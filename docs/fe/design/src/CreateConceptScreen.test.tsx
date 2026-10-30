@@ -87,7 +87,10 @@ it('버전 30개를 읽기 전용으로 열어도 본문과 연습할 조합을 
     expect(document.activeElement).toBe(trigger);
     expect(host.querySelector('.create-mapping-summary')!.textContent).toBe(before);
   }
-  await click('시작 전 점검 →');
+  await click('최종 확인 →');
+  expect(navigate).not.toHaveBeenCalled();
+  expect(host.querySelector('dialog')?.textContent).toContain('발표 준비 최종 확인');
+  await click('확인하고 시작 전 점검 →');
   expect(navigate).toHaveBeenCalledWith('prepare-mission');
 });
 it('파일명 없는 연결 메뉴에서 키보드로 선택하고 예시 매핑 완료 때만 창을 연다', async () => {
@@ -125,7 +128,7 @@ it('매핑 편집값은 닫고 다시 열어도 남고 재매핑·저장 후에�
   });
   expect(button('저장').disabled).toBe(true);
   await click('닫기');
-  expect(button('시작 전 점검 →')).toBeUndefined();
+  expect(button('최종 확인 →')).toBeUndefined();
   await click('매핑 확인/수정');
   await click('다음 장');
   expect(host.querySelector<HTMLTextAreaElement>('dialog textarea')?.value).toBe('수정한 둘째 장');
@@ -133,7 +136,7 @@ it('매핑 편집값은 닫고 다시 열어도 남고 재매핑·저장 후에�
   await finishMapping();
   await click('저장');
   await click('닫기');
-  expect(button('시작 전 점검 →').disabled).toBe(false);
+  expect(button('최종 확인 →').disabled).toBe(false);
 });
 it('전체 보기에서는 모달이 다른 시안을 가리지 않는다', async () => {
   const show = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
@@ -158,4 +161,57 @@ it('현재 단계 강조 시안은 선택과 입력에 따라 한 영역만 표�
   expect(current()).toHaveLength(1);
   expect(current()[0]?.getAttribute('aria-label')).toBe('발표정보');
   expect(host.querySelector('[aria-current="step"]')?.textContent).toContain('발표정보');
+});
+
+it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인하고 저장해야 한다', async () => {
+  await render('empty');
+  await click('PDF 파일 선택');
+  expect(host.querySelector('dialog')?.textContent).toContain('슬라이드 확인');
+  expect(host.querySelector('progress')?.value).toBe(0);
+  await click('닫기');
+  expect(host.querySelector('progress')?.value).toBe(0);
+  expect(host.textContent).toContain('업로드 완료 · 확인 필요');
+  await click('슬라이드 확인');
+  await click('다음 장');
+  expect(host.querySelector('dialog')?.textContent).toContain('2 / 3장');
+  await click('확인하고 저장');
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(host.querySelector('progress')?.value).toBe(1);
+  expect(host.textContent).toContain('확인 완료');
+});
+
+it('대본 매핑 완료와 창 닫기만으로는 저장되지 않는다', async () => {
+  await render();
+  await click('대본 매핑');
+  await finishMapping();
+  expect(host.querySelector('dialog')?.textContent).toContain('저장 필요');
+  await click('닫기');
+  expect(host.querySelector('progress')?.value).toBe(1);
+  await click('매핑 확인/수정');
+  await click('저장');
+  expect(host.querySelector('progress')?.value).toBe(2);
+});
+
+it('평가기준은 정리 후 확인·저장해야 하며 수정하면 재확인을 요구한다', async () => {
+  await render('ready');
+  const field = host.querySelector<HTMLTextAreaElement>('[id$="-criteria"]')!;
+  const edit = async (text: string) =>
+    act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+        field,
+        text,
+      );
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  await edit('출처를 명확하게 설명하기');
+  expect(button('최종 확인 →')).toBeUndefined();
+  await click('평가기준 정리');
+  expect(button('최종 확인 →')).toBeUndefined();
+  await click('평가기준 확인하고 저장');
+  await click('최종 확인 →');
+  expect(navigate).not.toHaveBeenCalled();
+  await click('돌아가서 수정');
+  await edit('');
+  await click('최종 확인 →');
+  expect(host.querySelector('dialog')?.textContent).toContain('사용하지 않음');
 });

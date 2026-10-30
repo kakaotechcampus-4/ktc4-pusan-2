@@ -16,7 +16,7 @@ const CRITERIA = [
 ];
 const GROUPS = ['슬라이드', '대본', '평가기준'] as const;
 type Kind = (typeof GROUPS)[number];
-type Preview = { kind: Kind | '매핑'; version: number };
+type Preview = { kind: Kind | '매핑' | '슬라이드 확인' | '최종 확인'; version: number };
 const sections = ['슬라이드', '대본 연결', '발표정보', '평가기준'];
 
 function Icon({ kind }: { kind: 'folder' | 'caret' | 'doc' | 'check' }) {
@@ -161,6 +161,7 @@ function PreviewDialog({
   onMap,
   onSave,
   onClose,
+  children,
 }: {
   preview: Preview;
   inline: boolean;
@@ -172,11 +173,14 @@ function PreviewDialog({
   onMap: () => void;
   onSave: () => void;
   onClose: () => void;
+  children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [page, setPage] = useState(0);
   const isMapping = preview.kind === '매핑';
+  const isSlideReview = preview.kind === '슬라이드 확인';
+  const isFinalReview = preview.kind === '최종 확인';
   useEffect(() => {
     if (inline) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -188,14 +192,17 @@ function PreviewDialog({
       previous?.focus({ preventScroll: true });
     };
   }, [inline]);
-  const title = isMapping ? '매핑 확인·수정' : `${preview.kind} V${preview.version} · 자료 보기`;
+  let title = `${preview.kind} V${preview.version} · 자료 보기`;
+  if (isMapping) title = '매핑 확인·수정';
+  if (isSlideReview) title = '슬라이드 확인';
+  if (isFinalReview) title = '발표 준비 최종 확인';
   return (
     <dialog
       ref={ref}
       open={inline || undefined}
       aria-labelledby={titleId}
       onClose={onClose}
-      className={`create-mapping-dialog ${inline ? '!static' : ''}`}
+      className={`create-mapping-dialog ${isFinalReview ? 'create-final-review' : ''} ${inline ? '!static' : ''}`}
       onKeyDown={(e) => {
         if (e.key !== 'Tab') return;
         const items = [
@@ -225,18 +232,19 @@ function PreviewDialog({
           닫기
         </button>
       </header>
-      {!isMapping && (
+      {!isMapping && !isSlideReview && !isFinalReview && (
         <p className="text-sm">
           확인용 창이에요. 현재 작성 중인 자료와 연습할 버전은 바뀌지 않아요.
         </p>
       )}
-      {(isMapping || preview.kind === '슬라이드') && (
+      {isSlideReview && <p>올린 PDF의 내용과 순서를 확인한 뒤 저장해 주세요.</p>}
+      {(isMapping || isSlideReview || preview.kind === '슬라이드') && (
         <>
           <p className="text-sm">
             슬라이드 V{preview.version} · 3장{isMapping && ' / 대본 V1'}
           </p>
           <div className="create-mapping-workspace">
-            <nav aria-label="매핑 슬라이드 목록">
+            <nav aria-label={isMapping ? '매핑 슬라이드 목록' : '슬라이드 목록'}>
               {TITLES.map((_, i) => (
                 <button
                   key={i}
@@ -282,6 +290,14 @@ function PreviewDialog({
               다음 장
             </button>
           </div>
+          {isSlideReview && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+              <p role="status">{saved ? '확인 완료' : '확인 필요'} · 서비스 소개.pdf</p>
+              <button type="button" className="create-primary" disabled={saved} onClick={onSave}>
+                {saved ? '확인 완료' : '확인하고 저장'}
+              </button>
+            </div>
+          )}
           {isMapping && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
               <p role="status">
@@ -311,6 +327,7 @@ function PreviewDialog({
           )}
         </>
       )}
+      {isFinalReview && children}
       {preview.kind === '대본' && (
         <div className="min-h-0 flex-1 overflow-auto bg-white p-5">
           {SCRIPT.map((text, i) => (
@@ -343,11 +360,14 @@ export function CreateConceptScreen({
   onNavigate: Navigate;
   inline: boolean;
 }) {
-  const focusOutline = stateId === 'focus-outline';
-  const ready = stateId === 'ready' || stateId === 'many' || focusOutline;
+  const focusOutline = ['focus-outline', 'upload-review', 'final-review'].includes(stateId);
+  const ready = ['ready', 'many', 'focus-outline', 'final-review'].includes(stateId);
   const [hasSlides, setHasSlides] = useState(!['empty', 'error'].includes(stateId));
+  const [slidesConfirmed, setSlidesConfirmed] = useState(
+    !['empty', 'error', 'upload-review'].includes(stateId),
+  );
   const [uploadError, setUploadError] = useState(stateId === 'error');
-  const [active, setActive] = useState(focusOutline ? 2 : 0);
+  const [active, setActive] = useState(focusOutline && stateId !== 'upload-review' ? 2 : 0);
   const [linked, setLinked] = useState(1);
   const [mapped, setMapped] = useState(ready || stateId === 'mapping');
   const [saved, setSaved] = useState(ready);
@@ -365,9 +385,13 @@ export function CreateConceptScreen({
   const [upper, setUpper] = useState(0);
   const [criteriaText, setCriteriaText] = useState(ready ? CRITERIA.join('\n') : '');
   const [criteria, setCriteria] = useState<string[]>(ready ? [...CRITERIA] : []);
-  const [preview, setPreview] = useState<Preview | null>(
-    stateId === 'mapping' ? { kind: '매핑', version: 1 } : null,
-  );
+  const [criteriaSaved, setCriteriaSaved] = useState(ready);
+  const [preview, setPreview] = useState<Preview | null>(() => {
+    if (stateId === 'mapping') return { kind: '매핑', version: 1 };
+    if (stateId === 'upload-review') return { kind: '슬라이드 확인', version: 1 };
+    if (stateId === 'final-review') return { kind: '최종 확인', version: 1 };
+    return null;
+  });
   const id = useId();
   useEffect(() => {
     if (!mapping) return;
@@ -388,13 +412,16 @@ export function CreateConceptScreen({
   const chooseFile = () => {
     setHasSlides(true);
     setUploadError(false);
+    setSlidesConfirmed(false);
+    setPreview({ kind: '슬라이드 확인', version: 1 });
     if (!title) setTitle('서비스 소개');
   };
-  const complete = Number(hasSlides) + Number(saved) + Number(confirmed);
+  const complete = Number(slidesConfirmed) + Number(saved) + Number(confirmed);
   let next: number | null = null;
-  if (!hasSlides) next = 0;
+  if (!slidesConfirmed) next = 0;
   else if (!saved) next = 1;
   else if (!confirmed) next = 2;
+  else if (criteriaText.trim() && !criteriaSaved) next = 3;
   const versions = Array.from({ length: stateId === 'many' ? 30 : 3 }, (_, i) => i + 1);
   return (
     <div
@@ -435,7 +462,7 @@ export function CreateConceptScreen({
                       <ul>
                         {(kind === '슬라이드' && hasSlides) ||
                         (kind === '대본' && mapped) ||
-                        (kind === '평가기준' && criteria.length > 0) ? (
+                        (kind === '평가기준' && criteriaSaved && criteria.length > 0) ? (
                           versions.map((v) => (
                             <li key={v}>
                               <button
@@ -492,6 +519,16 @@ export function CreateConceptScreen({
                     <p>서비스 소개.pdf</p>
                     <span>V1 · 3장 · PDF</span>
                   </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p role="status">{slidesConfirmed ? '확인 완료' : '업로드 완료 · 확인 필요'}</p>
+                  <button
+                    type="button"
+                    className="create-secondary"
+                    onClick={() => setPreview({ kind: '슬라이드 확인', version: 1 })}
+                  >
+                    슬라이드 확인
+                  </button>
                 </div>
                 <details className="create-slide-preview">
                   <summary>슬라이드 미리보기</summary>
@@ -701,14 +738,21 @@ export function CreateConceptScreen({
                   id={`${id}-criteria`}
                   className="min-h-40 w-full border border-line-strong bg-white p-4"
                   value={criteriaText}
-                  onChange={(e) => setCriteriaText(e.target.value)}
+                  onChange={(e) => {
+                    setCriteriaText(e.target.value);
+                    setCriteria([]);
+                    setCriteriaSaved(false);
+                  }}
                   placeholder="핵심 주장을 먼저 말하고, 근거와 출처를 설명하고 싶어요."
                 />
                 <button
                   type="button"
                   className="create-primary mt-3"
                   disabled={!criteriaText.trim()}
-                  onClick={() => setCriteria([...CRITERIA])}
+                  onClick={() => {
+                    setCriteria([...CRITERIA]);
+                    setCriteriaSaved(false);
+                  }}
                 >
                   평가기준 정리
                 </button>
@@ -724,6 +768,21 @@ export function CreateConceptScreen({
                 ) : (
                   <p>아직 정리된 평가기준이 없어요.</p>
                 )}
+                {criteria.length > 0 && (
+                  <div className="mt-5">
+                    <p role="status" className="mb-3 text-sm">
+                      {criteriaSaved ? '확인 완료' : '정리된 내용을 확인한 뒤 저장해 주세요.'}
+                    </p>
+                    <button
+                      type="button"
+                      className="create-primary"
+                      disabled={criteriaSaved}
+                      onClick={() => setCriteriaSaved(true)}
+                    >
+                      {criteriaSaved ? '확인 완료' : '평가기준 확인하고 저장'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -733,8 +792,8 @@ export function CreateConceptScreen({
         <div>
           <p role="status">
             {next === null
-              ? `슬라이드 V${linked} / 대본 V1 · 시작 전 점검으로 이동해요.`
-              : '필수 준비를 마친 뒤 시작 전 점검으로 이동해요.'}
+              ? `슬라이드 V${linked} / 대본 V1 · 준비한 내용을 최종 확인해 주세요.`
+              : '사용할 자료와 설정을 확인하고 저장해 주세요.'}
           </p>
           <div className="create-actions">
             <button type="button" className="create-secondary" onClick={() => onNavigate('home')}>
@@ -744,11 +803,18 @@ export function CreateConceptScreen({
               type="button"
               className="create-primary"
               disabled={mapping}
-              onClick={() => (next === null ? onNavigate('prepare-mission') : go(next))}
+              onClick={() =>
+                next === null ? setPreview({ kind: '최종 확인', version: linked }) : go(next)
+              }
             >
               {next === null
-                ? '시작 전 점검 →'
-                : ['슬라이드 올리기 ↓', '대본 연결 확인하기 ↓', '발표정보 확인하기 ↓'][next]}
+                ? '최종 확인 →'
+                : [
+                    '슬라이드 확인하기 ↓',
+                    '대본 연결 확인하기 ↓',
+                    '발표정보 확인하기 ↓',
+                    '평가기준 확인하기 ↓',
+                  ][next]}
             </button>
           </div>
         </div>
@@ -759,7 +825,7 @@ export function CreateConceptScreen({
           preview={preview}
           inline={inline}
           blocks={blocks}
-          saved={saved}
+          saved={preview.kind === '슬라이드 확인' ? slidesConfirmed : saved}
           mapping={mapping}
           edited={edited}
           onEdit={(page, text) => {
@@ -768,9 +834,46 @@ export function CreateConceptScreen({
             setEdited(true);
           }}
           onMap={() => setMapping(true)}
-          onSave={() => setSaved(true)}
+          onSave={() => {
+            if (preview.kind === '슬라이드 확인') {
+              setSlidesConfirmed(true);
+              setPreview(null);
+            } else setSaved(true);
+          }}
           onClose={() => setPreview(null)}
-        />
+        >
+          <p>이 자료와 설정으로 연습할까요? 수정하려면 창을 닫고 해당 항목을 바꿔 주세요.</p>
+          <dl className="grid gap-5 border-y border-line py-5">
+            {[
+              ['슬라이드', `서비스 소개.pdf · V${linked} · 3장`],
+              ['대본', `V1 · ${blocks.length}장 · 저장 완료`],
+              ['발표 제목', title],
+              ['목표 발표시간', `${minutes}분 · 짧게 ${lower}초 / 길게 ${upper}초 허용`],
+              [
+                '평가기준',
+                criteriaSaved && criteria.length ? criteria.join(' / ') : '사용하지 않음',
+              ],
+            ].map(([label, value]) => (
+              <div key={label} className="grid gap-1 sm:grid-cols-[8rem_1fr] sm:gap-4">
+                <dt className="font-bold">{label}</dt>
+                <dd className="break-words">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="create-secondary" onClick={() => setPreview(null)}>
+              돌아가서 수정
+            </button>
+            <button
+              type="button"
+              className="create-primary"
+              disabled={next !== null}
+              onClick={() => onNavigate('prepare-mission')}
+            >
+              확인하고 시작 전 점검 →
+            </button>
+          </div>
+        </PreviewDialog>
       )}
     </div>
   );

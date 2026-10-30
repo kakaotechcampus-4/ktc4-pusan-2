@@ -572,3 +572,9 @@
   outline: 1px solid var(--color-coral-deep);
   outline-offset: -1px;
 }
+
+.create-final-review {
+  width: min(44rem, calc(100vw - 2rem));
+  height: fit-content;
+  max-height: calc(100dvh - 2rem);
+}
