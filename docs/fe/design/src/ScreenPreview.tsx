@@ -7,8 +7,10 @@
 import { useState, type MouseEvent } from 'react';
 import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
+import { CreateConceptScreen } from './screens/CreateConceptScreen';
 import { CreateScreen } from './screens/CreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
+import { PrepareLayoutDraft } from './screens/PrepareLayoutDraft';
 import { StageScreen } from './screens/StageScreen';
 import { ProcessingScreen, ConfirmScreen } from './screens/AnalysisScreen';
 import { RetryScreen } from './screens/RetryScreen';
@@ -39,7 +41,7 @@ export type { Navigate as PreviewNavigate } from './screens/shared';
 
 /**
  * 위에 공용 상단바가 얹히는 화면과 그때 표시되는 메뉴. 제품 `app/routes.tsx`의 appHeaderPaths와
- * 리포트(ReportPage가 직접 둔다)다. 피치 생성 · 시작 전 세팅은 #738에서 더해졌다
+ * 리포트(ReportPage가 직접 둔다)다. 피치 생성은 #738에서 더해졌다(시작 전 세팅은 #706에서 정한다)
  */
 const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
   home: 'home',
@@ -49,7 +51,7 @@ const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
   comparison: null,
   report: null,
   'pitch-create': null,
-  'prepare-mission': null,
+  'pitch-create-a': null,
 };
 
 /** 제품 경로를 설계서 화면으로 바꾼다. 알 수 없는 경로는 제품으로 열지 않는다 */
@@ -179,10 +181,14 @@ function CurrentScreen({
       return <WritingFoundation stateId={stateId} />;
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'pitch-create-a':
+      return <CreateConceptScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'pitch-create':
       return <CreateScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'prepare-mission':
       return <PrepareScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'prepare-layout-review':
+      return <PrepareLayoutDraft stateId={stateId} onNavigate={onNavigate} />;
     case 'stage':
       return <StageScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'processing-loading':

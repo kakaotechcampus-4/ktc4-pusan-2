@@ -1,5 +1,5 @@
 // 제품 `frontend/src/features/rehearsal/prepare/ReplaceTakeDialog.tsx`에서 복사해 시작했다. 설계서가 관리한다.
-import { useEffect, useId, useRef } from 'react';
+import { useId, useLayoutEffect, useRef } from 'react';
 import { Button } from '../Button';
 
 /**
@@ -25,7 +25,9 @@ export function ReplaceTakeDialog({
   const bodyId = useId();
   const mounted = useRef(true);
 
-  useEffect(() => {
+  // 창을 내릴 때 close()를 <dialog>가 문서에서 빠지기 전에 불러야 브라우저가 초점을 연 버튼으로
+  // 돌려준다. useEffect 정리는 DOM을 뗀 뒤에 돌아 초점이 페이지 맨 처음으로 간다(제품 #771)
+  useLayoutEffect(() => {
     mounted.current = true;
     const dialog = ref.current;
     dialog?.showModal();

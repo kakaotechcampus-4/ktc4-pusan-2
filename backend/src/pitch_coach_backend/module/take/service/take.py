@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
@@ -351,6 +352,21 @@ def find_owned(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | No
     return TakeRepository(db).get_owned(take_id, user_id)
 
 
-def has_completed_report(db: Session, pitch_ids: list[uuid.UUID]) -> bool:
-    """본인 발표 범위에 완료된 측정 결과가 하나라도 남아 있는가."""
-    return TakeRepository(db).has_completed_report(pitch_ids)
+def has_report(db: Session, take: Take) -> bool:
+    """리포트를 볼 수 있는 Take 인가. 완료됐고 측정 결과가 남아 있어야 한다.
+
+    AI 리뷰가 실패하거나 건너뛰어도 측정 결과가 있으면 리포트가 있다.
+    """
+    return take.status == "COMPLETED" and TakeRepository(db).has_take_result(take.id)
+
+
+def list_reported_takes(
+    db: Session, user_id: uuid.UUID, *, completed_after: datetime, exclude: set[uuid.UUID]
+) -> list[Row]:
+    """`completed_after` 이후에 끝난, 리포트를 볼 수 있는 사용자의 Take. `exclude` 는 뺀다.
+
+    행은 take_id · pitch_id · pitch_title · take_number · completed_at 이다.
+    """
+    return TakeRepository(db).list_reported(
+        user_id, completed_after=completed_after, exclude=exclude
+    )

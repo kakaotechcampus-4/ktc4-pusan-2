@@ -52,6 +52,15 @@ http://localhost:3100/#/?screen=prepare-mission&state=mic-error&view=single&devi
 2. `src/screens/`에 화면 파일(예: `HomeScreen.tsx`)을 만들어 상태 ID마다 무엇이 바뀌는지 그리고, `src/ScreenPreview.tsx`의 `CurrentScreen`에 그 `id`를 한 줄 연결한다. 화면 안 버튼은 `onNavigate(화면 ID, 상태 ID)`로 이동하고, 여러 화면이 쓰는 틀 · 샘플 이름은 `src/screens/shared.tsx`에 둔다. 제품 경로로 가는 링크는 `ScreenPreview.tsx`의 `targetFor`에 연결하면 설계서 안에서만 이동한다.
 3. 새 UI 조각이 필요하면 `src/ui/`에 둔다. 제품 컴포넌트를 가져올 때는 import하지 않고 복사하며, 파일 머리에 어디서 복사해 시작했는지 한 줄 적는다.
 
+## 시작 전 세팅 · PM 검토 시안
+
+닫힌 구현 PR #789를 대체하는 **문서·독립 시안 전용** 검토다. 제품 구현은 PM 승인 후 별도 작업으로 진행한다. 기존 제품 샘플은 그대로 두고, `prepare-layout-review`를 `status: '시안'`으로 추가했다. 상태 선택으로 장비 연결 전·완료·오류, 목소리 읽기, 미션 0/1/2/3/4/20개·500자, 긴 장치 이름, 실전 모드를 살펴본다. 장치·API는 사용하지 않는다.
+
+- [디자인 결정과 검토 항목](prepare-layout-review.md)
+- 뷰어: `http://localhost:3100/#/?screen=prepare-layout-review&state=default&view=single&device=team-laptop`
+- 창 크기로 화면만 보기: `http://localhost:3100/#/frame?screen=prepare-layout-review&state=default`
+- 이 시안을 제품에 반영했다는 뜻으로 `PRODUCT_CHECKED`나 `pending`을 올리지 않는다.
+
 ## 시안 관리
 
 새 디자인과 제품 샘플을 **같은 자리**(`catalog.ts` + `src/screens/`)에서 관리한다. 시안을 따로 모아 두는 폴더는 두지 않는다 — 검사 · 빌드에서 빼야 하고, 제품이 바뀌어도 아무도 고치지 않아 금방 낡는다.

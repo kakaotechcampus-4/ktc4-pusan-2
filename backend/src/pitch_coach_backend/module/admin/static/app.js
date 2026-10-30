@@ -18,13 +18,21 @@ const LABELS = {
   ABANDONED: '이탈',
   CLOSED: '창 닫음',
   USER: '직접 종료',
-  RATING_POPUP: '평점 팝업',
   MY_PAGE: '마이페이지',
   POSITIVE: '좋았던 점',
   IMPROVEMENT: '개선할 점',
   PROBLEM: '문제 신고',
   QUESTION: '질문',
   OTHER: '기타',
+  FINALIZING: '결과 만드는 중',
+  SCORING: '채점 중',
+  AWAITING_CONFIRMATION: '확인 대기',
+  REVIEWING: '리뷰 중',
+  DONE: '완료',
+  SKIPPED: '건너뜀',
+  COVERAGE_RESCORE_FAILED: '병합 재채점 실패',
+  PENDING: '진행 중',
+  PARTIAL: '일부 실패',
 };
 
 const label = (value) => (value == null ? '—' : LABELS[value] ?? value);
@@ -143,16 +151,46 @@ function renderCounts(id, counts) {
 
 const statusBadge = (status) => el('span', { className: `badge ${status}`, textContent: label(status) });
 
+function takeIdCell(take) {
+  const short = `${take.id.slice(0, 8)}…${take.id.slice(-4)}`;
+  const button = el('button', { type: 'button', className: 'copy', title: take.id, textContent: short });
+  button.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(take.id);
+      button.textContent = '복사됨';
+      setTimeout(() => {
+        button.textContent = short;
+      }, 1500);
+    } catch {
+      window.prompt('Take ID', take.id);
+    }
+  });
+  return button;
+}
+
+const subText = (text) => el('small', { className: 'muted block', textContent: text });
+const shortId = (id) => el('span', { title: id, textContent: `${id.slice(0, 8)}…${id.slice(-4)}` });
+
+function stageCell(take) {
+  if (take.analysis_stage == null) return '—';
+  return el('span', {}, [label(take.analysis_stage), subText(dateTime(take.analysis_stage_at))]);
+}
+
 const TAKE_COLUMNS = [
+  ['ID', takeIdCell],
   ['만든 시각', (t) => dateTime(t.created_at)],
   ['사용자', (t) => `${t.user_name} (${t.user_email})`],
-  ['발표', (t) => t.pitch_title],
+  ['발표', pitchButton],
   ['회차', (t) => t.take_number, true],
   ['모드', (t) => label(t.mode)],
   ['상태', (t) => statusBadge(t.status)],
   ['종료 이유', (t) => (t.ended_at ? label(t.end_reason ?? 'USER') : '—')],
   ['연습 시간', (t) => duration(t.elapsed_sec), true],
   ['목표', (t) => duration(t.goal_time_sec), true],
+  ['분석 단계', stageCell],
+  ['리뷰', (t) => label(t.review_status)],
+  ['보류', (t) => label(t.analysis_hold_reason)],
+  ['기록', liveButton],
 ];
 
 const USER_COLUMNS = [
@@ -165,117 +203,57 @@ const USER_COLUMNS = [
   ['마지막 연습', (u) => dateTime(u.last_take_at)],
 ];
 
-// ---------- 서비스 평점 · 의견 ----------
+// ---------- Take별 설문 · 의견 ----------
 
 const opinionText = (text) => el('span', { className: 'opinion', textContent: text ?? '—' });
-const FEEDBACK_COLUMNS = [
-  ['제출 시각', (row) => dateTime(row.created_at)],
-  ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
-  ['평점', (row) => `${row.rating} / 5`, true],
-  ['의견 유형', (row) => label(row.category)],
-  ['의견', (row) => opinionText(row.suggestion)],
-];
 const SUGGESTION_COLUMNS = [
   ['제출 시각', (row) => dateTime(row.created_at)],
   ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
-  ['보낸 곳', (row) => label(row.source)],
   ['의견 유형', (row) => label(row.category)],
   ['의견', (row) => opinionText(row.content)],
 ];
 
-// 사용자별 평점 · 의견. 한 사용자가 한 행이고 의견은 같은 칸에 목록으로 모은다
-const stars = (rating) => '★'.repeat(rating) + '☆'.repeat(5 - rating);
-const subText = (text) => el('small', { className: 'muted block', textContent: text });
+const TAKE_SURVEY_COLUMNS = [
+  ['제출 시각', (row) => dateTime(row.created_at)],
+  ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
+  ['연습', (row) => (row.take_id ? `${row.pitch_title} · ${row.take_number}번째` : '지운 연습')],
+  ['정확도', (row) => `${row.accuracy_rating} / 5`, true],
+  ['유용성', (row) => `${row.usefulness_rating} / 5`, true],
+  ['아쉬운 점', (row) => opinionText(row.comment)],
+  ['문항 버전', (row) => row.question_version, true],
+];
 
-// UUIDv7 은 앞자리가 만든 시각이라 비슷한 때 가입한 사용자끼리 겹친다. 뒷자리를 붙여 가른다.
-// 전체 ID 는 마우스를 올리면 보인다
-const shortId = (id) => el('span', { title: id, textContent: `${id.slice(0, 8)}…${id.slice(-4)}` });
-
-function authorCell(row) {
-  if (row.user_id) return shortId(row.user_id);
-  // 탈퇴하면 작성자를 알 수 없다. 묶음마다 다른 ID 를 보여 서로 다른 탈퇴자를 가른다
-  const retained = el('small', { className: 'muted block' }, ['작성자 연결 없음 · ', shortId(row.retained_id)]);
-  return el('span', {}, ['탈퇴한 사용자', retained]);
-}
-
-function renderRatingSummary(summary) {
-  const node = document.getElementById('rating-summary');
-  if (summary.avg_rating == null) {
-    node.replaceChildren(el('span', { className: 'muted', textContent: '아직 평점이 없습니다' }));
+// 문항 버전마다 한 줄. 문구가 바뀐 앞뒤 응답을 섞어 평균 내지 않는다
+function renderTakeSurveySummary(rows) {
+  const node = document.getElementById('take-survey-summary');
+  if (!rows.length) {
+    node.replaceChildren(el('span', { className: 'muted', textContent: '아직 응답이 없습니다' }));
     return;
   }
   node.replaceChildren(
-    '평균 ',
-    el('strong', { textContent: `${summary.avg_rating.toFixed(1)}점` }),
-    el('span', { className: 'muted', textContent: ` · 평점 ${summary.rated_count}개, 미평가 제외` }),
+    ...rows.map((row) =>
+      el('span', { className: 'block' }, [
+        el('strong', {
+          textContent: `정확도 ${row.avg_accuracy.toFixed(1)} · 유용성 ${row.avg_usefulness.toFixed(1)}`,
+        }),
+        el('span', {
+          className: 'muted',
+          textContent: ` · 문항 버전 ${row.question_version} · 응답 ${row.survey_count}개`,
+        }),
+      ]),
+    ),
   );
 }
 
-function ratingCell(row) {
-  if (row.rating == null) return el('span', { className: 'muted', textContent: '미평가' });
-  return el('span', {}, [`${stars(row.rating)} · ${row.rating}점`, subText(dateTime(row.rated_at))]);
-}
-
-const suggestionItem = (s) =>
-  el('li', {}, [
-    opinionText(s.content),
-    subText(`${label(s.source)} · ${label(s.category)} · ${dateTime(s.created_at)}`),
-  ]);
-
-function suggestionsCell(row) {
-  if (row.suggestion_count === 0) return el('span', { className: 'muted', textContent: '의견 없음' });
-  const list = el('ul', { className: 'opinions' }, row.suggestions.map(suggestionItem));
-  // 탈퇴한 사용자의 묶음은 의견이 하나라 더 받을 것이 없다
-  if (!row.user_id || row.suggestions.length >= row.suggestion_count) return list;
-  // 나머지는 의견 목록을 이 사용자로 걸러 같은 순서로 이어서 받는다.
-  // 그 사이 새 의견이 오면 순서가 한 칸씩 밀려 받은 의견이 다시 올 수 있어 ID 로 거른다
-  const shown = new Set(row.suggestions.map((s) => s.id));
-  let offset = row.suggestions.length;
-  const more = el('button', { type: 'button', className: 'more' });
-  const error = el('small', { className: 'error-text block', hidden: true });
-  const updateMore = () => {
-    more.textContent = `의견 더보기 (${Math.max(0, row.suggestion_count - shown.size)}개 남음)`;
-  };
-  updateMore();
-  more.addEventListener('click', async () => {
-    more.disabled = true;
-    error.hidden = true;
-    const query = new URLSearchParams({ user_id: row.user_id, limit: '50', offset: String(offset) });
-    try {
-      const page = await getJSON(`api/suggestions?${query}`);
-      offset += page.items.length;
-      const fresh = page.items.filter((s) => !shown.has(s.id));
-      fresh.forEach((s) => shown.add(s.id));
-      list.append(...fresh.map(suggestionItem));
-      if (page.next_offset === null) more.remove();
-      else updateMore();
-    } catch (failure) {
-      error.textContent = `더 불러오지 못했습니다 — ${failure.message}`;
-      error.hidden = false;
-    } finally {
-      more.disabled = false;
-    }
-  });
-  return el('div', {}, [list, more, error]);
-}
-
-const FEEDBACK_USER_COLUMNS = [
-  ['사용자', authorCell],
-  ['평점', ratingCell],
-  ['의견들', suggestionsCell],
-  ['마지막 제출', (row) => dateTime(row.last_at)],
-];
-
 const feedbackPages = {
-  feedbacks: { path: 'api/service-feedbacks', columns: FEEDBACK_COLUMNS, offset: 0, next: null, request: 0 },
-  suggestions: { path: 'api/suggestions', columns: SUGGESTION_COLUMNS, offset: 0, next: null, request: 0 },
-  'feedback-users': {
-    path: 'api/service-feedbacks/by-user',
-    columns: FEEDBACK_USER_COLUMNS,
+  'take-surveys': {
+    path: 'api/take-surveys',
+    columns: TAKE_SURVEY_COLUMNS,
     offset: 0,
     next: null,
     request: 0,
   },
+  suggestions: { path: 'api/suggestions', columns: SUGGESTION_COLUMNS, offset: 0, next: null, request: 0 },
 };
 
 async function loadFeedbackPage(id, offset) {
@@ -288,8 +266,6 @@ async function loadFeedbackPage(id, offset) {
   error.hidden = true;
   const query = new URLSearchParams({ limit: '50', offset: String(offset) });
   if (id === 'suggestions') {
-    const source = document.getElementById('suggestions-source').value;
-    if (source) query.set('source', source);
     const category = document.getElementById('suggestions-category').value;
     if (category) query.set('category', category);
   }
@@ -330,11 +306,332 @@ function showFeedbackError(error) {
   node.textContent = error.message;
   node.hidden = false;
 }
-for (const id of ['suggestions-source', 'suggestions-category']) {
+for (const id of ['suggestions-category']) {
   document.getElementById(id).addEventListener('change', () => {
     loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
   });
 }
+
+// ---------- 연습 기록 ----------
+
+const LIVE_POLL_MS = 3000;
+const LIVE_STATUSES = ['READY', 'RUNNING'];
+const live = { takeId: null, timer: null, request: 0, segments: [], seconds: [] };
+
+function clock(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+const record = (value) =>
+  el('code', { className: 'record', textContent: value == null ? '—' : JSON.stringify(value) });
+
+const SEGMENT_COLUMNS = [
+  ['시각', (s) => `${clock(s.start_ms)}–${clock(s.end_ms)}`],
+  ['문장', (s) => opinionText(s.transcript)],
+  ['신뢰도', (s) => s.confidence.toFixed(2), true],
+  ['STT 세션', (s) => s.stt_session_no, true],
+];
+
+const SECOND_COLUMNS = [
+  ['시각', (s) => clock(s.t_ms)],
+  ['장', (s) => s.slide_number ?? '—', true],
+  ['STT 상태', (s) => s.stt_status],
+  ['시선', (s) => record(s.gaze)],
+  ['음량', (s) => record(s.voice)],
+];
+
+function liveButton(take) {
+  const button = el('button', { type: 'button', textContent: '보기' });
+  button.addEventListener('click', () => openLive(take));
+  return button;
+}
+
+function openLive(take) {
+  clearTimeout(live.timer);
+  live.request += 1;
+  Object.assign(live, { takeId: take.id, timer: null, segments: [], seconds: [] });
+  document.getElementById('live-title').textContent =
+    `${take.user_name} · ${take.pitch_title} · ${take.take_number}회차`;
+  document.getElementById('live-error').hidden = true;
+  const panel = document.getElementById('live');
+  panel.hidden = false;
+  renderLive(take.status);
+  pollLive();
+  loadResults();
+  panel.scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeLive() {
+  clearTimeout(live.timer);
+  live.request += 1;
+  results.request += 1;
+  Object.assign(live, { takeId: null, timer: null, segments: [], seconds: [] });
+  document.getElementById('live').hidden = true;
+}
+
+async function pollLive() {
+  const request = ++live.request;
+  const error = document.getElementById('live-error');
+  const query = new URLSearchParams({ after_seq: String(live.segments.at(-1)?.seq ?? 0) });
+  const last = live.seconds.at(-1);
+  if (last) query.set('after_t_ms', String(last.t_ms));
+  try {
+    const data = await getJSON(`api/takes/${live.takeId}/live?${query}`);
+    if (request !== live.request) return;
+    live.segments.push(...data.segments);
+    live.seconds.push(...data.seconds);
+    error.hidden = true;
+    renderLive(data.status);
+    const running = LIVE_STATUSES.includes(data.status);
+    const more = data.segments.length > 0 || data.seconds.length > 0;
+    if (running || more) live.timer = setTimeout(pollLive, running ? LIVE_POLL_MS : 0);
+  } catch (failure) {
+    if (request !== live.request) return;
+    error.textContent = `불러오지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+    live.timer = setTimeout(pollLive, LIVE_POLL_MS);
+  }
+}
+
+function renderLive(status) {
+  document.getElementById('live-status').replaceChildren(
+    statusBadge(status),
+    el('span', {
+      className: 'muted',
+      textContent: ` 전사 ${live.segments.length}개 · 1초 기록 ${live.seconds.length}개`,
+    }),
+  );
+  renderTable('live-segments', SEGMENT_COLUMNS, [...live.segments].reverse(), '아직 저장된 전사가 없습니다');
+  renderTable(
+    'live-seconds',
+    SECOND_COLUMNS,
+    [...live.seconds].reverse(),
+    '1초 기록이 없습니다 — 동의하지 않은 연습은 리포트를 만든 뒤 지웁니다',
+  );
+}
+
+document.getElementById('live-close').addEventListener('click', closeLive);
+
+const results = { request: 0 };
+const RESULT_TABLES = [
+  'take-ai-results',
+  'take-coach-events',
+  'take-summary',
+  'take-settings',
+  'take-calibration',
+  'take-slide-events',
+  'take-utterance-ends',
+  'take-words',
+];
+const FIELD_COLUMNS = [
+  ['항목', ([key]) => key],
+  ['값', ([, value]) => (value !== null && typeof value === 'object' ? record(value) : value ?? '—')],
+];
+
+const SLIDE_EVENT_COLUMNS = [
+  ['시각', (s) => clock(s.started_ms)],
+  ['장', (s) => s.slide_number, true],
+];
+
+const WORD_COLUMNS = [
+  ['seq', (s) => s.seq, true],
+  ['시각', (s) => `${clock(s.start_ms)}–${clock(s.end_ms)}`],
+  ['확정 시각', (s) => (s.final_at_ms == null ? '—' : clock(s.final_at_ms))],
+  ['단어 수', (s) => (Array.isArray(s.words) ? s.words.length : '—'), true],
+  ['words', (s) => folded('words', s.words)],
+];
+
+function renderInputs(inputs) {
+  const { slide_events: slides, segments, calibration, utterance_ends: ends, ...settings } = inputs;
+  renderTable('take-settings', FIELD_COLUMNS, Object.entries(settings));
+  renderTable(
+    'take-calibration',
+    FIELD_COLUMNS,
+    calibration ? Object.entries(calibration) : [],
+    '점검 기록이 없습니다',
+  );
+  renderTable('take-slide-events', SLIDE_EVENT_COLUMNS, slides, '장 변경이 없습니다');
+  document.getElementById('take-utterance-ends').textContent = Array.isArray(ends) && ends.length
+    ? `${ends.length}개 · ${ends.map(clock).join(', ')}`
+    : '없음';
+  renderTable('take-words', WORD_COLUMNS, segments, '전사가 없습니다');
+}
+
+async function downloadExport() {
+  const takeId = live.takeId;
+  const button = document.getElementById('export-take');
+  const error = document.getElementById('export-error');
+  button.disabled = true;
+  error.hidden = true;
+  try {
+    const data = await getJSON(`api/takes/${takeId}/export`);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = el('a', { href: url, download: `take-${takeId}.json` });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    if (data.request === null) {
+      error.textContent = '복구 요청을 만들 수 없어 request 가 비어 있습니다 — 1초 기록이 없는 연습입니다';
+      error.hidden = false;
+    }
+  } catch (failure) {
+    error.textContent = `내려받지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.getElementById('export-take').addEventListener('click', () => {
+  if (live.takeId) downloadExport();
+});
+
+function ratios(measured) {
+  const entries = Object.entries(measured);
+  if (!entries.length) return '—';
+  return entries.map(([area, ratio]) => `${area} ${ratio == null ? '—' : ratio.toFixed(2)}`).join(' · ');
+}
+
+const AI_RESULT_COLUMNS = [
+  ['종류', (r) => r.kind],
+  ['revision', (r) => r.revision, true],
+  ['만든 시각', (r) => dateTime(r.created_at)],
+  ['재판정', (r) => yesNo(r.replayed)],
+  ['기준 바뀜', (r) => yesNo(r.criteria_changed)],
+  ['측정 비율', (r) => ratios(r.measured_ratios)],
+  ['기본 문장', (r) => r.fallback_reason ?? '—'],
+  ['모델', (r) => r.model ?? '—'],
+  ['payload', (r) => folded('payload', r.payload)],
+  ['meta', (r) => folded('meta', r.meta)],
+];
+
+const COACH_EVENT_COLUMNS = [
+  ['시각', (e) => clock(e.t_ms)],
+  ['종류', (e) => e.kind],
+  ['seq', (e) => e.seq, true],
+  ['payload', (e) => folded('payload', e.payload)],
+  ['meta', (e) => folded('meta', e.meta)],
+];
+
+async function loadResults() {
+  const request = ++results.request;
+  const takeId = live.takeId;
+  const error = document.getElementById('results-error');
+  const inputsError = document.getElementById('inputs-error');
+  error.hidden = true;
+  inputsError.hidden = true;
+  RESULT_TABLES.forEach((id) => document.getElementById(id).replaceChildren());
+  const [data, inputs] = await Promise.allSettled([
+    getJSON(`api/takes/${takeId}/results`),
+    getJSON(`api/takes/${takeId}/inputs`),
+  ]);
+  if (request !== results.request) return;
+  if (inputs.status === 'fulfilled') {
+    renderInputs(inputs.value);
+  } else {
+    inputsError.textContent = `판정 입력을 불러오지 못했습니다 — ${inputs.reason.message}`;
+    inputsError.hidden = false;
+  }
+  if (data.status === 'fulfilled') {
+    const { ai_results: aiResults, coach_events: events, summary } = data.value;
+    renderTable('take-ai-results', AI_RESULT_COLUMNS, aiResults, '아직 AI 결과가 없습니다');
+    renderTable('take-coach-events', COACH_EVENT_COLUMNS, events, '코치 이벤트가 없습니다');
+    renderTable(
+      'take-summary',
+      FIELD_COLUMNS,
+      summary ? Object.entries(summary) : [],
+      '요약이 없습니다',
+    );
+  } else {
+    error.textContent = `AI 결과를 불러오지 못했습니다 — ${data.reason.message}`;
+    error.hidden = false;
+  }
+}
+
+document.getElementById('results-reload').addEventListener('click', () => {
+  if (live.takeId) loadResults();
+});
+
+const pitchAI = { request: 0 };
+
+const folded = (name, value) =>
+  value == null ? '—' : el('details', {}, [el('summary', { textContent: name }), record(value)]);
+const yesNo = (value) => (value == null ? '—' : value ? '예' : '아니오');
+const msDuration = (ms) => (ms == null ? '—' : duration(ms / 1000));
+
+const SCRIPT_COLUMNS = [
+  ['버전', (s) => `v${s.version}`],
+  ['만든 시각', (s) => dateTime(s.created_at)],
+  ['파싱', (s) => (s.parse_error ? `${label(s.parse_status)} (${s.parse_error})` : label(s.parse_status))],
+  ['파싱 요청', (s) => dateTime(s.parse_requested_at)],
+  ['장별 기준', (s) => label(s.rubric_status)],
+  ['기준 있는 장', (s) => `${s.rubric_slide_count} / ${s.slide_count}`, true],
+  ['빠진 장', (s) => (s.missing_rubric_slides.length ? s.missing_rubric_slides.join(', ') : '—')],
+  ['재시도 씀', (s) => yesNo(s.rubric_retry_used)],
+  ['기준 요청', (s) => dateTime(s.rubric_requested_at)],
+];
+
+const STANDARD_COLUMNS = [
+  ['버전', (s) => `v${s.version}`],
+  ['표시 기준', (s) => s.criteria_count, true],
+  ['분석', (s) => (s.analyzed_at ? dateTime(s.analyzed_at) : '분석 없음')],
+  ['대본 사용', (s) => yesNo(s.script_used)],
+  ['targets', (s) => folded('targets', s.targets)],
+  ['excluded', (s) => folded('excluded', s.excluded)],
+  ['values', (s) => folded('values', s.values)],
+  ['meta', (s) => folded('meta', s.meta)],
+];
+
+const PLAN_COLUMNS = [
+  ['요청 시각', (p) => dateTime(p.requested_at)],
+  ['결과', (p) => p.fallback_reason ?? '정상'],
+  ['모델', (p) => p.model ?? '—'],
+  ['바탕 Take', (p) => (p.source_take_id ? shortId(p.source_take_id) : '—')],
+  ['대본 버전 ID', (p) => (p.script_version_id ? shortId(p.script_version_id) : '—')],
+  ['목표', (p) => msDuration(p.target_ms), true],
+  ['최소', (p) => msDuration(p.min_ms), true],
+  ['최대', (p) => msDuration(p.max_ms), true],
+  ['payload', (p) => folded('payload', p.payload)],
+  ['meta', (p) => folded('meta', p.meta)],
+];
+
+function pitchButton(take) {
+  const button = el('button', { type: 'button', className: 'link', textContent: take.pitch_title });
+  button.addEventListener('click', () => openPitchAI(take));
+  return button;
+}
+
+async function openPitchAI(take) {
+  const request = ++pitchAI.request;
+  const panel = document.getElementById('pitch-ai');
+  const error = document.getElementById('pitch-ai-error');
+  document.getElementById('pitch-ai-title').textContent = `${take.user_name} · ${take.pitch_title}`;
+  error.hidden = true;
+  for (const id of ['pitch-ai-scripts', 'pitch-ai-standards', 'pitch-ai-plans']) {
+    document.getElementById(id).replaceChildren();
+  }
+  panel.hidden = false;
+  panel.scrollIntoView({ behavior: 'smooth' });
+  try {
+    const data = await getJSON(`api/pitches/${take.pitch_id}/ai`);
+    if (request !== pitchAI.request) return;
+    renderTable('pitch-ai-scripts', SCRIPT_COLUMNS, data.scripts, '대본이 없습니다');
+    renderTable('pitch-ai-standards', STANDARD_COLUMNS, data.standards, '평가 기준이 없습니다');
+    renderTable('pitch-ai-plans', PLAN_COLUMNS, data.coaching_plans, '코칭 계획이 없습니다');
+  } catch (failure) {
+    if (request !== pitchAI.request) return;
+    error.textContent = `불러오지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+  }
+}
+
+document.getElementById('pitch-ai-close').addEventListener('click', () => {
+  pitchAI.request += 1;
+  document.getElementById('pitch-ai').hidden = true;
+});
 
 // ---------- 불러오기 ----------
 
@@ -353,10 +650,11 @@ const SECTIONS = [
     renderCounts('by-end-reason', stats.takes.by_end_reason);
   }],
   ['api/takes/stuck', (rows) => renderTable('stuck-takes', TAKE_COLUMNS, rows)],
+  ['api/takes/stalled-analysis', (rows) => renderTable('stalled-analyses', TAKE_COLUMNS, rows)],
   ['api/takes?status=FAILED&limit=50', (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
   ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
-  ['api/service-feedbacks/summary', renderRatingSummary],
+  ['api/take-surveys/summary', renderTakeSurveySummary],
 ];
 
 async function load() {

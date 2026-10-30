@@ -1,77 +1,13 @@
-"""서비스 평가 쿼리. commit과 사용자 잠금은 service에서 처리한다."""
+"""Take별 설문 · 사용자 의견 쿼리. commit은 service에서 처리한다."""
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.service_feedback.entity import (
-    ServiceFeedback,
-    ServiceFeedbackImpression,
-    UserSuggestion,
-)
+from pitch_coach_backend.module.service_feedback.entity import TakeSurvey, UserSuggestion
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
-
-
-def feedback_of(db: Session, user_id: uuid.UUID) -> ServiceFeedback | None:
-    return db.scalar(select(ServiceFeedback).where(ServiceFeedback.user_id == user_id))
-
-
-def popup_suggestion(db: Session, feedback_id: uuid.UUID) -> UserSuggestion | None:
-    return db.scalar(
-        select(UserSuggestion).where(UserSuggestion.service_feedback_id == feedback_id)
-    )
-
-
-def display_count(db: Session, user_id: uuid.UUID) -> int:
-    return db.scalar(
-        select(func.count())
-        .select_from(ServiceFeedbackImpression)
-        .where(ServiceFeedbackImpression.user_id == user_id)
-    )
-
-
-def impression_exists(db: Session, user_id: uuid.UUID, request_id: uuid.UUID) -> bool:
-    return db.scalar(
-        select(
-            select(ServiceFeedbackImpression.id)
-            .where(
-                ServiceFeedbackImpression.user_id == user_id,
-                ServiceFeedbackImpression.display_request_id == request_id,
-            )
-            .exists()
-        )
-    )
-
-
-def add_impression(db: Session, user_id: uuid.UUID, request_id: uuid.UUID, number: int) -> None:
-    db.add(
-        ServiceFeedbackImpression(
-            user_id=user_id, display_request_id=request_id, display_number=number
-        )
-    )
-
-
-def add_feedback(db: Session, user_id: uuid.UUID, rating: int) -> ServiceFeedback:
-    row = ServiceFeedback(user_id=user_id, rating=rating)
-    db.add(row)
-    db.flush()
-    return row
-
-
-def add_popup_suggestion(
-    db: Session, feedback: ServiceFeedback, content: str, category: SuggestionCategory
-) -> None:
-    db.add(
-        UserSuggestion(
-            user_id=feedback.user_id,
-            content=content,
-            source="RATING_POPUP",
-            category=category.value,
-            service_feedback_id=feedback.id,
-        )
-    )
 
 
 def insert_suggestion(
@@ -101,5 +37,45 @@ def suggestion_by_request(
     return db.scalar(
         select(UserSuggestion).where(
             UserSuggestion.user_id == user_id, UserSuggestion.request_id == request_id
+        )
+    )
+
+
+def insert_survey(
+    db: Session,
+    user_id: uuid.UUID,
+    take_id: uuid.UUID,
+    *,
+    accuracy_rating: int,
+    usefulness_rating: int,
+    comment: str | None,
+    question_version: int,
+) -> TakeSurvey | None:
+    """이미 있으면 None. 같은 Take 를 동시에 보내도 한 행만 남는다."""
+    return db.scalar(
+        insert(TakeSurvey)
+        .values(
+            user_id=user_id,
+            take_id=take_id,
+            accuracy_rating=accuracy_rating,
+            usefulness_rating=usefulness_rating,
+            comment=comment,
+            question_version=question_version,
+        )
+        .on_conflict_do_nothing(constraint="uq_take_surveys_take")
+        .returning(TakeSurvey)
+    )
+
+
+def survey_of(db: Session, take_id: uuid.UUID) -> TakeSurvey | None:
+    return db.scalar(select(TakeSurvey).where(TakeSurvey.take_id == take_id))
+
+
+def surveyed_take_ids(db: Session, user_id: uuid.UUID) -> set[uuid.UUID]:
+    return set(
+        db.scalars(
+            select(TakeSurvey.take_id).where(
+                TakeSurvey.user_id == user_id, TakeSurvey.take_id.is_not(None)
+            )
         )
     )

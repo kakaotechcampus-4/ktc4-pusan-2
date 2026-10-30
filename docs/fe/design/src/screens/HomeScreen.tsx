@@ -24,8 +24,9 @@ const homePrimary =
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const pitches = stateId === 'empty' ? [] : HOME_PITCHES;
-  // 설문 안내 두 상태(#776)도 목록은 평소와 같다
-  const ready = ['default', 'empty', 'consent', 'pending'].includes(stateId);
+  const showPrepare = stateId === 'prepare-entry-draft';
+  // 설문 안내 두 상태(#776)와 발표 준비 버튼 시안도 목록은 평소와 같다
+  const ready = ['default', 'empty', 'consent', 'pending'].includes(stateId) || showPrepare;
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
   return (
     <div className="pitch-create flex min-h-[40rem] flex-col bg-greige text-ink">
@@ -96,7 +97,12 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             {pitches.length > 0 ? (
               <ul className="divide-y divide-line border-2 border-ink bg-white">
                 {pitches.map((pitch, index) => (
-                  <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
+                  <HomePitchCard
+                    key={pitch.pitch_id}
+                    pitch={pitch}
+                    index={index}
+                    showPrepare={showPrepare}
+                  />
                 ))}
               </ul>
             ) : (

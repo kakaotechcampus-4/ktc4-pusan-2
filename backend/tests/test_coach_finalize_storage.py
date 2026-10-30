@@ -275,6 +275,35 @@ def test_finalize_source_is_only_for_a_take_waiting_for_its_result(db_session: S
     assert coach_store.load_finalize_source(db_session, uuid.uuid7()) is None
 
 
+def test_recovery_request_of_a_completed_take_is_the_finalize_replay_request(
+    db_session: Session, take_parts
+):
+    take = finalizing(db_session, make_take(db_session, *take_parts, 1, utterance_ends=[900]))
+    coach_service.append_coach_events(db_session, take.id, [(_event("iv-1", 1), META)])
+    take.status = "COMPLETED"
+    take.analysis_stage = "DONE"
+    db_session.flush()
+
+    request = coach_store.recovery_request(db_session, take.id)
+
+    source = coach_store.load_finalize_source(db_session, take.id, waiting_only=False)
+    assert source is not None
+    replay = source.replay(1_000)
+    assert request is not None
+    assert request["t_ms"] == 1_000
+    assert request["coach_state"] is None
+    assert request["events"] == [_event("iv-1", 1)]
+    assert request["replay"] == replay
+    assert request["inputs"] == source.last_window(replay, 1_000)
+
+
+def test_recovery_request_needs_the_raw_seconds(db_session: Session, take_parts):
+    take = make_take(db_session, *take_parts, 1, status="COMPLETED")
+
+    assert coach_store.recovery_request(db_session, take.id) is None
+    assert coach_store.recovery_request(db_session, uuid.uuid7()) is None
+
+
 def test_finalizing_takes_are_found_for_the_restart(db_session: Session, take_parts):
     waiting = finalizing(db_session, make_take(db_session, *take_parts, 1))
     make_take(db_session, *take_parts, 2, status="ANALYZING", analysis_stage="SCORING")

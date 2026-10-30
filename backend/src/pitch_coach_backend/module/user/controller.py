@@ -32,7 +32,12 @@ def update_me(
     body: UserSettingsUpdate,
 ) -> UserResponse:
     """보낸 칸만 바꾼다. Bearer 헤더로 인증하므로 CSRF 검사는 하지 않는다."""
-    return service.update_settings(db, current_user, raw_data_consent=body.raw_data_consent)
+    return service.update_settings(
+        db,
+        current_user,
+        raw_data_consent=body.raw_data_consent,
+        test_consent_version=body.test_consent_version,
+    )
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, summary="회원 탈퇴")

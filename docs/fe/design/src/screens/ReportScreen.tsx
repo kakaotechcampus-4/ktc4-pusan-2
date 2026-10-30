@@ -46,16 +46,27 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
           </section>
           {!noReview && (
             <Card title="지난 Take와 비교">
-              <ul className="flex flex-col divide-y divide-line">
-                <li className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0">
-                  <span className="text-sm">
-                    <b>말하기 속도</b>
-                  </span>
-                  <span className="tabular flex items-center gap-2 text-sm">
-                    <span className="text-ink/80">352자/분</span>→<b>318자/분</b>
-                    <Badge tone="good">나아짐</Badge>
-                  </span>
-                </li>
+              <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+                {(
+                  [
+                    ['멈춤', '14회', '9회', '방향 없음', 'muted'],
+                    ['긴 침묵', '3회', '1회', '나아짐', 'good'],
+                    ['발표 시간', '05:12', '04:38', '방향 없음', 'muted'],
+                    ['분당 군더더기', '0회/분', '0회/분', '같음', 'muted'],
+                    ['군더더기', '10회', '7회', '나아짐', 'good'],
+                  ] as const
+                ).map(([label, prev, cur, badge, tone]) => (
+                  <li
+                    key={label}
+                    className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3"
+                  >
+                    <b className="text-sm">{label}</b>
+                    <span className="tabular flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
+                      <span className="text-ink/80">{prev}</span>→<b className="text-lg">{cur}</b>
+                      <Badge tone={tone}>{badge}</Badge>
+                    </span>
+                  </li>
+                ))}
               </ul>
             </Card>
           )}

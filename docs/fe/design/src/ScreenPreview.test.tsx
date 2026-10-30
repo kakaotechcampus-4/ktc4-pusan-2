@@ -105,13 +105,44 @@ it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대�
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('HIGHLIGHT');
   // 마지막 장이 아니면 끝낼 수 없다(#697)
   expect(button('발표 끝내기')?.disabled).toBe(true);
-  expect(button('발표 끝내기')?.title).toBe('마지막 슬라이드에서 끝낼 수 있어요');
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
+  expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
   await toLastSlide();
   expect(host.textContent).toContain('SLIDE 12 / 12');
   await click('발표 끝내기');
   expect(host.textContent).toContain('정말 끝낼까요?');
   await click('정말 끝낼까요?');
   expect(host.textContent).toContain('분석 중');
+});
+
+it('홈 기본 상태는 유지하고 시안의 발표 준비 버튼은 각 제목과 같은 경로와 인자로 이동한다', async () => {
+  await render('home');
+  expect(host.querySelector('a[aria-label$=" 발표 준비"]')).toBeNull();
+  await act(async () => root.render(null));
+  const onNavigate = vi.fn();
+  await act(async () =>
+    root.render(
+      <MemoryRouter>
+        <ScreenPreview screenId="home" stateId="prepare-entry-draft" onNavigate={onNavigate} />
+      </MemoryRouter>,
+    ),
+  );
+  const rows = [...host.querySelectorAll('section[aria-label="발표 목록"] li')];
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row.querySelector('.w-28.shrink-0')?.textContent).toContain('Take 기록');
+    expect(row.querySelector('.w-20.shrink-0')).not.toBeNull();
+    expect(row.lastElementChild?.textContent?.trim()).toBe('발표 준비');
+    const title = row.querySelector('a')!;
+    const prepare = row.lastElementChild as HTMLAnchorElement;
+    expect(prepare.getAttribute('href')).toBe(title.getAttribute('href'));
+    expect(prepare.getAttribute('href')).toMatch(/\/edit$/);
+    await act(async () => title.click());
+    expect(onNavigate).toHaveBeenLastCalledWith('pitch-create');
+    const titleArguments = onNavigate.mock.calls.at(-1);
+    await act(async () => prepare.click());
+    expect(onNavigate.mock.calls.at(-1)).toEqual(titleArguments);
+  }
 });
 
 it('카메라 · 마이크 · 시선 기준이 모두 돼야 시작할 수 있다', async () => {
@@ -152,7 +183,8 @@ it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 
   expect(host.querySelector('.script')).toBeNull();
   // 마지막 장이 아니면 끝낼 수 없다(#697)
   expect(button('발표 끝내기')?.disabled).toBe(true);
-  expect(button('발표 끝내기')?.title).toBe('마지막 슬라이드에서 끝낼 수 있어요');
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
+  expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
   await toLastSlide();
   expect(host.textContent).toContain('SLIDE 12 / 12');
   await click('발표 끝내기');
@@ -359,6 +391,28 @@ it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴�
   await act(async () => root.render(null));
   await render('stage');
   expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+  await act(async () => root.render(null));
+  // 시작 전 세팅은 상단바 없이 자체 틀을 쓴다(#738 최종, #706에서 정함)
+  await render('prepare-mission');
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+});
+
+it('끝내기 확인은 장이 바뀌면 풀리고, 마지막 장에서는 안내 글자가 없다', async () => {
+  await render('stage', 'last-slide');
+  expect(host.querySelector('#end-hint')).toBeNull();
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBeNull();
+  await click('발표 끝내기');
+  expect(button('정말 끝낼까요?')).toBeDefined();
+  // 이전 장에 갔다 돌아오면 처음부터 다시 묻는다(제품 useEndConfirm)
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+  });
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  });
+  expect(host.textContent).toContain('SLIDE 12 / 12');
+  expect(button('정말 끝낼까요?')).toBeUndefined();
+  expect(button('발표 끝내기')?.disabled).toBe(false);
 });
 
 it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검으로를 두고, 시작 전에는 끝낼 수 없다', async () => {
