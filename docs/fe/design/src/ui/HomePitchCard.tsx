@@ -98,7 +98,7 @@ export function HomePitchCard({
           to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
           aria-label={`${pitch.pitch_title} 발표 준비`}
           size="sm"
-          className="shrink-0 [--color-cream:#E6DFD5] [--color-ink:#2A2723] bg-cream! text-ink!"
+          className="shrink-0 border-transparent! shadow-none! outline-1 outline-ink"
         >
           발표 준비
         </ButtonLink>
