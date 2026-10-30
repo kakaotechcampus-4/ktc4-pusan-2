@@ -134,3 +134,51 @@ export function CheckIcon({ className = 'h-3.5 w-3.5 stroke-current' }: { classN
     </svg>
   );
 }
+
+export function CaretIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      {...svgProps}
+      viewBox="0 0 8 8"
+      className={['h-2 w-2', open ? '' : '-rotate-90'].join(' ')}
+    >
+      <path className="fill-ink" d="M0 2h8v1h-1v1h-1v1h-1v1h-2v-1h-1v-1h-1v-1h-1z" />
+    </svg>
+  );
+}
+
+export function FolderIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className={className}>
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M1.75 3.75h4.5l1.5 1.5h6.5v7h-12.5z"
+      />
+    </svg>
+  );
+}
+
+export function FitWidthIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M2.75 2.75v10.5M13.25 2.75v10.5M5 8h6M6.5 6l-2 2l2 2M9.5 6l2 2l-2 2"
+      />
+    </svg>
+  );
+}
+
+export function FullscreenIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M2.75 6v-3.25h3.25M10 2.75h3.25v3.25M13.25 10v3.25h-3.25M6 13.25h-3.25v-3.25"
+      />
+    </svg>
+  );
+}

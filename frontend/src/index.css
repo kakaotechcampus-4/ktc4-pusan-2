@@ -179,6 +179,7 @@ body {
   --color-ink: #17191e;
   --color-stone: #6b7280;
   --color-coral-wash: #fff0e9;
+  --color-coral-deep: #b83b19;
 }
 
 /* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */

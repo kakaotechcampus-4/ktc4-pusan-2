@@ -1,25 +1,26 @@
-import { useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useCreateStore } from '../createStore';
-import { FileIcon, PdfUploadIcon } from '../icons';
 import {
-  MAX_SLIDE_BYTES,
-  MAX_TITLE_CHARS,
-  type SlideUpload,
-  type SlideVersion,
-} from '../lib/draft';
+  CheckIcon,
+  ChevronIcon,
+  DocIcon,
+  FileIcon,
+  FitWidthIcon,
+  FullscreenIcon,
+  PdfUploadIcon,
+} from '../icons';
+import { MAX_SLIDE_BYTES, pendingVersion, type SlideUpload, type SlideVersion } from '../lib/draft';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { startSlideUpload } from '../slideUpload';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
-import { PaneFooter, primaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
-import { SlidePreviewDialog } from './SlidePreviewDialog';
 
 /**
- * 시안 슬라이드 — 첫 단계. 올린 것이 없으면 드롭존 → 올리는 중 → 제목 확인 + 썸네일.
+ * 목업 슬라이드 — 올린 것이 없으면 드롭존 → 올리는 중 → 썸네일 + 뷰어.
  *
- * 피치가 아직 없으면 올릴 때 만듭니다 — 파일 이름이 발표 제목이 됩니다 (`slideUpload.ts`).
- * 썸네일은 서버가 돌려준 URL 로 PDF 를 열어 그립니다. 고른 파일을 바로 그리지 않는 이유도 거기 있습니다.
+ * 뷰어는 서버가 돌려준 URL 로 PDF 를 열어 그립니다 (`shared/lib/pdf`).
+ * 고른 파일을 바로 그리지 않는 이유는 `slideUpload.ts` 에 있습니다.
  */
 
 const FAILURE_MESSAGE: Record<'upload' | 'invalid' | 'open', string> = {
@@ -32,7 +33,7 @@ const FAILURE_MESSAGE: Record<'upload' | 'invalid' | 'open', string> = {
 /** 같은 파일을 다시 보내도 같은 400 이면(`invalid`) "다시 시도"를 내지 않습니다 (`slideUpload.ts`) */
 const canRetry = (reason: keyof typeof FAILURE_MESSAGE) => reason !== 'invalid';
 
-/** 받을 수 없는 파일이면 그 이유 */
+/** 받을 수 없는 파일이면 그 이유. 드롭존에서 확인합니다 */
 function rejectReason(file: File): string | null {
   if (file.type !== 'application/pdf') return 'PDF 파일만 올릴 수 있어요';
   if (file.size > MAX_SLIDE_BYTES) return '40MB를 넘는 파일은 올릴 수 없어요';
@@ -69,8 +70,8 @@ function UploadFrame({ version, children }: { version: number | null; children: 
   return (
     <div className="flex flex-1 flex-col">
       <PaneHeading
-        title={version === null ? '슬라이드' : `슬라이드 V${version}`}
-        subtitle="발표에 사용할 PDF부터 올려 주세요."
+        title={version === null ? '1. 슬라이드' : `1. 슬라이드 · V${version}`}
+        subtitle="발표에 사용할 PDF를 올려 주세요."
       />
       {children}
     </div>
@@ -113,16 +114,15 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
         <PdfUploadIcon />
         <p className="mt-5 text-lg font-bold">PDF를 여기에 끌어다 놓으세요</p>
         <p className="mt-1.5 text-sm text-ink/80">
-          파일 이름으로 발표 제목을 채워 드려요 · 나중에 고칠 수 있어요 · 최대 40MB
+          파일 이름으로 제목을 채워 드려요 · PDF · 최대 40MB
         </p>
+
         {pitchId === null && (
           <p className="mt-3 text-xs text-ink/80">
-            PDF를 올리면 피치가 자동으로 만들어져요.
-            <br />
-            업로드에 실패하거나 나가도 내 피치에 남아, 나중에 이어서 준비할 수 있어요.
+            PDF를 올리면 피치가 자동으로 만들어져요. 업로드에 실패하거나 나가도 내 피치에 남아,
+            나중에 이어서 준비할 수 있어요.
           </p>
         )}
-
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -189,161 +189,264 @@ function Uploading({ file, version }: { file: File; version: number | null }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 올린 뒤 — 제목 확인 · 썸네일                                           */
+/* 뷰어                                                                */
 /* ------------------------------------------------------------------ */
 
-function Message({ children }: { children: ReactNode }) {
+/** 확대 단계. 100% 는 상자에 통째로 들어가는 크기입니다 */
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+const toolButton =
+  'flex h-8 w-8 items-center justify-center rounded-md hover:bg-panel disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent';
+
+function ViewerMessage({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-5 flex min-h-40 items-center justify-center rounded-lg border border-line bg-white text-sm text-ink/80">
-      {children}
+    <div className="flex flex-1 items-center justify-center text-sm text-ink/80">{children}</div>
+  );
+}
+
+function Toolbar({
+  fileName,
+  page,
+  total,
+  onPage,
+  zoomIndex,
+  onZoom,
+  fitWidth,
+  onFitWidth,
+  onFullscreen,
+}: {
+  fileName: string;
+  page: number;
+  total: number;
+  onPage: (page: number) => void;
+  zoomIndex: number;
+  onZoom: (index: number) => void;
+  fitWidth: boolean;
+  onFitWidth: () => void;
+  onFullscreen: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
+      <DocIcon className="h-4 w-4 shrink-0 stroke-ink" />
+      <span className="min-w-0 flex-1 truncate text-sm font-bold">{fileName}</span>
+
+      <button
+        type="button"
+        aria-label="이전 슬라이드"
+        disabled={page <= 1}
+        onClick={() => onPage(page - 1)}
+        className={toolButton}
+      >
+        <span className="rotate-180">
+          <ChevronIcon up={false} />
+        </span>
+      </button>
+      <span className="tabular text-sm" aria-live="polite">
+        {page} / {total}
+      </span>
+      <button
+        type="button"
+        aria-label="다음 슬라이드"
+        disabled={page >= total}
+        onClick={() => onPage(page + 1)}
+        className={toolButton}
+      >
+        <ChevronIcon up={false} />
+      </button>
+
+      <span className="h-5 w-px bg-line" aria-hidden="true" />
+
+      <button
+        type="button"
+        aria-label="축소"
+        disabled={zoomIndex <= 0}
+        onClick={() => onZoom(zoomIndex - 1)}
+        className={`${toolButton} text-lg`}
+      >
+        −
+      </button>
+      <span className="tabular w-12 text-center text-sm">
+        {Math.round((ZOOM_STEPS[zoomIndex] ?? 1) * 100)}%
+      </span>
+      <button
+        type="button"
+        aria-label="확대"
+        disabled={zoomIndex >= ZOOM_STEPS.length - 1}
+        onClick={() => onZoom(zoomIndex + 1)}
+        className={`${toolButton} text-lg`}
+      >
+        +
+      </button>
+
+      <span className="h-5 w-px bg-line" aria-hidden="true" />
+
+      <button
+        type="button"
+        aria-label="폭에 맞추기"
+        aria-pressed={fitWidth}
+        onClick={onFitWidth}
+        className={`${toolButton} ${fitWidth ? 'bg-panel' : ''}`}
+      >
+        <FitWidthIcon />
+      </button>
+      <button type="button" aria-label="전체 화면" onClick={onFullscreen} className={toolButton}>
+        <FullscreenIcon />
+      </button>
     </div>
   );
 }
 
-/**
- * 슬라이드를 올려 피치를 만들었으면 파일 이름이 발표 제목입니다. 여기서 바로 고치거나 되돌립니다.
- * 고친 제목은 발표정보처럼 아직 저장 전이고, 발표정보 확인에서 저장합니다 (`infoEdits`).
- */
-function TitleCheck({ autoTitle }: { autoTitle: string }) {
-  const id = useId();
-  const title = useCreateStore((s) => (s.infoEdits ?? s.draft).title);
-  const editInfo = useCreateStore((s) => s.editInfo);
+export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(1);
+  const [zoomIndex, setZoomIndex] = useState(ZOOM_STEPS.indexOf(1));
+  const [fitWidth, setFitWidth] = useState(false);
+  // 넘기기 · 썸네일은 실제로 연 문서의 쪽수입니다. BE 숫자(`slide.pageCount`)는 "N장" 배지와
+  // 대본 장 수 맞추기에만 씁니다 — 둘이 다른 PDF 에서 없는 쪽을 열다 오류가 나지 않게
+  const total = doc.numPages;
+
+  const goTo = (n: number) => setPage(Math.min(total, Math.max(1, n)));
+
+  const fullscreen = () => {
+    cardRef.current?.requestFullscreen().catch((err: unknown) => {
+      // 브라우저가 막은 경우(iframe 정책 등) — 뷰어는 그대로 쓸 수 있으니 남기기만 합니다
+      console.error('[슬라이드] 전체 화면을 열지 못했습니다', err);
+    });
+  };
 
   return (
-    <div className="mb-4 flex flex-col gap-2 rounded-lg border border-coral/40 bg-coral-wash px-4 py-3">
-      <label htmlFor={id} className="text-sm font-bold">
-        파일 이름으로 발표 제목을 정했어요
-      </label>
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          id={id}
-          value={title}
-          maxLength={MAX_TITLE_CHARS}
-          onChange={(e) => editInfo({ title: e.target.value })}
-          className="h-10 min-w-0 flex-1 rounded-md border border-line-strong bg-white px-3 text-sm outline-none focus:border-ink"
+    <div
+      ref={cardRef}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowRight' || e.key === 'PageDown') goTo(page + 1);
+        if (e.key === 'ArrowLeft' || e.key === 'PageUp') goTo(page - 1);
+      }}
+      className="flex min-h-0 flex-1 flex-col rounded-lg border border-line bg-white outline-none"
+    >
+      <Toolbar
+        fileName={slide.fileName ?? `슬라이드 V${slide.version}.pdf`}
+        page={page}
+        total={total}
+        onPage={goTo}
+        zoomIndex={zoomIndex}
+        onZoom={setZoomIndex}
+        fitWidth={fitWidth}
+        onFitWidth={() => setFitWidth((v) => !v)}
+        onFullscreen={fullscreen}
+      />
+
+      <div className="flex min-h-0 flex-1">
+        <ul className="w-20 shrink-0 overflow-y-auto border-r border-line bg-panel/50 p-2 sm:w-44 sm:p-4">
+          {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
+            <li key={n} className="mb-4">
+              <button
+                type="button"
+                onClick={() => setPage(n)}
+                aria-current={page === n ? 'true' : undefined}
+                aria-label={`${n}번 슬라이드`}
+                className={[
+                  'block w-full rounded-md border-2 p-1',
+                  page === n ? 'border-coral' : 'border-transparent hover:border-line-strong',
+                ].join(' ')}
+              >
+                <PdfPage doc={doc} pageNumber={n} fit="width" className="w-full" />
+              </button>
+              <span className="tabular mt-1.5 block text-center text-xs text-ink/80">{n}</span>
+            </li>
+          ))}
+        </ul>
+
+        <PdfPage
+          doc={doc}
+          pageNumber={page}
+          fit={fitWidth ? 'width' : 'contain'}
+          zoom={ZOOM_STEPS[zoomIndex] ?? 1}
+          className="min-h-0 min-w-0 flex-1 overflow-auto bg-panel/30 p-6"
         />
-        {title !== autoTitle && (
-          <button
-            type="button"
-            onClick={() => editInfo({ title: autoTitle })}
-            className="text-xs font-bold text-coral-deep"
-          >
-            파일 이름으로 되돌리기
-          </button>
-        )}
       </div>
-      <p className="text-xs text-ink/80">
-        여기서 바로 고치거나, 나중에 발표정보에서 고칠 수 있어요.
-      </p>
     </div>
   );
 }
 
-function Thumb({ children }: { children: ReactNode }) {
-  return (
-    <li className="tabular flex aspect-video items-center justify-center overflow-hidden rounded-md border border-line bg-cream text-xs text-ink/80">
-      {children}
-    </li>
-  );
-}
-
-const thumbGrid = 'mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5';
-
-/** 장마다 썸네일. 서버가 돌려준 URL 로 연 PDF 를 그립니다 (`shared/lib/pdf`) */
-function Thumbs({ slide }: { slide: SlideVersion }) {
+function Viewer({ slide }: { slide: SlideVersion }) {
+  const addSlideVersion = useCreateStore((s) => s.addSlideVersion);
+  // 파일을 기다리는 빈 버전이 있으면 새 버전을 막습니다 (`pendingVersion`)
+  const pendingSlide = useCreateStore((s) => pendingVersion(s.draft, 'slides'));
   const opened = usePdfDocument(slide.fileUrl);
+  const total = slide.pageCount ?? 0;
 
-  if (!slide.fileUrl) return <Message>이 버전에는 파일 주소가 없어요</Message>;
-  // BE 가 쪽수를 주면 업로드 때 PDF 를 열지 않아(#298) 처음 여는 곳이 여기입니다. 실서버에서는
-  // S3 CORS · 만료된 presigned URL(1시간)로 못 열 수 있습니다. 버전은 저장돼 있으니 다시 열기만 둡니다
-  if (opened !== null && 'failed' in opened)
-    return (
-      <Message>
-        <div role="alert" className="flex flex-col items-center gap-2 text-center">
-          <span>PDF를 열지 못했어요. 파일은 저장돼 있어요.</span>
-          <span className="text-xs">계속 안 되면 새로고침해 주세요.</span>
-          <button
-            type="button"
-            onClick={opened.retry}
-            className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
-          >
-            다시 열기
-          </button>
-        </div>
-      </Message>
-    );
-  // 여는 동안은 BE 가 센 장수만큼 번호 칸을 둡니다. 연 뒤에는 실제로 연 문서의 쪽수를 그립니다 —
-  // 둘이 다른 PDF 에서 없는 쪽을 열다 오류가 나지 않게
-  if (opened === null)
-    return (
-      <ul aria-busy="true" className={thumbGrid}>
-        {Array.from({ length: slide.pageCount ?? 0 }, (_, i) => (
-          <Thumb key={i}>{i + 1}</Thumb>
-        ))}
-      </ul>
-    );
-  return <OpenedThumbs doc={opened.doc} />;
-}
-
-/** 연 문서의 썸네일. 누르면 그 장을 크게 봅니다 (`SlidePreviewDialog`) */
-function OpenedThumbs({ doc }: { doc: PDFDocumentProxy }) {
-  const [preview, setPreview] = useState<number | null>(null);
-
-  return (
-    <>
-      <ul className={thumbGrid}>
-        {Array.from({ length: doc.numPages }, (_, i) => (
-          <li key={i}>
+  const body = (() => {
+    if (!slide.fileUrl) return <ViewerMessage>이 버전에는 파일 주소가 없어요</ViewerMessage>;
+    if (opened === null) return <ViewerMessage>PDF 여는 중…</ViewerMessage>;
+    // BE 가 쪽수를 주면 업로드 때 PDF 를 열지 않아(#298) 처음 여는 곳이 여기입니다. 실서버에서는
+    // S3 CORS · 만료된 presigned URL(1시간)로 못 열 수 있습니다. 버전은 저장돼 있으니 다시 열기만 둡니다
+    if ('failed' in opened)
+      return (
+        <ViewerMessage>
+          <div role="alert" className="flex flex-col items-center gap-2 text-center">
+            <span>PDF를 열지 못했어요. 파일은 저장돼 있어요.</span>
+            <span className="text-xs">계속 안 되면 새로고침해 주세요.</span>
             <button
               type="button"
-              onClick={() => setPreview(i + 1)}
-              aria-label={`${i + 1}번 슬라이드 크게 보기`}
-              className="tabular flex aspect-video w-full items-center justify-center overflow-hidden rounded-md border border-line bg-cream hover:border-ink focus-visible:border-ink"
+              onClick={opened.retry}
+              className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-ink hover:bg-coral-wash"
             >
-              <PdfPage doc={doc} pageNumber={i + 1} fit="width" className="w-full" />
+              다시 열기
             </button>
-          </li>
-        ))}
-      </ul>
-      {preview !== null && (
-        <SlidePreviewDialog
-          doc={doc}
-          page={preview}
-          onPage={setPreview}
-          onClose={() => setPreview(null)}
-        />
-      )}
-    </>
-  );
-}
-
-function Uploaded({ slide }: { slide: SlideVersion }) {
-  const select = useCreateStore((s) => s.select);
-  const autoTitle = useCreateStore((s) => s.autoTitle);
-  const versions = useCreateStore((s) => s.draft.slides.length);
+          </div>
+        </ViewerMessage>
+      );
+    // 파일을 바꾸면 첫 장부터 다시 봅니다
+    return <Pages key={slide.fileUrl} slide={slide} doc={opened.doc} />;
+  })();
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <PaneHeading
-        title={versions > 1 ? `슬라이드 V${slide.version}` : '슬라이드'}
-        subtitle="올린 자료를 확인해 주세요."
+        title="1. 슬라이드"
+        badges={
+          <>
+            {total > 0 && (
+              <span className="tabular rounded-md bg-panel px-2.5 py-1 text-sm text-ink/80">
+                {total}장
+              </span>
+            )}
+            <span className="flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-2.5 py-1 text-sm font-bold">
+              <CheckIcon /> 저장됨
+            </span>
+          </>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              disabled={pendingSlide !== null}
+              title={
+                pendingSlide !== null ? `V${pendingSlide}에 파일을 먼저 올려 주세요` : undefined
+              }
+              onClick={addSlideVersion}
+              className="flex h-11 items-center gap-2 rounded-lg border border-coral bg-white px-5 text-sm font-bold text-ink hover:bg-coral-wash disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              + 새 버전
+            </button>
+          </>
+        }
       />
-      {autoTitle !== null && <TitleCheck autoTitle={autoTitle} />}
 
-      <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-        <span className="min-w-0 font-bold [overflow-wrap:anywhere]">
-          {slide.fileName ?? `슬라이드 V${slide.version}.pdf`}
-        </span>
-        <span className="tabular text-ink/80">· {slide.pageCount}장</span>
-      </p>
-      <Thumbs slide={slide} />
-
-      {/* 저장한 버전은 고치지 않습니다 — 다른 파일은 사이드바의 "+ 새 버전"으로 올립니다 */}
-      <PaneFooter hint="다음은 슬라이드에 맞춰 대본을 붙여요.">
-        <button type="button" onClick={() => select('script')} className={primaryButton}>
-          다음 · 대본 →
-        </button>
-      </PaneFooter>
+      <div className="flex items-center gap-4 border border-line bg-white p-5 [&>svg]:size-8 [&>svg]:shrink-0 [&_p]:break-all [&_p]:font-bold [&_span]:mt-1.5 [&_span]:block [&_span]:text-sm [&_span]:text-stone">
+        <DocIcon />
+        <div>
+          <p>{slide.fileName ?? `슬라이드 V${slide.version}`}</p>
+          <span>
+            V{slide.version} · {total}장 · PDF
+          </span>
+        </div>
+      </div>
+      <details className="[&>summary]:min-h-11 [&>summary]:cursor-pointer [&>summary]:py-3 [&>summary]:text-sm [&>summary]:underline [&>summary]:underline-offset-4">
+        <summary>슬라이드 미리보기</summary>
+        <div className="flex h-[min(34rem,75dvh)] min-h-80">{body}</div>
+      </details>
     </div>
   );
 }
@@ -355,9 +458,12 @@ export function SlidePane({ slide }: { slide: SlideVersion | null }) {
   // 지난 버전을 열어 보는 중이면 그 버전을 그대로 보여 줍니다
   if (slide === null || slide.pageCount === null) {
     const version = slide?.version ?? null;
-    if (upload.status === 'uploading') return <Uploading file={upload.file} version={version} />;
+    if (upload.status === 'uploading') {
+      return <Uploading file={upload.file} version={version} />;
+    }
     return <DropZone upload={upload} version={version} />;
   }
 
-  return <Uploaded key={slide.version} slide={slide} />;
+  // 버전마다 첫 장부터 봅니다
+  return <Viewer key={slide.version} slide={slide} />;
 }

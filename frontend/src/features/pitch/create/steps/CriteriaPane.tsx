@@ -10,14 +10,10 @@ import {
   MAX_CRITERION_CHARS,
   criteriaToSave,
   isEditableCriteria,
-  latestSavedCriteria,
   pendingVersion,
-  toPracticeCombo,
   type CriteriaVersion,
 } from '../lib/draft';
-import { computeGate } from '../lib/gate';
 import { NeedPitch } from './NeedPitch';
-import { PaneFooter, primaryButton, secondaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -100,6 +96,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
   const [text, setText] = useState(criteria?.sourceText ?? '');
 
   const parse = useMutation({
+    mutationKey: ['pitch-criteria', draftId],
     // 정리를 시작한 작성(draftId)을 함께 넘깁니다. 그사이 새 피치를 시작했으면 결과를 버립니다
     mutationFn: async ({ source }: { source: string; draftId: string }) =>
       fromStandardsPosted(await parseStandards(pitchId, source)),
@@ -116,7 +113,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
   const except = criteria?.exceptText ?? null;
 
   return (
-    <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-white p-4 xl:p-5">
+    <section className="flex min-w-0 flex-col gap-3">
       <div>
         <h3 className="text-lg font-bold">평가기준 작성</h3>
         <p className="mt-1 text-sm text-ink/80">문장이나 목록으로 2,000자까지 작성해 주세요.</p>
@@ -129,7 +126,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         onChange={(e) => setText(e.target.value)}
         placeholder={PLACEHOLDER}
         rows={5}
-        className="min-h-32 w-full resize-y rounded-lg border border-line-strong bg-white p-3 text-sm leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80 focus:border-ink"
+        className="min-h-32 w-full resize-y rounded-lg border border-stone bg-white p-3 text-sm leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-stone focus:border-ink"
       />
 
       <button
@@ -175,7 +172,7 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
   const editable = useCreateStore((s) => isEditableCriteria(s.draft, criteria));
 
   return (
-    <section className="flex min-w-0 flex-col rounded-lg border border-line bg-white p-4 xl:p-5">
+    <section className="flex min-w-0 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <h3 className="text-lg font-bold">정리된 평가기준</h3>
@@ -289,7 +286,7 @@ function EditableItem({
         maxLength={MAX_CRITERION_CHARS}
         onChange={(e) => editCriterion(version, item.id, e.target.value)}
         placeholder="기준을 적어 주세요"
-        className="h-9 min-w-0 flex-1 rounded-md border border-transparent px-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80 hover:border-line focus:border-ink"
+        className="h-9 min-w-0 flex-1 rounded-md border border-transparent px-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-stone hover:border-line focus:border-ink"
       />
       {nearLimit && (
         <span className="tabular shrink-0 text-xs text-ink/80">
@@ -328,6 +325,7 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
   const [refined, setRefined] = useState(false);
 
   const save = useMutation({
+    mutationKey: ['pitch-criteria', draftId],
     // 정리와 같습니다 — 저장하는 사이 새 피치를 시작했으면 결과를 새 작성에 넣지 않습니다
     mutationFn: ({ list }: { list: string[]; draftId: string; sourceVersion: number }) =>
       saveStandards(pitchId, list),
@@ -411,65 +409,12 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
   );
 }
 
-/**
- * 마지막 단계의 연습 시작. 평가기준은 선택이라 없으면 "건너뛰기"로 시작합니다.
- *
- * 장치 점검에 넘기는 조합에는 평가기준이 없습니다 — 서버가 저장된 마지막 버전으로 채점합니다.
- * 그래서 저장한 기준이 있으면 건너뛸 수 없고(건너뛰어도 그 기준으로 채점됩니다), "건너뛰기"를 내지 않습니다.
- */
-function StartFooter({ onStart }: { onStart: () => void }) {
-  const draft = useCreateStore((s) => s.draft);
-  const chosen = useCreateStore((s) => s.chosen);
-  const select = useCreateStore((s) => s.select);
-  const gate = computeGate(draft, chosen);
-  const ready = toPracticeCombo(draft, chosen) !== null;
-  const hasCriteria = latestSavedCriteria(draft) !== null;
-
-  return (
-    <PaneFooter
-      hint={
-        ready ? (
-          '연습할 준비가 됐어요.'
-        ) : (
-          <span className="font-bold text-ink">
-            {gate.ready ? '대본 매핑을 확인하고 저장해 주세요.' : gate.message}
-          </span>
-        )
-      }
-    >
-      <button type="button" onClick={() => select('info')} className={secondaryButton}>
-        ← 이전
-      </button>
-      {!hasCriteria && (
-        <button type="button" disabled={!ready} onClick={onStart} className={secondaryButton}>
-          건너뛰기
-        </button>
-      )}
-      <button
-        type="button"
-        disabled={!ready || !hasCriteria}
-        onClick={onStart}
-        className={primaryButton}
-      >
-        연습 시작 →
-      </button>
-    </PaneFooter>
-  );
-}
-
-export function CriteriaPane({
-  criteria,
-  onStart,
-}: {
-  criteria: CriteriaVersion | null;
-  /** 연습 시작 — 장치 점검으로 갑니다 */
-  onStart: () => void;
-}) {
+export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null }) {
   const pitchId = useCreateStore((s) => s.pitchId);
   return (
     <div className="flex flex-1 flex-col">
       <PaneHeading
-        title="평가기준 (선택)"
+        title="4. 평가기준 (선택)"
         subtitle="연습할 때 무엇을 볼지 정해요. 건너뛰어도 연습할 수 있어요."
       />
       {pitchId === null ? (
@@ -481,9 +426,6 @@ export function CriteriaPane({
           <Result criteria={criteria} pitchId={pitchId} />
         </div>
       )}
-      <div className="mt-5 flex flex-1 flex-col">
-        <StartFooter onStart={onStart} />
-      </div>
     </div>
   );
 }
