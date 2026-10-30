@@ -73,6 +73,10 @@ export function ScriptPane({
 
   return (
     <div className="script" ref={boxRef}>
+      <div className="script-heading">
+        <span>대본</span>
+        <span>{mode === 'KEYWORD' ? '핵심 키워드만' : '전체 대본 + 하이라이트'}</span>
+      </div>
       {mode === 'KEYWORD' ? (
         <div className="keywords">
           {keywords.length === 0 ? (

@@ -11,6 +11,7 @@
  *
  *   cam   카메라 기기. 다른 웹캠이면 렌즈 위치가 다릅니다
  *   v     영상 해상도. 같은 웹캠이라도 해상도가 바뀌면 화각이 달라질 수 있습니다
+ *   stage 승인된 무대 배치 버전. 대본 위치가 달라지면 기존 기준을 쓰지 않습니다
  *   s     화면 크기와 배율. 대본 자리(BOTTOM)가 어디인지를 정합니다
  *
  * 카메라를 화면 위에서 옆으로 옮긴 것은 여기서 잡히지 않습니다 —
@@ -22,6 +23,12 @@
  * 주는 고정 식별자라, 원문을 보내면 기기 지문이 됩니다. 짧은 해시로 줄입니다 —
  * 같은 기기인지 가리는 데는 그걸로 충분합니다.
  */
+
+const STAGE_LAYOUT = '|stage:bottom-script-v2';
+
+export function hasCurrentStageLayout(signature: string): boolean {
+  return signature.endsWith(STAGE_LAYOUT);
+}
 
 export interface LayoutInputs {
   /** 비어 있으면 브라우저가 알려주지 않은 것입니다 (권한 전 등) */
@@ -47,7 +54,7 @@ export function makeLayoutSignature(i: LayoutInputs): string {
   const cam = i.deviceId ? shortHash(i.deviceId) : 'unknown';
   // 배율은 소수 둘째 자리까지 — 1.25 와 1.2500001 이 다른 키가 되면 안 됩니다
   const dpr = Math.round(i.devicePixelRatio * 100) / 100;
-  return `cam:${cam}|v${i.videoWidth}x${i.videoHeight}|s${i.screenWidth}x${i.screenHeight}@${dpr}`;
+  return `cam:${cam}|v${i.videoWidth}x${i.videoHeight}|s${i.screenWidth}x${i.screenHeight}@${dpr}${STAGE_LAYOUT}`;
 }
 
 /** 지금 흐르고 있는 `<video>` 와 화면에서 읽습니다 */
