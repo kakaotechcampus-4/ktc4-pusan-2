@@ -30,7 +30,7 @@ export const STEPS: { node: PaneNode; label: string; optional?: boolean }[] = [
 /** 발표 제목 최대 글자 수. BE 의 `title: StringConstraints(min_length=1, max_length=50)` 과 같습니다 */
 export const MAX_TITLE_CHARS = 50;
 
-/** 발표시간 범위(분). 입력 칸이 아니라 −/+ 로만 바꿉니다 */
+/** 발표시간 입력 범위(분). */
 export const MIN_TIME_LIMIT_MIN = 1;
 export const MAX_TIME_LIMIT_MIN = 60;
 
@@ -255,9 +255,19 @@ export const infoChanged = (a: InfoForm, b: InfoForm): boolean =>
 /** 저장할 수 있는 발표정보 — 허용오차까지 아는 것 */
 export type KnownInfo = InfoForm & { lowerToleranceSec: number; upperToleranceSec: number };
 
-/** 허용오차를 아나. 모르면 저장하지 않습니다 — 서버의 원래 값을 덮어쓰게 됩니다 */
+/** 시간 입력이 유효한가. 모르는 허용오차를 0으로 저장하지 않습니다 */
 export const infoReady = (form: InfoForm): form is KnownInfo =>
-  form.lowerToleranceSec !== null && form.upperToleranceSec !== null;
+  form.lowerToleranceSec !== null &&
+  form.upperToleranceSec !== null &&
+  Number.isInteger(form.timeLimitSec) &&
+  form.timeLimitSec >= MIN_TIME_LIMIT_MIN * 60 &&
+  form.timeLimitSec <= MAX_TIME_LIMIT_MIN * 60 &&
+  Number.isInteger(form.lowerToleranceSec) &&
+  form.lowerToleranceSec >= 0 &&
+  form.lowerToleranceSec <= Math.min(MAX_TOLERANCE_SEC, form.timeLimitSec) &&
+  Number.isInteger(form.upperToleranceSec) &&
+  form.upperToleranceSec >= 0 &&
+  form.upperToleranceSec <= MAX_TOLERANCE_SEC;
 
 /** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 export const latestSlides = (d: PitchDraft): SlideVersion | null => d.slides.at(-1) ?? null;

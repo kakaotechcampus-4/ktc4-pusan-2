@@ -71,3 +71,45 @@ it('파싱 중에는 매핑을 바꾸거나 저장할 수 없다', () => {
   expect(store().draft.scripts[0]?.blocks?.[0]).toBe('수정');
   expect(store().draft.scripts[0]?.saved).toBe(false);
 });
+
+it('이번 작성의 업로드만 확인 필요이며 확인·화면 이동·서버 재조회 규칙을 지킨다', () => {
+  expect(store().pendingSlideReviews).toEqual([1]);
+  expect(store().slideReviewVersion).toBe(1);
+  store().setSlideReview(null);
+  store().select('info');
+  expect(store().pendingSlideReviews).toEqual([1]);
+  store().confirmSlides(99);
+  expect(store().pendingSlideReviews).toEqual([1]);
+  store().confirmSlides(1);
+  expect(store().pendingSlideReviews).toEqual([]);
+  store().attachSlides({ ...uploaded, presentationVersionId: 'pv2' });
+  expect(store().pendingSlideReviews).toEqual([2]);
+  const draft = store().draft;
+  store().hydrate('re-entered', 'pitch1', draft);
+  expect(store().pendingSlideReviews).toEqual([]);
+  expect(store().slideReviewVersion).toBeNull();
+});
+
+it('평가기준 정리·저장 응답은 확인 필요이고 수정 중에는 확인할 수 없다', () => {
+  store().applyParsedCriteria(null, {
+    version: 1,
+    standards: ['기준'],
+    sourceText: '원문',
+    exceptText: null,
+  });
+  expect(store().pendingCriteriaReviews).toEqual([1]);
+  store().editCriterion(1, store().draft.criteria[0]!.items[0]!.id, '수정');
+  store().confirmCriteria(1);
+  expect(store().pendingCriteriaReviews).toEqual([1]);
+  store().markCriteriaSaved(1, {
+    version: 2,
+    standards: ['AI가 다시 다듬은 기준'],
+    sourceText: '수정',
+    exceptText: null,
+  });
+  expect(store().pendingCriteriaReviews).toContain(2);
+  store().confirmCriteria(2);
+  expect(store().pendingCriteriaReviews).not.toContain(2);
+  store().hydrate('re-entered', 'pitch1', store().draft);
+  expect(store().pendingCriteriaReviews).toEqual([]);
+});
