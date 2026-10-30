@@ -7,6 +7,9 @@ export interface DraftPrepareInfo {
 }
 
 export function prepareDraftFixture(stateId: string) {
+  let audioLevel = 0.78;
+  if (stateId === 'audio-low') audioLevel = 0.24;
+  if (stateId === 'audio-high') audioLevel = 0.94;
   let count = 3;
   if (stateId === 'first-take' || stateId === 'empty') count = 0;
   if (stateId === 'one') count = 1;
@@ -36,6 +39,7 @@ export function prepareDraftFixture(stateId: string) {
           },
   };
   return {
+    audioLevel,
     camera: !disconnected,
     mic: !disconnected && stateId !== 'mic-error',
     gaze,
