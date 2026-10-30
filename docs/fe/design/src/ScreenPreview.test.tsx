@@ -330,16 +330,52 @@ it('컴포넌트 · 대화 상자 견본: 종류가 다 보이고, 창은 상태
   expect(button('취소')?.disabled).toBe(true);
   await act(async () => root.render(null));
 
-  await render('review-dialog', 'open');
-  expect(button('별점 제출')?.disabled).toBe(true);
+  await render('survey-dialog', 'open');
+  expect(button('설문 보내기')?.disabled).toBe(true);
   await click('나중에');
-  expect(button('별점 제출')).toBeUndefined();
-  await click('리뷰 창 다시 열기');
-  expect(button('별점 제출')).toBeDefined();
+  expect(button('설문 보내기')).toBeUndefined();
+  await click('설문 창 다시 열기');
+  expect(button('설문 보내기')).toBeDefined();
   await act(async () => root.render(null));
 
-  await render('review-dialog', 'rated');
-  expect(button('별점 제출')?.disabled).toBe(false);
+  await render('survey-dialog', 'filled');
+  expect(button('설문 보내기')?.disabled).toBe(false);
+  await act(async () => root.render(null));
+
+  await render('consent-dialog', 'open');
+  expect(host.querySelector('dialog')?.textContent).toContain('음성 · 영상 원본은');
+  expect(button('동의하고 참여하기')).toBeDefined();
+});
+
+it('설문(#776): 홈은 참여 안내 · 남은 설문만 두고, 설문은 리포트 아래에서 보낸다', async () => {
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+  };
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  await render('home');
+  expect(host.textContent).not.toContain('사용자 테스트에 참여해 주세요');
+  expect(host.textContent).not.toContain('설문을 기다리는');
+  await act(async () => root.render(null));
+
+  await render('home', 'consent');
+  await click('안내 보고 참여하기');
+  expect(button('동의하고 참여하기')).toBeDefined();
+  await act(async () => root.render(null));
+
+  await render('home', 'pending');
+  expect(host.textContent).toContain('설문을 기다리는 리포트가 2개 있어요');
+  await act(async () => root.render(null));
+
+  await render('report');
+  await click('이번 분석 설문 남기기');
+  expect(button('설문 보내기')?.disabled).toBe(true);
+  await act(async () => root.render(null));
+
+  await render('report', 'survey-sent');
+  expect(button('이번 분석 설문 남기기')).toBeUndefined();
+  expect(host.textContent).toContain('설문을 보냈어요');
 });
 
 it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴를 표시한다', async () => {

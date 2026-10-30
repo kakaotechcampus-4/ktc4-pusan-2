@@ -77,6 +77,16 @@ const productScreens: GuideScreen[] = [
       state('loading', '불러오는 중', '발표 노트를 가져오는 동안 안내한다.'),
       state('empty', '첫 피치 전', '통계 · TIP을 빼고 첫 피치 안내만 둔다.'),
       state('error', '오류', '목록을 가져오지 못했고 다시 불러오기를 안내한다.'),
+      state(
+        'consent',
+        '테스트 참여 전',
+        '사용자 테스트에 아직 동의하지 않아 위쪽에 참여 안내 카드가 있다. 동의하면 카드가 사라진다.',
+      ),
+      state(
+        'pending',
+        '남은 설문',
+        '동의한 뒤 끝났는데 설문을 남기지 않은 리포트가 위쪽에 있다. 누르면 그 리포트로 간다.',
+      ),
     ],
     rules: [
       '제품 홈에는 연습 시작 버튼이 없다. 연습은 피치 생성 · 수정의 마지막 단계에서 시작 전 세팅으로 간다.',
@@ -85,16 +95,25 @@ const productScreens: GuideScreen[] = [
       '피치 제목은 피치 수정, "Take 기록"은 그 피치로 거른 Take 기록을 연다.',
       'Take 비교 링크는 Take가 둘 이상인 피치에만 있다.',
       '누적 발표 시간은 길이를 아는 Take만 더하고, 하나도 모르면 —로 둔다.',
+      '설문은 홈에서 받지 않는다(#776). 동의 전이면 참여 안내, 동의 뒤면 남은 설문 링크만 두고 설문은 리포트에서 한다. 자동으로 띄우는 창은 없다.',
+      '남은 설문은 동의한 뒤 끝난 Take 만 오고, 최대 3개를 보이고 나머지는 "외 N개"로 둔다. 없으면 아무것도 두지 않는다.',
     ],
-    components: ['HomePitchCard', '통계 3칸', 'TIP 줄'],
-    tokens: ['greige', 'panel', 'ink', 'coral-deep', 'line-strong'],
+    components: [
+      'HomePitchCard',
+      '통계 3칸',
+      'TIP 줄',
+      '참여 안내 카드 · 참여 동의 창',
+      '남은 설문 줄',
+    ],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep', 'line-strong', 'coral-wash'],
     sources: [
       'frontend/src/features/pitch/HomePage.tsx',
+      'frontend/src/features/pitch/HomeSurveyNotice.tsx',
       'frontend/src/features/pitch/HomePitchCard.tsx',
       'frontend/src/features/pitch/homeFormat.ts',
     ],
     productNote:
-      '서비스 리뷰 창 · 바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다(리뷰 창은 대화 상자의 "리뷰 창"에서 본다). "발표 준비 버튼 · 시안"의 버튼은 제품에 없는 제안이며, 기본 상태에는 표시하지 않는다.',
+      '바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다. 참여 동의 창은 대화 상자의 "참여 동의 창"에서도 본다. 동의 · 남은 설문은 서버에 묻지 않는 예시다. "발표 준비 버튼 · 시안"의 버튼은 제품에 없는 제안이며, 기본 상태에는 표시하지 않는다.',
     productLinks: [link('홈 · 내 피치', '/')],
     next: [
       next('새 피치 만들기', 'pitch-create', 'empty'),
@@ -530,6 +549,11 @@ const productScreens: GuideScreen[] = [
       state('error', '오류', '연습 기록을 불러오지 못했다.'),
       state('no-gaze', '시선 측정 제외', '재지 않은 시선은 0%가 아니라 —로 둔다.'),
       state('no-review', '코치 총평 실패', '받은 측정값은 그대로 두고 총평이 없음을 알린다.'),
+      state(
+        'survey-sent',
+        '설문 보냄',
+        '이 리포트의 설문을 냈다. 아래 줄에 버튼 대신 보냈다는 문장만 둔다.',
+      ),
     ],
     rules: [
       '점수(score)는 보여 주지 않는다. 요약과 지난 Take와의 변화를 먼저 보여 준다.',
@@ -537,15 +561,17 @@ const productScreens: GuideScreen[] = [
       '측정하지 않은 값은 —로 두어 측정된 0과 구별한다.',
       '"Take N 연습하기"는 시작 전 세팅으로 이동만 한다. 여기서 Take를 만들지 않는다.',
       '분석 실패 · 리뷰 보류 Take는 분석 대기 화면으로 보낸다.',
+      '아래 줄에 "이번 분석 설문 남기기"를 둔다(#776). 분석이 끝난 리포트에만 두고, 설문 상태를 못 받으면 버튼을 두지 않아 리포트를 막지 않는다. 리포트마다 한 번 보낸다.',
     ],
-    components: ['Card', 'Stat', 'Badge', 'ButtonLink'],
+    components: ['Card', 'Stat', 'Badge', 'ButtonLink', '설문 창'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: [
       'frontend/src/features/report/ReportPage.tsx',
       'frontend/src/features/report/ReportFrame.tsx',
+      'frontend/src/features/report/TakeSurvey.tsx',
     ],
     productNote:
-      '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다.',
+      '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다. 설문은 서버에 보내지 않고, 보내기를 누르면 "설문 보냄" 상태로 간다.',
     productLinks: [
       link('Take 리포트', '/takes/t3'),
       link('AI 문장 실패', '/takes/t-fallback'),
