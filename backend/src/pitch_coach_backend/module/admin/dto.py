@@ -1,7 +1,8 @@
 import uuid
 from datetime import date, datetime
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
@@ -61,6 +62,7 @@ class AdminUserRow(BaseModel):
 class AdminTakeRow(BaseModel):
     id: uuid.UUID
     take_number: int
+    pitch_id: uuid.UUID
     pitch_title: str
     user_name: str
     user_email: str
@@ -73,6 +75,173 @@ class AdminTakeRow(BaseModel):
     ended_at: datetime | None
     elapsed_sec: float | None
     goal_time_sec: int
+    analysis_stage: str | None
+    analysis_stage_at: datetime | None
+    review_status: str | None
+    analysis_hold_reason: str | None
+
+
+class AdminLiveSegment(BaseModel):
+    seq: int
+    stt_session_no: int
+    start_ms: int
+    end_ms: int
+    transcript: str
+    confidence: float
+    speech_final: bool
+
+
+class AdminLiveSecond(BaseModel):
+    t_ms: int
+    slide_number: int | None
+    gaze: dict[str, Any] | None
+    voice: dict[str, Any] | None
+    stt_status: str
+
+
+class AdminTakeLive(BaseModel):
+    status: str
+    segments: list[AdminLiveSegment]
+    seconds: list[AdminLiveSecond]
+
+
+class AdminAIResult(BaseModel):
+    kind: str
+    revision: int
+    created_at: datetime
+    replayed: bool | None
+    criteria_changed: bool | None
+    measured_ratios: dict[str, float | None]
+    fallback_reason: str | None
+    model: str | None
+    payload: Any
+    meta: Any | None
+
+
+class AdminCoachEvent(BaseModel):
+    seq: int
+    t_ms: int
+    kind: str
+    event_id: str
+    payload: Any
+    meta: Any
+
+
+class AdminTakeSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    average_cpm: float | None
+    filler_count: int | None
+    audience_gaze: int | None
+    slide_gaze: int | None
+    script_gaze: int | None
+    script_dependency_count: int | None
+    summary: str | None
+    overall_confidence: float | None
+    speak_accuracy: float | None
+    volume: float | None
+    total_intermission: int | None
+    score: int | None
+
+
+class AdminTakeResults(BaseModel):
+    ai_results: list[AdminAIResult]
+    coach_events: list[AdminCoachEvent]
+    summary: AdminTakeSummary | None
+
+
+class AdminSegmentWords(BaseModel):
+    seq: int
+    start_ms: int
+    end_ms: int
+    final_at_ms: int | None
+    words: Any
+
+
+class AdminSlideEvent(BaseModel):
+    started_ms: int
+    slide_number: int
+
+
+class AdminCalibration(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    created_at: datetime
+    face_detected: bool
+    mic_detected: bool
+    base_volume: float
+    base_level_db: float | None
+    gaze_confidence: float
+    result: Any | None
+
+
+class AdminTakeInputs(BaseModel):
+    script_mode: str
+    standard_version: int | None
+    mission_ids: Any | None
+    raw_data_consent: bool
+    utterance_ends: Any | None
+    slide_events: list[AdminSlideEvent]
+    segments: list[AdminSegmentWords]
+    calibration: AdminCalibration | None
+
+
+class AdminExportResult(BaseModel):
+    payload: Any
+    meta: Any | None
+    revision: int
+
+
+class AdminTakeExport(BaseModel):
+    take_id: uuid.UUID
+    raw_data_consent: bool
+    metric_second_count: int
+    request: dict[str, Any] | None
+    results: dict[str, AdminExportResult]
+
+
+class AdminScriptDetail(BaseModel):
+    version: int
+    created_at: datetime
+    parse_status: str
+    parse_error: str | None
+    parse_requested_at: datetime
+    rubric_status: str | None
+    rubric_requested_at: datetime | None
+    rubric_retry_used: bool
+    slide_count: int
+    rubric_slide_count: int
+    missing_rubric_slides: list[int]
+
+
+class AdminStandardAnalysis(BaseModel):
+    version: int
+    criteria_count: int
+    script_used: bool | None = None
+    targets: Any | None = None
+    excluded: Any | None = None
+    values: Any | None = None
+    meta: Any | None = None
+    analyzed_at: datetime | None = None
+
+
+class AdminCoachingPlan(BaseModel):
+    requested_at: datetime
+    source_take_id: uuid.UUID | None
+    script_version_id: uuid.UUID | None
+    target_ms: int | None
+    min_ms: int | None
+    max_ms: int | None
+    fallback_reason: str | None
+    model: str | None
+    payload: Any
+    meta: Any
+
+
+class AdminPitchAI(BaseModel):
+    scripts: list[AdminScriptDetail]
+    standards: list[AdminStandardAnalysis]
+    coaching_plans: list[AdminCoachingPlan]
 
 
 class AdminTakeSurveyRow(BaseModel):

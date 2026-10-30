@@ -11,14 +11,32 @@ from sqlalchemy import (
     distinct,
     extract,
     func,
+    or_,
     select,
 )
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.module.pitch.entity import Pitch
+from pitch_coach_backend.module.pitch.entity import (
+    CoachingPlan,
+    Pitch,
+    ScriptSlide,
+    ScriptVersion,
+    StandardAnalyses,
+    Standards,
+)
 from pitch_coach_backend.module.service_feedback.entity import TakeSurvey, UserSuggestion
-from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.entity import (
+    Calibration,
+    CoachEvent,
+    Take,
+    TakeAIResults,
+    TakeMetricSecond,
+    TakeSlideEvent,
+    TakeSummary,
+    TakeTranscriptSegment,
+)
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
 
@@ -134,13 +152,244 @@ def list_stuck_takes(db: Session, active_before: datetime, limit: int) -> list[d
     (`TakeRepository.running_takes_last_active`). 시작 시각만으로는 못 잰다.
     FE 가 발표를 끝낼 때에야 보내서 진행 중에는 비어 있다.
 
-    시작 전(`READY`)은 넣지 않는다. 시작하기 전에 떠난 Take 는 정리하는 곳이 없어 계속 쌓인다.
-    분석 중(`ANALYZING`)도 넣지 않는다. 아직 `COMPLETED` 로 바꾸는 곳이 없어
-    끝난 Take 가 모두 여기 머문다.
+    시작 전(`READY`)은 넣지 않는다. 만든 지 10분이 지나면 `ready_sweep` 이 이탈로 끝낸다.
+    분석 중(`ANALYZING`)은 `list_stalled_analyses` 가 분석 단계 시각으로 따로 본다.
     """
     active_at = last_active_at()
     stmt = _take_rows().where(Take.status == "RUNNING", active_at < active_before)
     return _fetch(db, stmt.order_by(active_at).limit(limit))
+
+
+def list_stalled_analyses(
+    db: Session, *, stage_before: datetime, confirmation_before: datetime, limit: int
+) -> list[dict[str, Any]]:
+    waited_too_long = case(
+        (
+            Take.analysis_stage == "AWAITING_CONFIRMATION",
+            Take.analysis_stage_at < confirmation_before,
+        ),
+        else_=Take.analysis_stage_at < stage_before,
+    )
+    stmt = _take_rows().where(
+        Take.status == "ANALYZING",
+        or_(
+            Take.analysis_hold_reason.is_not(None),
+            Take.analysis_stage_at.is_(None),
+            waited_too_long,
+        ),
+    )
+    return _fetch(db, stmt.order_by(Take.analysis_stage_at.asc().nulls_first()).limit(limit))
+
+
+def take_status(db: Session, take_id: uuid.UUID) -> str | None:
+    return db.scalar(select(Take.status).where(Take.id == take_id))
+
+
+def live_segments(
+    db: Session, take_id: uuid.UUID, *, after_seq: int, limit: int
+) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            TakeTranscriptSegment.seq,
+            TakeTranscriptSegment.stt_session_no,
+            TakeTranscriptSegment.start_ms,
+            TakeTranscriptSegment.end_ms,
+            TakeTranscriptSegment.transcript,
+            TakeTranscriptSegment.confidence,
+            TakeTranscriptSegment.speech_final,
+        )
+        .where(TakeTranscriptSegment.take_id == take_id, TakeTranscriptSegment.seq > after_seq)
+        .order_by(TakeTranscriptSegment.seq)
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
+
+
+def live_seconds(
+    db: Session, take_id: uuid.UUID, *, after_t_ms: int | None, limit: int
+) -> list[dict[str, Any]]:
+    stmt = select(
+        TakeMetricSecond.t_ms,
+        TakeMetricSecond.slide_number,
+        TakeMetricSecond.gaze,
+        TakeMetricSecond.voice,
+        TakeMetricSecond.stt_status,
+    ).where(TakeMetricSecond.take_id == take_id)
+    if after_t_ms is not None:
+        stmt = stmt.where(TakeMetricSecond.t_ms > after_t_ms)
+    return _fetch(db, stmt.order_by(TakeMetricSecond.t_ms).limit(limit))
+
+
+AI_RESULT_KINDS = ("TAKE_RESULT", "SCRIPT_COVERAGE", "SCRIPT_COVERAGE_PENDING", "REVIEW")
+
+
+def ai_results(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
+    order = case(
+        {kind: i for i, kind in enumerate(AI_RESULT_KINDS)},
+        value=TakeAIResults.kind,
+        else_=len(AI_RESULT_KINDS),
+    )
+    stmt = (
+        select(
+            TakeAIResults.kind,
+            TakeAIResults.revision,
+            TakeAIResults.created_at,
+            TakeAIResults.payload,
+            TakeAIResults.meta,
+        )
+        .where(TakeAIResults.take_id == take_id)
+        .order_by(order, TakeAIResults.kind)
+    )
+    return _fetch(db, stmt)
+
+
+def coach_events(db: Session, take_id: uuid.UUID, limit: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            CoachEvent.seq,
+            CoachEvent.t_ms,
+            CoachEvent.kind,
+            CoachEvent.event_id,
+            CoachEvent.payload,
+            CoachEvent.meta,
+        )
+        .where(CoachEvent.take_id == take_id)
+        .order_by(CoachEvent.seq)
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
+
+
+def take_summary(db: Session, take_id: uuid.UUID) -> TakeSummary | None:
+    return db.get(TakeSummary, take_id)
+
+
+def take_settings(db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+    row = db.execute(
+        select(
+            Take.script_mode,
+            Take.standard_version,
+            Take.mission_ids,
+            Take.raw_data_consent,
+            Take.utterance_ends,
+        ).where(Take.id == take_id)
+    ).mappings().first()
+    return None if row is None else dict(row)
+
+
+def transcript_words(db: Session, take_id: uuid.UUID, limit: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            TakeTranscriptSegment.seq,
+            TakeTranscriptSegment.start_ms,
+            TakeTranscriptSegment.end_ms,
+            TakeTranscriptSegment.final_at_ms,
+            TakeTranscriptSegment.words,
+        )
+        .where(TakeTranscriptSegment.take_id == take_id)
+        .order_by(TakeTranscriptSegment.seq)
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
+
+
+def slide_events(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
+    stmt = (
+        select(TakeSlideEvent.started_ms, TakeSlideEvent.slide_number)
+        .where(TakeSlideEvent.take_id == take_id)
+        .order_by(TakeSlideEvent.started_ms)
+    )
+    return _fetch(db, stmt)
+
+
+def calibration(db: Session, take_id: uuid.UUID) -> Calibration | None:
+    return db.scalar(select(Calibration).where(Calibration.take_id == take_id))
+
+
+def count_metric_seconds(db: Session, take_id: uuid.UUID) -> int:
+    stmt = select(func.count()).where(TakeMetricSecond.take_id == take_id)
+    return db.scalar(stmt) or 0
+
+
+def pitch_exists(db: Session, pitch_id: uuid.UUID) -> bool:
+    return db.scalar(select(Pitch.id).where(Pitch.id == pitch_id)) is not None
+
+
+def script_versions(db: Session, pitch_id: uuid.UUID) -> list[dict[str, Any]]:
+    slides = (
+        select(
+            ScriptSlide.script_version_id,
+            func.count().label("slide_count"),
+            func.count(ScriptSlide.rubric).label("rubric_slide_count"),
+            func.array_agg(aggregate_order_by(ScriptSlide.slide_number, ScriptSlide.slide_number))
+            .filter(ScriptSlide.rubric.is_(None))
+            .label("missing_rubric_slides"),
+        )
+        .group_by(ScriptSlide.script_version_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            ScriptVersion.version,
+            ScriptVersion.created_at,
+            ScriptVersion.parse_status,
+            ScriptVersion.parse_error,
+            ScriptVersion.parse_requested_at,
+            ScriptVersion.rubric_status,
+            ScriptVersion.rubric_requested_at,
+            ScriptVersion.rubric_retry_used,
+            func.coalesce(slides.c.slide_count, 0).label("slide_count"),
+            func.coalesce(slides.c.rubric_slide_count, 0).label("rubric_slide_count"),
+            slides.c.missing_rubric_slides,
+        )
+        .outerjoin(slides, slides.c.script_version_id == ScriptVersion.id)
+        .where(ScriptVersion.pitch_id == pitch_id)
+        .order_by(ScriptVersion.version.desc())
+    )
+    return _fetch(db, stmt)
+
+
+def standard_criteria_counts(db: Session, pitch_id: uuid.UUID) -> dict[int, int]:
+    rows = db.execute(
+        select(Standards.version, func.count())
+        .where(Standards.pitch_id == pitch_id)
+        .group_by(Standards.version)
+    ).all()
+    return {version: count for version, count in rows}
+
+
+def standard_analyses(db: Session, pitch_id: uuid.UUID) -> list[dict[str, Any]]:
+    stmt = select(
+        StandardAnalyses.version,
+        StandardAnalyses.script_used,
+        StandardAnalyses.targets,
+        StandardAnalyses.excluded,
+        StandardAnalyses.values,
+        StandardAnalyses.meta,
+        StandardAnalyses.updated_at.label("analyzed_at"),
+    ).where(StandardAnalyses.pitch_id == pitch_id)
+    return _fetch(db, stmt)
+
+
+def coaching_plans(db: Session, pitch_id: uuid.UUID, limit: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            CoachingPlan.requested_at,
+            CoachingPlan.source_take_id,
+            CoachingPlan.script_version_id,
+            CoachingPlan.target_ms,
+            CoachingPlan.min_ms,
+            CoachingPlan.max_ms,
+            CoachingPlan.payload["fallback_reason"].astext.label("fallback_reason"),
+            CoachingPlan.meta["model"].astext.label("model"),
+            CoachingPlan.payload,
+            CoachingPlan.meta,
+        )
+        .where(CoachingPlan.pitch_id == pitch_id)
+        .order_by(CoachingPlan.requested_at.desc())
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
 
 
 def _take_rows() -> Select[Any]:
@@ -148,6 +397,7 @@ def _take_rows() -> Select[Any]:
         select(
             Take.id,
             Take.take_number,
+            Take.pitch_id,
             Pitch.title.label("pitch_title"),
             User.name.label("user_name"),
             User.email.label("user_email"),
@@ -160,6 +410,10 @@ def _take_rows() -> Select[Any]:
             Take.ended_at,
             ELAPSED_SEC.label("elapsed_sec"),
             Take.goal_time_sec,
+            Take.analysis_stage,
+            Take.analysis_stage_at,
+            Take.review_status,
+            Take.analysis_hold_reason,
         )
         .join(Pitch, Pitch.id == Take.pitch_id)
         .join(User, User.id == Pitch.user_id)

@@ -9,8 +9,26 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
+from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.pitch.entity import (
+    CoachingPlan,
+    Pitch,
+    PresentationVersion,
+    ScriptSlide,
+    ScriptVersion,
+    StandardAnalyses,
+    Standards,
+)
+from pitch_coach_backend.module.take.entity import (
+    Calibration,
+    CoachEvent,
+    Take,
+    TakeAIResults,
+    TakeMetricSecond,
+    TakeSlideEvent,
+    TakeSummary,
+    TakeTranscriptSegment,
+)
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 from pitch_coach_backend.module.user.entity import User
 
@@ -292,14 +310,371 @@ def test_stuck_takes_are_running_without_activity_past_abandon(
     speaking = _take(db_session, pitch, 2, status="RUNNING", created_at=long_ago)
     _final_segment(db_session, speaking, now)
     _take(db_session, pitch, 3, status="RUNNING", created_at=long_ago, started_at=now)
-    # 시작 전에 떠난 Take 는 정리하는 곳이 없어 쌓이기만 한다. 넣지 않는다
+    # 시작 전에 떠난 Take 는 ready_sweep 이 끝낸다. 넣지 않는다
     _take(db_session, pitch, 4, status="READY", created_at=long_ago)
-    # 끝난 Take 는 아직 전부 분석 중에 머문다. 넣지 않는다
+    # 분석 중인 Take 는 분석이 멈춘 연습에서 따로 본다. 넣지 않는다
     _take(db_session, pitch, 5, status="ANALYZING", created_at=long_ago)
 
     rows = client.get("/admin/api/takes/stuck", auth=ADMIN).json()
 
     assert [row["id"] for row in rows] == [str(stuck.id)]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_stalled_analyses_are_held_or_past_resume_sweep(
+    client: TestClient, db_session: Session
+) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    now = datetime.now(UTC)
+
+    def analyzing(number: int, stage: str | None, minutes_ago: float | None, **fields) -> Take:
+        stage_at = None if minutes_ago is None else now - timedelta(minutes=minutes_ago)
+        return _take(
+            db_session,
+            pitch,
+            number,
+            status=fields.pop("status", "ANALYZING"),
+            analysis_stage=stage,
+            analysis_stage_at=stage_at,
+            **fields,
+        )
+
+    held = analyzing(1, "SCORING", 1, analysis_hold_reason="COVERAGE_RESCORE_FAILED")
+    finalizing = analyzing(2, "FINALIZING", 16)
+    confirming = analyzing(3, "AWAITING_CONFIRMATION", 26)
+    unknown_at = analyzing(4, None, None)
+    analyzing(5, "SCORING", 5)
+    analyzing(6, "AWAITING_CONFIRMATION", 20)
+    analyzing(7, "DONE", 60, status="COMPLETED", review_status="DONE")
+    analyzing(8, "FINALIZING", 60, status="FAILED")
+
+    rows = client.get("/admin/api/takes/stalled-analysis", auth=ADMIN).json()
+
+    assert [row["id"] for row in rows] == [
+        str(unknown_at.id),
+        str(confirming.id),
+        str(finalizing.id),
+        str(held.id),
+    ]
+    assert rows[-1]["analysis_hold_reason"] == "COVERAGE_RESCORE_FAILED"
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_takes_carry_analysis_state(client: TestClient, db_session: Session) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    stage_at = datetime(2026, 10, 22, 1, 30, tzinfo=UTC)
+    _take(
+        db_session,
+        pitch,
+        1,
+        **_ended(3),
+        analysis_stage="REVIEWING",
+        analysis_stage_at=stage_at,
+        review_status="FAILED",
+    )
+
+    [row] = client.get("/admin/api/takes", auth=ADMIN).json()
+
+    assert row["pitch_id"] == str(pitch.id)
+    assert row["analysis_stage"] == "REVIEWING"
+    assert datetime.fromisoformat(row["analysis_stage_at"]) == stage_at
+    assert row["review_status"] == "FAILED"
+    assert row["analysis_hold_reason"] is None
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_pitch_ai_shows_scripts_standards_and_plans(
+    client: TestClient, db_session: Session
+) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    script = ScriptVersion(
+        pitch_id=pitch.id,
+        version=2,
+        content="대본",
+        parse_status="DONE",
+        rubric_status="PARTIAL",
+        rubric_retry_used=True,
+    )
+    db_session.add(script)
+    db_session.flush()
+    db_session.add_all([
+        ScriptSlide(script_version_id=script.id, slide_number=1, full_content="일", rubric={}),
+        ScriptSlide(script_version_id=script.id, slide_number=2, full_content="이"),
+        ScriptSlide(script_version_id=script.id, slide_number=3, full_content="삼"),
+        Standards(pitch_id=pitch.id, version=1, position=1, title="천천히"),
+        Standards(pitch_id=pitch.id, version=1, position=2, title="청중 보기"),
+        Standards(pitch_id=pitch.id, version=2, position=1, title="또박또박"),
+        StandardAnalyses(
+            pitch_id=pitch.id,
+            version=1,
+            targets=[],
+            excluded=[],
+            script_used=False,
+            meta={"model": "m"},
+        ),
+    ])
+    requested = datetime(2026, 10, 22, 1, 0, tzinfo=UTC)
+    db_session.add_all([
+        CoachingPlan(
+            pitch_id=pitch.id,
+            requested_at=requested,
+            payload={"coaching_plan": {}, "fallback_reason": None},
+            meta={"model": "planner-model"},
+        ),
+        CoachingPlan(
+            pitch_id=pitch.id,
+            requested_at=requested + timedelta(minutes=1),
+            payload={"coaching_plan": {}, "fallback_reason": "LLM_TIMEOUT"},
+            meta={"model": "fallback"},
+        ),
+    ])
+    db_session.flush()
+
+    body = client.get(f"/admin/api/pitches/{pitch.id}/ai", auth=ADMIN).json()
+
+    assert [s["version"] for s in body["scripts"]] == [2, 1]
+    latest = body["scripts"][0]
+    assert latest["rubric_status"] == "PARTIAL"
+    assert (latest["slide_count"], latest["rubric_slide_count"]) == (3, 1)
+    assert latest["missing_rubric_slides"] == [2, 3]
+    assert body["scripts"][1]["missing_rubric_slides"] == []
+    assert [(s["version"], s["criteria_count"]) for s in body["standards"]] == [(2, 1), (1, 2)]
+    assert body["standards"][0]["analyzed_at"] is None
+    assert body["standards"][1]["script_used"] is False
+    assert [(p["fallback_reason"], p["model"]) for p in body["coaching_plans"]] == [
+        ("LLM_TIMEOUT", "fallback"),
+        (None, "planner-model"),
+    ]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_pitch_ai_of_unknown_pitch_is_not_found(client: TestClient) -> None:
+    response = client.get(f"/admin/api/pitches/{uuid.uuid4()}/ai", auth=ADMIN)
+
+    assert response.status_code == 404
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_live_returns_rows_after_cursors_in_order(
+    client: TestClient, db_session: Session
+) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    take = _take(db_session, pitch, 1, status="RUNNING")
+    other = _take(db_session, pitch, 2, status="RUNNING")
+    for seq in (3, 1, 2):
+        db_session.add(
+            TakeTranscriptSegment(
+                take_id=take.id,
+                seq=seq,
+                stt_session_no=1,
+                start_ms=seq * 1000,
+                end_ms=seq * 1000 + 500,
+                transcript=f"문장 {seq}",
+                words=[],
+                confidence=0.9,
+                speech_final=True,
+            )
+        )
+    for t_ms in (3000, 1000, 2000):
+        db_session.add(
+            TakeMetricSecond(
+                take_id=take.id,
+                t_ms=t_ms,
+                slide_number=1,
+                gaze={"t_ms": t_ms - 1000, "duration_ms": 1000},
+                voice=None,
+                stt_status="ok",
+            )
+        )
+    db_session.add(TakeMetricSecond(take_id=other.id, t_ms=4000, stt_status="ok"))
+    db_session.flush()
+
+    first = client.get(f"/admin/api/takes/{take.id}/live", auth=ADMIN).json()
+    rest = client.get(
+        f"/admin/api/takes/{take.id}/live",
+        params={"after_seq": 1, "after_t_ms": 2000},
+        auth=ADMIN,
+    ).json()
+
+    assert first["status"] == "RUNNING"
+    assert [s["seq"] for s in first["segments"]] == [1, 2, 3]
+    assert first["segments"][0]["transcript"] == "문장 1"
+    assert "words" not in first["segments"][0]
+    assert [s["t_ms"] for s in first["seconds"]] == [1000, 2000, 3000]
+    assert first["seconds"][0]["gaze"] == {"t_ms": 0, "duration_ms": 1000}
+    assert first["seconds"][0]["voice"] is None
+    assert [s["seq"] for s in rest["segments"]] == [2, 3]
+    assert [s["t_ms"] for s in rest["seconds"]] == [3000]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_live_of_unknown_take_is_not_found(client: TestClient) -> None:
+    response = client.get(f"/admin/api/takes/{uuid.uuid4()}/live", auth=ADMIN)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "TAKE_NOT_FOUND"
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_results_show_ai_results_events_and_summary(
+    client: TestClient, db_session: Session
+) -> None:
+    take = _take(db_session, _pitch(db_session, _user(db_session, "앨리스")), 1, **_ended(3))
+    db_session.add_all([
+        TakeAIResults(
+            take_id=take.id,
+            kind="REVIEW",
+            payload={"overall_summary": "요약", "fallback_reason": "LLM_TIMEOUT"},
+            meta={"model": "review-model"},
+            revision=1,
+        ),
+        TakeAIResults(
+            take_id=take.id,
+            kind="SCRIPT_COVERAGE",
+            payload={"slides": []},
+            meta={"model": "coverage-model"},
+        ),
+        TakeAIResults(
+            take_id=take.id,
+            kind="TAKE_RESULT",
+            payload={
+                "replayed": True,
+                "criteria_changed": False,
+                "areas": {"GAZE": {"measured_ratio": 0.9}, "SPEED": {"measured_ratio": None}},
+            },
+            meta={"schema_version": "1.0"},
+        ),
+        CoachEvent(
+            take_id=take.id, seq=2, kind="INTERVENTION", event_id="e2", t_ms=5_000,
+            payload={"kind": "INTERVENTION"}, meta={},
+        ),
+        CoachEvent(
+            take_id=take.id, seq=1, kind="ISSUE_OPENED", event_id="e1", t_ms=3_000,
+            payload={"kind": "ISSUE_OPENED"}, meta={},
+        ),
+        TakeSummary(take_id=take.id, average_cpm=320.5, filler_count=4, score=None),
+    ])
+    db_session.flush()
+
+    body = client.get(f"/admin/api/takes/{take.id}/results", auth=ADMIN).json()
+
+    result, coverage, review = body["ai_results"]
+    assert [result["kind"], coverage["kind"], review["kind"]] == [
+        "TAKE_RESULT",
+        "SCRIPT_COVERAGE",
+        "REVIEW",
+    ]
+    assert (result["replayed"], result["criteria_changed"]) == (True, False)
+    assert result["measured_ratios"] == {"GAZE": 0.9, "SPEED": None}
+    assert result["fallback_reason"] is None
+    assert coverage["model"] == "coverage-model"
+    assert coverage["replayed"] is None
+    assert (review["fallback_reason"], review["model"], review["revision"]) == (
+        "LLM_TIMEOUT",
+        "review-model",
+        1,
+    )
+    assert [(e["seq"], e["t_ms"]) for e in body["coach_events"]] == [(1, 3_000), (2, 5_000)]
+    assert body["summary"]["average_cpm"] == 320.5
+    assert body["summary"]["filler_count"] == 4
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_results_without_anything_yet(client: TestClient, db_session: Session) -> None:
+    take = _take(db_session, _pitch(db_session, _user(db_session, "앨리스")), 1)
+
+    body = client.get(f"/admin/api/takes/{take.id}/results", auth=ADMIN).json()
+
+    assert body == {"ai_results": [], "coach_events": [], "summary": None}
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_results_of_unknown_take_is_not_found(client: TestClient) -> None:
+    response = client.get(f"/admin/api/takes/{uuid.uuid4()}/results", auth=ADMIN)
+
+    assert response.status_code == 404
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_inputs_show_what_the_judges_read(client: TestClient, db_session: Session) -> None:
+    take = _take(
+        db_session,
+        _pitch(db_session, _user(db_session, "앨리스")),
+        1,
+        **_ended(3),
+        script_mode="KEYWORD",
+        standard_version=2,
+        mission_ids=["m-1"],
+        utterance_ends=[1_200, 3_400],
+    )
+    words = [{"word": "안녕", "start_ms": 100, "end_ms": 400, "final_at_ms": 900}]
+    db_session.add_all([
+        TakeTranscriptSegment(
+            take_id=take.id, seq=1, stt_session_no=1, start_ms=100, end_ms=400,
+            transcript="안녕", words=words, confidence=0.9, speech_final=True, final_at_ms=900,
+        ),
+        TakeSlideEvent(take_id=take.id, started_ms=2_000, slide_number=2),
+        TakeSlideEvent(take_id=take.id, started_ms=0, slide_number=1),
+        Calibration(
+            take_id=take.id, face_detected=True, mic_detected=True, base_volume=40,
+            base_level_db=-32.5, gaze_confidence=0.8, result={"engine": "v2"},
+        ),
+    ])
+    db_session.flush()
+
+    body = client.get(f"/admin/api/takes/{take.id}/inputs", auth=ADMIN).json()
+
+    assert body["script_mode"] == "KEYWORD"
+    assert body["standard_version"] == 2
+    assert body["mission_ids"] == ["m-1"]
+    assert body["utterance_ends"] == [1_200, 3_400]
+    assert body["slide_events"] == [
+        {"started_ms": 0, "slide_number": 1},
+        {"started_ms": 2_000, "slide_number": 2},
+    ]
+    [segment] = body["segments"]
+    assert (segment["final_at_ms"], segment["words"]) == (900, words)
+    assert body["calibration"]["base_level_db"] == -32.5
+    assert body["calibration"]["result"] == {"engine": "v2"}
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_export_wraps_the_recovery_request_with_results(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    take = _take(db_session, _pitch(db_session, _user(db_session, "앨리스")), 1, **_ended(3))
+    db_session.add_all([
+        TakeMetricSecond(take_id=take.id, t_ms=1_000, stt_status="ok"),
+        TakeAIResults(take_id=take.id, kind="TAKE_RESULT", payload={"replayed": False}, meta={}),
+    ])
+    db_session.flush()
+    asked: list[uuid.UUID] = []
+
+    class FakeExport:
+        def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict | None:
+            asked.append(take_id)
+            return {"t_ms": 1_000, "replay": {"words": []}}
+
+    monkeypatch.setattr(hooks, "_finalize_export", FakeExport())
+
+    body = client.get(f"/admin/api/takes/{take.id}/export", auth=ADMIN).json()
+
+    assert asked == [take.id]
+    assert body == {
+        "take_id": str(take.id),
+        "raw_data_consent": False,
+        "metric_second_count": 1,
+        "request": {"t_ms": 1_000, "replay": {"words": []}},
+        "results": {"TAKE_RESULT": {"payload": {"replayed": False}, "meta": {}, "revision": 0}},
+    }
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_inputs_and_export_of_unknown_take_are_not_found(client: TestClient) -> None:
+    for path in ("inputs", "export"):
+        response = client.get(f"/admin/api/takes/{uuid.uuid4()}/{path}", auth=ADMIN)
+
+        assert response.status_code == 404
 
 
 @pytest.mark.usefixtures("admin_account")

@@ -1,11 +1,12 @@
 """module 이 바깥(발표 중 처리 realtime · 코치 coach)에 알릴 일을 부르는 자리.
 
 module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'). 그래서 HTTP 요청이 그쪽에
-알릴 일은 여기 두 자리를 거쳐 부른다.
+알릴 일은 여기 세 자리를 거쳐 부른다.
 
   - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT),
     로그아웃
   - `coaching()`: 리뷰 뒤 · 제한 시간을 바꾼 뒤 · 대본을 파싱한 뒤 다음 Take 의 코칭 계획
+  - `finalize_export()`: 관리자 콘솔이 Take의 finalize 복구 요청을 내려받을 때
 
 실제 구현은 main.py 가 앱을 만들 때 꽂는다 (`install`). 꽂기 전에는 바깥이 없는 것처럼 군다 — 아무
 것도 하지 않고, 끝내기는 DB 에 적기만 한다.
@@ -13,7 +14,9 @@ module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'
 
 import uuid
 from collections.abc import Callable, Iterable
-from typing import Protocol
+from typing import Any, Protocol
+
+from sqlalchemy.orm import Session
 
 # Take 를 끝난 것으로 DB 에 적는다. (자동 종료 이유, 문장 끝 신호)를 받아, 적었으면 True
 type MarkEnded = Callable[[str | None, list[int] | None], bool]
@@ -59,6 +62,10 @@ class Coaching(Protocol):
         ...
 
 
+class FinalizeExport(Protocol):
+    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None: ...
+
+
 class _NoLiveTakes:
     def discard(self, take_ids: Iterable[uuid.UUID]) -> None:
         return None
@@ -84,15 +91,24 @@ class _NoCoaching:
         return None
 
 
+class _NoFinalizeExport:
+    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+        return None
+
+
 _live_takes: LiveTakes = _NoLiveTakes()
 _coaching: Coaching = _NoCoaching()
+_finalize_export: FinalizeExport = _NoFinalizeExport()
 
 
-def install(*, live_takes: LiveTakes, coaching: Coaching) -> None:
+def install(
+    *, live_takes: LiveTakes, coaching: Coaching, finalize_export: FinalizeExport
+) -> None:
     """main.py 가 앱을 만들 때 실제 구현을 꽂는다."""
-    global _live_takes, _coaching
+    global _live_takes, _coaching, _finalize_export
     _live_takes = live_takes
     _coaching = coaching
+    _finalize_export = finalize_export
 
 
 def live_takes() -> LiveTakes:
@@ -101,3 +117,7 @@ def live_takes() -> LiveTakes:
 
 def coaching() -> Coaching:
     return _coaching
+
+
+def finalize_export() -> FinalizeExport:
+    return _finalize_export

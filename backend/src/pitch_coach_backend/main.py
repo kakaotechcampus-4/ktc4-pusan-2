@@ -11,6 +11,7 @@ from pitch_coach_backend.coach.background import STOP_TIMEOUT_SEC as COACH_STOP_
 from pitch_coach_backend.coach.background import start as start_coach_background
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.coach.planner import PlannerCoaching
+from pitch_coach_backend.coach.store import StoreFinalizeExport
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
@@ -55,7 +56,11 @@ API_PREFIX = "/api"
 
 # module 은 realtime · coach 를 모른다 (README '의존 방향'). HTTP 요청이 발표 중 처리 · 코치에 알릴
 # 일은 module/hooks.py 를 거치고, 그 구현을 여기서 꽂는다
-hooks.install(live_takes=RealtimeLiveTakes(), coaching=PlannerCoaching())
+hooks.install(
+    live_takes=RealtimeLiveTakes(),
+    coaching=PlannerCoaching(),
+    finalize_export=StoreFinalizeExport(),
+)
 
 
 def shutdown_max_sec() -> float:
