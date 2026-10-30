@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pitch_coach_backend.core.database import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -8,6 +10,12 @@ NAME_MAX_LENGTH = 100
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "(test_consent_at IS NULL) = (test_consent_version IS NULL)",
+            name="ck_users_test_consent",
+        ),
+    )
 
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
@@ -18,3 +26,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     raw_data_consent: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # 사용자 테스트 참여 동의. 수집하는 데이터 · 목적 · 보관 기간 안내를 보고 동의한 시각과
+    # 그 안내문의 버전이다. 안내문이 바뀌면 FE 가 새 버전으로 다시 받는다
+    test_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    test_consent_version: Mapped[int | None] = mapped_column(Integer)

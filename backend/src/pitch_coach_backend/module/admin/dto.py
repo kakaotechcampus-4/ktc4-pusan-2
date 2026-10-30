@@ -75,13 +75,26 @@ class AdminTakeRow(BaseModel):
     goal_time_sec: int
 
 
-class AdminFeedbackRow(BaseModel):
+class AdminTakeSurveyRow(BaseModel):
     id: uuid.UUID
+    # 탈퇴했으면 user_id, 발표 · Take 를 지웠으면 take_id 이하가 비어 있다
     user_id: uuid.UUID | None
-    rating: int
-    suggestion: str | None
-    category: SuggestionCategory | None
+    take_id: uuid.UUID | None
+    pitch_title: str | None
+    take_number: int | None
+    accuracy_rating: int
+    usefulness_rating: int
+    comment: str | None
+    question_version: int
     created_at: datetime
+
+
+class AdminTakeSurveySummary(BaseModel):
+    # 문항 문구가 바뀌면 앞뒤 응답을 섞어 평균 내지 않도록 버전마다 따로 센다
+    question_version: int
+    survey_count: int
+    avg_accuracy: float
+    avg_usefulness: float
 
 
 class AdminSuggestionRow(BaseModel):
@@ -90,36 +103,7 @@ class AdminSuggestionRow(BaseModel):
     content: str
     source: str
     category: SuggestionCategory
-    service_feedback_id: uuid.UUID | None
     created_at: datetime
-
-
-class AdminRatingSummary(BaseModel):
-    # 평점을 남긴 수만 센다. 의견만 보낸 미평가 사용자는 빠진다
-    rated_count: int
-    avg_rating: float | None
-
-
-class AdminGroupSuggestion(BaseModel):
-    id: uuid.UUID
-    content: str
-    source: str
-    category: SuggestionCategory
-    created_at: datetime
-
-
-class AdminFeedbackGroupRow(BaseModel):
-    """한 사용자의 평점과 의견. 탈퇴했으면 user_id 가 비고 retained_id 로 묶음을 가른다."""
-
-    user_id: uuid.UUID | None
-    # 탈퇴해 작성자를 알 수 없는 묶음의 ID. 평점이 있으면 평점 ID, 없으면 마이페이지 의견 ID 다
-    retained_id: uuid.UUID | None
-    rating: int | None
-    rated_at: datetime | None
-    suggestion_count: int
-    # 최근 의견부터 몇 개만. 나머지는 의견 목록을 user_id 로 걸러 이어서 받는다
-    suggestions: list[AdminGroupSuggestion]
-    last_at: datetime
 
 
 class AdminPage[T](BaseModel):
