@@ -559,3 +559,22 @@
 .create-concept .create-preview-only {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* 후속 검토 시안: 구분선 없이 가까운 두 지면을 잇고, 작업 중인 한 영역만 표시합니다. */
+.create-focus .create-content > section {
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--color-panel) 55%, var(--color-cream));
+}
+.create-focus .create-content > section:nth-of-type(even) {
+  background: var(--color-cream);
+}
+.create-focus .create-content > section[data-current] {
+  outline: 1px solid var(--color-coral-deep);
+  outline-offset: -1px;
+}
+
+.create-final-review {
+  width: min(44rem, calc(100vw - 2rem));
+  height: fit-content;
+  max-height: calc(100dvh - 2rem);
+}
