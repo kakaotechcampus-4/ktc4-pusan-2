@@ -102,6 +102,13 @@
   --font-mono: "IBM Plex Mono", "Pretendard", ui-monospace, monospace;
 }
 
+@custom-variant prepare-compact {
+  @media (max-width: 1199px), (max-height: 699px) { @slot; }
+}
+@custom-variant prepare-low {
+  @media (max-height: 650px) and (min-width: 1024px) { @slot; }
+}
+
 html, body, #root { height: 100%; }
 
 body {

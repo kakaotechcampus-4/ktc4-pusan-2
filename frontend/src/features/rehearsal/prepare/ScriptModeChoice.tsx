@@ -1,12 +1,11 @@
 import type { ScriptMode } from '@/types/api';
-import { Card } from '@/shared/ui/Panel';
 
 /**
  * 발표 중 대본을 어떻게 띄울지. **시작하면 못 바꿉니다.**
  *
- * 대본 상자 높이가 모드마다 다르고(`--spacing-script-*`), 그만큼 대본을 보는 시선 각도가
- * 달라집니다 (CLAUDE.md 7번). 슬라이드 칸은 세 모드가 같은 크기 · 같은 자리입니다 (#443).
- * 발표 도중에 바꾸면 그 Take 의 시선 숫자가 앞뒤로 갈라져 비교가 불가능해집니다.
+ * 대본 영역 높이가 모드마다 다르고(`--spacing-script-*`), 그 높이가 바뀌면 시선 각도가
+ * 바뀌어 캘리브레이션 기준이 어긋납니다 (CLAUDE.md 7번). 발표 도중에 바꾸면 그 Take 의
+ * 시선 숫자가 앞뒤로 갈라져 비교가 불가능해집니다.
  *
  * 시안 09 의 세 줄입니다. 전에는 FULL(전체 대본)이 따로 있었는데 HIGHLIGHT 로
  * 합쳤습니다 — 보이는 글이 둘 다 대본 전체라 고르는 사람에게는 같은 것이 둘로
@@ -19,12 +18,12 @@ import { Card } from '@/shared/ui/Panel';
  *   발표 도중에 알게 됩니다.
  */
 const OPTIONS: { value: ScriptMode; label: string; note: string }[] = [
-  { value: 'HIGHLIGHT', label: '전체 대본 + 하이라이트', note: '대본 전체에 강조가 붙습니다' },
-  { value: 'KEYWORD', label: '핵심 키워드만', note: '문장 대신 단어만 남습니다' },
+  { value: 'HIGHLIGHT', label: '전체 대본 + 하이라이트', note: '대본 전체에 강조가 붙어요' },
+  { value: 'KEYWORD', label: '핵심 키워드만', note: '문장 대신 단어만 보여요' },
   {
     value: 'OFF',
     label: '실전 모드 · 대본 없이',
-    note: '대본도 실시간 코치도 없습니다. 기록은 남아 리포트에서 봅니다',
+    note: '대본과 실시간 코치 없이 진행해요. 기록은 리포트에서 봐요',
   },
 ];
 
@@ -35,20 +34,19 @@ export function ScriptModeChoice({
 }: {
   value: ScriptMode;
   onChange: (mode: ScriptMode) => void;
-  /** 시작을 누른 뒤에는 잠급니다 — 그사이 바꾸면 화면과 만들어질 Take 의 값이 갈라집니다 */
   disabled?: boolean;
 }) {
   return (
-    <Card
-      title="발표 중 대본 표시"
-      action={<span className="text-xs text-stone">시작 후 변경 불가</span>}
-    >
-      {/* 세로 목록입니다 — 넷을 가로로 놓으면 문구가 잘려 무엇이 다른지 안 보입니다 */}
+    <section className="prepare-script-mode px-0.5">
+      <div className="justify-between prepare-section-heading flex min-h-6 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs leading-[18px] [&>h2]:text-[15px] [&>h2]:leading-[22px] [&>h2]:font-bold">
+        <h2>발표 중 대본 표시</h2>
+        <span>시작 후 변경 불가</span>
+      </div>
       <div
+        aria-disabled={disabled || undefined}
         role="radiogroup"
         aria-label="발표 중 대본 표시"
-        aria-disabled={disabled || undefined}
-        className="flex flex-col gap-2"
+        className="prepare-script-options mt-1 grid grid-cols-[1.25fr_1fr_1.15fr] gap-1.5 max-[600px]:grid-cols-1"
       >
         {OPTIONS.map((opt, index) => {
           const on = value === opt.value;
@@ -85,23 +83,25 @@ export function ScriptModeChoice({
                 event.currentTarget.parentElement?.querySelectorAll('button')[next]?.focus();
               }}
               onClick={() => onChange(opt.value)}
-              className={[
-                'flex items-start gap-3 border-2 px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-60',
-                on ? 'border-ink bg-coral-wash' : 'border-line-strong bg-panel hover:bg-cream',
-              ].join(' ')}
+              className={`prepare-script-option flex min-h-10 min-w-0 items-center gap-1.5 border border-ink px-2 py-[5px] text-left disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink ${on ? 'is-selected bg-ink text-panel' : 'bg-panel hover:bg-cream'}`}
             >
-              {/* 색만으로 고른 것을 말하지 않습니다 — 모양이 같이 바뀝니다 */}
-              <span aria-hidden="true" className="mt-0.5 text-xs">
-                {on ? '◉' : '○'}
-              </span>
+              <span
+                aria-hidden="true"
+                className={`${on ? 'border-4' : 'border'} prepare-radio size-[15px] shrink-0 rounded-full border-current`}
+              />
               <span>
-                <span className={`block text-sm ${on ? 'font-bold' : ''}`}>{opt.label}</span>
-                <span className="mt-0.5 block text-xs text-ink/80">{opt.note}</span>
+                <span className={`block text-xs leading-4 ${on ? 'font-bold' : ''}`}>
+                  {opt.label}
+                </span>
+                <span className="sr-only">{opt.note}</span>
               </span>
             </button>
           );
         })}
       </div>
-    </Card>
+      <p className="prepare-mode-note mt-1 text-xs leading-[18px]">
+        실전 모드는 대본과 실시간 코치 없이 진행해요. 기록은 리포트에서 봐요.
+      </p>
+    </section>
   );
 }
