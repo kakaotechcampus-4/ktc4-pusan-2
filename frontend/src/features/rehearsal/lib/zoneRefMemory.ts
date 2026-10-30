@@ -1,3 +1,4 @@
+import { hasCurrentStageLayout } from './layoutSignature';
 import type { ZoneReference } from '@/workers/gaze.contract';
 
 /**
@@ -28,7 +29,7 @@ export function keepZoneRef(layoutSignature: string, ref: ZoneReference, engineV
  * **엔진이 다르면 버립니다.** 다른 엔진의 기준을 넣으면 판정이 조용히 틀어집니다.
  */
 export function takeZoneRef(layoutSignature: string, engineVersion: string): ZoneReference | null {
-  if (!kept) return null;
+  if (!kept || !hasCurrentStageLayout(layoutSignature)) return null;
   if (kept.layoutSignature !== layoutSignature || kept.engineVersion !== engineVersion) return null;
   return kept.ref;
 }
