@@ -64,9 +64,6 @@ function mapLabel(pending: boolean): string {
   return pending ? '나누는 중…' : '대본 매핑';
 }
 
-/** 편집기 왼쪽 줄 번호. 목업처럼 빈 편집기에도 몇 줄은 보입니다 */
-const MIN_GUTTER_LINES = 12;
-
 /* ------------------------------------------------------------------ */
 /* 대본 입력                                                           */
 /* ------------------------------------------------------------------ */
@@ -203,7 +200,6 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
   const estimate = formatEstimate(estimateDurationMs(script.text));
   const pending = script.parse.status === 'pending';
   const failure = script.parse.status === 'failed' ? script.parse.message : null;
-  const lineCount = Math.max(script.text.split('\n').length, MIN_GUTTER_LINES);
   const pageCount = linked?.pageCount ?? 0;
   const scan = scanSlideMarkers(script.text);
   const tooLong = scriptLength(script.text) > MAX_SCRIPT_CHARS;
@@ -267,19 +263,8 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         </p>
       )}
 
-      {/*
-        줄 번호와 글이 같이 스크롤되도록 한 상자에 둡니다. 줄을 접지 않아야 번호가 맞습니다.
-        포커스 표시는 상자 테두리가 맡습니다 — 글 칸의 포커스 링은 스크롤 상자에 잘려 선 하나만 남습니다
-      */}
-      <div className="h-80 flex min-h-0 overflow-auto rounded-lg border border-line bg-white focus-within:border-ink">
-        <ol
-          aria-hidden="true"
-          className="tabular sticky left-0 shrink-0 select-none border-r border-line bg-panel/50 px-4 py-5 text-right text-sm leading-8 text-ink/80"
-        >
-          {Array.from({ length: lineCount }, (_, i) => (
-            <li key={i}>{i + 1}</li>
-          ))}
-        </ol>
+      {/* 포커스는 편집기 테두리로 표시합니다. 긴 대본은 입력칸 안에서 줄바꿈하고 스크롤합니다. */}
+      <div className="h-80 flex min-h-0 min-w-0 overflow-hidden rounded-lg border border-line bg-white focus-within:border-ink">
         <textarea
           aria-label="대본"
           value={script.text}
@@ -287,9 +272,9 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           // 나누는 동안 고치면 결과가 이 글과 어긋납니다 — 끝날 때까지 잠깐 막습니다
           readOnly={pending}
           placeholder={PLACEHOLDER}
-          wrap="off"
-          rows={lineCount}
-          className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent px-5 py-5 text-sm leading-8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80"
+          wrap="soft"
+          rows={12}
+          className="min-w-0 flex-1 resize-none overflow-y-auto [overflow-wrap:anywhere] bg-transparent px-5 py-5 text-sm leading-8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80"
           // 전역 :focus-visible 링은 레이어 밖이라 유틸리티로 못 덮습니다 — 포커스는 바깥 상자 테두리가 보여 줍니다
           style={{ outline: 'none' }}
         />
@@ -611,6 +596,7 @@ function MappingEditor({
               readOnly={pending || active >= blocks.length}
               onChange={(e) => editMappingBlock(script.version, active, e.target.value)}
               placeholder="이 슬라이드에 연결된 대본이 없어요"
+              className="[overflow-wrap:anywhere]"
             />
           </label>
         </div>
