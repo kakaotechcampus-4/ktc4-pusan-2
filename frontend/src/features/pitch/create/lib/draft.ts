@@ -223,12 +223,11 @@ export interface PitchDraft {
   /**
    * 목표보다 짧게 발표해도 되는 시간(초).
    *
-   * **null 은 모른다는 뜻입니다.** 수정 화면은 피치를 목록 API(`GET /pitches`)에서 읽는데, 거기에
-   * 허용오차가 없습니다 (BE 에 단건 조회를 요청해 둠). 모르는 값을 0 으로 채우면 저장할 때
-   * 서버의 원래 값을 0 으로 덮어쓰므로, 사용자가 정할 때까지 저장을 막습니다 (`infoReady`).
+   * 수정 화면은 단건 조회(`fromPitchDetail`)의 숫자 편차로 초기화해 저장된 값을 유지합니다.
+   * 편집 중 비운 입력은 null 로 두고, blur 또는 저장 시(`normalizeInfo`) 0 으로 확정합니다.
    */
   lowerToleranceSec: number | null;
-  /** 목표보다 길게 발표해도 되는 시간(초). null 은 모름 — `lowerToleranceSec` 와 같습니다 */
+  /** 목표보다 길게 발표해도 되는 시간(초). 초기화·빈칸 처리는 `lowerToleranceSec` 와 같습니다 */
   upperToleranceSec: number | null;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
@@ -254,6 +253,13 @@ export const infoChanged = (a: InfoForm, b: InfoForm): boolean =>
 
 /** 저장할 수 있는 발표정보 — 허용오차까지 아는 것 */
 export type KnownInfo = InfoForm & { lowerToleranceSec: number; upperToleranceSec: number };
+
+/** 편집 중 비운 편차만 저장 경계에서 0으로 확정합니다. */
+export const normalizeInfo = (form: InfoForm): KnownInfo => ({
+  ...form,
+  lowerToleranceSec: form.lowerToleranceSec ?? 0,
+  upperToleranceSec: form.upperToleranceSec ?? 0,
+});
 
 /** 시간 입력이 유효한가. 모르는 허용오차를 0으로 저장하지 않습니다 */
 export const infoReady = (form: InfoForm): form is KnownInfo =>

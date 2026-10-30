@@ -6,12 +6,14 @@ import {
   infoChanged,
   infoOf,
   infoReady,
+  normalizeInfo,
   MAX_TIME_LIMIT_MIN,
   MAX_TITLE_CHARS,
   MAX_TOLERANCE_SEC,
   MIN_TIME_LIMIT_MIN,
   formatAllowedRange,
 } from '../lib/draft';
+import { ChevronIcon } from '../icons';
 import { PaneHeading } from './PaneHeading';
 
 function saveLabel(pending: boolean, unsaved: boolean): string {
@@ -36,35 +38,66 @@ function TimeField({
   onChange: (value: number | null) => void;
 }) {
   const id = useId();
+  const seconds = unit === '초';
+  const increment = (direction: number) =>
+    onChange(Math.max(min, Math.min(max, (value ?? 0) + direction * 10)));
   const invalid =
-    value === null ||
-    !Number.isFinite(value) ||
-    value < min ||
-    value > max ||
-    (unit === '초' && !Number.isInteger(value));
+    (value === null && !seconds) ||
+    (value !== null && !Number.isFinite(value)) ||
+    (value !== null && (value < min || value > max || (seconds && !Number.isInteger(value))));
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <label htmlFor={id} className="text-sm font-bold">
         {label}
       </label>
       <div className="flex items-center gap-2">
-        <input
-          id={id}
-          type="number"
-          min={min}
-          max={max}
-          step={unit === '초' ? 1 : 'any'}
-          required
-          value={value ?? ''}
-          aria-invalid={invalid || undefined}
-          aria-describedby={invalid ? `${id}-error` : undefined}
-          onChange={(event) =>
-            onChange(
-              Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : null,
-            )
-          }
-          className="h-12 min-w-0 w-full border border-stone bg-white px-3 font-bold tabular-nums"
-        />
+        <div className="relative min-w-0 flex-1">
+          <input
+            id={id}
+            type="number"
+            min={min}
+            max={max}
+            step={seconds ? 1 : 'any'}
+            required={!seconds}
+            value={value ?? ''}
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? `${id}-error` : undefined}
+            onChange={(event) =>
+              onChange(
+                Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : null,
+              )
+            }
+            onBlur={() => {
+              if (seconds && value === null) onChange(0);
+            }}
+            onKeyDown={(event) => {
+              if (!seconds || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+              event.preventDefault();
+              increment(event.key === 'ArrowUp' ? 1 : -1);
+            }}
+            className={`h-12 min-w-0 w-full border border-stone bg-white px-3 font-bold tabular-nums ${seconds ? 'appearance-textfield pr-10 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none' : ''}`}
+          />
+          {seconds && (
+            // step=10은 직접 입력한 15를 반올림하므로 증감만 별도로 처리합니다.
+            <div className="absolute inset-y-0 right-px grid w-8 grid-rows-2 py-px">
+              {[1, -1].map((direction) => (
+                <button
+                  key={direction}
+                  type="button"
+                  aria-label={`${label} 10초 ${direction === 1 ? '증가' : '감소'}`}
+                  aria-controls={id}
+                  disabled={value !== null && (direction === 1 ? value >= max : value <= min)}
+                  onClick={() => increment(direction)}
+                  className="flex items-center justify-center hover:bg-cream disabled:opacity-40"
+                >
+                  <span className={direction === -1 ? 'rotate-180' : ''}>
+                    <ChevronIcon up />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <span className="shrink-0 text-sm">{unit}</span>
       </div>
       {invalid && (
@@ -88,7 +121,7 @@ export function InfoPane({ save }: { save: ReturnType<typeof useSavePitchInfo> }
   const saved = infoOf(draft);
   const form = edits ?? saved;
   const dirty = pitchId === null || !confirmed || infoChanged(saved, form);
-  const valid = form.title.trim() !== '' && infoReady(form);
+  const valid = form.title.trim() !== '' && infoReady(normalizeInfo(form));
 
   return (
     <div>
