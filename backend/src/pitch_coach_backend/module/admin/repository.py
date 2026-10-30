@@ -33,7 +33,16 @@ from pitch_coach_backend.module.pitch.entity import (
     Standards,
 )
 from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
-from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
+from pitch_coach_backend.module.take.entity import (
+    Calibration,
+    CoachEvent,
+    Take,
+    TakeAIResults,
+    TakeMetricSecond,
+    TakeSlideEvent,
+    TakeSummary,
+    TakeTranscriptSegment,
+)
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
 
@@ -215,6 +224,97 @@ def live_seconds(
     if after_t_ms is not None:
         stmt = stmt.where(TakeMetricSecond.t_ms > after_t_ms)
     return _fetch(db, stmt.order_by(TakeMetricSecond.t_ms).limit(limit))
+
+
+AI_RESULT_KINDS = ("TAKE_RESULT", "SCRIPT_COVERAGE", "SCRIPT_COVERAGE_PENDING", "REVIEW")
+
+
+def ai_results(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
+    order = case(
+        {kind: i for i, kind in enumerate(AI_RESULT_KINDS)},
+        value=TakeAIResults.kind,
+        else_=len(AI_RESULT_KINDS),
+    )
+    stmt = (
+        select(
+            TakeAIResults.kind,
+            TakeAIResults.revision,
+            TakeAIResults.created_at,
+            TakeAIResults.payload,
+            TakeAIResults.meta,
+        )
+        .where(TakeAIResults.take_id == take_id)
+        .order_by(order, TakeAIResults.kind)
+    )
+    return _fetch(db, stmt)
+
+
+def coach_events(db: Session, take_id: uuid.UUID, limit: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            CoachEvent.seq,
+            CoachEvent.t_ms,
+            CoachEvent.kind,
+            CoachEvent.event_id,
+            CoachEvent.payload,
+            CoachEvent.meta,
+        )
+        .where(CoachEvent.take_id == take_id)
+        .order_by(CoachEvent.seq)
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
+
+
+def take_summary(db: Session, take_id: uuid.UUID) -> TakeSummary | None:
+    return db.get(TakeSummary, take_id)
+
+
+def take_settings(db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+    row = db.execute(
+        select(
+            Take.script_mode,
+            Take.standard_version,
+            Take.mission_ids,
+            Take.raw_data_consent,
+            Take.utterance_ends,
+        ).where(Take.id == take_id)
+    ).mappings().first()
+    return None if row is None else dict(row)
+
+
+def transcript_words(db: Session, take_id: uuid.UUID, limit: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            TakeTranscriptSegment.seq,
+            TakeTranscriptSegment.start_ms,
+            TakeTranscriptSegment.end_ms,
+            TakeTranscriptSegment.final_at_ms,
+            TakeTranscriptSegment.words,
+        )
+        .where(TakeTranscriptSegment.take_id == take_id)
+        .order_by(TakeTranscriptSegment.seq)
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
+
+
+def slide_events(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
+    stmt = (
+        select(TakeSlideEvent.started_ms, TakeSlideEvent.slide_number)
+        .where(TakeSlideEvent.take_id == take_id)
+        .order_by(TakeSlideEvent.started_ms)
+    )
+    return _fetch(db, stmt)
+
+
+def calibration(db: Session, take_id: uuid.UUID) -> Calibration | None:
+    return db.scalar(select(Calibration).where(Calibration.take_id == take_id))
+
+
+def count_metric_seconds(db: Session, take_id: uuid.UUID) -> int:
+    stmt = select(func.count()).where(TakeMetricSecond.take_id == take_id)
+    return db.scalar(stmt) or 0
 
 
 def pitch_exists(db: Session, pitch_id: uuid.UUID) -> bool:

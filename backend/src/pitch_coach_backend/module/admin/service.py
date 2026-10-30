@@ -2,12 +2,18 @@
 
 import uuid
 from datetime import UTC, datetime, time, timedelta
+from typing import Any
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin import repository
 from pitch_coach_backend.module.admin.dto import (
+    AdminAIResult,
+    AdminCalibration,
+    AdminCoachEvent,
     AdminCoachingPlan,
+    AdminExportResult,
     AdminFeedbackGroupRow,
     AdminFeedbackRow,
     AdminGroupSuggestion,
@@ -17,10 +23,16 @@ from pitch_coach_backend.module.admin.dto import (
     AdminPitchAI,
     AdminRatingSummary,
     AdminScriptDetail,
+    AdminSegmentWords,
+    AdminSlideEvent,
     AdminStandardAnalysis,
     AdminSuggestionRow,
+    AdminTakeExport,
+    AdminTakeInputs,
     AdminTakeLive,
+    AdminTakeResults,
     AdminTakeRow,
+    AdminTakeSummary,
     AdminUserRow,
     DailyCount,
     PracticeTimeStats,
@@ -53,6 +65,8 @@ USER_ENDED = "USER"
 # 사용자별 평점 · 의견에서 한 행에 미리 싣는 의견 수. 마이페이지 의견은 수에 제한이 없다
 GROUP_SUGGESTION_PREVIEW = 3
 LIVE_LIMIT = 500
+COACH_EVENT_LIMIT = 2000
+SEGMENT_LIMIT = 5000
 PLAN_LIMIT = 20
 
 
@@ -133,6 +147,72 @@ def get_take_live(
         status=status,
         segments=[AdminLiveSegment(**row) for row in segments],
         seconds=[AdminLiveSecond(**row) for row in seconds],
+    )
+
+
+def get_take_results(db: Session, take_id: uuid.UUID) -> AdminTakeResults:
+    if repository.take_status(db, take_id) is None:
+        raise NonExistentTake()
+    summary = repository.take_summary(db, take_id)
+    return AdminTakeResults(
+        ai_results=[_ai_result(row) for row in repository.ai_results(db, take_id)],
+        coach_events=[
+            AdminCoachEvent(**row)
+            for row in repository.coach_events(db, take_id, COACH_EVENT_LIMIT)
+        ],
+        summary=None if summary is None else AdminTakeSummary.model_validate(summary),
+    )
+
+
+def get_take_inputs(db: Session, take_id: uuid.UUID) -> AdminTakeInputs:
+    settings = repository.take_settings(db, take_id)
+    if settings is None:
+        raise NonExistentTake()
+    calibration = repository.calibration(db, take_id)
+    return AdminTakeInputs(
+        **settings,
+        slide_events=[AdminSlideEvent(**row) for row in repository.slide_events(db, take_id)],
+        segments=[
+            AdminSegmentWords(**row)
+            for row in repository.transcript_words(db, take_id, SEGMENT_LIMIT)
+        ],
+        calibration=None if calibration is None else AdminCalibration.model_validate(calibration),
+    )
+
+
+def export_take(db: Session, take_id: uuid.UUID) -> AdminTakeExport:
+    settings = repository.take_settings(db, take_id)
+    if settings is None:
+        raise NonExistentTake()
+    return AdminTakeExport(
+        take_id=take_id,
+        raw_data_consent=settings["raw_data_consent"],
+        metric_second_count=repository.count_metric_seconds(db, take_id),
+        request=hooks.finalize_export().recovery_request(db, take_id),
+        results={
+            row["kind"]: AdminExportResult(
+                payload=row["payload"], meta=row["meta"], revision=row["revision"]
+            )
+            for row in repository.ai_results(db, take_id)
+        },
+    )
+
+
+def _ai_result(row: dict[str, Any]) -> AdminAIResult:
+    payload = row["payload"] if isinstance(row["payload"], dict) else {}
+    meta = row["meta"] if isinstance(row["meta"], dict) else {}
+    areas = payload.get("areas") if row["kind"] == "TAKE_RESULT" else None
+    return AdminAIResult(
+        **row,
+        replayed=payload.get("replayed") if row["kind"] == "TAKE_RESULT" else None,
+        criteria_changed=payload.get("criteria_changed") if row["kind"] == "TAKE_RESULT" else None,
+        measured_ratios={
+            area: result.get("measured_ratio")
+            for area, result in (areas or {}).items()
+            if isinstance(result, dict)
+        },
+        fallback_reason=payload.get("fallback_reason") if row["kind"] == "REVIEW" else None,
+        model=meta.get("model"),
     )
 
 

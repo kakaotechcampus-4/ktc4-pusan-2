@@ -418,12 +418,14 @@ function openLive(take) {
   panel.hidden = false;
   renderLive(take.status);
   pollLive();
+  loadResults();
   panel.scrollIntoView({ behavior: 'smooth' });
 }
 
 function closeLive() {
   clearTimeout(live.timer);
   live.request += 1;
+  results.request += 1;
   Object.assign(live, { takeId: null, timer: null, segments: [], seconds: [] });
   document.getElementById('live').hidden = true;
 }
@@ -470,6 +472,141 @@ function renderLive(status) {
 }
 
 document.getElementById('live-close').addEventListener('click', closeLive);
+
+const results = { request: 0 };
+const RESULT_TABLES = [
+  'take-ai-results',
+  'take-coach-events',
+  'take-summary',
+  'take-settings',
+  'take-calibration',
+  'take-slide-events',
+  'take-utterance-ends',
+  'take-words',
+];
+const FIELD_COLUMNS = [
+  ['항목', ([key]) => key],
+  ['값', ([, value]) => (value !== null && typeof value === 'object' ? record(value) : value ?? '—')],
+];
+
+const SLIDE_EVENT_COLUMNS = [
+  ['시각', (s) => clock(s.started_ms)],
+  ['장', (s) => s.slide_number, true],
+];
+
+const WORD_COLUMNS = [
+  ['seq', (s) => s.seq, true],
+  ['시각', (s) => `${clock(s.start_ms)}–${clock(s.end_ms)}`],
+  ['확정 시각', (s) => (s.final_at_ms == null ? '—' : clock(s.final_at_ms))],
+  ['단어 수', (s) => (Array.isArray(s.words) ? s.words.length : '—'), true],
+  ['words', (s) => folded('words', s.words)],
+];
+
+function renderInputs(inputs) {
+  const { slide_events: slides, segments, calibration, utterance_ends: ends, ...settings } = inputs;
+  renderTable('take-settings', FIELD_COLUMNS, Object.entries(settings));
+  renderTable(
+    'take-calibration',
+    FIELD_COLUMNS,
+    calibration ? Object.entries(calibration) : [],
+    '점검 기록이 없습니다',
+  );
+  renderTable('take-slide-events', SLIDE_EVENT_COLUMNS, slides, '장 변경이 없습니다');
+  document.getElementById('take-utterance-ends').textContent = Array.isArray(ends) && ends.length
+    ? `${ends.length}개 · ${ends.map(clock).join(', ')}`
+    : '없음';
+  renderTable('take-words', WORD_COLUMNS, segments, '전사가 없습니다');
+}
+
+async function downloadExport() {
+  const takeId = live.takeId;
+  const button = document.getElementById('export-take');
+  const error = document.getElementById('export-error');
+  button.disabled = true;
+  error.hidden = true;
+  try {
+    const data = await getJSON(`api/takes/${takeId}/export`);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = el('a', { href: url, download: `take-${takeId}.json` });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    if (data.request === null) {
+      error.textContent = '복구 요청을 만들 수 없어 request 가 비어 있습니다 — 1초 기록이 없는 연습입니다';
+      error.hidden = false;
+    }
+  } catch (failure) {
+    error.textContent = `내려받지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.getElementById('export-take').addEventListener('click', () => {
+  if (live.takeId) downloadExport();
+});
+
+function ratios(measured) {
+  const entries = Object.entries(measured);
+  if (!entries.length) return '—';
+  return entries.map(([area, ratio]) => `${area} ${ratio == null ? '—' : ratio.toFixed(2)}`).join(' · ');
+}
+
+const AI_RESULT_COLUMNS = [
+  ['종류', (r) => r.kind],
+  ['revision', (r) => r.revision, true],
+  ['만든 시각', (r) => dateTime(r.created_at)],
+  ['재판정', (r) => yesNo(r.replayed)],
+  ['기준 바뀜', (r) => yesNo(r.criteria_changed)],
+  ['측정 비율', (r) => ratios(r.measured_ratios)],
+  ['기본 문장', (r) => r.fallback_reason ?? '—'],
+  ['모델', (r) => r.model ?? '—'],
+  ['payload', (r) => folded('payload', r.payload)],
+  ['meta', (r) => folded('meta', r.meta)],
+];
+
+const COACH_EVENT_COLUMNS = [
+  ['시각', (e) => clock(e.t_ms)],
+  ['종류', (e) => e.kind],
+  ['seq', (e) => e.seq, true],
+  ['payload', (e) => folded('payload', e.payload)],
+  ['meta', (e) => folded('meta', e.meta)],
+];
+
+async function loadResults() {
+  const request = ++results.request;
+  const takeId = live.takeId;
+  const error = document.getElementById('results-error');
+  error.hidden = true;
+  RESULT_TABLES.forEach((id) => document.getElementById(id).replaceChildren());
+  try {
+    const [data, inputs] = await Promise.all([
+      getJSON(`api/takes/${takeId}/results`),
+      getJSON(`api/takes/${takeId}/inputs`),
+    ]);
+    if (request !== results.request) return;
+    renderInputs(inputs);
+    renderTable('take-ai-results', AI_RESULT_COLUMNS, data.ai_results, '아직 AI 결과가 없습니다');
+    renderTable('take-coach-events', COACH_EVENT_COLUMNS, data.coach_events, '코치 이벤트가 없습니다');
+    renderTable(
+      'take-summary',
+      FIELD_COLUMNS,
+      data.summary ? Object.entries(data.summary) : [],
+      '요약이 없습니다',
+    );
+  } catch (failure) {
+    if (request !== results.request) return;
+    error.textContent = `불러오지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+  }
+}
+
+document.getElementById('results-reload').addEventListener('click', () => {
+  if (live.takeId) loadResults();
+});
 
 const pitchAI = { request: 0 };
 

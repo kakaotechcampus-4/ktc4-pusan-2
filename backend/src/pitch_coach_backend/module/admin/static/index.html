@@ -69,6 +69,25 @@
       <div class="scroll live"><table id="live-segments"></table></div>
       <h3>1초 기록</h3>
       <div class="scroll live"><table id="live-seconds"></table></div>
+      <h3>AI 결과 <button id="results-reload" type="button">결과 다시 불러오기</button></h3>
+      <p id="results-error" class="error" hidden></p>
+      <div class="scroll"><table id="take-ai-results" class="grouped"></table></div>
+      <h3>코치 이벤트</h3>
+      <div class="scroll live"><table id="take-coach-events" class="grouped"></table></div>
+      <h3>요약 (take_summaries)</h3>
+      <div class="scroll"><table id="take-summary"></table></div>
+      <h3>판정 입력 <button id="export-take" type="button">판정 묶음 내려받기 (JSON)</button></h3>
+      <p id="export-error" class="error" hidden></p>
+      <div class="grid-2">
+        <div><h3>Take 설정</h3><table id="take-settings"></table></div>
+        <div><h3>발표 전 점검</h3><table id="take-calibration"></table></div>
+      </div>
+      <h3>장 변경</h3>
+      <div class="scroll"><table id="take-slide-events"></table></div>
+      <h3>문장 끝</h3>
+      <p id="take-utterance-ends" class="summary"></p>
+      <h3>전사 단어별 시각</h3>
+      <div class="scroll live"><table id="take-words" class="grouped"></table></div>
     </section>
 
     <section class="panel" id="pitch-ai" hidden>

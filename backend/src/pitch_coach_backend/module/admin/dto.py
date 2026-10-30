@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
@@ -103,6 +103,101 @@ class AdminTakeLive(BaseModel):
     status: str
     segments: list[AdminLiveSegment]
     seconds: list[AdminLiveSecond]
+
+
+class AdminAIResult(BaseModel):
+    kind: str
+    revision: int
+    created_at: datetime
+    replayed: bool | None
+    criteria_changed: bool | None
+    measured_ratios: dict[str, float | None]
+    fallback_reason: str | None
+    model: str | None
+    payload: Any
+    meta: Any | None
+
+
+class AdminCoachEvent(BaseModel):
+    seq: int
+    t_ms: int
+    kind: str
+    event_id: str
+    payload: Any
+    meta: Any
+
+
+class AdminTakeSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    average_cpm: float | None
+    filler_count: int | None
+    audience_gaze: int | None
+    slide_gaze: int | None
+    script_gaze: int | None
+    script_dependency_count: int | None
+    summary: str | None
+    overall_confidence: float | None
+    speak_accuracy: float | None
+    volume: float | None
+    total_intermission: int | None
+    score: int | None
+
+
+class AdminTakeResults(BaseModel):
+    ai_results: list[AdminAIResult]
+    coach_events: list[AdminCoachEvent]
+    summary: AdminTakeSummary | None
+
+
+class AdminSegmentWords(BaseModel):
+    seq: int
+    start_ms: int
+    end_ms: int
+    final_at_ms: int | None
+    words: Any
+
+
+class AdminSlideEvent(BaseModel):
+    started_ms: int
+    slide_number: int
+
+
+class AdminCalibration(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    created_at: datetime
+    face_detected: bool
+    mic_detected: bool
+    base_volume: float
+    base_level_db: float | None
+    gaze_confidence: float
+    result: Any | None
+
+
+class AdminTakeInputs(BaseModel):
+    script_mode: str
+    standard_version: int | None
+    mission_ids: Any | None
+    raw_data_consent: bool
+    utterance_ends: Any | None
+    slide_events: list[AdminSlideEvent]
+    segments: list[AdminSegmentWords]
+    calibration: AdminCalibration | None
+
+
+class AdminExportResult(BaseModel):
+    payload: Any
+    meta: Any | None
+    revision: int
+
+
+class AdminTakeExport(BaseModel):
+    take_id: uuid.UUID
+    raw_data_consent: bool
+    metric_second_count: int
+    request: dict[str, Any] | None
+    results: dict[str, AdminExportResult]
 
 
 class AdminScriptDetail(BaseModel):

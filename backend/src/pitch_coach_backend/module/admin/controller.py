@@ -23,7 +23,10 @@ from pitch_coach_backend.module.admin.dto import (
     AdminPitchAI,
     AdminRatingSummary,
     AdminSuggestionRow,
+    AdminTakeExport,
+    AdminTakeInputs,
     AdminTakeLive,
+    AdminTakeResults,
     AdminTakeRow,
     AdminUserRow,
     StatsResponse,
@@ -101,6 +104,21 @@ def take_live(
     after_t_ms: Annotated[int | None, Query(ge=0)] = None,
 ) -> AdminTakeLive:
     return service.get_take_live(db, take_id, after_seq=after_seq, after_t_ms=after_t_ms)
+
+
+@router.get("/api/takes/{take_id}/results")
+def take_results(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> AdminTakeResults:
+    return service.get_take_results(db, take_id)
+
+
+@router.get("/api/takes/{take_id}/inputs")
+def take_inputs(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> AdminTakeInputs:
+    return service.get_take_inputs(db, take_id)
+
+
+@router.get("/api/takes/{take_id}/export")
+def take_export(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> AdminTakeExport:
+    return service.export_take(db, take_id)
 
 
 @router.get("/api/pitches/{pitch_id}/ai")

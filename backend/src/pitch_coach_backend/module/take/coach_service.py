@@ -233,11 +233,13 @@ def chosen_plan_payload(
 logger = logging.getLogger(__name__)
 
 
-def finalize_rows(db: Session, take_id: uuid.UUID) -> FinalizeRows | None:
+def finalize_rows(
+    db: Session, take_id: uuid.UUID, *, waiting_only: bool = True
+) -> FinalizeRows | None:
     """finalize 를 DB 에서 다시 만들 재료. Take 가 Take 결과를 기다리는 중이 아니면 None."""
     repo = CoachRepository(db)
     take = repo.take(take_id)
-    if take is None or not is_waiting_for_result(take):
+    if take is None or (waiting_only and not is_waiting_for_result(take)):
         return None
     values = _take_coach_values(db, repo, take)
     if values is None:
