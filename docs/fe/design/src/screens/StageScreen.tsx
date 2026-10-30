@@ -6,7 +6,7 @@ import type { Navigate } from './shared';
 import '@/ui/stage.css';
 
 /**
- * 제품 RehearsalPage의 무대 DOM을 같은 클래스로 그린다. 배치 · 색은 src/ui/stage.css가 정한다.
+ * PM 승인 대기 배치 시안이다. 제품의 보정·측정 계약은 바꾸지 않는다. 배치 · 색은 src/ui/stage.css가 정한다.
  * 클래스 이름은 ScreenPreview.test가 stage.css에 있는지 확인한다.
  * 슬라이드는 ← → · Space로 넘긴다(제품과 같은 키). 끝내기는 마지막 장에서만 열린다(제품 #697).
  */
@@ -102,6 +102,15 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                 <span className="slide-no">
                   SLIDE {slide} / {PAGES}
                 </span>
+                <button
+                  type="button"
+                  className="end"
+                  disabled={!onLastSlide || Boolean(gate)}
+                  aria-describedby={onLastSlide ? undefined : 'end-hint'}
+                  onClick={() => (asking ? onNavigate('processing-loading') : setAsking(true))}
+                >
+                  {asking ? '정말 끝낼까요?' : '발표 끝내기'}
+                </button>
               </header>
               <div className="viewport">
                 <div className="slide">
@@ -185,15 +194,6 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="end"
-                  disabled={!onLastSlide || Boolean(gate)}
-                  aria-describedby={onLastSlide ? undefined : 'end-hint'}
-                  onClick={() => (asking ? onNavigate('processing-loading') : setAsking(true))}
-                >
-                  {asking ? '정말 끝낼까요?' : '발표 끝내기'}
-                </button>
               </div>
             </div>
           </div>

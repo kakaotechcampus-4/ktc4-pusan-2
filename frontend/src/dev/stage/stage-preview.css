@@ -10,10 +10,10 @@
     --stage-line: 2px solid var(--color-ink-stage);
     --rail-w: clamp(200px, 18vw, 320px);
     /* 코치 확대분은 슬라이드 행이 받는다. 대본 예약 행과 하단 좌표는 유지한다. */
-    --coach-h: 44px;
+    --coach-h: 56px;
     height: 100%;
     min-height: 0;
-    grid-template-rows: 32px minmax(0, 1fr) var(--coach-h) var(--spacing-script-highlight) 70px;
+    grid-template-rows: 48px minmax(0, 1fr) var(--coach-h) 26px var(--spacing-script-highlight);
     gap: 8px;
     padding: 8px;
   }
@@ -115,7 +115,7 @@
     border: 2px solid var(--color-ink-stage);
     border-radius: 0;
     background: var(--coach-surface);
-    font-size: 16px;
+    font-size: 18px;
     box-shadow: inset 2px 2px 0 var(--color-stage-panel);
   }
 
@@ -130,8 +130,8 @@
   }
 
   .coach-avatar {
-    width: 28px;
-    height: 28px;
+    width: 40px;
+    height: 40px;
     flex: none;
     object-fit: contain;
     image-rendering: pixelated;
@@ -147,7 +147,7 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 500;
     color: var(--color-ink-stage);
   }
@@ -162,7 +162,7 @@
   }
 
   .stage-live .script {
-    grid-row: 4;
+    grid-row: 5;
     align-self: end;
     height: var(--script-h);
   }
@@ -325,7 +325,7 @@
     }
     .stage-live {
       --rail-w: 128px;
-      --coach-h: 44px;
+      --coach-h: 56px;
       grid-template-rows: 54px minmax(0, 1fr) var(--coach-h) var(--spacing-script-highlight) 70px;
       gap: 4px;
       padding: 4px;
@@ -377,5 +377,51 @@
     overflow-wrap: anywhere;
     color: var(--color-ink-stage);
     font-weight: 700;
+  }
+
+  /* 승인 전 배치 시안: 제품 대본 토큰·보정 계약은 변경하지 않는다. */
+  .stage-live .stage-foot {
+    grid-row: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+  .stage-live .stage-notes {
+    justify-content: center;
+    width: 100%;
+    gap: 12px;
+    flex-wrap: nowrap;
+  }
+  .stage-live .stage-status {
+    display: contents;
+  }
+  .stage-live .stage-foot .key-help {
+    font-size: 12px;
+    flex: 0 1 auto;
+  }
+  .stage-live .stage-head .end {
+    min-height: 44px;
+    padding: 8px 18px;
+    flex: none;
+    border: 2px solid var(--color-ink-stage);
+    border-radius: 0;
+    background: var(--color-coral);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .stage-live .stage-head .end:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .stage-live .stage-head .end:focus-visible {
+    outline: 2px solid var(--color-ink-stage);
+    outline-offset: 2px;
+  }
+  .stage-live .stage-head .end:hover:not(:disabled) {
+    background: var(--color-coral-deep);
   }
 }
