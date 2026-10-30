@@ -1,0 +1,53 @@
+name: Design CI
+
+on:
+  push:
+    branches: [main, develop, release, develop-next]
+    paths:
+      - 'docs/fe/design/**'
+      - '.github/workflows/design-ci.yml'
+  pull_request:
+    paths:
+      - 'docs/fe/design/**'
+      - '.github/workflows/design-ci.yml'
+
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/fe/design
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: docs/fe/design/.nvmrc
+          cache: npm
+          cache-dependency-path: docs/fe/design/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run format:check
+      - run: npm run build -- --base=./
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/develop-next'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/fe/design/dist
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop-next'
+    needs: design
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: design-pages
+      cancel-in-progress: true
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

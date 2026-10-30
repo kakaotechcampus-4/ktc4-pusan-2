@@ -104,3 +104,29 @@ jobs:
           prev_pid=$!
           check preview http://localhost:3001/
           kill $prev_pid
+
+  design-drift:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/fe/design
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: docs/fe/design/.nvmrc
+          cache: npm
+          cache-dependency-path: docs/fe/design/package-lock.json
+      - run: npm ci
+      - run: |
+          out=$(npm run --silent drift -- HEAD)
+          echo "$out"
+          {
+            echo '### 화면 설계서 대조'
+            echo '```'
+            echo "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
