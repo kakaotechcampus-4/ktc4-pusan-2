@@ -223,12 +223,11 @@ export interface PitchDraft {
   /**
    * 목표보다 짧게 발표해도 되는 시간(초).
    *
-   * **null 은 모른다는 뜻입니다.** 수정 화면은 피치를 목록 API(`GET /pitches`)에서 읽는데, 거기에
-   * 허용오차가 없습니다 (BE 에 단건 조회를 요청해 둠). 모르는 값을 0 으로 채우면 저장할 때
-   * 서버의 원래 값을 0 으로 덮어쓰므로, 사용자가 정할 때까지 저장을 막습니다 (`infoReady`).
+   * 수정 화면은 단건 조회(`fromPitchDetail`)의 숫자 편차로 초기화해 저장된 값을 유지합니다.
+   * 편집 중 비운 입력은 null 로 두고, blur 또는 저장 시(`normalizeInfo`) 0 으로 확정합니다.
    */
   lowerToleranceSec: number | null;
-  /** 목표보다 길게 발표해도 되는 시간(초). null 은 모름 — `lowerToleranceSec` 와 같습니다 */
+  /** 목표보다 길게 발표해도 되는 시간(초). 초기화·빈칸 처리는 `lowerToleranceSec` 와 같습니다 */
   upperToleranceSec: number | null;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
