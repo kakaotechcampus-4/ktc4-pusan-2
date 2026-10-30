@@ -580,26 +580,33 @@ async function loadResults() {
   const request = ++results.request;
   const takeId = live.takeId;
   const error = document.getElementById('results-error');
+  const inputsError = document.getElementById('inputs-error');
   error.hidden = true;
+  inputsError.hidden = true;
   RESULT_TABLES.forEach((id) => document.getElementById(id).replaceChildren());
-  try {
-    const [data, inputs] = await Promise.all([
-      getJSON(`api/takes/${takeId}/results`),
-      getJSON(`api/takes/${takeId}/inputs`),
-    ]);
-    if (request !== results.request) return;
-    renderInputs(inputs);
-    renderTable('take-ai-results', AI_RESULT_COLUMNS, data.ai_results, '아직 AI 결과가 없습니다');
-    renderTable('take-coach-events', COACH_EVENT_COLUMNS, data.coach_events, '코치 이벤트가 없습니다');
+  const [data, inputs] = await Promise.allSettled([
+    getJSON(`api/takes/${takeId}/results`),
+    getJSON(`api/takes/${takeId}/inputs`),
+  ]);
+  if (request !== results.request) return;
+  if (inputs.status === 'fulfilled') {
+    renderInputs(inputs.value);
+  } else {
+    inputsError.textContent = `판정 입력을 불러오지 못했습니다 — ${inputs.reason.message}`;
+    inputsError.hidden = false;
+  }
+  if (data.status === 'fulfilled') {
+    const { ai_results: aiResults, coach_events: events, summary } = data.value;
+    renderTable('take-ai-results', AI_RESULT_COLUMNS, aiResults, '아직 AI 결과가 없습니다');
+    renderTable('take-coach-events', COACH_EVENT_COLUMNS, events, '코치 이벤트가 없습니다');
     renderTable(
       'take-summary',
       FIELD_COLUMNS,
-      data.summary ? Object.entries(data.summary) : [],
+      summary ? Object.entries(summary) : [],
       '요약이 없습니다',
     );
-  } catch (failure) {
-    if (request !== results.request) return;
-    error.textContent = `불러오지 못했습니다 — ${failure.message}`;
+  } else {
+    error.textContent = `AI 결과를 불러오지 못했습니다 — ${data.reason.message}`;
     error.hidden = false;
   }
 }
