@@ -10,6 +10,7 @@ import { toCalibrationRequest } from '../lib/calibrationRequest';
 import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
+import { AudioInputMeter } from './AudioInputMeter';
 import { LevelBar } from '../media/LevelBar';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
@@ -492,18 +493,21 @@ export function DeviceCheckPage() {
       */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="aspect-video max-h-[360px] w-full">
-            <GazeSetupView
-              frameRef={cal.frameRef}
-              boxRef={cal.boxRef}
-              videoRef={videoRef}
-              live={live}
-              status={cal.status}
-              unavailableMessage={cal.unavailableMessage}
-              overlay={cal.overlay}
-              onEnable={() => request().catch(() => undefined)}
-              onCancel={cal.cancel}
-            />
+          <div className="flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px]">
+            <div className="aspect-video max-h-[360px] w-full">
+              <GazeSetupView
+                frameRef={cal.frameRef}
+                boxRef={cal.boxRef}
+                videoRef={videoRef}
+                live={live}
+                status={cal.status}
+                unavailableMessage={cal.unavailableMessage}
+                overlay={cal.overlay}
+                onEnable={() => request().catch(() => undefined)}
+                onCancel={cal.cancel}
+              />
+            </div>
+            <AudioInputMeter meterRef={meterRef} />
           </div>
 
           {/* 장치 선택과 점검 항목을 나란히 — 고른 장치의 결과가 바로 옆에서 보입니다 */}
@@ -545,9 +549,6 @@ export function DeviceCheckPage() {
                   // 문구는 rAF가 씁니다 — 계량기 루프 안에서 바뀌는 값이라 상태로 올리지 않습니다
                   label: <span ref={rowRef}>마이크 입력 확인 중</span>,
                   done: micOk,
-                  // 막대를 이 줄 안에 둡니다 (목업 09) — 문구와 움직임이 같이 보여야
-                  // "소리가 들어오고 있다"가 한 번에 읽힙니다
-                  trailing: <LevelBar variant="segments" meterRef={meterRef} />,
                 },
                 {
                   // 준비 점검 → 고개 원 → 3점 보정(화면 가운데 · 렌즈 · 대본 자리)을

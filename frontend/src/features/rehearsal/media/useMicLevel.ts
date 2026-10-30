@@ -23,14 +23,18 @@ function clampDb(db: number): number {
 /**
  * 계량기를 칠합니다. **상태로 올리지 않습니다** — 초당 수십 번 바뀝니다.
  *
- * 두 모양을 한 함수가 처리합니다. 어느 쪽인지는 엘리먼트가 `data-meter`로 말합니다.
+ * 모양은 엘리먼트의 `data-meter`로 구분합니다.
+ *   input — 카메라 아래 믹서형 입력 미터(CSS 변수와 접근성 값)
  *   clip  — 칸 나뉜 막대(장치 점검). 칸 수를 유지해야 해서 폭 대신 잘라냅니다
  *   width — 한 줄 막대(리허설 준비)
  */
 function paint(el: HTMLElement | null, percent: number): void {
   if (!el) return;
   const v = Math.max(0, Math.min(100, percent));
-  if (el.dataset.meter === 'clip') {
+  if (el.dataset.meter === 'input') {
+    el.style.setProperty('--prepare-input-level', `${v.toFixed(1)}%`);
+    el.setAttribute('aria-valuenow', v.toFixed(0));
+  } else if (el.dataset.meter === 'clip') {
     el.style.clipPath = `inset(0 ${(100 - v).toFixed(1)}% 0 0)`;
   } else {
     el.style.width = `${v.toFixed(1)}%`;
@@ -101,6 +105,8 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
   }, [clock]);
 
   useEffect(() => {
+    paint(meterRef.current, 0);
+    paint(echoMeterRef.current, 0);
     if (!stream) return;
     voice.reset();
 
@@ -144,7 +150,7 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
         statsRef.current.silentMs = meter.silentMs();
         statsRef.current.speechLeqDb = speech.leqDb;
         statsRef.current.speechMs = speech.ms;
-        const percent = ((db - DB_FLOOR) / -DB_FLOOR) * 100;
+        const percent = meter.state === 'running' ? ((db - DB_FLOOR) / -DB_FLOOR) * 100 : 0;
         paint(meterRef.current, percent);
         paint(echoMeterRef.current, percent);
 
