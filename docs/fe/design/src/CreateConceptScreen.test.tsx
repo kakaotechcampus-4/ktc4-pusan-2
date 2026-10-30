@@ -142,3 +142,20 @@ it('전체 보기에서는 모달이 다른 시안을 가리지 않는다', asyn
   expect(show).not.toHaveBeenCalled();
   expect(document.body.style.overflow).not.toBe('hidden');
 });
+
+it('현재 단계 강조 시안은 선택과 입력에 따라 한 영역만 표시한다', async () => {
+  Element.prototype.scrollIntoView = vi.fn();
+  await render('focus-outline');
+  const current = () => host.querySelectorAll('.create-content > section[data-current]');
+  expect(current()).toHaveLength(1);
+  expect(current()[0]?.getAttribute('aria-label')).toBe('발표정보');
+  await act(async () =>
+    host.querySelector<HTMLButtonElement>('[aria-label="준비 순서"] button')!.click(),
+  );
+  expect(current()).toHaveLength(1);
+  expect(current()[0]?.getAttribute('aria-label')).toBe('슬라이드');
+  await act(async () => host.querySelector<HTMLInputElement>('[aria-label="짧게 허용"]')!.focus());
+  expect(current()).toHaveLength(1);
+  expect(current()[0]?.getAttribute('aria-label')).toBe('발표정보');
+  expect(host.querySelector('[aria-current="step"]')?.textContent).toContain('발표정보');
+});
