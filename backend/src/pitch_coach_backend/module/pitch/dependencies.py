@@ -49,6 +49,7 @@ def get_owned_pitch(
     pitch_id: uuid.UUID,
 ) -> uuid.UUID:
     pitch = PitchRepository(db).get_owned(pitch_id, current_user.id)
+    db.commit()
     if pitch is None:
         raise NonExistentPitch()
     return pitch.id
