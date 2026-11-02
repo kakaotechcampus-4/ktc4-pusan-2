@@ -139,10 +139,13 @@ export type UploadedSlides = Required<
  * `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다. `open` 은 BE 가 쪽수를 주지 않을 때만 납니다.
  * 피치를 만들다 실패한 것도 `upload` 입니다 — 같은 파일로 다시 시도하면 피치부터 다시 만듭니다.
  */
+/** 업로드가 실패한 이유. 문구와 "다시 시도"를 낼지는 `SlidePane` 이 정합니다 */
+export type SlideUploadFailure = 'upload' | 'invalid' | 'complex' | 'busy' | 'open';
+
 export type SlideUpload =
   | { status: 'idle' }
   | { status: 'uploading'; file: File }
-  | { status: 'failed'; file: File; reason: 'upload' | 'invalid' | 'open' };
+  | { status: 'failed'; file: File; reason: SlideUploadFailure };
 
 /**
  * 대본을 서버에 올려 슬라이드로 나누는 진행 상태. 흐름은 `scriptParse.ts` 가 몹니다.

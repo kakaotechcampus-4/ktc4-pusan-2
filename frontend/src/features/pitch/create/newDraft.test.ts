@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPitch } from '@/shared/api/pitch';
 import { uploadPresentation } from '@/shared/api/presentation';
 import { createScript } from '@/shared/api/script';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { openPdf } from '@/shared/lib/pdf';
 import { isCurrentDraft, useCreateStore } from './createStore';
 import { startScriptMapping } from './scriptParse';
@@ -95,6 +96,22 @@ describe('슬라이드부터 올리는 새 피치', () => {
     } finally {
       error.mockRestore();
     }
+  });
+
+  it.each([
+    ['INVALID_PRESENTATION', 'invalid'],
+    ['PRESENTATION_TOO_COMPLEX', 'complex'],
+    ['PRESENTATION_BUSY', 'busy'],
+    ['PITCH_NOT_FOUND', 'upload'],
+  ])('서버가 %s 로 거절하면 실패 이유를 %s 로 둔다', async (code, reason) => {
+    store().setPitchId('pitch-new');
+    vi.mocked(uploadPresentation).mockRejectedValue(new ApiFailure(400, code));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' });
+
+    await uploadSlides(file);
+
+    expect(store().slideUpload).toEqual({ status: 'failed', file, reason });
   });
 
   it('피치가 없으면 파일 이름을 제목으로 피치부터 만들고 그 아래에 올린다', async () => {

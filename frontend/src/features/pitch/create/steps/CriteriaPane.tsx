@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useIsMutating, useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { parseStandards, saveStandards } from '@/shared/api/standards';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { isCurrentDraft, useCreateStore } from '../createStore';
 import { AlertIcon, CheckIcon, DocIcon, RefreshIcon } from '../icons';
 import { fromStandardsPosted } from '../lib/beAdapter';
@@ -33,6 +34,9 @@ import { PaneHeading } from './PaneHeading';
  */
 
 function parseErrorMessage(error: unknown): string {
+  // 앞 요청이 아직 정리하는 중이면 실패가 아닙니다 — "정리하지 못했어요"를 붙이지 않습니다
+  if (error instanceof ApiFailure && error.code === 'STANDARD_PARSE_IN_PROGRESS')
+    return toMessage(error);
   return `기준을 정리하지 못했어요. ${toMessage(error)}`;
 }
 
