@@ -6,17 +6,20 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.module.auth import google, service, state_store
+from pitch_coach_backend.core.rate_limit import RateLimiter
+from pitch_coach_backend.module.auth import controller, google, service, state_store
 from pitch_coach_backend.module.auth.controller import (
     BROWSER_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
     browser_cookie_name,
 )
 from pitch_coach_backend.module.auth.dependencies import CSRF_COOKIE_NAME
+from pitch_coach_backend.module.auth.entity import OAuthAuthorizationRequest
 from pitch_coach_backend.module.auth.exception import (
     EmailAlreadyRegistered,
     GoogleIdentityRejected,
@@ -59,6 +62,30 @@ def test_start_failure_redirects_with_login_failed(
     assert res.headers["location"].startswith(settings.frontend_base_url)
     assert "auth_error=login_failed" in res.headers["location"]
     assert not any(name.startswith(BROWSER_COOKIE_NAME) for name in res.cookies)
+
+
+def test_start_over_the_per_ip_limit_redirects_without_storing(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """상한을 넘은 IP 는 인증 요청을 DB 에 넣지 않고 프론트로 돌아간다. 다른 IP 는 그대로 받는다."""
+    monkeypatch.setattr(
+        controller, "login_start_limiter", RateLimiter("테스트", limit=2, window_sec=60)
+    )
+    attacker = {"X-Forwarded-For": "203.0.113.7"}
+    for _ in range(2):
+        assert client.get(START, headers=attacker, follow_redirects=False).status_code == 302
+    stored = db_session.scalar(select(func.count()).select_from(OAuthAuthorizationRequest))
+
+    res = client.get(START, headers=attacker, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=too_many_requests" in res.headers["location"]
+    assert not any(name.startswith(BROWSER_COOKIE_NAME) for name in res.cookies)
+    assert db_session.scalar(select(func.count()).select_from(OAuthAuthorizationRequest)) == stored
+
+    other = client.get(START, headers={"X-Forwarded-For": "198.51.100.1"}, follow_redirects=False)
+    assert other.headers["location"].startswith(google.AUTHORIZATION_ENDPOINT)
 
 
 def test_login_started_in_two_tabs_completes_in_both(
