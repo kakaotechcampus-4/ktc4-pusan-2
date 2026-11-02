@@ -61,6 +61,24 @@ it('슬라이드를 다시 올리면 장수가 같은 대본을 새 슬라이드
   expect(toPracticeCombo(store().draft, store().chosen)?.presentationVersionId).toBe('pv2');
 });
 
+it('파일을 기다리던 빈 슬라이드 버전을 채워도 대본을 옮기고 매핑을 다시 확인받는다', () => {
+  store().addSlideVersion();
+  store().attachSlides({ ...uploaded, presentationVersionId: 'pv2' });
+  expect(store().draft.slides.map((v) => v.version)).toEqual([1, 2]);
+  expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 2, saved: false });
+  store().saveMapping(1);
+  expect(toPracticeCombo(store().draft, store().chosen)?.presentationVersionId).toBe('pv2');
+});
+
+it('아직 나누지 않은 대본은 새 슬라이드로 옮기되 저장 상태를 두어 새 버전을 막지 않는다', () => {
+  // 다시 들어온 피치에서 나누는 중이거나 실패한 대본 — 서버에 올렸지만 `blocks` 가 없습니다 (`loadPitch.ts`)
+  store().patchScript(1, { blocks: null, segmented: null });
+  store().attachSlides({ ...uploaded, pageCount: 3, presentationVersionId: 'pv2' });
+  expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 2, saved: true });
+  store().addScriptVersion();
+  expect(store().draft.scripts.map((v) => v.version)).toEqual([1, 2]);
+});
+
 it('슬라이드를 다시 올려도 지난 대본 버전은 그대로라 새 대본 버전을 만들 수 있다', () => {
   store().addScriptVersion('슬라이드 1\n둘째\n\n슬라이드 2\n버전');
   store().patchScript(2, {

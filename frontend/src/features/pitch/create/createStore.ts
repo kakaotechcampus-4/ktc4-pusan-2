@@ -229,7 +229,9 @@ const mapScripts = (
  * 새로 올린 슬라이드에 지금 고른 대본을 옮겨 붙입니다. 다시 들어올 때(`loadPitch.ts`)와 같은 규칙입니다 —
  * 장수가 같은 가장 최근 슬라이드, 아직 나누지 않은 대본은 최신 슬라이드.
  * 옮기지 않으면 새 슬라이드를 올려도 예전 슬라이드로 연습하고, 새로고침하면 그제야 바뀝니다.
- * 슬라이드가 바뀌었으니 매핑은 다시 확인받습니다(`saved: false`).
+ * 슬라이드가 바뀌었으니 매핑은 다시 확인받습니다(`saved: false`). 아직 나누지 않은 대본(`blocks` 없음)은
+ * 저장 상태를 그대로 둡니다 — 확인할 매핑이 없어 저장할 수 없고, `saved: false` 로 두면 "+ 새 버전"까지
+ * 막힙니다(`pendingVersion`). 다시 들어올 때도 이 대본은 최신 슬라이드에 저장된 채로 붙습니다.
  *
  * 고른 대본은 연습 조합을 정하는 대본입니다(`PitchCreatePage` 의 `selectedVersion`). 안 골랐으면 최신입니다.
  * 나머지 버전은 두지 않습니다. 저장 안 한 대본은 "+ 새 버전" 대신 열리므로(`pendingVersion`),
@@ -244,7 +246,9 @@ const relinkScripts = (
   if (!target || target.slideVersion === slide.version) return scripts;
   if (target.blocks !== null && target.blocks.length !== slide.pageCount) return scripts;
   return scripts.map((v) =>
-    v.version === target.version ? { ...v, slideVersion: slide.version, saved: false } : v,
+    v.version === target.version
+      ? { ...v, slideVersion: slide.version, saved: v.blocks === null ? v.saved : false }
+      : v,
   );
 };
 
