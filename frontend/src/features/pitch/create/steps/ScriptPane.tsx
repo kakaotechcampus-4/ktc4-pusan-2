@@ -47,11 +47,18 @@ function markerHint(scan: MarkerScan, pageCount: number, tooLong: boolean): stri
   if (tooLong) {
     return `대본은 ${MAX_SCRIPT_CHARS.toLocaleString()}자(공백 포함)까지 매핑할 수 있어요. 조금 줄여 주세요.`;
   }
+  if (scan.legacy.length > 0) {
+    const rest = scan.legacy.length > 1 ? ` 등 ${scan.legacy.length}줄은` : ' 같은 줄은';
+    return `“${scan.legacy[0]}”${rest} 구분으로 인식되지 않아요. “[슬라이드 1]”처럼 바꿔 주세요.`;
+  }
   if (scan.numbers.length === 0) {
     return '“[슬라이드 1]”처럼 슬라이드마다 구분해 주세요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.';
   }
   if (scan.leadingText) {
     return '첫 구분 앞에는 제목 한 줄만 둘 수 있어요. 그보다 많으면 나뉘지 않으니 “[슬라이드 1]”을 앞으로 옮겨 주세요.';
+  }
+  if (!scan.numbersValid) {
+    return '구분 번호는 1부터 앞 번호보다 크게 이어져야 해요. 그렇지 않으면 대본 전체가 한 슬라이드로 연결돼요.';
   }
   const last = Math.max(...scan.numbers);
   if (pageCount > 0 && last !== pageCount) {
@@ -205,7 +212,10 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
   const tooLong = scriptLength(script.text) > MAX_SCRIPT_CHARS;
   const hint = chars > 0 ? markerHint(scan, pageCount, tooLong) : null;
   // 나뉠 장수 = 마지막 구분 번호 (건너뛴 번호는 빈 자리로 남습니다 — beAdapter)
-  const markerCount = scan.leadingText || scan.numbers.length === 0 ? 0 : Math.max(...scan.numbers);
+  const markerCount =
+    scan.leadingText || !scan.numbersValid || scan.numbers.length === 0
+      ? 0
+      : Math.max(...scan.numbers);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -240,6 +250,14 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           </button>
         </div>
       </div>
+
+      {chars === 0 && (
+        <p className="mb-3 text-sm text-ink/80">
+          사용하시는 AI로 만든 대본을 그대로 넣어 주세요. 슬라이드마다 새 줄에 “[1]” · “[슬라이드
+          1]” · “슬라이드 1:” 중 하나로 시작하면 장마다 연결돼요. AI에게 “슬라이드마다 [슬라이드 N]
+          줄로 시작해 줘”라고 덧붙이면 편해요.
+        </p>
+      )}
 
       {hint && !failure && (
         <p
@@ -281,8 +299,8 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
       </div>
 
       <p className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
-        슬라이드마다 [N] · [슬라이드 N] · 슬라이드 N: 중 하나를 새 줄에 적어 주세요. N은 슬라이드
-        번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.
+        슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” 중 하나를 새 줄 맨 앞에 적어 주세요.
+        번호는 1부터 차례로 커져야 해요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.
       </p>
     </div>
   );
