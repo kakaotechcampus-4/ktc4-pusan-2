@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { apiRequest } from './client';
 import { usePrepare } from './prepare';
@@ -57,5 +57,38 @@ it('장치 점검에 다시 들어오면 남겨 둔 답 대신 서버에 새로 
 
   expect(apiRequest).toHaveBeenCalledTimes(2);
   expect(seen[0]).toBeUndefined();
+  expect(seen.at(-1)).toBe('수정 후');
+});
+
+it('장치 점검을 띄워 둔 채 다른 탭에서 고치고 돌아오면 새로 받는다', async () => {
+  // 앱과 같은 기본값 — 탭으로 돌아와도 다시 받지 않습니다 (main.tsx)
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: 30_000, retry: false, refetchOnWindowFocus: false },
+    },
+  });
+  vi.mocked(apiRequest)
+    .mockResolvedValueOnce({ title: '수정 전' })
+    .mockResolvedValueOnce({ title: '수정 후' });
+
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    ),
+  );
+  await flush();
+  expect(seen.at(-1)).toBe('수정 전');
+
+  try {
+    await act(async () => focusManager.setFocused(false));
+    await act(async () => focusManager.setFocused(true));
+    await flush();
+  } finally {
+    focusManager.setFocused(undefined);
+  }
+
+  expect(apiRequest).toHaveBeenCalledTimes(2);
   expect(seen.at(-1)).toBe('수정 후');
 });
