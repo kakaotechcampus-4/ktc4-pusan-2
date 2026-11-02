@@ -195,8 +195,10 @@ function Uploading({ file, version }: { file: File; version: number | null }) {
 /** 확대 단계. 100% 는 상자에 통째로 들어가는 크기입니다 */
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
+// `disabled` 로 두면 끝에 닿은 버튼을 누른 순간 포커스가 body 로 빠져 뷰어의 ← → 가 멎습니다 (#818).
+// 그래서 `aria-disabled` 로 두고 `onClick` 에서 무시합니다 — 포커스가 뷰어 안에 남습니다
 const toolButton =
-  'flex h-8 w-8 items-center justify-center rounded-md hover:bg-panel disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent';
+  'flex h-8 w-8 items-center justify-center rounded-md hover:bg-panel aria-disabled:cursor-not-allowed aria-disabled:opacity-30 aria-disabled:hover:bg-transparent';
 
 function ViewerMessage({ children }: { children: ReactNode }) {
   return (
@@ -233,8 +235,10 @@ function Toolbar({
       <button
         type="button"
         aria-label="이전 슬라이드"
-        disabled={page <= 1}
-        onClick={() => onPage(page - 1)}
+        aria-disabled={page <= 1}
+        onClick={() => {
+          if (page > 1) onPage(page - 1);
+        }}
         className={toolButton}
       >
         <span className="rotate-180">
@@ -247,8 +251,10 @@ function Toolbar({
       <button
         type="button"
         aria-label="다음 슬라이드"
-        disabled={page >= total}
-        onClick={() => onPage(page + 1)}
+        aria-disabled={page >= total}
+        onClick={() => {
+          if (page < total) onPage(page + 1);
+        }}
         className={toolButton}
       >
         <ChevronIcon up={false} />
@@ -259,8 +265,10 @@ function Toolbar({
       <button
         type="button"
         aria-label="축소"
-        disabled={zoomIndex <= 0}
-        onClick={() => onZoom(zoomIndex - 1)}
+        aria-disabled={zoomIndex <= 0}
+        onClick={() => {
+          if (zoomIndex > 0) onZoom(zoomIndex - 1);
+        }}
         className={`${toolButton} text-lg`}
       >
         −
@@ -271,8 +279,10 @@ function Toolbar({
       <button
         type="button"
         aria-label="확대"
-        disabled={zoomIndex >= ZOOM_STEPS.length - 1}
-        onClick={() => onZoom(zoomIndex + 1)}
+        aria-disabled={zoomIndex >= ZOOM_STEPS.length - 1}
+        onClick={() => {
+          if (zoomIndex < ZOOM_STEPS.length - 1) onZoom(zoomIndex + 1);
+        }}
         className={`${toolButton} text-lg`}
       >
         +

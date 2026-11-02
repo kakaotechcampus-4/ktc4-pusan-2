@@ -372,16 +372,16 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     id: 'slide-preview',
     title: '미리보기 창',
     group: dialogs,
-    status: '제품에 있음',
+    status: '시안',
     summary: '슬라이드를 크게 보는 창. 피치 생성 화면의 "슬라이드 미리보기" 상태와 같다.',
     states: [view('open', '열림', '피치 생성 화면에서 연 슬라이드 미리보기.')],
     rules: ['보기만 하는 창이라 닫기 하나와 이전 · 다음만 둔다.', '닫으면 보던 단계로 돌아간다.'],
     tokens: ['panel', 'ink'],
-    sources: ['frontend/src/features/pitch/create/steps/SlidePreviewDialog.tsx'],
+    sources: [],
     file: 'src/screens/CreateScreen.tsx',
     props: [],
-    code: `// 제품: 썸네일을 누르면 연다. 쪽 이동은 부모가 쥔다
-<SlidePreviewDialog doc={doc} page={page} onPage={setPage} onClose={close} />`,
-    productNote: '설계서는 피치 생성 샘플 안의 창을 그대로 보인다. 제품은 썸네일을 눌러 연다.',
+    code: `// 제품에는 없다. 설계서 샘플 안의 창만 그린다`,
+    productNote:
+      '설계서는 피치 생성 샘플 안의 창을 그대로 보인다. 제품은 이 창을 쓰지 않고 뷰어 카드의 전체 화면 버튼을 쓴다(#802에서 썸네일로 여는 흐름이 빠졌다).',
   },
 ];
