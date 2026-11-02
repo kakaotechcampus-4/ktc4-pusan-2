@@ -129,6 +129,7 @@ backend/
 │   ├── test_auth_entity.py       # oauth_accounts·refresh_tokens 제약
 │   ├── test_google_oauth.py      # ID Token 검증 (실제 RSA 서명으로)
 │   ├── test_state_store.py       # state 1회 소비 · 만료 · 동시 콜백
+│   ├── test_rate_limit.py        # IP 별 호출 횟수 제한 · 시간 창
 │   ├── test_realtime_stt_adapter.py  # Deepgram 파싱 + 가짜 서버 왕복
 │   ├── test_realtime_auto_end.py # 말 없음 판단과 자동 종료 조건 (숫자만)
 │   ├── test_coach_session.py           # 발표 중 판단 · 상태 · 이벤트 처리 (AI · 저장소는 가짜)
@@ -166,6 +167,8 @@ backend/
     │   ├── tasks.py              # 백그라운드 태스크 보관 · 실패 로그 · 앱 종료 때 끊기
     │   ├── ai_slots.py           # 백그라운드 AI 호출 동시 개수 (합계 4, 그 안에서 대본 등록 2)
     │   ├── security.py           # JWT 발급/검증
+    │   ├── client_ip.py          # 요청한 쪽 IP (Caddy 가 넘긴 X-Forwarded-For 첫 값)
+    │   ├── rate_limit.py         # IP 별 호출 횟수 제한 (프로세스 메모리)
     │   ├── exceptions.py         # 공통 예외 베이스 + 에러 응답 핸들러
     │   └── logging.py            # 앱 로거(pitch_coach_backend.*) 레벨 · 형식. 앱이 뜰 때 건다
     │
@@ -402,6 +405,9 @@ OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시
   다시 쓸 수 없고, 구글 응답을 기다리는 동안 DB 트랜잭션을 열어 두지 않는다.
 - 만료 시각이 지난 요청은 콜백이 와도 거절한다. 콜백이 오지 않은 요청은 다음 로그인 시작 때
   만료된 것을 한꺼번에 지운다. 따로 도는 정리 작업은 없다.
+- 로그인 시작은 인증 없이 부를 수 있어 IP 별로 1분에 60번까지만 받는다
+  (`module/auth/controller.py` 의 `LOGIN_START_LIMIT`). 넘으면 DB 에 쓰지 않고 프론트로
+  `auth_error=too_many_requests` 를 붙여 돌려보낸다. 횟수는 프로세스 메모리에서 세므로 워커가 하나일 때만 맞다.
 
 예전에는 Redis 에 두었다. 배포 직전에 Redis 에 저장된 진행 중 요청은 옮기지 않는다. 배포 중에
 구글 동의 화면에 있던 사용자는 `auth_error=invalid_request` 로 돌아오고 다시 로그인하면 된다

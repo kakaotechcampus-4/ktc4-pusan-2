@@ -9,11 +9,11 @@ import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
+from pitch_coach_backend.core.client_ip import client_ip
 from pitch_coach_backend.realtime.connection import handshake as handshake_module
 from pitch_coach_backend.realtime.connection.handshake import (
     CLOSE_TRY_AGAIN_LATER,
     Handshake,
-    client_ip,
     pending_auth,
 )
 from tests.realtime.conftest import WS_PATH, FakeSttAdapter, FakeWebSocket, handshake, stop
