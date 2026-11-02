@@ -53,6 +53,20 @@ it('장수가 같아도 연결하지 않은 슬라이드 버전으로 시작하�
   expect(toPracticeCombo(store().draft, { ...CHOOSE_LATEST, slides: 2, script: 1 })).toBeNull();
 });
 
+it('슬라이드를 다시 올리면 장수가 같은 대본을 새 슬라이드로 옮기고 매핑을 다시 확인받는다', () => {
+  store().attachSlides({ ...uploaded, presentationVersionId: 'pv2' });
+  expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 2, saved: false });
+  expect(toPracticeCombo(store().draft, store().chosen)).toBeNull();
+  store().saveMapping(1);
+  expect(toPracticeCombo(store().draft, store().chosen)?.presentationVersionId).toBe('pv2');
+});
+
+it('장수가 다른 슬라이드를 올리면 대본은 앞 슬라이드에 남는다', () => {
+  store().attachSlides({ ...uploaded, pageCount: 3, presentationVersionId: 'pv2' });
+  expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: true });
+  expect(toPracticeCombo(store().draft, store().chosen)?.presentationVersionId).toBe('pv1');
+});
+
 it('빈 버전에 시작한 업로드는 화면을 옮겨도 그 버전에 들어간다', () => {
   store().addSlideVersion();
   // 파일을 기다리는 빈 버전(V2)이 있으면 새 버전을 더 만들지 않습니다 (pendingVersion)

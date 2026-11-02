@@ -8,6 +8,7 @@ import type {
   PitchDraft,
   ScriptParse,
   ScriptVersion,
+  SlideVersion,
   SlideUpload,
   UploadedSlides,
 } from './lib/draft';
@@ -121,6 +122,7 @@ interface CreateState {
   setSlideUpload: (next: SlideUpload) => void;
   /**
    * 올리고 열기까지 끝났습니다. 비어 있는 버전이 있으면 거기 채우고, 없으면 새로 만듭니다.
+   * 장수가 맞는 대본은 새 슬라이드로 옮기고 매핑을 다시 확인받습니다 (`relinkScripts`).
    *
    * 한 동작으로 묶은 이유 — 나눠 부르면 "버전을 만들었는데 장수는 다음 렌더에
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
@@ -222,6 +224,19 @@ const mapScripts = (
   ...draft,
   scripts: draft.scripts.map((v) => (v.version === version ? update(v) : v)),
 });
+
+/**
+ * 새로 올린 슬라이드에 대본을 옮겨 붙입니다. 다시 들어올 때(`loadPitch.ts`)와 같은 규칙입니다 —
+ * 장수가 같은 가장 최근 슬라이드, 아직 나누지 않은 대본은 최신 슬라이드.
+ * 옮기지 않으면 새 슬라이드를 올려도 예전 슬라이드로 연습하고, 새로고침하면 그제야 바뀝니다.
+ * 슬라이드가 바뀌었으니 매핑은 다시 확인받습니다(`saved: false`).
+ */
+const relinkScripts = (scripts: ScriptVersion[], slide: SlideVersion): ScriptVersion[] =>
+  scripts.map((v) => {
+    if (v.slideVersion === slide.version) return v;
+    if (v.blocks !== null && v.blocks.length !== slide.pageCount) return v;
+    return { ...v, slideVersion: slide.version, saved: false };
+  });
 
 /** 고칠 수 있는 평가기준 버전만 고치고 `edited` 로 둡니다. 그 밖의 버전은 그대로 돌려줍니다 */
 const editCriteria = (
@@ -336,6 +351,7 @@ export const useCreateStore = create<CreateState>((set) => ({
             slides: s.draft.slides.map((v) =>
               v.version === pending.version ? { ...v, ...uploaded } : v,
             ),
+            scripts: relinkScripts(s.draft.scripts, { ...pending, ...uploaded }),
           },
           pendingSlideReviews: [...s.pendingSlideReviews, pending.version],
           slideReviewVersion: pending.version,
@@ -344,7 +360,11 @@ export const useCreateStore = create<CreateState>((set) => ({
       }
       const version = nextVersion(s.draft.slides);
       return {
-        draft: { ...s.draft, slides: [...s.draft.slides, { version, ...uploaded }] },
+        draft: {
+          ...s.draft,
+          slides: [...s.draft.slides, { version, ...uploaded }],
+          scripts: relinkScripts(s.draft.scripts, { version, ...uploaded }),
+        },
         pendingSlideReviews: [...s.pendingSlideReviews, version],
         slideReviewVersion: version,
         ...viewSelection(s, 'slides', version),
