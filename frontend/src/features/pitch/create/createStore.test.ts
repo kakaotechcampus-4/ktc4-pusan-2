@@ -61,6 +61,21 @@ it('슬라이드를 다시 올리면 장수가 같은 대본을 새 슬라이드
   expect(toPracticeCombo(store().draft, store().chosen)?.presentationVersionId).toBe('pv2');
 });
 
+it('슬라이드를 다시 올려도 지난 대본 버전은 그대로라 새 대본 버전을 만들 수 있다', () => {
+  store().addScriptVersion('슬라이드 1\n둘째\n\n슬라이드 2\n버전');
+  store().patchScript(2, {
+    remote: { id: 'sv2', version: 2 },
+    blocks: ['둘째', '버전'],
+    segmented: true,
+  });
+  store().saveMapping(2);
+  store().attachSlides({ ...uploaded, presentationVersionId: 'pv2' });
+  expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: true });
+  store().saveMapping(2);
+  store().addScriptVersion();
+  expect(store().draft.scripts.map((v) => v.version)).toEqual([1, 2, 3]);
+});
+
 it('장수가 다른 슬라이드를 올리면 대본은 앞 슬라이드에 남는다', () => {
   store().attachSlides({ ...uploaded, pageCount: 3, presentationVersionId: 'pv2' });
   expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: true });
