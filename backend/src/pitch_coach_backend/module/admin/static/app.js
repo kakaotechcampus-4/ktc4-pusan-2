@@ -666,8 +666,15 @@ async function load() {
   await Promise.all(feedbackRequests);
   const failures = [];
   results.forEach((result, i) => {
-    if (result.status === 'fulfilled') SECTIONS[i][1](result.value);
-    else failures.push(result.reason.message);
+    if (result.status !== 'fulfilled') {
+      failures.push(result.reason.message);
+      return;
+    }
+    try {
+      SECTIONS[i][1](result.value);
+    } catch (failure) {
+      failures.push(`${SECTIONS[i][0]}: ${failure.message}`);
+    }
   });
   document.getElementById('updated').textContent = `${dateTime(new Date().toISOString())} 기준`;
   if (failures.length) {
