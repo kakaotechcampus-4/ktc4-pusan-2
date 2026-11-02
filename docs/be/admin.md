@@ -41,9 +41,11 @@
 ### 연습 기록 (Take 상세)
 * Take 표에서 **보기** 를 누르면 열립니다.
 * 시작 전 · 진행 중(`READY` · `RUNNING`)인 Take는 3초마다 새로 받은 전사 · 1초 기록만 이어 붙입니다. 끝난 Take는 남은 기록을 다 받으면 멈춥니다.
+* 장 변경은 끊겼던 연결이 나중에 몰아서 보내 앞 시각 행이 늦게 들어올 수 있어, 이어 붙이지 않고 3초마다 전체를 다시 받습니다.
 
 | 항목 | 보여 주는 것 | 데이터 |
 |---|---|---|
+| 대본 ↔ 확정 전사 | 장마다 그 Take 대본 버전의 대본과, 그 장을 띄운 동안 말한 확정 전사. 전사는 구간 시작 시각 직전의 장 변경으로 장을 정하고, 첫 장 변경 전에 말한 것은 '장 전환 전' 줄에 둡니다 | `GET /admin/api/takes/{take_id}/script`, `GET /admin/api/takes/{take_id}/live` 의 `segments` · `slide_events` |
 | 확정 전사 | 문장 · 시각 · 신뢰도 · STT 세션 번호 | `GET /admin/api/takes/{take_id}/live` 의 `segments` |
 | 1초 기록 | 시각 · 장 번호 · STT 상태 · 시선 · 음량 | `GET /admin/api/takes/{take_id}/live` 의 `seconds` |
 | AI 결과 | `TAKE_RESULT` · `SCRIPT_COVERAGE` · 리뷰 등 AI 결과와 `meta` | `GET /admin/api/takes/{take_id}/results` |
@@ -100,7 +102,8 @@
 
 | 메서드 | 경로 | 쿼리 | 응답 |
 |---|---|---|---|
-| GET | `/admin/api/takes/{take_id}/live` | `after_seq` (기본 0), `after_t_ms` | `{status, segments: [{seq, stt_session_no, start_ms, end_ms, transcript, confidence, speech_final}], seconds: [{t_ms, slide_number, gaze, voice, stt_status}]}`. 각각 한 번에 최대 500개이며, 받은 마지막 값 뒤부터 이어 받습니다 |
+| GET | `/admin/api/takes/{take_id}/live` | `after_seq` (기본 0), `after_t_ms` | `{status, segments: [{seq, stt_session_no, start_ms, end_ms, transcript, confidence, speech_final}], seconds: [{t_ms, slide_number, gaze, voice, stt_status}], slide_events: [{started_ms, slide_number}]}`. `segments` · `seconds` 는 각각 한 번에 최대 500개이며, 받은 마지막 값 뒤부터 이어 받습니다. `slide_events` 는 커서와 상관없이 매번 전체를 시각 순서로 줍니다 |
+| GET | `/admin/api/takes/{take_id}/script` | — | `[{slide_number, full_content}]`. Take가 고정한 대본 버전의 장별 대본을 장 번호 순서로 줍니다 |
 | GET | `/admin/api/takes/{take_id}/results` | — | `{ai_results: [{kind, revision, created_at, replayed, criteria_changed, measured_ratios, fallback_reason, model, payload, meta}], coach_events: [{seq, t_ms, kind, event_id, payload, meta}], summary}` |
 | GET | `/admin/api/takes/{take_id}/inputs` | — | `{script_mode, standard_version, mission_ids, raw_data_consent, utterance_ends, slide_events: [{started_ms, slide_number}], segments: [{seq, start_ms, end_ms, final_at_ms, words}], calibration}` |
 | GET | `/admin/api/takes/{take_id}/export` | — | `{take_id, raw_data_consent, metric_second_count, request, results: {<kind>: {payload, meta, revision}}}` |

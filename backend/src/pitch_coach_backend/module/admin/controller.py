@@ -19,6 +19,7 @@ from pitch_coach_backend.module.admin.dependencies import require_admin
 from pitch_coach_backend.module.admin.dto import (
     AdminPage,
     AdminPitchAI,
+    AdminScriptSlide,
     AdminSuggestionRow,
     AdminTakeExport,
     AdminTakeInputs,
@@ -103,6 +104,13 @@ def take_live(
     after_t_ms: Annotated[int | None, Query(ge=0)] = None,
 ) -> AdminTakeLive:
     return service.get_take_live(db, take_id, after_seq=after_seq, after_t_ms=after_t_ms)
+
+
+@router.get("/api/takes/{take_id}/script")
+def take_script(
+    take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]
+) -> list[AdminScriptSlide]:
+    return service.get_take_script(db, take_id)
 
 
 @router.get("/api/takes/{take_id}/results")

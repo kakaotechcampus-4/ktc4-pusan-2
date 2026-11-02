@@ -302,6 +302,16 @@ def slide_events(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
     return _fetch(db, stmt)
 
 
+def take_script_slides(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
+    stmt = (
+        select(ScriptSlide.slide_number, ScriptSlide.full_content)
+        .join(Take, Take.script_version_id == ScriptSlide.script_version_id)
+        .where(Take.id == take_id)
+        .order_by(ScriptSlide.slide_number)
+    )
+    return _fetch(db, stmt)
+
+
 def calibration(db: Session, take_id: uuid.UUID) -> Calibration | None:
     return db.scalar(select(Calibration).where(Calibration.take_id == take_id))
 
