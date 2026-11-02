@@ -99,9 +99,12 @@ function NavButton({
     <button
       type="button"
       aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="flex w-10 shrink-0 items-center justify-center text-3xl font-bold hover:bg-cream disabled:cursor-not-allowed disabled:text-line-strong disabled:hover:bg-transparent"
+      // `disabled` 로 두면 눌러서 끝 장에 닿는 순간 포커스가 body 로 빠져 ←/→ 가 멎습니다
+      aria-disabled={disabled}
+      onClick={() => {
+        if (!disabled) onClick();
+      }}
+      className="flex w-10 shrink-0 items-center justify-center text-3xl font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-line-strong aria-disabled:hover:bg-transparent"
     >
       {children}
     </button>

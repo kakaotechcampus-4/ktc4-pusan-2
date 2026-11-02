@@ -51,14 +51,45 @@ it('첫 장에서 ←를 눌러도 1장 밖으로 나가지 않는다', async ()
   const { dialog, onPage } = await renderDialog(1);
   await press(dialog, 'ArrowLeft');
   expect(onPage).toHaveBeenCalledWith(1);
-  expect(container.querySelector('[aria-label="이전 슬라이드"]')).toHaveProperty('disabled', true);
+  expect(
+    container.querySelector('[aria-label="이전 슬라이드"]')?.getAttribute('aria-disabled'),
+  ).toBe('true');
 });
 
 it('마지막 장에서 →를 눌러도 마지막 장 밖으로 나가지 않는다', async () => {
   const { dialog, onPage } = await renderDialog(3);
   await press(dialog, 'ArrowRight');
   expect(onPage).toHaveBeenCalledWith(3);
-  expect(container.querySelector('[aria-label="다음 슬라이드"]')).toHaveProperty('disabled', true);
+  expect(
+    container.querySelector('[aria-label="다음 슬라이드"]')?.getAttribute('aria-disabled'),
+  ).toBe('true');
+});
+
+it('끝 장의 버튼은 비활성처럼 보여도 포커스를 쥐고, 거기서 ←가 동작한다', async () => {
+  const { dialog, onPage } = await renderDialog(3);
+  const next = container.querySelector<HTMLButtonElement>('[aria-label="다음 슬라이드"]')!;
+  expect(next.disabled).toBe(false);
+
+  next.focus();
+  expect(document.activeElement).toBe(next);
+  await act(async () => next.click());
+  expect(onPage).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(next);
+
+  await act(async () => {
+    next.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  });
+  expect(onPage).toHaveBeenCalledWith(2);
+  expect(dialog.contains(document.activeElement)).toBe(true);
+});
+
+it('첫 장의 버튼도 같다', async () => {
+  const { onPage } = await renderDialog(1);
+  const prev = container.querySelector<HTMLButtonElement>('[aria-label="이전 슬라이드"]')!;
+  prev.focus();
+  await act(async () => prev.click());
+  expect(onPage).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(prev);
 });
 
 it('열려 있는 동안 배경 스크롤을 잠그고, 닫은 뒤 원래 값으로 돌려놓는다', async () => {
