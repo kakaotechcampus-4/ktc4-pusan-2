@@ -86,6 +86,14 @@ class AdminSlideEvent(BaseModel):
     slide_number: int
 
 
+class AdminLiveWord(BaseModel):
+    """대본 ↔ 확정 전사 표가 단어를 장에 나눌 때 쓴다. 조각의 `start_ms` 는 앞 조각이 끝난 시각이라
+    말하기 전 침묵이 들어 있다."""
+
+    word: str
+    start_ms: int
+
+
 class AdminLiveSegment(BaseModel):
     seq: int
     stt_session_no: int
@@ -94,6 +102,7 @@ class AdminLiveSegment(BaseModel):
     transcript: str
     confidence: float
     speech_final: bool
+    words: list[AdminLiveWord]
 
 
 class AdminLiveSecond(BaseModel):

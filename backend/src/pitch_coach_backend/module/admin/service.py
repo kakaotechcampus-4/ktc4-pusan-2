@@ -16,6 +16,7 @@ from pitch_coach_backend.module.admin.dto import (
     AdminExportResult,
     AdminLiveSecond,
     AdminLiveSegment,
+    AdminLiveWord,
     AdminPage,
     AdminPitchAI,
     AdminScriptDetail,
@@ -144,7 +145,7 @@ def get_take_live(
     seconds = repository.live_seconds(db, take_id, after_t_ms=after_t_ms, limit=LIVE_LIMIT)
     return AdminTakeLive(
         status=status,
-        segments=[AdminLiveSegment(**row) for row in segments],
+        segments=[_live_segment(row) for row in segments],
         seconds=[AdminLiveSecond(**row) for row in seconds],
         slide_events=[AdminSlideEvent(**row) for row in repository.slide_events(db, take_id)],
     )
@@ -202,6 +203,15 @@ def export_take(db: Session, take_id: uuid.UUID) -> AdminTakeExport:
             for row in repository.ai_results(db, take_id)
         },
     )
+
+
+def _live_segment(row: dict[str, Any]) -> AdminLiveSegment:
+    # 리포트 채점이 장을 나눌 때와 같은 글자 · 시각이다 (`TakeRepository.get_transcript_words`)
+    words = [
+        AdminLiveWord(word=w.get("punctuated_word") or w["word"], start_ms=w["start_ms"])
+        for w in row["words"]
+    ]
+    return AdminLiveSegment(**{**row, "words": words})
 
 
 def _ai_result(row: dict[str, Any]) -> AdminAIResult:
