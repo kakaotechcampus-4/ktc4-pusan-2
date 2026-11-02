@@ -206,10 +206,9 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/create/lib/draft.ts',
       'frontend/src/features/pitch/create/steps/SlidePane.tsx',
       'frontend/src/features/pitch/create/steps/CriteriaPane.tsx',
-      'frontend/src/features/pitch/create/steps/SlidePreviewDialog.tsx',
     ],
     productNote:
-      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 발표 정보 줄(InfoBar · 저장 전이면 "저장 전" 표시) · 단계 표시줄(StepBar)을 둔다. 위에는 공용 상단바가 얹히고 경로 줄은 없다(#738). 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 제품에서 썸네일을 눌러 연다(미리보기는 버튼 하나). 단계별 제목 · 버튼 · 안내 문구와 슬라이드를 올리기 전 아래 줄이 없는 것은 제품과 같다.',
+      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 발표 정보 줄(InfoBar · 저장 전이면 "저장 전" 표시) · 단계 표시줄(StepBar)을 둔다. 위에는 공용 상단바가 얹히고 경로 줄은 없다(#738). 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 시안에만 있다(제품은 뷰어 카드의 전체 화면 버튼을 쓴다). 단계별 제목 · 버튼 · 안내 문구와 슬라이드를 올리기 전 아래 줄이 없는 것은 제품과 같다.',
     productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
     next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
   },
