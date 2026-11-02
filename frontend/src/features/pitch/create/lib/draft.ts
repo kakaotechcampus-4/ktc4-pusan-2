@@ -131,18 +131,23 @@ export type UploadedSlides = Required<
   pageCount: number;
 };
 
+/** 업로드가 실패한 이유. 문구와 "다시 시도"를 낼지는 `SlidePane` 이 정합니다 */
+export type SlideUploadFailure = 'upload' | 'invalid' | 'complex' | 'busy' | 'open';
+
 /**
  * 슬라이드 업로드 진행 상태. 버전과 따로 둡니다 — 올리는 도중에는 아직 버전에 채울 것이 없고,
  * 실패하면 버전을 만들지 않은 채로 "다시 시도"할 파일만 들고 있어야 합니다.
  *
  * `upload` 는 서버에 못 올린 것, `invalid` 는 서버가 PDF 를 열지 못해 거절한 것(BE #298 — 깨짐 · 암호),
  * `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다. `open` 은 BE 가 쪽수를 주지 않을 때만 납니다.
+ * `complex` 는 쪽이나 구성 요소가 너무 많아 거절한 것(다시 올려도 같음), `busy` 는 서버가 바빠
+ * 받지 못한 것(503 — 잠시 뒤 같은 파일로 다시 올리면 됨)입니다.
  * 피치를 만들다 실패한 것도 `upload` 입니다 — 같은 파일로 다시 시도하면 피치부터 다시 만듭니다.
  */
 export type SlideUpload =
   | { status: 'idle' }
   | { status: 'uploading'; file: File }
-  | { status: 'failed'; file: File; reason: 'upload' | 'invalid' | 'open' };
+  | { status: 'failed'; file: File; reason: SlideUploadFailure };
 
 /**
  * 대본을 서버에 올려 슬라이드로 나누는 진행 상태. 흐름은 `scriptParse.ts` 가 몹니다.

@@ -4,7 +4,26 @@ import { ApiFailure } from '@/shared/api/tokenStore';
 import { openPdf } from '@/shared/lib/pdf';
 import { isCurrentDraft, useCreateStore } from './createStore';
 import { fromPitchSaved, fromUploadedPresentation, toPitchRequest } from './lib/beAdapter';
-import { infoOf, infoReady, titleFromFile } from './lib/draft';
+import { infoOf, infoReady, titleFromFile, type SlideUploadFailure } from './lib/draft';
+
+/**
+ * 업로드 실패를 화면 문구로 가릅니다 (BE `pitch/exception.py`).
+ * 열 수 없는 PDF(깨짐 · 암호 · PDF 아님)와 너무 복잡한 PDF 는 다시 올려도 같아서 따로 알리고,
+ * 서버가 바쁠 때는 네트워크 탓으로 보이지 않게 합니다.
+ */
+function uploadFailureReason(error: unknown): SlideUploadFailure {
+  if (!(error instanceof ApiFailure)) return 'upload';
+  switch (error.code) {
+    case 'INVALID_PRESENTATION':
+      return 'invalid';
+    case 'PRESENTATION_TOO_COMPLEX':
+      return 'complex';
+    case 'PRESENTATION_BUSY':
+      return 'busy';
+    default:
+      return 'upload';
+  }
+}
 
 /**
  * 슬라이드 올리기 — 업로드 → 장수 받기 → 버전에 채우기.
@@ -68,9 +87,7 @@ export async function uploadSlides(file: File): Promise<void> {
     if (!isCurrentDraft(draftId)) return;
     // 화면에는 한 줄만 보이므로 원인은 콘솔에 남깁니다 (404 피치 없음 · 네트워크 · 413 크기 …)
     console.error('[슬라이드] 업로드 실패', { pitchId, file: file.name, error });
-    // BE 가 PDF 를 열지 못했으면(깨짐 · 암호 · PDF 아님) 다시 올려도 같습니다 — 다른 문구로 알립니다
-    const invalid = error instanceof ApiFailure && error.code === 'INVALID_PRESENTATION';
-    set({ status: 'failed', file, reason: invalid ? 'invalid' : 'upload' });
+    set({ status: 'failed', file, reason: uploadFailureReason(error) });
     return;
   }
 

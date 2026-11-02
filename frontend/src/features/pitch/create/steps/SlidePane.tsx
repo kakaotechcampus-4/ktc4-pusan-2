@@ -10,7 +10,13 @@ import {
   FullscreenIcon,
   PdfUploadIcon,
 } from '../icons';
-import { MAX_SLIDE_BYTES, pendingVersion, type SlideUpload, type SlideVersion } from '../lib/draft';
+import {
+  MAX_SLIDE_BYTES,
+  pendingVersion,
+  type SlideUpload,
+  type SlideUploadFailure,
+  type SlideVersion,
+} from '../lib/draft';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { startSlideUpload } from '../slideUpload';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -23,15 +29,17 @@ import { PaneHeading } from './PaneHeading';
  * 고른 파일을 바로 그리지 않는 이유는 `slideUpload.ts` 에 있습니다.
  */
 
-const FAILURE_MESSAGE: Record<'upload' | 'invalid' | 'open', string> = {
+const FAILURE_MESSAGE: Record<SlideUploadFailure, string> = {
   upload: '업로드하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
   invalid:
     'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인하고 다른 파일을 골라 주세요.',
+  complex: '쪽이나 구성 요소가 너무 많은 PDF예요. 나눠서 올려 주세요.',
+  busy: '발표자료를 올리는 사람이 많아요. 잠시 뒤 다시 시도해 주세요.',
   open: '올린 PDF를 열지 못했어요. 파일이 손상됐을 수 있어요.',
 };
 
-/** 같은 파일을 다시 보내도 같은 400 이면(`invalid`) "다시 시도"를 내지 않습니다 (`slideUpload.ts`) */
-const canRetry = (reason: keyof typeof FAILURE_MESSAGE) => reason !== 'invalid';
+/** 같은 파일을 다시 보내도 같으면(`invalid` · `complex`) "다시 시도"를 내지 않습니다 (`slideUpload.ts`) */
+const canRetry = (reason: SlideUploadFailure) => reason !== 'invalid' && reason !== 'complex';
 
 /** 받을 수 없는 파일이면 그 이유. 드롭존에서 확인합니다 */
 function rejectReason(file: File): string | null {
