@@ -425,13 +425,29 @@ function slideAt(events, ms) {
   return current;
 }
 
+// 조각의 start_ms 는 앞 조각이 끝난 시각이라 말하기 전 침묵이 들어 있다. 리포트 채점처럼 단어 시각으로
+// 장을 정하고, 장 경계에 걸친 조각은 장마다 나눈다
+function slideParts(events, segment) {
+  const parts = [];
+  for (const w of segment.words) {
+    const slide = slideAt(events, w.start_ms);
+    const last = parts.at(-1);
+    if (last && last.slide === slide) last.words.push(w.word);
+    else parts.push({ slide, start_ms: w.start_ms, words: [w.word] });
+  }
+  if (parts.length === 0) {
+    return [{ slide: slideAt(events, segment.start_ms), start_ms: segment.start_ms, transcript: segment.transcript }];
+  }
+  if (parts.length === 1) return [{ ...parts[0], transcript: segment.transcript }];
+  return parts.map((p) => ({ ...p, transcript: p.words.join(' ') }));
+}
+
 function scriptRows() {
   const events = [...live.slideEvents].sort((a, b) => a.started_ms - b.started_ms);
   const spoken = new Map();
-  for (const s of live.segments) {
-    const slide = slideAt(events, s.start_ms);
-    if (!spoken.has(slide)) spoken.set(slide, []);
-    spoken.get(slide).push(s);
+  for (const part of live.segments.flatMap((s) => slideParts(events, s))) {
+    if (!spoken.has(part.slide)) spoken.set(part.slide, []);
+    spoken.get(part.slide).push(part);
   }
   const numbers = new Set([...live.script.map((s) => s.slide_number), ...spoken.keys()]);
   const script = new Map(live.script.map((s) => [s.slide_number, s.full_content]));
