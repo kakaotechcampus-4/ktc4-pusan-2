@@ -407,11 +407,11 @@ function renderLive(status) {
     }),
   );
   renderScript();
-  renderTable('live-segments', SEGMENT_COLUMNS, [...live.segments].reverse(), '아직 저장된 전사가 없습니다');
+  renderTable('live-segments', SEGMENT_COLUMNS, [...live.segments], '아직 저장된 전사가 없습니다');
   renderTable(
     'live-seconds',
     SECOND_COLUMNS,
-    [...live.seconds].reverse(),
+    [...live.seconds],
     '1초 기록이 없습니다 — 동의하지 않은 연습은 리포트를 만든 뒤 지웁니다',
   );
 }
