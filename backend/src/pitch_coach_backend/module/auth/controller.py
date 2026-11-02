@@ -23,9 +23,11 @@ from fastapi import APIRouter, Cookie, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.client_ip import client_ip
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.core.exceptions import AppException
+from pitch_coach_backend.core.rate_limit import RateLimiter
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth import service
 from pitch_coach_backend.module.auth.dependencies import (
@@ -39,6 +41,7 @@ from pitch_coach_backend.module.auth.exception import (
     GoogleTokenExchangeFailed,
     InvalidAuthorizationRequest,
     ServiceNotOpen,
+    TooManyLoginStarts,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -55,6 +58,15 @@ CSRF_COOKIE_PATH = "/"
 
 # 로그인 시작부터 콜백까지만 살면 된다. state 의 만료 시간과 맞춘다.
 BROWSER_COOKIE_MAX_AGE = 600
+
+# 로그인 시작은 인증 없이 부를 수 있고 부를 때마다 인증 요청을 DB 에 넣고 커밋한다. 반복 호출이
+# DB 쓰기를 붙잡지 못하게 IP 별로 센다. 같은 와이파이의 수강생 수십 명이 한꺼번에 로그인해도
+# 걸리지 않게 넉넉히 잡았다. 1초에 한 번 꼴의 쓰기는 DB 에 부담이 없다
+LOGIN_START_LIMIT = 60
+LOGIN_START_WINDOW_SEC = 60.0
+login_start_limiter = RateLimiter(
+    "구글 로그인 시작", limit=LOGIN_START_LIMIT, window_sec=LOGIN_START_WINDOW_SEC
+)
 
 # 우리가 만드는 state 의 모양(token_urlsafe). 쿠키 이름에 넣어도 되는 글자뿐이다.
 _STATE = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
@@ -120,6 +132,7 @@ _LOGIN_ERROR_CODES: dict[type[Exception], str] = {
     GoogleIdentityRejected: "identity_rejected",
     EmailAlreadyRegistered: "email_already_registered",
     ServiceNotOpen: "service_not_open",
+    TooManyLoginStarts: "too_many_requests",
 }
 
 
@@ -166,10 +179,13 @@ def _frontend_url(return_to: str | None, *, auth_error: str | None = None) -> st
 
 @router.get("/google/start", summary="구글 로그인 시작")
 def google_start(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     return_to: Annotated[str | None, Query(description="로그인 후 돌아갈 프론트 경로")] = None,
 ) -> RedirectResponse:
     try:
+        if not login_start_limiter.allow(client_ip(request)):
+            raise TooManyLoginStarts()
         started = service.start_login(db, return_to=_safe_return_to(return_to))
     except Exception as e:
         # 로그인 버튼이 화면째 이 주소로 옮겨 온다. 출시 전이거나 DB 오류 등으로 JSON 을 주면
