@@ -453,7 +453,13 @@ function scriptRows() {
   const script = new Map(live.script.map((s) => [s.slide_number, s.full_content]));
   return [...numbers]
     .sort((a, b) => (a ?? -1) - (b ?? -1))
-    .map((slide) => ({ slide, script: script.get(slide), segments: spoken.get(slide) ?? [] }));
+    .map((slide) => ({
+      slide,
+      // 같은 장으로 다시 넘어왔으면 넘어온 시각마다 적는다
+      starts: events.filter((e) => e.slide_number === slide).map((e) => e.started_ms),
+      script: script.get(slide),
+      segments: spoken.get(slide) ?? [],
+    }));
 }
 
 const spokenLines = (segments) =>
@@ -467,6 +473,7 @@ const spokenLines = (segments) =>
 
 const SCRIPT_TRANSCRIPT_COLUMNS = [
   ['장', (r) => r.slide ?? '장 전환 전', true],
+  ['시작', (r) => (r.starts.length ? r.starts.map(clock).join(', ') : '—'), true],
   ['대본', (r) => (r.slide == null ? '—' : opinionText(r.script ?? '대본 없음'))],
   ['확정 전사', (r) => spokenLines(r.segments)],
 ];
