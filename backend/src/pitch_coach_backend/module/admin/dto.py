@@ -81,6 +81,11 @@ class AdminTakeRow(BaseModel):
     analysis_hold_reason: str | None
 
 
+class AdminSlideEvent(BaseModel):
+    started_ms: int
+    slide_number: int
+
+
 class AdminLiveSegment(BaseModel):
     seq: int
     stt_session_no: int
@@ -103,6 +108,7 @@ class AdminTakeLive(BaseModel):
     status: str
     segments: list[AdminLiveSegment]
     seconds: list[AdminLiveSecond]
+    slide_events: list[AdminSlideEvent]
 
 
 class AdminAIResult(BaseModel):
@@ -158,11 +164,6 @@ class AdminSegmentWords(BaseModel):
     words: Any
 
 
-class AdminSlideEvent(BaseModel):
-    started_ms: int
-    slide_number: int
-
-
 class AdminCalibration(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -184,6 +185,11 @@ class AdminTakeInputs(BaseModel):
     slide_events: list[AdminSlideEvent]
     segments: list[AdminSegmentWords]
     calibration: AdminCalibration | None
+
+
+class AdminScriptSlide(BaseModel):
+    slide_number: int
+    full_content: str
 
 
 class AdminExportResult(BaseModel):

@@ -487,6 +487,11 @@ def test_take_live_returns_rows_after_cursors_in_order(
             )
         )
     db_session.add(TakeMetricSecond(take_id=other.id, t_ms=4000, stt_status="ok"))
+    db_session.add_all([
+        TakeSlideEvent(take_id=take.id, started_ms=5000, slide_number=2),
+        TakeSlideEvent(take_id=take.id, started_ms=0, slide_number=1),
+        TakeSlideEvent(take_id=other.id, started_ms=0, slide_number=3),
+    ])
     db_session.flush()
 
     first = client.get(f"/admin/api/takes/{take.id}/live", auth=ADMIN).json()
@@ -505,11 +510,51 @@ def test_take_live_returns_rows_after_cursors_in_order(
     assert first["seconds"][0]["voice"] is None
     assert [s["seq"] for s in rest["segments"]] == [2, 3]
     assert [s["t_ms"] for s in rest["seconds"]] == [3000]
+    slides = [{"started_ms": 0, "slide_number": 1}, {"started_ms": 5000, "slide_number": 2}]
+    assert first["slide_events"] == slides
+    assert rest["slide_events"] == slides
 
 
 @pytest.mark.usefixtures("admin_account")
 def test_take_live_of_unknown_take_is_not_found(client: TestClient) -> None:
     response = client.get(f"/admin/api/takes/{uuid.uuid4()}/live", auth=ADMIN)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "TAKE_NOT_FOUND"
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_script_returns_slides_of_take_script_version(
+    client: TestClient, db_session: Session
+) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    take = _take(db_session, pitch, 1, status="RUNNING")
+    newer = ScriptVersion(pitch_id=pitch.id, version=2, content="새 대본")
+    db_session.add(newer)
+    db_session.flush()
+    db_session.add_all([
+        ScriptSlide(
+            script_version_id=take.script_version_id, slide_number=2, full_content="둘째 장"
+        ),
+        ScriptSlide(
+            script_version_id=take.script_version_id, slide_number=1, full_content="첫 장"
+        ),
+        ScriptSlide(script_version_id=newer.id, slide_number=1, full_content="새 버전"),
+    ])
+    db_session.flush()
+
+    response = client.get(f"/admin/api/takes/{take.id}/script", auth=ADMIN)
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"slide_number": 1, "full_content": "첫 장"},
+        {"slide_number": 2, "full_content": "둘째 장"},
+    ]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_script_of_unknown_take_is_not_found(client: TestClient) -> None:
+    response = client.get(f"/admin/api/takes/{uuid.uuid4()}/script", auth=ADMIN)
 
     assert response.status_code == 404
     assert response.json()["code"] == "TAKE_NOT_FOUND"

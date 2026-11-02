@@ -19,6 +19,7 @@ from pitch_coach_backend.module.admin.dto import (
     AdminPage,
     AdminPitchAI,
     AdminScriptDetail,
+    AdminScriptSlide,
     AdminSegmentWords,
     AdminSlideEvent,
     AdminStandardAnalysis,
@@ -145,7 +146,14 @@ def get_take_live(
         status=status,
         segments=[AdminLiveSegment(**row) for row in segments],
         seconds=[AdminLiveSecond(**row) for row in seconds],
+        slide_events=[AdminSlideEvent(**row) for row in repository.slide_events(db, take_id)],
     )
+
+
+def get_take_script(db: Session, take_id: uuid.UUID) -> list[AdminScriptSlide]:
+    if repository.take_status(db, take_id) is None:
+        raise NonExistentTake()
+    return [AdminScriptSlide(**row) for row in repository.take_script_slides(db, take_id)]
 
 
 def get_take_results(db: Session, take_id: uuid.UUID) -> AdminTakeResults:

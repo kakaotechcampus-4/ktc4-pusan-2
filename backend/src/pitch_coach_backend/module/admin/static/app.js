@@ -316,7 +316,8 @@ for (const id of ['suggestions-category']) {
 
 const LIVE_POLL_MS = 3000;
 const LIVE_STATUSES = ['READY', 'RUNNING'];
-const live = { takeId: null, timer: null, request: 0, segments: [], seconds: [] };
+const live = { takeId: null, timer: null, request: 0, segments: [], seconds: [], slideEvents: [], script: [] };
+const scriptLoad = { request: 0 };
 
 function clock(ms) {
   const s = Math.floor(ms / 1000);
@@ -350,13 +351,14 @@ function liveButton(take) {
 function openLive(take) {
   clearTimeout(live.timer);
   live.request += 1;
-  Object.assign(live, { takeId: take.id, timer: null, segments: [], seconds: [] });
+  Object.assign(live, { takeId: take.id, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
   document.getElementById('live-title').textContent =
     `${take.user_name} · ${take.pitch_title} · ${take.take_number}회차`;
   document.getElementById('live-error').hidden = true;
   const panel = document.getElementById('live');
   panel.hidden = false;
   renderLive(take.status);
+  loadScript();
   pollLive();
   loadResults();
   panel.scrollIntoView({ behavior: 'smooth' });
@@ -366,7 +368,8 @@ function closeLive() {
   clearTimeout(live.timer);
   live.request += 1;
   results.request += 1;
-  Object.assign(live, { takeId: null, timer: null, segments: [], seconds: [] });
+  scriptLoad.request += 1;
+  Object.assign(live, { takeId: null, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
   document.getElementById('live').hidden = true;
 }
 
@@ -381,6 +384,7 @@ async function pollLive() {
     if (request !== live.request) return;
     live.segments.push(...data.segments);
     live.seconds.push(...data.seconds);
+    live.slideEvents = data.slide_events;
     error.hidden = true;
     renderLive(data.status);
     const running = LIVE_STATUSES.includes(data.status);
@@ -402,13 +406,73 @@ function renderLive(status) {
       textContent: ` 전사 ${live.segments.length}개 · 1초 기록 ${live.seconds.length}개`,
     }),
   );
-  renderTable('live-segments', SEGMENT_COLUMNS, [...live.segments].reverse(), '아직 저장된 전사가 없습니다');
+  renderScript();
+  renderTable('live-segments', SEGMENT_COLUMNS, [...live.segments], '아직 저장된 전사가 없습니다');
   renderTable(
     'live-seconds',
     SECOND_COLUMNS,
-    [...live.seconds].reverse(),
+    [...live.seconds],
     '1초 기록이 없습니다 — 동의하지 않은 연습은 리포트를 만든 뒤 지웁니다',
   );
+}
+
+function slideAt(events, ms) {
+  let current = null;
+  for (const e of events) {
+    if (e.started_ms > ms) break;
+    current = e.slide_number;
+  }
+  return current;
+}
+
+function scriptRows() {
+  const events = [...live.slideEvents].sort((a, b) => a.started_ms - b.started_ms);
+  const spoken = new Map();
+  for (const s of live.segments) {
+    const slide = slideAt(events, s.start_ms);
+    if (!spoken.has(slide)) spoken.set(slide, []);
+    spoken.get(slide).push(s);
+  }
+  const numbers = new Set([...live.script.map((s) => s.slide_number), ...spoken.keys()]);
+  const script = new Map(live.script.map((s) => [s.slide_number, s.full_content]));
+  return [...numbers]
+    .sort((a, b) => (a ?? -1) - (b ?? -1))
+    .map((slide) => ({ slide, script: script.get(slide), segments: spoken.get(slide) ?? [] }));
+}
+
+const spokenLines = (segments) =>
+  segments.length
+    ? el('div', {}, segments.map((s) =>
+        el('span', { className: 'block' }, [
+          el('span', { className: 'muted', textContent: `${clock(s.start_ms)} ` }),
+          s.transcript,
+        ])))
+    : el('span', { className: 'muted', textContent: '말한 내용 없음' });
+
+const SCRIPT_TRANSCRIPT_COLUMNS = [
+  ['장', (r) => r.slide ?? '장 전환 전', true],
+  ['대본', (r) => (r.slide == null ? '—' : opinionText(r.script ?? '대본 없음'))],
+  ['확정 전사', (r) => spokenLines(r.segments)],
+];
+
+async function loadScript() {
+  const request = ++scriptLoad.request;
+  const error = document.getElementById('live-script-error');
+  error.hidden = true;
+  try {
+    const script = await getJSON(`api/takes/${live.takeId}/script`);
+    if (request !== scriptLoad.request) return;
+    live.script = script;
+    renderScript();
+  } catch (failure) {
+    if (request !== scriptLoad.request) return;
+    error.textContent = `대본을 불러오지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+  }
+}
+
+function renderScript() {
+  renderTable('live-script', SCRIPT_TRANSCRIPT_COLUMNS, scriptRows(), '대본이 없습니다');
 }
 
 document.getElementById('live-close').addEventListener('click', closeLive);
