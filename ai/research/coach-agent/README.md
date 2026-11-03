@@ -76,7 +76,7 @@ coach-agent/
 | 옮긴 뒤 확인 | 결과 |
 |---|---|
 | 옮긴 코어 · 예시 · 프롬프트 | 이름만 바뀜(100%) |
-| 테스트 수 | 옮기기 전 605 passed = 옮긴 뒤 서비스 465 + 이 폴더 140 (+ 사본 검사 1). 그 뒤의 테스트 수는 기능 문서 10절 |
+| 테스트 수 | 옮기기 전 605 passed = 옮긴 뒤 서비스 465 + 이 폴더 140 (+ 사본 검사 1) |
 | `python -m coach_lab.replay` | 16/16 통과, 출력은 처리 시간(p50 · p95)만 다름 |
 | `evaluate --sweep` · `recovery_eval` · `coach_lab.examples` | 다시 만든 `take_result.json` · `recovery.json` · 예시가 옮기기 전과 같음 |
 
