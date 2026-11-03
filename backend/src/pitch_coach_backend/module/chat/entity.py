@@ -258,9 +258,7 @@ class ChatDailyUsage(UUIDPrimaryKeyMixin, Base):
     reassessments: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
-    goal_checks: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    goal_checks: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
@@ -322,9 +320,7 @@ class ChatRunLog(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
 
 class ChatDiagnostic(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "chat_diagnostics"
-    __table_args__ = (
-        UniqueConstraint("run_id", "turn_call", name="uq_chat_diagnostics_run_call"),
-    )
+    __table_args__ = (UniqueConstraint("run_id", "turn_call", name="uq_chat_diagnostics_run_call"),)
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True, nullable=False
