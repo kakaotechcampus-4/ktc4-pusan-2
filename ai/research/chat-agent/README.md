@@ -54,6 +54,8 @@ chat-agent/
 | `state.py` | 실행 상태 서명 · 검증(5-6): HMAC · `kid` · 검증 순서 · 크기 · 만료 | payload · 키 → 서명 dict, 서명 dict → payload 또는 409 | 턴(멈춤 · 이어 부르기) | 외곽 모양을 바꾸면 `STATE_V` |
 | `runctx.py` | 한 호출의 실행 맥락: 범위 · 피치 · 읽은 Take · 목표 · 근거 등록부 · 도구 캐시 | 요청 → `RunCtx` | 도구 · 행동 · 루프 | — |
 | `tools/` | 읽기 도구 8개(5-7): 엄격한 인자, 결과에 근거 id, 캐시, trace 요약(사용자 글 없음) | 맥락 · 인자 → `ToolResult` · `TraceItem` | 루프(조사) | 도구를 더하면 `TOOL_SCHEMA_VERSION`과 5-7 |
+| `actions.py` | 행동(5-8): 행동 도구 인자, 허용 근거 검사(6-2), 목표 제안 카드로 낮추기, 결과 짝 · 반영 | 모델 호출 → 행동 · 카드, BE 결과 → 반영 · 성공 문장 | 루프 | 자율 등급 표는 5-8 |
+| `budget.py` | 한도(8-2 · 8-3): 모델 · 도구 · 행동 · 토큰 · 시간 예약, 답 쓰기 · 고치기 몫 남기기 | 누적량 → 예약 또는 `LimitHit` | 행동 · 루프 | 숫자는 `config.py` |
 | `examples/` | 요청 · 스트림 · 오류 · 행동 결과 예시 JSON(5-10) | — | 계약 시험 · BE 계약 시험 | `python -m chat_agent_lab.examples` 로 다시 만든다 |
 
 ### 2-2. 연구 전용 `src/chat_agent_lab/`

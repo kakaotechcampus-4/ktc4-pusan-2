@@ -1,0 +1,981 @@
+"""행동 — 정의 · 허용 근거 검사 · 행동 만들기 · 결과 검사 · 다시 평가 비교 · 목표 제안 (기능 문서 5-8 · 6-2 · 6-3 · 6-6 · 6-7).
+
+- 누가 쓰나: loop.py. 모델이 행동 도구(`fetch_pitch` · `fetch_take` · `reassess` · `save_goal`)를 고르면 `propose()`가
+  행동을 만들거나 낮추거나 버린다. 이어 부를 때 `apply_result()`가 BE의 결과를 검사해 문맥에 반영한다.
+- 모델은 `type` · 인자 · `reason` · `authorized_by` 만 낸다. `action_id` · 자율 등급 · 순번 · `idempotency_key` 는 코드가 만든다(5-8 · L1-23).
+  목표 값(기준값 · 판 · 범위 · operator · min_delta)도 모델 값을 받지 않고 기준 Take 의 실제 기록으로 코드가 만든다(L4-11).
+- 허용 근거 검사(6-2, 저장 · 이동 행동): ① 처음 사용자 말 원문의 부분 문자열 ② 인용을 포함한 절 전체에 부정 · 취소 · 조건 ·
+  남의 말 인용이 없음 ③ 인용에 행동 낱말 + 절에 요청형 표현. 하나라도 어기면 실행하지 않고 제안 카드 · [연습 준비로] 버튼으로 낮춘다.
+  이 검사는 간접 표현을 완벽히 가리지 못한다(15-2). 그래서 저장 · 이동은 되돌릴 수 있는 것만 자동으로 둔다.
+- 고칠 때: 낱말 목록은 config.py(바꾸면 FEATURE_VERSION). 행동 모양을 바꾸면 TOOL_SCHEMA_VERSION.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+from .budget import Budget
+from .claims import goal_conflict
+from .config import ChatAgentConfig
+from .evidence import canonical_json
+from .goals import build_goal_draft
+from .runctx import RunCtx
+from .schemas import (
+    Action,
+    ActionResult,
+    CriteriaTarget,
+    Goal,
+    GoalDraft,
+    GoalOption,
+    GoalProposalCard,
+    PitchContext,
+    ReassessResultCard,
+    ReassessSide,
+    TakeSnapshot,
+)
+
+#: 행동마다 코드에 고정한 자율 등급(6-2). 모델이 바꾸지 못한다
+AUTONOMY: dict[str, str] = {
+    "FETCH_PITCH": "AUTO",
+    "FETCH_TAKE": "AUTO",
+    "REASSESS": "AUTO",
+    "SAVE_GOAL": "AUTO_UNDO",
+    "START_PRACTICE": "AUTO_UNDO",
+}
+#: 허용 근거가 필요한 행동(저장 · 이동 · ASK)
+NEEDS_AUTHORIZATION = frozenset({"SAVE_GOAL", "START_PRACTICE"})
+
+#: 목표 지표 → 차원(목표 충돌 판정 · 전문가 추천 안)
+GOAL_METRIC_DIM = {
+    "audience_ratio": "audience_gaze",
+    "filler_per_min": "fluency",
+    "cpm": "pacing_rhythm",
+    "duration_ms": "pacing_rhythm",
+}
+#: 우선 개선 차원 → 추천할 목표 지표(전문가 추천 안, 6-3)
+DIM_GOAL_METRIC = {
+    "audience_gaze": "audience_ratio",
+    "fluency": "filler_per_min",
+    "pacing_rhythm": "cpm",
+}
+
+
+# ── 모델에 주는 행동 도구 ─────────────────────────────────────────────────
+
+
+class _A(BaseModel):
+    # strict: 형 변환("3" → 3 · "true" → True)도 틀린 인자로 본다(L1-15 · L1-23)
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class FetchPitchArgs(_A):
+    pitch_id: str | None = None
+    name: str | None = Field(default=None, max_length=100)
+    reason: str = Field(default="", max_length=200)
+
+    @model_validator(mode="after")
+    def _one(self) -> FetchPitchArgs:
+        if (self.pitch_id is None) == (self.name is None):
+            raise ValueError("pitch_id · name 중 정확히 하나")
+        return self
+
+
+class FetchTakeArgs(_A):
+    take_id: str
+    reason: str = Field(default="", max_length=200)
+
+
+class ReassessChange(_A):
+    script_used: bool | None = None
+    targets: list[CriteriaTarget] | None = Field(default=None, max_length=20)
+
+    @model_validator(mode="after")
+    def _one(self) -> ReassessChange:
+        if (self.script_used is None) == (self.targets is None):
+            raise ValueError("허용 키 정확히 하나(script_used 또는 targets)")
+        return self
+
+
+class ReassessArgs(_A):
+    take_id: str
+    change: ReassessChange
+    reason: str = Field(default="", max_length=200)
+
+
+class SaveGoalArgs(_A):
+    metric: str
+    slide_number: int | None = Field(default=None, ge=1)
+    base_take_id: str
+    #: 이번 사용자 말에서 저장을 요청한 부분 그대로
+    authorized_by: str | None = Field(default=None, max_length=300)
+    reason: str = Field(default="", max_length=200)
+
+
+ACTION_TOOL_ARGS: dict[str, type[BaseModel]] = {
+    "fetch_pitch": FetchPitchArgs,
+    "fetch_take": FetchTakeArgs,
+    "reassess": ReassessArgs,
+    "save_goal": SaveGoalArgs,
+}
+ACTION_TOOL_TYPE = {
+    "fetch_pitch": "FETCH_PITCH",
+    "fetch_take": "FETCH_TAKE",
+    "reassess": "REASSESS",
+    "save_goal": "SAVE_GOAL",
+}
+ACTION_DESCRIPTIONS = {
+    "fetch_pitch": "다른 피치의 자세한 자료를 가져와 대화 범위를 그 피치로 바꾼다(BE가 실행). pitch_id 또는 name 하나.",
+    "fetch_take": "기본 자료에 없는 Take(같은 피치) 결과 전체를 가져온다(BE가 실행).",
+    "reassess": "바꾼 조건(대본 사용 script_used 또는 내 기준 targets 하나)으로 리뷰를 다시 불러 참고 결과를 만든다. 공식 결과는 바뀌지 않는다. 측정값 이의(카메라가 낮았다 등)에는 쓰지 않는다.",
+    "save_goal": "대화 목표를 저장한다. 지표는 audience_ratio · filler_per_min · cpm · duration_ms 중 하나. 기준값은 코드가 base_take_id 의 기록으로 정한다. authorized_by 에는 이번 사용자 말에서 저장을 요청한 부분을 글자 그대로 넣는다.",
+}
+
+
+def action_tool_definitions() -> list[dict[str, Any]]:
+    out = []
+    for name, model in ACTION_TOOL_ARGS.items():
+        schema = model.model_json_schema()
+        schema.pop("title", None)
+        out.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": ACTION_DESCRIPTIONS[name],
+                    "parameters": schema,
+                },
+            }
+        )
+    return out
+
+
+# ── 허용 근거 (6-2) ──────────────────────────────────────────────────────
+
+_SENT_SPLIT = re.compile(r"[.?!\n。？！]+")
+#: 끝이 "면"이지만 조건이 아닌 낱말(명사 · 접속 부사 "그러면")
+_NOUN_MYEON = ("화면", "장면", "측면", "전면", "이면", "표면", "정면", "평면", "방면", "그러면")
+
+
+def _clause_of(message: str, quote: str) -> str | None:
+    """인용을 포함한 원문 절(문장). 인용이 문장 경계를 넘으면 인용이 걸친 문장들을 합쳐 본다."""
+    start = message.find(quote)
+    if start < 0:
+        return None
+    end = start + len(quote)
+    bounds = [0]
+    for m in _SENT_SPLIT.finditer(message):
+        bounds.append(m.end())
+    bounds.append(len(message))
+    s = max(b for b in bounds if b <= start)
+    e = min(b for b in bounds if b >= end)
+    return message[s:e]
+
+
+def _has_condition(clause: str, cfg: ChatAgentConfig) -> bool:
+    for word in re.findall(r"[가-힣]+", clause):
+        if word in _NOUN_MYEON or any(word.endswith(n) for n in _NOUN_MYEON):
+            continue
+        if word.endswith("거든"):
+            return True
+        if word.endswith("면") and len(word) >= 2:
+            return True
+    return False
+
+
+def authorize(
+    action_type: str, authorized_by: str | None, original: str | None, cfg: ChatAgentConfig
+) -> str | None:
+    """허용 근거 검사. 통과면 None, 아니면 까닭 코드(진단 `reason_code`).
+
+    예: authorize("SAVE_GOAL", "그걸 목표로 잡고", "…그걸 목표로 잡고 다음 연습 준비해 줘", cfg) → None
+        authorize("SAVE_GOAL", "목표 저장", "목표 저장하지 마", cfg) → "NEGATION"
+    """
+    if not original:
+        return "NO_USER_MESSAGE"
+    if not authorized_by or not authorized_by.strip():
+        return "NO_QUOTE"
+    q = authorized_by.strip()
+    if q not in original:
+        return "NOT_SUBSTRING"
+    clause = _clause_of(original, q) or q
+    if any(w in clause for w in cfg.negation_words):
+        return "NEGATION"
+    if any(m in clause for m in cfg.quotation_markers):
+        return "QUOTED_SPEECH"
+    if _has_condition(clause, cfg):
+        return "CONDITION"
+    q_at = clause.find(q)
+    spots = [q_at + i for w in cfg.action_words.get(action_type, ()) if (i := q.find(w)) >= 0]
+    if not spots:
+        return "NO_ACTION_WORD"
+    pos = min(spots)
+    forms = cfg.request_forms.get(action_type, ())
+    verb = _word_at(clause, pos)
+    words = re.findall(r"[가-힣]+", clause[pos:])
+    # 동사 뒤에서 절을 끊는 말(~는데 · ~지만 · ~니까 …)이나 보조 용언(~고 있 · ~어 놓)이 오면 그 동사는 요청이 아니다
+    # ("목표를 정해 놓았는데 … 알려줘", "목표로 잡고 있었는데 결과를 알려줘")
+    if any(w.endswith(_CLAUSE_BREAKS) for w in words) or any(
+        w.startswith(_AUX_STEMS) for w in words[1:2]
+    ):
+        return "NO_REQUEST_FORM"
+    if verb.endswith("고"):
+        # "목표로 잡고 연습하러 가자"처럼 '~고'로 이은 복합 요청은 문장 끝 동사의 요청형이 앞 동사에도 걸린다(6-2 · 13-2)
+        forms = tuple({f for fs in cfg.request_forms.values() for f in fs})
+    # 요청형은 명령 · 권유라 절 끝에 온다: 마지막 두 낱말 안에 있어야 한다
+    tail = " ".join(words[-2:])
+    if not words or not any(f in tail for f in forms):
+        return "NO_REQUEST_FORM"
+    return None
+
+
+#: 절을 끊는 연결 어미(뒤의 요청형이 앞 동사에 걸리지 않음)
+_CLAUSE_BREAKS = (
+    "는데",
+    "은데",
+    "던데",
+    "지만",
+    "니까",
+    "으니",
+    "어서",
+    "아서",
+    "해서",
+    "면서",
+    "더니",
+)
+#: 동사 바로 뒤에 오면 서술(진행 · 완료)이 되는 보조 용언 줄기
+_AUX_STEMS = ("있", "놓", "놨", "뒀", "두었", "봤", "싶")
+
+
+def _word_at(text: str, pos: int) -> str:
+    """pos 가 든 한글 낱말 전체."""
+    s = pos
+    while s > 0 and "가" <= text[s - 1] <= "힣":
+        s -= 1
+    e = pos
+    while e < len(text) and "가" <= text[e] <= "힣":
+        e += 1
+    return text[s:e]
+
+
+# ── 행동 만들기 ──────────────────────────────────────────────────────────
+
+
+@dataclass
+class Proposal:
+    """`propose()`의 결과 하나."""
+
+    #: PROPOSED(행동을 낸다) · DOWNGRADED(제안 카드 · 버튼으로 낮춤) · DROPPED(버림) · TOOL_ERROR(모델에 오류로 돌려줌)
+    result: Literal["PROPOSED", "DOWNGRADED", "DROPPED", "TOOL_ERROR"]
+    action: Action | None = None
+    card: dict[str, Any] | None = None
+    reason_code: str | None = None
+    authorization: Literal["PASS", "FAIL", "NOT_REQUIRED"] = "NOT_REQUIRED"
+    #: 모델에 돌려줄 결과(행동을 내지 않았을 때)
+    tool_message: dict[str, Any] = field(default_factory=dict)
+
+
+def args_hash(args: dict[str, Any]) -> str:
+    return hashlib.sha256(canonical_json(args).encode("utf-8")).hexdigest()[:16]
+
+
+def _goal_options_hash(goal: GoalDraft | None) -> str | None:
+    if goal is None:
+        return None
+    return hashlib.sha256(canonical_json(goal.model_dump(mode="json")).encode("utf-8")).hexdigest()[
+        :16
+    ]
+
+
+def propose(
+    tool_name: str,
+    raw_args: dict[str, Any] | None,
+    *,
+    ctx: RunCtx,
+    budget: Budget,
+    seq: int,
+    original_message: str | None,
+    trigger: str,
+) -> Proposal:
+    """모델이 고른 행동 도구 하나를 행동 · 제안 카드 · 오류로 바꾼다."""
+    model = ACTION_TOOL_ARGS.get(tool_name)
+    if model is None or raw_args is None:
+        return Proposal(
+            result="TOOL_ERROR",
+            reason_code="BAD_ARGS",
+            tool_message=_err("TOOL_INVALID", "BAD_ARGS"),
+        )
+    try:
+        a = model.model_validate(raw_args)
+    except ValidationError:
+        return Proposal(
+            result="TOOL_ERROR",
+            reason_code="BAD_ARGS",
+            tool_message=_err("TOOL_INVALID", "BAD_ARGS"),
+        )
+    atype = ACTION_TOOL_TYPE[tool_name]
+    run_id = ctx.req.run.run_id
+    if trigger == "TAKE_REVIEWED" and atype in NEEDS_AUTHORIZATION:
+        # 사용자 말이 없는 턴에서는 저장 · 이동 행동을 내지 않는다(6-2)
+        return Proposal(
+            result="DROPPED",
+            reason_code="NO_USER_TURN",
+            tool_message=_err("NOT_ALLOWED", "자동 목표 확인 턴에서는 저장하지 않는다"),
+        )
+
+    args: dict[str, Any]
+    authorized_by: str | None = None
+    authorization: Literal["PASS", "FAIL", "NOT_REQUIRED"] = "NOT_REQUIRED"
+    if isinstance(a, FetchPitchArgs):
+        args = {"pitch_id": a.pitch_id, "name": a.name}
+        if a.pitch_id is not None and a.pitch_id == ctx.scope_pitch_id:
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="ALREADY_IN_SCOPE",
+                tool_message=_err("ALREADY_IN_SCOPE", "이미 지금 범위의 피치다"),
+            )
+    elif isinstance(a, FetchTakeArgs):
+        if ctx.pitch is None:
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="NO_SCOPE",
+                tool_message=_err("NO_SCOPE", "범위 피치가 없다. 먼저 fetch_pitch"),
+            )
+        if a.take_id in ctx.snapshots:
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="ALREADY_LOADED",
+                tool_message=_err("ALREADY_LOADED", "이미 읽을 수 있는 Take 다"),
+            )
+        if a.take_id in ctx.not_found:
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="NOT_FOUND",
+                tool_message=_err("NOT_FOUND", "이 실행에서 찾을 수 없던 Take 다"),
+            )
+        args = {"pitch_id": ctx.scope_pitch_id, "take_id": a.take_id}
+    elif isinstance(a, ReassessArgs):
+        if a.take_id not in ctx.summaries:
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="NOT_IN_SCOPE",
+                tool_message=_err("NOT_FOUND", "범위 피치의 Take 가 아니다"),
+            )
+        change = (
+            {"script_used": a.change.script_used}
+            if a.change.script_used is not None
+            else {"targets": [t.model_dump() for t in a.change.targets or []]}
+        )
+        args = {"take_id": a.take_id, "change": change}
+    else:
+        assert isinstance(a, SaveGoalArgs)
+        return _propose_goal(a, ctx=ctx, budget=budget, seq=seq, original_message=original_message)
+
+    hit = budget.reserve_action(atype)
+    if hit is not None:
+        return Proposal(
+            result="DROPPED", reason_code=hit.code, tool_message=_err("LIMIT", hit.code)
+        )
+    action = Action(
+        action_id=f"{run_id}:a{seq}",
+        type=atype,  # type: ignore[arg-type]
+        args=args,
+        autonomy=AUTONOMY[atype],  # type: ignore[arg-type]
+        args_hash=None,
+        idempotency_key=f"{run_id}:{seq}",
+        reason=getattr(a, "reason", "") or atype,
+        authorized_by=authorized_by,
+    )
+    return Proposal(result="PROPOSED", action=action, authorization=authorization)
+
+
+def _err(code: str, message: str) -> dict[str, Any]:
+    return {"ok": False, "error": {"code": code, "message": message}}
+
+
+def _propose_goal(
+    a: SaveGoalArgs, *, ctx: RunCtx, budget: Budget, seq: int, original_message: str | None
+) -> Proposal:
+    cfg = ctx.cfg
+    run_id = ctx.req.run.run_id
+    base = ctx.snapshots.get(a.base_take_id)
+    if base is None:
+        code = "NOT_LOADED" if a.base_take_id in ctx.summaries else "NOT_FOUND"
+        return Proposal(
+            result="TOOL_ERROR", reason_code=code, tool_message=_err(code, "기준 Take 결과가 없다")
+        )
+    draft = build_goal_draft(
+        base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg
+    )
+    review = base.results.review or {}
+    dims = review.get("dimensions") or {}
+    requested_dim = GOAL_METRIC_DIM.get(a.metric)
+    conflict = requested_dim is not None and goal_conflict(requested_dim, dims)
+    # 고른 제안(choice)은 내용 · 근거가 그대로이고 같은 목표일 때만 허용 근거다(6-2 6번 · L6-22).
+    # 그대로면 다시 따지지 않고, 바뀌었거나 다른 목표면 보통 허용 근거 검사로 간다(→ 새 제안)
+    chosen_ok = False
+    if ctx.req.choice is not None and not isinstance(draft, str):
+        valid, chosen = proposal_still_valid(ctx)
+        chosen_ok = valid and chosen is not None and _same_goal(chosen, draft)
+    if not chosen_ok and (isinstance(draft, str) or conflict):
+        # 잴 수 없거나 기록과 어긋나는 목표는 저장하지 않고 사용자 안 · 추천 안을 나란히 보인다(6-3 · L6-08 · L6-23)
+        card = goal_proposal_card(
+            ctx=ctx,
+            base=base,
+            user_draft=None if isinstance(draft, str) else draft,
+            user_reason=a.reason or "말씀하신 목표",
+            dims=dims,
+            seq=seq,
+        )
+        return Proposal(
+            result="DOWNGRADED",
+            card=card,
+            reason_code="UNMEASURABLE" if isinstance(draft, str) else "GOAL_CONFLICT",
+            tool_message={
+                "ok": True,
+                "data": {
+                    "proposal": "목표 제안 카드를 만들었다(저장하지 않음)",
+                    "reason": "UNMEASURABLE" if isinstance(draft, str) else "GOAL_CONFLICT",
+                },
+            },
+        )
+    assert not isinstance(draft, str)
+    if chosen_ok:
+        authorization: Literal["PASS", "FAIL", "NOT_REQUIRED"] = "PASS"
+        quote = a.authorized_by
+    else:
+        quote = a.authorized_by
+        why = authorize("SAVE_GOAL", quote, original_message, cfg)
+        authorization = "PASS" if why is None else "FAIL"
+        if why is not None:
+            card = goal_proposal_card(
+                ctx=ctx,
+                base=base,
+                user_draft=draft,
+                user_reason=a.reason or "말씀하신 목표",
+                dims=dims,
+                seq=seq,
+            )
+            return Proposal(
+                result="DOWNGRADED",
+                card=card,
+                reason_code=why,
+                authorization="FAIL",
+                tool_message={
+                    "ok": True,
+                    "data": {
+                        "proposal": "저장 요청이 분명하지 않아 목표 제안 카드로 보였다",
+                        "reason": why,
+                    },
+                },
+            )
+    hit = budget.reserve_action("SAVE_GOAL")
+    if hit is not None:
+        return Proposal(
+            result="DROPPED", reason_code=hit.code, tool_message=_err("LIMIT", hit.code)
+        )
+    args = {"expected_goal_version": ctx.goal_version, "goal": draft.model_dump(mode="json")}
+    action = Action(
+        action_id=f"{run_id}:a{seq}",
+        type="SAVE_GOAL",
+        args=args,
+        autonomy="AUTO_UNDO",
+        args_hash=None,
+        idempotency_key=f"{run_id}:{seq}",
+        reason=a.reason or "대화 목표 저장",
+        authorized_by=quote.strip() if quote else None,
+    )
+    return Proposal(result="PROPOSED", action=action, authorization=authorization)
+
+
+def goal_proposal_card(
+    *,
+    ctx: RunCtx,
+    base: TakeSnapshot,
+    user_draft: GoalDraft | None,
+    user_reason: str,
+    dims: dict[str, Any],
+    seq: int,
+) -> dict[str, Any]:
+    """사용자 안 · 전문가 추천 안을 담은 GOAL_PROPOSAL 카드(6-3). 잴 수 없는 사용자 안은 goal null(선택 버튼 없음)."""
+    cfg = ctx.cfg
+    options: list[GoalOption] = []
+    options.append(
+        GoalOption(
+            label="USER",
+            goal=user_draft,
+            reason=user_reason
+            if user_draft is not None
+            else "말씀하신 목표는 기록으로 잴 수 없어요",
+            evidence_ids=[],
+            content_hash=_goal_options_hash(user_draft),
+        )
+    )
+    expert: GoalDraft | None = None
+    for dim, state in dims.items():
+        if state == "PRIORITY" and dim in DIM_GOAL_METRIC:
+            d = build_goal_draft(
+                base, DIM_GOAL_METRIC[dim], None, pitch_id=ctx.scope_pitch_id or "", cfg=cfg
+            )
+            if not isinstance(d, str) and (user_draft is None or d.metric != user_draft.metric):
+                expert = d
+                break
+    if expert is not None:
+        options.append(
+            GoalOption(
+                label="EXPERT",
+                goal=expert,
+                reason="리뷰에서 우선 개선인 차원이에요",
+                evidence_ids=[],
+                content_hash=_goal_options_hash(expert),
+            )
+        )
+    basis = ctx.registry.basis_for([], corpus_version=ctx.corpus_version)
+    basis = basis.model_copy(update={"fingerprint": _proposal_fingerprint(ctx, base)})
+    card = GoalProposalCard(
+        proposal_id=f"{ctx.req.run.run_id}:gp{seq}",
+        options=options,
+        evidence_basis=basis,
+    )
+    return card.model_dump(mode="json")
+
+
+def _proposal_fingerprint(ctx: RunCtx, base: TakeSnapshot) -> str:
+    """목표 제안의 근거 지문: 기준 Take 의 결과 판 · 규칙 판 + 피치의 지금 대본 · 발표자료 · 평가 기준 버전.
+
+    고른 뒤 이 값이 바뀌면 다시 제안한다(6-3 '제안을 고른 뒤' · L6-22: 결과 판이 그대로여도 대본 · 평가 기준이 바뀌면 새 제안).
+    """
+    rv = ctx.version_of(base)
+    fp_src = canonical_json(
+        {
+            "take": rv.take_id,
+            "results": rv.results,
+            "rules": rv.rule_versions,
+            "pv": rv.script_version_id,
+            "presentation": rv.presentation_version_id,
+            "standard": rv.standard_version,
+        }
+    )
+    return hashlib.sha256(fp_src.encode("utf-8")).hexdigest()[:16]
+
+
+def _same_goal(a: GoalDraft, b: GoalDraft) -> bool:
+    return canonical_json(a.model_dump(mode="json")) == canonical_json(b.model_dump(mode="json"))
+
+
+# ── 결과 검사 · 반영 (5-8 '결과 검사') ─────────────────────────────────────
+
+
+class ResultMismatch(Exception):
+    """결과가 요청한 행동과 맞지 않는다(id · type · 개수 · 대상). turn.py 는 409, 내용 불일치는 루프가 끝낸다."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def match_result(pending: dict[str, Any] | None, results: list[ActionResult]) -> ActionResult:
+    """대기 행동 1개에 결과 정확히 1개(P0). 요청하지 않은 id · 다른 type · 두 개는 ResultMismatch(→ 409)."""
+    if pending is None:
+        raise ResultMismatch("NO_PENDING_ACTION")
+    if len(results) != 1:
+        raise ResultMismatch("RESULT_COUNT")
+    r = results[0]
+    if r.action_id != pending["action_id"] or r.type != pending["type"]:
+        raise ResultMismatch("RESULT_MISMATCH")
+    return r
+
+
+@dataclass
+class Applied:
+    """결과를 문맥에 반영한 결과."""
+
+    ok: bool
+    #: 모델에 돌려줄 도구 결과
+    tool_message: dict[str, Any]
+    #: 성공 문장(코드가 검증된 결과로 그림, ACTION_RESULT)
+    success_text: str | None = None
+    card: dict[str, Any] | None = None
+    #: 결과가 요청과 달라 실행을 끝내야 하는가(L1-30)
+    mismatch: bool = False
+    scope_changed: bool = False
+    reason_code: str | None = None
+
+
+def apply_result(pending: dict[str, Any], r: ActionResult, *, ctx: RunCtx) -> Applied:
+    """검사한 행동 결과를 문맥에 반영한다. status · data · error 가 서로 맞지 않으면 mismatch."""
+    from . import templates
+
+    atype = pending["type"]
+    args = pending["args"]
+    if r.status == "SUCCEEDED" and (r.data is None or r.error is not None):
+        return Applied(
+            ok=False,
+            tool_message=_err("RESULT_INVALID", "성공인데 data 가 없다"),
+            mismatch=True,
+            reason_code="SUCCEEDED_WITHOUT_DATA",
+        )
+    if r.status == "FAILED" and (r.error is None or r.data is not None):
+        # 실패에는 error 만 있다. 실패인데 data 가 있으면(L1-30 'FAILED+성공 data') 결과를 믿지 않는다
+        return Applied(
+            ok=False,
+            tool_message=_err("RESULT_INVALID", "실패 결과의 error · data 가 맞지 않는다"),
+            mismatch=True,
+            reason_code="FAILED_WITHOUT_ERROR" if r.error is None else "FAILED_WITH_DATA",
+        )
+    if r.status == "AMBIGUOUS" and atype != "FETCH_PITCH":
+        return Applied(
+            ok=False,
+            tool_message=_err("RESULT_INVALID", "AMBIGUOUS 는 FETCH_PITCH 만"),
+            mismatch=True,
+            reason_code="BAD_STATUS",
+        )
+    if r.status == "FAILED":
+        code = r.error.code if r.error else "FAILED"
+        return Applied(
+            ok=False,
+            tool_message={
+                "ok": False,
+                "error": {"code": code, "message": "행동이 실패했다. 다른 길을 고른다"},
+            },
+            reason_code="ACTION_FAILED",
+        )
+    data = r.data or {}
+    if atype == "FETCH_PITCH":
+        if r.status == "AMBIGUOUS":
+            cands = data.get("candidates") or []
+            view = [
+                {"pitch_id": c.get("pitch_id"), "title": c.get("title")}
+                for c in cands
+                if isinstance(c, dict)
+            ]
+            return Applied(
+                ok=False,
+                tool_message={
+                    "ok": False,
+                    "read_state": "AMBIGUOUS",
+                    "data": {"candidates": view},
+                    "error": {
+                        "code": "AMBIGUOUS",
+                        "message": "후보가 여럿이다. 사용자에게 고르게 한다",
+                    },
+                },
+                reason_code="AMBIGUOUS",
+            )
+        try:
+            pitch = PitchContext.model_validate(data.get("pitch"))
+        except ValidationError:
+            return Applied(
+                ok=False,
+                tool_message=_err("RESULT_INVALID", "피치 자료 모양이 틀렸다"),
+                mismatch=True,
+                reason_code="BAD_DATA",
+            )
+        if args.get("pitch_id") is not None and pitch.info.pitch_id != args["pitch_id"]:
+            return Applied(
+                ok=False,
+                tool_message=_err("RESULT_INVALID", "다른 피치"),
+                mismatch=True,
+                reason_code="TARGET_MISMATCH",
+            )
+        ctx.set_pitch(pitch)
+        ctx.touch(pitch.info.pitch_id)
+        text = templates.ACTION_SUCCESS["FETCH_PITCH"].format(title=pitch.info.title)
+        return Applied(
+            ok=True,
+            tool_message={
+                "ok": True,
+                "data": {
+                    "pitch_id": pitch.info.pitch_id,
+                    "title": pitch.info.title,
+                    "takes": len(pitch.takes),
+                },
+            },
+            success_text=text,
+            scope_changed=True,
+        )
+    if atype == "FETCH_TAKE":
+        try:
+            snap = TakeSnapshot.model_validate(data.get("take"))
+        except ValidationError:
+            return Applied(
+                ok=False,
+                tool_message=_err("RESULT_INVALID", "Take 자료 모양이 틀렸다"),
+                mismatch=True,
+                reason_code="BAD_DATA",
+            )
+        if snap.summary.take_id != args["take_id"]:
+            return Applied(
+                ok=False,
+                tool_message=_err("RESULT_INVALID", "다른 Take"),
+                mismatch=True,
+                reason_code="TARGET_MISMATCH",
+            )
+        ctx.add_snapshot(snap, trusted=True)
+        ctx.touch(snap.summary.take_id)
+        text = templates.ACTION_SUCCESS["FETCH_TAKE"].format(take_number=snap.summary.take_number)
+        return Applied(
+            ok=True,
+            tool_message={
+                "ok": True,
+                "data": {
+                    "take_id": snap.summary.take_id,
+                    "take_number": snap.summary.take_number,
+                    "loaded": True,
+                },
+            },
+            success_text=text,
+        )
+    if atype == "SAVE_GOAL":
+        try:
+            goal = Goal.model_validate(data.get("goal"))
+        except ValidationError:
+            return Applied(
+                ok=False,
+                tool_message=_err("RESULT_INVALID", "목표 모양이 틀렸다"),
+                mismatch=True,
+                reason_code="BAD_DATA",
+            )
+        requested = GoalDraft.model_validate(args["goal"])
+        saved_draft = GoalDraft.model_validate(
+            goal.model_dump(exclude={"version", "status", "created_at"})
+        )
+        if (
+            saved_draft.model_dump(mode="json") != requested.model_dump(mode="json")
+            or goal.status != "OPEN"
+            or goal.version != int(args["expected_goal_version"]) + 1
+        ):
+            # 저장 결과의 버전 · 내용이 요청과 다르면 성공이라고 말하지 않고 끝낸다(5-8 · L1-30)
+            return Applied(
+                ok=False,
+                tool_message=_err("RESULT_MISMATCH", "저장 결과가 요청과 다르다"),
+                mismatch=True,
+                reason_code="GOAL_MISMATCH",
+            )
+        ctx.goal = goal
+        ctx.goal_version = goal.version
+        card = {
+            "type": "GOAL_SAVED",
+            "action_id": pending["action_id"],
+            "goal": goal.model_dump(mode="json"),
+            "reason": pending.get("reason") or "대화 목표",
+            "evidence_ids": [],
+            "undo": True,
+        }
+        return Applied(
+            ok=True,
+            tool_message={"ok": True, "data": {"saved": True, "goal_version": goal.version}},
+            success_text=templates.ACTION_SUCCESS["SAVE_GOAL"],
+            card=card,
+        )
+    if atype == "REASSESS":
+        return _apply_reassess(pending, data, ctx=ctx)
+    return Applied(
+        ok=False,
+        tool_message=_err("RESULT_INVALID", "모르는 행동"),
+        mismatch=True,
+        reason_code="UNKNOWN_ACTION",
+    )
+
+
+_RULE_FIELDS = ("score", "dimensions", "criteria_results")
+
+
+def _side(resp: dict[str, Any]) -> ReassessSide:
+    crit = [
+        {k: c.get(k) for k in ("display", "metric", "operator", "target", "observed", "status")}
+        for c in resp.get("criteria_results") or []
+        if isinstance(c, dict)
+    ]
+    return ReassessSide(
+        score=resp.get("score"),
+        dimensions=dict(resp.get("dimensions") or {}),
+        criteria_results=crit,
+    )
+
+
+def _score_ok(v: Any) -> bool:
+    return v is None or (isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100)
+
+
+def _dims_ok(d: Any) -> bool:
+    return (
+        isinstance(d, dict)
+        and bool(d)
+        and all(isinstance(k, str) and isinstance(v, str) for k, v in d.items())
+    )
+
+
+def _review_ok(x: Any) -> bool:
+    """다시 평가 A · B 결과에 비교할 규칙 칸과 판 정보가 모두 있고 형이 맞는가(5-8 결과 모양 · 6-6)."""
+    if not isinstance(x, dict) or "score" not in x:
+        return False
+    meta = x.get("meta")
+    crit = x.get("criteria_results")
+    cv = meta.get("criteria_versions") if isinstance(meta, dict) else None
+    return (
+        _score_ok(x["score"])
+        and _dims_ok(x.get("dimensions"))
+        and isinstance(crit, list)
+        and all(isinstance(c, dict) for c in crit)
+        and isinstance(meta, dict)
+        and isinstance(meta.get("schema_version"), str)
+        and bool(meta["schema_version"])
+        and (
+            cv is None
+            or (
+                isinstance(cv, dict)
+                and all(isinstance(k, str) and isinstance(v, str) and v for k, v in cv.items())
+            )
+        )
+    )  # 규칙 판(criteria_versions)이 빠지거나 다르면 아래에서 RULES_DIFFER 로 안내한다(6-6 · L4-20)
+
+
+def _official_ok(x: Any) -> bool:
+    dims = x.get("dimensions") if isinstance(x, dict) else None
+    return (
+        isinstance(x, dict)
+        and "score" in x
+        and _score_ok(x["score"])
+        and isinstance(dims, dict)
+        and all(isinstance(k, str) and isinstance(v, str) for k, v in dims.items())
+    )
+
+
+def _apply_reassess(pending: dict[str, Any], data: dict[str, Any], *, ctx: RunCtx) -> Applied:
+    """A(지금 기록 그대로) · B(허용 칸 하나만 바꿈)의 규칙 칸만 비교한다(6-6). 문장 · 다음 미션은 비교하지 않는다."""
+    from . import templates
+
+    before, after, official = data.get("before"), data.get("after"), data.get("official")
+    if not (_review_ok(before) and _review_ok(after) and _official_ok(official)):
+        # 빠진 칸을 빈 값으로 채워 비교하지 않는다: 완전한 A · B · 공식 결과만 비교한다(6-6 · L1-30 · L4-20)
+        return Applied(
+            ok=False,
+            tool_message=_err("RESULT_INVALID", "A · B 결과가 없다"),
+            mismatch=True,
+            reason_code="BAD_DATA",
+        )
+    ta, tb = before.get("take_id"), after.get("take_id")
+    if ta != pending["args"]["take_id"] or tb != pending["args"]["take_id"]:
+        return Applied(
+            ok=False,
+            tool_message=_err("RESULT_INVALID", "다른 Take 의 결과"),
+            mismatch=True,
+            reason_code="TARGET_MISMATCH",
+        )
+    cva = (before.get("meta") or {}).get("criteria_versions")
+    cvb = (after.get("meta") or {}).get("criteria_versions")
+    if not cva or not cvb or cva != cvb:
+        # 규칙 버전이 다르거나 빠지면 같은 조건 비교가 아니다(6-6 6번 · L4-20)
+        return Applied(
+            ok=False,
+            tool_message={
+                "ok": False,
+                "error": {
+                    "code": "RULES_DIFFER",
+                    "message": templates.SystemText.REASSESS_RULES_DIFFER.value,
+                },
+            },
+            reason_code="RULES_DIFFER",
+        )
+    a, b = _side(before), _side(after)
+    changed: list[str] = []
+    if a.score != b.score:
+        changed.append("score")
+    for dim in sorted(set(a.dimensions) | set(b.dimensions)):
+        if a.dimensions.get(dim) != b.dimensions.get(dim):
+            changed.append(f"dimensions.{dim}")
+    if [c.get("status") for c in a.criteria_results] != [
+        c.get("status") for c in b.criteria_results
+    ]:
+        changed.append("criteria_results")
+    official_differs = False
+    if isinstance(official, dict):
+        official_differs = (
+            official.get("score") != a.score
+            or dict(official.get("dimensions") or {}) != a.dimensions
+        )
+    card = ReassessResultCard(
+        take_id=ta,
+        change=pending["args"]["change"],
+        before=a,
+        after=b,
+        changed_fields=changed,
+        official_differs=official_differs,
+    ).model_dump(mode="json")
+    view = {
+        "changed_fields": changed,
+        "before": {"score": a.score, "dimensions": a.dimensions},
+        "after": {"score": b.score, "dimensions": b.dimensions},
+        "official_differs": official_differs,
+        "note": templates.SystemText.REASSESS_HYPOTHETICAL.value,
+    }
+    return Applied(
+        ok=True,
+        tool_message={"ok": True, "data": view},
+        success_text=templates.ACTION_SUCCESS["REASSESS"],
+        card=card,
+    )
+
+
+def start_practice_action(
+    *,
+    ctx: RunCtx,
+    authorized_by: str | None,
+    original_message: str | None,
+    seq: int,
+    budget: Budget,
+) -> tuple[Action | None, dict[str, Any], str | None]:
+    """마지막 답의 연습 준비 이동(6-2). 허용 근거가 있으면 행동 + 카드(auto:true), 없으면 버튼 카드(auto:false)만."""
+    pid = ctx.scope_pitch_id
+    if pid is None:
+        return None, {}, "NO_SCOPE"
+    why = (
+        authorize("START_PRACTICE", authorized_by, original_message, ctx.cfg)
+        if authorized_by
+        else "NO_QUOTE"
+    )
+    if why is None and budget.reserve_action("START_PRACTICE") is None:
+        run_id = ctx.req.run.run_id
+        action = Action(
+            action_id=f"{run_id}:a{seq}",
+            type="START_PRACTICE",
+            args={"pitch_id": pid},
+            autonomy="AUTO_UNDO",
+            args_hash=None,
+            idempotency_key=f"{run_id}:{seq}",
+            reason="연습 준비 화면으로 이동",
+            authorized_by=(authorized_by or "").strip(),
+        )
+        return action, {"type": "START_PRACTICE", "pitch_id": pid, "auto": True}, None
+    return None, {"type": "START_PRACTICE", "pitch_id": pid, "auto": False}, why
+
+
+def proposal_still_valid(ctx: RunCtx) -> tuple[bool, GoalDraft | None]:
+    """고른 목표 제안(`selected_proposal`)이 지금 기록과 그대로인가(6-3 '제안을 고른 뒤')."""
+    sp = ctx.req.context.selected_proposal
+    if sp is None:
+        return False, None
+    goal = sp.goal
+    if _goal_options_hash(goal) != sp.content_hash:
+        return False, None
+    base = ctx.snapshots.get(goal.base.take_id)
+    if base is None:
+        return False, None
+    if _proposal_fingerprint(ctx, base) != sp.evidence_basis.fingerprint:
+        return False, None
+    rebuilt = build_goal_draft(
+        base, goal.metric, goal.slide_number, pitch_id=goal.pitch_id, cfg=ctx.cfg
+    )
+    if isinstance(rebuilt, str):
+        return False, None
+    if json.dumps(rebuilt.model_dump(mode="json"), sort_keys=True) != json.dumps(
+        goal.model_dump(mode="json"), sort_keys=True
+    ):
+        return False, None
+    return True, goal
