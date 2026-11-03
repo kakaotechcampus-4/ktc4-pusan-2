@@ -61,6 +61,8 @@ flowchart LR
 4. **숫자 검사**: 문장마다 숫자를 규칙 단계 결과와 대조하고, 없는 숫자가 든 문장은 기본 문장으로 바꾼다.
 5. **BE**: 결과를 저장하고 `/coach/plan`을 부른다(12, `architecture.md` 1-3).
 
+이 흐름 · 저장 규칙은 공식 리뷰에만 적용한다. 대화의 다시 평가 응답은 대화 저장소에만 두고 `take_ai_results` · `missions` · `take_summaries` · Take 상태를 바꾸지 않으며 코칭 계획도 부르지 않는다. 대화의 다시 평가로 부르는 경우는 5-1 · 5-2 · 7 · 8절이다.
+
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
 리뷰 코어는 서비스 `ai/service/src/pitch_coach_ai/features/review/`, 테스트는 서비스 `tests/unit/review/`에 있다. 코어 파일과 6-1 단계의 대응은 아래와 같다.
@@ -105,6 +107,7 @@ flowchart LR
 | 호출 | 언제 | 누가 | 방식 |
 |---|---|---|---|
 | `POST /takes/review` | 대본 전달도 채점 · 확인이 끝난 뒤(대본이 없거나 채점이 모두 실패해도) | BE | 백그라운드, LLM 1번(재시도는 요청 마감 안에서만) |
+| `POST /takes/review` (같은 API) | 대화 에이전트의 다시 평가 행동 | BE | 대화 턴 안. 입력은 BE의 기존 요청 만들기 함수로 만든 요청(A)과, 거기서 `user_criteria.script_used` · `user_criteria.targets`만 바꾼 요청(B). 둘을 함께 불러 비교한다 |
 
 ## 5-2. 입력
 | 필드 | 타입 | 필수 | 뜻 |
@@ -116,6 +119,7 @@ flowchart LR
 | `missions` | list | 아니오 | 이번 Take에 실린 미션 `[{mission_id, area, slide_number, target{metric, operator, value}}]` (`slide_number`는 null(Take 전체) 또는 1 이상, 0 · 음수면 422) |
 | `user_criteria` | object · null | 아니오 | 사용자 평가 기준 `{display_criteria, targets, script_used}` (없으면 null). BE는 이 Take의 `takes.standard_version`이 가리키는 버전의 평가 기준 분석 결과로 만들고(`architecture.md` 1-3 1번, `standard_version`이 null이면 기준 없음이라 `user_criteria` null), 그 결과의 `display_criteria` · `targets`를 그대로 싣고, `values.script_used`(저장 칸 `standard_analyses.script_used`)를 `script_used`로 옮긴다. `script_used`는 bool 또는 null(언급이 없으면 null) |
 
+- 대화의 다시 평가는 BE가 공식 리뷰 때와 같은 함수로 만든 요청(A)에서 `user_criteria.script_used` · `targets`만 바꾼 요청(B)을 함께 보낸다. A의 `user_criteria`가 null이면 B는 빈 기준 `{display_criteria: [], targets: [], script_used: null}`에서 시작한다.
 - 장 번호는 1부터다(`architecture.md` 6-1). `missions` · `take_result`의 장별 값(`areas.*.slides[]`) · `problem_segments[]` · `script_coverage.evaluations[]`의 `slide_number`가 0 · 음수면 422 `VALIDATION_ERROR`다(null은 Take 전체를 뜻하는 칸에서만 받는다). 출력의 장 번호는 이 입력에서 고르므로, 잘못된 장 번호는 출력에서 500이 되지 않게 입력에서 막는다.
 - 입력 개수 한도: `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `user_criteria.targets` 20. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다. `targets` 20은 평가 기준 분석의 표시 기준 10개 × 범위 목표 2개다. `take_result` · `script_coverage` 크기는 요청 본문 크기 상한(`ai-service.md` 15절 열린 질문)으로 정한다.
 
@@ -238,14 +242,15 @@ flowchart LR
 | 문장에 입력에 없는 숫자 | 그 문장만 기본 문장으로 | 200 | 숫자를 만들지 않는다 |
 | `script_coverage`가 null (대본 없음 · 모든 장 실패) | `content_delivery`는 `NOT_EVALUABLE`, 내용 미션은 `NOT_EVALUABLE` | 200 | 내용을 추측하지 않는다 |
 | 이전 Take가 없음 | 비교 없음, 반복 문제 가중 없음 | 200 | 첫 Take |
-| 규칙 단계의 예외(입력 모양 문제) | — | 500 `INTERNAL_ERROR`. BE가 한 번 다시 부르고, 그래도 실패하면 Take를 `COMPLETED`(리뷰 없음, `take_summaries.summary` · `score` null)로 두고 리포트에 결과 없음을 보인다. BE는 `/coach/plan`을 `previous_review` null과 이전 `ACTIVE` 미션 · 반복 문제로 부른다 | Take 결과 · 대본 전달도는 있으므로 측정값은 보여 준다(공통 흐름은 `architecture.md` 1-3) |
+| 규칙 단계의 예외(입력 모양 문제) | — | 500 `INTERNAL_ERROR`. BE가 한 번 다시 부르고(공식 리뷰만. 대화의 다시 평가는 다시 부르지 않는다, 8), 그래도 실패하면 Take를 `COMPLETED`(리뷰 없음, `take_summaries.summary` · `score` null)로 두고 리포트에 결과 없음을 보인다. BE는 `/coach/plan`을 `previous_review` null과 이전 `ACTIVE` 미션 · 반복 문제로 부른다 | Take 결과 · 대본 전달도는 있으므로 측정값은 보여 준다(공통 흐름은 `architecture.md` 1-3) |
 
-- `fallback_reason`이 있는 리뷰를 BE가 나중에 다시 부를 수 있다(같은 입력이라 규칙 단계 결과는 같고 문장만 채워진다, `architecture.md` 4절). 다음 미션 선택은 LLM이 하므로 다시 부르면 미션이 바뀔 수 있다. 그래서 다시 부르는 것은 다음 Take가 시작되기 전에만 한다. 덮을 때 그 리뷰가 만든 `ACTIVE` 미션을 새 결과로 바꾸고 `/coach/plan`을 다시 부른다. 저장 직전의 다음 Take 시작 확인(발표 행 잠금)과 다시 불러도 `fallback_reason`이 올 때의 처리는 `architecture.md` 4절을 따른다.
+- `fallback_reason`이 있는 리뷰를 BE가 나중에 다시 부를 수 있다(같은 입력이라 규칙 단계 결과는 같고 문장만 채워진다, `architecture.md` 4절). 다음 미션 선택은 LLM이 하므로 다시 부르면 미션이 바뀔 수 있다. 그래서 다시 부르는 것은 다음 Take가 시작되기 전에만 한다. 덮을 때 그 리뷰가 만든 `ACTIVE` 미션을 새 결과로 바꾸고 `/coach/plan`을 다시 부른다. 저장 직전의 다음 Take 시작 확인(발표 행 잠금)과 다시 불러도 `fallback_reason`이 올 때의 처리는 `architecture.md` 4절을 따른다. 공식 리뷰의 다시 부르기 조건(`fallback_reason`이 있을 때)은 그대로다. 대화의 다시 평가는 이 조건과 상관없이 바꾼 입력으로 부르며, 결과는 공식 리뷰 · 미션 · 요약에 저장하지 않고 대화에만 남긴다. 같은 입력이면 규칙 단계 결과는 같지만 LLM 문장 · 다음 미션 고르기는 달라질 수 있으므로, BE는 같은 실행 안의 재시도에만 처음 결과를 다시 쓰고, 실행을 넘어 재사용하지 않는다.
 
 # 8. 시간 예산과 호출 규칙
 | 호출 | AI 예산 | BE 시간 제한 | BE 재시도 | 이유 |
 |---|---|---|---|---|
 | `/takes/review` | 25초 (호출 한 번 기본 12초, 남은 예산 안에서만 1번 더) | 30초 | 연결 실패 · 시간 초과 · 408 · 429 · 5xx면 1번 | `architecture.md` 3절 '백그라운드 LLM' |
+| 대화의 다시 평가 (A · B 동시) | 25초 | 각 30초 | 0회 | 대화 한 턴의 강제 종료 한도(120초) 안에 끝내기 위해서. 한쪽이라도 실패하면 다시 평가 실패(`chat-agent.md` 8-1) |
 
 - 규칙 단계는 입력 크기에 비례하는 계산이라 LLM 시간에 비해 작다. LLM 출력은 문장 몇 개라 짧다.
 - 모델: 기본 묶음(역할 `review` → 기본 묶음, `architecture.md` 9절). 역할 `review`의 출력 상한은 2,048, 추론 강도는 `low`다(서비스 `settings.LLM_ROLES`, 연구 `review_lab.llm.REASONING_EFFORT`).
@@ -337,6 +342,7 @@ sequenceDiagram
 **`takes.mission_ids`**: BE가 Take를 시작할 때 그 Take에 실은 미션 id 목록을 고정한다. 다음 Take가 리뷰보다 먼저 시작돼 같은 `ACTIVE` 미션이 두 Take에 실려도, 리뷰 요청의 `missions`는 이 목록으로 읽으므로 각 Take의 리뷰가 자기 미션을 찾는다. `missions`의 `take_id`는 가장 최근에 실린 Take로 바뀌고, `status` · `observed`는 그 Take의 리뷰만 덮는다(12-2). Take별 판정은 그 Take의 리뷰 결과(`mission_results`)에 남는다. 미션 내용(목표 · 설명)은 Take에 실린 뒤에는 바꾸지 않는다. 목록의 미션이 지워졌으면 리뷰 요청에 싣지 않고 판정하지 않는다(건너뜀).
 
 ## 12-2. 저장 규칙
+- 이 흐름 · 저장 규칙은 공식 리뷰에만 적용한다. 대화의 다시 평가 응답은 대화 저장소에만 두고 `take_ai_results` · `missions` · `take_summaries` · Take 상태를 바꾸지 않으며 코칭 계획도 부르지 않는다.
 - 리뷰 결과 · 미션 갱신 · 다음 미션 · `take_summaries`(`summary` · `score`) · Take 상태(`COMPLETED`) · `takes.review_status`(`DONE`) · `analysis_stage`(`DONE`) · `completed_at`은 한 트랜잭션으로 저장한다(일부만 남지 않게). 리뷰가 끝내 실패했을 때의 완료 상태(`review_status` `FAILED`)와 요약 칸 처리는 `architecture.md` 1-1 · 1-3을 따른다.
 - BE는 `mission_results`의 `mission_id`로 이번 Take의 미션 행을 찾아 `status` · `observed`를 바꾸고, `complete`는 `status`가 `ACHIEVED`일 때만 true로 둔다. 그 행의 `take_id`가 이 Take가 아니면(다음 Take가 먼저 시작돼 같은 미션을 실었으면) 덮지 않는다 — 그 미션은 나중 Take의 리뷰가 판정하고, 이 Take의 판정은 이 리뷰의 `mission_results`에 남는다.
 - 결과는 `meta`와 함께 저장한다(`architecture.md` 1-1).
@@ -380,8 +386,9 @@ sequenceDiagram
 | 출력 | `take_id` · `overall_summary` · `score`(정수 · null) · `dimensions`(6) · `strengths`(장 번호 포함) · `improvements` · `comparison`(`script_mode` 포함) · `mission_results` · `criteria_results` · `next_missions`(20개 · 설명 500자 이하) · `recurring_issues`(`{area, slide_number, dimension}` · 20개 이하) · `fallback_reason` · `meta` | 5-3 |
 | 상태 | 차원 `IMPROVED` · `PRIORITY` · `STABLE` · `STRENGTH` · `NOT_EVALUABLE`, 미션 · 기준 `ACHIEVED` · `PARTIAL` · `FAILED` · `NOT_EVALUABLE` | 5-4 |
 | 장 없음 | `slide_number` null (0 아님) | 4-3 |
-| 실패 | LLM 실패는 200 기본 결과 + `fallback_reason`(`LLM_*`만). 입력 오류(422)는 다시 부르지 않고, 연결 실패 · 시간 초과 · 408 · 429 · 5xx는 BE가 1번 다시. 끝내 실패하면 Take `COMPLETED`(리뷰 없음) + `/coach/plan`은 `previous_review` null | 7절 |
-| 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
+| 실패 | LLM 실패는 200 기본 결과 + `fallback_reason`(`LLM_*`만). 입력 오류(422)는 다시 부르지 않고, 연결 실패 · 시간 초과 · 408 · 429 · 5xx는 BE가 1번 다시(공식 리뷰만. 대화의 다시 평가는 다시 부르지 않는다, 8). 끝내 실패하면 Take `COMPLETED`(리뷰 없음) + `/coach/plan`은 `previous_review` null | 7절 |
+| 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번(대화의 다시 평가는 재시도 0회, 8) | 8절 |
+| 대화의 다시 평가 | 같은 `/takes/review`를 A(기존 요청) · B(`user_criteria.script_used` 또는 `targets`만 바꿈)로 동시에 부른다. 이 흐름 · 저장 규칙은 공식 리뷰에만 적용한다. 대화의 다시 평가 응답은 대화 저장소에만 두고 `take_ai_results` · `missions` · `take_summaries` · Take 상태를 바꾸지 않으며 코칭 계획도 부르지 않는다. | 3 · 5-1 · 5-2 · 7 · 8 · 12-2 |
 | 버전 | `review-1.2` · `criteria_versions.review` `review-1.2+<config 해시>` · `schema_version` `1.0` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
 | 저장 | 저장 요구: 12-1 · 12-2(리뷰 결과, 미션 결과 갱신 · 다음 미션 추가, 같은 리뷰는 한 벌, 발표의 `ACTIVE` 미션을 찾을 수 있음, Take에 실은 미션 목록 고정). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `reason` · `observed`, UQ(`source_take_id`, `priority`), `source_take_id` 인덱스), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |
