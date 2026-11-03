@@ -115,6 +115,8 @@ SUPPORTED = "말씀하신 '{quote}'는 기록과 맞아요: {evidence}."
 KNOWLEDGE_SUPPORTED = "말씀하신 '{quote}'는 발표법 자료와 맞아요: {evidence}."
 PRESSURE = "답답하실 수 있지만 기록은 {evidence}예요."
 SCRIPT_FACT = "기록에는 화면 대본이 {state} 있었어요."
+#: 대본 사용 주장: 기록은 화면 대본 표시만 알려 준다. 실제로 봤는지는 단정하지 않는다(6-3 · L6-06)
+SCRIPT_UNKNOWN = "실제로 대본을 봤는지는 기록으로 확인할 수 없어요."
 SCRIPT_STATE = {"HIGHLIGHT": "전체로 켜져", "KEYWORD": "핵심어로 켜져", "OFF": "꺼져"}
 UNCOVERED_CLAUSE = "말씀하신 '{quote}'는 이번 답에서 확인하지 못했어요."
 OTHER_SPEAKER = "{speaker}의 말씀은 확인할 수 없지만, 기록에서는 {evidence}예요."
