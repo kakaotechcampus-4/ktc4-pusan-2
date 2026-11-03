@@ -906,12 +906,17 @@ def _topic_tokens(quote: str) -> set[str]:
 
 
 def _knowledge_ok(
-    d: AssessmentDraft, registry: EvidenceRegistry, guide_texts: Mapping[str, str] | None
+    d: AssessmentDraft,
+    registry: EvidenceRegistry,
+    guide_texts: Mapping[str, str] | None,
+    cfg: ChatAgentConfig | None = None,
 ) -> tuple[bool, str | None]:
     """발표법 주장을 `SUPPORTED` · `CONTRADICTED`로 둘 수 있는가(6-3, L6-12).
 
     인용한 자료마다 ① 이번 실행에서 읽은 것이고 ② 원문이 주어져 있으며 ③ 원문이 주장의 주제 낱말을 하나 이상
     공유해야 한다. 관련 없는 인용으로는 동의하지 않는다(정밀한 인용 원문 일치는 checks.py).
+    주제 낱말은 주장의 낱말 앞 두 글자와, 주장이 가리킨 차원의 측정 항목 낱말(예: 말 속도 차원이면 '속도')이다.
+    "빠를수록"처럼 활용으로 앞 두 글자가 달라지는 말도 같은 차원의 자료와 이을 수 있게 한다.
     """
     if not d.source_ids:
         return False, "NO_SOURCE"
@@ -921,6 +926,8 @@ def _knowledge_ok(
     if not all(sid in texts for sid in d.source_ids):
         return False, "NO_GUIDE_TEXT"
     topics = _topic_tokens(d.quote)
+    if cfg is not None and d.subject.dimension in cfg.dimensions:
+        topics |= {w for w, dim in cfg.measure_words.items() if dim == d.subject.dimension}
     if not any(tok in texts[sid] for sid in d.source_ids for tok in topics):
         return False, "IRRELEVANT_SOURCE"
     return True, None
@@ -939,7 +946,7 @@ def _model_verdict(
     phrase = ""
     evidence_ids: list[str] = []
     if d.type == "KNOWLEDGE":
-        ok, why = _knowledge_ok(d, registry, guide_texts)
+        ok, why = _knowledge_ok(d, registry, guide_texts, cfg)
         if verdict in ("SUPPORTED", "CONTRADICTED") and not ok:
             verdict, reason = "UNVERIFIABLE", why
         if ok:
@@ -1302,7 +1309,7 @@ def claim_link_key(
 class AssessmentOutcome:
     """확정한 판단 하나와 그에 딸린 문장 · 진단 값.
 
-    - `sentence`: 코드 템플릿으로 그린 첫 문장(`REQUEST`가 `SUPPORTED`면 빈 문자열).
+    - `sentence`: 코드 템플릿으로 그린 첫 문장(`REQUEST`가 `SUPPORTED` · `UNVERIFIABLE`이면 빈 문자열).
     - `extra_sentences`: 판정 문장 뒤에 붙일 사실 문장(대본 주장의 화면 대본 기록 · 대본 허용 없음).
     - `pressure`: 같은 주장 · 같은 근거를 되풀이해 앞 판정을 유지했는가(`verdict_kept`와 같다).
     - `prior_assessment_id` / `basis_changed`: 같은 `claim_key`의 가장 최근 앞 판단과 그 근거 지문이 바뀌었는지(진단용).
@@ -1465,7 +1472,9 @@ def finalize(
                 if state_facts
                 else templates.UNVERIFIABLE.format(quote=d.quote)
             )
-        elif d.type == "REQUEST" and verdict == "SUPPORTED":
+        elif d.type == "REQUEST" and (verdict in ("SUPPORTED", "UNVERIFIABLE") or not phrase):
+            # 요청 · 정보 질문은 참 · 거짓을 가릴 사실 주장이 아니다: '이 기록으로는 확인할 수 없어요'를 붙이지 않는다.
+            # 요청에 응할 수 없으면 답 · 행동 결과가 그 까닭을 말한다(근거가 있고 기록과 어긋난 요청만 템플릿 문장을 쓴다)
             sentence = ""
         else:
             sentence = templates.assessment_sentence(

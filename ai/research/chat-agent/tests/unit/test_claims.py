@@ -947,6 +947,20 @@ def test_fm_L6_12_irrelevant_citation_does_not_support_a_knowledge_claim():
         assert (cv.verdict, cv.reason_code) == ("UNVERIFIABLE", "IRRELEVANT_SOURCE")
 
 
+def test_knowledge_topic_includes_measure_words_of_its_dimension():
+    """'빠를수록'처럼 활용으로 앞 두 글자가 달라져도 같은 차원(말 속도)의 낱말('속도')을 공유하면 관련 자료다."""
+    reg = read_guides()
+    pace = {"guide-pace-1": "청중이 따라올 수 있는 속도에 쉼을 섞는다."}
+    d = mk(
+        "발표는 빨리 할수록 좋다며", type_="KNOWLEDGE", dim="pacing_rhythm", verdict="CONTRADICTED",
+        source_ids=["guide-pace-1"],
+    )  # fmt: skip
+    assert run_guides(d, reg, pace).verdict == "CONTRADICTED"
+    # 차원이 없으면 주장 낱말만 본다(관련 없는 인용으로 동의하지 않는다)
+    no_dim = d.model_copy(update={"subject": d.subject.model_copy(update={"dimension": None})})
+    assert run_guides(no_dim, reg, pace).reason_code == "IRRELEVANT_SOURCE"
+
+
 def run_guides(d, reg, texts):
     return code_verdict(
         d, takes={}, focus_take_id=None, pitch_id="p-1", registry=reg, version_of=VERSION_OF,
@@ -994,6 +1008,40 @@ def test_request_keeps_model_verdict_and_has_no_sentence_when_supported():
         "",
     )
     assert o.assessment.claim_op is None
+
+
+@pytest.mark.parametrize(
+    ("message", "verdict", "silent"),
+    [
+        ("목표 저장하지 마", "UNVERIFIABLE", True),
+        ("대본은 어떤 형식으로 넣어?", "UNVERIFIABLE", True),
+        ("시선 연습 목표로 잡아 줘", "SUPPORTED", True),
+        # 근거 없이 어긋난다고 하면 문장을 만들지 않는다
+        ("시선 연습 목표로 잡아 줘", "PARTLY", True),
+    ],
+)
+def test_request_and_info_question_get_no_unverifiable_sentence(
+    message: str, verdict: str, silent: bool
+) -> None:
+    """요청 · 정보 질문은 사실 주장이 아니다: '이 기록으로는 확인할 수 없어요'를 붙이지 않는다(판단은 남긴다)."""
+    o = fin([mk(message, type_="REQUEST", dim=None, verdict=verdict)], message).outcomes[0]
+    assert o.assessment.verdict == verdict and o.assessment.type == "REQUEST"
+    assert (o.sentence == "") is silent
+    assert "확인할 수 없어요" not in o.sentence
+
+
+def test_request_against_record_with_evidence_keeps_template_sentence() -> None:
+    """근거가 있고 기록과 어긋난 요청만 템플릿 문장을 쓴다."""
+    msg = "시선 연습 목표로 잡아 줘"
+    reg = new_registry()
+    ev = reg.screen(
+        pitch_id="p-1", snapshot_id="snap-1", path="screen.draft.time_limit_sec", value=300,
+        saved=False,
+    ).evidence_id  # fmt: skip
+    o = fin(
+        [mk(msg, type_="REQUEST", dim=None, verdict="PARTLY", evidence_ids=[ev])], msg, reg=reg
+    ).outcomes[0]
+    assert o.sentence.startswith(f"말씀하신 '{msg}'는 기록에서 일부만 확인돼요")
 
 
 # ── L6-21: 다른 사람 평가 인용 ────────────────────────────────────────────

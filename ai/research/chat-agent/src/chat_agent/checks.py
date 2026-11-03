@@ -314,6 +314,9 @@ def _token_matches_any(token: NumberToken, evidences: list[Evidence], cfg: ChatA
         v = _num(ev)
         if v is None or not _kind_ok(token, ev, cfg):
             continue
+        if ev.unit == "s":
+            # 화면의 초 단위 값(제한 시간)은 ms 로 바꿔 대조한다(시간 근거는 ms, architecture 6-1)
+            v = v * 1000
         if token.unit == "%p":
             if not _is_diff(ev):
                 continue  # %p 는 차이 계산 근거와만 맞는다(%/%p 혼동 거절, L4-25)

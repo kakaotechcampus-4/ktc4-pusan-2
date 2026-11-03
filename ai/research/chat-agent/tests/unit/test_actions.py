@@ -303,6 +303,24 @@ def test_reassess_is_auto_without_authorization_and_once_per_run() -> None:
     assert (out.result, out.reason_code) == ("TOOL_ERROR", "NOT_IN_SCOPE")
 
 
+@pytest.mark.parametrize(
+    ("message", "take_id", "ok"),
+    [
+        ("대본 보고 한 걸로 다시 평가해 줘", "t-5", True),  # Take 를 집어 말하지 않음 → 화면의 Take
+        ("Take 4 대본 보고 한 걸로 다시 평가해 줘", "t-4", True),
+        ("Take 4 대본 보고 한 걸로 다시 평가해 줘", "t-5", False),
+        ("p9-t1 Take를 대본 보고 한 걸로 다시 평가해 줘", "t-5", False),  # 범위에 없는 ID
+    ],
+)
+def test_reassess_only_on_the_take_the_user_named(message: str, take_id: str, ok: bool) -> None:
+    """사용자가 말한 Take 를 찾지 못했을 때 다른 Take(지금 화면의 Take 등)로 바꿔 다시 평가하지 않는다."""
+    p = do("reassess", {"take_id": take_id, "change": {"script_used": True}}, message=message)
+    if ok:
+        assert p.result == "PROPOSED"
+    else:
+        assert (p.result, p.reason_code) == ("TOOL_ERROR", "NOT_NAMED_TAKE")
+
+
 def test_l1_23_limits_carried_over_from_signed_counters() -> None:
     """재개를 걸친 6번째 행동 · 두 번째 저장 · 두 번째 다시 평가는 버린다."""
     sixth = do("fetch_take", {"take_id": "t-3"}, b=budget(actions=5))

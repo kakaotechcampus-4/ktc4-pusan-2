@@ -280,9 +280,16 @@ def test_get_screen_draft_values_are_screen_evidence_with_saved_flag() -> None:
     assert draft["title"]["saved"] is True  # 저장값과 같음
     assert draft["time_limit_sec"]["saved"] is False  # 저장 전 입력 300 ≠ 저장값 240
     assert draft["slide_count"]["saved"] is False  # 저장값에 없는 칸
-    assert res.data["saved"]["time_limit_sec"] == 240
+    # 저장값도 근거 id 를 붙여 돌려준다("저장된 값은 4분"을 근거와 잇는다)
+    saved = res.data["saved"]["time_limit_sec"]
+    assert saved["value"] == 240 and saved["evidence_id"] in res.evidence_ids
+    assert ctx.registry.get(saved["evidence_id"]).saved is True
     assert screen["changed"] == ["time_limit_sec", "criteria_text"]
-    assert set(res.evidence_ids) == {v["evidence_id"] for v in draft.values() if v is not None}
+    saved_ids = {v["evidence_id"] for v in res.data["saved"].values() if v is not None}
+    assert (
+        set(res.evidence_ids)
+        == {v["evidence_id"] for v in draft.values() if v is not None} | saved_ids
+    )
     for eid in res.evidence_ids:
         ev = ctx.registry.get(eid)
         assert (

@@ -148,6 +148,19 @@ def test_fm_L1_35_number_mismatch_reason_has_claim_and_evidence_numbers_only():
     assert f[0].claim_index == 0 and "'30%'" in f[0].reason and "0.28" in f[0].reason
 
 
+def test_screen_seconds_value_matches_minutes_and_seconds_in_sentence():
+    """화면의 제한 시간(초 단위 근거)은 "5분" · "300초"와 맞고 "4분"과는 맞지 않는다."""
+    r = reg()
+    e = r.screen(
+        pitch_id="p1", snapshot_id="ss-1", path="screen.draft.time_limit_sec", value=300,
+        saved=False, unit="s",
+    )  # fmt: skip
+    assert run([claim("입력 중인 제한 시간은 5분이에요", e.evidence_id)], r) == []
+    assert run([claim("입력 중인 제한 시간은 300초예요", e.evidence_id)], r) == []
+    f = run([claim("입력 중인 제한 시간은 4분이에요", e.evidence_id)], r)
+    assert ids_of(f) == [CheckId.NUMBER_MISMATCH]
+
+
 def test_fm_L1_35_missing_evidence():
     f = run([claim("시선 비율이 28%였어요")])
     assert ids_of(f) == [CheckId.EVIDENCE_MISSING]

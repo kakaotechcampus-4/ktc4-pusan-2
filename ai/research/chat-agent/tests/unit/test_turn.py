@@ -994,32 +994,40 @@ def test_script_points_removed_notice_condition() -> None:
 
 
 @pytest.mark.parametrize(
-    ("quote", "message", "kept"),
+    ("quote", "message", "claim_op", "polarity", "kept"),
     [
         (
             "군더더기가 몇 번이나 나왔는데 문제없었어",
             "군더더기가 몇 번이나 나왔는데 문제없었어",
+            "VALUE",
+            "NEUTRAL",
             True,
         ),
-        ("3장 시선 몇 %였어", "3장 시선 몇 %였어?", False),
-        ("3장 시선이 몇 %였는지 알아", "3장 시선이 몇 %였는지 알아.", True),
+        ("3장 시선 몇 %였어", "3장 시선 몇 %였어?", "VALUE", "NEUTRAL", False),
+        ("3장 시선이 몇 %였는지 알아", "3장 시선이 몇 %였는지 알아.", "VALUE", "NEUTRAL", True),
+        # 정보만 묻는 질문(값 · 방향 없음)은 요청이다
+        ("졸업 발표 3장 어땠어?", "졸업 발표 3장 어땠어?", "OVERALL", "NEUTRAL", False),
+        ("3장에서 뭐가 문제였어", "3장에서 뭐가 문제였어?", "ISSUE", "NEUTRAL", False),
+        # 평가를 내세운 질문은 주장으로 판정한다
+        ("Take 5 시선 어때, 잘 봤지?", "Take 5 시선 어때, 잘 봤지?", "OVERALL", "POSITIVE", True),
+        ("3장 시선 별로였지? 왜", "3장 시선 별로였지? 왜", "OVERALL", "NEGATIVE", True),
     ],
 )
-def test_value_question_conversion_only_for_plain_questions(
-    quote: str, message: str, kept: bool
+def test_question_conversion_only_for_plain_questions(
+    quote: str, message: str, claim_op: str, polarity: str, kept: bool
 ) -> None:
-    """값을 묻는 말이 있어도 물음표로 끝나는 단순 질문일 때만 요청으로 바꾼다."""
+    """묻는 말이 있어도 값 · 방향 없이 물음표로 끝나는 단순 질문일 때만 요청으로 바꾼다."""
     from chat_agent import claims as clm
-    from chat_agent.turn import _value_question_as_request
+    from chat_agent.turn import _question_as_request
 
     d = clm.AssessmentDraft.model_validate(
         F.draft(
             quote,
-            claim_op="VALUE",
-            dimension="fluency",
-            metric="filler_per_min",
-            polarity="NEUTRAL",
+            claim_op=claim_op,
+            dimension="audience_gaze",
+            metric=None,
+            polarity=polarity,
         )
     )
-    out = _value_question_as_request(d, message)
+    out = _question_as_request(d, message)
     assert (out.type == "MEASURED") is kept

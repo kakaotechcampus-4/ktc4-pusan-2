@@ -486,9 +486,7 @@ def _finalize(
     lp: Loop, req: TurnRequest, extra_prior: list[Assessment] | None = None
 ) -> clm.FinalizeResult | None:
     # 초안이 없어도 사용자 말이 있으면 확정한다: 측정 절을 덮는 판단이 없으면 '확인하지 못했어요' 문장을 만든다(L6-16)
-    drafts = [
-        _value_question_as_request(d, lp.original or "") for d in lp._parse_drafts(lp.st.drafts)
-    ]
+    drafts = [_question_as_request(d, lp.original or "") for d in lp._parse_drafts(lp.st.drafts)]
     if not lp.original:
         return None
     ctx = lp.ctx
@@ -517,21 +515,38 @@ def _finalize(
     )
 
 
-#: 값을 묻는 말. 이 말이 든 값 없는 값 주장 초안만 요청으로 본다("대본 보고 한 발표였어" 같은 상태 주장은 그대로)
-_VALUE_QUESTION = ("몇", "얼마", "어느 정도", "어떻게 나왔", "뭐였", "무엇이었")
+#: 값 · 정보를 묻는 말. 이 말이 들고 물음표로 끝난, 주장한 값 · 방향이 없는 측정 초안만 요청으로 본다
+#: ("대본 보고 한 발표였어" 같은 상태 주장 · "잘 봤지?"처럼 평가를 내세운 말은 그대로)
+_INFO_QUESTION = (
+    "몇",
+    "얼마",
+    "어느 정도",
+    "어떻게",
+    "어땠",
+    "어때",
+    "어떤",
+    "어디",
+    "무슨",
+    "뭐",
+    "무엇",
+    "왜",
+)
 
 
-def _value_question_as_request(d: clm.AssessmentDraft, original: str) -> clm.AssessmentDraft:
-    """값만 묻는 질문('3장 시선 몇 %였어?')은 주장이 아니다: 값 없는 값 주장 초안을 요청으로 바꾼다.
+def _question_as_request(d: clm.AssessmentDraft, original: str) -> clm.AssessmentDraft:
+    """정보만 묻는 질문('3장 시선 몇 %였어?' · '졸업 발표 3장 어땠어?')은 주장이 아니다: 측정 초안을 요청으로 바꾼다.
 
-    그대로 두면 주장한 값이 없어 '이 기록으로는 확인할 수 없어요'로 판정되고, 그 뒤 답이 값을 말해 모순이 된다.
-    값을 묻는 말(몇 · 얼마 …)이 있고, 그 절이 물음표로 끝나며, 절을 끊는 말(~는데 · ~지만)이 없을 때만 바꾼다
-    ("몇 번이나 나왔는데 문제없었어"처럼 평가가 섞인 말 · "대본 보고 한 발표였어" 같은 상태 주장은 그대로).
+    그대로 두면 주장한 값 · 방향이 없어 '이 기록으로는 확인할 수 없어요'로 판정되고, 그 뒤 답이 값을 말해 모순이 된다.
+    바꾸는 것은 값 없는 측정 초안 중 값 주장(`VALUE`)이거나 긍정 · 부정이 없는(`NEUTRAL`) 것이고, 묻는 말(몇 · 어땠 …)이
+    있고, 그 절이 물음표로 끝나며, 절을 끊는 말(~는데 · ~지만)이 없을 때뿐이다("몇 번이나 나왔는데 문제없었어"처럼
+    평가가 섞인 말 · "잘 봤지?"처럼 평가를 내세운 질문은 그대로 판정한다).
     """
-    if not (d.type == "MEASURED" and d.claim_op == "VALUE" and d.value is None):
+    if not (d.type == "MEASURED" and d.value is None):
+        return d
+    if not (d.claim_op == "VALUE" or d.polarity == "NEUTRAL"):
         return d
     q = d.quote.strip()
-    if not any(w in q for w in _VALUE_QUESTION) or any(b in q for b in ("는데", "은데", "지만")):
+    if not any(w in q for w in _INFO_QUESTION) or any(b in q for b in ("는데", "은데", "지만")):
         return d
     at = original.find(q)
     after = original[at + len(q) :].lstrip()[:1] if at >= 0 else ""
