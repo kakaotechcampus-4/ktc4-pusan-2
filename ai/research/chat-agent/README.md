@@ -74,6 +74,7 @@ chat-agent/
 | `examples.py` | 코어 `examples/` 파일 만들기. `state`는 예시 전용 키로 실제 서명 | 가상 기록 → JSON · NDJSON 파일 | 사람이 실행 | 5절 모양 · 프롬프트 · 설정을 바꾸면 다시 만든다(예시가 만들기 결과와 같은지 시험이 본다) |
 | `llm.py` | 도구 호출 LLM 함수(6-11): OpenAI 호환 스트리밍, 도구 · 구조화 모드, 시도마다 한도 예약, 재시도(429 · 503 · 5xx 한 번), `finish_reason` 허용 목록 | `LlmRequest` → `LlmResult` 또는 실패 | 서비스 계층 대역 · live 시험 · 평가 | 서비스 탑재 때 `common/llm.py`의 `tool_llm`으로 옮긴다 |
 | `app.py` | 서비스 계층 대역: `ai/.env` 읽기, 자료 묶음 읽기, 동시 실행 자리(429 `AGENT_BUSY`), `handle_turn` 부르기, 한 턴 해 보기 명령 | 요청 dict → 줄 목록 | live 시험 · 평가 · 손으로 해 보기 | 서비스 탑재 때 `api/chat_agent.py`가 같은 일을 한다 |
+| `fake_be.py` | 가짜 BE 실행기(12-3 흉내): 저장소(피치 · Take · 공식 리뷰 · 대화 · 목표 · 메시지 · 판단), 기본 자료 · 대화 기록 모으기, 스트림 · final 검사, 행동 실행(소유권 · 한 번만 · 다시 평가는 실제 리뷰 코드로 A · B), `ACTION_RESULT` 이어 부르기(누적량 + 행동 시간 · `loaded_takes` · `removed_sources` · 범위 확정과 `state_revision`), 답 저장, 자동 목표 확인 | `AgentApp` · 메시지 → `Run`(호출 · 행동 · final 기록) | 통합 시험 · 평가 | 계약(5절) · BE 할 일(12-3)이 바뀌면 같이 고친다. 실제 BE가 아니다(DB · 동시성 · 재시작 복구 없음, 머리 설명의 '단순화') |
 
 ## 3. 실행
 
