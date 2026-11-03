@@ -486,7 +486,9 @@ def _finalize(
     lp: Loop, req: TurnRequest, extra_prior: list[Assessment] | None = None
 ) -> clm.FinalizeResult | None:
     # 초안이 없어도 사용자 말이 있으면 확정한다: 측정 절을 덮는 판단이 없으면 '확인하지 못했어요' 문장을 만든다(L6-16)
-    drafts = lp._parse_drafts(lp.st.drafts)
+    drafts = [
+        _value_question_as_request(d, lp.original or "") for d in lp._parse_drafts(lp.st.drafts)
+    ]
     if not lp.original:
         return None
     ctx = lp.ctx
@@ -512,6 +514,31 @@ def _finalize(
         id_prefix=f"{req.run.run_id}:as{lp.counters.turn_count}-",
         guide_texts=_guide_texts(lp),
         **kwargs,
+    )
+
+
+#: 값을 묻는 말. 이 말이 든 값 없는 값 주장 초안만 요청으로 본다("대본 보고 한 발표였어" 같은 상태 주장은 그대로)
+_VALUE_QUESTION = ("몇", "얼마", "어느 정도", "어떻게 나왔", "뭐였", "무엇이었")
+
+
+def _value_question_as_request(d: clm.AssessmentDraft, original: str) -> clm.AssessmentDraft:
+    """값만 묻는 질문('3장 시선 몇 %였어?')은 주장이 아니다: 값 없는 값 주장 초안을 요청으로 바꾼다.
+
+    그대로 두면 주장한 값이 없어 '이 기록으로는 확인할 수 없어요'로 판정되고, 그 뒤 답이 값을 말해 모순이 된다.
+    값을 묻는 말(몇 · 얼마 …)이 있고, 그 절이 물음표로 끝나며, 절을 끊는 말(~는데 · ~지만)이 없을 때만 바꾼다
+    ("몇 번이나 나왔는데 문제없었어"처럼 평가가 섞인 말 · "대본 보고 한 발표였어" 같은 상태 주장은 그대로).
+    """
+    if not (d.type == "MEASURED" and d.claim_op == "VALUE" and d.value is None):
+        return d
+    q = d.quote.strip()
+    if not any(w in q for w in _VALUE_QUESTION) or any(b in q for b in ("는데", "은데", "지만")):
+        return d
+    at = original.find(q)
+    after = original[at + len(q) :].lstrip()[:1] if at >= 0 else ""
+    if not (q.endswith("?") or after == "?"):
+        return d
+    return d.model_copy(
+        update={"type": "REQUEST", "claim_op": None, "polarity": "NEUTRAL", "verdict": "SUPPORTED"}
     )
 
 
@@ -910,6 +937,9 @@ def _action_notes(lp: Loop) -> list[str]:
             note = st.REASSESS_DIFFERS
         if note is not None and note.value not in out:
             out.append(note.value)
+        removed = status == "SUCCEEDED" and t == "REASSESS" and e.get("script_points_removed")
+        if removed and st.SCRIPT_POINTS_REMOVED.value not in out:
+            out.append(st.SCRIPT_POINTS_REMOVED.value)
     return out
 
 

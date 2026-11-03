@@ -863,6 +863,8 @@ class Loop:
             "reason_code": applied.reason_code,
             "failed_code": applied.failed_code,
             "official_differs": applied.official_differs,
+            # 대본 허용으로 다시 평가해 점수가 올랐으면 "평가 항목이 빠져 오른 점수예요"를 붙인다(7-10)
+            "script_points_removed": _script_points_removed(applied.card),
         }
         if applied.review_versions:
             self.st.review_versions.update(applied.review_versions)
@@ -966,6 +968,24 @@ class Loop:
                 t = c.get("text")
                 out[c["index"]] = t if isinstance(t, str) and t.strip() else None
         return out
+
+
+def _script_points_removed(card: dict[str, Any] | None) -> bool:
+    if not card or card.get("type") != "REASSESS_RESULT":
+        return False
+    b, a = card.get("before") or {}, card.get("after") or {}
+    before, after = b.get("score"), a.get("score")
+    # 원인을 확인한다: 대본 허용으로 B 에서 대본 차원이 '평가하지 않음'으로 빠지고 점수가 올랐을 때만
+    dim_b = (b.get("dimensions") or {}).get("script_independence")
+    dim_a = (a.get("dimensions") or {}).get("script_independence")
+    return (
+        (card.get("change") or {}).get("script_used") is True
+        and dim_a == "NOT_EVALUABLE"
+        and dim_b != "NOT_EVALUABLE"
+        and isinstance(before, int)
+        and isinstance(after, int)
+        and after > before
+    )
 
 
 def _action_key(name: Any, args: Any) -> str:
