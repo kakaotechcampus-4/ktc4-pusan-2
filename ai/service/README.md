@@ -115,7 +115,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 - LLM 기능을 부를 때는 `--env-file ai/.env`를 더합니다. 키는 이미지에 넣지 않습니다.
 - 의존성 설치 층은 `pyproject.toml` · `uv.lock`이 그대로면 캐시를 다시 써서, 코드만 고친 뒤의 빌드는 몇 초면 끝납니다. 다만 `python:3.12-slim` 태그가 새 판으로 바뀌면(보안 패치 등) 맨 아래 층부터 다시 받아 의존성 층도 다시 만듭니다.
 
-- 이미지 크기는 약 896 MB입니다(대본 전달도의 형태소 분석기 모델 · scikit-learn 포함).
+- 이미지 크기는 약 898 MB입니다(형태소 분석기 모델 · scikit-learn · 판정 모듈 포함, `docs/ai/ai-service.md` 6-3).
 
 ### 대본 전달도 확인
 저장소 맨 위에서 키 없이 띄우고(`docker run --rm -p 8001:8000 pitch-coach-ai:local`), 다른 창에서 봅니다. 서버는 몇 초 뒤 요청을 받기 시작하고, 형태소 분석기는 그 뒤 약 1초 만에 준비됩니다.

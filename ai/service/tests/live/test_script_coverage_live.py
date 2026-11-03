@@ -1,7 +1,7 @@
 """대본 전달도를 실제 LLM 으로 장 하나 끝까지 (과금, 약 4~5번 호출).
 
 `uv run python -m pytest -m live`. `/scripts/rubric` 으로 평가 기준을 만들고, 대본을 그대로 읽은
-STT 로 `/takes/analyze` 를 부른다(기능 문서 11절 '옮긴 뒤 같은 결과인지 확인' 3).
+STT 로 `/takes/analyze` 를 부른다(서비스로 옮긴 뒤 실제 LLM 으로 장 하나가 끝까지 도는지 확인).
 서비스의 LLM 객체 · 역할 · 시간 제한 · 마감을 그대로 쓴다.
 `ai/.env` 의 기본 묶음을 직접 읽는다
 (conftest 가 묶음 환경변수를 비워 둔다, `test_llm_live.py` 와 같다).

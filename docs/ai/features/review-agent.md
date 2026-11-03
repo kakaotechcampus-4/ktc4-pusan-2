@@ -321,7 +321,7 @@ sequenceDiagram
 |---|---|
 | 미션마다 고유한 id를 두고 `mission_id`로 쓴다 | `id` |
 | 이 미션을 만든 리뷰의 Take에 잇는다(늘 채운다) | `source_take_id` |
-| 이 미션의 발표에 잇는다(늘 채운다, 발표를 지우면 함께 지운다). Take를 시작할 때 그 발표의 최신 `ACTIVE` 미션을 찾는 데 쓴다 | `pitch_id` Uuid FK `pitches.id` ON DELETE CASCADE NOT NULL (새 칸). BE 구현 확인 필요 |
+| 이 미션의 발표에 잇는다(늘 채운다, 발표를 지우면 함께 지운다). Take를 시작할 때 그 발표의 최신 `ACTIVE` 미션을 찾는 데 쓴다 | `missions`에 `pitch_id` 칸은 없고 `source_take_id` → `takes.pitch_id`로 잇는다(발표를 지우면 Take · 미션이 FK 연쇄로 함께 지워진다) |
 | 이 미션이 가장 최근에 실린 Take(BE가 Take를 시작할 때 채운다. 아직 없으면 비어 있음) | `take_id` |
 | 영역(늘 채운다) | `area` |
 | 장 번호(비어 있으면 Take 전체) | `slide_number` |
@@ -332,7 +332,7 @@ sequenceDiagram
 | 가장 최근 판정 때의 관측값(없을 수 있음) | `observed` |
 | `status`가 `ACHIEVED`면 true | `complete` |
 | 같은 리뷰를 두 번 저장해도 한 벌: (`source_take_id`, `priority`)마다 하나 | 유일 제약 |
-| 발표의 `ACTIVE` 미션을 찾을 수 있다 | 인덱스 (`pitch_id`, `status`). BE 구현 확인 필요 |
+| 발표의 `ACTIVE` 미션을 찾을 수 있다 | 그 발표의 최신 리뷰 Take를 찾은 뒤 `source_take_id`(인덱스) · `status`로 찾는다 |
 
 **`takes.mission_ids`**: BE가 Take를 시작할 때 그 Take에 실은 미션 id 목록을 고정한다. 다음 Take가 리뷰보다 먼저 시작돼 같은 `ACTIVE` 미션이 두 Take에 실려도, 리뷰 요청의 `missions`는 이 목록으로 읽으므로 각 Take의 리뷰가 자기 미션을 찾는다. `missions`의 `take_id`는 가장 최근에 실린 Take로 바뀌고, `status` · `observed`는 그 Take의 리뷰만 덮는다(12-2). Take별 판정은 그 Take의 리뷰 결과(`mission_results`)에 남는다. 미션 내용(목표 · 설명)은 Take에 실린 뒤에는 바꾸지 않는다. 목록의 미션이 지워졌으면 리뷰 요청에 싣지 않고 판정하지 않는다(건너뜀).
 
@@ -384,4 +384,4 @@ sequenceDiagram
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
 | 버전 | `review-1.2` · `criteria_versions.review` `review-1.2+<config 해시>` · `schema_version` `1.0` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
-| 저장 | 저장 요구: 12-1 · 12-2(리뷰 결과, 미션 결과 갱신 · 다음 미션 추가, 같은 리뷰는 한 벌, 발표의 `ACTIVE` 미션을 찾을 수 있음, Take에 실은 미션 목록 고정). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `pitch_id` · `reason` · `observed`, UQ(`source_take_id`, `priority`), 인덱스 (`pitch_id`, `status`)), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at`. `missions.pitch_id` · 인덱스: BE 구현 확인 필요 | 12-1 · 12-2 |
+| 저장 | 저장 요구: 12-1 · 12-2(리뷰 결과, 미션 결과 갱신 · 다음 미션 추가, 같은 리뷰는 한 벌, 발표의 `ACTIVE` 미션을 찾을 수 있음, Take에 실은 미션 목록 고정). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `reason` · `observed`, UQ(`source_take_id`, `priority`), `source_take_id` 인덱스), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |

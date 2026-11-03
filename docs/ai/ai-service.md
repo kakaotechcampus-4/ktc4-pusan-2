@@ -464,7 +464,7 @@ AI 서비스는 저장하지 않는다(DB · Redis · 파일 없음). 기능 결
 |---|---|---|---|
 | `tests/` (가짜 LLM) | 단위 · 계약 테스트 통과 | 키 없이 CI가 통과하고, 각 기능 예시 응답과 같은 것 | `ai-ci.yml` |
 | 로컬 이미지 | `docker build` 성공 · 컨테이너 `/health` 200 | 배포와 같은 이미지가 뜨는 것 | `ai/service/README.md` 'Docker 이미지로 실행' |
-| develop · release 서버 | be 컨테이너에서 `http://ai:8000/ready` 200, `ps ai` `(healthy)`, 메모리 상한 650117120 (release 서버는 헬스체크 · 메모리 상한 설정이 `release`에 들어가 배포된 뒤) | 내부망 연결, 모델 준비, 메모리 상한 | 11-6 명령 |
+| develop · release 서버 | be 컨테이너에서 `http://ai:8000/ready` 200, `ps ai` `(healthy)`, 메모리 상한 650117120 (release 서버는 이 설정으로 배포됐는지 함께 확인한다) | 내부망 연결, 모델 준비, 메모리 상한 | 11-6 명령 |
 | 실제 LLM (live) | 기능별 실제 호출 1회 성공 · 걸린 시간 | 모델 설정이 맞고 시간 제한 안에 끝나는 것 | `pytest -m live` (과금) |
 | 재생 중 측정 | `/coach/evaluate` 처리 시간 | 백그라운드 LLM 요청이 몰려도 실시간 경로가 BE 시간 제한 안에 끝나는 것 | AI 로그 · 부하 확인 |
 
