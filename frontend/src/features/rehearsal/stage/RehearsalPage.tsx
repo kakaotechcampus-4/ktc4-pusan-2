@@ -914,7 +914,7 @@ export function RehearsalPage() {
                   <span>테두리 =</span>
                   <i className="audience">청중</i>
                   <i className="screen">화면</i>
-                  <i className="script">대본</i>
+                  <i className="script-gaze">대본</i>
                   <i className="unknown">판정 불가</i>
                 </div>
               </div>
