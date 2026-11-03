@@ -162,7 +162,7 @@ def _assessments() -> list[dict]:
             "verdict_source": "CODE",
             "evidence_ids": ["e1", "e2"],
             "source_ids": [],
-            "reason": "Take 4 · 5 모두 3장에 대본 응시 문제 구간이 있다",
+            "reason": "Take 4 · 5 모두 3장 시선 비율이 다른 장보다 낮다",
             "claim_key": "ck-7d1e0a",
             "claim_link_key": "cl-3f9b21",
             "evidence_basis": _basis(),
@@ -218,11 +218,13 @@ TRACE = {
 }
 
 
-def _diag(turn_call: int, status: str, reason: str, steps: list[dict]) -> dict:
+def _diag(
+    turn_call: int, status: str, reason: str, steps: list[dict], run_id: str = "run-81"
+) -> dict:
     return {
         "v": 1,
-        "request_id": f"req-81-{turn_call}",
-        "run_id": "run-81",
+        "request_id": f"req-{run_id[4:]}-{turn_call}",
+        "run_id": run_id,
         "turn_call": turn_call,
         "versions": {
             "feature_version": FEATURE_VERSION,
@@ -354,7 +356,7 @@ def _final_done() -> dict:
         {
             "kind": "ASSESSMENT",
             "assessment_id": "as-1",
-            "text": "말씀하신 '3장에서 왜 자꾸 시선이 떨어져'는 기록과 맞아요: Take 4 · 5 모두 3장에 대본을 오래 본 구간이 있어요.",
+            "text": "말씀하신 '3장에서 왜 자꾸 시선이 떨어져'는 기록과 맞아요: Take 4 · 5 모두 3장 시선 비율이 31% · 28%로 낮아요.",
             "evidence_ids": ["e1", "e2"],
             "source_ids": [],
             "action_id": None,
@@ -582,6 +584,9 @@ def build() -> dict[str, Any]:
     t6 = fx.TakeRecord(
         take_id="t-6",
         take_number=6,
+        # 목표(2026-11-04 10:05 저장) 뒤에 시작한 Take 만 자동 목표 확인 대상이다(5-1 · 6-4)
+        started_at="2026-11-04T11:00:00+09:00",
+        completed_at="2026-11-04T11:10:00+09:00",
         take_result=fx.take_result(
             take_id="t-6", audience=[0.6, 0.6, 0.41, 0.6], script_ratio=[0.15, 0.2, 0.3, 0.18]
         ),
@@ -700,6 +705,35 @@ def build() -> dict[str, Any]:
         },
     ]
     goal_result["scope_pitch_id"] = "p-1"
+    goal_result["diagnostics"] = _diag(
+        1, "DONE", "ANSWERED", [_model_step(1, "ANSWER", 5, 0, "STOP")], run_id="run-90"
+    )
+    gv = fx.CRITERIA_VERSIONS["GAZE"]
+    goal_result["basis"] = {
+        "pitches": [
+            {
+                "pitch_id": "p-1",
+                "script_version_id": "sv-1",
+                "presentation_version_id": "pv-1",
+                "standard_version": 1,
+                "takes": [
+                    {
+                        "take_id": t,
+                        "take_number": n,
+                        "script_version_id": "sv-1",
+                        "presentation_version_id": "pv-1",
+                        "standard_version": 1,
+                        "results": {"TAKE_RESULT": 1, "REVIEW": 1},
+                        "rule_versions": {"GAZE": gv},
+                    }
+                    for t, n in (("t-6", 6), ("t-5", 5))
+                ],
+            }
+        ],
+        "conversation_goal_version": 1,
+        "corpus_version": "guides-1",
+        "sources": [],
+    }
     return {
         "request_user_message.json": req_user,
         "request_action_result.json": req_resume,

@@ -267,7 +267,8 @@ VerdictSource = Literal["CODE", "MODEL"]
 
 
 class Subject(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    #: 앞 판단(history.prior_assessments)으로 다시 들어오므로 입력 규칙(모르는 필드 무시)을 따른다
+    model_config = ConfigDict(extra="ignore")
 
     dimension: StrictStr | None = None
     metric: StrictStr | None = None
@@ -277,7 +278,8 @@ class Subject(BaseModel):
 
 
 class BasisTake(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    #: 앞 판단(history.prior_assessments)으로 다시 들어오므로 입력 규칙(모르는 필드 무시)을 따른다
+    model_config = ConfigDict(extra="ignore")
 
     take_id: StrictStr
     results: dict[StrictStr, Any] = Field(default_factory=dict)
@@ -285,7 +287,8 @@ class BasisTake(BaseModel):
 
 
 class BasisRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    #: 앞 판단(history.prior_assessments)으로 다시 들어오므로 입력 규칙(모르는 필드 무시)을 따른다
+    model_config = ConfigDict(extra="ignore")
 
     pitch_id: StrictStr
     script_version_id: StrictStr | None = None
@@ -295,22 +298,24 @@ class BasisRecord(BaseModel):
 
 
 class BasisSource(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    #: 앞 판단(history.prior_assessments)으로 다시 들어오므로 입력 규칙(모르는 필드 무시)을 따른다
+    model_config = ConfigDict(extra="ignore")
 
     source_id: StrictStr
     corpus_version: StrictStr
 
 
 class BasisScreen(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    #: 앞 판단(history.prior_assessments)으로 다시 들어오므로 입력 규칙(모르는 필드 무시)을 따른다
+    model_config = ConfigDict(extra="ignore")
 
     snapshot_id: StrictStr
 
 
 class EvidenceBasis(BaseModel):
-    """판단 · 제안이 기댄 원천별 버전 지문(5-2). 코드가 채운다."""
+    """판단 · 제안이 기댄 원천별 버전 지문(5-2). 코드가 채운다. 입력으로도 들어오므로 모르는 필드는 무시."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     records: list[BasisRecord] = Field(default_factory=list)
     sources: list[BasisSource] = Field(default_factory=list)
@@ -319,9 +324,10 @@ class EvidenceBasis(BaseModel):
 
 
 class Assessment(BaseModel):
-    """사용자 말 속 주장 · 요청 하나의 판단(5-2 · 6-3). 앞 판단(history.prior_assessments)으로 다시 들어온다."""
+    """사용자 말 속 주장 · 요청 하나의 판단(5-2 · 6-3). 앞 판단(history.prior_assessments)으로 다시 들어오므로
+    모르는 필드는 무시한다(BE가 선택 필드를 먼저 더해도 요청이 깨지지 않게, `architecture.md` 2절)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     assessment_id: StrictStr
     quote: StrictStr
@@ -606,7 +612,8 @@ class ActionResult(_In):
 
 
 class Resume(_In):
-    state: SignedState
+    #: 외곽 모양 검사는 state.verify 가 한다(모양이 틀려도 422 가 아니라 409 AGENT_STATE_INVALID, 5-6)
+    state: Any
     action_results: list[ActionResult]
 
 
@@ -735,6 +742,81 @@ class LimitDetail(_Out):
     attempted: NonNegInt | None = None
 
 
+TOOL_NAMES = (
+    "update_plan",
+    "get_screen",
+    "list_pitches",
+    "list_takes",
+    "get_take_report",
+    "compare_takes",
+    "get_goals",
+    "search_guides",
+)
+CHECK_IDS = (
+    "EVIDENCE_MISSING",
+    "NUMBER_MISMATCH",
+    "TARGET_MISMATCH",
+    "QUOTE_MISMATCH",
+    "STALE_EVIDENCE",
+    "FORBIDDEN_CLAIM",
+    "NUMBER_FORMAT",
+    "CAUSAL_CLAIM",
+    "ACTION_RESULT_UNVERIFIED",
+    "SYSTEM_TEXT",
+    "VERDICT_CONFLICT",
+    "HEDGE_WORD",
+    "AGREEMENT_WORD",
+    "DISPLAY_TEXT",
+    "PII",
+    "AUTHORIZATION",
+    "ACTION_ARGS",
+    "FIX_NEW_CONTENT",
+)
+LIMIT_CODES = (
+    "MODEL_CALLS",
+    "TOOL_CALLS",
+    "TOOLS_PER_RESPONSE",
+    "TURN_CALLS",
+    "ACTIONS",
+    "SAVE_ACTIONS",
+    "REASSESS_PER_TURN",
+    "PLAN_EDITS",
+    "INPUT_TOKENS",
+    "OUTPUT_RESERVE",
+    "TURN_TIME",
+    "CALL_TIME",
+    "LINE_SIZE",
+    "RESPONSE_SIZE",
+    "STATE_SIZE",
+)
+#: 종류별 code 허용 목록(11-5). 진단 기록에 문장이 들어가지 않게 닫힌 목록만 받는다
+DIAG_CODES: dict[str, tuple[str, ...]] = {
+    "MODEL": ("RESEARCH", "ANSWER", "FIX"),
+    "TOOL": TOOL_NAMES,
+    "CHECK": (*CHECK_IDS, "SUMMARY"),
+    "ASSESS": ("SUPPORTED", "PARTLY", "CONTRADICTED", "UNVERIFIABLE"),
+    "ACTION": (
+        "FETCH_PITCH",
+        "FETCH_TAKE",
+        "REASSESS",
+        "SAVE_GOAL",
+        "START_PRACTICE",
+        "SET_CRITERIA",
+        "SET_TIME_LIMIT",
+        "PREVIEW_CRITERIA",
+    ),
+    "LIMIT": LIMIT_CODES,
+}
+_DETAIL_MODEL: dict[str, type[BaseModel]] = {
+    "MODEL": ModelDetail,
+    "TOOL": ToolDetail,
+    "CHECK": CheckDetail,
+    "ASSESS": AssessDetail,
+    "ACTION": ActionDetail,
+    "LIMIT": LimitDetail,
+}
+
+
 class DiagStep(_Out):
     seq: PosInt
     kind: DiagKind
@@ -744,18 +826,22 @@ class DiagStep(_Out):
     parent_seq: PosInt | None = None
     detail: ModelDetail | ToolDetail | CheckDetail | AssessDetail | ActionDetail | LimitDetail
 
+    @model_validator(mode="before")
+    @classmethod
+    def _detail_by_kind(cls, data: Any) -> Any:
+        # 빈 detail({})은 여러 모델과 맞으므로 kind 로 먼저 고른다(줄이기 ① 뒤의 TOOL 단계, 11-5)
+        if isinstance(data, dict) and data.get("kind") in _DETAIL_MODEL:
+            det = data.get("detail")
+            if isinstance(det, dict):
+                data = {**data, "detail": _DETAIL_MODEL[data["kind"]].model_validate(det)}
+        return data
+
     @model_validator(mode="after")
-    def _detail_matches_kind(self) -> DiagStep:
-        expected = {
-            "MODEL": ModelDetail,
-            "TOOL": ToolDetail,
-            "CHECK": CheckDetail,
-            "ASSESS": AssessDetail,
-            "ACTION": ActionDetail,
-            "LIMIT": LimitDetail,
-        }[self.kind]
-        if not isinstance(self.detail, expected):
+    def _detail_and_code_match_kind(self) -> DiagStep:
+        if not isinstance(self.detail, _DETAIL_MODEL[self.kind]):
             raise ValueError(f"{self.kind} 단계의 detail 모양이 아니다")
+        if self.code not in DIAG_CODES[self.kind]:
+            raise ValueError(f"{self.kind} 단계의 code 가 허용 목록 밖이다")
         return self
 
 
@@ -809,6 +895,16 @@ class Message(_Out):
         if self.text != "\n".join(c.text for c in self.claims):
             raise ValueError("message.text 는 claims[].text 를 LF 로 이은 값과 같아야 한다")
         return self
+
+
+class BudgetOut(_Out):
+    """`final.budget_used` — 5-3 `budget_used` 와 같은 다섯 카운터(BE가 다음 이어 부르기에 그대로 보낸다)."""
+
+    model_calls: NonNegInt
+    tool_calls: NonNegInt
+    elapsed_ms: NonNegInt
+    input_tokens: NonNegInt
+    output_tokens: NonNegInt
 
 
 class Usage(_Out):
@@ -866,7 +962,7 @@ class FinalData(_Out):
     basis: Basis
     evidence: list[Evidence]
     history_summary: StrictStr | None = None
-    budget_used: dict[str, NonNegInt]
+    budget_used: BudgetOut
     usage: Usage
     assessments: list[Assessment]
     goal_result: GoalResult | None = None
@@ -881,6 +977,17 @@ class FinalData(_Out):
                 raise ValueError("NEEDS_ACTION 은 행동 정확히 1개(START_PRACTICE 아님)")
             if self.state is None:
                 raise ValueError("NEEDS_ACTION 은 state 필수")
+            if self.actions[0].type == "REASSESS" and self.assessments:
+                ids = {a.assessment_id for a in self.assessments}
+                linked = {
+                    c.assessment_id
+                    for c in (self.message.claims if self.message else [])
+                    if c.kind == "ASSESSMENT"
+                }
+                if not ids <= linked:
+                    raise ValueError(
+                        "REASSESS 를 담은 NEEDS_ACTION 의 판단마다 판단 문장이 있어야 한다"
+                    )
         else:
             if self.state is not None:
                 raise ValueError("NEEDS_ACTION 이 아니면 state 는 null")

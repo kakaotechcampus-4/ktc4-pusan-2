@@ -192,6 +192,7 @@
                       "audience_ratio": 0.62,
                       "script_ratio": 0.15,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.23,
                       "reading_ratio": 0.12,
                       "reading_runs": 0
                     }
@@ -206,6 +207,7 @@
                       "audience_ratio": 0.58,
                       "script_ratio": 0.2,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.22,
                       "reading_ratio": 0.16,
                       "reading_runs": 0
                     }
@@ -220,6 +222,7 @@
                       "audience_ratio": 0.28,
                       "script_ratio": 0.55,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.17,
                       "reading_ratio": 0.44,
                       "reading_runs": 0
                     }
@@ -234,6 +237,7 @@
                       "audience_ratio": 0.6,
                       "script_ratio": 0.18,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.22,
                       "reading_ratio": 0.144,
                       "reading_runs": 0
                     }
@@ -255,7 +259,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   },
                   {
@@ -265,7 +270,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   },
                   {
@@ -275,7 +281,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   },
                   {
@@ -285,7 +292,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   }
                 ],
@@ -307,6 +315,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -318,6 +327,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -329,6 +339,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -340,6 +351,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -412,7 +424,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   },
                   {
@@ -422,7 +437,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   },
                   {
@@ -432,7 +450,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   },
                   {
@@ -442,7 +463,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   }
                 ],

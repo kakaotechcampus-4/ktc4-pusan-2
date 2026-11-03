@@ -15,6 +15,9 @@ FEATURE_VERSION = "chat_agent-0.1.0"
 SCHEMA_VERSION = "1.0"
 TOOL_SCHEMA_VERSION = "tools-1"
 STATE_V = 1
+#: 목표 판정 계산식(6-4 판정 순서 · 비교식)의 판. 계산식을 바꾸면 올린다. 목표 규칙 판(goal_rule_version)에 들어가므로
+#: 옛 판으로 저장한 목표는 판이 달라 새 목표를 정하자고 한다(설정 해시만으로는 계산식 변경을 알 수 없다)
+GOAL_ALGORITHM_VERSION = "goal-algo-1"
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),
 #: 새 판을 배포해도 아직 지원하는 옛 판이면 여기에 남겨 둔다. 지원하지 않는 판은 409.

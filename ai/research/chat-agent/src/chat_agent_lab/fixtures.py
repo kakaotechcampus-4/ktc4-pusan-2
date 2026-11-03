@@ -120,6 +120,7 @@ def take_result(
                         "audience_ratio": aud[i],
                         "script_ratio": scr[i],
                         "screen_ratio": 0.0,
+                        "away_ratio": round(max(0.0, 1 - aud[i] - scr[i]), 4),
                         "reading_ratio": round(scr[i] * 0.8, 4),
                         "reading_runs": 0,
                     }
@@ -131,7 +132,7 @@ def take_result(
         "SPEED": {
             "measured_ratio": 1.0,
             "take": {"cpm": round(sum(sp) / n, 1), "pause_count": 3},
-            "slides": slide_rows([{"cpm": sp[i]} for i in range(n)]),
+            "slides": slide_rows([{"cpm": sp[i], "pause_count": 1} for i in range(n)]),
             "unmeasured_reason": None,
         },
         "VOLUME": {
@@ -143,7 +144,10 @@ def take_result(
                 "base_level_source": "CALIBRATION",
             },
             "slides": slide_rows(
-                [{"voice_diff_db": voice_diff_db, "low_ratio": 0.0} for _ in range(n)]
+                [
+                    {"level_db": -29.5, "voice_diff_db": voice_diff_db, "low_ratio": 0.0}
+                    for _ in range(n)
+                ]
             ),
             "unmeasured_reason": None,
         },
@@ -161,7 +165,17 @@ def take_result(
                 "by_tier": {},
                 "by_word": {},
             },
-            "slides": slide_rows([{"filler_per_min": filler_per_min} for _ in range(n)]),
+            "slides": slide_rows(
+                [
+                    {
+                        "filler_count": round(filler_count / n),
+                        "filler_per_min": filler_per_min,
+                        "by_tier": {},
+                        "by_word": {},
+                    }
+                    for _ in range(n)
+                ]
+            ),
             "unmeasured_reason": None,
         },
         "TIME": {

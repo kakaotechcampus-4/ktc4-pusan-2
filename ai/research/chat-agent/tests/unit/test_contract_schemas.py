@@ -60,7 +60,6 @@ def test_fm_L1_01_user_message_length_boundary() -> None:
         ),  # selected_proposal 없음
         ("ACTION_RESULT", {"user_message": None}),  # resume 없음
         ("TAKE_REVIEWED", {"user_message": None}),  # review_event 없음
-        ("ACTION_RESULT", {"user_message": "말", "resume": {"state": {}, "action_results": []}}),
     ],
 )
 def test_fm_L1_01_trigger_required_and_forbidden_fields(trigger, patch) -> None:
@@ -233,3 +232,168 @@ def test_diag_step_detail_must_match_kind() -> None:
         s.DiagStep.model_validate({**step, "kind": "TOOL"})
     with pytest.raises(ValidationError):  # 닫힌 스키마: 모르는 필드 거부(11-5)
         s.DiagStep.model_validate({**step, "detail": {**step["detail"], "prompt_text": "x"}})
+
+
+RESUME = json.loads(
+    (resources.files("chat_agent") / "examples" / "request_action_result.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def test_fm_L1_01_action_result_forbids_user_message_and_choice() -> None:
+    s.TurnRequest.model_validate(RESUME)
+    for field, value in (
+        ("user_message", "말"),
+        ("choice", {"proposal_id": "gp-1", "option": "USER"}),
+    ):
+        d = json.loads(json.dumps(RESUME))
+        d[field] = value
+        with pytest.raises(ValidationError):
+            s.TurnRequest.model_validate(d)
+
+
+def test_resume_state_shape_is_left_to_signature_check() -> None:
+    """실행 상태 외곽 모양이 틀려도 요청 검사(422)가 아니라 서명 검사(409)가 다룬다(5-6)."""
+    for state in ("not-an-object", 3, None, {"v": 2}):
+        d = json.loads(json.dumps(RESUME))
+        d["resume"]["state"] = state
+        s.TurnRequest.model_validate(d)
+
+
+def test_prior_assessments_and_targets_count_limits() -> None:
+    a = FINAL_DONE["assessments"][0]
+    d = _req()
+    d["history"]["prior_assessments"] = [a] * 50
+    s.TurnRequest.model_validate(d)
+    d["history"]["prior_assessments"] = [a] * 51
+    with pytest.raises(ValidationError):
+        s.TurnRequest.model_validate(d)
+    d = _req()
+    tgt = {"display": "말 속도 일정하게", "metric": "cpm", "operator": "GTE", "value": 280}
+    d["context"]["pitch"]["criteria"]["targets"] = [tgt] * 20
+    s.TurnRequest.model_validate(d)
+    d["context"]["pitch"]["criteria"]["targets"] = [tgt] * 21
+    with pytest.raises(ValidationError):
+        s.TurnRequest.model_validate(d)
+
+
+def test_prior_assessment_ignores_unknown_nested_fields() -> None:
+    """앞 판단은 입력으로 다시 들어오므로 BE가 더한 선택 필드를 무시한다(`architecture.md` 2절)."""
+    a = json.loads(json.dumps(FINAL_DONE["assessments"][0]))
+    a["new_field"] = 1
+    a["subject"]["new_field"] = 1
+    a["evidence_basis"]["records"][0]["takes"][0]["new_field"] = 1
+    d = _req()
+    d["history"]["prior_assessments"] = [a]
+    req = s.TurnRequest.model_validate(d)
+    assert req.history.prior_assessments[0].assessment_id == a["assessment_id"]
+
+
+@pytest.mark.parametrize(
+    "card",
+    [
+        {"type": "START_PRACTICE", "pitch_id": "p-1", "auto": True},
+        {
+            "type": "GOAL_RESULT",
+            "goal_version": 1,
+            "take_id": "t-6",
+            "status": "UNKNOWN",
+            "observed": None,
+            "reason": "r",
+        },
+        {
+            "type": "REASSESS_RESULT",
+            "take_id": "t-5",
+            "change": {"script_used": True},
+            "before": {
+                "score": 68,
+                "dimensions": {"script_independence": "PRIORITY"},
+                "criteria_results": [],
+            },
+            "after": {
+                "score": 74,
+                "dimensions": {"script_independence": "NOT_EVALUABLE"},
+                "criteria_results": [],
+            },
+            "changed_fields": ["score", "dimensions.script_independence"],
+            "official_differs": False,
+        },
+    ],
+)
+def test_card_shapes(card) -> None:
+    msg = {"text": "x", "claims": [{"kind": "SYSTEM", "text": "x"}], "cards": [card], "sources": []}
+    s.Message.model_validate(msg)
+    bad = {**card, "type": "UNKNOWN_CARD"}
+    with pytest.raises(ValidationError):
+        s.Message.model_validate({**msg, "cards": [bad]})
+    if card["type"] == "START_PRACTICE":
+        with pytest.raises(ValidationError):
+            s.Message.model_validate({**msg, "cards": [{**card, "auto": "yes"}]})
+
+
+def test_goal_proposal_card_options_one_or_two() -> None:
+    goal = {
+        k: v
+        for k, v in FINAL_DONE["message"]["cards"][0]["goal"].items()
+        if k not in ("version", "status", "created_at")
+    }
+    basis = FINAL_DONE["assessments"][0]["evidence_basis"]
+    opt = {"label": "EXPERT", "goal": goal, "reason": "r", "evidence_ids": [], "content_hash": "h"}
+    unmeasurable = {
+        "label": "USER",
+        "goal": None,
+        "reason": "잴 수 없음",
+        "evidence_ids": [],
+        "content_hash": None,
+    }
+    card = {
+        "type": "GOAL_PROPOSAL",
+        "proposal_id": "gp-1",
+        "options": [unmeasurable, opt],
+        "evidence_basis": basis,
+    }
+    s.GoalProposalCard.model_validate(card)
+    with pytest.raises(ValidationError):
+        s.GoalProposalCard.model_validate({**card, "options": []})
+    with pytest.raises(ValidationError):
+        s.GoalProposalCard.model_validate({**card, "options": [opt, opt, opt]})
+
+
+def test_fm_L6_07_reassess_needs_action_with_assessments_requires_judgement_message() -> None:
+    d = _final(FINAL_NA)
+    d["actions"][0]["type"] = "REASSESS"
+    d["actions"][0]["args"] = {"take_id": "t-5", "change": {"script_used": True}}
+    s.FinalData.model_validate(d)  # 판단이 없으면 message 없어도 된다
+    d["assessments"] = [FINAL_DONE["assessments"][0]]
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(d)
+    claim = {
+        "kind": "ASSESSMENT",
+        "assessment_id": "as-1",
+        "text": "말씀하신 '…'는 기록과 맞아요: …",
+    }
+    d["message"] = {"text": claim["text"], "claims": [claim], "cards": [], "sources": []}
+    s.FinalData.model_validate(d)
+
+
+def test_final_budget_used_is_closed_five_counters() -> None:
+    d = _final(FINAL_DONE)
+    d["budget_used"] = {"model_calls": 1}
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(d)
+    d["budget_used"] = {**FINAL_DONE["budget_used"], "extra": 1}
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(d)
+
+
+def test_diag_step_code_allowlist_and_reduced_tool_detail() -> None:
+    step = FINAL_NA["diagnostics"]["steps"][0]
+    with pytest.raises(ValidationError):  # 진단 기록에 문장 금지: code 는 종류별 닫힌 목록(11-5)
+        s.DiagStep.model_validate({**step, "code": "사용자가 시선을 물었다"})
+    tool = FINAL_NA["diagnostics"]["steps"][1]
+    with pytest.raises(ValidationError):
+        s.DiagStep.model_validate({**tool, "code": "delete_everything"})
+    # 줄이기 ①에서 TOOL detail 을 비워도 TOOL 로 읽힌다
+    reduced = s.DiagStep.model_validate({**tool, "detail": {}})
+    assert isinstance(reduced.detail, s.ToolDetail)

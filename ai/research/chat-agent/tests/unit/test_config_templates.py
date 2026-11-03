@@ -86,6 +86,8 @@ def test_objectivity_templates_are_feature_doc_strings() -> None:
         templates.UNCOVERED_CLAUSE,
         templates.OTHER_SPEAKER,
         templates.PREFERENCE,
+        templates.SUPPORTED,
+        templates.PREFERENCE_FITS,
     ):
         doc_form = tpl.replace("{evidence}", "{근거}").replace("{speaker}", "{화자}")
         assert f'"{doc_form}"' in doc, tpl
@@ -123,3 +125,39 @@ def test_assessment_sentence_picks_template_by_type_and_speaker() -> None:
         pressure=True,
         **kw,
     ).startswith("답답하실 수 있지만 기록은")
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"audience_ratio": {"min_delta": -0.05}},
+        {"audience_ratio": {"min_delta": 0}},
+        {"audience_ratio": {"min_delta": float("inf")}},
+        {"cpm": {"min_delta": 0.5}},
+        {"audience_ratio": {"operators": ["lt_base"]}},
+    ],
+)
+def test_fm_L4_12_invalid_goal_metric_config_is_rejected_at_start(bad) -> None:
+    with pytest.raises(ValueError):
+        load_config(goal_metrics=bad)
+
+
+def test_goal_rule_version_includes_algorithm_version(monkeypatch) -> None:
+    from chat_agent import config as cfg_mod
+
+    before = DEFAULT_CONFIG.goal_rule_version()
+    monkeypatch.setattr(cfg_mod, "GOAL_ALGORITHM_VERSION", "goal-algo-2")
+    assert DEFAULT_CONFIG.goal_rule_version() != before
+
+
+def test_forbidden_claims_cover_doc_example_and_variants() -> None:
+    words = DEFAULT_CONFIG.forbidden_claims
+    for sentence in (
+        "미션을 바꿔 뒀어요",
+        "점수를 변경했어요",
+        "공식 미션을 수정했어요",
+        "발표가 시작됐어요",
+    ):
+        assert any(w in sentence for w in words), sentence
+    for ok in ("점수는 바뀌지 않았어요", "미션은 리뷰가 정해요"):
+        assert not any(w in ok for w in words), ok

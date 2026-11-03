@@ -34,8 +34,45 @@
   "plan": [],
   "trace": [],
   "basis": {
-    "pitches": [],
-    "conversation_goal_version": 0,
+    "pitches": [
+      {
+        "pitch_id": "p-1",
+        "script_version_id": "sv-1",
+        "presentation_version_id": "pv-1",
+        "standard_version": 1,
+        "takes": [
+          {
+            "take_id": "t-6",
+            "take_number": 6,
+            "script_version_id": "sv-1",
+            "presentation_version_id": "pv-1",
+            "standard_version": 1,
+            "results": {
+              "TAKE_RESULT": 1,
+              "REVIEW": 1
+            },
+            "rule_versions": {
+              "GAZE": "gaze-1.3+1c10b82348a2"
+            }
+          },
+          {
+            "take_id": "t-5",
+            "take_number": 5,
+            "script_version_id": "sv-1",
+            "presentation_version_id": "pv-1",
+            "standard_version": 1,
+            "results": {
+              "TAKE_RESULT": 1,
+              "REVIEW": 1
+            },
+            "rule_versions": {
+              "GAZE": "gaze-1.3+1c10b82348a2"
+            }
+          }
+        ]
+      }
+    ],
+    "conversation_goal_version": 1,
     "corpus_version": "guides-1",
     "sources": []
   },
@@ -91,7 +128,7 @@
       "slide_number": 3,
       "value": 0.13,
       "unit": "ratio",
-      "rule_version": "goal-439f3f500ca0",
+      "rule_version": "goal-e6b795227503",
       "saved": null,
       "screen_snapshot_id": null,
       "inputs": [
@@ -135,13 +172,13 @@
     "prompt_version": "a1b2c3d4e5f6",
     "corpus_version": "guides-1",
     "criteria_versions": {
-      "chat_agent": "chat_agent-0.1.0+2749a6cfb38e"
+      "chat_agent": "chat_agent-0.1.0+bb258e007440"
     }
   },
   "diagnostics": {
     "v": 1,
-    "request_id": "req-81-1",
-    "run_id": "run-81",
+    "request_id": "req-90-1",
+    "run_id": "run-90",
     "turn_call": 1,
     "versions": {
       "feature_version": "chat_agent-0.1.0",

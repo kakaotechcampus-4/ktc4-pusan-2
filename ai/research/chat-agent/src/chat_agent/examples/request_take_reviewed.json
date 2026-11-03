@@ -68,7 +68,7 @@
           "script_version_id": "sv-1",
           "presentation_version_id": "pv-1",
           "standard_version": 1,
-          "completed_at": "2026-11-01T10:00:00+09:00",
+          "completed_at": "2026-11-04T11:10:00+09:00",
           "review": {
             "revision": 1,
             "score": 79,
@@ -170,7 +170,7 @@
           "script_version_id": "sv-1",
           "presentation_version_id": "pv-1",
           "standard_version": 1,
-          "completed_at": "2026-11-01T10:00:00+09:00",
+          "completed_at": "2026-11-04T11:10:00+09:00",
           "review": {
             "revision": 1,
             "score": 79,
@@ -218,6 +218,7 @@
                       "audience_ratio": 0.6,
                       "script_ratio": 0.15,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.25,
                       "reading_ratio": 0.12,
                       "reading_runs": 0
                     }
@@ -232,6 +233,7 @@
                       "audience_ratio": 0.6,
                       "script_ratio": 0.2,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.2,
                       "reading_ratio": 0.16,
                       "reading_runs": 0
                     }
@@ -246,6 +248,7 @@
                       "audience_ratio": 0.41,
                       "script_ratio": 0.3,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.29,
                       "reading_ratio": 0.24,
                       "reading_runs": 0
                     }
@@ -260,6 +263,7 @@
                       "audience_ratio": 0.6,
                       "script_ratio": 0.18,
                       "screen_ratio": 0.0,
+                      "away_ratio": 0.22,
                       "reading_ratio": 0.144,
                       "reading_runs": 0
                     }
@@ -281,7 +285,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   },
                   {
@@ -291,7 +296,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   },
                   {
@@ -301,7 +307,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   },
                   {
@@ -311,7 +318,8 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "cpm": 310.0
+                      "cpm": 310.0,
+                      "pause_count": 1
                     }
                   }
                 ],
@@ -333,6 +341,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -344,6 +353,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -355,6 +365,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -366,6 +377,7 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
+                      "level_db": -29.5,
                       "voice_diff_db": -0.5,
                       "low_ratio": 0.0
                     }
@@ -438,7 +450,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   },
                   {
@@ -448,7 +463,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   },
                   {
@@ -458,7 +476,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   },
                   {
@@ -468,7 +489,10 @@
                     "target_ms": 60000,
                     "measured_ratio": 1.0,
                     "metrics": {
-                      "filler_per_min": 1.2
+                      "filler_count": 1,
+                      "filler_per_min": 1.2,
+                      "by_tier": {},
+                      "by_word": {}
                     }
                   }
                 ],
@@ -633,7 +657,7 @@
       "operator": "gt_base",
       "script_version_id": "sv-1",
       "standard_version": 1,
-      "goal_rule_version": "goal-439f3f500ca0",
+      "goal_rule_version": "goal-e6b795227503",
       "base": {
         "take_id": "t-5",
         "take_number": 5,

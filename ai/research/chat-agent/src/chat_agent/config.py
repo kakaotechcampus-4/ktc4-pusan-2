@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .version import FEATURE_VERSION
+from .version import FEATURE_VERSION, GOAL_ALGORITHM_VERSION
 
 Direction = Literal["HIGHER", "LOWER", "RANGE"]
 
@@ -74,6 +75,18 @@ class GoalMetric(_Frozen):
     operators: tuple[Literal["gt_base", "lt_base", "in_range"], ...]
     #: gt_base · lt_base 의 최소 개선폭(유한 양수, 저장 때 목표에 고정). in_range 는 None
     min_delta: float | None = None
+
+    @model_validator(mode="after")
+    def _delta_matches_operator(self) -> GoalMetric:
+        # 잘못된 설정(음수 · 무한대 · in_range 에 min_delta)은 시작 때 거부한다(6-4, L4-12)
+        if len(self.operators) != 1:
+            raise ValueError("목표 지표의 operator 는 하나다")
+        if self.operators[0] == "in_range":
+            if self.min_delta is not None:
+                raise ValueError("in_range 목표의 min_delta 는 None 이다")
+        elif self.min_delta is None or not math.isfinite(self.min_delta) or self.min_delta <= 0:
+            raise ValueError("gt_base · lt_base 목표의 min_delta 는 유한 양수다")
+        return self
 
 
 def _default_dimensions() -> dict[str, DimensionSpec]:
@@ -245,6 +258,16 @@ class ChatAgentConfig(_Frozen):
             "내용": "content_delivery",
         }
     )
+    #: 측정 항목 낱말이 든 다른 낱말. 이 낱말 안에서 맞은 것은 측정 항목으로 보지 않는다(오탐 줄이기)
+    measure_word_exclusions: tuple[str, ...] = (
+        "헛소리",
+        "잔소리",
+        "실시간",
+        "시간표",
+        "버튼 내용",
+        "화면 내용",
+        "카드 내용",
+    )
     #: 문제 주장(ISSUE)의 방향 낱말 → 문제 이름. 방향이 둘인 차원(빠름 · 느림)을 가른다
     issue_words: Mapping[str, tuple[str, ...]] = Field(
         default_factory=lambda: {
@@ -280,16 +303,29 @@ class ChatAgentConfig(_Frozen):
     #: 금지 주장 낱말 (6-9 FORBIDDEN_CLAIM): 점수 · 미션을 바꿨다, 발표를 시작했다
     forbidden_claims: tuple[str, ...] = (
         "점수를 바꿨",
+        "점수를 바꿔",
         "점수를 고쳤",
         "점수를 올렸",
+        "점수를 변경",
+        "점수를 수정",
         "미션을 바꿨",
         "미션을 바꿔",
         "미션을 지웠",
         "미션을 고쳤",
+        "미션을 변경",
+        "미션을 수정",
+        "미션을 삭제",
         "리뷰를 바꿨",
+        "리뷰를 수정",
         "리뷰 결과를 바꿨",
+        "리뷰 결과를 수정",
+        "차원 상태를 바꿨",
         "발표를 시작했",
+        "발표가 시작됐",
+        "연습을 시작했",
         "녹화를 시작했",
+        "입력란을 채웠",
+        "대본을 고쳤",
     )
     #: 측정 수치를 한글 수로 쓴 표현 (6-9 NUMBER_FORMAT). 앞에 붙는 한글 수 + 뒤 단위
     korean_numerals: tuple[str, ...] = (
@@ -457,6 +493,15 @@ class ChatAgentConfig(_Frozen):
     #: P0 은 팀이 쓴 카드만(라이선스 위험 없음). 외부 자료(CC BY · CC BY-SA)는 P2
     allowed_licenses: tuple[str, ...] = ("team",)
 
+    @model_validator(mode="after")
+    def _goal_metrics_match_direction(self) -> ChatAgentConfig:
+        expected = {"HIGHER": "gt_base", "LOWER": "lt_base", "RANGE": "in_range"}
+        for metric, gm in self.goal_metrics.items():
+            direction = self.direction.get(metric)
+            if direction is None or gm.operators[0] != expected[direction]:
+                raise ValueError(f"목표 지표 {metric} 의 operator 가 비교 방향 표와 맞지 않는다")
+        return self
+
     def config_hash(self) -> str:
         """재현성 키(12자리). 같은 해시면 같은 입력에 같은 판정 · 검사 결과가 나온다."""
         blob = json.dumps(_thaw(self), sort_keys=True, ensure_ascii=False)
@@ -470,6 +515,7 @@ class ChatAgentConfig(_Frozen):
         """목표 판정 규칙 판 = goal-<비교 방향 · 목표 지표 · min_delta 해시 12자리>. 저장 때 목표에 고정한다(9절)."""
         blob = json.dumps(
             {
+                "algorithm": GOAL_ALGORITHM_VERSION,
                 "direction": _thaw(self.direction),
                 "goal_metrics": _thaw(self.goal_metrics),
                 "display_decimals": _thaw(self.display_decimals),
