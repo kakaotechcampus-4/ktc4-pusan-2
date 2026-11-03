@@ -326,7 +326,7 @@ sequenceDiagram
 
 | 데이터 | 언제 생기나 | 저장 위치(지금 구현 또는 확인 필요, BE 소유) | 저장 요구(남길 값 · 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 기준 음량 | 발표 전 점검 | `calibrations.base_level_db`. 기존 `base_volume`(0 이상 1000 미만, 조용한 환경의 소음 기준)은 뜻이 달라 NULL 허용으로 두고 AI 요청에 쓰지 않는다(`base_volume`의 NULL 허용: BE 구현 확인 필요) | 기준 음량(dBFS, 0 이하) 숫자 하나. 재지 못했으면 비워 둔다(null). AI 요청의 `calibration.base_level_db`로 쓰고, 옛 `base_volume`은 기준 음량으로 읽지 않는다 | FE가 재고 BE가 쓴다 · BE가 evaluate의 `calibration`으로 | Take마다 마지막 것 | Take와 함께. 파생값(음량)이다 |
+| 기준 음량 | 발표 전 점검 | `calibrations.base_level_db`. 기존 `base_volume`(0 이상 1000 미만, 조용한 환경의 소음 기준)은 뜻이 달라 AI 요청에 쓰지 않는다 | 기준 음량(dBFS, 0 이하) 숫자 하나. 재지 못했으면 비워 둔다(null). AI 요청의 `calibration.base_level_db`로 쓰고, 옛 `base_volume`은 기준 음량으로 읽지 않는다 | FE가 재고 BE가 쓴다 · BE가 evaluate의 `calibration`으로 | Take마다 마지막 것 | Take와 함께. 파생값(음량)이다 |
 | 음량 1초 기록 (원자료) | Take 동안 1초마다 | `take_metric_seconds.voice` | 음량 1초 기록 `{t_ms, duration_ms, level_db, voiced_ms, silence_ms, audio_live}` 그대로, 0.1 KB 안팎, 1시간 Take면 3,600행 | BE가 쓴다 · `replay`, 기준값 다시 고르기(`takes.raw_data_consent`가 true인 Take만) | `(take_id, t_ms)` 유일 제약, 먼저 저장한 것을 둔다 | Take와 함께. 음성 파형이 아닌 파생값이다. 동의 없는 Take의 예외는 `architecture.md` 1-1 '지우기 · 보관' |
 | 소리 크기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`TAKE_RESULT`)의 `areas.VOLUME` · `areas.PAUSE`(`take` · `slides`) · `criteria.VOLUME` · `criteria.PAUSE` | 코치가 고치지 않고 담는다. 영역 · 장 하나에 0.1 KB 안팎 | 코치가 만들고 BE가 쓴다 · 리뷰 · 리포트 | `(take_id, kind)` 유일 | Take와 함께 |
 | 리포트 요약 칸 | Take 결과를 저장할 때 | `take_summaries.volume` (VOLUME `voice_diff_db`) | 숫자, 잴 수 없었으면 null | BE · FE 리포트 목록 | Take마다 한 행 | Take와 함께 |
@@ -343,7 +343,7 @@ sequenceDiagram
 | 같은 녹음에 넣은 침묵(길이 여러 개)과 오디오 끊김 | 침묵 감지 지연, 끊김을 침묵으로 본 수 | 침묵을 바로 알아채고 끊김을 침묵으로 세지 않는 것 | 같음 |
 | 같은 세트 | 기준 음량 오차(발표 전 점검 값 vs Take 첫 발화 값) | 기록한다 | 같음 |
 
-- 기준값(`ai/service/src/pitch_coach_ai/features/volume/config.py`)은 실제 데이터로 고르기 전의 잠정값이다.
+- 기준값(`ai/service/src/pitch_coach_ai/features/volume/config.py`)은 실제 데이터로 고르기 전의 잠정값이다(작음 · 긴 침묵 기준은 옛 평가기 값).
 - 연구 폴더의 평가 데이터(`data/`: 같은 사람이 평소 · 작게 · 크게 읽은 녹음과 1초 기록) · 도구(`tools/`: 녹음 → 1초 기록 · 평가) · 결과(`reports/results/`)는 아직 없다.
 
 # 14. 지표 정의

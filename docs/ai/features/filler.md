@@ -23,7 +23,7 @@
 ## 1-1. 배경
 같은 단어라도 군더더기일 때와 아닐 때가 있다. "그 사람"의 "그"는 정상 단어이고, 말이 멈춘 뒤 혼자 나온 "그..."는 군더더기다. 그래서 단어 목록만으로는 안 되고, 단어 사이 간격과 문장 끝을 함께 봐야 한다.
 STT(Deepgram) 한국어는 채움말("음 · 어")을 기본으로 지우고, 군더더기를 남기는 설정이 없다. 그래서 군더더기 단어를 keyterm(꼭 받아 적을 단어)으로 넘겨야 전사에 남는다.
-BE에는 STT keyterm 목록과 후처리 사전(`backend/src/pitch_coach_backend/realtime/stt/fillers.py`)이 따로 있다(11절 'keyterm 목록이 BE로 가는 길').
+BE에는 STT keyterm 목록과 후처리 사전(`backend/src/pitch_coach_backend/realtime/stt/fillers.py`)이 따로 있고(11절 'keyterm 목록이 BE로 가는 길'), 대본 전달도의 STT 정리에도 간투사 패턴이 따로 있다(서비스 `features/script_coverage/stt_evaluation/fillers.py`, `script-coverage-evaluation.md` 6-2 ①).
 
 ## 1-2. 목표
 - STT 확정 단어마다 군더더기인지, 어느 층인지, 왜인지(`reason`)를 판정해 말 속도와 코치가 같은 판정을 쓰게 한다.
@@ -344,8 +344,10 @@ uv sync
 
 **환경변수**: 군더더기 판정 모듈은 환경변수를 읽지 않는다. 서비스 공통 환경변수는 `architecture.md` 10절이다.
 
-**배포 전 확인**
-- 서비스: `tests/unit/filler/`가 통과하고, 코어 경계 테스트가 코어 위치를 본다.
+**서비스 배포 전 확인**
+- `tests/unit/filler/`가 통과하고, 코어 경계 테스트가 코어 위치를 본다.
+
+**이어지는 확인**
 - BE: keyterm 복사본이 서비스의 `keyterms.json`과 같다는 BE 테스트가 통과한다(위 단락처럼 그 테스트는 아직 없다).
 
 **증상별 원인**

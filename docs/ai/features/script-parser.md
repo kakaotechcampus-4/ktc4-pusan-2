@@ -19,7 +19,7 @@
 # 1. 왜 필요한가
 ## 1-1. 배경
 발표자는 대본을 한 덩어리 글로 올린다. 발표 중 시간 판정은 장마다 목표 시간과 장 대본 글자 수가 있어야 진행도를 잴 수 있고, 대본 전달도는 장마다 평가 기준을 만들며, 발표 화면은 장마다 대본과 강조할 키워드를 보여 준다. 그래서 대본을 장 단위로 나누고 장마다 값이 필요하다.
-LLM이 대본 전문을 다시 쓰면 출력이 대본 길이에 비례해(추론까지 출력 한도를 써 긴 대본이 실패한다) 장 대본이 원문과 어긋날 수 있다. 그래서 장 나누기는 코드가 구분자로 하고, 사람의 판단이 필요한 제목 줄 · 키워드 · 용어만 LLM이 고른다(서비스 `features/script_parser/core.py`).
+LLM이 대본 전문을 다시 쓰면 출력이 대본 길이에 비례해 길어져(추론도 출력 한도를 쓴다) 긴 대본이 실패하고, 장 대본이 원문과 달라질 수 있다. 그래서 장 나누기는 코드가 구분자로 하고, 사람의 판단이 필요한 제목 줄 · 키워드 · 용어만 LLM이 고른다(서비스 `features/script_parser/core.py`).
 
 ## 1-2. 목표
 - 구분자가 있는 대본은 장 나눔이 틀리지 않는다(같은 입력이면 같은 장).
@@ -254,7 +254,7 @@ sequenceDiagram
 | 파싱 결과 (대본 버전) | `/scripts/parse` 응답 | `script_versions` (`parse_status` · `segmented` · `terms` · `parse_meta` · `parse_error`) | `segmented` = `status`가 `success`인가. `terms`: 문자열 배열, 최대 50개, 1 KB 안팎. `parse_meta` = 응답의 `meta`에 요청 `target_ms`를 더한 것, 0.1 KB 안팎. `parse_error`: 비어 있으면 차이 없음, `REPARSE_MISMATCH` = 같은 버전을 다시 파싱한 결과의 전체 장 번호 · 대본이 저장본과 달라 적용하지 않음 | BE가 쓴다 · BE가 STT keyterm을 만들 때 `terms`를 읽음 | 늦게 온 옛 응답은 버린다(BE의 `parse_requested_at` 표식) | 발표와 함께. 대본은 사용자가 쓴 글이다 |
 | 장별 대본 | 같음 | `script_slides` (`slide_number` · `full_content` · `keywords` · `highlights` · `script_chars` · `expected_ms`) | 장마다 `script`(→ `full_content`) · 키워드 · 하이라이트 · `script_chars` · `expected_ms`. `highlights`는 BE 형식 그대로 `[[start, end], ...]`(코드 포인트). 장 하나에서 대본 글을 뺀 값이 0.3~0.4 KB(`fail`이면 키워드가 많아 약 0.7 KB). 응답 전체는 대본 595~1,125자에 2.3~5.3 KB였고, 대본 글(UTF-8)에 장마다 0.4 KB와 용어 1 KB 안팎을 더한 크기다 | BE가 쓴다 · 코치 `plan.slides`(`expected_ms` → `target_ms`, `script_chars`) · `scripts`, 대본 전달도 `slides[].script`, FE 발표 화면 | `(script_version_id, slide_number)` 유일 제약 | 같음 |
 
-- 이미 저장된 대본 버전은 `script_chars` · `expected_ms` · `parse_meta`가 비어 있을 수 있다. 다시 파싱한 결과를 적용할 때 채우고(적용할지는 `architecture.md` 1-7의 저장본 비교 규칙), `parse_error`는 적용하지 않을 때 12-2대로 남긴다.
+- 이미 저장된 대본 버전은 `script_chars` · `expected_ms` · `parse_meta`가 비어 있을 수 있고, 지금은 다시 채우지 않는다(`DONE` 대본은 다시 파싱하지 않고, 저장본이 있으면 결과를 적용하지 않는다: `architecture.md` 1-7의 저장본 비교 규칙). 쓰는 쪽이 빈 값을 처리한다. 적용하지 않을 때의 `parse_error`는 12-2대로 남긴다.
 
 ## 12-2. 저장 규칙
 - 응답의 `meta`를 `parse_meta`에 함께 저장한다(`architecture.md` 1-1).
@@ -289,7 +289,7 @@ sequenceDiagram
 - `script_chars`는 대본 글의 글자 수라, 숫자 · 기호(`37%`)를 읽은 말("삼십칠 퍼센트")과 글자 수가 다르다. 시간 판정의 진행도(말한 글자 수 ÷ `script_chars`)가 숫자가 많은 장에서 조금 어긋난다.
 - 예상 시간은 글자 수 비례라, 장마다 다른 말 속도(인사 · 표 설명)를 반영하지 않는다.
 - 평가 세트(`data/scripts/` 15개 · `data/labels/`)에 장별 실제 발표 시간 라벨(`actual_slide_ms`)이 아직 없어 예상 시간 오차는 재지 못했다(13절).
-- 대본 길이보다 게이트웨이 응답 지연 변동이 커서, 호출 한 번 12초 · AI 예산 25초에서는 지연이 높은 때 BE 재시도까지 실패할 수 있다.
+- 대본 길이보다 게이트웨이 응답 지연 변동이 커서, 호출 한 번 12초 · AI 예산 25초에서는 지연이 높은 때 BE 재시도까지 실패할 수 있다(지연이 흔들린 때 4,198자 대본이 다섯 번 중 네 번 504 `LLM_TIMEOUT`, 시간 제한을 60초로 풀면 808자 12.0~38.4초 · 4,198자 11.2~42.5초).
 
 # 16. 확정 값 한눈에
 | 항목 | 값 | 어디서 정하나 |

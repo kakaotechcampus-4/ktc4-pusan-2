@@ -108,7 +108,7 @@ AI는 개인 context를 저장하지 않는다. BE가 사용자 · 발표 · Tak
 | 발표 | 대본 · 장별 대본 · 예상 시간 · 용어 | `script_versions` (`parse_status` · `segmented` · `terms` · `parse_meta` · `parse_error`), `script_slides` (`full_content` · `keywords` · `highlights` · `script_chars` · `expected_ms`) | `/scripts/parse`. `parse_error`는 BE(같은 버전 재파싱 결과가 저장본과 다를 때, 1-7) | 코치 `plan.slides` · `scripts`, STT keyterm | [script-parser.md](features/script-parser.md) 12-1 |
 | 발표 | 장별 평가 기준 (대본 전달도) | `script_slides.rubric` · `rubric_meta`, `script_versions` (`rubric_status` · `rubric_requested_at` · `rubric_retry_used`) | `/scripts/rubric`. 상태 · 작업 기록 칸은 BE(1-7) | `/takes/analyze` · `/takes/rescore`의 `rubrics` | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) 12-1 |
 | 발표 | 사용자 평가 기준 | `standards`, `standard_analyses` (버전마다 한 행) | `/evaluation-criteria/parse` | 리뷰 `user_criteria`, 코치 `script_used`. 둘 다 Take의 `takes.standard_version`이 가리키는 버전에서 만든다(1-3) | [evaluation-criteria.md](features/evaluation-criteria.md) 12-1 · 12-2 |
-| 발표 | 미션 이력 · 상태 | `missions` (`pitch_id` 포함), `takes.mission_ids` (Take를 시작할 때 실은 미션 id 목록). `missions.pitch_id`: BE 구현 확인 필요 | 리뷰 `next_missions` · `mission_results`, BE(Take 시작 때 `take_id` · `takes.mission_ids`) | 코칭 계획 · 코치 `missions`, 리뷰 `missions`(`takes.mission_ids`로 읽음) | [review-agent.md](features/review-agent.md) 12-1. 판정은 행의 `take_id`와 같은 Take의 리뷰만 덮는다(1-3) |
+| 발표 | 미션 이력 · 상태 | `missions` (`source_take_id`로 Take를 거쳐 발표에 잇는다), `takes.mission_ids` (Take를 시작할 때 실은 미션 id 목록) | 리뷰 `next_missions` · `mission_results`, BE(Take 시작 때 `take_id` · `takes.mission_ids`) | 코칭 계획 · 코치 `missions`, 리뷰 `missions`(`takes.mission_ids`로 읽음) | [review-agent.md](features/review-agent.md) 12-1. 판정은 행의 `take_id`와 같은 Take의 리뷰만 덮는다(1-3) |
 | 발표 | 반복 문제 | 그 발표에서 `REVIEW` 결과(`take_ai_results`)가 있는 Take 중 가장 늦게 끝난 Take(순서는 1-3 'Take 상태')의 리뷰의 `recurring_issues`. 가장 늦게 끝난 Take의 리뷰가 실패했거나 부르지 않았으면 그 앞 리뷰의 것을 쓴다(1-3 4번) | 리뷰 | 코칭 계획 · 코치 `recurring_issues`, 리뷰 `previous_recurring_issues` | [review-agent.md](features/review-agent.md) 12-1 |
 | 발표 | 코칭 계획 (응답마다 한 행) | `coaching_plans` (기본 계획 포함, 응답마다 한 행) | `/coach/plan` | 코치 `coaching_plan`. Take를 시작할 때 바탕 값이 지금 것과 같은 행 중 `requested_at`이 가장 늦은 것만 싣는다 | [coach-agent.md](features/coach-agent.md) 12-1 · 12-2 |
 | Take | 목표 시간 · 모드 · 대본 보기 | `takes` (`goal_time_sec` · `mode` · `script_mode`) | FE 입력 (Take를 만들 때) | 코치 `plan.target_ms` · `mode`, finalize `script_mode` | — |
@@ -221,7 +221,7 @@ BE는 `/coach/evaluate` · `/evaluation-criteria/parse` · `/takes/rescore`를 �
    - 문장 끝 신호는 Take 동안 BE가 메모리에 들고 있다가 창에 싣고, DB에는 3번 ③에서 한 번에 쓴다(Take 동안 `takes` 행을 계속 고치지 않게).
    - 응답의 `coach_state`는 진행 중 상태에, `events`는 `coach_events`에 저장한다(`INTERVENTION`도 여기에만 둔다. `live_feedbacks`에는 쓰지 않는다). `COACHING` 모드에서 `INTERVENE`이거나 `indicators`가 바뀌면 FE에 `coach`를 보낸다(빈 `indicators`는 '바뀌지 않음'이라 보내지 않는다). 1초 원자료는 몇 초씩 모아 저장한다.
 3. **Take 종료**: FE는 마지막 1초 조각을 실제 `duration_ms`로 담은 `metrics`를 보내고 `stop`을 보낸다(자동 종료면 BE가 `auto_end`를 보낸 뒤 같은 순서로 끝낸다, 1-4). BE는 순서대로 ① 새 `/coach/evaluate`를 보내지 않고, 진행 중인 요청은 시간 제한까지 기다려 응답을 반영하거나 버린다 ② Deepgram을 닫아 마지막 확정 단어를 받고, FE에 `stt_status: closed`를 보내 연결을 끝낸다 ③ 원자료 · 이벤트를 저장하고, Take 동안 들고 있던 문장 끝 신호를 `takes.utterance_ends`에 한 번에 쓰고, Take 상태를 `ANALYZING`, 분석 단계를 `FINALIZING`으로 바꾼다 ④ 그때의 `coach_state` · 이벤트 · 마지막 창으로 백그라운드 `/coach/finalize`를 부른다(409면 `replay`를 붙여 다시). 마지막 창의 `stt_status`에는 닫기 직전의 상태(정상 종료면 `ok`)를 싣는다. 그 뒤 Take 결과와 `take_summaries` 측정 칸을 저장하고(동의 없는 Take면 같은 트랜잭션에서 `take_metric_seconds`를 지운다, 1-1) 진행 중 상태를 지운다. Take 도중 BE가 재시작하면 메모리의 문장 끝 신호를 잃는다. 그 Take는 문장 끝 없이 `replay`로 판정되어 군더더기 · 코치의 문장 끝 판단이 부정확해진다(알려진 한계).
-4. **Take 종료 뒤 (백그라운드)**: Take 결과를 저장하면 분석 단계를 `SCORING`으로 바꾸고, 확정 전사를 장 구간(`take_slide_events` 전체)으로 나눠 `/takes/analyze`를 부른다. 최초 200의 채점 · 요약을 저장하고 1-7의 허용 오류 장(`failed` 중 LLM 오류 네 가지)만 1회 다시 채점한 뒤, 새로 성공한 장이 있을 때만 병합 후보를 보존하고 답 없이 `/takes/rescore`로 Take 값을 다시 받는다(최초 호출이 408 · 429 · 5xx · 무응답이면 전체를 1회 다시 부른다, 3절). 저장 · 병합 조건과 rescore가 끝내 실패했을 때의 보류(아래 '리뷰 보류')는 1-7이다. 허용된 호출이 모두 끝나도 확정본이 없으면(재시도하지 않는 입력 오류 포함) 확인을 건너뛰고 `speak_accuracy`는 null로 둔 채 `script_coverage` null로 리뷰한다(`script-coverage-evaluation.md` 7절).
+4. **Take 종료 뒤 (백그라운드)**: Take 결과를 저장하면 분석 단계를 `SCORING`으로 바꾸고, 확정 전사를 장 구간(`take_slide_events` 전체)으로 나눠 `/takes/analyze`를 부른다. 최초 200의 완전한 채점 · 요약을 저장하고 1-7의 허용 오류 장(`failed` 중 LLM 오류 네 가지)만 1회 다시 채점한 뒤, 새로 성공한 장이 있을 때만 병합 후보를 보존하고 답 없이 `/takes/rescore`로 Take 값을 다시 받는다(최초 호출이 408 · 429 · 5xx · 무응답이면 전체를 1회 다시 부른다, 3절). 저장 · 병합 조건과 rescore가 끝내 실패했을 때의 보류(아래 '리뷰 보류')는 1-7이다. 허용된 호출이 모두 끝나도 확정본이 없으면(재시도하지 않는 입력 오류 포함) 확인을 건너뛰고 `speak_accuracy`는 null로 둔 채 `script_coverage` null로 리뷰한다(`script-coverage-evaluation.md` 7절).
    - 확인할 것이 있으면 분석 단계를 `AWAITING_CONFIRMATION`으로 바꾸고 FE 확인 화면을 띄운다. 답하면 `/takes/rescore`를 부르고, 건너뛰거나 화면을 떠나거나 `analysis_stage_at`부터 10분이 지나면 그대로 다음으로 간다.
    - 그다음 분석 단계를 `REVIEWING`으로 바꾸고 `/takes/review` → 리뷰 · `missions` · `take_summaries` 저장 → `/coach/plan` 순서로 간다. 확인 답은 리뷰를 부르기 전까지만 받는다(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게).
    - 리뷰를 저장하면 분석 단계 `DONE` · `review_status` `DONE` · Take 상태 `COMPLETED` · `completed_at`(`COMPLETED` 전에는 null)을 그 시각으로 한 트랜잭션에서 바꾼다. 리뷰가 끝내 실패하면(재시도를 다 쓰고도 200을 받지 못했거나, 다시 부르지 않는 4xx를 받았으면) `review_status`만 `FAILED`로 하고 나머지는 같다. 이때 `/coach/plan`은 `previous_review` null과 이전 `ACTIVE` 미션 · 반복 문제로 부른다. Take 결과 · 대본 전달도는 있으므로 리포트의 측정값은 보인다. Take 결과를 만들지 못하면 Take 상태를 `FAILED`로 바꾼다.
@@ -272,7 +272,7 @@ BE와 FE 사이의 계약이고, AI 입력의 출처라 여기에 둔다. BE가 
 {
   "type": "metrics",
   "t_ms": 41000,
-  "gaze": {"t_ms": 40000, "duration_ms": 1000, "state": "BOTTOM", "direction": null, "confidence": 0.83, "reliability": 0.95, "issues": [], "frames": 12},
+  "gaze": {"t_ms": 40000, "duration_ms": 1000, "state": "BOTTOM", "direction": null, "confidence": 0.83, "reliability": 0.95, "issues": [], "frames": 8},
   "voice": {"t_ms": 40000, "duration_ms": 1000, "level_db": -31.2, "voiced_ms": 820, "silence_ms": 0, "audio_live": true},
   "slide_number": 3
 }
@@ -347,7 +347,7 @@ BE와 FE 사이의 계약이고, AI 입력의 출처라 여기에 둔다. BE가 
 # 2. 통신 규칙
 | 규칙 | 내용 | 이유 |
 |---|---|---|
-| BE만 AI를 부른다 | FE는 AI를 부르지 않는다. AI는 BE를 부르지 않고 DB · Redis를 쓰지 않는다. 필요한 값은 모두 요청으로 받고, 돌려준 값은 BE가 저장한다 | AI를 상태 없이 두어 재시작 · 워커 증설에도 결과가 같게 하고, 저장 · 재시도 판단을 BE 한 곳에 모은다 |
+| BE만 AI를 부른다 | FE는 AI를 부르지 않는다. AI는 BE를 부르지 않고 DB · Redis를 쓰지 않는다. 필요한 값은 모두 요청으로 받고, 돌려준 값은 BE가 저장한다. AI는 기억하지 않고, 같은 입력에는 같은 결과를 낸다(LLM 단계 제외) | AI를 상태 없이 두어 재시작 · 워커 증설에도 결과가 같게 하고, 저장 · 재시도 판단을 BE 한 곳에 모은다 |
 | AI는 내부망에만 | AI 서비스는 Docker 내부망 `http://ai:8000`에서만 받는다. 인증이 없으므로 서버 포트를 열거나 Caddy 경로를 만들지 않는다 | 내부망 격리가 유일한 보호다. 다른 서버로 옮기게 되면 그때 서비스 간 인증(공유 토큰 등)을 붙인다 |
 | 경로에 버전이 없다 | `/v1` 같은 접두어 없이 `/coach/evaluate`처럼 부른다. 필드 이름은 snake_case | BE 하나만 부르는 내부 API다. 버전은 `meta.schema_version`으로 알린다 |
 | 요청 ID | BE는 요청마다 `X-Request-ID` 헤더를 보낸다. 같은 요청을 다시 부를 때(3절의 재시도)는 처음과 같은 값을 쓰고, 409 뒤 `replay`를 붙인 호출처럼 본문이 다른 요청은 새 값을 쓴다. AI는 이 값을 로그에 남기고 응답 헤더로 그대로 돌려준다. 헤더가 없으면 AI가 만든다 | BE 로그와 AI 로그를 같은 요청으로 묶어 보고, 재시도를 같은 요청으로 알아본다 |
