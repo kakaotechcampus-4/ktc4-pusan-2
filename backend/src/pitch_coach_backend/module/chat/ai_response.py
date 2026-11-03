@@ -150,6 +150,7 @@ class StreamReader:
         self._seq = 0
         self._terminal: StreamLine | None = None
 
+    # NDJSON Stream을 읽고, StreamLine 객체 리스트를 반환
     def feed(self, chunk: bytes) -> list[StreamLine]:
         self._buffer += chunk
         lines = []
@@ -166,6 +167,7 @@ class StreamReader:
             raise InvalidTurnReply("끝 줄 없이 스트림이 끝났다")
         return self._terminal
 
+    # StreamLine으로 한 줄 변환
     def _line(self, raw: bytes) -> StreamLine:
         if len(raw) > MAX_LINE_BYTES:
             raise InvalidTurnReply("스트림 한 줄이 상한을 넘었다")

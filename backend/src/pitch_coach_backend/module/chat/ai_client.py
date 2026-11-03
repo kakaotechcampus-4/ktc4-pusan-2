@@ -40,13 +40,15 @@ class TurnFailure:
     retry_after_s: int | None = None
     diagnostics: dict[str, Any] | None = None
 
-
+# 사용자 입력을 하나 받고, AI가 응답을 스트리밍으로 보내는 turn 요청을 처리
 async def request_turn(
     request: AgentTurnRequestDTO,
     *,
     request_id: str,
     turn_call: int,
+    # first trigger : AI에게로 보내는 요청의 종류
     first_trigger: AgentTrigger,
+    # OnProgress : AI가 응답을 스트리밍으로 보내는 동안, 진행 상황을 처리하는 콜백 함수
     on_progress: OnProgress,
 ) -> TurnFinal | TurnFailure:
     body = request.model_dump(mode="json")
@@ -90,7 +92,7 @@ def _pre_stream_failure(body: bytes) -> TurnFailure:
     code = pre_stream_error_code(body)
     return TurnFailure(code, BUSY_RETRY_AFTER_SEC if code == "AGENT_BUSY" else None)
 
-
+# 스트림을 읽고, 최종 StreamLine을 반환
 async def _read(response: httpx.Response, run_id: str, on_progress: OnProgress) -> StreamLine:
     reader = StreamReader(run_id)
     async for chunk in response.aiter_bytes():

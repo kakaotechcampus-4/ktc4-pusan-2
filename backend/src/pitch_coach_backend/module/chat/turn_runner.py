@@ -80,6 +80,7 @@ class _Turn:
         self._session_factory = session_factory
         self._run: ClaimedRun | None = None
 
+    # 세션을 열고, 실행을 claim 한 뒤, 턴을 반복한다. 턴이 끝나면 종료 상태를 저장한다.
     async def run(self, run_id: uuid.UUID) -> None:
         self._run = await _in_session(self._session_factory, service.claim, run_id)
         if self._run is None:
@@ -106,6 +107,7 @@ class _Turn:
         assert self._run is not None
         return self._run
 
+    # AI 클라이언트 요청을 보내고, 응답을 스트리밍으로 받으며, 필요시 action을 실행하는 턴을 반복
     async def _turns(self) -> None:
         resume: AgentResumeDTO | None = None
         budget = BudgetUsedDTO()

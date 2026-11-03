@@ -31,6 +31,7 @@ class ChatRepository:
             select(ChatAction).where(ChatAction.run_id == run_id, ChatAction.action_id == action_id)
         )
 
+    # 행 잠금. UPDATING, DELETING 시 다른 트랜잭션이 접근하지 못하도록 잠금
     def lock_run(
         self,
         run_id: uuid.UUID,
@@ -46,6 +47,7 @@ class ChatRepository:
     def get_conversation(self, conversation_id: uuid.UUID) -> ChatConversation | None:
         return self.db.get(ChatConversation, conversation_id)
 
+    # Conversation에 대한 행 잠금. UPDATING, DELETING 시 다른 트랜잭션이 접근하지 못하도록 잠금
     def lock_conversation(self, conversation_id: uuid.UUID) -> ChatConversation | None:
         return self.db.scalar(
             select(ChatConversation).where(ChatConversation.id == conversation_id).with_for_update()
@@ -110,6 +112,7 @@ class ChatRepository:
         return self.db.get(ChatGoal, (conversation_id, version))
 
     def list_pitch_summaries(self, user_id: uuid.UUID, *, limit: int) -> list[Row]:
+        # completed 된 take 수와 마지막으로 연습한 시각을 가져오는 서브쿼리
         stats = (
             select(
                 Take.pitch_id,
