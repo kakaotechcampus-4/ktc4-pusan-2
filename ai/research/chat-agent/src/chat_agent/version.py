@@ -22,6 +22,12 @@ GOAL_ALGORITHM_VERSION = "goal-algo-1"
 #: 설정이 바뀌어도 같은 결과로 판정한다(6-4 · L4-12). 여기 없는 판의 목표는 새로 정하자고 한다
 SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 
+#: 자료 묶음 판 → 묶음 해시. 한 번 정한 판의 해시는 바꾸지 않는다: 카드 본문을 고치면 판을 올리고 여기에 줄을 더한다
+#: (같은 판에 다른 본문이 들어가면 그 판을 인용한 옛 답 · 진행 중 실행과 어긋난다, L4-30). 첫 배포 전에는 guides-1 을 고쳐 쓴다
+CORPUS_VERSION_HASHES: dict[str, str] = {
+    "guides-1": "48aa04e52f8f16abacb6c87d37d5536daf39e4d3c4aac05bf1550cad9dd6ad89",
+}
+
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),
 #: 새 판을 배포해도 아직 지원하는 옛 판이면 여기에 남겨 둔다. 지원하지 않는 판은 409.
 SUPPORTED_RUN_VERSIONS: frozenset[tuple[str, str]] = frozenset(
