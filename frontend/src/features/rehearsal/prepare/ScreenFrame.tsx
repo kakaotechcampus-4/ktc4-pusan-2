@@ -18,7 +18,12 @@ export function ScreenFrame({
   children: ReactNode;
 }) {
   return (
-    <main className="pitch-create prepare-screen flex-1 bg-greige px-6 pt-3 pb-4 text-ink prepare-compact:px-5 prepare-compact:py-2 prepare-low:py-1 max-[600px]:px-3 selection:bg-coral-wash selection:text-ink [&_:focus-visible]:outline-coral-deep">
+    // 상단바의 본문 건너뛰기 링크가 초점을 옮기는 자리 (#840 SkipLink 의 MAIN_ID)
+    <main
+      id="main"
+      tabIndex={-1}
+      className="pitch-create prepare-screen flex-1 bg-greige px-6 pt-3 pb-4 text-ink prepare-compact:px-5 prepare-compact:py-2 prepare-low:py-1 max-[600px]:px-3 selection:bg-coral-wash selection:text-ink [&_:focus-visible]:outline-coral-deep"
+    >
       <div className="prepare-frame mx-auto max-w-page">
         <header className="prepare-heading mb-3 flex min-h-14 items-center gap-3.5 prepare-compact:mb-2 prepare-compact:min-h-11 prepare-low:mb-1 prepare-low:min-h-10 max-lg:flex-wrap [&>h1]:shrink-0 [&>h1]:text-[22px] [&>h1]:font-bold prepare-compact:[&>h1]:text-xl">
           <button
