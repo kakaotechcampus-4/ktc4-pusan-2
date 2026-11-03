@@ -88,6 +88,7 @@ def test_objectivity_templates_are_feature_doc_strings() -> None:
         templates.PREFERENCE,
         templates.SUPPORTED,
         templates.PREFERENCE_FITS,
+        templates.KNOWLEDGE_SUPPORTED,
     ):
         doc_form = tpl.replace("{evidence}", "{근거}").replace("{speaker}", "{화자}")
         assert f'"{doc_form}"' in doc, tpl
@@ -161,3 +162,15 @@ def test_forbidden_claims_cover_doc_example_and_variants() -> None:
         assert any(w in sentence for w in words), sentence
     for ok in ("점수는 바뀌지 않았어요", "미션은 리뷰가 정해요"):
         assert not any(w in ok for w in words), ok
+
+
+def test_knowledge_supported_uses_guide_wording() -> None:
+    s = templates.assessment_sentence(
+        type_="KNOWLEDGE",
+        speaker="USER",
+        speaker_label=None,
+        verdict="SUPPORTED",
+        quote="쉼이 중요하다",
+        evidence="자료 g-05",
+    )
+    assert "발표법 자료와 맞아요" in s and "기록과" not in s

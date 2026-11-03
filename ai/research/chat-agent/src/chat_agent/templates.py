@@ -111,6 +111,8 @@ CONTRADICTED = "말씀하신 '{quote}'는 기록과 달라요: {evidence}."
 PARTLY = "말씀하신 '{quote}'는 기록에서 일부만 확인돼요: {evidence}."
 UNVERIFIABLE = "말씀하신 '{quote}'는 이 기록으로는 확인할 수 없어요."
 SUPPORTED = "말씀하신 '{quote}'는 기록과 맞아요: {evidence}."
+#: 발표법 주장(KNOWLEDGE)이 자료로 뒷받침될 때. 기록이 아니라 자료가 근거라 SUPPORTED 와 문구를 나눈다
+KNOWLEDGE_SUPPORTED = "말씀하신 '{quote}'는 발표법 자료와 맞아요: {evidence}."
 PRESSURE = "답답하실 수 있지만 기록은 {evidence}예요."
 SCRIPT_FACT = "기록에는 화면 대본이 {state} 있었어요."
 SCRIPT_STATE = {"HIGHLIGHT": "전체로 켜져", "KEYWORD": "핵심어로 켜져", "OFF": "꺼져"}
@@ -157,6 +159,8 @@ def assessment_sentence(
         return CONTRADICTED.format(quote=q, evidence=evidence)
     if verdict == "PARTLY":
         return PARTLY.format(quote=q, evidence=evidence)
+    if type_ == "KNOWLEDGE":
+        return KNOWLEDGE_SUPPORTED.format(quote=q, evidence=evidence)
     return SUPPORTED.format(quote=q, evidence=evidence)
 
 
