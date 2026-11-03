@@ -22,7 +22,7 @@ TERMINAL_EVENTS = frozenset({"final", "error"})
 class InvalidTurnReply(ValueError):
     pass
 
-
+# 기초 BaseModel인 _View에 대한 설정
 class _View(BaseModel):
     model_config = ConfigDict(strict=True, allow_inf_nan=False, extra="ignore")
 
