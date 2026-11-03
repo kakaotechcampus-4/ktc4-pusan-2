@@ -29,6 +29,7 @@ CHAT_SLOT_LIMIT = 4
 MAX_TURN_CALLS = 6
 STOP_TIMEOUT_SEC = 5.0
 
+# Callable[매개변수, 반환값] : 해당 함수 자체를 매개변수와 반환값으로 지정할 수 있다.
 type SessionFactory = Callable[[], Session]
 
 _running = TaskRegistry()
