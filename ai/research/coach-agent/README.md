@@ -170,6 +170,7 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 | 하는 일 | 명령 |
 |---|---|
 | 테스트 | `uv run python -m pytest` (실험 도구 `tests/lab`. 코어 단위 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/coach`) |
+| 판정 대역 테스트 (말 속도 · 소리 크기 대역) | `uv run python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judge_volume.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py` (대역은 `src/coach_lab/judges/`. 서비스 판정 모듈과 코치의 연결 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/coach/test_judges.py`) |
 | 실제 LLM으로 계획 한 번 (과금) | `uv run python -m pytest -m live` |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` |
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`, 설정 덮어쓰기: `--config my.json`) |
