@@ -325,7 +325,7 @@ BE와 FE 사이의 계약이고, AI 입력의 출처라 여기에 둔다. BE가 
 | 대본 전달도 채점 · 확인 | 확인 화면에서 항목마다 `as_script` · `as_stt` 답 (REST) | 백그라운드로 `/takes/analyze`를 부른다. 최초 채점 저장 · 실패한 장의 재채점 · 새로 성공한 장이 있을 때만 하는 병합 rescore · 보류는 1-7이다. 확인할 것이 있으면 FE에 알리고, 답을 받으면 `/takes/rescore`. 답은 리뷰를 부르기 전까지만 받고(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게), 같은 답이 두 번 오면 한 번만 반영한다 | `/takes/analyze` · `/takes/rescore` | `take_ai_results` (`SCRIPT_COVERAGE`, rescore 성공 때만 확정본 교체하고 `revision`을 올림; `SCRIPT_COVERAGE_PENDING`, 병합 후보), `take_summaries.speak_accuracy`, `takes` (`coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at`) |
 | 리뷰 | 리포트 화면 (REST 조회) | 채점 · 확인이 끝나면(확인을 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나도) 백그라운드로 `/takes/review`. 리뷰 · 미션을 저장하고 `take_summaries`의 `summary` · `score`를 채운다(미션 판정은 행의 `take_id`가 이 Take일 때만 덮는다. 끝내 실패하면 1-3) | `/takes/review` | `take_ai_results` (`REVIEW`), `take_summaries`, `missions`, `takes` (`review_status` · `completed_at`) |
 | 다음 Take 준비 | — | 리뷰를 저장한 직후(리뷰가 끝내 실패해도 `previous_review` null로) 백그라운드로 `/coach/plan`. 응답마다 한 행을 넣는다 | `/coach/plan` | `coaching_plans` |
-| 대화 에이전트 | 오른쪽 아래 버튼 · 대화창. 메시지를 보내고 2초마다 실행을 조회한다 (REST) | 메시지를 접수(202)하고 턴 실행기로 `/agent/turn`을 부른다. 진행 줄은 실행에 저장하고, 끝 줄의 행동은 권한을 확인해 실행한 뒤 결과를 붙여 이어 부른다. 대화 목표가 있는 대화는 새 리뷰 뒤 자동 목표 확인 턴을 부른다 | `/agent/turn` | BE가 정함(대화 · 메시지 · 실행 · 행동 · 근거). 저장 요구 · BE가 할 일은 [chat-agent.md](features/chat-agent.md) 12-1 · 12-3 |
+| 대화 에이전트 | 오른쪽 아래 버튼 · 대화창. 메시지를 보내고 2초마다 실행을 조회한다 (REST) | 메시지를 접수(202)하고 턴 실행기로 `/agent/turn`을 부른다. 진행 줄은 실행에 저장하고, `NEEDS_ACTION`의 행동은 권한을 확인해 실행한 뒤 결과를 붙여 이어 부른다. `DONE`에 실린 연습 준비 이동(`START_PRACTICE`)은 답과 함께 저장하고 이어 부르지 않는다. 대화 목표가 있는 대화는 새 리뷰 뒤 자동 목표 확인 턴을 부른다 | `/agent/turn` | BE가 정함(대화 · 메시지 · 실행 · 행동 · 근거). 저장 요구 · BE가 할 일은 [chat-agent.md](features/chat-agent.md) 12-1 · 12-3 |
 
 ## 1-7. 평가 기준 보존과 장별 재시도·병합 (BE 기준)
 
@@ -391,7 +391,7 @@ API마다 요청 하나의 시간 예산이 있다. AI는 LLM 호출 한 번마�
 - **백그라운드 호출은 BE가 동시 개수를 제한한다.** 코치 plan · finalize, Take 분석, 대본 등록(`/scripts/rubric`), 리뷰를 BE 전체 합계로 센다(권장 4. BE 프로세스를 늘리면 합계가 넘지 않게 나눈다). 그 안에서 `/scripts/rubric`은 동시에 2개까지다(요청 하나가 장마다 LLM을 동시에 12개 부르기 때문, `script-coverage-evaluation.md` 8절). 넘는 요청은 실패시키지 않고 BE에서 기다린다. 긴 LLM 요청이 AI의 스레드 풀(40)을 채우면 1초마다 오는 `/coach/evaluate`가 시간 제한을 넘긴다(`ai-service.md` 8절).
 - **대화용 AI 요청은 따로 센다.** 대화용 AI 요청은 BE 프로세스별 세마포어(대화 자리, 합계는 승인된 전체 상한 이하로 시작 4, 기존 백그라운드 자리와 따로)와 AI의 대화 전용 실행 풀(`AGENT_MAX_CONCURRENCY` × 2, AI 프로세스별 `/agent/turn` 상한 4)로 묶는다. 다시 평가 A · B는 기존 리뷰 경로로 AI 공용 실행 자원을 쓰고 BE 대화 자리 · 횟수로 묶는다([chat-agent.md](features/chat-agent.md) 8-4 · 12-3).
 - **출력이 긴 기능**은 출력 길이에 비례해 오래 걸린다. 기능 PR에서 실제 데이터로 걸린 시간을 재서 LLM 호출 한 번이 시간 제한 안에 끝나는지 확인한다.
-- **요청 하나의 시간**: `/coach/evaluate`는 BE 시간 제한 안에 여유 있게 끝나야 한다. 판정 모듈은 1초 판정에 LLM · 네트워크를 쓰지 않고, LLM은 대본 · 평가 기준 등록, 다음 Take 준비, Take 종료 뒤 분석에만 쓴다.
+- **요청 하나의 시간**: `/coach/evaluate`는 BE 시간 제한 안에 여유 있게 끝나야 한다. 판정 모듈은 1초 판정에 LLM · 네트워크를 쓰지 않고, LLM은 대본 · 평가 기준 등록, 다음 Take 준비, Take 종료 뒤 분석과 대화 에이전트에만 쓴다(0-3).
 
 # 4. 에러 본문과 상태 코드
 BE는 성공 · 실패를 상태 코드로 가르고, 에러 본문은 로그에만 남긴다. 200 응답에서는 `fallback_reason`(코칭 계획 · 리뷰)과 `failed`(장별 API)만 본문에서 읽는다. `/agent/turn`만 예외로, BE가 스트림 전 오류 본문과 `error` 끝 줄의 `error.code`를 읽어 [chat-agent.md](features/chat-agent.md) 5-9의 허용 목록에 따라 실행 오류로 바꾼다(같은 503의 `AGENT_DISABLED`와 `LLM_UNAVAILABLE`을 가르기 위해서다). 목록 밖 코드는 `AGENT_UPSTREAM_ERROR`로 보고, `error.message` 원문은 사용자에게 보내지 않고 로그에만 남긴다.
