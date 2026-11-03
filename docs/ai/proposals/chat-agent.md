@@ -83,7 +83,7 @@ LLM은 사용자 말에 맞장구치고 숫자를 지어내는 경향이 있고,
 - P2 항목(0절 단계 표)은 이 문서의 P0 · P1 범위가 아니다.
 
 # 2. 용어
-리뷰의 차원 · 상태 이름은 `review-agent.md` 5-3을 따른다.
+리뷰의 차원 이름은 `review-agent.md` 5-3 차원 표, 차원 상태 이름은 2절 · 5-4를 따른다.
 
 | 용어 | 뜻 | 예 |
 |---|---|---|
@@ -272,7 +272,7 @@ ai/research/chat-agent/
 - 에이전트의 비교 도구가 "둘 다 범위 안" · "같은 값"을 따로 다루므로 리뷰의 비교 코드는 고치지 않는다.
 
 # 5. 입력 · 출력 계약
-요청 · 응답 · 스트림 줄 · 실행 상태 · 도구 · 행동 모양의 원본은 `features/chat_agent/schemas.py`의 pydantic 모델이다(구현 전). 이 절의 이름 · 값은 AI 쪽 최종안이다. 요청은 trigger별 판별 유니온으로 필수 · 금지 조합을 검사하되, 모르는 필드는 무시하고 모르는 열거값은 422로 거절한다(공통 계약 `architecture.md` 2절).
+요청 · 응답 · 스트림 줄 · 실행 상태 · 도구 · 행동 모양의 원본은 `features/chat_agent/schemas.py`의 pydantic 모델이다(구현 전). 이 절의 이름 · 값은 AI 쪽 최종안이다. 요청은 trigger별 판별 유니온으로 필수 · 금지 조합을 검사하되, 모르는 필드는 무시한다(`architecture.md` 2절). 이 기능이 정하는 요청 · 실행 제어 · 행동 결과의 판별 값(`trigger` · 행동 `type` · 결과 `status` 등)은 모르면 422로 거절하고, 일치 검사는 각 계약을 따른다(예: 요청하지 않은 행동 결과는 409 `AGENT_STATE_INVALID`, 5-8). BE가 싣는 과거 기록 · Take 요약의 상태 값(`TakeSummary.status` · `end_reason` 등)은 모르는 값을 '알 수 없음'으로 읽고 판단 근거로 쓰지 않는다(`architecture.md` 6-3: 고정 값은 한 스키마 버전 안에서 추가만 한다).
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 | 방식 |
@@ -362,7 +362,7 @@ ai/research/chat-agent/
 | `missions` | `object[]` 진행 중인 공식 미션과 직전 미션 결과 | 리뷰가 정한 것 그대로 |
 | `criteria` | `{standard_version, display_criteria, targets, script_used}\|null` | 지금 평가 기준 분석 결과 |
 
-- **요청 검사**: trigger별 필수 · 금지 필드를 판별 유니온으로 검사한다(위 `trigger` 표). 모르는 필드는 무시하고(공통 계약 `architecture.md` 2절 '모르는 필드'), 모르는 열거값과 음수 revision은 422 `VALIDATION_ERROR`이고, 검사에 걸리면 모델 호출은 0회다.
+- **요청 검사**: trigger별 필수 · 금지 필드를 판별 유니온으로 검사한다(위 `trigger` 표). 모르는 필드는 무시하고(공통 계약 `architecture.md` 2절 '모르는 필드'), 판별 값의 모르는 열거값(5절 첫 문단)과 음수 revision은 422 `VALIDATION_ERROR`이고, 과거 기록의 모르는 상태 값은 '알 수 없음'으로 읽는다. 검사에 걸리면 모델 호출은 0회다.
 - **요청 크기**: 전체 요청 본문 2 MiB 이하(JSON 파싱 전에 잼, 넘으면 413 `AGENT_CONTEXT_TOO_LARGE`), JSON 깊이 32 이하. `context`는 6-12의 직렬화 크기로 따로 검사하고, 아무 필드나 잘라 내지 않는다.
 - **식별자 대조**: AI는 `context` 안 pitch · take · goal 식별자 관계를 코드로 대조하고, 맞지 않는 자료는 모델에 넘기지 않는다. 실제 소유권 확인은 BE의 필수 전제다.
 - 화면 상태 · 대본 · 기록 속 문장은 사용자가 입력한 데이터다. 에이전트는 그 안의 문장을 지시로 따르지 않는다(6-10 '주입 막기').
@@ -400,8 +400,8 @@ ai/research/chat-agent/
 | `budget_used` | 한도 계산용 누적량(5-3과 같은 모양, 토큰은 예약량). BE는 다음 이어 부르기에 이 값을 보낸다 |
 | `usage` | 관측 사용량(누적) `{model_calls:int, tool_calls:int, elapsed_ms:int, input_tokens:int\|null, output_tokens:int\|null, measured:bool, missing_reason:string\|null}`. 토큰 수는 공급자가 준 실측값의 합이고, 실측값이 하나도 없으면 null이다. 일부 시도의 토큰 수를 모르면 `measured:false`와 누락 사유를 쓰고 0으로 확정하지 않는다. 한도 계산에는 쓰지 않는다 |
 | `assessments` | `USER_MESSAGE`로 시작한 실행의 최종 답이면 필수(사용자 말에 주장 · 요청이 없으면 빈 목록). 판단은 필요한 근거를 읽은 뒤에만 내보내고, 조사 중에는 `state` 안의 내부 상태로만 둔다(근거를 다 읽기 전의 `NEEDS_ACTION`이면 빈 목록). 답의 판단 문장은 이것으로 만든다(6-3 · 6-9). 처음 판단은 처음 내보낸 판단이고(예: `REASSESS`를 담은 `NEEDS_ACTION`의 판단), 최종 답에 그대로 싣는다. 멈췄다 이어 가는 실행에서는 내보낸 판단이 서명 상태에 그 근거 사본(`evidence` · `sources`)과 함께 실려 이어진다. 같은 실행에서 내보낸 뒤 근거가 바뀌면 앞 판단을 지우지 않고 서명 상태의 근거 사본과 함께 최종 답에 남기며, 새 판단을 따로 더하고 새 판단의 `supersedes`에 앞 판단의 ID를 적는다. 이전 턴의 판단(`history.prior_assessments`)을 대체할 때는 새 판단의 `supersedes`에 그 ID만 싣고, 앞 판단과 근거 사본은 최종 답에 다시 싣지 않는다. 앞 판단은 원래 메시지와 BE가 그 메시지에 저장한 근거 사본에 남고, BE가 ID로 잇는다(12-3). 앞 판단의 근거는 그 판단을 보이는 데만 쓰고 지금 판단 · 문장 · 행동의 근거로 다시 쓰지 않는다(6-9). 지워진 원천(`removed_sources`)에 기댄 판단 · 근거는 남기지 않는다(5-6). BE는 메시지와 함께 저장해 다음 턴 `history.prior_assessments`에 싣는다 |
-| `goal_result` | `TAKE_REVIEWED`면 필수: `{goal_version, take_id, review_revision, status:"ACHIEVED"\|"NOT_ACHIEVED"\|"UNKNOWN"\|"BASELINE_MISMATCH", observed:number\|null, reason, terminal:bool}`. `UNKNOWN`만 `terminal=false`. 근거가 모자라거나 실패해도 `status=UNKNOWN` · `terminal=false`로 채운다. 판정 순서는 6-4 |
-| `meta` | `{schema_version, feature_version:"chat-agent-<버전>", model:string\|null, prompt_version, corpus_version, criteria_versions:{chat_agent:<목표 · 비교 규칙 버전>, review?:…, …}}` (`architecture.md` 5절 모양 + 프롬프트 · 자료 판). 모델 없이 만든 답이면 `model` null. 다시 평가 결과를 실었으면 그 리뷰의 `criteria_versions`를 그대로 싣는다 |
+| `goal_result` | `TAKE_REVIEWED`면 필수: `{goal_version, take_id, review_revision, status:"ACHIEVED"\|"NOT_ACHIEVED"\|"UNKNOWN"\|"BASELINE_MISMATCH", observed:number\|null, reason, terminal:bool}`. `UNKNOWN`만 `terminal=false`. 근거가 모자라거나 실패해도 `status=UNKNOWN` · `terminal=false`로 채운다. 다만 6-4 판정 순서대로 버전 차이를 먼저 보므로, 필수 버전이 모두 있고 그 값이 목표와 다르면 근거가 모자라도 `BASELINE_MISMATCH` · `terminal=true`다. 필수 버전이 없거나 형식이 틀리면 6-4 '값 검사'대로 계산을 멈추고 `UNKNOWN` · `terminal=false`다 |
+| `meta` | `{schema_version, feature_version:"chat_agent-<버전>", model:string\|null, prompt_version, corpus_version, criteria_versions:{chat_agent:<목표 · 비교 규칙 버전>, review?:…, …}}` (`architecture.md` 5절 모양 + 프롬프트 · 자료 판). 모델 없이 만든 답이면 `model` null. 다시 평가 결과를 실었으면 그 리뷰의 `criteria_versions`를 그대로 싣는다 |
 | `diagnostics` | `Diagnostics` 진단 기록(11-5). AI는 싣는다(줄여도 크기 한도에 들어가지 않을 때만 뺀다, 5-4). BE는 답 · 행동 본체와 따로 검사해, 빠지거나 형식 · 크기가 틀리면 진단 기록만 버리고 본체는 그대로 처리한다(12-3). 실행 조회 · 메시지 목록 · 화면에는 싣지 않는다 |
 
 - `final` 생성은 코드의 판별 유니온 검사를 거친다(상태 · `actions` · `state` 조합). BE도 최종 출력 스키마와 상태별 필수값을 다시 검사한다(L2-18).
@@ -563,7 +563,7 @@ ai/research/chat-agent/
   "history_summary": null,
   "budget_used": {"model_calls": 5, "tool_calls": 4, "elapsed_ms": "<누적>", "input_tokens": "<예약 누적>", "output_tokens": "<예약 누적>"},
   "usage": {"model_calls": 5, "tool_calls": 4, "elapsed_ms": "<누적>", "input_tokens": "<실측 누적>", "output_tokens": "<실측 누적>", "measured": true, "missing_reason": null},
-  "meta": {"schema_version": "1.0", "feature_version": "chat-agent-0.1.0", "model": "<응답한 모델>", "prompt_version": "<프롬프트 해시 12자리>",
+  "meta": {"schema_version": "1.0", "feature_version": "chat_agent-0.1.0", "model": "<응답한 모델>", "prompt_version": "<프롬프트 해시 12자리>",
            "corpus_version": "guides-1", "criteria_versions": {"chat_agent": "<목표 · 비교 규칙 버전>"}}
 }
 ```
@@ -646,16 +646,18 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 
 **판정 표 (`MEASURED`, 코드)**
 
+표의 '문제'는 리뷰가 부담에 세는 것과 같다(`review-agent.md` 6-1 4번): 코치 문제 구간은 Take 결과 `problem_segments[]` 중 `reliable: true`인 것만, 내용 전달은 `missing` · `contradicted` 핵심 내용이다. 장 · 구간 · `ISSUE` 판정에서 대상 범위에 `reliable: false` 구간만 있으면 '먼저 검사' 3번의 자료 부족으로 본다.
+
 | 연산(`claim_op`) · 범위 | 근거 | 판정 |
 |---|---|---|
 | `OVERALL` 긍정(예: "시선 잘 봤어", Take 전체) | 그 차원 상태 `STRENGTH` | `SUPPORTED` |
 | | `IMPROVED` · `STABLE`(나아짐은 문제가 풀렸다는 근거가 아님) | `PARTLY` |
 | | `PRIORITY` | `CONTRADICTED` |
 | | `NOT_EVALUABLE` · 리뷰 없음 | `UNVERIFIABLE` |
-| `OVERALL` 부정(예: "시선이 별로였어") | `PRIORITY` → `SUPPORTED`, `IMPROVED` · `STABLE` → `PARTLY`, `STRENGTH` → `CONTRADICTED`, `NOT_EVALUABLE` → `UNVERIFIABLE` | |
+| `OVERALL` 부정(예: "시선이 별로였어") | `PRIORITY` → `SUPPORTED`, `IMPROVED` · `STABLE` → `PARTLY`, `STRENGTH` → `CONTRADICTED`, `NOT_EVALUABLE` · 리뷰 없음 → `UNVERIFIABLE` | |
 | 장 · 구간 긍정(예: "3장은 잘했어") | 그 장에 그 차원 문제 있음 → `CONTRADICTED`, 측정됐고 문제 없음 → `PARTLY`(문제로 잡히지 않았다는 것만 확인), 측정 안 됨 → `UNVERIFIABLE` | |
 | 장 · 구간 부정(예: "3장 시선이 약했어") | 문제 있음 → `SUPPORTED`, 측정됐고 문제 없음 → `CONTRADICTED` | |
-| `ISSUE`(예: "속도가 너무 빨랐어") | 그 방향의 문제(`PACE_FAST`)가 Take 결과 · 리뷰 개선점에 있음 | `SUPPORTED` |
+| `ISSUE`(예: "속도가 너무 빨랐어") | 그 방향의 문제(`PACE_FAST`)가 Take 결과 `problem_segments[].issue_type`에 있음. 리뷰 개선점은 `area`만 있어 방향을 가르지 못하므로 근거로 쓰지 않는다 | `SUPPORTED` |
 | | 반대 방향 문제(`PACE_SLOW`)만 있음 · 충분히 측정됐고 그 차원에 문제 없음 | `CONTRADICTED` |
 | `VALUE`(예: "시선이 31%였어") | `value`를 `value_unit`으로 지표의 기본 단위로 바꾼다(31% → 0.31, 단위를 정하지 못하면 `UNVERIFIABLE`). 같은 대상의 측정값을 화면 표시 자리수로 반올림해 비교하고, 긍정은 같음 → `SUPPORTED` · 다름 → `CONTRADICTED`, 부정(`polarity:"NEGATIVE"`, 예: "31%가 아니었어")은 다름 → `SUPPORTED` · 같음 → `CONTRADICTED`(실제 값을 근거로) | |
 | `CHANGE`(예: "지난번보다 늘었어") | `compare_takes` 결과 방향이 주장과 같음 → `SUPPORTED`, 같음 · 반대 → `CONTRADICTED`, 비교할 수 없음 → `UNVERIFIABLE` | |
@@ -682,14 +684,14 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 - **값 읽기 · 측정 조건**: 영역 지표의 Take 값은 `take_result.areas.<영역>.take.<지표>`, 장 값은 `take_result.areas.<영역>.slides[]`에서 `slide_number`가 같은 항목의 `metrics.<지표>`. 코치가 잴 수 없다고 표시한 영역(`unmeasured_reason`)과 null은 값이 없다. 내용 전달 지표(`content_coverage` · `critical_fact_accuracy`)는 `script_coverage.take_scores`에서 읽고, 그 Take의 `scored_ratio`가 리뷰의 최소 채점 비율 미만이면 값이 없는 것으로 본다(리뷰 비교와 같은 조건). 값 없음은 개선 · 악화 · 실패로 바꾸지 않는다.
 - **값 검사**: 지표값은 유한 수만(bool 제외) 받고, 비율은 0~1, 시간 · 횟수는 비음수, 장 번호는 양수 · 중복 없음이다. 어기거나 필수 버전이 없거나 범위가 low > high면 `INVALID_DATA`로 계산을 멈춘다(0으로 보정하지 않는다). RANGE의 양끝을 얻기 전에는 거리를 계산하지 않는다.
 - **범위**: `cpm`은 그 Take의 말 속도 판정 기준(느림 · 빠름), `duration_ms`는 그 Take 계획의 `min_ms` · `max_ms`(둘 다 없으면 `target_ms`), `slide_duration_ms`는 그 장의 목표 시간(`target_ms`). 리뷰 비교와 같은 출처다. 범위를 찾지 못하면 `comparable:false, reason:"NO_RANGE"`. 목표 판정은 저장 때 고정한 `base.range`를 쓴다.
-- **비교할 수 없음**: 피치 · 대본 버전 · 평가 기준 버전이 다름, 둘 중 하나라도 `completed_fully`가 true가 아님, 값 없음, 그 지표의 판정 기준 버전(`take_result.criteria`)이 다름, 소유자 · 필수 버전 누락. `compare_takes`는 같은 피치 안에서만 동작한다.
+- **비교할 수 없음**: 피치 · 대본 버전 · 평가 기준 버전이 다름, 둘 중 하나라도 `completed_fully`가 true가 아님, 값 없음, 그 지표의 판정 기준 버전(`take_result.criteria`)이 다름, 소유자 · 필수 버전 누락. `compare_takes`는 같은 피치 안에서만 동작한다. 목표 판정은 아래 '판정 순서'를 따른다(버전 차이는 `BASELINE_MISMATCH`).
 - **`Comparison`** = `{comparable:bool, reason:string|null, metric, slide_number, previous:number|null, current:number|null, outcome:"SAME"|"BOTH_IN_RANGE"|"IMPROVED"|"WORSENED"|"SAME_DISTANCE"|null, previous_range:{low:number|null, high:number|null}|null, current_range:{low:number|null, high:number|null}|null, range_changed:bool|null, previous_distance:number|null, current_distance:number|null, evidence_ids}`. 범위 필드는 `RANGE` 지표에서만 채우고 그 밖은 null이다.
   - 원래 값이 같으면 `SAME`.
   - `RANGE`: 거리 `d(x) = max(L − x, x − U, 0)`. 둘 다 `d = 0`이면 `BOTH_IN_RANGE`, 아니면 `d`가 줄면 `IMPROVED` · 늘면 `WORSENED` · 같으면 `SAME_DISTANCE`. 두 Take의 실제 범위는 `previous_range` · `current_range`, 서로 다른지는 `range_changed`, 각 범위 대비 거리는 `previous_distance` · `current_distance`로 돌려주고, 범위 비교 설명은 이 값으로 만든다. 범위가 다르면 각 범위 대비 거리로만 설명한다(목표 시간 변경을 실력 향상으로 말하지 않는다). 무한대는 JSON에 쓰지 않고 null로 쓴다.
   - `HIGHER` · `LOWER`: 방향대로 `IMPROVED` · `WORSENED`.
   - 화면 표시용 반올림 값은 판정에 쓰지 않는다.
 - **목표 판정**: `gt_base`는 `current − base.value ≥ goal.min_delta`이면 이룸, `lt_base`는 `base.value − current ≥ goal.min_delta`, `in_range`는 고정한 `base.range`로 `d(current) = 0`. `gt_base` · `lt_base`의 `min_delta`는 유한 양수가 필수이고, 처음 값은 `chat_agent/config.py`의 지표별 값(시작값 `audience_ratio` 0.05 · `filler_per_min` 0.5, 측정 뒤 조정)이며 저장할 때 목표에 고정한다(`goal_rule_version`에 포함). `in_range`(`cpm` · `duration_ms`)는 `min_delta`를 쓰지 않으므로 null이다. 설정은 깊게 불변으로 두고, 과거 규칙을 지원하지 못하면 목표를 새로 정하자고 한다.
-- **판정 순서**: 판정 Take의 그 지표 판정 기준 버전이 `base.metric_rule_version`과 다르면 `BASELINE_MISMATCH`. 목표를 저장한 뒤 **시작한 Take**의 완료된 리뷰를 **Take 번호 순**으로 판정한다(리뷰 완료 순서가 Take 순서와 다를 수 있기 때문이다). 앞 번호 Take의 리뷰가 처리 중이면 기다리고, 최종 실패하면 다음 Take로 넘어간다. 버전이 다르면 `BASELINE_MISMATCH`(끝), 비교할 수 없으면 `UNKNOWN`(다음 Take 기다림), 그 밖은 `ACHIEVED` · `NOT_ACHIEVED`(끝). 목표 상태는 목표 판 번호를 조건으로 한 UPDATE(`목표 판 일치 AND OPEN`)로 한 번만 바꾸고, 판정 중 목표가 바뀌면 그 판정은 버린다. 종료된 목표는 나중의 재계산으로 다시 열지 않는다.
+- **판정 순서**: 판정 Take의 대본 버전 · 평가 기준 버전이 목표에 고정한 `script_version_id` · `standard_version`과 다르거나(null도 하나의 값으로 비교한다), 그 지표의 판정 기준 버전이 `base.metric_rule_version`과 다르면 `BASELINE_MISMATCH`다. 목표 판정에서는 이 버전 차이를 위 '비교할 수 없음'보다 먼저 본다. 필수 버전 필드가 없거나 형식이 틀리면 불일치가 아니라 `INVALID_DATA`로 계산을 멈추고, 목표는 끝내지 않는다(위 '값 검사'). 목표를 저장한 뒤 **시작한 Take**의 완료된 리뷰를 **Take 번호 순**으로 판정한다(리뷰 완료 순서가 Take 순서와 다를 수 있기 때문이다). 앞 번호 Take의 리뷰가 처리 중이면 기다리고, 최종 실패하면 다음 Take로 넘어간다. 버전이 다르면 `BASELINE_MISMATCH`(끝), 비교할 수 없으면 `UNKNOWN`(다음 Take 기다림), 그 밖은 `ACHIEVED` · `NOT_ACHIEVED`(끝). 목표 상태는 목표 판 번호를 조건으로 한 UPDATE(`목표 판 일치 AND OPEN`)로 한 번만 바꾸고, 판정 중 목표가 바뀌면 그 판정은 버린다. 종료된 목표는 나중의 재계산으로 다시 열지 않는다.
 
 ## 6-5. 대화 범위
 - 범위는 `run.scope_pitch_id`다. 전체면 null.
@@ -882,7 +884,7 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 
 | ID | 단계 | 실패 | 처리 | 사용자 안내 | 시험 |
 |---|---|---|---|---|---|
-| L1-01 | 요청 검사 | 빈 메시지, 잘못된 JSON · 타입 · 열거값, trigger와 필드 조합 불일치 | 판별 유니온으로 trigger별 스키마 고정한다. USER_MESSAGE는 resume · review_event=null(choice가 있으면 context.selected_proposal 필수), ACTION_RESULT는 resume 필수 · review_event=null, TAKE_REVIEWED는 review_event 필수 · resume=null이다. 공백뿐인 사용자 메시지, 모르는 열거값, 음수 revision은 422다(모르는 필드는 무시). 검사 실패 시 모델 호출 0회다. | "메시지를 확인해 주세요." | [계약] 각 trigger의 필수 · 금지 필드, null · 공백 · 잘못된 UTF-8 · 모르는 값 검사 |
+| L1-01 | 요청 검사 | 빈 메시지, 잘못된 JSON · 타입 · 판별 값의 열거값, trigger와 필드 조합 불일치 | 판별 유니온으로 trigger별 스키마 고정한다. USER_MESSAGE는 resume · review_event=null(choice가 있으면 context.selected_proposal 필수), ACTION_RESULT는 resume 필수 · review_event=null, TAKE_REVIEWED는 review_event 필수 · resume=null이다. 공백뿐인 사용자 메시지, 판별 값의 모르는 열거값, 음수 revision은 422다(모르는 필드는 무시). 과거 기록 · Take 요약의 모르는 상태 값은 422가 아니라 '알 수 없음'으로 읽는다(5절 첫 문단). 검사 실패 시 모델 호출 0회다. | "메시지를 확인해 주세요." | [계약] 각 trigger의 필수 · 금지 필드, null · 공백 · 잘못된 UTF-8 · 모르는 값 검사, 과거 기록의 새 상태 값은 422가 아니라 알 수 없음으로 읽음 |
 | L1-02 | 요청 검사 | context 외 history · screen · resume · 중첩 object가 과대하여 파싱 · 메모리 고갈 | 전체 요청 본문 2 MiB를 JSON 파싱 전에 제한한다. history.text 각각 4,000자, JSON 깊이 32로 제한한다. context는 정해진 직렬화 방식으로 별도 검사한다. 임의 필드 절단 금지다. 초과 시 413, 모델 호출 0회다. | "자료가 너무 많으니 범위를 좁혀 다시 물어봐 주세요." | [계약 · 부하] Content-Length 없음 · 거짓값 · 청크 전송, 한글 바이트 경계, 깊은 JSON, 각 상한 ±1 |
 | L1-03 | 요청 검사 | 직접 호출 · 위조 run.user_id, 다른 사용자 context를 신뢰하여 노출 | 호출자 인증은 새로 두지 않는다. 기존 AI 서비스처럼 Docker 내부망 격리가 보호이고 AI 포트는 밖에 열지 않는다. context 안의 pitch · take · goal 식별자 관계는 코드로 대조한다. 실제 소유권 확인은 BE의 필수 전제이며, 불일치하는 자료는 모델에 전달하지 않는다. | "기록을 찾을 수 없어요." | [통합] compose에서 AI 포트가 밖에 열리지 않음, user_id 교체, 다른 피치 Take · 목표 혼입 시 모델 입력과 응답에 미포함 |
 | L1-04 | 요청 검사·마감 설정 | 음수 · 거대 budget, 초 · ms 혼용, 이미 소진된 요청의 추가 실행 | 모든 카운터는 엄격한 비음수 정수다. `remaining_s=max(0,120-elapsed_ms/1000)`와 `deadline=monotonic()+min(45,remaining_s)`로 고정한다. 시작부터 소진됐으면 모델 · 행동 실행 없이 근거 템플릿 PARTIAL, 근거도 없으면 AGENT_TIMEOUT으로 끝낸다. | "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요." | [단위 · 루프] 0 · 119,999 · 120,000ms, 음수 · 문자열 · bool · 큰 정수, 가짜 시계로 초/ms 오류 검출 |
@@ -920,7 +922,7 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 | L1-36 | 답 검사 | 숫자는 맞지만 원인 · 개선 방향 · 인과관계가 거짓, SYSTEM 분류로 검사 우회 | 결론 문장(좋아짐 · 나빠짐 · 같음 · 목표 이룸 · 못 이룸)과 실행 성공 문장은 모델이 쓰지 않고 도구 결과 enum으로 코드 템플릿이 만든다. 모델은 그 앞뒤 설명만 쓴다. `SYSTEM` 문구는 코드 enum으로 고르고 목록을 버전 관리한다. 관측값만으로 원인을 단정하는 문장은 허용하지 않는다. 의미 근거성 안전 세트 실패는 배포를 막는다. | "기록만으로 원인을 단정할 수는 없어요." | [단위 · 평가셋] 같은 수치로 반대 결론 · 근거 없는 인과 · 임의 SYSTEM 문장 · 사용자 내용 복창으로 우회 |
 | L1-37 | 답·카드 조립 | 본문은 통과하지만 카드 reason · goal · before/after · sources · 요약에 허위값 · 개인정보 포함 | 카드 · 요약 · 계획 · trace 등 사용자에게 보이는 모든 문자열에 같은 출처 · 개인정보 검사를 적용한다. `GOAL_SAVED`는 성공 행동의 재독값으로만, `REASSESS_RESULT`는 검증된 결과로만 코드가 만든다. 검사 실패로 행동을 버리면 연결 카드 · 성공 Claim · 이동 지시도 함께 지운다. 이미 성공한 행동은 답 검사 실패로 미실행 처리하지 않는다. 카드의 모델 설명만 지우고, 검증된 행동 결과로 바뀐 내용 · 되돌리기 카드를 코드가 다시 만든다. | 검증 실패 카드는 숨김 / "작업 완료를 확인하지 못했어요."(필요할 때) | [계약] 본문 정상+카드 허위, 삭제된 action의 성공 카드, 다른 사용자 자료가 summary · reason에 섞인 경우, 이미 저장된 목표의 카드 설명만 틀린 경우(되돌리기 카드 유지) |
 | L1-38 | 스스로 고치기 | 수정 호출도 시간 초과 · 거절 · 무효 출력, 새 행동 생성, 수정 후 빈 답 · 새 환각 | 수정 실패 시 원본에서 이미 통과한 Claim만 보존한다. 수정 결과의 actions · 새 근거 id는 전부 거부한다. 추가 모델 호출 없이 재검사하고, 남은 Claim이 없으면 검증된 근거 템플릿 `PARTIAL`로 끝낸다. 근거도 없으면 비어 있지 않은 고정 SYSTEM 안내로 종료한다. | "답 일부를 확인하지 못해 확인된 내용만 알려드릴게요." | [단위 · 루프] 수정 timeout · 거절 · 잘림 · 새 행동 · 새 근거 · 전부 삭제, 수정 전 통과 문장 유지와 추가 호출 0회 |
-| L1-39 | 최종 상태·사용량 구성 | 상태 · actions · state 조합 오류, TAKE_REVIEWED 결과 누락, 실패 사용량 누락 · 비용 과소 집계 | final 생성은 코드의 판별 유니온 검사 필수다. TAKE_REVIEWED는 근거 부족 · 실패에도 goal_result=UNKNOWN · terminal=false 명시한다. 관측 `usage`는 모르는 토큰 수를 null과 누락 사유(`measured:false`)로 두고 0으로 확정하지 않으며, 한도는 `budget_used`의 예약량으로 센다. 전송 전 토큰 계산, 모델 context와 출력 상한 예약, 실행 입력 누적 64k · 출력 예약 누적 16k 초과 시 추가 호출 금지다. | "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요." | [계약] 모든 status 조합 · 빈 claims · goal_result 누락 · usage 없는 실패 · 출력 예약 · 토큰 경계에서 추가 전송 차단 |
+| L1-39 | 최종 상태·사용량 구성 | 상태 · actions · state 조합 오류, TAKE_REVIEWED 결과 누락, 실패 사용량 누락 · 비용 과소 집계 | final 생성은 코드의 판별 유니온 검사 필수다. TAKE_REVIEWED는 근거 부족 · 실패에도 goal_result=UNKNOWN · terminal=false 명시한다(필수 버전이 모두 있고 6-4의 버전 차이가 확인되면 BASELINE_MISMATCH · terminal=true, 필수 버전이 없거나 틀리면 UNKNOWN · terminal=false). 관측 `usage`는 모르는 토큰 수를 null과 누락 사유(`measured:false`)로 두고 0으로 확정하지 않으며, 한도는 `budget_used`의 예약량으로 센다. 전송 전 토큰 계산, 모델 context와 출력 상한 예약, 실행 입력 누적 64k · 출력 예약 누적 16k 초과 시 추가 호출 금지다. | "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요." | [계약] 모든 status 조합 · 빈 claims · goal_result 누락 · usage 없는 실패 · 출력 예약 · 토큰 경계에서 추가 전송 차단 |
 | L1-40 | final/error 발행 | 직렬화 실패 · NaN · LF 삽입 · 누적 응답 16 MiB 초과 · 큰 final 전송 중 끊김 | 각 이벤트를 allow_nan=false로 완전히 직렬화한 뒤 LF를 붙여 발행한다. 누적 UTF-8 크기를 세고 끝 error용 4 KiB 예약한다. 다음 이벤트가 한도를 넘으면 AGENT_OUTPUT_TOO_LARGE error 한 줄로 종료한다. final은 전체 검증 · 직렬화 후 한 번만 발행하며 발행 시작 뒤 재시도 금지다. | "답이 너무 길어 완료하지 못했으니 질문 범위를 좁혀 주세요." | [계약] 문자열 내부 LF · 제어문자 · NaN · 큰 trace · 16 MiB 경계 · final 중 단절, JSON 한 줄과 끝 이벤트 유일성 확인 |
 
 ## 7-4. L2 BE 실행기와 행동
@@ -1103,8 +1105,8 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | ID | 단계 | 실패 | 처리 | 사용자 안내 | 시험 |
 |---|---|---|---|---|---|
 | L6-01 | 판단 먼저 | 사용자 말 속 주장 · 요청에 모델이 판단 없이 동의부터 한다 / 판단 형식을 어긴다(누락 · `quote`가 사용자 말에 없음) | 주장 · 요청마다 `Assessment`를 답보다 먼저 만든다(필드는 5-2 · 6-3). `type`은 `MEASURED` · `PREFERENCE` · `KNOWLEDGE` · `REQUEST` 중 하나이고, `verdict`는 `SUPPORTED` · `PARTLY` · `CONTRADICTED` · `UNVERIFIABLE` 중 하나다. 판단이 없거나 `quote`가 사용자 말 원문의 부분 문자열이 아니면 답 검사에 걸려 1회 고치고, 그래도 어기면 그 판단과 판단에 걸린 문장을 지우고 "말씀하신 내용은 기록과 맞춰 보지 못했어요" 템플릿을 넣는다. | 안 보임(고치기 성공) / "말씀하신 내용은 기록과 맞춰 보지 못했어요."(다시 어김) | [단위 · 평가셋] (AI) 주장 · 요청이 든 말마다 판단이 먼저 나오는가, `quote`가 원문의 부분 문자열이 아니면 걸리는가 |
-| L6-02 | 코드 판정(Take 전체 평가) | "시선 잘 봤어" 같은 Take 전체에 대한 평가 주장을 모델이 기록과 달리 판정한다 | 장 · 구간을 가리키지 않은 전체 평가(`claim_op:"OVERALL"`)에만 차원 상태 표를 쓴다. 긍정 주장은 `STRENGTH` → `SUPPORTED`, `IMPROVED` · `STABLE` → `PARTLY`(나아짐은 문제가 풀렸다는 근거가 아님), `PRIORITY` → `CONTRADICTED`, `NOT_EVALUABLE` · 리뷰 없음 → `UNVERIFIABLE`. 부정 주장("시선이 별로였어")은 `PRIORITY` → `SUPPORTED`, `IMPROVED` · `STABLE` → `PARTLY`, `STRENGTH` → `CONTRADICTED`. 코드 판정이 모델 판정을 덮고 답을 고치게 한다(6-3). | "말씀하신 '{quote}'는 기록과 달라요: {근거}."(`CONTRADICTED`) / "말씀하신 '{quote}'는 기록에서 일부만 확인돼요: {근거}."(`PARTLY`) / "말씀하신 '{quote}'는 이 기록으로는 확인할 수 없어요."(`UNVERIFIABLE`) | [단위] (AI) 차원 상태 5종 × 긍정 · 부정의 기대 판정 표, 모델이 다른 판정을 내도 코드 판정으로 덮임 |
-| L6-03 | 코드 판정(문제 주장) | "속도가 너무 빨랐어" 같은 문제 주장을 모델이 기록과 달리 판정하거나, 측정되지 않은 자료의 빈 문제 목록을 "문제 없음"으로 읽는다 | 먼저 측정 가능 여부와 자료 완전성을 본다: 미측정 · 생략 · 자료 부족이면 `UNVERIFIABLE`이다. 충분히 측정된 같은 범위에서만, 그 방향의 문제(`PACE_FAST`)가 있으면 `SUPPORTED`, 반대 방향 문제(`PACE_SLOW`)만 있거나 문제가 없으면 `CONTRADICTED`로 코드가 정하고 모델 판정을 덮는다(`claim_op:"ISSUE"`). | "말씀하신 '{quote}'는 기록과 달라요: {근거}."(`CONTRADICTED`) / "말씀하신 '{quote}'는 이 기록으로는 확인할 수 없어요."(`UNVERIFIABLE`) | [단위] (AI) 문제 목록 × 문제 주장 표, 반대 방향 문제만 있는 경우, 측정 안 된 자료의 빈 문제 목록이 `UNVERIFIABLE`인가 |
+| L6-02 | 코드 판정(Take 전체 평가) | "시선 잘 봤어" 같은 Take 전체에 대한 평가 주장을 모델이 기록과 달리 판정한다 | 장 · 구간을 가리키지 않은 전체 평가(`claim_op:"OVERALL"`)에만 차원 상태 표를 쓴다. 긍정 주장은 `STRENGTH` → `SUPPORTED`, `IMPROVED` · `STABLE` → `PARTLY`(나아짐은 문제가 풀렸다는 근거가 아님), `PRIORITY` → `CONTRADICTED`, `NOT_EVALUABLE` · 리뷰 없음 → `UNVERIFIABLE`. 부정 주장("시선이 별로였어")은 `PRIORITY` → `SUPPORTED`, `IMPROVED` · `STABLE` → `PARTLY`, `STRENGTH` → `CONTRADICTED`, `NOT_EVALUABLE` · 리뷰 없음 → `UNVERIFIABLE`. 코드 판정이 모델 판정을 덮고 답을 고치게 한다(6-3). | "말씀하신 '{quote}'는 기록과 달라요: {근거}."(`CONTRADICTED`) / "말씀하신 '{quote}'는 기록에서 일부만 확인돼요: {근거}."(`PARTLY`) / "말씀하신 '{quote}'는 이 기록으로는 확인할 수 없어요."(`UNVERIFIABLE`) | [단위] (AI) 차원 상태 5종 × 긍정 · 부정의 기대 판정 표, 모델이 다른 판정을 내도 코드 판정으로 덮임 |
+| L6-03 | 코드 판정(문제 주장) | "속도가 너무 빨랐어" 같은 문제 주장을 모델이 기록과 달리 판정하거나, 측정되지 않은 자료의 빈 문제 목록을 "문제 없음"으로 읽는다 | 먼저 측정 가능 여부와 자료 완전성을 본다: 미측정 · 생략 · 자료 부족이면 `UNVERIFIABLE`이다. `reliable: true`인 구간만 세고(6-3 판정 표 머리 문장), 충분히 측정된 같은 범위에서만, 그 방향의 문제(`PACE_FAST`)가 있으면 `SUPPORTED`, 반대 방향 문제(`PACE_SLOW`)만 있거나 문제가 없으면 `CONTRADICTED`로 코드가 정하고 모델 판정을 덮는다(`claim_op:"ISSUE"`). | "말씀하신 '{quote}'는 기록과 달라요: {근거}."(`CONTRADICTED`) / "말씀하신 '{quote}'는 이 기록으로는 확인할 수 없어요."(`UNVERIFIABLE`) | [단위] (AI) 문제 목록 × 문제 주장 표, 반대 방향 문제만 있는 경우, 측정 안 된 자료의 빈 문제 목록이 `UNVERIFIABLE`인가 |
 | L6-04 | 판단 문장 · 설명 | `CONTRADICTED` · `PARTLY` · `UNVERIFIABLE` 판단을 모델이 돌려 말하거나, 템플릿 뒤 설명에서 "기록과 다르지만 사실상 충분히 잘한 발표예요"처럼 판정을 흐린다 | 판단의 첫 문장은 코드 템플릿으로 그린다("말씀하신 '{quote}'는 기록과 달라요: Take 5 청중 시선 31%, 우선 개선"). 모델 설명은 검증된 관측 사실과 연습 제안으로 제한한다. 판정의 방향 · 정도 · 범위를 바꾸는 결론(완화 낱말 "충분히 · 사실상 · 거의 · 괜찮 · 나쁘지 않" 포함)은 같은 대상의 `SUPPORTED` 판단이나 강점 근거에 이어지지 않으면 답 검사에 걸리고, 본문 · 카드 · 요약 등 모든 표시 문자열에 같은 검사를 한다(6-9 `ASSESSMENT`). | "말씀하신 '{quote}'는 기록과 달라요: {근거}."(`CONTRADICTED`) | [단위 · 계약] (AI) 판정 3종의 첫 문장이 템플릿과 같은가, `CONTRADICTED` 뒤 "맞아요" · "사실상 잘했어요"가 든 설명이 걸리는가 |
 | L6-05 | 동의 · 칭찬 낱말 | 근거 없이 "맞아요 · 잘하셨어요 · 훌륭해요" 같은 말로 동의하거나, 부정 주장이 맞다는 판단을 칭찬 근거로 쓰거나, 반대로 칭찬 막기가 과해 확인된 강점도 말하지 못한다 | "맞아요 · 맞습니다 · 그렇죠 · 좋아요 · 잘하셨 · 훌륭 · 완벽 · 문제없" 등이 든 문장은 대상 · 범위 · 평가 방향 · 정도가 같은 `SUPPORTED` 판단이나 강점 · 나아짐 근거에 이어져야 한다. 부정 주장에 대한 `SUPPORTED`("빨랐다"가 맞음)는 칭찬 근거가 아니다. 일부만 확인된 강점은 범위를 밝혀("2장 시선은 강점이에요") 말할 수 있다. 어기면 1회 고치게 하고, 그래도 어기면 그 문장을 지운다. | 안 보임 | [단위] (AI) 낱말 목록 × 근거의 대상 · 방향 일치, 부정 주장 `SUPPORTED`로 칭찬하면 걸림, 범위를 밝힌 강점은 통과 |
 | L6-06 | 대본 주장 | "대본 보고 한 발표였어"를 기록과 무관하게 받아들이거나 부정하고, 화면 대본 표시를 실제 사용으로 바꿔 말한다 | 기록은 화면 대본 표시만 알려 준다. 그 Take의 `script_mode`가 `HIGHLIGHT`면 `SUPPORTED`, `KEYWORD`면 `PARTLY`, `OFF`면 `UNVERIFIABLE`이고, 어느 경우든 사실 문장 "기록에는 화면 대본이 {전체로 켜져 · 핵심어로 켜져 · 꺼져} 있었어요"를 붙인다. 실제로 대본을 봤는지는 기록으로 확인할 수 없다고 말하고, 화면 표시를 실제 사용으로 바꿔 말하지 않는다. 평가 기준의 `script_used`가 false/null이면 "공식 평가에는 대본 사용 허용이 없어요"를 함께 말한다. | "기록에는 화면 대본이 {전체로 켜져 · 핵심어로 켜져 · 꺼져} 있었어요." / "공식 평가에는 대본 사용 허용이 없어요."(허용 없음) | [단위] (AI) `script_mode` 3종 × `script_used` 3종의 기대 판정과 사실 문장 |
@@ -1388,12 +1390,12 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `chat-agent-<버전>` (첫 판 `chat-agent-0.1.0`) | `features/chat_agent/version.py`, 응답 `meta` | 프롬프트 · 도구 정의 · 검사 규칙 · 자율 등급 · 허용 근거 낱말 목록이 바뀔 때 |
+| `feature_version` | `chat_agent-<버전>` (첫 판 `chat_agent-0.1.0`) | `features/chat_agent/version.py`, 응답 `meta` | 프롬프트 · 도구 정의 · 검사 규칙 · 자율 등급 · 허용 근거 낱말 목록이 바뀔 때 |
 | `prompt_version` | 프롬프트 파일 해시 12자리 | 응답 `meta` · 실행 상태 | 프롬프트 파일이 바뀌면 |
 | `corpus_version` | 자료 묶음 판(예 `guides-1`)과 manifest 해시 | 응답 `meta` · 실행 상태 · 근거 표시 | 자료 카드가 바뀌면. 최신 아님 `CORPUS_UPDATED`의 기준 |
 | 도구 스키마 판 | 도구 · 행동 모양의 판(tool_schema) | 실행 상태 | 도구 · 행동 모양이 바뀌면 |
 | `criteria_versions.chat_agent` | 목표 · 비교 규칙 버전 | 응답 `meta` | 비교 방향 표 · `min_delta` · 판정 규칙이 바뀌면 |
-| `goal_rule_version` · `base.metric_rule_version` | 목표 판정 규칙 판(`min_delta` 포함) · 기준 지표의 판정 기준 버전(`take_result.criteria`) | `Goal`(저장 때 고정) | 바뀌어도 저장된 목표는 그대로다. 판정 Take의 기준 버전이 다르면 `BASELINE_MISMATCH` |
+| `goal_rule_version` · `base.metric_rule_version` | 목표 판정 규칙 판(`min_delta` 포함) · 기준 지표의 판정 기준 버전(`take_result.criteria`) | `Goal`(저장 때 고정) | 바뀌어도 저장된 목표는 그대로다. 판정 Take의 기준 버전 · 대본 버전 · 평가 기준 버전이 목표와 다르면 `BASELINE_MISMATCH`(6-4) |
 | `criteria_versions.review` 등 | 다시 평가로 부른 리뷰의 `criteria_versions` 그대로 | 응답 `meta` | 리뷰 쪽 규칙이 바뀌면 |
 | 실행 상태 `v` | `1` | `state` 외곽 | 서명 형식이 바뀌면 |
 | 실행 판 고정 | payload의 feature · prompt · tool_schema · corpus 버전 | `state` | 진행 중 실행은 판을 고정한다. 지원하지 않는 판이면 409 `AGENT_STATE_INVALID` |
@@ -2026,7 +2028,7 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | 문서 | 바뀌는 것 | 누가 합의 · 승인 | 언제 |
 |---|---|---|---|
 | `architecture.md` 0-2 · 0-3 · 1 · 1-1 · 1-2 · 1-6 · 2 · 3 · 4 · 5 · 8 · 9 · 10 · 11 · 13 · 14 | 대화 에이전트 호출 방식 · 스트림 응답, 대화 보관 · 삭제, 진단 기록, 새 API · 시간 · 오류 코드 · 메타 · 환경변수, 도구 호출 LLM 규칙, 저장 설계 담당 | AI 팀 회의에서 정하고 AI 담당 두 사람이 Issue 결정 댓글로 합의, 작성자가 아닌 쪽이 PR 승인. FE · BE와 주고받는 필드 · 값 · 저장 · 호출 시점 · 시간 · 실패 처리 · 인프라 설정(환경변수 · 시크릿)은 BE(인프라 포함)와도 합의하고 그 팀을 PR 리뷰어로 | P0 전 |
-| `review-agent.md` 3 · 5-1 · 5-2 · 7 · 12-2 · 16 | 대화의 다시 평가로 리뷰를 부르는 경우, 그 결과를 저장하지 않음, 공식 리뷰 흐름은 공식 리뷰에만 | 리뷰 기능 담당(BE 저장 예외는 BE와도) | P0 전 |
+| `review-agent.md` 3 · 5-1 · 5-2 · 7 · 8 · 12-2 · 16 | 대화의 다시 평가로 리뷰를 부르는 경우, 그 결과를 저장하지 않음, 공식 리뷰 흐름은 공식 리뷰에만 | 리뷰 기능 담당(BE 저장 예외는 BE와도) | P0 전 |
 | `ai-service.md` | 새 기능 폴더 · 라우터, 도구 호출용 모델 호출 함수, 스트림 응답 예외, 대화 전용 실행 풀, 환경변수 | AI 서비스 담당. 모든 기능 담당이 쓰는 공통 모듈이 바뀌므로 PR 본문에서 다른 기능 담당에게 알림 | 구현 때 |
 | 이 문서 → `features/chat-agent.md` · `docs/ai/README.md` 기능 지도 | 기능 문서로 옮기고 기능 지도에 "설계만"(활성 코드 없음)으로 새 줄 | 그 기능의 담당 · 서비스 담당 | 결정 뒤 |
 | BE · FE와 주고받는 값 | 대화 API · 저장 요구(12-1 · 12-3), 기본 자료 · 행동(5-3 · 5-8), 화면 동작(12-4) | BE · FE 담당(Issue에 전 · 후, 그 팀을 PR 리뷰어로) | P0 전 |
@@ -2043,10 +2045,10 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | 1 모듈 표 · 1-6 기능별 연결 · 8 진입 함수 표 | (대화 기능 없음) | 줄 추가: 모듈 `chat_agent` · 언제 '사용자가 대화할 때 · 행동 결과 · 새 리뷰 뒤' · 받는 것 '사용자 말 · 화면 상태 · 대화 기록 · 기본 자료 · 행동 결과' · 내는 것 '검사를 거친 답 · 행동 · 서명한 실행 상태 · 근거 · 사용량' · 쓰는 곳 'FE 대화창 · BE(저장 · 행동 실행)'. 진입 함수 `api/chat_agent.py`. 상세는 기능 문서의 입출력 · 저장 절 |
 | 1-1 저장 지도 표 | (대화 줄 없음) | 줄 추가: 범위 '사용자 · 발표' · 담는 것 '대화 · 메시지 · 실행 · 행동 · 근거' · 저장 위치 'BE가 정함' · 만드는 기능 '대화 에이전트(응답) · BE' · 읽는 기능 '대화 에이전트(요청)' · 상세 '기능 문서의 저장 절' |
 | 1-1 '지우기 · 보관' | 저장 지도의 AI 결과 · 원자료는 그 발표 · Take와 함께 보관하고 따로 기한을 두지 않는다. 예외는 … | 예외 추가: "대화는 마지막 사용자 활동(사용자가 보낸 메시지 · 대화를 연 시각) 뒤 180일, 실행 상태는 끝난 지 7일 뒤 지운다. 에이전트의 자동 메시지는 기한을 늘리지 않는다. 진단 기록은 따로 기한 없이 대화를 지울 때 함께 지운다. 피치 · 계정을 지우면 그 대화를 함께 지운다. Take를 지우면 그 Take에서 나온 근거 값 사본 · 다시 평가 결과 · 목표 기준값을 지우고 그 Take를 근거로 한 답 본문 · 요약은 가린다(기존 삭제 코드는 바꾸지 않고 연쇄 삭제 · 읽을 때 가림 · 정리 작업으로)." |
-| 1-1 첫 문단 · 13 기능 담당 지도 (저장 설계 담당) | 저장 설계(테이블 · 칸 · 형식)는 AI가 한다 | AI는 입력 · 출력과 저장 요구(무엇을 남기고 · 무엇과 잇고 · 얼마나 두고 · 언제 지우고 · 무엇을 덮어쓰면 안 되는지)만 정하고 테이블 · 칸 · 형식은 BE가 정한다. 기존 기능 문서 12절의 저장 계약(유일 제약 · 덮어쓰기 막기 등)은 따로 합의해 바꾸기 전까지 그대로 유효하고, 기능 문서 12-1의 첫 문장("저장 설계는 AI가 하고 …")만 같은 반영 PR에서 고친다. 바꿀 문장 전체는 [docs-cleanup.md](docs-cleanup.md) 7절 |
-| 1-2 API 목록 | (없음) | 줄 추가: 시점 '사용자가 대화할 때 · 행동 결과를 돌려줄 때 · 대화 목표가 있는 피치에 새 리뷰가 생겼을 때(BE 백그라운드 작업)' · `POST /agent/turn` · 대화 에이전트 루프 · 답 또는 행동 · 요청 안 동기 LLM(BE 50초, 재시도 없음) · 대화창 |
-| 2 통신 규칙 표 | (응답 형식 줄 없음. `architecture.md` 3절 첫 문단이 "응답을 한 번에 보낸다"고 전제) | 줄 추가: "`/agent/turn`의 성공 응답은 `application/x-ndjson`이다(줄 형식은 기능 문서 5절). 스트림을 열기 전 오류는 이 절의 오류 형식을 따르고, 연 뒤의 오류는 마지막 `error` 줄로 알린다. 끝 줄(`final` 또는 `error`) 없이 끊긴 응답은 실패다." |
-| 3 시간 예산 표 · 첫 문단 | "AI는 처리가 끝난 뒤 응답을 한 번에 보내므로 BE 시간 제한이 사실상 AI 처리 시간 전체의 상한이다." | 줄 추가: '대화 LLM' · `/agent/turn` · AI 45초 · BE 50초(끝 줄까지의 시간) · 재시도 없음(사용자가 다시 보냄. BE 재시작 복구도 보냈거나 보냈을지 모르는 호출은 다시 보내지 않는다. 상세는 기능 문서 12-3). 문장 추가: "`/agent/turn`만 예외로 진행 이벤트를 한 줄씩 흘려보내는 스트림으로 응답한다. 이때도 BE 시간 제한은 끝 줄까지의 시간이다." 대화용 AI 요청은 BE 프로세스별 세마포어(대화 자리, 합계는 승인된 전체 상한 이하로 시작 4, 기존 백그라운드 자리와 따로)와 AI의 대화 전용 실행 풀(`AGENT_MAX_CONCURRENCY` × 2, AI 프로세스별 `/agent/turn` 상한 4)로 묶는다. 다시 평가 A · B는 기존 리뷰 경로로 AI 공용 실행 자원을 쓰고 BE 대화 자리 · 횟수로 묶는다 |
+| 1-1 첫 문단 · 13 기능 담당 지도 (저장 설계 담당) | AI 기능 결과의 저장 설계(무엇을 · 어느 테이블 · 칸에 · 어떤 형식으로)는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다 | AI는 입력 · 출력과 저장 요구(무엇을 남기고 · 무엇과 잇고 · 얼마나 두고 · 언제 지우고 · 무엇을 덮어쓰면 안 되는지)만 정하고 테이블 · 칸 · 형식은 BE가 정한다. 기존 기능 문서 12절의 저장 계약(유일 제약 · 덮어쓰기 막기 등)은 따로 합의해 바꾸기 전까지 그대로 유효하다. 이 원칙과 기능 문서 12-1 · 12-2의 저장 서술은 [docs-cleanup.md](docs-cleanup.md) 7절 · J1대로 기준 문서 정리 PR에서 바꾼다. 대화 기능 반영 PR은 그 결과 위에 대화 줄만 더한다 |
+| 1-2 API 목록 | (없음) | 줄 추가(정리 뒤 1-2 표의 열 순서: 시점 · API · AI 안에서 하는 일 · 돌려주는 것 · 다음에 쓰는 곳): 시점 '사용자가 대화할 때 · 행동 결과를 돌려줄 때 · 대화 목표가 있는 피치에 새 리뷰가 생겼을 때(BE 백그라운드 작업)' · `POST /agent/turn` · 대화 에이전트 루프 · 답 또는 행동 · 대화창. 시간 · 재시도는 3절 행 |
+| 2 통신 규칙 표 | (응답 형식 줄 없음. `architecture.md` 3절 첫 항목이 "응답을 한 번에 보낸다"고 전제) | 줄 추가: "`/agent/turn`의 성공 응답은 `application/x-ndjson`이다(줄 형식은 기능 문서 5절). 스트림을 열기 전 오류는 이 절의 오류 형식을 따르고, 연 뒤의 오류는 마지막 `error` 줄로 알린다. 끝 줄(`final` 또는 `error`) 없이 끊긴 응답은 실패다." |
+| 3 시간 예산 표 · 첫 항목 | (첫 항목 '**AI 예산을 BE 시간 제한보다 짧게 둔다.**') "AI는 처리가 끝난 뒤 응답을 한 번에 보내므로 BE 시간 제한이 사실상 AI 처리 시간 전체의 상한이다." | 줄 추가: '대화 LLM' · `/agent/turn` · AI 45초 · BE 50초(끝 줄까지의 시간) · 재시도 없음(사용자가 다시 보냄. BE 재시작 복구도 보냈거나 보냈을지 모르는 호출은 다시 보내지 않는다. 상세는 기능 문서 12-3). 문장 추가: "`/agent/turn`만 예외로 진행 이벤트를 한 줄씩 흘려보내는 스트림으로 응답한다. 이때도 BE 시간 제한은 끝 줄까지의 시간이다." 대화용 AI 요청은 BE 프로세스별 세마포어(대화 자리, 합계는 승인된 전체 상한 이하로 시작 4, 기존 백그라운드 자리와 따로)와 AI의 대화 전용 실행 풀(`AGENT_MAX_CONCURRENCY` × 2, AI 프로세스별 `/agent/turn` 상한 4)로 묶는다. 다시 평가 A · B는 기존 리뷰 경로로 AI 공용 실행 자원을 쓰고 BE 대화 자리 · 횟수로 묶는다. '백그라운드 LLM' 행에 문장 추가: "`/takes/review`를 대화의 다시 평가로 부를 때는 BE가 다시 부르지 않는다(대화 한 턴 한도 안에 끝내기 위해, `review-agent.md` 8)." |
 | 4 첫 문단 | BE는 성공 · 실패를 상태 코드로 가르고, 에러 본문은 로그에만 남긴다. … | 같은 문장 + "`/agent/turn`만 예외로, BE가 스트림 전 오류 본문과 `error` 끝 줄의 `error.code`를 읽어 기능 문서 5-9의 허용 목록에 따라 실행 오류로 바꾼다(같은 503의 `AGENT_DISABLED`와 `LLM_UNAVAILABLE`을 가르기 위해서다). 목록 밖 코드는 `AGENT_UPSTREAM_ERROR`로 보고, `error.message` 원문은 사용자에게 보내지 않고 로그에만 남긴다." |
 | 4 오류 코드 | (지금 목록) | 추가: `AGENT_DISABLED`(503) · `AGENT_BUSY`(429) · `AGENT_STATE_INVALID`(409) · `AGENT_CONTEXT_TOO_LARGE`(413). 스트림 중 오류는 `error` 줄(출력 한도를 넘으면 `AGENT_OUTPUT_TOO_LARGE`) |
 | 4 'LLM이 실패해도 200인 기능' | … BE는 이 응답을 정상 결과로 저장한다. 리뷰 다시 부르기는 선택이다 … `fallback_reason`이 있는 리뷰만 … | 같은 문장 + "공식 리뷰 복구를 위한 다시 부르기는 위 조건을 따른다. 대화 에이전트의 다시 평가는 `fallback_reason`과 상관없이 바꾼 입력으로 부를 수 있고, 그 200 응답은 공식 리뷰 · 미션 · 요약에 저장하지 않고 대화에만 남긴다." |
@@ -2065,6 +2067,9 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | 3 전체 흐름 · 12-2 저장 규칙 · 16 확정 값 | 공식 리뷰 흐름(응답 저장 · Take 완료 · 미션 갱신 · `/coach/plan` 후속 호출)만 설명 | 줄 추가: "이 흐름 · 저장 규칙은 공식 리뷰에만 적용한다. 대화의 다시 평가 응답은 대화 저장소에만 두고 `take_ai_results` · `missions` · `take_summaries` · Take 상태를 바꾸지 않으며 코칭 계획도 부르지 않는다." |
 | 5-2 입력 | (지금 입력 표) | 줄 추가: "대화의 다시 평가는 BE가 공식 리뷰 때와 같은 함수로 만든 요청(A)에서 `user_criteria.script_used` · `targets`만 바꾼 요청(B)을 함께 보낸다. A의 `user_criteria`가 null이면 B는 빈 기준 `{display_criteria: [], targets: [], script_used: null}`에서 시작한다." |
 | 7 실패할 때 · 다시 부르기 | `fallback_reason`이 있는 리뷰를 BE가 나중에 다시 부를 수 있다 … | 끝에 추가: "공식 리뷰의 다시 부르기 조건(`fallback_reason`이 있을 때)은 그대로다. 대화의 다시 평가는 이 조건과 상관없이 바꾼 입력으로 부르며, 결과는 공식 리뷰 · 미션 · 요약에 저장하지 않고 대화에만 남긴다. 같은 입력이면 규칙 단계 결과는 같지만 LLM 문장 · 다음 미션 고르기는 달라질 수 있으므로, BE는 같은 실행 안의 재시도에만 처음 결과를 다시 쓰고, 실행을 넘어 재사용하지 않는다." |
+| 7 실패 표 '규칙 단계의 예외' 행 · 16 '실패' 행 | "BE가 한 번 다시 부르고" · "BE가 1번 다시" | 끝에 추가: "(공식 리뷰만. 대화의 다시 평가는 다시 부르지 않는다, 8)" |
+| 8 시간 예산 표 | `/takes/review` \| 25초 (…) \| 30초 \| 연결 실패 · 시간 초과 · 408 · 429 · 5xx면 1번 | 줄 추가: 대화의 다시 평가(A · B 동시) \| 25초 \| 각 30초 \| 0회 \| 대화 한 턴의 강제 종료 한도(120초) 안에 끝내기 위해서. 한쪽이라도 실패하면 다시 평가 실패(대화 기능 문서 8-1) |
+| 16 '시간 예산' 행 | AI 25초 / BE 30초, BE 재시도 1번 | 같은 문장 + "(대화의 다시 평가는 재시도 0회, 8)" |
 
 - 리뷰 코드 · 비교 규칙은 바꾸지 않는다. 다시 평가는 기존 API를 다른 입력으로 부를 뿐이고, 에이전트의 비교 도구가 "같은 값" · "둘 다 범위 안"을 따로 다룬다.
 
@@ -2128,7 +2133,7 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | 자동 목표 확인 | 1분마다, 임대 5분, 중복 방지 키 `(conversation_id, goal_version, take_id, review_revision)` | 12-3 |
 | 오류 코드 | `VALIDATION_ERROR`(422) · `AGENT_DISABLED`(503) · `AGENT_BUSY`(429) · `AGENT_STATE_INVALID`(409) · `AGENT_CONTEXT_TOO_LARGE`(413) · `AGENT_OUTPUT_TOO_LARGE`(스트림) · `LLM_UNAVAILABLE`(503) · `AGENT_DAILY_LIMIT`(429) · `AGENT_REQUEST_CONFLICT`(409) · `AGENT_RUN_IN_PROGRESS`(409) · `AGENT_CANCELLED` · `AGENT_EXPIRED`(409) · `NOT_FOUND`(404) · `AGENT_TIMEOUT` · `AGENT_UPSTREAM_ERROR`(실행 종결). BE는 `/agent/turn` 오류의 `error.code`를 허용 목록으로만 실행 오류에 두고 나머지는 `AGENT_UPSTREAM_ERROR` | 5-9 |
 | 환경변수 | AI `AGENT_ENABLED`(기본 false) · `AGENT_MAX_CONCURRENCY`(기본 4) · `AGENT_STATE_SECRET`(32바이트 이상, 기본값 없음) · `AGENT_STATE_SECRET_PREVIOUS`(선택), BE `CHAT_GLOBAL_DAILY_TURNS` · `CHAT_AI_SLOTS_PER_PROCESS` | 11-1 |
-| 버전 | `feature_version` `chat-agent-<버전>`(첫 판 `chat-agent-0.1.0`), `prompt_version` 해시 12자리, `corpus_version`(예 `guides-1`), `criteria_versions.chat_agent`, `schema_version` `1.0` | 9절 |
+| 버전 | `feature_version` `chat_agent-<버전>`(첫 판 `chat_agent-0.1.0`), `prompt_version` 해시 12자리, `corpus_version`(예 `guides-1`), `criteria_versions.chat_agent`, `schema_version` `1.0` | 9절 |
 | 평가 | 평가셋 50(보류 15) · 안전 세트 20 · 객관성 세트 14 · pass^3 · 근거성 사람 판정 20문장 · 부하 0 · 4 · 8 조건 각 10분 · 기존 요청 200건 이상 | 13절 · 10-4 |
 | 목표 수치 | 과제 성공률 90% · pass^3 80%(대표 · 안전 100%) · 숫자 정확도 100% · 근거성 0.9 · 거절 · 자율 · 화면 이해도 · 객관성 95% · 금지된 일 0건 · 일반 턴 중간값 15초 · 상위 5% 30초 · 다시 평가 턴 상위 5% 45초 · 기존 기능 상위 5% 시간 +10% · 오류율 +1%p 이하 | 14-2 |
 | 실패 처리 | 6층 213행(L1 40 · L2 39 · L3 38 · L4 40 · L5 33 · L6 23), 공통 원칙 P1~P12 | 7절 |
