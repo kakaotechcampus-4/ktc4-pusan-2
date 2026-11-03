@@ -15,6 +15,7 @@ import type { ConfirmationItem, Confirmations, ConfirmationsSent } from '@/types
  *   t-confirm         대본 확인 대기 — 답하거나 건너뛰면 리뷰를 거쳐 리포트로
  *   t-confirm-timeout 대본 확인 대기 — 몇 초 뒤 시간이 다 되고, 보내면 409 `CONFIRMATION_CLOSED`
  *   t-confirm-done    대본 확인을 이미 끝내 리뷰 중 — 확인 화면은 "이미 넘어갔어요"
+ *   t-mode-changed    지난 Take 와 대본 보기가 달라 비교에 "대본 보기가 달랐어요"가 붙음
  *   그 밖의 id      처음 물은 뒤로 몇 초마다 단계가 넘어가 정상으로 끝남 (리허설을 끝내고 온 Take)
  *
  * 대본 확인 목(`GET` · `POST /api/takes/{take_id}/confirmations`, `types/confirmation.ts`)도 여기 둡니다 —
@@ -197,6 +198,21 @@ const awaiting = (takeId: string): TakeReport => ({
   review: null,
 });
 
+/** 지난 Take 는 하이라이트, 이번은 대본 없이 — 비교 문구가 한글 이름으로 보이는지 봅니다 */
+const modeChanged: TakeReport = {
+  ...done,
+  take_id: 't-mode-changed',
+  script_mode: 'OFF',
+  review: {
+    ...reviewFixture,
+    take_id: 't-mode-changed',
+    comparison: reviewFixture.comparison.map((row) => ({
+      ...row,
+      script_mode: { previous: 'HIGHLIGHT', current: 'OFF' },
+    })),
+  },
+};
+
 const FIXED: Record<string, TakeReport> = {
   t2: gazeExcluded,
   t3: done,
@@ -207,6 +223,7 @@ const FIXED: Record<string, TakeReport> = {
   't-confirm': awaiting('t-confirm'),
   't-confirm-timeout': awaiting('t-confirm-timeout'),
   't-confirm-done': { ...awaiting('t-confirm-done'), analysis_stage: 'REVIEWING' },
+  't-mode-changed': modeChanged,
 };
 
 /**

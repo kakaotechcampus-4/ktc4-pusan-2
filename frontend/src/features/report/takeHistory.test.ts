@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { TakeHistoryRow } from '@/types/takeHistory';
-import { completedTakes, gazeOffEngine, latestGazeEngine, takeDay } from './takeHistoryFormat';
+import {
+  completedTakes,
+  gazeOffEngine,
+  latestGazeEngine,
+  scriptModeLabel,
+  takeDay,
+} from './takeHistoryFormat';
 
 const row = (patch: Partial<TakeHistoryRow>): TakeHistoryRow => ({
   take_id: 't1',
@@ -46,4 +52,17 @@ it('최신 Take에 엔진이 없으면 가장 최근의 측정된 엔진으로 �
     'gaze_v1.1.0',
   );
   expect(latestGazeEngine([row({ gaze_engine: null })])).toBeNull();
+});
+
+describe('대본 보기 값을 한글로 (리포트 비교)', () => {
+  it('세 방식은 한글 이름이다', () => {
+    expect(scriptModeLabel('HIGHLIGHT')).toBe('전체 대본 + 하이라이트');
+    expect(scriptModeLabel('KEYWORD')).toBe('핵심 키워드');
+    expect(scriptModeLabel('OFF')).toBe('대본 없이');
+  });
+
+  it('예전 FULL 은 전체 대본, 모르는 값은 영어 코드 대신 "다른 방식"이다', () => {
+    expect(scriptModeLabel('FULL')).toBe('전체 대본');
+    expect(scriptModeLabel('SOMETHING_NEW')).toBe('다른 방식');
+  });
 });
