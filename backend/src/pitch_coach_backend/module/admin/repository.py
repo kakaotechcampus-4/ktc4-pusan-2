@@ -197,6 +197,7 @@ def live_segments(
             TakeTranscriptSegment.transcript,
             TakeTranscriptSegment.confidence,
             TakeTranscriptSegment.speech_final,
+            TakeTranscriptSegment.words,
         )
         .where(TakeTranscriptSegment.take_id == take_id, TakeTranscriptSegment.seq > after_seq)
         .order_by(TakeTranscriptSegment.seq)

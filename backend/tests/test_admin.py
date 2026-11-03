@@ -470,7 +470,15 @@ def test_take_live_returns_rows_after_cursors_in_order(
                 start_ms=seq * 1000,
                 end_ms=seq * 1000 + 500,
                 transcript=f"문장 {seq}",
-                words=[],
+                words=[
+                    {
+                        "word": "문장",
+                        "punctuated_word": f"문장{seq}.",
+                        "start_ms": seq * 1000 + 200,
+                        "end_ms": seq * 1000 + 500,
+                        "confidence": 0.9,
+                    }
+                ],
                 confidence=0.9,
                 speech_final=True,
             )
@@ -504,7 +512,8 @@ def test_take_live_returns_rows_after_cursors_in_order(
     assert first["status"] == "RUNNING"
     assert [s["seq"] for s in first["segments"]] == [1, 2, 3]
     assert first["segments"][0]["transcript"] == "문장 1"
-    assert "words" not in first["segments"][0]
+    # 표가 단어 시각으로 장을 나누는 데 쓰는 글자 · 시작 시각만 싣는다
+    assert first["segments"][0]["words"] == [{"word": "문장1.", "start_ms": 1200}]
     assert [s["t_ms"] for s in first["seconds"]] == [1000, 2000, 3000]
     assert first["seconds"][0]["gaze"] == {"t_ms": 0, "duration_ms": 1000}
     assert first["seconds"][0]["voice"] is None
