@@ -173,6 +173,9 @@
 .stage[data-gaze='SCREEN'] .viewport {
   border-color: var(--color-gaze-screen);
 }
+.stage[data-gaze='SCRIPT'] .viewport {
+  border-color: var(--color-gaze-script);
+}
 .stage[data-gaze='UNKNOWN'] .viewport {
   border-color: var(--color-gaze-unknown);
   border-style: dashed;
@@ -351,7 +354,7 @@
   font-size: 11px;
 }
 
-/* 테두리 3색이 무슨 뜻인지 한 줄로. 배지를 따로 두지 않는 대신
+/* 테두리 4색이 무슨 뜻인지 한 줄로. 배지를 따로 두지 않는 대신
    여기서 색의 의미만 알려준다 (CLAUDE.md 3번) */
 .rail .legend {
   background: none;
@@ -382,6 +385,9 @@
 }
 .rail .legend .screen {
   color: var(--color-gaze-screen);
+}
+.rail .legend .script {
+  color: var(--color-gaze-script);
 }
 .rail .legend .unknown {
   color: var(--color-gaze-unknown);
@@ -1000,6 +1006,10 @@
   color: var(--color-gaze-screen);
 }
 
+.stage-live .rail .legend .script::before {
+  color: var(--color-gaze-script);
+}
+
 .stage-live .rail .legend .unknown::before {
   color: var(--color-gaze-unknown);
   border-top-style: solid;
@@ -1018,6 +1028,7 @@
 
 .stage-live[data-gaze='AUDIENCE'] .rail .legend .audience,
 .stage-live[data-gaze='SCREEN'] .rail .legend .screen,
+.stage-live[data-gaze='SCRIPT'] .rail .legend .script,
 .stage-live[data-gaze='UNKNOWN'] .rail .legend .unknown {
   background: var(--color-ink-stage);
   color: var(--color-stage-panel);

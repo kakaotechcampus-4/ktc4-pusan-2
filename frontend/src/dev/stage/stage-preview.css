@@ -227,6 +227,10 @@
     color: var(--color-gaze-screen);
   }
 
+  .stage-live .rail .legend .script::before {
+    color: var(--color-gaze-script);
+  }
+
   .stage-live .rail .legend .unknown::before {
     color: var(--color-gaze-unknown);
     border-top-style: solid;
@@ -245,6 +249,7 @@
 
   .stage-live[data-gaze='AUDIENCE'] .rail .legend .audience,
   .stage-live[data-gaze='SCREEN'] .rail .legend .screen,
+  .stage-live[data-gaze='SCRIPT'] .rail .legend .script,
   .stage-live[data-gaze='UNKNOWN'] .rail .legend .unknown {
     background: var(--color-ink-stage);
     color: var(--color-stage-panel);

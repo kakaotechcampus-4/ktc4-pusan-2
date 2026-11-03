@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GazeZone, ScriptMode } from '@/types/api';
+import type { ScriptMode } from '@/types/api';
+import type { GazeBorder } from '../lib/gazeSegments';
 import { ScriptPane } from '@/dev/stage/ScriptPane';
 import { CoachStrip } from '@/dev/stage/CoachStrip';
 import './stage.css';
 import '@/dev/stage/stage-preview.css';
 
-/** contract의 Zone → 테두리 상태. 워커가 뭘 주든 매핑은 한 곳에서만 한다. */
-const BORDER: Record<GazeZone, string> = {
-  CAMERA: 'AUDIENCE',
-  BOTTOM: 'SCREEN',
-  UNCERTAIN: 'UNKNOWN',
-};
+/** 테두리 상태 네 가지. 실제 무대는 엔진 상태를 `borderOf` 로 바꿔 같은 값을 씁니다 */
+const BORDERS: GazeBorder[] = ['AUDIENCE', 'SCREEN', 'SCRIPT', 'UNKNOWN'];
 
 /**
  * /dev/stage — 무대 레이아웃 검증용. 제품 화면이 아니다.
@@ -46,8 +43,8 @@ export function StageDemo() {
   });
 
   // ★ 핵심 — 시선은 React 상태를 거치지 않는다
-  const setGaze = (zone: GazeZone) => {
-    if (stageRef.current) stageRef.current.dataset.gaze = BORDER[zone];
+  const setGaze = (border: GazeBorder) => {
+    if (stageRef.current) stageRef.current.dataset.gaze = border;
   };
 
   // 코치 줄도 같은 이유로 DOM에 직접 쓴다. 여기서 확인하려는 건
@@ -69,7 +66,7 @@ export function StageDemo() {
             검토 도구 숨기기
           </button>
           <span className="mr-1 text-xs font-bold text-stone">시선</span>
-          {(['CAMERA', 'BOTTOM', 'UNCERTAIN'] as GazeZone[]).map((z) => (
+          {BORDERS.map((z) => (
             <button
               key={z}
               onClick={() => setGaze(z)}
@@ -175,6 +172,7 @@ export function StageDemo() {
                 <span>테두리 =</span>
                 <i className="audience">청중</i>
                 <i className="screen">화면</i>
+                <i className="script">대본</i>
                 <i className="unknown">판정 불가</i>
               </div>
             </div>
