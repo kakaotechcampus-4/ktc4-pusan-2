@@ -1102,3 +1102,15 @@ def test_guide_quote_words_are_not_agreement_or_conclusion() -> None:
     assert any(
         f.check_id == "AGREEMENT_WORD" for f in check_claims([c2], registry=reg, guide_texts=guide)
     )
+
+
+def test_request_without_template_does_not_require_first_sentence():
+    """첫 문장이 일부러 없는 요청(REQUEST)의 설명은 템플릿을 요구하지 않는다. 동의 낱말 검사는 그대로다."""
+    a = assessment("UNVERIFIABLE", quote="대본은 어떤 형식으로 넣어?").model_copy(
+        update={"type": "REQUEST", "claim_op": None}
+    )
+    kw = {"assessments": {"a1": a}, "first_sentences": {"a1": ""}}
+    ok = Claim(kind="ASSESSMENT", assessment_id="a1", text="대본 입력 화면에서 장마다 나눠 넣어요.")
+    assert run([ok], **kw) == []
+    agree = Claim(kind="ASSESSMENT", assessment_id="a1", text="맞아요. 장마다 나눠 넣어요.")
+    assert CheckId.VERDICT_CONFLICT in ids_of(run([agree], **kw))

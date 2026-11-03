@@ -1640,7 +1640,7 @@ def test_issue_negative_tone_is_not_negation():
     slow = issue_draft("Take 5 속도 느렸지?", polarity=NEG)
     assert run(slow, t5(issues=[("PACE_FAST", 1, True)]), focus="take-5").verdict == "CONTRADICTED"
     assert run(slow, t5(issues=[("PACE_SLOW", 1, True)]), focus="take-5").verdict == "SUPPORTED"
-    for q in ("안 빨랐어", "빨랐던 건 아니야", "빠르진 않았어"):
+    for q in ("안 빨랐어", "빨랐던 건 아니죠", "빠르진 않아", "안빨랐어"):
         neg = issue_draft(q, polarity=POS)
         assert (
             run(neg, t5(issues=[("PACE_FAST", 1, True)]), focus="take-5").verdict == "CONTRADICTED"
@@ -1655,3 +1655,29 @@ def test_metric_label_from_tool_result_resolves_to_metric_key():
     assert (cv.verdict, cv.metric) == ("CONTRADICTED", "cpm")
     odd = issue_draft("Take 5 속도 느렸지?", polarity=NEG, metric="속도감")
     assert run(odd, t5(), focus="take-5").reason_code == "UNKNOWN_METRIC"
+
+
+def test_issue_negation_belongs_to_the_issue_word_clause():
+    """다른 절의 부정('안정적이지 않고')은 문제 낱말('빨랐')을 부정하지 않는다."""
+    d = issue_draft("속도가 안정적이지 않고 빨랐어", polarity=NEG)
+    assert run(d, t5(issues=[("PACE_FAST", 1, True)]), focus="take-5").verdict == "SUPPORTED"
+
+
+def test_issue_negation_is_part_of_claim_key():
+    """극성이 같아도 '빨랐어'와 '빠르지 않았어'는 다른 주장이다(앞 판정을 압력으로 이어받지 않는다)."""
+    keys = {
+        q: fin([issue_draft(q, polarity=NEG)], q, t5(), focus="take-5").assessments[0].claim_key
+        for q in ("속도가 빨랐어", "속도가 빠르지 않았어")
+    }
+    assert keys["속도가 빨랐어"] != keys["속도가 빠르지 않았어"]
+
+
+def test_metric_name_pointing_to_two_metrics_is_left_unknown():
+    """표시 이름과 설정의 문장용 이름이 다른 지표를 가리키면 바꾸지 않는다(확인 불가)."""
+    from chat_agent.claims import _metric_key
+    from chat_agent.config import load_config
+
+    cfg = load_config(metric_names={**dict(CFG.metric_names), "말 속도": "slide_duration_ms"})
+    d = issue_draft("Take 5 속도 느렸지?", polarity=NEG, metric="말 속도")
+    assert _metric_key(d, cfg).subject.metric == "말 속도"
+    assert _metric_key(d, CFG).subject.metric == "cpm"

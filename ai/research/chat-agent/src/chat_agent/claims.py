@@ -117,9 +117,13 @@ ISSUE_LABEL: dict[str, str] = {
 }
 #: 같은 지표의 반대 방향 문제 (6-3 ISSUE '반대 방향 문제만 있음')
 _OPPOSITE_ISSUE = {"PACE_FAST": "PACE_SLOW", "PACE_SLOW": "PACE_FAST"}
-#: 문제 주장을 부정하는 말("빠르지 않았어" · "안 빨랐어" · "빠른 건 아니었어"). 문제 주장(ISSUE)의 부정은 극성이 아니라
-#: 이 말로 가린다: 모델은 "느렸지?"처럼 문제를 말한 부정적 평가에도 NEGATIVE 를 붙이기 때문이다
-_ISSUE_NEGATION = re.compile(r"지\s*(?:않|못)|(?:^|\s)안\s|아니(?:었|야|에|다|라)|않았")
+#: 문제 낱말 뒤에서 그 말을 부정하는 표현("빠르지 않았어" · "빠르진 않아" · "빨랐던 건 아니죠").
+#: 문제 주장(ISSUE)의 부정은 극성이 아니라 이 말로 가린다: 모델은 "느렸지?"처럼 문제를 말한 부정적 평가에도 NEGATIVE 를 붙인다
+_NEG_AFTER = re.compile(r"않|지\s*못|진\s*못|아니|아닌")
+#: 문제 낱말 바로 앞의 부정("안 빨랐어" · "안빨랐어")
+_NEG_BEFORE = re.compile(r"(?:^|\s)안\s?$")
+#: 절을 끊는 말: 부정이 이 말 너머의 다른 절에 걸리지 않게 한다("안정적이지 않고 빨랐어"의 '않'은 '빨랐'을 부정하지 않음)
+_NEG_CLAUSE_BREAK = re.compile(r"[,.!?]|(?:지만|는데|은데|고)\s")
 #: 차원만 말하고 지표를 말하지 않은 값 · 비교 주장에서 쓰는 대표 지표
 PRIMARY_METRIC: dict[str, str] = {
     "audience_gaze": "audience_ratio",
@@ -604,10 +608,13 @@ def _metric_key(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft
     m = draft.subject.metric
     if m is None or m in cfg.direction or m in cfg.metric_units:
         return draft
-    named = {label: key for key, label in METRIC_LABEL.items()} | dict(cfg.metric_names)
-    key = named.get(m.strip())
-    if key is None:
-        return draft
+    name = m.strip()
+    found = {k for k, label in METRIC_LABEL.items() if label == name}
+    if name in cfg.metric_names:
+        found.add(cfg.metric_names[name])
+    if len(found) != 1:
+        return draft  # 모르는 이름 · 여러 지표를 가리키는 이름은 그대로(확인 불가)
+    key = next(iter(found))
     return draft.model_copy(update={"subject": draft.subject.model_copy(update={"metric": key})})
 
 
@@ -755,7 +762,7 @@ def _one_issue(d: AssessmentDraft, t: _Target, dim: str, ctx: _Ctx) -> _One:
     if pr.state != "OK":
         return _unv(pr.reason or pr.state)
     present = any(c in pr.issues for c in claimed)
-    if _ISSUE_NEGATION.search(d.quote):
+    if issue_negated(d.quote, claimed, ctx.cfg):
         verdict: Verdict = "CONTRADICTED" if present else "SUPPORTED"
     else:
         verdict = "SUPPORTED" if present else "CONTRADICTED"
@@ -1246,6 +1253,26 @@ def claimed_issues(quote: str, dimension: str | None, cfg: ChatAgentConfig) -> l
     )
 
 
+def issue_negated(quote: str, issues: Sequence[str], cfg: ChatAgentConfig) -> bool:
+    """문제 주장이 그 문제를 부정하는가("빠르지 않았어" · "안 빨랐어"). 문제 낱말 자리를 기준으로 본다.
+
+    문제 낱말 바로 앞의 '안', 또는 문제 낱말 뒤 같은 절 안의 부정 표현(않 · 못 · 아니)만 센다. 다른 절의 부정
+    ("안정적이지 않고 빨랐어")은 세지 않는다.
+    """
+    words = sorted({w for i in issues for w in cfg.issue_words.get(i, ())}, key=len, reverse=True)
+    for w in words:
+        at = quote.find(w)
+        while at != -1:
+            if _NEG_BEFORE.search(quote[:at]):
+                return True
+            rest = quote[at + len(w) :]
+            cut = _NEG_CLAUSE_BREAK.search(rest)
+            if _NEG_AFTER.search(rest[: cut.start()] if cut else rest):
+                return True
+            at = quote.find(w, at + 1)
+    return False
+
+
 def _claim_core(
     type_: str,
     subject: Subject,
@@ -1261,9 +1288,11 @@ def _claim_core(
         # 문제 주장은 어느 방향의 문제인지(PACE_FAST ↔ PACE_SLOW)도 '대상'이다: 반대 방향이 같은 키가 되면
         # 앞 판정을 압력으로 유지해 반대 주장을 맞다고 하게 된다
         issues = claimed_issues(quote, subject.dimension, cfg) if claim_op == "ISSUE" else []
+        # 문제 주장의 부정("빠르지 않았어")은 극성이 아니라 말로 가리므로 키에도 따로 넣는다
+        negated = issue_negated(quote, issues, cfg) if issues else None
         return [
             "M", subject.dimension, subject.metric, subject.slide_number, claim_op, polarity,
-            subject.relation, _normalized_value(value, value_unit, subject, cfg), issues,
+            subject.relation, _normalized_value(value, value_unit, subject, cfg), issues, negated,
         ]  # fmt: skip
     return [type_, subject.dimension, subject.metric, subject.slide_number, normalize_quote(quote)]
 

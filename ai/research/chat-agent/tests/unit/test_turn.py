@@ -1051,3 +1051,24 @@ def test_practice_move_only_answer_is_done_with_the_action() -> None:
     assert fd.message is not None
     assert fd.message.text == templates.SystemText.PRACTICE_BUTTON.value
     assert [c.type for c in fd.message.cards] == ["START_PRACTICE"]
+
+
+def test_assessment_head_does_not_render_supported_template_for_request() -> None:
+    """요청 · 정보 질문은 근거가 있어도 '기록과 맞아요'를 그리지 않는다(측정 주장은 그린다)."""
+    from types import SimpleNamespace
+
+    from chat_agent.turn import _assessment_head
+
+    def outcome(type_: str) -> Any:
+        a = SimpleNamespace(verdict="SUPPORTED", type=type_, quote="3장 시선 몇 %였어?")
+        return SimpleNamespace(
+            sentence="",
+            extra_sentences=[],
+            assessment=a,
+            evidence_phrase="Take 5 3장 청중 시선 28%",
+        )
+
+    assert _assessment_head(outcome("REQUEST")) == ""
+    assert _assessment_head(outcome("MEASURED")).startswith(
+        "말씀하신 '3장 시선 몇 %였어?'는 기록과 맞아요"
+    )

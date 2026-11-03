@@ -1123,7 +1123,9 @@ def _check_assessment(
     first = first_sentences.get(a.assessment_id)
     scan = c.text
     mismatch_verdict = a.verdict in ("CONTRADICTED", "PARTLY", "UNVERIFIABLE")
-    if mismatch_verdict:
+    # 요청 · 정보 질문(REQUEST)은 근거가 있고 기록과 어긋날 때만 첫 문장이 있다(6-3). 없으면 요구하지 않는다
+    template_required = mismatch_verdict and not (a.type == "REQUEST" and not first)
+    if template_required:
         if not first or not c.text.startswith(first):
             f.append(
                 CheckFailure(

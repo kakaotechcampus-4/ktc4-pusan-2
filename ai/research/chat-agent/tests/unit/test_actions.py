@@ -1086,3 +1086,13 @@ def test_l4_20_reassess_with_different_schema_versions_is_rules_differ() -> None
         ctx=ctx,
     )
     assert (applied.ok, applied.reason_code) == (False, "RULES_DIFFER")
+
+
+def test_number_range_is_not_a_take_id() -> None:
+    """'30-40%' 같은 숫자 범위는 Take ID 가 아니다: Take 를 집어 말하지 않았으면 화면의 Take 를 다시 평가할 수 있다."""
+    p = do(
+        "reassess",
+        {"take_id": "t-5", "change": {"script_used": True}},
+        message="시선 기준 30-40%로 다시 평가해 줘",
+    )
+    assert p.result == "PROPOSED"
