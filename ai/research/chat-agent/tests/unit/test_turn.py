@@ -1031,3 +1031,23 @@ def test_question_conversion_only_for_plain_questions(
     )
     out = _question_as_request(d, message)
     assert (out.type == "MEASURED") is kept
+
+
+def test_practice_move_only_answer_is_done_with_the_action() -> None:
+    """'바로 발표할래'처럼 이동만 요청한 답은 문장이 없어도 DONE 이고 START_PRACTICE 행동 · 카드를 싣는다."""
+    msg = "바로 발표할래"
+    req = F.request(user_message=msg)
+    req_draft = F.draft(msg, type_="REQUEST", claim_op=None, polarity="NEUTRAL")
+    llm = F.FakeLlm(
+        [
+            F.plan(route="ANSWER_DIRECT", steps=[], assessments=[req_draft]),
+            F.answer([], assessments=[req_draft], start_practice={"authorized_by": msg}),
+        ]
+    )
+    status, lines, data = F.run_turn(req, llm)
+    fd = final_ok(data)
+    assert fd.status == "DONE"
+    assert [a.type for a in fd.actions] == ["START_PRACTICE"]
+    assert fd.message is not None
+    assert fd.message.text == templates.SystemText.PRACTICE_BUTTON.value
+    assert [c.type for c in fd.message.cards] == ["START_PRACTICE"]

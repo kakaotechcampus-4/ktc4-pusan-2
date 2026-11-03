@@ -812,6 +812,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     # 4. 연습 준비 이동 · 대화 요약
     actions: list[Action] = []
+    practice_card = False
     sp = draft.get("start_practice")
     if isinstance(sp, dict):
         lp.st.action_seq += 1
@@ -826,6 +827,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         )
         if card:
             lp.st.cards.append(card)
+            practice_card = True
         if action is not None:
             actions.append(action)
     history_summary = (
@@ -844,6 +846,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         history_summary = None
 
     # 5. 상태 정하기
+    if not final_claims and practice_card:
+        # "바로 발표할래"처럼 연습 이동만 요청한 답: 문장이 없어도 이동(또는 버튼)이 답이다(6-2 START_PRACTICE)
+        final_claims = [Claim(kind="SYSTEM", text=templates.SystemText.PRACTICE_BUTTON.value)]
     if not final_claims:
         notes = _action_notes(lp)
         if notes:

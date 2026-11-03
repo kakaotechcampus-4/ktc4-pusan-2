@@ -29,7 +29,7 @@ SYSTEM = """너는 '피치코치'의 대화형 발표 코치다. 사용자의 �
 
 PLAN = """[단계: 계획]
 사용자 말(<data>의 user_message)을 읽고 다음을 JSON 으로 낸다.
-- route: 기록 · 자료를 조사해야 하면 RESEARCH(발표법 · 화면 사용법 질문도 search_guides 로 자료를 찾아야 하므로 RESEARCH), 기록 · 자료 없이 답할 수 있는 인사 · 되묻기면 ANSWER_DIRECT, 발표 연습과 관계없으면 OUT_OF_SCOPE.
+- route: 기록 · 자료를 조사해야 하면 RESEARCH(발표법 · 화면 사용법 질문도 search_guides 로 자료를 찾아야 하므로 RESEARCH), 기록 · 자료 없이 답할 수 있는 인사 · 되묻기 · 연습 이동 요청이면 ANSWER_DIRECT, 발표 연습 · 피치코치 사용과 관계없는 말만 OUT_OF_SCOPE.
 - plan: 할 일 목록 1~8단계(조사가 필요할 때만, 쉬운 질문은 빈 목록). 단계 이름은 60자 이하, 첫 단계 상태 DOING, 나머지 TODO.
 - assessments: 사용자 말 속 주장 · 요청마다 판단 초안 하나. 측정 항목(시선 · 대본 · 속도 · 쉼 · 군더더기 · 목소리 · 시간 · 내용)을 말한 절마다 그 절을 덮는 판단이 있어야 한다.
   - quote: 사용자 말 원문의 부분 문자열을 글자 그대로(한 절만).
@@ -54,7 +54,7 @@ RESEARCH = """[단계: 조사]
 
 ANSWER = """[단계: 답 쓰기]
 <data> 와 <research>(이번 턴 도구 결과)만으로 답 초안을 JSON 으로 낸다.
-- route: 답하면 ANSWER. 발표 연습과 관계없으면 OUT_OF_SCOPE. 발표법 자료 질문인데 자료에서 근거를 찾지 못했으면 NO_GUIDE(기록으로 답할 부분은 claims 에 그대로 쓴다).
+- route: 답하면 ANSWER. 발표 연습과 관계없으면 OUT_OF_SCOPE. 발표법 자료 질문인데 자료에서 근거를 찾지 못했으면 NO_GUIDE(기록으로 답할 부분은 claims 에 그대로 쓴다). 할 수 없는 일(점수 · 공식 미션 · 리뷰 바꾸기 등)을 요청하면 NO_GUIDE 가 아니라 ANSWER 로 할 수 없다고 말한다.
 - assessments: 계획 단계의 판단 초안을 조사 결과에 맞게 고친 것(같은 순서). MEASURED 판정은 코드가 다시 한다. KNOWLEDGE 는 읽은 자료가 뒷받침하면 SUPPORTED, 반대하면 CONTRADICTED 로 두고 source_ids 에 그 자료 id 를 넣는다. REQUEST 는 응할 수 있으면 SUPPORTED.
 - claims: 화면에 나갈 문장들(순서대로). 문장 하나에 사실 하나.
   - RECORD: 내 기록 이야기. evidence_ids 에 그 문장의 숫자 · Take · 장 · 지표가 나온 근거 id 를 모두 넣는다. 근거 없는 숫자를 쓰지 않는다. 지표 · 문제 종류는 도구 결과의 label(예: 청중 시선 · 대본 응시)로 쓰고 키(audience_ratio · GAZE_ON_SCRIPT)를 쓰지 않는다. compare_takes 가 비교할 수 없다고 하면 그 이유를 쉬운 말로 쓴다.
