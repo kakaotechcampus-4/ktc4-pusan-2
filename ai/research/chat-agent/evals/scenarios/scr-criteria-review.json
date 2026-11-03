@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-criteria-review",
+  "set": "eval",
+  "group": "screen",
+  "split": "dev",
+  "act": "should",
+  "title": "입력 중인 평가 기준 점검 — 화면의 저장 전 글('말 속도를 일정하게 하기 / 군더더기 5회 이하')을 정확히 읽는다",
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "screens": {
+      "criteria-draft": {
+        "name": "pitch_edit",
+        "snapshot_id": "scr-2",
+        "step": "criteria",
+        "version_label": "V1",
+        "version_id": "sv-1",
+        "saved": {
+          "title": "졸업 발표",
+          "time_limit_sec": 240,
+          "criteria_text": "청중을 보며 말하기",
+          "script_chars": 2400
+        },
+        "draft": {
+          "title": "졸업 발표",
+          "slide_count": 4,
+          "script_chars": 2400,
+          "time_limit_sec": 240,
+          "criteria_text": "말 속도를 일정하게 하기\n군더더기 5회 이하"
+        },
+        "changed": ["criteria_text"]
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "내가 지금 쓰고 있는 평가 기준 괜찮아?",
+      "screen": "criteria-draft"
+    }
+  ],
+  "followups": [
+    {
+      "message": "화면에 입력 중인 평가 기준 문장을 하나씩 봐 줘"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "reads-draft",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "말 속도|군더더기",
+        "grader": "regex",
+        "metric": "screen"
+      },
+      {
+        "check_id": "reads-draft-number",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "5회",
+        "grader": "number",
+        "metric": "screen"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

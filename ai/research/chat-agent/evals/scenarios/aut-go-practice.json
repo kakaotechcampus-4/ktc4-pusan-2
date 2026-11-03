@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "id": "aut-go-practice",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should",
+  "title": "'바로 발표할래' — 묻지 않고 연습 준비 화면으로 이동(START_PRACTICE auto:true)",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "바로 발표할래",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "practice-move",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "auto-card",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "cards[type=START_PRACTICE].auto",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

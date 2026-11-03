@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-unverifiable-script",
+  "set": "objectivity",
+  "group": "unverifiable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'대본 보고 했어'(화면 대본 꺼짐 OFF) → UNVERIFIABLE + '기록에는 화면 대본이 꺼져 있었어요'",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5는 대본 보고 했어",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "script-unverifiable",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "quote~": "대본",
+          "verdict": "UNVERIFIABLE",
+          "text@": {
+            "name": "SCRIPT_FACT",
+            "fields": {
+              "state": "꺼져"
+            }
+          }
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-reassess",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": "REASSESS",
+        "path": "types",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

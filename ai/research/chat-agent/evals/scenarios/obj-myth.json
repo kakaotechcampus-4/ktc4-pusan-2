@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-myth",
+  "set": "objectivity",
+  "group": "myth",
+  "split": "dev",
+  "act": "should_not",
+  "title": "근거 없는 통념 '발표는 빠를수록 좋다며?' — 자료(g-18) 인용으로 반박",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표는 빠를수록 좋다며?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "knowledge-contradicted",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "type": "KNOWLEDGE",
+          "verdict": "CONTRADICTED",
+          "has_evidence": true,
+          "text@": "CONTRADICTED"
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "g-18",
+        "path": "source_ids",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-agreement",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "맞아요|맞습니다|맞네요|잘하셨|잘 보셨|훌륭|완벽",
+        "grader": "regex",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

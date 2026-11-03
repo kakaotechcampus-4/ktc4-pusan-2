@@ -1,0 +1,1362 @@
+{
+  "$defs": {
+    "Check": {
+      "additionalProperties": false,
+      "description": "기대 결과 하나(10-5). 필수 검사가 하나라도 실패하거나 관찰값이 없으면 그 실행은 실패다.\n\n- observe: 무엇을 보나. answer(최종 답) · actions_proposed(AI가 낸 행동 · 카드) · actions_executed(BE가 실제로 실행한 행동) ·\n  db_diff(실행 전후 저장소) · trace(도구 · 진단 기록). 관찰값 모양은 grading.py 머리 설명\n- path: 관찰값 안의 위치(예 `after.conversation.goal.metric` · `assessments[]`). 없으면 grader 기본값\n- grader: value(값 그대로) · number(숫자 표기 규칙) · target(Take · 장 · 지표 대상) · regex · template(templates.py 문구) ·\n  quote(자료 인용이 원문에 그대로 있는가)\n- compare: equals · contains · set_equals · absent(10-5) + one_of(허용 집합, 13-5 '맞는 답이 여럿이면')\n- turn: 몇 번째 차례의 관찰값인가(기본 마지막, `all`이면 모든 차례를 합침)\n- metric: 이 검사가 들어가는 지표(자율 · 화면 이해도 · 객관성)\n- derive: 기대값을 계산한 가상 기록 위치(예 `t-5:GAZE.audience_ratio@3`). 시험이 기대값과 맞는지 다시 계산한다",
+      "properties": {
+        "check_id": {
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "observe": {
+          "enum": [
+            "answer",
+            "actions_proposed",
+            "actions_executed",
+            "db_diff",
+            "trace"
+          ],
+          "title": "Observe",
+          "type": "string"
+        },
+        "expect": {
+          "title": "Expect"
+        },
+        "compare": {
+          "enum": [
+            "equals",
+            "contains",
+            "set_equals",
+            "absent",
+            "one_of"
+          ],
+          "title": "Compare",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "grader": {
+          "default": "value",
+          "enum": [
+            "value",
+            "number",
+            "target",
+            "regex",
+            "template",
+            "quote"
+          ],
+          "title": "Grader",
+          "type": "string"
+        },
+        "turn": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "const": "all",
+              "type": "string"
+            }
+          ],
+          "default": -1,
+          "title": "Turn"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "enum": [
+                "autonomy",
+                "screen",
+                "objectivity"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric"
+        },
+        "derive": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Derive"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "check_id",
+        "observe",
+        "expect",
+        "compare"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "ConversationSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_pitch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "p-1",
+          "title": "Scope Pitch Id"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GoalSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/HistorySpec"
+          },
+          "title": "History",
+          "type": "array"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "title": "ConversationSpec",
+      "type": "object"
+    },
+    "CorpusSpec": {
+      "additionalProperties": false,
+      "description": "자료 묶음 바꾸기(주입 경로 시험용). 판은 `corpus_version`, 해시는 다시 계산한다.",
+      "properties": {
+        "corpus_version": {
+          "default": "guides-1-eval",
+          "title": "Corpus Version",
+          "type": "string"
+        },
+        "extra_cards": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Extra Cards",
+          "type": "array"
+        }
+      },
+      "title": "CorpusSpec",
+      "type": "object"
+    },
+    "Expected": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "minItems": 1,
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "checks"
+      ],
+      "title": "Expected",
+      "type": "object"
+    },
+    "Fault": {
+      "additionalProperties": false,
+      "description": "차례 하나에 넣는 장애(10-5 '장애 주입').\n\n- model_delay: `after_call`번째 모델 호출이 끝난 뒤 시계를 `seconds`만큼 흘린다(모델이 오래 걸림 · 한도 끝)\n- model_error: `purpose`의 `nth`번째 호출을 보내지 않고 시간 초과로 끝낸다(`seconds`만큼 시계를 흘림)\n- corrupt_answer: 첫 답 쓰기 응답의 문장 속 `from_text`를 `to_text`로 바꾼다(답 검사가 숫자를 잡아 고치게 하는지)\n- delete_before_action: BE가 `action` 행동을 실행하기 직전에 `target` Take 를 지운다(행동 실패)",
+      "properties": {
+        "kind": {
+          "enum": [
+            "model_delay",
+            "model_error",
+            "corrupt_answer",
+            "delete_before_action"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "after_call": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After Call"
+        },
+        "seconds": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Seconds",
+          "type": "number"
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "enum": [
+                "RESEARCH",
+                "ANSWER",
+                "FIX"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Purpose"
+        },
+        "nth": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Nth",
+          "type": "integer"
+        },
+        "from_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "From Text"
+        },
+        "to_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Text"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Fault",
+      "type": "object"
+    },
+    "Fixtures": {
+      "additionalProperties": false,
+      "properties": {
+        "user_id": {
+          "default": "u-3",
+          "title": "User Id",
+          "type": "string"
+        },
+        "pitches": {
+          "items": {
+            "$ref": "#/$defs/PitchSpec"
+          },
+          "title": "Pitches",
+          "type": "array"
+        },
+        "conversation": {
+          "$ref": "#/$defs/ConversationSpec"
+        },
+        "screens": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Screens",
+          "type": "object"
+        },
+        "corpus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CorpusSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "official_reviews": {
+          "default": "stored",
+          "enum": [
+            "stored",
+            "rule"
+          ],
+          "title": "Official Reviews",
+          "type": "string"
+        }
+      },
+      "title": "Fixtures",
+      "type": "object"
+    },
+    "Followup": {
+      "additionalProperties": false,
+      "description": "앞 차례가 실패했을 때만 차례로 주는 후속 사용자 말(13-3, 시나리오마다 최대 2개).",
+      "properties": {
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "page_take_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Take Id"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "Followup",
+      "type": "object"
+    },
+    "GoalSpec": {
+      "additionalProperties": false,
+      "description": "대화에 이미 저장된 대화 목표. 기준값 · 판 · 범위는 기준 Take 기록으로 코드가 만든다(6-7).",
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "slide_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slide Number"
+        },
+        "base_take_id": {
+          "title": "Base Take Id",
+          "type": "string"
+        },
+        "version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "status": {
+          "default": "OPEN",
+          "enum": [
+            "OPEN",
+            "ACHIEVED",
+            "NOT_ACHIEVED",
+            "BASELINE_MISMATCH"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "after_take": {
+          "minimum": 0,
+          "title": "After Take",
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "2026-11-03T11:00:00+09:00",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "base_take_id",
+        "after_take"
+      ],
+      "title": "GoalSpec",
+      "type": "object"
+    },
+    "HistorySpec": {
+      "additionalProperties": false,
+      "description": "대화에 이미 있는 메시지(옛 대화). `source_ids`의 원천이 지워졌으면 BE가 가린다(12-2).",
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "system"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Basis"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "title": "HistorySpec",
+      "type": "object"
+    },
+    "PitchSpec": {
+      "additionalProperties": false,
+      "description": "피치 하나. `preset`이 있으면 그 피치에서 시작해 나머지 칸으로 덮어쓴다.",
+      "properties": {
+        "preset": {
+          "anyOf": [
+            {
+              "const": "sample",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset"
+        },
+        "pitch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pitch Id"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Id"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "time_limit_sec": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Limit Sec"
+        },
+        "lower_deviation_sec": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lower Deviation Sec"
+        },
+        "upper_deviation_sec": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upper Deviation Sec"
+        },
+        "script_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Script Version Id"
+        },
+        "script_version_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Script Version Label"
+        },
+        "presentation_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Presentation Version Id"
+        },
+        "page_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Count"
+        },
+        "standard_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Standard Version"
+        },
+        "criteria": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Criteria"
+        },
+        "missions": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Missions"
+        },
+        "last_practiced_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Practiced At"
+        },
+        "takes": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/TakeSpec"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Takes"
+        },
+        "take_overrides": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Take Overrides",
+          "type": "object"
+        },
+        "add_takes": {
+          "items": {
+            "$ref": "#/$defs/TakeSpec"
+          },
+          "title": "Add Takes",
+          "type": "array"
+        },
+        "drop_takes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Drop Takes",
+          "type": "array"
+        }
+      },
+      "title": "PitchSpec",
+      "type": "object"
+    },
+    "ResultSpec": {
+      "additionalProperties": false,
+      "description": "코치 Take 결과(fixtures.take_result 인자). 리스트는 장마다, 수 하나면 모든 장에 같은 값.",
+      "properties": {
+        "slides": {
+          "default": 4,
+          "minimum": 1,
+          "title": "Slides",
+          "type": "integer"
+        },
+        "slide_ms": {
+          "default": 60000,
+          "minimum": 1,
+          "title": "Slide Ms",
+          "type": "integer"
+        },
+        "audience": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          ],
+          "default": 0.6,
+          "title": "Audience"
+        },
+        "script_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          ],
+          "default": 0.2,
+          "title": "Script Ratio"
+        },
+        "cpm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          ],
+          "default": 310.0,
+          "title": "Cpm"
+        },
+        "filler_per_min": {
+          "default": 1.2,
+          "title": "Filler Per Min",
+          "type": "number"
+        },
+        "filler_count": {
+          "default": 5,
+          "title": "Filler Count",
+          "type": "integer"
+        },
+        "voice_diff_db": {
+          "default": -0.5,
+          "title": "Voice Diff Db",
+          "type": "number"
+        },
+        "long_silence_count": {
+          "default": 0,
+          "title": "Long Silence Count",
+          "type": "integer"
+        },
+        "issues": {
+          "items": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "boolean"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "unmeasured": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Unmeasured",
+          "type": "object"
+        },
+        "script_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Script Mode"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan"
+        },
+        "criteria_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Criteria Versions",
+          "type": "object"
+        }
+      },
+      "title": "ResultSpec",
+      "type": "object"
+    },
+    "ReviewSpec": {
+      "additionalProperties": false,
+      "description": "공식 리뷰(fixtures.review 인자). 차원을 주지 않으면 모두 STABLE(내용 전달은 NOT_EVALUABLE).",
+      "properties": {
+        "dimensions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Dimensions",
+          "type": "object"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 72,
+          "title": "Score"
+        },
+        "fallback": {
+          "default": false,
+          "title": "Fallback",
+          "type": "boolean"
+        },
+        "overall_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overall Summary"
+        },
+        "strengths": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strengths"
+        },
+        "improvements": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Improvements"
+        },
+        "mission_results": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mission Results"
+        }
+      },
+      "title": "ReviewSpec",
+      "type": "object"
+    },
+    "TakeSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "take_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Take Id"
+        },
+        "take_number": {
+          "minimum": 0,
+          "title": "Take Number",
+          "type": "integer"
+        },
+        "status": {
+          "default": "COMPLETED",
+          "title": "Status",
+          "type": "string"
+        },
+        "mode": {
+          "default": "COACHING",
+          "title": "Mode",
+          "type": "string"
+        },
+        "script_mode": {
+          "default": "OFF",
+          "title": "Script Mode",
+          "type": "string"
+        },
+        "end_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Reason"
+        },
+        "page_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 4,
+          "title": "Page Count"
+        },
+        "visited_slides": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Visited Slides",
+          "type": "array"
+        },
+        "script_version_id": {
+          "default": "sv-1",
+          "title": "Script Version Id",
+          "type": "string"
+        },
+        "presentation_version_id": {
+          "default": "pv-1",
+          "title": "Presentation Version Id",
+          "type": "string"
+        },
+        "standard_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1,
+          "title": "Standard Version"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "2026-11-01T10:00:00+09:00",
+          "title": "Completed At"
+        },
+        "started_at": {
+          "default": "2026-11-01T09:50:00+09:00",
+          "title": "Started At",
+          "type": "string"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "script_coverage": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Script Coverage"
+        },
+        "revisions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revisions"
+        }
+      },
+      "required": [
+        "take_number"
+      ],
+      "title": "TakeSpec",
+      "type": "object"
+    },
+    "Turn": {
+      "additionalProperties": false,
+      "description": "사용자 말 하나(BE 메시지 → 실행 끝까지) 또는 자동 목표 확인 한 주기.",
+      "properties": {
+        "message": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "page_take_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Take Id"
+        },
+        "screen": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Screen"
+        },
+        "choice": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Choice"
+        },
+        "auto_goal_check": {
+          "default": false,
+          "title": "Auto Goal Check",
+          "type": "boolean"
+        },
+        "faults": {
+          "items": {
+            "$ref": "#/$defs/Fault"
+          },
+          "title": "Faults",
+          "type": "array"
+        }
+      },
+      "title": "Turn",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "title": "Id",
+      "type": "string"
+    },
+    "set": {
+      "enum": [
+        "eval",
+        "safety",
+        "objectivity"
+      ],
+      "title": "Set",
+      "type": "string"
+    },
+    "group": {
+      "title": "Group",
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "dev",
+        "holdout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "act": {
+      "enum": [
+        "should",
+        "should_not"
+      ],
+      "title": "Act",
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source"
+    },
+    "expect_refusal": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expect Refusal"
+    },
+    "baseline_type": {
+      "default": "record",
+      "enum": [
+        "record",
+        "compare",
+        "goal",
+        "reassess",
+        "scope",
+        "screen",
+        "guide",
+        "none"
+      ],
+      "title": "Baseline Type",
+      "type": "string"
+    },
+    "fixtures": {
+      "$ref": "#/$defs/Fixtures"
+    },
+    "turns": {
+      "items": {
+        "$ref": "#/$defs/Turn"
+      },
+      "minItems": 1,
+      "title": "Turns",
+      "type": "array"
+    },
+    "followups": {
+      "items": {
+        "$ref": "#/$defs/Followup"
+      },
+      "maxItems": 2,
+      "title": "Followups",
+      "type": "array"
+    },
+    "expected": {
+      "$ref": "#/$defs/Expected"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "set",
+    "group",
+    "split",
+    "act",
+    "title",
+    "turns",
+    "expected"
+  ],
+  "title": "chat_agent 평가 시나리오 1.0",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat-agent/evals/scenario.schema.json"
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "id": "guide-modes",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should",
+  "title": "'코칭 모드랑 실전 모드 차이' — 사용법 카드 u-16 인용",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "코칭 모드랑 실전 모드 차이가 뭐야?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "u-16",
+        "path": "source_ids"
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

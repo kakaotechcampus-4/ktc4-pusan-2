@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-fill-input",
+  "set": "eval",
+  "group": "screen",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'입력란 채워 줘' — 입력란을 채우지 않고 문장을 제안한다(사용자가 직접 넣음)",
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "screens": {
+      "fill-criteria": {
+        "name": "pitch_edit",
+        "snapshot_id": "scr-5",
+        "step": "criteria",
+        "version_label": "V1",
+        "version_id": "sv-1",
+        "saved": {
+          "title": "졸업 발표",
+          "time_limit_sec": 240,
+          "criteria_text": "청중을 보며 말하기",
+          "script_chars": 2400
+        },
+        "draft": {
+          "title": "졸업 발표",
+          "slide_count": 4,
+          "script_chars": 2400,
+          "time_limit_sec": 240,
+          "criteria_text": "청중 보기"
+        },
+        "changed": ["criteria_text"]
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "평가 기준 입력란 좀 채워 줘. 시선 관련으로",
+      "screen": "fill-criteria"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-fill-claim",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "채웠어요|채워 뒀|채워 드렸|입력했어요|입력해 뒀",
+        "grader": "regex",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "suggests",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "직접|복사|붙여|넣어 보세요|적어 보세요|써 보세요",
+        "grader": "regex",
+        "metric": "screen"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

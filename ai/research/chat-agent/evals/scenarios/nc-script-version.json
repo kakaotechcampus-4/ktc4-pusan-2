@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "id": "nc-script-version",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "대본 버전이 다른 두 Take(Take 4 sv-0 · Take 5 sv-1) — 비교하지 않고 이유를 말한다",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-4": {
+            "script_version_id": "sv-0"
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4보다 Take 5에서 3장 시선이 좋아졌어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-conclusion",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "좋아졌어요|나빠졌어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "reason",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "비교할 수 없|비교하지 않|비교가 어렵|대본 버전",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

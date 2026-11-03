@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "id": "ra-record-changed",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "공식 리뷰 뒤 이전 Take(4) 결과가 다시 계산된 상태 — 지금 기록 A 가 공식 리뷰와 달라 '지금 기록 기준'임을 알린다",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-4": {
+            "revisions": {
+              "TAKE_RESULT": 2
+            },
+            "result": {
+              "audience": [0.62, 0.58, 0.33, 0.6]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "stored"
+  },
+  "turns": [
+    {
+      "message": "Take 5는 대본 보고 한 발표였어. 다시 평가해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "one-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS"
+      },
+      {
+        "check_id": "official-differs",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "cards[type=REASSESS_RESULT].official_differs"
+      },
+      {
+        "check_id": "differs-notice",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "지금 기록 기준|공식 리뷰와 달라",
+        "grader": "regex"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "공식 리뷰는 가상 리뷰 그대로(stored)라 지금 규칙으로 만든 A 와 다르다"
+}

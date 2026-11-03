@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "id": "ana-filler",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "holdout",
+  "act": "should",
+  "title": "'Take 5 군더더기는 몇 번?' — 5번",
+  "expect_refusal": false,
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5에서 군더더기는 몇 번 나왔어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "5번",
+        "grader": "number",
+        "derive": "t-5:FILLER.filler_count"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 5,
+          "metric": "filler_count"
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "question-not-unverifiable",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "UNVERIFIABLE",
+        "grader": "template",
+        "note": "값을 묻는 질문을 '이 기록으로는 확인할 수 없어요' 판단으로 답하지 않는다(값이 기록에 있다)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}
