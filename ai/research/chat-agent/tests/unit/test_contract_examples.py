@@ -115,3 +115,61 @@ def test_pre_stream_error_body_shape() -> None:
 def test_action_result_example_shape() -> None:
     r = s.ActionResult.model_validate_json(_read("action_result_fetch_pitch_ambiguous.json"))
     assert r.status == "AMBIGUOUS" and len(r.data["candidates"]) == 2
+
+
+def test_example_files_match_builder() -> None:
+    """예시 파일이 만들기 코드(chat_agent_lab.examples)의 결과와 같다. 프롬프트 · 설정 · 모양을 바꾸면 다시 만든다."""
+    from chat_agent_lab import examples as ex
+
+    for name, content in ex.build().items():
+        text = (
+            content
+            if isinstance(content, str)
+            else json.dumps(content, ensure_ascii=False, indent=2, allow_nan=False)
+        )
+        on_disk = _read(name).replace("\r\n", "\n")  # 줄 끝 자동 변환(CRLF)은 무시한다
+        assert on_disk == text + "\n", f"{name} 이 오래됐다: python -m chat_agent_lab.examples"
+
+
+def test_resume_example_passes_state_and_pairing_checks() -> None:
+    """이어 부르기 예시는 예시 키로 서명 · 판 · 식별자 · 행동 결과 짝 · 누적량 검사를 통과하고, 저장 성공 문장으로 끝난다."""
+    from chat_agent.turn import handle_turn
+    from chat_agent_lab import examples as ex
+
+    from . import fakes as F
+
+    clock = F.Clock()
+    clock.ms = ex.EXAMPLE_ISSUED_MS + 60_000
+    llm = F.FakeLlm([F.done()], answers=[F.answer([])])
+    resp = handle_turn(
+        _read("request_action_result.json").encode("utf-8"),
+        F.deps(llm, clock=clock),
+        secret=ex.EXAMPLE_STATE_KEY,
+    )
+    assert resp.error is None
+    assert resp.lines is not None
+    lines = [json.loads(x) for x in resp.lines]
+    final = s.FinalData.model_validate(lines[-1]["data"])
+    assert final.message is not None and "목표를 저장했어요." in final.message.text
+    assert any(
+        c.kind == "ACTION_RESULT" and c.action_id == "run-81:a1" for c in final.message.claims
+    )
+    # 다른 키 · 만료 뒤에는 거절한다
+    assert (
+        handle_turn(
+            _read("request_action_result.json").encode("utf-8"),
+            F.deps(F.FakeLlm([]), clock=clock),
+            secret=b"x" * 32,
+        ).error
+        is not None
+    )
+    late = F.Clock()
+    late.ms = ex.EXAMPLE_ISSUED_MS + 11 * 60_000
+    assert (
+        handle_turn(
+            _read("request_action_result.json").encode("utf-8"),
+            F.deps(F.FakeLlm([]), clock=late),
+            secret=ex.EXAMPLE_STATE_KEY,
+        ).error
+        is not None
+    )
