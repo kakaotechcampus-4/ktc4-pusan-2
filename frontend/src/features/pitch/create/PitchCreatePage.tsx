@@ -26,6 +26,7 @@ import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
 import { FinalReviewDialog } from './FinalReviewDialog';
 import type { Chosen, PitchDraft } from './lib/draft';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 /**
  * 새로 시작한 작성인지 보고, 그렇다면 앞 피치를 비운 뒤에 화면을 그립니다.
@@ -343,7 +344,11 @@ function PitchCreateScreen() {
             <VersionRail />
           </details>
         </aside>
-        <main className="min-w-0 border-l border-line px-10 py-8 max-[1100px]:p-6 max-[760px]:border-l-0 max-[760px]:p-5 [&>section]:-mx-10 [&>section]:min-w-0 [&>section]:scroll-mt-6 [&>section]:bg-[color-mix(in_srgb,var(--color-panel)_55%,var(--color-cream))] [&>section[data-current]]:outline [&>section[data-current]]:outline-1 [&>section[data-current]]:-outline-offset-1 [&>section[data-current]]:outline-coral-deep [&>section]:px-10 [&>section]:py-8 [&>section:nth-of-type(even)]:bg-cream max-[1100px]:[&>section]:-mx-6 max-[1100px]:[&>section]:px-6 max-[760px]:[&>section]:-mx-5 max-[760px]:[&>section]:px-5">
+        <main
+          id={MAIN_ID}
+          tabIndex={-1}
+          className="min-w-0 border-l border-line px-10 py-8 max-[1100px]:p-6 max-[760px]:border-l-0 max-[760px]:p-5 [&>section]:-mx-10 [&>section]:min-w-0 [&>section]:scroll-mt-6 [&>section]:bg-[color-mix(in_srgb,var(--color-panel)_55%,var(--color-cream))] [&>section[data-current]]:outline [&>section[data-current]]:outline-1 [&>section[data-current]]:-outline-offset-1 [&>section[data-current]]:outline-coral-deep [&>section]:px-10 [&>section]:py-8 [&>section:nth-of-type(even)]:bg-cream max-[1100px]:[&>section]:-mx-6 max-[1100px]:[&>section]:px-6 max-[760px]:[&>section]:-mx-5 max-[760px]:[&>section]:px-5"
+        >
           <div className="flex items-center justify-between gap-8 pb-6 max-[1100px]:gap-4 max-[760px]:flex-wrap [&_h1]:text-[1.75rem] [&_h1]:font-bold [&_h1]:tracking-tight [&_p]:mt-2 [&_p]:text-sm [&_p]:text-stone">
             <div>
               <h1>발표 준비</h1>
