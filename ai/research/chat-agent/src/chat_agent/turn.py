@@ -370,7 +370,13 @@ def _orchestrate(
         return finish(error="INTERNAL_ERROR", reason="CLIENT_DISCONNECTED")
     if stop is not None:
         return _needs_action(
-            lp, req, action=stop["action"], call_id=stop["call_id"], tool_name=None, finish=finish
+            lp,
+            req,
+            action=stop["action"],
+            call_id=stop["call_id"],
+            tool_name=stop.get("tool_name"),
+            tool_args=stop.get("tool_args"),
+            finish=finish,
         )
     return _answer(lp, req, finish)
 
@@ -404,11 +410,12 @@ def _needs_action(
     call_id: str | None,
     tool_name: str | None,
     finish: Callable[..., _Result],
+    tool_args: Any = None,
 ) -> _Result:
     pending = action.model_dump(mode="json")
     pending["_call_id"] = call_id
     pending["_tool_name"] = tool_name or action.type.lower()
-    pending["_tool_args"] = None
+    pending["_tool_args"] = tool_args
     lp.st.pending_action = pending
     interim: list[Claim] = []
     newly: list[Assessment] = []
@@ -796,6 +803,15 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     # 5. 상태 정하기
     if not final_claims:
+        notes = _action_notes(lp)
+        if notes:
+            # 행동 결과 안내만 있는 답(예: 다른 탭에서 목표가 바뀌어 저장하지 못함): 안내를 그대로 낸다
+            return finish(
+                status="PARTIAL",
+                reason="OTHER",
+                claims=[Claim(kind="SYSTEM", text=n) for n in notes],
+                assessments=all_assessments,
+            )
         if no_guide:
             return finish(
                 status="REFUSED",
@@ -818,6 +834,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             system=[templates.SystemText.PARTIAL_CHECKED],
             assessments=all_assessments,
         )
+    for note in reversed(_action_notes(lp)):
+        if all(c.text != note for c in final_claims):
+            final_claims.insert(0, Claim(kind="SYSTEM", text=note))
     if lp.record_changed:
         final_claims.insert(
             0, Claim(kind="SYSTEM", text=templates.SystemText.RECORD_CHANGED_DURING.value)
@@ -847,6 +866,51 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         history_summary=history_summary,
         sources=_sources(final_claims),
     )
+
+
+def _action_notes(lp: Loop) -> list[str]:
+    """이 실행에서 처리한 행동 결과에 붙일 고정 안내(7-10): 실패 · 후보 여럿 · 규칙 판 다름 · 공식 리뷰와 다름."""
+    st = templates.SystemText
+    out: list[str] = []
+    for e in lp.st.executed:
+        t, status, reason, code = (
+            e.get("type"),
+            e.get("status"),
+            e.get("reason_code"),
+            e.get("failed_code"),
+        )
+        note = None
+        if t == "FETCH_PITCH" and reason == "AMBIGUOUS":
+            note = st.WHICH_PITCH
+        elif status == "FAILED" and t == "FETCH_PITCH":
+            note = st.PITCH_NOT_FOUND
+        elif status == "FAILED" and t == "FETCH_TAKE":
+            note = st.TAKE_FETCH_FAILED
+        elif t == "REASSESS" and "RULES_DIFFER" in (reason, code):
+            note = st.REASSESS_RULES_DIFFER
+        elif status == "FAILED" and t == "REASSESS":
+            note = {
+                "DAILY_LIMIT": st.REASSESS_DAILY_LIMIT,
+                "REASSESS_DAILY_LIMIT": st.REASSESS_DAILY_LIMIT,
+                "NO_DATA": st.REASSESS_NO_DATA,
+            }.get(code or "", st.REASSESS_FAILED)
+        elif status == "FAILED" and t == "SAVE_GOAL":
+            note = (
+                st.GOAL_CHANGED_ELSEWHERE
+                if code
+                in (
+                    "GOAL_CHANGED",
+                    "GOAL_VERSION_CONFLICT",
+                    "VERSION_CONFLICT",
+                    "STALE_GOAL_VERSION",
+                )
+                else st.ACTION_UNCONFIRMED
+            )
+        elif status == "SUCCEEDED" and t == "REASSESS" and e.get("official_differs"):
+            note = st.REASSESS_DIFFERS
+        if note is not None and note.value not in out:
+            out.append(note.value)
+    return out
 
 
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)
@@ -949,6 +1013,9 @@ def _referenced(ctx: Any, ids: list[str]) -> list[dict[str, Any]]:
     return list(out.values())
 
 
+#: 검증된 결과로 코드가 만든 카드 종류
+_CODE_CARDS = ("REASSESS_RESULT", "GOAL_RESULT", "START_PRACTICE")
+
 _CARD_DEFAULT_REASON = {"USER": "말씀하신 목표", "EXPERT": "기록으로 본 추천 목표"}
 
 
@@ -967,15 +1034,18 @@ def _safe_cards(
         ]
 
         def bad(c: dict[str, Any], ids: list[str] = ids) -> bool:
-            return bool(
-                chk.check_display_strings(
-                    cards=[c],
-                    registry=ctx.registry,
-                    display_evidence={"cards:0": ids},
-                    cfg=cfg,
-                    assessments=amap,
-                )
+            fails = chk.check_display_strings(
+                cards=[c],
+                registry=ctx.registry,
+                display_evidence={"cards:0": ids},
+                cfg=cfg,
+                assessments=amap,
             )
+            if c.get("type") in _CODE_CARDS:
+                # 검증된 행동 결과로 코드가 만든 카드(다시 평가 · 목표 판정 · 연습 이동)는 숫자 출처 대신
+                # 금지 주장 · 개인정보만 본다(사용자 기준 문구의 "30%" 같은 숫자로 카드가 통째로 숨지 않게)
+                fails = [f for f in fails if f.check_id in ("PII", "FORBIDDEN_CLAIM")]
+            return bool(fails)
 
         if not bad(card):
             out.append(card)
@@ -1094,6 +1164,7 @@ def _finish(
         "assessments": assessments_out,
         "goal_result": goal_result,
         "meta": meta(
+            extra=dict(st.review_versions) or None,
             model=lp.model_name if lp.model_used else None,
             prompt_version=prompts.PROMPT_VERSION,
             corpus_version=deps.corpus_version,

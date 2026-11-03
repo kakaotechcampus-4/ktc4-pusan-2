@@ -605,6 +605,12 @@ class Applied:
     mismatch: bool = False
     scope_changed: bool = False
     reason_code: str | None = None
+    #: BE 가 준 실패 코드(FAILED 일 때, 안내 문구 고르기용)
+    failed_code: str | None = None
+    #: 다시 평가 A · B 의 규칙 판(답 meta.criteria_versions 에 싣는다, 5-5)
+    review_versions: dict[str, str] | None = None
+    #: 다시 평가 결과가 공식 리뷰와 다른가
+    official_differs: bool = False
 
 
 def apply_result(pending: dict[str, Any], r: ActionResult, *, ctx: RunCtx) -> Applied:
@@ -637,7 +643,10 @@ def apply_result(pending: dict[str, Any], r: ActionResult, *, ctx: RunCtx) -> Ap
         )
     if r.status == "FAILED":
         code = r.error.code if r.error else "FAILED"
+        if atype == "FETCH_TAKE" and code == "NOT_FOUND":
+            ctx.not_found.add(str(args.get("take_id")))  # 같은 실행에서 다시 찾지 않는다(L1-17)
         return Applied(
+            failed_code=code,
             ok=False,
             tool_message={
                 "ok": False,
@@ -683,9 +692,10 @@ def apply_result(pending: dict[str, Any], r: ActionResult, *, ctx: RunCtx) -> Ap
                 mismatch=True,
                 reason_code="TARGET_MISMATCH",
             )
+        moved = pitch.info.pitch_id != ctx.scope_pitch_id
         ctx.set_pitch(pitch)
         ctx.touch(pitch.info.pitch_id)
-        text = templates.ACTION_SUCCESS["FETCH_PITCH"].format(title=pitch.info.title)
+        text = templates.fill(templates.ACTION_SUCCESS["FETCH_PITCH"], title=pitch.info.title)
         return Applied(
             ok=True,
             tool_message={
@@ -697,7 +707,8 @@ def apply_result(pending: dict[str, Any], r: ActionResult, *, ctx: RunCtx) -> Ap
                 },
             },
             success_text=text,
-            scope_changed=True,
+            # 같은 피치를 다시 가져온 것은 범위 전환이 아니다(판 번호를 올리지 않는다, 5-6)
+            scope_changed=moved,
         )
     if atype == "FETCH_TAKE":
         try:
@@ -870,7 +881,10 @@ def _apply_reassess(pending: dict[str, Any], data: dict[str, Any], *, ctx: RunCt
         )
     cva = (before.get("meta") or {}).get("criteria_versions")
     cvb = (after.get("meta") or {}).get("criteria_versions")
-    if not cva or not cvb or cva != cvb:
+    same_schema = (before.get("meta") or {}).get("schema_version") == (after.get("meta") or {}).get(
+        "schema_version"
+    )
+    if not cva or not cvb or cva != cvb or not same_schema:
         # 규칙 버전이 다르거나 빠지면 같은 조건 비교가 아니다(6-6 6번 · L4-20)
         return Applied(
             ok=False,
@@ -920,6 +934,8 @@ def _apply_reassess(pending: dict[str, Any], data: dict[str, Any], *, ctx: RunCt
         tool_message={"ok": True, "data": view},
         success_text=templates.ACTION_SUCCESS["REASSESS"],
         card=card,
+        review_versions={str(k): str(v) for k, v in (cva or {}).items()},
+        official_differs=official_differs,
     )
 
 

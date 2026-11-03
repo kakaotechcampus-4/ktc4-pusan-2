@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
 
@@ -146,7 +147,7 @@ def assessment_sentence(
     """
     q = quote.strip()
     if speaker == "OTHER" and evidence:
-        return OTHER_SPEAKER.format(speaker=speaker_label or "다른 분", evidence=evidence)
+        return fill(OTHER_SPEAKER, speaker=speaker_label or "다른 분", evidence=evidence)
     if type_ == "PREFERENCE":
         if not evidence:
             return UNVERIFIABLE.format(quote=q)
@@ -154,7 +155,7 @@ def assessment_sentence(
             return PREFERENCE_FITS.format(evidence=evidence)
         return PREFERENCE.format(evidence=evidence)
     if pressure and evidence and verdict in ("CONTRADICTED", "PARTLY"):
-        return PRESSURE.format(evidence=evidence)
+        return fill(PRESSURE, evidence=evidence)
     if not evidence or verdict == "UNVERIFIABLE":
         return UNVERIFIABLE.format(quote=q)
     if verdict == "CONTRADICTED":
@@ -181,3 +182,41 @@ GOAL_WORD = {
     "UNKNOWN": "이번 Take로는 목표를 판정할 수 없어 다음 Take를 기다려요",
     "BASELINE_MISMATCH": "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
 }
+
+
+# ── 조사 ─────────────────────────────────────────────────────────────────
+#: 숫자를 읽을 때의 끝소리 받침(0 영 · 1 일 · 3 삼 · 6 육 · 7 칠 · 8 팔). ㄹ 은 8
+_DIGIT_FINAL = {"0": 21, "1": 8, "2": 0, "3": 16, "4": 0, "5": 0, "6": 1, "7": 8, "8": 8, "9": 0}
+
+
+def _final(word: str) -> int:
+    """마지막 글자의 받침 번호(0 = 없음, 8 = ㄹ). 한글 · 숫자가 아니면 받침 없음으로 본다(예: '%' → 퍼센트)."""
+    w = word.rstrip(" )]}\"'.")
+    if not w:
+        return 0
+    ch = w[-1]
+    if "가" <= ch <= "힣":
+        return (ord(ch) - 0xAC00) % 28
+    return _DIGIT_FINAL.get(ch, 0)
+
+
+_SLOT = re.compile(r"\{(\w+)\}(으로|예요)?")
+
+
+def fill(template: str, **values: str) -> str:
+    """템플릿을 채우며 값 뒤 조사를 받침에 맞춘다: '{x}으로' → 받침 없거나 ㄹ이면 '로', '{x}예요' → 받침 있으면 '이에요'.
+
+    7-9 · 7-10 문구는 받침 있는 꼴로 적혀 있다("{title}으로", "{evidence}예요"). 값에 따라 "회사 소개 발표로",
+    "우선 개선이에요"처럼 읽히게 한다. 템플릿의 자리만 한 번 채우고 넣은 값은 다시 해석하지 않는다(제목에 '{'가 있어도 됨).
+    """
+
+    def one(m: re.Match[str]) -> str:
+        v = str(values[m.group(1)])
+        tail = m.group(2)
+        if tail == "으로":
+            return v + ("로" if _final(v) in (0, 8) else "으로")
+        if tail == "예요":
+            return v + ("이에요" if _final(v) else "예요")
+        return v
+
+    return _SLOT.sub(one, template)

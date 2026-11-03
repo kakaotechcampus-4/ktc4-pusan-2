@@ -96,6 +96,8 @@ class LoopState:
     #: 공급자가 준 입력 · 출력 토큰 실측값을 하나라도 받았는가(하나도 없으면 그쪽 usage 토큰은 null, 5-5)
     usage_seen_in: bool = False
     usage_seen_out: bool = False
+    #: 다시 평가 결과에서 받은 리뷰 규칙 판(답 meta.criteria_versions 에 싣는다)
+    review_versions: dict[str, str] = field(default_factory=dict)
     research_done: bool = False
     #: 크기 · 시간 등으로 조사를 끝낸 까닭(진단 · PARTIAL)
     stop_reason: str | None = None
@@ -588,7 +590,12 @@ class Loop:
                     any_valid = any_valid or out.get("valid", False)
                     results.append(self._tool_msg(call.id, out["message"]))
                     if out.get("action") is not None:
-                        stop_action = {"action": out["action"], "call_id": call.id}
+                        stop_action = {
+                            "action": out["action"],
+                            "call_id": call.id,
+                            "tool_name": call.name,
+                            "tool_args": call.args,
+                        }
                     progressed = progressed or out.get("progressed", False)
                     continue
                 args = validate_args(call.name, call.args)
@@ -713,7 +720,7 @@ class Loop:
 
     def _handle_action(self, call: Any, model_seq: int | None) -> dict[str, Any]:
         """행동 도구 하나를 처리한다. 같은 실패 행동 · 인자가 연속 2회면 더 실행하지 않는다(5-8 · L2-31)."""
-        key = json.dumps([call.name, call.args], ensure_ascii=False, sort_keys=True, default=str)
+        key = _action_key(call.name, call.args)
         if key == self.st.failed_action_key and self.st.failed_action_count >= 1:
             self.st.failed_action_count += 1
             self.st.research_done, self.st.stop_reason = True, "REPEATED_FAILED_ACTION"
@@ -853,19 +860,22 @@ class Loop:
             "type": pending["type"],
             "status": "SUCCEEDED" if applied.ok else ("MISMATCH" if applied.mismatch else "FAILED"),
             "success_text": applied.success_text,
+            "reason_code": applied.reason_code,
+            "failed_code": applied.failed_code,
+            "official_differs": applied.official_differs,
         }
+        if applied.review_versions:
+            self.st.review_versions.update(applied.review_versions)
         self.st.executed.append(rec)
         if applied.card is not None:
             self.st.cards.append(applied.card)
         if applied.scope_changed:
             self.scope_changed = True
+        if applied.ok:
+            # 다른 행동이 성공하면 '연속' 실패가 끊긴다(5-8: 같은 실패 행동 · 인자가 연속 2회면 멈춤)
+            self.st.failed_action_key, self.st.failed_action_count = None, 0
         if not applied.ok and not applied.mismatch:
-            key = json.dumps(
-                [pending.get("_tool_name"), pending.get("_tool_args")],
-                ensure_ascii=False,
-                sort_keys=True,
-                default=str,
-            )
+            key = _action_key(pending.get("_tool_name"), pending.get("_tool_args"))
             if key == self.st.failed_action_key:
                 self.st.failed_action_count += 1
             else:
@@ -956,6 +966,12 @@ class Loop:
                 t = c.get("text")
                 out[c["index"]] = t if isinstance(t, str) and t.strip() else None
         return out
+
+
+def _action_key(name: Any, args: Any) -> str:
+    """같은 실패 행동인지 가리는 열쇠: 행동 이름과 인자(모델이 쓰는 설명 reason 은 뺀다, 5-8 · L2-31)."""
+    a = {k: v for k, v in args.items() if k != "reason"} if isinstance(args, dict) else args
+    return json.dumps([name, a], ensure_ascii=False, sort_keys=True, default=str)
 
 
 def _assessment_sources(a: dict[str, Any]) -> list[str]:
