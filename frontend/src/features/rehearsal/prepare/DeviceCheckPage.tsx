@@ -504,7 +504,7 @@ export function DeviceCheckPage() {
           <AudioInputMeter meterRef={meterRef} />
         </div>
 
-        <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5">
+        <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5 prepare-low:gap-1">
           <CheckCard
             title="장비 준비"
             action={
