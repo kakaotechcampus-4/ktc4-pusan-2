@@ -213,6 +213,8 @@ it('starts with the chosen server version IDs while the optional voice task is s
       presentationVersionId: 'chosen-pv',
       scriptVersionId: 'chosen-sv',
       timeLimitSec: 180,
+      // 실패해 장치 점검으로 돌아갈 때 이 조합을 다시 넘깁니다 (deviceCheckLink)
+      practice: combo,
     }),
   );
   expect(host.textContent).toContain('연습 시작');
