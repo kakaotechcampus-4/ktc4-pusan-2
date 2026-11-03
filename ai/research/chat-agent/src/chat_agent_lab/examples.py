@@ -1,0 +1,748 @@
+"""`/agent/turn` 입출력 예시 JSON 만들기 (기능 문서 5-10, 연구 전용).
+
+- 무엇을: 코어 `chat_agent/examples/`의 요청(처음 · 이어 부르기 · 자동 목표 확인) · 스트림(행동 요청 · 답 완료 ·
+  부분 답 · 거절 · 오류 줄) · 스트림 전 오류 · 행동 결과 예시를 만든다. 계약 시험(tests/unit/test_contract_examples.py)이
+  읽어 5절 모양과 맞는지 보고, BE는 서비스 탑재 뒤 같은 파일로 계약 시험을 한다.
+- 실행: 연구 폴더에서 `.\\.venv\\Scripts\\python.exe -m chat_agent_lab.examples` (파일을 다시 쓴다).
+- 값: 가상 기록(fixtures.sample_pitch: '졸업 발표' Take 4 · 5의 3장 시선 31% · 28%)으로 만든다.
+  `state` 서명 · 판단 키 같은 코드 값은 형식만 맞춘 자리 값이다. 루프가 생기면 가짜 모델 실행 결과로 다시 만든다.
+- 고칠 때: 5절 모양을 바꾸면 이 파일로 예시를 다시 만들고 같은 PR에 넣는다.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from chat_agent.config import DEFAULT_CONFIG
+from chat_agent.version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
+
+from . import fixtures as fx
+
+EXAMPLES = Path(__file__).resolve().parents[1] / "chat_agent" / "examples"
+
+RUN = {"run_id": "run-81", "conversation_id": "c-12", "user_id": "u-3", "scope_pitch_id": "p-1"}
+PAGE = {"route": "/takes/t-5", "pitch_id": "p-1", "take_id": "t-5", "screen": None}
+USER_MESSAGE = "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"
+GAZE3 = "take_result.areas.GAZE.slides[slide_number=3].metrics.audience_ratio"
+META = {
+    "schema_version": SCHEMA_VERSION,
+    "feature_version": FEATURE_VERSION,
+    "model": "openai/gpt-6-luna",
+    "prompt_version": "a1b2c3d4e5f6",
+    "corpus_version": "guides-1",
+    "criteria_versions": {"chat_agent": DEFAULT_CONFIG.criteria_version()},
+}
+SIGNED_STATE = {
+    "v": 1,
+    "kid": "Qk3vX9aZ",
+    "payload": "eyJydW5faWQiOiJydW4tODEifQ",
+    "signature": "c2lnbmF0dXJlLXBsYWNlaG9sZGVy",
+}
+FP = "5f2a9c0d1e3b4a67"
+
+
+def _context(
+    pitch: fx.PitchRecord, *, focus: str = "t-5", goal: dict | None = None, goal_version: int = 0
+) -> dict:
+    return {
+        "pitches": [fx.pitch_summary(pitch)],
+        "pitches_total": 1,
+        "pitch": fx.pitch_context(pitch, focus_take_id=focus),
+        "conversation_goal": goal,
+        "goal_version": goal_version,
+        "loaded_takes": [],
+        "removed_sources": [],
+        "selected_proposal": None,
+    }
+
+
+def _evidence(eid: str, take: int, value: float) -> dict:
+    return {
+        "evidence_id": eid,
+        "origin": "RECORD",
+        "pitch_id": "p-1",
+        "take_id": f"t-{take}",
+        "take_number": take,
+        "kind": "TAKE_RESULT",
+        "revision": 1,
+        "path": GAZE3,
+        "metric": "audience_ratio",
+        "slide_number": 3,
+        "value": value,
+        "unit": "ratio",
+        "rule_version": fx.CRITERIA_VERSIONS["GAZE"],
+        "saved": None,
+        "screen_snapshot_id": None,
+        "inputs": None,
+        "calc": None,
+    }
+
+
+def _goal_draft() -> dict:
+    return {
+        "pitch_id": "p-1",
+        "metric": "audience_ratio",
+        "slide_number": 3,
+        "operator": "gt_base",
+        "script_version_id": "sv-1",
+        "standard_version": 1,
+        "goal_rule_version": DEFAULT_CONFIG.goal_rule_version(),
+        "base": {
+            "take_id": "t-5",
+            "take_number": 5,
+            "kind": "TAKE_RESULT",
+            "revision": 1,
+            "value": 0.28,
+            "metric_rule_version": fx.CRITERIA_VERSIONS["GAZE"],
+            "range": None,
+        },
+        "min_delta": 0.05,
+    }
+
+
+def _goal_saved() -> dict:
+    return {
+        **_goal_draft(),
+        "version": 1,
+        "created_at": "2026-11-04T10:05:00+09:00",
+        "status": "OPEN",
+    }
+
+
+def _basis() -> dict:
+    return {
+        "records": [
+            {
+                "pitch_id": "p-1",
+                "script_version_id": "sv-1",
+                "presentation_version_id": "pv-1",
+                "standard_version": 1,
+                "takes": [
+                    {
+                        "take_id": "t-4",
+                        "results": {"TAKE_RESULT": 1},
+                        "rule_versions": {"GAZE": fx.CRITERIA_VERSIONS["GAZE"]},
+                    },
+                    {
+                        "take_id": "t-5",
+                        "results": {"TAKE_RESULT": 1},
+                        "rule_versions": {"GAZE": fx.CRITERIA_VERSIONS["GAZE"]},
+                    },
+                ],
+            }
+        ],
+        "sources": [],
+        "screens": [],
+        "fingerprint": FP,
+    }
+
+
+def _assessments() -> list[dict]:
+    return [
+        {
+            "assessment_id": "as-1",
+            "quote": "3장에서 왜 자꾸 시선이 떨어져",
+            "type": "MEASURED",
+            "speaker": "USER",
+            "speaker_label": None,
+            "claim_op": "ISSUE",
+            "subject": {
+                "dimension": "audience_gaze",
+                "metric": "audience_ratio",
+                "slide_number": 3,
+                "take_ids": ["t-4", "t-5"],
+                "relation": "ALL",
+            },
+            "value": None,
+            "value_unit": None,
+            "polarity": "NEGATIVE",
+            "verdict": "SUPPORTED",
+            "verdict_source": "CODE",
+            "evidence_ids": ["e1", "e2"],
+            "source_ids": [],
+            "reason": "Take 4 · 5 모두 3장에 대본 응시 문제 구간이 있다",
+            "claim_key": "ck-7d1e0a",
+            "claim_link_key": "cl-3f9b21",
+            "evidence_basis": _basis(),
+            "supersedes": [],
+        },
+        {
+            "assessment_id": "as-2",
+            "quote": "그걸 목표로 잡고 다음 연습 준비해 줘",
+            "type": "REQUEST",
+            "speaker": "USER",
+            "speaker_label": None,
+            "claim_op": None,
+            "subject": {
+                "dimension": "audience_gaze",
+                "metric": "audience_ratio",
+                "slide_number": 3,
+                "take_ids": ["t-5"],
+                "relation": None,
+            },
+            "value": None,
+            "value_unit": None,
+            "polarity": "NEUTRAL",
+            "verdict": "SUPPORTED",
+            "verdict_source": "MODEL",
+            "evidence_ids": ["e2"],
+            "source_ids": [],
+            "reason": "3장 시선은 우선 개선 차원이라 목표로 맞다",
+            "claim_key": "ck-90aa12",
+            "claim_link_key": "cl-90aa12",
+            "evidence_basis": _basis(),
+            "supersedes": [],
+        },
+    ]
+
+
+def _plan(done: bool) -> list[dict]:
+    st = "DONE" if done else "TODO"
+    return [
+        {"step": "최근 Take 비교", "status": "DONE" if done else "DOING", "note": None},
+        {"step": "3장 문제 구간 확인", "status": st, "note": None},
+        {"step": "발표법 자료 찾기", "status": st, "note": None},
+        {"step": "대화 목표 저장", "status": st, "note": None},
+    ]
+
+
+TRACE = {
+    "seq": 1,
+    "tool": "compare_takes",
+    "args_summary": "Take 4 · 5 · audience_ratio · 3장",
+    "result_summary": "3장 audience_ratio 둘 다 낮음",
+    "ms": 4,
+    "outcome": "OK",
+}
+
+
+def _diag(turn_call: int, status: str, reason: str, steps: list[dict]) -> dict:
+    return {
+        "v": 1,
+        "request_id": f"req-81-{turn_call}",
+        "run_id": "run-81",
+        "turn_call": turn_call,
+        "versions": {
+            "feature_version": FEATURE_VERSION,
+            "prompt_version": META["prompt_version"],
+            "tool_schema": TOOL_SCHEMA_VERSION,
+            "corpus_version": "guides-1",
+        },
+        "steps": steps,
+        "end": {"status": status, "reason": reason, "omitted_steps": 0},
+        "truncated": False,
+    }
+
+
+def _model_step(
+    seq: int, code: str, start: int, tool_calls: int, finish: str = "TOOL_CALLS"
+) -> dict:
+    return {
+        "seq": seq,
+        "kind": "MODEL",
+        "code": code,
+        "start_ms": start,
+        "ms": 2100,
+        "parent_seq": None,
+        "detail": {
+            "model": "openai/gpt-6-luna",
+            "success": True,
+            "input_tokens": 3100,
+            "cached_input_tokens": 0,
+            "output_tokens": 240,
+            "finish_reason": finish,
+            "tool_call_count": tool_calls,
+            "error_code": None,
+            "fix_for": None,
+        },
+    }
+
+
+def _final_needs_action() -> dict:
+    return {
+        "status": "NEEDS_ACTION",
+        "message": None,
+        "actions": [
+            {
+                "action_id": "run-81:a1",
+                "type": "SAVE_GOAL",
+                "args": {"expected_goal_version": 0, "goal": _goal_draft()},
+                "autonomy": "AUTO_UNDO",
+                "args_hash": None,
+                "idempotency_key": "run-81:1",
+                "reason": "3장 시선 비율을 Take 5보다 높이는 목표",
+                "authorized_by": "그걸 목표로 잡고",
+            }
+        ],
+        "state": SIGNED_STATE,
+        "scope_pitch_id": "p-1",
+        "plan": _plan(False),
+        "trace": [TRACE],
+        "basis": {
+            "pitches": [],
+            "conversation_goal_version": 0,
+            "corpus_version": "guides-1",
+            "sources": [],
+        },
+        "evidence": [_evidence("e1", 4, 0.31), _evidence("e2", 5, 0.28)],
+        "history_summary": None,
+        "budget_used": {
+            "model_calls": 3,
+            "tool_calls": 4,
+            "elapsed_ms": 8400,
+            "input_tokens": 12000,
+            "output_tokens": 6000,
+        },
+        "usage": {
+            "model_calls": 3,
+            "tool_calls": 4,
+            "elapsed_ms": 8400,
+            "input_tokens": 9300,
+            "output_tokens": 720,
+            "measured": True,
+            "missing_reason": None,
+        },
+        "assessments": [],
+        "goal_result": None,
+        "meta": META,
+        "diagnostics": _diag(
+            1,
+            "NEEDS_ACTION",
+            "NEEDS_ACTION",
+            [
+                _model_step(1, "RESEARCH", 5, 1),
+                {
+                    "seq": 2,
+                    "kind": "TOOL",
+                    "code": "compare_takes",
+                    "start_ms": 2110,
+                    "ms": 4,
+                    "parent_seq": 1,
+                    "detail": {
+                        "target_ids": ["t-4", "t-5"],
+                        "revisions": {"t-4": 1, "t-5": 1},
+                        "outcome": "OK",
+                        "result_bytes": 610,
+                        "query_chars": None,
+                        "error_code": None,
+                    },
+                },
+                {
+                    "seq": 3,
+                    "kind": "ACTION",
+                    "code": "SAVE_GOAL",
+                    "start_ms": 8390,
+                    "ms": None,
+                    "parent_seq": 1,
+                    "detail": {
+                        "action_id": "run-81:a1",
+                        "autonomy": "AUTO_UNDO",
+                        "authorization": "PASS",
+                        "result": "PROPOSED",
+                        "reason_code": None,
+                    },
+                },
+            ],
+        ),
+    }
+
+
+def _final_done() -> dict:
+    claims = [
+        {
+            "kind": "ASSESSMENT",
+            "assessment_id": "as-1",
+            "text": "말씀하신 '3장에서 왜 자꾸 시선이 떨어져'는 기록과 맞아요: Take 4 · 5 모두 3장에 대본을 오래 본 구간이 있어요.",
+            "evidence_ids": ["e1", "e2"],
+            "source_ids": [],
+            "action_id": None,
+        },
+        {
+            "kind": "RECORD",
+            "assessment_id": None,
+            "text": "Take 4 · 5 모두 3장 시선 비율이 31% · 28%였어요",
+            "evidence_ids": ["e1", "e2"],
+            "source_ids": [],
+            "action_id": None,
+        },
+        {
+            "kind": "GUIDE",
+            "assessment_id": None,
+            "text": "핵심 단어만 적은 메모로 연습하면 대본 의존을 줄일 수 있어요",
+            "evidence_ids": [],
+            "source_ids": ["g-02"],
+            "action_id": None,
+        },
+        {
+            "kind": "ACTION_RESULT",
+            "assessment_id": None,
+            "text": "목표를 저장했어요.",
+            "evidence_ids": [],
+            "source_ids": [],
+            "action_id": "run-81:a1",
+        },
+    ]
+    return {
+        "status": "DONE",
+        "message": {
+            "text": "\n".join(c["text"] for c in claims),
+            "claims": claims,
+            "cards": [
+                {
+                    "type": "GOAL_SAVED",
+                    "action_id": "run-81:a1",
+                    "goal": _goal_saved(),
+                    "reason": "3장 시선 비율을 Take 5보다 높이는 목표",
+                    "evidence_ids": ["e2"],
+                    "undo": True,
+                },
+                {"type": "START_PRACTICE", "pitch_id": "p-1", "auto": False},
+            ],
+            "sources": [
+                {
+                    "source_id": "g-02",
+                    "title": "대본 의존 줄이기",
+                    "quote": "핵심 단어만 적은 메모로 연습하면 대본 의존을 줄일 수 있어요",
+                    "source": "팀 작성",
+                    "license": "team",
+                }
+            ],
+        },
+        "actions": [],
+        "state": None,
+        "scope_pitch_id": "p-1",
+        "plan": _plan(True),
+        "trace": [TRACE],
+        "basis": {
+            "pitches": [
+                {
+                    "pitch_id": "p-1",
+                    "script_version_id": "sv-1",
+                    "presentation_version_id": "pv-1",
+                    "standard_version": 1,
+                    "takes": [
+                        {
+                            "take_id": "t-5",
+                            "take_number": 5,
+                            "script_version_id": "sv-1",
+                            "presentation_version_id": "pv-1",
+                            "standard_version": 1,
+                            "results": {"REVIEW": 1, "TAKE_RESULT": 1},
+                            "rule_versions": {"GAZE": fx.CRITERIA_VERSIONS["GAZE"]},
+                        },
+                        {
+                            "take_id": "t-4",
+                            "take_number": 4,
+                            "script_version_id": "sv-1",
+                            "presentation_version_id": "pv-1",
+                            "standard_version": 1,
+                            "results": {"TAKE_RESULT": 1},
+                            "rule_versions": {"GAZE": fx.CRITERIA_VERSIONS["GAZE"]},
+                        },
+                    ],
+                }
+            ],
+            "conversation_goal_version": 1,
+            "corpus_version": "guides-1",
+            "sources": ["g-02"],
+        },
+        "evidence": [_evidence("e1", 4, 0.31), _evidence("e2", 5, 0.28)],
+        "history_summary": None,
+        "budget_used": {
+            "model_calls": 5,
+            "tool_calls": 4,
+            "elapsed_ms": 15800,
+            "input_tokens": 21000,
+            "output_tokens": 10000,
+        },
+        "usage": {
+            "model_calls": 5,
+            "tool_calls": 4,
+            "elapsed_ms": 15800,
+            "input_tokens": 16100,
+            "output_tokens": 1240,
+            "measured": True,
+            "missing_reason": None,
+        },
+        "assessments": _assessments(),
+        "goal_result": None,
+        "meta": META,
+        "diagnostics": _diag(2, "DONE", "ANSWERED", [_model_step(1, "ANSWER", 10, 0, "STOP")]),
+    }
+
+
+def _final_simple(status: str, text: str, reason: str) -> dict:
+    claims = [
+        {
+            "kind": "SYSTEM",
+            "assessment_id": None,
+            "text": text,
+            "evidence_ids": [],
+            "source_ids": [],
+            "action_id": None,
+        }
+    ]
+    return {
+        "status": status,
+        "message": {"text": text, "claims": claims, "cards": [], "sources": []},
+        "actions": [],
+        "state": None,
+        "scope_pitch_id": "p-1",
+        "plan": [],
+        "trace": [],
+        "basis": {
+            "pitches": [],
+            "conversation_goal_version": 0,
+            "corpus_version": "guides-1",
+            "sources": [],
+        },
+        "evidence": [],
+        "history_summary": None,
+        "budget_used": {
+            "model_calls": 1,
+            "tool_calls": 0,
+            "elapsed_ms": 2300,
+            "input_tokens": 4000,
+            "output_tokens": 2000,
+        },
+        "usage": {
+            "model_calls": 1,
+            "tool_calls": 0,
+            "elapsed_ms": 2300,
+            "input_tokens": 2900,
+            "output_tokens": 80,
+            "measured": True,
+            "missing_reason": None,
+        },
+        "assessments": [],
+        "goal_result": None,
+        "meta": META,
+        "diagnostics": _diag(1, status, reason, [_model_step(1, "ANSWER", 5, 0, "STOP")]),
+    }
+
+
+def _line(event: str, seq: int, data: dict) -> str:
+    return json.dumps(
+        {"event": event, "run_id": "run-81", "seq": seq, "data": data},
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def build() -> dict[str, Any]:
+    """파일 이름 → 내용(JSON 객체 또는 NDJSON 문자열)."""
+    pitch = fx.sample_pitch()
+    budget0 = {
+        "model_calls": 0,
+        "tool_calls": 0,
+        "elapsed_ms": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }
+    req_user = {
+        "run": {**RUN, "trigger": "USER_MESSAGE", "state_revision": 0},
+        "user_message": USER_MESSAGE,
+        "choice": None,
+        "review_event": None,
+        "page": PAGE,
+        "history": {"summary": None, "messages": [], "prior_assessments": []},
+        "context": _context(pitch),
+        "resume": None,
+        "budget_used": budget0,
+    }
+    saved_goal = _goal_saved()
+    req_resume = {
+        **req_user,
+        "run": {**RUN, "trigger": "ACTION_RESULT", "state_revision": 0},
+        "user_message": None,
+        "resume": {
+            "state": SIGNED_STATE,
+            "action_results": [
+                {
+                    "action_id": "run-81:a1",
+                    "type": "SAVE_GOAL",
+                    "status": "SUCCEEDED",
+                    "data": {"goal": saved_goal},
+                    "error": None,
+                }
+            ],
+        },
+        "context": _context(pitch, goal=saved_goal, goal_version=1),
+        "budget_used": {
+            "model_calls": 3,
+            "tool_calls": 4,
+            "elapsed_ms": 9100,
+            "input_tokens": 12000,
+            "output_tokens": 6000,
+        },
+    }
+    # 자동 목표 확인: Take 6(3장 시선 41%)의 리뷰가 저장된 뒤
+    t6 = fx.TakeRecord(
+        take_id="t-6",
+        take_number=6,
+        take_result=fx.take_result(
+            take_id="t-6", audience=[0.6, 0.6, 0.41, 0.6], script_ratio=[0.15, 0.2, 0.3, 0.18]
+        ),
+        review=fx.review(
+            take_id="t-6", dimensions={"audience_gaze": "IMPROVED", "fluency": "STRENGTH"}, score=79
+        ),
+    )
+    pitch6 = fx.sample_pitch()
+    pitch6.takes.append(t6)
+    req_reviewed = {
+        "run": {**RUN, "trigger": "TAKE_REVIEWED", "state_revision": 0, "run_id": "run-90"},
+        "user_message": None,
+        "choice": None,
+        "review_event": {"take_id": "t-6", "review_revision": 1, "goal_version": 1},
+        "page": {"route": "", "pitch_id": "p-1", "take_id": None, "screen": None},
+        "history": {"summary": None, "messages": [], "prior_assessments": []},
+        "context": _context(pitch6, focus="t-6", goal=saved_goal, goal_version=1),
+        "resume": None,
+        "budget_used": budget0,
+    }
+    needs_action = "\n".join(
+        [
+            _line("plan", 1, {"plan": _plan(False)}),
+            _line("tool_done", 2, {"trace": TRACE}),
+            _line("final", 3, _final_needs_action()),
+        ]
+    )
+    done = "\n".join([_line("final", 1, _final_done())])
+    partial = "\n".join(
+        [
+            _line(
+                "final",
+                1,
+                _final_simple(
+                    "PARTIAL", "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요.", "LIMIT"
+                ),
+            )
+        ]
+    )
+    refused = "\n".join(
+        [
+            _line(
+                "final",
+                1,
+                _final_simple("REFUSED", "발표 연습과 관계없는 질문이에요.", "OUT_OF_SCOPE"),
+            )
+        ]
+    )
+    error = "\n".join(
+        [
+            _line("plan", 1, {"plan": _plan(False)}),
+            _line(
+                "error",
+                2,
+                {
+                    "error": {
+                        "code": "AGENT_OUTPUT_TOO_LARGE",
+                        "message": "출력이 줄 · 누적 크기 한도를 넘었다",
+                    }
+                },
+            ),
+        ]
+    )
+    goal_result = _final_simple("DONE", "말씀하신 목표 결과를 확인했어요.", "ANSWERED")
+    goal_result["message"]["claims"] = [
+        {
+            "kind": "RECORD",
+            "assessment_id": None,
+            "text": "Take 6의 3장 시선 비율은 41%로 Take 5의 28%보다 13%p 높아 목표를 이뤘어요",
+            "evidence_ids": ["e5", "e6", "c1"],
+            "source_ids": [],
+            "action_id": None,
+        }
+    ]
+    goal_result["message"]["text"] = goal_result["message"]["claims"][0]["text"]
+    goal_result["message"]["cards"] = [
+        {
+            "type": "GOAL_RESULT",
+            "goal_version": 1,
+            "take_id": "t-6",
+            "status": "ACHIEVED",
+            "observed": 0.41,
+            "reason": "3장 시선 비율 0.41 ≥ 기준 0.28 + 0.05",
+        }
+    ]
+    goal_result["goal_result"] = {
+        "goal_version": 1,
+        "take_id": "t-6",
+        "review_revision": 1,
+        "status": "ACHIEVED",
+        "observed": 0.41,
+        "reason": "3장 시선 비율 0.41 ≥ 기준 0.28 + 0.05",
+        "terminal": True,
+    }
+    goal_result["evidence"] = [
+        _evidence("e5", 5, 0.28),
+        {**_evidence("e6", 6, 0.41), "take_id": "t-6"},
+        {
+            "evidence_id": "c1",
+            "origin": "COMPUTED",
+            "pitch_id": "p-1",
+            "take_id": None,
+            "take_number": None,
+            "kind": None,
+            "revision": None,
+            "path": "goal.audience_ratio.slide3.diff",
+            "metric": "audience_ratio",
+            "slide_number": 3,
+            "value": 0.13,
+            "unit": "ratio",
+            "rule_version": DEFAULT_CONFIG.goal_rule_version(),
+            "saved": None,
+            "screen_snapshot_id": None,
+            "inputs": ["e5", "e6"],
+            "calc": "GOAL_DIFF",
+        },
+    ]
+    goal_result["scope_pitch_id"] = "p-1"
+    return {
+        "request_user_message.json": req_user,
+        "request_action_result.json": req_resume,
+        "request_take_reviewed.json": req_reviewed,
+        "stream_needs_action.ndjson": needs_action,
+        "stream_done.ndjson": done,
+        "stream_partial.ndjson": partial,
+        "stream_refused.ndjson": refused,
+        "stream_error.ndjson": error,
+        "final_take_reviewed.json": goal_result,
+        "error_state_invalid.json": {
+            "error": {"code": "AGENT_STATE_INVALID", "message": "실행 상태를 확인할 수 없다"}
+        },
+        "action_result_fetch_pitch_ambiguous.json": {
+            "action_id": "run-82:a1",
+            "type": "FETCH_PITCH",
+            "status": "AMBIGUOUS",
+            "data": {
+                "candidates": [
+                    fx.pitch_summary(pitch),
+                    {**fx.pitch_summary(pitch), "pitch_id": "p-9", "title": "졸업 발표(리허설)"},
+                ]
+            },
+            "error": None,
+        },
+    }
+
+
+def write() -> list[Path]:
+    EXAMPLES.mkdir(parents=True, exist_ok=True)
+    written = []
+    for name, content in build().items():
+        path = EXAMPLES / name
+        text = (
+            content
+            if isinstance(content, str)
+            else json.dumps(content, ensure_ascii=False, indent=2, allow_nan=False)
+        )
+        path.write_text(text + "\n", encoding="utf-8", newline="\n")
+        written.append(path)
+    return written
+
+
+if __name__ == "__main__":
+    for p in write():
+        print(p.name)
