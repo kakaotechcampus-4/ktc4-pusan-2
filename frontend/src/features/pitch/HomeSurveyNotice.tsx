@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/shared/api/client';
@@ -19,17 +19,33 @@ const PENDING_SHOWN = 3;
 
 export function HomeSurveyNotice() {
   const { data: user } = useSession();
+  // 동의하면 연 버튼이 창과 함께 사라집니다. 초점은 그 자리에 오는 남은 설문 줄로 옮깁니다 (#845)
+  const [agreed, setAgreed] = useState(false);
   if (!user) return null;
-  return user.test_consent_at ? <PendingSurveyList /> : <ConsentPrompt />;
+  return user.test_consent_at ? (
+    <PendingSurveyList focusOnShow={agreed} />
+  ) : (
+    <ConsentPrompt onAgreed={() => setAgreed(true)} />
+  );
 }
 
-function PendingSurveyList() {
+function PendingSurveyList({ focusOnShow }: { focusOnShow: boolean }) {
   const pending = usePendingSurveys(true);
   const items = pending.data?.items ?? [];
+  const ref = useRef<HTMLElement>(null);
+  const shown = items.length > 0;
+  useEffect(() => {
+    if (focusOnShow && shown) ref.current?.focus();
+  }, [focusOnShow, shown]);
   // 목록을 못 받으면 아무것도 두지 않습니다. 설문은 리포트에서도 남길 수 있습니다
-  if (!items.length) return null;
+  if (!shown) return null;
   return (
-    <section aria-label="남은 설문" className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10">
+    <section
+      ref={ref}
+      tabIndex={-1}
+      aria-label="남은 설문"
+      className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10"
+    >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-2 border-ink bg-coral-wash px-4 py-3 text-sm">
         <p className="font-bold">설문을 기다리는 리포트가 {items.length}개 있어요.</p>
         <ul className="flex flex-wrap gap-x-4 gap-y-1">
@@ -49,7 +65,7 @@ function PendingSurveyList() {
   );
 }
 
-function ConsentPrompt() {
+function ConsentPrompt({ onAgreed }: { onAgreed: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <section
@@ -65,12 +81,12 @@ function ConsentPrompt() {
           안내 보고 참여하기
         </Button>
       </div>
-      {open && <ConsentDialog onClose={() => setOpen(false)} />}
+      {open && <ConsentDialog onAgreed={onAgreed} onClose={() => setOpen(false)} />}
     </section>
   );
 }
 
-function ConsentDialog({ onClose }: { onClose: () => void }) {
+function ConsentDialog({ onAgreed, onClose }: { onAgreed: () => void; onClose: () => void }) {
   const client = useQueryClient();
   const ref = useRef<HTMLDialogElement>(null);
   const title = useId();
@@ -87,6 +103,7 @@ function ConsentDialog({ onClose }: { onClose: () => void }) {
       return me;
     },
     onSuccess: (me) => {
+      onAgreed();
       client.setQueryData(['session'], me);
       client.invalidateQueries({ queryKey: takeSurveyKeys.pending }).catch(() => undefined);
     },
@@ -164,12 +181,21 @@ function ConsentDialog({ onClose }: { onClose: () => void }) {
           )}
         </div>
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line px-4 py-3 sm:px-6">
-          <Button variant="quiet" disabled={consent.isPending} onClick={onClose}>
+          {/* 저장 중에는 aria-disabled 로 막습니다 — disabled 면 누른 버튼의 초점이 창 밖으로 빠집니다 */}
+          <Button
+            variant="quiet"
+            aria-disabled={consent.isPending}
+            onClick={() => {
+              if (!consent.isPending) onClose();
+            }}
+          >
             나중에
           </Button>
           <Button
-            disabled={consent.isPending}
-            onClick={() => consent.mutate(undefined, { onSuccess: onClose })}
+            aria-disabled={consent.isPending}
+            onClick={() => {
+              if (!consent.isPending) consent.mutate(undefined, { onSuccess: onClose });
+            }}
           >
             {consent.isPending ? '저장하는 중…' : '동의하고 참여하기'}
           </Button>

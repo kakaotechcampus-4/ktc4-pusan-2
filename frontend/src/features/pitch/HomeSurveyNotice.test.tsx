@@ -135,3 +135,52 @@ it('안내문은 동의로 달라지는 것과 동의와 상관없이 저장되�
   for (const stored of ['발표자료', '대본', '시선 구간', '음성 · 영상 원본은 저장하지 않습니다'])
     expect(text).toContain(stored);
 });
+
+it('저장하는 동안 누른 버튼이 초점을 쥐고, 동의한 뒤에는 초점이 남은 설문 줄로 간다 (#845)', async () => {
+  session.user = base;
+  let save!: () => void;
+  request.mockImplementation((path: string) => {
+    if (path === '/api/users/me')
+      return new Promise<User>((resolve) => {
+        save = () => {
+          session.user = {
+            ...base,
+            test_consent_at: '2026-10-30T00:00:00Z',
+            test_consent_version: 1,
+          };
+          resolve(session.user);
+        };
+      });
+    return Promise.resolve({
+      items: [
+        {
+          take_id: 't1',
+          pitch_id: 'p1',
+          pitch_title: '캡스톤 최종 발표',
+          take_number: 2,
+          completed_at: '2026-10-30T01:00:00Z',
+        },
+      ],
+    });
+  });
+  await render();
+  await act(async () => button('안내 보고 참여하기')!.click());
+  const agree = button('동의하고 참여하기')!;
+  agree.focus();
+  await act(async () => agree.click());
+  await flush();
+
+  // disabled 면 브라우저가 초점을 body 로 옮깁니다. aria-disabled 로 막아 초점을 남깁니다
+  expect(agree.textContent).toBe('저장하는 중…');
+  expect(agree.disabled).toBe(false);
+  expect(agree.getAttribute('aria-disabled')).toBe('true');
+  await act(async () => button('나중에')!.click());
+  expect(host.querySelector('dialog')?.open).toBe(true);
+  expect(document.activeElement).toBe(agree);
+
+  // 연 버튼은 동의하면 카드와 함께 사라집니다. 초점이 body 로 빠지지 않고 남은 설문 줄로 갑니다
+  await act(async () => save());
+  await flush();
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector('section[aria-label="남은 설문"]'));
+});

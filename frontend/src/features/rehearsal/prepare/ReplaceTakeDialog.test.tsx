@@ -108,9 +108,25 @@ it('StrictMode 에서 열자마자 취소되지 않는다', async () => {
 
 it('끝내는 중에는 버튼도 Esc 도 막는다', async () => {
   const { onConfirm, onCancel } = await render(true);
-  expect(button('끝내는 중…').disabled).toBe(true);
-  expect(button('취소').disabled).toBe(true);
+  expect(button('끝내는 중…').getAttribute('aria-disabled')).toBe('true');
+  expect(button('취소').getAttribute('aria-disabled')).toBe('true');
+  await act(async () => button('끝내는 중…').click());
+  await act(async () => button('취소').click());
   await pressEscape();
   expect(onConfirm).not.toHaveBeenCalled();
   expect(onCancel).not.toHaveBeenCalled();
+});
+
+/** disabled 면 브라우저가 누른 버튼의 초점을 body 로 옮깁니다 — 창 밖으로 빠집니다 (#818 과 같음) */
+it('끝내기를 누르면 끝내는 동안에도 초점이 그 버튼에 남는다 (#845)', async () => {
+  const onConfirm = vi.fn();
+  await render(false, onConfirm);
+  const confirm = button('그 연습 끝내고 시작');
+  confirm.focus();
+  await act(async () => confirm.click());
+  expect(onConfirm).toHaveBeenCalledOnce();
+  await render(true, onConfirm);
+  expect(confirm.textContent).toBe('끝내는 중…');
+  expect(confirm.disabled).toBe(false);
+  expect(document.activeElement).toBe(confirm);
 });

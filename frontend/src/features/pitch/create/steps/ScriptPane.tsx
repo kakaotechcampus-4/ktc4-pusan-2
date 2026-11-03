@@ -601,12 +601,15 @@ function MappingEditor({
           </label>
         </div>
       </div>
+      {/* 끝에 닿은 버튼은 aria-disabled 로 둡니다 — disabled 면 누른 버튼의 초점이 창 밖으로 빠집니다 (#818) */}
       <div className="mt-3 flex items-center justify-end gap-4 text-sm tabular-nums">
         <button
           type="button"
-          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
-          disabled={active === 0}
-          onClick={() => setSelected(active - 1)}
+          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:opacity-55 aria-disabled:hover:bg-transparent"
+          aria-disabled={active === 0}
+          onClick={() => {
+            if (active > 0) setSelected(active - 1);
+          }}
         >
           이전 장
         </button>
@@ -615,9 +618,11 @@ function MappingEditor({
         </span>
         <button
           type="button"
-          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
-          disabled={active >= rows.length - 1}
-          onClick={() => setSelected(active + 1)}
+          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:opacity-55 aria-disabled:hover:bg-transparent"
+          aria-disabled={active >= rows.length - 1}
+          onClick={() => {
+            if (active < rows.length - 1) setSelected(active + 1);
+          }}
         >
           다음 장
         </button>
@@ -651,15 +656,16 @@ function MappingEditor({
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex flex-wrap justify-end gap-3">
             {(!script.remote || script.parse.status !== 'idle') && (
+              // 매핑 중에도 aria-disabled 로 둡니다 — 누른 이 버튼이 초점을 쥐고 있습니다
               <button
                 type="button"
-                disabled={pending}
-                onClick={() =>
-                  script.parse.status === 'failed'
-                    ? retryScriptMapping(script.version)
-                    : startScriptMapping(script.version)
-                }
-                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink disabled:opacity-50"
+                aria-disabled={pending}
+                onClick={() => {
+                  if (pending) return;
+                  if (script.parse.status === 'failed') retryScriptMapping(script.version);
+                  else startScriptMapping(script.version);
+                }}
+                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink aria-disabled:opacity-50"
               >
                 {pending ? '매핑 중…' : '수정 대본 매핑'}
               </button>
