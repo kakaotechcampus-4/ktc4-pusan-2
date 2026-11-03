@@ -117,6 +117,9 @@ ISSUE_LABEL: dict[str, str] = {
 }
 #: 같은 지표의 반대 방향 문제 (6-3 ISSUE '반대 방향 문제만 있음')
 _OPPOSITE_ISSUE = {"PACE_FAST": "PACE_SLOW", "PACE_SLOW": "PACE_FAST"}
+#: 문제 주장을 부정하는 말("빠르지 않았어" · "안 빨랐어" · "빠른 건 아니었어"). 문제 주장(ISSUE)의 부정은 극성이 아니라
+#: 이 말로 가린다: 모델은 "느렸지?"처럼 문제를 말한 부정적 평가에도 NEGATIVE 를 붙이기 때문이다
+_ISSUE_NEGATION = re.compile(r"지\s*(?:않|못)|(?:^|\s)안\s|아니(?:었|야|에|다|라)|않았")
 #: 차원만 말하고 지표를 말하지 않은 값 · 비교 주장에서 쓰는 대표 지표
 PRIMARY_METRIC: dict[str, str] = {
     "audience_gaze": "audience_ratio",
@@ -592,6 +595,22 @@ def _resolve_targets(
     return [_Target(snap.summary.take_id, snap.summary.take_number, snap)]
 
 
+def _metric_key(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft:
+    """초안의 지표를 도구 결과의 표시 이름(label, 예 '말 속도')이나 문장용 이름으로 적었으면 기록의 지표 키로 바꾼다.
+
+    이름 사전(`METRIC_LABEL` · `cfg.metric_names`)에 글자 그대로 있는 이름만 바꾼다. 모르는 이름은 그대로 두어
+    `UNKNOWN_METRIC`으로 걸린다(6-3 '대상을 기록의 이름으로 정하지 못하면 UNVERIFIABLE').
+    """
+    m = draft.subject.metric
+    if m is None or m in cfg.direction or m in cfg.metric_units:
+        return draft
+    named = {label: key for key, label in METRIC_LABEL.items()} | dict(cfg.metric_names)
+    key = named.get(m.strip())
+    if key is None:
+        return draft
+    return draft.model_copy(update={"subject": draft.subject.model_copy(update={"metric": key})})
+
+
 def _resolve_subject(
     draft: AssessmentDraft, cfg: ChatAgentConfig
 ) -> tuple[str | None, str | None, str | None]:
@@ -736,7 +755,7 @@ def _one_issue(d: AssessmentDraft, t: _Target, dim: str, ctx: _Ctx) -> _One:
     if pr.state != "OK":
         return _unv(pr.reason or pr.state)
     present = any(c in pr.issues for c in claimed)
-    if d.polarity == "NEGATIVE":
+    if _ISSUE_NEGATION.search(d.quote):
         verdict: Verdict = "CONTRADICTED" if present else "SUPPORTED"
     else:
         verdict = "SUPPORTED" if present else "CONTRADICTED"
@@ -1080,6 +1099,7 @@ def code_verdict(
         ``verdict="CONTRADICTED"``, ``evidence_phrase="Take 5 청중 시선 31%, 우선 개선"``.
     """
     ctx = _Ctx(pitch_id, registry, version_of, cfg, takes, script_used)
+    draft = _metric_key(draft, cfg)
     if draft.type == "PREFERENCE":
         return _preference_verdict(draft, ctx, focus_take_id)
     if draft.type != "MEASURED":

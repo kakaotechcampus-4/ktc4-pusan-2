@@ -1630,3 +1630,28 @@ def test_fm_L6_04_first_sentences_are_independent_literals():
         first(_dims("STRENGTH"))
         == "말씀하신 '시선 잘 봤어'는 기록과 맞아요: Take 5 청중 시선 31%, 강점."
     )
+
+
+def test_issue_negative_tone_is_not_negation():
+    """'느렸지?' · '시선이 약했어'처럼 문제를 말한 부정적 평가(모델이 NEGATIVE 로 줌)는 부정이 아니다.
+
+    문제 주장의 부정은 '빠르지 않았어' · '안 빨랐어'처럼 말에 부정이 있을 때만이다(극성으로 뒤집지 않는다).
+    """
+    slow = issue_draft("Take 5 속도 느렸지?", polarity=NEG)
+    assert run(slow, t5(issues=[("PACE_FAST", 1, True)]), focus="take-5").verdict == "CONTRADICTED"
+    assert run(slow, t5(issues=[("PACE_SLOW", 1, True)]), focus="take-5").verdict == "SUPPORTED"
+    for q in ("안 빨랐어", "빨랐던 건 아니야", "빠르진 않았어"):
+        neg = issue_draft(q, polarity=POS)
+        assert (
+            run(neg, t5(issues=[("PACE_FAST", 1, True)]), focus="take-5").verdict == "CONTRADICTED"
+        )
+        assert run(neg, t5(), focus="take-5").verdict == "SUPPORTED"
+
+
+def test_metric_label_from_tool_result_resolves_to_metric_key():
+    """도구 결과의 표시 이름('말 속도')을 지표로 적어도 기록의 지표 키(cpm)로 판정한다. 모르는 이름은 확인 불가."""
+    slow = issue_draft("Take 5 속도 느렸지?", polarity=NEG, metric="말 속도")
+    cv = run(slow, t5(issues=[("PACE_FAST", 1, True)]), focus="take-5")
+    assert (cv.verdict, cv.metric) == ("CONTRADICTED", "cpm")
+    odd = issue_draft("Take 5 속도 느렸지?", polarity=NEG, metric="속도감")
+    assert run(odd, t5(), focus="take-5").reason_code == "UNKNOWN_METRIC"

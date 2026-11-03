@@ -38,7 +38,7 @@ PLAN = """[단계: 계획]
   - claim_op(MEASURED 만): OVERALL(Take 전체 평가. '잘 봤어' · '적었어' · '문제없었어'처럼 문제가 없었다는 말도 OVERALL) · ISSUE(그 방향의 문제가 있었다: '빨랐어' · '많았어') · VALUE(값이 얼마였다) · CHANGE(지난번보다 늘었다 · 줄었다).
   - subject: dimension(audience_gaze · script_independence · pacing_rhythm · vocal_delivery · fluency · content_delivery), metric(지표 키 audience_ratio · script_ratio · cpm · filler_per_min · filler_count · pause_count · duration_ms · slide_duration_ms · voice_diff_db · content_coverage 중 하나. 사용자가 특정 지표 값을 말하지 않았으면 null. 한국어 이름을 쓰지 않는다), slide_number, take_numbers(사용자가 Take 번호를 말했으면), relation(여러 Take 면 ALL · SOME · COMPARE).
   - value · value_unit: 값 주장이면 원문 값과 단위(예: 31, "%").
-  - polarity: 긍정 평가 POSITIVE, 부정 평가 NEGATIVE, 요청 · 중립 NEUTRAL.
+  - polarity: 긍정 평가 POSITIVE, 부정 평가 NEGATIVE, 요청 · 중립 NEUTRAL. 값 주장(VALUE)은 그 값이었다는 말이면 POSITIVE, 그 값이 아니었다는 말이면 NEGATIVE.
   - verdict 는 아직 모르면 UNVERIFIABLE. MEASURED 는 코드가 기록으로 다시 판정한다. REQUEST 는 기록 · 자료로 응할 수 있으면 SUPPORTED."""
 
 RESEARCH = """[단계: 조사]
