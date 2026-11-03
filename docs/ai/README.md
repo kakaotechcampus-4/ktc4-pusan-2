@@ -9,6 +9,7 @@
 | [architecture.md](architecture.md) | 전체 기능 구성 · 호출 흐름, 기능 사이 입출력 계약, 공통 데이터 모양(1초 원자료 · 1초 판정 결과 · 에러 · `meta`), 시간 예산, DB 저장 지도, 환경변수, 담당 |
 | [ai-service.md](ai-service.md) | AI 서비스(`ai/service/`) 하나. 폴더 구조, 기능 · 모델을 붙이는 순서, 공통 모듈(`common/llm.py` · `common/errors.py`), 이미지 · compose · 환경별 구성, CI · 배포, 운영과 문제 해결 |
 | [features/](features/) | 기능마다 하나. 목적, 구성, 입력 · 출력 계약(필드 · 예시 · 오류), 처리 흐름, 실패 처리, 배포, DB 저장 상세, 품질 검증 |
+| [proposals/](proposals/README.md) | 결정 전 제안. 기준 문서가 아니며, 결정되면 합의를 거쳐 위 문서에 반영한다. 지금: 대화형 코치 에이전트 설계 · 기준 문서 정리(DB 설계 담당 변경 포함) |
 | [`ai/research/<기능>/README.md`](../../ai/research/README.md) | 연구 코드의 폴더 · 파일, 실행법, 실험 결과 |
 
 ## 기능 지도
