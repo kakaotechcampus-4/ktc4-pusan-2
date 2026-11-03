@@ -93,3 +93,137 @@ uv sync                                             # .venv 를 만들고 서비
 - 기본 실행은 LLM 키 · 서명 키 없이 통과합니다(가짜 모델 `tests/unit/fakes.py`). 실제 모델 시험(`live`)과 평가는 요금이 들고 요청할 때만 돌립니다.
 - `chat_agent_lab.app`은 가상 기록('졸업 발표' Take 3 · 4 · 5)으로 한 턴을 돌려 진행 줄 · 끝 줄을 출력합니다. `--loaded`는 BE가 미리 읽어 둔 Take입니다.
   `AGENT_STATE_SECRET`이 없으면 프로세스마다 임의 서명 키를 씁니다(연구용).
+
+## 실패 행 대응표 (10-3)
+
+기능 문서 7-3 ~ 7-8 의 실패 행 중 AI 몫인 행마다 연구 모듈 시험(`경로::이름`), 서비스 계층에서만 확인할 수 있는 행은 '서비스 탑재 때',
+평가셋(13절)이 맡는 행은 '평가셋'을 적습니다. `tests/unit/test_failure_map.py`가 이 표의 시험이 있는지, 기능 문서의 AI 몫 행이 빠짐없이
+들어 있는지, 층이 기능 문서와 같은지 확인합니다.
+
+- **AI 몫을 가리는 규칙**(시험 코드와 같음): ① 시험 열의 담당 표시(`(BE · AI)` 등)에 `AI`가 있으면 AI 몫. ② 표시가 없는 L1 행(AI 서버 루프 표)은
+  AI 몫. ③ 표시가 없는 L2 ~ L6 행 중 처리가 AI 코드 · 설정인 L4-29(자료 라이선스) · L5-12(워커별 동시 실행 상한) · L5-32(대화 전용 실행 풀) ·
+  L5-33(공급자 장애 격리)도 AI 몫. 나머지(BE · FE만 표시된 행, 표시 없는 FE 화면 시험 행)는 넣지 않습니다.
+- 담당이 여럿인 행은 AI 쪽 절반만 봅니다. BE · FE 쪽은 BE CI · FE CI 시험입니다(10-2). 층은 기능 문서 '시험' 열의 대괄호 그대로입니다.
+- 시험 이름이 행 ID 와 다른 것은 그 행의 '시험' 열을 함께 확인하는 기존 시험입니다. `xfail` 시험은 지금 코드의 버그를 적어 둔 것이고,
+  고치면 통과로 바뀌어 표시를 지웁니다.
+
+| 행 | 층 | 시험(경로::이름) 또는 '서비스 탑재 때' · '평가셋' | 메모 |
+|---|---|---|---|
+| L1-01 | 계약 | `tests/unit/test_contract_schemas.py::test_fm_L1_01_trigger_required_and_forbidden_fields` · `tests/unit/test_contract_schemas.py::test_fm_L1_01_blank_user_message_is_rejected` · `tests/unit/test_contract_schemas.py::test_fm_L1_01_unknown_fields_are_ignored_but_unknown_status_in_history_records_is_kept` | 같은 파일의 다른 L1_01 시험도 |
+| L1-02 | 계약 · 부하 | `tests/unit/test_failure_rows.py::test_fm_L1_02_request_body_limit_is_utf8_bytes_with_boundary` · `tests/unit/test_failure_rows.py::test_fm_L1_02_request_json_depth_boundary` · `tests/unit/test_failure_rows.py::test_fm_L1_02_history_text_4000_boundary` | Content-Length 없음 · 거짓값 · 청크 전송은 HTTP 층이라 서비스 탑재 때, 부하는 배포 사양 |
+| L1-03 | 통합 | `tests/unit/test_tools.py::test_l1_03_other_scope_drops_pitch_details_and_loaded_takes` · `tests/unit/test_tools.py::test_fm_L4_33_foreign_take_in_loaded_takes_is_not_used` · `tests/unit/test_turn.py::test_resume_with_tampered_state_or_ids_409` | compose 에서 AI 포트가 밖에 열리지 않는지는 서비스 탑재 때 |
+| L1-04 | 단위 · 루프 | `tests/unit/test_budget.py::test_l1_04_remaining_time_and_deadline` · `tests/unit/test_budget.py::test_l1_04_exhausted_turn_blocks_every_model_call` · `tests/unit/test_contract_schemas.py::test_fm_L1_04_budget_counters_are_strict_non_negative_ints` |  |
+| L1-05 | 통합 | `tests/unit/test_turn.py::test_pre_stream_missing_or_short_secret_disables` · `tests/unit/test_turn.py::test_pre_stream_llm_unavailable_503` · `tests/lab/test_fake_be.py::test_fm_L2_15_ai_error_codes_are_kept_or_mapped_by_be` | 환경변수로 켜고 끄기 · 역할 · 묶음 설정 · 기존 리뷰 경로 유지는 서비스 탑재 때 |
+| L1-06 | 통합 | `tests/lab/test_app.py::test_busy_when_no_slot_and_slot_returned_after_close_without_reading` · `tests/lab/test_app.py::test_disabled_and_pre_stream_error_release_slot` | 여러 워커 · 프로세스 경합은 서비스 탑재 때 |
+| L1-07 | 계약 | `tests/unit/test_contract_examples.py::test_fm_L1_07_stream_examples_have_exactly_one_terminal_line_last` · `tests/lab/test_fake_be.py::test_fm_L2_16_bad_stream_or_final_runs_no_action` |  |
+| L1-08 | 통합 | `tests/unit/test_turn.py::test_client_disconnect_stops_new_calls` · `tests/lab/test_app.py::test_busy_when_no_slot_and_slot_returned_after_close_without_reading` | 실제 HTTP 연결 끊김 · 읽지 않는 소비자 · 쓰기 대기 2초는 서비스 탑재 때 |
+| L1-09 | 루프 | `tests/unit/test_tools.py::test_l1_09_update_plan_one_to_eight_steps` · `tests/unit/test_tools.py::test_l1_09_update_plan_rejects_bad_plans` · `tests/unit/test_tools.py::test_l1_09_trace_has_no_user_text_or_record_values` |  |
+| L1-10 | 계약 | `tests/lab/test_llm.py::test_tool_call_deltas_are_joined_and_tool_mode_has_no_reasoning` · `tests/lab/test_llm.py::test_schema_mode_parses_json_with_role_reasoning` · `tests/lab/test_llm.py::test_fm_L1_39_failed_attempt_usage_is_returned_with_success` | 기존 review.py 팩터리 관례 회귀는 서비스 탑재 때(common/llm.py) |
+| L1-11 | 단위 | `tests/unit/test_turn.py::test_fm_L1_11_research_llm_failure_ends_partial` · `tests/lab/test_llm.py::test_503_retries_once_after_retry_after` · `tests/lab/test_llm.py::test_client_errors_are_not_retried` |  |
+| L1-12 | 단위 · 루프 | `tests/unit/test_failure_rows.py::test_fm_L1_12_unparseable_tool_args_are_not_executed` · `tests/unit/test_failure_rows.py::test_fm_L1_12_refused_or_invalid_research_output_runs_no_tool_and_is_not_resent` · `tests/unit/test_turn.py::test_fm_L1_12_research_refusal_ends_refused` · `tests/lab/test_llm.py::test_invalid_or_refused_output_is_not_retried` |  |
+| L1-13 | 단위 · 루프 | `tests/unit/test_budget.py::test_l1_13_research_stops_at_six_and_keeps_two_for_answer_and_fix` · `tests/unit/test_budget.py::test_l1_13_research_after_answer_share_is_used_is_refused` · `tests/unit/test_budget.py::test_l1_13_research_refused_when_answer_share_is_not_guaranteed` |  |
+| L1-14 | 부하 | `tests/lab/test_app.py::test_fm_L1_14_busy_when_model_pool_is_saturated` · `tests/lab/test_llm.py::test_fm_L1_14_timed_out_attempt_not_confirmed_is_not_resent` | 대화 전용 실행 풀 크기 · 리뷰 지연 부하 시험은 서비스 탑재 때 |
+| L1-15 | 단위 | `tests/unit/test_tools.py::test_l1_15_unknown_or_p1_tool_is_invalid` · `tests/unit/test_tools.py::test_l1_15_wrong_args_are_bad_args_not_exceptions` · `tests/lab/test_llm.py::test_fm_L1_15_tool_call_without_id_is_invalid_output` |  |
+| L1-16 | 루프 | `tests/unit/test_budget.py::test_l1_16_tool_calls_up_to_twelve` · `tests/unit/test_turn.py::test_repeated_same_tool_without_progress_stops_research` |  |
+| L1-17 | 단위 | `tests/unit/test_actions.py::test_l1_17_not_found_take_is_not_fetched_again_in_the_run` · `tests/unit/test_tools.py::test_l1_17_null_value_is_unmeasured_not_zero` · `tests/unit/test_tools.py::test_l1_17_l1_18_take_outside_scope_is_not_found_and_remembered` | 찾지 못한 Take 는 같은 실행에서 다시 요청하지 않는다(가져오기 실패 NOT_FOUND 포함) |
+| L1-18 | 단위 | `tests/unit/test_tools.py::test_l1_18_screen_of_other_pitch_is_marked_and_not_merged` · `tests/unit/test_tools.py::test_l1_18_goal_of_other_pitch_is_not_mixed` · `tests/unit/test_tools.py::test_l1_18_scope_change_gives_new_evidence_ids_for_same_take_number` |  |
+| L1-19 | 단위 | `tests/unit/test_contract_schemas.py::test_fm_L1_19_goal_min_delta_rules` · `tests/unit/test_goals.py::test_fm_L4_09_inverted_range_blocks_comparison` · `tests/unit/test_goals.py::test_fm_L4_06_invalid_values_stop_comparison` |  |
+| L1-20 | 계약 | `tests/unit/test_tools.py::test_l1_20_cache_hit_is_cached_without_new_evidence` · `tests/unit/test_tools.py::test_l1_20_cache_key_normalizes_argument_order` · `tests/unit/test_tools.py::test_l1_20_cache_key_changes_with_revision_scope_and_new_take` |  |
+| L1-21 | 단위 | `tests/unit/test_corpus.py::test_fm_L1_21_duplicate_source_id` · `tests/unit/test_corpus.py::test_fm_L1_21_broken_card_schema` · `tests/unit/test_tools.py::test_l1_21_search_without_corpus_fails_only_search` |  |
+| L1-22 | 평가셋 | 평가셋 | 안전 세트(13-2): role 위조 · 지시 주입 · 키 출력 요구 |
+| L1-23 | 단위 | `tests/unit/test_actions.py::test_l1_23_forged_or_wrong_action_args_are_tool_errors` · `tests/unit/test_actions.py::test_l1_23_code_makes_ids_autonomy_and_args` · `tests/unit/test_budget.py::test_l1_23_actions_five_total_one_save_one_reassess` |  |
+| L1-24 | 단위 · 평가셋 | `tests/unit/test_actions.py::test_l1_24_authorize` · `tests/unit/test_actions.py::test_l1_24_unauthorized_save_becomes_goal_proposal_without_reserving` · `tests/unit/test_actions.py::test_l1_24_past_or_broken_clause_is_not_a_request` | 모델 행동 쪽은 평가셋(안전 세트) |
+| L1-25 | 루프 · 계약 | `tests/unit/test_failure_rows.py::test_fm_L1_25_only_first_action_in_a_response_runs_and_skipped_calls_stay_skipped` · `tests/unit/test_failure_rows.py::test_fm_L1_25_text_sent_with_an_action_is_not_shown` |  |
+| L1-26 | 계약 | `tests/unit/test_state.py::test_fm_L1_26_state_size_limit_boundary` · `tests/unit/test_state.py::test_fm_L1_26_korean_text_counts_utf8_bytes` · `tests/unit/test_state.py::test_fm_L1_26_sign_rejects_over_decoded_limit` |  |
+| L1-27 | 단위 | `tests/unit/test_state.py::test_fm_L1_27_tamper_payload_byte` · `tests/unit/test_state.py::test_fm_L1_27_id_mismatch` · `tests/unit/test_state.py::test_fm_L1_27_request_scope_old_value_is_allowed` |  |
+| L1-28 | 단위 | `tests/unit/test_state.py::test_fm_L1_28_bad_padding` · `tests/unit/test_state.py::test_fm_L1_28_invalid_utf8` · `tests/unit/test_state.py::test_fm_L1_28_depth_boundary_32_ok_33_rejected` |  |
+| L1-29 | 계약 | `tests/unit/test_turn.py::test_resume_with_unmatched_action_result_409` · `tests/unit/test_turn.py::test_resume_with_tampered_state_or_ids_409` | 같은 상태 동시 재전송 · 재시작의 중복 막기는 BE 선점(12-3)이 전제다. BE 실제 경계 시험 |
+| L1-30 | 계약 | `tests/unit/test_actions.py::test_l1_30_match_result_mismatches` · `tests/unit/test_actions.py::test_l1_30_inconsistent_status_data_error_is_mismatch` · `tests/unit/test_turn.py::test_resume_with_wrong_take_in_result_stops_with_mismatch` |  |
+| L1-31 | 루프 | `tests/lab/test_fake_be.py::test_fm_L1_31_budget_and_turn_count_accumulate_across_resumes` · `tests/unit/test_turn.py::test_resume_with_lower_budget_used_409` · `tests/unit/test_turn.py::test_seventh_turn_call_ends_without_model` |  |
+| L1-32 | 통합 | `tests/lab/test_fake_be.py::test_fm_L1_32_deleted_focus_take_is_dropped_before_the_model_sees_it` · `tests/lab/test_fake_be.py::test_fm_L1_32_goal_changed_in_other_tab_is_not_overwritten` · `tests/unit/test_turn.py::test_fm_L1_32_changed_revision_between_calls_demotes_old_evidence` |  |
+| L1-33 | 계약 · 통합 | `tests/lab/test_fake_be.py::test_fm_L1_33_resume_on_other_instance_after_key_rotation` · `tests/unit/test_state.py::test_fm_L1_33_expiry_boundary` · `tests/unit/test_state.py::test_fm_L1_33_unsupported_versions` | 프로세스 재시작은 서비스 탑재 때 |
+| L1-34 | 통합 | `tests/unit/test_turn.py::test_client_disconnect_stops_new_calls` | AI 몫은 끊기면 새 호출 멈춤뿐이다. 취소 · 로그아웃 · 늦은 결과 폐기는 BE 실제 경계, 화면 동작은 FE |
+| L1-35 | 단위 | `tests/unit/test_checks.py::test_fm_L1_35_number_mismatch_reason_has_claim_and_evidence_numbers_only` · `tests/unit/test_checks.py::test_fm_L1_35_target_mismatch_take_slide_metric` · `tests/unit/test_checks.py::test_fm_L1_35_unknown_and_old_evidence_ids_are_stale` |  |
+| L1-36 | 단위 · 평가셋 | `tests/unit/test_checks.py::test_fm_L1_36_system_text_only_enum_values` · `tests/unit/test_checks.py::test_fm_L1_36_causal_claim_needs_approved_guide_source` | 모델의 우회 시도는 평가셋 |
+| L1-37 | 계약 | `tests/unit/test_checks.py::test_fm_L1_37_cards_with_forbidden_and_pii` · `tests/unit/test_checks.py::test_fm_L1_37_display_numbers_need_matching_evidence` | 사용자 기준 표시 글에 숫자가 있으면 REASSESS_RESULT 카드가 통째로 빠진다(버그, test_reassess_card_is_kept_when_target_display_has_numbers 가 xfail) |
+| L1-38 | 단위 · 루프 | `tests/unit/test_checks.py::test_fm_L1_38_fix_call_failed_keeps_original_passing_only` · `tests/unit/test_checks.py::test_fm_L1_38_fixed_new_action_rejected` · `tests/unit/test_turn.py::test_fm_L1_38_failed_explanation_keeps_code_judgement_sentence` |  |
+| L1-39 | 계약 | `tests/unit/test_contract_schemas.py::test_fm_L1_39_final_status_combinations` · `tests/unit/test_budget.py::test_l1_39_input_tokens_are_cumulative_up_to_64k` · `tests/unit/test_turn.py::test_unknown_usage_is_null_and_not_measured` |  |
+| L1-40 | 계약 | `tests/unit/test_contract_examples.py::test_fm_L1_07_stream_examples_have_exactly_one_terminal_line_last` · `tests/unit/test_turn.py::test_output_too_large_ends_with_one_error_line` | final 중 단절은 서비스 탑재 때 |
+| L2-08 | 통합 | `tests/lab/test_fake_be.py::test_fm_L2_08_switch_off_mid_run_keeps_committed_action` · `tests/lab/test_fake_be.py::test_fm_L1_33_resume_on_other_instance_after_key_rotation` · `tests/unit/test_turn.py::test_pre_stream_missing_or_short_secret_disables` |  |
+| L2-12 | 통합 | `tests/lab/test_fake_be.py::test_fm_L2_12_instruction_in_record_does_not_authorize_save` · `tests/unit/test_actions.py::test_l4_31_quote_from_tool_result_does_not_authorize` | 관리자 사칭 · 비밀 출력 지시에 모델이 따르는지는 평가셋(안전 세트) |
+| L2-15 | 실제 경계 | `tests/lab/test_fake_be.py::test_fm_L2_15_ai_error_codes_are_kept_or_mapped_by_be` | AI 쪽: 같은 503 의 AGENT_DISABLED · LLM_UNAVAILABLE 구분. 연결 거절 · 느린 바이트는 BE 실제 경계 |
+| L2-16 | 실제 경계 | `tests/lab/test_fake_be.py::test_fm_L2_16_bad_stream_or_final_runs_no_action` · `tests/unit/test_contract_examples.py::test_fm_L1_07_stream_examples_have_exactly_one_terminal_line_last` | 분할 UTF-8 · 16 MiB 초과는 BE 실제 경계 |
+| L2-18 | 실제 경계 | `tests/lab/test_fake_be.py::test_fm_L2_16_bad_stream_or_final_runs_no_action` · `tests/unit/test_contract_schemas.py::test_fm_L1_39_final_status_combinations` |  |
+| L2-21 | 통합 | `tests/lab/test_fake_be.py::test_fm_L2_21_fetch_pitch_scope_is_confirmed_by_the_next_final` · `tests/lab/test_fake_be.py::test_fm_L2_21_fetch_pitch_ambiguous_name_keeps_scope` · `tests/unit/test_actions.py::test_l2_21_fetch_pitch_ambiguous_returns_candidates_without_scope_change` | 모호할 때 '어떤 발표인지 선택해 주세요'(WHICH_PITCH)를 코드가 아직 내지 않는다 |
+| L2-22 | 통합 | `tests/lab/test_fake_be.py::test_fm_L2_22_fetch_take_of_other_pitch_fails_and_focus_is_kept` · `tests/lab/test_fake_be.py::test_message_action_resume_answer_is_stored_with_history` | 크기 경계는 BE |
+| L2-27 | 평가셋 | 평가셋 | 허용 근거 코드 검사는 단위 시험(test_actions.py 의 test_l1_24_*) |
+| L2-30 | 통합 | `tests/unit/test_turn.py::test_resume_with_tampered_state_or_ids_409` · `tests/unit/test_turn.py::test_resume_with_unmatched_action_result_409` · `tests/lab/test_fake_be.py::test_fm_L1_33_resume_on_other_instance_after_key_rotation` | row_revision 조건부 갱신 · 동시 재개는 BE |
+| L2-31 | 실제 경계 | `tests/lab/test_fake_be.py::test_fm_L2_31_budget_reset_on_resume_is_rejected` · `tests/lab/test_fake_be.py::test_fm_L2_31_same_failed_action_twice_stops` · `tests/unit/test_turn.py::test_fm_L2_31_success_in_between_resets_repeated_failure` | 같은 실패 행동 · 인자(설명 reason 은 뺌)는 한 번 실패한 뒤 바로 다시 내면 실행하지 않고, 사이에 다른 행동이 성공하면 다시 센다 |
+| L4-01 | 단위 | `tests/unit/test_values.py::test_fm_L4_01_null_and_unmeasured_are_not_zero` · `tests/unit/test_values.py::test_fm_L4_01_scored_ratio_boundary` · `tests/unit/test_goals.py::test_fm_L4_01_null_never_becomes_zero_improvement` |  |
+| L4-02 | 계약 | `tests/unit/test_tools.py::test_take_report_dimensions_without_review_is_empty_with_note` · `tests/unit/test_values.py::test_dimension_state_not_evaluable_no_review_unknown` | 처리 중 · 실패 상태를 나눠 싣는 것은 BE 계약 |
+| L4-03 | 단위 | `tests/unit/test_failure_rows.py::test_fm_L4_03_fallback_review_still_gives_rule_score_and_dimensions` · `tests/unit/test_failure_rows.py::test_fm_L4_03_review_rule_fields_do_not_depend_on_the_review_llm` |  |
+| L4-05 | 계약 | `tests/unit/test_goals.py::test_fm_L4_05_omitted_range_paths_block_the_comparison` · `tests/unit/test_goals.py::test_fm_L4_05_omitted_descendant_paths_block_range_sources` · `tests/unit/test_values.py::test_fm_L4_05_omitted_vs_not_loaded_vs_not_found` |  |
+| L4-06 | 단위 · 계약 | `tests/unit/test_goals.py::test_fm_L4_06_invalid_values_stop_comparison` · `tests/unit/test_goals.py::test_fm_L4_06_duplicate_slide_numbers_stop_slide_comparison` · `tests/unit/test_values.py::test_fm_L4_06_invalid_take_values` |  |
+| L4-08 | 계약 | `tests/unit/test_goals.py::test_fm_L4_08_each_condition_blocks_comparison` · `tests/unit/test_goals.py::test_fm_L4_08_same_standard_version_null_on_both_is_comparable` |  |
+| L4-09 | 단위 | `tests/unit/test_goals.py::test_fm_L4_09_one_sided_range_and_json_has_no_infinity` · `tests/unit/test_goals.py::test_fm_L4_09_range_changed_uses_each_range_distance` · `tests/unit/test_goals.py::test_fm_L4_09_inverted_range_blocks_comparison` |  |
+| L4-10 | 계약 | `tests/unit/test_contract_tables.py::test_fm_L4_10_direction_table_equals_review` · `tests/unit/test_goals.py::test_fm_L4_10_no_direction_metric_is_not_compared` · `tests/unit/test_goals.py::test_fm_L4_10_equal_raw_values_are_same_not_improved_or_worsened` |  |
+| L4-11 | 계약 | `tests/unit/test_goals.py::test_fm_L4_11_draft_gt_base_fixes_min_delta_and_versions` · `tests/unit/test_goals.py::test_fm_L4_11_draft_refuses_metric_outside_the_four` · `tests/lab/test_fake_be.py::test_save_goal_then_take_reviewed_closes_goal_without_model` | BE의 실제 근거 재구성 · 거절은 가짜 BE가 흉내만 낸다 |
+| L4-12 | 단위 | `tests/unit/test_config_templates.py::test_fm_L4_12_config_is_deeply_immutable` · `tests/unit/test_goals.py::test_fm_L4_12_config_refuses_zero_or_negative_min_delta` · `tests/unit/test_goals.py::test_fm_L4_12_gt_base_min_delta_boundary` |  |
+| L4-17 | 통합 | `tests/unit/test_turn.py::test_fm_L1_32_changed_revision_between_calls_demotes_old_evidence` | 저장 직전 버전 재확인 · 대본 · 목표 변경 충돌 거절은 BE |
+| L4-18 | 계약 | `tests/lab/test_fake_be.py::test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchanged` · `tests/unit/test_contract_schemas.py::test_criteria_target_all_or_none` · `tests/unit/test_actions.py::test_l1_23_forged_or_wrong_action_args_are_tool_errors` |  |
+| L4-20 | 계약 | `tests/lab/test_fake_be.py::test_fm_L4_20_reassess_with_different_rule_versions_fails_without_card` · `tests/unit/test_actions.py::test_l4_20_reassess_rule_versions_must_match` | 다시 평가 답의 meta.criteria_versions 에 리뷰 판이 빠진다(버그, test_reassess_final_meta_carries_review_criteria_versions 가 xfail) |
+| L4-22 | 계약 | `tests/lab/test_fake_be.py::test_fm_L4_22_reassess_flags_official_difference_when_record_changed` | 원인을 확인하지 못한 차이는 7-10 문구 '현재 조건으로 계산한 참고 결과가 공식 리뷰와 달라요.'로 알린다. 원인 문구(기록 · 규칙 판 변경)는 계약의 official 에 판 정보가 없어 고르지 않는다(열린 질문) |
+| L4-23 | 계약 | `tests/unit/test_contract_schemas.py::test_fm_L4_23_evidence_origin_rules` |  |
+| L4-24 | 단위 · 평가셋 | `tests/unit/test_checks.py::test_fm_L4_24_forbidden_claims` · `tests/unit/test_checks.py::test_fm_L4_24_opposite_direction_with_correct_diff_evidence_is_caught` · `tests/unit/test_checks.py::test_fm_L4_24_korean_numeral_is_number_format` | 모델 행동 쪽은 평가셋 |
+| L4-25 | 단위 | `tests/unit/test_checks.py::test_fm_L4_25_diff_value_must_equal_recomputed` · `tests/unit/test_checks.py::test_fm_L4_25_percent_vs_percentage_point_confusion` · `tests/unit/test_checks.py::test_fm_L4_25_mixed_metric_or_slide_inputs_rejected` |  |
+| L4-26 | 계약 | `tests/unit/test_checks.py::test_fm_L4_26_plan_trace_summary_checked` · `tests/unit/test_checks.py::test_fm_L4_26_claims_pii_is_checked_too` · `tests/unit/test_checks.py::test_fm_L4_26_display_fields_numbers_targets_and_praise` |  |
+| L4-27 | 단위 | `tests/unit/test_checks.py::test_fm_L4_27_mixed_fix_results_keep_only_passing_in_order` · `tests/unit/test_checks.py::test_fm_L4_27_all_dropped_flag` |  |
+| L4-28 | 단위 | `tests/unit/test_corpus.py::test_fm_L4_28_no_result_for_unrelated_query` · `tests/unit/test_corpus.py::test_fm_L4_28_limit_and_order_deterministic` · `tests/unit/test_tools.py::test_l1_21_l4_28_search_with_no_hits_is_empty` |  |
+| L4-29 | 계약 | `tests/unit/test_corpus.py::test_fm_L4_29_forbidden_license` · `tests/unit/test_corpus.py::test_fm_L4_29_unreviewed_rejected_for_service` · `tests/unit/test_corpus.py::test_fm_L4_29_blank_source_is_rejected` |  |
+| L4-30 | 통합 | `tests/unit/test_corpus.py::test_fm_L4_30_missing_file` · `tests/unit/test_corpus.py::test_fm_L4_30_body_changed_hash_mismatch` · `tests/unit/test_tools.py::test_l1_20_search_cache_is_per_corpus_version` · `tests/unit/test_corpus.py::test_fm_L4_30_same_version_with_new_text_is_rejected` · `tests/unit/test_corpus.py::test_fm_L4_30_service_mode_rejects_unregistered_version` | 배포 중 판 바뀜은 재개 때 검색 캐시만 버린다. 같은 판에 다른 본문 · 등록하지 않은 판(서비스 모드)은 묶음을 만들지 않는다. 철회한 자료의 옛 인용을 다시 보이지 않는 것은 서비스 탑재 때(자료 판별 보관) |
+| L4-31 | 평가셋 | 평가셋 | 안전 세트(주입 여섯 경로). 단위로는 test_actions.py 의 test_l4_31_* |
+| L4-32 | 평가셋 | 평가셋 | 안전 세트(허용 근거 우회). 단위로는 test_actions.py 의 test_l4_32_* |
+| L4-34 | 통합 | `tests/lab/test_fake_be.py::test_fm_L5_31_logs_and_diagnostics_hold_no_user_text_values_or_keys` · `tests/unit/test_checks.py::test_fm_L4_26_claims_pii_is_checked_too` · `tests/unit/test_checks.py::test_fm_L1_37_cards_with_forbidden_and_pii` | HTML · 링크 표시는 FE |
+| L4-38 | 통합 | `tests/lab/test_fake_be.py::test_fm_L4_38_take_deleted_while_waiting_stops_before_model` · `tests/lab/test_fake_be.py::test_deleted_take_between_turns_masks_history_and_prior_assessments` · `tests/unit/test_turn.py::test_resume_drops_removed_source_before_model` |  |
+| L4-40 | 통합 · 부하 | `tests/lab/test_fake_be.py::test_save_goal_then_take_reviewed_closes_goal_without_model` · `tests/lab/test_fake_be.py::test_fm_L2_08_switch_off_mid_run_keeps_committed_action` · `tests/unit/test_turn.py::test_pre_stream_context_too_large_413` | 중복 이벤트 폭주 · 동시 다시 평가는 부하 시험 |
+| L5-01 | 계약 | `tests/unit/test_turn.py::test_pre_stream_missing_or_short_secret_disables` · `tests/lab/test_app.py::test_disabled_and_pre_stream_error_release_slot` | 기존 기능이 그대로인지는 서비스 탑재 때 |
+| L5-02 | 통합 | `tests/lab/test_fake_be.py::test_fm_L5_02_missing_or_partial_model_bundle_gives_llm_unavailable` |  |
+| L5-03 | 통합 | `tests/lab/test_llm.py::test_client_errors_are_not_retried` | 잘못된 URL 과 기존 기능 영향은 서비스 탑재 때 |
+| L5-04 | 통합 | `tests/lab/test_fake_be.py::test_fm_L2_15_ai_error_codes_are_kept_or_mapped_by_be` | BE 켜짐 · AI 꺼짐 경우. 반대 경우는 BE |
+| L5-06 | 통합 | `tests/lab/test_fake_be.py::test_fm_L1_33_resume_on_other_instance_after_key_rotation` · `tests/unit/test_state.py::test_fm_L1_33_unknown_kid` |  |
+| L5-07 | 통합 | `tests/lab/test_fake_be.py::test_fm_L1_33_resume_on_other_instance_after_key_rotation` · `tests/unit/test_state.py::test_fm_L1_33_previous_key_verifies_but_new_signatures_use_current` |  |
+| L5-12 | 부하 | `tests/lab/test_app.py::test_busy_when_no_slot_and_slot_returned_after_close_without_reading` | AI 워커별 방어만. 워커 여러 개의 합계 · 직접 접근 차단은 배포 부하 시험 |
+| L5-15 | 통합 | `tests/lab/test_fake_be.py::test_fm_L2_16_bad_stream_or_final_runs_no_action` · `tests/lab/test_fake_be.py::test_fm_L2_15_ai_error_codes_are_kept_or_mapped_by_be` |  |
+| L5-16 | 통합 | `tests/lab/test_fake_be.py::test_fm_L5_16_action_time_counts_toward_the_turn_budget` | 첫 바이트 뒤 지연(50초)은 BE |
+| L5-17 | 통합 | `tests/lab/test_llm.py::test_503_retries_once_after_retry_after` · `tests/lab/test_llm.py::test_429_without_header_waits_half_second` · `tests/lab/test_llm.py::test_second_attempt_also_reserves_budget` |  |
+| L5-18 | 단위 · 계약 | `tests/lab/test_llm.py::test_invalid_or_refused_output_is_not_retried` · `tests/unit/test_turn.py::test_fm_L1_12_research_refusal_ends_refused` |  |
+| L5-19 | 단위 | `tests/unit/test_tools.py::test_l1_15_unknown_or_p1_tool_is_invalid` · `tests/unit/test_tools.py::test_l1_15_wrong_args_are_bad_args_not_exceptions` · `tests/unit/test_turn.py::test_repeated_same_tool_without_progress_stops_research` |  |
+| L5-24 | 통합 | `tests/lab/test_fake_be.py::test_fm_L2_16_bad_stream_or_final_runs_no_action` | 진행 줄 뒤 끝 줄 없는 EOF(eof_after_progress) |
+| L5-28 | 통합 | `tests/lab/test_fake_be.py::test_fm_L1_33_resume_on_other_instance_after_key_rotation` · `tests/unit/test_state.py::test_fm_L1_33_unsupported_versions` |  |
+| L5-29 | 부하 | `tests/unit/test_budget.py::test_l1_39_input_tokens_are_cumulative_up_to_64k` · `tests/unit/test_budget.py::test_l1_39_output_reserve_is_cumulative_up_to_16k` | 서비스 전체 하루 턴 상한 · 예약은 BE 부하 시험 |
+| L5-31 | 통합 | `tests/lab/test_fake_be.py::test_fm_L5_31_logs_and_diagnostics_hold_no_user_text_values_or_keys` · `tests/unit/test_turn.py::test_progress_lines_hold_no_user_text_or_keys` | 관리자 권한 · 조회 기록은 BE |
+| L5-32 | 부하 | 서비스 탑재 때 | 대화 전용 실행 풀 포화 · 다시 평가 동시 실행 중 기존 기능 지연은 서비스 부하 시험 |
+| L5-33 | 통합 | 서비스 탑재 때 | 공통 429 · 키 오류에서 코치 · 리뷰 결과는 서비스 통합 시험 |
+| L6-01 | 단위 · 평가셋 | `tests/unit/test_claims.py::test_fm_L6_01_quote_must_be_a_substring_of_the_message` · `tests/unit/test_claims.py::test_fm_L6_01_finalize_drops_bad_draft_and_adds_notice` | 판단이 먼저 나오는지는 평가셋 |
+| L6-02 | 단위 | `tests/unit/test_claims.py::test_fm_L6_02_overall_positive_table` · `tests/unit/test_claims.py::test_fm_L6_02_overall_negative_table` |  |
+| L6-03 | 단위 | `tests/unit/test_claims.py::test_fm_L6_03_issue_table` · `tests/unit/test_claims.py::test_fm_L6_03_empty_list_of_unmeasured_data_is_not_no_problem` |  |
+| L6-04 | 단위 · 계약 | `tests/unit/test_checks.py::test_fm_L6_04_first_sentence_must_be_template` · `tests/unit/test_checks.py::test_fm_L6_04_contradicted_with_agreement_or_hedge_is_caught` |  |
+| L6-05 | 단위 | `tests/unit/test_checks.py::test_fm_L6_05_agreement_word_without_backing_is_caught` · `tests/unit/test_checks.py::test_fm_L6_05_negative_claim_supported_is_not_praise` |  |
+| L6-06 | 단위 | `tests/unit/test_claims.py::test_fm_L6_06_script_mode_by_script_used` · `tests/unit/test_claims.py::test_fm_L6_06_first_sentence_is_script_fact_and_unknown_never_matches_or_differs` |  |
+| L6-07 | 통합 · 평가셋 | `tests/lab/test_fake_be.py::test_fm_L6_07_reassess_calls_real_review_with_changed_input_and_keeps_official` · `tests/unit/test_contract_schemas.py::test_fm_L6_07_reassess_needs_action_with_assessments_requires_judgement_message` | 모델 행동 쪽은 평가셋 |
+| L6-08 | 평가셋 | 평가셋 | 단위로는 test_actions.py 의 test_l6_08_* · test_claims.py 의 test_fm_L6_08_* |
+| L6-09 | 단위 · 평가셋 | `tests/unit/test_claims.py::test_fm_L6_09_claim_key_differs_when_any_part_differs` · `tests/unit/test_claims.py::test_fm_L6_09_evidence_basis_changes_with_pitch_versions_even_if_result_revision_same` · `tests/lab/test_fake_be.py::test_prior_assessment_same_claim_keeps_verdict_under_pressure` | 기록 20개 반복은 평가셋 |
+| L6-10 | 루프 | `tests/lab/test_fake_be.py::test_fm_L6_10_new_take_supersedes_prior_turn_assessment_by_id` · `tests/unit/test_claims.py::test_fm_L6_10_new_take_supersedes_prior_recent_three_claim` |  |
+| L6-11 | 평가셋 | 평가셋 | 객관성 세트(13-4) |
+| L6-12 | 평가셋 | 평가셋 | 단위로는 test_claims.py 의 test_fm_L6_12_* |
+| L6-13 | 단위 · 평가셋 | `tests/unit/test_checks.py::test_fm_L1_36_causal_claim_needs_approved_guide_source` · `tests/unit/test_checks.py::test_fm_L4_24_causal_regex_and_possibility_advice` | 조언의 (a)(b)(c) 갖춤은 평가셋 |
+| L6-14 | 평가셋 | 평가셋 | 객관성 세트 14개 × 3회 pass^3 |
+| L6-15 | 단위 | `tests/unit/test_claims.py::test_fm_L6_15_preference_conflicting_problem_is_partly_whatever_the_model_says` · `tests/unit/test_claims.py::test_fm_L6_15_preference_uses_its_own_template_never_the_measured_one` |  |
+| L6-16 | 단위 · 평가셋 | `tests/unit/test_claims.py::test_fm_L6_16_each_measured_clause_needs_a_covering_draft` · `tests/unit/test_turn.py::test_uncovered_clause_gets_one_format_fix_then_template` | 모델 행동 쪽은 평가셋 |
+| L6-17 | 단위 | `tests/unit/test_claims.py::test_fm_L6_17_reversed_direction_is_not_supported` · `tests/unit/test_claims.py::test_fm_L6_17_slide_that_does_not_exist_is_unverifiable` |  |
+| L6-18 | 단위 | `tests/unit/test_claims.py::test_fm_L6_18_slide_scope_table` · `tests/unit/test_claims.py::test_fm_L6_18_slide_not_measured_is_unverifiable` |  |
+| L6-19 | 단위 | `tests/unit/test_claims.py::test_fm_L6_19_value_claim_table` · `tests/unit/test_claims.py::test_fm_L6_19_value_rounding_boundary` |  |
+| L6-20 | 단위 | `tests/unit/test_claims.py::test_fm_L6_20_some_partly_plus_contradicted_is_partly` · `tests/unit/test_claims.py::test_fm_L6_20_unchecked_takes_are_reported_separately` |  |
+| L6-21 | 단위 · 평가셋 | `tests/unit/test_claims.py::test_fm_L6_21_other_speaker_keeps_label_and_judges_content_only` | 모델 행동 쪽은 평가셋 |
+| L6-22 | 통합 | `tests/lab/test_fake_be.py::test_fm_L6_22_chosen_user_option_is_saved_without_proposing_again` · `tests/unit/test_actions.py::test_l6_22_l4_32_changed_proposal_is_not_valid` | 화면 쪽은 FE |
+| L6-23 | 단위 | `tests/unit/test_actions.py::test_l6_23_unmeasurable_goal_has_no_save_option` · `tests/unit/test_goals.py::test_fm_L6_23_unmeasurable_goal_has_no_draft` |  |
