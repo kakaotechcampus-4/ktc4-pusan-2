@@ -132,6 +132,14 @@ def test_no_memory_conversation_or_off_setting_never_saves() -> None:
     assert be.profile_items("u-3") == []
     assert any(e.get("event") == "PROFILE_NOT_SAVED" for e in be.log)
 
+    # 일반 대화에서 설정을 끈 경우(AI 가 잘못 후보를 보내도 BE 가 막는다)
+    be2 = make_be(mem_llm())
+    be2.set_memory_enabled("u-3", False)
+    be2.app = TamperApp(be2.app, _inject([UPD]))  # type: ignore[assignment]
+    run2 = be2.send_message(be2.new_conversation().conversation_id, MSG)
+    assert be2.profile_items("u-3") == []
+    assert not [c for c in stored(be2, run2).cards if c["type"] == "MEMORY_SAVED"]
+
 
 def test_version_changed_during_the_run_blocks_saving() -> None:
     """실행을 시작한 뒤 기억 번호가 바뀌면(다른 탭에서 지움 · 끔) 그 실행의 후보는 저장하지 않는다(6-14 · L2-47)."""
@@ -144,9 +152,18 @@ def test_version_changed_during_the_run_blocks_saving() -> None:
             return inner.turn(body, request_id=request_id)
 
     be.app = BumpThenCall()  # type: ignore[assignment]
-    be.send_message(be.new_conversation().conversation_id, MSG)
+    run = be.send_message(be.new_conversation().conversation_id, MSG)
+    # AI 는 실행을 시작할 때의 번호로 유효한 후보를 냈고, BE 가 번호 불일치로 버렸다
+    assert run.calls[-1].final["profile_updates"] == [UPD]  # type: ignore[index]
     assert be.profile_items("u-3") == []
+    assert not [c for c in stored(be, run).cards if c["type"] == "MEMORY_SAVED"]
     assert any(e.get("event") == "PROFILE_NOT_SAVED" for e in be.log)
+
+    # 대조: 번호가 그대로면 같은 후보가 저장된다
+    be2 = make_be(mem_llm([UPD]))
+    run2 = be2.send_message(be2.new_conversation().conversation_id, MSG)
+    assert [i["value"] for i in be2.profile_items("u-3")] == ["설명을 짧게"]
+    assert [c["type"] for c in stored(be2, run2).cards] == ["MEMORY_SAVED"]
 
 
 # ── 대화 요약 (L2-49) ──────────────────────────────────────────────────────
@@ -219,3 +236,46 @@ def test_request_json_has_memory_and_overflow_shapes() -> None:
     json.dumps(req)  # 직렬화 가능
     assert set(req["memory"]) == {"enabled", "memory_version", "profile"}
     assert set(req["history"]["overflow"]) == {"messages", "prev_summary_version"}
+
+
+def test_overflow_is_at_most_ten_in_order_and_masks_deleted_sources() -> None:
+    be = make_be(mem_llm(None, F.summary(("TOPIC", "옛 대화"))))
+    conv = _with_history(be, 35)  # 최근 20개 밖으로 15개가 밀렸다
+    conv.messages[3].source_ids = {"t-4"}
+    be.delete_take("t-4")
+    run = be.send_message(conv.conversation_id, "안녕")
+    assert run.status != "FAILED"
+    sent = [m["text"] for m in last_request(be, run)["history"]["overflow"]["messages"]]
+    assert len(sent) == 10
+    assert sent[3] == "근거 기록이 지워져 이 답을 가렸어요"
+    assert sent[:3] + sent[4:] == [f"옛 말 {i}" for i in (0, 1, 2, 4, 5, 6, 7, 8, 9)]
+    assert conv.summary_covered == 10
+    # 요약이 덮은 답의 근거(t-4)가 지워졌으므로 다음 턴의 요약은 가려진다
+    be.app.llm = mem_llm(None, F.summary())  # type: ignore[union-attr]
+    run2 = be.send_message(conv.conversation_id, "다음")
+    req2 = last_request(be, run2)
+    assert req2["history"]["summary"] == [
+        {"kind": "TOPIC", "text": "근거 기록이 지워져 이 답을 가렸어요"}
+    ]
+    assert [m["text"] for m in req2["history"]["overflow"]["messages"]][:5] == [
+        f"옛 말 {i}" for i in range(10, 15)
+    ]
+
+
+def test_empty_summary_list_is_a_valid_update() -> None:
+    """빈 목록은 '못 만듦'(null)이 아니라 갱신이다: 판이 같으면 바꾸고 덮은 메시지 수를 늘린다(6-14)."""
+    be = make_be(mem_llm())
+    conv = _with_history(be, 22)
+    conv.summary = [{"kind": "TOPIC", "text": "옛 요약"}]
+    inner = be.app
+
+    def empty(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        last = objs[-1]
+        if last["event"] == "final":
+            last["data"]["history_summary"] = []
+        return objs
+
+    be.app = TamperApp(inner, empty)  # type: ignore[assignment]
+    be.app.inner.llm = mem_llm(None, F.summary())  # type: ignore[attr-defined]
+    be.send_message(conv.conversation_id, "안녕")
+    assert conv.summary == [] and conv.summary_version == 1 and conv.summary_covered == 2

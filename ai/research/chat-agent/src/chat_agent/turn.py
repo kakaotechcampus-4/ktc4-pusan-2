@@ -1262,10 +1262,9 @@ def _finish(
             reason = "LIMIT"
     if profile_updates:
         final["profile_updates"] = profile_updates
-    d = lp.diag.finish(final["status"], reason, usage=usage, max_bytes=cfg.max_diagnostics_bytes)
-    final["diagnostics"] = d.model_dump(mode="json")
     try:
-        FinalData.model_validate(final)
+        # 본체를 먼저 검사하고 진단 기록은 끝을 안 뒤 한 번만 만든다(진단 기록은 코드가 닫힌 모양으로 만든다)
+        FinalData.model_validate({**final, "diagnostics": None})
     except ValidationError as e:
         deps.log(
             {
@@ -1274,7 +1273,13 @@ def _finish(
                 "errors": [list(x.get("loc", ())) for x in e.errors()][:10],
             }
         )
-        return None, "INTERNAL_ERROR", None
+        # 실패해도 그때까지의 단계 · 사용량(요약 호출 포함)은 error 줄의 진단 기록으로 남긴다
+        d = lp.diag.finish(
+            "INTERNAL_ERROR", "OTHER", usage=usage, max_bytes=cfg.max_diagnostics_bytes
+        )
+        return None, "INTERNAL_ERROR", d.model_dump(mode="json")
+    d = lp.diag.finish(final["status"], reason, usage=usage, max_bytes=cfg.max_diagnostics_bytes)
+    final["diagnostics"] = d.model_dump(mode="json")
     # 아직 줄로 내지 않은 문장(보류했다 통과한 문장 · 끝에 붙는 안내 · 모델 없이 만든 답)도 끝 줄 앞에 문장 줄로 낸다.
     # 그래서 문장 줄 번호는 실행 전체 답에서의 자리와 같고 빈 번호가 없다(5-4)
     for d in [] if tail_sent else (final["message"] or {}).get("claims", [])[n_sent:]:

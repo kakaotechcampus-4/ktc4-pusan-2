@@ -223,6 +223,8 @@ class Conversation:
     summary: list[dict[str, Any]] | None = None
     summary_version: int = 0
     summary_covered: int = 0
+    #: 요약이 덮은 메시지들이 기댄 피치 · Take id(지워지면 요약을 가린다, 12-1 · L2-49)
+    summary_sources: set[str] = field(default_factory=set)
     #: '기억 없이' 대화: 코칭 프로필을 읽지도 쓰지도 않는다(기록 · 요약은 보관, 6-14 · L2-48)
     no_memory: bool = False
     #: 메시지와 함께 저장한 목표 제안 카드(proposal_id → 카드). choice 가 오면 selected_proposal 로 싣는다
@@ -783,9 +785,10 @@ class FakeBe:
                 "messages": [
                     {
                         "role": m.role,
+                        # 4,000자를 넘는 이전 답은 대화 기록처럼 문장을 앞에서부터 줄여 싣는다(5-3)
                         "text": MASKED_TEXT
                         if any(self._gone(s, conv.user_id) for s in m.source_ids)
-                        else m.text[:MAX_HISTORY_TEXT],
+                        else self._clip(m)[0],
                     }
                     for m in pushed[: DEFAULT_CONFIG.max_overflow_messages]
                 ],
@@ -794,8 +797,12 @@ class FakeBe:
             if pushed
             else None
         )
+        summary = copy.deepcopy(conv.summary)
+        if summary and any(self._gone(s, conv.user_id) for s in conv.summary_sources):
+            # 요약이 덮은 답의 근거가 지워졌으면 요약을 가린다(L2-37 · L2-49)
+            summary = [{"kind": "TOPIC", "text": MASKED_TEXT}]
         return {
-            "summary": copy.deepcopy(conv.summary),
+            "summary": summary,
             "messages": messages,
             "prior_assessments": prior[-MAX_PRIOR_ASSESSMENTS:],
             "overflow": overflow,
@@ -1377,14 +1384,19 @@ class FakeBe:
         """대화 요약 조건부 갱신(6-14 · L2-49): 이 실행이 보낸 앞 요약의 판 번호가 지금과 같을 때만 바꾸고, 덮은 메시지 수를
         보낸 밀린 메시지만큼 늘린다. null 이면 바꾸지 않는다(다음 턴에 같은 메시지를 다시 보낸다)."""
         overflow = (run.history or {}).get("overflow")
-        if not items or overflow is None:
-            return
+        if items is None or overflow is None:
+            return  # 빈 목록은 유효한 갱신이고, null 만 '못 만듦'이다(6-14)
         if overflow["prev_summary_version"] != conv.summary_version:
             self.log.append({"event": "SUMMARY_VERSION_CONFLICT", "run_id": run.run_id})
             return
+        covered = conv.messages[
+            conv.summary_covered : conv.summary_covered + len(overflow["messages"])
+        ]
         conv.summary = copy.deepcopy(items)
         conv.summary_version += 1
         conv.summary_covered += len(overflow["messages"])
+        # 굴리는 요약이므로 앞 요약의 원천도 그대로 이어진다
+        conv.summary_sources |= {s for m in covered for s in m.source_ids}
 
     def _store_profile(self, run: Run, conv: Conversation, updates: Any) -> None:
         """코칭 프로필 저장(6-14 · L2-47 · L2-48): 사용자 말로 시작한 실행 · 설정 켜짐 · '기억 없이'가 아님 · 지금 기억 번호가

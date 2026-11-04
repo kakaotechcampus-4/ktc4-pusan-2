@@ -420,3 +420,25 @@ def test_property_holds_with_a_model_that_reacts_to_poisoned_memory() -> None:
         )
 
     assert key(clean) == key(poisoned)
+
+
+def test_final_check_failure_after_summary_keeps_diagnostics_with_its_usage(
+    monkeypatch: Any,
+) -> None:
+    """요약 호출 뒤 끝 줄 검사가 실패해도 error 줄의 진단 기록에 요약 호출 단계 · 사용량이 남는다."""
+    from chat_agent import turn
+    from chat_agent.schemas import FinalData as RealFinal
+
+    class Broken:
+        @staticmethod
+        def model_validate(_d: Any) -> Any:
+            return RealFinal.model_validate({})  # 일부러 검사 실패
+
+    monkeypatch.setattr(turn, "FinalData", Broken)
+    script = basic_script()
+    script.append(F.summary(("TOPIC", "Take 5 의 3장 시선")))
+    _, lines, data = F.run_turn(req_with(overflow=OVERFLOW), F.FakeLlm(script))
+    assert lines[-1]["event"] == "error"
+    steps = (data or {})["diagnostics"]["steps"]
+    assert any(s["kind"] == "MODEL" and s["code"] == "HISTORY_SUMMARY" for s in steps)
+    assert data["diagnostics"]["end"]["status"] == "INTERNAL_ERROR"
