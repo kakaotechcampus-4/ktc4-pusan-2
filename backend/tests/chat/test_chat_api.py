@@ -22,6 +22,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
     ChatRunLog,
 )
+from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS, seconds_until_tomorrow
 from pitch_coach_backend.module.chat.service.run import SEOUL
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
@@ -275,7 +276,7 @@ def test_active_run_race_is_409(
     # 실행 중 검사를 지난 뒤 다른 탭이 같은 대화에 먼저 실행을 만든 경우다.
     # 부분 유일 인덱스가 막는다
     _, first = _send(client, user_id)
-    monkeypatch.setattr(ChatApiRepository, "has_active_run", lambda self, conversation_id: False)
+    monkeypatch.setattr(ChatRepository, "has_running_run", lambda self, conversation_id: False)
 
     status, body = _send(client, user_id, conversation_id=first["conversation_id"])
 

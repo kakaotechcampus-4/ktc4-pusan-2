@@ -16,8 +16,6 @@ from pitch_coach_backend.module.chat.entity import (
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take
 
-ACTIVE_RUN_STATUSES = ("QUEUED", "RUNNING", "WAITING_APPROVAL")
-
 
 class ChatApiRepository:
     def __init__(self, db: Session):
@@ -53,24 +51,6 @@ class ChatApiRepository:
             stmt = stmt.where(ChatConversation.scope_pitch_id == pitch_id)
         return list(self.db.execute(stmt).all())
 
-    def pitch_title(self, pitch_id: uuid.UUID | None) -> str | None:
-        if pitch_id is None:
-            return None
-        return self.db.scalar(select(Pitch.title).where(Pitch.id == pitch_id))
-
-    def has_active_run(self, conversation_id: uuid.UUID) -> bool:
-        return (
-            self.db.scalar(
-                select(ChatRun.id)
-                .where(
-                    ChatRun.conversation_id == conversation_id,
-                    ChatRun.status.in_(ACTIVE_RUN_STATUSES),
-                )
-                .limit(1)
-            )
-            is not None
-        )
-
     def get_owned_run(
         self, run_id: uuid.UUID, user_id: uuid.UUID, *, lock: bool = False
     ) -> ChatRun | None:
@@ -93,15 +73,6 @@ class ChatApiRepository:
                 ChatMessage.id == message_id, ChatMessage.conversation_id == conversation_id
             )
         )
-
-    def list_messages(
-        self, conversation_id: uuid.UUID, *, before_seq: int | None, limit: int
-    ) -> list[ChatMessage]:
-        stmt = select(ChatMessage).where(ChatMessage.conversation_id == conversation_id)
-        if before_seq is not None:
-            stmt = stmt.where(ChatMessage.seq < before_seq)
-        rows = self.db.scalars(stmt.order_by(ChatMessage.seq.desc()).limit(limit)).all()
-        return list(reversed(rows))
 
     def list_assessments(self, conversation_id: uuid.UUID, *, from_seq: int) -> list[Row]:
         """`from_seq` 메시지부터 끝까지의 판단을 메시지 순서대로.

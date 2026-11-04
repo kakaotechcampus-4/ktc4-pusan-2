@@ -131,7 +131,7 @@ def _accept(
         raise ChatTargetNotFound()
     if request.choice is not None:
         _check_choice(db, conversation.id, request.choice)
-    if repo.has_active_run(conversation.id):
+    if ChatRepository(db).has_running_run(conversation.id):
         # 승인 대기(WAITING_APPROVAL) 중의 새 메시지는 앞 확인 요청을 취소하고 받아야 한다(12-3).
         # 승인 · 거절 API 와 함께 더한다. 그 전에는 진행 중과 같이 409 로 막는다
         raise ChatRunInProgress()

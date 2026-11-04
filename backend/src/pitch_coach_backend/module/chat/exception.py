@@ -8,9 +8,6 @@ from pitch_coach_backend.core.exceptions import (
     NotFoundException,
 )
 
-# AI 서버 동시 실행 상한 · 대화 전용 실행 풀 포화일 때 FE 가 기다릴 초(5-9)
-BUSY_RETRY_AFTER_SEC = 5
-
 
 class ChatDisabled(AppException):
     # 끄기 스위치(`agent_enabled`)가 꺼져 있다. FE 는 버튼을 숨긴다

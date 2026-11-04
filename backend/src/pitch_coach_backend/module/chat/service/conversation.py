@@ -15,6 +15,7 @@ from pitch_coach_backend.module.chat.api_dto import (
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage
 from pitch_coach_backend.module.chat.exception import ChatRunInProgress, ChatTargetNotFound
+from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT, uses_deleted
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 
@@ -49,7 +50,7 @@ def change_scope(
     if conversation is None:
         db.rollback()
         raise ChatTargetNotFound()
-    if repo.has_active_run(conversation.id):
+    if ChatRepository(db).has_running_run(conversation.id):
         # 실행 중에 범위를 바꾸면 그 실행이 어느 범위로 답했는지 알 수 없게 된다
         db.rollback()
         raise ChatRunInProgress()
@@ -75,7 +76,9 @@ def list_messages(
     repo = ChatApiRepository(db)
     if repo.get_owned_conversation(conversation_id, user_id) is None:
         raise ChatTargetNotFound()
-    messages = repo.list_messages(conversation_id, before_seq=before_seq, limit=limit + 1)
+    messages = ChatRepository(db).list_recent_messages(
+        conversation_id, before_seq=before_seq, limit=limit + 1
+    )
     has_more = len(messages) > limit
     messages = messages[-limit:] if has_more else messages
     current = current_sources(
