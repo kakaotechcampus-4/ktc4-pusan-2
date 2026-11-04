@@ -65,6 +65,7 @@ class ChatGoal(CreatedAtMixin, Base):
     goal: Mapped[Any | None] = mapped_column(JSONB)
     status: Mapped[str | None] = mapped_column(String(20))
     base_take_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    first_take_number: Mapped[int | None] = mapped_column(Integer)
     action_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("chat_actions.id", ondelete="SET NULL")
     )

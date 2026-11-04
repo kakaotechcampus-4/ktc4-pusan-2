@@ -16,6 +16,7 @@ from pitch_coach_backend.module.chat.service.request import (
     selected_proposal,
 )
 from pitch_coach_backend.module.chat.service.result import failed, succeeded
+from pitch_coach_backend.module.take.repository import TakeRepository
 
 GOAL_METRICS = {
     "audience_ratio": ("GAZE", "gt_base"),
@@ -55,6 +56,7 @@ def save_goal(
             goal=goal,
             status="OPEN",
             base_take_id=uuid.UUID(goal["base"]["take_id"]),
+            first_take_number=TakeRepository(db).next_take_number(uuid.UUID(goal["pitch_id"])),
             action_id=saved.id,
         )
     )
