@@ -1,6 +1,7 @@
 """코치 대화 API(화면 ↔ BE). 턴 실행기는 띄우지 않고 띄우려 한 run_id 만 모은다."""
 
 import asyncio
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -309,6 +310,35 @@ def test_text_out_of_range_is_422(client: TestClient, user_id: uuid.UUID, text: 
     status, body = _send(client, user_id, text=text)
 
     assert (status, body["code"]) == (422, "VALIDATION_ERROR")
+
+
+def _nested(depth: int) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for _ in range(depth):
+        value = {"x": value}
+    return value
+
+
+@pytest.mark.parametrize(
+    "screen", [{"x": float("nan")}, {"x": "a\x00b"}, {"a\x00": 1}, _nested(33)]
+)
+def test_unstorable_screen_is_422(
+    client: TestClient, user_id: uuid.UUID, screen: dict[str, Any]
+) -> None:
+    # 실행의 원래 입력(JSONB)에 저장하지 못해 500 이 나기 전에 막는다.
+    # httpx 는 NaN 을 보내지 않으므로 본문을 직접 만든다(JSON 파서는 NaN 을 받는다)
+    body = {
+        "text": "질문",
+        "page": {**HOME, "screen": screen},
+        "client_request_id": str(uuid.uuid4()),
+    }
+    response = client.post(
+        "/api/chat/messages",
+        content=json.dumps(body),
+        headers={**_headers(user_id), "Content-Type": "application/json"},
+    )
+
+    assert (response.status_code, response.json()["code"]) == (422, "VALIDATION_ERROR")
 
 
 def test_text_at_limit_is_kept_whole(

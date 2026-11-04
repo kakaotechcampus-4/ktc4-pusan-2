@@ -4,9 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
-from pitch_coach_backend.core.validation import NulFreeStr
+from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
 
 # 사용자 말 길이. 유니코드 문자(코드 포인트) 수로 센다. 넘으면 자르지 않고 422 다
 MESSAGE_MAX_CHARS = 2000
@@ -36,8 +36,8 @@ class ChatPageDTO(_Request):
     pitch_id: uuid.UUID | None = None
     take_id: uuid.UUID | None = None
     # 피치 만들기 · 수정 · 장치 점검 화면의 저장 전 입력.
-    # 실행이 끝날 때까지만 실행의 원래 입력으로 둔다
-    screen: dict[str, Any] | None = None
+    # 실행이 끝날 때까지만 실행의 원래 입력(JSONB)으로 둔다. 저장할 수 없는 값은 받을 때 422 다
+    screen: Annotated[dict[str, Any], AfterValidator(reject_unstorable_json)] | None = None
 
 
 class ChatChoiceDTO(_Request):
