@@ -1,3 +1,5 @@
+import asyncio
+import copy
 import hashlib
 import json
 import re
@@ -12,12 +14,13 @@ from pydantic import BaseModel
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal
+from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal, request_review_once
 from pitch_coach_backend.module.chat.ai_response import (
     ACTION_ARGS,
     ACTION_AUTONOMY,
     FetchPitchArgs,
     FetchTakeArgs,
+    ReassessArgs,
     SaveGoalArgs,
     StartPracticeArgs,
     StreamLine,
@@ -50,8 +53,11 @@ from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import standard as standard_service
 from pitch_coach_backend.module.take.coach_repository import CoachRepository
+from pitch_coach_backend.module.take.dto import UserCriteriaDTO
 from pitch_coach_backend.module.take.entity import Mission, Take
+from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service.review import build_review_request
 
 SEOUL = ZoneInfo("Asia/Seoul")
 HISTORY_MESSAGES = 20
@@ -542,13 +548,13 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
         raise RunLost(run.run_id)
     saved = ChatRepository(db).get_action(row.id, action["action_id"])
     if saved.status in ("SUCCEEDED", "FAILED"):
-        return ActionResultDTO.model_validate(saved.result)
+        return ActionResultDTO.model_validate(
+            {key: value for key, value in saved.result.items() if key != "review_revision"}
+        )
     if _invalid(action):
-        result = _failed(action, "VALIDATION_ERROR", "실행할 수 없는 행동이에요.")
-        saved.status = "FAILED"
-        saved.result = result.model_dump(mode="json")
-        db.commit()
-        return result
+        return _close_action(
+            db, row, action, _failed(action, "VALIDATION_ERROR", "실행할 수 없는 행동이에요.")
+        )
     saved.status = "RUNNING"
     db.commit()
     return None
@@ -569,7 +575,7 @@ def run_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionRe
 
 def _invalid(action: dict[str, Any]) -> bool:
     kind = action["type"]
-    if kind not in ACTION_HANDLERS or action["autonomy"] != ACTION_AUTONOMY[kind]:
+    if kind not in (*ACTION_HANDLERS, "REASSESS") or action["autonomy"] != ACTION_AUTONOMY[kind]:
         return True
     try:
         ACTION_ARGS[kind].model_validate(action["args"])
@@ -939,6 +945,149 @@ def _finite(value: Any) -> bool:
 
 
 ACTION_HANDLERS["SAVE_GOAL"] = _save_goal
+
+REASSESS_DAILY_LIMIT = 30
+EMPTY_CRITERIA = {"display_criteria": [], "targets": [], "script_used": None}
+NO_REVIEW = "이 연습은 다시 평가할 자료가 부족해요."
+
+
+@dataclass(frozen=True)
+class PreparedReassess:
+    take_id: uuid.UUID
+    review_revision: int
+    official: dict[str, Any]
+    before: dict[str, Any]
+    after: dict[str, Any]
+    before_digest: str
+
+
+def prepare_reassess(
+    db: Session, run: ClaimedRun, action: dict[str, Any]
+) -> PreparedReassess | ActionResultDTO:
+    repo = ChatRepository(db)
+    row = _lock_current(db, run)
+    if row is None:
+        raise RunLost(run.run_id)
+    args = ReassessArgs.model_validate(action["args"])
+    take = _owned_take_by_id(db, repo, row.user_id, args.take_id)
+    if take is None:
+        return _close_action(
+            db, row, action, _failed(action, "NOT_FOUND", "기록을 찾을 수 없어요.")
+        )
+    review = repo.list_ai_results(take.Take.id, ["REVIEW"])
+    if not review:
+        return _close_action(db, row, action, _failed(action, "VALIDATION_ERROR", NO_REVIEW))
+    if repo.count_succeeded_actions(row.id, "REASSESS") > 0:
+        return _close_action(
+            db,
+            row,
+            action,
+            _failed(action, "VALIDATION_ERROR", "다시 평가는 한 번에 한 번만 해요."),
+        )
+    try:
+        before = build_review_request(db, take.Take.id).model_dump(mode="json")
+        after = _changed_request(before, args.change)
+    except ValueError, NonExistentTake:
+        return _close_action(db, row, action, _failed(action, "VALIDATION_ERROR", NO_REVIEW))
+    if not repo.charge_reassess(row.user_id, datetime.now(SEOUL).date(), REASSESS_DAILY_LIMIT):
+        return _close_action(
+            db,
+            row,
+            action,
+            _failed(
+                action,
+                "AGENT_DAILY_LIMIT",
+                "오늘은 다시 평가를 더 할 수 없지만 다른 질문은 계속할 수 있어요.",
+            ),
+        )
+    payload = review[0].payload
+    db.commit()
+    return PreparedReassess(
+        take_id=take.Take.id,
+        review_revision=review[0].revision,
+        official={"score": payload.get("score"), "dimensions": payload.get("dimensions")},
+        before=before,
+        after=after,
+        before_digest=_digest(before),
+    )
+
+
+def _owned_take_by_id(
+    db: Session, repo: ChatRepository, user_id: uuid.UUID, take_id: str
+) -> Row | None:
+    try:
+        take_uuid = uuid.UUID(take_id)
+    except ValueError:
+        return None
+    take = repo.get_take_with_review(take_uuid)
+    if take is None or PitchRepository(db).get_owned(take.Take.pitch_id, user_id) is None:
+        return None
+    return take
+
+
+def _changed_request(before: dict[str, Any], change: dict[str, Any]) -> dict[str, Any]:
+    after = copy.deepcopy(before)
+    criteria = after["user_criteria"] or copy.deepcopy(EMPTY_CRITERIA)
+    criteria.update(change)
+    after["user_criteria"] = UserCriteriaDTO.model_validate(criteria).model_dump(mode="json")
+    if {**before, "user_criteria": None} != {**after, "user_criteria": None}:
+        raise ValueError("허용 칸 밖이 바뀌었다")
+    return after
+
+
+async def call_reassess(prepared: PreparedReassess) -> tuple[dict, dict] | None:
+    try:
+        async with asyncio.TaskGroup() as group:
+            before = group.create_task(request_review_once(prepared.take_id, prepared.before))
+            after = group.create_task(request_review_once(prepared.take_id, prepared.after))
+    except Exception:
+        return None
+    return before.result(), after.result()
+
+
+def finish_reassess(
+    db: Session,
+    run: ClaimedRun,
+    action: dict[str, Any],
+    prepared: PreparedReassess,
+    replies: tuple[dict, dict] | None,
+) -> ActionResultDTO:
+    repo = ChatRepository(db)
+    row = _lock_current(db, run)
+    if row is None:
+        raise RunLost(run.run_id)
+    review = repo.list_ai_results(prepared.take_id, ["REVIEW"])
+    if (
+        replies is None
+        or _digest(prepared.before) != prepared.before_digest
+        or replies[0]["meta"].get("criteria_versions")
+        != replies[1]["meta"].get("criteria_versions")
+        or not review
+        or review[0].revision != prepared.review_revision
+    ):
+        result = _failed(
+            action, "AGENT_UPSTREAM_ERROR", "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요."
+        )
+    else:
+        result = _succeeded(
+            action, {"before": replies[0], "after": replies[1], "official": prepared.official}
+        )
+    saved = repo.get_action(row.id, action["action_id"])
+    saved.status = "SUCCEEDED" if result.status == "SUCCEEDED" else "FAILED"
+    saved.result = {**result.model_dump(mode="json"), "review_revision": prepared.review_revision}
+    saved.source_take_ids = [str(prepared.take_id)]
+    db.commit()
+    return result
+
+
+def _close_action(
+    db: Session, row: ChatRun, action: dict[str, Any], result: ActionResultDTO
+) -> ActionResultDTO:
+    saved = ChatRepository(db).get_action(row.id, action["action_id"])
+    saved.status = "FAILED"
+    saved.result = result.model_dump(mode="json")
+    db.commit()
+    return result
 
 
 def _digest(value: Any) -> str:

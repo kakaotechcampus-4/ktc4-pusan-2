@@ -2,7 +2,8 @@ import asyncio
 import logging
 import uuid
 import weakref
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,7 +15,12 @@ from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.chat import service
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, request_turn
 from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
-from pitch_coach_backend.module.chat.dto import AgentResumeDTO, BudgetUsedDTO, SignedStateDTO
+from pitch_coach_backend.module.chat.dto import (
+    ActionResultDTO,
+    AgentResumeDTO,
+    BudgetUsedDTO,
+    SignedStateDTO,
+)
 from pitch_coach_backend.module.chat.service import ClaimedRun, RunLost
 
 logger = logging.getLogger(__name__)
@@ -30,6 +36,9 @@ _running = TaskRegistry()
 _slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
     weakref.WeakKeyDictionary()
 )
+_slot_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _chat_slot() -> asyncio.Semaphore:
@@ -38,6 +47,25 @@ def _chat_slot() -> asyncio.Semaphore:
         slots = asyncio.Semaphore(CHAT_SLOT_LIMIT)
         _slots[loop] = slots
     return slots
+
+
+@asynccontextmanager
+async def _double_slot() -> AsyncGenerator[None]:
+    loop = asyncio.get_running_loop()
+    slots = _chat_slot()
+    lock = _slot_locks.setdefault(loop, asyncio.Lock())
+    async with lock:
+        await slots.acquire()
+        try:
+            await slots.acquire()
+        except BaseException:
+            slots.release()
+            raise
+    try:
+        yield
+    finally:
+        slots.release()
+        slots.release()
 
 
 async def _in_session[T](session_factory: SessionFactory, fn: Callable[..., T], *args: Any) -> T:
@@ -143,9 +171,12 @@ class _Turn:
                 self._session_factory, service.begin_action, self._current, action
             )
             if result is None:
-                result = await _in_session(
-                    self._session_factory, service.run_action, self._current, action
-                )
+                if action["type"] == "REASSESS":
+                    result = await self._reassess(action)
+                else:
+                    result = await _in_session(
+                        self._session_factory, service.run_action, self._current, action
+                    )
             action_ms = round((loop.time() - started) * 1000)
             resume = AgentResumeDTO(
                 state=SignedStateDTO.model_validate(outcome.data["state"]),
@@ -154,6 +185,23 @@ class _Turn:
             budget = BudgetUsedDTO.model_validate(outcome.data["budget_used"])
             budget = budget.model_copy(update={"elapsed_ms": budget.elapsed_ms + action_ms})
         await self.give_up(TurnFailure(UPSTREAM_ERROR))
+
+    async def _reassess(self, action: dict[str, Any]) -> ActionResultDTO:
+        prepared = await _in_session(
+            self._session_factory, service.prepare_reassess, self._current, action
+        )
+        if isinstance(prepared, ActionResultDTO):
+            return prepared
+        async with _double_slot():
+            replies = await service.call_reassess(prepared)
+        return await _in_session(
+            self._session_factory,
+            service.finish_reassess,
+            self._current,
+            action,
+            prepared,
+            replies,
+        )
 
     async def _progress(self, turn_call: int, line: StreamLine) -> None:
         saved = await _in_session(

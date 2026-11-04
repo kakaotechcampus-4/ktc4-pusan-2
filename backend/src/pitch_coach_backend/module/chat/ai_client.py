@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -19,8 +20,10 @@ from pitch_coach_backend.module.chat.ai_response import (
     validate_final,
 )
 from pitch_coach_backend.module.chat.dto import AgentTrigger, AgentTurnRequestDTO
+from pitch_coach_backend.module.take.ai_response import validate_review_reply
 
 TURN_TIMEOUT_SEC = 50.0
+REVIEW_TIMEOUT_SEC = 30.0
 BUSY_RETRY_AFTER_SEC = 5
 NDJSON = "application/x-ndjson"
 
@@ -39,6 +42,7 @@ class TurnFailure:
     code: str
     retry_after_s: int | None = None
     diagnostics: dict[str, Any] | None = None
+
 
 # 사용자 입력을 하나 받고, AI가 응답을 스트리밍으로 보내는 turn 요청을 처리
 async def request_turn(
@@ -92,6 +96,7 @@ def _pre_stream_failure(body: bytes) -> TurnFailure:
     code = pre_stream_error_code(body)
     return TurnFailure(code, BUSY_RETRY_AFTER_SEC if code == "AGENT_BUSY" else None)
 
+
 # 스트림을 읽고, 최종 StreamLine을 반환
 async def _read(response: httpx.Response, run_id: str, on_progress: OnProgress) -> StreamLine:
     reader = StreamReader(run_id)
@@ -100,3 +105,19 @@ async def _read(response: httpx.Response, run_id: str, on_progress: OnProgress) 
             if line.event in ("plan", "tool_done"):
                 await on_progress(line)
     return reader.finish()
+
+
+async def request_review_once(take_id: uuid.UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async with (
+        asyncio.timeout(REVIEW_TIMEOUT_SEC),
+        httpx.AsyncClient(timeout=REVIEW_TIMEOUT_SEC, event_hooks=AI_RESPONSE_HOOKS) as client,
+    ):
+        response = await client.post(
+            f"{settings.ai_base_url}/takes/review",
+            json=body,
+            headers={"X-Request-ID": uuid.uuid4().hex},
+        )
+    response.raise_for_status()
+    reply = response.json()
+    validate_review_reply(reply, take_id)
+    return reply

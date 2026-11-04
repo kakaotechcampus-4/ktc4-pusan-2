@@ -1,13 +1,16 @@
 import uuid
 from collections.abc import Sequence
+from datetime import date
 from typing import Any
 
 from sqlalchemy import Row, Select, and_, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
+    ChatDailyUsage,
     ChatGoal,
     ChatMessage,
     ChatRun,
@@ -30,6 +33,19 @@ class ChatRepository:
         return self.db.scalar(
             select(ChatAction).where(ChatAction.run_id == run_id, ChatAction.action_id == action_id)
         )
+
+    def charge_reassess(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
+        stmt = (
+            insert(ChatDailyUsage)
+            .values(id=uuid.uuid7(), user_id=user_id, day=day, reassessments=1)
+            .on_conflict_do_update(
+                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
+                set_={"reassessments": ChatDailyUsage.reassessments + 1},
+                where=ChatDailyUsage.reassessments < limit,
+            )
+            .returning(ChatDailyUsage.id)
+        )
+        return self.db.scalar(stmt) is not None
 
     def count_succeeded_actions(self, run_id: uuid.UUID, kind: str) -> int:
         return self.db.scalar(
