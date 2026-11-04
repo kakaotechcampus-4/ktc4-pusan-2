@@ -23,6 +23,8 @@
      첫 문장(코드 템플릿)은 낱말 검사에서 뺀다. 첫 문장 뒤 모델 설명만 낱말 · 숫자 검사를 받는다.
   6. 모든 종류(SYSTEM · ACTION_RESULT는 코드 문장이라 낱말 검사 제외): 금지 주장 · 한글 수 · 인과 단정 · 동의/칭찬 낱말 ·
      개인정보.
+  7. 범위 밖 `SCOPE_RULE`: 모델이 쓴 RECORD · GUIDE(인용 밖) · ASSESSMENT 설명에 `cfg.scope_out_words`(수정안 · 추천 값 ·
+     예상 질문 · 연습 계획 낱말)가 있으면 건다. 이 검사에 걸린 문장은 고치기에 보내지 않고 turn.py가 바로 버린다(6-9).
 - 고칠 때
   - 낱말 목록은 `config.py`에만 둔다(바꾸면 `version.FEATURE_VERSION`을 올린다). 검사 ID를 더하면 `CheckId`와
     기능 문서 11-5 표를 같이 고친다.
@@ -68,6 +70,7 @@ class CheckId(StrEnum):
     AUTHORIZATION = "AUTHORIZATION"
     ACTION_ARGS = "ACTION_ARGS"
     FIX_NEW_CONTENT = "FIX_NEW_CONTENT"
+    SCOPE_RULE = "SCOPE_RULE"
 
 
 DISPLAY_FIELDS = ("cards", "plan", "trace", "history_summary")
@@ -1016,6 +1019,11 @@ def _check_one(
         return f
     if c.kind == "GUIDE":
         scan = _unquoted(scan)  # 인용은 QUOTE_MISMATCH 로 원문과 대조했다
+    if scope := _found(cfg.scope_out_words, scan):
+        fail(
+            CheckId.SCOPE_RULE,
+            f"'{scope[0]}'처럼 대본 · 발표자료 · 평가 기준 · 제한 시간의 수정안 · 추천 값, 예상 질문, 연습 계획 · 일정은 쓸 수 없음",
+        )
     if (w := _conclusion_word(scan)) is not None and c.kind != "ASSESSMENT":
         fail(
             CheckId.VERDICT_CONFLICT,

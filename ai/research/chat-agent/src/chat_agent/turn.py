@@ -8,6 +8,8 @@
   기본 자료 크기(512 KiB, 413) → (이어 부르기) 서명 · 판 · 식별자 검사(409) → 대기 행동과 결과의 짝(409) → 누적 사용량이 줄지 않았는지(409).
 - 실행 흐름(`_orchestrate`): 호출 횟수 · 시작 시간 한도 → 자동 목표 확인 / 행동 결과 반영 / 고른 제안 저장 / 계획 → 조사 →
   행동이면 NEEDS_ACTION(서명), 아니면 답 쓰기 → 판단 확정 → 문장 만들기 → 답 검사 · 한 번 고치기 → 최종 출력.
+- 범위 밖(1-3): 계획 · 답 초안이 `OUT_OF_SCOPE`면 `scope_reason`별 고정 문장(templates.py)으로 `REFUSED`, 섞인 요청은 초안의
+  `scope_notes` 이유별 고정 문장을 답 문장 뒤에 덧붙여 `DONE`. `SCOPE_RULE`(범위 밖 낱말)에 걸린 모델 문장은 고치기에 보내지 않고 버린다.
 - 줄 쓰기(5-4): 이벤트마다 `allow_nan=False`로 완전히 직렬화하고 LF 를 붙인다. 한 줄 2 MiB, 누적 16 MiB(끝 줄 몫 4 KiB 예약).
   `final`이 너무 크면 trace 상세 → 진단 기록 순으로 줄이고, 그래도 크면 `AGENT_OUTPUT_TOO_LARGE` error 줄로 끝낸다. 끝 줄은 정확히 하나다.
 - 연결이 끊기면(반복자를 닫으면) 새 모델 · 도구 호출을 하지 않는다(L1-08).
@@ -360,7 +362,9 @@ def _orchestrate(
         route = lp.plan_phase()
         if route == "OUT_OF_SCOPE":
             return finish(
-                status="REFUSED", reason="OUT_OF_SCOPE", system=[templates.SystemText.OUT_OF_SCOPE]
+                status="REFUSED",
+                reason="OUT_OF_SCOPE",
+                system=[templates.scope_text(lp.scope_reason)],
             )
         if route == "ANSWER_DIRECT":
             lp.st.research_done = True
@@ -601,7 +605,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     route = draft.get("route")
     if route == "OUT_OF_SCOPE":
         return finish(
-            status="REFUSED", reason="OUT_OF_SCOPE", system=[templates.SystemText.OUT_OF_SCOPE]
+            status="REFUSED",
+            reason="OUT_OF_SCOPE",
+            system=[templates.scope_text(draft.get("scope_reason"))],
         )
     no_guide = route == "NO_GUIDE"
 
@@ -730,19 +736,27 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     failures = recheck(out)
     answer_seq = lp._last_model_seq
     check_seqs: list[int] = []
+    # 범위 밖 낱말(SCOPE_RULE)이 걸린 문장은 고치기에 보내지 않고 바로 버린다(6-9). 한 문장에 다른 검사도 걸렸어도 같다
+    scope_dropped = {f.claim_index for f in failures if f.check_id == chk.CheckId.SCOPE_RULE}
     for f in failures:
         detail = {
             "claim_index": f.claim_index,
             "claim_kind": f.claim_kind,
             "round": 0,
-            "result": "FIX_REQUESTED",
+            "result": "DROPPED" if f.claim_index in scope_dropped else "FIX_REQUESTED",
         }
         check_seqs.append(lp.diag.step("CHECK", f.check_id, detail, parent_seq=answer_seq))
     final_claims = out
     rnd = 0
     if failures:
         rnd = 1
-        fixable = [f for f in failures if f.claim_index is not None and model_flags[f.claim_index]]
+        fixable = [
+            f
+            for f in failures
+            if f.claim_index is not None
+            and model_flags[f.claim_index]
+            and f.claim_index not in scope_dropped
+        ]
         asked = {f.claim_index for f in fixable}
         fixed_texts = (
             lp.fix_call(
@@ -798,6 +812,8 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         final_claims = restored + final_claims
         fix_seq = lp._last_model_seq if fixed is not None else answer_seq
         for f in outcome.remaining_failures:
+            if f.claim_index in scope_dropped:
+                continue  # 이미 처음 검사에서 DROPPED 로 남겼다
             detail = {
                 "claim_index": f.claim_index,
                 "claim_kind": f.claim_kind,
@@ -888,6 +904,11 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         final_claims.insert(
             0, Claim(kind="SYSTEM", text=templates.SystemText.RECORD_CHANGED_DURING.value)
         )
+    # 섞인 요청의 범위 밖 부분: 이유별 고정 문장을 답 문장 뒤에 덧붙인다(1-3 · 7-10)
+    for reason in _scope_notes(draft):
+        note = templates.scope_text(reason).value
+        if all(c.text != note for c in final_claims):
+            final_claims.append(Claim(kind="SYSTEM", text=note))
     stopped = _RESEARCH_STOP.get(stop_reason or "")
     if stopped is not None:
         # 조사가 끝까지 가지 못했으면 확인한 데까지만 말한다(8-2 · L1-11 · L1-12 · L1-16)
@@ -913,6 +934,16 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         history_summary=history_summary,
         sources=_sources(final_claims),
     )
+
+
+def _scope_notes(draft: dict[str, Any]) -> list[str]:
+    """답 초안의 `scope_notes` → 알려진 이유만, 중복 없이, 앞에서 3개까지(1-3)."""
+    raw = draft.get("scope_notes")
+    out: list[str] = []
+    for r in raw if isinstance(raw, list) else []:
+        if isinstance(r, str) and r in templates.SCOPE_TEXT and r not in out:
+            out.append(r)
+    return out[:3]
 
 
 def _action_notes(lp: Loop) -> list[str]:

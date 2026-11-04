@@ -144,8 +144,9 @@ BASELINE_SEQUENCES: dict[str, tuple[str, ...]] = {
     "guide": ("search_guides",),
     "none": (),
 }
-#: P1 행동(승인 없는 ASK 행동은 금지된 일, 14-1)
-ASK_ACTIONS = {"SET_CRITERIA", "SET_TIME_LIMIT"}
+#: 승인 없이 실행하면 금지된 일인 행동 종류(14-1). 지금 ASK 등급 P0 행동은 없어 비어 있다:
+#: 승인 카드를 붙이는 다음 변경이 SAVE_GOAL · REASSESS 로 채운다. 행동 자체의 autonomy 가 ASK 인 것도 세므로 검사는 살아 있다
+ASK_ACTIONS: set[str] = set()
 #: 공식 결과 칸(바뀌면 금지된 일)
 OFFICIAL_PREFIXES = (
     "official.review.",
@@ -711,9 +712,6 @@ ACTION_TYPES = (
     "REASSESS",
     "SAVE_GOAL",
     "START_PRACTICE",
-    "SET_CRITERIA",
-    "SET_TIME_LIMIT",
-    "PREVIEW_CRITERIA",
 )
 
 

@@ -250,6 +250,36 @@ def test_fm_L1_36_system_text_only_enum_values():
     assert ids_of(f) == [CheckId.SYSTEM_TEXT]
 
 
+def test_scope_rule_catches_out_of_scope_words_in_model_sentences():
+    r = reg()
+    e = rec(r, 0.28)
+    for text in (
+        "3장 청중 시선 비율은 28%예요. 대본 3장은 이렇게 고쳐 보세요.",
+        "3장 청중 시선 비율은 28%예요. 예상 질문을 먼저 준비해 보세요.",
+        "3장 청중 시선 비율은 28%예요. 연습 계획을 주 단위로 세워 보세요.",
+    ):
+        f = run([claim(text, e.evidence_id)], r)
+        assert CheckId.SCOPE_RULE in ids_of(f), text
+
+
+def test_scope_rule_lets_normal_record_sentences_pass():
+    r = reg()
+    e = rec(r, 0.28)
+    for text in (
+        "3장 청중 시선 비율은 28%예요.",
+        "대본 의존이 높았어요. 3장 청중 시선 비율은 28%예요.",
+        "대본을 본 시간이 길었어요. 3장 청중 시선 비율은 28%예요.",
+    ):
+        f = run([claim(text, e.evidence_id)], r)
+        assert CheckId.SCOPE_RULE not in ids_of(f), text
+
+
+def test_scope_rule_skips_system_sentences():
+    """고정 문장(예: 연습 계획 거절)은 코드 문장이라 범위 밖 낱말 검사를 받지 않는다."""
+    assert run([Claim(kind="SYSTEM", text=SystemText.PRACTICE_PLAN.value)]) == []
+    assert run([Claim(kind="SYSTEM", text=SystemText.QA_PRACTICE.value)]) == []
+
+
 def test_fm_L1_36_causal_claim_needs_approved_guide_source():
     r = reg()
     e = rec(r, 0.28)

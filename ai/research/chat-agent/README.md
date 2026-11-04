@@ -10,7 +10,7 @@
 | 담당 | JWK0395 |
 | 설계 | 목적 · 계약 · 처리 · 실패 처리 · 시험 → [`docs/ai/features/chat-agent.md`](../../../docs/ai/features/chat-agent.md) |
 | 단계 | 연구 모듈에서 먼저 만들고 확인한 뒤 서비스에 탑재한다(기능 문서 4-1). **탑재 전에는 BE가 부르지 않는다** |
-| 버전 | `chat_agent-0.1.0`(`src/chat_agent/version.py`), 응답 스키마 `1.0`, 도구 스키마 `tools-1`, 실행 상태 `v` 1 |
+| 버전 | `chat_agent-0.2.0`(`src/chat_agent/version.py`, 아래 평가 결과 표의 1 ~ 3회차는 `0.1.0`에서 잰 값), 응답 스키마 `1.0`, 도구 스키마 `tools-1`, 실행 상태 `v` 1 |
 
 ## 1. 코드 구조
 
@@ -45,12 +45,12 @@ chat-agent/
 | `schemas.py` | `/agent/turn` 요청 · 응답 · 스트림 줄 · 진단 기록 · 행동 모양 = 계약(5절) | JSON → pydantic 모델 | 코어 전체 · 계약 시험 · 가짜 BE | 기능 문서 5절 · `examples/` · 계약 시험을 같이 고친다. 이름 변경 · 삭제는 `SCHEMA_VERSION` |
 | `config.py` | 비교 방향 표 · 차원 표(리뷰와 같은 사본) · 목표 지표 · 낱말 목록 · 한도 · 크기 | `load_config(**덮어쓸 값)` → 깊게 불변 설정 | 코어 전체 | 낱말 목록을 바꾸면 `FEATURE_VERSION` 을 올린다. 리뷰 표가 바뀌면 `test_contract_tables.py` 가 깨진다 |
 | `version.py` | feature · schema · tool_schema · state 판 | — | 응답 `meta` · 실행 상태 | 9절 '언제 오르나' |
-| `templates.py` | 사용자 안내 문구 · 판단 첫 문장 · 결론 문장(7-9 · 7-10) | 판정 · 근거 문구 → 문장 | 판단 · 답 검사 · 루프 | 문구는 기능 문서 7-9와 글자까지 같게 둔다(`test_config_templates.py`) |
+| `templates.py` | 사용자 안내 문구(범위 밖 이유별 거절 문장 포함, `scope_text`) · 판단 첫 문장 · 결론 문장(7-9 · 7-10) | 판정 · 근거 문구 → 문장 | 판단 · 답 검사 · 루프 | 문구는 기능 문서 7-9와 글자까지 같게 둔다(`test_config_templates.py`) |
 | `evidence.py` | 이번 실행의 근거 등록부(기록 · 화면 · 계산 근거 발급, 원천이 지워지면 함께 버림)와 근거 지문(5-2 `EvidenceBasis`) | 기록 값 · 버전 → `Evidence` · 지문 | 도구 · 판정 · 검사 · 루프 | 근거 모양은 5-2 `Evidence`. 지문 재료를 바꾸면 앞 판단과 맞지 않으니 `FEATURE_VERSION` |
 | `values.py` | Take 결과에서 지표 값 · 문제 구간 · 범위 경계 · 규칙 판 읽기. 생략된 경로(같은 · 조상 · 자손)는 읽지 않음 | 스냅숏 · 지표 → 값 또는 `OMITTED` | 비교 · 목표 · 판정 · 도구 | 코치 Take 결과 경로가 바뀌면 여기와 `fixtures.py` |
 | `goals.py` | 두 Take 비교(방향 표 · 비교 조건)와 목표 초안 · 목표 판정(6-4) | 두 스냅숏 · 지표 → `Comparison`, 목표 · 스냅숏 → `GoalJudgement` | 도구(`compare_takes`) · 행동(`SAVE_GOAL`) · 자동 목표 확인 | 계산식을 바꾸면 `GOAL_ALGORITHM_VERSION` |
 | `claims.py` | 사용자 주장 판정(6-3): 판단 초안 검사 · 코드 판정 · 주장 키 · 압력 · 대체 · 판단 첫 문장 | 판단 초안 · 기록 → `Assessment` · 문장 | 루프(답 쓰기 · 다시 평가 전) | 판정 표 · 키 재료를 바꾸면 `FEATURE_VERSION` |
-| `checks.py` | 답 검사(6-9): 종류별 검사 · 숫자 · 대상 대조 · 결론 · 동의 · 완화 낱말 · 화면 문자열 · 한 번 고치기 | 문장 · 근거 → `CheckFailure` 목록 | 루프(답 쓰기 · 고치기) | 검사 ID는 11-5. 검사를 더하면 ID와 `FEATURE_VERSION` |
+| `checks.py` | 답 검사(6-9): 종류별 검사 · 숫자 · 대상 대조 · 결론 · 동의 · 완화 · 범위 밖 낱말 · 화면 문자열 · 한 번 고치기 | 문장 · 근거 → `CheckFailure` 목록 | 루프(답 쓰기 · 고치기) | 검사 ID는 11-5. 검사를 더하면 ID와 `FEATURE_VERSION`. `SCOPE_RULE`(범위 밖 낱말)에 걸린 문장은 고치기 없이 `turn.py`가 버린다 |
 | `state.py` | 실행 상태 서명 · 검증(5-6): HMAC · `kid` · 검증 순서 · 크기 · 만료 | payload · 키 → 서명 dict, 서명 dict → payload 또는 409 | 턴(멈춤 · 이어 부르기) | 외곽 모양을 바꾸면 `STATE_V` |
 | `runctx.py` | 한 호출의 실행 맥락: 범위 · 피치 · 읽은 Take · 목표 · 근거 등록부 · 도구 캐시 | 요청 → `RunCtx` | 도구 · 행동 · 루프 | — |
 | `tools/` | 읽기 도구 8개(5-7): 엄격한 인자, 결과에 근거 id, 캐시, trace 요약(사용자 글 없음) | 맥락 · 인자 → `ToolResult` · `TraceItem` | 루프(조사) | 도구를 더하면 `TOOL_SCHEMA_VERSION`과 5-7 |
@@ -60,7 +60,7 @@ chat-agent/
 | `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시) | — | `corpus.py` | 카드를 고치면 해시를 다시 만들고 `corpus_version`을 올린다 |
 | `llm_types.py` | 코어가 받는 도구 호출 LLM 의 모양(6-11): 요청 · 결과 · 실패 종류 · `before_attempt` 예약 | — | 루프 · 연구용 LLM 함수 · 가짜 모델 | 서비스로 옮길 때 `common/errors.py` 이름과 맞춘다 |
 | `diagnostics.py` | 진단 기록(11-5): 단계 · 끝, 닫힌 detail, 65,536바이트 줄이기 순서, `agent_step` · `agent_end` 로그 줄 | 단계 → `Diagnostics` | 루프 · 턴 | detail 필드는 `schemas.py` 닫힌 모델과 11-5 표 |
-| `prompts/` | 고정 지시문(계획 · 조사 · 답 쓰기 · 고치기)과 구조화 출력 모양, `PROMPT_VERSION`(해시) | — | 루프 | 바꾸면 평가셋을 다시 돌리고 예시를 다시 만든다(판이 바뀜) |
+| `prompts/` | 고정 지시문(계획 · 조사 · 답 쓰기 · 고치기)과 구조화 출력 모양(범위 밖 이유 `scope_reason` · 섞인 요청의 `scope_notes` 포함), `PROMPT_VERSION`(해시) | — | 루프 | 바꾸면 평가셋을 다시 돌리고 예시를 다시 만든다(판이 바뀜) |
 | `loop.py` | 루프 단계(6-1): 계획 → 조사(도구 · 행동) → 답 쓰기 → 고치기, 이어 부를 때 지워진 원천 버리기 · 행동 결과 반영 | 요청 · 의존성 → 단계별 결과 | 턴 | 한도 숫자는 `config.py`, 순서 규칙은 `budget.py` |
 | `compose.py` | 코드가 그리는 문장: 비교 결론 · 목표 판정 · 근거 템플릿 부분 답 · 자료 카드 | 근거 → 문장 · 카드 | 턴 | 문구는 `templates.py` |
 | `turn.py` | `/agent/turn` 한 번(5-3 · 5-4): 스트림 전 검사 → 실행 → 진행 줄 · 끝 줄, 행동이면 서명, 판단 확정 · 답 검사 · 한 번 고치기 · 최종 출력 검사 | 요청 바이트 · 의존성 → 스트림 전 오류 또는 NDJSON 줄 | 서비스 계층(연구는 `chat_agent_lab/app.py`) | 크기 한도는 `config.py` |

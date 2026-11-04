@@ -17,7 +17,20 @@ from enum import StrEnum
 class SystemText(StrEnum):
     """`SYSTEM` 문장으로 쓸 수 있는 고정 문구 (7-9 · 7-10). 값이 화면 문구다."""
 
+    #: 범위 밖 이유 OTHER(발표와 무관한 질문)의 문장. 이유별 문장은 아래 CONTENT_COACHING · QA_PRACTICE · PRACTICE_PLAN
     OUT_OF_SCOPE = "발표 연습과 관계없는 질문이에요."
+    CONTENT_COACHING = (
+        "대본 · 발표자료 · 평가 기준 · 제한 시간을 평가하거나 고쳐 쓰는 일은 도와드리지 않아요. "
+        "연습 기록으로 볼 수 있는 대본 의존 · 대본 응시 · 내용 전달도는 같이 볼 수 있어요."
+    )
+    QA_PRACTICE = (
+        "예상 질문 만들기 · 질의응답 연습은 도와드리지 않아요. "
+        "연습 기록에서 말 속도 · 시선 같은 전달 방식은 같이 볼 수 있어요."
+    )
+    PRACTICE_PLAN = (
+        "연습 계획 · 일정은 짜 드리지 않아요. "
+        "대화 목표를 정해 두면 다음 Take에서 이뤘는지 확인해 드릴 수 있어요."
+    )
     NO_GUIDE = "자료에서 근거를 찾지 못해 답하지 않을게요."
     CANNOT_ANSWER = "이 요청에는 답할 수 없어요."
     ANSWER_INCOMPLETE = "답을 완성하지 못했어요."
@@ -82,6 +95,25 @@ class SystemText(StrEnum):
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
     SCRIPT_NOT_ALLOWED = "공식 평가에는 대본 사용 허용이 없어요."
     SCRIPT_POINTS_REMOVED = "평가 항목이 빠져 오른 점수예요. 실력이 바뀐 건 아니에요."
+
+
+#: 범위 밖 이유(1-3) → 고정 문장(7-10). 모델이 고른 이유를 코드가 이 문장으로 바꾼다(거절 문장은 모델이 쓰지 않는다)
+SCOPE_REASONS = ("CONTENT_COACHING", "QA_PRACTICE", "PRACTICE_PLAN", "OTHER")
+SCOPE_TEXT: dict[str, SystemText] = {
+    "CONTENT_COACHING": SystemText.CONTENT_COACHING,
+    "QA_PRACTICE": SystemText.QA_PRACTICE,
+    "PRACTICE_PLAN": SystemText.PRACTICE_PLAN,
+    "OTHER": SystemText.OUT_OF_SCOPE,
+}
+
+
+def scope_text(reason: object) -> SystemText:
+    """범위 밖 이유 → 고정 문장. 이유가 없거나 모르는 값이면 `OTHER`(발표와 무관)의 문장."""
+    return (
+        SCOPE_TEXT.get(reason, SystemText.OUT_OF_SCOPE)
+        if isinstance(reason, str)
+        else SystemText.OUT_OF_SCOPE
+    )
 
 
 #: 실행 성공 문장 (ACTION_RESULT, 6-9 · 7-10). 행동 type → 문장

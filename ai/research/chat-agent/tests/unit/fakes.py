@@ -86,11 +86,13 @@ def plan(
     route: str = "RESEARCH",
     steps: list[str] | None = None,
     assessments: list[dict[str, Any]] | None = None,
+    scope_reason: str | None = None,
 ) -> LlmResult:
     steps = steps if steps is not None else ["기록 확인", "답 쓰기"]
     return structured(
         {
             "route": route,
+            "scope_reason": scope_reason,
             "plan": [
                 {"step": s, "status": "DOING" if i == 0 else "TODO", "note": None}
                 for i, s in enumerate(steps)
@@ -143,10 +145,14 @@ def answer(
     assessments: list[dict[str, Any]] | None = None,
     start_practice: dict[str, Any] | None = None,
     history_summary: str | None = None,
+    scope_reason: str | None = None,
+    scope_notes: list[str] | None = None,
 ) -> LlmResult:
     return structured(
         {
             "route": route,
+            "scope_reason": scope_reason,
+            "scope_notes": scope_notes or [],
             "assessments": assessments or [],
             "claims": claims,
             "start_practice": start_practice,
