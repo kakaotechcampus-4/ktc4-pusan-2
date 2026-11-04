@@ -162,6 +162,14 @@ def test_low_persistence_counts_back_from_last_second() -> None:
     assert 0 < issue.persistence_sec <= 6
 
 
+def test_low_persistence_stops_at_a_missing_second() -> None:
+    # 작게 5초 → 기록 없는 1초 → 작게 3초. 빈 1초 너머는 이어 세지 않는다
+    records = speech(0, 5000, BASE - 12) + speech(6000, 9000, BASE - 12)
+    volume, _ = run(records, 9000)
+    [issue] = volume.issues
+    assert issue.persistence_sec == 3.0
+
+
 # --------------------------------------------------------------------------
 # PAUSE
 # --------------------------------------------------------------------------

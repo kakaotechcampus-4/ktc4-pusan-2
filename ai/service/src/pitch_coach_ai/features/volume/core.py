@@ -261,9 +261,14 @@ def _smoothed(
 
 
 def _low_run_ms(seen: list[VoiceRecord], base: float | None, config: Config) -> int:
-    """마지막 1초부터 거꾸로, 짧은 창의 voice_diff_db 가 작음 기준 미만이었던 시간."""
+    """마지막 1초부터 거꾸로, 짧은 창의 voice_diff_db 가 작음 기준 미만이었던 시간.
+
+    기록 사이가 비면 거기서 멈춘다(빈 시간 너머의 작음을 이어 세지 않는다).
+    """
     run = 0
     for i in range(len(seen) - 1, -1, -1):
+        if i + 1 < len(seen) and _end(seen[i]) != seen[i + 1].t_ms:
+            break
         _, diff = _smoothed(seen[: i + 1], _end(seen[i]), base, config)
         if diff is None or diff >= config.low_diff_db:
             break
