@@ -25,6 +25,8 @@ def clean_script(text: str) -> str:
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     # 줄 안의 연속 공백/탭만 하나로 정리, 문단 구분은 최대 빈 줄 하나(\n\n)까지 유지
     text = re.sub(r"[ \t]+", " ", text)
+    # 줄 끝 공백을 지워 공백 · 탭만 있던 줄도 빈 줄로 센다
+    text = re.sub(r" +$", "", text, flags=re.MULTILINE)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 

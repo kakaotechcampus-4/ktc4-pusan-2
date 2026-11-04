@@ -26,6 +26,9 @@ from pitch_coach_ai.features.script_parser.cleaner import clean_script, count_ch
         ("a  \t b", "a b"),
         ("a\n\n\n\nb", "a\n\nb"),
         ("  앞뒤 공백  \n", "앞뒤 공백"),
+        # 공백 · 탭만 있는 줄도 빈 줄로 보고 줄인다
+        ("가\n \n\t\n \n나", "가\n\n나"),
+        ("가 \n나", "가\n나"),
     ],
 )
 def test_clean_script(text, expected):
