@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import null, select, update
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
@@ -23,31 +22,9 @@ from pitch_coach_backend.module.chat.service.goal_undo import BASE_DELETED, UNDO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.user.entity import User
+from tests.chat.api_helpers import bearer
 
-
-async def _no_sweep_stop() -> None:
-    return None
-
-
-def _no_sweep() -> Any:
-    return _no_sweep_stop
-
-
-@pytest.fixture(autouse=True)
-def chat_app(monkeypatch: pytest.MonkeyPatch) -> None:
-    """대화를 켜고, 턴 실행기 · 대화 주기 작업이 실제 DB · AI 를 부르지 않게 막는다."""
-    from pitch_coach_backend import main
-    from pitch_coach_backend.core.config import settings
-    from pitch_coach_backend.module.chat import controller
-
-    monkeypatch.setattr(settings, "agent_enabled", True)
-    monkeypatch.setattr(main, "start_goal_sweep", _no_sweep)
-    monkeypatch.setattr(main, "start_cleanup_sweep", _no_sweep)
-    monkeypatch.setattr(controller.turn_runner, "start", lambda run_id: None)
-
-
-def _headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+pytestmark = pytest.mark.usefixtures("chat_app")
 
 
 def _pitch(db: Session, user_id: uuid.UUID) -> Pitch:
@@ -151,9 +128,7 @@ def _save(
 
 
 def _undo(client: TestClient, user_id: uuid.UUID, run_id: uuid.UUID, action_id: str) -> Any:
-    return client.post(
-        f"/api/chat/runs/{run_id}/actions/{action_id}/undo", headers=_headers(user_id)
-    )
+    return client.post(f"/api/chat/runs/{run_id}/actions/{action_id}/undo", headers=bearer(user_id))
 
 
 def _system_texts(db: Session, conversation_id: uuid.UUID) -> list[str]:
