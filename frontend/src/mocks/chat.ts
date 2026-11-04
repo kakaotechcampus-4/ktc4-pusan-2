@@ -9,6 +9,7 @@ import type {
   ChatErrorCode,
   ChatMessage,
   ClaimEventData,
+  ChatScreen,
   ConversationSummary,
   Goal,
   ProposedGoal,
@@ -23,7 +24,7 @@ import type {
   SendMessageRequest,
   TraceItem,
 } from '@/types/chat';
-import { TERMINAL_RUN_STATUSES } from '@/types/chat';
+import { isTerminalRun } from '@/shared/lib/chatAgent';
 
 /**
  * 대화형 코치 에이전트 목 (`docs/ai/features/chat-agent.md` 12-3 · 12-4, 개정판 #900).
@@ -40,12 +41,17 @@ import { TERMINAL_RUN_STATUSES } from '@/types/chat';
  *   "다시 평가" · "대본 보고" → 승인 카드(REASSESS) → [승인] 참고 결과 카드
  *   "발표할래" · "연습 준비" → [연습 준비로] 버튼 카드
  *   "기억"            → '기억했어요' 카드 (기억이 켜져 있고 '기억 없이' 대화가 아닐 때)
+ *   "봤지"            → 주장 판정: 판단 문장(기록과 다름). 같은 대화에서 다시 물으면 앞 판단을 대체
+ *   (피치 만들기 · 수정 화면에서) → 화면 값 근거(`origin:"SCREEN"`) 문장과 사용법 자료
  *   그 밖              → Take 비교 답: 내 기록 · 자료 · 일반 조언 문장 셋
+ *
+ * 실행은 첫 조회에서 `QUEUED` 를 그대로 보이고, 다음 조회부터 나아갑니다.
  *
  * 콘솔(개발 중에만): `mockChat.fail('AGENT_BUSY')` 다음 보내기 실패 · `mockChat.runFail('AGENT_TIMEOUT')`
  * 다음 실행이 첫 문장 뒤 실패 · `mockChat.partial()` 다음 실행이 첫 문장 뒤 PARTIAL (행동 성공 문장 뒤에서는
  * 끊지 않습니다 — 완료 문장은 성공 기록으로만 나옵니다) · `mockChat.expire()`
- * 승인 대기를 만료 · `mockChat.disable()` / `enable()` / `unreachable()` 사용 가능 여부 · `mockChat.ok()` 되돌리기.
+ * 승인 대기를 만료 · `mockChat.goalCheck('ACHIEVED')` 저장된 대화 목표의 자동 확인 결과 ·
+ * `mockChat.disable()` / `enable()` / `unreachable()` 사용 가능 여부 · `mockChat.ok()` 되돌리기.
  */
 
 const pitch = homeFixture.pitches[0]!;
@@ -112,6 +118,14 @@ const guide: GuideCard = {
   license: 'CC BY 4.0',
 };
 
+const usageGuide: GuideCard = {
+  source_id: 'u-03#1',
+  title: '발표 정보 바꾸기',
+  quote: '제한 시간은 피치 만들기의 발표 정보 단계에서 바꾸고, 저장하면 다음 연습부터 적용돼요.',
+  source: '피치코치 사용법',
+  license: '피치코치',
+};
+
 const BASIS_LABEL = `Take ${take3!.take_version} · 대본 V2 · 기준 v4 기준`;
 
 type ClaimStep = Omit<ClaimEventData, 'index'>;
@@ -137,25 +151,34 @@ const say = (
   ...rest,
 });
 
-function compareClaims(): ClaimStep[] {
-  const a = gazeOf(take2, 0.31, 'ev-gaze-t2');
-  const b = gazeOf(take3, 0.24, 'ev-gaze-t3');
+const percent = (ratio: number) => Math.round(ratio * 100);
+
+/** 두 Take 의 3장 청중 보기 비율 비교. 기본은 최근 완료 Take 둘(2 → 3) */
+function compareClaims(
+  from = take2,
+  to = take3,
+  [fromValue, toValue]: [number, number] = [0.31, 0.24],
+  prefix = 'ev',
+): ClaimStep[] {
+  const a = gazeOf(from, fromValue, `${prefix}-gaze-t${from!.take_version}`);
+  const b = gazeOf(to, toValue, `${prefix}-gaze-t${to!.take_version}`);
+  const delta = Math.round((toValue - fromValue) * 100) / 100;
   const diff = evidence({
-    evidence_id: 'ev-gaze-diff',
+    evidence_id: `${prefix}-gaze-diff`,
     origin: 'COMPUTED',
     kind: null,
     revision: null,
     path: 'computed.diff(audience_ratio, slide 3)',
     metric: 'audience_ratio',
     slide_number: 3,
-    value: -0.07,
+    value: delta,
     inputs: [a.evidence_id, b.evidence_id],
     calc: 'DIFF',
   });
   return [
     say(
       'RECORD',
-      `3장에서 청중을 본 비율이 Take ${take2!.take_version} 31%에서 Take ${take3!.take_version} 24%로 7%p 줄었어요.`,
+      `3장에서 청중을 본 비율이 Take ${from!.take_version} ${percent(fromValue)}%에서 Take ${to!.take_version} ${percent(toValue)}%로 ${Math.abs(percent(delta))}%p ${delta < 0 ? '줄었어요' : '늘었어요'}.`,
       { evidence_ids: [diff.evidence_id] },
       { evidence: [a, b, diff] },
     ),
@@ -241,7 +264,92 @@ const base = (): Step[] => [
   { t: 'plan', plan: plan(['DONE', 'DONE', 'DOING'], STEPS) },
 ];
 
-function scenario(text: string, ctx: { memoryOn: boolean; choice: boolean }): Step[] {
+interface ScenarioContext {
+  memoryOn: boolean;
+  choice: boolean;
+  screen: ChatScreen | null;
+  /** 이번 판단에 붙일 ID 와, 같은 대화의 가장 최근 판단 */
+  assessmentId: string;
+  priorAssessmentId: string | null;
+}
+
+/**
+ * 사용자 주장 판정 (6-3). 측정 주장은 코드가 판정하므로 `verdict` 는 기록대로 "기록과 다름" 입니다.
+ * 실제로는 대상 Take 나 근거가 바뀌었을 때만 앞 판단을 대체합니다. 목은 대체 표시(`superseded_by`)를
+ * 볼 수 있게, 같은 대화에서 다시 물으면 늘 앞 판단을 대체합니다.
+ */
+function assessmentSteps(text: string, ctx: ScenarioContext): Step[] {
+  const [record, guideClaim] = compareClaims();
+  const quote = text.slice(0, text.indexOf('봤지') + 2).trim();
+  const assessment: Assessment = {
+    assessment_id: ctx.assessmentId,
+    quote,
+    type: 'MEASURED',
+    verdict: 'CONTRADICTED',
+    evidence_ids: record!.claim.evidence_ids,
+    source_ids: [],
+    reason: '3장 청중 보기 비율이 줄었어요.',
+    supersedes: ctx.priorAssessmentId ? [ctx.priorAssessmentId] : [],
+  };
+  return [
+    ...base(),
+    {
+      t: 'claim',
+      data: say(
+        'ASSESSMENT',
+        `말씀하신 '${quote}'는 기록과 달라요. ${record!.claim.text}`,
+        { assessment_id: ctx.assessmentId, evidence_ids: record!.claim.evidence_ids },
+        { evidence: record!.evidence, assessments: [assessment] },
+      ),
+    },
+    { t: 'claim', data: guideClaim! },
+    { t: 'end', status: 'DONE', cards: () => [] },
+  ];
+}
+
+/** 피치 만들기 · 수정 화면의 질문 — 화면 값을 근거로 쓰고 입력란은 바꾸지 않습니다 (12-4 Screen) */
+function screenSteps(screen: Extract<ChatScreen, { name: 'pitch_create' | 'pitch_edit' }>): Step[] {
+  const sec = screen.draft.time_limit_sec;
+  const steps: Step[] = [];
+  if (sec !== null) {
+    const value = evidence({
+      evidence_id: 'ev-screen-time',
+      origin: 'SCREEN',
+      kind: null,
+      revision: null,
+      rule_version: null,
+      path: 'screen.draft.time_limit_sec',
+      value: sec,
+      unit: 'sec',
+      saved: !screen.changed.includes('time_limit_sec'),
+      screen_snapshot_id: screen.snapshot_id,
+    });
+    steps.push({
+      t: 'claim',
+      data: say(
+        'RECORD',
+        `지금 화면의 제한 시간은 ${Math.round(sec / 60)}분이에요.`,
+        { evidence_ids: [value.evidence_id] },
+        { evidence: [value] },
+      ),
+    });
+  }
+  steps.push(
+    {
+      t: 'claim',
+      data: say(
+        'GUIDE',
+        '발표 정보 단계에서 바꾸고 저장하면 다음 연습부터 적용돼요.',
+        { source_ids: [usageGuide.source_id] },
+        { sources: [usageGuide] },
+      ),
+    },
+    { t: 'end', status: 'DONE', cards: () => [] },
+  );
+  return steps;
+}
+
+function scenario(text: string, ctx: ScenarioContext): Step[] {
   const [first, ...more] = compareClaims();
   if (ctx.choice)
     return [
@@ -320,7 +428,7 @@ function scenario(text: string, ctx: { memoryOn: boolean; choice: boolean }): St
         t: 'ask',
         action_type: 'REASSESS',
         title: '대본을 보고 한 발표로 다시 평가할까요?',
-        summary: `Take ${take3!.take_version}을 대본 사용 기준으로 다시 평가해 참고 결과를 만들어요`,
+        summary: `Take ${take2!.take_version}를 대본 사용 기준으로 다시 평가해 참고 결과를 만들어요`,
         before: { script_used: false },
         after: { script_used: true },
         notes: ['참고 결과이고 공식 결과는 그대로예요'],
@@ -335,15 +443,16 @@ function scenario(text: string, ctx: { memoryOn: boolean; choice: boolean }): St
             cards: () => [
               {
                 type: 'REASSESS_RESULT',
-                take_id: take3!.take_id,
+                // 홈 목에서 점수가 있는 Take(2, 72점) — Take 3 은 점수가 없습니다
+                take_id: take2!.take_id,
                 change: 'SCRIPT_USED',
                 before: {
-                  score: 68,
+                  score: take2!.score,
                   dimensions: { audience_gaze: 'NEEDS_WORK', delivery: 'STABLE' },
                   criteria_results: {},
                 },
                 after: {
-                  score: 74,
+                  score: 78,
                   dimensions: { audience_gaze: null, delivery: 'STABLE' },
                   criteria_results: {},
                 },
@@ -373,6 +482,9 @@ function scenario(text: string, ctx: { memoryOn: boolean; choice: boolean }): St
             : [],
       },
     ];
+  if (text.includes('봤지')) return assessmentSteps(text, ctx);
+  if (ctx.screen?.name === 'pitch_create' || ctx.screen?.name === 'pitch_edit')
+    return screenSteps(ctx.screen);
   return [
     ...base(),
     ...[first!, ...more].map((data): Step => ({ t: 'claim', data })),
@@ -421,6 +533,10 @@ interface Run {
   failAfterFirst: { status: 'PARTIAL' | 'FAILED'; code: ChatErrorCode | null } | null;
   /** 승인받은 행동. 그 결과 카드(목표 저장됨)는 같은 `action_id` 를 씁니다 — 승인한 그 행동의 결과입니다 */
   approvedActionId: string | null;
+  /** 제안 카드에서 고른 안의 목표. 저장할 목표 내용입니다 */
+  chosenGoal: ProposedGoal | null;
+  /** 첫 조회에서 `QUEUED` 를 보였는지 */
+  queuedShown: boolean;
 }
 
 /** msw 가 넘기는 것 중 이 목이 쓰는 칸 */
@@ -441,7 +557,7 @@ interface UserState {
   undone: Map<string, { action_id: string; goal_version: number }>;
   goalVersion: number;
   /** 저장된 목표의 `action_id` 와 그 판 */
-  goalAction: { action_id: string; version: number } | null;
+  goalAction: { action_id: string; version: number; conversation_id: string } | null;
   memory: { enabled: boolean; items: ProfileItem[] };
 }
 
@@ -452,6 +568,7 @@ export interface MockChatControls {
   runFail: (code?: ChatErrorCode) => void;
   partial: () => void;
   expire: () => void;
+  goalCheck: (status?: 'ACHIEVED' | 'NOT_ACHIEVED') => void;
   disable: () => void;
   enable: () => void;
   unreachable: () => void;
@@ -473,6 +590,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
   const newRunId = idMaker('42000000');
   const newActionId = idMaker('43000000');
   const newItemId = idMaker('44000000');
+  const newProposalId = idMaker('45000000');
+  const newAssessmentId = idMaker('46000000');
 
   let availability: 'on' | 'off' | 'unreachable' = 'on';
   let sendFailure: Failure = null;
@@ -498,6 +617,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
               'EXPIRED',
               '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.',
             );
+    },
+    goalCheck: (status = 'ACHIEVED') => {
+      for (const state of users.values()) checkGoal(state, status);
     },
     disable: () => {
       availability = 'off';
@@ -537,7 +659,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
   /** 지난 대화 하나 — 최신 아님 배지(`NEW_TAKE`)를 볼 수 있게 둡니다 */
   function seed(state: UserState) {
     const id = newConversationId();
-    const [claim] = compareClaims();
+    // 그 뒤에 끝난 Take 3 이 있어 최신 아님(NEW_TAKE)입니다
+    const [claim] = compareClaims(take1, take2, [0.22, 0.31], 'ev-old');
     state.conversations.set(id, {
       conversation_id: id,
       title: '지난번보다 청중을 더 봤어?',
@@ -551,11 +674,44 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         {
           ...assistantMessage(newRunId(), 'DONE', [claim!], [], [], []),
           created_at: '2026-10-28T09:00:00Z',
-          basis_label: `Take ${take1!.take_version} · 대본 V1 · 기준 v3 기준`,
+          basis_label: `Take ${take2!.take_version} · 대본 V2 · 기준 v4 기준`,
           stale_reasons: ['NEW_TAKE'],
         },
       ],
     });
+  }
+
+  /**
+   * 자동 목표 확인 (5-1 `TAKE_REVIEWED`). 목표 저장 뒤 시작한 Take 의 리뷰가 저장되면 BE 가 부릅니다.
+   * 사용자 말 없이 답 메시지만 대화에 남고, 대화창을 열면 보입니다.
+   * 목에는 목표 뒤의 Take 가 없어서 홈 목 다음 번호(Take 6)를 씁니다.
+   */
+  function checkGoal(state: UserState, status: 'ACHIEVED' | 'NOT_ACHIEVED') {
+    const goal = state.goalAction;
+    const conversation = goal ? state.conversations.get(goal.conversation_id) : undefined;
+    if (!goal || !conversation) return;
+    const nextTake = pitch.takes.length + 1;
+    const observed = status === 'ACHIEVED' ? 0.33 : 0.25;
+    const verdict = status === 'ACHIEVED' ? '이뤘어요' : '아직 이루지 못했어요';
+    const card: Card = {
+      type: 'GOAL_RESULT',
+      goal_version: goal.version,
+      take_id: `20000000-0000-4000-8000-${String(nextTake).padStart(12, '0')}`,
+      status,
+      observed,
+      reason: `3장 청중 보기 비율이 ${percent(observed)}%예요.`,
+    };
+    conversation.messages.push(
+      assistantMessage(
+        newRunId(),
+        'DONE',
+        [say('SYSTEM', `Take ${nextTake} 리뷰로 대화 목표를 확인했어요. 목표를 ${verdict}.`)],
+        [card],
+        [],
+        [],
+      ),
+    );
+    conversation.last_message_at = new Date().toISOString();
   }
 
   function userMessage(text: string, at = new Date().toISOString()): ChatMessage {
@@ -664,7 +820,12 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
 
   /** 조회 한 번에 한 단계 */
   function advance(state: UserState, run: Run) {
-    if (TERMINAL_RUN_STATUSES.includes(run.status) || run.status === 'WAITING_APPROVAL') return;
+    if (isTerminalRun(run.status) || run.status === 'WAITING_APPROVAL') return;
+    // 접수 직후 첫 조회는 대기 그대로 — 화면의 대기(2초) → 실행 중(1초) 조회 전환을 볼 수 있게
+    if (run.status === 'QUEUED' && !run.queuedShown) {
+      run.queuedShown = true;
+      return;
+    }
     run.status = 'RUNNING';
     const step = run.steps.shift();
     if (!step) return finish(state, run, 'DONE', []);
@@ -702,14 +863,19 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         cards = cards.map((card) => {
           if (card.type === 'GOAL_SAVED') {
             state.goalVersion += 1;
-            state.goalAction = { action_id: actionId, version: state.goalVersion };
-            return { ...card, goal: savedGoal(state.goalVersion) };
+            state.goalAction = {
+              action_id: actionId,
+              version: state.goalVersion,
+              conversation_id: run.conversation_id,
+            };
+            return { ...card, goal: { ...savedGoal(state.goalVersion), ...run.chosenGoal } };
           }
           if (card.type === 'MEMORY_SAVED') {
             const item: ProfileItem = { item_id: newItemId(), key: card.key, value: card.value };
             state.memory.items = [...state.memory.items.filter((i) => i.key !== item.key), item];
             return { ...card, item_id: item.item_id };
           }
+          if (card.type === 'GOAL_PROPOSAL') return { ...card, proposal_id: newProposalId() };
           return card;
         });
         return finish(state, run, step.status, cards);
@@ -732,9 +898,24 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     };
   }
 
+  /** 내 피치인지 — 없거나 남의 대상은 같은 404 (12-3). 목의 피치는 하나입니다 */
+  const knownScope = (pitchId: unknown) => pitchId === null || pitchId === PITCH_ID;
+
+  /** 이 대화에 저장된 제안 카드의 그 안 — 없거나 다른 대화의 것이면 null (12-3 → 404) */
+  function proposalOption(
+    conversation: Conversation,
+    choice: NonNullable<SendMessageRequest['choice']>,
+  ) {
+    for (const message of conversation.messages)
+      for (const card of message.cards)
+        if (card.type === 'GOAL_PROPOSAL' && card.proposal_id === choice.proposal_id)
+          return card.options.find((o) => o.label === choice.option) ?? null;
+    return null;
+  }
+
   const activeRun = (state: UserState, conversationId: string) =>
     [...state.runs.values()].find(
-      (r) => r.conversation_id === conversationId && !TERMINAL_RUN_STATUSES.includes(r.status),
+      (r) => r.conversation_id === conversationId && !isTerminalRun(r.status),
     ) ?? null;
 
   const summary = (c: Conversation): ConversationSummary => ({
@@ -780,7 +961,13 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           scope_pitch_id?: unknown;
           memory_off?: unknown;
         } | null;
-        if (!body || typeof body.memory_off !== 'boolean') return error('VALIDATION_ERROR', 422);
+        if (
+          !body ||
+          typeof body.memory_off !== 'boolean' ||
+          !(body.scope_pitch_id === null || typeof body.scope_pitch_id === 'string')
+        )
+          return error('VALIDATION_ERROR', 422);
+        if (!knownScope(body.scope_pitch_id)) return error('NOT_FOUND', 404);
         const conversation = createConversation(
           state,
           body.scope_pitch_id as string | null,
@@ -799,7 +986,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       withUser((state, { params }) => {
         const conversation = state.conversations.get(String(params.conversationId));
         if (!conversation) return error('NOT_FOUND', 404);
-        return HttpResponse.json({ items: conversation.messages, next_cursor: null });
+        return HttpResponse.json({
+          items: withSupersededBy(conversation.messages),
+          next_cursor: null,
+        });
       }),
     ),
 
@@ -842,13 +1032,18 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             return error(code, status, { 'Retry-After': String(secondsToSeoulMidnight()) });
           return error(code, status);
         }
+        // 고르기(choice)는 그 제안이 있는 대화에서만 옵니다
+        if (body.choice && !body.conversation_id) return error('NOT_FOUND', 404);
         let conversation: Conversation | undefined;
         if (body.conversation_id) {
           conversation = state.conversations.get(body.conversation_id);
           if (!conversation) return error('NOT_FOUND', 404);
         } else {
+          if (!knownScope(body.scope_pitch_id)) return error('NOT_FOUND', 404);
           conversation = createConversation(state, body.scope_pitch_id, body.text, false);
         }
+        const chosen = body.choice ? proposalOption(conversation, body.choice) : null;
+        if (body.choice && !chosen) return error('NOT_FOUND', 404);
         const running = activeRun(state, conversation.conversation_id);
         if (running?.status === 'WAITING_APPROVAL')
           settleAsk(state, running, 'CANCELLED', '새 메시지를 받아 앞의 확인 요청은 취소했어요.');
@@ -864,7 +1059,11 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           status: 'QUEUED',
           steps: scenario(body.text, {
             memoryOn: state.memory.enabled && !conversation.memory_off,
-            choice: body.choice !== null,
+            choice: chosen !== null,
+            screen: body.page.screen,
+            assessmentId: newAssessmentId(),
+            priorAssessmentId:
+              conversation.messages.flatMap((msg) => msg.assessments).at(-1)?.assessment_id ?? null,
           }),
           events: [],
           plan: [],
@@ -876,6 +1075,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           ask: null,
           failAfterFirst: runFailure,
           approvedActionId: null,
+          chosenGoal: chosen?.goal ?? null,
+          queuedShown: false,
         };
         runFailure = null;
         state.runs.set(run.run_id, run);
@@ -909,7 +1110,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         if (!run) return error('NOT_FOUND', 404);
         // [취소]는 새 메시지가 아니라서 "새 메시지를 받아 …" 문장을 붙이지 않습니다
         if (run.status === 'WAITING_APPROVAL') settleAsk(state, run, 'CANCELLED', null);
-        else if (!TERMINAL_RUN_STATUSES.includes(run.status)) finish(state, run, 'CANCELLED', []);
+        else if (!isTerminalRun(run.status)) finish(state, run, 'CANCELLED', []);
         // 먼저 끝난 쪽이 이깁니다 — 이미 끝났으면 그 상태를 그대로 돌려줍니다
         return HttpResponse.json(runView(run, run.events.length));
       }),
@@ -1038,6 +1239,21 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
   }
 
   return { handlers, controls };
+}
+
+/** 판단마다 그 판단을 대체한 새 판단의 ID — 대화 전체의 `supersedes` 로 계산합니다 (12-3 메시지 목록) */
+function withSupersededBy(messages: ChatMessage[]): ChatMessage[] {
+  const by = new Map<string, string>();
+  for (const message of messages)
+    for (const a of message.assessments)
+      for (const old of a.supersedes) by.set(old, a.assessment_id);
+  return messages.map((message) => ({
+    ...message,
+    assessments: message.assessments.map((a) => ({
+      ...a,
+      superseded_by: by.get(a.assessment_id) ?? null,
+    })),
+  }));
 }
 
 /** 키 순서와 상관없이 같은 값이면 같은 글 */

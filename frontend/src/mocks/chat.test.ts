@@ -354,13 +354,49 @@ describe('그 밖의 시나리오', () => {
     expect((await cardsOf(conversation_id)).map((c) => c.type)).toEqual(['GOAL_SAVED']);
   });
 
+  /** 제안 카드를 받은 대화와 그 제안 */
+  async function proposalConversation() {
+    const { run_id, conversation_id } = await accepted('목표 제안해 줘');
+    await settle(run_id);
+    const proposal = (await cardsOf(conversation_id))[0] as Extract<
+      Card,
+      { type: 'GOAL_PROPOSAL' }
+    >;
+    return { conversation_id, proposal };
+  }
+
   it('PARTIAL 을 걸어도 행동 성공 문장 뒤에서는 끊지 않는다 — 카드 없는 "저장했어요" 가 없다', async () => {
+    const { conversation_id, proposal } = await proposalConversation();
     controls.partial();
-    const { run_id, conversation_id } = await accepted('추천 안으로 잡아 줘', {
-      choice: { proposal_id: 'proposal-1', option: 'EXPERT' },
+    const { run_id } = await accepted('추천 안으로 잡아 줘', {
+      conversation_id,
+      choice: { proposal_id: proposal.proposal_id, option: 'EXPERT' },
     });
     expect((await settle(run_id)).status).toBe('DONE');
     expect((await cardsOf(conversation_id)).map((c) => c.type)).toEqual(['GOAL_SAVED']);
+  });
+
+  it('고른 안의 목표를 저장한다 — 사용자 안은 장이 없는 목표', async () => {
+    const { conversation_id, proposal } = await proposalConversation();
+    const { run_id } = await accepted('내 안으로 잡아 줘', {
+      conversation_id,
+      choice: { proposal_id: proposal.proposal_id, option: 'USER' },
+    });
+    await settle(run_id);
+    const saved = (await cardsOf(conversation_id))[0] as Extract<Card, { type: 'GOAL_SAVED' }>;
+    expect(saved.goal).toMatchObject({ slide_number: null, status: 'OPEN', version: 1 });
+  });
+
+  it('이 대화에 없는 제안 · 대화 없는 고르기는 404', async () => {
+    const { conversation_id } = await proposalConversation();
+    const unknown = await send(
+      message('골라 줘', { conversation_id, choice: { proposal_id: 'nope', option: 'EXPERT' } }),
+    );
+    expect(unknown.status).toBe(404);
+    const orphan = await send(
+      message('골라 줘', { choice: { proposal_id: 'nope', option: 'USER' } }),
+    );
+    expect(orphan.status).toBe(404);
   });
 
   it('PARTIAL 을 걸면 첫 문장만 남긴 채 PARTIAL 로 끝난다', async () => {
@@ -403,5 +439,119 @@ describe('그 밖의 시나리오', () => {
     const off = await accepted('짧게 설명해 줘, 기억해');
     await settle(off.run_id);
     expect(await cardsOf(off.conversation_id)).toEqual([]);
+  });
+});
+
+describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
+  it('접수 직후 첫 조회는 QUEUED 그대로, 다음 조회부터 RUNNING', async () => {
+    const { run_id } = await accepted('비교해 줘');
+    expect(await poll(run_id)).toMatchObject({ status: 'QUEUED', events: [] });
+    expect((await poll(run_id)).status).toBe('RUNNING');
+  });
+
+  it('없는 피치를 범위로 보내거나 새 대화를 만들면 404', async () => {
+    expect((await send(message('비교해 줘', { scope_pitch_id: 'nope' }))).status).toBe(404);
+    const created = await call(chatPaths.conversations, 'POST', {
+      scope_pitch_id: 'nope',
+      page: message('').page,
+      memory_off: false,
+    });
+    expect(created.status).toBe(404);
+  });
+
+  it('"봤지" 는 판단 문장과 판단을 함께 내고, 다시 물으면 앞 판단을 대체한다', async () => {
+    const first = await accepted('이번엔 청중 많이 봤지?');
+    const view = await settle(first.run_id);
+    expect(view.status).toBe('DONE');
+    const second = await accepted('그래도 청중 많이 봤지?', {
+      conversation_id: first.conversation_id,
+    });
+    await settle(second.run_id);
+
+    const answers = (await messages(first.conversation_id)).items.filter(
+      (m) => m.role === 'assistant',
+    );
+    const [old, next] = answers.map((m) => m.assessments[0]!);
+    expect(answers[0]!.claims[0]).toMatchObject({
+      kind: 'ASSESSMENT',
+      assessment_id: old!.assessment_id,
+    });
+    expect(old).toMatchObject({ quote: '이번엔 청중 많이 봤지', verdict: 'CONTRADICTED' });
+    // quote 는 사용자 말 원문의 부분 문자열
+    expect('이번엔 청중 많이 봤지?'.includes(old!.quote)).toBe(true);
+    expect(next!.supersedes).toEqual([old!.assessment_id]);
+    expect([old!.superseded_by, next!.superseded_by]).toEqual([next!.assessment_id, null]);
+  });
+
+  it('저장된 목표는 자동 확인 결과를 사용자 말 없이 그 대화에 남긴다', async () => {
+    const { run_id, conversation_id } = await accepted('목표로 잡아 줘');
+    const ask = askOf(await settle(run_id));
+    await call(chatPaths.decision(ask.action_id), 'POST', {
+      decision: 'APPROVE',
+      args_hash: ask.args_hash,
+    });
+    await settle(run_id);
+    const before = (await messages(conversation_id)).items.length;
+
+    controls.goalCheck('NOT_ACHIEVED');
+    const items = (await messages(conversation_id)).items;
+    expect(items).toHaveLength(before + 1);
+    expect(items.at(-1)!.cards[0]).toMatchObject({
+      type: 'GOAL_RESULT',
+      goal_version: 1,
+      status: 'NOT_ACHIEVED',
+    });
+  });
+
+  it('피치 만들기 화면에서 물으면 화면 값 근거로 답한다 — 결과 판이 아니라 스냅샷을 가리킨다', async () => {
+    const screen = {
+      name: 'pitch_create',
+      snapshot_id: 'ss-1',
+      step: 'info',
+      version_label: null,
+      version_id: null,
+      saved: null,
+      draft: {
+        title: '졸업 발표',
+        slide_count: 12,
+        script_chars: 1850,
+        time_limit_sec: 300,
+        criteria_text: null,
+      },
+      changed: ['time_limit_sec'],
+    };
+    const { run_id, conversation_id } = await accepted('제한 시간은 어디서 바꿔?', {
+      page: { route: '/pitch/new', pitch_id: null, take_id: null, screen },
+    });
+    await settle(run_id);
+    const answer = (await messages(conversation_id)).items.at(-1)!;
+    expect(answer.evidence[0]).toMatchObject({
+      origin: 'SCREEN',
+      screen_snapshot_id: 'ss-1',
+      revision: null,
+      value: 300,
+      saved: false,
+    });
+    expect(answer.claims.map((c) => c.kind)).toEqual(['RECORD', 'GUIDE']);
+  });
+
+  it('목 데이터가 홈 목과 맞는다 — 지난 대화는 Take 2 기준, 다시 평가는 점수가 있는 Take 2', async () => {
+    const list = await call(chatPaths.conversations).then(json<ConversationList>);
+    const old = (await messages(list.items[0]!.conversation_id)).items.at(-1)!;
+    expect(old.basis_label).toMatch(/^Take 2 /);
+    expect(old.evidence.map((e) => e.take_number).filter(Boolean)).toEqual([1, 2]);
+
+    const { run_id, conversation_id } = await accepted('대본 보고 한 발표였어');
+    const ask = askOf(await settle(run_id));
+    await call(chatPaths.decision(ask.action_id), 'POST', {
+      decision: 'APPROVE',
+      args_hash: ask.args_hash,
+    });
+    await settle(run_id);
+    const result = (await messages(conversation_id)).items.at(-1)!.cards[0] as Extract<
+      Card,
+      { type: 'REASSESS_RESULT' }
+    >;
+    expect(result.before.score).toBe(72);
   });
 });

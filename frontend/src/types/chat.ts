@@ -23,15 +23,6 @@ export type RunStatus =
   | 'CANCELLED'
   | 'EXPIRED';
 
-export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
-  'DONE',
-  'PARTIAL',
-  'REFUSED',
-  'FAILED',
-  'CANCELLED',
-  'EXPIRED',
-];
-
 /** 행동 상태 (12-3). `ASK` 행동은 PENDING 에서 승인 · 거절 · 만료 · 취소로 갈립니다 */
 export type ActionStatus =
   'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
@@ -248,6 +239,7 @@ export type RunEvent =
 /** 실행 조회 응답 (12-3 '실행 상태 조회') */
 export interface RunView {
   run_id: string;
+  /** (FE 잠정) 문서 12-4 가 "대화 ID 가 지금과 다르면 버린다" 고 해서 실었습니다 */
   conversation_id: string;
   status: RunStatus;
   plan: PlanStep[];
@@ -285,16 +277,16 @@ export interface ChatMessage {
   /** 사용자 말 · 시스템 문장. 에이전트 답은 `claims` 를 이은 값입니다 */
   text: string;
   created_at: string;
-  /** 이 메시지를 만든 실행. 사용자 · 시스템 메시지는 null */
+  /** (FE 잠정) 이 메시지를 만든 실행. 사용자 · 시스템 메시지는 null */
   run_id: string | null;
-  /** 답을 만든 실행의 끝 상태. 사용자 · 시스템 메시지는 null */
+  /** (FE 잠정) 답을 만든 실행의 끝 상태 — PARTIAL · 만료 · 취소 표시에 씁니다. 사용자 · 시스템 메시지는 null */
   status: RunStatus | null;
   claims: Claim[];
   cards: Card[];
   assessments: ListedAssessment[];
   evidence: Evidence[];
   sources: GuideCard[];
-  /** 근거 표시 배지 글자 — 예 "Take 5 · 대본 V2 · 기준 v4 기준". 번호는 BE 값 그대로 */
+  /** (FE 잠정 이름) 근거 표시 배지 글자 — 예 "Take 5 · 대본 V2 · 기준 v4 기준". 번호는 BE 값 그대로 */
   basis_label: string | null;
   stale_reasons: string[];
   plan: PlanStep[];
@@ -314,10 +306,12 @@ export interface ConversationSummary {
   title: string;
   /** 대화 범위. 전체면 null */
   scope_pitch_id: string | null;
+  /** (FE 잠정) 범위 칩에 보일 발표 이름 */
   scope_title: string | null;
   last_message_at: string | null;
+  /** (FE 잠정 이름) 최신 아닌 답이 있는 대화 */
   has_stale: boolean;
-  /** '기억 없이' 대화. 만든 뒤에는 바뀌지 않습니다 */
+  /** (FE 잠정 이름) '기억 없이' 대화. 만든 뒤에는 바뀌지 않습니다 */
   memory_off: boolean;
 }
 
@@ -368,6 +362,7 @@ export interface ChatPage {
   screen: ChatScreen | null;
 }
 
+/** (FE 잠정 이름) 새 대화 — 범위 · 연 화면 · '기억 없이' (12-3) */
 export interface CreateConversationRequest {
   scope_pitch_id: string | null;
   page: ChatPage;
@@ -402,6 +397,7 @@ export interface ScopeChangeRequest {
   pitch_id: string | null;
 }
 
+/** (FE 잠정 모양) 범위 바꾸기 응답 — 문서는 "바뀐 범위" 만 정합니다 */
 export interface ScopeChangeResponse {
   conversation_id: string;
   scope_pitch_id: string | null;
@@ -422,6 +418,7 @@ export interface ActionDecisionResponse {
   run_status: RunStatus;
 }
 
+/** (FE 잠정 모양) 되돌리기 응답 */
 export interface UndoResponse {
   action_id: string;
   goal_version: number;
