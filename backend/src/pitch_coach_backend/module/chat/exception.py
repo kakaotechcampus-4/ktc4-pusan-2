@@ -1,0 +1,50 @@
+"""대화 API(화면 ↔ BE) 예외. code 는 chat-agent.md 5-9 의 오류 코드 그대로다."""
+
+from fastapi import status
+
+from pitch_coach_backend.core.exceptions import (
+    AppException,
+    ConflictException,
+    NotFoundException,
+)
+
+# AI 서버 동시 실행 상한 · 대화 전용 실행 풀 포화일 때 FE 가 기다릴 초(5-9)
+BUSY_RETRY_AFTER_SEC = 5
+
+
+class ChatDisabled(AppException):
+    # 끄기 스위치(`chat_agent_enabled`)가 꺼져 있다. FE 는 버튼을 숨긴다
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "AGENT_DISABLED"
+    message = "지금은 코치 대화를 쓸 수 없어요."
+
+
+class ChatTargetNotFound(NotFoundException):
+    # 없는 대상과 남의 대상을 같은 404 로 돌려준다. 남의 대화가 있는지 알 수 없게 한다
+    message = "기록을 찾을 수 없어요."
+
+
+class ChatRequestConflict(ConflictException):
+    # 같은 client_request_id 로 다른 내용을 보냈다.
+    # 정상 화면에서는 생기지 않는 화면 버그 · 탭 경합이다
+    code = "AGENT_REQUEST_CONFLICT"
+    message = "보낸 질문과 내용이 달라 받지 못했어요. 다시 보내 주세요."
+
+
+class ChatRunInProgress(ConflictException):
+    code = "AGENT_RUN_IN_PROGRESS"
+    message = "이 대화의 답변을 만들고 있어요."
+
+
+class ChatDailyLimit(AppException):
+    # 사용자 하루 턴 한도. Retry-After 는 다음 Asia/Seoul 00:00 까지의 초
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "AGENT_DAILY_LIMIT"
+    message = "오늘 이용 횟수를 모두 썼으니 내일 다시 이용해 주세요."
+
+
+class ChatBusy(AppException):
+    # 서비스 전체 하루 상한. 사용자 한도와 같이 다음 Asia/Seoul 00:00 까지 기다리게 한다
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "AGENT_BUSY"
+    message = "오늘은 사용량이 많아 잠시 뒤 다시 이용해 주세요."

@@ -22,6 +22,7 @@ from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup_sweep
+from pitch_coach_backend.module.chat.controller import router as chat_router
 from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
 from pitch_coach_backend.module.chat.run_recovery import start as start_run_recovery
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
@@ -174,6 +175,7 @@ api.include_router(pitch_router)
 api.include_router(take_router)
 api.include_router(takes_router)
 api.include_router(realtime_router)
+api.include_router(chat_router)
 
 app.include_router(api)
 app.include_router(admin_router)
