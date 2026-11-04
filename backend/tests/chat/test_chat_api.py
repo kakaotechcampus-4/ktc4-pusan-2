@@ -44,7 +44,7 @@ def chat_app(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
     from pitch_coach_backend.core.config import settings
     from pitch_coach_backend.module.chat import controller
 
-    monkeypatch.setattr(settings, "chat_agent_enabled", True)
+    monkeypatch.setattr(settings, "agent_enabled", True)
     # 대화 주기 작업은 SessionLocal(테스트 DB 가 아니다)로 돈다
     monkeypatch.setattr(main, "start_goal_sweep", _no_sweep)
     monkeypatch.setattr(main, "start_cleanup_sweep", _no_sweep)
@@ -91,7 +91,7 @@ def test_availability_follows_the_switch(
     assert client.get("/api/chat/availability", headers=_headers(user_id)).json() == {
         "enabled": True
     }
-    monkeypatch.setattr(settings, "chat_agent_enabled", False)
+    monkeypatch.setattr(settings, "agent_enabled", False)
     assert client.get("/api/chat/availability", headers=_headers(user_id)).json() == {
         "enabled": False
     }

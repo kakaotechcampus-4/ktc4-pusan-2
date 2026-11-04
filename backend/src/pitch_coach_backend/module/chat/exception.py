@@ -13,7 +13,7 @@ BUSY_RETRY_AFTER_SEC = 5
 
 
 class ChatDisabled(AppException):
-    # 끄기 스위치(`chat_agent_enabled`)가 꺼져 있다. FE 는 버튼을 숨긴다
+    # 끄기 스위치(`agent_enabled`)가 꺼져 있다. FE 는 버튼을 숨긴다
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "AGENT_DISABLED"
     message = "지금은 코치 대화를 쓸 수 없어요."

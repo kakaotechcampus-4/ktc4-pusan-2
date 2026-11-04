@@ -491,7 +491,7 @@ FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 
 
 오른쪽 아래 코치 대화창의 API 다. 동작 · 값의 기준은 [docs/ai/features/chat-agent.md](../docs/ai/features/chat-agent.md)
 12-3 이다. 메시지는 즉시 `202` 로 받고, 답은 실행 상태를 조회해 받는다(실행 중 1초 간격).
-AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스위치 `CHAT_AGENT_ENABLED` 가 꺼져 있으면
+AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스위치 `AGENT_ENABLED` 가 꺼져 있으면
 아래 API 는 `503 AGENT_DISABLED` 다(사용 가능 여부만 `enabled:false` 로 답한다).
 
 | 엔드포인트 | 내용 |

@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     ai_base_url: str = "http://localhost:8001"
     # 코치 대화(대화 에이전트) 끄기 스위치. AI 서비스에 /agent/turn 이 올라가기 전에는 꺼 둔다.
     # 꺼져 있으면 대화 API 가 AGENT_DISABLED(503)를 돌려주고 FE 는 버튼을 숨긴다
-    chat_agent_enabled: bool = False
+    agent_enabled: bool = False
 
     # AWS S3 Configuration
     # SSO로 로그인, 그래서 따로 액세스&시크릿 키를 발급받지 않아도 됨.
