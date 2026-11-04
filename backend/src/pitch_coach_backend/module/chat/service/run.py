@@ -79,11 +79,11 @@ def lock_or_cancel(db: Session, run: ClaimedRun, pitch_ids: set[str], take_ids: 
     if lock_ids(db, pitch_ids, take_ids):
         return
     db.rollback()
-    _cancel(db, run)
+    cancel(db, run)
     raise RunLost(run.run_id)
 
 
-def _cancel(db: Session, run: ClaimedRun) -> None:
+def cancel(db: Session, run: ClaimedRun) -> None:
     row = lock_current(db, run)
     if row is None:
         return

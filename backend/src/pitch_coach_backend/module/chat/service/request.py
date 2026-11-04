@@ -12,6 +12,7 @@ from pitch_coach_backend.module.chat.dto import (
     AgentHistoryMessageDTO,
     AgentPageDTO,
     AgentResumeDTO,
+    AgentReviewEventDTO,
     AgentRunDTO,
     AgentTurnRequestDTO,
     BudgetUsedDTO,
@@ -69,27 +70,35 @@ def build_request(
     first = resume is None
     source = row.input if first else {}
     choice = source.get("choice")
+    review_event = source.get("review_event")
+    scope_pitch_id = run_scope(row, conversation)
     trigger_message = repo.get_message(row.message_id) if row.message_id else None
     before_seq = trigger_message.seq if trigger_message else None
-    context = _fit_context(_context(db, repo, row, conversation, choice))
+    context = _fit_context(_context(db, repo, row, conversation, scope_pitch_id, choice))
     return AgentTurnRequestDTO(
         run=AgentRunDTO(
             run_id=row.id,
             conversation_id=row.conversation_id,
             user_id=row.user_id,
-            scope_pitch_id=conversation.scope_pitch_id,
+            scope_pitch_id=scope_pitch_id,
             trigger=run.first_trigger if first else "ACTION_RESULT",
             state_revision=row.state_revision,
         ),
         user_message=source.get("user_message"),
         choice=AgentChoiceDTO.model_validate(choice) if choice else None,
-        review_event=None,
+        review_event=AgentReviewEventDTO.model_validate(review_event) if review_event else None,
         page=AgentPageDTO.model_validate(row.input["page"]),
         history=_history(repo, conversation.id, before_seq),
         context=context,
         resume=resume,
         budget_used=budget_used,
     )
+
+
+def run_scope(row: ChatRun, conversation: ChatConversation) -> uuid.UUID | None:
+    if row.first_trigger == "TAKE_REVIEWED":
+        return row.scope_pitch_id
+    return conversation.scope_pitch_id
 
 
 def _json_size(value: Any) -> int:
@@ -164,6 +173,7 @@ def _context(
     repo: ChatRepository,
     row: ChatRun,
     conversation: ChatConversation,
+    scope_pitch_id: uuid.UUID | None,
     choice: dict[str, Any] | None,
 ) -> AgentContextDTO:
     page_take_id = row.input["page"].get("take_id")
@@ -180,10 +190,10 @@ def _context(
             pitch_context(
                 db,
                 row.user_id,
-                conversation.scope_pitch_id,
+                scope_pitch_id,
                 uuid.UUID(page_take_id) if page_take_id else None,
             )
-            if conversation.scope_pitch_id
+            if scope_pitch_id
             else None
         ),
         conversation_goal=goal_view(repo.get_goal(conversation.id, conversation.goal_version)),

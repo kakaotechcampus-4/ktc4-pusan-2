@@ -14,10 +14,12 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
 from pitch_coach_backend.module.chat.service.practice import start_practice
 from pitch_coach_backend.module.chat.service.run import (
     ClaimedRun,
     add_run_log,
+    cancel,
     claimed,
     digest,
     lock_current,
@@ -115,12 +117,19 @@ def wait_for_action(
 def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bool:
     data = final.data
     pitch_ids, take_ids = _answer_sources(data)
+    if run.first_trigger == "TAKE_REVIEWED":
+        take_ids.add(data["goal_result"]["take_id"])
     lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
     row = lock_current(db, run)
     if row is None:
         return False
     conversation = repo.lock_conversation(row.conversation_id)
+    if row.first_trigger == "TAKE_REVIEWED" and not settle_goal_check(
+        repo, row, conversation, data["goal_result"]
+    ):
+        cancel(db, run)
+        return False
     _apply_scope(row, conversation, data)
     start_practice(db, repo, row, data)
     message = data["message"]

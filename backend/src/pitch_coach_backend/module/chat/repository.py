@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import Row, Select, and_, func, select
@@ -12,6 +12,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatConversation,
     ChatDailyUsage,
     ChatGoal,
+    ChatLease,
     ChatMessage,
     ChatRun,
 )
@@ -57,6 +58,32 @@ class ChatRepository:
                 index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
                 set_={"reassessments": ChatDailyUsage.reassessments + 1},
                 where=ChatDailyUsage.reassessments < limit,
+            )
+            .returning(ChatDailyUsage.id)
+        )
+        return self.db.scalar(stmt) is not None
+
+    def charge_goal_check(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
+        stmt = (
+            insert(ChatDailyUsage)
+            .values(id=uuid.uuid7(), user_id=user_id, day=day, goal_checks=1)
+            .on_conflict_do_update(
+                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
+                set_={"goal_checks": ChatDailyUsage.goal_checks + 1},
+                where=ChatDailyUsage.goal_checks < limit,
+            )
+            .returning(ChatDailyUsage.id)
+        )
+        return self.db.scalar(stmt) is not None
+
+    def reserve_service_turn(self, day: date, limit: int) -> bool:
+        stmt = (
+            insert(ChatDailyUsage)
+            .values(id=uuid.uuid7(), user_id=None, day=day, reserved=1)
+            .on_conflict_do_update(
+                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
+                set_={"reserved": ChatDailyUsage.reserved + 1},
+                where=ChatDailyUsage.reserved + ChatDailyUsage.sent < limit,
             )
             .returning(ChatDailyUsage.id)
         )
@@ -150,6 +177,118 @@ class ChatRepository:
 
     def get_goal(self, conversation_id: uuid.UUID, version: int) -> ChatGoal | None:
         return self.db.get(ChatGoal, (conversation_id, version))
+
+    def list_open_goals(self) -> list[Row]:
+        return list(
+            self.db.execute(
+                select(
+                    ChatGoal.conversation_id,
+                    ChatConversation.user_id,
+                    ChatGoal.version,
+                    ChatGoal.goal["pitch_id"].astext.label("pitch_id"),
+                    ChatGoal.first_take_number,
+                )
+                .join(
+                    ChatConversation,
+                    and_(
+                        ChatConversation.id == ChatGoal.conversation_id,
+                        ChatConversation.goal_version == ChatGoal.version,
+                    ),
+                )
+                .where(ChatGoal.status == "OPEN", ChatGoal.first_take_number.is_not(None))
+                .order_by(ChatGoal.created_at)
+            )
+        )
+
+    def list_takes_from(self, pitch_id: uuid.UUID, first_take_number: int) -> list[Row]:
+        return list(
+            self.db.execute(
+                select(
+                    Take.id,
+                    Take.status,
+                    Take.review_status,
+                    TakeAIResults.revision.label("review_revision"),
+                )
+                .outerjoin(
+                    TakeAIResults,
+                    and_(TakeAIResults.take_id == Take.id, TakeAIResults.kind == "REVIEW"),
+                )
+                .where(Take.pitch_id == pitch_id, Take.take_number >= first_take_number)
+                .order_by(Take.take_number)
+            )
+        )
+
+    def has_running_run(self, conversation_id: uuid.UUID) -> bool:
+        return (
+            self.db.scalar(
+                select(ChatRun.id)
+                .where(
+                    ChatRun.conversation_id == conversation_id,
+                    ChatRun.status.in_(("QUEUED", "RUNNING", "WAITING_APPROVAL")),
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    def take_goal_check(
+        self,
+        *,
+        conversation_id: uuid.UUID,
+        goal_version: int,
+        take_id: uuid.UUID,
+        review_revision: int,
+        owner: str,
+        until: datetime,
+        now: datetime,
+    ) -> ChatLease | None:
+        stmt = (
+            insert(ChatLease)
+            .values(
+                id=uuid.uuid7(),
+                kind="GOAL_CHECK",
+                conversation_id=conversation_id,
+                goal_version=goal_version,
+                take_id=take_id,
+                review_revision=review_revision,
+                status="PENDING",
+                owner=owner,
+                lease_until=until,
+                fencing_token=1,
+            )
+            .on_conflict_do_update(
+                constraint="uq_chat_leases_goal_check",
+                set_={
+                    "owner": owner,
+                    "lease_until": until,
+                    "fencing_token": ChatLease.fencing_token + 1,
+                },
+                where=and_(ChatLease.status == "PENDING", ChatLease.lease_until <= now),
+            )
+            .returning(ChatLease)
+        )
+        return self.db.scalars(stmt).first()
+
+    def lock_goal_check(self, run_id: uuid.UUID) -> ChatLease | None:
+        return self.db.scalar(select(ChatLease).where(ChatLease.run_id == run_id).with_for_update())
+
+    def get_review_revision(self, take_id: uuid.UUID) -> int | None:
+        return self.db.scalar(
+            select(TakeAIResults.revision).where(
+                TakeAIResults.take_id == take_id, TakeAIResults.kind == "REVIEW"
+            )
+        )
+
+    def list_goal_leases(self, conversation_id: uuid.UUID, goal_version: int) -> list[ChatLease]:
+        return list(
+            self.db.scalars(
+                select(ChatLease).where(
+                    ChatLease.kind == "GOAL_CHECK",
+                    ChatLease.conversation_id == conversation_id,
+                    ChatLease.goal_version == goal_version,
+                )
+            )
+        )
 
     def list_pitch_summaries(
         self, user_id: uuid.UUID, *, limit: int, pitch_ids: Sequence[uuid.UUID] | None = None

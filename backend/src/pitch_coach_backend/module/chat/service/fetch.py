@@ -12,6 +12,7 @@ from pitch_coach_backend.module.chat.service.request import (
     PITCH_SUMMARIES,
     pitch_context,
     pitch_summary,
+    run_scope,
     take_snapshot,
 )
 from pitch_coach_backend.module.chat.service.result import ambiguous, failed, succeeded
@@ -24,7 +25,7 @@ def fetch_take(
     repo = ChatRepository(db)
     conversation = repo.get_conversation(row.conversation_id)
     take = owned_take(db, repo, row.user_id, args.pitch_id, args.take_id)
-    if take is None or str(conversation.scope_pitch_id) != args.pitch_id:
+    if take is None or str(run_scope(row, conversation)) != args.pitch_id:
         return failed(action, "NOT_FOUND", "기록을 찾을 수 없어요.")
     _remember_take(repo, row, action, take.Take.id)
     return succeeded(action, {"take": take_snapshot(repo, take)})
