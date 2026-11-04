@@ -23,8 +23,9 @@
      첫 문장(코드 템플릿)은 낱말 검사에서 뺀다. 첫 문장 뒤 모델 설명만 낱말 · 숫자 검사를 받는다.
   6. 모든 종류(SYSTEM · ACTION_RESULT는 코드 문장이라 낱말 검사 제외): 금지 주장 · 한글 수 · 인과 단정 · 동의/칭찬 낱말 ·
      개인정보.
-  7. 범위 밖 `SCOPE_RULE`: 모델이 쓴 RECORD · GUIDE(인용 밖) · ASSESSMENT 설명에 `cfg.scope_out_words`(수정안 · 추천 값 ·
-     예상 질문 · 연습 계획 낱말)가 있으면 건다. 이 검사에 걸린 문장은 고치기에 보내지 않고 turn.py가 바로 버린다(6-9).
+  7. 범위 밖 `SCOPE_RULE`: 모델이 쓴 RECORD · GUIDE(인용 안 포함) · ASSESSMENT 설명에 `cfg.scope_out_words`(수정안 · 추천 값 ·
+     예상 질문 · 연습 계획 낱말)가 있거나, 같은 절 안에서 `scope_targets`(대본 · 평가 기준 …) 뒤에 `scope_edit_verbs`
+     (넣으세요 · 바꿔 보 …)가 오면 건다. 이 검사에 걸린 문장은 고치기에 보내지 않고 turn.py가 바로 버린다(6-9).
 - 고칠 때
   - 낱말 목록은 `config.py`에만 둔다(바꾸면 `version.FEATURE_VERSION`을 올린다). 검사 ID를 더하면 `CheckId`와
     기능 문서 11-5 표를 같이 고친다.
@@ -696,6 +697,30 @@ def _found(words: Iterable[str], text: str) -> list[str]:
     return [w for w in words if w in text]
 
 
+_SCOPE_CLAUSE_SPLIT = re.compile(r"[.!?。\n,，;]")
+
+
+def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
+    """같은 절 안에서 대상 낱말(대본 · 평가 기준 …) 뒤 가까이에 고치라는 동사가 있으면 그 동사를 돌려준다(6-9 SCOPE_RULE).
+
+    절은 마침표 · 쉼표 · 줄바꿈으로 나눈다. 대상과 동사 사이에 수행 방법을 뜻하는 말(`scope_edit_exempt`)이 끼면 통과시킨다.
+    """
+    for clause in _SCOPE_CLAUSE_SPLIT.split(text):
+        for t in cfg.scope_targets:
+            start = clause.find(t)
+            while start != -1:
+                tail = clause[start + len(t) :]
+                for v in cfg.scope_edit_verbs:
+                    pos = tail.find(v)
+                    if pos == -1 or pos > cfg.scope_edit_window:
+                        continue
+                    if any(x in tail[:pos] for x in cfg.scope_edit_exempt):
+                        continue
+                    return v
+                start = clause.find(t, start + 1)
+    return None
+
+
 def agreement_words(cfg: ChatAgentConfig) -> tuple[str, ...]:
     """동의 · 칭찬 낱말 전체(설정 목록 + 판정과 반대되는 동의 표현)."""
     return tuple(dict.fromkeys((*cfg.agreement_words, *EXTRA_AGREEMENT_WORDS)))
@@ -1017,9 +1042,13 @@ def _check_one(
     )
     if code_made:
         return f
+    # 범위 밖 검사는 GUIDE 인용 안도 본다. 자료 원문에 있어도 범위 밖 내용이면 문장을 버린다(6-9)
+    scope = _found(cfg.scope_out_words, scan) or (
+        [edit_verb] if (edit_verb := _scope_edit(scan, cfg)) else []
+    )
     if c.kind == "GUIDE":
         scan = _unquoted(scan)  # 인용은 QUOTE_MISMATCH 로 원문과 대조했다
-    if scope := _found(cfg.scope_out_words, scan):
+    if scope:
         fail(
             CheckId.SCOPE_RULE,
             f"'{scope[0]}'처럼 대본 · 발표자료 · 평가 기준 · 제한 시간의 수정안 · 추천 값, 예상 질문, 연습 계획 · 일정은 쓸 수 없음",

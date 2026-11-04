@@ -766,6 +766,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             else None
         )
         fixed: list[Claim] | None = None
+        origin: list[
+            int
+        ] = []  # 고친 목록의 각 문장이 원래 몇 번째 문장이었는지(진단 기록을 원래 번호로 남기려고)
         if fixed_texts is not None:
             fixed = []
             for i, c in enumerate(out):
@@ -773,6 +776,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                     i not in fixed_texts or i not in asked
                 ):  # 고치라고 하지 않은 문장(코드 문장 포함)은 고치기 결과로 바꾸거나 지우지 않는다
                     fixed.append(c)
+                    origin.append(i)
                     continue
                 t = fixed_texts[i]
                 if t is None:
@@ -790,6 +794,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 )
                 if nc is not None:
                     fixed.append(nc)
+                    origin.append(i)
         outcome = chk.apply_fix_round(out, fixed, failures, recheck=recheck)
         final_claims = list(outcome.claims)
         kept = {c.assessment_id for c in final_claims if c.kind == "ASSESSMENT"}
@@ -812,10 +817,16 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         final_claims = restored + final_claims
         fix_seq = lp._last_model_seq if fixed is not None else answer_seq
         for f in outcome.remaining_failures:
-            if f.claim_index in scope_dropped:
+            # 다시 검사한 번호는 고친 목록 기준이라 원래 번호로 바꿔 처음 검사와 맞춘다
+            oi = (
+                origin[f.claim_index]
+                if f.claim_index is not None and f.claim_index < len(origin)
+                else f.claim_index
+            )
+            if oi in scope_dropped:
                 continue  # 이미 처음 검사에서 DROPPED 로 남겼다
             detail = {
-                "claim_index": f.claim_index,
+                "claim_index": oi,
                 "claim_kind": f.claim_kind,
                 "round": 1,
                 "result": "DROPPED",

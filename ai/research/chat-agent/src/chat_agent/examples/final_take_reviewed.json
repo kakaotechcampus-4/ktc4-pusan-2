@@ -172,7 +172,7 @@
     "prompt_version": "dcb0ca777926",
     "corpus_version": "guides-1",
     "criteria_versions": {
-      "chat_agent": "chat_agent-0.2.0+0df1079a4719"
+      "chat_agent": "chat_agent-0.2.0+8c1deb505960"
     }
   },
   "diagnostics": {

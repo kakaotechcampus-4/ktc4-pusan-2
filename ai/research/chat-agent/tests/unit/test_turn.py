@@ -275,6 +275,38 @@ def test_scope_rule_drops_model_sentence_without_fix_and_logs_check() -> None:
     assert len(steps) == 1 and steps[0].detail.result == "DROPPED"
 
 
+def test_check_diagnostics_use_original_sentence_numbers_after_fix_drops_earlier_sentence() -> None:
+    """앞 문장이 고치기에서 버려져 번호가 밀려도, SCOPE_RULE 로 버린 문장 · 고친 뒤에도 실패한 문장의 CHECK 가 모두 남는다."""
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    s3 = F.claim("RECORD", "Take 5의 3장 청중 시선 비율은 77%예요.", evidence_ids=[])
+    s4 = F.claim(
+        "RECORD", "Take 5의 3장 청중 시선 비율은 28%예요. 이렇게 고쳐 쓰세요.", evidence_ids=[]
+    )
+    s5 = F.claim("RECORD", "Take 5의 3장 청중 시선 비율은 66%예요.", evidence_ids=[])
+
+    def make(r: Any) -> Any:
+        cur = roles(r)["current"]
+        for c in (s3, s4, s5):
+            c["evidence_ids"] = [cur]
+        return compare_answer(s3, s4, s5)(r)
+
+    llm = F.FakeLlm(
+        [*basic_script(make)],
+        fixes=[F.fix({3: None, 5: "Take 5의 3장 청중 시선 비율은 55%예요."})],
+    )
+    fd = final_ok(F.run_turn(req, llm)[2])
+    steps = [s for s in fd.diagnostics.steps if s.kind == "CHECK" and s.code != "SUMMARY"]  # type: ignore[union-attr]
+    dropped = sorted(
+        s.detail.claim_index
+        for s in steps
+        if s.detail.result == "DROPPED" and s.detail.round in (0, 1)
+    )
+    assert 4 in dropped  # SCOPE_RULE 로 처음에 버린 문장
+    assert [s.detail.claim_index for s in steps if s.detail.round == 1] == [
+        5
+    ]  # 고친 뒤에도 실패한 문장, 원래 번호
+
+
 def test_plan_with_unbacked_number_falls_back_to_default_plan() -> None:
     bad_plan = F.plan(steps=["Take 5 시선 28% 확인", "답 쓰기"], assessments=[change_draft()])
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
