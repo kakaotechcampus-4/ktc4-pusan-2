@@ -12,7 +12,6 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.tasks import TaskRegistry
-from pitch_coach_backend.module.chat import service
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, request_turn
 from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
 from pitch_coach_backend.module.chat.dto import (
@@ -21,7 +20,12 @@ from pitch_coach_backend.module.chat.dto import (
     BudgetUsedDTO,
     SignedStateDTO,
 )
-from pitch_coach_backend.module.chat.service import ClaimedRun, RunLost
+from pitch_coach_backend.module.chat.service import action as action_service
+from pitch_coach_backend.module.chat.service import reassess as reassess_service
+from pitch_coach_backend.module.chat.service import request as request_service
+from pitch_coach_backend.module.chat.service import run as run_service
+from pitch_coach_backend.module.chat.service import turn as turn_service
+from pitch_coach_backend.module.chat.service.run import ClaimedRun, RunLost
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +114,7 @@ class _Turn:
 
     # 세션을 열고, 실행을 claim 한 뒤, 턴을 반복한다. 턴이 끝나면 종료 상태를 저장한다.
     async def run(self, run_id: uuid.UUID) -> None:
-        self._run = await _in_session(self._session_factory, service.claim, run_id)
+        self._run = await _in_session(self._session_factory, run_service.claim, run_id)
         if self._run is None:
             return
         remaining = (self._run.deadline - datetime.now(UTC)).total_seconds()
@@ -126,7 +130,7 @@ class _Turn:
         if self._run is None:
             return
         try:
-            await _in_session(self._session_factory, service.fail, self._run, failure)
+            await _in_session(self._session_factory, turn_service.fail, self._run, failure)
         except Exception:
             logger.exception("대화 턴 실패를 저장하지 못했다 run=%s", self._run.run_id)
 
@@ -143,14 +147,18 @@ class _Turn:
         for turn_call in range(1, MAX_TURN_CALLS + 1):
             try:
                 request = await _in_session(
-                    self._session_factory, service.build_request, self._current, resume, budget
+                    self._session_factory,
+                    request_service.build_request,
+                    self._current,
+                    resume,
+                    budget,
                 )
-            except service.ContextTooLarge:
+            except request_service.ContextTooLarge:
                 await self.give_up(TurnFailure("AGENT_CONTEXT_TOO_LARGE"))
                 return
             request_id = uuid.uuid4().hex
             async with _chat_slot():
-                await self._advance(service.mark_sending, turn_call, request_id)
+                await self._advance(turn_service.mark_sending, turn_call, request_id)
                 outcome = await request_turn(
                     request,
                     request_id=request_id,
@@ -163,23 +171,23 @@ class _Turn:
                 return
             if outcome.view.status != "NEEDS_ACTION":
                 await _in_session(
-                    self._session_factory, service.finish, self._current, turn_call, outcome
+                    self._session_factory, turn_service.finish, self._current, turn_call, outcome
                 )
                 return
             if turn_call == MAX_TURN_CALLS:
                 break
-            await self._advance(service.wait_for_action, turn_call, outcome)
+            await self._advance(turn_service.wait_for_action, turn_call, outcome)
             started = loop.time()
             action = outcome.data["actions"][0]
             result = await _in_session(
-                self._session_factory, service.begin_action, self._current, action
+                self._session_factory, action_service.begin_action, self._current, action
             )
             if result is None:
                 if action["type"] == "REASSESS":
                     result = await self._reassess(action)
                 else:
                     result = await _in_session(
-                        self._session_factory, service.run_action, self._current, action
+                        self._session_factory, action_service.run_action, self._current, action
                     )
             action_ms = round((loop.time() - started) * 1000)
             resume = AgentResumeDTO(
@@ -192,15 +200,15 @@ class _Turn:
 
     async def _reassess(self, action: dict[str, Any]) -> ActionResultDTO:
         prepared = await _in_session(
-            self._session_factory, service.prepare_reassess, self._current, action
+            self._session_factory, reassess_service.prepare_reassess, self._current, action
         )
         if isinstance(prepared, ActionResultDTO):
             return prepared
         async with _double_slot():
-            replies = await service.call_reassess(prepared)
+            replies = await reassess_service.call_reassess(prepared)
         return await _in_session(
             self._session_factory,
-            service.finish_reassess,
+            reassess_service.finish_reassess,
             self._current,
             action,
             prepared,
@@ -209,7 +217,7 @@ class _Turn:
 
     async def _progress(self, turn_call: int, line: StreamLine) -> None:
         saved = await _in_session(
-            self._session_factory, service.save_progress, self._current, turn_call, line
+            self._session_factory, turn_service.save_progress, self._current, turn_call, line
         )
         if not saved:
             raise RunLost()
