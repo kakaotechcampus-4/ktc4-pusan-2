@@ -170,5 +170,14 @@ class MessageListResponse(BaseModel):
     next_before_seq: int | None
 
 
+class GoalUndoneResponse(BaseModel):
+    run_id: uuid.UUID
+    action_id: str
+    # 되돌려서 새로 만든 목표 판 번호
+    goal_version: int
+    # 되살린 목표. 처음 저장을 되돌렸으면 목표 내용이 없어 null
+    goal: dict[str, Any] | None
+
+
 class AvailabilityResponse(BaseModel):
     enabled: bool

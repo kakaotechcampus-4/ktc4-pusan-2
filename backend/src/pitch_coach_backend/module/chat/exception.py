@@ -49,6 +49,12 @@ class ChatCancelled(ConflictException):
     message = "취소된 확인 요청이에요. 필요하면 다시 말해 주세요."
 
 
+class ChatStateInvalid(ConflictException):
+    # 되돌리려는 목표가 이미 다른 판으로 바뀌었거나 기준 Take 가 지워졌다(5-9 BE 되돌리기 판 충돌)
+    code = "AGENT_STATE_INVALID"
+    message = "이미 다른 목표로 바뀌었어요."
+
+
 class ChatDailyLimit(AppException):
     # 사용자 하루 턴 한도. Retry-After 는 다음 Asia/Seoul 00:00 까지의 초
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
