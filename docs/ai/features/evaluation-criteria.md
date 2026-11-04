@@ -146,7 +146,7 @@ ai/service/src/pitch_coach_ai/features/evaluation_criteria/   코어 (테스트�
              "script_dependency": null, "script_similarity": null, "script_used": null},
   "targets": [{"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}],
   "excluded": ["발표는 5분 안에 끝내기"],
-  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}
 }
 ```
 
@@ -160,7 +160,7 @@ ai/service/src/pitch_coach_ai/features/evaluation_criteria/   코어 (테스트�
             "script_dependency": null, "script_similarity": null, "script_used": true},
  "targets": [{"display": "말 속도 1분에 300자 이하", "metric": "cpm", "operator": "LTE", "value": 300}],
  "excluded": [],
- "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": "<응답한 모델>"}}
+ "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}}
 ```
 - 사용자가 길이 조건("3초 넘게")을 붙인 횟수 기준은 판정 모듈의 기준(긴 침묵은 소리 크기 모듈의 값)과 다를 수 있어 목표로 만들지 않고 표시 기준 · `values`에만 남긴다. 목표로 만들면 3~5초 침묵을 세지 않은 채 "이뤘다"고 판정할 수 있다.
 
@@ -285,6 +285,6 @@ sequenceDiagram
 | 요소 → 지표 | `speed` `cpm` · `pause` `pause_count` · `silence` `long_silence_count` · `volume` `voice_diff_db` · `filler` `filler_count`/`filler_per_min` · `gaze` `audience_ratio` · `script_dependency` `reading_ratio` · `script_similarity` `content_coverage` · `script_used` 설정 | 5-3 |
 | 연산자 | `LTE` · `GTE` · `LT` · `GT` | 5-3 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 없음 | 8절 |
-| 버전 | `evaluation_criteria-1.0` · `schema_version` `1.0` | 9절 |
+| 버전 | `evaluation_criteria-1.1` · `schema_version` `1.0` | 9절 |
 | 저장 | 저장 요구: 12-1 · 12-2(표시 기준과 분석 결과를 같은 버전으로, 발표 · 버전마다 하나). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `standards`(표시 기준) · `standard_analyses`(버전마다 `targets` · `script_used` · `excluded` · `values` · `meta`) | 12-1 |
 | 입력 한도 | `standard_text` 1~2,000자 (넘으면 422) | 5-2 |
