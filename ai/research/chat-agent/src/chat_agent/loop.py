@@ -592,7 +592,13 @@ class Loop:
                     }
                 )
                 self.st.processed_calls.append(call.id)
-                if stop_action is not None or alt_stop or i >= self.cfg.max_tools_per_response:
+                #: 같은 응답 안에서 한도로 조사가 끝났으면 남은 요청도 실행하지 않는다(6-1 · 8-2)
+                if (
+                    stop_action is not None
+                    or alt_stop
+                    or self.st.research_done
+                    or i >= self.cfg.max_tools_per_response
+                ):
                     results.append(
                         self._tool_msg(
                             call.id,

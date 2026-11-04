@@ -373,7 +373,15 @@ def test_limit_partial_counts_final_end_reasons_by_reason() -> None:
         "TOKENS": 0,
         "REPEAT": 2,
     }
-    assert lp["check_all_dropped"] == 1
+    assert lp["check_all_dropped"] == 1 and lp["no_end_line"] == 0
+    # 끝 줄이 없는 턴은 분모에 두고 따로 센다
+    no_end = dataclasses.replace(
+        base, turns=[{**base.turns[0], "end_status": None, "end_reason": None}]
+    )
+    lp2 = ev.summarize([with_end("PARTIAL", "TIME"), no_end], None, None, repeat=1)["units"]["all"][
+        "limit_partial"
+    ]
+    assert (lp2["num"], lp2["den"], lp2["no_end_line"]) == (1, 2, 1)
 
 
 def test_report_is_written(tmp_path: Path) -> None:
@@ -398,6 +406,7 @@ def test_report_is_written(tmp_path: Path) -> None:
     md = mp.read_text(encoding="utf-8")
     assert "묶음 단위" in md and "목표 수치" in md and "실패 시나리오" in md
     assert "한도 때문의 PARTIAL" in md and rep["units"]["all"]["limit_partial"]["den"] == 2
+    assert "끝 줄 없어 이유를 못 본 턴" in md
     lines = (tmp_path / "out" / "runs.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
 

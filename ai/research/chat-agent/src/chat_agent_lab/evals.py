@@ -1313,7 +1313,8 @@ def unit_metrics(
         }
     else:
         out["cost_usd"] = None
-    # 한도 때문의 PARTIAL(14-1): 최종 응답 진단 기록 end.reason 이 한도 이유인 PARTIAL 수 / 최종 응답이 있는 말 턴(실행) 수
+    # 한도 때문의 PARTIAL(14-1): 최종 응답 진단 기록 end.reason 이 한도 이유인 PARTIAL 수 / 시작한 전체 말 턴 수.
+    # 끝 줄이 없어 끝난 이유를 보지 못한 턴은 분모에 두고 수를 따로 보인다(no_end_line)
     finals = [t for t in msg_turns if t.get("end_status") is not None]
     by_reason = {
         reason: sum(
@@ -1322,7 +1323,8 @@ def unit_metrics(
         for reason in LIMIT_REASONS
     }
     out["limit_partial"] = {
-        **ratio(sum(by_reason.values()), len(finals)),
+        **ratio(sum(by_reason.values()), len(msg_turns)),
+        "no_end_line": len(msg_turns) - len(finals),
         "by_reason": by_reason,
         "check_all_dropped": sum(1 for t in finals if t.get("end_reason") == "CHECK_ALL_DROPPED"),
     }
@@ -1556,6 +1558,7 @@ def _markdown(rep: dict[str, Any]) -> str:
             f" {tok['per_turn_input']} · 출력 {tok['per_turn_output']} · 턴당 모델 호출 {tok['model_calls_per_turn']}"
             f" · 비용 미확인 호출 {tok['calls_cost_unknown']}",
             f"- 한도 때문의 PARTIAL(14-1): {_fmt(u['limit_partial'])} · 이유별 {u['limit_partial']['by_reason']}"
+            f" · 끝 줄 없어 이유를 못 본 턴 {u['limit_partial']['no_end_line']}"
             f" · 답 검사 때문(CHECK_ALL_DROPPED) {u['limit_partial']['check_all_dropped']}",
             f"- 비용(USD): {u['cost_usd'] if u['cost_usd'] else '단가 미입력(--price-*)'}",
             f"- 턴당 도구 호출 {u['tool_calls_per_turn']} · 후속 말 {u['followups']}",

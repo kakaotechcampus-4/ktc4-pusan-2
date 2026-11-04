@@ -471,6 +471,28 @@ def test_l1_16_limit_reason_is_not_overwritten_by_repeat() -> None:
     assert reason_of(fd) == "TOOL_CALLS"
 
 
+def test_requests_after_tool_limit_in_same_response_are_skipped() -> None:
+    """도구 한도에 닿은 응답의 남은 요청(새 도구 + 유효한 행동)은 실행 · 제안하지 않고 TOOL_CALLS 로 답한다(6-1 · 8-2)."""
+    a, b = reads_ab()
+    c = read("t-4", 3)
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[change_draft()]),
+            F.tools(a, b, prefix="x1"),
+            F.tools(
+                c,
+                ("fetch_take", {"take_id": "t-3", "reason": "Take 3"}),
+                prefix="x2",
+            ),
+        ],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+    )
+    fd = final_ok(F.run_turn(request(), llm, cfg=load_config(max_tool_calls=2))[2])
+    assert fd.status == "PARTIAL" and reason_of(fd) == "TOOL_CALLS"
+    assert fd.actions == []
+    assert len(fd.trace) == 2  # 한도 뒤 요청은 실행하지 않음
+
+
 # ── 끝난 이유 값 (11-5) ─────────────────────────────────────────────────────
 
 
