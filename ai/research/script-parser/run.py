@@ -84,6 +84,12 @@ def natural_key(path: Path) -> list:
     return [int(s) if s.isdigit() else s for s in re.split(r"(\d+)", path.name)]
 
 
+def _first_last_lines(script: str) -> tuple[str, str] | None:
+    """장 대본의 빈 줄이 아닌 첫 줄과 마지막 줄 (앞뒤 공백 제외). 글이 없으면 None."""
+    lines = [line.strip() for line in script.splitlines() if line.strip()]
+    return (lines[0], lines[-1]) if lines else None
+
+
 def score(text: str, label: dict, response: ParseResponse, picked: LLMOutput) -> dict:
     """대본 하나를 라벨과 비교합니다 (docs/ai/features/script-parser.md 14절)."""
     slides = response.slides
@@ -91,7 +97,7 @@ def score(text: str, label: dict, response: ParseResponse, picked: LLMOutput) ->
         response.status == label["status"]
         and [s.slide_number for s in slides] == [s["slide_number"] for s in label["slides"]]
         and all(
-            s.script.startswith(want["first"]) and s.script.endswith(want["last"])
+            _first_last_lines(s.script) == (want["first"].strip(), want["last"].strip())
             for s, want in zip(slides, label["slides"])
         )
     )

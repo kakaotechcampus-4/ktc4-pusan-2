@@ -57,6 +57,16 @@ def label(first_last: list[tuple[str, str]], status: str = "success") -> dict:
     }
 
 
+def test_split_ok_compares_whole_first_and_last_lines():
+    response, picked = parsed(TWO_SLIDES, [(1, []), (2, [])])
+    third = ("셋째 문장입니다.", "셋째 문장입니다.")
+    exact = label([("첫 문장입니다.", "둘째 문장입니다."), third])
+    assert run.score(TWO_SLIDES, exact, response, picked)["split_ok"] is True
+    # 앞부분 · 뒷부분만 같은 줄은 장 경계가 같다고 보지 않는다(14절 '첫 줄 · 마지막 줄이 같음')
+    prefix = label([("첫 문장", "문장입니다."), third])
+    assert run.score(TWO_SLIDES, prefix, response, picked)["split_ok"] is False
+
+
 def test_keyword_on_missing_slide_is_not_in_script():
     # 3번 장은 없다. '첫 문장'은 1번 장에 있지만 3번 장 키워드로 왔으니 대본에 없는 것으로 센다
     response, picked = parsed(TWO_SLIDES, [(1, ["둘째"]), (2, []), (3, ["첫 문장"])])
