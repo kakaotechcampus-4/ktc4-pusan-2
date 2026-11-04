@@ -506,6 +506,7 @@ AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스�
 | `GET /api/chat/conversations/{id}/run?after_seq=` | 그 대화의 마지막 실행(새로고침 뒤 복원). 없으면 null |
 | `POST /api/chat/runs/{run_id}/actions/{action_id}/decision` | `{decision: APPROVE\|REJECT, args_hash}`. 인자는 받지 않고 저장한 인자로만 실행한다. 승인하면 기다린 시간만큼 마감을 밀고 턴 실행기가 이어 간다. 거절은 AI 를 부르지 않고 이미 낸 문장 뒤에 고정 문장을 덧붙여 `DONE` 으로 끝낸다. 해시가 다르면 409 `APPROVAL_HASH_MISMATCH`, 30분이 지났으면 409 `AGENT_EXPIRED`, 취소됐으면 409 `AGENT_CANCELLED`. 같은 요청은 처음 결과 |
 | `POST /api/chat/runs/{run_id}/cancel` | `QUEUED` · `RUNNING` · `WAITING_APPROVAL` 을 `CANCELLED` 로(승인 대기면 행동도 끝내고 고정 문장을 남긴다). 이미 끝났으면 그 상태를 그대로 준다. 자동 목표 확인 실행이면 그 확인도 끝난 것으로 닫아 다시 만들지 않는다 |
+| `POST /api/chat/runs/{run_id}/actions/{action_id}/undo` | 목표 저장 카드의 [되돌리기]. 지금 목표 판이 그 행동이 저장한 판일 때만 앞 판 내용을 새 판으로 되살리고 시스템 메시지 "목표를 되돌렸어요." 를 남긴다. 다른 목표로 바뀌었거나 기준 Take 가 지워졌으면 409 `AGENT_STATE_INVALID`. 같은 요청은 처음 결과. 실행이 끝나거나 정리된 뒤에도 쓸 수 있다 |
 | `GET /api/chat/conversations/{id}/messages?before_seq=&limit=` | 최신 메시지부터 `limit`(기본 30, 최대 50)개와 다음 커서. 근거가 된 피치 · Take 가 지워졌거나 남의 것인 답은 가려서 준다(`masked`, AI 에 보낼 기록을 조립할 때와 같은 기준). 메시지마다 지금 기록과 달라진 이유(`stale_reasons`)와 판단마다 그 판단을 대체한 새 판단 ID(`superseded_by`)를 싣는다. 대체한 판단은 늘 뒤 메시지에 있어 그 페이지의 첫 메시지부터만 읽는다 |
 
 없거나 남의 대화 · 실행 · 피치 · Take 는 모두 같은 `404 NOT_FOUND` 다.
