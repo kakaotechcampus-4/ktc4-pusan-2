@@ -197,6 +197,10 @@ describe('승인 카드', () => {
     const answer = (await messages(conversation_id)).items.at(-1)!;
     expect(answer.claims.at(-1)!.text).toBe('목표를 저장했어요.');
     expect(answer.cards.map((c) => c.type)).toEqual(['GOAL_SAVED']);
+    // 목표 저장됨은 승인한 그 행동의 결과다 — 같은 action_id
+    expect((answer.cards[0] as Extract<Card, { type: 'GOAL_SAVED' }>).action_id).toBe(
+      ask.action_id,
+    );
   });
 
   it('[거절]하면 AI 를 다시 부르지 않고 거절 문장으로 끝난다', async () => {

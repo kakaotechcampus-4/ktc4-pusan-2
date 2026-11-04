@@ -417,6 +417,8 @@ interface Run {
     | null;
   /** 다음 실행에 걸어 둔 실패 — 첫 문장 뒤 끝냅니다 */
   failAfterFirst: { status: 'PARTIAL' | 'FAILED'; code: ChatErrorCode | null } | null;
+  /** 승인받은 행동. 그 결과 카드(목표 저장됨)는 같은 `action_id` 를 씁니다 — 승인한 그 행동의 결과입니다 */
+  approvedActionId: string | null;
 }
 
 /** msw 가 넘기는 것 중 이 목이 쓰는 칸 */
@@ -687,7 +689,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         return;
       }
       case 'end': {
-        const actionId = newActionId();
+        // 승인 없이 바로 실행한 행동(제안 고르기)만 새 ID 를 받습니다
+        const actionId = run.approvedActionId ?? newActionId();
         let cards = step.cards(actionId);
         cards = cards.map((card) => {
           if (card.type === 'GOAL_SAVED') {
@@ -865,6 +868,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           retry_after_s: null,
           ask: null,
           failAfterFirst: runFailure,
+          approvedActionId: null,
         };
         runFailure = null;
         state.runs.set(run.run_id, run);
@@ -932,6 +936,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           return HttpResponse.json(state.decisions.get(actionId));
         }
         run.steps = [...run.ask.approved];
+        run.approvedActionId = actionId;
         run.ask = null;
         run.cards = [];
         run.status = 'RUNNING';

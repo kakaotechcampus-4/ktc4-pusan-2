@@ -348,7 +348,8 @@ export type ChatScreen =
         time_limit_sec: number | null;
         criteria_text: string | null;
       };
-      changed: ('title' | 'slides' | 'script' | 'time_limit_sec' | 'criteria_text')[];
+      /** 저장값과 달라진 입력. 문서 12-4 의 세 값뿐입니다 — 슬라이드 · 대본은 `draft` 의 수로만 알립니다 */
+      changed: ('title' | 'time_limit_sec' | 'criteria_text')[];
     }
   | {
       name: 'device_check';
