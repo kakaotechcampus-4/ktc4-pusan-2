@@ -487,6 +487,27 @@ FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 
 발표 중 코치(`/coach/evaluate`), 종료 뒤 Take 결과(`/coach/finalize`), 다음 Take 의 코칭 계획(`/coach/plan`)과
 원자료 보관 규칙은 [docs/be/realtime-coach.md](../docs/be/realtime-coach.md) 에 있다.
 
+## 코치 대화 (AI)
+
+오른쪽 아래 코치 대화창의 API 다. 동작 · 값의 기준은 [docs/ai/features/chat-agent.md](../docs/ai/features/chat-agent.md)
+12-3 이다. 메시지는 즉시 `202` 로 받고, 답은 실행 상태를 조회해 받는다(실행 중 1초 간격).
+AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스위치 `CHAT_AGENT_ENABLED` 가 꺼져 있으면
+아래 API 는 `503 AGENT_DISABLED` 다(사용 가능 여부만 `enabled:false` 로 답한다).
+
+| 엔드포인트 | 내용 |
+|---|---|
+| `GET /api/chat/availability` | `{enabled}`. 버튼을 보일지 |
+| `POST /api/chat/conversations` | `{pitch_id?}` 로 새 대화. 201 |
+| `GET /api/chat/conversations?pitch_id=` | 내 대화 목록. 마지막 사용자 활동 최신순 50개 |
+| `PATCH /api/chat/conversations/{id}/scope` | `{pitch_id\|null}`. 실행 중이면 409 `AGENT_RUN_IN_PROGRESS` |
+| `POST /api/chat/messages` | `{conversation_id?, scope_pitch_id?, text, page, client_request_id, again_of_message_id?, choice?}`. 메시지 · 실행 · 하루 한도를 한 트랜잭션으로 커밋한 뒤 `202 {conversation_id, message_id, run_id, status}`. 같은 `client_request_id` 재전송은 처음 결과, 다른 내용이면 409 `AGENT_REQUEST_CONFLICT`. 실행 중인 대화는 409 `AGENT_RUN_IN_PROGRESS`. 하루 100턴(`AGENT_DAILY_LIMIT`) · 서비스 전체 상한(`AGENT_BUSY`)은 429 + `Retry-After`(다음 서울 00:00 까지) |
+| `GET /api/chat/runs/{run_id}` | `{run_id, conversation_id, status, plan, trace, error, retry_after_s}`. AI 의 서명 상태와 오류 원문은 싣지 않는다 |
+| `GET /api/chat/conversations/{id}/run` | 그 대화의 마지막 실행(새로고침 뒤 복원). 없으면 null |
+| `POST /api/chat/runs/{run_id}/cancel` | `QUEUED` · `RUNNING` 을 `CANCELLED` 로. 이미 끝났으면 그 상태를 그대로 준다 |
+| `GET /api/chat/conversations/{id}/messages?before_seq=&limit=` | 최신 메시지부터 `limit`(기본 30, 최대 50)개와 다음 커서. 근거가 된 피치 · Take 가 지워진 답은 가려서 준다(`masked`) |
+
+없거나 남의 대화 · 실행 · 피치 · Take 는 모두 같은 `404 NOT_FOUND` 다.
+
 ## 에러 응답 형식
 
 모든 에러는 `core/exceptions.py` 의 핸들러를 거쳐 같은 형태로 나간다. 프론트엔드는 `code` 로 분기한다.
