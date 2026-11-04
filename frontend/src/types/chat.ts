@@ -1,0 +1,468 @@
+/**
+ * 대화형 코치 에이전트 — 화면 ↔ BE 계약 (잠정).
+ *
+ * 원본: `docs/ai/features/chat-agent.md` 5-2 · 5-5 · 12-3 · 12-4 (개정판 PR #900, #899).
+ * BE 가 화면용 API 를 아직 정하지 않았습니다(12-5 "경로 · 이름 · 응답 모양은 BE 가 FE 와 맞춤").
+ * 그래서 **값과 동작은 문서 그대로, 감싸는 모양(목록 키 · 페이지 칸)은 FE 가 임시로 정했습니다.**
+ * BE 초안이 나오면 이 파일과 `mocks/chat.ts` · `shared/api/chatPaths.ts` 부터 맞춥니다.
+ *
+ * BE 그대로 snake_case 입니다. 없음은 `?` 가 아니라 `| null` 입니다(frontend/AGENTS.md 6절).
+ */
+
+// ── 실행 · 상태 ───────────────────────────────────────────────
+
+/** 실행 상태 (12-3 상태 전이). 종결 상태에서는 바뀌지 않습니다 */
+export type RunStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'WAITING_APPROVAL'
+  | 'DONE'
+  | 'PARTIAL'
+  | 'REFUSED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'EXPIRED';
+
+export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
+  'DONE',
+  'PARTIAL',
+  'REFUSED',
+  'FAILED',
+  'CANCELLED',
+  'EXPIRED',
+];
+
+/** 행동 상태 (12-3). `ASK` 행동은 PENDING 에서 승인 · 거절 · 만료 · 취소로 갈립니다 */
+export type ActionStatus =
+  'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
+
+/** 할 일 한 줄 (5-2 `PlanStep`) */
+export interface PlanStep {
+  /** 1~60자 */
+  step: string;
+  status: 'TODO' | 'DOING' | 'DONE' | 'SKIPPED';
+  /** ≤200자 */
+  note: string | null;
+}
+
+/** 도구 기록 한 줄 — 화면의 "확인한 것" (5-2 `TraceItem`) */
+export interface TraceItem {
+  seq: number;
+  tool: string;
+  args_summary: string;
+  result_summary: string;
+  ms: number;
+  outcome: 'OK' | 'EMPTY' | 'ERROR' | 'CACHED';
+}
+
+// ── 답 문장 · 근거 ─────────────────────────────────────────────
+
+/**
+ * 근거 값 (5-2 `Evidence`). `RECORD` 는 내 기록, `SCREEN` 은 보낸 화면 상태, `COMPUTED` 는 코드가 계산한 값입니다.
+ * `COMPUTED` 의 입력 근거(`inputs`)도 같은 목록에 함께 옵니다 — 칩은 입력 기록으로 그립니다(12-4 F4).
+ */
+export interface Evidence {
+  evidence_id: string;
+  origin: 'RECORD' | 'SCREEN' | 'COMPUTED';
+  pitch_id: string;
+  take_id: string | null;
+  take_number: number | null;
+  kind: string | null;
+  revision: number | null;
+  path: string;
+  metric: string | null;
+  slide_number: number | null;
+  value: number | string;
+  unit: string | null;
+  rule_version: string | null;
+  saved: boolean | null;
+  screen_snapshot_id: string | null;
+  inputs: string[] | null;
+  calc: string | null;
+}
+
+/** 문장 종류. `GENERAL` 은 기록 · 자료로 확인하지 않은 일반 조언이라 칩이 없습니다(6-10) */
+export type ClaimKind = 'RECORD' | 'GUIDE' | 'GENERAL' | 'ACTION_RESULT' | 'SYSTEM' | 'ASSESSMENT';
+
+/** 답 문장 하나 (5-2 `Claim`). 화면은 고치거나 다시 계산하지 않습니다 */
+export interface Claim {
+  kind: ClaimKind;
+  assessment_id: string | null;
+  /** 1~300자 */
+  text: string;
+  evidence_ids: string[];
+  source_ids: string[];
+  action_id: string | null;
+}
+
+/** 발표법 · 사용법 자료 (5-2 `GuideCard`). 자료 칩을 펼치면 인용을 보입니다 */
+export interface GuideCard {
+  source_id: string;
+  title: string;
+  /** ≤300자 */
+  quote: string;
+  source: string;
+  license: string;
+}
+
+export type Verdict = 'SUPPORTED' | 'PARTLY' | 'CONTRADICTED' | 'UNVERIFIABLE';
+
+/**
+ * 사용자 주장 판단 (5-2 `Assessment`). 화면이 쓰는 칸만 둡니다 —
+ * `claim_key` · `evidence_basis` 같은 대조용 칸은 BE · AI 가 씁니다.
+ */
+export interface Assessment {
+  assessment_id: string;
+  /** 사용자 말 원문의 부분 문자열 */
+  quote: string;
+  type: 'MEASURED' | 'PREFERENCE' | 'KNOWLEDGE' | 'REQUEST';
+  verdict: Verdict;
+  evidence_ids: string[];
+  source_ids: string[];
+  reason: string;
+  supersedes: string[];
+}
+
+/** 메시지 목록의 판단 — 새 판단이 이 판단을 대체했으면 그 ID (12-3 메시지 목록) */
+export interface ListedAssessment extends Assessment {
+  superseded_by: string | null;
+}
+
+// ── 목표 · 카드 ───────────────────────────────────────────────
+
+/** 대화 목표 (5-2 `Goal`). 화면은 지표 · 장 · 비교 방법 · 기준만 보입니다 */
+export interface Goal {
+  version: number;
+  pitch_id: string;
+  created_at: string;
+  metric: string;
+  slide_number: number | null;
+  operator: 'gt_base' | 'lt_base' | 'in_range';
+  script_version_id: string;
+  standard_version: number | null;
+  goal_rule_version: string;
+  base: {
+    take_id: string;
+    take_number: number;
+    kind: string;
+    revision: number;
+    value: number;
+    metric_rule_version: string;
+    range: { low: number | null; high: number | null } | null;
+  };
+  min_delta: number | null;
+  status: 'OPEN' | 'ACHIEVED' | 'NOT_ACHIEVED' | 'BASELINE_MISMATCH';
+}
+
+export type ProposedGoal = Omit<Goal, 'version' | 'status' | 'created_at'>;
+
+/** 리뷰 결과 한쪽 — 바꾸기 전(A) · 참고 결과(B)가 같은 모양입니다 */
+export interface ReassessSide {
+  score: number | null;
+  dimensions: Record<string, string | null>;
+  criteria_results: Record<string, string | null>;
+}
+
+/** 카드 (5-2 `Card` 종류). 모르는 `type` 은 화면이 대체 표시로 그립니다(12-4) */
+export type Card =
+  | {
+      type: 'GOAL_SAVED';
+      action_id: string;
+      goal: Goal;
+      reason: string;
+      evidence_ids: string[];
+      undo: true;
+    }
+  | {
+      type: 'GOAL_PROPOSAL';
+      proposal_id: string;
+      options: {
+        label: 'USER' | 'EXPERT';
+        goal: ProposedGoal;
+        reason: string;
+        evidence_ids: string[];
+        content_hash: string;
+      }[];
+    }
+  | {
+      type: 'REASSESS_RESULT';
+      take_id: string;
+      change: string;
+      before: ReassessSide;
+      after: ReassessSide;
+      changed_fields: string[];
+      official_differs: boolean;
+    }
+  | { type: 'START_PRACTICE'; pitch_id: string }
+  | {
+      type: 'ASK_CONFIRM';
+      action_id: string;
+      action_type: 'SAVE_GOAL' | 'REASSESS';
+      title: string;
+      summary: string;
+      before: Record<string, unknown> | null;
+      after: Record<string, unknown>;
+      notes: string[];
+      expires_at: string;
+      /** 승인 · 거절 요청에 그대로 보냅니다 */
+      args_hash: string;
+    }
+  | {
+      type: 'GOAL_RESULT';
+      goal_version: number;
+      take_id: string;
+      status: string;
+      observed: number | null;
+      reason: string;
+    }
+  | {
+      type: 'MEMORY_SAVED';
+      item_id: string;
+      key: ProfileKey;
+      value: string;
+    };
+
+export type CardType = Card['type'];
+
+// ── 실행 이벤트 · 실행 조회 ────────────────────────────────────
+
+/** `claim` 줄 — 검사를 통과한 문장 하나와 그 근거 · 자료 · 판단 (5-4) */
+export interface ClaimEventData {
+  /** 실행 전체에서 0부터 1씩. 이벤트 순번(`event_seq`)과 따로입니다 */
+  index: number;
+  claim: Claim;
+  evidence: Evidence[];
+  sources: GuideCard[];
+  assessments: Assessment[];
+}
+
+/**
+ * 실행 이벤트 (12-3 B15). BE 가 진행 줄 · 문장 줄을 저장하고 `after_seq` 커서로 돌려줍니다.
+ * 저장된 이벤트의 순번 · 내용은 바뀌지 않습니다.
+ */
+export type RunEvent =
+  | { event_seq: number; event: 'plan'; data: { plan: PlanStep[] } }
+  | { event_seq: number; event: 'tool_done'; data: { trace: TraceItem } }
+  | { event_seq: number; event: 'claim'; data: ClaimEventData };
+
+/** 실행 조회 응답 (12-3 '실행 상태 조회') */
+export interface RunView {
+  run_id: string;
+  conversation_id: string;
+  status: RunStatus;
+  plan: PlanStep[];
+  trace: TraceItem[];
+  /** `after_seq` 뒤의 이벤트, 순번순 */
+  events: RunEvent[];
+  /** 크기 때문에 나눠 보냈으면 다음 커서 (FE 잠정 칸). 다 보냈으면 null */
+  next_after_seq: number | null;
+  /** 대기 중 카드와 그 행동의 `args_hash` */
+  cards: Card[];
+  error: { code: ChatErrorCode } | null;
+  retry_after_s: number | null;
+}
+
+// ── 메시지 · 대화 ─────────────────────────────────────────────
+
+/** 최신 아님 사유 (6-8). 모르는 값은 "일부 기준이 바뀌었어요"로 보입니다 */
+export type StaleReason =
+  | 'NEW_TAKE'
+  | 'RESULT_REVISED'
+  | 'SCRIPT_VERSION_CHANGED'
+  | 'CRITERIA_VERSION_CHANGED'
+  | 'GOAL_CHANGED'
+  | 'SOURCE_DELETED'
+  | 'PRESENTATION_VERSION_CHANGED'
+  | 'RULE_VERSION_CHANGED'
+  | 'RESULT_UNAVAILABLE'
+  | 'VERSION_UNKNOWN'
+  | 'CORPUS_UPDATED';
+
+/** 메시지 목록 한 줄 (12-3 '메시지 목록') */
+export interface ChatMessage {
+  message_id: string;
+  role: 'user' | 'assistant' | 'system';
+  /** 사용자 말 · 시스템 문장. 에이전트 답은 `claims` 를 이은 값입니다 */
+  text: string;
+  created_at: string;
+  /** 이 메시지를 만든 실행. 사용자 · 시스템 메시지는 null */
+  run_id: string | null;
+  /** 답을 만든 실행의 끝 상태. 사용자 · 시스템 메시지는 null */
+  status: RunStatus | null;
+  claims: Claim[];
+  cards: Card[];
+  assessments: ListedAssessment[];
+  evidence: Evidence[];
+  sources: GuideCard[];
+  /** 근거 표시 배지 글자 — 예 "Take 5 · 대본 V2 · 기준 v4 기준". 번호는 BE 값 그대로 */
+  basis_label: string | null;
+  stale_reasons: string[];
+  plan: PlanStep[];
+  trace: TraceItem[];
+}
+
+export interface MessagePage {
+  items: ChatMessage[];
+  /** 더 옛 메시지를 읽을 커서 (FE 잠정 칸). 없으면 null */
+  next_cursor: string | null;
+}
+
+/** 대화 목록 한 줄 (12-3 '새 대화 · 대화 목록') */
+export interface ConversationSummary {
+  conversation_id: string;
+  /** 첫 질문 앞부분 */
+  title: string;
+  /** 대화 범위. 전체면 null */
+  scope_pitch_id: string | null;
+  scope_title: string | null;
+  last_message_at: string | null;
+  has_stale: boolean;
+  /** '기억 없이' 대화. 만든 뒤에는 바뀌지 않습니다 */
+  memory_off: boolean;
+}
+
+export interface ConversationList {
+  items: ConversationSummary[];
+}
+
+// ── 요청 ──────────────────────────────────────────────────────
+
+/** 화면 상태 (12-4 `Screen`). 그 밖의 화면은 null 입니다 */
+export type ChatScreen =
+  | {
+      name: 'pitch_create' | 'pitch_edit';
+      snapshot_id: string;
+      step: 'slides' | 'script' | 'info' | 'criteria';
+      version_label: string | null;
+      version_id: string | null;
+      saved: {
+        title: string;
+        time_limit_sec: number;
+        criteria_text: string;
+        script_chars: number;
+      } | null;
+      draft: {
+        title: string | null;
+        slide_count: number | null;
+        script_chars: number | null;
+        time_limit_sec: number | null;
+        criteria_text: string | null;
+      };
+      changed: ('title' | 'slides' | 'script' | 'time_limit_sec' | 'criteria_text')[];
+    }
+  | {
+      name: 'device_check';
+      snapshot_id: string;
+      camera: 'connected' | 'disconnected';
+      mic: 'detected' | 'checking' | 'disconnected';
+      gaze_setup: 'LOADING' | 'UNAVAILABLE' | 'IDLE' | 'RUNNING' | 'DONE' | 'FAILED';
+      gaze_reason: string | null;
+    };
+
+/** 대화창을 연 화면 (5-3 `page`). 메시지마다 함께 보냅니다 */
+export interface ChatPage {
+  route: string;
+  pitch_id: string | null;
+  take_id: string | null;
+  screen: ChatScreen | null;
+}
+
+export interface CreateConversationRequest {
+  scope_pitch_id: string | null;
+  page: ChatPage;
+  memory_off: boolean;
+}
+
+export interface CreateConversationResponse {
+  conversation_id: string;
+}
+
+/** 메시지 보내기 (12-3). `client_request_id` 는 사용자 단위로 유일합니다 */
+export interface SendMessageRequest {
+  conversation_id: string | null;
+  scope_pitch_id: string | null;
+  /** 앞뒤 공백을 지운 1~2,000자(코드 포인트) */
+  text: string;
+  page: ChatPage;
+  client_request_id: string;
+  again_of_message_id: string | null;
+  choice: { proposal_id: string; option: 'USER' | 'EXPERT' } | null;
+}
+
+/** 메시지 보내기 응답 — 202 */
+export interface SendMessageAccepted {
+  conversation_id: string;
+  message_id: string;
+  run_id: string;
+  status: 'QUEUED';
+}
+
+export interface ScopeChangeRequest {
+  pitch_id: string | null;
+}
+
+export interface ScopeChangeResponse {
+  conversation_id: string;
+  scope_pitch_id: string | null;
+  scope_title: string | null;
+}
+
+/** 승인 · 거절 (12-3). 인자는 보내지 않고 화면에 보인 `args_hash` 만 보냅니다 */
+export interface ActionDecisionRequest {
+  decision: 'APPROVE' | 'REJECT';
+  args_hash: string;
+}
+
+/** 승인 · 거절 · 되돌리기 · 취소의 응답 — 그 뒤의 실행 상태입니다 (FE 잠정 모양) */
+export interface ActionDecisionResponse {
+  action_id: string;
+  action_status: ActionStatus;
+  run_id: string;
+  run_status: RunStatus;
+}
+
+export interface UndoResponse {
+  action_id: string;
+  goal_version: number;
+}
+
+// ── 기억 ──────────────────────────────────────────────────────
+
+export type ProfileKey = 'TONE' | 'EXPLAIN_STYLE' | 'FOCUS_AREA' | 'CONTEXT';
+
+/** 코칭 프로필 항목 하나 (5-2 `ProfileItem`) */
+export interface ProfileItem {
+  item_id: string;
+  key: ProfileKey;
+  /** 1~80자 */
+  value: string;
+}
+
+/** 기억 설정 · 코칭 프로필 (12-3) */
+export interface MemorySettings {
+  enabled: boolean;
+  items: ProfileItem[];
+}
+
+// ── 사용 가능 여부 · 오류 ──────────────────────────────────────
+
+export interface ChatAvailability {
+  enabled: boolean;
+}
+
+/** 화면이 받는 오류 코드 (5-9 · 12-4 F8). 모르는 코드는 "지금은 답을 만들지 못했어요"로 보입니다 */
+export type ChatErrorCode =
+  | 'VALIDATION_ERROR'
+  | 'NOT_FOUND'
+  | 'AGENT_DISABLED'
+  | 'AGENT_BUSY'
+  | 'AGENT_DAILY_LIMIT'
+  | 'AGENT_STATE_INVALID'
+  | 'AGENT_CONTEXT_TOO_LARGE'
+  | 'AGENT_OUTPUT_TOO_LARGE'
+  | 'AGENT_REQUEST_CONFLICT'
+  | 'AGENT_RUN_IN_PROGRESS'
+  | 'AGENT_CANCELLED'
+  | 'AGENT_EXPIRED'
+  | 'AGENT_TIMEOUT'
+  | 'AGENT_UPSTREAM_ERROR';

@@ -1,4 +1,5 @@
 import { homeHandlers } from './home';
+import { chatHandlers } from './chat';
 import { serviceReviewHandlers } from './serviceReview';
 import { takeSurveyHandlers } from './takeSurvey';
 import { http, HttpResponse } from 'msw';
@@ -192,6 +193,8 @@ if (import.meta.env.DEV) {
 }
 
 export const handlers = [
+  // 대화 에이전트(잠정 경로 `/api/chat/*`). 다른 목과 경로가 겹치지 않습니다
+  ...chatHandlers,
   ...serviceReviewHandlers,
   // 리포트 설문(#776). `/api/takes/:takeId/...` 의 다른 목보다 먼저 둡니다
   ...takeSurveyHandlers,
