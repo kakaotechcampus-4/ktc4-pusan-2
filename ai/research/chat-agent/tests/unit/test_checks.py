@@ -1219,9 +1219,16 @@ def test_ref_ids_in_sentence_text_are_removed_so_their_digits_are_not_values(
 ) -> None:
     """모델이 문장 글에 적은 근거 · 자료 id 는 지운다. id 속 숫자(0 · 00 · 50)를 문장의 값으로 세지 않는다."""
     from chat_agent.checks import extract_numbers
-    from chat_agent.compose import _claim, strip_ref_ids
+    from chat_agent.compose import strip_ref_ids
 
     assert strip_ref_ids(text) == want
     assert extract_numbers(strip_ref_ids(text)).values == extract_numbers(want).values
-    c = _claim("RECORD", text)
-    assert c is not None and c.text == want
+
+
+def test_code_template_sentences_keep_their_source_ids() -> None:
+    """id 지우기는 모델이 쓴 글에만 한다: 코드가 만드는 문장(판단 첫 문장의 "발표법 자료(g-18)")은 그대로다(6회차 회귀)."""
+    from chat_agent.compose import _claim
+
+    head = "말씀하신 '발표는 빠를수록 좋다며?'는 기록과 달라요: 발표법 자료(g-18)."
+    c = _claim("ASSESSMENT", head)
+    assert c is not None and c.text == head

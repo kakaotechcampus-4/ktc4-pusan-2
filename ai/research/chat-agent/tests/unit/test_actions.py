@@ -1442,3 +1442,15 @@ def test_fetch_take_does_not_swap_in_another_take_after_the_named_one_was_not_fo
     # 가져오기가 실패한 일이 없으면 막지 않는다
     q = do("fetch_take", {"take_id": "t-3", "reason": "비교"}, ctx=ctx_for(msg), message=msg)
     assert q.reason_code != "NOT_NAMED_TAKE"
+
+
+def test_fetch_take_does_not_swap_in_another_take_when_the_named_one_is_gone() -> None:
+    """말한 Take 가 범위 피치에 없으면(지워짐) 가져오기를 시도하기 전이라도 다른 Take 로 바꿔 가져오지 않는다(6회차
+    stale-deleted). 말한 Take 가 있으면 막지 않는다."""
+    msg = "아까 말한 Take 4 3장 값 다시 알려 줘"
+    gone = ctx_for(msg)
+    gone.summaries.pop("t-4", None)
+    p = do("fetch_take", {"take_id": "t-3", "reason": "대신"}, ctx=gone, message=msg)
+    assert (p.result, p.reason_code) == ("TOOL_ERROR", "NOT_NAMED_TAKE")
+    q = do("fetch_take", {"take_id": "t-3", "reason": "비교"}, ctx=ctx_for(msg), message=msg)
+    assert q.reason_code != "NOT_NAMED_TAKE"

@@ -378,7 +378,7 @@ class Composer:
         expl: dict[int, str] = {}
         for c in elems[:lead]:
             if isinstance(c.get("assessment_index"), int):
-                expl.setdefault(c["assessment_index"], (c.get("text") or "").strip())
+                expl.setdefault(c["assessment_index"], compose.strip_ref_ids(c.get("text") or ""))
         for i, o in enumerate(fin.outcomes):
             if i not in expl and not lead_closed:
                 return out, flags, code  # 이 판단의 설명을 아직 기다린다
@@ -580,8 +580,12 @@ class Composer:
                 if t is None:
                     continue
                 head = fin.first.get(c.assessment_id or "")
-                if c.kind == "ASSESSMENT" and head and not t.startswith(head):
-                    t = f"{head} {t}"  # 판단 첫 문장(템플릿)은 고치는 단계도 바꾸지 못한다
+                if c.kind == "ASSESSMENT" and head:
+                    # 판단 첫 문장(템플릿)은 고치는 단계도 바꾸지 못한다. 모델이 쓴 뒷부분만 근거 · 자료 id 를 지운다
+                    body = t[len(head) :] if t.startswith(head) else t
+                    t = f"{head} {compose.strip_ref_ids(body)}".strip()
+                else:
+                    t = compose.strip_ref_ids(t)
                 nc = compose._claim(
                     c.kind,
                     t,
