@@ -10,7 +10,7 @@
 | 담당 | JWK0395 |
 | 설계 | 목적 · 계약 · 처리 · 실패 처리 · 시험 → [`docs/ai/features/chat-agent.md`](../../../docs/ai/features/chat-agent.md) |
 | 단계 | 연구 모듈에서 먼저 만들고 확인한 뒤 서비스에 탑재한다(기능 문서 4-1). **탑재 전에는 BE가 부르지 않는다** |
-| 버전 | `chat_agent-0.5.0`(`src/chat_agent/version.py`, 아래 평가 결과 표의 1 ~ 3회차는 `0.1.0`에서 잰 값), 응답 스키마 `1.0`, 도구 스키마 `tools-2`, 실행 상태 `v` 1 |
+| 버전 | `chat_agent-0.6.0`(`src/chat_agent/version.py`, 아래 평가 결과 표의 1 ~ 3회차는 `0.1.0`에서 잰 값), 응답 스키마 `1.0`, 도구 스키마 `tools-2`, 실행 상태 `v` 1 |
 
 ## 1. 코드 구조
 
@@ -56,8 +56,8 @@ chat-agent/
 | `tools/` | 읽기 도구 8개(5-7): 엄격한 인자, 결과에 근거 id, 캐시, trace 요약(사용자 글 없음) | 맥락 · 인자 → `ToolResult` · `TraceItem` | 루프(조사) | 도구를 더하면 `TOOL_SCHEMA_VERSION`과 5-7 |
 | `actions.py` | 행동(5-8): 자율 등급 `AUTO` · `ASK` · `BUTTON`, `args_hash`, 행동 도구 인자, 허용 근거 검사(6-2, '확인 카드를 낼 근거가 있나'), 목표 제안 카드로 낮추기, 승인 확인 카드 그리기(`ask_confirm_card`, 다시 평가의 바꾸기 전 조건은 대상 Take 의 리뷰 조건이고 확인할 수 없으면 카드 · 행동 없음), 연습 이동 버튼 카드, 고른 제안의 선승인, 결과 짝(`executed_args_hash` — `ASK` 행동은 성공 · 실패 · 불명확 모두 필수) · 반영 | 모델 호출 → 행동 · 카드, BE 결과 → 반영 · 성공 문장 | 루프 · 턴 | 자율 등급 표는 5-8 · 6-2. 행동 모양을 바꾸면 `TOOL_SCHEMA_VERSION` |
 | `budget.py` | 한도(8-2 · 8-3): 모델 18번(조사는 16번째 시도까지) · 도구 12번 · 행동 · 토큰(입력 72k · 출력 8k, 둘 다 전송 전 예약 뒤 응답의 실측으로 정산) · 시간 예약, 응답마다 답 쓰기 · 고치기 몫 남기기, 한도 코드 → 끝난 이유 | 누적량 → 예약 또는 `LimitHit` | 행동 · 루프 | 숫자는 `config.py` |
-| `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 라이선스 · 검수)와 검색(6-10) | manifest · 카드 → `Corpus`, 질의 → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스 탑재 때는 `allow_unreviewed=False` |
-| `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시) | — | `corpus.py` | 카드를 고치면 해시를 다시 만들고 `corpus_version`을 올린다 |
+| `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 라이선스 · 검수)와 검색(6-10). 검색은 제목 · 주제어 · 본문 키워드에 동의어 사전(질문의 다른 말 → 카드가 쓰는 대표어, 한 방향)을 더한다 | manifest · 카드 → `Corpus`, 질의 → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스 탑재 때는 `allow_unreviewed=False` |
+| `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시 · 동의어 사전 `synonyms`: 묶음의 첫 말이 대표어) | — | `corpus.py` | 카드나 동의어 사전을 고치면 해시를 다시 만들고(`manifest_hash(cards, synonyms)`) `corpus_version`을 올린다 |
 | `llm_types.py` | 코어가 받는 도구 호출 LLM 의 모양(6-11): 요청 · 결과 · 실패 종류 · `before_attempt` 예약 · 응답 조각을 받는 쪽(`TextSink`, 화면에 낸 것이 있으면 다시 보내지 않음) | — | 루프 · 연구용 LLM 함수 · 가짜 모델 | 서비스로 옮길 때 `common/errors.py` 이름과 맞춘다 |
 | `diagnostics.py` | 진단 기록(11-5): 단계 · 끝, 닫힌 detail, 65,536바이트 줄이기 순서, `agent_step` · `agent_end` 로그 줄 | 단계 → `Diagnostics` | 루프 · 턴 | detail 필드는 `schemas.py` 닫힌 모델과 11-5 표 |
 | `prompts/` | 고정 지시문(계획 · 조사 · 답 쓰기 · 고치기)과 구조화 출력 모양(범위 밖 이유 `scope_reason` · 섞인 요청의 `scope_notes` 포함), `PROMPT_VERSION`(해시) | — | 루프 | 바꾸면 평가셋을 다시 돌리고 예시를 다시 만든다(판이 바뀜) |
@@ -305,7 +305,7 @@ uv sync                                             # .venv 를 만들고 서비
 | L4-25 | 단위 | `tests/unit/test_checks.py::test_fm_L4_25_diff_value_must_equal_recomputed` · `tests/unit/test_checks.py::test_fm_L4_25_percent_vs_percentage_point_confusion` · `tests/unit/test_checks.py::test_fm_L4_25_mixed_metric_or_slide_inputs_rejected` |  |
 | L4-26 | 계약 | `tests/unit/test_checks.py::test_fm_L4_26_plan_trace_summary_checked` · `tests/unit/test_checks.py::test_fm_L4_26_claims_pii_is_checked_too` · `tests/unit/test_checks.py::test_fm_L4_26_display_fields_numbers_targets_and_praise` |  |
 | L4-27 | 단위 | `tests/unit/test_checks.py::test_fm_L4_27_mixed_fix_results_keep_only_passing_in_order` · `tests/unit/test_checks.py::test_fm_L4_27_all_dropped_flag` |  |
-| L4-28 | 단위 | `tests/unit/test_corpus.py::test_fm_L4_28_no_result_for_unrelated_query` · `tests/unit/test_corpus.py::test_fm_L4_28_limit_and_order_deterministic` · `tests/unit/test_tools.py::test_l1_21_l4_28_search_with_no_hits_is_empty` |  |
+| L4-28 | 단위 | `tests/unit/test_corpus.py::test_fm_L4_28_no_result_for_unrelated_query` · `tests/unit/test_corpus.py::test_fm_L4_28_limit_and_order_deterministic` · `tests/unit/test_tools.py::test_l1_21_l4_28_search_with_no_hits_is_empty` · `tests/unit/test_corpus.py::test_synonym_dictionary_finds_cards_the_query_words_miss` |  |
 | L4-29 | 계약 | `tests/unit/test_corpus.py::test_fm_L4_29_forbidden_license` · `tests/unit/test_corpus.py::test_fm_L4_29_unreviewed_rejected_for_service` · `tests/unit/test_corpus.py::test_fm_L4_29_blank_source_is_rejected` |  |
 | L4-30 | 통합 | `tests/unit/test_corpus.py::test_fm_L4_30_missing_file` · `tests/unit/test_corpus.py::test_fm_L4_30_body_changed_hash_mismatch` · `tests/unit/test_tools.py::test_l1_20_search_cache_is_per_corpus_version` · `tests/unit/test_corpus.py::test_fm_L4_30_same_version_with_new_text_is_rejected` · `tests/unit/test_corpus.py::test_fm_L4_30_service_mode_rejects_unregistered_version` | 배포 중 판 바뀜은 재개 때 검색 캐시만 버린다. 같은 판에 다른 본문 · 등록하지 않은 판(서비스 모드)은 묶음을 만들지 않는다. 철회한 자료의 옛 인용을 다시 보이지 않는 것은 서비스 탑재 때(자료 판별 보관) |
 | L4-31 | 평가셋 | 평가셋 | 안전 세트(주입 여섯 경로). 단위로는 test_actions.py 의 test_l4_31_* |

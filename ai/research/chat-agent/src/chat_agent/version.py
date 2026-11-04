@@ -11,7 +11,7 @@
 - prompt_version(프롬프트 해시) · corpus_version(자료 묶음 판)은 각각 prompts/ · corpus.py 가 계산한다.
 """
 
-FEATURE_VERSION = "chat_agent-0.5.0"
+FEATURE_VERSION = "chat_agent-0.6.0"
 SCHEMA_VERSION = "1.0"
 TOOL_SCHEMA_VERSION = "tools-2"
 STATE_V = 1
@@ -23,9 +23,11 @@ GOAL_ALGORITHM_VERSION = "goal-algo-1"
 SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 
 #: 자료 묶음 판 → 묶음 해시. 한 번 정한 판의 해시는 바꾸지 않는다: 카드 본문을 고치면 판을 올리고 여기에 줄을 더한다
-#: (같은 판에 다른 본문이 들어가면 그 판을 인용한 옛 답 · 진행 중 실행과 어긋난다, L4-30). 첫 배포 전에는 guides-1 을 고쳐 쓴다
+#: (같은 판에 다른 본문이 들어가면 그 판을 인용한 옛 답 · 진행 중 실행과 어긋난다, L4-30). 첫 배포 전에도 평가 결과 표(README)에
+#: 남은 판은 고쳐 쓰지 않는다(그 판으로 잰 결과와 본문이 어긋난다). guides-2: 동의어 사전 · 카드 g-13 범위 밖 문장 빼기
 CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-1": "48aa04e52f8f16abacb6c87d37d5536daf39e4d3c4aac05bf1550cad9dd6ad89",
+    "guides-2": "a2b1f11aaf653da307afce2ec0bfe8d5a141fe08d3faed1e803c955ffe619823",
 }
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),

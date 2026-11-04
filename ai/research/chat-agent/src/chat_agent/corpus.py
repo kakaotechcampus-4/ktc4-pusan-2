@@ -126,6 +126,20 @@ class _Manifest(BaseModel):
     corpus_version: str = Field(min_length=1)
     files: list[str] = Field(min_length=1)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    #: 검수한 동의어 사전(6-10): 같은 뜻의 말 묶음. 첫 말은 카드가 쓰는 대표어이고, 질문에 나머지 말이 있으면 대표어로도
+    #: 찾는다. 묶음 해시에 든다
+    synonyms: list[list[str]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _synonym_groups(self) -> _Manifest:
+        for g in self.synonyms:
+            if len(g) < 2 or any(not isinstance(t, str) or not t.strip() for t in g):
+                raise ValueError("동의어 묶음은 빈 말 없이 2개 이상이다")
+            if not _grams(g[0]):
+                raise ValueError(
+                    "동의어 묶음의 대표어(첫 말)는 두 글자 이상 낱말을 가져야 찾을 수 있다"
+                )
+        return self
 
 
 class GuideHit(BaseModel):
@@ -137,14 +151,19 @@ class GuideHit(BaseModel):
     score: float
 
 
-def manifest_hash(cards: Iterable[Mapping[str, Any]]) -> str:
+def manifest_hash(
+    cards: Iterable[Mapping[str, Any]], synonyms: list[list[str]] | None = None
+) -> str:
     """모든 카드를 `source_id` 순으로 놓은 정규 JSON(키 정렬 · 공백 없음 · UTF-8)의 SHA-256 16진수.
 
+    동의어 사전이 있으면 `{"cards": …, "synonyms": …}`를 해시한다(사전도 자료 묶음 판에 든다, 6-10). 없으면 카드 목록만
+    해시하므로 사전이 없던 판(guides-1)의 해시는 그대로다.
     파일에서 읽은 dict 그대로 계산한다(모델을 거치지 않아 기본값이 해시에 끼지 않는다).
-    카드를 만들거나 고친 뒤 이 값으로 `manifest.json` 의 `sha256` 을 다시 쓴다.
+    카드 · 사전을 만들거나 고친 뒤 이 값으로 `manifest.json` 의 `sha256` 을 다시 쓴다.
     """
     ordered = sorted(cards, key=lambda c: str(c.get("source_id", "")))
-    blob = json.dumps(ordered, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    body: Any = {"cards": ordered, "synonyms": synonyms} if synonyms else ordered
+    blob = json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
@@ -188,10 +207,16 @@ class Corpus:
         hash_: str,
         cards: list[GuideCardData],
         cfg: ChatAgentConfig,
+        synonyms: list[list[str]] | None = None,
     ) -> None:
         self.version = version
         self.hash = hash_
         self._cfg = cfg
+        #: 동의어 묶음: (질문에서 찾을 다른 말들(정규화), 대표어 조각 모음)
+        self._synonyms = [
+            (tuple(n for n in (" ".join(_words(t)) for t in g[1:]) if n), _grams(g[0]))
+            for g in synonyms or []
+        ]
         self._cards = tuple(sorted(cards, key=lambda c: c.source_id))
         self._by_id = {c.source_id: c for c in self._cards}
         self._indexed = [_Indexed(c) for c in self._cards]
@@ -242,6 +267,13 @@ class Corpus:
         limit = cap if limit is None else max(0, min(limit, cap))
         q_grams = _grams(query)
         q_norm = " ".join(_words(query))
+        # 검수한 동의어 사전으로 질의를 넓힌다(6-10): 질문에 묶음의 다른 말(카드가 쓰지 않는 말)이 있으면 대표어로도
+        # 찾는다("원고만 봐요" → 대본). 한 방향으로만 넓힌다 — 대표어를 쓴 질문까지 다른 말로 넓히면 그 말을 주제어로 가진
+        # 카드가 질문의 나머지 말(예: "시선 기준")이 맞는 카드를 앞지른다. 대표어는 사용자가 쓴 말을 대신하므로 질문에
+        # 직접 쓴 말과 같은 무게로 센다(가볍게 세면 대표어로만 맞는 카드가 MIN_SCORE 를 못 넘는다)
+        for variants, rep in self._synonyms:
+            if any(v in q_norm for v in variants):
+                q_grams |= rep
         hits: list[tuple[float, _Indexed]] = []
         for ix in self._indexed:
             score = 0.0
@@ -339,7 +371,7 @@ def build_corpus(
     for c in cards:
         if c.license not in cfg.allowed_licenses:
             raise CorpusInvalid("LICENSE_FORBIDDEN", f"{c.source_id}: {c.license}")
-    if manifest_hash(raw) != man.sha256:
+    if manifest_hash(raw, man.synonyms or None) != man.sha256:
         raise CorpusInvalid("HASH_MISMATCH", man.corpus_version)
     fixed = CORPUS_VERSION_HASHES.get(man.corpus_version)
     if fixed is None and not allow_unreviewed:
@@ -352,4 +384,10 @@ def build_corpus(
         pending = [c.source_id for c in cards if c.review != "APPROVED"]
         if pending:
             raise CorpusInvalid("UNREVIEWED", ", ".join(pending))
-    return Corpus(version=man.corpus_version, hash_=man.sha256, cards=cards, cfg=cfg)
+    return Corpus(
+        version=man.corpus_version,
+        hash_=man.sha256,
+        cards=cards,
+        cfg=cfg,
+        synonyms=man.synonyms,
+    )

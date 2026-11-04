@@ -598,7 +598,11 @@ def build_corpus_for(spec: CorpusSpec | None) -> Corpus:
         first = manifest["files"][0]
         files[first] = [*files[first], *copy.deepcopy(spec.extra_cards)]
         raw = [c for name in manifest["files"] for c in files[name]]
-        manifest = {**manifest, "corpus_version": spec.corpus_version, "sha256": manifest_hash(raw)}
+        manifest = {
+            **manifest,
+            "corpus_version": spec.corpus_version,
+            "sha256": manifest_hash(raw, manifest.get("synonyms") or None),
+        }
     return build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=True)
 
 
