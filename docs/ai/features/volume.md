@@ -224,7 +224,7 @@ ai/research/volume-analysis/
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. `judge` 요청 하나가 도는 과정
 1. **기록 정리**: 같은 `t_ms`가 두 번 오면 먼저 온 것만 쓴다. `t_ms + duration_ms`가 판정 시각 이하인 기록만 본다.
-2. **`VOLUME`**: 판정 시각 앞 짧은 창(평활 창) 안의 말한 1초들로 에너지 Leq를 내 `level_db`로, 기준 음량이 있으면 `voice_diff_db`를 낸다. 마지막 1초에 오디오가 흐르지 않거나, 기준 음량이 없거나, 말한 1초가 기준 개수 미만이면 잴 수 없다. `voice_diff_db`가 작음 기준 미만이면 `LOW`와 `VOLUME_LOW`다.
+2. **`VOLUME`**: 판정 시각 앞 짧은 창(평활 창) 안의 말한 1초들로 에너지 Leq를 내 `level_db`로, 기준 음량이 있으면 `voice_diff_db`를 낸다. 마지막 1초에 오디오가 흐르지 않거나, 기준 음량이 없거나, 말한 1초가 기준 개수 미만이면 잴 수 없다. `level_db`는 소수 둘째 자리로 반올림하고, `voice_diff_db`는 반올림한 `level_db`에서 기준 음량을 뺀 뒤 다시 둘째 자리로 반올림한다. 작음 기준과는 이 반올림한 `voice_diff_db`로 비교한다. `voice_diff_db`가 작음 기준 미만이면 `LOW`와 `VOLUME_LOW`다.
 3. **`PAUSE`**: 마지막 기록의 `silence_ms`를 오디오가 다시 흐른 뒤 시간으로 자른 값을 `silence_ms`로 낸다. 오디오가 흐르지 않으면 잴 수 없다. 긴 침묵 기준을 넘으면 `SILENT`와 `LONG_SILENCE`다.
 4. **새 몫 세기 (`tally`)**: `since_ms` 이상의 새 1초마다 5-3 표의 값을 그 1초의 `t_ms`로 낸다. `low_ms`는 그 1초에서 끝나는 짧은 창으로 잰다(그 1초 시점까지의 기록만). 한 번 센 몫은 바꾸지 않는다.
 5. **커서**: `counted_until_ms = max(t_ms, since_ms)`로 돌려주어 커서를 되돌리지 않는다. 같은 입력이면 같은 결과다.
@@ -351,7 +351,8 @@ sequenceDiagram
 - **`voice_diff_db`** (판정 결과): `level_db − base_level_db`.
 - **`level_db`** (Take · 장): `10·log10(voiced_energy ÷ voiced_ms)`.
 - **`voice_diff_db`** (Take · 장): `level_db − base_db_ms ÷ level_voiced_ms`.
-- **`low_ratio`**: 작다고 판정된 1초의 발화 시간 ÷ 전체 발화 시간.
+- 위 `level_db` · `voice_diff_db`는 소수 둘째 자리로 반올림한다. `voice_diff_db`는 반올림한 `level_db`로 계산한 뒤 다시 반올림한다(6-1 2번).
+- **`low_ratio`**: 작다고 판정된 1초의 발화 시간 ÷ 전체 발화 시간. 소수 넷째 자리로 반올림한다(`measured_ratio`도 같다).
 - **`long_silence_count`**: 오디오가 흐르는 동안 연속 무음이 긴 침묵 기준을 넘은 횟수(한 침묵은 한 번).
 - **`measured_ratio`**: 5-3 표.
 - **침묵 감지 지연**: 정답 침묵이 긴 침묵 기준 길이에 닿은 시각부터 `LONG_SILENCE`가 처음 나온 판정 시각까지의 차이 평균.
