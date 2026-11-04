@@ -2,8 +2,33 @@
 
 from pathlib import Path
 
+import pytest
+
 import run
 from pitch_coach_ai.features import script_parser
+from pitch_coach_ai.features.script_parser.schemas import LLMOutput, ParseRequest
+
+
+class FakeLLM:
+    def __init__(self, output: dict):
+        self.output = LLMOutput.model_validate(output)
+
+    def invoke(self, messages):
+        return self.output
+
+
+def parsed(text: str, slides: list[tuple[int, list[str]]]):
+    """가짜 LLM으로 parse_script를 돌려 (응답, LLM 출력)을 만든다."""
+    picked = {
+        "preface_title_lines": [],
+        "slides": [{"slide_number": n, "title_lines": [], "keywords": k} for n, k in slides],
+        "terms": [],
+    }
+    llm = FakeLLM(picked)
+    return run.parse_script(ParseRequest(script_text=text), llm), llm.output
+
+
+TWO_SLIDES = "[1] 첫 문장입니다.\n둘째 문장입니다.\n[2] 셋째 문장입니다."
 
 
 def test_run_uses_the_service_core_in_this_repo():
@@ -19,3 +44,28 @@ def test_every_script_has_a_label_and_every_label_a_script():
     labels = {p.stem for p in run.LABELS_DIR.glob("*.json")}
     assert scripts
     assert scripts == labels
+
+
+def label(first_last: list[tuple[str, str]], status: str = "success") -> dict:
+    return {
+        "status": status,
+        "slides": [
+            {"slide_number": i, "first": first, "last": last}
+            for i, (first, last) in enumerate(first_last, 1)
+        ],
+        "title_lines": [],
+    }
+
+
+def test_keyword_on_missing_slide_is_not_in_script():
+    # 3번 장은 없다. '첫 문장'은 1번 장에 있지만 3번 장 키워드로 왔으니 대본에 없는 것으로 센다
+    response, picked = parsed(TWO_SLIDES, [(1, ["둘째"]), (2, []), (3, ["첫 문장"])])
+    result = run.score(TWO_SLIDES, label([("", ""), ("", "")]), response, picked)
+    assert (result["keywords"], result["keywords_in_script"]) == (2, 1)
+
+
+def test_fail_script_looks_for_keywords_in_the_whole_script():
+    text = "구분자 없는 대본입니다.\n둘째 줄입니다."
+    response, picked = parsed(text, [(1, ["둘째"])])
+    result = run.score(text, label([("", "")], status="fail"), response, picked)
+    assert (response.status, result["keywords_in_script"]) == ("fail", 1)
