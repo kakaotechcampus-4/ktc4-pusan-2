@@ -7,8 +7,9 @@
   2. 조사: 모델이 도구를 고르면 실행해 결과를 돌려주고, 행동을 고르면 그 지점에서 멈추고 NEEDS_ACTION 을 낸다(한 응답에서 첫 행동까지만).
      한도(8-2: 모델 호출 18번 중 조사는 16번째 시도까지 · 도구 12번 · 시간 · 토큰)에 닿거나, 같은 (도구, 인자, 범위, 자료 판)을 새 근거 없이
      연속 2회, 최근 네 요청이 A-B-A-B로 번갈아 되풀이(교대 반복, 캐시 적중 포함), 무효 도구 응답이 연속 2회면 조사를 끝낸다.
+     교대 반복은 요청마다 판정해 그 응답의 남은 요청은 실행하지 않고, 새 근거가 생긴 요청에서 기록을 비운다. 이미 한도로 정해진 끝난 이유는 덮지 않는다.
      끝난 까닭은 `stop_reason`(TIME · MODEL_CALLS · TOOL_CALLS · TOKENS · 반복 계열)에 남기고 turn.py 가 진단 `end.reason`으로 옮긴다.
-  2-1. 모델 한 번(`_call`)마다 출력 예약을 응답 뒤 공급자 실측으로 정산한다(budget.py `settle_output`).
+  2-1. 모델 한 번(`_call`)마다 입력 · 출력 예약을 응답 뒤 공급자 실측으로 정산한다(budget.py `settle_input` · `settle_output`).
   3. 답 쓰기(구조화) → 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 · 결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9).
      걸리면 걸린 문장과 까닭을 알려 한 번 고치게 하고 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
@@ -281,8 +282,9 @@ class Loop:
         self.model_name = res.model or llm.model_name or self.model_name
         usages = list(res.attempt_usages) or [res.usage]
         self._count_usage(usages)
-        # 응답을 받은 시도(마지막)의 출력 예약을 실측으로 바꾼다. 실패한 앞 시도 · 실측이 없는 시도는 예약 그대로(8-3)
+        # 응답을 받은 시도(마지막)의 입력 · 출력 예약을 실측으로 바꾼다. 실패한 앞 시도 · 실측이 없는 시도는 예약 그대로(8-3)
         if reserved[0]:
+            self.budget.settle_input(est, res.usage.input_tokens)
             self.budget.settle_output(max_out, res.usage.output_tokens)
         # 실패한 앞 시도(재시도 전)도 진단 단계로 남긴다
         self._failed_steps(
@@ -571,6 +573,8 @@ class Loop:
             stop_action: dict[str, Any] | None = None
             any_valid = False
             progressed = False
+            #: 교대 반복(A-B-A-B)이 이 응답의 어느 요청에서 확인되면 남은 요청은 실행하지 않는다(5-7)
+            alt_stop = False
             for i, call in enumerate(calls):
                 if self.cancelled():
                     break  # 연결이 끊기면 같은 응답의 남은 도구 · 행동도 실행하지 않는다(L1-08)
@@ -588,7 +592,7 @@ class Loop:
                     }
                 )
                 self.st.processed_calls.append(call.id)
-                if stop_action is not None or i >= self.cfg.max_tools_per_response:
+                if stop_action is not None or alt_stop or i >= self.cfg.max_tools_per_response:
                     results.append(
                         self._tool_msg(
                             call.id,
@@ -596,7 +600,7 @@ class Loop:
                                 "ok": False,
                                 "error": {
                                     "code": "TOOL_SKIPPED",
-                                    "message": "앞 행동에서 멈춰 실행하지 않았다",
+                                    "message": "앞 요청에서 멈춰 실행하지 않았다",
                                 },
                             },
                         )
@@ -613,7 +617,9 @@ class Loop:
                             "tool_name": call.name,
                             "tool_args": call.args,
                         }
-                    progressed = progressed or out.get("progressed", False)
+                    if out.get("progressed", False):
+                        progressed = True
+                        self.st.recent_keys = []  # 새 근거가 생긴 요청에서 반복 기록을 비운다(5-7)
                     continue
                 args = validate_args(call.name, call.args)
                 if isinstance(args, str):
@@ -632,6 +638,7 @@ class Loop:
                 else:
                     self.st.repeat_key, self.st.repeat_count = key, 1
                 self.st.recent_keys = [*self.st.recent_keys, key][-4:]
+                request_progressed = False
                 cached = call.name != "update_plan" and self._is_cached(call.name, args)
                 if not cached:
                     hit = self.budget.reserve_tool()
@@ -673,6 +680,7 @@ class Loop:
                     )
                     if tr.outcome != "CACHED" and tr.ok:
                         progressed = True
+                        request_progressed = True
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq)
@@ -680,20 +688,29 @@ class Loop:
                     [self.ctx.scope_pitch_id] if self.ctx.scope_pitch_id else []
                 )
                 results.append(self._tool_msg(call.id, tr.model_view()))
+                # 교대 반복은 요청마다 본다: 새 근거가 생기면 기록을 비우고 다음 요청부터 다시 센다
+                if request_progressed:
+                    self.st.recent_keys = []
+                elif _alternating(self.st.recent_keys):
+                    alt_stop = True
+                    if not self.st.research_done:  # 이미 한도로 끝난 이유는 덮지 않는다
+                        self.st.research_done, self.st.stop_reason = True, "ALTERNATING"
             self.st.messages.append(assistant)
             self.st.messages.extend(results)
             if stop_action is not None:
                 return stop_action
             if not any_valid:
                 self.st.invalid_streak += 1
-                if self.st.invalid_streak >= self.cfg.invalid_stop:
+                if self.st.invalid_streak >= self.cfg.invalid_stop and not self.st.research_done:
                     self.st.research_done, self.st.stop_reason = True, "INVALID_TOOLS"
             else:
                 self.st.invalid_streak = 0
-            if self.st.repeat_count >= self.cfg.repeat_stop and not progressed:
+            if (
+                self.st.repeat_count >= self.cfg.repeat_stop
+                and not progressed
+                and not self.st.research_done
+            ):
                 self.st.research_done, self.st.stop_reason = True, "NO_PROGRESS"
-            elif not progressed and _alternating(self.st.recent_keys):
-                self.st.research_done, self.st.stop_reason = True, "ALTERNATING"
         return None
 
     def _is_cached(self, name: str, args: Any) -> bool:

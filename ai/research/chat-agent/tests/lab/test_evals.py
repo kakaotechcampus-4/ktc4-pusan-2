@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -346,6 +347,35 @@ def test_targets_are_the_fixed_14_2_values() -> None:
     assert t["reassess_turn_p95_s"]["value"] == 45.0
 
 
+def test_limit_partial_counts_final_end_reasons_by_reason() -> None:
+    """14-1 '한도 때문의 PARTIAL': 최종 응답 진단 기록 end.reason 이 한도 이유인 PARTIAL 수 · 비율 · 이유별 수."""
+    (base,) = _run(["ana-slide3-gaze"])
+    assert (base.turns[0]["end_status"], base.turns[0]["end_reason"]) == ("DONE", "ANSWERED")
+
+    def with_end(status: str, reason: str) -> ev.RunResult:
+        turn = {**base.turns[0], "end_status": status, "end_reason": reason}
+        return dataclasses.replace(base, turns=[turn])
+
+    runs = [
+        base,
+        with_end("PARTIAL", "TIME"),
+        with_end("PARTIAL", "REPEAT"),
+        with_end("PARTIAL", "REPEAT"),
+        with_end("PARTIAL", "CHECK_ALL_DROPPED"),  # 답 검사 때문은 한도 이유에 넣지 않는다
+        with_end("DONE", "TOKENS"),  # PARTIAL 이 아니면 세지 않는다
+    ]
+    lp = ev.summarize(runs, None, None, repeat=1)["units"]["all"]["limit_partial"]
+    assert (lp["num"], lp["den"]) == (3, 6) and lp["raw"] == 0.5
+    assert lp["by_reason"] == {
+        "TIME": 1,
+        "MODEL_CALLS": 0,
+        "TOOL_CALLS": 0,
+        "TOKENS": 0,
+        "REPEAT": 2,
+    }
+    assert lp["check_all_dropped"] == 1
+
+
 def test_report_is_written(tmp_path: Path) -> None:
     results = _run(["ana-slide3-gaze", "refuse-out-of-scope"])
     summary = ev.summarize(results, ev.Prices(1.0, 0.1, 4.0, "2026-11-04"), None, repeat=1)
@@ -367,6 +397,7 @@ def test_report_is_written(tmp_path: Path) -> None:
     assert rep["info"]["scenario_ids"] == ["ana-slide3-gaze", "refuse-out-of-scope"]
     md = mp.read_text(encoding="utf-8")
     assert "묶음 단위" in md and "목표 수치" in md and "실패 시나리오" in md
+    assert "한도 때문의 PARTIAL" in md and rep["units"]["all"]["limit_partial"]["den"] == 2
     lines = (tmp_path / "out" / "runs.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
 

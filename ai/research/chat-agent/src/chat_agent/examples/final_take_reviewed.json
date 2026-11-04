@@ -143,8 +143,8 @@
     "model_calls": 1,
     "tool_calls": 0,
     "elapsed_ms": 2300,
-    "input_tokens": 4000,
-    "output_tokens": 2000
+    "input_tokens": 2900,
+    "output_tokens": 80
   },
   "usage": {
     "model_calls": 1,
