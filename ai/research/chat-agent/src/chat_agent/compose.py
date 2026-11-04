@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -38,8 +39,37 @@ class Composed:
     outcomes: list[Any] = field(default_factory=list)
 
 
+#: 근거 · 자료 id(기록 근거 e- · 계산 근거 c- · 자료 카드 g- · u-). id 는 evidence_ids · source_ids 칸에만 쓴다(6-9)
+_REF_ID = r"(?<![0-9A-Za-z])(?:[ec]-[0-9a-f]{10}|[gu]-\d{2,3})(?![0-9A-Za-z])"
+_REF_LIST = rf"{_REF_ID}(?:\s*[,·、/]\s*{_REF_ID})*"
+_REF_PATTERNS = (
+    # "(e-0e00ac50bb)" · "(근거: e-…, e-…)" · "[g-13]"
+    re.compile(
+        rf"\s*[(\[]\s*(?:(?:근거|출처|자료)\s*(?:id)?\s*[:：]?\s*)?{_REF_LIST}\s*[)\]]",
+        re.IGNORECASE,
+    ),
+    # "근거: e-…"
+    re.compile(rf"\s*(?:근거|출처)\s*(?:id)?\s*[:：]\s*{_REF_LIST}", re.IGNORECASE),
+    # 맨 id
+    re.compile(rf"\s*{_REF_LIST}"),
+)
+_SPACE_BEFORE_PUNCT = re.compile(r"\s+([.,!?])")
+
+
+def strip_ref_ids(text: str) -> str:
+    """모델이 문장 글에 적은 근거 · 자료 id 표기를 지운다(6-9).
+
+    숫자 검사가 id 속 숫자(`e-0e00ac50bb`의 0 · 00 · 50)를 문장의 값으로 읽어 맞는 문장을 빼지 않게 하고, 화면에 내부
+    표기가 나가지 않게 한다(4회차: 고치기 응답이 "28%였습니다 (e-…)"로 써서 고친 문장까지 빠짐)."""
+    t = text
+    for p in _REF_PATTERNS:
+        t = p.sub("", t)
+    t = _SPACE_BEFORE_PUNCT.sub(r"\1", t)
+    return re.sub(r"\s{2,}", " ", t).strip()
+
+
 def _claim(kind: str, text: str, **kw: Any) -> Claim | None:
-    t = (text or "").strip()
+    t = strip_ref_ids(text or "")
     if not t:
         return None
     if len(t) > _CLAIM_MAX:

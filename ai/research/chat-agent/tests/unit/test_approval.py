@@ -80,8 +80,12 @@ def save_script(**kw: Any) -> list[Any]:
     ]
 
 
-def first_request() -> dict[str, Any]:
-    return F.with_loaded(F.request(user_message=GOAL_MSG), "t-4")
+def first_request(message: str = GOAL_MSG) -> dict[str, Any]:
+    return F.with_loaded(F.request(user_message=message), "t-4")
+
+
+#: 목표 저장과 다시 평가(조건: 내 기준)를 함께 바라는 말. 다시 평가는 조건 없는 측정값 이야기만으로는 내지 않는다(6-6)
+GOAL_AND_REASSESS_MSG = GOAL_MSG + " 내 기준으로 다시 평가도 해 줘"
 
 
 def pause(llm: Any | None = None, *, req: dict[str, Any] | None = None):  # noqa: ANN201
@@ -367,7 +371,7 @@ def test_second_pause_after_resume_carries_the_front_sentences() -> None:
 
 def test_second_ask_in_one_run_stacks_on_the_front_and_the_first_result() -> None:
     """한 실행에 승인 대기는 최대 2개(저장 1 · 다시 평가 1)이고 한 번에 하나다. 둘째 멈춤은 앞 문장 · 첫 행동 결과 뒤에 카드를 낸다."""
-    req, _, data = pause()
+    req, _, data = pause(req=first_request(GOAL_AND_REASSESS_MSG))
     said = data["message"]["claims"]
     req2 = resume_request(req, data, saved_result(data["actions"][0]))
     llm2 = F.FakeLlm([F.tools(REASSESS, prefix="ra")], answers=[F.answer([])], fixes=[F.fix({})])
@@ -702,7 +706,7 @@ def test_state_too_large_keeps_the_front_sentences_and_their_source_cards(monkey
     from chat_agent import state as st
     from chat_agent import turn as turn_mod
 
-    req, _, data = pause()
+    req, _, data = pause(req=first_request(GOAL_AND_REASSESS_MSG))
     data = with_guide_front(data)
     said = payload_of(data["state"])["loop"]["emitted"]
     req2 = resume_request(req, data, saved_result(data["actions"][0]))
@@ -728,7 +732,7 @@ def test_state_too_large_keeps_the_executed_result_sentence_and_card(monkeypatch
     from chat_agent import state as st
     from chat_agent import turn as turn_mod
 
-    req, _, data = pause()
+    req, _, data = pause(req=first_request(GOAL_AND_REASSESS_MSG))
     said = data["message"]["claims"]
     req2 = resume_request(req, data, saved_result(data["actions"][0]))
 
@@ -767,3 +771,76 @@ def test_removed_source_under_a_front_sentence_stops_the_resume_and_keeps_the_fr
     assert claims[: len(said)] == said  # 앞부분은 이미 낸 문장 그대로
     assert claims[-1]["text"] == templates.SystemText.SOURCE_DELETED_STOP.value
     assert claims[-1]["kind"] == "SYSTEM"
+
+
+# ── 측정값 이의 · 대본 진술(6-6 · L6-06, 4회차) ───────────────────────────────
+
+DISPUTE_MSG = "Take 5는 카메라가 낮아서 시선이 낮게 나온 거야. 다시 평가해 줘"
+
+
+def dispute_drafts() -> list[dict[str, Any]]:
+    return [
+        F.draft(
+            "Take 5는 카메라가 낮아서 시선이 낮게 나온 거야",
+            claim_op="ISSUE",
+            dimension="audience_gaze",
+            take_numbers=[5],
+            polarity="NEGATIVE",
+        ),
+        F.draft("다시 평가해 줘", type_="REQUEST", claim_op=None, polarity="NEUTRAL"),
+    ]
+
+
+def test_measurement_dispute_gets_the_measurement_notice_without_reassess() -> None:
+    """측정값 이의로 다시 평가를 바라면 코드가 "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요"를 붙인다(6-6)."""
+    llm = F.FakeLlm(
+        [F.plan(assessments=dispute_drafts()), F.done()],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=DISPUTE_MSG), llm)
+    fd = final_ok(data)
+    assert fd.actions == []
+    assert templates.SystemText.MEASUREMENT_FIXED.value in fd.message.text  # type: ignore[union-attr]
+
+
+def test_reassess_on_a_measurement_dispute_is_a_tool_error_and_gets_the_notice() -> None:
+    """측정값 이의 말(대본 · 원고 · 기준 없음)에서 모델이 다시 평가를 내면 도구 오류로 돌려주고 확인 카드를 만들지 않는다."""
+    llm = F.FakeLlm(
+        [F.plan(assessments=dispute_drafts()), F.tools(REASSESS, prefix="ra"), F.done()],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=DISPUTE_MSG), llm)
+    fd = final_ok(data)
+    assert fd.status != "NEEDS_ACTION" and fd.actions == []
+    assert "CONDITION_NOT_STATED" in json.dumps(llm.calls[2].messages, ensure_ascii=False)
+    assert templates.SystemText.MEASUREMENT_FIXED.value in fd.message.text  # type: ignore[union-attr]
+
+
+def test_script_statement_typed_as_request_still_gets_the_screen_script_fact() -> None:
+    """'대본 보고 한 발표였어'를 모델이 요청(REQUEST)으로 분류해도 코드가 대본 주장으로 바로잡아 화면 대본 사실 문장을
+    붙인다(L6-06, 4회차 ra-script). 조건을 말한 다시 평가라 측정값 안내는 붙이지 않는다."""
+    msg = "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘"
+    d = [
+        F.draft(
+            "Take 5는 대본 보고 한 발표였어",
+            type_="REQUEST",
+            claim_op=None,
+            dimension="script_independence",
+            take_numbers=[5],
+            polarity="NEUTRAL",
+        ),
+        F.draft("그 조건으로 다시 평가해 줘", type_="REQUEST", claim_op=None, polarity="NEUTRAL"),
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert [a.type for a in fd.actions] == ["REASSESS"]
+    text = fd.message.text  # type: ignore[union-attr]
+    assert "기록에는 화면 대본이" in text and templates.SCRIPT_UNKNOWN in text
+    assert templates.SystemText.MEASUREMENT_FIXED.value not in text

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import threading
 import traceback
 from collections.abc import Callable, Iterator
@@ -337,11 +338,12 @@ def _orchestrate(
     if trigger == "ACTION_RESULT":
         # 이어 부를 때는 어떤 한도 종료보다 먼저 지워진 원천을 처리하고 행동 결과를 검증 · 반영한다.
         # 한도로 모델 없이 끝나도 승인된 행동의 결과 문장 · 카드와 삭제 중단이 지워지지 않게 하려는 것이다(5-5 · 6-1)
-        if not lp.drop_removed(req.context.removed_sources):
+        assert req.resume is not None
+        failed = req.resume.action_results[0].status != "SUCCEEDED"
+        if not lp.drop_removed(req.context.removed_sources, fetch_failed=failed):
             return finish(
                 status="PARTIAL", reason="OTHER", system=[templates.SystemText.SOURCE_DELETED_STOP]
             )
-        assert req.resume is not None
         applied = lp.apply_action_result(req.resume.action_results[0])
         if applied.mismatch:
             return finish(
@@ -806,6 +808,7 @@ def _pre_claims(
         if lp.record_changed:
             system.append(templates.SystemText.RECORD_CHANGED_DURING.value)
         system += _action_notes(lp)
+        system += _measurement_notes(lp)
         out += [Claim(kind="SYSTEM", text=t) for t in dict.fromkeys(system) if t not in said]
     out += [
         Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"])
@@ -873,6 +876,27 @@ def _action_notes(lp: Loop) -> list[str]:
         if removed and st.SCRIPT_POINTS_REMOVED.value not in out:
             out.append(st.SCRIPT_POINTS_REMOVED.value)
     return out
+
+
+#: 다시 평가를 바라는 말(6-6)
+_REASSESS_ASK = re.compile(r"다시\s*평가|재평가|다시\s*채점|다시\s*매겨")
+
+
+def _measurement_notes(lp: Loop) -> list[str]:
+    """측정값 이의로 다시 평가를 바랐는데 다시 평가하지 않은 답에 붙일 안내(6-6 · 7-10):
+    "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요."
+
+    사용자 말이 다시 평가를 바라는 측정값 이의이고(`clm.measurement_dispute`: 측정 항목을 말했지만 대본 · 원고 · 기준은
+    말하지 않음), 이 실행에서 다시 평가를 내지도 하지도 않았을 때만 붙인다. 까닭과 다음 Take에서 확인할 방법은 모델이 쓴다."""
+    msg = lp.original or ""
+    if not _REASSESS_ASK.search(msg) or not clm.measurement_dispute(msg, lp.cfg):
+        return []
+    pending = lp.st.pending_action or {}
+    if pending.get("type") == "REASSESS" or any(
+        e.get("type") == "REASSESS" for e in lp.st.executed
+    ):
+        return []
+    return [templates.SystemText.MEASUREMENT_FIXED.value]
 
 
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)

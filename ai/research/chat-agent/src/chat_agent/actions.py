@@ -428,6 +428,19 @@ def propose(
                 reason_code="NOT_FOUND",
                 tool_message=_err("NOT_FOUND", "이 실행에서 찾을 수 없던 Take 다"),
             )
+        named = named_take_ids(original_message, ctx)
+        if named is not None and ctx.not_found and a.take_id not in named:
+            # 사용자가 Take 를 집어 말했고 이 실행에서 가져오기가 실패했으면, 말하지 않은 Take 를 대신 가져와 그것으로 답하지
+            # 않는다(다시 평가와 같은 규칙, 4회차 fail-action: 지워진 Take 4 대신 Take 3 을 가져와 비교함). 지워진 Take 는
+            # 기본 자료에서도 빠져 `named`에 없을 수 있으므로 실패한 Take 가 `named`에 있는지는 보지 않는다
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="NOT_NAMED_TAKE",
+                tool_message=_err(
+                    "NOT_FOUND",
+                    "사용자가 말한 Take 를 가져오지 못했다. 다른 Take 로 바꿔 답하지 않는다",
+                ),
+            )
         args = {"pitch_id": ctx.scope_pitch_id, "take_id": a.take_id}
     elif isinstance(a, ReassessArgs):
         if a.take_id not in ctx.summaries:
@@ -445,6 +458,17 @@ def propose(
                 tool_message=_err(
                     "NOT_FOUND",
                     "사용자가 말한 Take 가 아니다. 그 Take 를 찾지 못했으면 다시 평가하지 않는다",
+                ),
+            )
+        if clm.measurement_dispute(original_message or "", ctx.cfg):
+            # 다시 평가는 입력을 바꾸는 조건(대본 사용 · 내 기준)을 사용자가 말했을 때만 한다. 측정값 이의('카메라가 낮았어')는
+            # 다시 평가로 바뀌지 않는다(6-6, 4회차 ra-measurement)
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="CONDITION_NOT_STATED",
+                tool_message=_err(
+                    "CONDITION_NOT_STATED",
+                    "사용자가 이 조건(대본 사용 · 내 기준)을 말하지 않았다. 측정값 이의는 다시 평가하지 않는다",
                 ),
             )
         change = (
