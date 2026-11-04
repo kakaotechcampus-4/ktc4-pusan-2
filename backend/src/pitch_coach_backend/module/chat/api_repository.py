@@ -2,12 +2,14 @@
 
 import uuid
 from datetime import date
+from typing import Any
 
 from sqlalchemy import Row, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.entity import (
+    ChatAction,
     ChatConversation,
     ChatDailyUsage,
     ChatMessage,
@@ -63,6 +65,12 @@ class ChatApiRepository:
             .where(ChatRun.conversation_id == conversation_id)
             .order_by(ChatRun.accepted_at.desc(), ChatRun.id.desc())
             .limit(1)
+        )
+
+    def action_source_take_ids(self, run_id: uuid.UUID) -> list[Any]:
+        """행동마다 근거로 삼은 Take ID 목록. 1초 조회 경로라 큰 JSONB 칸은 읽지 않는다."""
+        return list(
+            self.db.scalars(select(ChatAction.source_take_ids).where(ChatAction.run_id == run_id))
         )
 
     def get_message_in(

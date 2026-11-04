@@ -110,8 +110,8 @@ def _uses_deleted_sources(db: Session, run: ChatRun) -> bool:
         *(read.get("takes") or []),
         *(
             take_id
-            for action in ChatRepository(db).list_actions(run.id)
-            for take_id in action.source_take_ids or []
+            for action_take_ids in ChatApiRepository(db).action_source_take_ids(run.id)
+            for take_id in action_take_ids or []
         ),
     }
     current = current_sources(db, run.user_id, pitch_ids, take_ids)
