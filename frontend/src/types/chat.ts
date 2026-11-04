@@ -165,6 +165,7 @@ export type Card =
       undo: true;
     }
   | {
+      /** 문서 5-2 의 `evidence_basis` 는 BE · AI 가 대조에 쓰는 칸이라 화면 타입에서 뺐습니다 */
       type: 'GOAL_PROPOSAL';
       proposal_id: string;
       options: {
@@ -411,7 +412,10 @@ export interface ActionDecisionRequest {
   args_hash: string;
 }
 
-/** 승인 · 거절 · 되돌리기 · 취소의 응답 — 그 뒤의 실행 상태입니다 (FE 잠정 모양) */
+/**
+ * (FE 잠정 모양) 승인 · 거절의 응답 — 그 뒤의 행동 · 실행 상태입니다. 같은 `action_id` 로 다시 보내면
+ * 처음 결과를 그대로 돌려줍니다(12-3). 그래서 승인 직후의 `RUNNING` 이 남을 수 있고, 지금 상태는 실행 조회로 봅니다
+ */
 export interface ActionDecisionResponse {
   action_id: string;
   action_status: ActionStatus;

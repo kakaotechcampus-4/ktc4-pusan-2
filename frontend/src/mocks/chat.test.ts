@@ -6,6 +6,7 @@ import { chatPaths } from '@/shared/api/chatPaths';
 import type {
   ActionDecisionResponse,
   Card,
+  ChatMessage,
   ConversationList,
   MessagePage,
   MemorySettings,
@@ -149,13 +150,23 @@ describe('보내기 → 조회', () => {
     expect((await send(message('비교해 줘'))).status).toBe(202);
   });
 
-  it('실행 실패를 걸면 첫 문장 뒤 FAILED 와 오류 코드로 끝나고 받은 문장은 남는다', async () => {
+  it('받은 문장 없이 실패하면 FAILED — 답 메시지는 남지 않는다', async () => {
     controls.runFail('AGENT_TIMEOUT');
     const { run_id, conversation_id } = await accepted('비교해 줘');
     const view = await settle(run_id);
-    expect(view).toMatchObject({ status: 'FAILED', error: { code: 'AGENT_TIMEOUT' } });
+    expect(view).toMatchObject({ status: 'FAILED', error: { code: 'AGENT_TIMEOUT' }, events: [] });
+    expect((await messages(conversation_id)).items.map((m) => m.role)).toEqual(['user']);
+  });
+
+  it('받은 문장이 있으면 PARTIAL 로 남긴다 (12-3 "앞서 받은 답이 있으면 그것으로 PARTIAL")', async () => {
+    controls.partial('AGENT_TIMEOUT');
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    expect(await settle(run_id)).toMatchObject({
+      status: 'PARTIAL',
+      error: { code: 'AGENT_TIMEOUT' },
+    });
     const answer = (await messages(conversation_id)).items.at(-1)!;
-    expect([answer.status, answer.claims.length]).toEqual(['FAILED', 1]);
+    expect([answer.status, answer.claims.length]).toEqual(['PARTIAL', 1]);
   });
 
   it('[취소]하면 CANCELLED 로 끝나고 다시 취소해도 같다', async () => {
@@ -631,5 +642,154 @@ describe('계약 경계', () => {
     expect((await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: 'nope' })).status).toBe(
       404,
     );
+  });
+});
+
+describe('독립 리뷰 반영', () => {
+  async function approveGoal(conversationId: string | null = null) {
+    const { run_id, conversation_id } = await accepted('목표로 잡아 줘', {
+      conversation_id: conversationId,
+    });
+    const ask = askOf(await settle(run_id));
+    await call(chatPaths.decision(ask.action_id), 'POST', {
+      decision: 'APPROVE',
+      args_hash: ask.args_hash,
+    });
+    await settle(run_id);
+    const answer = (await messages(conversation_id)).items.at(-1)!;
+    return { conversation_id, ask, answer };
+  }
+  const savedOf = (answer: ChatMessage) =>
+    answer.cards.find((c) => c.type === 'GOAL_SAVED') as Extract<Card, { type: 'GOAL_SAVED' }>;
+
+  it('목표 판 번호는 대화마다 0 에서 시작하고, 다른 대화의 저장이 되돌리기를 막지 않는다', async () => {
+    const a = await approveGoal();
+    const b = await approveGoal();
+    expect([savedOf(a.answer).goal.version, savedOf(b.answer).goal.version]).toEqual([1, 1]);
+    const undo = await call(chatPaths.undo(savedOf(a.answer).action_id), 'POST');
+    expect(await undo.json()).toEqual({ action_id: savedOf(a.answer).action_id, goal_version: 2 });
+  });
+
+  it('없는 행동의 되돌리기는 404, 같은 대화에서 다른 목표로 바뀐 뒤면 409', async () => {
+    expect((await call(chatPaths.undo('nope'), 'POST')).status).toBe(404);
+    const first = await approveGoal();
+    await approveGoal(first.conversation_id);
+    const r = await call(chatPaths.undo(savedOf(first.answer).action_id), 'POST');
+    expect([r.status, (await r.json()).code]).toEqual([409, 'AGENT_STATE_INVALID']);
+  });
+
+  it('행동 성공 문장은 그 행동의 action_id 를 싣는다 — 승인 · 고르기 모두', async () => {
+    const { ask, answer } = await approveGoal();
+    const success = answer.claims.find((c) => c.kind === 'ACTION_RESULT')!;
+    expect([success.action_id, savedOf(answer).action_id]).toEqual([ask.action_id, ask.action_id]);
+
+    const { run_id, conversation_id } = await accepted('목표 제안해 줘');
+    await settle(run_id);
+    const proposal = (await messages(conversation_id)).items.at(-1)!.cards[0] as Extract<
+      Card,
+      { type: 'GOAL_PROPOSAL' }
+    >;
+    const chosen = await accepted('추천 안으로', {
+      conversation_id,
+      choice: { proposal_id: proposal.proposal_id, option: 'EXPERT' },
+    });
+    await settle(chosen.run_id);
+    const picked = (await messages(conversation_id)).items.at(-1)!;
+    const claim = picked.claims.find((c) => c.kind === 'ACTION_RESULT')!;
+    expect(claim.action_id).toBe(savedOf(picked).action_id);
+    expect(claim.action_id).not.toBeNull();
+  });
+
+  it('사용자 안을 고르면 카드 이유 · 자동 확인이 그 안(전체 장)으로 말한다', async () => {
+    const { run_id, conversation_id } = await accepted('목표 제안해 줘');
+    await settle(run_id);
+    const proposal = (await messages(conversation_id)).items.at(-1)!.cards[0] as Extract<
+      Card,
+      { type: 'GOAL_PROPOSAL' }
+    >;
+    const user = proposal.options.find((o) => o.label === 'USER')!;
+    const chosen = await accepted('내 안으로', {
+      conversation_id,
+      choice: { proposal_id: proposal.proposal_id, option: 'USER' },
+    });
+    await settle(chosen.run_id);
+    const saved = savedOf((await messages(conversation_id)).items.at(-1)!);
+    expect([saved.reason, saved.evidence_ids]).toEqual([user.reason, user.evidence_ids]);
+    controls.goalCheck();
+    const check = (await messages(conversation_id)).items.at(-1)!;
+    expect(check.claims[0]!.text.startsWith('전체 장')).toBe(true);
+    // 목표 판정 문장은 계산 근거를 가리키고, 그 근거는 같은 메시지에 있다
+    const ids = check.evidence.map((e) => e.evidence_id);
+    expect(check.claims[0]!.evidence_ids.every((id) => ids.includes(id))).toBe(true);
+    expect(check.evidence.find((e) => e.origin === 'COMPUTED')!.inputs).not.toBeNull();
+  });
+
+  it('새 피치(저장값 없음)의 화면 값은 저장된 값이 아니다', async () => {
+    const screen = {
+      name: 'pitch_create',
+      snapshot_id: 'ss-2',
+      step: 'info',
+      version_label: null,
+      version_id: null,
+      saved: null,
+      draft: {
+        title: null,
+        slide_count: null,
+        script_chars: null,
+        time_limit_sec: 600,
+        criteria_text: null,
+      },
+      changed: [],
+    };
+    const { run_id, conversation_id } = await accepted('제한 시간 어디서 바꿔?', {
+      page: { route: '/pitch/new', pitch_id: null, take_id: null, screen },
+    });
+    await settle(run_id);
+    const answer = (await messages(conversation_id)).items.at(-1)!;
+    expect(answer.evidence[0]).toMatchObject({ origin: 'SCREEN', saved: false });
+  });
+
+  it('꺼지면 대화 API 가 503 AGENT_DISABLED, 켜면 다시 받는다', async () => {
+    controls.disable();
+    const r = await send(message('비교해 줘'));
+    expect([r.status, (await r.json()).code]).toEqual([503, 'AGENT_DISABLED']);
+    expect((await call(chatPaths.conversations)).status).toBe(503);
+    controls.enable();
+    expect((await send(message('비교해 줘'))).status).toBe(202);
+  });
+
+  it('fail 은 코드마다 문서의 HTTP 상태로 거절한다', async () => {
+    controls.fail('NOT_FOUND');
+    expect((await send(message('비교해 줘'))).status).toBe(404);
+    controls.fail('AGENT_DISABLED');
+    expect((await send(message('비교해 줘'))).status).toBe(503);
+  });
+
+  it('끝난 답의 할 일은 모두 끝이고, 자료 문장 앞에 자료 찾기 기록이 있다', async () => {
+    for (const text of ['비교해 줘', '바로 발표할래', '짧게 설명해 줘, 기억해']) {
+      const { run_id, conversation_id } = await accepted(text);
+      await settle(run_id);
+      const answer = (await messages(conversation_id)).items.at(-1)!;
+      expect(answer.plan.every((p) => p.status === 'DONE')).toBe(true);
+      const kinds = answer.claims.map((c) => c.kind);
+      if (kinds.includes('GUIDE') || kinds.includes('GENERAL'))
+        expect(answer.trace.some((t) => t.tool === 'search_guides')).toBe(true);
+    }
+  });
+
+  it('근거 배지는 Take 기록을 읽은 답에만 붙는다', async () => {
+    const refused = await accepted('오늘 날씨 어때?');
+    await settle(refused.run_id);
+    expect((await messages(refused.conversation_id)).items.at(-1)!.basis_label).toBeNull();
+    const compared = await accepted('비교해 줘');
+    await settle(compared.run_id);
+    expect((await messages(compared.conversation_id)).items.at(-1)!.basis_label).toMatch(
+      /^Take 3 /,
+    );
+  });
+
+  it('ID 칸의 형식이 틀리면 저장 전 422', async () => {
+    expect((await send(message('비교해 줘', { conversation_id: 123 }))).status).toBe(422);
+    expect((await send(message('비교해 줘', { scope_pitch_id: 42 }))).status).toBe(422);
   });
 });

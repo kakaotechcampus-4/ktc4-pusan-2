@@ -24,7 +24,7 @@ export const [take1, take2, take3] = pitch.takes;
 
 // ── 고정 자료 ─────────────────────────────────────────────────
 
-const evidence = (
+export const evidence = (
   e: Partial<Evidence> & Pick<Evidence, 'evidence_id' | 'path' | 'value'>,
 ): Evidence => ({
   origin: 'RECORD',
@@ -67,6 +67,14 @@ const usageGuide: GuideCard = {
   source_id: 'u-03#1',
   title: '발표 정보 바꾸기',
   quote: '제한 시간은 피치 만들기의 발표 정보 단계에서 바꾸고, 저장하면 다음 연습부터 적용돼요.',
+  source: '피치코치 사용법',
+  license: '피치코치',
+};
+
+const practiceGuide: GuideCard = {
+  source_id: 'u-05#1',
+  title: '연습 시작하기',
+  quote: '연습 준비 화면에서 대본 보기 방식을 고르고 카메라 · 마이크를 확인한 뒤 시작해요.',
   source: '피치코치 사용법',
   license: '피치코치',
 };
@@ -133,7 +141,8 @@ export function compareClaims(
       { source_ids: [guide.source_id] },
       { sources: [guide] },
     ),
-    say('GENERAL', '말하기 전에 한 번 숨을 고르고 청중 쪽을 먼저 보면 시작이 안정돼요.'),
+    // 일반 조언에는 숫자 · 한글 수 · 횟수를 쓰지 않습니다 (6-9)
+    say('GENERAL', '말하기 전에 숨을 고르고 청중 쪽을 먼저 보면 시작이 안정돼요.'),
   ];
 }
 
@@ -149,7 +158,7 @@ const trace = (seq: number, tool: string, args: string, result: string): TraceIt
   outcome: 'OK',
 });
 
-export function savedGoal(version: number): Goal {
+function savedGoal(version: number): Goal {
   return {
     version,
     pitch_id: PITCH_ID,
@@ -195,6 +204,10 @@ export type Step =
 
 const STEPS = ['최근 Take 비교', '3장 문제 구간 확인', '발표법 자료 찾기'];
 
+/**
+ * 비교 → 자료 찾기 → 할 일 모두 끝. 자료 문장은 그 턴에 자료를 찾은 뒤에만 나옵니다(6-9 · 6-10) —
+ * 그래서 문장보다 앞에 자료 찾기 도구 기록을 둡니다
+ */
 const base = (): Step[] => [
   { t: 'plan', plan: plan(['DOING'], STEPS) },
   {
@@ -207,11 +220,24 @@ const base = (): Step[] => [
     ),
   },
   { t: 'plan', plan: plan(['DONE', 'DONE', 'DOING'], STEPS) },
+  { t: 'tool', trace: trace(2, 'search_guides', '대본 의존', "자료 '대본 의존 줄이기'") },
+  { t: 'plan', plan: plan(['DONE', 'DONE', 'DONE'], STEPS) },
 ];
 
-interface ScenarioContext {
+/** 사용법만 찾는 짧은 턴 — 할 일 하나 */
+const guideOnly = (query: string, found: string, outcome: TraceItem['outcome'] = 'OK'): Step[] => [
+  { t: 'plan', plan: plan(['DOING'], ['사용법 자료 찾기']) },
+  { t: 'tool', trace: { ...trace(1, 'search_guides', query, found), outcome } },
+  { t: 'plan', plan: plan(['DONE'], ['사용법 자료 찾기']) },
+];
+
+/** 목표 제안 카드의 안 하나 */
+export type GoalOption = Extract<Card, { type: 'GOAL_PROPOSAL' }>['options'][number];
+
+export interface ScenarioContext {
   memoryOn: boolean;
-  choice: boolean;
+  /** 제안 카드에서 고른 안. 없으면 null */
+  chosen: GoalOption | null;
   screen: ChatScreen | null;
   /** 이번 판단에 붙일 ID 와, 같은 대화의 가장 최근 판단 */
   assessmentId: string;
@@ -256,8 +282,10 @@ function assessmentSteps(text: string, ctx: ScenarioContext): Step[] {
 /** 피치 만들기 · 수정 화면의 질문 — 화면 값을 근거로 쓰고 입력란은 바꾸지 않습니다 (12-4 Screen) */
 function screenSteps(screen: Extract<ChatScreen, { name: 'pitch_create' | 'pitch_edit' }>): Step[] {
   const sec = screen.draft.time_limit_sec;
-  const steps: Step[] = [];
+  const steps: Step[] = guideOnly('제한 시간 바꾸기', "자료 '발표 정보 바꾸기'");
   if (sec !== null) {
+    // 문서 미정: 새 피치 화면은 아직 피치가 없는데 `Evidence.pitch_id` 는 null 을 받지 않습니다.
+    // AI · BE 에 물어볼 것 — 목은 임시로 목 피치 ID 를 씁니다
     const value = evidence({
       evidence_id: 'ev-screen-time',
       origin: 'SCREEN',
@@ -267,7 +295,8 @@ function screenSteps(screen: Extract<ChatScreen, { name: 'pitch_create' | 'pitch
       path: 'screen.draft.time_limit_sec',
       value: sec,
       unit: 'sec',
-      saved: !screen.changed.includes('time_limit_sec'),
+      // 저장값이 없으면(새 피치) `changed` 가 비어도 저장된 값이 아닙니다 (12-4 "저장값이 없으면 changed:[]")
+      saved: screen.saved !== null && !screen.changed.includes('time_limit_sec'),
       screen_snapshot_id: screen.snapshot_id,
     });
     steps.push({
@@ -298,12 +327,19 @@ function screenSteps(screen: Extract<ChatScreen, { name: 'pitch_create' | 'pitch
 export function scenario(text: string, ctx: ScenarioContext): Step[] {
   const [first, ...more] = compareClaims();
   // 고르기: 목표 카드가 가리키는 근거(3장 비교)를 같은 답 메시지에 싣습니다 — 메시지는 참조를 풀 근거를 함께 갖습니다
-  if (ctx.choice)
+  if (ctx.chosen) {
+    const chosen = ctx.chosen;
     return [
-      { t: 'claim', data: first! },
+      // 근거를 가리키는 안이면 그 근거 문장을 같은 답에 싣습니다 — 메시지는 참조를 풀 근거를 함께 갖습니다
+      ...(chosen.evidence_ids.length > 0 ? [{ t: 'claim', data: first! } as Step] : []),
       { t: 'claim', data: say('ACTION_RESULT', '목표를 저장했어요.') },
-      { t: 'end', status: 'DONE', cards: (id) => [goalSavedCard(id)] },
+      {
+        t: 'end',
+        status: 'DONE',
+        cards: (id) => [goalSavedCard(id, chosen)],
+      },
     ];
+  }
   if (text.includes('날씨'))
     return [
       { t: 'claim', data: say('SYSTEM', '발표 연습과 관계없는 질문이에요.') },
@@ -331,14 +367,14 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
                     slide_number: null,
                     base: { ...proposed.base, value: 0.35 },
                   },
-                  reason: '전체 장 평균 35%를 한 번에 올리기는 기록상 어려워요.',
+                  reason: '말씀하신 대로 전체 장의 청중 보기를 올리는 목표예요.',
                   evidence_ids: [],
                   content_hash: 'hash-user',
                 },
                 {
                   label: 'EXPERT',
                   goal: proposed,
-                  reason: '가장 낮은 3장부터 올려요.',
+                  reason: '3장 청중 보기 비율이 가장 낮아요.',
                   evidence_ids: ['ev-gaze-diff'],
                   content_hash: 'hash-expert',
                 },
@@ -420,12 +456,25 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
     ];
   if (text.includes('발표할래') || text.includes('연습 준비'))
     return [
-      { t: 'claim', data: say('SYSTEM', '준비되면 연습 준비 화면에서 모드를 고르고 시작하세요.') },
+      // SYSTEM 은 코드 목록의 문장만(6-9) — 안내는 사용법 자료 문장으로 냅니다
+      ...guideOnly('연습 시작', "자료 '연습 시작하기'"),
+      {
+        t: 'claim',
+        data: say(
+          'GUIDE',
+          '연습 준비 화면에서 대본 보기 방식을 고르고 시작하면 돼요.',
+          { source_ids: [practiceGuide.source_id] },
+          { sources: [practiceGuide] },
+        ),
+      },
       { t: 'end', status: 'DONE', cards: () => [{ type: 'START_PRACTICE', pitch_id: PITCH_ID }] },
     ];
   if (text.includes('기억'))
     return [
-      { t: 'claim', data: say('GENERAL', '앞으로는 짧게 설명할게요.') },
+      // 자료 없음: 고정 안내 뒤 일반 조언으로 DONE (6-10 · 7-10)
+      ...guideOnly('짧게 설명', '찾은 자료 없음', 'EMPTY'),
+      { t: 'claim', data: say('SYSTEM', '자료에서 확인한 내용은 아니고 일반적인 조언이에요.') },
+      { t: 'claim', data: say('GENERAL', '핵심을 먼저 말하고 이유는 짧게 덧붙여 볼게요.') },
       {
         t: 'end',
         status: 'DONE',
@@ -453,13 +502,15 @@ function proposedGoal(goal: Goal): ProposedGoal {
   return proposed as ProposedGoal;
 }
 
-function goalSavedCard(actionId: string): Card {
+/** 다시 읽은 값으로 만든 목표 저장됨 카드 (5-2). 고른 안이 있으면 그 안의 목표 · 이유 · 근거입니다 */
+function goalSavedCard(actionId: string, chosen: GoalOption | null = null): Card {
+  const goal = savedGoal(1);
   return {
     type: 'GOAL_SAVED',
     action_id: actionId,
-    goal: savedGoal(1),
-    reason: '3장 청중 보기 비율이 가장 낮아요.',
-    evidence_ids: ['ev-gaze-diff'],
+    goal: chosen ? { ...goal, ...chosen.goal } : goal,
+    reason: chosen?.reason ?? '3장 청중 보기 비율이 가장 낮아요.',
+    evidence_ids: chosen?.evidence_ids ?? ['ev-gaze-diff'],
     undo: true,
   };
 }

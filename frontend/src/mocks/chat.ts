@@ -6,13 +6,15 @@ import {
   PITCH_ID,
   take1,
   take2,
+  take3,
   BASIS_LABEL,
   say,
   percent,
   compareClaims,
-  savedGoal,
+  evidence,
   scenario,
   type ClaimStep,
+  type GoalOption,
   type Step,
 } from './chatScenarios';
 import type {
@@ -22,7 +24,6 @@ import type {
   ChatErrorCode,
   ChatMessage,
   ConversationSummary,
-  ProposedGoal,
   PlanStep,
   ProfileItem,
   RunEvent,
@@ -55,11 +56,16 @@ import { isTerminalRun } from '@/shared/lib/chatAgent';
  *
  * 실행은 첫 조회에서 `QUEUED` 를 그대로 보이고, 다음 조회부터 나아갑니다.
  *
- * 콘솔(개발 중에만): `mockChat.fail('AGENT_BUSY')` 다음 보내기 실패 · `mockChat.runFail('AGENT_TIMEOUT')`
- * 다음 실행이 첫 문장 뒤 실패 · `mockChat.partial()` 다음 실행이 첫 문장 뒤 PARTIAL (행동 성공 문장 뒤에서는
- * 끊지 않습니다 — 완료 문장은 성공 기록으로만 나옵니다) · `mockChat.expire()`
- * 승인 대기를 만료 · `mockChat.goalCheck('ACHIEVED')` 저장된 대화 목표의 자동 확인 결과 ·
- * `mockChat.disable()` / `enable()` / `unreachable()` 사용 가능 여부 · `mockChat.ok()` 되돌리기.
+ * 콘솔(개발 중에만):
+ *   `mockChat.fail('AGENT_BUSY')`      다음 보내기를 그 HTTP 오류로 거절
+ *   `mockChat.runFail('AGENT_TIMEOUT')` 다음 실행이 문장 없이 FAILED (12-3 "받은 답이 없으면 FAILED")
+ *   `mockChat.partial('AGENT_TIMEOUT')` 다음 실행이 첫 문장 뒤 PARTIAL — 코드 없이 부르면 한도로 멈춘 PARTIAL.
+ *                                      행동 성공 문장 뒤에서는 끊지 않습니다(완료 문장은 성공 기록으로만)
+ *   `mockChat.expire()`                승인 대기를 만료
+ *   `mockChat.goalCheck('ACHIEVED')`   저장된 대화 목표의 자동 확인 결과 (목표마다 한 번)
+ *   `mockChat.disable()` · `enable()`   꺼짐 — 대화 API 모두 503 `AGENT_DISABLED`, 사용 가능 여부는 `{enabled:false}`
+ *   `mockChat.unreachable()`           사용 가능 여부 조회가 네트워크 오류
+ *   `mockChat.ok()`                    모두 되돌리기
  */
 
 const error = (code: string, status: number, headers?: Record<string, string>) =>
@@ -99,12 +105,15 @@ interface Run {
   ask:
     | (Extract<Step, { t: 'ask' }> & { action_id: string; args_hash: string; expires_at: string })
     | null;
-  /** 다음 실행에 걸어 둔 실패 — 첫 문장 뒤 끝냅니다 */
-  failAfterFirst: { status: 'PARTIAL' | 'FAILED'; code: ChatErrorCode | null } | null;
-  /** 승인받은 행동. 그 결과 카드(목표 저장됨)는 같은 `action_id` 를 씁니다 — 승인한 그 행동의 결과입니다 */
-  approvedActionId: string | null;
-  /** 제안 카드에서 고른 안의 목표. 저장할 목표 내용입니다 */
-  chosenGoal: ProposedGoal | null;
+  /** 걸어 둔 실패 — 문장 없이 FAILED, 또는 첫 문장 뒤 PARTIAL */
+  failure: RunFailure | null;
+  /**
+   * 이 실행의 행동. 승인 카드 · 행동 성공 문장 · 결과 카드(목표 저장됨)가 모두 이 `action_id` 를 씁니다(6-9).
+   * 승인이 필요한 행동은 승인 카드를 낼 때, 바로 실행하는 행동(제안 고르기)은 접수할 때 정합니다
+   */
+  actionId: string | null;
+  /** 제안 카드에서 고른 안 */
+  chosen: GoalOption | null;
   /** 첫 조회에서 `QUEUED` 를 보였는지 */
   queuedShown: boolean;
 }
@@ -117,6 +126,16 @@ interface Info {
 
 interface Conversation extends ConversationSummary {
   messages: ChatMessage[];
+  /** 이 대화의 목표 판 번호 — 처음 0, 저장 · 되돌리기마다 1 올립니다 (5-3 "이 대화의 목표 판 번호") */
+  goalVersion: number;
+  /** 지금 목표와 그것을 저장한 행동. 되돌리면 null */
+  goal: {
+    action_id: string;
+    version: number;
+    slide_number: number | null;
+    /** 자동 확인을 마쳤는지 — 같은 리뷰에는 한 번만, 이뤘다 · 못 이뤘다는 끝난 판정입니다 */
+    checked: boolean;
+  } | null;
 }
 
 interface UserState {
@@ -125,24 +144,44 @@ interface UserState {
   requests: Map<string, { body: string; accepted: SendMessageAccepted }>;
   decisions: Map<string, ActionDecisionResponse>;
   undone: Map<string, { action_id: string; goal_version: number }>;
-  goalVersion: number;
-  /** 저장된 목표의 `action_id` 와 그 판 */
-  goalAction: {
-    action_id: string;
-    version: number;
-    conversation_id: string;
-    /** 자동 확인을 마쳤는지 — 같은 리뷰에는 한 번만, 이뤘다 · 못 이뤘다는 끝난 판정입니다 */
-    checked: boolean;
-  } | null;
   memory: { enabled: boolean; items: ProfileItem[] };
 }
 
-type Failure = { code: ChatErrorCode; status: number } | null;
+/** 보내기가 HTTP 로 돌려줄 수 있는 실패와 그 상태 (5-9 · 12-3) */
+const SEND_FAILURE_STATUS = {
+  AGENT_BUSY: 429,
+  AGENT_DAILY_LIMIT: 429,
+  AGENT_CONTEXT_TOO_LARGE: 413,
+  VALIDATION_ERROR: 422,
+  AGENT_DISABLED: 503,
+  AGENT_RUN_IN_PROGRESS: 409,
+  AGENT_REQUEST_CONFLICT: 409,
+  NOT_FOUND: 404,
+} as const satisfies Partial<Record<ChatErrorCode, number>>;
+type SendFailureCode = keyof typeof SEND_FAILURE_STATUS;
+
+/**
+ * 실행이 끝날 때 실행 상태의 `error` 로 실릴 수 있는 코드 — BE 의 AI 오류 허용 목록과 BE 시간 초과 (5-9).
+ * 목록 밖 · `LLM_UNAVAILABLE` 은 BE 가 `AGENT_UPSTREAM_ERROR` 로 바꿉니다
+ */
+type RunErrorCode = Extract<
+  ChatErrorCode,
+  | 'AGENT_DISABLED'
+  | 'AGENT_BUSY'
+  | 'AGENT_STATE_INVALID'
+  | 'AGENT_CONTEXT_TOO_LARGE'
+  | 'AGENT_OUTPUT_TOO_LARGE'
+  | 'AGENT_TIMEOUT'
+  | 'AGENT_UPSTREAM_ERROR'
+>;
+
+type RunFailure =
+  { when: 'start'; code: RunErrorCode } | { when: 'afterFirstClaim'; code: RunErrorCode | null };
 
 export interface MockChatControls {
-  fail: (code?: ChatErrorCode) => void;
-  runFail: (code?: ChatErrorCode) => void;
-  partial: () => void;
+  fail: (code?: SendFailureCode) => void;
+  runFail: (code?: RunErrorCode) => void;
+  partial: (code?: RunErrorCode) => void;
   expire: () => void;
   goalCheck: (status?: 'ACHIEVED' | 'NOT_ACHIEVED') => void;
   disable: () => void;
@@ -150,14 +189,6 @@ export interface MockChatControls {
   unreachable: () => void;
   ok: () => void;
 }
-
-const SEND_FAILURE_STATUS: Partial<Record<ChatErrorCode, number>> = {
-  AGENT_BUSY: 429,
-  AGENT_DAILY_LIMIT: 429,
-  AGENT_CONTEXT_TOO_LARGE: 413,
-  VALIDATION_ERROR: 422,
-  AGENT_DISABLED: 503,
-};
 
 export function createChatHandlers(userId: () => string | null = currentMockUserId) {
   const users = new Map<string, UserState>();
@@ -170,18 +201,18 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
   const newAssessmentId = idMaker('46000000');
 
   let availability: 'on' | 'off' | 'unreachable' = 'on';
-  let sendFailure: Failure = null;
-  let runFailure: Run['failAfterFirst'] = null;
+  let sendFailure: SendFailureCode | null = null;
+  let runFailure: RunFailure | null = null;
 
   const controls: MockChatControls = {
     fail: (code = 'AGENT_BUSY') => {
-      sendFailure = { code, status: SEND_FAILURE_STATUS[code] ?? 409 };
+      sendFailure = code;
     },
     runFail: (code = 'AGENT_TIMEOUT') => {
-      runFailure = { status: 'FAILED', code };
+      runFailure = { when: 'start', code };
     },
-    partial: () => {
-      runFailure = { status: 'PARTIAL', code: null };
+    partial: (code) => {
+      runFailure = { when: 'afterFirstClaim', code: code ?? null };
     },
     expire: () => {
       for (const state of users.values())
@@ -195,7 +226,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             );
     },
     goalCheck: (status = 'ACHIEVED') => {
-      for (const state of users.values()) checkGoal(state, status);
+      for (const state of users.values())
+        for (const conversation of state.conversations.values()) checkGoal(conversation, status);
     },
     disable: () => {
       availability = 'off';
@@ -222,8 +254,6 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         requests: new Map(),
         decisions: new Map(),
         undone: new Map(),
-        goalVersion: 0,
-        goalAction: null,
         memory: { enabled: true, items: [] },
       };
       seed(state);
@@ -245,12 +275,21 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       last_message_at: '2026-10-28T09:00:00Z',
       has_stale: true,
       memory_off: false,
+      goalVersion: 0,
+      goal: null,
       messages: [
         userMessage('지난번보다 청중을 더 봤어?', '2026-10-28T08:59:50Z'),
         {
-          ...assistantMessage(newRunId(), 'DONE', [claim!], [], [], []),
+          ...assistantMessage(
+            newRunId(),
+            'DONE',
+            [claim!],
+            [],
+            [],
+            [],
+            basisOf(take2!.take_version),
+          ),
           created_at: '2026-10-28T09:00:00Z',
-          basis_label: `Take ${take2!.take_version} · 대본 V2 · 기준 v4 기준`,
           stale_reasons: ['NEW_TAKE'],
         },
       ],
@@ -262,30 +301,62 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
    * 사용자 말 없이 답 메시지만 대화에 남고, 대화창을 열면 보입니다.
    * 목에는 목표 뒤의 Take 가 없어서 홈 목 다음 번호(Take 6)를 씁니다.
    */
-  function checkGoal(state: UserState, status: 'ACHIEVED' | 'NOT_ACHIEVED') {
-    const goal = state.goalAction;
-    const conversation = goal ? state.conversations.get(goal.conversation_id) : undefined;
-    if (!goal || !conversation || goal.checked) return;
+  function checkGoal(conversation: Conversation, status: 'ACHIEVED' | 'NOT_ACHIEVED') {
+    const goal = conversation.goal;
+    if (!goal || goal.checked) return;
     goal.checked = true;
     const nextTake = pitch.takes.length + 1;
+    const takeId = `20000000-0000-4000-8000-${String(nextTake).padStart(12, '0')}`;
+    const base = 0.24;
     const observed = status === 'ACHIEVED' ? 0.33 : 0.25;
-    const verdict = status === 'ACHIEVED' ? '이뤘어요' : '아직 이루지 못했어요';
+    const where = goal.slide_number === null ? '전체 장' : `${goal.slide_number}장`;
+    // 목표 판정은 코드가 계산한 근거(COMPUTED)를 가리키는 기록 문장입니다 (6-8 · 6-9)
+    const record = evidence({
+      evidence_id: 'ev-goal-observed',
+      take_id: takeId,
+      take_number: nextTake,
+      path: 'take_result.areas.GAZE.metrics.audience_ratio',
+      metric: 'audience_ratio',
+      slide_number: goal.slide_number,
+      value: observed,
+    });
+    const computed = evidence({
+      evidence_id: 'ev-goal-check',
+      origin: 'COMPUTED',
+      kind: null,
+      revision: null,
+      path: 'computed.goal_check(audience_ratio)',
+      metric: 'audience_ratio',
+      slide_number: goal.slide_number,
+      value: status,
+      inputs: [record.evidence_id],
+      calc: 'GOAL_CHECK',
+    });
+    const verdict = status === 'ACHIEVED' ? '목표를 이뤘어요' : '아직 목표에 닿지 않았어요';
     const card: Card = {
       type: 'GOAL_RESULT',
       goal_version: goal.version,
-      take_id: `20000000-0000-4000-8000-${String(nextTake).padStart(12, '0')}`,
+      take_id: takeId,
       status,
       observed,
-      reason: `3장 청중 보기 비율이 ${percent(observed)}%예요.`,
+      reason: `${where} 청중 보기 비율이 ${percent(observed)}%예요.`,
     };
     conversation.messages.push(
       assistantMessage(
         newRunId(),
         'DONE',
-        [say('SYSTEM', `Take ${nextTake} 리뷰로 대화 목표를 확인했어요. 목표를 ${verdict}.`)],
+        [
+          say(
+            'RECORD',
+            `${where} 청중 보기 비율이 Take ${take3!.take_version} ${percent(base)}%에서 Take ${nextTake} ${percent(observed)}%가 되어 ${verdict}.`,
+            { evidence_ids: [computed.evidence_id] },
+            { evidence: [record, computed] },
+          ),
+        ],
         [card],
         [],
         [],
+        basisOf(nextTake),
       ),
     );
     conversation.last_message_at = new Date().toISOString();
@@ -318,6 +389,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     cards: Card[],
     planSteps: PlanStep[],
     traceItems: TraceItem[],
+    basisLabel: string | null,
   ): ChatMessage {
     const assessments: Assessment[] = claims.flatMap((c) => c.assessments);
     return {
@@ -332,7 +404,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       assessments: assessments.map((a) => ({ ...a, superseded_by: null })),
       evidence: claims.flatMap((c) => c.evidence),
       sources: claims.flatMap((c) => c.sources),
-      basis_label: BASIS_LABEL,
+      basis_label: basisLabel,
       stale_reasons: [],
       plan: planSteps,
       trace: traceItems,
@@ -359,8 +431,18 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     run.ask = null;
     const conversation = state.conversations.get(run.conversation_id)!;
     if (run.claims.length > 0 || cards.length > 0) {
+      // 근거 배지는 그 턴이 Take 기록을 읽었을 때만 — 거절 · 사용법만 본 답에는 없습니다 (6-8 basis)
+      const readTakes = run.trace.some((t) => t.tool === 'compare_takes');
       conversation.messages.push(
-        assistantMessage(run.run_id, status, run.claims, cards, run.plan, run.trace),
+        assistantMessage(
+          run.run_id,
+          status,
+          run.claims,
+          cards,
+          run.plan,
+          run.trace,
+          readTakes ? BASIS_LABEL : null,
+        ),
       );
       conversation.last_message_at = new Date().toISOString();
     }
@@ -404,6 +486,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       return;
     }
     run.status = 'RUNNING';
+    // 문장을 하나도 내지 않고 실패 — 받은 답이 없으면 FAILED (12-3)
+    if (run.failure?.when === 'start') return failRun(state, run, 'FAILED', run.failure.code);
     const step = run.steps.shift();
     if (!step) return finish(state, run, 'DONE', []);
     switch (step.t) {
@@ -413,18 +497,23 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       case 'tool':
         run.trace.push(step.trace);
         return pushEvent(run, 'tool_done', { trace: step.trace });
-      case 'claim':
-        emitClaim(run, step.data);
-        if (run.failAfterFirst && step.data.claim.kind !== 'ACTION_RESULT') {
-          const { status, code } = run.failAfterFirst;
-          run.error = code ? { code } : null;
-          // 12-3: 실행 오류가 붐빔이면 5초 뒤 다시
-          run.retry_after_s = code === 'AGENT_BUSY' ? 5 : null;
-          finish(state, run, status, []);
-        }
+      case 'claim': {
+        // 행동 성공 문장의 근거는 그 행동의 action_id 입니다 (6-9 `ACTION_RESULT`)
+        const isAction = step.data.claim.kind === 'ACTION_RESULT';
+        emitClaim(
+          run,
+          isAction
+            ? { ...step.data, claim: { ...step.data.claim, action_id: run.actionId } }
+            : step.data,
+        );
+        // 받은 문장이 있으면 PARTIAL (12-3). 행동 성공 문장 뒤에서는 끊지 않습니다
+        if (run.failure?.when === 'afterFirstClaim' && !isAction)
+          failRun(state, run, 'PARTIAL', run.failure.code);
         return;
+      }
       case 'ask': {
         const actionId = newActionId();
+        run.actionId = actionId;
         run.ask = {
           ...step,
           action_id: actionId,
@@ -436,19 +525,20 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         return;
       }
       case 'end': {
-        // 승인 없이 바로 실행한 행동(제안 고르기)만 새 ID 를 받습니다
-        const actionId = run.approvedActionId ?? newActionId();
+        const actionId = run.actionId ?? newActionId();
+        const conversation = state.conversations.get(run.conversation_id)!;
         let cards = step.cards(actionId);
         cards = cards.map((card) => {
           if (card.type === 'GOAL_SAVED') {
-            state.goalVersion += 1;
-            state.goalAction = {
+            conversation.goalVersion += 1;
+            const goal = { ...card.goal, version: conversation.goalVersion };
+            conversation.goal = {
               action_id: actionId,
-              version: state.goalVersion,
-              conversation_id: run.conversation_id,
+              version: goal.version,
+              slide_number: goal.slide_number,
               checked: false,
             };
-            return { ...card, goal: { ...savedGoal(state.goalVersion), ...run.chosenGoal } };
+            return { ...card, goal };
           }
           if (card.type === 'MEMORY_SAVED') {
             const item: ProfileItem = { item_id: newItemId(), key: card.key, value: card.value };
@@ -461,6 +551,18 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         return finish(state, run, step.status, cards);
       }
     }
+  }
+
+  function failRun(
+    state: UserState,
+    run: Run,
+    status: 'FAILED' | 'PARTIAL',
+    code: RunErrorCode | null,
+  ) {
+    run.error = code ? { code } : null;
+    // 12-3: 실행 오류가 붐빔이면 5초 뒤 다시
+    run.retry_after_s = code === 'AGENT_BUSY' ? 5 : null;
+    finish(state, run, status, []);
   }
 
   function runView(run: Run, afterSeq: number): RunView {
@@ -510,6 +612,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
 
   function withUser(fn: (state: UserState, info: Info) => Response | Promise<Response>) {
     return (info: Info) => {
+      // 스위치가 꺼지면 대화 API 가 AGENT_DISABLED 를 돌려준다 (12-3) — 화면은 버튼을 숨깁니다
+      if (availability === 'off') return error('AGENT_DISABLED', 503);
       const id = userId();
       if (!id) return error('UNAUTHORIZED', 401);
       return fn(stateOf(id), info);
@@ -606,7 +710,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             ? HttpResponse.json(seen.accepted, { status: 202 })
             : error('AGENT_REQUEST_CONFLICT', 409);
         if (sendFailure) {
-          const { code, status } = sendFailure;
+          const code = sendFailure;
+          const status = SEND_FAILURE_STATUS[code];
           sendFailure = null;
           if (code === 'AGENT_BUSY') return error(code, status, { 'Retry-After': '5' });
           if (code === 'AGENT_DAILY_LIMIT')
@@ -645,7 +750,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           status: 'QUEUED',
           steps: scenario(body.text, {
             memoryOn: state.memory.enabled && !conversation.memory_off,
-            choice: chosen !== null,
+            chosen,
             screen: body.page.screen,
             assessmentId: newAssessmentId(),
             priorAssessmentId:
@@ -659,9 +764,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           error: null,
           retry_after_s: null,
           ask: null,
-          failAfterFirst: runFailure,
-          approvedActionId: null,
-          chosenGoal: chosen?.goal ?? null,
+          failure: runFailure,
+          // 고르기는 승인 없이 바로 실행하는 목표 저장 — 그 행동의 ID 를 접수 때 정합니다
+          actionId: chosen ? newActionId() : null,
+          chosen,
           queuedShown: false,
         };
         runFailure = null;
@@ -730,7 +836,6 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           return HttpResponse.json(state.decisions.get(actionId));
         }
         run.steps = [...run.ask.approved];
-        run.approvedActionId = actionId;
         run.ask = null;
         run.cards = [];
         run.status = 'RUNNING';
@@ -751,18 +856,19 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         const actionId = String(params.actionId);
         const again = state.undone.get(actionId);
         if (again) return HttpResponse.json(again);
-        if (!state.goalAction || state.goalAction.action_id !== actionId)
-          return error('AGENT_STATE_INVALID', 409);
-        state.goalVersion += 1;
-        state.goalAction = null;
-        const result = { action_id: actionId, goal_version: state.goalVersion };
-        state.undone.set(actionId, result);
         const conversation = [...state.conversations.values()].find((c) =>
-          c.messages.some((m) =>
-            m.cards.some((card) => card.type === 'GOAL_SAVED' && card.action_id === actionId),
+          c.messages.some((msg) =>
+            msg.cards.some((card) => card.type === 'GOAL_SAVED' && card.action_id === actionId),
           ),
         );
-        conversation?.messages.push({ ...userMessage('목표를 되돌렸어요.'), role: 'system' });
+        // 없거나 남의 대상은 같은 404, 그 뒤 다른 목표가 저장됐으면 409 (12-3)
+        if (!conversation) return error('NOT_FOUND', 404);
+        if (conversation.goal?.action_id !== actionId) return error('AGENT_STATE_INVALID', 409);
+        conversation.goalVersion += 1;
+        conversation.goal = null;
+        const result = { action_id: actionId, goal_version: conversation.goalVersion };
+        state.undone.set(actionId, result);
+        conversation.messages.push({ ...userMessage('목표를 되돌렸어요.'), role: 'system' });
         return HttpResponse.json(result);
       }),
     ),
@@ -818,6 +924,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       last_message_at: null,
       has_stale: false,
       memory_off: memoryOff,
+      goalVersion: 0,
+      goal: null,
       messages: [],
     };
     state.conversations.set(conversation.conversation_id, conversation);
@@ -826,6 +934,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
 
   return { handlers, controls };
 }
+
+/** 근거 배지 글자 — 그 Take 를 읽은 답 */
+const basisOf = (takeNumber: number) => `Take ${takeNumber} · 대본 V2 · 기준 v4 기준`;
 
 /** 판단마다 그 판단을 대체한 새 판단의 ID — 대화 전체의 `supersedes` 로 계산합니다 (12-3 메시지 목록) */
 function withSupersededBy(messages: ChatMessage[]): ChatMessage[] {
@@ -870,6 +981,10 @@ function parseSend(raw: string): SendMessageRequest | null {
   if (!text || codePoints(text) > 2000) return null;
   if (typeof body.client_request_id !== 'string' || !body.client_request_id) return null;
   if (!body.page || typeof body.page !== 'object') return null;
+  // ID 칸은 문자열 · null · 빠짐만 — 다른 형식은 저장 전 422 (12-3 "잘못된 UUID · 열거값은 저장 전 422")
+  const idOrNull = (v: unknown) => v === undefined || v === null || typeof v === 'string';
+  if (![body.conversation_id, body.scope_pitch_id, body.again_of_message_id].every(idOrNull))
+    return null;
   const choice = body.choice ?? null;
   if (
     choice !== null &&
