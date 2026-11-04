@@ -37,33 +37,41 @@ def _undo(
     db: Session, user_id: uuid.UUID, run_id: uuid.UUID, action_id: str, now: datetime
 ) -> GoalUndoneResponse:
     repo = ChatApiRepository(db)
+    chat_repo = ChatRepository(db)
     action = repo.get_owned_action(run_id, action_id, user_id)
     if action is None or action.type != "SAVE_GOAL":
         raise ChatTargetNotFound()
+    saved = repo.goal_saved_by(action.id)
+    if saved is None:
+        raise ChatTargetNotFound()
+    previous = chat_repo.get_goal(action.conversation_id, saved.version - 1)
+    # 기준 Take 가 지워지는 것과 겹치지 않게 피치 · Take 를 대화보다 먼저 잠근다(턴 실행기와 같은
+    # 순서). 피치를 지우는 쪽은 피치를 잡은 뒤 연쇄 삭제로 대화를 잡아, 반대로 잠그면 서로 기다린다
+    saved_base_gone = _base_gone(chat_repo, saved)
+    previous_base_gone = previous is not None and _base_gone(chat_repo, previous)
     conversation = repo.get_owned_conversation(action.conversation_id, user_id, lock=True)
     if conversation is None:
         raise ChatTargetNotFound()
     # 대화를 잠근 뒤 행동을 다시 읽는다. 같은 되돌리기가 동시에 오면 뒤에 온 쪽이 처음 결과를 본다
     db.refresh(action, with_for_update=True)
-    saved = repo.goal_saved_by(action.id)
-    if action.status != "SUCCEEDED" or saved is None:
+    if action.status != "SUCCEEDED":
         raise ChatTargetNotFound()
-    chat_repo = ChatRepository(db)
-    restored_version = saved.version + 1
     if action.undone_at is not None:
-        view = _view(run_id, action_id, chat_repo.get_goal(conversation.id, restored_version))
+        view = _view(run_id, action_id, chat_repo.get_goal(conversation.id, saved.version + 1))
         db.rollback()
         return view
-    # 기준 Take 가 지워진 목표는 되돌리지 않는다. 지우기와 겹치지 않게 Take · 피치 행을 잠가 본다.
     # 판 번호보다 먼저 본다. 정리 작업이 목표를 비활성화해 판이 바뀐 경우도 이 이유로 알린다
-    if saved.base_take_id is not None and chat_repo.lock_take_id(saved.base_take_id) is None:
+    if saved_base_gone:
         raise ChatStateInvalid(BASE_DELETED)
     # 실행 상태와 상관없이 지금 목표 판으로만 따진다. 실행이 끝났거나 정리됐어도 되돌릴 수 있다
     if conversation.goal_version != saved.version:
         raise ChatStateInvalid()
-    restored = _restored(db, chat_repo, conversation.id, saved.version)
+    # 앞 판의 내용보다 먼저 본다. 정리 작업이 내용을 비운 뒤에도 정리 전과 같이 거절한다
+    if previous_base_gone:
+        raise ChatStateInvalid(BASE_DELETED)
+    restored = _restored(db, conversation.id, saved.version, previous)
     db.add(restored)
-    conversation.goal_version = restored_version
+    conversation.goal_version = restored.version
     action.undone_at = now
     db.add(
         ChatMessage(
@@ -78,18 +86,17 @@ def _undo(
     return _view(run_id, action_id, restored)
 
 
+def _base_gone(chat_repo: ChatRepository, goal: ChatGoal) -> bool:
+    """목표의 기준 Take 가 지워졌는지. 있으면 Take · 피치 행을 잠가 지우기와 겹치지 않게 한다."""
+    return goal.base_take_id is not None and chat_repo.lock_take_id(goal.base_take_id) is None
+
+
 def _restored(
-    db: Session, chat_repo: ChatRepository, conversation_id: uuid.UUID, saved_version: int
+    db: Session, conversation_id: uuid.UUID, saved_version: int, previous: ChatGoal | None
 ) -> ChatGoal:
     """저장한 판 바로 앞 판의 내용을 새 판으로. 앞 판이 없거나 비었으면 내용 없는 판이다."""
     restored = ChatGoal(conversation_id=conversation_id, version=saved_version + 1)
-    previous = chat_repo.get_goal(conversation_id, saved_version - 1)
-    if previous is None:
-        return restored
-    # 내용보다 먼저 본다. 정리 작업이 내용을 비운 뒤에도 정리 전과 같이 거절하려는 것이다
-    if previous.base_take_id is not None and chat_repo.lock_take_id(previous.base_take_id) is None:
-        raise ChatStateInvalid(BASE_DELETED)
-    if previous.goal is None:
+    if previous is None or previous.goal is None:
         return restored
     restored.goal = previous.goal
     # 끝난 목표(ACHIEVED 등)는 그대로 둔다. 되살렸다고 자동 판정을 다시 열지 않는다(L4-14)

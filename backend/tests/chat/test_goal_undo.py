@@ -10,6 +10,7 @@ from sqlalchemy import null, select, update
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
@@ -17,6 +18,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatMessage,
     ChatRun,
 )
+from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_undo import BASE_DELETED, UNDONE_TEXT
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take
@@ -328,6 +330,39 @@ def test_previous_goal_emptied_by_cleanup_is_still_not_restored(
     assert response.json()["message"] == BASE_DELETED
     db_session.expire_all()
     assert db_session.get(ChatConversation, saved["conversation"].id).goal_version == 2
+
+
+def test_pitch_and_take_are_locked_before_the_conversation(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    saved: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 피치를 지우는 쪽은 피치 → (연쇄 삭제) 대화 순서로 잠근다. 반대로 잠그면 서로 기다린다
+    order: list[str] = []
+    lock_take_id = ChatRepository.lock_take_id
+    get_owned_conversation = ChatApiRepository.get_owned_conversation
+
+    def recording_lock_take_id(self: ChatRepository, take_id: uuid.UUID) -> uuid.UUID | None:
+        order.append("take")
+        return lock_take_id(self, take_id)
+
+    def recording_get_owned_conversation(
+        self: ChatApiRepository, conversation_id: uuid.UUID, owner: uuid.UUID, *, lock: bool = False
+    ) -> ChatConversation | None:
+        if lock:
+            order.append("conversation")
+        return get_owned_conversation(self, conversation_id, owner, lock=lock)
+
+    monkeypatch.setattr(ChatRepository, "lock_take_id", recording_lock_take_id)
+    monkeypatch.setattr(
+        ChatApiRepository, "get_owned_conversation", recording_get_owned_conversation
+    )
+
+    assert _undo(client, user_id, saved["run"].id, "a-1").status_code == 200
+
+    assert order == ["take", "conversation"]
 
 
 def test_only_my_goal_saves_can_be_undone(
