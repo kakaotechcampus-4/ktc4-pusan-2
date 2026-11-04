@@ -159,11 +159,15 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
-async function render(combo?: PracticeCombo) {
+async function render(combo?: PracticeCombo, pitchId = 'p1') {
   await act(async () =>
     root.render(
+      // 피치를 바꿔 다시 그릴 때 새 주소로 열리도록 key 를 둡니다
       <MemoryRouter
-        initialEntries={[{ pathname: '/pitch/p1/device-check', state: { practice: combo } }]}
+        key={pitchId}
+        initialEntries={[
+          { pathname: `/pitch/${pitchId}/device-check`, state: { practice: combo } },
+        ]}
       >
         <Routes>
           <Route path="/pitch/:pitchId/device-check" element={<DeviceCheckPage />} />
@@ -177,6 +181,10 @@ async function render(combo?: PracticeCombo) {
 const findButton = (text: string) =>
   [...host.querySelectorAll<HTMLButtonElement>('button')].find(
     (node) => node.textContent === text,
+  )!;
+const scriptOption = (label: string) =>
+  [...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((node) =>
+    node.textContent?.includes(label),
   )!;
 
 it('starts with the chosen server version IDs while the optional voice task is still untouched', async () => {
@@ -329,4 +337,23 @@ it('locks device and script choices while checking for an existing Take, and res
   expect(host.querySelector('dialog')).toBeNull();
   expect(findButton('Take 4 시작하기').disabled).toBe(false);
   expect(document.activeElement).toBe(findButton('Take 4 시작하기'));
+});
+
+it("does not carry one pitch's exam choice into another pitch's server default and Take", async () => {
+  await render(undefined, 'p1');
+  await act(async () => scriptOption('실전 모드').click());
+  expect(scriptOption('실전 모드').getAttribute('aria-checked')).toBe('true');
+
+  fixture.data = { ...fixture.data, pitch_id: 'p2', default_script_mode: 'KEYWORD' };
+  await render(undefined, 'p2');
+  expect(scriptOption('핵심 키워드').getAttribute('aria-checked')).toBe('true');
+
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      pitchId: 'p2',
+      body: expect.objectContaining({ mode: 'COACHING', script_mode: 'KEYWORD' }),
+    }),
+  );
+  expect(host.textContent).toContain('연습 시작');
 });
