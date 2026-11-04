@@ -164,6 +164,10 @@ class ReassessArgs(_Args):
         return self
 
 
+class StartPracticeArgs(_Args):
+    pitch_id: str
+
+
 class SaveGoalArgs(_Args):
     expected_goal_version: int = Field(ge=0)
     goal: dict[str, Any]

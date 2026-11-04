@@ -2,8 +2,8 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Row, and_, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Row, Select, and_, func, select
+from sqlalchemy.orm import Session, aliased
 
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
@@ -12,8 +12,8 @@ from pitch_coach_backend.module.chat.entity import (
     ChatMessage,
     ChatRun,
 )
-from pitch_coach_backend.module.pitch.entity import Pitch
-from pitch_coach_backend.module.take.entity import Take, TakeAIResults
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
+from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSlideEvent
 
 
 class ChatRepository:
@@ -111,7 +111,9 @@ class ChatRepository:
     def get_goal(self, conversation_id: uuid.UUID, version: int) -> ChatGoal | None:
         return self.db.get(ChatGoal, (conversation_id, version))
 
-    def list_pitch_summaries(self, user_id: uuid.UUID, *, limit: int) -> list[Row]:
+    def list_pitch_summaries(
+        self, user_id: uuid.UUID, *, limit: int, pitch_ids: Sequence[uuid.UUID] | None = None
+    ) -> list[Row]:
         # completed 된 take 수와 마지막으로 연습한 시각을 가져오는 서브쿼리
         stats = (
             select(
@@ -138,7 +140,16 @@ class ChatRepository:
             )
             .limit(limit)
         )
+        if pitch_ids is not None:
+            stmt = stmt.where(Pitch.id.in_(pitch_ids))
         return list(self.db.execute(stmt).all())
+
+    def find_pitch_ids_by_name(self, user_id: uuid.UUID, name: str) -> list[uuid.UUID]:
+        return list(
+            self.db.scalars(
+                select(Pitch.id).where(Pitch.user_id == user_id, Pitch.title.ilike(f"%{name}%"))
+            )
+        )
 
     def count_pitches(self, user_id: uuid.UUID) -> int:
         return self.db.scalar(
@@ -164,3 +175,68 @@ class ChatRepository:
             .order_by(Take.pitch_id, Take.take_number.desc())
         )
         return list(self.db.execute(stmt).all())
+
+    def list_recent_takes(self, pitch_id: uuid.UUID, *, limit: int) -> list[Row]:
+        stmt = (
+            _take_with_review()
+            .where(Take.pitch_id == pitch_id)
+            .order_by(Take.take_number.desc())
+            .limit(limit)
+        )
+        return list(self.db.execute(stmt).all())
+
+    def get_take_with_review(self, take_id: uuid.UUID) -> Row | None:
+        return self.db.execute(_take_with_review().where(Take.id == take_id)).first()
+
+    def list_ai_results(self, take_id: uuid.UUID, kinds: Sequence[str]) -> list[TakeAIResults]:
+        return list(
+            self.db.scalars(
+                select(TakeAIResults).where(
+                    TakeAIResults.take_id == take_id, TakeAIResults.kind.in_(kinds)
+                )
+            )
+        )
+
+    def get_latest_completed_take(self, pitch_id: uuid.UUID) -> Row | None:
+        return self.db.execute(
+            _take_with_review()
+            .where(Take.pitch_id == pitch_id, Take.status == "COMPLETED")
+            .order_by(Take.completed_at.desc().nulls_last(), Take.take_number.desc())
+            .limit(1)
+        ).first()
+
+    def list_judged_missions(self, take_id: uuid.UUID) -> list[Mission]:
+        return list(
+            self.db.scalars(
+                select(Mission)
+                .where(Mission.take_id == take_id, Mission.status != "ACTIVE")
+                .order_by(Mission.priority, Mission.slide_number, Mission.id)
+            )
+        )
+
+    def slide_numbers(self, take_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, set[int]]:
+        if not take_ids:
+            return {}
+        rows = self.db.execute(
+            select(TakeSlideEvent.take_id, TakeSlideEvent.slide_number)
+            .where(TakeSlideEvent.take_id.in_(take_ids))
+            .distinct()
+        )
+        slides: dict[uuid.UUID, set[int]] = {}
+        for take_id, slide_number in rows:
+            slides.setdefault(take_id, set()).add(slide_number)
+        return slides
+
+
+def _take_with_review() -> Select:
+    review = aliased(TakeAIResults)
+    return (
+        select(
+            Take,
+            PresentationVersion.page_count,
+            review.revision.label("review_revision"),
+            review.payload.label("review_payload"),
+        )
+        .join(PresentationVersion, PresentationVersion.id == Take.presentation_version_id)
+        .outerjoin(review, and_(review.take_id == Take.id, review.kind == "REVIEW"))
+    )

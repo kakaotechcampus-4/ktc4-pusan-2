@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -12,7 +13,14 @@ from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal
-from pitch_coach_backend.module.chat.ai_response import ACTION_ARGS, ACTION_AUTONOMY, StreamLine
+from pitch_coach_backend.module.chat.ai_response import (
+    ACTION_ARGS,
+    ACTION_AUTONOMY,
+    FetchPitchArgs,
+    FetchTakeArgs,
+    StartPracticeArgs,
+    StreamLine,
+)
 from pitch_coach_backend.module.chat.dto import (
     ActionResultDTO,
     AgentChoiceDTO,
@@ -37,15 +45,26 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRunLog,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.pitch.entity import Pitch
+from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import standard as standard_service
+from pitch_coach_backend.module.take.coach_repository import CoachRepository
+from pitch_coach_backend.module.take.entity import Mission, Take
+from pitch_coach_backend.module.take.repository import TakeRepository
 
 SEOUL = ZoneInfo("Asia/Seoul")
 HISTORY_MESSAGES = 20
 PRIOR_ASSESSMENTS = 50
 HISTORY_TEXT_LIMIT = 4000
 PITCH_SUMMARIES = 20
+RECENT_TAKES = 10
 
 
-class ScopeNotSupported(Exception):
+class PitchNotFound(Exception):
+    pass
+
+
+class ScopeChangeRejected(Exception):
     pass
 
 
@@ -57,7 +76,7 @@ class RunLost(Exception):
     pass
 
 
-type ActionHandler = Callable[[Session, ChatRun, BaseModel], ActionResultDTO]
+type ActionHandler = Callable[[Session, ChatRun, dict[str, Any], BaseModel], ActionResultDTO]
 
 ACTION_HANDLERS: dict[str, ActionHandler] = {}
 
@@ -98,8 +117,6 @@ def build_request(
     repo = ChatRepository(db)
     row = repo.get_run(run.run_id)
     conversation = repo.get_conversation(row.conversation_id)
-    if conversation.scope_pitch_id is not None:
-        raise ScopeNotSupported(conversation.id)
     first = resume is None
     source = row.input if first else {}
     choice = source.get("choice")
@@ -110,7 +127,7 @@ def build_request(
             run_id=row.id,
             conversation_id=row.conversation_id,
             user_id=row.user_id,
-            scope_pitch_id=None,
+            scope_pitch_id=conversation.scope_pitch_id,
             trigger=run.first_trigger if first else "ACTION_RESULT",
             state_revision=row.state_revision,
         ),
@@ -119,7 +136,7 @@ def build_request(
         review_event=None,
         page=AgentPageDTO.model_validate(row.input["page"]),
         history=_history(repo, conversation.id, before_seq),
-        context=_context(repo, row, conversation, choice),
+        context=_context(db, repo, row, conversation, choice),
         resume=resume,
         budget_used=budget_used,
     )
@@ -167,11 +184,14 @@ def _shorten(message: ChatMessage) -> tuple[str, bool]:
 
 
 def _context(
+    db: Session,
     repo: ChatRepository,
     row: ChatRun,
     conversation: ChatConversation,
     choice: dict[str, Any] | None,
 ) -> AgentContextDTO:
+    page_take_id = row.input["page"].get("take_id")
+    loaded_takes, removed_sources = _read_sources(db, repo, row)
     pitches = repo.list_pitch_summaries(row.user_id, limit=PITCH_SUMMARIES)
     reviews = {
         review.pitch_id: review
@@ -180,13 +200,135 @@ def _context(
     return AgentContextDTO(
         pitches=[_pitch_summary(pitch, reviews.get(pitch.pitch_id)) for pitch in pitches],
         pitches_total=repo.count_pitches(row.user_id),
-        pitch=None,
+        pitch=(
+            _pitch_context(
+                db,
+                row.user_id,
+                conversation.scope_pitch_id,
+                uuid.UUID(page_take_id) if page_take_id else None,
+            )
+            if conversation.scope_pitch_id
+            else None
+        ),
         conversation_goal=_goal(repo.get_goal(conversation.id, conversation.goal_version)),
         goal_version=conversation.goal_version,
-        loaded_takes=[],
-        removed_sources=[],
+        loaded_takes=loaded_takes,
+        removed_sources=removed_sources,
         selected_proposal=_selected_proposal(repo, conversation.id, choice),
     )
+
+
+def _read_sources(
+    db: Session, repo: ChatRepository, row: ChatRun
+) -> tuple[list[dict[str, Any]], list[uuid.UUID]]:
+    sources = row.read_sources or {}
+    pitch_repository = PitchRepository(db)
+    loaded: list[dict[str, Any]] = []
+    removed: list[uuid.UUID] = []
+    for pitch_id in map(uuid.UUID, sources.get("pitches", [])):
+        if pitch_repository.get_owned(pitch_id, row.user_id) is None:
+            removed.append(pitch_id)
+    for take_id in map(uuid.UUID, sources.get("takes", [])):
+        take = repo.get_take_with_review(take_id)
+        if take is None or pitch_repository.get_owned(take.Take.pitch_id, row.user_id) is None:
+            removed.append(take_id)
+        else:
+            loaded.append(_take_snapshot(repo, take))
+    return loaded, removed
+
+
+def _pitch_context(
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID, focus_take_id: uuid.UUID | None
+) -> dict[str, Any]:
+    pitch = PitchRepository(db).get_owned(pitch_id, user_id)
+    if pitch is None:
+        raise PitchNotFound(pitch_id)
+    repo = ChatRepository(db)
+    rows = repo.list_recent_takes(pitch.id, limit=RECENT_TAKES)
+    slides = repo.slide_numbers([row.Take.id for row in rows])
+    standard_version = standard_service.latest_analysis_version(db, pitch.id)
+    return {
+        "info": _pitch_info(pitch),
+        "versions": _pitch_versions(db, pitch.id, standard_version),
+        "takes": [_take_summary(row, slides.get(row.Take.id, set())) for row in rows],
+        "focus_take": _focus_take(repo, pitch.id, focus_take_id),
+        "missions": _pitch_missions(db, repo, pitch.id),
+        "criteria": _pitch_criteria(db, pitch.id, standard_version),
+    }
+
+
+def _pitch_info(pitch: Pitch) -> dict[str, Any]:
+    min_ms = (pitch.time_limit_sec - pitch.lower_deviation) * 1000
+    return {
+        "pitch_id": str(pitch.id),
+        "title": pitch.title,
+        "time_limit_ms": pitch.time_limit_sec * 1000,
+        "min_ms": min_ms if min_ms > 0 else None,
+        "max_ms": (pitch.time_limit_sec + pitch.upper_deviation) * 1000,
+    }
+
+
+def _pitch_versions(
+    db: Session, pitch_id: uuid.UUID, standard_version: int | None
+) -> dict[str, Any]:
+    pitch_repository = PitchRepository(db)
+    script = pitch_repository.get_latest_parsed_script(pitch_id)
+    slide_count = pitch_repository.count_slides(script.id) if script else None
+    presentation = None
+    if slide_count:
+        presentation = pitch_repository.get_latest_presentation(pitch_id, page_count=slide_count)
+    if presentation is None:
+        presentation = pitch_repository.get_latest_presentation(pitch_id)
+    return {
+        "script_version_id": str(script.id) if script else None,
+        "script_version_label": f"V{script.version}" if script else None,
+        "presentation_version_id": str(presentation.id) if presentation else None,
+        "page_count": presentation.page_count if presentation else None,
+        "standard_version": standard_version,
+    }
+
+
+def _focus_take(
+    repo: ChatRepository, pitch_id: uuid.UUID, take_id: uuid.UUID | None
+) -> dict[str, Any] | None:
+    row = repo.get_take_with_review(take_id) if take_id else None
+    if row is None or row.Take.pitch_id != pitch_id:
+        row = repo.get_latest_completed_take(pitch_id)
+    return _take_snapshot(repo, row) if row else None
+
+
+def _pitch_missions(db: Session, repo: ChatRepository, pitch_id: uuid.UUID) -> list[dict[str, Any]]:
+    source = TakeRepository(db).get_latest_reviewed_take_in_pitch(pitch_id)
+    if source is None:
+        return []
+    judged = repo.list_judged_missions(source.id)
+    active = CoachRepository(db).active_missions_from(source.id)
+    return [_mission(mission) for mission in [*judged, *active]]
+
+
+def _mission(mission: Mission) -> dict[str, Any]:
+    return {
+        "mission_id": str(mission.id),
+        "source_take_id": str(mission.source_take_id),
+        "take_id": str(mission.take_id) if mission.take_id else None,
+        "area": mission.area,
+        "slide_number": mission.slide_number,
+        "target": mission.target,
+        "description": mission.description,
+        "priority": mission.priority,
+        "reason": mission.reason,
+        "status": mission.status,
+        "observed": mission.observed,
+    }
+
+
+def _pitch_criteria(
+    db: Session, pitch_id: uuid.UUID, standard_version: int | None
+) -> dict[str, Any] | None:
+    criteria = standard_service.criteria_for_version(db, pitch_id, standard_version)
+    if criteria is None:
+        return None
+    return {"standard_version": standard_version, **criteria}
 
 
 def _pitch_summary(pitch: Row, review: Row | None) -> dict[str, Any]:
@@ -209,6 +351,67 @@ def _last_review(review: Row) -> dict[str, Any]:
         "take_number": review.take_number,
         "score": payload.get("score"),
         "priority_dimensions": [name for name, state in dimensions.items() if state == "PRIORITY"],
+    }
+
+
+SNAPSHOT_RESULTS = {
+    "TAKE_RESULT": "take_result",
+    "SCRIPT_COVERAGE": "script_coverage",
+    "REVIEW": "review",
+}
+
+
+def _take_snapshot(repo: ChatRepository, row: Row) -> dict[str, Any]:
+    take = row.Take
+    results: dict[str, Any] = dict.fromkeys(SNAPSHOT_RESULTS.values())
+    revisions: dict[str, int | None] = dict.fromkeys(SNAPSHOT_RESULTS)
+    for saved in repo.list_ai_results(take.id, list(SNAPSHOT_RESULTS)):
+        results[SNAPSHOT_RESULTS[saved.kind]] = saved.payload
+        revisions[saved.kind] = saved.revision
+    slides = repo.slide_numbers([take.id]).get(take.id, set())
+    return {
+        "summary": _take_summary(row, slides),
+        "results": results,
+        "revisions": revisions,
+        "omitted_paths": [],
+    }
+
+
+def _take_summary(row: Row, slides: set[int]) -> dict[str, Any]:
+    take = row.Take
+    return {
+        "take_id": str(take.id),
+        "take_number": take.take_number,
+        "status": take.status,
+        "mode": take.mode,
+        "script_mode": take.script_mode,
+        "end_reason": take.end_reason,
+        "completed_fully": _completed_fully(take, row.page_count, slides),
+        "script_version_id": str(take.script_version_id),
+        "presentation_version_id": str(take.presentation_version_id),
+        "standard_version": take.standard_version,
+        "completed_at": take.completed_at.isoformat() if take.completed_at else None,
+        "review": _review_summary(row.review_revision, row.review_payload),
+    }
+
+
+def _completed_fully(take: Take, page_count: int | None, slides: set[int]) -> bool | None:
+    if take.end_reason in ("ABANDONED", "CLOSED"):
+        return False
+    if take.status != "COMPLETED" or take.end_reason is not None:
+        return None
+    if not page_count or not set(range(1, page_count + 1)) <= slides:
+        return None
+    return True
+
+
+def _review_summary(revision: int | None, payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if payload is None:
+        return None
+    return {
+        "revision": revision,
+        "score": payload.get("score"),
+        "dimensions": payload.get("dimensions"),
     }
 
 
@@ -291,6 +494,7 @@ def wait_for_action(
     row = _lock_current(db, run)
     if row is None:
         return None
+    conversation = repo.lock_conversation(row.conversation_id)
     data = final.data
     action = data["actions"][0]
     row.state = data["state"]
@@ -324,6 +528,8 @@ def wait_for_action(
         )
     )
     _add_diagnostics(repo, row, turn_call, final.diagnostics, datetime.now(UTC))
+    if _apply_scope(row, conversation, data):
+        row.state_revision += 1
     row.row_revision += 1
     db.commit()
     return _claimed(row)
@@ -352,7 +558,7 @@ def run_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionRe
     if row is None:
         raise RunLost(run.run_id)
     args = ACTION_ARGS[action["type"]].model_validate(action["args"])
-    result = ACTION_HANDLERS[action["type"]](db, row, args)
+    result = ACTION_HANDLERS[action["type"]](db, row, action, args)
     saved = ChatRepository(db).get_action(row.id, action["action_id"])
     saved.status = "SUCCEEDED" if result.status != "FAILED" else "FAILED"
     saved.result = result.model_dump(mode="json")
@@ -381,6 +587,184 @@ def _failed(action: dict[str, Any], code: str, message: str) -> ActionResultDTO:
     )
 
 
+def _succeeded(action: dict[str, Any], data: dict[str, Any]) -> ActionResultDTO:
+    return ActionResultDTO(
+        action_id=action["action_id"],
+        type=action["type"],
+        status="SUCCEEDED",
+        data=data,
+        error=None,
+    )
+
+
+def _fetch_take(
+    db: Session, row: ChatRun, action: dict[str, Any], args: FetchTakeArgs
+) -> ActionResultDTO:
+    repo = ChatRepository(db)
+    conversation = repo.get_conversation(row.conversation_id)
+    take = _owned_take(db, repo, row.user_id, args.pitch_id, args.take_id)
+    if take is None or str(conversation.scope_pitch_id) != args.pitch_id:
+        return _failed(action, "NOT_FOUND", "기록을 찾을 수 없어요.")
+    _remember_take(repo, row, action, take.Take.id)
+    return _succeeded(action, {"take": _take_snapshot(repo, take)})
+
+
+def _owned_take(
+    db: Session, repo: ChatRepository, user_id: uuid.UUID, pitch_id: str, take_id: str
+) -> Row | None:
+    try:
+        pitch_uuid, take_uuid = uuid.UUID(pitch_id), uuid.UUID(take_id)
+    except ValueError:
+        return None
+    if PitchRepository(db).get_owned(pitch_uuid, user_id) is None:
+        return None
+    take = repo.get_take_with_review(take_uuid)
+    if take is None or take.Take.pitch_id != pitch_uuid:
+        return None
+    return take
+
+
+def _remember_take(
+    repo: ChatRepository, row: ChatRun, action: dict[str, Any], take_id: uuid.UUID
+) -> None:
+    sources = row.read_sources or {"pitches": [], "takes": []}
+    if str(take_id) not in sources["takes"]:
+        row.read_sources = {**sources, "takes": [*sources["takes"], str(take_id)]}
+    repo.get_action(row.id, action["action_id"]).source_take_ids = [str(take_id)]
+
+
+def _fetch_pitch(
+    db: Session, row: ChatRun, action: dict[str, Any], args: FetchPitchArgs
+) -> ActionResultDTO:
+    repo = ChatRepository(db)
+    if args.pitch_id is not None:
+        pitch_ids = _owned_pitch_ids(db, row.user_id, args.pitch_id)
+    else:
+        pitch_ids = repo.find_pitch_ids_by_name(row.user_id, args.name.strip())
+    if not pitch_ids:
+        return _failed(action, "NOT_FOUND", "발표를 찾을 수 없어요.")
+    if len(pitch_ids) > 1:
+        rows = repo.list_pitch_summaries(row.user_id, limit=PITCH_SUMMARIES, pitch_ids=pitch_ids)
+        reviews = {review.pitch_id: review for review in repo.list_last_reviews(pitch_ids)}
+        candidates = [_pitch_summary(pitch, reviews.get(pitch.pitch_id)) for pitch in rows]
+        return _ambiguous(action, {"candidates": candidates})
+    pitch_id = pitch_ids[0]
+    _remember_pitch(row, pitch_id)
+    return _succeeded(action, {"pitch": _pitch_context(db, row.user_id, pitch_id, None)})
+
+
+def _owned_pitch_ids(db: Session, user_id: uuid.UUID, pitch_id: str) -> list[uuid.UUID]:
+    try:
+        pitch_uuid = uuid.UUID(pitch_id)
+    except ValueError:
+        return []
+    return [pitch_uuid] if PitchRepository(db).get_owned(pitch_uuid, user_id) else []
+
+
+def _remember_pitch(row: ChatRun, pitch_id: uuid.UUID) -> None:
+    sources = row.read_sources or {"pitches": [], "takes": []}
+    if str(pitch_id) not in sources["pitches"]:
+        row.read_sources = {**sources, "pitches": [*sources["pitches"], str(pitch_id)]}
+
+
+def _ambiguous(action: dict[str, Any], data: dict[str, Any]) -> ActionResultDTO:
+    return ActionResultDTO(
+        action_id=action["action_id"],
+        type=action["type"],
+        status="AMBIGUOUS",
+        data=data,
+        error=None,
+    )
+
+
+def _apply_scope(row: ChatRun, conversation: ChatConversation, data: dict[str, Any]) -> bool:
+    if row.first_trigger == "TAKE_REVIEWED":
+        return False
+    new = data["scope_pitch_id"]
+    current = str(conversation.scope_pitch_id) if conversation.scope_pitch_id else None
+    if new == current:
+        return False
+    if new is None or new not in (row.read_sources or {}).get("pitches", []):
+        raise ScopeChangeRejected(new)
+    conversation.scope_pitch_id = uuid.UUID(new)
+    return True
+
+
+ACTION_HANDLERS["FETCH_TAKE"] = _fetch_take
+ACTION_HANDLERS["FETCH_PITCH"] = _fetch_pitch
+
+NEGATIONS = ("하지 마", "말고", "취소", "빼고", "안 해")
+CONDITION = re.compile(r"(으)?면(\s|$|,)")
+QUOTES = ('"', "'", "“", "”", "‘", "’", "라고")
+REQUEST_ENDINGS = re.compile(r"(자|줘|주세요|할래|해 줘|하고 싶어|갈래|해요)(\s|$|[.!?,])")
+ACTION_WORDS = {
+    "START_PRACTICE": ("연습", "발표", "시작", "가자"),
+    "SAVE_GOAL": ("목표", "잡", "정해", "저장"),
+}
+CLAUSE_SPLIT = re.compile(r"[.!?\n]")
+
+
+def _authorization(original: str | None, quote: str | None, kind: str) -> str:
+    if not original or not quote or quote not in original:
+        return "MISSING"
+    clause = next((part for part in CLAUSE_SPLIT.split(original) if quote in part), original)
+    if (
+        any(word in clause for word in NEGATIONS)
+        or CONDITION.search(clause)
+        or any(mark in clause for mark in QUOTES)
+    ):
+        return "REJECTED"
+    if not any(word in quote for word in ACTION_WORDS[kind]) or not REQUEST_ENDINGS.search(quote):
+        return "MISSING"
+    return "OK"
+
+
+def _start_practice(db: Session, repo: ChatRepository, row: ChatRun, data: dict[str, Any]) -> None:
+    actions = [action for action in data["actions"] if action["type"] == "START_PRACTICE"]
+    if not actions:
+        return
+    action = actions[0]
+    decision = _practice_decision(db, row, action)
+    cards = [card for card in data["message"]["cards"] if card.get("type") != "START_PRACTICE"]
+    if decision is not None:
+        cards.append({"type": "START_PRACTICE", **decision})
+        repo.add(
+            ChatAction(
+                conversation_id=row.conversation_id,
+                user_id=row.user_id,
+                run_id=row.id,
+                action_id=action["action_id"],
+                type="START_PRACTICE",
+                args=action["args"],
+                args_digest=_digest(action["args"]),
+                autonomy=action["autonomy"],
+                idempotency_key=action["idempotency_key"],
+                args_hash=action["args_hash"],
+                status="SUCCEEDED",
+                result=decision,
+            )
+        )
+    data["message"]["cards"] = cards
+
+
+def _practice_decision(db: Session, row: ChatRun, action: dict[str, Any]) -> dict[str, Any] | None:
+    if row.first_trigger == "TAKE_REVIEWED" or action["autonomy"] != "AUTO_UNDO":
+        return None
+    try:
+        args = StartPracticeArgs.model_validate(action["args"])
+        pitch_id = uuid.UUID(args.pitch_id)
+    except ValueError:
+        return None
+    if PitchRepository(db).get_owned(pitch_id, row.user_id) is None:
+        return None
+    verdict = _authorization(
+        row.input.get("user_message"), action.get("authorized_by"), "START_PRACTICE"
+    )
+    if verdict == "REJECTED":
+        return None
+    return {"pitch_id": str(pitch_id), "auto": verdict == "OK"}
+
+
 def _digest(value: Any) -> str:
     canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -393,6 +777,8 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
         return False
     conversation = repo.lock_conversation(row.conversation_id)
     data = final.data
+    _apply_scope(row, conversation, data)
+    _start_practice(db, repo, row, data)
     message = data["message"]
     now = datetime.now(UTC)
     repo.add(
