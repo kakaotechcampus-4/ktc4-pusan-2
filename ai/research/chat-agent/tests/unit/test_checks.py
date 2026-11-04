@@ -271,6 +271,9 @@ def test_scope_rule_catches_reworded_edit_suggestions():
         "대본 3장 첫 문장을 짧게 바꿔 보세요.",
         "제한 시간을 7분으로 정하세요.",
         "슬라이드에 그림을 추가하세요.",
+        "대본에서 덜 중요한 부분을 빼세요.",
+        "대본을 보는 시간을 줄이세요 그리고 첫 문장을 바꾸세요.",
+        "평가 기준 항목을 정하세요.",
     ):
         f = run([claim("3장 청중 시선 비율은 28%예요. " + text, e.evidence_id)], r)
         assert CheckId.SCOPE_RULE in ids_of(f), text
@@ -286,6 +289,9 @@ def test_scope_rule_edit_rule_lets_record_and_practice_advice_pass():
         "제한 시간 안에 끝났어요.",
         "다음 Take에서 대본을 보는 시간을 줄여 보세요.",
         "대본을 보는 시간을 줄이세요.",
+        "슬라이드를 넘기는 속도를 줄이세요.",
+        "제한 시간 안에 말하는 속도를 줄이세요.",
+        "대본을 보는 시간을 줄여 보세요.",
         "대본은 그대로 두세요, 말하기를 바꿔 보세요.",  # 절이 달라 대상과 동사가 만나지 않는다
     ):
         f = run([claim("3장 청중 시선 비율은 28%예요. " + text, e.evidence_id)], r)

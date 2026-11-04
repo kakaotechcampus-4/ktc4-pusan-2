@@ -25,7 +25,8 @@
      개인정보.
   7. 범위 밖 `SCOPE_RULE`: 모델이 쓴 RECORD · GUIDE(인용 안 포함) · ASSESSMENT 설명에 `cfg.scope_out_words`(수정안 · 추천 값 ·
      예상 질문 · 연습 계획 낱말)가 있거나, 같은 절 안에서 `scope_targets`(대본 · 평가 기준 …) 뒤에 `scope_edit_verbs`
-     (넣으세요 · 바꿔 보 …)가 오면 건다. 이 검사에 걸린 문장은 고치기에 보내지 않고 turn.py가 바로 버린다(6-9).
+     (넣으세요 · 바꿔 보 …)가 오면(사이에 수행 명사 속도 · 시간 …이 있으면 통과), 또는 대상이 든 문장에 `내용 명사 + 을/를/에 + 고치는
+     동사`("첫 문장을 바꾸세요")가 있으면 건다. 이 검사에 걸린 문장은 고치기에 보내지 않고 turn.py가 바로 버린다(6-9).
 - 고칠 때
   - 낱말 목록은 `config.py`에만 둔다(바꾸면 `version.FEATURE_VERSION`을 올린다). 검사 ID를 더하면 `CheckId`와
     기능 문서 11-5 표를 같이 고친다.
@@ -698,12 +699,16 @@ def _found(words: Iterable[str], text: str) -> list[str]:
 
 
 _SCOPE_CLAUSE_SPLIT = re.compile(r"[.!?。\n,，;]")
+_SCOPE_SENTENCE_SPLIT = re.compile(r"[.!?。\n]")
 
 
 def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
-    """같은 절 안에서 대상 낱말(대본 · 평가 기준 …) 뒤 가까이에 고치라는 동사가 있으면 그 동사를 돌려준다(6-9 SCOPE_RULE).
+    """대본 · 평가 기준 같은 대상을 고치라는 말이면 그 동사를 돌려준다(6-9 SCOPE_RULE).
 
-    절은 마침표 · 쉼표 · 줄바꿈으로 나눈다. 대상과 동사 사이에 수행 방법을 뜻하는 말(`scope_edit_exempt`)이 끼면 통과시킨다.
+    규칙 1(대상 + 동사): 같은 절 안에서 대상 낱말 뒤 가까이에 고치라는 동사가 오면 건다. 절은 마침표 · 쉼표 · 줄바꿈으로 나눈다.
+      대상과 동사 사이에 수행 명사(`scope_performance_nouns`: 속도 · 시간 · 시선 …)가 있으면 발표 수행 방식을 바꾸는 말이라 통과시킨다.
+    규칙 2(내용 고쳐 쓰기): 문장 안 어디든 대상 낱말이 있고 같은 문장에 `내용 명사 + 을/를/에 + 고치는 동사`가 있으면 건다.
+      절로 나누지 않으므로 대상이 앞 절에 있어도 걸리고, 수행 명사 예외도 받지 않는다.
     """
     for clause in _SCOPE_CLAUSE_SPLIT.split(text):
         for t in cfg.scope_targets:
@@ -714,10 +719,19 @@ def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
                     pos = tail.find(v)
                     if pos == -1 or pos > cfg.scope_edit_window:
                         continue
-                    if any(x in tail[:pos] for x in cfg.scope_edit_exempt):
+                    if any(x in tail[:pos] for x in cfg.scope_performance_nouns):
                         continue
                     return v
                 start = clause.find(t, start + 1)
+    nouns = "|".join(re.escape(n) for n in cfg.scope_content_nouns)
+    verbs = "|".join(re.escape(v) for v in cfg.scope_edit_verbs)
+    content = re.compile(rf"(?:{nouns})[을를에][^.!?。\n]{{0,{cfg.scope_content_gap}}}?({verbs})")
+    for sentence in _SCOPE_SENTENCE_SPLIT.split(text):
+        if not any(t in sentence for t in cfg.scope_targets):
+            continue
+        m = content.search(sentence)
+        if m:
+            return m.group(1)
     return None
 
 
