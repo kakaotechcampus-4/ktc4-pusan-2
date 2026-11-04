@@ -32,17 +32,19 @@ import { TERMINAL_RUN_STATUSES } from '@/types/chat';
  * 실행은 시계가 아니라 **조회할 때마다 한 단계씩** 나아갑니다 — 화면이 1초마다 조회하면 1초에 한 문장이
  * 오고, 시험은 타이머 없이 순서를 확인할 수 있습니다.
  *
- * 보낸 말로 시나리오를 고릅니다:
+ * 보낸 말로 시나리오를 고릅니다. **위에서부터 처음 맞는 하나**입니다 (예: "목표 제안해 줘" 는 제안):
+ *   (제안 카드에서 고름) → 승인 없이 바로 목표 저장됨
+ *   "날씨"            → REFUSED (발표와 관계없는 질문)
+ *   "제안"            → 목표 제안 카드(사용자 안 · 추천 안)
  *   "목표"            → 할 일 · 도구 · 판단 문장 → 승인 카드(SAVE_GOAL) 대기 → [승인] 목표 저장됨 / [거절]
  *   "다시 평가" · "대본 보고" → 승인 카드(REASSESS) → [승인] 참고 결과 카드
- *   "제안"            → 목표 제안 카드(사용자 안 · 추천 안). 고르면(choice) 바로 목표 저장됨
- *   "발표할래" · "연습" → [연습 준비로] 버튼 카드
+ *   "발표할래" · "연습 준비" → [연습 준비로] 버튼 카드
  *   "기억"            → '기억했어요' 카드 (기억이 켜져 있고 '기억 없이' 대화가 아닐 때)
- *   "날씨"            → REFUSED (발표와 관계없는 질문)
  *   그 밖              → Take 비교 답: 내 기록 · 자료 · 일반 조언 문장 셋
  *
  * 콘솔(개발 중에만): `mockChat.fail('AGENT_BUSY')` 다음 보내기 실패 · `mockChat.runFail('AGENT_TIMEOUT')`
- * 다음 실행이 첫 문장 뒤 실패 · `mockChat.partial()` 다음 실행이 첫 문장 뒤 PARTIAL · `mockChat.expire()`
+ * 다음 실행이 첫 문장 뒤 실패 · `mockChat.partial()` 다음 실행이 첫 문장 뒤 PARTIAL (행동 성공 문장 뒤에서는
+ * 끊지 않습니다 — 완료 문장은 성공 기록으로만 나옵니다) · `mockChat.expire()`
  * 승인 대기를 만료 · `mockChat.disable()` / `enable()` / `unreachable()` 사용 가능 여부 · `mockChat.ok()` 되돌리기.
  */
 
@@ -251,6 +253,40 @@ function scenario(text: string, ctx: { memoryOn: boolean; choice: boolean }): St
       { t: 'claim', data: say('SYSTEM', '발표 연습과 관계없는 질문이에요.') },
       { t: 'end', status: 'REFUSED', cards: () => [] },
     ];
+  if (text.includes('제안'))
+    return [
+      ...base(),
+      { t: 'claim', data: first! },
+      {
+        t: 'end',
+        status: 'DONE',
+        cards: () => {
+          const proposed = proposedGoal(savedGoal(0));
+          return [
+            {
+              type: 'GOAL_PROPOSAL',
+              proposal_id: 'proposal-1',
+              options: [
+                {
+                  label: 'USER',
+                  goal: { ...proposed, slide_number: null },
+                  reason: '전체 장을 한 번에 올리기는 기록상 어려워요.',
+                  evidence_ids: [],
+                  content_hash: 'hash-user',
+                },
+                {
+                  label: 'EXPERT',
+                  goal: proposed,
+                  reason: '가장 낮은 3장부터 올려요.',
+                  evidence_ids: ['ev-gaze-diff'],
+                  content_hash: 'hash-expert',
+                },
+              ],
+            },
+          ];
+        },
+      },
+    ];
   if (text.includes('목표'))
     return [
       ...base(),
@@ -320,41 +356,7 @@ function scenario(text: string, ctx: { memoryOn: boolean; choice: boolean }): St
         rejected: '다시 평가하지 않았어요.',
       },
     ];
-  if (text.includes('제안'))
-    return [
-      ...base(),
-      { t: 'claim', data: first! },
-      {
-        t: 'end',
-        status: 'DONE',
-        cards: () => {
-          const proposed = proposedGoal(savedGoal(0));
-          return [
-            {
-              type: 'GOAL_PROPOSAL',
-              proposal_id: 'proposal-1',
-              options: [
-                {
-                  label: 'USER',
-                  goal: { ...proposed, slide_number: null },
-                  reason: '전체 장을 한 번에 올리기는 기록상 어려워요.',
-                  evidence_ids: [],
-                  content_hash: 'hash-user',
-                },
-                {
-                  label: 'EXPERT',
-                  goal: proposed,
-                  reason: '가장 낮은 3장부터 올려요.',
-                  evidence_ids: ['ev-gaze-diff'],
-                  content_hash: 'hash-expert',
-                },
-              ],
-            },
-          ];
-        },
-      },
-    ];
-  if (text.includes('발표할래') || text.includes('연습'))
+  if (text.includes('발표할래') || text.includes('연습 준비'))
     return [
       { t: 'claim', data: say('SYSTEM', '준비되면 연습 준비 화면에서 모드를 고르고 시작하세요.') },
       { t: 'end', status: 'DONE', cards: () => [{ type: 'START_PRACTICE', pitch_id: PITCH_ID }] },
@@ -604,7 +606,12 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     };
   }
 
-  function pushEvent(run: Run, event: RunEvent['event'], data: RunEvent['data']) {
+  /** 이벤트 종류와 데이터 모양이 짝이 맞는지 부르는 쪽에서 검사합니다 */
+  function pushEvent<E extends RunEvent['event']>(
+    run: Run,
+    event: E,
+    data: Extract<RunEvent, { event: E }>['data'],
+  ) {
     run.events.push({ event_seq: run.events.length + 1, event, data } as RunEvent);
   }
 
@@ -670,7 +677,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         return pushEvent(run, 'tool_done', { trace: step.trace });
       case 'claim':
         emitClaim(run, step.data);
-        if (run.failAfterFirst) {
+        if (run.failAfterFirst && step.data.claim.kind !== 'ACTION_RESULT') {
           const { status, code } = run.failAfterFirst;
           run.error = code ? { code } : null;
           finish(state, run, status, []);

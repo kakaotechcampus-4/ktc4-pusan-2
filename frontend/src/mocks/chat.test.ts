@@ -318,3 +318,90 @@ describe('사용자 · 대화 목록', () => {
     expect(await r.json()).toMatchObject({ code: 'AGENT_RUN_IN_PROGRESS' });
   });
 });
+
+describe('그 밖의 시나리오', () => {
+  const cardsOf = async (conversationId: string) =>
+    (await messages(conversationId)).items.at(-1)!.cards;
+
+  it('다시 평가는 승인 뒤 참고 결과 카드를 낸다', async () => {
+    const { run_id, conversation_id } = await accepted('대본 보고 한 발표였어');
+    const ask = askOf(await settle(run_id));
+    expect(ask.action_type).toBe('REASSESS');
+    expect(ask.notes).toContain('참고 결과이고 공식 결과는 그대로예요');
+    await call(chatPaths.decision(ask.action_id), 'POST', {
+      decision: 'APPROVE',
+      args_hash: ask.args_hash,
+    });
+    await settle(run_id);
+    expect((await cardsOf(conversation_id)).map((c) => c.type)).toEqual(['REASSESS_RESULT']);
+  });
+
+  it('"목표 제안" 은 제안 카드가 먼저 맞고, 고르면 승인 없이 목표가 저장된다', async () => {
+    const { run_id, conversation_id } = await accepted('목표 제안해 줘');
+    expect((await settle(run_id)).status).toBe('DONE');
+    const proposal = (await cardsOf(conversation_id))[0] as Extract<
+      Card,
+      { type: 'GOAL_PROPOSAL' }
+    >;
+    expect(proposal.type).toBe('GOAL_PROPOSAL');
+
+    const chosen = await accepted('추천 안으로 목표를 잡아 줘', {
+      conversation_id,
+      choice: { proposal_id: proposal.proposal_id, option: 'EXPERT' },
+    });
+    const view = await settle(chosen.run_id);
+    expect(view.status).toBe('DONE');
+    expect((await cardsOf(conversation_id)).map((c) => c.type)).toEqual(['GOAL_SAVED']);
+  });
+
+  it('PARTIAL 을 걸어도 행동 성공 문장 뒤에서는 끊지 않는다 — 카드 없는 "저장했어요" 가 없다', async () => {
+    controls.partial();
+    const { run_id, conversation_id } = await accepted('추천 안으로 잡아 줘', {
+      choice: { proposal_id: 'proposal-1', option: 'EXPERT' },
+    });
+    expect((await settle(run_id)).status).toBe('DONE');
+    expect((await cardsOf(conversation_id)).map((c) => c.type)).toEqual(['GOAL_SAVED']);
+  });
+
+  it('PARTIAL 을 걸면 첫 문장만 남긴 채 PARTIAL 로 끝난다', async () => {
+    controls.partial();
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    expect(await settle(run_id)).toMatchObject({ status: 'PARTIAL', error: null });
+    expect((await messages(conversation_id)).items.at(-1)!.claims).toHaveLength(1);
+  });
+
+  it('"연습 준비" 는 [연습 준비로] 버튼, "날씨" 는 REFUSED', async () => {
+    const practice = await accepted('바로 발표할래');
+    await settle(practice.run_id);
+    expect(await cardsOf(practice.conversation_id)).toEqual([
+      { type: 'START_PRACTICE', pitch_id: expect.any(String) },
+    ]);
+    const refused = await accepted('오늘 날씨 어때?');
+    expect((await settle(refused.run_id)).status).toBe('REFUSED');
+  });
+
+  it('범위를 바꾸면 그 범위로 대화 목록을 거를 수 있다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const list = await call(chatPaths.conversations).then(json<ConversationList>);
+    const pitchId = list.items.find((c) => c.scope_pitch_id)!.scope_pitch_id!;
+    const changed = await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: pitchId });
+    expect(await changed.json()).toMatchObject({ scope_pitch_id: pitchId });
+    const filtered = await call(`${chatPaths.conversations}?pitch_id=${pitchId}`).then(
+      json<ConversationList>,
+    );
+    expect(filtered.items.map((c) => c.conversation_id)).toContain(conversation_id);
+  });
+
+  it('기억을 끄면 카드를 만들지 않고, 전체 지우기는 항목을 모두 지운다', async () => {
+    const first = await accepted('짧게 설명해 줘, 기억해');
+    await settle(first.run_id);
+    await call(chatPaths.memoryItems, 'DELETE');
+    expect((await call(chatPaths.memory).then(json<MemorySettings>)).items).toEqual([]);
+
+    await call(chatPaths.memory, 'PUT', { enabled: false });
+    const off = await accepted('짧게 설명해 줘, 기억해');
+    await settle(off.run_id);
+    expect(await cardsOf(off.conversation_id)).toEqual([]);
+  });
+});
