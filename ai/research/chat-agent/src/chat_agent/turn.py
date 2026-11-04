@@ -811,6 +811,7 @@ def _pre_claims(
             system.append(templates.SystemText.RECORD_CHANGED_DURING.value)
         system += _action_notes(lp)
         system += _measurement_notes(lp)
+        system += _missing_take_notes(lp)
         out += [Claim(kind="SYSTEM", text=t) for t in dict.fromkeys(system) if t not in said]
     out += [
         Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"])
@@ -901,6 +902,18 @@ def _measurement_notes(lp: Loop) -> list[str]:
     ):
         return []
     return [templates.SystemText.MEASUREMENT_FIXED.value]
+
+
+def _missing_take_notes(lp: Loop) -> list[str]:
+    """사용자가 번호로 집어 말한 Take 가 범위 피치에 없으면(지워짐 · 없는 번호) "해당 연습 기록을 가져오지 못했어요"(L2-22).
+
+    가져오기를 시도하지 않고 다른 Take 로 답하거나 그 Take 이야기를 빼먹지 않게 한다(6회차 stale-deleted). 전체 범위
+    (범위 피치 없음)에서는 Take 번호를 피치에 묶을 수 없으므로 붙이지 않는다."""
+    if lp.ctx.pitch is None or not lp.ctx.summaries:
+        return []
+    if not act.unresolved_take_numbers(lp.original, lp.ctx):
+        return []
+    return [templates.SystemText.TAKE_FETCH_FAILED.value]
 
 
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)

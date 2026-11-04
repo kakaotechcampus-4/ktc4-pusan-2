@@ -1107,3 +1107,21 @@ def test_scope_switch_counts_a_reread_take_after_coming_back() -> None:
     be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
     assert actions == ["FETCH_PITCH", "FETCH_PITCH", "FETCH_PITCH"]
     assert "SCOPE_NOT_READ" not in texts_after(llm, 0)
+
+
+def test_named_take_missing_from_the_scope_gets_the_fetch_failed_notice() -> None:
+    """말한 Take 가 범위 피치에 없으면(지워짐) 가져오기를 시도하지 않아도 "해당 연습 기록을 가져오지 못했어요"를 붙이고,
+    다른 Take 를 대신 가져오지 않는다(L2-22, 6회차 stale-deleted)."""
+    msg = "아까 말한 Take 4 3장 값 다시 알려 줘"
+    llm = F.FakeLlm(
+        [F.plan(assessments=[request_draft(msg)]), fetch("t-3", "f"), F.done()],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm)
+    be.delete_take("t-4")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["args"]["take_id"])
+    run = be.send_message(None, msg, page_take_id="t-5")
+    assert actions == []  # Take 3 으로 바꿔 가져오지 않았다
+    assert templates.SystemText.TAKE_FETCH_FAILED.value in ok(run.final).message.text  # type: ignore[union-attr]
