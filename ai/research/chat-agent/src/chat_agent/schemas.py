@@ -1084,8 +1084,19 @@ class ErrorBody(_Out):
 # ── 5-4 스트림 줄 ───────────────────────────────────────────────────────────
 
 
+class ClaimLineData(_Out):
+    """문장 줄(`claim`)의 `data`(5-4): 검사를 통과해 확정된 답 문장 하나와, 그 줄이 처음 쓰는 근거 · 자료 사본과
+    아직 보내지 않은 확정 판단. `index`는 실행 전체 답에서 그 문장의 자리(0부터, 이어 부르기에서도 이어진다)."""
+
+    index: NonNegInt
+    claim: Claim
+    evidence: list[Evidence]
+    sources: list[GuideCard]
+    assessments: list[Assessment]
+
+
 class StreamLine(_Out):
-    event: Literal["plan", "tool_done", "final", "error"]
+    event: Literal["plan", "tool_done", "claim", "final", "error"]
     run_id: StrictStr
     seq: PosInt
     data: dict[str, Any]

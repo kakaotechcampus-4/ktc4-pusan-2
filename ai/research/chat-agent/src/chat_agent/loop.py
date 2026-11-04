@@ -12,8 +12,9 @@
      교대 반복은 요청마다 판정해 그 응답의 남은 요청은 실행하지 않고, 새 근거가 생긴 요청에서 기록을 비운다. 이미 한도로 정해진 끝난 이유는 덮지 않는다.
      끝난 까닭은 `stop_reason`(TIME · MODEL_CALLS · TOOL_CALLS · TOKENS · 반복 계열)에 남기고 turn.py 가 진단 `end.reason`으로 옮긴다.
   2-1. 모델 한 번(`_call`)마다 입력 · 출력 예약을 응답 뒤 공급자 실측으로 정산한다(budget.py `settle_input` · `settle_output`).
-  3. 답 쓰기(구조화) → 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 · 결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9).
-     걸리면 걸린 문장과 까닭을 알려 한 번 고치게 하고 다시 검사한다. 그래도 걸린 문장은 지운다.
+  3. 답 쓰기(구조화, `answer_phase`). 응답 조각은 answer.py 가 받아 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 ·
+     결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9)를 하고 통과한 문장부터 문장 줄로 낸다. 걸린 문장은 까닭을 알려 한 번
+     고치게 하고(`fix_call`) 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
 - 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤(이미 낸 문장이 기댄 원천이면 재개를 멈춘다 — `drop_removed`),
   행동 결과를 검사해 반영하고 2부터 잇는다.
@@ -39,7 +40,16 @@ from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, finish_code
 from .evidence import EvidenceRegistry
 from .goals import judge_goal
-from .llm_types import LlmBudgetStop, LlmError, LlmRefused, LlmRequest, LlmResult, ToolLlm, Usage
+from .llm_types import (
+    LlmBudgetStop,
+    LlmError,
+    LlmRefused,
+    LlmRequest,
+    LlmResult,
+    TextSink,
+    ToolLlm,
+    Usage,
+)
 from .runctx import RunCtx
 from .schemas import (
     Assessment,
@@ -213,6 +223,8 @@ class Loop:
         #: 연결이 끊겼는가(turn.py 가 넣는다). 끊기면 새 모델 · 도구 호출을 하지 않는다(L1-08)
         self.cancelled: Callable[[], bool] = lambda: False
         self._last_model_seq: int | None = None
+        #: 문장 줄(`claim`)을 내는 쪽(turn.py 가 넣는다, answer.py `ClaimLines`)
+        self.lines: Any = None
 
     # ── 모델 호출 공통 ───────────────────────────────────────────────
     def _call(
@@ -224,6 +236,7 @@ class Loop:
         schema=None,
         max_attempts: int = 2,
         fix_for: list[int] | None = None,
+        sink: TextSink | None = None,
     ) -> LlmResult | LlmError | LimitHit:
         """모델 한 번(내부 재시도 포함). 시도마다 한도를 예약한다. 실패 · 한도는 결과로 돌려준다(예외 없음).
 
@@ -263,6 +276,7 @@ class Loop:
             max_output_tokens=max_out,
             deadline=deadline,
             max_attempts=max_attempts,
+            text_sink=sink,
         )
         start = self.diag.now_ms()
         try:
@@ -957,10 +971,20 @@ class Loop:
         }
 
     # ── 3. 답 쓰기 · 검사 ────────────────────────────────────────────
-    def answer_phase(self, *, route: str, pending: Any = None) -> dict[str, Any]:
-        """답 초안 → 판단 확정 → 템플릿 문장 → 답 검사 → 한 번 고치기. 돌려주는 값: 메시지 · 판단 · 카드 · 상태.
+    def answer_phase(
+        self,
+        *,
+        route: str,
+        pending: Any = None,
+        sink: TextSink | None = None,
+        already_said: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """답 초안 호출(구조화). 돌려주는 값: `{failed, refused, llm_error}` 또는 `{failed: False, draft, messages}`.
+        판단 확정 · 문장 만들기 · 검사 · 고치기는 answer.py 가 한다.
 
-        `pending`: 승인 대기로 멈추기 전 답을 쓸 때의 `ASK` 행동. 모델에게 그 행동이 아직 실행되지 않았음을 알린다.
+        - `pending`: 승인 대기로 멈추기 전 답을 쓸 때의 `ASK` 행동. 모델에게 그 행동이 아직 실행되지 않았음을 알린다.
+        - `sink`: 응답 조각을 받아 검사를 통과한 문장부터 문장 줄로 내는 쪽(answer.py `Composer`, 5-4).
+        - `already_said`: 모델에게 알릴 '이미 보인 문장'. 없으면 서명 상태의 낸 문장(이 답 직전에 코드가 낸 앞 문장은 넣지 않는다).
         """
         research = [
             {"tool": t["tool"], "args": t["args_summary"], "result": t["result_summary"]}
@@ -974,9 +998,10 @@ class Loop:
             "actions": action_views[-5:],
             "drafts": self.st.drafts,
         }
-        if self.st.emitted:
+        said = already_said if already_said is not None else [c["text"] for c in self.st.emitted]
+        if said:
             # 이미 사용자에게 보인 문장: 같은 내용을 되풀이하지 않고 이어질 내용만 쓰게 한다
-            research_block["already_said"] = [c["text"] for c in self.st.emitted]
+            research_block["already_said"] = said
         if pending is not None:
             research_block["pending_action"] = {"type": pending.type}
         msgs = [
@@ -989,7 +1014,7 @@ class Loop:
                 + "\n</research>",
             },
         ]
-        res = self._call("ANSWER", msgs, schema=prompts.ANSWER_SCHEMA)
+        res = self._call("ANSWER", msgs, schema=prompts.ANSWER_SCHEMA, sink=sink)
         if not isinstance(res, LlmResult) or res.parsed is None:
             refused = isinstance(res, LlmRefused)
             return {
