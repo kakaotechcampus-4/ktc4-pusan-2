@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
-import { markerNumber, SLIDE_MARKER, splitLines } from '@/shared/lib/slideMarkers';
+import { markerNumber, splitLines, stripMarker } from '@/shared/lib/slideMarkers';
 import type {
   ParseRequested,
   ScriptCreateRequest,
@@ -29,7 +29,7 @@ export function splitScript(text: string): { segmented: boolean; slides: ScriptS
   for (const line of splitLines(text)) {
     const n = markerNumber(line);
     if (n !== null) {
-      const rest = line.replace(SLIDE_MARKER, '');
+      const rest = stripMarker(line);
       sections.push({ number: n, lines: [rest] });
       if (rest.trim() !== '') stripped.push(rest.trim());
     } else {

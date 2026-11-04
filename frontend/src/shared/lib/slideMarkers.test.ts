@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isLegacyMarker, markerNumber, scanSlideMarkers } from './slideMarkers';
+import {
+  isLegacyMarker,
+  markerNumber,
+  scanSlideMarkers,
+  stripMarker,
+  toAsciiDigits,
+} from './slideMarkers';
 
 /**
  * ★ FE · AI 공통 입력 목록 — AI `find_slides`(`tests/unit/script_parser/test_splitter.py`)도
@@ -47,6 +53,27 @@ const LINE_CASES: [string, number | null][] = [
   ['오늘은 슬라이드 3: 을 봅니다', null],
   ['첫째로', null],
   ['', null],
+  // 전각 숫자 — Python `\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다
+  ['[１]', 1],
+  ['[슬라이드 ２]', 2],
+  ['슬라이드 ３:', 3],
+  ['슬라이드 ３: 도입', 3],
+  ['  [４] 들여쓰기', 4],
+  ['[０]', 0],
+  ['슬라이드 ０:', 0],
+  ['[１２]', 12],
+  ['[1２]', 12], // 전각과 반각이 섞인 번호
+  ['[슬라이드 ３４]', 34],
+  ['[９９９９]', 9999],
+  ['[１２３４５]', null], // 5자리 이상은 전각이어도 본문
+  ['[１００００]', null],
+  ['슬라이드 ３', null], // 콜론 없음
+  ['슬라이드 ３.', null],
+  ['[１', null],
+  ['［１］', null], // 괄호가 전각이면 구분자가 아니다
+  ['[슬라이드　３]', null], // 공백이 전각이면 구분자가 아니다
+  ['[①]', null], // 숫자(Nd)가 아닌 원 숫자
+  ['３. 도입', null],
 ];
 
 /** 대본 전체: AI 는 번호가 0 · 겹침 · 거꾸로면 fail, 구분자가 없어도 fail */
@@ -71,6 +98,18 @@ const SCRIPT_CASES: {
   { name: '예전 표기뿐', script: 'Slide 1\n가\nSlide 2\n나', status: 'fail', numbers: [] },
   { name: 'CRLF', script: '[1]\r\n가\r\n[2]\r\n나', status: 'success', numbers: [1, 2] },
   { name: '제목 한 줄', script: '제목\n[1]\n가', status: 'success', numbers: [1] },
+  { name: '전각 정상', script: '[１]\n가\n[２]\n나', status: 'success', numbers: [1, 2] },
+  {
+    name: '전각 형식 섞기',
+    script: '[１] 가\n슬라이드 ２: 나\n[슬라이드 ３]\n다',
+    status: 'success',
+    numbers: [1, 2, 3],
+  },
+  { name: '전각 반각 섞기', script: '[1]\n가\n[２]\n나', status: 'success', numbers: [1, 2] },
+  { name: '전각 번호 0', script: '[０]\n가\n[１]\n나', status: 'fail', numbers: [0, 1] },
+  { name: '전각 번호 겹침', script: '[1]\n가\n[１]\n나', status: 'fail', numbers: [1, 1] },
+  { name: '전각 번호 거꾸로', script: '[２]\n가\n[１]\n나', status: 'fail', numbers: [2, 1] },
+  { name: '전각 두 자리', script: '[９]\n가\n[１０]\n나', status: 'success', numbers: [9, 10] },
 ];
 
 describe('슬라이드 구분자 — FE · AI 공통 입력 목록', () => {
@@ -150,5 +189,28 @@ describe('예전 표기 안내', () => {
 
   it('찾은 줄을 앞뒤 공백 없이 모아 준다', () => {
     expect(scanSlideMarkers('  Slide 1  \n가\n[2]\n나\n3.\n다').legacy).toEqual(['Slide 1', '3.']);
+  });
+});
+
+describe('전각 숫자', () => {
+  it('검사할 때만 ASCII 로 바꾸고 원문은 그대로 둔다', () => {
+    const script = '[１]\n가 ２０２４\n[２] 나';
+    scanSlideMarkers(script);
+    expect(script).toBe('[１]\n가 ２０２４\n[２] 나');
+    expect(toAsciiDigits('[１2３] ０９')).toBe('[123] 09');
+    expect(toAsciiDigits('[１]').length).toBe('[１]'.length);
+  });
+
+  it('구분자 뒤 글은 원문 그대로 남긴다', () => {
+    expect(stripMarker('[１] 안녕 ２０２４')).toBe(' 안녕 ２０２４');
+    expect(stripMarker('슬라이드 ３４: 도입')).toBe(' 도입');
+    expect(stripMarker('본문 [１]')).toBe('본문 [１]');
+  });
+
+  it('전각 숫자 예전 표기도 안내한다', () => {
+    expect(isLegacyMarker('Slide １')).toBe(true);
+    expect(isLegacyMarker('１.')).toBe(true);
+    expect(isLegacyMarker('[１]')).toBe(false);
+    expect(isLegacyMarker('３.５%p 늘었습니다')).toBe(false);
   });
 });

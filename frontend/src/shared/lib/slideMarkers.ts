@@ -12,10 +12,19 @@
  *   `findLegacyMarkers` 로 찾아 "구분으로 인식되지 않아요" 라고 안내합니다.
  *   이 결과는 **안내용**이고, 이걸로 매핑을 막지는 않습니다.
  *   "첫째", "다음으로" 같은 전환 표현과 빈 줄은 AI 도 구분자로 보지 않습니다.
+ * ★ 숫자 `\d` 의 뜻이 다릅니다 — Python 은 전각 숫자(１２３)도 숫자로 봐서 AI 는 `[１]` 을 구분자로
+ *   나누는데 JS 는 ASCII 만 봅니다. 그래서 검사할 때만 전각 숫자(０~９)를 ASCII 로 바꿔 AI 와 맞춥니다
+ *   (`toAsciiDigits`). 사용자 대본 원문은 바꾸지 않습니다. 그 밖의 유니코드 숫자(아라비아 · 데바나가리 등)는
+ *   AI 만 숫자로 봅니다 — 한글 입력기로는 칠 수 없어 맞추지 않았습니다.
  */
 
 export const SLIDE_MARKER =
   /^[ \t]*(?:\[(\d{1,4})\]|\[슬라이드[ \t]+(\d{1,4})\]|슬라이드[ \t]+(\d{1,4}):)/;
+
+/** 전각 숫자(０~９)를 ASCII 숫자로. 한 글자가 한 글자로 바뀌어 길이와 위치가 그대로입니다 */
+export function toAsciiDigits(text: string): string {
+  return text.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+}
 
 /** 예전 표기 — 구분으로는 세지 않고 안내에만 씁니다 */
 const LEGACY_MARKER =
@@ -29,13 +38,19 @@ function splitLines(text: string): string[] {
 
 /** 이 줄이 구분자로 시작하면 그 번호, 아니면 null */
 export function markerNumber(line: string): number | null {
-  const m = SLIDE_MARKER.exec(line);
+  const m = SLIDE_MARKER.exec(toAsciiDigits(line));
   return m ? Number(m[1] ?? m[2] ?? m[3]) : null;
+}
+
+/** 구분자 뒤 같은 줄의 글 — 구분자가 아니면 줄 그대로. 원문(전각 숫자 포함)에서 자릅니다 */
+export function stripMarker(line: string): string {
+  const m = SLIDE_MARKER.exec(toAsciiDigits(line));
+  return m ? line.slice(m[0].length) : line;
 }
 
 /** 구분자는 아니지만 예전에 구분으로 쓰던 표기(`Slide 1` · `1.` 등)로 보이는 줄 */
 export function isLegacyMarker(line: string): boolean {
-  return markerNumber(line) === null && LEGACY_MARKER.test(line);
+  return markerNumber(line) === null && LEGACY_MARKER.test(toAsciiDigits(line));
 }
 
 export interface MarkerScan {
