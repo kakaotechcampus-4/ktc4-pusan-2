@@ -85,6 +85,10 @@ def shutdown_max_sec() -> float:
     )
 
 
+async def _nothing_to_stop() -> None:
+    """띄우지 않은 주기 작업의 멈춤 함수."""
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     started_before = datetime.now(UTC)
@@ -103,7 +107,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
     stop_run_recovery = start_run_recovery()
-    stop_goal_sweep = start_goal_sweep()
+    # 자동 목표 확인은 AI 를 부르므로 대화 스위치가 꺼져 있으면 띄우지 않는다(chat-agent.md 11-2).
+    # 근거가 지워진 답을 가리는 정리 작업은 꺼져 있어도 돈다
+    stop_goal_sweep = start_goal_sweep() if settings.agent_enabled else _nothing_to_stop
     stop_cleanup_sweep = start_cleanup_sweep()
     # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
     stop_file_cleanup = start_file_cleanup_sweep()

@@ -1,5 +1,6 @@
 """코치 대화 API(화면 ↔ BE). 턴 실행기는 띄우지 않고 띄우려 한 run_id 만 모은다."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -626,3 +627,29 @@ def test_each_judgement_shows_the_newest_judgement_that_replaced_it(
         for item in message["assessments"] or []
     }
     assert by_id == {"a1": "a5", "a2": None, "a3": None, "a4": None, "a5": None}
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_goal_sweep_runs_only_while_chat_is_on(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, enabled: bool
+) -> None:
+    # 꺼 두면 자동 목표 확인이 AI 를 부르지 않는다. 다른 주기 작업은 client 픽스처가 막아 두었다
+    from pitch_coach_backend import main
+    from pitch_coach_backend.core.config import settings
+
+    started: list[bool] = []
+
+    def start() -> Any:
+        started.append(True)
+        return _no_sweep_stop
+
+    monkeypatch.setattr(main, "start_goal_sweep", start)
+    monkeypatch.setattr(settings, "agent_enabled", enabled)
+
+    async def run_app() -> None:
+        async with main.lifespan(main.app):
+            pass
+
+    asyncio.run(run_app())
+
+    assert started == ([True] if enabled else [])
