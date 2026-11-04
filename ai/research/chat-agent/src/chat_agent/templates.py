@@ -95,6 +95,11 @@ class SystemText(StrEnum):
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
     SCRIPT_NOT_ALLOWED = "공식 평가에는 대본 사용 허용이 없어요."
     SCRIPT_POINTS_REMOVED = "평가 항목이 빠져 오른 점수예요. 실력이 바뀐 건 아니에요."
+    #: 거절 · 만료 · 취소 문장(7-10). BE 가 AI 를 다시 부르지 않고 이미 낸 문장 뒤에 덧붙인다. 글은 코드 템플릿 한 곳에 둔다
+    REJECTED_SAVE_GOAL = "목표를 저장하지 않았어요."
+    REJECTED_REASSESS = "다시 평가하지 않았어요."
+    APPROVAL_EXPIRED = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
+    APPROVAL_CANCELLED = "새 메시지를 받아 앞의 확인 요청은 취소했어요."
 
 
 #: 범위 밖 이유(1-3) → 고정 문장(7-10). 모델이 고른 이유를 코드가 이 문장으로 바꾼다(거절 문장은 모델이 쓰지 않는다)
@@ -123,6 +128,25 @@ ACTION_SUCCESS = {
     "FETCH_TAKE": "Take {take_number} 기록을 가져왔어요.",
     "REASSESS": "참고 결과를 만들었어요. 공식 리뷰는 그대로예요.",
 }
+
+# ── 승인 확인 카드 (5-2 `ASK_CONFIRM` · 6-2) ─────────────────────────────────
+#: 카드 글은 모델이 쓰지 않는다. 대기 행동의 `args`로 코드가 이 템플릿을 채운다(표시 문자열 검사 6-9를 거친다)
+ASK_CONFIRM_TITLE = {"SAVE_GOAL": "대화 목표 저장", "REASSESS": "다시 평가"}
+#: 목표 요약 문장(지표 이름 · 장 · 기준 Take · 방향). 값 뒤 조사를 쓰지 않는 꼴로 둔다
+GOAL_SUMMARY = {
+    "gt_base": "Take {take_number}의 {where}{label}({value})보다 높이는 목표예요.",
+    "lt_base": "Take {take_number}의 {where}{label}({value})보다 낮추는 목표예요.",
+    "in_range": "Take {take_number} 기준 {where}{label}의 목표 범위({value}) 안에 드는 목표예요.",
+}
+SAVE_GOAL_NOTE_REPLACE = "저장하면 지금 대화 목표가 이 목표로 바뀌어요."
+SAVE_GOAL_NOTE_UNDO = "저장한 뒤에도 되돌릴 수 있어요."
+REASSESS_SUMMARY = "Take {take_number} 기록을 {change}으로 다시 평가해 참고 결과를 만들어요."
+REASSESS_CHANGE_TEXT = {
+    "script_used_true": "대본을 보고 한 발표",
+    "script_used_false": "대본을 보지 않은 발표",
+    "targets": "내 평가 기준 {count}개",
+}
+REASSESS_NOTE = "참고 결과이고 공식 결과는 그대로예요"
 
 #: 스트림 전 오류 · error 줄의 message (로그 · BE용. 화면에는 BE가 7-9 문구로 바꿔 보인다)
 ERROR_MESSAGES = {

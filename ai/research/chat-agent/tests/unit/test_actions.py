@@ -16,11 +16,14 @@ from chat_agent.actions import (
     ACTION_TOOL_ARGS,
     AUTONOMY,
     ResultMismatch,
+    action_args_hash,
     action_tool_definitions,
     apply_result,
+    ask_confirm_card,
     authorize,
     goal_proposal_card,
     match_result,
+    preapproval,
     proposal_still_valid,
     propose,
     start_practice_action,
@@ -32,6 +35,8 @@ from chat_agent.runctx import RunCtx
 from chat_agent.schemas import (
     Action,
     ActionResult,
+    AskConfirmCard,
+    Goal,
     GoalDraft,
     GoalProposalCard,
     GoalSavedCard,
@@ -100,12 +105,13 @@ def test_action_tool_definitions_are_closed_and_autonomy_is_fixed() -> None:
     for d in defs:
         props = set(d["function"]["parameters"]["properties"])
         assert not props & {"autonomy", "action_id", "idempotency_key", "args_hash"}
+    # 6-2 등급 표: 읽기는 AUTO, 저장 · 다시 평가는 확인 카드(ASK), 연습 이동은 버튼 카드(BUTTON)
     assert AUTONOMY == {
         "FETCH_PITCH": "AUTO",
         "FETCH_TAKE": "AUTO",
-        "REASSESS": "AUTO",
-        "SAVE_GOAL": "AUTO_UNDO",
-        "START_PRACTICE": "AUTO_UNDO",
+        "REASSESS": "ASK",
+        "SAVE_GOAL": "ASK",
+        "START_PRACTICE": "BUTTON",
     }
 
 
@@ -273,7 +279,8 @@ def test_fetch_pitch_by_name_or_id() -> None:
     assert (same.result, same.reason_code) == ("TOOL_ERROR", "ALREADY_IN_SCOPE")
 
 
-def test_reassess_is_auto_without_authorization_and_once_per_run() -> None:
+def test_reassess_is_ask_without_authorization_check_and_once_per_run() -> None:
+    """다시 평가는 허용 근거 검사 없이 확인 카드(ASK)가 승인 근거다. 한 턴에 한 번(6-2)."""
     b = budget()
     p = do(
         "reassess",
@@ -285,8 +292,9 @@ def test_reassess_is_auto_without_authorization_and_once_per_run() -> None:
     assert p.result == "PROPOSED" and p.authorization == "NOT_REQUIRED"
     assert (
         p.action.args == {"take_id": "t-5", "change": {"script_used": False}}
-        and p.action.autonomy == "AUTO"
+        and p.action.autonomy == "ASK"
     )
+    assert p.action.args_hash == action_args_hash("REASSESS", p.action.args)
     t = do(
         "reassess",
         {
@@ -345,10 +353,11 @@ def test_save_goal_authorized_builds_goal_from_record() -> None:
     a = p.action
     assert (a.type, a.autonomy, a.authorized_by, a.action_id) == (
         "SAVE_GOAL",
-        "AUTO_UNDO",
+        "ASK",
         "그걸 목표로 잡고",
         "run-81:a2",
     )
+    assert a.preapproved is None and a.args_hash == action_args_hash("SAVE_GOAL", a.args)
     assert a.args["expected_goal_version"] == 0
     goal = GoalDraft.model_validate(a.args["goal"])
     assert (goal.metric, goal.slide_number, goal.operator, goal.base.value, goal.base.take_id) == (
@@ -395,6 +404,153 @@ def test_l4_31_quote_from_tool_result_does_not_authorize() -> None:
 def test_save_goal_on_take_reviewed_turn_is_dropped() -> None:
     p = do("save_goal", SAVE_ARGS, ctx=ctx_for(None), message=None, trigger="TAKE_REVIEWED")
     assert (p.result, p.reason_code, p.action, p.card) == ("DROPPED", "NO_USER_TURN", None, None)
+
+
+def test_reassess_on_take_reviewed_turn_is_dropped() -> None:
+    """사용자 말이 없는 턴(TAKE_REVIEWED)은 ASK 행동(저장 · 다시 평가)을 내지 않는다(6-2)."""
+    p = do(
+        "reassess",
+        {"take_id": "t-5", "change": {"script_used": True}},
+        ctx=ctx_for(None),
+        message=None,
+        trigger="TAKE_REVIEWED",
+    )
+    assert (p.result, p.reason_code, p.action) == ("DROPPED", "NO_USER_TURN", None)
+
+
+# ── args_hash · 확인 카드 (5-8 · 6-2) ───────────────────────────────────────
+
+
+def test_args_hash_is_a_deterministic_sha256_of_type_and_sorted_args() -> None:
+    h = action_args_hash("REASSESS", {"take_id": "t-5", "change": {"script_used": True}})
+    assert h.startswith("sha256:") and len(h) == len("sha256:") + 64
+    int(h.removeprefix("sha256:"), 16)  # 16진수
+    # 키 순서가 달라도 같은 값
+    assert h == action_args_hash("REASSESS", {"change": {"script_used": True}, "take_id": "t-5"})
+    # 숫자 표기: 같은 값은 같은 표기(0.28 은 늘 0.28)
+    goal = {"base": {"value": 0.28, "revision": 1}, "min_delta": 0.05}
+    assert action_args_hash("SAVE_GOAL", goal) == action_args_hash(
+        "SAVE_GOAL", {"min_delta": 0.05, "base": {"revision": 1, "value": 0.28}}
+    )
+    assert action_args_hash("SAVE_GOAL", {"n": 1}) != action_args_hash("SAVE_GOAL", {"n": 2})
+    # 행동 종류와 인자가 모두 해시에 든다
+    assert action_args_hash("SAVE_GOAL", {"a": 1}) != action_args_hash("REASSESS", {"a": 1})
+    assert action_args_hash("SAVE_GOAL", {"a": 1}) != action_args_hash(
+        "SAVE_GOAL", {"a": 1, "b": 2}
+    )
+
+
+def _ask_pending() -> dict[str, Any]:
+    return {
+        "action_id": "run-81:a1",
+        "type": "REASSESS",
+        "args": {"take_id": "t-5"},
+        "autonomy": "ASK",
+        "args_hash": action_args_hash("REASSESS", {"take_id": "t-5"}),
+    }
+
+
+def _ask_result(**kw: Any) -> ActionResult:
+    return _result(type="REASSESS", **kw)
+
+
+def test_ask_result_needs_executed_args_hash_equal_to_pending() -> None:
+    pending = _ask_pending()
+    good = _ask_result(executed_args_hash=pending["args_hash"])
+    assert match_result(pending, [good]) is good
+    # 다른 인자로 실행됨 → 409
+    other = action_args_hash("REASSESS", {"take_id": "t-4"})
+    with pytest.raises(ResultMismatch) as e:
+        match_result(pending, [_ask_result(executed_args_hash=other)])
+    assert e.value.code == "ARGS_HASH_MISMATCH"
+    # 성공인데 해시가 없음 → 409
+    with pytest.raises(ResultMismatch) as e2:
+        match_result(pending, [_ask_result()])
+    assert e2.value.code == "ARGS_HASH_MISSING"
+    # 실행하지 못한 실패 결과는 해시가 없어도 된다. 있으면 같아야 한다
+    failed = _ask_result(status="FAILED", data=None, error={"code": "NOT_FOUND", "message": ""})
+    assert match_result(pending, [failed]) is failed
+    with pytest.raises(ResultMismatch):
+        match_result(
+            pending,
+            [
+                _ask_result(
+                    status="FAILED",
+                    data=None,
+                    error={"code": "X", "message": ""},
+                    executed_args_hash=other,
+                )
+            ],
+        )
+    # AUTO 행동은 해시를 따지지 않는다
+    auto = {**PENDING, "autonomy": "AUTO", "args_hash": None}
+    r = _result(executed_args_hash="sha256:" + "0" * 64)
+    assert match_result(auto, [r]) is r
+
+
+def test_save_goal_confirm_card_is_drawn_from_args_only() -> None:
+    ctx = ctx_for()
+    p = do("save_goal", SAVE_ARGS, ctx=ctx)
+    pending = p.action.model_dump(mode="json")
+    card = ask_confirm_card(pending, ctx=ctx, expires_at="2026-11-04T01:35:00+00:00")
+    assert card is not None
+    assert (card["type"], card["action_id"], card["action_type"]) == (
+        "ASK_CONFIRM",
+        "run-81:a1",
+        "SAVE_GOAL",
+    )
+    assert card["title"] == "대화 목표 저장" and card["args_hash"] == pending["args_hash"]
+    assert card["summary"] == "Take 5의 3장 청중 시선(28%)보다 높이는 목표예요."
+    assert card["before"] is None  # 지금 대화 목표가 없다
+    assert card["after"] == pending["args"]["goal"]
+    assert card["expires_at"] == "2026-11-04T01:35:00+00:00"
+    assert templates.SAVE_GOAL_NOTE_UNDO in card["notes"]
+    # 카드 모양은 스키마를 따른다
+    assert AskConfirmCard.model_validate(card).args_hash == pending["args_hash"]
+    # 모델 문장(reason · authorized_by)은 카드에 들어가지 않는다
+    assert "그걸 목표로 잡고" not in json.dumps(card, ensure_ascii=False)
+
+
+def test_confirm_card_before_is_the_current_goal() -> None:
+    ctx = ctx_for()
+    draft = build_goal_draft(ctx.snapshots["t-5"], "audience_ratio", 3, pitch_id="p-1", cfg=CFG)
+    assert not isinstance(draft, str)
+    ctx.goal = Goal(
+        **draft.model_dump(), version=1, created_at="2026-11-04T10:05:00+09:00", status="OPEN"
+    )
+    p = do("save_goal", SAVE_ARGS, ctx=ctx)
+    card = ask_confirm_card(p.action.model_dump(mode="json"), ctx=ctx, expires_at="x")
+    assert card is not None and card["before"] is not None and card["before"]["version"] == 1
+    assert templates.SAVE_GOAL_NOTE_REPLACE in card["notes"]
+
+
+def test_reassess_confirm_card_shows_current_and_reference_condition() -> None:
+    msg = "대본 보고 한 걸로 다시 평가해 줘"
+    ctx = ctx_for(msg)
+    p = do("reassess", {"take_id": "t-5", "change": {"script_used": True}}, ctx=ctx, message=msg)
+    card = ask_confirm_card(p.action.model_dump(mode="json"), ctx=ctx, expires_at="x")
+    assert card is not None and card["action_type"] == "REASSESS" and card["title"] == "다시 평가"
+    assert (
+        card["summary"] == "Take 5 기록을 대본을 보고 한 발표로 다시 평가해 참고 결과를 만들어요."
+    )
+    assert card["before"]["take_number"] == 5 and card["after"]["script_used"] is True
+    assert "참고 결과이고 공식 결과는 그대로예요" in card["notes"]
+    # 내 기준으로 바꾸는 경우: 사용자가 쓴 문구(display)는 싣지 않고 숫자 기준만 싣는다
+    targets = [{"display": "속도 330 이하", "metric": "cpm", "operator": "LTE", "value": 330}]
+    ctx2 = ctx_for(MSG)
+    t = do("reassess", {"take_id": "t-4", "change": {"targets": targets}}, ctx=ctx2)
+    tcard = ask_confirm_card(t.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
+    assert tcard is not None and "내 평가 기준 1개" in tcard["summary"]
+    assert tcard["after"]["targets"] == [{"metric": "cpm", "operator": "LTE", "value": 330}]
+    assert "속도 330 이하" not in json.dumps(tcard, ensure_ascii=False)
+
+
+def test_confirm_card_is_not_drawn_for_other_actions_or_without_hash() -> None:
+    ctx = ctx_for()
+    fetch = do("fetch_take", {"take_id": "t-3"}, ctx=ctx).action.model_dump(mode="json")
+    assert ask_confirm_card(fetch, ctx=ctx, expires_at="x") is None
+    no_hash = {**_ask_pending(), "args_hash": None}
+    assert ask_confirm_card(no_hash, ctx=ctx, expires_at="x") is None
 
 
 @pytest.mark.parametrize(
@@ -515,6 +671,15 @@ def test_l6_22_valid_choice_authorizes_same_goal_even_if_conflicting() -> None:
     )
     assert (p.result, p.authorization) == ("PROPOSED", "PASS")
     assert p.action.args["goal"]["metric"] == "cpm"
+    # 고른 안을 그대로 저장하는 SAVE_GOAL 은 선승인(preapproved)을 달고 나온다: BE 가 해시를 다시 계산해 카드 없이 실행한다
+    sp = ctx.req.context.selected_proposal
+    assert p.action.autonomy == "ASK" and p.action.args_hash is not None
+    assert p.action.preapproved == preapproval(sp)
+    assert p.action.preapproved.model_dump() == {
+        "by": "CHOICE",
+        "proposal_id": sp.proposal_id,
+        "content_hash": sp.content_hash,
+    }
 
 
 def test_l4_32_stale_or_different_choice_does_not_authorize() -> None:
@@ -547,55 +712,44 @@ def test_l4_32_stale_or_different_choice_does_not_authorize() -> None:
 # ── 연습 준비 이동 (START_PRACTICE) ──────────────────────────────────────────
 
 
-def test_start_practice_with_authorization_is_auto_action() -> None:
-    b = budget()
-    msg = "좋아, 이제 연습하러 가자"
-    action, card, why = start_practice_action(
-        ctx=ctx_for(msg), authorized_by="연습하러 가자", original_message=msg, seq=3, budget=b
-    )
-    assert why is None and isinstance(action, Action)
-    assert (action.type, action.autonomy, action.args, action.authorized_by) == (
-        "START_PRACTICE",
-        "AUTO_UNDO",
-        {"pitch_id": "p-1"},
-        "연습하러 가자",
-    )
-    assert action.action_id == "run-81:a3"
-    assert StartPracticeCard.model_validate(card).auto is True
-    assert b.counters.actions == 1
-
-
 @pytest.mark.parametrize(
-    ("quote", "message", "why"),
+    "quote",
     [
-        (None, MSG, "NO_QUOTE"),
-        ("다음 연습 준비해 줘", MSG, "NO_REQUEST_FORM"),
-        ("연습하러 가자", "괜찮으면 연습하러 가자", "CONDITION"),
-        ("연습하러 가자", "친구가 '연습하러 가자'라고 했어", "QUOTED_SPEECH"),
-        ("연습하러 가자", "연습하러 가자는 말은 하지 마", "NEGATION"),
-        ("연습하러 가자", None, "NO_USER_MESSAGE"),
+        "연습하러 가자",  # 요청한 말
+        None,  # 연습을 권하기만 함
+        "다음 연습 준비해 줘",  # 요청형이 어긋난 인용
+        "괜찮으면 연습하러 가자",  # 조건이 붙은 말
     ],
 )
-def test_start_practice_without_authorization_is_button_only(
-    quote: str | None, message: str | None, why: str
-) -> None:
+def test_start_practice_is_always_a_button_card_with_button_action(quote: str | None) -> None:
+    """연습 이동은 허용 근거와 상관없이 언제나 버튼 카드다(자동 이동 없음 · `auto` 필드 없음, 6-2)."""
     b = budget()
     action, card, reason = start_practice_action(
-        ctx=ctx_for(message), authorized_by=quote, original_message=message, seq=1, budget=b
+        ctx=ctx_for("좋아, 이제 연습하러 가자"), authorized_by=quote, seq=3, budget=b
     )
-    assert action is None and reason == why
-    assert card == {"type": "START_PRACTICE", "pitch_id": "p-1", "auto": False}
-    assert b.counters.actions == 0
+    assert reason is None and isinstance(action, Action)
+    assert (action.type, action.autonomy, action.args, action.args_hash) == (
+        "START_PRACTICE",
+        "BUTTON",
+        {"pitch_id": "p-1"},
+        None,
+    )
+    assert action.authorized_by == quote and action.action_id == "run-81:a3"
+    assert card == {"type": "START_PRACTICE", "pitch_id": "p-1"}
+    assert StartPracticeCard.model_validate(card).pitch_id == "p-1"
+    assert b.counters.actions == 1
 
 
 def test_start_practice_over_action_limit_or_without_scope() -> None:
     msg = "연습하러 가자"
-    action, card, _ = start_practice_action(
-        ctx=ctx_for(msg), authorized_by=msg, original_message=msg, seq=1, budget=budget(actions=5)
+    action, card, reason = start_practice_action(
+        ctx=ctx_for(msg), authorized_by=msg, seq=1, budget=budget(actions=5)
     )
-    assert action is None and card["auto"] is False
+    # 행동 수 한도에 막혀도 버튼 카드는 남는다(행동만 없다)
+    assert action is None and card == {"type": "START_PRACTICE", "pitch_id": "p-1"}
+    assert reason == "LIMIT"
     none_action, none_card, why = start_practice_action(
-        ctx=make_ctx(scope=None), authorized_by=msg, original_message=msg, seq=1, budget=budget()
+        ctx=make_ctx(scope=None), authorized_by=msg, seq=1, budget=budget()
     )
     assert (none_action, none_card, why) == (None, {}, "NO_SCOPE")
 

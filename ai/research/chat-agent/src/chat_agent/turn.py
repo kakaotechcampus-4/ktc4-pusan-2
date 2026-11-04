@@ -8,6 +8,10 @@
   기본 자료 크기(512 KiB, 413) → (이어 부르기) 서명 · 판 · 식별자 검사(409) → 대기 행동과 결과의 짝(409) → 누적 사용량이 줄지 않았는지(409).
 - 실행 흐름(`_orchestrate`): 호출 횟수 · 시작 시간 한도 → 자동 목표 확인 / 행동 결과 반영 / 고른 제안 저장 / 계획 → 조사 →
   행동이면 NEEDS_ACTION(서명), 아니면 답 쓰기 → 판단 확정 → 문장 만들기 → 답 검사 · 한 번 고치기 → 최종 출력.
+- 승인(6-1 4번 · 6-2): `ASK` 행동(`SAVE_GOAL` · `REASSESS`)이면 멈추기 전에 `_ask_pause`가 코드가 그린 확인 카드(`ASK_CONFIRM`)를 만들고
+  그때까지 확인한 것으로 답 문장을 쓰고 검사(`_compose`, 답 쓰기 · 고치기 몫)한 뒤 message = 문장 + 카드, actions = 그 행동 하나로 멈춘다.
+  고른 제안(`choice`)의 저장은 `preapproved`를 달고 카드 · 승인 대기 없이 낸다. 이미 낸 문장은 `_finish`가 서명 상태(`emitted`)에 담고,
+  이어 부른 호출의 어떤 끝에서도 message 의 앞부분에 그대로 싣는다(그 뒤에 행동 결과 문장 · 나머지 답).
 - 범위 밖(1-3): 계획 · 답 초안이 `OUT_OF_SCOPE`면 `scope_reason`별 고정 문장(templates.py)으로 `REFUSED`, 섞인 요청은 초안의
   `scope_notes` 이유별 고정 문장을 답 문장 뒤에 덧붙여 `DONE`. `SCOPE_RULE`(범위 밖 낱말)에 걸린 모델 문장은 고치기에 보내지 않고 버린다.
 - 줄 쓰기(5-4): 이벤트마다 `allow_nan=False`로 완전히 직렬화하고 LF 를 붙인다. 한 줄 2 MiB, 누적 16 MiB(끝 줄 몫 4 KiB 예약).
@@ -24,6 +28,7 @@ import threading
 import traceback
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import PurePath as Path
 from typing import Any
 
@@ -388,17 +393,16 @@ def _choice_action(lp: Loop, req: TurnRequest) -> Action | None:
     if lp.budget.reserve_action("SAVE_GOAL") is not None:
         return None
     lp.st.action_seq += 1
-    seq = lp.st.action_seq
-    run_id = req.run.run_id
-    return Action(
-        action_id=f"{run_id}:a{seq}",
-        type="SAVE_GOAL",
+    sp = req.context.selected_proposal
+    assert sp is not None  # proposal_still_valid 가 True 면 고른 제안이 있다
+    # 고른 클릭이 승인이다: 확인 카드 · 승인 대기 없이 `preapproved` 를 달고 낸다. BE 가 내용 해시를 다시 계산해 바로 실행한다(6-2)
+    return act.make_action(
+        run_id=req.run.run_id,
+        seq=lp.st.action_seq,
+        action_type="SAVE_GOAL",
         args={"expected_goal_version": lp.ctx.goal_version, "goal": goal.model_dump(mode="json")},
-        autonomy="AUTO_UNDO",
-        args_hash=None,
-        idempotency_key=f"{run_id}:{seq}",
         reason="고른 목표 제안 저장",
-        authorized_by=None,
+        preapproved=act.preapproval(sp),
     )
 
 
@@ -417,57 +421,56 @@ def _needs_action(
     pending["_tool_name"] = tool_name or action.type.lower()
     pending["_tool_args"] = tool_args
     lp.st.pending_action = pending
-    interim: list[Claim] = []
-    newly: list[Assessment] = []
-    if action.type == "REASSESS" and lp.st.drafts and not lp.st.exported:
-        # 다시 평가 전 판단: 판단을 먼저 확정해 보인다. BE가 interim_message 로 먼저 보이고 결과를 그 뒤에 붙인다(6-3 · L6-07)
-        result = _finalize(lp, req)
-        outcomes = result.outcomes if result is not None else []
-        code_sentences: set[str] = set()
-        cands: list[tuple[Claim, Assessment]] = []
-        for o in outcomes:
-            text = _assessment_head(o)
-            a = o.assessment
-            c = compose._claim(
-                "ASSESSMENT",
-                text,
-                assessment_id=a.assessment_id,
-                evidence_ids=list(a.evidence_ids),
-                source_ids=list(a.source_ids),
-            )
-            if c is not None:
-                code_sentences.add(c.text)
-                cands.append((c, a))
-        amap = {a.assessment_id: a for _, a in cands}
-        first = {o.assessment.assessment_id: o.sentence for o in outcomes}
-        fails = (
-            chk.check_claims(
-                [c for c, _ in cands],
-                registry=lp.ctx.registry,
-                assessments=amap,
-                first_sentences=first,
-                guide_texts=_guide_texts(lp),
-                code_sentences=code_sentences,
-                cfg=lp.cfg,
-            )
-            if cands
-            else []
+    if action.autonomy == "ASK" and action.preapproved is None:
+        return _ask_pause(lp, req, action, finish)
+    # 읽기(AUTO) 행동과 선승인 저장은 확인 카드가 없다. 이 실행에서 이미 낸 문장이 있으면 `_finish`가 message 앞에 싣는다(5-5)
+    return finish(status="NEEDS_ACTION", reason="NEEDS_ACTION", action=action)
+
+
+def _iso_utc(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000, tz=UTC).isoformat(timespec="seconds")
+
+
+def _ask_pause(
+    lp: Loop, req: TurnRequest, action: Action, finish: Callable[..., _Result]
+) -> _Result:
+    """`ASK` 행동 앞에서 멈춘다(6-1 4번): 확인 카드를 코드가 그리고, 그때까지 확인한 것으로 답 문장을 먼저 써서 검사한 뒤
+    `NEEDS_ACTION`(message = 이미 낸 문장 + 통과한 문장 + 확인 카드, actions = 그 행동 하나, state 서명)으로 넘긴다.
+
+    사용자가 거절해도 질문에 대한 답이 남게 하려는 것이다. 이 답 쓰기도 답 쓰기 · 고치기 몫(응답마다 2번 · 24초)을 쓰고,
+    모델이 안 되면(한도 · 오류 · 거절) 코드가 확정한 판단 문장만 낸다.
+    """
+    pending = lp.st.pending_action
+    assert pending is not None
+    expires = _iso_utc(lp.deps.clock_ms() + lp.cfg.approval_wait_seconds * 1000)
+    card = act.ask_confirm_card(pending, ctx=lp.ctx, expires_at=expires)
+    if card is None or _card_blocked(lp, card):
+        # 카드를 그릴 수 없거나 표시 검사에 걸리면 승인받을 수 없으므로 행동을 내지 않는다
+        lp.st.pending_action = None
+        return finish(
+            status="PARTIAL", reason="OTHER", system=[templates.SystemText.ACTION_UNCONFIRMED]
         )
-        bad = {f.claim_index for f in fails}
-        for i, (c, a) in enumerate(cands):
-            if i in bad:
-                continue
-            interim.append(c)
-            newly.append(a)
-            lp.st.exported.append(a.model_dump(mode="json"))
-            lp.st.exported_sentences[a.assessment_id] = c.text
+    ans = lp.answer_phase(route="ASK", pending=action)
+    draft = {} if ans.get("failed") else ans["draft"]
+    comp = _compose(lp, req, draft, ans.get("messages") or [])
+    # 낸 문장 · 판단 · 자료 사본은 `_finish`가 서명 상태에 담는다: 이어 부른 뒤 최종 답이 앞부분에 그대로 싣는다(5-5 · 5-6)
     return finish(
         status="NEEDS_ACTION",
         reason="NEEDS_ACTION",
         action=action,
-        claims=interim,
-        assessments=newly,
+        claims=comp.final_claims,
+        assessments=comp.all_assessments,
+        sources=_sources(comp.final_claims),
+        extra_cards=[card],
     )
+
+
+def _card_blocked(lp: Loop, card: dict[str, Any]) -> bool:
+    """확인 카드를 가리는 표시 검사(개인정보 · 금지 주장만, 코드가 그린 카드는 숫자 출처를 따지지 않는다)."""
+    fails = chk.check_display_strings(
+        cards=[card], registry=lp.ctx.registry, display_evidence=None, cfg=lp.cfg, assessments={}
+    )
+    return any(f.check_id in ("PII", "FORBIDDEN_CLAIM") for f in fails)
 
 
 def _assessment_head(o: Any) -> str:
@@ -594,47 +597,30 @@ def _slots_short_end(lp: Loop, finish: Callable[..., _Result]) -> _Result:
     return _end_without_model(lp, finish, "MODEL_CALLS", notes=_action_notes(lp))
 
 
-def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
+@dataclass
+class _Composed:
+    """답 문장 만들기 · 검사의 결과(`_compose`)."""
+
+    #: 검사 전의 새 문장(이번 호출에서 만든 것, 이미 낸 문장 제외)
+    out: list[Claim]
+    #: 검사를 통과한 새 문장
+    final_claims: list[Claim]
+    #: 이 실행에서 내보낸 모든 판단(앞서 내보낸 것 + 이번에 확정한 것)
+    all_assessments: list[Assessment]
+    amap: dict[str, Assessment]
+
+
+def _compose(
+    lp: Loop, req: TurnRequest, draft: dict[str, Any], messages: list[dict[str, Any]]
+) -> _Composed:
+    """판단 확정 → 문장 만들기 → 답 검사 → 한 번 고치기 → 다시 검사(6-9). `draft`가 비면 코드가 확정한 문장만 만든다.
+
+    이미 낸 문장(`st.emitted`)은 여기서 다시 검사하지 않고 만들지도 않는다: 최종 답의 앞부분에 그대로 싣는 것은 `_finish`다.
+    """
     cfg = lp.cfg
     ctx = lp.ctx
-    stop_reason = lp.st.stop_reason
-    if stop_reason == "LLM_REFUSED":
-        # 공급자가 조사 단계에서 거절하면 답을 쓰지 않고 거절로 끝낸다(L1-12)
-        return finish(status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER])
-    ans = lp.answer_phase(route="ANSWER")
-    if ans.get("failed"):
-        if ans.get("refused"):
-            return finish(
-                status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER]
-            )
-        # 한도 때문에 못 썼으면 어느 한도인지 나눠 남긴다(11-5). 한도가 아니면 모델 오류
-        limit = (
-            stop_reason
-            if stop_reason in LIMIT_END_REASONS
-            else lp.limit_end or ("TIME" if lp.budget.left() <= 0 else None)
-        )
-        partial = compose.template_partial(ctx, list(ctx.registry.items))
-        if partial:
-            return finish(
-                status="PARTIAL",
-                reason=limit or "LLM_ERROR",
-                system=[templates.SystemText.PARTIAL_CHECKED],
-                claims=partial,
-            )
-        return finish(
-            error="AGENT_TIMEOUT" if limit else "INTERNAL_ERROR",
-            reason=limit or "LLM_ERROR",
-        )
-    draft = ans["draft"]
-    route = draft.get("route")
-    if route == "OUT_OF_SCOPE":
-        return finish(
-            status="REFUSED",
-            reason="OUT_OF_SCOPE",
-            system=[templates.scope_text(draft.get("scope_reason"))],
-        )
-    no_guide = route == "NO_GUIDE"
-
+    answer_model_seq = lp._last_model_seq
+    prior_texts = {d["text"] for d in lp.st.emitted}
     # 1. 판단 확정(답 단계의 초안이 있으면 그것, 없으면 계획 단계의 초안). 이미 내보낸 판단은 다시 확정하지 않는다
     answer_drafts = [d for d in draft.get("assessments") or [] if isinstance(d, dict)]
     if answer_drafts and not lp.st.exported:
@@ -671,21 +657,6 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         if c.get("kind") == "ASSESSMENT" and isinstance(c.get("assessment_index"), int):
             expl.setdefault(c["assessment_index"], (c.get("text") or "").strip())
     heads: dict[str, str] = {}
-    for aid, sent in lp.st.exported_sentences.items():
-        if aid in amap:
-            heads[aid] = sent
-            first.setdefault(aid, sent)
-            a = amap[aid]
-            add(
-                compose._claim(
-                    "ASSESSMENT",
-                    sent,
-                    assessment_id=aid,
-                    evidence_ids=list(a.evidence_ids),
-                    source_ids=list(a.source_ids),
-                ),
-                False,
-            )
     for i, o in enumerate(outcomes):
         a = o.assessment
         head = _assessment_head(o)
@@ -717,8 +688,8 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             model_texts.append((kind, c))
     for kind, c in model_texts:
         text = (c.get("text") or "").strip()
-        if text in code_sentences:
-            continue  # 코드 문장과 글자만 같은 모델 문장은 버린다(코드 문장의 검사 면제를 흉내 내지 못하게)
+        if text in code_sentences or text in prior_texts:
+            continue  # 코드 문장 · 이미 낸 문장과 글자만 같은 모델 문장은 버린다(검사 면제를 흉내 내지 못하게 · 되풀이 없이)
         add(
             compose._claim(
                 kind,
@@ -729,12 +700,23 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             True,
         )
     succeeded: dict[str, str] = {}
+    said_actions = {d.get("action_id") for d in lp.st.emitted}
+    result_claims: list[Claim] = []
     for e in lp.st.executed:
         if e.get("status") == "SUCCEEDED" and e.get("success_text"):
             succeeded[e["action_id"]] = e["success_text"]
-            add(
-                Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"]), False
-            )
+            if e["action_id"] not in said_actions:
+                result_claims.append(
+                    Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"])
+                )
+    if prior_texts:
+        # 멈추기 전에 낸 문장이 있으면 그 바로 뒤에 행동 결과 문장을 두고 나머지 답을 잇는다(5-5 · 6-1)
+        out[0:0] = result_claims
+        model_flags[0:0] = [False] * len(result_claims)
+    else:
+        for c in result_claims:
+            add(c, False)
+    code_sentences.update(c.text for c in result_claims)
 
     # 3. 답 검사 → 한 번 고치기 → 다시 검사(6-9)
     approved = {
@@ -758,7 +740,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         )
 
     failures = recheck(out)
-    answer_seq = lp._last_model_seq
+    answer_seq = answer_model_seq
     check_seqs: list[int] = []
     # 범위 밖 낱말(SCOPE_RULE)이 걸린 문장은 고치기에 보내지 않고 바로 버린다(6-9). 한 문장에 다른 검사도 걸렸어도 같다
     scope_dropped = {f.claim_index for f in failures if f.check_id == chk.CheckId.SCOPE_RULE}
@@ -783,9 +765,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         ]
         asked = {f.claim_index for f in fixable}
         fixed_texts = (
-            lp.fix_call(
-                ans["messages"], [{"text": c.text} for c in out], fixable, fix_for=check_seqs
-            )
+            lp.fix_call(messages, [{"text": c.text} for c in out], fixable, fix_for=check_seqs)
             if fixable
             else None
         )
@@ -862,6 +842,58 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         chk.summary_counts(failures, rnd, checked=len(out), dropped=len(out) - len(final_claims)),
     )
 
+    return _Composed(out, final_claims, all_assessments, amap)
+
+
+def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
+    cfg = lp.cfg
+    ctx = lp.ctx
+    stop_reason = lp.st.stop_reason
+    if stop_reason == "LLM_REFUSED":
+        # 공급자가 조사 단계에서 거절하면 답을 쓰지 않고 거절로 끝낸다(L1-12)
+        return finish(status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER])
+    ans = lp.answer_phase(route="ANSWER")
+    if ans.get("failed"):
+        if ans.get("refused"):
+            return finish(
+                status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER]
+            )
+        # 한도 때문에 못 썼으면 어느 한도인지 나눠 남긴다(11-5). 한도가 아니면 모델 오류
+        limit = (
+            stop_reason
+            if stop_reason in LIMIT_END_REASONS
+            else lp.limit_end or ("TIME" if lp.budget.left() <= 0 else None)
+        )
+        partial = compose.template_partial(ctx, list(ctx.registry.items))
+        if partial:
+            return finish(
+                status="PARTIAL",
+                reason=limit or "LLM_ERROR",
+                system=[templates.SystemText.PARTIAL_CHECKED],
+                claims=partial,
+            )
+        return finish(
+            error="AGENT_TIMEOUT" if limit else "INTERNAL_ERROR",
+            reason=limit or "LLM_ERROR",
+        )
+    draft = ans["draft"]
+    route = draft.get("route")
+    if route == "OUT_OF_SCOPE":
+        return finish(
+            status="REFUSED",
+            reason="OUT_OF_SCOPE",
+            system=[templates.scope_text(draft.get("scope_reason"))],
+        )
+    no_guide = route == "NO_GUIDE"
+
+    comp = _compose(lp, req, draft, ans["messages"])
+    out, final_claims, all_assessments, amap = (
+        comp.out,
+        comp.final_claims,
+        comp.all_assessments,
+        comp.amap,
+    )
+
     # 4. 연습 준비 이동 · 대화 요약
     actions: list[Action] = []
     sp = draft.get("start_practice")
@@ -872,7 +904,6 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             authorized_by=sp.get("authorized_by")
             if isinstance(sp.get("authorized_by"), str)
             else None,
-            original_message=lp.original,
             seq=lp.st.action_seq,
             budget=lp.budget,
         )
@@ -939,6 +970,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         final_claims.insert(
             0, Claim(kind="SYSTEM", text=templates.SystemText.RECORD_CHANGED_DURING.value)
         )
+    # (이미 낸 문장은 `_finish`가 이 문장들 앞에 그대로 싣는다)
     # 섞인 요청의 범위 밖 부분: 이유별 고정 문장을 답 문장 뒤에 덧붙인다(1-3 · 7-10)
     for reason in _scope_notes(draft):
         note = templates.scope_text(reason).value
@@ -1118,6 +1150,11 @@ def _take_reviewed(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -
 # ── 최종 출력 조립 · 서명 ────────────────────────────────────────────────
 
 
+def _waits_for_approval(actions: list[Action]) -> bool:
+    """사용자의 승인을 기다리는 행동(확인 카드가 있는 `ASK`)인가: 그러면 서명 상태 유효기간이 35분이다(5-6)."""
+    return bool(actions) and actions[0].autonomy == "ASK" and actions[0].preapproved is None
+
+
 def _referenced(ctx: Any, ids: list[str]) -> list[dict[str, Any]]:
     """답 · 판단 · 카드가 가리킨 근거와 그 입력(계산 근거를 따라감)의 사본(5-5: 입력 근거도 같은 목록에)."""
     out: dict[str, Any] = {}
@@ -1135,7 +1172,7 @@ def _referenced(ctx: Any, ids: list[str]) -> list[dict[str, Any]]:
 
 
 #: 검증된 결과로 코드가 만든 카드 종류
-_CODE_CARDS = ("REASSESS_RESULT", "GOAL_RESULT", "START_PRACTICE")
+_CODE_CARDS = ("REASSESS_RESULT", "GOAL_RESULT", "START_PRACTICE", "ASK_CONFIRM")
 
 _CARD_DEFAULT_REASON = {"USER": "말씀하신 목표", "EXPERT": "기록으로 본 추천 목표"}
 
@@ -1216,6 +1253,7 @@ def _finish(
     history_summary: str | None = None,
     goal_result: dict[str, Any] | None = None,
     sources: list[str] | None = None,
+    extra_cards: list[dict[str, Any]] | None = None,
     error: str | None = None,
 ) -> _Result:
     cfg = deps.cfg
@@ -1241,6 +1279,17 @@ def _finish(
     assessments_out = [
         a.model_dump(mode="json") if hasattr(a, "model_dump") else a for a in (assessments or [])
     ]
+    # 멈추기 전에 이미 낸 문장은 언제나 최종 답(message)의 앞부분이다: 글자 · 종류 · 근거까지 그대로 싣고, 그 문장이 가리킨
+    # 판단도 함께 싣는다. 이어 부른 호출의 어떤 끝(모델 없이 끝내기 · 부분 답 · 거절)에서도 지워지지 않게 한 곳에서 한다(5-5)
+    prior = [Claim.model_validate(d) for d in st.emitted]
+    if prior and [c.model_dump(mode="json") for c in claim_list[: len(prior)]] != st.emitted:
+        claim_list = prior + claim_list
+    if prior:
+        have = {a["assessment_id"] for a in assessments_out}
+        assessments_out += [a for a in st.exported if a["assessment_id"] not in have]
+    sources = list(
+        dict.fromkeys([*(sources or []), *(s for c in claim_list for s in c.source_ids)])
+    )
     if req.run.trigger == "TAKE_REVIEWED":
         assessments_out = []
     amap = {a["assessment_id"]: Assessment.model_validate(a) for a in assessments_out}
@@ -1250,17 +1299,27 @@ def _finish(
             {**p, "status": "DONE" if p["status"] in ("DOING", "TODO") else p["status"]}
             for p in plan
         ]
-    cards = _safe_cards(lp, st.cards, amap) if status != "NEEDS_ACTION" else []
+    # NEEDS_ACTION 의 message 에는 확인 카드(`extra_cards`)만 싣는다. 모인 카드(st.cards)는 최종 답까지 상태에 남는다
+    cards = _safe_cards(lp, st.cards if status != "NEEDS_ACTION" else extra_cards or [], amap)
     msg = None
-    if claim_list or status != "NEEDS_ACTION":
-        if not claim_list:
+    act_list = [action] if action is not None else list(actions or [])
+    ask_wait = bool(act_list) and act_list[0].autonomy == "ASK"
+    if claim_list or extra_cards or ask_wait or status != "NEEDS_ACTION":
+        if not claim_list and status != "NEEDS_ACTION":
             claim_list = [Claim(kind="SYSTEM", text=templates.SystemText.PARTIAL_CHECKED.value)]
         text, ordered = chk.assemble_message(claim_list)
+        # 멈추기 전에 낸 문장의 자료 카드는 서명 상태의 사본을 그대로 쓰고, 새 자료만 지금 자료 묶음에서 그린다
+        carried = {g["source_id"]: g for g in st.emitted_sources}
+        src_ids = sources
+        fresh = {
+            g.source_id: g.model_dump(mode="json")
+            for g in compose.guide_cards(ctx, [i for i in src_ids if i not in carried])
+        }
         msg = {
             "text": text,
             "claims": [cl.model_dump(mode="json") for cl in ordered],
             "cards": cards,
-            "sources": [g.model_dump(mode="json") for g in compose.guide_cards(ctx, sources or [])],
+            "sources": [carried.get(i) or fresh[i] for i in src_ids if i in carried or i in fresh],
         }
     ev_ids = [e for cl in claim_list for e in cl.evidence_ids]
     ev_ids += [e for a in assessments_out for e in a.get("evidence_ids", [])]
@@ -1268,7 +1327,6 @@ def _finish(
     ev_ids += [
         e for cd in cards for o in cd.get("options") or [] for e in o.get("evidence_ids") or []
     ]
-    act_list = [action] if action is not None else list(actions or [])
     final: dict[str, Any] = {
         "status": status,
         "message": msg,
@@ -1294,12 +1352,17 @@ def _finish(
         "diagnostics": None,
     }
     if status == "NEEDS_ACTION":
+        # 지금까지 보인 문장 · 판단 · 자료 카드 사본: 이어 부른 호출의 최종 답이 앞부분에 그대로 싣는다(5-5 · 5-6)
+        st.emitted = [c.model_dump(mode="json") for c in claim_list]
+        st.exported = [dict(a) for a in assessments_out]
+        st.emitted_sources = list(msg["sources"]) if msg else []
         st.registry = ctx.registry.dump()
         st.counters = c.dump()
         st.tool_cache = ctx.tool_cache
         st.read_sources = sorted(ctx.read_sources)
         st.corpus_version = deps.corpus_version
-        issued, expires = state.issue_times(deps.clock_ms(), ask=False, cfg=cfg)
+        waiting = _waits_for_approval(act_list)
+        issued, expires = state.issue_times(deps.clock_ms(), ask=waiting, cfg=cfg)
         pl = state.StatePayload(
             run_id=req.run.run_id,
             conversation_id=req.run.conversation_id,
@@ -1334,8 +1397,8 @@ def _finish(
                 if payload is not None
                 else req.run.scope_pitch_id,
                 message={
-                    "text": sys_claim.text,
-                    "claims": [sys_claim.model_dump(mode="json")],
+                    "text": "\n".join(c.text for c in [*prior, sys_claim]),
+                    "claims": [c.model_dump(mode="json") for c in [*prior, sys_claim]],
                     "cards": [],
                     "sources": [],
                 },

@@ -164,6 +164,90 @@ def test_fm_L1_39_final_status_combinations() -> None:
         )
 
 
+def test_ask_action_final_rules() -> None:
+    """ASK 행동의 NEEDS_ACTION: args_hash · message · 같은 해시의 ASK_CONFIRM 카드가 필수, 선승인이면 카드 없이 message 없어도 된다(5-5 · 5-8)."""
+    # ASK 는 args_hash 필수
+    no_hash = _final(FINAL_NA)
+    no_hash["actions"][0]["args_hash"] = None
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(no_hash)
+    # message 필수
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(_final(FINAL_NA, message=None))
+    # 확인 카드 필수, 그리고 행동과 같은 action_id · args_hash
+    no_card = _final(FINAL_NA)
+    no_card["message"]["cards"] = []
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(no_card)
+    other_hash = _final(FINAL_NA)
+    other_hash["message"]["cards"][0]["args_hash"] = "sha256:" + "0" * 64
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(other_hash)
+    # 선승인 SAVE_GOAL: 확인 카드도 승인 대기도 없다(message 는 있되 확인 카드는 필수가 아니다)
+    pre = _final(FINAL_NA)
+    pre["message"]["cards"] = []
+    pre["actions"][0]["preapproved"] = {
+        "by": "CHOICE",
+        "proposal_id": "prop-1",
+        "content_hash": "h-1",
+    }
+    s.FinalData.model_validate(pre)
+    pre_no_message = _final(pre, message=None)
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(pre_no_message)
+    # preapproved 는 ASK 등급의 SAVE_GOAL 에만 싣는다
+    bad_pre = _final(pre)
+    bad_pre["actions"][0].update(
+        type="REASSESS", preapproved={"by": "CHOICE", "proposal_id": "p", "content_hash": "h"}
+    )
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(bad_pre)
+    # 읽기(AUTO) 행동은 message null 가능, 그러나 BUTTON 은 NEEDS_ACTION 에 싣지 않는다
+    auto = _final(FINAL_NA, message=None)
+    auto["actions"][0].update(type="FETCH_TAKE", autonomy="AUTO", args_hash=None)
+    s.FinalData.model_validate(auto)
+    button = _final(FINAL_NA, message=None)
+    button["actions"][0].update(type="FETCH_TAKE", autonomy="BUTTON", args_hash=None)
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(button)
+    # 모르는 자율 등급(옛 AUTO_UNDO)은 계약 밖
+    old = _final(FINAL_NA)
+    old["actions"][0]["autonomy"] = "AUTO_UNDO"
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(old)
+
+
+def test_ask_confirm_card_shape() -> None:
+    card = FINAL_NA["message"]["cards"][0]
+    parsed = s.AskConfirmCard.model_validate(card)
+    assert (parsed.action_type, parsed.before) == ("SAVE_GOAL", None)
+    for field in ("args_hash", "expires_at", "title", "summary", "before", "after", "action_id"):
+        broken = {k: v for k, v in card.items() if k != field}
+        with pytest.raises(ValidationError):
+            s.AskConfirmCard.model_validate(broken)
+    with pytest.raises(
+        ValidationError
+    ):  # START_PRACTICE 등 ASK 가 아닌 행동은 카드를 그리지 않는다
+        s.AskConfirmCard.model_validate({**card, "action_type": "START_PRACTICE"})
+
+
+def test_action_result_carries_executed_args_hash() -> None:
+    r = s.ActionResult.model_validate(
+        {"action_id": "a", "type": "SAVE_GOAL", "status": "SUCCEEDED", "data": {}, "error": None}
+    )
+    assert r.executed_args_hash is None
+    r = s.ActionResult.model_validate(
+        {
+            "action_id": "a",
+            "type": "SAVE_GOAL",
+            "status": "SUCCEEDED",
+            "data": {},
+            "executed_args_hash": "sha256:" + "a" * 64,
+        }
+    )
+    assert r.executed_args_hash == "sha256:" + "a" * 64
+
+
 def test_fm_L1_39_message_text_must_equal_joined_claims() -> None:
     d = _final(FINAL_DONE)
     d["message"]["text"] = d["message"]["text"] + " 덧붙인 문장"
@@ -293,7 +377,7 @@ def test_prior_assessment_ignores_unknown_nested_fields() -> None:
 @pytest.mark.parametrize(
     "card",
     [
-        {"type": "START_PRACTICE", "pitch_id": "p-1", "auto": True},
+        {"type": "START_PRACTICE", "pitch_id": "p-1"},
         {
             "type": "GOAL_RESULT",
             "goal_version": 1,
@@ -328,8 +412,9 @@ def test_card_shapes(card) -> None:
     with pytest.raises(ValidationError):
         s.Message.model_validate({**msg, "cards": [bad]})
     if card["type"] == "START_PRACTICE":
+        # 자동 이동은 없다: `auto` 필드가 없다(6-2)
         with pytest.raises(ValidationError):
-            s.Message.model_validate({**msg, "cards": [{**card, "auto": "yes"}]})
+            s.Message.model_validate({**msg, "cards": [{**card, "auto": False}]})
 
 
 def test_goal_proposal_card_options_one_or_two() -> None:
@@ -364,17 +449,22 @@ def test_fm_L6_07_reassess_needs_action_with_assessments_requires_judgement_mess
     d = _final(FINAL_NA)
     d["actions"][0]["type"] = "REASSESS"
     d["actions"][0]["args"] = {"take_id": "t-5", "change": {"script_used": True}}
-    s.FinalData.model_validate(d)  # 판단이 없으면 message 없어도 된다
-    d["assessments"] = [FINAL_DONE["assessments"][0]]
-    with pytest.raises(ValidationError):
-        s.FinalData.model_validate(d)
-    claim = {
-        "kind": "ASSESSMENT",
-        "assessment_id": "as-1",
-        "text": "말씀하신 '…'는 기록과 맞아요: …",
+    s.FinalData.model_validate(
+        d
+    )  # 판단 문장(as-1)이 message 에 있다. 문장 없이 응하는 요청(as-2)은 면제
+    # 사실 판단(as-1)을 가리키는 문장이 없으면 거절
+    sys_claim = {
+        "kind": "SYSTEM",
+        "text": "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요.",
     }
-    d["message"] = {"text": claim["text"], "claims": [claim], "cards": [], "sources": []}
-    s.FinalData.model_validate(d)
+    unlinked = _final(d)
+    unlinked["message"]["claims"] = [sys_claim]
+    unlinked["message"]["text"] = sys_claim["text"]
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(unlinked)
+    # 판단이 없으면 판단 문장이 없어도 된다
+    none = _final(unlinked, assessments=[])
+    s.FinalData.model_validate(none)
 
 
 def test_final_budget_used_is_closed_five_counters() -> None:

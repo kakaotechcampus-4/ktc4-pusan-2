@@ -1,0 +1,437 @@
+"""승인 흐름 코어 시험 — `ASK` 행동 앞 답 쓰기 · 확인 카드 · 재개 뒤 앞부분 유지 · 선승인 · 버튼 카드 (기능 문서 5-5 · 5-8 · 6-1 4번 · 6-2).
+
+실제 모델 없이 정해 둔 응답(tests/unit/fakes.py)을 쓴다. 행동 모양 · 해시의 단위 시험은 test_actions.py,
+최종 출력 판별 검사는 test_contract_schemas.py 에 있다.
+"""
+
+from __future__ import annotations
+
+import base64
+import copy
+import json
+from datetime import UTC, datetime
+from typing import Any
+
+from chat_agent import templates
+from chat_agent.actions import action_args_hash
+from chat_agent.config import DEFAULT_CONFIG
+from chat_agent.llm_types import LlmTimeout
+from chat_agent.schemas import FinalData
+
+from . import fakes as F
+from .test_actions import _proposal_request
+from .test_turn import COMPARE, final_ok, resume_request, roles
+
+GOAL_MSG = "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"
+SAVE = (
+    "save_goal",
+    {
+        "metric": "audience_ratio",
+        "slide_number": 3,
+        "base_take_id": "t-5",
+        "authorized_by": "그걸 목표로 잡고",
+        "reason": "3장 시선 목표",
+    },
+)
+REASSESS = (
+    "reassess",
+    {"take_id": "t-5", "change": {"script_used": True}, "reason": "대본 조건"},
+)
+
+
+def drafts() -> list[dict[str, Any]]:
+    return [
+        F.draft(
+            "3장에서 왜 자꾸 시선이 떨어져",
+            claim_op="ISSUE",
+            dimension="audience_gaze",
+            metric="audience_ratio",
+            slide_number=3,
+            polarity="NEGATIVE",
+        ),
+        F.draft(
+            "그걸 목표로 잡고 다음 연습 준비해 줘",
+            type_="REQUEST",
+            claim_op=None,
+            polarity="NEUTRAL",
+        ),
+    ]
+
+
+def record_answer(r: Any) -> Any:
+    """승인 대기 앞 답: 판단 설명은 비우고(첫 문장은 코드) 기록 문장 하나."""
+    eid = roles(r)["current"]
+    return F.answer(
+        [
+            F.claim("ASSESSMENT", "", assessment_index=0),
+            F.claim("RECORD", "Take 5의 3장 청중 시선 비율은 28%예요.", evidence_ids=[eid]),
+        ]
+    )
+
+
+def save_script(**kw: Any) -> list[Any]:
+    return [
+        F.plan(assessments=drafts()),
+        F.tools(COMPARE),
+        F.tools(SAVE, prefix="sg"),
+        F.done(),
+    ]
+
+
+def first_request() -> dict[str, Any]:
+    return F.with_loaded(F.request(user_message=GOAL_MSG), "t-4")
+
+
+def pause(llm: Any | None = None, *, req: dict[str, Any] | None = None):  # noqa: ANN201
+    req = req or first_request()
+    llm = llm or F.FakeLlm(save_script(), answers=[record_answer, F.answer([])], fixes=[F.fix({})])
+    _, _, data = F.run_turn(req, llm)
+    return req, llm, data
+
+
+def saved_result(action: dict[str, Any], **kw: Any) -> list[dict[str, Any]]:
+    goal = {
+        **action["args"]["goal"],
+        "version": 1,
+        "status": "OPEN",
+        "created_at": "2026-11-04T10:05:00+09:00",
+    }
+    return [
+        {
+            "action_id": action["action_id"],
+            "type": "SAVE_GOAL",
+            "status": "SUCCEEDED",
+            "data": {"goal": goal},
+            "error": None,
+            "executed_args_hash": action["args_hash"],
+            **kw,
+        }
+    ]
+
+
+def payload_of(state: dict[str, Any]) -> dict[str, Any]:
+    raw = state["payload"] + "=" * (-len(state["payload"]) % 4)
+    return json.loads(base64.urlsafe_b64decode(raw))
+
+
+# ── ASK 행동 앞 답 쓰기 (6-1 4번) ────────────────────────────────────────────
+
+
+def test_ask_action_writes_the_answer_first_then_stops_with_card_and_one_action() -> None:
+    req, llm, data = pause()
+    fd = final_ok(data)
+    assert fd.status == "NEEDS_ACTION"
+    # 행동은 하나이고 ASK 등급 + args_hash(행동 type 과 args 의 해시)
+    (action,) = fd.actions
+    assert (action.type, action.autonomy, action.preapproved) == ("SAVE_GOAL", "ASK", None)
+    assert action.args_hash == action_args_hash("SAVE_GOAL", action.args)
+    # 그때까지 확인한 것으로 쓴 답 문장(판단 첫 문장은 코드 템플릿)과 확인 카드를 함께 낸다
+    assert fd.message is not None
+    kinds = [c.kind for c in fd.message.claims]
+    assert kinds == ["ASSESSMENT", "RECORD"]
+    assert fd.message.claims[0].text.startswith("말씀하신 '3장에서 왜 자꾸 시선이 떨어져'는")
+    assert fd.message.claims[1].text == "Take 5의 3장 청중 시선 비율은 28%예요."
+    assert fd.message.text == "\n".join(c.text for c in fd.message.claims)
+    (card,) = fd.message.cards
+    assert card.type == "ASK_CONFIRM"
+    assert (card.action_id, card.action_type, card.args_hash) == (
+        action.action_id,
+        "SAVE_GOAL",
+        action.args_hash,
+    )
+    assert card.after == action.args["goal"] and card.before is None
+    # 이 답 쓰기는 답 쓰기 몫을 쓴다: 조사 3번 + 답 쓰기 1번(고칠 문장이 없어 고치기는 안 씀)
+    assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH", "RESEARCH", "ANSWER"]
+    assert fd.budget_used.model_calls == 4
+    # 판단은 이 답에 들어가고(별도 interim 값 없음) 낸 판단의 근거는 evidence 에 있다
+    ids = {e.evidence_id for e in fd.evidence}
+    assert fd.assessments and all(set(c.evidence_ids) <= ids for c in fd.message.claims)
+    assert "interim_message" not in data
+
+
+def test_confirm_card_expires_30_minutes_after_issue_and_state_lasts_35() -> None:
+    clock = F.Clock()
+    req = first_request()
+    _, _, data = F.run_turn(
+        req,
+        F.FakeLlm(save_script(), answers=[record_answer], fixes=[F.fix({})]),
+        clock=clock,
+    )
+    fd = final_ok(data)
+    (card,) = fd.message.cards  # type: ignore[union-attr]
+    start = clock.ms
+    exp = datetime.fromisoformat(card.expires_at)
+    assert exp.tzinfo is not None
+    assert int(exp.astimezone(UTC).timestamp() * 1000) - start == 30 * 60 * 1000
+    p = payload_of(fd.state)  # type: ignore[arg-type]
+    assert p["expires_at"] - p["issued_at"] == DEFAULT_CONFIG.state_ttl_ask_seconds * 1000
+    assert DEFAULT_CONFIG.state_ttl_ask_seconds == 35 * 60
+
+
+def test_read_action_state_keeps_the_ordinary_ten_minutes() -> None:
+    from .test_turn import fetch_take_script
+
+    _, _, data = F.run_turn(
+        F.request(user_message="Take 4보다 Take 5에서 3장 시선이 좋아졌어?"),
+        F.FakeLlm(fetch_take_script()),
+    )
+    fd = final_ok(data)
+    assert fd.actions[0].autonomy == "AUTO" and fd.actions[0].args_hash is None
+    p = payload_of(fd.state)  # type: ignore[arg-type]
+    assert p["expires_at"] - p["issued_at"] == DEFAULT_CONFIG.state_ttl_seconds * 1000
+
+
+def test_reassess_pauses_with_sentence_and_card_without_authorization_check() -> None:
+    msg = "대본 보고 한 발표였어. 다시 평가해 줘"
+    d = [
+        F.draft(
+            "대본 보고 한 발표였어",
+            claim_op="VALUE",
+            dimension="script_independence",
+            metric="script_mode",
+            polarity="POSITIVE",
+        ),
+        F.draft("다시 평가해 줘", type_="REQUEST", claim_op=None, polarity="NEUTRAL"),
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    (action,) = fd.actions
+    assert (action.type, action.autonomy, action.authorized_by) == ("REASSESS", "ASK", None)
+    (card,) = fd.message.cards  # type: ignore[union-attr]
+    assert card.action_type == "REASSESS" and card.args_hash == action.args_hash
+    assert "참고 결과이고 공식 결과는 그대로예요" in card.notes
+    assert fd.message.claims and fd.message.claims[0].kind == "ASSESSMENT"  # type: ignore[union-attr]
+    assert templates.SystemText.REASSESS_HYPOTHETICAL.value not in fd.message.text  # type: ignore[union-attr]
+
+
+def test_model_failure_before_ask_still_shows_code_sentences_and_card() -> None:
+    """답 쓰기가 안 돼도(한도 · 오류) 코드가 확정한 판단 문장과 확인 카드로 멈춘다."""
+    llm = F.FakeLlm(save_script(), answers=[LlmTimeout()], fixes=[F.fix({})])
+    _, _, data = pause(llm)
+    fd = final_ok(data)
+    assert fd.status == "NEEDS_ACTION" and fd.actions[0].autonomy == "ASK"
+    assert fd.message is not None and [c.kind for c in fd.message.claims] == ["ASSESSMENT"]
+    assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
+
+
+def test_ask_after_unauthorized_request_becomes_goal_proposal_not_a_card() -> None:
+    """허용 근거 검사에 못 걸리면 확인 카드가 아니라 목표 제안 카드(GOAL_PROPOSAL)로 낮춘다(6-2)."""
+    msg = "3장에서 왜 자꾸 시선이 떨어져? 목표 얘기 좀 해 보자"
+    save = ("save_goal", {**SAVE[1], "authorized_by": "목표 얘기 좀 해 보자"})
+    llm = F.FakeLlm(
+        [F.plan(assessments=drafts()[:1]), F.tools(COMPARE), F.tools(save, prefix="sg"), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=msg), "t-4"), llm)
+    fd = final_ok(data)
+    assert fd.status == "DONE" and fd.actions == []
+    kinds = [c.type for c in fd.message.cards]  # type: ignore[union-attr]
+    assert "GOAL_PROPOSAL" in kinds and "ASK_CONFIRM" not in kinds
+
+
+def test_take_reviewed_turn_never_asks() -> None:
+    req = F.request(
+        run__trigger="TAKE_REVIEWED",
+        user_message=None,
+        review_event={"take_id": "t-5", "review_revision": 1, "goal_version": 0},
+    )
+    llm = F.FakeLlm([])
+    _, _, data = F.run_turn(req, llm)
+    fd = final_ok(data)
+    assert fd.actions == [] and llm.calls == []
+    assert fd.message is None or all(c.type != "ASK_CONFIRM" for c in fd.message.cards)
+
+
+# ── 재개 뒤 앞부분 유지 (5-5 · 5-6) ──────────────────────────────────────────
+
+
+def test_resumed_answer_starts_with_the_sentences_shown_before_the_pause() -> None:
+    req, llm, data = pause()
+    paused = final_ok(data)
+    said = [c.model_dump(mode="json") for c in paused.message.claims]  # type: ignore[union-attr]
+    action = data["actions"][0]
+    # 서명 상태가 낸 문장 · 판단을 담는다
+    loop = payload_of(paused.state)["loop"]  # type: ignore[arg-type]
+    assert loop["emitted"] == said
+    assert [a["assessment_id"] for a in loop["exported"]] == [
+        a.assessment_id for a in paused.assessments
+    ]
+    llm2 = F.FakeLlm([F.done()], answers=[F.answer([])], fixes=[F.fix({})])
+    req2 = resume_request(req, data, saved_result(action))
+    req2["context"]["conversation_goal"] = None
+    _, _, d2 = F.run_turn(req2, llm2)
+    fd = final_ok(d2)
+    assert fd.status == "DONE" and fd.state is None
+    claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
+    # 앞부분은 멈추기 전에 낸 문장 그대로(글자 · 종류 · 근거까지), 그 뒤에 행동 결과 문장(코드 템플릿)
+    assert claims[: len(said)] == said
+    assert claims[len(said)]["kind"] == "ACTION_RESULT"
+    assert claims[len(said)]["text"] == templates.ACTION_SUCCESS["SAVE_GOAL"]
+    assert fd.message.text == "\n".join(c["text"] for c in claims)  # type: ignore[union-attr]
+    # 낸 판단은 최종 답에도 그대로 있고 다시 확정하지 않는다(중복 없음)
+    assert [a.assessment_id for a in fd.assessments] == [
+        a.assessment_id for a in paused.assessments
+    ]
+    # 모든 문장이 가리키는 근거는 최종 답의 evidence 에 있다
+    ids = {e.evidence_id for e in fd.evidence}
+    assert all(set(c["evidence_ids"]) <= ids for c in claims)
+    assert [c.type for c in fd.message.cards] == ["GOAL_SAVED"]  # 확인 카드는 최종 답에 남지 않는다
+    # 이어 부른 호출은 이미 낸 문장을 모델에 알려 되풀이하지 않게 한다
+    answer_req = next(c for c in llm2.calls if c.purpose == "ANSWER")
+    blob = json.dumps(answer_req.messages, ensure_ascii=False)
+    assert "already_said" in blob and "Take 5의 3장 청중 시선 비율은 28%예요." in blob
+
+
+def test_resumed_model_repeating_a_shown_sentence_is_dropped() -> None:
+    req, _, data = pause()
+    again = F.answer(
+        [
+            F.claim(
+                "RECORD",
+                "Take 5의 3장 청중 시선 비율은 28%예요.",
+                evidence_ids=[data["message"]["claims"][1]["evidence_ids"][0]],
+            )
+        ]
+    )
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    _, _, d2 = F.run_turn(req2, F.FakeLlm([F.done()], answers=[again], fixes=[F.fix({})]))
+    texts = [c["text"] for c in final_ok(d2).message.model_dump(mode="json")["claims"]]  # type: ignore[union-attr]
+    assert texts.count("Take 5의 3장 청중 시선 비율은 28%예요.") == 1
+
+
+def test_resume_without_answer_slots_ends_without_model_but_keeps_the_front() -> None:
+    """남은 호출 수로 답 쓰기 · 고치기 몫을 남길 수 없으면 모델 없이 끝내되 앞부분은 그대로 싣는다(8-3)."""
+    req, _, data = pause()
+    said = data["message"]["claims"]
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    req2["budget_used"] = {**req2["budget_used"], "model_calls": 17}
+    llm2 = F.FakeLlm([])
+    _, _, d2 = F.run_turn(req2, llm2)
+    fd = final_ok(d2)
+    assert llm2.calls == []  # 모델 없음
+    assert [c.model_dump(mode="json") for c in fd.message.claims[: len(said)]] == said  # type: ignore[union-attr]
+    assert fd.status in ("PARTIAL", "DONE")
+
+
+def test_second_pause_after_resume_carries_the_front_sentences() -> None:
+    """승인 뒤 읽기 행동(AUTO)으로 다시 멈추면 message 에 이미 낸 문장을 싣는다. 아직 낸 문장이 없을 때만 null 이다(5-5)."""
+    req, _, data = pause()
+    said = data["message"]["claims"]
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    fetch3 = ("fetch_take", {"take_id": "t-3", "reason": "Take 3"})
+    _, _, d2 = F.run_turn(req2, F.FakeLlm([F.tools(fetch3, prefix="f")]))
+    fd = final_ok(d2)
+    assert fd.status == "NEEDS_ACTION" and fd.actions[0].autonomy == "AUTO"
+    assert fd.message is not None
+    assert [c.model_dump(mode="json") for c in fd.message.claims] == said
+    assert fd.message.cards == []  # 확인 카드는 ASK 행동 앞에서만
+
+
+def test_second_ask_in_one_run_stacks_on_the_front_and_the_first_result() -> None:
+    """한 실행에 승인 대기는 최대 2개(저장 1 · 다시 평가 1)이고 한 번에 하나다. 둘째 멈춤은 앞 문장 · 첫 행동 결과 뒤에 카드를 낸다."""
+    req, _, data = pause()
+    said = data["message"]["claims"]
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    llm2 = F.FakeLlm([F.tools(REASSESS, prefix="ra")], answers=[F.answer([])], fixes=[F.fix({})])
+    _, _, d2 = F.run_turn(req2, llm2)
+    fd = final_ok(d2)
+    (action,) = fd.actions
+    assert fd.status == "NEEDS_ACTION" and (action.type, action.autonomy) == ("REASSESS", "ASK")
+    assert fd.message is not None
+    claims = [c.model_dump(mode="json") for c in fd.message.claims]
+    assert claims[: len(said)] == said
+    assert [c["kind"] for c in claims[len(said) :]] == ["ACTION_RESULT"]
+    assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
+    assert fd.message.cards[0].action_id == action.action_id  # type: ignore[union-attr]
+    # 보인 문장(첫 행동 결과 문장 포함)은 서명 상태에 담겨 다음 이어 부르기에서 다시 만들지 않는다
+    assert payload_of(fd.state)["loop"]["emitted"] == claims  # type: ignore[arg-type]
+
+
+# ── 해시 묶기 (5-8) ─────────────────────────────────────────────────────────
+
+
+def test_executed_args_hash_mismatch_or_missing_is_409() -> None:
+    req, _, data = pause()
+    action = data["actions"][0]
+    other = action_args_hash("SAVE_GOAL", {"expected_goal_version": 0, "goal": {"x": 1}})
+    for results in (
+        saved_result(action, executed_args_hash=other),  # 사용자가 본 카드와 다른 인자로 실행됨
+        saved_result(action, executed_args_hash=None),  # 성공인데 해시가 없음
+    ):
+        status, _, body = F.run_turn(resume_request(req, data, results), F.FakeLlm([]))
+        assert status == 409 and body["error"]["code"] == "AGENT_STATE_INVALID"
+    status, _, _ = F.run_turn(
+        resume_request(req, data, saved_result(action)),
+        F.FakeLlm([F.done()], answers=[F.answer([])], fixes=[F.fix({})]),
+    )
+    assert status == 200
+
+
+# ── 고른 제안 · 연습 버튼 ────────────────────────────────────────────────────
+
+
+def test_chosen_proposal_saves_with_preapproved_and_no_card_or_model() -> None:
+    req, card = _proposal_request()
+    llm = F.FakeLlm([])
+    _, _, data = F.run_turn(req, llm)
+    fd = final_ok(data)
+    (action,) = fd.actions
+    sp = req["context"]["selected_proposal"]
+    assert fd.status == "NEEDS_ACTION" and (action.type, action.autonomy) == ("SAVE_GOAL", "ASK")
+    assert action.preapproved is not None
+    assert action.preapproved.model_dump() == {
+        "by": "CHOICE",
+        "proposal_id": sp["proposal_id"],
+        "content_hash": sp["content_hash"],
+    }
+    assert action.args_hash == action_args_hash("SAVE_GOAL", action.args)
+    # 확인 카드도 승인 대기도 없다: 문장 없는 message, 유효기간은 보통 10분
+    assert fd.message is not None and fd.message.claims == [] and fd.message.cards == []
+    p = payload_of(fd.state)  # type: ignore[arg-type]
+    assert p["expires_at"] - p["issued_at"] == DEFAULT_CONFIG.state_ttl_seconds * 1000
+    assert llm.calls == []  # 계획 · 모델 없이 바로
+    assert card["proposal_id"] == sp["proposal_id"]
+
+
+def test_practice_move_is_always_a_button_card_even_without_a_request_quote() -> None:
+    """연습 이동은 허용 근거와 상관없이 [연습 준비로] 버튼 카드 + BUTTON 행동이다(자동 이동 없음, 6-2)."""
+    msg = "바로 발표할래"
+    req_draft = F.draft(msg, type_="REQUEST", claim_op=None, polarity="NEUTRAL")
+    for quote in (msg, None):  # 요청한 말 · 연습을 권하기만 한 경우
+        llm = F.FakeLlm(
+            [F.plan(route="ANSWER_DIRECT", steps=[], assessments=[req_draft])],
+            answers=[
+                F.answer([], assessments=[req_draft], start_practice={"authorized_by": quote})
+            ],
+        )
+        _, _, data = F.run_turn(F.request(user_message=msg), llm)
+        fd = final_ok(data)
+        assert fd.status == "DONE"
+        (action,) = fd.actions
+        assert (action.type, action.autonomy, action.args_hash) == (
+            "START_PRACTICE",
+            "BUTTON",
+            None,
+        )
+        (card,) = [c for c in fd.message.cards if c.type == "START_PRACTICE"]  # type: ignore[union-attr]
+        assert "auto" not in card.model_dump()
+
+
+def test_final_output_validation_rejects_ask_without_card() -> None:
+    """코드가 만든 응답은 판별 검사를 통과하고, 카드를 빼면 거절된다(5-5)."""
+    _, _, data = pause()
+    final_ok(data)
+    broken = copy.deepcopy(data)
+    broken["message"]["cards"] = []
+    try:
+        FinalData.model_validate(broken)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("확인 카드 없는 ASK 행동이 통과했다")

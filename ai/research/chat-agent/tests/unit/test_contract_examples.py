@@ -80,6 +80,22 @@ def test_needs_action_example_has_one_action_and_state() -> None:
     # 코드가 만드는 값(5-8): action_id · idempotency_key 는 실행 id 에 묶인다
     assert action.idempotency_key.startswith("run-81:") and action.action_id.startswith("run-81:")
     assert action.authorized_by and action.authorized_by in _user_message()
+    # ASK 행동(6-2): args_hash 가 있고, 멈추기 전에 낸 문장과 같은 해시의 확인 카드가 message 에 있다
+    assert action.autonomy == "ASK" and action.args_hash and action.preapproved is None
+    assert data.message is not None and data.message.claims
+    (card,) = [c for c in data.message.cards if c.type == "ASK_CONFIRM"]
+    assert (card.action_id, card.args_hash) == (action.action_id, action.args_hash)
+    assert card.before is None and card.after == action.args["goal"]
+
+
+def test_ask_args_hash_is_sha256_of_type_and_args() -> None:
+    from chat_agent.actions import action_args_hash
+
+    final = json.loads(_read("stream_needs_action.ndjson").splitlines()[-1])["data"]
+    action = final["actions"][0]
+    assert action["args_hash"] == action_args_hash(action["type"], action["args"])
+    res = json.loads(_read("request_action_result.json"))["resume"]["action_results"][0]
+    assert res["executed_args_hash"] == action["args_hash"]
 
 
 def _user_message() -> str:
@@ -93,6 +109,13 @@ def test_done_example_text_is_claims_joined_and_cards_valid() -> None:
     assert data.message.text == "\n".join(c.text for c in data.message.claims)
     kinds = {c.type for c in data.message.cards}
     assert kinds == {"GOAL_SAVED", "START_PRACTICE"}
+    # 연습 이동은 버튼 등급 행동 + 버튼 카드(자동 이동 없음)
+    assert [(a.type, a.autonomy) for a in data.actions] == [("START_PRACTICE", "BUTTON")]
+    # 앞부분은 승인 대기로 멈추기 전에 낸 문장 그대로이고 그 뒤에 행동 결과 문장이 이어진다(5-5)
+    paused = json.loads(_read("stream_needs_action.ndjson").splitlines()[-1])["data"]
+    said = paused["message"]["claims"]
+    assert [c.model_dump(mode="json") for c in data.message.claims[: len(said)]] == said
+    assert data.message.claims[len(said)].kind == "ACTION_RESULT"
     # 판단은 사용자 말 원문의 부분 문자열이다(6-3)
     for a in data.assessments:
         assert a.quote in _user_message()
@@ -154,6 +177,13 @@ def test_resume_example_passes_state_and_pairing_checks() -> None:
     assert any(
         c.kind == "ACTION_RESULT" and c.action_id == "run-81:a1" for c in final.message.claims
     )
+    # 멈추기 전에 낸 문장이 최종 답의 앞부분에 그대로 있다(5-5)
+    paused = json.loads(_read("stream_needs_action.ndjson").splitlines()[-1])["data"]
+    said = paused["message"]["claims"]
+    assert [c.model_dump(mode="json") for c in final.message.claims[: len(said)]] == said
+    assert {a.assessment_id for a in final.assessments} == {
+        a["assessment_id"] for a in paused["assessments"]
+    }
     # 다른 키 · 만료 뒤에는 거절한다
     assert (
         handle_turn(
@@ -163,8 +193,19 @@ def test_resume_example_passes_state_and_pairing_checks() -> None:
         ).error
         is not None
     )
+    # 승인 대기로 멈춘 상태는 발급 + 35분까지 받는다(보통 10분보다 길다, 5-6)
+    wait = F.Clock()
+    wait.ms = ex.EXAMPLE_ISSUED_MS + 34 * 60_000
+    assert (
+        handle_turn(
+            _read("request_action_result.json").encode("utf-8"),
+            F.deps(F.FakeLlm([F.done()], answers=[F.answer([])]), clock=wait),
+            secret=ex.EXAMPLE_STATE_KEY,
+        ).error
+        is None
+    )
     late = F.Clock()
-    late.ms = ex.EXAMPLE_ISSUED_MS + 11 * 60_000
+    late.ms = ex.EXAMPLE_ISSUED_MS + 36 * 60_000
     assert (
         handle_turn(
             _read("request_action_result.json").encode("utf-8"),

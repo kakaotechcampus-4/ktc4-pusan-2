@@ -15,10 +15,12 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from chat_agent import state as st
+from chat_agent.actions import action_args_hash
 from chat_agent.config import DEFAULT_CONFIG
 from chat_agent.prompts import PROMPT_VERSION
 from chat_agent.version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
@@ -43,12 +45,13 @@ META = {
 EXAMPLE_STATE_KEY = b"pitchcoach-example-state-key-not-secret"
 #: 예시 상태의 발급 시각(ms, 2026-11-04 10:04:00+09:00). 시험은 이 시각으로 검증한다
 EXAMPLE_ISSUED_MS = 1_793_754_240_000
+#: 행동 요청 응답 때의 누적량: 조사 3번 + 승인 대기 앞 답 쓰기 1번(6-1 4번)
 NEEDS_ACTION_BUDGET = {
-    "model_calls": 3,
+    "model_calls": 4,
     "tool_calls": 4,
-    "elapsed_ms": 8400,
-    "input_tokens": 9300,
-    "output_tokens": 720,
+    "elapsed_ms": 10500,
+    "input_tokens": 12400,
+    "output_tokens": 960,
 }
 FP = "5f2a9c0d1e3b4a67"
 
@@ -273,15 +276,71 @@ def _model_step(
 
 
 def _save_goal_action() -> dict:
+    args = {"expected_goal_version": 0, "goal": _goal_draft()}
     return {
         "action_id": "run-81:a1",
         "type": "SAVE_GOAL",
-        "args": {"expected_goal_version": 0, "goal": _goal_draft()},
-        "autonomy": "AUTO_UNDO",
-        "args_hash": None,
+        "args": args,
+        "autonomy": "ASK",
+        "args_hash": action_args_hash("SAVE_GOAL", args),
         "idempotency_key": "run-81:1",
         "reason": "3장 시선 비율을 Take 5보다 높이는 목표",
         "authorized_by": "그걸 목표로 잡고",
+        "preapproved": None,
+    }
+
+
+def _start_practice_action() -> dict:
+    return {
+        "action_id": "run-81:a2",
+        "type": "START_PRACTICE",
+        "args": {"pitch_id": "p-1"},
+        "autonomy": "BUTTON",
+        "args_hash": None,
+        "idempotency_key": "run-81:2",
+        "reason": "연습 준비 화면으로 이동",
+        "authorized_by": "다음 연습 준비해 줘",
+        "preapproved": None,
+    }
+
+
+def _claim_assessment() -> dict:
+    return {
+        "kind": "ASSESSMENT",
+        "assessment_id": "as-1",
+        "text": "말씀하신 '3장에서 왜 자꾸 시선이 떨어져'는 기록과 맞아요: Take 4 · 5 모두 3장 시선 비율이 31% · 28%로 낮아요.",
+        "evidence_ids": ["e1", "e2"],
+        "source_ids": [],
+        "action_id": None,
+    }
+
+
+def _claim_record() -> dict:
+    return {
+        "kind": "RECORD",
+        "assessment_id": None,
+        "text": "Take 4 · 5 모두 3장 시선 비율이 31% · 28%였어요",
+        "evidence_ids": ["e1", "e2"],
+        "source_ids": [],
+        "action_id": None,
+    }
+
+
+def _ask_confirm_card() -> dict:
+    """확인 카드: 대기 행동의 args 로 코드가 그린다(모델 문장 없음, 5-2 · 6-2)."""
+    action = _save_goal_action()
+    expires = datetime.fromtimestamp((EXAMPLE_ISSUED_MS + 1_800_000) / 1000, tz=UTC)
+    return {
+        "type": "ASK_CONFIRM",
+        "action_id": action["action_id"],
+        "action_type": "SAVE_GOAL",
+        "title": "대화 목표 저장",
+        "summary": "Take 5의 3장 청중 시선(28%)보다 높이는 목표예요.",
+        "before": None,
+        "after": _goal_draft(),
+        "notes": ["저장한 뒤에도 되돌릴 수 있어요."],
+        "expires_at": expires.isoformat(timespec="seconds"),
+        "args_hash": action["args_hash"],
     }
 
 
@@ -308,21 +367,33 @@ def _signed_state() -> dict:
             corpus="guides-1",
         ),
         issued_at=EXAMPLE_ISSUED_MS,
-        expires_at=EXAMPLE_ISSUED_MS + DEFAULT_CONFIG.state_ttl_seconds * 1000,
+        # 승인 대기로 멈춘 상태는 발급 + 35분이다(5-6)
+        expires_at=EXAMPLE_ISSUED_MS + DEFAULT_CONFIG.state_ttl_ask_seconds * 1000,
         turn_count=1,
         loop={
             "pending_action": pending,
-            "counters": {**NEEDS_ACTION_BUDGET, "turn_count": 1},
+            "counters": {**NEEDS_ACTION_BUDGET, "turn_count": 1, "actions": 1, "saves": 1},
             "action_seq": 1,
+            # 멈추기 전에 낸 문장 · 판단: 이어 부른 뒤 최종 답의 앞부분에 그대로 싣는다(5-5)
+            "emitted": [_claim_assessment(), _claim_record()],
+            "emitted_sources": [],
+            "exported": _assessments(),
         },
     )
     return st.sign(payload, EXAMPLE_STATE_KEY)
 
 
 def _final_needs_action() -> dict:
+    claims = [_claim_assessment(), _claim_record()]
     return {
         "status": "NEEDS_ACTION",
-        "message": None,
+        # ASK 행동: 그때까지 확인한 것으로 낸 문장과 확인 카드를 함께 싣는다(5-5)
+        "message": {
+            "text": "\n".join(c["text"] for c in claims),
+            "claims": claims,
+            "cards": [_ask_confirm_card()],
+            "sources": [],
+        },
         "actions": [_save_goal_action()],
         "state": _signed_state(),
         "scope_pitch_id": "p-1",
@@ -338,15 +409,15 @@ def _final_needs_action() -> dict:
         "history_summary": None,
         "budget_used": dict(NEEDS_ACTION_BUDGET),
         "usage": {
-            "model_calls": 3,
+            "model_calls": 4,
             "tool_calls": 4,
-            "elapsed_ms": 8400,
-            "input_tokens": 9300,
-            "output_tokens": 720,
+            "elapsed_ms": 10500,
+            "input_tokens": 12400,
+            "output_tokens": 960,
             "measured": True,
             "missing_reason": None,
         },
-        "assessments": [],
+        "assessments": _assessments(),
         "goal_result": None,
         "meta": META,
         "diagnostics": _diag(
@@ -380,34 +451,30 @@ def _final_needs_action() -> dict:
                     "parent_seq": 1,
                     "detail": {
                         "action_id": "run-81:a1",
-                        "autonomy": "AUTO_UNDO",
+                        "autonomy": "ASK",
                         "authorization": "PASS",
                         "result": "PROPOSED",
                         "reason_code": None,
                     },
                 },
+                _model_step(4, "ANSWER", 8400, 0, "STOP"),
             ],
         ),
     }
 
 
 def _final_done() -> dict:
+    # 최종 답의 앞부분은 승인 대기로 멈추기 전에 낸 문장 그대로이고, 그 뒤에 행동 결과 문장 · 나머지 답이 이어진다(5-5)
     claims = [
+        _claim_assessment(),
+        _claim_record(),
         {
-            "kind": "ASSESSMENT",
-            "assessment_id": "as-1",
-            "text": "말씀하신 '3장에서 왜 자꾸 시선이 떨어져'는 기록과 맞아요: Take 4 · 5 모두 3장 시선 비율이 31% · 28%로 낮아요.",
-            "evidence_ids": ["e1", "e2"],
-            "source_ids": [],
-            "action_id": None,
-        },
-        {
-            "kind": "RECORD",
+            "kind": "ACTION_RESULT",
             "assessment_id": None,
-            "text": "Take 4 · 5 모두 3장 시선 비율이 31% · 28%였어요",
-            "evidence_ids": ["e1", "e2"],
+            "text": "목표를 저장했어요.",
+            "evidence_ids": [],
             "source_ids": [],
-            "action_id": None,
+            "action_id": "run-81:a1",
         },
         {
             "kind": "GUIDE",
@@ -416,14 +483,6 @@ def _final_done() -> dict:
             "evidence_ids": [],
             "source_ids": ["g-02"],
             "action_id": None,
-        },
-        {
-            "kind": "ACTION_RESULT",
-            "assessment_id": None,
-            "text": "목표를 저장했어요.",
-            "evidence_ids": [],
-            "source_ids": [],
-            "action_id": "run-81:a1",
         },
     ]
     return {
@@ -440,7 +499,7 @@ def _final_done() -> dict:
                     "evidence_ids": ["e2"],
                     "undo": True,
                 },
-                {"type": "START_PRACTICE", "pitch_id": "p-1", "auto": False},
+                {"type": "START_PRACTICE", "pitch_id": "p-1"},
             ],
             "sources": [
                 {
@@ -452,7 +511,7 @@ def _final_done() -> dict:
                 }
             ],
         },
-        "actions": [],
+        "actions": [_start_practice_action()],
         "state": None,
         "scope_pitch_id": "p-1",
         "plan": _plan(True),
@@ -493,18 +552,18 @@ def _final_done() -> dict:
         "evidence": [_evidence("e1", 4, 0.31), _evidence("e2", 5, 0.28)],
         "history_summary": None,
         "budget_used": {
-            "model_calls": 5,
+            "model_calls": 6,
             "tool_calls": 4,
-            "elapsed_ms": 15800,
-            "input_tokens": 16100,
-            "output_tokens": 1240,
+            "elapsed_ms": 18000,
+            "input_tokens": 19500,
+            "output_tokens": 1480,
         },
         "usage": {
-            "model_calls": 5,
+            "model_calls": 6,
             "tool_calls": 4,
-            "elapsed_ms": 15800,
-            "input_tokens": 16100,
-            "output_tokens": 1240,
+            "elapsed_ms": 18000,
+            "input_tokens": 19500,
+            "output_tokens": 1480,
             "measured": True,
             "missing_reason": None,
         },
@@ -608,16 +667,20 @@ def build() -> dict[str, Any]:
                     "status": "SUCCEEDED",
                     "data": {"goal": saved_goal},
                     "error": None,
+                    # 승인 뒤 BE 가 실행한 args 의 해시: 대기 행동의 args_hash 와 같아야 한다(5-8)
+                    "executed_args_hash": action_args_hash(
+                        "SAVE_GOAL", _save_goal_action()["args"]
+                    ),
                 }
             ],
         },
         "context": _context(pitch, goal=saved_goal, goal_version=1),
         "budget_used": {
-            "model_calls": 3,
+            "model_calls": 4,
             "tool_calls": 4,
-            "elapsed_ms": 9100,
-            "input_tokens": 9300,
-            "output_tokens": 720,
+            "elapsed_ms": 11200,
+            "input_tokens": 12400,
+            "output_tokens": 960,
         },
     }
     # 자동 목표 확인: Take 6(3장 시선 41%)의 리뷰가 저장된 뒤

@@ -42,6 +42,7 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
+from chat_agent.actions import action_args_hash
 from chat_agent.schemas import FinalData, StreamLine
 
 from . import fixtures as fx
@@ -52,8 +53,8 @@ KST = timezone(timedelta(hours=9))
 FIXED_AUTONOMY = {
     "FETCH_PITCH": "AUTO",
     "FETCH_TAKE": "AUTO",
-    "REASSESS": "AUTO",
-    "SAVE_GOAL": "AUTO_UNDO",
+    "REASSESS": "ASK",
+    "SAVE_GOAL": "ASK",
 }
 #: 행동별 인자 키(5-8). 정확히 이 키만 받는다
 ACTION_ARG_KEYS = {
@@ -202,6 +203,8 @@ class ActionRecord:
     elapsed_ms: int = 0
     #: 실제로 효과를 냈는가(같은 키의 재시도 · 검사 거절이면 False)
     executed: bool = False
+    #: `ASK` 행동을 사용자가 승인했는가. 임시: 승인 흐름을 붙이기 전까지 가짜 BE 는 `ASK` 행동을 자동 승인한다
+    approved: bool = False
 
 
 @dataclass
@@ -642,7 +645,7 @@ class FakeBe:
             if scope_changed:
                 run.state_revision += 1
             action = final["actions"][0]
-            if action["type"] == "REASSESS" and final.get("message") is not None:
+            if action["autonomy"] == "ASK" and final.get("message") is not None:
                 run.interim_message = {
                     **copy.deepcopy(final["message"]),
                     "assessments": copy.deepcopy(final["assessments"]),
@@ -802,9 +805,7 @@ class FakeBe:
             if card.get("type") == "GOAL_PROPOSAL":
                 conv.proposals[card["proposal_id"]] = copy.deepcopy(card)
             elif card.get("type") == "START_PRACTICE":
-                conv.practice_moves.append(
-                    {"run_id": run.run_id, "pitch_id": card["pitch_id"], "auto": card["auto"]}
-                )
+                conv.practice_moves.append({"run_id": run.run_id, "pitch_id": card["pitch_id"]})
         if final.get("history_summary"):
             conv.summary = final["history_summary"]
         gr = final.get("goal_result")
@@ -864,7 +865,9 @@ class FakeBe:
         if self.action_ms and callable(advance):
             advance(self.action_ms / 1000)
         elapsed = max(0, round((self.clock.monotonic() - t0) * 1000))
-        rec = ActionRecord(copy.deepcopy(action), result, elapsed, executed)
+        rec = ActionRecord(
+            copy.deepcopy(action), result, elapsed, executed, approved=action["autonomy"] == "ASK"
+        )
         run.actions.append(rec)
         return rec
 
@@ -878,6 +881,10 @@ class FakeBe:
             "status": status,
             "data": data,
             "error": None,
+            # `ASK` 행동(승인 뒤 실행)의 결과에는 BE 가 실행한 args 의 해시를 싣는다(5-8)
+            "executed_args_hash": action_args_hash(action["type"], action["args"])
+            if action.get("autonomy") == "ASK"
+            else None,
         }
 
     @staticmethod
@@ -888,6 +895,7 @@ class FakeBe:
             "status": "FAILED",
             "data": None,
             "error": {"code": code, "message": code},
+            "executed_args_hash": None,
         }
 
     def _send_pitch(self, run: Run, p: fx.PitchRecord) -> dict[str, Any]:

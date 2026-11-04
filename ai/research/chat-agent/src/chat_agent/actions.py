@@ -4,9 +4,16 @@
   행동을 만들거나 낮추거나 버린다. 이어 부를 때 `apply_result()`가 BE의 결과를 검사해 문맥에 반영한다.
 - 모델은 `type` · 인자 · `reason` · `authorized_by` 만 낸다. `action_id` · 자율 등급 · 순번 · `idempotency_key` 는 코드가 만든다(5-8 · L1-23).
   목표 값(기준값 · 판 · 범위 · operator · min_delta)도 모델 값을 받지 않고 기준 Take 의 실제 기록으로 코드가 만든다(L4-11).
-- 허용 근거 검사(6-2, 저장 · 이동 행동): ① 처음 사용자 말 원문의 부분 문자열 ② 인용을 포함한 절 전체에 부정 · 취소 · 조건 ·
-  남의 말 인용이 없음 ③ 인용에 행동 낱말 + 절에 요청형 표현. 하나라도 어기면 실행하지 않고 제안 카드 · [연습 준비로] 버튼으로 낮춘다.
-  이 검사는 간접 표현을 완벽히 가리지 못한다(15-2). 그래서 저장 · 이동은 되돌릴 수 있는 것만 자동으로 둔다.
+- 자율 등급(6-2): `FETCH_PITCH` · `FETCH_TAKE` = `AUTO`, `SAVE_GOAL` · `REASSESS` = `ASK`(확인 카드로 승인받은 뒤 BE 가 실행),
+  `START_PRACTICE` = `BUTTON`(버튼 카드만, 실행 없음). `ASK` 행동에는 `args_hash`(행동 `type` + 확정 `args`의 정렬 JSON SHA-256)를
+  붙이고, 확인 카드(`ASK_CONFIRM`)는 대기 행동의 `args`로 코드가 그린다(`ask_confirm_card`). 승인 뒤 결과의 `executed_args_hash`가
+  대기 행동의 `args_hash`와 다르면 이어 부르기를 409 로 거절한다(`match_result`).
+- 허용 근거 검사(6-2, `SAVE_GOAL`): ① 처음 사용자 말 원문의 부분 문자열 ② 인용을 포함한 절 전체에 부정 · 취소 · 조건 ·
+  남의 말 인용이 없음 ③ 인용에 행동 낱말 + 절에 요청형 표현. 이제 이 검사는 '확인 카드를 낼 근거가 있나'를 정한다: 통과하면 `ASK` 행동
+  (확인 카드), 하나라도 어기면 실행하지 않고 목표 제안 카드로 낮춘다. `REASSESS`는 허용 근거 검사 없이 `ASK`(확인 카드가 승인 근거),
+  `START_PRACTICE`는 허용 근거와 상관없이 언제나 버튼 카드다. 이 검사는 간접 표현을 완벽히 가리지 못한다(15-2): 잘못 판별해도
+  실행되지 않고 원치 않는 확인 카드가 뜰 뿐이다.
+- 고른 목표 제안(`choice`)의 `SAVE_GOAL`은 `preapproved`를 달고 확인 카드 없이 BE 가 해시를 다시 계산해 바로 실행한다.
 - 고칠 때: 낱말 목록은 config.py(바꾸면 FEATURE_VERSION). 행동 모양을 바꾸면 TOOL_SCHEMA_VERSION.
 """
 
@@ -20,8 +27,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from . import claims as clm
+from . import templates
 from .budget import Budget
 from .claims import goal_conflict
+from .compose import metric_label
 from .config import ChatAgentConfig
 from .evidence import canonical_json
 from .goals import build_goal_draft
@@ -29,14 +39,18 @@ from .runctx import RunCtx
 from .schemas import (
     Action,
     ActionResult,
+    AskConfirmCard,
     CriteriaTarget,
     Goal,
     GoalDraft,
     GoalOption,
     GoalProposalCard,
     PitchContext,
+    Preapproved,
     ReassessResultCard,
     ReassessSide,
+    SelectedProposal,
+    StartPracticeCard,
     TakeSnapshot,
 )
 
@@ -44,12 +58,12 @@ from .schemas import (
 AUTONOMY: dict[str, str] = {
     "FETCH_PITCH": "AUTO",
     "FETCH_TAKE": "AUTO",
-    "REASSESS": "AUTO",
-    "SAVE_GOAL": "AUTO_UNDO",
-    "START_PRACTICE": "AUTO_UNDO",
+    "REASSESS": "ASK",
+    "SAVE_GOAL": "ASK",
+    "START_PRACTICE": "BUTTON",
 }
-#: 허용 근거가 필요한 행동(저장 · 이동 · ASK)
-NEEDS_AUTHORIZATION = frozenset({"SAVE_GOAL", "START_PRACTICE"})
+#: 사용자 말이 없는 턴(`TAKE_REVIEWED`)에서 내지 않는 행동(저장 · 다시 평가 · 이동, 6-2)
+NEEDS_USER_TURN = frozenset({"SAVE_GOAL", "REASSESS", "START_PRACTICE"})
 
 #: 목표 지표 → 차원(목표 충돌 판정 · 전문가 추천 안)
 GOAL_METRIC_DIM = {
@@ -302,8 +316,39 @@ def named_take_ids(message: str | None, ctx: RunCtx) -> set[str] | None:
     return {tid for tid, summ in ctx.summaries.items() if summ.take_number in nums or tid in ids}
 
 
-def args_hash(args: dict[str, Any]) -> str:
-    return hashlib.sha256(canonical_json(args).encode("utf-8")).hexdigest()[:16]
+def action_args_hash(action_type: str, args: dict[str, Any]) -> str:
+    """`args_hash`(5-8): 행동 `type`과 확정한 `args`를 정렬한 JSON(`canonical_json`)의 SHA-256, `"sha256:<hex>"` 꼴.
+
+    열쇠 순서와 상관없이 같은 내용이면 같은 값이다. `executed_args_hash`(BE 가 실행한 `args`)도 같은 규칙이다.
+    예: action_args_hash("REASSESS", {"take_id": "t-5", "change": {"script_used": True}}) → "sha256:…"(64자리 16진수)
+    """
+    blob = canonical_json({"type": action_type, "args": args})
+    return "sha256:" + hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def make_action(
+    *,
+    run_id: str,
+    seq: int,
+    action_type: str,
+    args: dict[str, Any],
+    reason: str,
+    authorized_by: str | None = None,
+    preapproved: Preapproved | None = None,
+) -> Action:
+    """코드가 만드는 행동 하나: id · 자율 등급 · 순번 · `idempotency_key`, `ASK`면 `args_hash`(5-8 · L1-23)."""
+    autonomy = AUTONOMY[action_type]
+    return Action(
+        action_id=f"{run_id}:a{seq}",
+        type=action_type,  # type: ignore[arg-type]
+        args=args,
+        autonomy=autonomy,  # type: ignore[arg-type]
+        args_hash=action_args_hash(action_type, args) if autonomy == "ASK" else None,
+        idempotency_key=f"{run_id}:{seq}",
+        reason=reason,
+        authorized_by=authorized_by,
+        preapproved=preapproved,
+    )
 
 
 def _goal_options_hash(goal: GoalDraft | None) -> str | None:
@@ -342,7 +387,7 @@ def propose(
         )
     atype = ACTION_TOOL_TYPE[tool_name]
     run_id = ctx.req.run.run_id
-    if trigger == "TAKE_REVIEWED" and atype in NEEDS_AUTHORIZATION:
+    if trigger == "TAKE_REVIEWED" and atype in NEEDS_USER_TURN:
         # 사용자 말이 없는 턴에서는 저장 · 이동 행동을 내지 않는다(6-2)
         return Proposal(
             result="DROPPED",
@@ -414,13 +459,11 @@ def propose(
         return Proposal(
             result="DROPPED", reason_code=hit.code, tool_message=_err("LIMIT", hit.code)
         )
-    action = Action(
-        action_id=f"{run_id}:a{seq}",
-        type=atype,  # type: ignore[arg-type]
+    action = make_action(
+        run_id=run_id,
+        seq=seq,
+        action_type=atype,
         args=args,
-        autonomy=AUTONOMY[atype],  # type: ignore[arg-type]
-        args_hash=None,
-        idempotency_key=f"{run_id}:{seq}",
         reason=getattr(a, "reason", "") or atype,
         authorized_by=authorized_by,
     )
@@ -513,15 +556,16 @@ def _propose_goal(
             result="DROPPED", reason_code=hit.code, tool_message=_err("LIMIT", hit.code)
         )
     args = {"expected_goal_version": ctx.goal_version, "goal": draft.model_dump(mode="json")}
-    action = Action(
-        action_id=f"{run_id}:a{seq}",
-        type="SAVE_GOAL",
+    sp = ctx.req.context.selected_proposal
+    action = make_action(
+        run_id=run_id,
+        seq=seq,
+        action_type="SAVE_GOAL",
         args=args,
-        autonomy="AUTO_UNDO",
-        args_hash=None,
-        idempotency_key=f"{run_id}:{seq}",
         reason=a.reason or "대화 목표 저장",
         authorized_by=quote.strip() if quote else None,
+        # 고른 제안을 그대로 저장하면 그 클릭이 승인이다: 확인 카드 없이 BE 가 해시를 다시 계산해 실행한다(6-2)
+        preapproved=preapproval(sp) if chosen_ok and sp is not None else None,
     )
     return Proposal(result="PROPOSED", action=action, authorization=authorization)
 
@@ -613,7 +657,11 @@ class ResultMismatch(Exception):
 
 
 def match_result(pending: dict[str, Any] | None, results: list[ActionResult]) -> ActionResult:
-    """대기 행동 1개에 결과 정확히 1개(P0). 요청하지 않은 id · 다른 type · 두 개는 ResultMismatch(→ 409)."""
+    """대기 행동 1개에 결과 정확히 1개(P0). 요청하지 않은 id · 다른 type · 두 개는 ResultMismatch(→ 409).
+
+    `ASK` 행동은 승인 뒤 BE 가 저장한 `args`로 실행하므로 성공 결과에 `executed_args_hash`가 있어야 하고, 값이 있으면
+    대기 행동의 `args_hash`와 같아야 한다(다르면 사용자가 본 카드와 다른 인자로 실행된 것, 5-8 · 6-2).
+    """
     if pending is None:
         raise ResultMismatch("NO_PENDING_ACTION")
     if len(results) != 1:
@@ -621,6 +669,13 @@ def match_result(pending: dict[str, Any] | None, results: list[ActionResult]) ->
     r = results[0]
     if r.action_id != pending["action_id"] or r.type != pending["type"]:
         raise ResultMismatch("RESULT_MISMATCH")
+    if pending.get("autonomy") == "ASK":
+        expected = pending.get("args_hash")
+        got = r.executed_args_hash
+        if got is not None and got != expected:
+            raise ResultMismatch("ARGS_HASH_MISMATCH")
+        if got is None and r.status == "SUCCEEDED":
+            raise ResultMismatch("ARGS_HASH_MISSING")
     return r
 
 
@@ -648,8 +703,6 @@ class Applied:
 
 def apply_result(pending: dict[str, Any], r: ActionResult, *, ctx: RunCtx) -> Applied:
     """검사한 행동 결과를 문맥에 반영한다. status · data · error 가 서로 맞지 않으면 mismatch."""
-    from . import templates
-
     atype = pending["type"]
     args = pending["args"]
     if r.status == "SUCCEEDED" and (r.data is None or r.error is not None):
@@ -893,8 +946,6 @@ def _official_ok(x: Any) -> bool:
 
 def _apply_reassess(pending: dict[str, Any], data: dict[str, Any], *, ctx: RunCtx) -> Applied:
     """A(지금 기록 그대로) · B(허용 칸 하나만 바꿈)의 규칙 칸만 비교한다(6-6). 문장 · 다음 미션은 비교하지 않는다."""
-    from . import templates
-
     before, after, official = data.get("before"), data.get("after"), data.get("official")
     if not (_review_ok(before) and _review_ok(after) and _official_ok(official)):
         # 빠진 칸을 빈 값으로 채워 비교하지 않는다: 완전한 A · B · 공식 결과만 비교한다(6-6 · L1-30 · L4-20)
@@ -976,33 +1027,129 @@ def start_practice_action(
     *,
     ctx: RunCtx,
     authorized_by: str | None,
-    original_message: str | None,
     seq: int,
     budget: Budget,
 ) -> tuple[Action | None, dict[str, Any], str | None]:
-    """마지막 답의 연습 준비 이동(6-2). 허용 근거가 있으면 행동 + 카드(auto:true), 없으면 버튼 카드(auto:false)만."""
+    """마지막 답의 연습 준비 이동(6-2): 허용 근거와 상관없이 언제나 [연습 준비로] 버튼 카드만 낸다(자동 이동 없음).
+
+    행동은 `autonomy:"BUTTON"`으로 `DONE`의 `actions`에 싣고 BE 는 실행하지 않는다(누르는 것이 승인이고 FE 가 옮긴다).
+    행동 수 한도에 막히면 행동 없이 카드만 남긴다. 사용자가 이번 말에서 요청한 인용은 그대로 남긴다.
+    """
     pid = ctx.scope_pitch_id
     if pid is None:
         return None, {}, "NO_SCOPE"
-    why = (
-        authorize("START_PRACTICE", authorized_by, original_message, ctx.cfg)
-        if authorized_by
-        else "NO_QUOTE"
+    card = StartPracticeCard(pitch_id=pid).model_dump(mode="json")
+    if budget.reserve_action("START_PRACTICE") is not None:
+        return None, card, "LIMIT"
+    action = make_action(
+        run_id=ctx.req.run.run_id,
+        seq=seq,
+        action_type="START_PRACTICE",
+        args={"pitch_id": pid},
+        reason="연습 준비 화면으로 이동",
+        authorized_by=(authorized_by or "").strip() or None,
     )
-    if why is None and budget.reserve_action("START_PRACTICE") is None:
-        run_id = ctx.req.run.run_id
-        action = Action(
-            action_id=f"{run_id}:a{seq}",
-            type="START_PRACTICE",
-            args={"pitch_id": pid},
-            autonomy="AUTO_UNDO",
-            args_hash=None,
-            idempotency_key=f"{run_id}:{seq}",
-            reason="연습 준비 화면으로 이동",
-            authorized_by=(authorized_by or "").strip(),
+    return action, card, None
+
+
+def preapproval(sp: SelectedProposal) -> Preapproved:
+    """고른 목표 제안의 선승인 표시(5-8): 제안 id · 표시했던 내용의 해시."""
+    return Preapproved(by="CHOICE", proposal_id=sp.proposal_id, content_hash=sp.content_hash)
+
+
+# ── 승인 확인 카드 (5-2 `ASK_CONFIRM` · 6-2) ─────────────────────────────────
+
+
+def _goal_summary(goal: GoalDraft, cfg: ChatAgentConfig) -> str:
+    base = goal.base
+    if goal.operator == "in_range":
+        rng = base.range
+        lo = (
+            ""
+            if rng is None or rng.low is None
+            else clm.format_metric_value(goal.metric, rng.low, cfg)
         )
-        return action, {"type": "START_PRACTICE", "pitch_id": pid, "auto": True}, None
-    return None, {"type": "START_PRACTICE", "pitch_id": pid, "auto": False}, why
+        hi = (
+            ""
+            if rng is None or rng.high is None
+            else clm.format_metric_value(goal.metric, rng.high, cfg)
+        )
+        value_text = f"{lo}~{hi}"
+    elif goal.metric in cfg.metric_units:
+        value_text = clm.format_metric_value(goal.metric, base.value, cfg)
+    else:
+        value_text = str(base.value)
+    return templates.GOAL_SUMMARY[goal.operator].format(
+        take_number=base.take_number,
+        where=f"{goal.slide_number}장 " if goal.slide_number else "",
+        label=metric_label(goal.metric),
+        value=value_text,
+    )
+
+
+def _target_view(t: CriteriaTarget | dict[str, Any]) -> dict[str, Any]:
+    d = t.model_dump() if isinstance(t, CriteriaTarget) else t
+    # 사용자가 쓴 문구(display)는 카드에 싣지 않는다: 숫자 기준(지표 · 비교 · 값)만 보인다
+    return {k: d.get(k) for k in ("metric", "operator", "value")}
+
+
+def ask_confirm_card(
+    pending: dict[str, Any], *, ctx: RunCtx, expires_at: str
+) -> dict[str, Any] | None:
+    """대기 행동의 `args`만으로 그린 `ASK_CONFIRM` 카드(모델 문장 없음). 그릴 수 없으면 None(행동을 내지 않는다).
+
+    `SAVE_GOAL`: before = 지금 대화 목표(없으면 null), after = 저장할 목표. `REASSESS`: before = 지금 조건,
+    after = 참고 조건. `args_hash`는 대기 행동의 것을 그대로 싣는다.
+    """
+    atype, args, ahash = pending["type"], pending["args"], pending.get("args_hash")
+    if atype not in ("SAVE_GOAL", "REASSESS") or not ahash:
+        return None
+    notes: list[str] = []
+    before: dict[str, Any] | None
+    if atype == "SAVE_GOAL":
+        try:
+            goal = GoalDraft.model_validate(args["goal"])
+        except (ValidationError, KeyError):
+            return None
+        before = ctx.goal.model_dump(mode="json") if ctx.goal is not None else None
+        after = goal.model_dump(mode="json")
+        summary = _goal_summary(goal, ctx.cfg)
+        if before is not None:
+            notes.append(templates.SAVE_GOAL_NOTE_REPLACE)
+        notes.append(templates.SAVE_GOAL_NOTE_UNDO)
+    else:
+        summ = ctx.summaries.get(args.get("take_id"))
+        if summ is None:
+            return None
+        change = args["change"]
+        crit = ctx.pitch.criteria if ctx.pitch is not None else None
+        take_view = {"take_id": summ.take_id, "take_number": summ.take_number}
+        if "script_used" in change:
+            before = {**take_view, "script_used": crit.script_used if crit else None}
+            after = {**take_view, "script_used": change["script_used"]}
+            key = "script_used_true" if change["script_used"] else "script_used_false"
+            text = templates.REASSESS_CHANGE_TEXT[key]
+        else:
+            now = [_target_view(t) for t in (crit.targets if crit else [])]
+            new = [_target_view(t) for t in change.get("targets") or []]
+            before = {**take_view, "targets": now}
+            after = {**take_view, "targets": new}
+            text = templates.REASSESS_CHANGE_TEXT["targets"].format(count=len(new))
+        summary = templates.fill(
+            templates.REASSESS_SUMMARY, take_number=str(summ.take_number), change=text
+        )
+        notes.append(templates.REASSESS_NOTE)
+    return AskConfirmCard(
+        action_id=pending["action_id"],
+        action_type=atype,
+        title=templates.ASK_CONFIRM_TITLE[atype],
+        summary=summary,
+        before=before,
+        after=after,
+        notes=notes,
+        expires_at=expires_at,
+        args_hash=ahash,
+    ).model_dump(mode="json")
 
 
 def proposal_still_valid(ctx: RunCtx) -> tuple[bool, GoalDraft | None]:

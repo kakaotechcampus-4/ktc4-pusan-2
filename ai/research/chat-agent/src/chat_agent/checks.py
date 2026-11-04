@@ -1234,6 +1234,8 @@ _CARD_SKIP_KEYS = frozenset(
         "content_hash",
         "fingerprint",
         "created_at",
+        "expires_at",
+        "action_type",
         "undo",
         "auto",
         "change",
