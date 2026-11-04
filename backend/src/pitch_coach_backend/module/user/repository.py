@@ -29,9 +29,5 @@ def delete(db: Session, user: User) -> None:
     db.flush()
 
 
-def lock_for_update(db: Session, user_id: uuid.UUID) -> bool:
-    return db.scalar(select(User.id).where(User.id == user_id).with_for_update()) is not None
-
-
 def exists(db: Session, user_id: uuid.UUID) -> bool:
     return db.scalar(select(User.id).where(User.id == user_id)) is not None

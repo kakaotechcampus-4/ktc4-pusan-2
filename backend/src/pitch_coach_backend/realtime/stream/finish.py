@@ -62,8 +62,10 @@ async def flush_metrics(take_id: uuid.UUID) -> bool:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(buffer.flush(), FLUSH_METRICS_TIMEOUT_SEC)
 
-    await asyncio.gather(*(flush(buffer) for buffer in (record.metrics, record.slides)))
-    saved = await save_finals(take_id)
+    # 서로 다른 기록이라 같이 저장한다. 차례로 저장하면 DB 가 느릴 때 상한이 두 배가 된다
+    *_, saved = await asyncio.gather(
+        flush(record.metrics), flush(record.slides), save_finals(take_id)
+    )
     for buffer, what in buffers:
         # 못 넣은 행은 여기서 버린다. 끝난 뒤 다시 넣으면 Take 결과 저장과 엇갈린다 (`close`)
         dropped = buffer.close()

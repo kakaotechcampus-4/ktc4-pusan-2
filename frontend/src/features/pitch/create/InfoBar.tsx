@@ -36,9 +36,13 @@ export function InfoBar() {
 
   return (
     <section aria-label={heading} className="shrink-0 border-b border-line pb-2">
-      <p className="mb-1 text-xs font-medium text-ink/80">{heading}</p>
       <dl className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)] lg:divide-x lg:divide-line">
         <Item label="발표 제목">
+          {pitchId === null && (
+            <span className="shrink-0 rounded bg-cream px-1.5 py-0.5 text-xs font-medium text-stone">
+              저장 전
+            </span>
+          )}
           <span
             className={[
               'min-w-0 [overflow-wrap:anywhere]',

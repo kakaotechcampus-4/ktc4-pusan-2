@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { HomeServiceReview } from './HomeServiceReview';
+import { HomeSurveyNotice } from './HomeSurveyNotice';
 import { Link } from 'react-router';
 import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
@@ -17,7 +17,7 @@ export function HomePage() {
     // 넓고 높은 창(one-screen, index.css)은 한 화면에 고정합니다 — 남은 높이만 받고, 피치가 많으면 목록 안에서만 스크롤됩니다.
     // flex-1 의 basis 0% 는 부모(min-h-dvh) 높이가 정해지지 않아 내용 높이로 풀려 basis-0 을 따로 줍니다
     <div className="pitch-create flex flex-1 flex-col bg-greige text-ink one-screen:min-h-0 one-screen:basis-0">
-      <HomeServiceReview ready={!home.isPending && !home.isError} blocked={helpOpen} />
+      <HomeSurveyNotice />
       <main className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 one-screen:flex one-screen:min-h-0 one-screen:flex-col lg:px-10 one-screen:pb-5">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>

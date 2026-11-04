@@ -32,6 +32,19 @@ import { resumeOnGesture } from './resumeOnGesture';
 /** 이 값 미만이면 "소리가 없다"로 봅니다. 완전한 0 만 보면 미세한 노이즈에 속습니다. */
 const SILENCE_RMS = 0.005;
 
+/**
+ * 이 블록이 조용한가 — 무음 경고("N초 동안 소리가 들어오지 않습니다") · 마이크 입력 확인이 씁니다.
+ *
+ * 크기만 보지 않고 **말소리 판정(`loudness.speaking`)을 따릅니다.** 크기는 자동 음량 조절을 끈 원본으로
+ * 재서(`openMeasureStream`) 작게 말하면 0.005(약 -46dBFS) 아래로 자주 내려가는데, 말소리 판정은
+ * -65dBFS 위 · 소음보다 10dB 위면 말로 봅니다. 크기만 보면 평소 목소리 읽기가 "들려요"라고 하는 동안
+ * 아래에서는 "소리가 들어오지 않습니다"가 떴습니다. 이 경고는 입력이 아예 없는 마이크를 찾는 것이라,
+ * 말로 들리면 조용한 게 아닙니다. 입력이 없는 마이크는 말소리 판정에도 걸리지 않아 그대로 잡힙니다
+ */
+export function isSilentFrame(rms: number, speaking: boolean): boolean {
+  return rms < SILENCE_RMS && !speaking;
+}
+
 export interface LevelMeter {
   /**
    * 0..1 RMS. **매 프레임 불러도 되게** 만들어 두었습니다 — 상태로 올리지 마세요.
@@ -126,7 +139,8 @@ export async function createLevelMeter(stream: MediaStream): Promise<LevelMeter 
       const now = performance.now();
       loudness.update(wsum / wbuf.length, now);
 
-      if (rms < SILENCE_RMS) {
+      // 말소리 판정은 바로 위 update 로 이 블록까지 반영된 값입니다
+      if (isSilentFrame(rms, loudness.speaking())) {
         silentSince ??= now;
       } else {
         silentSince = null;

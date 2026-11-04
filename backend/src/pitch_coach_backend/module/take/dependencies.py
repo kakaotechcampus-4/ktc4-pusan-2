@@ -19,7 +19,7 @@ def get_owned_take(
     take = db.scalar(
         select(Take).where(Take.id == take_id, Take.pitch_id == pitch_id)
     )
-
+    db.commit()
     if take is None:
         raise NonExistentTake()
 

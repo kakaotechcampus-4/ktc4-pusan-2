@@ -1,0 +1,12 @@
+node_modules
+dist
+package-lock.json
+
+# 디자인 값은 정렬이 곧 주석이다. Prettier가 표를 흩뜨린다.
+src/styles.css
+
+# 문서는 손으로 맞춘 표가 곧 내용이다.
+*.md
+
+# 무대 CSS는 정렬된 주석 표가 곧 명세다. 제품 원본과 같은 모양으로 둔다.
+src/ui/stage.css

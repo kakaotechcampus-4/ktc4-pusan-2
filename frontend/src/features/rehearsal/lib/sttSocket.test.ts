@@ -170,6 +170,46 @@ describe('재연결', () => {
     expect(states.at(-1)).toBe('degraded');
   });
 
+  it('다른 곳에서 발표 중이라(TOO_MANY_STREAMS) 1008 로 닫히면 다시 붙지 않고 이유를 알린다', async () => {
+    const onGiveUp = vi.fn();
+    const onError = vi.fn();
+    const stt = makeSocket({ onGiveUp, onError });
+    stt.start();
+    await settle();
+
+    sockets[0]!.open();
+    sockets[0]!.emit({ type: 'error', code: 'TOO_MANY_STREAMS', message: '다른 곳에서 연습 중' });
+    sockets[0]!.serverClose(1008);
+    await settle();
+
+    expect(onError).toHaveBeenCalledWith('TOO_MANY_STREAMS', '다른 곳에서 연습 중', null);
+    expect(sockets).toHaveLength(1);
+    expect(onGiveUp).toHaveBeenCalledWith('FATAL');
+  });
+
+  /**
+   * 다른 곳의 Take 를 끝내고(abandon?replace=true) 바로 새 Take 를 열면, 이전 스트림 정리가 늦을 때
+   * BE 가 새 연결을 1013 으로 닫습니다 (BE #716). ready 전이어도 다시 붙어야 시작합니다
+   */
+  it('ready 전에 1013 으로 닫혀도 백오프로 다시 붙는다', async () => {
+    vi.useFakeTimers();
+    const onGiveUp = vi.fn();
+    const stt = makeSocket({ onGiveUp });
+    stt.start();
+    await settle();
+
+    sockets[0]!.open();
+    sockets[0]!.serverClose(1013);
+    expect(states.at(-1)).toBe('reconnecting');
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(sockets).toHaveLength(2);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+    expect(onGiveUp).not.toHaveBeenCalled();
+    expect(states.at(-1)).toBe('ok');
+  });
+
   it('비정상 종료는 백오프로 다시 붙고 seq 가 이어진다', async () => {
     vi.useFakeTimers();
     const stt = makeSocket();

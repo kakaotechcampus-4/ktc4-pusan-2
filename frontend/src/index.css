@@ -55,11 +55,23 @@
   --color-coral-deep: #C9421C;      /* hover · 눌림 */
   --color-coral-wash: #F3DED5;      /* 배경 강조 */
 
+  /* 입력 미터는 .pitch-create의 지면 재정의와 별개로 승인 팔레트를 유지한다. */
+  --color-meter-panel: var(--color-panel);
+  --color-meter-line: var(--color-line-strong);
+  --color-meter-ink: var(--color-ink);
+  --color-meter-off: #E8E1D7;
+  --color-meter-green: #78C57F;
+  --color-meter-yellow: #E4BF45;
+  --color-meter-red: #DA5248;
+
   /* ── 시선 상태 3색 ─────────────────────────────────────────────
      리허설 화면 테두리에만 씁니다. 다른 곳에서 쓰지 않습니다.
      여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */
   --color-gaze-audience: #6B9E78;   /* 청중 · solid 2px */
-  --color-gaze-screen: #D9A441;     /* 대본 · 슬라이드 · solid 5px */
+  --color-gaze-screen: #D9A441;     /* 화면(슬라이드) · solid 5px */
+  /* 대본(화면 아래 대본 띠) · solid 5px.
+     하이라이트 모드에서는 대본을 보는 게 자연스러워 경고처럼 보이지 않는 차분한 색을 둡니다 */
+  --color-gaze-script: #7FA3C7;
   --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
 
   /* ── 분석 대기 로딩 화면 ───────────────────────────────────────
@@ -83,6 +95,7 @@
   --spacing-script-keyword: 120px;
   --spacing-script-off: 0px;
 
+  --spacing-app-header: 5.3rem;     /* AppHeader 높이(약 85px, 높이를 바꾸면 AppHeader.tsx 와 같이 맞출 것) — 위에 얹힌 화면이 남은 높이를 계산할 때 */
   --spacing-sidebar: 236px;         /* 공통 셸 사이드바 */
   --container-page: 90rem;          /* max-w-page · 상단바와 본문 폭 (1440px) */
 
@@ -90,6 +103,13 @@
   --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
                "Apple SD Gothic Neo", sans-serif;
   --font-mono: "IBM Plex Mono", "Pretendard", ui-monospace, monospace;
+}
+
+@custom-variant prepare-compact {
+  @media (max-width: 1199px), (max-height: 699px) { @slot; }
+}
+@custom-variant prepare-low {
+  @media (max-height: 650px) and (min-width: 1024px) { @slot; }
 }
 
 html, body, #root { height: 100%; }
@@ -110,6 +130,13 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-coral);
   outline-offset: 2px;
+}
+
+/* 스크롤 영역 가장자리의 요소는 바깥으로 그린 테두리가 영역 경계에서 잘립니다.
+   영역(또는 목록)에 이 클래스를 달면 안에 있는 요소의 테두리를 안쪽에 그립니다.
+   전역 규칙이 레이어 밖이라 Tailwind 유틸리티로는 덮을 수 없어 여기에 둡니다 */
+.focus-inset :focus-visible {
+  outline-offset: -2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -178,6 +205,11 @@ body {
   --color-ink: #17191e;
   --color-stone: #6b7280;
   --color-coral-wash: #fff0e9;
+}
+
+/* 생성 화면의 버튼 대비 보정은 다른 밝은 지면으로 전파하지 않습니다. */
+.pitch-create-square {
+  --color-coral-deep: #b83b19;
 }
 
 /* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */

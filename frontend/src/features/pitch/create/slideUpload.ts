@@ -4,7 +4,26 @@ import { ApiFailure } from '@/shared/api/tokenStore';
 import { openPdf } from '@/shared/lib/pdf';
 import { isCurrentDraft, useCreateStore } from './createStore';
 import { fromPitchSaved, fromUploadedPresentation, toPitchRequest } from './lib/beAdapter';
-import { infoOf, infoReady, titleFromFile } from './lib/draft';
+import { infoOf, infoReady, titleFromFile, type SlideUploadFailure } from './lib/draft';
+
+/**
+ * 업로드 실패를 화면 문구로 가릅니다 (BE `pitch/exception.py`).
+ * 열 수 없는 PDF(깨짐 · 암호 · PDF 아님)와 너무 복잡한 PDF 는 다시 올려도 같아서 따로 알리고,
+ * 서버가 바쁠 때는 네트워크 탓으로 보이지 않게 합니다.
+ */
+function uploadFailureReason(error: unknown): SlideUploadFailure {
+  if (!(error instanceof ApiFailure)) return 'upload';
+  switch (error.code) {
+    case 'INVALID_PRESENTATION':
+      return 'invalid';
+    case 'PRESENTATION_TOO_COMPLEX':
+      return 'complex';
+    case 'PRESENTATION_BUSY':
+      return 'busy';
+    default:
+      return 'upload';
+  }
+}
 
 /**
  * 슬라이드 올리기 — 업로드 → 장수 받기 → 버전에 채우기.
@@ -26,7 +45,7 @@ import { infoOf, infoReady, titleFromFile } from './lib/draft';
  * ── 피치가 없으면 여기서 만듭니다 (시안 `pitch-create`) ──────────────────────
  * 첫 단계가 슬라이드라 처음 올릴 때는 피치가 없습니다. 발표자료는 피치 아래에 올라가므로
  * 파일 이름을 제목으로, 시간은 기본값으로 피치부터 만들고(`POST /pitches/add`) 올립니다.
- * 날짜는 비워 둡니다. 제목 · 날짜 · 시간은 발표정보 확인 단계에서 고칩니다.
+ * 새 발표의 날짜는 비워 둡니다. 제목과 시간은 발표정보에서 확인합니다.
  *
  * 실패는 스토어의 `slideUpload` 로 화면에 올리고, 이 함수는 던지지 않습니다.
  */
@@ -35,15 +54,17 @@ export async function uploadSlides(file: File): Promise<void> {
   const { draftId } = store;
   let { pitchId } = store;
   // 업로드가 끝나기 전에 다른 빈 버전을 만들어도 시작한 자리에 채웁니다.
-  const targetVersion = store.version ?? store.draft.slides.at(-1)?.version ?? null;
+  const viewed = store.node === 'slides' ? store.version : store.viewedVersions.slides;
+  const targetVersion = viewed ?? store.draft.slides.at(-1)?.version ?? null;
   // 두 번 눌러도 한 번만 올립니다
-  if (store.slideUpload.status === 'uploading') return;
+  if (store.slideUpload.status === 'uploading' || store.infoSaving) return;
   const set = store.setSlideUpload;
 
   set({ status: 'uploading', file });
 
   if (!pitchId) {
-    const info = { ...infoOf(store.draft), title: titleFromFile(file.name) };
+    const current = store.infoEdits ?? infoOf(store.draft);
+    const info = { ...current, title: current.title.trim() || titleFromFile(file.name) };
     // 새 작성의 시간 기본값은 늘 알고 있습니다. 모르는 허용오차(수정 화면)는 여기 오지 않습니다
     if (!infoReady(info)) return set({ status: 'failed', file, reason: 'upload' });
     try {
@@ -66,9 +87,7 @@ export async function uploadSlides(file: File): Promise<void> {
     if (!isCurrentDraft(draftId)) return;
     // 화면에는 한 줄만 보이므로 원인은 콘솔에 남깁니다 (404 피치 없음 · 네트워크 · 413 크기 …)
     console.error('[슬라이드] 업로드 실패', { pitchId, file: file.name, error });
-    // BE 가 PDF 를 열지 못했으면(깨짐 · 암호 · PDF 아님) 다시 올려도 같습니다 — 다른 문구로 알립니다
-    const invalid = error instanceof ApiFailure && error.code === 'INVALID_PRESENTATION';
-    set({ status: 'failed', file, reason: invalid ? 'invalid' : 'upload' });
+    set({ status: 'failed', file, reason: uploadFailureReason(error) });
     return;
   }
 

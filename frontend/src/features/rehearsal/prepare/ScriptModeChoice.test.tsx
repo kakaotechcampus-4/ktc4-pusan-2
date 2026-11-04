@@ -22,6 +22,18 @@ function Choice() {
   const [value, setValue] = useState<ScriptMode>('HIGHLIGHT');
   return <ScriptModeChoice value={value} onChange={setValue} />;
 }
+/** 시작을 누른 뒤 바꾸면 화면과 만들어질 Take 의 대본 표시가 갈라집니다 (#719) */
+it('잠그면 눌러도 바뀌지 않는다', async () => {
+  const onChange = vi.fn();
+  await act(async () =>
+    root.render(<ScriptModeChoice value="HIGHLIGHT" onChange={onChange} disabled />),
+  );
+  const options = [...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+  expect(options.every((option) => option.disabled)).toBe(true);
+  await act(async () => options[0]!.click());
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 it('keeps one tab stop and wraps arrow selection with focus following the selected option', async () => {
   await act(async () => root.render(<Choice />));
   const options = [...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')];

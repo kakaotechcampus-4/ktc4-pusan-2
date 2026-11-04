@@ -1,6 +1,6 @@
 import { lazy } from 'react';
 
-// 첫 진입 화면은 즉시 표시하고, PDF·시선 엔진·개발 시안은 해당 화면 진입 때만 가져옵니다.
+// 첫 진입 화면은 즉시 표시하고, PDF·시선 엔진은 해당 화면 진입 때만 가져옵니다.
 export const StageDemo = lazy(() =>
   import('@/features/rehearsal/stage/StageDemo').then((m) => ({ default: m.StageDemo })),
 );
@@ -35,12 +35,6 @@ export const ProcessingPage = lazy(() =>
 );
 export const ReportPage = lazy(() =>
   import('@/features/report/ReportPage').then((m) => ({ default: m.ReportPage })),
-);
-export const DesignIndex = lazy(() =>
-  import('@/dev/design/DesignIndex').then((m) => ({ default: m.DesignIndex })),
-);
-export const DesignDraftRoute = lazy(() =>
-  import('@/dev/design/DesignIndex').then((m) => ({ default: m.DesignDraftRoute })),
 );
 export const AboutPage = lazy(() =>
   import('@/features/info/AboutPage').then((m) => ({ default: m.AboutPage })),

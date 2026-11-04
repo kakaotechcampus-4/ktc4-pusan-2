@@ -73,6 +73,12 @@ interface PrepareState {
   /** 사용자가 직접 골랐나. 서버 기본값으로 덮어쓰지 않기 위한 표시입니다 */
   scriptModeTouched: boolean;
   /**
+   * 대본 표시를 고른 피치. 이 스토어는 앱 메모리에 남아서, 다른 피치의 장치 점검에 들어가도
+   * 앞 피치에서 고른 값(예: 실전 모드)이 남고 `scriptModeTouched` 때문에 서버 기본값이 들어가지
+   * 않았습니다. 그래서 피치가 바뀌면 대본 표시만 비웁니다 (`enterPitch`)
+   */
+  scriptModePitchId: string | null;
+  /**
    * 점검을 통과한 카메라·마이크. 리허설이 **같은 장치**를 엽니다.
    * 비어 있으면 브라우저 기본 장치입니다 — 캘리브레이션과 녹음이 다른 장치에서
    * 나오면 점검이 아무것도 보장하지 못합니다.
@@ -89,6 +95,12 @@ interface PrepareState {
   setScriptMode: (mode: ScriptMode, byUser?: boolean) => void;
   setDevices: (devices: DeviceChoice) => void;
   /**
+   * 장치 점검에 들어올 때 부릅니다. 다른 피치면 대본 표시를 처음 값으로 돌립니다.
+   * 장치 선택은 남깁니다 — 같은 컴퓨터라 피치가 바뀌어도 같은 장치를 씁니다.
+   * 시선 기준은 `useGazeSetup` 이 들어올 때마다 따로 지웁니다
+   */
+  enterPitch: (pitchId: string) => void;
+  /**
    * 리허설을 새로고침했을 때 세션 행에 남겨 둔 값으로 되살립니다 (`SessionRow.prepare`).
    * 이 스토어는 메모리에만 있어서 새로고침하면 비어 있습니다.
    */
@@ -96,12 +108,16 @@ interface PrepareState {
   reset: () => void;
 }
 
+/** 아직 고르지 않았을 때의 대본 표시. 서버 기본값이 오면 그것으로 바뀝니다 */
+export const DEFAULT_SCRIPT_MODE: ScriptMode = 'HIGHLIGHT';
+
 const INITIAL = {
   calibration: null,
   calibrationAdvice: null,
   placement: null,
-  scriptMode: 'HIGHLIGHT' as ScriptMode,
+  scriptMode: DEFAULT_SCRIPT_MODE,
   scriptModeTouched: false,
+  scriptModePitchId: null as string | null,
   devices: {} as DeviceChoice,
 };
 
@@ -114,6 +130,16 @@ export const usePrepareStore = create<PrepareState>((set) => ({
   setScriptMode: (mode, byUser = true) =>
     set((s) => ({ scriptMode: mode, scriptModeTouched: s.scriptModeTouched || byUser })),
   setDevices: (devices) => set({ devices }),
+  enterPitch: (pitchId) =>
+    set((s) =>
+      s.scriptModePitchId === pitchId
+        ? s
+        : {
+            scriptModePitchId: pitchId,
+            scriptMode: INITIAL.scriptMode,
+            scriptModeTouched: false,
+          },
+    ),
   restore: ({ calibration, devices }) => set({ calibration, devices }),
   reset: () => set(INITIAL),
 }));
