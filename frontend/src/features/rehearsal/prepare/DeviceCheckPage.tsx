@@ -405,6 +405,8 @@ export function DeviceCheckPage() {
         scriptMode,
         // 준비 정보의 번호는 예상값이라 그사이 다른 Take 가 생기면 어긋납니다. 실제로 매긴 번호를 씁니다
         takeNumber: take.takeNumber,
+        // 실패해 장치 점검으로 돌아갈 때 이 조합을 다시 넘깁니다 (`deviceCheckLink`)
+        practice: combo,
       };
       await setSessionTicket(clientSessionId, ticket);
 

@@ -212,7 +212,10 @@ it('starts with the chosen server version IDs while the optional voice task is s
     expect.objectContaining({
       presentationVersionId: 'chosen-pv',
       scriptVersionId: 'chosen-sv',
-      timeLimitSec: 180,
+      // 조합의 목표 시간(180)이 아니라 피치의 지금 설정(300)입니다 — BE 가 Take 를 그 값으로 기록합니다
+      timeLimitSec: 300,
+      // 실패해 장치 점검으로 돌아갈 때 이 조합을 다시 넘깁니다 (deviceCheckLink)
+      practice: combo,
     }),
   );
   expect(host.textContent).toContain('연습 시작');
