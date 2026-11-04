@@ -793,3 +793,75 @@ describe('독립 리뷰 반영', () => {
     expect((await send(message('비교해 줘', { scope_pitch_id: 42 }))).status).toBe(422);
   });
 });
+
+describe('AI 코드(schemas.py)와 같은 모양', () => {
+  const screenOf = (name: 'pitch_create' | 'pitch_edit') => ({
+    name,
+    snapshot_id: `ss-${name}`,
+    step: 'info',
+    version_label: null,
+    version_id: null,
+    saved: null,
+    draft: {
+      title: null,
+      slide_count: null,
+      script_chars: null,
+      time_limit_sec: 300,
+      criteria_text: null,
+    },
+    changed: [],
+  });
+
+  it('새 피치 화면의 근거는 pitch_id 가 null, 피치 수정 화면은 그 피치', async () => {
+    const pitchIds = [];
+    for (const name of ['pitch_create', 'pitch_edit'] as const) {
+      const { run_id, conversation_id } = await accepted('제한 시간 어디서 바꿔?', {
+        page: { route: '/', pitch_id: null, take_id: null, screen: screenOf(name) },
+      });
+      await settle(run_id);
+      const answer = (await messages(conversation_id)).items.at(-1)!;
+      pitchIds.push(answer.evidence.find((e) => e.origin === 'SCREEN')!.pitch_id);
+    }
+    expect(pitchIds[0]).toBeNull();
+    expect(typeof pitchIds[1]).toBe('string');
+  });
+
+  it('잴 수 없는 사용자 안은 goal · content_hash 가 null 이고 고를 수 없다', async () => {
+    const { run_id, conversation_id } = await accepted('자신감 있게 하는 걸 목표로 제안해 줘');
+    await settle(run_id);
+    const proposal = (await messages(conversation_id)).items.at(-1)!.cards[0] as Extract<
+      Card,
+      { type: 'GOAL_PROPOSAL' }
+    >;
+    const user = proposal.options.find((o) => o.label === 'USER')!;
+    expect([user.goal, user.content_hash]).toEqual([null, null]);
+    const pick = (option: 'USER' | 'EXPERT') =>
+      send(
+        message('골라 줘', {
+          conversation_id,
+          choice: { proposal_id: proposal.proposal_id, option },
+        }),
+      );
+    expect((await pick('USER')).status).toBe(422);
+    expect((await pick('EXPERT')).status).toBe(202);
+  });
+
+  it('다시 평가 결과의 change 는 객체, criteria_results 는 배열', async () => {
+    const { run_id, conversation_id } = await accepted('대본 보고 한 발표였어');
+    const ask = askOf(await settle(run_id));
+    await call(chatPaths.decision(ask.action_id), 'POST', {
+      decision: 'APPROVE',
+      args_hash: ask.args_hash,
+    });
+    await settle(run_id);
+    const result = (await messages(conversation_id)).items.at(-1)!.cards[0] as Extract<
+      Card,
+      { type: 'REASSESS_RESULT' }
+    >;
+    expect(result.change).toEqual({ script_used: true });
+    expect([
+      Array.isArray(result.before.criteria_results),
+      Array.isArray(result.after.criteria_results),
+    ]).toEqual([true, true]);
+  });
+});

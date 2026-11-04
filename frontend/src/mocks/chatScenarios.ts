@@ -284,10 +284,10 @@ function screenSteps(screen: Extract<ChatScreen, { name: 'pitch_create' | 'pitch
   const sec = screen.draft.time_limit_sec;
   const steps: Step[] = guideOnly('제한 시간 바꾸기', "자료 '발표 정보 바꾸기'");
   if (sec !== null) {
-    // 문서 미정: 새 피치 화면은 아직 피치가 없는데 `Evidence.pitch_id` 는 null 을 받지 않습니다.
-    // AI · BE 에 물어볼 것 — 목은 임시로 목 피치 ID 를 씁니다
     const value = evidence({
       evidence_id: 'ev-screen-time',
+      // 새 피치 화면은 아직 피치가 없습니다 — AI 코드는 null 을 허용합니다 (문서 5-2 표에는 아직 없음)
+      pitch_id: screen.name === 'pitch_create' ? null : PITCH_ID,
       origin: 'SCREEN',
       kind: null,
       revision: null,
@@ -345,7 +345,9 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
       { t: 'claim', data: say('SYSTEM', '발표 연습과 관계없는 질문이에요.') },
       { t: 'end', status: 'REFUSED', cards: () => [] },
     ];
-  if (text.includes('제안'))
+  if (text.includes('제안')) {
+    // "자신감 있게" 처럼 기록으로 잴 수 없는 사용자 안은 목표 없이(goal null) 설명만 둡니다 (12-4)
+    const measurable = !text.includes('자신감');
     return [
       ...base(),
       { t: 'claim', data: first! },
@@ -359,18 +361,26 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
               type: 'GOAL_PROPOSAL',
               proposal_id: 'proposal-1',
               options: [
-                {
-                  label: 'USER',
-                  // 장이 없는 목표라 기준도 전체 장 평균(35%)입니다
-                  goal: {
-                    ...proposed,
-                    slide_number: null,
-                    base: { ...proposed.base, value: 0.35 },
-                  },
-                  reason: '말씀하신 대로 전체 장의 청중 보기를 올리는 목표예요.',
-                  evidence_ids: [],
-                  content_hash: 'hash-user',
-                },
+                measurable
+                  ? {
+                      label: 'USER',
+                      // 장이 없는 목표라 기준도 전체 장 평균(35%)입니다
+                      goal: {
+                        ...proposed,
+                        slide_number: null,
+                        base: { ...proposed.base, value: 0.35 },
+                      },
+                      reason: '말씀하신 대로 전체 장의 청중 보기를 올리는 목표예요.',
+                      evidence_ids: [],
+                      content_hash: 'hash-user',
+                    }
+                  : {
+                      label: 'USER',
+                      goal: null,
+                      reason: '말씀하신 자신감은 기록으로 잴 수 없어 목표로 저장하지 않아요.',
+                      evidence_ids: [],
+                      content_hash: null,
+                    },
                 {
                   label: 'EXPERT',
                   goal: proposed,
@@ -384,6 +394,7 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
         },
       },
     ];
+  }
   if (text.includes('목표'))
     return [
       ...base(),
@@ -434,16 +445,16 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
                 type: 'REASSESS_RESULT',
                 // 홈 목에서 점수가 있는 Take(2, 72점) — Take 3 은 점수가 없습니다
                 take_id: take2!.take_id,
-                change: 'SCRIPT_USED',
+                change: { script_used: true },
                 before: {
                   score: take2!.score,
                   dimensions: { audience_gaze: 'NEEDS_WORK', delivery: 'STABLE' },
-                  criteria_results: {},
+                  criteria_results: [],
                 },
                 after: {
                   score: 78,
                   dimensions: { audience_gaze: null, delivery: 'STABLE' },
-                  criteria_results: {},
+                  criteria_results: [],
                 },
                 changed_fields: ['score', 'dimensions.audience_gaze'],
                 official_differs: false,
@@ -508,7 +519,7 @@ function goalSavedCard(actionId: string, chosen: GoalOption | null = null): Card
   return {
     type: 'GOAL_SAVED',
     action_id: actionId,
-    goal: chosen ? { ...goal, ...chosen.goal } : goal,
+    goal: chosen?.goal ? { ...goal, ...chosen.goal } : goal,
     reason: chosen?.reason ?? '3장 청중 보기 비율이 가장 낮아요.',
     evidence_ids: chosen?.evidence_ids ?? ['ev-gaze-diff'],
     undo: true,

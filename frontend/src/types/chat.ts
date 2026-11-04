@@ -6,6 +6,10 @@
  * 그래서 **값과 동작은 문서 그대로, 감싸는 모양(목록 키 · 페이지 칸)은 FE 가 임시로 정했습니다.**
  * BE 초안이 나오면 이 파일과 `mocks/chat.ts` · `shared/api/chatPaths.ts` 부터 맞춥니다.
  *
+ * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 연구 모듈의
+ * `ai/research/chat-agent/src/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `feat/ai-chat-agent-svc-guide-facts`
+ * `8ed5a688` (#921, 머지 전). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
+ *
  * BE 그대로 snake_case 입니다. 없음은 `?` 가 아니라 `| null` 입니다(frontend/AGENTS.md 6절).
  */
 
@@ -55,7 +59,8 @@ export interface TraceItem {
 export interface Evidence {
   evidence_id: string;
   origin: 'RECORD' | 'SCREEN' | 'COMPUTED';
-  pitch_id: string;
+  /** AI 코드는 null 을 허용합니다 — 아직 피치가 없는 새 피치 화면의 값 (문서 5-2 표는 null 없음) */
+  pitch_id: string | null;
   take_id: string | null;
   take_number: number | null;
   kind: string | null;
@@ -129,7 +134,7 @@ export interface Goal {
   metric: string;
   slide_number: number | null;
   operator: 'gt_base' | 'lt_base' | 'in_range';
-  script_version_id: string;
+  script_version_id: string | null;
   standard_version: number | null;
   goal_rule_version: string;
   base: {
@@ -150,8 +155,10 @@ export type ProposedGoal = Omit<Goal, 'version' | 'status' | 'created_at'>;
 /** 리뷰 결과 한쪽 — 바꾸기 전(A) · 참고 결과(B)가 같은 모양입니다 */
 export interface ReassessSide {
   score: number | null;
+  /** 차원 상태. 문서 12-4 는 null 을 "판정 없음" 으로 보이고, AI 코드는 null 을 받지 않습니다 — 화면은 둘 다 받습니다 */
   dimensions: Record<string, string | null>;
-  criteria_results: Record<string, string | null>;
+  /** 사용자 기준 판정 목록 (AI 코드 `list[dict]`) */
+  criteria_results: Record<string, unknown>[];
 }
 
 /** 카드 (5-2 `Card` 종류). 모르는 `type` 은 화면이 대체 표시로 그립니다(12-4) */
@@ -170,16 +177,18 @@ export type Card =
       proposal_id: string;
       options: {
         label: 'USER' | 'EXPERT';
-        goal: ProposedGoal;
+        /** null 이면 잴 수 없는 안 — 설명만 보이고 [이 안으로] 버튼을 두지 않습니다 (12-4, AI 코드 `GoalDraft | None`) */
+        goal: ProposedGoal | null;
         reason: string;
         evidence_ids: string[];
-        content_hash: string;
+        content_hash: string | null;
       }[];
     }
   | {
       type: 'REASSESS_RESULT';
       take_id: string;
-      change: string;
+      /** 무엇을 바꿔 다시 평가했는지 (AI 코드 `dict`) */
+      change: Record<string, unknown>;
       before: ReassessSide;
       after: ReassessSide;
       changed_fields: string[];

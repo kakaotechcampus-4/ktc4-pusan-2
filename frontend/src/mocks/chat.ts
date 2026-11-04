@@ -45,7 +45,7 @@ import { isTerminalRun } from '@/shared/lib/chatAgent';
  * 보낸 말로 시나리오를 고릅니다. **위에서부터 처음 맞는 하나**입니다 (예: "목표 제안해 줘" 는 제안):
  *   (제안 카드에서 고름) → 승인 없이 바로 목표 저장됨
  *   "날씨"            → REFUSED (발표와 관계없는 질문)
- *   "제안"            → 목표 제안 카드(사용자 안 · 추천 안)
+ *   "제안"            → 목표 제안 카드(사용자 안 · 추천 안). "자신감" 이 있으면 사용자 안은 잴 수 없는 안(goal null)
  *   "목표"            → 할 일 · 도구 · 판단 문장 → 승인 카드(SAVE_GOAL) 대기 → [승인] 목표 저장됨 / [거절]
  *   "다시 평가" · "대본 보고" → 승인 카드(REASSESS) → [승인] 참고 결과 카드
  *   "발표할래" · "연습 준비" → [연습 준비로] 버튼 카드
@@ -731,6 +731,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         }
         const chosen = body.choice ? proposalOption(conversation, body.choice) : null;
         if (body.choice && !chosen) return error('NOT_FOUND', 404);
+        // 잴 수 없는 안(goal null)은 화면에 버튼이 없어 고를 수 없습니다 — 문서가 정하지 않아 목은 422 로 둡니다
+        if (chosen && !chosen.goal) return error('VALIDATION_ERROR', 422);
         // 다시 묻기는 이 대화에 있는 메시지만 — 없거나 남의 것은 같은 404 (12-3)
         const again = body.again_of_message_id;
         if (again && !conversation.messages.some((msg) => msg.message_id === again))
