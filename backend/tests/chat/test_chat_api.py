@@ -739,6 +739,50 @@ def test_answer_on_a_deleted_take_is_masked_on_read(
     assert (masked["claims"], masked["evidence"], masked["basis"]) == (None, None, None)
 
 
+def test_masking_reads_the_stored_id_and_checks_the_owner(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    # AI 기록 조립(request.py _current_sources)과 같은 기준이다. 대문자로 적힌 내 피치는 보이고,
+    # 남의 피치를 근거로 삼은 답은 가린다
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    mine = _pitch(db_session, user_id)
+    theirs = _pitch(db_session, _other_user(db_session))
+    upper = _answer(db_session, conversation_id, user_id, 2, source_pitch_ids=[str(mine).upper()])
+    other = _answer(db_session, conversation_id, user_id, 3, source_pitch_ids=[str(theirs)])
+
+    masked = {
+        message["message_id"]: message["masked"]
+        for message in client.get(
+            f"/api/chat/conversations/{conversation_id}/messages", headers=_headers(user_id)
+        ).json()["messages"]
+    }
+
+    assert (masked[str(upper.id)], masked[str(other.id)]) == (False, True)
+
+
+def test_run_status_hides_progress_once_a_read_source_is_gone(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    # 정리 작업이 1시간마다 비우기 전에도 지워진 근거의 진행은 보이지 않는다
+    _, sent = _send(client, user_id)
+    run = db_session.get(ChatRun, uuid.UUID(sent["run_id"]))
+    pitch_id = _pitch(db_session, user_id)
+    run.plan = [{"step": "기록 확인", "status": "DONE", "note": None}]
+    run.trace = [{"text": "Take 5 를 읽었어요."}]
+    run.read_sources = {"pitches": [str(pitch_id)], "takes": []}
+    db_session.flush()
+    path = f"/api/chat/runs/{run.id}"
+
+    shown = client.get(path, headers=_headers(user_id)).json()
+    assert (shown["plan"], shown["trace"]) == (run.plan, run.trace)
+
+    run.read_sources = {"pitches": [str(pitch_id)], "takes": [str(uuid.uuid4())]}
+    db_session.flush()
+    hidden = client.get(path, headers=_headers(user_id)).json()
+    assert (hidden["plan"], hidden["trace"]) == (None, None)
+
+
 def _judgement(assessment_id: str, *supersedes: str) -> dict[str, Any]:
     return {
         "assessment_id": assessment_id,

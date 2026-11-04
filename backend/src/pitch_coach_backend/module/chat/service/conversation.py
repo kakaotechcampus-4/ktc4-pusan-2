@@ -15,7 +15,6 @@ from pitch_coach_backend.module.chat.api_dto import (
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage
 from pitch_coach_backend.module.chat.exception import ChatRunInProgress, ChatTargetNotFound
-from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT, uses_deleted
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 
@@ -79,7 +78,12 @@ def list_messages(
     messages = repo.list_messages(conversation_id, before_seq=before_seq, limit=limit + 1)
     has_more = len(messages) > limit
     messages = messages[-limit:] if has_more else messages
-    current = _existing_sources(db, messages)
+    current = current_sources(
+        db,
+        user_id,
+        {value for message in messages for value in message.source_pitch_ids or []},
+        {value for message in messages for value in message.source_take_ids or []},
+    )
     superseded = superseded_by(repo.list_assessments(conversation_id))
     return MessageListResponse(
         messages=[_message_view(message, current, superseded) for message in messages],
@@ -133,31 +137,35 @@ def _conversation_view(
     )
 
 
-def _existing_sources(db: Session, messages: list[ChatMessage]) -> dict[str, dict[str, Any]]:
-    """한 페이지의 메시지가 근거로 삼은 피치 · Take 중 아직 있는 것. 한 번에 읽는다.
+def current_sources(
+    db: Session, user_id: uuid.UUID, pitch_ids: set[Any], take_ids: set[Any]
+) -> dict[str, dict[str, bool]]:
+    """근거로 삼은 피치 · Take 중 아직 있고 이 사용자의 것. 한 번에 읽는다.
 
+    저장된 문자열을 그대로 키로 두고, 값만 UUID 로 읽어 소유권까지 본다. AI 에 보낼 기록을 조립할
+    때(request.py `_current_sources`)와 같은 기준이라 화면과 AI 가 같은 답을 가린다.
     지워진 근거는 1시간 정리 작업이 가리지만, 그 사이에도 보이면 안 되므로
     읽을 때 다시 본다(12-2 ①).
     """
-    pitch_ids = {value for message in messages for value in message.source_pitch_ids or []}
-    take_ids = {value for message in messages for value in message.source_take_ids or []}
-    repo = ChatRepository(db)
-    pitches = {str(value) for value in repo.existing_pitch_ids(_uuids(pitch_ids))}
-    takes = {str(value) for value in repo.existing_take_ids(_uuids(take_ids))}
-    # uses_deleted 는 값이 None 인 항목을 지워진 것으로 본다
+    pitches = _parsed(pitch_ids)
+    takes = _parsed(take_ids)
+    repo = ChatApiRepository(db)
+    owned_pitches = repo.owned_pitch_ids(user_id, set(pitches.values()))
+    owned_takes = repo.owned_take_ids(user_id, set(takes.values()))
+    # uses_deleted 는 없는 키를 지워진 것으로 본다
     return {
-        "pitches": {value: True for value in pitches},
-        "takes": {value: True for value in takes},
+        "pitches": {key: True for key, value in pitches.items() if value in owned_pitches},
+        "takes": {key: True for key, value in takes.items() if value in owned_takes},
     }
 
 
-def _uuids(values: set[str]) -> set[uuid.UUID]:
-    parsed: set[uuid.UUID] = set()
+def _parsed(values: set[Any]) -> dict[str, uuid.UUID]:
+    parsed: dict[str, uuid.UUID] = {}
     for value in values:
         try:
-            parsed.add(uuid.UUID(str(value)))
+            parsed[str(value)] = uuid.UUID(str(value))
         except ValueError:
-            # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 조회하지 않아 지워진 것으로 남는다
+            # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 키를 두지 않아 지워진 것으로 남는다
             continue
     return parsed
 

@@ -14,6 +14,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
 )
 from pitch_coach_backend.module.pitch.entity import Pitch
+from pitch_coach_backend.module.take.entity import Take
 
 ACTIVE_RUN_STATUSES = ("QUEUED", "RUNNING", "WAITING_APPROVAL")
 
@@ -116,6 +117,28 @@ class ChatApiRepository:
                 )
                 .order_by(ChatMessage.seq)
             ).all()
+        )
+
+    def owned_pitch_ids(self, user_id: uuid.UUID, pitch_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+        """아직 있고 이 사용자의 것인 피치."""
+        if not pitch_ids:
+            return set()
+        return set(
+            self.db.scalars(
+                select(Pitch.id).where(Pitch.id.in_(pitch_ids), Pitch.user_id == user_id)
+            )
+        )
+
+    def owned_take_ids(self, user_id: uuid.UUID, take_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+        """아직 있고 이 사용자의 피치에 속한 Take."""
+        if not take_ids:
+            return set()
+        return set(
+            self.db.scalars(
+                select(Take.id)
+                .join(Pitch, Pitch.id == Take.pitch_id)
+                .where(Take.id.in_(take_ids), Pitch.user_id == user_id)
+            )
         )
 
     def charge_turn(self, user_id: uuid.UUID, day: date, limit: int) -> bool:

@@ -13,7 +13,9 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.exception import ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.conversation import current_sources
 from pitch_coach_backend.module.chat.service.run import SEOUL, add_run_log
+from pitch_coach_backend.module.chat.service.stale import uses_deleted
 
 # 화면이 바로 취소할 수 있는 상태. 승인 대기(WAITING_APPROVAL)의 취소는 대기 행동을 함께 끝내고
 # 고정 문장을 남겨야 해서 승인 · 거절 API 와 함께 더한다
@@ -24,7 +26,7 @@ def run_status(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
     run = ChatApiRepository(db).get_owned_run(run_id, user_id)
     if run is None:
         raise ChatTargetNotFound()
-    return _view(run)
+    return _view(db, run)
 
 
 def latest_run_status(
@@ -35,7 +37,7 @@ def latest_run_status(
     if repo.get_owned_conversation(conversation_id, user_id) is None:
         raise ChatTargetNotFound()
     run = repo.latest_run(conversation_id)
-    return _view(run) if run is not None else None
+    return _view(db, run) if run is not None else None
 
 
 def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusResponse:
@@ -51,7 +53,7 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
         raise ChatTargetNotFound()
     if run.status not in CANCELLABLE:
         # 잠근 채 읽은 상태로 답한다. rollback 하면 객체가 만료돼 다시 읽게 된다
-        view = _view(run)
+        view = _view(db, run)
         db.rollback()
         return view
     now = datetime.now(UTC)
@@ -67,7 +69,7 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
     run.row_revision += 1
     add_run_log(ChatRepository(db), run, now)
     db.commit()
-    return _view(run)
+    return _view(db, run)
 
 
 def _close_goal_check(repo: ChatRepository, run: ChatRun) -> None:
@@ -81,13 +83,38 @@ def _close_goal_check(repo: ChatRepository, run: ChatRun) -> None:
         lease.status = "DONE"
 
 
-def _view(run: ChatRun) -> RunStatusResponse:
+def _view(db: Session, run: ChatRun) -> RunStatusResponse:
+    hidden = _uses_deleted_sources(db, run)
     return RunStatusResponse(
         run_id=run.id,
         conversation_id=run.conversation_id,
         status=run.status,
-        plan=run.plan,
-        trace=run.trace,
+        plan=None if hidden else run.plan,
+        trace=None if hidden else run.trace,
         error=RunErrorDTO(code=run.error_code) if run.error_code else None,
         retry_after_s=run.retry_after_s,
+    )
+
+
+def _uses_deleted_sources(db: Session, run: ChatRun) -> bool:
+    """실행이 읽은 피치 · Take 가 지워졌거나 남의 것인지. 진행(plan · trace)을 가릴 때 쓴다.
+
+    정리 작업(cleanup.py `_mask_runs`)이 1시간마다 비우지만 그 사이에도 보이면 안 되므로
+    메시지 목록처럼 읽을 때 다시 본다(12-2 ①). 보는 근거도 정리 작업과 같다.
+    """
+    if not run.plan and not run.trace:
+        return False
+    read = run.read_sources or {}
+    pitch_ids = set(read.get("pitches") or [])
+    take_ids = {
+        *(read.get("takes") or []),
+        *(
+            take_id
+            for action in ChatRepository(db).list_actions(run.id)
+            for take_id in action.source_take_ids or []
+        ),
+    }
+    current = current_sources(db, run.user_id, pitch_ids, take_ids)
+    return uses_deleted(
+        {str(value) for value in pitch_ids}, {str(value) for value in take_ids}, current
     )
