@@ -102,6 +102,22 @@ class ChatApiRepository:
         rows = self.db.scalars(stmt.order_by(ChatMessage.seq.desc()).limit(limit)).all()
         return list(reversed(rows))
 
+    def list_assessments(self, conversation_id: uuid.UUID) -> list[Row]:
+        """대화의 모든 판단을 메시지 순서대로.
+
+        판단이 대체됐는지는 페이지와 상관없이 대화 전체로 정한다.
+        """
+        return list(
+            self.db.execute(
+                select(ChatMessage.seq, ChatMessage.assessments)
+                .where(
+                    ChatMessage.conversation_id == conversation_id,
+                    ChatMessage.assessments.is_not(None),
+                )
+                .order_by(ChatMessage.seq)
+            ).all()
+        )
+
     def charge_turn(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
         """사용자 하루 턴을 1 선점한다. 한도에 닿았으면 늘리지 않고 False."""
         stmt = (

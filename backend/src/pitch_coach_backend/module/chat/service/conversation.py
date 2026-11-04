@@ -3,6 +3,7 @@
 import uuid
 from typing import Any
 
+from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.api_dto import (
@@ -79,10 +80,35 @@ def list_messages(
     has_more = len(messages) > limit
     messages = messages[-limit:] if has_more else messages
     current = _existing_sources(db, messages)
+    superseded = superseded_by(repo.list_assessments(conversation_id))
     return MessageListResponse(
-        messages=[_message_view(message, current) for message in messages],
+        messages=[_message_view(message, current, superseded) for message in messages],
         next_before_seq=messages[0].seq if has_more else None,
     )
+
+
+def superseded_by(rows: list[Row]) -> dict[str, str]:
+    """앞 판단 ID → 그 판단을 `supersedes` 로 가리킨 가장 최근 판단 ID.
+
+    새 판단은 앞 메시지의 판단만 대체한다. 이 대화에 없는 ID 나 같은 메시지 · 뒤 메시지의 ID 를
+    가리키면 잇지 않는다(12-3 '판단 저장'). 앞 판단은 고치지 않고 읽을 때 이 값만 붙인다.
+    """
+    earlier: set[str] = set()
+    links: dict[str, str] = {}
+    for _, assessments in rows:
+        ids: list[str] = []
+        for assessment in assessments if isinstance(assessments, list) else []:
+            new_id = assessment.get("assessment_id") if isinstance(assessment, dict) else None
+            if not isinstance(new_id, str):
+                continue
+            ids.append(new_id)
+            supersedes = assessment.get("supersedes")
+            # 목록이 아니면(예: 문자열) 글자 단위로 돌아 엉뚱한 판단을 잇지 않게 건너뛴다
+            for old_id in supersedes if isinstance(supersedes, list) else []:
+                if old_id in earlier:
+                    links[old_id] = new_id
+        earlier.update(ids)
+    return links
 
 
 def _owned_pitch_title(db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None) -> str | None:
@@ -136,12 +162,17 @@ def _uuids(values: set[str]) -> set[uuid.UUID]:
     return parsed
 
 
-def _message_view(message: ChatMessage, current: dict[str, dict[str, Any]]) -> ChatMessageResponse:
+def _message_view(
+    message: ChatMessage, current: dict[str, dict[str, Any]], superseded: dict[str, str]
+) -> ChatMessageResponse:
     pitch_ids = {str(value) for value in message.source_pitch_ids or []}
     take_ids = {str(value) for value in message.source_take_ids or []}
     masked = uses_deleted(pitch_ids, take_ids, current)
     # 가릴 때는 본문만이 아니라 그 근거에서 나온 모든 반환 필드를 뺀다(12-2)
     hidden = None if masked else message
+    assessments = (
+        _with_superseded_by(hidden.assessments, superseded) if hidden is not None else None
+    )
     return ChatMessageResponse(
         message_id=message.id,
         seq=message.seq,
@@ -153,7 +184,7 @@ def _message_view(message: ChatMessage, current: dict[str, dict[str, Any]]) -> C
         created_at=message.created_at,
         claims=hidden and hidden.claims,
         cards=hidden and hidden.cards,
-        assessments=hidden and hidden.assessments,
+        assessments=assessments,
         evidence=hidden and hidden.evidence,
         sources=hidden and hidden.sources,
         basis=hidden and hidden.basis,
@@ -161,3 +192,18 @@ def _message_view(message: ChatMessage, current: dict[str, dict[str, Any]]) -> C
         trace=hidden and hidden.trace,
         masked=masked,
     )
+
+
+def _with_superseded_by(assessments: Any, superseded: dict[str, str]) -> Any:
+    """판단마다 `superseded_by`(대체한 새 판단 ID, 없으면 null)를 붙인다.
+
+    저장된 값은 바꾸지 않는다.
+    """
+    if not isinstance(assessments, list):
+        return assessments
+    return [
+        {**item, "superseded_by": superseded.get(item.get("assessment_id"))}
+        if isinstance(item, dict)
+        else item
+        for item in assessments
+    ]
