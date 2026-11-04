@@ -133,6 +133,56 @@ class FinalView(_View):
         return self
 
 
+class _Args(BaseModel):
+    model_config = ConfigDict(strict=True, allow_inf_nan=False, extra="forbid")
+
+
+class FetchPitchArgs(_Args):
+    pitch_id: str | None
+    name: str | None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> Self:
+        if (self.pitch_id is None) == (self.name is None):
+            raise ValueError("pitch_id 와 name 중 정확히 하나가 필요하다")
+        return self
+
+
+class FetchTakeArgs(_Args):
+    pitch_id: str
+    take_id: str
+
+
+class ReassessArgs(_Args):
+    take_id: str
+    change: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _one_allowed_key(self) -> Self:
+        if len(self.change) != 1 or next(iter(self.change)) not in ("script_used", "targets"):
+            raise ValueError("change 는 허용 키 하나만 가진다")
+        return self
+
+
+class SaveGoalArgs(_Args):
+    expected_goal_version: int = Field(ge=0)
+    goal: dict[str, Any]
+
+
+ACTION_ARGS: dict[str, type[_Args]] = {
+    "FETCH_PITCH": FetchPitchArgs,
+    "FETCH_TAKE": FetchTakeArgs,
+    "REASSESS": ReassessArgs,
+    "SAVE_GOAL": SaveGoalArgs,
+}
+ACTION_AUTONOMY = {
+    "FETCH_PITCH": "AUTO",
+    "FETCH_TAKE": "AUTO",
+    "REASSESS": "AUTO",
+    "SAVE_GOAL": "AUTO_UNDO",
+}
+
+
 def _reject_constant(value: str) -> Any:
     raise ValueError(f"JSON 에 {value} 를 쓸 수 없다")
 

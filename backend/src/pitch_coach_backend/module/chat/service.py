@@ -1,16 +1,18 @@
 import hashlib
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from pydantic import BaseModel
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal
-from pitch_coach_backend.module.chat.ai_response import StreamLine
+from pitch_coach_backend.module.chat.ai_response import ACTION_ARGS, ACTION_AUTONOMY, StreamLine
 from pitch_coach_backend.module.chat.dto import (
     ActionResultDTO,
     AgentChoiceDTO,
@@ -53,6 +55,11 @@ class ProposalNotFound(Exception):
 
 class RunLost(Exception):
     pass
+
+
+type ActionHandler = Callable[[Session, ChatRun, BaseModel], ActionResultDTO]
+
+ACTION_HANDLERS: dict[str, ActionHandler] = {}
 
 
 @dataclass(frozen=True)
@@ -322,22 +329,56 @@ def wait_for_action(
     return _claimed(row)
 
 
-def execute_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionResultDTO:
+def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionResultDTO | None:
     row = _lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)
-    result = ActionResultDTO(
+    saved = ChatRepository(db).get_action(row.id, action["action_id"])
+    if saved.status in ("SUCCEEDED", "FAILED"):
+        return ActionResultDTO.model_validate(saved.result)
+    if _invalid(action):
+        result = _failed(action, "VALIDATION_ERROR", "실행할 수 없는 행동이에요.")
+        saved.status = "FAILED"
+        saved.result = result.model_dump(mode="json")
+        db.commit()
+        return result
+    saved.status = "RUNNING"
+    db.commit()
+    return None
+
+
+def run_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionResultDTO:
+    row = _lock_current(db, run)
+    if row is None:
+        raise RunLost(run.run_id)
+    args = ACTION_ARGS[action["type"]].model_validate(action["args"])
+    result = ACTION_HANDLERS[action["type"]](db, row, args)
+    saved = ChatRepository(db).get_action(row.id, action["action_id"])
+    saved.status = "SUCCEEDED" if result.status != "FAILED" else "FAILED"
+    saved.result = result.model_dump(mode="json")
+    db.commit()
+    return result
+
+
+def _invalid(action: dict[str, Any]) -> bool:
+    kind = action["type"]
+    if kind not in ACTION_HANDLERS or action["autonomy"] != ACTION_AUTONOMY[kind]:
+        return True
+    try:
+        ACTION_ARGS[kind].model_validate(action["args"])
+    except ValueError:
+        return True
+    return False
+
+
+def _failed(action: dict[str, Any], code: str, message: str) -> ActionResultDTO:
+    return ActionResultDTO(
         action_id=action["action_id"],
         type=action["type"],
         status="FAILED",
         data=None,
-        error=AgentErrorDTO(code="VALIDATION_ERROR", message="아직 지원하지 않는 행동이에요."),
+        error=AgentErrorDTO(code=code, message=message),
     )
-    saved = ChatRepository(db).get_action(row.id, action["action_id"])
-    saved.status = "FAILED"
-    saved.result = result.model_dump(mode="json")
-    db.commit()
-    return result
 
 
 def _digest(value: Any) -> str:

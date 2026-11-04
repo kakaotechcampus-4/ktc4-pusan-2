@@ -138,12 +138,14 @@ class _Turn:
                 break
             await self._advance(service.wait_for_action, turn_call, outcome)
             started = loop.time()
+            action = outcome.data["actions"][0]
             result = await _in_session(
-                self._session_factory,
-                service.execute_action,
-                self._current,
-                outcome.data["actions"][0],
+                self._session_factory, service.begin_action, self._current, action
             )
+            if result is None:
+                result = await _in_session(
+                    self._session_factory, service.run_action, self._current, action
+                )
             action_ms = round((loop.time() - started) * 1000)
             resume = AgentResumeDTO(
                 state=SignedStateDTO.model_validate(outcome.data["state"]),
