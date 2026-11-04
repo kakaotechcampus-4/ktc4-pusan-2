@@ -19,7 +19,7 @@
      승인 흐름(12-3 '승인 · 거절' · '상태 전이'): `approve(run_id, action_id, args_hash)`는 해시가 저장값과 다르면 409(`ApprovalError`, 실행 안 함,
      대기 그대로), 맞으면 대기를 먼저 선점하고 **저장한 `args`로만** 실행해 `ACTION_RESULT`에 `executed_args_hash`를 싣고 이어 부른다
      (같은 승인 재요청은 처음 결과, 다시 평가 하루 횟수는 승인 때 한 번). `reject` · 만료(대기 시작부터 30분, `expire_due`) · 대기 중 새 메시지
-     (`send_message`가 대기를 먼저 `CANCELLED`로 끝낸 뒤 접수) · `cancel`은 **AI를 부르지 않는다**: 행동 `REJECTED` · `EXPIRED` · `CANCELLED`,
+     (`send_message`가 새 요청을 먼저 검사하고 유효해 접수할 때 대기를 `CANCELLED`로 끝냄) · `cancel`은 **AI를 부르지 않는다**: 행동 `REJECTED` · `EXPIRED` · `CANCELLED`,
      실행 `DONE` · `EXPIRED` · `CANCELLED`, 이미 낸 문장 뒤에 코어 `SystemText`의 고정 문장을 덧붙여 메시지로 저장한다. 먼저 확정한 전이가 이기고
      취소 · 만료가 확정된 뒤 온 승인은 실행하지 않는다(`AGENT_CANCELLED` · `AGENT_EXPIRED`). 선승인 `SAVE_GOAL`(`preapproved`)은 실제 `args.goal`에서
      내용 해시를 다시 계산해 저장된 제안의 `content_hash` · 제안 id · 고른 안과 모두 같을 때만 실행하고 다르면 `FAILED`(`PREAPPROVAL_MISMATCH`)로 실행하지 않는다.
@@ -31,8 +31,8 @@
   7. 다시 평가(`REASSESS`, 6-6): 지금 기록으로 리뷰 요청 A 를 만들고, A 의 깊은 복사본에서 허용 칸 하나만 바꾼 B 를 만들어 실제 리뷰 코드
      (`pitch_coach_ai.features.review.core.review_take`, LLM 없이 — 규칙 칸은 LLM 과 상관없이 같다)를 두 번 부른다. 공식 리뷰는 고치지 않는다.
 - 단순화(실제 BE와 다른 점): DB · 트랜잭션 · 행 잠금 · `row_revision` · 임대 · 재시작 복구 · 대화 자리 · 하루 턴 한도 · 202 접수 ·
-  HTTP 스트림이 없다(한 프로세스 · 한 스레드에서 차례로 부른다). 승인 · 취소 · 만료의 '원자적 선점'은 한 스레드의 순서(먼저 부른 쪽이 대기를 비움)로 흉내 내고,
-  만료는 시계를 흘린 뒤 `expire_due`(또는 승인 · 거절 · 새 메시지가 올 때 먼저)로 확정한다. 승인 대기 시간을 실행의 120초에서 빼는 것은 흉내 내지 않는다. 최신 아님 사유(6-8)는 근거가 지워진 답 가리기(`SOURCE_DELETED`)만 한다.
+  HTTP 스트림이 없다(한 프로세스에서 부른다). 승인 · 거절 · 취소 · 만료 · 새 메시지의 '대기 확인 → 결정'은 한 잠금(`threading.RLock`) 안의
+  조건부 전이로 흉내 낸다(먼저 잠근 쪽이 대기를 비우고 이긴다. 이긴 뒤의 실행은 잠금 밖에서 한다). 만료는 시계를 흘린 뒤 `expire_due`(또는 승인 · 거절 · 새 메시지가 올 때 먼저)로 확정한다. 승인 대기 시간을 실행의 120초에서 빼는 것은 흉내 내지 않는다. 최신 아님 사유(6-8)는 근거가 지워진 답 가리기(`SOURCE_DELETED`)만 한다.
   `build_review_request`는 저장된 Take 결과 · 이전 Take 3개 · 피치 미션 · 평가 기준으로 흉내 낸다(실제 BE 함수를 부르지 않는다).
   '목표 저장 뒤 시작한 Take'는 저장 시각 대신 '저장 때 그 피치의 가장 큰 Take 번호보다 큰 번호'로 가린다.
   '이 실행이 읽은 원천'은 행동 기록만이 아니라 이 실행에 보낸 피치 · Take 전부로 넓게 잡는다(지운 것을 놓치지 않으려는 보수적 선택).
@@ -45,6 +45,7 @@ import copy
 import hashlib
 import json
 import math
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -246,6 +247,10 @@ class ActionRecord:
     #: `ASK` 행동을 어떻게 확정했는가: `APPROVED`(승인) · `PREAPPROVED`(고른 안의 선승인) · `REJECTED` · `EXPIRED` · `CANCELLED`.
     #: `AUTO` · `BUTTON` 행동과 확정 전이면 None. 승인 없이 실행한 `ASK` 행동은 평가에서 금지된 일이다(14-1)
     decision: str | None = None
+    #: 승인 때 보관한 `args_hash`(`APPROVED`) 또는 선승인 행동의 `args_hash`(`PREAPPROVED`). 평가가 결과의 `executed_args_hash`와 대조한다
+    approved_hash: str | None = None
+    #: 결정 없이 `ASK` 행동을 실행하려 했으면 `NO_DECISION`(실행은 막혔고 평가에서 금지된 일로 센다)
+    blocked: str | None = None
 
 
 @dataclass
@@ -283,6 +288,8 @@ class Run:
     pending: PendingApproval | None = None
     #: 확정한 승인 대기의 `action_id` → 결정. 같은 `action_id`로 두 번 오면 처음 결과를 돌려준다
     decided: dict[str, str] = field(default_factory=dict)
+    #: 승인 때 보관한 `args_hash`(`action_id` → 해시). 실행 직전에 실제 `args`의 해시와 다시 대조한다
+    approved_hash: dict[str, str] = field(default_factory=dict)
     #: 거절 · 만료 · 취소로 끝났을 때 저장한 메시지(이미 낸 문장 + 고정 문장, AI 를 다시 부르지 않는다)
     closed_message: dict[str, Any] | None = None
     #: 이 실행에 보낸 피치 · Take id. 이어 부를 때 다시 확인해 지워진 것을 removed_sources 로 보낸다
@@ -290,6 +297,8 @@ class Run:
     #: 이 실행이 FETCH_TAKE 로 가져온 Take(이어 부를 때 loaded_takes 로 다시 싣는다)
     fetched_takes: list[str] = field(default_factory=list)
     reassess_count: int = 0
+    #: 승인 결정 때 예약한 다시 평가 횟수의 결과: `RESERVED` · `PER_TURN`(이 실행에서 이미 승인함) · `DAILY_LIMIT`
+    reassess_slot: str | None = None
     review_event: dict[str, Any] | None = None
 
     @property
@@ -356,6 +365,8 @@ class FakeBe:
         #: `settle`의 `EXPIRE`가 시계를 흘린 시간(초). 평가 실행기가 장애 주입 시간에서 빼려고 읽고 0으로 되돌린다
         self.expired_seconds = 0.0
         self._ids: dict[str, int] = {}
+        #: 승인 · 거절 · 취소 · 만료 · 새 메시지의 '대기 확인 → 결정'을 묶는 잠금(12-3 '상태 전이')
+        self._lock = threading.RLock()
 
     # ── 저장소 ───────────────────────────────────────────────────────
     def _next(self, prefix: str) -> str:
@@ -468,8 +479,8 @@ class FakeBe:
         """사용자 메시지 하나를 받아 실행을 승인 대기나 끝까지 돌린다(12-3 '턴 실행기'). 입력이 틀리면 ValueError(BE 422), 없는 대상은 LookupError(404).
 
         승인 대기(`WAITING_APPROVAL`)에서 멈추면 그대로 돌려준다(사용자가 `approve` · `reject`를 부른다). `approval`을 주면
-        `settle`로 그 결정까지 이어서 한다(시험 · 평가 편의). 이 대화가 승인 대기 중이면 먼저 대기 행동 · 실행을 `CANCELLED`로 끝내고
-        취소 문장을 덧붙여 저장한 뒤(AI 를 부르지 않는다, L2-43) 새 메시지를 접수한다.
+        `settle`로 그 결정까지 이어서 한다(시험 · 평가 편의). 새 요청이 유효하고 이 대화가 승인 대기 중이면 접수할 때 대기 행동 · 실행을
+        `CANCELLED`로 끝내고 취소 문장을 덧붙여 저장한다(AI 를 부르지 않는다, L2-43). 요청이 무효(없는 제안 id 등)면 대기를 그대로 둔다.
         """
         if not isinstance(text, str) or not text.strip() or len(text) > 2000:
             raise ValueError("VALIDATION_ERROR")
@@ -481,9 +492,7 @@ class FakeBe:
         if conv.user_id != user_id:
             raise LookupError("NOT_FOUND")
         self.expire_due()
-        waiting = self.waiting_run(conv.conversation_id)
-        if waiting is not None:
-            self._close(waiting, conv, "CANCELLED")
+        # 새 요청(선택지 등)을 먼저 검사한다. 무효면 기존 승인 대기는 그대로 둔다
         page_take = self.owned_take(page_take_id, user_id) if page_take_id else None
         page = {
             "route": f"/takes/{page_take_id}" if page_take else "/",
@@ -492,8 +501,13 @@ class FakeBe:
             "screen": screen,
         }
         selected = self._selected_proposal(conv, choice) if choice is not None else None
-        history = self._history(conv)
-        conv.messages.append(StoredMessage(self._next("m"), "user", text))
+        with self._lock:
+            # 유효한 새 메시지를 접수할 때 대기를 취소한다(AI 를 부르지 않는다, L2-43)
+            waiting = self.waiting_run(conv.conversation_id)
+            if waiting is not None:
+                self._close(waiting, conv, "CANCELLED")
+            history = self._history(conv)
+            conv.messages.append(StoredMessage(self._next("m"), "user", text))
         run = self._new_run(
             conv,
             "USER_MESSAGE",
@@ -780,39 +794,44 @@ class FakeBe:
         """대기 시작부터 30분을 넘긴 승인 대기를 `EXPIRED`로 끝낸다(AI 를 부르지 않는다). 끝낸 실행을 돌려준다."""
         now = self.clock.clock_ms()
         out: list[Run] = []
-        for run in list(self.runs.values()):
-            pend = run.pending
-            if (
-                run.status == "WAITING_APPROVAL"
-                and pend is not None
-                and now - pend.started_ms >= APPROVAL_WAIT_MS
-            ):
-                self._close(run, self.conversations[run.conversation_id], "EXPIRED")
-                out.append(run)
+        with self._lock:
+            for run in list(self.runs.values()):
+                pend = run.pending
+                if (
+                    run.status == "WAITING_APPROVAL"
+                    and pend is not None
+                    and now - pend.started_ms >= APPROVAL_WAIT_MS
+                ):
+                    self._close(run, self.conversations[run.conversation_id], "EXPIRED")
+                    out.append(run)
         return out
 
     def approve(
         self, run_id: str, action_id: str, args_hash: str, *, user_id: str | None = None
     ) -> Run:
-        """승인(12-3): 화면에 보인 `args_hash`가 저장값과 같을 때만, 저장한 `args`로 실행해 이어 부른다. 틀리면 `ApprovalError`."""
-        run, conv = self._claim(run_id, action_id, args_hash, user_id)
-        pend = run.pending
+        """승인(12-3): 화면에 보인 `args_hash`가 저장값과 같을 때만, 승인 때 보관한 `args` 사본으로 실행해 이어 부른다. 틀리면 `ApprovalError`.
+
+        이미 결정된 `action_id`의 재요청은 그 행동의 이전 결과만 돌려준다(지금 다른 행동이 대기 중이어도 건드리지 않는다).
+        """
+        run, conv, pend = self._decide(run_id, action_id, args_hash, user_id, "APPROVED")
         if pend is None:
-            return run  # 같은 승인의 재요청: 처음 결과
-        # 승인이 대기 상태를 선점했다. 이제 취소 · 만료가 와도 이긴 쪽은 승인이다
-        run.pending = None
-        run.decided[action_id] = "APPROVED"
-        run.status = "RUNNING"
-        req = self._run_action(run, conv, pend.action)
-        return run if req is None else self._drive(run, conv, req)
+            return run  # 이미 결정된 행동의 재요청: 처음 결과
+        # 보관한 args 로 실행 요청을 만든다. 대기 중 `pend.action["args"]`가 바뀌었어도 승인한 인자만 쓴다
+        action = copy.deepcopy(pend.action)
+        action["args"] = copy.deepcopy(pend.args)
+        req = self._run_action(run, conv, action)
+        if req is None:
+            if run.status == "PARTIAL":
+                # 호출 한도에 닿아 이어 부르지 못해도 승인 대기 때 받은 문장 · 판단 · 근거는 대화에 남긴다
+                self._store_final(run, conv, copy.deepcopy(pend.final), status="PARTIAL")
+            return run
+        return self._drive(run, conv, req)
 
     def reject(
         self, run_id: str, action_id: str, args_hash: str, *, user_id: str | None = None
     ) -> Run:
         """거절(12-3): AI 를 부르지 않는다. 행동 `REJECTED` · 실행 `DONE`, 이미 낸 문장 뒤에 거절 문장을 덧붙여 저장."""
-        run, conv = self._claim(run_id, action_id, args_hash, user_id)
-        if run.pending is not None:
-            self._close(run, conv, "REJECTED")
+        run, _conv, _pend = self._decide(run_id, action_id, args_hash, user_id, "REJECTED")
         return run
 
     def cancel(self, run_id: str, *, user_id: str | None = None) -> Run:
@@ -820,37 +839,67 @@ class FakeBe:
         run = self.runs.get(run_id)
         if run is None or (user_id is not None and run.user_id != user_id):
             raise ApprovalError(404, "NOT_FOUND")
-        self.expire_due()
-        if run.status == "WAITING_APPROVAL":
-            self._close(run, self.conversations[run.conversation_id], "CANCELLED")
+        with self._lock:
+            self.expire_due()
+            if run.status == "WAITING_APPROVAL" and run.pending is not None:
+                self._close(run, self.conversations[run.conversation_id], "CANCELLED")
         return run
 
-    def _claim(
-        self, run_id: str, action_id: str, args_hash: str, user_id: str | None
-    ) -> tuple[Run, Conversation]:
-        """승인 · 거절 요청 검사. 같은 `action_id`의 두 번째 요청은 처음 결과(`run.pending is None`인 채로 돌려줌)다."""
+    def _decide(
+        self,
+        run_id: str,
+        action_id: str,
+        args_hash: str,
+        user_id: str | None,
+        outcome: str,
+    ) -> tuple[Run, Conversation, PendingApproval | None]:
+        """승인 · 거절 요청의 '대기 확인 → 결정'을 한 잠금 안에서 한다(원자적 선점, 12-3 '상태 전이').
+
+        - 이미 결정된 `action_id`의 요청은 지금 대기와 상관없이 이전 결과만 돌려준다(`pending`은 None). 만료 · 취소로 끝난 행동은 409.
+        - 새 전이는 요청의 `action_id`가 지금 대기 행동이고 해시가 맞을 때만 한다. 거절이면 여기서 끝내고, 승인이면 대기를 비우고
+          결정 · 해시를 보관하고 다시 평가 하루 횟수를 예약한 뒤 보관한 대기 값을 돌려준다(실행은 잠금 밖에서 한다).
+        """
         run = self.runs.get(run_id)
         if run is None or (user_id is not None and run.user_id != user_id):
             raise ApprovalError(404, "NOT_FOUND")  # 없는 · 남의 실행은 같은 404
-        self.expire_due()
-        conv = self.conversations[run.conversation_id]
-        first = run.decided.get(action_id)
-        if first == "EXPIRED":
-            raise ApprovalError(409, "AGENT_EXPIRED")
-        if first == "CANCELLED":
-            # 취소가 확정된 뒤 온 승인은 실행하지 않는다
-            raise ApprovalError(409, "AGENT_CANCELLED")
-        if first is not None:
-            return run, conv
-        if run.status == "RUNNING":
-            raise ApprovalError(409, "AGENT_RUN_IN_PROGRESS")
-        pend = run.pending
-        if pend is None or pend.action["action_id"] != action_id:
-            raise ApprovalError(404, "NOT_FOUND")
-        if args_hash != pend.args_hash:
-            # 그사이 카드가 바뀜. 실행하지 않고 대기는 그대로
-            raise ApprovalError(409, "APPROVAL_HASH_MISMATCH")
-        return run, conv
+        with self._lock:
+            self.expire_due()
+            conv = self.conversations[run.conversation_id]
+            first = run.decided.get(action_id)
+            if first == "EXPIRED":
+                raise ApprovalError(409, "AGENT_EXPIRED")
+            if first == "CANCELLED":
+                # 취소가 확정된 뒤 온 승인은 실행하지 않는다
+                raise ApprovalError(409, "AGENT_CANCELLED")
+            if first is not None:
+                return run, conv, None
+            if run.status == "RUNNING":
+                raise ApprovalError(409, "AGENT_RUN_IN_PROGRESS")
+            pend = run.pending
+            if pend is None or pend.action["action_id"] != action_id:
+                raise ApprovalError(404, "NOT_FOUND")
+            if args_hash != pend.args_hash:
+                # 그사이 카드가 바뀜. 실행하지 않고 대기는 그대로
+                raise ApprovalError(409, "APPROVAL_HASH_MISMATCH")
+            if outcome == "REJECTED":
+                self._close(run, conv, "REJECTED")
+                return run, conv, None
+            # 승인이 대기 상태를 선점했다. 이제 취소 · 만료가 와도 이긴 쪽은 승인이다
+            run.pending = None
+            run.decided[action_id] = "APPROVED"
+            run.approved_hash[action_id] = pend.args_hash
+            run.status = "RUNNING"
+            if pend.action["type"] == "REASSESS":
+                # 날짜별 횟수는 결정과 같은 선점에서 예약한다(뒤 검사에서 실패해도 차감, 같은 승인 재요청은 다시 세지 않음)
+                if run.reassess_count >= 1:
+                    run.reassess_slot = "PER_TURN"
+                elif self.reassess_today.get(run.user_id, 0) >= REASSESS_PER_DAY:
+                    run.reassess_slot = "DAILY_LIMIT"
+                else:
+                    run.reassess_count += 1
+                    self.reassess_today[run.user_id] = self.reassess_today.get(run.user_id, 0) + 1
+                    run.reassess_slot = "RESERVED"
+            return run, conv, pend
 
     def settle(self, run: Run, decision: str) -> Run:
         """평가 · 시험 편의: 승인 대기 중인 동안 사용자의 결정(`APPROVE` · `REJECT` · `EXPIRE` · `NEW_MESSAGE`)을 따라 진행한다.
@@ -1129,11 +1178,28 @@ class FakeBe:
         ahash = _hash(action["args"])
         executed = False
         decision: str | None = None
+        approved_hash: str | None = None
+        blocked: str | None = None
         if action["autonomy"] == "ASK":
-            decision = "PREAPPROVED" if action.get("preapproved") is not None else "APPROVED"
-        if decision == "PREAPPROVED" and not self._preapproval_ok(run, conv, action):
+            if action.get("preapproved") is not None:
+                decision, approved_hash = "PREAPPROVED", action.get("args_hash")
+            elif run.decided.get(action["action_id"]) == "APPROVED":
+                decision = "APPROVED"
+                approved_hash = run.approved_hash.get(action["action_id"])
+            else:
+                blocked = "NO_DECISION"  # 실제 확정된 결정 없이는 실행하지 않는다
+        if blocked is not None:
+            result = self._failed(action, "APPROVAL_REQUIRED")
+        elif decision == "PREAPPROVED" and not self._preapproval_ok(run, conv, action):
             result = self._failed(action, "PREAPPROVAL_MISMATCH")
             decision = None
+        elif decision == "APPROVED" and (
+            approved_hash is None
+            or action_args_hash(action["type"], action["args"]) != approved_hash
+        ):
+            # 실행 직전 실제 인자가 승인 때 보관한 해시와 다르다(갈고리 · 대기 중 변조): 실행하지 않는다
+            result = self._failed(action, "APPROVAL_ARGS_CHANGED")
+            result["executed_args_hash"] = approved_hash
         elif key in self.action_results:
             prev_hash, prev = self.action_results[key]
             result = (
@@ -1159,7 +1225,15 @@ class FakeBe:
         if self.action_ms and callable(advance):
             advance(self.action_ms / 1000)
         elapsed = max(0, round((self.clock.monotonic() - t0) * 1000))
-        rec = ActionRecord(copy.deepcopy(action), result, elapsed, executed, decision=decision)
+        rec = ActionRecord(
+            copy.deepcopy(action),
+            result,
+            elapsed,
+            executed,
+            decision=decision,
+            approved_hash=approved_hash,
+            blocked=blocked,
+        )
         run.actions.append(rec)
         return rec
 
@@ -1246,12 +1320,14 @@ class FakeBe:
         change = args["change"]
         if not isinstance(change, dict) or len(change) != 1 or set(change) - REASSESS_KEYS:
             return self._failed(action, "INVALID_CHANGE")
-        if run.reassess_count >= 1:
+        # 횟수는 승인 결정 때 예약해 두었다(`_decide`). 여기서는 예약 결과만 본다
+        slot, run.reassess_slot = run.reassess_slot, None
+        if slot == "PER_TURN":
             return self._failed(action, "REASSESS_PER_TURN")
-        if self.reassess_today.get(run.user_id, 0) >= REASSESS_PER_DAY:
+        if slot == "DAILY_LIMIT":
             return self._failed(action, "REASSESS_DAILY_LIMIT")
-        run.reassess_count += 1
-        self.reassess_today[run.user_id] = self.reassess_today.get(run.user_id, 0) + 1
+        if slot != "RESERVED":
+            return self._failed(action, "APPROVAL_REQUIRED")
         a_req = self.build_review_request(p, t)
         a_hash = _hash(a_req)
         b_req = copy.deepcopy(a_req)
