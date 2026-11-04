@@ -118,7 +118,7 @@ ai/research/speech-pace/
 
 | 필드 | 값 | 예 |
 |---|---|---|
-| `metrics` | `cpm`(최근 창), `cpm_short`(짧은 창, 개입 효과용), `speak_ms`(최근 창 안 단어 발화 시간 합). `cpm` · `cpm_short`는 각 창의 최소 발화 시간 · 단어 수를 채울 때만 값이 있다. 최근 창이 모자라 `measurable`이 false여도 짧은 창 조건을 채우면 `cpm_short`는 값이 있을 수 있다. STT가 `ok`가 아니거나 군더더기 판정이 실패하면 둘 다 null | `{"cpm": 319.4, "cpm_short": 324.0, "speak_ms": 12400}` |
+| `metrics` | `cpm`(최근 창), `cpm_short`(짧은 창, 개입 효과용), `speak_ms`(최근 창 안 단어 발화 시간 합). `cpm` · `cpm_short`는 각 창의 최소 발화 시간 · 단어 수를 채울 때만 값이 있다. 최근 창이 모자라 `measurable`이 false여도 짧은 창 조건을 채우면 `cpm_short`는 값이 있을 수 있다. STT가 `ok`가 아니거나 군더더기 판정이 실패하면 둘 다 null. 둘 다 소수 첫째 자리로 반올림한다 | `{"cpm": 319.4, "cpm_short": 324.0, "speak_ms": 12400}` |
 | `tally` | 새로 판정이 정해진 단어마다 `{t_ms: 그 단어의 start_ms, values: {chars, speak_ms, pause_count?, pause_ms?}}`, 새 1초마다 `{t_ms: 그 1초의 시작, values: {ok_ms, total_ms}}`. 값이 0인 키는 뺀다 | 아래 5-5 |
 | `state` | `SLOW` · `NORMAL` · `FAST`. 잴 수 없으면 `UNKNOWN` | `NORMAL` |
 | `measurable` | STT 상태가 `ok`이고, 군더더기 판정이 실패하지 않았고, 최근 창 안 발화 시간과 단어 수가 기준 이상 | `true` |
@@ -133,9 +133,9 @@ ai/research/speech-pace/
 
 | 지표 | 계산 |
 |---|---|
-| `cpm` | `chars ÷ speak_ms × 60000` |
+| `cpm` | `chars ÷ speak_ms × 60000`, 소수 첫째 자리로 반올림 |
 | `pause_count` | 합 |
-| `measured_ratio` | `ok_ms ÷ total_ms` (말 속도의 측정 비율) |
+| `measured_ratio` | `ok_ms ÷ total_ms` (말 속도의 측정 비율), 소수 넷째 자리로 반올림 |
 
 **`criteria()`** → `{"PACE_FAST": {metric: "cpm", direction: "HIGHER_IS_WORSE", threshold, bad, onset_lag_ms, offset_lag_ms}, "PACE_SLOW": {metric: "cpm", direction: "LOWER_IS_WORSE", ...}}`
 
@@ -145,6 +145,7 @@ ai/research/speech-pace/
 | `PACE_FAST` | 최근 창 `cpm`이 빠름 기준 초과 | `cpm` (높을수록) | true |
 | `PACE_SLOW` | 최근 창 `cpm`이 느림 기준 미만 | `cpm` (낮을수록) | true (코치가 말하지 않고 문제 구간에만 남긴다) |
 
+- 빠름 · 느림 기준과는 소수 첫째 자리로 반올림한 `cpm`(5-3)으로 비교한다.
 - 잴 수 없으면 `state`는 `UNKNOWN`, `issues`는 빈 목록이다. 말 속도에는 측정 불가 문제 이름이 없다(`architecture.md` 6-3).
 - `severity`는 공통 규칙(기준값에서 0.5, 아주 나쁨 값에서 1.0, 그 사이 직선, 1.0에서 자름)을 따른다. `evidence`에는 `cpm`과 창 길이를 싣는다.
 - 코치는 `PACE_FAST`에 `SLOW_DOWN` → `SLOW_DOWN`(문장 끝 쉬기) → 그만둠 사다리를 쓰고, 개입 효과는 `cpm_short`로 잰다(`coach-agent.md` 6-1).
