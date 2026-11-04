@@ -328,8 +328,9 @@ function PitchCreateScreen() {
                     </span>
                     <span>{section.label}</span>
                     {done[section.node] ? (
-                      <span className="ml-auto text-ink" aria-label="완료">
+                      <span className="ml-auto text-ink">
                         <CheckIcon />
+                        <span className="sr-only">완료</span>
                       </span>
                     ) : null}
                     {!done[section.node] && section.node === 'criteria' && <small>선택</small>}

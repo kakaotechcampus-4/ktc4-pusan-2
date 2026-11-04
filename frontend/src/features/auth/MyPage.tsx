@@ -69,7 +69,10 @@ export function MyPage() {
           바뀌었을 때 지난 연습을 다시 분석하는 데 써요. 동의하지 않아도 리포트는 똑같이 나오고, 이
           기록은 리포트를 만든 뒤 지워요(분석에 실패한 연습은 7일 뒤).
         </p>
-        <label className="flex min-h-11 items-center gap-3 text-sm font-bold">
+        <label
+          htmlFor="raw-data-consent"
+          className="flex min-h-11 items-center gap-3 text-sm font-bold"
+        >
           <input
             id="raw-data-consent"
             type="checkbox"
