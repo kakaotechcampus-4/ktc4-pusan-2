@@ -103,16 +103,18 @@ class ChatApiRepository:
         rows = self.db.scalars(stmt.order_by(ChatMessage.seq.desc()).limit(limit)).all()
         return list(reversed(rows))
 
-    def list_assessments(self, conversation_id: uuid.UUID) -> list[Row]:
-        """대화의 모든 판단을 메시지 순서대로.
+    def list_assessments(self, conversation_id: uuid.UUID, *, from_seq: int) -> list[Row]:
+        """`from_seq` 메시지부터 끝까지의 판단을 메시지 순서대로.
 
-        판단이 대체됐는지는 페이지와 상관없이 대화 전체로 정한다.
+        판단을 대체한 새 판단은 늘 그 뒤 메시지에 있다. 그래서 한 페이지의 판단이 대체됐는지는
+        그 페이지의 첫 메시지부터 읽으면 대화 전체로 정한 것과 같다.
         """
         return list(
             self.db.execute(
                 select(ChatMessage.seq, ChatMessage.assessments)
                 .where(
                     ChatMessage.conversation_id == conversation_id,
+                    ChatMessage.seq >= from_seq,
                     ChatMessage.assessments.is_not(None),
                 )
                 .order_by(ChatMessage.seq)

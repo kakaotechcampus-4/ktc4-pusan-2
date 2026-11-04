@@ -84,7 +84,11 @@ def list_messages(
         {value for message in messages for value in message.source_pitch_ids or []},
         {value for message in messages for value in message.source_take_ids or []},
     )
-    superseded = superseded_by(repo.list_assessments(conversation_id))
+    superseded = (
+        superseded_by(repo.list_assessments(conversation_id, from_seq=messages[0].seq))
+        if messages
+        else {}
+    )
     return MessageListResponse(
         messages=[_message_view(message, current, superseded) for message in messages],
         next_before_seq=messages[0].seq if has_more else None,
