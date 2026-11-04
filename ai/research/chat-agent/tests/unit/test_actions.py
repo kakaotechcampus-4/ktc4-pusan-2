@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from typing import Any
 
@@ -36,6 +37,7 @@ from chat_agent.schemas import (
     Action,
     ActionResult,
     AskConfirmCard,
+    CriteriaTarget,
     Goal,
     GoalDraft,
     GoalProposalCard,
@@ -433,10 +435,58 @@ def test_args_hash_is_a_deterministic_sha256_of_type_and_sorted_args() -> None:
         "SAVE_GOAL", {"min_delta": 0.05, "base": {"revision": 1, "value": 0.28}}
     )
     assert action_args_hash("SAVE_GOAL", {"n": 1}) != action_args_hash("SAVE_GOAL", {"n": 2})
+    # 독립 계산 고정값: 입력 JSON 하나 → 기대 해시(구현의 `canonical_json`을 쓰지 않고 손으로 쓴 정렬 JSON 의 SHA-256)
+    reassess = {"take_id": "t-5", "change": {"script_used": True}}
+    assert action_args_hash("REASSESS", reassess) == _sha(
+        '{"args":{"change":{"script_used":true},"take_id":"t-5"},"type":"REASSESS"}'
+    )
+    assert (
+        action_args_hash("REASSESS", reassess)
+        == "sha256:145fc6e6aff9a2953557b7c12273f9738643230c159adebad93562dec9d9cebf"
+    )
+    # 문구 · 숫자가 든 인자(한글은 이스케이프 없이 그대로)
+    words = {
+        "take_id": "t-4",
+        "change": {
+            "targets": [
+                {"display": "말 속도 330 이하", "metric": "cpm", "operator": "LTE", "value": 330}
+            ]
+        },
+    }
+    assert (
+        action_args_hash("REASSESS", words)
+        == "sha256:b239627bb593e6ec14d2d1a5c11fe7e6372ff980f0f7627896f5fc1fdb79bb5d"
+    )
     # 행동 종류와 인자가 모두 해시에 든다
     assert action_args_hash("SAVE_GOAL", {"a": 1}) != action_args_hash("REASSESS", {"a": 1})
     assert action_args_hash("SAVE_GOAL", {"a": 1}) != action_args_hash(
         "SAVE_GOAL", {"a": 1, "b": 2}
+    )
+
+
+def _sha(canonical: str) -> str:
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def test_args_hash_number_forms_are_pinned() -> None:
+    """확정 인자에 나올 수 있는 숫자 표기(정수 · 실수 · 지수)를 고정한다: 표기가 바뀌면 BE 와 해시가 어긋난다(5-8).
+
+    기대 문자열은 손으로 쓴 정렬 JSON 이다. 같은 값이라도 정수 330 과 실수 330.0 은 표기가 달라 해시가 다르다(파이썬 JSON 규칙).
+    """
+    cases = [
+        ({"value": 330}, '{"args":{"value":330},"type":"SAVE_GOAL"}'),
+        ({"value": 330.0}, '{"args":{"value":330.0},"type":"SAVE_GOAL"}'),
+        ({"value": 0.28}, '{"args":{"value":0.28},"type":"SAVE_GOAL"}'),
+        ({"value": 0.05}, '{"args":{"value":0.05},"type":"SAVE_GOAL"}'),
+        ({"value": 0}, '{"args":{"value":0},"type":"SAVE_GOAL"}'),
+        ({"value": 1e-05}, '{"args":{"value":1e-05},"type":"SAVE_GOAL"}'),
+        ({"value": 1e16}, '{"args":{"value":1e+16},"type":"SAVE_GOAL"}'),
+        ({"low": 0.9, "high": 1.5}, '{"args":{"high":1.5,"low":0.9},"type":"SAVE_GOAL"}'),
+    ]
+    for args, canonical in cases:
+        assert action_args_hash("SAVE_GOAL", args) == _sha(canonical), canonical
+    assert action_args_hash("SAVE_GOAL", {"value": 330}) != action_args_hash(
+        "SAVE_GOAL", {"value": 330.0}
     )
 
 
@@ -463,13 +513,28 @@ def test_ask_result_needs_executed_args_hash_equal_to_pending() -> None:
     with pytest.raises(ResultMismatch) as e:
         match_result(pending, [_ask_result(executed_args_hash=other)])
     assert e.value.code == "ARGS_HASH_MISMATCH"
-    # 성공인데 해시가 없음 → 409
-    with pytest.raises(ResultMismatch) as e2:
-        match_result(pending, [_ask_result()])
-    assert e2.value.code == "ARGS_HASH_MISSING"
-    # 실행하지 못한 실패 결과는 해시가 없어도 된다. 있으면 같아야 한다
-    failed = _ask_result(status="FAILED", data=None, error={"code": "NOT_FOUND", "message": ""})
-    assert match_result(pending, [failed]) is failed
+    # 해시가 없음 → 409: 성공 · 실패 · 불명확 결과 모두(승인 뒤 실행한 행동은 무엇을 실행했는지 해시로 드러내야 한다, 5-8)
+    err = {"code": "NOT_FOUND", "message": ""}
+    for no_hash in (
+        _ask_result(),
+        _ask_result(status="FAILED", data=None, error=err),
+        _ask_result(status="AMBIGUOUS", data=None, error=err),
+    ):
+        with pytest.raises(ResultMismatch) as e2:
+            match_result(pending, [no_hash])
+        assert e2.value.code == "ARGS_HASH_MISSING", no_hash.status
+    # 실패 · 불명확 결과도 해시가 대기 행동과 같아야 한다
+    for status in ("FAILED", "AMBIGUOUS"):
+        ok_hash = _ask_result(
+            status=status, data=None, error=err, executed_args_hash=pending["args_hash"]
+        )
+        assert match_result(pending, [ok_hash]) is ok_hash
+        with pytest.raises(ResultMismatch) as e3:
+            match_result(
+                pending,
+                [_ask_result(status=status, data=None, error=err, executed_args_hash=other)],
+            )
+        assert e3.value.code == "ARGS_HASH_MISMATCH"
     with pytest.raises(ResultMismatch):
         match_result(
             pending,
@@ -535,14 +600,49 @@ def test_reassess_confirm_card_shows_current_and_reference_condition() -> None:
     )
     assert card["before"]["take_number"] == 5 and card["after"]["script_used"] is True
     assert "참고 결과이고 공식 결과는 그대로예요" in card["notes"]
-    # 내 기준으로 바꾸는 경우: 사용자가 쓴 문구(display)는 싣지 않고 숫자 기준만 싣는다
+    # 내 기준으로 바꾸는 경우: 바꾼 뒤 조건은 행동 인자 그대로(문구 display 포함)
     targets = [{"display": "속도 330 이하", "metric": "cpm", "operator": "LTE", "value": 330}]
     ctx2 = ctx_for(MSG)
     t = do("reassess", {"take_id": "t-4", "change": {"targets": targets}}, ctx=ctx2)
     tcard = ask_confirm_card(t.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
     assert tcard is not None and "내 평가 기준 1개" in tcard["summary"]
-    assert tcard["after"]["targets"] == [{"metric": "cpm", "operator": "LTE", "value": 330}]
-    assert "속도 330 이하" not in json.dumps(tcard, ensure_ascii=False)
+    assert tcard["after"]["targets"] == targets
+    # 숫자 목표가 없는 기준은 문구만이 실제 조건이다: 카드에 문구가 보여야 승인할 수 있다
+    words = [{"display": "자연스럽게 말하기", "metric": None, "operator": None, "value": None}]
+    w = do("reassess", {"take_id": "t-4", "change": {"targets": words}}, ctx=ctx2)
+    wcard = ask_confirm_card(w.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
+    assert wcard is not None and wcard["after"]["targets"] == words
+
+
+def _reassess_before(ctx: RunCtx, take_id: str, change: dict[str, Any]) -> dict[str, Any] | None:
+    p = do("reassess", {"take_id": take_id, "change": change}, ctx=ctx)
+    card = ask_confirm_card(p.action.model_dump(mode="json"), ctx=ctx, expires_at="x")
+    return None if card is None else card["before"]
+
+
+def test_reassess_card_before_is_the_target_takes_review_condition_not_the_pitch_now() -> None:
+    """바꾸기 전 조건은 대상 Take 가 리뷰받은 때의 조건이다(Take 요약의 `standard_version` 판, 6-6)."""
+    ctx = ctx_for(MSG)
+    crit = ctx.pitch.criteria
+    assert crit is not None and crit.standard_version == 1
+    crit.script_used, crit.targets = False, [CriteriaTarget(display="자연스럽게 말하기")]
+    # 같은 판: 지금 피치 기준이 그 Take 의 조건이다
+    assert _reassess_before(ctx, "t-5", {"script_used": True})["script_used"] is False
+    got = _reassess_before(ctx, "t-5", {"targets": [{"display": "빠르지 않게"}]})["targets"]
+    assert got == [
+        {"display": "자연스럽게 말하기", "metric": None, "operator": None, "value": None}
+    ]
+    # Take 뒤에 피치 기준이 새 판으로 바뀌었다 → 그 Take 의 옛 조건을 알 수 없다: 카드를 그리지 않는다
+    crit.standard_version = 2
+    assert _reassess_before(ctx, "t-5", {"script_used": True}) is None
+    assert _reassess_before(ctx, "t-5", {"targets": [{"display": "빠르지 않게"}]}) is None
+    # 피치 기준이 사라졌는데 Take 는 기준 판을 가졌다 → 확인할 수 없다
+    ctx.pitch.criteria = None
+    assert _reassess_before(ctx, "t-5", {"script_used": True}) is None
+    # 기준 없이 리뷰된 Take(standard_version null)는 빈 조건에서 시작한다(리뷰 입력 5-2: user_criteria null)
+    ctx.summaries["t-5"].standard_version = None
+    assert _reassess_before(ctx, "t-5", {"script_used": True})["script_used"] is None
+    assert _reassess_before(ctx, "t-5", {"targets": [{"display": "빠르지 않게"}]})["targets"] == []
 
 
 def test_confirm_card_is_not_drawn_for_other_actions_or_without_hash() -> None:

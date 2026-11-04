@@ -165,7 +165,7 @@ def test_fm_L1_39_final_status_combinations() -> None:
 
 
 def test_ask_action_final_rules() -> None:
-    """ASK 행동의 NEEDS_ACTION: args_hash · message · 같은 해시의 ASK_CONFIRM 카드가 필수, 선승인이면 카드 없이 message 없어도 된다(5-5 · 5-8)."""
+    """ASK 행동의 NEEDS_ACTION: args_hash · message · 같은 해시의 ASK_CONFIRM 카드가 필수, 선승인이면 확인 카드는 없어도 되지만 message 는 있어야 한다(5-5 · 5-8)."""
     # ASK 는 args_hash 필수
     no_hash = _final(FINAL_NA)
     no_hash["actions"][0]["args_hash"] = None
@@ -215,6 +215,34 @@ def test_ask_action_final_rules() -> None:
     old["actions"][0]["autonomy"] = "AUTO_UNDO"
     with pytest.raises(ValidationError):
         s.FinalData.model_validate(old)
+
+
+def test_action_type_and_autonomy_are_fixed_pairs() -> None:
+    """행동 종류와 자율 등급의 대응은 고정이다(6-2 · 12-3): 다르면 확인 카드 · 해시 없이 실행되는 길이 열려 스키마가 거절한다."""
+    pairs = {
+        "FETCH_PITCH": "AUTO",
+        "FETCH_TAKE": "AUTO",
+        "SAVE_GOAL": "ASK",
+        "REASSESS": "ASK",
+        "START_PRACTICE": "BUTTON",
+    }
+    base = {
+        "action_id": "run-1:a1",
+        "args": {},
+        "args_hash": "sha256:" + "0" * 64,
+        "idempotency_key": "k",
+        "reason": "r",
+    }
+    for atype, autonomy in pairs.items():
+        s.Action.model_validate({**base, "type": atype, "autonomy": autonomy})
+        for other in {"AUTO", "ASK", "BUTTON"} - {autonomy}:
+            with pytest.raises(ValidationError):
+                s.Action.model_validate({**base, "type": atype, "autonomy": other})
+    # 저장 행동을 AUTO 로 바꿔 확인 카드 · 해시를 건너뛰는 NEEDS_ACTION 은 최종 출력 검사도 통과하지 못한다
+    sneaky = _final(FINAL_NA, message=None)
+    sneaky["actions"][0].update(type="SAVE_GOAL", autonomy="AUTO", args_hash=None)
+    with pytest.raises(ValidationError):
+        s.FinalData.model_validate(sneaky)
 
 
 def test_ask_confirm_card_shape() -> None:

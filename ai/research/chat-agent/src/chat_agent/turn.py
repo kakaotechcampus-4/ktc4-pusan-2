@@ -11,7 +11,8 @@
 - 승인(6-1 4번 · 6-2): `ASK` 행동(`SAVE_GOAL` · `REASSESS`)이면 멈추기 전에 `_ask_pause`가 코드가 그린 확인 카드(`ASK_CONFIRM`)를 만들고
   그때까지 확인한 것으로 답 문장을 쓰고 검사(`_compose`, 답 쓰기 · 고치기 몫)한 뒤 message = 문장 + 카드, actions = 그 행동 하나로 멈춘다.
   고른 제안(`choice`)의 저장은 `preapproved`를 달고 카드 · 승인 대기 없이 낸다. 이미 낸 문장은 `_finish`가 서명 상태(`emitted`)에 담고,
-  이어 부른 호출의 어떤 끝에서도 message 의 앞부분에 그대로 싣는다(그 뒤에 행동 결과 문장 · 나머지 답).
+  이어 부른 호출의 어떤 끝에서도 message 의 앞부분에 그대로 싣는다(그 뒤에 행동 결과 문장 · 나머지 답). 모델 없이 끝나는 길(`_end_without_model`)도
+  앞 문장 · 승인한 행동의 결과 문장 · 카드를 먼저 조립하고, 상태가 한도를 넘어 못 서명할 때도 앞 문장의 자료 카드 사본을 남긴다.
 - 범위 밖(1-3): 계획 · 답 초안이 `OUT_OF_SCOPE`면 `scope_reason`별 고정 문장(templates.py)으로 `REFUSED`, 섞인 요청은 초안의
   `scope_notes` 이유별 고정 문장을 답 문장 뒤에 덧붙여 `DONE`. `SCOPE_RULE`(범위 밖 낱말)에 걸린 모델 문장은 고치기에 보내지 않고 버린다.
 - 줄 쓰기(5-4): 이벤트마다 `allow_nan=False`로 완전히 직렬화하고 LF 를 붙인다. 한 줄 2 MiB, 누적 16 MiB(끝 줄 몫 4 KiB 예약).
@@ -466,11 +467,13 @@ def _ask_pause(
 
 
 def _card_blocked(lp: Loop, card: dict[str, Any]) -> bool:
-    """확인 카드를 가리는 표시 검사(개인정보 · 금지 주장만, 코드가 그린 카드는 숫자 출처를 따지지 않는다)."""
+    """확인 카드를 가리는 표시 검사(개인정보 · 금지 주장 · 링크 · 주입 문장, 코드가 그린 카드는 숫자 출처를 따지지 않는다).
+
+    카드에 실린 사용자 기준 문구(`display`)가 걸리면 카드를 그리지 못하고 행동도 내지 않는다(보이지 않는 조건은 승인받지 않는다)."""
     fails = chk.check_display_strings(
         cards=[card], registry=lp.ctx.registry, display_evidence=None, cfg=lp.cfg, assessments={}
     )
-    return any(f.check_id in ("PII", "FORBIDDEN_CLAIM") for f in fails)
+    return any(f.check_id in ("PII", "FORBIDDEN_CLAIM", "DISPLAY_TEXT") for f in fails)
 
 
 def _assessment_head(o: Any) -> str:
@@ -577,15 +580,37 @@ def _guide_texts(lp: Loop) -> dict[str, str]:
 def _end_without_model(
     lp: Loop, finish: Callable[..., _Result], reason: str, *, notes: list[str] | None = None
 ) -> _Result:
-    """모델 없이 끝낸다(시간 · 호출 몫 부족): 검증된 근거를 템플릿으로, 없으면 `AGENT_TIMEOUT`(8-3)."""
+    """모델 없이 끝낸다(시간 · 호출 몫 부족): 이미 낸 문장 · 행동 결과 문장 · 검증된 근거 템플릿으로, 없으면 `AGENT_TIMEOUT`(8-3).
+
+    승인 뒤 이어 부른 호출이면 멈추기 전에 낸 문장(`_finish`가 앞에 그대로 싣는다)과, 검증된 성공 결과로 코드가 쓴 행동 결과 문장
+    · 그 카드를 먼저 조립한다. 낸 문장이 하나라도 있으면 `AGENT_TIMEOUT`으로 버리지 않는다(5-5 · 6-1).
+    """
     partial = compose.template_partial(lp.ctx, list(lp.ctx.registry.items))
     notes_claims = [Claim(kind="SYSTEM", text=n) for n in notes or []]
-    if partial or notes_claims:
+    said_actions = {d.get("action_id") for d in lp.st.emitted}
+    result_claims = [
+        Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"])
+        for e in lp.st.executed
+        if e.get("status") == "SUCCEEDED"
+        and e.get("type")
+        in (
+            "SAVE_GOAL",
+            "REASSESS",
+        )  # 사용자가 승인한 행동의 결과만(읽기 행동은 모델이 쓸 재료일 뿐)
+        and e.get("success_text")
+        and e["action_id"] not in said_actions
+    ]
+    if partial or notes_claims or result_claims or lp.st.emitted:
+        # 한도 안내는 행동 결과 문장 뒤에 둔다(앞 문장 → 결과 문장 → 안내 순서)
+        limit = (
+            []
+            if notes_claims
+            else [Claim(kind="SYSTEM", text=templates.SystemText.LIMIT_PARTIAL.value)]
+        )
         return finish(
             status="PARTIAL",
             reason=reason,
-            system=[templates.SystemText.LIMIT_PARTIAL] if not notes_claims else [],
-            claims=[*notes_claims, *partial],
+            claims=[*result_claims, *limit, *notes_claims, *partial],
         )
     return finish(error="AGENT_TIMEOUT", reason=reason)
 
@@ -1353,6 +1378,9 @@ def _finish(
     }
     if status == "NEEDS_ACTION":
         # 지금까지 보인 문장 · 판단 · 자료 카드 사본: 이어 부른 호출의 최종 답이 앞부분에 그대로 싣는다(5-5 · 5-6)
+        prior_sources = list(
+            st.emitted_sources
+        )  # 상태가 너무 커 못 서명하면 앞 문장의 자료 카드로 쓴다
         st.emitted = [c.model_dump(mode="json") for c in claim_list]
         st.exported = [dict(a) for a in assessments_out]
         st.emitted_sources = list(msg["sources"]) if msg else []
@@ -1389,6 +1417,8 @@ def _finish(
             # 잘라 내지 않고 행동 없이 PARTIAL 로 끝낸다. 범위 전환도 적용하지 않는다(5-6 · L1-26)
             lp._limit(lp.budget._hit("STATE_SIZE", cfg.max_state_bytes, cfg.max_state_bytes))
             sys_claim = Claim(kind="SYSTEM", text=templates.SystemText.STATE_TOO_LARGE.value)
+            # 앞 문장이 쓰는 자료 카드 사본은 버리지 않는다(5-5 · 5-6)
+            keep_src = {i for c in prior for i in c.source_ids}
             final.update(
                 status="PARTIAL",
                 actions=[],
@@ -1400,7 +1430,7 @@ def _finish(
                     "text": "\n".join(c.text for c in [*prior, sys_claim]),
                     "claims": [c.model_dump(mode="json") for c in [*prior, sys_claim]],
                     "cards": [],
-                    "sources": [],
+                    "sources": [g for g in prior_sources if g["source_id"] in keep_src],
                 },
             )
             reason = "LIMIT"

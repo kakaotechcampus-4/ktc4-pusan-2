@@ -15,7 +15,7 @@
   3. 답 쓰기(구조화) → 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 · 결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9).
      걸리면 걸린 문장과 까닭을 알려 한 번 고치게 하고 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
-- 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤,
+- 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤(이미 낸 문장이 기댄 원천이면 재개를 멈춘다 — `drop_removed`),
   행동 결과를 검사해 반영하고 2부터 잇는다.
 - 자동 목표 확인(TAKE_REVIEWED): 모델 없이 코드가 목표를 판정하고 결과 문장 · 카드를 만든다(meta.model null).
 - 고칠 때: 한도 숫자는 config.py, 순서 규칙은 budget.py. 사용자에게 보이는 문구는 templates.py.
@@ -204,6 +204,8 @@ class Loop:
         #: 이어 부르는 사이 결과 판이 바뀐 Take 가 있었는가(옛 근거는 사본으로 낮췄다, 5-5 · L1-32)
         self.record_changed = self._demote_changed_records() if state.registry else False
         self.scope_changed = False
+        #: 이미 낸 문장이 지워진 원천에 기댔는가(`drop_removed`가 정한다 — 그러면 재개를 멈춘다)
+        self.emitted_removed = False
         self.model_name: str | None = None
         self.model_used = False
         #: 이 호출에서 모델 전송이 한도로 막힌 까닭(진단 끝 사유 TIME · MODEL_CALLS · TOKENS …). 답 단계 실패를 나눌 때 쓴다
@@ -887,16 +889,21 @@ class Loop:
             if c.get("take_id") not in rs
             and (c.get("goal") or {}).get("base", {}).get("take_id") not in rs
         ]
-        self.st.exported = [a for a in self.st.exported if not set(_assessment_sources(a)) & rs]
-        # 이미 낸 문장도 지워진 원천에 기댄 것(근거가 버려졌거나 판단이 버려진 것)은 남기지 않는다(5-6 · L4-38)
-        kept_ids = {a["assessment_id"] for a in self.st.exported}
-        self.st.emitted = [
-            c
+        exported = [a for a in self.st.exported if not set(_assessment_sources(a)) & rs]
+        # 이미 낸 문장이 지워진 원천에 기댄 것(근거가 버려졌거나 판단이 버려진 것)이면 재개를 멈춘다(5-5 · 5-6 · L4-38):
+        # 그 문장만 빼고 이어 가면 최종 답의 앞부분이 이미 화면에 낸 문장과 달라진다. 낸 문장 · 판단은 손대지 않고 그대로 둬
+        # 호출자가 모델 없이 그 문장 그대로 끝내게 한다(지운 원천의 값은 모델에 다시 주지 않는다)
+        kept_ids = {a["assessment_id"] for a in exported}
+        self.emitted_removed = any(
+            not all(self.ctx.registry.get(e) is not None for e in c.get("evidence_ids") or [])
+            or (c.get("assessment_id") is not None and c["assessment_id"] not in kept_ids)
             for c in self.st.emitted
-            if all(self.ctx.registry.get(e) is not None for e in c.get("evidence_ids") or [])
-            and (c.get("assessment_id") is None or c["assessment_id"] in kept_ids)
-        ]
+        )
+        if not self.emitted_removed:
+            self.st.exported = exported
         pending = self.st.pending_action
+        if self.emitted_removed:
+            return False
         if pending is not None and set(_action_targets(pending)) & rs:
             return False
         self.ctx.read_sources -= rs

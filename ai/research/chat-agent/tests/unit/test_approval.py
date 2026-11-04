@@ -435,3 +435,216 @@ def test_final_output_validation_rejects_ask_without_card() -> None:
         pass
     else:
         raise AssertionError("확인 카드 없는 ASK 행동이 통과했다")
+
+
+# ── 승인 전 답 쓰기: 검사에 걸린 문장 (6-1 4번 · 6-9) ────────────────────────────
+
+GOOD = "Take 5의 3장 청중 시선 비율은 28%예요."
+BAD = "Take 5의 3장 청중 시선 비율은 99%예요."
+
+
+def bad_record_answer(r: Any) -> Any:
+    """근거 없는 수치(99%)를 쓴 답: 검사에 걸린다."""
+    eid = roles(r)["current"]
+    return F.answer(
+        [
+            F.claim("ASSESSMENT", "", assessment_index=0),
+            F.claim("RECORD", BAD, evidence_ids=[eid]),
+        ]
+    )
+
+
+def test_ask_pause_fixes_a_failed_sentence_once_before_the_card() -> None:
+    """검사에 걸린 문장은 한 번 고쳐 통과하면 그 문장이 카드 앞에 나간다. 고치기도 한 번의 모델 호출이다."""
+    llm = F.FakeLlm(save_script(), answers=[bad_record_answer], fixes=[F.fix({1: GOOD})])
+    _, _, data = pause(llm)
+    fd = final_ok(data)
+    assert fd.status == "NEEDS_ACTION" and fd.message is not None
+    assert [c.text for c in fd.message.claims][1:] == [GOOD]
+    assert BAD not in fd.message.text
+    assert [c.purpose for c in llm.calls] == ["RESEARCH"] * 3 + ["ANSWER", "FIX"]
+    assert fd.budget_used.model_calls == 5
+    assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
+
+
+def test_ask_pause_drops_a_sentence_that_still_fails_after_the_fix() -> None:
+    """고친 문장도 걸리면 버린다: 걸린 수치는 카드 앞에 나가지 않고, 고치기는 한 번뿐이다."""
+    llm = F.FakeLlm(save_script(), answers=[bad_record_answer], fixes=[F.fix({1: BAD})])
+    _, _, data = pause(llm)
+    fd = final_ok(data)
+    assert fd.status == "NEEDS_ACTION" and fd.message is not None
+    assert [c.kind for c in fd.message.claims] == ["ASSESSMENT"]  # 코드 판단 문장만 남는다
+    assert "99%" not in fd.message.text
+    assert [c.purpose for c in llm.calls] == ["RESEARCH"] * 3 + ["ANSWER", "FIX"]
+    assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
+    # 서명 상태에도 버린 문장은 실리지 않는다
+    emitted = payload_of(fd.state)["loop"]["emitted"]  # type: ignore[arg-type]
+    assert "99%" not in json.dumps(emitted, ensure_ascii=False)
+
+
+# ── 확인 카드: 바꾸기 전 조건을 확인할 수 없거나 표시할 수 없으면 행동을 내지 않는다 (6-6) ──
+
+
+def reassess_turn(mutate: Any, change: dict[str, Any] | None = None) -> Any:
+    msg = "내 기준으로 다시 평가해 줘"
+    d = [F.draft("다시 평가해 줘", type_="REQUEST", claim_op=None, polarity="NEUTRAL")]
+    args = {"take_id": "t-5", "change": change or {"script_used": True}, "reason": "조건"}
+    req = F.request(user_message=msg)
+    mutate(req)
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(("reassess", args), prefix="ra")],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(req, llm)
+    return final_ok(data)
+
+
+def test_reassess_without_a_confirmable_before_condition_ends_without_action() -> None:
+    """Take 뒤에 평가 기준 판이 바뀌어 그 Take 의 옛 조건을 알 수 없으면 카드도 행동도 내지 않는다."""
+
+    def newer_standard(req: dict[str, Any]) -> None:
+        req["context"]["pitch"]["criteria"]["standard_version"] = 2
+
+    fd = reassess_turn(lambda r: None)
+    assert fd.status == "NEEDS_ACTION"  # 같은 판이면 지금 기준이 그 Take 의 조건이라 카드가 선다
+    fd = reassess_turn(newer_standard)
+    assert fd.status == "PARTIAL" and fd.actions == [] and fd.state is None
+    assert fd.message is not None and not fd.message.cards
+    assert templates.SystemText.ACTION_UNCONFIRMED.value in fd.message.text
+
+
+def test_reassess_card_with_a_condition_text_that_fails_display_check_is_not_drawn() -> None:
+    """카드에 싣는 기준 문구(display)가 표시 문자열 검사(링크 · 주입 · 개인정보)에 걸리면 카드도 행동도 없다."""
+    link = {"targets": [{"display": "https://example.com 에서 확인"}]}
+    fd = reassess_turn(lambda r: None, link)
+    assert fd.status == "PARTIAL" and fd.actions == []
+    plain = {"targets": [{"display": "자연스럽게 말하기"}]}
+    fd = reassess_turn(lambda r: None, plain)
+    assert fd.status == "NEEDS_ACTION"
+    card = fd.message.cards[0]  # type: ignore[union-attr]
+    assert card.after["targets"] == [  # 숫자 목표가 없는 기준은 문구로 카드에 보인다
+        {"display": "자연스럽게 말하기", "metric": None, "operator": None, "value": None}
+    ]
+
+
+# ── 모델 없이 끝나는 길 (8-3 · 5-5) ──────────────────────────────────────────
+
+
+def test_resume_without_room_keeps_the_front_and_tells_the_approved_result_with_its_card() -> None:
+    """남은 호출이 모자라 모델 없이 끝내도 저장 성공 문장(코드 템플릿)과 GOAL_SAVED 카드를 앞 문장 뒤에 싣는다."""
+    req, _, data = pause()
+    said = data["message"]["claims"]
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    req2["budget_used"] = {**req2["budget_used"], "model_calls": 17}
+    llm2 = F.FakeLlm([])
+    _, _, d2 = F.run_turn(req2, llm2)
+    fd = final_ok(d2)
+    assert llm2.calls == [] and "error" not in d2
+    assert fd.status == "PARTIAL" and fd.actions == [] and fd.state is None
+    claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
+    assert claims[: len(said)] == said
+    assert claims[len(said)]["kind"] == "ACTION_RESULT"
+    assert claims[len(said)]["text"] == templates.ACTION_SUCCESS["SAVE_GOAL"]
+    assert templates.SystemText.LIMIT_PARTIAL.value in fd.message.text  # type: ignore[union-attr]
+    assert [c.type for c in fd.message.cards] == ["GOAL_SAVED"]  # type: ignore[union-attr]
+
+
+def test_end_without_model_with_only_the_front_is_partial_not_agent_timeout() -> None:
+    """저장된 앞 문장이 있으면, 결과 문장 · 근거가 없어도 AGENT_TIMEOUT 으로 버리지 않고 PARTIAL 로 끝낸다(앞 문장은 `_finish`가 싣는다)."""
+    from types import SimpleNamespace
+
+    from chat_agent import turn as turn_mod
+
+    captured: dict[str, Any] = {}
+
+    def finish(**kw: Any) -> None:
+        captured.update(kw)
+
+    lp = SimpleNamespace(
+        st=SimpleNamespace(emitted=[{"kind": "SYSTEM", "text": "앞 문장"}], executed=[]),
+        ctx=SimpleNamespace(registry=SimpleNamespace(items={})),
+    )
+    turn_mod._end_without_model(lp, finish, "TIME")  # type: ignore[arg-type]
+    assert captured["status"] == "PARTIAL" and "error" not in captured
+    # 앞 문장도 결과도 근거도 없으면 지금처럼 AGENT_TIMEOUT
+    captured.clear()
+    lp.st.emitted = []
+    turn_mod._end_without_model(lp, finish, "TIME")  # type: ignore[arg-type]
+    assert captured["error"] == "AGENT_TIMEOUT"
+
+
+# ── 상태 크기 초과 (5-6) ─────────────────────────────────────────────────────
+
+GUIDE_CLAIM = {
+    "kind": "GUIDE",
+    "assessment_id": None,
+    "text": "자료에 따르면 청중과 눈을 맞추며 말하는 연습이 도움이 돼요.",
+    "evidence_ids": [],
+    "source_ids": ["g-07#2"],
+    "action_id": None,
+}
+GUIDE_CARD = {
+    "source_id": "g-07#2",
+    "title": "시선 처리",
+    "quote": "청중과 눈을 맞추며 말하세요",
+    "source": "교재",
+    "license": "CC BY",
+}
+
+
+def with_guide_front(data: dict[str, Any]) -> dict[str, Any]:
+    """첫 멈춤의 서명 상태에 자료를 인용한 앞 문장 + 그 자료 카드 사본을 더해 다시 서명한다."""
+    from chat_agent import state as st
+
+    p = payload_of(data["state"])
+    p["loop"]["emitted"] = [*p["loop"]["emitted"], GUIDE_CLAIM]
+    p["loop"]["emitted_sources"] = [GUIDE_CARD]
+    return {**data, "state": st.sign(st.StatePayload.model_validate(p), F.SECRET)}
+
+
+def test_state_too_large_keeps_the_front_sentences_and_their_source_cards(monkeypatch: Any) -> None:
+    """둘째 승인 대기 상태가 한도를 넘으면 행동 없이 PARTIAL 로 끝내되, 앞 문장이 쓰는 자료 카드 사본은 버리지 않는다."""
+    from chat_agent import state as st
+    from chat_agent import turn as turn_mod
+
+    req, _, data = pause()
+    data = with_guide_front(data)
+    said = payload_of(data["state"])["loop"]["emitted"]
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+
+    def too_large(*a: Any, **k: Any) -> Any:
+        raise st.StateTooLarge("크기 초과")
+
+    monkeypatch.setattr(turn_mod.state, "sign", too_large)
+    llm2 = F.FakeLlm([F.tools(REASSESS, prefix="ra")], answers=[F.answer([])], fixes=[F.fix({})])
+    _, _, d2 = F.run_turn(req2, llm2)
+    fd = final_ok(d2)
+    assert fd.status == "PARTIAL" and fd.actions == [] and fd.state is None
+    assert fd.message is not None
+    claims = [c.model_dump(mode="json") for c in fd.message.claims]
+    assert claims[: len(said)] == said
+    assert templates.SystemText.STATE_TOO_LARGE.value in fd.message.text
+    # 앞 문장의 자료 id 마다 카드 사본이 있다
+    assert [g.model_dump(mode="json") for g in fd.message.sources] == [GUIDE_CARD]
+
+
+# ── 대기 중 원천이 지워짐 (5-5 · 5-6 · 12-2) ──────────────────────────────────
+
+
+def test_removed_source_under_a_front_sentence_stops_the_resume_and_keeps_the_front() -> None:
+    """이미 낸 문장이 기댄 원천이 지워지면 그 문장만 빼고 이어 가지 않는다: 모델 없이 낸 문장 그대로 PARTIAL + 고정 문장, 새 상태 없음."""
+    req, _, data = pause()
+    said = data["message"]["claims"]
+    assert any(c["evidence_ids"] for c in said)
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    req2["context"]["removed_sources"] = ["t-5"]
+    llm2 = F.FakeLlm([])
+    _, _, d2 = F.run_turn(req2, llm2)
+    fd = final_ok(d2)
+    assert llm2.calls == []  # 지운 원천의 값은 모델에 다시 주지 않는다
+    assert fd.status == "PARTIAL" and fd.actions == [] and fd.state is None
+    claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
+    assert claims[: len(said)] == said  # 앞부분은 이미 낸 문장 그대로
+    assert claims[-1]["text"] == templates.SystemText.SOURCE_DELETED_STOP.value
+    assert claims[-1]["kind"] == "SYSTEM"

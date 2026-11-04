@@ -13,6 +13,9 @@
   (확인 카드), 하나라도 어기면 실행하지 않고 목표 제안 카드로 낮춘다. `REASSESS`는 허용 근거 검사 없이 `ASK`(확인 카드가 승인 근거),
   `START_PRACTICE`는 허용 근거와 상관없이 언제나 버튼 카드다. 이 검사는 간접 표현을 완벽히 가리지 못한다(15-2): 잘못 판별해도
   실행되지 않고 원치 않는 확인 카드가 뜰 뿐이다.
+- 다시 평가 확인 카드(6-6): 바꾸기 전 조건은 지금 피치 기준이 아니라 대상 Take 가 리뷰받은 때의 조건(Take 요약 `standard_version`이 가리키는 판, `_take_conditions`)이고,
+  바꾼 뒤 조건은 행동 인자 그대로다. 사용자 기준 문구(`display`)도 표시 문자열 검사(6-9)를 통과하면 싣는다. 바꾸기 전 조건을 확인할 수 없으면 카드를 그리지 못해
+  행동을 내지 않는다(사용자가 본 것과 실행되는 것이 달라지면 안 된다).
 - 고른 목표 제안(`choice`)의 `SAVE_GOAL`은 `preapproved`를 달고 확인 카드 없이 BE 가 해시를 다시 계산해 바로 실행한다.
 - 고칠 때: 낱말 목록은 config.py(바꾸면 FEATURE_VERSION). 행동 모양을 바꾸면 TOOL_SCHEMA_VERSION.
 """
@@ -659,8 +662,9 @@ class ResultMismatch(Exception):
 def match_result(pending: dict[str, Any] | None, results: list[ActionResult]) -> ActionResult:
     """대기 행동 1개에 결과 정확히 1개(P0). 요청하지 않은 id · 다른 type · 두 개는 ResultMismatch(→ 409).
 
-    `ASK` 행동은 승인 뒤 BE 가 저장한 `args`로 실행하므로 성공 결과에 `executed_args_hash`가 있어야 하고, 값이 있으면
-    대기 행동의 `args_hash`와 같아야 한다(다르면 사용자가 본 카드와 다른 인자로 실행된 것, 5-8 · 6-2).
+    `ASK` 행동은 승인 뒤 BE 가 저장한 `args`로 실행하므로 결과(`SUCCEEDED` · `FAILED` · `AMBIGUOUS` 모두)에
+    `executed_args_hash`가 있어야 하고 대기 행동의 `args_hash`와 같아야 한다(없거나 다르면 사용자가 본 카드와 다른 인자로
+    실행됐을 수 있다, 5-8 · 6-2).
     """
     if pending is None:
         raise ResultMismatch("NO_PENDING_ACTION")
@@ -672,10 +676,10 @@ def match_result(pending: dict[str, Any] | None, results: list[ActionResult]) ->
     if pending.get("autonomy") == "ASK":
         expected = pending.get("args_hash")
         got = r.executed_args_hash
-        if got is not None and got != expected:
-            raise ResultMismatch("ARGS_HASH_MISMATCH")
-        if got is None and r.status == "SUCCEEDED":
+        if got is None:
             raise ResultMismatch("ARGS_HASH_MISSING")
+        if got != expected:
+            raise ResultMismatch("ARGS_HASH_MISMATCH")
     return r
 
 
@@ -1089,8 +1093,28 @@ def _goal_summary(goal: GoalDraft, cfg: ChatAgentConfig) -> str:
 
 def _target_view(t: CriteriaTarget | dict[str, Any]) -> dict[str, Any]:
     d = t.model_dump() if isinstance(t, CriteriaTarget) else t
-    # 사용자가 쓴 문구(display)는 카드에 싣지 않는다: 숫자 기준(지표 · 비교 · 값)만 보인다
-    return {k: d.get(k) for k in ("metric", "operator", "value")}
+    # 사용자가 쓴 문구(display)도 싣는다: 숫자 목표가 없는 기준(예: "자연스럽게 말하기")은 문구만이 실제 조건이다.
+    # 문구가 표시 문자열 검사(6-9)에 걸리면 카드를 그리지 못한다(`_card_blocked`가 막아 행동을 내지 않는다)
+    return {k: d.get(k) for k in ("display", "metric", "operator", "value")}
+
+
+def _take_conditions(ctx: RunCtx, take_id: str) -> tuple[bool | None, list[Any]] | None:
+    """대상 Take 가 리뷰를 받을 때의 평가 조건 `(script_used, targets)`. 확인할 수 없으면 None.
+
+    Take 요약의 `standard_version`(평가 기준 판)이 BE 가 그 Take 의 리뷰 요청 `user_criteria`를 만든 판이다(리뷰 입력 5-2).
+    null 이면 그 Take 는 기준 없이 리뷰됐다(`user_criteria` null → 빈 조건). 값이 있으면 지금 피치 기준이 같은 판일 때만
+    그 기준이 Take 의 조건이다. 판이 다르면(Take 뒤에 기준이 바뀜) Take 의 옛 조건을 알 수 없다 — 지금 기준을
+    '바뀌기 전'으로 보이면 사용자가 본 것과 실행되는 것이 달라지므로 None 이다(6-6).
+    """
+    summ = ctx.summaries.get(take_id)
+    if summ is None:
+        return None
+    if summ.standard_version is None:
+        return None, []
+    crit = ctx.pitch.criteria if ctx.pitch is not None else None
+    if crit is None or crit.standard_version != summ.standard_version:
+        return None
+    return crit.script_used, list(crit.targets)
 
 
 def ask_confirm_card(
@@ -1098,8 +1122,8 @@ def ask_confirm_card(
 ) -> dict[str, Any] | None:
     """대기 행동의 `args`만으로 그린 `ASK_CONFIRM` 카드(모델 문장 없음). 그릴 수 없으면 None(행동을 내지 않는다).
 
-    `SAVE_GOAL`: before = 지금 대화 목표(없으면 null), after = 저장할 목표. `REASSESS`: before = 지금 조건,
-    after = 참고 조건. `args_hash`는 대기 행동의 것을 그대로 싣는다.
+    `SAVE_GOAL`: before = 지금 대화 목표(없으면 null), after = 저장할 목표. `REASSESS`: before = 대상 Take 의 실제 리뷰 조건
+    (`_take_conditions`, 확인할 수 없으면 None), after = 참고 조건(행동 인자 그대로). `args_hash`는 대기 행동의 것을 그대로 싣는다.
     """
     atype, args, ahash = pending["type"], pending["args"], pending.get("args_hash")
     if atype not in ("SAVE_GOAL", "REASSESS") or not ahash:
@@ -1122,15 +1146,18 @@ def ask_confirm_card(
         if summ is None:
             return None
         change = args["change"]
-        crit = ctx.pitch.criteria if ctx.pitch is not None else None
+        cond = _take_conditions(ctx, summ.take_id)
+        if cond is None:
+            return None  # 바뀌기 전 조건을 확인할 수 없으면 카드를 그리지 않는다(행동을 내지 않음)
+        now_script, now_targets = cond
         take_view = {"take_id": summ.take_id, "take_number": summ.take_number}
         if "script_used" in change:
-            before = {**take_view, "script_used": crit.script_used if crit else None}
+            before = {**take_view, "script_used": now_script}
             after = {**take_view, "script_used": change["script_used"]}
             key = "script_used_true" if change["script_used"] else "script_used_false"
             text = templates.REASSESS_CHANGE_TEXT[key]
         else:
-            now = [_target_view(t) for t in (crit.targets if crit else [])]
+            now = [_target_view(t) for t in now_targets]
             new = [_target_view(t) for t in change.get("targets") or []]
             before = {**take_view, "targets": now}
             after = {**take_view, "targets": new}
