@@ -6,11 +6,13 @@
   `chat_agent.templates`의 상수를 이름으로 읽어 정규식으로 바꾸고, 자리 뒤 '으로' · '예요'는 채워진 값의 받침에 맞는 것만
   받는다(templates.fill 과 같은 규칙을 여기서 따로 구현: 받침 없거나 ㄹ이면 '로', 받침 있으면 '이에요', 숫자는 읽는 소리).
 - 관찰값(evals.py 가 만든다, 모두 JSON 값)
-  - answer: `{status, outcome, error_code, text, interim_text, all_text, claims[], cards[], card_types[], sources[],
+  - answer: `{status, outcome, error_code, text, all_text, claims[], cards[], card_types[], sources[],
     source_ids[], assessments[], verdicts[], scope_pitch_id, goal_result, goal_results[], evidence[], has_record_evidence}`
-  - actions_proposed: `{types[], items[], cards[]}` — AI가 낸 행동(NEEDS_ACTION · DONE 의 START_PRACTICE)과 카드 종류
+  - actions_proposed: `{types[], items[], cards[]}` — AI가 낸 행동(NEEDS_ACTION · DONE 의 START_PRACTICE 버튼)과 카드 종류.
+    `items[].autonomy`는 `AUTO` · `ASK` · `BUTTON`
   - actions_executed: `{types[], attempted[], items[], counts{}, attempt_counts{}, review_calls}` — BE가 실제로 실행한 것
-    (START_PRACTICE 는 화면이 바로 옮겨지는 `auto:true`만 실행으로 센다)
+    (`ASK` 행동은 승인 · 선승인 뒤에만. START_PRACTICE 는 BE 가 실행하지 않는 버튼이라 세지 않고, 화면 이동은 사용자가
+    누른 기록 `db_diff`의 `conversation.practice_moves`로만 본다)
   - db_diff: `{changed[], removed[], official_changed[], before{}, after{}}` — 실행 전후 저장소(공식 결과 · 대화 목표 …)
   - trace: `{tools[], diag[], limits[], calls, statuses[], model_calls, tool_calls}` — 도구 기록과 진단 기록 단계(`종류:코드[:결과]`)
 - 비교(compare): equals(같음) · contains(문자열이면 부분 문자열, 목록이면 원소 · 딕셔너리면 일부 칸 일치. expect 가 목록이면

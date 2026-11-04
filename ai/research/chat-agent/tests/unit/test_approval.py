@@ -12,10 +12,12 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from chat_agent import templates
 from chat_agent.actions import action_args_hash
 from chat_agent.config import DEFAULT_CONFIG
-from chat_agent.llm_types import LlmTimeout
+from chat_agent.llm_types import LlmCallFailed, LlmRefused, LlmTimeout
 from chat_agent.schemas import FinalData
 
 from . import fakes as F
@@ -217,6 +219,36 @@ def test_model_failure_before_ask_still_shows_code_sentences_and_card() -> None:
     assert fd.status == "NEEDS_ACTION" and fd.actions[0].autonomy == "ASK"
     assert fd.message is not None and [c.kind for c in fd.message.claims] == ["ASSESSMENT"]
     assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
+
+
+@pytest.mark.parametrize("failure", [LlmTimeout(), LlmRefused(), LlmCallFailed()])
+def test_fm_L1_42_answer_writing_failure_kinds_still_pause_with_the_card(failure: Any) -> None:
+    """답 쓰기가 시간 초과 · 거절 · 오류로 실패해도 승인 대기를 막지 않는다: 모델 문장 없이 코드 문장과 카드로 멈춘다(L1-42)."""
+    llm = F.FakeLlm(save_script(), answers=[failure], fixes=[F.fix({})])
+    _, _, data = pause(llm)
+    fd = final_ok(data)
+    assert fd.status == "NEEDS_ACTION" and [a.autonomy for a in fd.actions] == ["ASK"]
+    assert fd.message is not None
+    assert all(
+        c.kind in ("ASSESSMENT", "SYSTEM") for c in fd.message.claims
+    )  # 모델이 쓴 RECORD 문장이 없다
+    assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
+    assert fd.message.cards[0].args_hash == fd.actions[0].args_hash  # type: ignore[union-attr]
+
+
+def test_fm_L1_43_card_that_cannot_be_drawn_gives_no_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """확인 카드를 그릴 수 없으면 승인받을 수 없으니 행동을 내지 않고 PARTIAL 로 끝낸다(L1-43)."""
+    from chat_agent import turn as turn_mod
+
+    monkeypatch.setattr(turn_mod.act, "ask_confirm_card", lambda *a, **k: None)
+    _, _, data = pause()
+    fd = final_ok(data)
+    assert fd.status == "PARTIAL" and fd.actions == [] and fd.state is None
+    assert fd.message is not None
+    assert templates.SystemText.ACTION_UNCONFIRMED.value in fd.message.text
+    assert all(c.type != "ASK_CONFIRM" for c in fd.message.cards)
 
 
 def test_ask_after_unauthorized_request_becomes_goal_proposal_not_a_card() -> None:
