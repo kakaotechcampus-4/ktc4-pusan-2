@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import is_transient_db_error
-from pitch_coach_backend.module.chat.api_dto import SendMessageRequest
+from pitch_coach_backend.module.chat.api_dto import ChatChoiceDTO, SendMessageRequest
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.exception import (
@@ -26,6 +26,7 @@ from pitch_coach_backend.module.chat.exception import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import SERVICE_DAILY_TURNS, TURN_DEADLINE
+from pitch_coach_backend.module.chat.service.request import ProposalNotFound, selected_proposal
 from pitch_coach_backend.module.chat.service.run import SEOUL, digest
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.repository import TakeRepository
@@ -127,11 +128,8 @@ def _accept(
         repo.get_message_in(request.again_of_message_id, conversation.id) is None
     ):
         raise ChatTargetNotFound()
-    if request.choice is not None and (
-        ChatRepository(db).find_proposal_card(conversation.id, str(request.choice.proposal_id))
-        is None
-    ):
-        raise ChatTargetNotFound()
+    if request.choice is not None:
+        _check_choice(db, conversation.id, request.choice)
     if repo.has_active_run(conversation.id):
         # 승인 대기(WAITING_APPROVAL) 중의 새 메시지는 앞 확인 요청을 취소하고 받아야 한다(12-3).
         # 승인 · 거절 API 와 함께 더한다. 그 전에는 진행 중과 같이 409 로 막는다
@@ -207,6 +205,18 @@ def _check_page(db: Session, user_id: uuid.UUID, request: SendMessageRequest) ->
         raise ChatTargetNotFound()
     if page.take_id is not None and TakeRepository(db).get_owned(page.take_id, user_id) is None:
         raise ChatTargetNotFound()
+
+
+def _check_choice(db: Session, conversation_id: uuid.UUID, choice: ChatChoiceDTO) -> None:
+    """고른 안이 그 대화의 제안 카드에 있는지 본다. 턴 실행기가 AI 요청을 만들 때 쓰는 함수다.
+
+    카드에는 저장할 수 있는 안만 있어 하나뿐일 수 있다(6-3). 여기서 막지 않으면 202 를 준 뒤 실행이
+    실패하고 하루 턴만 줄어든다.
+    """
+    try:
+        selected_proposal(ChatRepository(db), conversation_id, choice.model_dump(mode="json"))
+    except ProposalNotFound:
+        raise ChatTargetNotFound() from None
 
 
 def _charge(db: Session, repo: ChatApiRepository, user_id: uuid.UUID, now: datetime) -> None:

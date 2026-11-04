@@ -361,6 +361,37 @@ def test_again_of_and_choice_must_belong_to_the_conversation(
     assert status == 404
 
 
+def test_choice_of_an_option_not_on_the_card_is_404(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    # 잴 수 없는 사용자 안은 선택지에 두지 않아 카드에 추천 안만 있을 수 있다
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    db_session.get(ChatRun, uuid.UUID(sent["run_id"])).status = "DONE"
+    proposal_id = str(uuid.uuid4())
+    card = {
+        "type": "GOAL_PROPOSAL",
+        "proposal_id": proposal_id,
+        "options": [{"label": "EXPERT", "goal": {"metric": "pace"}, "content_hash": "h"}],
+        "evidence_basis": {"records": [], "sources": [], "screens": []},
+    }
+    _answer(db_session, conversation_id, user_id, 2, cards=[card])
+    # 접수가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
+    db_session.commit()
+
+    def choose(option: str) -> tuple[int, dict[str, Any]]:
+        return _send(
+            client,
+            user_id,
+            conversation_id=str(conversation_id),
+            choice={"proposal_id": proposal_id, "option": option},
+        )
+
+    status, body = choose("USER")
+    assert (status, body["code"]) == (404, "NOT_FOUND")
+    assert choose("EXPERT")[0] == 202
+
+
 def test_daily_limit_is_429_with_retry_after_and_charges_nothing(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
