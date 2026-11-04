@@ -29,7 +29,7 @@ from typing import Any, Literal
 
 from .config import ChatAgentConfig
 
-ModelKind = Literal["RESEARCH", "ANSWER", "FIX"]
+ModelKind = Literal["RESEARCH", "ANSWER", "FIX", "HISTORY_SUMMARY"]
 
 #: 한도 코드(LimitHit.code) → 진단 끝 사유(11-5). 여기에 없는 코드는 이유를 나눌 수 없어 `LIMIT`
 _END_REASON_OF_LIMIT = {
@@ -225,7 +225,21 @@ class Budget:
         left = self.left()
         if kind == "RESEARCH":
             return max(0.0, min(per_call, left - self.cfg.reserved_answer_seconds))
+        if kind == "HISTORY_SUMMARY":
+            # 대화 요약은 끝 줄을 만들어 보낼 몫을 남긴다(6-14)
+            return max(0.0, min(per_call, left - self.cfg.final_line_reserve_seconds))
         return max(0.0, min(per_call, left))
+
+    def summary_room(self) -> bool:
+        """대화 요약 호출(6-14)을 보낼 몫이 있는가: 답 쓰기 · 고치기 뒤 모델 호출 1 · 호출 한 번 시간 + 끝 줄 몫 · 출력 상한
+        한 번 몫이 남아야 한다(입력 토큰은 보낼 때 예약에서 다시 본다)."""
+        c, cfg = self.counters, self.cfg
+        per_call = cfg.reserved_answer_seconds / max(1, cfg.reserved_answer_calls)
+        return (
+            c.model_calls + 1 <= cfg.max_model_calls
+            and self.left() >= per_call + cfg.final_line_reserve_seconds
+            and c.output_tokens + cfg.output_tokens_per_call <= cfg.max_output_tokens
+        )
 
     # ── 도구 · 행동 · 계획 ───────────────────────────────────────────
     def reserve_tool(self) -> LimitHit | None:

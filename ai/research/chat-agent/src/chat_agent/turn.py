@@ -41,7 +41,7 @@ from pydantic import ValidationError
 from . import actions as act
 from . import checks as chk
 from . import claims as clm
-from . import compose, prompts, state, templates
+from . import compose, memory, prompts, state, templates
 from .answer import ClaimLines, Composer, with_prefix
 from .answer import assessment_head as _assessment_head  # noqa: F401  # 시험이 이 이름으로 부른다
 from .answer import guide_texts as _guide_texts
@@ -616,7 +616,6 @@ def _slots_short_end(lp: Loop, finish: Callable[..., _Result]) -> _Result:
 
 
 def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
-    cfg = lp.cfg
     ctx = lp.ctx
     stop_reason = lp.st.stop_reason
     if stop_reason == "LLM_REFUSED":
@@ -668,7 +667,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     no_guide = route == "NO_GUIDE"
 
     comp = cmp.finish(draft, ans["messages"])
-    out, body, all_assessments, amap = comp.out, list(comp.body), comp.all_assessments, comp.amap
+    out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
 
     # 4. 연습 준비 이동 · 대화 요약
     actions: list[Action] = []
@@ -687,20 +686,8 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             lp.st.cards.append(card)
         if action is not None:
             actions.append(action)
-    history_summary = (
-        draft.get("history_summary") if isinstance(draft.get("history_summary"), str) else None
-    )
-    if history_summary and (
-        len(history_summary) > 600
-        or chk.check_display_strings(
-            history_summary=history_summary,
-            registry=ctx.registry,
-            display_evidence=None,
-            cfg=cfg,
-            assessments=amap,
-        )
-    ):
-        history_summary = None
+    # 코칭 프로필 저장 후보: 검사 · 자격(처음 사용자 말 · 켜짐 · 번호 그대로)은 `_finish`가 종결 응답에서만 본다(6-14)
+    lp.profile_candidates = draft.get("profile_updates")
 
     # 5. 상태 정하기 (앞 문장은 이미 냈고, `_finish`가 낸 문장을 최종 답의 앞부분에 그대로 싣는다)
     has_result = any(c.kind == "ACTION_RESULT" for c in comp.pre)
@@ -752,7 +739,6 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             reason=stopped[0],
             claims=final_claims,
             assessments=all_assessments,
-            history_summary=history_summary,
             sources=_sources(final_claims),
         )
     if no_guide:
@@ -765,7 +751,6 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         claims=final_claims,
         assessments=all_assessments,
         actions=actions,
-        history_summary=history_summary,
         sources=_sources(final_claims),
     )
 
@@ -1038,6 +1023,40 @@ def _safe_trace(lp: Loop, trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _history_summary(lp: Loop) -> list[dict[str, str]] | None:
+    """요청에 밀린 메시지가 있으면 모델 1번으로 새 요약을 만들고 코드가 거른다(6-14). 못 만들거나 남은 항목이 없으면 None."""
+    raw = lp.summary_phase()
+    if raw is None:
+        return None
+    kept, dropped = memory.check_summary_items(raw, cfg=lp.cfg)
+    for d in dropped:
+        lp.diag.step("CHECK", "MEMORY_RULE", {"field": d.field, "round": 0, "result": "DROPPED"})
+    return kept or None
+
+
+def _profile_updates(lp: Loop, req: TurnRequest, payload: Any) -> list[dict[str, str]] | None:
+    """코칭 프로필 저장 후보(6-14): 사용자 말로 시작한 실행 · 기억 켜짐 · 실행 중 기억 번호가 그대로일 때만, 처음 사용자 말
+    기준으로 ①~⑥을 검사해 통과한 것만. 번호가 한 번이라도 바뀐 실행은 후보를 모두 버린다(AI · BE)."""
+    raw = lp.profile_candidates
+    if not raw:
+        return None
+    trigger = payload.trigger if payload is not None else req.run.trigger
+    if (
+        trigger != "USER_MESSAGE"
+        or not req.memory.enabled
+        or lp.st.memory_changed
+        or not lp.original
+    ):
+        lp.diag.step(
+            "CHECK", "MEMORY_RULE", {"field": "profile_updates", "round": 0, "result": "DROPPED"}
+        )
+        return None
+    kept, dropped = memory.check_profile_updates(raw, user_message=lp.original, cfg=lp.cfg)
+    for d in dropped:
+        lp.diag.step("CHECK", "MEMORY_RULE", {"field": d.field, "round": 0, "result": "DROPPED"})
+    return kept or None
+
+
 def _finish(
     lp: Loop,
     req: TurnRequest,
@@ -1052,7 +1071,6 @@ def _finish(
     assessments: list[Any] | None = None,
     actions: list[Action] | None = None,
     action: Action | None = None,
-    history_summary: str | None = None,
     goal_result: dict[str, Any] | None = None,
     sources: list[str] | None = None,
     extra_cards: list[dict[str, Any]] | None = None,
@@ -1064,6 +1082,10 @@ def _finish(
     lines = lp.lines if lp.lines is not None else ClaimLines(lp)
     #: 이 실행에서 이미 낸 문장 수(앞 응답 + 이 응답의 문장 줄). 끝 줄 message 의 앞부분은 이 문장들과 같다(5-4)
     n_sent = len(st.emitted)
+    terminal = error is None and status in ("DONE", "PARTIAL", "REFUSED")
+    # 대화 요약 · 프로필 저장 후보(6-14): 종결 응답에서만. 요약 호출은 사용량에 들어가므로 사용량을 세기 전에 한다
+    history_summary = _history_summary(lp) if terminal else None
+    profile_updates = _profile_updates(lp, req, payload) if terminal else None
     lp.budget.sync_elapsed()
     c = lp.counters
     usage = {
@@ -1144,6 +1166,7 @@ def _finish(
         "basis": ctx.basis(sources or []),
         "evidence": compose.referenced(ctx, ev_ids),
         "history_summary": history_summary,
+        "profile_updates": profile_updates,
         "budget_used": c.budget_used(),
         "usage": usage,
         "assessments": assessments_out,

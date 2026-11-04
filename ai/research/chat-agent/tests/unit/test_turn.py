@@ -63,7 +63,7 @@ def compare_answer(
             F.claim("RECORD", record_text, evidence_ids=[ro["current"]]),
             *extra,
         ]
-        return F.answer(claims, history_summary="3장 시선 비교를 물었다")
+        return F.answer(claims)
 
     return make
 

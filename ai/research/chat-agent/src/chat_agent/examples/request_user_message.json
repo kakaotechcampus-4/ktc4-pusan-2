@@ -19,7 +19,8 @@
   "history": {
     "summary": null,
     "messages": [],
-    "prior_assessments": []
+    "prior_assessments": [],
+    "overflow": null
   },
   "context": {
     "pitches": [
@@ -648,5 +649,10 @@
     "elapsed_ms": 0,
     "input_tokens": 0,
     "output_tokens": 0
+  },
+  "memory": {
+    "enabled": true,
+    "memory_version": 0,
+    "profile": []
   }
 }

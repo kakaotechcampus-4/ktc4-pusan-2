@@ -152,9 +152,9 @@ def answer(
     route: str = "ANSWER",
     assessments: list[dict[str, Any]] | None = None,
     start_practice: dict[str, Any] | None = None,
-    history_summary: str | None = None,
     scope_reason: str | None = None,
     scope_notes: list[str] | None = None,
+    profile_updates: list[dict[str, Any]] | None = None,
 ) -> LlmResult:
     return structured(
         {
@@ -164,9 +164,14 @@ def answer(
             "assessments": assessments or [],
             "claims": claims,
             "start_practice": start_practice,
-            "history_summary": history_summary,
+            "profile_updates": profile_updates or [],
         }
     )
+
+
+def summary(*items: tuple[str, str]) -> LlmResult:
+    """대화 요약 호출(HISTORY_SUMMARY)의 응답: (kind, text) 항목들."""
+    return structured({"items": [{"kind": k, "text": t} for k, t in items]})
 
 
 def fix(items: dict[int, str | None]) -> LlmResult:

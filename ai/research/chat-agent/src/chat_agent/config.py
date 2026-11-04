@@ -566,6 +566,52 @@ class ChatAgentConfig(_Frozen):
     repeat_stop: int = 2
     #: 무효 도구 응답이 연속 이만큼이면 조사를 끝낸다
     invalid_stop: int = 2
+    #: 대화 요약 호출(6-14) 뒤 끝 줄을 만들어 보낼 몫(초). 요약은 호출 한 번 시간 + 이 몫이 남을 때만 부른다
+    final_line_reserve_seconds: float = 2.0
+
+    # ── 6-14 기억(코칭 프로필 · 대화 요약) ─────────────────────────
+    #: 직접적인 기억 요청 표현. 인용(`quote`) 안에 이 중 하나가 있어야 프로필 후보로 받는다(②)
+    memory_request_words: tuple[str, ...] = (
+        "기억해",
+        "기억해 줘",
+        "기억해줘",
+        "기억해 두",
+        "기억해두",
+        "앞으로는",
+        "앞으로",
+        "다음부터",
+        "다음부터는",
+        "매번",
+        "항상",
+    )
+    #: 기억 철회 표현(③). 인용이 든 절에 있으면 후보를 버린다(일반 부정 표현 `negation_words`도 함께 본다)
+    memory_withdraw_words: tuple[str, ...] = ("잊어", "기억하지 마", "기억하지마", "지워", "지우고")
+    #: 저장 값에 들어가면 안 되는 지시형 · 판정 · 권한 낱말(⑤). 기억이 판정 · 실행 권한에 닿지 않게 한다(P14)
+    memory_directive_words: tuple[str, ...] = (
+        "무시",
+        "승인",
+        "허용",
+        "맞다고",
+        "동의해",
+        "틀렸다고",
+        "판정",
+        "점수",
+        "통과",
+        "지시",
+        "규칙",
+        "시스템",
+        "프롬프트",
+        "저장해",
+        "실행",
+    )
+    #: 코칭 프로필 항목 수(`key`마다 하나) · 값 길이, 한 응답의 갱신 후보 수
+    max_profile_items: int = 4
+    max_profile_value_chars: int = 80
+    max_profile_updates: int = 2
+    #: 대화 요약 항목 수 · 길이, 밀린 메시지 수
+    max_summary_items: int = 12
+    max_summary_item_chars: int = 120
+    max_overflow_messages: int = 10
 
     # ── 크기 (5-3 · 5-4 · 5-6 · 6-12 · 11-5) ────────────────────────
     max_request_bytes: int = 2 * 1024 * 1024

@@ -123,29 +123,37 @@ def test_fm_L1_02_request_json_depth_boundary() -> None:
     assert pre_stream(encode(deep_req)) == (413, "AGENT_CONTEXT_TOO_LARGE")
 
 
-@pytest.mark.parametrize("field", ["summary", "message"])
-def test_fm_L1_02_history_text_4000_boundary(field: str) -> None:
-    """history 요약 · 각 메시지 본문은 4,000자까지(코드 포인트). 4,001자는 자르지 않고 422."""
+def test_fm_L1_02_history_text_4000_boundary() -> None:
+    """history 각 메시지 본문은 4,000자까지(코드 포인트). 4,001자는 자르지 않고 422."""
 
     def with_text(n: int) -> dict[str, Any]:
         req = F.request(user_message=MSG)
-        text = "가" * n
-        if field == "summary":
-            req["history"]["summary"] = text
-        else:
-            req["history"]["messages"] = [
-                {
-                    "role": "user",
-                    "text": text,
-                    "truncated": False,
-                    "basis": None,
-                    "stale_reasons": [],
-                }
-            ]
+        req["history"]["messages"] = [
+            {
+                "role": "user",
+                "text": "가" * n,
+                "truncated": False,
+                "basis": None,
+                "stale_reasons": [],
+            }
+        ]
         return req
 
     assert pre_stream(encode(with_text(4000))) is None
     assert pre_stream(encode(with_text(4001))) == (422, "VALIDATION_ERROR")
+
+
+def test_fm_L1_02_history_summary_items_boundary() -> None:
+    """대화 요약은 항목 12개 · 각 120자까지(5-2 `SummaryItem`, 6-14). 넘으면 자르지 않고 422."""
+
+    def with_summary(n: int, chars: int) -> dict[str, Any]:
+        req = F.request(user_message=MSG)
+        req["history"]["summary"] = [{"kind": "TOPIC", "text": "가" * chars}] * n
+        return req
+
+    assert pre_stream(encode(with_summary(12, 120))) is None
+    assert pre_stream(encode(with_summary(13, 10))) == (422, "VALIDATION_ERROR")
+    assert pre_stream(encode(with_summary(1, 121))) == (422, "VALIDATION_ERROR")
 
 
 # ── L1-12 잘린 인자 · 거절 · 무효 출력 ───────────────────────────────────────

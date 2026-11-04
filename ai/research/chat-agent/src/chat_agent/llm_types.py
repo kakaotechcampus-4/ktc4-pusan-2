@@ -18,7 +18,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
-Purpose = Literal["RESEARCH", "ANSWER", "FIX"]
+#: 대화 요약(6-14)은 `HISTORY_SUMMARY`(답 쓰기 · 고치기 뒤 남은 몫에서)
+Purpose = Literal["RESEARCH", "ANSWER", "FIX", "HISTORY_SUMMARY"]
 
 
 @dataclass(frozen=True)
