@@ -677,6 +677,17 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       }),
     ),
 
+    // 대화로 실행 조회 — 조회만 하고 실행을 나아가게 하지 않습니다(나아가는 것은 실행 조회 GET 입니다)
+    http.get(
+      `*${chatPaths.conversationRun(':conversationId')}`,
+      withUser((state, { params }) => {
+        const conversation = state.conversations.get(String(params.conversationId));
+        if (!conversation) return error('NOT_FOUND', 404);
+        const run = activeRun(state, conversation.conversation_id);
+        return HttpResponse.json({ run: run && runView(run, 0) });
+      }),
+    ),
+
     http.put(
       `*${chatPaths.scope(':conversationId')}`,
       withUser(async (state, { params, request }) => {

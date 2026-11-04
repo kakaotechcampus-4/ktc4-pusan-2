@@ -8,6 +8,7 @@ import {
   canSend,
   chatTicket,
   isCurrent,
+  needsCreate,
   pendingSendTicket,
   useChatStore,
   type ChatScope,
@@ -151,16 +152,43 @@ describe('열기 · 범위', () => {
     store().finishScopeChange(change, WHOLE_SCOPE);
   });
 
-  it("'기억 없이' 는 새 대화에서 보내기 전에만 고를 수 있고, 새로고침해도 남는다", () => {
+  it("'기억 없이' 는 새 대화에서만 고르고, 고르면 대화를 먼저 만든 뒤에 보낸다", () => {
     store().openChat(pitchA);
     expect(store().setMemoryOff(true)).toBe(true);
     reload('user-1');
-    expect(store().memoryOff).toBe(true);
-    const ticket = store().beginSend(draft)!;
+    expect([store().memoryOff, needsCreate(store())]).toEqual([true, true]);
+    // 만들기 전에는 보내지 않습니다 — 보내기로 대화가 생기면 '기억 없이' 를 전할 길이 없습니다
+    expect(store().beginSend(draft)).toBeNull();
+
+    const create = store().beginCreate()!;
+    expect([canSend(store()), store().beginCreate()]).toEqual([false, null]);
+    store().finishCreate(create, 'conv-1');
+    expect(store()).toMatchObject({ conversationId: 'conv-1', memoryOff: true, creating: null });
     expect(store().setMemoryOff(false)).toBe(false);
-    store().beginRun(ticket, 'run-1', 'conv-1');
-    expect(store().setMemoryOff(false)).toBe(false);
+    expect(store().beginSend(draft)?.conversationId).toBe('conv-1');
+  });
+
+  it('대화 만들기가 실패하면 잠금을 풀고, 다른 대화로 옮긴 뒤 온 응답은 받지 않는다', () => {
+    store().openChat(pitchA);
+    store().setMemoryOff(true);
+    store().finishCreate(store().beginCreate()!, null);
+    expect([store().creating, store().conversationId, canSend(store())]).toEqual([
+      null,
+      null,
+      true,
+    ]);
+
+    const late = store().beginCreate()!;
+    store().startNewConversation(pitchB);
+    store().finishCreate(late, 'conv-late');
+    expect(store().conversationId).toBeNull();
+  });
+
+  it('지난 대화를 고르면 그 대화의 기억 없이 값을 따른다', () => {
+    store().selectConversation('conv-1', pitchA, true);
     expect(store().memoryOff).toBe(true);
+    store().selectConversation('conv-2', pitchA);
+    expect(store().memoryOff).toBe(false);
   });
 });
 
@@ -475,20 +503,52 @@ describe('세 번째 리뷰 반영', () => {
     expect(store().pending).toBeNull();
   });
 
-  it('있는 대화에서 보내던 요청을 되살리면, 실행 상태 조회가 그 보내기를 정리한다', () => {
+  it('있는 대화에서 보내던 요청을 되살리면, 실행 조회는 그 보내기를 지우지 않고 같은 키로 다시 보내 정리한다', () => {
+    openConversation('conv-1', pitchA);
+    const ticket = store().beginSend(draft)!;
+    reload('user-1');
+    expect([store().pending?.unconfirmed, canSend(store())]).toEqual([true, false]);
+    // 실행이 없다고 서버가 못 받았다고 볼 수 없습니다 — 보내기는 남깁니다
+    store().resolveConversation(chatTicket(), null);
+    expect([store().pending?.sendId, canSend(store())]).toEqual([ticket.sendId, false]);
+    expect(store().beginRun(pendingSendTicket()!, 'run-1', 'conv-1')).toBe(true);
+    expect(store()).toMatchObject({ pending: null, run: { runId: 'run-1' } });
+  });
+
+  it('되살린 보내기를 다시 보냈는데 접수되지 않았음이 확정되면 그때 놓는다', () => {
     openConversation('conv-1', pitchA);
     store().beginSend(draft);
     reload('user-1');
-    expect([store().pending?.unconfirmed, canSend(store())]).toEqual([true, false]);
-    store().resolveConversation(chatTicket(), { runId: 'run-1', phase: 'RUNNING' });
-    expect(store()).toMatchObject({ pending: null, run: { runId: 'run-1' } });
-    store().endRun('run-1');
-    expect(canSend(store())).toBe(true);
-
-    store().beginSend(draft);
-    reload('user-1');
     store().resolveConversation(chatTicket(), null);
+    store().failSend(pendingSendTicket()!);
     expect([store().pending, canSend(store())]).toEqual([null, true]);
+  });
+
+  it('409(다른 탭이 실행 중)면 보내기를 놓고 대화의 실행을 조회할 때까지 잠근다', () => {
+    openConversation('conv-1', pitchA);
+    const first = store().beginSend(draft)!;
+    store().conflictSend(first);
+    expect([store().pending, store().syncing, canSend(store())]).toEqual([null, true, false]);
+    store().resolveConversation(chatTicket(), { runId: 'run-other', phase: 'RUNNING' });
+    expect([store().run?.runId, canSend(store())]).toEqual(['run-other', false]);
+    store().endRun('run-other');
+    expect(canSend(store())).toBe(true);
+  });
+
+  it('로그아웃이 확인되면, 새로 연 페이지라 사용자가 이미 없음이어도 사본을 지운다', () => {
+    openConversation('conv-1', pitchA);
+    store().beginSend(draft);
+    useChatStore.setState({ userId: null });
+    store().setUser(null);
+    expect(sessionStorage.getItem('pitchcoach.chat.user-1')).toBeNull();
+  });
+
+  it('범위 변경 중에 새로고침하면 서버가 받은 앞 범위로 되살린다', () => {
+    openConversation('conv-1', pitchA);
+    store().beginScopeChange(pitchB);
+    store().openChat(pitchB);
+    reload('user-1');
+    expect(store().scope).toEqual(pitchA);
   });
 
   it('승인 대기 중 보내기와 취소가 겹쳐도, 새 실행이 붙으면 취소 중 잠금이 남지 않는다', () => {

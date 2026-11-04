@@ -10,20 +10,25 @@ import type { SendMessageRequest } from '@/types/chat';
  *
  * 서버를 부르는 일은 통신 계층이 하고, 이 저장소는 값과 그 값을 바꿔도 되는지만 정합니다.
  * 통신 계층이 할 순서:
+ *   새 대화  '기억 없이' 면 보내기 전에 대화부터 만듭니다(12-3 "'기억 없이' 선택(대화를 만들 때만)") —
+ *            needsCreate 면 beginCreate → POST /conversations(memory_off) → finishCreate(표, 대화 ID) → 보내기
  *   보내기   beginSend(초안) → `pending.request` 를 그대로 POST → (15초 넘게 모름) markUnconfirmed →
  *            같은 `pending.request` 로 다시 보내기 → 202 면 beginRun(표)
  *            · 접수 안 됨이 확정되면 failSend(표, 기다릴 초) — 429 는 Retry-After, 없거나 잘못되면 5초
- *            · 409 AGENT_RUN_IN_PROGRESS(다른 탭이 실행 중)면 failSend 뒤 실행 상태 조회 → resolveConversation
+ *            · 409 AGENT_RUN_IN_PROGRESS(다른 탭이 실행 중)면 conflictSend(표) → 대화의 실행 조회 →
+ *              resolveConversation — 조회가 끝날 때까지 잠근 채로 둡니다(L3-17 "409 실행 중은 상태 조회")
  *   조회     chatTicket → GET → isCurrent 면 setRunPhase · advanceCursor → 종결이면 endRun(실행, retry_after_s)
+ *            — 범위가 바뀐 종결 응답은 endRun **전에** applyServerScope(그 조회의 표, 범위) 합니다
  *   취소     beginCancel → POST → 종결을 보면 endRun · 취소 요청이 실패하면 abortCancel
- *   대화 열기 selectConversation · 새로고침 복원 → 그 대화의 실행 상태 조회 → resolveConversation(표, 찾은 실행)
- *            — 되살린 보내는 중도 여기서 정리합니다(찾은 실행을 붙이거나, 없으면 놓음)
- *   새 대화의 보내던 요청을 되살렸으면 대화 ID 가 없어 조회할 수 없으니, `pendingSendTicket()` 과
- *            `pending.request` 로 같은 키를 다시 보냅니다 — 접수됐던 요청이면 BE 가 같은 202 를 돌려줍니다
+ *   대화 열기 selectConversation · 새로고침 복원 → 대화의 실행 조회 → resolveConversation(표, 찾은 실행)
+ *   되살린 보내기 새로고침 전에 보내던 요청이 있으면(`pending`) 대화가 있든 없든 `pendingSendTicket()` 과
+ *            `pending.request` 로 같은 키를 다시 보냅니다(L3-15 "같은 키 · 본문으로 재시도") — 접수됐던 요청이면
+ *            BE 가 같은 202 를, 못 받았던 요청이면 새로 접수합니다. 접수되지 않음이 확정될 때만 failSend 합니다
  *   범위     새 대화는 chooseScope, 있는 대화는 beginScopeChange → PUT → finishScopeChange(표, 결과)
  *
  * **잠그는 것** (12-4 F2 · F3) — 화면은 `canSend` · `canChangeScope` 로 읽습니다
- * - 보내기: 로그인 전 · 범위 확인 중 · 보내는 중(미확정 포함) · 취소 확정 전 · 범위 변경 중 · 대화 상태를 아직 모를 때 ·
+ * - 보내기: 로그인 전 · 범위 확인 중 · 대화 만드는 중 · 보내는 중(미확정 포함) · 취소 확정 전 · 범위 변경 중 ·
+ *   대화 상태를 아직 모를 때 ·
  *   대기 · 실행 중 · 기다리라는 시각 전(429 Retry-After · `retry_after_s`). 승인 대기에서는 허용합니다 — BE 가 앞 확인을
  *   취소하고 받습니다.
  * - 범위 칩: 위와 같고, 승인 대기까지 실행이 끝나기 전에는 막습니다("실행 중에는 칩을 막는다").
@@ -101,6 +106,8 @@ export interface ChatTicket {
   runId: string | null;
   sendId: string | null;
   scopeChangeId: number | null;
+  /** 대화 만들기 표에만 있습니다 */
+  createId: number | null;
 }
 
 /** 찾은 실행 — 대화를 열거나 되살린 뒤 실행 상태 조회로 압니다 */
@@ -123,7 +130,7 @@ interface ChatState {
   scope: ScreenScope;
   /** 범위를 정했는지 — 칩으로 고르거나 보내기를 시작하면, 화면을 옮겨도 덮어쓰지 않습니다 */
   scopeFixed: boolean;
-  /** 새 대화를 '기억 없이' 시작할지. 보내기를 시작한 뒤에는 바꾸지 않습니다 */
+  /** '기억 없이' 대화인지 — 새 대화에서는 고른 값, 고른 대화에서는 그 대화의 값. 대화를 만든 뒤에는 바꾸지 않습니다 */
   memoryOff: boolean;
   pending: PendingSend | null;
   run: ActiveRun | null;
@@ -133,6 +140,8 @@ interface ChatState {
   syncing: boolean;
   /** 이 시각(ms) 전에는 보내지 않습니다 — 429 `Retry-After` · 실행 오류의 `retry_after_s` (12-4 F3 · F8) */
   blockedUntil: number | null;
+  /** '기억 없이' 새 대화를 만드는 중 — 응답까지 보내기 · 칩을 잠급니다 */
+  creating: { id: number; scopeFixedBefore: boolean } | null;
   /** 진행 중인 범위 변경 — 응답이 오기 전까지 칩과 보내기를 잠급니다 */
   scopeChange: { id: number; previous: ScreenScope } | null;
   /** 대화창을 가린 모달 수와, 가려진 동안 정해진 열림 상태 — 모달이 모두 닫히면 이것으로 돌립니다 */
@@ -156,11 +165,15 @@ interface ChatState {
   syncScreenScope: (screenScope: ScreenScope) => void;
   /** 새 대화 입력 상태로. 보내던 요청 · 지켜보던 실행은 놓습니다 — 늦은 응답은 표로 버립니다 */
   startNewConversation: (screenScope: ScreenScope) => void;
-  /** 대화 목록에서 지난 대화를 고릅니다. 그 대화의 실행 상태를 조회할 때까지 잠급니다(`resolveConversation`) */
-  selectConversation: (conversationId: string, scope: ChatScope) => void;
   /**
-   * 대화를 열거나 되살린 뒤 실행 상태를 조회한 결과. 표가 지금 것일 때만 받고, 같은 실행이면 커서를 지킵니다.
-   * 되살린 보내는 중도 정리합니다 — 실행을 찾았으면 그 실행이 그 보내기의 결과이고, 없으면 놓습니다(접수됐던 말은 목록에 있음)
+   * 대화 목록에서 지난 대화를 고릅니다. 그 대화의 실행 상태를 조회할 때까지 잠급니다(`resolveConversation`).
+   * `memoryOff` 는 목록의 그 대화 값입니다 — '기억 없이' 표시를 그 대화대로 붙입니다
+   */
+  selectConversation: (conversationId: string, scope: ChatScope, memoryOff?: boolean) => void;
+  /**
+   * 대화를 열거나 되살린 뒤 · 409 뒤 실행 상태를 조회한 결과. 표가 지금 것일 때만 받고, 같은 실행이면 커서를 지킵니다.
+   * 보내는 중(`pending`)은 건드리지 않습니다 — 실행이 없다고 그 말을 서버가 못 받았다고 볼 수 없고, 다른 탭의 실행을
+   * 그 말의 답으로 볼 수도 없습니다. 보내는 중은 같은 키로 다시 보내 정리합니다
    */
   resolveConversation: (ticket: ChatTicket, found: FoundRun | null) => boolean;
   /** 새 대화의 범위 칩 — 서버를 부르지 않습니다. 대화가 있거나 잠겨 있으면 false */
@@ -181,6 +194,15 @@ interface ChatState {
    * 보낼 본문은 `pending.request` 입니다
    */
   beginSend: (draft: SendDraft) => ChatTicket | null;
+  /** '기억 없이' 새 대화를 만들기 시작합니다. 만들 필요가 없거나 잠겨 있으면 null */
+  beginCreate: () => ChatTicket | null;
+  /** 대화 만들기 응답 — 만든 대화 ID, 실패면 null. 그 만들기의 표일 때만 받습니다 */
+  finishCreate: (ticket: ChatTicket, conversationId: string | null) => void;
+  /**
+   * 보내기가 409 `AGENT_RUN_IN_PROGRESS` 였을 때 — 이 대화에 다른 실행(다른 탭)이 있습니다. 보내던 요청은 접수되지
+   * 않았으니 놓고, 대화의 실행을 조회할 때까지 잠급니다(L3-17)
+   */
+  conflictSend: (ticket: ChatTicket) => void;
   /** 접수가 확인되지 않은 채 시간이 지남 — 잠금은 그대로 두고 같은 sendId 로 다시 보냅니다 */
   markUnconfirmed: (ticket: ChatTicket) => void;
   /**
@@ -215,14 +237,19 @@ interface ChatState {
 export function canSend(s: ChatState, now = Date.now()): boolean {
   if (s.userId === null || s.scope === null) return false;
   if (s.blockedUntil !== null && now < s.blockedUntil) return false;
-  if (s.pending || s.cancelling || s.scopeChange || s.syncing) return false;
+  if (s.pending || s.creating || s.cancelling || s.scopeChange || s.syncing) return false;
   return s.run === null || s.run.phase === 'WAITING_APPROVAL';
+}
+
+/** '기억 없이' 새 대화라 보내기 전에 대화를 먼저 만들어야 하는지 */
+export function needsCreate(s: ChatState): boolean {
+  return s.conversationId === null && s.memoryOff;
 }
 
 /** 범위 칩을 바꿀 수 있는지 */
 export function canChangeScope(s: ChatState): boolean {
   if (s.userId === null) return false;
-  return !s.pending && !s.run && !s.cancelling && !s.scopeChange && !s.syncing;
+  return !s.pending && !s.creating && !s.run && !s.cancelling && !s.scopeChange && !s.syncing;
 }
 
 // ── 새로고침 뒤 복원용 사본 ───────────────────────────────────
@@ -344,6 +371,7 @@ const emptyForUser = {
   cancelling: null,
   syncing: false,
   scopeChange: null,
+  creating: null,
   blockedUntil: null,
   openAfterCover: false,
 } satisfies Partial<ChatState>;
@@ -354,20 +382,32 @@ const leaveConversation = {
   run: null,
   cancelling: null,
   scopeChange: null,
+  creating: null,
   memoryOff: false,
 } satisfies Partial<ChatState>;
 
 let scopeChangeSeq = 0;
+let createSeq = 0;
 
 export const useChatStore = create<ChatState>()((set, get) => {
   /** 바뀐 뒤 복원용 사본을 남깁니다 */
   const save = () => {
-    const { userId, conversationId, scope, scopeFixed, memoryOff, run, pending, blockedUntil } =
-      get();
+    const {
+      userId,
+      conversationId,
+      scope,
+      scopeChange,
+      scopeFixed,
+      memoryOff,
+      run,
+      pending,
+      blockedUntil,
+    } = get();
     if (!userId) return;
     writeSaved(userId, {
       conversationId,
-      scope,
+      // 범위 변경 중이면 서버가 아직 받지 않은 범위라 앞 범위를 남깁니다
+      scope: scopeChange ? scopeChange.previous : scope,
       scopeFixed,
       memoryOff,
       run: run ? { runId: run.runId, conversationId: run.conversationId } : null,
@@ -404,7 +444,11 @@ export const useChatStore = create<ChatState>()((set, get) => {
     ...emptyForUser,
 
     setUser: (userId) => {
-      if (userId === get().userId) return;
+      if (userId === get().userId) {
+        // 새로 연 페이지는 처음부터 사용자가 없음이라, 로그아웃이 확인돼도 여기서 끝납니다 — 그래도 사본은 지웁니다
+        if (userId === null) dropOthers(null);
+        return;
+      }
       dropOthers(userId);
       const saved = userId ? readSaved(userId) : null;
       set((s) => ({
@@ -468,10 +512,11 @@ export const useChatStore = create<ChatState>()((set, get) => {
       save();
     },
 
-    selectConversation: (conversationId, scope) => {
+    selectConversation: (conversationId, scope, memoryOff = false) => {
       set((s) => ({
         ...leaveConversation,
         conversationId,
+        memoryOff,
         scope,
         scopeFixed: true,
         syncing: true,
@@ -493,8 +538,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
       const same = found !== null && s.run?.runId === found.runId;
       set({
         syncing: false,
-        // 되살린 보내는 중은 여기서 끝냅니다 — 찾은 실행이 그 결과이거나, 없으면 접수 여부는 목록이 보여 줍니다
-        pending: null,
         // 다른 실행이 붙으면 앞 실행의 취소 중 표시는 의미가 없습니다
         cancelling: found && s.cancelling === found.runId ? s.cancelling : null,
         run: found && {
@@ -553,7 +596,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
     beginSend: (draft) => {
       const s = get();
-      if (!canSend(s)) return null;
+      if (!canSend(s) || needsCreate(s)) return null;
       const sendId = newSendId();
       const pending: PendingSend = {
         sendId,
@@ -572,6 +615,43 @@ export const useChatStore = create<ChatState>()((set, get) => {
       set({ pending, scopeFixed: true });
       save();
       return { ...chatTicket(), sendId: pending.sendId };
+    },
+
+    beginCreate: () => {
+      const s = get();
+      if (!needsCreate(s) || !canSend(s)) return null;
+      const id = ++createSeq;
+      // 대화를 만드는 순간 범위가 정해집니다
+      set({ creating: { id, scopeFixedBefore: s.scopeFixed }, scopeFixed: true });
+      return { ...chatTicket(), createId: id };
+    },
+
+    finishCreate: (ticket, conversationId) => {
+      const s = get();
+      if (
+        ticket.createId === null ||
+        s.creating?.id !== ticket.createId ||
+        ticket.generation !== s.generation ||
+        ticket.attempt !== s.attempt
+      )
+        return;
+      if (conversationId === null) {
+        set({ creating: null, scopeFixed: s.creating.scopeFixedBefore });
+        return;
+      }
+      // '기억 없이' 는 그대로 — 이 대화의 값입니다
+      set({ creating: null, conversationId, scopeFixed: true });
+      save();
+    },
+
+    conflictSend: (ticket) => {
+      if (!isPendingSend(ticket)) return;
+      set((s) => ({
+        pending: null,
+        scopeFixed: s.conversationId !== null || s.pending!.scopeFixedBefore,
+        syncing: s.conversationId !== null,
+      }));
+      save();
     },
 
     markUnconfirmed: (ticket) => {
@@ -686,6 +766,7 @@ export function chatTicket(): ChatTicket {
     runId: run?.runId ?? null,
     sendId: null,
     scopeChangeId: null,
+    createId: null,
   };
 }
 

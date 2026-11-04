@@ -107,3 +107,66 @@ describe('목 BE 와 붙인 순서', () => {
     expect([store().conversationId, canSend(store())]).toEqual([lost.conversation_id, true]);
   });
 });
+
+describe('대화의 실행 조회 · 409 · 기억 없이 (네 번째 리뷰)', () => {
+  const convRun = async (conversationId: string) =>
+    (await (await fetch(base + chatPaths.conversationRun(conversationId))).json()) as {
+      run: RunView | null;
+    };
+
+  /** 다른 탭: 같은 대화에 직접 보냄 */
+  const otherTabSends = (conversationId: string) =>
+    post(chatPaths.send, {
+      ...draft,
+      conversation_id: conversationId,
+      scope_pitch_id: null,
+      client_request_id: `other-${Math.random()}`,
+    });
+
+  it('409(다른 탭이 실행 중)면 대화의 실행을 찾아 이어 가고, 그동안 다시 보내지 못한다', async () => {
+    const first = await send('비교해 줘');
+    await untilSettled();
+    const conversationId = first.conversation_id;
+    await otherTabSends(conversationId);
+
+    const ticket = store().beginSend(draft)!;
+    const response = await post(chatPaths.send, store().pending!.request);
+    expect(response.status).toBe(409);
+    store().conflictSend(ticket);
+    // 조회가 끝나기 전에는 잠금 — 리뷰가 찾은 "다시 보낸 말이 사라짐" 이 생기지 않습니다
+    expect(canSend(store())).toBe(false);
+
+    const lookupTicket = chatTicket();
+    const found = (await convRun(conversationId)).run;
+    expect(found).not.toBeNull();
+    store().resolveConversation(lookupTicket, {
+      runId: found!.run_id,
+      phase: found!.status as 'RUNNING',
+    });
+    await untilSettled();
+    expect([store().run, canSend(store())]).toEqual([null, true]);
+    expect((await send('이번엔 되나?')).run_id).toBeTruthy();
+  });
+
+  it("'기억 없이' 면 대화를 먼저 만들고 보낸다 — 그 대화에는 기억이 저장되지 않는다", async () => {
+    store().setMemoryOff(true);
+    const create = store().beginCreate()!;
+    const created = (await (
+      await post(chatPaths.conversations, {
+        scope_pitch_id: null,
+        page: draft.page,
+        memory_off: true,
+      })
+    ).json()) as { conversation_id: string };
+    store().finishCreate(create, created.conversation_id);
+
+    const accepted = await send('짧게 설명해 줘, 기억해');
+    expect(accepted.conversation_id).toBe(created.conversation_id);
+    await untilSettled();
+    const page = (await (
+      await fetch(base + chatPaths.messages(created.conversation_id))
+    ).json()) as { items: { cards: { type: string }[] }[] };
+    expect(page.items.at(-1)!.cards).toEqual([]);
+    expect(store().memoryOff).toBe(true);
+  });
+});
