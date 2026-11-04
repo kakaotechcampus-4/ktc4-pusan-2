@@ -138,7 +138,7 @@ function EditNotice({
 }) {
   return (
     <div className="pitch-create flex min-h-0 flex-1 flex-col bg-greige text-ink">
-      <div className="flex flex-1 items-center justify-center p-6">
+      <main id={MAIN_ID} tabIndex={-1} className="flex flex-1 items-center justify-center p-6">
         <div
           role={busy ? 'status' : 'alert'}
           className="flex w-full max-w-md flex-col items-center gap-3 rounded-lg border border-line bg-panel p-8 text-center"
@@ -152,7 +152,7 @@ function EditNotice({
             </Link>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

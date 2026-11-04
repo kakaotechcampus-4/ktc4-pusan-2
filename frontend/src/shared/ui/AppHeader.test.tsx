@@ -68,7 +68,7 @@ it('링크를 누르면 초점이 본문으로 옮겨 가고 주소는 그대로
   expect(window.location.hash).toBe('');
 });
 
-it('본문이 아직 없으면 기본 이동(앵커)에 맡긴다', async () => {
+it('본문이 아직 없어도 기본 앵커 이동을 막아 주소에 #main 이 붙지 않는다', async () => {
   await act(async () =>
     root.render(
       <MemoryRouter>
@@ -80,5 +80,6 @@ it('본문이 아직 없으면 기본 이동(앵커)에 맡긴다', async () => 
   await act(async () => {
     host.querySelector('a')!.dispatchEvent(click);
   });
-  expect(click.defaultPrevented).toBe(false);
+  expect(click.defaultPrevented).toBe(true);
+  expect(window.location.hash).toBe('');
 });

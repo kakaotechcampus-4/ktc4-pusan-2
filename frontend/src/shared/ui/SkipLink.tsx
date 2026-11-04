@@ -13,11 +13,11 @@ export function SkipLink() {
     <a
       href={`#${MAIN_ID}`}
       onClick={(e) => {
-        const main = document.getElementById(MAIN_ID);
-        if (!main) return;
+        // 목표가 없을 때도 기본 앵커 이동을 막습니다 — 주소에 #main 이 붙으면 안 됩니다
         e.preventDefault();
-        main.focus();
-        main.scrollIntoView();
+        const main = document.getElementById(MAIN_ID);
+        main?.focus();
+        main?.scrollIntoView();
       }}
       className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-panel focus:p-4"
     >

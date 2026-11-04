@@ -27,6 +27,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { AppHeader } from '@/shared/ui/AppHeader';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 import { HomePage } from '@/features/pitch/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 
@@ -107,9 +108,12 @@ export const appRoutes = routes.map((route) => {
   const screen = (
     <Suspense
       fallback={
-        <p role="status" className="bg-panel p-8 text-ink">
-          화면을 불러오고 있어요.
-        </p>
+        // 상단바가 먼저 그려져도 건너뛰기 링크가 갈 곳이 있도록 본문 자리를 지킵니다
+        <main id={MAIN_ID} tabIndex={-1} className="flex-1 bg-panel text-ink">
+          <p role="status" className="p-8">
+            화면을 불러오고 있어요.
+          </p>
+        </main>
       }
     >
       {route.element}
