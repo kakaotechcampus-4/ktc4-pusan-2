@@ -69,7 +69,7 @@
      여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */
   --color-gaze-audience: #6B9E78;   /* 청중 · solid 2px */
   --color-gaze-screen: #D9A441;     /* 화면(슬라이드) · solid 5px */
-  /* 대본(화면 아래 대본 띠) · solid 5px. ★ 임시 값 — 색은 PR 리뷰에서 정합니다.
+  /* 대본(화면 아래 대본 띠) · solid 5px.
      하이라이트 모드에서는 대본을 보는 게 자연스러워 경고처럼 보이지 않는 차분한 색을 둡니다 */
   --color-gaze-script: #7FA3C7;
   --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */

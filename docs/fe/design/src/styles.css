@@ -61,7 +61,7 @@
      여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */
   --color-gaze-audience: #6B9E78;   /* 청중 · solid 2px */
   --color-gaze-screen: #D9A441;     /* 화면(슬라이드) · solid 5px */
-  --color-gaze-script: #7FA3C7;     /* 대본 · solid 5px. 임시 값 — 리뷰에서 정합니다 */
+  --color-gaze-script: #7FA3C7;     /* 대본 · solid 5px */
   --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
 
   /* ── 분석 대기 로딩 화면 ───────────────────────────────────────
