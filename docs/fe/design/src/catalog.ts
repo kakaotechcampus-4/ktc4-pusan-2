@@ -736,12 +736,16 @@ const infoScreens: GuideScreen[] = [
     summary: '이 브라우저 · 기기에서 연습할 수 없는 이유와 쓸 브라우저를 알린다.',
     states: [
       state('browser', '시선 분석 불가', '시선 분석에 필요한 브라우저 기능이 없다.'),
-      state('mobile', '터치 기기', '터치만 되는 기기라 PC에서 연습하라고 알린다.'),
+      state(
+        'mobile',
+        '터치 기기',
+        '휴대폰 · 태블릿에서 연습 화면(장치 점검 · 리허설 · 실전)을 열면 이 안내로 온다. 노트북 · 데스크톱에서 연습하라고 알린다.',
+      ),
       state('supported', '연습 가능', '이 주소로 바로 들어왔지만 이 브라우저는 연습할 수 있다.'),
     ],
     rules: [
-      '사유는 이 화면이 직접 고른다. 시선 분석 기능이 없으면 그게 먼저고, 그다음 터치 전용 기기(`pointer: coarse`)다.',
-      '지금 제품에는 이 화면으로 자동으로 보내는 곳이 없다. 연습은 PC 정책이고, 이 화면이 그 안내다.',
+      '사유는 이 화면이 직접 고른다. 시선 분석 기능이 없으면 그게 먼저고, 그다음 터치 전용 기기다(주 입력이 `pointer: coarse` 이고 마우스 · 트랙패드가 없을 때).',
+      '터치 전용 기기가 연습 화면(장치 점검 · 리허설 · 실전)을 열면 `DesktopGate` 가 로그인보다 먼저 이 화면으로 보낸다. 홈 · 피치 · 리포트 · 마이페이지는 모바일에서도 열린다.',
       '"링크 복사"는 주소를 복사하고, 복사할 수 없으면 주소를 직접 옮기라고 알린다.',
     ],
     components: ['InfoPage 틀(로고 줄)', 'Card', 'Button'],
@@ -749,6 +753,7 @@ const infoScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/info/UnsupportedPage.tsx',
       'frontend/src/features/info/unsupportedReason.ts',
+      'frontend/src/app/DesktopGate.tsx',
     ],
     productNote: '"링크 복사"는 샘플에서 클립보드를 쓰지 않고 복사 결과 문구도 띄우지 않는다.',
     productLinks: [
