@@ -19,7 +19,7 @@ const pitchB: ChatScope = { pitchId: 'pitch-b', title: '중간 발표' };
 
 /** 보내기 → 접수까지 — 통신 계층이 할 순서 */
 function sendAndAccept(runId: string, conversationId: string) {
-  const ticket = store().beginSend();
+  const ticket = store().beginSend(draft);
   expect(ticket).not.toBeNull();
   expect(store().beginRun(ticket!, runId, conversationId)).toBe(true);
   return ticket!;
@@ -36,6 +36,13 @@ function reload(userId: string) {
   useChatStore.setState({ userId: null });
   store().setUser(userId);
 }
+
+const draft = {
+  text: '질문',
+  page: { route: '/', pitch_id: null, take_id: null, screen: null },
+  again_of_message_id: null,
+  choice: null,
+};
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 
@@ -69,14 +76,18 @@ describe('열기 · 범위', () => {
 
   it('범위를 모르면 "확인 중"(null)으로 두고 보내지 않는다 — 알게 되면 맞춘 뒤 보낼 수 있다', () => {
     store().openChat(null);
-    expect([store().scope, canSend(store()), store().beginSend()]).toEqual([null, false, null]);
+    expect([store().scope, canSend(store()), store().beginSend(draft)]).toEqual([
+      null,
+      false,
+      null,
+    ]);
     store().syncScreenScope(pitchA);
     expect(canSend(store())).toBe(true);
   });
 
   it('새 대화의 첫 보내기 중에는 화면을 옮겨도 범위가 바뀌지 않고, 보낸 범위로 대화가 정해진다', () => {
     store().openChat(pitchA);
-    const ticket = store().beginSend()!;
+    const ticket = store().beginSend(draft)!;
     store().openChat(pitchB);
     store().syncScreenScope(null);
     expect(store().scope).toEqual(pitchA);
@@ -88,7 +99,7 @@ describe('열기 · 범위', () => {
 
   it('새 대화의 첫 보내기가 접수되지 않으면, 범위는 다시 화면을 따라갈 수 있다', () => {
     store().openChat(pitchA);
-    store().failSend(store().beginSend()!);
+    store().failSend(store().beginSend(draft)!);
     store().openChat(pitchB);
     expect(store().scope).toEqual(pitchB);
   });
@@ -145,7 +156,7 @@ describe('열기 · 범위', () => {
     expect(store().setMemoryOff(true)).toBe(true);
     reload('user-1');
     expect(store().memoryOff).toBe(true);
-    const ticket = store().beginSend()!;
+    const ticket = store().beginSend(draft)!;
     expect(store().setMemoryOff(false)).toBe(false);
     store().beginRun(ticket, 'run-1', 'conv-1');
     expect(store().setMemoryOff(false)).toBe(false);
@@ -157,14 +168,14 @@ describe('보내기 · 접수', () => {
   beforeEach(() => store().openChat(pitchA));
 
   it('보내기를 시작하면 접수 전에도 바로 잠근다 — 두 번 보내기 · 범위 칩을 막는다', () => {
-    const ticket = store().beginSend()!;
-    expect([store().beginSend(), store().chooseScope(pitchB)]).toEqual([null, false]);
+    const ticket = store().beginSend(draft)!;
+    expect([store().beginSend(draft), store().chooseScope(pitchB)]).toEqual([null, false]);
     store().failSend(ticket);
     expect(canSend(store())).toBe(true);
   });
 
   it('미확정이어도 잠금을 풀지 않고, 같은 sendId 로 다시 보내 접수를 받는다', () => {
-    const ticket = store().beginSend()!;
+    const ticket = store().beginSend(draft)!;
     store().markUnconfirmed(ticket);
     expect([canSend(store()), store().pending?.unconfirmed]).toEqual([false, true]);
     expect(pendingSendTicket()?.sendId).toBe(ticket.sendId);
@@ -173,9 +184,9 @@ describe('보내기 · 접수', () => {
   });
 
   it('앞 보내기의 늦은 접수는 다음 보내기를 가로채지 못한다', () => {
-    const a = store().beginSend()!;
+    const a = store().beginSend(draft)!;
     store().failSend(a);
-    const b = store().beginSend()!;
+    const b = store().beginSend(draft)!;
     expect(store().beginRun(a, 'run-a', 'conv-a')).toBe(false);
     expect(store().pending?.sendId).toBe(b.sendId);
     expect(store().beginRun(b, 'run-b', 'conv-b')).toBe(true);
@@ -215,16 +226,16 @@ describe('보내기 · 접수', () => {
   });
 
   it('로그인 전 · 로그아웃 뒤에는 보내지 않고, 늦게 온 접수도 붙지 않는다', () => {
-    const ticket = store().beginSend()!;
+    const ticket = store().beginSend(draft)!;
     store().signOut();
     store().openChat(pitchA);
-    expect(store().beginSend()).toBeNull();
+    expect(store().beginSend(draft)).toBeNull();
     expect(store().beginRun(ticket, 'run-late', 'conv-late')).toBe(false);
     expect(store().run).toBeNull();
   });
 
   it('보내는 사이 새 대화를 시작하면 늦게 온 접수는 붙지 않는다', () => {
-    const ticket = store().beginSend()!;
+    const ticket = store().beginSend(draft)!;
     store().startNewConversation(pitchB);
     expect(store().beginRun(ticket, 'run-late', 'conv-late')).toBe(false);
     expect(store()).toMatchObject({
@@ -301,7 +312,7 @@ describe('사용자 · 로그아웃 · 새로고침', () => {
     store().openChat(pitchA);
     sendAndAccept('run-1', 'conv-1');
     store().setRunPhase('run-1', 'WAITING_APPROVAL');
-    store().beginSend();
+    store().beginSend(draft);
     store().beginCancel('run-1');
     expect(store().pending).not.toBeNull();
     store().setUser('user-2');
@@ -335,7 +346,7 @@ describe('사용자 · 로그아웃 · 새로고침', () => {
 
   it('보내는 중에 새로고침하면 미확정으로 되살려 같은 sendId 로 다시 보낸다', () => {
     store().openChat(pitchA);
-    const ticket = store().beginSend()!;
+    const ticket = store().beginSend(draft)!;
     reload('user-1');
     expect(store().pending).toMatchObject({ sendId: ticket.sendId, unconfirmed: true });
     expect(canSend(store())).toBe(false);
@@ -425,5 +436,102 @@ describe('모달에 가려질 때', () => {
     expect(store().coveredBy).toBe(1);
     store().uncoverByModal();
     expect(store().open).toBe(false);
+  });
+});
+
+describe('세 번째 리뷰 반영', () => {
+  beforeEach(() => store().openChat(pitchA));
+
+  it('보낼 본문은 저장소가 대화 · 범위 · 키를 채워 보관하고, 새로고침해도 남는다', () => {
+    openConversation('conv-1', pitchA);
+    const ticket = store().beginSend({ ...draft, text: '다시 봐 줘' })!;
+    expect(store().pending?.request).toEqual({
+      ...draft,
+      text: '다시 봐 줘',
+      conversation_id: 'conv-1',
+      scope_pitch_id: 'pitch-a',
+      client_request_id: ticket.sendId,
+    });
+    reload('user-1');
+    expect(store().pending?.request.client_request_id).toBe(ticket.sendId);
+  });
+
+  it('본문이 없거나 키가 다른 사본의 보내는 중은 되살리지 않는다', () => {
+    sessionStorage.setItem(
+      'pitchcoach.chat.user-4',
+      JSON.stringify({
+        conversationId: null,
+        scope: pitchA,
+        pending: {
+          sendId: 's-1',
+          conversationId: null,
+          scope: pitchA,
+          scopeFixedBefore: false,
+          request: { ...draft, client_request_id: 's-other' },
+        },
+      }),
+    );
+    store().setUser('user-4');
+    expect(store().pending).toBeNull();
+  });
+
+  it('있는 대화에서 보내던 요청을 되살리면, 실행 상태 조회가 그 보내기를 정리한다', () => {
+    openConversation('conv-1', pitchA);
+    store().beginSend(draft);
+    reload('user-1');
+    expect([store().pending?.unconfirmed, canSend(store())]).toEqual([true, false]);
+    store().resolveConversation(chatTicket(), { runId: 'run-1', phase: 'RUNNING' });
+    expect(store()).toMatchObject({ pending: null, run: { runId: 'run-1' } });
+    store().endRun('run-1');
+    expect(canSend(store())).toBe(true);
+
+    store().beginSend(draft);
+    reload('user-1');
+    store().resolveConversation(chatTicket(), null);
+    expect([store().pending, canSend(store())]).toEqual([null, true]);
+  });
+
+  it('승인 대기 중 보내기와 취소가 겹쳐도, 새 실행이 붙으면 취소 중 잠금이 남지 않는다', () => {
+    sendAndAccept('run-a', 'conv-1');
+    store().setRunPhase('run-a', 'WAITING_APPROVAL');
+    const ticket = store().beginSend(draft)!;
+    store().beginCancel('run-a');
+    store().beginRun(ticket, 'run-b', 'conv-1');
+    store().endRun('run-a');
+    store().endRun('run-b');
+    expect([store().cancelling, canSend(store())]).toEqual([null, true]);
+  });
+
+  it('지켜보던 실행이 바뀐 뒤 온 앞 실행의 종결도 그 실행의 취소 중 표시를 지운다', () => {
+    sendAndAccept('run-a', 'conv-1');
+    store().beginCancel('run-a');
+    useChatStore.setState({
+      run: { runId: 'run-b', conversationId: 'conv-1', phase: 'RUNNING', afterSeq: 0 },
+    });
+    store().endRun('run-a');
+    expect(store().cancelling).toBeNull();
+  });
+
+  it('429 · retry_after_s 동안은 보내지 않고, 시각이 지나면 보낼 수 있다', () => {
+    const now = Date.now();
+    store().failSend(store().beginSend(draft)!, 5);
+    expect([canSend(store(), now), canSend(store(), now + 6000)]).toEqual([false, true]);
+
+    useChatStore.setState({ blockedUntil: null });
+    sendAndAccept('run-1', 'conv-1');
+    store().endRun('run-1', 5);
+    expect([canSend(store(), now), canSend(store(), now + 6000)]).toEqual([false, true]);
+    reload('user-1');
+    expect(store().blockedUntil).not.toBeNull();
+  });
+
+  it('있는 대화의 접수는 그사이 서버가 확정한 범위를 덮어쓰지 않는다', () => {
+    openConversation('conv-1', pitchA);
+    sendAndAccept('run-a', 'conv-1');
+    store().setRunPhase('run-a', 'WAITING_APPROVAL');
+    const ticket = store().beginSend(draft)!;
+    store().applyServerScope(chatTicket(), pitchB);
+    store().beginRun(ticket, 'run-b', 'conv-1');
+    expect(store().scope).toEqual(pitchB);
   });
 });
