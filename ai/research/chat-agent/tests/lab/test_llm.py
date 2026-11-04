@@ -299,3 +299,66 @@ def test_fm_L1_14_result_finished_right_after_timeout_is_used_not_resent() -> No
     fake.create = lambda **kw: (fake.kwargs.append(kw), fake.outcomes.pop(0))[1]  # type: ignore[method-assign]
     r = llm.invoke(req(tools=False), always)
     assert r.parsed == {} and len(fake.kwargs) == 1
+
+
+# ── 응답 조각을 받는 쪽(문장 줄, 5-4) ───────────────────────────────────────────
+
+
+class CutStream(Stream):
+    """조각 몇 개를 낸 뒤 연결이 끊기는 스트림."""
+
+    def __iter__(self) -> Any:
+        yield from self.chunks
+        raise httpx.ReadError("끊김")
+
+
+class Sink:
+    def __init__(self, *, commit_after: int | None) -> None:
+        self.commit_after = commit_after
+        self.starts: list[int] = []
+        self.feeds: list[tuple[int, str]] = []
+
+    def start(self, attempt: int) -> None:
+        self.starts.append(attempt)
+
+    def feed(self, attempt: int, text: str) -> None:
+        self.feeds.append((attempt, text))
+
+    def committed(self) -> bool:
+        return self.commit_after is not None and len(self.feeds) >= self.commit_after
+
+
+def sink_req(sink: Sink) -> LlmRequest:
+    import dataclasses
+
+    return dataclasses.replace(req(tools=False), text_sink=sink)
+
+
+def test_chunks_go_to_the_sink_with_the_attempt_number() -> None:
+    llm, _, _ = make([[chunk(content='{"a":'), chunk(content="1}"), chunk(finish="stop")]])
+    sink = Sink(commit_after=None)
+    r = llm.invoke(sink_req(sink), always)
+    assert r.parsed == {"a": 1}
+    assert sink.starts == [1] and sink.feeds == [(1, '{"a":'), (1, "1}")]
+
+
+def test_call_that_already_showed_a_sentence_is_not_resent() -> None:
+    """화면에 낸 문장이 있으면 끊겨도 다시 보내지 않는다(낸 문장이 다른 초안과 섞이지 않게)."""
+    llm, fake, sleeps = make(
+        [CutStream([chunk(content='{"claims":[')]), [chunk(content="{}"), chunk(finish="stop")]]
+    )
+    sink = Sink(commit_after=1)
+    with pytest.raises(LlmCallFailed):
+        llm.invoke(sink_req(sink), always)
+    assert len(fake.kwargs) == 1 and sleeps == []
+    assert sink.starts == [1]
+
+
+def test_call_that_showed_nothing_is_resent_and_the_sink_restarts() -> None:
+    llm, fake, _ = make(
+        [CutStream([chunk(content='{"claims":[')]), [chunk(content="{}"), chunk(finish="stop")]]
+    )
+    sink = Sink(commit_after=None)
+    r = llm.invoke(sink_req(sink), always)
+    assert r.attempts == 2 and len(fake.kwargs) == 2
+    assert sink.starts == [1, 2] and sink.feeds[-1] == (2, "{}")

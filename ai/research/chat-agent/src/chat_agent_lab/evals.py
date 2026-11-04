@@ -284,6 +284,12 @@ class MeteredLlm:
             req = dataclasses.replace(req, tools=only)
         # 코어 마감은 흘린 시간이 든 시계 기준이다. 실제 모델은 실제 시계로 재므로 그만큼 빼서 넘긴다
         req = dataclasses.replace(req, deadline=req.deadline - self.clock.offset)
+        bad = self._fault("corrupt_answer")
+        corrupt = bad is not None and req.purpose == "ANSWER" and pn == bad.nth
+        sink = req.text_sink
+        if corrupt and sink is not None:
+            # 바꾼 답을 모델이 흘린 것처럼 받는 쪽에 다시 흘린다(원래 글이 먼저 화면에 나가지 않게)
+            req = dataclasses.replace(req, text_sink=None)
         t0 = time.monotonic()
         try:
             res = self.inner.invoke(req, before_attempt)
@@ -297,9 +303,11 @@ class MeteredLlm:
         if offered is not None and not res.tool_calls:
             # 도구 하나만 줘도 부를지는 모델이 정한다(강제 수단 없음). 기록만 하고 조사는 코어 규칙대로 끝난다
             self._step(self._seq_pos - 1, offered, "MODEL_NO_CALL")
-        bad = self._fault("corrupt_answer")
-        if bad is not None and req.purpose == "ANSWER" and pn == bad.nth and res.parsed:
+        if corrupt and bad is not None and res.parsed:
             res = _corrupt(res, bad.from_text or "", bad.to_text or "")
+        if corrupt and sink is not None and res.message:
+            sink.start(1)
+            sink.feed(1, res.message)
         delay = self._fault("model_delay", after_call=n)
         if delay is not None:
             self.clock.advance(delay.seconds)

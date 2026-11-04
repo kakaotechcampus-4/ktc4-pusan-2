@@ -111,6 +111,7 @@ class OpenAiToolLlm:
         usages: list[Usage] = []
         errors: list[str] = []
         last: LlmError | None = None
+        sink = req.text_sink
         for attempt in range(1, req.max_attempts + 1):
             if not before_attempt(attempt):
                 raise LlmBudgetStop(attempts=attempt - 1, usage=usages, cause="budget")
@@ -119,8 +120,10 @@ class OpenAiToolLlm:
             if timeout <= 0:
                 raise last or LlmTimeout(attempts=attempt - 1, usage=usages, cause="deadline")
             started = self._monotonic()
+            if sink is not None:
+                sink.start(attempt)
             try:
-                result = self._once(req, mode, timeout)
+                result = self._once(req, mode, timeout, attempt)
             except _Retryable as r:
                 usages.append(Usage())
                 errors.append(r.error.code)
@@ -128,9 +131,13 @@ class OpenAiToolLlm:
                 last.attempts, last.usage = attempt, list(usages)
                 self._emit(req, attempt, r.error.code, None, started, r.cause)
                 wait = r.retry_after if r.retry_after is not None else 0.5
-                # 다시 부를 시간: 대기 + 호출 한 번(12초)이 마감 안에 들어와야 한다(8-3)
-                if attempt < req.max_attempts and (
-                    req.deadline - self._monotonic() >= wait + self._role.timeout_seconds
+                # 다시 부를 시간: 대기 + 호출 한 번(12초)이 마감 안에 들어와야 한다(8-3).
+                # 앞 시도의 문장을 이미 화면에 냈으면 다시 보내지 않는다(낸 문장이 다른 초안과 섞이지 않게, 5-4 · 6-11)
+                shown = sink is not None and sink.committed()
+                if (
+                    attempt < req.max_attempts
+                    and not shown
+                    and req.deadline - self._monotonic() >= wait + self._role.timeout_seconds
                 ):
                     self._sleep(wait)
                     continue
@@ -157,8 +164,8 @@ class OpenAiToolLlm:
         raise last or LlmCallFailed(attempts=req.max_attempts, usage=usages)
 
     # ── 한 번 보내기 ──────────────────────────────────────────────────
-    def _once(self, req: LlmRequest, mode: str, timeout: float) -> LlmResult:
-        holder: dict[str, Any] = {}
+    def _once(self, req: LlmRequest, mode: str, timeout: float, attempt: int = 1) -> LlmResult:
+        holder: dict[str, Any] = {"attempt": attempt}
         with self._inflight_lock:
             self._inflight += 1
         future = self._executor.submit(self._stream, req, holder)
@@ -231,6 +238,9 @@ class OpenAiToolLlm:
                     if d is not None:
                         if getattr(d, "content", None):
                             text.append(d.content)
+                            if req.text_sink is not None:
+                                # 받는 쪽이 지난 시도의 조각을 가려 버린다(시간 초과 뒤 늦게 끝난 전송)
+                                req.text_sink.feed(holder["attempt"], d.content)
                         if getattr(d, "refusal", None):
                             refusal = True
                         for tc in getattr(d, "tool_calls", None) or []:
