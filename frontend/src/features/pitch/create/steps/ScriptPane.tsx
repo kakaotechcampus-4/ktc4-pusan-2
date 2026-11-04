@@ -540,6 +540,20 @@ function MappingEditor({
   const countsMatch = pageCount > 0 && blocks.length === pageCount;
   const canSave = !script.saved && canSaveMapping(script, linked);
 
+  // "수정 대본 매핑"은 끝나면 사라집니다(서버 버전이 생기고 나누기가 끝남). 그 버튼이 쥐고 있던 초점이
+  // body 로 빠지지 않게 다음 할 일로 옮깁니다 — 저장할 수 있으면 저장, 아니면 왜 못 하는지 알리는 줄 (#845).
+  // 실패하면 버튼이 남아 초점도 그대로입니다
+  const saveButton = useRef<HTMLButtonElement>(null);
+  const saveStatus = useRef<HTMLDivElement>(null);
+  const wasPending = useRef(pending);
+  useEffect(() => {
+    const finished = wasPending.current && !pending;
+    wasPending.current = pending;
+    if (!finished || saveStatus.current?.closest('dialog')?.contains(document.activeElement))
+      return;
+    (canSave ? saveButton.current : saveStatus.current)?.focus();
+  }, [pending, canSave]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-3 flex flex-wrap gap-2">
@@ -635,23 +649,25 @@ function MappingEditor({
       </p>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-4">
-        {script.saved ? (
-          <p className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white">
-              <CheckIcon className="h-4 w-4 stroke-current" />
-            </span>
-            <span>
-              <span className="block text-sm font-bold">
-                저장 완료 · 슬라이드 V{linked?.version} / 대본 V{script.version}
+        <div ref={saveStatus} tabIndex={-1}>
+          {script.saved ? (
+            <p className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white">
+                <CheckIcon className="h-4 w-4 stroke-current" />
               </span>
-              <span className="block text-xs text-ink/80">
-                {gate.ready ? '이 조합으로 연습을 진행해요.' : gate.message}
+              <span>
+                <span className="block text-sm font-bold">
+                  저장 완료 · 슬라이드 V{linked?.version} / 대본 V{script.version}
+                </span>
+                <span className="block text-xs text-ink/80">
+                  {gate.ready ? '이 조합으로 연습을 진행해요.' : gate.message}
+                </span>
               </span>
-            </span>
-          </p>
-        ) : (
-          <SaveHint countsMatch={countsMatch} blockCount={blocks.length} pageCount={pageCount} />
-        )}
+            </p>
+          ) : (
+            <SaveHint countsMatch={countsMatch} blockCount={blocks.length} pageCount={pageCount} />
+          )}
+        </div>
 
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex flex-wrap justify-end gap-3">
@@ -671,6 +687,7 @@ function MappingEditor({
               </button>
             )}
             <button
+              ref={saveButton}
               type="button"
               disabled={!canSave}
               onClick={() => {

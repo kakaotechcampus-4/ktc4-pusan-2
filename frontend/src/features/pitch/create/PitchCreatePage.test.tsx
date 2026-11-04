@@ -422,6 +422,62 @@ it('매핑 확인 창에서 끝 장에 닿아도 누른 버튼이 초점을 쥔�
   expect(document.activeElement).toBe(previous);
 });
 
+/** 매핑 확인 창에서 "수정 대본 매핑"을 눌러 매핑 중인 상태. 끝나면 이 버튼이 사라집니다 (#845) */
+async function remap() {
+  ready();
+  useCreateStore.setState({
+    draft: { ...state().draft, slides: [{ ...state().draft.slides[0]!, pageCount: 2 }] },
+  });
+  state().patchScript(1, { blocks: ['첫 장', '둘째 장'] });
+  state().saveMapping(1);
+  await mount();
+  await act(async () => button('매핑 확인/수정').click());
+  await act(async () => state().editMappingBlock(1, 0, '고친 첫 장'));
+  const remapButton = button('수정 대본 매핑');
+  remapButton.focus();
+  await act(async () => state().patchScript(1, { parse: { status: 'pending' } }));
+  expect(document.activeElement).toBe(remapButton);
+  return remapButton;
+}
+
+it('수정 대본 매핑이 끝나면 초점이 저장 버튼으로 간다 (#845)', async () => {
+  await remap();
+  await act(async () =>
+    state().patchScript(1, {
+      remote: { id: 'sv2', version: 2 },
+      blocks: ['고친 첫 장', '둘째 장'],
+      parse: { status: 'idle' },
+    }),
+  );
+  expect(button('수정 대본 매핑')).toBeUndefined();
+  expect(document.activeElement).toBe(button('저장'));
+});
+
+it('수정 대본 매핑이 끝났는데 장수가 달라 저장할 수 없으면 초점이 그 이유를 알리는 줄로 간다 (#845)', async () => {
+  await remap();
+  await act(async () =>
+    state().patchScript(1, {
+      remote: { id: 'sv2', version: 2 },
+      blocks: ['고친 첫 장', '둘째 장', '셋째 장'],
+      parse: { status: 'idle' },
+    }),
+  );
+  expect(button('저장').disabled).toBe(true);
+  const focused = document.activeElement as HTMLElement;
+  expect(host.querySelector('dialog')!.contains(focused)).toBe(true);
+  expect(focused.textContent).toContain('저장할 수 없어요');
+});
+
+it('수정 대본 매핑이 실패하면 버튼이 남아 초점도 그대로다 (#845)', async () => {
+  const remapButton = await remap();
+  await act(async () =>
+    state().patchScript(1, { parse: { status: 'failed', message: '서버 저장 실패' } }),
+  );
+  expect(remapButton.isConnected).toBe(true);
+  expect(remapButton.textContent).toBe('수정 대본 매핑');
+  expect(document.activeElement).toBe(remapButton);
+});
+
 it('PDF는 업로드 직후 확인 창을 열고 로딩·닫기로는 확인 완료가 되지 않는다', async () => {
   ready();
   await mount();
