@@ -24,6 +24,7 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS, seconds_until_tomorrow
+from pitch_coach_backend.module.chat.service.goal_check import SERVICE_DAILY_TURNS
 from pitch_coach_backend.module.chat.service.run import SEOUL
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 from pitch_coach_backend.module.pitch.entity import Pitch
@@ -446,6 +447,30 @@ def test_daily_limit_is_429_with_retry_after_and_charges_nothing(
     assert db_session.scalar(reserved) == before
 
 
+def test_service_limit_is_429_busy_and_returns_the_user_turn(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    # 서비스 전체 하루 상한에 닿으면 사용자 하루 턴도 줄이지 않는다(한 트랜잭션으로 되돌린다)
+    day = datetime.now(UTC).astimezone(SEOUL).date()
+    db_session.add(ChatDailyUsage(user_id=None, day=day, reserved=SERVICE_DAILY_TURNS))
+    # 접수가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
+    db_session.commit()
+
+    response = client.post(
+        "/api/chat/messages",
+        json={"text": "질문", "page": HOME, "client_request_id": str(uuid.uuid4())},
+        headers=_headers(user_id),
+    )
+
+    assert (response.status_code, response.json()["code"]) == (429, "AGENT_BUSY")
+    assert 0 < int(response.headers["retry-after"]) <= 86_400
+    db_session.expire_all()
+    turns = select(ChatDailyUsage.turns).where(
+        ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == day
+    )
+    assert db_session.scalar(turns) is None
+
+
 def test_daily_limit_has_retry_after_header(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
@@ -574,6 +599,54 @@ def test_cancel_after_send_keeps_the_reservation(
 
     db_session.expire_all()
     assert db_session.scalar(reserved) == before
+
+
+def test_cancel_blocks_the_turn_runner_saves_after_it(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    # 취소가 올린 판 번호(row_revision) 뒤에 도착한 AI 결과는 턴 실행기가 저장하지 못한다
+    from pitch_coach_backend.module.chat.ai_client import TurnFailure
+    from pitch_coach_backend.module.chat.ai_response import StreamLine
+    from pitch_coach_backend.module.chat.service import run as run_service
+    from pitch_coach_backend.module.chat.service import turn as turn_service
+
+    _, sent = _send(client, user_id)
+    run_id = uuid.UUID(sent["run_id"])
+    sending = turn_service.mark_sending(
+        db_session,
+        run_service.claim(db_session, run_id),
+        1,
+        "r1",
+        {"pitches": [], "takes": []},
+        0,
+        None,
+    )
+    assert sending is not None
+
+    response = client.post(f"/api/chat/runs/{run_id}/cancel", headers=_headers(user_id))
+    assert response.json()["status"] == "CANCELLED"
+    db_session.expire_all()
+
+    line = StreamLine.model_validate(
+        {"event": "plan", "run_id": str(run_id), "seq": 1, "data": {"plan": []}}
+    )
+    assert turn_service.save_progress(db_session, sending, 1, line) is False
+    assert turn_service.mark_sending(db_session, sending, 2, "r2", {}, 0, None) is None
+    assert turn_service.fail(db_session, sending, TurnFailure("AGENT_UPSTREAM_ERROR")) is False
+    db_session.expire_all()
+    assert db_session.get(ChatRun, run_id).status == "CANCELLED"
+
+
+def test_cancelled_queued_run_is_not_claimed(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    from pitch_coach_backend.module.chat.service import run as run_service
+
+    _, sent = _send(client, user_id)
+    client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=_headers(user_id))
+    db_session.expire_all()
+
+    assert run_service.claim(db_session, uuid.UUID(sent["run_id"])) is None
 
 
 def test_cancel_of_finished_run_keeps_the_result(
