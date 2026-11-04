@@ -130,7 +130,7 @@ const productScreens: GuideScreen[] = [
     route: '/pitch/new',
     status: '시안',
     summary:
-      'PM 승인 전 디자인 검토용. 발표 자료부터 연습 설정까지 한 페이지에서 준비하는 A안이다. 제품 구현은 포함하지 않는다.',
+      '발표 자료부터 연습 설정까지 한 페이지에서 준비하는 A안이다. PM이 승인해 제품에 적용됐고(#802), 이 샘플이 그 구조를 그린다.',
     states: [
       state('default', '시안 · 슬라이드 준비', '예시 슬라이드를 올린 뒤 대본을 연결한다.'),
       state('empty', '시안 · 빈 화면', '모든 섹션은 보이고 슬라이드부터 시작한다.'),
@@ -160,7 +160,7 @@ const productScreens: GuideScreen[] = [
       state('many', '시안 · 버전 30개', '긴 버전 목록의 스크롤과 읽기 전용 열람을 확인한다.'),
     ],
     rules: [
-      'PM 승인 전 독립 시안이다. 파일 업로드·저장·매핑은 메모리의 예시 데이터이며 API·카메라·마이크를 사용하지 않는다.',
+      '제품 구조를 그린 샘플이다. 파일 업로드·저장·매핑은 메모리의 예시 데이터이며 API·카메라·마이크를 사용하지 않는다.',
       '슬라이드, 대본 연결, 발표정보, 평가기준(선택)을 한 페이지에 둔다. 날짜 항목은 없고 시간 편차는 0초/0초로 시작한다.',
       '섹션 배경은 발표 생성용 밝은 지면의 panel과 cream을 번갈아 쓴다. 슬라이드·발표정보는 panel, 대본 연결·평가기준은 cream이다. 경계는 1px line-strong이고 입력칸은 흰색을 유지한다.',
       '현재 단계 강조 시안은 기존 panel·cream을 섞어 색 차이를 줄이고 일반 구분선을 없앤다. 준비 순서 선택·본문 클릭·키보드 입력에 맞춰 한 섹션의 1px coral-deep 테두리만 이동한다. 기존 교차 배경 A안도 상태 선택에서 비교한다.',
@@ -174,9 +174,17 @@ const productScreens: GuideScreen[] = [
     ],
     components: ['시안 전용 폴더 트리 · 연결 메뉴 · 매핑 창'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
-    sources: ['frontend/src/features/pitch/create/PitchCreatePage.tsx'],
+    sources: [
+      'frontend/src/features/pitch/create/PitchCreatePage.tsx',
+      'frontend/src/features/pitch/create/FinalReviewDialog.tsx',
+      'frontend/src/features/pitch/create/VersionPreviewDialog.tsx',
+      'frontend/src/features/pitch/create/steps/SlidePane.tsx',
+      'frontend/src/features/pitch/create/steps/ScriptPane.tsx',
+      'frontend/src/features/pitch/create/steps/InfoPane.tsx',
+      'frontend/src/features/pitch/create/steps/CriteriaPane.tsx',
+    ],
     productNote:
-      '현재 제품은 단계별 본문과 날짜 입력을 사용한다. 이 항목은 제품을 설명하는 샘플이 아닌 PM 검토 시안이다. 기존 제품 샘플은 피치 생성 · 수정에서 비교한다. #802의 제품 구현 PR은 후속 피드백 검토를 위해 Draft로 전환했다. 현재 단계 강조 상태는 추가 검토 시안이며, 실제 제품 반영은 승인 후 별도 작업이다. PDF 확인 상태는 FE 메모리에만 둔다. 이번 화면에서 새로 업로드한 미확인 버전만 확인 필요로 보고, 서버에서 불러온 기존 버전은 확인 완료로 본다. 확인 전 새로고침해도 수정 화면에서 다시 불러오면 확인 완료가 되는 한계가 있다. PDF는 업로드 때 이미 서버에 저장되므로 확인 완료 버튼은 추가 저장 API를 부르지 않는다. 슬라이드는 PDF를 읽지 않고 3장의 예시 자료를 그린다. 입력한 원문은 화면에 보관하고, 매핑과 평가기준 정리 결과는 고정 fixture로 표현한다. API 응답·장비·서버 저장·실제 파일 선택은 검증 대상이 아니다.',
+      '제품은 이 시안의 한 페이지 구조를 이미 쓴다(#802 · 현재 단계 강조와 최종 확인 창까지 반영). 아직 시안으로 표시하는 것은 상태를 "제품에 있음"으로 올릴지와 단계형이던 "피치 생성 · 수정" 샘플을 어떻게 정리할지를 FE가 정하지 않았기 때문이다. 제품과 다른 점: 목표 발표 시간은 제품이 1~60분(편차 ±10초 버튼, 1초 단위)이고 샘플은 30분까지(30초 단위)다. 제품에는 슬라이드 제목줄의 N장 · 확인 상태 배지와 새 버전 버튼, 대본의 구분 수 · 글자 수 · 예상 시간 안내와 장수 불일치 안내, 업로드 실패 사유별 문구가 있지만 샘플은 그리지 않는다. 제품의 읽기용 버전 창은 실제 PDF를 그린다. PDF 확인 상태는 FE 메모리에만 둔다. 이번 화면에서 새로 업로드한 미확인 버전만 확인 필요로 보고, 서버에서 불러온 기존 버전은 확인 완료로 본다. 확인 전 새로고침해도 수정 화면에서 다시 불러오면 확인 완료가 되는 한계가 있다. PDF는 업로드 때 이미 서버에 저장되므로 확인 완료 버튼은 추가 저장 API를 부르지 않는다. 슬라이드는 PDF를 읽지 않고 3장의 예시 자료를 그린다. 입력한 원문은 화면에 보관하고, 매핑과 평가기준 정리 결과는 고정 fixture로 표현한다. API 응답·장비·서버 저장·실제 파일 선택은 검증 대상이 아니다.',
     next: [next('현재 제품 샘플과 비교', 'pitch-create'), next('시작 전 점검', 'prepare-mission')],
   },
   {
@@ -424,7 +432,7 @@ const productScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
       'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
-      'frontend/src/dev/stage/CoachStrip.tsx',
+      'frontend/src/features/rehearsal/stage/CoachStrip.tsx',
       'frontend/src/features/rehearsal/stage/stage.css',
       'frontend/src/features/rehearsal/stage/canEnd.ts',
       'frontend/src/features/rehearsal/stage/useEndConfirm.ts',

@@ -16,7 +16,7 @@ npm run dev
 | 명령 | 하는 일 |
 | --- | --- |
 | `npm run dev` | 개발 서버(3100). 파일을 저장하면 새로고침 없이 바로 바뀐다 |
-| `npm run build` | 공유용 정적 파일을 `dist/`에 만든다. 정적 서버의 루트에 올리거나 `npm run preview`(3101)로 연다 |
+| `npm run build` | 공유용 정적 파일을 `dist/`에 만든다. 정적 서버의 루트에 올리거나 `npm run preview`(3101)로 연다. 하위 경로(GitHub Pages `/ktc4-pusan-2/`)는 `npm run build -- --base=/ktc4-pusan-2/`로 만든다. `public/`의 그림은 코드에서 `publicUrl('onboarding/…')`로 가리키고(`src/lib/publicUrl.ts`), `styles.css`의 `url(/fonts/…)` · `index.html`은 Vite가 base에 맞게 바꿔 준다 |
 | `npm run typecheck` · `lint` · `test` · `format:check` | 검사. 고친 뒤 넷 다 통과시킨다 |
 | `npm run tokens` | 설계서와 제품의 디자인 값(CSS 변수) 중 다른 것을 보여 준다. 제품 파일은 읽기만 한다 |
 | `npm run drift` | 마지막 대조 뒤로 바뀌거나 없어진 제품 코드를 화면별로 보여 준다(기본 `origin/develop-next`, 먼저 `git fetch`). 다른 ref는 `npm run drift -- <ref>` |
