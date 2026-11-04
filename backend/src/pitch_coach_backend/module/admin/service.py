@@ -1,5 +1,6 @@
 """관리자 콘솔 집계. 읽기만 하고 커밋하지 않는다."""
 
+import logging
 import uuid
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
@@ -12,6 +13,8 @@ from pitch_coach_backend.module.admin import repository
 from pitch_coach_backend.module.admin.dto import (
     AdminAIResult,
     AdminCalibration,
+    AdminChatDay,
+    AdminChatDiagnostic,
     AdminCoachEvent,
     AdminCoachingPlan,
     AdminExportResult,
@@ -41,6 +44,7 @@ from pitch_coach_backend.module.admin.dto import (
     TakeStats,
     UserStats,
 )
+from pitch_coach_backend.module.admin.exception import AdminChatQueryInvalid
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.measures import word_text
@@ -67,6 +71,13 @@ LIVE_LIMIT = 500
 COACH_EVENT_LIMIT = 2000
 SEGMENT_LIMIT = 5000
 PLAN_LIMIT = 20
+
+# 코치 대화 운영 기록을 보는 기본 기간과 상한. 운영 기록은 180일 둔다(chat-agent.md 12-2)
+CHAT_DAYS = 14
+CHAT_DAYS_MAX = 180
+CHAT_DIAGNOSTIC_LIMIT = 200
+
+logger = logging.getLogger(__name__)
 
 
 def get_stats(db: Session) -> StatsResponse:
@@ -288,3 +299,28 @@ def list_suggestions(
         db, category=category, limit=limit, offset=offset, user_id=user_id
     )
     return _page(rows, AdminSuggestionRow, limit, offset)
+
+
+def chat_days(db: Session, days: int) -> list[AdminChatDay]:
+    since = datetime.now(UTC).astimezone(KST).date() - timedelta(days=days - 1)
+    rows = repository.chat_days(db, since)
+    # 대화 관리자 API 는 조회한 사실을 남긴다(chat-agent.md 12-3). 조건만 적는다
+    logger.info("관리자가 대화 운영 기록을 조회했다 days=%d", days)
+    return [AdminChatDay(**row) for row in rows]
+
+
+def chat_diagnostics(
+    db: Session, *, run_id: uuid.UUID | None, conversation_id: uuid.UUID | None
+) -> list[AdminChatDiagnostic]:
+    if (run_id is None) == (conversation_id is None):
+        raise AdminChatQueryInvalid()
+    rows = repository.chat_diagnostics(
+        db, run_id=run_id, conversation_id=conversation_id, limit=CHAT_DIAGNOSTIC_LIMIT
+    )
+    logger.info(
+        "관리자가 대화 진단 기록을 조회했다 run=%s conversation=%s rows=%d",
+        run_id,
+        conversation_id,
+        len(rows),
+    )
+    return [AdminChatDiagnostic.model_validate(row, from_attributes=True) for row in rows]

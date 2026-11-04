@@ -225,6 +225,25 @@ const TAKE_SURVEY_COLUMNS = [
   ['문항 버전', (row) => row.question_version, true],
 ];
 
+const seconds = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}초`);
+const tokens = (n) => (n == null ? '—' : n.toLocaleString());
+// 코치 대화 실행의 하루 운영 기록. 오류는 실패(FAILED)만 센다. 취소 · 만료는 따로 본다
+const CHAT_DAY_COLUMNS = [
+  ['날짜', (row) => row.day],
+  ['사용자', (row) => row.users, true],
+  ['턴', (row) => row.runs, true],
+  ['완료', (row) => row.done, true],
+  ['일부', (row) => row.partial, true],
+  ['거절', (row) => row.refused, true],
+  ['실패', (row) => row.failed, true],
+  ['취소 · 만료', (row) => row.cancelled + row.expired, true],
+  ['평균 시간', (row) => seconds(row.avg_ms), true],
+  ['상위 5% 시간', (row) => seconds(row.p95_ms), true],
+  ['입력 토큰', (row) => tokens(row.input_tokens), true],
+  ['출력 토큰', (row) => tokens(row.output_tokens), true],
+  ['토큰 모름', (row) => row.tokens_missing, true],
+];
+
 // 문항 버전마다 한 줄. 문구가 바뀐 앞뒤 응답을 섞어 평균 내지 않는다
 function renderTakeSurveySummary(rows) {
   const node = document.getElementById('take-survey-summary');
@@ -746,6 +765,7 @@ const SECTIONS = [
   [`api/takes?limit=${PAGE_SIZE}`, (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
   ['api/take-surveys/summary', renderTakeSurveySummary],
+  ['api/chat/days', (rows) => renderTable('chat-days', CHAT_DAY_COLUMNS, rows, '아직 끝난 대화 실행이 없습니다')],
 ];
 
 async function load() {
