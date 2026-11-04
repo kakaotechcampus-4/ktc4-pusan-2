@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -65,9 +65,14 @@ PRIOR_ASSESSMENTS = 50
 HISTORY_TEXT_LIMIT = 4000
 PITCH_SUMMARIES = 20
 RECENT_TAKES = 10
+CONTEXT_LIMIT_BYTES = 524_288
 
 
 class PitchNotFound(Exception):
+    pass
+
+
+class ContextTooLarge(Exception):
     pass
 
 
@@ -497,12 +502,13 @@ def save_progress(db: Session, run: ClaimedRun, turn_call: int, line: StreamLine
 def wait_for_action(
     db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal
 ) -> ClaimedRun | None:
+    data = final.data
+    _lock_or_cancel(db, run, *_answer_sources(data))
     repo = ChatRepository(db)
     row = _lock_current(db, run)
     if row is None:
         return None
     conversation = repo.lock_conversation(row.conversation_id)
-    data = final.data
     action = data["actions"][0]
     row.state = data["state"]
     row.budget_used = data["budget_used"]
@@ -561,10 +567,13 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
 
 
 def run_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionResultDTO:
+    args = ACTION_ARGS[action["type"]].model_validate(action["args"])
+    if isinstance(args, SaveGoalArgs):
+        goal = args.goal
+        _lock_ids(db, {goal.get("pitch_id")}, {(goal.get("base") or {}).get("take_id")})
     row = _lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)
-    args = ACTION_ARGS[action["type"]].model_validate(action["args"])
     result = ACTION_HANDLERS[action["type"]](db, row, action, args)
     saved = ChatRepository(db).get_action(row.id, action["action_id"])
     saved.status = "SUCCEEDED" if result.status != "FAILED" else "FAILED"
@@ -1052,6 +1061,7 @@ def finish_reassess(
     prepared: PreparedReassess,
     replies: tuple[dict, dict] | None,
 ) -> ActionResultDTO:
+    _lock_or_cancel(db, run, set(), {str(prepared.take_id)})
     repo = ChatRepository(db)
     row = _lock_current(db, run)
     if row is None:
@@ -1090,18 +1100,79 @@ def _close_action(
     return result
 
 
+def _answer_sources(data: dict[str, Any]) -> tuple[set[str], set[str]]:
+    pitch_ids: set[str] = set()
+    take_ids: set[str] = set()
+    for item in data.get("evidence") or []:
+        pitch_ids.add(item.get("pitch_id"))
+        take_ids.add(item.get("take_id"))
+    basis = data.get("basis")
+    for record in basis.get("records") or [] if isinstance(basis, dict) else []:
+        pitch_ids.add(record.get("pitch_id"))
+        take_ids.update(take.get("take_id") for take in record.get("takes") or [])
+    pitch_ids.discard(None)
+    take_ids.discard(None)
+    return pitch_ids, take_ids
+
+
+def _parse_ids(values: Iterable[Any]) -> tuple[set[uuid.UUID], bool]:
+    parsed: set[uuid.UUID] = set()
+    valid = True
+    for value in values:
+        if value is None:
+            continue
+        try:
+            parsed.add(uuid.UUID(str(value)))
+        except ValueError:
+            valid = False
+    return parsed, valid
+
+
+def _lock_ids(db: Session, pitch_ids: set[str], take_ids: set[str]) -> bool:
+    pitches, pitches_valid = _parse_ids(pitch_ids)
+    takes, takes_valid = _parse_ids(take_ids)
+    repo = ChatRepository(db)
+    locked = all(repo.lock_pitch_id(pitch_id) for pitch_id in sorted(pitches))
+    locked = all(repo.lock_take_id(take_id) for take_id in sorted(takes)) and locked
+    return locked and pitches_valid and takes_valid
+
+
+def _lock_or_cancel(db: Session, run: ClaimedRun, pitch_ids: set[str], take_ids: set[str]) -> None:
+    if _lock_ids(db, pitch_ids, take_ids):
+        return
+    db.rollback()
+    _cancel(db, run)
+    raise RunLost(run.run_id)
+
+
+def _cancel(db: Session, run: ClaimedRun) -> None:
+    row = _lock_current(db, run)
+    if row is None:
+        return
+    now = datetime.now(UTC)
+    row.status = "CANCELLED"
+    row.state = None
+    row.error_code = "AGENT_CANCELLED"
+    row.finished_at = now
+    row.row_revision += 1
+    _add_run_log(ChatRepository(db), row, now)
+    db.commit()
+
+
 def _digest(value: Any) -> str:
     canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bool:
+    data = final.data
+    pitch_ids, take_ids = _answer_sources(data)
+    _lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
     row = _lock_current(db, run)
     if row is None:
         return False
     conversation = repo.lock_conversation(row.conversation_id)
-    data = final.data
     _apply_scope(row, conversation, data)
     _start_practice(db, repo, row, data)
     message = data["message"]
@@ -1125,6 +1196,8 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
             evidence=data.get("evidence"),
             usage=data.get("usage"),
             meta=data.get("meta"),
+            source_pitch_ids=sorted(pitch_ids),
+            source_take_ids=sorted(take_ids),
         )
     )
     row.status = data["status"]

@@ -34,6 +34,21 @@ class ChatRepository:
             select(ChatAction).where(ChatAction.run_id == run_id, ChatAction.action_id == action_id)
         )
 
+    def lock_pitch_id(self, pitch_id: uuid.UUID) -> uuid.UUID | None:
+        return self.db.scalar(
+            select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(read=True)
+        )
+
+    def lock_take_id(self, take_id: uuid.UUID) -> uuid.UUID | None:
+        pitch_id = self.db.scalar(select(Take.pitch_id).where(Take.id == take_id))
+        if pitch_id is None or self.lock_pitch_id(pitch_id) is None:
+            return None
+        return self.db.scalar(
+            select(Take.id)
+            .where(Take.id == take_id, Take.pitch_id == pitch_id)
+            .with_for_update(read=True)
+        )
+
     def charge_reassess(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
         stmt = (
             insert(ChatDailyUsage)
