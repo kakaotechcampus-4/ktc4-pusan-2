@@ -1,20 +1,28 @@
 import { http, HttpResponse, type PathParams } from 'msw';
 import { chatPaths } from '@/shared/api/chatPaths';
 import { currentMockUserId } from './auth';
-import { homeFixture } from './home';
+import {
+  pitch,
+  PITCH_ID,
+  take1,
+  take2,
+  BASIS_LABEL,
+  say,
+  percent,
+  compareClaims,
+  savedGoal,
+  scenario,
+  type ClaimStep,
+  type Step,
+} from './chatScenarios';
 import type {
   ActionDecisionResponse,
   Assessment,
   Card,
   ChatErrorCode,
   ChatMessage,
-  ClaimEventData,
-  ChatScreen,
   ConversationSummary,
-  Goal,
   ProposedGoal,
-  Evidence,
-  GuideCard,
   PlanStep,
   ProfileItem,
   RunEvent,
@@ -54,10 +62,6 @@ import { isTerminalRun } from '@/shared/lib/chatAgent';
  * `mockChat.disable()` / `enable()` / `unreachable()` 사용 가능 여부 · `mockChat.ok()` 되돌리기.
  */
 
-const pitch = homeFixture.pitches[0]!;
-const PITCH_ID = pitch.pitch_id;
-const [take1, take2, take3] = pitch.takes;
-
 const error = (code: string, status: number, headers?: Record<string, string>) =>
   HttpResponse.json({ code, message: code, detail: null }, { status, headers });
 
@@ -75,440 +79,6 @@ function secondsToSeoulMidnight(now = Date.now()) {
   const kst = now + 9 * 3600_000;
   const next = Math.floor(kst / 86_400_000 + 1) * 86_400_000;
   return Math.ceil((next - kst) / 1000);
-}
-
-// ── 고정 자료 ─────────────────────────────────────────────────
-
-const evidence = (
-  e: Partial<Evidence> & Pick<Evidence, 'evidence_id' | 'path' | 'value'>,
-): Evidence => ({
-  origin: 'RECORD',
-  pitch_id: PITCH_ID,
-  take_id: null,
-  take_number: null,
-  kind: 'TAKE_RESULT',
-  revision: 1,
-  metric: null,
-  slide_number: null,
-  unit: null,
-  rule_version: 'gaze-1.3',
-  saved: null,
-  screen_snapshot_id: null,
-  inputs: null,
-  calc: null,
-  ...e,
-});
-
-const gazeOf = (take: typeof take2, value: number, id: string) =>
-  evidence({
-    evidence_id: id,
-    take_id: take!.take_id,
-    take_number: take!.take_version,
-    path: 'take_result.areas.GAZE.slides[slide_number=3].metrics.audience_ratio',
-    metric: 'audience_ratio',
-    slide_number: 3,
-    value,
-  });
-
-const guide: GuideCard = {
-  source_id: 'g-07#2',
-  title: '대본 의존 줄이기',
-  quote: '문장 전체가 아니라 장마다 첫 낱말만 보고 말을 이어 가면 청중을 보는 시간이 늘어요.',
-  source: '피치코치 발표법 자료',
-  license: 'CC BY 4.0',
-};
-
-const usageGuide: GuideCard = {
-  source_id: 'u-03#1',
-  title: '발표 정보 바꾸기',
-  quote: '제한 시간은 피치 만들기의 발표 정보 단계에서 바꾸고, 저장하면 다음 연습부터 적용돼요.',
-  source: '피치코치 사용법',
-  license: '피치코치',
-};
-
-const BASIS_LABEL = `Take ${take3!.take_version} · 대본 V2 · 기준 v4 기준`;
-
-type ClaimStep = Omit<ClaimEventData, 'index'>;
-
-const say = (
-  kind: ClaimStep['claim']['kind'],
-  text: string,
-  extra: Partial<ClaimStep['claim']> = {},
-  rest: Partial<Omit<ClaimStep, 'claim'>> = {},
-): ClaimStep => ({
-  claim: {
-    kind,
-    text,
-    assessment_id: null,
-    evidence_ids: [],
-    source_ids: [],
-    action_id: null,
-    ...extra,
-  },
-  evidence: [],
-  sources: [],
-  assessments: [],
-  ...rest,
-});
-
-const percent = (ratio: number) => Math.round(ratio * 100);
-
-/** 두 Take 의 3장 청중 보기 비율 비교. 기본은 최근 완료 Take 둘(2 → 3) */
-function compareClaims(
-  from = take2,
-  to = take3,
-  [fromValue, toValue]: [number, number] = [0.31, 0.24],
-  prefix = 'ev',
-): ClaimStep[] {
-  const a = gazeOf(from, fromValue, `${prefix}-gaze-t${from!.take_version}`);
-  const b = gazeOf(to, toValue, `${prefix}-gaze-t${to!.take_version}`);
-  const delta = Math.round((toValue - fromValue) * 100) / 100;
-  const diff = evidence({
-    evidence_id: `${prefix}-gaze-diff`,
-    origin: 'COMPUTED',
-    kind: null,
-    revision: null,
-    path: 'computed.diff(audience_ratio, slide 3)',
-    metric: 'audience_ratio',
-    slide_number: 3,
-    value: delta,
-    inputs: [a.evidence_id, b.evidence_id],
-    calc: 'DIFF',
-  });
-  return [
-    say(
-      'RECORD',
-      `3장에서 청중을 본 비율이 Take ${from!.take_version} ${percent(fromValue)}%에서 Take ${to!.take_version} ${percent(toValue)}%로 ${Math.abs(percent(delta))}%p ${delta < 0 ? '줄었어요' : '늘었어요'}.`,
-      { evidence_ids: [diff.evidence_id] },
-      { evidence: [a, b, diff] },
-    ),
-    say(
-      'GUIDE',
-      '장마다 첫 낱말만 보고 말을 이어 가 보세요.',
-      { source_ids: [guide.source_id] },
-      { sources: [guide] },
-    ),
-    say('GENERAL', '말하기 전에 한 번 숨을 고르고 청중 쪽을 먼저 보면 시작이 안정돼요.'),
-  ];
-}
-
-const plan = (statuses: PlanStep['status'][], steps: string[]): PlanStep[] =>
-  steps.map((step, i) => ({ step, status: statuses[i] ?? 'TODO', note: null }));
-
-const trace = (seq: number, tool: string, args: string, result: string): TraceItem => ({
-  seq,
-  tool,
-  args_summary: args,
-  result_summary: result,
-  ms: 120,
-  outcome: 'OK',
-});
-
-function savedGoal(version: number): Goal {
-  return {
-    version,
-    pitch_id: PITCH_ID,
-    created_at: new Date().toISOString(),
-    metric: 'audience_ratio',
-    slide_number: 3,
-    operator: 'gt_base',
-    script_version_id: 'sv2',
-    standard_version: 4,
-    goal_rule_version: 'chat_goal-1',
-    base: {
-      take_id: take3!.take_id,
-      take_number: take3!.take_version,
-      kind: 'TAKE_RESULT',
-      revision: 1,
-      value: 0.24,
-      metric_rule_version: 'gaze-1.3',
-      range: null,
-    },
-    min_delta: 0.05,
-    status: 'OPEN',
-  };
-}
-
-// ── 실행 시나리오 ─────────────────────────────────────────────
-
-type Step =
-  | { t: 'plan'; plan: PlanStep[] }
-  | { t: 'tool'; trace: TraceItem }
-  | { t: 'claim'; data: ClaimStep }
-  | {
-      t: 'ask';
-      action_type: 'SAVE_GOAL' | 'REASSESS';
-      title: string;
-      summary: string;
-      before: Record<string, unknown> | null;
-      after: Record<string, unknown>;
-      notes: string[];
-      approved: Step[];
-      rejected: string;
-    }
-  | { t: 'end'; status: RunStatus; cards: (actionId: string) => Card[] };
-
-const STEPS = ['최근 Take 비교', '3장 문제 구간 확인', '발표법 자료 찾기'];
-
-const base = (): Step[] => [
-  { t: 'plan', plan: plan(['DOING'], STEPS) },
-  {
-    t: 'tool',
-    trace: trace(
-      1,
-      'compare_takes',
-      `Take ${take2!.take_version} · ${take3!.take_version}`,
-      '3장 시선 둘 다 낮음',
-    ),
-  },
-  { t: 'plan', plan: plan(['DONE', 'DONE', 'DOING'], STEPS) },
-];
-
-interface ScenarioContext {
-  memoryOn: boolean;
-  choice: boolean;
-  screen: ChatScreen | null;
-  /** 이번 판단에 붙일 ID 와, 같은 대화의 가장 최근 판단 */
-  assessmentId: string;
-  priorAssessmentId: string | null;
-}
-
-/**
- * 사용자 주장 판정 (6-3). 측정 주장은 코드가 판정하므로 `verdict` 는 기록대로 "기록과 다름" 입니다.
- * 실제로는 대상 Take 나 근거가 바뀌었을 때만 앞 판단을 대체합니다. 목은 대체 표시(`superseded_by`)를
- * 볼 수 있게, 같은 대화에서 다시 물으면 늘 앞 판단을 대체합니다.
- */
-function assessmentSteps(text: string, ctx: ScenarioContext): Step[] {
-  const [record, guideClaim] = compareClaims();
-  const quote = text.slice(0, text.indexOf('봤지') + 2).trim();
-  const assessment: Assessment = {
-    assessment_id: ctx.assessmentId,
-    quote,
-    type: 'MEASURED',
-    verdict: 'CONTRADICTED',
-    evidence_ids: record!.claim.evidence_ids,
-    source_ids: [],
-    reason: '3장 청중 보기 비율이 줄었어요.',
-    supersedes: ctx.priorAssessmentId ? [ctx.priorAssessmentId] : [],
-  };
-  return [
-    ...base(),
-    {
-      t: 'claim',
-      data: say(
-        'ASSESSMENT',
-        `말씀하신 '${quote}'는 기록과 달라요. ${record!.claim.text}`,
-        { assessment_id: ctx.assessmentId, evidence_ids: record!.claim.evidence_ids },
-        { evidence: record!.evidence, assessments: [assessment] },
-      ),
-    },
-    { t: 'claim', data: guideClaim! },
-    { t: 'end', status: 'DONE', cards: () => [] },
-  ];
-}
-
-/** 피치 만들기 · 수정 화면의 질문 — 화면 값을 근거로 쓰고 입력란은 바꾸지 않습니다 (12-4 Screen) */
-function screenSteps(screen: Extract<ChatScreen, { name: 'pitch_create' | 'pitch_edit' }>): Step[] {
-  const sec = screen.draft.time_limit_sec;
-  const steps: Step[] = [];
-  if (sec !== null) {
-    const value = evidence({
-      evidence_id: 'ev-screen-time',
-      origin: 'SCREEN',
-      kind: null,
-      revision: null,
-      rule_version: null,
-      path: 'screen.draft.time_limit_sec',
-      value: sec,
-      unit: 'sec',
-      saved: !screen.changed.includes('time_limit_sec'),
-      screen_snapshot_id: screen.snapshot_id,
-    });
-    steps.push({
-      t: 'claim',
-      data: say(
-        'RECORD',
-        `지금 화면의 제한 시간은 ${Math.round(sec / 60)}분이에요.`,
-        { evidence_ids: [value.evidence_id] },
-        { evidence: [value] },
-      ),
-    });
-  }
-  steps.push(
-    {
-      t: 'claim',
-      data: say(
-        'GUIDE',
-        '발표 정보 단계에서 바꾸고 저장하면 다음 연습부터 적용돼요.',
-        { source_ids: [usageGuide.source_id] },
-        { sources: [usageGuide] },
-      ),
-    },
-    { t: 'end', status: 'DONE', cards: () => [] },
-  );
-  return steps;
-}
-
-function scenario(text: string, ctx: ScenarioContext): Step[] {
-  const [first, ...more] = compareClaims();
-  if (ctx.choice)
-    return [
-      { t: 'claim', data: say('ACTION_RESULT', '목표를 저장했어요.') },
-      { t: 'end', status: 'DONE', cards: (id) => [goalSavedCard(id)] },
-    ];
-  if (text.includes('날씨'))
-    return [
-      { t: 'claim', data: say('SYSTEM', '발표 연습과 관계없는 질문이에요.') },
-      { t: 'end', status: 'REFUSED', cards: () => [] },
-    ];
-  if (text.includes('제안'))
-    return [
-      ...base(),
-      { t: 'claim', data: first! },
-      {
-        t: 'end',
-        status: 'DONE',
-        cards: () => {
-          const proposed = proposedGoal(savedGoal(0));
-          return [
-            {
-              type: 'GOAL_PROPOSAL',
-              proposal_id: 'proposal-1',
-              options: [
-                {
-                  label: 'USER',
-                  goal: { ...proposed, slide_number: null },
-                  reason: '전체 장을 한 번에 올리기는 기록상 어려워요.',
-                  evidence_ids: [],
-                  content_hash: 'hash-user',
-                },
-                {
-                  label: 'EXPERT',
-                  goal: proposed,
-                  reason: '가장 낮은 3장부터 올려요.',
-                  evidence_ids: ['ev-gaze-diff'],
-                  content_hash: 'hash-expert',
-                },
-              ],
-            },
-          ];
-        },
-      },
-    ];
-  if (text.includes('목표'))
-    return [
-      ...base(),
-      { t: 'claim', data: first! },
-      {
-        t: 'ask',
-        action_type: 'SAVE_GOAL',
-        title: '대화 목표를 저장할까요?',
-        summary: `3장 청중 보기 비율을 Take ${take3!.take_version}의 24%보다 5%p 넘게 올리기`,
-        before: null,
-        after: {
-          metric: 'audience_ratio',
-          slide_number: 3,
-          operator: 'gt_base',
-          base: 0.24,
-          min_delta: 0.05,
-        },
-        notes: [],
-        approved: [
-          { t: 'claim', data: say('ACTION_RESULT', '목표를 저장했어요.') },
-          { t: 'end', status: 'DONE', cards: (id) => [goalSavedCard(id)] },
-        ],
-        rejected: '목표를 저장하지 않았어요.',
-      },
-    ];
-  if (text.includes('다시 평가') || text.includes('대본 보고'))
-    return [
-      ...base(),
-      { t: 'claim', data: say('SYSTEM', '실제로 대본을 봤는지는 기록으로 확인할 수 없어요.') },
-      {
-        t: 'ask',
-        action_type: 'REASSESS',
-        title: '대본을 보고 한 발표로 다시 평가할까요?',
-        summary: `Take ${take2!.take_version}를 대본 사용 기준으로 다시 평가해 참고 결과를 만들어요`,
-        before: { script_used: false },
-        after: { script_used: true },
-        notes: ['참고 결과이고 공식 결과는 그대로예요'],
-        approved: [
-          {
-            t: 'claim',
-            data: say('ACTION_RESULT', '참고 결과를 만들었어요. 공식 리뷰는 그대로예요.'),
-          },
-          {
-            t: 'end',
-            status: 'DONE',
-            cards: () => [
-              {
-                type: 'REASSESS_RESULT',
-                // 홈 목에서 점수가 있는 Take(2, 72점) — Take 3 은 점수가 없습니다
-                take_id: take2!.take_id,
-                change: 'SCRIPT_USED',
-                before: {
-                  score: take2!.score,
-                  dimensions: { audience_gaze: 'NEEDS_WORK', delivery: 'STABLE' },
-                  criteria_results: {},
-                },
-                after: {
-                  score: 78,
-                  dimensions: { audience_gaze: null, delivery: 'STABLE' },
-                  criteria_results: {},
-                },
-                changed_fields: ['score', 'dimensions.audience_gaze'],
-                official_differs: false,
-              },
-            ],
-          },
-        ],
-        rejected: '다시 평가하지 않았어요.',
-      },
-    ];
-  if (text.includes('발표할래') || text.includes('연습 준비'))
-    return [
-      { t: 'claim', data: say('SYSTEM', '준비되면 연습 준비 화면에서 모드를 고르고 시작하세요.') },
-      { t: 'end', status: 'DONE', cards: () => [{ type: 'START_PRACTICE', pitch_id: PITCH_ID }] },
-    ];
-  if (text.includes('기억'))
-    return [
-      { t: 'claim', data: say('GENERAL', '앞으로는 짧게 설명할게요.') },
-      {
-        t: 'end',
-        status: 'DONE',
-        cards: () =>
-          ctx.memoryOn
-            ? [{ type: 'MEMORY_SAVED', item_id: '', key: 'TONE', value: '짧게 설명' }]
-            : [],
-      },
-    ];
-  if (text.includes('봤지')) return assessmentSteps(text, ctx);
-  if (ctx.screen?.name === 'pitch_create' || ctx.screen?.name === 'pitch_edit')
-    return screenSteps(ctx.screen);
-  return [
-    ...base(),
-    ...[first!, ...more].map((data): Step => ({ t: 'claim', data })),
-    { t: 'end', status: 'DONE', cards: () => [] },
-  ];
-}
-
-function proposedGoal(goal: Goal): ProposedGoal {
-  const proposed: Partial<Goal> = { ...goal };
-  delete proposed.version;
-  delete proposed.status;
-  delete proposed.created_at;
-  return proposed as ProposedGoal;
-}
-
-function goalSavedCard(actionId: string): Card {
-  return {
-    type: 'GOAL_SAVED',
-    action_id: actionId,
-    goal: savedGoal(1),
-    reason: '3장 청중 보기 비율이 가장 낮아요.',
-    evidence_ids: ['ev-gaze-diff'],
-    undo: true,
-  };
 }
 
 // ── 사용자별 상태 ─────────────────────────────────────────────
@@ -557,7 +127,13 @@ interface UserState {
   undone: Map<string, { action_id: string; goal_version: number }>;
   goalVersion: number;
   /** 저장된 목표의 `action_id` 와 그 판 */
-  goalAction: { action_id: string; version: number; conversation_id: string } | null;
+  goalAction: {
+    action_id: string;
+    version: number;
+    conversation_id: string;
+    /** 자동 확인을 마쳤는지 — 같은 리뷰에는 한 번만, 이뤘다 · 못 이뤘다는 끝난 판정입니다 */
+    checked: boolean;
+  } | null;
   memory: { enabled: boolean; items: ProfileItem[] };
 }
 
@@ -689,7 +265,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
   function checkGoal(state: UserState, status: 'ACHIEVED' | 'NOT_ACHIEVED') {
     const goal = state.goalAction;
     const conversation = goal ? state.conversations.get(goal.conversation_id) : undefined;
-    if (!goal || !conversation) return;
+    if (!goal || !conversation || goal.checked) return;
+    goal.checked = true;
     const nextTake = pitch.takes.length + 1;
     const observed = status === 'ACHIEVED' ? 0.33 : 0.25;
     const verdict = status === 'ACHIEVED' ? '이뤘어요' : '아직 이루지 못했어요';
@@ -841,6 +418,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         if (run.failAfterFirst && step.data.claim.kind !== 'ACTION_RESULT') {
           const { status, code } = run.failAfterFirst;
           run.error = code ? { code } : null;
+          // 12-3: 실행 오류가 붐빔이면 5초 뒤 다시
+          run.retry_after_s = code === 'AGENT_BUSY' ? 5 : null;
           finish(state, run, status, []);
         }
         return;
@@ -867,6 +446,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
               action_id: actionId,
               version: state.goalVersion,
               conversation_id: run.conversation_id,
+              checked: false,
             };
             return { ...card, goal: { ...savedGoal(state.goalVersion), ...run.chosenGoal } };
           }
@@ -1002,7 +582,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           return error('AGENT_RUN_IN_PROGRESS', 409);
         const body = (await request.json().catch(() => null)) as { pitch_id?: unknown } | null;
         const pitchId = body?.pitch_id ?? null;
-        if (pitchId !== null && pitchId !== PITCH_ID) return error('NOT_FOUND', 404);
+        if (pitchId !== null && typeof pitchId !== 'string') return error('VALIDATION_ERROR', 422);
+        if (!knownScope(pitchId)) return error('NOT_FOUND', 404);
         conversation.scope_pitch_id = pitchId;
         conversation.scope_title = pitchId ? pitch.pitch_title : null;
         return HttpResponse.json({
@@ -1032,8 +613,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             return error(code, status, { 'Retry-After': String(secondsToSeoulMidnight()) });
           return error(code, status);
         }
-        // 고르기(choice)는 그 제안이 있는 대화에서만 옵니다
-        if (body.choice && !body.conversation_id) return error('NOT_FOUND', 404);
+        // 고르기(choice) · 다시 묻기는 그 제안 · 메시지가 있는 대화에서만 옵니다 — 빈 대화를 만들기 전에 거릅니다
+        if ((body.choice || body.again_of_message_id) && !body.conversation_id)
+          return error('NOT_FOUND', 404);
         let conversation: Conversation | undefined;
         if (body.conversation_id) {
           conversation = state.conversations.get(body.conversation_id);
@@ -1044,6 +626,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         }
         const chosen = body.choice ? proposalOption(conversation, body.choice) : null;
         if (body.choice && !chosen) return error('NOT_FOUND', 404);
+        // 다시 묻기는 이 대화에 있는 메시지만 — 없거나 남의 것은 같은 404 (12-3)
+        const again = body.again_of_message_id;
+        if (again && !conversation.messages.some((msg) => msg.message_id === again))
+          return error('NOT_FOUND', 404);
         const running = activeRun(state, conversation.conversation_id);
         if (running?.status === 'WAITING_APPROVAL')
           settleAsk(state, running, 'CANCELLED', '새 메시지를 받아 앞의 확인 요청은 취소했어요.');
@@ -1298,7 +884,11 @@ function parseSend(raw: string): SendMessageRequest | null {
     conversation_id: typeof body.conversation_id === 'string' ? body.conversation_id : null,
     scope_pitch_id: typeof body.scope_pitch_id === 'string' ? body.scope_pitch_id : null,
     text,
-    page: body.page as SendMessageRequest['page'],
+    // 화면 상태가 빠졌으면 null — 타입과 런타임 값을 맞춥니다
+    page: {
+      ...(body.page as SendMessageRequest['page']),
+      screen: (body.page as { screen?: unknown }).screen ?? null,
+    } as SendMessageRequest['page'],
     client_request_id: body.client_request_id,
     again_of_message_id:
       typeof body.again_of_message_id === 'string' ? body.again_of_message_id : null,

@@ -202,7 +202,8 @@ export type Card =
       type: 'GOAL_RESULT';
       goal_version: number;
       take_id: string;
-      status: string;
+      /** 5-5 `goal_result.status`. `UNKNOWN` 만 끝난 판정이 아닙니다 */
+      status: 'ACHIEVED' | 'NOT_ACHIEVED' | 'UNKNOWN' | 'BASELINE_MISMATCH';
       observed: number | null;
       reason: string;
     }

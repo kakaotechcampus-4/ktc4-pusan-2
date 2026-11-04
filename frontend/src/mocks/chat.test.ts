@@ -365,26 +365,37 @@ describe('그 밖의 시나리오', () => {
     return { conversation_id, proposal };
   }
 
-  it('PARTIAL 을 걸어도 행동 성공 문장 뒤에서는 끊지 않는다 — 카드 없는 "저장했어요" 가 없다', async () => {
+  it('PARTIAL 로 끊겨도 카드 없는 "목표를 저장했어요" 는 없다 — 저장 전 근거 문장에서 끊긴다', async () => {
     const { conversation_id, proposal } = await proposalConversation();
     controls.partial();
     const { run_id } = await accepted('추천 안으로 잡아 줘', {
       conversation_id,
       choice: { proposal_id: proposal.proposal_id, option: 'EXPERT' },
     });
-    expect((await settle(run_id)).status).toBe('DONE');
-    expect((await cardsOf(conversation_id)).map((c) => c.type)).toEqual(['GOAL_SAVED']);
+    expect((await settle(run_id)).status).toBe('PARTIAL');
+    const answer = (await messages(conversation_id)).items.at(-1)!;
+    expect(answer.claims.map((c) => c.kind)).toEqual(['RECORD']);
+    expect(answer.cards).toEqual([]);
   });
 
-  it('고른 안의 목표를 저장한다 — 사용자 안은 장이 없는 목표', async () => {
+  it('고른 안의 목표를 저장하고, 목표 카드의 근거는 같은 메시지에 있다', async () => {
     const { conversation_id, proposal } = await proposalConversation();
     const { run_id } = await accepted('내 안으로 잡아 줘', {
       conversation_id,
       choice: { proposal_id: proposal.proposal_id, option: 'USER' },
     });
     await settle(run_id);
-    const saved = (await cardsOf(conversation_id))[0] as Extract<Card, { type: 'GOAL_SAVED' }>;
-    expect(saved.goal).toMatchObject({ slide_number: null, status: 'OPEN', version: 1 });
+    const answer = (await messages(conversation_id)).items.at(-1)!;
+    const saved = answer.cards[0] as Extract<Card, { type: 'GOAL_SAVED' }>;
+    // 사용자 안은 장이 없는 목표라 기준도 전체 장 값
+    expect(saved.goal).toMatchObject({
+      slide_number: null,
+      status: 'OPEN',
+      version: 1,
+      base: { value: 0.35 },
+    });
+    const ids = answer.evidence.map((e) => e.evidence_id);
+    expect(saved.evidence_ids.every((id) => ids.includes(id))).toBe(true);
   });
 
   it('이 대화에 없는 제안 · 대화 없는 고르기는 404', async () => {
@@ -553,5 +564,72 @@ describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
       { type: 'REASSESS_RESULT' }
     >;
     expect(result.before.score).toBe(72);
+  });
+});
+
+describe('계약 경계', () => {
+  it('긴 말에 "봤지" 가 붙어도 판정 문장은 300자 안이고, quote 는 원문의 부분 문자열이다', async () => {
+    const text = `${'가'.repeat(400)} 청중 많이 봤지?`;
+    const { run_id, conversation_id } = await accepted(text);
+    await settle(run_id);
+    const answer = (await messages(conversation_id)).items.at(-1)!;
+    expect([...answer.claims[0]!.text].length).toBeLessThanOrEqual(300);
+    expect(text.includes(answer.assessments[0]!.quote)).toBe(true);
+  });
+
+  it('다시 묻기는 이 대화에 있는 메시지만 받는다 — 없거나 대화가 없으면 404', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const old = (await messages(conversation_id)).items.at(-1)!;
+    expect(
+      (await send(message('다시', { conversation_id, again_of_message_id: 'nope' }))).status,
+    ).toBe(404);
+    expect((await send(message('다시', { again_of_message_id: old.message_id }))).status).toBe(404);
+    const before = (await call(chatPaths.conversations).then(json<ConversationList>)).items.length;
+    expect(
+      (await send(message('다시', { conversation_id, again_of_message_id: old.message_id })))
+        .status,
+    ).toBe(202);
+    // 404 로 거른 요청은 빈 대화를 남기지 않는다
+    expect((await call(chatPaths.conversations).then(json<ConversationList>)).items).toHaveLength(
+      before,
+    );
+  });
+
+  it('자동 목표 확인은 같은 목표에 한 번만 남는다', async () => {
+    const { run_id, conversation_id } = await accepted('목표로 잡아 줘');
+    const ask = askOf(await settle(run_id));
+    await call(chatPaths.decision(ask.action_id), 'POST', {
+      decision: 'APPROVE',
+      args_hash: ask.args_hash,
+    });
+    await settle(run_id);
+    controls.goalCheck();
+    controls.goalCheck();
+    const results = (await messages(conversation_id)).items.filter((m) =>
+      m.cards.some((c) => c.type === 'GOAL_RESULT'),
+    );
+    expect(results).toHaveLength(1);
+  });
+
+  it('실행 오류가 붐빔이면 retry_after_s 5, 다른 오류면 null', async () => {
+    controls.runFail('AGENT_BUSY');
+    const busy = await accepted('비교해 줘');
+    expect(await settle(busy.run_id)).toMatchObject({
+      error: { code: 'AGENT_BUSY' },
+      retry_after_s: 5,
+    });
+    controls.runFail('AGENT_TIMEOUT');
+    const timeout = await accepted('비교해 줘');
+    expect((await settle(timeout.run_id)).retry_after_s).toBeNull();
+  });
+
+  it('범위 바꾸기의 형식이 틀리면 422, 없는 피치면 404', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    expect((await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: 1 })).status).toBe(422);
+    expect((await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: 'nope' })).status).toBe(
+      404,
+    );
   });
 });
