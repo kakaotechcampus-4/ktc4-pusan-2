@@ -67,6 +67,15 @@ def test_same_as_baseline_is_normal() -> None:
     assert volume.issues == []
 
 
+def test_exactly_at_low_threshold_is_normal() -> None:
+    # 작음은 기준 '미만'이다. 기준과 정확히 같은 값은 NORMAL
+    low = Config().low_diff_db
+    volume, _ = run(speech(0, 5000, BASE + low), 5000)
+    assert volume.metrics.voice_diff_db == low
+    assert volume.state == "NORMAL"
+    assert volume.issues == []
+
+
 def test_quiet_is_low() -> None:
     volume, _ = run(speech(0, 5000, BASE - 10), 5000)
     assert volume.state == "LOW"
@@ -329,6 +338,14 @@ def test_audio_dead_seconds_count_only_total() -> None:
 def test_tally_only_new_seconds() -> None:
     volume, _ = run(speech(0, 10000), 10000, since_ms=8000)
     assert [i.t_ms for i in volume.tally] == [8000, 9000]
+
+
+def test_since_in_the_middle_of_a_second_counts_only_the_rest() -> None:
+    # 40000~41000 기록에 since_ms 40500: 이미 센 앞 절반은 다시 세지 않고 500 만 센다
+    volume, pause = run([rec(40000)], 41000, since_ms=40500)
+    assert [(i.t_ms, i.values.total_ms) for i in volume.tally] == [(40500, 500)]
+    assert [(i.t_ms, i.values.total_ms) for i in pause.tally] == [(40500, 500)]
+    assert volume.tally[0].values.voiced_ms == 0
 
 
 def test_recall_with_cursor_has_empty_tally() -> None:
