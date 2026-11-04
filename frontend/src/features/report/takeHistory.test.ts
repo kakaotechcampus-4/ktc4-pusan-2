@@ -65,4 +65,9 @@ describe('대본 보기 값을 한글로 (리포트 비교)', () => {
     expect(scriptModeLabel('FULL')).toBe('전체 대본');
     expect(scriptModeLabel('SOMETHING_NEW')).toBe('다른 방식');
   });
+
+  it('toString 같은 상속 키도 모르는 값으로 본다', () => {
+    expect(scriptModeLabel('toString')).toBe('다른 방식');
+    expect(scriptModeLabel('constructor')).toBe('다른 방식');
+  });
 });

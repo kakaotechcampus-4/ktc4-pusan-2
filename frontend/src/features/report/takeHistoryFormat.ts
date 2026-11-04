@@ -15,7 +15,8 @@ export const SCRIPT_MODE_LABEL: Record<ScriptMode, string> = {
 export function scriptModeLabel(raw: string): string {
   // 예전 방식입니다. 그 방식으로 연습한 옛 Take 와 비교할 때 옵니다 (`normalizeScriptMode` 참고)
   if (raw === 'FULL') return '전체 대본';
-  if (raw in SCRIPT_MODE_LABEL) return SCRIPT_MODE_LABEL[raw as ScriptMode];
+  // in 은 toString 같은 상속 키도 참이라 직접 가진 키만 봅니다
+  if (Object.hasOwn(SCRIPT_MODE_LABEL, raw)) return SCRIPT_MODE_LABEL[raw as ScriptMode];
   return '다른 방식';
 }
 
