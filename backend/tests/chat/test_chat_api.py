@@ -588,3 +588,41 @@ def test_answer_on_a_deleted_take_is_masked_on_read(
     assert masked["masked"] is True
     assert masked["text"] == MASKED_TEXT
     assert (masked["claims"], masked["evidence"], masked["basis"]) == (None, None, None)
+
+
+def _judgement(assessment_id: str, *supersedes: str) -> dict[str, Any]:
+    return {
+        "assessment_id": assessment_id,
+        "verdict": "CONTRADICTED",
+        "supersedes": list(supersedes),
+    }
+
+
+def test_each_judgement_shows_the_newest_judgement_that_replaced_it(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    _answer(db_session, conversation_id, user_id, 2, assessments=[_judgement("a1")])
+    _answer(db_session, conversation_id, user_id, 3, assessments=[_judgement("a2", "a1")])
+    # 이 대화에 없는 판단 · 같은 메시지 안의 판단은 잇지 않는다
+    _answer(
+        db_session,
+        conversation_id,
+        user_id,
+        4,
+        assessments=[_judgement("a3", "other"), _judgement("a4", "a3")],
+    )
+    _answer(db_session, conversation_id, user_id, 5, assessments=[_judgement("a5", "a1")])
+    path = f"/api/chat/conversations/{conversation_id}/messages"
+
+    # 앞 판단만 담은 페이지에서도 대화 전체로 계산한 값이 같게 나온다
+    oldest = client.get(f"{path}?limit=1&before_seq=3", headers=_headers(user_id)).json()
+    assert oldest["messages"][0]["assessments"][0]["superseded_by"] == "a5"
+
+    by_id = {
+        item["assessment_id"]: item["superseded_by"]
+        for message in client.get(path, headers=_headers(user_id)).json()["messages"]
+        for item in message["assessments"] or []
+    }
+    assert by_id == {"a1": "a5", "a2": None, "a3": None, "a4": None, "a5": None}
