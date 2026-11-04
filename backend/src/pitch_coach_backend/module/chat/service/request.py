@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Row
@@ -25,6 +26,7 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import ClaimedRun
+from pitch_coach_backend.module.chat.service.stale import stale_reasons
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import standard as standard_service
@@ -43,6 +45,7 @@ SNAPSHOT_RESULTS = {
     "SCRIPT_COVERAGE": "script_coverage",
     "REVIEW": "review",
 }
+APP_STARTED_AT = datetime.now(UTC)
 
 
 class PitchNotFound(Exception):
@@ -88,7 +91,9 @@ def build_request(
         choice=AgentChoiceDTO.model_validate(choice) if choice else None,
         review_event=AgentReviewEventDTO.model_validate(review_event) if review_event else None,
         page=AgentPageDTO.model_validate(row.input["page"]),
-        history=_history(repo, conversation.id, before_seq),
+        history=_history(
+            db, repo, row.user_id, conversation.id, conversation.goal_version, before_seq
+        ),
         context=context,
         resume=resume,
         budget_used=budget_used,
@@ -128,29 +133,110 @@ def _fit_context(context: AgentContextDTO) -> AgentContextDTO:
 
 
 def _history(
-    repo: ChatRepository, conversation_id: uuid.UUID, before_seq: int | None
+    db: Session,
+    repo: ChatRepository,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    goal_version: int,
+    before_seq: int | None,
 ) -> AgentHistoryDTO:
     messages = repo.list_recent_messages(
         conversation_id, before_seq=before_seq, limit=HISTORY_MESSAGES
     )
+    current = _current_sources(db, repo, user_id, [message.basis for message in messages])
+    corpus_version = repo.latest_corpus_version(APP_STARTED_AT)
     return AgentHistoryDTO(
         summary=None,
-        messages=[_history_message(message) for message in messages],
+        messages=[
+            _history_message(message, current, goal_version, corpus_version) for message in messages
+        ],
         prior_assessments=repo.list_recent_assessments(
             conversation_id, before_seq=before_seq, limit=PRIOR_ASSESSMENTS
         ),
     )
 
 
-def _history_message(message: ChatMessage) -> AgentHistoryMessageDTO:
+def _history_message(
+    message: ChatMessage,
+    current: dict[str, Any],
+    goal_version: int,
+    corpus_version: str | None,
+) -> AgentHistoryMessageDTO:
     text, truncated = _shorten(message)
+    basis = message.basis if isinstance(message.basis, dict) else None
     return AgentHistoryMessageDTO(
         role=message.role,
         text=text,
         truncated=truncated,
-        basis=message.basis if isinstance(message.basis, dict) else None,
-        stale_reasons=[],
+        basis=basis,
+        stale_reasons=stale_reasons(
+            basis, message.created_at, current, goal_version, corpus_version
+        ),
     )
+
+
+def _current_sources(
+    db: Session, repo: ChatRepository, user_id: uuid.UUID, bases: list[Any]
+) -> dict[str, Any]:
+    pitch_ids: set[str] = set()
+    take_ids: set[str] = set()
+    for basis in bases:
+        for pitch in basis.get("pitches") or [] if isinstance(basis, dict) else []:
+            pitch_ids.add(pitch.get("pitch_id"))
+            take_ids.update(take.get("take_id") for take in pitch.get("takes") or [])
+    pitch_repository = PitchRepository(db)
+    return {
+        "pitches": {
+            pitch_id: _current_pitch(db, repo, pitch_repository, user_id, pitch_id)
+            for pitch_id in pitch_ids
+        },
+        "takes": {
+            take_id: _current_take(repo, pitch_repository, user_id, take_id) for take_id in take_ids
+        },
+    }
+
+
+def _current_pitch(
+    db: Session,
+    repo: ChatRepository,
+    pitch_repository: PitchRepository,
+    user_id: uuid.UUID,
+    pitch_id: Any,
+) -> dict[str, Any] | None:
+    parsed = _as_uuid(pitch_id)
+    pitch = pitch_repository.get_owned(parsed, user_id) if parsed else None
+    if pitch is None:
+        return None
+    standard_version = standard_service.latest_analysis_version(db, pitch.id)
+    return {
+        **_pitch_versions(db, pitch.id, standard_version),
+        "last_completed_at": repo.last_completed_at(pitch.id),
+    }
+
+
+def _current_take(
+    repo: ChatRepository, pitch_repository: PitchRepository, user_id: uuid.UUID, take_id: Any
+) -> dict[str, Any] | None:
+    parsed = _as_uuid(take_id)
+    row = repo.get_take_with_review(parsed) if parsed else None
+    if row is None or pitch_repository.get_owned(row.Take.pitch_id, user_id) is None:
+        return None
+    results = repo.list_ai_results(row.Take.id, list(SNAPSHOT_RESULTS))
+    take_result = next((saved for saved in results if saved.kind == "TAKE_RESULT"), None)
+    criteria = (take_result.payload or {}).get("criteria") or {} if take_result else {}
+    return {
+        "results": {saved.kind: saved.revision for saved in results},
+        "rule_versions": {
+            area: (rule or {}).get("criteria_version") for area, rule in criteria.items()
+        },
+    }
+
+
+def _as_uuid(value: Any) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
 
 
 def _shorten(message: ChatMessage) -> tuple[str, bool]:

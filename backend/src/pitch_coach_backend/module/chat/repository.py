@@ -178,6 +178,21 @@ class ChatRepository:
     def get_goal(self, conversation_id: uuid.UUID, version: int) -> ChatGoal | None:
         return self.db.get(ChatGoal, (conversation_id, version))
 
+    def last_completed_at(self, pitch_id: uuid.UUID) -> datetime | None:
+        return self.db.scalar(
+            select(func.max(Take.completed_at)).where(
+                Take.pitch_id == pitch_id, Take.status == "COMPLETED"
+            )
+        )
+
+    def latest_corpus_version(self, since: datetime) -> str | None:
+        return self.db.scalar(
+            select(ChatMessage.meta["corpus_version"].astext)
+            .where(ChatMessage.role == "assistant", ChatMessage.created_at >= since)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(1)
+        )
+
     def list_open_goals(self) -> list[Row]:
         return list(
             self.db.execute(

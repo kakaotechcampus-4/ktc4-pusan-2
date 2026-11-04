@@ -212,9 +212,9 @@ def _answer_sources(data: dict[str, Any]) -> tuple[set[str], set[str]]:
         pitch_ids.add(item.get("pitch_id"))
         take_ids.add(item.get("take_id"))
     basis = data.get("basis")
-    for record in basis.get("records") or [] if isinstance(basis, dict) else []:
-        pitch_ids.add(record.get("pitch_id"))
-        take_ids.update(take.get("take_id") for take in record.get("takes") or [])
+    for pitch in basis.get("pitches") or [] if isinstance(basis, dict) else []:
+        pitch_ids.add(pitch.get("pitch_id"))
+        take_ids.update(take.get("take_id") for take in pitch.get("takes") or [])
     pitch_ids.discard(None)
     take_ids.discard(None)
     return pitch_ids, take_ids
