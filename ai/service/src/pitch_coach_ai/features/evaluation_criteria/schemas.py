@@ -1,8 +1,15 @@
 """평가 기준 분석 Structured Output 스키마와 응답 모델."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+)
 
 from .config import DEFAULT
 
@@ -30,6 +37,13 @@ def _within_display_chars(text: str) -> str:
 
 # JSON 스키마에 maxLength 를 싣지 않고 응답을 검증할 때만 본다 (strict 모드 호환)
 DisplayCriterion = Annotated[str, AfterValidator(_within_display_chars)]
+
+
+def _first_display_criteria(value: Any) -> Any:
+    # 쓰는 앞 10개만 남긴 뒤 줄마다 50자를 본다. 버릴 줄이 길어서 응답 전체가 실패하지 않게 (문서 5-3)
+    if isinstance(value, list):
+        return value[: DEFAULT.max_display_criteria]
+    return value
 
 
 class EvaluationCriteriaRequest(BaseModel):
@@ -65,7 +79,9 @@ class Target(BaseModel):
 
 
 class EvaluationCriteriaAnalysis(BaseModel):
-    display_criteria: list[DisplayCriterion] = Field(
+    display_criteria: Annotated[
+        list[DisplayCriterion], BeforeValidator(_first_display_criteria)
+    ] = Field(
         description='사용자 입력 표현을 살려 짧게 다듬은 평가 기준 목록 (예: "추임새 5번 이하")'
     )
     values: Criteria = Field(description="평가 요소별 기준 값 (기준이 없으면 null)")
