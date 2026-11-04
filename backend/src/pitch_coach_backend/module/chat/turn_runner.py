@@ -141,9 +141,13 @@ class _Turn:
         budget = BudgetUsedDTO()
         loop = asyncio.get_running_loop()
         for turn_call in range(1, MAX_TURN_CALLS + 1):
-            request = await _in_session(
-                self._session_factory, service.build_request, self._current, resume, budget
-            )
+            try:
+                request = await _in_session(
+                    self._session_factory, service.build_request, self._current, resume, budget
+                )
+            except service.ContextTooLarge:
+                await self.give_up(TurnFailure("AGENT_CONTEXT_TOO_LARGE"))
+                return
             request_id = uuid.uuid4().hex
             async with _chat_slot():
                 await self._advance(service.mark_sending, turn_call, request_id)

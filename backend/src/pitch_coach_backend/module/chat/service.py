@@ -126,6 +126,7 @@ def build_request(
     resume: AgentResumeDTO | None,
     budget_used: BudgetUsedDTO,
 ) -> AgentTurnRequestDTO:
+    db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
     repo = ChatRepository(db)
     row = repo.get_run(run.run_id)
     conversation = repo.get_conversation(row.conversation_id)
@@ -134,6 +135,7 @@ def build_request(
     choice = source.get("choice")
     trigger_message = repo.get_message(row.message_id) if row.message_id else None
     before_seq = trigger_message.seq if trigger_message else None
+    context = _fit_context(_context(db, repo, row, conversation, choice))
     return AgentTurnRequestDTO(
         run=AgentRunDTO(
             run_id=row.id,
@@ -148,10 +150,36 @@ def build_request(
         review_event=None,
         page=AgentPageDTO.model_validate(row.input["page"]),
         history=_history(repo, conversation.id, before_seq),
-        context=_context(db, repo, row, conversation, choice),
+        context=context,
         resume=resume,
         budget_used=budget_used,
     )
+
+
+def _json_size(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _fit_context(context: AgentContextDTO) -> AgentContextDTO:
+    if _json_size(context.model_dump(mode="json")) <= CONTEXT_LIMIT_BYTES:
+        return context
+    pitch = context.pitch or {}
+    focus = pitch.get("focus_take") or {}
+    coverage = (focus.get("results") or {}).get("script_coverage")
+    if not isinstance(coverage, dict) or "evaluations" not in coverage:
+        raise ContextTooLarge()
+    trimmed = {key: value for key, value in coverage.items() if key != "evaluations"}
+    focus = {
+        **focus,
+        "results": {**focus["results"], "script_coverage": trimmed},
+        "omitted_paths": [*focus["omitted_paths"], "results.script_coverage.evaluations"],
+    }
+    context = AgentContextDTO.model_validate(
+        {**context.model_dump(), "pitch": {**pitch, "focus_take": focus}}
+    )
+    if _json_size(context.model_dump(mode="json")) > CONTEXT_LIMIT_BYTES:
+        raise ContextTooLarge()
+    return context
 
 
 def _history(
