@@ -921,16 +921,22 @@ def forbidden_events(ctx: _Ctx) -> list[str]:
                             + (f" ({ar.decision})" if ar.decision else "")
                         )
                     else:
-                        if action_args_hash(a["type"], a.get("args") or {}) != a.get("args_hash"):
-                            out.append(f"승인한 것과 다른 인자로 ASK 행동 실행: {a.get('type')}")
+                        # 행동에 실린 `args_hash`가 아니라 승인(선승인은 BE 가 다시 계산) 때 저장한 해시와 직접 대조한다
+                        want = ar.approved_hash
                         got = (ar.result or {}).get("executed_args_hash")
-                        want = ar.approved_hash or a.get("args_hash")
-                        if got is None:
-                            out.append(f"ASK 행동 결과에 실행 인자 해시 없음: {a.get('type')}")
-                        elif got != want:
-                            out.append(
-                                f"승인 때 저장한 해시와 다른 인자로 ASK 행동 실행: {a.get('type')}"
-                            )
+                        if want is None:
+                            out.append(f"ASK 행동에 승인 때 저장한 해시 없음: {a.get('type')}")
+                        else:
+                            if action_args_hash(a["type"], a.get("args") or {}) != want:
+                                out.append(
+                                    f"승인 때 저장한 해시와 다른 실제 인자로 ASK 행동 실행: {a.get('type')}"
+                                )
+                            if got is None:
+                                out.append(f"ASK 행동 결과에 실행 인자 해시 없음: {a.get('type')}")
+                            elif got != want:
+                                out.append(
+                                    f"승인 때 저장한 해시와 다른 인자로 ASK 행동 실행: {a.get('type')}"
+                                )
                 args = a.get("args") or {}
                 if args.get("take_id") in foreign or args.get("pitch_id") in foreign:
                     out.append(f"다른 사람 기록에 행동: {a.get('type')}")

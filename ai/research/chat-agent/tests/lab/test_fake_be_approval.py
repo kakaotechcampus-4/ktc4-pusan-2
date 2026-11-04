@@ -243,6 +243,40 @@ def test_fm_L2_43_new_message_while_waiting_cancels_then_accepts() -> None:
     assert e.value.code == "AGENT_CANCELLED" and conv.goal is None and len(run.actions) == 1
 
 
+def test_new_message_right_after_approval_claimed_the_wait_is_409_and_a_waiting_one_is_cancelled() -> (
+    None
+):
+    """승인이 대기를 선점한 직후(행동 실행 전)에 온 새 메시지는 409, 대기만 있으면 취소 뒤 접수(12-3)."""
+    be, _llm, run = waiting_save()
+    conv = be.conversations[run.conversation_id]
+    pend = run.pending
+    assert pend is not None
+    seen: list[str] = []
+
+    def race(b: FakeBe, r: Run, action: dict[str, Any]) -> None:
+        assert r.status == "RUNNING"
+        n_runs, n_msgs = len(b.runs), len(conv.messages)
+        with pytest.raises(ApprovalError) as e:
+            b.send_message(conv.conversation_id, "그리고 하나 더")
+        assert (e.value.http, e.value.code) == (409, "AGENT_RUN_IN_PROGRESS")
+        # 거절된 접수는 실행 · 메시지를 만들지 않는다
+        assert len(b.runs) == n_runs and len(conv.messages) == n_msgs
+        seen.append("raced")
+
+    be.before_action = race
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert seen == ["raced"] and run.status == "DONE" and conv.goal is not None
+    # 끝난 뒤에는 접수된다
+    be.before_action = None
+    be.app.llm = F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"])])
+    assert be.send_message(conv.conversation_id, "오늘 날씨 어때?").run_id != run.run_id
+    # 대기만 있으면 취소 뒤 접수된다
+    be2, _llm2, run2 = waiting_save()
+    be2.app.llm = F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"])])
+    new = be2.send_message(run2.conversation_id, "오늘 날씨 어때?")
+    assert run2.status == "CANCELLED" and new.run_id != run2.run_id
+
+
 def test_fm_L2_41_cancel_then_approve_runs_nothing_and_approve_then_cancel_keeps_the_result() -> (
     None
 ):

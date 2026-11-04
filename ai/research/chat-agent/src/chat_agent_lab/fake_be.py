@@ -502,18 +502,25 @@ class FakeBe:
         }
         selected = self._selected_proposal(conv, choice) if choice is not None else None
         with self._lock:
+            # 접수는 한 잠금 안에서: 진행 중인 실행(승인이 대기를 막 선점한 것 포함)이 있으면 409(12-3), 대기만 있으면 취소 뒤 접수.
+            # 새 실행 생성까지 같은 잠금에 묶어 승인 실행과 새 실행이 한 대화에서 겹치지 않게 한다
+            if any(
+                r.conversation_id == conv.conversation_id and r.status == "RUNNING"
+                for r in self.runs.values()
+            ):
+                raise ApprovalError(409, "AGENT_RUN_IN_PROGRESS")
             # 유효한 새 메시지를 접수할 때 대기를 취소한다(AI 를 부르지 않는다, L2-43)
             waiting = self.waiting_run(conv.conversation_id)
             if waiting is not None:
                 self._close(waiting, conv, "CANCELLED")
             history = self._history(conv)
             conv.messages.append(StoredMessage(self._next("m"), "user", text))
-        run = self._new_run(
-            conv,
-            "USER_MESSAGE",
-            original={"user_message": text, "page": page, "choice": choice},
-            history=history,
-        )
+            run = self._new_run(
+                conv,
+                "USER_MESSAGE",
+                original={"user_message": text, "page": page, "choice": choice},
+                history=history,
+            )
         ctx = self._context(conv, run, focus_take_id=page["take_id"])
         ctx["selected_proposal"] = selected
         req = {
@@ -1182,7 +1189,8 @@ class FakeBe:
         blocked: str | None = None
         if action["autonomy"] == "ASK":
             if action.get("preapproved") is not None:
-                decision, approved_hash = "PREAPPROVED", action.get("args_hash")
+                # 선승인의 기준은 BE 가 저장된 제안에서 다시 계산한 해시다(행동에 실린 `args_hash`가 아니다)
+                decision, approved_hash = "PREAPPROVED", self._preapproved_hash(run, conv, action)
             elif run.decided.get(action["action_id"]) == "APPROVED":
                 decision = "APPROVED"
                 approved_hash = run.approved_hash.get(action["action_id"])
@@ -1432,6 +1440,24 @@ class FakeBe:
             == opt.get("content_hash")
             == content_hash(opt["goal"])
         )
+
+    def _preapproved_hash(self, run: Run, conv: Conversation, action: dict[str, Any]) -> str | None:
+        """선승인 `SAVE_GOAL`의 기준 해시: 저장된 제안의 고른 안 목표로 BE 가 다시 계산한 `args` 해시. 안을 찾지 못하면 None."""
+        pre = action.get("preapproved") or {}
+        choice = run.original.get("choice") or {}
+        card = conv.proposals.get(pre.get("proposal_id", ""))
+        opt = next(
+            (
+                o
+                for o in (card or {}).get("options", [])
+                if o.get("label") == choice.get("option") and o.get("goal") is not None
+            ),
+            None,
+        )
+        if opt is None or action["type"] != "SAVE_GOAL":
+            return None
+        args = {**(action.get("args") or {}), "goal": copy.deepcopy(opt["goal"])}
+        return action_args_hash(action["type"], args)
 
     def _authorized(self, run: Run, conv: Conversation, action: dict[str, Any]) -> bool:
         """허용 근거를 이 실행의 처음 사용자 원문과 대조한다(6-2). 고른 제안(choice)이면 그 안과 같은 목표인지 본다."""

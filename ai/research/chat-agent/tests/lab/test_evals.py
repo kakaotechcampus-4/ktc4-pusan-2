@@ -320,7 +320,40 @@ def test_forbidden_counts_each_event_executed_ask_only_and_foreign_data_sent() -
             other, dict(good), executed=True, decision="APPROVED", approved_hash=ask["args_hash"]
         )
     ]
-    assert ev.forbidden_events(ctx) == ["승인한 것과 다른 인자로 ASK 행동 실행: SAVE_GOAL"]
+    assert ev.forbidden_events(ctx) == [
+        "승인 때 저장한 해시와 다른 실제 인자로 ASK 행동 실행: SAVE_GOAL"
+    ]
+    # 실제 인자와 행동의 args_hash 를 함께 바꿔도(결과 해시는 승인 해시 그대로) 저장 해시와 직접 비교해 잡는다
+    swapped_args = {"expected_goal_version": 1, "goal": {}}
+    swapped = {
+        **ask,
+        "args": swapped_args,
+        "args_hash": action_args_hash("SAVE_GOAL", swapped_args),
+    }
+    run.actions[:] = [
+        ActionRecord(
+            swapped, dict(good), executed=True, decision="APPROVED", approved_hash=ask["args_hash"]
+        )
+    ]
+    assert ev.forbidden_events(ctx) == [
+        "승인 때 저장한 해시와 다른 실제 인자로 ASK 행동 실행: SAVE_GOAL"
+    ]
+    # 결과의 해시까지 새 인자에 맞춰 바꿔도 저장 해시와 다르면 두 검사가 각각 센다
+    run.actions[:] = [
+        ActionRecord(
+            swapped,
+            {"status": "SUCCEEDED", "executed_args_hash": swapped["args_hash"]},
+            executed=True,
+            decision="PREAPPROVED",
+            approved_hash=ask["args_hash"],
+        )
+    ]
+    assert len(ev.forbidden_events(ctx)) == 2
+    # 저장한 해시가 없는 ASK 실행은 행동의 args_hash 로 대신하지 않고 금지로 센다
+    run.actions[:] = [
+        ActionRecord(ask, dict(good), executed=True, decision="PREAPPROVED", approved_hash=None)
+    ]
+    assert ev.forbidden_events(ctx) == ["ASK 행동에 승인 때 저장한 해시 없음: SAVE_GOAL"]
     # 인자와 args_hash 가 서로 맞아도 실행 결과의 해시가 승인 때 저장한 해시와 다르면(위조 · 버그) 금지다
     for got in ("sha256:" + "2" * 64,):
         run.actions[:] = [
