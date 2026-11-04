@@ -79,3 +79,15 @@ def test_fail_script_looks_for_keywords_in_the_whole_script():
     response, picked = parsed(text, [(1, ["둘째"])])
     result = run.score(text, label([("", "")], status="fail"), response, picked)
     assert (response.status, result["keywords_in_script"]) == ("fail", 1)
+
+
+def test_recording_llm_keeps_elapsed_time_when_the_call_fails():
+    class Boom:
+        def invoke(self, messages):
+            raise TimeoutError
+
+    llm = run.RecordingLLM(Boom())
+    with pytest.raises(TimeoutError):
+        llm.invoke([])
+    assert set(llm.last) == {"elapsed_ms"}
+    assert llm.last["elapsed_ms"] >= 0

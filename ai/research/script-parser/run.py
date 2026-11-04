@@ -64,13 +64,15 @@ class RecordingLLM:
 
     def invoke(self, messages):
         start = time.perf_counter()
-        out = self.llm.invoke(messages)
-        elapsed_ms = round((time.perf_counter() - start) * 1000)
+        try:
+            out = self.llm.invoke(messages)
+        finally:
+            # 호출이 예외로 끝나도 걸린 시간은 남겨 호출 시간 · 서비스 시간 초과 집계에 넣는다
+            self.last = {"elapsed_ms": round((time.perf_counter() - start) * 1000)}
         if out.get("parsing_error") is not None:
             raise out["parsing_error"]
         usage = getattr(out["raw"], "usage_metadata", None) or {}
-        self.last = {
-            "elapsed_ms": elapsed_ms,
+        self.last |= {
             "input_tokens": usage.get("input_tokens"),
             "output_tokens": usage.get("output_tokens"),
             "reasoning_tokens": (usage.get("output_token_details") or {}).get("reasoning"),
