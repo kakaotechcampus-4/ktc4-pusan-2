@@ -12,12 +12,14 @@ from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.module.chat.api_dto import SendMessageRequest
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.exception import (
     ChatBusy,
     ChatDailyLimit,
+    ChatNotAccepted,
     ChatRequestConflict,
     ChatRunInProgress,
     ChatTargetNotFound,
@@ -40,11 +42,25 @@ class Accepted:
     conversation_id: uuid.UUID
     message_id: uuid.UUID
     run_id: uuid.UUID
-    # 이번 요청으로 새로 접수했다. 같은 요청을 다시 보낸 것이면 턴 실행기를 다시 띄우지 않는다
-    created: bool
+    # 턴 실행기를 띄울지. 새로 접수했거나 다시 보낸 요청의 실행이 아직 QUEUED 일 때다.
+    # 커밋은 됐는데 응답을 잃으면(503) 실행을 띄우지 못한 채 남는다. 다시 보낸 요청이 띄운다.
+    # 실행을 잡는 쪽(claim)은 QUEUED 만 잡으므로 두 번 띄워도 한 번만 돈다
+    start: bool
 
 
 def accept_message(
+    db: Session, user_id: uuid.UUID, request: SendMessageRequest, now: datetime
+) -> Accepted:
+    try:
+        return _accept_or_replay(db, user_id, request, now)
+    except Exception as exc:
+        db.rollback()
+        if is_transient_db_error(exc):
+            raise ChatNotAccepted() from None
+        raise
+
+
+def _accept_or_replay(
     db: Session, user_id: uuid.UUID, request: SendMessageRequest, now: datetime
 ) -> Accepted:
     request_hash = digest(request.model_dump(mode="json"))
@@ -68,9 +84,6 @@ def accept_message(
             raise ChatRunInProgress() from None
         # 그 밖의 무결성 오류(예: 확인한 뒤 피치가 지워짐)를 진행 중으로 바꿔 말하지 않는다
         raise
-    except Exception:
-        db.rollback()
-        raise
     return accepted
 
 
@@ -82,11 +95,12 @@ def _replay(
         return None
     if message.request_hash != request_hash:
         raise ChatRequestConflict()
+    run = db.get(ChatRun, message.run_id)
     return Accepted(
         conversation_id=message.conversation_id,
         message_id=message.id,
         run_id=message.run_id,
-        created=False,
+        start=run is not None and run.status == "QUEUED",
     )
 
 
@@ -148,7 +162,7 @@ def _accept(
     if not conversation.title:
         conversation.title = _title(request.text)
     return Accepted(
-        conversation_id=conversation.id, message_id=message.id, run_id=run.id, created=True
+        conversation_id=conversation.id, message_id=message.id, run_id=run.id, start=True
     )
 
 

@@ -43,6 +43,15 @@ class ChatDailyLimit(AppException):
     message = "오늘 이용 횟수를 모두 썼으니 내일 다시 이용해 주세요."
 
 
+class ChatNotAccepted(AppException):
+    # 메시지 · 실행 · 하루 한도를 커밋하기 전에 DB 가 잠깐 안 됐다
+    # (연결 끊김 · 잠금 대기 · 시간 초과).
+    # FE 는 같은 client_request_id 로 다시 보낸다
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "AGENT_NOT_ACCEPTED"
+    message = "요청을 접수하지 못했으니 다시 보내 주세요."
+
+
 class ChatBusy(AppException):
     # 서비스 전체 하루 상한. 사용자 한도와 같이 다음 Asia/Seoul 00:00 까지 기다리게 한다
     status_code = status.HTTP_429_TOO_MANY_REQUESTS

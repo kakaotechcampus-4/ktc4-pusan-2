@@ -139,7 +139,7 @@ def post_message(
     background_tasks: BackgroundTasks,
 ) -> MessageAcceptedResponse:
     accepted = accept_message(db, current_user.id, body, datetime.now(UTC))
-    if accepted.created:
+    if accepted.start:
         background_tasks.add_task(_start_turn, accepted.run_id)
     return MessageAcceptedResponse(
         conversation_id=accepted.conversation_id,

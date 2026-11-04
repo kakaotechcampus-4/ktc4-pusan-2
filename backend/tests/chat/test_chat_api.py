@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
@@ -142,15 +142,50 @@ def test_long_title_is_cut_to_first_part(client: TestClient, user_id: uuid.UUID)
     assert title.endswith("…")
 
 
-def test_same_request_id_returns_the_first_result_without_starting_again(
-    client: TestClient, user_id: uuid.UUID, chat_app: list[uuid.UUID]
-) -> None:
+def test_same_request_id_returns_the_first_result(client: TestClient, user_id: uuid.UUID) -> None:
     request_id = str(uuid.uuid4())
     first = _send(client, user_id, client_request_id=request_id)
     again = _send(client, user_id, client_request_id=request_id)
 
     assert first == again
-    assert len(chat_app) == 1
+
+
+def test_replay_starts_the_turn_only_while_it_is_still_queued(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, chat_app: list[uuid.UUID]
+) -> None:
+    # 커밋은 됐는데 응답을 잃으면 턴 실행기를 띄우지 못한 채 남는다. 다시 보낸 요청이 띄운다
+    request_id = str(uuid.uuid4())
+    _, first = _send(client, user_id, client_request_id=request_id)
+    _send(client, user_id, client_request_id=request_id)
+    run_id = uuid.UUID(first["run_id"])
+    assert chat_app == [run_id, run_id]
+
+    db_session.get(ChatRun, run_id).status = "RUNNING"
+    db_session.flush()
+    _send(client, user_id, client_request_id=request_id)
+
+    assert chat_app == [run_id, run_id]
+
+
+def test_transient_db_error_before_commit_is_503_and_saves_nothing(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+    chat_app: list[uuid.UUID],
+) -> None:
+    def lost(*args: Any, **kwargs: Any) -> bool:
+        raise OperationalError("UPDATE chat_daily_usage", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(ChatApiRepository, "charge_turn", lost)
+
+    status, body = _send(client, user_id)
+
+    assert (status, body["code"]) == (503, "AGENT_NOT_ACCEPTED")
+    assert body["message"] == "요청을 접수하지 못했으니 다시 보내 주세요."
+    conversations = select(ChatConversation).where(ChatConversation.user_id == user_id)
+    assert db_session.scalars(conversations).all() == []
+    assert chat_app == []
 
 
 def test_same_request_id_with_other_text_is_conflict(
