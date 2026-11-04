@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import null, select, update
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
@@ -304,6 +304,30 @@ def test_previous_goal_whose_base_take_is_deleted_is_not_restored(
 
     assert response.status_code == 409
     assert response.json()["message"] == BASE_DELETED
+
+
+def test_previous_goal_emptied_by_cleanup_is_still_not_restored(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, saved: dict[str, Any]
+) -> None:
+    # 정리 작업이 앞 판을 비운 뒤에도 정리 전과 같다. 빈 판을 만들면 지금 목표만 사라진다
+    other_pitch = _pitch(db_session, user_id)
+    other_take = _take(db_session, other_pitch, 1)
+    _save(db_session, saved["conversation"], saved["run"], other_take, "a-2")
+    db_session.delete(saved["take"])
+    # 정리 작업이 남기는 모양이다. 내용만 비우고 base_take_id 는 둔다
+    db_session.execute(
+        update(ChatGoal)
+        .where(ChatGoal.conversation_id == saved["conversation"].id, ChatGoal.version == 1)
+        .values(goal=null(), status=None)
+    )
+    db_session.commit()
+
+    response = _undo(client, user_id, saved["run"].id, "a-2")
+
+    assert response.status_code == 409
+    assert response.json()["message"] == BASE_DELETED
+    db_session.expire_all()
+    assert db_session.get(ChatConversation, saved["conversation"].id).goal_version == 2
 
 
 def test_only_my_goal_saves_can_be_undone(

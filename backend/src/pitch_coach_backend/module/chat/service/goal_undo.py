@@ -1,9 +1,9 @@
 """대화 목표 되돌리기(chat-agent.md 12-3 '되돌리기', 실패 표 L2-28 · L3-29).
 
 목표 저장(`SAVE_GOAL`) 카드의 [되돌리기]다. 지금 목표 판이 그 행동이 저장한 판일 때만 이전 내용을
-새 판으로 되살린다. 판은 지우거나 고치지 않고 늘리기만 한다. 그래서 되돌린 판은 언제나
-저장한 판 + 1 이다.
-그래서 같은 요청을 다시 보내면 그 판을 다시 읽어 처음 결과를 돌려줄 수 있다.
+새 판으로 되살린다. 되돌리기는 판을 늘리기만 한다. 그래서 되돌린 판은 언제나 저장한 판 + 1 이고,
+같은 요청을 다시 보내면 그 판을 다시 읽어 처음 결과를 돌려줄 수 있다.
+판의 내용을 비우는 것은 기준 Take 가 지워졌을 때의 정리 작업뿐이고 그때도 `base_take_id` 는 남는다.
 """
 
 import uuid
@@ -84,10 +84,13 @@ def _restored(
     """저장한 판 바로 앞 판의 내용을 새 판으로. 앞 판이 없거나 비었으면 내용 없는 판이다."""
     restored = ChatGoal(conversation_id=conversation_id, version=saved_version + 1)
     previous = chat_repo.get_goal(conversation_id, saved_version - 1)
-    if previous is None or previous.goal is None:
+    if previous is None:
         return restored
+    # 내용보다 먼저 본다. 정리 작업이 내용을 비운 뒤에도 정리 전과 같이 거절하려는 것이다
     if previous.base_take_id is not None and chat_repo.lock_take_id(previous.base_take_id) is None:
         raise ChatStateInvalid(BASE_DELETED)
+    if previous.goal is None:
+        return restored
     restored.goal = previous.goal
     # 끝난 목표(ACHIEVED 등)는 그대로 둔다. 되살렸다고 자동 판정을 다시 열지 않는다(L4-14)
     restored.status = previous.status
