@@ -881,7 +881,9 @@ def _action_notes(lp: Loop) -> list[str]:
 
 
 #: 다시 평가를 바라는 말(6-6)
-_REASSESS_ASK = re.compile(r"다시\s*(평가|채점|매겨|판정|봐)|재평가|재채점")
+_REASSESS_ASK = re.compile(
+    r"다시\s*(평가|채점|매겨|판정)|다시\s*봐\s*(줘|주세요|줄래)|재평가|재채점"
+)
 
 
 def _measurement_notes(lp: Loop) -> list[str]:

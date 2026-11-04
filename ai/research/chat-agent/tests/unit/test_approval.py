@@ -861,3 +861,12 @@ def test_measurement_notice_also_for_asking_to_look_again() -> None:
     llm = F.FakeLlm([F.plan(assessments=d), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
     _, _, data = F.run_turn(F.request(user_message=msg), llm)
     assert templates.SystemText.MEASUREMENT_FIXED.value in final_ok(data).message.text  # type: ignore[union-attr]
+
+
+def test_saying_it_stays_low_even_looking_again_is_not_a_reassess_request() -> None:
+    """'다시 봐도 시선이 낮아'는 서술이다(다시 평가 요청이 아니면 측정값 안내를 붙이지 않는다)."""
+    msg = "Take 5 다시 봐도 시선이 낮아"
+    d = [F.draft(msg, claim_op="OVERALL", dimension="audience_gaze", take_numbers=[5])]
+    llm = F.FakeLlm([F.plan(assessments=d), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    assert templates.SystemText.MEASUREMENT_FIXED.value not in final_ok(data).message.text  # type: ignore[union-attr]
