@@ -45,14 +45,14 @@ def test_limits_match_feature_doc_values() -> None:
         c.reserved_answer_calls,
         c.max_tool_calls,
         c.max_tools_per_response,
-    ) == (8, 2, 12, 8)
+    ) == (18, 2, 12, 8)
     assert (c.max_turn_calls, c.max_actions, c.max_save_actions, c.max_reassess_per_turn) == (
         6,
         5,
         1,
         1,
     )
-    assert (c.max_input_tokens, c.max_output_reserve) == (64_000, 16_000)
+    assert (c.max_input_tokens, c.max_output_tokens) == (72_000, 8_000)
     assert (c.turn_seconds, c.call_seconds, c.reserved_answer_seconds) == (120.0, 45.0, 24.0)
     assert (c.max_request_bytes, c.max_context_bytes, c.max_state_bytes) == (
         2 * 1024 * 1024,

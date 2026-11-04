@@ -861,6 +861,12 @@ class DiagEnd(_Out):
         "LLM_ERROR",
         "CLIENT_DISCONNECTED",
         "OTHER",
+        "TIME",
+        "MODEL_CALLS",
+        "TOOL_CALLS",
+        "TOKENS",
+        "REPEAT",
+        "CHECK_ALL_DROPPED",
     ]
     omitted_steps: NonNegInt = 0
 

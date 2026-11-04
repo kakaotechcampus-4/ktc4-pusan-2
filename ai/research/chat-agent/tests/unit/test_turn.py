@@ -628,7 +628,7 @@ def test_seventh_turn_call_ends_without_model() -> None:
 
 
 def test_research_stops_before_reserved_answer_calls() -> None:
-    """L1-04 · 8-3: 조사가 모델 호출 6번을 넘지 못하고, 답 쓰기 · 고치기 몫 2번은 남는다."""
+    """L1-04 · 8-3: 호출 한도를 8로 줄여도 조사는 6번을 넘지 못하고, 답 쓰기 · 고치기 몫 2번은 남는다(기본 18은 test_limits.py)."""
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
     reads = [
         ("get_take_report", {"take_id": t, "section": "slides", "slide_number": n})
@@ -640,7 +640,7 @@ def test_research_stops_before_reserved_answer_calls() -> None:
         [F.plan(assessments=[change_draft()]), *loop_tools],
         answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
     )
-    _, _, data = F.run_turn(req, llm)
+    _, _, data = F.run_turn(req, llm, cfg=load_config(max_model_calls=8))
     fd = final_ok(data)
     purposes = [c.purpose for c in llm.calls]
     assert purposes.count("RESEARCH") <= 6
@@ -771,8 +771,10 @@ def test_fm_L1_39_partial_usage_keeps_unknown_side_null() -> None:
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
     llm = F.FakeLlm(basic_script(), usage=Usage(100, None))
     fd = final_ok(F.run_turn(req, llm)[2])
-    assert fd.usage.input_tokens == 400 and fd.usage.output_tokens is None
+    # 출력 사용량을 모르면 예약 전체를 쓴 것으로 두므로 출력 누적 8k 에 일찍 닿아 조사를 끝낸다(8-2 · 8-3)
+    assert fd.usage.input_tokens == 300 and fd.usage.output_tokens is None
     assert fd.usage.measured is False
+    assert fd.diagnostics is not None and fd.diagnostics.end.reason == "TOKENS"
 
 
 def test_fm_L1_39_failed_attempt_usage_marks_unmeasured_and_logs_model_step() -> None:
