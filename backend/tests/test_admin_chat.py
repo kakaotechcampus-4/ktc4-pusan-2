@@ -138,11 +138,32 @@ def test_chat_diagnostics_by_run_or_conversation(
         f"/admin/api/chat/diagnostics?conversation_id={conversation.id}", auth=ADMIN
     ).json()
 
-    assert [row["turn_call"] for row in by_run] == [1, 2]
-    assert by_run[0]["request_id"] == "req-1"
-    assert by_run[0]["diagnostics"] == {"stop_reason": "DONE", "model_calls": 1}
-    assert [row["turn_call"] for row in by_conversation] == [1, 2, 3]
+    assert [row["turn_call"] for row in by_run["items"]] == [2, 1]
+    assert by_run["items"][0]["request_id"] == "req-2"
+    assert by_run["items"][0]["diagnostics"] == {"stop_reason": "DONE", "model_calls": 2}
+    assert [row["turn_call"] for row in by_conversation["items"]] == [3, 2, 1]
+    assert by_conversation["next_offset"] is None
     assert any(f"run={first_run}" in r.getMessage() for r in caplog.records)
+
+
+def test_chat_diagnostics_are_paged_from_the_newest(
+    client: TestClient, db_session: Session
+) -> None:
+    # 오래된 기록부터 자르면 가장 궁금한 최근 답의 기록이 빠진다
+    conversation = ChatConversation(user_id=_user(db_session).id, title="질문")
+    db_session.add(conversation)
+    db_session.flush()
+    for call in range(1, 4):
+        _diagnostic(db_session, conversation, uuid.uuid4(), call)
+    path = f"/admin/api/chat/diagnostics?conversation_id={conversation.id}&limit=2"
+
+    first = client.get(path, auth=ADMIN).json()
+    second = client.get(f"{path}&offset={first['next_offset']}", auth=ADMIN).json()
+
+    assert [row["turn_call"] for row in first["items"]] == [3, 2]
+    assert first["next_offset"] == 2
+    assert [row["turn_call"] for row in second["items"]] == [1]
+    assert second["next_offset"] is None
 
 
 @pytest.mark.parametrize(

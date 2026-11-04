@@ -561,12 +561,22 @@ def chat_diagnostics(
     run_id: uuid.UUID | None,
     conversation_id: uuid.UUID | None,
     limit: int,
+    offset: int,
 ) -> list[ChatDiagnostic]:
+    """진단 기록을 최신부터. 다음 쪽이 있는지 보려고 한 행 더 읽는다."""
     stmt = select(ChatDiagnostic)
     if run_id is not None:
         stmt = stmt.where(ChatDiagnostic.run_id == run_id)
     if conversation_id is not None:
         stmt = stmt.where(ChatDiagnostic.conversation_id == conversation_id)
     return list(
-        db.scalars(stmt.order_by(ChatDiagnostic.received_at, ChatDiagnostic.turn_call).limit(limit))
+        db.scalars(
+            stmt.order_by(
+                ChatDiagnostic.received_at.desc(),
+                ChatDiagnostic.turn_call.desc(),
+                ChatDiagnostic.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit + 1)
+        )
     )

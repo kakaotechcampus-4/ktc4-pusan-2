@@ -171,10 +171,14 @@ def chat_days(
 
 
 # 답이 왜 그렇게 나왔는지 따라가는 진단 기록. run_id 와 conversation_id 중 하나로 찾는다
-@router.get("/api/chat/diagnostics")
+@router.get("/api/chat/diagnostics", response_model=AdminPage[AdminChatDiagnostic])
 def chat_diagnostics(
     db: Annotated[Session, Depends(get_db)],
     run_id: uuid.UUID | None = None,
     conversation_id: uuid.UUID | None = None,
-) -> list[AdminChatDiagnostic]:
-    return service.chat_diagnostics(db, run_id=run_id, conversation_id=conversation_id)
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminChatDiagnostic]:
+    return service.chat_diagnostics(
+        db, run_id=run_id, conversation_id=conversation_id, limit=limit, offset=offset
+    )

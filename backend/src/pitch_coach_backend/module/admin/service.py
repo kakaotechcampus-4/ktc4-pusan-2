@@ -75,7 +75,6 @@ PLAN_LIMIT = 20
 # 코치 대화 운영 기록을 보는 기본 기간과 상한. 운영 기록은 180일 둔다(chat-agent.md 12-2)
 CHAT_DAYS = 14
 CHAT_DAYS_MAX = 180
-CHAT_DIAGNOSTIC_LIMIT = 200
 
 logger = logging.getLogger(__name__)
 
@@ -310,17 +309,26 @@ def chat_days(db: Session, days: int) -> list[AdminChatDay]:
 
 
 def chat_diagnostics(
-    db: Session, *, run_id: uuid.UUID | None, conversation_id: uuid.UUID | None
-) -> list[AdminChatDiagnostic]:
+    db: Session,
+    *,
+    run_id: uuid.UUID | None,
+    conversation_id: uuid.UUID | None,
+    limit: int,
+    offset: int,
+) -> AdminPage[AdminChatDiagnostic]:
     if (run_id is None) == (conversation_id is None):
         raise AdminChatQueryInvalid()
     rows = repository.chat_diagnostics(
-        db, run_id=run_id, conversation_id=conversation_id, limit=CHAT_DIAGNOSTIC_LIMIT
+        db, run_id=run_id, conversation_id=conversation_id, limit=limit, offset=offset
     )
+    items = [AdminChatDiagnostic.model_validate(row, from_attributes=True) for row in rows[:limit]]
     logger.info(
         "관리자가 대화 진단 기록을 조회했다 run=%s conversation=%s rows=%d",
         run_id,
         conversation_id,
-        len(rows),
+        len(items),
     )
-    return [AdminChatDiagnostic.model_validate(row, from_attributes=True) for row in rows]
+    return AdminPage[AdminChatDiagnostic](
+        items=items,
+        next_offset=offset + limit if len(rows) > limit else None,
+    )
