@@ -129,6 +129,13 @@ body {
   outline-offset: 2px;
 }
 
+/* 스크롤 영역 가장자리의 요소는 바깥으로 그린 테두리가 영역 경계에서 잘립니다.
+   영역(또는 목록)에 이 클래스를 달면 안에 있는 요소의 테두리를 안쪽에 그립니다.
+   전역 규칙이 레이어 밖이라 Tailwind 유틸리티로는 덮을 수 없어 여기에 둡니다 */
+.focus-inset :focus-visible {
+  outline-offset: -2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;

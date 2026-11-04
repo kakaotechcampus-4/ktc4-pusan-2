@@ -355,7 +355,7 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
       />
 
       <div className="flex min-h-0 flex-1">
-        <ul className="w-20 shrink-0 overflow-y-auto border-r border-line bg-panel/50 p-2 sm:w-44 sm:p-4">
+        <ul className="focus-inset w-20 shrink-0 overflow-y-auto border-r border-line bg-panel/50 p-2 sm:w-44 sm:p-4">
           {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
             <li key={n} className="mb-4">
               <button
