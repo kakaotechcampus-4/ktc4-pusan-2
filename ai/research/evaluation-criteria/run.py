@@ -71,7 +71,12 @@ class MeasuredLLM:
 
     def invoke(self, messages: list[tuple[str, str]]) -> EvaluationCriteriaAnalysis:
         start = time.perf_counter()
-        result = self.llm.invoke(messages)
+        try:
+            result = self.llm.invoke(messages)
+        except Exception:
+            # 호출이 예외로 끝나도 걸린 시간은 남겨 측정(latency_s)에서 빠지지 않게 한다
+            self.calls.append({"latency_s": round(time.perf_counter() - start, 2)})
+            raise
         raw = result["raw"]
         usage = getattr(raw, "usage_metadata", None) or {}
         self.calls.append(

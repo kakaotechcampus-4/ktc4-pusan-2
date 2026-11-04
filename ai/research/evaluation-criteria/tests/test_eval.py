@@ -164,3 +164,7 @@ def test_evaluate_keeps_going_when_a_call_fails():
     report = evaluate([EXAMPLE, EXAMPLE], MeasuredLLM(FakeRawLLM(fail=TimeoutError("late"))))
     assert report["metrics"]["failed"] == 2
     assert all(c["output"] is None and "TimeoutError" in c["error"] for c in report["cases"])
+    # 실패한 호출도 걸린 시간은 남는다
+    assert all(c["latency_s"] is not None for c in report["cases"])
+    assert report["measurements"]["latency_s"] is not None
+    assert report["meta"]["models"] == []
