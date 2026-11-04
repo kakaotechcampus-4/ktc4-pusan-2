@@ -591,24 +591,47 @@ class _Ctx:
         return {"proposal_id": last, "option": raw.get("option", "USER")}
 
 
-def _cut_lines(lines: Any, after_claims: int, state: dict[str, bool]) -> Any:
-    """문장 줄을 `after_claims`개 내보낸 뒤 연결이 끊긴 것처럼 ConnectionError 를 낸다(남은 줄은 버린다). 어떻게 끝나든
-    안쪽 응답을 닫아 동시 실행 자리를 돌려준다."""
-    n = 0
-    try:
-        for ln in lines:
-            yield ln
-            try:
-                ev = json.loads(ln).get("event")
-            except (ValueError, AttributeError):
-                ev = None
-            if ev == "claim":
-                n += 1
-                if n >= after_claims:
-                    state["done"] = True
-                    raise ConnectionError("stream cut (fault)")
-    finally:
-        close = getattr(lines, "close", None)
+class _cut_lines:  # noqa: N801  # 줄 반복자 자리에 그대로 들어가므로 함수처럼 쓴다
+    """문장 줄을 `after_claims`개 내보낸 뒤 연결이 끊긴 것처럼 ConnectionError 를 낸다(남은 줄은 버린다). 끝까지 읽든 끊기든
+    받는 쪽이 `close()`하든(한 번도 읽지 않았어도) 안쪽 응답을 닫아 동시 실행 자리를 돌려준다."""
+
+    def __init__(self, lines: Any, after_claims: int, state: dict[str, bool]) -> None:
+        self._lines = lines
+        self._it = iter(lines)
+        self._after = after_claims
+        self._state = state
+        self._n = 0
+        self._cut = False
+        self._closed = False
+
+    def __iter__(self) -> _cut_lines:
+        return self
+
+    def __next__(self) -> str:
+        if self._cut:
+            self.close()
+            raise ConnectionError("stream cut (fault)")
+        try:
+            ln = next(self._it)
+        except StopIteration:
+            self.close()
+            raise
+        try:
+            ev = json.loads(ln).get("event")
+        except (ValueError, AttributeError):
+            ev = None
+        if ev == "claim":
+            self._n += 1
+            if self._n >= self._after:
+                self._cut = True
+                self._state["done"] = True
+        return ln
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        close = getattr(self._lines, "close", None)
         if callable(close):
             close()
 
@@ -797,6 +820,8 @@ def answer_obs(runs: list[Run], conv: Any) -> Any:
         "meta": (last or {}).get("meta") or (final or {}).get("meta"),
         #: 끝 줄의 코칭 프로필 갱신 후보(6-14, 없으면 빈 목록). 저장된 것은 db_diff 의 memory.profile
         "profile_updates": list((last or {}).get("profile_updates") or []),
+        #: 기록 문장(RECORD)의 글만, 답 순서대로 — 행동 결과 · 안내 문장이 앞에 끼어도 기록 문장끼리의 순서를 본다(13-2 스트림)
+        "record_texts": [c["text"] or "" for c in claims if c["kind"] == "RECORD"],
         #: 조언 문장(GUIDE · GENERAL)의 글만 — 기록 문장의 숫자와 섞지 않고 조언이 지어낸 수치를 볼 때(13-2 숫자 유도)
         "advice_text": "\n".join(
             c["text"] or "" for c in claims if c["kind"] in ("GUIDE", "GENERAL")
@@ -1781,7 +1806,7 @@ def _markdown(rep: dict[str, Any]) -> str:
             f" · 끝 줄 없어 이유를 못 본 턴 {u['limit_partial']['no_end_line']}"
             f" · 답 검사 때문(CHECK_ALL_DROPPED) {u['limit_partial']['check_all_dropped']}",
             f"- 에이전트 서비스 지표(14-1): 승인 없는 실행 {u['unapproved_exec']}건 · 나간 문장 변경 {u['stream_mismatch']}턴"
-            f" · GENERAL 금지 위반 {u['general_violations']}문장 · 기억 누설 {u['memory_leak']}실행"
+            f" · GENERAL 금지 위반 {u['general_violations']}문장 · 기억 누설 {_fmt(u['memory_leak'])}실행"
             f"(대상 {u['memory_runs']}실행) · 조언 질문의 GUIDE 비율 {_fmt(u['advice_guide_ratio'])}",
             f"- 비용(USD): {u['cost_usd'] if u['cost_usd'] else '단가 미입력(--price-*)'}",
             f"- 턴당 도구 호출 {u['tool_calls_per_turn']} · 후속 말 {u['followups']}",

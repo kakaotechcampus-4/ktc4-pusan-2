@@ -8,7 +8,7 @@
 - 관찰값(evals.py 가 만든다, 모두 JSON 값)
   - answer: `{status, outcome, error_code, text, all_text, claims[], cards[], card_types[], sources[],
     source_ids[], assessments[], verdicts[], scope_pitch_id, goal_result, goal_results[], evidence[], has_record_evidence,
-    profile_updates[], advice_text}`(advice_text: GUIDE · GENERAL 문장 글만)
+    profile_updates[], record_texts[], advice_text}`(record_texts: RECORD 문장 글만 순서대로, advice_text: GUIDE · GENERAL 문장 글만)
   - actions_proposed: `{types[], items[], cards[]}` — AI가 낸 행동(NEEDS_ACTION · DONE 의 START_PRACTICE 버튼)과 카드 종류.
     `items[].autonomy`는 `AUTO` · `ASK` · `BUTTON`
   - actions_executed: `{types[], attempted[], items[], counts{}, attempt_counts{}, review_calls}` — BE가 실제로 실행한 것
@@ -865,12 +865,15 @@ def flatten_text(claims: Iterable[Mapping[str, Any]]) -> str:
 GENERAL_MAX_CLAIMS = 3
 GENERAL_MAX_CHARS = 120
 _GEN_DIGIT = re.compile(r"\d")
-#: 한글 수 + 단위(횟수 · 개수 · 시간 · 비율). '한 장면' · '한 분야' · '두 배려'처럼 단위로 시작하는 낱말은 빼고, '두세 번'처럼
-#: 붙여 쓴 수도 본다
+#: 한글 수 + 단위(횟수 · 개수 · 시간 · 비율). 단위 뒤에는 글이 끝나거나 조사 · 접미(씩 · 쯤 · 정도 · 은 · 을 …)만 와야 한다:
+#: '한 분석' · '한 개념' · '한 장소'처럼 단위로 시작하는 낱말은 수가 아니다. '두세 번' · '한두 번'처럼 붙여 쓴 수도 본다.
+#: 서수(번째)와 관용구 '한 번에'(한꺼번에), 개수 '가지'는 보지 않는다
 _GEN_KO_NUM = re.compile(
-    r"(?<![가-힣])(?:두세|서너|네다섯|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|스무|서른|마흔|쉰)\s?"
-    r"(?:번(?!째)|개|장(?!면|점)|분(?!야|위기|량|명)|초(?!점|반)|퍼센트|배(?!려|경|우)|시간|회(?!의)|명(?!확|료)|점(?!검))"
+    r"(?<![가-힣])(?:한두|두세|서너|네다섯|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|스무|서른|마흔|쉰)\s?"
+    r"(?:번|개|장|분|초|퍼센트|배|시간|회|명|점)"
+    r"(?:씩|쯤|정도|이상|이하|은|는|이|가|을|를|에|만|도|의|으로|로|까지|부터|마다)?(?![가-힣])"
 )
+_GEN_KO_NUM_IDIOMS = ("한 번에", "한번에")
 #: 까닭 → 낱말(소문자로 맞춘다). 권하는 말끝 '~하면 좋아요'는 동의로 보지 않아 '좋아요'는 넣지 않는다
 GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
     "기록 지시어": (
@@ -885,9 +888,15 @@ GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
         "님의 발표",
         "당신의 발표",
         "기록에서",
+        "기록에는",
         "기록상",
-        "기록을 보면",
+        "기록을 보",
+        "기록을 확인",
         "기록으로 보면",
+        "기록이 있",
+        "내 기록",
+        "지난 기록",
+        "이전 기록",
         "연습 기록",
         "발표 기록",
         "take",
@@ -912,6 +921,8 @@ GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
         "약점",
         "합격",
         "통과했",
+        "통과해",
+        "통과한",
         "통과예요",
         "통과입",
         "미달",
@@ -926,6 +937,8 @@ GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
         "학회",
         "연구 기관",
         "공공 기관",
+        "정부 기관",
+        "교육 기관",
         "통계",
         "따르면",
         "전문가",
@@ -933,7 +946,7 @@ GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
         "책에서",
         "입증",
     ),
-    "인과 단정": ("때문에", "때문이", "탓에", "탓이", "원인은"),
+    "인과 단정": ("때문에", "때문이", "탓에", "탓이", "탓입", "원인은"),
     "행동 · 성공 주장": ("저장했", "바꿨어요", "다시 평가했", "시작했", "옮겼"),
     "범위 밖": ("예상 질문", "연습 계획", "연습 일정", "고쳐 써", "수정안", "추천 기준"),
 }
@@ -961,7 +974,10 @@ def general_violations(claims: Iterable[Mapping[str, Any]], *, searched: bool) -
             why.append("근거 · 자료 · 판단 · 행동에 이음")
         if len(text) > GENERAL_MAX_CHARS:
             why.append(f"{GENERAL_MAX_CHARS}자 넘음")
-        if _GEN_DIGIT.search(text) or _GEN_KO_NUM.search(text):
+        plain = text
+        for idiom in _GEN_KO_NUM_IDIOMS:
+            plain = plain.replace(idiom, " ")
+        if _GEN_DIGIT.search(text) or _GEN_KO_NUM.search(plain):
             why.append("숫자")
         why += [label for label, words in GENERAL_FORBIDDEN.items() if any(w in low for w in words)]
         if why:

@@ -49,7 +49,9 @@
         "compare": "contains",
         "expect": "28%",
         "grader": "number",
-        "derive": "t-5:GAZE.audience_ratio@3"
+        "derive": "t-5:GAZE.audience_ratio@3",
+        "path": "claims[0].text",
+        "note": "멈추기 전에 낸 기록 문장이 행동 결과 문장보다 앞, 최종 답의 첫 문장"
       },
       {
         "check_id": "save-executed",

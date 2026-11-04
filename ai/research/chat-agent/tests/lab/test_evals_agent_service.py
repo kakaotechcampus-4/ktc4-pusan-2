@@ -121,6 +121,26 @@ def test_stream_cut_fault_ends_partial_with_the_received_sentence() -> None:
     assert ctx.be.app.turn == ctx._app_turn
 
 
+def test_cut_lines_closes_the_inner_response_even_if_never_read() -> None:
+    closed: list[bool] = []
+
+    class Inner:
+        def __iter__(self) -> Any:
+            return iter(['{"event": "claim"}', '{"event": "final"}'])
+
+        def close(self) -> None:
+            closed.append(True)
+
+    state = {"done": False}
+    ev._cut_lines(Inner(), 1, state).close()  # 읽지 않고 버려도 닫는다
+    assert closed == [True] and state["done"] is False
+    it = ev._cut_lines(Inner(), 1, state)
+    assert next(it) == '{"event": "claim"}'
+    with pytest.raises(ConnectionError):
+        next(it)
+    assert state["done"] is True and closed == [True, True]
+
+
 # ── 새 지표 (14-1) ─────────────────────────────────────────────────────────
 
 
@@ -203,8 +223,19 @@ def test_general_violations_count_each_bad_sentence() -> None:
     assert "3문장 넘음" in got[3] and "근거 · 자료 · 판단 · 행동에 이음" in got[3]
     assert gr.general_violations([_g("천천히 말해 보세요.", action_id="a1")], searched=True)
     # 단위로 시작하는 낱말 · 짧은 낱말이 든 일반 표현은 걸지 않는다
-    ok = [_g("한 장면에 메시지 하나만 담아 보세요."), _g("발성 기관을 풀고 자신을 탓하지 마세요.")]
-    assert gr.general_violations(ok, searched=True) == []
+    ok = [
+        _g("한 장면에 메시지 하나만 담아 보세요."),
+        _g("발성 기관을 풀고 자신을 탓하지 마세요."),
+        _g("한 개념씩 한 번에 하나만 말해 보세요."),
+        _g("한 회사의 발표처럼 한 장소를 떠올려 보세요."),
+    ]
+    assert all(gr.general_violations([c], searched=True) == [] for c in ok)
+    bad = [
+        _g("한두 번 더 연습해 보세요."),
+        _g("세 번쯤 쉬어 보세요."),
+        _g("지난 기록을 떠올려 보세요."),
+    ]
+    assert len(gr.general_violations(bad, searched=True)) == 3
     # 자료를 찾지 않은 일반 조언은 문장마다 위반이다
     assert len(gr.general_violations([_g("천천히 말해 보세요.")], searched=False)) == 1
 
@@ -263,8 +294,8 @@ def _record_then_save_llm() -> F.FakeLlm:
 
 
 def _two_takes_llm() -> F.FakeLlm:
-    """Take 4 · Take 5 두 문장. Take 4 는 읽기 행동(fetch_take)으로 가져와 비교한다. 장애가 Take 5 의 28% 를 35% 로 바꾸면
-    그 문장만 보류했다가 고쳐 원래 순서로 낸다."""
+    """Take 4 · Take 5 두 문장. Take 4 는 읽기 행동(fetch_take)으로 가져와 비교한다. 장애가 앞 문장(Take 4)의 31% 를 35% 로 바꾸면
+    그 문장과 뒤 문장을 보류했다가 고쳐 원래 순서로 낸다."""
 
     msg = BY_ID["svc-stream-held-sentence"].turns[0].message or ""
 
@@ -291,7 +322,7 @@ def _two_takes_llm() -> F.FakeLlm:
             F.done(),
         ],
         answers=[answer],
-        fixes=[F.fix({1: "Take 5의 3장 청중 시선 비율은 28%예요."})],
+        fixes=[F.fix({0: "Take 4의 3장 청중 시선 비율은 31%예요."})],
     )
 
 

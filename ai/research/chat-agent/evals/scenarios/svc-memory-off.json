@@ -17,7 +17,13 @@
       "scope_pitch_id": "p-1"
     },
     "memory": {
-      "enabled": false
+      "enabled": false,
+      "profile": [
+        {
+          "key": "TONE",
+          "value": "아주 길고 자세하게"
+        }
+      ]
     }
   },
   "turns": [

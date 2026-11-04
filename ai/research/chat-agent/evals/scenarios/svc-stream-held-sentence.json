@@ -5,7 +5,7 @@
   "group": "stream",
   "split": "dev",
   "act": "should",
-  "title": "검사에 걸린 문장(틀린 숫자)은 보류했다가 고쳐 원래 순서로 낸다 — 낸 문장은 끝 줄 앞부분과 같다",
+  "title": "앞 문장이 검사에 걸리면(틀린 숫자) 그 문장과 뒤의 정상 문장을 보류했다가 고쳐 원래 순서로 낸다 — 낸 문장은 끝 줄 앞부분과 같다",
   "baseline_type": "record",
   "fixtures": {
     "pitches": [
@@ -24,7 +24,7 @@
       "faults": [
         {
           "kind": "corrupt_answer",
-          "from_text": "28%",
+          "from_text": "31%",
           "to_text": "35%"
         }
       ]
@@ -55,20 +55,24 @@
         "path": "stream_ok"
       },
       {
-        "check_id": "fixed-value",
+        "check_id": "second-kept",
         "observe": "answer",
         "compare": "contains",
         "expect": "28%",
         "grader": "number",
-        "derive": "t-5:GAZE.audience_ratio@3"
+        "derive": "t-5:GAZE.audience_ratio@3",
+        "path": "record_texts[1]",
+        "note": "보류했던 뒤 기록 문장이 그 뒤 자리"
       },
       {
-        "check_id": "other-value",
+        "check_id": "first-fixed",
         "observe": "answer",
         "compare": "contains",
         "expect": "31%",
         "grader": "number",
-        "derive": "t-4:GAZE.audience_ratio@3"
+        "derive": "t-4:GAZE.audience_ratio@3",
+        "path": "record_texts[0]",
+        "note": "걸렸다 고친 앞 기록 문장이 그대로 첫 자리(행동 결과 문장은 빼고 센다)"
       },
       {
         "check_id": "no-wrong-value",
