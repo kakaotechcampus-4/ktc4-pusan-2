@@ -492,7 +492,8 @@ FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 
 오른쪽 아래 코치 대화창의 API 다. 동작 · 값의 기준은 [docs/ai/features/chat-agent.md](../docs/ai/features/chat-agent.md)
 12-3 이다. 메시지는 즉시 `202` 로 받고, 답은 실행 상태를 조회해 받는다(실행 중 1초 간격).
 AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스위치 `AGENT_ENABLED` 가 꺼져 있으면
-아래 API 는 `503 AGENT_DISABLED` 다(사용 가능 여부만 `enabled:false` 로 답한다).
+아래 API 는 `503 AGENT_DISABLED` 다(사용 가능 여부만 `enabled:false` 로 답한다). 자동 목표 확인 주기 작업도
+띄우지 않는다. 근거가 지워진 답을 가리는 정리 작업은 꺼져 있어도 돈다.
 
 | 엔드포인트 | 내용 |
 |---|---|
@@ -500,11 +501,11 @@ AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스�
 | `POST /api/chat/conversations` | `{pitch_id?}` 로 새 대화. 201 |
 | `GET /api/chat/conversations?pitch_id=` | 내 대화 목록. 마지막 사용자 활동 최신순 50개 |
 | `PATCH /api/chat/conversations/{id}/scope` | `{pitch_id\|null}`. 실행 중이면 409 `AGENT_RUN_IN_PROGRESS` |
-| `POST /api/chat/messages` | `{conversation_id?, scope_pitch_id?, text, page, client_request_id, again_of_message_id?, choice?}`. 메시지 · 실행 · 하루 한도를 한 트랜잭션으로 커밋한 뒤 `202 {conversation_id, message_id, run_id, status}`. 같은 `client_request_id` 재전송은 처음 결과, 다른 내용이면 409 `AGENT_REQUEST_CONFLICT`. 실행 중인 대화는 409 `AGENT_RUN_IN_PROGRESS`. 하루 100턴(`AGENT_DAILY_LIMIT`) · 서비스 전체 상한(`AGENT_BUSY`)은 429 + `Retry-After`(다음 서울 00:00 까지). 커밋 전 DB 일시 오류는 503 `AGENT_NOT_ACCEPTED`(같은 키로 다시 보낸다). 다시 보낸 요청의 실행이 아직 `QUEUED` 면 턴 실행기를 다시 띄운다 |
-| `GET /api/chat/runs/{run_id}` | `{run_id, conversation_id, status, plan, trace, error, retry_after_s}`. AI 의 서명 상태와 오류 원문은 싣지 않는다 |
+| `POST /api/chat/messages` | `{conversation_id?, scope_pitch_id?, text, page, client_request_id, again_of_message_id?, choice?}`. 메시지 · 실행 · 하루 한도를 한 트랜잭션으로 커밋한 뒤 `202 {conversation_id, message_id, run_id, status}`. 같은 `client_request_id` 재전송은 처음 결과(동시에 보내 뒤 요청이 진행 중 · 한도에 막혀도 같다), 다른 내용이면 409 `AGENT_REQUEST_CONFLICT`. 실행 중인 대화는 409 `AGENT_RUN_IN_PROGRESS`. 고른 안(`choice`)이 그 대화의 제안 카드에 없으면 404. `page.screen` 에 저장할 수 없는 값(NUL · NaN · 32단계보다 깊게 겹침)이 있으면 422. 하루 100턴(`AGENT_DAILY_LIMIT`) · 서비스 전체 상한(`AGENT_BUSY`)은 429 + `Retry-After`(다음 서울 00:00 까지, 올림). 커밋 전 DB 일시 오류는 503 `AGENT_NOT_ACCEPTED`(같은 키로 다시 보낸다). 다시 보낸 요청의 실행이 아직 `QUEUED` 면 턴 실행기를 다시 띄운다 |
+| `GET /api/chat/runs/{run_id}` | `{run_id, conversation_id, status, plan, trace, error, retry_after_s}`. AI 의 서명 상태와 오류 원문은 싣지 않는다. 실행이 읽은 피치 · Take 가 지워졌으면 `plan` · `trace` 를 비운다 |
 | `GET /api/chat/conversations/{id}/run` | 그 대화의 마지막 실행(새로고침 뒤 복원). 없으면 null |
-| `POST /api/chat/runs/{run_id}/cancel` | `QUEUED` · `RUNNING` 을 `CANCELLED` 로. 이미 끝났으면 그 상태를 그대로 준다 |
-| `GET /api/chat/conversations/{id}/messages?before_seq=&limit=` | 최신 메시지부터 `limit`(기본 30, 최대 50)개와 다음 커서. 근거가 된 피치 · Take 가 지워진 답은 가려서 준다(`masked`). 판단마다 그 판단을 대체한 새 판단 ID(`superseded_by`)를 대화 전체에서 계산해 싣는다 |
+| `POST /api/chat/runs/{run_id}/cancel` | `QUEUED` · `RUNNING` 을 `CANCELLED` 로. 이미 끝났으면 그 상태를 그대로 준다. 자동 목표 확인 실행이면 그 확인도 끝난 것으로 닫아 다시 만들지 않는다 |
+| `GET /api/chat/conversations/{id}/messages?before_seq=&limit=` | 최신 메시지부터 `limit`(기본 30, 최대 50)개와 다음 커서. 근거가 된 피치 · Take 가 지워졌거나 남의 것인 답은 가려서 준다(`masked`, AI 에 보낼 기록을 조립할 때와 같은 기준). 판단마다 그 판단을 대체한 새 판단 ID(`superseded_by`)를 싣는다. 대체한 판단은 늘 뒤 메시지에 있어 그 페이지의 첫 메시지부터만 읽는다 |
 
 없거나 남의 대화 · 실행 · 피치 · Take 는 모두 같은 `404 NOT_FOUND` 다.
 
