@@ -3,16 +3,16 @@
 import asyncio
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import (
     ChatConversation,
@@ -30,36 +30,12 @@ from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.user.entity import User
+from tests.chat.api_helpers import bearer
 
 HOME = {"route": "home", "pitch_id": None, "take_id": None, "screen": None}
 
 
-async def _no_sweep_stop() -> None:
-    return None
-
-
-def _no_sweep() -> Any:
-    return _no_sweep_stop
-
-
-@pytest.fixture(autouse=True)
-def chat_app(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
-    """대화를 켜고, 턴 실행기 · 대화 주기 작업이 실제 DB · AI 를 부르지 않게 막는다."""
-    from pitch_coach_backend import main
-    from pitch_coach_backend.core.config import settings
-    from pitch_coach_backend.module.chat import controller
-
-    monkeypatch.setattr(settings, "agent_enabled", True)
-    # 대화 주기 작업은 SessionLocal(테스트 DB 가 아니다)로 돈다
-    monkeypatch.setattr(main, "start_goal_sweep", _no_sweep)
-    monkeypatch.setattr(main, "start_cleanup_sweep", _no_sweep)
-    started: list[uuid.UUID] = []
-    monkeypatch.setattr(controller.turn_runner, "start", started.append)
-    return started
-
-
-def _headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+pytestmark = pytest.mark.usefixtures("chat_app")
 
 
 def _other_user(db: Session) -> uuid.UUID:
@@ -76,7 +52,7 @@ def _pitch(db: Session, user_id: uuid.UUID, title: str = "졸업 발표") -> uui
     return pitch.id
 
 
-def _send(client: TestClient, user_id: uuid.UUID, **overrides: Any) -> tuple[int, dict[str, Any]]:
+def _post(client: TestClient, user_id: uuid.UUID, **overrides: Any) -> Response:
     body = {
         "conversation_id": None,
         "text": "3장에서 왜 시선이 떨어져?",
@@ -84,8 +60,25 @@ def _send(client: TestClient, user_id: uuid.UUID, **overrides: Any) -> tuple[int
         "client_request_id": str(uuid.uuid4()),
         **overrides,
     }
-    response = client.post("/api/chat/messages", json=body, headers=_headers(user_id))
+    return client.post("/api/chat/messages", json=body, headers=bearer(user_id))
+
+
+def _send(client: TestClient, user_id: uuid.UUID, **overrides: Any) -> tuple[int, dict[str, Any]]:
+    response = _post(client, user_id, **overrides)
     return response.status_code, response.json()
+
+
+def _today() -> date:
+    return datetime.now(UTC).astimezone(SEOUL).date()
+
+
+def _service_reserved(db: Session) -> int | None:
+    """오늘 서비스 전체 하루 상한에 잡힌 예약 수."""
+    return db.scalar(
+        select(ChatDailyUsage.reserved).where(
+            ChatDailyUsage.user_id.is_(None), ChatDailyUsage.day == _today()
+        )
+    )
 
 
 def test_availability_follows_the_switch(
@@ -93,11 +86,9 @@ def test_availability_follows_the_switch(
 ) -> None:
     from pitch_coach_backend.core.config import settings
 
-    assert client.get("/api/chat/availability", headers=_headers(user_id)).json() == {
-        "enabled": True
-    }
+    assert client.get("/api/chat/availability", headers=bearer(user_id)).json() == {"enabled": True}
     monkeypatch.setattr(settings, "agent_enabled", False)
-    assert client.get("/api/chat/availability", headers=_headers(user_id)).json() == {
+    assert client.get("/api/chat/availability", headers=bearer(user_id)).json() == {
         "enabled": False
     }
     status, body = _send(client, user_id)
@@ -139,7 +130,7 @@ def test_first_message_creates_conversation_and_queued_run(
 
 def test_long_title_is_cut_to_first_part(client: TestClient, user_id: uuid.UUID) -> None:
     _, body = _send(client, user_id, text="가" * 100)
-    listed = client.get("/api/chat/conversations", headers=_headers(user_id)).json()
+    listed = client.get("/api/chat/conversations", headers=bearer(user_id)).json()
 
     title = listed["conversations"][0]["title"]
     assert listed["conversations"][0]["conversation_id"] == body["conversation_id"]
@@ -208,7 +199,7 @@ def test_replay_is_answered_before_the_running_check(
 ) -> None:
     # 응답을 잃고 다시 보낸 요청이 '진행 중' 409 로 막히면 안 된다.
     # 기존 대화로 보내야 진행 중 검사를 거친다
-    created = client.post("/api/chat/conversations", json={}, headers=_headers(user_id)).json()
+    created = client.post("/api/chat/conversations", json={}, headers=bearer(user_id)).json()
     body = {"conversation_id": created["conversation_id"], "client_request_id": str(uuid.uuid4())}
     _, first = _send(client, user_id, **body)
     status, again = _send(client, user_id, **body)
@@ -233,7 +224,7 @@ def test_same_key_seen_only_after_the_conversation_lock_is_replayed(
     client: TestClient, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # 대화 잠금을 얻고 나면 앞 요청의 실행이 보여 진행 중으로 막힌다. 이미 접수된 메시지다
-    created = client.post("/api/chat/conversations", json={}, headers=_headers(user_id)).json()
+    created = client.post("/api/chat/conversations", json={}, headers=bearer(user_id)).json()
     body = {"conversation_id": created["conversation_id"], "client_request_id": str(uuid.uuid4())}
     _, first = _send(client, user_id, **body)
     _miss_first_lookup(monkeypatch)
@@ -249,10 +240,9 @@ def test_same_key_seen_only_after_the_daily_limit_is_replayed(
     # 새 대화로 보낸 앞 요청이 그날 마지막 턴을 썼다. 뒤 요청은 메시지 유일 제약까지 가지 못한다
     request_id = str(uuid.uuid4())
     _, first = _send(client, user_id, client_request_id=request_id)
-    day = datetime.now(UTC).astimezone(SEOUL).date()
     db_session.execute(
         update(ChatDailyUsage)
-        .where(ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == day)
+        .where(ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == _today())
         .values(turns=USER_DAILY_TURNS)
     )
     # 접수가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
@@ -338,7 +328,7 @@ def test_unstorable_screen_is_422(
     response = client.post(
         "/api/chat/messages",
         content=json.dumps(body),
-        headers={**_headers(user_id), "Content-Type": "application/json"},
+        headers={**bearer(user_id), "Content-Type": "application/json"},
     )
 
     assert (response.status_code, response.json()["code"]) == (422, "VALIDATION_ERROR")
@@ -377,8 +367,8 @@ def test_others_targets_are_the_same_404(
         f"/api/chat/conversations/{conversation_id}/messages",
         f"/api/chat/conversations/{conversation_id}/run",
     ):
-        assert client.get(path, headers=_headers(user_id)).status_code == 404, path
-    cancel = client.post(f"/api/chat/runs/{run_id}/cancel", headers=_headers(user_id))
+        assert client.get(path, headers=bearer(user_id)).status_code == 404, path
+    cancel = client.post(f"/api/chat/runs/{run_id}/cancel", headers=bearer(user_id))
     assert cancel.status_code == 404
 
 
@@ -428,63 +418,39 @@ def test_choice_of_an_option_not_on_the_card_is_404(
 def test_daily_limit_is_429_with_retry_after_and_charges_nothing(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
-    day = datetime.now(UTC).astimezone(SEOUL).date()
-    db_session.add(ChatDailyUsage(user_id=user_id, day=day, turns=USER_DAILY_TURNS))
+    db_session.add(ChatDailyUsage(user_id=user_id, day=_today(), turns=USER_DAILY_TURNS))
     # 접수가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
     db_session.commit()
-    reserved = select(ChatDailyUsage.reserved).where(
-        ChatDailyUsage.user_id.is_(None), ChatDailyUsage.day == day
-    )
-    before = db_session.scalar(reserved)
+    before = _service_reserved(db_session)
 
-    status, body = _send(client, user_id)
+    response = _post(client, user_id)
 
-    assert (status, body["code"]) == (429, "AGENT_DAILY_LIMIT")
+    assert (response.status_code, response.json()["code"]) == (429, "AGENT_DAILY_LIMIT")
+    assert 0 < int(response.headers["retry-after"]) <= 86_400
     # 실패한 접수는 대화 · 메시지 · 서비스 전체 예약을 남기지 않는다
     db_session.expire_all()
     conversations = select(ChatConversation).where(ChatConversation.user_id == user_id)
     assert db_session.scalars(conversations).all() == []
-    assert db_session.scalar(reserved) == before
+    assert _service_reserved(db_session) == before
 
 
 def test_service_limit_is_429_busy_and_returns_the_user_turn(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
     # 서비스 전체 하루 상한에 닿으면 사용자 하루 턴도 줄이지 않는다(한 트랜잭션으로 되돌린다)
-    day = datetime.now(UTC).astimezone(SEOUL).date()
-    db_session.add(ChatDailyUsage(user_id=None, day=day, reserved=SERVICE_DAILY_TURNS))
+    db_session.add(ChatDailyUsage(user_id=None, day=_today(), reserved=SERVICE_DAILY_TURNS))
     # 접수가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
     db_session.commit()
 
-    response = client.post(
-        "/api/chat/messages",
-        json={"text": "질문", "page": HOME, "client_request_id": str(uuid.uuid4())},
-        headers=_headers(user_id),
-    )
+    response = _post(client, user_id)
 
     assert (response.status_code, response.json()["code"]) == (429, "AGENT_BUSY")
     assert 0 < int(response.headers["retry-after"]) <= 86_400
     db_session.expire_all()
     turns = select(ChatDailyUsage.turns).where(
-        ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == day
+        ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == _today()
     )
     assert db_session.scalar(turns) is None
-
-
-def test_daily_limit_has_retry_after_header(
-    client: TestClient, db_session: Session, user_id: uuid.UUID
-) -> None:
-    day = datetime.now(UTC).astimezone(SEOUL).date()
-    db_session.add(ChatDailyUsage(user_id=user_id, day=day, turns=USER_DAILY_TURNS))
-    db_session.commit()
-
-    response = client.post(
-        "/api/chat/messages",
-        json={"text": "질문", "page": HOME, "client_request_id": str(uuid.uuid4())},
-        headers=_headers(user_id),
-    )
-
-    assert 0 < int(response.headers["retry-after"]) <= 86_400
 
 
 def test_turns_are_counted_per_message(
@@ -492,11 +458,10 @@ def test_turns_are_counted_per_message(
 ) -> None:
     _send(client, user_id)
     _send(client, user_id)
-    day = datetime.now(UTC).astimezone(SEOUL).date()
 
     turns = db_session.scalar(
         select(ChatDailyUsage.turns).where(
-            ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == day
+            ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == _today()
         )
     )
     assert turns == 2
@@ -516,7 +481,7 @@ def test_frontend_on_another_origin_can_read_retry_after(
     from pitch_coach_backend.core.config import settings
 
     origin = settings.frontend_base_url.rstrip("/")
-    response = client.get("/api/chat/availability", headers={**_headers(user_id), "Origin": origin})
+    response = client.get("/api/chat/availability", headers={**bearer(user_id), "Origin": origin})
 
     assert response.headers["access-control-expose-headers"] == "Retry-After"
 
@@ -533,7 +498,7 @@ def test_run_status_hides_signed_state_and_error_message(
     run.retry_after_s = 5
     db_session.flush()
 
-    body = client.get(f"/api/chat/runs/{run.id}", headers=_headers(user_id)).json()
+    body = client.get(f"/api/chat/runs/{run.id}", headers=bearer(user_id)).json()
 
     assert body == {
         "run_id": str(run.id),
@@ -547,31 +512,27 @@ def test_run_status_hides_signed_state_and_error_message(
 
 
 def test_latest_run_of_conversation_for_restore(client: TestClient, user_id: uuid.UUID) -> None:
-    created = client.post("/api/chat/conversations", json={}, headers=_headers(user_id)).json()
+    created = client.post("/api/chat/conversations", json={}, headers=bearer(user_id)).json()
     path = f"/api/chat/conversations/{created['conversation_id']}/run"
-    assert client.get(path, headers=_headers(user_id)).json() is None
+    assert client.get(path, headers=bearer(user_id)).json() is None
 
     _, sent = _send(client, user_id, conversation_id=created["conversation_id"])
 
-    assert client.get(path, headers=_headers(user_id)).json()["run_id"] == sent["run_id"]
+    assert client.get(path, headers=bearer(user_id)).json()["run_id"] == sent["run_id"]
 
 
 def test_cancel_before_send_returns_the_service_reservation(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
     _, sent = _send(client, user_id)
-    day = datetime.now(UTC).astimezone(SEOUL).date()
-    reserved = select(ChatDailyUsage.reserved).where(
-        ChatDailyUsage.user_id.is_(None), ChatDailyUsage.day == day
-    )
-    before = db_session.scalar(reserved)
+    before = _service_reserved(db_session)
 
-    response = client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=_headers(user_id))
+    response = client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=bearer(user_id))
 
     assert response.json()["status"] == "CANCELLED"
     assert response.json()["error"] == {"code": "AGENT_CANCELLED"}
     db_session.expire_all()
-    assert db_session.scalar(reserved) == before - 1
+    assert _service_reserved(db_session) == before - 1
     run = db_session.get(ChatRun, uuid.UUID(sent["run_id"]))
     assert run.row_revision == 1
     assert db_session.scalar(select(ChatRunLog.status).where(ChatRunLog.run_id == run.id)) == (
@@ -589,16 +550,12 @@ def test_cancel_after_send_keeps_the_reservation(
         {"turn_call": 1, "request_id": "r", "state_revision": None, "stage": "SENDING"}
     ]
     db_session.flush()
-    day = datetime.now(UTC).astimezone(SEOUL).date()
-    reserved = select(ChatDailyUsage.reserved).where(
-        ChatDailyUsage.user_id.is_(None), ChatDailyUsage.day == day
-    )
-    before = db_session.scalar(reserved)
+    before = _service_reserved(db_session)
 
-    client.post(f"/api/chat/runs/{run.id}/cancel", headers=_headers(user_id))
+    client.post(f"/api/chat/runs/{run.id}/cancel", headers=bearer(user_id))
 
     db_session.expire_all()
-    assert db_session.scalar(reserved) == before
+    assert _service_reserved(db_session) == before
 
 
 def test_cancel_blocks_the_turn_runner_saves_after_it(
@@ -623,7 +580,7 @@ def test_cancel_blocks_the_turn_runner_saves_after_it(
     )
     assert sending is not None
 
-    response = client.post(f"/api/chat/runs/{run_id}/cancel", headers=_headers(user_id))
+    response = client.post(f"/api/chat/runs/{run_id}/cancel", headers=bearer(user_id))
     assert response.json()["status"] == "CANCELLED"
     db_session.expire_all()
 
@@ -643,7 +600,7 @@ def test_cancelled_queued_run_is_not_claimed(
     from pitch_coach_backend.module.chat.service import run as run_service
 
     _, sent = _send(client, user_id)
-    client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=_headers(user_id))
+    client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=bearer(user_id))
     db_session.expire_all()
 
     assert run_service.claim(db_session, uuid.UUID(sent["run_id"])) is None
@@ -658,7 +615,7 @@ def test_cancel_of_finished_run_keeps_the_result(
     # 취소 API 가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
     db_session.commit()
 
-    response = client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=_headers(user_id))
+    response = client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=bearer(user_id))
 
     assert response.json()["status"] == "DONE"
 
@@ -667,7 +624,7 @@ def test_cancel_of_auto_goal_check_closes_the_check(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
     # 임대를 PENDING 으로 두면 5분 뒤 같은 리뷰로 실행을 다시 만들고 확인 횟수를 또 줄인다
-    created = client.post("/api/chat/conversations", json={}, headers=_headers(user_id)).json()
+    created = client.post("/api/chat/conversations", json={}, headers=bearer(user_id)).json()
     conversation_id = uuid.UUID(created["conversation_id"])
     now = datetime.now(UTC)
     run = ChatRun(
@@ -697,7 +654,7 @@ def test_cancel_of_auto_goal_check_closes_the_check(
     db_session.add(lease)
     db_session.flush()
 
-    response = client.post(f"/api/chat/runs/{run.id}/cancel", headers=_headers(user_id))
+    response = client.post(f"/api/chat/runs/{run.id}/cancel", headers=bearer(user_id))
 
     assert response.json()["status"] == "CANCELLED"
     db_session.expire_all()
@@ -708,21 +665,19 @@ def test_conversations_list_filters_by_pitch_and_shows_title(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
     pitch_id = _pitch(db_session, user_id, "졸업 발표")
-    client.post("/api/chat/conversations", json={}, headers=_headers(user_id))
+    client.post("/api/chat/conversations", json={}, headers=bearer(user_id))
     in_pitch = client.post(
-        "/api/chat/conversations", json={"pitch_id": str(pitch_id)}, headers=_headers(user_id)
+        "/api/chat/conversations", json={"pitch_id": str(pitch_id)}, headers=bearer(user_id)
     ).json()
 
     listed = client.get(
-        f"/api/chat/conversations?pitch_id={pitch_id}", headers=_headers(user_id)
+        f"/api/chat/conversations?pitch_id={pitch_id}", headers=bearer(user_id)
     ).json()["conversations"]
 
     assert [item["conversation_id"] for item in listed] == [in_pitch["conversation_id"]]
     assert listed[0]["scope_pitch_title"] == "졸업 발표"
     assert (
-        len(
-            client.get("/api/chat/conversations", headers=_headers(user_id)).json()["conversations"]
-        )
+        len(client.get("/api/chat/conversations", headers=bearer(user_id)).json()["conversations"])
         == 2
     )
 
@@ -732,7 +687,7 @@ def test_create_conversation_with_others_pitch_is_404(
 ) -> None:
     their_pitch = _pitch(db_session, _other_user(db_session))
     response = client.post(
-        "/api/chat/conversations", json={"pitch_id": str(their_pitch)}, headers=_headers(user_id)
+        "/api/chat/conversations", json={"pitch_id": str(their_pitch)}, headers=bearer(user_id)
     )
 
     assert response.status_code == 404
@@ -746,15 +701,15 @@ def test_scope_change_is_blocked_while_running(
     path = f"/api/chat/conversations/{sent['conversation_id']}/scope"
 
     db_session.commit()
-    running = client.patch(path, json={"pitch_id": str(pitch_id)}, headers=_headers(user_id))
+    running = client.patch(path, json={"pitch_id": str(pitch_id)}, headers=bearer(user_id))
     assert running.json()["code"] == "AGENT_RUN_IN_PROGRESS"
 
     db_session.get(ChatRun, uuid.UUID(sent["run_id"])).status = "DONE"
     db_session.flush()
-    changed = client.patch(path, json={"pitch_id": str(pitch_id)}, headers=_headers(user_id))
+    changed = client.patch(path, json={"pitch_id": str(pitch_id)}, headers=bearer(user_id))
     assert changed.status_code == 200
     assert changed.json()["scope_pitch_id"] == str(pitch_id)
-    back = client.patch(path, json={"pitch_id": None}, headers=_headers(user_id))
+    back = client.patch(path, json={"pitch_id": None}, headers=bearer(user_id))
     assert back.json()["scope_pitch_id"] is None
 
 
@@ -786,11 +741,11 @@ def test_messages_are_paged_from_the_newest(
         _answer(db_session, conversation_id, user_id, seq)
     path = f"/api/chat/conversations/{conversation_id}/messages"
 
-    page = client.get(f"{path}?limit=2", headers=_headers(user_id)).json()
+    page = client.get(f"{path}?limit=2", headers=bearer(user_id)).json()
     assert [message["seq"] for message in page["messages"]] == [4, 5]
     assert page["next_before_seq"] == 4
 
-    rest = client.get(f"{path}?limit=10&before_seq=4", headers=_headers(user_id)).json()
+    rest = client.get(f"{path}?limit=10&before_seq=4", headers=bearer(user_id)).json()
     assert [message["seq"] for message in rest["messages"]] == [1, 2, 3]
     assert rest["next_before_seq"] is None
 
@@ -814,7 +769,7 @@ def test_answer_on_a_deleted_take_is_masked_on_read(
     messages = {
         message["message_id"]: message
         for message in client.get(
-            f"/api/chat/conversations/{conversation_id}/messages", headers=_headers(user_id)
+            f"/api/chat/conversations/{conversation_id}/messages", headers=bearer(user_id)
         ).json()["messages"]
     }
 
@@ -841,7 +796,7 @@ def test_masking_reads_the_stored_id_and_checks_the_owner(
     masked = {
         message["message_id"]: message["masked"]
         for message in client.get(
-            f"/api/chat/conversations/{conversation_id}/messages", headers=_headers(user_id)
+            f"/api/chat/conversations/{conversation_id}/messages", headers=bearer(user_id)
         ).json()["messages"]
     }
 
@@ -861,12 +816,12 @@ def test_run_status_hides_progress_once_a_read_source_is_gone(
     db_session.flush()
     path = f"/api/chat/runs/{run.id}"
 
-    shown = client.get(path, headers=_headers(user_id)).json()
+    shown = client.get(path, headers=bearer(user_id)).json()
     assert (shown["plan"], shown["trace"]) == (run.plan, run.trace)
 
     run.read_sources = {"pitches": [str(pitch_id)], "takes": [str(uuid.uuid4())]}
     db_session.flush()
-    hidden = client.get(path, headers=_headers(user_id)).json()
+    hidden = client.get(path, headers=bearer(user_id)).json()
     assert (hidden["plan"], hidden["trace"]) == (None, None)
 
 
@@ -897,12 +852,12 @@ def test_each_judgement_shows_the_newest_judgement_that_replaced_it(
     path = f"/api/chat/conversations/{conversation_id}/messages"
 
     # 앞 판단만 담은 페이지에서도 대화 전체로 계산한 값이 같게 나온다
-    oldest = client.get(f"{path}?limit=1&before_seq=3", headers=_headers(user_id)).json()
+    oldest = client.get(f"{path}?limit=1&before_seq=3", headers=bearer(user_id)).json()
     assert oldest["messages"][0]["assessments"][0]["superseded_by"] == "a5"
 
     by_id = {
         item["assessment_id"]: item["superseded_by"]
-        for message in client.get(path, headers=_headers(user_id)).json()["messages"]
+        for message in client.get(path, headers=bearer(user_id)).json()["messages"]
         for item in message["assessments"] or []
     }
     assert by_id == {"a1": "a5", "a2": None, "a3": None, "a4": None, "a5": None}
@@ -927,7 +882,7 @@ def test_masked_answer_is_not_shown_as_the_replacement(
     def first_judgement() -> dict[str, Any]:
         page = client.get(
             f"/api/chat/conversations/{conversation_id}/messages?limit=1&before_seq=3",
-            headers=_headers(user_id),
+            headers=bearer(user_id),
         ).json()
         return page["messages"][0]["assessments"][0]
 
@@ -956,9 +911,12 @@ def test_goal_sweep_runs_only_while_chat_is_on(
 
     started: list[bool] = []
 
+    async def stop_nothing() -> None:
+        return None
+
     def start() -> Any:
         started.append(True)
-        return _no_sweep_stop
+        return stop_nothing
 
     monkeypatch.setattr(main, "start_goal_sweep", start)
     monkeypatch.setattr(settings, "agent_enabled", enabled)
