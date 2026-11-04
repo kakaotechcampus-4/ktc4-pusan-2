@@ -309,7 +309,7 @@ uv sync
 - **`cpm_short`**: 같은 계산을 짧은 창으로.
 - **`cpm`** (Take · 장): `chars ÷ speak_ms × 60000`. `speak_ms`가 0이면 null.
 - **`pause_count`**: 연속한 두 확정 단어 사이 간격이 멈춤 기준 시간을 넘은 횟수의 합(앞 단어가 STT 회복 전이면 세지 않음).
-- **`measured_ratio`**: `ok_ms ÷ total_ms`. STT가 정상이던 시간의 비율이다.
+- **`measured_ratio`**: `ok_ms ÷ total_ms`. STT가 `ok`이고, 회복 시각(`stt_ok_since_ms`) 이후이며, 군더더기 판정이 실패하지 않은(`fillers`가 null이 아닌) 시간의 비율이다(5-3 `ok_ms`).
 - **CPM 오차**: 평가 발화마다 `|모듈 cpm − 사람이 잰 cpm|`의 평균(Take · 장 값).
 - **상태 일치율**: 평가 1초마다 모듈 `state`와 사람이 정한 상태가 같은 비율(`UNKNOWN` 제외, 그 비율은 따로 기록).
 - **멈춤 재현율**: 사람이 표시한 멈춤 중 모듈이 센 비율.
