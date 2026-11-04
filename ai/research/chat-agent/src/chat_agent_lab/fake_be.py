@@ -9,6 +9,10 @@
   3. 스트림 검사(12-3 '스트림 검사' · '최종 응답 검사'): 줄마다 모양 · `run_id` · 1부터 연속인 `seq`, 끝 줄 정확히 하나 · 마지막,
      `final` 모양(5-5), 빈 DONE · 등록되지 않은 행동 · 자율 등급 위조. 어기면 행동을 실행하지 않고 실행을 `AGENT_UPSTREAM_ERROR`로 끝낸다.
      진단 기록은 본체와 따로 검사해(`request_id` · `run_id` · `turn_call`) 틀리면 진단 기록만 버린다.
+     실행 이벤트(L2-46): 진행 줄 · 문장 줄(`claim`)을 받은 순서대로 실행 전체에서 이어지는 `event_seq`로 저장하고, `events_after`가
+     `after_seq` 커서 뒤의 이벤트만 돌려준다. 문장 줄은 번호가 실행 전체에서 이어져야 하고, 끝 줄 `message.claims`의 앞부분은
+     이 실행에서 받은 문장과 글자 · 종류 · 근거까지 같아야 한다(L2-44). 어기거나 끝 줄 없이 끊기거나 `error` 끝 줄이면, 받은 문장이
+     있을 때 그 문장 · 판단 · 근거로 `PARTIAL`을 남기고 행동은 실행하지 않는다(L2-45). 받은 문장이 없으면 위처럼 실패다.
   4. `NEEDS_ACTION`: 행동 종류 · 고정 자율 등급(`AUTO` · `ASK` · `BUTTON`) · 인자 키를 검사하고 `ASK` 행동은 `args_hash`를 같은 규칙으로
      다시 계산해 본다. 읽기(`AUTO`)와 선승인 `SAVE_GOAL`은 사용자 · 피치 소유권을 확인해 바로 실행하고(5-8 · 12-3 '행동 실행'),
      그 밖의 `ASK` 행동은 `args` · `args_hash` · 대기 시작 시각을 저장하고 실행을 `WAITING_APPROVAL`에서 멈춘 채 돌려준다.
@@ -55,7 +59,7 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from chat_agent.actions import action_args_hash
-from chat_agent.schemas import FinalData, StreamLine
+from chat_agent.schemas import ClaimLineData, FinalData, StreamLine
 from chat_agent.templates import SystemText
 
 from . import fixtures as fx
@@ -233,6 +237,13 @@ class Call:
     error_code: str | None = None
     #: 검사를 통과한 진단 기록(틀리면 None, 본체 처리와 상관없다)
     diagnostics: dict[str, Any] | None = None
+    #: 이 호출에서 받은 문장 줄(`claim`)의 data(검사를 통과한 것만, 받은 순서)
+    claims: list[dict[str, Any]] = field(default_factory=list)
+    #: 받은 문장으로 `PARTIAL`을 남겨야 한다(끝 줄 없이 끊김 · `error` 끝 줄 · 앞부분 불일치 등, L2-44 · L2-45)
+    partial_from_claims: bool = False
+    #: 호출 시작부터 첫 문장 줄 · 마지막 줄까지 걸린 시간(ms, 실제 시계. 평가의 첫 문장 시간)
+    first_claim_ms: int | None = None
+    end_ms: int | None = None
 
 
 @dataclass
@@ -280,7 +291,9 @@ class Run:
     error_code: str | None = None
     calls: list[Call] = field(default_factory=list)
     actions: list[ActionRecord] = field(default_factory=list)
-    progress: list[dict[str, Any]] = field(default_factory=list)
+    #: 실행 이벤트(12-3 · L2-46): 진행 줄(`plan` · `tool_done`)과 문장 줄(`claim`)을 실행 전체에서 이어지는 순번
+    #: `event_seq`(1부터, 이어 부르기에서도 이어짐)로 받은 순서대로 저장한 것. 저장한 뒤 바꾸지 않는다
+    events: list[dict[str, Any]] = field(default_factory=list)
     state: dict[str, Any] | None = None
     state_revision: int = 0
     budget_used: dict[str, int] = field(default_factory=lambda: dict(ZERO_BUDGET))
@@ -312,6 +325,16 @@ class Run:
     @property
     def requests(self) -> list[dict[str, Any]]:
         return [c.request for c in self.calls]
+
+    @property
+    def progress(self) -> list[dict[str, Any]]:
+        """진행 줄 이벤트(`plan` · `tool_done`)."""
+        return [e for e in self.events if e["event"] in ("plan", "tool_done")]
+
+    @property
+    def claim_lines(self) -> list[dict[str, Any]]:
+        """이 실행에서 받은 문장 줄의 data(모든 호출, 받은 순서)."""
+        return [e["data"] for e in self.events if e["event"] == "claim"]
 
 
 # ── 가짜 BE ──────────────────────────────────────────────────────────────
@@ -725,6 +748,10 @@ class FakeBe:
             call = self._call(run, req)
             final = call.final
             if final is None:
+                if call.partial_from_claims:
+                    # 끝 줄 없이 끊김 · error 끝 줄 · 앞부분 불일치여도 받은 문장은 PARTIAL 로 남긴다(L2-44 · L2-45)
+                    self._store_received(run, conv)
+                    return run
                 return self._fail(run, call.error_code or "AGENT_UPSTREAM_ERROR")
             scope_changed = False
             if run.trigger != "TAKE_REVIEWED" and final["scope_pitch_id"] != conv.scope_pitch_id:
@@ -756,7 +783,9 @@ class FakeBe:
         """행동 하나를 실행해 이어 부를 요청을 만든다. 호출 상한에 닿았으면 실행을 끝내고 None."""
         if len(run.calls) >= self.max_calls:
             # 한 실행 6번(8-2): 앞서 받은 답이 있으면 PARTIAL, 없으면 AGENT_TIMEOUT
-            if self._emitted(run):
+            if run.claim_lines:
+                self._store_received(run, self.conversations[run.conversation_id])
+            elif self._emitted(run):
                 run.status = "PARTIAL"
             else:
                 self._fail(run, "AGENT_TIMEOUT")
@@ -785,6 +814,45 @@ class FakeBe:
             final=copy.deepcopy(final),
         )
         run.status = "WAITING_APPROVAL"
+
+    def _store_received(self, run: Run, conv: Conversation) -> None:
+        """이 실행에서 받은 문장 줄로 `PARTIAL` 메시지를 남긴다(L2-44 · L2-45): 문장 · 판단 · 근거 · 자료 사본을 그대로 보존하고
+        행동은 실행하지 않는다. 근거 표시 · 계획 · 기록은 앞 응답의 끝 줄에서 가져온다(없으면 비움)."""
+        lines = run.claim_lines
+        claims = [copy.deepcopy(d["claim"]) for d in lines]
+
+        def uniq(key: str, field_: str) -> list[dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for d in lines:
+                for x in d[key]:
+                    out.setdefault(x[field_], copy.deepcopy(x))
+            return list(out.values())
+
+        last = run.finals[-1] if run.finals else {}
+        received = {
+            "status": "PARTIAL",
+            "message": {
+                "text": "\n".join(c["text"] for c in claims),
+                "claims": claims,
+                "cards": [],
+                "sources": uniq("sources", "source_id"),
+            },
+            "evidence": uniq("evidence", "evidence_id"),
+            "assessments": uniq("assessments", "assessment_id"),
+            "basis": copy.deepcopy(last.get("basis") or {"pitches": []}),
+            "plan": copy.deepcopy(last.get("plan") or []),
+            "trace": copy.deepcopy(last.get("trace") or []),
+            "meta": copy.deepcopy(last.get("meta")),
+            "history_summary": None,
+            "goal_result": None,
+        }
+        self._store_final(run, conv, received, status="PARTIAL")
+
+    def events_after(self, run_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
+        """실행 조회(12-3 · L2-46): `after_seq` 커서 뒤의 실행 이벤트만 `event_seq` 순서대로. 같은 커서로 다시 읽으면 같은 것과
+        그 뒤에 저장된 것을 돌려준다(저장된 이벤트는 바뀌지 않는다)."""
+        run = self.runs[run_id]
+        return [copy.deepcopy(e) for e in run.events if e["event_seq"] > after_seq]
 
     def waiting_run(self, conversation_id: str) -> Run | None:
         """이 대화에서 승인 대기 중인 실행(대화마다 끝나지 않은 실행은 하나, 12-3)."""
@@ -1008,33 +1076,50 @@ class FakeBe:
         if out.lines is None:
             call.error_code = ((out.error or {}).get("error") or {}).get("code") or "UNKNOWN"
             return call
-        self._check_stream(run, call, list(out.lines))
-        run.progress.extend(ln for ln in call.lines if ln["event"] in ("plan", "tool_done"))
+        raw: list[str] = []
+        t0 = time.monotonic()
+        for ln in out.lines:
+            raw.append(ln)
+            if call.first_claim_ms is None and ln.startswith('{"event":"claim"'):
+                call.first_claim_ms = int((time.monotonic() - t0) * 1000)
+        call.end_ms = int((time.monotonic() - t0) * 1000)
+        self._check_stream(run, call, raw)
         return call
 
     def _check_stream(self, run: Run, call: Call, raw: list[str]) -> None:
-        """스트림 검사(12-3): 어기면 call.error_code 를 남기고 final 을 쓰지 않는다(행동 실행 0번)."""
-        parsed: list[dict[str, Any]] = []
+        """스트림 검사(12-3) · 실행 이벤트 저장(L2-46).
+
+        줄마다 모양 · `run_id` · 1부터 연속인 `seq`를 보고, 진행 줄 · 문장 줄은 받은 순서대로 실행 이벤트로 저장한다.
+        문장 줄은 번호가 실행 전체에서 이어져야 하고, 끝 줄 `message.claims`의 앞부분은 이 실행에서 받은 문장과 글자 · 종류 ·
+        근거까지 같아야 한다(L2-44). 어기거나 끝 줄 없이 끝나면 `call.error_code`를 남기고 final 을 쓰지 않는다(행동 실행 0번).
+        그때 받은 문장이 있으면 그 문장으로 `PARTIAL`을 남긴다(`partial_from_claims`, L2-45).
+        """
+        terminal: dict[str, Any] | None = None
         for i, line in enumerate(raw, start=1):
-            if not line.endswith("\n") or len(line.encode("utf-8")) > MAX_LINE_BYTES:
-                call.error_code = "STREAM_INVALID"
-                return
-            try:
-                obj = json.loads(line)
-                StreamLine.model_validate(obj)
-            except (ValueError, ValidationError):
-                call.error_code = "STREAM_INVALID"
-                return
-            if obj["run_id"] != run.run_id or obj["seq"] != i:
-                call.error_code = "STREAM_INVALID"
-                return
-            parsed.append(obj)
-        call.lines = parsed
-        ends = [i for i, ln in enumerate(parsed) if ln["event"] in ("final", "error")]
-        if ends != [len(parsed) - 1]:
-            call.error_code = "STREAM_INVALID"  # 끝 줄 없는 EOF · 중복 · 끝 줄 뒤 이벤트
-            return
-        last = parsed[-1]
+            if terminal is not None:
+                return self._reject(run, call, "STREAM_INVALID")  # 끝 줄 뒤 이벤트 · 끝 줄 두 번
+            obj = self._line(run, line, i)
+            if obj is None:
+                return self._reject(run, call, "STREAM_INVALID")
+            call.lines.append(obj)
+            if obj["event"] in ("final", "error"):
+                terminal = obj
+                continue
+            if obj["event"] == "claim":
+                if not self._claim_ok(run, obj["data"]):
+                    return self._reject(run, call, "CLAIM_INVALID")
+                call.claims.append(obj["data"])
+            run.events.append(
+                {
+                    "event_seq": len(run.events) + 1,
+                    "call": call.number,
+                    "event": obj["event"],
+                    "data": obj["data"],
+                }
+            )
+        if terminal is None:
+            return self._reject(run, call, "STREAM_INVALID")  # 끝 줄 없는 EOF
+        last = terminal
         diag = last["data"].get("diagnostics")
         call.diagnostics = diag if self._diagnostics_ok(diag, run, call) else None
         if diag is not None and call.diagnostics is None:
@@ -1042,30 +1127,64 @@ class FakeBe:
                 {"event": "DIAGNOSTICS_INVALID", "run_id": run.run_id, "call": call.number}
             )
         if last["event"] == "error":
-            call.error_code = (last["data"].get("error") or {}).get("code") or "UNKNOWN"
-            return
+            # error 끝 줄이어도 받은 문장이 있으면 그 문장으로 PARTIAL(L2-45)
+            return self._reject(
+                run, call, (last["data"].get("error") or {}).get("code") or "UNKNOWN"
+            )
         try:
             FinalData.model_validate(last["data"])
         except ValidationError:
-            call.error_code = "FINAL_INVALID"
-            return
+            return self._reject(run, call, "FINAL_INVALID")
         final = last["data"]
+        got = [d["claim"] for d in run.claim_lines]
+        if ((final.get("message") or {}).get("claims") or [])[: len(got)] != got:
+            # 끝 줄 앞부분이 받은 문장과 다르다: 계약 위반으로 남기고 받은 문장만 PARTIAL 로(행동 실행 0번, L2-44)
+            self.log.append(
+                {"event": "CLAIM_PREFIX_MISMATCH", "run_id": run.run_id, "call": call.number}
+            )
+            return self._reject(run, call, "CLAIM_PREFIX_MISMATCH")
         if final["status"] == "DONE" and not final["message"]["claims"]:
-            call.error_code = "FINAL_INVALID"  # 빈 DONE
-            return
+            return self._reject(run, call, "FINAL_INVALID")  # 빈 DONE
         for a in final["actions"] if final["status"] in ("NEEDS_ACTION", "DONE") else []:
             if FIXED_AUTONOMY.get(a["type"]) != a["autonomy"]:
-                call.error_code = "ACTION_NOT_ALLOWED"  # 등록되지 않은 행동 · 자율 등급 위조
-                return
+                # 등록되지 않은 행동 · 자율 등급 위조
+                return self._reject(run, call, "ACTION_NOT_ALLOWED")
             if a["autonomy"] == "ASK" and a["args_hash"] != action_args_hash(a["type"], a["args"]):
                 # BE 도 같은 규칙으로 해시를 다시 계산해 맞는지 본다(5-8)
-                call.error_code = "FINAL_INVALID"
-                return
+                return self._reject(run, call, "FINAL_INVALID")
             if a.get("preapproved") is not None and a["type"] != "SAVE_GOAL":
                 # 선승인은 고른 목표 제안을 저장하는 SAVE_GOAL 만
-                call.error_code = "ACTION_NOT_ALLOWED"
-                return
+                return self._reject(run, call, "ACTION_NOT_ALLOWED")
         call.final = final
+
+    @staticmethod
+    def _line(run: Run, line: str, seq: int) -> dict[str, Any] | None:
+        """한 줄 검사: LF 로 끝남 · 2 MiB 이하 · JSON · 줄 모양 · 이 실행의 `run_id` · 1부터 연속인 `seq`."""
+        if not line.endswith("\n") or len(line.encode("utf-8")) > MAX_LINE_BYTES:
+            return None
+        try:
+            obj = json.loads(line)
+            StreamLine.model_validate(obj)
+        except (ValueError, ValidationError):
+            return None
+        if obj["run_id"] != run.run_id or obj["seq"] != seq:
+            return None
+        return obj
+
+    @staticmethod
+    def _claim_ok(run: Run, data: Any) -> bool:
+        """문장 줄 검사: 모양(5-4)과 번호(이 실행에서 받은 문장 수와 같아야 한다 — 빈 번호 · 되풀이 없음)."""
+        try:
+            ClaimLineData.model_validate(data)
+        except ValidationError:
+            return False
+        return data["index"] == len(run.claim_lines)
+
+    @staticmethod
+    def _reject(run: Run, call: Call, code: str) -> None:
+        """호출 결과를 쓰지 않는다(행동 실행 0번). 이 실행에서 받은 문장이 있으면 그 문장으로 PARTIAL 을 남긴다(L2-45)."""
+        call.error_code = code
+        call.partial_from_claims = bool(run.claim_lines)
 
     @staticmethod
     def _diagnostics_ok(diag: Any, run: Run, call: Call) -> bool:
