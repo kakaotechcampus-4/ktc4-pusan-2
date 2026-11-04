@@ -247,11 +247,18 @@ class HistorySpec(_M):
     basis: dict[str, Any] | None = None
 
 
+class SummaryItemSpec(_M):
+    """대화에 이미 있는 대화 요약 항목(5-2 `SummaryItem`, 6-14)."""
+
+    kind: Literal["TOPIC", "INTENT", "DECISION", "OPEN"]
+    text: str = Field(min_length=1, max_length=120)
+
+
 class ConversationSpec(_M):
     scope_pitch_id: str | None = "p-1"
     goal: GoalSpec | None = None
     history: list[HistorySpec] = Field(default_factory=list)
-    summary: str | None = Field(default=None, max_length=4000)
+    summary: list[SummaryItemSpec] | None = Field(default=None, max_length=12)
 
 
 class CorpusSpec(_M):

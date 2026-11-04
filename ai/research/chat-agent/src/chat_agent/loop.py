@@ -1101,7 +1101,9 @@ class Loop:
         prev = self.req.history.summary or []
         block = {
             "prev_summary": [{"kind": s.kind, "text": s.text} for s in prev],
-            "overflow": [{"role": m.role, "text": m.text[:1000]} for m in ov.messages],
+            # 밀린 메시지는 자르지 않고 그대로 준다(BE 는 보낸 메시지 전체를 덮은 것으로 기록한다). 입력이 한도를 넘으면
+            # 예약에서 막혀 요약을 만들지 않고(null) 다음 턴에 다시 보낸다
+            "overflow": [{"role": m.role, "text": m.text} for m in ov.messages],
         }
         msgs = [self._system(prompts.HISTORY_SUMMARY), prompts.data_message(block)]
         res = self._call(

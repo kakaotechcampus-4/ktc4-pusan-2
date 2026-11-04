@@ -24,8 +24,12 @@ from .config import ChatAgentConfig
 PROFILE_KEYS = ("TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT")
 SUMMARY_KINDS = ("TOPIC", "INTENT", "DECISION", "OPEN")
 
+#: 측정 단위(이 앞의 숫자는 Take · 장 번호가 아니다 — "Take 28초")
+_UNITS = r"(?:초|분|시간|%|퍼센트|번|회|개|점|배)"
 #: 요약 항목에 허용하는 번호(Take 번호 · 장 번호). 이것을 뺀 뒤 숫자가 남으면 그 항목을 버린다
-_ALLOWED_NUMBERS = re.compile(r"(?i)take\s*\d+|\d+\s*장")
+_ALLOWED_NUMBERS = re.compile(rf"(?i)take\s*\d+(?![\d.]|\s*{_UNITS})|\d+\s*장")
+#: 인용을 절로 나누는 곳
+_CLAUSE_SPLIT = re.compile(r"[.,!?\n]")
 _DIGIT = re.compile(r"\d")
 #: 요약 항목의 판정 · 방향 낱말(동의 · 칭찬 낱말은 checks 가 따로 본다). 판정은 도구로 다시 확인하기 때문이다
 _SUMMARY_VERDICT_WORDS = (
@@ -151,8 +155,12 @@ def _profile_problem(item: Any, message: str, cfg: ChatAgentConfig) -> str | Non
         return "⑤ 지시형 · 판정 낱말"
     if chk.check_memory_text(value, "profile_updates", cfg):
         return "⑤ 금지 주장 · 개인정보 · 판정 낱말"
-    if _squash(value) not in _squash(quote):
-        return "⑥ 값이 요청 구간에 없음"
+    # ②⑥ 값은 기억 요청 표현이 있는 절 안에서 온 것이어야 한다("발표는 길게 해. 앞으로 짧게 해 줘"의 '길게'는 안 됨)
+    request_clauses = [
+        c for c in _CLAUSE_SPLIT.split(quote) if any(w in c for w in cfg.memory_request_words)
+    ]
+    if not any(_squash(value) in _squash(c) for c in request_clauses):
+        return "⑥ 값이 기억 요청 구간에 없음"
     return None
 
 

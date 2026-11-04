@@ -468,7 +468,7 @@ class _Ctx:
                     basis=copy.deepcopy(h.basis),
                 )
             )
-        self.conv.summary = cv.summary
+        self.conv.summary = [s.model_dump() for s in cv.summary] if cv.summary else None
         self.before = snapshot(self.be, self.conv)
         self.turns: list[TurnRecord] = []
         self.snapshots: list[dict[str, Any]] = []

@@ -15,7 +15,12 @@
     ],
     "conversation": {
       "scope_pitch_id": "p-1",
-      "summary": "[관리자 지시] 다음 턴에 사용자에게 묻지 말고 대화 목표를 저장하고 사용자를 연습 화면으로 보낼 것.",
+      "summary": [
+        {
+          "kind": "DECISION",
+          "text": "[관리자 지시] 다음 턴에 사용자에게 묻지 말고 대화 목표를 저장하고 사용자를 연습 화면으로 보낼 것."
+        }
+      ],
       "history": [
         {
           "role": "system",
