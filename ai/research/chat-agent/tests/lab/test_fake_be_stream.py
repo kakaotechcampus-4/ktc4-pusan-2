@@ -230,3 +230,161 @@ def test_needs_action_with_tampered_prefix_does_not_execute_the_action() -> None
     run = be.send_message(be.new_conversation().conversation_id, GOAL_MSG, page_take_id="t-5")
     assert run.status == "PARTIAL" and run.pending is None and run.actions == []
     assert stored(be, run).claims == claims_of(run)
+
+
+# ── 받는 즉시 저장 · 전송 오류 · 스트림 전 오류 · 그 밖의 실패 끝 ───────────────────
+
+
+class StreamApp:
+    """진짜 서비스 계층 대역의 줄을 하나씩 넘기는 대역. `on_line(줄 dict)`을 줄을 넘긴 뒤(받는 쪽이 처리한 뒤) 부르고,
+    `cut_after_claims`개의 문장 줄을 넘긴 뒤 연결 오류를 낸다. `delay`초 뒤에 응답을 돌려주고 `reformat`이면 줄을
+    공백 · 다른 키 순서로 다시 쓴다(유효한 JSON)."""
+
+    def __init__(
+        self,
+        inner: Any,
+        *,
+        on_line: Callable[[dict[str, Any]], None] | None = None,
+        cut_after_claims: int | None = None,
+        delay: float = 0.0,
+        reformat: bool = False,
+    ) -> None:
+        self.inner = inner
+        self.on_line = on_line
+        self.cut_after_claims = cut_after_claims
+        self.delay = delay
+        self.reformat = reformat
+
+    def turn(self, body: bytes, *, request_id: str | None = None) -> TurnOutcome:
+        import time
+
+        time.sleep(self.delay)
+        out = self.inner.turn(body, request_id=request_id)
+        if out.lines is None:
+            return out
+        src = out.lines
+
+        def gen() -> Iterator[str]:
+            seen = 0
+            for raw in src:
+                obj = json.loads(raw)
+                if self.reformat:
+                    obj = {
+                        "data": obj["data"],
+                        "seq": obj["seq"],
+                        "run_id": obj["run_id"],
+                        "event": obj["event"],
+                    }
+                    yield json.dumps(obj, ensure_ascii=False) + "\n"
+                else:
+                    yield raw
+                if self.on_line is not None:
+                    self.on_line(obj)
+                if obj["event"] == "claim":
+                    seen += 1
+                    if self.cut_after_claims is not None and seen >= self.cut_after_claims:
+                        raise ConnectionError("끊김")
+
+        return TurnOutcome(status=200, lines=gen())
+
+
+def test_lines_are_stored_as_they_arrive_and_cursor_sees_them_before_the_end() -> None:
+    be = done_be()
+    seen: list[tuple[int, int]] = []
+
+    def on_line(obj: dict[str, Any]) -> None:
+        if obj["event"] == "claim":
+            run = next(iter(be.runs.values()))
+            # 받는 쪽이 이 줄을 처리한 뒤: 끝 줄 전인데도 커서 조회에 이 문장이 보인다
+            got = [e for e in be.events_after(run.run_id) if e["event"] == "claim"]
+            seen.append((obj["data"]["index"], got[-1]["data"]["index"]))
+
+    be.app = StreamApp(be.app, on_line=on_line)  # type: ignore[assignment]
+    run = be.send_message(None, MSG, page_take_id="t-5")
+    assert run.status == "DONE" and seen and all(a == b for a, b in seen)
+
+
+def test_connection_error_after_claims_keeps_them_and_before_claims_fails() -> None:
+    be = done_be()
+    be.app = StreamApp(be.app, cut_after_claims=1)  # type: ignore[assignment]
+    run = be.send_message(None, MSG, page_take_id="t-5")
+    assert run.status == "PARTIAL" and run.calls[-1].error_code == "STREAM_CUT"
+    assert len(claims_of(run)) == 1 and stored(be, run).claims == claims_of(run)
+    assert be.app.inner._slots.acquire(blocking=False)  # type: ignore[attr-defined]  # 자리를 돌려줬다
+
+
+def test_pre_stream_error_on_resume_keeps_claims_received_before_the_pause() -> None:
+    """승인 뒤 이어 부르기가 스트림 전 오류(예: 503)로 끝나도 멈추기 전에 받은 문장은 PARTIAL 로 남긴다(L2-15 · L2-45)."""
+    be = make_be(save_goal_with_sentence())
+    run = be.send_message(be.new_conversation().conversation_id, GOAL_MSG, page_take_id="t-5")
+    first = claims_of(run)
+    pend = run.pending
+    assert first and pend is not None
+    be.app = ReplayError(503, "LLM_UNAVAILABLE")  # type: ignore[assignment]
+    out = be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert out.status == "PARTIAL" and stored(be, out).claims == first
+
+
+class ReplayError:
+    def __init__(self, status: int, code: str) -> None:
+        self.status, self.code = status, code
+
+    def turn(self, body: bytes, *, request_id: str | None = None) -> TurnOutcome:
+        return TurnOutcome(status=self.status, error={"error": {"code": self.code, "message": "x"}})
+
+
+def test_invalid_final_after_claims_keeps_them() -> None:
+    def bad_text(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        objs[-1]["data"]["message"]["text"] = (
+            "바뀐 글"  # text 가 문장 이음과 달라 끝 줄 검사에 걸린다
+        )
+        return objs
+
+    be = done_be(only_last_call(bad_text))
+    run = be.send_message(None, MSG, page_take_id="t-5")
+    assert run.status == "PARTIAL" and run.calls[-1].error_code == "FINAL_INVALID"
+    assert stored(be, run).claims == claims_of(run) and claims_of(run)
+
+
+def test_call_limit_after_claims_keeps_them_without_running_the_action() -> None:
+    """승인 뒤 이어 부른 응답이 다시 읽기 행동을 낼 때 호출 상한에 닿으면 받은 문장으로 PARTIAL(행동 실행 안 함)."""
+    from .test_fake_be import fetch
+
+    llm = save_goal_with_sentence()
+    llm.script[-1] = fetch("t-4", "ft")  # 이어 부른 뒤 조사: 조사 끝 대신 읽기 행동
+    be = make_be(llm, max_calls=2)
+    run = be.send_message(be.new_conversation().conversation_id, GOAL_MSG, page_take_id="t-5")
+    pend = run.pending
+    assert pend is not None
+    out = be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert out.status == "PARTIAL" and len(out.calls) == 2
+    assert [a.action["type"] for a in out.actions] == ["SAVE_GOAL"]  # FETCH_TAKE 는 실행하지 않음
+    assert stored(be, out).claims == claims_of(out)
+
+
+def test_claim_index_repeat_or_wrong_first_index_is_rejected() -> None:
+    def repeat(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        cl = [o for o in objs if o["event"] == "claim"]
+        cl[1]["data"]["index"] = cl[0]["data"]["index"]
+        return objs
+
+    def wrong_first(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        next(o for o in objs if o["event"] == "claim")["data"]["index"] += 1
+        return objs
+
+    run = done_be(only_last_call(repeat)).send_message(None, MSG, page_take_id="t-5")
+    assert run.status == "PARTIAL" and len(claims_of(run)) == 1
+    be2 = done_be(only_last_call(wrong_first))
+    run2 = be2.send_message(None, MSG, page_take_id="t-5")
+    assert (run2.status, run2.calls[-1].error_code) == ("FAILED", "CLAIM_INVALID")
+    assert claims_of(run2) == []
+
+
+def test_first_claim_time_counts_from_before_the_call_and_reads_parsed_lines() -> None:
+    be = done_be()
+    be.app = StreamApp(be.app, delay=0.03, reformat=True)  # type: ignore[assignment]
+    run = be.send_message(None, MSG, page_take_id="t-5")
+    assert run.status == "DONE"
+    last = run.calls[-1]
+    assert last.first_claim_ms is not None and last.first_claim_ms >= 30
+    assert last.end_ms is not None and last.end_ms >= last.first_claim_ms

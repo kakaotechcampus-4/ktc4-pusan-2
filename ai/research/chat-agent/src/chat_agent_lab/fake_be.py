@@ -51,7 +51,7 @@ import json
 import math
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Protocol
@@ -1069,54 +1069,72 @@ class FakeBe:
         n = len(run.calls) + 1
         call = Call(n, f"req-{run.run_id}-{n}", copy.deepcopy(req))
         run.calls.append(call)
-        out = self.app.turn(
-            json.dumps(req, ensure_ascii=False).encode("utf-8"), request_id=call.request_id
-        )
-        call.http_status = out.status
-        if out.lines is None:
-            call.error_code = ((out.error or {}).get("error") or {}).get("code") or "UNKNOWN"
+        t0 = time.monotonic()  # 호출 직전부터 잰다(서비스 계층의 처리 시간 포함)
+        try:
+            out = self.app.turn(
+                json.dumps(req, ensure_ascii=False).encode("utf-8"), request_id=call.request_id
+            )
+            call.http_status = out.status
+            if out.lines is None:
+                # 스트림 전 오류. 이어 부르기였고 이 실행에서 받은 문장이 있으면 그 문장으로 PARTIAL(L2-15 · L2-45)
+                code = ((out.error or {}).get("error") or {}).get("code") or "UNKNOWN"
+                self._reject(run, call, code)
+                return call
+            self._check_stream(run, call, out.lines, t0)
             return call
-        raw: list[str] = []
-        t0 = time.monotonic()
-        for ln in out.lines:
-            raw.append(ln)
-            if call.first_claim_ms is None and ln.startswith('{"event":"claim"'):
-                call.first_claim_ms = int((time.monotonic() - t0) * 1000)
-        call.end_ms = int((time.monotonic() - t0) * 1000)
-        self._check_stream(run, call, raw)
-        return call
+        finally:
+            call.end_ms = int((time.monotonic() - t0) * 1000)
 
-    def _check_stream(self, run: Run, call: Call, raw: list[str]) -> None:
-        """스트림 검사(12-3) · 실행 이벤트 저장(L2-46).
+    def _check_stream(self, run: Run, call: Call, lines: Iterable[str], t0: float) -> None:
+        """스트림 검사(12-3) · 실행 이벤트 저장(L2-46). 줄을 받는 즉시 검사하고 저장한다(실행 중 커서 조회가 받은 문장을 본다).
 
         줄마다 모양 · `run_id` · 1부터 연속인 `seq`를 보고, 진행 줄 · 문장 줄은 받은 순서대로 실행 이벤트로 저장한다.
         문장 줄은 번호가 실행 전체에서 이어져야 하고, 끝 줄 `message.claims`의 앞부분은 이 실행에서 받은 문장과 글자 · 종류 ·
-        근거까지 같아야 한다(L2-44). 어기거나 끝 줄 없이 끝나면 `call.error_code`를 남기고 final 을 쓰지 않는다(행동 실행 0번).
-        그때 받은 문장이 있으면 그 문장으로 `PARTIAL`을 남긴다(`partial_from_claims`, L2-45).
+        근거까지 같아야 한다(L2-44). 어기거나 끝 줄 없이 끝나거나 받는 중에 전송 오류가 나면 `call.error_code`를 남기고
+        final 을 쓰지 않는다(행동 실행 0번). 그때 받은 문장이 있으면 그 문장으로 `PARTIAL`을 남긴다(`partial_from_claims`, L2-45).
+        검사를 멈추면 응답을 닫는다(동시 실행 자리를 돌려준다).
         """
         terminal: dict[str, Any] | None = None
-        for i, line in enumerate(raw, start=1):
-            if terminal is not None:
-                return self._reject(run, call, "STREAM_INVALID")  # 끝 줄 뒤 이벤트 · 끝 줄 두 번
-            obj = self._line(run, line, i)
-            if obj is None:
-                return self._reject(run, call, "STREAM_INVALID")
-            call.lines.append(obj)
-            if obj["event"] in ("final", "error"):
-                terminal = obj
-                continue
-            if obj["event"] == "claim":
-                if not self._claim_ok(run, obj["data"]):
-                    return self._reject(run, call, "CLAIM_INVALID")
-                call.claims.append(obj["data"])
-            run.events.append(
-                {
-                    "event_seq": len(run.events) + 1,
-                    "call": call.number,
-                    "event": obj["event"],
-                    "data": obj["data"],
-                }
-            )
+        it = iter(lines)
+        seq = 0
+        try:
+            while True:
+                try:
+                    line = next(it)
+                except StopIteration:
+                    break
+                except Exception:  # noqa: BLE001  # 받는 중 연결 끊김 · 시간 초과 같은 전송 오류(L2-15)
+                    return self._reject(run, call, "STREAM_CUT")
+                seq += 1
+                if terminal is not None:
+                    return self._reject(
+                        run, call, "STREAM_INVALID"
+                    )  # 끝 줄 뒤 이벤트 · 끝 줄 두 번
+                obj = self._line(run, line, seq)
+                if obj is None:
+                    return self._reject(run, call, "STREAM_INVALID")
+                call.lines.append(obj)
+                if obj["event"] in ("final", "error"):
+                    terminal = obj
+                    continue
+                if obj["event"] == "claim":
+                    if not self._claim_ok(run, obj["data"]):
+                        return self._reject(run, call, "CLAIM_INVALID")
+                    call.claims.append(obj["data"])
+                    if call.first_claim_ms is None:
+                        call.first_claim_ms = int((time.monotonic() - t0) * 1000)
+                run.events.append(
+                    {
+                        "event_seq": len(run.events) + 1,
+                        "call": call.number,
+                        "event": obj["event"],
+                        "data": obj["data"],
+                    }
+                )
+        finally:
+            close = getattr(lines, "close", None)
+            if callable(close):
+                close()
         if terminal is None:
             return self._reject(run, call, "STREAM_INVALID")  # 끝 줄 없는 EOF
         last = terminal
