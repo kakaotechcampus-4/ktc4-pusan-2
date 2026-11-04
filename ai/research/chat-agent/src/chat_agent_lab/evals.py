@@ -242,9 +242,16 @@ def _sum_usage(usages: list[Usage]) -> tuple[int | None, int | None, int | None]
 class MeteredLlm:
     """코어에 넘기는 모델 대역: 실제(또는 가짜) 모델을 감싸 비용을 남기고 장애 주입 · 기준선 도구 순서를 건다."""
 
-    def __init__(self, inner: ToolLlm, clock: OffsetClock) -> None:
+    def __init__(
+        self,
+        inner: ToolLlm,
+        clock: OffsetClock,
+        on_call: Callable[[CallRecord], None] | None = None,
+    ) -> None:
         self.inner = inner
         self.clock = clock
+        #: 호출 기록을 남길 때마다 부른다(실행기의 제공자 장애 연속 수 — 호출이 끝난 순서로 센다)
+        self.on_call = on_call
         self.records: list[CallRecord] = []
         self.turn = 0
         self.faults: list[scn.Fault] = []
@@ -362,12 +369,13 @@ class MeteredLlm:
         cause: str | None = None,
     ) -> None:
         i, c, o = _sum_usage(usages) if usages else (0, 0, 0)
+        rec = CallRecord(
+            self.turn, purpose, model, ok, attempts, i, c, o, ms, error, synthetic, cause
+        )
         with self._lock:
-            self.records.append(
-                CallRecord(
-                    self.turn, purpose, model, ok, attempts, i, c, o, ms, error, synthetic, cause
-                )
-            )
+            self.records.append(rec)
+        if self.on_call is not None:
+            self.on_call(rec)
 
 
 def _corrupt(res: LlmResult, old: str, new: str) -> LlmResult:
@@ -459,9 +467,11 @@ class RunnerConfig:
     followups: bool = False
     workers: int = 1
     prices: Prices | None = None
-    #: 사용량 없이 실패한 모델 호출(제공자 오류 · 연결 실패)이 실행 순서대로 이만큼 이어지면 새 실행을 시작하지 않는다.
+    #: 사용량 없이 실패한 모델 호출(제공자 오류 · 연결 실패)이 호출이 끝난 순서대로 이만큼 이어지면 새 실행을 시작하지 않는다.
     #: 제공자 장애 동안 도는 실행은 결과로 쓸 수 없고 요금만 든다(4회차 교훈). 0 이면 멈추지 않는다
     stop_after_provider_failures: int = 20
+    #: 모델 호출 기록마다 부를 함수(run_suite 가 넣는다)
+    on_call: Callable[[Any], None] | None = None
 
 
 #: 제공자 쪽 실패로 보는 오류 코드(사용량이 없을 때만). 시간 초과 · 무효 출력 · 거절 · 한도는 모델 · 코어 쪽이라 넣지 않는다
@@ -487,7 +497,7 @@ class _Ctx:
         self.cfg = cfg
         self.world = scn.build_world(sc)
         self.clock = OffsetClock()
-        self.llm = MeteredLlm(inner, self.clock)
+        self.llm = MeteredLlm(inner, self.clock, on_call=cfg.on_call)
         self.log: list[dict[str, Any]] = []
         app = AgentApp(
             llm=self.llm,
@@ -1444,7 +1454,7 @@ def run_suite(
 ) -> list[RunResult]:
     """시나리오 × 반복을 돌린다. 반복마다 초기 상태를 새로 만든다(응답 캐시 없음).
 
-    제공자 장애 멈춤: 끝난 실행의 호출을 끝난 순서대로 보며 제공자 쪽 실패(`provider_failure`)가 연속
+    제공자 장애 멈춤: 모델 호출이 끝난 순서대로(모든 실행에 걸쳐) 제공자 쪽 실패(`provider_failure`)가 연속
     `cfg.stop_after_provider_failures`번이면, 아직 시작하지 않은 실행은 돌리지 않고 '제공자 장애로 중단' 실패로 남긴다
     (이미 돌고 있는 실행은 끝까지 간다). 성공한 호출이 하나 오면 연속 수는 0 으로 돌아간다."""
     jobs = (
@@ -1454,6 +1464,20 @@ def run_suite(
     )
     state = {"streak": 0, "stopped": False}
     lock = threading.Lock()
+    limit = cfg.stop_after_provider_failures
+
+    def on_call(c: CallRecord) -> None:
+        if c.synthetic:
+            return
+        with lock:
+            state["streak"] = state["streak"] + 1 if provider_failure(c) else 0
+            if limit and state["streak"] >= limit and not state["stopped"]:
+                state["stopped"] = True
+                progress(
+                    f"{PROVIDER_ABORT}: 사용량 없는 호출 실패가 연속 {limit}번 — 남은 실행을 멈춘다"
+                )
+
+    cfg = dataclasses.replace(cfg, on_call=on_call)
 
     def one(job: tuple[scn.Scenario, int]) -> RunResult:
         sc, rep = job
@@ -1464,17 +1488,6 @@ def run_suite(
             progress(f"건너뜀 {sc.id} #{rep + 1} — {PROVIDER_ABORT}")
             return r
         r = run_one(sc, rep, llm_factory(sc, rep), secret, cfg)
-        with lock:
-            for c in r.calls:
-                if c.get("synthetic"):
-                    continue
-                state["streak"] = state["streak"] + 1 if provider_failure(c) else 0
-                limit = cfg.stop_after_provider_failures
-                if limit and state["streak"] >= limit and not state["stopped"]:
-                    state["stopped"] = True
-                    progress(
-                        f"{PROVIDER_ABORT}: 사용량 없는 호출 실패가 연속 {limit}번 — 남은 실행을 멈춘다"
-                    )
         progress(
             f"{'통과' if r.passed else '실패'} {sc.id} #{rep + 1}"
             + (f" — {r.error}" if r.error else "")
@@ -1853,6 +1866,17 @@ def retry_plan(
         "followups": a.followups,
         "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
     }
+    now = freeze_info(scenarios, None, a.bundle)
+    want.update(
+        {
+            "bundle": a.bundle,
+            "fake": a.fake,
+            **{
+                k: now[k]
+                for k in ("feature_version", "prompt_version", "corpus_version", "scenarios_sha256")
+            },
+        }
+    )
     for k, v in want.items():
         if info.get(k, {"default": "low"} if k == "reasoning" else None) != v:
             raise ValueError(f"앞 결과와 설정이 다르다: {k} {info.get(k)} ≠ {v}")
@@ -1865,8 +1889,18 @@ def retry_plan(
         for ln in (prev / "runs.jsonl").read_text(encoding="utf-8").splitlines()
         if ln.strip()
     ]
+    keys = [(r.scenario, r.rep) for r in prev_runs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("앞 결과에 같은 (시나리오, 반복)이 두 번 있다")
+    expected = {(s, rep) for s in by_id for rep in range(a.repeat)}
+    if set(keys) - expected:
+        raise ValueError(
+            f"앞 결과에 이번 설정 밖의 실행이 있다: {sorted(set(keys) - expected)[:3]}"
+        )
     kept = [r for r in prev_runs if not needs_retry(r)]
     redo = [(by_id[r.scenario], r.rep) for r in prev_runs if needs_retry(r)]
+    # 앞 결과에서 빠진 실행도 다시 돈다(pass^k 분모에서 빠지지 않게)
+    redo += [(by_id[s], rep) for s, rep in sorted(expected - set(keys))]
     return kept, redo
 
 

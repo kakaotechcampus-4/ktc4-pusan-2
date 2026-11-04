@@ -599,22 +599,52 @@ def test_retry_from_keeps_clean_runs_and_redoes_only_outage_runs(tmp_path: Any) 
     ok = dataclasses_replace(ok, rep=1)
     runs = [down[0], ok]
     info = {
+        **ev.freeze_info([sc], None, "OPENAI"),
+        "started_at": "x",
         "set": "dev",
         "repeat": 2,
         "baseline": False,
         "followups": False,
+        "fake": False,
         "reasoning": {"default": "low"},
-        "scenario_ids": [sc.id],
     }
-    ev.write_report(
-        tmp_path, runs, ev.summarize(runs, None, None, repeat=2), {**_info(sc), **info}, None
-    )
-    a = argparse.Namespace(set="dev", repeat=2, baseline=False, followups=False)
-    kept, redo = ev.retry_plan(tmp_path, [sc], a, ())
+
+    def plan(rs: list[Any], inf: dict[str, Any], **kw: Any) -> Any:
+        ev.write_report(tmp_path, rs, ev.summarize(rs, None, None, repeat=2), inf, None)
+        a = argparse.Namespace(
+            **{
+                "set": "dev",
+                "repeat": 2,
+                "baseline": False,
+                "followups": False,
+                "bundle": "OPENAI",
+                "fake": False,
+                **kw,
+            }
+        )
+        return ev.retry_plan(tmp_path, [sc], a, ())
+
+    kept, redo = plan(runs, info)
     assert [r.rep for r in kept] == [1] and [(s.id, rep) for s, rep in redo] == [(sc.id, 0)]
-    a2 = argparse.Namespace(set="dev", repeat=3, baseline=False, followups=False)
-    with pytest.raises(ValueError):
-        ev.retry_plan(tmp_path, [sc], a2, ())
+    # 설정 · 판 · 묶음 · 가짜 여부가 다르면 합치지 않는다
+    for kw, inf in (
+        ({"repeat": 3}, info),
+        ({"bundle": "OPENAI_SOL"}, info),
+        ({"fake": True}, info),
+        ({}, {**info, "corpus_version": "guides-0"}),
+        ({}, {**info, "scenarios_sha256": "다른 해시"}),
+    ):
+        with pytest.raises(ValueError):
+            plan(runs, inf, **kw)
+    # 같은 (시나리오, 반복)이 두 번이거나 반복 범위 밖이면 합치지 않는다
+    with pytest.raises(ValueError, match="두 번"):
+        plan([down[0], ok, ok], info)
+    with pytest.raises(ValueError, match="설정 밖"):
+        plan([down[0], ok, dataclasses_replace(ok, rep=2)], info)
+    # 앞 결과에서 빠진 실행은 다시 돌 목록에 든다
+    kept, redo = plan([down[0]], info)
+    assert kept == [] and [(s.id, rep) for s, rep in redo] == [(sc.id, 0), (sc.id, 1)]
+    kept, redo = plan(runs, info)
     again = ev.run_suite(
         [sc],
         llm_factory=lambda s, r: _slide3_llm(),
@@ -631,13 +661,32 @@ def dataclasses_replace(r: Any, **kw: Any) -> Any:
     return dc.replace(r, **kw)
 
 
-def _info(sc: Any) -> dict[str, Any]:
-    return {
-        "started_at": "x",
-        "feature_version": "f",
-        "prompt_version": "p",
-        "corpus_version": "c",
-        "model": None,
-        "bundle": "OPENAI",
-        "scenarios_sha256": "h",
-    }
+def test_provider_streak_counts_calls_in_completion_order_across_runs() -> None:
+    # 실행 A 의 실패 2번 → 실행 B 의 성공 1번 → 실행 A 의 실패 1번: 끝난 실행 단위가 아니라 호출이
+    # 끝난 순서로 세므로 B 의 성공이 연속을 끊는다(실행이 끝나기를 기다렸다 세면 A 의 3번이 이어 보인다)
+    import contextlib
+
+    from chat_agent.llm_types import LlmCallFailed, LlmRequest, LlmResult, Usage
+
+    seen: list[Any] = []
+
+    class _Down:
+        model_name = None
+
+        def invoke(self, req: Any, before_attempt: Any) -> Any:
+            raise LlmCallFailed(attempts=1, usage=[Usage()], cause="connection")
+
+    class _Up:
+        model_name = None
+
+        def invoke(self, req: Any, before_attempt: Any) -> Any:
+            return LlmResult(message="ok", usage=Usage(input_tokens=5, output_tokens=1))
+
+    a = ev.MeteredLlm(_Down(), ev.OffsetClock(), on_call=seen.append)
+    b = ev.MeteredLlm(_Up(), ev.OffsetClock(), on_call=seen.append)
+    req = LlmRequest(purpose="ANSWER", messages=[], deadline=1e12)
+    for m in (a, a, b, a):
+        with contextlib.suppress(LlmCallFailed):
+            m.invoke(req, lambda _n: True)
+    assert [ev.provider_failure(c) for c in seen] == [True, True, False, True]
+    assert seen == [*a.records[:2], *b.records, a.records[2]]
