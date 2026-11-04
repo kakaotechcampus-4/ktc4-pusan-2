@@ -637,12 +637,12 @@ export function RehearsalPage() {
     return () => window.removeEventListener('pagehide', save);
   }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide, slideLog]);
 
-  // 시선 판정이 아직 없는 dev 환경에서 테두리 3색을 눈으로 보려고 둡니다.
-  // 1·2·3 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
+  // 시선 판정이 아직 없는 dev 환경에서 테두리 4색을 눈으로 보려고 둡니다.
+  // 1·2·3·4 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const onKey = (e: KeyboardEvent) => {
-      const zone = { '1': 'AUDIENCE', '2': 'SCREEN', '3': 'UNKNOWN' }[e.key];
+      const zone = { '1': 'AUDIENCE', '2': 'SCREEN', '3': 'SCRIPT', '4': 'UNKNOWN' }[e.key];
       if (zone && stageRef.current) stageRef.current.dataset.gaze = zone;
     };
     window.addEventListener('keydown', onKey);
@@ -914,6 +914,7 @@ export function RehearsalPage() {
                   <span>테두리 =</span>
                   <i className="audience">청중</i>
                   <i className="screen">화면</i>
+                  <i className="script-gaze">대본</i>
                   <i className="unknown">판정 불가</i>
                 </div>
               </div>
