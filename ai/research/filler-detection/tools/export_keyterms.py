@@ -1,7 +1,7 @@
 """STT keyterm 단어 목록 파일을 사전에서 다시 만드는 도구.
 
 하는 일: 기본 사전(`filler.config.DEFAULT`)의 keyterm 목록과 그 목록을 만든 `criteria_version` 을
-`src/filler/keyterms.json` 에 다시 쓴다.
+서비스 `features/filler/keyterms.json` 에 다시 쓴다.
 누가 부르나: 사람이 사전의 keyterm 이나 기준값을 바꾼 뒤 한 번 돌린다. BE 는 이 파일의 복사본을
 쓰고, `tests/test_keyterms.py` 가 파일이 지금 사전과 같은지 본다.
 입력과 출력: 입력 없음. 출력은 `{"criteria_version": ..., "keyterms": [...]}`
@@ -18,10 +18,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from filler.config import DEFAULT
-from filler.core import criteria_version, keyterms
+from pitch_coach_ai.features import filler as filler_pkg
+from pitch_coach_ai.features.filler.config import DEFAULT
+from pitch_coach_ai.features.filler.core import criteria_version, keyterms
 
-TARGET = Path(__file__).resolve().parents[1] / "src" / "filler" / "keyterms.json"
+# 원본은 서비스의 판정 모듈 안에 있다 (연구 폴더는 서비스를 editable 로 설치해 그 모듈을 쓴다)
+TARGET = Path(filler_pkg.__file__).resolve().parent / "keyterms.json"
 
 
 def build_text() -> str:

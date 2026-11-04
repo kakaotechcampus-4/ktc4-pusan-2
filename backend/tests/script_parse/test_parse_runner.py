@@ -8,12 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
     ScriptParseError,
 )
 from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service import script_parse_runner as parse_runner
 from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
 from tests.script_parse.conftest import (
     SCRIPT_TEXT,
@@ -84,3 +86,51 @@ def test_save_failure_ends_as_failed_not_pending(
 
     assert (body["parse_status"], body["error_code"]) == ("FAILED", "INTERNAL_ERROR")
     assert _reparse(client, pitch_id, script_id, auth_headers).status_code == 202
+
+
+# ── runner: AI 호출은 백그라운드 AI 자리 하나를 쓴다 ─────────────────────
+
+
+class _SlotProbeParser(FakeParser):
+    """AI 를 부르는 동안 비어 있는 자리 수를 남긴다."""
+
+    async def parse(self, script_text: str, target_ms: int | None) -> ParsedScript:
+        self.free = ai_slots.background()._value
+        return await super().parse(script_text, target_ms)
+
+
+@pytest.mark.anyio
+async def test_runner_holds_one_slot_only_while_calling_ai() -> None:
+    parser = _SlotProbeParser()
+    runner = ScriptParseRunner(parser, session_factory=_broken_session)
+    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS)
+
+    await runner.run(ticket)
+
+    assert parser.free == ai_slots.BACKGROUND_LIMIT - 1
+    assert ai_slots.background()._value == ai_slots.BACKGROUND_LIMIT
+
+
+@pytest.mark.anyio
+async def test_runner_fails_when_no_slot_frees_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    """자리가 없으면 AI 를 부르지 않고 AI_UNAVAILABLE 로 끝낸다. 만료(90초)까지 PENDING 으로
+    두지 않는다."""
+    monkeypatch.setattr(parse_runner, "SLOT_WAIT_SEC", 0.01)
+    slots = ai_slots.background()
+    for _ in range(ai_slots.BACKGROUND_LIMIT):
+        await slots.acquire()
+    parser = FakeParser()
+    runner = ScriptParseRunner(parser)
+    saved: list[ScriptParseErrorCode] = []
+
+    async def record(ticket: ParseTicket, code: ScriptParseErrorCode) -> None:
+        saved.append(code)
+
+    monkeypatch.setattr(runner, "_save_failure", record)
+    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS)
+
+    await runner.run(ticket)
+
+    assert parser.calls == []
+    assert saved == [ScriptParseErrorCode.AI_UNAVAILABLE]
+    assert slots._value == 0  # 얻지 못한 자리를 반납하지 않았다

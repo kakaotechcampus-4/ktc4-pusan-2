@@ -24,11 +24,11 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
-from coach import ReplayRequired, decide_safe, finalize, recovery
-from coach.schemas import FinalizeRequest, ProblemSegment, TakeResult
-from coach.version import FEATURE_VERSION
+from pitch_coach_ai.features.coach import ReplayRequired, decide_safe, finalize, recovery
+from pitch_coach_ai.features.coach.schemas import FinalizeRequest, ProblemSegment, TakeResult
+from pitch_coach_ai.features.coach.version import FEATURE_VERSION
 
-from .judges import lab_judges
+from .judges import real_judges
 from .paths import RESULTS_DIR, SCENARIOS_DIR
 from .simulator import NOISE_PRESETS, RunResult, Scenario, run, scenario_config
 
@@ -42,7 +42,7 @@ def offline(
 
     합계가 Take 를 덮지 못하면(409) BE 처럼 replay 를 실어 다시 부른다. (Take 결과, replay 를 썼나)
     """
-    judges = judges or lab_judges()
+    judges = judges or real_judges()
     cfg = result.config
     payload = result.presenter.replay_payload()
     assert result.final_request is not None
@@ -77,7 +77,7 @@ def full_replay(result: RunResult, judges: Any = None) -> TakeResult:
         "coach_state": None,
         "replay": result.presenter.replay_payload(),
     }
-    return finalize(req, judges or lab_judges(), result.config).take_result
+    return finalize(req, judges or real_judges(), result.config).take_result
 
 
 def _match(a: list[ProblemSegment], b: list[ProblemSegment]) -> float | None:
@@ -157,7 +157,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def evaluate(scenarios: list[Path], seeds: int) -> dict[str, Any]:
-    judges = lab_judges()
+    judges = real_judges()
     results: dict[str, Any] = {}
     for noise_name in ("clean", "noisy"):
         seed_list = [None] if noise_name == "clean" else list(range(1, seeds + 1))

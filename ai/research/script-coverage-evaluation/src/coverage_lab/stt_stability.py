@@ -9,9 +9,9 @@ from collections import Counter, defaultdict
 
 import pandas as pd
 
-from script_coverage.core import TakeLLMs
-from script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
-from script_coverage.stt_evaluation.scoring import take_scores
+from pitch_coach_ai.features.script_coverage.core import TakeLLMs
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
+from pitch_coach_ai.features.script_coverage.stt_evaluation.scoring import take_scores
 
 from .llm import Settings
 from .runs import run_take_evaluation

@@ -10,6 +10,7 @@ COPY . .
 # 배포에서 시선 분석이 켜지지 않습니다. wasm 은 node_modules 에서 복사하고, 모델은 공식 주소에서 받아
 # 크기 · sha256 을 확인합니다. 다르면 여기서 빌드가 멈춥니다 (scripts/models.mjs)
 RUN npm run models -- --download
+ARG VITE_LAUNCH_GATE_ENABLED=false
 RUN npm run build
 
 FROM caddy:2.6.4-alpine

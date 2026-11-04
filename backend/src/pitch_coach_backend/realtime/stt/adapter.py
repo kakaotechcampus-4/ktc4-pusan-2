@@ -79,6 +79,9 @@ def build_listen_url(base_url: str, config: SttConfig) -> str:
         # 뭘 바꾸는지 몰라 끈다 — raw 가 필요한 쪽은 우리다
         ("punctuate", "true"),
         ("smart_format", "false"),
+        # 발표 음성 · 전사를 Deepgram 이 모델 개선용으로 보관하지 않게 한다(기본은 보관).
+        # 연결마다 붙여야 한다. Pay as you Go · Growth 요금제는 요금이 같다 (#590)
+        ("mip_opt_out", "true"),
     ]
     params.extend(("keyterm", term) for term in config.keyterms)
     if config.tag:

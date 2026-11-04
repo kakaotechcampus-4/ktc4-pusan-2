@@ -1,15 +1,13 @@
-"""auth 테스트 공통: 테스트용 Redis · 가짜 Google · 로그인 · CSRF 도우미.
+"""auth 테스트 공통: 가짜 Google · 로그인 · CSRF 도우미.
 
 구글 통신(code 교환·ID Token 검증)만 가짜로 바꾸고 나머지는 실제로 돈다.
-DB 는 진짜 트랜잭션, Redis 도 진짜(15번 DB)다. 검증 로직을 통째로 패치하지 않는다.
+DB 는 진짜 트랜잭션이다. 검증 로직을 통째로 패치하지 않는다.
 """
 
-from collections.abc import Generator
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-import redis
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -18,20 +16,6 @@ from pitch_coach_backend.core import security
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.auth import google, service
 from pitch_coach_backend.module.auth.dependencies import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
-
-TEST_REDIS_DB = 15
-
-
-@pytest.fixture
-def redis_client() -> Generator[redis.Redis]:
-    from pitch_coach_backend.core.config import settings
-
-    url = urlparse(settings.redis_url)._replace(path=f"/{TEST_REDIS_DB}").geturl()
-    client = redis.Redis.from_url(url, decode_responses=True)
-    client.flushdb()
-    yield client
-    client.flushdb()
-    client.close()
 
 
 @pytest.fixture
@@ -57,13 +41,12 @@ def fake_google(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return box
 
 
-def login(db: Session, redis_client: redis.Redis, *, return_to: str = "/") -> service.IssuedSession:
+def login(db: Session, *, return_to: str = "/") -> service.IssuedSession:
     """start -> callback 을 한 번 돌린다. 실제 흐름 그대로 state 를 주고받는다."""
-    started = service.start_login(redis_client, return_to=return_to)
+    started = service.start_login(db, return_to=return_to)
     state = _state_from(started.authorization_url)
     return service.complete_login(
         db,
-        redis_client,
         code="auth-code",
         state=state,
         browser_token=started.browser_token,
@@ -95,30 +78,6 @@ CALLBACK = "/api/auth/google/callback"
 REFRESH = "/api/auth/refresh"
 ME = "/api/users/me"
 FRONTEND_ORIGIN = {"Origin": settings.frontend_base_url}
-
-
-@pytest.fixture
-def _clean_redis() -> Generator[None]:
-    url = urlparse(settings.redis_url)._replace(path=f"/{TEST_REDIS_DB}").geturl()
-    client = redis.Redis.from_url(url, decode_responses=True)
-    client.flushdb()
-    yield
-    client.flushdb()
-    client.close()
-
-
-@pytest.fixture
-def _use_test_redis(monkeypatch: pytest.MonkeyPatch) -> None:
-    """앱이 15번 DB 를 쓰게 한다. 개발용 0번을 건드리지 않는다."""
-    from pitch_coach_backend.core import redis as core_redis
-    from pitch_coach_backend.main import app
-
-    url = urlparse(settings.redis_url)._replace(path=f"/{TEST_REDIS_DB}").geturl()
-    client = redis.Redis.from_url(url, decode_responses=True)
-    app.dependency_overrides[core_redis.get_redis] = lambda: client
-    yield
-    app.dependency_overrides.pop(core_redis.get_redis, None)
-    client.close()
 
 
 def start_login(client: TestClient) -> str:

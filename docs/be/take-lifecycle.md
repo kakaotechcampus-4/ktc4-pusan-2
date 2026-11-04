@@ -123,7 +123,26 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 - 이미 끝났으면 바꾸지 않고 지금 상태를 돌려줍니다. `ANALYZING` 이면 끝내기가 이미 닿은 것입니다.
 - 연결이 붙어 있고 최근 10초 안에 오디오가 왔으면 다른 창이 발표 중입니다. 바꾸지 않고
   409 `TAKE_IN_PROGRESS` 로 거절합니다 — FE 의 하트비트 판정이 늦어도 발표 중인 Take 를 끝내지 않습니다.
+- `?replace=true` 는 사용자가 다른 곳에서 새 Take 를 시작하려고 이 Take 를 끝내기로 고른 것입니다. 발표 중이어도
+  위와 같이 `FAILED`(`CLOSED`)로 끝내고, 붙어 있는 연결에는 문구만 바꿔 알립니다:
+  `{"type": "error", "code": "TAKE_ENDED", "message": "다른 곳에서 새 연습을 시작해 이 연습을 끝냈어요.", "end_reason": "CLOSED"}`.
+  끝낸 Take 는 리포트를 만들지 않습니다.
 - 다시 불러도 결과가 같습니다. 남의 Take 는 404 입니다.
+
+### 발표 중인 Take 묻기
+
+사용자는 한 번에 연습 하나만 합니다 (`registry.MAX_STREAMS_PER_USER` = 1). FE 는 새 Take 를 만들기 전에 다른
+창 · 기기에서 발표 중인 Take 가 있는지 묻고, 있으면 끝낼지 사용자에게 확인한 뒤 `abandon?replace=true` 를 부릅니다.
+
+```
+GET /api/takes/active
+→ 200 {"take": {"take_id": "...", "pitch_id": "...", "pitch_title": "...", "take_number": 3}}
+→ 200 {"take": null}
+```
+
+- 연결이 붙어 있고 오디오가 멈추지 않은(최근 10초 안에 왔거나 막 붙은) Take 입니다. 새 Take 의 연결을 막는 것과
+  같은 기준입니다. 끊겨 다시 붙기를 기다리거나 오디오가 멈춘 연결은 새 Take 가 정리하므로 알리지 않습니다.
+- DB 에서 이미 끝난 Take 는 `null` 입니다.
 
 ## 3. 아무도 다시 붙지 않을 때
 
@@ -195,6 +214,8 @@ Take 는 장치 점검에서 시작을 누를 때 만들어 곧바로 연결이 
 | `FAILED`(`CLOSED`) · 그 밖의 `FAILED` · `COMPLETED` | 없음 | 409 `TAKE_ENDED` |
 
 `ended_at` 이 `started_at` 보다 앞서면 400 `INVALID_TAKE_TIME` 입니다.
+시각은 Take 를 만든 때 1일 전부터 지금 1일 뒤까지만 받고 나머지는 422 `VALIDATION_ERROR` 입니다.
+FE 시계로 잰 값이라 앞뒤로 같은 여유를 둡니다.
 
 ## 6. 상수 위치
 

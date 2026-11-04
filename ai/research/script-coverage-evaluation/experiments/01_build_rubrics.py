@@ -17,7 +17,7 @@ from coverage_lab.llm import load_settings, script_llms
 from coverage_lab.rubric_report import rubric_summary, show_rubric
 from coverage_lab.runs import run_script_analysis
 from coverage_lab.store import connect, load_rubric
-from script_coverage.shared.rubric import EvaluationRubric
+from pitch_coach_ai.features.script_coverage.shared.rubric import EvaluationRubric
 
 # 스크립트로 실행할 때도 표가 잘리지 않게 한다
 pd.set_option("display.width", 250)

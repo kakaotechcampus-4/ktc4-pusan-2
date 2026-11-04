@@ -8,10 +8,10 @@
 
 import pytest
 
-from coach import plan_coaching
 from coach_lab.llm import load_settings, plan_llm
 from coach_lab.plan_eval import PLAN_SCENARIOS_DIR, plan_request
 from coach_lab.simulator import Scenario
+from pitch_coach_ai.features.coach import plan_coaching
 
 pytestmark = pytest.mark.live
 

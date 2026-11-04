@@ -1,4 +1,4 @@
-import { endSession, getSession, markSubmitted } from '../lib/db';
+import { endSession, markSubmitted } from '../lib/db';
 import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
 import type { Ms } from '@/types/api';
 import type { TakeEndRequest } from '@/types/take';
@@ -11,7 +11,7 @@ export interface Ending {
 }
 
 /**
- * Take 의 시작 · 종료 시각을 BE 에 적습니다. 리허설 끝내기(종료 중 새로고침 포함)와 재시도 화면(P15)이 같이 씁니다.
+ * Take 의 종료 시각을 BE 에 적습니다. 리허설 끝내기(종료 중 새로고침 포함)와 재시도 화면(P15)이 같이 씁니다.
  *
  * 성공하면 세션 행에 보냈다고 적고 이 탭에 남긴 이어 가기 값을 지웁니다. 실패는 그대로 던집니다 —
  * 기록은 IndexedDB 에 그대로 있어서 같은 `clientSessionId` 로 다시 부르면 됩니다.
@@ -23,7 +23,7 @@ export interface Ending {
 export async function sendEnding(
   takeId: string,
   id: string,
-  { durationMs, endedAtIso }: Ending,
+  { endedAtIso }: Ending,
   endTake: (body: TakeEndRequest) => Promise<unknown>,
 ): Promise<void> {
   await endSession(id);
@@ -36,9 +36,8 @@ export async function sendEnding(
     console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
   }
 
-  const row = await getSession(id);
   await endTake({
-    started_at: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
+    // 시작 시각은 첫 WS 연결 때 서버가 기록한 값을 유지합니다.
     ended_at: endedAtIso,
   });
   // 보냈다는 표시. 이 주소로 다시 들어오면(새로고침 · 뒤로 가기) 무대를 열지 않습니다.

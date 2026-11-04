@@ -35,7 +35,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-from filler.config import DEFAULT, FillerConfig, normalize
+from pitch_coach_ai.features.filler.config import DEFAULT, FillerConfig, normalize
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "data" / "virtual" / "source.json"

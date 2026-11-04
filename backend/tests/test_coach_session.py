@@ -666,3 +666,18 @@ async def test_metrics_after_the_raw_buffers_close_stay_out_of_the_last_window()
     assert snapshot is not None
     assert snapshot.t_ms == 1_000
     assert coach._slide_changes == []
+
+@pytest.mark.anyio
+async def test_metrics_held_while_the_coach_is_off_are_bounded():
+    """코치를 켜지 못한 Take 도 대기 목록이 받은 만큼 커지지 않는다. 오래된 것은 DB 에 들어가 켤 때
+    읽는 값에 있으므로 가장 새것을 남긴다."""
+    coach = CoachSession(TAKE_ID)
+    total = session_module.MAX_PENDING_METRICS + 100
+
+    for i in range(1, total + 1):
+        tick(coach, i * 1_000)
+
+    pending = coach._pending_metrics
+    assert len(pending) == session_module.MAX_PENDING_METRICS
+    assert pending[0].t_ms == 101_000
+    assert pending[-1].t_ms == total * 1_000

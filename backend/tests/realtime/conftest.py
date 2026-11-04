@@ -230,7 +230,7 @@ class FakeTranscriptStore:
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
         await asyncio.sleep(self.append_delay)  # 실제 저장은 threadpool 왕복이라 한 번은 양보한다
         if self.fail:
-            raise RuntimeError("db down")
+            raise db_down()
         if self.errors:
             raise self.errors.pop(0)
         self.take_ids.append(take_id)
@@ -458,6 +458,8 @@ class FakeWebSocket:
         fail_send_after: int | None = None,
     ) -> None:
         self.headers: dict[str, str] = {}
+        # Starlette 의 `WebSocket.client`. 소켓 상대 주소이고 모르면 None 이다
+        self.client = None
         self._inbound = list(inbound or [])
         self.sent: list[str] = []
         self.closed: tuple[int, str] | None = None

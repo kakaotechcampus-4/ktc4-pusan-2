@@ -4,9 +4,9 @@ import coverage_lab.results as results
 from coverage_lab.llm import Settings
 from coverage_lab.runs import run_take_evaluation
 from coverage_lab.store import connect
-from script_coverage.config import CRITERIA_VERSION
-from script_coverage.stt_evaluation.schemas import SlideSTT, Take
-from script_coverage.version import FEATURE_VERSION
+from pitch_coach_ai.features.script_coverage.config import CRITERIA_VERSION
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import SlideSTT, Take
+from pitch_coach_ai.features.script_coverage.version import FEATURE_VERSION
 
 
 def test_take_evaluation_without_rubrics_is_rubric_missing_without_llm_call(tmp_path):

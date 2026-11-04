@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.validation import MAX_JSON_DEPTH
 from tests.take.conftest import Versions, _make_take
 
 # ── 입력 검증 ───────────────────────────────────────────────────────
@@ -80,6 +81,9 @@ _UNSTORABLE_EVENT_LOGS = [
     '[{"\\u0000": 1}]',
     '[{"type": "slide", "at_ms": NaN}]',
     '[{"type": "slide", "nested": [{"value": Infinity}]}]',
+    # 짝 없는 서로게이트는 UTF-8 로 바꿀 수 없다
+    '[{"type": "slide", "note": "\\ud800"}]',
+    '[{"\\udc00": 1}]',
 ]
 
 
@@ -103,12 +107,60 @@ def test_put_with_unstorable_event_logs_is_422(
     assert response.status_code == 422
 
 
+def _nested_event_logs(depth: int) -> str:
+    """`depth` 단계로 겹친 event_logs. 바깥 목록 · 기록 객체가 두 단계다."""
+    return '[{"note": ' + "[" * (depth - 2) + "]" * (depth - 2) + "}]"
+
+
+@pytest.mark.parametrize(("depth", "status"), [(MAX_JSON_DEPTH, 200), (MAX_JSON_DEPTH + 1, 422)])
+def test_put_event_logs_depth_limit(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    depth: int,
+    status: int,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = client.put(
+        f"/api/pitches/{pitch_id}/takes/{take.id}",
+        content=f'{{"event_logs": {_nested_event_logs(depth)}}}',
+        headers={**auth_headers, "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == status
+
+
+def test_put_with_very_deep_event_logs_is_422_not_recursion_error(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """JSON 파서 · pydantic 은 1,200단계도 받는다. 검사나 422 응답이 재귀 한도에 걸려 500 이었다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = client.put(
+        f"/api/pitches/{pitch_id}/takes/{take.id}",
+        content=f'{{"event_logs": {_nested_event_logs(1200)}}}',
+        headers={**auth_headers, "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422
+    # 거절한 값을 응답에 다시 담지 않는다
+    assert "input" not in response.json()["detail"][0]
+
+
 @pytest.mark.parametrize(
     "result",
     [
         '{"engine_version": "1.0\\u0000"}',
         '{"status": "\\u0000"}',
         '{"warnings": ["ok", "\\u0000"]}',
+        '{"status": "\\ud800"}',
         '{"separability": NaN}',
         '{"loo_accuracy": Infinity}',
         '{"loo_accuracy": -Infinity}',

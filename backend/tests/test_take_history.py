@@ -129,6 +129,7 @@ def test_lists_measures_missions_and_gaze_engine(
         "take_number": 2,
         "started_at": row["started_at"],
         "status": "COMPLETED",
+        "end_reason": None,
         "script_mode": "HIGHLIGHT",
         "duration_ms": 282_000,
         "goal_ms": 300_000,
@@ -141,6 +142,19 @@ def test_lists_measures_missions_and_gaze_engine(
         "gaze_engine": "gaze_v1.1.0",
     }
     assert datetime.fromisoformat(row["started_at"]) == T0 + timedelta(days=1)
+
+
+@pytest.mark.parametrize("end_reason", [None, "SILENCE", "TIME_LIMIT", "ABANDONED", "CLOSED"])
+def test_lists_end_reason(
+    client: TestClient, db_session: Session, user_id: uuid.UUID,
+    auth_headers: dict[str, str], end_reason: str | None,
+) -> None:
+    status = "FAILED" if end_reason in ("ABANDONED", "CLOSED") else "COMPLETED"
+    _take(db_session, _pitch(db_session, user_id), 1, status=status, end_reason=end_reason)
+
+    [row] = _list(client, auth_headers).json()["takes"]
+
+    assert row["end_reason"] == end_reason
 
 
 def test_mission_verdict_stays_with_the_take_when_a_later_take_starts(

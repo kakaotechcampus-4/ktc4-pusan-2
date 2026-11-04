@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { useTakeHistory } from '@/shared/api/takeHistory';
 import { takeStatusView } from '@/shared/lib/takeStatus';
@@ -14,14 +13,15 @@ import { SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
 
 /**
  * P16 Take 기록 — 모든 피치의 연습 기록을 최신순으로.
- * 홈은 피치별로 접어 보여 주고, 여기는 "언제 무엇을 연습했나"를 한 줄씩 봅니다.
+ * 홈은 피치 목록만 두고 이리로 보냅니다(?pitch= 로 그 피치를 골라서). 여기는 "언제 무엇을 연습했나"를 한 줄씩 봅니다.
  */
 
 const ALL = '';
 
 export function TakesPage() {
   const history = useTakeHistory();
-  const [pitch, setPitch] = useState(ALL);
+  // 고른 피치는 주소(?pitch=)에만 둡니다 — 홈 링크로 걸러 열고, 상단바(/takes)로 오면 풀리고, 새로고침해도 남습니다
+  const [params, setParams] = useSearchParams();
   const rows = history.data?.takes;
 
   if (!rows)
@@ -33,6 +33,9 @@ export function TakesPage() {
 
   // 제목은 겹칠 수 있어 pitch_id 로 거르고, 제목은 보여 주는 데만 씁니다
   const pitches = new Map(rows.map((t) => [t.pitch_id, t.pitch_title]));
+  // 지운 피치 · 오래된 주소처럼 목록에 없는 피치면 전체로 봅니다
+  const asked = params.get('pitch') ?? ALL;
+  const pitch = pitches.has(asked) ? asked : ALL;
   const shown = pitch === ALL ? rows : rows.filter((t) => t.pitch_id === pitch);
 
   return (
@@ -48,12 +51,14 @@ export function TakesPage() {
         <Card
           title="최근 연습"
           action={
-            <label className="flex items-center gap-2 text-sm font-bold">
+            <label className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm font-bold">
               피치
               <select
                 value={pitch}
-                onChange={(e) => setPitch(e.target.value)}
-                className="border-2 border-ink bg-white px-2 py-1"
+                onChange={(e) =>
+                  setParams(e.target.value ? { pitch: e.target.value } : {}, { replace: true })
+                }
+                className="min-h-11 min-w-0 max-w-full border-2 border-ink bg-white px-2 py-1 sm:max-w-xs"
               >
                 <option value={ALL}>전체</option>
                 {[...pitches].map(([id, title]) => (
@@ -65,17 +70,19 @@ export function TakesPage() {
             </label>
           }
         >
+          <p role="status" className="sr-only">
+            연습 기록 {shown.length}개
+          </p>
           <ul className="flex flex-col">
             {shown.map((t) => {
-              // Take 목록 응답에는 end_reason 이 없어 FAILED 는 모두 "실패" 로 보입니다
-              const status = takeStatusView(t.take_id, t.status, null);
+              const status = takeStatusView(t.take_id, t.status, t.end_reason ?? null);
               return (
                 <li
                   key={t.take_id}
                   className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-x-4 gap-y-3 border-b border-line py-4 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_5rem_24rem_6rem]"
                 >
                   <div className="min-w-0">
-                    <p className="break-words text-xs text-stone">
+                    <p className="[overflow-wrap:anywhere] text-xs text-stone">
                       {takeDay(t.started_at)} · {t.pitch_title}
                     </p>
                     <p className="mt-0.5 font-mono font-bold">TAKE {t.take_number}</p>
@@ -102,7 +109,11 @@ export function TakesPage() {
                   </dl>
                   <div className="col-span-2 min-h-5 text-right lg:col-span-1">
                     {status.link && (
-                      <Link to={status.link.to} className="text-sm font-bold hover:text-coral-deep">
+                      <Link
+                        to={status.link.to}
+                        aria-label={`${t.pitch_title} Take ${t.take_number} ${status.link.text}`}
+                        className="inline-flex min-h-11 items-center text-sm font-bold hover:text-coral-deep"
+                      >
                         {status.link.text} →
                       </Link>
                     )}

@@ -2,11 +2,13 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, and_, case, func, literal, or_, select, union_all, update
+from sqlalchemy import Row, and_, case, delete, func, literal, or_, select, union_all, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
     CoachingPlan,
+    PendingFileDeletion,
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
@@ -93,6 +95,37 @@ class PitchRepository:
         self.db.delete(pitch)
         self.db.flush()
 
+    def add_file_deletions(self, prefixes: list[str]) -> None:
+        """지울 S3 경로를 남긴다. commit 은 호출자가 한다 — 발표를 지우는 트랜잭션에 같이 묶는다."""
+        if not prefixes:
+            return
+        self.db.execute(
+            insert(PendingFileDeletion)
+            .values([{"prefix": prefix} for prefix in dict.fromkeys(prefixes)])
+            .on_conflict_do_nothing()
+        )
+
+    def list_file_deletions(self, older_than: datetime, limit: int) -> list[str]:
+        return list(
+            self.db.scalars(
+                select(PendingFileDeletion.prefix)
+                .where(PendingFileDeletion.created_at < older_than)
+                # 계속 실패하는 오래된 한 묶음이 뒤의 모든 경로를 막지 않게 기회를 나눈다
+                .order_by(PendingFileDeletion.attempts, PendingFileDeletion.created_at)
+                .limit(limit)
+            )
+        )
+
+    def remove_file_deletion(self, prefix: str) -> None:
+        self.db.execute(delete(PendingFileDeletion).where(PendingFileDeletion.prefix == prefix))
+
+    def count_file_deletion_failure(self, prefix: str) -> None:
+        self.db.execute(
+            update(PendingFileDeletion)
+            .where(PendingFileDeletion.prefix == prefix)
+            .values(attempts=PendingFileDeletion.attempts + 1)
+        )
+
     def lock_for_new_version(self, pitch_id: uuid.UUID) -> bool:
         """이 pitch 에 새 버전을 만드는 요청을 한 줄로 세운다 (트랜잭션이 끝날 때까지 잠금).
 
@@ -131,6 +164,17 @@ class PitchRepository:
             )
         )
         return (current or 0) + 1
+
+    def has_presentation_version(self, pitch_id: uuid.UUID, version: int) -> bool:
+        return (
+            self.db.scalar(
+                select(PresentationVersion.id).where(
+                    PresentationVersion.pitch_id == pitch_id,
+                    PresentationVersion.version == version,
+                )
+            )
+            is not None
+        )
 
     def save_presentation(self, presentation_version: PresentationVersion) -> PresentationVersion:
         self.db.add(presentation_version)
@@ -179,6 +223,17 @@ class PitchRepository:
             .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
             .order_by(ScriptVersion.version.asc())
         ).all()
+
+    def get_latest_presentations(
+        self, pitch_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, PresentationVersion]:
+        rows = self.db.scalars(
+            select(PresentationVersion)
+            .where(PresentationVersion.pitch_id.in_(pitch_ids))
+            .distinct(PresentationVersion.pitch_id)
+            .order_by(PresentationVersion.pitch_id, PresentationVersion.version.desc())
+        ).all()
+        return {row.pitch_id: row for row in rows}
 
     def get_latest_presentation(
         self, pitch_id: uuid.UUID, page_count: int | None = None
@@ -321,6 +376,44 @@ class PitchRepository:
                 parse_requested_at=now,
                 parse_error=None,
             )
+        )
+        return result.rowcount == 1
+
+    def get_resumable_parses(
+        self, expired_before: datetime, started_before: datetime
+    ) -> list[tuple[uuid.UUID, datetime]]:
+        """만료 전인 PENDING 파싱. 원문이 없는 행(파싱 기능 전 대본)은 다시 보낼 수 없어 뺀다."""
+        rows = self.db.execute(
+            select(ScriptVersion.id, ScriptVersion.parse_requested_at).where(
+                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
+                ScriptVersion.parse_requested_at >= expired_before,
+                ScriptVersion.parse_requested_at <= started_before,
+                ScriptVersion.content.is_not(None),
+            )
+        ).all()
+        return [(script_version_id, requested_at) for script_version_id, requested_at in rows]
+
+    def take_over_parse(
+        self,
+        script_version_id: uuid.UUID,
+        read_at: datetime,
+        now: datetime,
+        *,
+        expired_before: datetime,
+    ) -> bool:
+        """읽은 표식이 그대로이고 아직 만료 전인 PENDING 이면 표식을 새 시각으로 바꾼다.
+
+        바꿨으면 True. 옛 작업은 표식이 달라 아무것도 쓰지 못한다.
+        """
+        result = self.db.execute(
+            update(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
+                ScriptVersion.parse_requested_at == read_at,
+                ScriptVersion.parse_requested_at >= expired_before,
+            )
+            .values(parse_requested_at=now)
         )
         return result.rowcount == 1
 

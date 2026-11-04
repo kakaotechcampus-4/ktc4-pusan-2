@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TakeHistoryRow } from '@/types/takeHistory';
-import { completedTakes, gazeOffEngine, takeDay } from './takeHistoryFormat';
+import { completedTakes, gazeOffEngine, latestGazeEngine, takeDay } from './takeHistoryFormat';
 
 const row = (patch: Partial<TakeHistoryRow>): TakeHistoryRow => ({
   take_id: 't1',
@@ -9,6 +9,7 @@ const row = (patch: Partial<TakeHistoryRow>): TakeHistoryRow => ({
   take_number: 1,
   started_at: '2026-10-06T12:00:00',
   status: 'COMPLETED',
+  end_reason: null,
   script_mode: 'HIGHLIGHT',
   duration_ms: 1000,
   goal_ms: 1000,
@@ -38,4 +39,11 @@ describe('Take 목록 표시', () => {
     expect(gazeOffEngine(row({ gaze_engine: null }), 'gaze_v1.1.0')).toBe(true);
     expect(gazeOffEngine(row({}), null)).toBe(true);
   });
+});
+
+it('최신 Take에 엔진이 없으면 가장 최근의 측정된 엔진으로 비교한다', () => {
+  expect(latestGazeEngine([row({ gaze_engine: null }), row({}), row({ gaze_engine: 'old' })])).toBe(
+    'gaze_v1.1.0',
+  );
+  expect(latestGazeEngine([row({ gaze_engine: null })])).toBeNull();
 });

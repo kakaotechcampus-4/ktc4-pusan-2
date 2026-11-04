@@ -29,8 +29,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from gaze.core import judge, r4, summarize
-from gaze.schemas import JudgmentResult
+from pitch_coach_ai.features.gaze.core import judge, r4, summarize
+from pitch_coach_ai.features.gaze.schemas import JudgmentResult
 from gaze_lab.config import EvidenceConfig
 from gaze_lab.schemas import GAZE_DIRECTIONS, STATE_CLASSES, GazeDecision
 

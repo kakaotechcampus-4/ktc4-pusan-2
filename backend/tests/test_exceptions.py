@@ -1,5 +1,6 @@
 """에러 응답 형식 계약. 실제 라우터 대신 최소 앱으로 핸들러만 검증한다."""
 
+import json
 import logging
 from collections.abc import Generator
 
@@ -147,3 +148,15 @@ def test_unhandled_exception_returns_json_without_internals(
     assert "DB 비밀번호" not in res.text
     assert "DB 비밀번호" not in caplog.text
     assert "GET /boom error=RuntimeError sqlstate=None" in caplog.text
+
+
+@pytest.mark.parametrize("value", ["\ud800", {"\ud800": "값"}, ["\udfff"]])
+def test_invalid_unicode_in_validation_detail_is_still_422(probe: TestClient, value) -> None:
+    response = probe.post(
+        "/validate",
+        content=json.dumps({"n": value}),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert "\\ud" in response.text

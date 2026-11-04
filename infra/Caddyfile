@@ -1,3 +1,9 @@
+{
+	servers :80 {
+		trusted_proxies static private_ranges
+	}
+}
+
 {$SITE_URL} {
 	# 관리자 콘솔. 화면 · 집계는 BE(backend/.../module/admin), 서버 로그는 Dozzle 이 보여 준다.
 	# 로그인(브라우저 기본 로그인 창)은 BE 한 곳에서만 확인한다. 계정은 backend/.env 의 ADMIN_USERNAME · ADMIN_PASSWORD.
@@ -37,3 +43,5 @@
 		reverse_proxy fe:5173
 	}
 }
+
+import /etc/caddy/sites/*

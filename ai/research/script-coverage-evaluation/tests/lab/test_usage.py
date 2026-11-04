@@ -5,7 +5,7 @@ from langchain_core.outputs import ChatGeneration, LLMResult
 
 from coverage_lab.llm import Settings, structured_llm
 from coverage_lab.usage import UsageLog, output_of, recommended_cap
-from script_coverage.stt_evaluation.schemas import VerifierResult
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import VerifierResult
 
 
 def _result(tokens: int | None, reason: str | None, *, streaming: bool = True) -> LLMResult:

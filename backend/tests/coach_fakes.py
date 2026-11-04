@@ -29,7 +29,9 @@ from pitch_coach_backend.coach.requests import (
 )
 from pitch_coach_backend.coach.session import CoachSession, FinalizeSnapshot
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "ai/research/coach-agent/src/coach/examples"
+EXAMPLES = (
+    Path(__file__).resolve().parents[2] / "ai/service/src/pitch_coach_ai/features/coach/examples"
+)
 
 META = {"schema_version": "1.0", "feature_version": "coach-1.2", "model": None}
 

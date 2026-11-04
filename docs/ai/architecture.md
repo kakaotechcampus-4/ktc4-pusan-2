@@ -165,7 +165,7 @@ AI는 개인 context를 저장하지 않는다. BE가 사용자 · 발표 · Tak
 - **크기**: JSON 칸(JSONB)에 DB 크기 제약은 두지 않는다. 기능 문서 12-1에 잰 크기를 적고, BE는 크기가 그보다 크게 벗어나면 로그로 남긴다.
 - **모든 AI 결과는 `meta`와 함께 저장한다.** 결과가 어느 버전 · 모델에서 나왔는지 추적하기 위해서다.
 - **`takes.event_logs`는 FE 화면 이벤트 기록용으로 둔다.** FE가 이 칸을 통째로 다시 쓰므로 코치 이벤트를 섞지 않는다.
-- **스키마 변경**: 저장 지도의 테이블 · 칸 변경은 BE 마이그레이션으로 만들고, develop · 운영 배포 모두 새 이미지를 띄우기 전에 적용한다(11절).
+- **스키마 변경**: 저장 지도의 테이블 · 칸 변경은 BE 마이그레이션으로 만들고, develop · release 배포 모두 새 이미지를 띄우기 전에 적용한다(11절).
 
 ## 1-2. API 목록과 호출 시점
 ```mermaid
@@ -640,32 +640,31 @@ features/<모듈>/
 | `<기능>_LLM_TIMEOUT_SECONDS` | 선택 | `LLM_TIMEOUT_SECONDS` | 그 기능만 시간 제한이 다를 때 (예: 출력이 긴 기능). 그 기능 PR에서 잰 시간과 함께 더한다 |
 | `LLM_MAX_RETRIES` | 선택 | 1 | LLM 호출 재시도 횟수. 요청 예산 안에서만 쓴다. 예비 묶음으로 넘어가면 무시하고 묶음마다 한 번씩 시도한다 |
 | `WEB_CONCURRENCY` | 선택 | 1 | uvicorn 워커 수 (`ai-service.md` 8절) |
-| `AI_ENABLE_SAMPLE` | 선택 | `false` | 규약 확인용 대역 엔드포인트(`POST /sample/judge`)를 켠다. 로컬에서 규약을 확인할 때만 `true`로 두고, 서버의 `AI_ENV`에는 넣지 않는다. 첫 실제 기능 엔드포인트가 붙으면 대역과 함께 지운다 (`ai-service.md` 4 · 15절) |
 | `AI_BASE_URL` (BE) | BE에 필요 | 로컬 `http://localhost:8001` | BE가 AI를 부르는 주소. 서버에서는 `http://ai:8000` |
 
 - research와 service가 같은 이름을 쓴다. 로컬에서는 `ai/.env` 하나를 함께 쓴다.
-- **값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적는다.** `docker run --env-file`은 따옴표와 줄 끝 주석을 값에 그대로 넣어서, 주소나 키가 틀어져 LLM 연결이 실패한다. 주석은 자기 줄에 쓴다. 서버의 `AI_ENV` 시크릿도 같다.
+- **값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적는다.** `docker run --env-file`은 따옴표와 줄 끝 주석을 값에 그대로 넣어서, 주소나 키가 틀어져 LLM 연결이 실패한다. 주석은 자기 줄에 쓴다. 서버의 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)도 같다.
 - **`ai/.env.example`을 그대로 복사해 키만 비운 묶음은 일부만 채운 묶음이라 서비스가 시작할 때 오류를 낸다.** 쓰지 않는 묶음은 세 줄을 주석으로 두고, 키 없이 띄워 볼 때는 `--env-file` 없이 띄운다.
 - **키가 없어도 서버는 뜨고 `/health`는 응답한다**(CI · 로컬 확인용, 묶음 값이 아예 없을 때). LLM을 쓰는 요청은 503(`LLM_UNAVAILABLE`)으로 실패하고, 코칭 계획 · 리뷰는 기본 결과를 200으로 돌려준다(`fallback_reason`).
-- **비밀값이 가는 길**: 로컬은 `ai/.env`(git 제외) → `uv run` · `docker run --env-file`. 서버는 GitHub 시크릿 `AI_ENV`(내용 = `ai/.env` 전체) → 배포 워크플로가 서버에 쓴다(develop 배포는 SSH stdin으로, 운영 배포는 ssh-action의 `env`로 넘김) → 서버 `~/pitch-coach/ai/.env` → compose `env_file`. BE의 `BACKEND_ENV`와 같은 방식이다.
+- **비밀값이 가는 길**: 로컬은 `ai/.env`(git 제외) → `uv run` · `docker run --env-file`. 서버는 GitHub 시크릿(내용 = `ai/.env` 전체. develop 서버는 `AI_ENV`, release 서버는 `RELEASE_AI_ENV`) → 배포 워크플로가 SSH stdin으로 서버에 쓴다(`develop-deploy.yml` · `release-deploy.yml` 같음) → 서버 `~/pitch-coach/ai/.env` · `~/pitch-coach-release/ai/.env` → compose `env_file`. BE의 `BACKEND_ENV`와 같은 방식이다.
 - 키는 이미지에 COPY하지 않고, Dockerfile `ENV`에 적지 않고, 로그에 남기지 않는다. 키를 커밋하거나 채팅 · Issue에 붙여 넣지 않는다.
 
 **새 환경변수를 더할 때**
 1. 서비스 `settings.py`에 필드를 더한다. 기본값을 두어 값이 없어도 서버가 뜨게 한다.
 2. `ai/.env.example`에 이름을 더한다. 비밀값은 이름만 적고 값은 비운다. 기본값이 있는 선택 변수는 주석 줄로 적는다(예: `# LLM_TIMEOUT_SECONDS=12`). 빈 값을 넣으면 숫자 · 참거짓 변수는 읽을 때 오류가 난다.
 3. `ai/service/README.md`의 환경변수 표에 더한다.
-4. 서버에도 값이 필요하면 인프라 담당(BE)에게 GitHub 시크릿 `AI_ENV`에 추가를 요청한다. 시크릿이 바뀌면 다음 배포 때 반영된다.
+4. 서버에도 값이 필요하면 인프라 담당(BE)에게 GitHub 시크릿 두 개(`AI_ENV` · `RELEASE_AI_ENV`)에 추가를 요청한다. 시크릿이 바뀌면 다음 배포 때 반영된다.
 
 # 11. CI와 배포 개요
 자세한 파일 내용(Dockerfile · compose · 워크플로 변경)은 `ai-service.md` 11절에 있다. 배포 단계는 요약이고, 정확한 단계(서버 env 파일 지정 · 마이그레이션 revision 만들기 등)는 BE가 관리하는 배포 워크플로 파일이 기준이다.
 
 | 단계 | 무엇을 | 누가 |
 |---|---|---|
-| CI | `ai/service/**`나 `.github/workflows/ai-ci.yml`이 바뀐 PR, 그리고 main · develop push에서 job `ai` 하나: `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`. 실제 LLM은 부르지 않아 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다 | BE가 만든다(`.github/workflows/`는 BE 관리). AI는 내용을 BE에 요청한다 |
-| 이미지 | `ai/service/` 폴더 하나가 빌드 컨텍스트이고 이미지 하나를 만든다. 태그는 커밋 SHA(`pitch-coach:ai-<sha>`). develop은 ECR, 운영은 Docker Hub | AI(`ai/service/Dockerfile`). 빌드 · push는 BE의 배포 워크플로 |
-| 배포 | develop push(merge) → `develop-deploy.yml`, main push → `main-deploy.yml`. 두 워크플로가 `be` · `fe` · `ai` 이미지를 빌드 · push하고, compose 파일 · 시크릿(`BACKEND_ENV` · `FRONTEND_ENV` · `AI_ENV`)을 서버에 복사한 뒤, 서버에서 `docker compose pull` → `docker compose run --rm be alembic upgrade head` → `docker compose up -d --no-build` | 인프라(BE) |
+| CI | `ai/service/**`나 `.github/workflows/ai-ci.yml`이 바뀐 PR과 push(push는 main · develop · release · develop-next. backend · frontend CI와 같은 브랜치)에서 job `ai` 하나: `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`. 실제 LLM은 부르지 않아 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다 | BE가 만든다(`.github/workflows/`는 BE 관리). AI는 내용을 BE에 요청한다 |
+| 이미지 | `ai/service/` 폴더 하나가 빌드 컨텍스트이고 이미지 하나를 만든다. 태그는 커밋 SHA(`pitch-coach:ai-<sha>`). develop · release 배포 모두 ECR | AI(`ai/service/Dockerfile`). 빌드 · push는 BE의 배포 워크플로 |
+| 배포 | `develop-next` push(merge) → `develop-deploy.yml` → develop 서버(`~/pitch-coach`), `release` push → `release-deploy.yml` → release 서버(운영, 같은 EC2의 `~/pitch-coach-release`). 두 워크플로 모두 Actions에서 수동 실행도 된다. `main`은 워크플로 없이 수동으로 배포하기로 했다(#380). 두 워크플로가 `be` · `fe` · `ai` 이미지를 빌드 · push하고, compose 파일 · 시크릿(develop `BACKEND_ENV` · `FRONTEND_ENV` · `AI_ENV`, release는 같은 이름 앞에 `RELEASE_`)을 서버에 복사한 뒤, 서버에서 `docker compose pull` → `docker compose run --rm be alembic upgrade head` → `docker compose up -d --no-build` | 인프라(BE) |
 | DB 마이그레이션 | AI 결과를 저장하는 테이블 · 칸이 바뀌면 BE 마이그레이션으로 만든다. 두 워크플로 모두 새 이미지를 띄우기 전에 `alembic upgrade head`를 돌리고, 실패하면 컨테이너를 바꾸지 않는다 | BE |
-| 되돌리기 | 문제가 생긴 커밋을 `git revert`해 develop 서버는 develop에, 운영 서버는 main에 올리면 그 브랜치의 배포 워크플로가 같은 흐름으로 다시 배포한다 | 그 커밋의 담당 |
+| 되돌리기 | 문제가 생긴 커밋을 `git revert`해 develop 서버는 `develop-next`에 merge한다. release 서버는 `docs/be/release.md`의 hotfix대로 `release`에서 브랜치를 갈라 PR로 `release`에 merge한다. 그 브랜치의 배포 워크플로가 같은 흐름으로 다시 배포한다 | 그 커밋의 담당 |
 
 - 서버는 이미지를 직접 빌드하지 않고 받아서 띄우기만 한다. 그래서 compose에 `ai`를 넣으면 **두 배포 워크플로의 build · push 대상에도 `ai`를 같이 넣어야 한다.** 빠뜨리면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패한다.
 - **로그 규칙**: 남기는 것은 `X-Request-ID` · 경로 · 상태 코드 · 걸린 시간 · 응답한 모델 · 토큰 수다. 대본 · STT · 질문 같은 사용자 입력 원문(일부도)과 LLM 키는 남기지 않는다. 필요하면 입력 길이 · 장 수 같은 크기 정보만 남긴다.
@@ -728,8 +727,8 @@ features/<모듈>/
 | 역할 → 모델 묶음 | 서비스 `settings.py` 상수. 지금은 모든 역할이 기본 묶음 | 9절 |
 | LLM 출력 한도 | 역할마다 출력 토큰 상한을 서비스 `settings.py` 상수로(잘리면 `LLM_INVALID_OUTPUT`) | 9절 |
 | 문장 끝 신호 · 커서 | `utterance_ends` = Deepgram `UtteranceEnd`의 마지막 단어 끝 시각(말 속도는 쓰지 않음) · 커서는 되돌아가지 않음 | 6-2 · 7절 |
-| 그 밖의 서비스 환경변수 | `WEB_CONCURRENCY`(1) · `AI_ENABLE_SAMPLE`(`false`, 로컬 확인용) | 10절 |
+| 그 밖의 서비스 환경변수 | `WEB_CONCURRENCY`(1) | 10절 |
 | `.env` 작성 | 따옴표 · 줄 끝 주석 없이 `이름=값` | 10절 |
-| 서버 시크릿 | GitHub 시크릿 `AI_ENV` → 서버 `~/pitch-coach/ai/.env` | 10절 |
+| 서버 시크릿 | GitHub 시크릿 `AI_ENV` → develop 서버 `~/pitch-coach/ai/.env`, `RELEASE_AI_ENV` → release 서버 `~/pitch-coach-release/ai/.env` | 10절 |
 | 이미지 태그 | `pitch-coach:ai-<커밋 SHA>` | 11절 |
 | DB 마이그레이션 | 배포 전 `alembic upgrade head`, 실패하면 멈춤 (BE) | 11절 |

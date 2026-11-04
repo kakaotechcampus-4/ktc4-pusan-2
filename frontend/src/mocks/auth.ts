@@ -56,6 +56,8 @@ const mockUser = {
   raw_data_consent: false,
 };
 
+export const currentMockUserId = () => (signedIn ? mockUser.id : null);
+
 /**
  * 토큰 회전은 **쿠키를 먼저 봅니다** — `csrf_token` 이 없으면 `refresh()` 가
  * 네트워크를 아예 타지 않습니다 (tokenStore). 목에는 서버가 심어 줄 쿠키가

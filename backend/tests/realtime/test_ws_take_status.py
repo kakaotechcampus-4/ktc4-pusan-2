@@ -316,7 +316,7 @@ def put_end(client: TestClient, take: Take, token: str) -> int:
     """
     response = client.put(
         f"/api/pitches/{take.pitch_id}/takes/{take.id}",
-        json={"ended_at": "2026-10-22T10:05:00Z"},
+        json={"ended_at": datetime.now(UTC).isoformat()},
         headers={"Authorization": f"Bearer {token}"},
     )
     return response.status_code

@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
@@ -10,6 +10,7 @@ from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.dependencies import OwnedTake
 from pitch_coach_backend.module.take.dto import (
+    ActiveTakeResponseDTO,
     CalibrationDTO,
     ConfirmationsDTO,
     ConfirmationsRequestDTO,
@@ -26,6 +27,7 @@ from pitch_coach_backend.module.take.service.confirmation import (
 )
 from pitch_coach_backend.module.take.service.lifecycle import close_take_service, mark_ended
 from pitch_coach_backend.module.take.service.take import (
+    active_take_service,
     create_calibration_service,
     create_take_service,
     delete_take_service,
@@ -82,15 +84,18 @@ def update_take(
 def abandon_take(
     db: Annotated[Session, Depends(get_db)],
     take_id: OwnedTake,
+    replace: Annotated[bool, Query()] = False,
 ):
     # 창을 닫았다 다시 연 FE 가 부른다. 창을 닫은 Take 는 이어 가지 않고 실패로 끝낸다.
-    # 다른 창이 아직 발표 중이면 거절한다 — FE 는 하트비트로 보지만 늦을 수 있다
-    if hooks.live_takes().is_live(take_id):
+    # 다른 창이 아직 발표 중이면 거절한다 — FE 는 하트비트로 보지만 늦을 수 있다.
+    # `replace` 는 사용자가 다른 곳에서 새 Take 를 시작하려고 발표 중인 이 Take 를 끝내기로
+    # 고른 것이다
+    if not replace and hooks.live_takes().is_live(take_id):
         raise TakeInProgress()
     status, closed = close_take_service(db, take_id)
     if closed:
         # 남은 스트림 · 떠난 Take 타이머 · 코치를 정리한다
-        hooks.live_takes().end_closed_tab(take_id)
+        hooks.live_takes().end_closed_tab(take_id, replaced=replace)
     return {"message": "Take abandoned", "take_id": take_id, "status": status}
 
 @router.post("/{take_id}/calibration")
@@ -113,6 +118,16 @@ def list_takes(
     pitch_id: uuid.UUID | None = None,
 ):
     return list_takes_service(db, current_user.id, pitch_id)
+
+# 새 Take 를 시작하기 전에 FE 가 부른다. 사용자는 한 번에 연습 하나만 하므로 어느 창 · 기기에서
+# 발표 중인 Take 가 있으면 끝낼지 묻는다 (끝내기는 /abandon?replace=true)
+@takes_router.get("/active", response_model=ActiveTakeResponseDTO)
+def get_active_take(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    take_id = hooks.live_takes().blocking_take(current_user.id)
+    return active_take_service(db, current_user.id, take_id)
 
 @takes_router.get("/{take_id}/report", response_model=TakeReportDTO)
 def get_take_report(

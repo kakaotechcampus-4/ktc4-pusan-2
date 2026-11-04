@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { fetchTakeReport, isSettled } from '@/shared/api/report';
 import { clearTokens } from '@/shared/api/tokenStore';
-import type { TakeReport } from '@/types/report';
-import { duration, fmt, pct, stepStates } from './reportFormat';
+import type { Operator, TakeReport } from '@/types/report';
+import { OP, duration, fmt, pct, stepStates } from './reportFormat';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -23,6 +23,15 @@ const analyzing: TakeReport = {
   measures: null,
   review: null,
 };
+
+it.each<[Operator, string]>([
+  ['LT', '미만'],
+  ['LTE', '이하'],
+  ['GT', '초과'],
+  ['GTE', '이상'],
+])('formats the %s report target operator as %s', (operator, label) => {
+  expect(`목표 ${fmt('filler_count', 5)} ${OP[operator]}`).toBe(`목표 5회 ${label}`);
+});
 
 it('spreads each BE stage over the three on-screen steps', () => {
   expect(stepStates(null)).toEqual(['RUNNING', 'PENDING', 'PENDING']);

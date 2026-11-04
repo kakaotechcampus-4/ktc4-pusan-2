@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { markerNumber, scanSlideMarkers } from './slideMarkers';
 
 describe('슬라이드 구분자 — AI script-parser 규칙', () => {
+  it.each(['[1]', '[슬라이드 1]', '슬라이드 1:'])('%s 형식을 줄 앞에서 인식한다', (marker) => {
+    expect(markerNumber(marker)).toBe(1);
+    expect(markerNumber(`  ${marker} 본문`)).toBe(1);
+    expect(markerNumber(`본문 중간 ${marker}`)).toBeNull();
+    expect(scanSlideMarkers(`${marker}\n첫 장\n${marker.replace('1', '2')}\n둘째 장`)).toEqual({
+      numbers: [1, 2],
+      leadingText: false,
+    });
+  });
+
+  it('닫히지 않은 대괄호와 숫자가 아닌 표기는 인식하지 않는다', () => {
+    for (const marker of ['[1', '[슬라이드 1', '[N]', '[슬라이드 N]']) {
+      expect(markerNumber(marker)).toBeNull();
+    }
+  });
+
   it('"슬라이드 N" · "Slide N" · "N." · "N)" 을 줄 맨 앞에서만 찾는다', () => {
     expect(markerNumber('슬라이드 3')).toBe(3);
     expect(markerNumber('  Slide 2 - 도입')).toBe(2);

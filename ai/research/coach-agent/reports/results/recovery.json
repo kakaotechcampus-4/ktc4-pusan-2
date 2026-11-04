@@ -10,7 +10,7 @@
       80000
     ]
   },
-  "feature_version": "coach-1.2",
+  "feature_version": "coach-1.3",
   "results": {
     "clean": {
       "long_drop": {
@@ -56,7 +56,7 @@
         "needed_replay_rate": 1.0,
         "runs": 16,
         "segments_extra": 1.0,
-        "segments_found": 0.9688,
+        "segments_found": 0.9167,
         "values_missing": 0
       },
       "replay": {
@@ -130,7 +130,7 @@
             "measured_ratio": 0.0
           },
           "SPEED": {
-            "cpm": 0.0187,
+            "cpm": 0.0,
             "measured_ratio": 0.0037,
             "pause_count": 0.0
           },
@@ -147,8 +147,8 @@
         },
         "needed_replay_rate": 0.0,
         "runs": 16,
-        "segments_extra": 0.9542,
-        "segments_found": 0.9437,
+        "segments_extra": 0.9182,
+        "segments_found": 0.875,
         "values_missing": 0
       }
     },
@@ -287,8 +287,8 @@
         },
         "needed_replay_rate": 0.0,
         "runs": 32,
-        "segments_extra": 0.913,
-        "segments_found": 0.8958,
+        "segments_extra": 0.9217,
+        "segments_found": 0.8438,
         "values_missing": 0
       }
     }

@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { splitScript } from './scripts';
 
 describe('대본 목 — AI 처럼 명시적 구분자로만 나눈다', () => {
+  it.each(['[1]', '[슬라이드 1]', '슬라이드 1:'])(
+    '%s 형식으로 나누고 구분자를 제거한다',
+    (marker) => {
+      const { segmented, slides } = splitScript(
+        `${marker} 첫 장\n${marker.replace('1', '2')}\n둘째 장`,
+      );
+      expect(segmented).toBe(true);
+      expect(slides.map((s) => s.slide_number)).toEqual([1, 2]);
+      expect(slides.map((s) => s.content)).toEqual(['첫 장', '둘째 장']);
+    },
+  );
+
+  it('대괄호 뒤 본문 문장부호는 남긴다', () => {
+    expect(splitScript('[1] - 첫 항목').slides[0]?.content).toBe('- 첫 항목');
+  });
+
   it('"슬라이드 N" 으로 나눈다', () => {
     const { segmented, slides } = splitScript('슬라이드 1\n안녕하세요.\n\n슬라이드 2\n문제는…');
     expect(segmented).toBe(true);

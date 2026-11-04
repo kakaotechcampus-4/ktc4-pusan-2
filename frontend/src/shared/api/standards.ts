@@ -18,8 +18,7 @@ export function parseStandards(pitchId: string, text: string) {
 
 /**
  * 사용자가 고친 평가기준을 저장합니다. 화면에 보인 순서 그대로 보냅니다. 서버는 그 글로 한 번 더 분석해
- * 같은 버전으로 저장하고(계약 57 · 282행), 저장한 목록을 돌려줍니다.
- * ★ 경로 · 모양은 아직 정하지 않았습니다(304행). 정해지면 여기만 바꿉니다
+ * 새 버전으로 저장하고(#532), 버전 번호와 다시 분석한 목록을 돌려줍니다.
  */
 export function saveStandards(pitchId: string, standards: string[]) {
   const body: StandardsSaveRequest = { standards: standards.map((standard) => ({ standard })) };

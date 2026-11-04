@@ -42,7 +42,7 @@ export function ScriptModeChoice({
     >
       {/* 세로 목록입니다 — 넷을 가로로 놓으면 문구가 잘려 무엇이 다른지 안 보입니다 */}
       <div role="radiogroup" aria-label="발표 중 대본 표시" className="flex flex-col gap-2">
-        {OPTIONS.map((opt) => {
+        {OPTIONS.map((opt, index) => {
           const on = value === opt.value;
           return (
             <button
@@ -50,6 +50,31 @@ export function ScriptModeChoice({
               type="button"
               role="radio"
               aria-checked={on}
+              tabIndex={on ? 0 : -1}
+              onKeyDown={(event) => {
+                let next: number;
+                switch (event.key) {
+                  case 'ArrowRight':
+                  case 'ArrowDown':
+                    next = (index + 1) % OPTIONS.length;
+                    break;
+                  case 'ArrowLeft':
+                  case 'ArrowUp':
+                    next = (index + OPTIONS.length - 1) % OPTIONS.length;
+                    break;
+                  case 'Home':
+                    next = 0;
+                    break;
+                  case 'End':
+                    next = OPTIONS.length - 1;
+                    break;
+                  default:
+                    return;
+                }
+                event.preventDefault();
+                onChange(OPTIONS[next]!.value);
+                event.currentTarget.parentElement?.querySelectorAll('button')[next]?.focus();
+              }}
               onClick={() => onChange(opt.value)}
               className={[
                 'flex items-start gap-3 border-2 px-3 py-2.5 text-left',
@@ -62,7 +87,7 @@ export function ScriptModeChoice({
               </span>
               <span>
                 <span className={`block text-sm ${on ? 'font-bold' : ''}`}>{opt.label}</span>
-                <span className="mt-0.5 block text-xs text-stone">{opt.note}</span>
+                <span className="mt-0.5 block text-xs text-ink/80">{opt.note}</span>
               </span>
             </button>
           );

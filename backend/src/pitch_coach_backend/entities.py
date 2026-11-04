@@ -11,5 +11,6 @@ import pitch_coach_backend.module.user.entity  # noqa: F401
 
 import pitch_coach_backend.module.auth.entity  # noqa: F401
 import pitch_coach_backend.module.pitch.entity  # noqa: F401
+import pitch_coach_backend.module.service_feedback.entity  # noqa: F401
 import pitch_coach_backend.module.take.entity  # noqa: F401
 import pitch_coach_backend.module.user.entity  # noqa: F401

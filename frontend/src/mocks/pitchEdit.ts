@@ -71,6 +71,16 @@ const evaluations: EvaluationDetail[] = [
   },
 ];
 
+/** 평가기준 목에서 새 버전을 저장하면 수정 화면을 다시 열어도 그 버전이 보이게 합니다. */
+export function recordMockEvaluation(pitchId: string, version: number, standards: string[]) {
+  if (pitchId !== PITCH_ID) return;
+  evaluations.push({
+    pitch_id: pitchId,
+    evaluation_version: version,
+    evaluations: standards.map((standard, index) => ({ order: index + 1, standard })),
+  });
+}
+
 /** blob URL 은 페이지에서만 만들 수 있어 처음 부를 때 만듭니다 */
 const pdfUrls = new Map<string, string>();
 const pdfOf = (id: string, pages: number) => {
@@ -83,6 +93,18 @@ const notFound = () => HttpResponse.json({ code: 'PITCH_NOT_FOUND' }, { status: 
 
 /** ★ 업로드 · 대본 목보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다 */
 export const pitchEditHandlers = [
+  http.get('*/api/pitches/:pitchId', ({ params }) => {
+    const item = homeFixture.pitches.find((p) => p.pitch_id === params.pitchId);
+    if (!item) return HttpResponse.json({ code: 'PITCH_NOT_FOUND' }, { status: 404 });
+    return HttpResponse.json({
+      pitch_id: item.pitch_id,
+      title: item.pitch_title,
+      time_limit_sec: item.pitch_time,
+      presentation_date: item.presentation_date,
+      lower_deviation: 15,
+      upper_deviation: 30,
+    });
+  }),
   http.get('*/api/pitches/:pitchId/resources', ({ params }) => {
     if (params.pitchId !== PITCH_ID) return notFound();
     const body: PitchResources = {

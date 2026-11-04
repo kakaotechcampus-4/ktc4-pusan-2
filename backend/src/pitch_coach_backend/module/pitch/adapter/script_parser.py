@@ -34,6 +34,7 @@ from typing import Any, Literal, Protocol
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
+from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
 from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
 
 logger = logging.getLogger(__name__)
@@ -329,6 +330,7 @@ class HttpScriptParser:
                 timeout=self._timeout,
                 transport=self._transport,
                 verify=_ssl_context(),
+                event_hooks=AI_RESPONSE_HOOKS,
             ) as client:
                 response = await client.post(
                     PARSE_PATH, json=payload, headers={"X-Request-ID": request_id}
@@ -337,6 +339,8 @@ class HttpScriptParser:
             raise ScriptParseError(
                 ScriptParseErrorCode.AI_TIMEOUT, type(exc).__name__, retryable=True
             ) from exc
+        except httpx.DecodingError as exc:
+            raise _invalid(str(exc)) from exc
         except httpx.TransportError as exc:
             # 연결 거부·DNS 실패 등. AI 컨테이너가 재시작 중일 수 있어 한 번 더 본다
             raise ScriptParseError(

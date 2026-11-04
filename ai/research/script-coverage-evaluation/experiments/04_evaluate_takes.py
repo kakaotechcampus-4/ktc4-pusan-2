@@ -21,7 +21,7 @@ from coverage_lab.stt_report import (
     similar_report,
     take_summary,
 )
-from script_coverage.stt_evaluation.schemas import SlideEvaluation
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import SlideEvaluation
 
 # 스크립트로 실행할 때도 표가 잘리지 않게 한다
 pd.set_option("display.width", 250)

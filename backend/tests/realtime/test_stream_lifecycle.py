@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.connection import session
+from pitch_coach_backend.realtime.dto import MetricsMessage
+from pitch_coach_backend.realtime.stream import client as client_module
 from pitch_coach_backend.realtime.stream import registry, runtime, state
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
@@ -30,6 +32,7 @@ from tests.realtime.conftest import (
     closed_with,
     frame,
     handshake,
+    metrics,
     stop,
     transcript,
     use,
@@ -267,11 +270,12 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
 
 
 @pytest.mark.anyio
-async def test_handover_waits_for_the_old_stream_to_finish_saving(
+async def test_handover_numbers_after_the_final_the_old_stream_is_still_saving(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 끝까지 간다. 새 스트림은
-    그 저장이 끝난 뒤 번호를 읽는다 — 먼저 읽으면 같은 seq 로 저장하다 UNIQUE 위반으로 버려진다."""
+    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 Take 의 버퍼가 끝까지 한다.
+    새 스트림은 저장된 번호와 아직 못 넣은 번호 중 큰 쪽 뒤에서 잇는다 — 저장된 번호만 보면 같은
+    seq 로 저장하다 UNIQUE 위반으로 버려진다."""
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
@@ -303,8 +307,9 @@ async def test_handover_waits_for_the_old_stream_to_finish_saving(
         store=store,
     )
 
-    assert [seg.transcript for seg in store.segments] == ["마지막 말"]
-    assert store.cursor_reads == [0, 1], "새 스트림이 옛 스트림의 저장보다 먼저 번호를 읽었다"
+    assert new_stream._transcripts.segment_no == 2, "옛 스트림이 저장 중인 seq 1 을 다시 쓴다"
+    assert await new_stream._record.finals.flush()
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(1, "마지막 말")]
     await _wait_until_ok(new_stream)
     await asyncio.sleep(0.01)  # 세션 태스크가 뜨기 전에 끊으면 "never awaited" 경고가 난다
     new_stream.cancel()
@@ -411,18 +416,19 @@ async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.Mo
 
 
 @pytest.mark.anyio
-async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.MonkeyPatch):
-    """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(DRAIN_TIMEOUT_SEC) 동안
-    다른 모든 Take 의 연결이 같이 멈춘다 (코드 리뷰 지적). take_id 별 락이어야 한다."""
+async def test_handover_wait_does_not_block_other_users(monkeypatch: pytest.MonkeyPatch):
+    """한 사용자의 핸드오버 대기(DRAIN_TIMEOUT_SEC)가 다른 사용자의 연습을 막으면 안 된다.
+    같은 사용자의 다른 Take는 사용자당 연습 하나 정책으로 제한한다."""
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 0.5)
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
-    take_a, take_b, owner = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
+    take_a, take_b = uuid.uuid7(), uuid.uuid7()
+    owners = {take_a: uuid.uuid7(), take_b: uuid.uuid7()}
 
     def attach(take_id: uuid.UUID):
         return registry.attach(
             take_id,
             FakeWebSocket(),
-            owner_id=owner,
+            owner_id=owners[take_id],
             stt_adapter=adapter,
             config=SttConfig(),
             store=FakeTranscriptStore(),
@@ -439,7 +445,7 @@ async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.Monk
 
     new_a, (elapsed_b, stream_b) = await asyncio.gather(attach(take_a), attach_b_timed())
 
-    assert elapsed_b < 0.25, f"다른 Take 가 핸드오버 대기에 같이 막혔다 ({elapsed_b:.2f}s)"
+    assert elapsed_b < 0.25, f"다른 사용자가 핸드오버 대기에 같이 막혔다 ({elapsed_b:.2f}s)"
     assert new_a is not old_a and stream_b is not old_a
     assert registry.active_count() == 2
     assert not state.attach_locks, "다 쓴 락은 남기지 않는다"
@@ -502,6 +508,151 @@ async def test_stop_from_a_taken_over_connection_is_ignored():
     await realtime._pump_client(stream)
 
     assert not stream.is_stopping
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+class StuckWebSocket(FakeWebSocket):
+    """받지 않는 상대. `send_stuck` · `close_stuck` 인 단계는 끝나지 않는다."""
+
+    def __init__(self, *, send_stuck: bool = False, close_stuck: bool = False) -> None:
+        super().__init__()
+        self.send_stuck = send_stuck
+        self.close_stuck = close_stuck
+        self.close_tried = False
+
+    async def send_text(self, text: str) -> None:
+        if self.send_stuck:
+            await asyncio.Event().wait()
+        await super().send_text(text)
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        self.close_tried = True
+        if self.close_stuck:
+            await asyncio.Event().wait()
+        await super().close(code, reason)
+
+
+def _taken_over(ws: FakeWebSocket) -> bool:
+    return [json.loads(t)["code"] for t in ws.sent] == ["TAKE_TAKEN_OVER"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("send_stuck", "close_stuck"), [(True, False), (False, True), (True, True)]
+)
+async def test_takeover_does_not_wait_forever_for_the_old_connection(
+    monkeypatch: pytest.MonkeyPatch, send_stuck: bool, close_stuck: bool
+):
+    """이어받을 때 옛 연결에 알리고 닫기를 기다린다. 옛 연결이 받지 않으면 새 연결의 ready 가 그
+    연결에 붙잡힌다. 알림이 막혀도 닫기는 해 본다."""
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    stream = registry.create_stream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    old_tab = StuckWebSocket(send_stuck=send_stuck, close_stuck=close_stuck)
+    new_tab = FakeWebSocket()
+    await stream.attach(old_tab)
+
+    started = time.monotonic()
+    await asyncio.wait_for(stream.attach(new_tab), timeout=1.0)
+
+    assert time.monotonic() - started < 0.5
+    assert stream.is_client(new_tab)
+    assert old_tab.close_tried
+    assert _taken_over(old_tab) is not send_stuck
+    # 옛 연결이 뒤늦게 끊겨도 새 연결은 그대로 붙어 있다
+    stream.detach(old_tab)
+    assert stream.is_client(new_tab)
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_metrics_from_a_connection_taken_over_while_closing_are_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    stream = registry.create_stream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    old_tab = StuckWebSocket(send_stuck=True, close_stuck=True)
+    await stream.attach(old_tab)
+    await asyncio.wait_for(stream.attach(FakeWebSocket()), timeout=1.0)
+
+    stream.push_metrics(MetricsMessage.model_validate(metrics(1_000)), source=old_tab)
+    stream.push(frame(1, 0), source=old_tab)
+
+    assert not stream._record.metrics.pending
+    assert stream.sequencer.frames == 0
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_concurrent_takeovers_of_a_stuck_connection_share_one_stream(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """옛 연결이 받지 않는 동안 탭 둘이 같이 이어받는다. 둘 다 상한 안에 끝나고 스트림 · Deepgram
+    세션은 하나다. 나중에 붙은 탭이 남는다."""
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    take_id = uuid.uuid7()
+    owner_id = uuid.uuid7()
+    adapter = FakeSttAdapter()
+
+    def attach(ws: FakeWebSocket):
+        return registry.attach(
+            take_id,
+            ws,
+            owner_id=owner_id,
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
+        )
+
+    old_tab = StuckWebSocket(send_stuck=True, close_stuck=True)
+    first = await attach(old_tab)
+    await _wait_until_ok(first)
+    second_tab, third_tab = FakeWebSocket(), FakeWebSocket()
+
+    second, third = await asyncio.wait_for(
+        asyncio.gather(attach(second_tab), attach(third_tab)), timeout=1.0
+    )
+
+    assert first is second is third
+    assert registry.active_count() == 1
+    assert len(adapter.sessions) == 1
+    assert first.is_client(third_tab)
+    assert _taken_over(second_tab)
+
+
+@pytest.mark.anyio
+async def test_sign_out_does_not_wait_forever_for_a_stuck_connection(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """로그아웃은 그 사용자의 연결을 모두 닫고 나서 답한다. 받지 않는 연결 하나가 응답을 붙잡지
+    않는다."""
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    owner_id = uuid.uuid7()
+    stream = await registry.attach(
+        uuid.uuid7(),
+        StuckWebSocket(send_stuck=True, close_stuck=True),
+        owner_id=owner_id,
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+
+    await asyncio.wait_for(registry.sign_out(owner_id), timeout=1.0)
+
     stream.cancel()
     await stream.wait_closed(timeout=1.0)
 

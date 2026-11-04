@@ -6,7 +6,7 @@
  * jumping.  Without a face it falls back to a static dashed oval in the
  * middle -- "put your face here".
  */
-import type { FaceGuide } from '../engine/types';
+import type { FaceGuide } from '../engine/contract';
 import { crossCurves, toPoints } from './cross3d';
 
 interface Shape {

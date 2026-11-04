@@ -15,19 +15,16 @@ from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.user.entity import User
 from tests.auth.conftest import ME, REFRESH, csrf_headers, do_login
 
-pytestmark = pytest.mark.usefixtures("_clean_redis", "_use_test_redis")
-
-
 # --- 회원 탈퇴 -----------------------------------------------------------
 
 
 @pytest.fixture
 def deleted_prefixes(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """S3 에서 지우라고 한 prefix. conftest 의 막아 둔 함수를 기록하는 것으로 바꾼다."""
-    from pitch_coach_backend.module.pitch.service import pitch as pitch_service
+    from pitch_coach_backend.module.pitch.service import file_cleanup
 
     prefixes: list[str] = []
-    monkeypatch.setattr(pitch_service, "delete_prefix", prefixes.append)
+    monkeypatch.setattr(file_cleanup, "delete_prefix", prefixes.append)
     return prefixes
 
 

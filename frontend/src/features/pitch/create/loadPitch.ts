@@ -1,11 +1,10 @@
-import { fetchPitchList } from '@/shared/api/home';
-import { getPitchResources } from '@/shared/api/pitch';
+import { getPitch, getPitchResources } from '@/shared/api/pitch';
 import { getPresentation } from '@/shared/api/presentation';
 import { getScript } from '@/shared/api/script';
 import { getEvaluation } from '@/shared/api/standards';
 import { openPdf } from '@/shared/lib/pdf';
 import type { VersionRef } from '@/types/pitch';
-import { fromEvaluation, fromPitchListItem, fromScriptDetail } from './lib/beAdapter';
+import { fromEvaluation, fromPitchDetail, fromScriptDetail } from './lib/beAdapter';
 import type {
   CriteriaVersion,
   PitchDraft,
@@ -17,7 +16,7 @@ import type {
 /**
  * 수정 화면 — 서버에 있는 피치를 피치 생성 화면의 초안 모양으로 읽어 옵니다.
  *
- *   발표정보   GET /pitches (목록에서 찾기 — 단건 API 가 없습니다. 허용오차는 모름)
+ *   발표정보   GET /pitches/{id} (허용오차 포함)
  *   버전 목록  GET /pitches/{id}/resources
  *   슬라이드   GET …/presentations/{id} — 장수는 BE 가 센 숫자(#298). 모르면(옛 발표자료) PDF 를 열어 셉니다
  *   대본       GET …/scripts/{id}
@@ -29,14 +28,6 @@ import type {
  * 하나라도 못 읽으면 전체를 실패로 돌립니다. 몇 버전만 빠진 사이드바는 번호가 비어
  * 무엇이 없는지 알 수 없고, 빠진 채로 새 버전을 만들면 번호가 서버와 어긋납니다.
  */
-
-/** 목록에 이 피치가 없습니다 — 지워졌거나 남의 피치입니다 */
-export class PitchNotFound extends Error {
-  constructor(pitchId: string) {
-    super(`피치를 찾을 수 없습니다: ${pitchId}`);
-    this.name = 'PitchNotFound';
-  }
-}
 
 const byVersion = (a: VersionRef, b: VersionRef) => a.version - b.version;
 
@@ -102,9 +93,7 @@ async function loadCriteria(pitchId: string, ref: VersionRef): Promise<CriteriaV
 }
 
 export async function loadPitch(pitchId: string): Promise<PitchDraft> {
-  const [list, resources] = await Promise.all([fetchPitchList(), getPitchResources(pitchId)]);
-  const item = list.pitches.find((p) => p.pitch_id === pitchId);
-  if (!item) throw new PitchNotFound(pitchId);
+  const [item, resources] = await Promise.all([getPitch(pitchId), getPitchResources(pitchId)]);
 
   const slides = await Promise.all(
     [...resources.presentation_versions].sort(byVersion).map((ref) => loadSlide(pitchId, ref)),
@@ -118,5 +107,5 @@ export async function loadPitch(pitchId: string): Promise<PitchDraft> {
     ),
   ]);
 
-  return { ...fromPitchListItem(item), slides, scripts, criteria };
+  return { ...fromPitchDetail(item), slides, scripts, criteria };
 }

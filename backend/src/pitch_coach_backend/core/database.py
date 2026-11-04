@@ -2,7 +2,7 @@ import uuid
 from collections.abc import Callable, Generator
 from datetime import datetime
 
-from sqlalchemy import DateTime, Uuid, create_engine, func
+from sqlalchemy import DateTime, Engine, Uuid, create_engine, func
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -14,8 +14,28 @@ from sqlalchemy.orm import (
 
 from pitch_coach_backend.core.config import settings
 
-# pool_pre_ping: 끊어진 커넥션을 쓰기 전에 감지 (RDS 유휴 종료 대비)
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+
+def create_app_engine(
+    url: str,
+    lock_timeout_ms: int = settings.db_lock_timeout_ms,
+    statement_timeout_ms: int = settings.db_statement_timeout_ms,
+) -> Engine:
+    """연결마다 잠금 · 문장 대기 상한을 건 엔진.
+
+    pool_pre_ping: 끊어진 커넥션을 쓰기 전에 감지 (RDS 유휴 종료 대비)
+    hide_parameters: 예외 문자열에 바인드 값(이메일 · 대본 · STT)을 붙이지 않는다. 로그로 새지 않게
+    options: 시간 초과는 `OperationalError` 로 올라와 `is_transient_db_error` 가 일시 오류로 본다
+    """
+    options = f"-c lock_timeout={lock_timeout_ms} -c statement_timeout={statement_timeout_ms}"
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        hide_parameters=True,
+        connect_args={"options": options},
+    )
+
+
+engine = create_app_engine(settings.database_url)
 
 # expire_on_commit=False: commit 후에도 entity 속성을 다시 조회 없이 읽을 수 있게 함
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

@@ -24,8 +24,11 @@ from coverage_lab.stt_labels import (
     truth_key_point,
 )
 from coverage_lab.stt_stability import spread
-from script_coverage.shared.facts import CriticalFact
-from script_coverage.stt_evaluation.schemas import SentenceResult, SimilarItem
+from pitch_coach_ai.features.script_coverage.shared.facts import CriticalFact
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    SentenceResult,
+    SimilarItem,
+)
 
 
 def _label(status, **extra):

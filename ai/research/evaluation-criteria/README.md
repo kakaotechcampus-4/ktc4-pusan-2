@@ -19,33 +19,35 @@ standard_text ──▶ LLM 한 번 (SYSTEM_PROMPT + 출력 스키마 Evaluation
 
 ## 구조
 
+코어는 AI 서비스 `ai/service/src/pitch_coach_ai/features/evaluation_criteria/`에 있습니다(이 폴더의 `src/evaluation_criteria/`에서 폴더째 옮겼습니다). 이 폴더는 서비스를 editable로 설치해 코어를 그대로 import하므로, 코어는 서비스에서만 고칩니다. pydantic과 계산용 표준 모듈만 씁니다.
+
 | 위치 | 내용 |
 |---|---|
-| `src/evaluation_criteria/` | 코어. 나중에 서비스 `features/evaluation_criteria/`로 폴더째 옮깁니다. pydantic과 계산용 표준 모듈만 씁니다 |
-| `src/evaluation_criteria/schemas.py` | 요청 · LLM 출력 · 응답 모델 = 계약. 지표 · 연산자 enum, 표시 기준 50자 검사 |
-| `src/evaluation_criteria/core.py` | `analyze_criteria(request, llm)` 진입 함수, `check_targets(targets, display_criteria, config)` 숫자 목표 검사 |
-| `src/evaluation_criteria/config.py` | 요소 → 지표 연결(원본), 표시 기준 50자 · 10개, 목표 20개, 지표별 값 범위 |
-| `src/evaluation_criteria/version.py` | `SCHEMA_VERSION` · `FEATURE_VERSION` |
-| `src/evaluation_criteria/prompts/system.py` | `SYSTEM_PROMPT` — 요소 표 · 단위 규칙 · 예시 |
-| `src/evaluation_criteria/examples/` | 요청 · 응답 예시 3쌍 (기능 문서 5-5: 기본 · 긴 침묵 경계 · 숫자 목표 없음) |
+| (서비스) `features/evaluation_criteria/schemas.py` | 요청 · LLM 출력 · 응답 모델 = 계약. 지표 · 연산자 enum, 표시 기준 50자 검사 |
+| (서비스) `features/evaluation_criteria/core.py` | `analyze_criteria(request, llm)` 진입 함수, `check_targets(targets, display_criteria, config)` 숫자 목표 검사 |
+| (서비스) `features/evaluation_criteria/config.py` | 요소 → 지표 연결(원본), 표시 기준 50자 · 10개, 목표 20개, 지표별 값 범위 |
+| (서비스) `features/evaluation_criteria/version.py` | `SCHEMA_VERSION` · `FEATURE_VERSION` |
+| (서비스) `features/evaluation_criteria/prompts/system.py` | `SYSTEM_PROMPT` — 요소 표 · 단위 규칙 · 예시 |
+| (서비스) `features/evaluation_criteria/examples/` | 요청 · 응답 예시 3쌍 (기능 문서 5-5: 기본 · 긴 침묵 경계 · 숫자 목표 없음) |
 | `run.py` | 실험 도구. `build_llm()`(`ai/.env`로 LLM 생성), 문장 실행, `--eval` 채점 |
 | `data/examples.json` | 평가 데이터 15문장과 정답(`values` · `targets` · `excluded`) |
-| `tests/` | 가짜 LLM 테스트 (과금 없음, 아래 표) |
+| `tests/` | 가짜 LLM 테스트 (과금 없음, 아래 표). `fakes.py`는 서비스 테스트 도우미 중 `test_eval.py`가 쓰는 것의 사본 |
 | `tests/live/` | 실제 LLM 테스트 (`live` 표시, 과금) |
 | `results/` | `run.py --all` 결과 (gitignore) |
 | `reports/results/` | `--eval` 결과 JSON (커밋) |
 
-| 테스트 | 보는 것 |
-|---|---|
-| `test_schema.py` | 스키마 고정 필드 · 요청 길이(1~2,000자) · 표시 기준 50자 · 지표 · 연산자 enum |
-| `test_check_targets.py` | 값 범위 · `display` 짝 · 중복 · 20개 상한 |
-| `test_core.py` | `analyze_criteria` — 표시 기준 10개, `meta`, `script_used` 세 값, LLM 예외를 잡지 않음 |
-| `test_examples.py` | `examples/`가 계약을 통과하고 코어가 예시 응답을 그대로 냄 |
-| `test_config.py` | 요소 → 지표 연결이 스키마 enum · 프롬프트 요소 표와 같음 |
-| `test_data.py` | 평가 데이터 정답이 계약에 맞고 13절 경우를 담음, 프롬프트 예시와 겹치지 않음 |
-| `test_eval.py` | `--eval` 채점 규칙 · 측정 기록 |
-| `test_core_boundary.py` | 코어 import 규약 (`architecture.md` 8절) |
-| `live/test_live_analyze.py` | 실제 LLM 출력이 스키마를 통과 |
+| 테스트 | 위치 | 보는 것 |
+|---|---|---|
+| `test_schema.py` | 서비스 `tests/unit/evaluation_criteria/` | 스키마 고정 필드 · 요청 길이(1~2,000자) · 표시 기준 50자 · 지표 · 연산자 enum |
+| `test_check_targets.py` | 같음 | 값 범위 · `display` 짝 · 중복 · 20개 상한 |
+| `test_core.py` | 같음 | `analyze_criteria` — 표시 기준 10개, `meta`, `script_used` 세 값, LLM 예외를 잡지 않음 |
+| `test_examples.py` | 같음 | `examples/`가 계약을 통과하고 코어가 예시 응답을 그대로 냄 |
+| `test_config.py` | 같음 | 요소 → 지표 연결이 스키마 enum · 프롬프트 요소 표와 같음 |
+| `test_core_boundary.py` | 같음 | 코어 import 규약 (`architecture.md` 8절) |
+| `test_api.py` | 같음 | 엔드포인트 `POST /evaluation-criteria/parse` — 응답 · `meta.model`, 에러 상태 코드, 25초 예산 · 역할, 로그에 기준 문장이 없음 |
+| `test_data.py` | 이 폴더 `tests/` | 평가 데이터 정답이 계약에 맞고 13절 경우를 담음, 프롬프트 예시와 겹치지 않음 |
+| `test_eval.py` | 같음 | `--eval` 채점 규칙 · 측정 기록 |
+| `live/test_live_analyze.py` | 같음 | 실제 LLM 출력이 스키마를 통과 |
 
 ---
 
@@ -62,7 +64,8 @@ OneDrive 폴더처럼 하드 링크가 안 되는 곳에서는 `UV_LINK_MODE=cop
 
 | 하는 일 | 명령 | 과금 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 없음 |
+| 테스트 (이 폴더) | `uv run python -m pytest` | 없음 |
+| 코어 · 엔드포인트 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/evaluation_criteria` | 없음 |
 | 실제 LLM 테스트 | `uv run python -m pytest -m live` | `examples/` 요청 3번 |
 | 직접 입력 | `uv run python run.py --text "추임새는 5번 이하로 해주세요."` | 1번 |
 | 평가 데이터 일부 | `uv run python run.py --index 1 3` | 고른 수 |
@@ -72,8 +75,8 @@ OneDrive 폴더처럼 하드 링크가 안 되는 곳에서는 `UV_LINK_MODE=cop
 코드에서 직접 쓸 때 (`llm`은 필수 인자입니다. 코어는 LLM을 만들지 않습니다):
 
 ```python
-from evaluation_criteria import analyze_criteria
-from evaluation_criteria.schemas import EvaluationCriteriaRequest
+from pitch_coach_ai.features.evaluation_criteria import analyze_criteria
+from pitch_coach_ai.features.evaluation_criteria.schemas import EvaluationCriteriaRequest
 from run import build_llm
 
 llm = build_llm()                    # 여러 입력을 돌릴 때는 재사용
@@ -116,8 +119,8 @@ response.model_dump()                # meta.model 은 None (서비스 라우터�
 |---|---|
 | 고정 필드 스키마 | OpenAI Structured Output의 `json_schema` strict 모드는 자유 키 dict(`dict[str, ...]`)를 지원하지 않습니다. 요소를 `Criteria`의 고정 필드로, 지표 · 연산자를 enum으로 둡니다. 언급이 없는 요소도 `null`로 반환합니다 |
 | 표시 기준 50자 | LLM에 보내는 JSON 스키마에는 길이 제한을 싣지 않고(strict 모드 호환), 응답을 pydantic으로 검증할 때 봅니다. 넘으면 자르지 않고 `ValidationError` → 서비스에서 `LLM_INVALID_OUTPUT` |
-| 요소 → 지표 연결 | 원본은 `config.py`입니다. 프롬프트 요소 표 · 스키마 enum과 어긋나면 `test_config.py`가 깨지므로 셋을 함께 고칩니다 |
-| 프롬프트 변경 | 결과의 뜻이 바뀌면 `version.py`의 `FEATURE_VERSION`을 올리고 `--eval`로 다시 잽니다. 평가 데이터 문장을 프롬프트 예시로 쓰지 않습니다(`test_data.py`) |
+| 요소 → 지표 연결 | 원본은 서비스 `config.py`입니다. 프롬프트 요소 표 · 스키마 enum과 어긋나면 서비스 `test_config.py`가 깨지므로 셋을 함께 고칩니다 |
+| 프롬프트 변경 | 프롬프트는 서비스에서 고칩니다. 결과의 뜻이 바뀌면 `version.py`의 `FEATURE_VERSION`을 올리고 `--eval`로 다시 잽니다. 평가 데이터 문장을 프롬프트 예시로 쓰지 않습니다(`test_data.py`) |
 | `excluded` 어미 | 끝맺음("합니다 · 해 주세요 · 입니다")과 마침표만 빼고 "~해야 · ~이어야"는 남깁니다. 처음에는 "뗐을 때 명사로 끝나면 뗀다"였는데, LLM이 프롬프트 예시와 같은 구절("발표 주제는 창의적이어야")에서도 어미를 남겨 지금 규칙으로 줄였습니다. 그 규칙으로 돌린 실행에서는 15문장 중 5문장이 정답과 달랐습니다(어미를 남김 4 · 그중 1문장은 한 구절을 둘로 나눔, "~하기"로 바꿈 1). 지금 결과에서는 1문장이 정답과 다릅니다("10분 이내로 해야" → "10분 이내로"). 14절 지표에는 들어가지 않습니다 |
 | `excluded` 한 구절 | "같은 대상에 대한 기준은 한 구절로" 규칙도 실행마다 다르게 지켜집니다. 어미 규칙을 바꾸기 전 실행에서 1문장("발표 내용은 이해하기 쉽고 논리적으로 구성되어야")을 둘로 나눴고, 지금 결과에서는 나누지 않았습니다 |
 | 사람 판정 칸 | `--eval`을 다시 돌리면 `cases[].display_user_wording`과 `display_user_wording_ratio`가 `null`로 돌아갑니다. 결과를 보고 다시 채웁니다 |

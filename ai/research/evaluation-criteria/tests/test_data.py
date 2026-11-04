@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from evaluation_criteria import check_targets
-from evaluation_criteria.config import DEFAULT
-from evaluation_criteria.schemas import Criteria, EvaluationCriteriaRequest, Target
-from evaluation_criteria.prompts import SYSTEM_PROMPT
+from pitch_coach_ai.features.evaluation_criteria import check_targets
+from pitch_coach_ai.features.evaluation_criteria.config import DEFAULT
+from pitch_coach_ai.features.evaluation_criteria.schemas import Criteria, EvaluationCriteriaRequest, Target
+from pitch_coach_ai.features.evaluation_criteria.prompts import SYSTEM_PROMPT
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "examples.json"
 EXAMPLES = json.loads(DATA.read_text(encoding="utf-8"))

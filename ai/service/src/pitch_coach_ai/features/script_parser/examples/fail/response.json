@@ -1,0 +1,38 @@
+{
+  "status": "fail",
+  "slides": [
+    {
+      "slide_number": 1,
+      "script": "피치코치는 발표 연습을 돕는 AI 코치입니다.",
+      "script_chars": 19,
+      "keywords": [
+        "피치코치",
+        "발표 연습",
+        "AI 코치"
+      ],
+      "highlights": [
+        {
+          "start": 0,
+          "end": 4
+        },
+        {
+          "start": 6,
+          "end": 11
+        },
+        {
+          "start": 16,
+          "end": 21
+        }
+      ],
+      "expected_ms": 300000
+    }
+  ],
+  "terms": [
+    "피치코치"
+  ],
+  "meta": {
+    "schema_version": "1.0",
+    "feature_version": "script_parser-1.1",
+    "model": null
+  }
+}

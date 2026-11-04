@@ -79,7 +79,7 @@ export function GazeSetupView({
         {live && status === 'LOADING' && (
           <p
             className="pointer-events-none absolute inset-x-0 bottom-12 text-center text-sm
-                     text-stone"
+                     text-ink-stage"
           >
             시선 분석을 준비하는 중…
           </p>
@@ -87,8 +87,8 @@ export function GazeSetupView({
 
         {live && status === 'UNAVAILABLE' && (
           <div className="absolute inset-x-4 bottom-4 rounded-lg bg-stage/90 p-3 text-xs">
-            <p className="font-bold text-coral">시선 분석을 켤 수 없어요</p>
-            <p className="mt-1 text-stone">{unavailableMessage}</p>
+            <p className="font-bold text-ink-stage">시선 분석을 켤 수 없어요</p>
+            <p className="mt-1 text-ink-stage">{unavailableMessage}</p>
           </div>
         )}
 
@@ -97,8 +97,8 @@ export function GazeSetupView({
             <button
               type="button"
               onClick={onEnable}
-              className="rounded-full bg-coral px-4 py-2 text-xs font-semibold text-white
-                       hover:bg-coral-deep"
+              className="min-h-11 rounded-full bg-coral-deep px-4 py-2 text-xs font-semibold text-white
+                       hover:bg-ink"
             >
               카메라·마이크 켜기
             </button>

@@ -1,10 +1,13 @@
-"""연구용 판정 대역 테스트의 공용 도우미 — 계약 모양 검사와 입력 만들기."""
+"""연구용 판정 대역 · 예시 테스트의 공용 도우미 — 계약 모양 검사와 입력 만들기.
+
+`words` 는 코치 단위 테스트(서비스로 옮겨 감)의 같은 이름 함수 사본이다.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from coach.schemas import JudgmentResult
+from pitch_coach_ai.features.coach.schemas import JudgmentResult
 
 
 def check_shape(result: JudgmentResult, since: int = 0) -> None:
@@ -45,3 +48,30 @@ def pace_words(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def plain(word: str, start: int, end: int) -> dict[str, Any]:
     return {"word": word, "start_ms": start, "end_ms": end}
+
+
+def words(
+    end_ms: int,
+    *,
+    cpm: float = 300,
+    seconds: float = 15,
+    final: bool = True,
+    chars: int = 3,
+    filler_every: int = 0,
+) -> list[dict[str, Any]]:
+    """이전 요청 모양(w · final · filler)의 단어. 말 속도 대역 테스트가 계약 모양으로 바꿔 쓴다."""
+    dur = round(chars * 60_000 / cpm)
+    out: list[dict[str, Any]] = []
+    t = int(end_ms - seconds * 1000)
+    i = 0
+    while t + dur <= end_ms:
+        i += 1
+        if filler_every and i % filler_every == 0:
+            out.append(
+                {"w": "음", "start_ms": t, "end_ms": t + 300, "final": final, "filler": True}
+            )
+            t += 300
+            continue
+        out.append({"w": "가" * chars, "start_ms": t, "end_ms": t + dur, "final": final})
+        t += dur
+    return out

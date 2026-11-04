@@ -151,7 +151,7 @@ async def measure(args):
     template = json.loads(
         (
             Path(__file__).resolve().parents[2]
-            / "ai/research/coach-agent/src/coach/examples/finalize/response.json"
+            / "ai/service/src/pitch_coach_ai/features/coach/examples/finalize/response.json"
         ).read_text()
     )
 

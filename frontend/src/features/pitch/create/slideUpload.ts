@@ -1,8 +1,10 @@
+import { createPitch } from '@/shared/api/pitch';
 import { uploadPresentation } from '@/shared/api/presentation';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { openPdf } from '@/shared/lib/pdf';
 import { isCurrentDraft, useCreateStore } from './createStore';
-import { fromUploadedPresentation } from './lib/beAdapter';
+import { fromPitchSaved, fromUploadedPresentation, toPitchRequest } from './lib/beAdapter';
+import { infoOf, infoReady, titleFromFile } from './lib/draft';
 
 /**
  * 슬라이드 올리기 — 업로드 → 장수 받기 → 버전에 채우기.
@@ -21,20 +23,40 @@ import { fromUploadedPresentation } from './lib/beAdapter';
  * ★ **고른 파일을 바로 그리지 않습니다.** 서버가 돌려준 URL 로만 그립니다 —
  *   화면에 보이는 것이 곧 저장된 것이고, 다시 들어올 때와 같은 길 하나만 탑니다.
  *
- * 실패는 스토어의 `slideUpload` 로 화면에 올리고, 이 함수는 던지지 않습니다.
+ * ── 피치가 없으면 여기서 만듭니다 (시안 `pitch-create`) ──────────────────────
+ * 첫 단계가 슬라이드라 처음 올릴 때는 피치가 없습니다. 발표자료는 피치 아래에 올라가므로
+ * 파일 이름을 제목으로, 시간은 기본값으로 피치부터 만들고(`POST /pitches/add`) 올립니다.
+ * 날짜는 비워 둡니다. 제목 · 날짜 · 시간은 발표정보 확인 단계에서 고칩니다.
  *
- * @param replace "파일 교체"로 바꿀 버전. 없으면 빈 자리에 새로 올립니다
+ * 실패는 스토어의 `slideUpload` 로 화면에 올리고, 이 함수는 던지지 않습니다.
  */
-export async function uploadSlides(file: File, replace: number | null = null): Promise<void> {
+export async function uploadSlides(file: File): Promise<void> {
   const store = useCreateStore.getState();
-  const { pitchId, draftId } = store;
+  const { draftId } = store;
+  let { pitchId } = store;
   // 업로드가 끝나기 전에 다른 빈 버전을 만들어도 시작한 자리에 채웁니다.
   const targetVersion = store.version ?? store.draft.slides.at(-1)?.version ?? null;
-  // 두 번 눌러도 한 번만 올립니다. 피치가 없으면 올릴 곳이 없습니다 — 화면이 먼저 막습니다
-  if (store.slideUpload.status === 'uploading' || !pitchId) return;
+  // 두 번 눌러도 한 번만 올립니다
+  if (store.slideUpload.status === 'uploading') return;
   const set = store.setSlideUpload;
 
-  set({ status: 'uploading', file, replace });
+  set({ status: 'uploading', file });
+
+  if (!pitchId) {
+    const info = { ...infoOf(store.draft), title: titleFromFile(file.name) };
+    // 새 작성의 시간 기본값은 늘 알고 있습니다. 모르는 허용오차(수정 화면)는 여기 오지 않습니다
+    if (!infoReady(info)) return set({ status: 'failed', file, reason: 'upload' });
+    try {
+      pitchId = fromPitchSaved(await createPitch(toPitchRequest(info)));
+    } catch (error) {
+      if (!isCurrentDraft(draftId)) return;
+      console.error('[슬라이드] 피치를 만들지 못했습니다', { file: file.name, error });
+      return set({ status: 'failed', file, reason: 'upload' });
+    }
+    // 그사이 새 피치를 시작했으면 앞 피치는 서버에 남고, 새 작성에는 넣지 않습니다
+    if (!isCurrentDraft(draftId)) return;
+    useCreateStore.getState().startFromFile(pitchId, info);
+  }
 
   let uploaded;
   try {
@@ -46,7 +68,7 @@ export async function uploadSlides(file: File, replace: number | null = null): P
     console.error('[슬라이드] 업로드 실패', { pitchId, file: file.name, error });
     // BE 가 PDF 를 열지 못했으면(깨짐 · 암호 · PDF 아님) 다시 올려도 같습니다 — 다른 문구로 알립니다
     const invalid = error instanceof ApiFailure && error.code === 'INVALID_PRESENTATION';
-    set({ status: 'failed', file, replace, reason: invalid ? 'invalid' : 'upload' });
+    set({ status: 'failed', file, reason: invalid ? 'invalid' : 'upload' });
     return;
   }
 
@@ -58,7 +80,7 @@ export async function uploadSlides(file: File, replace: number | null = null): P
       if (!isCurrentDraft(draftId)) return;
       // 실서버에서는 대개 S3 CORS 입니다 — 브라우저가 URL 의 바이트를 읽지 못합니다
       console.error('[슬라이드] PDF 열기 실패', { url: uploaded.fileUrl, error });
-      set({ status: 'failed', file, replace, reason: 'open' });
+      set({ status: 'failed', file, reason: 'open' });
       return;
     }
   }
@@ -71,9 +93,7 @@ export async function uploadSlides(file: File, replace: number | null = null): P
   };
   // 그사이 새 피치를 시작했으면 버립니다. 파일은 앞 피치(pitchId) 아래에 올라가 있으니 거기 남습니다
   if (!isCurrentDraft(draftId)) return;
-  const latest = useCreateStore.getState();
-  if (replace === null) latest.attachSlides(result, targetVersion);
-  else latest.replaceSlides(replace, result);
+  useCreateStore.getState().attachSlides(result, targetVersion);
   set({ status: 'idle' });
 }
 
@@ -81,8 +101,8 @@ export async function uploadSlides(file: File, replace: number | null = null): P
  * 화면에서 부르는 입구. `uploadSlides` 는 실패를 스토어로 올리므로 여기까지 오는 건
  * 예상 밖의 오류뿐입니다 — 버리지 않고 남깁니다 (CLAUDE.md 9번).
  */
-export function startSlideUpload(file: File, replace: number | null = null): void {
-  uploadSlides(file, replace).catch((err: unknown) => {
+export function startSlideUpload(file: File): void {
+  uploadSlides(file).catch((err: unknown) => {
     console.error('[슬라이드] 업로드 중 예상 밖의 오류', err);
   });
 }

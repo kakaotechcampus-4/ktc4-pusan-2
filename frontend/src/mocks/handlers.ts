@@ -1,4 +1,5 @@
 import { homeHandlers } from './home';
+import { serviceReviewHandlers } from './serviceReview';
 import { http, HttpResponse } from 'msw';
 import { authHandlers } from './auth';
 import { sttHandlers } from './stt';
@@ -167,6 +168,7 @@ if (import.meta.env.DEV) {
 }
 
 export const handlers = [
+  ...serviceReviewHandlers,
   // ★ 대본 목(scriptHandlers)보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
     HttpResponse.json(sampleScript),

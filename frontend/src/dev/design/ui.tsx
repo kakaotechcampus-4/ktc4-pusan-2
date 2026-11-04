@@ -20,6 +20,7 @@ export function DraftPage<V extends string>({
   variant,
   onVariant,
   questions,
+  fitViewport = false,
   children,
 }: {
   title: string;
@@ -32,12 +33,18 @@ export function DraftPage<V extends string>({
   onVariant?: (v: V) => void;
   /** 시안에서 아직 정하지 못한 것 */
   questions: string[];
+  /** 화면 틀을 한 뷰포트에 맞추고 긴 내용만 안쪽에서 스크롤합니다 */
+  fitViewport?: boolean;
   children: ReactNode;
 }) {
   return (
     // 밝은 지면(시안 10–12 기준). 토큰만 바꾸는 클래스입니다 (index.css)
-    <div className="pitch-create min-h-dvh bg-greige text-ink">
-      <header className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 pt-6 sm:px-8">
+    <div
+      className={`pitch-create bg-greige text-ink ${fitViewport ? 'flex h-dvh flex-col overflow-hidden' : 'min-h-dvh'}`}
+    >
+      <header
+        className={`mx-auto flex w-full max-w-7xl shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 sm:px-8 ${fitViewport ? 'pt-4' : 'pt-6'}`}
+      >
         <div className="flex flex-wrap items-center gap-4">
           <Link to="/dev/design" aria-label="시안 목록">
             <PitchCoachWordmark />
@@ -48,15 +55,22 @@ export function DraftPage<V extends string>({
         {meta && <p className="tabular text-sm text-stone">{meta}</p>}
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-12 pt-5 sm:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+      <main
+        className={`mx-auto flex w-full max-w-7xl flex-col px-5 sm:px-8 ${fitViewport ? 'min-h-0 flex-1 gap-2 overflow-hidden pb-3 pt-2' : 'gap-6 pb-12 pt-5'}`}
+      >
+        <div
+          className={`flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line ${fitViewport ? 'pb-2' : 'pb-4'}`}
+        >
           <div className="font-bold">{eyebrow}</div>
           <span className="font-mono text-xs tracking-widest text-stone">DESIGN DRAFT · 시안</span>
         </div>
 
         {children}
 
-        <details className="border-t border-line pt-5 text-sm" open>
+        <details
+          className={`shrink-0 border-t border-line pt-3 text-sm ${fitViewport ? 'max-h-[35vh] overflow-y-auto' : ''}`}
+          open={!fitViewport}
+        >
           <summary className="w-fit cursor-pointer font-bold text-stone">시안 검토 도구</summary>
           <div className="mt-4 space-y-4">
             {variants && variant && onVariant && (

@@ -1,0 +1,608 @@
+{
+  "rubrics": [
+    {
+      "meta": {
+        "rubric_id": "182e0668bb67ed42",
+        "script_name": "sv-3",
+        "slide_number": 6,
+        "content_hash": "d211dcdd3f197a1f93540587dded4e2c54dda186e91eae954f1925023f1f1a3e",
+        "rubric_schema_version": "1.2",
+        "llm_model": "openai/gpt-5.6-luna",
+        "llm_config_hash": "f7b2ef94d4e7",
+        "final_config_hash": "83cb79b10a03",
+        "unit_config_hash": "1e964b21a6bf"
+      },
+      "normalized_script": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했습니다. 참여한 이용자는 1,860명이었고, 빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었습니다. 알림을 받고 10분 안에 자리를 잡은 비율은 76%였습니다. 노쇼 비율도 18%에서 7%로 낮아졌습니다. 시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다.",
+      "sentences": [
+        {
+          "index": 0,
+          "text": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했습니다.",
+          "start": 0,
+          "end": 41
+        },
+        {
+          "index": 1,
+          "text": "참여한 이용자는 1,860명이었고, 빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었습니다.",
+          "start": 42,
+          "end": 108
+        },
+        {
+          "index": 2,
+          "text": "알림을 받고 10분 안에 자리를 잡은 비율은 76%였습니다.",
+          "start": 109,
+          "end": 142
+        },
+        {
+          "index": 3,
+          "text": "노쇼 비율도 18%에서 7%로 낮아졌습니다.",
+          "start": 143,
+          "end": 167
+        },
+        {
+          "index": 4,
+          "text": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다.",
+          "start": 168,
+          "end": 212
+        }
+      ],
+      "sentence_roles": [
+        "detail",
+        "claim",
+        "evidence",
+        "evidence",
+        "evidence"
+      ],
+      "core_claim": "시범 운영 결과 빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+      "key_points": [
+        {
+          "id": "KP1",
+          "content": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했다.",
+          "importance": "normal",
+          "sentence_indices": [
+            0
+          ],
+          "source_quote": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했습니다.",
+          "source_span": [
+            0,
+            41
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF1",
+            "CF2",
+            "CF3"
+          ]
+        },
+        {
+          "id": "KP2",
+          "content": "빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+          "importance": "critical",
+          "sentence_indices": [
+            1
+          ],
+          "source_quote": "참여한 이용자는 1,860명이었고, 빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었습니다.",
+          "source_span": [
+            42,
+            108
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF4",
+            "CF5",
+            "CF6",
+            "CF7"
+          ]
+        },
+        {
+          "id": "KP3",
+          "content": "알림을 받고 10분 안에 자리를 잡은 비율이 76%이다.",
+          "importance": "high",
+          "sentence_indices": [
+            2
+          ],
+          "source_quote": "알림을 받고 10분 안에 자리를 잡은 비율은 76%였습니다.",
+          "source_span": [
+            109,
+            142
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF8",
+            "CF9"
+          ]
+        },
+        {
+          "id": "KP4",
+          "content": "노쇼 비율이 18%에서 7%로 낮아졌다.",
+          "importance": "high",
+          "sentence_indices": [
+            3
+          ],
+          "source_quote": "노쇼 비율도 18%에서 7%로 낮아졌습니다.",
+          "source_span": [
+            143,
+            167
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF10",
+            "CF11"
+          ]
+        },
+        {
+          "id": "KP5",
+          "content": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했다.",
+          "importance": "high",
+          "sentence_indices": [
+            4
+          ],
+          "source_quote": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다.",
+          "source_span": [
+            168,
+            212
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF12"
+          ]
+        }
+      ],
+      "critical_facts": [
+        {
+          "id": "CF1",
+          "type": "date",
+          "value": "2025년 3월",
+          "normalized": "2025-03",
+          "numeric_value": null,
+          "unit": null,
+          "qualifier": null,
+          "spans": [
+            [
+              0,
+              8
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "normal"
+        },
+        {
+          "id": "CF2",
+          "type": "duration",
+          "value": "8주 동안",
+          "normalized": "8주",
+          "numeric_value": 8.0,
+          "unit": "주",
+          "qualifier": null,
+          "spans": [
+            [
+              11,
+              16
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "normal"
+        },
+        {
+          "id": "CF3",
+          "type": "quantity",
+          "value": "3곳",
+          "normalized": "3곳",
+          "numeric_value": 3.0,
+          "unit": "곳",
+          "qualifier": null,
+          "spans": [
+            [
+              24,
+              26
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "normal"
+        },
+        {
+          "id": "CF4",
+          "type": "quantity",
+          "value": "1,860명",
+          "normalized": "1,860명",
+          "numeric_value": 1860.0,
+          "unit": "명",
+          "qualifier": null,
+          "spans": [
+            [
+              51,
+              57
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP2"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF5",
+          "type": "duration",
+          "value": "평균 23분",
+          "normalized": "23분",
+          "numeric_value": 23.0,
+          "unit": "분",
+          "qualifier": "평균",
+          "spans": [
+            [
+              79,
+              85
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP2"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF6",
+          "type": "duration",
+          "value": "13분",
+          "normalized": "13분",
+          "numeric_value": 13.0,
+          "unit": "분",
+          "qualifier": null,
+          "spans": [
+            [
+              88,
+              91
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP2"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF7",
+          "type": "percentage",
+          "value": "약 42퍼센트",
+          "normalized": "42%",
+          "numeric_value": 42.0,
+          "unit": "%",
+          "qualifier": "약",
+          "spans": [
+            [
+              94,
+              101
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP2"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF8",
+          "type": "duration",
+          "value": "10분",
+          "normalized": "10분",
+          "numeric_value": 10.0,
+          "unit": "분",
+          "qualifier": null,
+          "spans": [
+            [
+              116,
+              119
+            ]
+          ],
+          "sentence_indices": [
+            2
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP3"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF9",
+          "type": "percentage",
+          "value": "76%",
+          "normalized": "76%",
+          "numeric_value": 76.0,
+          "unit": "%",
+          "qualifier": null,
+          "spans": [
+            [
+              134,
+              137
+            ]
+          ],
+          "sentence_indices": [
+            2
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP3"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF10",
+          "type": "percentage",
+          "value": "18%",
+          "normalized": "18%",
+          "numeric_value": 18.0,
+          "unit": "%",
+          "qualifier": null,
+          "spans": [
+            [
+              150,
+              153
+            ]
+          ],
+          "sentence_indices": [
+            3
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP4"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF11",
+          "type": "percentage",
+          "value": "7%",
+          "normalized": "7%",
+          "numeric_value": 7.0,
+          "unit": "%",
+          "qualifier": null,
+          "spans": [
+            [
+              156,
+              158
+            ]
+          ],
+          "sentence_indices": [
+            3
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP4"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF12",
+          "type": "percentage",
+          "value": "85퍼센트 이상",
+          "normalized": "85%",
+          "numeric_value": 85.0,
+          "unit": "%",
+          "qualifier": "이상",
+          "spans": [
+            [
+              186,
+              194
+            ]
+          ],
+          "sentence_indices": [
+            4
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP5"
+          ],
+          "importance": "high"
+        }
+      ],
+      "keywords": [
+        {
+          "term": "시범",
+          "score": 0.3784,
+          "tf": 2
+        },
+        {
+          "term": "시범 운영",
+          "score": 0.3784,
+          "tf": 2
+        },
+        {
+          "term": "운영",
+          "score": 0.3784,
+          "tf": 2
+        },
+        {
+          "term": "비율",
+          "score": 0.3196,
+          "tf": 2
+        },
+        {
+          "term": "퍼센트",
+          "score": 0.2235,
+          "tf": 1
+        },
+        {
+          "term": "동안",
+          "score": 0.2235,
+          "tf": 1
+        },
+        {
+          "term": "동안 제휴",
+          "score": 0.2235,
+          "tf": 1
+        },
+        {
+          "term": "설문",
+          "score": 0.2235,
+          "tf": 1
+        }
+      ],
+      "warnings": [],
+      "draft_warnings": [],
+      "review_changes": [],
+      "name_decisions": [],
+      "content_units": [
+        {
+          "id": "S0-U1",
+          "sentence_index": 0,
+          "text": "2025년 3월부터 시범 운영함",
+          "quote": "2025년 3월부터",
+          "span": [
+            0,
+            10
+          ],
+          "fact_ids": [
+            "CF1"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S0-U2",
+          "sentence_index": 0,
+          "text": "8주 동안 시범 운영함",
+          "quote": "8주 동안",
+          "span": [
+            11,
+            16
+          ],
+          "fact_ids": [
+            "CF2"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S0-U3",
+          "sentence_index": 0,
+          "text": "제휴 도서관 3곳에서 시범 운영함",
+          "quote": "제휴 도서관 3곳",
+          "span": [
+            17,
+            26
+          ],
+          "fact_ids": [
+            "CF3"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S1-U1",
+          "sentence_index": 1,
+          "text": "참여한 이용자는 1,860명이었음",
+          "quote": "참여한 이용자는 1,860명",
+          "span": [
+            42,
+            57
+          ],
+          "fact_ids": [
+            "CF4"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S1-U2",
+          "sentence_index": 1,
+          "text": "빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄어듦",
+          "quote": "빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었습니다",
+          "span": [
+            62,
+            107
+          ],
+          "fact_ids": [
+            "CF5",
+            "CF6",
+            "CF7"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S2-U1",
+          "sentence_index": 2,
+          "text": "알림을 받고 10분 안에 자리를 잡은 비율은 76%였음",
+          "quote": "알림을 받고 10분 안에 자리를 잡은 비율은 76%",
+          "span": [
+            109,
+            136
+          ],
+          "fact_ids": [
+            "CF8",
+            "CF9"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S3-U1",
+          "sentence_index": 3,
+          "text": "노쇼 비율이 18%에서 7%로 낮아짐",
+          "quote": "노쇼 비율도 18%에서 7%로 낮아졌습니다",
+          "span": [
+            143,
+            166
+          ],
+          "fact_ids": [
+            "CF10",
+            "CF11"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S4-U1",
+          "sentence_index": 4,
+          "text": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답함",
+          "quote": "이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다",
+          "span": [
+            181,
+            211
+          ],
+          "fact_ids": [
+            "CF12"
+          ],
+          "source": "llm"
+        }
+      ]
+    }
+  ],
+  "failed": [
+    {
+      "slide_number": 7,
+      "error": {
+        "code": "LLM_TIMEOUT",
+        "message": "LLM 응답 시간이 초과되었습니다."
+      }
+    }
+  ],
+  "meta": {
+    "schema_version": "1.0",
+    "feature_version": "script_coverage-1.1",
+    "model": "openai/gpt-5.6-luna"
+  }
+}

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from coach.vocab import Issue
 from coach_lab.judges import filler
+from pitch_coach_ai.features.coach.vocab import Issue
 from tests.lab.judge_helpers import check_shape, merged, plain
 
 

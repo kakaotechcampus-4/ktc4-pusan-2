@@ -7,17 +7,22 @@
 import sqlite3
 from pathlib import Path
 
-from script_coverage.core import (
+from pitch_coach_ai.features.script_coverage.core import (
     CoverageError,
     ScriptLLMs,
     TakeLLMs,
     analyze_script,
     evaluate_take,
 )
-from script_coverage.schemas import AnalyzeRequest, RubricRequest, ScriptSlide, TakeSlide
-from script_coverage.shared.llm_step import LLMCache
-from script_coverage.shared.rubric import EvaluationRubric
-from script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
+from pitch_coach_ai.features.script_coverage.schemas import (
+    AnalyzeRequest,
+    RubricRequest,
+    ScriptSlide,
+    TakeSlide,
+)
+from pitch_coach_ai.features.script_coverage.shared.llm_step import LLMCache
+from pitch_coach_ai.features.script_coverage.shared.rubric import EvaluationRubric
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
 
 from .cache import SampleCache, SqliteLLMCache
 from .datasets import load_script_json

@@ -55,3 +55,21 @@ def test_empty_admin_account_keeps_console_off() -> None:
     settings = Settings(admin_username="", admin_password="")
 
     assert (settings.admin_username, settings.admin_password) == ("", "")
+
+
+def test_launch_at_without_a_timezone_is_refused() -> None:
+    """시간대가 없으면 서버 시간대에 따라 출시 시각이 9시간 어긋날 수 있다."""
+    with pytest.raises(ValidationError, match="launch_at"):
+        Settings(jwt_secret_key=JWT, launch_at="2026-10-30T14:00:00")
+
+
+def test_launch_at_keeps_its_timezone() -> None:
+    launch_at = Settings(jwt_secret_key=JWT, launch_at="2026-10-30T14:00:00+09:00").launch_at
+
+    assert launch_at is not None
+    assert launch_at.isoformat() == "2026-10-30T14:00:00+09:00"
+
+
+def test_blank_launch_at_means_no_launch_gate(monkeypatch) -> None:
+    monkeypatch.setenv("LAUNCH_AT", " ")
+    assert Settings(jwt_secret_key=JWT, _env_file=None).launch_at is None

@@ -7,7 +7,7 @@ Google 이 발급한 access·refresh token 은 어느 테이블에도 저장하�
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pitch_coach_backend.core.database import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -63,3 +63,23 @@ class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class OAuthAuthorizationRequest(Base):
+    """구글로 보낸 뒤 콜백을 기다리는 인증 요청 1건. 콜백에서 지우며 읽는다 (state_store.py).
+
+    회원·세션과 묶이지 않는 임시 값이라 FK 가 없다. 콜백이 오지 않은 행은 만료 뒤
+    다음 로그인 시작 때 지운다.
+    """
+
+    __tablename__ = "oauth_authorization_requests"
+
+    # 구글이 콜백에 그대로 돌려주는 값. 우리가 만든 것은 43자다 (token_urlsafe(32))
+    state: Mapped[str] = mapped_column(String(64), primary_key=True)
+    nonce: Mapped[str] = mapped_column(String(64), nullable=False)
+    # PKCE verifier. 86자다 (token_urlsafe(64)). RFC 7636 의 상한이 128자다
+    code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    browser_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    return_to: Mapped[str] = mapped_column(Text, nullable=False)
+    # 지난 행은 콜백이 와도 거절한다. 정리가 늦어도 만료는 이 칸으로 지킨다
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )

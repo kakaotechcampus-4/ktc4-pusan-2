@@ -63,6 +63,10 @@ def arm(
     )
 
 
+def armed(take_id: uuid.UUID) -> bool:
+    return take_id in _abandon_timers
+
+
 def cancel(take_id: uuid.UUID) -> None:
     timer = _abandon_timers.pop(take_id, None)
     if timer is not None:

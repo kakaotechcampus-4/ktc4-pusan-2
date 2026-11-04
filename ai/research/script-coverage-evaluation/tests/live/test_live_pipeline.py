@@ -11,9 +11,14 @@ import pytest
 from coverage_lab.datasets import load_script_json, load_take
 from coverage_lab.llm import load_settings, script_llms, stt_llms
 from coverage_lab.paths import SCRIPT_DIR, STT_DIR
-from script_coverage.core import analyze_script, evaluate_take
-from script_coverage.schemas import AnalyzeRequest, RubricRequest, ScriptSlide, TakeSlide
-from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
+from pitch_coach_ai.features.script_coverage.core import analyze_script, evaluate_take
+from pitch_coach_ai.features.script_coverage.schemas import (
+    AnalyzeRequest,
+    RubricRequest,
+    ScriptSlide,
+    TakeSlide,
+)
+from pitch_coach_ai.features.script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
 
 pytestmark = pytest.mark.live
 

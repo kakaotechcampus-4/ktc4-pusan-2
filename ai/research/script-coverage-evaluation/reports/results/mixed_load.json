@@ -1,0 +1,110 @@
+{
+  "feature_version": "script_coverage-1.1",
+  "criteria_version": "script_coverage-1.1+e7d09c338962",
+  "model": "fake (지연만 흉내)",
+  "method": "uvicorn in-process, fake LLM via service StructuredLlm",
+  "slides": 20,
+  "fake_llm_delay_s": [
+    4.0,
+    9.0
+  ],
+  "call_timeout_s": 20.0,
+  "rubric_max_workers": 12,
+  "llm_executor_threads": 40,
+  "scenes": [
+    {
+      "scene": "idle",
+      "requests": [],
+      "rescore_while_loaded": {
+        "n": 30,
+        "p50_ms": 84.7,
+        "p95_ms": 116.4,
+        "max_ms": 119.5
+      },
+      "probe_errors": [],
+      "ok": true
+    },
+    {
+      "scene": "be_limit",
+      "requests": [
+        {
+          "path": "/scripts/rubric",
+          "status": 200,
+          "seconds": 49.3,
+          "failed": 0,
+          "failed_codes": []
+        },
+        {
+          "path": "/scripts/rubric",
+          "status": 200,
+          "seconds": 50.1,
+          "failed": 0,
+          "failed_codes": []
+        },
+        {
+          "path": "/takes/analyze",
+          "status": 200,
+          "seconds": 81.3,
+          "failed": 0,
+          "failed_codes": []
+        },
+        {
+          "path": "/takes/analyze",
+          "status": 200,
+          "seconds": 80.7,
+          "failed": 0,
+          "failed_codes": []
+        }
+      ],
+      "rescore_while_loaded": {
+        "n": 237,
+        "p50_ms": 65.5,
+        "p95_ms": 129.9,
+        "max_ms": 1766.3
+      },
+      "probe_errors": [],
+      "ok": true
+    },
+    {
+      "scene": "over_limit",
+      "requests": [
+        {
+          "path": "/scripts/rubric",
+          "status": 200,
+          "seconds": 49.1,
+          "failed": 0,
+          "failed_codes": []
+        },
+        {
+          "path": "/scripts/rubric",
+          "status": 200,
+          "seconds": 50.0,
+          "failed": 0,
+          "failed_codes": []
+        },
+        {
+          "path": "/scripts/rubric",
+          "status": 200,
+          "seconds": 52.3,
+          "failed": 0,
+          "failed_codes": []
+        },
+        {
+          "path": "/scripts/rubric",
+          "status": 200,
+          "seconds": 48.6,
+          "failed": 0,
+          "failed_codes": []
+        }
+      ],
+      "rescore_while_loaded": {
+        "n": 170,
+        "p50_ms": 48.6,
+        "p95_ms": 84.3,
+        "max_ms": 519.4
+      },
+      "probe_errors": [],
+      "ok": true
+    }
+  ]
+}

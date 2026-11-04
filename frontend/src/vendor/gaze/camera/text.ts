@@ -1,7 +1,19 @@
 /** Korean wording for the camera view (and the demo page). The engine stays English; the screen speaks Korean. */
-import type { ConditionIssue } from '../engine/condition';
-import type { PreconditionReason } from '../engine/preconditions';
-import type { GazeDirection, State } from '../engine/types';
+import type {
+  CameraPlacement,
+  ConditionIssue,
+  FailReason,
+  GaugeReason,
+  PlacementReason,
+  PreconditionReason,
+} from '../engine';
+import type { GazeDirection, State } from '../engine/contract';
+
+// Tables keyed by an engine reason type check their keys with `satisfies` (docs/ai/features/gaze-tracking.md
+// 5-6): a code the engine adds fails the typecheck as a missing line, a code it drops as a stale one. The
+// declared type stays `Record<string, string>` so fields the engine sends as `string` (`last_reason` …)
+// can still look them up. Head-circle and on-hold reasons (SWEEP_REASON · UNCERTAIN_REASON) have no engine
+// type yet, so they are not checked.
 
 export const CHECK_NAME: Record<Exclude<PreconditionReason, 'OK'>, string> = {
   NO_FACE: '얼굴 인식',
@@ -28,7 +40,10 @@ export const CHECK_FIX: Record<PreconditionReason, string> = {
   LOW_FPS: '카메라가 느려요. 카메라나 CPU를 쓰는 다른 프로그램을 닫아 주세요.',
 };
 
-/** Gauge reject reasons (head-pose engine: no blink / head-moved rules). */
+/**
+ * Gauge reject reasons (head-pose engine: no blink / head-moved rules).
+ * No line for SETTLING (the view filters it out) or NOT_ACTIVE (never shown to the user).
+ */
 export const GAUGE_REASON: Record<string, string> = {
   NO_FACE: '얼굴이 보이지 않아요',
   LOW_FACE_CONFIDENCE: '얼굴이 일부만 보여요',
@@ -44,7 +59,7 @@ export const GAUGE_REASON: Record<string, string> = {
   LOOK_HIGHER: '렌즈 쪽으로 고개를 조금 더 들어 주세요',
   LOOK_LOWER: '대본 쪽으로 고개를 조금 더 숙여 주세요',
   OFF_TARGET: '과녁 쪽으로 고개를 돌려 주세요',
-};
+} satisfies Record<Exclude<GaugeReason, 'SETTLING' | 'NOT_ACTIVE'>, string>;
 
 export const ISSUE: Record<ConditionIssue, string> = {
   HEAD_TURNED: '고개가 보정 범위를 벗어남',
@@ -123,8 +138,9 @@ export const PLACEMENT_NAME: Record<string, string> = {
   SIDE_LEFT: '화면 왼쪽',
   SIDE_RIGHT: '화면 오른쪽',
   INCONCLUSIVE: '판정 불가',
-};
+} satisfies Record<CameraPlacement, string>;
 
+/** A hint for the placement found (not INCONCLUSIVE), or for why none was found (not OK). */
 export const PLACEMENT_HINT: Record<string, string> = {
   TOP: '카메라가 화면 위 가운데에 있어요.',
   BOTTOM:
@@ -137,8 +153,12 @@ export const PLACEMENT_HINT: Record<string, string> = {
     '렌즈와 화면 가운데의 방향이 거의 같아요. 카메라 위치는 판정하지 않고 넘어갑니다.',
   AMBIGUOUS_AXIS: '카메라가 대각선으로 치우쳐 있어 위치를 판정하지 못했어요.',
   NOT_ENOUGH_SAMPLES: '쓸 수 있는 프레임이 부족했어요.',
-};
+} satisfies Record<
+  Exclude<CameraPlacement, 'INCONCLUSIVE'> | Exclude<PlacementReason, 'OK'>,
+  string
+>;
 
+/** Calibration failures (FailReason), plus the two warnings a passing calibration can carry (`warnings` prefixes). */
 export const CALIBRATION_HINT: Record<string, string> = {
   NOT_ENOUGH_SAMPLES: '쓸 수 있는 프레임이 부족해요. 얼굴이 잘 보이게 하고 다시 해 주세요.',
   DEGENERATE_FEATURES:
@@ -152,7 +172,7 @@ export const CALIBRATION_HINT: Record<string, string> = {
     '렌즈와 화면 가운데가 거의 같게 측정되어, 화면을 보는 것도 청중(카메라)으로 판정해요.',
   INVERTED_PITCH:
     '지점들의 위아래 순서가 뒤집혀 측정됐어요. 카메라가 화면 위에 있는지 확인해 주세요.',
-};
+} satisfies Record<FailReason | 'SCREEN_MERGED' | 'INVERTED_PITCH', string>;
 
 /** Why a frame of the head circle lit nothing (sweep reasons, then preprocess reasons). */
 export const SWEEP_REASON: Record<string, string> = {

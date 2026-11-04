@@ -4,7 +4,7 @@
 > **기준 범위**: 평가 기준 분석 모듈(`POST /evaluation-criteria/parse`)의 목표 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 지표 이름 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **관련 Issue**: #159
 > **한 줄 요약**: 사용자가 자유롭게 적은 발표 평가 기준을 화면에 보일 짧은 기준 문장, 요소별 값, 숫자로 판정할 수 있는 목표(`targets`), 대본 사용 설정(`script_used`)으로 바꾼다. 리뷰가 `targets`로 사용자 기준을 판정하고, 코치가 `script_used`로 대본 응시 지적을 끈다.
-> **기준값**: 표시 문장 길이 상한 · 요소 → 지표 연결 · 개수 상한은 `src/evaluation_criteria/config.py`에만 둔다. 이 문서에는 BE · 리뷰와 맞춰야 하는 값(요소 · 지표 이름 · 연산자 · 50자 · 입력 한도 · 시간 예산)과 예시만 적는다.
+> **기준값**: 표시 문장 길이 상한 · 요소 → 지표 연결 · 개수 상한은 서비스 `features/evaluation_criteria/config.py`에만 둔다. 이 문서에는 BE · 리뷰와 맞춰야 하는 값(요소 · 지표 이름 · 연산자 · 50자 · 입력 한도 · 시간 예산)과 예시만 적는다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -21,7 +21,7 @@
 # 1. 왜 필요한가
 ## 1-1. 배경
 사용자(또는 발표 대회 · 수업)는 "추임새는 5번 이하로, 청중을 자주 보면서, 대본은 봐도 된다"처럼 평가 기준을 글로 준다. 리포트가 이 기준을 지켰는지 보여 주려면 기준을 판정 모듈의 지표 이름과 숫자 목표로 바꿔야 하고, 코치가 대본 응시를 지적할지도 이 글에서 정해진다.
-연구 코드(`ai/research/evaluation-criteria/`)는 숫자 목표와 `meta`까지 내지만 아직 서비스에 올라가지 않았다. BE는 표시 문장만 `standards`에 저장하고(뺀 항목은 문자열로 합쳐 응답에만 쓰고, 요소 값은 버린다), 그래서 리뷰의 사용자 기준 판정과 코치의 대본 사용 설정이 입력을 받지 못한다.
+숫자 목표와 `meta`까지 내는 코어는 AI 서비스 `features/evaluation_criteria/`로 옮겨 `POST /evaluation-criteria/parse`로 열었다(11절). BE는 표시 문장만 `standards`에 저장하고(뺀 항목은 문자열로 합쳐 응답에만 쓰고, 요소 값은 버린다), 그래서 리뷰의 사용자 기준 판정과 코치의 대본 사용 설정이 입력을 받지 못한다.
 
 ## 1-2. 목표
 - 숫자로 적힌 기준을 지표 이름 · 연산자 · 값으로 정확히 옮긴다(예: "추임새 5번 이하" → `filler_count` `LTE` 5).
@@ -64,8 +64,8 @@ flowchart LR
 ```
 ai/research/evaluation-criteria/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
-├─ src/evaluation_criteria/                 코어 → 서비스 features/evaluation_criteria/로 폴더째 옮긴다
+├─ pyproject.toml · uv.lock                 Python 3.12, 서비스를 editable로 설치해 코어를 쓴다. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
+├─ (서비스 ai/service/src/pitch_coach_ai/features/evaluation_criteria/)   코어 (연구 폴더 src/evaluation_criteria/에서 폴더째 옮김, 테스트는 서비스 tests/unit/evaluation_criteria/)
 │   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델(지표 · 연산자 enum) = 계약
 │   ├─ core.py                              analyze_criteria(): LLM → 검사
 │   ├─ config.py · version.py               표시 문장 길이 상한 · 요소 → 지표 연결 · 개수 상한, 기능 버전
@@ -73,7 +73,7 @@ ai/research/evaluation-criteria/
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
 ├─ run.py                                   실험 도구: ai/.env로 LLM을 만들어 data를 돌림 (build_llm은 여기로)
 ├─ data/                                    기준 문장 예시 세트와 정답(values · targets · excluded)
-├─ tests/ · tests/live/                     스키마 · 검사 · 계약(가짜 LLM) / 실제 LLM(live 표시)
+├─ tests/ · tests/live/                     평가 데이터 정답 · 채점 규칙(가짜 LLM) / 실제 LLM(live 표시)
 └─ reports/results/                         평가 결과 JSON
 ```
 파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
@@ -93,7 +93,7 @@ ai/research/evaluation-criteria/
 | 지표 이름은 `architecture.md` 6-3 그대로 쓴다 | 리뷰가 지표 이름으로 Take 결과에서 값을 찾는다 |
 
 # 5. 입력 · 출력 계약
-요청 · 응답의 원본은 `src/evaluation_criteria/schemas.py`의 pydantic 모델이다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절).
+요청 · 응답의 원본은 서비스 `features/evaluation_criteria/schemas.py`의 pydantic 모델이다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절).
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 | 방식 |
@@ -205,7 +205,7 @@ ai/research/evaluation-criteria/
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `evaluation_criteria-<버전>` (첫 판 `evaluation_criteria-1.0`) | `src/evaluation_criteria/version.py` | 요소 · 지표 연결 · 프롬프트 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `evaluation_criteria-<버전>` (첫 판 `evaluation_criteria-1.0`) | 서비스 `features/evaluation_criteria/version.py` | 요소 · 지표 연결 · 프롬프트 · 출력의 뜻이 바뀔 때 |
 | `schema_version` | `1.0` | 응답 `meta` (`architecture.md` 5절) | 필드 이름 변경 · 삭제 · 뜻 변경 |
 
 # 10. 실행 · 테스트
@@ -216,7 +216,8 @@ uv sync
 ```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 스키마 · 목표 검사 · 계약(`examples/`, 가짜 LLM) 통과 |
+| 코어 · 엔드포인트 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/evaluation_criteria` | 스키마 · 목표 검사 · 계약(`examples/`, 가짜 LLM) · 엔드포인트 통과 (107 passed, 2026-10-28) |
+| 연구 폴더 테스트 | `uv run python -m pytest` | 평가 데이터 정답 · 채점 규칙 통과 (61 passed, 2026-10-28) |
 | 실제 LLM 테스트 | `uv run python -m pytest -m live` | 예시 문장이 스키마를 통과 (과금) |
 | 문장 실행 | `uv run python run.py --all` | `results/` (과금) |
 | 평가 | `uv run python run.py --eval --out reports/results/evaluation_criteria_eval.json` | 요소 분류 정확도 · 숫자 목표 추출 정확도 (13절, 과금) |
@@ -224,7 +225,9 @@ uv sync
 - 테스트가 볼 것: 요소마다 · 단위 바꾸기(% · 분당 · 초당), 숫자 없는 기준은 목표 없음, `display` 짝이 틀린 목표 빼기, 값 범위, `script_used` 세 값, 50자 넘는 표시 기준은 스키마 위반(502 `LLM_INVALID_OUTPUT`), 측정할 수 없는 기준만 있을 때.
 
 # 11. 배포
-**어디서 도는가**: 코어 `src/evaluation_criteria/`(`prompts/` · `examples/` 포함)를 AI 서비스의 `features/evaluation_criteria/`로 폴더째 옮기고, 라우터가 `POST /evaluation-criteria/parse`를 연다. 라우터는 요청 마감 시각을 만들고 `structured_llm(LLM 출력 스키마, deadline)`을 넘긴다. LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/evaluation_criteria/`에 있다(연구 폴더 `src/evaluation_criteria/`에서 폴더째 옮겼다). 라우터 `api/evaluation_criteria.py`가 `POST /evaluation-criteria/parse`를 연다. 라우터는 요청 마감 시각(25초)을 만들고 `structured_llm(LLM 출력 스키마, deadline)`을 넘긴다(역할 `evaluation_criteria`, 출력 상한 2,048 = 잰 최대 720 × 2를 1,024 단위로 올린 값의 최소). LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. 테스트는 `ai-service.md` 6-1 2번대로 서비스 `tests/unit/evaluation_criteria/`로 옮겼고, 평가 데이터 · `run.py`를 쓰는 테스트(`test_data.py` · `test_eval.py` · `live/`)는 연구 폴더에 남겼다. 의존성은 pydantic 하나다.
+
+**옮긴 뒤 확인** (2026-10-28): 옮기기 전후 LLM 출력 스키마 · 응답 스키마 · `SYSTEM_PROMPT`가 바이트까지 같다. 이미지(`docker build`)를 키와 함께 띄워 `examples/` 요청 셋을 실제 LLM(`gpt-6-luna`)으로 두 번 보냈다. 여섯 번 모두 200이고 LLM 호출은 요청마다 1번, 응답까지 2.8~7.3초, 출력 토큰 146~291이다. 응답은 `meta.model` 말고 예시 응답과 같았고, 한 번만 기본 예시의 표시 기준 한 줄이 `청중을 자주 보기`(예시는 `청중 자주 보기`)로 달랐다(LLM 출력은 실행마다 조금씩 다르다).
 
 **BE와 함께 바꿀 것**: `X-Request-ID`, 호출 전체 30초, 응답의 `targets` · `script_used` · `excluded` · `values` · `meta`를 `standard_analyses`에 저장, 고친 표시 기준을 다시 분석해 같은 버전으로 저장. 새 필드(`targets` · `meta` · `silence`)는 BE가 모르는 필드로 무시하므로 AI가 먼저 내도 깨지지 않는다.
 

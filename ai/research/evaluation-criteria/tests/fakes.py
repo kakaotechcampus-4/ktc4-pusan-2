@@ -1,8 +1,12 @@
-"""가짜 LLM — analyze_criteria 가 받는 `.invoke` 만 흉내 낸다 (architecture.md 9절 '테스트')."""
+"""가짜 LLM 출력 도우미 — test_eval.py 가 쓴다.
+
+단위 테스트는 서비스(`ai/service/tests/unit/evaluation_criteria/`)로 옮겼다. 이 파일은 그 도우미
+(`fakes.py`) 중 `EMPTY_VALUES` · `analysis` 의 사본이다.
+"""
 
 from typing import Any
 
-from evaluation_criteria.schemas import EvaluationCriteriaAnalysis
+from pitch_coach_ai.features.evaluation_criteria.schemas import EvaluationCriteriaAnalysis
 
 ELEMENTS = [
     "speed",
@@ -33,20 +37,3 @@ def analysis(
             "excluded": excluded or [],
         }
     )
-
-
-class FakeLLM:
-    """정해진 출력을 돌려주고, 받은 메시지를 calls 에 남긴다. error 를 주면 그 예외를 낸다."""
-
-    def __init__(
-        self, output: EvaluationCriteriaAnalysis | None = None, error: Exception | None = None
-    ):
-        self.output = output if output is not None else analysis()
-        self.error = error
-        self.calls: list[list[tuple[str, str]]] = []
-
-    def invoke(self, messages: list[tuple[str, str]]) -> EvaluationCriteriaAnalysis:
-        self.calls.append(messages)
-        if self.error is not None:
-            raise self.error
-        return self.output

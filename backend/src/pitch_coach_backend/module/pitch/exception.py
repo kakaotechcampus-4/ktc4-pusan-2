@@ -19,6 +19,15 @@ class InvalidPresentation(AppException):
     code = "INVALID_PRESENTATION"
     message = "40MB 이하의 PDF 만 올릴 수 있습니다. 암호가 걸린 PDF 는 풀어서 올려 주세요."
 
+class PresentationTooComplex(AppException):
+    code = "PRESENTATION_TOO_COMPLEX"
+    message = "쪽이나 구성 요소가 너무 많은 PDF 입니다. 나눠서 올려 주세요."
+
+class PresentationBusy(AppException):
+    status_code = 503
+    code = "PRESENTATION_BUSY"
+    message = "발표자료를 올리는 사람이 많습니다. 잠시 후 다시 올려 주세요."
+
 class NonExistentEvaluation(AppException):
     status_code = 404
     code = "EVALUATION_NOT_FOUND"
@@ -35,6 +44,17 @@ class StandardInputRejected(AppException):
     status_code = 422
     code = "STANDARD_INPUT_REJECTED"
     message = "평가 기준 입력을 확인해 주세요."
+
+
+class StandardParseInProgress(ConflictException):
+    code = "STANDARD_PARSE_IN_PROGRESS"
+    message = "평가 기준을 나누고 있습니다. 끝난 뒤 다시 시도해 주세요."
+
+
+class StandardParseBusy(AppException):
+    status_code = 503
+    code = "STANDARD_PARSE_BUSY"
+    message = "요청이 많아 평가 기준을 나누지 못했습니다. 잠시 후 다시 시도해 주세요."
 
 
 class InvalidScript(AppException):

@@ -1,0 +1,67 @@
+[
+  {
+    "evaluator": "volume",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "criteria_version": "volume-1.1+19f685ae6d67",
+    "measurable": true,
+    "area": "VOLUME",
+    "state": "LOW",
+    "metrics": {
+      "level_db": -38.0,
+      "voice_diff_db": -8.5
+    },
+    "tally": [
+      {
+        "t_ms": 40000,
+        "values": {
+          "voiced_ms": 710.0,
+          "voiced_energy": 0.10029016566821554,
+          "low_ms": 710.0,
+          "level_voiced_ms": 710.0,
+          "base_db_ms": -20945.0,
+          "audio_live_ms": 1000.0,
+          "total_ms": 1000.0
+        }
+      }
+    ],
+    "issues": [
+      {
+        "severity": 0.6389,
+        "confidence": 1.0,
+        "persistence_sec": 3.0,
+        "threshold": -6.0,
+        "bad": -15.0,
+        "evidence": {
+          "voice_diff_db": -8.5
+        },
+        "actionable": true,
+        "issue_type": "VOLUME_LOW",
+        "area": "VOLUME"
+      }
+    ]
+  },
+  {
+    "evaluator": "volume",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "criteria_version": "volume-1.1+19f685ae6d67",
+    "measurable": true,
+    "area": "PAUSE",
+    "state": "NORMAL",
+    "metrics": {
+      "silence_ms": 40
+    },
+    "tally": [
+      {
+        "t_ms": 40000,
+        "values": {
+          "long_silence_count": 0.0,
+          "audio_live_ms": 1000.0,
+          "total_ms": 1000.0
+        }
+      }
+    ],
+    "issues": []
+  }
+]

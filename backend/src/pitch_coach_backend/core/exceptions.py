@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from pitch_coach_backend.core.logging import sqlstate
+from pitch_coach_backend.core.validation import MAX_JSON_DEPTH
 
 logger = logging.getLogger(__name__)
 
@@ -110,25 +111,48 @@ async def app_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return _error_response(exc.status_code, exc.code, exc.message, exc.detail)
 
 
-def _finite_only(value: Any) -> Any:
-    """NaN · Infinity 를 문자열로 바꾼다. JSON 응답은 이 값을 담지 못한다."""
+def _json_safe_values(value: Any) -> Any:
+    """검증 오류의 비유한 수·잘못된 유니코드도 JSON으로 응답할 수 있게 한다."""
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
+    if isinstance(value, str):
+        return value.encode("utf-8", errors="backslashreplace").decode("utf-8")
     if isinstance(value, dict):
-        return {key: _finite_only(item) for key, item in value.items()}
+        return {_json_safe_values(key): _json_safe_values(item) for key, item in value.items()}
     if isinstance(value, list):
-        return [_finite_only(item) for item in value]
+        return [_json_safe_values(item) for item in value]
     return value
+
+
+def _deeper_than(value: Any, limit: int) -> bool:
+    """객체 · 배열이 `limit` 단계보다 깊게 겹쳤나. 재귀 한도에 걸리지 않게 반복으로 센다."""
+    stack = [(value, 0)]
+    while stack:
+        current, depth = stack.pop()
+        if isinstance(current, dict | list):
+            if depth >= limit:
+                return True
+            items = current.values() if isinstance(current, dict) else current
+            stack.extend((item, depth + 1) for item in items)
+    return False
+
+
+def _without_deep_input(error: dict[str, Any]) -> dict[str, Any]:
+    # 깊이 상한(`MAX_JSON_DEPTH`)으로 거절한 값은 다시 JSON 으로 바꾸다 재귀 한도에 걸린다
+    if _deeper_than(error.get("input"), MAX_JSON_DEPTH):
+        return {key: value for key, value in error.items() if key != "input"}
+    return error
 
 
 async def validation_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
-    # 받은 값이 detail 의 input 으로 그대로 돌아간다. NaN 을 보냈으면 422 를 만들다 500 이 된다
+    # 검증에서 거절한 값이 detail에 다시 들어가도 응답 직렬화가 실패하지 않게 한다.
+    errors = [_without_deep_input(error) for error in exc.errors()]
     return _error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         "VALIDATION_ERROR",
         "요청 형식이 올바르지 않습니다.",
-        _finite_only(jsonable_encoder(exc.errors())),
+        _json_safe_values(jsonable_encoder(errors)),
     )
 
 

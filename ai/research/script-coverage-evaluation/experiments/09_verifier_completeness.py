@@ -17,7 +17,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-import script_coverage.stt_evaluation.core as stt_core
+import pitch_coach_ai.features.script_coverage.stt_evaluation.core as stt_core
 from coverage_lab.cache import SqliteLLMCache
 from coverage_lab.datasets import load_take, take_files
 from coverage_lab.llm import load_settings

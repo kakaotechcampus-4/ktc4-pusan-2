@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from coach.config import load_config
 from coach_lab.paths import SCENARIOS_DIR
 from coach_lab.replay import load_config_file
 from coach_lab.simulator import Presenter, Scenario, check_expect, run
+from pitch_coach_ai.features.coach.config import load_config
 
 SCENARIOS = sorted(SCENARIOS_DIR.glob("*.json"))
 
@@ -153,9 +153,10 @@ def test_expect_no_segments_ignores_unreliable_segments():
 
 
 def test_expect_gave_up_include():
-    ok = {"gave_up_include": [{"issue_type": "GAZE_ON_SCRIPT", "slide_number": 2}]}
+    # 실제 시선 모듈은 둘째 개입을 GAZE_LOW_EYE_CONTACT 로 하고 그것을 포기한다
+    ok = {"gave_up_include": [{"issue_type": "GAZE_LOW_EYE_CONTACT", "slide_number": 2}]}
     assert check_expect(_with_expect("03_gaze_gave_up", ok)) == []
-    wrong = {"gave_up_include": [{"issue_type": "GAZE_ON_SCRIPT", "slide_number": 3}]}
+    wrong = {"gave_up_include": [{"issue_type": "GAZE_LOW_EYE_CONTACT", "slide_number": 3}]}
     assert len(check_expect(_with_expect("03_gaze_gave_up", wrong))) == 1
     assert len(check_expect(_with_expect("02_gaze_effective", ok))) == 1
 
@@ -203,3 +204,10 @@ def test_config_file_is_read_outside_the_core(tmp_path: Path):
     from_file = load_config_file(path)
     assert from_file.policy.cooldown_ms == 45_000
     assert from_file.config_hash() == load_config(policy={"cooldown_ms": 45_000}).config_hash()
+
+
+def test_segment_iou_merges_overlapping_claims_first():
+    from coach_lab.evaluate import _merge
+
+    assert _merge([(0, 5), (3, 8), (10, 12)]) == [(0, 8), (10, 12)]
+    assert _merge([(10, 12), (0, 5)]) == [(0, 5), (10, 12)]

@@ -47,14 +47,6 @@ it('서버가 수정 대본을 반환하고 저장한 뒤 새 서버 id로 연�
   expect(toPracticeCombo(store().draft, store().chosen)?.scriptVersionId).toBe('sv2');
 });
 
-it('같은 장수의 PDF를 교체해도 확인 전에는 시작할 수 없다', () => {
-  store().replaceSlides(1, { ...uploaded, presentationVersionId: 'pv2' });
-  expect(store().draft.scripts[0]?.saved).toBe(false);
-  expect(toPracticeCombo(store().draft, store().chosen)).toBeNull();
-  store().saveMapping(1);
-  expect(toPracticeCombo(store().draft, store().chosen)?.presentationVersionId).toBe('pv2');
-});
-
 it('장수가 같아도 연결하지 않은 슬라이드 버전으로 시작하지 않는다', () => {
   store().addSlideVersion();
   store().attachSlides({ ...uploaded, presentationVersionId: 'pv2' });

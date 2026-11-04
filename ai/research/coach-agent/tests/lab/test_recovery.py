@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from coach import finalize
 from coach_lab.judges import lab_judges
 from coach_lab.paths import SCENARIOS_DIR
 from coach_lab.recovery_eval import DROPS, compare, full_replay, offline
 from coach_lab.simulator import Scenario, run
+from pitch_coach_ai.features.coach import finalize
 
 SCENARIO = SCENARIOS_DIR / "02_gaze_effective.json"
 

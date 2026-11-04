@@ -11,28 +11,21 @@ export interface StandardTextRequest {
 
 export interface StandardTextResponse {
   pitch_id: string;
+  version: number;
   standards: { standard: string }[];
   /** 기준에 넣지 않은 부분 — AI 가 측정할 수 없다고 본 항목을 쉼표로 이은 것. 없으면 null */
   except_standard: string | null;
 }
 
 /**
- * 사용자가 고친 평가기준 저장. 계약은 "고친 표시 기준을 저장하면 서버가 그 글로 한 번 더 분석해 같은 버전으로
- * 저장한다"이고, **이 호출의 경로 · 모양은 아직 정하지 않았습니다** (`evaluation-criteria.md` 304행).
- * 지금은 FE 가 제안한 `POST /api/pitches/{pitch_id}/standards` 입니다. 순서대로(`position`) 문장만 보냅니다.
+ * 사용자가 고친 평가기준 저장. 서버는 다시 분석해 늘 새 버전으로 저장합니다 (#532).
+ * `POST /api/pitches/{pitch_id}/standards`에 화면 순서대로 문장만 보냅니다.
  */
 export interface StandardsSaveRequest {
   standards: { standard: string }[];
 }
 
-export interface StandardsSaved {
-  /**
-   * 다시 분석해 저장한 표시 기준. 보낸 문장과 다를 수 있어 화면은 이것으로 다시 그립니다.
-   * CLAUDE.md 6번(`?` 대신 `| null`)의 예외입니다 — 응답 모양이 아직 정해지지 않아(304행) 서버가 주지 않을
-   * 수 있습니다. 없으면 보낸 목록을 씁니다
-   */
-  standards?: { standard: string }[];
-}
+export type StandardsSaved = StandardTextResponse;
 
 /**
  * GET /api/pitches/{pitch_id}/evaluations/{evaluation_version} — 저장된 평가기준 한 버전.

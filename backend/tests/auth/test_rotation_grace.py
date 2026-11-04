@@ -6,7 +6,6 @@ import uuid
 from typing import Any
 
 import pytest
-import redis
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
@@ -146,10 +145,10 @@ def test_retries_arriving_together_after_a_rotation_all_succeed(
 
 
 def test_just_rotated_token_is_rotated_again(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """회전 응답을 받기 전에 새로고침한 브라우저가 옛 토큰을 다시 보낸다. 로그아웃시키지 않는다."""
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     lost = service.rotate(db_session, issued.refresh_token)  # 브라우저가 버린 응답
 
     retried = service.rotate(db_session, issued.refresh_token)
@@ -164,10 +163,10 @@ def test_just_rotated_token_is_rotated_again(
 
 
 def test_retry_can_repeat_within_the_grace_window(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """새로고침을 연달아 해도 매번 이어 준다."""
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     service.rotate(db_session, issued.refresh_token)
     service.rotate(db_session, issued.refresh_token)
 
@@ -177,10 +176,10 @@ def test_retry_can_repeat_within_the_grace_window(
 
 
 def test_token_pushed_out_by_a_retry_counts_as_reuse(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """재시도로 밀려난 토큰이 나중에 오면 그 응답을 누군가 받았다는 뜻이다. 탈취로 본다."""
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     pushed_out = service.rotate(db_session, issued.refresh_token)
     service.rotate(db_session, issued.refresh_token)
 
@@ -191,10 +190,10 @@ def test_token_pushed_out_by_a_retry_counts_as_reuse(
 
 
 def test_thief_in_the_grace_window_is_caught_when_the_user_refreshes(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """사용자가 회전한 직후 탈취한 쪽이 옛 토큰을 쓴다. 사용자가 다시 갱신할 때 둘 다 끊긴다."""
-    stolen = login(db_session, redis_client)
+    stolen = login(db_session)
     user = service.rotate(db_session, stolen.refresh_token)
     thief = service.rotate(db_session, stolen.refresh_token)
 
@@ -207,10 +206,10 @@ def test_thief_in_the_grace_window_is_caught_when_the_user_refreshes(
 
 
 def test_thief_in_the_grace_window_keeps_the_session_if_the_user_never_returns(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """한계: 밀려난 사용자가 다시 갱신하지 않으면 탈취한 쪽은 계속 갱신할 수 있다."""
-    stolen = login(db_session, redis_client)
+    stolen = login(db_session)
     service.rotate(db_session, stolen.refresh_token)
     thief = service.rotate(db_session, stolen.refresh_token)
     _past_grace(db_session, stolen.refresh_token)
@@ -223,10 +222,10 @@ def test_thief_in_the_grace_window_keeps_the_session_if_the_user_never_returns(
 
 
 def test_no_retry_once_the_new_token_was_used(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """이어받은 토큰이 이미 쓰였으면 응답을 받은 쪽이 있다. 옛 토큰은 탈취본이다."""
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     current = service.rotate(db_session, issued.refresh_token)
     service.rotate(db_session, current.refresh_token)
 
@@ -236,10 +235,8 @@ def test_no_retry_once_the_new_token_was_used(
     assert _alive(db_session, issued.device_id) == []
 
 
-def test_no_retry_after_logout(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
-) -> None:
-    issued = login(db_session, redis_client)
+def test_no_retry_after_logout(db_session: Session, fake_google: dict[str, Any]) -> None:
+    issued = login(db_session)
     current = service.rotate(db_session, issued.refresh_token)
     service.logout(db_session, current.refresh_token)
 

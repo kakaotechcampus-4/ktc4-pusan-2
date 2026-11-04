@@ -27,24 +27,28 @@ ParseResponse {status, slides[], terms, meta}
 
 ## 구조
 
+코어(`script_parser`)와 단위 테스트는 AI 서비스로 옮겼습니다: 코어 `ai/service/src/pitch_coach_ai/features/script_parser/`, 테스트 `ai/service/tests/unit/script_parser/`. 원본은 서비스 한 곳이고, 이 폴더는 서비스를 editable로 설치해(`pyproject.toml`의 `[tool.uv.sources]`) `run.py` · 실제 LLM 테스트가 `pitch_coach_ai.features.script_parser`를 import합니다. 코어는 서비스에서 고칩니다. 아래 표의 '서비스 `features/script_parser/…`'는 그 폴더의 파일입니다.
+
 | 위치 | 내용 |
 |---|---|
-| `src/script_parser/schemas.py` | `ParseRequest` · `ParseResponse` (요청 · 응답 계약), `LLMOutput` (LLM Structured Output 스키마) |
-| `src/script_parser/prompts/parse.py` | `SYSTEM_PROMPT` — 제목 줄 · keywords · terms 고르기 규칙 |
-| `src/script_parser/splitter.py` | `find_slides()` — 줄 맨 앞 구분자(`[N]` · `[슬라이드 N]` · `슬라이드 N:`)로 머리글 · 장 후보를 나눔 (LLM 없음) |
-| `src/script_parser/cleaner.py` | `clean_script()`, `count_chars()`, `find_highlights()` — LLM 없이 도는 순수 함수 |
-| `src/script_parser/core.py` | `parse_script(request, llm)` — 파이프라인, `EmptyScriptError`(서비스에서 422 `EMPTY_SCRIPT`) |
-| `src/script_parser/config.py` | 기준 말 속도 `BASE_CPM`(잠정 264), 키워드 상한(장마다 7 · fail 15), 용어 상한 50 |
-| `src/script_parser/version.py` | `SCHEMA_VERSION` · `FEATURE_VERSION` |
-| `src/script_parser/examples/` | 요청 · 응답 예시 `success` · `no_target` · `fail` (`request.json` · 가짜 LLM 출력 `llm_output.json` · `response.json`) |
+| 서비스 `features/script_parser/schemas.py` | `ParseRequest` · `ParseResponse` (요청 · 응답 계약), `LLMOutput` (LLM Structured Output 스키마) |
+| 서비스 `features/script_parser/prompts/parse.py` | `SYSTEM_PROMPT` — 제목 줄 · keywords · terms 고르기 규칙 |
+| 서비스 `features/script_parser/splitter.py` | `find_slides()` — 줄 맨 앞 구분자(`[N]` · `[슬라이드 N]` · `슬라이드 N:`)로 머리글 · 장 후보를 나눔 (LLM 없음) |
+| 서비스 `features/script_parser/cleaner.py` | `clean_script()`, `count_chars()`, `find_highlights()` — LLM 없이 도는 순수 함수 |
+| 서비스 `features/script_parser/core.py` | `parse_script(request, llm)` — 파이프라인, `EmptyScriptError`(서비스에서 422 `EMPTY_SCRIPT`) |
+| 서비스 `features/script_parser/config.py` | 기준 말 속도 `BASE_CPM`(잠정 264), 키워드 상한(장마다 7 · fail 15), 용어 상한 50 |
+| 서비스 `features/script_parser/version.py` | `SCHEMA_VERSION` · `FEATURE_VERSION` |
+| 서비스 `features/script_parser/examples/` | 요청 · 응답 예시 `success` · `no_target` · `fail` (`request.json` · 가짜 LLM 출력 `llm_output.json` · `response.json`) |
 | `run.py` | `build_llm()` (`ai/.env`로 LLM 생성), `data/scripts/*.txt` 실행 → `results/<이름>.json`, `--eval`로 라벨과 비교 → `reports/results/` |
-| `tests/test_cleaner.py` | 정제 · 글자 수 · 하이라이트 테스트 (LLM 호출 없음) |
-| `tests/test_splitter.py` | 구분자 · 번호 검사 테스트 (LLM 호출 없음) |
-| `tests/test_core.py` | `parse_script` 테스트 (가짜 LLM, 과금 없음) |
-| `tests/test_examples.py` | 계약 테스트: `examples/`의 요청을 돌린 응답이 `response.json`과 같은지, 예시가 계약(장 번호 · fail 1장 · 예상 시간 합 · 하이라이트 위치)을 지키는지 |
+| 서비스 `tests/unit/script_parser/test_cleaner.py` | 정제 · 글자 수 · 하이라이트 테스트 (LLM 호출 없음) |
+| 서비스 `tests/unit/script_parser/test_splitter.py` | 구분자 · 번호 검사 테스트 (LLM 호출 없음) |
+| 서비스 `tests/unit/script_parser/test_core.py` | `parse_script` 테스트 (가짜 LLM, 과금 없음) |
+| 서비스 `tests/unit/script_parser/test_core_boundary.py` | 코어가 상대 import와 표준 계산 모듈 · pydantic만 쓰고 파일 · 출력을 다루지 않음 |
+| 서비스 `tests/unit/script_parser/test_examples.py` | 계약 테스트: `examples/`의 요청을 돌린 응답이 `response.json`과 같은지, 예시가 계약(장 번호 · fail 1장 · 예상 시간 합 · 하이라이트 위치)을 지키는지 |
 | `data/scripts/` | 평가 대본 15개. `script1`–`5`는 원래 대본(`script1`만 구분자 형식, `2`–`5`는 형식이 다른 `fail` 경우), `script6`–`15`는 평가 경우마다 새로 쓴 대본으로, 분야를 나눴다: `[N]` 수학 · `[슬라이드 N]` 화학 · 머리글 제목만 법률 · 머리글 본문 기계공학 · 일부만 구분자 생명과학 · 마크다운 컴퓨터공학 · 번호 겹침 물리 · 구분자 없음 금융공학 · 2,000자대(2,052자) 전자공학 · 4,000자대(4,198자) 토목공학 |
 | `data/labels/` | 대본마다 정답 라벨: `status`, 장마다 첫 줄 · 마지막 줄, 남으면 안 되는 제목 줄, 장별 실제 시간(`actual_slide_ms`, 아직 없음) |
-| `tests/live/` | 실제 LLM 테스트 (`live` 표시, 과금) |
+| `tests/test_run.py` | 연구 폴더 준비 확인 (LLM 호출 없음): `run.py`가 서비스 코어를 import하는지, `data/scripts/`와 `data/labels/`의 이름이 짝을 이루는지. 이 폴더의 기본 실행(`pytest`)이 고르는 시험입니다 |
+| `tests/live/` | 실제 LLM 테스트 (`live` 표시, 과금). `run.build_llm`을 써서 연구 폴더에 남겼습니다 |
 | `reports/results/` | 평가 결과 JSON (`run.py --eval`) |
 | `results/` | 실행 결과 (gitignore) |
 
@@ -61,7 +65,8 @@ uv sync
 경로가 코드에 고정되어 있어서 어느 디렉터리에서 실행하든 같은 파일을 읽습니다. 키나 모델이 비어 있으면 바로 에러가 납니다.
 
 ```bash
-uv run python -m pytest                           # 테스트 (가짜 LLM, 과금 없음)
+# 코어 단위 테스트는 서비스에서: cd ai/service && uv run python -m pytest tests/unit/script_parser  (가짜 LLM, 과금 없음)
+uv run python -m pytest                           # 연구 폴더 준비 확인 (LLM 호출 없음, 과금 없음)
 uv run python -m pytest -m live                   # 실제 LLM 테스트 (과금)
 uv run python run.py --file script3.txt           # 대본 하나 (과금)
 uv run python run.py --all                        # 전체 (순차 호출이라 시간이 걸림, 과금)
@@ -75,8 +80,8 @@ Windows에서는 실행 파일이 막힐 수 있어 `uv run python -m …`으로
 
 ```python
 from run import build_llm
-from script_parser import parse_script
-from script_parser.schemas import ParseRequest
+from pitch_coach_ai.features.script_parser import parse_script
+from pitch_coach_ai.features.script_parser.schemas import ParseRequest
 
 llm = build_llm()                    # 여러 대본을 돌릴 때는 재사용
 response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
@@ -94,7 +99,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
      "highlights": [{"start": 7, "end": 9}], "expected_ms": 160000}
   ],
   "terms": ["..."],
-  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.0", "model": null}
+  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": null}
 }
 ```
 전체 계약 · 예시는 설계 문서 5절입니다. `meta.model`은 서비스 라우터가 채웁니다.

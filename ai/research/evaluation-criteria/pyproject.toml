@@ -1,17 +1,15 @@
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
 [project]
-# import 패키지 evaluation_criteria 는 나중에 ai/service 의 features/evaluation_criteria/ 로 폴더째 옮긴다
+# 코어는 AI 서비스(ai/service)의 pitch_coach_ai.features.evaluation_criteria 에 있고, 서비스를 editable 로
+# 설치해 그대로 import 한다(코어 원본은 서비스 한 곳). 코어를 고칠 때는 서비스에서 고친다.
+# 이 폴더에는 실험 도구(run.py) · 평가 데이터 · 보고만 남아 설치할 패키지가 없다
 name = "evaluation-criteria"
 version = "1.0.0"
 description = "자연어 발표 평가 기준에서 측정 가능 요소 · 기준 값 추출 (research)"
 # service 가 쓸 Python 버전(3.12)에서 검증한다
 requires-python = ">=3.12"
 dependencies = [
-    # ── 코어(evaluation_criteria)가 쓰는 것은 pydantic 하나뿐이다. LLM 은 인자로 받는다
-    "pydantic>=2",
+    # ── 코어: 서비스 패키지가 코어 의존성(pydantic)을 함께 가져온다. 판은 서비스 uv.lock 과 같게 맞춘다
+    "pitch-coach-ai",
     # ── research 전용 (run.py 의 build_llm)
     "langchain-openai",
     "python-dotenv",
@@ -20,11 +18,12 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.uv]
+# 이 폴더 자체는 설치하지 않는다 (run.py · tests 는 아래 pythonpath 로 찾는다)
+package = false
 
-[tool.setuptools.package-data]
-evaluation_criteria = ["examples/*.json"]
+[tool.uv.sources]
+pitch-coach-ai = { path = "../../service", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

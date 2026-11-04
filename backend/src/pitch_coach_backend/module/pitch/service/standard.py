@@ -1,11 +1,14 @@
 """평가 기준 저장 · 나누기 · 조회. Take 에 고정한 버전의 기준도 여기서 읽는다."""
 
-import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
+from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.module.pitch.adapter.standard_parser import parse_standard_text
 from pitch_coach_backend.module.pitch.dto import (
     StandardAIResponseDTO,
@@ -14,18 +17,25 @@ from pitch_coach_backend.module.pitch.dto import (
     StandardTextResponseDTO,
 )
 from pitch_coach_backend.module.pitch.entity import StandardAnalyses, Standards
-from pitch_coach_backend.module.pitch.exception import NonExistentEvaluation, NonExistentPitch
+from pitch_coach_backend.module.pitch.exception import (
+    NonExistentEvaluation,
+    NonExistentPitch,
+    StandardParseBusy,
+    StandardParseInProgress,
+)
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 
+_parsing_users: set[uuid.UUID] = set()
 
-def add_pitch_standard_service(
-    db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO
+
+async def add_pitch_standard_service(
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO
 ) -> StandardTextResponseDTO:
-    return _analyze_and_save(db, pitch_id, standard_text_dto.standard_text)
+    return await _analyze_and_save(db, user_id, pitch_id, standard_text_dto.standard_text)
 
 
-def save_pitch_standards_service(
-    db: Session, pitch_id: uuid.UUID, standards_dto: StandardsSaveRequestDTO
+async def save_pitch_standards_service(
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID, standards_dto: StandardsSaveRequestDTO
 ) -> StandardTextResponseDTO:
     """사용자가 고친 표시 기준을 다시 분석해 새 버전으로 저장한다 (evaluation-criteria.md 12절).
 
@@ -33,14 +43,37 @@ def save_pitch_standards_service(
     문장을 저장한다. Take 가 고정한 버전을 바꾸지 않도록 늘 새 버전이다.
     """
     text = "\n".join(item.standard for item in standards_dto.standards)
-    return _analyze_and_save(db, pitch_id, text)
+    return await _analyze_and_save(db, user_id, pitch_id, text)
 
 
-def _analyze_and_save(db: Session, pitch_id: uuid.UUID, text: str) -> StandardTextResponseDTO:
-    # 인가 조회가 빌린 커넥션부터 반환한다. AI 응답을 기다릴 때 DB 트랜잭션을 두지 않는다.
-    db.commit()
-    standards_result = divide_standard_text(text)
+@asynccontextmanager
+async def _parse_slot(user_id: uuid.UUID) -> AsyncIterator[None]:
+    if user_id in _parsing_users:
+        raise StandardParseInProgress()
+    slots = ai_slots.standard()
+    if slots.locked():
+        raise StandardParseBusy()
+    _parsing_users.add(user_id)
+    try:
+        async with slots:
+            yield
+    finally:
+        _parsing_users.discard(user_id)
 
+
+async def _analyze_and_save(
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID, text: str
+) -> StandardTextResponseDTO:
+    async with _parse_slot(user_id):
+        # 인가 조회가 빌린 커넥션부터 반환한다. AI 응답을 기다릴 때 DB 트랜잭션을 두지 않는다.
+        await run_in_threadpool(db.commit)
+        standards_result = await parse_standard_text(text)
+    return await run_in_threadpool(_save, db, pitch_id, standards_result)
+
+
+def _save(
+    db: Session, pitch_id: uuid.UUID, standards_result: StandardAIResponseDTO
+) -> StandardTextResponseDTO:
     pitch_repository = PitchRepository(db)
     if not pitch_repository.lock_for_new_version(pitch_id):
         raise NonExistentPitch()
@@ -72,11 +105,6 @@ def _analyze_and_save(db: Session, pitch_id: uuid.UUID, text: str) -> StandardTe
         ],
         except_standard=", ".join(standards_result.excluded or []) or None,
     )
-
-
-def divide_standard_text(text: str) -> StandardAIResponseDTO:
-    """동기 HTTP 작업 스레드에서 전체 시간 제한이 있는 AI 어댑터를 부른다."""
-    return asyncio.run(parse_standard_text(text))
 
 
 def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):

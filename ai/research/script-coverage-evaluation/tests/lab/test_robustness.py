@@ -19,15 +19,14 @@ from coverage_lab.store import (
     save_rubric,
 )
 from coverage_lab.stt_stability import check_baseline, repeat_runs
-from script_coverage.core import CoverageError, ScriptLLMs, TakeLLMs
-from script_coverage.script_analysis.schemas import SlideSemanticAnalysis
-from script_coverage.script_analysis.semantic import semantic_config_hash
-from script_coverage.shared.text import normalize_script
-from script_coverage.stt_evaluation.schemas import SlideSTT, Take
+from pitch_coach_ai.features.script_coverage.core import CoverageError, ScriptLLMs, TakeLLMs
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import SlideSemanticAnalysis
+from pitch_coach_ai.features.script_coverage.script_analysis.semantic import semantic_config_hash
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import SlideSTT, Take
+from tests.lab.fakes import DeckAwareLLM, KeepFirstVerifier, SaidAllLLM
+from tests.lab.slides import SLIDES
 from tests.lab.test_store import _evaluation, _item, _rubric
-from tests.unit.fakes import DeckAwareLLM, KeepFirstVerifier
-from tests.unit.shared.slides import SLIDES
-from tests.unit.test_take_core import SaidAllLLM
 
 MODEL = "m"
 SETTINGS = Settings(base_url="http://127.0.0.1:9/v1", api_key="dummy", model=MODEL)

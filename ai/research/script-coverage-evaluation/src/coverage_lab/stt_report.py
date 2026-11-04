@@ -8,12 +8,15 @@ from collections import Counter
 import pandas as pd
 from IPython.display import display
 
-from script_coverage.shared.text import normalize_script
-from script_coverage.stt_evaluation.align import align_sentences, positioned_tokens
-from script_coverage.stt_evaluation.merge import CONFLICT_TEXT
-from script_coverage.stt_evaluation.normalize import normalize_stt
-from script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
-from script_coverage.stt_evaluation.scoring import take_scores
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.stt_evaluation.align import (
+    align_sentences,
+    positioned_tokens,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.merge import CONFLICT_TEXT
+from pitch_coach_ai.features.script_coverage.stt_evaluation.normalize import normalize_stt
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
+from pitch_coach_ai.features.script_coverage.stt_evaluation.scoring import take_scores
 
 from .store import load_rubric, load_similar_items
 

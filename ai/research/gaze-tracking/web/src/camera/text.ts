@@ -1,7 +1,6 @@
 /** Korean wording for the camera view (and the demo page). The engine stays English; the screen speaks Korean. */
-import type { ConditionIssue } from '../engine/condition';
-import type { PreconditionReason } from '../engine/preconditions';
-import type { GazeDirection, State } from '../engine/types';
+import type { ConditionIssue, PreconditionReason } from '../engine';
+import type { GazeDirection, State } from '../engine/contract';
 
 export const CHECK_NAME: Record<Exclude<PreconditionReason, 'OK'>, string> = {
   NO_FACE: '얼굴 인식',

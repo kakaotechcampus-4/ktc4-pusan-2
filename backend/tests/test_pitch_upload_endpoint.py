@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.pitch.adapter import presentation_file
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
@@ -249,4 +250,26 @@ def test_file_over_the_size_limit_is_400(
 
     assert response.status_code == 400
     assert response.json()["code"] == "INVALID_PRESENTATION"
+    assert _presentation_count(db_session, pitch_id) == 0
+
+
+def test_pdf_over_the_object_limit_is_400_without_reading_pages(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    pdf: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pypdf import PdfReader
+
+    pages = MagicMock(side_effect=AssertionError("pages read"))
+    monkeypatch.setattr(PdfReader, "pages", property(pages))
+    monkeypatch.setattr(presentation_file, "MAX_PDF_OBJECTS", 1)
+
+    response = _upload(client, pitch_id, pdf, auth_headers)
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "PRESENTATION_TOO_COMPLEX"
+    pages.assert_not_called()
     assert _presentation_count(db_session, pitch_id) == 0

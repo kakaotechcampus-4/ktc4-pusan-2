@@ -7,8 +7,9 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError, StatementError
 
+from pitch_coach_backend.core.database import engine
 from pitch_coach_backend.core.logging import APP_LOGGER, configure_logging, sqlstate
 
 
@@ -107,3 +108,54 @@ class _DriverError(Exception):
 )
 def test_sqlstate_reads_only_the_five_char_driver_code(error, expected):
     assert sqlstate(error) == expected
+
+
+class _Violation(Exception):
+    """제약 위반처럼 본문에 행 값이 붙은 드라이버 예외."""
+
+    sqlstate = "23514"
+
+
+def _raise_db_error() -> None:
+    try:
+        raise _Violation('Failing row contains (secret@example.com, "대본 원문")')
+    except _Violation as e:
+        raise IntegrityError("INSERT INTO users ...", {"email": "x"}, e) from e
+
+
+def test_db_error_logs_keep_type_sqlstate_and_frames_but_not_the_row(app_logger: logging.Logger):
+    """DB 오류 본문(`Failing row contains`)에 사용자 값이 붙는다. 자식 로거로 남겨도 뺀다."""
+    configure_logging("INFO")
+    stream = captured(app_logger)
+
+    try:
+        _raise_db_error()
+    except IntegrityError:
+        logging.getLogger(f"{APP_LOGGER}.module.take").exception("Take 저장 실패 take=%s", 7)
+
+    output = stream.getvalue()
+    assert "Take 저장 실패 take=7" in output
+    assert "secret@example.com" not in output
+    assert "대본 원문" not in output
+    assert "IntegrityError <- _Violation (DB 오류 본문 생략) sqlstate=23514" in output
+    assert "_raise_db_error" in output
+
+
+def test_other_error_logs_keep_the_traceback(app_logger: logging.Logger):
+    configure_logging("INFO")
+    stream = captured(app_logger)
+
+    try:
+        raise RuntimeError("AI 응답이 이상하다")
+    except RuntimeError:
+        logging.getLogger(f"{APP_LOGGER}.module").exception("실패")
+
+    assert "RuntimeError: AI 응답이 이상하다" in stream.getvalue()
+
+
+def test_engine_hides_bind_parameters():
+    """예외 문자열에 바인드 값을 붙이지 않는다."""
+    params = {"email": "secret@example.com"}
+    error = StatementError("오류", "SELECT :email", params, None, engine.hide_parameters)
+
+    assert "secret@example.com" not in str(error)

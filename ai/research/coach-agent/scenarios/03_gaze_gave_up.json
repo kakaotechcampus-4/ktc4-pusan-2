@@ -60,7 +60,7 @@
     ],
     "gave_up_include": [
       {
-        "issue_type": "GAZE_ON_SCRIPT",
+        "issue_type": "GAZE_LOW_EYE_CONTACT",
         "slide_number": 2
       }
     ],

@@ -7,6 +7,7 @@ import {
   formatEstimate,
   formatTimeLimit,
   infoReady,
+  titleFromFile,
   toPracticeCombo,
   type PitchDraft,
 } from './draft';
@@ -94,5 +95,19 @@ describe('허용오차를 모를 때 (수정 화면)', () => {
   it('정보 줄과 허용 범위는 모른다고 적는다', () => {
     expect(formatTimeLimit(300, null, 60)).toBe('5분 (허용오차 확인 필요)');
     expect(formatAllowedRange(300, null, 60)).toBe('허용오차를 정해 주세요');
+  });
+});
+
+describe('titleFromFile', () => {
+  it('확장자를 떼고 _ · - 를 띄어 쓴다', () => {
+    expect(titleFromFile('캡스톤_중간발표--최종.PDF')).toBe('캡스톤 중간발표 최종');
+  });
+
+  it('50자에서 자른다', () => {
+    expect(titleFromFile(`${'가'.repeat(60)}.pdf`)).toHaveLength(50);
+  });
+
+  it('남는 게 없으면 기본 제목을 쓴다', () => {
+    expect(titleFromFile('.pdf')).toBe('새 발표');
   });
 });

@@ -434,3 +434,22 @@ def test_client_build_error_is_llm_unavailable_and_logs_only_the_class(
         structured_llm(Answer, app_settings=_full_settings())
     assert "llm_build_failed" in caplog.text and "ValueError" in caplog.text
     assert "secret-in-message" not in caplog.text
+
+
+def test_feature_role_uses_its_own_call_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class SpyChatOpenAI:
+        def __init__(self, **kwargs: Any) -> None:
+            seen.update(kwargs)
+
+        def with_structured_output(self, schema: type[BaseModel]) -> FakeRunnable:
+            return FakeRunnable(ok())
+
+    monkeypatch.setattr(llm_module, "ChatOpenAI", SpyChatOpenAI)
+    s = _full_settings(script_coverage_llm_timeout_seconds=20)
+    llm = structured_llm(Answer, "script_coverage.unit", app_settings=s)
+    assert llm._timeout == 20  # 호출 전체를 끊는 시간
+    assert seen["timeout"] == 20  # 연결 · 읽기 한 번마다
+    assert seen["max_completion_tokens"] == 5120  # LLM_ROLES["script_coverage.unit"]
+    assert structured_llm(Answer, app_settings=s)._timeout == 12  # 다른 역할은 그대로

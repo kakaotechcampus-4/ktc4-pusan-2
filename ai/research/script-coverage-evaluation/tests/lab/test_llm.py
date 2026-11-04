@@ -3,7 +3,7 @@
 import pytest
 
 import coverage_lab.llm as lab_llm
-from script_coverage.core import ScriptLLMs, TakeLLMs
+from pitch_coach_ai.features.script_coverage.core import ScriptLLMs, TakeLLMs
 
 ENV_NAMES = ("OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL")
 

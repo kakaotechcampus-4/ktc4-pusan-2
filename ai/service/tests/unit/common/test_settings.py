@@ -27,7 +27,7 @@ def test_defaults_without_any_value() -> None:
     assert s.llm_timeout_seconds == 12
     assert s.llm_max_retries == 1
     assert s.web_concurrency == 1
-    assert s.ai_enable_sample is False
+    assert s.script_coverage_llm_timeout_seconds is None
     assert s.bundle("default") is None
     assert s.bundle("sol") is None
 
@@ -79,6 +79,8 @@ def test_startup_error_does_not_show_other_keys() -> None:
         {"llm_timeout_seconds": "nan"},
         {"llm_max_retries": -1},
         {"web_concurrency": 0},
+        {"script_coverage_llm_timeout_seconds": 0},
+        {"script_coverage_llm_timeout_seconds": "inf"},
     ],
 )
 def test_out_of_range_numbers_are_rejected(values: dict[str, object]) -> None:
@@ -119,3 +121,23 @@ def test_app_import_fails_when_a_bundle_is_partly_filled() -> None:
     assert result.returncode != 0
     assert "OPENAI_SOL_API_KEY" in result.stderr
     assert "https://llm.example/sol/v1" not in result.stderr
+
+
+def test_feature_timeout_applies_only_to_its_roles() -> None:
+    s = _settings(script_coverage_llm_timeout_seconds=20)
+    assert s.timeout_for(LLM_ROLES["script_coverage.eval"]) == 20
+    assert s.timeout_for(LLM_ROLES["script_coverage.semantic"]) == 20
+    assert s.timeout_for(LLM_ROLES["default"]) == 12
+
+
+def test_blank_feature_timeout_falls_back_to_llm_timeout() -> None:
+    # 예시 파일을 복사해 값을 비운 줄 (SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=)
+    s = _settings(script_coverage_llm_timeout_seconds="", llm_timeout_seconds=15)
+    assert s.script_coverage_llm_timeout_seconds is None
+    assert s.timeout_for(LLM_ROLES["script_coverage.unit"]) == 15
+
+
+def test_every_timeout_setting_names_a_settings_field() -> None:
+    for role in LLM_ROLES.values():
+        if role.timeout_setting is not None:
+            assert role.timeout_setting in Settings.model_fields

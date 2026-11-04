@@ -12,6 +12,8 @@
 | 대본 파싱 | [script-parser/](script-parser/README.md) |
 | 평가 기준 분석 | [evaluation-criteria/](evaluation-criteria/README.md) |
 | 군더더기 | [filler-detection/](filler-detection/README.md) |
+| 말 속도 · 멈춤 | [speech-pace/](speech-pace/README.md) |
+| 소리 크기 · 침묵 | [volume-analysis/](volume-analysis/README.md) |
 | 리뷰 | [review-agent/](review-agent/README.md) |
 
-새 연구 코드가 merge되면 이 실행법 목록과 기능 지도를 함께 갱신합니다. 연구 폴더의 존재는 서비스 탑재를 뜻하지 않습니다. 과거 실험의 동결본은 [archive/](../archive/README.md)에 있습니다.
+새 연구 코드가 merge되면 이 실행법 목록과 기능 지도를 함께 갱신합니다. 연구 폴더의 존재는 서비스 탑재를 뜻하지 않습니다. 코어를 AI 서비스(`ai/service/src/pitch_coach_ai/features/<기능>/`)로 옮긴 기능은 이 폴더에 실험 · 재생 · 예시 생성 도구가 남고, 서비스를 editable로 설치해 코어를 import합니다(어느 기능인지는 기능 지도의 '활성 코드'). 과거 실험의 동결본은 [archive/](../archive/README.md)에 있습니다.

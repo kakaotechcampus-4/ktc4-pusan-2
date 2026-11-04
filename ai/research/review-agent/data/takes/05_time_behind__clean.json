@@ -1,0 +1,601 @@
+{
+ "scenario": "05_time_behind",
+ "noise": "clean",
+ "seed": 0,
+ "description": "느린 발표자(240 CPM) + 3번 장 시간 미션. 늦어지면 '조금만 빠르게', 반응하면 따라잡는다. '천천히'는 나오면 안 된다",
+ "source": {
+  "coach_feature_version": "coach-1.2",
+  "coach_config_hash": "8b1e640e988a"
+ },
+ "request": {
+  "take_result": {
+   "take_id": "sim-05_time_behind",
+   "duration_ms": 171000,
+   "script_mode": null,
+   "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000
+   },
+   "replayed": false,
+   "criteria_changed": false,
+   "areas": {
+    "GAZE": {
+     "measured_ratio": 0.9649,
+     "take": {
+      "audience_ratio": 0.8,
+      "script_ratio": 0.2,
+      "screen_ratio": 0.0,
+      "away_ratio": 0.0,
+      "reading_ratio": 0.1941,
+      "reading_runs": 0
+     },
+     "slides": [
+      {
+       "slide_number": 1,
+       "start_ms": 0,
+       "end_ms": 32730,
+       "target_ms": 30000,
+       "measured_ratio": 0.9394,
+       "metrics": {
+        "audience_ratio": 0.7742,
+        "script_ratio": 0.2258,
+        "screen_ratio": 0.0,
+        "away_ratio": 0.0,
+        "reading_ratio": 0.2121,
+        "reading_runs": 0
+       }
+      },
+      {
+       "slide_number": 2,
+       "start_ms": 32730,
+       "end_ms": 90490,
+       "target_ms": 60000,
+       "measured_ratio": 0.9828,
+       "metrics": {
+        "audience_ratio": 0.807,
+        "script_ratio": 0.193,
+        "screen_ratio": 0.0,
+        "away_ratio": 0.0,
+        "reading_ratio": 0.1897,
+        "reading_runs": 0
+       }
+      },
+      {
+       "slide_number": 3,
+       "start_ms": 90490,
+       "end_ms": 143740,
+       "target_ms": 60000,
+       "measured_ratio": 0.9623,
+       "metrics": {
+        "audience_ratio": 0.7843,
+        "script_ratio": 0.2157,
+        "screen_ratio": 0.0,
+        "away_ratio": 0.0,
+        "reading_ratio": 0.2075,
+        "reading_runs": 0
+       }
+      },
+      {
+       "slide_number": 4,
+       "start_ms": 143740,
+       "end_ms": 171000,
+       "target_ms": 30000,
+       "measured_ratio": 0.963,
+       "metrics": {
+        "audience_ratio": 0.8462,
+        "script_ratio": 0.1538,
+        "screen_ratio": 0.0,
+        "away_ratio": 0.0,
+        "reading_ratio": 0.1538,
+        "reading_runs": 0
+       }
+      }
+     ],
+     "unmeasured_reason": null
+    },
+    "SPEED": {
+     "measured_ratio": 1.0,
+     "take": {
+      "cpm": 295.4,
+      "pause_count": 0
+     },
+     "slides": [
+      {
+       "slide_number": 1,
+       "start_ms": 0,
+       "end_ms": 32730,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "cpm": 240.0,
+        "pause_count": 0
+       }
+      },
+      {
+       "slide_number": 2,
+       "start_ms": 32730,
+       "end_ms": 90490,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "cpm": 290.6,
+        "pause_count": 0
+       }
+      },
+      {
+       "slide_number": 3,
+       "start_ms": 90490,
+       "end_ms": 143740,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "cpm": 324.3,
+        "pause_count": 0
+       }
+      },
+      {
+       "slide_number": 4,
+       "start_ms": 143740,
+       "end_ms": 171000,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "cpm": 324.2,
+        "pause_count": 0
+       }
+      }
+     ],
+     "unmeasured_reason": null
+    },
+    "VOLUME": {
+     "measured_ratio": 0.912,
+     "take": {
+      "level_db": -24.0,
+      "voice_diff_db": 0.0,
+      "low_ratio": 0.0,
+      "base_level_source": "TAKE"
+     },
+     "slides": [
+      {
+       "slide_number": 1,
+       "start_ms": 0,
+       "end_ms": 32730,
+       "target_ms": 30000,
+       "measured_ratio": 0.5739,
+       "metrics": {
+        "level_db": -24.0,
+        "voice_diff_db": 0.0,
+        "low_ratio": 0.0
+       }
+      },
+      {
+       "slide_number": 2,
+       "start_ms": 32730,
+       "end_ms": 90490,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "level_db": -24.0,
+        "voice_diff_db": 0.0,
+        "low_ratio": 0.0
+       }
+      },
+      {
+       "slide_number": 3,
+       "start_ms": 90490,
+       "end_ms": 143740,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "level_db": -24.0,
+        "voice_diff_db": 0.0,
+        "low_ratio": 0.0
+       }
+      },
+      {
+       "slide_number": 4,
+       "start_ms": 143740,
+       "end_ms": 171000,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "level_db": -24.0,
+        "voice_diff_db": 0.0,
+        "low_ratio": 0.0
+       }
+      }
+     ],
+     "unmeasured_reason": null
+    },
+    "PAUSE": {
+     "measured_ratio": 1.0,
+     "take": {
+      "long_silence_count": 0.0
+     },
+     "slides": [
+      {
+       "slide_number": 1,
+       "start_ms": 0,
+       "end_ms": 32730,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "long_silence_count": 0.0
+       }
+      },
+      {
+       "slide_number": 2,
+       "start_ms": 32730,
+       "end_ms": 90490,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "long_silence_count": 0.0
+       }
+      },
+      {
+       "slide_number": 3,
+       "start_ms": 90490,
+       "end_ms": 143740,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "long_silence_count": 0.0
+       }
+      },
+      {
+       "slide_number": 4,
+       "start_ms": 143740,
+       "end_ms": 171000,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "long_silence_count": 0.0
+       }
+      }
+     ],
+     "unmeasured_reason": null
+    },
+    "FILLER": {
+     "measured_ratio": 1.0,
+     "take": {
+      "filler_count": 5.0,
+      "filler_per_min": 1.75,
+      "by_tier": {
+       "T1": 5,
+       "T2": 0,
+       "T3": 0
+      },
+      "by_word": {
+       "음": 5
+      }
+     },
+     "slides": [
+      {
+       "slide_number": 1,
+       "start_ms": 0,
+       "end_ms": 32730,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "filler_count": 0,
+        "filler_per_min": 0.0,
+        "by_tier": {
+         "T1": 0,
+         "T2": 0,
+         "T3": 0
+        },
+        "by_word": {}
+       }
+      },
+      {
+       "slide_number": 2,
+       "start_ms": 32730,
+       "end_ms": 90490,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "filler_count": 2.0,
+        "filler_per_min": 2.07,
+        "by_tier": {
+         "T1": 2,
+         "T2": 0,
+         "T3": 0
+        },
+        "by_word": {
+         "음": 2
+        }
+       }
+      },
+      {
+       "slide_number": 3,
+       "start_ms": 90490,
+       "end_ms": 143740,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "filler_count": 2.0,
+        "filler_per_min": 2.26,
+        "by_tier": {
+         "T1": 2,
+         "T2": 0,
+         "T3": 0
+        },
+        "by_word": {
+         "음": 2
+        }
+       }
+      },
+      {
+       "slide_number": 4,
+       "start_ms": 143740,
+       "end_ms": 171000,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "filler_count": 1.0,
+        "filler_per_min": 2.22,
+        "by_tier": {
+         "T1": 1,
+         "T2": 0,
+         "T3": 0
+        },
+        "by_word": {
+         "음": 1
+        }
+       }
+      }
+     ],
+     "unmeasured_reason": null
+    },
+    "TIME": {
+     "measured_ratio": 1.0,
+     "take": {
+      "duration_ms": 171000.0
+     },
+     "slides": [
+      {
+       "slide_number": 1,
+       "start_ms": 0,
+       "end_ms": 32730,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "slide_duration_ms": 32730.0
+       }
+      },
+      {
+       "slide_number": 2,
+       "start_ms": 32730,
+       "end_ms": 90490,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "slide_duration_ms": 57760.0
+       }
+      },
+      {
+       "slide_number": 3,
+       "start_ms": 90490,
+       "end_ms": 143740,
+       "target_ms": 60000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "slide_duration_ms": 53250.0
+       }
+      },
+      {
+       "slide_number": 4,
+       "start_ms": 143740,
+       "end_ms": 171000,
+       "target_ms": 30000,
+       "measured_ratio": 1.0,
+       "metrics": {
+        "slide_duration_ms": 27260.0
+       }
+      }
+     ],
+     "unmeasured_reason": null
+    }
+   },
+   "problem_segments": [
+    {
+     "area": "GAZE",
+     "issue_type": "GAZE_UNMEASURABLE",
+     "slide_number": 1,
+     "start_ms": 0,
+     "end_ms": 2000,
+     "mean_severity": 0.7205,
+     "reliable": false,
+     "coached": false
+    },
+    {
+     "area": "SPEED",
+     "issue_type": "PACE_SLOW",
+     "slide_number": 1,
+     "start_ms": 0,
+     "end_ms": 32730,
+     "mean_severity": 0.7204,
+     "reliable": true,
+     "coached": false
+    },
+    {
+     "area": "TIME",
+     "issue_type": "BEHIND_SCHEDULE",
+     "slide_number": 2,
+     "start_ms": 52000,
+     "end_ms": 66000,
+     "mean_severity": 0.5038,
+     "reliable": true,
+     "coached": true
+    }
+   ],
+   "interventions": [
+    {
+     "intervention_id": "iv-52000",
+     "t_ms": 52000,
+     "area": "TIME",
+     "issue_type": "BEHIND_SCHEDULE",
+     "instruction": "SPEED_UP",
+     "message": "조금만 빠르게 — 남은 3장, 2분 8초",
+     "outcome": "EFFECTIVE",
+     "metric": "required_ratio",
+     "before": 1.0498,
+     "after": 1.0476
+    }
+   ],
+   "gave_up": [],
+   "criteria": {
+    "GAZE": {
+     "criteria_version": "gaze-0.2+b6f8b464a3ee",
+     "issues": {
+      "GAZE_ON_SCRIPT": {
+       "metric": "script_run_ms",
+       "direction": "HIGHER_IS_WORSE",
+       "threshold": 5000.0,
+       "bad": 15000.0,
+       "onset_lag_ms": 7000,
+       "offset_lag_ms": 3000
+      },
+      "GAZE_UNMEASURABLE": {
+       "metric": "measured_ratio",
+       "direction": "LOWER_IS_WORSE",
+       "threshold": 0.5,
+       "bad": 0.0,
+       "onset_lag_ms": 7000,
+       "offset_lag_ms": 3000
+      }
+     }
+    },
+    "SPEED": {
+     "criteria_version": "pace-0.2+685bb58a4c67",
+     "issues": {
+      "PACE_FAST": {
+       "metric": "cpm",
+       "direction": "HIGHER_IS_WORSE",
+       "threshold": 350.0,
+       "bad": 450.0,
+       "onset_lag_ms": 7500,
+       "offset_lag_ms": 7500
+      },
+      "PACE_SLOW": {
+       "metric": "cpm",
+       "direction": "LOWER_IS_WORSE",
+       "threshold": 275.0,
+       "bad": 200.0,
+       "onset_lag_ms": 7500,
+       "offset_lag_ms": 7500
+      }
+     }
+    },
+    "VOLUME": {
+     "criteria_version": "volume-0.2+862f8de95679",
+     "issues": {
+      "VOLUME_LOW": {
+       "metric": "voice_diff_db",
+       "direction": "LOWER_IS_WORSE",
+       "threshold": -6.0,
+       "bad": -15.0,
+       "onset_lag_ms": 2500,
+       "offset_lag_ms": 2500
+      }
+     }
+    },
+    "PAUSE": {
+     "criteria_version": "volume-0.2+862f8de95679",
+     "issues": {
+      "LONG_SILENCE": {
+       "metric": "silence_ms",
+       "direction": "HIGHER_IS_WORSE",
+       "threshold": 5000.0,
+       "bad": 15000.0,
+       "onset_lag_ms": 5000,
+       "offset_lag_ms": 0
+      }
+     }
+    },
+    "FILLER": {
+     "criteria_version": "filler-0.1+4b2747c2be03",
+     "issues": {
+      "FILLER_FREQUENT": {
+       "metric": "recent_filler_count",
+       "direction": "HIGHER_IS_WORSE",
+       "threshold": 6.0,
+       "bad": 15.0,
+       "onset_lag_ms": 30000,
+       "offset_lag_ms": 30000
+      }
+     }
+    },
+    "TIME": {
+     "criteria_version": "timing-1.0+305f8e44237d",
+     "issues": {
+      "TIME_OVER": {
+       "metric": "elapsed_ratio",
+       "direction": "HIGHER_IS_WORSE",
+       "threshold": 1.0,
+       "bad": 1.05,
+       "onset_lag_ms": 0,
+       "offset_lag_ms": 0
+      },
+      "FINAL_MINUTE": {
+       "metric": "remaining_ms",
+       "direction": "LOWER_IS_WORSE",
+       "threshold": 60000.0,
+       "bad": 0.0,
+       "onset_lag_ms": 0,
+       "offset_lag_ms": 0
+      },
+      "BEHIND_SCHEDULE": {
+       "metric": "required_ratio",
+       "direction": "HIGHER_IS_WORSE",
+       "threshold": 1.05,
+       "bad": 1.5,
+       "onset_lag_ms": 0,
+       "offset_lag_ms": 0
+      },
+      "SLIDE_OVER": {
+       "metric": "slide_time_ratio",
+       "direction": "HIGHER_IS_WORSE",
+       "threshold": 1.5,
+       "bad": 2.5,
+       "onset_lag_ms": 0,
+       "offset_lag_ms": 0
+      },
+      "AHEAD_OF_SCHEDULE": {
+       "metric": "projected_end_ratio",
+       "direction": "LOWER_IS_WORSE",
+       "threshold": 1.0,
+       "bad": 0.82,
+       "onset_lag_ms": 0,
+       "offset_lag_ms": 0
+      }
+     }
+    }
+   }
+  },
+  "script_coverage": null,
+  "previous_takes": [],
+  "previous_recurring_issues": [
+   {
+    "area": "TIME",
+    "slide_number": 3,
+    "dimension": "pacing_rhythm"
+   }
+  ],
+  "missions": [
+   {
+    "mission_id": "mission-9",
+    "area": "TIME",
+    "slide_number": 3,
+    "target": {
+     "metric": "slide_duration_ms",
+     "operator": "LTE",
+     "value": 60000
+    }
+   }
+  ],
+  "user_criteria": null
+ }
+}
