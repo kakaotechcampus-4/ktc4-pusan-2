@@ -645,6 +645,34 @@ def test_reassess_card_before_is_the_target_takes_review_condition_not_the_pitch
     assert _reassess_before(ctx, "t-5", {"targets": [{"display": "빠르지 않게"}]})["targets"] == []
 
 
+def test_reassess_card_missing_fields_are_unconfirmed_not_empty_conditions() -> None:
+    """필드 누락과 명시적 null · 빈 값을 구분한다: 확인할 수 없는 조건은 빈 조건으로 보이지 않고 카드를 그리지 않는다(6-6)."""
+    ctx = ctx_for(MSG)
+    summ, crit = ctx.summaries["t-5"], ctx.pitch.criteria
+    assert crit is not None
+    # Take 요약의 standard_version 이 누락(명시적 null 과 다름) → 판을 모른다
+    raw = summ.model_dump(mode="json")
+    del raw["standard_version"]
+    ctx.summaries["t-5"] = type(summ).model_validate(raw)
+    assert _reassess_before(ctx, "t-5", {"script_used": True}) is None
+    # 명시적 null 이면 기준 없이 리뷰된 Take: 빈 조건
+    ctx.summaries["t-5"] = type(summ).model_validate({**raw, "standard_version": None})
+    assert _reassess_before(ctx, "t-5", {"targets": [{"display": "빠르지 않게"}]})["targets"] == []
+    # 같은 판이어도 바꾸는 항목이 지금 기준에 누락되면 확인할 수 없다(명시적 빈 목록 · null 과 다름)
+    ctx.summaries["t-5"] = summ
+    full = crit.model_dump(mode="json")
+    for missing, change in (
+        ("targets", {"targets": [{"display": "빠르지 않게"}]}),
+        ("script_used", {"script_used": True}),
+    ):
+        part = {k: v for k, v in full.items() if k != missing}
+        ctx.pitch.criteria = type(crit).model_validate(part)
+        assert _reassess_before(ctx, "t-5", change) is None
+    ctx.pitch.criteria = type(crit).model_validate({**full, "targets": [], "script_used": None})
+    assert _reassess_before(ctx, "t-5", {"targets": [{"display": "빠르지 않게"}]})["targets"] == []
+    assert _reassess_before(ctx, "t-5", {"script_used": True})["script_used"] is None
+
+
 def test_confirm_card_is_not_drawn_for_other_actions_or_without_hash() -> None:
     ctx = ctx_for()
     fetch = do("fetch_take", {"take_id": "t-3"}, ctx=ctx).action.model_dump(mode="json")

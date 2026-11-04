@@ -14,7 +14,7 @@
   `START_PRACTICE`는 허용 근거와 상관없이 언제나 버튼 카드다. 이 검사는 간접 표현을 완벽히 가리지 못한다(15-2): 잘못 판별해도
   실행되지 않고 원치 않는 확인 카드가 뜰 뿐이다.
 - 다시 평가 확인 카드(6-6): 바꾸기 전 조건은 지금 피치 기준이 아니라 대상 Take 가 리뷰받은 때의 조건(Take 요약 `standard_version`이 가리키는 판, `_take_conditions`)이고,
-  바꾼 뒤 조건은 행동 인자 그대로다. 사용자 기준 문구(`display`)도 표시 문자열 검사(6-9)를 통과하면 싣는다. 바꾸기 전 조건을 확인할 수 없으면 카드를 그리지 못해
+  바꾼 뒤 조건은 행동 인자 그대로다. 사용자 기준 문구(`display`)도 표시 문자열 검사(6-9)를 통과하면 싣는다. 바꾸기 전 조건을 확인할 수 없으면(Take 요약 판 필드 누락 · 판이 다름 · 바꾸는 항목의 지금 기준 값 누락, 명시적 null · 빈 값과 다름) 카드를 그리지 못해
   행동을 내지 않는다(사용자가 본 것과 실행되는 것이 달라지면 안 된다).
 - 고른 목표 제안(`choice`)의 `SAVE_GOAL`은 `preapproved`를 달고 확인 카드 없이 BE 가 해시를 다시 계산해 바로 실행한다.
 - 고칠 때: 낱말 목록은 config.py(바꾸면 FEATURE_VERSION). 행동 모양을 바꾸면 TOOL_SCHEMA_VERSION.
@@ -1098,21 +1098,26 @@ def _target_view(t: CriteriaTarget | dict[str, Any]) -> dict[str, Any]:
     return {k: d.get(k) for k in ("display", "metric", "operator", "value")}
 
 
-def _take_conditions(ctx: RunCtx, take_id: str) -> tuple[bool | None, list[Any]] | None:
+def _take_conditions(
+    ctx: RunCtx, take_id: str, need: Literal["script_used", "targets"] | None = None
+) -> tuple[bool | None, list[Any]] | None:
     """대상 Take 가 리뷰를 받을 때의 평가 조건 `(script_used, targets)`. 확인할 수 없으면 None.
 
     Take 요약의 `standard_version`(평가 기준 판)이 BE 가 그 Take 의 리뷰 요청 `user_criteria`를 만든 판이다(리뷰 입력 5-2).
-    null 이면 그 Take 는 기준 없이 리뷰됐다(`user_criteria` null → 빈 조건). 값이 있으면 지금 피치 기준이 같은 판일 때만
-    그 기준이 Take 의 조건이다. 판이 다르면(Take 뒤에 기준이 바뀜) Take 의 옛 조건을 알 수 없다 — 지금 기준을
-    '바뀌기 전'으로 보이면 사용자가 본 것과 실행되는 것이 달라지므로 None 이다(6-6).
+    필드가 **명시적 null** 이면 그 Take 는 기준 없이 리뷰됐다(`user_criteria` null → 빈 조건). 필드가 **누락**됐으면 판을 모르는 것이라
+    확인할 수 없다(None). 값이 있으면 지금 피치 기준이 같은 판일 때만 그 기준이 Take 의 조건이다. 판이 다르면(Take 뒤에 기준이
+    바뀜) Take 의 옛 조건을 알 수 없다 — 지금 기준을 '바뀌기 전'으로 보이면 사용자가 본 것과 실행되는 것이 달라지므로 None 이다(6-6).
+    같은 판이어도 바꾸는 항목(`need`)의 값이 지금 기준에 누락됐으면(빈 값과 다름) 확인할 수 없다.
     """
     summ = ctx.summaries.get(take_id)
-    if summ is None:
+    if summ is None or "standard_version" not in summ.model_fields_set:
         return None
     if summ.standard_version is None:
         return None, []
     crit = ctx.pitch.criteria if ctx.pitch is not None else None
     if crit is None or crit.standard_version != summ.standard_version:
+        return None
+    if need is not None and need not in crit.model_fields_set:
         return None
     return crit.script_used, list(crit.targets)
 
@@ -1146,7 +1151,9 @@ def ask_confirm_card(
         if summ is None:
             return None
         change = args["change"]
-        cond = _take_conditions(ctx, summ.take_id)
+        cond = _take_conditions(
+            ctx, summ.take_id, "script_used" if "script_used" in change else "targets"
+        )
         if cond is None:
             return None  # 바뀌기 전 조건을 확인할 수 없으면 카드를 그리지 않는다(행동을 내지 않음)
         now_script, now_targets = cond

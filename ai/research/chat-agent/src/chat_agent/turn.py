@@ -6,13 +6,13 @@
 - 스트림 전 검사 순서(걸리면 모델 · 도구 · 행동 0회, P1): 요청 본문 크기(2 MiB, 413) → UTF-8 · JSON(422) · 깊이(32, 413) →
   요청 모양(422) → 서명 키(32바이트 미만이면 503 `AGENT_DISABLED`) → 모델 준비(503 `LLM_UNAVAILABLE`, 자동 목표 확인은 모델 없이 됨) →
   기본 자료 크기(512 KiB, 413) → (이어 부르기) 서명 · 판 · 식별자 검사(409) → 대기 행동과 결과의 짝(409) → 누적 사용량이 줄지 않았는지(409).
-- 실행 흐름(`_orchestrate`): 호출 횟수 · 시작 시간 한도 → 자동 목표 확인 / 행동 결과 반영 / 고른 제안 저장 / 계획 → 조사 →
+- 실행 흐름(`_orchestrate`): (이어 부르기면 먼저 지워진 원천 처리 · 행동 결과 검증 · 반영) → 호출 횟수 · 시작 시간 한도 → 자동 목표 확인 / 행동 결과 반영 / 고른 제안 저장 / 계획 → 조사 →
   행동이면 NEEDS_ACTION(서명), 아니면 답 쓰기 → 판단 확정 → 문장 만들기 → 답 검사 · 한 번 고치기 → 최종 출력.
 - 승인(6-1 4번 · 6-2): `ASK` 행동(`SAVE_GOAL` · `REASSESS`)이면 멈추기 전에 `_ask_pause`가 코드가 그린 확인 카드(`ASK_CONFIRM`)를 만들고
   그때까지 확인한 것으로 답 문장을 쓰고 검사(`_compose`, 답 쓰기 · 고치기 몫)한 뒤 message = 문장 + 카드, actions = 그 행동 하나로 멈춘다.
   고른 제안(`choice`)의 저장은 `preapproved`를 달고 카드 · 승인 대기 없이 낸다. 이미 낸 문장은 `_finish`가 서명 상태(`emitted`)에 담고,
   이어 부른 호출의 어떤 끝에서도 message 의 앞부분에 그대로 싣는다(그 뒤에 행동 결과 문장 · 나머지 답). 모델 없이 끝나는 길(`_end_without_model`)도
-  앞 문장 · 승인한 행동의 결과 문장 · 카드를 먼저 조립하고, 상태가 한도를 넘어 못 서명할 때도 앞 문장의 자료 카드 사본을 남긴다.
+  앞 문장 · 승인한 행동의 결과 문장 · 카드를 먼저 조립하고, 상태가 한도를 넘어 못 서명할 때도 앞 문장의 자료 카드 사본과 이미 실행된 행동의 결과 문장 · 카드를 남기고 새 승인 행동만 버린다.
 - 범위 밖(1-3): 계획 · 답 초안이 `OUT_OF_SCOPE`면 `scope_reason`별 고정 문장(templates.py)으로 `REFUSED`, 섞인 요청은 초안의
   `scope_notes` 이유별 고정 문장을 답 문장 뒤에 덧붙여 `DONE`. `SCOPE_RULE`(범위 밖 낱말)에 걸린 모델 문장은 고치기에 보내지 않고 버린다.
 - 줄 쓰기(5-4): 이벤트마다 `allow_nan=False`로 완전히 직렬화하고 LF 를 붙인다. 한 줄 2 MiB, 누적 16 MiB(끝 줄 몫 4 KiB 예약).
@@ -325,20 +325,10 @@ def _orchestrate(
     def finish(**kw: Any) -> _Result:
         return _finish(lp, req, deps, secret=secret, payload=payload, **kw)
 
-    # 7번째 호출 · 시작부터 시간 없음: 모델 없이 끝낸다(8-3 · L1-04 · L1-31)
-    hit = budget.turn_limit_hit()
-    if hit is not None:
-        lp._limit(hit)
-        return finish(status="PARTIAL", reason="LIMIT", system=[templates.SystemText.TURN_LIMIT])
-    if budget.exhausted_at_start():
-        lp._limit(budget._hit("TURN_TIME", lp.counters.elapsed_ms, int(cfg.turn_seconds * 1000)))
-        return _end_without_model(lp, finish, "TIME")
-
     trigger = req.run.trigger
-    if trigger == "TAKE_REVIEWED":
-        return _take_reviewed(lp, req, finish)
-
     if trigger == "ACTION_RESULT":
+        # 이어 부를 때는 어떤 한도 종료보다 먼저 지워진 원천을 처리하고 행동 결과를 검증 · 반영한다.
+        # 한도로 모델 없이 끝나도 승인된 행동의 결과 문장 · 카드와 삭제 중단이 지워지지 않게 하려는 것이다(5-5 · 6-1)
         if not lp.drop_removed(req.context.removed_sources):
             return finish(
                 status="PARTIAL", reason="OTHER", system=[templates.SystemText.SOURCE_DELETED_STOP]
@@ -349,6 +339,27 @@ def _orchestrate(
             return finish(
                 status="PARTIAL", reason="OTHER", system=[templates.SystemText.ACTION_MISMATCH]
             )
+
+    # 7번째 호출 · 시작부터 시간 없음: 모델 없이 끝낸다(8-3 · L1-04 · L1-31)
+    hit = budget.turn_limit_hit()
+    if hit is not None:
+        lp._limit(hit)
+        if trigger == "ACTION_RESULT":
+            return _end_without_model(
+                lp,
+                finish,
+                "LIMIT",
+                notes=[*_action_notes(lp), templates.SystemText.TURN_LIMIT.value],
+            )
+        return finish(status="PARTIAL", reason="LIMIT", system=[templates.SystemText.TURN_LIMIT])
+    if budget.exhausted_at_start():
+        lp._limit(budget._hit("TURN_TIME", lp.counters.elapsed_ms, int(cfg.turn_seconds * 1000)))
+        return _end_without_model(lp, finish, "TIME", notes=_action_notes(lp))
+
+    if trigger == "TAKE_REVIEWED":
+        return _take_reviewed(lp, req, finish)
+
+    if trigger == "ACTION_RESULT":
         if budget.answer_slots_short():
             return _slots_short_end(lp, finish)
     else:
@@ -604,13 +615,13 @@ def _end_without_model(
         # 한도 안내는 행동 결과 문장 뒤에 둔다(앞 문장 → 결과 문장 → 안내 순서)
         limit = (
             []
-            if notes_claims
+            if any(n == templates.SystemText.TURN_LIMIT.value for n in notes or [])
             else [Claim(kind="SYSTEM", text=templates.SystemText.LIMIT_PARTIAL.value)]
         )
         return finish(
             status="PARTIAL",
             reason=reason,
-            claims=[*result_claims, *limit, *notes_claims, *partial],
+            claims=[*result_claims, *notes_claims, *limit, *partial],
         )
     return finish(error="AGENT_TIMEOUT", reason=reason)
 
@@ -1419,6 +1430,15 @@ def _finish(
             sys_claim = Claim(kind="SYSTEM", text=templates.SystemText.STATE_TOO_LARGE.value)
             # 앞 문장이 쓰는 자료 카드 사본은 버리지 않는다(5-5 · 5-6)
             keep_src = {i for c in prior for i in c.source_ids}
+            # 이미 실행 · 검증된 행동의 결과 문장과 결과 카드는 새 승인 행동만 버리고 앞 문장 뒤에 남긴다(5-5 · 6-1)
+            prior_dump = [c.model_dump(mode="json") for c in prior]
+            done = [
+                c
+                for c in claim_list
+                if c.kind == "ACTION_RESULT" and c.model_dump(mode="json") not in prior_dump
+            ]
+            kept_claims = [*prior, *done, sys_claim]
+            keep_src |= {i for c in done for i in c.source_ids}
             final.update(
                 status="PARTIAL",
                 actions=[],
@@ -1427,9 +1447,9 @@ def _finish(
                 if payload is not None
                 else req.run.scope_pitch_id,
                 message={
-                    "text": "\n".join(c.text for c in [*prior, sys_claim]),
-                    "claims": [c.model_dump(mode="json") for c in [*prior, sys_claim]],
-                    "cards": [],
+                    "text": "\n".join(c.text for c in kept_claims),
+                    "claims": [c.model_dump(mode="json") for c in kept_claims],
+                    "cards": _safe_cards(lp, st.cards, amap) if done else [],
                     "sources": [g for g in prior_sources if g["source_id"] in keep_src],
                 },
             )

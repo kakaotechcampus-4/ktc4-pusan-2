@@ -550,6 +550,68 @@ def test_resume_without_room_keeps_the_front_and_tells_the_approved_result_with_
     assert [c.type for c in fd.message.cards] == ["GOAL_SAVED"]  # type: ignore[union-attr]
 
 
+def _resume_with_state_turn_count(req: Any, data: dict[str, Any], turn_count: int) -> Any:
+    """서명 상태의 호출 번호를 바꿔 다시 서명한다(7번째 호출 한도 시험)."""
+    from chat_agent import state as st
+
+    p = payload_of(data["state"])
+    p["turn_count"] = turn_count
+    return {**data, "state": st.sign(st.StatePayload.model_validate(p), F.SECRET)}
+
+
+def _limit_cases() -> list[str]:
+    return ["TIME", "TURN_CALLS", "MODEL_CALLS"]
+
+
+def _resume_at_limit(which: str) -> tuple[Any, dict[str, Any], Any]:
+    req, _, data = pause()
+    if which == "TURN_CALLS":
+        data = _resume_with_state_turn_count(req, data, 6)  # 이어 부르면 7번째
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    if which == "TIME":
+        req2["budget_used"] = {**req2["budget_used"], "elapsed_ms": 120_000}
+    if which == "MODEL_CALLS":
+        req2["budget_used"] = {**req2["budget_used"], "model_calls": 17}
+    return req2, data, F.FakeLlm([])
+
+
+def test_resume_at_any_limit_still_tells_the_approved_result_with_its_card() -> None:
+    """시간 소진 · 7번째 호출 · 답 쓰기 몫 부족 어느 한도로 끝나도 앞 문장 → 결과 문장 → 한도 안내 순서이고 GOAL_SAVED 카드가 남는다."""
+    for which in _limit_cases():
+        req2, data, llm2 = _resume_at_limit(which)
+        said = payload_of(data["state"])["loop"]["emitted"]
+        _, _, d2 = F.run_turn(req2, llm2)
+        fd = final_ok(d2)
+        assert llm2.calls == [], which
+        assert fd.status == "PARTIAL" and fd.actions == [], which
+        claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
+        assert claims[: len(said)] == said, which
+        assert claims[len(said)]["kind"] == "ACTION_RESULT", which
+        assert claims[len(said)]["text"] == templates.ACTION_SUCCESS["SAVE_GOAL"], which
+        notice = (
+            templates.SystemText.TURN_LIMIT
+            if which == "TURN_CALLS"
+            else templates.SystemText.LIMIT_PARTIAL
+        )
+        assert notice.value in [c["text"] for c in claims], which
+        assert [c.type for c in fd.message.cards] == ["GOAL_SAVED"], which  # type: ignore[union-attr]
+
+
+def test_resume_removed_source_under_front_stops_even_when_a_limit_was_hit() -> None:
+    """한도에 걸려도 지워진 원천 처리가 먼저다: 앞 문장이 기대면 한도 안내 대신 삭제 중단 문장으로 끝낸다."""
+    for which in _limit_cases():
+        req2, data, llm2 = _resume_at_limit(which)
+        said = payload_of(data["state"])["loop"]["emitted"]
+        req2["context"]["removed_sources"] = ["t-5"]
+        _, _, d2 = F.run_turn(req2, llm2)
+        fd = final_ok(d2)
+        assert llm2.calls == [], which
+        claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
+        assert claims[: len(said)] == said, which
+        assert claims[-1]["text"] == templates.SystemText.SOURCE_DELETED_STOP.value, which
+        assert all(c["kind"] != "ACTION_RESULT" for c in claims), which
+
+
 def test_end_without_model_with_only_the_front_is_partial_not_agent_timeout() -> None:
     """저장된 앞 문장이 있으면, 결과 문장 · 근거가 없어도 AGENT_TIMEOUT 으로 버리지 않고 PARTIAL 로 끝낸다(앞 문장은 `_finish`가 싣는다)."""
     from types import SimpleNamespace
@@ -627,6 +689,31 @@ def test_state_too_large_keeps_the_front_sentences_and_their_source_cards(monkey
     assert templates.SystemText.STATE_TOO_LARGE.value in fd.message.text
     # 앞 문장의 자료 id 마다 카드 사본이 있다
     assert [g.model_dump(mode="json") for g in fd.message.sources] == [GUIDE_CARD]
+
+
+def test_state_too_large_keeps_the_executed_result_sentence_and_card(monkeypatch: Any) -> None:
+    """둘째 승인 상태가 크기 한도를 넘어 새 승인 행동을 버려도, 이미 실행 · 검증된 저장 결과 문장과 GOAL_SAVED 카드는 남는다."""
+    from chat_agent import state as st
+    from chat_agent import turn as turn_mod
+
+    req, _, data = pause()
+    said = data["message"]["claims"]
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+
+    def too_large(*a: Any, **k: Any) -> Any:
+        raise st.StateTooLarge("크기 초과")
+
+    monkeypatch.setattr(turn_mod.state, "sign", too_large)
+    llm2 = F.FakeLlm([F.tools(REASSESS, prefix="ra")], answers=[F.answer([])], fixes=[F.fix({})])
+    _, _, d2 = F.run_turn(req2, llm2)
+    fd = final_ok(d2)
+    assert fd.status == "PARTIAL" and fd.actions == [] and fd.state is None
+    claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
+    assert claims[: len(said)] == said
+    assert claims[len(said)]["kind"] == "ACTION_RESULT"
+    assert claims[len(said)]["text"] == templates.ACTION_SUCCESS["SAVE_GOAL"]
+    assert claims[-1]["text"] == templates.SystemText.STATE_TOO_LARGE.value
+    assert [c.type for c in fd.message.cards] == ["GOAL_SAVED"]  # type: ignore[union-attr]
 
 
 # ── 대기 중 원천이 지워짐 (5-5 · 5-6 · 12-2) ──────────────────────────────────
