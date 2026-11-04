@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -202,17 +202,62 @@ def test_same_request_id_with_other_text_is_conflict(
 def test_replay_is_answered_before_the_running_check(
     client: TestClient, user_id: uuid.UUID
 ) -> None:
-    # 응답을 잃고 다시 보낸 요청이 '진행 중' 409 로 막히면 안 된다
-    request_id = str(uuid.uuid4())
-    _, first = _send(client, user_id, client_request_id=request_id)
-    status, again = _send(
-        client,
-        user_id,
-        client_request_id=request_id,
-    )
+    # 응답을 잃고 다시 보낸 요청이 '진행 중' 409 로 막히면 안 된다.
+    # 기존 대화로 보내야 진행 중 검사를 거친다
+    created = client.post("/api/chat/conversations", json={}, headers=_headers(user_id)).json()
+    body = {"conversation_id": created["conversation_id"], "client_request_id": str(uuid.uuid4())}
+    _, first = _send(client, user_id, **body)
+    status, again = _send(client, user_id, **body)
 
     assert status == 202
     assert again["run_id"] == first["run_id"]
+
+
+def _miss_first_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """같은 키를 동시에 보낸 뒤 요청처럼, 맨 앞 재전송 조회만 앞 요청을 못 보게 한다."""
+    real = ChatApiRepository.find_request
+    calls: list[uuid.UUID] = []
+
+    def miss_once(self: ChatApiRepository, user_id: uuid.UUID, key: uuid.UUID) -> Any:
+        calls.append(key)
+        return None if len(calls) == 1 else real(self, user_id, key)
+
+    monkeypatch.setattr(ChatApiRepository, "find_request", miss_once)
+
+
+def test_same_key_seen_only_after_the_conversation_lock_is_replayed(
+    client: TestClient, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 대화 잠금을 얻고 나면 앞 요청의 실행이 보여 진행 중으로 막힌다. 이미 접수된 메시지다
+    created = client.post("/api/chat/conversations", json={}, headers=_headers(user_id)).json()
+    body = {"conversation_id": created["conversation_id"], "client_request_id": str(uuid.uuid4())}
+    _, first = _send(client, user_id, **body)
+    _miss_first_lookup(monkeypatch)
+
+    status, again = _send(client, user_id, **body)
+
+    assert (status, again.get("run_id")) == (202, first["run_id"])
+
+
+def test_same_key_seen_only_after_the_daily_limit_is_replayed(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 새 대화로 보낸 앞 요청이 그날 마지막 턴을 썼다. 뒤 요청은 메시지 유일 제약까지 가지 못한다
+    request_id = str(uuid.uuid4())
+    _, first = _send(client, user_id, client_request_id=request_id)
+    day = datetime.now(UTC).astimezone(SEOUL).date()
+    db_session.execute(
+        update(ChatDailyUsage)
+        .where(ChatDailyUsage.user_id == user_id, ChatDailyUsage.day == day)
+        .values(turns=USER_DAILY_TURNS)
+    )
+    # 접수가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
+    db_session.commit()
+    _miss_first_lookup(monkeypatch)
+
+    status, again = _send(client, user_id, client_request_id=request_id)
+
+    assert (status, again.get("run_id")) == (202, first["run_id"])
 
 
 def test_new_message_while_running_is_rejected(client: TestClient, user_id: uuid.UUID) -> None:

@@ -84,6 +84,15 @@ def _accept_or_replay(
             raise ChatRunInProgress() from None
         # 그 밖의 무결성 오류(예: 확인한 뒤 피치가 지워짐)를 진행 중으로 바꿔 말하지 않는다
         raise
+    except ChatRunInProgress, ChatDailyLimit, ChatBusy:
+        # 같은 키를 동시에 보내면 뒤 요청은 맨 앞 조회에서 앞 요청을 못 보고, 대화 잠금이나
+        # 하루 한도 행에서 앞 요청의 커밋을 기다린 뒤 진행 중 · 한도에 막힌다.
+        # 그 메시지는 앞 요청이 이미 접수했으니 처음 결과를 준다(L2-05)
+        db.rollback()
+        replay = _replay(db, user_id, request.client_request_id, request_hash)
+        if replay is not None:
+            return replay
+        raise
     return accepted
 
 
