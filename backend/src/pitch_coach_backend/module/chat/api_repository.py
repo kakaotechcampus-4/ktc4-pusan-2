@@ -203,25 +203,13 @@ class ChatApiRepository:
             )
         )
 
-    def get_owned_action(
-        self, run_id: uuid.UUID, action_id: str, user_id: uuid.UUID
-    ) -> ChatAction | None:
-        """화면이 보낸 run_id · action_id 의 행동. action_id 는 실행 안에서만 유일하다.
-
-        실행 행은 끝나고 7일 뒤 지워도 행동 행은 대화 보관 기간까지 남는다.
-        그래서 실행 행을 거치지 않는다.
-        """
+    def goal_saved_by(self, conversation_id: uuid.UUID, action_pk: uuid.UUID) -> ChatGoal | None:
+        """그 목표 저장 행동이 만든 목표 판."""
         return self.db.scalar(
-            select(ChatAction).where(
-                ChatAction.run_id == run_id,
-                ChatAction.action_id == action_id,
-                ChatAction.user_id == user_id,
+            select(ChatGoal).where(
+                ChatGoal.conversation_id == conversation_id, ChatGoal.action_id == action_pk
             )
         )
-
-    def goal_saved_by(self, action_pk: uuid.UUID) -> ChatGoal | None:
-        """그 목표 저장 행동이 만든 목표 판."""
-        return self.db.scalar(select(ChatGoal).where(ChatGoal.action_id == action_pk))
 
     def charge_turn(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
         """사용자 하루 턴을 1 선점한다. 한도에 닿았으면 늘리지 않고 False."""
