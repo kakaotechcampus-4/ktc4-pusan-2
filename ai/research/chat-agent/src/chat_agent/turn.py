@@ -669,9 +669,13 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     comp = cmp.finish(draft, ans["messages"])
     out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
     # 조언(자료 · 일반 조언)만 쓴 답: 문장이 검사로 모두 빠지면 route 가 ANSWER 여도 자료 없음 거절이다(6-10 · L4-28).
-    # 확인된 기록이 없으니 '확인된 내용만'(PARTIAL)이 아니다
-    advice_only = bool(out) and all(
-        c.kind in ("GUIDE", "GENERAL") or is_general_intro(c) for c in out
+    # 확인된 기록이 없으니 '확인된 내용만'(PARTIAL)이 아니다. 조립 단계에서 모두 버린 조언 초안(판단에 이은 일반 조언 등)도
+    # 같으므로 초안 원소의 종류도 본다
+    elems = [c for c in draft.get("claims") or [] if isinstance(c, dict)]
+    advice_only = (
+        bool(out or elems)
+        and all(c.kind in ("GUIDE", "GENERAL") or is_general_intro(c) for c in out)
+        and all(c.get("kind") in ("GUIDE", "GENERAL") for c in elems)
     )
 
     # 4. 연습 준비 이동 · 대화 요약

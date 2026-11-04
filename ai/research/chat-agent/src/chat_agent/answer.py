@@ -417,6 +417,8 @@ class Composer:
                     add(compose._claim("RECORD", r[0], evidence_ids=r[1]), False)
             elif kind in ("RECORD", "GUIDE", "GENERAL"):
                 text = (c.get("text") or "").strip()
+                if not text:
+                    continue  # 빈 원소는 문장이 아니다(일반 조언 수 · 진단에도 세지 않는다)
                 if text in code or text in self.prior_texts or text in self.pre_texts:
                     continue  # 코드 문장 · 이미 낸 문장과 글자만 같은 모델 문장은 버린다(검사 면제를 흉내 내지 못하게 · 되풀이 없이)
                 if kind == "GENERAL" and (

@@ -341,3 +341,21 @@ def test_search_and_general_count_carry_over_the_approval_pause() -> None:
     assert texts.count(INTRO) == 1
     assert [t for k, t in _texts(d2) if k == "GENERAL"] == [G1, G2, G3]
     assert [(s.detail.result) for s in _general_rule_steps(d2)] == ["DROPPED"]
+
+
+def test_advice_draft_dropped_while_building_still_refuses() -> None:
+    """조립 단계에서 모두 버린 조언 초안(판단에 이은 일반 조언뿐)도 확인된 문장이 없으니 거절이다."""
+    _, data, _ = _run(F.answer([F.claim("GENERAL", G1, assessment_index=0)]))
+    assert data["status"] == "REFUSED"
+    assert _texts(data) == [("SYSTEM", templates.SystemText.NO_GUIDE.value)]
+
+
+def test_blank_general_after_the_limit_is_not_logged() -> None:
+    _, data, _ = _run(
+        F.answer(
+            [*(F.claim("GENERAL", g) for g in (G1, G2, G3)), F.claim("GENERAL", " ")],
+            route="NO_GUIDE",
+        )
+    )
+    assert [t for k, t in _texts(data) if k == "GENERAL"] == [G1, G2, G3]
+    assert _general_rule_steps(data) == []
