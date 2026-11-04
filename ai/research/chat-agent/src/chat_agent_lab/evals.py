@@ -91,6 +91,7 @@ from . import scenario as scn
 from .app import AgentApp, from_env
 from .fake_be import FakeBe, Run, StoredMessage
 from .judge import sentence_key
+from .llm import ROLE_CHAT_AGENT
 
 OUTPUTS = Path(__file__).resolve().parents[2] / "outputs" / "evals"
 LAB = Path(__file__).resolve().parent
@@ -1439,13 +1440,18 @@ def run_suite(
     secret: bytes,
     cfg: RunnerConfig,
     progress: Callable[[str], None] = lambda _s: None,
+    only: list[tuple[scn.Scenario, int]] | None = None,
 ) -> list[RunResult]:
     """시나리오 × 반복을 돌린다. 반복마다 초기 상태를 새로 만든다(응답 캐시 없음).
 
     제공자 장애 멈춤: 끝난 실행의 호출을 끝난 순서대로 보며 제공자 쪽 실패(`provider_failure`)가 연속
     `cfg.stop_after_provider_failures`번이면, 아직 시작하지 않은 실행은 돌리지 않고 '제공자 장애로 중단' 실패로 남긴다
     (이미 돌고 있는 실행은 끝까지 간다). 성공한 호출이 하나 오면 연속 수는 0 으로 돌아간다."""
-    jobs = [(sc, rep) for sc in scenarios for rep in range(cfg.repeat)]
+    jobs = (
+        list(only)
+        if only is not None
+        else [(sc, rep) for sc in scenarios for rep in range(cfg.repeat)]
+    )
     state = {"streak": 0, "stopped": False}
     lock = threading.Lock()
 
@@ -1813,6 +1819,57 @@ def write_report(
     return jp, mp
 
 
+REASONING_PURPOSES = ("RESEARCH", "ANSWER", "FIX", "HISTORY_SUMMARY")
+REASONING_LEVELS = ("none", "minimal", "low", "medium", "high")
+
+
+def parse_reasoning(items: list[str]) -> tuple[tuple[str, str], ...]:
+    """`ANSWER=medium` 꼴 목록 → 목적별 추론 강도. 모르는 목적 · 강도는 ValueError."""
+    out: dict[str, str] = {}
+    for it in items:
+        purpose, _, level = it.partition("=")
+        purpose, level = purpose.strip().upper(), level.strip().lower()
+        if purpose not in REASONING_PURPOSES or level not in REASONING_LEVELS:
+            raise ValueError(f"'{it}' — 목적은 {REASONING_PURPOSES}, 강도는 {REASONING_LEVELS}")
+        out[purpose] = level
+    return tuple(sorted(out.items()))
+
+
+def needs_retry(r: RunResult) -> bool:
+    """제공자 장애로 돌리지 않았거나(멈춤) 제공자 쪽 실패 호출이 섞인 실행인가(그 결과는 성능으로 쓸 수 없다)."""
+    return (r.error or "").startswith(PROVIDER_ABORT) or any(provider_failure(c) for c in r.calls)
+
+
+def retry_plan(
+    prev: Path, scenarios: list[scn.Scenario], a: Any, efforts: tuple[tuple[str, str], ...]
+) -> tuple[list[RunResult], list[tuple[scn.Scenario, int]]]:
+    """앞 결과(`runs.jsonl` · `report.json`)에서 그대로 둘 실행과 다시 돌 (시나리오, 반복)을 정한다. 설정(세트 · 반복 · 기준선 ·
+    후속 말 · 추론 강도 · 시나리오)이 앞 결과와 다르면 합칠 수 없으므로 ValueError."""
+    info = json.loads((prev / "report.json").read_text(encoding="utf-8"))["info"]
+    want = {
+        "set": a.set,
+        "repeat": a.repeat,
+        "baseline": a.baseline,
+        "followups": a.followups,
+        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+    }
+    for k, v in want.items():
+        if info.get(k, {"default": "low"} if k == "reasoning" else None) != v:
+            raise ValueError(f"앞 결과와 설정이 다르다: {k} {info.get(k)} ≠ {v}")
+    by_id = {s.id: s for s in scenarios}
+    if sorted(info.get("scenario_ids") or []) != sorted(by_id):
+        raise ValueError("앞 결과와 시나리오 목록이 다르다")
+    fields = {f.name for f in dataclasses.fields(RunResult)}
+    prev_runs = [
+        RunResult(**{k: v for k, v in json.loads(ln).items() if k in fields})
+        for ln in (prev / "runs.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    kept = [r for r in prev_runs if not needs_retry(r)]
+    redo = [(by_id[r.scenario], r.rep) for r in prev_runs if needs_retry(r)]
+    return kept, redo
+
+
 def _provider_warning(rep: dict[str, Any]) -> list[str]:
     """제공자 쪽 실패가 있었으면 보고 머리에 경고 줄(이번 결과를 성능으로 읽지 않게)."""
     u = rep["units"].get("all") or {}
@@ -1979,6 +2036,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--judge-price-cached", type=float, default=None)
     ap.add_argument("--judge-price-output", type=float, default=None)
     ap.add_argument("--validate", action="store_true", help="시나리오 검사만 하고 끝낸다")
+    ap.add_argument(
+        "--reasoning",
+        nargs="*",
+        default=[],
+        metavar="목적=강도",
+        help="호출 목적별 추론 강도(RESEARCH · ANSWER · FIX · HISTORY_SUMMARY = none · minimal · low · medium · high)",
+    )
+    ap.add_argument(
+        "--retry-from",
+        type=Path,
+        default=None,
+        help="앞 결과 폴더: 제공자 장애로 멈췄거나 장애가 섞인 실행만 다시 돌려 합친다(같은 설정이어야 한다)",
+    )
     ap.add_argument("--write-schema", action="store_true")
     a = ap.parse_args(argv)
     if a.write_schema:
@@ -2010,12 +2080,27 @@ def main(argv: list[str] | None = None) -> int:
         workers=max(1, a.workers),
         prices=prices,
     )
+    try:
+        efforts = parse_reasoning(a.reasoning)
+    except ValueError as e:
+        print(f"--reasoning: {e}", file=sys.stderr)
+        return 2
+    role = dataclasses.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts) if efforts else None
+    kept: list[RunResult] = []
+    redo: list[tuple[scn.Scenario, int]] | None = None
+    if a.retry_from is not None:
+        try:
+            kept, redo = retry_plan(a.retry_from, scenarios, a, efforts)
+        except ValueError as e:
+            print(f"--retry-from: {e}", file=sys.stderr)
+            return 2
+        print(f"앞 결과에서 {len(kept)}개를 그대로 두고 {len(redo)}개를 다시 돈다")
     if a.fake:
         base: ToolLlm = DryRunLlm()
         secret = secrets.token_bytes(32)
         model = "dry-run"
     else:
-        app = from_env(bundle=a.bundle)
+        app = from_env(bundle=a.bundle, role=role)
         if app.llm is None:
             print("모델 설정(ai/.env)이 없습니다", file=sys.stderr)
             return 2
@@ -2025,8 +2110,15 @@ def main(argv: list[str] | None = None) -> int:
     started = datetime.now()
     print(f"시나리오 {len(scenarios)}개 × {cfg.repeat}번 시작")
     results = run_suite(
-        scenarios, llm_factory=lambda _s, _r: base, secret=secret, cfg=cfg, progress=print
+        scenarios,
+        llm_factory=lambda _s, _r: base,
+        secret=secret,
+        cfg=cfg,
+        progress=print,
+        only=redo,
     )
+    if a.retry_from is not None:
+        results = sorted([*kept, *results], key=lambda r: (r.scenario, r.rep))
     judged = judge_info = None
     if a.judge and not a.fake:
         from .judge import judge_all
@@ -2051,6 +2143,10 @@ def main(argv: list[str] | None = None) -> int:
         "baseline": cfg.baseline,
         "followups": cfg.followups,
         "fake": a.fake,
+        #: 목적별 추론 강도(없으면 역할 기본값 low, 도구 모드는 none)
+        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+        "retried_from": str(a.retry_from) if a.retry_from is not None else None,
+        "retried_runs": len(redo) if redo is not None else 0,
     }
     summary = summarize(results, prices, judged, repeat=cfg.repeat)
     out = a.out or OUTPUTS / started.strftime("%Y%m%d-%H%M%S")

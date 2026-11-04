@@ -557,3 +557,87 @@ def test_successful_call_resets_the_provider_failure_streak() -> None:
     injected = {"ok": False, "synthetic": True, "error": "LLM_ERROR", "input_tokens": None}
     assert ev.provider_failure(bad) and not ev.provider_failure(ok)
     assert not ev.provider_failure(timeout) and not ev.provider_failure(injected)
+
+
+# ── 목적별 추론 강도 · 장애 실행만 다시 돌리기 ───────────────────────────
+
+
+def test_reasoning_per_purpose_parses_and_falls_back_to_the_role_default() -> None:
+    import dataclasses as dc
+
+    from chat_agent_lab.llm import ROLE_CHAT_AGENT
+
+    efforts = ev.parse_reasoning(["answer=Medium", "FIX=high"])
+    assert efforts == (("ANSWER", "medium"), ("FIX", "high"))
+    role = dc.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts)
+    assert (role.effort("ANSWER"), role.effort("FIX"), role.effort("RESEARCH")) == (
+        "medium",
+        "high",
+        ROLE_CHAT_AGENT.reasoning_effort,
+    )
+    with pytest.raises(ValueError):
+        ev.parse_reasoning(["TOOLS=high"])
+    with pytest.raises(ValueError):
+        ev.parse_reasoning(["ANSWER=max"])
+
+
+def test_retry_from_keeps_clean_runs_and_redoes_only_outage_runs(tmp_path: Any) -> None:
+    import argparse
+
+    sc = BY_ID["ana-slide3-gaze"]
+    down = ev.run_suite(
+        [sc],
+        llm_factory=lambda s, r: _DownLlm(),
+        secret=F.SECRET,
+        cfg=ev.RunnerConfig(repeat=2, stop_after_provider_failures=1),
+    )
+    from .test_evals import _slide3_llm
+
+    (ok,) = ev.run_suite(
+        [sc], llm_factory=lambda s, r: _slide3_llm(), secret=F.SECRET, cfg=ev.RunnerConfig(repeat=1)
+    )
+    ok = dataclasses_replace(ok, rep=1)
+    runs = [down[0], ok]
+    info = {
+        "set": "dev",
+        "repeat": 2,
+        "baseline": False,
+        "followups": False,
+        "reasoning": {"default": "low"},
+        "scenario_ids": [sc.id],
+    }
+    ev.write_report(
+        tmp_path, runs, ev.summarize(runs, None, None, repeat=2), {**_info(sc), **info}, None
+    )
+    a = argparse.Namespace(set="dev", repeat=2, baseline=False, followups=False)
+    kept, redo = ev.retry_plan(tmp_path, [sc], a, ())
+    assert [r.rep for r in kept] == [1] and [(s.id, rep) for s, rep in redo] == [(sc.id, 0)]
+    a2 = argparse.Namespace(set="dev", repeat=3, baseline=False, followups=False)
+    with pytest.raises(ValueError):
+        ev.retry_plan(tmp_path, [sc], a2, ())
+    again = ev.run_suite(
+        [sc],
+        llm_factory=lambda s, r: _slide3_llm(),
+        secret=F.SECRET,
+        cfg=ev.RunnerConfig(repeat=2),
+        only=redo,
+    )
+    assert [r.rep for r in again] == [0] and again[0].passed
+
+
+def dataclasses_replace(r: Any, **kw: Any) -> Any:
+    import dataclasses as dc
+
+    return dc.replace(r, **kw)
+
+
+def _info(sc: Any) -> dict[str, Any]:
+    return {
+        "started_at": "x",
+        "feature_version": "f",
+        "prompt_version": "p",
+        "corpus_version": "c",
+        "model": None,
+        "bundle": "OPENAI",
+        "scenarios_sha256": "h",
+    }
