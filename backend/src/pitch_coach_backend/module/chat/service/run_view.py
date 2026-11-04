@@ -55,6 +55,8 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
         db.rollback()
         return view
     now = datetime.now(UTC)
+    if run.first_trigger == "TAKE_REVIEWED":
+        _close_goal_check(ChatRepository(db), run)
     if not run.turn_calls:
         # 아직 /agent/turn 을 보내지 않았다. 접수 때 잡은 서비스 전체 예약을 돌려준다
         repo.release_service_turn(run.accepted_at.astimezone(SEOUL).date())
@@ -66,6 +68,17 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
     add_run_log(ChatRepository(db), run, now)
     db.commit()
     return _view(run)
+
+
+def _close_goal_check(repo: ChatRepository, run: ChatRun) -> None:
+    """자동 목표 확인 실행을 취소하면 그 확인도 끝난 것으로 닫는다.
+
+    임대가 PENDING 으로 남으면 5분 임대가 풀린 뒤 주기 작업이 같은 리뷰로 실행을 다시 만들고
+    확인 횟수를 또 줄인다. 실행 → 임대 순서로 잠근다(턴 실행기의 settle_goal_check 와 같다).
+    """
+    lease = repo.lock_goal_check(run.id)
+    if lease is not None and lease.status == "PENDING" and lease.fencing_token == run.fencing_token:
+        lease.status = "DONE"
 
 
 def _view(run: ChatRun) -> RunStatusResponse:

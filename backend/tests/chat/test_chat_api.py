@@ -17,6 +17,7 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import (
     ChatConversation,
     ChatDailyUsage,
+    ChatLease,
     ChatMessage,
     ChatRun,
     ChatRunLog,
@@ -573,6 +574,47 @@ def test_cancel_of_finished_run_keeps_the_result(
     response = client.post(f"/api/chat/runs/{sent['run_id']}/cancel", headers=_headers(user_id))
 
     assert response.json()["status"] == "DONE"
+
+
+def test_cancel_of_auto_goal_check_closes_the_check(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    # 임대를 PENDING 으로 두면 5분 뒤 같은 리뷰로 실행을 다시 만들고 확인 횟수를 또 줄인다
+    created = client.post("/api/chat/conversations", json={}, headers=_headers(user_id)).json()
+    conversation_id = uuid.UUID(created["conversation_id"])
+    now = datetime.now(UTC)
+    run = ChatRun(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        first_trigger="TAKE_REVIEWED",
+        status="QUEUED",
+        input={"review_event": {}, "page": HOME},
+        accepted_at=now,
+        deadline_at=now + timedelta(seconds=120),
+        fencing_token=1,
+    )
+    db_session.add(run)
+    db_session.flush()
+    lease = ChatLease(
+        kind="GOAL_CHECK",
+        conversation_id=conversation_id,
+        goal_version=1,
+        take_id=uuid.uuid4(),
+        review_revision=1,
+        status="PENDING",
+        run_id=run.id,
+        owner="sweep",
+        lease_until=now + timedelta(minutes=5),
+        fencing_token=1,
+    )
+    db_session.add(lease)
+    db_session.flush()
+
+    response = client.post(f"/api/chat/runs/{run.id}/cancel", headers=_headers(user_id))
+
+    assert response.json()["status"] == "CANCELLED"
+    db_session.expire_all()
+    assert db_session.get(ChatLease, lease.id).status == "DONE"
 
 
 def test_conversations_list_filters_by_pitch_and_shows_title(
