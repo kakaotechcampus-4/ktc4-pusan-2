@@ -124,7 +124,9 @@ export function takeChoice(
     return {
       presentationVersionId: combo.presentationVersionId,
       scriptVersionId: combo.scriptVersionId,
-      timeLimitSec: combo.goalTimeSec,
+      // 시간은 고른 조합이 아니라 피치의 지금 설정입니다. BE 가 Take 를 그 값으로 기록해서,
+      // 다시 찍기로 옛 조합을 되살려도 타이머가 어긋나지 않게 합니다. 준비 정보가 오기 전에만 조합 값을 씁니다
+      timeLimitSec: info?.timeLimitSec ?? combo.goalTimeSec,
       label: `자료 v${combo.slideVersion} · 대본 v${combo.scriptVersion}`,
     };
   }

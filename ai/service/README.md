@@ -10,6 +10,7 @@ cd ai/service
 uv sync --locked                    # .venv 를 만들고 uv.lock 그대로 설치 (lock 을 바꾸지 않음, 테스트 도구 포함)
 uv run python -m pytest             # 테스트 (가짜 LLM, 키 · 과금 없음)
 uv run ruff check .                 # 코드 검사
+uv run ruff format --check .        # 형식 검사 (고치려면 uv run ruff format .)
 uv run python -m uvicorn pitch_coach_ai.main:app --reload --port 8001
 ```
 다른 창에서:
@@ -29,7 +30,7 @@ INFO pitch_coach_ai.request request_id=4f1c… method=GET path=/health status=20
 - uvicorn 자체의 접근 로그(`"GET /health HTTP/1.1" 200 OK`)는 끕니다. 요청마다 위 줄과 겹치고, 쿼리 문자열을 그대로 싣고, 요청 ID가 없기 때문입니다. uvicorn의 시작 · 오류 로그는 그대로 나옵니다.
 - `http://localhost:8001/docs`에서 API 목록과 요청 · 응답 형식을 보고 직접 요청을 보내 볼 수 있습니다.
 - `--reload`는 코드를 저장하면 서버를 다시 띄웁니다. 개발할 때만 씁니다.
-- Windows에서 실행 파일(`pytest.exe` · `uvicorn.exe`)이 막히면 위처럼 `uv run python -m …`으로 부릅니다.
+- Windows에서 실행 파일(`pytest.exe` · `uvicorn.exe`)이 막히면 위처럼 `uv run python -m …`으로 부릅니다. macOS · Linux에서는 `curl.exe` 대신 `curl`을 씁니다.
 - 서버를 띄우고 `/health`를 보는 데는 LLM 키가 필요 없습니다. LLM을 쓰는 기능을 실제로 부를 때만 아래 환경변수를 채웁니다.
 - 시작할 때 대본 전달도의 형태소 분석기(Kiwi)를 따로 불러옵니다(로컬 약 1초). 그동안 `/health`는 200이고 `/ready`와 대본 전달도 경로는 503 `NOT_READY`입니다. 다 불러오면 서버 창에 `warmup_done name=get_kiwi duration_ms=…`가 남고 `/ready`가 200 `{"status":"ready"}`입니다.
 
@@ -114,7 +115,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 - LLM 기능을 부를 때는 `--env-file ai/.env`를 더합니다. 키는 이미지에 넣지 않습니다.
 - 의존성 설치 층은 `pyproject.toml` · `uv.lock`이 그대로면 캐시를 다시 써서, 코드만 고친 뒤의 빌드는 몇 초면 끝납니다. 다만 `python:3.12-slim` 태그가 새 판으로 바뀌면(보안 패치 등) 맨 아래 층부터 다시 받아 의존성 층도 다시 만듭니다.
 
-- 이미지 크기는 약 896 MB입니다(대본 전달도의 형태소 분석기 모델 · scikit-learn을 더하기 전 374 MB).
+- 이미지 크기는 약 898 MB입니다(형태소 분석기 모델 · scikit-learn · 판정 모듈 포함, `docs/ai/ai-service.md` 6-3).
 
 ### 대본 전달도 확인
 저장소 맨 위에서 키 없이 띄우고(`docker run --rm -p 8001:8000 pitch-coach-ai:local`), 다른 창에서 봅니다. 서버는 몇 초 뒤 요청을 받기 시작하고, 형태소 분석기는 그 뒤 약 1초 만에 준비됩니다.
@@ -218,23 +219,12 @@ ai/service/
 
 ## 테스트
 ```powershell
-uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
-```
-```
-2015 passed, 7 deselected
-```
-```powershell
+uv run python -m pytest              # 기본: 가짜 LLM, 키 · 과금 없음. live · slow 표시 테스트는 빠진다
 uv run python -m pytest -m live      # 실제 LLM 약 9번 (ai/.env 의 기본 묶음, 과금)
-```
-```
-5 passed, 1749 deselected
-```
-```powershell
 uv run python -m pytest -m slow      # 한 시간 Take 복구 시간 · Take 결과 크기 (실제 판정 모듈, 약 25초)
 ```
-```
-1 passed, 2021 deselected
-```
+- 기본 실행에서 빼는 표시는 `pyproject.toml`의 `addopts = "-m 'not live and not slow'"`입니다.
+- 계약 테스트는 각 기능 `examples/`의 요청을 넣어 예시 응답과 같은지 봅니다. 앱 테스트는 `tests/conftest.py`의 `client` fixture로 앱을 띄웁니다.
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```
 INFO pitch_coach_ai.llm llm_call request_id=- role=default model=gpt-6-luna attempt=1 outcome=ok cause=- tokens_in=79 tokens_out=35 duration_ms=1953.0

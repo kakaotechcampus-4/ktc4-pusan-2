@@ -669,7 +669,7 @@ v1을 "완료"라고 부르려면 실제 슬라이드별 Deepgram 결과와 녹�
 
 ## 9. 배포
 
-AI 서버로 옮기는 방법과 옮긴 뒤 확인은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절에 있습니다.
+AI 서비스의 배포 구성은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절에 있고, 옮긴 뒤 검증 결과는 이 문서의 [옮긴 뒤 검증](#옮긴-뒤-검증)에 있습니다.
 
 ---
 

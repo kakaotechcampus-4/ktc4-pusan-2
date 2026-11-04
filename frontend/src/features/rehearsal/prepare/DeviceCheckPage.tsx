@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
@@ -205,10 +205,19 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
+  // 무음 경고는 평소 목소리를 **읽는 동안만**, 읽기를 누른 때부터 셉니다. 읽기 전에는 말할 이유가 없어
+  // 페이지를 연 뒤로 세면 가만히 있는 사람에게 경고가 떴습니다. 읽기 상태는 useBaseVoice 뒤에서 이 ref 에
+  // 적습니다 — useMicLevel 이 voiceRecord 를 넘겨야 해서 먼저 불리기 때문입니다
+  const readingSinceRef = useRef<number | null>(null);
+  const silenceFrom = useCallback(() => readingSinceRef.current, []);
   const { meterRef, echoMeterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } =
-    useMicLevel(stream, { clock: pageClock });
+    useMicLevel(stream, { clock: pageClock, silenceFrom });
   // 평소 목소리 크기. 선택 단계라 시작을 막지 않습니다 — 안 재면 AI 가 Take 첫 발화로 잡습니다
   const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
+  const reading = baseVoice.status === 'READING';
+  useEffect(() => {
+    readingSinceRef.current = reading ? performance.now() : null;
+  }, [reading]);
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
@@ -424,6 +433,8 @@ export function DeviceCheckPage() {
         scriptMode,
         // 준비 정보의 번호는 예상값이라 그사이 다른 Take 가 생기면 어긋납니다. 실제로 매긴 번호를 씁니다
         takeNumber: take.takeNumber,
+        // 실패해 장치 점검으로 돌아갈 때 이 조합을 다시 넘깁니다 (`deviceCheckLink`)
+        practice: combo,
       };
       await setSessionTicket(clientSessionId, ticket);
 

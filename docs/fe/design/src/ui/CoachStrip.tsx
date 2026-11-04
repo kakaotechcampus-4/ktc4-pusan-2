@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { publicUrl } from '@/lib/publicUrl';
 
 /** 대기 문구는 알림 밖에 둔다. 서버 메시지가 사라질 때 기본 안내를 다시 낭독하지 않는다. */
 export function CoachStrip({
@@ -15,7 +16,7 @@ export function CoachStrip({
   const text = exam ? '' : (message ?? '');
   return (
     <div className="coach" data-empty={!text} data-tone={praise ? 'praise' : 'correct'}>
-      <img className="coach-avatar" src="/onboarding/pico-bust.png" alt="" />
+      <img className="coach-avatar" src={publicUrl('onboarding/pico-bust.png')} alt="" />
       <b className="coach-label">{exam ? '코치 OFF' : '피코'}</b>
       <span className="coach-text" role="status" aria-atomic="true">
         {text}

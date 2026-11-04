@@ -1,8 +1,6 @@
 # 말 속도 · 멈춤 (pace) 설계
 
-> **이 문서는** 말 속도 · 멈춤 판정 기능의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
-> **기준 범위**: 말 속도 판정 모듈의 목표 설계다. 기능 사이 공통 계약(1초 판정 결과 형식 · 커서 · STT 모듈 입력 · 단위 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
-> **관련 Issue**: #154
+> **기준 범위**: 말 속도 판정 모듈의 기준 설계다. 기능 사이 공통 계약(1초 판정 결과 형식 · 커서 · STT 모듈 입력 · 단위 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **한 줄 요약**: STT가 확정한 단어로 최근 말 속도(CPM, 군더더기를 뺀 글자 수 ÷ 단어 발화 시간)를 재고, 단어 사이 긴 멈춤을 세어 1초 판정 결과(영역 `SPEED`)를 낸다. 시간 판정이 장별 말한 글자 수와 말 속도를 받아 진행도를 잰다.
 > **기준값**: 빠름 · 느림 기준과 아주 나쁨 값, 최근 창 · 짧은 창 길이, 측정 가능 최소 발화 시간 · 단어 수, 멈춤 기준 시간은 서비스 `features/pace/config.py`에만 두고 이 문서에는 지표와 나쁜 방향만 쓴다. 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
 
@@ -18,12 +16,11 @@
   - 말을 걸지 결정하지 않는다(코치 몫). 느림은 문제 구간에만 남고 코치가 말하지 않는다.
   - 긴 침묵을 따로 세지 않는다. 오디오가 흐르는 동안 말하지 않는 긴 침묵은 소리 크기 모듈의 `PAUSE` 영역(`LONG_SILENCE` · `long_silence_count`)이 판정하고, 오디오가 끊기면 `PAUSE`는 잴 수 없음이다. 말 속도는 두 확정 단어 사이 간격이 멈춤 기준을 넘으면 길이와 관계없이 멈춤 하나로 센다(긴 침묵 뒤에 단어가 오면 `pause_count`에도 들어간다). 단어가 뒤따르지 않은 침묵은 세지 않는다.
   - STT 중간 결과를 쓰지 않는다. 확정 단어만 쓴다.
-  - 옛 노트북의 연속 경고 조건은 옮기지 않는다. 코치가 말을 걸기 위한 지속 조건은 코치가 문제 구간에서 측정을 믿을 수 있던 시간으로 따로 잰다(`architecture.md` 7절).
+  - 연속 경고 조건은 이 모듈에 없다. 말을 걸기 위한 지속 조건은 코치가 문제 구간에서 측정을 믿을 수 있던 시간으로 잰다(`architecture.md` 7절).
 
 # 1. 왜 필요한가
 ## 1-1. 배경
-긴장하면 말이 빨라진다. 너무 빠르면 청중이 따라오지 못하고, 시간이 남는다. 반대로 너무 느리면 시간이 모자란다. 말 속도는 STT 단어 시각으로 잴 수 있지만, STT가 끊긴 동안의 듬성한 단어나 "음 · 어" 같은 군더더기를 그대로 세면 속도가 틀린다.
-판정 모듈(`pace-1.0`)은 AI 서비스 `features/pace/`에 있고 코치 연구 폴더에는 연구용 대역(`coach_lab/judges/pace.py`, `pace-0.2`)이 남아 있다. 평가 데이터는 아직 없다.
+말 속도는 STT 단어 시각으로 재는데, STT가 끊긴 동안의 듬성한 단어나 군더더기를 그대로 세면 CPM이 틀린다.
 
 ## 1-2. 목표
 - 사람이 단어 시각으로 잰 CPM과 맞는 말 속도를 낸다.
@@ -58,11 +55,9 @@ flowchart LR
   C -- "장 · Take tally 합계" --> S["pace.summarize · criteria"]
   S --> TR["Take 결과 areas.SPEED"]
 ```
-1. **BE**: 확정 단어 · STT 상태를 Take 기준 ms로 들고 있다가 FE `metrics`를 받을 때마다(`buffered: true`인 것은 빼고) 최근 60초를 `/coach/evaluate`에 싣는다(호출 조건은 `architecture.md` 1-3 2번 · 2절).
-2. **코치 → 군더더기 → 말 속도**: 코치가 군더더기를 먼저 부르고, 단어별 판정 중 군더더기(true)와 보류(null) 단어를 `fillers`로 말 속도에 넘긴다. 군더더기 판정이 실패하면 `fillers: null`이다(`coach-agent.md` 6-1).
-3. **`pace.judge`**: 새 단어를 세어 `tally`에 내고(글자 수 · 발화 시간 · 멈춤), 최근 창 · 짧은 창 CPM으로 상태와 문제를 정한다.
-4. **코치 → 시간 판정**: 같은 요청 안에서 말 속도의 `cpm` · `measurable`과 `criteria()`의 `PACE_FAST` 기준값, 장별 `chars` 합을 시간 판정에 넘긴다(`coach-agent.md` 6-2).
-5. **Take 끝**: 코치가 장 · Take `tally` 합계로 `summarize`를 불러 Take 결과의 `areas.SPEED`에 담는다.
+호출 순서는 `architecture.md` 1-3과 `coach-agent.md` 6-1 · 6-2다(코치가 군더더기를 먼저 부르고 그 판정을 `fillers`로 넘긴다).
+- **받는 것**: 최근 60초 확정 단어 · STT 상태, 같은 요청의 군더더기 · 보류 단어(`fillers`, 군더더기 판정이 실패하면 null), 커서.
+- **내는 것**: 1초 판정 결과(`SPEED`)와 `tally`(글자 수 · 발화 시간 · 멈춤). 같은 요청의 `cpm` · `measurable` · `PACE_FAST` 기준값 · 장별 `chars`가 시간 판정으로 가고(6-2), Take 끝에는 코치가 `summarize`로 `areas.SPEED`를 만든다.
 
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
@@ -70,14 +65,11 @@ flowchart LR
 ai/research/speech-pace/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과, 대역과 달라진 점
 ├─ pyproject.toml · uv.lock                 Python 3.12, 서비스를 editable로 설치해 판정 모듈을 쓴다
-├─ (서비스 ai/service/src/pitch_coach_ai/features/pace/)   판정 모듈 (연구 폴더 src/pace/에서 폴더째 옮김, 테스트는 서비스 tests/unit/pace/)
-│   ├─ schemas.py · core.py · config.py · version.py
-│   └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
-├─ data/                                    평가 데이터: 단어 시각을 사람이 확인한 발화 세트 (아직 없음)
-├─ tools/                                   평가 스크립트 (아직 없음)
-└─ reports/results/                         평가 결과 JSON (CPM 오차 · 상태 일치율 · 멈춤 재현율) (아직 없음)
+└─ (서비스 ai/service/src/pitch_coach_ai/features/pace/)   판정 모듈 (테스트는 서비스 tests/unit/pace/)
+    ├─ schemas.py · core.py · config.py · version.py
+    └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
 ```
-폴더 이름은 `speech-pace`다. 같은 규칙의 연구용 대역이 코치 연구 폴더의 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있다. 코치 재생 · 실험은 2026-10-28부터 대역 대신 서비스의 이 모듈을 쓰고(`coach_lab.judges.real_judges`), 대역은 대역 자체의 테스트(`lab_judges`)와 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 빠름 기준은 이 모듈과 같은 값)에만 남는다.
+같은 규칙의 연구용 대역이 코치 연구 폴더의 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있다. 코치 재생 · 실험은 서비스의 이 모듈을 쓰고(`coach_lab.judges.real_judges`), 대역은 대역 자체의 테스트(`lab_judges`)와 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 빠름 기준은 이 모듈과 같은 값)에만 남는다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -89,7 +81,7 @@ ai/research/speech-pace/
 ## 4-3. 규칙과 이유
 | 규칙 | 이유 |
 |---|---|
-| 코어는 상대 import와 pydantic만 쓰고 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않는다. 다른 모듈(군더더기)을 import하지 않는다 (`architecture.md` 8절) | 같은 입력에 같은 결과, 서비스로 폴더째 옮겨도 코드를 고치지 않는다 |
+| 코어는 상대 import와 pydantic만 쓰고 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않는다. 다른 모듈(군더더기)을 import하지 않는다 (`architecture.md` 8절) | 같은 입력에 같은 결과, 서비스 · 연구 폴더 어디서 불러도 같다 |
 | 판정이 정해진 단어만 센다. 한 번 센 몫은 바꾸지 않는다 | 겹쳐 오는 창에서 두 번 세지 않게 |
 | 기준값은 `config.py`에만 두고 해시가 `criteria_version`에 들어간다 | 기준을 바꾸면 결과가 바뀌므로 버전으로 추적한다 |
 | 입력 모델은 모르는 필드를 무시하고, 출력 모델은 정해진 필드만 낸다 | `architecture.md` 2절 |
@@ -221,7 +213,7 @@ ai/research/speech-pace/
 7. **커서**: `counted_until_ms = max(t_ms, since_ms)`로 돌려주어 커서를 되돌리지 않는다. `words_counted_until_ms`는 지금까지 센(또는 넘긴) 단어의 `end_ms` 중 가장 큰 값이고(받은 커서보다 작아지지 않는다. 시각이 거꾸로인 단어가 커서를 되돌리지 않게), 보류 단어 앞에서 멈추며, `fillers`가 null이면 받은 값 그대로다. 같은 입력을 두 번 넣으면 같은 결과가 나오고, 돌려준 커서로 겹친 창을 다시 부르면 이미 센 단어는 다시 나오지 않는다.
 
 ## 6-2. 시간 판정과의 연결
-코치는 같은 요청 안에서 `metrics.cpm` · `measurable`(STT를 믿을 수 있고 군더더기 · 말 속도가 실패하지 않았을 때만 true로 넘김) · `criteria()["PACE_FAST"].threshold`와, 이번 `tally`의 `chars`를 단어를 말한 장에 더한 장별 글자 수를 시간 판정에 넘긴다(`coach-agent.md` 6-2). 시간 판정은 장 진행 비율 = 말한 글자 수 ÷ 대본 파싱의 `script_chars`로 잰다. 그래서 `chars`와 `script_chars`는 같은 정의(공백 · 문장부호를 뺀 코드 포인트 수)다.
+시간 판정에 넘기는 값(`cpm` · `measurable` · `PACE_FAST` 기준값 · 장별 `chars`)과 그 조건은 `coach-agent.md` 6-2다. 시간 판정은 장 진행 비율 = 말한 글자 수 ÷ 대본 파싱의 `script_chars`로 재므로, `chars`와 `script_chars`는 같은 정의(공백 · 문장부호를 뺀 코드 포인트 수)다.
 
 ## 6-3. `summarize` · `criteria`
 - `summarize`는 코치가 장 · Take 동안 더한 `tally` 합계로 5-3 표의 지표를 계산한다. 코치는 결과를 고치지 않고 Take 결과의 `areas.SPEED`에 담고, 측정 비율이 코치의 기준 미만이면 값을 비운다(`coach-agent.md` 6-3).
@@ -250,7 +242,7 @@ ai/research/speech-pace/
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `pace-<버전>` (첫 판 `pace-1.0`, 지금 대역은 `pace-0.2`) | 서비스 `features/pace/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `pace-<버전>` | 서비스 `features/pace/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
 | `criteria_version` | `pace-<버전>+<config 해시 12자리>` | `judge` 출력 → `coach_state` → 응답 `meta.criteria_versions.pace` | 기준값을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` (`architecture.md` 5절) | 판정 결과의 필드 이름 변경 · 삭제 · 뜻 변경 |
 
@@ -266,17 +258,13 @@ uv sync
 | 평가 (`ai/research/speech-pace`에서, 아직 없음) | `uv run python tools/evaluate.py --out reports/results/pace_eval.json` | CPM 오차 · 상태 일치율 · 멈춤 재현율 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
-- 코치 연구 폴더의 연구용 대역(`pace-0.2`)과 그 테스트는 `cd ai/research/coach-agent` 뒤 `uv run python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judge_volume.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py`로 돈다(소리 크기 대역 테스트는 `volume.md` 10절이 이 명령을 가리켜 함께 둔다). 코치 쪽 연결 테스트는 서비스 `tests/unit/coach/test_judges.py`다.
+- 코치 연구 폴더의 연구용 대역 테스트 명령은 `ai/research/coach-agent/README.md` 6절에 있다. 코치 쪽 연결 테스트는 서비스 `tests/unit/coach/test_judges.py`다.
 - 테스트가 볼 것: 빠름 · 느림 · 기준과 같을 때, 군더더기 글자 빼기, 보류에서 커서 멈춤, `fillers: null`, `stt_ok_since_ms` 앞 단어 빼기와 그 간격은 멈춤 아님, 멈춤은 뒤 단어가 와야 셈, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 없음. 테스트 이름은 동작을 문장으로 짓는다.
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/pace/`에 있다(연구 폴더 `src/pace/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 모두 `tests/unit/pace/`로 옮겼다. 예시 · 코어 폴더를 연구 폴더 경로로 찾던 `test_examples.py` · `test_core_boundary.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 폴더에는 연구 도구를 쓰는 테스트가 없어 남긴 테스트가 없다. 자기 HTTP 엔드포인트는 없고, 코치 라우터(`api/coach.py`)가 앱을 불러올 때 만드는 `Judges` 묶음(`JUDGES`)에 `judge` · `summarize` · `criteria`를 넣어 `/coach/evaluate` · `/coach/finalize`에서 코치에 넘긴다(`coach-agent.md` 11절). 코치 연구 폴더의 재생 · 실험(`real_judges()`)도 이 모듈을 쓴다. 의존성은 pydantic 하나다.
+**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/pace/`, 테스트는 모두 `tests/unit/pace/`에 있다. 자기 HTTP 엔드포인트는 없고, 코치 라우터(`api/coach.py`)가 앱을 불러올 때 만드는 `Judges` 묶음(`JUDGES`)에 `judge` · `summarize` · `criteria`를 넣어 `/coach/evaluate` · `/coach/finalize`에서 코치에 넘긴다(`coach-agent.md` 11절). 코치 연구 폴더의 재생 · 실험(`real_judges()`)도 이 모듈을 쓴다. 의존성은 pydantic 하나다.
 
 **환경변수**: 말 속도 모듈은 환경변수를 읽지 않는다.
-
-**옮긴 뒤 같은 결과인지 확인**
-1. 서비스: 옮긴 `tests/unit/pace/`가 (경로를 고친 뒤) 통과하고, 코어 경계 테스트가 새 위치를 본다. 옮기기 전후 `examples/`의 `judge` · `summarize` · `criteria` 출력과 `criteria_version`이 바이트까지 같다.
-2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고 달라진 판정을 README에 기록한다. 재생 16/16 통과, 구간 · 개입 지표는 같고 장별 CPM 평균 절대 오차만 줄었다(clean 4.2 → 0.2, 코치 연구 폴더 README 7절).
 
 **증상별 원인**
 
@@ -291,12 +279,12 @@ uv sync
 말 속도는 원자료(STT 단어)를 받기만 하고, 결과는 코치의 Take 결과에 담겨 저장된다. BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절, 코치 쪽 저장은 `coach-agent.md` 12절에 있다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+이 기능의 저장 요구는 AI가 정하고, 테이블 · 칸 · 형식 · 마이그레이션 · 구현 · 운영은 BE가 정한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래 저장 요구와 저장 위치는 저장 계약이며(지금 BE 구현과 맞는지 확인하지 못한 항목은 "BE 구현 확인 필요"로 따로 표시한다), 바꾸려면 BE와 합의한다.
 
-| 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
+| 데이터 | 언제 생기나 | 저장 위치(지금 구현 또는 확인 필요, BE 소유) | 저장 요구(남길 값 · 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
 | 말 속도 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.SPEED`(`take` · `slides`) · `criteria.SPEED` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. Take 또는 장 하나에 0.1 KB 안팎(지표 두 개 + 측정 비율) | 코치가 만들고 BE가 쓴다 · 리뷰(`pacing_rhythm`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
-| 리포트 요약 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.average_cpm`(SPEED `cpm`) · `take_summaries.total_intermission`(SPEED `pause_count`) | 숫자. 잴 수 없었으면 null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
+| 리포트 요약 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.average_cpm`(SPEED `cpm`) · `take_summaries.total_intermission`(SPEED `pause_count`) | 평균 말 속도 · 멈춤 수. 잴 수 없었으면 비워 둔다(null) | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
 | 말 속도 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `SPEED`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `SPEED`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
 | STT 확정 단어 (원자료, 이 모듈의 입력) | Take 동안 | `take_transcript_segments.words` | `architecture.md` 1-1, `coach-agent.md` 12-1 | BE가 쓴다 · `replay` | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
 
@@ -313,7 +301,8 @@ uv sync
 | 판정 모듈 단위 시나리오 | 계약 · 경계 테스트 통과 | 같은 입력 같은 결과, 보류 · 커서로 두 번 세지 않음 | `tests/` · `examples/` |
 | 코치 재생 시나리오 | 코치 쪽 지표 (불필요한 개입률 등) | 이 모듈로 바꿔도 코칭이 나빠지지 않는 것 | `coach-agent.md` 13절 |
 
-- 기준값(빠름 · 느림 · 멈춤 기준)은 옛 노트북 값이거나 손으로 고른 잠정값이다. 이 세트로 다시 고른다.
+- 기준값(빠름 · 느림 · 멈춤 기준)은 잠정값이다(빠름 · 느림은 옛 노트북 값, 나머지는 코치 연구용 대역 `pace-0.2` 값, 서비스 `features/pace/config.py`). 이 세트로 다시 고른다.
+- 연구 폴더의 평가 데이터(`data/`) · 평가 스크립트(`tools/`) · 결과(`reports/results/`)는 아직 없다. 평가 데이터를 모으면 만든다.
 
 # 14. 지표 정의
 - **`cpm`** (판정 결과): 최근 창 안 군더더기가 아닌 단어의 공백 · 문장부호를 뺀 글자 수 ÷ 그 단어들의 발화 시간 × 60000. 발화 시간 · 단어 수가 기준 미만이면 null.
@@ -326,10 +315,6 @@ uv sync
 - **멈춤 재현율**: 사람이 표시한 멈춤 중 모듈이 센 비율.
 
 # 15. 열린 질문 · 알려진 한계
-**정한 것**
-- 창과 `tally`가 같은 규칙(군더더기는 글자 · 시간 모두 빼고, 보류 단어는 창에서도 아직 세지 않음), 문장 끝 신호를 쓰지 않음, 시각이 거꾸로인 단어는 계산에서 빼고 커서는 넘김.
-- 오디오가 멈춘 동안의 STT 정상 시간은 코치 쪽에서 정했다(코치가 오디오가 멈춘 1초에 `degraded`를 넘김). 말 속도 계약은 그대로다.
-
 **열린 질문**
 - 없음.
 
