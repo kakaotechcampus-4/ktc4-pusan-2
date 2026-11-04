@@ -38,9 +38,18 @@ function channel(): BroadcastChannel | null {
   }
 }
 
-/** 로그아웃했음을 알립니다 — 이 탭의 듣는 쪽은 바로(새로고침 전에), 다른 탭은 채널로 */
+/**
+ * 로그아웃했음을 알립니다 — 이 탭의 듣는 쪽은 바로(새로고침 전에), 다른 탭은 채널로.
+ * 듣는 쪽 하나가 실패해도 나머지 · 다른 탭 알림 · 부른 쪽의 새로고침은 그대로 갑니다
+ */
 export function announceSignedOut() {
-  for (const listener of local) listener();
+  for (const listener of local) {
+    try {
+      listener();
+    } catch (error) {
+      console.error('로그아웃 신호를 처리하지 못했어요', error);
+    }
+  }
   const ch = channel();
   if (!ch) return;
   ch.postMessage({ type: SIGNED_OUT, tab: TAB } satisfies Signal);

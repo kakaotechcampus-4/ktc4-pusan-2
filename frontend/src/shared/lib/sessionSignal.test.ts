@@ -40,3 +40,28 @@ describe('로그아웃 신호', () => {
     expect(calls).toBe(0);
   });
 });
+
+describe('듣는 쪽이 실패해도', () => {
+  it('나머지 듣는 쪽과 다른 탭 알림은 그대로 간다', async () => {
+    let calls = 0;
+    let otherTab = 0;
+    const error = console.error;
+    console.error = () => undefined;
+    offs.push(
+      onSignedOut(() => {
+        throw new Error('boom');
+      }),
+    );
+    offs.push(onSignedOut(() => calls++));
+    const other = new BroadcastChannel('pitchcoach-session');
+    other.onmessage = () => otherTab++;
+    try {
+      expect(() => announceSignedOut()).not.toThrow();
+      await settle();
+      expect([calls, otherTab]).toEqual([1, 1]);
+    } finally {
+      other.close();
+      console.error = error;
+    }
+  });
+});
