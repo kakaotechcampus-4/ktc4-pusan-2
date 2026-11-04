@@ -17,7 +17,10 @@ from chat_agent.schemas import Claim, FinalData
 from chat_agent_lab.app import load_corpus
 
 from . import fakes as F
+from .test_approval import SAVE as SAVE_GOAL
+from .test_approval import drafts, payload_of, saved_result
 from .test_stream_answer import Feeder, assert_prefix_invariant, claim_lines
+from .test_turn import COMPARE, resume_request, roles
 
 INTRO = templates.SystemText.GENERAL_INTRO.value
 G1 = "중요한 문장 앞에서 잠깐 멈추면 청중이 따라오기 쉬워요."
@@ -105,14 +108,22 @@ def _script(answer: Any, *, search: bool = True) -> list[Any]:
     return [F.plan(steps=["자료 찾기", "답 쓰기"]), *research, F.done(), answer]
 
 
+_CORPUS = object()
+
+
 def _run(
-    answer: Any, *, search: bool = True, req: dict | None = None, **kw: Any
+    answer: Any,
+    *,
+    search: bool = True,
+    req: dict | None = None,
+    corpus: Any = _CORPUS,
+    **kw: Any,
 ) -> tuple[list[dict], dict, F.FakeLlm]:
     llm = F.FakeLlm(_script(answer, search=search), **kw)
     status, lines, data = F.run_turn(
         req or F.request(user_message="발표 전에 긴장을 풀려면 어떻게 해?"),
         llm,
-        corpus=load_corpus(),
+        corpus=load_corpus() if corpus is _CORPUS else corpus,
         corpus_version="guides-2",
     )
     assert status == 200 and data is not None
@@ -188,7 +199,7 @@ def test_general_without_a_search_is_refused_without_a_fix_call() -> None:
 
 def test_general_after_a_record_sentence_keeps_both_and_skips_the_no_source_note() -> None:
     """기록 문장과 일반 조언을 한 답에 낸다: 안내는 일반 조언 바로 앞, 자료 근거 없음 안내(KNOWLEDGE_NO_SOURCE)는 붙이지 않는다."""
-    from .test_turn import COMPARE, MSG, change_draft, roles
+    from .test_turn import MSG, change_draft
 
     record = "Take 5의 3장 청중 시선 비율은 28%예요."
 
@@ -213,3 +224,120 @@ def test_general_after_a_record_sentence_keeps_both_and_skips_the_no_source_note
     assert texts[-3:] == [("RECORD", record), ("SYSTEM", INTRO), ("GENERAL", G3)]
     assert templates.SystemText.KNOWLEDGE_NO_SOURCE.value not in [t for _, t in texts]
     assert_prefix_invariant(lines, data)
+
+
+def _general_rule_steps(data: dict) -> list[Any]:
+    fd = FinalData.model_validate(data)
+    return [
+        s
+        for s in fd.diagnostics.steps  # type: ignore[union-attr]
+        if s.kind == "CHECK" and s.code == "GENERAL_RULE"
+    ]
+
+
+def test_failed_search_does_not_allow_general() -> None:
+    """자료 묶음 준비 실패로 자료 찾기가 실패하면 찾은 것이 아니다: 일반 조언은 고치기 없이 버리고 거절(L1-21)."""
+    _, data, llm = _run(F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"), corpus=None, fixes=[])
+    assert data["status"] == "REFUSED"
+    assert _texts(data) == [("SYSTEM", templates.SystemText.NO_GUIDE.value)]
+    assert [c for c in llm.calls if c.purpose == "FIX"] == []
+
+
+def test_guide_and_general_all_dropped_refuses_even_on_answer_route() -> None:
+    """조언(자료 · 일반 조언)만 쓴 답이 검사로 모두 빠지면 route 가 ANSWER 여도 '확인된 내용만'이 아니라 거절이다."""
+    _, data, _ = _run(
+        F.answer(
+            [
+                F.claim("GUIDE", '"핵심어만 적어 연습하세요"', source_ids=["g-99"]),
+                F.claim("GENERAL", "연구에 따르면 쉼이 중요해요."),
+            ]
+        ),
+        fixes=[F.fix({0: None, 2: None})],
+    )
+    assert data["status"] == "REFUSED"
+    assert _texts(data) == [("SYSTEM", templates.SystemText.NO_GUIDE.value)]
+
+
+def test_general_linked_to_a_judgement_is_not_used_and_logged() -> None:
+    """판단 · 비교 결론에 이은 일반 조언 원소는 쓰지 않고 진단에 남긴다(근거가 있으면 일반 조언이 아니다)."""
+    _, data, _ = _run(
+        F.answer(
+            [F.claim("GENERAL", G4, assessment_index=0), F.claim("GENERAL", G1)],
+            route="NO_GUIDE",
+        )
+    )
+    assert _texts(data) == [("SYSTEM", INTRO), ("GENERAL", G1)]
+    assert [(s.detail.result, s.detail.claim_kind) for s in _general_rule_steps(data)] == [
+        ("DROPPED", "GENERAL")
+    ]
+
+
+def test_blank_general_element_is_not_counted_as_over_the_limit() -> None:
+    _, data, _ = _run(
+        F.answer(
+            [
+                F.claim("GENERAL", G1),
+                F.claim("GENERAL", "  "),
+                F.claim("GENERAL", G2),
+                F.claim("GENERAL", G3),
+            ],
+            route="NO_GUIDE",
+        )
+    )
+    assert [t for k, t in _texts(data) if k == "GENERAL"] == [G1, G2, G3]
+    assert _general_rule_steps(data) == []
+
+
+def test_search_and_general_count_carry_over_the_approval_pause() -> None:
+    """승인 대기 전에 자료를 찾았으면 이어 부른 답에서도 찾은 것이다(서명 상태). 한 답의 일반 조언 수와 안내는 실행 전체에서
+    센다: 앞 응답에 2문장을 냈으면 이어 부른 답은 1문장만, 안내는 다시 붙이지 않는다."""
+    corpus = load_corpus()
+
+    def before_pause(r: Any) -> Any:
+        eid = roles(r)["current"]
+        return F.answer(
+            [
+                F.claim("ASSESSMENT", "", assessment_index=0),
+                F.claim("RECORD", "Take 5의 3장 청중 시선 비율은 28%예요.", evidence_ids=[eid]),
+                F.claim("GENERAL", G1),
+                F.claim("GENERAL", G2),
+            ]
+        )
+
+    req = F.with_loaded(
+        F.request(
+            user_message="3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"
+        ),
+        "t-4",
+    )
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=drafts()),
+            F.tools(COMPARE),
+            F.tools(NO_HIT, prefix="s"),
+            F.tools(SAVE_GOAL, prefix="sg"),
+            F.done(),
+        ],
+        answers=[before_pause],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(req, llm, corpus=corpus, corpus_version="guides-2")
+    assert data["status"] == "NEEDS_ACTION"
+    assert payload_of(data["state"])["loop"]["guide_searched"] is True
+    said = [c["text"] for c in data["message"]["claims"]]
+    assert said[-3:] == [INTRO, G1, G2]
+
+    llm2 = F.FakeLlm(
+        [F.done()],
+        answers=[F.answer([F.claim("GENERAL", G3), F.claim("GENERAL", G4)])],
+        fixes=[F.fix({})],
+    )
+    req2 = resume_request(req, data, saved_result(data["actions"][0]))
+    req2["context"]["conversation_goal"] = None
+    _, lines2, d2 = F.run_turn(req2, llm2, corpus=corpus, corpus_version="guides-2")
+    assert d2["status"] == "DONE"
+    texts = [t for _, t in _texts(d2)]
+    assert texts[: len(said)] == said
+    assert texts.count(INTRO) == 1
+    assert [t for k, t in _texts(d2) if k == "GENERAL"] == [G1, G2, G3]
+    assert [(s.detail.result) for s in _general_rule_steps(d2)] == ["DROPPED"]

@@ -668,9 +668,11 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     comp = cmp.finish(draft, ans["messages"])
     out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
-    if out and all(c.kind == "GENERAL" or is_general_intro(c) for c in out):
-        # 일반 조언만 쓴 답은 자료를 찾지 못한 답이다(route 를 ANSWER 로 썼어도): 일반 조언이 모두 걸리면 거절(6-10 · L4-28)
-        no_guide = True
+    # 조언(자료 · 일반 조언)만 쓴 답: 문장이 검사로 모두 빠지면 route 가 ANSWER 여도 자료 없음 거절이다(6-10 · L4-28).
+    # 확인된 기록이 없으니 '확인된 내용만'(PARTIAL)이 아니다
+    advice_only = bool(out) and all(
+        c.kind in ("GUIDE", "GENERAL") or is_general_intro(c) for c in out
+    )
 
     # 4. 연습 준비 이동 · 대화 요약
     actions: list[Action] = []
@@ -707,7 +709,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 claims=comp.pre,
                 assessments=all_assessments,
             )
-        if no_guide:
+        if no_guide or advice_only:
             return finish(
                 status="REFUSED",
                 reason="NO_EVIDENCE",
