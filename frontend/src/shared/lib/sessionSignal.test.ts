@@ -65,3 +65,15 @@ describe('듣는 쪽이 실패해도', () => {
     }
   });
 });
+
+describe('같은 함수로 두 번 들으면', () => {
+  it('하나를 풀어도 다른 하나는 남는다', () => {
+    let calls = 0;
+    const listener = () => calls++;
+    const first = onSignedOut(listener);
+    offs.push(onSignedOut(listener));
+    first();
+    announceSignedOut();
+    expect(calls).toBe(1);
+  });
+});

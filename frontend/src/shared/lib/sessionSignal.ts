@@ -58,14 +58,16 @@ export function announceSignedOut() {
 
 /** 이 탭이나 다른 탭의 로그아웃을 듣습니다. 돌려준 함수로 그만 듣습니다 */
 export function onSignedOut(listener: () => void): () => void {
-  local.add(listener);
+  // 듣기마다 따로 둡니다 — 같은 함수로 두 번 들어도 하나를 풀 때 다른 하나가 같이 풀리지 않게
+  const entry = () => listener();
+  local.add(entry);
   const ch = channel();
   if (ch)
     ch.onmessage = (event: MessageEvent) => {
       if (isSignal(event.data) && event.data.tab !== TAB) listener();
     };
   return () => {
-    local.delete(listener);
+    local.delete(entry);
     ch?.close();
   };
 }
