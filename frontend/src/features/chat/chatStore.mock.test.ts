@@ -170,3 +170,29 @@ describe('대화의 실행 조회 · 409 · 기억 없이 (네 번째 리뷰)', 
     expect(store().memoryOff).toBe(true);
   });
 });
+
+describe('다섯 번째 리뷰', () => {
+  it('되살린 보내기를 다시 보내는 것과 대화의 실행 조회가 겹쳐도, 늦게 온 조회가 새 실행을 지우지 않는다', async () => {
+    const first = await send('비교해 줘');
+    await untilSettled();
+    store().beginSend({ ...draft, text: '두번째' });
+    // 서버에 닿기 전에 새로고침
+    useChatStore.setState({ userId: null });
+    store().setUser('u');
+    expect(store().syncing).toBe(true);
+
+    // 조회와 다시 보내기를 동시에 시작 — 조회 응답이 먼저 만들어지고 마지막에 반영됩니다
+    const lookupTicket = chatTicket();
+    const lookup = (await (
+      await fetch(base + chatPaths.conversationRun(first.conversation_id))
+    ).json()) as { run: RunView | null };
+    expect(lookup.run).toBeNull();
+    const again = await sendPending();
+    expect(store().beginRun(pendingSendTicket()!, again.run_id, again.conversation_id)).toBe(true);
+    expect(store().resolveConversation(lookupTicket, null)).toBe(false);
+
+    expect(store().run?.runId).toBe(again.run_id);
+    await untilSettled();
+    expect([store().run, canSend(store())]).toEqual([null, true]);
+  });
+});

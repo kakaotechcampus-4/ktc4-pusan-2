@@ -21,6 +21,7 @@ import type { SendMessageRequest } from '@/types/chat';
  *            — 범위가 바뀐 종결 응답은 endRun **전에** applyServerScope(그 조회의 표, 범위) 합니다
  *   취소     beginCancel → POST → 종결을 보면 endRun · 취소 요청이 실패하면 abortCancel
  *   대화 열기 selectConversation · 새로고침 복원 → 대화의 실행 조회 → resolveConversation(표, 찾은 실행)
+ *            — 되살린 보내기를 다시 보내는 것과 동시에 해도 됩니다. 202 로 실행이 먼저 붙으면 늦게 온 조회는 버려집니다
  *   되살린 보내기 새로고침 전에 보내던 요청이 있으면(`pending`) 대화가 있든 없든 `pendingSendTicket()` 과
  *            `pending.request` 로 같은 키를 다시 보냅니다(L3-15 "같은 키 · 본문으로 재시도") — 접수됐던 요청이면
  *            BE 가 같은 202 를, 못 받았던 요청이면 새로 접수합니다. 접수되지 않음이 확정될 때만 failSend 합니다
@@ -187,7 +188,7 @@ interface ChatState {
    * 그 응답의 표가 지금 것이고 사용자가 바꾸는 중이 아닐 때만 받습니다
    */
   applyServerScope: (ticket: ChatTicket, scope: ChatScope) => void;
-  /** 새 대화의 '기억 없이'. 대화가 있거나 보내기를 시작했으면 바꾸지 않고 false */
+  /** 새 대화의 '기억 없이'. 대화가 있거나 · 만드는 중이거나 · 보내기를 시작했으면 바꾸지 않고 false */
   setMemoryOff: (memoryOff: boolean) => boolean;
   /**
    * 보내기를 시작합니다 — 누르는 즉시 잠급니다("전송을 시작하면 바로 잠그고"). 보낼 수 없으면 null.
@@ -528,6 +529,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
     resolveConversation: (ticket, found) => {
       const s = get();
       if (
+        // 상태를 모를 때만 받습니다 — 그사이 202 로 실행이 붙었거나 새 대화로 옮겼으면 이 조회는 늦은 응답입니다
+        // (L3-20 "느린 응답 순서 역전 · 이전 대화 응답이 현재 진행 상태를 덮음")
+        !s.syncing ||
         ticket.generation !== s.generation ||
         ticket.attempt !== s.attempt ||
         ticket.conversationId === null ||
@@ -588,7 +592,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
     setMemoryOff: (memoryOff) => {
       const s = get();
-      if (s.conversationId !== null || s.pending) return false;
+      // 만드는 요청이 나간 순간 그 대화의 값이 정해집니다 — 응답 전에도 바꾸지 않습니다 (F15 "만든 뒤에는 바꾸지 않는다")
+      if (s.conversationId !== null || s.pending || s.creating) return false;
       set({ memoryOff });
       save();
       return true;

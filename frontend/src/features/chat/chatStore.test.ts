@@ -595,3 +595,28 @@ describe('세 번째 리뷰 반영', () => {
     expect(store().scope).toEqual(pitchB);
   });
 });
+
+describe('다섯 번째 리뷰', () => {
+  beforeEach(() => store().openChat(pitchA));
+
+  it("대화를 만드는 중에는 '기억 없이' 를 바꾸지 못한다", () => {
+    store().setMemoryOff(true);
+    const create = store().beginCreate()!;
+    expect(store().setMemoryOff(false)).toBe(false);
+    store().finishCreate(create, 'conv-1');
+    expect(store().memoryOff).toBe(true);
+    reload('user-1');
+    expect(store().memoryOff).toBe(true);
+  });
+
+  it('상태를 확인하는 중이 아니면 실행 조회 결과를 받지 않는다 — 그사이 붙은 실행을 지키고', () => {
+    openConversation('conv-1', pitchA);
+    const ticket = store().beginSend(draft)!;
+    reload('user-1');
+    const lookup = chatTicket();
+    store().beginRun(pendingSendTicket()!, 'run-2', 'conv-1');
+    expect(ticket.sendId).toBeTruthy();
+    expect(store().resolveConversation(lookup, null)).toBe(false);
+    expect(store().run?.runId).toBe('run-2');
+  });
+});
