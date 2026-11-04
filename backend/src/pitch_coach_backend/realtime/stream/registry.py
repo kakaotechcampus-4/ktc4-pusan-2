@@ -56,6 +56,10 @@ ENDING_WAIT_SEC = (
     runtime.CONTROL_SEND_TIMEOUT_SEC + stt_loop.DRAIN_TIMEOUT_SEC + 2 * stt_loop.ABORT_TIMEOUT_SEC
 )
 
+# 앱을 내릴 때 스트림이 CloseStream 으로 스스로 닫히기를 기다리는 상한. 넘으면 끊고 정리를
+# `ABORT_TIMEOUT_SEC` 더 기다린다
+SHUTDOWN_CLOSE_WAIT_SEC = 2.0
+
 
 class StreamOwnerMismatch(Exception):
     """다른 사용자가 이미 쓰고 있는 Take 다."""
@@ -523,21 +527,48 @@ def active_count() -> int:
     return len(state.streams)
 
 
+def _finishing_sec() -> float:
+    """Take 끝내기 정리(자동 종료 · 떠난 Take · 늦은 종료 기록) 하나가 걸리는 상한. 스트림이 닫힌
+    뒤 남은 것은 FE 의 마지막 1초 조각 기다리기, 재료 만들기와 원자료 저장(같이 돈다), DB 에
+    적기, FE 에 closed 를 보내고 닫기다. 다시 적으려고 쉬는 중인 것은 이 상한에서 끊긴다."""
+    return (
+        runtime.FINAL_METRICS_WAIT_SEC
+        + max(finish.FLUSH_METRICS_TIMEOUT_SEC, 2 * SEAL_WAIT_SEC)
+        + finish.MARK_AUTO_END_TIMEOUT_SEC
+        + stt_loop.ABORT_TIMEOUT_SEC
+    )
+
+
+def stop_all_max_sec() -> float:
+    """`stop_all` 이 걸리는 상한. 스트림 닫기 → 기록 저장과, 그동안 같이 돈 Take 끝내기 정리 중
+    긴 쪽에 끝나지 않은 정리를 끊고 기다리는 시간을 더한다. 앱 전체 종료 상한(`main`)에 들어간다."""
+    closing = SHUTDOWN_CLOSE_WAIT_SEC + stt_loop.ABORT_TIMEOUT_SEC
+    saving = finish.FLUSH_METRICS_TIMEOUT_SEC
+    return max(closing + saving, _finishing_sec()) + stt_loop.ABORT_TIMEOUT_SEC
+
+
+async def _close_for_shutdown(stream: TakeStream) -> None:
+    if not await stream.wait_closed(timeout=SHUTDOWN_CLOSE_WAIT_SEC):
+        stream.cancel()
+        await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
+
+
 async def stop_all() -> None:
     """앱 종료. 남은 스트림을 정리한다.
 
     정상 종료(CloseStream) 를 잠깐 기다렸다가 안 끝나면 끊는다. 끊은 뒤에도 정리
     (Deepgram 소켓 닫기) 가 끝나기를 기다린다 — 여기서 바로 돌아가면 이벤트 루프가
     닫히면서 "Task was destroyed but it is pending" 로 정리가 중간에 잘린다.
+
+    컨테이너는 정해 둔 시간(`stop_grace_period`)이 지나면 프로세스를 강제로 끝낸다. 그 전에
+    메모리의 기록을 저장하도록 스트림은 같이 닫는다 — 하나씩 기다리면 스트림 수만큼 늘어난다.
     """
+    started = asyncio.get_running_loop().time()
     streams = list(state.streams.values())
     state.streams.clear()
     for stream in streams:
         stream.request_stop()
-    for stream in streams:
-        if not await stream.wait_closed(timeout=2.0):
-            stream.cancel()
-            await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
+    await asyncio.gather(*(_close_for_shutdown(stream) for stream in streams))
     # 닫힌 스트림이 남긴 1초 원자료 · 확정 전사. 다시 뜨면 메모리에 없다. 스트림이 닫히며 시작한
     # 백그라운드 저장은 행을 꺼내 가 버퍼가 비어 보이므로 `pending` 으로 고른다
     unsaved = [
@@ -552,30 +583,22 @@ async def stop_all() -> None:
         for take_id, record in list(state.takes.items())
         if not record.coach.released
     ]
+    # 진행 중인 코치 판단을 끊고 저장 못 한 코치 이벤트도 넣는다. 다시 뜨면 메모리에 없다. 서로
+    # 다른 기록이라 같이 저장한다
     await asyncio.gather(
         *(finish.flush_metrics(take_id) for take_id in unsaved),
         *(_save_utterance_ends(take_id, record) for take_id, record in live),
-    )
-    # 진행 중인 코치 판단을 끊고 저장 못 한 코치 이벤트를 넣는다. 다시 뜨면 메모리에 없다
-    await asyncio.gather(
         *(
             record.coach.shutdown(finish.FLUSH_METRICS_TIMEOUT_SEC)
             for record in list(state.takes.values())
-        )
+        ),
     )
     if state.background:
         # Take 끝내기 정리(자동 종료 · 떠난 Take · 늦은 종료 기록)가 아직 돌고 있을 수 있다.
-        # 여기서 잘리면 Take 가 진행 중으로 남아 다시 뜬 뒤 떠난 Take 로 끝난다. 스트림은 위에서 다
-        # 닫혔으므로 정리에 남은 것은 FE 의 마지막 1초 조각 기다리기, 재료 만들기와 원자료 저장(같이
-        # 돈다), DB 에 적기, FE 에 closed 를 보내고 닫기다. 다시 적으려고 쉬는 중인 것은 상한에서
-        # 끊긴다
-        finishing_sec = (
-            runtime.FINAL_METRICS_WAIT_SEC
-            + max(finish.FLUSH_METRICS_TIMEOUT_SEC, 2 * SEAL_WAIT_SEC)
-            + finish.MARK_AUTO_END_TIMEOUT_SEC
-            + stt_loop.ABORT_TIMEOUT_SEC
-        )
-        _, pending = await asyncio.wait(state.background.tasks(), timeout=finishing_sec)
+        # 여기서 잘리면 Take 가 진행 중으로 남아 다시 뜬 뒤 떠난 Take 로 끝난다. 위에서 스트림을
+        # 닫고 기록을 저장하는 동안에도 같이 돌았으므로 상한은 stop_all 을 시작한 때부터 잰다
+        remaining = started + _finishing_sec() - asyncio.get_running_loop().time()
+        _, pending = await asyncio.wait(state.background.tasks(), timeout=max(0.0, remaining))
         for task in pending:
             # 루프가 닫히며 "pending 인 채로 사라졌다" 로만 남지 않게, 무엇이 남았는지 적고 끊는다
             logger.error("종료 때까지 끝나지 않은 백그라운드 태스크를 끊는다 %s", task.get_name())

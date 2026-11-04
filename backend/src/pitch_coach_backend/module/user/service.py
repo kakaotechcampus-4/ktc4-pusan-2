@@ -5,6 +5,7 @@
 
 import uuid
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user import repository
@@ -33,11 +34,25 @@ def create(db: Session, *, email: str, name: str) -> User:
     return repository.create(db, email=email, name=name)
 
 
-def update_settings(db: Session, user: User, *, raw_data_consent: bool | None) -> User:
+def update_settings(
+    db: Session,
+    user: User,
+    *,
+    raw_data_consent: bool | None,
+    test_consent_version: int | None = None,
+) -> User:
     """마이페이지 설정을 바꾸고 커밋한다. 원자료 사용 동의는 바꾼 뒤에 시작하는 Take 부터다 —
-    Take 는 시작할 때 이 값을 복사해 그 값만 본다 (`docs/ai/architecture.md` 1-1)."""
+    Take 는 시작할 때 이 값을 복사해 그 값만 본다 (`docs/ai/architecture.md` 1-1).
+
+    테스트 참여 동의는 버전이 바뀔 때만 시각을 새로 적는다. 같은 버전을 다시 보내면 처음 동의한
+    시각을 그대로 둔다.
+    """
     if raw_data_consent is not None:
         user.raw_data_consent = raw_data_consent
+    if test_consent_version is not None and test_consent_version != user.test_consent_version:
+        user.test_consent_version = test_consent_version
+        # DB 시각으로 적는다. 커밋 뒤 다시 읽어 다른 시각 칸과 같은 형식으로 돌려준다
+        user.test_consent_at = func.now()
     db.commit()
     return user
 
@@ -46,16 +61,11 @@ def delete(db: Session, user: User) -> None:
     """회원을 지운다. 되살릴 수 없다.
 
     소셜 계정·Refresh 토큰·발표와 그 아래 행은 FK의 CASCADE로 DB가 같이 지운다.
-    서비스 평점·의견은 user_id를 NULL로 바꿔 남기고 팝업 표시 기록은 삭제한다.
+    Take별 설문·의견은 user_id를 NULL로 바꿔 남긴다.
     같은 구글 계정으로 다시 로그인하면 기록이 없는 새 회원이 된다.
     """
     repository.delete(db, user)
     db.commit()
-
-
-def lock_for_update(db: Session, user_id: uuid.UUID) -> bool:
-    """같은 사용자의 표시 승인·평점 제출을 직렬화한다. commit은 호출자가 한다."""
-    return repository.lock_for_update(db, user_id)
 
 
 def exists(db: Session, user_id: uuid.UUID) -> bool:

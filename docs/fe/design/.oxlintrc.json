@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "ignorePatterns": ["dist/**"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "no-nested-ternary": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/frontend/**"],
+            "message": "화면 설계서는 제품 코드를 import하지 않습니다. 필요한 것은 src/ui 에 복사해 설계서가 관리합니다 (README)."
+          }
+        ]
+      }
+    ]
+  }
+}

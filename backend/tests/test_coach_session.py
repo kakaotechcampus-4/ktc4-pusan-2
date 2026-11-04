@@ -1,11 +1,13 @@
 """코치 session 실행부의 실패·복구 회귀 테스트."""
 
 import asyncio
+import logging
 from typing import Any
 
 import pytest
 
 from pitch_coach_backend.coach import session as session_module
+from pitch_coach_backend.coach.client import EvaluateMiss
 from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import MetricSecond, SlideEvent, TakeContext
 from pitch_coach_backend.coach.session import CoachSession
@@ -82,6 +84,33 @@ async def test_only_one_request_at_a_time_and_the_skipped_second_is_not_queued()
         2_000,
         3_000,
     ]
+
+@pytest.mark.anyio
+async def test_release_logs_one_evaluate_summary_for_the_take(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    monkeypatch.setattr(session_module, "SEAL_WAIT_SEC", 0.01)
+    caplog.set_level(logging.INFO, logger="pitch_coach_backend.coach.session")
+    client, store = FakeClient(), FakeStore()
+    client.replies = [EvaluateMiss.TIMEOUT, EvaluateMiss.FAILED]
+    coach = session(client, store)
+
+    for t_ms in (1_000, 2_000, 3_000):
+        tick(coach, t_ms)
+        await settle()
+    client.release.clear()
+    tick(coach, 4_000)
+    await settle()
+    tick(coach, 5_000)
+    await coach.seal()
+    coach.release()
+    coach.release()
+
+    [record] = [r for r in caplog.records if "evaluate 요약" in r.getMessage()]
+    assert record.getMessage().endswith(
+        f"take={TAKE_ID} calls=4 timeouts=1 skipped=1 failed=1 "
+        "paused=0 out_of_range=0 dropped_at_seal=1"
+    )
 
 @pytest.mark.anyio
 async def test_buffered_metrics_go_to_the_window_only():
@@ -614,7 +643,7 @@ async def test_cancelling_a_seal_that_drops_a_late_evaluate_is_not_swallowed(
     monkeypatch.setattr(session_module, "SEAL_WAIT_SEC", 0.01)
 
     class SlowToStop(FakeClient):
-        async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | None:
+        async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | EvaluateMiss:
             self.evaluated.append(request)
             try:
                 await asyncio.Event().wait()
@@ -622,7 +651,7 @@ async def test_cancelling_a_seal_that_drops_a_late_evaluate_is_not_swallowed(
                 # 끊겨도 정리에 시간이 걸린다
                 await asyncio.sleep(0.2)
                 raise
-            return None
+            return EvaluateMiss.FAILED
 
     coach = session(SlowToStop(), FakeStore())
     tick(coach, 1_000)

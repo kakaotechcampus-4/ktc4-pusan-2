@@ -23,7 +23,8 @@ AI 응답을 BE 형식으로 바꾸는 곳은 이 파일 하나다(architecture.
   - 요청마다 `X-Request-ID`. 다시 부를 때도 같은 값이다 — AI 로그에서 두 시도가 한 요청으로 묶인다
   - 로그에는 상태 코드와 `error.code` 만 남긴다. 본문에는 대본 · 전사가 되돌아올 수 있다
 
-실패는 던지지 않고 None 을 돌려준다. 코칭이 안 된다고 발표가 멈추면 안 되고, 호출자가 할 수 있는
+실패는 던지지 않는다. evaluate 는 못 받은 이유(`EvaluateMiss`)를, finalize · plan 은 None 을
+돌려준다. 코칭이 안 된다고 발표가 멈추면 안 되고, 호출자가 할 수 있는
 일도 "이번 1초는 건너뛴다" · "Take 를 FAILED 로 둔다" 정도다.
 """
 
@@ -35,6 +36,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from functools import cache
 from typing import Any, Protocol
 
@@ -118,10 +120,17 @@ def _ssl_context() -> ssl.SSLContext:
     return httpx.create_ssl_context()
 
 
+class EvaluateMiss(StrEnum):
+    TIMEOUT = "TIMEOUT"
+    FAILED = "FAILED"
+    PAUSED = "PAUSED"
+    OUT_OF_RANGE = "OUT_OF_RANGE"
+
+
 class CoachClient(Protocol):
     """코치를 부르는 쪽이 의존하는 최소 인터페이스. 테스트는 가짜로 바꿔 끼운다."""
 
-    async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | None: ...
+    async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | EvaluateMiss: ...
 
     async def finalize(self, request: dict[str, Any]) -> FinalizeReply | ReplayRequired | None: ...
 
@@ -140,10 +149,13 @@ class _Endpoint:
 class _Failure(Exception):
     """시도 하나가 실패했다. `retryable` 이면 다시 불러 볼 만하고, `unavailable` 이면 AI 가 없다."""
 
-    def __init__(self, reason: str, *, retryable: bool, unavailable: bool = False) -> None:
+    def __init__(
+        self, reason: str, *, retryable: bool, unavailable: bool = False, timeout: bool = False
+    ) -> None:
         super().__init__(reason)
         self.retryable = retryable
         self.unavailable = unavailable
+        self.timeout = timeout
 
 
 class HttpCoachClient:
@@ -185,7 +197,7 @@ class HttpCoachClient:
         self._transport = transport
         self._clock = clock
 
-    async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | None:
+    async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | EvaluateMiss:
         if not _t_ms_in_range(request):
             # AI 가 422 로 거절한다. Take 자동 종료(최대 1시간)가 지켜지면 나오지 않는다
             self._warn_evaluate(
@@ -194,10 +206,10 @@ class HttpCoachClient:
                 _subject(request),
                 request.get("t_ms"),
             )
-            return None
+            return EvaluateMiss.OUT_OF_RANGE
         if self._clock() < self._evaluate_paused_until:
             # AI 가 없다. 그 1초는 건너뛴다 — 쉬는 동안의 기록은 다음 요청의 창에 실린다
-            return None
+            return EvaluateMiss.PAUSED
         try:
             reply = await self._call(
                 self._evaluate, request, EvaluateReply, self._evaluate_timeout_sec
@@ -217,7 +229,7 @@ class HttpCoachClient:
             else:
                 # 시간 초과 · 5xx. 그 1초만 건너뛴다. 계속되면 코칭이 멈춘 것이라 묶어서 남긴다
                 self._warn_evaluate("transient", "evaluate 가 제때 답하지 못했다: %s", exc)
-            return None
+            return EvaluateMiss.TIMEOUT if exc.timeout else EvaluateMiss.FAILED
         assert isinstance(reply, EvaluateReply)
         return reply
 
@@ -332,7 +344,7 @@ class HttpCoachClient:
                     headers={"Content-Type": "application/json", REQUEST_ID_HEADER: request_id},
                 )
         except (TimeoutError, httpx.TimeoutException) as exc:
-            raise _Failure("시간 초과", retryable=True) from exc
+            raise _Failure("시간 초과", retryable=True, timeout=True) from exc
         except httpx.ConnectError as exc:
             # 연결 거부 · DNS 실패. AI 컨테이너가 없거나 재시작 중이다
             raise _Failure(type(exc).__name__, retryable=True, unavailable=True) from exc

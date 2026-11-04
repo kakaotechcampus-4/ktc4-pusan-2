@@ -18,7 +18,7 @@ describe('layoutSignature', () => {
   it('deviceId 원문을 담지 않는다 — 서버로 가는 값이다', () => {
     const sig = makeLayoutSignature(base);
     expect(sig).not.toContain(base.deviceId);
-    expect(sig).toMatch(/^cam:[0-9a-f]{8}\|v1280x720\|s1920x1080@1\.25$/);
+    expect(sig).toMatch(/^cam:[0-9a-f]{8}\|v1280x720\|s1920x1080@1\.25\|stage:bottom-script-v2$/);
   });
 
   it('카메라·해상도·화면 중 하나라도 다르면 다른 키다', () => {

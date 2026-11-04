@@ -263,6 +263,11 @@ export interface RehearsalTicket {
   scriptMode: ScriptMode;
   /** 몇 번째 Take 인가. Take 생성 응답(`take_number`)이 실제로 매긴 번호입니다 */
   takeNumber: number | null;
+  /**
+   * 이 Take 를 시작한 조합. 피치 수정에서 골라 왔으면 그 값, 홈에서 바로 왔으면 null 입니다.
+   * 실패해 장치 점검으로 돌아갈 때 다시 넘깁니다 (`deviceCheckLink`). 이 칸 전에 저장된 세션에는 없습니다
+   */
+  practice?: PracticeCombo | null;
 }
 
 /**

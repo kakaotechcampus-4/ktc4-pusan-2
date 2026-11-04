@@ -33,6 +33,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ../backend/.env
+    # 내릴 때 열린 요청 기다리기(5초) + 스트림 정리 · 기록 저장 · 백그라운드 정리(최대 33초)보다
+    # 길어야 저장 전에 강제로 끝나지 않는다. 기본값은 10초다 (backend main.shutdown_max_sec)
+    stop_grace_period: 45s
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

@@ -35,6 +35,13 @@ describe('무대 시계를 돌려도 되나', () => {
     });
   });
 
+  it('다른 곳에서 발표 중이라 거절되면 그 이유로 알린다', () => {
+    expect(startGate({ ...base, startFailure: 'BUSY' })).toEqual({
+      kind: 'FAILED',
+      reason: 'BUSY',
+    });
+  });
+
   it('오래 기다리면 slow 로 알린다', () => {
     expect(startGate({ ...base, slow: true })).toEqual({ kind: 'CONNECTING', slow: true });
   });

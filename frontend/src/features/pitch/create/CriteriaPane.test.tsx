@@ -12,7 +12,7 @@ vi.mock('@/shared/api/standards', () => ({ saveStandards: vi.fn(), parseStandard
 
 function CurrentCriteria() {
   const criteria = useCreateStore((s) => s.draft.criteria.at(-1) ?? null);
-  return <CriteriaPane criteria={criteria} onStart={vi.fn()} />;
+  return <CriteriaPane criteria={criteria} />;
 }
 
 it('저장 중 표시 버전이 바뀌어도 요청을 시작한 버전에 응답을 반영한다', async () => {

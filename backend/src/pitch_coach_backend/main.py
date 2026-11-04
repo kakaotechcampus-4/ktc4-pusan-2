@@ -7,9 +7,11 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매퍼에 등록
+from pitch_coach_backend.coach.background import STOP_TIMEOUT_SEC as COACH_STOP_TIMEOUT_SEC
 from pitch_coach_backend.coach.background import start as start_coach_background
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.coach.planner import PlannerCoaching
+from pitch_coach_backend.coach.store import StoreFinalizeExport
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
@@ -24,8 +26,10 @@ from pitch_coach_backend.module.pitch.dependencies import (
     resume_script_rubrics,
 )
 from pitch_coach_backend.module.pitch.file_cleanup_sweep import start as start_file_cleanup_sweep
-from pitch_coach_backend.module.service_feedback.controller import router as feedback_router
-from pitch_coach_backend.module.service_feedback.controller import suggestions_router
+from pitch_coach_backend.module.service_feedback.controller import (
+    suggestions_router,
+    surveys_router,
+)
 from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.take.controller import takes_router
 from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
@@ -40,6 +44,9 @@ from pitch_coach_backend.realtime.live_takes import RealtimeLiveTakes
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.stream.registry import arm_abandoned_takes
 from pitch_coach_backend.realtime.stream.registry import stop_all as stop_all_streams
+from pitch_coach_backend.realtime.stream.registry import (
+    stop_all_max_sec as stop_all_streams_max_sec,
+)
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
 # 프론트 화면이 돌아온다. 그래서 /docs·/openapi.json 까지 전부 /api 아래로 옮긴다.
@@ -49,7 +56,27 @@ API_PREFIX = "/api"
 
 # module 은 realtime · coach 를 모른다 (README '의존 방향'). HTTP 요청이 발표 중 처리 · 코치에 알릴
 # 일은 module/hooks.py 를 거치고, 그 구현을 여기서 꽂는다
-hooks.install(live_takes=RealtimeLiveTakes(), coaching=PlannerCoaching())
+hooks.install(
+    live_takes=RealtimeLiveTakes(),
+    coaching=PlannerCoaching(),
+    finalize_export=StoreFinalizeExport(),
+)
+
+
+def shutdown_max_sec() -> float:
+    """lifespan 을 내리는 데 걸리는 상한.
+
+    컨테이너는 SIGTERM 뒤 `stop_grace_period`(infra/docker-compose.yml)가 지나면 강제로 끝낸다.
+    uvicorn 은 먼저 열린 요청 · 연결이 끝나기를 `--timeout-graceful-shutdown`(Dockerfile)까지
+    기다린 뒤 이 정리를 부른다. 그래서 `stop_grace_period` 는 둘을 더한 것보다 길어야 메모리의
+    기록을 저장하기 전에 잘리지 않는다 (tests/test_shutdown_budget.py).
+    """
+    return (
+        stop_all_streams_max_sec()
+        # 코치 finalize 와 계획 요청을 차례로 끊는다
+        + 2 * COACH_STOP_TIMEOUT_SEC
+        + analysis_runner.STOP_TIMEOUT_SEC
+    )
 
 
 @asynccontextmanager
@@ -129,8 +156,8 @@ def health() -> dict[str, str]:
 
 api.include_router(auth_router)
 api.include_router(user_router)
-api.include_router(feedback_router)
 api.include_router(suggestions_router)
+api.include_router(surveys_router)
 api.include_router(pitch_router)
 api.include_router(take_router)
 api.include_router(takes_router)

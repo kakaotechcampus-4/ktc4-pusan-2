@@ -1,5 +1,6 @@
 import { homeHandlers } from './home';
 import { serviceReviewHandlers } from './serviceReview';
+import { takeSurveyHandlers } from './takeSurvey';
 import { http, HttpResponse } from 'msw';
 import { authHandlers } from './auth';
 import { sttHandlers } from './stt';
@@ -9,7 +10,7 @@ import { pitchHandlers } from './pitch';
 import { pitchEditHandlers } from './pitchEdit';
 import { scriptHandlers } from './scripts';
 import { takeHistoryHandlers } from './takeHistory';
-import type { TakeCreated, TakeCreateRequest } from '@/types/take';
+import type { ActiveTake, TakeCreated, TakeCreateRequest } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
 import { reportHandlers, reviewFixture } from './report';
 import type { PrepareResponse } from '@/types/api';
@@ -149,10 +150,20 @@ const sampleScript: ScriptDetail = {
  */
 let takeEndFailure: 'INTERNAL_SERVER_ERROR' | 'TAKE_ENDED' | 'TAKE_NOT_STARTED' | null = null;
 
+/**
+ * 다른 창 · 기기에서 발표 중인 Take (#719). 시작 전 확인 창을 보려면 콘솔에서
+ *   mockActiveTake.on()    발표 중인 Take 가 있다 — 시작을 누르면 끝낼지 묻습니다
+ *   mockActiveTake.off()   없다 (기본)
+ * 끝내기(abandon?replace=true)를 누르면 없어집니다
+ */
+let activeTake: ActiveTake | null = null;
+
 declare global {
   interface Window {
     /** 개발 중 발표 종료 실패 토글. 프로덕션 번들에는 들어가지 않습니다 */
     mockTakeEnd?: { fail: (code?: NonNullable<typeof takeEndFailure>) => void; ok: () => void };
+    /** 개발 중 발표 중인 Take 토글. 프로덕션 번들에는 들어가지 않습니다 */
+    mockActiveTake?: { on: () => void; off: () => void };
   }
 }
 
@@ -165,10 +176,25 @@ if (import.meta.env.DEV) {
       takeEndFailure = null;
     },
   };
+  window.mockActiveTake = {
+    on: () => {
+      activeTake = {
+        take_id: 'live-take',
+        pitch_id: 'p2',
+        pitch_title: '다른 기기에서 하던 발표',
+        take_number: 3,
+      };
+    },
+    off: () => {
+      activeTake = null;
+    },
+  };
 }
 
 export const handlers = [
   ...serviceReviewHandlers,
+  // 리포트 설문(#776). `/api/takes/:takeId/...` 의 다른 목보다 먼저 둡니다
+  ...takeSurveyHandlers,
   // ★ 대본 목(scriptHandlers)보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
     HttpResponse.json(sampleScript),
@@ -199,13 +225,17 @@ export const handlers = [
   ),
 
   // BE 모양 그대로 — 창을 닫았다 다시 연 Take 를 실패로 끝냅니다. 응답 {message, take_id, status}
-  http.post('*/api/pitches/:pitchId/takes/:takeId/abandon', ({ params }) =>
-    HttpResponse.json({
+  http.post('*/api/pitches/:pitchId/takes/:takeId/abandon', ({ params }) => {
+    if (activeTake?.take_id === params.takeId) activeTake = null;
+    return HttpResponse.json({
       message: 'Take abandoned',
       take_id: String(params.takeId),
       status: 'FAILED',
-    }),
-  ),
+    });
+  }),
+
+  // BE 모양 그대로 — 어느 창 · 기기에서 발표 중인 Take. 응답 {take: {...} | null} (`mockActiveTake`)
+  http.get('*/api/takes/active', () => HttpResponse.json({ take: activeTake })),
 
   // BE 모양 그대로 — POST /pitches/{id}/takes/{take_id}/calibration, 응답 {message, calibration_id}
   http.post('*/api/pitches/:pitchId/takes/:takeId/calibration', () =>

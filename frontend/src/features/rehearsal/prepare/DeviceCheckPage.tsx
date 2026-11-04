@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
@@ -10,13 +10,16 @@ import { toCalibrationRequest } from '../lib/calibrationRequest';
 import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
+import { AudioInputMeter } from './AudioInputMeter';
 import { LevelBar } from '../media/LevelBar';
 import { Button } from '@/shared/ui/Button';
-import { Card } from '@/shared/ui/Panel';
 import { ScreenFrame } from './ScreenFrame';
 import { ScriptModeChoice } from './ScriptModeChoice';
+import { ReplaceTakeDialog } from './ReplaceTakeDialog';
+import { activeTakeOrNone, endActiveTake } from './activeTake';
+import type { ActiveTake } from '@/types/take';
 import { MissionCard } from './MissionCard';
-import { practiceModeFor, usePrepareStore } from './prepareStore';
+import { DEFAULT_SCRIPT_MODE, practiceModeFor, usePrepareStore } from './prepareStore';
 import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
@@ -87,17 +90,27 @@ function deviceCheckHint({
   return '점검이 끝났어요';
 }
 
+/**
+ * 시작을 누른 뒤의 안내. 다른 곳에서 발표 중인 Take 를 끝낼지 묻는 동안은 아직 여는 중이
+ * 아닙니다 (#719)
+ */
+function startingHint(replacing: { busy: boolean } | null): string {
+  if (!replacing) return '연습을 여는 중…';
+  if (replacing.busy) return '다른 곳의 연습을 끝내는 중…';
+  return '다른 곳에서 진행 중인 연습을 끝낼지 골라 주세요';
+}
+
 /** 평소 목소리 항목의 문구 */
 function baseVoiceLabel(status: BaseVoiceStatus, reason: ShortReason | null): string {
   switch (status) {
     case 'IDLE':
-      return '평소 목소리 · 문단 읽기';
+      return '아직 재지 않았어요';
     case 'READING':
-      return '평소 목소리 · 크기 재는 중';
+      return '크기 재는 중';
     case 'DONE':
-      return '평소 목소리 · 확인됨';
+      return '확인됨';
     case 'SHORT':
-      return `평소 목소리 · ${SHORT_TITLE[reason ?? 'BRIEF']}`;
+      return SHORT_TITLE[reason ?? 'BRIEF'];
   }
 }
 
@@ -118,7 +131,7 @@ const SHORT_GUIDE: Record<ShortReason, string> = {
 function baseVoiceActionText(status: BaseVoiceStatus): string {
   switch (status) {
     case 'IDLE':
-      return '누르고 읽기';
+      return '목소리 재기';
     case 'READING':
       return '그만두기';
     case 'DONE':
@@ -148,7 +161,7 @@ function calibrationActionText(status: GazeSetupStatus, live: boolean): string {
       return '사용 불가';
     case 'IDLE':
     case 'FAILED':
-      return live ? '누르면 시작' : '카메라 먼저';
+      return live ? '시선 기준 잡기' : '카메라 먼저';
   }
 }
 
@@ -156,15 +169,17 @@ function calibrationActionText(status: GazeSetupStatus, live: boolean): string {
 function calibrationLabel(cal: Pick<ReturnType<typeof useGazeSetup>, 'status' | 'advice'>): string {
   switch (cal.status) {
     case 'UNAVAILABLE':
-      return '시선 기준 · 시선 분석 사용 불가';
+      return '시선 분석 사용 불가';
     case 'FAILED':
-      return '시선 기준 · 다시 필요';
+      return '다시 필요';
     case 'DONE':
-      return cal.advice ? '시선 기준 3 / 3 · 품질 낮음' : '시선 기준 3 / 3';
+      return cal.advice ? '3/3 완료 · 품질 낮음' : '3/3 완료';
     case 'LOADING':
+      return '시선 분석 준비 중';
     case 'IDLE':
+      return '기준을 잡아 주세요';
     case 'RUNNING':
-      return '시선 기준 · 화면 가운데 · 렌즈 · 대본';
+      return '기준 잡는 중';
   }
 }
 
@@ -190,29 +205,77 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
+  // 무음 경고는 평소 목소리를 **읽는 동안만**, 읽기를 누른 때부터 셉니다. 읽기 전에는 말할 이유가 없어
+  // 페이지를 연 뒤로 세면 가만히 있는 사람에게 경고가 떴습니다. 읽기 상태는 useBaseVoice 뒤에서 이 ref 에
+  // 적습니다 — useMicLevel 이 voiceRecord 를 넘겨야 해서 먼저 불리기 때문입니다
+  const readingSinceRef = useRef<number | null>(null);
+  const silenceFrom = useCallback(() => readingSinceRef.current, []);
   const { meterRef, echoMeterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } =
-    useMicLevel(stream, { clock: pageClock });
+    useMicLevel(stream, { clock: pageClock, silenceFrom });
   // 평소 목소리 크기. 선택 단계라 시작을 막지 않습니다 — 안 재면 AI 가 Take 첫 발화로 잡습니다
   const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
+  const reading = baseVoice.status === 'READING';
+  useEffect(() => {
+    readingSinceRef.current = reading ? performance.now() : null;
+  }, [reading]);
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
-  const { scriptMode, setScriptMode, calibration, scriptModeTouched, setChosenDevices } =
-    usePrepareStore(
-      useShallow((s) => ({
-        scriptMode: s.scriptMode,
+  //
+  // 대본 표시는 **이 피치에서 고른 것일 때만** 씁니다. 다른 피치에서 고른 값은 `enterPitch` 가
+  // 비우는데, 비우기 전 첫 그림에서도 앞 피치의 선택(예: 실전 모드)이 보이지 않게 여기서도 거릅니다
+  const {
+    scriptMode,
+    setScriptMode,
+    calibration,
+    scriptModeTouched,
+    setChosenDevices,
+    enterPitch,
+  } = usePrepareStore(
+    useShallow((s) => {
+      const mine = s.scriptModePitchId === pitchId;
+      return {
+        scriptMode: mine ? s.scriptMode : DEFAULT_SCRIPT_MODE,
         setScriptMode: s.setScriptMode,
         calibration: s.calibration,
-        scriptModeTouched: s.scriptModeTouched,
+        scriptModeTouched: mine && s.scriptModeTouched,
         setChosenDevices: s.setDevices,
-      })),
-    );
+        enterPitch: s.enterPitch,
+      };
+    }),
+  );
   const cal = useGazeSetup({ stream, videoRef, live });
   const createTake = useCreateTake();
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  /** 다른 곳에서 발표 중인 Take 를 끝낼지 묻는 중. `busy` 면 끝내는 중입니다 (#719) */
+  const [replacing, setReplacing] = useState<{ take: ActiveTake; busy: boolean } | null>(null);
+  /**
+   * 이 화면을 떠났다 (뒤로 가기 등). 묻거나 끝내는 요청은 화면이 닫혀도 마저 끝나니, 그 뒤에
+   * Take 를 만들어 리허설로 끌고 가지 않도록 봅니다
+   */
+  const leftPage = useRef(false);
+  useEffect(() => {
+    leftPage.current = false;
+    return () => {
+      leftPage.current = true;
+    };
+  }, []);
+
+  /**
+   * 확인 창을 닫은 뒤(취소 · Esc · 끝내기 실패) 초점을 시작 버튼으로 돌립니다. 브라우저에 맡기면
+   * 안 됩니다 — 창이 열려 있는 동안 시작 버튼이 비활성이라, 브라우저가 초점을 body 로 옮겨 둡니다.
+   * 비활성이 풀린 뒤에야 초점을 받으니 창이 내려가고 starting 이 false 가 된 다음에 줍니다
+   */
+  const startButton = useRef<HTMLButtonElement>(null);
+  const focusStartAfterClose = useRef(false);
+  useEffect(() => {
+    if (replacing || starting || !focusStartAfterClose.current) return;
+    focusStartAfterClose.current = false;
+    startButton.current?.focus();
+  }, [replacing, starting]);
 
   // 지금 열려 있는 트랙이 곧 선택값입니다. 따로 상태로 들고 있으면
   // 브라우저가 다른 장치를 열었을 때 화면과 실제가 갈라집니다
@@ -230,6 +293,12 @@ export function DeviceCheckPage() {
       .userActivation;
     if (activation?.hasBeenActive) request().catch(() => undefined);
   }, [request]);
+
+  // 다른 피치에서 왔으면 대본 표시를 비웁니다. 아래 서버 기본값 이펙트보다 **먼저** 돌아야 합니다 —
+  // 늦으면 앞 피치의 "사용자가 고름" 표시를 보고 이 피치의 기본값을 건너뜁니다
+  useEffect(() => {
+    if (pitchId) enterPitch(pitchId);
+  }, [pitchId, enterPitch]);
 
   // 서버 기본값은 **사용자가 고르기 전에만** 넣습니다. 조건 없이 덮으면 응답이 늦게
   // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
@@ -265,15 +334,58 @@ export function DeviceCheckPage() {
   const ready = live && micOk && cal.status === 'DONE' && choice !== null && !starting;
 
   /**
-   * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
-   *
-   * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
-   * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
+   * 시작 버튼. 사용자는 한 번에 연습 하나만 해서, 다른 창 · 기기에서 발표 중인 Take 가 있으면
+   * 그것을 끝낼지 먼저 묻습니다 (#719). 없거나 묻지 못했으면 바로 `begin` 입니다.
    */
   const start = async () => {
     if (!choice || starting) return;
     setStarting(true);
     setStartError(null);
+    const other = await activeTakeOrNone();
+    if (leftPage.current) return;
+    if (other) {
+      setReplacing({ take: other, busy: false });
+      return;
+    }
+    await begin();
+  };
+
+  /** 확인 창의 [그 연습 끝내고 시작]. 끝내지 못하면 시작하지 않습니다 — 새 연결이 거절됩니다 */
+  const confirmReplace = async () => {
+    if (!replacing || replacing.busy) return;
+    setReplacing({ ...replacing, busy: true });
+    try {
+      await endActiveTake(replacing.take);
+    } catch (e) {
+      focusStartAfterClose.current = true;
+      setReplacing(null);
+      setStartError(`다른 곳의 연습을 끝내지 못했어요. ${toMessage(e)}`);
+      setStarting(false);
+      return;
+    }
+    if (leftPage.current) return;
+    setReplacing(null);
+    await begin();
+  };
+
+  const cancelReplace = () => {
+    focusStartAfterClose.current = true;
+    setReplacing(null);
+    setStarting(false);
+  };
+
+  /**
+   * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
+   *
+   * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
+   * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
+   */
+  const begin = async () => {
+    // 확인 창을 거치는 동안 고를 조합이 사라졌을 수 있습니다. 시작 버튼을 잠근 채 두지 않습니다
+    if (!choice) {
+      setStarting(false);
+      return;
+    }
 
     // 드롭다운 값이 아니라 **실제로 열린 트랙**의 장치를 넘깁니다. 기본 장치로 통과했어도
     // 그 장치가 남아서, 그사이 OS 기본값이 바뀌어도 리허설이 같은 장치를 엽니다.
@@ -321,6 +433,8 @@ export function DeviceCheckPage() {
         scriptMode,
         // 준비 정보의 번호는 예상값이라 그사이 다른 Take 가 생기면 어긋납니다. 실제로 매긴 번호를 씁니다
         takeNumber: take.takeNumber,
+        // 실패해 장치 점검으로 돌아갈 때 이 조합을 다시 넘깁니다 (`deviceCheckLink`)
+        practice: combo,
       };
       await setSessionTicket(clientSessionId, ticket);
 
@@ -357,7 +471,7 @@ export function DeviceCheckPage() {
   const hint =
     startError ??
     (starting
-      ? '연습을 여는 중…'
+      ? startingHint(replacing)
       : (prepareBlocked ??
         deviceCheckHint({
           deviceError,
@@ -377,28 +491,35 @@ export function DeviceCheckPage() {
 
   return (
     <ScreenFrame
-      screenName="시작 전 세팅"
       title={info?.title ?? combo?.title ?? '불러오는 중…'}
       subtitle={subtitle}
-      badge={`TAKE ${takeNumber || '—'} · 시작 전 세팅`}
+      badge={`TAKE ${takeNumber || '—'}`}
       onBack={() => navigate(-1)}
       hint={hint}
       actions={
         <>
-          <Button disabled={!ready} onClick={() => start().catch(() => undefined)}>
+          <Button
+            ref={startButton}
+            aria-busy={starting}
+            disabled={!ready}
+            onClick={() => start().catch(() => undefined)}
+          >
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </Button>
+          {replacing && (
+            <ReplaceTakeDialog
+              take={replacing.take}
+              busy={replacing.busy}
+              onConfirm={() => confirmReplace().catch(() => undefined)}
+              onCancel={cancelReplace}
+            />
+          )}
         </>
       }
     >
-      {/*
-        목업 09 의 구성 — 왼쪽은 "지금 보이는 것"(카메라와 그 아래 점검), 오른쪽은
-        "이번 Take 를 어떻게 할지"(대본 표시)입니다. 장치와 결정을 갈라 두면
-        발표 직전에 눈이 한쪽만 훑어도 됩니다.
-      */}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="aspect-video max-h-[360px] w-full">
+      <div className="prepare-content grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] prepare-compact:gap-4">
+        <div className="prepare-camera-column flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px]">
+          <div className="prepare-camera relative aspect-video w-full">
             <GazeSetupView
               frameRef={cal.frameRef}
               boxRef={cal.boxRef}
@@ -407,160 +528,151 @@ export function DeviceCheckPage() {
               status={cal.status}
               unavailableMessage={cal.unavailableMessage}
               overlay={cal.overlay}
-              onEnable={() => request().catch(() => undefined)}
               onCancel={cal.cancel}
             />
           </div>
-
-          {/* 장치 선택과 점검 항목을 나란히 — 고른 장치의 결과가 바로 옆에서 보입니다 */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-            <Card title="장치 선택">
-              <DeviceSelect
-                label="카메라"
-                value={videoId}
-                options={cameras}
-                fallback="기본 카메라"
-                onChange={(id) =>
-                  request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
-                }
-              />
-              <DeviceSelect
-                label="마이크"
-                value={audioId}
-                options={mics}
-                fallback="기본 마이크"
-                onChange={(id) =>
-                  request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
-                }
-              />
-            </Card>
-
-            <CheckCard
-              title="점검 항목"
-              rows={[
-                {
-                  id: 'camera',
-                  label: live ? '카메라 · 얼굴 인식됨' : '카메라 · 영상 없음',
-                  done: live,
-                },
-                {
-                  id: 'mic',
-                  // 문구는 rAF가 씁니다 — 계량기 루프 안에서 바뀌는 값이라 상태로 올리지 않습니다
-                  label: <span ref={rowRef}>마이크 입력 확인 중</span>,
-                  done: micOk,
-                  // 막대를 이 줄 안에 둡니다 (목업 09) — 문구와 움직임이 같이 보여야
-                  // "소리가 들어오고 있다"가 한 번에 읽힙니다
-                  trailing: <LevelBar variant="segments" meterRef={meterRef} />,
-                },
-                {
-                  // 준비 점검 → 고개 원 → 3점 보정(화면 가운데 · 렌즈 · 대본 자리)을
-                  // 전체 화면에서 AI 카메라 화면 모듈이 진행합니다. 여기서는 열고 결과만 받습니다.
-                  // 전체 화면은 사용자 클릭 안에서만 열리므로 이 onClick 에서 바로 엽니다
-                  id: 'gaze',
-                  label: calibrationLabel(cal),
-                  done: cal.status === 'DONE',
-                  action: {
-                    text: calibrationActionText(cal.status, live),
-                    onClick: cal.start,
-                  },
-                },
-                {
-                  // 평소 목소리 크기 — AI 가 "평소보다 작게 말하나"를 볼 기준입니다 (volume.md).
-                  // 마이크가 없으면 잴 수 없어 버튼을 두지 않습니다
-                  id: 'voice',
-                  label: baseVoiceLabel(baseVoice.status, baseVoice.reason),
-                  done: baseVoice.status === 'DONE',
-                  optional: true,
-                  action: stream
-                    ? {
-                        text: baseVoiceActionText(baseVoice.status),
-                        onClick:
-                          baseVoice.status === 'READING' ? baseVoice.cancel : baseVoice.start,
-                      }
-                    : null,
-                },
-              ]}
-            >
-              {/* 읽을 문단과 진행. 읽는 동안 · 다시 읽어야 할 때 · 잡힌 뒤에 보입니다 */}
-              {baseVoice.status !== 'IDLE' && (
-                <BaseVoicePanel
-                  status={baseVoice.status}
-                  stage={baseVoice.stage}
-                  onFinish={baseVoice.finish}
-                  reason={baseVoice.reason}
-                  heardSec={baseVoice.heardSec}
-                  echoMeterRef={echoMeterRef}
-                />
-              )}
-            </CheckCard>
-          </div>
+          <AudioInputMeter meterRef={meterRef} />
         </div>
 
-        <div className="flex min-w-0 flex-col gap-4">
-          {/* 준비 정보가 와야 압니다 — 불러오는 중 · 실패면 자리를 비워 둡니다 */}
-          {info && <MissionCard info={info} exam={practiceModeFor(scriptMode) === 'EXAM'} />}
-          <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
-
-          {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —
-              화면마다 새로 지으면 사용자가 뭘 해야 할지 매번 달라집니다 */}
-          <section className="border-2 border-dashed border-line-strong p-4 text-xs leading-relaxed">
-            {deviceError ? (
-              <p className="font-bold text-ink">{DEVICE_ERROR_MESSAGE[deviceError]}</p>
-            ) : (
-              <>
-                <p className="text-ink/80">권한·무입력 안내가 이 자리에 표시됩니다</p>
-                <p className="mt-1 text-ink/80">
-                  예: 주소창 왼쪽 자물쇠 → 카메라 → 허용으로 바꿔 주세요
-                </p>
-              </>
-            )}
-
-            {/* 품질이 낮은 기준. AI 정책대로 막지 않습니다 — 시작 버튼은 열려 있고 다시 잡기를 권합니다 */}
-            {cal.advice && (
-              <div className="mt-2 border border-line-strong bg-panel p-3">
-                <p className="font-bold">시선 기준이 흐릿해요 · 다시 잡기를 권해요</p>
-                <p className="mt-1 text-ink/80">{CALIBRATION_FAIL_MESSAGE[cal.advice]}</p>
-                <p className="mt-1 text-ink/80">
-                  이대로 시작해도 되지만, 이번 Take 의 시선 기록은 덜 정확할 수 있어요.
-                </p>
+        <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5">
+          <CheckCard
+            title="장비 준비"
+            action={
+              !live && (
                 <button
                   type="button"
-                  onClick={cal.start}
-                  className="mt-2 border-2 border-coral px-3 py-1 font-bold text-ink hover:bg-coral/10"
+                  className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream disabled:pointer-events-none disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5 prepare-action-primary bg-coral-deep! text-white! hover:bg-ink! disabled:bg-cream! disabled:text-ink! disabled:border-line-strong!"
+                  disabled={starting}
+                  onClick={() => request().catch(() => undefined)}
                 >
-                  다시 잡기
+                  카메라·마이크 켜기
                 </button>
-              </div>
+              )
+            }
+            rows={[
+              {
+                id: 'camera',
+                name: '카메라',
+                label: live ? '연결됨' : '영상 없음',
+                done: live,
+                selection: (
+                  <DeviceSelect
+                    label="카메라"
+                    value={videoId}
+                    options={cameras}
+                    fallback="기본 카메라"
+                    disabled={starting || cal.overlay || baseVoice.status === 'READING'}
+                    onChange={(id) =>
+                      request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
+                    }
+                  />
+                ),
+              },
+              {
+                id: 'mic',
+                name: '마이크',
+                label: <span ref={rowRef}>{stream ? '마이크 입력 확인 중' : '연결 전'}</span>,
+                done: micOk,
+                selection: (
+                  <DeviceSelect
+                    label="마이크"
+                    value={audioId}
+                    options={mics}
+                    fallback="기본 마이크"
+                    disabled={starting || cal.overlay || baseVoice.status === 'READING'}
+                    onChange={(id) =>
+                      request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
+                    }
+                  />
+                ),
+              },
+              {
+                id: 'gaze',
+                name: '시선 기준',
+                label: calibrationLabel(cal),
+                done: cal.status === 'DONE',
+                action: {
+                  text: calibrationActionText(cal.status, live),
+                  onClick: cal.start,
+                  disabled:
+                    !live ||
+                    starting ||
+                    baseVoice.status === 'READING' ||
+                    ['LOADING', 'RUNNING', 'UNAVAILABLE'].includes(cal.status),
+                  primary: cal.status === 'IDLE' || cal.status === 'FAILED',
+                },
+              },
+              {
+                id: 'voice',
+                name: '평소 목소리',
+                label: stream
+                  ? baseVoiceLabel(baseVoice.status, baseVoice.reason)
+                  : '마이크 연결 후 가능',
+                done: baseVoice.status === 'DONE',
+                optional: true,
+                action: {
+                  text: baseVoiceActionText(baseVoice.status),
+                  onClick: baseVoice.status === 'READING' ? baseVoice.cancel : baseVoice.start,
+                  disabled: !stream || starting || cal.overlay,
+                },
+              },
+            ]}
+          >
+            {baseVoice.status !== 'IDLE' && (
+              <BaseVoicePanel
+                status={baseVoice.status}
+                stage={baseVoice.stage}
+                onFinish={baseVoice.finish}
+                reason={baseVoice.reason}
+                heardSec={baseVoice.heardSec}
+                echoMeterRef={echoMeterRef}
+              />
             )}
-
-            {cal.status === 'FAILED' && (
-              <div className="mt-2 border border-coral bg-coral/10 p-3">
-                <p className="font-bold text-ink">기준을 잡지 못했어요</p>
-                <p className="mt-1 text-ink/80">
-                  {CALIBRATION_FAIL_MESSAGE[cal.failReason ?? 'ENGINE_ERROR']}
+            <div
+              className="prepare-notices text-xs leading-[18px] wrap-anywhere [&>p]:mt-1.5"
+              aria-live="polite"
+            >
+              {deviceError && <p>{DEVICE_ERROR_MESSAGE[deviceError]}</p>}
+              {cal.advice && (
+                <p>
+                  시선 기준이 흐릿해요. {CALIBRATION_FAIL_MESSAGE[cal.advice]} 이대로 시작해도 돼요.
                 </p>
-                <button
-                  type="button"
-                  onClick={cal.start}
-                  className="mt-2 border-2 border-ink bg-coral-deep px-3 py-1 font-bold text-white hover:bg-ink"
-                >
-                  다시 잡기
-                </button>
-              </div>
-            )}
-
-            <p className="mt-1 text-ink">
-              <span ref={silentRef} />
-            </p>
-            {audioState && audioState !== 'running' && (
-              <p className="mt-1 text-ink">
-                AudioContext가 {audioState} 상태입니다 — 오디오가 흐르지 않습니다
+              )}
+              {cal.status === 'FAILED' && (
+                <p>{CALIBRATION_FAIL_MESSAGE[cal.failReason ?? 'ENGINE_ERROR']}</p>
+              )}
+              <p className="prepare-silence has-[>span:empty]:hidden">
+                <span ref={silentRef} />
               </p>
-            )}
-            {/* 계량기가 아예 못 떴을 때. '입력 없음'과 구분해서 보여줘야
-                사용자가 말을 더 크게 할지, 장치를 바꿀지 정할 수 있습니다 */}
-            {meterError && <p className="mt-1 text-ink">{meterError}</p>}
-          </section>
+              {audioState && audioState !== 'running' && (
+                <p>마이크 소리가 흐르지 않아요. 장치를 다시 연결해 주세요.</p>
+              )}
+              {meterError && <p>{meterError}</p>}
+            </div>
+          </CheckCard>
+
+          {info && (
+            <MissionCard
+              info={info}
+              exam={practiceModeFor(scriptMode) === 'EXAM'}
+              compact={
+                baseVoice.status === 'READING' ||
+                Boolean(
+                  prepareBlocked ||
+                  startError ||
+                  deviceError ||
+                  cal.status === 'FAILED' ||
+                  meterError ||
+                  (audioState && audioState !== 'running'),
+                )
+              }
+            />
+          )}
+          <ScriptModeChoice
+            value={scriptMode}
+            onChange={(mode) => setScriptMode(mode)}
+            disabled={starting}
+          />
         </div>
       </div>
     </ScreenFrame>
@@ -595,17 +707,15 @@ function BaseVoicePanel({
 }) {
   if (status === 'DONE') {
     return (
-      <div role="status" className="border border-line-strong bg-cream p-3 text-sm">
-        <p className="font-bold">평소 목소리를 {heardSec}초 동안 들었어요</p>
-        <p className="mt-1 text-xs leading-relaxed text-ink/80">
-          발표 중 목소리 크기를 이 기준과 비교해요. 평소보다 크거나 작게 읽었다면 다시 읽어 주세요.
-        </p>
-      </div>
+      <p role="status" className="mt-1.5 text-xs leading-[18px]">
+        평소 목소리를 {heardSec}초 들었어요. 발표 중 이 기준과 비교해요. 평소와 다르게 읽었다면 다시
+        읽어 주세요.
+      </p>
     );
   }
   if (status === 'SHORT') {
     return (
-      <div className="border border-line-strong bg-cream p-3">
+      <div className="prepare-voice-panel mt-1.5 bg-cream p-2 text-xs leading-[18px]">
         <p role="alert" className="text-xs leading-relaxed text-ink/80">
           {SHORT_GUIDE[reason ?? 'BRIEF']}
         </p>
@@ -613,73 +723,30 @@ function BaseVoicePanel({
     );
   }
   return (
-    <div className="border border-line-strong bg-cream p-3">
-      <p className="text-sm leading-relaxed font-semibold">{BASE_VOICE_SENTENCES.join(' ')}</p>
-      <div className="mt-3">
-        <LevelBar variant="segments" meterRef={echoMeterRef} />
+    <div className="prepare-voice-panel mt-1.5 bg-cream p-2 text-xs leading-[18px]">
+      <p className="prepare-voice-script font-semibold">{BASE_VOICE_SENTENCES.join(' ')}</p>
+      <div className="prepare-voice-progress mt-1.5 grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2">
+        <div className="prepare-voice-meter">
+          <LevelBar variant="segments" meterRef={echoMeterRef} />
+        </div>
+        <p role="status">{READ_GUIDE[stage]}</p>
+        <Button
+          onClick={onFinish}
+          size="sm"
+          className="prepare-voice-finish min-h-[30px]! border! px-3! py-1! text-xs! shadow-none!"
+        >
+          다 읽었어요
+        </Button>
       </div>
-      <ol aria-live="polite" className="mt-3 flex flex-col gap-1.5 text-xs">
-        {READ_STEPS.map((step, i) => (
-          <ReadStep key={step.done} index={i} current={READ_STEP_INDEX[stage]} step={step} />
-        ))}
-      </ol>
-      <Button onClick={onFinish} className="mt-3 w-full">
-        다 읽었어요
-      </Button>
     </div>
   );
 }
 
-/**
- * 읽기 세 단계. 지난 단계는 체크, 지금 단계는 "무엇을 하면 되는지", 다음 단계는 흐리게 둡니다.
- * 마지막 단계는 끝나면 카드가 결과로 바뀌므로 체크될 일이 없습니다.
- */
-const READ_STEPS = [
-  { done: '목소리가 들려요', doing: '말소리를 기다리고 있어요' },
-  { done: '충분히 들었어요', doing: '계속 읽어 주세요' },
-  { done: '다 읽고 버튼 누르기', doing: '끝까지 읽고 아래 버튼을 눌러 주세요' },
-] as const;
-
-const READ_STEP_INDEX: Record<ReadStage, number> = { WAITING: 0, HEARD: 1, ENOUGH: 2 };
-
-function ReadStep({
-  index,
-  current,
-  step,
-}: {
-  index: number;
-  current: number;
-  step: (typeof READ_STEPS)[number];
-}) {
-  if (index < current) {
-    return (
-      <li className="flex items-center gap-2 font-bold text-ink">
-        <span aria-hidden="true" className="w-3 text-center">
-          ✓
-        </span>
-        {step.done}
-      </li>
-    );
-  }
-  if (index === current) {
-    return (
-      <li aria-current="step" className="flex items-center gap-2 font-bold text-ink">
-        <span aria-hidden="true" className="flex w-3 justify-center">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-coral" />
-        </span>
-        {step.doing}
-      </li>
-    );
-  }
-  return (
-    <li className="flex items-center gap-2 text-ink/80">
-      <span aria-hidden="true" className="flex w-3 justify-center">
-        <span className="h-2 w-2 rounded-full border border-stone" />
-      </span>
-      {step.done}
-    </li>
-  );
-}
+const READ_GUIDE: Record<ReadStage, string> = {
+  WAITING: '말소리를 기다리고 있어요',
+  HEARD: '목소리가 들려요 · 계속 읽어 주세요',
+  ENOUGH: '충분히 들었어요 · 끝까지 읽고 버튼을 눌러 주세요',
+};
 
 function DeviceSelect({
   label,
@@ -687,21 +754,28 @@ function DeviceSelect({
   options,
   fallback,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: string;
   options: MediaDeviceInfo[];
   fallback: string;
   onChange: (deviceId: string) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="block">
-      <span className="text-xs text-ink/80">{label}</span>
+    <label>
+      <span className="sr-only">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        disabled={options.length === 0}
-        className="mt-1 w-full border-2 border-ink bg-panel px-3 py-2 text-sm disabled:opacity-50"
+        disabled={disabled || options.length === 0}
+        title={
+          options.find((device) => device.deviceId === value)?.label ||
+          options[0]?.label ||
+          fallback
+        }
+        className="prepare-select min-h-[30px] w-full min-w-0 text-ellipsis border border-line-strong bg-panel px-1.5 py-[3px] text-xs text-ink disabled:border-dashed disabled:bg-cream disabled:text-ink prepare-low:min-h-7"
       >
         {options.length === 0 ? (
           <option value="">{fallback}</option>

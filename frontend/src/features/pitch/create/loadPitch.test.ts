@@ -150,7 +150,7 @@ describe('수정 화면 — 불러온 초안으로 시작한다 (hydrate)', () =
   it('최신 대본과 그 대본이 맞춘 슬라이드로 바로 연습할 수 있다', async () => {
     store().hydrate('key1', 'p1', await loadPitch('p1'));
 
-    expect(store()).toMatchObject({ pitchId: 'p1', entryKey: 'key1', node: 'info' });
+    expect(store()).toMatchObject({ pitchId: 'p1', entryKey: 'key1', node: 'slides' });
     // "최신끼리"(슬라이드 V2 · 대본 V2)면 장수가 달라 시작할 수 없습니다
     expect(toPracticeCombo(store().draft, store().chosen)).toMatchObject({
       presentationVersionId: 'pv1',

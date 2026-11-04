@@ -1,8 +1,6 @@
 # 대본 파싱 (script_parser) 설계
 
-> **이 문서는** 대본 파싱 기능의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
-> **기준 범위**: 대본 파싱 모듈(`POST /scripts/parse`)의 목표 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 글자 위치 단위 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
-> **관련 Issue**: #156
+> **기준 범위**: 대본 파싱 모듈(`POST /scripts/parse`)의 기준 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 글자 위치 단위 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **한 줄 요약**: 대본 원문을 코드가 구분자로 장마다 나누고 정제해 장별 글자 수 · 예상 발표 시간 · 하이라이트를 내고, LLM은 장별 키워드 · 제목 줄과 대본 전체의 STT 용어만 고른다.
 > **기준값**: 기준 말 속도(CPM) · 키워드 개수 · 용어 상한은 서비스 `features/script_parser/config.py`에만 두고, 이 문서에는 BE와 맞춰야 하는 통신 값(구분자 형식 · 용어 50개 · 입력 한도 · 시간 예산)과 예시만 적는다.
 
@@ -21,7 +19,7 @@
 # 1. 왜 필요한가
 ## 1-1. 배경
 발표자는 대본을 한 덩어리 글로 올린다. 발표 중 시간 판정은 장마다 목표 시간과 장 대본 글자 수가 있어야 진행도를 잴 수 있고, 대본 전달도는 장마다 평가 기준을 만들며, 발표 화면은 장마다 대본과 강조할 키워드를 보여 준다. 그래서 대본을 장 단위로 나누고 장마다 값이 필요하다.
-지금 구현은 LLM이 장을 나누면서 대본 전문을 다시 쓴다. 출력이 대본 길이에 비례해 길어지는 구조이고, 기본 모델(6 luna)에서 808자 대본 하나와 이어 붙인 2,225자 · 4,397자 대본이 실패했다. 이 실패의 직접 원인은 추론이 출력 한도 2,000토큰을 다 쓴 것이다(출력 글자는 0). 장 대본이 원문과 달라질 수도 있다. 장 나누기는 규칙으로 정할 수 있는 일이라 코드가 하고, 사람의 판단이 필요한 키워드 · 용어만 LLM에 맡긴다.
+LLM이 대본 전문을 다시 쓰면 출력이 대본 길이에 비례해 길어져(추론도 출력 한도를 쓴다) 긴 대본이 실패하고, 장 대본이 원문과 달라질 수 있다. 그래서 장 나누기는 코드가 구분자로 하고, 사람의 판단이 필요한 제목 줄 · 키워드 · 용어만 LLM이 고른다(서비스 `features/script_parser/core.py`).
 
 ## 1-2. 목표
 - 구분자가 있는 대본은 장 나눔이 틀리지 않는다(같은 입력이면 같은 장).
@@ -64,27 +62,20 @@ flowchart LR
 2. **구분자 찾기**: 코드가 줄 맨 앞 구분자를 찾아 장 후보와 첫 구분자 앞 글(머리글)을 나눈다.
 3. **LLM 한 번**: 대본과 장 후보를 주고, 머리글 · 장마다의 제목 줄, 장마다 키워드, 대본 전체 용어를 고르게 한다. 출력은 짧다(키워드 · 줄 · 용어 목록).
 4. **코드 마무리**: 제목 줄을 걷어 낸 뒤 머리글에 본문이 남으면 `fail`로 바꾼다. 장 대본을 정제하고 글자 수 · 예상 시간 · 하이라이트를 계산한다. 대본에 그대로 없는 키워드 · 용어를 버린다.
-5. **BE**: 응답을 저장하고(처리 상태 `DONE`, `fail`이면 `segmented` false) 대본 전달도 평가 기준 · 코칭 계획을 부른다. 평가 기준(`/scripts/rubric`)은 기준 생성 이력이 없을 때만 모든 장으로 첫 작업을 시작하고, 같은 버전의 기존 생성 작업 · 성공 기준 · meta는 다시 만들지 않는다. 같은 버전을 다시 파싱한 결과가 저장본과 다르면 적용하지 않고(`parse_error` = `REPARSE_MISMATCH`, 12-2) rubric · 코칭 계획도 부르지 않는다. 조건은 `architecture.md` 1-6 · 1-7을 따른다. STT keyterm은 Take의 STT를 연결할 때 `terms`와 군더더기 keyterm 단어로 만든다.
+5. **BE**: 응답을 저장하고(처리 상태 `DONE`, `fail`이면 `segmented` false) 대본 전달도 평가 기준 · 코칭 계획을 부른다. 첫 파싱 · 같은 버전 재파싱의 적용 조건과 그때 부르는 것은 `architecture.md` 1-6 · 1-7이다(평가 기준은 기준 생성 이력이 없을 때만 첫 작업을 시작한다). 같은 버전을 다시 파싱한 결과가 저장본과 다르면 적용하지 않고 rubric과 코칭 계획을 부르지 않으며, 12-2의 표시를 남긴다. STT keyterm은 Take의 STT를 연결할 때 `terms`와 군더더기 keyterm 단어로 만든다.
 
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
 ```
-ai/research/script-parser/
-├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12. 서비스를 editable로 설치해 코어를 쓴다(코어는 pydantic 하나), 연구 도구만 LLM 라이브러리
-├─ (서비스 ai/service/src/pitch_coach_ai/features/script_parser/)   코어 (연구 폴더 src/script_parser/에서 폴더째 옮김, 단위 테스트는 서비스 tests/unit/script_parser/)
+ai/service/src/pitch_coach_ai/features/script_parser/   코어 (단위 테스트는 서비스 tests/unit/script_parser/)
 │   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
 │   ├─ core.py                              parse_script(): 구분자 → LLM → 정제 · 계산
 │   ├─ splitter.py · cleaner.py             구분자 찾기 · 판정, 정제 · 글자 수 · 하이라이트 (LLM 없는 순수 함수)
 │   ├─ config.py · version.py               기준 말 속도 · 키워드 개수 · 용어 상한, 기능 버전
 │   ├─ prompts/                             제목 줄 · 키워드 · 용어 고르기 프롬프트
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
-├─ run.py                                   실험 도구: ai/.env로 LLM을 만들어 data/scripts를 돌림 (build_llm은 여기로)
-├─ data/scripts/ · data/labels/             평가 대본과 정답 장 나눔 라벨
-├─ tests/live/                              실제 LLM(live 표시, run.py의 build_llm을 씀). 구분자 · 정제 · 계산 · 계약(가짜 LLM)은 서비스 tests/unit/script_parser/
-└─ reports/results/                         평가 결과 JSON
 ```
-위는 모듈 규약(`architecture.md` 8절)을 따른 모양이다. 파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
+모듈 규약은 `architecture.md` 8절이다. 연구 폴더 `ai/research/script-parser/`(실험 도구 `run.py` · 평가 데이터 · 실제 LLM 테스트 · 결과)의 파일은 그 README '구조'에 있다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -97,7 +88,7 @@ ai/research/script-parser/
 | 규칙 | 이유 |
 |---|---|
 | 장 나누기 · 정제 · 글자 수 · 예상 시간 · 하이라이트는 코드가 한다 | 같은 입력에 같은 장, 장 대본이 원문과 같고, LLM 출력이 짧다 |
-| 코어는 상대 import와 pydantic만 쓰고 파일 · 환경변수 · 네트워크 · 시계를 쓰지 않는다. `ai/.env`를 읽어 LLM을 만드는 코드는 `run.py`로 옮긴다 (`architecture.md` 8절) | 서비스로 옮겨도 코드를 고치지 않고, 가짜 LLM으로 시험한다 |
+| 코어는 상대 import와 pydantic만 쓰고 파일 · 환경변수 · 네트워크 · 시계를 쓰지 않는다. `ai/.env`를 읽어 LLM을 만드는 코드는 연구 폴더 `run.py`에 둔다 (`architecture.md` 8절) | 서비스 · 연구 폴더 어디서 불러도 같고, 가짜 LLM으로 시험한다 |
 | LLM이 고른 키워드 · 제목 줄 · 용어는 대본에 그대로 있을 때만 쓴다 | LLM이 바꿔 쓴 말이 하이라이트 · keyterm에 들어가지 않게 |
 | 기준 말 속도 · 개수 상한은 `config.py`에 둔다 | 기준값을 한곳에서 관리한다 |
 
@@ -201,9 +192,8 @@ LLM은 장 대본을 다시 쓰지 않고 키워드 · 제목 줄 · 용어만 �
 |---|---|---|---|---|
 | `/scripts/parse` | 25초 (호출 한 번 기본 12초, 남은 예산 안에서만 1번 더) | 30초 (호출 전체) | 연결 실패 · 시간 초과 · 408 · 429 · 5xx면 1번 | `architecture.md` 3절 '백그라운드 LLM' |
 
-- 잰 시간 (2026-10-24, 기본 묶음 6 luna, 목표 설계 구현, 평가 대본 15개 · 495~4,198자, 출력 상한은 게이트웨이 기본 2,000토큰): 추론 강도를 정하지 않으면(모델 기본값) 922자 · 2,455자 · 4,440자 대본이 출력 2,000토큰을 추론에 다 써 실패했고(`LengthFinishReasonError`, 옛 평가 대본 20개 기준), 응답한 것도 중앙값 13.2초로 12초를 자주 넘었다. 추론 토큰은 대본 길이와 관계없이 호출마다 달랐다. 추론 강도 `low`에서는 실패 없이 1,000자 미만 13개가 중앙값 6.2초 · 최대 7.9초, 2,052자 7.5초, 4,198자 9.9초였고 최대 출력은 1,283토큰(그중 답은 21장에 약 1,000토큰)이었다. 출력 한도 · 추론 강도는 `architecture.md` 9절대로 역할 `script_parser`의 `settings.py` 상수로 둔다(잰 값: 출력 상한 2,000 · 추론 `low`). 대본별 결과는 연구 폴더 README의 '평가 결과'다.
-- 서비스 경로로 잰 시간 (2026-10-28, 기본 묶음 6 luna, 서비스 `/scripts/parse`를 BE의 AI 호출 코드(`HttpScriptParser`)로 부름, 출력 상한 2,000 · 추론 `low`): 평가 대본 15개는 첫 시도에 모두 200이었고 5.97~10.95초(4,198자 10.95초 · 2,052자 9.22초), BE가 읽은 하이라이트 중 버려진 것은 없었다. 같은 날 조금 뒤에는 게이트웨이 지연이 크게 흔들려, 4,198자 대본이 다섯 번 중 네 번 504 `LLM_TIMEOUT`(호출마다 12초 제한에 걸림)이었고, 시간 제한을 60초로 풀고 재면 808자 대본도 12.0~38.4초 · 4,198자 대본은 11.2~42.5초였다. 대본 길이보다 응답 지연 변동이 커서, 호출 한 번 12초 · AI 예산 25초에서는 지연이 높은 때 BE 재시도까지 실패할 수 있다.
-- 옛 측정 (2026-10-12, 6 luna, LLM이 전문을 다시 쓰던 구현): 595~1,125자 대본 9개는 6.4~10.2초에 응답했고, 808자 대본 1개와 이어 붙인 2,225자 · 4,397자 대본은 출력 2,000토큰이 추론에 다 쓰여 실패했다.
+- **추론 강도 `low`가 필요한 이유**: 정하지 않으면(모델 기본값) 긴 대본이 출력 2,000토큰을 추론에 다 써 실패하고(`LengthFinishReasonError`), 응답한 것도 12초를 자주 넘는다. 그래서 역할 `script_parser`는 출력 상한 2,000 · 추론 `low`다(`architecture.md` 9절, `settings.py` 상수).
+- **잰 시간** (기본 묶음 6 luna, 출력 상한 2,000 · 추론 `low`, 평가 대본 15개 · 495~4,198자): 1,000자 미만 13개 중앙값 6.2초 · 최대 7.9초, 2,052자 7.5~9.22초, 4,198자 9.9~10.95초(서비스 `/scripts/parse`를 BE의 AI 호출 코드로 부른 값 포함). 최대 출력은 1,283토큰(그중 답은 21장에 약 1,000토큰)이었다. 대본별 결과는 연구 폴더 README의 '평가 결과'다.
 - 모델: 기본 묶음(역할 `script_parser` → 기본 묶음, `architecture.md` 9절).
 
 # 9. 버전
@@ -213,26 +203,18 @@ LLM은 장 대본을 다시 쓰지 않고 키워드 · 제목 줄 · 용어만 �
 | `schema_version` | `1.0` | 응답 `meta` (`architecture.md` 5절) | 필드 이름 변경 · 삭제 · 뜻 변경 (예: `highlights` 모양) |
 
 # 10. 실행 · 테스트
-준비 (코어 · 단위 테스트는 `ai/service`에, 실험 도구 `run.py`와 평가 데이터는 `ai/research/script-parser`에 있다. Python 3.12, `.venv`는 git에 없어 폴더마다 처음 한 번 만든다. 연구 폴더는 서비스를 editable로 설치한다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
-```bash
-cd ai/research/script-parser
-uv sync
-```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
 | 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/script_parser` | 구분자 · 판정 · 정제 · 글자 수 · 예상 시간(합 · 누적 반올림) · 하이라이트 · 계약(`examples/`, 가짜 LLM) · 코어 경계 통과 |
-| 연구 폴더 준비 확인 | `uv run python -m pytest` | `run.py`가 서비스 코어를 import하고, `data/scripts/`와 `data/labels/`의 이름이 짝을 이룸 (LLM 호출 없음) |
-| 실제 LLM 테스트 | `uv run python -m pytest -m live` | 예시 대본이 스키마를 통과 (과금) |
-| 대본 실행 | `uv run python run.py --all` | `results/<이름>.json` (과금) |
-| 평가 | `uv run python run.py --eval --out reports/results/script_parser_eval.json` | 장 나눔 정확도 · 예상 시간 오차 · 호출 시간 (13절, 과금) |
+| 연구 폴더의 준비 확인 · 실제 LLM 테스트 · 대본 실행 · 평가 | `ai/research/script-parser/README.md` '실행' | 평가는 13절 지표 (실제 LLM은 과금) |
 
 - Windows에서는 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다.
 - 테스트가 볼 것: 구분자 세 형식 · 줄 맨 앞이 아닌 표시 · '첫째' 같은 말, 머리글이 제목 줄뿐(`success`) · 본문 있음(`fail`), 구분자 뒤 같은 줄 본문, 정제(`#1` · `4 * 6` 남김), 코드 포인트 위치(이모지 뒤 하이라이트), 예상 시간 합 · 마지막 장 0자 · 목표 없음, 대본에 없는 키워드 · 용어 버림, 키워드 대본 순서 · `fail`로 바뀐 대본의 키워드가 장마다 고르게 남음, 번호 0 · 겹침 · 거꾸로는 `fail`, 정제 뒤 0자 422, 공백뿐 · 구분자만 있음 422, LLM 예외가 잡히지 않고 올라감, `examples/` 계약(예시 요청을 가짜 LLM으로 돌린 응답이 예시 응답과 같음).
 
 # 11. 배포
-**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/script_parser/`에 있다(연구 폴더 `src/script_parser/`에서 폴더째 옮겼다). 단위 테스트는 서비스 `tests/unit/script_parser/`로 옮겼고, `run.py`(`build_llm`)를 쓰는 실제 LLM 테스트는 연구 폴더 `tests/live/`에 남겼다. 라우터 `api/script_parser.py`가 `POST /scripts/parse`를 연다. 라우터는 요청마다 마감 시각(25초)을 만들고 `structured_llm(LLMOutput, "script_parser", deadline)`을 `parse_script`에 넘긴다. 역할 `script_parser`는 출력 상한 2,000 · 추론 `low`다(8절의 잰 값, `settings.py`의 `LLM_ROLES`). 모델 설정이 없어도 입력 검사가 먼저라 빈 대본은 422 `EMPTY_SCRIPT`이고, LLM을 부를 때만 503 `LLM_UNAVAILABLE`이다. 코어의 `EmptyScriptError`는 라우터가 422 `EMPTY_SCRIPT`로, LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. `meta.model`에는 실제로 응답한 모델 이름을 싣는다.
+**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/script_parser/`, 단위 테스트는 서비스 `tests/unit/script_parser/`, `run.py`(`build_llm`)를 쓰는 실제 LLM 테스트는 연구 폴더 `tests/live/`에 있다. 라우터 `api/script_parser.py`가 `POST /scripts/parse`를 연다. 라우터는 요청마다 마감 시각(25초)을 만들고 `structured_llm(LLMOutput, "script_parser", deadline)`을 `parse_script`에 넘긴다. 역할 `script_parser`는 출력 상한 2,000 · 추론 `low`다(8절의 잰 값, `settings.py`의 `LLM_ROLES`). 모델 설정이 없어도 입력 검사가 먼저라 빈 대본은 422 `EMPTY_SCRIPT`이고, LLM을 부를 때만 503 `LLM_UNAVAILABLE`이다. 코어의 `EmptyScriptError`는 라우터가 422 `EMPTY_SCRIPT`로, LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. `meta.model`에는 실제로 응답한 모델 이름을 싣는다.
 
-**BE와 함께 바꿀 것**: 경로 `/scripts/parse` · `X-Request-ID` · 30초 · 재시도 1번 · `target_ms` 싣기 · `script_chars` · `expected_ms` · `meta` 저장. `highlights`를 `{start, end}`로 바꾸면 `"start:end"` 문자열만 받는 BE 검증은 모든 응답을 실패로 본다. 그래서 BE가 두 모양을 먼저 받게 했고(BE의 AI 호출 코드 `backend/src/pitch_coach_backend/module/pitch/adapter/script_parser.py`가 `{start, end}`와 `"start:end"`를 모두 받는다), AI는 서비스 탑재로 `{start, end}`를 낸다. BE의 옛 모양 처리를 지우는 것은 BE가 고른다(15절).
+**BE 요구사항**: 경로 `/scripts/parse` · `X-Request-ID` · 호출 30초 · 재시도 1번 · `target_ms` 싣기 · `script_chars` · `expected_ms` · `meta` 저장(BE의 AI 호출 코드 `backend/src/pitch_coach_backend/module/pitch/adapter/script_parser.py`). 응답 `highlights`는 `{start, end}`다. BE 호출 코드는 옛 `"start:end"` 문자열도 받으며, 그 처리를 없앨지는 BE가 정한다.
 
 **환경변수**: 서비스 공통의 LLM 묶음과 시간 제한을 쓴다. 대본 파싱만 시간 제한이 달라야 하면 잰 값과 함께 `SCRIPT_PARSER_LLM_TIMEOUT_SECONDS`를 더한다(`architecture.md` 10절).
 
@@ -245,7 +227,6 @@ uv sync
 | 구분자를 넣었는데 `fail` | 형식이 세 가지가 아님(`1.` · `## Slide 1` 등), 첫 구분자 앞에 본문이 있음 | 대본의 구분자 줄, FE 안내 문구 |
 | 장 대본에 제목이 남음 | LLM이 제목 줄을 고르지 않음, 고른 줄이 대본 줄과 글자가 다름 | LLM 출력의 `title_lines`, 프롬프트 |
 | 하이라이트가 한두 글자 밀림 | FE가 코드 포인트를 UTF-16으로 바꾸지 않음 | FE의 코드 포인트 → UTF-16 변환, `architecture.md` 6-1 |
-| BE가 모든 응답을 `AI_INVALID_OUTPUT`으로 봄 | `highlights` 새 모양을 BE가 아직 받지 못함 | 배포 순서(11절 'BE와 함께 바꿀 것') |
 | 504가 잦음 | 대본이 아주 길어 입력 처리가 김, 모델 출력 한도 | AI 로그의 호출 시간 · 토큰 수, `SCRIPT_PARSER_LLM_TIMEOUT_SECONDS` |
 
 # 12. FE · BE · DB 연결과 저장
@@ -258,28 +239,22 @@ sequenceDiagram
     BE->>BE: script_versions (PENDING) 저장
     BE->>P: POST /scripts/parse {script_text, target_ms}
     P-->>BE: status · slides · terms · meta
-    alt 새 버전의 첫 파싱 결과 (architecture.md 1-7)
-        BE->>BE: script_versions (DONE, segmented, terms, parse_meta) · script_slides 저장
-        BE->>BE: 대본 전달도 /scripts/rubric (기준 생성 이력이 없을 때만) · /coach/plan (백그라운드)
-    else 같은 버전을 다시 파싱 · 저장본과 같음
-        BE->>BE: 기존 장 · 성공 기준 · meta 재사용 (기준 생성 이력이 없을 때만 /scripts/rubric 첫 작업)
-        BE->>BE: /coach/plan (백그라운드)
-    else 같은 버전을 다시 파싱 · 저장본과 다름
-        BE->>BE: 적용하지 않음 · parse_error = REPARSE_MISMATCH (rubric · /coach/plan 부르지 않음, 12-2)
-    end
+    BE->>BE: 적용 조건대로 script_versions · script_slides 저장, 기준 생성 이력이 없을 때만 /scripts/rubric 첫 작업 · /coach/plan (architecture.md 1-6 · 1-7)
+    Note over BE: 같은 버전 재파싱이 저장본과 다르면 적용하지 않고 parse_error = REPARSE_MISMATCH, rubric · /coach/plan을 부르지 않음 (12-2)
     FE->>BE: 상태 조회 (1초 폴링)
     BE-->>FE: 장별 대본 · 키워드 · 하이라이트 · segmented
 ```
+그림의 테이블 · 칸 이름은 지금 저장 위치(BE 소유)다.
+
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+이 기능의 저장 요구는 AI가 정하고, 테이블 · 칸 · 형식 · 마이그레이션 · 구현 · 운영은 BE가 정한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래 저장 요구와 저장 위치는 저장 계약이며(지금 BE 구현과 맞는지 확인하지 못한 항목은 "BE 구현 확인 필요"로 따로 표시한다), 바꾸려면 BE와 합의한다.
 
-| 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
+| 데이터 | 언제 생기나 | 저장 위치(지금 구현 또는 확인 필요, BE 소유) | 저장 요구(남길 값 · 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 파싱 결과 (대본 버전) | `/scripts/parse` 응답 | `script_versions` (`parse_status` · `segmented` = `status`가 `success`인가 · `terms` JSONB · 새 칸 `parse_meta` JSONB NULL = 응답의 `meta` · 새 칸 `parse_error` String NULL: null = 차이 없음, `REPARSE_MISMATCH` = 같은 버전을 다시 파싱한 결과의 전체 장 번호 · 대본이 저장본과 달라 적용하지 않음) | `terms`: 문자열 배열 50개 이하, 1 KB 안팎. `parse_meta`: 0.1 KB 안팎 | BE가 쓴다 · BE가 STT keyterm을 만들 때 `terms`를 읽음 | 늦게 온 옛 응답은 버린다(BE의 `parse_requested_at` 표식) | 발표와 함께. 대본은 사용자가 쓴 글이다 |
-| 장별 대본 | 같음 | `script_slides` (`slide_number` · `full_content` = `script` · `keywords` JSONB · `highlights` JSONB · 새 칸 `script_chars` Integer NULL · 새 칸 `expected_ms` Integer NULL) | `highlights`는 BE 형식 그대로 `[[start, end], ...]`(코드 포인트). 장 하나에서 대본 글을 뺀 값이 0.3~0.4 KB(`fail`이면 키워드가 많아 약 0.7 KB). 응답 전체는 대본 595~1,125자에 2.3~5.3 KB였고, 대본 글(UTF-8)에 장마다 0.4 KB와 용어 1 KB 안팎을 더한 크기다 | BE가 쓴다 · 코치 `plan.slides`(`expected_ms` → `target_ms`, `script_chars`) · `scripts`, 대본 전달도 `slides[].script`, FE 발표 화면 | `(script_version_id, slide_number)` 유일 제약 | 같음 |
+| 파싱 결과 (대본 버전) | `/scripts/parse` 응답 | `script_versions` (`parse_status` · `segmented` · `terms` · `parse_meta` · `parse_error`) | `segmented` = `status`가 `success`인가. `terms`: 문자열 배열, 최대 50개, 1 KB 안팎. `parse_meta` = 응답의 `meta`에 요청 `target_ms`를 더한 것, 0.1 KB 안팎. `parse_error`: 비어 있으면 차이 없음, `REPARSE_MISMATCH` = 같은 버전을 다시 파싱한 결과의 전체 장 번호 · 대본이 저장본과 달라 적용하지 않음 | BE가 쓴다 · BE가 STT keyterm을 만들 때 `terms`를 읽음 | 늦게 온 옛 응답은 버린다(BE의 `parse_requested_at` 표식) | 발표와 함께. 대본은 사용자가 쓴 글이다 |
+| 장별 대본 | 같음 | `script_slides` (`slide_number` · `full_content` · `keywords` · `highlights` · `script_chars` · `expected_ms`) | 장마다 `script`(→ `full_content`) · 키워드 · 하이라이트 · `script_chars` · `expected_ms`. `highlights`는 BE 형식 그대로 `[[start, end], ...]`(코드 포인트). 장 하나에서 대본 글을 뺀 값이 0.3~0.4 KB(`fail`이면 키워드가 많아 약 0.7 KB). 응답 전체는 대본 595~1,125자에 2.3~5.3 KB였고, 대본 글(UTF-8)에 장마다 0.4 KB와 용어 1 KB 안팎을 더한 크기다 | BE가 쓴다 · 코치 `plan.slides`(`expected_ms` → `target_ms`, `script_chars`) · `scripts`, 대본 전달도 `slides[].script`, FE 발표 화면 | `(script_version_id, slide_number)` 유일 제약 | 같음 |
 
-- 새 칸(`script_chars` · `expected_ms` · `parse_meta` · `parse_error`)은 BE가 마이그레이션한다. 이미 저장된 대본 버전의 새 칸은 null이다. `script_chars` · `expected_ms` · `parse_meta`는 다시 파싱한 결과를 적용할 때 채우고(적용할지는 `architecture.md` 1-7의 저장본 비교 규칙), `parse_error`는 적용하지 않을 때 12-2대로 남긴다.
-- 잰 크기는 지금 구현의 응답(9개 대본)을 목표 모양(`script_chars` · `expected_ms` · `{start, end}` · `meta`)으로 바꿔 쟀다.
+- 이미 저장된 대본 버전은 `script_chars` · `expected_ms` · `parse_meta`가 비어 있을 수 있고, 지금은 다시 채우지 않는다(`DONE` 대본은 다시 파싱하지 않고, 저장본이 있으면 결과를 적용하지 않는다: `architecture.md` 1-7의 저장본 비교 규칙). 쓰는 쪽이 빈 값을 처리한다. 적용하지 않을 때의 `parse_error`는 12-2대로 남긴다.
 
 ## 12-2. 저장 규칙
 - 응답의 `meta`를 `parse_meta`에 함께 저장한다(`architecture.md` 1-1).
@@ -295,7 +270,7 @@ sequenceDiagram
 | 같은 대본으로 발표한 기록(가상 발표와 실제 리허설, 장별 실제 시작 · 끝 시각) | 예상 시간과 실제 장 시간의 오차 | 기록한다(기준 말 속도 고르기의 근거) | 같음 |
 | 같은 세트 | 키워드 · 용어가 대본에 그대로 있는 비율(버리기 전), 장 대본에 제목이 남은 수, LLM 호출 시간 (긴 대본 포함) | 정제가 맞고 시간 제한 안에 드는 것 | 같음 |
 
-- 지금 평가 세트는 `data/scripts/` 15개와 `data/labels/`의 라벨(`status`, 장마다 첫 줄 · 마지막 줄, 남으면 안 되는 제목 줄)이다. 원래 대본 5개 중 4개는 5-2의 구분자 형식이 아닌 `fail` 경우(`## Slide 1 —` · `1.` · `[Slide 1]` · 구분자 없음)이고, 나머지 10개는 위 표의 경우마다 분야를 달리해 새로 쓴 대본(구분자 형식마다, 머리글에 제목만 · 본문 있음, 일부만 구분자, 마크다운, 번호 겹침, 구분자 없음, 2,000자대 · 4,000자대)이다.
+- 지금 평가 세트는 `data/scripts/` 15개와 `data/labels/`의 라벨(`status`, 장마다 첫 줄 · 마지막 줄, 남으면 안 되는 제목 줄)이다. 구성: 구분자 형식별, 5-2 형식이 아닌 `fail` 경우(`## Slide 1 —` · `1.` · `[Slide 1]`), 머리글에 제목만 · 본문 있음, 일부만 구분자, 마크다운, 번호 겹침, 구분자 없음, 2천 자대 · 4천 자대.
 - 장별 실제 발표 시간 라벨(`actual_slide_ms`)이 아직 없어 예상 시간 오차는 재지 못했다. 가상 발표와 실제 리허설 기록을 모아 채운다.
 
 # 14. 지표 정의
@@ -305,11 +280,7 @@ sequenceDiagram
 - **LLM 호출 시간**: 요청을 받아 LLM 응답을 받기까지의 시간, 대본 길이별 중앙값 · 최댓값.
 
 # 15. 열린 질문 · 알려진 한계
-**정한 것**
-- 번호 0 · 겹침 · 거꾸로는 `fail`, 용어도 대본에 있는지로 거름, 정제 뒤 0자 422, `fail` 키워드 합치기, 입력 50,000자 한도, 제한 시간만 바뀌면 다시 파싱하지 않음 · `parse_meta`에 `target_ms`.
-- `highlights` 배포 순서: BE가 `"start:end"`와 `{start, end}`를 모두 받게 한 뒤(BE의 AI 호출 코드) AI가 서비스 탑재로 새 모양을 낸다. BE가 옛 모양 처리를 지울지는 BE가 고른다.
-
-**열린 질문** (에이전트 입출력과는 관계없는 FE · BE 쪽)
+**열린 질문** (FE · BE 쪽)
 - 아직 정하지 않았다: 구분자 형식을 넓힐지. 후보 안은 모호하지 않은 형식(`[Slide N]` · `Slide N:` · 줄 전체가 `슬라이드 N`/`Slide N`, 앞의 `#` 제목 표시)만 더하고 번호 목록(`1.` · `1)`)은 넣지 않으며, FE 안내 정규식을 같은 정의로 맞추는 것이다.
 - 아직 정하지 않았다: FE 예상 시간 표시. 후보 안은 파싱이 끝난 대본은 서버 `expected_ms`를 보이고, 파싱 전 미리보기만 FE 계산을 쓰되 기준 말 속도를 이 문서에 적어 FE 상수를 그 값으로 맞추는 것이다.
 - 아직 정하지 않았다: BE의 파싱 오류 안내. 후보 안은 BE가 대본 파싱의 AI 422를 상태 코드만으로 사용자 입력 오류로 남기고, FE가 "대본을 확인해 주세요"로 안내하는 것이다(에러 본문은 읽지 않는다, `architecture.md` 4절).
@@ -317,7 +288,8 @@ sequenceDiagram
 **알려진 한계**
 - `script_chars`는 대본 글의 글자 수라, 숫자 · 기호(`37%`)를 읽은 말("삼십칠 퍼센트")과 글자 수가 다르다. 시간 판정의 진행도(말한 글자 수 ÷ `script_chars`)가 숫자가 많은 장에서 조금 어긋난다.
 - 예상 시간은 글자 수 비례라, 장마다 다른 말 속도(인사 · 표 설명)를 반영하지 않는다.
-- 지금 평가 대본은 짧고(595~1,125자) 정답 라벨이 없다.
+- 평가 세트(`data/scripts/` 15개 · `data/labels/`)에 장별 실제 발표 시간 라벨(`actual_slide_ms`)이 아직 없어 예상 시간 오차는 재지 못했다(13절).
+- 대본 길이보다 게이트웨이 응답 지연 변동이 커서, 호출 한 번 12초 · AI 예산 25초에서는 지연이 높은 때 BE 재시도까지 실패할 수 있다(지연이 흔들린 때 4,198자 대본이 다섯 번 중 네 번 504 `LLM_TIMEOUT`, 시간 제한을 60초로 풀면 808자 12.0~38.4초 · 4,198자 11.2~42.5초).
 
 # 16. 확정 값 한눈에
 | 항목 | 값 | 어디서 정하나 |
@@ -331,4 +303,4 @@ sequenceDiagram
 | 에러 | 422 `EMPTY_SCRIPT` · `VALIDATION_ERROR`, LLM 실패 `LLM_*` | 5-4 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
 | 버전 | `script_parser-1.1` · `schema_version` `1.0` | 9절 |
-| 저장 | `script_versions`(`parse_meta` · `parse_error` 새 칸) · `script_slides`(`script_chars` · `expected_ms` 새 칸) | 12-1 |
+| 저장 | 저장 요구: 12-1 · 12-2(대본 버전마다 파싱 결과 · `meta`와 `target_ms` · 재파싱 불일치 표시, 장마다 대본 · 키워드 · 하이라이트 · `script_chars` · `expected_ms`, 대본 버전과 장 번호마다 하나). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `script_versions`(`parse_meta` · `parse_error`) · `script_slides`(`script_chars` · `expected_ms`) | 12-1 |

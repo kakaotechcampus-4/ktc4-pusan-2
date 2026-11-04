@@ -1,0 +1,30 @@
+.prepare-input-track,
+.prepare-input-fill {
+  display: grid;
+  grid-template-columns: repeat(48, minmax(0, 1fr));
+  gap: 3px;
+}
+.prepare-input-track {
+  position: relative;
+  min-width: 0;
+  height: 18px;
+  flex: 1;
+  background: var(--color-meter-panel);
+}
+.prepare-input-track > span {
+  background: var(--color-meter-off);
+}
+.prepare-input-fill {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 calc(100% - var(--prepare-input-level, 0%)) 0 0);
+}
+.prepare-input-fill > [data-band='green'] {
+  background: var(--color-meter-green);
+}
+.prepare-input-fill > [data-band='yellow'] {
+  background: var(--color-meter-yellow);
+}
+.prepare-input-fill > [data-band='red'] {
+  background: var(--color-meter-red);
+}

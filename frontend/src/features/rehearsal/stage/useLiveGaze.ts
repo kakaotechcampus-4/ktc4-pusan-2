@@ -2,18 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useGazeWorker } from '../media/useGazeWorker';
 import { appendGazeSamples, markGazeExcluded } from '../lib/db';
 import { takeZoneRef } from '../lib/zoneRefMemory';
-import { zoneOf } from '../lib/gazeSegments';
+import { borderOf } from '../lib/gazeSegments';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { fitsCurrentEngine } from '@/workers/calibrationModel';
 import type { GazeSampleRecord, ZoneReference } from '@/workers/gaze.contract';
-import type { GazeExcludedReason, GazeZone, Ms } from '@/types/api';
-
-/** contract의 Zone → 테두리 상태. 엔진 상태는 `zoneOf` 가 먼저 3구역으로 접습니다 */
-const BORDER: Record<GazeZone, string> = {
-  CAMERA: 'AUDIENCE',
-  BOTTOM: 'SCREEN',
-  UNCERTAIN: 'UNKNOWN',
-};
+import type { GazeExcludedReason, Ms } from '@/types/api';
 
 /**
  * 기준을 꺼낸 상태. 엔진 버전은 워커가 ready 를 보내야 알므로, 그 전에는 꺼낼 수 없어 LOADING 입니다.
@@ -109,7 +102,7 @@ export function useLiveGaze({
       if (!last) return;
 
       // 1. 테두리 — 리렌더 없이. 가장 최근 1초로 칠합니다
-      if (stageRef.current) stageRef.current.dataset.gaze = BORDER[zoneOf(last.state)];
+      if (stageRef.current) stageRef.current.dataset.gaze = borderOf(last.state);
 
       // 2. 기록 — 종료 시점에 이 행들을 읽어 서버로 보냅니다
       //

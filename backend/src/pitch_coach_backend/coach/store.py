@@ -21,6 +21,7 @@ from pitch_coach_backend.coach.requests import (
     TakeConstants,
     TakeContext,
     build_plan,
+    finalize_request,
     missions_payload,
     plan_request,
 )
@@ -167,9 +168,11 @@ def _take_context(db: Session, values: TakeCoachValues) -> TakeContext:
     return TakeContext(constants=constants, slides=values.slide_events)
 
 
-def load_finalize_source(db: Session, take_id: uuid.UUID) -> FinalizeSource | None:
+def load_finalize_source(
+    db: Session, take_id: uuid.UUID, *, waiting_only: bool = True
+) -> FinalizeSource | None:
     """finalize 를 DB 에서 다시 만들 재료. Take 가 Take 결과를 기다리는 중이 아니면 None."""
-    rows = coach_service.finalize_rows(db, take_id)
+    rows = coach_service.finalize_rows(db, take_id, waiting_only=waiting_only)
     if rows is None:
         return None
     return FinalizeSource(
@@ -180,6 +183,26 @@ def load_finalize_source(db: Session, take_id: uuid.UUID) -> FinalizeSource | No
         events=rows.events,
         raw_data_consent=rows.raw_data_consent,
     )
+
+
+def recovery_request(db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+    source = load_finalize_source(db, take_id, waiting_only=False)
+    if source is None or (t_end_ms := source.t_end_ms) is None:
+        return None
+    replay = source.replay(t_end_ms)
+    return finalize_request(
+        source.context.constants,
+        t_end_ms,
+        source.last_window(replay, t_end_ms),
+        None,
+        source.events,
+        replay=replay,
+    )
+
+
+class StoreFinalizeExport:
+    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+        return recovery_request(db, take_id)
 
 
 def save_take_result(

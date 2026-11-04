@@ -3,7 +3,7 @@ import { Card } from '@/shared/ui/Panel';
 import { Mascot } from '@/shared/ui/Mascot';
 import { InfoPage } from '@/shared/ui/InfoPage';
 
-/** 404 찾을 수 없음 — 시안 `/dev/design/not-found` */
+/** 404 찾을 수 없음 — 시안 `docs/fe/design` not-found */
 export function NotFoundPage() {
   return (
     <InfoPage title="찾을 수 없음">

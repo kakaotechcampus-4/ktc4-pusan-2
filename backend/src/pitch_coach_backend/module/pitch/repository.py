@@ -165,13 +165,10 @@ class PitchRepository:
         )
         return (current or 0) + 1
 
-    def has_presentation_version(self, pitch_id: uuid.UUID, version: int) -> bool:
+    def has_presentation(self, presentation_id: uuid.UUID) -> bool:
         return (
             self.db.scalar(
-                select(PresentationVersion.id).where(
-                    PresentationVersion.pitch_id == pitch_id,
-                    PresentationVersion.version == version,
-                )
+                select(PresentationVersion.id).where(PresentationVersion.id == presentation_id)
             )
             is not None
         )
