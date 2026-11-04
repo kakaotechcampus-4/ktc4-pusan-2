@@ -31,6 +31,15 @@ class ChatRepository:
             select(ChatAction).where(ChatAction.run_id == run_id, ChatAction.action_id == action_id)
         )
 
+    def count_succeeded_actions(self, run_id: uuid.UUID, kind: str) -> int:
+        return self.db.scalar(
+            select(func.count()).where(
+                ChatAction.run_id == run_id,
+                ChatAction.type == kind,
+                ChatAction.status == "SUCCEEDED",
+            )
+        )
+
     # 행 잠금. UPDATING, DELETING 시 다른 트랜잭션이 접근하지 못하도록 잠금
     def lock_run(
         self,
