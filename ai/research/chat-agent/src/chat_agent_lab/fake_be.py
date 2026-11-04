@@ -1076,9 +1076,9 @@ class FakeBe:
             )
             call.http_status = out.status
             if out.lines is None:
-                # 스트림 전 오류. 이어 부르기였고 이 실행에서 받은 문장이 있으면 그 문장으로 PARTIAL(L2-15 · L2-45)
-                code = ((out.error or {}).get("error") or {}).get("code") or "UNKNOWN"
-                self._reject(run, call, code)
+                # 스트림 전 오류(HTTP 오류 본문): 실행 오류 코드 규칙(5-9)대로 실패로 끝낸다. 이어 부르기의 409 도
+                # 실행 FAILED 다(L1-41). 받은 문장으로 PARTIAL 을 남기는 것은 스트림을 받다가 끊긴 경우뿐이다(L2-45)
+                call.error_code = ((out.error or {}).get("error") or {}).get("code") or "UNKNOWN"
                 return call
             self._check_stream(run, call, out.lines, t0)
             return call
@@ -1103,7 +1103,11 @@ class FakeBe:
                     line = next(it)
                 except StopIteration:
                     break
-                except Exception:  # noqa: BLE001  # 받는 중 연결 끊김 · 시간 초과 같은 전송 오류(L2-15)
+                except TimeoutError:
+                    # 받는 중 시간 초과(L2-15): 받은 문장이 있으면 PARTIAL, 없으면 AGENT_TIMEOUT
+                    return self._reject(run, call, "AGENT_TIMEOUT")
+                except (ConnectionError, OSError):
+                    # 받는 중 연결 끊김 같은 전송 오류(L2-15). 그 밖의 예외는 버그이므로 숨기지 않고 올린다
                     return self._reject(run, call, "STREAM_CUT")
                 seq += 1
                 if terminal is not None:

@@ -10,6 +10,8 @@ import json
 from collections.abc import Callable, Iterator
 from typing import Any
 
+import pytest
+
 from chat_agent_lab.app import TurnOutcome
 from chat_agent_lab.fake_be import FakeBe, Run
 from tests.unit import fakes as F
@@ -236,9 +238,9 @@ def test_needs_action_with_tampered_prefix_does_not_execute_the_action() -> None
 
 
 class StreamApp:
-    """진짜 서비스 계층 대역의 줄을 하나씩 넘기는 대역. `on_line(줄 dict)`을 줄을 넘긴 뒤(받는 쪽이 처리한 뒤) 부르고,
-    `cut_after_claims`개의 문장 줄을 넘긴 뒤 연결 오류를 낸다. `delay`초 뒤에 응답을 돌려주고 `reformat`이면 줄을
-    공백 · 다른 키 순서로 다시 쓴다(유효한 JSON)."""
+    """진짜 서비스 계층 대역의 줄을 하나씩 넘기는 대역. `on_line(줄 dict)`을 줄을 넘긴 뒤(받는 쪽이 처리한 뒤) 부른다.
+    `cut_after_claims`개의 문장 줄을 넘긴 뒤(0 이면 첫 줄 전에) `cut_with` 예외를 낸다. `delay`초 뒤에 응답을 돌려주고
+    `reformat`이면 줄을 공백 · 다른 키 순서로 다시 쓴다(유효한 JSON). 끝나거나 닫히면 안쪽 응답도 닫는다(자리 반환)."""
 
     def __init__(
         self,
@@ -246,12 +248,14 @@ class StreamApp:
         *,
         on_line: Callable[[dict[str, Any]], None] | None = None,
         cut_after_claims: int | None = None,
+        cut_with: type[Exception] = ConnectionError,
         delay: float = 0.0,
         reformat: bool = False,
     ) -> None:
         self.inner = inner
         self.on_line = on_line
         self.cut_after_claims = cut_after_claims
+        self.cut_with = cut_with
         self.delay = delay
         self.reformat = reformat
 
@@ -266,26 +270,41 @@ class StreamApp:
 
         def gen() -> Iterator[str]:
             seen = 0
-            for raw in src:
-                obj = json.loads(raw)
-                if self.reformat:
-                    obj = {
-                        "data": obj["data"],
-                        "seq": obj["seq"],
-                        "run_id": obj["run_id"],
-                        "event": obj["event"],
-                    }
-                    yield json.dumps(obj, ensure_ascii=False) + "\n"
-                else:
-                    yield raw
-                if self.on_line is not None:
-                    self.on_line(obj)
-                if obj["event"] == "claim":
-                    seen += 1
-                    if self.cut_after_claims is not None and seen >= self.cut_after_claims:
-                        raise ConnectionError("끊김")
+            try:
+                if self.cut_after_claims == 0:
+                    raise self.cut_with("끊김")
+                for raw in src:
+                    obj = json.loads(raw)
+                    if self.reformat:
+                        obj = {
+                            "data": obj["data"],
+                            "seq": obj["seq"],
+                            "run_id": obj["run_id"],
+                            "event": obj["event"],
+                        }
+                        yield json.dumps(obj, ensure_ascii=False) + "\n"
+                    else:
+                        yield raw
+                    if self.on_line is not None:
+                        self.on_line(obj)
+                    if obj["event"] == "claim":
+                        seen += 1
+                        if self.cut_after_claims is not None and seen >= self.cut_after_claims:
+                            raise self.cut_with("끊김")
+            finally:
+                close = getattr(src, "close", None)
+                if callable(close):
+                    close()
 
         return TurnOutcome(status=200, lines=gen())
+
+
+def one_slot(be: FakeBe) -> Any:
+    """서비스 계층 대역의 동시 실행 자리를 1개로 줄인다(자리를 돌려줬는지 정확히 보려고)."""
+    import threading
+
+    be.app._slots = threading.BoundedSemaphore(1)  # type: ignore[attr-defined]
+    return be.app
 
 
 def test_lines_are_stored_as_they_arrive_and_cursor_sees_them_before_the_end() -> None:
@@ -304,25 +323,60 @@ def test_lines_are_stored_as_they_arrive_and_cursor_sees_them_before_the_end() -
     assert run.status == "DONE" and seen and all(a == b for a, b in seen)
 
 
-def test_connection_error_after_claims_keeps_them_and_before_claims_fails() -> None:
+def test_connection_error_after_claims_keeps_them_and_returns_the_slot() -> None:
     be = done_be()
-    be.app = StreamApp(be.app, cut_after_claims=1)  # type: ignore[assignment]
+    inner = one_slot(be)
+    be.app = StreamApp(inner, cut_after_claims=1)  # type: ignore[assignment]
     run = be.send_message(None, MSG, page_take_id="t-5")
     assert run.status == "PARTIAL" and run.calls[-1].error_code == "STREAM_CUT"
     assert len(claims_of(run)) == 1 and stored(be, run).claims == claims_of(run)
-    assert be.app.inner._slots.acquire(blocking=False)  # type: ignore[attr-defined]  # 자리를 돌려줬다
+    assert inner._slots.acquire(blocking=False)  # 자리 하나를 돌려줬다
+    inner._slots.release()
 
 
-def test_pre_stream_error_on_resume_keeps_claims_received_before_the_pause() -> None:
-    """승인 뒤 이어 부르기가 스트림 전 오류(예: 503)로 끝나도 멈추기 전에 받은 문장은 PARTIAL 로 남긴다(L2-15 · L2-45)."""
+@pytest.mark.parametrize(
+    ("cut_with", "code"),
+    [(ConnectionError, "AGENT_UPSTREAM_ERROR"), (TimeoutError, "AGENT_TIMEOUT")],
+)
+def test_transport_error_before_any_claim_fails_with_the_mapped_code(
+    cut_with: type[Exception], code: str
+) -> None:
+    """문장 줄을 받기 전 끊기면 PARTIAL 이 아니라 실패다: 시간 초과는 AGENT_TIMEOUT, 그 밖은 AGENT_UPSTREAM_ERROR(L2-15)."""
+    be = done_be()
+    inner = one_slot(be)
+
+    def cut_last_call(body: bytes, *, request_id: str | None = None) -> TurnOutcome:
+        # 처음 호출(행동 전, 문장 없음)은 그대로, 이어 부른 호출은 첫 줄 전에 끊는다
+        app = StreamApp(
+            inner, cut_after_claims=0 if b"ACTION_RESULT" in body else None, cut_with=cut_with
+        )
+        return app.turn(body, request_id=request_id)
+
+    be.app = type("A", (), {"turn": staticmethod(cut_last_call)})()  # type: ignore[assignment]
+    run = be.send_message(None, MSG, page_take_id="t-5")
+    assert (run.status, run.error_code) == ("FAILED", code)
+    assert claims_of(run) == []
+    assert inner._slots.acquire(blocking=False)
+    inner._slots.release()
+
+
+def test_unexpected_iterator_error_is_not_hidden_as_a_cut() -> None:
+    """전송 오류가 아닌 예외(버그)는 부분 실패로 숨기지 않고 올린다."""
+    be = done_be()
+    be.app = StreamApp(be.app, cut_after_claims=1, cut_with=ValueError)  # type: ignore[assignment]
+    with pytest.raises(ValueError):
+        be.send_message(None, MSG, page_take_id="t-5")
+
+
+def test_pre_stream_error_on_resume_fails_with_the_passed_code() -> None:
+    """승인 뒤 이어 부르기의 스트림 전 오류는 받은 문장이 있어도 실행 오류 코드 규칙(5-9)대로 FAILED 다(L1-41 · L2-15)."""
     be = make_be(save_goal_with_sentence())
     run = be.send_message(be.new_conversation().conversation_id, GOAL_MSG, page_take_id="t-5")
-    first = claims_of(run)
     pend = run.pending
-    assert first and pend is not None
-    be.app = ReplayError(503, "LLM_UNAVAILABLE")  # type: ignore[assignment]
+    assert claims_of(run) and pend is not None
+    be.app = ReplayError(409, "AGENT_STATE_INVALID")  # type: ignore[assignment]
     out = be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
-    assert out.status == "PARTIAL" and stored(be, out).claims == first
+    assert (out.status, out.error_code) == ("FAILED", "AGENT_STATE_INVALID")
 
 
 class ReplayError:
