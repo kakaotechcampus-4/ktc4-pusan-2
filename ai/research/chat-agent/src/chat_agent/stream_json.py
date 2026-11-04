@@ -69,6 +69,10 @@ class StreamTracker:
     assessments_done: bool = False
     #: 닫힌 claims 원소 수
     claims_seen: int = field(default=0)
+    #: 지금까지 읽은 최상위 키. 같은 키가 두 번 나오면 `duplicate_key`(다 받은 뒤 파싱은 마지막 값을 쓰므로,
+    #: 호출자는 그 뒤로 흘려 내지 않는다)
+    keys_seen: set[str] = field(default_factory=set)
+    duplicate_key: bool = False
 
     def feed(self, text: str) -> list[Event]:
         """조각을 더하고 이번 조각으로 새로 닫힌 사건들을 순서대로 돌려준다."""
@@ -142,6 +146,10 @@ class StreamTracker:
             value = None
         if kind == "key":
             self._last_key = value if isinstance(value, str) else None
+            if self._last_key is not None:
+                if self._last_key in self.keys_seen:
+                    self.duplicate_key = True
+                self.keys_seen.add(self._last_key)
         elif self._last_key is not None and isinstance(value, str):
             events.append(ValueDone(self._last_key, value))
 

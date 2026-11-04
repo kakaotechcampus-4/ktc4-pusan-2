@@ -119,3 +119,11 @@ def test_top_level_string_value_with_escapes_is_not_read_as_keys() -> None:
         ClaimClosed(0, {"k": 1}),
         ValueDone("tail", "끝"),
     ]
+
+
+def test_duplicate_top_level_key_is_flagged_but_nested_repeats_are_not() -> None:
+    t = StreamTracker()
+    t.feed('{"route":"ANSWER","claims":[{"kind":"A"},{"kind":"B"}],"x":{"route":1}')
+    assert t.keys_seen == {"route", "claims", "x"} and not t.duplicate_key
+    t.feed(',"route":"OUT_OF_SCOPE"}')
+    assert t.duplicate_key

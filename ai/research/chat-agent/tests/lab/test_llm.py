@@ -148,6 +148,8 @@ def test_schema_mode_parses_json_with_role_reasoning() -> None:
         ([chunk(content='{"a":'), chunk(finish="length")], LlmInvalidOutput),
         ([chunk(content="..."), chunk(finish="content_filter")], LlmRefused),
         ([chunk(content="not json"), chunk(finish="stop")], LlmInvalidOutput),
+        # 같은 키가 두 번이면 무효(흘려 낸 앞 값과 다 받은 파싱의 뒤 값이 갈라지지 않게, 5-4)
+        ([chunk(content='{"a":1,"b":{"c":1,"c":2}}'), chunk(finish="stop")], LlmInvalidOutput),
         ([chunk(finish="stop")], LlmInvalidOutput),
         ([chunk(content="{}"), chunk(finish="weird")], LlmInvalidOutput),
     ],

@@ -5,11 +5,12 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Any
 
 from chat_agent import templates
-from chat_agent.llm_types import LlmTimeout, Usage
+from chat_agent.llm_types import LlmRefused, LlmTimeout, Usage
 from chat_agent.schemas import ClaimLineData, FinalData
 
 from . import fakes as F
@@ -49,8 +50,23 @@ class Feeder:
         return len(self.sink.sent)
 
 
+def _closure(ev: dict[str, Any], ids: list[str]) -> set[str]:
+    out: set[str] = set()
+    stack = list(ids)
+    while stack:
+        i = stack.pop()
+        if i in out or i not in ev:
+            continue
+        out.add(i)
+        stack.extend(ev[i].get("inputs") or [])
+    return out
+
+
 def assert_prefix_invariant(lines: list[dict[str, Any]], data: dict[str, Any]) -> None:
-    """5-4: 문장 줄은 끝 줄 message 문장과 글자 · 종류 · 근거까지 같고 번호가 0부터 1씩, 끝 줄은 문장 줄 뒤 하나."""
+    """5-4: 문장 줄은 끝 줄 message 문장과 글자 · 종류 · 근거까지 같고 번호가 0부터 1씩, 끝 줄은 문장 줄 뒤 하나.
+
+    근거 · 자료 · 판단 사본은 처음 쓰는 줄에만, 끝 줄의 사본과 같은 내용으로 싣는다. 줄마다 그때까지 받은 사본으로
+    그 문장을 그릴 수 있고(근거와 계산 근거의 입력 · 자료 카드), 문장 줄을 받았으면 확정 판단이 모두 있다."""
     cl = claim_lines(lines)
     for c in cl:
         ClaimLineData.model_validate(c)
@@ -58,10 +74,32 @@ def assert_prefix_invariant(lines: list[dict[str, Any]], data: dict[str, Any]) -
     assert [c["index"] for c in cl] == list(range(len(claims)))
     assert [c["claim"] for c in cl] == claims
     assert lines[-1]["event"] == "final"
-    # 근거 · 자료 사본은 처음 쓰는 줄에만 싣는다
-    ev_ids = [e["evidence_id"] for c in cl for e in c["evidence"]]
-    assert len(ev_ids) == len(set(ev_ids))
-    assert set(ev_ids) <= {e["evidence_id"] for e in data["evidence"]}
+    final_ev = {e["evidence_id"]: e for e in data["evidence"]}
+    final_src = {g["source_id"]: g for g in data["message"]["sources"]}
+    final_as = {a["assessment_id"]: a for a in data["assessments"]}
+    have_ev: set[str] = set()
+    have_src: set[str] = set()
+    have_as: set[str] = set()
+    for c in cl:
+        for e in c["evidence"]:
+            assert e["evidence_id"] not in have_ev and e == final_ev[e["evidence_id"]]
+            have_ev.add(e["evidence_id"])
+        for g in c["sources"]:
+            assert g["source_id"] not in have_src and g == final_src[g["source_id"]]
+            have_src.add(g["source_id"])
+        for a in c["assessments"]:
+            assert a["assessment_id"] not in have_as and a == final_as[a["assessment_id"]]
+            have_as.add(a["assessment_id"])
+        ids = [
+            *c["claim"]["evidence_ids"],
+            *(e for a in c["assessments"] for e in a["evidence_ids"]),
+        ]
+        assert _closure(final_ev, ids) <= have_ev
+        assert set(c["claim"]["source_ids"]) <= have_src
+        if c["claim"].get("assessment_id"):
+            assert c["claim"]["assessment_id"] in have_as
+    if cl:
+        assert have_as == set(final_as)
 
 
 # ── 통과한 문장부터 낸다 ─────────────────────────────────────────────────────
@@ -171,6 +209,73 @@ def test_model_failure_after_a_sentence_went_out_keeps_it_and_ends_partial() -> 
     }
 
 
+def test_refusal_after_a_sentence_went_out_ends_partial_not_refused() -> None:
+    def cut(r: Any) -> Any:
+        res = compare_answer()(r)
+        assert Feeder(r.text_sink, res.message).until('"kind": "RECORD"') == 2
+        return LlmRefused(attempts=1, usage=[Usage()], cause="content_filter")
+
+    _, lines, data = F.run_turn(request(), F.FakeLlm(script(cut), stream_chunk=None))
+    fd = FinalData.model_validate(data)
+    assert fd.status == "PARTIAL"
+    assert fd.message.claims[-1].text == templates.SystemText.PARTIAL_CHECKED.value  # type: ignore[union-attr]
+    assert_prefix_invariant(lines, data)
+
+
+def test_refusal_before_any_sentence_stays_refused() -> None:
+    def refuse(r: Any) -> Any:
+        return LlmRefused(attempts=1, usage=[Usage()], cause="content_filter")
+
+    _, lines, data = F.run_turn(request(), F.FakeLlm(script(refuse)))
+    assert data["status"] == "REFUSED"
+    assert_prefix_invariant(lines, data)
+
+
+def test_ask_pause_answer_failure_after_a_sentence_still_pauses_without_repeating_it() -> None:
+    """승인 대기 전 답이 문장을 낸 뒤 실패해도 확인 카드와 함께 멈춘다(6-1 4번). 낸 판단 문장의 판단은 설명 없는 첫
+    문장으로 다시 그리지 않는다."""
+    expl = "3장에서 청중을 보는 시간을 늘려 보세요."
+
+    def cut(r: Any) -> Any:
+        res = F.answer(
+            [
+                F.claim("ASSESSMENT", expl, assessment_index=0),
+                F.claim("RECORD", GOOD, evidence_ids=[roles(r)["current"]]),
+            ]
+        )
+        assert Feeder(r.text_sink, res.message).until('"kind": "RECORD"') == 1
+        return LlmTimeout(attempts=1, usage=[Usage()], cause="stream_timeout")
+
+    llm = F.FakeLlm(save_script(), answers=[cut], fixes=[F.fix({})], stream_chunk=None)
+    _, lines, data = F.run_turn(first_request(), llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "NEEDS_ACTION"
+    assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]  # type: ignore[union-attr]
+    claims = fd.message.claims  # type: ignore[union-attr]
+    assert expl in claims[0].text
+    ids = [c.assessment_id for c in claims if c.kind == "ASSESSMENT"]
+    assert len(ids) == len(set(ids))
+    assert_prefix_invariant(lines, data)
+
+
+def test_duplicate_top_level_key_stops_streaming() -> None:
+    """같은 최상위 키가 두 번 오면(다 받은 파싱은 뒤 값을 씀) 그 뒤로는 흘려 내지 않는다."""
+
+    def dup(r: Any) -> Any:
+        res = compare_answer()(r)
+        text = res.message.replace(
+            '"route": "ANSWER"', '"route": "ANSWER", "route": "OUT_OF_SCOPE"', 1
+        )
+        assert Feeder(r.text_sink, text).until(None) == 0
+        parsed = {**(res.parsed or {}), "route": "OUT_OF_SCOPE", "scope_reason": "OTHER"}
+        return dataclasses.replace(res, parsed=parsed)
+
+    _, lines, data = F.run_turn(request(), F.FakeLlm(script(dup), stream_chunk=None))
+    assert data["status"] == "REFUSED"
+    assert all(c["claim"]["kind"] == "SYSTEM" for c in claim_lines(lines))
+    assert_prefix_invariant(lines, data)
+
+
 def test_out_of_scope_draft_streams_no_model_sentence() -> None:
     def oos(r: Any) -> Any:
         ro = roles(r)
@@ -219,9 +324,10 @@ def test_chunks_of_another_attempt_or_after_close_are_ignored() -> None:
         return res
 
     _, lines, data = F.run_turn(request(), F.FakeLlm(script(streamed), stream_chunk=None))
-    n = len(claim_lines(lines))
-    kept["sink"].feed(1, '{"route":"ANSWER","assessments":[],"claims":[{"kind":"RECORD"}]}')
-    assert len(kept["sink"].sent) <= n and kept["sink"].closed
+    sink = kept["sink"]
+    before = list(sink.sent)
+    sink.feed(1, json.dumps(json.loads(F.answer([F.claim("RECORD", GOOD)]).message)))
+    assert sink.closed and sink.sent == before
     assert_prefix_invariant(lines, data)
 
 
