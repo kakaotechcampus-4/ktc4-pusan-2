@@ -288,6 +288,44 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
   },
   {
     kind: 'component',
+    id: 'delete-pitch-dialog',
+    title: '피치 삭제 창',
+    group: dialogs,
+    status: '시안',
+    summary:
+      '홈 더보기 메뉴의 삭제(#807). 영구 삭제라 되돌릴 수 없다는 것과 함께 지워지는 것을 알린다.',
+    states: [
+      view('open', '열림', '피치 제목 · 되돌릴 수 없음 · 함께 지워지는 것. 처음 초점은 취소.'),
+      view('busy', '처리 중', '취소 · 삭제를 aria-disabled로 막고 Esc도 막는다.'),
+      view('error', '실패', '창을 닫지 않고 실패를 알린다(role="alert"). 다시 누를 수 있다.'),
+    ],
+    rules: [
+      '확인 창(ReplaceTakeDialog)과 같은 틀이다. showModal()로 열고 useLayoutEffect 정리에서 close()한다.',
+      '제목 · 피치 이름 · 본문을 aria-labelledby · aria-describedby로 잇는다.',
+      '되돌릴 수 없는 쪽이 삭제라 처음 초점은 취소에 둔다(autoFocus).',
+      '처리 중 버튼은 disabled 대신 aria-disabled다. 누른 버튼이 초점을 쥔 채 막힌다(#845). 요청은 한 번만 보낸다.',
+      '누르는 순간 연습 · 분석이 시작된 것을 알면 지우지 않고 그 이유를 알린다.',
+      '닫힌 뒤 초점은 부모가 옮긴다. 취소면 연 ··· 버튼, 지웠으면 다음 줄의 제목이다.',
+    ],
+    tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
+    sources: ['frontend/src/features/pitch/DeletePitchDialog.tsx'],
+    file: 'src/ui/dialogs/DeletePitchDialog.tsx',
+    props: [
+      ['pitchTitle · takeCount', 'string · number', '알릴 피치'],
+      ['busy', 'boolean', '처리 중'],
+      ['error', "'failed' | 'busy' | null", '실패 문구'],
+      ['onConfirm · onCancel', '() => void', '닫는 것은 부모가 정한다'],
+    ],
+    code: `{deleting && (
+  <DeletePitchDialog
+    pitch={deleting.pitch}
+    onCancel={cancelDelete}
+    onDeleted={finishDelete}
+  />
+)}`,
+  },
+  {
+    kind: 'component',
     id: 'help-dialog',
     title: '도움말 창',
     group: dialogs,

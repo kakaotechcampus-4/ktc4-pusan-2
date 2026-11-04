@@ -1,0 +1,281 @@
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { ApiFailure } from '@/shared/api/tokenStore';
+import { pitchListKey } from '@/shared/api/home';
+import { prepareKey } from '@/shared/api/prepare';
+import { takeSurveyKeys } from '@/shared/api/takeSurvey';
+import type { HomePitch, HomeTake, PitchListResponse } from '@/types/home';
+import type { TakeStatus } from '@/types/api';
+import { HomePage } from './HomePage';
+
+vi.mock('@/shared/api/useSession', () => ({ useSession: () => ({ data: null }) }));
+const request = vi.hoisted(() => vi.fn());
+vi.mock('@/shared/api/client', () => ({ apiRequest: request }));
+
+const take = (id: string, status: TakeStatus): HomeTake => ({
+  take_id: id,
+  take_version: 1,
+  take_elapsed: 300,
+  take_time: 300,
+  script_mode: 'HIGHLIGHT',
+  score: null,
+  delta: null,
+  status,
+  end_reason: null,
+});
+const pitch = (id: string, title: string, takes: HomeTake[] = []): HomePitch => ({
+  pitch_id: id,
+  pitch_title: title,
+  pitch_time: 300,
+  thumbnail_url: null,
+  presentation_date: null,
+  takes,
+});
+
+let list: PitchListResponse;
+/** DELETE 응답. 기본은 성공입니다 */
+let onDelete: (id: string) => Promise<unknown>;
+let host: HTMLDivElement;
+let root: Root;
+let client: QueryClient;
+
+beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  list = {
+    pitches: [
+      pitch('p1', '캡스톤 최종 발표', [take('t1', 'COMPLETED'), take('t2', 'COMPLETED')]),
+      pitch('p2', '창업 경진대회 본선'),
+      pitch('p3', '분석 중인 발표', [take('t3', 'ANALYZING')]),
+    ],
+  };
+  onDelete = async (id) => {
+    list = { pitches: list.pitches.filter((p) => p.pitch_id !== id) };
+    return { message: 'Pitch deleted successfully', pitch_id: id };
+  };
+  request.mockReset();
+  request.mockImplementation(async (path: string, options?: RequestInit) => {
+    if (path === '/api/pitches/') return structuredClone(list);
+    if (options?.method === 'DELETE') return onDelete(path.split('/').at(-1)!);
+    throw new ApiFailure(404, 'NOT_FOUND');
+  });
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  host.remove();
+  vi.unstubAllGlobals();
+});
+
+async function render() {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  );
+  await flush();
+}
+const flush = () =>
+  act(async () => {
+    for (let i = 0; i < 4; i += 1) await new Promise((r) => setTimeout(r, 0));
+  });
+const more = (title: string) =>
+  host.querySelector<HTMLButtonElement>(`button[aria-label="${title} 더보기"]`)!;
+const menuItem = () => host.querySelector<HTMLButtonElement>('[role="menuitem"]');
+const dialog = () => host.querySelector('dialog');
+const dialogButton = (text: string) =>
+  [...(dialog()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === text)!;
+const key = (el: Element, k: string) =>
+  act(async () => {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+  });
+const click = (el: HTMLElement) =>
+  act(async () => {
+    el.click();
+  });
+const titles = () =>
+  [...host.querySelectorAll('ul > li a[href$="/edit"]:first-child')].map(
+    (a) => a.querySelector('.truncate')?.textContent,
+  );
+const deletes = () => request.mock.calls.filter(([, o]) => o?.method === 'DELETE');
+
+async function openDialog(title: string) {
+  await click(more(title));
+  await click(menuItem()!);
+}
+
+it('··· 는 메뉴 버튼이고, ↓ 로 열면 첫 항목에 초점이 가고 Esc 로 닫으면 ··· 로 돌아온다', async () => {
+  await render();
+  const button = more('창업 경진대회 본선');
+  expect(button.getAttribute('aria-haspopup')).toBe('menu');
+  expect(button.getAttribute('aria-expanded')).toBe('false');
+
+  button.focus();
+  await key(button, 'ArrowDown');
+  expect(button.getAttribute('aria-expanded')).toBe('true');
+  const menu = host.querySelector('[role="menu"]')!;
+  expect(button.getAttribute('aria-controls')).toBe(menu.id);
+  expect(document.activeElement).toBe(menuItem());
+  expect(menuItem()!.textContent).toBe('삭제');
+
+  // 항목이 하나라 ↑ ↓ 는 제자리입니다
+  await key(menuItem()!, 'ArrowUp');
+  expect(document.activeElement).toBe(menuItem());
+
+  await key(menuItem()!, 'Escape');
+  expect(menuItem()).toBeNull();
+  expect(button.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(button);
+});
+
+it('Enter · Space(누르기)로 열면 첫 항목에 초점이 가고, 다시 누르면 닫는다', async () => {
+  await render();
+  const button = more('캡스톤 최종 발표');
+  await click(button);
+  expect(document.activeElement).toBe(menuItem());
+  await click(button);
+  expect(menuItem()).toBeNull();
+});
+
+it('연습이나 분석 중인 Take 가 있으면 삭제를 aria-disabled 로 막고 이유를 보인다', async () => {
+  await render();
+  await click(more('분석 중인 발표'));
+  const item = menuItem()!;
+  expect(item.getAttribute('aria-disabled')).toBe('true');
+  const reason = document.getElementById(item.getAttribute('aria-describedby')!)!;
+  expect(reason.textContent).toBe('연습이나 분석이 끝난 뒤 지울 수 있어요.');
+  await click(item);
+  expect(dialog()).toBeNull();
+  expect(menuItem()).not.toBeNull();
+});
+
+it('확인 창은 제목 · 되돌릴 수 없음 · 함께 지워지는 것을 알리고, 취소에 처음 초점을 둔다. 취소하면 ··· 로 돌아온다', async () => {
+  await render();
+  await openDialog('캡스톤 최종 발표');
+  const text = dialog()!.textContent;
+  expect(text).toContain('캡스톤 최종 발표');
+  expect(text).toContain('되돌릴 수 없어요');
+  expect(text).toContain('Take 기록 2개와 리포트');
+  expect(document.activeElement).toBe(dialogButton('취소'));
+
+  await click(dialogButton('취소'));
+  expect(dialog()).toBeNull();
+  expect(document.activeElement).toBe(more('캡스톤 최종 발표'));
+  expect(deletes()).toHaveLength(0);
+});
+
+it('지우면 목록에서 빼고 관련 캐시를 지운 뒤, 같은 자리의 다음 줄로 초점을 옮긴다', async () => {
+  await render();
+  client.setQueryData(prepareKey('p1'), { title: 'old' });
+  client.setQueryData(['takes', 't1', 'report'], { old: true });
+  client.setQueryData(takeSurveyKeys.state('t2'), { old: true });
+  client.setQueryData(['prepare', 'p2'], { keep: true });
+
+  await openDialog('캡스톤 최종 발표');
+  // 두 번 빠르게 눌러도 요청은 한 번입니다
+  await act(async () => {
+    dialogButton('삭제').click();
+    dialogButton('삭제').click();
+  });
+  await flush();
+
+  expect(deletes()).toHaveLength(1);
+  expect(deletes()[0][0]).toBe('/api/pitches/delete/p1');
+  expect(dialog()).toBeNull();
+  expect(titles()).toEqual(['창업 경진대회 본선', '분석 중인 발표']);
+  expect(client.getQueryData<PitchListResponse>(pitchListKey)?.pitches).toHaveLength(2);
+  expect(client.getQueryData(prepareKey('p1'))).toBeUndefined();
+  expect(client.getQueryData(['takes', 't1', 'report'])).toBeUndefined();
+  expect(client.getQueryData(takeSurveyKeys.state('t2'))).toBeUndefined();
+  expect(client.getQueryData(['prepare', 'p2'])).toEqual({ keep: true });
+  expect(document.activeElement?.textContent).toContain('창업 경진대회 본선');
+  expect(host.querySelector('[role="status"].sr-only')!.textContent).toBe(
+    '‘캡스톤 최종 발표’ 피치를 삭제했어요.',
+  );
+});
+
+it('마지막 줄을 지우면 윗줄로, 줄이 다 사라지면 제목으로 초점을 옮긴다', async () => {
+  list = { pitches: [pitch('p1', '하나'), pitch('p2', '둘')] };
+  await render();
+  await openDialog('둘');
+  await click(dialogButton('삭제'));
+  await flush();
+  expect(document.activeElement?.textContent).toContain('하나');
+
+  await openDialog('하나');
+  await click(dialogButton('삭제'));
+  await flush();
+  expect(document.activeElement?.tagName).toBe('H1');
+});
+
+it('처리 중에는 두 버튼을 aria-disabled 로 막고, 실패하면 창과 줄을 그대로 두고 알린다', async () => {
+  let fail: (e: unknown) => void = () => undefined;
+  onDelete = () => new Promise((_, reject) => (fail = reject));
+  await render();
+  await openDialog('창업 경진대회 본선');
+  await click(dialogButton('삭제'));
+  await flush();
+
+  const busy = dialogButton('삭제하는 중…');
+  expect(busy.getAttribute('aria-disabled')).toBe('true');
+  expect(dialogButton('취소').getAttribute('aria-disabled')).toBe('true');
+  // 처리 중에는 취소 · Esc 가 듣지 않습니다
+  await click(dialogButton('취소'));
+  await act(async () => {
+    dialog()!.dispatchEvent(new Event('cancel', { cancelable: true }));
+  });
+  expect(dialog()).not.toBeNull();
+  // 막힌 버튼은 초점을 쥔 채로 둡니다
+  busy.focus();
+
+  await act(async () => fail(new ApiFailure(500, 'INTERNAL_ERROR')));
+  await flush();
+  expect(dialog()!.querySelector('[role="alert"]')!.textContent).toContain('삭제하지 못했어요');
+  expect(dialogButton('삭제').getAttribute('aria-disabled')).toBe('false');
+  expect(document.activeElement).toBe(dialogButton('삭제'));
+  expect(titles()).toContain('창업 경진대회 본선');
+});
+
+it('누르는 순간 다시 물어 연습이 시작됐으면 지우지 않고 알린다', async () => {
+  await render();
+  await openDialog('창업 경진대회 본선');
+  list.pitches[1]!.takes = [take('t9', 'RUNNING')];
+  await click(dialogButton('삭제'));
+  await flush();
+
+  expect(deletes()).toHaveLength(0);
+  expect(dialog()!.querySelector('[role="alert"]')!.textContent).toContain(
+    '연습하거나 분석하는 중',
+  );
+  expect(titles()).toContain('창업 경진대회 본선');
+});
+
+it('서버가 이미 없다고(404) 하면 지운 것으로 본다', async () => {
+  // 다른 창에서 먼저 지웠습니다
+  onDelete = async (id) => {
+    list = { pitches: list.pitches.filter((p) => p.pitch_id !== id) };
+    throw new ApiFailure(404, 'PITCH_NOT_FOUND');
+  };
+  await render();
+  await openDialog('창업 경진대회 본선');
+  await click(dialogButton('삭제'));
+  await flush();
+  expect(dialog()).toBeNull();
+  expect(titles()).not.toContain('창업 경진대회 본선');
+});

@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import type { PitchListResponse } from '@/types/home';
 
 /**
@@ -71,7 +71,75 @@ export const homeFixture: PitchListResponse = {
         },
       ],
     },
+    // 삭제(#807)를 시험할 줄입니다. 위 피치는 분석 중인 Take 가 있어 삭제가 막힙니다
+    {
+      pitch_id: '10000000-0000-4000-8000-000000000002',
+      pitch_title: '창업 경진대회 본선',
+      pitch_time: 420,
+      thumbnail_url: null,
+      presentation_date: null,
+      takes: [
+        {
+          take_id: '20000000-0000-4000-8000-000000000011',
+          take_version: 1,
+          take_elapsed: 431,
+          take_time: 420,
+          script_mode: 'HIGHLIGHT',
+          score: 61,
+          delta: null,
+          status: 'COMPLETED',
+          end_reason: null,
+        },
+      ],
+    },
+    {
+      pitch_id: '10000000-0000-4000-8000-000000000003',
+      pitch_title: '스터디 중간 공유',
+      pitch_time: 300,
+      thumbnail_url: null,
+      presentation_date: null,
+      takes: [],
+    },
   ],
 };
 
-export const homeHandlers = [http.get('*/api/pitches/', () => HttpResponse.json(homeFixture))];
+/** 목에서 지운 피치. 새로고침하면 되살아납니다 */
+const deleted = new Set<string>();
+let failDelete = false;
+
+declare global {
+  interface Window {
+    /** 개발 중 피치 삭제 실패 토글 (#807). 프로덕션 번들에는 들어가지 않습니다 */
+    mockPitchDelete?: { fail: () => void; ok: () => void };
+  }
+}
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  // 콘솔에서 mockPitchDelete.fail() 뒤 삭제하면 500 으로 실패합니다. ok() 로 되돌립니다
+  window.mockPitchDelete = {
+    fail: () => {
+      failDelete = true;
+    },
+    ok: () => {
+      failDelete = false;
+    },
+  };
+}
+
+export const homeHandlers = [
+  http.get('*/api/pitches/', () =>
+    HttpResponse.json({
+      pitches: homeFixture.pitches.filter((pitch) => !deleted.has(pitch.pitch_id)),
+    } satisfies PitchListResponse),
+  ),
+  // BE 처럼 {message, pitch_id}. 없는 피치는 404 PITCH_NOT_FOUND 입니다
+  http.delete('*/api/pitches/delete/:pitchId', async ({ params }) => {
+    const pitchId = String(params.pitchId);
+    await delay(600);
+    if (failDelete) return HttpResponse.json({ code: 'INTERNAL_ERROR' }, { status: 500 });
+    if (deleted.has(pitchId) || !homeFixture.pitches.some((pitch) => pitch.pitch_id === pitchId))
+      return HttpResponse.json({ code: 'PITCH_NOT_FOUND' }, { status: 404 });
+    deleted.add(pitchId);
+    return HttpResponse.json({ message: 'Pitch deleted successfully', pitch_id: pitchId });
+  }),
+];
