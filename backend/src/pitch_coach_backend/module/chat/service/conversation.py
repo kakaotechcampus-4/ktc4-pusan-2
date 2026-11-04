@@ -81,16 +81,19 @@ def list_messages(
     )
     has_more = len(messages) > limit
     messages = messages[-limit:] if has_more else messages
+    judged = repo.list_assessments(conversation_id, from_seq=messages[0].seq) if messages else []
+    # 페이지 뒤 메시지의 판단도 대체 표시에 쓰므로 그 근거까지 함께 읽는다
+    sourced = [*messages, *judged]
     current = current_sources(
         db,
         user_id,
-        {value for message in messages for value in message.source_pitch_ids or []},
-        {value for message in messages for value in message.source_take_ids or []},
+        {value for item in sourced for value in item.source_pitch_ids or []},
+        {value for item in sourced for value in item.source_take_ids or []},
     )
-    superseded = (
-        superseded_by(repo.list_assessments(conversation_id, from_seq=messages[0].seq))
-        if messages
-        else {}
+    # 가려지는 메시지의 판단은 없는 것으로 친다. 화면에 ID 를 내보이지 않고,
+    # 정리 작업이 그 판단을 비운 뒤와 같은 값이 나온다
+    superseded = superseded_by(
+        [row.assessments for row in judged if not _uses_gone_source(row, current)]
     )
     return MessageListResponse(
         messages=[_message_view(message, current, superseded) for message in messages],
@@ -98,7 +101,7 @@ def list_messages(
     )
 
 
-def superseded_by(rows: list[Row]) -> dict[str, str]:
+def superseded_by(judged: list[Any]) -> dict[str, str]:
     """앞 판단 ID → 그 판단을 `supersedes` 로 가리킨 가장 최근 판단 ID.
 
     새 판단은 앞 메시지의 판단만 대체한다. 이 대화에 없는 ID 나 같은 메시지 · 뒤 메시지의 ID 를
@@ -106,7 +109,7 @@ def superseded_by(rows: list[Row]) -> dict[str, str]:
     """
     earlier: set[str] = set()
     links: dict[str, str] = {}
-    for _, assessments in rows:
+    for assessments in judged:
         ids: list[str] = []
         for assessment in assessments if isinstance(assessments, list) else []:
             new_id = assessment.get("assessment_id") if isinstance(assessment, dict) else None
@@ -177,12 +180,19 @@ def _parsed(values: set[Any]) -> dict[str, uuid.UUID]:
     return parsed
 
 
+def _uses_gone_source(item: ChatMessage | Row, current: dict[str, dict[str, Any]]) -> bool:
+    """메시지의 근거 중 지워졌거나 남의 것이 있는지."""
+    return uses_deleted(
+        {str(value) for value in item.source_pitch_ids or []},
+        {str(value) for value in item.source_take_ids or []},
+        current,
+    )
+
+
 def _message_view(
     message: ChatMessage, current: dict[str, dict[str, Any]], superseded: dict[str, str]
 ) -> ChatMessageResponse:
-    pitch_ids = {str(value) for value in message.source_pitch_ids or []}
-    take_ids = {str(value) for value in message.source_take_ids or []}
-    masked = uses_deleted(pitch_ids, take_ids, current)
+    masked = _uses_gone_source(message, current)
     # 가릴 때는 본문만이 아니라 그 근거에서 나온 모든 반환 필드를 뺀다(12-2)
     hidden = None if masked else message
     assessments = (

@@ -908,6 +908,44 @@ def test_each_judgement_shows_the_newest_judgement_that_replaced_it(
     assert by_id == {"a1": "a5", "a2": None, "a3": None, "a4": None, "a5": None}
 
 
+def test_masked_answer_is_not_shown_as_the_replacement(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    # 가린 답의 판단 ID 를 내보이지 않는다. 정리 작업이 그 판단을 비운 뒤와도 같은 값이다
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    _answer(db_session, conversation_id, user_id, 2, assessments=[_judgement("a1")])
+    _answer(
+        db_session,
+        conversation_id,
+        user_id,
+        3,
+        assessments=[_judgement("a2", "a1")],
+        source_take_ids=[str(uuid.uuid4())],
+    )
+
+    def first_judgement() -> dict[str, Any]:
+        page = client.get(
+            f"/api/chat/conversations/{conversation_id}/messages?limit=1&before_seq=3",
+            headers=_headers(user_id),
+        ).json()
+        return page["messages"][0]["assessments"][0]
+
+    assert first_judgement()["superseded_by"] is None
+
+    # 페이지 뒤 메시지의 근거도 읽어, 근거가 남은 답의 대체는 그대로 보인다
+    _answer(
+        db_session,
+        conversation_id,
+        user_id,
+        4,
+        assessments=[_judgement("a3", "a1")],
+        source_pitch_ids=[str(_pitch(db_session, user_id))],
+    )
+
+    assert first_judgement()["superseded_by"] == "a3"
+
+
 @pytest.mark.parametrize("enabled", [True, False])
 def test_goal_sweep_runs_only_while_chat_is_on(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, enabled: bool
