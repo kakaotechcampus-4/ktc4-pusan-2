@@ -34,7 +34,7 @@ chat-agent/
 ├─ src/chat_agent_lab/      연구 전용 도구
 ├─ tests/unit/              코어 단위 · 계약 시험 (서비스 탑재 때 ai/service/tests/unit/chat_agent/ 로)
 ├─ tests/lab/ · tests/live/ 연구 도구 시험 · 실제 모델 평가(live)
-├─ evals/scenarios/         평가셋 · 안전 세트 · 객관성 세트
+├─ evals/scenarios/         평가셋 · 안전 세트 · 객관성 세트 · 에이전트 서비스 세트
 └─ reports/results/         커밋하는 평가 결과
 ```
 
@@ -103,13 +103,14 @@ uv sync                                             # .venv 를 만들고 서비
 목표(14-2)는 비교만 하고, 표의 값은 측정값입니다. 고칠 때는 평가셋 **개발 35개**와 안전 · 객관성 세트의 도구 기록 · 진단 기록만 읽었고, **보류 15개**는 고치는 데 쓰지 않았습니다.
 
 ```powershell
-# 에이전트(84개 × 3번, 근거성 판정 · 후속 말 포함) — 약 20분
+# 에이전트(103개 × 3번, 근거성 판정 · 후속 말 포함). 1 ~ 3회차는 에이전트 서비스 세트 19개를 더하기 전의 84개
 .\.venv\Scripts\python.exe -m chat_agent_lab.evals --set all --judge --followups --workers 4 --out outputs/evals/<이름>-main
 # 고정 순서 기준선(평가셋 50 × 3번, 13-3) — 약 10분
 .\.venv\Scripts\python.exe -m chat_agent_lab.evals --set eval --baseline --followups --workers 4 --out outputs/evals/<이름>-baseline
 ```
 
 - 결과는 `outputs/evals/<이름>/`(git 무시)의 `report.md` · `report.json` · `runs.jsonl`입니다. 보고에는 '한도 때문의 PARTIAL' 수 · 비율과 이유별(`TIME` · `MODEL_CALLS` · `TOOL_CALLS` · `TOKENS` · `REPEAT`) 수가 들어 있습니다(14-1). 문장 줄(5-4)은 일반 턴의 첫 문장까지 시간(중간값 · 상위 5%, 호출 시간 합 · 실제 시계)과, 받은 문장 줄이 끝 줄 앞부분과 다른 턴 수(0 이어야 함)를 냅니다.
+- 에이전트 서비스 세트 19개(13-2, `--set agent_service`, 승인 4 · 문장 스트림 3 · 기억 5 · 일반 조언 4 · 범위 밖 3)는 평가셋 50과 합치지 않고 따로 보고합니다. 지표(14-1): 승인 없는 실행 · 나간 문장 변경 · `GENERAL` 금지 위반(채점기 `grading.general_violations`, 제품 검사와 따로 짠 규칙) · 기억 누설(`memory` 표시 검사가 하나라도 실패한 실행) · 조언 질문의 GUIDE 비율(`advice` 표시 검사). 시나리오의 기억 fixtures(설정 · 코칭 프로필 · '기억 없이')는 가짜 BE 에 그대로 넣고, 장애 `stream_cut`은 문장 줄을 정한 수만큼 받은 뒤 끝 줄 없이 연결을 끊습니다.
 - 과제 성공률 · pass^3 은 첫 시도로만 셉니다. 후속 말은 후속 말을 적은 시나리오에만 있습니다.
 - **아직 하지 않은 것(13-5)**: 기대 결과(사람 정답) 검수, 근거성 LLM 판정과 사람 20문장의 일치도. 그래서 채점 · 근거성은 사람 확인 전 값입니다.
 - 비용: 단가를 넣지 않아(`--price-*`) USD 는 계산하지 않았습니다. 토큰 수는 아래 표에 있습니다.

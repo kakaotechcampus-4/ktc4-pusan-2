@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-oos-qa",
+  "set": "agent_service",
+  "group": "out_of_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "질의응답 연습(예상 질문 만들기) — REFUSED 와 이유별 고정 문장",
+  "expect_refusal": true,
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표 끝나고 나올 예상 질문 5개 만들어 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status"
+      },
+      {
+        "check_id": "reason-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.QA_PRACTICE",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      }
+    ]
+  }
+}

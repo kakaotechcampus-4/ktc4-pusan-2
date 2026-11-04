@@ -1,5 +1,8 @@
 """평가 시나리오 모양 · 읽기 · 가상 기록 만들기 (기능 문서 10-5 · 13-2 · 13-4 · 13-5, 연구 전용).
 
+세트: 평가셋 50(`eval`) · 안전 세트 20(`safety`) · 객관성 세트 14(`objectivity`) · 에이전트 서비스 세트 19(`agent_service`,
+승인 · 문장 스트림 · 기억 · 일반 조언 · 범위 밖의 새 동작, 13-2). 세트마다 따로 분모로 보고한다(14-1).
+
 - 누가 쓰나: 평가 실행기(evals.py) · 평가 시험(tests/lab/test_evals.py). `evals/scenarios/schema.json`은 여기 모델에서 만든다
   (`python -m chat_agent_lab.evals --write-schema`). 시험이 파일과 모델이 같은지 본다.
 - 시나리오 파일: `evals/scenarios/<id>.json` 하나에 시나리오 하나. 필수 `schema_version` · `id` · `set` · `group` · `split` ·
@@ -75,6 +78,13 @@ GROUPS: dict[str, dict[str, int]] = {
         "mixed": 1,
         "other_speaker": 1,
     },
+    "agent_service": {
+        "approval": 4,
+        "stream": 3,
+        "memory": 5,
+        "general": 4,
+        "out_of_scope": 3,
+    },
 }
 #: 묶음 이름(결과 표)
 GROUP_LABELS = {
@@ -103,6 +113,11 @@ GROUP_LABELS = {
     "myth": "근거 없는 통념",
     "mixed": "여러 주장이 섞인 말",
     "other_speaker": "다른 사람 평가 인용",
+    "approval": "승인",
+    "stream": "문장 스트림",
+    "memory": "기억",
+    "general": "일반 조언",
+    "out_of_scope": "범위 밖",
 }
 #: 평가셋 50 의 보류 개수(13-5: 묶음마다 약 30%, 합계 15)
 HOLDOUT_COUNTS = {
@@ -125,8 +140,10 @@ BaselineType = Literal["record", "compare", "goal", "reassess", "scope", "screen
 Observe = Literal["answer", "actions_proposed", "actions_executed", "db_diff", "trace"]
 Compare = Literal["equals", "contains", "set_equals", "absent", "one_of"]
 Grader = Literal["value", "number", "target", "regex", "template", "quote"]
-#: 검사가 들어가는 지표(14-1). 그 지표의 대상 실행 = 이 표시가 있는 검사를 가진 시나리오의 실행
-MetricTag = Literal["autonomy", "screen", "objectivity"]
+#: 검사가 들어가는 지표(14-1). 그 지표의 대상 실행 = 이 표시가 있는 검사를 가진 시나리오의 실행.
+#: advice: 조언 질문의 GUIDE 비율(답을 뒷받침하는 자료 id 를 정해 둔 조언 질문) · memory: 기억 누설(기억을 넣거나 바꿔도
+#: 판단 · 판정 · 근거 · 행동이 기억 없을 때의 기대와 같은가 — 기대값은 기억 없이 fixtures 만 보고 쓴다)
+MetricTag = Literal["autonomy", "screen", "objectivity", "advice", "memory"]
 Approval = Literal["APPROVE", "REJECT", "EXPIRE", "NEW_MESSAGE"]
 
 
@@ -259,6 +276,30 @@ class ConversationSpec(_M):
     goal: GoalSpec | None = None
     history: list[HistorySpec] = Field(default_factory=list)
     summary: list[SummaryItemSpec] | None = Field(default=None, max_length=12)
+    #: '기억 없이' 대화(6-14): 코칭 프로필을 주지 않고 저장 후보도 저장하지 않는다
+    no_memory: bool = False
+
+
+class ProfileItemSpec(_M):
+    """이미 저장된 코칭 프로필 항목(5-3 `memory.profile`, 6-14). key 마다 하나."""
+
+    key: Literal["TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT"]
+    value: str = Field(min_length=1, max_length=200)
+
+
+class MemorySpec(_M):
+    """사용자의 기억 설정 · 코칭 프로필(6-14). 기본은 켜짐 · 빈 프로필. 값은 BE 가 저장하는 그대로 넣는다(검사 없이 —
+    오염된 프로필이 들어온 경우를 시험하려고)."""
+
+    enabled: bool = True
+    profile: list[ProfileItemSpec] = Field(default_factory=list, max_length=4)
+
+    @model_validator(mode="after")
+    def _one_per_key(self) -> MemorySpec:
+        keys = [p.key for p in self.profile]
+        if len(keys) != len(set(keys)):
+            raise ValueError("코칭 프로필은 key 마다 하나")
+        return self
 
 
 class CorpusSpec(_M):
@@ -277,6 +318,8 @@ class Fixtures(_M):
     corpus: CorpusSpec | None = None
     #: stored: 가상 리뷰 그대로 · rule: 공식 리뷰를 실제 리뷰 규칙 결과로 바꿔 시작(다시 평가 비교용)
     official_reviews: Literal["stored", "rule"] = "stored"
+    #: 기억 설정 · 코칭 프로필(6-14)
+    memory: MemorySpec = Field(default_factory=MemorySpec)
 
 
 # ── 차례 · 장애 주입 ─────────────────────────────────────────────────────
@@ -291,8 +334,12 @@ class Fault(_M):
     - delete_before_action: BE가 `action` 행동을 실행하기 직전에 `target` Take 를 지운다(행동 실패)
     """
 
-    kind: Literal["model_delay", "model_error", "corrupt_answer", "delete_before_action"]
+    kind: Literal[
+        "model_delay", "model_error", "corrupt_answer", "delete_before_action", "stream_cut"
+    ]
     after_call: int | None = Field(default=None, ge=1)
+    #: stream_cut: 이 차례의 첫 AI 호출에서 문장 줄을 이만큼 받은 뒤 끝 줄 없이 연결이 끊긴다(L2-45)
+    after_claims: int | None = Field(default=None, ge=1)
     seconds: float = Field(default=0.0, ge=0)
     purpose: Literal["RESEARCH", "ANSWER", "FIX"] | None = None
     nth: int = Field(default=1, ge=1)
@@ -308,6 +355,7 @@ class Fault(_M):
             "model_error": self.purpose is not None,
             "corrupt_answer": bool(self.from_text) and self.to_text is not None,
             "delete_before_action": bool(self.action) and bool(self.target),
+            "stream_cut": self.after_claims is not None,
         }[self.kind]
         if not need:
             raise ValueError(f"{self.kind} 에 필요한 칸이 없다")
@@ -391,7 +439,7 @@ class Expected(_M):
 class Scenario(_M):
     schema_version: Literal["1.0"]
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
-    set: Literal["eval", "safety", "objectivity"]
+    set: Literal["eval", "safety", "objectivity", "agent_service"]
     group: str
     split: Literal["dev", "holdout"]
     #: 해야 할 때(should: 기록 읽기 · 다시 평가 · 저장 · 이동을 묻지 않고 함) · 하지 말아야 할 때(should_not, 13-1)
@@ -623,7 +671,7 @@ _SCREEN = TypeAdapter(Screen)
 
 @dataclass
 class World:
-    """시나리오 하나의 초기 상태: 피치 목록 · 대화 준비값 · 화면 · 자료 묶음."""
+    """시나리오 하나의 초기 상태: 피치 목록 · 대화 준비값 · 화면 · 자료 묶음 · 기억."""
 
     pitches: list[fx.PitchRecord]
     user_id: str
@@ -633,6 +681,7 @@ class World:
     corpus_texts: dict[str, str]
     official_reviews: str
     goal: dict[str, Any] | None = None
+    memory: MemorySpec = field(default_factory=MemorySpec)
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -672,6 +721,7 @@ def build_world(sc: Scenario) -> World:
         corpus_texts=corpus_texts(fxs.corpus),
         official_reviews=fxs.official_reviews,
         goal=goal,
+        memory=fxs.memory,
     )
 
 
@@ -781,7 +831,7 @@ def load_scenario(path: Path) -> Scenario:
 def load_scenarios(
     directory: Path = SCENARIO_DIR,
     *,
-    sets: tuple[str, ...] = ("eval", "safety", "objectivity"),
+    sets: tuple[str, ...] = ("eval", "safety", "objectivity", "agent_service"),
     splits: tuple[str, ...] = ("dev", "holdout"),
     ids: list[str] | None = None,
     check_counts: bool = True,
@@ -851,6 +901,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "Check",
     "Fault",
+    "MemorySpec",
     "Scenario",
     "ScenarioError",
     "Turn",

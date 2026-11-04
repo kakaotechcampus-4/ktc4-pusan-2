@@ -78,7 +78,9 @@
               "enum": [
                 "autonomy",
                 "screen",
-                "objectivity"
+                "objectivity",
+                "advice",
+                "memory"
               ],
               "type": "string"
             },
@@ -171,6 +173,11 @@
           ],
           "default": null,
           "title": "Summary"
+        },
+        "no_memory": {
+          "default": false,
+          "title": "No Memory",
+          "type": "boolean"
         }
       },
       "title": "ConversationSpec",
@@ -224,7 +231,8 @@
             "model_delay",
             "model_error",
             "corrupt_answer",
-            "delete_before_action"
+            "delete_before_action",
+            "stream_cut"
           ],
           "title": "Kind",
           "type": "string"
@@ -241,6 +249,19 @@
           ],
           "default": null,
           "title": "After Call"
+        },
+        "after_claims": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After Claims"
         },
         "seconds": {
           "default": 0.0,
@@ -371,6 +392,9 @@
           ],
           "title": "Official Reviews",
           "type": "string"
+        },
+        "memory": {
+          "$ref": "#/$defs/MemorySpec"
         }
       },
       "title": "Fixtures",
@@ -510,6 +534,27 @@
         "text"
       ],
       "title": "HistorySpec",
+      "type": "object"
+    },
+    "MemorySpec": {
+      "additionalProperties": false,
+      "description": "사용자의 기억 설정 · 코칭 프로필(6-14). 기본은 켜짐 · 빈 프로필. 값은 BE 가 저장하는 그대로 넣는다(검사 없이 —\n오염된 프로필이 들어온 경우를 시험하려고).",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "profile": {
+          "items": {
+            "$ref": "#/$defs/ProfileItemSpec"
+          },
+          "maxItems": 4,
+          "title": "Profile",
+          "type": "array"
+        }
+      },
+      "title": "MemorySpec",
       "type": "object"
     },
     "PitchSpec": {
@@ -741,6 +786,34 @@
         }
       },
       "title": "PitchSpec",
+      "type": "object"
+    },
+    "ProfileItemSpec": {
+      "additionalProperties": false,
+      "description": "이미 저장된 코칭 프로필 항목(5-3 `memory.profile`, 6-14). key 마다 하나.",
+      "properties": {
+        "key": {
+          "enum": [
+            "TONE",
+            "EXPLAIN_STYLE",
+            "FOCUS_AREA",
+            "CONTEXT"
+          ],
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "title": "ProfileItemSpec",
       "type": "object"
     },
     "ResultSpec": {
@@ -1282,7 +1355,8 @@
       "enum": [
         "eval",
         "safety",
-        "objectivity"
+        "objectivity",
+        "agent_service"
       ],
       "title": "Set",
       "type": "string"

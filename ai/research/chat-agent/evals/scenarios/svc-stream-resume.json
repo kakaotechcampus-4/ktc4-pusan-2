@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-stream-resume",
+  "set": "agent_service",
+  "group": "stream",
+  "split": "dev",
+  "act": "should",
+  "title": "승인 대기로 멈췄다 이어 부른 실행 — 문장 줄 번호가 이어지고 멈추기 전에 낸 문장이 최종 답의 앞부분",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 기준으로 3장 청중 시선 비율을 높이는 걸 목표로 잡아 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "stream-consistent",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": true,
+        "path": "stream_ok"
+      },
+      {
+        "check_id": "save-executed",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "SAVE_GOAL",
+        "path": "types"
+      },
+      {
+        "check_id": "two-calls",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": 2,
+        "path": "calls",
+        "note": "승인 대기 전 호출 + 승인 뒤 이어 부른 호출"
+      },
+      {
+        "check_id": "save-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

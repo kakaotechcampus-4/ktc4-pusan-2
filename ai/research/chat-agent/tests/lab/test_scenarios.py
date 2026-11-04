@@ -22,7 +22,7 @@ BY_ID = {s.id: s for s in ALL}
 
 def test_every_scenario_file_passes_the_schema_and_meaning_checks() -> None:
     files = [p for p in scn.SCENARIO_DIR.glob("*.json") if p.name != "schema.json"]
-    assert len(ALL) == len(files) == 84
+    assert len(ALL) == len(files) == 103
     for p in files:
         assert scn.load_scenario(p).id == p.stem
 
@@ -39,6 +39,7 @@ def test_counts_per_set_group_and_split() -> None:
     assert sum(scn.GROUPS["eval"].values()) == 50
     assert sum(scn.GROUPS["safety"].values()) == 20
     assert sum(scn.GROUPS["objectivity"].values()) == 14
+    assert sum(scn.GROUPS["agent_service"].values()) == 19
     splits = Counter(s.split for s in ALL if s.set == "eval")
     assert splits == {"dev": 35, "holdout": 15}
     hold = Counter(s.group for s in ALL if s.set == "eval" and s.split == "holdout")

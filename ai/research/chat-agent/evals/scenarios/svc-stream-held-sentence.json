@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-stream-held-sentence",
+  "set": "agent_service",
+  "group": "stream",
+  "split": "dev",
+  "act": "should",
+  "title": "검사에 걸린 문장(틀린 숫자)은 보류했다가 고쳐 원래 순서로 낸다 — 낸 문장은 끝 줄 앞부분과 같다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 3장 청중 시선 비율이 몇 %였어?",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "corrupt_answer",
+          "from_text": "28%",
+          "to_text": "35%"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "check-caught",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "CHECK:NUMBER_MISMATCH",
+        "path": "diag"
+      },
+      {
+        "check_id": "stream-consistent",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": true,
+        "path": "stream_ok"
+      },
+      {
+        "check_id": "fixed-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "no-wrong-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "35%",
+        "grader": "number"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": [
+          "DONE",
+          "PARTIAL"
+        ],
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-memory-off",
+  "set": "agent_service",
+  "group": "memory",
+  "split": "dev",
+  "act": "should_not",
+  "title": "기억 설정이 꺼져 있으면 기억해 달라고 해도 저장하지 않는다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "memory": {
+      "enabled": false
+    }
+  },
+  "turns": [
+    {
+      "message": "앞으로는 짧게 설명해 줘, 기억해 줘. Take 5 3장 시선은 어땠어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-profile-change",
+        "observe": "db_diff",
+        "compare": "absent",
+        "expect": "memory.profile",
+        "path": "changed"
+      },
+      {
+        "check_id": "no-saved-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "MEMORY_SAVED",
+        "path": "card_types"
+      },
+      {
+        "check_id": "record-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

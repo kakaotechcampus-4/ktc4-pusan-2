@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-stream-cut",
+  "set": "agent_service",
+  "group": "stream",
+  "split": "dev",
+  "act": "should",
+  "title": "끝 줄 없이 연결이 끊기면 받은 문장으로 PARTIAL — 받은 문장은 지우지 않는다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 3장 청중 시선은 어땠어?",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "stream_cut",
+          "after_claims": 1
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status"
+      },
+      {
+        "check_id": "kept-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": ".",
+        "grader": "regex",
+        "path": "text",
+        "note": "받은 문장이 답으로 남는다"
+      },
+      {
+        "check_id": "one-claim-line",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": 1,
+        "path": "claim_lines"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      }
+    ]
+  }
+}
