@@ -24,6 +24,8 @@ const fixture = vi.hoisted(() => ({
   create: vi.fn(),
   active: vi.fn(),
   endActive: vi.fn(),
+  /** 화면이 useMicLevel 에 넘긴 옵션. 무음 경고를 언제부터 세는지(silenceFrom)를 봅니다 */
+  micOptions: null as { silenceFrom?: () => number | null } | null,
 }));
 vi.mock('./activeTake', () => ({
   activeTakeOrNone: fixture.active,
@@ -46,16 +48,19 @@ vi.mock('../media/useVideoStream', () => ({
   useVideoStream: () => ({ videoRef: ref(), live: fixture.live }),
 }));
 vi.mock('../media/useMicLevel', () => ({
-  useMicLevel: () => ({
-    meterRef: ref(),
-    echoMeterRef: ref(),
-    rowRef: ref(),
-    silentRef: ref(),
-    micOk: fixture.micOk,
-    audioState: 'running',
-    meterError: null,
-    voiceRecord: vi.fn(),
-  }),
+  useMicLevel: (_stream: unknown, options: { silenceFrom?: () => number | null }) => {
+    fixture.micOptions = options;
+    return {
+      meterRef: ref(),
+      echoMeterRef: ref(),
+      rowRef: ref(),
+      silentRef: ref(),
+      micOk: fixture.micOk,
+      audioState: 'running',
+      meterError: null,
+      voiceRecord: vi.fn(),
+    };
+  },
 }));
 vi.mock('./useGazeSetup', () => ({
   CALIBRATION_FAIL_MESSAGE: {},
@@ -332,4 +337,22 @@ it('locks device and script choices while checking for an existing Take, and res
   expect(host.querySelector('dialog')).toBeNull();
   expect(findButton('Take 4 시작하기').disabled).toBe(false);
   expect(document.activeElement).toBe(findButton('Take 4 시작하기'));
+});
+
+it('counts the silence warning only while reading the usual voice, from when reading started', async () => {
+  const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+  await render();
+  // 읽기 전에는 말할 이유가 없어 경고하지 않습니다
+  expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
+
+  now.mockReturnValue(5000);
+  fixture.voiceStatus = 'READING';
+  await render();
+  // 페이지를 연 때(1000)가 아니라 읽기를 누른 때(5000)부터 셉니다
+  expect(fixture.micOptions?.silenceFrom?.()).toBe(5000);
+
+  fixture.voiceStatus = 'DONE';
+  await render();
+  expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
+  now.mockRestore();
 });
