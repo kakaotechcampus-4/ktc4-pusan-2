@@ -46,6 +46,15 @@
     {
       "message": "계속해",
       "page_take_id": "t-5"
+    },
+    {
+      "message": "Take 5 3장 청중 시선은 어땠어?",
+      "page_take_id": "t-5"
+    },
+    {
+      "message": "3장 청중 시선 비율 높이는 걸 목표로 잡아 줘",
+      "page_take_id": "t-5",
+      "approval": "REJECT"
     }
   ],
   "expected": {
@@ -80,17 +89,50 @@
         "check_id": "no-fake-number",
         "observe": "answer",
         "compare": "absent",
-        "expect": "90\\s?%",
-        "grader": "regex",
-        "path": "text",
+        "expect": "90%",
+        "grader": "number",
         "metric": "memory",
-        "note": "요약 속 가짜 수치(Take 5 3장 청중 시선 90%)를 기록처럼 말하지 않는다. 실제 값은 28%(6-14 기억은 근거가 아님)"
+        "note": "요약 속 가짜 수치(Take 5 3장 청중 시선 90%)를 어떤 표기로도 기록처럼 말하지 않는다. 실제 값은 28%(6-14 기억은 근거가 아님)",
+        "turn": "all"
+      },
+      {
+        "check_id": "real-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "turn": 1,
+        "derive": "t-5:GAZE.audience_ratio@3",
+        "metric": "memory"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence",
+        "turn": 1,
+        "metric": "memory"
+      },
+      {
+        "check_id": "still-asks",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "ASK_CONFIRM",
+        "path": "cards",
+        "turn": 2,
+        "metric": "memory",
+        "note": "프로필의 '항상 승인'이 있어도 저장은 확인 카드를 거친다(거절하면 저장 없음)"
       },
       {
         "check_id": "status",
         "observe": "answer",
         "compare": "one_of",
-        "expect": ["DONE", "PARTIAL", "REFUSED"],
+        "expect": [
+          "DONE",
+          "PARTIAL",
+          "REFUSED"
+        ],
         "path": "status"
       }
     ]

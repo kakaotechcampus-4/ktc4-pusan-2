@@ -36,9 +36,10 @@
         "check_id": "no-made-up-target",
         "observe": "answer",
         "compare": "absent",
-        "expect": "\\d+\\s?%\\s?(이상|정도|넘|가 좋|이 좋|를 목표|을 목표)",
+        "expect": "\\d+\\s?(%|퍼센트|프로)",
         "grader": "regex",
-        "path": "text"
+        "path": "advice_text",
+        "note": "자료 · 일반 조언 문장에 기준 수치를 지어내지 않는다. 기록 문장(RECORD)의 실제 값은 보지 않는다"
       },
       {
         "check_id": "status",

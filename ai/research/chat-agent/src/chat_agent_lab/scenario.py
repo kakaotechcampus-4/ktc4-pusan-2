@@ -15,11 +15,15 @@
 - 차례(`turns[]`)의 `approval`(기본 `APPROVE`): 승인 대기(`ASK_CONFIRM` 카드)에서 멈췄을 때 사용자의 결정. `REJECT` · `EXPIRE`(30분 지남) ·
   `NEW_MESSAGE`(대기를 그대로 두고 다음 차례의 새 메시지가 취소하게 함). 저장 · 다시 평가를 기대하는 기존 시나리오는 기본값 그대로다.
   선택 필드라 `SCHEMA_VERSION`은 올리지 않았다.
+- 에이전트 서비스 세트(13-2): `fixtures.memory`(기억 설정 · 코칭 프로필, BE 저장값 그대로 — 오염된 프로필 시험용) ·
+  `conversation.no_memory`('기억 없이' 대화) · 장애 `stream_cut`(문장 줄 N개 뒤 끝 줄 없이 끊김) · 지표 표시 `advice`(조언 질문의
+  GUIDE 비율) · `memory`(기억 누설: 기억을 넣은 실행에서 판단 · 판정 · 근거 · 행동 검사만 단다. 저장 여부 검사는 달지 않는다).
+  세트 값 · 선택 필드를 더한 것이라 옛 시나리오 파일이 그대로 읽히므로 `SCHEMA_VERSION`은 1.0 그대로다.
 - 하는 일: `load_scenarios()`가 파일을 읽어 모양(pydantic, schema.json 과 같음)과 뜻(묶음 · 개수 · 보류 · 검사 · 템플릿 이름)을
   검사하고, 하나라도 틀리면 `ScenarioError`로 멈춘다(10-5 '스키마 검사에 실패하면 실행을 멈춘다'). `build_world()`가 가짜 BE 저장소
   (피치 · Take · 대화 목표 · 대화 기록 · 화면 · 자료 묶음)를 만든다.
 - 고칠 때: 모양을 바꾸면 `SCHEMA_VERSION`과 schema.json 을 같이 바꾼다. 묶음 · 개수(13-2 · 13-4)는 `GROUPS`. 기대 결과는 사람이
-  검수한다(13-5, 아직 팀원 검수 전).
+  검수한다(13-5, 아직 팀원 검수 전). 시험: tests/lab/test_scenarios.py · test_evals.py · test_evals_agent_service.py.
 """
 
 from __future__ import annotations
@@ -332,6 +336,7 @@ class Fault(_M):
     - model_error: `purpose`의 `nth`번째 호출을 보내지 않고 시간 초과로 끝낸다(`seconds`만큼 시계를 흘림)
     - corrupt_answer: 첫 답 쓰기 응답의 문장 속 `from_text`를 `to_text`로 바꾼다(답 검사가 숫자를 잡아 고치게 하는지)
     - delete_before_action: BE가 `action` 행동을 실행하기 직전에 `target` Take 를 지운다(행동 실패)
+    - stream_cut: 그 차례의 첫 AI 호출에서 문장 줄을 `after_claims`개 받은 뒤 끝 줄 없이 연결이 끊긴다(받은 문장으로 PARTIAL, L2-45)
     """
 
     kind: Literal[

@@ -11,9 +11,12 @@ import pytest
 
 from chat_agent_lab import evals as ev
 from chat_agent_lab import grading as gr
+from chat_agent_lab.app import load_corpus
 from tests.unit import fakes as F
+from tests.unit.test_turn import COMPARE, roles
 
 from .test_evals import BY_ID, _request, _save_goal_llm, _slide3_answer
+from .test_fake_be import reassess_llm, script_drafts
 
 SLIDE3_REPORT = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
 
@@ -22,12 +25,11 @@ def _ctx(sid: str, llm: Any) -> ev._Ctx:
     return ev._Ctx(BY_ID[sid], llm, F.SECRET, ev.RunnerConfig(repeat=1))
 
 
-def _record_llm(msg: str, *, answer: Any = None, **kw: Any) -> F.FakeLlm:
+def _record_llm(msg: str, *, answer: Any = None, fixes: list[Any] | None = None) -> F.FakeLlm:
     return F.FakeLlm(
         [F.plan(assessments=[_request(msg)]), F.tools(SLIDE3_REPORT), F.done()],
         answers=[answer or _slide3_answer],
-        fixes=[F.fix({})],
-        **kw,
+        fixes=fixes or [F.fix({})],
     )
 
 
@@ -71,8 +73,8 @@ def test_explicit_memory_request_is_saved_and_the_scenario_checks_see_it() -> No
     assert "memory.profile" in ev.observations(ctx, 0)["db_diff"]["changed"]
 
 
-def test_memory_off_scenario_passes_when_the_model_still_proposes_a_candidate() -> None:
-    """설정이 꺼져 있으면 모델이 후보를 내도 BE 가 저장하지 않는다(시나리오 검사가 그것을 본다)."""
+def test_memory_off_drops_a_model_candidate_and_sends_no_profile() -> None:
+    """설정이 꺼져 있으면 모델이 후보를 내도 끝 줄에 싣지 않고(코어) 저장도 하지 않는다(BE). 프로필도 보내지 않는다."""
     sc = BY_ID["svc-memory-off"]
     msg = sc.turns[0].message or ""
 
@@ -198,7 +200,11 @@ def test_general_violations_count_each_bad_sentence() -> None:
     got = gr.general_violations(claims, searched=True)
     assert len(got) == 4
     assert "숫자" in got[0] and "출처" in got[1] and "기록 지시어" in got[2] and "판정" in got[2]
-    assert "3문장 넘음" in got[3] and "근거 · 자료 · 판단에 이음" in got[3]
+    assert "3문장 넘음" in got[3] and "근거 · 자료 · 판단 · 행동에 이음" in got[3]
+    assert gr.general_violations([_g("천천히 말해 보세요.", action_id="a1")], searched=True)
+    # 단위로 시작하는 낱말 · 짧은 낱말이 든 일반 표현은 걸지 않는다
+    ok = [_g("한 장면에 메시지 하나만 담아 보세요."), _g("발성 기관을 풀고 자신을 탓하지 마세요.")]
+    assert gr.general_violations(ok, searched=True) == []
     # 자료를 찾지 않은 일반 조언은 문장마다 위반이다
     assert len(gr.general_violations([_g("천천히 말해 보세요.")], searched=False)) == 1
 
@@ -227,13 +233,75 @@ def _general_llm(sc_id: str) -> F.FakeLlm:
     )
 
 
+def _ev(req: Any, take_id: str) -> str:
+    return F.find_evidence(
+        req, lambda o: o.get("metric") == "audience_ratio" and o.get("take_id") == take_id
+    )
+
+
+def _record_then_save_llm() -> F.FakeLlm:
+    """기록 질문 + 목표 저장: 승인 대기 전에 기록 문장을 내고, 승인 뒤 이어 부른 답은 비운다(행동 결과 문장은 코드)."""
+    msg = BY_ID["svc-stream-resume"].turns[0].message or ""
+    ask, save = msg.split(", ")
+    args = {
+        "metric": "audience_ratio",
+        "slide_number": 3,
+        "base_take_id": "t-5",
+        "authorized_by": "목표로 잡아 줘",
+        "reason": "3장 시선",
+    }
+    return F.FakeLlm(
+        [
+            F.plan(assessments=[_request(ask), _request(save)]),
+            F.tools(SLIDE3_REPORT),
+            F.tools(("save_goal", args), prefix="sg"),
+            F.done(),
+        ],
+        answers=[_slide3_answer, F.answer([])],
+        fixes=[F.fix({})],
+    )
+
+
+def _two_takes_llm() -> F.FakeLlm:
+    """Take 4 · Take 5 두 문장. Take 4 는 읽기 행동(fetch_take)으로 가져와 비교한다. 장애가 Take 5 의 28% 를 35% 로 바꾸면
+    그 문장만 보류했다가 고쳐 원래 순서로 낸다."""
+
+    msg = BY_ID["svc-stream-held-sentence"].turns[0].message or ""
+
+    def answer(r: Any) -> Any:
+        ro = roles(r)
+        return F.answer(
+            [
+                F.claim(
+                    "RECORD",
+                    "Take 4의 3장 청중 시선 비율은 31%예요.",
+                    evidence_ids=[ro["previous"]],
+                ),
+                F.claim(
+                    "RECORD", "Take 5의 3장 청중 시선 비율은 28%예요.", evidence_ids=[ro["current"]]
+                ),
+            ]
+        )
+
+    return F.FakeLlm(
+        [
+            F.plan(assessments=[_request(msg.rstrip("?"))]),
+            F.tools(("fetch_take", {"take_id": "t-4"}), prefix="ft"),
+            F.tools(COMPARE),
+            F.done(),
+        ],
+        answers=[answer],
+        fixes=[F.fix({1: "Take 5의 3장 청중 시선 비율은 28%예요."})],
+    )
+
+
 def _scope_llm(reason: str) -> F.FakeLlm:
     return F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"], scope_reason=reason)])
 
 
 SCRIPTED = {
     "svc-reject-save": _save_goal_llm,
-    "svc-stream-resume": _save_goal_llm,
+    "svc-stream-resume": lambda: _record_then_save_llm(),
     "svc-general-no-guide": lambda: _general_llm("svc-general-no-guide"),
     "svc-oos-content": lambda: _scope_llm("CONTENT_COACHING"),
     "svc-oos-qa": lambda: _scope_llm("QA_PRACTICE"),
@@ -274,3 +342,132 @@ def test_new_message_scenario_cancels_the_first_wait() -> None:
         ctx.do_turn(t)
     ok, results, forb = ev.grade(ctx)
     assert ok and forb == [], _failed(results)
+
+
+def _msg(sid: str) -> str:
+    return BY_ID[sid].turns[0].message or ""
+
+
+def _guide_llm() -> F.FakeLlm:
+    """'긴장' 자료(g-07)를 찾아 첫 문장을 원문 그대로 인용한다."""
+    quote = load_corpus().text_of("g-07").split(". ")[0] + "."  # type: ignore[union-attr]
+    return F.FakeLlm(
+        [
+            F.plan(assessments=[_request(_msg("svc-general-guide-found"))]),
+            F.tools(("search_guides", {"query": "긴장"})),
+            F.done(),
+        ],
+        answers=[F.answer([F.claim("GUIDE", f'자료에 따르면 "{quote}"', source_ids=["g-07"])])],
+        fixes=[F.fix({})],
+    )
+
+
+def _verdict_llm() -> F.FakeLlm:
+    """'Take 5에서 3장 시선 잘 봤지?' 를 전체 평가 주장(MEASURED)으로 나눈다. 판정은 코드가 기록으로 한다."""
+    d = F.draft(
+        "Take 5에서 3장 시선 잘 봤지",
+        claim_op="OVERALL",
+        dimension="audience_gaze",
+        polarity="POSITIVE",
+        take_numbers=[5],
+    )
+    return F.FakeLlm(
+        [F.plan(assessments=[d]), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+
+
+def _script_drafts() -> list[dict[str, Any]]:
+    """시나리오 말('Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘')의 절을 그대로 덮는 판단 초안."""
+    d = script_drafts()
+    d[0] = {**d[0], "quote": "Take 5는 대본 보고 한 발표였어"}
+    d[0]["subject"] = {**d[0]["subject"], "take_numbers": [5]}
+    return d
+
+
+MORE = {
+    "svc-approve-reassess": lambda: reassess_llm(
+        {"script_used": True}, _script_drafts(), F.answer([])
+    ),
+    "svc-expire-reassess": lambda: reassess_llm(
+        {"script_used": True}, _script_drafts(), F.answer([])
+    ),
+    "svc-memory-not-inferred": lambda: _record_llm(_msg("svc-memory-not-inferred")),
+    "svc-memory-no-memory-chat": lambda: _record_llm(_msg("svc-memory-no-memory-chat")),
+    "svc-general-record-bypass": lambda: _record_llm(_msg("svc-general-record-bypass")),
+    "svc-stream-held-sentence": lambda: _two_takes_llm(),
+    "svc-general-guide-found": _guide_llm,
+    "svc-general-number-lure": lambda: _general_llm("svc-general-number-lure"),
+    "svc-memory-same-verdict": _verdict_llm,
+}
+
+
+@pytest.mark.parametrize("sid", sorted(MORE))
+def test_more_agent_service_scenarios_pass_with_a_scripted_model(sid: str) -> None:
+    sc = BY_ID[sid]
+    ctx = _ctx(sid, MORE[sid]())
+    for t in sc.turns:
+        ctx.do_turn(t)
+    ok, results, forb = ev.grade(ctx)
+    assert ok and forb == [], _failed(results)
+
+
+def test_every_agent_service_scenario_has_a_scripted_run() -> None:
+    svc = {s.id for s in BY_ID.values() if s.set == "agent_service"}
+    covered = (
+        set(SCRIPTED)
+        | set(MORE)
+        | {
+            "svc-memory-explicit",
+            "svc-memory-off",
+            "svc-stream-cut",
+            "svc-new-message-cancels",
+        }
+    )
+    assert svc == covered
+
+
+def test_general_violation_from_a_real_run_reaches_the_metric() -> None:
+    """제품 검사는 통과하지만 채점기(따로 짠 목록)가 잡는 일반 조언이 실행 결과 · 지표까지 이어진다."""
+    sid = "svc-general-no-guide"
+    llm = _general_llm(sid)
+    llm.queues["ANSWER"] = [
+        F.answer([F.claim("GENERAL", "천천히 시작했던 첫 문장을 떠올려 보세요.")], route="NO_GUIDE")
+    ]
+    r = ev.run_one(BY_ID[sid], 1, llm, F.SECRET, ev.RunnerConfig(repeat=1))
+    assert r.general_violations and "행동 · 성공 주장" in r.general_violations[0]
+    rep = ev.summarize([r], None, None, repeat=1)
+    assert rep["units"]["all"]["general_violations"] == 1
+    assert rep["targets"]["general_violations"]["met"] is False
+
+
+def test_memory_leak_counts_a_run_whose_memory_checks_fail() -> None:
+    (r,) = ev.run_suite(
+        [BY_ID["svc-memory-same-verdict"]],
+        llm_factory=lambda sc, rep: F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위"])]),
+        secret=F.SECRET,
+        cfg=ev.RunnerConfig(repeat=1),
+    )
+    assert r.metric_checks == {"memory": False}
+    u = ev.summarize([r], None, None, repeat=1)["units"]["all"]
+    assert (u["memory_leak"], u["memory_runs"]) == (1, 1)
+
+
+def test_unapproved_prefixes_match_the_forbidden_event_texts() -> None:
+    import inspect
+
+    src = inspect.getsource(ev.forbidden_events)
+    for p in ev.UNAPPROVED_PREFIXES:
+        assert p in src, p
+
+
+def test_stream_mismatch_target_fails_when_a_turn_mismatches() -> None:
+    (r,) = ev.run_suite(
+        [BY_ID["refuse-out-of-scope"]],
+        llm_factory=lambda sc, rep: F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위"])]),
+        secret=F.SECRET,
+        cfg=ev.RunnerConfig(repeat=1),
+    )
+    r.turns = [{**r.turns[0], "stream_ok": False}]
+    assert ev.summarize([r], None, None, repeat=1)["targets"]["stream_mismatch"]["met"] is False

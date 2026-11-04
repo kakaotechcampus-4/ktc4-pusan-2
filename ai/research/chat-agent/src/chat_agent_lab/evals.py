@@ -501,16 +501,16 @@ class _Ctx:
         self._app_turn = self.be.app.turn
 
     def _cut_stream(self, after_claims: int) -> None:
-        """장애 `stream_cut`: 이 차례의 첫 AI 호출 응답을 문장 줄 `after_claims`개 뒤 끝 줄 없이 끊는다(연결 끊김, L2-45)."""
+        """장애 `stream_cut`: 이 차례에서 문장 줄을 `after_claims`개 받은 AI 호출을 끝 줄 없이 끊는다(연결 끊김, L2-45).
+        한 번 끊은 뒤에는 끊지 않는다. 문장 줄이 그보다 적은 호출(문장 없이 읽기 행동으로 끝난 호출 등)은 그대로 둔다."""
         orig = self._app_turn
-        used = {"done": False}
+        state = {"done": False}
 
         def cutting(body: bytes, *, request_id: str | None = None) -> Any:
             out = orig(body, request_id=request_id)
-            if used["done"] or out.lines is None:
+            if state["done"] or out.lines is None:
                 return out
-            used["done"] = True
-            return dataclasses.replace(out, lines=_cut_lines(out.lines, after_claims))
+            return dataclasses.replace(out, lines=_cut_lines(out.lines, after_claims, state))
 
         self.be.app.turn = cutting  # type: ignore[method-assign]
 
@@ -591,22 +591,26 @@ class _Ctx:
         return {"proposal_id": last, "option": raw.get("option", "USER")}
 
 
-def _cut_lines(lines: Any, after_claims: int) -> Any:
-    """문장 줄을 `after_claims`개 내보낸 뒤 연결이 끊긴 것처럼 ConnectionError 를 낸다(남은 줄은 버린다)."""
+def _cut_lines(lines: Any, after_claims: int, state: dict[str, bool]) -> Any:
+    """문장 줄을 `after_claims`개 내보낸 뒤 연결이 끊긴 것처럼 ConnectionError 를 낸다(남은 줄은 버린다). 어떻게 끝나든
+    안쪽 응답을 닫아 동시 실행 자리를 돌려준다."""
     n = 0
-    for ln in lines:
-        yield ln
-        try:
-            ev = json.loads(ln).get("event")
-        except (ValueError, AttributeError):
-            ev = None
-        if ev == "claim":
-            n += 1
-            if n >= after_claims:
-                close = getattr(lines, "close", None)
-                if callable(close):
-                    close()
-                raise ConnectionError("stream cut (fault)")
+    try:
+        for ln in lines:
+            yield ln
+            try:
+                ev = json.loads(ln).get("event")
+            except (ValueError, AttributeError):
+                ev = None
+            if ev == "claim":
+                n += 1
+                if n >= after_claims:
+                    state["done"] = True
+                    raise ConnectionError("stream cut (fault)")
+    finally:
+        close = getattr(lines, "close", None)
+        if callable(close):
+            close()
 
 
 # ── 저장소 사진 · 관찰값 ──────────────────────────────────────────────────
@@ -707,14 +711,22 @@ def answer_obs(runs: list[Run], conv: Any) -> Any:
         ),
         None,
     )
-    if stored is not None and final is None and run.closed_message is None:
+    if (
+        stored is not None
+        and run.closed_message is None
+        and (final is None or stored.status != final.get("status"))
+    ):
         msg = {
             "text": stored.text,
             "claims": stored.claims,
             "cards": stored.cards,
             "sources": stored.sources,
         }
-        final = {"assessments": stored.assessments, "evidence": stored.evidence}
+        final = {
+            "assessments": stored.assessments,
+            "evidence": stored.evidence,
+            "meta": stored.meta,
+        }
     else:
         msg = run.closed_message or (final or {}).get("message") or {}
     text = msg.get("text") or ""
@@ -782,9 +794,13 @@ def answer_obs(runs: list[Run], conv: Any) -> Any:
         "has_record_evidence": any(
             c["kind"] == "RECORD" and set(c.get("evidence_ids") or []) & ev_ids for c in claims
         ),
-        "meta": (last or {}).get("meta"),
+        "meta": (last or {}).get("meta") or (final or {}).get("meta"),
         #: 끝 줄의 코칭 프로필 갱신 후보(6-14, 없으면 빈 목록). 저장된 것은 db_diff 의 memory.profile
         "profile_updates": list((last or {}).get("profile_updates") or []),
+        #: 조언 문장(GUIDE · GENERAL)의 글만 — 기록 문장의 숫자와 섞지 않고 조언이 지어낸 수치를 볼 때(13-2 숫자 유도)
+        "advice_text": "\n".join(
+            c["text"] or "" for c in claims if c["kind"] in ("GUIDE", "GENERAL")
+        ),
     }
 
 
@@ -914,6 +930,12 @@ def trace_obs(runs: list[Run]) -> dict[str, Any]:
         #: 문장 줄(5-4): 받은 수 · 끝 줄 앞부분과 같고 BE 검사에 걸리지 않았는가(스트림 시나리오가 본다)
         "claim_lines": stream["claim_lines"],
         "stream_ok": stream["stream_ok"],
+        #: BE 가 AI 요청에 코칭 프로필을 실었는가(6-14: 기억이 꺼졌거나 '기억 없이'면 싣지 않는다)
+        "profile_sent": any(
+            ((c.request or {}).get("memory") or {}).get("profile")
+            for run in runs
+            for c in run.calls
+        ),
     }
 
 
@@ -1179,6 +1201,9 @@ def run_one(
     for t in sc.turns:
         ctx.do_turn(t)  # 턴 안의 예외는 do_turn 이 턴 기록에 남긴다
     first_n = len(ctx.turns)
+    # 첫 시도의 답 관찰값은 후속 말 전에 잡아 둔다(후속 말이 승인 대기 실행을 취소해 저장 메시지를 바꾸므로)
+    final_ans = [answer_obs(r.runs, ctx.conv) for r in ctx.turns[:first_n]]
+    searched_by_turn = [_searched(r.runs) for r in ctx.turns[:first_n]]
     try:
         passed, results, forb = grade(ctx)
         if cfg.followups and not passed and sc.followups:
@@ -1192,11 +1217,9 @@ def run_one(
                     break
     except Exception as e:  # noqa: BLE001  # 채점 중 예외도 실패로 센다(14-1)
         passed, crash = False, f"채점 중 예외 {type(e).__name__}: {e}"
-    final_ans = [answer_obs(r.runs, ctx.conv) for r in ctx.turns[:first_n]]
     gen_bad: list[str] = []
-    for rec, a in zip(ctx.turns[:first_n], final_ans, strict=True):
+    for a, searched in zip(final_ans, searched_by_turn, strict=True):
         if a is not gr.MISSING:
-            searched = "search_guides" in trace_obs(rec.runs)["tools"]
             gen_bad += gr.general_violations(a["claims"], searched=searched)
     ok_n = tot_n = unv_n = 0
     bad_n: list[str] = []
@@ -1294,6 +1317,20 @@ def run_one(
         baseline_steps=list(ctx.llm.baseline_steps),
         general_violations=gen_bad,
     )
+
+
+def _searched(runs: list[Run]) -> bool:
+    """이 차례에 자료 찾기가 한 번이라도 성공했는가(결과 0건 · 캐시 적중 포함, 자료 묶음 준비 실패는 아님, 6-10)."""
+    for run in runs:
+        for ln in run.progress:
+            tr = (ln.get("data") or {}).get("trace") or {}
+            if (
+                ln.get("event") == "tool_done"
+                and tr.get("tool") == "search_guides"
+                and tr.get("outcome") in ("OK", "EMPTY", "CACHED")
+            ):
+                return True
+    return False
 
 
 def _token_sums(calls: list[CallRecord]) -> dict[str, Any]:
@@ -1421,7 +1458,7 @@ def unit_metrics(
         out[name] = ratio(sum(tgt), len(tgt))
     # 기억 누설(14-1): 기억을 넣거나 바꾼 실행 중 판단 · 판정 · 근거 · 행동 검사(`memory` 표시)가 하나라도 실패한 실행 수
     mem = [r.metric_checks["memory"] for r in results if "memory" in r.metric_checks]
-    out["memory_leak"] = sum(1 for ok in mem if not ok)
+    out["memory_leak"] = sum(1 for ok in mem if not ok) if mem else None
     out["memory_runs"] = len(mem)
     out["general_violations"] = sum(len(r.general_violations) for r in results)
     out["number_accuracy"] = ratio(

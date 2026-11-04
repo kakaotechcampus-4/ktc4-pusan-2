@@ -8,7 +8,7 @@
 - 관찰값(evals.py 가 만든다, 모두 JSON 값)
   - answer: `{status, outcome, error_code, text, all_text, claims[], cards[], card_types[], sources[],
     source_ids[], assessments[], verdicts[], scope_pitch_id, goal_result, goal_results[], evidence[], has_record_evidence,
-    profile_updates[]}`
+    profile_updates[], advice_text}`(advice_text: GUIDE · GENERAL 문장 글만)
   - actions_proposed: `{types[], items[], cards[]}` — AI가 낸 행동(NEEDS_ACTION · DONE 의 START_PRACTICE 버튼)과 카드 종류.
     `items[].autonomy`는 `AUTO` · `ASK` · `BUTTON`
   - actions_executed: `{types[], attempted[], items[], counts{}, attempt_counts{}, review_calls}` — BE가 실제로 실행한 것
@@ -16,7 +16,7 @@
     누른 기록 `db_diff`의 `conversation.practice_moves`로만 본다)
   - db_diff: `{changed[], removed[], official_changed[], before{}, after{}}` — 실행 전후 저장소(공식 결과 · 대화 목표 · 기억(설정 ·
     번호 · 코칭 프로필) …)
-  - trace: `{tools[], diag[], limits[], calls, statuses[], model_calls, tool_calls, claim_lines, stream_ok}` — 도구 기록과 진단 기록 단계
+  - trace: `{tools[], diag[], limits[], calls, statuses[], model_calls, tool_calls, claim_lines, stream_ok, profile_sent}` — 도구 기록과 진단 기록 단계
     (`종류:코드[:결과]`), 문장 줄 수 · 문장 줄이 끝 줄 앞부분과 같은가
 - 비교(compare): equals(같음) · contains(문자열이면 부분 문자열, 목록이면 원소 · 딕셔너리면 일부 칸 일치. expect 가 목록이면
   모두 있어야) · set_equals(집합 같음) · absent(expect 의 원소가 하나라도 있으면 실패, 하나 값이면 다름) · one_of(허용 집합:
@@ -26,7 +26,7 @@
   못한 근거는 대조 불가로 따로).
 - `GENERAL` 금지 위반(14-1)은 `general_violations`: 제품의 GENERAL_RULE(checks.py · config.py 낱말 목록)과 따로 짠 규칙 ·
   낱말이다. 제품 목록이 놓친 우회를 잡으려는 것이라 일부러 같게 맞추지 않는다.
-- 고칠 때: 규칙을 바꾸면 tests/lab/test_evals.py 의 통과 · 실패 예시를 같이 고친다. 제품 검사 코드를 import 하지 않는다.
+- 고칠 때: 규칙을 바꾸면 tests/lab/test_evals.py(GENERAL 금지 위반은 test_evals_agent_service.py)의 통과 · 실패 예시를 같이 고친다. 제품 검사 코드를 import 하지 않는다.
 """
 
 from __future__ import annotations
@@ -865,8 +865,11 @@ def flatten_text(claims: Iterable[Mapping[str, Any]]) -> str:
 GENERAL_MAX_CLAIMS = 3
 GENERAL_MAX_CHARS = 120
 _GEN_DIGIT = re.compile(r"\d")
+#: 한글 수 + 단위(횟수 · 개수 · 시간 · 비율). '한 장면' · '한 분야' · '두 배려'처럼 단위로 시작하는 낱말은 빼고, '두세 번'처럼
+#: 붙여 쓴 수도 본다
 _GEN_KO_NUM = re.compile(
-    r"(?<![가-힣])(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|스무|서른)\s?(?:번|개|장|분|초|퍼센트|배|가지|명)"
+    r"(?<![가-힣])(?:두세|서너|네다섯|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|스무|서른|마흔|쉰)\s?"
+    r"(?:번(?!째)|개|장(?!면|점)|분(?!야|위기|량|명)|초(?!점|반)|퍼센트|배(?!려|경|우)|시간|회(?!의)|명(?!확|료)|점(?!검))"
 )
 #: 까닭 → 낱말(소문자로 맞춘다). 권하는 말끝 '~하면 좋아요'는 동의로 보지 않아 '좋아요'는 넣지 않는다
 GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
@@ -881,13 +884,18 @@ GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
         "제 발표",
         "님의 발표",
         "당신의 발표",
-        "기록",
+        "기록에서",
+        "기록상",
+        "기록을 보면",
+        "기록으로 보면",
+        "연습 기록",
+        "발표 기록",
         "take",
         "테이크",
         "점수",
         "리뷰",
     ),
-    "측정값 이름": ("비율", "횟수", "빈도", "분당", "cpm", "전달률", "데시벨"),
+    "측정값 이름": ("비율", "횟수", "빈도", "분당", "cpm", "전달률", "정확도", "데시벨"),
     "동의 · 칭찬": (
         "맞아요",
         "맞습니다",
@@ -899,10 +907,33 @@ GENERAL_FORBIDDEN: dict[str, tuple[str, ...]] = {
         "정확합니다",
         "말씀대로",
     ),
-    "판정": ("강점", "약점", "합격", "통과", "미달", "달성", "문제없", "문제 없"),
+    "판정": (
+        "강점",
+        "약점",
+        "합격",
+        "통과했",
+        "통과예요",
+        "통과입",
+        "미달",
+        "달성",
+        "문제없",
+        "문제 없",
+    ),
     "완화": ("충분히", "사실상", "거의", "나쁘지 않"),
-    "출처": ("연구", "논문", "학회", "기관", "통계", "따르면", "전문가", "교수", "책에서", "입증"),
-    "인과 단정": ("때문에", "때문이", "탓", "원인은"),
+    "출처": (
+        "연구",
+        "논문",
+        "학회",
+        "연구 기관",
+        "공공 기관",
+        "통계",
+        "따르면",
+        "전문가",
+        "교수",
+        "책에서",
+        "입증",
+    ),
+    "인과 단정": ("때문에", "때문이", "탓에", "탓이", "원인은"),
     "행동 · 성공 주장": ("저장했", "바꿨어요", "다시 평가했", "시작했", "옮겼"),
     "범위 밖": ("예상 질문", "연습 계획", "연습 일정", "고쳐 써", "수정안", "추천 기준"),
 }
@@ -921,8 +952,13 @@ def general_violations(claims: Iterable[Mapping[str, Any]], *, searched: bool) -
             why.append("자료 찾기 전")
         if i >= GENERAL_MAX_CLAIMS:
             why.append(f"{GENERAL_MAX_CLAIMS}문장 넘음")
-        if c.get("evidence_ids") or c.get("source_ids") or c.get("assessment_id"):
-            why.append("근거 · 자료 · 판단에 이음")
+        if (
+            c.get("evidence_ids")
+            or c.get("source_ids")
+            or c.get("assessment_id")
+            or c.get("action_id")
+        ):
+            why.append("근거 · 자료 · 판단 · 행동에 이음")
         if len(text) > GENERAL_MAX_CHARS:
             why.append(f"{GENERAL_MAX_CHARS}자 넘음")
         if _GEN_DIGIT.search(text) or _GEN_KO_NUM.search(text):

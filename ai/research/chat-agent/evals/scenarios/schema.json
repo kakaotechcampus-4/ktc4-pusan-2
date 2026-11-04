@@ -224,7 +224,7 @@
     },
     "Fault": {
       "additionalProperties": false,
-      "description": "차례 하나에 넣는 장애(10-5 '장애 주입').\n\n- model_delay: `after_call`번째 모델 호출이 끝난 뒤 시계를 `seconds`만큼 흘린다(모델이 오래 걸림 · 한도 끝)\n- model_error: `purpose`의 `nth`번째 호출을 보내지 않고 시간 초과로 끝낸다(`seconds`만큼 시계를 흘림)\n- corrupt_answer: 첫 답 쓰기 응답의 문장 속 `from_text`를 `to_text`로 바꾼다(답 검사가 숫자를 잡아 고치게 하는지)\n- delete_before_action: BE가 `action` 행동을 실행하기 직전에 `target` Take 를 지운다(행동 실패)",
+      "description": "차례 하나에 넣는 장애(10-5 '장애 주입').\n\n- model_delay: `after_call`번째 모델 호출이 끝난 뒤 시계를 `seconds`만큼 흘린다(모델이 오래 걸림 · 한도 끝)\n- model_error: `purpose`의 `nth`번째 호출을 보내지 않고 시간 초과로 끝낸다(`seconds`만큼 시계를 흘림)\n- corrupt_answer: 첫 답 쓰기 응답의 문장 속 `from_text`를 `to_text`로 바꾼다(답 검사가 숫자를 잡아 고치게 하는지)\n- delete_before_action: BE가 `action` 행동을 실행하기 직전에 `target` Take 를 지운다(행동 실패)\n- stream_cut: 그 차례의 첫 AI 호출에서 문장 줄을 `after_claims`개 받은 뒤 끝 줄 없이 연결이 끊긴다(받은 문장으로 PARTIAL, L2-45)",
       "properties": {
         "kind": {
           "enum": [

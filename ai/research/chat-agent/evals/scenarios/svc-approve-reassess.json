@@ -31,28 +31,38 @@
         "observe": "actions_proposed",
         "compare": "equals",
         "expect": "ASK",
-        "path": "items[type=REASSESS].autonomy"
+        "path": "items[type=REASSESS].autonomy",
+        "metric": "autonomy"
       },
       {
         "check_id": "confirm-card",
         "observe": "actions_proposed",
         "compare": "contains",
         "expect": "ASK_CONFIRM",
-        "path": "cards"
+        "path": "cards",
+        "metric": "autonomy"
       },
       {
         "check_id": "one-reassess",
         "observe": "actions_executed",
         "compare": "equals",
         "expect": 1,
-        "path": "counts.REASSESS"
+        "path": "counts.REASSESS",
+        "metric": "autonomy"
       },
       {
         "check_id": "result-card",
         "observe": "answer",
         "compare": "contains",
-        "expect": "REASSESS_RESULT",
-        "path": "card_types"
+        "expect": {
+          "type": "REASSESS_RESULT",
+          "take_id": "t-5",
+          "change": {
+            "script_used": true
+          }
+        },
+        "path": "cards",
+        "note": "말한 Take(t-5)를 말한 조건(대본 사용)으로 다시 평가했다"
       },
       {
         "check_id": "official-kept",
@@ -60,6 +70,13 @@
         "compare": "equals",
         "expect": [],
         "path": "official_changed"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
       },
       {
         "check_id": "status",

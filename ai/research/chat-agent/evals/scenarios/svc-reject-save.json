@@ -57,10 +57,10 @@
       {
         "check_id": "ai-not-called-again",
         "observe": "trace",
-        "compare": "equals",
-        "expect": 1,
-        "path": "calls",
-        "note": "거절 · 만료 · 취소는 BE 가 고정 문장을 덧붙여 끝내고 AI 를 다시 부르지 않는다(6-2 · 5-8)"
+        "compare": "absent",
+        "expect": "DONE",
+        "path": "statuses",
+        "note": "거절 · 만료는 BE 가 고정 문장을 덧붙여 끝내고 AI 를 다시 부르지 않는다: AI 끝 줄에 DONE 이 없다(6-2 · 5-8)"
       },
       {
         "check_id": "status",

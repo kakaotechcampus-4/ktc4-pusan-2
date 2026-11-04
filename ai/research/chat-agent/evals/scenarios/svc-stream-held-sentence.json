@@ -19,7 +19,7 @@
   },
   "turns": [
     {
-      "message": "Take 5 3장 청중 시선 비율이 몇 %였어?",
+      "message": "Take 4와 Take 5의 3장 청중 시선 비율이 각각 몇 %였어?",
       "page_take_id": "t-5",
       "faults": [
         {
@@ -40,6 +40,14 @@
         "path": "diag"
       },
       {
+        "check_id": "not-dropped",
+        "observe": "trace",
+        "compare": "absent",
+        "expect": "CHECK:NUMBER_MISMATCH:DROPPED",
+        "path": "diag",
+        "note": "걸린 문장은 고쳐서 내야 한다(버리고 코드 템플릿 PARTIAL 로 끝나면 실패)"
+      },
+      {
         "check_id": "stream-consistent",
         "observe": "trace",
         "compare": "equals",
@@ -55,6 +63,14 @@
         "derive": "t-5:GAZE.audience_ratio@3"
       },
       {
+        "check_id": "other-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "31%",
+        "grader": "number",
+        "derive": "t-4:GAZE.audience_ratio@3"
+      },
+      {
         "check_id": "no-wrong-value",
         "observe": "answer",
         "compare": "absent",
@@ -64,11 +80,8 @@
       {
         "check_id": "status",
         "observe": "answer",
-        "compare": "one_of",
-        "expect": [
-          "DONE",
-          "PARTIAL"
-        ],
+        "compare": "equals",
+        "expect": "DONE",
         "path": "status"
       }
     ]

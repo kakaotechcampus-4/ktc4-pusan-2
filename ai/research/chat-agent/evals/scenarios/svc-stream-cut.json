@@ -41,11 +41,10 @@
       {
         "check_id": "kept-sentence",
         "observe": "answer",
-        "compare": "contains",
-        "expect": ".",
-        "grader": "regex",
-        "path": "text",
-        "note": "받은 문장이 답으로 남는다"
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence",
+        "note": "끊긴 실행의 답은 BE 가 받은 문장 줄(근거 사본 포함)로만 남긴 PARTIAL 이다(L2-45)"
       },
       {
         "check_id": "one-claim-line",
