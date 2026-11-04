@@ -17,7 +17,7 @@
   선택 필드라 `SCHEMA_VERSION`은 올리지 않았다.
 - 에이전트 서비스 세트(13-2): `fixtures.memory`(기억 설정 · 코칭 프로필, BE 저장값 그대로 — 오염된 프로필 시험용) ·
   `conversation.no_memory`('기억 없이' 대화) · 장애 `stream_cut`(문장 줄 N개 뒤 끝 줄 없이 끊김) · 지표 표시 `advice`(조언 질문의
-  GUIDE 비율) · `memory`(기억 누설: 기억을 넣은 실행에서 판단 · 판정 · 근거 · 행동 검사만 단다. 저장 여부 검사는 달지 않는다).
+  GUIDE 비율) · `memory`(기억 오염 기대검사 실패 — 기억 누설의 대리 지표: 기억을 넣은 실행에서 판단 · 판정 · 근거 · 행동 검사만 단다. 저장 여부 검사는 달지 않는다).
   세트 값 · 선택 필드를 더한 것이라 옛 시나리오 파일이 그대로 읽히므로 `SCHEMA_VERSION`은 1.0 그대로다.
 - 하는 일: `load_scenarios()`가 파일을 읽어 모양(pydantic, schema.json 과 같음)과 뜻(묶음 · 개수 · 보류 · 검사 · 템플릿 이름)을
   검사하고, 하나라도 틀리면 `ScenarioError`로 멈춘다(10-5 '스키마 검사에 실패하면 실행을 멈춘다'). `build_world()`가 가짜 BE 저장소
@@ -145,7 +145,7 @@ Observe = Literal["answer", "actions_proposed", "actions_executed", "db_diff", "
 Compare = Literal["equals", "contains", "set_equals", "absent", "one_of"]
 Grader = Literal["value", "number", "target", "regex", "template", "quote"]
 #: 검사가 들어가는 지표(14-1). 그 지표의 대상 실행 = 이 표시가 있는 검사를 가진 시나리오의 실행.
-#: advice: 조언 질문의 GUIDE 비율(답을 뒷받침하는 자료 id 를 정해 둔 조언 질문) · memory: 기억 누설(기억을 넣거나 바꿔도
+#: advice: 조언 질문의 GUIDE 비율(답을 뒷받침하는 자료 id 를 정해 둔 조언 질문) · memory: 기억 오염 기대검사 실패(기억 누설의 대리 지표, 기억을 넣거나 바꿔도
 #: 판단 · 판정 · 근거 · 행동이 기억 없을 때의 기대와 같은가 — 기대값은 기억 없이 fixtures 만 보고 쓴다)
 MetricTag = Literal["autonomy", "screen", "objectivity", "advice", "memory"]
 Approval = Literal["APPROVE", "REJECT", "EXPIRE", "NEW_MESSAGE"]

@@ -124,7 +124,7 @@ def _run(
         req or F.request(user_message="발표 전에 긴장을 풀려면 어떻게 해?"),
         llm,
         corpus=load_corpus() if corpus is _CORPUS else corpus,
-        corpus_version="guides-3",
+        corpus_version="guides-4",
     )
     assert status == 200 and data is not None
     return lines, data, llm
@@ -217,7 +217,7 @@ def test_general_after_a_record_sentence_keeps_both_and_skips_the_no_source_note
         F.with_loaded(F.request(user_message=MSG), "t-4"),
         llm,
         corpus=load_corpus(),
-        corpus_version="guides-3",
+        corpus_version="guides-4",
     )
     assert status == 200 and data["status"] == "DONE"
     texts = _texts(data)
@@ -321,7 +321,7 @@ def test_search_and_general_count_carry_over_the_approval_pause() -> None:
         answers=[before_pause],
         fixes=[F.fix({})],
     )
-    _, _, data = F.run_turn(req, llm, corpus=corpus, corpus_version="guides-3")
+    _, _, data = F.run_turn(req, llm, corpus=corpus, corpus_version="guides-4")
     assert data["status"] == "NEEDS_ACTION"
     assert payload_of(data["state"])["loop"]["guide_searched"] is True
     said = [c["text"] for c in data["message"]["claims"]]
@@ -334,7 +334,7 @@ def test_search_and_general_count_carry_over_the_approval_pause() -> None:
     )
     req2 = resume_request(req, data, saved_result(data["actions"][0]))
     req2["context"]["conversation_goal"] = None
-    _, lines2, d2 = F.run_turn(req2, llm2, corpus=corpus, corpus_version="guides-3")
+    _, lines2, d2 = F.run_turn(req2, llm2, corpus=corpus, corpus_version="guides-4")
     assert d2["status"] == "DONE"
     texts = [t for _, t in _texts(d2)]
     assert texts[: len(said)] == said
