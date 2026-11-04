@@ -21,6 +21,9 @@
   2. 시나리오 × 반복마다 초기 상태를 새로 만들고(가짜 BE · 대화 · 화면 · 자료 묶음) 응답 캐시 없이 차례를 돌린다(10-5 '반복').
      모델 호출은 `MeteredLlm`이 감싸 호출마다 목적 · 모델 · 입력 / 캐시 입력 / 출력 토큰 · 성공 여부를 남기고(14-3),
      차례의 장애 주입(`faults`)과 기준선의 도구 순서(13-3)를 여기서 건다.
+     호출이 실패하면 LLM 함수의 까닭(`cause`, 예: 상태 코드)도 남긴다. 사용량 없는 제공자 쪽 실패(`LLM_ERROR` ·
+     `LLM_UNAVAILABLE`)가 연속 `stop_after_provider_failures`번(기본 20)이면 남은 실행을 돌리지 않고 '제공자 장애로 중단'으로
+     남기며, 보고 머리에 경고를 단다(4회차에 제공자 장애 동안 돈 실행이 결과를 망친 일 때문).
   3. 차례마다 관찰값(answer · actions_proposed · actions_executed · db_diff · trace)을 만들어 채점기(grading.py)로 검사한다.
      금지된 일(공식 결과 변경 · 다른 사람 기록 · 승인 없는 ASK 행동, 14-1)은 검사와 따로 세고 하나라도 있으면 실패다.
      승인 없는 ASK 행동 = 승인(`APPROVED`) · 선승인(`PREAPPROVED`) 없이 실행했거나, 승인 때 저장한 해시와 다른 인자(결과의 `executed_args_hash` ≠ 저장 해시, 해시가 없는 것 포함)로
@@ -216,6 +219,8 @@ class CallRecord:
     error: str | None = None
     #: 모델을 부르지 않았다(기준선 순서 끝 · 장애 주입)
     synthetic: bool = False
+    #: 실패 까닭(LLM 함수의 cause, 예: `PermissionDeniedError:403` · `connection`). 키 · 본문은 담지 않는다
+    cause: str | None = None
 
 
 def _sum_usage(usages: list[Usage]) -> tuple[int | None, int | None, int | None]:
@@ -311,7 +316,9 @@ class MeteredLlm:
             res = self.inner.invoke(req, before_attempt)
         except LlmError as e:
             ms = int((time.monotonic() - t0) * 1000)
-            self._record(req.purpose, None, False, e.attempts, list(e.usage), ms, e.code)
+            self._record(
+                req.purpose, None, False, e.attempts, list(e.usage), ms, e.code, cause=e.cause
+            )
             raise
         ms = int((time.monotonic() - t0) * 1000)
         usages = list(res.attempt_usages) or [res.usage]
@@ -346,11 +353,14 @@ class MeteredLlm:
         error: str | None,
         *,
         synthetic: bool = False,
+        cause: str | None = None,
     ) -> None:
         i, c, o = _sum_usage(usages) if usages else (0, 0, 0)
         with self._lock:
             self.records.append(
-                CallRecord(self.turn, purpose, model, ok, attempts, i, c, o, ms, error, synthetic)
+                CallRecord(
+                    self.turn, purpose, model, ok, attempts, i, c, o, ms, error, synthetic, cause
+                )
             )
 
 
@@ -443,6 +453,24 @@ class RunnerConfig:
     followups: bool = False
     workers: int = 1
     prices: Prices | None = None
+    #: 사용량 없이 실패한 모델 호출(제공자 오류 · 연결 실패)이 실행 순서대로 이만큼 이어지면 새 실행을 시작하지 않는다.
+    #: 제공자 장애 동안 도는 실행은 결과로 쓸 수 없고 요금만 든다(4회차 교훈). 0 이면 멈추지 않는다
+    stop_after_provider_failures: int = 20
+
+
+#: 제공자 쪽 실패로 보는 오류 코드(사용량이 없을 때만). 시간 초과 · 무효 출력 · 거절 · 한도는 모델 · 코어 쪽이라 넣지 않는다
+PROVIDER_ERRORS = ("LLM_ERROR", "LLM_UNAVAILABLE")
+
+
+def provider_failure(c: CallRecord | dict[str, Any]) -> bool:
+    """제공자 쪽 실패 호출인가: 모델을 실제로 부르려 했고(장애 주입 아님) 실패했고 사용량이 없다."""
+    get = c.get if isinstance(c, dict) else lambda k: getattr(c, k)
+    return (
+        not get("ok")
+        and not get("synthetic")
+        and get("error") in PROVIDER_ERRORS
+        and get("input_tokens") in (None, 0)
+    )
 
 
 class _Ctx:
@@ -1372,6 +1400,10 @@ def _token_sums(calls: list[CallRecord]) -> dict[str, Any]:
     }
 
 
+#: 제공자 장애로 돌리지 않은 실행의 오류 문구(보고에서 이것으로 센다)
+PROVIDER_ABORT = "제공자 장애로 중단"
+
+
 def _crashed(sc: scn.Scenario, rep: int, why: str) -> RunResult:
     return RunResult(
         scenario=sc.id,
@@ -1403,12 +1435,35 @@ def run_suite(
     cfg: RunnerConfig,
     progress: Callable[[str], None] = lambda _s: None,
 ) -> list[RunResult]:
-    """시나리오 × 반복을 돌린다. 반복마다 초기 상태를 새로 만든다(응답 캐시 없음)."""
+    """시나리오 × 반복을 돌린다. 반복마다 초기 상태를 새로 만든다(응답 캐시 없음).
+
+    제공자 장애 멈춤: 끝난 실행의 호출을 끝난 순서대로 보며 제공자 쪽 실패(`provider_failure`)가 연속
+    `cfg.stop_after_provider_failures`번이면, 아직 시작하지 않은 실행은 돌리지 않고 '제공자 장애로 중단' 실패로 남긴다
+    (이미 돌고 있는 실행은 끝까지 간다). 성공한 호출이 하나 오면 연속 수는 0 으로 돌아간다."""
     jobs = [(sc, rep) for sc in scenarios for rep in range(cfg.repeat)]
+    state = {"streak": 0, "stopped": False}
+    lock = threading.Lock()
 
     def one(job: tuple[scn.Scenario, int]) -> RunResult:
         sc, rep = job
+        with lock:
+            stopped = state["stopped"]
+        if stopped:
+            r = _crashed(sc, rep, f"{PROVIDER_ABORT}(연속 {cfg.stop_after_provider_failures}번)")
+            progress(f"건너뜀 {sc.id} #{rep + 1} — {PROVIDER_ABORT}")
+            return r
         r = run_one(sc, rep, llm_factory(sc, rep), secret, cfg)
+        with lock:
+            for c in r.calls:
+                if c.get("synthetic"):
+                    continue
+                state["streak"] = state["streak"] + 1 if provider_failure(c) else 0
+                limit = cfg.stop_after_provider_failures
+                if limit and state["streak"] >= limit and not state["stopped"]:
+                    state["stopped"] = True
+                    progress(
+                        f"{PROVIDER_ABORT}: 사용량 없는 호출 실패가 연속 {limit}번 — 남은 실행을 멈춘다"
+                    )
         progress(
             f"{'통과' if r.passed else '실패'} {sc.id} #{rep + 1}"
             + (f" — {r.error}" if r.error else "")
@@ -1486,6 +1541,19 @@ def unit_metrics(
     out["memory_leak"] = sum(1 for ok in mem if not ok) if mem else None
     out["memory_runs"] = len(mem)
     out["general_violations"] = sum(len(r.general_violations) for r in results)
+    # 제공자 쪽 실패(사용량 없는 LLM_ERROR · LLM_UNAVAILABLE) 호출 수와 그 때문에 돌리지 않은 실행 수. 0 이 아니면 이번 결과는
+    # 모델 · 코드의 성능이 아니라 제공자 상태가 섞인 값이다(보고 머리에 경고)
+    out["provider_failed_calls"] = sum(1 for r in results for c in r.calls if provider_failure(c))
+    out["provider_aborted_runs"] = sum(
+        1 for r in results if (r.error or "").startswith(PROVIDER_ABORT)
+    )
+    causes = Counter(
+        (c.get("cause") or c.get("error") or "?")
+        for r in results
+        for c in r.calls
+        if provider_failure(c)
+    )
+    out["provider_failure_causes"] = dict(causes.most_common(5))
     out["number_accuracy"] = ratio(
         sum(r.numbers["ok"] for r in results), sum(r.numbers["total"] for r in results)
     )
@@ -1740,6 +1808,20 @@ def write_report(
     return jp, mp
 
 
+def _provider_warning(rep: dict[str, Any]) -> list[str]:
+    """제공자 쪽 실패가 있었으면 보고 머리에 경고 줄(이번 결과를 성능으로 읽지 않게)."""
+    u = rep["units"].get("all") or {}
+    n = u.get("provider_failed_calls") or 0
+    aborted = u.get("provider_aborted_runs") or 0
+    if not n and not aborted:
+        return []
+    return [
+        f"> **경고: 제공자 쪽 실패 호출 {n}개(사용량 없음) · 그 때문에 돌리지 않은 실행 {aborted}개.**"
+        f" 까닭 {u.get('provider_failure_causes')}. 이 실행의 결과는 모델 · 코드 성능이 아니라 제공자 상태가 섞인 값이다.",
+        "",
+    ]
+
+
 def _markdown(rep: dict[str, Any]) -> str:
     info = rep["info"]
     lines = [
@@ -1752,6 +1834,7 @@ def _markdown(rep: dict[str, Any]) -> str:
         f"- 시나리오 {len(info['scenario_ids'])}개 · 해시 `{info['scenarios_sha256']}` · 채점기 해시는 report.json",
         "- 기대 결과(사람 정답)는 아직 팀원 검수 전이다(13-5). 근거성 LLM 판정과 사람 20문장의 일치도는 미측정",
         "",
+        *_provider_warning(rep),
         "## 묶음 단위 (14-1 보고 단위)",
         "",
         "| 단위 | 시나리오 | 실행 | 과제 성공률 | pass^k | 거절 정확도 | 자율 정확도 | 화면 이해도 | 객관성 정확도 | 숫자 정확도 | 금지된 일 |",

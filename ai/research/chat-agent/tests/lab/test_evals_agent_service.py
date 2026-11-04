@@ -502,3 +502,58 @@ def test_stream_mismatch_target_fails_when_a_turn_mismatches() -> None:
     )
     r.turns = [{**r.turns[0], "stream_ok": False}]
     assert ev.summarize([r], None, None, repeat=1)["targets"]["stream_mismatch"]["met"] is False
+
+
+# ── 제공자 장애 멈춤 (4회차 교훈) ─────────────────────────────────────────
+
+
+class _DownLlm:
+    """제공자 장애 대역: 모든 호출이 사용량 없이 403 으로 실패한다."""
+
+    model_name = None
+
+    def invoke(self, req: Any, before_attempt: Any) -> Any:
+        from chat_agent.llm_types import LlmCallFailed, Usage
+
+        before_attempt(1)
+        raise LlmCallFailed(attempts=1, usage=[Usage()], cause="PermissionDeniedError:403")
+
+
+def test_provider_outage_stops_new_runs_and_warns_in_the_report(tmp_path: Any) -> None:
+    sc = BY_ID["ana-slide3-gaze"]
+    cfg = ev.RunnerConfig(repeat=6, stop_after_provider_failures=3)
+    results = ev.run_suite([sc], llm_factory=lambda s, r: _DownLlm(), secret=F.SECRET, cfg=cfg)
+    calls = [c for r in results for c in r.calls if not c["synthetic"]]
+    assert calls and all(ev.provider_failure(c) for c in calls)
+    assert {c["cause"] for c in calls} == {"PermissionDeniedError:403"}
+    aborted = [r for r in results if (r.error or "").startswith(ev.PROVIDER_ABORT)]
+    assert aborted and len(aborted) < len(results)  # 연속 3번 뒤 남은 실행은 돌리지 않는다
+    u = ev.summarize(results, None, None, repeat=6)["units"]["all"]
+    assert u["provider_failed_calls"] == len(calls) and u["provider_aborted_runs"] == len(aborted)
+    assert u["provider_failure_causes"] == {"PermissionDeniedError:403": len(calls)}
+    rep = {
+        "info": {
+            "started_at": "x",
+            "baseline": False,
+            "repeat": 6,
+            "followups": False,
+            "feature_version": "f",
+            "prompt_version": "p",
+            "corpus_version": "c",
+            "model": None,
+            "bundle": "OPENAI",
+            "scenario_ids": [sc.id],
+            "scenarios_sha256": "h",
+        },
+        **ev.summarize(results, None, None, repeat=6),
+    }
+    assert any("제공자 쪽 실패 호출" in ln for ln in ev._provider_warning(rep))
+
+
+def test_successful_call_resets_the_provider_failure_streak() -> None:
+    ok = {"ok": True, "synthetic": False, "error": None, "input_tokens": 10}
+    bad = {"ok": False, "synthetic": False, "error": "LLM_ERROR", "input_tokens": None}
+    timeout = {"ok": False, "synthetic": False, "error": "LLM_TIMEOUT", "input_tokens": None}
+    injected = {"ok": False, "synthetic": True, "error": "LLM_ERROR", "input_tokens": None}
+    assert ev.provider_failure(bad) and not ev.provider_failure(ok)
+    assert not ev.provider_failure(timeout) and not ev.provider_failure(injected)
