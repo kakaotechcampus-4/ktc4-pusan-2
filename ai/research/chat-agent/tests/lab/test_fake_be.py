@@ -1078,3 +1078,32 @@ def test_scope_can_switch_again_after_reading_a_take_of_the_new_scope() -> None:
     be.before_action = lambda b, r, a: actions.append(a["type"])
     be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
     assert actions == ["FETCH_PITCH", "FETCH_TAKE", "FETCH_PITCH"]
+
+
+def test_scope_switch_counts_a_reread_take_after_coming_back() -> None:
+    """다른 피치에서 돌아와 이미 읽었던 Take 를 다시 읽어도(캐시 적중 포함) 읽은 것이다. 원천 집합의 차이로 세면 다시
+    읽기를 못 세어 다음 범위 바꾸기를 막는다."""
+    takes = ("list_takes", {"completed_fully": True})
+    llm = F.FakeLlm(
+        [
+            F.plan(),
+            F.tools(takes, prefix="l1"),
+            F.tools(
+                ("fetch_pitch", {"name": "회사 소개 발표", "reason": "다른 발표"}), prefix="f1"
+            ),
+            F.tools(takes, prefix="l2"),
+            F.tools(("fetch_pitch", {"pitch_id": "p-1", "reason": "돌아가기"}), prefix="f2"),
+            F.tools(takes, prefix="l3"),
+            F.tools(("fetch_pitch", {"pitch_id": "p-2", "reason": "다시"}), prefix="f3"),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm, pitches=[fx.sample_pitch(), other_pitch("p-2", "회사 소개 발표")])
+    conv = be.new_conversation(scope_pitch_id="p-1")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["type"])
+    be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
+    assert actions == ["FETCH_PITCH", "FETCH_PITCH", "FETCH_PITCH"]
+    assert "SCOPE_NOT_READ" not in texts_after(llm, 0)

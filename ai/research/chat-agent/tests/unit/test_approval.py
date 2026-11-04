@@ -844,3 +844,20 @@ def test_script_statement_typed_as_request_still_gets_the_screen_script_fact() -
     text = fd.message.text  # type: ignore[union-attr]
     assert "기록에는 화면 대본이" in text and templates.SCRIPT_UNKNOWN in text
     assert templates.SystemText.MEASUREMENT_FIXED.value not in text
+
+
+def test_measurement_notice_also_for_asking_to_look_again() -> None:
+    """'다시 봐 줘'도 다시 평가 요청이다(측정값 이의면 안내를 붙인다)."""
+    msg = "시선 잘 봤는데 왜 낮게 나와? 다시 봐 줘"
+    d = [
+        F.draft(
+            "시선 잘 봤는데 왜 낮게 나와",
+            claim_op="OVERALL",
+            dimension="audience_gaze",
+            polarity="POSITIVE",
+        ),
+        F.draft("다시 봐 줘", type_="REQUEST", claim_op=None, polarity="NEUTRAL"),
+    ]
+    llm = F.FakeLlm([F.plan(assessments=d), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    assert templates.SystemText.MEASUREMENT_FIXED.value in final_ok(data).message.text  # type: ignore[union-attr]

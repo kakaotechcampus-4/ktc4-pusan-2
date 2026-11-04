@@ -416,7 +416,8 @@ class Composer:
                 if r is not None:
                     add(compose._claim("RECORD", r[0], evidence_ids=r[1]), False)
             elif kind in ("RECORD", "GUIDE", "GENERAL"):
-                text = (c.get("text") or "").strip()
+                # 이미 낸 문장 · 코드 문장과의 대조는 문장 글의 근거 · 자료 id 를 지운 뒤에 한다(id 만 붙여 되풀이하지 않게)
+                text = compose.strip_ref_ids(c.get("text") or "")
                 if not text:
                     continue  # 빈 원소는 문장이 아니다(일반 조언 수 · 진단에도 세지 않는다)
                 if text in code or text in self.prior_texts or text in self.pre_texts:

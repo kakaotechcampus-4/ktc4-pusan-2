@@ -339,7 +339,9 @@ def _orchestrate(
         # 이어 부를 때는 어떤 한도 종료보다 먼저 지워진 원천을 처리하고 행동 결과를 검증 · 반영한다.
         # 한도로 모델 없이 끝나도 승인된 행동의 결과 문장 · 카드와 삭제 중단이 지워지지 않게 하려는 것이다(5-5 · 6-1)
         assert req.resume is not None
-        failed = req.resume.action_results[0].status != "SUCCEEDED"
+        # 데이터 없는 FAILED 만 '대상을 읽지 못한 가져오기'다(AMBIGUOUS 후보 · 실패에 실린 값에는 지운 원천이 있을 수 있다)
+        first = req.resume.action_results[0]
+        failed = first.status == "FAILED" and first.data is None
         if not lp.drop_removed(req.context.removed_sources, fetch_failed=failed):
             return finish(
                 status="PARTIAL", reason="OTHER", system=[templates.SystemText.SOURCE_DELETED_STOP]
@@ -879,7 +881,7 @@ def _action_notes(lp: Loop) -> list[str]:
 
 
 #: 다시 평가를 바라는 말(6-6)
-_REASSESS_ASK = re.compile(r"다시\s*평가|재평가|다시\s*채점|다시\s*매겨")
+_REASSESS_ASK = re.compile(r"다시\s*(평가|채점|매겨|판정|봐)|재평가|재채점")
 
 
 def _measurement_notes(lp: Loop) -> list[str]:

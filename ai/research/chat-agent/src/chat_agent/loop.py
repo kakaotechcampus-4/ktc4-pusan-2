@@ -128,9 +128,10 @@ class LoopState:
     memory_version: int | None = None
     #: 실행 중 기억 번호가 한 번이라도 바뀌었는가. 바뀌면 그 실행의 프로필 저장 후보를 내지 않는다
     memory_changed: bool = False
-    #: 마지막으로 범위를 바꾼(FETCH_PITCH 성공) 때까지 읽은 원천. 그 뒤 새 범위 피치의 Take 를 하나도 읽지 않았으면
-    #: 범위를 다시 바꾸지 않는다(6-5: 여러 피치 질문에서 범위만 오가다 한도에 걸리지 않게, 4회차)
-    scope_switch_reads: list[str] | None = None
+    #: 범위를 바꾼(FETCH_PITCH 성공) 뒤 새 범위 피치의 Take 를 아직 하나도 읽지 않았다. 이 동안에는 범위를 다시 바꾸지
+    #: 않는다(6-5: 여러 피치 질문에서 범위만 오가다 한도에 걸리지 않게, 4회차). 그 피치의 Take 를 읽으면(다시 읽기 ·
+    #: 캐시 적중 · FETCH_TAKE 성공 포함) 풀린다
+    scope_switch_unread: bool = False
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -738,6 +739,8 @@ class Loop:
                         self.st.guide_searched = (
                             True  # 캐시 적중도 찾은 것이다(자료 묶음 준비 실패는 ok 아님)
                         )
+                    if tr.ok and set(tr.target_ids or []) & set(self.ctx.summaries):
+                        self.st.scope_switch_unread = False  # 지금 범위 피치의 Take 를 읽었다
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq)
@@ -876,11 +879,7 @@ class Loop:
 
     def _switched_without_reading(self) -> bool:
         """범위를 바꾼 뒤 새 범위 피치의 Take 를 하나도 읽지 않았는가(읽을 Take 가 없는 피치는 아니다)."""
-        before = self.st.scope_switch_reads
-        if before is None or not self.ctx.summaries:
-            return False
-        read_after = self.ctx.read_sources - set(before)
-        return not (read_after & set(self.ctx.summaries))
+        return self.st.scope_switch_unread and bool(self.ctx.summaries)
 
     def _demote_changed_records(self) -> bool:
         """이어 부를 때 Take 결과 판이 서명 때와 다르면 그 Take 의 옛 근거를 사본으로 낮춘다(새 문장의 근거로 못 씀)."""
@@ -906,7 +905,7 @@ class Loop:
     def drop_removed(self, removed: list[str], *, fetch_failed: bool = False) -> bool:
         """지워진 원천에 기댄 근거 · 캐시 · 도구 결과 메시지를 버린다(5-6 · L1-32 · L4-38). 떼어 낼 수 없으면 False.
 
-        `fetch_failed`: 대기 행동의 결과가 성공이 아니다(가져오기 행동이면 대상을 읽지 못했다)."""
+        `fetch_failed`: 대기 행동의 결과가 데이터 없는 실패다(가져오기 행동이면 대상을 읽지 못했다)."""
         if not removed:
             return True
         rs = set(removed)
@@ -1005,7 +1004,9 @@ class Loop:
         if applied.review_versions:
             self.st.review_versions.update(applied.review_versions)
         if applied.ok and pending["type"] == "FETCH_PITCH":
-            self.st.scope_switch_reads = sorted(self.ctx.read_sources)
+            self.st.scope_switch_unread = True
+        elif applied.ok and pending["type"] == "FETCH_TAKE":
+            self.st.scope_switch_unread = False
         self.st.executed.append(rec)
         if applied.card is not None:
             self.st.cards.append(applied.card)

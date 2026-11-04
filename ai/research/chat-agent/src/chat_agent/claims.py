@@ -60,7 +60,9 @@ VersionOf = Callable[[TakeSnapshot], RecordVersion]
 
 #: 대본 사용 주장의 지표 이름(모델이 명시한다). 지표 표에는 없는 가상 이름이다
 SCRIPT_USE_METRIC = "script_mode"
-_SCRIPT_USE_RE = re.compile(r"(대본|원고)\s*(을|를)?\s*(보고|보면서|보며|켜고|켜 놓고|띄우고)")
+_SCRIPT_USE_RE = re.compile(
+    r"(대본|원고)\s*(을|를)?\s*(보고|보면서|보며|켜고|켜 놓고|띄우고|사용하고|사용해서|사용했|사용하며|사용하면서)"
+)
 CLAIM_OPS = ("OVERALL", "ISSUE", "VALUE", "CHANGE")
 
 #: 근거 문구용 표시 이름
@@ -683,12 +685,13 @@ def states_script_use(text: str) -> bool:
     return bool(_SCRIPT_USE_RE.search(text))
 
 
-#: 다시 평가가 바꿀 수 있는 조건(대본 사용 · 내 기준, 6-6 표)을 가리키는 낱말
-_CONDITION_WORD_RE = re.compile(r"대본|원고|기준")
+#: 다시 평가가 바꿀 수 있는 조건(대본 사용 · 내 기준, 6-6 표)을 가리키는 낱말. 앞 턴의 조건을 가리키는 '그 조건으로'도
+#: 조건으로 본다. '측정 기준' · '(시선) 기준 잡기'(측정 보정)는 측정 쪽 말이라 조건이 아니다('시선 기준 30%로'는 내 기준)
+_CONDITION_WORD_RE = re.compile(r"대본|원고|조건|(?<!측정 )(?<!측정)기준(?!\s*잡)")
 
 
 def measurement_dispute(text: str, cfg: ChatAgentConfig) -> bool:
-    """측정 항목(시선 · 말 속도 …)을 말했지만 다시 평가가 바꿀 수 있는 조건(대본 · 원고 · 기준)은 한 낱말도 말하지 않았는가.
+    """측정 항목(시선 · 말 속도 …)을 말했지만 다시 평가가 바꿀 수 있는 조건(대본 · 원고 · 조건 · 기준)은 한 낱말도 말하지 않았는가.
 
     이런 말의 다시 평가 요청은 측정값 이의다: 다시 평가해도 바뀌지 않는다(6-6). 조건 낱말이 있으면(앞 턴의 조건을
     가리키는 '대본 조건으로'도) 측정값 이의로 보지 않는다."""
