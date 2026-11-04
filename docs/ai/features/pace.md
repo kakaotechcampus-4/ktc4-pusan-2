@@ -193,9 +193,9 @@ ai/research/speech-pace/
 [{"evaluator": "pace", "area": "SPEED", "t_ms": 52000, "counted_until_ms": 52000, "words_counted_until_ms": 50200,
   "criteria_version": "pace-1.0+<config 해시>", "measurable": false, "state": "UNKNOWN",
   "metrics": {"cpm": null, "cpm_short": null, "speak_ms": null},
-  "tally": [{"t_ms": 51000, "values": {"ok_ms": 0, "total_ms": 1000}}], "issues": []}]
+  "tally": [{"t_ms": 51000, "values": {"total_ms": 1000}}], "issues": []}]
 ```
-새 단어를 세지 않고 단어 커서를 받은 값(50,200) 그대로 둔다. 그 1초는 `total_ms`에만 넣고 `ok_ms`에는 넣지 않는다(단어를 세지 못한 시간이라 측정 비율이 낮아지게. STT가 `ok`여도 같다).
+새 단어를 세지 않고 단어 커서를 받은 값(50,200) 그대로 둔다. 그 1초는 `total_ms`에만 넣고 `ok_ms`에는 넣지 않는다(0이라 키가 빠진다, 5-3. 단어를 세지 못한 시간이라 측정 비율이 낮아지게. STT가 `ok`여도 같다).
 
 **`summarize` 출력 (Take)**
 ```json
