@@ -31,6 +31,9 @@ def _in_session[T](session_factory: Callable[[], Session], fn: Callable[..., T],
 async def sweep_once(session_factory: Callable[[], Session] = SessionLocal) -> int:
     try:
         now = datetime.now(UTC)
+        await run_in_threadpool(
+            _in_session, session_factory, goal_check_service.deactivate_goals_without_base
+        )
         targets = await run_in_threadpool(
             _in_session, session_factory, goal_check_service.pick_targets, now
         )

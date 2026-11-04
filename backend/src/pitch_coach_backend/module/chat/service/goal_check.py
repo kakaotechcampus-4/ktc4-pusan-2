@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun
+from pitch_coach_backend.module.chat.entity import ChatConversation, ChatGoal, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import SEOUL
 
@@ -127,6 +127,22 @@ def claim_target(
     lease.run_id = run.id
     db.commit()
     return run.id
+
+
+def deactivate_goals_without_base(db: Session) -> int:
+    repo = ChatRepository(db)
+    deactivated = 0
+    for goal in repo.list_goals_without_base():
+        conversation = repo.lock_conversation(goal.conversation_id)
+        if conversation is None or conversation.goal_version != goal.version:
+            db.rollback()
+            continue
+        version = goal.version + 1
+        repo.add(ChatGoal(conversation_id=conversation.id, version=version))
+        conversation.goal_version = version
+        db.commit()
+        deactivated += 1
+    return deactivated
 
 
 def settle_goal_check(

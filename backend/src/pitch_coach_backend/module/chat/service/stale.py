@@ -6,6 +6,24 @@ PITCH_VERSIONS = {
     "presentation_version_id": "PRESENTATION_VERSION_CHANGED",
     "standard_version": "CRITERIA_VERSION_CHANGED",
 }
+MASKED_TEXT = "근거 기록이 지워져 이 답을 가렸어요."
+
+
+def sources_of(groups: Any) -> tuple[set[str], set[str]]:
+    pitch_ids: set[str] = set()
+    take_ids: set[str] = set()
+    for group in groups if isinstance(groups, list) else []:
+        pitch_ids.add(group.get("pitch_id"))
+        take_ids.update(take.get("take_id") for take in group.get("takes") or [])
+    pitch_ids.discard(None)
+    take_ids.discard(None)
+    return pitch_ids, take_ids
+
+
+def uses_deleted(pitch_ids: set[str], take_ids: set[str], current: dict[str, Any]) -> bool:
+    return any(current["pitches"].get(pitch_id) is None for pitch_id in pitch_ids) or any(
+        current["takes"].get(take_id) is None for take_id in take_ids
+    )
 
 
 def stale_reasons(

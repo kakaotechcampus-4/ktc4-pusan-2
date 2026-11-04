@@ -26,7 +26,12 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import ClaimedRun
-from pitch_coach_backend.module.chat.service.stale import stale_reasons
+from pitch_coach_backend.module.chat.service.stale import (
+    MASKED_TEXT,
+    sources_of,
+    stale_reasons,
+    uses_deleted,
+)
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import standard as standard_service
@@ -143,16 +148,29 @@ def _history(
     messages = repo.list_recent_messages(
         conversation_id, before_seq=before_seq, limit=HISTORY_MESSAGES
     )
-    current = _current_sources(db, repo, user_id, [message.basis for message in messages])
+    assessments = repo.list_recent_assessments(
+        conversation_id, before_seq=before_seq, limit=PRIOR_ASSESSMENTS
+    )
+    pitch_ids: set[str] = set()
+    take_ids: set[str] = set()
+    for message in messages:
+        message_pitch_ids, message_take_ids = _message_sources(message)
+        pitch_ids.update(message_pitch_ids)
+        take_ids.update(message_take_ids)
+    for assessment in assessments:
+        assessment_pitch_ids, assessment_take_ids = _assessment_sources(assessment)
+        pitch_ids.update(assessment_pitch_ids)
+        take_ids.update(assessment_take_ids)
+    current = _current_sources(db, repo, user_id, pitch_ids, take_ids)
     corpus_version = repo.latest_corpus_version(APP_STARTED_AT)
     return AgentHistoryDTO(
         summary=None,
         messages=[
             _history_message(message, current, goal_version, corpus_version) for message in messages
         ],
-        prior_assessments=repo.list_recent_assessments(
-            conversation_id, before_seq=before_seq, limit=PRIOR_ASSESSMENTS
-        ),
+        prior_assessments=[
+            assessment for assessment in assessments if not _assessment_deleted(assessment, current)
+        ],
     )
 
 
@@ -162,6 +180,15 @@ def _history_message(
     goal_version: int,
     corpus_version: str | None,
 ) -> AgentHistoryMessageDTO:
+    pitch_ids, take_ids = _message_sources(message)
+    if uses_deleted(pitch_ids, take_ids, current):
+        return AgentHistoryMessageDTO(
+            role=message.role,
+            text=MASKED_TEXT,
+            truncated=False,
+            basis=None,
+            stale_reasons=["SOURCE_DELETED"],
+        )
     text, truncated = _shorten(message)
     basis = message.basis if isinstance(message.basis, dict) else None
     return AgentHistoryMessageDTO(
@@ -175,15 +202,28 @@ def _history_message(
     )
 
 
+def _message_sources(message: ChatMessage) -> tuple[set[str], set[str]]:
+    return set(message.source_pitch_ids or []), set(message.source_take_ids or [])
+
+
+def _assessment_sources(assessment: dict[str, Any]) -> tuple[set[str], set[str]]:
+    evidence_basis = assessment.get("evidence_basis")
+    records = evidence_basis.get("records") if isinstance(evidence_basis, dict) else None
+    return sources_of(records)
+
+
+def _assessment_deleted(assessment: dict[str, Any], current: dict[str, Any]) -> bool:
+    pitch_ids, take_ids = _assessment_sources(assessment)
+    return uses_deleted(pitch_ids, take_ids, current)
+
+
 def _current_sources(
-    db: Session, repo: ChatRepository, user_id: uuid.UUID, bases: list[Any]
+    db: Session,
+    repo: ChatRepository,
+    user_id: uuid.UUID,
+    pitch_ids: set[str],
+    take_ids: set[str],
 ) -> dict[str, Any]:
-    pitch_ids: set[str] = set()
-    take_ids: set[str] = set()
-    for basis in bases:
-        for pitch in basis.get("pitches") or [] if isinstance(basis, dict) else []:
-            pitch_ids.add(pitch.get("pitch_id"))
-            take_ids.update(take.get("take_id") for take in pitch.get("takes") or [])
     pitch_repository = PitchRepository(db)
     return {
         "pitches": {

@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, and_, func, select
+from sqlalchemy import Row, Select, and_, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -18,6 +18,8 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSlideEvent
+
+FINISHED_RUN_STATUSES = ("DONE", "PARTIAL", "REFUSED", "FAILED", "CANCELLED", "EXPIRED")
 
 
 class ChatRepository:
@@ -212,6 +214,90 @@ class ChatRepository:
                 )
                 .where(ChatGoal.status == "OPEN", ChatGoal.first_take_number.is_not(None))
                 .order_by(ChatGoal.created_at)
+            )
+        )
+
+    def get_cleanup_lease(self) -> ChatLease | None:
+        return self.db.scalar(select(ChatLease).where(ChatLease.kind == "CLEANUP"))
+
+    def take_cleanup(self, owner: str, until: datetime, now: datetime) -> ChatLease | None:
+        stmt = (
+            insert(ChatLease)
+            .values(
+                id=uuid.uuid7(), kind="CLEANUP", owner=owner, lease_until=until, fencing_token=1
+            )
+            .on_conflict_do_update(
+                index_elements=[ChatLease.kind],
+                index_where=ChatLease.kind == "CLEANUP",
+                set_={
+                    "owner": owner,
+                    "lease_until": until,
+                    "fencing_token": ChatLease.fencing_token + 1,
+                },
+                where=ChatLease.lease_until <= now,
+            )
+            .returning(ChatLease)
+        )
+        return self.db.scalars(stmt).first()
+
+    def existing_pitch_ids(self, pitch_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+        return set(self.db.scalars(select(Pitch.id).where(Pitch.id.in_(pitch_ids))))
+
+    def existing_take_ids(self, take_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+        return set(self.db.scalars(select(Take.id).where(Take.id.in_(take_ids))))
+
+    def list_unmasked_answers(self, masked_text: str) -> list[ChatMessage]:
+        return list(
+            self.db.scalars(
+                select(ChatMessage).where(
+                    ChatMessage.role == "assistant",
+                    ChatMessage.text != masked_text,
+                )
+            )
+        )
+
+    def list_finished_runs_with_content(self) -> list[ChatRun]:
+        return list(
+            self.db.scalars(
+                select(ChatRun).where(
+                    ChatRun.status.in_(FINISHED_RUN_STATUSES),
+                    or_(
+                        ChatRun.state.is_not(None),
+                        ChatRun.interim_message.is_not(None),
+                        ChatRun.plan.is_not(None),
+                        ChatRun.trace.is_not(None),
+                    ),
+                )
+            )
+        )
+
+    def list_actions(self, run_id: uuid.UUID) -> list[ChatAction]:
+        return list(self.db.scalars(select(ChatAction).where(ChatAction.run_id == run_id)))
+
+    def list_goals_with_base(self) -> list[ChatGoal]:
+        return list(
+            self.db.scalars(
+                select(ChatGoal).where(
+                    ChatGoal.base_take_id.is_not(None), ChatGoal.goal.is_not(None)
+                )
+            )
+        )
+
+    def list_goals_without_base(self) -> list[Row]:
+        return list(
+            self.db.execute(
+                select(ChatGoal.conversation_id, ChatGoal.version)
+                .join(
+                    ChatConversation,
+                    and_(
+                        ChatConversation.id == ChatGoal.conversation_id,
+                        ChatConversation.goal_version == ChatGoal.version,
+                    ),
+                )
+                .where(
+                    ChatGoal.base_take_id.is_not(None),
+                    ~exists().where(Take.id == ChatGoal.base_take_id),
+                )
             )
         )
 

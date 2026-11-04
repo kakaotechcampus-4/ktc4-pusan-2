@@ -11,7 +11,12 @@ from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.fetch import fetch_pitch, fetch_take
 from pitch_coach_backend.module.chat.service.goal import save_goal
 from pitch_coach_backend.module.chat.service.result import close_action, failed
-from pitch_coach_backend.module.chat.service.run import ClaimedRun, RunLost, lock_current, lock_ids
+from pitch_coach_backend.module.chat.service.run import (
+    ClaimedRun,
+    RunLost,
+    lock_current,
+    lock_or_cancel,
+)
 
 type ActionHandler = Callable[[Session, ChatRun, dict[str, Any], BaseModel], ActionResultDTO]
 
@@ -44,7 +49,7 @@ def run_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionRe
     args = ACTION_ARGS[action["type"]].model_validate(action["args"])
     if isinstance(args, SaveGoalArgs):
         goal = args.goal
-        lock_ids(db, {goal.get("pitch_id")}, {(goal.get("base") or {}).get("take_id")})
+        lock_or_cancel(db, run, {goal.get("pitch_id")}, {(goal.get("base") or {}).get("take_id")})
     row = lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)
