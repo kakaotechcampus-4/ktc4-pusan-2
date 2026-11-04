@@ -5,6 +5,7 @@
 그 원래 입력(`ChatRun.input`)으로 다시 처음 호출할 수 있다.
 """
 
+import math
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -230,10 +231,13 @@ def _charge(db: Session, repo: ChatApiRepository, user_id: uuid.UUID, now: datet
 
 
 def seconds_until_tomorrow(now: datetime) -> int:
-    """다음 Asia/Seoul 00:00 까지 남은 초. 하루 한도의 Retry-After 로 쓴다."""
+    """다음 Asia/Seoul 00:00 까지 남은 초. 하루 한도의 Retry-After 로 쓴다.
+
+    올림한다. 내리면 자정 전에 다시 보내 한 번 더 429 를 받는다.
+    """
     local = now.astimezone(SEOUL)
     tomorrow = datetime.combine(local.date() + timedelta(days=1), datetime.min.time(), SEOUL)
-    return max(1, int((tomorrow - local).total_seconds()))
+    return max(1, math.ceil((tomorrow - local).total_seconds()))
 
 
 def _title(text: str) -> str:

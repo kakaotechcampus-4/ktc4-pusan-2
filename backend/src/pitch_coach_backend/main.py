@@ -161,6 +161,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", CSRF_HEADER_NAME],
+    # 대화 한도 429 가 다시 보낼 시각을 이 헤더로 준다. 밝히지 않으면 다른 origin 의 FE 가 못 읽는다
+    expose_headers=["Retry-After"],
 )
 
 # 도메인 controller 는 모두 이 라우터에 붙인다. /api 는 이 파일 한 곳에만 적는다.

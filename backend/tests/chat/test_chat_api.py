@@ -480,6 +480,19 @@ def test_seconds_until_tomorrow_uses_seoul_midnight() -> None:
     # 서울 23:59:30 → 30초
     now = datetime(2026, 11, 5, 14, 59, 30, tzinfo=UTC)
     assert seconds_until_tomorrow(now) == 30
+    # 0.5초가 남으면 올려 1초다. 내리면 자정 전에 다시 보낸다
+    assert seconds_until_tomorrow(now.replace(second=59, microsecond=500_000)) == 1
+
+
+def test_frontend_on_another_origin_can_read_retry_after(
+    client: TestClient, user_id: uuid.UUID
+) -> None:
+    from pitch_coach_backend.core.config import settings
+
+    origin = settings.frontend_base_url.rstrip("/")
+    response = client.get("/api/chat/availability", headers={**_headers(user_id), "Origin": origin})
+
+    assert response.headers["access-control-expose-headers"] == "Retry-After"
 
 
 def test_run_status_hides_signed_state_and_error_message(
