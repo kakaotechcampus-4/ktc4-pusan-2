@@ -628,8 +628,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     ans, cmp = _start_answer(lp, req, route="ANSWER", pre=pre)
     if ans.get("failed"):
         if ans.get("refused"):
-            if cmp.committed():
-                # 이 답의 문장을 이미 냈으면 거절로 바꾸지 않는다: 낸 문장 뒤에 안내를 붙여 부분 답(6-1 5번)
+            if lp.st.emitted:
+                # 이 실행에서 이미 낸 문장(앞 문장 · 이 답의 문장 줄 · 앞 응답)이 있으면 거절로 바꾸지 않는다:
+                # 낸 문장 뒤에 안내를 붙여 부분 답(6-1 5번)
                 return finish(
                     status="PARTIAL", reason="OTHER", system=[templates.SystemText.PARTIAL_CHECKED]
                 )

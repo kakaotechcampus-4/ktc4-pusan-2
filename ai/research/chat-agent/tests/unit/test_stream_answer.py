@@ -51,12 +51,14 @@ class Feeder:
 
 
 def _closure(ev: dict[str, Any], ids: list[str]) -> set[str]:
+    """근거 id 와 계산 근거의 입력을 따라간 id. 끝 줄 근거에 없는 id 를 가리키면 실패다(사본이 빠진 것)."""
     out: set[str] = set()
     stack = list(ids)
     while stack:
         i = stack.pop()
-        if i in out or i not in ev:
+        if i in out:
             continue
+        assert i in ev, f"끝 줄 근거에 없는 id: {i}"
         out.add(i)
         stack.extend(ev[i].get("inputs") or [])
     return out
@@ -85,7 +87,9 @@ def assert_prefix_invariant(lines: list[dict[str, Any]], data: dict[str, Any]) -
             assert e["evidence_id"] not in have_ev and e == final_ev[e["evidence_id"]]
             have_ev.add(e["evidence_id"])
         for g in c["sources"]:
-            assert g["source_id"] not in have_src and g == final_src[g["source_id"]]
+            assert g["source_id"] not in have_src
+            # 끝 줄 message.sources 는 답 문장이 쓴 자료다. 문장이 없는 판단의 자료 사본은 문장 줄에만 있을 수 있다
+            assert g == final_src.get(g["source_id"], g)
             have_src.add(g["source_id"])
         for a in c["assessments"]:
             assert a["assessment_id"] not in have_as and a == final_as[a["assessment_id"]]
@@ -95,7 +99,8 @@ def assert_prefix_invariant(lines: list[dict[str, Any]], data: dict[str, Any]) -
             *(e for a in c["assessments"] for e in a["evidence_ids"]),
         ]
         assert _closure(final_ev, ids) <= have_ev
-        assert set(c["claim"]["source_ids"]) <= have_src
+        srcs = [*c["claim"]["source_ids"], *(s for a in c["assessments"] for s in a["source_ids"])]
+        assert set(srcs) <= have_src
         if c["claim"].get("assessment_id"):
             assert c["claim"]["assessment_id"] in have_as
     if cl:
@@ -228,6 +233,28 @@ def test_refusal_before_any_sentence_stays_refused() -> None:
 
     _, lines, data = F.run_turn(request(), F.FakeLlm(script(refuse)))
     assert data["status"] == "REFUSED"
+    assert_prefix_invariant(lines, data)
+
+
+def test_refusal_after_only_code_sentences_went_out_ends_partial() -> None:
+    """모델 문장은 아직 없어도 앞 문장(조사 중단 안내)을 냈으면 공급자 거절을 REFUSED 로 바꾸지 않는다(6-1 5번)."""
+
+    def refuse(r: Any) -> Any:
+        return LlmRefused(attempts=1, usage=[Usage()], cause="content_filter")
+
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[change_draft()]),
+            F.tools(COMPARE, prefix="a"),
+            F.tools(COMPARE, prefix="b"),
+            refuse,
+        ]
+    )
+    _, lines, data = F.run_turn(request(), llm)
+    assert data["status"] == "PARTIAL"
+    texts = [c["text"] for c in data["message"]["claims"]]
+    assert texts[0] == templates.SystemText.NO_MORE_SOURCES.value
+    assert texts[-1] == templates.SystemText.PARTIAL_CHECKED.value
     assert_prefix_invariant(lines, data)
 
 
