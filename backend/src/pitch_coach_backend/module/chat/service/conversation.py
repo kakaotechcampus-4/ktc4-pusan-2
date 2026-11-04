@@ -194,9 +194,9 @@ def _message_view(
 ) -> ChatMessageResponse:
     masked = _uses_gone_source(message, current)
     # 가릴 때는 본문만이 아니라 그 근거에서 나온 모든 반환 필드를 뺀다(12-2)
-    hidden = None if masked else message
+    visible = None if masked else message
     assessments = (
-        _with_superseded_by(hidden.assessments, superseded) if hidden is not None else None
+        _with_superseded_by(visible.assessments, superseded) if visible is not None else None
     )
     return ChatMessageResponse(
         message_id=message.id,
@@ -207,14 +207,14 @@ def _message_view(
         run_id=message.run_id,
         again_of_message_id=message.again_of_message_id,
         created_at=message.created_at,
-        claims=hidden and hidden.claims,
-        cards=hidden and hidden.cards,
+        claims=visible and visible.claims,
+        cards=visible and visible.cards,
         assessments=assessments,
-        evidence=hidden and hidden.evidence,
-        sources=hidden and hidden.sources,
-        basis=hidden and hidden.basis,
-        plan=hidden and hidden.plan,
-        trace=hidden and hidden.trace,
+        evidence=visible and visible.evidence,
+        sources=visible and visible.sources,
+        basis=visible and visible.basis,
+        plan=visible and visible.plan,
+        trace=visible and visible.trace,
         masked=masked,
     )
 

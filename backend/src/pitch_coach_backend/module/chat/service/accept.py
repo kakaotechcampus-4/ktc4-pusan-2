@@ -74,26 +74,20 @@ def _accept_or_replay(
     try:
         accepted = _accept(db, user_id, request, request_hash, now)
         db.commit()
-    except IntegrityError as exc:
-        # 같은 키를 동시에 두 번 보냈거나(사용자 · client_request_id 유일),
-        # 다른 탭이 같은 대화에 먼저 실행을 만들었다(대화마다 끝나지 않은 실행 하나)
-        db.rollback()
-        replay = _replay(db, user_id, request.client_request_id, request_hash)
-        if replay is not None:
-            return replay
-        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-        if constraint == ACTIVE_RUN_INDEX:
-            raise ChatRunInProgress() from None
-        # 그 밖의 무결성 오류(예: 확인한 뒤 피치가 지워짐)를 진행 중으로 바꿔 말하지 않는다
-        raise
-    except ChatRunInProgress, ChatDailyLimit, ChatBusy:
-        # 같은 키를 동시에 보내면 뒤 요청은 맨 앞 조회에서 앞 요청을 못 보고, 대화 잠금이나
-        # 하루 한도 행에서 앞 요청의 커밋을 기다린 뒤 진행 중 · 한도에 막힌다.
+    except (IntegrityError, ChatRunInProgress, ChatDailyLimit, ChatBusy) as exc:
+        # 같은 키를 동시에 보내면 뒤 요청은 맨 앞 조회에서 앞 요청을 못 보고 유일 제약에 걸리거나,
+        # 대화 잠금 · 하루 한도 행에서 앞 요청의 커밋을 기다린 뒤 진행 중 · 한도에 막힌다.
         # 그 메시지는 앞 요청이 이미 접수했으니 처음 결과를 준다(L2-05)
         db.rollback()
         replay = _replay(db, user_id, request.client_request_id, request_hash)
         if replay is not None:
             return replay
+        if isinstance(exc, IntegrityError):
+            # 다른 탭이 같은 대화에 먼저 실행을 만들었다(대화마다 끝나지 않은 실행 하나).
+            # 그 밖의 무결성 오류(예: 확인한 뒤 피치가 지워짐)를 진행 중으로 바꿔 말하지 않는다
+            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+            if constraint == ACTIVE_RUN_INDEX:
+                raise ChatRunInProgress() from None
         raise
     return accepted
 
@@ -123,6 +117,7 @@ def _accept(
     now: datetime,
 ) -> Accepted:
     repo = ChatApiRepository(db)
+    chat_repo = ChatRepository(db)
     conversation = _conversation(db, repo, user_id, request)
     _check_page(db, user_id, request)
     if request.again_of_message_id is not None and (
@@ -130,17 +125,17 @@ def _accept(
     ):
         raise ChatTargetNotFound()
     if request.choice is not None:
-        _check_choice(db, conversation.id, request.choice)
-    if ChatRepository(db).has_running_run(conversation.id):
+        _check_choice(chat_repo, conversation.id, request.choice)
+    if chat_repo.has_running_run(conversation.id):
         # 승인 대기(WAITING_APPROVAL) 중의 새 메시지는 앞 확인 요청을 취소하고 받아야 한다(12-3).
         # 승인 · 거절 API 와 함께 더한다. 그 전에는 진행 중과 같이 409 로 막는다
         raise ChatRunInProgress()
-    _charge(db, repo, user_id, now)
+    _charge(repo, chat_repo, user_id, now)
 
     message = ChatMessage(
         conversation_id=conversation.id,
         user_id=user_id,
-        seq=ChatRepository(db).next_message_seq(conversation.id),
+        seq=chat_repo.next_message_seq(conversation.id),
         role="user",
         text=request.text,
         client_request_id=request.client_request_id,
@@ -208,25 +203,29 @@ def _check_page(db: Session, user_id: uuid.UUID, request: SendMessageRequest) ->
         raise ChatTargetNotFound()
 
 
-def _check_choice(db: Session, conversation_id: uuid.UUID, choice: ChatChoiceDTO) -> None:
+def _check_choice(
+    chat_repo: ChatRepository, conversation_id: uuid.UUID, choice: ChatChoiceDTO
+) -> None:
     """고른 안이 그 대화의 제안 카드에 있는지 본다. 턴 실행기가 AI 요청을 만들 때 쓰는 함수다.
 
     카드에는 저장할 수 있는 안만 있어 하나뿐일 수 있다(6-3). 여기서 막지 않으면 202 를 준 뒤 실행이
     실패하고 하루 턴만 줄어든다.
     """
     try:
-        selected_proposal(ChatRepository(db), conversation_id, choice.model_dump(mode="json"))
+        selected_proposal(chat_repo, conversation_id, choice.model_dump(mode="json"))
     except ProposalNotFound:
         raise ChatTargetNotFound() from None
 
 
-def _charge(db: Session, repo: ChatApiRepository, user_id: uuid.UUID, now: datetime) -> None:
+def _charge(
+    repo: ChatApiRepository, chat_repo: ChatRepository, user_id: uuid.UUID, now: datetime
+) -> None:
     day = now.astimezone(SEOUL).date()
     retry_after = {"Retry-After": str(seconds_until_tomorrow(now))}
     if not repo.charge_turn(user_id, day, USER_DAILY_TURNS):
         raise ChatDailyLimit(headers=retry_after)
     # 서비스 전체 하루 상한에 처음 호출 1회를 예약한다. 보내지 않고 끝나면 돌려준다(실행 취소)
-    if not ChatRepository(db).reserve_service_turn(day, SERVICE_DAILY_TURNS):
+    if not chat_repo.reserve_service_turn(day, SERVICE_DAILY_TURNS):
         raise ChatBusy(headers=retry_after)
 
 

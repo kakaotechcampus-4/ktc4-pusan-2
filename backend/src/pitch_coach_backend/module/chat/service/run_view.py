@@ -57,8 +57,9 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
         db.rollback()
         return view
     now = datetime.now(UTC)
+    chat_repo = ChatRepository(db)
     if run.first_trigger == "TAKE_REVIEWED":
-        _close_goal_check(ChatRepository(db), run)
+        _close_goal_check(chat_repo, run)
     if not run.turn_calls:
         # 아직 /agent/turn 을 보내지 않았다. 접수 때 잡은 서비스 전체 예약을 돌려준다
         repo.release_service_turn(run.accepted_at.astimezone(SEOUL).date())
@@ -67,7 +68,7 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
     run.error_code = "AGENT_CANCELLED"
     run.finished_at = now
     run.row_revision += 1
-    add_run_log(ChatRepository(db), run, now)
+    add_run_log(chat_repo, run, now)
     db.commit()
     return _view(db, run)
 
