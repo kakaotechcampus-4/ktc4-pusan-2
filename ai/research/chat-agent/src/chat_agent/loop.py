@@ -122,6 +122,8 @@ class LoopState:
     #: 크기 · 시간 등으로 조사를 끝낸 까닭(진단 · PARTIAL)
     stop_reason: str | None = None
     corpus_version: str | None = None
+    #: 이 실행에서 자료 찾기(`search_guides`)가 한 번 이상 성공했는가(결과 0건 포함). 일반 조언(`GENERAL`)의 조건이다(6-10)
+    guide_searched: bool = False
     #: 처음 요청의 기억 번호(6-14). 프로필 · 요약 본문은 담지 않는다(5-6)
     memory_version: int | None = None
     #: 실행 중 기억 번호가 한 번이라도 바뀌었는가. 바뀌면 그 실행의 프로필 저장 후보를 내지 않는다
@@ -729,6 +731,10 @@ class Loop:
                     if tr.outcome != "CACHED" and tr.ok:
                         progressed = True
                         request_progressed = True
+                    if call.name == "search_guides" and tr.ok:
+                        self.st.guide_searched = (
+                            True  # 캐시 적중도 찾은 것이다(자료 묶음 준비 실패는 ok 아님)
+                        )
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq)

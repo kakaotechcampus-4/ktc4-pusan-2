@@ -92,6 +92,8 @@ class SystemText(StrEnum):
     )
     GOAL_CONFLICT = "말씀하신 목표와 기록으로 본 추천 목표가 달라요. 하나를 골라 주세요."
     KNOWLEDGE_NO_SOURCE = "발표법 자료에서 그 말을 뒷받침하는 근거를 찾지 못했어요."
+    #: 일반 조언(`GENERAL`) 문장 묶음 바로 앞에 코드가 붙이는 안내(6-10). 일반 조언이 하나도 남지 않으면 뺀다
+    GENERAL_INTRO = "자료에서 확인한 내용은 아니고 일반적인 조언이에요."
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
     SCRIPT_NOT_ALLOWED = "공식 평가에는 대본 사용 허용이 없어요."
     SCRIPT_POINTS_REMOVED = "평가 항목이 빠져 오른 점수예요. 실력이 바뀐 건 아니에요."

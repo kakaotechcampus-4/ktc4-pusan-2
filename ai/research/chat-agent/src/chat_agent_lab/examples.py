@@ -23,6 +23,7 @@ from chat_agent import state as st
 from chat_agent.actions import action_args_hash
 from chat_agent.config import DEFAULT_CONFIG
 from chat_agent.prompts import PROMPT_VERSION
+from chat_agent.templates import SystemText
 from chat_agent.version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
 
 from . import fixtures as fx
@@ -482,6 +483,23 @@ def _final_done() -> dict:
             "text": "핵심 단어만 적은 메모로 연습하면 대본 의존을 줄일 수 있어요",
             "evidence_ids": [],
             "source_ids": ["g-02"],
+            "action_id": None,
+        },
+        # 자료가 모자란 부분의 일반 조언(6-10): 코드 고정 안내 바로 뒤, 근거 · 자료 칩 없이 일반 조언 라벨로 그린다(L3-42)
+        {
+            "kind": "SYSTEM",
+            "assessment_id": None,
+            "text": SystemText.GENERAL_INTRO.value,
+            "evidence_ids": [],
+            "source_ids": [],
+            "action_id": None,
+        },
+        {
+            "kind": "GENERAL",
+            "assessment_id": None,
+            "text": "청중 몇 사람과 차례로 눈을 맞추며 말하면 좋아요.",
+            "evidence_ids": [],
+            "source_ids": [],
             "action_id": None,
         },
     ]

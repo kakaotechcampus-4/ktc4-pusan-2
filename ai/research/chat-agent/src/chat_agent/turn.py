@@ -42,7 +42,7 @@ from . import actions as act
 from . import checks as chk
 from . import claims as clm
 from . import compose, memory, prompts, state, templates
-from .answer import ClaimLines, Composer, with_prefix
+from .answer import ClaimLines, Composer, is_general_intro, with_prefix
 from .answer import assessment_head as _assessment_head  # noqa: F401  # 시험이 이 이름으로 부른다
 from .answer import guide_texts as _guide_texts
 from .budget import LIMIT_END_REASONS, Counters
@@ -668,6 +668,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     comp = cmp.finish(draft, ans["messages"])
     out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
+    if out and all(c.kind == "GENERAL" or is_general_intro(c) for c in out):
+        # 일반 조언만 쓴 답은 자료를 찾지 못한 답이다(route 를 ANSWER 로 썼어도): 일반 조언이 모두 걸리면 거절(6-10 · L4-28)
+        no_guide = True
 
     # 4. 연습 준비 이동 · 대화 요약
     actions: list[Action] = []
@@ -741,7 +744,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             assessments=all_assessments,
             sources=_sources(final_claims),
         )
-    if no_guide:
+    if no_guide and not any(c.kind == "GENERAL" for c in final_claims):
+        # 자료를 찾지 못했고 일반 조언도 없으면(기록 답만 남음) 자료 근거가 없다고 덧붙인다. 일반 조언이 있으면 그 앞의
+        # 고정 안내(GENERAL_INTRO)가 이미 자료에서 확인한 내용이 아니라고 말한다(6-10)
         final_claims.append(
             Claim(kind="SYSTEM", text=templates.SystemText.KNOWLEDGE_NO_SOURCE.value)
         )

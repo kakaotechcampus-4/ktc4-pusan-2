@@ -74,6 +74,7 @@ class CheckId(StrEnum):
     FIX_NEW_CONTENT = "FIX_NEW_CONTENT"
     SCOPE_RULE = "SCOPE_RULE"
     MEMORY_RULE = "MEMORY_RULE"
+    GENERAL_RULE = "GENERAL_RULE"
 
 
 DISPLAY_FIELDS = ("cards", "plan", "trace", "history_summary", "profile_updates")
@@ -88,6 +89,8 @@ class CheckFailure:
     reason: str
     field: str | None = None
     claim_kind: str | None = None
+    #: 글만 고쳐서는 풀리지 않는가(예: 자료를 찾지 않은 일반 조언). 그런 문장은 고치기에 보내지 않고 바로 버린다
+    unfixable: bool = False
 
 
 # ══ 숫자 추출 · 대조 (architecture 0-2) ═══════════════════════════════════════
@@ -963,6 +966,7 @@ def check_claims(
     succeeded_actions: Mapping[str, str] | None = None,
     approved_cause_sources: set[str] | None = None,
     code_sentences: set[str] | None = None,
+    guide_searched: bool = False,
     cfg: ChatAgentConfig = DEFAULT_CONFIG,
 ) -> list[CheckFailure]:
     """문장마다 종류별 검사와 공통 낱말 검사를 하고 걸린 것을 순서대로 돌려준다(6-9). 모두 통과면 빈 목록.
@@ -977,6 +981,8 @@ def check_claims(
       든 문장은 여기 글자 그대로 있어야 한다. 어떤 종류든 여기 있는 문장은 코드가 만든 것이라 결론 · 동의 · 완화 낱말
       규칙은 건너뛰고 근거 최신성 · 금지 주장 · 개인정보 검사는 그대로 한다. `SYSTEM` 문장은 `SystemText`
       값이거나 여기 있으면 통과한다.
+    - `guide_searched`: 이번 실행에서 자료 찾기(`search_guides`)가 한 번 이상 성공했는가. 아니면 `GENERAL` 문장은 걸린다.
+      한 답의 `GENERAL` 문장 수(`max_general_claims`)는 문장을 만드는 쪽(answer.py)이 앞의 것만 써서 지킨다.
     - 한 문장에 여러 검사가 걸리면 검사마다 하나씩 돌려준다. 입력은 바꾸지 않는다.
     """
     assessments = assessments or {}
@@ -999,6 +1005,7 @@ def check_claims(
                 approved,
                 code,
                 cfg,
+                guide_searched=guide_searched,
             )
         )
     return out
@@ -1015,6 +1022,8 @@ def _check_one(
     approved: set[str],
     code: set[str],
     cfg: ChatAgentConfig,
+    *,
+    guide_searched: bool = False,
 ) -> list[CheckFailure]:
     f: list[CheckFailure] = []
 
@@ -1028,6 +1037,9 @@ def _check_one(
         f.extend(_check_record_text(i, c.kind, c.text, c.evidence_ids, registry, cfg))
     elif c.kind == "GUIDE":
         f.extend(_check_guide(i, c, guide_texts))
+    elif c.kind == "GENERAL":
+        code_made = False  # 일반 조언은 언제나 모델 문장이다(코드 문장과 글자가 같아도 검사를 건너뛰지 않는다)
+        f.extend(_check_general(i, c, cfg, searched=guide_searched))
     elif c.kind == "ACTION_RESULT":
         if not c.action_id or succeeded_actions.get(c.action_id) != c.text:
             fail(
@@ -1073,6 +1085,8 @@ def _check_one(
             CheckId.VERDICT_CONFLICT,
             f"'{w}'처럼 비교 · 변화 · 목표 결론은 코드가 쓰는 문장만 낼 수 있음. 결론 문장은 코드가 쓴다",
         )
+    if c.kind == "GENERAL":
+        return f  # 동의 · 완화 낱말은 GENERAL_RULE 이 받쳐 줄 근거 없이 모두 막는다(같은 낱말을 두 번 걸지 않게)
     af = _agreement_failure(
         i, c.kind, scan, c.assessment_id, c.evidence_ids, registry, assessments, cfg
     )
@@ -1099,6 +1113,47 @@ def _check_one(
 
 
 _SYSTEM_TEXTS = frozenset(s.value for s in SystemText)
+_DIGIT = re.compile(r"\d")
+#: 권하는 말끝("~하면 좋아요" · "~하는 게 좋습니다")의 '좋아요'는 동의 · 칭찬이 아니다(일반 조언의 동의 낱말 검사에서 뺀다)
+_ADVICE_GOOD = re.compile(r"(?:면|게|것이|것도|편이)\s?좋(?:아요|습니다|겠어요|을 거예요)")
+
+
+def _check_general(i: int, c: Claim, cfg: ChatAgentConfig, *, searched: bool) -> list[CheckFailure]:
+    """일반 조언(6-9 `GENERAL` · 6-10): 자료를 찾은 뒤에만, 근거 · 자료 · 판단 · 행동에 잇지 않고, 짧게, 숫자 · 기록 ·
+    측정값 이름 · 출처 · 판정 · 동의 · 완화 낱말 없이. 걸린 까닭마다 `GENERAL_RULE` 하나(인과 · 금지 주장 · 범위 밖 ·
+    결론 낱말은 공통 검사가 본다). 낱말은 소문자로 맞춘다(Take · CPM)."""
+    f: list[CheckFailure] = []
+
+    def fail(reason: str, *, unfixable: bool = False) -> None:
+        f.append(
+            CheckFailure(i, CheckId.GENERAL_RULE, reason, claim_kind=c.kind, unfixable=unfixable)
+        )
+
+    # 자료를 찾지 않았거나 근거 · 자료에 이은 일반 조언은 글을 고쳐도 풀리지 않는다(고치기는 글만 바꾼다)
+    if not searched:
+        fail("일반 조언은 이번 실행에서 자료를 먼저 찾은 뒤에만 쓸 수 있음", unfixable=True)
+    if c.evidence_ids or c.source_ids or c.assessment_id or c.action_id:
+        fail(
+            "일반 조언은 근거 · 자료 · 판단 · 행동에 이을 수 없음(근거가 있으면 RECORD · GUIDE 로 씀)",
+            unfixable=True,
+        )
+    if len(c.text) > cfg.max_general_chars:
+        fail(f"일반 조언은 한 문장 {cfg.max_general_chars}자 이하")
+    if _DIGIT.search(c.text):
+        fail("일반 조언에는 숫자를 쓸 수 없음")
+    low = c.text.lower()
+    for label, words, text in (
+        ("기록을 가리키는", cfg.general_record_words, low),
+        ("측정값 이름", cfg.general_metric_words, low),
+        ("출처를 내세우는", cfg.general_citation_words, low),
+        ("판정하는", cfg.general_verdict_words, low),
+        ("동의 · 칭찬하는", agreement_words(cfg), _ADVICE_GOOD.sub(" ", low)),
+        ("판정을 흐리는", cfg.hedge_words, low),
+    ):
+        hit = _found((w.lower() for w in words), text)
+        if hit:
+            fail(f"'{hit[0]}'처럼 {label} 말은 일반 조언에 쓸 수 없음")
+    return f
 
 
 def _check_guide(i: int, c: Claim, guide_texts: Mapping[str, str]) -> list[CheckFailure]:
