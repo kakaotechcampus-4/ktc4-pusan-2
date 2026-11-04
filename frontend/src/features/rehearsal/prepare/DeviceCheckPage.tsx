@@ -19,7 +19,7 @@ import { ReplaceTakeDialog } from './ReplaceTakeDialog';
 import { activeTakeOrNone, endActiveTake } from './activeTake';
 import type { ActiveTake } from '@/types/take';
 import { MissionCard } from './MissionCard';
-import { practiceModeFor, usePrepareStore } from './prepareStore';
+import { DEFAULT_SCRIPT_MODE, practiceModeFor, usePrepareStore } from './prepareStore';
 import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
@@ -221,16 +221,29 @@ export function DeviceCheckPage() {
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
-  const { scriptMode, setScriptMode, calibration, scriptModeTouched, setChosenDevices } =
-    usePrepareStore(
-      useShallow((s) => ({
-        scriptMode: s.scriptMode,
+  //
+  // 대본 표시는 **이 피치에서 고른 것일 때만** 씁니다. 다른 피치에서 고른 값은 `enterPitch` 가
+  // 비우는데, 비우기 전 첫 그림에서도 앞 피치의 선택(예: 실전 모드)이 보이지 않게 여기서도 거릅니다
+  const {
+    scriptMode,
+    setScriptMode,
+    calibration,
+    scriptModeTouched,
+    setChosenDevices,
+    enterPitch,
+  } = usePrepareStore(
+    useShallow((s) => {
+      const mine = s.scriptModePitchId === pitchId;
+      return {
+        scriptMode: mine ? s.scriptMode : DEFAULT_SCRIPT_MODE,
         setScriptMode: s.setScriptMode,
         calibration: s.calibration,
-        scriptModeTouched: s.scriptModeTouched,
+        scriptModeTouched: mine && s.scriptModeTouched,
         setChosenDevices: s.setDevices,
-      })),
-    );
+        enterPitch: s.enterPitch,
+      };
+    }),
+  );
   const cal = useGazeSetup({ stream, videoRef, live });
   const createTake = useCreateTake();
 
@@ -280,6 +293,12 @@ export function DeviceCheckPage() {
       .userActivation;
     if (activation?.hasBeenActive) request().catch(() => undefined);
   }, [request]);
+
+  // 다른 피치에서 왔으면 대본 표시를 비웁니다. 아래 서버 기본값 이펙트보다 **먼저** 돌아야 합니다 —
+  // 늦으면 앞 피치의 "사용자가 고름" 표시를 보고 이 피치의 기본값을 건너뜁니다
+  useEffect(() => {
+    if (pitchId) enterPitch(pitchId);
+  }, [pitchId, enterPitch]);
 
   // 서버 기본값은 **사용자가 고르기 전에만** 넣습니다. 조건 없이 덮으면 응답이 늦게
   // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
