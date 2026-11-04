@@ -46,7 +46,9 @@ def test_find_highlights_first_occurrence():
 
 def test_find_highlights_skips_missing(caplog):
     assert find_highlights("발표 시간", ["발표", "없는말"]) == [{"start": 0, "end": 2}]
-    assert "없는말" in caplog.text
+    # 못 찾은 사실만 남기고 키워드(대본 내용)는 남기지 않는다(문서 11절)
+    assert "keyword not found" in caplog.text
+    assert "없는말" not in caplog.text
 
 
 def test_find_highlights_code_points():

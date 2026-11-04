@@ -42,12 +42,13 @@ def find_highlights(script: str, keywords: list[str]) -> list[dict[str, int]]:
     위치는 코드 포인트 기준이고 end는 포함하지 않습니다.
     clean_script를 거친 script 기준이어야 합니다.
     script에 없는 keyword는 건너뜁니다.
+    키워드는 대본 내용이라 로그에 남기지 않습니다(기능 문서 11절).
     """
     highlights = []
     for keyword in keywords:
         start = script.find(keyword)
         if start == -1:
-            logger.warning("keyword %r not found in script", keyword)
+            logger.warning("keyword not found in script")
             continue
         highlights.append({"start": start, "end": start + len(keyword)})
     return highlights
