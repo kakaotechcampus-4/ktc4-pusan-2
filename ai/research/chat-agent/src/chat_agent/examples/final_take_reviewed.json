@@ -73,7 +73,7 @@
       }
     ],
     "conversation_goal_version": 1,
-    "corpus_version": "guides-4",
+    "corpus_version": "guides-5",
     "sources": []
   },
   "evidence": [
@@ -170,9 +170,9 @@
     "feature_version": "chat_agent-0.7.0",
     "model": "openai/gpt-6-luna",
     "prompt_version": "40389d09544a",
-    "corpus_version": "guides-4",
+    "corpus_version": "guides-5",
     "criteria_versions": {
-      "chat_agent": "chat_agent-0.7.0+794de513e80b"
+      "chat_agent": "chat_agent-0.7.0+86fe792b7a9f"
     }
   },
   "diagnostics": {
@@ -183,8 +183,8 @@
     "versions": {
       "feature_version": "chat_agent-0.7.0",
       "prompt_version": "40389d09544a",
-      "tool_schema": "tools-2",
-      "corpus_version": "guides-4"
+      "tool_schema": "tools-3",
+      "corpus_version": "guides-5"
     },
     "steps": [
       {

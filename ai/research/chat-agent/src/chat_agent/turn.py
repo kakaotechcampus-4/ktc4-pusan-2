@@ -47,7 +47,8 @@ from .answer import ClaimLines, Composer, is_general_intro, with_prefix
 from .answer import assessment_head as _assessment_head  # noqa: F401  # 시험이 이 이름으로 부른다
 from .answer import guide_texts as _guide_texts
 from .budget import LIMIT_END_REASONS, Counters
-from .diagnostics import DiagRecorder, reduce_to_fit, safe_request_id
+from .config import ChatAgentConfig
+from .diagnostics import DiagRecorder, code_enum, reduce_to_fit, safe_request_id
 from .evidence import canonical_json
 from .goals import judge_goal
 from .loop import Loop, LoopState, TurnDeps, meta
@@ -505,7 +506,9 @@ def _finalize(
     lp: Loop, req: TurnRequest, extra_prior: list[Assessment] | None = None
 ) -> clm.FinalizeResult | None:
     # 초안이 없어도 사용자 말이 있으면 확정한다: 측정 절을 덮는 판단이 없으면 '확인하지 못했어요' 문장을 만든다(L6-16)
-    drafts = [_question_as_request(d, lp.original or "") for d in lp._parse_drafts(lp.st.drafts)]
+    drafts = [
+        _question_as_request(d, lp.original or "", lp.cfg) for d in lp._parse_drafts(lp.st.drafts)
+    ]
     if not lp.original:
         return None
     ctx = lp.ctx
@@ -534,25 +537,9 @@ def _finalize(
     )
 
 
-#: 값 · 정보를 묻는 말. 이 말이 들고 물음표로 끝난, 주장한 값 · 방향이 없는 측정 초안만 요청으로 본다
-#: ("대본 보고 한 발표였어" 같은 상태 주장 · "잘 봤지?"처럼 평가를 내세운 말은 그대로)
-_INFO_QUESTION = (
-    "몇",
-    "얼마",
-    "어느 정도",
-    "어떻게",
-    "어땠",
-    "어때",
-    "어떤",
-    "어디",
-    "무슨",
-    "뭐",
-    "무엇",
-    "왜",
-)
-
-
-def _question_as_request(d: clm.AssessmentDraft, original: str) -> clm.AssessmentDraft:
+def _question_as_request(
+    d: clm.AssessmentDraft, original: str, cfg: ChatAgentConfig
+) -> clm.AssessmentDraft:
     """정보만 묻는 질문('3장 시선 몇 %였어?' · '졸업 발표 3장 어땠어?')은 주장이 아니다: 측정 초안을 요청으로 바꾼다.
 
     그대로 두면 주장한 값 · 방향이 없어 '이 기록으로는 확인할 수 없어요'로 판정되고, 그 뒤 답이 값을 말해 모순이 된다.
@@ -565,7 +552,9 @@ def _question_as_request(d: clm.AssessmentDraft, original: str) -> clm.Assessmen
     if not (d.claim_op == "VALUE" or d.polarity == "NEUTRAL"):
         return d
     q = d.quote.strip()
-    if not any(w in q for w in _INFO_QUESTION) or any(b in q for b in ("는데", "은데", "지만")):
+    if not any(w in q for w in cfg.info_question_words) or any(
+        b in q for b in cfg.clause_break_words
+    ):
         return d
     at = original.find(q)
     after = original[at + len(q) :].lstrip()[:1] if at >= 0 else ""
@@ -689,13 +678,29 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     sp = draft.get("start_practice")
     if isinstance(sp, dict):
         lp.st.action_seq += 1
-        action, card, _why = act.start_practice_action(
+        action, card, why = act.start_practice_action(
             ctx=ctx,
             authorized_by=sp.get("authorized_by")
             if isinstance(sp.get("authorized_by"), str)
             else None,
             seq=lp.st.action_seq,
             budget=lp.budget,
+        )
+        # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
+        # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
+        lp.diag.step(
+            "ACTION",
+            "START_PRACTICE",
+            {
+                "action_id": action.action_id if action is not None else None,
+                "autonomy": act.AUTONOMY.get("START_PRACTICE"),
+                "authorization": "NOT_REQUIRED",
+                "result": "PROPOSED"
+                if action is not None
+                else ("DOWNGRADED" if card else "DROPPED"),
+                "reason_code": code_enum(why),
+            },
+            parent_seq=lp._last_model_seq,
         )
         if card:
             lp.st.cards.append(card)

@@ -1155,6 +1155,7 @@ def test_question_conversion_only_for_plain_questions(
 ) -> None:
     """묻는 말이 있어도 값 · 방향 없이 물음표로 끝나는 단순 질문일 때만 요청으로 바꾼다."""
     from chat_agent import claims as clm
+    from chat_agent.config import DEFAULT_CONFIG
     from chat_agent.turn import _question_as_request
 
     d = clm.AssessmentDraft.model_validate(
@@ -1166,7 +1167,7 @@ def test_question_conversion_only_for_plain_questions(
             polarity=polarity,
         )
     )
-    out = _question_as_request(d, message)
+    out = _question_as_request(d, message, DEFAULT_CONFIG)
     assert (out.type == "MEASURED") is kept
 
 
@@ -1188,6 +1189,17 @@ def test_practice_move_only_answer_is_done_with_the_action() -> None:
     assert fd.message is not None
     assert fd.message.text == templates.SystemText.PRACTICE_BUTTON.value
     assert [c.type for c in fd.message.cards] == ["START_PRACTICE"]
+
+    # 연습 이동도 ACTION 진단 단계를 남긴다: 버튼 행동이라 승인 확인 불필요, 행동을 냈으니 PROPOSED(#887 리뷰)
+    step = next(s for s in data["diagnostics"]["steps"] if s["kind"] == "ACTION")
+    assert step["code"] == "START_PRACTICE"
+    assert step["detail"]["authorization"] == "NOT_REQUIRED"
+    assert (step["detail"]["result"], step["detail"]["action_id"]) == (
+        "PROPOSED",
+        fd.actions[0].action_id,
+    )
+    assert step["detail"]["autonomy"] == "BUTTON"
+    assert step["parent_seq"] is not None
 
 
 def test_assessment_head_does_not_render_supported_template_for_request() -> None:

@@ -415,7 +415,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 else:
                     items.append({"dimension": dim, "read_state": rv.state})
             score = review.get("score")
-            if isinstance(score, int):
+            if isinstance(score, int) and not isinstance(score, bool):
                 ev = ctx.registry.record(
                     pitch_id=ctx.scope_pitch_id or "",
                     take_id=snap.summary.take_id,
@@ -567,7 +567,6 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 eids.append(ev.evidence_id)
                 row["observed"] = {"value": obs, "evidence_id": ev.evidence_id}
             items.append(row)
-        items.append({"active_missions": missions})
         state = None if results else "EMPTY"
     data: dict[str, Any] = {
         "take_id": snap.summary.take_id,
@@ -575,6 +574,9 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         "section": a.section,
         "items": items,
     }
+    if a.section == "mission_results":
+        # 지금 진행 중인 미션은 결과 행(items)과 모양이 달라 따로 둔다(items 는 한 모양, #883 리뷰)
+        data["active_missions"] = missions
     if note:
         data["note"] = note
     omitted = [
@@ -584,6 +586,12 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
     ]
     if omitted:
         data["omitted_paths"] = omitted
+    # 읽은 원천의 판을 남긴다: 리뷰에서 읽은 절은 REVIEW, Take 결과에서 읽은 절은 TAKE_RESULT(#883 리뷰)
+    source_revision = (
+        snap.revisions.TAKE_RESULT
+        if a.section in ("slides", "problem_segments")
+        else snap.revisions.REVIEW
+    )
     return _res(
         "get_take_report",
         ok=state != "NOT_LOADED",
@@ -592,7 +600,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         evidence_ids=eids,
         read_state=state,
         target_ids=[snap.summary.take_id],
-        revisions={snap.summary.take_id: snap.revisions.REVIEW or snap.revisions.TAKE_RESULT},
+        revisions={snap.summary.take_id: source_revision},
         args_summary=summ,
         result_summary=f"{len(items)}개 항목" if items else (state or "OK"),
     )

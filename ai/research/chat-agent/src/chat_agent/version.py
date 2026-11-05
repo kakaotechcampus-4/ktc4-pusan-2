@@ -13,7 +13,7 @@
 
 FEATURE_VERSION = "chat_agent-0.7.0"
 SCHEMA_VERSION = "1.0"
-TOOL_SCHEMA_VERSION = "tools-2"
+TOOL_SCHEMA_VERSION = "tools-3"
 STATE_V = 1
 #: 목표 판정 계산식(6-4 판정 순서 · 비교식)의 판. 계산식을 바꾸면 올린다. 목표 규칙 판(goal_rule_version)에 들어가므로
 #: 옛 판으로 저장한 목표는 판이 달라 새 목표를 정하자고 한다(설정 해시만으로는 계산식 변경을 알 수 없다)
@@ -27,12 +27,14 @@ SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 #: 남은 판은 고쳐 쓰지 않는다(그 판으로 잰 결과와 본문이 어긋난다). guides-2: 동의어 사전 · 카드 g-13 범위 밖 문장 빼기.
 #: guides-3: 사용법 카드 u-07 을 기준이 판정되는 방식(사실)만 남김 — 평가 기준을 어떻게 쓰라는 조언은 범위 밖(1-3).
 #: guides-4: u-08 의 기준 고쳐 쓰기 안내 문장 빼기, 동의어 사전에서 오탐 낱말(불안 · 급하게 · 포즈 · 결론 …) 빼고
-#: 목소리 · 억양 묶음 대표어를 카드 표현으로, q&a 더함
+#: 목소리 · 억양 묶음 대표어를 카드 표현으로, q&a 더함. guides-5: 사용법 카드 u-03 을 대본 파서 규칙에 맞춤(번호 조건 ·
+#: 첫 구분 표시 앞에는 제목만, #885 리뷰)
 CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-1": "48aa04e52f8f16abacb6c87d37d5536daf39e4d3c4aac05bf1550cad9dd6ad89",
     "guides-2": "a2b1f11aaf653da307afce2ec0bfe8d5a141fe08d3faed1e803c955ffe619823",
     "guides-3": "470a7eb607869ce4598e956d9c6d958b2cde5678d792062cc12b4342f85776bc",
     "guides-4": "ed5d3b2dd2a3aae8acd8ec5bc71518b64863d1ba7323db889140f20200af16d7",
+    "guides-5": "a8c7f133a4549c27c1e22ea4530b91ff19834551e96e59fd9d8d2c822a6cc30a",
 }
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),

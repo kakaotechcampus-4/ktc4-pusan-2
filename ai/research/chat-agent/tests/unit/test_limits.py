@@ -100,7 +100,7 @@ class RetryLlm(F.FakeLlm):
             return super().invoke(req, before_attempt)
         assert before_attempt(1)  # 첫 시도는 보냈고 실패했다(사용량 모름)
         if not before_attempt(2):  # 재시도가 한도에 막히면 보내지 않는다
-            raise LlmBudgetStop(attempts=1, usage=[Usage()])
+            raise LlmBudgetStop(attempts=1, usage=[Usage()], attempt_errors=["LLM_TIMEOUT"])
         res = super().invoke(req, lambda _n: True)
         return replace(
             res, attempts=2, attempt_usages=[Usage(), res.usage], attempt_errors=["LLM_TIMEOUT"]
@@ -178,6 +178,21 @@ def test_l1_39_retry_blocked_by_the_cap_is_not_sent() -> None:
     assert reason_of(fd) == "TOKENS"
     assert fd.budget_used.model_calls == 2  # 실패한 첫 시도 + 답 쓰기
     assert fd.budget_used.output_tokens == 2_000 + 50
+
+
+def test_retry_blocked_by_the_cap_keeps_the_first_attempts_real_error_code() -> None:
+    """한도로 막힌 재시도의 앞 시도는 진단 기록에 진짜 오류 코드(시간 초과)로 남고, LIMIT 단계는 따로 있다(#887 리뷰)."""
+    llm = RetryLlm(
+        basic_script(),
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        usage=Usage(100, 50),
+        flaky={0},
+    )
+    _, _, data = F.run_turn(request(), llm, cfg=load_config(max_output_tokens=7_000))
+    steps = data["diagnostics"]["steps"]
+    failed = [s for s in steps if s["kind"] == "MODEL" and s["detail"].get("success") is False]
+    assert [s["detail"]["error_code"] for s in failed] == ["LLM_TIMEOUT"]
+    assert any(s["kind"] == "LIMIT" for s in steps)
 
 
 def test_l1_39_settlement_lets_a_long_run_pass_the_8k_cap() -> None:

@@ -359,3 +359,40 @@ def test_blank_general_after_the_limit_is_not_logged() -> None:
     )
     assert [t for k, t in _texts(data) if k == "GENERAL"] == [G1, G2, G3]
     assert _general_rule_steps(data) == []
+
+
+# ── 진단 기록 TOOL 단계 (11-5, #887 리뷰) ────────────────────────────────────────
+
+
+def _tool_steps(data: dict) -> list[dict]:
+    return [s for s in data["diagnostics"]["steps"] if s["kind"] == "TOOL"]
+
+
+def test_search_guides_diag_step_records_query_length_only() -> None:
+    """`query_chars` 는 질의 글자 수만 남기고 질의 글은 남기지 않는다."""
+    _, data, _ = _run(F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"))
+    step = next(s for s in _tool_steps(data) if s["code"] == "search_guides")
+    assert step["detail"]["query_chars"] == len(NO_HIT[1]["query"])
+    assert NO_HIT[1]["query"] not in str(data["diagnostics"])
+
+
+def test_invalid_tool_call_leaves_a_tool_step_with_its_error_code() -> None:
+    """인자가 틀린 도구 호출(알려진 도구)도 TOOL 단계를 남기고, 모르는 도구 이름은 단계를 만들지 않는다."""
+    llm = F.FakeLlm(
+        [
+            F.plan(steps=["자료 찾기", "답 쓰기"]),
+            F.tools(("search_guides", {"query": ""}), ("not_a_tool", {"x": 1})),
+            F.done(),
+            F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"),
+        ]
+    )
+    _, _, data = F.run_turn(
+        F.request(user_message="발표 전에 긴장을 풀려면 어떻게 해?"),
+        llm,
+        corpus=load_corpus(),
+        corpus_version="guides-4",
+    )
+    steps = _tool_steps(data)
+    assert [(s["code"], s["detail"]["outcome"], s["detail"]["error_code"]) for s in steps] == [
+        ("search_guides", "ERROR", "TOOL_INVALID")
+    ]

@@ -988,6 +988,8 @@ def check_claims(
     - `guide_searched`: 이번 실행에서 자료 찾기(`search_guides`)가 한 번 이상 성공했는가. 아니면 `GENERAL` 문장은 걸린다.
       한 답의 `GENERAL` 문장 수(`max_general_claims`)는 문장을 만드는 쪽(answer.py)이 앞의 것만 써서 지킨다.
     - 한 문장에 여러 검사가 걸리면 검사마다 하나씩 돌려준다. 입력은 바꾸지 않는다.
+    - 문장은 서로 독립으로 검사한다(문장 사이를 보는 검사는 없다). 이것이 문장 스트림의 전제다: 이미 낸 문장은
+      뒤 문장 때문에 되돌리지 않는다(5-4). 문장 사이를 보는 검사를 더하려면 스트림이 먼저 바뀌어야 한다.
     """
     assessments = assessments or {}
     first_sentences = first_sentences or {}

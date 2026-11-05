@@ -20,13 +20,15 @@
     (`종류:코드[:결과]`), 문장 줄 수 · 문장 줄이 끝 줄 앞부분과 같은가
 - 비교(compare): equals(같음) · contains(문자열이면 부분 문자열, 목록이면 원소 · 딕셔너리면 일부 칸 일치. expect 가 목록이면
   모두 있어야) · set_equals(집합 같음) · absent(expect 의 원소가 하나라도 있으면 실패, 하나 값이면 다름) · one_of(허용 집합:
-  값이 목록 안에 있음, 관찰값이 목록이면 하나라도). 관찰값이 없으면(경로가 없음, `items[].x`에서 한 원소라도 x 가 없음 포함)
+  값이 목록 안에 있음, 관찰값이 목록이면 하나라도. 목록 관찰값을 쓰는 검사는 모두 '이 중 하나라도 나오면 됨'이 뜻이고,
+  목록 밖 원소를 막으려면 absent 를 함께 쓴다, 10-5). 관찰값이 없으면(경로가 없음, `items[].x`에서 한 원소라도 x 가 없음 포함)
   어떤 비교든 실패다(10-5). 딕셔너리 일부 칸 일치의 키 끝 `~`는 부분 문자열, `@`는 고정 문구가 있는가.
 - 숫자 정확도(14-1)의 셈 규칙은 `number_accuracy` 설명(분모에 단위 없는 정수 포함, 대상 번호 · 순서 · 날짜 제외, 원본을 읽지
   못한 근거는 대조 불가로 따로).
 - `GENERAL` 금지 위반(14-1)은 `general_violations`: 제품의 GENERAL_RULE(checks.py · config.py 낱말 목록)과 따로 짠 규칙 ·
   낱말이다. 제품 목록이 놓친 우회를 잡으려는 것이라 일부러 같게 맞추지 않는다.
-- 고칠 때: 규칙을 바꾸면 tests/lab/test_evals.py(GENERAL 금지 위반은 test_evals_agent_service.py)의 통과 · 실패 예시를 같이 고친다. 제품 검사 코드를 import 하지 않는다.
+- 고칠 때: 규칙을 바꾸면 tests/lab/test_grading.py(비교 · 숫자 · 대상 · 인용 규칙의 통과 · 실패 예시), GENERAL 금지 위반은
+  tests/lab/test_evals_agent_service.py 의 예시를 같이 고친다(#892 리뷰). 제품 검사 코드를 import 하지 않는다.
 """
 
 from __future__ import annotations

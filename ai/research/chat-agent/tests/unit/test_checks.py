@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from chat_agent.checks import (
@@ -1253,3 +1255,22 @@ def test_scope_edit_rule_lets_delivery_advice_through(text: str, caught: bool) -
     from chat_agent.checks import _scope_edit
 
     assert (_scope_edit(text, CFG) is not None) is caught
+
+
+def test_check_claims_checks_each_claim_independently() -> None:
+    """문장 하나씩 따로 검사한 결과의 합과 목록 전체를 한 번에 검사한 결과가 같다(5-4 문장 스트림의 전제, #913 리뷰)."""
+    r = reg()
+    e = rec(r, 0.62)
+    claims = [
+        claim("시선 비율이 62%였어요", e.evidence_id),
+        claim("시선 비율이 99%였어요", e.evidence_id),
+        Claim(kind="SYSTEM", text="지어낸 시스템 문장이에요."),
+        claim("기록에 없는 값 77%예요."),
+        claim("시선 비율이 62%였어요", e.evidence_id),
+    ]
+    whole = run(claims, r)
+    singles = [replace(f, claim_index=i) for i, c in enumerate(claims) for f in run([c], r)]
+    assert whole == singles
+    # 통과한 문장과 걸린 문장이 모두 섞여 있어야 시험이 뜻이 있다
+    caught = {f.claim_index for f in whole}
+    assert caught and caught != set(range(len(claims)))
