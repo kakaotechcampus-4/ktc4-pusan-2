@@ -512,3 +512,14 @@ def test_just_now_about_a_file_is_not_a_memory_withdrawal() -> None:
     no_msg = "앞으로 짧게 설명해 줘, 기억해 줘. 아니 방금 그거 지워 줘"
     kept, dropped = memory.check_profile_updates([upd], user_message=no_msg, cfg=DEFAULT_CONFIG)
     assert kept == [] and dropped[0].reason.startswith("③")
+
+
+def test_just_now_that_file_is_not_a_memory_withdrawal() -> None:
+    upd = {
+        "key": "EXPLAIN_STYLE",
+        "value": "짧게 설명",
+        "quote": "앞으로 짧게 설명해 줘, 기억해 줘",
+    }
+    msg = "방금 그 대본 파일은 지우고 다시 올릴게. 앞으로 짧게 설명해 줘, 기억해 줘"
+    kept, _ = memory.check_profile_updates([upd], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert kept

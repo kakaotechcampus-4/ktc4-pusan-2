@@ -1762,3 +1762,13 @@ def test_goal_and_script_synonyms_state_a_reassess_condition() -> None:
     assert not clm.measurement_dispute("시선이 낮게 나왔는데 스크립트 보고 했어. 다시 봐 줘", cfg)
     assert clm.measurement_dispute("카메라가 낮아서 시선이 낮게 나왔어. 다시 봐 줘", cfg)
     assert clm._SCRIPT_USE_RE.search("Take 5는 프롬프터 보고 했어")
+
+
+def test_goal_only_counts_as_a_condition_when_a_number_is_set() -> None:
+    """'목표치보다 낮게 나왔어'는 값과 견주기만 한 측정값 이의다('목표 30%로'처럼 정해 말해야 조건)."""
+    from chat_agent import claims as clm
+    from chat_agent.config import load_config
+
+    cfg = load_config()
+    assert clm.measurement_dispute("시선 목표치보다 낮게 나왔어. 다시 봐 줘", cfg)
+    assert not clm.measurement_dispute("시선 목표를 30%로 다시 평가해 줘", cfg)

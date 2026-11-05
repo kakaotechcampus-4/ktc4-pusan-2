@@ -1892,8 +1892,9 @@ def retry_plan(
     for name in RETRY_GRADER_FILES:
         if old_hashes.get(name) != now["grader_sha256"][name]:
             raise ValueError(f"앞 결과와 채점 코드가 다르다: {name}")
-    if model is not None and info.get("model") is not None and info["model"] != model:
-        raise ValueError(f"앞 결과와 모델이 다르다: {info['model']} ≠ {model}")
+    if model is not None and info.get("model") != model:
+        # 앞 결과에 모델이 없으면(옛 결과) 같은 모델인지 알 수 없으므로 합치지 않는다
+        raise ValueError(f"앞 결과와 모델이 다르거나 알 수 없다: {info.get('model')} ≠ {model}")
     old_reasoning = info.get("reasoning")
     if old_reasoning is None:
         role = info.get("role")

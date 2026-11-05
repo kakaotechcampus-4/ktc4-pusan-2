@@ -666,10 +666,13 @@ def test_retry_from_keeps_clean_runs_and_redoes_only_outage_runs(tmp_path: Any) 
     assert [r.rep for r in kept] == [1]
     with pytest.raises(ValueError, match="grader_sha256"):
         plan(runs, {k: v for k, v in info.items() if k != "grader_sha256"})
-    # 모델: 앞 결과에 모델이 있고 이번과 다르면 합치지 않는다. 한쪽이 모르면(None) 비교하지 않는다
+    # 모델: 이번 모델을 알면 앞 결과의 모델과 같아야 합친다. 앞 결과에 모델이 없으면(옛 결과) 알 수 없어 합치지 않는다.
+    # 이번 모델을 모르면(시험 호출) 비교하지 않는다
     with_model = {**info, "model": "m-a"}
     assert plan(runs, with_model, model="m-a")[0]
-    assert plan(runs, with_model)[0] and plan(runs, info, model="m-b")[0]
+    assert plan(runs, with_model)[0]
+    with pytest.raises(ValueError, match="모델"):
+        plan(runs, {**info, "model": None}, model="m-b")
     with pytest.raises(ValueError, match="모델"):
         plan(runs, with_model, model="m-b")
     # 추론 강도가 없는 옛 결과는 그 결과의 역할 기본 강도로 읽는다(고정 low 가 아니다)
