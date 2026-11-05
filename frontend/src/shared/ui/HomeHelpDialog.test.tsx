@@ -95,7 +95,15 @@ it('리허설의 일곱 기능과 키보드 조작을 이미지와 별도 텍스
 
   const numbered = host.querySelectorAll('ol[aria-label="발표 연습 화면의 번호별 사용방법"] > li');
   expect(numbered).toHaveLength(7);
-  for (const label of ['슬라이드', '카메라', '마이크', '피코 코치', '대본', '이동 방법', '발표 끝내기']) {
+  for (const label of [
+    '슬라이드',
+    '카메라',
+    '마이크',
+    '피코 코치',
+    '대본',
+    '이동 방법',
+    '발표 끝내기',
+  ]) {
     expect([...numbered].some((row) => row.textContent?.includes(label))).toBe(true);
   }
   expect(host.textContent).toContain('Space 다음 장');
