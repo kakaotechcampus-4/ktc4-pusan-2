@@ -47,7 +47,7 @@
 
   /* ── 글자 ──────────────────────────────────────────────────── */
   --color-ink: #2A2723;             /* 본문 */
-  --color-stone: #8C8375;           /* 보조 · 캡션 */
+  --color-stone: #696055;           /* 보조 · 캡션 */
   --color-ink-stage: #F5F0E9;       /* 무대 위 본문 */
 
   /* ── 강조 ──────────────────────────────────────────────────── */
@@ -203,7 +203,7 @@ body {
   --color-line: #e3e3e3;
   --color-line-strong: #d0d1d4;
   --color-ink: #17191e;
-  --color-stone: #6b7280;
+  --color-stone: #626976;
   --color-coral-wash: #fff0e9;
 }
 
