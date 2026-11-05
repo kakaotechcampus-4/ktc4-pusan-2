@@ -16,6 +16,7 @@ class ChatInfoDTO(BaseModel):
 AgentTrigger = Literal["USER_MESSAGE", "ACTION_RESULT", "TAKE_REVIEWED"]
 ActionType = Literal["FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"]
 ActionStatus = Literal["SUCCEEDED", "FAILED", "AMBIGUOUS"]
+ProfileKey = Literal["TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT"]
 
 Count = Annotated[int, Field(ge=0)]
 HistoryText = Annotated[str, Field(max_length=4000)]
@@ -110,6 +111,24 @@ class BudgetUsedDTO(_AgentDTO):
     output_tokens: Count = 0
 
 
+class AgentProfileItemDTO(_AgentDTO):
+    item_id: uuid.UUID
+    key: ProfileKey
+    value: Annotated[str, Field(min_length=1, max_length=80)]
+
+
+class AgentMemoryDTO(_AgentDTO):
+    enabled: bool
+    memory_version: Count
+    profile: Annotated[list[AgentProfileItemDTO], Field(max_length=4)] | None
+
+    @model_validator(mode="after")
+    def _profile_when_enabled(self) -> Self:
+        if not self.enabled and self.profile is not None:
+            raise ValueError("memory.enabled 가 false 면 profile 은 null 이다")
+        return self
+
+
 class AgentTurnRequestDTO(_AgentDTO):
     run: AgentRunDTO
     user_message: NulFreeStr | None
@@ -120,6 +139,7 @@ class AgentTurnRequestDTO(_AgentDTO):
     context: AgentContextDTO
     resume: AgentResumeDTO | None
     budget_used: BudgetUsedDTO
+    memory: AgentMemoryDTO
 
     @model_validator(mode="after")
     def _matches_trigger(self) -> Self:

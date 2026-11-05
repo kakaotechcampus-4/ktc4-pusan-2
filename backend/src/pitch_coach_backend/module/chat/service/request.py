@@ -11,7 +11,9 @@ from pitch_coach_backend.module.chat.dto import (
     AgentContextDTO,
     AgentHistoryDTO,
     AgentHistoryMessageDTO,
+    AgentMemoryDTO,
     AgentPageDTO,
+    AgentProfileItemDTO,
     AgentResumeDTO,
     AgentReviewEventDTO,
     AgentRunDTO,
@@ -103,6 +105,24 @@ def build_request(
         context=context,
         resume=resume,
         budget_used=budget_used,
+        memory=_memory(repo, row.user_id, conversation),
+    )
+
+
+def _memory(
+    repo: ChatRepository, user_id: uuid.UUID, conversation: ChatConversation
+) -> AgentMemoryDTO:
+    setting = repo.get_memory_setting(user_id)
+    enabled = (setting is None or setting.enabled) and not conversation.without_memory
+    return AgentMemoryDTO(
+        enabled=enabled,
+        memory_version=setting.memory_version if setting else 0,
+        profile=[
+            AgentProfileItemDTO(item_id=item.id, key=item.key, value=item.value)
+            for item in repo.list_profile_items(user_id)
+        ]
+        if enabled
+        else None,
     )
 
 

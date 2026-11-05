@@ -13,7 +13,9 @@ from pitch_coach_backend.module.chat.entity import (
     ChatDailyUsage,
     ChatGoal,
     ChatLease,
+    ChatMemorySetting,
     ChatMessage,
+    ChatProfileItem,
     ChatRun,
     ChatRunEvent,
 )
@@ -140,6 +142,16 @@ class ChatRepository:
 
     def get_conversation(self, conversation_id: uuid.UUID) -> ChatConversation | None:
         return self.db.get(ChatConversation, conversation_id)
+
+    def get_memory_setting(self, user_id: uuid.UUID) -> ChatMemorySetting | None:
+        return self.db.get(ChatMemorySetting, user_id)
+
+    def list_profile_items(self, user_id: uuid.UUID) -> Sequence[ChatProfileItem]:
+        return self.db.scalars(
+            select(ChatProfileItem)
+            .where(ChatProfileItem.user_id == user_id)
+            .order_by(ChatProfileItem.key)
+        ).all()
 
     # Conversation에 대한 행 잠금. UPDATING, DELETING 시 다른 트랜잭션이 접근하지 못하도록 잠금
     def lock_conversation(self, conversation_id: uuid.UUID) -> ChatConversation | None:

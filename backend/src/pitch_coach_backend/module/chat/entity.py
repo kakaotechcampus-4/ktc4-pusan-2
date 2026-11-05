@@ -46,6 +46,9 @@ class ChatConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_user_activity_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    without_memory: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class ChatGoal(CreatedAtMixin, Base):
@@ -333,6 +336,57 @@ class ChatDiagnostic(UUIDPrimaryKeyMixin, Base):
     request_id: Mapped[str] = mapped_column(String(64), nullable=False)
     diagnostics: Mapped[Any] = mapped_column(JSONB, nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ChatMemorySetting(TimestampMixin, Base):
+    __tablename__ = "chat_memory_settings"
+    __table_args__ = (CheckConstraint("memory_version >= 0", name="check_chat_memory_version"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    memory_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+
+class ChatProfileItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "chat_profile_items"
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_chat_profile_items_user_key"),
+        CheckConstraint(
+            "key IN ('TONE', 'EXPLAIN_STYLE', 'FOCUS_AREA', 'CONTEXT')",
+            name="check_chat_profile_item_key",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(String(20), nullable=False)
+    value: Mapped[str] = mapped_column(String(80), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatSummary(TimestampMixin, Base):
+    __tablename__ = "chat_summaries"
+    __table_args__ = (CheckConstraint("summary_version >= 0", name="check_chat_summary_version"),)
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    items: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    summary_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    covered_message_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_messages.id"), nullable=False
+    )
+    source_pitch_ids: Mapped[list[str] | None] = mapped_column(JSONB)
+    source_take_ids: Mapped[list[str] | None] = mapped_column(JSONB)
 
 
 class ChatRunEvent(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
