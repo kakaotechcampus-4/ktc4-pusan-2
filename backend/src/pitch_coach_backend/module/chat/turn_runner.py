@@ -86,15 +86,31 @@ async def _in_session[T](session_factory: SessionFactory, fn: Callable[..., T], 
 def start(
     run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
 ) -> asyncio.Task[None] | None:
+    return _spawn(run_id, session_factory, approved=False)
+
+
+def resume(
+    run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
+) -> asyncio.Task[None] | None:
+    return _spawn(run_id, session_factory, approved=True)
+
+
+def _spawn(
+    run_id: uuid.UUID, session_factory: SessionFactory, *, approved: bool
+) -> asyncio.Task[None] | None:
     if _running.running(run_id):
         return None
-    return _running.spawn(run(run_id, session_factory), name=f"chat-turn:{run_id}", key=run_id)
+    return _running.spawn(
+        run(run_id, session_factory, approved=approved), name=f"chat-turn:{run_id}", key=run_id
+    )
 
 
-async def run(run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal) -> None:
+async def run(
+    run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal, *, approved: bool = False
+) -> None:
     turn = _Turn(session_factory)
     try:
-        await turn.run(run_id)
+        await turn.run(run_id, approved=approved)
     except asyncio.CancelledError:
         logger.info("대화 턴을 멈춘다 (앱 종료) run=%s", run_id)
         raise
@@ -113,14 +129,22 @@ class _Turn:
         self._run: ClaimedRun | None = None
 
     # 세션을 열고, 실행을 claim 한 뒤, 턴을 반복한다. 턴이 끝나면 종료 상태를 저장한다.
-    async def run(self, run_id: uuid.UUID) -> None:
-        self._run = await _in_session(self._session_factory, run_service.claim, run_id)
+    async def run(self, run_id: uuid.UUID, *, approved: bool) -> None:
+        point = None
+        if approved:
+            point = await _in_session(self._session_factory, turn_service.resume_point, run_id)
+            self._run = point.run if point else None
+        else:
+            self._run = await _in_session(self._session_factory, run_service.claim, run_id)
         if self._run is None:
             return
         remaining = (self._run.deadline - datetime.now(UTC)).total_seconds()
         try:
             async with asyncio.timeout(max(0.0, remaining)):
-                await self._turns()
+                if point is None:
+                    await self._turns(1, None, BudgetUsedDTO())
+                else:
+                    await self._continue(point)
         except TimeoutError:
             await self.give_up(TurnFailure("AGENT_TIMEOUT"))
         except RunLost:
@@ -140,11 +164,10 @@ class _Turn:
         return self._run
 
     # AI 클라이언트 요청을 보내고, 응답을 스트리밍으로 받으며, 필요시 action을 실행하는 턴을 반복
-    async def _turns(self) -> None:
-        resume: AgentResumeDTO | None = None
-        budget = BudgetUsedDTO()
-        loop = asyncio.get_running_loop()
-        for turn_call in range(1, MAX_TURN_CALLS + 1):
+    async def _turns(
+        self, first_call: int, resume: AgentResumeDTO | None, budget: BudgetUsedDTO
+    ) -> None:
+        for turn_call in range(first_call, MAX_TURN_CALLS + 1):
             try:
                 request = await _in_session(
                     self._session_factory,
@@ -177,19 +200,16 @@ class _Turn:
             if turn_call == MAX_TURN_CALLS:
                 break
             await self._advance(turn_service.wait_for_action, turn_call, outcome)
-            started = loop.time()
             action = outcome.data["actions"][0]
-            result = await _in_session(
-                self._session_factory, action_service.begin_action, self._current, action
-            )
-            if result is None:
-                if action["type"] == "REASSESS":
-                    result = await self._reassess(action)
-                else:
-                    result = await _in_session(
-                        self._session_factory, action_service.run_action, self._current, action
-                    )
-            action_ms = round((loop.time() - started) * 1000)
+            if action["autonomy"] == "ASK":
+                result = await _in_session(
+                    self._session_factory, action_service.hold_for_approval, self._current, action
+                )
+                if result is None:
+                    return
+                action_ms = 0
+            else:
+                result, action_ms = await self._act(action)
             resume = AgentResumeDTO(
                 state=SignedStateDTO.model_validate(outcome.data["state"]),
                 action_results=[result],
@@ -197,6 +217,32 @@ class _Turn:
             budget = BudgetUsedDTO.model_validate(outcome.data["budget_used"])
             budget = budget.model_copy(update={"elapsed_ms": budget.elapsed_ms + action_ms})
         await self.give_up(TurnFailure(UPSTREAM_ERROR))
+
+    async def _continue(self, point: turn_service.ResumePoint) -> None:
+        result, action_ms = await self._act(point.action)
+        budget = BudgetUsedDTO.model_validate(point.budget_used)
+        await self._turns(
+            point.turn_call + 1,
+            AgentResumeDTO(
+                state=SignedStateDTO.model_validate(point.state), action_results=[result]
+            ),
+            budget.model_copy(update={"elapsed_ms": budget.elapsed_ms + action_ms}),
+        )
+
+    async def _act(self, action: dict[str, Any]) -> tuple[ActionResultDTO, int]:
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        result = await _in_session(
+            self._session_factory, action_service.begin_action, self._current, action
+        )
+        if result is None:
+            if action["type"] == "REASSESS":
+                result = await self._reassess(action)
+            else:
+                result = await _in_session(
+                    self._session_factory, action_service.run_action, self._current, action
+                )
+        return result, round((loop.time() - started) * 1000)
 
     async def _reassess(self, action: dict[str, Any]) -> ActionResultDTO:
         prepared = await _in_session(

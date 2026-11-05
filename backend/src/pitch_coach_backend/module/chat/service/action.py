@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -41,6 +42,23 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
             db, row, action, failed(action, "VALIDATION_ERROR", "실행할 수 없는 행동이에요.")
         )
     saved.status = "RUNNING"
+    db.commit()
+    return None
+
+
+def hold_for_approval(
+    db: Session, run: ClaimedRun, action: dict[str, Any]
+) -> ActionResultDTO | None:
+    row = lock_current(db, run)
+    if row is None:
+        raise RunLost(run.run_id)
+    if _invalid(action):
+        return close_action(
+            db, row, action, failed(action, "VALIDATION_ERROR", "실행할 수 없는 행동이에요.")
+        )
+    row.status = "WAITING_APPROVAL"
+    row.approval_started_at = datetime.now(UTC)
+    row.row_revision += 1
     db.commit()
     return None
 

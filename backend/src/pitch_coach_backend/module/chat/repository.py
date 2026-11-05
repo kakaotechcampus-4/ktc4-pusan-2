@@ -38,6 +38,15 @@ class ChatRepository:
             select(ChatAction).where(ChatAction.run_id == run_id, ChatAction.action_id == action_id)
         )
 
+    def get_approved_action(self, run_id: uuid.UUID) -> ChatAction | None:
+        return self.db.scalar(
+            select(ChatAction).where(
+                ChatAction.run_id == run_id,
+                ChatAction.approved.is_(True),
+                ChatAction.status == "PENDING",
+            )
+        )
+
     def lock_pitch_id(self, pitch_id: uuid.UUID) -> uuid.UUID | None:
         return self.db.scalar(
             select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(read=True)

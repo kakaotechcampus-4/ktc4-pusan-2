@@ -69,6 +69,8 @@ def save_goal(
 def _goal_authorized(
     repo: ChatRepository, row: ChatRun, action: dict[str, Any], goal: dict[str, Any]
 ) -> bool:
+    if repo.get_action(row.id, action["action_id"]).approved:
+        return True
     choice = row.input.get("choice")
     if choice:
         try:

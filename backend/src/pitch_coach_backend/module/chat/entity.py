@@ -201,7 +201,8 @@ class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("autonomy IN ('AUTO', 'ASK', 'BUTTON')", name="check_chat_action_autonomy"),
         CheckConstraint(
-            "status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED')",
+            "status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'REJECTED', 'EXPIRED', "
+            "'CANCELLED')",
             name="check_chat_action_status",
         ),
     )

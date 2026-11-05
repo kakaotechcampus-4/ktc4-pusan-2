@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -122,6 +123,40 @@ def wait_for_action(
     row.row_revision += 1
     db.commit()
     return claimed(row)
+
+
+@dataclass(frozen=True)
+class ResumePoint:
+    run: ClaimedRun
+    action: dict[str, Any]
+    turn_call: int
+    state: dict[str, Any]
+    budget_used: dict[str, Any]
+
+
+def resume_point(db: Session, run_id: uuid.UUID) -> ResumePoint | None:
+    repo = ChatRepository(db)
+    row = repo.lock_run(run_id, statuses=("RUNNING",))
+    if row is None or not row.turn_calls:
+        return None
+    saved = repo.get_approved_action(row.id)
+    if saved is None:
+        return None
+    point = ResumePoint(
+        run=claimed(row),
+        action={
+            "action_id": saved.action_id,
+            "type": saved.type,
+            "args": saved.args,
+            "autonomy": saved.autonomy,
+            "authorized_by": None,
+        },
+        turn_call=row.turn_calls[-1]["turn_call"],
+        state=row.state,
+        budget_used=row.budget_used,
+    )
+    db.commit()
+    return point
 
 
 def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bool:
