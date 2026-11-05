@@ -1,24 +1,14 @@
 import { useId, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link } from 'react-router';
 import type { TakeHistoryRow } from '@/types/takeHistory';
 import { formatDuration } from '@/shared/lib/clock';
-import { isPitchMissing, useTakeHistory } from '@/shared/api/takeHistory';
-import { ButtonLink } from '@/shared/ui/Button';
-import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
-import { QueryState } from './QueryState';
 import { duration, pct } from './reportFormat';
-import {
-  SCRIPT_MODE_LABEL,
-  completedTakes,
-  gazeOffEngine,
-  latestGazeEngine,
-  takeDay,
-} from './takeHistoryFormat';
+import { SCRIPT_MODE_LABEL, gazeOffEngine, latestGazeEngine, takeDay } from './takeHistoryFormat';
 
 /**
- * P7 Take 비교 — 한 피치의 Take들을 나란히.
+ * P7 Take 비교 — 한 피치의 Take들을 나란히. 따로 된 화면 없이 Take 기록의 지표 비교 보기로만 씁니다 (#795).
  *
  * FE 원칙이 "점수가 아니라 Take 간 변화"라 총점 줄은 없습니다 (CLAUDE.md).
  * 시선 엔진이 다른 Take끼리는 시선 값을 이어 그리지 않습니다 — 같은 사람도 엔진이 다르면 숫자가 달라집니다.
@@ -41,36 +31,7 @@ const METRICS: {
 
 const GAZE: MetricKey[] = ['audience_ratio', 'script_ratio'];
 
-export function ComparisonPage() {
-  const { id = '' } = useParams();
-  const history = useTakeHistory(id);
-  if (!history.data)
-    return (
-      <InfoPage title="Take 비교" logo={false}>
-        {isPitchMissing(history.error) ? (
-          <Card>
-            <div role="alert" className="flex flex-col gap-3">
-              <p className="font-bold">피치를 찾을 수 없어요.</p>
-              <p className="text-sm text-stone">지워졌거나 열 수 없는 피치예요.</p>
-              <div>
-                <ButtonLink to="/">내 피치로</ButtonLink>
-              </div>
-            </div>
-          </Card>
-        ) : (
-          <QueryState query={history} />
-        )}
-      </InfoPage>
-    );
-
-  return (
-    <InfoPage title="Take 비교" logo={false}>
-      <TakeComparison rows={completedTakes(history.data.takes)} />
-    </InfoPage>
-  );
-}
-
-/** 기존 비교 차트·표는 데이터만 받아 통합 Take 기록에서도 그대로 재사용합니다. */
+/** 완료된 같은 피치의 Take만 받습니다. 거르는 일은 TakesPage가 합니다 */
 export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
   const [metric, setMetric] = useState<MetricKey>('audience_ratio');
   const tabsId = useId();

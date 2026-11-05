@@ -51,9 +51,6 @@ export const MyPage = lazy(() =>
 export const TakesPage = lazy(() =>
   import('@/features/report/TakesPage').then((m) => ({ default: m.TakesPage })),
 );
-export const ComparisonPage = lazy(() =>
-  import('@/features/report/ComparisonPage').then((m) => ({ default: m.ComparisonPage })),
-);
 
 export const ConfirmPage = lazy(() =>
   import('@/features/report/ConfirmPage').then((m) => ({ default: m.ConfirmPage })),

@@ -8,7 +8,7 @@ import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import { QueryState } from './QueryState';
-import { TakeComparison } from './ComparisonPage';
+import { TakeComparison } from './TakeComparison';
 import { duration, pct } from './reportFormat';
 import { completedTakes, SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
 

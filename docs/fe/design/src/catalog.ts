@@ -632,7 +632,7 @@ const productScreens: GuideScreen[] = [
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: [
       'frontend/src/features/report/TakesPage.tsx',
-      'frontend/src/features/report/ComparisonPage.tsx',
+      'frontend/src/features/report/TakeComparison.tsx',
       'frontend/src/features/report/TakeComparisonRedirect.tsx',
       'frontend/src/shared/lib/takeStatus.ts',
     ],
