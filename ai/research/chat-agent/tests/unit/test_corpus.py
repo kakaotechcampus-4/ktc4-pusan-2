@@ -448,3 +448,10 @@ def test_approved_method_card_without_reference_is_refused_for_service(raw):
     with pytest.raises(CorpusInvalid) as e:
         _rebuilt(raw, approve_only, allow_unreviewed=False)
     assert e.value.reason_code == "NO_REFERENCE"
+
+
+@pytest.mark.parametrize("q", ["질문에 결론부터 답하려면?", "결론을 먼저 말하는 게 좋아?"])
+def test_conclusion_first_questions_find_the_qa_card(corpus, q):
+    """'결론부터 말하기'(답변 순서)는 질의응답 카드 g-13 이 1위다. 동의어 사전이 '결론'을 '마무리'로 넓혀 g-10 이
+    앞서던 회귀를 막는다(#918 리뷰, 사전에서 '결론'은 #938 에서 뺐다)."""
+    assert corpus.search(q)[0].card.source_id == "g-13"

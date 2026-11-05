@@ -43,7 +43,18 @@ def failures(c: Claim, *, searched: bool = True) -> list[tuple[CheckId, bool]]:
 # ── 검사 (6-9 GENERAL) ──────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("text", [G1, G2, G3, G4, "긴장되면 숨을 천천히 내쉬고 시작해 보세요."])
+@pytest.mark.parametrize(
+    "text",
+    [
+        G1,
+        G2,
+        G3,
+        G4,
+        "긴장되면 숨을 천천히 내쉬고 시작해 보세요.",
+        "말 속도를 조금 늦춰 보면 좋아요.",
+        "천천히 말하는 편이 좋아요.",
+    ],
+)
 def test_plain_general_advice_passes_after_a_search(text: str) -> None:
     """'말 속도' 같은 발표 요소 낱말과 권하는 말끝(~하면 좋아요)은 쓸 수 있다."""
     assert failures(general(text)) == []
@@ -77,6 +88,10 @@ def test_general_longer_than_the_limit_is_fixable() -> None:
         "목소리는 강점이니 그대로 살려 보세요.",  # 판정
         "잘하셨어요, 그 느낌으로 이어 가 보세요.",  # 칭찬
         "거의 다 왔으니 조금만 더 다듬어 보세요.",  # 완화
+        "발표 잘하시네요.",  # 칭찬(#919 리뷰)
+        "말씀하시는 속도가 너무 빨라요.",  # 사용자 발표 판정
+        "시선이 자주 떨어지는 편이에요.",
+        "평소에 말이 빠른 편이시네요.",
     ],
 )
 def test_general_forbidden_words_fail_general_rule(text: str) -> None:

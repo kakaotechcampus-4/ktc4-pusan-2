@@ -1155,6 +1155,7 @@ def _check_general(i: int, c: Claim, cfg: ChatAgentConfig, *, searched: bool) ->
         ("측정값 이름", cfg.general_metric_words, low),
         ("출처를 내세우는", cfg.general_citation_words, low),
         ("판정하는", cfg.general_verdict_words, low),
+        ("사용자 발표를 판정하는", cfg.general_user_judgement_words, low),
         ("동의 · 칭찬하는", agreement_words(cfg), _ADVICE_GOOD.sub(" ", low)),
         ("판정을 흐리는", cfg.hedge_words, low),
     ):
