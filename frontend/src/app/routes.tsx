@@ -108,7 +108,6 @@ const appHeaderPaths = [
   '/takes',
   '/me',
   '/takes/:takeId/retry',
-  '/pitch/:id/comparison',
   '/pitch/new',
   '/pitch/:id/edit',
 ];
