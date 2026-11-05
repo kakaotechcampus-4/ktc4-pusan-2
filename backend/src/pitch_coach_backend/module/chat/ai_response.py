@@ -91,6 +91,12 @@ class _GoalResult(_View):
     reason: str
     terminal: bool
 
+    @model_validator(mode="after")
+    def _matches_status(self) -> Self:
+        if self.terminal == (self.status == "UNKNOWN"):
+            raise ValueError("terminal 은 UNKNOWN 일 때만 false 다")
+        return self
+
 
 class _Meta(_View):
     schema_version: str
