@@ -224,7 +224,7 @@ describe('보내기 → 조회', () => {
     const claims = of('progress')
       .flatMap((s) => s.events)
       .flatMap((e) => (e.event === 'claim' ? [e.data.index] : []));
-    expect(claims).toEqual([0, 1, 2]);
+    expect(claims).toEqual([0, 1, 2, 3]);
     const seqs = of('progress').flatMap((s) => s.events.map((e) => e.event_seq));
     expect(seqs).toEqual(seqs.map((_, i) => i + 1));
     expect(of('ended')).toMatchObject([{ status: 'DONE', errorCode: null }]);
@@ -629,7 +629,7 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
     const claims = of('progress')
       .flatMap((s) => s.events)
       .flatMap((e) => (e.event === 'claim' ? [e.data.index] : []));
-    expect(claims).toEqual([0, 1, 2]);
+    expect(claims).toEqual([0, 1, 2, 3]);
   });
 
   it('닫힌 통신 계층이 보낸 요청의 접수가 오면, 새 통신 계층이 그 실행을 조회한다', async () => {

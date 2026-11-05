@@ -91,14 +91,16 @@ describe('보내기 → 조회', () => {
 
     expect(events.map((e) => e.event_seq)).toEqual(events.map((_, i) => i + 1));
     const claims = events.flatMap((e) => (e.event === 'claim' ? [e.data] : []));
-    expect(claims.map((c) => c.index)).toEqual([0, 1, 2]);
-    expect(claims.map((c) => c.claim.kind)).toEqual(['RECORD', 'GUIDE', 'GENERAL']);
+    expect(claims.map((c) => c.index)).toEqual([0, 1, 2, 3]);
+    // 일반 조언 묶음 바로 앞에는 고정 안내가 붙습니다(7-10)
+    expect(claims.map((c) => c.claim.kind)).toEqual(['RECORD', 'GUIDE', 'SYSTEM', 'GENERAL']);
+    expect(claims[2]!.claim.text).toBe('자료에서 확인한 내용은 아니고 일반적인 조언이에요.');
     // 계산 근거는 입력 근거와 함께 온다
     const computed = claims[0]!.evidence.find((e) => e.origin === 'COMPUTED')!;
     expect(
       computed.inputs!.every((id) => claims[0]!.evidence.some((e) => e.evidence_id === id)),
     ).toBe(true);
-    expect(claims[2]!.claim.evidence_ids).toEqual([]);
+    expect(claims[3]!.claim.evidence_ids).toEqual([]);
 
     const answer = (await messages(conversation_id)).items.at(-1)!;
     expect(answer).toMatchObject({ role: 'assistant', status: 'DONE', run_id });

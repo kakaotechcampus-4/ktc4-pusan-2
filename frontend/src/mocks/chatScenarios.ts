@@ -498,9 +498,14 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
   if (text.includes('봤지')) return assessmentSteps(text, ctx);
   if (ctx.screen?.name === 'pitch_create' || ctx.screen?.name === 'pitch_edit')
     return screenSteps(ctx.screen);
+  const [guideClaim, general] = more;
   return [
     ...base(),
-    ...[first!, ...more].map((data): Step => ({ t: 'claim', data })),
+    { t: 'claim', data: first! },
+    { t: 'claim', data: guideClaim! },
+    // 일반 조언 묶음 바로 앞에는 언제나 고정 안내가 붙습니다 — 자료가 있어도 (7-10, AI 스택 #921 뒤 개정)
+    { t: 'claim', data: say('SYSTEM', '자료에서 확인한 내용은 아니고 일반적인 조언이에요.') },
+    { t: 'claim', data: general! },
     { t: 'end', status: 'DONE', cards: () => [] },
   ];
 }
