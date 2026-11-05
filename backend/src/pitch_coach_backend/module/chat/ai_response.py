@@ -152,6 +152,8 @@ class FetchPitchArgs(_Args):
     def _exactly_one(self) -> Self:
         if (self.pitch_id is None) == (self.name is None):
             raise ValueError("pitch_id 와 name 중 정확히 하나가 필요하다")
+        if self.name is not None and not self.name.strip():
+            raise ValueError("name 은 공백만으로 둘 수 없다")
         return self
 
 

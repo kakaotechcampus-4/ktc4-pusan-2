@@ -462,7 +462,9 @@ class ChatRepository:
     def find_pitch_ids_by_name(self, user_id: uuid.UUID, name: str) -> list[uuid.UUID]:
         return list(
             self.db.scalars(
-                select(Pitch.id).where(Pitch.user_id == user_id, Pitch.title.ilike(f"%{name}%"))
+                select(Pitch.id).where(
+                    Pitch.user_id == user_id, Pitch.title.icontains(name, autoescape=True)
+                )
             )
         )
 
