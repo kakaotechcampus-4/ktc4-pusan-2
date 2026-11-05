@@ -195,8 +195,8 @@ body {
   .loading-dot { animation: none; }
 }
 
-/* 피치 생성 화면의 밝은 지면. */
-.pitch-create {
+/* 피치 생성 화면의 밝은 지면. `.light-surface` 는 화면 밖 공용 층(채팅)이 같은 지면을 쓰는 이름입니다. */
+.pitch-create, .light-surface {
   --color-greige: #faf9f6;
   --color-cream: #f1f0eb;
   --color-panel: #ffffff;
