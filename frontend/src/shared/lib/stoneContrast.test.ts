@@ -15,17 +15,29 @@ const designStage = readFileSync(
   new URL('../../../../docs/fe/design/src/ui/stage.css', import.meta.url),
   'utf8',
 );
+const devStage = readFileSync(
+  new URL('../../dev/stage/stage-preview.css', import.meta.url),
+  'utf8',
+);
 
 function colorToken(css: string, selector: string, token: string): string {
-  const start = css.indexOf(selector + ' {');
-  if (start < 0) throw new Error('CSS selector not found: ' + selector);
-  const end = css.indexOf('\n}', start);
-  if (end < 0) throw new Error('CSS block not closed: ' + selector);
+  // 선택자 목록(`.a, .b {`) 안에 selector 가 들어 있는 블록을 찾는다. `@import …;` 같은 앞 문장은 떼고, 안에 다른 블록을 품은 @scope · @media 머리는 건너뛴다.
+  const blocks = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(
+    ([, prelude]) =>
+      prelude!
+        .split(';')
+        .pop()!
+        .split(',')
+        .some((part) => part.trim() === selector),
+  );
+  if (blocks.length === 0) throw new Error('CSS selector not found: ' + selector);
 
   const declaration = new RegExp('^\\s*' + token + '\\s*:\\s*(#[0-9a-f]{6})\\s*;', 'im');
-  const color = css.slice(start, end).match(declaration)?.[1];
-  if (!color) throw new Error('CSS color token not found: ' + selector + ' ' + token);
-  return color;
+  for (const [, , body] of blocks) {
+    const color = body!.match(declaration)?.[1];
+    if (color) return color;
+  }
+  throw new Error('CSS color token not found: ' + selector + ' ' + token);
 }
 
 function luminance(hex: string): number {
@@ -67,21 +79,21 @@ describe('stone text contrast (WCAG AA, normal text)', () => {
     expect(contrast(stone, background)).toBeGreaterThanOrEqual(4.5);
   });
 
+  // 실제 리허설과 설계서 무대는 `stage stage-live` 로 뒤의 .stage-live 가 토큰을 다시 덮는다.
   it.each([
     ['stage', '--color-stage'],
     ['stage panel', '--color-stage-panel'],
     ['stage deep', '--color-stage-deep'],
-  ])('dark rehearsal: stone on %s is at least 4.5:1', (_name, backgroundToken) => {
-    const stone = colorToken(productStage, '.stage', '--color-stone');
-    const background = colorToken(product, '@theme', backgroundToken);
+  ])('light rehearsal (.stage-live): stone on %s is at least 4.5:1', (_name, backgroundToken) => {
+    const stone = colorToken(productStage, '.stage-live', '--color-stone');
+    const background = colorToken(productStage, '.stage-live', backgroundToken);
     expect(contrast(stone, background)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('keeps the general, pitch-create, and dark-stage tones scoped separately', () => {
-    const general = colorToken(product, '@theme', '--color-stone');
-    const create = colorToken(product, '.pitch-create', '--color-stone');
-    const stage = colorToken(productStage, '.stage', '--color-stone');
-    expect(new Set([general, create, stage]).size).toBe(3);
+  it('does not override stone on the base .stage (the .stage-live value must be the one applied)', () => {
+    for (const css of [productStage, designStage]) {
+      expect(() => colorToken(css, '.stage', '--color-stone')).toThrow('color token not found');
+    }
   });
 
   it('keeps product and design-guide stone tokens in sync', () => {
@@ -90,8 +102,8 @@ describe('stone text contrast (WCAG AA, normal text)', () => {
         colorToken(design, scope, '--color-stone'),
       );
     }
-    expect(colorToken(productStage, '.stage', '--color-stone')).toBe(
-      colorToken(designStage, '.stage', '--color-stone'),
-    );
+    const stage = colorToken(productStage, '.stage-live', '--color-stone');
+    expect(colorToken(designStage, '.stage-live', '--color-stone')).toBe(stage);
+    expect(colorToken(devStage, '.stage-live', '--color-stone')).toBe(stage);
   });
 });
