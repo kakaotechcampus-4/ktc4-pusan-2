@@ -15,7 +15,7 @@
   --line: #ddd4c7;
   --line-strong: #c6bcac;
   --ink: #2a2723;
-  --stone: #8c8375;
+  --stone: #696055; /* 보조 글자. 밝은 지면 · 유리 카드 위 4.5:1 이상 (stoneContrast.test.ts) */
   --coral: #e8532a;
   --coral-deep: #c9421c;
   --coral-wash: #f3ded5;
@@ -28,7 +28,8 @@
     'Pretendard', 'Noto Sans KR', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   /* behind the picture (letterbox), and the glass the UI floats on */
   --backdrop: #161412;
-  --glass: rgba(245, 240, 233, 0.86);
+  /* 불투명도 0.94: 영상이 검정이어도 stone 이 4.5:1 이상 */
+  --glass: rgba(245, 240, 233, 0.94);
   --glass-edge: rgba(255, 255, 255, 0.55);
   --glass-blur: blur(18px) saturate(1.15);
   --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 18px 40px -16px rgba(0, 0, 0, 0.45);
