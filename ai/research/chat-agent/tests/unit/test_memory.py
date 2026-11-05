@@ -162,6 +162,31 @@ OK = {"key": "TONE", "value": "설명을 짧게", "quote": "앞으로는 설명�
             "⑤",
         ),
         (MEM_MSG, {**OK, "value": "아주 간단하게"}, "⑥"),
+        # 바람 표현 '~주면 좋겠어'는 조건이 아니다(#916 리뷰). 진짜 조건은 그대로 거부
+        (
+            "앞으로는 설명을 짧게 해 주면 좋겠어",
+            {**OK, "quote": "앞으로는 설명을 짧게 해 주면 좋겠어"},
+            None,
+        ),
+        (
+            "괜찮으면 앞으로는 설명을 짧게 해 줘",
+            {**OK, "quote": "괜찮으면 앞으로는 설명을 짧게 해 줘"},
+            "③",
+        ),
+        # 기억과 상관없는 '지우고'는 철회가 아니다. 기억을 가리키는 '그거 지워 줘'는 철회(#916 리뷰)
+        ("앞으로는 설명을 짧게 해 줘. 대본 파일은 지우고 다시 올릴게", {**OK}, None),
+        ("앞으로는 설명을 짧게 해 줘. 아니 그거 지워 줘", {**OK}, "③"),
+        # 기억 요청 낱말만 있는 절은 바로 앞 절을 가리킨다(#917 리뷰 막음)
+        (
+            "설명을 짧게 해 줘, 기억해 줘",
+            {**OK, "quote": "설명을 짧게 해 줘, 기억해 줘"},
+            None,
+        ),
+        (
+            "설명을 짧게 해 줘. 기억해 둬",
+            {**OK, "quote": "설명을 짧게 해 줘. 기억해 둬"},
+            None,
+        ),
         # 값이 요청 표현이 없는 다른 절에서 옴(반대 선호 · 요청하지 않은 사실)
         (
             "발표는 길게 해. 앞으로 짧게 해 줘",
@@ -183,7 +208,8 @@ def test_profile_update_rules(message: str, item: dict[str, str], rule: str | No
     kept, dropped = memory.check_profile_updates([item], user_message=message, cfg=DEFAULT_CONFIG)
     if rule is None:
         assert (
-            kept == [{"key": "TONE", "value": "설명을 짧게", "quote": OK["quote"]}] and not dropped
+            kept == [{"key": "TONE", "value": "설명을 짧게", "quote": item["quote"]}]
+            and not dropped
         )
     else:
         assert kept == [] and dropped[0].reason.startswith(rule), dropped

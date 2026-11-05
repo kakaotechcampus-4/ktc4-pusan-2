@@ -477,6 +477,8 @@ def _ask_pause(
     ans, cmp = _start_answer(lp, req, route="ASK", pending=action, pre=_pre_claims(lp))
     draft = {} if ans.get("failed") else ans["draft"]
     comp = cmp.finish(draft, ans.get("messages") or [])
+    # 같은 말의 기억 요청(코칭 프로필 후보)도 이 응답에 싣는다: 승인과 상관없이 BE 가 저장한다(6-14). 검사는 `_finish`
+    lp.profile_candidates = draft.get("profile_updates")
     # 낸 문장 · 판단 · 자료 사본은 `_finish`가 서명 상태에 담는다: 이어 부른 뒤 최종 답이 앞부분에 그대로 싣는다(5-5 · 5-6)
     return finish(
         status="NEEDS_ACTION",
@@ -1150,8 +1152,14 @@ def _finish(
     #: 이 실행에서 이미 낸 문장 수(앞 응답 + 이 응답의 문장 줄). 끝 줄 message 의 앞부분은 이 문장들과 같다(5-4)
     n_sent = len(st.emitted)
     terminal = error is None and status in ("DONE", "PARTIAL", "REFUSED")
-    # 코칭 프로필 저장 후보(6-14): 종결 응답에서만(모델 호출 없음)
-    profile_updates = _profile_updates(lp, req, payload) if terminal else None
+    # 코칭 프로필 저장 후보(6-14): 종결 응답과 승인 대기 응답에서(모델 호출 없음). 승인 대기에 실으면 BE 가 승인 결과와
+    # 상관없이 저장한다 — 카드를 거절해도 같은 말의 "기억해 줘"가 말없이 사라지지 않게(#900 리뷰)
+    waiting = (
+        error is None
+        and status == "NEEDS_ACTION"
+        and _waits_for_approval(actions or ([action] if action is not None else []))
+    )
+    profile_updates = _profile_updates(lp, req, payload) if terminal or waiting else None
     c = lp.counters
 
     def usage_now() -> dict[str, Any]:

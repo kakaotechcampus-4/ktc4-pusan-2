@@ -509,6 +509,8 @@ class ChatAgentConfig(_Frozen):
         "싫",
     )
     #: 조건 표현(~면). 절의 낱말 끝이 이 꼴이면 조건으로 본다
+    #: 바람 표현: `~면` 바로 뒤 낱말이 이것으로 시작하면 조건이 아니라 바람이다("설명해 주면 좋겠어", 6-14 기억 요청)
+    wish_after_condition: tuple[str, ...] = ("좋겠", "고맙", "좋아", "좋을", "감사")
     condition_suffixes: tuple[str, ...] = ("면", "다면", "으면", "라면", "거든")
     #: 남의 말 인용 표현
     quotation_markers: tuple[str, ...] = (
@@ -653,8 +655,12 @@ class ChatAgentConfig(_Frozen):
         "매번",
         "항상",
     )
-    #: 기억 철회 표현(③). 인용이 든 절에 있으면 후보를 버린다(일반 부정 표현 `negation_words`도 함께 본다)
-    memory_withdraw_words: tuple[str, ...] = ("잊어", "기억하지 마", "기억하지마", "지워", "지우고")
+    #: 기억 철회 표현(③). 기억을 직접 가리키므로 말 전체에서 본다("~해 줘, 아니 기억하지 마")
+    memory_withdraw_words: tuple[str, ...] = ("잊어", "기억하지 마", "기억하지마")
+    #: 지우기 동사(③). 기억과 상관없는 말("대본 파일은 지우고 다시 올릴게")에도 나오므로, 같은 절에 기억을 가리키는 말
+    #: (`memory_withdraw_targets`)이 있을 때만 철회로 본다
+    memory_withdraw_verbs: tuple[str, ...] = ("지워", "지우고", "지워 줘")
+    memory_withdraw_targets: tuple[str, ...] = ("기억", "그거", "그건", "방금", "그 말", "아까 말")
     #: 저장 값에 들어가면 안 되는 지시형 · 판정 · 권한 낱말(⑤). 기억이 판정 · 실행 권한에 닿지 않게 한다(P14)
     memory_directive_words: tuple[str, ...] = (
         "무시",

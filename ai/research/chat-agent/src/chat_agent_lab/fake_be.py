@@ -321,6 +321,11 @@ class Run:
     approved_hash: dict[str, str] = field(default_factory=dict)
     #: 거절 · 만료 · 취소로 끝났을 때 저장한 메시지(이미 낸 문장 + 고정 문장, AI 를 다시 부르지 않는다)
     closed_message: dict[str, Any] | None = None
+    #: 승인 대기 응답(`NEEDS_ACTION`)에서 받아 이미 저장한 코칭 프로필의 `MEMORY_SAVED` 카드. 이 실행의 답 메시지가
+    #: 저장될 때(승인 뒤 끝 · 거절 · 만료 · 취소) 그 메시지에 붙인다(6-14, #900 리뷰)
+    memory_cards: list[dict[str, Any]] = field(default_factory=list)
+    #: 이 실행에서 저장한 코칭 프로필 key(같은 실행의 끝 응답에 같은 값이 다시 실려도 한 번만)
+    memory_saved: set[str] = field(default_factory=set)
     #: 이 실행에 보낸 피치 · Take id. 이어 부를 때 다시 확인해 지워진 것을 removed_sources 로 보낸다
     sent_sources: set[str] = field(default_factory=set)
     #: 이 실행이 FETCH_TAKE 로 가져온 Take(이어 부를 때 loaded_takes 로 다시 싣는다)
@@ -853,6 +858,8 @@ class FakeBe:
                 run.state_revision += 1
             action = final["actions"][0]
             if action["autonomy"] == "ASK" and action.get("preapproved") is None:
+                # 같은 말의 기억 요청은 승인 결과와 상관없이 지금 저장한다(거절 · 만료 · 취소여도 사라지지 않게, 6-14)
+                run.memory_cards += self._store_profile(run, conv, final.get("profile_updates"))
                 self._wait_for_approval(run, action, final)
                 return run
             req = self._run_action(run, conv, action)
@@ -1358,7 +1365,7 @@ class FakeBe:
                 run_id=run.run_id,
                 status=status or final["status"],
                 claims=copy.deepcopy(msg["claims"]),
-                cards=copy.deepcopy(msg["cards"]),
+                cards=copy.deepcopy(msg["cards"]) + run.memory_cards,
                 assessments=copy.deepcopy(final["assessments"]),
                 evidence=copy.deepcopy(final["evidence"]),
                 sources=copy.deepcopy(msg["sources"]),
@@ -1377,7 +1384,7 @@ class FakeBe:
         if (
             status is None
         ):  # BE 가 끝낸 실행(거절 · 만료 · 취소 · 받은 문장 보존)은 AI 의 저장 후보가 아니다
-            self._store_profile(run, conv, final.get("profile_updates"))
+            conv.messages[-1].cards += self._store_profile(run, conv, final.get("profile_updates"))
         gr = final.get("goal_result")
         goal = conv.goal
         if (
@@ -1410,12 +1417,13 @@ class FakeBe:
         # 굴리는 요약이므로 앞 요약의 원천도 그대로 이어진다
         conv.summary_sources |= {s for m in covered for s in m.source_ids}
 
-    def _store_profile(self, run: Run, conv: Conversation, updates: Any) -> None:
+    def _store_profile(self, run: Run, conv: Conversation, updates: Any) -> list[dict[str, Any]]:
         """코칭 프로필 저장(6-14 · L2-47 · L2-48): 사용자 말로 시작한 실행 · 설정 켜짐 · '기억 없이'가 아님 · 지금 기억 번호가
         실행을 시작할 때와 같을 때만, AI 와 같은 검사(①~⑥)를 다시 해 통과한 것만 저장한다(`key`마다 하나, 새 값이 덮음).
-        저장에 성공한 값으로만 `MEMORY_SAVED` 카드를 만들어 그 답 메시지에 붙인다."""
+        저장에 성공한 값으로만 `MEMORY_SAVED` 카드를 만들어 돌려준다(호출한 쪽이 그 답 메시지에 붙인다). 같은 key 에 같은 값이
+        이미 있으면 다시 저장하지 않고 카드도 내지 않는다(승인 대기 응답에서 저장한 뒤 끝 응답에 다시 실려도 한 번)"""
         if not updates:
-            return
+            return []
         s = self.memory_setting(conv.user_id)
         text = run.original.get("user_message")
         if (
@@ -1426,18 +1434,26 @@ class FakeBe:
             or s["version"] != run.memory_version
         ):
             self.log.append({"event": "PROFILE_NOT_SAVED", "run_id": run.run_id})
-            return
+            return []
         kept, _dropped = memory_rules.check_profile_updates(
             updates, user_message=text, cfg=DEFAULT_CONFIG
         )
         items = self.profiles.setdefault(conv.user_id, {})
-        msg = conv.messages[-1]
+        out: list[dict[str, Any]] = []
         for u in kept:
             if u["key"] not in items and len(items) >= DEFAULT_CONFIG.max_profile_items:
                 continue
+            if (
+                u["key"] in items
+                and items[u["key"]]["value"] == u["value"]
+                and u["key"] in run.memory_saved
+            ):
+                continue
             item = {"item_id": self._next("mem"), "key": u["key"], "value": u["value"]}
             items[u["key"]] = item
-            msg.cards.append({"type": "MEMORY_SAVED", **copy.deepcopy(item)})
+            run.memory_saved.add(u["key"])
+            out.append({"type": "MEMORY_SAVED", **copy.deepcopy(item)})
+        return out
 
     def click_practice(self, run: Run) -> dict[str, Any]:
         """사용자가 [연습 준비로] 버튼을 누름: FE 가 화면을 옮기고 BE 는 이동 기록만 남긴다. BE 가 행동으로 실행하지 않는다(5-8)."""
