@@ -63,6 +63,8 @@ export function TakesPage() {
 
   const viewLink =
     'inline-flex min-h-11 items-center justify-center px-4 py-2 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep';
+  const activeViewLink = viewLink + ' bg-ink text-white';
+  const inactiveViewLink = viewLink + ' bg-panel text-ink hover:bg-cream';
 
   return (
     <InfoPage title="Take 기록" logo={false}>
@@ -74,20 +76,14 @@ export function TakesPage() {
           <Link
             to={viewPath('list')}
             aria-current={!comparing ? 'page' : undefined}
-            className={
-              viewLink +
-              (!comparing ? ' bg-ink text-white' : ' bg-panel text-ink hover:bg-cream')
-            }
+            className={!comparing ? activeViewLink : inactiveViewLink}
           >
             기록 목록
           </Link>
           <Link
             to={viewPath('compare')}
             aria-current={comparing ? 'page' : undefined}
-            className={
-              viewLink +
-              (comparing ? ' bg-ink text-white' : ' bg-panel text-ink hover:bg-cream')
-            }
+            className={comparing ? activeViewLink : inactiveViewLink}
           >
             지표 비교
           </Link>
@@ -139,6 +135,8 @@ export function TakesPage() {
           <ul className="flex flex-col">
             {shown.map((t) => {
               const status = takeStatusView(t.take_id, t.status, t.end_reason ?? null);
+              const durationClass =
+                t.duration_ms === null ? 'whitespace-nowrap text-stone' : 'whitespace-nowrap';
               return (
                 <li
                   key={t.take_id}
@@ -158,11 +156,7 @@ export function TakesPage() {
                     </div>
                     <div>
                       <dt className="sr-only">시간</dt>
-                      <dd
-                        className={
-                          'whitespace-nowrap ' + (t.duration_ms === null ? 'text-stone' : '')
-                        }
-                      >
+                      <dd className={durationClass}>
                         {duration(t.duration_ms)}
                         <span className="text-stone"> / {formatDuration(t.goal_ms)}</span>
                       </dd>
@@ -176,9 +170,7 @@ export function TakesPage() {
                     {status.link && (
                       <Link
                         to={status.link.to}
-                        aria-label={
-                          t.pitch_title + ' Take ' + t.take_number + ' ' + status.link.text
-                        }
+                        aria-label={`${t.pitch_title} Take ${t.take_number} ${status.link.text}`}
                         className="inline-flex min-h-11 items-center text-sm font-bold hover:text-coral-deep"
                       >
                         {status.link.text} →
