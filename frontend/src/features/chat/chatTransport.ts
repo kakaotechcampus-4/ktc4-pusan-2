@@ -56,6 +56,11 @@ export type TransportSignal =
       events: RunEvent[];
       /** 새로 그릴 문장 — 같은 문장은 한 번만, 계약 오류 뒤의 문장은 빠집니다 */
       claims: ShownClaim[];
+      /**
+       * 이 실행의 문장을 처음부터 다시 보냄 — 화면은 이 실행에 그려 둔 문장을 비우고 `claims` 로 다시 그립니다.
+       * 다른 대화로 갔다 돌아오거나 통신 계층이 새로 생겼을 때 첫 진행 신호에만 true 입니다
+       */
+      restart: boolean;
       /** 이 실행에서 난 계약 오류. 한 번 나면 끝날 때까지 그대로 */
       contractError: ContractError | null;
       /** 아직 진행이 없으면 null (BE). 깨진 항목은 빠집니다 */
@@ -85,6 +90,10 @@ export type TransportSignal =
    * 응답이 2 MiB 를 넘었으면(`TOO_LARGE`) "일부 진행 정보를 표시하지 못했어요." (L3-22)
    */
   | { type: 'pollTrouble'; failures: number; reason: PollTroubleReason }
+  /** 로그인이 풀렸거나 다른 계정으로 바뀜 — 조회를 멈춥니다. "로그인이 만료됐으니 다시 로그인해 주세요." (L3-04) */
+  | { type: 'sessionExpired' }
+  /** 취소하지 못함 — 실행은 그대로이고 다시 취소할 수 있습니다(L3-34). 승인 대기는 지금 BE 가 취소하지 않습니다 */
+  | { type: 'cancelFailed'; runId: string }
   | { type: 'pollRecovered' }
   /** 130초가 지나도 끝나지 않음 — "결과 확인이 늦어지고 있으니 상태를 다시 확인해 주세요." */
   | { type: 'slow'; runId: string }
@@ -96,16 +105,22 @@ export type TransportSignal =
   | { type: 'scopeFailed'; code: string };
 
 /** 조회 실패 이유 — 형식 오류 · 크기 초과도 실패로 세어 간격을 늘립니다(L3-19 · L3-22) */
-export type PollTroubleReason = 'TOO_LARGE' | 'FORMAT' | 'FAILED';
+export type PollTroubleReason = 'TOO_LARGE' | 'FORMAT' | 'TIMEOUT' | 'FAILED';
 
 /** 응답 모양이 틀림 */
 class FormatError extends Error {}
 
+/** 정한 시간 안에 응답이 오지 않음 — 걸린 요청 하나가 조회 · 잠금을 영영 붙잡지 않게 합니다(L3-19) */
+class RequestTimeout extends Error {}
+
 const troubleOf = (error: unknown): PollTroubleReason => {
   if (error instanceof ResponseTooLargeError) return 'TOO_LARGE';
   if (error instanceof FormatError || error instanceof SyntaxError) return 'FORMAT';
+  if (error instanceof RequestTimeout) return 'TIMEOUT';
   return 'FAILED';
 };
+
+const isSignedOut = (error: unknown) => error instanceof ApiFailure && error.status === 401;
 
 export type SendResult =
   'accepted' | 'locked' | 'unconfirmed' | 'conflict' | 'failed' | 'stale' | 'none';
@@ -143,6 +158,11 @@ export interface ChatTransport {
 }
 
 export const SEND_UNCONFIRMED_MS = 15_000;
+/**
+ * 조회 · 취소 · 대화 만들기 · 범위 바꾸기의 응답을 기다리는 한도 — 넘으면 실패로 세고 간격을 늘려 다시 합니다.
+ * 보내기는 15초 미확정이 따로 있어 여기에 넣지 않습니다(자동으로 다시 보내지 않으므로)
+ */
+export const REQUEST_TIMEOUT_MS = 20_000;
 export const POLL_RUNNING_MS = 1_000;
 /** 그 밖(대기 · 승인 대기)은 2초에서 1.5배씩, 15초까지 — 문서는 "2초 · 늘림" 만 정해 늘리는 폭은 FE 가 정했습니다 */
 export const POLL_IDLE_START_MS = 2_000;
@@ -263,7 +283,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
    * 실행마다 문장 읽기 — 커서와 수명을 같이 합니다. 읽기가 없는 실행을 지켜보기 시작하면(새 통신 계층 ·
    * 다시 연 화면) 커서를 처음으로 되감아, 앞 문장부터 다시 받고 순번이 0부터 이어지게 합니다
    */
-  const readers = new Map<string, RunReader>();
+  const readers = new Map<string, { reader: RunReader; fresh: boolean }>();
   /** 마지막으로 알린 계획 · 진행 기록 — 이벤트가 없어도(BE 커서 미구현) 진행 패널이 바뀌게 */
   let lastShape: string | null = null;
   /** 실행마다 잰 시간. 승인 대기 시간은 뺍니다(12-3 "대기한 시간은 실행의 120초에서 뺀다") */
@@ -285,6 +305,22 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   const clearTimer = (handle: unknown) => {
     if (handle !== null) clock.clearTimeout(handle);
   };
+
+  /** 응답을 정한 시간까지만 기다립니다 — 늦게 온 응답은 버려집니다 */
+  const timed = <T>(request: Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const handle = clock.setTimeout(() => reject(new RequestTimeout()), REQUEST_TIMEOUT_MS);
+      request.then(
+        (value) => {
+          clock.clearTimeout(handle);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clock.clearTimeout(handle);
+          reject(error);
+        },
+      );
+    });
 
   const clearPoll = () => {
     clearTimer(pollTimer);
@@ -322,7 +358,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     rereads = 0;
     lastShape = null;
     if (!readers.has(runId)) {
-      readers.set(runId, createRunReader());
+      readers.set(runId, { reader: createRunReader(), fresh: true });
       store().rewindCursor(runId);
     }
   };
@@ -406,7 +442,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const ticket = chatTicket();
     let view: RunView;
     try {
-      const response = readRunView(await api.run(run.runId, run.afterSeq));
+      const response = readRunView(await timed(api.run(run.runId, run.afterSeq)));
       if (!response || response.run_id !== run.runId) throw new FormatError();
       view = response;
     } catch (error) {
@@ -430,11 +466,12 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       rereads = 0;
     }
     // 지켜보기 전에 응답이 먼저 온 실행도 읽기를 갖게 합니다(되감기는 하지 않음 — 이미 처음부터 받는 중)
-    let reader = readers.get(run.runId);
-    if (!reader) {
-      reader = createRunReader();
-      readers.set(run.runId, reader);
+    let entry = readers.get(run.runId);
+    if (!entry) {
+      entry = { reader: createRunReader(), fresh: true };
+      readers.set(run.runId, entry);
     }
+    const { reader } = entry;
     const errorBefore = reader.error;
     const claims = reader.add(taken);
     const plan = readPlan(view.plan);
@@ -442,7 +479,9 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const shape = JSON.stringify([view.plan, view.trace]);
     const shapeChanged = shape !== lastShape && (view.plan !== null || view.trace !== null);
     lastShape = shape;
-    if (taken.length > 0 || view.cards.length > 0 || shapeChanged || reader.error !== errorBefore)
+    if (taken.length > 0 || view.cards.length > 0 || shapeChanged || reader.error !== errorBefore) {
+      const restart = entry.fresh;
+      entry.fresh = false;
       emit({
         type: 'progress',
         runId: run.runId,
@@ -450,12 +489,14 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         status: view.status,
         events: taken,
         claims,
+        restart,
         contractError: reader.error,
         plan: view.plan === null ? null : plan.items,
         trace: view.trace === null ? null : trace.items,
         progressDropped: plan.dropped || trace.dropped,
         cards: reader.cards(view.cards),
       });
+    }
     // 건너뛴 순번 · 나눠 보낸 나머지는 같은 커서로 곧바로 다시 읽습니다(L3-46) — 잇달아 몇 번까지만
     const more = gap || view.next_after_seq !== null;
     if (more && rereads < MAX_REREADS) {
@@ -476,6 +517,11 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       forget(runId);
       recovered();
       emit({ type: 'lost', runId });
+      return;
+    }
+    // 로그인이 풀림 — 같은 토큰으로 계속 두드리지 않습니다. 다시 로그인하면 사용자 전환이 상태를 새로 엽니다
+    if (isSignedOut(error)) {
+      emit({ type: 'sessionExpired' });
       return;
     }
     failures += 1;
@@ -516,7 +562,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const before = s.run?.runId ?? null;
     try {
       // BE 는 이 대화의 마지막 실행을 끝났어도 돌려주고, 한 번도 없으면 null 입니다
-      const response = await api.conversationRun(conversationId);
+      const response = await timed(api.conversationRun(conversationId));
       const run = response === null ? null : readRunView(response);
       if (response !== null && (!run || run.conversation_id !== conversationId))
         throw new FormatError();
@@ -543,6 +589,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       if (error instanceof ApiFailure && error.status === 404) {
         store().resolveConversation(ticket, null);
         emit({ type: 'conversationMissing', conversationId });
+        return;
+      }
+      if (isSignedOut(error)) {
+        emit({ type: 'sessionExpired' });
         return;
       }
       lookupFailures += 1;
@@ -599,7 +649,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       emit({ type: 'disabled' });
       return 'failed';
     }
-    // 503 은 커밋 전 실패(12-3 "커밋 전 실패는 503") — 접수되지 않았습니다. 그 밖 5xx 는 받았는지 모릅니다
+    // 접수 중 DB 가 잠깐 안 됨 — BE 는 "FE 는 같은 client_request_id 로 다시 보낸다" 고 정했습니다.
+    // 자동으로 다시 보내지 않고, 미확정으로 두어 사용자가 [다시 확인]을 누르면 같은 키로 보냅니다(L3-18)
+    if (status === 503 && code === 'AGENT_NOT_ACCEPTED') return unconfirmed();
+    // 그 밖의 503 은 커밋 전 실패(12-3 "커밋 전 실패는 503") — 접수되지 않았습니다. 그 밖 5xx 는 받았는지 모릅니다
     if (status >= 500 && status !== 503) return unconfirmed();
     store().failSend(ticket);
     emit({ type: 'sendFailed', code, status });
@@ -631,14 +684,19 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const scope = store().scope;
     try {
       // (BE 미구현) `memory_off` — 지금 BE 는 모르는 칸이라 422 로 거절합니다. 목은 받습니다
-      const created = await api.createConversation({
-        pitch_id: scope?.pitchId ?? null,
-        memory_off: true,
-      });
+      const created = await timed(
+        api.createConversation({
+          pitch_id: scope?.pitchId ?? null,
+          memory_off: true,
+        }),
+      );
       store().finishCreate(ticket, created.conversation_id);
       return !disposed && store().conversationId === created.conversation_id;
     } catch (error) {
+      // 그사이 대화 · 사용자가 바뀌었으면 잠금만 풀고 안내하지 않습니다 — 새 화면에 엉뚱한 실패가 뜨지 않게
+      const current = isCurrent(ticket);
       store().finishCreate(ticket, null);
+      if (!current || disposed) return false;
       if (error instanceof ApiFailure) {
         if (error.status === 503 && error.code === 'AGENT_DISABLED') emit({ type: 'disabled' });
         else emit({ type: 'sendFailed', code: error.code, status: error.status });
@@ -655,11 +713,18 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
    */
   const offStore = useChatStore.subscribe((now, before) => {
     if (disposed) return;
+    // 지켜보던 실행을 떠나면(다른 대화 · 로그아웃) 그 읽기를 버립니다 — 돌아오면 처음부터 다시 받습니다(restart)
+    if (before.run && before.run.runId !== now.run?.runId) readers.delete(before.run.runId);
     if (now.run && now.run.runId !== before.run?.runId) {
       watch(now.run.runId);
       kick();
     }
-    if (now.syncing && !before.syncing && now.conversationId) lookup().catch(() => undefined);
+    // 확인 중에 다른 대화를 고르면 앞 대화의 실패 대기를 기다리지 않고 바로 조회합니다
+    const otherConversation = now.conversationId !== before.conversationId;
+    if (now.syncing && now.conversationId && (!before.syncing || otherConversation)) {
+      if (otherConversation) lookupFailures = 0;
+      lookup().catch(() => undefined);
+    }
   });
 
   const offOnline = (options.onOnline ?? defaultOnOnline)(() => {
@@ -706,17 +771,28 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       const run = store().run;
       if (!run || !store().beginCancel(run.runId)) return false;
       try {
-        const view = readRunView(await api.cancel(run.runId));
+        const view = readRunView(await timed(api.cancel(run.runId)));
         if (disposed) return true;
         // 끝남은 그 실행을 아직 지켜볼 때만 알립니다 — 조회가 먼저 끝냈으면 취소 중 표시만 지웁니다
         if (view && view.run_id === run.runId && isTerminalRun(view.status))
           finishRun(run.runId, run.conversationId, view);
-        else if (store().run?.runId === run.runId) kick();
+        else {
+          // 서버가 취소하지 않고 그 상태를 그대로 돌려줌(지금 BE 는 승인 대기를 취소하지 않습니다) —
+          // "취소 중" 을 풀어 보내기 · 다시 취소를 막지 않고, 상태부터 다시 확인합니다
+          store().abortCancel(run.runId);
+          if (store().run?.runId === run.runId) {
+            emit({ type: 'cancelFailed', runId: run.runId });
+            kick();
+          }
+        }
       } catch {
         if (disposed) return true;
         // 취소 요청이 실패해도 취소된 것으로 보지 않습니다 — 상태부터 다시 확인하고, 다시 취소할 수 있게 둡니다(L3-34)
         store().abortCancel(run.runId);
-        if (store().run?.runId === run.runId) kick();
+        if (store().run?.runId === run.runId) {
+          emit({ type: 'cancelFailed', runId: run.runId });
+          kick();
+        }
       }
       return true;
     },
@@ -727,14 +803,16 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       const ticket = store().beginScopeChange(scope);
       if (!ticket) return false;
       try {
-        const changed = await api.changeScope(ticket.conversationId!, scope.pitchId);
+        const changed = await timed(api.changeScope(ticket.conversationId!, scope.pitchId));
         store().finishScopeChange(ticket, {
           pitchId: changed.scope_pitch_id,
           title: changed.scope_pitch_title,
         });
         return true;
       } catch (error) {
+        const current = isCurrent(ticket);
         store().finishScopeChange(ticket, null);
+        if (!current || disposed) return false;
         emit({
           type: 'scopeFailed',
           code: error instanceof ApiFailure ? error.code : 'REQUEST_FAILED',
@@ -747,11 +825,17 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       if (disposed) return;
       const run = store().run;
       if (run) {
-        // 직접 확인하면 늦어짐을 처음부터 다시 셉니다
-        forget(run.runId);
-        watch(run.runId);
+        // 직접 확인하면 늦어짐을 처음부터 다시 셉니다 — 받은 문장 · 커서는 그대로 둬 같은 문장을 다시 받지 않습니다
+        runClocks.delete(run.runId);
+        slowNotified.delete(run.runId);
+        ensureClock(run.runId);
+        idleDelay = 0;
+        rereads = 0;
         kick();
-      } else if (store().syncing) ensureLookup();
+      } else if (store().syncing) {
+        lookupFailures = 0;
+        ensureLookup();
+      }
     },
 
     subscribe: (listener) => {

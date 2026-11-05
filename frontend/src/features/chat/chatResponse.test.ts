@@ -391,7 +391,13 @@ describe('카드 (L3-28)', () => {
   });
 
   it('목표 저장됨 · 목표 제안은 근거 칩을 함께 준다', () => {
-    const goal = { version: 1, metric: 'audience_ratio', operator: 'gt_base' };
+    const goal = {
+      version: 1,
+      metric: 'audience_ratio',
+      operator: 'gt_base',
+      slide_number: 3,
+      base: { take_id: TAKE, take_number: 3, value: 0.24 },
+    };
     const saved = readCard(
       { type: 'GOAL_SAVED', action_id: 'a', goal, reason: '', evidence_ids: ['r'], undo: true },
       basis,
@@ -619,7 +625,13 @@ describe('오류 안내 · 다시 읽기 (L3-23 · L3-24)', () => {
 });
 
 describe('계약 오류 뒤의 카드', () => {
-  const goal = { version: 1, metric: 'audience_ratio', operator: 'gt_base' };
+  const goal = {
+    version: 1,
+    metric: 'audience_ratio',
+    operator: 'gt_base',
+    slide_number: 3,
+    base: { take_id: TAKE, take_number: 3, value: 0.24 },
+  };
   const saved = {
     type: 'GOAL_SAVED',
     action_id: 'a',
@@ -696,5 +708,95 @@ describe('대화 API 의 크기 제한 연결 (L3-22)', () => {
       '/api/chat/conversations/c-1/messages?before_seq=31',
       '/api/chat/conversations/c-1/messages',
     ]);
+  });
+});
+
+// ── 1~4단계 점검 반영 ────────────────────────────────────────
+
+describe('카드 필수 칸 — AI 스키마에 맞춤', () => {
+  const basis = emptyBasis();
+  const goal = {
+    version: 1,
+    metric: 'audience_ratio',
+    operator: 'gt_base',
+    slide_number: 3,
+    base: { take_id: TAKE, take_number: 3, value: 0.24 },
+  };
+  const saved = (g: unknown) =>
+    readCard(
+      { type: 'GOAL_SAVED', action_id: 'a', goal: g, reason: '', evidence_ids: [], undo: true },
+      basis,
+    ).ok;
+
+  it('목표는 비교 방법이 정한 값이고 기준 값이 있어야 한다', () => {
+    expect(saved(goal)).toBe(true);
+    expect(saved({ ...goal, operator: 'DROP TABLE' })).toBe(false);
+    expect(saved({ ...goal, base: undefined })).toBe(false);
+    expect(saved({ ...goal, base: { ...goal.base, value: '0.24' } })).toBe(false);
+  });
+
+  it('차원 상태는 글자 · null 만, 기억 항목은 정한 키만, 만료 시각은 ISO 형식만', () => {
+    const side = (dimensions: unknown) => ({ score: 1, dimensions, criteria_results: [] });
+    const reassess = (dimensions: unknown) =>
+      readCard(
+        {
+          type: 'REASSESS_RESULT',
+          take_id: TAKE,
+          change: {},
+          before: side(dimensions),
+          after: side({}),
+          changed_fields: [],
+          official_differs: false,
+        },
+        basis,
+      ).ok;
+    expect([reassess({ GAZE: 'GOOD', PACE: null }), reassess({ GAZE: { x: 1 } })]).toEqual([
+      true,
+      false,
+    ]);
+    const memory = (key: string) =>
+      readCard({ type: 'MEMORY_SAVED', item_id: 'i', key, value: '짧게' }, basis).ok;
+    expect([memory('TONE'), memory('PASSWORD')]).toEqual([true, false]);
+    const ask = (expires_at: string) =>
+      readCard(
+        {
+          type: 'ASK_CONFIRM',
+          action_id: 'a',
+          action_type: 'SAVE_GOAL',
+          title: 't',
+          summary: '',
+          before: null,
+          after: {},
+          notes: [],
+          expires_at,
+          args_hash: 'h',
+        },
+        basis,
+      ).ok;
+    expect([ask('2026-11-05T00:10:00Z'), ask('1'), ask('곧')]).toEqual([true, false, false]);
+  });
+});
+
+describe('경로의 ID 인코딩', () => {
+  it('서버가 준 ID 에 / · ? · .. 이 섞여도 다른 경로가 되지 않는다', () => {
+    const path = chatPaths.undo('r-1', '../../../runs/X/cancel?');
+    expect(path).toBe('/api/chat/runs/r-1/actions/..%2F..%2F..%2Fruns%2FX%2Fcancel%3F/undo');
+    expect(new URL(path, 'http://x').pathname.endsWith('/undo')).toBe(true);
+    // 목의 경로 자리표시는 그대로
+    expect(chatPaths.run(':runId')).toBe('/api/chat/runs/:runId');
+  });
+});
+
+describe('메시지 목록의 빠진 칸 (BE 미구현)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('최신 아님 사유가 빠져 오면 빈 목록으로 채운다', async () => {
+    const fromBe = { ...message({ claims: [claim('SYSTEM', '안내')] }) } as Partial<ChatMessage>;
+    delete fromBe.stale_reasons;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(Response.json({ messages: [fromBe], next_before_seq: null }))),
+    );
+    expect((await fetchMessages('c-1')).messages[0]!.stale_reasons).toEqual([]);
   });
 });

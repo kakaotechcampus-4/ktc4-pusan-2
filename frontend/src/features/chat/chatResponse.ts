@@ -384,10 +384,28 @@ export type ShownCard =
 
 export const UNSUPPORTED_CARD_TEXT = '이 카드를 표시할 수 없으니 새로고침해 주세요.';
 
-const isGoal = (v: unknown) => isObj(v) && isText(v.metric) && isText(v.operator);
+const isOperator = oneOf(['gt_base', 'lt_base', 'in_range'] as const);
+const isProfileKey = oneOf(['TONE', 'EXPLAIN_STYLE', 'FOCUS_AREA', 'CONTEXT'] as const);
+/** 시각은 ISO 8601 만 — `Date.parse` 는 "1" 같은 값도 날짜로 받습니다 */
+const isIsoTime = (v: unknown): v is string =>
+  isStr(v) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v) && !Number.isNaN(Date.parse(v));
+
+/** 목표 (5-2 `Goal` · 제안의 `GoalDraft`) — 화면이 그리는 지표 · 장 · 비교 방법 · 기준 */
+const isGoal = (v: unknown) =>
+  isObj(v) &&
+  isText(v.metric) &&
+  isOperator(v.operator) &&
+  isIntOrNull(v.slide_number ?? null) &&
+  isObj(v.base) &&
+  isNum(v.base.value) &&
+  isIntOrNull(v.base.take_number ?? null);
 
 const isReassessSide = (v: unknown) =>
-  isObj(v) && isNumOrNull(v.score) && isObj(v.dimensions) && Array.isArray(v.criteria_results);
+  isObj(v) &&
+  isNumOrNull(v.score) &&
+  isObj(v.dimensions) &&
+  Object.values(v.dimensions).every((d) => d === null || isStr(d)) &&
+  Array.isArray(v.criteria_results);
 
 const isGoalOption = (v: unknown) =>
   isObj(v) &&
@@ -428,8 +446,7 @@ const CARD_CHECKS: Record<Card['type'], (c: Obj) => boolean> = {
     (c.before === null || isObj(c.before)) &&
     isObj(c.after) &&
     isStrList(c.notes) &&
-    isStr(c.expires_at) &&
-    !Number.isNaN(Date.parse(c.expires_at)) &&
+    isIsoTime(c.expires_at) &&
     isText(c.args_hash),
   GOAL_RESULT: (c) =>
     isInt(c.goal_version) &&
@@ -437,7 +454,7 @@ const CARD_CHECKS: Record<Card['type'], (c: Obj) => boolean> = {
     oneOf(['ACHIEVED', 'NOT_ACHIEVED', 'UNKNOWN', 'BASELINE_MISMATCH'] as const)(c.status) &&
     isNumOrNull(c.observed) &&
     isStr(c.reason),
-  MEMORY_SAVED: (c) => isText(c.item_id) && isText(c.key) && isStr(c.value),
+  MEMORY_SAVED: (c) => isText(c.item_id) && isProfileKey(c.key) && isStr(c.value),
 };
 
 const isCardType = (v: unknown): v is Card['type'] =>

@@ -12,6 +12,7 @@ import { MAX_RESPONSE_BYTES } from './chatResponse';
 import { canSend, useChatStore } from './chatStore';
 import {
   MAX_REREADS,
+  REQUEST_TIMEOUT_MS,
   createChatTransport,
   type ChatClock,
   type ChatTransport,
@@ -580,7 +581,12 @@ describe('취소 · 복원 · 범위', () => {
     const pitch = { pitchId: '10000000-0000-4000-8000-000000000001', title: '캡스톤 최종 발표' };
     expect(await transport.changeScope(pitch)).toBe(true);
     expect(store().scope).toEqual(pitch);
-    expect(await transport.changeScope({ pitchId: 'nope', title: '없는 발표' })).toBe(false);
+    expect(
+      await transport.changeScope({
+        pitchId: '99999999-0000-4000-8000-000000000000',
+        title: '없는 발표',
+      }),
+    ).toBe(false);
     expect(store().scope).toEqual(pitch);
     expect(of('scopeFailed')).toMatchObject([{ code: 'NOT_FOUND' }]);
   });
@@ -1016,18 +1022,36 @@ describe('진행 신호의 문장 읽기', () => {
     expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
   });
 
-  it('같은 통신 계층이 대화를 다시 조회해 같은 실행을 이어 가면 되감지 않는다', async () => {
+  it('다른 대화로 갔다 돌아오면 그 실행의 문장을 처음부터 다시 보내고 restart 로 알린다', async () => {
     await sendNow(draft());
     for (let i = 0; i < 30 && claimsOf().length < 2; i++) await clock.advance(1_000);
-    const seen = claimsOf().length;
+    const first = of('progress');
+    expect(first[0]!.restart).toBe(true);
+    expect(first.slice(1).every((s) => !s.restart)).toBe(true);
     const conversationId = store().conversationId!;
+    signals.length = 0;
     store().startNewConversation(WHOLE);
     store().selectConversation(conversationId, WHOLE);
     await flush();
     await untilEnded();
-    // 같은 문장을 두 번 그리지 않습니다
+    // 화면은 이 실행의 문장을 비우고 다시 그립니다 — 그 뒤로는 같은 문장이 두 번 오지 않습니다
+    const again = of('progress');
+    expect(again[0]!.restart).toBe(true);
     expect(claimsOf().map((c) => c.index)).toEqual([0, 1, 2, 3]);
-    expect(seen).toBeGreaterThan(0);
+    expect(again.map((s) => s.contractError)).not.toContain('INDEX_GAP');
+  });
+
+  it('[다시 확인]은 받은 문장을 다시 보내지 않는다 — 늦어짐만 처음부터 다시 센다', async () => {
+    await sendNow(draft());
+    for (let i = 0; i < 30 && claimsOf().length < 2; i++) await clock.advance(1_000);
+    const seen = claimsOf().map((c) => c.index);
+    transport.checkNow();
+    await flush();
+    await untilEnded();
+    const all = claimsOf().map((c) => c.index);
+    expect(all.slice(0, seen.length)).toEqual(seen);
+    expect(all).toEqual([0, 1, 2, 3]);
+    expect(of('progress').filter((s) => s.restart)).toHaveLength(1);
   });
 
   it('모르는 종류의 문장이 오면 계약 오류를 알리고 그 뒤 문장은 보내지 않는다', async () => {
@@ -1054,5 +1078,160 @@ describe('진행 신호의 문장 읽기', () => {
     expect(of('progress')).toMatchObject([
       { plan: [{ step: '비교' }], trace: null, progressDropped: true },
     ]);
+  });
+});
+
+// ── 1~4단계 점검 반영 ────────────────────────────────────────
+
+const never = <T>() => new Promise<T>(() => undefined);
+
+describe('응답이 오지 않는 요청 (L3-19)', () => {
+  it('실행 조회가 걸려도 20초 뒤 실패로 세고 다시 조회해 끝까지 간다', async () => {
+    let polls = 0;
+    start({
+      run: (runId, afterSeq) => {
+        polls += 1;
+        return polls === 2 ? never() : mockApi.run(runId, afterSeq);
+      },
+    });
+    await sendNow(draft());
+    for (let i = 0; i < 5 && polls < 2; i++) await clock.advance(1_000);
+    expect(polls).toBe(2);
+    await clock.advance(REQUEST_TIMEOUT_MS);
+    expect(of('pollTrouble')).toMatchObject([{ failures: 1, reason: 'TIMEOUT' }]);
+    await untilEnded();
+    expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
+    expect(canSend(store())).toBe(true);
+  });
+
+  it('대화 조회 · 범위 바꾸기 · 대화 만들기가 걸려도 잠금이 풀린다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const conversationId = store().conversationId!;
+
+    start({ conversationRun: () => never(), changeScope: () => never() });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    expect(store().syncing).toBe(true);
+    await clock.advance(REQUEST_TIMEOUT_MS);
+    expect(of('pollTrouble').at(-1)).toMatchObject({ reason: 'TIMEOUT' });
+
+    start({ changeScope: () => never() });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    await clock.advance(1_000);
+    expect(store().syncing).toBe(false);
+    const changing = transport.changeScope({
+      pitchId: '10000000-0000-4000-8000-000000000001',
+      title: '캡스톤 최종 발표',
+    });
+    await flush();
+    await clock.advance(REQUEST_TIMEOUT_MS);
+    expect(await changing).toBe(false);
+    expect([store().scopeChange, store().scope]).toEqual([null, WHOLE]);
+
+    start({ createConversation: () => never() });
+    store().startNewConversation(WHOLE);
+    store().setMemoryOff(true);
+    const sending = transport.send(draft());
+    await flush();
+    await clock.advance(REQUEST_TIMEOUT_MS);
+    expect(await sending).toBe('failed');
+    expect(store().creating).toBeNull();
+  });
+});
+
+describe('승인 대기 중 [취소] — 지금 BE 는 취소하지 않고 그 상태를 돌려줌', () => {
+  it('"취소 중" 을 풀고 알린다 — 보내기 · 다시 취소가 막히지 않는다', async () => {
+    start({
+      run: async (runId) => beRun(runId, store().run!.conversationId, 'WAITING_APPROVAL'),
+      cancel: async (runId) => beRun(runId, store().run!.conversationId, 'WAITING_APPROVAL'),
+    });
+    await sendNow(draft());
+    expect(store().run?.phase).toBe('WAITING_APPROVAL');
+    expect(await transport.cancel()).toBe(true);
+    await flush();
+    expect(store().cancelling).toBeNull();
+    expect(of('cancelFailed')).toHaveLength(1);
+    expect(canSend(store())).toBe(true);
+  });
+});
+
+describe('로그인이 풀림 (L3-04)', () => {
+  it('조회가 401 이면 알리고 더 두드리지 않는다', async () => {
+    start({
+      run: async () => {
+        throw new ApiFailure(401, 'SESSION_CHANGED');
+      },
+    });
+    await sendNow(draft());
+    const calls = runCalls.length;
+    await clock.advance(120_000);
+    expect(of('sessionExpired')).toHaveLength(1);
+    expect(of('pollTrouble')).toEqual([]);
+    expect(runCalls.length).toBe(calls);
+  });
+});
+
+describe('503 AGENT_NOT_ACCEPTED — BE 는 같은 키로 다시 보내라고 정함', () => {
+  it('미확정으로 두고, [다시 확인]은 같은 client_request_id 로 보낸다', async () => {
+    const keys: string[] = [];
+    start({
+      send: async (request) => {
+        keys.push(request.client_request_id);
+        if (keys.length === 1) throw new ApiFailure(503, 'AGENT_NOT_ACCEPTED');
+        return mockApi.send(request);
+      },
+    });
+    expect(await sendNow(draft())).toBe('unconfirmed');
+    expect(of('sendFailed')).toEqual([]);
+    expect(await transport.retryUnconfirmed()).toBe('accepted');
+    expect(new Set(keys).size).toBe(1);
+  });
+});
+
+describe('늦게 온 실패 · 대화 바꾸기', () => {
+  it('다른 대화로 옮긴 뒤 늦게 온 범위 바꾸기 실패는 안내하지 않는다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    let fail!: () => void;
+    start({
+      changeScope: () =>
+        new Promise((_, reject) => (fail = () => reject(new ApiFailure(500, 'INTERNAL')))),
+    });
+    const changing = transport.changeScope({
+      pitchId: '10000000-0000-4000-8000-000000000001',
+      title: '캡스톤 최종 발표',
+    });
+    await flush();
+    store().startNewConversation(WHOLE);
+    fail();
+    expect(await changing).toBe(false);
+    expect(of('scopeFailed')).toEqual([]);
+  });
+
+  it('대화 조회 실패를 기다리는 중에 다른 대화를 고르면 바로 그 대화를 조회한다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const good = store().conversationId!;
+    const asked: string[] = [];
+    start({
+      conversationRun: async (id) => {
+        asked.push(id);
+        if (id === 'c-bad') throw new ApiFailure(500, 'INTERNAL');
+        return mockApi.conversationRun(id);
+      },
+    });
+    store().startNewConversation(WHOLE);
+    store().selectConversation('c-bad', WHOLE);
+    await flush();
+    await clock.advance(2_500);
+    expect(asked).toEqual(['c-bad', 'c-bad']);
+    store().selectConversation(good, WHOLE);
+    await flush();
+    expect(asked.at(-1)).toBe(good);
+    expect(store().syncing).toBe(false);
   });
 });

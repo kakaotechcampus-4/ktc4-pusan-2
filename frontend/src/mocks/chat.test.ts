@@ -35,6 +35,8 @@ const call = (path: string, method = 'GET', body?: unknown) =>
   });
 
 let key = 0;
+/** 형식은 맞지만 없는 ID — 없음(404)과 형식 오류(422)를 나눠 보려고 씁니다 */
+const MISSING = '99999999-0000-4000-8000-000000000000';
 const message = (text: string, extra: Record<string, unknown> = {}) => ({
   conversation_id: null,
   scope_pitch_id: null,
@@ -195,6 +197,15 @@ describe('보내기 → 조회', () => {
       'CANCELLED',
     );
     expect((await poll(run_id)).status).toBe('CANCELLED');
+  });
+
+  it('[취소]는 BE 처럼 오류 코드 AGENT_CANCELLED 만 남기고 답 메시지를 만들지 않는다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await poll(run_id);
+    await poll(run_id);
+    const cancelled = await call(chatPaths.cancel(run_id), 'POST').then(json<RunView>);
+    expect(cancelled.error).toEqual({ code: 'AGENT_CANCELLED' });
+    expect((await messages(conversation_id)).items.map((m) => m.role)).toEqual(['user']);
   });
 });
 
@@ -428,11 +439,11 @@ describe('그 밖의 시나리오', () => {
   it('이 대화에 없는 제안 · 대화 없는 고르기는 404', async () => {
     const { conversation_id } = await proposalConversation();
     const unknown = await send(
-      message('골라 줘', { conversation_id, choice: { proposal_id: 'nope', option: 'EXPERT' } }),
+      message('골라 줘', { conversation_id, choice: { proposal_id: MISSING, option: 'EXPERT' } }),
     );
     expect(unknown.status).toBe(404);
     const orphan = await send(
-      message('골라 줘', { choice: { proposal_id: 'nope', option: 'USER' } }),
+      message('골라 줘', { choice: { proposal_id: MISSING, option: 'USER' } }),
     );
     expect(orphan.status).toBe(404);
   });
@@ -488,8 +499,8 @@ describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
   });
 
   it('없는 피치를 범위로 보내거나 새 대화를 만들면 404', async () => {
-    expect((await send(message('비교해 줘', { scope_pitch_id: 'nope' }))).status).toBe(404);
-    const created = await call(chatPaths.conversations, 'POST', { pitch_id: 'nope' });
+    expect((await send(message('비교해 줘', { scope_pitch_id: MISSING }))).status).toBe(404);
+    const created = await call(chatPaths.conversations, 'POST', { pitch_id: MISSING });
     expect(created.status).toBe(404);
   });
 
@@ -605,7 +616,7 @@ describe('계약 경계', () => {
     await settle(run_id);
     const old = (await messages(conversation_id)).items.at(-1)!;
     expect(
-      (await send(message('다시', { conversation_id, again_of_message_id: 'nope' }))).status,
+      (await send(message('다시', { conversation_id, again_of_message_id: MISSING }))).status,
     ).toBe(404);
     expect((await send(message('다시', { again_of_message_id: old.message_id }))).status).toBe(404);
     const before = (await call(chatPaths.conversations).then(json<ConversationList>)).conversations
@@ -655,8 +666,11 @@ describe('계약 경계', () => {
       422,
     );
     expect(
-      (await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: 'nope' })).status,
+      (await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: MISSING })).status,
     ).toBe(404);
+    // BE 처럼 — UUID 가 아니거나 pitch_id 가 빠졌거나 모르는 칸이 있으면 저장 전 422
+    for (const body of [{ pitch_id: 'nope' }, {}, { pitch_id: null, title: 'x' }])
+      expect((await call(chatPaths.scope(conversation_id), 'PATCH', body)).status).toBe(422);
   });
 });
 
@@ -814,9 +828,33 @@ describe('독립 리뷰 반영', () => {
     });
   });
 
-  it('ID 칸의 형식이 틀리면 저장 전 422', async () => {
+  it('ID 칸의 형식이 틀리면 저장 전 422 — 숫자도, UUID 가 아닌 글자도', async () => {
     expect((await send(message('비교해 줘', { conversation_id: 123 }))).status).toBe(422);
     expect((await send(message('비교해 줘', { scope_pitch_id: 42 }))).status).toBe(422);
+    for (const id of ['nope', '1234', `${MISSING}x`]) {
+      expect((await send(message('비교해 줘', { scope_pitch_id: id }))).status).toBe(422);
+      expect((await send(message('비교해 줘', { conversation_id: id }))).status).toBe(422);
+      expect((await send(message('비교해 줘', { again_of_message_id: id }))).status).toBe(422);
+    }
+    const goodPage = message('').page;
+    for (const page of [
+      { ...goodPage, take_id: 'abc' },
+      { ...goodPage, pitch_id: 'abc' },
+      { ...goodPage, route: '' },
+      { ...goodPage, route: '/'.repeat(65) },
+      { ...goodPage, extra: 1 },
+    ])
+      expect((await send(message('비교해 줘', { page }))).status).toBe(422);
+    expect(
+      (await send(message('골라 줘', { choice: { proposal_id: 'gp-1', option: 'USER' } }))).status,
+    ).toBe(422);
+  });
+
+  it('BE 처럼 모르는 칸 · 공백을 더해 2,000자를 넘는 글은 422', async () => {
+    expect((await send(message('비교해 줘', { memory_off: true }))).status).toBe(422);
+    expect((await send(message(` ${'가'.repeat(2000)}`))).status).toBe(422);
+    expect((await send(message('가'.repeat(2000)))).status).toBe(202);
+    expect((await call(chatPaths.conversations, 'POST', { pitch_id: 'nope' })).status).toBe(422);
   });
 });
 

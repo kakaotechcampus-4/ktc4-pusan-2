@@ -62,7 +62,19 @@ export const chatApi: ChatApi = {
  * 메시지 목록 한 페이지 — 최근부터, `beforeSeq` 가 있으면 그 앞. 화면(8단계)이 부르고,
  * 문장 · 카드는 `readMessage` 로 읽은 뒤 그립니다. 2 MiB 를 넘으면 `ResponseTooLargeError`
  */
-export function fetchMessages(conversationId: string, beforeSeq: number | null = null) {
+export async function fetchMessages(
+  conversationId: string,
+  beforeSeq: number | null = null,
+): Promise<MessagePage> {
   const query = beforeSeq === null ? '' : `?before_seq=${encodeURIComponent(beforeSeq)}`;
-  return apiRequest<MessagePage>(`${chatPaths.messages(conversationId)}${query}`, {}, within);
+  const page = await apiRequest<MessagePage>(
+    `${chatPaths.messages(conversationId)}${query}`,
+    {},
+    within,
+  );
+  // (BE 미구현) 최신 아님 사유는 아직 싣지 않습니다 — 빠졌으면 빈 목록으로
+  return {
+    ...page,
+    messages: page.messages.map((m) => ({ ...m, stale_reasons: m.stale_reasons ?? [] })),
+  };
 }

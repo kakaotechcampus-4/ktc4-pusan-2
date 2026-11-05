@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest } from './client';
+import { apiRequest, tokenSubject } from './client';
 import { clearTokens, getAccessToken, refresh, logout } from './tokenStore';
 
 beforeEach(() => {
@@ -111,6 +111,47 @@ describe('인증 갱신', () => {
 
     await expect(refresh()).rejects.toMatchObject({ status: 401 });
     expect(mock).not.toHaveBeenCalled();
+  });
+
+  it('갱신한 토큰이 다른 사용자(sub)면 다시 보내지 않는다 — 다른 탭에서 계정이 바뀐 경우 (L3-16)', async () => {
+    const jwt = (sub: string) =>
+      `h.${btoa(JSON.stringify({ sub })).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')}.s`;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.endsWith('/refresh')
+            ? Response.json({ access_token: jwt('user-a') })
+            : new Response(null, { status: 401 }),
+        ),
+      ),
+    );
+    await refresh();
+    expect(tokenSubject(getAccessToken())).toBe('user-a');
+
+    const sent: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init: RequestInit) => {
+        if (url.endsWith('/refresh'))
+          return Promise.resolve(Response.json({ access_token: jwt('user-b') }));
+        sent.push(new Headers(init.headers).get('Authorization') ?? '');
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }),
+    );
+    await expect(
+      apiRequest('/api/chat/messages', { method: 'POST', body: '{}' }),
+    ).rejects.toMatchObject({ status: 401, code: 'SESSION_CHANGED' });
+    // 처음 한 번만 — B 의 토큰으로 다시 보내지 않았습니다
+    expect(sent).toEqual([`Bearer ${jwt('user-a')}`]);
+  });
+
+  it('토큰에서 사용자를 읽지 못하면 null', () => {
+    expect([tokenSubject(null), tokenSubject('opaque'), tokenSubject('a.!!!.b')]).toEqual([
+      null,
+      null,
+      null,
+    ]);
   });
 
   it('갱신 뒤에도 401이면 요청을 한 번만 재시도한다', async () => {

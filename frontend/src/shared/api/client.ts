@@ -29,6 +29,10 @@ export async function apiRequest<T>(
     // A late 401 may arrive after another request already rotated the token.
     const current = getAccessToken();
     const token = current && current !== sentToken ? current : await refresh();
+    // 다른 탭에서 다른 계정으로 로그인해 쿠키가 바뀌었으면 그 토큰으로 다시 보내지 않습니다 —
+    // 앞 사용자가 쓴 글이 새 계정으로 접수되지 않게 (chat-agent.md L3-16 "갱신 전후 사용자 ID 가 다르면 재전송 중단")
+    if (sentToken && tokenSubject(sentToken) !== tokenSubject(token))
+      throw new ApiFailure(401, 'SESSION_CHANGED');
     response = await send(token);
   }
 
@@ -45,6 +49,21 @@ export async function apiRequest<T>(
   }
 
   return response.status === 204 ? (undefined as T) : read(response);
+}
+
+/** 액세스 토큰(JWT)의 사용자(`sub`) — 읽을 수 없으면 null (서명은 서버가 봅니다) */
+export function tokenSubject(token: string | null): string | null {
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const body: unknown = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')));
+    return body && typeof body === 'object' && 'sub' in body && typeof body.sub === 'string'
+      ? body.sub
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 성공 응답이 정한 크기를 넘음 — 본문은 읽지 않고 버립니다 */

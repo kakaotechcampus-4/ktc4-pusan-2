@@ -657,8 +657,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         } | null;
         const pitchId = body?.pitch_id ?? null;
         if (
-          !body ||
-          !(pitchId === null || typeof pitchId === 'string') ||
+          !isBody(body) ||
+          !onlyKeys(body, ['pitch_id', 'memory_off']) ||
+          !uuidOrNull(pitchId) ||
           !(body.memory_off === undefined || typeof body.memory_off === 'boolean')
         )
           return error('VALIDATION_ERROR', 422);
@@ -719,11 +720,14 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         if (!conversation) return error('NOT_FOUND', 404);
         if (activeRun(state, conversation.conversation_id))
           return error('AGENT_RUN_IN_PROGRESS', 409);
-        const body = (await request.json().catch(() => null)) as { pitch_id?: unknown } | null;
-        const pitchId = body?.pitch_id ?? null;
-        if (pitchId !== null && typeof pitchId !== 'string') return error('VALIDATION_ERROR', 422);
+        // BE `ChangeScopeRequest` — `pitch_id` 는 빠지면 안 되고(전체는 null), 다른 칸은 받지 않습니다
+        const body: unknown = await request.json().catch(() => null);
+        if (!isBody(body) || !('pitch_id' in body) || !onlyKeys(body, ['pitch_id']))
+          return error('VALIDATION_ERROR', 422);
+        const pitchId = body.pitch_id;
+        if (!uuidOrNull(pitchId)) return error('VALIDATION_ERROR', 422);
         if (!knownScope(pitchId)) return error('NOT_FOUND', 404);
-        conversation.scope_pitch_id = pitchId;
+        conversation.scope_pitch_id = pitchId ?? null;
         conversation.scope_pitch_title = pitchId ? pitch.pitch_title : null;
         return HttpResponse.json(summary(conversation));
       }),
@@ -834,9 +838,16 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       withUser((state, { params }) => {
         const run = state.runs.get(String(params.runId));
         if (!run) return error('NOT_FOUND', 404);
-        // [취소]는 새 메시지가 아니라서 "새 메시지를 받아 …" 문장을 붙이지 않습니다
+        // [취소]는 새 메시지가 아니라서 "새 메시지를 받아 …" 문장을 붙이지 않습니다.
+        // 승인 대기 취소는 (BE 미구현) — 문서(L2-41 · L2-42)대로 취소 문장 메시지를 남깁니다
         if (run.status === 'WAITING_APPROVAL') settleAsk(state, run, 'CANCELLED', null);
-        else if (!isTerminalRun(run.status)) finish(state, run, 'CANCELLED', []);
+        else if (!isTerminalRun(run.status)) {
+          // BE `cancel_run` 처럼 — 오류 코드만 남기고 답 메시지는 만들지 않습니다
+          run.status = 'CANCELLED';
+          run.cards = [];
+          run.ask = null;
+          run.error = { code: 'AGENT_CANCELLED' };
+        }
         // 먼저 끝난 쪽이 이깁니다 — 이미 끝났으면 그 상태를 그대로 돌려줍니다
         return HttpResponse.json(runView(run, run.events.length));
       }),
@@ -1035,30 +1046,66 @@ function canonical(body: SendMessageRequest) {
   return stableJson({ ...body, client_request_id: null });
 }
 
-/** 메시지 보내기 본문 검사 (12-3) — 공백뿐 · 2,000자 초과 · 모르는 값은 저장 전 422 */
+type Body = Record<string, unknown>;
+
+const isBody = (v: unknown): v is Body => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** BE 요청 DTO 는 모르는 칸을 받지 않습니다(`extra="forbid"`) */
+const onlyKeys = (body: Body, keys: readonly string[]) =>
+  Object.keys(body).every((k) => keys.includes(k));
+/** UUID 칸 — 빠짐 · null 이거나 UUID 만 (12-3 "잘못된 UUID · 열거값은 저장 전 422") */
+const uuidOrNull = (v: unknown): v is string | null | undefined =>
+  v === undefined || v === null || (typeof v === 'string' && UUID.test(v));
+
+const SEND_KEYS = [
+  'conversation_id',
+  'scope_pitch_id',
+  'text',
+  'page',
+  'client_request_id',
+  'again_of_message_id',
+  'choice',
+] as const;
+const PAGE_KEYS = ['route', 'pitch_id', 'take_id', 'screen'] as const;
+
+/**
+ * 메시지 보내기 본문 검사 — BE `SendMessageRequest` 와 같은 규칙이라 BE 가 422 로 막을 요청은 목도 막습니다.
+ * 공백뿐 · 2,000자 초과(앞뒤 공백 포함, 코드 포인트) · 모르는 칸 · 형식이 틀린 UUID · 1~64자를 벗어난 경로
+ */
 function parseSend(raw: string): SendMessageRequest | null {
-  let body: Record<string, unknown>;
+  let body: unknown;
   try {
-    body = JSON.parse(raw) as Record<string, unknown>;
+    body = JSON.parse(raw);
   } catch {
     return null;
   }
-  const text = typeof body.text === 'string' ? body.text.trim() : '';
-  if (!text || codePoints(text) > 2000) return null;
+  if (!isBody(body) || !onlyKeys(body, SEND_KEYS)) return null;
+  const text = typeof body.text === 'string' ? body.text : '';
+  if (!text.trim() || codePoints(text) > 2000 || text.includes('\u0000')) return null;
   // BE 는 보내기 키를 UUID 로만 받습니다(`client_request_id: uuid.UUID`)
   if (typeof body.client_request_id !== 'string' || !UUID.test(body.client_request_id)) return null;
-  if (!body.page || typeof body.page !== 'object') return null;
-  // ID 칸은 문자열 · null · 빠짐만 — 다른 형식은 저장 전 422 (12-3 "잘못된 UUID · 열거값은 저장 전 422")
-  const idOrNull = (v: unknown) => v === undefined || v === null || typeof v === 'string';
-  if (![body.conversation_id, body.scope_pitch_id, body.again_of_message_id].every(idOrNull))
+  if (![body.conversation_id, body.scope_pitch_id, body.again_of_message_id].every(uuidOrNull))
+    return null;
+  const page = body.page;
+  if (
+    !isBody(page) ||
+    !onlyKeys(page, PAGE_KEYS) ||
+    typeof page.route !== 'string' ||
+    codePoints(page.route) < 1 ||
+    codePoints(page.route) > 64 ||
+    !uuidOrNull(page.pitch_id) ||
+    !uuidOrNull(page.take_id) ||
+    !(page.screen === undefined || page.screen === null || isBody(page.screen))
+  )
     return null;
   const choice = body.choice ?? null;
   if (
     choice !== null &&
     !(
-      typeof choice === 'object' &&
-      typeof (choice as { proposal_id?: unknown }).proposal_id === 'string' &&
-      ['USER', 'EXPERT'].includes(String((choice as { option?: unknown }).option))
+      isBody(choice) &&
+      onlyKeys(choice, ['proposal_id', 'option']) &&
+      typeof choice.proposal_id === 'string' &&
+      UUID.test(choice.proposal_id) &&
+      ['USER', 'EXPERT'].includes(String(choice.option))
     )
   )
     return null;
@@ -1068,8 +1115,10 @@ function parseSend(raw: string): SendMessageRequest | null {
     text,
     // 화면 상태가 빠졌으면 null — 타입과 런타임 값을 맞춥니다
     page: {
-      ...(body.page as SendMessageRequest['page']),
-      screen: (body.page as { screen?: unknown }).screen ?? null,
+      route: page.route,
+      pitch_id: typeof page.pitch_id === 'string' ? page.pitch_id : null,
+      take_id: typeof page.take_id === 'string' ? page.take_id : null,
+      screen: (page.screen ?? null) as SendMessageRequest['page']['screen'],
     } as SendMessageRequest['page'],
     client_request_id: body.client_request_id,
     again_of_message_id:
