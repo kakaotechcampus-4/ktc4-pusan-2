@@ -227,13 +227,100 @@ def test_answer_on_a_deleted_take_cancels_the_run(
     db_session, session_factory, agent, queued_run
 ) -> None:
     run_id = str(queued_run)
-    evidence = [{"evidence_id": "e1", "pitch_id": None, "take_id": str(uuid.uuid4())}]
+    deleted_take_id = str(uuid.uuid4())
+    row = db_session.get(ChatRun, queued_run)
+    row.input = {**row.input, "page": {**row.input["page"], "take_id": deleted_take_id}}
+    db_session.flush()
+    evidence = [{"evidence_id": "e1", "pitch_id": None, "take_id": deleted_take_id}]
     agent.replies.append(_ndjson(_stream(run_id, ("final", _final(evidence=evidence)))))
 
     _run(queued_run, session_factory)
 
     run = _reload(db_session, queued_run)
     assert (run.status, run.error_code) == ("CANCELLED", "AGENT_CANCELLED")
+    assert (
+        db_session.scalar(
+            select(ChatMessage).where(
+                ChatMessage.conversation_id == run.conversation_id,
+                ChatMessage.role == "assistant",
+            )
+        )
+        is None
+    )
+
+
+def _answer_with_pitch_source(
+    db_session, session_factory, agent, queued_run, pitch_id: str
+) -> ChatRun:
+    run_id = str(queued_run)
+    evidence = [{"evidence_id": "e1", "pitch_id": pitch_id, "take_id": None}]
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final(evidence=evidence)))))
+
+    _run(queued_run, session_factory)
+
+    return _reload(db_session, queued_run)
+
+
+def test_answer_with_malformed_source_fails_as_upstream_error(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run = _answer_with_pitch_source(db_session, session_factory, agent, queued_run, "not-a-uuid")
+
+    assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
+
+
+def test_answer_with_own_take_never_sent_fails_as_upstream_error(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+    from pitch_coach_backend.module.take.entity import Take
+
+    pitch = Pitch(user_id=user_id, title="내 발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    presentation = PresentationVersion(pitch_id=pitch.id, version=1, file_key=f"{pitch.id}/1.pdf")
+    script = ScriptVersion(pitch_id=pitch.id, version=1, content="대본")
+    db_session.add_all([presentation, script])
+    db_session.flush()
+    take = Take(
+        pitch_id=pitch.id,
+        take_number=1,
+        presentation_version_id=presentation.id,
+        script_version_id=script.id,
+        mode="COACHING",
+        script_mode="HIGHLIGHT",
+        goal_time_sec=300,
+        status="READY",
+    )
+    db_session.add(take)
+    db_session.flush()
+    evidence = [{"evidence_id": "e1", "pitch_id": None, "take_id": str(take.id)}]
+    agent.replies.append(_ndjson(_stream(str(queued_run), ("final", _final(evidence=evidence)))))
+
+    _run(queued_run, session_factory)
+
+    run = _reload(db_session, queued_run)
+    assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
+    assert str(pitch.id) in run.turn_calls[0]["sources"]["pitches"]
+    assert str(take.id) not in run.turn_calls[0]["sources"]["takes"]
+
+
+def test_answer_with_someone_elses_pitch_fails_as_upstream_error(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch
+    from pitch_coach_backend.module.user.entity import User
+
+    other = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
+    db_session.add(other)
+    db_session.flush()
+    pitch = Pitch(user_id=other.id, title="남의 발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+
+    run = _answer_with_pitch_source(db_session, session_factory, agent, queued_run, str(pitch.id))
+
+    assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
     assert (
         db_session.scalar(
             select(ChatMessage).where(

@@ -62,6 +62,21 @@ class ChatRepository:
             .with_for_update(read=True)
         )
 
+    def foreign_sources(
+        self, user_id: uuid.UUID, pitch_ids: set[uuid.UUID], take_ids: set[uuid.UUID]
+    ) -> bool:
+        take_pitches = select(Take.pitch_id).where(Take.id.in_(take_ids))
+        return bool(
+            self.db.scalar(
+                select(
+                    exists().where(
+                        or_(Pitch.id.in_(pitch_ids), Pitch.id.in_(take_pitches)),
+                        Pitch.user_id != user_id,
+                    )
+                )
+            )
+        )
+
     def charge_reassess(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
         stmt = (
             insert(ChatDailyUsage)

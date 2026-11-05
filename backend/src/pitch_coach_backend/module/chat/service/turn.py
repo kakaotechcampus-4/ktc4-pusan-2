@@ -22,6 +22,7 @@ from pitch_coach_backend.module.chat.service.run import (
     ClaimedRun,
     add_run_log,
     cancel,
+    check_sources,
     claimed,
     digest,
     lock_current,
@@ -34,7 +35,7 @@ class ScopeChangeRejected(Exception):
 
 
 def mark_sending(
-    db: Session, run: ClaimedRun, turn_call: int, request_id: str
+    db: Session, run: ClaimedRun, turn_call: int, request_id: str, sources: dict[str, list[str]]
 ) -> ClaimedRun | None:
     row = lock_current(db, run)
     if row is None:
@@ -46,6 +47,7 @@ def mark_sending(
             "request_id": request_id,
             "state_revision": row.state_revision if turn_call > 1 else None,
             "stage": "SENDING",
+            "sources": sources,
         },
     ]
     row.row_revision += 1
@@ -80,7 +82,9 @@ def wait_for_action(
     db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal
 ) -> ClaimedRun | None:
     data = final.data
-    lock_or_cancel(db, run, *_answer_sources(data))
+    pitch_ids, take_ids = _answer_sources(data)
+    check_sources(db, run, pitch_ids, take_ids)
+    lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
     row = lock_current(db, run)
     if row is None:
@@ -164,6 +168,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     pitch_ids, take_ids = _answer_sources(data)
     if run.first_trigger == "TAKE_REVIEWED":
         take_ids.add(data["goal_result"]["take_id"])
+    check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
     row = lock_current(db, run)

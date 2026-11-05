@@ -181,7 +181,12 @@ class _Turn:
                 return
             request_id = uuid.uuid4().hex
             async with _chat_slot():
-                await self._advance(turn_service.mark_sending, turn_call, request_id)
+                await self._advance(
+                    turn_service.mark_sending,
+                    turn_call,
+                    request_id,
+                    request_service.offered_sources(request),
+                )
                 outcome = await request_turn(
                     request,
                     request_id=request_id,

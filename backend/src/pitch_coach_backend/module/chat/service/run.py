@@ -20,6 +20,10 @@ class RunLost(Exception):
     pass
 
 
+class InvalidSource(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class ClaimedRun:
     run_id: uuid.UUID
@@ -73,6 +77,28 @@ def lock_ids(db: Session, pitch_ids: set[str], take_ids: set[str]) -> bool:
     locked = all(repo.lock_pitch_id(pitch_id) for pitch_id in sorted(pitches))
     locked = all(repo.lock_take_id(take_id) for take_id in sorted(takes)) and locked
     return locked and pitches_valid and takes_valid
+
+
+def check_sources(db: Session, run: ClaimedRun, pitch_ids: set[str], take_ids: set[str]) -> None:
+    pitches, pitches_valid = _parse_ids(pitch_ids)
+    takes, takes_valid = _parse_ids(take_ids)
+    repo = ChatRepository(db)
+    row = repo.get_run(run.run_id)
+    offered_pitches, offered_takes = _offered(row)
+    if (
+        not (pitches_valid and takes_valid)
+        or not pitch_ids <= offered_pitches
+        or not take_ids <= offered_takes
+        or repo.foreign_sources(row.user_id, pitches, takes)
+    ):
+        raise InvalidSource(run.run_id)
+
+
+def _offered(row: ChatRun) -> tuple[set[str], set[str]]:
+    sent = [call.get("sources", {}) for call in row.turn_calls or []]
+    pitches = {pitch_id for sources in sent for pitch_id in sources.get("pitches", [])}
+    takes = {take_id for sources in sent for take_id in sources.get("takes", [])}
+    return pitches, takes
 
 
 def lock_or_cancel(db: Session, run: ClaimedRun, pitch_ids: set[str], take_ids: set[str]) -> None:

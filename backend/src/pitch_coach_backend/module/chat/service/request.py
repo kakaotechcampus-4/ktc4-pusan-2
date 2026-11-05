@@ -51,6 +51,7 @@ SNAPSHOT_RESULTS = {
     "REVIEW": "review",
 }
 APP_STARTED_AT = datetime.now(UTC)
+PITCH_KEYS = ("pitch_id", "scope_pitch_id")
 
 
 class PitchNotFound(Exception):
@@ -103,6 +104,25 @@ def build_request(
         resume=resume,
         budget_used=budget_used,
     )
+
+
+def offered_sources(request: AgentTurnRequestDTO) -> dict[str, list[str]]:
+    pitches: set[str] = set()
+    takes: set[str] = set()
+    stack: list[Any] = [request.model_dump(mode="json")]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in PITCH_KEYS and isinstance(item, str):
+                    pitches.add(item)
+                elif key == "take_id" and isinstance(item, str):
+                    takes.add(item)
+                else:
+                    stack.append(item)
+        elif isinstance(value, list):
+            stack.extend(value)
+    return {"pitches": sorted(pitches), "takes": sorted(takes)}
 
 
 def run_scope(row: ChatRun, conversation: ChatConversation) -> uuid.UUID | None:
