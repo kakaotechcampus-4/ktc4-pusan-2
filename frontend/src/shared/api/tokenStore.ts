@@ -7,11 +7,14 @@ export const apiBase = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
 export class ApiFailure extends Error {
   public status: number;
   public code: string;
+  /** 서버가 `Retry-After` 로 알린 기다릴 초. 없거나 읽을 수 없으면 null — 429 를 다루는 화면이 씁니다 */
+  public retryAfterSec: number | null;
 
-  constructor(status: number, code: string) {
+  constructor(status: number, code: string, retryAfterSec: number | null = null) {
     super(code);
     this.status = status;
     this.code = code;
+    this.retryAfterSec = retryAfterSec;
   }
 }
 
