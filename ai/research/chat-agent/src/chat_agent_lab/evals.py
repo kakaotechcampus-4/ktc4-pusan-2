@@ -75,6 +75,7 @@ from typing import Any
 
 from chat_agent import prompts
 from chat_agent.actions import action_args_hash
+from chat_agent.config import load_config
 from chat_agent.llm_types import (
     LlmBudgetStop,
     LlmError,
@@ -508,6 +509,8 @@ class _Ctx:
             clock_ms=self.clock.clock_ms,
             monotonic=self.clock.monotonic,
             log=self.log.append,
+            # 고정 순서 기준선(13-3)은 정한 순서의 도구만 쓴다: 코드가 먼저 읽는 조사 흐름(6-1)을 끈다
+            **({"cfg": load_config(research_prefetch=False)} if cfg.baseline else {}),
         )
         self.be = FakeBe(app, pitches=self.world.pitches, clock=self.clock)
         if self.world.official_reviews == "rule":

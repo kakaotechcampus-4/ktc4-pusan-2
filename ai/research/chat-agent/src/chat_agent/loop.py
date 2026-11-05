@@ -47,6 +47,7 @@ from .llm_types import (
     LlmRequest,
     LlmResult,
     TextSink,
+    ToolCall,
     ToolLlm,
     Usage,
 )
@@ -134,6 +135,8 @@ class LoopState:
     scope_switch_unread: bool = False
     #: 이 실행에서 범위 피치를 다른 피치로 바꾼 적이 있는가(`RunCtx.scope_switched`를 이어 부르기 사이에 잇는다)
     scope_switched: bool = False
+    #: 코드가 먼저 읽은 요청(조사 흐름, `_prefetch_calls`)의 열쇠. 이어 부른 뒤 같은 것을 다시 내지 않는다
+    prefetched: list[str] = field(default_factory=list)
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -600,29 +603,36 @@ class Loop:
             if self.cancelled():
                 self.st.research_done, self.st.stop_reason = True, "CLIENT_DISCONNECTED"
                 break
-            msgs = [
-                self._system(prompts.RESEARCH),
-                prompts.data_message(self.data_block()),
-                *self.st.messages,
-            ]
-            res = self._call("RESEARCH", msgs, tools=tools)
-            if isinstance(res, LimitHit):
-                self.st.research_done, self.st.stop_reason = True, limit_end_reason(res.code)
-                break
-            if isinstance(res, LlmError):
-                self.st.research_done = True
-                self.st.stop_reason = "LLM_REFUSED" if isinstance(res, LlmRefused) else "LLM_ERROR"
-                break
-            calls = list(res.tool_calls)
-            if not calls:
-                self.st.research_done = True
-                break
-            model_seq = self._last_model_seq
+            pre = self._prefetch_calls()
+            if pre:
+                # 조사 흐름: 판단 초안이 집은 기록을 모델이 고르기 전에 코드가 먼저 읽는다(모델 호출 없음)
+                calls, said, model_seq = pre, "", None
+            else:
+                msgs = [
+                    self._system(prompts.RESEARCH),
+                    prompts.data_message(self.data_block()),
+                    *self.st.messages,
+                ]
+                res = self._call("RESEARCH", msgs, tools=tools)
+                if isinstance(res, LimitHit):
+                    self.st.research_done, self.st.stop_reason = True, limit_end_reason(res.code)
+                    break
+                if isinstance(res, LlmError):
+                    self.st.research_done = True
+                    self.st.stop_reason = (
+                        "LLM_REFUSED" if isinstance(res, LlmRefused) else "LLM_ERROR"
+                    )
+                    break
+                calls = list(res.tool_calls)
+                if not calls:
+                    self.st.research_done = True
+                    break
+                said, model_seq = res.message or "", self._last_model_seq
             if len(calls) > self.cfg.max_tools_per_response:
                 self._limit(
                     LimitHit("TOOLS_PER_RESPONSE", len(calls), self.cfg.max_tools_per_response)
                 )
-            assistant = {"role": "assistant", "content": res.message or "", "tool_calls": []}
+            assistant = {"role": "assistant", "content": said, "tool_calls": []}
             results: list[dict[str, Any]] = []
             stop_action: dict[str, Any] | None = None
             any_valid = False
@@ -763,6 +773,9 @@ class Loop:
                         self.st.research_done, self.st.stop_reason = True, "ALTERNATING"
             self.st.messages.append(assistant)
             self.st.messages.extend(results)
+            if pre:
+                # 코드가 먼저 읽은 요청은 반복 판정에 넣지 않는다: 모델이 같은 것을 한 번 더 읽어도(캐시) 되풀이로 세지 않는다
+                self.st.repeat_key, self.st.repeat_count, self.st.recent_keys = None, 0, []
             if stop_action is not None:
                 return stop_action
             if not any_valid:
@@ -778,6 +791,117 @@ class Loop:
             ):
                 self.st.research_done, self.st.stop_reason = True, "NO_PROGRESS"
         return None
+
+    def _prefetch_calls(self) -> list[ToolCall]:
+        """조사 흐름(6-1 2번 앞): 계획의 판단 초안이 집은 대상을 모델이 고르기 전에 코드가 먼저 읽을 요청 목록.
+
+        - 대상: `MEASURED` · `REQUEST` 초안의 Take(번호 → 지금 범위 피치의 Take, 없으면 6-3 '판정 대상 Take') · 장 · 지표 · 차원.
+          지표가 없으면 차원의 첫 지표를 쓴다. 대상이 없거나 전체 범위(피치 없음)면 읽지 않는다.
+        - 읽을 것: 비교(`COMPARE` · `CHANGE`, Take 둘)는 `compare_takes`, 그 밖은 Take 마다 장 · 지표면 `slides`, 차원만이면
+          `dimensions`, 문제 주장(`ISSUE`)이나 장을 집은 측정 주장이면 `problem_segments`도. 한 실행에 최대 4개.
+        - 기본 자료에 없는 Take 는 먼저 `fetch_take`(AUTO 행동)를 낸다. 가져오기에 실패한 Take 는 다시 내지 않는다.
+        - 이미 낸 요청은 `prefetched`에 남겨 이어 부른 뒤에도 다시 내지 않는다. 결과는 모델이 고른 호출과 같은 길(캐시 ·
+          한도 · 근거 · 도구 기록)로 처리한다.
+        """
+        if not self.cfg.research_prefetch or self.ctx.pitch is None:
+            return []
+        if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
+            return []
+        summaries = self.ctx.summaries
+        by_number = {s.take_number: tid for tid, s in summaries.items()}
+        wanted: list[tuple[str, dict[str, Any]]] = []
+        for d in self.st.drafts:
+            if d.get("type") not in ("MEASURED", "REQUEST"):
+                continue
+            sub = d.get("subject") or {}
+            metric = sub.get("metric")
+            dim = sub.get("dimension")
+            if metric not in self.cfg.metric_units:
+                metric = None
+            if dim not in self.cfg.dimensions:
+                dim = None
+            if metric is None and dim is not None:
+                ms = [m for m in self.cfg.dimensions[dim].metrics if m in self.cfg.metric_units]
+                metric = ms[0] if ms else None
+            slide = sub.get("slide_number") if isinstance(sub.get("slide_number"), int) else None
+            if metric is None and dim is None and slide is None:
+                continue
+            named = list(sub.get("take_numbers") or [])
+            if any(n not in by_number for n in named):
+                continue  # 말한 Take 가 이 피치에 없다(다른 Take 로 바꿔 읽지 않는다, L2-22)
+            takes = [by_number[n] for n in named]
+            if not takes:
+                page = self.req.page.take_id
+                if page in summaries:
+                    takes = [page]
+                else:
+                    latest = self.ctx.latest_completed()
+                    if latest is not None and latest.summary.take_id in summaries:
+                        takes = [latest.summary.take_id]
+            if not takes:
+                continue
+            op = d.get("claim_op")
+            compare = sub.get("relation") == "COMPARE" or op == "CHANGE"
+            if compare and len(takes) == 1 and op == "CHANGE" and len(named) <= 1:
+                # '지난번보다'처럼 비교 상대를 말하지 않은 변화 주장만 바로 앞 Take 와 비교한다(말한 두 Take 는 그대로)
+                cur_n = summaries[takes[0]].take_number
+                prev = [n for n in by_number if n < cur_n]
+                if prev:
+                    takes = [by_number[max(prev)], takes[0]]
+            takes = sorted(set(takes), key=lambda t: summaries[t].take_number)[:3]
+            if compare and len(takes) == 2 and metric is not None:
+                wanted.append(
+                    (
+                        "compare_takes",
+                        {
+                            "previous_take_id": takes[0],
+                            "current_take_id": takes[1],
+                            "metric": metric,
+                            "slide_number": slide,
+                        },
+                    )
+                )
+                continue
+            for tid in takes:
+                if slide is not None or sub.get("metric") in self.cfg.metric_units:
+                    wanted.append(
+                        ("get_take_report", {"take_id": tid, "section": "slides", "slide_number": slide})
+                    )
+                elif dim is not None:
+                    wanted.append(("get_take_report", {"take_id": tid, "section": "dimensions"}))
+                if op == "ISSUE" or (d.get("type") == "MEASURED" and slide is not None):
+                    wanted.append(("get_take_report", {"take_id": tid, "section": "problem_segments"}))
+        out: list[ToolCall] = []
+        for name, args in wanted:
+            needed = (
+                [args["previous_take_id"], args["current_take_id"]]
+                if name == "compare_takes"
+                else [args["take_id"]]
+            )
+            missing = [t for t in needed if t not in self.ctx.snapshots]
+            if missing:
+                tid = missing[0]
+                fkey = json.dumps(["fetch_take", tid])
+                if fkey in self.st.prefetched:
+                    continue  # 이미 가져오려 했는데 아직 없다 = 실패했다(다시 내지 않는다)
+                self.st.prefetched.append(fkey)
+                # 행동은 한 번에 하나만(6-1). 가져온 뒤 이어 부르면 나머지를 읽는다
+                return [
+                    *out,
+                    ToolCall(
+                        id=f"pf-{len(self.st.prefetched)}",
+                        name="fetch_take",
+                        args={"take_id": tid, "reason": "질문한 연습 기록 확인"},
+                    ),
+                ]
+            key = json.dumps([name, args], sort_keys=True)
+            if key in self.st.prefetched:
+                continue
+            if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
+                break
+            self.st.prefetched.append(key)
+            out.append(ToolCall(id=f"pf-{len(self.st.prefetched)}", name=name, args=args))
+        return out
 
     def _is_cached(self, name: str, args: Any) -> bool:
         from .tools import cache_key

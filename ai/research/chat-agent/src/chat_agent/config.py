@@ -583,6 +583,10 @@ class ChatAgentConfig(_Frozen):
     #: 조사 호출이 의미 있게 끝날 최소 시간(초). 남은 시간 − 답 몫(24초)이 이보다 짧으면 조사를 보내지 않는다(전송 뒤 24초는 항상 남음)
     min_research_call_seconds: float = 3.0
     max_tool_calls: int = 12
+    #: 조사 흐름(6-1): 계획의 판단 초안이 집은 기록을 모델이 고르기 전에 코드가 먼저 읽는다. 고정 순서 기준선(13-3)은 끈다
+    research_prefetch: bool = True
+    #: 코드가 먼저 내는 요청(읽기 · 가져오기) 수의 한 실행 상한. 도구 호출 한도(`max_tool_calls`) 안에서 센다
+    research_prefetch_max: int = 4
     max_tools_per_response: int = 8
     max_turn_calls: int = 6
     max_actions: int = 5
