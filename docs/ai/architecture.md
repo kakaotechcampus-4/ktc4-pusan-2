@@ -154,7 +154,7 @@ AI는 개인 context를 저장하지 않는다. BE가 사용자 · 발표 · Tak
 | 리뷰 | Take 결과, 대본 전달도 채점, 이전 Take 결과(최근 3개), 직전 반복 문제, 이번 미션, 사용자 평가 기준 | 리뷰 결과, 미션 결과 · 다음 미션, 반복 문제 |
 
 - **공유 방식**: 개인별 context는 BE DB 한 곳에만 있고, 항목마다 만드는 곳은 하나다(저장 지도의 '만드는 기능'). 다른 에이전트는 BE가 요청에 실어 준 사본을 읽기만 한다. 그래서 두 에이전트가 같은 값을 다르게 고칠 일이 없다.
-- **이어지는 범위는 발표 단위다.** 미션 · 반복 문제 · 코칭 계획 · 이전 Take 비교는 같은 발표 안에서만 이어진다. 다른 발표의 것은 가져오지 않는다(대본 · 목표 시간이 달라서).
+- **이어지는 범위는 발표 단위다.** 미션 · 반복 문제 · 코칭 계획 · 이전 Take 비교는 같은 발표 안에서만 이어진다. 다른 발표의 것은 가져오지 않는다(대본 · 목표 시간이 달라서). 대화 에이전트가 피치 목록을 싣고 다른 피치를 읽는 것(`FETCH_PITCH`)은 사용자 질문에 답하기 위한 것이고, 피치끼리 수치를 잇거나 비교하지 않는다([chat-agent.md](features/chat-agent.md) 1-3).
 - **원자료 사용 동의**: 1초 원자료(`take_metric_seconds`)를 Take가 끝난 뒤에도 남겨 다시 쓰는 것에 대한 동의다. BE는 사용자 설정(마이페이지)에서 한 번 받은 동의 값을 Take를 시작할 때(1-3 1번) `takes.raw_data_consent`(참 · 거짓, 기본은 동의하지 않음 false)에 복사하고, 그 Take 동안과 뒤에는 이 칸만 본다. 그래서 동의를 철회하면 철회한 뒤에 시작하는 Take부터 적용된다(이미 끝난 Take의 값은 바뀌지 않는다). 동의가 거는 제한은 기준값 다시 고르기와 원자료로 다시 판정하기([gaze-tracking.md](features/gaze-tracking.md) 12-2) 두 가지뿐이다. Take 결과를 만드는 finalize와 `replay` 복구는 동의와 상관없이 한다.
 - **지우기 · 보관**: 저장 지도의 AI 결과 · 원자료는 그 발표 · Take와 함께 보관하고 따로 기한을 두지 않는다. 예외는 동의 없는 Take(`takes.raw_data_consent` = false)의 `take_metric_seconds`와 대화(아래 마지막 항목)다.
   - 그 Take의 Take 결과(`TAKE_RESULT`)를 저장하는 트랜잭션에서 함께 지운다(Take 결과가 생기면 `replay`에 쓸 일이 없다).
@@ -209,7 +209,7 @@ sequenceDiagram
 | 채점 · 확인이 끝난 뒤 (확인을 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나도, 1-3) | `POST /takes/review` | 리뷰 에이전트 | 보고서 · 점수 · 미션 결과 · 다음 미션 · 반복 문제 | 리포트, 다음 Take 준비 |
 | 사용자가 대화할 때 · 행동 결과를 돌려줄 때 · 대화 목표가 있는 피치에 새 리뷰가 생겼을 때(BE 백그라운드 작업) | `POST /agent/turn` | 대화 에이전트 루프 | 답 또는 행동 | 대화창 |
 
-BE는 `/coach/evaluate` · `/evaluation-criteria/parse` · `/takes/rescore`를 요청 안에서 동기로 부르고, 나머지는 백그라운드로 부른다. API마다 LLM을 쓰는지와 시간 예산 · 재시도는 3절 표다. 대화 에이전트는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들고 서비스에 탑재하며, 탑재 전에는 BE가 `/agent/turn`을 부르지 않는다([chat-agent.md](features/chat-agent.md) 4-1).
+BE는 `/coach/evaluate` · `/evaluation-criteria/parse` · `/takes/rescore`를 요청 안에서 동기로 부르고, `/agent/turn`은 메시지를 202로 접수한 뒤 BE 턴 실행기가 부르는 대화 호출(3절 '대화 LLM', 스트림을 끝 줄까지 받음)이며, 나머지는 백그라운드로 부른다. API마다 LLM을 쓰는지와 시간 예산 · 재시도는 3절 표다. 대화 에이전트는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들고 서비스에 탑재하며, 탑재 전에는 BE가 `/agent/turn`을 부르지 않는다([chat-agent.md](features/chat-agent.md) 4-1).
 
 ## 1-3. Take 한 번의 순서 (BE 기준)
 1. **Take 시작**: FE가 WS `/api/ws/takes/{take_id}`에 붙어 `auth`를 보낸다. BE는 Take 상태를 `RUNNING`으로 바꾸고 `ready`를 보낸다. Take 생성 때 저장한 `script_version_id`의 장별 대본을 읽고 코칭·채점·재계산에 같은 버전을 계속 사용한다(발표의 최신 버전으로 대신하지 않는다). 평가 기준 생성이 PENDING이면 생성 종료 후 같은 버전의 보존된 기준을 읽어 최초 채점에 사용하고, rescore에는 실제 채점에 쓴 기준을 그대로 싣는다. 이때 BE는 그 Take에 쓸 값 셋을 `takes`에 고정하고, 뒤에 발표의 값이 바뀌어도 이 칸은 바꾸지 않는다.
@@ -671,6 +671,7 @@ features/<모듈>/
 
 - research와 service가 같은 이름을 쓴다. 로컬에서는 `ai/.env` 하나를 함께 쓴다.
 - **대화 에이전트가 켜졌는데 서명 키가 없거나 32바이트 미만이면** 대화 경로만 503 `AGENT_DISABLED`이고 기존 기능 · 헬스체크는 그대로다. 반영 위치는 [chat-agent.md](features/chat-agent.md) 11-1이고, 서버 시크릿 설정은 BE(인프라)에 요청한다.
+- **대화 변수 넷(`AGENT_*`)은 서비스 탑재 전이라 아직 `settings.py` · `ai/.env.example`에 없다.** 서비스에 탑재할 때 아래 '새 환경변수를 더할 때'대로 두 곳에 더한다. 그 전에는 서버에 넣지 않는다.
 - **값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적는다.** `docker run --env-file`은 따옴표와 줄 끝 주석을 값에 그대로 넣어서, 주소나 키가 틀어져 LLM 연결이 실패한다. 주석은 자기 줄에 쓴다. 서버의 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)도 같다.
 - **`ai/.env.example`을 그대로 복사해 키만 비운 묶음은 일부만 채운 묶음이라 서비스가 시작할 때 오류를 낸다.** 쓰지 않는 묶음은 세 줄을 주석으로 두고, 키 없이 띄워 볼 때는 `--env-file` 없이 띄운다.
 - **키가 없어도 서버는 뜨고 `/health`는 응답한다**(CI · 로컬 확인용, 묶음 값이 아예 없을 때). LLM을 쓰는 요청은 503(`LLM_UNAVAILABLE`)으로 실패하고, 코칭 계획 · 리뷰는 기본 결과를 200으로 돌려준다(`fallback_reason`).

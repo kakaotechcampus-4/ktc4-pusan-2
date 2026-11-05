@@ -332,7 +332,7 @@ ai/service/tests/unit/chat_agent/  연구 모듈 tests/unit/을 옮긴 단위 ·
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 | 방식 |
 |---|---|---|---|
-| `POST /agent/turn` (`trigger: USER_MESSAGE`) | 사용자가 메시지를 보냈을 때(BE가 202로 접수한 뒤) | BE 턴 실행기 | 요청 안 동기 LLM. 성공 응답은 NDJSON 스트림(5-4). BE 시간 제한 50초(끝 줄까지), 재시도 없음(BE 재시작 복구도 보냈거나 보냈을지 모르는 호출은 다시 보내지 않는다, 12-3) |
+| `POST /agent/turn` (`trigger: USER_MESSAGE`) | 사용자가 메시지를 보냈을 때(BE가 202로 접수한 뒤) | BE 턴 실행기 | 대화 LLM(`architecture.md` 3절, 접수와 따로 BE 턴 실행기가 끝 줄까지 받음). 성공 응답은 NDJSON 스트림(5-4). BE 시간 제한 50초(끝 줄까지), 재시도 없음(BE 재시작 복구도 보냈거나 보냈을지 모르는 호출은 다시 보내지 않는다, 12-3) |
 | `POST /agent/turn` (`trigger: ACTION_RESULT`) | BE가 `NEEDS_ACTION`의 행동을 실행한 뒤 | BE 턴 실행기 | 같은 실행을 서명한 `state`로 이어 부름. 한 실행에 처음 포함 6번까지 |
 | `POST /agent/turn` (`trigger: TAKE_REVIEWED`) | 대화 목표가 `OPEN`인 대화에서, 목표 저장 뒤 시작한 Take의 리뷰가 저장됐을 때 | BE 자동 목표 확인(1분마다) | 사용자 말 없음, 저장 · 이동 행동 없음, `goal_result` 필수 |
 | `POST /takes/review` (기존 API, 저장 없음) | `REASSESS` 행동 | BE | 요청 A · B를 동시에, 각 30초 · 재시도 0회. 결과는 공식 칸에 쓰지 않는다(6-6) |
