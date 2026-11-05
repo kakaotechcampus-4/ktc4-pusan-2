@@ -48,6 +48,9 @@ export function retryAfterSec(value: string | null, now = Date.now()): number | 
   if (!value) return null;
   const trimmed = value.trim();
   if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // 날짜는 HTTP 형식(IMF-fixdate)만 — 브라우저의 Date.parse 는 "5.5" · "-1" 같은 값도 날짜로 받아 0초가 됩니다
+  if (!/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(trimmed))
+    return null;
   const at = Date.parse(trimmed);
   if (Number.isNaN(at)) return null;
   return Math.max(0, Math.ceil((at - now) / 1000));

@@ -116,6 +116,8 @@ export const SLOW_AFTER_MS = 130_000;
 export const SLOW_POLL_MS = 30_000;
 /** 429 에 `Retry-After` 가 없거나 잘못됐을 때 (L3-18) */
 export const DEFAULT_RETRY_AFTER_SEC = 5;
+/** 곧바로 다시 읽기를 잇달아 몇 번까지 — 그 뒤에는 보통 간격으로 (FE 가 정함) */
+export const MAX_REREADS = 3;
 
 const defaultClock: ChatClock = {
   now: () => Date.now(),
@@ -182,27 +184,49 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     for (const listener of listeners) listener(signal);
   };
 
+  /**
+   * 닫힌 뒤에는 고리를 다시 살리지 않습니다 — 진행 중이던 요청의 응답이 와도 예약 · 신호를 내지 않습니다.
+   * 잠금을 푸는 저장소 갱신(접수 · 대화 만들기 · 범위 바꾸기 응답)은 표가 맞으면 그대로 반영합니다 — 새 통신 계층이
+   * 저장소 변화를 구독해 이어 갑니다
+   */
+  let disposed = false;
+
   // ── 조회 고리 ───────────────────────────────────────────────
   let pollTimer: unknown = null;
   let polling = false;
   let pollAgain = false;
   let failures = 0;
   let idleDelay = 0;
-  const startedAt = new Map<string, number>();
+  /** 곧바로 다시 읽기를 잇달아 한 횟수 — 건너뛴 순번이 메워지지 않거나 다음 커서가 끝없이 와도 멈추지 않게 */
+  let rereads = 0;
+  /** 실행마다 잰 시간. 승인 대기 시간은 뺍니다(12-3 "대기한 시간은 실행의 120초에서 뺀다") */
+  const runClocks = new Map<
+    string,
+    { started: number; waited: number; waitingSince: number | null }
+  >();
   const slowNotified = new Set<string>();
 
-  // 대화 상태 조회는 따로 한 번에 하나
+  // 대화 상태 조회도 한 번에 하나
   let lookupTimer: unknown = null;
   let lookingUp = false;
+  let lookupAgain = false;
   let lookupFailures = 0;
 
+  /** 15초 미확정 타이머 */
+  let sendTimer: unknown = null;
+
+  const clearTimer = (handle: unknown) => {
+    if (handle !== null) clock.clearTimeout(handle);
+  };
+
   const clearPoll = () => {
-    if (pollTimer !== null) clock.clearTimeout(pollTimer);
+    clearTimer(pollTimer);
     pollTimer = null;
   };
 
   const schedulePoll = (ms: number) => {
     clearPoll();
+    if (disposed) return;
     pollTimer = clock.setTimeout(() => {
       pollTimer = null;
       pollOnce().catch(() => undefined);
@@ -211,14 +235,44 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
 
   /** 지금 바로 조회 — 조회 중이면 끝난 뒤 한 번 더 */
   const kick = () => {
+    if (disposed) return;
     clearPoll();
     if (polling) pollAgain = true;
     else pollOnce().catch(() => undefined);
   };
 
+  /** 실행 시간 기록을 만듭니다 — 이미 있으면 그대로 */
+  const ensureClock = (runId: string) => {
+    if (!runClocks.has(runId))
+      runClocks.set(runId, { started: clock.now(), waited: 0, waitingSince: null });
+    return runClocks.get(runId)!;
+  };
+
+  /** 새로 지켜보는 실행 — 간격 · 다시 읽기 횟수를 처음부터 */
   const watch = (runId: string) => {
-    if (!startedAt.has(runId)) startedAt.set(runId, clock.now());
+    ensureClock(runId);
     idleDelay = 0;
+    rereads = 0;
+  };
+
+  const forget = (runId: string) => {
+    runClocks.delete(runId);
+    slowNotified.delete(runId);
+  };
+
+  /** 승인 대기를 뺀 실행 시간 — 이번 상태를 반영해 셉니다 */
+  const elapsed = (runId: string, status: RunStatus) => {
+    // 조회마다 불리므로 watch 를 부르지 않습니다 — 간격 · 다시 읽기 횟수를 되돌리면 늘림 · 제한이 풀립니다
+    const c = ensureClock(runId);
+    const now = clock.now();
+    if (status === 'WAITING_APPROVAL') {
+      if (c.waitingSince === null) c.waitingSince = now;
+    } else if (c.waitingSince !== null) {
+      c.waited += now - c.waitingSince;
+      c.waitingSince = null;
+    }
+    const waitingNow = c.waitingSince === null ? 0 : now - c.waitingSince;
+    return now - c.started - c.waited - waitingNow;
   };
 
   const failureDelay = (count: number) => {
@@ -227,8 +281,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   };
 
   const nextDelay = (runId: string, status: RunStatus) => {
-    const started = startedAt.get(runId) ?? clock.now();
-    if (clock.now() - started >= SLOW_AFTER_MS) {
+    if (elapsed(runId, status) >= SLOW_AFTER_MS) {
       if (!slowNotified.has(runId)) {
         slowNotified.add(runId);
         emit({ type: 'slow', runId });
@@ -243,11 +296,25 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     return idleDelay;
   };
 
+  /** 조회가 다시 됨 — 실패 안내를 거둡니다 */
+  const recovered = () => {
+    if (failures === 0 && lookupFailures === 0) return;
+    failures = 0;
+    lookupFailures = 0;
+    emit({ type: 'pollRecovered' });
+  };
+
+  /** 끝남 — 지켜보는 실행일 때만 끝남을 알립니다. 이미 끝나 놓은 실행이면 그 실행의 취소 중 표시만 지웁니다 */
   const finishRun = (runId: string, conversationId: string, view: RunView) => {
+    forget(runId);
+    if (store().run?.runId !== runId) {
+      store().endRun(runId);
+      return;
+    }
     store().endRun(runId, view.retry_after_s);
-    startedAt.delete(runId);
-    slowNotified.delete(runId);
     idleDelay = 0;
+    rereads = 0;
+    recovered();
     emit({
       type: 'ended',
       runId,
@@ -258,6 +325,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   };
 
   async function pollOnce(): Promise<void> {
+    if (disposed) return;
     const run = store().run;
     if (!run || polling) return;
     polling = true;
@@ -270,20 +338,24 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       view = response;
     } catch (error) {
       polling = false;
+      if (disposed) return;
+      // 실패도 늦은 응답이면 버리고 지금 실행을 조회합니다 — 지난 실행의 404 로 새 실행의 고리가 멈추지 않게
+      if (!isCurrent(ticket) || pollAgain) return kick();
       onPollFailure(run.runId, error);
       return;
     }
     polling = false;
+    if (disposed) return;
     // 그사이 실행 · 대화 · 세대가 바뀌었으면 이 응답은 버리고 지금 상태로 다시 (L3-20)
     if (!isCurrent(ticket) || pollAgain) return kick();
-    if (failures > 0) {
-      failures = 0;
-      emit({ type: 'pollRecovered' });
-    }
+    recovered();
 
     const { taken, gap } = takeEvents(run.afterSeq, view.events);
     const last = taken.at(-1);
-    if (last) store().advanceCursor(run.runId, last.event_seq);
+    if (last) {
+      store().advanceCursor(run.runId, last.event_seq);
+      rereads = 0;
+    }
     if (taken.length > 0 || view.cards.length > 0)
       emit({
         type: 'progress',
@@ -295,8 +367,13 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         trace: view.trace,
         cards: view.cards,
       });
-    // 건너뛴 순번 · 나눠 보낸 나머지는 같은 커서로 곧바로 다시 읽습니다
-    if (gap || view.next_after_seq !== null) return schedulePoll(0);
+    // 건너뛴 순번 · 나눠 보낸 나머지는 같은 커서로 곧바로 다시 읽습니다(L3-46) — 잇달아 몇 번까지만
+    const more = gap || view.next_after_seq !== null;
+    if (more && rereads < MAX_REREADS) {
+      rereads += 1;
+      return schedulePoll(0);
+    }
+    // 끝났으면 끝냅니다 — 끝까지 메워지지 않은 순번은 메시지 목록이 보여 줍니다
     if (isTerminalRun(view.status)) return finishRun(run.runId, run.conversationId, view);
     // 모르는 상태는 "확인 중" — 끝나지 않은 것으로 보고 계속 조회합니다(L3-22)
     if (KNOWN.includes(view.status)) store().setRunPhase(run.runId, asPhase(view.status));
@@ -307,7 +384,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (error instanceof ApiFailure && error.status === 404) {
       // 실행 기록이 없어짐 — 놓고 목록에서 복구합니다(L3-21)
       store().endRun(runId);
-      startedAt.delete(runId);
+      forget(runId);
+      recovered();
       emit({ type: 'lost', runId });
       return;
     }
@@ -319,35 +397,58 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   // ── 대화 상태 조회 (고르기 · 되살리기 · 409) ───────────────────
 
   const scheduleLookup = (ms: number) => {
-    if (lookupTimer !== null) clock.clearTimeout(lookupTimer);
+    clearTimer(lookupTimer);
+    lookupTimer = null;
+    if (disposed) return;
     lookupTimer = clock.setTimeout(() => {
       lookupTimer = null;
       lookup().catch(() => undefined);
     }, ms);
   };
 
+  /**
+   * 대화의 실행을 조회합니다. 조회 중에 또 불리면(예: 대화를 바로 바꿈) 끝난 뒤 지금 대화로 한 번 더 —
+   * 앞 대화의 늦은 응답은 버리고, 새 대화가 "상태 확인 중" 에 갇히지 않게 합니다
+   */
   async function lookup(): Promise<void> {
+    if (disposed) return;
     const s = store();
-    if (lookingUp || !s.syncing || !s.conversationId) return;
+    if (!s.syncing || !s.conversationId) return;
+    if (lookingUp) {
+      lookupAgain = true;
+      return;
+    }
     lookingUp = true;
+    lookupAgain = false;
+    clearTimer(lookupTimer);
+    lookupTimer = null;
     const ticket = chatTicket();
     const conversationId = s.conversationId;
+    const before = s.run?.runId ?? null;
     try {
       const response = await api.conversationRun(conversationId);
       const run = response?.run ?? null;
       if (run !== null && !isRunView(run)) throw new Error('형식 오류');
       lookingUp = false;
-      lookupFailures = 0;
+      if (disposed) return;
       const found =
         run && !isTerminalRun(run.status)
           ? { runId: run.run_id, phase: asPhase(run.status) }
           : null;
-      if (store().resolveConversation(ticket, found) && found) {
-        watch(found.runId);
-        kick();
+      const applied = store().resolveConversation(ticket, found);
+      if (applied) {
+        recovered();
+        // 새 실행이면 저장소 구독이 조회를 시작합니다. 되살린 그 실행이면 여기서 이어 갑니다
+        if (found && found.runId === before) {
+          watch(found.runId);
+          kick();
+        }
       }
+      if (lookupAgain || (!applied && store().syncing)) return lookup();
     } catch (error) {
       lookingUp = false;
+      if (disposed) return;
+      if (lookupAgain || !isCurrent(ticket)) return lookup();
       if (error instanceof ApiFailure && error.status === 404) {
         store().resolveConversation(ticket, null);
         emit({ type: 'conversationMissing', conversationId });
@@ -359,7 +460,29 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     }
   }
 
+  /** 조회 중이 아니면 조회 — 같은 상태를 여러 곳에서 깨워도 겹쳐 부르지 않습니다 */
+  const ensureLookup = () => {
+    if (!lookingUp) lookup().catch(() => undefined);
+  };
+
   // ── 보내기 ─────────────────────────────────────────────────
+
+  const clearSendTimer = () => {
+    clearTimer(sendTimer);
+    sendTimer = null;
+  };
+
+  /** 15초 안에 접수가 확정되지 않으면 미확정으로 알립니다 — 다시 보내지는 않습니다 */
+  const armUnconfirmed = (ticket: ChatTicket) => {
+    clearSendTimer();
+    if (disposed) return;
+    sendTimer = clock.setTimeout(() => {
+      sendTimer = null;
+      if (store().pending?.sendId !== ticket.sendId) return;
+      store().markUnconfirmed(ticket);
+      emit({ type: 'unconfirmed', sendId: ticket.sendId! });
+    }, SEND_UNCONFIRMED_MS);
+  };
 
   function onSendFailure(ticket: ChatTicket, error: unknown): SendResult {
     const unconfirmed = (): SendResult => {
@@ -371,9 +494,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (!(error instanceof ApiFailure)) return unconfirmed();
     const { status, code } = error;
     if (status === 409 && code === 'AGENT_RUN_IN_PROGRESS') {
-      // 다른 탭이 실행 중 — 상태를 조회해 그 실행을 이어 봅니다(L3-17)
+      // 다른 탭이 실행 중 — 저장소가 "상태 확인 중" 이 되면 구독이 조회를 시작합니다(L3-17)
       store().conflictSend(ticket);
-      lookup().catch(() => undefined);
       return 'conflict';
     }
     if (status === 429) {
@@ -395,22 +517,18 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
 
   async function post(ticket: ChatTicket): Promise<SendResult> {
     const pending = store().pending;
-    if (!pending || pending.sendId !== ticket.sendId) return 'stale';
-    const timer = clock.setTimeout(() => {
-      if (store().pending?.sendId !== ticket.sendId) return;
-      store().markUnconfirmed(ticket);
-      emit({ type: 'unconfirmed', sendId: ticket.sendId! });
-    }, SEND_UNCONFIRMED_MS);
+    if (disposed || !pending || pending.sendId !== ticket.sendId) return 'stale';
+    armUnconfirmed(ticket);
     try {
       const accepted = await api.send(pending.request);
-      clock.clearTimeout(timer);
+      clearSendTimer();
+      // 접수는 닫힌 뒤에도 반영합니다 — 잠금을 풀고, 새 통신 계층이 저장소 구독으로 조회를 시작합니다
       if (!store().beginRun(ticket, accepted.run_id, accepted.conversation_id)) return 'stale';
-      watch(accepted.run_id);
-      kick();
       return 'accepted';
     } catch (error) {
-      clock.clearTimeout(timer);
-      if (store().pending?.sendId !== ticket.sendId) return 'stale';
+      clearSendTimer();
+      // 닫혔으면 결과를 모르는 채로 둡니다 — 새 통신 계층이 미확정으로 알립니다
+      if (disposed || store().pending?.sendId !== ticket.sendId) return 'stale';
       return onSendFailure(ticket, error);
     }
   }
@@ -427,7 +545,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         memory_off: true,
       });
       store().finishCreate(ticket, created.conversation_id);
-      return store().conversationId === created.conversation_id;
+      return !disposed && store().conversationId === created.conversation_id;
     } catch (error) {
       store().finishCreate(ticket, null);
       if (error instanceof ApiFailure) {
@@ -438,16 +556,32 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     }
   }
 
-  // ── 바깥에 내는 동작 ─────────────────────────────────────────
+  // ── 저장소 · 연결 구독 ───────────────────────────────────────
+
+  /**
+   * 저장소가 바뀌면 이어 갑니다 — 새 실행이 붙으면 조회를, "상태 확인 중" 이 켜지면 대화의 실행 조회를 시작합니다.
+   * 접수 · 409 · 대화 고르기 · 다른(닫힌) 통신 계층의 반영까지 한 길로 받습니다
+   */
+  const offStore = useChatStore.subscribe((now, before) => {
+    if (disposed) return;
+    if (now.run && now.run.runId !== before.run?.runId) {
+      watch(now.run.runId);
+      kick();
+    }
+    if (now.syncing && !before.syncing && now.conversationId) lookup().catch(() => undefined);
+  });
 
   const offOnline = (options.onOnline ?? defaultOnOnline)(() => {
     // 연결이 돌아오면 바로 (L3-19)
-    if (store().syncing) lookup().catch(() => undefined);
+    if (store().syncing) ensureLookup();
     if (store().run) kick();
   });
 
+  // ── 바깥에 내는 동작 ─────────────────────────────────────────
+
   return {
     send: async (draft) => {
+      if (disposed) return 'stale';
       if (!(await createIfNeeded(draft))) return needsCreate(store()) ? 'failed' : 'locked';
       const ticket = store().beginSend(draft);
       if (!ticket) return 'locked';
@@ -461,33 +595,43 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     },
 
     resume: () => {
+      if (disposed) return;
       const s = store();
-      if (s.syncing && s.conversationId) lookup().catch(() => undefined);
+      if (s.syncing && s.conversationId) ensureLookup();
       else if (s.run) {
         watch(s.run.runId);
         kick();
       }
-      // 되살린 보내기는 자동으로 다시 보내지 않습니다 — 미확정으로 알려 사용자가 다시 확인하게 합니다
-      if (s.pending?.unconfirmed) emit({ type: 'unconfirmed', sendId: s.pending.sendId });
+      if (s.pending) {
+        // 되살린 보내기는 자동으로 다시 보내지 않습니다 — 미확정으로 알려 사용자가 다시 확인하게 합니다.
+        // 아직 결과를 기다리던 보내기(앞 통신 계층이 보낸 것)는 여기서 15초를 다시 셉니다
+        if (s.pending.unconfirmed) emit({ type: 'unconfirmed', sendId: s.pending.sendId });
+        else armUnconfirmed(pendingSendTicket()!);
+      }
     },
 
     cancel: async () => {
+      if (disposed) return false;
       const run = store().run;
       if (!run || !store().beginCancel(run.runId)) return false;
       try {
         const view: unknown = await api.cancel(run.runId);
+        if (disposed) return true;
+        // 끝남은 그 실행을 아직 지켜볼 때만 알립니다 — 조회가 먼저 끝냈으면 취소 중 표시만 지웁니다
         if (isRunView(view) && isTerminalRun(view.status))
           finishRun(run.runId, run.conversationId, view);
-        else kick();
+        else if (store().run?.runId === run.runId) kick();
       } catch {
+        if (disposed) return true;
         // 취소 요청이 실패해도 취소된 것으로 보지 않습니다 — 상태부터 다시 확인하고, 다시 취소할 수 있게 둡니다(L3-34)
         store().abortCancel(run.runId);
-        kick();
+        if (store().run?.runId === run.runId) kick();
       }
       return true;
     },
 
     changeScope: async (scope) => {
+      if (disposed) return false;
       if (store().conversationId === null) return store().chooseScope(scope);
       const ticket = store().beginScopeChange(scope);
       if (!ticket) return false;
@@ -509,13 +653,14 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     },
 
     checkNow: () => {
+      if (disposed) return;
       const run = store().run;
       if (run) {
-        // 직접 확인하면 늦어짐 표시를 처음부터 다시 셉니다
-        startedAt.set(run.runId, clock.now());
-        slowNotified.delete(run.runId);
+        // 직접 확인하면 늦어짐을 처음부터 다시 셉니다
+        forget(run.runId);
+        watch(run.runId);
         kick();
-      } else if (store().syncing) lookup().catch(() => undefined);
+      } else if (store().syncing) ensureLookup();
     },
 
     subscribe: (listener) => {
@@ -524,9 +669,12 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     },
 
     dispose: () => {
+      disposed = true;
       clearPoll();
-      if (lookupTimer !== null) clock.clearTimeout(lookupTimer);
+      clearTimer(lookupTimer);
       lookupTimer = null;
+      clearSendTimer();
+      offStore();
       offOnline();
       listeners.clear();
     },
