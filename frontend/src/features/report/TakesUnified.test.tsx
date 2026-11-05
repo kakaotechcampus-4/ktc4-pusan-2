@@ -145,3 +145,27 @@ it('비교 화면의 지표 탭과 표는 키보드 접근 가능한 기존 컴�
   expect(host.querySelector('[role="tabpanel"]')).not.toBeNull();
   expect(host.querySelector('[role="region"][tabindex="0"]')).not.toBeNull();
 });
+
+it('지표 비교 표의 각 완료 Take에서 자신에게 해당하는 리포트로 이동할 수 있다', async () => {
+  history.data.takes = [take(7, 'p2'), take(2), take(1)];
+  await render('/takes?pitch=p1&view=compare');
+  const links = [...host.querySelectorAll<HTMLAnchorElement>('tbody a[href]')];
+  expect(links.map((link) => link.getAttribute('href'))).toEqual(['/takes/p1-2', '/takes/p1-1']);
+  expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+    'Take 2 리포트 보기',
+    'Take 1 리포트 보기',
+  ]);
+  expect(host.querySelector('a[href="/takes/p2-7"]')).toBeNull();
+});
+
+it('비교 가능한 Take가 하나뿐이면 그 Take 리포트로 직접 이동할 수 있다', async () => {
+  history.data.takes = [take(1, 'p1')];
+  await render('/takes?pitch=p1&view=compare');
+  expect(host.querySelector('a[href="/takes/p1-1"]')?.textContent).toContain('리포트 보기');
+});
+
+it('완료된 Take가 없으면 비교 화면에 리포트 링크를 만들지 않는다', async () => {
+  history.data.takes = [take(2, 'p1', 'ANALYZING')];
+  await render('/takes?pitch=p1&view=compare');
+  expect(host.querySelector('a[href^="/takes/"]')).toBeNull();
+});

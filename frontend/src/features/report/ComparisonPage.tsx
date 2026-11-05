@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import type { TakeHistoryRow } from '@/types/takeHistory';
 import { formatDuration } from '@/shared/lib/clock';
 import { isPitchMissing, useTakeHistory } from '@/shared/api/takeHistory';
@@ -95,6 +95,16 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
           <Mascot who="pico">
             비교하려면 완료된 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?
           </Mascot>
+          {rows.map((r) => (
+            <Link
+              key={r.take_id}
+              to={`/takes/${encodeURIComponent(r.take_id)}`}
+              aria-label={`Take ${r.take_number} 리포트 보기`}
+              className="inline-flex min-h-11 w-fit items-center border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+            >
+              Take {r.take_number} 리포트 보기 →
+            </Link>
+          ))}
         </Card>
       ) : (
         <>
@@ -221,7 +231,10 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
                         {x.label}
                       </th>
                     ))}
-                    <th className="py-2 font-bold">미션</th>
+                    <th className="py-2 pr-4 font-bold">미션</th>
+                    <th scope="col" className="py-2 font-bold">
+                      리포트
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="tabular">
@@ -257,10 +270,19 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
                             </td>
                           );
                         })}
-                        <td className="py-3">
+                        <td className="py-3 pr-4">
                           {r.missions_total === 0
                             ? '—'
                             : `${r.missions_achieved} / ${r.missions_total}`}
+                        </td>
+                        <td className="py-3">
+                          <Link
+                            to={`/takes/${encodeURIComponent(r.take_id)}`}
+                            aria-label={`Take ${r.take_number} 리포트 보기`}
+                            className="inline-flex min-h-11 items-center whitespace-nowrap font-bold text-ink underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+                          >
+                            리포트 보기 →
+                          </Link>
                         </td>
                       </tr>
                     );

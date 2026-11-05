@@ -144,6 +144,15 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
               <Mascot who="pico">
                 비교하려면 완료된 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?
               </Mascot>
+              {count === 1 && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('report')}
+                  className="inline-flex min-h-11 w-fit items-center border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream"
+                >
+                  Take 1 리포트 보기 →
+                </button>
+              )}
             </Card>
           ) : (
             <>
@@ -232,6 +241,7 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                           '말하기 속도',
                           '군더더기',
                           '미션',
+                          '리포트',
                         ].map((label) => (
                           <th scope="col" key={label} className="py-2 pr-4 font-bold">
                             {label}
@@ -250,7 +260,17 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                               {display(take[item.id], item.id)}
                             </td>
                           ))}
-                          <td className="py-3">—</td>
+                          <td className="py-3 pr-4">—</td>
+                          <td className="py-3">
+                            <button
+                              type="button"
+                              onClick={() => onNavigate('report')}
+                              aria-label={`Take ${take.take} 리포트 보기`}
+                              className="inline-flex min-h-11 items-center whitespace-nowrap font-bold underline underline-offset-4 hover:text-coral-deep"
+                            >
+                              리포트 보기 →
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

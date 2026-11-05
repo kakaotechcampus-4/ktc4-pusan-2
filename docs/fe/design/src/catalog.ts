@@ -623,7 +623,8 @@ const productScreens: GuideScreen[] = [
     rules: [
       '기록 목록 / 지표 비교 전환을 사용한다. 뷰는 ?view=compare, 피치는 ?pitch=로 주소에 남긴다.',
       '목록은 모든 피치를 선택할 수 있으나 비교는 한 피치만 고른다. 다른 피치의 Take를 섞지 않는다.',
-      '비교에는 완료된 Take만 사용한다. 둘 미만이면 한 번 더 연습하자고 안내한다.',
+      '비교에는 완료된 Take만 사용한다. 둘 미만이면 한 번 더 연습하자고 안내한다. 1개라면 해당 리포트로 이동할 수 있다.',
+      '비교 표의 각 완료 Take에는 개별 리포트 보기 링크를 둔다. 주소는 /takes/:takeId를 사용한다.',
       '측정하지 않았거나 시선 엔진이 다른 Take는 —로 표시하고 비교하지 않는다. 말하기 속도는 높고 낮음으로 판정하지 않는다.',
       '기존 /pitch/:id/comparison 주소는 /takes?pitch=:id&view=compare로 리다이렉트한다.',
     ],
@@ -636,7 +637,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/shared/lib/takeStatus.ts',
     ],
     productNote:
-      '지표 비교의 두 Take 값은 예시다. 제품은 여러 Take를 가로 스크롤 차트와 표로 보여 준다. 샘플 지표 버튼은 제품과 같은 이름·방향을 사용한다.',
+      '지표 비교의 두 Take 값은 예시다. 제품은 여러 Take를 가로 스크롤 차트와 표로 보여 준다. 샘플 지표 버튼은 제품과 같은 이름·방향을 사용하며, 표의 각 리포트 보기에서 해당 Take 리포트로 이동한다.',
     productLinks: [
       link('기록 목록', '/takes'),
       link('한 피치의 지표 비교', '/takes?pitch=10000000-0000-4000-8000-000000000001&view=compare'),
