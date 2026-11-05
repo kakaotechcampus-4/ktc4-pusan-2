@@ -131,7 +131,7 @@ it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 �
   expect(rows).toHaveLength(2);
   for (const row of rows) {
     expect(row.querySelector('.w-28.shrink-0')?.textContent).toContain('Take 기록');
-    expect(row.querySelector('.w-20.shrink-0')).not.toBeNull();
+    expect(row.querySelector('.w-20.shrink-0')).toBeNull();
     expect(row.lastElementChild?.textContent?.trim()).toBe('발표 준비');
     const title = row.querySelector('a')!;
     const prepare = row.lastElementChild as HTMLAnchorElement;

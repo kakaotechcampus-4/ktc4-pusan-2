@@ -48,7 +48,7 @@ const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
   takes: 'takes',
   me: 'me',
   retry: null,
-  comparison: null,
+  comparison: 'takes',
   report: null,
   'pitch-create': null,
   'pitch-create-a': null,

@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { useParams } from 'react-router';
+import type { TakeHistoryRow } from '@/types/takeHistory';
 import { formatDuration } from '@/shared/lib/clock';
 import { isPitchMissing, useTakeHistory } from '@/shared/api/takeHistory';
 import { ButtonLink } from '@/shared/ui/Button';
@@ -43,9 +44,6 @@ const GAZE: MetricKey[] = ['audience_ratio', 'script_ratio'];
 export function ComparisonPage() {
   const { id = '' } = useParams();
   const history = useTakeHistory(id);
-  const [metric, setMetric] = useState<MetricKey>('audience_ratio');
-  const tabsId = useId();
-
   if (!history.data)
     return (
       <InfoPage title="Take 비교" logo={false}>
@@ -65,7 +63,17 @@ export function ComparisonPage() {
       </InfoPage>
     );
 
-  const rows = completedTakes(history.data.takes);
+  return (
+    <InfoPage title="Take 비교" logo={false}>
+      <TakeComparison rows={completedTakes(history.data.takes)} />
+    </InfoPage>
+  );
+}
+
+/** 기존 비교 차트·표는 데이터만 받아 통합 Take 기록에서도 그대로 재사용합니다. */
+export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
+  const [metric, setMetric] = useState<MetricKey>('audience_ratio');
+  const tabsId = useId();
   const latestEngine = latestGazeEngine(rows);
   const m = METRICS.find((x) => x.key === metric)!;
   // 오래된 Take부터 그립니다
@@ -74,7 +82,7 @@ export function ComparisonPage() {
   const offEngine = rows.filter((r) => r.gaze_engine !== null && gazeOffEngine(r, latestEngine));
 
   return (
-    <InfoPage title="Take 비교" logo={false}>
+    <>
       {rows[0] && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
           <p className="min-w-0 font-bold [overflow-wrap:anywhere]">{rows[0].pitch_title}</p>
@@ -84,7 +92,7 @@ export function ComparisonPage() {
 
       {rows.length < 2 ? (
         <Card>
-          <Mascot who="pico">비교하려면 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?</Mascot>
+          <Mascot who="pico">비교하려면 완료된 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?</Mascot>
         </Card>
       ) : (
         <>
@@ -267,6 +275,6 @@ export function ComparisonPage() {
           </Card>
         </>
       )}
-    </InfoPage>
+    </>
   );
 }
