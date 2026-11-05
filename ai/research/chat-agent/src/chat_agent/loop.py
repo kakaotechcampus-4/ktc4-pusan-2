@@ -34,7 +34,7 @@ from pydantic import ValidationError
 from . import actions as act
 from . import checks as chk
 from . import claims as clm
-from . import memory, prompts, templates
+from . import compose, memory, prompts, templates
 from .budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
 from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, finish_code
@@ -1228,11 +1228,15 @@ class Loop:
         ]
         tool_views = [json.loads(m["content"]) for m in self.st.messages if m.get("role") == "tool"]
         action_views = [m["content"] for m in self.st.messages if m.get("role") == "user"]
+        table = self._evidence_table()
         research_block = {
             "trace": research,
             "results": tool_views[-20:],
             "actions": action_views[-5:],
             "drafts": self.st.drafts,
+            # 맥락 구성(6-1 3번): 이번 턴에 읽은 근거 값 표와 질문별로 맞는 근거. 모델이 숫자 · 대상을 이 표에서 고르게 한다
+            "evidence_table": table,
+            "questions": self._question_checklist(table),
         }
         said = already_said if already_said is not None else [c["text"] for c in self.st.emitted]
         if said:
@@ -1260,6 +1264,61 @@ class Loop:
                 "llm_error": isinstance(res, LlmError) and not refused,
             }
         return {"failed": False, "draft": res.parsed, "messages": msgs}
+
+    def _evidence_table(self) -> list[dict[str, Any]]:
+        """이번 턴에 읽은 최신 기록 · 화면 근거를 한 줄씩(최대 40줄): id · Take · 장 · 무엇(지표 · 문제 이름) · 화면 표기 값."""
+        reg = self.ctx.registry
+        rows: list[dict[str, Any]] = []
+        for eid, ev in reg.items.items():
+            if not reg.is_current(eid) or ev.origin == "COMPUTED":
+                continue
+            if ev.metric:
+                what = compose.metric_label(ev.metric)
+            elif ev.path.endswith(".issue_type") and isinstance(ev.value, str):
+                what = "문제 구간: " + clm.ISSUE_LABEL.get(ev.value, ev.value)
+            else:
+                what = ev.path.rsplit(".", 1)[-1]
+            rows.append(
+                {
+                    "id": eid,
+                    "take": ev.take_number,
+                    "slide": ev.slide_number,
+                    "what": what,
+                    "value": compose.value_display(self.ctx, ev),
+                    **({"saved": ev.saved} if ev.origin == "SCREEN" else {}),
+                }
+            )
+        return rows[-40:]
+
+    def _question_checklist(self, table: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """판단 초안(기록 질문 · 주장)마다 그 대상(Take · 장 · 지표 · 차원)에 맞는 근거 id. 답이 질문을 빠뜨리지 않게 한다."""
+        out: list[dict[str, Any]] = []
+        num_of = {tid: s.take_number for tid, s in self.ctx.summaries.items()}
+        for d in self.st.drafts:
+            if d.get("type") not in ("MEASURED", "REQUEST"):
+                continue
+            sub = d.get("subject") or {}
+            takes = set(sub.get("take_numbers") or []) | {
+                num_of[t] for t in sub.get("take_ids") or [] if t in num_of
+            }
+            slide = sub.get("slide_number")
+            metrics: set[str] = set()
+            if sub.get("metric"):
+                metrics.add(sub["metric"])
+            elif sub.get("dimension") in self.cfg.dimensions:
+                metrics |= set(self.cfg.dimensions[sub["dimension"]].metrics)
+            if not (takes or slide or metrics):
+                continue
+            labels = {compose.metric_label(m) for m in metrics}
+            ids = [
+                r["id"]
+                for r in table
+                if (not takes or r["take"] in takes)
+                and (slide is None or r["slide"] == slide)
+                and (not labels or r["what"] in labels or r["what"].startswith("문제 구간"))
+            ]
+            out.append({"quote": d.get("quote"), "evidence_ids": ids[:8]})
+        return out
 
     def fix_call(
         self,

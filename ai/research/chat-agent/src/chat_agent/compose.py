@@ -130,6 +130,12 @@ def not_comparable_sentence(rec: dict[str, Any]) -> str:
         return f"Take {a} · Take {b} 기록은 {_NC_PAIR[reason]} {what} 비교할 수 없어요."
     fixed = _NC_FIXED.get(reason or "")
     return fixed.value if fixed is not None else templates.SystemText.NOT_COMPARABLE.value
+def value_display(ctx: Any, ev: Any) -> str | None:
+    """근거 값을 화면 표기로(숫자 지표는 단위 · 자리수, 글 값은 그대로)."""
+    shown = _num_display(ctx, ev)
+    if shown is not None:
+        return shown
+    return ev.value if isinstance(ev.value, str) else None
 
 
 def topic(word: str) -> str:
