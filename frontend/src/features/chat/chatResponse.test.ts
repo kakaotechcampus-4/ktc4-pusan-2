@@ -1,5 +1,5 @@
 import { setupServer } from 'msw/node';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/mocks/auth', () => ({ currentMockUserId: () => null }));
 import { createChatHandlers } from '@/mocks/chat';
 import { readJsonWithin, ResponseTooLargeError } from '@/shared/api/client';
@@ -13,16 +13,19 @@ import type {
   RunView,
   SendMessageAccepted,
 } from '@/types/chat';
+import { chatApi, fetchMessages } from './chatApi';
 import {
   chipLabel,
   chipsFor,
   createRunReader,
   emptyBasis,
+  errorText,
   MAX_RESPONSE_BYTES,
   readCard,
   readMessage,
   readPlan,
   readTrace,
+  shouldRefetch,
   type Basis,
 } from './chatResponse';
 
@@ -594,5 +597,104 @@ describe('목 시나리오를 응답 검사로 읽기', () => {
     expect([reader.error, answer.error]).toEqual(['UNKNOWN_KIND', 'UNKNOWN_KIND']);
     expect(answer.claims.map((c) => c.kind)).toEqual(['RECORD']);
     expect(answer.cards).toEqual([]);
+  });
+});
+
+// ── 점검 반영 ─────────────────────────────────────────────────
+
+describe('오류 안내 · 다시 읽기 (L3-23 · L3-24)', () => {
+  it('비었으면 "지금은 답을 만들지 못했어요." 와 다시 읽기, 검사 실패는 근거 안내만', () => {
+    expect([errorText('EMPTY_ANSWER'), shouldRefetch('EMPTY_ANSWER')]).toEqual([
+      '지금은 답을 만들지 못했어요.',
+      true,
+    ]);
+    expect(shouldRefetch('TEXT_MISMATCH')).toBe(true);
+    for (const error of ['UNKNOWN_KIND', 'BAD_CLAIM', 'INDEX_GAP'] as const)
+      expect([errorText(error), shouldRefetch(error)]).toEqual([
+        '답의 근거를 확인하지 못했으니 다시 물어봐 주세요.',
+        false,
+      ]);
+    expect(shouldRefetch(null)).toBe(false);
+  });
+});
+
+describe('계약 오류 뒤의 카드', () => {
+  const goal = { version: 1, metric: 'audience_ratio', operator: 'gt_base' };
+  const saved = {
+    type: 'GOAL_SAVED',
+    action_id: 'a',
+    goal,
+    reason: '',
+    evidence_ids: [],
+    undo: true,
+  };
+  const practice = { type: 'START_PRACTICE', pitch_id: '10000000-0000-4000-8000-000000000001' };
+  const proposal = {
+    type: 'GOAL_PROPOSAL',
+    proposal_id: 'p',
+    options: [{ label: 'USER', goal: null, reason: '', evidence_ids: [], content_hash: null }],
+  };
+
+  it('이미 일어난 결과(목표 저장됨)는 남기고, 새 행동을 부르는 카드 · 대체 표시는 뺀다', () => {
+    const answer = readMessage(
+      message({
+        claims: [claim('SYSTEM', '앞'), claim('FUTURE', '모름')],
+        text: '앞\n모름',
+        cards: [saved, practice, proposal, { type: 'FUTURE_CARD' }],
+      }),
+    );
+    expect(answer.error).toBe('UNKNOWN_KIND');
+    expect(answer.cards.map((c) => c.ok && c.card.type)).toEqual(['GOAL_SAVED']);
+  });
+
+  it('실행 중에도 같다 — 승인 확인은 막고 결과 카드는 남긴다', () => {
+    const reader = createRunReader();
+    reader.add([claimEvent(1, 1, { claim: claim('SYSTEM', '건너뜀') })]);
+    const ask = {
+      type: 'ASK_CONFIRM',
+      action_id: 'a-1',
+      action_type: 'SAVE_GOAL',
+      title: '저장할까요?',
+      summary: '',
+      before: null,
+      after: {},
+      notes: [],
+      expires_at: '2026-11-05T00:10:00Z',
+      args_hash: 'h',
+    };
+    expect(reader.cards([ask, saved]).map((c) => c.ok && c.card.type)).toEqual(['GOAL_SAVED']);
+  });
+});
+
+describe('대화 API 의 크기 제한 연결 (L3-22)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const huge = () => new Response(JSON.stringify({ pad: 'x'.repeat(MAX_RESPONSE_BYTES) }));
+
+  it('실행 조회 · 대화의 실행 조회 · 취소 · 메시지 목록이 2 MiB 를 넘으면 처리하지 않는다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(huge())),
+    );
+    for (const call of [
+      () => chatApi.run('r-1', 0),
+      () => chatApi.conversationRun('c-1'),
+      () => chatApi.cancel('r-1'),
+      () => fetchMessages('c-1'),
+    ])
+      await expect(call()).rejects.toBeInstanceOf(ResponseTooLargeError);
+  });
+
+  it('메시지 목록은 before_seq 로 앞 페이지를 읽는다', async () => {
+    const fetchMock = vi.fn((_url: string) =>
+      Promise.resolve(Response.json({ messages: [], next_before_seq: null })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchMessages('c-1', 31);
+    await fetchMessages('c-1');
+    // 앞의 API 주소(VITE_API_BASE)는 환경마다 달라 경로만 봅니다
+    expect(fetchMock.mock.calls.map(([url]) => url.slice(url.indexOf('/api/')))).toEqual([
+      '/api/chat/conversations/c-1/messages?before_seq=31',
+      '/api/chat/conversations/c-1/messages',
+    ]);
   });
 });

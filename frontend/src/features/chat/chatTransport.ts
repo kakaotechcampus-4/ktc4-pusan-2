@@ -1,8 +1,17 @@
 import { ResponseTooLargeError } from '@/shared/api/client';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { isTerminalRun } from '@/shared/lib/chatAgent';
-import type { Card, PlanStep, RunEvent, RunStatus, RunView, TraceItem } from '@/types/chat';
+import type { PlanStep, RunEvent, RunStatus, RunView, TraceItem } from '@/types/chat';
 import { chatApi, type ChatApi } from './chatApi';
+import {
+  createRunReader,
+  readPlan,
+  readTrace,
+  type ContractError,
+  type RunReader,
+  type ShownCard,
+  type ShownClaim,
+} from './chatResponse';
 import {
   chatTicket,
   isCurrent,
@@ -34,18 +43,28 @@ import {
 
 /** 화면이 받는 신호 */
 export type TransportSignal =
-  /** 새로 받은 진행 줄 · 문장 줄과 지금 실행 모습 */
+  /**
+   * 새로 받은 진행 줄 · 문장 줄과 지금 실행 모습 — 모두 응답 검사(`chatResponse`)를 거친 값입니다.
+   * 화면은 `claims` 를 차례로 그리고, `contractError` 가 있으면 그 안내를 붙입니다
+   */
   | {
       type: 'progress';
       runId: string;
       conversationId: string;
       status: RunStatus;
+      /** 받은 줄 그대로(순번순) — 검사 전 값이라 그리지 않습니다 */
       events: RunEvent[];
-      /** 아직 진행이 없으면 null (BE) */
+      /** 새로 그릴 문장 — 같은 문장은 한 번만, 계약 오류 뒤의 문장은 빠집니다 */
+      claims: ShownClaim[];
+      /** 이 실행에서 난 계약 오류. 한 번 나면 끝날 때까지 그대로 */
+      contractError: ContractError | null;
+      /** 아직 진행이 없으면 null (BE). 깨진 항목은 빠집니다 */
       plan: PlanStep[] | null;
       trace: TraceItem[] | null;
-      /** 승인 대기 중 카드 */
-      cards: Card[];
+      /** 깨진 진행 항목을 뺐음 — "일부 진행 정보를 표시하지 못했어요." */
+      progressDropped: boolean;
+      /** 승인 대기 중 카드 — 모르는 카드는 대체 표시, 계약 오류 뒤에는 행동 카드가 빠집니다 */
+      cards: ShownCard[];
     }
   /** 실행이 끝남 — 화면은 메시지 목록을 다시 읽습니다 */
   | {
@@ -240,6 +259,11 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   let idleDelay = 0;
   /** 곧바로 다시 읽기를 잇달아 한 횟수 — 건너뛴 순번이 메워지지 않거나 다음 커서가 끝없이 와도 멈추지 않게 */
   let rereads = 0;
+  /**
+   * 실행마다 문장 읽기 — 커서와 수명을 같이 합니다. 읽기가 없는 실행을 지켜보기 시작하면(새 통신 계층 ·
+   * 다시 연 화면) 커서를 처음으로 되감아, 앞 문장부터 다시 받고 순번이 0부터 이어지게 합니다
+   */
+  const readers = new Map<string, RunReader>();
   /** 마지막으로 알린 계획 · 진행 기록 — 이벤트가 없어도(BE 커서 미구현) 진행 패널이 바뀌게 */
   let lastShape: string | null = null;
   /** 실행마다 잰 시간. 승인 대기 시간은 뺍니다(12-3 "대기한 시간은 실행의 120초에서 뺀다") */
@@ -297,11 +321,16 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     idleDelay = 0;
     rereads = 0;
     lastShape = null;
+    if (!readers.has(runId)) {
+      readers.set(runId, createRunReader());
+      store().rewindCursor(runId);
+    }
   };
 
   const forget = (runId: string) => {
     runClocks.delete(runId);
     slowNotified.delete(runId);
+    readers.delete(runId);
   };
 
   /** 승인 대기를 뺀 실행 시간 — 이번 상태를 반영해 셉니다 */
@@ -400,19 +429,32 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       store().advanceCursor(run.runId, last.event_seq);
       rereads = 0;
     }
+    // 지켜보기 전에 응답이 먼저 온 실행도 읽기를 갖게 합니다(되감기는 하지 않음 — 이미 처음부터 받는 중)
+    let reader = readers.get(run.runId);
+    if (!reader) {
+      reader = createRunReader();
+      readers.set(run.runId, reader);
+    }
+    const errorBefore = reader.error;
+    const claims = reader.add(taken);
+    const plan = readPlan(view.plan);
+    const trace = readTrace(view.trace);
     const shape = JSON.stringify([view.plan, view.trace]);
     const shapeChanged = shape !== lastShape && (view.plan !== null || view.trace !== null);
     lastShape = shape;
-    if (taken.length > 0 || view.cards.length > 0 || shapeChanged)
+    if (taken.length > 0 || view.cards.length > 0 || shapeChanged || reader.error !== errorBefore)
       emit({
         type: 'progress',
         runId: run.runId,
         conversationId: run.conversationId,
         status: view.status,
         events: taken,
-        plan: view.plan,
-        trace: view.trace,
-        cards: view.cards,
+        claims,
+        contractError: reader.error,
+        plan: view.plan === null ? null : plan.items,
+        trace: view.trace === null ? null : trace.items,
+        progressDropped: plan.dropped || trace.dropped,
+        cards: reader.cards(view.cards),
       });
     // 건너뛴 순번 · 나눠 보낸 나머지는 같은 커서로 곧바로 다시 읽습니다(L3-46) — 잇달아 몇 번까지만
     const more = gap || view.next_after_seq !== null;

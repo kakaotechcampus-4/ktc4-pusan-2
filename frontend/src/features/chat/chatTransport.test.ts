@@ -736,12 +736,10 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
     await clock.advance(200_000);
     expect(of('slow')).toHaveLength(0);
 
+    // 진행 신호의 카드는 응답 검사를 거친 값 — 그려도 되는 카드만 card 를 갖습니다
     const ask = of('progress')
       .flatMap((s) => s.cards)
-      .find((c) => c.type === 'ASK_CONFIRM') as Extract<
-      RunView['cards'][number],
-      { type: 'ASK_CONFIRM' }
-    >;
+      .flatMap((c) => (c.ok && c.card.type === 'ASK_CONFIRM' ? [c.card] : []))[0]!;
     await call(
       chatPaths.decision(ask.action_id),
       json('POST', { decision: 'APPROVE', args_hash: ask.args_hash }),
@@ -877,7 +875,7 @@ const beRun = (
 describe('BE #933 모양의 실행 조회', () => {
   it('이벤트 칸이 없어도 형식 오류가 아니다 — 계획이 바뀔 때만 진행을 알리고, 끝나면 끝남을 알린다', async () => {
     let polls = 0;
-    const plan = [{ step: 'READ_RECORD', status: 'RUNNING' }];
+    const plan = [{ step: '기록 읽기', status: 'DOING', note: null }];
     start({
       run: async (runId) => {
         polls += 1;
@@ -891,7 +889,9 @@ describe('BE #933 모양의 실행 조회', () => {
     await untilEnded();
     expect(of('pollTrouble')).toEqual([]);
     // 계획이 처음 생긴 한 번만 — 같은 계획을 다시 받으면 알리지 않습니다
-    expect(of('progress')).toMatchObject([{ events: [], plan, trace: null, cards: [] }]);
+    expect(of('progress')).toMatchObject([
+      { events: [], claims: [], plan, trace: null, cards: [], progressDropped: false },
+    ]);
     expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
     expect(store().run).toBeNull();
   });
@@ -991,5 +991,68 @@ describe('보내기 키', () => {
     expect(sent[0]).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+  });
+});
+
+// ── 응답 검사 연결 (4단계 점검) ─────────────────────────────
+
+describe('진행 신호의 문장 읽기', () => {
+  const claimsOf = () => of('progress').flatMap((s) => s.claims);
+
+  it('실행 중에 통신 계층을 새로 만들어도 문장을 처음부터 다시 받아 순번 오류가 나지 않는다', async () => {
+    await sendNow(draft());
+    for (let i = 0; i < 30 && claimsOf().length < 2; i++) await clock.advance(1_000);
+    expect(claimsOf().length).toBeGreaterThan(0);
+    expect(store().run!.afterSeq).toBeGreaterThan(0);
+
+    // 팝업을 다시 열어 통신 계층이 새로 생김 — 저장소의 커서는 남아 있습니다
+    signals.length = 0;
+    start();
+    transport.resume();
+    await flush();
+    await untilEnded();
+    expect(of('progress').map((s) => s.contractError)).not.toContain('INDEX_GAP');
+    expect(claimsOf().map((c) => c.index)).toEqual([0, 1, 2, 3]);
+    expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
+  });
+
+  it('같은 통신 계층이 대화를 다시 조회해 같은 실행을 이어 가면 되감지 않는다', async () => {
+    await sendNow(draft());
+    for (let i = 0; i < 30 && claimsOf().length < 2; i++) await clock.advance(1_000);
+    const seen = claimsOf().length;
+    const conversationId = store().conversationId!;
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    await untilEnded();
+    // 같은 문장을 두 번 그리지 않습니다
+    expect(claimsOf().map((c) => c.index)).toEqual([0, 1, 2, 3]);
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('모르는 종류의 문장이 오면 계약 오류를 알리고 그 뒤 문장은 보내지 않는다', async () => {
+    await sendNow(draft('모르는 문장'));
+    await untilEnded();
+    expect(claimsOf().map((c) => c.kind)).toEqual(['RECORD']);
+    expect(of('progress').at(-1)!.contractError).toBe('UNKNOWN_KIND');
+    expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
+  });
+
+  it('깨진 할 일 항목은 빼고 알린다', async () => {
+    start({
+      run: async (runId) => ({
+        run_id: runId,
+        conversation_id: store().run!.conversationId,
+        status: 'RUNNING',
+        plan: [{ step: '비교', status: 'DOING', note: null }, { step: '' }],
+        trace: null,
+        error: null,
+        retry_after_s: null,
+      }),
+    });
+    await sendNow(draft());
+    expect(of('progress')).toMatchObject([
+      { plan: [{ step: '비교' }], trace: null, progressDropped: true },
+    ]);
   });
 });

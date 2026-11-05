@@ -18,8 +18,9 @@ import type {
  *
  * 걸렸을 때 두 갈래입니다.
  * - **칩만 버림** — 문장은 멀쩡한데 가리키는 근거 · 자료가 없거나 깨졌으면 그 칩만 만들지 않습니다(L3-24 "누락된 칩을 만들지 않는다").
- * - **계약 오류** — 문장 자체가 깨졌거나 모르는 종류(`kind`)면, 그 앞 문장은 두고 그 문장부터 뒤의 문장 · 카드(행동)를 막고
- *   "답의 근거를 확인하지 못했으니 다시 물어봐 주세요." 를 붙입니다(L3-24 · L3-42).
+ * - **계약 오류** — 문장 자체가 깨졌거나 모르는 종류(`kind`)면, 그 앞 문장은 두고 그 문장부터 뒤의 문장과
+ *   새 행동을 부르는 카드를 막고 안내를 붙입니다(L3-24 · L3-42). 이미 일어난 결과(목표 저장됨 등)의 카드는 그대로 둡니다.
+ *   안내 문구와 메시지 목록을 다시 읽을지는 `errorText` · `shouldRefetch` 가 정합니다.
  */
 
 /** 실행 조회 · 메시지 목록 응답의 크기 상한 (L3-22). 넘으면 처리하지 않습니다 */
@@ -318,6 +319,19 @@ export type ContractError =
   | 'EMPTY_ANSWER';
 
 export const CONTRACT_ERROR_TEXT = '답의 근거를 확인하지 못했으니 다시 물어봐 주세요.';
+/** 끝난 답이 비었거나 손상됨 (L3-23) */
+export const ANSWER_FAILED_TEXT = '지금은 답을 만들지 못했어요.';
+
+/** 오류 안내 — 답이 비었으면 L3-23, 그 밖의 검사 실패는 L3-24 · L3-42 문구 */
+export const errorText = (error: ContractError) =>
+  error === 'EMPTY_ANSWER' ? ANSWER_FAILED_TEXT : CONTRACT_ERROR_TEXT;
+
+/**
+ * 메시지 목록을 한 번 다시 읽을지 — 저장된 답 자체가 비었거나 글과 문장이 어긋난 손상일 때만(L3-23 "목록 재조회 1회").
+ * 다시 읽어도 같으면 그대로 안내합니다. 몇 번 읽었는지는 화면이 셉니다
+ */
+export const shouldRefetch = (error: ContractError | null) =>
+  error === 'EMPTY_ANSWER' || error === 'TEXT_MISMATCH';
 export const PROGRESS_DROPPED_TEXT = '일부 진행 정보를 표시하지 못했어요.';
 export const GENERAL_LABEL = '일반 조언 · 기록과 자료로 확인한 것이 아니에요';
 
@@ -441,6 +455,16 @@ export function readCard(v: unknown, basis: Basis): ShownCard {
   return { ok: true, card, chips, optionChips };
 }
 
+/**
+ * 새 행동을 부르는 카드 — 계약 오류 뒤에는 막습니다("오류 뒤의 출력 · 행동만 막는다").
+ * 목표 저장됨 · 목표 확인 결과 · 참고 결과 · 기억했어요는 이미 일어난 결과라 그대로 보여, [되돌리기]도 남깁니다
+ */
+const ACTION_CARDS: readonly string[] = ['ASK_CONFIRM', 'GOAL_PROPOSAL', 'START_PRACTICE'];
+
+/** 계약 오류 뒤에 남길 카드 — 읽을 수 있는 결과 카드만 */
+const afterError = (cards: ShownCard[]) =>
+  cards.filter((c) => c.ok && !ACTION_CARDS.includes(c.card.type));
+
 export function readCards(v: unknown, basis: Basis): ShownCard[] {
   if (v === null || v === undefined) return [];
   if (!Array.isArray(v)) return [{ ok: false, type: null }];
@@ -452,7 +476,7 @@ export function readCards(v: unknown, basis: Basis): ShownCard[] {
 /** 그려도 되는 답 */
 export interface ShownAnswer {
   claims: ShownClaim[];
-  /** 계약 오류면 비어 있습니다 — 오류 뒤의 행동은 막습니다 */
+  /** 계약 오류면 새 행동을 부르는 카드는 빠지고 결과 카드만 남습니다 */
   cards: ShownCard[];
   error: ContractError | null;
   basis: Basis;
@@ -482,7 +506,8 @@ export function readMessage(message: ChatMessage): ShownAnswer {
   if (!error && list.length === 0 && message.status === 'DONE') error = 'EMPTY_ANSWER';
   if (!error && list.length > 0 && message.text !== claims.map((c) => c.text).join('\n'))
     error = 'TEXT_MISMATCH';
-  return { claims, cards: error ? [] : readCards(message.cards, basis), error, basis };
+  const cards = readCards(message.cards, basis);
+  return { claims, cards: error ? afterError(cards) : cards, error, basis };
 }
 
 // ── 실행 중에 받는 문장 줄 (L3-46) ─────────────────────────────
@@ -494,7 +519,7 @@ export function readMessage(message: ChatMessage): ShownAnswer {
 export interface RunReader {
   /** 새로 그릴 문장 — 이미 받은 것 · 오류 뒤의 것은 빠집니다 */
   add: (events: readonly RunEvent[]) => ShownClaim[];
-  /** 대기 카드 — 계약 오류 뒤에는 행동을 막아 비웁니다 */
+  /** 대기 카드 — 계약 오류 뒤에는 새 행동을 부르는 카드를 막습니다 */
   cards: (v: unknown) => ShownCard[];
   readonly error: ContractError | null;
   readonly basis: Basis;
@@ -531,7 +556,7 @@ export function createRunReader(): RunReader {
       }
       return shown;
     },
-    cards: (v) => (error ? [] : readCards(v, basis)),
+    cards: (v) => (error ? afterError(readCards(v, basis)) : readCards(v, basis)),
     get error() {
       return error;
     },
