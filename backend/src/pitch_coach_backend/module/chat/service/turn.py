@@ -12,6 +12,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatDiagnostic,
     ChatMessage,
     ChatRun,
+    ChatRunEvent,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
@@ -55,11 +56,20 @@ def save_progress(db: Session, run: ClaimedRun, turn_call: int, line: StreamLine
     row = lock_current(db, run)
     if row is None:
         return False
+    repo = ChatRepository(db)
+    repo.add(
+        ChatRunEvent(
+            run_id=row.id,
+            event_seq=repo.next_event_seq(row.id),
+            event=line.event,
+            data=line.data,
+        )
+    )
     row.progress_turn_call = turn_call
     row.progress_seq = line.seq
     if line.event == "plan":
         row.plan = line.data.get("plan")
-    else:
+    elif line.event == "tool_done":
         row.trace = [*(row.trace or []), line.data.get("trace")]
     db.commit()
     return True

@@ -29,7 +29,7 @@ class _View(BaseModel):
 
 
 class StreamLine(_View):
-    event: Literal["plan", "tool_done", "final", "error"]
+    event: Literal["plan", "tool_done", "claim", "final", "error"]
     run_id: str
     seq: int = Field(ge=1)
     data: dict[str, Any]

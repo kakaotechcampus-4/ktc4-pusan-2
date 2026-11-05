@@ -102,7 +102,7 @@ async def _read(response: httpx.Response, run_id: str, on_progress: OnProgress) 
     reader = StreamReader(run_id)
     async for chunk in response.aiter_bytes():
         for line in reader.feed(chunk):
-            if line.event in ("plan", "tool_done"):
+            if line.event in ("plan", "tool_done", "claim"):
                 await on_progress(line)
     return reader.finish()
 

@@ -334,3 +334,20 @@ class ChatDiagnostic(UUIDPrimaryKeyMixin, Base):
     request_id: Mapped[str] = mapped_column(String(64), nullable=False)
     diagnostics: Mapped[Any] = mapped_column(JSONB, nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ChatRunEvent(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    __tablename__ = "chat_run_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "event_seq", name="uq_chat_run_events_run_seq"),
+        CheckConstraint(
+            "event IN ('plan', 'tool_done', 'claim')", name="check_chat_run_event_event"
+        ),
+    )
+
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    event_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    event: Mapped[str] = mapped_column(String(10), nullable=False)
+    data: Mapped[Any] = mapped_column(JSONB, nullable=False)

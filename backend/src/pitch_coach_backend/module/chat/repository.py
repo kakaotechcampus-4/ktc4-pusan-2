@@ -15,6 +15,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatLease,
     ChatMessage,
     ChatRun,
+    ChatRunEvent,
 )
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSlideEvent
@@ -128,6 +129,12 @@ class ChatRepository:
     def next_message_seq(self, conversation_id: uuid.UUID) -> int:
         last = self.db.scalar(
             select(func.max(ChatMessage.seq)).where(ChatMessage.conversation_id == conversation_id)
+        )
+        return (last or 0) + 1
+
+    def next_event_seq(self, run_id: uuid.UUID) -> int:
+        last = self.db.scalar(
+            select(func.max(ChatRunEvent.event_seq)).where(ChatRunEvent.run_id == run_id)
         )
         return (last or 0) + 1
 
