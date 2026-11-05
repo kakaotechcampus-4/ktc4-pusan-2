@@ -84,11 +84,12 @@ function ChatLayer() {
 
   return (
     <SignedInOnly>
-      {/* 런처는 아래 가운데에 둡니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 오른쪽 아래에 두면
-          홈 바닥글 · 리포트 끝 버튼처럼 오른쪽에 붙은 컨트롤을 가리고, 왼쪽 아래도 리포트 끝 버튼에 닿습니다.
-          아래 가운데는 허용 화면 어디에서도 클릭할 것이 없는 자리입니다 (1366×650 · 1920×950 · 125% 확대에서 잼) */}
-      <div className="light-surface fixed bottom-4 left-1/2 z-[70] -translate-x-1/2 text-ink">
-        {/* 패널은 상단바(--spacing-app-header) 아래에서 멈춥니다. 5.25rem = 런처 자리(아래 1rem + 높이 2.75rem) + 위아래 간격 0.75rem 둘.
+      {/* 런처는 오른쪽 아래 구석의 44px 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 구석에 붙여도
+          홈 바닥글 "개인정보 처리방침" 끝 글자처럼 오른쪽에 붙은 컨트롤에 조금 닿지만, 가려진 컨트롤도 그대로 눌립니다
+          (1366×650 · 1920×950 · 125% 확대에서 잼, #941 리뷰) */}
+      <div className="light-surface fixed bottom-2 right-2 z-[70] text-ink">
+        {/* 패널은 런처 위 오른쪽에 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
+            4.75rem = 런처 자리(아래 0.5rem + 높이 2.75rem) + 위아래 간격 0.75rem 둘.
             낮은 창에서는 높이가 줄고 메시지 목록만 스크롤되며, 입력칸과 버튼은 늘 보입니다 */}
         {open && (
           <section
@@ -102,7 +103,7 @@ function ChatLayer() {
                 close();
               }
             }}
-            className="absolute bottom-full left-1/2 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-5.25rem)] w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
+            className="absolute bottom-full right-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-4.75rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
           >
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-strong px-5 py-3">
               <div>
@@ -181,7 +182,9 @@ function ChatLayer() {
           aria-expanded={open}
           aria-controls={`${id}-panel`}
           onClick={() => (open ? close() : setOpen(true))}
-          className="flex h-11 items-center gap-2 whitespace-nowrap rounded-full border-2 border-ink bg-coral-deep px-4 text-sm font-bold text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
+          aria-label="채팅 에이전트"
+          title="채팅 에이전트"
+          className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-coral-deep text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
         >
           <svg
             aria-hidden="true"
@@ -190,7 +193,6 @@ function ChatLayer() {
           >
             <path d="M3 4h14v9H8l-4 3v-3H3z" strokeLinejoin="round" />
           </svg>
-          채팅 에이전트
         </button>
       </div>
     </SignedInOnly>
