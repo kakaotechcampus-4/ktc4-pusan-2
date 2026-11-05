@@ -30,6 +30,7 @@ import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { HomePage } from '@/features/pitch/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
+import { AppShell } from './AppShell';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -169,4 +170,6 @@ export const appRoutes = screenRoutes.map((route) =>
     ? { ...route, element: <DesktopGate>{route.element}</DesktopGate> }
     : route,
 );
-export const router = createBrowserRouter(appRoutes);
+// One persistent layout above all screens: chat state survives navigation, while
+// each child keeps its existing authentication and device guards.
+export const router = createBrowserRouter([{ element: <AppShell />, children: appRoutes }]);
