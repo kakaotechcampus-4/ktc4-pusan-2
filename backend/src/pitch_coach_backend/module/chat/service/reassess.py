@@ -138,7 +138,7 @@ def finish_reassess(
     review = repo.list_ai_results(prepared.take_id, ["REVIEW"])
     if (
         replies is None
-        or digest(prepared.before) != prepared.before_digest
+        or _request_changed(db, prepared)
         or replies[0]["meta"].get("criteria_versions")
         != replies[1]["meta"].get("criteria_versions")
         or not review
@@ -157,3 +157,11 @@ def finish_reassess(
     saved.source_take_ids = [str(prepared.take_id)]
     db.commit()
     return result
+
+
+def _request_changed(db: Session, prepared: PreparedReassess) -> bool:
+    try:
+        current = build_review_request(db, prepared.take_id).model_dump(mode="json")
+    except ValueError, NonExistentTake:
+        return True
+    return digest(current) != prepared.before_digest
