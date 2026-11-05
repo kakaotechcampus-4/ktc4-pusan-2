@@ -1,10 +1,10 @@
 """대화 API(화면 ↔ BE) 가 읽고 쓰는 쿼리. AI 턴 실행 쪽 쿼리는 repository.py 에 있다."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, select, update
+from sqlalchemy import Row, Select, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -14,9 +14,18 @@ from pitch_coach_backend.module.chat.entity import (
     ChatDailyUsage,
     ChatMessage,
     ChatRun,
+    ChatRunEvent,
 )
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take
+
+# 한 주기에 끝낼 승인 대기 수. 남은 건은 다음 주기에 고른다
+OVERDUE_LIMIT = 100
+
+
+def _locked(stmt: Select) -> Select:
+    # 잠금을 기다리는 사이 바뀐 값을 읽는다. 세션이 앞서 읽은 값을 그대로 두면 낡은 상태로 판단한다
+    return stmt.with_for_update().execution_options(populate_existing=True)
 
 
 class ChatApiRepository:
@@ -37,7 +46,7 @@ class ChatApiRepository:
         stmt = select(ChatConversation).where(
             ChatConversation.id == conversation_id, ChatConversation.user_id == user_id
         )
-        return self.db.scalar(stmt.with_for_update() if lock else stmt)
+        return self.db.scalar(_locked(stmt) if lock else stmt)
 
     def list_conversations(
         self, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, limit: int
@@ -57,7 +66,7 @@ class ChatApiRepository:
         self, run_id: uuid.UUID, user_id: uuid.UUID, *, lock: bool = False
     ) -> ChatRun | None:
         stmt = select(ChatRun).where(ChatRun.id == run_id, ChatRun.user_id == user_id)
-        return self.db.scalar(stmt.with_for_update() if lock else stmt)
+        return self.db.scalar(_locked(stmt) if lock else stmt)
 
     def latest_run(self, conversation_id: uuid.UUID) -> ChatRun | None:
         return self.db.scalar(
@@ -65,6 +74,83 @@ class ChatApiRepository:
             .where(ChatRun.conversation_id == conversation_id)
             .order_by(ChatRun.accepted_at.desc(), ChatRun.id.desc())
             .limit(1)
+        )
+
+    def list_run_events(
+        self, run_id: uuid.UUID, *, after_seq: int, limit: int
+    ) -> list[ChatRunEvent]:
+        return list(
+            self.db.scalars(
+                select(ChatRunEvent)
+                .where(ChatRunEvent.run_id == run_id, ChatRunEvent.event_seq > after_seq)
+                .order_by(ChatRunEvent.event_seq)
+                .limit(limit)
+            )
+        )
+
+    def latest_answers(self, conversation_ids: list[uuid.UUID]) -> list[ChatMessage]:
+        """대화마다 마지막 에이전트 답. 목록의 '최신 아님' 표시에 쓴다."""
+        if not conversation_ids:
+            return []
+        return list(
+            self.db.scalars(
+                select(ChatMessage)
+                .where(
+                    ChatMessage.conversation_id.in_(conversation_ids),
+                    ChatMessage.role == "assistant",
+                )
+                .distinct(ChatMessage.conversation_id)
+                .order_by(ChatMessage.conversation_id, ChatMessage.seq.desc())
+            )
+        )
+
+    def lock_conversation_of(self, run: ChatRun) -> ChatConversation | None:
+        return self.get_owned_conversation(run.conversation_id, run.user_id, lock=True)
+
+    def active_run(self, conversation_id: uuid.UUID) -> ChatRun | None:
+        """끝나지 않은 실행(대화마다 하나). 앞서 읽은 값이 있어도 지금 값으로 다시 읽는다."""
+        return self.db.scalar(
+            select(ChatRun)
+            .where(
+                ChatRun.conversation_id == conversation_id,
+                ChatRun.status.in_(("QUEUED", "RUNNING", "WAITING_APPROVAL")),
+            )
+            .limit(1)
+            .execution_options(populate_existing=True)
+        )
+
+    def overdue_waiting_run_ids(self, started_before: datetime) -> list[uuid.UUID]:
+        return list(
+            self.db.scalars(
+                select(ChatRun.id)
+                .where(
+                    ChatRun.status == "WAITING_APPROVAL",
+                    ChatRun.approval_started_at <= started_before,
+                )
+                .order_by(ChatRun.approval_started_at)
+                .limit(OVERDUE_LIMIT)
+            )
+        )
+
+    def list_claim_events(self, run_id: uuid.UUID) -> list[dict[str, Any]]:
+        """이 실행에서 이미 낸 문장 줄의 내용. 순번순이다."""
+        return list(
+            self.db.scalars(
+                select(ChatRunEvent.data)
+                .where(ChatRunEvent.run_id == run_id, ChatRunEvent.event == "claim")
+                .order_by(ChatRunEvent.event_seq)
+            )
+        )
+
+    def waiting_action(self, run_id: uuid.UUID) -> ChatAction | None:
+        """승인 · 거절을 기다리는 행동. 승인 대기는 한 번에 하나다."""
+        return self.db.scalar(
+            select(ChatAction).where(
+                ChatAction.run_id == run_id,
+                ChatAction.autonomy == "ASK",
+                ChatAction.status == "PENDING",
+                ChatAction.approved.is_(None),
+            )
         )
 
     def action_source_take_ids(self, run_id: uuid.UUID) -> list[Any]:

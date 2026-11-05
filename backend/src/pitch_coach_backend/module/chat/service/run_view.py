@@ -3,41 +3,51 @@
 AI 의 실행 상태(`state`, 서명 포함)는 화면에 보내지 않는다. 화면은 run_id · action_id 만 다룬다.
 """
 
+import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.chat.api_dto import RunErrorDTO, RunStatusResponse
+from pitch_coach_backend.module.chat.api_dto import (
+    RunErrorDTO,
+    RunEventDTO,
+    RunStatusResponse,
+)
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.exception import ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.conversation import current_sources
+from pitch_coach_backend.module.chat.service.conversation import owned_sources
 from pitch_coach_backend.module.chat.service.run import SEOUL, add_run_log
 from pitch_coach_backend.module.chat.service.stale import uses_deleted
 
-# 화면이 바로 취소할 수 있는 상태. 승인 대기(WAITING_APPROVAL)의 취소는 대기 행동을 함께 끝내고
-# 고정 문장을 남겨야 해서 승인 · 거절 API 와 함께 더한다
+# 화면이 바로 취소할 수 있는 상태
 CANCELLABLE = ("QUEUED", "RUNNING")
+# 한 응답은 직렬화 뒤 2 MiB 이하다(12-3). 끝맺는 칸 몫을 남긴다
+RESPONSE_MAX_BYTES = 2 * 1024 * 1024 - 4096
+EVENTS_PAGE = 200
 
 
-def run_status(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusResponse:
+def run_status(
+    db: Session, user_id: uuid.UUID, run_id: uuid.UUID, after_seq: int = 0
+) -> RunStatusResponse:
     run = ChatApiRepository(db).get_owned_run(run_id, user_id)
     if run is None:
         raise ChatTargetNotFound()
-    return _view(db, run)
+    return _view(db, run, after_seq)
 
 
 def latest_run_status(
-    db: Session, user_id: uuid.UUID, conversation_id: uuid.UUID
+    db: Session, user_id: uuid.UUID, conversation_id: uuid.UUID, after_seq: int = 0
 ) -> RunStatusResponse | None:
     """화면을 떠났다 오거나 새로고침했을 때 대화 ID 로 마지막 실행을 다시 찾는다."""
     repo = ChatApiRepository(db)
     if repo.get_owned_conversation(conversation_id, user_id) is None:
         raise ChatTargetNotFound()
     run = repo.latest_run(conversation_id)
-    return _view(db, run) if run is not None else None
+    return _view(db, run, after_seq) if run is not None else None
 
 
 def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusResponse:
@@ -84,27 +94,111 @@ def _close_goal_check(repo: ChatRepository, run: ChatRun) -> None:
         lease.status = "DONE"
 
 
-def _view(db: Session, run: ChatRun) -> RunStatusResponse:
+def _view(db: Session, run: ChatRun, after_seq: int | None = None) -> RunStatusResponse:
+    """실행 상태. `after_seq` 를 주면 그 뒤의 실행 이벤트까지 싣는다."""
     hidden = _uses_deleted_sources(db, run)
+    plan = None if hidden else run.plan
+    trace = None if hidden else run.trace
+    cards = [] if hidden else _waiting_cards(db, run)
+    events, has_more, next_after_seq = (
+        ([], False, None)
+        if after_seq is None
+        else _events_after(db, run, after_seq, hidden, _json_size([plan, trace, cards]))
+    )
     return RunStatusResponse(
         run_id=run.id,
         conversation_id=run.conversation_id,
         status=run.status,
-        plan=None if hidden else run.plan,
-        trace=None if hidden else run.trace,
+        plan=plan,
+        trace=trace,
+        events=events,
+        next_after_seq=next_after_seq,
+        has_more=has_more,
+        cards=cards,
         error=RunErrorDTO(code=run.error_code) if run.error_code else None,
         retry_after_s=run.retry_after_s,
     )
 
 
+def _json_size(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _events_after(
+    db: Session, run: ChatRun, after_seq: int, hidden: bool, used_bytes: int
+) -> tuple[list[RunEventDTO], bool, int]:
+    """커서 뒤의 이벤트를 순번순으로. 크기 한도를 넘으면 나누고 문장 · 근거를 자르지 않는다.
+
+    첫 이벤트는 크기와 상관없이 싣는다. 안 그러면 커서가 나아가지 못한다.
+    """
+    rows = ChatApiRepository(db).list_run_events(run.id, after_seq=after_seq, limit=EVENTS_PAGE + 1)
+    masked = _masked_seqs(db, run, rows) if not hidden else {row.event_seq for row in rows}
+    events: list[RunEventDTO] = []
+    total = used_bytes
+    has_more = False
+    for index, row in enumerate(rows):
+        data = None if row.event_seq in masked else row.data
+        total += _json_size(data)
+        if index == EVENTS_PAGE or (events and total > RESPONSE_MAX_BYTES):
+            has_more = True
+            break
+        events.append(
+            RunEventDTO(
+                event_seq=row.event_seq,
+                event=row.event,
+                data=data,
+                masked=row.event_seq in masked,
+            )
+        )
+    return events, has_more, events[-1].event_seq if events else after_seq
+
+
+def _masked_seqs(db: Session, run: ChatRun, rows: list[Any]) -> set[int]:
+    """문장 줄의 근거가 지워졌거나 남의 것인 이벤트의 순번."""
+    by_seq = {row.event_seq: _claim_sources(row.data) for row in rows if row.event == "claim"}
+    pitch_ids = {value for pitches, _ in by_seq.values() for value in pitches}
+    take_ids = {value for _, takes in by_seq.values() for value in takes}
+    if not pitch_ids and not take_ids:
+        return set()
+    current = owned_sources(db, run.user_id, pitch_ids, take_ids)
+    return {
+        seq for seq, (pitches, takes) in by_seq.items() if uses_deleted(pitches, takes, current)
+    }
+
+
+def _claim_sources(data: Any) -> tuple[set[str], set[str]]:
+    evidence = data.get("evidence") if isinstance(data, dict) else None
+    items = [item for item in evidence or [] if isinstance(item, dict)]
+    return (
+        {str(item["pitch_id"]) for item in items if item.get("pitch_id")},
+        {str(item["take_id"]) for item in items if item.get("take_id")},
+    )
+
+
+def _waiting_cards(db: Session, run: ChatRun) -> list[dict[str, Any]]:
+    """승인 대기 중인 행동의 확인 카드. 카드는 턴 실행기가 저장한 답 안에 있다.
+
+    AI 가 그린 값을 그대로 주되 해시는 저장한 대기 행동의 값으로 맞춘다(12-3 '승인 대기').
+    """
+    if run.status != "WAITING_APPROVAL":
+        return []
+    action = ChatApiRepository(db).waiting_action(run.id)
+    message = (run.interim_message or {}).get("message") or {}
+    if action is None:
+        return []
+    return [
+        {**card, "args_hash": action.args_hash}
+        for card in message.get("cards") or []
+        if card.get("type") == "ASK_CONFIRM" and card.get("action_id") == action.action_id
+    ]
+
+
 def _uses_deleted_sources(db: Session, run: ChatRun) -> bool:
-    """실행이 읽은 피치 · Take 가 지워졌거나 남의 것인지. 진행(plan · trace)을 가릴 때 쓴다.
+    """실행이 읽은 피치 · Take 가 지워졌거나 남의 것인지. 진행 전체를 가릴 때 쓴다.
 
     정리 작업(cleanup.py `_mask_runs`)이 1시간마다 비우지만 그 사이에도 보이면 안 되므로
     메시지 목록처럼 읽을 때 다시 본다(12-2 ①). 보는 근거도 정리 작업과 같다.
     """
-    if not run.plan and not run.trace:
-        return False
     read = run.read_sources or {}
     pitch_ids = set(read.get("pitches") or [])
     take_ids = {
@@ -115,7 +209,9 @@ def _uses_deleted_sources(db: Session, run: ChatRun) -> bool:
             for take_id in action_take_ids or []
         ),
     }
-    current = current_sources(db, run.user_id, pitch_ids, take_ids)
+    if not pitch_ids and not take_ids:
+        return False
+    current = owned_sources(db, run.user_id, pitch_ids, take_ids)
     return uses_deleted(
         {str(value) for value in pitch_ids}, {str(value) for value in take_ids}, current
     )

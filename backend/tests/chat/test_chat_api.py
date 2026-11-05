@@ -506,6 +506,10 @@ def test_run_status_hides_signed_state_and_error_message(
         "status": "FAILED",
         "plan": run.plan,
         "trace": None,
+        "events": [],
+        "next_after_seq": 0,
+        "has_more": False,
+        "cards": [],
         "error": {"code": "AGENT_BUSY"},
         "retry_after_s": 5,
     }
@@ -784,7 +788,7 @@ def test_answer_on_a_deleted_take_is_masked_on_read(
 def test_masking_reads_the_stored_id_and_checks_the_owner(
     client: TestClient, db_session: Session, user_id: uuid.UUID
 ) -> None:
-    # AI 기록 조립(request.py _current_sources)과 같은 기준이다. 대문자로 적힌 내 피치는 보이고,
+    # AI 기록 조립(request.py current_sources)과 같은 기준이다. 대문자로 적힌 내 피치는 보이고,
     # 남의 피치를 근거로 삼은 답은 가린다
     _, sent = _send(client, user_id)
     conversation_id = uuid.UUID(sent["conversation_id"])

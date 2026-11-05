@@ -93,13 +93,28 @@ class ConversationResponse(BaseModel):
     created_at: datetime
 
 
+class ConversationListItem(ConversationResponse):
+    # 마지막 답이 지금 기록과 달라졌는지(6-8). 답이 없으면 false
+    stale: bool
+
+
 class ConversationListResponse(BaseModel):
-    conversations: list[ConversationResponse]
+    conversations: list[ConversationListItem]
 
 
 class RunErrorDTO(BaseModel):
     # AI 의 error.message 원문은 싣지 않는다. 화면 문구는 FE 가 code 로 고른다
     code: str
+
+
+class RunEventDTO(BaseModel):
+    # 실행 전체에서 이어지는 순번. FE 는 마지막으로 처리한 값을 after_seq 로 보낸다
+    event_seq: int
+    event: Literal["plan", "tool_done", "claim"]
+    # 줄 내용 그대로다. claim 은 {index, claim, evidence, sources, assessments}.
+    # 근거가 지워졌으면 null 이고 masked 가 true 다
+    data: dict[str, Any] | None
+    masked: bool
 
 
 class RunStatusResponse(BaseModel):
@@ -108,6 +123,14 @@ class RunStatusResponse(BaseModel):
     status: RunStatus
     plan: Any | None
     trace: Any | None
+    # after_seq 뒤의 실행 이벤트(순번순). SSE 를 붙여도 같은 모양이다
+    events: list[RunEventDTO]
+    # 다음 조회에 보낼 커서. 이벤트를 읽지 않은 응답(취소 · 승인 · 거절)은 null 이다
+    next_after_seq: int | None
+    # 크기 한도로 나눠 남은 이벤트가 있다. 기다리지 않고 next_after_seq 로 바로 다시 조회한다
+    has_more: bool
+    # 승인 대기 중인 확인 카드(ASK_CONFIRM). 그 밖에는 빈 목록이다
+    cards: list[dict[str, Any]]
     error: RunErrorDTO | None
     retry_after_s: int | None
 
@@ -131,6 +154,8 @@ class ChatMessageResponse(BaseModel):
     trace: Any | None
     # 근거가 된 피치 · Take 가 지워져 본문과 근거를 가렸다(사유 SOURCE_DELETED)
     masked: bool
+    # 이 답을 지금 다시 물으면 달라질 수 있는 이유(6-8). 저장하지 않고 읽을 때 계산한다
+    stale_reasons: list[str]
 
 
 class MessageListResponse(BaseModel):

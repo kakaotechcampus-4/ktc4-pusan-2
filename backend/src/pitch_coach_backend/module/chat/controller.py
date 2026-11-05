@@ -120,9 +120,12 @@ def get_messages(
     dependencies=[Enabled],
 )
 def get_latest_run(
-    conversation_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    after_seq: Annotated[int, Query(ge=0)] = 0,
 ) -> RunStatusResponse | None:
-    return latest_run_status(db, current_user.id, conversation_id)
+    return latest_run_status(db, current_user.id, conversation_id, after_seq)
 
 
 # 202: 메시지 · 실행 · 하루 한도 차감을 커밋한 뒤 돌려준다. 답은 실행 상태 조회로 받는다
@@ -150,8 +153,13 @@ def post_message(
 
 # FE 가 실행 중에는 1초마다, 그 밖에는 늘려 가며 부른다
 @router.get("/runs/{run_id}", response_model=RunStatusResponse, dependencies=[Enabled])
-def get_run(run_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> RunStatusResponse:
-    return run_status(db, current_user.id, run_id)
+def get_run(
+    run_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    after_seq: Annotated[int, Query(ge=0)] = 0,
+) -> RunStatusResponse:
+    return run_status(db, current_user.id, run_id, after_seq)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=RunStatusResponse, dependencies=[Enabled])

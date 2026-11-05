@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.api_dto import (
     ChatMessageResponse,
+    ConversationListItem,
     ConversationListResponse,
     ConversationResponse,
     MessageListResponse,
@@ -16,7 +17,13 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage
 from pitch_coach_backend.module.chat.exception import ChatRunInProgress, ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT, uses_deleted
+from pitch_coach_backend.module.chat.service.request import APP_STARTED_AT, current_sources
+from pitch_coach_backend.module.chat.service.stale import (
+    MASKED_TEXT,
+    sources_of,
+    stale_reasons,
+    uses_deleted,
+)
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 
 CONVERSATIONS_LIMIT = 50
@@ -36,9 +43,20 @@ def create_conversation(
 def list_conversations(
     db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None
 ) -> ConversationListResponse:
-    rows = ChatApiRepository(db).list_conversations(user_id, pitch_id, limit=CONVERSATIONS_LIMIT)
+    repo = ChatApiRepository(db)
+    rows = repo.list_conversations(user_id, pitch_id, limit=CONVERSATIONS_LIMIT)
+    answers = repo.latest_answers([row.ChatConversation.id for row in rows])
+    goal_versions = {row.ChatConversation.id: row.ChatConversation.goal_version for row in rows}
+    reasons = _stale_reasons_of(db, user_id, answers, goal_versions)
+    stale = {answer.conversation_id: bool(reasons[answer.id]) for answer in answers}
     return ConversationListResponse(
-        conversations=[_conversation_view(row.ChatConversation, row.pitch_title) for row in rows]
+        conversations=[
+            ConversationListItem(
+                **_conversation_view(row.ChatConversation, row.pitch_title).model_dump(),
+                stale=stale.get(row.ChatConversation.id, False),
+            )
+            for row in rows
+        ]
     )
 
 
@@ -74,7 +92,8 @@ def list_messages(
     limit: int,
 ) -> MessageListResponse:
     repo = ChatApiRepository(db)
-    if repo.get_owned_conversation(conversation_id, user_id) is None:
+    conversation = repo.get_owned_conversation(conversation_id, user_id)
+    if conversation is None:
         raise ChatTargetNotFound()
     messages = ChatRepository(db).list_recent_messages(
         conversation_id, before_seq=before_seq, limit=limit + 1
@@ -84,7 +103,7 @@ def list_messages(
     judged = repo.list_assessments(conversation_id, from_seq=messages[0].seq) if messages else []
     # 페이지 뒤 메시지의 판단도 대체 표시에 쓰므로 그 근거까지 함께 읽는다
     sourced = [*messages, *judged]
-    current = current_sources(
+    current = owned_sources(
         db,
         user_id,
         {value for item in sourced for value in item.source_pitch_ids or []},
@@ -95,10 +114,52 @@ def list_messages(
     superseded = superseded_by(
         [row.assessments for row in judged if not _uses_gone_source(row, current)]
     )
+    reasons = _stale_reasons_of(db, user_id, messages, {conversation_id: conversation.goal_version})
     return MessageListResponse(
-        messages=[_message_view(message, current, superseded) for message in messages],
+        messages=[
+            _message_view(message, current, superseded, reasons[message.id]) for message in messages
+        ],
         next_before_seq=messages[0].seq if has_more else None,
     )
+
+
+def _stale_reasons_of(
+    db: Session,
+    user_id: uuid.UUID,
+    messages: list[ChatMessage],
+    goal_versions: dict[uuid.UUID, int],
+) -> dict[uuid.UUID, list[str]]:
+    """메시지마다 '최신 아님' 사유(6-8). AI 에 보낼 기록을 조립할 때와 같은 함수로 계산한다.
+
+    근거의 지금 판 번호는 메시지가 가리키는 피치 · Take 만, 겹치지 않게 한 번씩 읽는다.
+    """
+    pitch_ids: set[str] = set()
+    take_ids: set[str] = set()
+    for message in messages:
+        pitch_ids.update(str(value) for value in message.source_pitch_ids or [])
+        take_ids.update(str(value) for value in message.source_take_ids or [])
+        if isinstance(message.basis, dict):
+            basis_pitches, basis_takes = sources_of(message.basis.get("pitches"))
+            pitch_ids.update(basis_pitches)
+            take_ids.update(basis_takes)
+    if not pitch_ids and not take_ids and not any(message.basis for message in messages):
+        return {message.id: [] for message in messages}
+    chat_repo = ChatRepository(db)
+    current = current_sources(db, chat_repo, user_id, pitch_ids, take_ids)
+    corpus_version = chat_repo.latest_corpus_version(APP_STARTED_AT)
+    reasons: dict[uuid.UUID, list[str]] = {}
+    for message in messages:
+        if _uses_gone_source(message, current):
+            reasons[message.id] = ["SOURCE_DELETED"]
+            continue
+        reasons[message.id] = stale_reasons(
+            message.basis,
+            message.created_at,
+            current,
+            goal_versions[message.conversation_id],
+            corpus_version,
+        )
+    return reasons
 
 
 def superseded_by(judged: list[Any]) -> dict[str, str]:
@@ -147,13 +208,14 @@ def _conversation_view(
     )
 
 
-def current_sources(
+def owned_sources(
     db: Session, user_id: uuid.UUID, pitch_ids: set[Any], take_ids: set[Any]
 ) -> dict[str, dict[str, bool]]:
     """근거로 삼은 피치 · Take 중 아직 있고 이 사용자의 것. 한 번에 읽는다.
 
     저장된 문자열을 그대로 키로 두고, 값만 UUID 로 읽어 소유권까지 본다. AI 에 보낼 기록을 조립할
-    때(request.py `_current_sources`)와 같은 기준이라 화면과 AI 가 같은 답을 가린다.
+    때(request.py `current_sources`)와 같은 기준이라 화면과 AI 가 같은 답을 가린다.
+    그쪽과 달리 판 번호는 읽지 않아 1초 조회 경로에서도 쓴다.
     지워진 근거는 1시간 정리 작업이 가리지만, 그 사이에도 보이면 안 되므로
     읽을 때 다시 본다(12-2 ①).
     """
@@ -190,7 +252,10 @@ def _uses_gone_source(item: ChatMessage | Row, current: dict[str, dict[str, Any]
 
 
 def _message_view(
-    message: ChatMessage, current: dict[str, dict[str, Any]], superseded: dict[str, str]
+    message: ChatMessage,
+    current: dict[str, dict[str, Any]],
+    superseded: dict[str, str],
+    reasons: list[str],
 ) -> ChatMessageResponse:
     masked = _uses_gone_source(message, current)
     # 가릴 때는 본문만이 아니라 그 근거에서 나온 모든 반환 필드를 뺀다(12-2)
@@ -216,6 +281,7 @@ def _message_view(
         plan=visible and visible.plan,
         trace=visible and visible.trace,
         masked=masked,
+        stale_reasons=reasons,
     )
 
 
