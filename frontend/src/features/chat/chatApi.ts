@@ -1,13 +1,18 @@
-import { apiRequest, postJson } from '@/shared/api/client';
+import { apiRequest, postJson, readJsonWithin } from '@/shared/api/client';
 import { chatPaths } from '@/shared/api/chatPaths';
 import type {
   CreateConversationRequest,
   CreateMemoryOffConversationRequest,
   CreateConversationResponse,
+  MessagePage,
   ScopeChangeResponse,
   SendMessageAccepted,
   SendMessageRequest,
 } from '@/types/chat';
+import { MAX_RESPONSE_BYTES } from './chatResponse';
+
+/** 실행 조회 · 메시지 목록은 2 MiB 까지만 읽습니다 — 넘으면 `ResponseTooLargeError` (L3-22) */
+const within = readJsonWithin(MAX_RESPONSE_BYTES);
 
 /**
  * 대화 에이전트 API — 통신 계층이 부르는 서버 호출만 모았습니다. 경로는 `chatPaths`(BE #933)이고,
@@ -34,11 +39,15 @@ export interface ChatApi {
 export const chatApi: ChatApi = {
   send: (request) => postJson<SendMessageAccepted>(chatPaths.send, request),
   run: (runId, afterSeq) =>
-    apiRequest<unknown>(`${chatPaths.run(runId)}?after_seq=${encodeURIComponent(afterSeq)}`),
+    apiRequest<unknown>(
+      `${chatPaths.run(runId)}?after_seq=${encodeURIComponent(afterSeq)}`,
+      {},
+      within,
+    ),
   conversationRun: (conversationId) =>
-    apiRequest<unknown>(chatPaths.conversationRun(conversationId)),
+    apiRequest<unknown>(chatPaths.conversationRun(conversationId), {}, within),
   // BE 취소는 본문을 받지 않습니다. 빈 본문 대신 아무것도 보내지 않습니다
-  cancel: (runId) => apiRequest<unknown>(chatPaths.cancel(runId), { method: 'POST' }),
+  cancel: (runId) => apiRequest<unknown>(chatPaths.cancel(runId), { method: 'POST' }, within),
   createConversation: (request) =>
     postJson<CreateConversationResponse>(chatPaths.conversations, request),
   changeScope: (conversationId, pitchId) =>
@@ -48,3 +57,12 @@ export const chatApi: ChatApi = {
       body: JSON.stringify({ pitch_id: pitchId }),
     }),
 };
+
+/**
+ * 메시지 목록 한 페이지 — 최근부터, `beforeSeq` 가 있으면 그 앞. 화면(8단계)이 부르고,
+ * 문장 · 카드는 `readMessage` 로 읽은 뒤 그립니다. 2 MiB 를 넘으면 `ResponseTooLargeError`
+ */
+export function fetchMessages(conversationId: string, beforeSeq: number | null = null) {
+  const query = beforeSeq === null ? '' : `?before_seq=${encodeURIComponent(beforeSeq)}`;
+  return apiRequest<MessagePage>(`${chatPaths.messages(conversationId)}${query}`, {}, within);
+}

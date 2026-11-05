@@ -285,7 +285,6 @@ export type StaleReason =
   | 'VERSION_UNKNOWN'
   | 'CORPUS_UPDATED';
 
-/** 메시지 목록 한 줄 (12-3 '메시지 목록') */
 /**
  * 근거 표시 (6-8 `basis`) — 이 답이 읽은 피치 · Take 와 그때의 버전. 배지 글자("Take 5 · 대본 V2 · 기준 v4 기준")는
  * 화면이 이것으로 만듭니다. BE 는 AI 가 준 값을 그대로 넘기므로(`Any`) 모르는 칸은 무시하고,

@@ -3,11 +3,12 @@ import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/mocks/auth', () => ({ currentMockUserId: () => 'u' }));
 import { createChatHandlers, type MockChatControls } from '@/mocks/chat';
-import { retryAfterSec } from '@/shared/api/client';
+import { ResponseTooLargeError, retryAfterSec } from '@/shared/api/client';
 import { chatPaths } from '@/shared/api/chatPaths';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import type { RunView } from '@/types/chat';
 import type { ChatApi } from './chatApi';
+import { MAX_RESPONSE_BYTES } from './chatResponse';
 import { canSend, useChatStore } from './chatStore';
 import {
   MAX_REREADS,
@@ -903,7 +904,23 @@ describe('BE #933 모양의 실행 조회', () => {
       }),
     });
     await sendNow(draft());
-    expect(of('pollTrouble')).toHaveLength(1);
+    expect(of('pollTrouble')).toMatchObject([{ failures: 1, reason: 'FORMAT' }]);
+  });
+
+  it('응답이 2 MiB 를 넘으면 크기 초과로 알리고 간격을 늘려 다시 조회한다 (L3-22)', async () => {
+    let polls = 0;
+    start({
+      run: async (runId) => {
+        polls += 1;
+        if (polls === 1) throw new ResponseTooLargeError(MAX_RESPONSE_BYTES);
+        return beRun(runId, store().run!.conversationId, 'DONE');
+      },
+    });
+    await sendNow(draft());
+    expect(of('pollTrouble')).toMatchObject([{ failures: 1, reason: 'TOO_LARGE' }]);
+    await untilEnded();
+    expect(of('pollRecovered')).toHaveLength(1);
+    expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
   });
 
   it('대화의 마지막 실행이 끝나 있으면 이어 가지 않고, 끝나지 않았으면 이어 간다', async () => {

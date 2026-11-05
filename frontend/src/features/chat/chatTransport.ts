@@ -1,3 +1,4 @@
+import { ResponseTooLargeError } from '@/shared/api/client';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { isTerminalRun } from '@/shared/lib/chatAgent';
 import type { Card, PlanStep, RunEvent, RunStatus, RunView, TraceItem } from '@/types/chat';
@@ -60,8 +61,11 @@ export type TransportSignal =
   | { type: 'sendFailed'; code: string; status: number }
   /** 꺼짐 — 버튼을 숨깁니다 */
   | { type: 'disabled' }
-  /** 조회가 잇따라 실패 — "진행 상태를 확인하지 못해 다시 연결하고 있어요." */
-  | { type: 'pollTrouble'; failures: number }
+  /**
+   * 조회가 잇따라 실패 — "진행 상태를 확인하지 못해 다시 연결하고 있어요."
+   * 응답이 2 MiB 를 넘었으면(`TOO_LARGE`) "일부 진행 정보를 표시하지 못했어요." (L3-22)
+   */
+  | { type: 'pollTrouble'; failures: number; reason: PollTroubleReason }
   | { type: 'pollRecovered' }
   /** 130초가 지나도 끝나지 않음 — "결과 확인이 늦어지고 있으니 상태를 다시 확인해 주세요." */
   | { type: 'slow'; runId: string }
@@ -71,6 +75,18 @@ export type TransportSignal =
   | { type: 'conversationMissing'; conversationId: string }
   /** 범위 바꾸기 실패 — 칩은 앞 범위로 돌아갔습니다 */
   | { type: 'scopeFailed'; code: string };
+
+/** 조회 실패 이유 — 형식 오류 · 크기 초과도 실패로 세어 간격을 늘립니다(L3-19 · L3-22) */
+export type PollTroubleReason = 'TOO_LARGE' | 'FORMAT' | 'FAILED';
+
+/** 응답 모양이 틀림 */
+class FormatError extends Error {}
+
+const troubleOf = (error: unknown): PollTroubleReason => {
+  if (error instanceof ResponseTooLargeError) return 'TOO_LARGE';
+  if (error instanceof FormatError || error instanceof SyntaxError) return 'FORMAT';
+  return 'FAILED';
+};
 
 export type SendResult =
   'accepted' | 'locked' | 'unconfirmed' | 'conflict' | 'failed' | 'stale' | 'none';
@@ -362,7 +378,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     let view: RunView;
     try {
       const response = readRunView(await api.run(run.runId, run.afterSeq));
-      if (!response || response.run_id !== run.runId) throw new Error('형식 오류');
+      if (!response || response.run_id !== run.runId) throw new FormatError();
       view = response;
     } catch (error) {
       polling = false;
@@ -421,7 +437,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       return;
     }
     failures += 1;
-    emit({ type: 'pollTrouble', failures });
+    emit({ type: 'pollTrouble', failures, reason: troubleOf(error) });
     schedulePoll(failureDelay(failures));
   }
 
@@ -461,7 +477,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       const response = await api.conversationRun(conversationId);
       const run = response === null ? null : readRunView(response);
       if (response !== null && (!run || run.conversation_id !== conversationId))
-        throw new Error('형식 오류');
+        throw new FormatError();
       lookingUp = false;
       if (disposed) return;
       const found =
@@ -488,7 +504,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         return;
       }
       lookupFailures += 1;
-      emit({ type: 'pollTrouble', failures: lookupFailures });
+      emit({ type: 'pollTrouble', failures: lookupFailures, reason: troubleOf(error) });
       scheduleLookup(failureDelay(lookupFailures));
     }
   }

@@ -494,6 +494,8 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
       },
     ];
   if (text.includes('봤지')) return assessmentSteps(text, ctx);
+  if (text.includes('깨진 답')) return brokenSteps();
+  if (text.includes('모르는 문장')) return unknownKindSteps();
   if (ctx.screen?.name === 'pitch_create' || ctx.screen?.name === 'pitch_edit')
     return screenSteps(ctx.screen);
   const [guideClaim, general] = more;
@@ -527,4 +529,54 @@ function goalSavedCard(actionId: string, chosen: GoalOption | null = null): Card
     evidence_ids: chosen?.evidence_ids ?? ['ev-gaze-diff'],
     undo: true,
   };
+}
+
+// ── 화면 검사용: 일부러 어긋난 답 (응답 검사, L3-24 · L3-28 · L3-42) ───────────
+
+/**
+ * "깨진 답" — 칩만 버리면 되는 어긋남. 없는 근거를 가리키는 문장, 근거가 실려 온 일반 조언,
+ * 모르는 카드가 섞여 옵니다. 문장은 모두 보이고, 칩 · 카드만 빠지거나 대체 표시가 됩니다
+ */
+function brokenSteps(): Step[] {
+  const [first] = compareClaims();
+  return [
+    ...base(),
+    {
+      t: 'claim',
+      data: {
+        ...first!,
+        claim: { ...first!.claim, evidence_ids: [...first!.claim.evidence_ids, 'ev-missing'] },
+      },
+    },
+    {
+      t: 'claim',
+      data: say('GENERAL', '천천히 말하면 듣는 사람이 따라오기 쉬워요.', {
+        evidence_ids: ['ev-gaze-diff'],
+        source_ids: [guide.source_id],
+      }),
+    },
+    {
+      t: 'end',
+      status: 'DONE',
+      cards: () => [
+        { type: 'FUTURE_CARD', note: '아직 모르는 카드' } as unknown as Card,
+        { type: 'START_PRACTICE', pitch_id: PITCH_ID },
+      ],
+    },
+  ];
+}
+
+/** "모르는 문장" — 계약 오류. 앞 문장은 보이고, 모르는 종류부터 뒤 문장 · 카드는 막힙니다 */
+function unknownKindSteps(): Step[] {
+  const [first] = compareClaims();
+  return [
+    ...base(),
+    { t: 'claim', data: first! },
+    {
+      t: 'claim',
+      data: say('FUTURE' as ClaimStep['claim']['kind'], '아직 모르는 종류의 문장이에요.'),
+    },
+    { t: 'claim', data: say('GENERAL', '이 문장은 보이면 안 돼요.') },
+    { t: 'end', status: 'DONE', cards: () => [{ type: 'START_PRACTICE', pitch_id: PITCH_ID }] },
+  ];
 }
