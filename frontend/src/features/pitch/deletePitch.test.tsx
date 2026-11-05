@@ -210,6 +210,35 @@ it('지우면 목록에서 빼고 관련 캐시를 지운 뒤, 같은 자리의 
   );
 });
 
+it('창이 닫힐 때 목록이 아직 지운 줄을 담고 있어도, 지운 줄이 아닌 줄로 초점을 옮긴다', async () => {
+  await render();
+  // 목록 알림(setQueryData)이 창 닫기보다 늦게 그려지는 순서를 만듭니다 — 지운 줄이 그대로 남습니다
+  vi.spyOn(client, 'setQueryData').mockImplementation(() => undefined);
+  onDelete = async (id) => ({ message: 'Pitch deleted successfully', pitch_id: id });
+
+  await openDialog('캡스톤 최종 발표');
+  await click(dialogButton('삭제'));
+  await flush();
+
+  expect(dialog()).toBeNull();
+  expect(titles()).toContain('캡스톤 최종 발표');
+  expect(document.activeElement?.textContent).toContain('창업 경진대회 본선');
+});
+
+it('마지막 줄을 지우는데 그 줄이 아직 남아 있어도, 자기 자신이 아니라 윗줄로 옮긴다', async () => {
+  list = { pitches: [pitch('p1', '하나'), pitch('p2', '둘')] };
+  await render();
+  vi.spyOn(client, 'setQueryData').mockImplementation(() => undefined);
+  onDelete = async (id) => ({ message: 'Pitch deleted successfully', pitch_id: id });
+
+  await openDialog('둘');
+  await click(dialogButton('삭제'));
+  await flush();
+
+  expect(titles()).toContain('둘');
+  expect(document.activeElement?.textContent).toContain('하나');
+});
+
 it('마지막 줄을 지우면 윗줄로, 줄이 다 사라지면 제목으로 초점을 옮긴다', async () => {
   list = { pitches: [pitch('p1', '하나'), pitch('p2', '둘')] };
   await render();

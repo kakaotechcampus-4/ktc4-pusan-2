@@ -38,12 +38,15 @@ export function HomePage() {
     focusAfter.current = () => opener?.focus();
     setDeleting(null);
   };
-  // 지운 줄의 ··· 는 사라졌습니다. 같은 자리에 온 다음 줄(마지막이었으면 윗줄), 줄이 없으면 제목으로 옮깁니다
+  // 지운 줄의 ··· 는 사라졌습니다. 같은 자리에 온 다음 줄(마지막이었으면 윗줄), 줄이 없으면 제목으로 옮깁니다.
+  // 목록 알림(setQueryData)과 창 닫기는 따로 그려져 지운 줄이 아직 남아 있을 수 있어, 지운 id 의 줄은 걸러서 고릅니다
   const finishDelete = () => {
     if (!deleting) return;
     const { index, pitch } = deleting;
     focusAfter.current = () => {
-      const rows = listRef.current?.querySelectorAll<HTMLElement>(':scope > li') ?? [];
+      const rows = [
+        ...(listRef.current?.querySelectorAll<HTMLElement>(':scope > li') ?? []),
+      ].filter((row) => row.dataset.pitchId !== pitch.pitch_id);
       const row = rows[Math.min(index, rows.length - 1)];
       (row?.querySelector<HTMLElement>('a, button') ?? headingRef.current)?.focus();
     };

@@ -23,7 +23,7 @@ export function HomePitchCard({
   const takes = pitch.takes.length;
   const titleStyle = 'inline-flex min-w-0 items-center gap-2 font-bold';
   return (
-    <li className="flex items-center gap-4 px-4 py-2 sm:px-5">
+    <li data-pitch-id={pitch.pitch_id} className="flex items-center gap-4 px-4 py-2 sm:px-5">
       <div
         aria-hidden="true"
         className="hidden h-8 w-12 shrink-0 items-center justify-center overflow-hidden border border-line-strong bg-cream sm:flex"
