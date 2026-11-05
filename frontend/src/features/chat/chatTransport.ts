@@ -68,6 +68,12 @@ export type TransportSignal =
        * 다른 대화로 갔다 돌아오거나 통신 계층이 새로 생겼을 때 첫 진행 신호에만 true 입니다
        */
       restart: boolean;
+      /**
+       * 이미 만들어진 문장을 따라잡는 묶음 — 새로고침 · 다시 열기 · 대화를 다시 고름 · 다른 탭이 시작한 실행.
+       * 화면은 글자 효과 없이 그립니다(12-4 F12 "새로고침 · 다시 열기 · 지난 메시지는 효과 없이"). 이 화면에서 보낸
+       * 실행을 처음 받을 때는 false 라 효과로 보입니다
+       */
+      catchUp: boolean;
       /** 이 실행에서 난 계약 오류. 한 번 나면 끝날 때까지 그대로 */
       contractError: ContractError | null;
       /** 아직 진행이 없으면 null (BE). 깨진 항목은 빠집니다 */
@@ -352,7 +358,19 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
    * 실행마다 문장 읽기 — 커서와 수명을 같이 합니다. 읽기가 없는 실행을 지켜보기 시작하면(새 통신 계층 ·
    * 다시 연 화면) 커서를 처음으로 되감아, 앞 문장부터 다시 받고 순번이 0부터 이어지게 합니다
    */
-  const readers = new Map<string, { reader: RunReader; fresh: boolean }>();
+  const readers = new Map<string, { reader: RunReader; fresh: boolean; catchUp: boolean }>();
+  /**
+   * 새 읽기가 따라잡기로 시작하는지 — 전에 문장을 보여 준 실행이거나(다시 열기 · 대화를 다시 고름) 이 화면에서
+   * 보내지 않은 실행이면(새로고침 · 다른 탭) 이미 만들어진 문장부터 받습니다
+   */
+  const newReader = (runId: string) => ({
+    reader: createRunReader(),
+    fresh: true,
+    catchUp: everShown.has(runId) || !startedHere.has(runId),
+  });
+  /** 이 통신 계층이 보내 시작한 실행 · 문장을 한 번이라도 보낸 실행 — 글자 효과를 줄지(`catchUp`) 정합니다 */
+  const startedHere = new Set<string>();
+  const everShown = new Set<string>();
   /** 응답을 잃은 취소의 실행 — 다음 조회가 확정합니다 */
   let cancelUnsure: string | null = null;
   /** 보내는 중인 승인 · 거절 (L3-39 "`action_id` 별로 막는다") */
@@ -447,7 +465,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     rereads = 0;
     lastShape = null;
     if (!readers.has(runId)) {
-      readers.set(runId, { reader: createRunReader(), fresh: true });
+      readers.set(runId, newReader(runId));
       store().rewindCursor(runId);
     }
   };
@@ -456,6 +474,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     runClocks.delete(runId);
     slowNotified.delete(runId);
     readers.delete(runId);
+    startedHere.delete(runId);
+    everShown.delete(runId);
     if (cancelUnsure === runId) cancelUnsure = null;
   };
 
@@ -591,7 +611,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     // 지켜보기 전에 응답이 먼저 온 실행도 읽기를 갖게 합니다(되감기는 하지 않음 — 이미 처음부터 받는 중)
     let entry = readers.get(run.runId);
     if (!entry) {
-      entry = { reader: createRunReader(), fresh: true };
+      entry = newReader(run.runId);
       readers.set(run.runId, entry);
     }
     const { reader } = entry;
@@ -605,6 +625,13 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (taken.length > 0 || view.cards.length > 0 || shapeChanged || reader.error !== errorBefore) {
       const restart = entry.fresh;
       entry.fresh = false;
+      // 따라잡기는 이 읽기가 처음 문장을 받을 때까지 이어집니다 — 첫 응답이 할 일 목록뿐이어도 그 뒤의 옛 문장을
+      // 효과로 다시 보이지 않게. 첫 문장 묶음 뒤로 오는 문장은 새로 만들어진 것이라 효과로 보입니다
+      const catchUp = entry.catchUp;
+      if (claims.length > 0) {
+        entry.catchUp = false;
+        everShown.add(run.runId);
+      }
       emit({
         type: 'progress',
         runId: run.runId,
@@ -613,6 +640,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         events: taken,
         claims,
         restart,
+        catchUp,
         contractError: reader.error,
         plan: view.plan === null ? null : plan.items,
         trace: view.trace === null ? null : trace.items,
@@ -809,6 +837,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       const accepted = await api.send(pending.request);
       clearSendTimer();
       // 접수는 닫힌 뒤에도 반영합니다 — 잠금을 풀고, 새 통신 계층이 저장소 구독으로 조회를 시작합니다
+      // 저장소에 붙이기 전에 표시합니다 — 붙이는 순간 구독이 조회를 시작합니다
+      startedHere.add(accepted.run_id);
       if (!store().beginRun(ticket, accepted.run_id, accepted.conversation_id)) return 'stale';
       return 'accepted';
     } catch (error) {

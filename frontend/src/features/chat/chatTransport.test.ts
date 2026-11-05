@@ -1697,3 +1697,75 @@ describe('승인 · 거절의 결과를 모를 때 (L3-39)', () => {
     expect(of('decisionFailed')).toMatchObject([{ code: 'AGENT_EXPIRED' }]);
   });
 });
+
+// ── 글자 효과를 줄지 (5단계, 12-4 F12) ───────────────────────
+
+describe('따라잡는 묶음(catchUp)', () => {
+  const withClaims = () => of('progress').filter((s) => s.claims.length > 0);
+  async function untilClaims(n = 1) {
+    for (let i = 0; i < 30 && withClaims().flatMap((s) => s.claims).length < n; i++)
+      await clock.advance(1_000);
+  }
+
+  it('이 화면에서 보낸 실행은 처음부터 효과로 보인다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    expect(withClaims().map((s) => s.catchUp)).toEqual(withClaims().map(() => false));
+  });
+
+  it('첫 응답에 문장이 없어도 따라잡기는 첫 문장 묶음까지 이어진다', async () => {
+    await sendNow(draft());
+    await untilClaims(2);
+    let polls = 0;
+    signals.length = 0;
+    start({
+      // 다시 연 뒤 첫 응답은 할 일 목록만 — 문장은 그다음에 옵니다
+      run: async (runId, afterSeq) => {
+        polls += 1;
+        const view = (await mockApi.run(runId, afterSeq)) as RunView;
+        return polls === 1
+          ? {
+              ...view,
+              events: view.events.filter((e) => e.event !== 'claim').slice(0, 1),
+              has_more: true,
+            }
+          : view;
+      },
+    });
+    transport.resume();
+    await flush();
+    await untilClaims(1);
+    expect(withClaims()[0]!.catchUp).toBe(true);
+  });
+
+  it('화면을 다시 열어(새 통신 계층) 이어 받으면 이미 있던 문장은 효과 없이', async () => {
+    await sendNow(draft());
+    await untilClaims(2);
+    signals.length = 0;
+    start();
+    transport.resume();
+    await flush();
+    const first = withClaims()[0]!;
+    expect([first.restart, first.catchUp]).toEqual([true, true]);
+  });
+
+  it('다른 대화로 갔다 돌아와도 효과 없이 다시 그린다', async () => {
+    await sendNow(draft());
+    await untilClaims(2);
+    const conversationId = store().conversationId!;
+    signals.length = 0;
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    await untilClaims(1);
+    const first = withClaims()[0]!;
+    expect([first.restart, first.catchUp]).toEqual([true, true]);
+    // 따라잡은 뒤 새로 오는 문장은 다시 효과로
+    await untilEnded();
+    expect(
+      withClaims()
+        .slice(1)
+        .every((s) => !s.catchUp),
+    ).toBe(true);
+  });
+});
