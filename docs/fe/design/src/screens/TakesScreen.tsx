@@ -29,7 +29,9 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
   const comparing = ['compare', 'compare-empty', 'compare-zero'].includes(stateId);
   const [metric, setMetric] = useState<Metric>('audience');
   const selected = metrics.find((item) => item.id === metric)!;
-  const count = stateId === 'compare-zero' ? 0 : stateId === 'compare-empty' ? 1 : 2;
+  let count = 2;
+  if (stateId === 'compare-zero') count = 0;
+  else if (stateId === 'compare-empty') count = 1;
 
   return (
     <Frame title="Take 기록">

@@ -33,8 +33,10 @@ export function TakesPage() {
   const comparing = params.get('view') === 'compare';
   const asked = params.get('pitch') ?? ALL;
   // 목록의 사라진 피치는 전체로 복구하되, 비교 URL의 피치는 다른 발표로 바꾸지 않습니다.
-  const pitch = comparing ? asked || firstPitch : pitches.has(asked) ? asked : ALL;
-  const shown = pitch === ALL ? (comparing ? [] : rows) : rows.filter((t) => t.pitch_id === pitch);
+  let pitch = ALL;
+  if (comparing) pitch = asked || firstPitch;
+  else if (pitches.has(asked)) pitch = asked;
+  const shown = rows.filter((t) => (!comparing && pitch === ALL) || t.pitch_id === pitch);
   const compared = completedTakes(shown);
 
   function viewPath(view: 'list' | 'compare') {
@@ -102,7 +104,7 @@ export function TakesPage() {
         </label>
       </div>
 
-      {comparing ? (
+      {comparing && (
         <section aria-label="지표 비교" className="flex min-w-0 flex-col gap-5">
           {pitch && !pitches.has(pitch) && (
             <p role="status" className="text-sm text-stone">
@@ -111,14 +113,16 @@ export function TakesPage() {
           )}
           <TakeComparison rows={compared} />
         </section>
-      ) : rows.length === 0 ? (
+      )}
+      {!comparing && rows.length === 0 && (
         <Card>
           <Mascot who="chichi">아직 연습 기록이 없어. 첫 Take를 시작해 보자!</Mascot>
           <div>
             <ButtonLink to="/">내 피치로</ButtonLink>
           </div>
         </Card>
-      ) : (
+      )}
+      {!comparing && rows.length > 0 && (
         <Card title="최근 연습">
           <p role="status" className="sr-only">
             연습 기록 {shown.length}개
