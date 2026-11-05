@@ -33,6 +33,8 @@
   --script-h: var(--spacing-script-highlight);
   --rail-w: 320px;
   --coach-h: 46px;
+  /* 어두운 무대에서 전역 stone을 쓰면 대비가 낮아져 무대 안에서만 밝게 덮습니다. */
+  --color-stone: #B8AFA3;
   /* 상자 선. 시안 07 의 어두운 지면 규칙 — 진한 테두리는 묻혀서 밝은 선(35%)으로 그린다.
      모서리는 각지게 둔다 (시작 전 안내 .start-gate .box 와 같은 규칙) */
   --stage-line: 2px solid color-mix(in srgb, var(--color-ink-stage) 35%, transparent);
