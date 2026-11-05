@@ -173,6 +173,13 @@ def _profile_problem(item: Any, message: str, cfg: ChatAgentConfig) -> str | Non
                 request_clauses.append(parts[i - 1])
     if not any(_squash(value) in _squash(c) for c in request_clauses):
         return "⑥ 값이 기억 요청 구간에 없음"
+    # 값 바로 뒤가 부정이면 사용자가 바라지 않는 값이다("길게 말하지 말고 짧게 설명해 줘, 기억해 줘"의 '길게')
+    for c in request_clauses:
+        at = c.find(value)
+        if at >= 0 and any(
+            n in c[at + len(value) : at + len(value) + 8] for n in cfg.negation_words
+        ):
+            return "⑥ 부정한 값"
     return None
 
 

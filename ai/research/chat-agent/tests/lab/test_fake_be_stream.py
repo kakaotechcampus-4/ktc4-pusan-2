@@ -455,3 +455,4 @@ def test_pre_stream_error_on_resume_keeps_the_shown_sentences_as_a_message() -> 
     out = be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
     assert (out.status, out.error_code) == ("FAILED", "AGENT_STATE_INVALID")
     assert stored(be, run).claims == shown
+    assert stored(be, run).status == "FAILED"

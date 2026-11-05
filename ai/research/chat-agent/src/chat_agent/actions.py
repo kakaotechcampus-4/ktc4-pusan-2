@@ -578,6 +578,8 @@ def _sourced_targets(
     out: list[dict[str, Any]] = []
     for t in targets:
         d = (t.get("display") or "").strip()
+        if not d and t.get("metric") is None:
+            return None  # 숫자 목표도 문구도 없는 칸: 보이는 조건이 없다
         if not d or (original is not None and d in original) or d in known:
             out.append(t)
         elif t.get("metric") is not None:

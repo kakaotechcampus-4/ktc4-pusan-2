@@ -1484,3 +1484,15 @@ def test_named_take_ids_need_letters_and_digits() -> None:
         message="Q-A 대본 보고 한 걸로 다시 평가해 줘",
     )
     assert p.result == "PROPOSED", p.reason_code
+
+
+def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
+    """숫자 목표도 문구도 없는 칸은 보이는 조건이 없어 다시 평가를 내지 않는다(L1-37)."""
+    empty = [{"display": "  ", "metric": None, "operator": None, "value": None}]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": empty}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.action is None and p.reason_code == "DISPLAY_UNSOURCED"

@@ -468,3 +468,14 @@ def test_final_check_failure_after_summary_keeps_diagnostics_with_its_usage(
     steps = (data or {})["diagnostics"]["steps"]
     assert any(s["kind"] == "MODEL" and s["code"] == "HISTORY_SUMMARY" for s in steps)
     assert data["diagnostics"]["end"]["status"] == "INTERNAL_ERROR"
+
+
+def test_negated_value_is_not_saved_even_in_the_widened_request_clause() -> None:
+    """앞 절까지 요청 구간으로 넓혀도, 값 바로 뒤가 부정이면 사용자가 바라지 않는 값이라 버린다(⑥)."""
+    msg = "길게 말하지 말고 짧게 설명해 줘, 기억해 줘"
+    bad = {"key": "EXPLAIN_STYLE", "value": "길게", "quote": msg}
+    good = {"key": "EXPLAIN_STYLE", "value": "짧게 설명", "quote": msg}
+    kept, dropped = memory.check_profile_updates([bad], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert kept == [] and dropped[0].reason.startswith("⑥")
+    kept, _ = memory.check_profile_updates([good], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert [k["value"] for k in kept] == ["짧게 설명"]

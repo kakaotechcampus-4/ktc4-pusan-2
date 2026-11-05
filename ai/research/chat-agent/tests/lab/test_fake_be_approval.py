@@ -615,3 +615,14 @@ def test_cancel_button_uses_its_own_sentence_not_the_new_message_one() -> None:
     (text,) = stored_texts(be, run)
     assert text.endswith(templates.SystemText.APPROVAL_CANCELLED_BY_USER.value)
     assert templates.SystemText.APPROVAL_CANCELLED.value not in text
+
+
+def test_call_cap_right_after_approval_stores_the_answer_once() -> None:
+    """승인 직후 호출 상한에 닿으면 받은 문장으로 메시지를 한 번만 남긴다(받은 문장 줄 저장과 대기 응답 저장이 겹치지 않게)."""
+    be = make_be(save_goal_llm(), max_calls=1)
+    run = be.send_message(be.new_conversation().conversation_id, GOAL_MSG, page_take_id="t-5")
+    pend = run.pending
+    assert pend is not None
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert run.status == "PARTIAL"
+    assert len(stored_texts(be, run)) == 1

@@ -1188,6 +1188,8 @@ def test_reassess_on_take_without_official_review_says_not_enough_data() -> None
         ("REASSESS_DAILY_LIMIT", templates.SystemText.REASSESS_DAILY_LIMIT),
         ("REASSESS_PER_TURN", templates.SystemText.ACTION_UNCONFIRMED),
         ("REVIEW_FAILED", templates.SystemText.REASSESS_FAILED),
+        ("PREAPPROVAL_MISMATCH", templates.SystemText.ACTION_UNCONFIRMED),
+        ("APPROVAL_ARGS_CHANGED", templates.SystemText.ACTION_UNCONFIRMED),
         # 목록 밖 코드(턴 한도 429 코드를 행동에 잘못 실음)는 일반 안내다
         ("AGENT_DAILY_LIMIT", templates.SystemText.REASSESS_FAILED),
     ],

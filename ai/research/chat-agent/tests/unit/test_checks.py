@@ -1274,3 +1274,10 @@ def test_check_claims_checks_each_claim_independently() -> None:
     # 통과한 문장과 걸린 문장이 모두 섞여 있어야 시험이 뜻이 있다
     caught = {f.claim_index for f in whole}
     assert caught and caught != set(range(len(claims)))
+
+
+def test_scope_performance_exception_stays_inside_the_clause() -> None:
+    """수행 명사 예외는 같은 절 안에서만: 쉼표 너머의 '시선'으로 내용 수정안이 빠지지 않는다."""
+    from chat_agent.checks import _scope_edit
+
+    assert _scope_edit("대본 시선, 첫 문장을 바꾸세요", CFG) is not None

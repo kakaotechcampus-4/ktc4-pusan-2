@@ -989,8 +989,10 @@ class FakeBe:
         action["args"] = copy.deepcopy(pend.args)
         req = self._run_action(run, conv, action)
         if req is None:
-            if run.status == "PARTIAL":
-                # 호출 한도에 닿아 이어 부르지 못해도 승인 대기 때 받은 문장 · 판단 · 근거는 대화에 남긴다
+            stored = any(m.run_id == run.run_id for m in conv.messages)
+            if run.status == "PARTIAL" and not stored:
+                # 호출 한도에 닿아 이어 부르지 못해도 승인 대기 때 받은 문장 · 판단 · 근거는 대화에 남긴다. 받은 문장 줄로
+                # 이미 저장했으면(`_run_action`) 다시 저장하지 않는다(메시지 · 기억 카드가 두 번 생기지 않게)
                 self._store_final(run, conv, copy.deepcopy(pend.final), status="PARTIAL")
             return run
         return self._drive(run, conv, req)

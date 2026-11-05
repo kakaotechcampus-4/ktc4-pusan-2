@@ -733,6 +733,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 status="REFUSED",
                 reason="NO_EVIDENCE",
                 system=[templates.SystemText.NO_GUIDE],
+                claims=scope_claims or None,
                 assessments=all_assessments,
             )
         partial = compose.template_partial(ctx, [e for c in out for e in c.evidence_ids])
@@ -858,6 +859,10 @@ _REASSESS_FAILED_NOTE = {
     "APPROVAL_REQUIRED": templates.SystemText.ACTION_UNCONFIRMED,
     "REVIEW_TAKE_MISMATCH": templates.SystemText.ACTION_UNCONFIRMED,
     "REVIEW_REQUEST_CHANGED": templates.SystemText.ACTION_UNCONFIRMED,
+    "INVALID_ACTION": templates.SystemText.ACTION_UNCONFIRMED,
+    "IDEMPOTENCY_CONFLICT": templates.SystemText.ACTION_UNCONFIRMED,
+    "APPROVAL_ARGS_CHANGED": templates.SystemText.ACTION_UNCONFIRMED,
+    "PREAPPROVAL_MISMATCH": templates.SystemText.ACTION_UNCONFIRMED,
 }
 
 
