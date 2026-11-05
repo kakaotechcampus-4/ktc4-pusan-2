@@ -1,6 +1,7 @@
 import { apiRequest, postJson, readJsonWithin } from '@/shared/api/client';
 import { chatPaths } from '@/shared/api/chatPaths';
 import type {
+  ActionDecisionRequest,
   CreateConversationRequest,
   CreateMemoryOffConversationRequest,
   CreateConversationResponse,
@@ -23,39 +24,72 @@ const within = readJsonWithin(MAX_RESPONSE_BYTES);
 export interface ChatApi {
   send: (request: SendMessageRequest) => Promise<SendMessageAccepted>;
   /**
-   * 응답은 `unknown` — BE 가 아직 싣지 않는 칸(`events` · `cards` · `next_after_seq`)이 있어
-   * 통신 계층이 읽으며 채웁니다. `after_seq` 는 (BE 미구현)이라 지금 BE 는 무시합니다
+   * 실행 조회 · 대화의 실행 · 취소 · 승인 · 거절의 응답은 `unknown` — 통신 계층이 모양을 검사하며 읽습니다.
+   * `signal` 은 통신 계층이 시간 초과 · 대화 바꾸기 때 걸린 요청을 끊는 데 씁니다
    */
-  run: (runId: string, afterSeq: number) => Promise<unknown>;
-  /** 이 대화의 마지막 실행(끝났어도). 한 번도 없으면 null */
-  conversationRun: (conversationId: string) => Promise<unknown>;
-  cancel: (runId: string) => Promise<unknown>;
+  run: (runId: string, afterSeq: number, signal?: AbortSignal) => Promise<unknown>;
+  /** 이 대화의 마지막 실행(끝났어도). 한 번도 없으면 null. `afterSeq` 뒤의 이벤트도 싣습니다 */
+  conversationRun: (
+    conversationId: string,
+    afterSeq: number,
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
+  cancel: (runId: string, signal?: AbortSignal) => Promise<unknown>;
+  decide: (
+    runId: string,
+    actionId: string,
+    request: ActionDecisionRequest,
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
   createConversation: (
     request: CreateConversationRequest | CreateMemoryOffConversationRequest,
+    signal?: AbortSignal,
   ) => Promise<CreateConversationResponse>;
-  changeScope: (conversationId: string, pitchId: string | null) => Promise<ScopeChangeResponse>;
+  changeScope: (
+    conversationId: string,
+    pitchId: string | null,
+    signal?: AbortSignal,
+  ) => Promise<ScopeChangeResponse>;
+  /** 대화 목록 — 범위 바꾸기의 결과를 모를 때 서버의 범위를 다시 읽습니다 */
+  listConversations: (signal?: AbortSignal) => Promise<unknown>;
 }
+
+const postBody = (body: unknown, signal?: AbortSignal): RequestInit => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+  signal,
+});
 
 export const chatApi: ChatApi = {
   send: (request) => postJson<SendMessageAccepted>(chatPaths.send, request),
-  run: (runId, afterSeq) =>
+  run: (runId, afterSeq, signal) =>
     apiRequest<unknown>(
       `${chatPaths.run(runId)}?after_seq=${encodeURIComponent(afterSeq)}`,
-      {},
+      { signal },
       within,
     ),
-  conversationRun: (conversationId) =>
-    apiRequest<unknown>(chatPaths.conversationRun(conversationId), {}, within),
+  conversationRun: (conversationId, afterSeq, signal) =>
+    apiRequest<unknown>(
+      `${chatPaths.conversationRun(conversationId)}?after_seq=${encodeURIComponent(afterSeq)}`,
+      { signal },
+      within,
+    ),
   // BE 취소는 본문을 받지 않습니다. 빈 본문 대신 아무것도 보내지 않습니다
-  cancel: (runId) => apiRequest<unknown>(chatPaths.cancel(runId), { method: 'POST' }, within),
-  createConversation: (request) =>
-    postJson<CreateConversationResponse>(chatPaths.conversations, request),
-  changeScope: (conversationId, pitchId) =>
+  cancel: (runId, signal) =>
+    apiRequest<unknown>(chatPaths.cancel(runId), { method: 'POST', signal }, within),
+  decide: (runId, actionId, request, signal) =>
+    apiRequest<unknown>(chatPaths.decision(runId, actionId), postBody(request, signal), within),
+  createConversation: (request, signal) =>
+    apiRequest<CreateConversationResponse>(chatPaths.conversations, postBody(request, signal)),
+  changeScope: (conversationId, pitchId, signal) =>
     apiRequest<ScopeChangeResponse>(chatPaths.scope(conversationId), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pitch_id: pitchId }),
+      signal,
     }),
+  listConversations: (signal) => apiRequest<unknown>(chatPaths.conversations, { signal }, within),
 };
 
 /**
@@ -72,7 +106,7 @@ export async function fetchMessages(
     {},
     within,
   );
-  // (BE 미구현) 최신 아님 사유는 아직 싣지 않습니다 — 빠졌으면 빈 목록으로
+  // 최신 아님 사유가 빠져 와도(예전 BE) 빈 목록으로
   return {
     ...page,
     messages: page.messages.map((m) => ({ ...m, stale_reasons: m.stale_reasons ?? [] })),

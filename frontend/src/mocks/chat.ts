@@ -17,7 +17,6 @@ import {
   type Step,
 } from './chatScenarios';
 import type {
-  ActionDecisionResponse,
   Assessment,
   Card,
   ChatErrorCode,
@@ -145,7 +144,11 @@ interface UserState {
   conversations: Map<string, Conversation>;
   runs: Map<string, Run>;
   requests: Map<string, { body: string; accepted: SendMessageAccepted }>;
-  decisions: Map<string, ActionDecisionResponse>;
+  /** 결정이 끝난 확인 카드 — 그 실행과 끝난 모습 (BE: 승인 · 거절 · 만료 · 취소) */
+  decisions: Map<
+    string,
+    { run_id: string; status: 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED' }
+  >;
   undone: Map<string, UndoResponse>;
   memory: { enabled: boolean; items: ProfileItem[] };
 }
@@ -221,13 +224,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     expire: () => {
       for (const state of users.values())
         for (const run of state.runs.values())
-          if (run.status === 'WAITING_APPROVAL')
-            settleAsk(
-              state,
-              run,
-              'EXPIRED',
-              '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.',
-            );
+          if (run.status === 'WAITING_APPROVAL') settleAsk(state, run, 'EXPIRED', EXPIRED_TEXT);
     },
     goalCheck: (status = 'ACHIEVED') => {
       for (const state of users.values())
@@ -428,7 +425,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     event: E,
     data: Extract<RunEvent, { event: E }>['data'],
   ) {
-    run.events.push({ event_seq: run.events.length + 1, event, data } as RunEvent);
+    run.events.push({ event_seq: run.events.length + 1, event, data, masked: false } as RunEvent);
   }
 
   function emitClaim(run: Run, data: ClaimStep) {
@@ -458,17 +455,39 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     }
   }
 
-  /** 승인 대기를 거절 · 만료 · 취소로 끝냅니다 — AI 를 다시 부르지 않고 BE 고정 문장을 덧붙입니다 */
-  function settleAsk(state: UserState, run: Run, status: RunStatus, sentence: string | null) {
+  /**
+   * 승인 대기를 거절 · 만료 · 취소 · 새 메시지로 끝냅니다 — BE `close_waiting` 처럼. AI 를 다시 부르지 않고,
+   * 이미 낸 문장 뒤에 고정 문장을 덧붙인 메시지를 남깁니다. 고정 문장은 이벤트로 내지 않고(메시지에만),
+   * 메시지 카드는 비우며, 메시지 상태는 거절이면 DONE · 그 밖에는 PARTIAL 입니다("메시지 상태에는 만료 · 취소가 없다")
+   */
+  function settleAsk(
+    state: UserState,
+    run: Run,
+    status: 'DONE' | 'EXPIRED' | 'CANCELLED',
+    sentence: string,
+  ) {
     const ask = run.ask!;
-    const card: Card = askCard(ask);
-    if (sentence) emitClaim(run, say('SYSTEM', sentence));
-    finish(state, run, status, [card]);
+    run.status = status;
+    run.cards = [];
+    run.ask = null;
+    if (status !== 'DONE')
+      run.error = { code: status === 'EXPIRED' ? 'AGENT_EXPIRED' : 'AGENT_CANCELLED' };
+    const conversation = state.conversations.get(run.conversation_id)!;
+    const readTakes = run.trace.some((t) => t.tool === 'compare_takes');
+    conversation.messages.push(
+      assistantMessage(
+        run.run_id,
+        status === 'DONE' ? 'DONE' : 'PARTIAL',
+        [...run.claims, say('SYSTEM', sentence)],
+        [],
+        run.plan,
+        run.trace,
+        readTakes ? basisOf(take3!.take_version) : null,
+      ),
+    );
     state.decisions.set(ask.action_id, {
-      action_id: ask.action_id,
-      action_status: status === 'DONE' ? 'REJECTED' : (status as 'EXPIRED' | 'CANCELLED'),
       run_id: run.run_id,
-      run_status: status,
+      status: status === 'DONE' ? 'REJECTED' : status,
     });
   }
 
@@ -575,15 +594,27 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     finish(state, run, status, []);
   }
 
+  /** 실행 조회 — BE `_view` 처럼 커서 뒤 이벤트와 다음 커서. 목은 한 번에 다 보내 `has_more` 가 늘 false */
   function runView(run: Run, afterSeq: number): RunView {
+    const events = run.events.filter((e) => e.event_seq > afterSeq);
+    return {
+      ...statusView(run),
+      events,
+      next_after_seq: events.at(-1)?.event_seq ?? afterSeq,
+    };
+  }
+
+  /** 이벤트 없이 상태만 — 취소 · 승인 · 거절의 응답 (BE `view_of`) */
+  function statusView(run: Run): RunView {
     return {
       run_id: run.run_id,
       conversation_id: run.conversation_id,
       status: run.status,
       plan: run.plan,
       trace: run.trace,
-      events: run.events.filter((e) => e.event_seq > afterSeq),
+      events: [],
       next_after_seq: null,
+      has_more: false,
       cards: run.status === 'WAITING_APPROVAL' ? run.cards : [],
       error: run.error,
       retry_after_s: run.retry_after_s,
@@ -609,6 +640,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     [...state.runs.values()].find(
       (r) => r.conversation_id === conversationId && !isTerminalRun(r.status),
     ) ?? null;
+
+  /** 마지막 답이 최신이 아닌지 (BE 목록의 `stale`) — 답이 없으면 false */
+  const isStale = (c: Conversation) =>
+    (c.messages.findLast((msg) => msg.role === 'assistant')?.stale_reasons.length ?? 0) > 0;
 
   const summary = (c: Conversation): ConversationSummary => ({
     conversation_id: c.conversation_id,
@@ -641,7 +676,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         const pitchId = new URL(request.url).searchParams.get('pitch_id');
         const conversations = [...state.conversations.values()]
           .filter((c) => !pitchId || c.scope_pitch_id === pitchId)
-          .map(summary)
+          .map((c) => ({ ...summary(c), stale: isStale(c) }))
           .sort((a, b) => b.last_user_activity_at.localeCompare(a.last_user_activity_at));
         return HttpResponse.json({ conversations });
       }),
@@ -774,7 +809,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           return error('NOT_FOUND', 404);
         const running = activeRun(state, conversation.conversation_id);
         if (running?.status === 'WAITING_APPROVAL')
-          settleAsk(state, running, 'CANCELLED', '새 메시지를 받아 앞의 확인 요청은 취소했어요.');
+          settleAsk(state, running, 'CANCELLED', NEW_MESSAGE_TEXT);
         else if (running) return error('AGENT_RUN_IN_PROGRESS', 409);
 
         if (!conversation.title) conversation.title = [...body.text].slice(0, 30).join('');
@@ -838,9 +873,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       withUser((state, { params }) => {
         const run = state.runs.get(String(params.runId));
         if (!run) return error('NOT_FOUND', 404);
-        // [취소]는 새 메시지가 아니라서 "새 메시지를 받아 …" 문장을 붙이지 않습니다.
-        // 승인 대기 취소는 (BE 미구현) — 문서(L2-41 · L2-42)대로 취소 문장 메시지를 남깁니다
-        if (run.status === 'WAITING_APPROVAL') settleAsk(state, run, 'CANCELLED', null);
+        // 승인 대기 취소 — BE `_cancel_waiting` 처럼 "목표를 저장하지 않았어요." 같은 행동별 문장을 남깁니다
+        // (문서 L2-41 · 7-10 은 "요청을 취소했어요." — BE 와 다른 점은 BE 담당에게 확인 중)
+        if (run.status === 'WAITING_APPROVAL')
+          settleAsk(state, run, 'CANCELLED', NOT_DONE_TEXT[run.ask!.action_type]);
         else if (!isTerminalRun(run.status)) {
           // BE `cancel_run` 처럼 — 오류 코드만 남기고 답 메시지는 만들지 않습니다
           run.status = 'CANCELLED';
@@ -849,49 +885,44 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           run.error = { code: 'AGENT_CANCELLED' };
         }
         // 먼저 끝난 쪽이 이깁니다 — 이미 끝났으면 그 상태를 그대로 돌려줍니다
-        return HttpResponse.json(runView(run, run.events.length));
+        return HttpResponse.json(statusView(run));
       }),
     ),
 
     http.post(
-      `*${chatPaths.decision(':actionId')}`,
+      `*${chatPaths.decision(':runId', ':actionId')}`,
       withUser(async (state, { params, request }) => {
+        // BE `decide_action` 순서 — 본문 검사 → 대상 → 이미 결정됨(그때의 상태) → 만료 · 취소 → 카드 바뀜
         const actionId = String(params.actionId);
-        const done = state.decisions.get(actionId);
-        const body = (await request.json().catch(() => null)) as {
-          decision?: unknown;
-          args_hash?: unknown;
-        } | null;
+        const body: unknown = await request.json().catch(() => null);
         if (
-          !body ||
+          !isBody(body) ||
+          !onlyKeys(body, ['decision', 'args_hash']) ||
           (body.decision !== 'APPROVE' && body.decision !== 'REJECT') ||
-          typeof body.args_hash !== 'string'
+          typeof body.args_hash !== 'string' ||
+          body.args_hash.length < 1 ||
+          body.args_hash.length > 128
         )
           return error('VALIDATION_ERROR', 422);
-        if (done) {
-          if (done.action_status === 'EXPIRED') return error('AGENT_EXPIRED', 409);
-          if (done.action_status === 'CANCELLED') return error('AGENT_CANCELLED', 409);
-          return HttpResponse.json(done);
-        }
-        const run = [...state.runs.values()].find((r) => r.ask?.action_id === actionId);
-        if (!run?.ask) return error('NOT_FOUND', 404);
+        const run = state.runs.get(String(params.runId));
+        const done = state.decisions.get(actionId);
+        if (!run || (done ? done.run_id !== run.run_id : run.ask?.action_id !== actionId))
+          return error('NOT_FOUND', 404);
+        if (done?.status === 'APPROVED' || done?.status === 'REJECTED')
+          return HttpResponse.json(statusView(run));
+        if (done?.status === 'EXPIRED') return error('AGENT_EXPIRED', 409);
+        if (done?.status === 'CANCELLED' || !run.ask) return error('AGENT_CANCELLED', 409);
         if (body.args_hash !== run.ask.args_hash) return error('AGENT_STATE_INVALID', 409);
         if (body.decision === 'REJECT') {
-          settleAsk(state, run, 'DONE', run.ask.rejected);
-          return HttpResponse.json(state.decisions.get(actionId));
+          settleAsk(state, run, 'DONE', NOT_DONE_TEXT[run.ask.action_type]);
+          return HttpResponse.json(statusView(run));
         }
         run.steps = [...run.ask.approved];
         run.ask = null;
         run.cards = [];
         run.status = 'RUNNING';
-        const response: ActionDecisionResponse = {
-          action_id: actionId,
-          action_status: 'RUNNING',
-          run_id: run.run_id,
-          run_status: 'RUNNING',
-        };
-        state.decisions.set(actionId, response);
-        return HttpResponse.json(response);
+        state.decisions.set(actionId, { run_id: run.run_id, status: 'APPROVED' });
+        return HttpResponse.json(statusView(run));
       }),
     ),
 
@@ -1011,6 +1042,14 @@ const basisOf = (takeNumber: number): MessageBasis => ({
     },
   ],
 });
+
+/** BE `waiting.py` 의 고정 문장 (7-10) */
+const EXPIRED_TEXT = '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.';
+const NEW_MESSAGE_TEXT = '새 메시지를 받아 앞의 확인 요청은 취소했어요.';
+const NOT_DONE_TEXT = {
+  SAVE_GOAL: '목표를 저장하지 않았어요.',
+  REASSESS: '다시 평가하지 않았어요.',
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

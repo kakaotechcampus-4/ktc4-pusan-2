@@ -13,6 +13,7 @@ import { canSend, useChatStore } from './chatStore';
 import {
   MAX_REREADS,
   REQUEST_TIMEOUT_MS,
+  STATUS_ONLY_AFTER_SEQ,
   createChatTransport,
   type ChatClock,
   type ChatTransport,
@@ -106,8 +107,11 @@ const json = (method: string, body: unknown): RequestInit => ({
 const mockApi: ChatApi = {
   send: (request) => call(chatPaths.send, json('POST', request)),
   run: (runId, afterSeq) => call(`${chatPaths.run(runId)}?after_seq=${afterSeq}`),
-  conversationRun: (id) => call(chatPaths.conversationRun(id)),
+  conversationRun: (id, afterSeq) => call(`${chatPaths.conversationRun(id)}?after_seq=${afterSeq}`),
   cancel: (runId) => call(chatPaths.cancel(runId), { method: 'POST' }),
+  decide: (runId, actionId, request) =>
+    call(chatPaths.decision(runId, actionId), json('POST', request)),
+  listConversations: () => call(chatPaths.conversations),
   createConversation: (request) => call(chatPaths.conversations, json('POST', request)),
   changeScope: (id, pitchId) => call(chatPaths.scope(id), json('PATCH', { pitch_id: pitchId })),
 };
@@ -119,13 +123,13 @@ const draft = (text = '비교해 줘') => ({
   choice: null,
 });
 
-/** 직접 만드는 실행 조회 응답 — 순번마다 진행 줄 하나 */
+/** 직접 만드는 실행 조회 응답 — 순번마다 진행 줄 하나. `hasMore` 는 크기 때문에 나눠 남은 이벤트가 있음 */
 function runView(
   runId: string,
   conversationId: string,
   status: RunView['status'],
   seqs: number[],
-  nextAfterSeq: number | null = null,
+  hasMore = false,
 ): RunView {
   return {
     run_id: runId,
@@ -133,8 +137,14 @@ function runView(
     status,
     plan: [],
     trace: [],
-    events: seqs.map((seq) => ({ event_seq: seq, event: 'plan' as const, data: { plan: [] } })),
-    next_after_seq: nextAfterSeq,
+    events: seqs.map((seq) => ({
+      event_seq: seq,
+      event: 'plan' as const,
+      data: { plan: [] },
+      masked: false,
+    })),
+    next_after_seq: seqs.at(-1) ?? 0,
+    has_more: hasMore,
     cards: [],
     error: null,
     retry_after_s: null,
@@ -162,14 +172,16 @@ function start(override: Partial<ChatApi> = {}) {
   api = { ...mockApi, ...override };
   const tracked: ChatApi = {
     send: counted(api.send),
-    run: counted((runId: string, afterSeq: number) => {
+    run: counted((runId: string, afterSeq: number, signal?: AbortSignal) => {
       runCalls.push(clock.t);
-      return api.run(runId, afterSeq);
+      return api.run(runId, afterSeq, signal);
     }),
     conversationRun: counted(api.conversationRun),
     cancel: counted(api.cancel),
+    decide: counted(api.decide),
     createConversation: counted(api.createConversation),
     changeScope: counted(api.changeScope),
+    listConversations: counted(api.listConversations),
   };
   transport = createChatTransport({
     api: tracked,
@@ -225,7 +237,7 @@ describe('보내기 → 조회', () => {
     await untilEnded();
     const claims = of('progress')
       .flatMap((s) => s.events)
-      .flatMap((e) => (e.event === 'claim' ? [e.data.index] : []));
+      .flatMap((e) => (e.event === 'claim' && e.data ? [e.data.index] : []));
     expect(claims).toEqual([0, 1, 2, 3]);
     const seqs = of('progress').flatMap((s) => s.events.map((e) => e.event_seq));
     expect(seqs).toEqual(seqs.map((_, i) => i + 1));
@@ -271,6 +283,7 @@ describe('보내기 → 조회', () => {
       event_seq: seq,
       event: 'plan' as const,
       data: { plan: [] },
+      masked: false,
     });
     const view = (status: RunView['status'], seqs: number[]): RunView => ({
       run_id: store().run!.runId,
@@ -279,7 +292,8 @@ describe('보내기 → 조회', () => {
       plan: [],
       trace: [],
       events: seqs.map(plan),
-      next_after_seq: null,
+      next_after_seq: seqs.at(-1) ?? 0,
+      has_more: false,
       cards: [],
       error: null,
       retry_after_s: null,
@@ -344,6 +358,7 @@ describe('조회 실패 · 늦어짐', () => {
         trace: [],
         events: [],
         next_after_seq: null,
+        has_more: false,
         cards: [],
         error: null,
         retry_after_s: null,
@@ -635,7 +650,7 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
     await untilEnded();
     const claims = of('progress')
       .flatMap((s) => s.events)
-      .flatMap((e) => (e.event === 'claim' ? [e.data.index] : []));
+      .flatMap((e) => (e.event === 'claim' && e.data ? [e.data.index] : []));
     expect(claims).toEqual([0, 1, 2, 3]);
   });
 
@@ -686,7 +701,7 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
           await gate.promise;
           throw new ApiFailure(404, 'NOT_FOUND');
         }
-        return mockApi.conversationRun(id);
+        return mockApi.conversationRun(id, 0);
       },
     });
     store().selectConversation(a, WHOLE);
@@ -747,7 +762,7 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
       .flatMap((s) => s.cards)
       .flatMap((c) => (c.ok && c.card.type === 'ASK_CONFIRM' ? [c.card] : []))[0]!;
     await call(
-      chatPaths.decision(ask.action_id),
+      chatPaths.decision(store().run!.runId, ask.action_id),
       json('POST', { decision: 'APPROVE', args_hash: ask.args_hash }),
     );
     // 승인 대기 중 간격(최대 15초) 안에 다시 조회해 실행 중을 보고, 그 뒤로는 1초
@@ -795,12 +810,18 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
     expect(clock.pending()[0]).toBeGreaterThan(0);
   });
 
-  it('다음 커서가 끝없이 와도 곧바로 다시 읽기는 몇 번까지만, 끝난 실행은 끝낸다', async () => {
+  it('남은 이벤트(has_more)가 끝없이 와도 곧바로 다시 읽기는 몇 번까지만, 끝난 실행은 끝낸다', async () => {
     let calls = 0;
     start({
       run: async (runId) => {
         calls += 1;
-        return runView(runId, store().run!.conversationId, calls > 6 ? 'DONE' : 'RUNNING', [], 9);
+        return runView(
+          runId,
+          store().run!.conversationId,
+          calls > 6 ? 'DONE' : 'RUNNING',
+          [],
+          true,
+        );
       },
     });
     await sendNow(draft());
@@ -821,7 +842,7 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
           fail = false;
           throw new TypeError('offline');
         }
-        return mockApi.conversationRun(cid);
+        return mockApi.conversationRun(cid, 0);
       },
     });
     store().selectConversation(id, WHOLE);
@@ -1143,7 +1164,7 @@ describe('응답이 오지 않는 요청 (L3-19)', () => {
   });
 });
 
-describe('승인 대기 중 [취소] — 지금 BE 는 취소하지 않고 그 상태를 돌려줌', () => {
+describe('서버가 취소하지 않고 끝나지 않은 상태를 돌려줌 — 예: 다른 탭이 먼저 승인해 RUNNING', () => {
   it('"취소 중" 을 풀고 알린다 — 보내기 · 다시 취소가 막히지 않는다', async () => {
     start({
       run: async (runId) => beRun(runId, store().run!.conversationId, 'WAITING_APPROVAL'),
@@ -1221,7 +1242,7 @@ describe('늦게 온 실패 · 대화 바꾸기', () => {
       conversationRun: async (id) => {
         asked.push(id);
         if (id === 'c-bad') throw new ApiFailure(500, 'INTERNAL');
-        return mockApi.conversationRun(id);
+        return mockApi.conversationRun(id, 0);
       },
     });
     store().startNewConversation(WHOLE);
@@ -1232,6 +1253,258 @@ describe('늦게 온 실패 · 대화 바꾸기', () => {
     store().selectConversation(good, WHOLE);
     await flush();
     expect(asked.at(-1)).toBe(good);
+    expect(store().syncing).toBe(false);
+  });
+});
+
+// ── 새 BE (55aa10d0) 에 맞춤 ──────────────────────────────────
+
+describe('이벤트 커서 — next_after_seq 는 늘 다음 커서, 남은 것은 has_more', () => {
+  it('BE 처럼 다음 커서가 늘 와도 곧바로 다시 읽지 않고 실행 중 1초 간격을 지킨다', async () => {
+    let seq = 0;
+    start({
+      run: async (runId) => {
+        seq += 1;
+        return {
+          ...runView(runId, store().run!.conversationId, 'RUNNING', [seq]),
+          next_after_seq: seq,
+          has_more: false,
+        };
+      },
+    });
+    await sendNow(draft());
+    await clock.advance(5_000);
+    const gaps = runCalls.slice(1).map((t, i) => t - runCalls[i]!);
+    expect(gaps.every((g) => g === 1_000)).toBe(true);
+    expect(runCalls.length).toBeLessThanOrEqual(6);
+  });
+
+  it('대화의 실행을 찾을 때는 이벤트 없이 상태만 받는 커서를 보낸다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const conversationId = store().conversationId!;
+    const cursors: number[] = [];
+    start({
+      conversationRun: async (id, afterSeq) => {
+        cursors.push(afterSeq);
+        return mockApi.conversationRun(id, afterSeq);
+      },
+    });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    expect(cursors).toEqual([STATUS_ONLY_AFTER_SEQ]);
+  });
+});
+
+describe('가린 문장 줄 (근거가 지워짐)', () => {
+  const claimData = (index: number) => ({
+    index,
+    claim: {
+      kind: 'SYSTEM',
+      assessment_id: null,
+      text: `문장 ${index}`,
+      evidence_ids: [],
+      source_ids: [],
+      action_id: null,
+    },
+    evidence: [],
+    sources: [],
+    assessments: [],
+  });
+
+  it('가린 줄은 자리를 채우는 안내로 보내고, 뒤 문장은 그대로 이어진다', async () => {
+    start({
+      run: async (runId, afterSeq) => {
+        const conversationId = store().run!.conversationId;
+        const all = [
+          { event_seq: 1, event: 'claim', data: null, masked: true },
+          { event_seq: 2, event: 'claim', data: claimData(1), masked: false },
+        ].filter((e) => e.event_seq > afterSeq);
+        return {
+          ...runView(runId, conversationId, afterSeq >= 2 ? 'DONE' : 'RUNNING', []),
+          events: all,
+          next_after_seq: all.at(-1)?.event_seq ?? afterSeq,
+        };
+      },
+    });
+    await sendNow(draft());
+    await untilEnded();
+    const claims = of('progress').flatMap((s) => s.claims);
+    expect(claims.map((c) => [c.index, c.masked, c.text])).toEqual([
+      [0, true, '근거 기록이 지워져 이 답을 가렸어요.'],
+      [1, false, '문장 1'],
+    ]);
+    expect(of('progress').map((s) => s.contractError)).not.toContain('BAD_CLAIM');
+    expect(of('pollTrouble')).toEqual([]);
+  });
+
+  it('가렸다면서 내용이 있으면 형식 오류', async () => {
+    start({
+      run: async (runId) => ({
+        ...runView(runId, store().run!.conversationId, 'RUNNING', []),
+        events: [{ event_seq: 1, event: 'claim', data: claimData(0), masked: true }],
+      }),
+    });
+    await sendNow(draft());
+    expect(of('pollTrouble')).toMatchObject([{ reason: 'FORMAT' }]);
+  });
+
+  it('가리지 않았는데 내용이 없으면 형식 오류', async () => {
+    start({
+      run: async (runId) => ({
+        ...runView(runId, store().run!.conversationId, 'RUNNING', []),
+        events: [{ event_seq: 1, event: 'claim', data: null, masked: false }],
+      }),
+    });
+    await sendNow(draft());
+    expect(of('pollTrouble')).toMatchObject([{ reason: 'FORMAT' }]);
+  });
+});
+
+describe('승인 · 거절 (L3-39 · L3-40)', () => {
+  /** 목의 승인 대기까지 — 진행 신호의 확인 카드 */
+  async function untilAsk() {
+    await sendNow(draft('3장 시선을 목표로 잡아 줘'));
+    for (let i = 0; i < 30 && store().run?.phase !== 'WAITING_APPROVAL'; i++)
+      await clock.advance(1_000);
+    return of('progress')
+      .flatMap((s) => s.cards)
+      .flatMap((c) => (c.ok && c.card.type === 'ASK_CONFIRM' ? [c.card] : []))
+      .at(-1)!;
+  }
+
+  it('[승인]하면 실행 중으로 돌아가 끝까지 받고, 같은 카드를 겹쳐 누르면 막는다', async () => {
+    const ask = await untilAsk();
+    const first = transport.decide(ask.action_id, 'APPROVE', ask.args_hash);
+    expect(await transport.decide(ask.action_id, 'APPROVE', ask.args_hash)).toBe('locked');
+    expect(await first).toBe('decided');
+    expect(store().run?.phase).toBe('RUNNING');
+    await untilEnded();
+    expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
+  });
+
+  it('[거절]하면 DONE 으로 끝난다', async () => {
+    const ask = await untilAsk();
+    expect(await transport.decide(ask.action_id, 'REJECT', ask.args_hash)).toBe('decided');
+    expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
+    expect(store().run).toBeNull();
+  });
+
+  it('카드가 바뀌었으면(409) 알리고 상태를 다시 읽는다 — 승인 대기가 아니면 보내지 않는다', async () => {
+    const ask = await untilAsk();
+    const before = runCalls.length;
+    expect(await transport.decide(ask.action_id, 'APPROVE', 'stale-hash')).toBe('failed');
+    expect(of('decisionFailed')).toMatchObject([
+      { actionId: ask.action_id, code: 'AGENT_STATE_INVALID' },
+    ]);
+    await flush();
+    expect(runCalls.length).toBeGreaterThan(before);
+    store().endRun(store().run!.runId);
+    expect(await transport.decide(ask.action_id, 'APPROVE', ask.args_hash)).toBe('locked');
+  });
+});
+
+describe('결과를 모르는 취소 · 범위 바꾸기 (L3-34)', () => {
+  it('취소 응답을 잃으면 "확인 중" 으로 두고, 다음 조회가 끝나지 않았으면 취소 못 함으로 확정한다', async () => {
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'RUNNING', []),
+      cancel: async () => {
+        throw new TypeError('offline');
+      },
+    });
+    await sendNow(draft());
+    expect(await transport.cancel()).toBe(true);
+    expect(of('cancelChecking')).toHaveLength(1);
+    expect(of('cancelFailed')).toEqual([]);
+    expect(store().cancelling).not.toBeNull();
+    await flush();
+    await clock.advance(1_000);
+    expect(of('cancelFailed')).toHaveLength(1);
+    expect(store().cancelling).toBeNull();
+  });
+
+  it('취소 응답을 잃었어도 서버가 취소했으면 다음 조회의 끝남으로 확정한다', async () => {
+    let cancelled = false;
+    start({
+      run: async (runId) =>
+        runView(runId, store().run!.conversationId, cancelled ? 'CANCELLED' : 'RUNNING', []),
+      cancel: async () => {
+        cancelled = true;
+        throw new TypeError('offline');
+      },
+    });
+    await sendNow(draft());
+    await transport.cancel();
+    await flush();
+    await clock.advance(1_000);
+    expect(of('cancelFailed')).toEqual([]);
+    expect(of('ended')).toMatchObject([{ status: 'CANCELLED' }]);
+  });
+
+  it('범위 바꾸기 응답을 잃으면 서버의 범위를 다시 읽어 맞춘다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const pitch = { pitchId: '10000000-0000-4000-8000-000000000001', title: '캡스톤 최종 발표' };
+    // 서버는 바꿨는데 응답을 잃음
+    start({
+      changeScope: async (id, pitchId) => {
+        await mockApi.changeScope(id, pitchId);
+        throw new TypeError('offline');
+      },
+    });
+    expect(await transport.changeScope(pitch)).toBe(true);
+    expect(store().scope).toEqual(pitch);
+    expect(of('scopeFailed')).toEqual([]);
+    // 서버가 받지 못함 — 앞 범위로
+    start({
+      changeScope: async () => {
+        throw new TypeError('offline');
+      },
+    });
+    expect(await transport.changeScope(WHOLE)).toBe(false);
+    expect(store().scope).toEqual(pitch);
+    expect(of('scopeFailed')).toHaveLength(1);
+  });
+});
+
+describe('걸린 요청 끊기', () => {
+  it('시간이 넘은 조회는 요청을 끊는다', async () => {
+    const seen: AbortSignal[] = [];
+    start({
+      run: (_runId, _afterSeq, signal) => {
+        seen.push(signal!);
+        return never();
+      },
+    });
+    await sendNow(draft());
+    expect(seen[0]!.aborted).toBe(false);
+    await clock.advance(REQUEST_TIMEOUT_MS);
+    expect(seen[0]!.aborted).toBe(true);
+  });
+
+  it('걸린 대화 조회 중에 다른 대화를 고르면 끊고 곧바로 새 대화를 조회한다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const good = store().conversationId!;
+    const asked: string[] = [];
+    start({
+      conversationRun: (id, afterSeq, signal) => {
+        asked.push(id);
+        if (id !== 'c-hung') return mockApi.conversationRun(id, afterSeq);
+        return new Promise((_, reject) =>
+          signal!.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          ),
+        );
+      },
+    });
+    store().startNewConversation(WHOLE);
+    store().selectConversation('c-hung', WHOLE);
+    await flush();
+    store().selectConversation(good, WHOLE);
+    await flush();
+    expect(asked).toEqual(['c-hung', good]);
     expect(store().syncing).toBe(false);
   });
 });

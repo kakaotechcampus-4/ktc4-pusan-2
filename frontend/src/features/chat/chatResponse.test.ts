@@ -20,6 +20,7 @@ import {
   createRunReader,
   emptyBasis,
   errorText,
+  MASKED_TEXT,
   MAX_RESPONSE_BYTES,
   readCard,
   readMessage,
@@ -112,6 +113,7 @@ const claimEvent = (seq: number, index: number, data: Record<string, unknown>): 
     event_seq: seq,
     event: 'claim',
     data: { index, evidence: [], sources: [], assessments: [], ...data },
+    masked: false,
   }) as unknown as RunEvent;
 
 // ── 진행 ─────────────────────────────────────────────────────
@@ -266,7 +268,7 @@ describe('메시지 목록의 답 (L3-23 · L3-24 · L3-42)', () => {
   });
 
   it.each([
-    ['빈 글', claim('RECORD', '  ')],
+    ['빈 글', claim('RECORD', '')],
     ['300자 초과', claim('RECORD', '가'.repeat(301))],
     ['참조가 목록이 아님', { ...claim('RECORD', '문장'), evidence_ids: 'r' }],
     ['문장이 객체가 아님', 'RECORD'],
@@ -474,7 +476,7 @@ describe('실행 중 문장 줄 (L3-46)', () => {
 
   it('진행 줄은 건너뛰고 문장 줄만 읽는다', () => {
     const reader = createRunReader();
-    const plan = { event_seq: 1, event: 'plan', data: { plan: [] } } as RunEvent;
+    const plan: RunEvent = { event_seq: 1, event: 'plan', data: { plan: [] }, masked: false };
     expect(reader.add([plan, claimEvent(2, 0, { claim: claim('SYSTEM', '하나') })])).toHaveLength(
       1,
     );
@@ -542,7 +544,7 @@ describe('목 시나리오를 응답 검사로 읽기', () => {
       const ask = view.cards.find((c) => c.type === 'ASK_CONFIRM') as
         Extract<Card, { type: 'ASK_CONFIRM' }> | undefined;
       if (ask && reader.cards(view.cards).every((c) => c.ok))
-        await call(chatPaths.decision(ask.action_id), 'POST', {
+        await call(chatPaths.decision(accepted.run_id, ask.action_id), 'POST', {
           decision: 'APPROVE',
           args_hash: ask.args_hash,
         });
@@ -689,7 +691,7 @@ describe('대화 API 의 크기 제한 연결 (L3-22)', () => {
     );
     for (const call of [
       () => chatApi.run('r-1', 0),
-      () => chatApi.conversationRun('c-1'),
+      () => chatApi.conversationRun('c-1', 0),
       () => chatApi.cancel('r-1'),
       () => fetchMessages('c-1'),
     ])
@@ -798,5 +800,25 @@ describe('메시지 목록의 빠진 칸 (BE 미구현)', () => {
       vi.fn(() => Promise.resolve(Response.json({ messages: [fromBe], next_before_seq: null }))),
     );
     expect((await fetchMessages('c-1')).messages[0]!.stale_reasons).toEqual([]);
+  });
+});
+
+// ── 새 BE (55aa10d0) 에 맞춤 ──────────────────────────────────
+
+describe('가린 문장 줄 · 공백 글', () => {
+  it('가린 줄은 순번 하나를 채우는 안내 — 칩 없이, 뒤 문장은 이어서 읽는다', () => {
+    const reader = createRunReader();
+    const masked = { event_seq: 1, event: 'claim', data: null, masked: true } as RunEvent;
+    const shown = reader.add([masked, claimEvent(2, 1, { claim: claim('SYSTEM', '뒤 문장') })]);
+    expect(shown.map((c) => [c.index, c.masked, c.text, c.chips.length])).toEqual([
+      [0, true, MASKED_TEXT, 0],
+      [1, false, '뒤 문장', 0],
+    ]);
+    expect(reader.error).toBeNull();
+  });
+
+  it('공백뿐인 문장도 AI 스키마(min_length=1)처럼 받는다', () => {
+    const answer = readMessage(message({ claims: [claim('SYSTEM', ' ')] }));
+    expect([answer.error, answer.claims.length]).toEqual([null, 1]);
   });
 });

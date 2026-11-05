@@ -73,8 +73,11 @@ export interface Readable<T> {
   dropped: boolean;
 }
 
+/** AI 스키마의 글 칸은 1자 이상이면 받습니다(`min_length=1`) — 공백뿐이어도 정상 출력입니다 */
+const isFilled = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+
 const isPlanStep = (v: unknown): v is PlanStep =>
-  isObj(v) && isText(v.step) && isPlanStatus(v.status) && isStrOrNull(v.note ?? null);
+  isObj(v) && isFilled(v.step) && isPlanStatus(v.status) && isStrOrNull(v.note ?? null);
 
 /** 할 일 목록 — null 은 아직 진행이 없는 것(BE)이라 빠진 것이 아닙니다 */
 export function readPlan(v: unknown): Readable<PlanStep> {
@@ -303,7 +306,12 @@ export interface ShownClaim {
   /** 판단 문장의 판단. 받지 못했으면 null — 판정을 추정하지 않습니다(12-4) */
   assessment: ListedAssessment | null;
   actionId: string | null;
+  /** 근거가 지워져 BE 가 가린 문장 — `text` 는 가림 안내이고 칩이 없습니다 */
+  masked: boolean;
 }
+
+/** 가린 문장 자리에 보일 글 — BE 메시지 가림 문구와 같습니다 */
+export const MASKED_TEXT = '근거 기록이 지워져 이 답을 가렸어요.';
 
 /** 계약 오류 사유 — 화면 문구는 모두 "답의 근거를 확인하지 못했으니 다시 물어봐 주세요." */
 export type ContractError =
@@ -340,7 +348,7 @@ function readClaim(v: unknown, index: number, basis: Basis): ShownClaim | { erro
   if (!isClaimKind(v.kind)) return { error: 'UNKNOWN_KIND' };
   const { kind, text, evidence_ids, source_ids } = v;
   const ok =
-    isText(text) &&
+    isFilled(text) &&
     codePoints(text) <= 300 &&
     isStrList(evidence_ids) &&
     isStrList(source_ids) &&
@@ -365,6 +373,7 @@ function readClaim(v: unknown, index: number, basis: Basis): ShownClaim | { erro
         ? (basis.assessments.get(assessmentId) ?? null)
         : null,
     actionId: (v.action_id as string | null) ?? null,
+    masked: false,
   };
 }
 
@@ -552,6 +561,22 @@ export function createRunReader(): RunReader {
       for (const event of events) {
         if (error) break;
         if (event.event !== 'claim') continue;
+        // 가린 줄도 문장 순번 하나를 차지합니다 — 내용은 몰라도 자리를 채워 뒤 문장이 이어지게 합니다
+        if (event.masked) {
+          shown.push({
+            index: expected,
+            kind: 'SYSTEM',
+            text: MASKED_TEXT,
+            chips: [],
+            missing: 0,
+            general: false,
+            assessment: null,
+            actionId: null,
+            masked: true,
+          });
+          expected += 1;
+          continue;
+        }
         const data: unknown = event.data;
         if (!isObj(data) || !isInt(data.index)) {
           error = 'BAD_CLAIM';
