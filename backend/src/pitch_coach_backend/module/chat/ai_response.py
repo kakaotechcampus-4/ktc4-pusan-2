@@ -45,7 +45,7 @@ class _ErrorBody(_View):
 
 
 class _Claim(_View):
-    kind: Literal["RECORD", "GUIDE", "ACTION_RESULT", "SYSTEM", "ASSESSMENT"]
+    kind: Literal["RECORD", "GUIDE", "GENERAL", "ACTION_RESULT", "SYSTEM", "ASSESSMENT"]
     text: str = Field(min_length=1, max_length=300)
 
 
