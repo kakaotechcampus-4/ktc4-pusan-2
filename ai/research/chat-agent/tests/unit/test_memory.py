@@ -479,3 +479,21 @@ def test_negated_value_is_not_saved_even_in_the_widened_request_clause() -> None
     assert kept == [] and dropped[0].reason.startswith("⑥")
     kept, _ = memory.check_profile_updates([good], user_message=msg, cfg=DEFAULT_CONFIG)
     assert [k["value"] for k in kept] == ["짧게 설명"]
+
+
+@pytest.mark.parametrize(
+    ("msg", "value", "ok"),
+    [
+        ("길게 하지 마. 짧게 설명해 줘, 기억해 줘", "짧게 설명", True),
+        (
+            "짧게 설명 예시는 빼고 해 줘, 기억해 줘",
+            "짧게 설명",
+            True,
+        ),  # '빼고'는 값의 부정이 아니다
+        ("길게  설명하지 말고 짧게 해 줘, 기억해 줘", "길게 설명", False),  # 공백이 달라도 찾는다
+    ],
+)
+def test_negation_is_only_the_one_attached_to_the_value(msg: str, value: str, ok: bool) -> None:
+    item = {"key": "EXPLAIN_STYLE", "value": value, "quote": msg}
+    kept, _ = memory.check_profile_updates([item], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert bool(kept) is ok

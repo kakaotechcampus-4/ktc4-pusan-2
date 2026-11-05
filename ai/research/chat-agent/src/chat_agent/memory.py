@@ -173,16 +173,19 @@ def _profile_problem(item: Any, message: str, cfg: ChatAgentConfig) -> str | Non
                 request_clauses.append(parts[i - 1])
     if not any(_squash(value) in _squash(c) for c in request_clauses):
         return "⑥ 값이 기억 요청 구간에 없음"
-    # 값 바로 뒤가 부정이면 사용자가 바라지 않는 값이다("길게 말하지 말고 짧게 설명해 줘, 기억해 줘"의 '길게')
+    # 값에 바로 이어진 부정이면 사용자가 바라지 않는 값이다("길게 말하지 말고 짧게 설명해 줘, 기억해 줘"의 '길게').
+    # 값 뒤에 짧은 동사(4글자 안)와 부정 어미가 바로 붙을 때만 본다: "짧게 설명 예시는 빼고"의 '빼고'는 값의 부정이 아니다
+    v = _squash(value)
     for c in request_clauses:
-        at = c.find(value)
-        if at >= 0 and any(
-            n in c[at + len(value) : at + len(value) + 8] for n in cfg.negation_words
-        ):
+        sc = _squash(c)
+        at = sc.find(v)
+        if at >= 0 and _NEGATED_AFTER.match(sc[at + len(v) :]):
             return "⑥ 부정한 값"
     return None
 
 
+#: 저장 값에 바로 이어진 부정(공백을 지운 글에서): 짧은 동사 + '지 마 · 지 말 · 말고'("길게 말하지 말고" · "길게 하지 마")
+_NEGATED_AFTER = re.compile(r"[가-힣]{0,4}?(?:지마|지말|말고)")
 #: 기억 요청만 있는 절에서 지워도 되는 말(요청 어미 · 꾸밈)
 _REQUEST_FILLERS = re.compile(
     r"(?:줘요|줘|둬요|둬|주세요|두세요|줄래|줄래요|해요|해|요|꼭|제발|좀|~)"

@@ -737,7 +737,7 @@ def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
             continue
         for m in content.finditer(sentence):
             # 예외는 같은 절 안에서만 본다("대본 시선, 첫 문장을 바꾸세요"의 '시선'은 다른 절)
-            clause_start = max(sentence.rfind(c, 0, m.start()) for c in ",\n") + 1
+            clause_start = max(sentence.rfind(c, 0, m.start()) for c in ",，;\n") + 1
             near = sentence[max(clause_start, m.start() - cfg.scope_content_gap) : m.end()]
             if any(x in near for x in cfg.scope_performance_nouns):
                 continue

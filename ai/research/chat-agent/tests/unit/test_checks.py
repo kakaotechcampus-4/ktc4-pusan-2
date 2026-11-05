@@ -1281,3 +1281,10 @@ def test_scope_performance_exception_stays_inside_the_clause() -> None:
     from chat_agent.checks import _scope_edit
 
     assert _scope_edit("대본 시선, 첫 문장을 바꾸세요", CFG) is not None
+
+
+def test_scope_performance_exception_uses_the_same_clause_separators() -> None:
+    from chat_agent.checks import _scope_edit
+
+    assert _scope_edit("대본 시선， 첫 문장을 바꾸세요", CFG) is not None
+    assert _scope_edit("대본 시선; 첫 문장을 바꾸세요", CFG) is not None
