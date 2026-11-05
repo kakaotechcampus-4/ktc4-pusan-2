@@ -38,9 +38,18 @@ function HelpIllustration({
   return (
     <figure className="min-w-0">
       <div className="overflow-hidden border border-line-strong bg-white">
-        <img src={src} alt={alt} width={1040} height={600} loading="lazy" className="block h-auto w-full" />
+        <img
+          src={src}
+          alt={alt}
+          width={1040}
+          height={600}
+          loading="lazy"
+          className="block h-auto w-full"
+        />
       </div>
-      <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs leading-5 text-stone">
+      <figcaption
+        className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs leading-5 text-stone"
+      >
         <span>{caption} · 개인정보가 없는 설명용 목업</span>
         <a
           href={src}
@@ -153,8 +162,14 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
         </p>
         <ol className="mt-7 space-y-7">
           {steps.map(([title, description], index) => (
-            <li key={title} className="flex min-w-0 gap-3 border-t border-line-strong pt-5 sm:gap-4">
-              <span aria-hidden="true" className="shrink-0 font-mono text-2xl font-bold text-coral-deep">
+            <li
+            key={title}
+            className="flex min-w-0 gap-3 border-t border-line-strong pt-5 sm:gap-4"
+          >
+              <span
+                aria-hidden="true"
+                className="shrink-0 font-mono text-2xl font-bold text-coral-deep"
+              >
                 0{index + 1}
               </span>
               <div className="min-w-0 flex-1">
