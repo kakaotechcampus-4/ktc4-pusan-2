@@ -23,18 +23,13 @@ const stageGuide = [
   ['피코 코치', '슬라이드 아래에 코칭 메시지가 나타나요. 실전 모드에서는 코칭이 꺼져요.'],
   ['대본', '화면 맨 아래에 선택한 표시 모드로 대본이 나와요. 실전 모드에서는 숨겨져요.'],
   ['이동 방법', '←·→ 슬라이드 이동, Space 다음 장, 대본 표시 중에는 ↑·↓로 스크롤해요.'],
-  ['발표 끝내기', '상단 오른쪽의 종료 버튼을 사용해요. 마지막 장에서 눌러 종료를 한 번 더 확인해요.'],
+  [
+    '발표 끝내기',
+    '상단 오른쪽의 종료 버튼을 사용해요. 마지막 장에서 눌러 종료를 한 번 더 확인해요.',
+  ],
 ] as const;
 
-function HelpIllustration({
-  src,
-  alt,
-  caption,
-}: {
-  src: string;
-  alt: string;
-  caption: string;
-}) {
+function HelpIllustration({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
     <figure className="min-w-0">
       <div className="overflow-hidden border border-line-strong bg-white">
@@ -47,9 +42,7 @@ function HelpIllustration({
           className="block h-auto w-full"
         />
       </div>
-      <figcaption
-        className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs leading-5 text-stone"
-      >
+      <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs leading-5 text-stone">
         <span>{caption} · 개인정보가 없는 설명용 목업</span>
         <a
           href={src}
@@ -90,7 +83,10 @@ function RehearsalGuide() {
           alt="발표 연습 화면 목업. 1 현재 슬라이드와 다음 슬라이드, 2 오른쪽 카메라, 3 음량 막대, 4 가운데 아래 피코 코치, 5 맨 아래 대본, 6 코치 아래 키보드 이동 안내, 7 오른쪽 위 발표 끝내기 버튼."
           caption="실시간 코칭 모드 예시"
         />
-        <ol className="mt-4 grid gap-3 sm:grid-cols-2" aria-label="발표 연습 화면의 번호별 사용방법">
+        <ol
+          className="mt-4 grid gap-3 sm:grid-cols-2"
+          aria-label="발표 연습 화면의 번호별 사용방법"
+        >
           {stageGuide.map(([title, description], index) => (
             <li key={title} className="flex min-w-0 items-start gap-3">
               <span
@@ -163,9 +159,9 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
         <ol className="mt-7 space-y-7">
           {steps.map(([title, description], index) => (
             <li
-            key={title}
-            className="flex min-w-0 gap-3 border-t border-line-strong pt-5 sm:gap-4"
-          >
+              key={title}
+              className="flex min-w-0 gap-3 border-t border-line-strong pt-5 sm:gap-4"
+            >
               <span
                 aria-hidden="true"
                 className="shrink-0 font-mono text-2xl font-bold text-coral-deep"
