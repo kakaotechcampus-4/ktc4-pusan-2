@@ -521,8 +521,9 @@ def test_ask_pause_drops_a_sentence_that_still_fails_after_the_fix() -> None:
 # ── 확인 카드: 바꾸기 전 조건을 확인할 수 없거나 표시할 수 없으면 행동을 내지 않는다 (6-6) ──
 
 
-def reassess_turn(mutate: Any, change: dict[str, Any] | None = None) -> Any:
-    msg = "내 기준으로 다시 평가해 줘"
+def reassess_turn(
+    mutate: Any, change: dict[str, Any] | None = None, msg: str = "내 기준으로 다시 평가해 줘"
+) -> Any:
     d = [F.draft("다시 평가해 줘", type_="REQUEST", claim_op=None, polarity="NEUTRAL")]
     args = {"take_id": "t-5", "change": change or {"script_used": True}, "reason": "조건"}
     req = F.request(user_message=msg)
@@ -553,10 +554,13 @@ def test_reassess_without_a_confirmable_before_condition_ends_without_action() -
 def test_reassess_card_with_a_condition_text_that_fails_display_check_is_not_drawn() -> None:
     """카드에 싣는 기준 문구(display)가 표시 문자열 검사(링크 · 주입 · 개인정보)에 걸리면 카드도 행동도 없다."""
     link = {"targets": [{"display": "https://example.com 에서 확인"}]}
-    fd = reassess_turn(lambda r: None, link)
+    # 사용자가 말한 문구여도(출처 통과) 표시 검사에 걸리면 카드를 그리지 않는다
+    fd = reassess_turn(
+        lambda r: None, link, "내 기준은 https://example.com 에서 확인이야, 다시 평가해 줘"
+    )
     assert fd.status == "PARTIAL" and fd.actions == []
     plain = {"targets": [{"display": "자연스럽게 말하기"}]}
-    fd = reassess_turn(lambda r: None, plain)
+    fd = reassess_turn(lambda r: None, plain, "내 기준은 자연스럽게 말하기야, 다시 평가해 줘")
     assert fd.status == "NEEDS_ACTION"
     card = fd.message.cards[0]  # type: ignore[union-attr]
     assert card.after["targets"] == [  # 숫자 목표가 없는 기준은 문구로 카드에 보인다

@@ -1039,9 +1039,13 @@ def _safe_cards(
                 assessments=amap,
             )
             if c.get("type") in _CODE_CARDS:
-                # 검증된 행동 결과로 코드가 만든 카드(다시 평가 · 목표 판정 · 연습 이동)는 숫자 출처 대신
-                # 금지 주장 · 개인정보만 본다(사용자 기준 문구의 "30%" 같은 숫자로 카드가 통째로 숨지 않게)
-                fails = [f for f in fails if f.check_id in ("PII", "FORBIDDEN_CLAIM")]
+                # 검증된 행동 결과로 코드가 만든 카드(다시 평가 · 목표 판정 · 연습 이동 · 확인 카드)는 숫자 출처 대신
+                # 금지 주장 · 개인정보 · 표시 형식만 본다(사용자 기준 문구의 "30%" 같은 숫자로 카드가 통째로 숨지 않게).
+                # 카드에 실리는 모델 글은 다시 평가 기준 문구(`display`)뿐이고, 그것은 행동을 낼 때 출처가 있는 것만
+                # 남긴다(`actions._sourced_targets`, 6-9 '코드가 만든 카드')
+                fails = [
+                    f for f in fails if f.check_id in ("PII", "FORBIDDEN_CLAIM", "DISPLAY_TEXT")
+                ]
             return bool(fails)
 
         if not bad(card):

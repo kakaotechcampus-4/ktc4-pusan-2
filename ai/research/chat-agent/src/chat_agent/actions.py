@@ -175,8 +175,9 @@ def action_tool_definitions() -> list[dict[str, Any]]:
 # ── 허용 근거 (6-2) ──────────────────────────────────────────────────────
 
 _SENT_SPLIT = re.compile(r"[.?!\n。？！]+")
-#: 끝이 "면"이지만 조건이 아닌 낱말(명사 · 접속 부사 "그러면")
-_NOUN_MYEON = ("화면", "장면", "측면", "전면", "이면", "표면", "정면", "평면", "방면", "그러면")
+#: 끝이 "면"이지만 조건이 아닌 낱말(명사 · 접속 부사 "그러면"). 낱말 전체가 같을 때만 예외다: 끝 비교로 보면
+#: "3장이면"처럼 `~이면` 조건이 명사로 빠진다. 그래서 "이면(裏面)"은 넣지 않는다(조건이 훨씬 흔하다)
+_NOUN_MYEON = ("화면", "장면", "측면", "전면", "표면", "정면", "평면", "방면", "그러면")
 
 
 def _clause_of(message: str, quote: str) -> str | None:
@@ -196,7 +197,7 @@ def _clause_of(message: str, quote: str) -> str | None:
 
 def _has_condition(clause: str, cfg: ChatAgentConfig) -> bool:
     for word in re.findall(r"[가-힣]+", clause):
-        if word in _NOUN_MYEON or any(word.endswith(n) for n in _NOUN_MYEON):
+        if word in _NOUN_MYEON:
             continue
         if word.endswith("거든"):
             return True
@@ -483,11 +484,25 @@ def propose(
                     "사용자가 이 조건(대본 사용 · 내 기준)을 말하지 않았다. 측정값 이의는 다시 평가하지 않는다",
                 ),
             )
-        change = (
-            {"script_used": a.change.script_used}
-            if a.change.script_used is not None
-            else {"targets": [t.model_dump() for t in a.change.targets or []]}
-        )
+        if a.change.script_used is not None:
+            change: dict[str, Any] = {"script_used": a.change.script_used}
+        else:
+            targets = _sourced_targets(
+                [t.model_dump() for t in a.change.targets or []],
+                original=original_message,
+                ctx=ctx,
+                take_id=a.take_id,
+            )
+            if targets is None:
+                return Proposal(
+                    result="TOOL_ERROR",
+                    reason_code="DISPLAY_UNSOURCED",
+                    tool_message=_err(
+                        "DISPLAY_UNSOURCED",
+                        "기준 문구(display)는 사용자가 말한 글자 그대로나 그 Take 기준의 문구만 쓴다",
+                    ),
+                )
+            change = {"targets": targets}
         args = {"take_id": a.take_id, "change": change}
     else:
         assert isinstance(a, SaveGoalArgs)
@@ -511,6 +526,33 @@ def propose(
 
 def _err(code: str, message: str) -> dict[str, Any]:
     return {"ok": False, "error": {"code": code, "message": message}}
+
+
+def _sourced_targets(
+    targets: list[dict[str, Any]], *, original: str | None, ctx: RunCtx, take_id: str
+) -> list[dict[str, Any]] | None:
+    """다시 평가 '바꾼 뒤' 기준의 문구(`display`)는 출처가 있을 때만 싣는다(6-9 · L1-37, #888 · #909 리뷰).
+
+    문구는 모델이 채운 행동 인자라, 확인 카드 · 결과 카드(코드 카드라 숫자 출처 검사를 받지 않음)에 그대로 보이면 근거 없는
+    숫자 · 칭찬이 나갈 수 있다. 출처: 처음 사용자 말 원문의 부분 문자열이거나 그 Take 기준(바꾸기 전 조건)의 문구와 같음.
+    출처가 없으면 숫자 목표가 있는 칸은 문구를 비우고(숫자 조건이 실제 조건), 문구만 있는 칸이면 None(행동을 내지 않는다:
+    보이지 않는 조건은 승인받지 않는다).
+    예: 사용자 "시선 70% 넘으면 통과로 다시 봐 줘", display "Take 5 시선 90%였어요"(metric 있음) → display None
+    """
+    known: set[str] = set()
+    cond = _take_conditions(ctx, take_id, "targets")
+    if cond is not None:
+        known = {str(_target_view(t).get("display") or "").strip() for t in cond[1]} - {""}
+    out: list[dict[str, Any]] = []
+    for t in targets:
+        d = (t.get("display") or "").strip()
+        if not d or (original is not None and d in original) or d in known:
+            out.append(t)
+        elif t.get("metric") is not None:
+            out.append({**t, "display": None})
+        else:
+            return None
+    return out
 
 
 def _propose_goal(

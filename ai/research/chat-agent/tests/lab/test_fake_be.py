@@ -559,7 +559,7 @@ def test_fm_L6_07_reassess_calls_real_review_with_changed_input_and_keeps_offici
 def test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchanged() -> None:
     """A 의 user_criteria 가 null 이면 B 는 빈 기준에서 targets 만 넣는다. A 는 호출 전후 같다."""
     target = {"display": "청중 보기", "metric": "audience_ratio", "operator": "GTE", "value": 0.3}
-    msg = "내 기준으로 다시 평가해 줘"
+    msg = "내 기준은 청중 보기야, 그걸로 다시 평가해 줘"
     llm = reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([]))
     be = make_be(llm)
     be.pitches["p-1"].criteria = None
@@ -596,6 +596,42 @@ def test_reassess_card_is_kept_when_target_display_has_numbers() -> None:
     be.use_rule_reviews()
     run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
     assert [c["type"] for c in cards(run)] == ["REASSESS_RESULT"]
+    # 문구가 사용자 말에 없고 숫자 목표가 있으면 문구는 비운다(모델 글이 코드 카드에 나가지 않음, #888 리뷰)
+    (card,) = cards(run, "REASSESS_RESULT")
+    assert card["change"]["targets"][0]["display"] is None
+    assert card["change"]["targets"][0]["value"] == 0.3
+
+
+def test_reassess_card_keeps_display_the_user_said() -> None:
+    target = {
+        "display": "3장 시선 30% 넘기기",
+        "metric": "audience_ratio",
+        "operator": "GTE",
+        "value": 0.3,
+    }
+    msg = "내 기준은 3장 시선 30% 넘기기야, 그걸로 다시 평가해 줘"
+    be = make_be(reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([])))
+    be.use_rule_reviews()
+    run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
+    (card,) = cards(run, "REASSESS_RESULT")
+    assert card["change"]["targets"][0]["display"] == "3장 시선 30% 넘기기"
+
+
+def test_reassess_with_unsourced_text_only_target_is_not_proposed() -> None:
+    """문구만 있는 기준인데 문구가 사용자 말에 없으면(모델이 지어냄) 다시 평가를 내지 않는다(L1-37)."""
+    target = {
+        "display": "Take 5 시선 90%였으니 통과",
+        "metric": None,
+        "operator": None,
+        "value": None,
+    }
+    msg = "내 기준으로 다시 평가해 줘"
+    be = make_be(reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([])))
+    be.use_rule_reviews()
+    run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
+    assert be.review_calls == []
+    assert not cards(run, "REASSESS_RESULT")
+    assert not cards(run, "ASK_CONFIRM")
 
 
 def test_reassess_final_meta_carries_review_criteria_versions() -> None:

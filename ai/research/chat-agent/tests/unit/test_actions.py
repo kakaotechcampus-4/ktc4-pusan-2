@@ -51,6 +51,8 @@ from .test_tools import EXAMPLES, base_request, focus_snapshot, load, make_ctx, 
 
 MSG = "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"
 RA_MSG = "대본 보고 한 걸로 다시 평가해 줘"
+#: 기준 문구(display)는 사용자가 말한 글자일 때만 싣는다(L1-37): 문구를 담은 다시 평가 요청
+CRIT_MSG = "내 기준은 속도 330 이하, 자연스럽게 말하기, 빠르지 않게야. 그걸로 다시 평가해 줘"
 SAVE_ARGS = {
     "metric": "audience_ratio",
     "slide_number": 3,
@@ -157,6 +159,16 @@ def test_action_tool_definitions_are_closed_and_autonomy_is_fixed() -> None:
         ("SAVE_GOAL", "목표로 저장해 줘", "괜찮으면 목표로 저장해 줘", "CONDITION"),
         ("SAVE_GOAL", "목표로 정해 줘", "시간 되면 목표로 정해 줘", "CONDITION"),
         ("START_PRACTICE", "연습하러 가자", "괜찮으면 연습하러 가자", "CONDITION"),
+        # 서술격 조사 '~이면'도 조건이다(명사 '이면'으로 빼지 않는다, #884 리뷰)
+        (
+            "SAVE_GOAL",
+            "그걸 목표로 잡아 줘",
+            "제일 낮은 게 3장이면 그걸 목표로 잡아 줘",
+            "CONDITION",
+        ),
+        ("SAVE_GOAL", "목표로 저장해 줘", "시간이 남는 상황이면 목표로 저장해 줘", "CONDITION"),
+        # 명사 예외는 낱말 전체가 같을 때만
+        ("SAVE_GOAL", "목표로 잡아 줘", "이 화면 보고 3장 시선을 목표로 잡아 줘", None),
         # 남의 말 인용
         ("SAVE_GOAL", "목표로 저장해", "친구가 '목표로 저장해'라고 했어", "QUOTED_SPEECH"),
         ("SAVE_GOAL", "목표로 잡아", "코치님이 목표로 잡아 보라던데", "QUOTED_SPEECH"),
@@ -607,19 +619,21 @@ def test_reassess_confirm_card_shows_current_and_reference_condition() -> None:
     # 내 기준으로 바꾸는 경우: 바꾼 뒤 조건은 행동 인자 그대로(문구 display 포함)
     targets = [{"display": "속도 330 이하", "metric": "cpm", "operator": "LTE", "value": 330}]
     ctx2 = ctx_for(MSG)
-    t = do("reassess", {"take_id": "t-4", "change": {"targets": targets}}, ctx=ctx2)
+    t = do(
+        "reassess", {"take_id": "t-4", "change": {"targets": targets}}, ctx=ctx2, message=CRIT_MSG
+    )
     tcard = ask_confirm_card(t.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
     assert tcard is not None and "내 평가 기준 1개" in tcard["summary"]
     assert tcard["after"]["targets"] == targets
     # 숫자 목표가 없는 기준은 문구만이 실제 조건이다: 카드에 문구가 보여야 승인할 수 있다
     words = [{"display": "자연스럽게 말하기", "metric": None, "operator": None, "value": None}]
-    w = do("reassess", {"take_id": "t-4", "change": {"targets": words}}, ctx=ctx2)
+    w = do("reassess", {"take_id": "t-4", "change": {"targets": words}}, ctx=ctx2, message=CRIT_MSG)
     wcard = ask_confirm_card(w.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
     assert wcard is not None and wcard["after"]["targets"] == words
 
 
 def _reassess_before(ctx: RunCtx, take_id: str, change: dict[str, Any]) -> dict[str, Any] | None:
-    p = do("reassess", {"take_id": take_id, "change": change}, ctx=ctx)
+    p = do("reassess", {"take_id": take_id, "change": change}, ctx=ctx, message=CRIT_MSG)
     card = ask_confirm_card(p.action.model_dump(mode="json"), ctx=ctx, expires_at="x")
     return None if card is None else card["before"]
 
