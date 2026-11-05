@@ -19,6 +19,10 @@ const devStage = readFileSync(
   new URL('../../dev/stage/stage-preview.css', import.meta.url),
   'utf8',
 );
+const camera = readFileSync(
+  new URL('../../vendor/gaze/camera/camera.css', import.meta.url),
+  'utf8',
+);
 
 function colorToken(css: string, selector: string, token: string): string {
   // 선택자 목록(`.a, .b {`) 안에 selector 가 들어 있는 블록을 찾는다. `@import …;` 같은 앞 문장은 떼고, 안에 다른 블록을 품은 @scope · @media 머리는 건너뛴다.
@@ -38,6 +42,30 @@ function colorToken(css: string, selector: string, token: string): string {
     if (color) return color;
   }
   throw new Error('CSS color token not found: ' + selector + ' ' + token);
+}
+
+function glassRgba(css: string): [number, number, number, number] {
+  const match = css.match(
+    /--glass\s*:\s*rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/,
+  );
+  if (!match) throw new Error('CSS glass token not found');
+  return [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])];
+}
+
+// 유리 카드(rgba) 를 영상 색 위에 얹었을 때 실제로 보이는 색
+function overBackdrop(glass: [number, number, number, number], backdrop: string): string {
+  const [r, g, b, alpha] = glass;
+  const under = backdrop
+    .slice(1)
+    .match(/.{2}/g)!
+    .map((channel) => Number.parseInt(channel, 16));
+  return (
+    '#' +
+    [r, g, b]
+      .map((value, i) => Math.round(value * alpha + under[i]! * (1 - alpha)))
+      .map((value) => value.toString(16).padStart(2, '0'))
+      .join('')
+  );
 }
 
 function luminance(hex: string): number {
@@ -105,5 +133,38 @@ describe('stone text contrast (WCAG AA, normal text)', () => {
     const stage = colorToken(productStage, '.stage-live', '--color-stone');
     expect(colorToken(designStage, '.stage-live', '--color-stone')).toBe(stage);
     expect(colorToken(devStage, '.stage-live', '--color-stone')).toBe(stage);
+  });
+
+  // 장치 점검의 시선 보정 화면(vendor/gaze/camera)은 index.css 토큰을 복사한 자기 변수를 쓴다.
+  it.each([
+    ['cream', '--cream'],
+    ['greige', '--greige'],
+    ['panel', '--panel'],
+    ['coral wash', '--coral-wash'],
+  ])('gaze calibration (.gzc): stone on %s is at least 4.5:1', (_name, backgroundToken) => {
+    const stone = colorToken(camera, '.gzc', '--stone');
+    const background = colorToken(camera, '.gzc', backgroundToken);
+    expect(contrast(stone, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // 유리 카드는 반투명이라 영상이 가장 어두운 검정일 때가 최악이다.
+  it.each([
+    ['black', '#000000'],
+    ['backdrop', null],
+    ['white', '#ffffff'],
+  ])(
+    'gaze calibration (.gzc): stone on the glass card over %s video is at least 4.5:1',
+    (_name, video) => {
+      const stone = colorToken(camera, '.gzc', '--stone');
+      const under = video ?? colorToken(camera, '.gzc', '--backdrop');
+      const card = overBackdrop(glassRgba(camera), under);
+      expect(contrast(stone, card)).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it('keeps the gaze calibration stone in sync with the product stone', () => {
+    expect(colorToken(camera, '.gzc', '--stone')).toBe(
+      colorToken(product, '@theme', '--color-stone'),
+    );
   });
 });
