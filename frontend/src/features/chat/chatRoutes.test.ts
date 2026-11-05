@@ -6,7 +6,6 @@ describe('chat route visibility', () => {
     '/',
     '/pitches',
     '/takes',
-    '/takes?pitch=abc'.split('?')[0]!,
     '/takes/123',
     '/takes/123/processing',
     '/takes/123/confirm',
