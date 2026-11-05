@@ -76,6 +76,7 @@ def _mask_runs(repo: ChatRepository) -> int:
         run.interim_message = None
         run.plan = None
         run.trace = None
+        repo.delete_run_events(run.id)
         for action in actions:
             action.result = None
         masked += 1

@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, and_, exists, func, or_, select
+from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -273,6 +273,7 @@ class ChatRepository:
                         ChatRun.interim_message.is_not(None),
                         ChatRun.plan.is_not(None),
                         ChatRun.trace.is_not(None),
+                        exists().where(ChatRunEvent.run_id == ChatRun.id),
                     ),
                 )
             )
@@ -280,6 +281,9 @@ class ChatRepository:
 
     def list_actions(self, run_id: uuid.UUID) -> list[ChatAction]:
         return list(self.db.scalars(select(ChatAction).where(ChatAction.run_id == run_id)))
+
+    def delete_run_events(self, run_id: uuid.UUID) -> None:
+        self.db.execute(delete(ChatRunEvent).where(ChatRunEvent.run_id == run_id))
 
     def list_goals_with_base(self) -> list[ChatGoal]:
         return list(
