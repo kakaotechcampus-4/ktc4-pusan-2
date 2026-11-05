@@ -40,7 +40,7 @@ export function MissionCard({
         {compact && items.length > 0 && (
           <button
             type="button"
-            className="prepare-text-action min-h-6 shrink-0 cursor-pointer py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
+            className="prepare-text-action min-h-6 shrink-0 py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
             onClick={() => setSelectedId(items[0]!.id)}
           >
             전체 미션 보기
@@ -170,7 +170,7 @@ function MissionItem({
       {truncated && (
         <button
           type="button"
-          className="prepare-text-action min-h-6 shrink-0 cursor-pointer py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
+          className="prepare-text-action min-h-6 shrink-0 py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
           aria-label={`미션 ${number} 전체 보기`}
           onClick={onRead}
         >
