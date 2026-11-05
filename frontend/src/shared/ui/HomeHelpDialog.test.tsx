@@ -9,7 +9,7 @@ const closeDescriptor = Object.getOwnPropertyDescriptor(HTMLDialogElement.protot
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
-let onDismiss: ReturnType<typeof vi.fn>;
+let onDismiss = vi.fn<() => void>();
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -29,7 +29,7 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  onDismiss = vi.fn();
+  onDismiss = vi.fn<() => void>();
 });
 
 afterEach(async () => {
