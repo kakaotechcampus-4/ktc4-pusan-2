@@ -122,7 +122,7 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   <section className="camera">
                     <div className="frame">
                       <div className="guide" />
-                      <span className="tag">카메라 · 4:3</span>
+                      <span className="tag">CAMERA 4:3</span>
                     </div>
                   </section>
                   <section className="mic">
@@ -184,7 +184,6 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                         말하기 분석 연결이 끊겼어요. 발표는 계속하세요.
                       </span>
                     )}
-                    {exam && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
                     {/* 끝내기는 마지막 장에서만 연다(제품 #697). 막힌 버튼은 초점 · title이 안 보여 이유를 글자로 둔다.
                     제품은 4초 뒤에도 확인이 풀린다 */}
                     {!onLastSlide && (

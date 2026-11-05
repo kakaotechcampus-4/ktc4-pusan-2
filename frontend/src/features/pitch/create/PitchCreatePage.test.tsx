@@ -612,3 +612,14 @@ it('PDF 열기 실패는 확인하지 않고 재열기·재시도 후 확인하�
   await act(async () => button('슬라이드 확인').click());
   expect(button('확인 완료').disabled).toBe(true);
 });
+
+it('완료된 단계의 표시는 aria-label이 아니라 글자로 읽힌다', async () => {
+  ready();
+  await mount();
+  const doneSteps = [...host.querySelectorAll('nav li button')].filter(
+    (el) => el.querySelector('.sr-only')?.textContent === '완료',
+  );
+  expect(doneSteps.length).toBeGreaterThan(0);
+  expect(doneSteps[0]!.textContent).toContain('완료');
+  expect(host.querySelector('[aria-label="완료"]')).toBeNull();
+});

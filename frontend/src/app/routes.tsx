@@ -23,10 +23,12 @@ import {
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
+import { DesktopGate } from './DesktopGate';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { AppHeader } from '@/shared/ui/AppHeader';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 import { HomePage } from '@/features/pitch/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 
@@ -90,6 +92,14 @@ const publicPaths = [
   '*',
 ];
 
+// 카메라 · 마이크로 연습하는 화면. 휴대폰 · 태블릿에서는 /unsupported 로 보냅니다 (#710).
+// 분석 대기 · 대본 확인 · 재시도 같은 리포트 쪽은 모바일에서도 열립니다.
+const practicePaths = [
+  '/pitch/:pitchId/device-check',
+  '/takes/:takeId/rehearsal',
+  '/takes/:takeId/exam',
+];
+
 // 홈과 같은 상단바(AppHeader)를 얹는 화면. 메뉴를 옮기거나 기록을 열어도 상단바가 바뀌지 않게 합니다.
 // 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다
 const appHeaderPaths = [
@@ -104,13 +114,16 @@ const appHeaderPaths = [
   '/pitch/:pitchId/device-check',
 ];
 
-export const appRoutes = routes.map((route) => {
+const screenRoutes = routes.map((route) => {
   const screen = (
     <Suspense
       fallback={
-        <p role="status" className="bg-panel p-8 text-ink">
-          화면을 불러오고 있어요.
-        </p>
+        // 상단바가 먼저 그려져도 건너뛰기 링크가 갈 곳이 있도록 본문 자리를 지킵니다
+        <main id={MAIN_ID} tabIndex={-1} className="flex-1 bg-panel text-ink">
+          <p role="status" className="p-8">
+            화면을 불러오고 있어요.
+          </p>
+        </main>
       }
     >
       {route.element}
@@ -144,4 +157,10 @@ export const appRoutes = routes.map((route) => {
         children: [{ index: true, element: screen }],
       };
 });
+// 로그인 · 공개 예정 확인보다 바깥에서 막는다 — 못 하는 연습 주소로 로그인부터 시키지 않으려는 것입니다.
+export const appRoutes = screenRoutes.map((route) =>
+  practicePaths.includes(route.path)
+    ? { ...route, element: <DesktopGate>{route.element}</DesktopGate> }
+    : route,
+);
 export const router = createBrowserRouter(appRoutes);

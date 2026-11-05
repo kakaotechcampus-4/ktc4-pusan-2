@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
+import { publicUrl } from '@/lib/publicUrl';
 
 /** 마스코트 한마디. 치치는 연습생, 피코는 교수입니다 */
 export function Mascot({ who, children }: { who: 'chichi' | 'pico'; children: ReactNode }) {
   return (
     <div className="flex items-center gap-4">
       <img
-        src={who === 'pico' ? '/onboarding/pico-bust.png' : '/onboarding/chichi-bust.png'}
+        src={publicUrl(who === 'pico' ? 'onboarding/pico-bust.png' : 'onboarding/chichi-bust.png')}
         alt=""
         width={80}
         height={80}

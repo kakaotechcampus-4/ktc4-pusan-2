@@ -150,3 +150,33 @@ it('shows welcome to signed-out root visitors after launch and home to signed-in
   expect(router!.state.location.pathname).toBe('/');
   expect(host.textContent).toContain('내 피치');
 });
+
+it('sends touch-only devices from practice routes to the unsupported screen, even before login', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+  state.launchOpen = true;
+  state.signedIn = false;
+  for (const path of ['/pitch/p1/device-check', '/takes/t1/rehearsal', '/takes/t1/exam']) {
+    await visit(path);
+    expect(router!.state.location.pathname).toBe('/unsupported');
+  }
+});
+
+it('keeps home and report-side routes open on touch-only devices', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+  state.launchOpen = true;
+  state.signedIn = true;
+  await visit('/');
+  expect(router!.state.location.pathname).toBe('/');
+  await visit('/takes/t1/confirm');
+  expect(router!.state.location.pathname).toBe('/takes/t1/confirm');
+});
+
+it('lets devices with a mouse or trackpad into practice routes', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(pointer: fine)' || query === '(any-pointer: fine)',
+  }));
+  state.launchOpen = true;
+  state.signedIn = true;
+  await visit('/takes/t1/rehearsal');
+  expect(router!.state.location.pathname).toBe('/takes/t1/rehearsal');
+});
