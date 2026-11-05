@@ -117,6 +117,7 @@ flowchart LR
 | `user_criteria` | object · null | 아니오 | 사용자 평가 기준 `{display_criteria, targets, script_used}` (없으면 null). BE는 이 Take의 `takes.standard_version`이 가리키는 버전의 평가 기준 분석 결과로 만들고(`architecture.md` 1-3 1번, `standard_version`이 null이면 기준 없음이라 `user_criteria` null), 그 결과의 `display_criteria` · `targets`를 그대로 싣고, `values.script_used`(저장 칸 `standard_analyses.script_used`)를 `script_used`로 옮긴다. `script_used`는 bool 또는 null(언급이 없으면 null) |
 
 - 장 번호는 1부터다(`architecture.md` 6-1). `missions` · `take_result`의 장별 값(`areas.*.slides[]`) · `problem_segments[]` · `script_coverage.evaluations[]`의 `slide_number`가 0 · 음수면 422 `VALIDATION_ERROR`다(null은 Take 전체를 뜻하는 칸에서만 받는다). 출력의 장 번호는 이 입력에서 고르므로, 잘못된 장 번호는 출력에서 500이 되지 않게 입력에서 막는다.
+- `take_result.areas`(이전 Take 포함)의 key는 일곱 영역(`architecture.md` 6-3) 중 하나이고, 아니면 422 `VALIDATION_ERROR`다. 출력의 영역은 이 key에서 고르므로, 장 번호와 같이 출력에서 500이 되지 않게 입력에서 막는다.
 - 입력 개수 한도: `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `user_criteria.targets` 20. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다. `targets` 20은 평가 기준 분석의 표시 기준 10개 × 범위 목표 2개다. `take_result` · `script_coverage` 크기는 요청 본문 크기 상한(`ai-service.md` 15절 열린 질문)으로 정한다.
 
 ## 5-3. 출력
