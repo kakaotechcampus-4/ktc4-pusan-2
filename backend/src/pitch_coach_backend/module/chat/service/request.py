@@ -181,7 +181,7 @@ def _history(
         assessment_pitch_ids, assessment_take_ids = _assessment_sources(assessment)
         pitch_ids.update(assessment_pitch_ids)
         take_ids.update(assessment_take_ids)
-    current = _current_sources(db, repo, user_id, pitch_ids, take_ids)
+    current = current_sources(db, repo, user_id, pitch_ids, take_ids)
     corpus_version = repo.latest_corpus_version(APP_STARTED_AT)
     return AgentHistoryDTO(
         summary=None,
@@ -237,7 +237,7 @@ def _assessment_deleted(assessment: dict[str, Any], current: dict[str, Any]) -> 
     return uses_deleted(pitch_ids, take_ids, current)
 
 
-def _current_sources(
+def current_sources(
     db: Session,
     repo: ChatRepository,
     user_id: uuid.UUID,
