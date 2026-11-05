@@ -17,6 +17,7 @@ AgentTrigger = Literal["USER_MESSAGE", "ACTION_RESULT", "TAKE_REVIEWED"]
 ActionType = Literal["FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"]
 ActionStatus = Literal["SUCCEEDED", "FAILED", "AMBIGUOUS"]
 ProfileKey = Literal["TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT"]
+SummaryKind = Literal["TOPIC", "INTENT", "DECISION", "OPEN"]
 
 Count = Annotated[int, Field(ge=0)]
 HistoryText = Annotated[str, Field(max_length=4000)]
@@ -61,10 +62,26 @@ class AgentHistoryMessageDTO(_AgentDTO):
     stale_reasons: list[str]
 
 
+class AgentSummaryItemDTO(_AgentDTO):
+    kind: SummaryKind
+    text: Annotated[str, Field(min_length=1, max_length=120)]
+
+
+class AgentOverflowMessageDTO(_AgentDTO):
+    role: Literal["user", "assistant", "system"]
+    text: HistoryText
+
+
+class AgentOverflowDTO(_AgentDTO):
+    messages: list[AgentOverflowMessageDTO] = Field(min_length=1, max_length=10)
+    prev_summary_version: Count
+
+
 class AgentHistoryDTO(_AgentDTO):
-    summary: HistoryText | None
+    summary: Annotated[list[AgentSummaryItemDTO], Field(max_length=12)] | None
     messages: list[AgentHistoryMessageDTO] = Field(max_length=20)
     prior_assessments: list[dict[str, Any]] = Field(max_length=50)
+    overflow: AgentOverflowDTO | None
 
 
 class AgentContextDTO(_AgentDTO):

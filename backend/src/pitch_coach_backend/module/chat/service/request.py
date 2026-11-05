@@ -12,11 +12,14 @@ from pitch_coach_backend.module.chat.dto import (
     AgentHistoryDTO,
     AgentHistoryMessageDTO,
     AgentMemoryDTO,
+    AgentOverflowDTO,
+    AgentOverflowMessageDTO,
     AgentPageDTO,
     AgentProfileItemDTO,
     AgentResumeDTO,
     AgentReviewEventDTO,
     AgentRunDTO,
+    AgentSummaryItemDTO,
     AgentTurnRequestDTO,
     BudgetUsedDTO,
 )
@@ -25,6 +28,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatGoal,
     ChatMessage,
     ChatRun,
+    ChatSummary,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import ClaimedRun
@@ -42,6 +46,7 @@ from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.repository import TakeRepository
 
 HISTORY_MESSAGES = 20
+OVERFLOW_MESSAGES = 10
 PRIOR_ASSESSMENTS = 50
 HISTORY_TEXT_LIMIT = 4000
 PITCH_SUMMARIES = 20
@@ -188,15 +193,20 @@ def _history(
     messages = repo.list_recent_messages(
         conversation_id, before_seq=before_seq, limit=HISTORY_MESSAGES
     )
+    summary = repo.get_summary(conversation_id)
+    overflow = overflow_messages(repo, conversation_id, summary, messages)
     assessments = repo.list_recent_assessments(
         conversation_id, before_seq=before_seq, limit=PRIOR_ASSESSMENTS
     )
     pitch_ids: set[str] = set()
     take_ids: set[str] = set()
-    for message in messages:
+    for message in [*messages, *overflow]:
         message_pitch_ids, message_take_ids = _message_sources(message)
         pitch_ids.update(message_pitch_ids)
         take_ids.update(message_take_ids)
+    if summary is not None:
+        pitch_ids.update(summary.source_pitch_ids or [])
+        take_ids.update(summary.source_take_ids or [])
     for assessment in assessments:
         assessment_pitch_ids, assessment_take_ids = _assessment_sources(assessment)
         pitch_ids.update(assessment_pitch_ids)
@@ -204,14 +214,54 @@ def _history(
     current = current_sources(db, repo, user_id, pitch_ids, take_ids)
     corpus_version = repo.latest_corpus_version(APP_STARTED_AT)
     return AgentHistoryDTO(
-        summary=None,
+        summary=_summary_items(summary, current),
         messages=[
             _history_message(message, current, goal_version, corpus_version) for message in messages
         ],
         prior_assessments=[
             assessment for assessment in assessments if not _assessment_deleted(assessment, current)
         ],
+        overflow=AgentOverflowDTO(
+            messages=[_overflow_message(message, current) for message in overflow],
+            prev_summary_version=summary.summary_version if summary else 0,
+        )
+        if overflow
+        else None,
     )
+
+
+def overflow_messages(
+    repo: ChatRepository,
+    conversation_id: uuid.UUID,
+    summary: ChatSummary | None,
+    recent: list[ChatMessage],
+) -> list[ChatMessage]:
+    if not recent:
+        return []
+    covered = repo.get_message(summary.covered_message_id) if summary else None
+    return repo.list_overflow_messages(
+        conversation_id,
+        after_seq=covered.seq if covered else 0,
+        before_seq=recent[0].seq,
+        limit=OVERFLOW_MESSAGES,
+    )
+
+
+def _summary_items(
+    summary: ChatSummary | None, current: dict[str, Any]
+) -> list[AgentSummaryItemDTO] | None:
+    if summary is None or uses_deleted(
+        set(summary.source_pitch_ids or []), set(summary.source_take_ids or []), current
+    ):
+        return None
+    return [AgentSummaryItemDTO.model_validate(item) for item in summary.items]
+
+
+def _overflow_message(message: ChatMessage, current: dict[str, Any]) -> AgentOverflowMessageDTO:
+    pitch_ids, take_ids = _message_sources(message)
+    if uses_deleted(pitch_ids, take_ids, current):
+        return AgentOverflowMessageDTO(role=message.role, text=MASKED_TEXT)
+    return AgentOverflowMessageDTO(role=message.role, text=_shorten(message)[0])
 
 
 def _history_message(

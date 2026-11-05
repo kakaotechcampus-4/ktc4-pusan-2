@@ -18,6 +18,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatProfileItem,
     ChatRun,
     ChatRunEvent,
+    ChatSummary,
 )
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSlideEvent
@@ -200,6 +201,32 @@ class ChatRepository:
             stmt = stmt.where(ChatMessage.seq < before_seq)
         rows = self.db.scalars(stmt.order_by(ChatMessage.seq.desc()).limit(limit)).all()
         return list(reversed(rows))
+
+    def get_summary(self, conversation_id: uuid.UUID) -> ChatSummary | None:
+        return self.db.get(ChatSummary, conversation_id)
+
+    def lock_summary(self, conversation_id: uuid.UUID) -> ChatSummary | None:
+        return self.db.scalar(
+            select(ChatSummary)
+            .where(ChatSummary.conversation_id == conversation_id)
+            .with_for_update()
+        )
+
+    def list_overflow_messages(
+        self, conversation_id: uuid.UUID, *, after_seq: int, before_seq: int, limit: int
+    ) -> list[ChatMessage]:
+        return list(
+            self.db.scalars(
+                select(ChatMessage)
+                .where(
+                    ChatMessage.conversation_id == conversation_id,
+                    ChatMessage.seq > after_seq,
+                    ChatMessage.seq < before_seq,
+                )
+                .order_by(ChatMessage.seq)
+                .limit(limit)
+            )
+        )
 
     def list_recent_assessments(
         self, conversation_id: uuid.UUID, *, before_seq: int | None, limit: int

@@ -1,8 +1,12 @@
 import re
-from typing import Any
+from typing import Annotated, Any
 
-from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun
+from pydantic import Field, TypeAdapter, ValidationError
+
+from pitch_coach_backend.module.chat.dto import AgentSummaryItemDTO
+from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatSummary
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.request import HISTORY_MESSAGES, overflow_messages
 
 PROFILE_KEYS = ("TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT")
 VALUE_LIMIT = 80
@@ -95,6 +99,48 @@ def save_profile_updates(
             }
         )
     data["message"]["cards"] = cards
+
+
+def save_summary(repo: ChatRepository, row: ChatRun, turn_call: int, data: dict[str, Any]) -> None:
+    items = _summary_items(data.get("history_summary"))
+    sent = next(call for call in row.turn_calls if call["turn_call"] == turn_call)
+    if items is None or sent.get("summary_version") is None:
+        return
+    summary = repo.lock_summary(row.conversation_id)
+    if sent["summary_version"] != (summary.summary_version if summary else 0):
+        return
+    trigger = repo.get_message(row.message_id) if row.message_id else None
+    recent = repo.list_recent_messages(
+        row.conversation_id, before_seq=trigger.seq if trigger else None, limit=HISTORY_MESSAGES
+    )
+    covered = overflow_messages(repo, row.conversation_id, summary, recent)
+    if not covered:
+        return
+    pitch_ids = set(summary.source_pitch_ids or []) if summary else set()
+    take_ids = set(summary.source_take_ids or []) if summary else set()
+    for message in covered:
+        pitch_ids.update(message.source_pitch_ids or [])
+        take_ids.update(message.source_take_ids or [])
+    if summary is None:
+        summary = ChatSummary(conversation_id=row.conversation_id, summary_version=0)
+        repo.add(summary)
+    summary.items = items
+    summary.summary_version += 1
+    summary.covered_message_id = covered[-1].id
+    summary.source_pitch_ids = sorted(pitch_ids)
+    summary.source_take_ids = sorted(take_ids)
+
+
+def _summary_items(raw: Any) -> list[dict[str, str]] | None:
+    if not isinstance(raw, list) or not raw:
+        return None
+    try:
+        items = TypeAdapter(
+            Annotated[list[AgentSummaryItemDTO], Field(max_length=12)]
+        ).validate_python(raw)
+    except ValidationError:
+        return None
+    return [item.model_dump() for item in items]
 
 
 def _accepted(

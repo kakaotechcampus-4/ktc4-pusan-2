@@ -187,6 +187,9 @@ class _Turn:
                     request_id,
                     request_service.offered_sources(request),
                     request.memory.memory_version,
+                    request.history.overflow.prev_summary_version
+                    if request.history.overflow
+                    else None,
                 )
                 outcome = await request_turn(
                     request,
