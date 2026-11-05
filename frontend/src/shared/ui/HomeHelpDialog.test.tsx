@@ -4,7 +4,10 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { HomeHelpDialog } from './HomeHelpDialog';
 
-const showModalDescriptor = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal');
+const showModalDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLDialogElement.prototype,
+  'showModal',
+);
 const closeDescriptor = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close');
 
 let host: HTMLDivElement;
@@ -109,7 +112,9 @@ it('닫기 버튼이 모달을 닫고 언마운트 시 본문 스크롤을 복�
   expect(document.body.style.overflow).toBe('hidden');
 
   await act(async () => {
-    host.querySelector('dialog header button')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    host
+      .querySelector('dialog header button')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   expect(dialog.open).toBe(false);
   expect(onDismiss).toHaveBeenCalledOnce();
