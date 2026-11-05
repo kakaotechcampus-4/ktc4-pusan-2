@@ -51,7 +51,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 
 **설정** — Vite 8 · React 18 · TS 6 · Tailwind 4 · React Router 7 · TanStack Query 5 · Zustand 5 · MSW 2 · Vitest 4 · oxlint · `@/` 경로 별칭 · COOP/COEP 헤더
 
-**디자인 토큰** (`src/index.css` `@theme`) — 시안 v5의 팔레트와 시선 3색, 그리고 **계측 조건인 고정 높이 네 값**이 있습니다. 밝은 지면(홈·리포트)과 어두운 지면(리허설)이 나뉘어 있습니다. **색을 새로 만들지 말고 여기 있는 것만 쓰세요.**
+**디자인 토큰** (`src/index.css` `@theme`) — 시안 v5의 팔레트와 시선 4색, 그리고 **계측 조건인 고정 높이 네 값**이 있습니다. 밝은 지면(홈·리포트)과 어두운 지면(리허설)이 나뉘어 있습니다. **색을 새로 만들지 말고 여기 있는 것만 쓰세요.**
 
 **라우팅 21개** (`src/app/routes.tsx`) — 전부 Stub이지만 이동은 됩니다. P 번호는 화면 목록 문서와 같습니다.
 여기에 제품 화면이 아닌 검증용 `/dev/stage` · `/dev/media` 둘이 더 있습니다.
@@ -85,7 +85,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 - `shared/lib/clock.ts` — `performance.now()` 기준 단조 시계. 백그라운드 탭에서도 정확합니다
 
 **무대 레이아웃** (`features/rehearsal/stage/`) — `/dev/stage`에서 확인합니다.
-Script Mode 4단 높이 · 시선 테두리 3색 · **리렌더 없이 테두리가 바뀌는 것**을 눈으로 봅니다.
+Script Mode 4단 높이 · 시선 테두리 4색 · **리렌더 없이 테두리가 바뀌는 것**을 눈으로 봅니다.
 이 프로젝트에서 Tailwind를 안 쓰는 유일한 곳입니다 (`stage.css`).
 
 **아직 없는 것** — 실모델 가중치 · Calibration(`ZoneReference` 를 만드는 코드가 없어서

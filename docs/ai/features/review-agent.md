@@ -1,8 +1,6 @@
 # 리뷰 에이전트 (review) 설계
 
-> **이 문서는** 리뷰 에이전트의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
-> **기준 범위**: 리뷰 에이전트(`POST /takes/review`)의 목표 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 지표 · 문제 이름 · 숫자 검사 원칙 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
-> **관련 Issue**: #211
+> **기준 범위**: 리뷰 에이전트(`POST /takes/review`)의 기준 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 지표 · 문제 이름 · 숫자 검사 원칙 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **한 줄 요약**: Take 결과 · 대본 전달도 채점 · 이전 Take · 미션 · 사용자 평가 기준을 받아, 규칙으로 차원 상태 · 점수 · 미션 판정 · 다음 미션 · 반복 문제를 정하고, LLM 한 번으로 요약 · 강점 · 개선점 문장과 다음 미션 설명을 쓴다. 숫자 · 상태 · 점수는 LLM이 바꾸지 못하고, 코드가 문장의 숫자를 검사한다.
 > **기준값**: 부담 기준 · 1순위 차원 수 · 중요도별 부담 · 허용치 · 지표별 한 걸음 폭과 최종 목표 · 장 집중 비율 · 상태별 점수 · 채점 비율 기준은 서비스 `features/review/config.py`에만 두고, 이 문서에는 BE · 코치와 맞춰야 하는 값(개수 · 길이 한도 · 시간 예산)과 예시만 적는다.
 
@@ -22,7 +20,6 @@
 ## 1-1. 배경
 코치는 Take의 사실(지표 · 문제 구간 · 개입 · 판정 기준)만 모으고 결론을 내지 않는다(`architecture.md` 0-2). 사용자에게는 "무엇이 가장 문제였고, 지난번보다 나아졌는지, 다음엔 무엇을 하면 되는지"가 필요하다. 그 결론이 다음 Take의 코칭 우선순위(미션 · 반복 문제)와 코칭 계획으로 이어진다.
 LLM에게 결론을 맡기면 숫자를 지어내거나 같은 입력에 다른 1순위가 나온다. 그래서 결론은 규칙으로 정하고, LLM은 문장만 쓴다.
-옛 결론 규칙은 코치 안의 리뷰 근거(`review.py`)에 있었으나 지워졌고(지금은 archive에만 있음, 옛 지표 이름), 지금 리뷰 에이전트는 서비스 `features/review/`에 탑재되어 `POST /takes/review`로 열려 있다(#670).
 
 ## 1-2. 목표
 - 같은 입력이면 같은 차원 상태 · 점수 · 미션 판정 · 다음 미션(규칙 단계)이 나온다.
@@ -58,43 +55,32 @@ flowchart LR
   BE -- "take_ai_results(REVIEW) · missions · take_summaries" --> DB[(DB)]
   BE -- "next_missions · recurring_issues · previous_review" --> P["/coach/plan (다음 Take 준비)"]
 ```
-1. **BE**: 대본 전달도 채점 · 확인이 끝나면(확인을 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나도) 백그라운드로 `/takes/review`를 부른다(`architecture.md` 1-3). 확인 답은 리뷰를 부르기 전까지만 받는다.
+1. **BE**: 대본 전달도 채점 · 확인이 끝나면 백그라운드로 `/takes/review`를 부른다(호출 시점은 `architecture.md` 1-3).
 2. **규칙 단계**: 6-1 순서로 숫자 · 상태 · 점수 · 미션 판정 · 다음 미션 후보 · 반복 문제를 정한다. 같은 입력이면 같은 결과다.
 3. **LLM 단계**: 규칙 단계 결과와 근거 숫자만 받아 문장을 쓰고 다음 미션 후보 중 고른다. 출력 스키마는 고정이다.
 4. **숫자 검사**: 문장마다 숫자를 규칙 단계 결과와 대조하고, 없는 숫자가 든 문장은 기본 문장으로 바꾼다.
-5. **BE**: 리뷰 · 미션 · `take_summaries`(`summary` · `score`)를 저장하고 Take를 `COMPLETED`로 바꾼 뒤 `/coach/plan`을 부른다.
+5. **BE**: 결과를 저장하고 `/coach/plan`을 부른다(12, `architecture.md` 1-3).
 
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
-```
-ai/research/review-agent/
-├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 패키지 하나: review_lab(연구). 서비스를 editable로 설치해 코어를 씀, Python 3.12
-├─ (서비스 ai/service/src/pitch_coach_ai/features/review/)  리뷰 코어 (연구 폴더 src/review/에서 폴더째 옮김, 테스트는 서비스 tests/unit/review/)
-│   ├─ __init__.py                          review_take 공개
-│   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
-│   ├─ core.py                              review_take(): 규칙 단계 → LLM 단계 → 숫자 검사
-│   ├─ evaluable.py                         6-1 1번: 판단 가능 여부
-│   ├─ missions.py                          6-1 2 · 3번: 미션 판정 · 사용자 기준
-│   ├─ burden.py                            6-1 4번: 차원 · 장 · 영역별 문제 부담
-│   ├─ dimensions.py                        6-1 5번: 차원 상태
-│   ├─ comparison.py                        6-1 6번: 이전 Take 비교
-│   ├─ next_missions.py                     6-1 7번: 다음 미션 후보
-│   ├─ recurring.py                         6-1 8번: 반복 문제
-│   ├─ score.py                             6-1 9번: 점수
-│   ├─ metrics.py                           지표 찾기 · 비교 (미션 판정 · 다음 미션 · 근거가 같이 쓴다)
-│   ├─ llm_input.py                         LLM 입력 · 후보 번호
-│   ├─ vocab.py                             고정 어휘 · 5-3 차원 표
-│   ├─ text.py                              기본 문장
-│   ├─ config.py · version.py               부담 · 허용치 · 한 걸음 폭 · 점수 · 개수 한도, 기능 버전
-│   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트
-│   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
-├─ src/review_lab/                          연구 전용(정답 리뷰 평가 · 실제 LLM 실행 · 예시 만들기). 옮기지 않는다
-├─ data/                                    공통 기준 Take의 저장 결과 묶음과 정답 리뷰
-├─ tests/ · tests/live/                     준비 확인(LLM 없음) / 실제 LLM(live 표시). 규칙 · 숫자 검사 · 계약 테스트는 서비스 tests/unit/review/
-└─ reports/results/                         평가 결과 JSON
-```
-연구 폴더는 `ai/research/review-agent/`(코치 `coach-agent`와 같은 꼴)다. 파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
+리뷰 코어는 서비스 `ai/service/src/pitch_coach_ai/features/review/`, 테스트는 서비스 `tests/unit/review/`에 있다. 코어 파일과 6-1 단계의 대응은 아래와 같다.
+
+| 파일 | 하는 일 |
+|---|---|
+| `schemas.py` | 요청 · 응답 · LLM 출력 pydantic 모델 = 계약 |
+| `core.py` (`__init__.py`가 `review_take` 공개) | `review_take()`: 규칙 단계 → LLM 단계 → 숫자 검사 |
+| `evaluable.py` | 6-1 1번: 판단 가능 여부 |
+| `missions.py` | 6-1 2 · 3번: 미션 판정 · 사용자 기준 |
+| `burden.py` | 6-1 4번: 차원 · 장 · 영역별 문제 부담 |
+| `dimensions.py` | 6-1 5번: 차원 상태 |
+| `comparison.py` | 6-1 6번: 이전 Take 비교 |
+| `next_missions.py` | 6-1 7번: 다음 미션 후보 |
+| `recurring.py` | 6-1 8번: 반복 문제 |
+| `score.py` | 6-1 9번: 점수 |
+| `metrics.py` · `llm_input.py` · `vocab.py` · `text.py` | 지표 찾기 · 비교, LLM 입력 · 후보 번호, 고정 어휘 · 5-3 차원 표, 기본 문장 |
+| `config.py` · `version.py` · `prompts/` · `examples/` | 기준값 · 개수 한도와 기능 버전, 문장 쓰기 · 다음 미션 고르기 프롬프트, 요청 · 응답 예시(계약 테스트가 읽는다) |
+
+연구 폴더 `ai/research/review-agent/`(실험 도구 `review_lab` · 평가 묶음 · 결과)의 파일 지도는 그 README 1절에 있다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -109,7 +95,7 @@ ai/research/review-agent/
 | 숫자 · 상태 · 점수 · 미션 판정은 규칙 단계가 정하고 LLM은 바꾸지 못한다 | 같은 입력에 같은 결론, 숫자를 지어내지 않게 |
 | 판단 가능 여부 · 믿을 수 있는 구간은 Take 결과의 표시를 따르고 리뷰가 따로 기준값을 두지 않는다 | 판정 기준을 한곳에 둔다(`architecture.md` 0-2) |
 | 지표 · 영역 · 문제 이름은 `architecture.md` 6-3 그대로 쓴다. 다음 미션의 `target.metric`도 Take 결과의 지표 이름이다 | 다음 Take의 코치 · 리뷰가 그대로 읽는다 |
-| 코어는 상대 import와 pydantic만 쓰고 파일 · 환경변수 · 네트워크 · 시계를 쓰지 않는다. 다른 모듈을 import하지 않는다 (`architecture.md` 8절) | 서비스로 폴더째 옮기고, 가짜 LLM으로 시험한다 |
+| 코어는 상대 import와 pydantic만 쓰고 파일 · 환경변수 · 네트워크 · 시계를 쓰지 않는다. 다른 모듈을 import하지 않는다 (`architecture.md` 8절) | 서비스 · 연구 폴더 어디서 불러도 같고, 가짜 LLM으로 시험한다 |
 | 장이 없는 값(Take 전체)은 `slide_number` null이다. 0을 쓰지 않는다 | 미션 · 반복 문제 · 코칭 계획 · 코치가 모두 null을 Take 전체로 읽는다 |
 
 # 5. 입력 · 출력 계약
@@ -263,7 +249,7 @@ ai/research/review-agent/
 
 - 규칙 단계는 입력 크기에 비례하는 계산이라 LLM 시간에 비해 작다. LLM 출력은 문장 몇 개라 짧다.
 - 모델: 기본 묶음(역할 `review` → 기본 묶음, `architecture.md` 9절). 역할 `review`의 출력 상한은 2,048, 추론 강도는 `low`다(서비스 `settings.LLM_ROLES`, 연구 `review_lab.llm.REASONING_EFFORT`).
-  - 추론 강도를 보내지 않으면(모델 기본값) 호출 한 번이 12초를 자주 넘는다. 서비스 경로에서 clean 16 Take 중 3번이 넘었고(최대 19.4초), 대본 전달도 채점 · 미션 · 사용자 기준이 모두 있는 예시 요청은 15초 안팎이었다. `low`에서는 48 Take 모두 12초 안(최대 8.0초, 예시 요청 7.6초)이고, 평가 지표(스키마 유효율 · 입력에 없는 숫자 · 숫자 검사)는 같거나 나았다(연구 폴더 README 3절, 2026-10-28).
+  - 추론 강도를 보내지 않으면(모델 기본값) 호출 한 번이 12초를 자주 넘는다(최대 19.4초). `low`에서는 48 Take 모두 12초 안(최대 8.0초, 예시 요청 7.6초)이고, 평가 지표(스키마 유효율 · 입력에 없는 숫자 · 숫자 검사)는 같거나 나았다(연구 폴더 README 3절).
   - 출력 토큰(추론 포함)은 `low` 48 Take 최대 802, 기본값 clean 16 Take 최대 1,809다. 상한 2,048은 `low`의 최대 × 2를 1,024 단위로 올린 값이다. 잘리면 `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
 - 요청에는 대본 전달도 채점 전체가 실려 장 수에 비례해 커진다(10장 약 98 KB, 30장 약 0.3 MB). 서비스의 요청 본문 크기 상한이 이 값을 넉넉히 넘어야 한다.
 
@@ -282,23 +268,14 @@ uv sync
 ```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/review` | 규칙 단계 · 숫자 검사 · 기본 결과 · 계약(`examples/`, 가짜 LLM) · `/takes/review` 통과 (181 passed, 2026-10-29) |
-| 준비 확인 (연구 폴더에서) | `uv run python -m pytest` | 연구 도구가 서비스 코어를 쓰는지, 예시 폴더 · 평가 묶음 · 캐시 키 (4 passed, 3 deselected, 2026-10-28) |
-| 실제 LLM 테스트 (과금) | 연구 폴더에서 `uv run python -m pytest -m live`(예시가 스키마 · 숫자 검사를 통과), 서비스 경로는 `ai/service`에서 `uv run python -m pytest -m live tests/live/test_review_live.py` | 기본 결과가 아니고 25초 안 |
-| 평가 (과금) | `uv run python -m review_lab.evaluate --out reports/results/review_eval.json` | 13절 지표 |
+| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/review` | 규칙 단계 · 숫자 검사 · 기본 결과 · 계약(`examples/`, 가짜 LLM) · `/takes/review` 통과 |
+| 실제 LLM 테스트, 서비스 경로 (과금) | `ai/service`에서 `uv run python -m pytest -m live tests/live/test_review_live.py` | 기본 결과가 아니고 25초 안 |
+| 연구 폴더의 준비 확인 · 실제 LLM 테스트 · 평가 | `ai/research/review-agent/README.md` 2절 | 준비 확인 통과, 실제 LLM 테스트는 예시가 스키마 · 숫자 검사를 통과하고 기본 결과가 아니며 25초 안, 평가는 13절 지표 |
 
 - 테스트가 볼 것: 차원마다 판단 불가 · 부담 · 상태 순서, `script_used`, 미션 판정 세 지표 출처(Take · 장 · 대본 전달도)와 `NOT_EVALUABLE` 조건, 허용치 · 개수 지표, 사용자 기준 `FAILED` 미션이 맨 앞, 장 미션 · Take 미션, 다음 미션 20개 · 설명 500자 상한, 반복 문제(`GAZE` 두 차원을 `dimension`으로 가름), 점수, 숫자 검사(표기 · 반올림 · 장 번호), LLM 실패 기본 결과, 이전 Take 없음.
 
 # 11. 배포
-**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/review/`에 있다(연구 폴더 `src/review/`에서 폴더째 옮겼다). 라우터 `api/review.py`가 `POST /takes/review`를 연다. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들고 `structured_llm(ReviewDraft, "review", deadline)`으로 LLM 객체를 받아 `review_take(req, llm, model=…)`에 넘긴다. LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 기본 결과 + `LLM_UNAVAILABLE`을 200으로 돌려준다. LLM 실패는 코어가 잡아 기본 결과로 돌아가고, 서비스 `common/llm.py`가 예외에 붙인 `code`를 `fallback_reason`으로 쓴다(코치의 코칭 계획과 같은 방식, `coach-agent.md` 6-4). `meta.model`은 응답한 모델이다. 연구 도구(`review_lab`)는 옮기지 않는다. 의존성은 pydantic 하나.
-
-**옮긴 뒤 같은 결과인지 확인** (2026-10-28)
-1. 코어 테스트 169개를 서비스 `tests/unit/review/`로 옮겨 통과했다(엔드포인트 `test_api.py` 12개를 더해 181개). `test_examples.py` · `test_core_boundary.py`는 예시 · 코어 폴더를 패키지 위치로 찾는다.
-2. 연구 폴더는 서비스를 editable로 설치하고 `review_lab`의 import를 `pitch_coach_ai.features.review`로 바꿨다. 예시 폴더(`paths.EXAMPLES_DIR`)는 서비스 코어 패키지 안이다.
-3. 옮기기 전 · 뒤의 응답이 바이트까지 같다: 예시 요청(LLM 없음 · 예시 LLM 출력), 평가 묶음 48개(LLM 없음).
-4. OpenAPI 스키마 이름이 다른 기능과 겹치지 않게 응답 · 입력 모델 몇 개의 클래스 이름만 바꿨다(JSON 필드는 같다). 기존 경로 · 스키마는 그대로다.
-5. BE 리뷰 DTO로 응답 50개(예시 둘 + 평가 묶음 48개)를 검사해 모두 통과했고, BE DTO를 거친 요청으로 돌린 리뷰가 원래 요청과 같다.
-6. 연구 폴더의 `src/review/`와 `tests/unit/`을 지웠다. 이후 코어는 서비스에서만 고친다.
+**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/review/`에 있다. 라우터 `api/review.py`가 `POST /takes/review`를 연다. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들고 `structured_llm(ReviewDraft, "review", deadline)`으로 LLM 객체를 받아 `review_take(req, llm, model=…)`에 넘긴다. LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 기본 결과 + `LLM_UNAVAILABLE`을 200으로 돌려준다. LLM 실패는 코어가 잡아 기본 결과로 돌아가고, 서비스 `common/llm.py`가 예외에 붙인 `code`를 `fallback_reason`으로 쓴다(코치의 코칭 계획과 같은 방식, `coach-agent.md` 6-4). `meta.model`은 응답한 모델이다. 의존성은 pydantic 하나. 코어는 서비스에서만 고치고, 연구 도구 `review_lab`은 서비스를 편집 가능 설치(editable)로 쓴다. 서비스로 옮기기 전 · 뒤에 예시 요청을 LLM 없음과 예시 LLM 출력으로 각각, 평가 묶음 48개를 LLM 없이 돌려 응답이 바이트까지 같은지 확인했다.
 
 
 **BE와 함께 할 것**: 백그라운드 호출 · 저장(12절), Take 상태, `missions` 칸.
@@ -326,36 +303,38 @@ sequenceDiagram
     BE->>BE: take_ai_results(REVIEW) · missions(결과 갱신 · 다음 미션 추가) · take_summaries(summary · score) · Take COMPLETED (한 트랜잭션)
     BE->>C: POST /coach/plan (missions = next_missions + mission_id, recurring_issues, previous_review)
 ```
-## 12-1. 저장 (DB)
-저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+그림의 테이블 · 칸 이름은 지금 저장 위치(BE 소유)다.
 
-| 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
+## 12-1. 저장 (DB)
+이 기능의 저장 요구는 AI가 정하고, 테이블 · 칸 · 형식 · 마이그레이션 · 구현 · 운영은 BE가 정한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래 저장 요구와 저장 위치는 저장 계약이며(지금 BE 구현과 맞는지 확인하지 못한 항목은 "BE 구현 확인 필요"로 따로 표시한다), 바꾸려면 BE와 합의한다.
+
+| 데이터 | 언제 생기나 | 저장 위치(지금 구현 또는 확인 필요, BE 소유) | 저장 요구(남길 값 · 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 리뷰 결과 | `/takes/review` 응답 | `take_ai_results` (`kind` = `REVIEW`, `payload` = 응답에서 `meta`를 뺀 것, `meta`) | JSONB. 예시 응답(공백 없는 JSON)이 약 1.7 KB이고 강점 · 개선점 · 비교 · 미션 수에 비례한다(실제 리뷰로 잰 값은 없음) | BE가 쓴다 · FE 리포트, 다음 리뷰의 `previous_recurring_issues`, 코칭 계획 `previous_review` | `(take_id, kind)` 유일 제약, 다시 부르면 덮는다 | Take와 함께 |
-| 미션 결과 | 같음 | `missions` (이 Take에 실린 행의 `status` · `observed` · `complete`, `complete`는 `status`가 `ACHIEVED`일 때만 true) | 칸 | BE가 쓴다 · 리포트 | `mission_id`로 갱신 | 발표와 함께 |
-| 다음 미션 | 같음 | `missions` 새 행 (`source_take_id` = 이 Take, `area` · `slide_number` · `target` · `priority` · `description` · `reason`, `status` = `ACTIVE`) | 칸 | BE가 쓴다 · 다음 Take 코칭 계획 · 코치 · 리뷰 `missions` | `(source_take_id, priority)` 유일 제약, 다시 부르면 그 리뷰가 만든 `ACTIVE` 행을 바꾼다 | 발표와 함께 |
+| 리뷰 결과 | `/takes/review` 응답 | `take_ai_results` (`kind` = `REVIEW`, `payload` = 응답에서 `meta`를 뺀 것, `meta`) | 응답 JSON 그대로. 예시 응답(공백 없는 JSON)이 약 1.7 KB이고 강점 · 개선점 · 비교 · 미션 수에 비례한다(실제 리뷰로 잰 값은 없음) | BE가 쓴다 · FE 리포트, 다음 리뷰의 `previous_recurring_issues`, 코칭 계획 `previous_review` | `(take_id, kind)` 유일 제약, 다시 부르면 덮는다 | Take와 함께 |
+| 미션 결과 | 같음 | `missions` (이 Take에 실린 행의 `status` · `observed` · `complete`) | 미션마다 최근 판정 · 관측값. `complete`는 `status`가 `ACHIEVED`일 때만 true | BE가 쓴다 · 리포트 | `mission_id`로 갱신 | 발표와 함께 |
+| 다음 미션 | 같음 | `missions` 새 행 (`source_take_id` = 이 Take, `area` · `slide_number` · `target` · `priority` · `description` · `reason`, `status` = `ACTIVE`) | 다음 미션마다 한 행(아래 '`missions` 저장 요구') | BE가 쓴다 · 다음 Take 코칭 계획 · 코치 · 리뷰 `missions` | `(source_take_id, priority)` 유일 제약, 다시 부르면 그 리뷰가 만든 `ACTIVE` 행을 바꾼다 | 발표와 함께 |
 | 리포트 요약 칸 | 같음 | `take_summaries.summary` · `score` | 글 · 정수. 모든 차원이 판단 불가이거나 리뷰가 끝내 실패하면 `score` null | BE가 쓴다 · FE 리포트 목록 · 홈 | Take마다 한 행 | Take와 함께 |
 
-**`missions` 칸** (`architecture.md` 1-1의 칸 + 리뷰가 더하는 칸 · 제약. BE가 만든다)
+**`missions` 저장 요구** (`architecture.md` 1-1의 미션 행에 리뷰가 더하는 요구)
 
-| 칸 | 타입 · null | 뜻 |
-|---|---|---|
-| `id` | Uuid PK (있음) | `mission_id` |
-| `source_take_id` | Uuid FK `takes.id` NOT NULL (있음) | 이 미션을 만든 리뷰의 Take |
-| `pitch_id` | Uuid FK `pitches.id` ON DELETE CASCADE NOT NULL (새 칸) | 이 미션의 발표. Take를 시작할 때 그 발표의 최신 `ACTIVE` 미션을 찾는 데 쓴다 |
-| `take_id` | Uuid FK `takes.id` NULL (새 칸) | 이 미션이 가장 최근에 실린 Take. BE가 Take를 시작할 때 채운다 |
-| `area` | String(16) NOT NULL (새 칸) | 영역 |
-| `slide_number` | Integer **NULL 허용으로** | null이면 Take 전체 |
-| `target` | JSONB NOT NULL (새 칸) | `{metric, operator, value}` |
-| `priority` · `description` | (있음) | `description`은 500자 이하 |
-| `reason` | Text NULL (새 칸) | 다음 미션의 이유 |
-| `status` | String(16) NOT NULL 기본 `ACTIVE` (새 칸), CHECK `ACTIVE` · `ACHIEVED` · `PARTIAL` · `FAILED` · `NOT_EVALUABLE` | 가장 최근 판정 결과 |
-| `observed` | Float NULL (새 칸) | 가장 최근 판정 때의 관측값 |
-| `complete` | (있음) | `status`가 `ACHIEVED`면 true |
-| 제약 | UQ(`source_take_id`, `priority`) | 같은 리뷰를 두 번 저장해도 한 벌 |
-| 인덱스 | (`pitch_id`, `status`) | 발표의 `ACTIVE` 미션 찾기 |
+| 저장 요구 | 저장 위치(지금 구현 또는 확인 필요, BE 소유) |
+|---|---|
+| 미션마다 고유한 id를 두고 `mission_id`로 쓴다 | `id` |
+| 이 미션을 만든 리뷰의 Take에 잇는다(늘 채운다) | `source_take_id` |
+| 이 미션의 발표에 잇는다(늘 채운다, 발표를 지우면 함께 지운다). Take를 시작할 때 그 발표의 최신 `ACTIVE` 미션을 찾는 데 쓴다 | `missions`에 `pitch_id` 칸은 없고 `source_take_id` → `takes.pitch_id`로 잇는다(발표를 지우면 Take · 미션이 FK 연쇄로 함께 지워진다) |
+| 이 미션이 가장 최근에 실린 Take(BE가 Take를 시작할 때 채운다. 아직 없으면 비어 있음) | `take_id` |
+| 영역(늘 채운다) | `area` |
+| 장 번호(비어 있으면 Take 전체) | `slide_number` |
+| 목표 `{metric, operator, value}`(늘 채운다) | `target` |
+| 순위 · 설명(설명은 500자 이하) | `priority` · `description` |
+| 다음 미션의 이유(없을 수 있음) | `reason` |
+| 가장 최근 판정 결과(늘 채운다) `ACTIVE` · `ACHIEVED` · `PARTIAL` · `FAILED` · `NOT_EVALUABLE` 중 하나, 처음엔 `ACTIVE` | `status` |
+| 가장 최근 판정 때의 관측값(없을 수 있음) | `observed` |
+| `status`가 `ACHIEVED`면 true | `complete` |
+| 같은 리뷰를 두 번 저장해도 한 벌: (`source_take_id`, `priority`)마다 하나 | 유일 제약 |
+| 발표의 `ACTIVE` 미션을 찾을 수 있다 | 그 발표의 최신 리뷰 Take를 찾은 뒤 `source_take_id`(인덱스) · `status`로 찾는다 |
 
-**`takes.mission_ids`** (새 칸 JSONB NULL): BE가 Take를 시작할 때 그 Take에 실은 미션 id 목록을 고정한다. 다음 Take가 리뷰보다 먼저 시작돼 같은 `ACTIVE` 미션이 두 Take에 실려도, 리뷰 요청의 `missions`는 이 목록으로 읽으므로 각 Take의 리뷰가 자기 미션을 찾는다. `missions`의 `take_id`는 가장 최근에 실린 Take로 바뀌고, `status` · `observed`는 그 Take의 리뷰만 덮는다(12-2). Take별 판정은 그 Take의 리뷰 결과(`mission_results`)에 남는다. 미션 내용(목표 · 설명)은 Take에 실린 뒤에는 바꾸지 않는다. 목록의 미션이 지워졌으면 리뷰 요청에 싣지 않고 판정하지 않는다(건너뜀). 미션과 Take를 잇는 `take_missions` 연결 테이블은 쓰지 않는다.
+**`takes.mission_ids`**: BE가 Take를 시작할 때 그 Take에 실은 미션 id 목록을 고정한다. 다음 Take가 리뷰보다 먼저 시작돼 같은 `ACTIVE` 미션이 두 Take에 실려도, 리뷰 요청의 `missions`는 이 목록으로 읽으므로 각 Take의 리뷰가 자기 미션을 찾는다. `missions`의 `take_id`는 가장 최근에 실린 Take로 바뀌고, `status` · `observed`는 그 Take의 리뷰만 덮는다(12-2). Take별 판정은 그 Take의 리뷰 결과(`mission_results`)에 남는다. 미션 내용(목표 · 설명)은 Take에 실린 뒤에는 바꾸지 않는다. 목록의 미션이 지워졌으면 리뷰 요청에 싣지 않고 판정하지 않는다(건너뜀).
 
 ## 12-2. 저장 규칙
 - 리뷰 결과 · 미션 갱신 · 다음 미션 · `take_summaries`(`summary` · `score`) · Take 상태(`COMPLETED`) · `takes.review_status`(`DONE`) · `analysis_stage`(`DONE`) · `completed_at`은 한 트랜잭션으로 저장한다(일부만 남지 않게). 리뷰가 끝내 실패했을 때의 완료 상태(`review_status` `FAILED`)와 요약 칸 처리는 `architecture.md` 1-1 · 1-3을 따른다.
@@ -363,7 +342,7 @@ sequenceDiagram
 - 결과는 `meta`와 함께 저장한다(`architecture.md` 1-1).
 - 리뷰에 싣는 `missions`는 이 Take에 실린 미션이고 `takes.mission_ids`로 읽는다. 이 Take가 만든 미션(`source_take_id` = 이 Take)이 아니다.
 - 다음 Take는 그 발표에서 `REVIEW` 결과가 있는 Take 중 가장 늦게 끝난 Take(순서 `completed_at DESC NULLS LAST, take_number DESC`, `architecture.md` 1-3 'Take 상태')의 리뷰가 만든 `ACTIVE` 미션을 싣는다. 리뷰가 아직 없으면 그때 저장된 최신 미션 · 반복 문제를 쓴다(`architecture.md` 1-3).
-- 테이블 · 칸 변경은 배포 전 BE 마이그레이션이다.
+
 
 # 13. 품질 검증
 | 평가 데이터 | 지표 | 중점 | 검증 방법 |
@@ -372,7 +351,7 @@ sequenceDiagram
 | 같은 묶음 | 스키마 유효율, 입력에 없는 숫자 수(숫자 검사 전) | 스키마는 늘 통과하고, 입력에 없는 숫자는 쓰지 않는 것 | 같음 (실제 LLM, 과금) |
 | 실제 리허설의 이어진 Take | 반복 `PRIORITY` 비율 | 기록 (반복 문제 가중이 같은 차원을 계속 붙잡는지) | 같음 |
 
-- 결론 규칙을 시험할 정답 데이터는 새로 만든다(옛 정답 `type_status` · `mission_status` 등은 옛 이름이다).
+- 결론 규칙을 시험할 정답 데이터는 새로 만든다.
 
 # 14. 지표 정의
 - **스키마 유효율 · 입력에 없는 숫자**: LLM 출력이 스키마를 통과한 비율 · 숫자 검사 전 LLM 문장에 나온 숫자 중 규칙 단계 결과에 없는 숫자 수.
@@ -382,19 +361,13 @@ sequenceDiagram
 - **부담**: 5-3 · 6-1. **점수**: 6-1의 9번.
 
 # 15. 열린 질문 · 알려진 한계
-**정한 것**
-- 연구 폴더 이름 `ai/research/review-agent/`(4-1, 구현 Issue #211), 강점에도 장 번호(5-3 · 6-2), 규칙 단계의 세부(6-1), 출력의 세부(점수 · 비교 · 반복 문제의 영역 · 차원, 5-3 · 6-1), 입력 한도와 다음 미션 상한(5-2 · 5-3), 실패 · 다시 부르기 흐름(7절), 저장 설계와 `takes.mission_ids`(12절), 숫자 검사 규칙과 `fallback_reason`의 뜻(5-3 · 6-2).
-
-**`architecture.md`에 있는 것**
-- 숫자 검사 규칙 · `fallback_reason`의 뜻(`architecture.md` 0-2 · 4 · 9절), 리뷰 실패 흐름 · `takes.mission_ids` · `missions` 칸(`architecture.md` 1-1 · 1-3).
-
 **열린 질문**
 - 대본 전달도 부담에 핵심 수치가 틀린(`mismatched`) · 빠진 경우를 넣을지와 중복 계산 막기: 아직 정하지 않았다(6-1 4번).
 
 **알려진 한계**
 - 부담 기준(`PRIORITY`가 되는 최소 부담)만 13절 평가로 골랐다. 허용치 · 한 걸음 폭 · 점수 · 가중은 정답이 없거나 적어 아직 임시값이다. 실제 리허설 Take와 사람이 단 정답으로 다시 고른다.
-- 13절 평가는 공통 기준 Take(`architecture.md` 12절)가 아직 없어 코치 가상 발표 시나리오를 재생한 Take 결과로 대신했고, 정답 리뷰도 시나리오로 적은 초안이다. 대본 전달도 채점 · 이어진 Take · 사용자 평가 기준이 없는 묶음이라 내용 규칙과 반복 `PRIORITY` 비율은 재지 않았다(결과와 묶음은 연구 폴더 README).
-- 추론 강도 `low`의 문장 품질은 같은 요청 17개(가상 발표 clean 16 + 예시 요청)를 기본값과 눈으로만 비교했고, 품질을 재는 지표는 없다. 실제 리허설 Take가 생기면 다시 본다(추론 기본값은 호출 한 번이 12초를 자주 넘어 고르지 않았다, 8절).
+- 13절 평가는 가상 발표 48 Take와 시나리오로 적은 초안 정답으로만 했고, 대본 전달도 채점 · 이어진 Take · 사용자 평가 기준이 없어 내용 규칙과 반복 `PRIORITY` 비율은 재지 못했다(결과와 묶음은 연구 폴더 README).
+- 추론 강도 `low`의 문장 품질은 같은 요청 17개(가상 발표 clean 16 + 예시 요청)를 기본값과 눈으로만 비교했고, 품질을 재는 지표는 없다. 실제 리허설 Take가 생기면 다시 본다.
 - 이전 Take 비교는 같은 발표 안에서만이고, 대본 보기가 다른 Take끼리의 비교는 해석에 주의가 필요하다.
 - 다음 미션 목표는 지금 값에서 한 걸음이라, 측정 비율이 낮은 Take에서는 후보가 줄어든다.
 - 숫자 검사는 허용 숫자를 단위 구분 없이 한 목록으로 대조한다(4-2 `check_numbers(sentence, allowed_numbers)`). 그래서 입력에 장 번호 · 개수 같은 작은 정수가 있으면 같은 숫자를 다른 단위로 쓴 문장도 통과한다(예: 장 번호 3이 있으면 실제 값이 −2.1인 음량을 "3dB"라고 써도 통과하고, 사용자 기준 값 5가 있으면 없는 "5번 장"도 통과한다).
@@ -411,4 +384,4 @@ sequenceDiagram
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
 | 버전 | `review-1.2` · `criteria_versions.review` `review-1.2+<config 해시>` · `schema_version` `1.0` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
-| 저장 | `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `pitch_id` · `reason` · `observed`, UQ(`source_take_id`, `priority`), 인덱스 (`pitch_id`, `status`)), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |
+| 저장 | 저장 요구: 12-1 · 12-2(리뷰 결과, 미션 결과 갱신 · 다음 미션 추가, 같은 리뷰는 한 벌, 발표의 `ACTIVE` 미션을 찾을 수 있음, Take에 실은 미션 목록 고정). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `reason` · `observed`, UQ(`source_take_id`, `priority`), `source_take_id` 인덱스), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |

@@ -45,7 +45,7 @@
 
 | 항목 | 보여 주는 것 | 데이터 |
 |---|---|---|
-| 대본 ↔ 확정 전사 | 장마다 그 Take 대본 버전의 대본과, 그 장을 띄운 동안 말한 확정 전사. 전사는 구간 시작 시각 직전의 장 변경으로 장을 정하고, 첫 장 변경 전에 말한 것은 '장 전환 전' 줄에 둡니다 | `GET /admin/api/takes/{take_id}/script`, `GET /admin/api/takes/{take_id}/live` 의 `segments` · `slide_events` |
+| 대본 ↔ 확정 전사 | 장마다 그 장으로 넘어온 시각, 그 Take 대본 버전의 대본, 그 장을 띄운 동안 말한 확정 전사. 리포트 채점처럼 단어 시작 시각 직전의 장 변경으로 장을 정하고, 장 경계에 걸친 구간은 장마다 나눠 둡니다. 같은 장으로 다시 넘어왔으면 넘어온 시각을 모두 적습니다. 첫 장 변경 전에 말한 것은 '장 전환 전' 줄에 둡니다 | `GET /admin/api/takes/{take_id}/script`, `GET /admin/api/takes/{take_id}/live` 의 `segments` · `slide_events` |
 | 확정 전사 | 문장 · 시각 · 신뢰도 · STT 세션 번호 | `GET /admin/api/takes/{take_id}/live` 의 `segments` |
 | 1초 기록 | 시각 · 장 번호 · STT 상태 · 시선 · 음량 | `GET /admin/api/takes/{take_id}/live` 의 `seconds` |
 | AI 결과 | `TAKE_RESULT` · `SCRIPT_COVERAGE` · 리뷰 등 AI 결과와 `meta` | `GET /admin/api/takes/{take_id}/results` |
@@ -102,7 +102,7 @@
 
 | 메서드 | 경로 | 쿼리 | 응답 |
 |---|---|---|---|
-| GET | `/admin/api/takes/{take_id}/live` | `after_seq` (기본 0), `after_t_ms` | `{status, segments: [{seq, stt_session_no, start_ms, end_ms, transcript, confidence, speech_final}], seconds: [{t_ms, slide_number, gaze, voice, stt_status}], slide_events: [{started_ms, slide_number}]}`. `segments` · `seconds` 는 각각 한 번에 최대 500개이며, 받은 마지막 값 뒤부터 이어 받습니다. `slide_events` 는 커서와 상관없이 매번 전체를 시각 순서로 줍니다 |
+| GET | `/admin/api/takes/{take_id}/live` | `after_seq` (기본 0), `after_t_ms` | `{status, segments: [{seq, stt_session_no, start_ms, end_ms, transcript, confidence, speech_final, words: [{word, start_ms}]}], seconds: [{t_ms, slide_number, gaze, voice, stt_status}], slide_events: [{started_ms, slide_number}]}`. `segments` · `seconds` 는 각각 한 번에 최대 500개이며, 받은 마지막 값 뒤부터 이어 받습니다. `slide_events` 는 커서와 상관없이 매번 전체를 시각 순서로 줍니다. `words` 는 단어마다 문장부호를 붙인 글자와 시작 시각만 싣습니다. 구간의 `start_ms` 는 앞 구간이 끝난 시각이라 말하기 전 침묵이 들어 있으므로, 장은 단어 시각으로 정합니다 |
 | GET | `/admin/api/takes/{take_id}/script` | — | `[{slide_number, full_content}]`. Take가 고정한 대본 버전의 장별 대본을 장 번호 순서로 줍니다 |
 | GET | `/admin/api/takes/{take_id}/results` | — | `{ai_results: [{kind, revision, created_at, replayed, criteria_changed, measured_ratios, fallback_reason, model, payload, meta}], coach_events: [{seq, t_ms, kind, event_id, payload, meta}], summary}` |
 | GET | `/admin/api/takes/{take_id}/inputs` | — | `{script_mode, standard_version, mission_ids, raw_data_consent, utterance_ends, slide_events: [{started_ms, slide_number}], segments: [{seq, start_ms, end_ms, final_at_ms, words}], calibration}` |
