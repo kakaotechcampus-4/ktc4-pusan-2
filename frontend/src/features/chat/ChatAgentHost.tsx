@@ -84,12 +84,13 @@ function ChatLayer() {
 
   return (
     <SignedInOnly>
-      {/* 런처는 오른쪽 아래 구석의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 구석에 붙여도
-          홈 바닥글 "개인정보 처리방침" 끝 글자처럼 오른쪽에 붙은 컨트롤에 조금 닿지만, 가려진 컨트롤도 그대로 눌립니다
-          (1366×650 · 1920×950 · 125% 확대에서 잼, #941 리뷰) */}
-      <div className="light-surface fixed bottom-2 right-2 z-[70] text-ink">
+      {/* 런처는 오른쪽 아래의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 오른쪽에 붙은
+          컨트롤과 자리를 나눠 씁니다. 아래 32px 는 홈의 "사용방법 살펴보기"와 바닥글 "개인정보 처리방침" 사이 빈칸이고,
+          리포트 맨 끝 "내 피치로" 버튼의 오른쪽 아래 모서리에만 닿습니다(글자는 가리지 않고 버튼도 그대로 눌림).
+          아래 8px 이면 바닥글 글자를, 40px 넘게 올리면 "사용방법 살펴보기"를 가립니다 (1366×650 · 1920×950 · 125% 확대에서 잼, #941 리뷰) */}
+      <div className="light-surface fixed bottom-8 right-2 z-[70] text-ink">
         {/* 패널은 런처 위 오른쪽에 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
-            4.75rem = 런처 자리(아래 0.5rem + 높이 2.75rem) + 위아래 간격 0.75rem 둘.
+            6.25rem = 런처 자리(아래 2rem + 높이 2.75rem) + 위아래 간격 0.75rem 둘.
             낮은 창에서는 높이가 줄고 메시지 목록만 스크롤되며, 입력칸과 버튼은 늘 보입니다 */}
         {open && (
           <section
@@ -103,7 +104,7 @@ function ChatLayer() {
                 close();
               }
             }}
-            className="absolute bottom-full right-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-4.75rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
+            className="absolute bottom-full right-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-6.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
           >
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-strong px-5 py-3">
               <div>
