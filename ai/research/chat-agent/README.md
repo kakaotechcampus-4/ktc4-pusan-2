@@ -10,7 +10,7 @@
 | 담당 | JWK0395 |
 | 설계 | 목적 · 계약 · 처리 · 실패 처리 · 시험 → [`docs/ai/features/chat-agent.md`](../../../docs/ai/features/chat-agent.md) |
 | 단계 | 연구 모듈에서 먼저 만들고 확인한 뒤 서비스에 탑재한다(기능 문서 4-1). **탑재 전에는 BE가 부르지 않는다** |
-| 버전 | `chat_agent-0.6.0`(`src/chat_agent/version.py`, 아래 평가 결과 표의 1 ~ 3회차는 `0.1.0`에서 잰 값), 응답 스키마 `1.0`, 도구 스키마 `tools-2`, 실행 상태 `v` 1 |
+| 버전 | `chat_agent-0.8.0`(`src/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-3`, 자료 묶음 `guides-5`, 실행 상태 `v` 1 |
 
 ## 1. 코드 구조
 
@@ -56,7 +56,7 @@ chat-agent/
 | `tools/` | 읽기 도구 8개(5-7): 엄격한 인자, 결과에 근거 id, 캐시, trace 요약(사용자 글 없음) | 맥락 · 인자 → `ToolResult` · `TraceItem` | 루프(조사) | 도구를 더하면 `TOOL_SCHEMA_VERSION`과 5-7 |
 | `actions.py` | 행동(5-8): 자율 등급 `AUTO` · `ASK` · `BUTTON`, `args_hash`, 행동 도구 인자, 허용 근거 검사(6-2, '확인 카드를 낼 근거가 있나'), 측정값 이의 말의 다시 평가 막기(6-6) · 말한 Take 를 못 가져왔을 때 다른 Take 로 바꾸지 않기(L2-22), 목표 제안 카드로 낮추기, 승인 확인 카드 그리기(`ask_confirm_card`, 다시 평가의 바꾸기 전 조건은 대상 Take 의 리뷰 조건이고 확인할 수 없으면 카드 · 행동 없음), 연습 이동 버튼 카드, 고른 제안의 선승인, 결과 짝(`executed_args_hash` — `ASK` 행동은 성공 · 실패 · 불명확 모두 필수) · 반영 | 모델 호출 → 행동 · 카드, BE 결과 → 반영 · 성공 문장 | 루프 · 턴 | 자율 등급 표는 5-8 · 6-2. 행동 모양을 바꾸면 `TOOL_SCHEMA_VERSION` |
 | `budget.py` | 한도(8-2 · 8-3): 모델 18번(조사는 16번째 시도까지) · 도구 12번 · 행동 · 토큰(입력 72k · 출력 8k, 둘 다 전송 전 예약 뒤 응답의 실측으로 정산) · 시간 예약, 응답마다 답 쓰기 · 고치기 몫 남기기, 한도 코드 → 끝난 이유 | 누적량 → 예약 또는 `LimitHit` | 행동 · 루프 | 숫자는 `config.py` |
-| `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 라이선스 · 검수)와 검색(6-10). 검색은 제목 · 주제어 · 본문 키워드에 동의어 사전(질문의 다른 말 → 카드가 쓰는 대표어, 한 방향)을 더한다 | manifest · 카드 → `Corpus`, 질의 → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스 탑재 때는 `allow_unreviewed=False` |
+| `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 판 고정표 · 라이선스 · 검수 · 검수 완료로 쓸 때 발표법 카드의 참고 문헌)와 검색(6-10). 검색은 제목 · 주제어 · 본문 키워드에 동의어 사전(질문의 다른 말 → 카드가 쓰는 대표어, 한 방향)을 더한다 | manifest · 카드 → `Corpus`, 질의 → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스 탑재 때는 `allow_unreviewed=False` |
 | `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시 · 동의어 사전 `synonyms`: 묶음의 첫 말이 대표어) | — | `corpus.py` | 카드나 동의어 사전을 고치면 해시를 다시 만들고(`manifest_hash(cards, synonyms)`) `corpus_version`을 올린다 |
 | `llm_types.py` | 코어가 받는 도구 호출 LLM 의 모양(6-11): 요청 · 결과 · 실패 종류 · `before_attempt` 예약 · 응답 조각을 받는 쪽(`TextSink`, 화면에 낸 것이 있으면 다시 보내지 않음) | — | 루프 · 연구용 LLM 함수 · 가짜 모델 | 서비스로 옮길 때 `common/errors.py` 이름과 맞춘다 |
 | `diagnostics.py` | 진단 기록(11-5): 단계 · 끝, 닫힌 detail, 65,536바이트 줄이기 순서, `agent_step` · `agent_end` 로그 줄 | 단계 → `Diagnostics` | 루프 · 턴 | detail 필드는 `schemas.py` 닫힌 모델과 11-5 표 |
@@ -100,7 +100,9 @@ uv sync                                             # .venv 를 만들고 서비
 ## 평가 결과 (13-6)
 
 실제 모델(`ai/.env`의 기본 묶음 `gpt-6-luna`)로 평가셋 50 · 안전 세트 20 · 객관성 세트 14(4회차부터 에이전트 서비스 세트 19 포함)를 시나리오마다 3번씩 돌린 결과입니다.
-목표(14-2)는 비교만 하고, 표의 값은 측정값입니다. 고칠 때는 평가셋 **개발 35개**와 안전 · 객관성 세트의 도구 기록 · 진단 기록만 읽었고, **보류 15개**는 고치는 데 쓰지 않았습니다.
+목표(14-2)는 비교만 하고, 표의 값은 측정값입니다. 고칠 때는 평가셋 **개발 35개**와 안전 · 객관성 세트의 도구 기록 · 진단 기록을 읽었습니다.
+
+**평가셋의 나머지 15개는 13-5가 말하는 보류 세트가 아닙니다.** 시나리오 · 기대값을 이 에이전트를 만든 사람이 직접 썼고, 1회차부터 회차마다 결과를 보고 다음 고침을 정했으며, 6회차에서는 그중 4개(`fail-action` · `nc-different-pitch` · `ra-measurement` · `scr-time-limit`)의 실패 원인을 직접 고쳤습니다. 그래서 이 15개의 값은 개발 35개와 같은 '본 문항' 결과이고, 고침이 처음 보는 문항으로 일반화되는지의 근거가 아닙니다. 13-5대로 다음 최종 측정 전에 다른 팀원이 보류를 새로 쓰고(기대값 포함), 공개된 이 15개는 최종 평가의 보류에서 뺍니다.
 
 ```powershell
 # 에이전트(103개 × 3번, 근거성 판정 · 후속 말 포함). 1 ~ 3회차는 에이전트 서비스 세트 19개를 더하기 전의 84개
@@ -112,7 +114,7 @@ uv sync                                             # .venv 를 만들고 서비
 - 결과는 `outputs/evals/<이름>/`(git 무시)의 `report.md` · `report.json` · `runs.jsonl`입니다. 보고에는 '한도 때문의 PARTIAL' 수 · 비율과 이유별(`TIME` · `MODEL_CALLS` · `TOOL_CALLS` · `TOKENS` · `REPEAT`) 수가 들어 있습니다(14-1). 문장 줄(5-4)은 일반 턴의 첫 문장까지 시간(중간값 · 상위 5%, 호출 시간 합 · 실제 시계)과, 받은 문장 줄이 끝 줄 앞부분과 다른 턴 수(0 이어야 함)를 냅니다.
 - 에이전트 서비스 세트 19개(13-2, `--set agent_service`, 승인 4 · 문장 스트림 3 · 기억 5 · 일반 조언 4 · 범위 밖 3)는 평가셋 50과 합치지 않고 따로 보고합니다. 지표(14-1): 승인 없는 실행 · 나간 문장 변경 · `GENERAL` 금지 위반(채점기 `grading.general_violations`, 제품 검사와 따로 짠 규칙) · 기억 오염 기대검사 실패(기억 누설의 대리 지표 — 인과 판정이 아니다. 기억을 넣은 실행에서 판단 · 판정 · 근거 · 행동 검사(`memory` 표시)가 하나라도 실패한 실행. 저장 여부는 시나리오 검사로만 본다) · 조언 질문의 GUIDE 비율(`advice` 표시 검사). 시나리오의 기억 fixtures(설정 · 코칭 프로필 · '기억 없이')는 가짜 BE 에 그대로 넣고, 장애 `stream_cut`은 문장 줄을 정한 수만큼 받은 뒤 끝 줄 없이 연결을 끊습니다.
 - 과제 성공률 · pass^3 은 첫 시도로만 셉니다. 후속 말은 후속 말을 적은 시나리오에만 있습니다.
-- **아직 하지 않은 것(13-5)**: 기대 결과(사람 정답) 검수, 근거성 LLM 판정과 사람 20문장의 일치도. 그래서 채점 · 근거성은 사람 확인 전 값입니다.
+- **아직 하지 않은 것(13-5)**: 기대 결과(사람 정답) 검수, 다른 팀원이 쓰는 새 보류 세트, 근거성 LLM 판정과 사람 20문장의 일치도. 그래서 채점 · 근거성은 사람 확인 전 값입니다. 실행기의 `--set eval` · `--set all`은 지금 평가셋 50개(나머지 15개 포함)를 늘 돌립니다. 새 보류를 쓸 때 최종 측정 표시가 있을 때만 보류를 싣고 해시를 동결하게 바꿉니다.
 - 비용: 단가를 넣지 않아(`--price-*`) USD 는 계산하지 않았습니다. 토큰 수는 아래 표에 있습니다.
 
 ### 결과 표
@@ -121,7 +123,7 @@ uv sync                                             # .venv 를 만들고 서비
 |---|---|---|---|---|---|---|
 | 과제 성공률 · 평가셋 50 | ≥ 0.90 | 0.43 (65/150) | 0.49 (73/150) | 0.53 (79/150) | 0.56 (84/150) | 0.71 (106/150) |
 | 　평가셋 개발 35 | — | 0.47 (49/105) | 0.50 (53/105) | 0.56 (59/105) | 0.59 (62/105) | 0.70 (73/105) |
-| 　평가셋 보류 15(고칠 때 보지 않음) | — | 0.36 (16/45) | 0.44 (20/45) | 0.44 (20/45) | 0.49 (22/45) | 0.73 (33/45) |
+| 　평가셋 나머지 15(보류로 나눴던 것, 13-5의 보류 아님 — 위 설명) | — | 0.36 (16/45) | 0.44 (20/45) | 0.44 (20/45) | 0.49 (22/45) | 0.73 (33/45) |
 | pass^3 · 평가셋 50 | ≥ 0.80 | 0.28 (14/50) | 0.38 (19/50) | 0.38 (19/50) | 0.46 (23/50) | 0.52 (26/50) |
 | pass^3 · 대표 시나리오 경로 6 | 1.00 | 0.17 (1/6) | 0.33 (2/6) | 0.50 (3/6) | 0.50 (3/6) | 0.50 (3/6) |
 | 과제 성공률 · 안전 세트 20 | — | 0.83 (50/60) | 0.88 (53/60) | 0.90 (54/60) | 0.85 (51/60) | 0.87 (52/60) |
@@ -213,7 +215,7 @@ uv sync                                             # .venv 를 만들고 서비
 
 ### 남은 실패와 다음에 할 것 (3회차, 개발 쪽)
 
-3회차에도 목표(14-2)에 못 미칩니다. 평가셋 50 에서는 **고정 순서 기준선이 에이전트보다 높습니다**(과제 성공률 0.65 대 0.53, pass^3 0.56 대 0.38). 기준선은 도구 순서가 정해져 있어 조사 호출을 낭비하지 않고, 에이전트는 같은 한도 안에서 도구를 더 고르다 한도에 닿습니다. 보류 15개는 2 · 3회차 모두 0.44 로, 개발 쪽 고침이 보류 쪽으로 더 번지지 않았습니다.
+3회차에도 목표(14-2)에 못 미칩니다. 평가셋 50 에서는 **고정 순서 기준선이 에이전트보다 높습니다**(과제 성공률 0.65 대 0.53, pass^3 0.56 대 0.38). 기준선은 도구 순서가 정해져 있어 조사 호출을 낭비하지 않고, 에이전트는 같은 한도 안에서 도구를 더 고르다 한도에 닿습니다.
 
 | 원인 | 증상 | 다음에 할 것 | 예 |
 |---|---|---|---|
@@ -336,7 +338,7 @@ uv sync                                             # .venv 를 만들고 서비
 | L1-34 | 통합 | `tests/unit/test_turn.py::test_client_disconnect_stops_new_calls` | AI 몫은 끊기면 새 호출 멈춤뿐이다. 취소 · 로그아웃 · 늦은 결과 폐기는 BE 실제 경계, 화면 동작은 FE |
 | L1-35 | 단위 | `tests/unit/test_checks.py::test_fm_L1_35_number_mismatch_reason_has_claim_and_evidence_numbers_only` · `tests/unit/test_checks.py::test_fm_L1_35_target_mismatch_take_slide_metric` · `tests/unit/test_checks.py::test_fm_L1_35_unknown_and_old_evidence_ids_are_stale` |  |
 | L1-36 | 단위 · 평가셋 | `tests/unit/test_checks.py::test_fm_L1_36_system_text_only_enum_values` · `tests/unit/test_checks.py::test_fm_L1_36_causal_claim_needs_approved_guide_source` | 모델의 우회 시도는 평가셋 |
-| L1-37 | 계약 | `tests/unit/test_checks.py::test_fm_L1_37_cards_with_forbidden_and_pii` · `tests/unit/test_checks.py::test_fm_L1_37_display_numbers_need_matching_evidence` | 사용자 기준 표시 글에 숫자가 있으면 REASSESS_RESULT 카드가 통째로 빠진다(버그, test_reassess_card_is_kept_when_target_display_has_numbers 가 xfail) |
+| L1-37 | 계약 | `tests/unit/test_checks.py::test_fm_L1_37_cards_with_forbidden_and_pii` · `tests/unit/test_checks.py::test_fm_L1_37_display_numbers_need_matching_evidence` · `tests/lab/test_fake_be.py::test_reassess_card_is_kept_when_target_display_has_numbers` · `tests/lab/test_fake_be.py::test_reassess_card_keeps_display_the_user_said` · `tests/lab/test_fake_be.py::test_reassess_with_unsourced_text_only_target_is_not_proposed` |  |
 | L1-38 | 단위 · 루프 | `tests/unit/test_checks.py::test_fm_L1_38_fix_call_failed_keeps_original_passing_only` · `tests/unit/test_checks.py::test_fm_L1_38_fixed_new_action_rejected` · `tests/unit/test_turn.py::test_fm_L1_38_failed_explanation_keeps_code_judgement_sentence` |  |
 | L1-39 | 계약 | `tests/unit/test_contract_schemas.py::test_fm_L1_39_final_status_combinations` · `tests/unit/test_budget.py::test_l1_39_input_tokens_are_cumulative_up_to_72k` · `tests/unit/test_budget.py::test_settle_output_replaces_reservation_with_measured_usage` · `tests/unit/test_limits.py::test_l1_39_output_is_settled_to_measured_usage_per_response` · `tests/unit/test_limits.py::test_l1_39_failed_attempt_keeps_its_reservation` · `tests/unit/test_budget.py::test_settle_input_replaces_estimate_with_measured_usage` · `tests/unit/test_limits.py::test_l1_39_retry_inside_one_call_keeps_failed_reservation_and_settles_the_sent_one` · `tests/unit/test_limits.py::test_l1_39_retry_blocked_by_the_cap_is_not_sent` · `tests/unit/test_turn.py::test_unknown_usage_is_null_and_not_measured` |  |
 | L1-40 | 계약 | `tests/unit/test_contract_examples.py::test_fm_L1_07_stream_examples_have_exactly_one_terminal_line_last` · `tests/unit/test_turn.py::test_output_too_large_ends_with_one_error_line` | final 중 단절은 서비스 탑재 때 |
@@ -372,7 +374,7 @@ uv sync                                             # .venv 를 만들고 서비
 | L4-12 | 단위 | `tests/unit/test_config_templates.py::test_fm_L4_12_config_is_deeply_immutable` · `tests/unit/test_goals.py::test_fm_L4_12_config_refuses_zero_or_negative_min_delta` · `tests/unit/test_goals.py::test_fm_L4_12_gt_base_min_delta_boundary` |  |
 | L4-17 | 통합 | `tests/unit/test_turn.py::test_fm_L1_32_changed_revision_between_calls_demotes_old_evidence` | 저장 직전 버전 재확인 · 대본 · 목표 변경 충돌 거절은 BE |
 | L4-18 | 계약 | `tests/lab/test_fake_be.py::test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchanged` · `tests/unit/test_contract_schemas.py::test_criteria_target_all_or_none` · `tests/unit/test_actions.py::test_l1_23_forged_or_wrong_action_args_are_tool_errors` |  |
-| L4-20 | 계약 | `tests/lab/test_fake_be.py::test_fm_L4_20_reassess_with_different_rule_versions_fails_without_card` · `tests/unit/test_actions.py::test_l4_20_reassess_rule_versions_must_match` | 다시 평가 답의 meta.criteria_versions 에 리뷰 판이 빠진다(버그, test_reassess_final_meta_carries_review_criteria_versions 가 xfail) |
+| L4-20 | 계약 | `tests/lab/test_fake_be.py::test_fm_L4_20_reassess_with_different_rule_versions_fails_without_card` · `tests/unit/test_actions.py::test_l4_20_reassess_rule_versions_must_match` · `tests/lab/test_fake_be.py::test_reassess_final_meta_carries_review_criteria_versions` |  |
 | L4-22 | 계약 | `tests/lab/test_fake_be.py::test_fm_L4_22_reassess_flags_official_difference_when_record_changed` | 원인을 확인하지 못한 차이는 7-10 문구 '현재 조건으로 계산한 참고 결과가 공식 리뷰와 달라요.'로 알린다. 원인 문구(기록 · 규칙 판 변경)는 계약의 official 에 판 정보가 없어 고르지 않는다(열린 질문) |
 | L4-23 | 계약 | `tests/unit/test_contract_schemas.py::test_fm_L4_23_evidence_origin_rules` |  |
 | L4-24 | 단위 · 평가셋 | `tests/unit/test_checks.py::test_fm_L4_24_forbidden_claims` · `tests/unit/test_checks.py::test_fm_L4_24_opposite_direction_with_correct_diff_evidence_is_caught` · `tests/unit/test_checks.py::test_fm_L4_24_korean_numeral_is_number_format` | 모델 행동 쪽은 평가셋 |

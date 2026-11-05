@@ -11,7 +11,7 @@
 - prompt_version(프롬프트 해시) · corpus_version(자료 묶음 판)은 각각 prompts/ · corpus.py 가 계산한다.
 """
 
-FEATURE_VERSION = "chat_agent-0.7.0"
+FEATURE_VERSION = "chat_agent-0.8.0"
 SCHEMA_VERSION = "1.0"
 TOOL_SCHEMA_VERSION = "tools-3"
 STATE_V = 1
