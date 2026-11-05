@@ -186,6 +186,7 @@ class _Turn:
                     turn_call,
                     request_id,
                     request_service.offered_sources(request),
+                    request.memory.memory_version,
                 )
                 outcome = await request_turn(
                     request,

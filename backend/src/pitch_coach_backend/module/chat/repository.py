@@ -146,6 +146,24 @@ class ChatRepository:
     def get_memory_setting(self, user_id: uuid.UUID) -> ChatMemorySetting | None:
         return self.db.get(ChatMemorySetting, user_id)
 
+    def lock_memory_setting(self, user_id: uuid.UUID) -> ChatMemorySetting | None:
+        return self.db.scalar(
+            select(ChatMemorySetting)
+            .where(ChatMemorySetting.user_id == user_id)
+            .with_for_update(read=True)
+        )
+
+    def upsert_profile_item(self, user_id: uuid.UUID, key: str, value: str) -> uuid.UUID:
+        return self.db.scalar(
+            insert(ChatProfileItem)
+            .values(id=uuid.uuid7(), user_id=user_id, key=key, value=value)
+            .on_conflict_do_update(
+                constraint="uq_chat_profile_items_user_key",
+                set_={"value": value, "updated_at": func.now()},
+            )
+            .returning(ChatProfileItem.id)
+        )
+
     def list_profile_items(self, user_id: uuid.UUID) -> Sequence[ChatProfileItem]:
         return self.db.scalars(
             select(ChatProfileItem)

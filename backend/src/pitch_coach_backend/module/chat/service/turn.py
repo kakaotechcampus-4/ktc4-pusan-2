@@ -17,6 +17,7 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
+from pitch_coach_backend.module.chat.service.memory import save_profile_updates
 from pitch_coach_backend.module.chat.service.practice import start_practice
 from pitch_coach_backend.module.chat.service.run import (
     ClaimedRun,
@@ -35,7 +36,12 @@ class ScopeChangeRejected(Exception):
 
 
 def mark_sending(
-    db: Session, run: ClaimedRun, turn_call: int, request_id: str, sources: dict[str, list[str]]
+    db: Session,
+    run: ClaimedRun,
+    turn_call: int,
+    request_id: str,
+    sources: dict[str, list[str]],
+    memory_version: int,
 ) -> ClaimedRun | None:
     row = lock_current(db, run)
     if row is None:
@@ -48,6 +54,7 @@ def mark_sending(
             "state_revision": row.state_revision if turn_call > 1 else None,
             "stage": "SENDING",
             "sources": sources,
+            "memory_version": memory_version,
         },
     ]
     row.row_revision += 1
@@ -182,6 +189,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
         return False
     _apply_scope(row, conversation, data)
     start_practice(db, repo, row, data)
+    save_profile_updates(repo, row, conversation, data)
     message = data["message"]
     now = datetime.now(UTC)
     repo.add(
