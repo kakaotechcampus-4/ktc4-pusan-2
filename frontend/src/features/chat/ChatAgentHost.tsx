@@ -84,7 +84,7 @@ function ChatLayer() {
 
   return (
     <SignedInOnly>
-      {/* 런처는 오른쪽 아래 구석의 44px 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 구석에 붙여도
+      {/* 런처는 오른쪽 아래 구석의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 구석에 붙여도
           홈 바닥글 "개인정보 처리방침" 끝 글자처럼 오른쪽에 붙은 컨트롤에 조금 닿지만, 가려진 컨트롤도 그대로 눌립니다
           (1366×650 · 1920×950 · 125% 확대에서 잼, #941 리뷰) */}
       <div className="light-surface fixed bottom-2 right-2 z-[70] text-ink">
@@ -184,15 +184,15 @@ function ChatLayer() {
           onClick={() => (open ? close() : setOpen(true))}
           aria-label="채팅 에이전트"
           title="채팅 에이전트"
-          className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-coral-deep text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
+          className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 20 20"
-            className="h-5 w-5 fill-none stroke-current stroke-2"
-          >
-            <path d="M3 4h14v9H8l-4 3v-3H3z" strokeLinejoin="round" />
-          </svg>
+          {/* 앱 아이콘 그림(192px)의 몸통 중심 (82, 104)을 44px 로 줄여 원 안쪽(40px)의 가운데에 둡니다.
+              오른쪽 꼬리와 반짝이는 원 밖으로 잘립니다 */}
+          <img
+            src="/icon-192.png"
+            alt=""
+            className="absolute left-[1.2px] top-[-3.8px] h-11 w-11 max-w-none"
+          />
         </button>
       </div>
     </SignedInOnly>
