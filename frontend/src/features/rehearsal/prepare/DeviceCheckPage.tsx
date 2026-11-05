@@ -518,7 +518,7 @@ export function DeviceCheckPage() {
       }
     >
       <div className="prepare-content grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] prepare-compact:gap-4">
-        <div className="prepare-camera-column flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px]">
+        <div className="prepare-camera-column flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px] prepare-low:max-w-[640px]">
           <div className="prepare-camera relative aspect-video w-full">
             <GazeSetupView
               frameRef={cal.frameRef}

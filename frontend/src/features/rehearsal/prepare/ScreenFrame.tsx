@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 export function ScreenFrame({
   title,
@@ -18,9 +19,9 @@ export function ScreenFrame({
   children: ReactNode;
 }) {
   return (
-    // 상단바의 본문 건너뛰기 링크가 초점을 옮기는 자리 (#840 SkipLink 의 MAIN_ID)
+    // 상단바의 본문 건너뛰기 링크가 초점을 옮기는 자리
     <main
-      id="main"
+      id={MAIN_ID}
       tabIndex={-1}
       className="pitch-create prepare-screen flex-1 bg-greige px-6 pt-3 pb-4 text-ink prepare-compact:px-5 prepare-compact:py-2 prepare-low:py-1 max-[600px]:px-3 selection:bg-coral-wash selection:text-ink [&_:focus-visible]:outline-coral-deep"
     >

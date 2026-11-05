@@ -105,11 +105,14 @@
   --font-mono: "IBM Plex Mono", "Pretendard", ui-monospace, monospace;
 }
 
+/* 시작 전 세팅이 시작 버튼까지 첫 화면에 들어오게 줄이는 단계. 높이 기준은 상단바(약 85px)를 얹은
+   페이지 높이로 정했습니다 — 기본 배치 746px, compact 658px, low 606px (#872).
+   본문이나 상단바 높이가 바뀌면 다시 재서 맞춥니다 */
 @custom-variant prepare-compact {
-  @media (max-width: 1199px), (max-height: 699px) { @slot; }
+  @media (max-width: 1199px), (max-height: 749px) { @slot; }
 }
 @custom-variant prepare-low {
-  @media (max-height: 650px) and (min-width: 1024px) { @slot; }
+  @media (max-height: 659px) and (min-width: 1024px) { @slot; }
 }
 
 html, body, #root { height: 100%; }
