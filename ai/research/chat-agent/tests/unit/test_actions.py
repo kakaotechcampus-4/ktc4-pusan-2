@@ -1468,3 +1468,19 @@ def test_fetch_take_does_not_swap_in_another_take_when_the_named_one_is_gone() -
     assert (p.result, p.reason_code) == ("TOOL_ERROR", "NOT_NAMED_TAKE")
     q = do("fetch_take", {"take_id": "t-3", "reason": "비교"}, ctx=ctx_for(msg), message=msg)
     assert q.reason_code != "NOT_NAMED_TAKE"
+
+
+def test_named_take_ids_need_letters_and_digits() -> None:
+    """하이픈 낱말 중 영문자와 숫자가 모두 든 것만 Take ID 후보다('Q-A' · 'B-roll'로 다시 평가를 막지 않음, #895 리뷰)."""
+    from chat_agent.actions import _NAMED_ID
+
+    assert _NAMED_ID.findall("Q-A 대본 보고 한 걸로 다시 평가해 줘, co-presenter B-roll") == []
+    assert _NAMED_ID.findall("p9-t1 하고 t-4 다시 봐 줘") == ["p9-t1", "t-4"]
+    ctx = ctx_for("Q-A 대본 보고 한 걸로 다시 평가해 줘")
+    p = do(
+        "reassess",
+        {"take_id": "t-5", "change": {"script_used": True}},
+        ctx=ctx,
+        message="Q-A 대본 보고 한 걸로 다시 평가해 줘",
+    )
+    assert p.result == "PROPOSED", p.reason_code

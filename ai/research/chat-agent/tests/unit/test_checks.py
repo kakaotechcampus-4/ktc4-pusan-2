@@ -1232,3 +1232,24 @@ def test_code_template_sentences_keep_their_source_ids() -> None:
     head = "말씀하신 '발표는 빠를수록 좋다며?'는 기록과 달라요: 발표법 자료(g-18)."
     c = _claim("ASSESSMENT", head)
     assert c is not None and c.text == head
+
+
+@pytest.mark.parametrize(
+    ("text", "caught"),
+    [
+        # 범위 안 전달 조언은 통과(#904 리뷰)
+        ("대본 응시가 높은 3장 부분에 청중 보기를 더해 보세요.", False),
+        ("대본 3장 부분에 쉼을 더해 보세요.", False),
+        ("슬라이드 3장에서 청중을 보며 말하는 부분을 늘리세요.", False),
+        ("슬라이드 2장 내용에 맞춰 목소리를 줄이세요.", False),
+        ("슬라이드를 넘길 때 잠깐 멈추는 걸 더해 보세요.", False),
+        # 내용 수정안은 그대로 걸림('~면 좋아요'형 포함)
+        ("대본의 첫 문장을 이렇게 바꾸면 좋아요: 안녕하세요", True),
+        ("대본을 보는 시간을 줄이세요 그리고 첫 문장을 바꾸세요", True),
+        ("평가 기준에는 명료성을 넣으세요", True),
+    ],
+)
+def test_scope_edit_rule_lets_delivery_advice_through(text: str, caught: bool) -> None:
+    from chat_agent.checks import _scope_edit
+
+    assert (_scope_edit(text, CFG) is not None) is caught

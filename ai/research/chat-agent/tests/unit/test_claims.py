@@ -1739,3 +1739,13 @@ def test_script_statement_with_saying_used_is_also_retyped() -> None:
     )
     (v,), _ = split_check(msg, [d], DEFAULT_CONFIG)
     assert (v.type, v.subject.metric) == ("MEASURED", "script_mode")
+
+
+def test_choice_questions_are_not_issue_negation() -> None:
+    """'아니면' · '아닌지'는 고르는 질문이라 문제 주장의 부정이 아니다(#895 리뷰). 진짜 부정은 그대로."""
+    from chat_agent.claims import _NEG_AFTER
+
+    assert not _NEG_AFTER.search(" 아니면 느렸어?")
+    assert not _NEG_AFTER.search("는지 아닌지 알려줘")
+    assert _NEG_AFTER.search("던 건 아니야")
+    assert _NEG_AFTER.search("지 않았어")

@@ -712,7 +712,9 @@ def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
     규칙 1(대상 + 동사): 같은 절 안에서 대상 낱말 뒤 가까이에 고치라는 동사가 오면 건다. 절은 마침표 · 쉼표 · 줄바꿈으로 나눈다.
       대상과 동사 사이에 수행 명사(`scope_performance_nouns`: 속도 · 시간 · 시선 …)가 있으면 발표 수행 방식을 바꾸는 말이라 통과시킨다.
     규칙 2(내용 고쳐 쓰기): 문장 안 어디든 대상 낱말이 있고 같은 문장에 `내용 명사 + 을/를/에 + 고치는 동사`가 있으면 건다.
-      절로 나누지 않으므로 대상이 앞 절에 있어도 걸리고, 수행 명사 예외도 받지 않는다.
+      절로 나누지 않으므로 대상이 앞 절에 있어도 걸린다. 수행 명사 예외는 내용 명사 바로 앞(`scope_content_gap`자)과
+      일치 구간에 수행 명사가 있을 때만 받는다("대본 3장 부분에 쉼을 더해 보세요" · "청중을 보며 말하는 부분을 늘리세요"는
+      전달 조언이라 통과, #904 리뷰).
     """
     for clause in _SCOPE_CLAUSE_SPLIT.split(text):
         for t in cfg.scope_targets:
@@ -733,8 +735,10 @@ def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
     for sentence in _SCOPE_SENTENCE_SPLIT.split(text):
         if not any(t in sentence for t in cfg.scope_targets):
             continue
-        m = content.search(sentence)
-        if m:
+        for m in content.finditer(sentence):
+            near = sentence[max(0, m.start() - cfg.scope_content_gap) : m.end()]
+            if any(x in near for x in cfg.scope_performance_nouns):
+                continue
             return m.group(1)
     return None
 

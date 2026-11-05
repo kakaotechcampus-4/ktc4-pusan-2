@@ -710,13 +710,17 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         # "바로 발표할래"처럼 연습 이동만 요청해 허용된 답: 문장이 없어도 이동이 답이다(6-2 START_PRACTICE).
         # 모델이 쓴 문장이 검사로 모두 빠졌거나 자료를 찾지 못한 답은 그대로 PARTIAL · 거절이다
         body = [Claim(kind="SYSTEM", text=templates.SystemText.PRACTICE_BUTTON.value)]
+    # 섞인 요청의 범위 밖 이유(1-3): 답 문장이 검사로 모두 빠져도 범위 밖 안내는 낸다(#904 리뷰)
+    scope_claims = [
+        Claim(kind="SYSTEM", text=templates.scope_text(r).value) for r in _scope_notes(draft)
+    ]
     if not body and not has_result:
         if notes:
             # 행동 결과 안내만 있는 답(예: 다른 탭에서 목표가 바뀌어 저장하지 못함): 안내를 그대로 낸다
             return finish(
                 status="PARTIAL",
                 reason="OTHER",
-                claims=comp.pre,
+                claims=[*comp.pre, *scope_claims],
                 assessments=all_assessments,
             )
         if no_guide or advice_only:
@@ -732,13 +736,14 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 status="PARTIAL",
                 reason="CHECK_ALL_DROPPED",
                 system=[templates.SystemText.VERIFIED_ONLY],
-                claims=partial,
+                claims=[*partial, *scope_claims],
                 assessments=all_assessments,
             )
         return finish(
             status="PARTIAL",
             reason="CHECK_ALL_DROPPED",
             system=[templates.SystemText.PARTIAL_CHECKED],
+            claims=scope_claims or None,
             assessments=all_assessments,
         )
     final_claims = [*comp.pre, *body]

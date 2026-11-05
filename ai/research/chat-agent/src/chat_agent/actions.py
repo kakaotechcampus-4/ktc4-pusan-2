@@ -328,10 +328,12 @@ class Proposal:
     tool_message: dict[str, Any] = field(default_factory=dict)
 
 
-#: 사용자 말 속 Take 지칭: 'Take 5' · '테이크 5' 번호와 ID 모양의 낱말('p9-t1')
+#: 사용자 말 속 Take 지칭: 'Take 5' · '테이크 5' 번호와 ID 모양의 낱말('p9-t1'). ID 는 영문자와 숫자가 모두 든 하이픈 낱말만
+#: 본다: 'Q-A' · 'co-presenter' · 'B-roll' 같은 말을 Take ID 로 보면 말한 Take 가 없다고 다시 평가를 막는다(#895 리뷰)
 _NAMED_TAKE_NUM = re.compile(r"(?:take|테이크)\s*(\d+)", re.IGNORECASE)
 _NAMED_ID = re.compile(
-    r"(?<![A-Za-z0-9-])(?=[A-Za-z0-9-]*[A-Za-z])[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+(?![A-Za-z0-9-])"
+    r"(?<![A-Za-z0-9-])(?=[A-Za-z0-9-]*[A-Za-z])(?=[A-Za-z0-9-]*\d)"
+    r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+(?![A-Za-z0-9-])"
 )
 
 

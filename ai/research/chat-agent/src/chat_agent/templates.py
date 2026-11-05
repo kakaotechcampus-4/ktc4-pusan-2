@@ -31,6 +31,8 @@ class SystemText(StrEnum):
         "연습 계획 · 일정은 짜 드리지 않아요. "
         "대화 목표를 정해 두면 다음 Take에서 이뤘는지 확인해 드릴 수 있어요."
     )
+    #: 범위 밖인데 이유(`scope_reason`)가 없거나 모르는 값일 때의 중립 문장(#904 리뷰). '발표와 관계없다'고 단정하지 않는다
+    OUT_OF_SCOPE_UNKNOWN = "이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요."
     NO_GUIDE = "자료에서 근거를 찾지 못해 답하지 않을게요."
     CANNOT_ANSWER = "이 요청에는 답할 수 없어요."
     ANSWER_INCOMPLETE = "답을 완성하지 못했어요."
@@ -117,11 +119,12 @@ SCOPE_TEXT: dict[str, SystemText] = {
 
 
 def scope_text(reason: object) -> SystemText:
-    """범위 밖 이유 → 고정 문장. 이유가 없거나 모르는 값이면 `OTHER`(발표와 무관)의 문장."""
+    """범위 밖 이유 → 고정 문장. 이유가 없거나 모르는 값이면 중립 문장(`OTHER`의 '발표와 관계없다'로 단정하지 않는다:
+    "대본 고쳐 줘"에 그 문장이 나가면 사실과 다르다)."""
     return (
-        SCOPE_TEXT.get(reason, SystemText.OUT_OF_SCOPE)
+        SCOPE_TEXT.get(reason, SystemText.OUT_OF_SCOPE_UNKNOWN)
         if isinstance(reason, str)
-        else SystemText.OUT_OF_SCOPE
+        else SystemText.OUT_OF_SCOPE_UNKNOWN
     )
 
 
