@@ -67,6 +67,36 @@ AUTONOMY: dict[str, str] = {
 }
 #: 사용자 말이 없는 턴(`TAKE_REVIEWED`)에서 내지 않는 행동(저장 · 다시 평가 · 이동, 6-2)
 NEEDS_USER_TURN = frozenset({"SAVE_GOAL", "REASSESS", "START_PRACTICE"})
+#: 행동 결과 `error.code` 닫힌 목록(5-8). BE 는 실패한 행동에 이 코드만 싣고, AI 는 목록 코드만 고정 안내로 바꾼다(목록 밖은
+#: 일반 안내). 행동마다 쓰는 코드: 모든 행동 `NOT_FOUND` · `NOT_AUTHORIZED` · `NOT_ALLOWED` · `INVALID_ACTION` ·
+#: `IDEMPOTENCY_CONFLICT` · `APPROVAL_REQUIRED` · `APPROVAL_ARGS_CHANGED` · `PREAPPROVAL_MISMATCH`, `REASSESS`
+#: `NO_OFFICIAL_REVIEW` · `INVALID_CHANGE` · `REASSESS_PER_TURN` · `REASSESS_DAILY_LIMIT` · `RULES_DIFFER` · `REVIEW_FAILED` ·
+#: `REVIEW_TAKE_MISMATCH` · `REVIEW_REQUEST_CHANGED`, `SAVE_GOAL` `GOAL_VERSION_CONFLICT` · `GOAL_METRIC_NOT_ALLOWED` ·
+#: `GOAL_OPERATOR_MISMATCH` · `GOAL_BASE_MISMATCH`
+ACTION_ERROR_CODES = frozenset(
+    {
+        "NOT_FOUND",
+        "NOT_AUTHORIZED",
+        "NOT_ALLOWED",
+        "INVALID_ACTION",
+        "IDEMPOTENCY_CONFLICT",
+        "APPROVAL_REQUIRED",
+        "APPROVAL_ARGS_CHANGED",
+        "PREAPPROVAL_MISMATCH",
+        "NO_OFFICIAL_REVIEW",
+        "INVALID_CHANGE",
+        "REASSESS_PER_TURN",
+        "REASSESS_DAILY_LIMIT",
+        "RULES_DIFFER",
+        "REVIEW_FAILED",
+        "REVIEW_TAKE_MISMATCH",
+        "REVIEW_REQUEST_CHANGED",
+        "GOAL_VERSION_CONFLICT",
+        "GOAL_METRIC_NOT_ALLOWED",
+        "GOAL_OPERATOR_MISMATCH",
+        "GOAL_BASE_MISMATCH",
+    }
+)
 
 #: 목표 지표 → 차원(목표 충돌 판정 · 전문가 추천 안)
 GOAL_METRIC_DIM = {

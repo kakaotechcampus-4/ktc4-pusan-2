@@ -64,7 +64,7 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from chat_agent import memory as memory_rules
-from chat_agent.actions import action_args_hash
+from chat_agent.actions import ACTION_ERROR_CODES, action_args_hash
 from chat_agent.config import DEFAULT_CONFIG
 from chat_agent.schemas import ClaimLineData, FinalData, StreamLine
 from chat_agent.templates import SystemText
@@ -122,6 +122,8 @@ CLOSING_TEXT = {
     ("CANCELLED", "SAVE_GOAL"): SystemText.APPROVAL_CANCELLED,
     ("CANCELLED", "REASSESS"): SystemText.APPROVAL_CANCELLED,
 }
+#: [취소] 버튼으로 끝낸 승인 대기(새 메시지가 없었으므로 '새 메시지를 받아' 문장을 쓰지 않는다)
+CANCEL_BUTTON_TEXT = SystemText.APPROVAL_CANCELLED_BY_USER
 #: 행동 끝 상태 → 실행 끝 상태(12-3 상태 전이). 거절은 실행이 `DONE`
 RUN_STATUS_AFTER = {"REJECTED": "DONE", "EXPIRED": "EXPIRED", "CANCELLED": "CANCELLED"}
 MAX_HISTORY_MESSAGES = 20
@@ -832,6 +834,10 @@ class FakeBe:
                     # 끝 줄 없이 끊김 · error 끝 줄 · 앞부분 불일치여도 받은 문장은 PARTIAL 로 남긴다(L2-44 · L2-45)
                     self._store_received(run, conv)
                     return run
+                if run.claim_lines:
+                    # 앞 호출에서 이미 보인 문장(승인 전 답 등)은 이 호출이 실패해도 메시지로 남긴다(P13 · L1-41, #915 리뷰).
+                    # 실행은 오류 코드 규칙(5-9)대로 FAILED 이고, 화면은 실행 오류 문구를 따로 보인다
+                    self._store_received(run, conv, status="FAILED")
                 return self._fail(run, call.error_code or "AGENT_UPSTREAM_ERROR")
             scope_changed = False
             if run.trigger != "TAKE_REVIEWED" and final["scope_pitch_id"] != conv.scope_pitch_id:
@@ -895,7 +901,7 @@ class FakeBe:
         )
         run.status = "WAITING_APPROVAL"
 
-    def _store_received(self, run: Run, conv: Conversation) -> None:
+    def _store_received(self, run: Run, conv: Conversation, *, status: str = "PARTIAL") -> None:
         """이 실행에서 받은 문장 줄로 `PARTIAL` 메시지를 남긴다(L2-44 · L2-45): 문장 · 판단 · 근거 · 자료 사본을 그대로 보존하고
         행동은 실행하지 않는다. 근거 표시 · 계획 · 기록은 앞 응답의 끝 줄에서 가져온다(없으면 비움)."""
         lines = run.claim_lines
@@ -926,7 +932,7 @@ class FakeBe:
             "history_summary": None,
             "goal_result": None,
         }
-        self._store_final(run, conv, received, status="PARTIAL")
+        self._store_final(run, conv, received, status=status)
 
     def events_after(self, run_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
         """실행 조회(12-3 · L2-46): `after_seq` 커서 뒤의 실행 이벤트만 `event_seq` 순서대로. 같은 커서로 다시 읽으면 같은 것과
@@ -997,7 +1003,9 @@ class FakeBe:
         with self._lock:
             self.expire_due()
             if run.status == "WAITING_APPROVAL" and run.pending is not None:
-                self._close(run, self.conversations[run.conversation_id], "CANCELLED")
+                self._close(
+                    run, self.conversations[run.conversation_id], "CANCELLED", by_button=True
+                )
         return run
 
     def _decide(
@@ -1081,7 +1089,9 @@ class FakeBe:
                 break
         return run
 
-    def _close(self, run: Run, conv: Conversation, outcome: str) -> None:
+    def _close(
+        self, run: Run, conv: Conversation, outcome: str, *, by_button: bool = False
+    ) -> None:
         """승인 대기를 거절 · 만료 · 취소로 끝낸다: 행동 `REJECTED` · `EXPIRED` · `CANCELLED`, 이미 낸 문장 뒤에 고정 문장(7-10)을 덧붙여 저장.
 
         AI 를 부르지 않고 판단 · 근거는 지우지 않는다. 실행은 거절이면 `DONE`, 만료면 `EXPIRED`, 취소면 `CANCELLED`.
@@ -1113,7 +1123,9 @@ class FakeBe:
             {
                 "kind": "SYSTEM",
                 "assessment_id": None,
-                "text": str(CLOSING_TEXT[(outcome, action["type"])]),
+                "text": str(
+                    CANCEL_BUTTON_TEXT if by_button else CLOSING_TEXT[(outcome, action["type"])]
+                ),
                 "evidence_ids": [],
                 "source_ids": [],
                 "action_id": action["action_id"],
@@ -1547,6 +1559,7 @@ class FakeBe:
 
     @staticmethod
     def _failed(action: dict[str, Any], code: str) -> dict[str, Any]:
+        assert code in ACTION_ERROR_CODES, code  # 행동 결과 실패 코드는 5-8 닫힌 목록만
         return {
             "action_id": action["action_id"],
             "type": action["type"],

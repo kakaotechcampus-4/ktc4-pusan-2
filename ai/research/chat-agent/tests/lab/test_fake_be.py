@@ -1161,3 +1161,69 @@ def test_named_take_missing_from_the_scope_gets_the_fetch_failed_notice() -> Non
     run = be.send_message(None, msg, page_take_id="t-5")
     assert actions == []  # Take 3 으로 바꿔 가져오지 않았다
     assert templates.SystemText.TAKE_FETCH_FAILED.value in ok(run.final).message.text  # type: ignore[union-attr]
+
+
+# ── 행동 실패 코드 목록(5-8) → 고정 안내 (#888 · #889 리뷰) ─────────────────────────
+
+
+def test_reassess_on_take_without_official_review_says_not_enough_data() -> None:
+    """공식 리뷰가 없는 Take 의 다시 평가는 'NO_OFFICIAL_REVIEW' → 자료 부족 안내(L2-23), '잠시 뒤 다시 시도'가 아니다."""
+    llm = reassess_llm({"script_used": True}, script_drafts(), F.answer([]))
+    be = make_be(llm)
+    be.use_rule_reviews()
+    for t in be.pitches["p-1"].takes:
+        if t.take_id == "t-5":
+            t.review = None
+    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5", approval="APPROVE")
+    (rec,) = run.actions
+    assert rec.result["error"]["code"] == "NO_OFFICIAL_REVIEW"
+    text = ok(run.final).message.text  # type: ignore[union-attr]
+    assert templates.SystemText.REASSESS_NO_DATA.value in text
+    assert templates.SystemText.REASSESS_FAILED.value not in text
+
+
+@pytest.mark.parametrize(
+    ("code", "note"),
+    [
+        ("REASSESS_DAILY_LIMIT", templates.SystemText.REASSESS_DAILY_LIMIT),
+        ("REASSESS_PER_TURN", templates.SystemText.ACTION_UNCONFIRMED),
+        ("REVIEW_FAILED", templates.SystemText.REASSESS_FAILED),
+        # 목록 밖 코드(턴 한도 429 코드를 행동에 잘못 실음)는 일반 안내다
+        ("AGENT_DAILY_LIMIT", templates.SystemText.REASSESS_FAILED),
+    ],
+)
+def test_reassess_failure_codes_map_only_listed_codes(
+    code: str, note: templates.SystemText
+) -> None:
+    from chat_agent import turn as turn_mod
+
+    class _St:
+        executed = [
+            {"type": "REASSESS", "status": "FAILED", "reason_code": None, "failed_code": code}
+        ]
+
+    class _Lp:
+        st = _St()
+
+    assert turn_mod._action_notes(_Lp())[:1] == [note.value]  # type: ignore[arg-type]
+
+
+def test_feature_doc_action_error_codes_equal_the_code_list() -> None:
+    """5-8 '실패 코드' 표의 코드와 코드의 닫힌 목록이 같다(문서와 BE 참조 구현이 어긋나지 않게)."""
+    import re
+    from pathlib import Path
+
+    from chat_agent.actions import ACTION_ERROR_CODES
+
+    doc = (Path(__file__).resolve().parents[5] / "docs/ai/features/chat-agent.md").read_text(
+        "utf-8"
+    )
+    sec = doc.split("**실패 코드(`error.code`, 닫힌 목록)**", 1)[1].split("\n- BE가 행동마다", 1)[0]
+    rows = [ln for ln in sec.splitlines() if ln.strip().startswith("| ") and "→" in ln]
+    found = {
+        c
+        for ln in rows
+        for c in re.findall(r"`([A-Z][A-Z_]+)`", ln.split("|")[2])
+        if c not in ("AGENT_DAILY_LIMIT",)
+    }
+    assert found == set(ACTION_ERROR_CODES)

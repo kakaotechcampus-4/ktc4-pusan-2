@@ -519,6 +519,13 @@ ai/service/tests/unit/chat_agent/  연구 모듈 tests/unit/을 옮긴 단위 ·
   - 선승인의 `content_hash`는 다른 값이다: `type` 감싸기 없이 `args.goal` 객체 하나(null 칸을 포함한 목표 초안의 필드 전부)를 위 2 ~ 5로 문자열로 만들어 SHA-256을 낸 소문자 16진수의 **앞 16자리**이고 `sha256:` 접두어가 없다.
 - **결과 모양**: `{action_id, type, status:"SUCCEEDED"|"FAILED"|"AMBIGUOUS", data:object|null, error:{code, message}|null, executed_args_hash:string|null}`. 요청하지 않은 `action_id` · 다른 `type` · 같은 결과 두 번은 409 `AGENT_STATE_INVALID`. `ASK` 행동(승인 뒤 실행)의 결과는 `executed_args_hash`(행동 `type`과 BE가 실행한 `args`를 `args_hash`와 같은 규칙(정렬 JSON의 SHA-256)으로 계산한 값)를 싣고, 대기 행동의 `args_hash`와 다르면 409 `AGENT_STATE_INVALID`다. 거절 · 만료 · 취소된 행동은 AI를 다시 부르지 않으므로 결과로 오지 않는다(6-2). P0는 대기 행동 1개에 결과가 정확히 1개다.
 - **결과 검사(AI)**: type별 결과 스키마와 `status` · `data` · `error`가 서로 맞는지 검사하고, 대기 행동의 `args`와 결과의 pitch · take · goal 식별자를 코드로 대조한다. 저장 결과의 버전 · 내용이 요청과 다르면 성공이라고 말하지 않고 끝낸다. 실패 결과도 루프에 돌려주고 모델이 다른 길을 고른다. 같은 실패 행동 · 인자가 연속 2회 나오면 더 실행하지 않는다.
+- **실패 코드(`error.code`, 닫힌 목록)**: BE는 `FAILED` 결과에 아래 코드만 싣고, AI는 목록 코드만 고정 안내(7-10)로 바꾼다. 목록 밖 코드는 일반 안내다(다시 평가 "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요.", 목표 저장 "작업 완료를 확인하지 못했어요."). 다시 해도 결과가 같은 실패는 '잠시 뒤 다시 시도'로 안내하지 않는다.
+  | 행동 | 코드 → 안내(7-10) |
+  |---|---|
+  | 모든 행동 | `NOT_FOUND`(대상 없음 · 지워짐) → 가져오기 "해당 연습 기록을 가져오지 못했어요." · 피치 없음 안내, `NOT_AUTHORIZED` · `NOT_ALLOWED` · `INVALID_ACTION`(등급 · 인자 키 틀림) · `IDEMPOTENCY_CONFLICT` · `APPROVAL_REQUIRED`(확정된 승인 없음) · `APPROVAL_ARGS_CHANGED`(승인 때와 다른 인자) · `PREAPPROVAL_MISMATCH`(선승인 대조 실패) → "작업 완료를 확인하지 못했어요." |
+  | `REASSESS` | `NO_OFFICIAL_REVIEW` → "이 연습은 다시 평가할 자료가 부족해요."(L2-23), `REASSESS_DAILY_LIMIT` → "오늘은 다시 평가를 더 할 수 없지만 다른 질문은 계속할 수 있어요."(L2-07), `RULES_DIFFER` → "평가 규칙이 달라 같은 조건으로 비교할 수 없어요.", `REVIEW_FAILED`(리뷰 호출 실패) → "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요.", `INVALID_CHANGE` · `REASSESS_PER_TURN` · `REVIEW_TAKE_MISMATCH` · `REVIEW_REQUEST_CHANGED` → "작업 완료를 확인하지 못했어요." |
+  | `SAVE_GOAL` | `GOAL_VERSION_CONFLICT` → "이미 다른 목표로 바뀌었어요.", `GOAL_METRIC_NOT_ALLOWED` · `GOAL_OPERATOR_MISMATCH` · `GOAL_BASE_MISMATCH` → "작업 완료를 확인하지 못했어요." |
+  다시 평가 하루 한도는 턴 한도 429 `AGENT_DAILY_LIMIT`과 다른 코드(`REASSESS_DAILY_LIMIT`)다: 행동만 실패하고 일반 질문은 계속된다.
 - BE가 행동마다 하는 일 · 확인할 것은 12-3.
 
 ## 5-9. 오류 코드
@@ -535,6 +542,7 @@ ai/service/tests/unit/chat_agent/  연구 모듈 tests/unit/을 옮긴 단위 ·
 | `AGENT_REQUEST_CONFLICT` | 409 | BE 같은 `client_request_id`에 다른 요청 | "보낸 질문과 내용이 달라 받지 못했어요. 다시 보내 주세요"(다시 보내면 새 키) |
 | `AGENT_RUN_IN_PROGRESS` | 409 | BE 같은 대화에 실행 중 · 실행 중 범위 바꾸기 | 진행 중 표시 |
 | `AGENT_CANCELLED` · `AGENT_EXPIRED` | 409 | BE 끝난 실행에 승인 · 확정 전 카드 | 다시 묻기 |
+| `APPROVAL_HASH_MISMATCH` | 409 | BE 승인 · 거절에 실린 `args_hash`가 저장한 대기 행동의 것과 다름(그사이 카드가 바뀜 · 위조, L2-40) | "요청이 변경되어 다시 확인이 필요해요." 카드를 다시 읽는다 |
 | `NOT_FOUND` | 404 | BE 없는 · 남의 대상(같은 404) | "기록을 찾을 수 없어요" |
 | `AGENT_TIMEOUT` · `AGENT_UPSTREAM_ERROR` | (실행 종결 상태의 `error`) | BE 비동기 실행 | "답이 늦어지고 있으니 다시 보내 주세요" · "지금은 답을 만들지 못했어요" |
 
@@ -1028,7 +1036,7 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 | L1-38 | 스스로 고치기 | 수정 호출도 시간 초과 · 거절 · 무효 출력, 새 행동 생성, 수정 후 빈 답 · 새 환각 | 수정 실패 시 원본에서 이미 통과한 Claim만 보존한다. 수정 결과의 actions · 새 근거 id는 전부 거부하고, 문장의 `kind`를 바꾼 수정(자료 검증에 실패한 `GUIDE`를 `GENERAL`로 바꾸기 등)은 그 문장을 버린다. 추가 모델 호출 없이 재검사하고, 남은 Claim이 없으면 검증된 근거 템플릿 `PARTIAL`로 끝낸다. 근거도 없으면 비어 있지 않은 고정 SYSTEM 안내로 종료한다. | "답 일부를 확인하지 못해 확인된 내용만 알려드릴게요." | [단위 · 루프] 수정 timeout · 거절 · 잘림 · 새 행동 · 새 근거 · 전부 삭제, 수정 전 통과 문장 유지와 추가 호출 0회 |
 | L1-39 | 최종 상태·사용량 구성 | 상태 · actions · state 조합 오류, TAKE_REVIEWED 결과 누락, 실패 사용량 누락 · 비용 과소 집계 | final 생성은 코드의 판별 유니온 검사 필수다. TAKE_REVIEWED는 근거 부족 · 실패에도 goal_result=UNKNOWN · terminal=false 명시한다(필수 버전이 모두 있고 6-4의 버전 차이가 확인되면 BASELINE_MISMATCH · terminal=true, 필수 버전이 없거나 틀리면 UNKNOWN · terminal=false). 관측 `usage`는 모르는 토큰 수를 null과 누락 사유(`measured:false`)로 두고 0으로 확정하지 않으며, 한도는 `budget_used`의 예약량으로 센다. 전송 전 토큰 계산, 모델 context와 출력 상한 예약, 실행 입력 누적 72k · 출력 누적 8k(호출 전에 그 호출의 입력 추정량과 출력 상한을 예약하고 응답 뒤 공급자 실측으로 정산, 사용량을 모르면 예약 전체를 쓴 것으로 남김)를 넘으면 추가 호출 금지다. | "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요." | [계약] 모든 status 조합 · 빈 claims · goal_result 누락 · usage 없는 실패 · 출력 예약 · 토큰 경계에서 추가 전송 차단 |
 | L1-40 | final/error 발행 | 직렬화 실패 · NaN · LF 삽입 · 누적 응답 16 MiB 초과 · 큰 final 전송 중 끊김 | 각 이벤트를 allow_nan=false로 완전히 직렬화한 뒤 LF를 붙여 발행한다. 누적 UTF-8 크기를 세고 끝 error용 4 KiB 예약한다. 다음 이벤트가 한도를 넘으면 AGENT_OUTPUT_TOO_LARGE error 한 줄로 종료한다. final은 전체 검증 · 직렬화 후 한 번만 발행하며 발행 시작 뒤 재시도 금지다. | "답이 너무 길어 완료하지 못했으니 질문 범위를 좁혀 주세요." | [계약] 문자열 내부 LF · 제어문자 · NaN · 큰 trace · 16 MiB 경계 · final 중 단절, JSON 한 줄과 끝 이벤트 유일성 확인 |
-| L1-41 | 승인 뒤 이어 부르기 | 승인한 것과 다른 인자로 실행됨(BE 버그 · 위조): 결과의 `executed_args_hash`가 없거나 대기 행동의 `args_hash`와 다름, 승인 대기 행동이 아닌 `ASK` 결과 | `SAVE_GOAL` · `REASSESS`의 결과는 `executed_args_hash`가 대기 `args_hash`와 글자까지 같을 때만 반영한다. 다르거나 없으면 스트림 전에 409 `AGENT_STATE_INVALID`로 끝내고 모델 · 도구 호출 0회, 성공 문장 · 카드를 만들지 않는다. BE는 이 오류를 실행 `FAILED`로 끝낸다(L2-15). | "실행 상태를 확인할 수 없으니 다시 물어봐 주세요." | [계약 · 통합] 해시 없음 · 다른 해시 · 다른 `type`으로 계산한 해시 → 409, 효과 반영 없음 |
+| L1-41 | 승인 뒤 이어 부르기 | 승인한 것과 다른 인자로 실행됨(BE 버그 · 위조): 결과의 `executed_args_hash`가 없거나 대기 행동의 `args_hash`와 다름, 승인 대기 행동이 아닌 `ASK` 결과 | `SAVE_GOAL` · `REASSESS`의 결과는 `executed_args_hash`가 대기 `args_hash`와 글자까지 같을 때만 반영한다. 다르거나 없으면 스트림 전에 409 `AGENT_STATE_INVALID`로 끝내고 모델 · 도구 호출 0회, 성공 문장 · 카드를 만들지 않는다. BE는 이 오류를 실행 `FAILED`로 끝낸다(L2-15). 앞 호출에서 이미 받아 화면에 보인 문장(승인 전 답 등)은 `FAILED`여도 그 문장 그대로 메시지로 남긴다(5-4 '낸 문장은 지우지 않는다', 다음 턴 `history`에도 실림). | "실행 상태를 확인할 수 없으니 다시 물어봐 주세요." | [계약 · 통합] 해시 없음 · 다른 해시 · 다른 `type`으로 계산한 해시 → 409, 효과 반영 없음 |
 | L1-42 | ASK 행동 앞 답 쓰기 | 멈추기 전 답 쓰기가 시간 초과 · 오류 · 거절로 실패, 응답마다 남긴 답 쓰기 몫(2번 · 24초)이 없어 호출 못 함, 이어 부른 호출에 몫을 다시 남길 수 없음, 쓴 문장이 답 검사에서 버려짐 | 승인 대기를 막지 않는다. 실패한 답은 다시 쓰려 하지 않고, 실패 전에 문장 줄로 이미 낸 문장은 그대로 둔 채 코드가 확정한 판단 · 근거 문장(이미 낸 판단 문장의 판단은 다시 그리지 않음, 없으면 문장 없이)과 확인 카드로 `NEEDS_ACTION`을 낸다(6-1 5번). 이어 부를 때 몫을 남길 수 없으면 모델 없이 멈추기 전 낸 문장(앞부분)과 행동 결과 문장으로 끝낸다(8-3). 거절해도 앞서 낸 문장은 남는다. | 모델 문장 없이 코드 판단 문장 + 확인 카드 | [단위 · 루프] 답 쓰기 시간 초과 · 거절 · 오류 → 카드 + 코드 문장, 이어 부를 때 몫 부족 → 모델 0회로 앞부분 유지 |
 | L1-43 | ASK 확인 카드 | 대기 행동의 `args`로 카드를 그릴 수 없음(대상 Take 요약 없음 · 목표를 읽지 못함) 또는 카드 글이 표시 문자열 검사(개인정보 · 금지 주장 · 링크 · 주입 문장 같은 표시 형식(`DISPLAY_TEXT`))에 걸림 | 승인받을 수 없으므로 행동을 내지 않는다. 대기 행동을 비우고 `PARTIAL`로 끝내며 서명 상태 · `ASK_CONFIRM` 카드 · 행동이 없다. | "작업 완료를 확인하지 못했어요." | [단위] 카드를 그릴 수 없을 때 `actions` 비어 있음 · `state` null · 카드 없음 |
 | L1-44 | 선승인 · 확인 카드 형식 | `preapproved`를 `SAVE_GOAL`이 아닌 행동에 달거나 모델이 달려 함, 선승인이 아닌 `ASK` 행동이 `ASK_CONFIRM` 카드(같은 `action_id` · `args_hash`) 없이 나감, 고른 안과 다른 목표를 선승인으로 저장하려 함 | `preapproved`는 고른 제안(`selected_proposal`)이 지금 기록과 그대로일 때 코드만 단다. 최종 출력 판별 검사가 `preapproved`는 `ASK`의 `SAVE_GOAL`에만, 선승인이 아닌 `ASK` 행동은 `message`와 짝이 맞는 카드를 필수로 보고 어기면 그 final 을 내지 않는다(코드 버그라 시험이 막는다). BE도 같은 검사를 하고(`ACTION_NOT_ALLOWED` · `FINAL_INVALID`, L2-16) 선승인은 실제 `args.goal`에서 내용 해시를 다시 계산해 맞을 때만 실행한다. | 안 보임 | [계약 · 통합] `preapproved` 위치 · 카드 없는 ASK 거부, 목표 · 제안 id · 내용 해시를 바꾼 선승인은 실행 0번 |
@@ -1291,7 +1299,7 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | "요청을 접수하지 못했으니 다시 보내 주세요." | L2-04 · L5-25 | 503 |
 | "보낸 질문의 상태를 확인하고 있어요." | L3-14 | — |
 | "전송 여부를 확인하지 못했으니 다시 확인해 주세요." | L3-15 | — |
-| "요청이 변경되어 다시 확인이 필요해요." | L2-20 · L2-40 · L3-39 | 409 |
+| "요청이 변경되어 다시 확인이 필요해요." | L2-20 · L2-40 · L3-39 | 409(승인은 `APPROVAL_HASH_MISMATCH`) |
 | "취소 여부를 확인하고 있어요." | L3-34 | — |
 | "요청을 취소했어요." | L1-34 · L2-32 · L2-41 | — |
 
@@ -1477,6 +1485,7 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | "다시 평가하지 않았어요." | 사용자가 `REASSESS` 승인 카드를 거절했을 때 이미 낸 문장 뒤에 덧붙임(L2-42) | BE 코드 고정 문장(12-3) |
 | "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요." | 승인 대기 30분이 지나 `EXPIRED`로 끝났을 때(L2-42 · L3-40 · L5-34) | BE 코드 고정 문장(12-3) |
 | "새 메시지를 받아 앞의 확인 요청은 취소했어요." | 승인 대기 중 새 메시지로 `CANCELLED`가 됐을 때(L2-41 · L2-43 · L3-40) | BE 코드 고정 문장(12-3) |
+| "확인 요청을 취소했어요." | 승인 대기 중 [취소] 버튼으로 `CANCELLED`가 됐을 때(L2-41 · L3-40). 새 메시지가 없었으므로 위 문장을 쓰지 않는다 | BE 코드 고정 문장(12-3) |
 | "자료에서 확인한 내용은 아니고 일반적인 조언이에요." | `GENERAL` 문장 묶음 바로 앞에 붙는 안내. 자료가 없을 때는 이 안내와 일반 조언으로 `DONE`(6-10) | AI `SYSTEM` 문구 |
 | "일반 조언 · 기록과 자료로 확인한 것이 아니에요" | `GENERAL` 문장 글의 라벨(칩 없음, L3-42) | FE 고정 문구 |
 | "코칭 프로필 기억 — 말투 · 설명 방식처럼 직접 기억해 달라고 하신 것만 저장해요. 설정에서 끄거나 지울 수 있어요. 끄거나 '기억 없이' 대화를 골라도 그 대화의 기록 · 요약은 보관되고, 다른 대화의 맞춤 답에만 쓰지 않아요." | 코칭 프로필 기억 첫 안내(첫 사용 때 한 줄)와 설정 화면 설명(L3-43) | FE 고정 문구 |
@@ -1810,7 +1819,7 @@ uv sync                                        # .venv, 서비스 패키지(pitc
 | 범위 바꾸기 | `conversation_id`, `pitch_id` 또는 null | 바뀐 범위. 실행 중이면 409 `AGENT_RUN_IN_PROGRESS` |
 | 되돌리기 | `action_id` | 목표 저장의 되돌리기는 **그 실행이 끝난 뒤에도** 쓸 수 있다. 지금 목표 판이 그 행동이 저장한 판일 때만 이전 내용을 새 판으로 되살린다(처음 저장을 되돌리면 목표 내용이 없는 새 판, 그 뒤 다른 목표가 저장됐으면 409 `AGENT_STATE_INVALID`, "이미 다른 목표로 바뀌었어요"). 기준 Take가 지워진 목표는 되돌리지 않는다. 같은 요청을 다시 보내면 처음 결과. 되돌린 사실을 대화에 시스템 메시지로 남긴다("목표를 되돌렸어요") |
 | 실행 취소 | `run_id` | 아래 상태 전이의 취소 규칙 결과 |
-| 승인 · 거절 | `action_id`, 결정(`APPROVE` / `REJECT`), 화면에 보인 `args_hash`(인자는 받지 않음) | 승인이면 저장한 `args`로만 실행해 이어 부른 실행의 상태, 거절이면 AI를 부르지 않고 행동 `REJECTED` · 실행 `DONE`에 거절 문장(7-10). 해시가 저장값과 다르면 409(바뀐 카드), 만료 · 취소된 실행은 `AGENT_EXPIRED` · `AGENT_CANCELLED`. 같은 `action_id`로 두 번 오면 처음 결과 |
+| 승인 · 거절 | `action_id`, 결정(`APPROVE` / `REJECT`), 화면에 보인 `args_hash`(인자는 받지 않음) | 승인이면 저장한 `args`로만 실행해 이어 부른 실행의 상태, 거절이면 AI를 부르지 않고 행동 `REJECTED` · 실행 `DONE`에 거절 문장(7-10). 해시가 저장값과 다르면 409 `APPROVAL_HASH_MISMATCH`(바뀐 카드), 만료 · 취소된 실행은 `AGENT_EXPIRED` · `AGENT_CANCELLED`. 같은 `action_id`로 두 번 오면 처음 결과 |
 | 기억 설정 · 코칭 프로필 | 켜기 · 끄기, 항목 목록, 항목 지우기(`item_id`), 전체 지우기 | `{enabled, items:[{item_id, key, value}]}`. 설정 변경 · 항목 삭제 · 전체 삭제는 `memory_version`을 올리고 지운 항목은 즉시 실제로 삭제한다. 항목은 사용자 말의 `profile_updates` 저장으로만 늘고 화면이 직접 쓰지 않는다. 인증 · 소유권은 다른 대화 API와 같다 |
 
 - AI의 실행 상태(`state`)는 화면에 보내지 않는다. 화면은 `action_id` · `run_id`만 다룬다.
@@ -1849,6 +1858,7 @@ uv sync                                        # .venv, 서비스 패키지(pitc
 - **이어 부를 때 자료**: 기본 자료를 다시 모으고, 이 실행이 읽은 모든 Take · 피치(실행의 행동 기록)의 소유권 · 존재를 다시 확인해 있는 것은 `context.loaded_takes`에 다시 싣고, 지워졌거나 소유가 바뀐 것의 ID는 `context.removed_sources`로 보낸다. `(run_id, state_revision, 대기 action_id)`를 원자적으로 선점한 요청만 AI에 보내고, 같은 재개 요청은 완료 결과를 다시 쓴다. `budget_used`는 직전 `final.budget_used`에 행동 실행 시간을 더해 단조 증가로 보낸다(관측 `usage`로 만들지 않는다). 승인 뒤 이어 부를 때는 저장한 `args`의 실행 결과에 `executed_args_hash`를 싣고, 기억 `memory`는 지금 값으로 다시 싣는다(`memory_version`이 바뀌었으면 AI가 이전 프로필에서 나온 모델 메시지를 버린다).
 - **판단 저장**: 답의 `assessments`를 각 판단의 `claim_key` · `claim_link_key` · `evidence_basis` · `supersedes`와 함께, 판단이 가리킨 근거 사본(`evidence` · `sources`)과 같이 그 메시지에 저장하고 다음 턴 `history.prior_assessments`(이 대화의 최근 판단 50개, 메시지 20개와 따로)로 보낸다(대화 요약으로 대신하지 않는다). 새 판단의 `supersedes`가 가리킨 앞 판단은 고치거나 옮기지 않고 원래 메시지에 그 근거 사본과 함께 그대로 둔다. BE는 `supersedes`의 ID로 이전 메시지의 판단과 잇고(이 대화의 판단이 아닌 ID는 잇지 않는다), 메시지 목록에서 판단마다 `superseded_by`로 돌려준다.
 - **승인 대기**: `NEEDS_ACTION`의 `ASK` 행동(`SAVE_GOAL` · `REASSESS`)을 받고 BE가 검증한 `preapproved`가 없으면 `args` · `args_hash`를 저장하고 실행을 `WAITING_APPROVAL`(30분)로 둔다. 카드 `ASK_CONFIRM`(`{action_id, action_type, title, summary, before, after, notes, expires_at, args_hash}`)은 AI가 `args`로 코드가 그린 값이고 BE는 그대로 화면에 돌려준다(`args_hash`는 저장한 대기 행동의 것). FE는 `action_id` · 결정 · 카드에 실린 `args_hash`만 보내고, 저장값과 다른 해시는 409다. 승인되면 저장한 `args`로만 실행하고(AI는 대기 행동의 `args_hash`와 다르면 409 `AGENT_STATE_INVALID`) 거절 · 만료 · 취소는 AI를 다시 부르지 않고 행동 · 실행을 끝낸 뒤, 이미 낸 문장 뒤에 7-10의 고정 문장을 덧붙여 메시지로 저장한다(판단 · 근거는 지우지 않는다). 승인 대기는 한 번에 1개, 한 실행에 최대 2개다. 목표 제안에서 고른 클릭은 `preapproved:{by:"CHOICE", proposal_id, content_hash}`를 단 `SAVE_GOAL`로 오고, BE가 실제 `args.goal`에서 내용 해시를 다시 계산해 저장된 제안의 `content_hash` · 제안 id · 고른 안과 모두 같을 때만 확인 카드 없이 실행한다. 다르면 실행하지 않고 새 제안을 낸다.
+- **이어 부르기 실패 때 받은 문장**: 승인 뒤 이어 부른 호출이 스트림 전 오류 등으로 실패해 실행이 `FAILED`가 돼도, 앞 호출에서 이미 받아 화면에 보인 문장 줄(`claim`)은 판단 · 근거 사본과 함께 그대로 메시지로 저장한다(L1-41). 실행 오류 코드 · 화면 문구는 5-9대로다. [취소] 버튼으로 승인 대기를 끝내면 새 메시지 취소와 다른 고정 문장("확인 요청을 취소했어요.", 7-10)을 덧붙인다.
 - **기억 · 요약**: 입력 `memory`는 `{enabled, memory_version, profile}`이고 설정이 꺼져 있거나 '기억 없이' 대화면 `enabled:false, profile:null`이다(프로필은 `key`마다 하나 · 최대 4개). 출력 `final.profile_updates`(0~2개)는 `USER_MESSAGE`이고 `memory.enabled`일 때만 오며, BE도 6-14의 저장 검사 ①~⑥을 모두 다시 하고, 처음 요청의 `memory_version`과 지금 값이 같을 때만 저장한 뒤 저장에 성공한 값으로 카드 `MEMORY_SAVED`(`{item_id, key, value}`, [지우기])를 만든다. 실행 중 번호가 한 번이라도 바뀌었으면 그 실행의 프로필 후보는 모두 버리고(AI · BE), 재개 뒤 처음 사용자 말로 후보를 다시 만들지 않는다. 대화 요약은 기억 설정과 상관없이 동작한다: 최근 20개 밖으로 밀린 메시지(최대 10개)를 `history.overflow`(`prev_summary_version` 포함)로 싣고, `final.history_summary`를 받으면 `summary_version`이 보낸 때와 같을 때만 바꾸며 덮은 마지막 메시지를 기록한다. 못 만들면(null) 바꾸지 않고 다음 턴에 같은 `overflow`를 다시 보낸다. 프로필 · 요약은 판단 · 비교 · 목표 계산의 입력이 아니고 근거로 쓰지 않는다(6-14).
 - **격리**: 대화 실행은 코치 · 분석 · 리뷰 백그라운드 작업의 동시 개수 상한(`architecture.md` 3절)과 따로 세므로, BE에서는 다시 평가가 공식 리뷰의 백그라운드 자리를 빼앗지 않는다. AI 서버에서는 다시 평가 A · B가 기존 `/takes/review` 경로로 공식 리뷰와 같은 공용 실행 자원을 쓰므로(8-4) 대화 자리(가중치 2) · 하루 30회 · 한 턴 1회로 묶는다. 대화 때문에 리뷰가 늦어지면 안 된다.
 
@@ -2067,7 +2077,7 @@ uv sync                                        # .venv, 서비스 패키지(pitc
 | `AGENT_REQUEST_CONFLICT`(409) | 보낸 질문과 내용이 달라 받지 못했어요. 다시 보내 주세요 | 다시 보내면 새 `client_request_id` |
 | `AGENT_DISABLED`(503) | (버튼을 숨김) | — |
 | 실행 만료 · 취소 | 시간이 지나 다시 물어봐 주세요 | 새로 묻기 |
-| 승인 카드 만료 · 취소 | 확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요 / 새 메시지를 받아 앞의 확인 요청은 취소했어요 | BE가 저장한 문장을 그대로 보임, 새로 묻기 |
+| 승인 카드 만료 · 취소 | 확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요 / 새 메시지를 받아 앞의 확인 요청은 취소했어요 / 확인 요청을 취소했어요 | BE가 저장한 문장을 그대로 보임, 새로 묻기. 승인 대기에서 끝난 실행(`EXPIRED` · `CANCELLED`)에는 위 '실행 만료 · 취소' 문장을 함께 보이지 않는다 |
 | `AGENT_STATE_INVALID`(실행 오류) | 실행 상태가 만료되었거나 업데이트되었으니 다시 물어봐 주세요 | 새로 묻기 |
 | `AGENT_OUTPUT_TOO_LARGE` | 답이 너무 길어 완료하지 못했으니 질문 범위를 좁혀 주세요 | [다시 보내기] |
 | 모르는 코드 | 지금은 답을 만들지 못했어요 | [다시 보내기] |

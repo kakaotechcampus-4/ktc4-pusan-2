@@ -833,6 +833,22 @@ def _scope_notes(draft: dict[str, Any]) -> list[str]:
     return out[:3]
 
 
+#: 다시 평가 실패 코드(5-8 닫힌 목록) → 고정 안내(7-10). 다시 해도 결과가 같은 실패는 '잠시 뒤 다시 시도'로 안내하지 않는다.
+#: 목록 밖 코드 · `REVIEW_FAILED`(리뷰 호출 실패)는 `REASSESS_FAILED`
+_REASSESS_FAILED_NOTE = {
+    "NO_OFFICIAL_REVIEW": templates.SystemText.REASSESS_NO_DATA,
+    "REASSESS_DAILY_LIMIT": templates.SystemText.REASSESS_DAILY_LIMIT,
+    "NOT_FOUND": templates.SystemText.TAKE_FETCH_FAILED,
+    "REASSESS_PER_TURN": templates.SystemText.ACTION_UNCONFIRMED,
+    "INVALID_CHANGE": templates.SystemText.ACTION_UNCONFIRMED,
+    "NOT_AUTHORIZED": templates.SystemText.ACTION_UNCONFIRMED,
+    "NOT_ALLOWED": templates.SystemText.ACTION_UNCONFIRMED,
+    "APPROVAL_REQUIRED": templates.SystemText.ACTION_UNCONFIRMED,
+    "REVIEW_TAKE_MISMATCH": templates.SystemText.ACTION_UNCONFIRMED,
+    "REVIEW_REQUEST_CHANGED": templates.SystemText.ACTION_UNCONFIRMED,
+}
+
+
 def _action_notes(lp: Loop) -> list[str]:
     """이 실행에서 처리한 행동 결과에 붙일 고정 안내(7-10): 실패 · 후보 여럿 · 규칙 판 다름 · 공식 리뷰와 다름."""
     st = templates.SystemText
@@ -854,21 +870,13 @@ def _action_notes(lp: Loop) -> list[str]:
         elif t == "REASSESS" and "RULES_DIFFER" in (reason, code):
             note = st.REASSESS_RULES_DIFFER
         elif status == "FAILED" and t == "REASSESS":
-            note = {
-                "DAILY_LIMIT": st.REASSESS_DAILY_LIMIT,
-                "REASSESS_DAILY_LIMIT": st.REASSESS_DAILY_LIMIT,
-                "NO_DATA": st.REASSESS_NO_DATA,
-            }.get(code or "", st.REASSESS_FAILED)
+            note = _REASSESS_FAILED_NOTE.get(
+                code if code in act.ACTION_ERROR_CODES else "", st.REASSESS_FAILED
+            )
         elif status == "FAILED" and t == "SAVE_GOAL":
             note = (
                 st.GOAL_CHANGED_ELSEWHERE
-                if code
-                in (
-                    "GOAL_CHANGED",
-                    "GOAL_VERSION_CONFLICT",
-                    "VERSION_CONFLICT",
-                    "STALE_GOAL_VERSION",
-                )
+                if code == "GOAL_VERSION_CONFLICT"
                 else st.ACTION_UNCONFIRMED
             )
         elif status == "SUCCEEDED" and t == "REASSESS" and e.get("official_differs"):

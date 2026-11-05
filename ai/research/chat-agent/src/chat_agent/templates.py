@@ -102,6 +102,8 @@ class SystemText(StrEnum):
     REJECTED_REASSESS = "다시 평가하지 않았어요."
     APPROVAL_EXPIRED = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
     APPROVAL_CANCELLED = "새 메시지를 받아 앞의 확인 요청은 취소했어요."
+    #: [취소] 버튼으로 승인 대기를 끝냈을 때(새 메시지 없음, #900 · #910 리뷰)
+    APPROVAL_CANCELLED_BY_USER = "확인 요청을 취소했어요."
 
 
 #: 범위 밖 이유(1-3) → 고정 문장(7-10). 모델이 고른 이유를 코드가 이 문장으로 바꾼다(거절 문장은 모델이 쓰지 않는다)

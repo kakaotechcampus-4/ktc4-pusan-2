@@ -606,3 +606,12 @@ def test_ask_action_without_a_confirmed_decision_is_blocked_and_counted() -> Non
     rec = be._execute(run, conv, copy.deepcopy(pend.action))  # 승인 없이 실행 시도
     assert not rec.executed and rec.decision is None and rec.blocked == "NO_DECISION"
     assert rec.result["error"]["code"] == "APPROVAL_REQUIRED" and conv.goal is None
+
+
+def test_cancel_button_uses_its_own_sentence_not_the_new_message_one() -> None:
+    """[취소] 버튼으로 끝낸 대기에는 '새 메시지를 받아' 문장을 쓰지 않는다(7-10, #900 · #910 리뷰)."""
+    be, _llm, run = waiting_save()
+    be.cancel(run.run_id)
+    (text,) = stored_texts(be, run)
+    assert text.endswith(templates.SystemText.APPROVAL_CANCELLED_BY_USER.value)
+    assert templates.SystemText.APPROVAL_CANCELLED.value not in text
