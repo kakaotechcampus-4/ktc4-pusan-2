@@ -173,9 +173,11 @@ export function ChatAgentHost() {
         onClick={() => (open ? close() : setOpen(true))}
         className="ml-auto flex min-h-16 min-w-16 items-center justify-center rounded-2xl border-2 border-ink bg-coral-deep px-3 py-2 text-center text-xs font-bold leading-4 text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
       >
-        채팅
-        <br />
-        에이전트
+        <span>
+          채팅
+          <br />
+          에이전트
+        </span>
       </button>
     </div>
   );
