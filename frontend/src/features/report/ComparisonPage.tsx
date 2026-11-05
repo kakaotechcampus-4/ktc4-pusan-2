@@ -92,7 +92,9 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
 
       {rows.length < 2 ? (
         <Card>
-          <Mascot who="pico">비교하려면 완료된 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?</Mascot>
+          <Mascot who="pico">
+            비교하려면 완료된 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?
+          </Mascot>
         </Card>
       ) : (
         <>

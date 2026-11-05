@@ -67,18 +67,27 @@ export function TakesPage() {
   return (
     <InfoPage title="Take 기록" logo={false}>
       <div className="flex min-w-0 flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <nav aria-label="Take 기록 보기" className="flex w-fit max-w-full flex-wrap border-2 border-ink">
+        <nav
+          aria-label="Take 기록 보기"
+          className="flex w-fit max-w-full flex-wrap border-2 border-ink"
+        >
           <Link
             to={viewPath('list')}
             aria-current={!comparing ? 'page' : undefined}
-            className={viewLink + (!comparing ? ' bg-ink text-white' : ' bg-panel text-ink hover:bg-cream')}
+            className={
+              viewLink +
+              (!comparing ? ' bg-ink text-white' : ' bg-panel text-ink hover:bg-cream')
+            }
           >
             기록 목록
           </Link>
           <Link
             to={viewPath('compare')}
             aria-current={comparing ? 'page' : undefined}
-            className={viewLink + (comparing ? ' bg-ink text-white' : ' bg-panel text-ink hover:bg-cream')}
+            className={
+              viewLink +
+              (comparing ? ' bg-ink text-white' : ' bg-panel text-ink hover:bg-cream')
+            }
           >
             지표 비교
           </Link>
@@ -149,7 +158,11 @@ export function TakesPage() {
                     </div>
                     <div>
                       <dt className="sr-only">시간</dt>
-                      <dd className={ 'whitespace-nowrap ' + (t.duration_ms === null ? 'text-stone' : '') }>
+                      <dd
+                        className={
+                          'whitespace-nowrap ' + (t.duration_ms === null ? 'text-stone' : '')
+                        }
+                      >
                         {duration(t.duration_ms)}
                         <span className="text-stone"> / {formatDuration(t.goal_ms)}</span>
                       </dd>
@@ -163,7 +176,9 @@ export function TakesPage() {
                     {status.link && (
                       <Link
                         to={status.link.to}
-                        aria-label={t.pitch_title + ' Take ' + t.take_number + ' ' + status.link.text}
+                        aria-label={
+                          t.pitch_title + ' Take ' + t.take_number + ' ' + status.link.text
+                        }
                         className="inline-flex min-h-11 items-center text-sm font-bold hover:text-coral-deep"
                       >
                         {status.link.text} →

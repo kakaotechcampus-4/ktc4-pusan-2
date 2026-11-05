@@ -11,7 +11,11 @@ const history = vi.hoisted(() => ({ data: { takes: [] as TakeHistoryRow[] } }));
 const useHistory = vi.hoisted(() => vi.fn(() => history));
 vi.mock('@/shared/api/takeHistory', () => ({ useTakeHistory: useHistory }));
 
-function take(n: number, pitchId = 'p1', status: TakeHistoryRow['status'] = 'COMPLETED'): TakeHistoryRow {
+function take(
+  n: number,
+  pitchId = 'p1',
+  status: TakeHistoryRow['status'] = 'COMPLETED',
+): TakeHistoryRow {
   return {
     take_id: pitchId + '-' + n,
     pitch_id: pitchId,
@@ -111,11 +115,15 @@ it('목록 · 비교 선택과 피치 필터는 주소와 브라우저 뒤로 �
   await act(async () => view('지표 비교').click());
   expect(router.state.location.search).toContain('pitch=p1');
   expect(view('지표 비교').getAttribute('aria-current')).toBe('page');
-  await act(async () => { await router.navigate(-1); });
+  await act(async () => {
+    await router.navigate(-1);
+  });
   expect(router.state.location.pathname).toBe('/takes');
   expect(host.querySelector('select')?.value).toBe('p1');
   expect(view('기록 목록').getAttribute('aria-current')).toBe('page');
-  await act(async () => { await router.navigate(1); });
+  await act(async () => {
+    await router.navigate(1);
+  });
   expect(view('지표 비교').getAttribute('aria-current')).toBe('page');
 });
 

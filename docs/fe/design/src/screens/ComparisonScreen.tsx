@@ -9,5 +9,10 @@ export function ComparisonScreen({
   stateId: string;
   onNavigate: Navigate;
 }) {
-  return <TakesScreen stateId={stateId === 'empty' ? 'compare-empty' : 'compare'} onNavigate={onNavigate} />;
+  return (
+    <TakesScreen
+      stateId={stateId === 'empty' ? 'compare-empty' : 'compare'}
+      onNavigate={onNavigate}
+    />
+  );
 }
