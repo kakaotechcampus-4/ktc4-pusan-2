@@ -114,7 +114,8 @@ describe('글자 효과 (12-4 F12 · L3-41)', () => {
     queue.push([item(0, '가나다라마바사')]);
     queue.push([item(1, '아자')], { animate: false });
     expect(shown()).toEqual(['가나다라마바사', '아자']);
-    expect(done).toEqual([0, 1]);
+    // 앞에서 보이던 새 문장은 알리고, 효과 없이 넣은 따라잡기 문장은 알리지 않습니다
+    expect(done).toEqual([0]);
   });
 
   it('finish 는 남은 문장을 모두 보이고, reset 은 비우고, dispose 뒤에는 움직이지 않는다', () => {
@@ -164,5 +165,31 @@ describe('진행 신호 넣기', () => {
       claims: [item(0, '근거 기록이 지워져 이 답을 가렸어요.'), item(1, '라마')],
     });
     expect(shown()).toEqual(['근거 기록이 지워져 이 답을 가렸어요.', '라마']);
+  });
+});
+
+describe('점검 반영 — 알림 · 다시 그리기', () => {
+  it('따라잡기 문장은 다 보여도 알리지 않는다 — 새로고침마다 지난 답을 읽지 않게 (L3-37)', () => {
+    const { queue, done } = setup();
+    queue.push([item(0, '옛 문장'), item(1, '옛 문장 둘')], { animate: false });
+    expect(done).toEqual([]);
+    expect(queue.lines().every((l) => l.done)).toBe(true);
+  });
+
+  it('움직임 줄이기로 바로 보인 새 문장은 알린다', () => {
+    const { queue, done } = setup(true);
+    queue.push([item(0, '새 문장')]);
+    expect(done).toEqual([0]);
+  });
+
+  it('다 보인 줄은 같은 객체 그대로 — 매 틱 모든 문장을 다시 그리지 않게', () => {
+    const { clock, queue } = setup();
+    queue.push([item(0, '가나'), item(1, '다'.repeat(30))]);
+    clock.advance(TYPING_TICK_MS);
+    const first = queue.lines()[0]!;
+    expect(first.done).toBe(true);
+    clock.advance(TYPING_TICK_MS);
+    expect(queue.lines()[0]).toBe(first);
+    expect(queue.lines()[1]!.done).toBe(false);
   });
 });

@@ -31,10 +31,16 @@ type SegmenterCtor = new (locale: string, options: { granularity: 'grapheme' }) 
  * `Intl.Segmenter` 가 없는 환경에서는 코드 포인트로 나눕니다(완성형 한글은 그래도 깨지지 않습니다)
  */
 export function graphemes(text: string): string[] {
-  const Ctor = (Intl as unknown as { Segmenter?: SegmenterCtor }).Segmenter;
-  if (!Ctor) return Array.from(text);
-  return Array.from(new Ctor('ko', { granularity: 'grapheme' }).segment(text), (s) => s.segment);
+  if (segmenter === undefined) {
+    const Ctor = (Intl as unknown as { Segmenter?: SegmenterCtor }).Segmenter;
+    segmenter = Ctor ? new Ctor('ko', { granularity: 'grapheme' }) : null;
+  }
+  if (!segmenter) return Array.from(text);
+  return Array.from(segmenter.segment(text), (s) => s.segment);
 }
+
+/** 한 번만 만들어 다시 씁니다 — 없는 환경이면 null */
+let segmenter: Segmenter | null | undefined;
 
 /** 큐에 넣는 문장 — 실행 안 순번과 글 */
 export interface TypingItem {
@@ -71,7 +77,11 @@ export interface TypingOptions<T extends TypingItem> {
   clock?: Pick<ChatClock, 'setTimeout' | 'clearTimeout'>;
   /** 움직임 줄이기 — 켜져 있으면 문장째 보입니다. 넣을 때마다 다시 읽습니다 */
   reducedMotion?: () => boolean;
-  /** 한 문장이 다 보였을 때 — 화면이 문장 단위로 읽어 줄 때 씁니다(글자마다가 아니라) */
+  /**
+   * 새 문장이 다 보였을 때 — 화면이 문장 단위로 읽어 줄 때 씁니다(글자마다가 아니라, L3-37).
+   * 효과 없이 넣은 따라잡기 문장(`animate: false`)은 이미 있던 글이라 부르지 않습니다 — 새로고침할 때마다
+   * 지난 답 전체를 읽지 않게. 움직임 줄이기로 바로 보인 새 문장은 부릅니다
+   */
   onLineDone?: (line: TypedLine<T>) => void;
 }
 
@@ -90,7 +100,8 @@ export function createTypingQueue<T extends TypingItem>(
 ): TypingQueue<T> {
   const clock = options.clock ?? browserClock;
   const reducedMotion = options.reducedMotion ?? prefersReducedMotion;
-  const entries: { item: T; parts: string[]; count: number }[] = [];
+  type Entry = { item: T; parts: string[]; count: number; line: TypedLine<T> };
+  const entries: Entry[] = [];
   const seen = new Set<number>();
   const listeners = new Set<() => void>();
   let timer: unknown = null;
@@ -99,16 +110,21 @@ export function createTypingQueue<T extends TypingItem>(
   let snapshot: readonly TypedLine<T>[] = [];
   let disposed = false;
 
-  const lineOf = (e: (typeof entries)[number]): TypedLine<T> => ({
+  const lineOf = (e: Pick<Entry, 'item' | 'parts' | 'count'>): TypedLine<T> => ({
     index: e.item.index,
     item: e.item,
     shown: e.parts.slice(0, e.count).join(''),
     done: e.count >= e.parts.length,
   });
 
-  const changed = (finished: (typeof entries)[number][]) => {
-    snapshot = entries.map(lineOf);
-    for (const e of finished) options.onLineDone?.(lineOf(e));
+  /**
+   * 바뀐 줄만 새 객체로 — 다 보인 줄은 같은 객체라 화면이 매 틱 모든 문장을 다시 그리지 않습니다.
+   * `announce` 는 다 보여 알릴 새 문장입니다
+   */
+  const changed = (touched: Entry[], announce: Entry[]) => {
+    for (const e of touched) e.line = lineOf(e);
+    snapshot = entries.map((e) => e.line);
+    for (const e of announce) options.onLineDone?.(e.line);
     for (const listener of listeners) listener();
   };
 
@@ -126,7 +142,8 @@ export function createTypingQueue<T extends TypingItem>(
     // 남은 글자를 남은 틱에 고르게 나눕니다 — 매번 남은 양에 비례해 정하면 줄수록 느려져 끝나지 않습니다
     let budget = Math.max(BASE_PER_TICK, Math.ceil(remaining() / ticksLeft));
     ticksLeft = Math.max(1, ticksLeft - 1);
-    const finished: (typeof entries)[number][] = [];
+    const touched: Entry[] = [];
+    const finished: Entry[] = [];
     for (const e of entries) {
       if (budget <= 0) break;
       const left = e.parts.length - e.count;
@@ -134,9 +151,10 @@ export function createTypingQueue<T extends TypingItem>(
       const step = Math.min(left, budget);
       e.count += step;
       budget -= step;
+      touched.push(e);
       if (e.count >= e.parts.length) finished.push(e);
     }
-    changed(finished);
+    changed(touched, finished);
     schedule();
   };
 
@@ -146,7 +164,7 @@ export function createTypingQueue<T extends TypingItem>(
   };
 
   /** 남은 글자를 모두 보입니다 */
-  const showAll = () => {
+  const showAll = (): Entry[] => {
     stop();
     const finished = entries.filter((e) => e.count < e.parts.length);
     for (const e of finished) e.count = e.parts.length;
@@ -160,28 +178,32 @@ export function createTypingQueue<T extends TypingItem>(
       if (fresh.length === 0) return;
       const instant = !animate || reducedMotion();
       ticksLeft = LAG_TICKS;
-      // 효과 없이 보일 때는 앞에서 보이던 문장부터 다 보여 순서를 지킵니다
-      const finished = instant ? showAll() : [];
+      // 효과 없이 보일 때는 앞에서 보이던 문장부터 다 보여 순서를 지킵니다 — 그 문장들은 새 글이라 알립니다
+      const flushed = instant ? showAll() : [];
+      const added: Entry[] = [];
       for (const item of fresh) {
         seen.add(item.index);
         const parts = graphemes(item.text);
-        const entry = { item, parts, count: instant ? parts.length : 0 };
+        const count = instant ? parts.length : 0;
+        const entry: Entry = { item, parts, count, line: lineOf({ item, parts, count }) };
         entries.push(entry);
-        if (instant) finished.push(entry);
+        added.push(entry);
       }
-      changed(finished);
+      // 움직임 줄이기로 바로 보인 새 문장은 알리고, 따라잡기(`animate: false`)는 알리지 않습니다
+      const announce = [...flushed, ...(instant && animate ? added : [])];
+      changed([...flushed, ...added], announce);
       schedule();
     },
     finish() {
       if (disposed) return;
       const finished = showAll();
-      if (finished.length > 0) changed(finished);
+      if (finished.length > 0) changed(finished, finished);
     },
     reset() {
       stop();
       entries.length = 0;
       seen.clear();
-      if (snapshot.length > 0) changed([]);
+      if (snapshot.length > 0) changed([], []);
     },
     lines: () => snapshot,
     subscribe(listener) {
@@ -200,7 +222,10 @@ type ProgressSignal = Extract<TransportSignal, { type: 'progress' }>;
 
 /**
  * 진행 신호를 큐에 넣습니다 — 처음부터 다시 보내면(`restart`) 비우고, 이미 만들어진 문장을 따라잡는 묶음이면
- * (`catchUp`: 새로고침 · 다시 열기 · 다른 탭이 시작한 실행) 효과 없이 보입니다
+ * (`catchUp`: 새로고침 · 다시 열기 · 다른 탭이 시작한 실행) 효과 없이 보입니다.
+ *
+ * **큐는 실행마다 하나**입니다 — 새 실행의 첫 진행 신호도 `restart` 라 큐를 비웁니다. 끝난 답은 메시지 목록으로
+ * 그리므로, 화면은 지금 실행의 답만 이 큐로 그리고 끝나면(`ended`) `finish()` 뒤 메시지 목록으로 바꿉니다
  */
 export function feedProgress<T extends TypingItem>(
   queue: TypingQueue<T>,
