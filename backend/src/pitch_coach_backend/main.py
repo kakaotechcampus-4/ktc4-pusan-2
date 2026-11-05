@@ -20,6 +20,7 @@ from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
+from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup_sweep
 from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
@@ -78,6 +79,7 @@ def shutdown_max_sec() -> float:
         # 코치 finalize 와 계획 요청을 차례로 끊는다
         + 2 * COACH_STOP_TIMEOUT_SEC
         + analysis_runner.STOP_TIMEOUT_SEC
+        + turn_runner.STOP_TIMEOUT_SEC
     )
 
 
@@ -119,6 +121,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_all_streams()
     await stop_ready_sweep()
     await stop_goal_sweep()
+    await turn_runner.stop_all()
     await stop_cleanup_sweep()
     await stop_file_cleanup()
     await stop_coach_background()
