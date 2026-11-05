@@ -187,8 +187,25 @@ describe('예전 표기 안내', () => {
     expect(isLegacyMarker(line)).toBe(false);
   });
 
-  it('찾은 줄을 앞뒤 공백 없이 모아 준다', () => {
-    expect(scanSlideMarkers('  Slide 1  \n가\n[2]\n나\n3.\n다').legacy).toEqual(['Slide 1', '3.']);
+  it('첫 구분자 앞의 줄만 앞뒤 공백 없이 모아 준다', () => {
+    expect(scanSlideMarkers('  Slide 1  \n가\n2)\n[3]\n나\n4.\n다').legacy).toEqual([
+      'Slide 1',
+      '2)',
+    ]);
+  });
+
+  it('구분자가 없으면 모든 줄에서 찾는다', () => {
+    expect(scanSlideMarkers('Slide 1\n가\nSlide 2\n나').legacy).toEqual(['Slide 1', 'Slide 2']);
+  });
+
+  it('구분자 뒤 본문의 번호 목록 · 문장은 예전 표기로 세지 않는다', () => {
+    const script = '[슬라이드 1]\n가\n[슬라이드 3]\n1. 첫째 이유는\n2) 둘째로\nSlide 3 shows';
+    expect(scanSlideMarkers(script)).toEqual({
+      numbers: [1, 3],
+      numbersValid: true,
+      leadingText: false,
+      legacy: [],
+    });
   });
 });
 

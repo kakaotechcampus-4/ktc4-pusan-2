@@ -9,7 +9,8 @@
  * ★ 이 정규식은 AI 와 **글자 그대로 같은 정의**여야 합니다 (줄 맨 앞 · 번호 1~4자리 · 콜론 필수 등).
  *   AI 가 형식을 넓히면 이 파일과 테스트(`slideMarkers.test.ts` 의 공통 목록)를 함께 고칩니다.
  *   예전에 FE 가 인식하던 넓은 표기(`Slide 1` · `1.` · `슬라이드 1` 등)는 구분으로 세지 않고,
- *   `findLegacyMarkers` 로 찾아 "구분으로 인식되지 않아요" 라고 안내합니다.
+ *   첫 구분자 앞에서만 `isLegacyMarker` 로 찾아 "구분으로 인식되지 않아요" 라고 안내합니다.
+ *   구분자 뒤 본문의 "1. 첫째 이유는" 같은 번호 목록은 예전 표기가 아니라 본문입니다.
  *   이 결과는 **안내용**이고, 이걸로 매핑을 막지는 않습니다.
  *   "첫째", "다음으로" 같은 전환 표현과 빈 줄은 AI 도 구분자로 보지 않습니다.
  * ★ 숫자 `\d` 의 뜻이 다릅니다 — Python 은 전각 숫자(１２３)도 숫자로 봐서 AI 는 `[１]` 을 구분자로
@@ -70,7 +71,10 @@ export interface MarkerScan {
    * 구분 없는 본문으로 봅니다.
    */
   leadingText: boolean;
-  /** 구분으로는 안 세지만 예전 표기처럼 보이는 줄의 글 (앞뒤 공백 제외) */
+  /**
+   * 구분으로는 안 세지만 예전 표기처럼 보이는 줄의 글 (앞뒤 공백 제외). **첫 구분자 앞의 줄만**
+   * 셉니다 — 구분자 뒤의 "1. 첫째 이유는" · "Slide 3 shows" 는 본문의 번호 목록 · 문장입니다.
+   */
   legacy: string[];
 }
 
@@ -81,9 +85,9 @@ export function scanSlideMarkers(text: string): MarkerScan {
   for (const line of splitLines(text)) {
     const n = markerNumber(line);
     if (n !== null) numbers.push(n);
-    else {
+    else if (numbers.length === 0) {
       if (isLegacyMarker(line)) legacy.push(line.trim());
-      if (numbers.length === 0 && line.trim() !== '') leadingLines++;
+      if (line.trim() !== '') leadingLines++;
     }
   }
   const numbersValid = numbers.every((n, i) => n >= 1 && (i === 0 || n > numbers[i - 1]));

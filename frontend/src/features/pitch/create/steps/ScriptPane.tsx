@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
-import { scanSlideMarkers, type MarkerScan } from '@/shared/lib/slideMarkers';
+import { scanSlideMarkers } from '@/shared/lib/slideMarkers';
 import { useCreateStore } from '../createStore';
 import { CaretIcon, CheckIcon, DocIcon, LinkIcon } from '../icons';
 import {
@@ -13,6 +13,7 @@ import {
   type SlideVersion,
 } from '../lib/draft';
 import { computeGate } from '../lib/gate';
+import { markerHint } from '../lib/markerHint';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -38,34 +39,6 @@ const PLACEHOLDER = [
   '[슬라이드 2]',
   '처음에 저희가 마주한 문제는 …',
 ].join('\n');
-
-/**
- * 입력 중 안내. 지금 대본대로 매핑하면 어떻게 나뉠지 미리 알려 줍니다.
- * 막지는 않습니다 — 기존 표기도 안내용으로 인식합니다 (`shared/lib/slideMarkers`).
- */
-function markerHint(scan: MarkerScan, pageCount: number, tooLong: boolean): string | null {
-  if (tooLong) {
-    return `대본은 ${MAX_SCRIPT_CHARS.toLocaleString()}자(공백 포함)까지 매핑할 수 있어요. 조금 줄여 주세요.`;
-  }
-  if (scan.legacy.length > 0) {
-    const rest = scan.legacy.length > 1 ? ` 등 ${scan.legacy.length}줄은` : ' 같은 줄은';
-    return `“${scan.legacy[0]}”${rest} 구분으로 인식되지 않아요. “[슬라이드 1]”처럼 바꿔 주세요.`;
-  }
-  if (scan.numbers.length === 0) {
-    return '“[슬라이드 1]”처럼 슬라이드마다 구분해 주세요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.';
-  }
-  if (scan.leadingText) {
-    return '첫 구분 앞에는 제목 한 줄만 둘 수 있어요. 그보다 많으면 나뉘지 않으니 “[슬라이드 1]”을 앞으로 옮겨 주세요.';
-  }
-  if (!scan.numbersValid) {
-    return '구분 번호는 1부터 앞 번호보다 크게 이어져야 해요. 그렇지 않으면 대본 전체가 한 슬라이드로 연결돼요.';
-  }
-  const last = Math.max(...scan.numbers);
-  if (pageCount > 0 && last !== pageCount) {
-    return `구분은 ${last}번까지, 슬라이드는 ${pageCount}장이에요. 장수를 맞춰야 연습을 시작할 수 있어요.`;
-  }
-  return null;
-}
 
 function mapLabel(pending: boolean): string {
   return pending ? '나누는 중…' : '대본 매핑';
