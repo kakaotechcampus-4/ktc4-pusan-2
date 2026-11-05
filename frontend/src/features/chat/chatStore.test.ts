@@ -290,6 +290,22 @@ describe('대화 고르기 · 실행', () => {
     });
   });
 
+  it('조회를 시작한 뒤 지켜보던 실행이 끝났으면 그 조회 결과로 실행을 되살리지 않는다 (L3-20)', () => {
+    store().selectConversation('conv-1', pitchA);
+    // 되살린 실행을 지켜보며 상태 확인 중 — 새로고침과 같은 모습
+    useChatStore.setState({
+      run: { runId: 'run-1', conversationId: 'conv-1', phase: 'RUNNING', afterSeq: 0 },
+    });
+    const lookup = chatTicket();
+    // 실행 조회가 먼저 끝남을 받음
+    store().endRun('run-1');
+    expect(store().resolveConversation(lookup, { runId: 'run-1', phase: 'RUNNING' })).toBe(false);
+    expect([store().run, store().syncing]).toEqual([null, true]);
+    // 지금 상태로 다시 조회하면 받습니다
+    expect(store().resolveConversation(chatTicket(), null)).toBe(true);
+    expect(store().syncing).toBe(false);
+  });
+
   it('다른 대화로 옮긴 뒤 온 앞 대화의 상태는 받지 않는다', () => {
     store().selectConversation('conv-1', pitchA);
     const ticket = chatTicket();

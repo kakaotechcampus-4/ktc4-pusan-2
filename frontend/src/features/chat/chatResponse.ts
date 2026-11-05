@@ -422,7 +422,9 @@ const isGoalOption = (v: unknown) =>
   (v.goal === null || isGoal(v.goal)) &&
   isStr(v.reason) &&
   isStrList(v.evidence_ids) &&
-  isStrOrNull(v.content_hash ?? null);
+  // 고를 수 있는 안(goal 이 있음)은 내용 해시가 꼭 있어야 합니다 — 없으면 [이 안으로]를 눌러도 AI 검사에서 실패하고
+  // 하루 이용 횟수만 줄어듭니다(AI `SelectedProposal.content_hash` 필수)
+  (v.goal === null ? isStrOrNull(v.content_hash ?? null) : isText(v.content_hash));
 
 /** 카드 종류마다 필수 칸 — 모르는 종류 · 빠진 칸은 대체 표시 */
 const CARD_CHECKS: Record<Card['type'], (c: Obj) => boolean> = {
@@ -532,7 +534,11 @@ export function readMessage(message: ChatMessage): ShownAnswer {
   if (!error && list.length === 0 && message.status === 'DONE') error = 'EMPTY_ANSWER';
   if (!error && list.length > 0 && message.text !== claims.map((c) => c.text).join('\n'))
     error = 'TEXT_MISMATCH';
-  const cards = readCards(message.cards, basis);
+  // 승인 확인 카드는 실행 조회(대기 중)로만 옵니다 — 지난 메시지에 남아 있으면 [승인]을 눌러도 404 · 409 라
+  // 버튼 없는 대체 표시로 바꿉니다
+  const cards = readCards(message.cards, basis).map((c): ShownCard =>
+    c.ok && c.card.type === 'ASK_CONFIRM' ? { ok: false, type: 'ASK_CONFIRM' } : c,
+  );
   return { claims, cards: error ? afterError(cards) : cards, error, basis };
 }
 
