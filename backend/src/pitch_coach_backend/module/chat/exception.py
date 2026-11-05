@@ -33,6 +33,22 @@ class ChatRunInProgress(ConflictException):
     message = "이 대화의 답변을 만들고 있어요."
 
 
+class ChatCardChanged(ConflictException):
+    # 화면이 보낸 args_hash 가 저장한 대기 행동과 다르다. 화면이 본 카드와 실행할 인자가 다르다
+    code = "AGENT_STATE_INVALID"
+    message = "확인 내용이 바뀌었어요. 다시 확인해 주세요."
+
+
+class ChatExpired(ConflictException):
+    code = "AGENT_EXPIRED"
+    message = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
+
+
+class ChatCancelled(ConflictException):
+    code = "AGENT_CANCELLED"
+    message = "취소된 확인 요청이에요. 필요하면 다시 말해 주세요."
+
+
 class ChatDailyLimit(AppException):
     # 사용자 하루 턴 한도. Retry-After 는 다음 Asia/Seoul 00:00 까지의 초
     status_code = status.HTTP_429_TOO_MANY_REQUESTS

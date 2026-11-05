@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
@@ -17,6 +17,7 @@ from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.api_dto import (
     MESSAGES_PAGE_MAX,
+    ActionDecisionRequest,
     AvailabilityResponse,
     ChangeScopeRequest,
     ConversationListResponse,
@@ -29,6 +30,7 @@ from pitch_coach_backend.module.chat.api_dto import (
 )
 from pitch_coach_backend.module.chat.exception import ChatDisabled
 from pitch_coach_backend.module.chat.service.accept import accept_message
+from pitch_coach_backend.module.chat.service.approval import decide_action
 from pitch_coach_backend.module.chat.service.conversation import (
     change_scope,
     create_conversation,
@@ -57,6 +59,10 @@ Enabled = Depends(_require_enabled)
 async def _start_turn(run_id: uuid.UUID) -> None:
     # 턴 실행기는 이벤트 루프에 작업을 건다. 응답을 보낸 뒤(커밋이 끝난 뒤) 루프에서 띄운다
     turn_runner.start(run_id)
+
+
+async def _resume_turn(run_id: uuid.UUID) -> None:
+    turn_runner.resume(run_id)
 
 
 # 버튼을 보일지. 스위치 값만 본다. 꺼져 있어도 503 이 아니라 enabled:false 로 답한다
@@ -165,3 +171,25 @@ def get_run(
 @router.post("/runs/{run_id}/cancel", response_model=RunStatusResponse, dependencies=[Enabled])
 def post_cancel(run_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> RunStatusResponse:
     return cancel_run(db, current_user.id, run_id)
+
+
+# 확인 카드의 [승인] · [거절]. 같은 요청은 처음 결과를 준다. 거절은 AI 를 부르지 않는다
+@router.post(
+    "/runs/{run_id}/actions/{action_id}/decision",
+    response_model=RunStatusResponse,
+    dependencies=[Enabled],
+)
+def post_decision(
+    run_id: uuid.UUID,
+    action_id: Annotated[str, Path(min_length=1, max_length=64)],
+    body: ActionDecisionRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+) -> RunStatusResponse:
+    decided = decide_action(
+        db, current_user.id, run_id, action_id, body.decision, body.args_hash, datetime.now(UTC)
+    )
+    if decided.resume:
+        background_tasks.add_task(_resume_turn, run_id)
+    return decided.view

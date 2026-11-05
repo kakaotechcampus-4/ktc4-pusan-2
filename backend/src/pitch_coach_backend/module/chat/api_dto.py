@@ -69,6 +69,12 @@ class SendMessageRequest(_Request):
         return value
 
 
+class ActionDecisionRequest(_Request):
+    decision: Literal["APPROVE", "REJECT"]
+    # 화면에 보인 카드의 값. 인자는 받지 않고 저장한 인자로만 실행한다
+    args_hash: Annotated[NulFreeStr, Field(min_length=1, max_length=128)]
+
+
 class MessageAcceptedResponse(BaseModel):
     conversation_id: uuid.UUID
     message_id: uuid.UUID

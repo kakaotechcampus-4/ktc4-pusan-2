@@ -29,6 +29,12 @@ from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import SERVICE_DAILY_TURNS, TURN_DEADLINE
 from pitch_coach_backend.module.chat.service.request import ProposalNotFound, selected_proposal
 from pitch_coach_backend.module.chat.service.run import SEOUL, digest
+from pitch_coach_backend.module.chat.service.waiting import (
+    NEW_MESSAGE_TEXT,
+    Emitted,
+    close_waiting,
+    read_emitted,
+)
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.repository import TakeRepository
 
@@ -118,6 +124,7 @@ def _accept(
 ) -> Accepted:
     repo = ChatApiRepository(db)
     chat_repo = ChatRepository(db)
+    emitted = _emitted_of_waiting_run(db, repo, user_id, request.conversation_id)
     conversation = _conversation(db, repo, user_id, request)
     _check_page(db, user_id, request)
     if request.again_of_message_id is not None and (
@@ -126,10 +133,7 @@ def _accept(
         raise ChatTargetNotFound()
     if request.choice is not None:
         _check_choice(chat_repo, conversation.id, request.choice)
-    if chat_repo.has_running_run(conversation.id):
-        # 승인 대기(WAITING_APPROVAL) 중의 새 메시지는 앞 확인 요청을 취소하고 받아야 한다(12-3).
-        # 승인 · 거절 API 와 함께 더한다. 그 전에는 진행 중과 같이 409 로 막는다
-        raise ChatRunInProgress()
+    _clear_way(db, repo, conversation.id, emitted, now)
     _charge(repo, chat_repo, user_id, now)
 
     message = ChatMessage(
@@ -166,6 +170,48 @@ def _accept(
         conversation.title = _title(request.text)
     return Accepted(
         conversation_id=conversation.id, message_id=message.id, run_id=run.id, start=True
+    )
+
+
+def _emitted_of_waiting_run(
+    db: Session, repo: ChatApiRepository, user_id: uuid.UUID, conversation_id: uuid.UUID | None
+) -> Emitted | None:
+    """승인 대기 중이면 대화를 잠그기 전에 낸 문장의 근거를 먼저 잠근다(waiting.py 잠금 순서)."""
+    run = repo.active_run(conversation_id) if conversation_id is not None else None
+    if run is None or run.user_id != user_id or run.status != "WAITING_APPROVAL":
+        return None
+    return read_emitted(db, run.id)
+
+
+def _clear_way(
+    db: Session,
+    repo: ChatApiRepository,
+    conversation_id: uuid.UUID,
+    emitted: Emitted | None,
+    now: datetime,
+) -> None:
+    """끝나지 않은 실행이 있으면 막는다. 승인 대기면 앞 확인 요청을 취소하고 받는다(12-3 · L2-43).
+
+    취소와 접수는 한 트랜잭션이다. 하루 한도에 막혀 접수하지 못하면 확인 카드도 그대로 남는다.
+    """
+    run = repo.active_run(conversation_id)
+    if run is None:
+        return
+    # 근거를 먼저 잠그지 못한 경우(방금 승인 대기로 바뀜)도 진행 중으로 답한다. 다시 보내면 된다
+    if run.status != "WAITING_APPROVAL" or emitted is None:
+        raise ChatRunInProgress()
+    db.refresh(run, with_for_update=True)
+    if run.status != "WAITING_APPROVAL":
+        raise ChatRunInProgress()
+    close_waiting(
+        db,
+        run,
+        repo.waiting_action(run.id),
+        emitted,
+        action_status="CANCELLED",
+        run_status="CANCELLED",
+        text=NEW_MESSAGE_TEXT,
+        now=now,
     )
 
 

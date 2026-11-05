@@ -21,6 +21,7 @@ from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.chat import turn_runner
+from pitch_coach_backend.module.chat.approval_sweep import start as start_approval_sweep
 from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup_sweep
 from pitch_coach_backend.module.chat.controller import router as chat_router
 from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
@@ -111,6 +112,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 근거가 지워진 답을 가리는 정리 작업은 꺼져 있어도 돈다
     stop_goal_sweep = start_goal_sweep() if settings.agent_enabled else _nothing_to_stop
     stop_cleanup_sweep = start_cleanup_sweep()
+    # 30분이 지난 승인 대기를 끝낸다. AI 를 부르지 않으므로 꺼져 있어도 돈다
+    stop_approval_sweep = start_approval_sweep()
     # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
     stop_file_cleanup = start_file_cleanup_sweep()
     # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
@@ -133,6 +136,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_run_recovery()
     await turn_runner.stop_all()
     await stop_cleanup_sweep()
+    await stop_approval_sweep()
     await stop_file_cleanup()
     await stop_coach_background()
     await stop_analysis()

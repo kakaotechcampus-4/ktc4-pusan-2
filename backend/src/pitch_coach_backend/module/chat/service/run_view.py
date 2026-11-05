@@ -22,8 +22,15 @@ from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.conversation import owned_sources
 from pitch_coach_backend.module.chat.service.run import SEOUL, add_run_log
 from pitch_coach_backend.module.chat.service.stale import uses_deleted
+from pitch_coach_backend.module.chat.service.waiting import (
+    CANCELLED_TEXT,
+    NOT_DONE_TEXT,
+    close_waiting,
+    read_emitted,
+)
 
-# 화면이 바로 취소할 수 있는 상태
+# 화면이 바로 취소할 수 있는 상태.
+# 승인 대기는 대기 행동을 함께 끝내고 고정 문장을 남겨서 따로 처리한다
 CANCELLABLE = ("QUEUED", "RUNNING")
 # 한 응답은 직렬화 뒤 2 MiB 이하다(12-3). 끝맺는 칸 몫을 남긴다
 RESPONSE_MAX_BYTES = 2 * 1024 * 1024 - 4096
@@ -57,6 +64,9 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
     도착한 AI 결과 · 행동은 반영되지 않는다.
     """
     repo = ChatApiRepository(db)
+    peek = repo.get_owned_run(run_id, user_id)
+    if peek is not None and peek.status == "WAITING_APPROVAL":
+        return _cancel_waiting(db, peek)
     run = repo.get_owned_run(run_id, user_id, lock=True)
     if run is None:
         db.rollback()
@@ -80,6 +90,37 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
     run.row_revision += 1
     add_run_log(chat_repo, run, now)
     db.commit()
+    return _view(db, run)
+
+
+def _cancel_waiting(db: Session, run: ChatRun) -> RunStatusResponse:
+    """승인 대기 중인 실행의 취소. 행동까지 끝내고 고정 문장을 남긴다. AI 는 부르지 않는다."""
+    repo = ChatApiRepository(db)
+    try:
+        emitted = read_emitted(db, run.id)
+        repo.lock_conversation_of(run)
+        db.refresh(run, with_for_update=True)
+        if run.status == "WAITING_APPROVAL":
+            action = repo.waiting_action(run.id)
+            close_waiting(
+                db,
+                run,
+                action,
+                emitted,
+                action_status="CANCELLED",
+                run_status="CANCELLED",
+                text=NOT_DONE_TEXT[action.type] if action else CANCELLED_TEXT,
+                now=datetime.now(UTC),
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return view_of(db, run)
+
+
+def view_of(db: Session, run: ChatRun) -> RunStatusResponse:
+    """이벤트 없이 상태만. 취소 · 승인 · 거절의 응답이다. 이벤트는 화면이 자기 커서로 조회한다."""
     return _view(db, run)
 
 
