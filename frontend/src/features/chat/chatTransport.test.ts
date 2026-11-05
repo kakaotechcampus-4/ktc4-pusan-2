@@ -1396,7 +1396,8 @@ describe('승인 · 거절 (L3-39 · L3-40)', () => {
     const before = runCalls.length;
     expect(await transport.decide(ask.action_id, 'APPROVE', 'stale-hash')).toBe('failed');
     expect(of('decisionFailed')).toMatchObject([
-      { actionId: ask.action_id, code: 'AGENT_STATE_INVALID' },
+      // BE 는 AGENT_STATE_INVALID 를 주지만 화면에는 문서의 바뀐 카드 코드로 알립니다
+      { actionId: ask.action_id, code: 'APPROVAL_HASH_MISMATCH' },
     ]);
     await flush();
     expect(runCalls.length).toBeGreaterThan(before);
@@ -1506,5 +1507,193 @@ describe('걸린 요청 끊기', () => {
     await flush();
     expect(asked).toEqual(['c-hung', good]);
     expect(store().syncing).toBe(false);
+  });
+});
+
+// ── 문서 #900 · #948 대조 뒤 고친 것 ──────────────────────────
+
+describe('스위치가 꺼짐 (503 AGENT_DISABLED)', () => {
+  const off = () => new ApiFailure(503, 'AGENT_DISABLED');
+
+  it('실행 조회가 꺼짐을 받으면 알리고 더 조회하지 않는다', async () => {
+    start({
+      run: async () => {
+        throw off();
+      },
+    });
+    await sendNow(draft());
+    const calls = runCalls.length;
+    await clock.advance(120_000);
+    expect(of('disabled')).toHaveLength(1);
+    expect(of('pollTrouble')).toEqual([]);
+    expect(runCalls.length).toBe(calls);
+  });
+
+  it('대화 조회 · 취소 · 범위 바꾸기에서도 꺼짐을 알린다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const conversationId = store().conversationId!;
+    start({
+      conversationRun: async () => {
+        throw off();
+      },
+    });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    expect(of('disabled')).toHaveLength(1);
+    expect(of('pollTrouble')).toEqual([]);
+
+    start({
+      changeScope: async () => {
+        throw off();
+      },
+    });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    expect(
+      await transport.changeScope({
+        pitchId: '10000000-0000-4000-8000-000000000001',
+        title: '캡스톤 최종 발표',
+      }),
+    ).toBe(false);
+    expect(of('disabled')).toHaveLength(2);
+    expect(of('scopeFailed')).toEqual([]);
+
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'RUNNING', []),
+      cancel: async () => {
+        throw off();
+      },
+    });
+    await sendNow(draft());
+    await transport.cancel();
+    expect(of('disabled')).toHaveLength(3);
+    expect(store().cancelling).toBeNull();
+    expect(of('cancelChecking')).toEqual([]);
+  });
+});
+
+describe('조회 간격 — 접수 대기는 2초 고정, 승인 대기만 늘림', () => {
+  it('접수 대기가 길어도 2초마다 조회한다', async () => {
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'QUEUED', []),
+    });
+    await sendNow(draft());
+    await clock.advance(20_000);
+    const gaps = runCalls.slice(1).map((t, i) => t - runCalls[i]!);
+    expect(new Set(gaps)).toEqual(new Set([2_000]));
+  });
+
+  it('승인 대기는 2초에서 늘린다', async () => {
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'WAITING_APPROVAL', []),
+    });
+    await sendNow(draft());
+    await clock.advance(30_000);
+    const gaps = runCalls.slice(1).map((t, i) => t - runCalls[i]!);
+    expect(gaps.slice(0, 3)).toEqual([2_000, 3_000, 4_500]);
+  });
+});
+
+describe('끝남 신호 · 범위 맞추기', () => {
+  it('승인 대기에서 곧바로 끝나면 endedWhileWaiting, 실행 중에 끝나면 아니다', async () => {
+    let status: RunView['status'] = 'WAITING_APPROVAL';
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, status, []),
+      cancel: async (runId) => runView(runId, store().run!.conversationId, 'CANCELLED', []),
+    });
+    await sendNow(draft());
+    expect(store().run?.phase).toBe('WAITING_APPROVAL');
+    await transport.cancel();
+    expect(of('ended')).toMatchObject([{ status: 'CANCELLED', endedWhileWaiting: true }]);
+
+    status = 'RUNNING';
+    await sendNow(draft());
+    status = 'DONE';
+    await untilEnded();
+    expect(of('ended').at(-1)).toMatchObject({ status: 'DONE', endedWhileWaiting: false });
+  });
+
+  it('실행이 끝나면 서버가 확정한 범위로 칩을 맞춘다 (에이전트가 다른 피치를 연 경우)', async () => {
+    const pitch = { pitchId: '10000000-0000-4000-8000-000000000001', title: '캡스톤 최종 발표' };
+    start({
+      listConversations: async () => ({
+        conversations: [
+          {
+            conversation_id: store().conversationId,
+            scope_pitch_id: pitch.pitchId,
+            scope_pitch_title: pitch.title,
+          },
+        ],
+      }),
+    });
+    expect(store().scope).toEqual(WHOLE);
+    await sendNow(draft());
+    await untilEnded();
+    await flush();
+    expect(store().scope).toEqual(pitch);
+  });
+
+  it('범위를 읽는 사이 다른 대화로 옮겼으면 맞추지 않는다', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    start({
+      listConversations: async () => {
+        await gate;
+        return {
+          conversations: [
+            {
+              conversation_id: 'old',
+              scope_pitch_id: '10000000-0000-4000-8000-000000000001',
+              scope_pitch_title: 'x',
+            },
+          ],
+        };
+      },
+    });
+    await sendNow(draft());
+    await untilEnded();
+    store().startNewConversation(WHOLE);
+    release();
+    await flush();
+    expect(store().scope).toEqual(WHOLE);
+  });
+});
+
+describe('승인 · 거절의 결과를 모를 때 (L3-39)', () => {
+  it('응답을 잃으면 같은 요청으로 한 번 다시 보낸다', async () => {
+    const sent: unknown[] = [];
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'WAITING_APPROVAL', []),
+      decide: async (runId, _actionId, request) => {
+        sent.push(request);
+        if (sent.length === 1) throw new TypeError('offline');
+        return runView(runId, store().run!.conversationId, 'RUNNING', []);
+      },
+    });
+    await sendNow(draft());
+    expect(await transport.decide('a-1', 'APPROVE', 'h')).toBe('decided');
+    expect(sent).toEqual([
+      { decision: 'APPROVE', args_hash: 'h' },
+      { decision: 'APPROVE', args_hash: 'h' },
+    ]);
+    expect(of('decisionFailed')).toEqual([]);
+  });
+
+  it('서버가 거절했으면(4xx) 다시 보내지 않는다', async () => {
+    let calls = 0;
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'WAITING_APPROVAL', []),
+      decide: async () => {
+        calls += 1;
+        throw new ApiFailure(409, 'AGENT_EXPIRED');
+      },
+    });
+    await sendNow(draft());
+    expect(await transport.decide('a-1', 'APPROVE', 'h')).toBe('failed');
+    expect(calls).toBe(1);
+    expect(of('decisionFailed')).toMatchObject([{ code: 'AGENT_EXPIRED' }]);
   });
 });

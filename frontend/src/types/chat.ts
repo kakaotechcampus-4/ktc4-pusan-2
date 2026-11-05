@@ -511,5 +511,7 @@ export type ChatErrorCode =
   | 'AGENT_EXPIRED'
   | 'AGENT_TIMEOUT'
   | 'AGENT_UPSTREAM_ERROR'
-  /** BE: 접수 중 DB 가 잠깐 안 됨(503) — 커밋 전 실패라 접수되지 않았습니다 */
-  | 'AGENT_NOT_ACCEPTED';
+  /** BE: 접수 중 DB 가 잠깐 안 됨(503) — 같은 `client_request_id` 로 다시 보냅니다 */
+  | 'AGENT_NOT_ACCEPTED'
+  /** 승인 · 거절의 `args_hash` 가 저장한 대기 행동과 다름 — 카드를 다시 읽습니다(문서 #948 5-9) */
+  | 'APPROVAL_HASH_MISMATCH';
