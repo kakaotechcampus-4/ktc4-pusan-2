@@ -1496,3 +1496,19 @@ def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
         message=CRIT_MSG,
     )
     assert p.action is None and p.reason_code == "DISPLAY_UNSOURCED"
+
+
+def test_take_numbers_are_not_unresolved_after_switching_the_scope_pitch() -> None:
+    """범위 피치를 다른 피치로 바꾼 실행은 말한 Take 번호를 한 피치에 묶을 수 없어 '없는 번호'로 보지 않는다
+    ("졸업 발표 Take 5랑 회사 소개 Take 2 비교해 줘"에서 회사 소개로 바꾼 뒤 Take 5, #940 리뷰)."""
+    from chat_agent.actions import unresolved_take_numbers
+
+    msg = "졸업 발표 Take 5랑 회사 소개 발표 Take 9 시선 비교해 줘"
+    ctx = ctx_for(msg)
+    assert 9 in unresolved_take_numbers(msg, ctx)  # 바꾸기 전: 범위 피치에 없는 번호는 없는 번호
+    other = ctx.pitch.model_copy(
+        update={"info": ctx.pitch.info.model_copy(update={"pitch_id": "p-other"})}
+    )
+    ctx.set_pitch(other)
+    assert ctx.scope_switched
+    assert unresolved_take_numbers(msg, ctx) == set()

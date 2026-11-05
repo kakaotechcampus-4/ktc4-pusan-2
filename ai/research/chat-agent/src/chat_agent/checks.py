@@ -731,17 +731,21 @@ def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
                 start = clause.find(t, start + 1)
     nouns = "|".join(re.escape(n) for n in cfg.scope_content_nouns)
     verbs = "|".join(re.escape(v) for v in cfg.scope_edit_verbs)
-    content = re.compile(rf"(?:{nouns})[을를에][^.!?。\n]{{0,{cfg.scope_content_gap}}}?({verbs})")
+    content = re.compile(rf"({nouns})([을를에])[^.!?。\n]{{0,{cfg.scope_content_gap}}}?({verbs})")
     for sentence in _SCOPE_SENTENCE_SPLIT.split(text):
         if not any(t in sentence for t in cfg.scope_targets):
             continue
         for m in content.finditer(sentence):
             # 예외는 같은 절 안에서만 본다("대본 시선, 첫 문장을 바꾸세요"의 '시선'은 다른 절)
             clause_start = max(sentence.rfind(c, 0, m.start()) for c in ",，;\n") + 1
-            near = sentence[max(clause_start, m.start() - cfg.scope_content_gap) : m.end()]
+            # 내용 명사가 목적어(을/를)면 고치는 대상은 그 내용이라, 명사와 동사 사이의 꾸밈말("문장을 말하기 쉽게 고쳐")은
+            # 예외로 보지 않고 명사 앞("청중을 보며 말하는 부분을")만 본다. '에'면("부분에 쉼을 더해") 동사의 목적어가
+            # 사이에 있으므로 그 구간도 본다(#948 리뷰)
+            end = m.end() if m.group(2) == "에" else m.end(1)
+            near = sentence[max(clause_start, m.start() - cfg.scope_content_gap) : end]
             if any(x in near for x in cfg.scope_performance_nouns):
                 continue
-            return m.group(1)
+            return m.group(3)
     return None
 
 

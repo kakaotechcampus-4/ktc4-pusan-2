@@ -1749,3 +1749,16 @@ def test_choice_questions_are_not_issue_negation() -> None:
     assert not _NEG_AFTER.search("는지 아닌지 알려줘")
     assert _NEG_AFTER.search("던 건 아니야")
     assert _NEG_AFTER.search("지 않았어")
+
+
+def test_goal_and_script_synonyms_state_a_reassess_condition() -> None:
+    """'시선 목표 30%로 다시 평가해 줘'(내 기준)와 '스크립트 · 프롬프터 보고 했어'(대본 사용)는 조건을 말한 다시 평가 요청이라
+    측정값 이의가 아니다. 측정값만 문제 삼으면 그대로 이의다(6-6, #940 리뷰)."""
+    from chat_agent import claims as clm
+    from chat_agent.config import load_config
+
+    cfg = load_config()
+    assert not clm.measurement_dispute("시선 목표 30%로 다시 평가해 줘", cfg)
+    assert not clm.measurement_dispute("시선이 낮게 나왔는데 스크립트 보고 했어. 다시 봐 줘", cfg)
+    assert clm.measurement_dispute("카메라가 낮아서 시선이 낮게 나왔어. 다시 봐 줘", cfg)
+    assert clm._SCRIPT_USE_RE.search("Take 5는 프롬프터 보고 했어")

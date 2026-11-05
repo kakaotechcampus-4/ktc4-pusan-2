@@ -354,8 +354,9 @@ def named_take_ids(message: str | None, ctx: RunCtx) -> set[str] | None:
 
 def unresolved_take_numbers(message: str | None, ctx: RunCtx) -> set[int]:
     """사용자 말이 번호로 집어 말한 Take 가운데 범위 피치에 없는 번호(지워졌거나 없는 Take). 예: Take 4 가 지워졌으면
-    "Take 4 3장 값 알려 줘" → {4}."""
-    if not message:
+    "Take 4 3장 값 알려 줘" → {4}. 이 실행에서 범위 피치를 바꿨으면 번호를 한 피치에 묶을 수 없으므로 빈 집합이다
+    ("졸업 발표 Take 5랑 회사 소개 Take 2"에서 회사 소개로 바꾼 뒤 Take 5 를 '없는 번호'로 보지 않게, #940 리뷰)."""
+    if not message or ctx.scope_switched:
         return set()
     nums = {int(n) for n in _NAMED_TAKE_NUM.findall(message)}
     return nums - {s.take_number for s in ctx.summaries.values()}

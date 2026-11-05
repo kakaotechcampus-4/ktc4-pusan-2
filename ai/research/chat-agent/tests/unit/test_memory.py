@@ -497,3 +497,18 @@ def test_negation_is_only_the_one_attached_to_the_value(msg: str, value: str, ok
     item = {"key": "EXPLAIN_STYLE", "value": value, "quote": msg}
     kept, _ = memory.check_profile_updates([item], user_message=msg, cfg=DEFAULT_CONFIG)
     assert bool(kept) is ok
+
+
+def test_just_now_about_a_file_is_not_a_memory_withdrawal() -> None:
+    """'방금 올린 대본은 지우고'는 기억 철회가 아니다. '방금 그거 지워 줘'처럼 말을 가리키면 철회(#948 리뷰)."""
+    upd = {
+        "key": "EXPLAIN_STYLE",
+        "value": "짧게 설명",
+        "quote": "앞으로 짧게 설명해 줘, 기억해 줘",
+    }
+    ok_msg = "방금 올린 대본은 지우고 다시 할게. 앞으로 짧게 설명해 줘, 기억해 줘"
+    kept, _ = memory.check_profile_updates([upd], user_message=ok_msg, cfg=DEFAULT_CONFIG)
+    assert kept
+    no_msg = "앞으로 짧게 설명해 줘, 기억해 줘. 아니 방금 그거 지워 줘"
+    kept, dropped = memory.check_profile_updates([upd], user_message=no_msg, cfg=DEFAULT_CONFIG)
+    assert kept == [] and dropped[0].reason.startswith("③")

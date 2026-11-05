@@ -39,7 +39,7 @@ META = {
     "feature_version": FEATURE_VERSION,
     "model": "openai/gpt-6-luna",
     "prompt_version": PROMPT_VERSION,
-    "corpus_version": "guides-5",
+    "corpus_version": "guides-6",
     "criteria_versions": {"chat_agent": DEFAULT_CONFIG.criteria_version()},
 }
 #: 예시 전용 서명 키(비밀 아님). 실제 키는 AGENT_STATE_SECRET 이다
@@ -244,7 +244,7 @@ def _diag(
             "feature_version": FEATURE_VERSION,
             "prompt_version": META["prompt_version"],
             "tool_schema": TOOL_SCHEMA_VERSION,
-            "corpus_version": "guides-5",
+            "corpus_version": "guides-6",
         },
         "steps": steps,
         "end": {"status": status, "reason": reason, "omitted_steps": 0},
@@ -365,7 +365,7 @@ def _signed_state() -> dict:
             feature=FEATURE_VERSION,
             prompt=PROMPT_VERSION,
             tool_schema=TOOL_SCHEMA_VERSION,
-            corpus="guides-5",
+            corpus="guides-6",
         ),
         issued_at=EXAMPLE_ISSUED_MS,
         # 승인 대기로 멈춘 상태는 발급 + 35분이다(5-6)
@@ -403,7 +403,7 @@ def _final_needs_action() -> dict:
         "basis": {
             "pitches": [],
             "conversation_goal_version": 0,
-            "corpus_version": "guides-5",
+            "corpus_version": "guides-6",
             "sources": [],
         },
         "evidence": [_evidence("e1", 4, 0.31), _evidence("e2", 5, 0.28)],
@@ -564,7 +564,7 @@ def _final_done() -> dict:
                 }
             ],
             "conversation_goal_version": 1,
-            "corpus_version": "guides-5",
+            "corpus_version": "guides-6",
             "sources": ["g-02"],
         },
         "evidence": [_evidence("e1", 4, 0.31), _evidence("e2", 5, 0.28)],
@@ -614,7 +614,7 @@ def _final_simple(status: str, text: str, reason: str) -> dict:
         "basis": {
             "pitches": [],
             "conversation_goal_version": 0,
-            "corpus_version": "guides-5",
+            "corpus_version": "guides-6",
             "sources": [],
         },
         "evidence": [],
@@ -904,7 +904,7 @@ def build() -> dict[str, Any]:
             }
         ],
         "conversation_goal_version": 1,
-        "corpus_version": "guides-5",
+        "corpus_version": "guides-6",
         "sources": [],
     }
     return {

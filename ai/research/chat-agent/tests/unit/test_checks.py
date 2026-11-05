@@ -1288,3 +1288,20 @@ def test_scope_performance_exception_uses_the_same_clause_separators() -> None:
 
     assert _scope_edit("대본 시선， 첫 문장을 바꾸세요", CFG) is not None
     assert _scope_edit("대본 시선; 첫 문장을 바꾸세요", CFG) is not None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "대본의 첫 문장을 말하기 쉽게 고쳐 보세요.",
+        "슬라이드 제목을 청중이 알기 쉽게 바꿔 보세요.",
+        "대본 3장 내용을 청중 눈높이에 맞게 수정해 보세요.",
+        "대본을 말하기 쉽게 고쳐 보세요.",
+    ],
+)
+def test_content_rewrite_with_audience_or_speaking_modifiers_is_still_caught(text: str) -> None:
+    """'청중이 알기 쉽게' · '말하기 쉽게' 같은 꾸밈말이 붙은 내용 수정안도 범위 검사에 걸린다(1-3, #948 리뷰).
+    수행 예외는 낱말 하나가 아니라 동작 구('청중을 보' · '말하는 부분' …)이고, 목적어(을/를)인 내용 명사 뒤 꾸밈 구간은 보지 않는다."""
+    from chat_agent.checks import _scope_edit
+
+    assert _scope_edit(text, CFG) is not None

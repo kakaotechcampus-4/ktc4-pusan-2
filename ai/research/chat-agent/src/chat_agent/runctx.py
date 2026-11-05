@@ -47,6 +47,9 @@ class RunCtx:
     omitted_retries: set[str] = field(default_factory=set)
     #: 화면 상태의 피치가 범위와 다른가(SCREEN 근거만 따로 표시, 5-7 '범위 대조')
     screen_other_pitch: bool = False
+    #: 이 실행에서 범위 피치를 다른 피치로 바꿨는가(서명 상태 `scope_switched`로 이어진다). 바꾼 뒤에는 사용자가 말한 Take
+    #: 번호가 어느 피치의 것인지 지금 범위만으로 알 수 없다("졸업 발표 Take 5랑 회사 소개 Take 2", #940 리뷰)
+    scope_switched: bool = False
 
     @classmethod
     def build(
@@ -121,6 +124,8 @@ class RunCtx:
 
     def set_pitch(self, pitch: PitchContext) -> None:
         """FETCH_PITCH 성공: 범위를 바꾸고 자료를 새로 묶는다(6-5). 이전 범위의 Take 스냅샷은 버린다."""
+        if self.scope_pitch_id is not None and self.scope_pitch_id != pitch.info.pitch_id:
+            self.scope_switched = True
         self.scope_pitch_id = pitch.info.pitch_id
         self.pitch = pitch
         self.snapshots = {}

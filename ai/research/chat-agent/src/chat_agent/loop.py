@@ -132,6 +132,8 @@ class LoopState:
     #: 않는다(6-5: 여러 피치 질문에서 범위만 오가다 한도에 걸리지 않게, 4회차). 그 피치의 Take 를 읽으면(다시 읽기 ·
     #: 캐시 적중 · FETCH_TAKE 성공 포함) 풀린다
     scope_switch_unread: bool = False
+    #: 이 실행에서 범위 피치를 다른 피치로 바꾼 적이 있는가(`RunCtx.scope_switched`를 이어 부르기 사이에 잇는다)
+    scope_switched: bool = False
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -221,6 +223,7 @@ class Loop:
                 if json.loads(k).get("tool") != "search_guides"
             }
         self.ctx.read_sources = set(state.read_sources)
+        self.ctx.scope_switched = state.scope_switched
         #: 이어 부르는 사이 결과 판이 바뀐 Take 가 있었는가(옛 근거는 사본으로 낮췄다, 5-5 · L1-32)
         self.record_changed = self._demote_changed_records() if state.registry else False
         self.scope_changed = False
@@ -1015,6 +1018,7 @@ class Loop:
             self.st.review_versions.update(applied.review_versions)
         if applied.ok and pending["type"] == "FETCH_PITCH":
             self.st.scope_switch_unread = True
+            self.st.scope_switched = self.st.scope_switched or self.ctx.scope_switched
         elif applied.ok and pending["type"] == "FETCH_TAKE":
             self.st.scope_switch_unread = False
         self.st.executed.append(rec)
