@@ -40,7 +40,7 @@ def start_practice(db: Session, repo: ChatRepository, row: ChatRun, data: dict[s
 
 
 def _practice_decision(db: Session, row: ChatRun, action: dict[str, Any]) -> dict[str, Any] | None:
-    if row.first_trigger == "TAKE_REVIEWED" or action["autonomy"] != "AUTO_UNDO":
+    if row.first_trigger == "TAKE_REVIEWED" or action["autonomy"] != "BUTTON":
         return None
     try:
         args = StartPracticeArgs.model_validate(action["args"])
@@ -54,4 +54,4 @@ def _practice_decision(db: Session, row: ChatRun, action: dict[str, Any]) -> dic
     )
     if verdict == "REJECTED":
         return None
-    return {"pitch_id": str(pitch_id), "auto": verdict == "OK"}
+    return {"pitch_id": str(pitch_id)}

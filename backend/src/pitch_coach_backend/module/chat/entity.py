@@ -199,9 +199,7 @@ class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "type IN ('FETCH_PITCH', 'FETCH_TAKE', 'REASSESS', 'SAVE_GOAL', 'START_PRACTICE')",
             name="check_chat_action_type",
         ),
-        CheckConstraint(
-            "autonomy IN ('AUTO', 'AUTO_UNDO', 'ASK')", name="check_chat_action_autonomy"
-        ),
+        CheckConstraint("autonomy IN ('AUTO', 'ASK', 'BUTTON')", name="check_chat_action_autonomy"),
         CheckConstraint(
             "status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED')",
             name="check_chat_action_status",

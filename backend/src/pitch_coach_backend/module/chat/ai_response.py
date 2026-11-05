@@ -67,7 +67,7 @@ class _Action(_View):
     action_id: str
     type: ActionType
     args: dict[str, Any]
-    autonomy: Literal["AUTO", "AUTO_UNDO", "ASK"]
+    autonomy: Literal["AUTO", "ASK", "BUTTON"]
     args_hash: str | None
     idempotency_key: str
     reason: str
@@ -183,8 +183,8 @@ ACTION_ARGS: dict[str, type[_Args]] = {
 ACTION_AUTONOMY = {
     "FETCH_PITCH": "AUTO",
     "FETCH_TAKE": "AUTO",
-    "REASSESS": "AUTO",
-    "SAVE_GOAL": "AUTO_UNDO",
+    "REASSESS": "ASK",
+    "SAVE_GOAL": "ASK",
 }
 
 
