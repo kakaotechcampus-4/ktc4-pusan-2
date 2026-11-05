@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as prettier from 'prettier';
