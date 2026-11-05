@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const product = readFileSync(new URL('../../index.css', import.meta.url), 'utf8');
-const design = readFileSync(new URL('../../../../docs/fe/design/src/styles.css', import.meta.url), 'utf8');
+const design = readFileSync(
+  new URL('../../../../docs/fe/design/src/styles.css', import.meta.url),
+  'utf8',
+);
 const productStage = readFileSync(
   new URL('../../features/rehearsal/stage/stage.css', import.meta.url),
   'utf8',
