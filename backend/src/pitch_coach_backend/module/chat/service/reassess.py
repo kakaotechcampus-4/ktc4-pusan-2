@@ -12,6 +12,7 @@ from pitch_coach_backend.module.chat.ai_client import request_review_once
 from pitch_coach_backend.module.chat.ai_response import ReassessArgs
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.request import run_scope
 from pitch_coach_backend.module.chat.service.result import close_action, failed, succeeded
 from pitch_coach_backend.module.chat.service.run import (
     SEOUL,
@@ -50,7 +51,8 @@ def prepare_reassess(
         raise RunLost(run.run_id)
     args = ReassessArgs.model_validate(action["args"])
     take = _owned_take_by_id(db, repo, row.user_id, args.take_id)
-    if take is None:
+    conversation = repo.get_conversation(row.conversation_id)
+    if take is None or take.Take.pitch_id != run_scope(row, conversation):
         return close_action(db, row, action, failed(action, "NOT_FOUND", "기록을 찾을 수 없어요."))
     review = repo.list_ai_results(take.Take.id, ["REVIEW"])
     if not review:
