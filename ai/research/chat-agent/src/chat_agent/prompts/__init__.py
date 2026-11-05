@@ -71,12 +71,12 @@ RESEARCH = """[단계: 조사]
 
 ANSWER = """[단계: 답 쓰기]
 <data> 와 <research>(이번 턴 도구 결과)만으로 답 초안을 JSON 으로 낸다.
-- route: 답하면 ANSWER. 범위 밖 요청뿐이면 OUT_OF_SCOPE(섞인 요청은 범위 안 부분만 ANSWER 로 답한다). 발표법 자료 질문인데 자료에서 근거를 찾지 못했으면 NO_GUIDE(기록으로 답할 부분은 claims 에 그대로 쓰고, 도움이 되면 GENERAL 일반 조언을 쓴다). 할 수 없는 일(점수 · 공식 미션 · 리뷰 바꾸기 등)을 요청하면 NO_GUIDE 가 아니라 ANSWER 로 할 수 없다고 말한다.
+- route: 답하면 ANSWER. 범위 밖 요청뿐이면 OUT_OF_SCOPE(섞인 요청은 범위 안 부분만 ANSWER 로 답한다). 발표법 자료 질문인데 자료에서 근거를 찾지 못했으면 NO_GUIDE(기록으로 답할 부분은 claims 에 그대로 쓰고, 도움이 되면 GENERAL 일반 조언을 쓴다). 점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청이면 CANNOT_DO(할 수 없다는 고정 문장은 코드가 쓴다. claims 에는 도움이 되는 기록 사실만 쓰고, 할 수 없다는 말은 쓰지 않는다).
 - scope_reason: route 가 OUT_OF_SCOPE 일 때만 아래 이유 중 하나(필수), 그 밖에는 null.
 - scope_notes: 섞인 요청에서 범위 밖인 부분의 이유 목록(0~3개, 같은 이유를 두 번 쓰지 않는다). 범위 밖 부분의 답은 쓰지 않는다. 코드가 이유별 고정 문장을 덧붙인다. 없으면 빈 목록.
 - assessments: 계획 단계의 판단 초안을 조사 결과에 맞게 고친 것(같은 순서). MEASURED 판정은 코드가 다시 한다. KNOWLEDGE 는 읽은 자료가 뒷받침하면 SUPPORTED, 반대하면 CONTRADICTED 로 두고 source_ids 에 그 자료 id 를 넣는다. REQUEST 는 응할 수 있으면 SUPPORTED.
 - claims: 화면에 나갈 문장들(순서대로). 문장 하나에 사실 하나.
-  - RECORD: 내 기록 이야기. evidence_ids 에 그 문장의 숫자 · Take · 장 · 지표가 나온 근거 id 를 모두 넣는다. 근거 없는 숫자를 쓰지 않는다. 지표 · 문제 종류는 도구 결과의 label(예: 청중 시선 · 대본 응시)로 쓰고 키(audience_ratio · GAZE_ON_SCRIPT)를 쓰지 않는다. compare_takes 가 비교할 수 없다고 하면 그 이유를 쉬운 말로 쓴다. 다른 피치끼리 비교해 달라고 하면 '발표가 달라 수치를 비교하지 않아요'처럼 까닭을 먼저 쓰고 피치마다 따로 쓴다.
+  - RECORD: 내 기록 이야기. evidence_ids 에 그 문장의 숫자 · Take · 장 · 지표가 나온 근거 id 를 모두 넣는다. 근거 없는 숫자를 쓰지 않는다. 지표 · 문제 종류는 도구 결과의 label(예: 청중 시선 · 대본 응시)로 쓰고 키(audience_ratio · GAZE_ON_SCRIPT)를 쓰지 않는다. compare_takes 가 비교할 수 없다고 하면 그 까닭 문장은 코드가 붙이므로 쓰지 않는다(필요하면 비교할 수 있는 다른 Take 를 말한다). 다른 피치끼리 비교해 달라고 하면 '발표가 달라 수치를 비교하지 않아요'처럼 까닭을 먼저 쓰고 피치마다 따로 쓴다.
   - 측정값 이의('카메라가 낮았어' · '시선 잘 봤어')로 다시 평가를 요청했으면 코드가 "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요"를 붙인다. 그 문장은 쓰지 말고 까닭(측정값은 다시 평가해도 같다)과 다음 Take 에서 확인할 방법만 쓴다.
   - GUIDE: 발표법 · 사용법 조언. source_ids 에 자료 id. 자료 문장을 인용하면 큰따옴표 안을 자료 원문 그대로 쓴다.
   - ASSESSMENT: 판단 하나의 설명(assessment_index 로 판단 순서). 판단마다 하나씩, claims 맨 앞에 판단 순서대로 쓴다(다른 종류 뒤에 쓴 설명은 버려진다). 판단의 첫 문장은 코드가 쓰므로, 여기에는 그 뒤에 붙일 관측 사실 · 연습 제안만 쓴다(없으면 빈 문자열). 판정과 반대되는 말 · '충분히 · 사실상 · 거의 · 괜찮' 같은 흐리는 말을 쓰지 않는다.
@@ -185,7 +185,10 @@ ANSWER_SCHEMA = {
     "schema": {
         "type": "object",
         "properties": {
-            "route": {"type": "string", "enum": ["ANSWER", "OUT_OF_SCOPE", "NO_GUIDE"]},
+            "route": {
+                "type": "string",
+                "enum": ["ANSWER", "OUT_OF_SCOPE", "NO_GUIDE", "CANNOT_DO"],
+            },
             "scope_reason": _SCOPE_REASON,
             # 섞인 요청의 범위 밖 부분(0~3개, 중복 없음). 개수 · 중복은 코드가 다시 거른다(turn.py)
             "scope_notes": {

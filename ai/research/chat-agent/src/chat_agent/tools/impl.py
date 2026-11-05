@@ -245,9 +245,23 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
         row: dict[str, Any] = {"pitch_id": p.pitch_id, "title": p.title, "take_count": p.take_count}
         lr = p.last_review
         if lr is not None:
+            # 우선 개선 차원도 근거로 낸다(피치마다 따로 말하는 전체 범위 답이 근거 없는 문장으로 빠지지 않게, 6-5)
+            dims = []
+            for d in lr.priority_dimensions:
+                dev = ctx.registry.record(
+                    pitch_id=p.pitch_id,
+                    take_id=lr.take_id,
+                    take_number=lr.take_number,
+                    kind="REVIEW",
+                    revision=None,
+                    path=f"pitches[pitch_id={p.pitch_id}].last_review.dimensions.{d}",
+                    value="PRIORITY",
+                )
+                eids.append(dev.evidence_id)
+                dims.append({"dimension": d, "evidence_id": dev.evidence_id})
             row["last_review"] = {
                 "take_number": lr.take_number,
-                "priority_dimensions": lr.priority_dimensions,
+                "priority_dimensions": dims,
             }
             if lr.score is not None:
                 ev = ctx.registry.record(
@@ -412,6 +426,22 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                     )
                     eids.append(eid)
                     items.append({"dimension": dim, "state": rv.value, "evidence_id": eid})
+                elif rv.value == "NOT_EVALUABLE":
+                    # 리뷰가 '평가할 수 없음'으로 적은 차원도 기록이다: 근거를 내어 '측정되지 않았다'는 문장이 근거 없이 빠지지 않게
+                    ev = ctx.registry.record(
+                        pitch_id=ctx.scope_pitch_id or "",
+                        take_id=snap.summary.take_id,
+                        take_number=tn,
+                        kind="REVIEW",
+                        revision=snap.revisions.REVIEW,
+                        path=rv.path,
+                        value="NOT_EVALUABLE",
+                        version=ctx.version_of(snap),
+                    )
+                    eids.append(ev.evidence_id)
+                    items.append(
+                        {"dimension": dim, "state": "NOT_EVALUABLE", "evidence_id": ev.evidence_id}
+                    )
                 else:
                     items.append({"dimension": dim, "read_state": rv.state})
             score = review.get("score")

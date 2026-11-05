@@ -137,6 +137,10 @@ class LoopState:
     scope_switched: bool = False
     #: 코드가 먼저 읽은 요청(조사 흐름, `_prefetch_calls`)의 열쇠. 이어 부른 뒤 같은 것을 다시 내지 않는다
     prefetched: list[str] = field(default_factory=list)
+    #: 이름으로 찾은(`list_pitches` query) 피치가 둘 이상이었다. 범위를 정하지 않고 답하면 어느 발표인지 되묻는다(L2-21)
+    ambiguous_name: bool = False
+    #: 이 실행에서 `compare_takes`가 비교할 수 없다고 한 것(앞 · 뒤 Take 번호 · 지표 · 장 · 까닭). 답에 까닭 문장을 코드가 붙인다(7-10)
+    not_comparable: list[dict[str, Any]] = field(default_factory=list)
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -751,6 +755,20 @@ class Loop:
                     if tr.outcome != "CACHED" and tr.ok:
                         progressed = True
                         request_progressed = True
+                    if (
+                        call.name == "compare_takes"
+                        and tr.ok
+                        and tr.data
+                        and tr.data.get("comparable") is False
+                    ):
+                        self._note_not_comparable(args, tr.data)
+                    if (
+                        call.name == "list_pitches"
+                        and tr.ok
+                        and getattr(args, "query", None)
+                        and len((tr.data or {}).get("items") or []) >= 2
+                    ):
+                        self.st.ambiguous_name = True
                     if call.name == "search_guides" and tr.ok:
                         self.st.guide_searched = (
                             True  # 캐시 적중도 찾은 것이다(자료 묶음 준비 실패는 ok 아님)
@@ -902,6 +920,23 @@ class Loop:
             self.st.prefetched.append(key)
             out.append(ToolCall(id=f"pf-{len(self.st.prefetched)}", name=name, args=args))
         return out
+    def _note_not_comparable(self, args: Any, data: dict[str, Any]) -> None:
+        """비교할 수 없다는 결과를 남긴다(같은 두 Take · 지표 · 장 · 까닭은 한 번). 답 쓰기가 까닭 문장을 코드로 그린다."""
+        s = self.ctx.summaries
+        prev, cur = s.get(args.previous_take_id), s.get(args.current_take_id)
+        if prev is None or cur is None:
+            return
+        rec = {
+            "previous": prev.take_number,
+            "current": cur.take_number,
+            "previous_complete": prev.completed_fully,
+            "current_complete": cur.completed_fully,
+            "metric": args.metric,
+            "slide_number": args.slide_number,
+            "reason": data.get("reason"),
+        }
+        if rec not in self.st.not_comparable:
+            self.st.not_comparable.append(rec)
 
     def _is_cached(self, name: str, args: Any) -> bool:
         from .tools import cache_key

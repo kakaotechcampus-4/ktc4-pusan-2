@@ -663,6 +663,14 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     comp = cmp.finish(draft, ans["messages"])
     out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
+    if lp.st.ambiguous_name and not any(
+        e.get("type") == "FETCH_PITCH" and e.get("status") == "SUCCEEDED" for e in lp.st.executed
+    ):
+        # 이름이 같은 피치가 여럿인데 범위를 정하지 않았다: 어느 발표인지 되묻는다(L2-21, 낸 문장 뒤에)
+        body.append(Claim(kind="SYSTEM", text=templates.SystemText.WHICH_PITCH.value))
+    if route == "CANNOT_DO":
+        # 공식 결과를 바꿔 달라는 요청: 할 수 없다는 고정 문장을 코드가 붙인다(낸 문장 뒤에, 6-2)
+        body.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
     # 조언(자료 · 일반 조언)만 쓴 답: 문장이 검사로 모두 빠지면 route 가 ANSWER 여도 자료 없음 거절이다(6-10 · L4-28).
     # 확인된 기록이 없으니 '확인된 내용만'(PARTIAL)이 아니다. 조립 단계에서 모두 버린 조언 초안(판단에 이은 일반 조언 등)도
     # 같으므로 초안 원소의 종류도 본다

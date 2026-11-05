@@ -40,7 +40,7 @@ from .schemas import Assessment, Claim
 from .stream_json import AssessmentsDone, ClaimClosed, StreamTracker, ValueDone
 
 #: 모델 문장을 스트림으로 내도 되는 답 초안 route. 범위 밖 답(OUT_OF_SCOPE)은 고정 거절 문장으로 끝나므로 내지 않는다
-STREAM_ROUTES = ("ANSWER", "NO_GUIDE")
+STREAM_ROUTES = ("ANSWER", "NO_GUIDE", "CANNOT_DO")
 #: 일반 조언 묶음 바로 앞의 고정 안내(6-10)
 GENERAL_INTRO = templates.SystemText.GENERAL_INTRO.value
 
@@ -376,9 +376,20 @@ class Composer:
         # 판단 설명은 맨 앞에 이어 온 ASSESSMENT 원소만. 다른 종류가 나왔거나 초안이 끝났으면 설명이 확정됐다
         lead_closed = closed or lead < len(elems)
         expl: dict[int, str] = {}
+        #: 판단 설명이 이은 근거(이번 턴에 읽은 최신 근거만). 판단의 근거에 더해 설명 속 관측 값 검사에 쓴다(6-9)
+        expl_ev: dict[int, list[str]] = {}
+        reg = self.lp.ctx.registry
         for c in elems[:lead]:
             if isinstance(c.get("assessment_index"), int):
                 expl.setdefault(c["assessment_index"], compose.strip_ref_ids(c.get("text") or ""))
+                expl_ev.setdefault(
+                    c["assessment_index"],
+                    [
+                        e
+                        for e in c.get("evidence_ids") or []
+                        if isinstance(e, str) and reg.is_current(e)
+                    ],
+                )
         for i, o in enumerate(fin.outcomes):
             if i not in expl and not lead_closed:
                 return out, flags, code  # 이 판단의 설명을 아직 기다린다
@@ -387,11 +398,14 @@ class Composer:
             body = expl.get(i, "")
             text = f"{head} {body}".strip() if body and len(head) + len(body) < 299 else head
             if text:
+                ev_ids = list(a.evidence_ids)
+                if text != head:
+                    ev_ids += [e for e in expl_ev.get(i, []) if e not in ev_ids]
                 c = compose._claim(
                     "ASSESSMENT",
                     text,
                     assessment_id=a.assessment_id,
-                    evidence_ids=list(a.evidence_ids),
+                    evidence_ids=ev_ids,
                     source_ids=list(a.source_ids),
                 )
                 add(c, text != head)
@@ -399,6 +413,13 @@ class Composer:
             return out, flags, code
         if fin.result is not None:
             for s in [*fin.result.uncovered_sentences, *fin.result.dropped_notice]:
+                add(compose._claim("SYSTEM", s), False)
+        # 비교할 수 없다는 도구 결과의 까닭은 코드 문장으로(모델이 근거 없는 까닭 문장을 써서 빠지지 않게, 7-10)
+        seen_nc: set[str] = set()
+        for rec in self.lp.st.not_comparable:
+            s = compose.not_comparable_sentence(rec)
+            if s not in seen_nc and s not in self.prior_texts and s not in self.pre_texts:
+                seen_nc.add(s)
                 add(compose._claim("SYSTEM", s), False)
         in_general = False
         n_general = 0

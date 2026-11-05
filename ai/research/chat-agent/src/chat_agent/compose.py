@@ -86,6 +86,52 @@ def _num_display(ctx: Any, ev: Any) -> str | None:
     return clm.format_metric_value(ev.metric, ev.value, ctx.cfg)
 
 
+def obj(word: str) -> str:
+    """목적격 조사 '을/를': 마지막 한글 음절에 받침이 있으면 '을'."""
+    w = word.rstrip(" )")
+    last = w[-1] if w else ""
+    if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28:
+        return word + "을"
+    return word + "를"
+
+
+#: 비교할 수 없는 까닭 → 문장 틀(7-10). 두 Take 의 조건이 다른 까닭만 틀로, 값이 없는 등 그 밖의 까닭은 고정 문장(templates)
+_NC_PAIR = {
+    "DIFFERENT_SCRIPT_VERSION": "대본 버전이 달라",
+    "DIFFERENT_CRITERIA_VERSION": "평가 기준 버전이 달라",
+    "RULE_VERSION_CHANGED": "판정 기준 버전이 달라",
+    "MISSING_VERSION": "버전 정보가 없어",
+}
+_NC_FIXED = {
+    "NO_VALUE": templates.SystemText.METRIC_UNMEASURED,
+    "NO_RANGE": templates.SystemText.METRIC_UNMEASURED,
+    "OMITTED": templates.SystemText.OMITTED,
+    "NO_DIRECTION": templates.SystemText.NO_DIRECTION,
+    "INVALID_DATA": templates.SystemText.INVALID_DATA,
+}
+
+
+def not_comparable_sentence(rec: dict[str, Any]) -> str:
+    """`compare_takes`가 비교할 수 없다고 한 까닭 문장(코드 템플릿, 7-10).
+
+    예: 'Take 4 기록은 끝까지 한 발표가 아니라 Take 5 기록과 3장 청중 시선을 비교할 수 없어요.'
+    숫자 바로 뒤에 조사를 붙이지 않는다(읽는 소리에 따라 은/는 · 과/와가 달라 틀리기 쉽다)."""
+    a, b = rec["previous"], rec["current"]
+    where = f"{rec['slide_number']}장 " if rec.get("slide_number") else ""
+    what = obj(where + metric_label(rec.get("metric")))
+    reason = rec.get("reason")
+    if reason == "NOT_COMPLETED_FULLY":
+        pa, pb = rec.get("previous_complete") is not True, rec.get("current_complete") is not True
+        if pa and pb:
+            return f"Take {a} · Take {b} 기록은 모두 끝까지 한 발표가 아니라 {what} 비교할 수 없어요."
+        n, other = (a, b) if pa else (b, a)
+        return f"Take {n} 기록은 끝까지 한 발표가 아니라 Take {other} 기록과 {what} 비교할 수 없어요."
+    if reason in _NC_PAIR:
+        return f"Take {a} · Take {b} 기록은 {_NC_PAIR[reason]} {what} 비교할 수 없어요."
+    fixed = _NC_FIXED.get(reason or "")
+    return fixed.value if fixed is not None else templates.SystemText.NOT_COMPARABLE.value
+
+
 def topic(word: str) -> str:
     """주제 조사 '은/는': 마지막 한글 음절에 받침이 있으면 '은'."""
     w = word.rstrip(" )")
