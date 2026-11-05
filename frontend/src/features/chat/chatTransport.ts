@@ -40,8 +40,9 @@ export type TransportSignal =
       conversationId: string;
       status: RunStatus;
       events: RunEvent[];
-      plan: PlanStep[];
-      trace: TraceItem[];
+      /** 아직 진행이 없으면 null (BE) */
+      plan: PlanStep[] | null;
+      trace: TraceItem[] | null;
       /** 승인 대기 중 카드 */
       cards: Card[];
     }
@@ -143,19 +144,43 @@ const KNOWN: readonly RunStatus[] = [
   'EXPIRED',
 ];
 
-/** 실행 조회 응답의 최소 형식 — 틀리면 실패로 봅니다(L3-19). 세부 검사는 응답 검사(4단계)가 맡습니다 */
-function isRunView(v: unknown): v is RunView {
-  if (typeof v !== 'object' || v === null) return false;
-  const r = v as RunView;
-  return (
+const isListOrNull = (v: unknown) => v === null || Array.isArray(v);
+const isListOrMissing = (v: unknown) => v === undefined || Array.isArray(v);
+
+/**
+ * 실행 조회 응답을 읽습니다 — 최소 형식이 틀리면 null(실패로 봅니다, L3-19). 세부 검사는 응답 검사(4단계)가 맡습니다.
+ *
+ * BE #933 은 아직 `events` · `next_after_seq` · `cards` 를 싣지 않고(이벤트 커서 · 승인 API 가 남은 일),
+ * `plan` · `trace` 는 진행이 없으면 null 입니다. 빠진 칸은 "새 줄 없음" 으로 채워, 끝날 때 메시지 목록을 다시 읽게 합니다.
+ * 칸이 있는데 모양이 틀리면 형식 오류입니다
+ */
+function readRunView(v: unknown): RunView | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const r = v as Partial<Record<keyof RunView, unknown>>;
+  const ok =
     typeof r.run_id === 'string' &&
+    typeof r.conversation_id === 'string' &&
     typeof r.status === 'string' &&
-    Array.isArray(r.events) &&
-    r.events.every((e) => typeof e === 'object' && e !== null && Number.isInteger(e.event_seq)) &&
-    Array.isArray(r.plan) &&
-    Array.isArray(r.trace) &&
-    Array.isArray(r.cards)
-  );
+    isListOrNull(r.plan) &&
+    isListOrNull(r.trace) &&
+    isListOrMissing(r.events) &&
+    (r.events ?? []).every(
+      (e) => typeof e === 'object' && e !== null && Number.isInteger(e.event_seq),
+    ) &&
+    isListOrMissing(r.cards) &&
+    (r.next_after_seq === undefined ||
+      r.next_after_seq === null ||
+      Number.isInteger(r.next_after_seq));
+  if (!ok) return null;
+  const view = v as RunView;
+  return {
+    ...view,
+    events: view.events ?? [],
+    next_after_seq: view.next_after_seq ?? null,
+    cards: view.cards ?? [],
+    error: view.error ?? null,
+    retry_after_s: view.retry_after_s ?? null,
+  };
 }
 
 /** 아직 처리하지 않은 이벤트를 순번대로, 건너뛴 순번 앞까지만 (L3-46) */
@@ -199,6 +224,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   let idleDelay = 0;
   /** 곧바로 다시 읽기를 잇달아 한 횟수 — 건너뛴 순번이 메워지지 않거나 다음 커서가 끝없이 와도 멈추지 않게 */
   let rereads = 0;
+  /** 마지막으로 알린 계획 · 진행 기록 — 이벤트가 없어도(BE 커서 미구현) 진행 패널이 바뀌게 */
+  let lastShape: string | null = null;
   /** 실행마다 잰 시간. 승인 대기 시간은 뺍니다(12-3 "대기한 시간은 실행의 120초에서 뺀다") */
   const runClocks = new Map<
     string,
@@ -253,6 +280,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     ensureClock(runId);
     idleDelay = 0;
     rereads = 0;
+    lastShape = null;
   };
 
   const forget = (runId: string) => {
@@ -333,8 +361,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const ticket = chatTicket();
     let view: RunView;
     try {
-      const response: unknown = await api.run(run.runId, run.afterSeq);
-      if (!isRunView(response) || response.run_id !== run.runId) throw new Error('형식 오류');
+      const response = readRunView(await api.run(run.runId, run.afterSeq));
+      if (!response || response.run_id !== run.runId) throw new Error('형식 오류');
       view = response;
     } catch (error) {
       polling = false;
@@ -356,7 +384,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       store().advanceCursor(run.runId, last.event_seq);
       rereads = 0;
     }
-    if (taken.length > 0 || view.cards.length > 0)
+    const shape = JSON.stringify([view.plan, view.trace]);
+    const shapeChanged = shape !== lastShape && (view.plan !== null || view.trace !== null);
+    lastShape = shape;
+    if (taken.length > 0 || view.cards.length > 0 || shapeChanged)
       emit({
         type: 'progress',
         runId: run.runId,
@@ -426,9 +457,11 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const conversationId = s.conversationId;
     const before = s.run?.runId ?? null;
     try {
+      // BE 는 이 대화의 마지막 실행을 끝났어도 돌려주고, 한 번도 없으면 null 입니다
       const response = await api.conversationRun(conversationId);
-      const run = response?.run ?? null;
-      if (run !== null && !isRunView(run)) throw new Error('형식 오류');
+      const run = response === null ? null : readRunView(response);
+      if (response !== null && (!run || run.conversation_id !== conversationId))
+        throw new Error('형식 오류');
       lookingUp = false;
       if (disposed) return;
       const found =
@@ -533,15 +566,15 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     }
   }
 
-  async function createIfNeeded(draft: SendDraft): Promise<boolean> {
+  async function createIfNeeded(): Promise<boolean> {
     if (!needsCreate(store())) return true;
     const ticket = store().beginCreate();
     if (!ticket) return false;
     const scope = store().scope;
     try {
+      // (BE 미구현) `memory_off` — 지금 BE 는 모르는 칸이라 422 로 거절합니다. 목은 받습니다
       const created = await api.createConversation({
-        scope_pitch_id: scope?.pitchId ?? null,
-        page: draft.page,
+        pitch_id: scope?.pitchId ?? null,
         memory_off: true,
       });
       store().finishCreate(ticket, created.conversation_id);
@@ -582,7 +615,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   return {
     send: async (draft) => {
       if (disposed) return 'stale';
-      if (!(await createIfNeeded(draft))) return needsCreate(store()) ? 'failed' : 'locked';
+      if (!(await createIfNeeded())) return needsCreate(store()) ? 'failed' : 'locked';
       const ticket = store().beginSend(draft);
       if (!ticket) return 'locked';
       return post(ticket);
@@ -615,10 +648,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       const run = store().run;
       if (!run || !store().beginCancel(run.runId)) return false;
       try {
-        const view: unknown = await api.cancel(run.runId);
+        const view = readRunView(await api.cancel(run.runId));
         if (disposed) return true;
         // 끝남은 그 실행을 아직 지켜볼 때만 알립니다 — 조회가 먼저 끝냈으면 취소 중 표시만 지웁니다
-        if (isRunView(view) && isTerminalRun(view.status))
+        if (view && view.run_id === run.runId && isTerminalRun(view.status))
           finishRun(run.runId, run.conversationId, view);
         else if (store().run?.runId === run.runId) kick();
       } catch {
@@ -639,7 +672,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         const changed = await api.changeScope(ticket.conversationId!, scope.pitchId);
         store().finishScopeChange(ticket, {
           pitchId: changed.scope_pitch_id,
-          title: changed.scope_title,
+          title: changed.scope_pitch_title,
         });
         return true;
       } catch (error) {

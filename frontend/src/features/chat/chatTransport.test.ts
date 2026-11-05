@@ -105,9 +105,9 @@ const mockApi: ChatApi = {
   send: (request) => call(chatPaths.send, json('POST', request)),
   run: (runId, afterSeq) => call(`${chatPaths.run(runId)}?after_seq=${afterSeq}`),
   conversationRun: (id) => call(chatPaths.conversationRun(id)),
-  cancel: (runId) => call(chatPaths.cancel(runId), json('POST', {})),
+  cancel: (runId) => call(chatPaths.cancel(runId), { method: 'POST' }),
   createConversation: (request) => call(chatPaths.conversations, json('POST', request)),
-  changeScope: (id, pitchId) => call(chatPaths.scope(id), json('PUT', { pitch_id: pitchId })),
+  changeScope: (id, pitchId) => call(chatPaths.scope(id), json('PATCH', { pitch_id: pitchId })),
 };
 
 const draft = (text = '비교해 줘') => ({
@@ -479,7 +479,7 @@ describe('보내기 실패', () => {
       ...draft('다른 탭'),
       conversation_id: conversationId,
       scope_pitch_id: null,
-      client_request_id: 'other-tab',
+      client_request_id: crypto.randomUUID(),
     });
     expect(await sendNow(draft('이번 탭'))).toBe('conflict');
     await flush();
@@ -716,7 +716,7 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
       ...draft('다른 탭'),
       conversation_id: null,
       scope_pitch_id: null,
-      client_request_id: 'other-tab',
+      client_request_id: crypto.randomUUID(),
     });
     store().selectConversation(other.conversation_id, WHOLE);
     await flush();
@@ -852,5 +852,127 @@ describe('대기 간격', () => {
     await clock.advance(80_000);
     const gaps = runCalls.slice(1, 8).map((t, i) => t - runCalls[i]!);
     expect(gaps).toEqual([2_000, 3_000, 4_500, 6_750, 10_125, 15_000, 15_000]);
+  });
+});
+
+// ── BE #933 모양 ────────────────────────────────────────────
+
+/** BE `RunStatusResponse` 그대로 — 이벤트 · 카드 · 다음 커서 칸이 없고, 진행이 없으면 계획 · 기록이 null */
+const beRun = (
+  runId: string,
+  conversationId: string,
+  status: RunView['status'],
+  plan: unknown = null,
+) => ({
+  run_id: runId,
+  conversation_id: conversationId,
+  status,
+  plan,
+  trace: null,
+  error: null,
+  retry_after_s: null,
+});
+
+describe('BE #933 모양의 실행 조회', () => {
+  it('이벤트 칸이 없어도 형식 오류가 아니다 — 계획이 바뀔 때만 진행을 알리고, 끝나면 끝남을 알린다', async () => {
+    let polls = 0;
+    const plan = [{ step: 'READ_RECORD', status: 'RUNNING' }];
+    start({
+      run: async (runId) => {
+        polls += 1;
+        const conversationId = store().run!.conversationId;
+        if (polls < 3) return beRun(runId, conversationId, 'RUNNING', polls === 1 ? null : plan);
+        if (polls < 5) return beRun(runId, conversationId, 'RUNNING', plan);
+        return beRun(runId, conversationId, 'DONE', plan);
+      },
+    });
+    await sendNow(draft());
+    await untilEnded();
+    expect(of('pollTrouble')).toEqual([]);
+    // 계획이 처음 생긴 한 번만 — 같은 계획을 다시 받으면 알리지 않습니다
+    expect(of('progress')).toMatchObject([{ events: [], plan, trace: null, cards: [] }]);
+    expect(of('ended')).toMatchObject([{ status: 'DONE' }]);
+    expect(store().run).toBeNull();
+  });
+
+  it('칸이 있는데 모양이 틀리면 형식 오류로 센다', async () => {
+    start({
+      run: async (runId) => ({
+        ...beRun(runId, store().run!.conversationId, 'RUNNING'),
+        events: 'nope',
+      }),
+    });
+    await sendNow(draft());
+    expect(of('pollTrouble')).toHaveLength(1);
+  });
+
+  it('대화의 마지막 실행이 끝나 있으면 이어 가지 않고, 끝나지 않았으면 이어 간다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const conversationId = store().conversationId!;
+    const ended = of('ended').length;
+    /** 대화를 다시 골라 그 대화의 실행을 조회하게 합니다 */
+    const reopen = async (found: ReturnType<typeof beRun>) => {
+      start({
+        conversationRun: async () => found,
+        run: async (runId) => beRun(runId, conversationId, 'RUNNING'),
+      });
+      store().startNewConversation(WHOLE);
+      store().selectConversation(conversationId, WHOLE);
+      await flush();
+    };
+
+    await reopen(beRun('r-done', conversationId, 'DONE'));
+    expect([store().run, store().syncing, canSend(store())]).toEqual([null, false, true]);
+
+    await reopen(beRun('r-live', conversationId, 'RUNNING'));
+    expect([store().run?.runId, store().run?.phase]).toEqual(['r-live', 'RUNNING']);
+    expect(of('ended')).toHaveLength(ended);
+  });
+
+  it('다른 대화의 실행을 돌려주면 형식 오류로 보고 반영하지 않는다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const conversationId = store().conversationId!;
+    start({ conversationRun: async () => beRun('r-x', 'another', 'RUNNING') });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    expect([store().run, store().syncing]).toEqual([null, true]);
+    expect(of('pollTrouble')).toHaveLength(1);
+  });
+
+  it('새 대화 본문은 BE 모양(`pitch_id`) — 연 화면은 싣지 않는다', async () => {
+    const created: unknown[] = [];
+    store().setMemoryOff(true);
+    start({
+      createConversation: async (request) => {
+        created.push(request);
+        return mockApi.createConversation(request);
+      },
+    });
+    await sendNow(draft());
+    expect(created).toEqual([{ pitch_id: null, memory_off: true }]);
+  });
+});
+
+describe('보내기 키', () => {
+  it('randomUUID 가 없는 곳(보안 연결 아님)에서도 UUID 모양으로 만든다', async () => {
+    const sent: string[] = [];
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    try {
+      start({
+        send: async (request) => {
+          sent.push(request.client_request_id);
+          return mockApi.send(request);
+        },
+      });
+      expect(await sendNow(draft())).toBe('accepted');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(sent[0]).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
   });
 });

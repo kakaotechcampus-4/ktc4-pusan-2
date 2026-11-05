@@ -6,7 +6,6 @@ import { chatPaths } from '@/shared/api/chatPaths';
 import type {
   ActionDecisionResponse,
   Card,
-  ChatMessage,
   ConversationList,
   MessagePage,
   MemorySettings,
@@ -41,7 +40,7 @@ const message = (text: string, extra: Record<string, unknown> = {}) => ({
   scope_pitch_id: null,
   text,
   page: { route: '/', pitch_id: null, take_id: null, screen: null },
-  client_request_id: `req-${++key}`,
+  client_request_id: `00000000-0000-4000-8000-${String(++key).padStart(12, '0')}`,
   again_of_message_id: null,
   choice: null,
   ...extra,
@@ -62,8 +61,24 @@ async function settle(runId: string) {
   }
   throw new Error('실행이 끝나지 않음');
 }
-const messages = (conversationId: string) =>
-  call(chatPaths.messages(conversationId)).then(json<MessagePage>);
+/** 메시지 목록 — 비어(null) 올 수 있는 칸은 빈 목록으로 채워 읽기 쉽게. `page` 는 받은 그대로 */
+async function messages(conversationId: string, query = '') {
+  const page = await call(`${chatPaths.messages(conversationId)}${query}`).then(json<MessagePage>);
+  const items = page.messages.map((msg) => ({
+    ...msg,
+    claims: msg.claims ?? [],
+    cards: msg.cards ?? [],
+    assessments: msg.assessments ?? [],
+    evidence: msg.evidence ?? [],
+    sources: msg.sources ?? [],
+    plan: msg.plan ?? [],
+    trace: msg.trace ?? [],
+  }));
+  return { page, items };
+}
+type MessageItem = Awaited<ReturnType<typeof messages>>['items'][number];
+const conversations = (query = '') =>
+  call(`${chatPaths.conversations}${query}`).then(json<ConversationList>);
 const askOf = (view: RunView) =>
   view.cards.find((c) => c.type === 'ASK_CONFIRM') as Extract<Card, { type: 'ASK_CONFIRM' }>;
 
@@ -269,8 +284,8 @@ describe('승인 카드', () => {
       { type: 'GOAL_SAVED' }
     >;
 
-    const first = await call(chatPaths.undo(saved.action_id), 'POST').then(json);
-    expect(await call(chatPaths.undo(saved.action_id), 'POST').then(json)).toEqual(first);
+    const first = await call(chatPaths.undo(run_id, saved.action_id), 'POST').then(json);
+    expect(await call(chatPaths.undo(run_id, saved.action_id), 'POST').then(json)).toEqual(first);
     expect((await messages(conversation_id)).items.at(-1)).toMatchObject({
       role: 'system',
       text: '목표를 되돌렸어요.',
@@ -296,8 +311,7 @@ describe('기억', () => {
 
   it("'기억 없이' 대화에서는 카드를 만들지 않는다", async () => {
     const created = await call(chatPaths.conversations, 'POST', {
-      scope_pitch_id: null,
-      page: message('').page,
+      pitch_id: null,
       memory_off: true,
     }).then(json<{ conversation_id: string }>);
     const { run_id } = await accepted('짧게 설명해 줘, 기억해', {
@@ -312,8 +326,8 @@ describe('기억', () => {
 describe('사용자 · 대화 목록', () => {
   it('처음 보는 사용자에게 최신 아님 배지가 있는 지난 대화가 하나 있다', async () => {
     const list = await call(chatPaths.conversations).then(json<ConversationList>);
-    expect(list.items).toHaveLength(1);
-    const old = await messages(list.items[0]!.conversation_id);
+    expect(list.conversations).toHaveLength(1);
+    const old = await messages(list.conversations[0]!.conversation_id);
     expect(old.items.at(-1)!.stale_reasons).toEqual(['NEW_TAKE']);
   });
 
@@ -327,7 +341,7 @@ describe('사용자 · 대화 목록', () => {
 
   it('실행 중에는 범위를 바꿀 수 없다', async () => {
     const { conversation_id } = await accepted('비교해 줘');
-    const r = await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: null });
+    const r = await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: null });
     expect(await r.json()).toMatchObject({ code: 'AGENT_RUN_IN_PROGRESS' });
   });
 });
@@ -444,13 +458,13 @@ describe('그 밖의 시나리오', () => {
     const { run_id, conversation_id } = await accepted('비교해 줘');
     await settle(run_id);
     const list = await call(chatPaths.conversations).then(json<ConversationList>);
-    const pitchId = list.items.find((c) => c.scope_pitch_id)!.scope_pitch_id!;
-    const changed = await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: pitchId });
+    const pitchId = list.conversations.find((c) => c.scope_pitch_id)!.scope_pitch_id!;
+    const changed = await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: pitchId });
     expect(await changed.json()).toMatchObject({ scope_pitch_id: pitchId });
     const filtered = await call(`${chatPaths.conversations}?pitch_id=${pitchId}`).then(
       json<ConversationList>,
     );
-    expect(filtered.items.map((c) => c.conversation_id)).toContain(conversation_id);
+    expect(filtered.conversations.map((c) => c.conversation_id)).toContain(conversation_id);
   });
 
   it('기억을 끄면 카드를 만들지 않고, 전체 지우기는 항목을 모두 지운다', async () => {
@@ -475,11 +489,7 @@ describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
 
   it('없는 피치를 범위로 보내거나 새 대화를 만들면 404', async () => {
     expect((await send(message('비교해 줘', { scope_pitch_id: 'nope' }))).status).toBe(404);
-    const created = await call(chatPaths.conversations, 'POST', {
-      scope_pitch_id: 'nope',
-      page: message('').page,
-      memory_off: false,
-    });
+    const created = await call(chatPaths.conversations, 'POST', { pitch_id: 'nope' });
     expect(created.status).toBe(404);
   });
 
@@ -561,8 +571,8 @@ describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
 
   it('목 데이터가 홈 목과 맞는다 — 지난 대화는 Take 2 기준, 다시 평가는 점수가 있는 Take 2', async () => {
     const list = await call(chatPaths.conversations).then(json<ConversationList>);
-    const old = (await messages(list.items[0]!.conversation_id)).items.at(-1)!;
-    expect(old.basis_label).toMatch(/^Take 2 /);
+    const old = (await messages(list.conversations[0]!.conversation_id)).items.at(-1)!;
+    expect(old.basis?.pitches[0]!.takes[0]!.take_number).toBe(2);
     expect(old.evidence.map((e) => e.take_number).filter(Boolean)).toEqual([1, 2]);
 
     const { run_id, conversation_id } = await accepted('대본 보고 한 발표였어');
@@ -598,15 +608,16 @@ describe('계약 경계', () => {
       (await send(message('다시', { conversation_id, again_of_message_id: 'nope' }))).status,
     ).toBe(404);
     expect((await send(message('다시', { again_of_message_id: old.message_id }))).status).toBe(404);
-    const before = (await call(chatPaths.conversations).then(json<ConversationList>)).items.length;
+    const before = (await call(chatPaths.conversations).then(json<ConversationList>)).conversations
+      .length;
     expect(
       (await send(message('다시', { conversation_id, again_of_message_id: old.message_id })))
         .status,
     ).toBe(202);
     // 404 로 거른 요청은 빈 대화를 남기지 않는다
-    expect((await call(chatPaths.conversations).then(json<ConversationList>)).items).toHaveLength(
-      before,
-    );
+    expect(
+      (await call(chatPaths.conversations).then(json<ConversationList>)).conversations,
+    ).toHaveLength(before);
   });
 
   it('자동 목표 확인은 같은 목표에 한 번만 남는다', async () => {
@@ -640,10 +651,12 @@ describe('계약 경계', () => {
   it('범위 바꾸기의 형식이 틀리면 422, 없는 피치면 404', async () => {
     const { run_id, conversation_id } = await accepted('비교해 줘');
     await settle(run_id);
-    expect((await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: 1 })).status).toBe(422);
-    expect((await call(chatPaths.scope(conversation_id), 'PUT', { pitch_id: 'nope' })).status).toBe(
-      404,
+    expect((await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: 1 })).status).toBe(
+      422,
     );
+    expect(
+      (await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: 'nope' })).status,
+    ).toBe(404);
   });
 });
 
@@ -659,24 +672,34 @@ describe('독립 리뷰 반영', () => {
     });
     await settle(run_id);
     const answer = (await messages(conversation_id)).items.at(-1)!;
-    return { conversation_id, ask, answer };
+    return { conversation_id, run_id, ask, answer };
   }
-  const savedOf = (answer: ChatMessage) =>
+  const savedOf = (answer: MessageItem) =>
     answer.cards.find((c) => c.type === 'GOAL_SAVED') as Extract<Card, { type: 'GOAL_SAVED' }>;
 
   it('목표 판 번호는 대화마다 0 에서 시작하고, 다른 대화의 저장이 되돌리기를 막지 않는다', async () => {
     const a = await approveGoal();
     const b = await approveGoal();
     expect([savedOf(a.answer).goal.version, savedOf(b.answer).goal.version]).toEqual([1, 1]);
-    const undo = await call(chatPaths.undo(savedOf(a.answer).action_id), 'POST');
-    expect(await undo.json()).toEqual({ action_id: savedOf(a.answer).action_id, goal_version: 2 });
+    const undo = await call(chatPaths.undo(a.run_id, savedOf(a.answer).action_id), 'POST');
+    // BE #935 `GoalUndoneResponse` — 처음 저장을 되돌렸으니 목표 내용은 null
+    expect(await undo.json()).toEqual({
+      run_id: a.run_id,
+      action_id: savedOf(a.answer).action_id,
+      goal_version: 2,
+      goal: null,
+    });
+    // 다른 실행의 경로로는 그 행동을 찾지 못합니다
+    expect((await call(chatPaths.undo(b.run_id, savedOf(a.answer).action_id), 'POST')).status).toBe(
+      404,
+    );
   });
 
   it('없는 행동의 되돌리기는 404, 같은 대화에서 다른 목표로 바뀐 뒤면 409', async () => {
-    expect((await call(chatPaths.undo('nope'), 'POST')).status).toBe(404);
+    expect((await call(chatPaths.undo('nope', 'nope'), 'POST')).status).toBe(404);
     const first = await approveGoal();
     await approveGoal(first.conversation_id);
-    const r = await call(chatPaths.undo(savedOf(first.answer).action_id), 'POST');
+    const r = await call(chatPaths.undo(first.run_id, savedOf(first.answer).action_id), 'POST');
     expect([r.status, (await r.json()).code]).toEqual([409, 'AGENT_STATE_INVALID']);
   });
 
@@ -782,12 +805,13 @@ describe('독립 리뷰 반영', () => {
   it('근거 배지는 Take 기록을 읽은 답에만 붙는다', async () => {
     const refused = await accepted('오늘 날씨 어때?');
     await settle(refused.run_id);
-    expect((await messages(refused.conversation_id)).items.at(-1)!.basis_label).toBeNull();
+    expect((await messages(refused.conversation_id)).items.at(-1)!.basis).toBeNull();
     const compared = await accepted('비교해 줘');
     await settle(compared.run_id);
-    expect((await messages(compared.conversation_id)).items.at(-1)!.basis_label).toMatch(
-      /^Take 3 /,
-    );
+    // 근거 표시는 글자가 아니라 읽은 피치 · Take 와 버전 (6-8 `basis`) — 배지 글자는 화면이 만듭니다
+    expect((await messages(compared.conversation_id)).items.at(-1)!.basis).toMatchObject({
+      pitches: [{ standard_version: 4, takes: [{ take_number: 3 }] }],
+    });
   });
 
   it('ID 칸의 형식이 틀리면 저장 전 422', async () => {
@@ -869,15 +893,102 @@ describe('AI 코드(schemas.py)와 같은 모양', () => {
 });
 
 describe('대화의 실행 조회', () => {
-  it('끝나지 않은 실행이 있으면 그 실행을, 없으면 null 을 돌려주고 실행을 나아가게 하지 않는다', async () => {
+  it('마지막 실행을 끝났어도 돌려주고(BE `latest_run_status`), 실행을 나아가게 하지 않는다', async () => {
     const { run_id, conversation_id } = await accepted('비교해 줘');
     const lookup = () =>
-      call(chatPaths.conversationRun(conversation_id)).then(json<{ run: RunView | null }>);
-    const found = await lookup();
-    expect(found.run).toMatchObject({ run_id, status: 'QUEUED' });
-    expect((await lookup()).run?.status).toBe('QUEUED');
+      call(chatPaths.conversationRun(conversation_id)).then(json<RunView | null>);
+    expect(await lookup()).toMatchObject({ run_id, conversation_id, status: 'QUEUED' });
+    expect((await lookup())?.status).toBe('QUEUED');
     await settle(run_id);
-    expect((await lookup()).run).toBeNull();
+    expect(await lookup()).toMatchObject({ run_id, status: 'DONE' });
     expect((await call(chatPaths.conversationRun('nope'))).status).toBe(404);
+  });
+
+  it('실행이 한 번도 없던 대화는 null', async () => {
+    const created = await call(chatPaths.conversations, 'POST', { pitch_id: null }).then(
+      json<{ conversation_id: string }>,
+    );
+    const r = await call(chatPaths.conversationRun(created.conversation_id));
+    expect([r.status, await r.json()]).toEqual([200, null]);
+  });
+});
+
+describe('BE #933 모양', () => {
+  it('새 대화는 201 과 대화 하나 — 본문은 `pitch_id` 만(목은 `memory_off` 도) 받는다', async () => {
+    const r = await call(chatPaths.conversations, 'POST', { pitch_id: null });
+    expect(r.status).toBe(201);
+    const created = (await r.json()) as Record<string, unknown>;
+    expect(Object.keys(created).sort()).toEqual(
+      [
+        'conversation_id',
+        'created_at',
+        'last_user_activity_at',
+        'scope_pitch_id',
+        'scope_pitch_title',
+        'title',
+      ].sort(),
+    );
+    expect((await call(chatPaths.conversations, 'POST', { pitch_id: 42 })).status).toBe(422);
+    expect(
+      (await call(chatPaths.conversations, 'POST', { pitch_id: null, memory_off: 'yes' })).status,
+    ).toBe(422);
+  });
+
+  it('대화 목록은 `conversations` 에, 최근 사용자 활동순', async () => {
+    const { run_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const list = await conversations();
+    expect(list.conversations).toHaveLength(2);
+    const times = list.conversations.map((c) => c.last_user_activity_at);
+    expect([...times].sort().reverse()).toEqual(times);
+  });
+
+  it('범위 바꾸기는 PATCH 이고 바뀐 대화를 돌려준다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const pitchId = (await conversations()).conversations.find(
+      (c) => c.scope_pitch_id,
+    )!.scope_pitch_id!;
+    const r = await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: pitchId });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({
+      conversation_id,
+      scope_pitch_id: pitchId,
+      scope_pitch_title: expect.any(String),
+    });
+  });
+
+  it('메시지 목록은 최근부터 한 페이지 — 순번 · `next_before_seq` 로 앞을 읽는다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const all = (await messages(conversation_id)).page;
+    expect(all.next_before_seq).toBeNull();
+    const seqs = all.messages.map((m) => m.seq);
+    expect(seqs).toEqual(seqs.map((_, i) => i + 1));
+
+    const last = await messages(conversation_id, '?limit=1');
+    expect(last.page.messages.map((m) => m.seq)).toEqual([seqs.at(-1)]);
+    expect(last.page.next_before_seq).toBe(seqs.at(-1));
+    const earlier = await messages(conversation_id, `?limit=1&before_seq=${seqs.at(-1)}`);
+    expect(earlier.page.messages.map((m) => m.seq)).toEqual([seqs.at(-2)]);
+    expect((await call(`${chatPaths.messages(conversation_id)}?limit=0`)).status).toBe(422);
+  });
+
+  it('사용자 메시지의 답 칸은 null, 가림 표시는 false', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const user = (await messages(conversation_id)).page.messages.find((m) => m.role === 'user')!;
+    expect(user).toMatchObject({
+      claims: null,
+      cards: null,
+      assessments: null,
+      basis: null,
+      masked: false,
+      again_of_message_id: null,
+    });
+  });
+
+  it('보내기 키가 UUID 가 아니면 저장 전 422', async () => {
+    expect((await send(message('비교해 줘', { client_request_id: 'req-1' }))).status).toBe(422);
   });
 });

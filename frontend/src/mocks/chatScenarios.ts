@@ -79,8 +79,6 @@ const practiceGuide: GuideCard = {
   license: '피치코치',
 };
 
-export const BASIS_LABEL = `Take ${take3!.take_version} · 대본 V2 · 기준 v4 기준`;
-
 export type ClaimStep = Omit<ClaimEventData, 'index'>;
 
 export const say = (

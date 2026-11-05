@@ -354,10 +354,21 @@ const blockFor = (retryAfterSec: number | null | undefined, now = Date.now()) =>
     : null;
 
 /** 보내기 하나의 표시 — `client_request_id` 로 씁니다 */
+/**
+ * 보내기 키 — BE 는 UUID 만 받습니다(`client_request_id: uuid.UUID`, 아니면 422).
+ * `randomUUID` 는 보안 연결(https · localhost)에서만 있어, 없으면 같은 모양(v4)을 직접 만듭니다
+ */
 function newSendId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
     return crypto.randomUUID();
-  return `send-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function')
+    crypto.getRandomValues(bytes);
+  else for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 // ── 저장소 ───────────────────────────────────────────────────

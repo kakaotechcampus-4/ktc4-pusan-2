@@ -2,9 +2,10 @@
  * 대화형 코치 에이전트 — 화면 ↔ BE 계약 (잠정).
  *
  * 원본: `docs/ai/features/chat-agent.md` 5-2 · 5-5 · 12-3 · 12-4 (개정판 PR #900, #899).
- * BE 가 화면용 API 를 아직 정하지 않았습니다(12-5 "경로 · 이름 · 응답 모양은 BE 가 FE 와 맞춤").
- * 그래서 **값과 동작은 문서 그대로, 감싸는 모양(목록 키 · 페이지 칸)은 FE 가 임시로 정했습니다.**
- * BE 초안이 나오면 이 파일과 `mocks/chat.ts` · `shared/api/chatPaths.ts` 부터 맞춥니다.
+ * 화면 ↔ BE 모양(경로 · 목록 키 · 칸 이름)은 **BE #933 `feat/be-chat-api-834` (`module/chat/api_dto.py`)** 에
+ * 맞췄습니다 — BE 도 머지 전이고, 본문에 "경로와 응답 모양을 FE 와 맞춘다" 가 남은 일입니다.
+ * BE 가 아직 열지 않은 것(실행 이벤트 커서 · 승인 · 기억 · 최신 아님 사유 · '기억 없이')은 문서 계약대로 두고
+ * `(BE 미구현)` 으로 표시했습니다. 목(`mocks/chat.ts`)은 그것까지 문서대로 흉내 냅니다.
  *
  * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 연구 모듈의
  * `ai/research/chat-agent/src/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `feat/ai-chat-agent-svc-guide-facts`
@@ -250,16 +251,19 @@ export type RunEvent =
 /** 실행 조회 응답 (12-3 '실행 상태 조회') */
 export interface RunView {
   run_id: string;
-  /** (FE 잠정) 문서 12-4 가 "대화 ID 가 지금과 다르면 버린다" 고 해서 실었습니다 */
   conversation_id: string;
   status: RunStatus;
-  plan: PlanStep[];
-  trace: TraceItem[];
-  /** `after_seq` 뒤의 이벤트, 순번순 */
+  /** BE 는 아직 진행이 없거나 근거가 지워졌으면 null 을 줍니다 */
+  plan: PlanStep[] | null;
+  trace: TraceItem[] | null;
+  /**
+   * (BE 미구현 — #933 "이후 남은 작업: 실행 이벤트 커서 조회") `after_seq` 뒤의 이벤트, 순번순.
+   * BE 가 아직 싣지 않으므로 통신 계층은 빠진 칸을 빈 목록으로 읽습니다
+   */
   events: RunEvent[];
-  /** 크기 때문에 나눠 보냈으면 다음 커서 (FE 잠정 칸). 다 보냈으면 null */
+  /** (BE 미구현 · FE 잠정 칸) 크기 때문에 나눠 보냈으면 다음 커서. 다 보냈으면 null */
   next_after_seq: number | null;
-  /** 대기 중 카드와 그 행동의 `args_hash` */
+  /** (BE 미구현 — 승인 API 와 함께) 대기 중 카드와 그 행동의 `args_hash` */
   cards: Card[];
   error: { code: ChatErrorCode } | null;
   retry_after_s: number | null;
@@ -282,60 +286,76 @@ export type StaleReason =
   | 'CORPUS_UPDATED';
 
 /** 메시지 목록 한 줄 (12-3 '메시지 목록') */
+/**
+ * 근거 표시 (6-8 `basis`) — 이 답이 읽은 피치 · Take 와 그때의 버전. 배지 글자("Take 5 · 대본 V2 · 기준 v4 기준")는
+ * 화면이 이것으로 만듭니다. BE 는 AI 가 준 값을 그대로 넘기므로(`Any`) 모르는 칸은 무시하고,
+ * 피치를 읽지 않은 답은 `pitches` 가 빠져 올 수 있어 읽을 때 빈 목록으로 봅니다
+ */
+export interface MessageBasis {
+  pitches: {
+    pitch_id: string;
+    script_version_id: string | null;
+    presentation_version_id: string | null;
+    standard_version: number | null;
+    takes: { take_id: string; take_number: number }[];
+  }[];
+}
+
+/** 메시지 목록 한 줄 (12-3 '메시지 목록', BE `ChatMessageResponse`) */
 export interface ChatMessage {
   message_id: string;
+  /** 대화 안 순번 — 앞 페이지를 읽는 커서(`before_seq`)로 씁니다 */
+  seq: number;
   role: 'user' | 'assistant' | 'system';
   /** 사용자 말 · 시스템 문장. 에이전트 답은 `claims` 를 이은 값입니다 */
   text: string;
-  created_at: string;
-  /** (FE 잠정) 이 메시지를 만든 실행. 사용자 · 시스템 메시지는 null */
-  run_id: string | null;
-  /** (FE 잠정) 답을 만든 실행의 끝 상태 — PARTIAL · 만료 · 취소 표시에 씁니다. 사용자 · 시스템 메시지는 null */
+  /** 답을 만든 실행의 끝 상태. 사용자 · 시스템 메시지는 null */
   status: RunStatus | null;
-  claims: Claim[];
-  cards: Card[];
-  assessments: ListedAssessment[];
-  evidence: Evidence[];
-  sources: GuideCard[];
-  /** (FE 잠정 이름) 근거 표시 배지 글자 — 예 "Take 5 · 대본 V2 · 기준 v4 기준". 번호는 BE 값 그대로 */
-  basis_label: string | null;
+  /** 이 메시지를 만든 실행. 사용자 · 시스템 메시지는 null */
+  run_id: string | null;
+  /** 최신 기준으로 다시 물은 메시지면 원래 메시지 */
+  again_of_message_id: string | null;
+  created_at: string;
+  /** 사용자 · 시스템 메시지는 null 일 수 있습니다 */
+  claims: Claim[] | null;
+  cards: Card[] | null;
+  assessments: ListedAssessment[] | null;
+  evidence: Evidence[] | null;
+  sources: GuideCard[] | null;
+  basis: MessageBasis | null;
+  plan: PlanStep[] | null;
+  trace: TraceItem[] | null;
+  /** 근거가 된 피치 · Take 가 지워져 본문과 근거를 가렸음(사유 `SOURCE_DELETED`) */
+  masked: boolean;
+  /** (BE 미구현 — #933 "메시지 목록의 최신 아님 사유") 6-8 사유. 목만 싣습니다 */
   stale_reasons: string[];
-  plan: PlanStep[];
-  trace: TraceItem[];
 }
 
+/** 메시지 목록 한 페이지 — 최근부터, 더 앞은 `before_seq` 로 */
 export interface MessagePage {
-  items: ChatMessage[];
-  /** 더 옛 메시지를 읽을 커서 (FE 잠정 칸). 없으면 null */
-  next_cursor: string | null;
+  messages: ChatMessage[];
+  /** 더 앞의 메시지를 읽을 커서. 없으면 첫 메시지까지 다 읽었음 */
+  next_before_seq: number | null;
 }
 
-/** 대화 목록 한 줄 (12-3 '새 대화 · 대화 목록') */
+/**
+ * 대화 하나 (BE `ConversationResponse`) — 목록 · 만들기 · 범위 바꾸기가 같은 모양을 돌려줍니다.
+ * 문서 12-3 의 "최신 아님 여부" 와 '기억 없이' 표시는 (BE 미구현)이라 아직 칸이 없습니다
+ */
 export interface ConversationSummary {
   conversation_id: string;
   /** 첫 질문 앞부분 */
   title: string;
   /** 대화 범위. 전체면 null */
   scope_pitch_id: string | null;
-  /** (FE 잠정) 범위 칩에 보일 발표 이름 */
-  scope_title: string | null;
-  last_message_at: string | null;
-  /** (FE 잠정 이름) 최신 아닌 답이 있는 대화 */
-  has_stale: boolean;
-  /** (FE 잠정 이름) '기억 없이' 대화. 만든 뒤에는 바뀌지 않습니다 */
-  memory_off: boolean;
+  /** 범위 칩에 보일 발표 이름 */
+  scope_pitch_title: string | null;
+  last_user_activity_at: string;
+  created_at: string;
 }
 
 export interface ConversationList {
-  items: ConversationSummary[];
-}
-
-/**
- * (FE 잠정 모양) 대화로 실행 상태 조회 — 그 대화에서 끝나지 않은 실행. 없으면 null.
- * 대화를 열거나 되살렸을 때 · 보내기가 409 `AGENT_RUN_IN_PROGRESS` 일 때 씁니다 (12-3 · L3-17)
- */
-export interface ConversationRunView {
-  run: RunView | null;
+  conversations: ConversationSummary[];
 }
 
 // ── 요청 ──────────────────────────────────────────────────────
@@ -381,16 +401,20 @@ export interface ChatPage {
   screen: ChatScreen | null;
 }
 
-/** (FE 잠정 이름) 새 대화 — 범위 · 연 화면 · '기억 없이' (12-3) */
+/**
+ * 새 대화 (BE `CreateConversationRequest`). `memory_off` 는 (BE 미구현) — 문서 12-3 "'기억 없이' 선택(대화를 만들 때만)".
+ * 지금 BE 는 모르는 칸을 422 로 거절하므로(`extra="forbid"`), BE 가 칸을 열기 전에는 '기억 없이' 대화를 만들 수 없습니다
+ */
 export interface CreateConversationRequest {
-  scope_pitch_id: string | null;
-  page: ChatPage;
-  memory_off: boolean;
+  pitch_id: string | null;
 }
 
-export interface CreateConversationResponse {
-  conversation_id: string;
+/** (BE 미구현) '기억 없이' 새 대화 — 목만 받습니다. 지금 BE 에 보내면 422 입니다 */
+export interface CreateMemoryOffConversationRequest extends CreateConversationRequest {
+  memory_off: true;
 }
+
+export type CreateConversationResponse = ConversationSummary;
 
 /** 메시지 보내기 (12-3). `client_request_id` 는 사용자 단위로 유일합니다 */
 export interface SendMessageRequest {
@@ -416,14 +440,10 @@ export interface ScopeChangeRequest {
   pitch_id: string | null;
 }
 
-/** (FE 잠정 모양) 범위 바꾸기 응답 — 문서는 "바뀐 범위" 만 정합니다 */
-export interface ScopeChangeResponse {
-  conversation_id: string;
-  scope_pitch_id: string | null;
-  scope_title: string | null;
-}
+/** 범위 바꾸기 응답 — 바뀐 대화 그대로 */
+export type ScopeChangeResponse = ConversationSummary;
 
-/** 승인 · 거절 (12-3). 인자는 보내지 않고 화면에 보인 `args_hash` 만 보냅니다 */
+/** (BE 미구현) 승인 · 거절 (12-3). 인자는 보내지 않고 화면에 보인 `args_hash` 만 보냅니다 */
 export interface ActionDecisionRequest {
   decision: 'APPROVE' | 'REJECT';
   args_hash: string;
@@ -440,10 +460,14 @@ export interface ActionDecisionResponse {
   run_status: RunStatus;
 }
 
-/** (FE 잠정 모양) 되돌리기 응답 */
+/** 되돌리기 응답 (BE #935 `GoalUndoneResponse`) */
 export interface UndoResponse {
+  run_id: string;
   action_id: string;
+  /** 되돌려 새로 만든 목표 판 번호 */
   goal_version: number;
+  /** 되살린 목표. 처음 저장을 되돌렸으면 null */
+  goal: Goal | null;
 }
 
 // ── 기억 ──────────────────────────────────────────────────────
@@ -458,7 +482,7 @@ export interface ProfileItem {
   value: string;
 }
 
-/** 기억 설정 · 코칭 프로필 (12-3) */
+/** (BE 미구현) 기억 설정 · 코칭 프로필 (12-3) */
 export interface MemorySettings {
   enabled: boolean;
   items: ProfileItem[];
@@ -485,4 +509,6 @@ export type ChatErrorCode =
   | 'AGENT_CANCELLED'
   | 'AGENT_EXPIRED'
   | 'AGENT_TIMEOUT'
-  | 'AGENT_UPSTREAM_ERROR';
+  | 'AGENT_UPSTREAM_ERROR'
+  /** BE: 접수 중 DB 가 잠깐 안 됨(503) — 커밋 전 실패라 접수되지 않았습니다 */
+  | 'AGENT_NOT_ACCEPTED';
