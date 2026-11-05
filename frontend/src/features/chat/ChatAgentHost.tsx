@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useLocation } from 'react-router';
 import { useSession } from '@/shared/api/useSession';
 import { canShowChat } from './chatRoutes';
@@ -22,8 +15,7 @@ export function ChatAgentHost() {
   const { pathname } = useLocation();
   const session = useSession();
   const userId = session.data?.id ?? null;
-  const visible =
-    canShowChat(pathname) && !session.isPending && !session.isError && !!userId;
+  const visible = canShowChat(pathname) && !session.isPending && !session.isError && !!userId;
 
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -76,11 +68,7 @@ export function ChatAgentHost() {
   };
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (
-      event.key === 'Enter' &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       submit();
     }
@@ -140,10 +128,7 @@ export function ChatAgentHost() {
             ))}
           </div>
 
-          <form
-            onSubmit={submit}
-            className="shrink-0 border-t border-line-strong p-4"
-          >
+          <form onSubmit={submit} className="shrink-0 border-t border-line-strong p-4">
             <p className="mb-3 text-xs leading-5 text-stone">
               현재는 UI 시연입니다. 입력한 메시지는 서버에 전송되지 않으며 새로고침하면 사라집니다.
             </p>
@@ -162,9 +147,7 @@ export function ChatAgentHost() {
               className="w-full resize-none rounded-lg border-2 border-line-strong bg-white p-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-coral"
             />
             <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-xs text-stone">
-                Enter 전송 · Shift+Enter 줄바꿈
-              </span>
+              <span className="text-xs text-stone">Enter 전송 · Shift+Enter 줄바꿈</span>
               <button
                 type="submit"
                 disabled={!draft.trim()}
