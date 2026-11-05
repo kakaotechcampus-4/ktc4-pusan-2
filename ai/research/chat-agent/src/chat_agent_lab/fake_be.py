@@ -1457,6 +1457,13 @@ class FakeBe:
             out.append({"type": "MEMORY_SAVED", **copy.deepcopy(item)})
         return out
 
+    def seed_profile(self, user_id: str, items: list[tuple[str, str]]) -> None:
+        """검사 없이 프로필을 저장한다(오염된 프로필 시험용). 기억 번호(`memory_version`)는 올리지 않는다:
+        시나리오 시작 전 상태라 실행 중 바뀜이 아니다(#920 리뷰)."""
+        self.profiles[user_id] = {
+            k: {"item_id": self._next("mem"), "key": k, "value": v} for k, v in items
+        }
+
     def click_practice(self, run: Run) -> dict[str, Any]:
         """사용자가 [연습 준비로] 버튼을 누름: FE 가 화면을 옮기고 BE 는 이동 기록만 남긴다. BE 가 행동으로 실행하지 않는다(5-8)."""
         conv = self.conversations[run.conversation_id]

@@ -16,7 +16,7 @@
   `NEW_MESSAGE`(대기를 그대로 두고 다음 차례의 새 메시지가 취소하게 함). 저장 · 다시 평가를 기대하는 기존 시나리오는 기본값 그대로다.
   선택 필드라 `SCHEMA_VERSION`은 올리지 않았다.
 - 에이전트 서비스 세트(13-2): `fixtures.memory`(기억 설정 · 코칭 프로필, BE 저장값 그대로 — 오염된 프로필 시험용) ·
-  `conversation.no_memory`('기억 없이' 대화) · 장애 `stream_cut`(문장 줄 N개 뒤 끝 줄 없이 끊김) · 지표 표시 `advice`(조언 질문의
+  `conversation.no_memory`('기억 없이' 대화) · 장애 `stream_cut`(문장 줄 N개를 처음 받은 호출이 끝 줄 없이 끊김) · 지표 표시 `advice`(조언 질문의
   GUIDE 비율) · `memory`(기억 오염 기대검사 실패 — 기억 누설의 대리 지표: 기억을 넣은 실행에서 판단 · 판정 · 근거 · 행동 검사만 단다. 저장 여부 검사는 달지 않는다).
   세트 값 · 선택 필드를 더한 것이라 옛 시나리오 파일이 그대로 읽히므로 `SCHEMA_VERSION`은 1.0 그대로다.
 - 하는 일: `load_scenarios()`가 파일을 읽어 모양(pydantic, schema.json 과 같음)과 뜻(묶음 · 개수 · 보류 · 검사 · 템플릿 이름)을
@@ -336,14 +336,14 @@ class Fault(_M):
     - model_error: `purpose`의 `nth`번째 호출을 보내지 않고 시간 초과로 끝낸다(`seconds`만큼 시계를 흘림)
     - corrupt_answer: 첫 답 쓰기 응답의 문장 속 `from_text`를 `to_text`로 바꾼다(답 검사가 숫자를 잡아 고치게 하는지)
     - delete_before_action: BE가 `action` 행동을 실행하기 직전에 `target` Take 를 지운다(행동 실패)
-    - stream_cut: 그 차례의 첫 AI 호출에서 문장 줄을 `after_claims`개 받은 뒤 끝 줄 없이 연결이 끊긴다(받은 문장으로 PARTIAL, L2-45)
+    - stream_cut: 그 차례에서 문장 줄을 `after_claims`개 처음 받은 AI 호출을 끝 줄 없이 끊는다(문장이 그보다 적은 호출은 그대로, 받은 문장으로 PARTIAL, L2-45)
     """
 
     kind: Literal[
         "model_delay", "model_error", "corrupt_answer", "delete_before_action", "stream_cut"
     ]
     after_call: int | None = Field(default=None, ge=1)
-    #: stream_cut: 이 차례의 첫 AI 호출에서 문장 줄을 이만큼 받은 뒤 끝 줄 없이 연결이 끊긴다(L2-45)
+    #: stream_cut: 이 차례에서 문장 줄을 이만큼 처음 받은 AI 호출을 끝 줄 없이 끊는다(문장이 그보다 적은 호출은 그대로, L2-45)
     after_claims: int | None = Field(default=None, ge=1)
     seconds: float = Field(default=0.0, ge=0)
     purpose: Literal["RESEARCH", "ANSWER", "FIX"] | None = None
