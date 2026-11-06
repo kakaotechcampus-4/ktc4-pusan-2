@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ButtonLink } from '@/shared/ui/Button';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 import type { TakeReport } from '@/types/report';
 
 /** 리포트 화면의 틀. 밝은 지면(시안 10–12)에 진한 테두리 · 각진 모서리입니다 */
@@ -23,7 +24,11 @@ export function ReportFrame({
         {meta && <p className="tabular text-sm text-stone">{meta}</p>}
       </header>
 
-      <main className="mx-auto flex max-w-page flex-col gap-6 px-6 pb-12 pt-5 lg:px-10">
+      <main
+        id={MAIN_ID}
+        tabIndex={-1}
+        className="mx-auto flex max-w-page flex-col gap-6 px-6 pb-12 pt-5 lg:px-10"
+      >
         {report && (
           <p className="border-b border-line pb-4 font-bold">
             {report.pitch_title} <span className="mx-2 text-line-strong">/</span> TAKE{' '}

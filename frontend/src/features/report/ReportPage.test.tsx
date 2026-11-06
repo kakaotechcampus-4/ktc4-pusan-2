@@ -67,6 +67,26 @@ it('shows the previous Take comparison immediately after the summary and before 
   expect(main.querySelectorAll('h2')).toHaveLength(8);
 });
 
+it('shows the script modes in Korean when the two Takes used different ones', async () => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      {
+        metric: 'script_ratio',
+        slide_number: null,
+        previous: 0.7,
+        current: 0.62,
+        improved: true,
+        script_mode: { previous: 'HIGHLIGHT', current: 'OFF' },
+      },
+    ],
+  };
+  await render();
+  const text = host.querySelector('main')!.textContent;
+  expect(text).toContain('전체 대본 + 하이라이트 → 대본 없이');
+  expect(text).not.toContain('HIGHLIGHT');
+});
+
 it('shows 같음, not 나빠짐, when the visible values are equal even if improved is false', async () => {
   const row = { slide_number: null, script_mode: null };
   query.data!.review = {

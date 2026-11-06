@@ -123,6 +123,7 @@ flowchart LR
 
 - 대화의 다시 평가는 BE가 공식 리뷰 때와 같은 함수로 만든 요청(A)에서 `user_criteria.script_used` · `targets`만 바꾼 요청(B)을 함께 보낸다. A의 `user_criteria`가 null이면 B는 빈 기준 `{display_criteria: [], targets: [], script_used: null}`에서 시작한다.
 - 장 번호는 1부터다(`architecture.md` 6-1). `missions` · `take_result`의 장별 값(`areas.*.slides[]`) · `problem_segments[]` · `script_coverage.evaluations[]`의 `slide_number`가 0 · 음수면 422 `VALIDATION_ERROR`다(null은 Take 전체를 뜻하는 칸에서만 받는다). 출력의 장 번호는 이 입력에서 고르므로, 잘못된 장 번호는 출력에서 500이 되지 않게 입력에서 막는다.
+- `take_result.areas`(이전 Take 포함)의 key는 일곱 영역(`architecture.md` 6-3) 중 하나이고, 아니면 422 `VALIDATION_ERROR`다. 출력의 영역은 이 key에서 고르므로, 장 번호와 같이 출력에서 500이 되지 않게 입력에서 막는다.
 - 입력 개수 한도: `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `user_criteria.targets` 20. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다. `targets` 20은 평가 기준 분석의 표시 기준 10개 × 범위 목표 2개다. `take_result` · `script_coverage` 크기는 요청 본문 크기 상한(`ai-service.md` 15절 열린 질문)으로 정한다.
 
 ## 5-3. 출력

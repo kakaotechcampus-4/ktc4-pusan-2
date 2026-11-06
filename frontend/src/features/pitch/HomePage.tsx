@@ -5,6 +5,7 @@ import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
@@ -18,7 +19,11 @@ export function HomePage() {
     // flex-1 의 basis 0% 는 부모(min-h-dvh) 높이가 정해지지 않아 내용 높이로 풀려 basis-0 을 따로 줍니다
     <div className="pitch-create flex flex-1 flex-col bg-greige text-ink one-screen:min-h-0 one-screen:basis-0">
       <HomeSurveyNotice />
-      <main className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 one-screen:flex one-screen:min-h-0 one-screen:flex-col lg:px-10 one-screen:pb-5">
+      <main
+        id={MAIN_ID}
+        tabIndex={-1}
+        className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 one-screen:flex one-screen:min-h-0 one-screen:flex-col lg:px-10 one-screen:pb-5"
+      >
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="mb-2 font-mono text-[10px] tracking-widest text-ink/80">MY PITCHES</p>

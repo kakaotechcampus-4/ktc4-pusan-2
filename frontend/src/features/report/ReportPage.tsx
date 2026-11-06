@@ -16,6 +16,7 @@ import type {
 import { QueryState, ReportFrame } from './ReportFrame';
 import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
 import { TakeSurvey } from './TakeSurvey';
+import { scriptModeLabel } from './takeHistoryFormat';
 
 /**
  * Take 리포트 (P6).
@@ -319,8 +320,8 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
               </span>
               {r.script_mode && (
                 <p className="text-xs text-ink/80">
-                  대본 보기가 달랐어요 ({r.script_mode.previous} → {r.script_mode.current}). 비교는
-                  참고만 해 주세요.
+                  대본 보기가 달랐어요 ({scriptModeLabel(r.script_mode.previous)} →{' '}
+                  {scriptModeLabel(r.script_mode.current)}). 비교는 참고만 해 주세요.
                 </p>
               )}
             </li>

@@ -97,13 +97,18 @@ describe('장치 점검 준비 정보 — BE GET /prepare', () => {
 });
 
 describe('이번 연습의 조합', () => {
-  it('피치 생성에서 고른 조합이 먼저다', () => {
+  it('버전은 피치 생성에서 고른 조합이 먼저고, 시간은 피치의 지금 설정이다', () => {
+    // 조합의 목표 시간(300)은 고른 때의 값이라, 그 뒤 피치에서 바꾼 시간(600)을 따릅니다
     expect(takeChoice(combo, fromPrepare(res))).toEqual({
       presentationVersionId: 'pv1',
       scriptVersionId: 'sv3',
-      timeLimitSec: 300,
+      timeLimitSec: 600,
       label: '자료 v1 · 대본 v3',
     });
+  });
+
+  it('준비 정보가 오기 전에는 조합의 목표 시간을 쓴다', () => {
+    expect(takeChoice(combo, null)?.timeLimitSec).toBe(300);
   });
 
   it('조합이 없으면 준비 정보로 정하고, 리허설 제한 시간은 발표 제한 시간이다', () => {

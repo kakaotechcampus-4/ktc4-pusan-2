@@ -68,7 +68,10 @@
      리허설 화면 테두리에만 씁니다. 다른 곳에서 쓰지 않습니다.
      여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */
   --color-gaze-audience: #6B9E78;   /* 청중 · solid 2px */
-  --color-gaze-screen: #D9A441;     /* 대본 · 슬라이드 · solid 5px */
+  --color-gaze-screen: #D9A441;     /* 화면(슬라이드) · solid 5px */
+  /* 대본(화면 아래 대본 띠) · solid 5px.
+     하이라이트 모드에서는 대본을 보는 게 자연스러워 경고처럼 보이지 않는 차분한 색을 둡니다 */
+  --color-gaze-script: #7FA3C7;
   --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
 
   /* ── 분석 대기 로딩 화면 ───────────────────────────────────────
@@ -127,6 +130,13 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-coral);
   outline-offset: 2px;
+}
+
+/* 스크롤 영역 가장자리의 요소는 바깥으로 그린 테두리가 영역 경계에서 잘립니다.
+   영역(또는 목록)에 이 클래스를 달면 안에 있는 요소의 테두리를 안쪽에 그립니다.
+   전역 규칙이 레이어 밖이라 Tailwind 유틸리티로는 덮을 수 없어 여기에 둡니다 */
+.focus-inset :focus-visible {
+  outline-offset: -2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

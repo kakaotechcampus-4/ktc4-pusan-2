@@ -86,7 +86,8 @@ class TakeResult(_In):
     script_mode: str | None = None
     #: 시간 계획 {target_ms, min_ms, max_ms}. 이전 Take 비교에서 duration_ms 의 기준
     plan: dict[str, Any] | None = None
-    areas: dict[str, AreaResult]
+    #: key 는 일곱 영역 중 하나. 모르는 영역이 오면 출력 검증이 아니라 입력에서 422 로 막는다
+    areas: dict[Area, AreaResult]
     problem_segments: list[ProblemSegment] = Field(default_factory=list)
     gave_up: list[GaveUp] = Field(default_factory=list)
     #: 영역 → {criteria_version, issues}. 리뷰는 criteria_version 만 meta 에 옮겨 싣는다
