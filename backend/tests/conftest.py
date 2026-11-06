@@ -1,7 +1,7 @@
 """공통 fixture.
 
 - 테스트 DB 는 DATABASE_URL 의 DB 이름에 `_test` 를 붙인 것을 쓴다. 없으면 만든다.
-  개발 DB 를 건드리지 않기 위한 장치다.
+  앱의 SessionLocal 도 같은 DB 를 본다. 개발 DB 를 건드리지 않기 위한 장치다.
 - 각 테스트는 트랜잭션 안에서 돌고 끝나면 롤백된다. service 가 commit 해도 savepoint 로 처리된다.
 - pitch_coach_backend 는 fixture 안에서 import 한다.
   settings 가 아래 환경변수를 먼저 읽어야 하기 때문.
@@ -26,6 +26,16 @@ _local_database_url = os.environ.get("LOCAL_DATABASE_URL") or _dotenv.get("LOCAL
 if _local_database_url:
     os.environ["DATABASE_URL"] = _local_database_url
 
+# 앱의 SessionLocal 도 시험 DB 를 보게 settings 를 읽기 전에 주소를 바꾼다. 막기를 빠뜨린 백그라운드
+# 작업이 있어도 개발 DB 를 읽고 쓰지 않는다.
+_database_url = os.environ.get("DATABASE_URL") or _dotenv.get("DATABASE_URL")
+if _database_url:
+    _url = make_url(_database_url)
+    assert _url.database, "DATABASE_URL 에 DB 이름이 없습니다."
+    if not _url.database.endswith("_test"):
+        _url = _url.set(database=f"{_url.database}_test")
+    os.environ["DATABASE_URL"] = _url.render_as_string(hide_password=False)
+
 # 테스트 토큰은 항상 같은 키로 서명된다 (.env 값보다 우선)
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-do-not-use-in-production")
 
@@ -47,9 +57,7 @@ os.environ.setdefault("S3_BUCKET_NAME", _dotenv.get("S3_BUCKET_NAME", "test-buck
 def _test_database_url() -> str:
     from pitch_coach_backend.core.config import settings
 
-    url = make_url(settings.database_url)
-    assert url.database, "DATABASE_URL 에 DB 이름이 없습니다."
-    return url.set(database=f"{url.database}_test").render_as_string(hide_password=False)
+    return settings.database_url
 
 
 def _ensure_database(url_str: str) -> None:
@@ -156,7 +164,7 @@ class NoCoachClient:
 
 class NoCoachStore:
     """코치 저장소. 아무것도 저장하지 않는다 — 실제 DbCoachStore 는 SessionLocal 로 새 커넥션을
-    열어 테스트 DB 가 아닌 개발 DB 를 본다."""
+    열어 테스트 트랜잭션 안의(아직 커밋 안 된) 행을 못 본다."""
 
     def __init__(self) -> None:
         self.failed: list[uuid.UUID] = []
@@ -236,11 +244,11 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     monkeypatch.setattr(main, "get_s3", lambda: None)
     # 발표 삭제·회원 탈퇴 뒤 S3 파일 정리가 실제 버킷을 부르지 않게 막는다
     monkeypatch.setattr(file_cleanup, "delete_prefix", lambda prefix: None)
-    # 삭제 기록 갱신은 SessionLocal(테스트 DB 가 아니다)로 연다. 막는다
+    # 삭제 기록 갱신은 SessionLocal(테스트 트랜잭션 밖의 연결)로 연다. 막는다
     # (test_file_cleanup.py 가 테스트 세션으로 따로 본다). 다시 지우는 주기 작업도 막는다
     monkeypatch.setattr(file_cleanup, "_record", lambda *args, **kwargs: None)
     monkeypatch.setattr(main, "start_file_cleanup_sweep", _no_ready_sweep)
-    # 앱이 뜰 때 진행 중인 Take 를 SessionLocal(테스트 DB 가 아니다)로 읽고 타이머를 건다. 막는다
+    # 앱이 뜰 때 진행 중인 Take 를 SessionLocal(테스트 트랜잭션 밖의 연결)로 읽고 타이머를 건다. 막는다
     monkeypatch.setattr(main, "arm_abandoned_takes", _no_abandon_timers)
     # 시작하지 않은 Take 정리도 SessionLocal 로 돈다. 테스트는 sweep_once 에 세션을 넘겨 따로 본다
     monkeypatch.setattr(main, "start_ready_sweep", _no_ready_sweep)
