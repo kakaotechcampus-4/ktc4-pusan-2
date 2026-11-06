@@ -16,6 +16,7 @@ from pitch_coach_backend.module.chat.service.request import (
     selected_proposal,
 )
 from pitch_coach_backend.module.chat.service.result import failed, succeeded
+from pitch_coach_backend.module.chat.service.run import digest
 from pitch_coach_backend.module.take.repository import TakeRepository
 
 GOAL_METRICS = {
@@ -36,7 +37,11 @@ def save_goal(
     repo = ChatRepository(db)
     if row.first_trigger == "TAKE_REVIEWED":
         return failed(action, "VALIDATION_ERROR", "자동 확인에서는 목표를 저장하지 않아요.")
-    if not _goal_authorized(repo, row, action, args.goal):
+    preapproved = action.get("preapproved")
+    if preapproved is not None:
+        if not _preapproval_matches(repo, row, preapproved, args.goal):
+            return failed(action, "PREAPPROVAL_MISMATCH", "작업 완료를 확인하지 못했어요.")
+    elif not _goal_authorized(repo, row, action):
         return failed(action, "VALIDATION_ERROR", "목표를 저장해 달라는 요청을 확인하지 못했어요.")
     if repo.count_succeeded_actions(row.id, "SAVE_GOAL") > 0:
         return failed(action, "VALIDATION_ERROR", "한 번에 목표는 하나만 저장해요.")
@@ -66,20 +71,24 @@ def save_goal(
     return succeeded(action, {"goal": goal_view(repo.get_goal(conversation.id, version))})
 
 
-def _goal_authorized(
-    repo: ChatRepository, row: ChatRun, action: dict[str, Any], goal: dict[str, Any]
-) -> bool:
+def _goal_authorized(repo: ChatRepository, row: ChatRun, action: dict[str, Any]) -> bool:
     if repo.get_action(row.id, action["action_id"]).approved:
         return True
-    choice = row.input.get("choice")
-    if choice:
-        try:
-            proposal = selected_proposal(repo, row.conversation_id, choice)
-        except ProposalNotFound:
-            return False
-        return proposal["goal"] == goal
     original = row.input.get("user_message")
     return authorization(original, action.get("authorized_by"), "SAVE_GOAL") == "OK"
+
+
+def _preapproval_matches(
+    repo: ChatRepository, row: ChatRun, preapproved: dict[str, Any], goal: dict[str, Any]
+) -> bool:
+    choice = row.input.get("choice")
+    if not choice or preapproved.get("proposal_id") != choice["proposal_id"]:
+        return False
+    try:
+        proposal = selected_proposal(repo, row.conversation_id, choice)
+    except ProposalNotFound:
+        return False
+    return proposal["content_hash"] == preapproved.get("content_hash") == digest(goal)[:16]
 
 
 def _rebuild_goal(

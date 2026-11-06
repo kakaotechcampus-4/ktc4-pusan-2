@@ -63,6 +63,12 @@ class _SignedState(_View):
     signature: str
 
 
+class _Preapproved(_View):
+    by: Literal["CHOICE"]
+    proposal_id: str
+    content_hash: str
+
+
 class _Action(_View):
     action_id: str
     type: ActionType
@@ -72,6 +78,7 @@ class _Action(_View):
     idempotency_key: str
     reason: str
     authorized_by: str | None
+    preapproved: _Preapproved | None = None
 
 
 class _Budget(_View):
@@ -120,6 +127,12 @@ class FinalView(_View):
 
     @model_validator(mode="after")
     def _matches_status(self) -> Self:
+        if any(
+            action.preapproved is not None
+            and (action.type != "SAVE_GOAL" or action.autonomy != "ASK")
+            for action in self.actions
+        ):
+            raise ValueError("preapproved 는 ASK 인 SAVE_GOAL 에만 실을 수 있다")
         if self.status == "NEEDS_ACTION":
             if len(self.actions) != 1 or self.actions[0].type == "START_PRACTICE":
                 raise ValueError("NEEDS_ACTION 은 기다리는 행동 하나가 필요하다")

@@ -210,7 +210,7 @@ class _Turn:
                 break
             await self._advance(turn_service.wait_for_action, turn_call, outcome)
             action = outcome.data["actions"][0]
-            if action["autonomy"] == "ASK":
+            if action["autonomy"] == "ASK" and action.get("preapproved") is None:
                 result = await _in_session(
                     self._session_factory, action_service.hold_for_approval, self._current, action
                 )
