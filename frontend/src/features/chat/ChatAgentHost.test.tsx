@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiFailure } from '@/shared/api/tokenStore';
+import { registerChatScreen, resetChatScreen, type ScreenBody } from '@/shared/lib/chatScreen';
+import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
+import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
+import type { ShownClaim } from './chatResponse';
+import { chatTicket, useChatStore } from './chatStore';
+import type { TransportSignal } from './chatTransport';
 
 const state = vi.hoisted(() => ({
   calls: 0,
@@ -16,15 +24,110 @@ vi.mock('@/shared/api/useSession', () => ({
   },
 }));
 
+/** 서버 — 경로마다 답을 바꿔 끼웁니다 */
+const server = vi.hoisted(() => ({
+  seen: [] as { path: string; signal: AbortSignal | null }[],
+  availability: (_signal: AbortSignal | null): Promise<unknown> =>
+    Promise.resolve({ enabled: true }),
+  messages: (): Promise<unknown> => Promise.resolve({ messages: [], next_before_seq: null }),
+  report: (takeId: string): Promise<unknown> =>
+    Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' }),
+}));
+vi.mock('@/shared/api/client', async (original) => ({
+  ...(await original<typeof import('@/shared/api/client')>()),
+  apiRequest: (path: string, init: RequestInit = {}) => {
+    server.seen.push({ path, signal: init.signal ?? null });
+    if (path === '/api/chat/availability') return server.availability(init.signal ?? null);
+    if (path.startsWith('/api/chat/conversations/')) return server.messages();
+    const take = /^\/api\/takes\/([^/]+)\/report$/.exec(path);
+    if (take) return server.report(take[1]!);
+    return Promise.reject(new Error(`모르는 경로 ${path}`));
+  },
+}));
+
+/** 통신 계층 대역 — 보내기는 저장소의 잠금까지만 하고(보내는 중), 신호는 시험이 냅니다 */
+interface FakeTransport {
+  sent: SendMessageRequest[];
+  resumed: number;
+  /** resume 할 때 이미 듣는 쪽이 있었나 */
+  listenedBeforeResume: boolean;
+  disposed: boolean;
+  retried: number;
+  emit: (signal: TransportSignal) => void;
+}
+const transports = vi.hoisted(() => [] as FakeTransport[]);
+/** 보내기 결과 — 'failed' 면 접수되지 않음이 확정된 것처럼 잠금을 풉니다 */
+const sendMode = vi.hoisted(() => ({ value: 'accepted' as 'accepted' | 'failed' }));
+vi.mock('./chatTransport', async () => {
+  const { useChatStore: store } = await import('./chatStore');
+  return {
+    createChatTransport: () => {
+      const listeners = new Set<(signal: TransportSignal) => void>();
+      const t: FakeTransport = {
+        sent: [],
+        resumed: 0,
+        listenedBeforeResume: false,
+        disposed: false,
+        retried: 0,
+        emit: (signal) => listeners.forEach((listener) => listener(signal)),
+      };
+      transports.push(t);
+      return {
+        send: async (draft: Parameters<ReturnType<typeof store.getState>['beginSend']>[0]) => {
+          const ticket = store.getState().beginSend(draft);
+          if (!ticket) return 'locked';
+          t.sent.push(store.getState().pending!.request);
+          if (sendMode.value === 'failed') {
+            await Promise.resolve();
+            store.getState().failSend(ticket);
+            return 'failed';
+          }
+          return 'accepted';
+        },
+        retryUnconfirmed: async () => {
+          t.retried++;
+          return 'none';
+        },
+        resume: () => {
+          t.resumed++;
+          t.listenedBeforeResume = listeners.size > 0;
+        },
+        subscribe: (listener: (signal: TransportSignal) => void) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        dispose: () => {
+          t.disposed = true;
+        },
+        decide: async () => 'locked',
+        cancel: async () => false,
+        changeScope: async () => false,
+        checkNow: () => undefined,
+      };
+    },
+  };
+});
+
 let host: HTMLDivElement;
 let root: Root;
 let router: ReturnType<typeof createMemoryRouter>;
+let queryClient: QueryClient;
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubEnv('VITE_CHAT_AGENT', 'true');
   state.calls = 0;
   state.session = { isPending: false, isError: false, data: { id: 'u1' } };
+  server.seen = [];
+  server.availability = () => Promise.resolve({ enabled: true });
+  server.messages = () => Promise.resolve({ messages: [], next_before_seq: null });
+  server.report = (takeId) =>
+    Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
+  transports.length = 0;
+  sendMode.value = 'accepted';
+  sessionStorage.clear();
+  useChatStore.getState().signOut();
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -33,9 +136,24 @@ afterEach(async () => {
   await act(async () => root.unmount());
   router.dispose();
   host.remove();
+  queryClient.clear();
+  resetChatScreen();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
+
+/** 조회 결과가 화면에 닿을 때까지 — TanStack Query 는 알림을 setTimeout(0) 으로 묶습니다 */
+const settle = () =>
+  act(async () => {
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+/** 가짜 시계에서 그만큼 흘려보냅니다 */
+const wait = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 
 // routes.tsx 의 최상위 레이아웃과 같은 모양 — 화면이 바뀌어도 채팅은 같은 자리에 남습니다
 async function visit(path: string) {
@@ -50,9 +168,12 @@ async function visit(path: string) {
         ),
         children: [
           { path: '/', element: <button type="button">홈 버튼</button> },
+          { path: '/pitches', element: <p>피치 목록</p> },
+          { path: '/takes', element: <p>Take 기록</p> },
           { path: '/takes/:takeId', element: <p>리포트</p> },
           { path: '/takes/:takeId/rehearsal', element: <p>리허설</p> },
           { path: '/pitch/new', element: <p>피치 만들기</p> },
+          { path: '/pitch/:id/edit', element: <p>피치 수정</p> },
           { path: '/pitch/:pitchId/device-check', element: <p>장치 점검</p> },
           { path: '/welcome', element: <p>서비스 소개</p> },
         ],
@@ -60,17 +181,32 @@ async function visit(path: string) {
     ],
     { initialEntries: [path] },
   );
-  await act(async () => root.render(<RouterProvider router={router} />));
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    ),
+  );
+  if (vi.isFakeTimers()) await wait(0);
+  else await settle();
 }
 
-const go = (path: string) => act(async () => router.navigate(path));
+const go = async (path: string) => {
+  await act(async () => router.navigate(path));
+  await settle();
+};
 const launcher = () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
 const panel = () => host.querySelector<HTMLElement>('[role="dialog"]');
 const input = () => host.querySelector('textarea')!;
-const sendButton = () =>
-  [...host.querySelectorAll('button')].find((button) => button.textContent === '입력')!;
+const button = (label: string) =>
+  [...host.querySelectorAll('button')].find((b) => b.textContent === label);
+const sendButton = () => button('입력')!;
 const sentMessages = () =>
   [...panel()!.querySelectorAll('p.self-end')].map((message) => message.textContent);
+const scopeText = () => panel()!.querySelector('[data-chat-scope]')!.textContent;
+const transport = () => transports.at(-1)!;
+const alerts = () => [...host.querySelectorAll('[role="alert"]')].map((a) => a.textContent);
 
 async function openPanel() {
   launcher()!.focus();
@@ -248,4 +384,344 @@ it('닫혀 있을 때는 런처가 없는 패널을 가리키지 않는다', asy
   expect(launcher()!.hasAttribute('aria-controls')).toBe(false);
   await openPanel();
   expect(launcher()!.getAttribute('aria-controls')).toBe(panel()!.id);
+});
+
+// ── 8-1 연결 ─────────────────────────────────────────────
+
+/** 걸어 둔 응답 — 시험이 직접 풉니다 */
+function held<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** 끊기면 실패하는 걸린 요청 — 사용 가능 여부의 5초 제한을 봅니다 */
+const hangUntilAborted = (signal: AbortSignal | null) =>
+  new Promise<unknown>((_, reject) =>
+    signal?.addEventListener('abort', () => reject(new DOMException('끊김', 'AbortError'))),
+  );
+
+const availabilityCalls = () => server.seen.filter((s) => s.path === '/api/chat/availability');
+
+const deviceBody: ScreenBody = {
+  name: 'device_check',
+  camera: 'connected',
+  mic: 'detected',
+  gaze_setup: 'DONE',
+  gaze_reason: null,
+};
+
+const claim = (text: string) =>
+  ({
+    index: 0,
+    kind: 'FACT',
+    text,
+    chips: [],
+    missing: 0,
+    general: true,
+    assessment: null,
+    actionId: null,
+    masked: false,
+  }) as unknown as ShownClaim;
+
+describe('사용 가능 여부 (12-4 F1 · L3-02)', () => {
+  it('조회하는 동안은 숨기고, 켜짐이면 보인다', async () => {
+    const answer = held<unknown>();
+    server.availability = () => answer.promise;
+    await visit('/');
+    expect(launcher()).toBeNull();
+
+    answer.resolve({ enabled: true });
+    await settle();
+    expect(launcher()).not.toBeNull();
+  });
+
+  it.each([
+    ['enabled:false', () => Promise.resolve({ enabled: false })],
+    ['AGENT_DISABLED', () => Promise.reject(new ApiFailure(503, 'AGENT_DISABLED'))],
+  ])('%s 는 꺼짐으로 숨기고 통신 계층을 만들지 않는다', async (_, answer) => {
+    server.availability = answer;
+    await visit('/');
+    expect(launcher()).toBeNull();
+    expect(transports).toHaveLength(0);
+  });
+
+  it('5초 안에 답이 없으면 실패로 세고 2 · 4 · 8초 뒤 다시 묻는다. 모두 실패하면 버튼과 [다시 시도]를 보인다', async () => {
+    vi.useFakeTimers();
+    server.availability = hangUntilAborted;
+    await visit('/');
+    expect(availabilityCalls()).toHaveLength(1);
+
+    // 첫 조회 5초 + 2초 → 두 번째, 5초 + 4초 → 세 번째, 5초 + 8초 → 네 번째
+    const [first, second, third] = AVAILABILITY_RETRY_MS;
+    await wait(AVAILABILITY_TIMEOUT_MS + first - 1);
+    expect(availabilityCalls()).toHaveLength(1);
+    await wait(1);
+    expect(availabilityCalls()).toHaveLength(2);
+    await wait(AVAILABILITY_TIMEOUT_MS + second);
+    expect(availabilityCalls()).toHaveLength(3);
+    await wait(AVAILABILITY_TIMEOUT_MS + third);
+    expect(availabilityCalls()).toHaveLength(4);
+    // 다시 묻는 동안은 실패를 꺼짐으로도, 켜짐으로도 보지 않습니다
+    expect(launcher()).toBeNull();
+
+    await wait(AVAILABILITY_TIMEOUT_MS);
+    // 실패 알림이 화면에 닿도록 한 틱 더
+    await wait(1);
+    expect(availabilityCalls()).toHaveLength(4);
+    expect(launcher()).not.toBeNull();
+    expect(transports).toHaveLength(0);
+
+    await openPanel();
+    expect(alerts()).toContain('코치를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+
+    server.availability = () => Promise.resolve({ enabled: true });
+    await act(async () => button('다시 시도')!.click());
+    await wait(0);
+    expect(alerts()).toEqual([]);
+    expect(transports).toHaveLength(1);
+  });
+
+  it('통신 계층이 AGENT_DISABLED 를 받으면 버튼을 숨기고 통신 계층을 닫는다', async () => {
+    await visit('/');
+    await act(async () => transport().emit({ type: 'disabled' }));
+    await settle();
+    expect(launcher()).toBeNull();
+    expect(transport().disposed).toBe(true);
+  });
+});
+
+describe('연결 (12-4 F1 · F2 · F3)', () => {
+  it('확인된 로그인 사용자로 저장소를 맞추고, 확인 중 · 오류에는 비우지 않는다', async () => {
+    await visit('/');
+    expect(useChatStore.getState().userId).toBe('u1');
+
+    state.session = { isPending: false, isError: true, data: undefined as never };
+    await go('/pitches');
+    expect(useChatStore.getState().userId).toBe('u1');
+
+    state.session = { isPending: false, isError: false, data: null };
+    await go('/');
+    expect(useChatStore.getState().userId).toBeNull();
+  });
+
+  it('통신 계층은 하나 — 듣기를 건 뒤 이어 가고, 화면을 옮겨도 그대로, 숨는 화면에서 닫는다', async () => {
+    await visit('/');
+    await go('/pitch/new');
+    await go('/pitch/p1/device-check');
+    expect(transports).toHaveLength(1);
+    expect(transport().resumed).toBe(1);
+    expect(transport().listenedBeforeResume).toBe(true);
+
+    await go('/takes/t1/rehearsal');
+    expect(transport().disposed).toBe(true);
+  });
+
+  it.each([
+    ['/', '전체', null],
+    ['/pitch/new', '전체', null],
+    ['/takes', '전체', null],
+    ['/pitch/p1/edit', '피치', 'p1'],
+    ['/pitch/p1/device-check', '피치', 'p1'],
+    ['/takes?pitch=p2', '피치', 'p2'],
+  ])('%s 에서 열면 처음 범위는 %s', async (path, label, pitchId) => {
+    await visit(path);
+    await openPanel();
+    expect(useChatStore.getState().scope).toEqual({ pitchId, title: null });
+    expect(scopeText()).toBe(label);
+  });
+
+  it('Take 화면은 그 Take 의 피치를 알 때까지 범위 확인 중이고 보내지 않는다', async () => {
+    const report = held<unknown>();
+    server.report = () => report.promise;
+    await visit('/takes/t1');
+    await openPanel();
+    expect(scopeText()).toBe('범위 확인 중');
+    await type('이 연습 어땠어?');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent).toEqual([]);
+    expect(input().value).toBe('이 연습 어땠어?');
+
+    report.resolve({ take_id: 't1', pitch_id: 'p-9', pitch_title: '졸업 발표' });
+    await settle();
+    expect(scopeText()).toBe('피치: 졸업 발표');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent).toHaveLength(1);
+    expect(transport().sent[0]).toMatchObject({
+      text: '이 연습 어땠어?',
+      scope_pitch_id: 'p-9',
+      page: { route: '/takes/:takeId', pitch_id: 'p-9', take_id: 't1', screen: null },
+    });
+  });
+
+  it('Take 를 조회하지 못하면 전체로 단정하지 않고 다시 시도를 보인다 (L3-06)', async () => {
+    server.report = () => Promise.reject(new ApiFailure(404, 'NOT_FOUND'));
+    await visit('/takes/t1');
+    await openPanel();
+    await settle();
+    expect(useChatStore.getState().scope).toBeNull();
+    expect(alerts()).toContain('연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.다시 시도');
+
+    server.report = (takeId) =>
+      Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
+    await act(async () => button('다시 시도')!.click());
+    await settle();
+    expect(useChatStore.getState().scope).toEqual({ pitchId: 'p-9', title: '졸업 발표' });
+    expect(alerts()).toEqual([]);
+  });
+
+  it('보낼 때 지금 화면 page 와 그 순간의 화면 상태를 싣는다', async () => {
+    let gaze: ScreenBody = deviceBody;
+    registerChatScreen('/pitch/:pitchId/device-check', () => gaze);
+    await visit('/pitch/p1/device-check');
+    await openPanel();
+    await type('시선 기준이 왜 실패해?');
+    gaze = { ...deviceBody, gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' };
+    await press(input(), { key: 'Enter' });
+
+    const [sent] = transport().sent;
+    expect(sent!.page).toMatchObject({
+      route: '/pitch/:pitchId/device-check',
+      pitch_id: 'p1',
+      take_id: null,
+      screen: { name: 'device_check', gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' },
+    });
+    expect(sent!.page.screen!.snapshot_id).toMatch(/^ss-[0-9a-f]{16}$/);
+  });
+
+  it('평가 기준 원문이 2,000자를 넘으면 보내지 않고 알린다 (L3-11)', async () => {
+    registerChatScreen('/pitch/new', () => ({
+      name: 'pitch_create',
+      step: 'criteria',
+      version_label: 'V1',
+      version_id: null,
+      saved: null,
+      draft: {
+        title: null,
+        slide_count: null,
+        script_chars: null,
+        time_limit_sec: 300,
+        criteria_text: '가'.repeat(2001),
+      },
+      changed: [],
+    }));
+    await visit('/pitch/new');
+    await openPanel();
+    await type('기준 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent).toEqual([]);
+    expect(alerts()).toContain('평가 기준이 2,000자를 넘어 보낼 수 없어요.');
+    expect(input().value).toBe('기준 괜찮아?');
+  });
+
+  it('보내기 전에는 화면을 따라가고, 보낸 뒤에는 화면을 옮겨도 범위가 바뀌지 않는다', async () => {
+    await visit('/');
+    await openPanel();
+    await go('/pitch/p1/edit');
+    expect(useChatStore.getState().scope).toEqual({ pitchId: 'p1', title: null });
+
+    await type('질문');
+    await press(input(), { key: 'Enter' });
+    await go('/');
+    expect(useChatStore.getState().scope).toEqual({ pitchId: 'p1', title: null });
+  });
+
+  it('접수되지 않음이 확정되면 보낸 글을 입력에 되돌린다', async () => {
+    sendMode.value = 'failed';
+    await visit('/');
+    await openPanel();
+    await type('다시 보낼 말');
+    await press(input(), { key: 'Enter' });
+    await settle();
+    expect(transport().sent).toHaveLength(1);
+    expect(sentMessages()).toEqual([]);
+    expect(input().value).toBe('다시 보낼 말');
+  });
+
+  it('입력은 사용자별 — 다른 사용자로 바뀌면 앞 사용자의 글을 보이지 않는다', async () => {
+    await visit('/');
+    await openPanel();
+    await type('u1 의 글');
+    state.session = { isPending: false, isError: false, data: { id: 'u2' } };
+    await go('/pitches');
+    await openPanel();
+    expect(input().value).toBe('');
+  });
+
+  it('미확정이면 [다시 확인]을 보이고, 누르면 같은 요청을 다시 확인한다', async () => {
+    await visit('/');
+    await openPanel();
+    await act(async () => transport().emit({ type: 'unconfirmed', sendId: 's1' }));
+    expect(alerts()).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.다시 확인');
+    await act(async () => button('다시 확인')!.click());
+    expect(transport().retried).toBe(1);
+    expect(alerts()).toEqual([]);
+  });
+
+  it('실행 중 받은 문장을 보이고, 끝나면 메시지 목록을 다시 읽어 저장된 답으로 바꾼다', async () => {
+    await visit('/');
+    const store = useChatStore.getState();
+    store.selectConversation('c1', { pitchId: null, title: null });
+    store.resolveConversation(chatTicket(), { runId: 'r1', phase: 'RUNNING' });
+    await openPanel();
+    await settle();
+    const reads = () => server.seen.filter((s) => s.path.startsWith('/api/chat/conversations/c1'));
+    const before = reads().length;
+
+    await act(async () =>
+      transport().emit({
+        type: 'progress',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'RUNNING',
+        events: [],
+        claims: [claim('첫 문장')],
+        restart: false,
+        catchUp: false,
+        contractError: null,
+        plan: null,
+        trace: null,
+        progressDropped: false,
+        cards: [],
+      }),
+    );
+    expect(panel()!.querySelector('[aria-live="polite"]')!.textContent).toBe('첫 문장');
+
+    server.messages = () =>
+      Promise.resolve({
+        messages: [
+          { message_id: 'm1', role: 'user', text: '질문', run_id: 'r1' },
+          { message_id: 'm2', role: 'system', text: '확인 시간이 지나 취소했어요.', run_id: 'r1' },
+        ],
+        next_before_seq: null,
+      });
+    await act(async () =>
+      transport().emit({
+        type: 'ended',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'EXPIRED',
+        errorCode: null,
+        endedWhileWaiting: true,
+      }),
+    );
+    await settle();
+    expect(reads().length).toBeGreaterThan(before);
+    expect(panel()!.querySelector('[aria-live="polite"]')).toBeNull();
+    expect(sentMessages()).toEqual(['질문']);
+    expect(panel()!.textContent).toContain('확인 시간이 지나 취소했어요.');
+  });
+
+  it('숨는 화면으로 가면 저장소의 열림도 닫는다', async () => {
+    await visit('/');
+    await openPanel();
+    expect(useChatStore.getState().open).toBe(true);
+    await go('/takes/t1/rehearsal');
+    expect(useChatStore.getState().open).toBe(false);
+  });
 });
