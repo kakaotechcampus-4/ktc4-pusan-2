@@ -27,7 +27,7 @@ import type { SendMessageRequest } from '@/types/chat';
  *            대화가 있든 없든 `pendingSendTicket()` 과 `pending.request` 로 같은 키를 다시 보냅니다(L3-15 "같은 키 ·
  *            본문으로 재시도") — 접수됐던 요청이면 BE 가 같은 202 를, 못 받았던 요청이면 새로 접수합니다.
  *            접수되지 않음이 확정될 때만 failSend 합니다
- *   범위     새 대화는 chooseScope, 있는 대화는 beginScopeChange → PUT → finishScopeChange(표, 결과)
+ *   범위     새 대화는 chooseScope, 있는 대화는 beginScopeChange → PATCH → finishScopeChange(표, 결과)
  *
  * **잠그는 것** (12-4 F2 · F3) — 화면은 `canSend` · `canChangeScope` 로 읽습니다
  * - 보내기: 로그인 전 · 범위 확인 중 · 대화 만드는 중 · 보내는 중(미확정 포함) · 취소 확정 전 · 범위 변경 중 ·
