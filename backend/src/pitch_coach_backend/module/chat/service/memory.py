@@ -87,8 +87,28 @@ CLAUSE_SPLIT = re.compile(r"[.,!?\n]")
 def save_profile_updates(
     repo: ChatRepository, row: ChatRun, conversation: ChatConversation, data: dict[str, Any]
 ) -> None:
+    saved = memory_cards(row)
     cards = [card for card in data["message"]["cards"] if card.get("type") != "MEMORY_SAVED"]
-    for update in _accepted(repo, row, conversation, data.get("profile_updates")):
+    new = new_memory_cards(repo, row, conversation, data.get("profile_updates"), saved)
+    data["message"]["cards"] = [*cards, *saved, *new]
+
+
+def memory_cards(row: ChatRun) -> list[dict[str, Any]]:
+    return list((row.interim_message or {}).get("memory_saved") or [])
+
+
+def new_memory_cards(
+    repo: ChatRepository,
+    row: ChatRun,
+    conversation: ChatConversation,
+    raw: Any,
+    saved: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    done = {(card["key"], card["value"]) for card in saved}
+    cards: list[dict[str, Any]] = []
+    for update in _accepted(repo, row, conversation, raw):
+        if (update["key"], update["value"]) in done:
+            continue
         item_id = repo.upsert_profile_item(row.user_id, update["key"], update["value"])
         cards.append(
             {
@@ -98,7 +118,7 @@ def save_profile_updates(
                 "value": update["value"],
             }
         )
-    data["message"]["cards"] = cards
+    return cards
 
 
 def save_summary(repo: ChatRepository, row: ChatRun, turn_call: int, data: dict[str, Any]) -> None:

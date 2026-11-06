@@ -18,7 +18,11 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
-from pitch_coach_backend.module.chat.service.memory import save_profile_updates, save_summary
+from pitch_coach_backend.module.chat.service.memory import (
+    memory_cards,
+    save_profile_updates,
+    save_summary,
+)
 from pitch_coach_backend.module.chat.service.practice import start_practice
 from pitch_coach_backend.module.chat.service.request import goal_view
 from pitch_coach_backend.module.chat.service.result import failed, succeeded
@@ -126,6 +130,7 @@ def wait_for_action(
             "message": data["message"],
             "assessments": data.get("assessments"),
             "evidence": data.get("evidence"),
+            "memory_saved": memory_cards(row),
         }
     row.turn_calls = [
         {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
@@ -417,7 +422,7 @@ def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | 
         status=status,
         run_id=row.id,
         claims=claims,
-        cards=[],
+        cards=memory_cards(row),
         sources=sources,
         assessments=assessments,
         plan=row.plan,

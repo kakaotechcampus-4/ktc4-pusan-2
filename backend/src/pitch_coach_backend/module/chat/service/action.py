@@ -11,6 +11,7 @@ from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.fetch import fetch_pitch, fetch_take
 from pitch_coach_backend.module.chat.service.goal import save_goal
+from pitch_coach_backend.module.chat.service.memory import memory_cards, new_memory_cards
 from pitch_coach_backend.module.chat.service.result import UNCONFIRMED, close_action, failed
 from pitch_coach_backend.module.chat.service.run import (
     ClaimedRun,
@@ -45,13 +46,18 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
 
 
 def hold_for_approval(
-    db: Session, run: ClaimedRun, action: dict[str, Any]
+    db: Session, run: ClaimedRun, action: dict[str, Any], profile_updates: Any
 ) -> ActionResultDTO | None:
     row = lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)
     if _invalid(action):
         return close_action(db, row, action, failed(action, "INVALID_ACTION", UNCONFIRMED))
+    repo = ChatRepository(db)
+    conversation = repo.lock_conversation(row.conversation_id)
+    saved = memory_cards(row)
+    new = new_memory_cards(repo, row, conversation, profile_updates, saved)
+    row.interim_message = {**(row.interim_message or {}), "memory_saved": [*saved, *new]}
     row.status = "WAITING_APPROVAL"
     row.approval_started_at = datetime.now(UTC)
     row.row_revision += 1
