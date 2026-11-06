@@ -11,6 +11,13 @@ python ai/tools/docs-check/check.py --base origin/develop-next --head HEAD --pr-
 python -m unittest discover -s ai/tools/docs-check -p "test_*.py"
 ```
 
+macOS·Linux는 `python` 대신 `python3`를 씁니다(macOS에는 보통 `python` 명령이 없습니다).
+
+```bash
+python3 ai/tools/docs-check/check.py --base origin/develop-next --head HEAD --pr-body-file pr-body.md
+python3 -m unittest discover -s ai/tools/docs-check -p "test_*.py"
+```
+
 `pr-body.md`는 실행자가 PR 본문을 담아 지정한 로컬 입력입니다. 이 도구가 생성하거나 저장소에 커밋하는 파일은 아닙니다. 실제 PR base를 `--base`에 지정합니다. 스택 PR이면 앞 PR의 브랜치·커밋을 사용합니다.
 
 | 옵션 | 뜻 |
