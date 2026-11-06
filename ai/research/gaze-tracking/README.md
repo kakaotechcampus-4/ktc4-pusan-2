@@ -252,15 +252,18 @@ cd web && npm ci && cd ..               # Node 24
 - 아래 명령은 모두 `ai/research/gaze-tracking`에서 돌립니다. `npm` 명령은 `web/`에서 돌므로 그 줄에서 `cd web`으로 들어가고 블록 끝에서 돌아옵니다.
 - `fetch_assets.py`는 토큰 없이 받습니다(테스트 얼굴은 공개 CC0 데이터셋). 네트워크가 막히면 `--model-file` / `--face-file`.
 - torch는 눈 기반 백본 비교 실험에만 씁니다: `uv sync --extra torch` (CPU 판).
-- Windows에서는 `pytest.exe`가 앱 제어로 막혀 있을 수 있어 `uv run python -m pytest`로 부릅니다.
+- Windows에서는 `pytest.exe`가 앱 제어로 막혀 있을 수 있어 `uv run python -m pytest`로 부릅니다. macOS · Linux에서도 아래 명령을 그대로 씁니다(`run_demo.bat`과 `npm run smoke` 첫 실행만 데모 · 테스트 절에 macOS · Linux 방법을 따로 적었습니다).
 
 ### 데모
 
 ```bash
 run_demo.bat                                           # Python 데모 (웹캠, OpenCV 창). 또는:
+uv run python tools/pipeline_demo.py                   # macOS · Linux: run_demo.bat 대신 (웹캠, OpenCV 창)
 uv run python tools/pipeline_demo.py --video tests/fixtures/local/static_face_30fps.mp4 --no-window --advisory --countdown 0
 cd web && npm run dev                                  # 브라우저 데모 http://localhost:5180 (끝낸 뒤 cd ..)
 ```
+
+- macOS에서는 처음 웹캠을 열 때, 명령을 돌린 터미널 앱(터미널 · iTerm · VS Code 등)에 카메라 권한을 묻습니다. 거절했다면 시스템 설정 → 개인정보 보호 및 보안 → 카메라에서 그 앱을 켜고 다시 실행합니다.
 
 ### 테스트
 
@@ -276,6 +279,8 @@ npm run smoke                              # 실제 브라우저 (Chrome. CHROME
 npm run smoke:prod                         # 운영처럼 격리 헤더 없이
 cd ..
 ```
+
+- macOS · Linux에서는 `npm run smoke`를 처음 돌리기 전에, 이 폴더(`ai/research/gaze-tracking`)에서 `uv run python tools/make_y4m.py`로 가짜 카메라 영상(`web/.cache/static_face.y4m`)을 한 번 만듭니다. smoke는 이 파일이 없으면 Windows 경로의 Python(`.venv/Scripts/python.exe`)으로 만들려 하고, 그것이 없으면 `python`을 부르는데 macOS에는 보통 `python` 명령이 없습니다. Chrome은 `/Applications/Google Chrome.app`에 설치돼 있으면 찾습니다.
 
 ### 생성 파일 · 평가
 
