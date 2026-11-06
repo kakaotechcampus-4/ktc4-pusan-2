@@ -53,6 +53,12 @@ class Role:
     max_output_tokens: int
     reasoning_effort: str | None
     timeout_seconds: float
+    #: 호출 목적별 추론 강도((목적, 강도) 묶음, 예: (("ANSWER", "medium"),)). 없으면 `reasoning_effort`.
+    #: 도구 모드(조사의 도구 고르기)는 게이트웨이 제약으로 언제나 none 이라 여기 값과 관계없다. 계획 호출은 목적 RESEARCH
+    purpose_efforts: tuple[tuple[str, str], ...] = ()
+
+    def effort(self, purpose: str) -> str | None:
+        return dict(self.purpose_efforts).get(purpose, self.reasoning_effort)
 
 
 #: 대화 에이전트 역할. 출력 상한은 실행 출력 예약 16k 를 8번에 나눈 2,000 이하, 추론 강도는 평가에서 잰다(15-3)
@@ -200,8 +206,8 @@ class OpenAiToolLlm:
             # 게이트웨이의 gpt-6-luna 는 chat completions 에서 도구와 추론을 함께 받지 않는다(400 "Function tools with
             # reasoning_effort are not supported ... set reasoning_effort to 'none'", 2026-11-04 확인). 도구 모드는 none
             kwargs["reasoning_effort"] = "none"
-        elif self._role.reasoning_effort:
-            kwargs["reasoning_effort"] = self._role.reasoning_effort
+        elif self._role.effort(req.purpose):
+            kwargs["reasoning_effort"] = self._role.effort(req.purpose)
         if req.tools:
             kwargs["tools"] = req.tools
             kwargs["tool_choice"] = "auto"

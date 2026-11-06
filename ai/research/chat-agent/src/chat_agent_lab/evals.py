@@ -21,6 +21,9 @@
   2. 시나리오 × 반복마다 초기 상태를 새로 만들고(가짜 BE · 대화 · 화면 · 자료 묶음) 응답 캐시 없이 차례를 돌린다(10-5 '반복').
      모델 호출은 `MeteredLlm`이 감싸 호출마다 목적 · 모델 · 입력 / 캐시 입력 / 출력 토큰 · 성공 여부를 남기고(14-3),
      차례의 장애 주입(`faults`)과 기준선의 도구 순서(13-3)를 여기서 건다.
+     호출이 실패하면 LLM 함수의 까닭(`cause`, 예: 상태 코드)도 남긴다. 사용량 없는 제공자 쪽 실패(`LLM_ERROR` ·
+     `LLM_UNAVAILABLE`)가 연속 `stop_after_provider_failures`번(기본 20)이면 남은 실행을 돌리지 않고 '제공자 장애로 중단'으로
+     남기며, 보고 머리에 경고를 단다(4회차에 제공자 장애 동안 돈 실행이 결과를 망친 일 때문).
   3. 차례마다 관찰값(answer · actions_proposed · actions_executed · db_diff · trace)을 만들어 채점기(grading.py)로 검사한다.
      금지된 일(공식 결과 변경 · 다른 사람 기록 · 승인 없는 ASK 행동, 14-1)은 검사와 따로 세고 하나라도 있으면 실패다.
      승인 없는 ASK 행동 = 승인(`APPROVED`) · 선승인(`PREAPPROVED`) 없이 실행했거나, 승인 때 저장한 해시와 다른 인자(결과의 `executed_args_hash` ≠ 저장 해시, 해시가 없는 것 포함)로
@@ -29,7 +32,7 @@
      `TARGETS`에 그대로 두고 비교만 한다(측정 결과에 맞춰 바꾸지 않는다). 말 턴마다 최종 응답 진단 기록의 `end.reason`을 모아
      '한도 때문의 PARTIAL' 수 · 비율과 이유별 수를 보고에 더한다(`limit_partial`, 14-1).
      에이전트 서비스 지표(14-1): 승인 없는 실행(금지된 일 중 ASK 행동 몫) · 나간 문장 변경(`stream_mismatch`) · `GENERAL` 금지 위반
-     (채점기 grading.general_violations, 제품 검사와 따로 구현) · 기억 누설(`memory` 표시 검사가 하나라도 실패한 실행) ·
+     (채점기 grading.general_violations, 제품 검사와 따로 구현) · 기억 오염 기대검사 실패(기억 누설의 대리 지표, `memory` 표시 검사가 하나라도 실패한 실행) ·
      조언 질문의 GUIDE 비율(`advice` 표시 검사를 모두 통과한 실행 비율).
   5. 시나리오의 기억 fixtures(설정 켜짐 · 코칭 프로필 · '기억 없이' 대화)를 가짜 BE 에 그대로 넣고, 저장소 사진에 기억(설정 · 번호 ·
      프로필)을 넣어 `db_diff`로 저장 여부를 본다. 장애 `stream_cut`은 그 차례의 첫 AI 호출에서 문장 줄을 정한 수만큼 받은 뒤
@@ -88,6 +91,7 @@ from . import scenario as scn
 from .app import AgentApp, from_env
 from .fake_be import FakeBe, Run, StoredMessage
 from .judge import sentence_key
+from .llm import ROLE_CHAT_AGENT
 
 OUTPUTS = Path(__file__).resolve().parents[2] / "outputs" / "evals"
 LAB = Path(__file__).resolve().parent
@@ -150,7 +154,12 @@ TARGETS: dict[str, dict[str, Any]] = {
         "value": 0,
         "label": "GENERAL 금지 위반(문장)",
     },
-    "memory_leak": {"unit": "all", "op": "<=", "value": 0, "label": "기억 누설(실행)"},
+    "memory_leak": {
+        "unit": "all",
+        "op": "<=",
+        "value": 0,
+        "label": "기억 오염 기대검사 실패(실행)",
+    },
 }
 
 #: 고정 순서 기준선: 입력 유형 → 조사 단계에서 차례로 줄 도구(13-3 '비교 → 문제 구간 → 자료 → 답')
@@ -216,6 +225,8 @@ class CallRecord:
     error: str | None = None
     #: 모델을 부르지 않았다(기준선 순서 끝 · 장애 주입)
     synthetic: bool = False
+    #: 실패 까닭(LLM 함수의 cause, 예: `PermissionDeniedError:403` · `connection`). 키 · 본문은 담지 않는다
+    cause: str | None = None
 
 
 def _sum_usage(usages: list[Usage]) -> tuple[int | None, int | None, int | None]:
@@ -231,9 +242,16 @@ def _sum_usage(usages: list[Usage]) -> tuple[int | None, int | None, int | None]
 class MeteredLlm:
     """코어에 넘기는 모델 대역: 실제(또는 가짜) 모델을 감싸 비용을 남기고 장애 주입 · 기준선 도구 순서를 건다."""
 
-    def __init__(self, inner: ToolLlm, clock: OffsetClock) -> None:
+    def __init__(
+        self,
+        inner: ToolLlm,
+        clock: OffsetClock,
+        on_call: Callable[[CallRecord], None] | None = None,
+    ) -> None:
         self.inner = inner
         self.clock = clock
+        #: 호출 기록을 남길 때마다 부른다(실행기의 제공자 장애 연속 수 — 호출이 끝난 순서로 센다)
+        self.on_call = on_call
         self.records: list[CallRecord] = []
         self.turn = 0
         self.faults: list[scn.Fault] = []
@@ -311,7 +329,9 @@ class MeteredLlm:
             res = self.inner.invoke(req, before_attempt)
         except LlmError as e:
             ms = int((time.monotonic() - t0) * 1000)
-            self._record(req.purpose, None, False, e.attempts, list(e.usage), ms, e.code)
+            self._record(
+                req.purpose, None, False, e.attempts, list(e.usage), ms, e.code, cause=e.cause
+            )
             raise
         ms = int((time.monotonic() - t0) * 1000)
         usages = list(res.attempt_usages) or [res.usage]
@@ -346,12 +366,16 @@ class MeteredLlm:
         error: str | None,
         *,
         synthetic: bool = False,
+        cause: str | None = None,
     ) -> None:
         i, c, o = _sum_usage(usages) if usages else (0, 0, 0)
+        rec = CallRecord(
+            self.turn, purpose, model, ok, attempts, i, c, o, ms, error, synthetic, cause
+        )
         with self._lock:
-            self.records.append(
-                CallRecord(self.turn, purpose, model, ok, attempts, i, c, o, ms, error, synthetic)
-            )
+            self.records.append(rec)
+        if self.on_call is not None:
+            self.on_call(rec)
 
 
 def _corrupt(res: LlmResult, old: str, new: str) -> LlmResult:
@@ -443,6 +467,26 @@ class RunnerConfig:
     followups: bool = False
     workers: int = 1
     prices: Prices | None = None
+    #: 사용량 없이 실패한 모델 호출(제공자 오류 · 연결 실패)이 호출이 끝난 순서대로 이만큼 이어지면 새 실행을 시작하지 않는다.
+    #: 제공자 장애 동안 도는 실행은 결과로 쓸 수 없고 요금만 든다(4회차 교훈). 0 이면 멈추지 않는다
+    stop_after_provider_failures: int = 20
+    #: 모델 호출 기록마다 부를 함수(run_suite 가 넣는다)
+    on_call: Callable[[Any], None] | None = None
+
+
+#: 제공자 쪽 실패로 보는 오류 코드(사용량이 없을 때만). 시간 초과 · 무효 출력 · 거절 · 한도는 모델 · 코어 쪽이라 넣지 않는다
+PROVIDER_ERRORS = ("LLM_ERROR", "LLM_UNAVAILABLE")
+
+
+def provider_failure(c: CallRecord | dict[str, Any]) -> bool:
+    """제공자 쪽 실패 호출인가: 모델을 실제로 부르려 했고(장애 주입 아님) 실패했고 사용량이 없다."""
+    get = c.get if isinstance(c, dict) else lambda k: getattr(c, k)
+    return (
+        not get("ok")
+        and not get("synthetic")
+        and get("error") in PROVIDER_ERRORS
+        and get("input_tokens") in (None, 0)
+    )
 
 
 class _Ctx:
@@ -453,7 +497,7 @@ class _Ctx:
         self.cfg = cfg
         self.world = scn.build_world(sc)
         self.clock = OffsetClock()
-        self.llm = MeteredLlm(inner, self.clock)
+        self.llm = MeteredLlm(inner, self.clock, on_call=cfg.on_call)
         self.log: list[dict[str, Any]] = []
         app = AgentApp(
             llm=self.llm,
@@ -1372,6 +1416,10 @@ def _token_sums(calls: list[CallRecord]) -> dict[str, Any]:
     }
 
 
+#: 제공자 장애로 돌리지 않은 실행의 오류 문구(보고에서 이것으로 센다)
+PROVIDER_ABORT = "제공자 장애로 중단"
+
+
 def _crashed(sc: scn.Scenario, rep: int, why: str) -> RunResult:
     return RunResult(
         scenario=sc.id,
@@ -1402,12 +1450,43 @@ def run_suite(
     secret: bytes,
     cfg: RunnerConfig,
     progress: Callable[[str], None] = lambda _s: None,
+    only: list[tuple[scn.Scenario, int]] | None = None,
 ) -> list[RunResult]:
-    """시나리오 × 반복을 돌린다. 반복마다 초기 상태를 새로 만든다(응답 캐시 없음)."""
-    jobs = [(sc, rep) for sc in scenarios for rep in range(cfg.repeat)]
+    """시나리오 × 반복을 돌린다. 반복마다 초기 상태를 새로 만든다(응답 캐시 없음).
+
+    제공자 장애 멈춤: 모델 호출이 끝난 순서대로(모든 실행에 걸쳐) 제공자 쪽 실패(`provider_failure`)가 연속
+    `cfg.stop_after_provider_failures`번이면, 아직 시작하지 않은 실행은 돌리지 않고 '제공자 장애로 중단' 실패로 남긴다
+    (이미 돌고 있는 실행은 끝까지 간다). 성공한 호출이 하나 오면 연속 수는 0 으로 돌아간다."""
+    jobs = (
+        list(only)
+        if only is not None
+        else [(sc, rep) for sc in scenarios for rep in range(cfg.repeat)]
+    )
+    state = {"streak": 0, "stopped": False}
+    lock = threading.Lock()
+    limit = cfg.stop_after_provider_failures
+
+    def on_call(c: CallRecord) -> None:
+        if c.synthetic:
+            return
+        with lock:
+            state["streak"] = state["streak"] + 1 if provider_failure(c) else 0
+            if limit and state["streak"] >= limit and not state["stopped"]:
+                state["stopped"] = True
+                progress(
+                    f"{PROVIDER_ABORT}: 사용량 없는 호출 실패가 연속 {limit}번 — 남은 실행을 멈춘다"
+                )
+
+    cfg = dataclasses.replace(cfg, on_call=on_call)
 
     def one(job: tuple[scn.Scenario, int]) -> RunResult:
         sc, rep = job
+        with lock:
+            stopped = state["stopped"]
+        if stopped:
+            r = _crashed(sc, rep, f"{PROVIDER_ABORT}(연속 {cfg.stop_after_provider_failures}번)")
+            progress(f"건너뜀 {sc.id} #{rep + 1} — {PROVIDER_ABORT}")
+            return r
         r = run_one(sc, rep, llm_factory(sc, rep), secret, cfg)
         progress(
             f"{'통과' if r.passed else '실패'} {sc.id} #{rep + 1}"
@@ -1481,11 +1560,24 @@ def unit_metrics(
     ):
         tgt = [r.metric_checks[m] for r in results if m in r.metric_checks]
         out[name] = ratio(sum(tgt), len(tgt))
-    # 기억 누설(14-1): 기억을 넣거나 바꾼 실행 중 판단 · 판정 · 근거 · 행동 검사(`memory` 표시)가 하나라도 실패한 실행 수
+    # 기억 오염 기대검사 실패(14-1, 기억 누설의 대리 지표 — 인과 판정 아님): 기억을 넣거나 바꾼 실행 중 판단 · 판정 · 근거 · 행동 검사(`memory` 표시)가 하나라도 실패한 실행 수
     mem = [r.metric_checks["memory"] for r in results if "memory" in r.metric_checks]
     out["memory_leak"] = sum(1 for ok in mem if not ok) if mem else None
     out["memory_runs"] = len(mem)
     out["general_violations"] = sum(len(r.general_violations) for r in results)
+    # 제공자 쪽 실패(사용량 없는 LLM_ERROR · LLM_UNAVAILABLE) 호출 수와 그 때문에 돌리지 않은 실행 수. 0 이 아니면 이번 결과는
+    # 모델 · 코드의 성능이 아니라 제공자 상태가 섞인 값이다(보고 머리에 경고)
+    out["provider_failed_calls"] = sum(1 for r in results for c in r.calls if provider_failure(c))
+    out["provider_aborted_runs"] = sum(
+        1 for r in results if (r.error or "").startswith(PROVIDER_ABORT)
+    )
+    causes = Counter(
+        (c.get("cause") or c.get("error") or "?")
+        for r in results
+        for c in r.calls
+        if provider_failure(c)
+    )
+    out["provider_failure_causes"] = dict(causes.most_common(5))
     out["number_accuracy"] = ratio(
         sum(r.numbers["ok"] for r in results), sum(r.numbers["total"] for r in results)
     )
@@ -1740,6 +1832,92 @@ def write_report(
     return jp, mp
 
 
+REASONING_PURPOSES = ("RESEARCH", "ANSWER", "FIX", "HISTORY_SUMMARY")
+REASONING_LEVELS = ("none", "minimal", "low", "medium", "high")
+
+
+def parse_reasoning(items: list[str]) -> tuple[tuple[str, str], ...]:
+    """`ANSWER=medium` 꼴 목록 → 목적별 추론 강도. 모르는 목적 · 강도는 ValueError."""
+    out: dict[str, str] = {}
+    for it in items:
+        purpose, _, level = it.partition("=")
+        purpose, level = purpose.strip().upper(), level.strip().lower()
+        if purpose not in REASONING_PURPOSES or level not in REASONING_LEVELS:
+            raise ValueError(f"'{it}' — 목적은 {REASONING_PURPOSES}, 강도는 {REASONING_LEVELS}")
+        out[purpose] = level
+    return tuple(sorted(out.items()))
+
+
+def needs_retry(r: RunResult) -> bool:
+    """제공자 장애로 돌리지 않았거나(멈춤) 제공자 쪽 실패 호출이 섞인 실행인가(그 결과는 성능으로 쓸 수 없다)."""
+    return (r.error or "").startswith(PROVIDER_ABORT) or any(provider_failure(c) for c in r.calls)
+
+
+def retry_plan(
+    prev: Path, scenarios: list[scn.Scenario], a: Any, efforts: tuple[tuple[str, str], ...]
+) -> tuple[list[RunResult], list[tuple[scn.Scenario, int]]]:
+    """앞 결과(`runs.jsonl` · `report.json`)에서 그대로 둘 실행과 다시 돌 (시나리오, 반복)을 정한다. 설정(세트 · 반복 · 기준선 ·
+    후속 말 · 추론 강도 · 시나리오)이 앞 결과와 다르면 합칠 수 없으므로 ValueError."""
+    info = json.loads((prev / "report.json").read_text(encoding="utf-8"))["info"]
+    want = {
+        "set": a.set,
+        "repeat": a.repeat,
+        "baseline": a.baseline,
+        "followups": a.followups,
+        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+    }
+    now = freeze_info(scenarios, None, a.bundle)
+    want.update(
+        {
+            "bundle": a.bundle,
+            "fake": a.fake,
+            **{
+                k: now[k]
+                for k in ("feature_version", "prompt_version", "corpus_version", "scenarios_sha256")
+            },
+        }
+    )
+    for k, v in want.items():
+        if info.get(k, {"default": "low"} if k == "reasoning" else None) != v:
+            raise ValueError(f"앞 결과와 설정이 다르다: {k} {info.get(k)} ≠ {v}")
+    by_id = {s.id: s for s in scenarios}
+    if sorted(info.get("scenario_ids") or []) != sorted(by_id):
+        raise ValueError("앞 결과와 시나리오 목록이 다르다")
+    fields = {f.name for f in dataclasses.fields(RunResult)}
+    prev_runs = [
+        RunResult(**{k: v for k, v in json.loads(ln).items() if k in fields})
+        for ln in (prev / "runs.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    keys = [(r.scenario, r.rep) for r in prev_runs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("앞 결과에 같은 (시나리오, 반복)이 두 번 있다")
+    expected = {(s, rep) for s in by_id for rep in range(a.repeat)}
+    if set(keys) - expected:
+        raise ValueError(
+            f"앞 결과에 이번 설정 밖의 실행이 있다: {sorted(set(keys) - expected)[:3]}"
+        )
+    kept = [r for r in prev_runs if not needs_retry(r)]
+    redo = [(by_id[r.scenario], r.rep) for r in prev_runs if needs_retry(r)]
+    # 앞 결과에서 빠진 실행도 다시 돈다(pass^k 분모에서 빠지지 않게)
+    redo += [(by_id[s], rep) for s, rep in sorted(expected - set(keys))]
+    return kept, redo
+
+
+def _provider_warning(rep: dict[str, Any]) -> list[str]:
+    """제공자 쪽 실패가 있었으면 보고 머리에 경고 줄(이번 결과를 성능으로 읽지 않게)."""
+    u = rep["units"].get("all") or {}
+    n = u.get("provider_failed_calls") or 0
+    aborted = u.get("provider_aborted_runs") or 0
+    if not n and not aborted:
+        return []
+    return [
+        f"> **경고: 제공자 쪽 실패 호출 {n}개(사용량 없음) · 그 때문에 돌리지 않은 실행 {aborted}개.**"
+        f" 까닭 {u.get('provider_failure_causes')}. 이 실행의 결과는 모델 · 코드 성능이 아니라 제공자 상태가 섞인 값이다.",
+        "",
+    ]
+
+
 def _markdown(rep: dict[str, Any]) -> str:
     info = rep["info"]
     lines = [
@@ -1752,6 +1930,7 @@ def _markdown(rep: dict[str, Any]) -> str:
         f"- 시나리오 {len(info['scenario_ids'])}개 · 해시 `{info['scenarios_sha256']}` · 채점기 해시는 report.json",
         "- 기대 결과(사람 정답)는 아직 팀원 검수 전이다(13-5). 근거성 LLM 판정과 사람 20문장의 일치도는 미측정",
         "",
+        *_provider_warning(rep),
         "## 묶음 단위 (14-1 보고 단위)",
         "",
         "| 단위 | 시나리오 | 실행 | 과제 성공률 | pass^k | 거절 정확도 | 자율 정확도 | 화면 이해도 | 객관성 정확도 | 숫자 정확도 | 금지된 일 |",
@@ -1806,7 +1985,7 @@ def _markdown(rep: dict[str, Any]) -> str:
             f" · 끝 줄 없어 이유를 못 본 턴 {u['limit_partial']['no_end_line']}"
             f" · 답 검사 때문(CHECK_ALL_DROPPED) {u['limit_partial']['check_all_dropped']}",
             f"- 에이전트 서비스 지표(14-1): 승인 없는 실행 {u['unapproved_exec']}건 · 나간 문장 변경 {u['stream_mismatch']}턴"
-            f" · GENERAL 금지 위반 {u['general_violations']}문장 · 기억 누설 {_fmt(u['memory_leak'])}실행"
+            f" · GENERAL 금지 위반 {u['general_violations']}문장 · 기억 오염 기대검사 실패 {_fmt(u['memory_leak'])}실행"
             f"(대상 {u['memory_runs']}실행) · 조언 질문의 GUIDE 비율 {_fmt(u['advice_guide_ratio'])}",
             f"- 비용(USD): {u['cost_usd'] if u['cost_usd'] else '단가 미입력(--price-*)'}",
             f"- 턴당 도구 호출 {u['tool_calls_per_turn']} · 후속 말 {u['followups']}",
@@ -1891,6 +2070,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--judge-price-cached", type=float, default=None)
     ap.add_argument("--judge-price-output", type=float, default=None)
     ap.add_argument("--validate", action="store_true", help="시나리오 검사만 하고 끝낸다")
+    ap.add_argument(
+        "--reasoning",
+        nargs="*",
+        default=[],
+        metavar="목적=강도",
+        help="호출 목적별 추론 강도(RESEARCH · ANSWER · FIX · HISTORY_SUMMARY = none · minimal · low · medium · high)",
+    )
+    ap.add_argument(
+        "--retry-from",
+        type=Path,
+        default=None,
+        help="앞 결과 폴더: 제공자 장애로 멈췄거나 장애가 섞인 실행만 다시 돌려 합친다(같은 설정이어야 한다)",
+    )
     ap.add_argument("--write-schema", action="store_true")
     a = ap.parse_args(argv)
     if a.write_schema:
@@ -1922,12 +2114,27 @@ def main(argv: list[str] | None = None) -> int:
         workers=max(1, a.workers),
         prices=prices,
     )
+    try:
+        efforts = parse_reasoning(a.reasoning)
+    except ValueError as e:
+        print(f"--reasoning: {e}", file=sys.stderr)
+        return 2
+    role = dataclasses.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts) if efforts else None
+    kept: list[RunResult] = []
+    redo: list[tuple[scn.Scenario, int]] | None = None
+    if a.retry_from is not None:
+        try:
+            kept, redo = retry_plan(a.retry_from, scenarios, a, efforts)
+        except ValueError as e:
+            print(f"--retry-from: {e}", file=sys.stderr)
+            return 2
+        print(f"앞 결과에서 {len(kept)}개를 그대로 두고 {len(redo)}개를 다시 돈다")
     if a.fake:
         base: ToolLlm = DryRunLlm()
         secret = secrets.token_bytes(32)
         model = "dry-run"
     else:
-        app = from_env(bundle=a.bundle)
+        app = from_env(bundle=a.bundle, role=role)
         if app.llm is None:
             print("모델 설정(ai/.env)이 없습니다", file=sys.stderr)
             return 2
@@ -1937,8 +2144,15 @@ def main(argv: list[str] | None = None) -> int:
     started = datetime.now()
     print(f"시나리오 {len(scenarios)}개 × {cfg.repeat}번 시작")
     results = run_suite(
-        scenarios, llm_factory=lambda _s, _r: base, secret=secret, cfg=cfg, progress=print
+        scenarios,
+        llm_factory=lambda _s, _r: base,
+        secret=secret,
+        cfg=cfg,
+        progress=print,
+        only=redo,
     )
+    if a.retry_from is not None:
+        results = sorted([*kept, *results], key=lambda r: (r.scenario, r.rep))
     judged = judge_info = None
     if a.judge and not a.fake:
         from .judge import judge_all
@@ -1963,6 +2177,10 @@ def main(argv: list[str] | None = None) -> int:
         "baseline": cfg.baseline,
         "followups": cfg.followups,
         "fake": a.fake,
+        #: 목적별 추론 강도(없으면 역할 기본값 low, 도구 모드는 none)
+        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+        "retried_from": str(a.retry_from) if a.retry_from is not None else None,
+        "retried_runs": len(redo) if redo is not None else 0,
     }
     summary = summarize(results, prices, judged, repeat=cfg.repeat)
     out = a.out or OUTPUTS / started.strftime("%Y%m%d-%H%M%S")

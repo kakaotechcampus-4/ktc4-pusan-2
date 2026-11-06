@@ -25,11 +25,14 @@ SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 #: 자료 묶음 판 → 묶음 해시. 한 번 정한 판의 해시는 바꾸지 않는다: 카드 본문을 고치면 판을 올리고 여기에 줄을 더한다
 #: (같은 판에 다른 본문이 들어가면 그 판을 인용한 옛 답 · 진행 중 실행과 어긋난다, L4-30). 첫 배포 전에도 평가 결과 표(README)에
 #: 남은 판은 고쳐 쓰지 않는다(그 판으로 잰 결과와 본문이 어긋난다). guides-2: 동의어 사전 · 카드 g-13 범위 밖 문장 빼기.
-#: guides-3: 사용법 카드 u-07 을 기준이 판정되는 방식(사실)만 남김 — 평가 기준을 어떻게 쓰라는 조언은 범위 밖(1-3)
+#: guides-3: 사용법 카드 u-07 을 기준이 판정되는 방식(사실)만 남김 — 평가 기준을 어떻게 쓰라는 조언은 범위 밖(1-3).
+#: guides-4: u-08 의 기준 고쳐 쓰기 안내 문장 빼기, 동의어 사전에서 오탐 낱말(불안 · 급하게 · 포즈 · 결론 …) 빼고
+#: 목소리 · 억양 묶음 대표어를 카드 표현으로, q&a 더함
 CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-1": "48aa04e52f8f16abacb6c87d37d5536daf39e4d3c4aac05bf1550cad9dd6ad89",
     "guides-2": "a2b1f11aaf653da307afce2ec0bfe8d5a141fe08d3faed1e803c955ffe619823",
     "guides-3": "470a7eb607869ce4598e956d9c6d958b2cde5678d792062cc12b4342f85776bc",
+    "guides-4": "ed5d3b2dd2a3aae8acd8ec5bc71518b64863d1ba7323db889140f20200af16d7",
 }
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),
