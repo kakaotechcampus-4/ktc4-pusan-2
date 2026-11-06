@@ -15,7 +15,8 @@
 - 문장 줄에는 실행 전체에서 이어지는 번호와 그 줄이 처음 쓰는 근거 · 자료 사본, 아직 보내지 않은 확정 판단을 싣는다
   (`ClaimLines`). 그래서 문장 줄을 하나라도 받았으면 그때까지 확정된 판단이 모두 BE에 있다.
 - 스레드: 응답 조각은 LLM 실행 풀의 스레드에서 들어온다. 잠금 하나로 묶고, 답 쓰기 호출이 끝나면 `close()`로 늦게 온 조각을
-  버린다. 스트림 처리에서 예외가 나면 그 뒤로는 스트림을 멈추고 초안을 다 받은 뒤 한꺼번에 낸다(답은 막지 않는다).
+  버린다. 스트림 처리에서 예외가 나거나 같은 최상위 키가 두 번 오면 그 뒤로는 흘려 내지 않고 초안을 다 받은 뒤
+  한꺼번에 낸다(답은 막지 않는다).
 - 하지 않는 것: 상태 · 행동 정하기와 끝 줄 조립(turn.py), 줄 쓰기 · 크기 한도(turn.py `_Writer`).
 - 고칠 때: 검사 규칙은 checks.py, 판단 확정은 claims.py, 템플릿 문장은 compose.py · templates.py.
 """
@@ -236,6 +237,10 @@ class Composer:
             try:
                 for ev in self.tracker.feed(text):
                     self._on(ev)
+                if self.tracker.duplicate_key:
+                    # 같은 최상위 키가 두 번 오면 다 받은 뒤 파싱은 마지막 값을 쓴다: 그 뒤로는 흘려 내지 않는다
+                    self.broken = True
+                    return
                 self._advance()
             except Exception as exc:  # noqa: BLE001  # 스트림 처리 오류로 답을 막지 않는다(초안을 다 받은 뒤 한꺼번에 낸다)
                 self.broken = True
@@ -410,13 +415,17 @@ class Composer:
         if [_key(c) for c in out[:n]] == [_key(c) for c in self.sent]:
             rest, rflags = out[n:], flags[n:]
         else:
-            # 스트림에서 읽은 초안과 다 받은 초안이 다르다(낸 뒤 실패해 빈 초안 등): 낸 문장은 그대로 두고 나머지만 본다
+            # 스트림에서 읽은 초안과 다 받은 초안이 다르다(낸 뒤 실패해 빈 초안 등): 낸 문장은 그대로 두고 나머지만 본다.
+            # 이미 낸 판단 문장의 판단은 다시 그리지 않는다(설명 없이 다시 만든 첫 문장이 한 번 더 나가지 않게)
             left = Counter(_key(c) for c in self.sent)
+            said_as = {c.assessment_id for c in self.sent if c.kind == "ASSESSMENT"}
             rest, rflags = [], []
             for c, f in zip(out, flags, strict=True):
                 k = _key(c)
                 if left[k] > 0:
                     left[k] -= 1
+                    continue
+                if c.kind == "ASSESSMENT" and c.assessment_id in said_as:
                     continue
                 rest.append(c)
                 rflags.append(f)

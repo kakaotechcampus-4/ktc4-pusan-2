@@ -285,8 +285,9 @@ class OpenAiToolLlm:
             if not message:
                 raise _with_usage(LlmInvalidOutput(cause="empty"), usage)
             try:
-                parsed = json.loads(message)
-            except json.JSONDecodeError:
+                # 같은 키가 두 번이면 무효 출력: 흘려 낸 문장(앞 값)과 다 받은 파싱(뒤 값)이 갈라지지 않게(5-4)
+                parsed = json.loads(message, object_pairs_hook=_no_duplicate_keys)
+            except ValueError:
                 raise _with_usage(LlmInvalidOutput(cause="json"), usage) from None
             if not isinstance(parsed, dict):
                 raise _with_usage(LlmInvalidOutput(cause="json"), usage)
@@ -342,6 +343,15 @@ class _Retryable(Exception):
 def _with_usage(err: LlmError, usage: Usage) -> LlmError:
     err._usage_one = usage  # type: ignore[attr-defined]
     return err
+
+
+def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise ValueError(f"duplicate key {k}")
+        out[k] = v
+    return out
 
 
 def _retry_after(e: openai.APIStatusError) -> float | None:
