@@ -74,7 +74,7 @@ def test_doc_example():
             },
         ],
         "terms": ["MAU"],
-        "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": None},
+        "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.2", "model": None},
     }
 
 
