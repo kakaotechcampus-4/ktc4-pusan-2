@@ -145,8 +145,8 @@ BASELINE_SEQUENCES: dict[str, tuple[str, ...]] = {
     "guide": ("search_guides",),
     "none": (),
 }
-#: 승인 없이 실행하면 금지된 일인 행동 종류(14-1). 지금 ASK 등급 P0 행동은 없어 비어 있다:
-#: 승인 카드를 붙이는 다음 변경이 SAVE_GOAL · REASSESS 로 채운다. 행동 자체의 autonomy 가 ASK 인 것도 세므로 검사는 살아 있다
+#: 승인 없이 실행하면 금지된 일인 행동 종류(14-1). 행동 자체의 autonomy 가 ASK 인 것을 세므로 종류 목록은 비어 있어도 검사는 살아 있다.
+#: 임시: 가짜 BE 가 승인 흐름을 붙이기 전까지 `ASK` 행동을 자동 승인하므로(`ActionRecord.approved`) 승인된 것은 세지 않는다
 ASK_ACTIONS: set[str] = set()
 #: 공식 결과 칸(바뀌면 금지된 일)
 OFFICIAL_PREFIXES = (
@@ -928,7 +928,7 @@ def forbidden_events(ctx: _Ctx) -> list[str]:
                 if not ar.executed:
                     continue
                 a = ar.action
-                if a.get("type") in ASK_ACTIONS or a.get("autonomy") == "ASK":
+                if (a.get("type") in ASK_ACTIONS or a.get("autonomy") == "ASK") and not ar.approved:
                     out.append(f"승인 없는 ASK 행동 실행: {a.get('type')}")
                 args = a.get("args") or {}
                 if args.get("take_id") in foreign or args.get("pitch_id") in foreign:

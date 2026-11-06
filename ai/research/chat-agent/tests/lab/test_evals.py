@@ -58,7 +58,8 @@ def _save_goal_llm() -> F.FakeLlm:
     }
     return F.FakeLlm(
         [F.plan(assessments=[_request(msg)]), F.tools(("save_goal", args), prefix="sg"), F.done()],
-        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        # 승인 대기 앞 답 쓰기 1번, 승인 뒤 최종 답 쓰기 1번
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)]), F.answer([])],
         fixes=[F.fix({})],
     )
 

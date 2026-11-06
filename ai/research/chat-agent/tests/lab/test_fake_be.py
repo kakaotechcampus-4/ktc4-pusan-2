@@ -364,7 +364,8 @@ def save_goal_llm() -> F.FakeLlm:
             F.tools(("save_goal", SAVE_ARGS), prefix="sg"),
             F.done(),
         ],
-        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        # 승인 대기 앞 답 쓰기 1번, 승인 뒤 최종 답 쓰기 1번
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)]), F.answer([])],
         fixes=[F.fix({})],
     )
 
@@ -490,7 +491,8 @@ def reassess_llm(change: dict[str, Any], drafts: list[dict[str, Any]], answer: A
             ),
             F.done(),
         ],
-        answers=[answer],
+        # 승인 대기 앞 답 쓰기(판단 문장), 승인 뒤 최종 답 쓰기
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)]), answer],
         fixes=[F.fix({})],
     )
 

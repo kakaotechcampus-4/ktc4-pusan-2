@@ -560,6 +560,8 @@ class ChatAgentConfig(_Frozen):
     line_write_seconds: float = 2.0
     state_ttl_seconds: int = 600
     state_ttl_ask_seconds: int = 2_100
+    #: 승인 확인 카드의 유효시간(초) — `ASK_CONFIRM.expires_at` = 발급 + 이만큼. BE 의 승인 대기(30분)와 같다(5-2 · 6-2)
+    approval_wait_seconds: int = 1_800
     #: 같은 (도구, 인자, 범위, 자료 판)을 새 근거 없이 연속 이만큼 요청하면 조사를 끝낸다
     repeat_stop: int = 2
     #: 무효 도구 응답이 연속 이만큼이면 조사를 끝낸다

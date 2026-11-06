@@ -429,9 +429,26 @@ class ReassessResultCard(_Out):
 
 
 class StartPracticeCard(_Out):
+    """[연습 준비로] 버튼 카드. 사용자가 누를 때만 FE 가 옮긴다(자동 이동 없음 · `auto` 필드 없음, 6-2)."""
+
     type: Literal["START_PRACTICE"] = "START_PRACTICE"
     pitch_id: StrictStr
-    auto: StrictBool
+
+
+class AskConfirmCard(_Out):
+    """승인 확인 카드(5-2 · 6-2). 코드가 대기 행동의 `args`로만 그린다(모델 문장 없음)."""
+
+    type: Literal["ASK_CONFIRM"] = "ASK_CONFIRM"
+    action_id: StrictStr
+    action_type: Literal["SAVE_GOAL", "REASSESS"]
+    title: StrictStr
+    summary: StrictStr
+    before: dict[str, Any] | None
+    after: dict[str, Any]
+    notes: list[StrictStr] = Field(default_factory=list)
+    expires_at: StrictStr
+    #: 대기 행동의 `args_hash`와 같다. FE 는 이 값을 승인 · 거절 요청에 그대로 보낸다
+    args_hash: StrictStr
 
 
 class GoalResultCard(_Out):
@@ -444,7 +461,12 @@ class GoalResultCard(_Out):
 
 
 Card = Annotated[
-    GoalSavedCard | GoalProposalCard | ReassessResultCard | StartPracticeCard | GoalResultCard,
+    GoalSavedCard
+    | GoalProposalCard
+    | ReassessResultCard
+    | StartPracticeCard
+    | GoalResultCard
+    | AskConfirmCard,
     Field(discriminator="type"),
 ]
 
@@ -608,6 +630,8 @@ class ActionResult(_In):
     status: Literal["SUCCEEDED", "FAILED", "AMBIGUOUS"]
     data: dict[str, Any] | None = None
     error: ErrorDetail | None = None
+    #: `ASK` 행동(승인 뒤 실행)의 결과에 싣는다: 행동 `type`과 BE 가 실행한 `args`를 `args_hash`와 같은 규칙으로 계산한 값(5-8)
+    executed_args_hash: StrictStr | None = None
 
 
 class Resume(_In):
@@ -660,7 +684,16 @@ class TurnRequest(_In):
 
 # ── 5-8 행동 ───────────────────────────────────────────────────────────────
 
-Autonomy = Literal["AUTO", "AUTO_UNDO", "ASK"]
+#: `AUTO` 묻지 않고 실행 · `ASK` 확인 카드로 승인받은 뒤 BE 가 실행 · `BUTTON` 버튼 카드만(사용자가 누르면 FE 가 옮김)
+Autonomy = Literal["AUTO", "ASK", "BUTTON"]
+
+
+class Preapproved(_Out):
+    """목표 제안 카드에서 고른 클릭이 승인인 `SAVE_GOAL`(6-2). BE 가 내용 해시를 다시 계산해 맞을 때만 카드 없이 실행한다."""
+
+    by: Literal["CHOICE"] = "CHOICE"
+    proposal_id: StrictStr
+    content_hash: StrictStr
 
 
 class Action(_Out):
@@ -668,10 +701,20 @@ class Action(_Out):
     type: ActionType
     args: dict[str, Any]
     autonomy: Autonomy
+    #: `ASK` 행동에 필수(행동 `type`과 확정 `args`의 정렬 JSON SHA-256, 5-8)
     args_hash: StrictStr | None = None
     idempotency_key: StrictStr
     reason: StrictStr
     authorized_by: StrictStr | None = None
+    preapproved: Preapproved | None = None
+
+    @model_validator(mode="after")
+    def _ask_needs_hash(self) -> Action:
+        if self.autonomy == "ASK" and not self.args_hash:
+            raise ValueError("ASK 행동은 args_hash 가 필수다")
+        if self.preapproved is not None and (self.autonomy != "ASK" or self.type != "SAVE_GOAL"):
+            raise ValueError("preapproved 는 ASK 등급의 SAVE_GOAL 에만 싣는다")
+        return self
 
 
 # ── 11-5 진단 기록 ──────────────────────────────────────────────────────────
@@ -980,8 +1023,25 @@ class FinalData(_Out):
                 raise ValueError("NEEDS_ACTION 은 행동 정확히 1개(START_PRACTICE 아님)")
             if self.state is None:
                 raise ValueError("NEEDS_ACTION 은 state 필수")
+            act0 = self.actions[0]
+            if act0.autonomy == "BUTTON":
+                raise ValueError("NEEDS_ACTION 의 행동은 BUTTON 등급이 아니다")
+            if act0.autonomy == "ASK":
+                # 확인 카드를 기다리는 행동: 그때까지 낸 문장을 message 에 싣고, 선승인이 아니면 확인 카드도 싣는다(5-5)
+                if self.message is None:
+                    raise ValueError("ASK 행동의 NEEDS_ACTION 은 message 필수")
+                if act0.preapproved is None and not any(
+                    c.type == "ASK_CONFIRM"
+                    and c.action_id == act0.action_id
+                    and c.args_hash == act0.args_hash
+                    for c in self.message.cards
+                ):
+                    raise ValueError(
+                        "ASK 행동은 같은 action_id · args_hash 의 ASK_CONFIRM 카드가 필수"
+                    )
             if self.actions[0].type == "REASSESS" and self.assessments:
-                ids = {a.assessment_id for a in self.assessments}
+                # 문장 없이 응하는 요청(REQUEST)은 판단 문장이 없다. 사실 · 의견 판단은 문장으로 이어져야 한다
+                ids = {a.assessment_id for a in self.assessments if a.type != "REQUEST"}
                 linked = {
                     c.assessment_id
                     for c in (self.message.claims if self.message else [])

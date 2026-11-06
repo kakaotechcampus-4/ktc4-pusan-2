@@ -79,6 +79,8 @@ ANSWER = """[단계: 답 쓰기]
   - CONCLUSION: 비교 결론. text 는 비우고 comparison_evidence_id 에 compare_takes 결과의 evidence_by_role.outcome 을 넣는다.
 - start_practice: 사용자가 이번 말에서 연습하러 가자 · 바로 발표할래처럼 이동을 요청했으면 {authorized_by: 그 요청 부분 그대로}, 연습을 권하기만 하면 {authorized_by: null}, 아니면 null.
 - history_summary: 대화가 길어 다음 턴에 쓸 요약이 필요하면 2문장 이하, 아니면 null.
+- <research> 의 already_said 는 이미 사용자에게 보인 문장이다. 같은 내용을 되풀이하지 말고 그 뒤에 이어질 내용만 쓴다(더 쓸 말이 없으면 claims 를 비운다).
+- <research> 에 pending_action 이 있으면 그 행동은 아직 실행되지 않았고 사용자가 확인 카드로 승인해야 실행된다. 행동을 했다 · 저장했다 · 다시 평가했다고 쓰지 않고, 지금까지 확인한 내용으로만 답한다(확인 카드와 행동 결과 문장은 코드가 낸다).
 동의 · 칭찬(맞아요 · 잘하셨어요 · 훌륭해요)은 기록이 그 판단을 뒷받침할 때만 쓴다."""
 
 ANSWER = ANSWER + "\n" + SCOPE

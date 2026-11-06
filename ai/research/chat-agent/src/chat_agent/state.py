@@ -315,6 +315,6 @@ def verify(
 def issue_times(
     now_ms: int, *, ask: bool, cfg: ChatAgentConfig = DEFAULT_CONFIG
 ) -> tuple[int, int]:
-    """(issued_at, expires_at) ms. 발급 + 10분, P1 `ASK` 승인 대기로 멈춘 상태는 발급 + 35분(5-6)."""
+    """(issued_at, expires_at) ms. 발급 + 10분, `ASK` 승인 대기(확인 카드)로 멈춘 상태는 발급 + 35분(5-6)."""
     ttl = cfg.state_ttl_ask_seconds if ask else cfg.state_ttl_seconds
     return now_ms, now_ms + ttl * 1000

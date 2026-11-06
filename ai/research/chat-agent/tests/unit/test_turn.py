@@ -968,7 +968,8 @@ def test_fm_L1_32_changed_revision_during_reassess_supersedes_exported_judgement
                 F.plan(assessments=[change_draft()]),
                 F.tools(COMPARE),
                 F.tools(reassess, prefix="act"),
-            ]
+            ],
+            answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
         ),
     )
     assert d1["status"] == "NEEDS_ACTION" and len(d1["assessments"]) == 1
@@ -986,6 +987,7 @@ def test_fm_L1_32_changed_revision_during_reassess_supersedes_exported_judgement
             "status": "SUCCEEDED",
             "data": data,
             "error": None,
+            "executed_args_hash": a1["args_hash"],
         }
     ]
     req2 = resume_request(req, d1, r1)
@@ -995,7 +997,10 @@ def test_fm_L1_32_changed_revision_during_reassess_supersedes_exported_judgement
     assert first_id in ids and len(ids) == 2
     new = next(a for a in fd.assessments if a.assessment_id != first_id)
     assert new.supersedes == [first_id]
-    assert fd.message.claims[0].text == templates.SystemText.RECORD_CHANGED_DURING.value  # type: ignore[union-attr]
+    # 멈추기 전에 낸 판단 문장이 맨 앞에 그대로 있고(5-5), 그 뒤에 기록이 바뀌었다는 안내가 온다
+    said = d1["message"]["claims"]
+    assert [c.model_dump(mode="json") for c in fd.message.claims[: len(said)]] == said  # type: ignore[union-attr]
+    assert fd.message.claims[len(said)].text == templates.SystemText.RECORD_CHANGED_DURING.value  # type: ignore[union-attr]
 
 
 def test_fm_L1_12_research_refusal_ends_refused() -> None:

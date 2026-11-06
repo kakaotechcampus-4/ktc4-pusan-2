@@ -5,6 +5,8 @@
   1. 처음(USER_MESSAGE)이면 계획 호출(구조화)로 할 일 목록 · 판단 초안을 받는다. 무효면 형식 고치기 1회(조사 몫), 그래도 무효면 기본 계획.
      판단은 근거를 읽을 때까지 내보내지 않는다(실행 상태 안에만 둔다).
   2. 조사: 모델이 도구를 고르면 실행해 결과를 돌려주고, 행동을 고르면 그 지점에서 멈추고 NEEDS_ACTION 을 낸다(한 응답에서 첫 행동까지만).
+     `ASK` 행동(저장 · 다시 평가)이면 멈추기 전에 turn.py 가 그때까지 확인한 것으로 답 문장을 먼저 쓰고 검사해 확인 카드와 함께 낸다(6-1 4번).
+     그 문장 · 판단 · 자료 카드는 `LoopState.emitted` 등으로 서명 상태에 실려 이어 부른 뒤 최종 답의 앞부분에 그대로 싣는다(5-5).
      한도(8-2: 모델 호출 18번 중 조사는 16번째 시도까지 · 도구 12번 · 시간 · 토큰)에 닿거나, 같은 (도구, 인자, 범위, 자료 판)을 새 근거 없이
      연속 2회, 최근 네 요청이 A-B-A-B로 번갈아 되풀이(교대 반복, 캐시 적중 포함), 무효 도구 응답이 연속 2회면 조사를 끝낸다.
      교대 반복은 요청마다 판정해 그 응답의 남은 요청은 실행하지 않고, 새 근거가 생긴 요청에서 기록을 비운다. 이미 한도로 정해진 끝난 이유는 덮지 않는다.
@@ -13,7 +15,7 @@
   3. 답 쓰기(구조화) → 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 · 결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9).
      걸리면 걸린 문장과 까닭을 알려 한 번 고치게 하고 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
-- 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤,
+- 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤,
   행동 결과를 검사해 반영하고 2부터 잇는다.
 - 자동 목표 확인(TAKE_REVIEWED): 모델 없이 코드가 목표를 판정하고 결과 문장 · 카드를 만든다(meta.model null).
 - 고칠 때: 한도 숫자는 config.py, 순서 규칙은 budget.py. 사용자에게 보이는 문구는 templates.py.
@@ -76,7 +78,9 @@ class LoopState:
     drafts: list[dict[str, Any]] = field(default_factory=list)
     #: 같은 실행에서 이미 내보낸 판단(그 근거 사본과 함께 최종 답에 남김, 5-5)
     exported: list[dict[str, Any]] = field(default_factory=list)
-    exported_sentences: dict[str, str] = field(default_factory=dict)
+    #: 승인 대기로 멈추기 전에 이미 낸 문장(`Claim`)과 그 자료 카드 사본. 이어 부른 뒤 최종 답의 앞부분에 그대로 싣는다(5-5 · 5-6)
+    emitted: list[dict[str, Any]] = field(default_factory=list)
+    emitted_sources: list[dict[str, Any]] = field(default_factory=list)
     pending_action: dict[str, Any] | None = None
     #: 이 실행에서 처리한 행동(id · type · 결과 · 성공 문장)
     executed: list[dict[str, Any]] = field(default_factory=list)
@@ -884,6 +888,14 @@ class Loop:
             and (c.get("goal") or {}).get("base", {}).get("take_id") not in rs
         ]
         self.st.exported = [a for a in self.st.exported if not set(_assessment_sources(a)) & rs]
+        # 이미 낸 문장도 지워진 원천에 기댄 것(근거가 버려졌거나 판단이 버려진 것)은 남기지 않는다(5-6 · L4-38)
+        kept_ids = {a["assessment_id"] for a in self.st.exported}
+        self.st.emitted = [
+            c
+            for c in self.st.emitted
+            if all(self.ctx.registry.get(e) is not None for e in c.get("evidence_ids") or [])
+            and (c.get("assessment_id") is None or c["assessment_id"] in kept_ids)
+        ]
         pending = self.st.pending_action
         if pending is not None and set(_action_targets(pending)) & rs:
             return False
@@ -938,8 +950,11 @@ class Loop:
         }
 
     # ── 3. 답 쓰기 · 검사 ────────────────────────────────────────────
-    def answer_phase(self, *, route: str) -> dict[str, Any]:
-        """답 초안 → 판단 확정 → 템플릿 문장 → 답 검사 → 한 번 고치기. 돌려주는 값: 메시지 · 판단 · 카드 · 상태."""
+    def answer_phase(self, *, route: str, pending: Any = None) -> dict[str, Any]:
+        """답 초안 → 판단 확정 → 템플릿 문장 → 답 검사 → 한 번 고치기. 돌려주는 값: 메시지 · 판단 · 카드 · 상태.
+
+        `pending`: 승인 대기로 멈추기 전 답을 쓸 때의 `ASK` 행동. 모델에게 그 행동이 아직 실행되지 않았음을 알린다.
+        """
         research = [
             {"tool": t["tool"], "args": t["args_summary"], "result": t["result_summary"]}
             for t in self.st.trace
@@ -952,6 +967,11 @@ class Loop:
             "actions": action_views[-5:],
             "drafts": self.st.drafts,
         }
+        if self.st.emitted:
+            # 이미 사용자에게 보인 문장: 같은 내용을 되풀이하지 않고 이어질 내용만 쓰게 한다
+            research_block["already_said"] = [c["text"] for c in self.st.emitted]
+        if pending is not None:
+            research_block["pending_action"] = {"type": pending.type}
         msgs = [
             self._system(prompts.ANSWER),
             prompts.data_message(self.data_block()),
