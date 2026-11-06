@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.main import app
@@ -33,6 +34,7 @@ from pitch_coach_backend.module.pitch.entity import (
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service import script_rubric_runner
 from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
 from pitch_coach_backend.module.pitch.service.script_rubric_runner import ScriptRubricRunner
 
@@ -583,3 +585,47 @@ async def test_mismatched_reparse_does_not_make_rubrics(
 
     assert fake.calls == []
     assert _state(db_session, version_id)[0] is None
+
+
+def _failing_once(monkeypatch, error: Exception) -> list[int]:
+    """`save_rubrics` 첫 호출만 `error` 로 실패하게 한다. 호출 횟수를 돌려준다."""
+    real = script_service.save_rubrics
+    calls: list[int] = []
+
+    def save(*args: Any) -> bool:
+        calls.append(1)
+        if len(calls) == 1:
+            raise error
+        return real(*args)
+
+    monkeypatch.setattr(script_rubric_runner.script_service, "save_rubrics", save)
+    monkeypatch.setattr(script_rubric_runner, "DB_RETRY_DELAYS_SEC", (0.0,))
+    return calls
+
+
+async def test_transient_db_error_does_not_lose_the_reply(
+    db_session: Session, version_id: uuid.UUID, monkeypatch
+) -> None:
+    error = OperationalError("UPDATE script_slides", {}, RuntimeError("잠금 대기 시간 초과"))
+    calls = _failing_once(monkeypatch, error)
+    fake = FakeClient(_reply([1, 2, 3]))
+
+    await _runner(db_session, fake).start(version_id, _queued(db_session, version_id))
+
+    status, _, rubrics = _state(db_session, version_id)
+    assert status == ScriptRubricStatus.DONE
+    assert set(rubrics) == {1, 2, 3}
+    assert (len(calls), len(fake.calls)) == (2, 1)
+
+
+async def test_other_db_error_is_not_retried(
+    db_session: Session, version_id: uuid.UUID, monkeypatch
+) -> None:
+    calls = _failing_once(monkeypatch, ValueError("코드 오류"))
+
+    await _runner(db_session, FakeClient(_reply([1, 2, 3]))).start(
+        version_id, _queued(db_session, version_id)
+    )
+
+    assert _state(db_session, version_id)[0] == ScriptRubricStatus.PENDING
+    assert len(calls) == 1
