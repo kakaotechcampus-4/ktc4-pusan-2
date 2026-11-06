@@ -67,6 +67,36 @@ AUTONOMY: dict[str, str] = {
 }
 #: 사용자 말이 없는 턴(`TAKE_REVIEWED`)에서 내지 않는 행동(저장 · 다시 평가 · 이동, 6-2)
 NEEDS_USER_TURN = frozenset({"SAVE_GOAL", "REASSESS", "START_PRACTICE"})
+#: 행동 결과 `error.code` 닫힌 목록(5-8). BE 는 실패한 행동에 이 코드만 싣고, AI 는 목록 코드만 고정 안내로 바꾼다(목록 밖은
+#: 일반 안내). 행동마다 쓰는 코드: 모든 행동 `NOT_FOUND` · `NOT_AUTHORIZED` · `NOT_ALLOWED` · `INVALID_ACTION` ·
+#: `IDEMPOTENCY_CONFLICT` · `APPROVAL_REQUIRED` · `APPROVAL_ARGS_CHANGED` · `PREAPPROVAL_MISMATCH`, `REASSESS`
+#: `NO_OFFICIAL_REVIEW` · `INVALID_CHANGE` · `REASSESS_PER_TURN` · `REASSESS_DAILY_LIMIT` · `RULES_DIFFER` · `REVIEW_FAILED` ·
+#: `REVIEW_TAKE_MISMATCH` · `REVIEW_REQUEST_CHANGED`, `SAVE_GOAL` `GOAL_VERSION_CONFLICT` · `GOAL_METRIC_NOT_ALLOWED` ·
+#: `GOAL_OPERATOR_MISMATCH` · `GOAL_BASE_MISMATCH`
+ACTION_ERROR_CODES = frozenset(
+    {
+        "NOT_FOUND",
+        "NOT_AUTHORIZED",
+        "NOT_ALLOWED",
+        "INVALID_ACTION",
+        "IDEMPOTENCY_CONFLICT",
+        "APPROVAL_REQUIRED",
+        "APPROVAL_ARGS_CHANGED",
+        "PREAPPROVAL_MISMATCH",
+        "NO_OFFICIAL_REVIEW",
+        "INVALID_CHANGE",
+        "REASSESS_PER_TURN",
+        "REASSESS_DAILY_LIMIT",
+        "RULES_DIFFER",
+        "REVIEW_FAILED",
+        "REVIEW_TAKE_MISMATCH",
+        "REVIEW_REQUEST_CHANGED",
+        "GOAL_VERSION_CONFLICT",
+        "GOAL_METRIC_NOT_ALLOWED",
+        "GOAL_OPERATOR_MISMATCH",
+        "GOAL_BASE_MISMATCH",
+    }
+)
 
 #: 목표 지표 → 차원(목표 충돌 판정 · 전문가 추천 안)
 GOAL_METRIC_DIM = {
@@ -175,8 +205,9 @@ def action_tool_definitions() -> list[dict[str, Any]]:
 # ── 허용 근거 (6-2) ──────────────────────────────────────────────────────
 
 _SENT_SPLIT = re.compile(r"[.?!\n。？！]+")
-#: 끝이 "면"이지만 조건이 아닌 낱말(명사 · 접속 부사 "그러면")
-_NOUN_MYEON = ("화면", "장면", "측면", "전면", "이면", "표면", "정면", "평면", "방면", "그러면")
+#: 끝이 "면"이지만 조건이 아닌 낱말(명사 · 접속 부사 "그러면"). 낱말 전체가 같을 때만 예외다: 끝 비교로 보면
+#: "3장이면"처럼 `~이면` 조건이 명사로 빠진다. 그래서 "이면(裏面)"은 넣지 않는다(조건이 훨씬 흔하다)
+_NOUN_MYEON = ("화면", "장면", "측면", "전면", "표면", "정면", "평면", "방면", "그러면")
 
 
 def _clause_of(message: str, quote: str) -> str | None:
@@ -196,7 +227,7 @@ def _clause_of(message: str, quote: str) -> str | None:
 
 def _has_condition(clause: str, cfg: ChatAgentConfig) -> bool:
     for word in re.findall(r"[가-힣]+", clause):
-        if word in _NOUN_MYEON or any(word.endswith(n) for n in _NOUN_MYEON):
+        if word in _NOUN_MYEON:
             continue
         if word.endswith("거든"):
             return True
@@ -297,10 +328,12 @@ class Proposal:
     tool_message: dict[str, Any] = field(default_factory=dict)
 
 
-#: 사용자 말 속 Take 지칭: 'Take 5' · '테이크 5' 번호와 ID 모양의 낱말('p9-t1')
+#: 사용자 말 속 Take 지칭: 'Take 5' · '테이크 5' 번호와 ID 모양의 낱말('p9-t1'). ID 는 영문자와 숫자가 모두 든 하이픈 낱말만
+#: 본다: 'Q-A' · 'co-presenter' · 'B-roll' 같은 말을 Take ID 로 보면 말한 Take 가 없다고 다시 평가를 막는다(#895 리뷰)
 _NAMED_TAKE_NUM = re.compile(r"(?:take|테이크)\s*(\d+)", re.IGNORECASE)
 _NAMED_ID = re.compile(
-    r"(?<![A-Za-z0-9-])(?=[A-Za-z0-9-]*[A-Za-z])[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+(?![A-Za-z0-9-])"
+    r"(?<![A-Za-z0-9-])(?=[A-Za-z0-9-]*[A-Za-z])(?=[A-Za-z0-9-]*\d)"
+    r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+(?![A-Za-z0-9-])"
 )
 
 
@@ -321,8 +354,9 @@ def named_take_ids(message: str | None, ctx: RunCtx) -> set[str] | None:
 
 def unresolved_take_numbers(message: str | None, ctx: RunCtx) -> set[int]:
     """사용자 말이 번호로 집어 말한 Take 가운데 범위 피치에 없는 번호(지워졌거나 없는 Take). 예: Take 4 가 지워졌으면
-    "Take 4 3장 값 알려 줘" → {4}."""
-    if not message:
+    "Take 4 3장 값 알려 줘" → {4}. 이 실행에서 범위 피치를 바꿨으면 번호를 한 피치에 묶을 수 없으므로 빈 집합이다
+    ("졸업 발표 Take 5랑 회사 소개 Take 2"에서 회사 소개로 바꾼 뒤 Take 5 를 '없는 번호'로 보지 않게, #940 리뷰)."""
+    if not message or ctx.scope_switched:
         return set()
     nums = {int(n) for n in _NAMED_TAKE_NUM.findall(message)}
     return nums - {s.take_number for s in ctx.summaries.values()}
@@ -483,11 +517,25 @@ def propose(
                     "사용자가 이 조건(대본 사용 · 내 기준)을 말하지 않았다. 측정값 이의는 다시 평가하지 않는다",
                 ),
             )
-        change = (
-            {"script_used": a.change.script_used}
-            if a.change.script_used is not None
-            else {"targets": [t.model_dump() for t in a.change.targets or []]}
-        )
+        if a.change.script_used is not None:
+            change: dict[str, Any] = {"script_used": a.change.script_used}
+        else:
+            targets = _sourced_targets(
+                [t.model_dump() for t in a.change.targets or []],
+                original=original_message,
+                ctx=ctx,
+                take_id=a.take_id,
+            )
+            if targets is None:
+                return Proposal(
+                    result="TOOL_ERROR",
+                    reason_code="DISPLAY_UNSOURCED",
+                    tool_message=_err(
+                        "DISPLAY_UNSOURCED",
+                        "기준 문구(display)는 사용자가 말한 글자 그대로나 그 Take 기준의 문구만 쓴다",
+                    ),
+                )
+            change = {"targets": targets}
         args = {"take_id": a.take_id, "change": change}
     else:
         assert isinstance(a, SaveGoalArgs)
@@ -511,6 +559,35 @@ def propose(
 
 def _err(code: str, message: str) -> dict[str, Any]:
     return {"ok": False, "error": {"code": code, "message": message}}
+
+
+def _sourced_targets(
+    targets: list[dict[str, Any]], *, original: str | None, ctx: RunCtx, take_id: str
+) -> list[dict[str, Any]] | None:
+    """다시 평가 '바꾼 뒤' 기준의 문구(`display`)는 출처가 있을 때만 싣는다(6-9 · L1-37, #888 · #909 리뷰).
+
+    문구는 모델이 채운 행동 인자라, 확인 카드 · 결과 카드(코드 카드라 숫자 출처 검사를 받지 않음)에 그대로 보이면 근거 없는
+    숫자 · 칭찬이 나갈 수 있다. 출처: 처음 사용자 말 원문의 부분 문자열이거나 그 Take 기준(바꾸기 전 조건)의 문구와 같음.
+    출처가 없으면 숫자 목표가 있는 칸은 문구를 비우고(숫자 조건이 실제 조건), 문구만 있는 칸이면 None(행동을 내지 않는다:
+    보이지 않는 조건은 승인받지 않는다).
+    예: 사용자 "시선 70% 넘으면 통과로 다시 봐 줘", display "Take 5 시선 90%였어요"(metric 있음) → display None
+    """
+    known: set[str] = set()
+    cond = _take_conditions(ctx, take_id, "targets")
+    if cond is not None:
+        known = {str(_target_view(t).get("display") or "").strip() for t in cond[1]} - {""}
+    out: list[dict[str, Any]] = []
+    for t in targets:
+        d = (t.get("display") or "").strip()
+        if not d and t.get("metric") is None:
+            return None  # 숫자 목표도 문구도 없는 칸: 보이는 조건이 없다
+        if not d or (original is not None and d in original) or d in known:
+            out.append(t)
+        elif t.get("metric") is not None:
+            out.append({**t, "display": None})
+        else:
+            return None
+    return out
 
 
 def _propose_goal(

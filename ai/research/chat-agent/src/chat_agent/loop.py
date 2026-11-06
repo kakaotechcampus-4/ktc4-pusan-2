@@ -132,6 +132,8 @@ class LoopState:
     #: 않는다(6-5: 여러 피치 질문에서 범위만 오가다 한도에 걸리지 않게, 4회차). 그 피치의 Take 를 읽으면(다시 읽기 ·
     #: 캐시 적중 · FETCH_TAKE 성공 포함) 풀린다
     scope_switch_unread: bool = False
+    #: 이 실행에서 범위 피치를 다른 피치로 바꾼 적이 있는가(`RunCtx.scope_switched`를 이어 부르기 사이에 잇는다)
+    scope_switched: bool = False
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -221,6 +223,7 @@ class Loop:
                 if json.loads(k).get("tool") != "search_guides"
             }
         self.ctx.read_sources = set(state.read_sources)
+        self.ctx.scope_switched = state.scope_switched
         #: 이어 부르는 사이 결과 판이 바뀐 Take 가 있었는가(옛 근거는 사본으로 낮췄다, 5-5 · L1-32)
         self.record_changed = self._demote_changed_records() if state.registry else False
         self.scope_changed = False
@@ -278,6 +281,9 @@ class Loop:
         if self.cancelled():
             return LlmError(cause="client_disconnected")
         timeout_left = self.budget.call_timeout(kind)  # type: ignore[arg-type]
+        # 조사 · 요약 호출의 마감은 지금 + 호출 한도다. 조사의 한도는 이미 답 쓰기 · 고치기 예약(24초)을 뺀
+        # min(12, 남은 시간 − 24)초라서, 재시도 조건(대기 + 12초 ≤ 마감 − 지금)이 거의 맞지 않는다.
+        # 조사의 max_attempts=2 는 사실상 1회이고 8-3 의 '최대 1회'와 맞다(#886 · #887 리뷰)
         deadline = (
             self.deps.monotonic() + timeout_left
             if purpose in ("RESEARCH", "HISTORY_SUMMARY")
@@ -298,9 +304,9 @@ class Loop:
             res = llm.invoke(req, before)
         except LlmBudgetStop as e:
             self._count_usage(e.usage)
-            self._failed_steps(
-                purpose, llm.model_name, e.usage, [e.code] * len(e.usage), start, fix_for
-            )
+            # 앞 시도가 실패한 진짜 이유를 남긴다. 한도로 막힌 것은 아래 LIMIT 단계가 따로 기록한다(#887 리뷰)
+            codes = e.attempt_errors or [e.code] * len(e.usage)
+            self._failed_steps(purpose, llm.model_name, e.usage, codes, start, fix_for)
             if hit_holder:
                 self._limit(hit_holder[-1])
                 self.limit_end = limit_end_reason(hit_holder[-1].code)
@@ -743,7 +749,7 @@ class Loop:
                         self.st.scope_switch_unread = False  # 지금 범위 피치의 Take 를 읽었다
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
-                self._tool_diag(tr, trace, model_seq)
+                self._tool_diag(tr, trace, model_seq, args)
                 self.st.message_deps[call.id] = list(tr.target_ids) + (
                     [self.ctx.scope_pitch_id] if self.ctx.scope_pitch_id else []
                 )
@@ -796,10 +802,17 @@ class Loop:
         )
         self.st.trace.append(trace.model_dump())
         self.emit("tool_done", {"trace": trace.model_dump()})
+        # 무효 호출도 TOOL 단계로 남긴다(11-5, #887 리뷰). 모르는 도구 이름은 `code` 가 5-7 의 도구 이름이어야 해서
+        # 단계를 만들지 않는다(_tool_diag 가 거른다). 이때 모델이 보낸 이름은 진단 기록에 쓰지 않는다
+        self._tool_diag(tr, trace, model_seq)
 
-    def _tool_diag(self, tr: ToolResult, trace: TraceItem, model_seq: int | None) -> None:
+    def _tool_diag(
+        self, tr: ToolResult, trace: TraceItem, model_seq: int | None, args: Any = None
+    ) -> None:
         if tr.name not in P0_TOOLS:
             return
+        # 질의 글자 수만 남기고 질의 글은 남기지 않는다(`search_guides` 만, 11-5)
+        query_chars = len(args.query) if tr.name == "search_guides" and args is not None else None
         self.diag.step(
             "TOOL",
             tr.name,
@@ -808,7 +821,7 @@ class Loop:
                 "revisions": tr.revisions or None,
                 "outcome": trace.outcome,
                 "result_bytes": result_bytes(tr),
-                "query_chars": None,
+                "query_chars": query_chars,
                 "error_code": code_enum(tr.error["code"]) if tr.error else None,
             },
             ms=trace.ms,
@@ -1005,6 +1018,7 @@ class Loop:
             self.st.review_versions.update(applied.review_versions)
         if applied.ok and pending["type"] == "FETCH_PITCH":
             self.st.scope_switch_unread = True
+            self.st.scope_switched = self.st.scope_switched or self.ctx.scope_switched
         elif applied.ok and pending["type"] == "FETCH_TAKE":
             self.st.scope_switch_unread = False
         self.st.executed.append(rec)
@@ -1159,18 +1173,18 @@ class Loop:
 def _script_points_removed(card: dict[str, Any] | None) -> bool:
     if not card or card.get("type") != "REASSESS_RESULT":
         return False
-    b, a = card.get("before") or {}, card.get("after") or {}
-    before, after = b.get("score"), a.get("score")
-    # 원인을 확인한다: 대본 허용으로 B 에서 대본 차원이 '평가하지 않음'으로 빠지고 점수가 올랐을 때만
-    dim_b = (b.get("dimensions") or {}).get("script_independence")
-    dim_a = (a.get("dimensions") or {}).get("script_independence")
+    before_card, after_card = card.get("before") or {}, card.get("after") or {}
+    before_score, after_score = before_card.get("score"), after_card.get("score")
+    # 원인을 확인한다: 대본 허용으로 뒤(after, 6-6 의 B)에서 대본 차원이 '평가하지 않음'으로 빠지고 점수가 올랐을 때만
+    before_dim = (before_card.get("dimensions") or {}).get("script_independence")
+    after_dim = (after_card.get("dimensions") or {}).get("script_independence")
     return (
         (card.get("change") or {}).get("script_used") is True
-        and dim_a == "NOT_EVALUABLE"
-        and dim_b != "NOT_EVALUABLE"
-        and isinstance(before, int)
-        and isinstance(after, int)
-        and after > before
+        and after_dim == "NOT_EVALUABLE"
+        and before_dim != "NOT_EVALUABLE"
+        and isinstance(before_score, int)
+        and isinstance(after_score, int)
+        and after_score > before_score
     )
 
 

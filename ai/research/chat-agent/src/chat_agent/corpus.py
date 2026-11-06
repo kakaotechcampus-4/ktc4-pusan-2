@@ -12,7 +12,10 @@
   1. manifest 모양 · 목록에 적힌 파일이 모두 있는지(`FILE_MISSING`) · 목록에 없는 파일이 끼지 않았는지.
   2. 카드 스키마(`SCHEMA`), 유일한 `source_id`(`DUPLICATE_ID`), 허용 라이선스(`LICENSE_FORBIDDEN`, L4-29).
   3. 묶음 해시(`manifest_hash`)가 manifest 와 같은지(`HASH_MISMATCH`, L4-30: 본문이 바뀌었는데 판이 그대로인 경우를 막는다).
-  4. 검수 상태: `allow_unreviewed=False` 면 `review == "APPROVED"` 인 카드만 허용(`UNREVIEWED`).
+     판 고정표(`version.CORPUS_VERSION_HASHES`): 서비스(`allow_unreviewed=False`)는 등록한 판만(`UNKNOWN_VERSION`), 등록한 판에
+     다른 본문이면 `VERSION_REUSED`.
+  4. 검수 상태: `allow_unreviewed=False` 면 `review == "APPROVED"` 인 카드만 허용(`UNREVIEWED`), 발표법 카드는 참고 문헌
+     (`source`의 '참고:')이 있어야 한다(`NO_REFERENCE`, 6-10 '카드마다 참고 문헌', #885 리뷰).
 - 검수 상태(`review`)가 있는 까닭: 기능 문서 L4-29 는 P0 에서 '팀 작성 · 검수 완료 카드만' 빌드에 허용한다고 정했다.
   지금 카드는 초안이라 발표법 카드는 다른 AI 담당, 화면 사용법 카드는 FE 의 검수를 기다린다(`PENDING`).
   연구 단계는 `allow_unreviewed=True` 로 초안을 시험하고, **서비스 탑재 때는 `False` 로 부른다**(그 전에 모든 카드를 `APPROVED` 로 바꿔 해시를 다시 만든다).
@@ -66,7 +69,10 @@ Reason = Literal[
     "DUPLICATE_ID",
     "LICENSE_FORBIDDEN",
     "HASH_MISMATCH",
+    "UNKNOWN_VERSION",
+    "VERSION_REUSED",
     "UNREVIEWED",
+    "NO_REFERENCE",
     "EMPTY",
 ]
 
@@ -384,6 +390,10 @@ def build_corpus(
         pending = [c.source_id for c in cards if c.review != "APPROVED"]
         if pending:
             raise CorpusInvalid("UNREVIEWED", ", ".join(pending))
+        # 6-10: 발표법 카드는 카드마다 참고 문헌이 있어야 한다(팀 작성 원칙만으로는 검수 완료로 쓰지 않는다)
+        no_ref = [c.source_id for c in cards if c.kind == "method" and "참고:" not in c.source]
+        if no_ref:
+            raise CorpusInvalid("NO_REFERENCE", ", ".join(no_ref))
     return Corpus(
         version=man.corpus_version,
         hash_=man.sha256,

@@ -43,7 +43,18 @@ def failures(c: Claim, *, searched: bool = True) -> list[tuple[CheckId, bool]]:
 # ── 검사 (6-9 GENERAL) ──────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("text", [G1, G2, G3, G4, "긴장되면 숨을 천천히 내쉬고 시작해 보세요."])
+@pytest.mark.parametrize(
+    "text",
+    [
+        G1,
+        G2,
+        G3,
+        G4,
+        "긴장되면 숨을 천천히 내쉬고 시작해 보세요.",
+        "말 속도를 조금 늦춰 보면 좋아요.",
+        "천천히 말하는 편이 좋아요.",
+    ],
+)
 def test_plain_general_advice_passes_after_a_search(text: str) -> None:
     """'말 속도' 같은 발표 요소 낱말과 권하는 말끝(~하면 좋아요)은 쓸 수 있다."""
     assert failures(general(text)) == []
@@ -77,6 +88,10 @@ def test_general_longer_than_the_limit_is_fixable() -> None:
         "목소리는 강점이니 그대로 살려 보세요.",  # 판정
         "잘하셨어요, 그 느낌으로 이어 가 보세요.",  # 칭찬
         "거의 다 왔으니 조금만 더 다듬어 보세요.",  # 완화
+        "발표 잘하시네요.",  # 칭찬(#919 리뷰)
+        "말씀하시는 속도가 너무 빨라요.",  # 사용자 발표 판정
+        "시선이 자주 떨어지는 편이에요.",
+        "평소에 말이 빠른 편이시네요.",
     ],
 )
 def test_general_forbidden_words_fail_general_rule(text: str) -> None:
@@ -359,3 +374,40 @@ def test_blank_general_after_the_limit_is_not_logged() -> None:
     )
     assert [t for k, t in _texts(data) if k == "GENERAL"] == [G1, G2, G3]
     assert _general_rule_steps(data) == []
+
+
+# ── 진단 기록 TOOL 단계 (11-5, #887 리뷰) ────────────────────────────────────────
+
+
+def _tool_steps(data: dict) -> list[dict]:
+    return [s for s in data["diagnostics"]["steps"] if s["kind"] == "TOOL"]
+
+
+def test_search_guides_diag_step_records_query_length_only() -> None:
+    """`query_chars` 는 질의 글자 수만 남기고 질의 글은 남기지 않는다."""
+    _, data, _ = _run(F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"))
+    step = next(s for s in _tool_steps(data) if s["code"] == "search_guides")
+    assert step["detail"]["query_chars"] == len(NO_HIT[1]["query"])
+    assert NO_HIT[1]["query"] not in str(data["diagnostics"])
+
+
+def test_invalid_tool_call_leaves_a_tool_step_with_its_error_code() -> None:
+    """인자가 틀린 도구 호출(알려진 도구)도 TOOL 단계를 남기고, 모르는 도구 이름은 단계를 만들지 않는다."""
+    llm = F.FakeLlm(
+        [
+            F.plan(steps=["자료 찾기", "답 쓰기"]),
+            F.tools(("search_guides", {"query": ""}), ("not_a_tool", {"x": 1})),
+            F.done(),
+            F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"),
+        ]
+    )
+    _, _, data = F.run_turn(
+        F.request(user_message="발표 전에 긴장을 풀려면 어떻게 해?"),
+        llm,
+        corpus=load_corpus(),
+        corpus_version="guides-4",
+    )
+    steps = _tool_steps(data)
+    assert [(s["code"], s["detail"]["outcome"], s["detail"]["error_code"]) for s in steps] == [
+        ("search_guides", "ERROR", "TOOL_INVALID")
+    ]

@@ -9,6 +9,8 @@
 |---|---|---|---|
 | Take 종료 뒤, 대본 전달도 채점 · 확인이 끝난 뒤 (`POST /takes/review`, BE 백그라운드) | Take 결과, 대본 전달도 채점(없으면 null), 같은 발표의 이전 Take 3개, 직전 반복 문제, 이번 Take 미션, 사용자 평가 기준 | 요약 · 점수 · 차원 상태 · 강점 · 개선점 · 이전 Take 비교 · 미션 결과 · 사용자 기준 판정 · 다음 미션 · 반복 문제 · `fallback_reason` · `meta` | FE 리포트, BE(`missions` · `take_summaries`), 다음 Take의 코칭 계획 · 코치 · 다음 리뷰 |
 
+- 대화 에이전트의 다시 평가도 같은 `/takes/review`를 바꾼 입력으로 부르지만, 결과는 참고 결과라 위 칸들에 저장하지 않는다(5-1).
+
 - **하는 것**: 결론을 낸다. 차원 여섯 개의 상태(`PRIORITY` 등)와 점수, 미션 · 사용자 기준을 이뤘는지, 다음 Take에 무엇을 목표로 할지(다음 미션)와 계속 남은 문제(반복 문제)를 정한다. LLM은 이 결론을 사람이 읽을 문장으로 쓰고 다음 미션 후보 중 고른다.
 - **하지 않는 것**:
   - 지표를 다시 계산하지 않는다. Take 결과 · 대본 전달도 값을 읽기만 한다(`architecture.md` 0-2).
@@ -278,6 +280,7 @@ uv sync
 | 실제 LLM 테스트, 서비스 경로 (과금) | `ai/service`에서 `uv run python -m pytest -m live tests/live/test_review_live.py` | 기본 결과가 아니고 25초 안 |
 | 연구 폴더의 준비 확인 · 실제 LLM 테스트 · 평가 | `ai/research/review-agent/README.md` 2절 | 준비 확인 통과, 실제 LLM 테스트는 예시가 스키마 · 숫자 검사를 통과하고 기본 결과가 아니며 25초 안, 평가는 13절 지표 |
 
+- 비교 방향 표 · 차원 표 · 내용 전달 지표의 최소 채점 비율 · `CriteriaTarget` 필드를 바꾸면 대화 에이전트 연구 모듈의 대조 시험도 돌린다(`ai/research/chat-agent`에서 `python -m pytest tests/unit/test_contract_tables.py`, AI CI는 `ai/service/**`만 돌아 이 시험을 돌리지 않는다).
 - 테스트가 볼 것: 차원마다 판단 불가 · 부담 · 상태 순서, `script_used`, 미션 판정 세 지표 출처(Take · 장 · 대본 전달도)와 `NOT_EVALUABLE` 조건, 허용치 · 개수 지표, 사용자 기준 `FAILED` 미션이 맨 앞, 장 미션 · Take 미션, 다음 미션 20개 · 설명 500자 상한, 반복 문제(`GAZE` 두 차원을 `dimension`으로 가름), 점수, 숫자 검사(표기 · 반올림 · 장 번호), LLM 실패 기본 결과, 이전 Take 없음.
 
 # 11. 배포

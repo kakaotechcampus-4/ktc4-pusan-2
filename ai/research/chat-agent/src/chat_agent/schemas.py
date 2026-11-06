@@ -1145,8 +1145,16 @@ class FinalData(_Out):
                     raise ValueError("DONE 의 actions 는 START_PRACTICE 0~1개")
             elif self.actions:
                 raise ValueError("PARTIAL · REFUSED 의 actions 는 빈 목록")
-        if s == "NEEDS_ACTION" and (self.history_summary or self.profile_updates):
-            raise ValueError("history_summary · profile_updates 는 종결 응답에만 싣는다(6-14)")
+        if s == "NEEDS_ACTION" and self.history_summary:
+            raise ValueError("history_summary 는 종결 응답에만 싣는다(6-14)")
+        waits = (
+            bool(self.actions)
+            and self.actions[0].autonomy == "ASK"
+            and self.actions[0].preapproved is None
+        )
+        if s == "NEEDS_ACTION" and self.profile_updates and not waits:
+            # 승인 대기 응답에는 실을 수 있다: 같은 말의 기억 요청은 승인 결과와 상관없이 저장한다(6-14)
+            raise ValueError("profile_updates 는 종결 응답 · 승인 대기 응답에만 싣는다(6-14)")
         keys = [u.key for u in self.profile_updates or []]
         if len(keys) != len(set(keys)):
             raise ValueError("profile_updates 는 key 마다 하나다")

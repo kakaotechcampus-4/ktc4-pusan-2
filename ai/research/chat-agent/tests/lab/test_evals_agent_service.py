@@ -117,6 +117,7 @@ def test_stream_cut_fault_ends_partial_with_the_received_sentence() -> None:
     ok, results, forb = ev.grade(ctx)
     assert ok and forb == [], _failed(results)
     assert ev.observations(ctx, 0)["trace"]["claim_lines"] == 1
+    assert ctx.turns[0].cut_applied is True  # 실제로 끊었다(#920 리뷰)
     # 끊김은 그 차례에만: 다음 차례의 호출은 그대로다
     assert ctx.be.app.turn == ctx._app_turn
 
@@ -238,6 +239,18 @@ def test_general_violations_count_each_bad_sentence() -> None:
     assert len(gr.general_violations(bad, searched=True)) == 3
     # 자료를 찾지 않은 일반 조언은 문장마다 위반이다
     assert len(gr.general_violations([_g("천천히 말해 보세요.")], searched=False)) == 1
+
+
+def test_general_violations_match_the_product_rule_for_idioms_and_causal_wording() -> None:
+    # 제품 검사(checks.check_claims, kind GENERAL)도 같은 문장을 막는다(기능 문서 6-9: GENERAL 에는 한글 수사 · 숫자 표기와
+    # 인과 표현이 없다). 채점기가 일부러 같게 센 것이므로 위반으로 고정한다(#920 리뷰)
+    for text in (
+        "한번 소리 내어 연습해 보세요.",
+        "한 번 더 천천히 읽어 보세요.",
+        "핵심 한 점에 집중해 보세요.",
+        "긴장 때문에 말이 빨라질 수 있어요.",
+    ):
+        assert len(gr.general_violations([_g(text)], searched=True)) == 1, text
 
 
 # ── 시나리오 검사가 관찰값에 닿는가(정해 둔 모델 응답) ──────────────────────
@@ -488,9 +501,27 @@ def test_memory_leak_counts_a_run_whose_memory_checks_fail() -> None:
 def test_unapproved_prefixes_match_the_forbidden_event_texts() -> None:
     import inspect
 
+    # 문구는 같은 상수로 만들고 세는 쪽도 같은 상수를 쓴다: 한쪽만 바꿔 지표가 0이 되지 않는다(#920 리뷰)
+    consts = (
+        ev.ASK_NO_DECISION,
+        ev.ASK_NOT_APPROVED,
+        ev.ASK_NO_STORED_HASH,
+        ev.ASK_HASH_DIFFERS,
+        ev.ASK_NO_RESULT_HASH,
+    )
+    assert consts == ev.UNAPPROVED_PREFIXES
     src = inspect.getsource(ev.forbidden_events)
+    for name in (
+        "ASK_NO_DECISION",
+        "ASK_NOT_APPROVED",
+        "ASK_NO_STORED_HASH",
+        "ASK_HASH_DIFFERS",
+        "ASK_NO_RESULT_HASH",
+    ):
+        assert "{" + name + "}" in src, name
+    # 상수 밖에 문구를 따로 적지 않았다
     for p in ev.UNAPPROVED_PREFIXES:
-        assert p in src, p
+        assert f'f"{p}' not in src and f'"{p}' not in src, p
 
 
 def test_stream_mismatch_target_fails_when_a_turn_mismatches() -> None:
@@ -609,7 +640,7 @@ def test_retry_from_keeps_clean_runs_and_redoes_only_outage_runs(tmp_path: Any) 
         "reasoning": {"default": "low"},
     }
 
-    def plan(rs: list[Any], inf: dict[str, Any], **kw: Any) -> Any:
+    def plan(rs: list[Any], inf: dict[str, Any], model: str | None = None, **kw: Any) -> Any:
         ev.write_report(tmp_path, rs, ev.summarize(rs, None, None, repeat=2), inf, None)
         a = argparse.Namespace(
             **{
@@ -622,10 +653,35 @@ def test_retry_from_keeps_clean_runs_and_redoes_only_outage_runs(tmp_path: Any) 
                 **kw,
             }
         )
-        return ev.retry_plan(tmp_path, [sc], a, ())
+        return ev.retry_plan(tmp_path, [sc], a, (), model=model)
 
     kept, redo = plan(runs, info)
     assert [r.rep for r in kept] == [1] and [(s.id, rep) for s, rep in redo] == [(sc.id, 0)]
+    # 채점 코드(grading · scenario · judge)가 다르면 합치지 않고, 실행기(evals.py)만 다르면 합친다(#938 리뷰)
+    gs = info["grader_sha256"]
+    for name in ("grading.py", "scenario.py", "judge.py"):
+        with pytest.raises(ValueError, match=name):
+            plan(runs, {**info, "grader_sha256": {**gs, name: "다른 해시"}})
+    kept, _ = plan(runs, {**info, "grader_sha256": {**gs, "evals.py": "다른 해시"}})
+    assert [r.rep for r in kept] == [1]
+    with pytest.raises(ValueError, match="grader_sha256"):
+        plan(runs, {k: v for k, v in info.items() if k != "grader_sha256"})
+    # 모델: 이번 모델을 알면 앞 결과의 모델과 같아야 합친다. 앞 결과에 모델이 없으면(옛 결과) 알 수 없어 합치지 않는다.
+    # 이번 모델을 모르면(시험 호출) 비교하지 않는다
+    with_model = {**info, "model": "m-a"}
+    assert plan(runs, with_model, model="m-a")[0]
+    assert plan(runs, with_model)[0]
+    with pytest.raises(ValueError, match="모델"):
+        plan(runs, {**info, "model": None}, model="m-b")
+    with pytest.raises(ValueError, match="모델"):
+        plan(runs, with_model, model="m-b")
+    # 추론 강도가 없는 옛 결과는 그 결과의 역할 기본 강도로 읽는다(고정 low 가 아니다)
+    old = {k: v for k, v in info.items() if k != "reasoning"}
+    old_role = {**info["role"], "reasoning_effort": "high"}
+    with pytest.raises(ValueError, match="reasoning"):
+        plan(runs, {**old, "role": old_role})  # 지금 기본(low)과 다르다
+    assert plan(runs, {**old, "role": {**info["role"], "reasoning_effort": "low"}})[0]
+    assert plan(runs, {k: v for k, v in old.items() if k != "role"})[0]  # 역할도 없으면 low
     # 설정 · 판 · 묶음 · 가짜 여부가 다르면 합치지 않는다
     for kw, inf in (
         ({"repeat": 3}, info),

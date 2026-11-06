@@ -442,3 +442,17 @@ def test_first_claim_time_counts_from_before_the_call_and_reads_parsed_lines() -
     last = run.calls[-1]
     assert last.first_claim_ms is not None and last.first_claim_ms >= 30
     assert last.end_ms is not None and last.end_ms >= last.first_claim_ms
+
+
+def test_pre_stream_error_on_resume_keeps_the_shown_sentences_as_a_message() -> None:
+    """이어 부르기가 실패해 실행이 FAILED 여도, 승인 전에 이미 보인 문장은 메시지로 남는다(L1-41 · 5-4, #915 리뷰)."""
+    be = make_be(save_goal_with_sentence())
+    run = be.send_message(be.new_conversation().conversation_id, GOAL_MSG, page_take_id="t-5")
+    pend = run.pending
+    shown = claims_of(run)
+    assert shown and pend is not None
+    be.app = ReplayError(409, "AGENT_STATE_INVALID")  # type: ignore[assignment]
+    out = be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert (out.status, out.error_code) == ("FAILED", "AGENT_STATE_INVALID")
+    assert stored(be, run).claims == shown
+    assert stored(be, run).status == "FAILED"

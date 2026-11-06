@@ -712,7 +712,9 @@ def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
     규칙 1(대상 + 동사): 같은 절 안에서 대상 낱말 뒤 가까이에 고치라는 동사가 오면 건다. 절은 마침표 · 쉼표 · 줄바꿈으로 나눈다.
       대상과 동사 사이에 수행 명사(`scope_performance_nouns`: 속도 · 시간 · 시선 …)가 있으면 발표 수행 방식을 바꾸는 말이라 통과시킨다.
     규칙 2(내용 고쳐 쓰기): 문장 안 어디든 대상 낱말이 있고 같은 문장에 `내용 명사 + 을/를/에 + 고치는 동사`가 있으면 건다.
-      절로 나누지 않으므로 대상이 앞 절에 있어도 걸리고, 수행 명사 예외도 받지 않는다.
+      절로 나누지 않으므로 대상이 앞 절에 있어도 걸린다. 수행 명사 예외는 내용 명사 바로 앞(`scope_content_gap`자)과
+      일치 구간에 수행 명사가 있을 때만 받는다("대본 3장 부분에 쉼을 더해 보세요" · "청중을 보며 말하는 부분을 늘리세요"는
+      전달 조언이라 통과, #904 리뷰).
     """
     for clause in _SCOPE_CLAUSE_SPLIT.split(text):
         for t in cfg.scope_targets:
@@ -729,13 +731,21 @@ def _scope_edit(text: str, cfg: ChatAgentConfig) -> str | None:
                 start = clause.find(t, start + 1)
     nouns = "|".join(re.escape(n) for n in cfg.scope_content_nouns)
     verbs = "|".join(re.escape(v) for v in cfg.scope_edit_verbs)
-    content = re.compile(rf"(?:{nouns})[을를에][^.!?。\n]{{0,{cfg.scope_content_gap}}}?({verbs})")
+    content = re.compile(rf"({nouns})([을를에])[^.!?。\n]{{0,{cfg.scope_content_gap}}}?({verbs})")
     for sentence in _SCOPE_SENTENCE_SPLIT.split(text):
         if not any(t in sentence for t in cfg.scope_targets):
             continue
-        m = content.search(sentence)
-        if m:
-            return m.group(1)
+        for m in content.finditer(sentence):
+            # 예외는 같은 절 안에서만 본다("대본 시선, 첫 문장을 바꾸세요"의 '시선'은 다른 절)
+            clause_start = max(sentence.rfind(c, 0, m.start()) for c in ",，;\n") + 1
+            # 내용 명사가 목적어(을/를)면 고치는 대상은 그 내용이라, 명사와 동사 사이의 꾸밈말("문장을 말하기 쉽게 고쳐")은
+            # 예외로 보지 않고 명사 앞("청중을 보며 말하는 부분을")만 본다. '에'면("부분에 쉼을 더해") 동사의 목적어가
+            # 사이에 있으므로 그 구간도 본다(#948 리뷰)
+            end = m.end() if m.group(2) == "에" else m.end(1)
+            near = sentence[max(clause_start, m.start() - cfg.scope_content_gap) : end]
+            if any(x in near for x in cfg.scope_performance_nouns):
+                continue
+            return m.group(3)
     return None
 
 
@@ -984,6 +994,8 @@ def check_claims(
     - `guide_searched`: 이번 실행에서 자료 찾기(`search_guides`)가 한 번 이상 성공했는가. 아니면 `GENERAL` 문장은 걸린다.
       한 답의 `GENERAL` 문장 수(`max_general_claims`)는 문장을 만드는 쪽(answer.py)이 앞의 것만 써서 지킨다.
     - 한 문장에 여러 검사가 걸리면 검사마다 하나씩 돌려준다. 입력은 바꾸지 않는다.
+    - 문장은 서로 독립으로 검사한다(문장 사이를 보는 검사는 없다). 이것이 문장 스트림의 전제다: 이미 낸 문장은
+      뒤 문장 때문에 되돌리지 않는다(5-4). 문장 사이를 보는 검사를 더하려면 스트림이 먼저 바뀌어야 한다.
     """
     assessments = assessments or {}
     first_sentences = first_sentences or {}
@@ -1147,6 +1159,7 @@ def _check_general(i: int, c: Claim, cfg: ChatAgentConfig, *, searched: bool) ->
         ("측정값 이름", cfg.general_metric_words, low),
         ("출처를 내세우는", cfg.general_citation_words, low),
         ("판정하는", cfg.general_verdict_words, low),
+        ("사용자 발표를 판정하는", cfg.general_user_judgement_words, low),
         ("동의 · 칭찬하는", agreement_words(cfg), _ADVICE_GOOD.sub(" ", low)),
         ("판정을 흐리는", cfg.hedge_words, low),
     ):

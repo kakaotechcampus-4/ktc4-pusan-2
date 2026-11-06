@@ -606,3 +606,23 @@ def test_ask_action_without_a_confirmed_decision_is_blocked_and_counted() -> Non
     rec = be._execute(run, conv, copy.deepcopy(pend.action))  # 승인 없이 실행 시도
     assert not rec.executed and rec.decision is None and rec.blocked == "NO_DECISION"
     assert rec.result["error"]["code"] == "APPROVAL_REQUIRED" and conv.goal is None
+
+
+def test_cancel_button_uses_its_own_sentence_not_the_new_message_one() -> None:
+    """[취소] 버튼으로 끝낸 대기에는 '새 메시지를 받아' 문장을 쓰지 않는다(7-10, #900 · #910 리뷰)."""
+    be, _llm, run = waiting_save()
+    be.cancel(run.run_id)
+    (text,) = stored_texts(be, run)
+    assert text.endswith(templates.SystemText.APPROVAL_CANCELLED_BY_USER.value)
+    assert templates.SystemText.APPROVAL_CANCELLED.value not in text
+
+
+def test_call_cap_right_after_approval_stores_the_answer_once() -> None:
+    """승인 직후 호출 상한에 닿으면 받은 문장으로 메시지를 한 번만 남긴다(받은 문장 줄 저장과 대기 응답 저장이 겹치지 않게)."""
+    be = make_be(save_goal_llm(), max_calls=1)
+    run = be.send_message(be.new_conversation().conversation_id, GOAL_MSG, page_take_id="t-5")
+    pend = run.pending
+    assert pend is not None
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert run.status == "PARTIAL"
+    assert len(stored_texts(be, run)) == 1

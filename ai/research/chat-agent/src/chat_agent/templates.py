@@ -31,6 +31,8 @@ class SystemText(StrEnum):
         "연습 계획 · 일정은 짜 드리지 않아요. "
         "대화 목표를 정해 두면 다음 Take에서 이뤘는지 확인해 드릴 수 있어요."
     )
+    #: 범위 밖인데 이유(`scope_reason`)가 없거나 모르는 값일 때의 중립 문장(#904 리뷰). '발표와 관계없다'고 단정하지 않는다
+    OUT_OF_SCOPE_UNKNOWN = "이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요."
     NO_GUIDE = "자료에서 근거를 찾지 못해 답하지 않을게요."
     CANNOT_ANSWER = "이 요청에는 답할 수 없어요."
     ANSWER_INCOMPLETE = "답을 완성하지 못했어요."
@@ -102,6 +104,8 @@ class SystemText(StrEnum):
     REJECTED_REASSESS = "다시 평가하지 않았어요."
     APPROVAL_EXPIRED = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
     APPROVAL_CANCELLED = "새 메시지를 받아 앞의 확인 요청은 취소했어요."
+    #: [취소] 버튼으로 승인 대기를 끝냈을 때(새 메시지 없음, #900 · #910 리뷰)
+    APPROVAL_CANCELLED_BY_USER = "확인 요청을 취소했어요."
 
 
 #: 범위 밖 이유(1-3) → 고정 문장(7-10). 모델이 고른 이유를 코드가 이 문장으로 바꾼다(거절 문장은 모델이 쓰지 않는다)
@@ -115,11 +119,12 @@ SCOPE_TEXT: dict[str, SystemText] = {
 
 
 def scope_text(reason: object) -> SystemText:
-    """범위 밖 이유 → 고정 문장. 이유가 없거나 모르는 값이면 `OTHER`(발표와 무관)의 문장."""
+    """범위 밖 이유 → 고정 문장. 이유가 없거나 모르는 값이면 중립 문장(`OTHER`의 '발표와 관계없다'로 단정하지 않는다:
+    "대본 고쳐 줘"에 그 문장이 나가면 사실과 다르다)."""
     return (
-        SCOPE_TEXT.get(reason, SystemText.OUT_OF_SCOPE)
+        SCOPE_TEXT.get(reason, SystemText.OUT_OF_SCOPE_UNKNOWN)
         if isinstance(reason, str)
-        else SystemText.OUT_OF_SCOPE
+        else SystemText.OUT_OF_SCOPE_UNKNOWN
     )
 
 

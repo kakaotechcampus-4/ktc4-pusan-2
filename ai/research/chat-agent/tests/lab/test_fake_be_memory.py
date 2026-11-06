@@ -279,3 +279,29 @@ def test_empty_summary_list_is_a_valid_update() -> None:
     be.app.inner.llm = mem_llm(None, F.summary())  # type: ignore[attr-defined]
     be.send_message(conv.conversation_id, "안녕")
     assert conv.summary == [] and conv.summary_version == 1 and conv.summary_covered == 2
+
+
+def test_memory_request_in_a_turn_that_waits_for_approval_is_saved_even_if_rejected() -> None:
+    """승인 대기 응답에도 저장 후보를 싣고 BE 는 승인 결과와 상관없이 저장한다: 카드를 거절해도 같은 말의
+    '기억해 줘'가 말없이 사라지지 않는다. 카드는 그 실행의 답 메시지에 붙는다(6-14, #900 리뷰)."""
+    from .test_fake_be import GOAL_MSG, SAVE_ARGS, request_draft
+
+    msg = f"{GOAL_MSG}. 앞으로는 설명을 짧게 해 줘"
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[request_draft(GOAL_MSG)]),
+            F.tools(("save_goal", SAVE_ARGS), prefix="sg"),
+        ],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)], profile_updates=[UPD])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm)
+    run = be.send_message(be.new_conversation().conversation_id, msg, page_take_id="t-5")
+    assert run.status == "WAITING_APPROVAL" and run.pending is not None
+    assert run.finals[-1]["profile_updates"] == [{**UPD}]
+    (item,) = be.profile_items("u-3")
+    assert (item["key"], item["value"]) == ("TONE", "설명을 짧게")
+    pend = run.pending
+    be.reject(run.run_id, pend.action["action_id"], pend.args_hash)
+    cards = [c for c in stored(be, run).cards if c["type"] == "MEMORY_SAVED"]
+    assert cards == [{"type": "MEMORY_SAVED", **item}]

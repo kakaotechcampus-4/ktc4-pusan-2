@@ -162,6 +162,31 @@ OK = {"key": "TONE", "value": "설명을 짧게", "quote": "앞으로는 설명�
             "⑤",
         ),
         (MEM_MSG, {**OK, "value": "아주 간단하게"}, "⑥"),
+        # 바람 표현 '~주면 좋겠어'는 조건이 아니다(#916 리뷰). 진짜 조건은 그대로 거부
+        (
+            "앞으로는 설명을 짧게 해 주면 좋겠어",
+            {**OK, "quote": "앞으로는 설명을 짧게 해 주면 좋겠어"},
+            None,
+        ),
+        (
+            "괜찮으면 앞으로는 설명을 짧게 해 줘",
+            {**OK, "quote": "괜찮으면 앞으로는 설명을 짧게 해 줘"},
+            "③",
+        ),
+        # 기억과 상관없는 '지우고'는 철회가 아니다. 기억을 가리키는 '그거 지워 줘'는 철회(#916 리뷰)
+        ("앞으로는 설명을 짧게 해 줘. 대본 파일은 지우고 다시 올릴게", {**OK}, None),
+        ("앞으로는 설명을 짧게 해 줘. 아니 그거 지워 줘", {**OK}, "③"),
+        # 기억 요청 낱말만 있는 절은 바로 앞 절을 가리킨다(#917 리뷰 막음)
+        (
+            "설명을 짧게 해 줘, 기억해 줘",
+            {**OK, "quote": "설명을 짧게 해 줘, 기억해 줘"},
+            None,
+        ),
+        (
+            "설명을 짧게 해 줘. 기억해 둬",
+            {**OK, "quote": "설명을 짧게 해 줘. 기억해 둬"},
+            None,
+        ),
         # 값이 요청 표현이 없는 다른 절에서 옴(반대 선호 · 요청하지 않은 사실)
         (
             "발표는 길게 해. 앞으로 짧게 해 줘",
@@ -183,7 +208,8 @@ def test_profile_update_rules(message: str, item: dict[str, str], rule: str | No
     kept, dropped = memory.check_profile_updates([item], user_message=message, cfg=DEFAULT_CONFIG)
     if rule is None:
         assert (
-            kept == [{"key": "TONE", "value": "설명을 짧게", "quote": OK["quote"]}] and not dropped
+            kept == [{"key": "TONE", "value": "설명을 짧게", "quote": item["quote"]}]
+            and not dropped
         )
     else:
         assert kept == [] and dropped[0].reason.startswith(rule), dropped
@@ -442,3 +468,58 @@ def test_final_check_failure_after_summary_keeps_diagnostics_with_its_usage(
     steps = (data or {})["diagnostics"]["steps"]
     assert any(s["kind"] == "MODEL" and s["code"] == "HISTORY_SUMMARY" for s in steps)
     assert data["diagnostics"]["end"]["status"] == "INTERNAL_ERROR"
+
+
+def test_negated_value_is_not_saved_even_in_the_widened_request_clause() -> None:
+    """앞 절까지 요청 구간으로 넓혀도, 값 바로 뒤가 부정이면 사용자가 바라지 않는 값이라 버린다(⑥)."""
+    msg = "길게 말하지 말고 짧게 설명해 줘, 기억해 줘"
+    bad = {"key": "EXPLAIN_STYLE", "value": "길게", "quote": msg}
+    good = {"key": "EXPLAIN_STYLE", "value": "짧게 설명", "quote": msg}
+    kept, dropped = memory.check_profile_updates([bad], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert kept == [] and dropped[0].reason.startswith("⑥")
+    kept, _ = memory.check_profile_updates([good], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert [k["value"] for k in kept] == ["짧게 설명"]
+
+
+@pytest.mark.parametrize(
+    ("msg", "value", "ok"),
+    [
+        ("길게 하지 마. 짧게 설명해 줘, 기억해 줘", "짧게 설명", True),
+        (
+            "짧게 설명 예시는 빼고 해 줘, 기억해 줘",
+            "짧게 설명",
+            True,
+        ),  # '빼고'는 값의 부정이 아니다
+        ("길게  설명하지 말고 짧게 해 줘, 기억해 줘", "길게 설명", False),  # 공백이 달라도 찾는다
+    ],
+)
+def test_negation_is_only_the_one_attached_to_the_value(msg: str, value: str, ok: bool) -> None:
+    item = {"key": "EXPLAIN_STYLE", "value": value, "quote": msg}
+    kept, _ = memory.check_profile_updates([item], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert bool(kept) is ok
+
+
+def test_just_now_about_a_file_is_not_a_memory_withdrawal() -> None:
+    """'방금 올린 대본은 지우고'는 기억 철회가 아니다. '방금 그거 지워 줘'처럼 말을 가리키면 철회(#948 리뷰)."""
+    upd = {
+        "key": "EXPLAIN_STYLE",
+        "value": "짧게 설명",
+        "quote": "앞으로 짧게 설명해 줘, 기억해 줘",
+    }
+    ok_msg = "방금 올린 대본은 지우고 다시 할게. 앞으로 짧게 설명해 줘, 기억해 줘"
+    kept, _ = memory.check_profile_updates([upd], user_message=ok_msg, cfg=DEFAULT_CONFIG)
+    assert kept
+    no_msg = "앞으로 짧게 설명해 줘, 기억해 줘. 아니 방금 그거 지워 줘"
+    kept, dropped = memory.check_profile_updates([upd], user_message=no_msg, cfg=DEFAULT_CONFIG)
+    assert kept == [] and dropped[0].reason.startswith("③")
+
+
+def test_just_now_that_file_is_not_a_memory_withdrawal() -> None:
+    upd = {
+        "key": "EXPLAIN_STYLE",
+        "value": "짧게 설명",
+        "quote": "앞으로 짧게 설명해 줘, 기억해 줘",
+    }
+    msg = "방금 그 대본 파일은 지우고 다시 올릴게. 앞으로 짧게 설명해 줘, 기억해 줘"
+    kept, _ = memory.check_profile_updates([upd], user_message=msg, cfg=DEFAULT_CONFIG)
+    assert kept

@@ -61,9 +61,9 @@ class Role:
         return dict(self.purpose_efforts).get(purpose, self.reasoning_effort)
 
 
-#: 대화 에이전트 역할. 출력 상한은 실행 출력 예약 16k 를 8번에 나눈 2,000 이하, 추론 강도는 평가에서 잰다(15-3)
 #: 시간 초과 뒤 앞 시도가 끝났는지 기다려 보는 시간(초). 이 안에 끝나야 다시 보낸다
 _CANCEL_GRACE_SECONDS = 0.5
+#: 대화 에이전트 역할. 출력 상한은 실행 출력 예약 16k 를 8번에 나눈 2,000 이하, 추론 강도는 평가에서 잰다(15-3)
 ROLE_CHAT_AGENT = Role(max_output_tokens=2_000, reasoning_effort="low", timeout_seconds=12.0)
 
 _ALLOWED_FINISH = {"tools": {"stop", "tool_calls"}, "schema": {"stop"}}
@@ -120,7 +120,9 @@ class OpenAiToolLlm:
         sink = req.text_sink
         for attempt in range(1, req.max_attempts + 1):
             if not before_attempt(attempt):
-                raise LlmBudgetStop(attempts=attempt - 1, usage=usages, cause="budget")
+                raise LlmBudgetStop(
+                    attempts=attempt - 1, usage=usages, cause="budget", attempt_errors=errors
+                )
             left = req.deadline - self._monotonic()
             timeout = min(self._role.timeout_seconds, left)
             if timeout <= 0:

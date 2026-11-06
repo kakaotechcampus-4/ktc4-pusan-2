@@ -47,7 +47,8 @@ from .answer import ClaimLines, Composer, is_general_intro, with_prefix
 from .answer import assessment_head as _assessment_head  # noqa: F401  # 시험이 이 이름으로 부른다
 from .answer import guide_texts as _guide_texts
 from .budget import LIMIT_END_REASONS, Counters
-from .diagnostics import DiagRecorder, reduce_to_fit, safe_request_id
+from .config import ChatAgentConfig
+from .diagnostics import DiagRecorder, code_enum, reduce_to_fit, safe_request_id
 from .evidence import canonical_json
 from .goals import judge_goal
 from .loop import Loop, LoopState, TurnDeps, meta
@@ -477,6 +478,8 @@ def _ask_pause(
     ans, cmp = _start_answer(lp, req, route="ASK", pending=action, pre=_pre_claims(lp))
     draft = {} if ans.get("failed") else ans["draft"]
     comp = cmp.finish(draft, ans.get("messages") or [])
+    # 같은 말의 기억 요청(코칭 프로필 후보)도 이 응답에 싣는다: 승인과 상관없이 BE 가 저장한다(6-14). 검사는 `_finish`
+    lp.profile_candidates = draft.get("profile_updates")
     # 낸 문장 · 판단 · 자료 사본은 `_finish`가 서명 상태에 담는다: 이어 부른 뒤 최종 답이 앞부분에 그대로 싣는다(5-5 · 5-6)
     return finish(
         status="NEEDS_ACTION",
@@ -503,7 +506,9 @@ def _finalize(
     lp: Loop, req: TurnRequest, extra_prior: list[Assessment] | None = None
 ) -> clm.FinalizeResult | None:
     # 초안이 없어도 사용자 말이 있으면 확정한다: 측정 절을 덮는 판단이 없으면 '확인하지 못했어요' 문장을 만든다(L6-16)
-    drafts = [_question_as_request(d, lp.original or "") for d in lp._parse_drafts(lp.st.drafts)]
+    drafts = [
+        _question_as_request(d, lp.original or "", lp.cfg) for d in lp._parse_drafts(lp.st.drafts)
+    ]
     if not lp.original:
         return None
     ctx = lp.ctx
@@ -532,25 +537,9 @@ def _finalize(
     )
 
 
-#: 값 · 정보를 묻는 말. 이 말이 들고 물음표로 끝난, 주장한 값 · 방향이 없는 측정 초안만 요청으로 본다
-#: ("대본 보고 한 발표였어" 같은 상태 주장 · "잘 봤지?"처럼 평가를 내세운 말은 그대로)
-_INFO_QUESTION = (
-    "몇",
-    "얼마",
-    "어느 정도",
-    "어떻게",
-    "어땠",
-    "어때",
-    "어떤",
-    "어디",
-    "무슨",
-    "뭐",
-    "무엇",
-    "왜",
-)
-
-
-def _question_as_request(d: clm.AssessmentDraft, original: str) -> clm.AssessmentDraft:
+def _question_as_request(
+    d: clm.AssessmentDraft, original: str, cfg: ChatAgentConfig
+) -> clm.AssessmentDraft:
     """정보만 묻는 질문('3장 시선 몇 %였어?' · '졸업 발표 3장 어땠어?')은 주장이 아니다: 측정 초안을 요청으로 바꾼다.
 
     그대로 두면 주장한 값 · 방향이 없어 '이 기록으로는 확인할 수 없어요'로 판정되고, 그 뒤 답이 값을 말해 모순이 된다.
@@ -563,7 +552,9 @@ def _question_as_request(d: clm.AssessmentDraft, original: str) -> clm.Assessmen
     if not (d.claim_op == "VALUE" or d.polarity == "NEUTRAL"):
         return d
     q = d.quote.strip()
-    if not any(w in q for w in _INFO_QUESTION) or any(b in q for b in ("는데", "은데", "지만")):
+    if not any(w in q for w in cfg.info_question_words) or any(
+        b in q for b in cfg.clause_break_words
+    ):
         return d
     at = original.find(q)
     after = original[at + len(q) :].lstrip()[:1] if at >= 0 else ""
@@ -687,13 +678,29 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     sp = draft.get("start_practice")
     if isinstance(sp, dict):
         lp.st.action_seq += 1
-        action, card, _why = act.start_practice_action(
+        action, card, why = act.start_practice_action(
             ctx=ctx,
             authorized_by=sp.get("authorized_by")
             if isinstance(sp.get("authorized_by"), str)
             else None,
             seq=lp.st.action_seq,
             budget=lp.budget,
+        )
+        # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
+        # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
+        lp.diag.step(
+            "ACTION",
+            "START_PRACTICE",
+            {
+                "action_id": action.action_id if action is not None else None,
+                "autonomy": act.AUTONOMY.get("START_PRACTICE"),
+                "authorization": "NOT_REQUIRED",
+                "result": "PROPOSED"
+                if action is not None
+                else ("DOWNGRADED" if card else "DROPPED"),
+                "reason_code": code_enum(why),
+            },
+            parent_seq=lp._last_model_seq,
         )
         if card:
             lp.st.cards.append(card)
@@ -708,13 +715,17 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         # "바로 발표할래"처럼 연습 이동만 요청해 허용된 답: 문장이 없어도 이동이 답이다(6-2 START_PRACTICE).
         # 모델이 쓴 문장이 검사로 모두 빠졌거나 자료를 찾지 못한 답은 그대로 PARTIAL · 거절이다
         body = [Claim(kind="SYSTEM", text=templates.SystemText.PRACTICE_BUTTON.value)]
+    # 섞인 요청의 범위 밖 이유(1-3): 답 문장이 검사로 모두 빠져도 범위 밖 안내는 낸다(#904 리뷰)
+    scope_claims = [
+        Claim(kind="SYSTEM", text=templates.scope_text(r).value) for r in _scope_notes(draft)
+    ]
     if not body and not has_result:
         if notes:
             # 행동 결과 안내만 있는 답(예: 다른 탭에서 목표가 바뀌어 저장하지 못함): 안내를 그대로 낸다
             return finish(
                 status="PARTIAL",
                 reason="OTHER",
-                claims=comp.pre,
+                claims=[*comp.pre, *scope_claims],
                 assessments=all_assessments,
             )
         if no_guide or advice_only:
@@ -722,6 +733,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 status="REFUSED",
                 reason="NO_EVIDENCE",
                 system=[templates.SystemText.NO_GUIDE],
+                claims=scope_claims or None,
                 assessments=all_assessments,
             )
         partial = compose.template_partial(ctx, [e for c in out for e in c.evidence_ids])
@@ -730,13 +742,14 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 status="PARTIAL",
                 reason="CHECK_ALL_DROPPED",
                 system=[templates.SystemText.VERIFIED_ONLY],
-                claims=partial,
+                claims=[*partial, *scope_claims],
                 assessments=all_assessments,
             )
         return finish(
             status="PARTIAL",
             reason="CHECK_ALL_DROPPED",
             system=[templates.SystemText.PARTIAL_CHECKED],
+            claims=scope_claims or None,
             assessments=all_assessments,
         )
     final_claims = [*comp.pre, *body]
@@ -833,6 +846,26 @@ def _scope_notes(draft: dict[str, Any]) -> list[str]:
     return out[:3]
 
 
+#: 다시 평가 실패 코드(5-8 닫힌 목록) → 고정 안내(7-10). 다시 해도 결과가 같은 실패는 '잠시 뒤 다시 시도'로 안내하지 않는다.
+#: 목록 밖 코드 · `REVIEW_FAILED`(리뷰 호출 실패)는 `REASSESS_FAILED`
+_REASSESS_FAILED_NOTE = {
+    "NO_OFFICIAL_REVIEW": templates.SystemText.REASSESS_NO_DATA,
+    "REASSESS_DAILY_LIMIT": templates.SystemText.REASSESS_DAILY_LIMIT,
+    "NOT_FOUND": templates.SystemText.TAKE_FETCH_FAILED,
+    "REASSESS_PER_TURN": templates.SystemText.ACTION_UNCONFIRMED,
+    "INVALID_CHANGE": templates.SystemText.ACTION_UNCONFIRMED,
+    "NOT_AUTHORIZED": templates.SystemText.ACTION_UNCONFIRMED,
+    "NOT_ALLOWED": templates.SystemText.ACTION_UNCONFIRMED,
+    "APPROVAL_REQUIRED": templates.SystemText.ACTION_UNCONFIRMED,
+    "REVIEW_TAKE_MISMATCH": templates.SystemText.ACTION_UNCONFIRMED,
+    "REVIEW_REQUEST_CHANGED": templates.SystemText.ACTION_UNCONFIRMED,
+    "INVALID_ACTION": templates.SystemText.ACTION_UNCONFIRMED,
+    "IDEMPOTENCY_CONFLICT": templates.SystemText.ACTION_UNCONFIRMED,
+    "APPROVAL_ARGS_CHANGED": templates.SystemText.ACTION_UNCONFIRMED,
+    "PREAPPROVAL_MISMATCH": templates.SystemText.ACTION_UNCONFIRMED,
+}
+
+
 def _action_notes(lp: Loop) -> list[str]:
     """이 실행에서 처리한 행동 결과에 붙일 고정 안내(7-10): 실패 · 후보 여럿 · 규칙 판 다름 · 공식 리뷰와 다름."""
     st = templates.SystemText
@@ -854,21 +887,13 @@ def _action_notes(lp: Loop) -> list[str]:
         elif t == "REASSESS" and "RULES_DIFFER" in (reason, code):
             note = st.REASSESS_RULES_DIFFER
         elif status == "FAILED" and t == "REASSESS":
-            note = {
-                "DAILY_LIMIT": st.REASSESS_DAILY_LIMIT,
-                "REASSESS_DAILY_LIMIT": st.REASSESS_DAILY_LIMIT,
-                "NO_DATA": st.REASSESS_NO_DATA,
-            }.get(code or "", st.REASSESS_FAILED)
+            note = _REASSESS_FAILED_NOTE.get(
+                code if code in act.ACTION_ERROR_CODES else "", st.REASSESS_FAILED
+            )
         elif status == "FAILED" and t == "SAVE_GOAL":
             note = (
                 st.GOAL_CHANGED_ELSEWHERE
-                if code
-                in (
-                    "GOAL_CHANGED",
-                    "GOAL_VERSION_CONFLICT",
-                    "VERSION_CONFLICT",
-                    "STALE_GOAL_VERSION",
-                )
+                if code == "GOAL_VERSION_CONFLICT"
                 else st.ACTION_UNCONFIRMED
             )
         elif status == "SUCCEEDED" and t == "REASSESS" and e.get("official_differs"):
@@ -1039,9 +1064,13 @@ def _safe_cards(
                 assessments=amap,
             )
             if c.get("type") in _CODE_CARDS:
-                # 검증된 행동 결과로 코드가 만든 카드(다시 평가 · 목표 판정 · 연습 이동)는 숫자 출처 대신
-                # 금지 주장 · 개인정보만 본다(사용자 기준 문구의 "30%" 같은 숫자로 카드가 통째로 숨지 않게)
-                fails = [f for f in fails if f.check_id in ("PII", "FORBIDDEN_CLAIM")]
+                # 검증된 행동 결과로 코드가 만든 카드(다시 평가 · 목표 판정 · 연습 이동 · 확인 카드)는 숫자 출처 대신
+                # 금지 주장 · 개인정보 · 표시 형식만 본다(사용자 기준 문구의 "30%" 같은 숫자로 카드가 통째로 숨지 않게).
+                # 카드에 실리는 모델 글은 다시 평가 기준 문구(`display`)뿐이고, 그것은 행동을 낼 때 출처가 있는 것만
+                # 남긴다(`actions._sourced_targets`, 6-9 '코드가 만든 카드')
+                fails = [
+                    f for f in fails if f.check_id in ("PII", "FORBIDDEN_CLAIM", "DISPLAY_TEXT")
+                ]
             return bool(fails)
 
         if not bad(card):
@@ -1138,8 +1167,14 @@ def _finish(
     #: 이 실행에서 이미 낸 문장 수(앞 응답 + 이 응답의 문장 줄). 끝 줄 message 의 앞부분은 이 문장들과 같다(5-4)
     n_sent = len(st.emitted)
     terminal = error is None and status in ("DONE", "PARTIAL", "REFUSED")
-    # 코칭 프로필 저장 후보(6-14): 종결 응답에서만(모델 호출 없음)
-    profile_updates = _profile_updates(lp, req, payload) if terminal else None
+    # 코칭 프로필 저장 후보(6-14): 종결 응답과 승인 대기 응답에서(모델 호출 없음). 승인 대기에 실으면 BE 가 승인 결과와
+    # 상관없이 저장한다 — 카드를 거절해도 같은 말의 "기억해 줘"가 말없이 사라지지 않게(#900 리뷰)
+    waiting = (
+        error is None
+        and status == "NEEDS_ACTION"
+        and _waits_for_approval(actions or ([action] if action is not None else []))
+    )
+    profile_updates = _profile_updates(lp, req, payload) if terminal or waiting else None
     c = lp.counters
 
     def usage_now() -> dict[str, Any]:

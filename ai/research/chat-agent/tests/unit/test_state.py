@@ -331,6 +331,14 @@ def test_fm_L1_28_decoded_size_boundary():
     assert reason_of(resign(padded_payload(limit + 1)), cfg=cfg) == "DECODED_TOO_LARGE"
 
 
+def test_fm_L1_28_decoded_size_checked_before_utf8_and_json() -> None:
+    # 한도를 넘는 바이트가 UTF-8 도 JSON 도 아니어도, 해석 전에 크기로 거절한다(#882 리뷰)
+    cfg = load_config(max_state_bytes=4 * 1024 * 1024)
+    limit = cfg.max_state_decoded_bytes
+    signed = resign(bytes([0xFF]) * (limit + 1))
+    assert reason_of(signed, cfg=cfg) == "DECODED_TOO_LARGE"
+
+
 def test_fm_L1_28_order_signature_before_payload_fields():
     # 서명이 틀리면 payload 가 깨져 있어도 SIGNATURE 다(검증 전 payload 를 읽지 않는다)
     signed = resign(b"{not json")

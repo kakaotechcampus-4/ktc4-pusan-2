@@ -60,7 +60,9 @@ class LlmRequest:
     #: 구조화 모드면 JSON Schema(이름 · 스키마)
     response_schema: dict[str, Any] | None = None
     max_output_tokens: int = 2_000
-    #: 마감(monotonic 초). 넘기면 보내지 않는다
+    #: 마감(monotonic 초). 넘기면 보내지 않는다. 조사 호출의 마감은 이미 답 쓰기 · 고치기 예약(24초)을 뺀
+    #: `min(12, 남은 시간 − 24)`초 뒤라서, 다시 보낼 조건(대기 + 12초 ≤ 마감 − 지금)이 거의 맞지 않는다. 조사의
+    #: `max_attempts=2` 는 사실상 1회이고, 8-3 이 조사를 '최대 1회'로 정한 것과 맞다(#886 리뷰)
     deadline: float = 0.0
     #: 이 호출 안의 최대 시도 수(고치기는 1)
     max_attempts: int = 2
@@ -121,6 +123,18 @@ class LlmBudgetStop(LlmError):
     """before_attempt 가 False 를 돌려 보내지 않았다(한도 · 시간)."""
 
     code = "LIMIT"
+
+    def __init__(
+        self,
+        *,
+        attempts: int = 1,
+        usage: list[Usage] | None = None,
+        cause: str = "",
+        attempt_errors: list[str] | None = None,
+    ) -> None:
+        super().__init__(attempts=attempts, usage=usage, cause=cause)
+        #: 한도로 막히기 전에 실패한 앞 시도의 오류 코드(진단 기록 MODEL 단계에 쓴다, #887 리뷰)
+        self.attempt_errors = list(attempt_errors or [])
 
 
 class ToolLlm(Protocol):

@@ -130,8 +130,13 @@ def _profile_problem(item: Any, message: str, cfg: ChatAgentConfig) -> str | Non
     if not any(w in quote for w in cfg.memory_request_words):
         return "② 직접적인 기억 요청 표현이 없음"
     clause = _clause_of(message, quote)
-    if any(w in message for w in cfg.memory_withdraw_words):
-        # 철회는 다른 절에 있어도("~해 줘, 아니 기억하지 마") 그 말 전체의 기억 요청을 거둔다
+    if any(w in message for w in cfg.memory_withdraw_words) or any(
+        any(v in c for v in cfg.memory_withdraw_verbs)
+        and any(t in c for t in cfg.memory_withdraw_targets)
+        for c in _CLAUSE_SPLIT.split(message)
+    ):
+        # 철회는 다른 절에 있어도("~해 줘, 아니 기억하지 마") 그 말 전체의 기억 요청을 거둔다. 지우기 동사는 기억을
+        # 가리키는 말과 같은 절일 때만("대본 파일은 지우고 다시 올릴게"는 철회가 아니다, #916 리뷰)
         return "③ 기억 철회 표현"
     if any(m in clause for m in cfg.quotation_markers):
         return "③ 남의 말 인용"
@@ -141,8 +146,9 @@ def _profile_problem(item: Any, message: str, cfg: ChatAgentConfig) -> str | Non
         len(words),
     )
     if any(
-        len(w) > 1 and w.endswith(cfg.condition_suffixes)
-        for w in words[:first_req] + words[first_req + 1 :]
+        len(w) > 1 and w.endswith(cfg.condition_suffixes) and not _is_wish(words, i, cfg)
+        for i, w in enumerate(words)
+        if i != first_req
     ):
         return "③ 조건부 요청"
     if key not in PROFILE_KEYS:
@@ -156,12 +162,48 @@ def _profile_problem(item: Any, message: str, cfg: ChatAgentConfig) -> str | Non
     if chk.check_memory_text(value, "profile_updates", cfg):
         return "⑤ 금지 주장 · 개인정보 · 판정 낱말"
     # ②⑥ 값은 기억 요청 표현이 있는 절 안에서 온 것이어야 한다("발표는 길게 해. 앞으로 짧게 해 줘"의 '길게'는 안 됨)
-    request_clauses = [
-        c for c in _CLAUSE_SPLIT.split(quote) if any(w in c for w in cfg.memory_request_words)
-    ]
+    # 기억 요청 낱말만 있는 절("짧게 설명해 줘, 기억해 줘"의 '기억해 줘')은 바로 앞 절을 가리키므로 앞 절도 요청 구간이다
+    # (#917 리뷰). 앞 절이 아닌 다른 내용을 가리키는 절("앞으로 짧게 해 줘")은 넓히지 않는다
+    parts = [c for c in _CLAUSE_SPLIT.split(quote) if c.strip()]
+    request_clauses = []
+    for i, c in enumerate(parts):
+        if any(w in c for w in cfg.memory_request_words):
+            request_clauses.append(c)
+            if i > 0 and _only_request(c, cfg):
+                request_clauses.append(parts[i - 1])
     if not any(_squash(value) in _squash(c) for c in request_clauses):
         return "⑥ 값이 기억 요청 구간에 없음"
+    # 값에 바로 이어진 부정이면 사용자가 바라지 않는 값이다("길게 말하지 말고 짧게 설명해 줘, 기억해 줘"의 '길게').
+    # 값 뒤에 짧은 동사(4글자 안)와 부정 어미가 바로 붙을 때만 본다: "짧게 설명 예시는 빼고"의 '빼고'는 값의 부정이 아니다
+    v = _squash(value)
+    for c in request_clauses:
+        sc = _squash(c)
+        at = sc.find(v)
+        if at >= 0 and _NEGATED_AFTER.match(sc[at + len(v) :]):
+            return "⑥ 부정한 값"
     return None
+
+
+#: 저장 값에 바로 이어진 부정(공백을 지운 글에서): 짧은 동사 + '지 마 · 지 말 · 말고'("길게 말하지 말고" · "길게 하지 마")
+_NEGATED_AFTER = re.compile(r"[가-힣]{0,4}?(?:지마|지말|말고)")
+#: 기억 요청만 있는 절에서 지워도 되는 말(요청 어미 · 꾸밈)
+_REQUEST_FILLERS = re.compile(
+    r"(?:줘요|줘|둬요|둬|주세요|두세요|줄래|줄래요|해요|해|요|꼭|제발|좀|~)"
+)
+
+
+def _only_request(clause: str, cfg: ChatAgentConfig) -> bool:
+    """절에 기억 요청 낱말과 요청 어미만 있는가. 예: '기억해 줘' · ' 기억해 둬' → True, '앞으로 짧게 해 줘' → False"""
+    rest = clause
+    for w in sorted(cfg.memory_request_words, key=len, reverse=True):
+        if w.startswith("기억"):
+            rest = rest.replace(w, " ")
+    return not _squash(_REQUEST_FILLERS.sub("", _squash(rest)))
+
+
+def _is_wish(words: list[str], i: int, cfg: ChatAgentConfig) -> bool:
+    """`~면` 낱말 바로 뒤가 바람 표현이면("설명해 주면 좋겠어") 조건이 아니다(#916 리뷰)."""
+    return i + 1 < len(words) and words[i + 1].startswith(cfg.wish_after_condition)
 
 
 def check_summary_items(

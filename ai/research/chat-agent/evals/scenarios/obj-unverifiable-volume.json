@@ -5,7 +5,7 @@
   "group": "unverifiable",
   "split": "dev",
   "act": "should_not",
-  "title": "측정 안 된 영역(음량 측정 안 됨 · 목소리 판단 불가)에 대한 주장 → UNVERIFIABLE",
+  "title": "측정 안 된 영역(측정 비율이 낮아 음량 판단 불가 · 목소리 판단 불가)에 대한 주장 → UNVERIFIABLE",
   "baseline_type": "record",
   "fixtures": {
     "pitches": [
@@ -15,7 +15,7 @@
           "t-5": {
             "result": {
               "unmeasured": {
-                "VOLUME": "MIC_NOT_CALIBRATED"
+                "VOLUME": "LOW_MEASURED_RATIO"
               }
             },
             "review": {

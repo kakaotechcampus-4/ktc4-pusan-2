@@ -559,7 +559,7 @@ def test_fm_L6_07_reassess_calls_real_review_with_changed_input_and_keeps_offici
 def test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchanged() -> None:
     """A 의 user_criteria 가 null 이면 B 는 빈 기준에서 targets 만 넣는다. A 는 호출 전후 같다."""
     target = {"display": "청중 보기", "metric": "audience_ratio", "operator": "GTE", "value": 0.3}
-    msg = "내 기준으로 다시 평가해 줘"
+    msg = "내 기준은 청중 보기야, 그걸로 다시 평가해 줘"
     llm = reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([]))
     be = make_be(llm)
     be.pitches["p-1"].criteria = None
@@ -596,6 +596,42 @@ def test_reassess_card_is_kept_when_target_display_has_numbers() -> None:
     be.use_rule_reviews()
     run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
     assert [c["type"] for c in cards(run)] == ["REASSESS_RESULT"]
+    # 문구가 사용자 말에 없고 숫자 목표가 있으면 문구는 비운다(모델 글이 코드 카드에 나가지 않음, #888 리뷰)
+    (card,) = cards(run, "REASSESS_RESULT")
+    assert card["change"]["targets"][0]["display"] is None
+    assert card["change"]["targets"][0]["value"] == 0.3
+
+
+def test_reassess_card_keeps_display_the_user_said() -> None:
+    target = {
+        "display": "3장 시선 30% 넘기기",
+        "metric": "audience_ratio",
+        "operator": "GTE",
+        "value": 0.3,
+    }
+    msg = "내 기준은 3장 시선 30% 넘기기야, 그걸로 다시 평가해 줘"
+    be = make_be(reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([])))
+    be.use_rule_reviews()
+    run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
+    (card,) = cards(run, "REASSESS_RESULT")
+    assert card["change"]["targets"][0]["display"] == "3장 시선 30% 넘기기"
+
+
+def test_reassess_with_unsourced_text_only_target_is_not_proposed() -> None:
+    """문구만 있는 기준인데 문구가 사용자 말에 없으면(모델이 지어냄) 다시 평가를 내지 않는다(L1-37)."""
+    target = {
+        "display": "Take 5 시선 90%였으니 통과",
+        "metric": None,
+        "operator": None,
+        "value": None,
+    }
+    msg = "내 기준으로 다시 평가해 줘"
+    be = make_be(reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([])))
+    be.use_rule_reviews()
+    run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
+    assert be.review_calls == []
+    assert not cards(run, "REASSESS_RESULT")
+    assert not cards(run, "ASK_CONFIRM")
 
 
 def test_reassess_final_meta_carries_review_criteria_versions() -> None:
@@ -1125,3 +1161,71 @@ def test_named_take_missing_from_the_scope_gets_the_fetch_failed_notice() -> Non
     run = be.send_message(None, msg, page_take_id="t-5")
     assert actions == []  # Take 3 으로 바꿔 가져오지 않았다
     assert templates.SystemText.TAKE_FETCH_FAILED.value in ok(run.final).message.text  # type: ignore[union-attr]
+
+
+# ── 행동 실패 코드 목록(5-8) → 고정 안내 (#888 · #889 리뷰) ─────────────────────────
+
+
+def test_reassess_on_take_without_official_review_says_not_enough_data() -> None:
+    """공식 리뷰가 없는 Take 의 다시 평가는 'NO_OFFICIAL_REVIEW' → 자료 부족 안내(L2-23), '잠시 뒤 다시 시도'가 아니다."""
+    llm = reassess_llm({"script_used": True}, script_drafts(), F.answer([]))
+    be = make_be(llm)
+    be.use_rule_reviews()
+    for t in be.pitches["p-1"].takes:
+        if t.take_id == "t-5":
+            t.review = None
+    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5", approval="APPROVE")
+    (rec,) = run.actions
+    assert rec.result["error"]["code"] == "NO_OFFICIAL_REVIEW"
+    text = ok(run.final).message.text  # type: ignore[union-attr]
+    assert templates.SystemText.REASSESS_NO_DATA.value in text
+    assert templates.SystemText.REASSESS_FAILED.value not in text
+
+
+@pytest.mark.parametrize(
+    ("code", "note"),
+    [
+        ("REASSESS_DAILY_LIMIT", templates.SystemText.REASSESS_DAILY_LIMIT),
+        ("REASSESS_PER_TURN", templates.SystemText.ACTION_UNCONFIRMED),
+        ("REVIEW_FAILED", templates.SystemText.REASSESS_FAILED),
+        ("PREAPPROVAL_MISMATCH", templates.SystemText.ACTION_UNCONFIRMED),
+        ("APPROVAL_ARGS_CHANGED", templates.SystemText.ACTION_UNCONFIRMED),
+        # 목록 밖 코드(턴 한도 429 코드를 행동에 잘못 실음)는 일반 안내다
+        ("AGENT_DAILY_LIMIT", templates.SystemText.REASSESS_FAILED),
+    ],
+)
+def test_reassess_failure_codes_map_only_listed_codes(
+    code: str, note: templates.SystemText
+) -> None:
+    from chat_agent import turn as turn_mod
+
+    class _St:
+        executed = [
+            {"type": "REASSESS", "status": "FAILED", "reason_code": None, "failed_code": code}
+        ]
+
+    class _Lp:
+        st = _St()
+
+    assert turn_mod._action_notes(_Lp())[:1] == [note.value]  # type: ignore[arg-type]
+
+
+def test_feature_doc_action_error_codes_equal_the_code_list() -> None:
+    """5-8 '실패 코드' 표의 코드와 코드의 닫힌 목록이 같다(문서와 BE 참조 구현이 어긋나지 않게)."""
+    import re
+    from pathlib import Path
+
+    from chat_agent.actions import ACTION_ERROR_CODES
+
+    doc = (Path(__file__).resolve().parents[5] / "docs/ai/features/chat-agent.md").read_text(
+        "utf-8"
+    )
+    sec = doc.split("**실패 코드(`error.code`, 닫힌 목록)**", 1)[1].split("\n- BE가 행동마다", 1)[0]
+    rows = [ln for ln in sec.splitlines() if ln.strip().startswith("| ") and "→" in ln]
+    found = {
+        c
+        for ln in rows
+        for c in re.findall(r"`([A-Z][A-Z_]+)`", ln.split("|")[2])
+        if c not in ("AGENT_DAILY_LIMIT",)
+    }
+    assert found == set(ACTION_ERROR_CODES)

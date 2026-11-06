@@ -66,7 +66,7 @@ def _save_goal_llm() -> F.FakeLlm:
 
 
 def _refuse_llm() -> F.FakeLlm:
-    return F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"])])
+    return F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"], scope_reason="OTHER")])
 
 
 def _no_answer_llm() -> F.FakeLlm:

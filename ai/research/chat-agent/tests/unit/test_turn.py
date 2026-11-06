@@ -174,7 +174,7 @@ def test_pre_stream_context_too_large_413() -> None:
 
 
 def test_out_of_scope_is_refused_after_plan() -> None:
-    llm = F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=[])])
+    llm = F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=[], scope_reason="OTHER")])
     _, lines, data = F.run_turn(F.request(user_message="오늘 날씨 어때?"), llm)
     fd = final_ok(data)
     assert fd.status == "REFUSED"
@@ -189,8 +189,9 @@ def test_out_of_scope_is_refused_after_plan() -> None:
         ("QA_PRACTICE", templates.SystemText.QA_PRACTICE),
         ("PRACTICE_PLAN", templates.SystemText.PRACTICE_PLAN),
         ("OTHER", templates.SystemText.OUT_OF_SCOPE),
-        (None, templates.SystemText.OUT_OF_SCOPE),
-        ("NOT_A_REASON", templates.SystemText.OUT_OF_SCOPE),
+        # 이유가 없거나 모르는 값이면 '발표와 관계없다'로 단정하지 않는 중립 문장(#904 리뷰)
+        (None, templates.SystemText.OUT_OF_SCOPE_UNKNOWN),
+        ("NOT_A_REASON", templates.SystemText.OUT_OF_SCOPE_UNKNOWN),
     ],
 )
 def test_out_of_scope_plan_refuses_with_fixed_sentence_per_reason(
@@ -210,7 +211,7 @@ def test_out_of_scope_plan_refuses_with_fixed_sentence_per_reason(
     [
         ("QA_PRACTICE", templates.SystemText.QA_PRACTICE),
         ("PRACTICE_PLAN", templates.SystemText.PRACTICE_PLAN),
-        (None, templates.SystemText.OUT_OF_SCOPE),
+        (None, templates.SystemText.OUT_OF_SCOPE_UNKNOWN),
     ],
 )
 def test_out_of_scope_answer_route_refuses_with_fixed_sentence_per_reason(
@@ -1154,6 +1155,7 @@ def test_question_conversion_only_for_plain_questions(
 ) -> None:
     """묻는 말이 있어도 값 · 방향 없이 물음표로 끝나는 단순 질문일 때만 요청으로 바꾼다."""
     from chat_agent import claims as clm
+    from chat_agent.config import DEFAULT_CONFIG
     from chat_agent.turn import _question_as_request
 
     d = clm.AssessmentDraft.model_validate(
@@ -1165,7 +1167,7 @@ def test_question_conversion_only_for_plain_questions(
             polarity=polarity,
         )
     )
-    out = _question_as_request(d, message)
+    out = _question_as_request(d, message, DEFAULT_CONFIG)
     assert (out.type == "MEASURED") is kept
 
 
@@ -1187,6 +1189,17 @@ def test_practice_move_only_answer_is_done_with_the_action() -> None:
     assert fd.message is not None
     assert fd.message.text == templates.SystemText.PRACTICE_BUTTON.value
     assert [c.type for c in fd.message.cards] == ["START_PRACTICE"]
+
+    # 연습 이동도 ACTION 진단 단계를 남긴다: 버튼 행동이라 승인 확인 불필요, 행동을 냈으니 PROPOSED(#887 리뷰)
+    step = next(s for s in data["diagnostics"]["steps"] if s["kind"] == "ACTION")
+    assert step["code"] == "START_PRACTICE"
+    assert step["detail"]["authorization"] == "NOT_REQUIRED"
+    assert (step["detail"]["result"], step["detail"]["action_id"]) == (
+        "PROPOSED",
+        fd.actions[0].action_id,
+    )
+    assert step["detail"]["autonomy"] == "BUTTON"
+    assert step["parent_seq"] is not None
 
 
 def test_assessment_head_does_not_render_supported_template_for_request() -> None:
@@ -1224,3 +1237,19 @@ def test_fix_text_with_an_evidence_id_keeps_the_fixed_sentence_without_the_id() 
     text = fd.message.text  # type: ignore[union-attr]
     assert "Take 5의 3장 청중 시선 비율은 28%예요." in text
     assert "e-0e00ac50bb" not in text and "30%" not in text
+
+
+def test_mixed_request_keeps_the_scope_sentence_when_every_answer_sentence_is_dropped() -> None:
+    """섞인 요청에서 범위 안 답 문장이 검사로 모두 빠져 PARTIAL 이어도 범위 밖 고정 문장은 낸다(1-3, #904 리뷰)."""
+
+    def make(r: Any) -> Any:
+        bad = F.claim("RECORD", "Take 5의 3장 시선은 99%예요.", evidence_ids=["e-없는근거"])
+        return F.answer([bad], scope_notes=["CONTENT_COACHING"])
+
+    req = F.with_loaded(F.request(user_message="Take 5 3장 기록 알려 줘"), "t-4")
+    llm = F.FakeLlm([F.plan(), F.tools(COMPARE), F.done()], answers=[make], fixes=[LlmTimeout()])
+    fd = final_ok(F.run_turn(req, llm)[2])
+    assert fd.status == "PARTIAL"
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    assert texts[-1] == templates.SystemText.CONTENT_COACHING.value
+    assert all("99%" not in t for t in texts)

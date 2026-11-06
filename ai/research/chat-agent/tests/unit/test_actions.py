@@ -51,6 +51,8 @@ from .test_tools import EXAMPLES, base_request, focus_snapshot, load, make_ctx, 
 
 MSG = "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"
 RA_MSG = "대본 보고 한 걸로 다시 평가해 줘"
+#: 기준 문구(display)는 사용자가 말한 글자일 때만 싣는다(L1-37): 문구를 담은 다시 평가 요청
+CRIT_MSG = "내 기준은 속도 330 이하, 자연스럽게 말하기, 빠르지 않게야. 그걸로 다시 평가해 줘"
 SAVE_ARGS = {
     "metric": "audience_ratio",
     "slide_number": 3,
@@ -157,6 +159,16 @@ def test_action_tool_definitions_are_closed_and_autonomy_is_fixed() -> None:
         ("SAVE_GOAL", "목표로 저장해 줘", "괜찮으면 목표로 저장해 줘", "CONDITION"),
         ("SAVE_GOAL", "목표로 정해 줘", "시간 되면 목표로 정해 줘", "CONDITION"),
         ("START_PRACTICE", "연습하러 가자", "괜찮으면 연습하러 가자", "CONDITION"),
+        # 서술격 조사 '~이면'도 조건이다(명사 '이면'으로 빼지 않는다, #884 리뷰)
+        (
+            "SAVE_GOAL",
+            "그걸 목표로 잡아 줘",
+            "제일 낮은 게 3장이면 그걸 목표로 잡아 줘",
+            "CONDITION",
+        ),
+        ("SAVE_GOAL", "목표로 저장해 줘", "시간이 남는 상황이면 목표로 저장해 줘", "CONDITION"),
+        # 명사 예외는 낱말 전체가 같을 때만
+        ("SAVE_GOAL", "목표로 잡아 줘", "이 화면 보고 3장 시선을 목표로 잡아 줘", None),
         # 남의 말 인용
         ("SAVE_GOAL", "목표로 저장해", "친구가 '목표로 저장해'라고 했어", "QUOTED_SPEECH"),
         ("SAVE_GOAL", "목표로 잡아", "코치님이 목표로 잡아 보라던데", "QUOTED_SPEECH"),
@@ -607,19 +619,21 @@ def test_reassess_confirm_card_shows_current_and_reference_condition() -> None:
     # 내 기준으로 바꾸는 경우: 바꾼 뒤 조건은 행동 인자 그대로(문구 display 포함)
     targets = [{"display": "속도 330 이하", "metric": "cpm", "operator": "LTE", "value": 330}]
     ctx2 = ctx_for(MSG)
-    t = do("reassess", {"take_id": "t-4", "change": {"targets": targets}}, ctx=ctx2)
+    t = do(
+        "reassess", {"take_id": "t-4", "change": {"targets": targets}}, ctx=ctx2, message=CRIT_MSG
+    )
     tcard = ask_confirm_card(t.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
     assert tcard is not None and "내 평가 기준 1개" in tcard["summary"]
     assert tcard["after"]["targets"] == targets
     # 숫자 목표가 없는 기준은 문구만이 실제 조건이다: 카드에 문구가 보여야 승인할 수 있다
     words = [{"display": "자연스럽게 말하기", "metric": None, "operator": None, "value": None}]
-    w = do("reassess", {"take_id": "t-4", "change": {"targets": words}}, ctx=ctx2)
+    w = do("reassess", {"take_id": "t-4", "change": {"targets": words}}, ctx=ctx2, message=CRIT_MSG)
     wcard = ask_confirm_card(w.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
     assert wcard is not None and wcard["after"]["targets"] == words
 
 
 def _reassess_before(ctx: RunCtx, take_id: str, change: dict[str, Any]) -> dict[str, Any] | None:
-    p = do("reassess", {"take_id": take_id, "change": change}, ctx=ctx)
+    p = do("reassess", {"take_id": take_id, "change": change}, ctx=ctx, message=CRIT_MSG)
     card = ask_confirm_card(p.action.model_dump(mode="json"), ctx=ctx, expires_at="x")
     return None if card is None else card["before"]
 
@@ -1454,3 +1468,47 @@ def test_fetch_take_does_not_swap_in_another_take_when_the_named_one_is_gone() -
     assert (p.result, p.reason_code) == ("TOOL_ERROR", "NOT_NAMED_TAKE")
     q = do("fetch_take", {"take_id": "t-3", "reason": "비교"}, ctx=ctx_for(msg), message=msg)
     assert q.reason_code != "NOT_NAMED_TAKE"
+
+
+def test_named_take_ids_need_letters_and_digits() -> None:
+    """하이픈 낱말 중 영문자와 숫자가 모두 든 것만 Take ID 후보다('Q-A' · 'B-roll'로 다시 평가를 막지 않음, #895 리뷰)."""
+    from chat_agent.actions import _NAMED_ID
+
+    assert _NAMED_ID.findall("Q-A 대본 보고 한 걸로 다시 평가해 줘, co-presenter B-roll") == []
+    assert _NAMED_ID.findall("p9-t1 하고 t-4 다시 봐 줘") == ["p9-t1", "t-4"]
+    ctx = ctx_for("Q-A 대본 보고 한 걸로 다시 평가해 줘")
+    p = do(
+        "reassess",
+        {"take_id": "t-5", "change": {"script_used": True}},
+        ctx=ctx,
+        message="Q-A 대본 보고 한 걸로 다시 평가해 줘",
+    )
+    assert p.result == "PROPOSED", p.reason_code
+
+
+def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
+    """숫자 목표도 문구도 없는 칸은 보이는 조건이 없어 다시 평가를 내지 않는다(L1-37)."""
+    empty = [{"display": "  ", "metric": None, "operator": None, "value": None}]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": empty}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.action is None and p.reason_code == "DISPLAY_UNSOURCED"
+
+
+def test_take_numbers_are_not_unresolved_after_switching_the_scope_pitch() -> None:
+    """범위 피치를 다른 피치로 바꾼 실행은 말한 Take 번호를 한 피치에 묶을 수 없어 '없는 번호'로 보지 않는다
+    ("졸업 발표 Take 5랑 회사 소개 Take 2 비교해 줘"에서 회사 소개로 바꾼 뒤 Take 5, #940 리뷰)."""
+    from chat_agent.actions import unresolved_take_numbers
+
+    msg = "졸업 발표 Take 5랑 회사 소개 발표 Take 9 시선 비교해 줘"
+    ctx = ctx_for(msg)
+    assert 9 in unresolved_take_numbers(msg, ctx)  # 바꾸기 전: 범위 피치에 없는 번호는 없는 번호
+    other = ctx.pitch.model_copy(
+        update={"info": ctx.pitch.info.model_copy(update={"pitch_id": "p-other"})}
+    )
+    ctx.set_pitch(other)
+    assert ctx.scope_switched
+    assert unresolved_take_numbers(msg, ctx) == set()

@@ -8,8 +8,8 @@
   - `verify(signed, ...)` → 검증을 통과한 `StatePayload`. 하나라도 어긋나면 `StateInvalid(reason_code)`.
     BE에는 409 `AGENT_STATE_INVALID`로만 보이고, `reason_code`는 진단 기록(`reason_code`)에만 쓴다.
 - 검증 순서(5-6, 정확히 이 순서): 외곽 크기 → `v` · 문자열 형식 → `kid`로 키 고르기(지금 키 · 바로 전 키)
-  → 서명(상수 시간 비교) → 엄격한 base64url decode → UTF-8 → JSON(중복 키 거절, 깊이 상한)
-  → decode 결과 크기 → 엄격한 스키마 → 만료 → 지원하는 실행 판(프롬프트 판 포함) → 요청 `run`의 식별자.
+  → 서명(상수 시간 비교) → 엄격한 base64url decode → decode 결과 크기 → UTF-8 → JSON(중복 키 거절, 깊이 상한)
+  → 엄격한 스키마 → 만료 → 지원하는 실행 판(프롬프트 판 포함) → 요청 `run`의 식별자.
   서명이 통과하기 전에는 payload 안의 어떤 필드도 읽지 않는다(L1-28).
 - 고칠 때
   - 오류 메시지 · 예외에 payload 내용 · 키를 넣지 않는다(P8). `reason_code` 문자열만 담는다.
@@ -283,14 +283,14 @@ def verify(
         raise StateInvalid("SIGNATURE")
     # 5~7. decode → UTF-8 → JSON (여기서부터 서명된 내용)
     raw = _strict_b64decode(payload_b64)
+    # decode 결과 크기는 UTF-8 · JSON 해석 전에 본다(큰 입력을 파싱하지 않는다, #882 리뷰)
+    if len(raw) > cfg.max_state_decoded_bytes:
+        raise StateInvalid("DECODED_TOO_LARGE")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         raise StateInvalid("DECODE") from None
     obj = strict_json_loads(text, cfg.max_json_depth)
-    # 8. decode 결과 크기
-    if len(raw) > cfg.max_state_decoded_bytes:
-        raise StateInvalid("DECODED_TOO_LARGE")
     # 9. 엄격한 스키마
     try:
         payload = StatePayload.model_validate(obj)

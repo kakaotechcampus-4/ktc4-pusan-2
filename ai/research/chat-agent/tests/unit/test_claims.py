@@ -1739,3 +1739,36 @@ def test_script_statement_with_saying_used_is_also_retyped() -> None:
     )
     (v,), _ = split_check(msg, [d], DEFAULT_CONFIG)
     assert (v.type, v.subject.metric) == ("MEASURED", "script_mode")
+
+
+def test_choice_questions_are_not_issue_negation() -> None:
+    """'아니면' · '아닌지'는 고르는 질문이라 문제 주장의 부정이 아니다(#895 리뷰). 진짜 부정은 그대로."""
+    from chat_agent.claims import _NEG_AFTER
+
+    assert not _NEG_AFTER.search(" 아니면 느렸어?")
+    assert not _NEG_AFTER.search("는지 아닌지 알려줘")
+    assert _NEG_AFTER.search("던 건 아니야")
+    assert _NEG_AFTER.search("지 않았어")
+
+
+def test_goal_and_script_synonyms_state_a_reassess_condition() -> None:
+    """'시선 목표 30%로 다시 평가해 줘'(내 기준)와 '스크립트 · 프롬프터 보고 했어'(대본 사용)는 조건을 말한 다시 평가 요청이라
+    측정값 이의가 아니다. 측정값만 문제 삼으면 그대로 이의다(6-6, #940 리뷰)."""
+    from chat_agent import claims as clm
+    from chat_agent.config import load_config
+
+    cfg = load_config()
+    assert not clm.measurement_dispute("시선 목표 30%로 다시 평가해 줘", cfg)
+    assert not clm.measurement_dispute("시선이 낮게 나왔는데 스크립트 보고 했어. 다시 봐 줘", cfg)
+    assert clm.measurement_dispute("카메라가 낮아서 시선이 낮게 나왔어. 다시 봐 줘", cfg)
+    assert clm._SCRIPT_USE_RE.search("Take 5는 프롬프터 보고 했어")
+
+
+def test_goal_only_counts_as_a_condition_when_a_number_is_set() -> None:
+    """'목표치보다 낮게 나왔어'는 값과 견주기만 한 측정값 이의다('목표 30%로'처럼 정해 말해야 조건)."""
+    from chat_agent import claims as clm
+    from chat_agent.config import load_config
+
+    cfg = load_config()
+    assert clm.measurement_dispute("시선 목표치보다 낮게 나왔어. 다시 봐 줘", cfg)
+    assert not clm.measurement_dispute("시선 목표를 30%로 다시 평가해 줘", cfg)

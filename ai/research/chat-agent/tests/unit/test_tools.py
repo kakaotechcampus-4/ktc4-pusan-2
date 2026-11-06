@@ -597,9 +597,35 @@ def test_take_report_mission_results() -> None:
         ctx.registry.get(row["observed"]["evidence_id"]).path
         == "review.mission_results[0].observed"
     )
-    assert res.data["items"][-1]["active_missions"][0]["mission_id"] == "m-7"
+    assert res.data["active_missions"][0]["mission_id"] == "m-7"
+    assert all("active_missions" not in it for it in res.data["items"])
+    assert res.result_summary == "1개 항목"
     empty, _ = run(make_ctx(), "get_take_report", {"take_id": "t-5", "section": "mission_results"})
     assert empty.ok and empty.read_state == "EMPTY"
+    assert empty.data["items"] == [] and empty.result_summary == "EMPTY"
+
+
+def test_take_report_revisions_follow_source_per_section() -> None:
+    # 절마다 읽은 원천의 판을 남긴다(#883 리뷰): 리뷰 절은 REVIEW, Take 결과 절은 TAKE_RESULT
+    req = load(base_request(), "t-5")
+    req["context"]["loaded_takes"][0]["revisions"]["REVIEW"] = 3
+    req["context"]["loaded_takes"][0]["revisions"]["TAKE_RESULT"] = 7
+    ctx = make_ctx(req)
+    for section, want in (
+        ("dimensions", 3),
+        ("improvements", 3),
+        ("slides", 7),
+        ("problem_segments", 7),
+    ):
+        res, _ = run(ctx, "get_take_report", {"take_id": "t-5", "section": section})
+        assert res.revisions == {"t-5": want}, section
+
+
+def test_take_report_bool_score_is_not_a_score() -> None:
+    req = load(base_request(), "t-5")
+    req["context"]["loaded_takes"][0]["results"]["review"]["score"] = True
+    res, _ = run(make_ctx(req), "get_take_report", {"take_id": "t-5", "section": "dimensions"})
+    assert not any("score" in it for it in res.data["items"])
 
 
 # ── compare_takes ───────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@
 - **기능은 실시간 결과와 최종 결과를 같은 기준으로 낸다.** 실시간 결과는 1초마다 `judge`가 내는 1초 판정 결과이고, 최종 결과는 장 · Take 동안의 `tally` 합계로 `summarize`가 계산한 지표다. 기능은 최종 결과를 BE에 따로 보내지 않는다.
 - **최종 결과는 코치가 모아 돌려준다.** 코치는 1초마다 각 기능의 `tally`를 장 · Take 합계에 더하고, Take가 끝나면(`/coach/finalize`) 기능별 `summarize`로 Take 결과 하나를 만든다. 대본 전달도만 Take 전체 발화가 있어야 해서 `/takes/analyze`가 따로 돌려준다.
 - **결론은 리뷰가 낸다.** Take 결과는 사실(지표 · 문제 구간 · 개입 · 판정 기준)만 담는다. 차원 상태 · 점수 · 미션 판정 · 다음 미션 · 반복 문제는 리뷰가 낸다.
-- **에이전트끼리 부르지 않는다.** 모두 BE가 부르고, 앞 단계의 결과는 BE가 저장한 것을 입력으로 받는다. 대화 에이전트(`/agent/turn`)도 같다. 대화 에이전트는 요청에 실린 값과 이미지에 든 자료만 읽는 도구를 스스로 고르고, 그 밖의 일(다른 피치 · Take 가져오기 · 다시 평가 · 목표 저장)은 행동으로 돌려준다. 읽기(다른 피치 · Take 가져오기)는 BE가 권한을 확인해 바로 실행하고, 목표 저장 · 다시 평가는 사용자가 확인 카드에서 승인한 뒤 BE가 권한을 확인해 실행한다. BE는 실행 결과를 붙여 다시 부른다. 화면 이동(연습 준비)은 마지막 답의 버튼 카드이고 사용자가 누르면 FE가 옮긴다(다시 부르지 않는다). 다시 평가로 BE가 리뷰를 부른 결과는 공식 결과가 아니며 `take_ai_results` · `missions` · `take_summaries`에 쓰지 않는다.
+- **에이전트끼리 부르지 않는다.** 모두 BE가 부르고, 앞 단계의 결과는 BE가 저장한 것을 입력으로 받는다. 대화 에이전트(`/agent/turn`)도 같다. 대화 에이전트는 요청에 실린 값과 이미지에 든 자료만 읽는 도구를 스스로 고르고, 그 밖의 일(다른 피치 · Take 가져오기 · 다시 평가 · 목표 저장)은 행동으로 돌려준다. 읽기(다른 피치 · Take 가져오기)는 BE가 권한을 확인해 바로 실행하고, 목표 저장 · 다시 평가는 사용자가 확인 카드에서 승인한 뒤 BE가 권한을 확인해 실행한다. 다만 목표 제안 카드에서 사용자가 고른 클릭은 그 안의 승인으로 본다. 그 목표 저장은 BE가 실제 저장할 목표에서 내용 해시를 다시 계산해 저장해 둔 제안의 내용 해시 · 제안 id · 고른 안과 모두 같을 때만 확인 카드 없이 실행하고, 다르면 실행하지 않는다([chat-agent.md](features/chat-agent.md) 6-2). BE는 실행 결과를 붙여 다시 부른다. 화면 이동(연습 준비)은 마지막 답의 버튼 카드이고 사용자가 누르면 FE가 옮긴다(다시 부르지 않는다). 다시 평가로 BE가 리뷰를 부른 결과는 공식 결과가 아니며 `take_ai_results` · `missions` · `take_summaries`에 쓰지 않는다.
 - **숫자는 입력에 있는 것만 쓴다.** LLM이 숫자를 계산하거나 만들지 않고, 코드가 LLM 출력의 숫자를 입력과 대조한다. 같은 값으로 보는 표기는 ① 비율과 퍼센트(0.62 ↔ 62% ↔ 62퍼센트. 단위 없는 62는 같은 값이 아니다) ② 시간 ms ↔ 초 ↔ 분(88000 ↔ 88초 ↔ 1분 28초. 이어 쓴 "N분 M초"는 한 값이다) ③ 보여 준 자리까지 반올림한 값(0.6248 ↔ 0.62 ↔ 62%) ④ 정수 개수 · 점수는 그대로이고, ⑤ 음수는 크기로 본다(`voice_diff_db` −1.5 ↔ "1.5dB 작게". "작게 · 줄었다" 같은 방향 말은 검사하지 않는다). 장 번호 · Take 번호 · 날짜는 입력에 있으면 입력에 있는 숫자로 본다. 한글로 쓴 수("세 번")는 검사하지 않으므로 프롬프트가 숫자를 아라비아 숫자로 쓰게 한다. 숫자 검사를 하는 리뷰는 이 규칙을 아래 예시 표(통과 · 걸림)로 계약 테스트한다(LLM 문장 속 숫자를 검사하는 기능이 더 생기면 같은 표를 쓴다. 모듈끼리 import하지 않으므로 공용 코드가 아니라 공용 규칙 · 공용 시험). 대화 에이전트는 답의 문장마다 근거 값을 잇고, 문장 속 숫자를 그 문장에 이은 값과 이 표의 규칙으로 대조한다. 숫자는 정수 · 소수와 뒤에 붙은 단위(% · 퍼센트 · ms · 초 · 분 · 번 · 개 · 점 · 자 · dB, 퍼센트는 %와 같다)로 뽑고, 이어 쓴 "N분 M초"는 한 값으로 뽑는다. 검사에 걸렸을 때의 처리는 9절.
 
 **숫자 검사 예시 표** (리뷰가 이 표로 계약 테스트한다)
@@ -112,7 +112,7 @@ AI는 개인 context를 저장하지 않는다. BE가 사용자 · 발표 · Tak
 | 발표 | 미션 이력 · 상태 | `missions` (`source_take_id`로 Take를 거쳐 발표에 잇는다), `takes.mission_ids` (Take를 시작할 때 실은 미션 id 목록) | 리뷰 `next_missions` · `mission_results`, BE(Take 시작 때 `take_id` · `takes.mission_ids`) | 코칭 계획 · 코치 `missions`, 리뷰 `missions`(`takes.mission_ids`로 읽음) | [review-agent.md](features/review-agent.md) 12-1. 판정은 행의 `take_id`와 같은 Take의 리뷰만 덮는다(1-3) |
 | 발표 | 반복 문제 | 그 발표에서 `REVIEW` 결과(`take_ai_results`)가 있는 Take 중 가장 늦게 끝난 Take(순서는 1-3 'Take 상태')의 리뷰의 `recurring_issues`. 가장 늦게 끝난 Take의 리뷰가 실패했거나 부르지 않았으면 그 앞 리뷰의 것을 쓴다(1-3 4번) | 리뷰 | 코칭 계획 · 코치 `recurring_issues`, 리뷰 `previous_recurring_issues` | [review-agent.md](features/review-agent.md) 12-1 |
 | 발표 | 코칭 계획 (응답마다 한 행) | `coaching_plans` (기본 계획 포함, 응답마다 한 행) | `/coach/plan` | 코치 `coaching_plan`. Take를 시작할 때 바탕 값이 지금 것과 같은 행 중 `requested_at`이 가장 늦은 것만 싣는다 | [coach-agent.md](features/coach-agent.md) 12-1 · 12-2 |
-| 사용자 · 발표 | 대화 · 메시지 · 실행(실행 이벤트 포함) · 행동 · 근거 · 기억(기억 설정 · 코칭 프로필 · 대화 요약) | BE가 정함 | 대화 에이전트(응답) · BE | 대화 에이전트(요청) | [chat-agent.md](features/chat-agent.md) 12-1 |
+| 사용자 · 발표 | 대화 · 메시지 · 실행(실행 이벤트 포함) · 행동 · 근거 · 기억(기억 설정 · 코칭 프로필 · 대화 요약) · 운영 기록(본문 없음) | BE가 정함 | 대화 에이전트(응답) · BE | 대화 에이전트(요청) | [chat-agent.md](features/chat-agent.md) 12-1 |
 | Take | 목표 시간 · 모드 · 대본 보기 | `takes` (`goal_time_sec` · `mode` · `script_mode`) | FE 입력 (Take를 만들 때) | 코치 `plan.target_ms` · `mode`, finalize `script_mode` | — |
 | Take | Take를 시작할 때 고정하는 값 | `takes` (`mission_ids` · `standard_version` · `raw_data_consent`) | BE (Take 시작 때, 1-3 1번) | 리뷰 `missions`, 코치 `script_used` · 리뷰 `user_criteria`, 기준값 다시 고르기 · 원자료로 다시 판정하기(동의한 Take만) | 1-3, 아래 '원자료 사용 동의' |
 | Take | Take 상태 · 분석 단계 · 재시도 기록 | `takes` (`status` · `analysis_stage` · `analysis_stage_at` · `review_status` · `analysis_hold_reason` · `completed_at` · `coverage_retry_used` · `coverage_rescore_retry_used` · `coverage_requested_at`) | BE | FE 분석 대기 · 리포트 화면, BE가 재시작할 때 이어 갈 작업 고르기 | 1-3 · 1-7, [script-coverage-evaluation.md](features/script-coverage-evaluation.md) 12-1 (재시도 기록 · 보류 사유) |
@@ -154,13 +154,13 @@ AI는 개인 context를 저장하지 않는다. BE가 사용자 · 발표 · Tak
 | 리뷰 | Take 결과, 대본 전달도 채점, 이전 Take 결과(최근 3개), 직전 반복 문제, 이번 미션, 사용자 평가 기준 | 리뷰 결과, 미션 결과 · 다음 미션, 반복 문제 |
 
 - **공유 방식**: 개인별 context는 BE DB 한 곳에만 있고, 항목마다 만드는 곳은 하나다(저장 지도의 '만드는 기능'). 다른 에이전트는 BE가 요청에 실어 준 사본을 읽기만 한다. 그래서 두 에이전트가 같은 값을 다르게 고칠 일이 없다.
-- **이어지는 범위는 발표 단위다.** 미션 · 반복 문제 · 코칭 계획 · 이전 Take 비교는 같은 발표 안에서만 이어진다. 다른 발표의 것은 가져오지 않는다(대본 · 목표 시간이 달라서).
+- **이어지는 범위는 발표 단위다.** 미션 · 반복 문제 · 코칭 계획 · 이전 Take 비교는 같은 발표 안에서만 이어진다. 다른 발표의 것은 가져오지 않는다(대본 · 목표 시간이 달라서). 대화 에이전트가 피치 목록을 싣고 다른 피치를 읽는 것(`FETCH_PITCH`)은 사용자 질문에 답하기 위한 것이고, 피치끼리 수치를 잇거나 비교하지 않는다([chat-agent.md](features/chat-agent.md) 1-3).
 - **원자료 사용 동의**: 1초 원자료(`take_metric_seconds`)를 Take가 끝난 뒤에도 남겨 다시 쓰는 것에 대한 동의다. BE는 사용자 설정(마이페이지)에서 한 번 받은 동의 값을 Take를 시작할 때(1-3 1번) `takes.raw_data_consent`(참 · 거짓, 기본은 동의하지 않음 false)에 복사하고, 그 Take 동안과 뒤에는 이 칸만 본다. 그래서 동의를 철회하면 철회한 뒤에 시작하는 Take부터 적용된다(이미 끝난 Take의 값은 바뀌지 않는다). 동의가 거는 제한은 기준값 다시 고르기와 원자료로 다시 판정하기([gaze-tracking.md](features/gaze-tracking.md) 12-2) 두 가지뿐이다. Take 결과를 만드는 finalize와 `replay` 복구는 동의와 상관없이 한다.
-- **지우기 · 보관**: 저장 지도의 AI 결과 · 원자료는 그 발표 · Take와 함께 보관하고 따로 기한을 두지 않는다. 예외는 동의 없는 Take(`takes.raw_data_consent` = false)의 `take_metric_seconds`와 대화(아래 마지막 항목)다.
+- **지우기 · 보관**: 저장 지도의 AI 결과 · 원자료는 그 발표 · Take와 함께 보관하고 따로 기한을 두지 않는다. 예외는 동의 없는 Take(`takes.raw_data_consent` = false)의 `take_metric_seconds`와 대화 · 대화 에이전트의 기억 · 운영 기록(아래 마지막 항목)이다.
   - 그 Take의 Take 결과(`TAKE_RESULT`)를 저장하는 트랜잭션에서 함께 지운다(Take 결과가 생기면 `replay`에 쓸 일이 없다).
   - Take가 `FAILED`로 끝나 Take 결과가 없으면 `takes.ended_at`(없으면 `takes.created_at`)부터 7일 동안 둔다(나중에 `replay`로 Take 결과를 다시 만들 수 있게). 7일이 지나면 BE의 주기 작업이 지운다. 지우기 직전에 그 Take가 아직 `FAILED`인지 다시 본다(그사이 다시 분석된 Take의 원자료를 지우지 않게).
   - 확정 전사(`take_transcript_segments`) · 문장 끝(`takes.utterance_ends`) · 장 변경(`take_slide_events`)은 동의와 상관없이 Take와 함께 보관한다. Take 뒤 분석(대본 전달도 장 구간 나누기)이 읽기 때문이다.
-  - 대화는 마지막 사용자 활동(사용자가 보낸 메시지 · 대화를 연 시각) 뒤 180일, 실행 상태는 끝난 지 7일 뒤 지운다. 에이전트의 자동 메시지는 기한을 늘리지 않는다. 진단 기록은 따로 기한 없이 대화를 지울 때 함께 지운다. 피치 · 계정을 지우면 그 대화를 함께 지운다. Take를 지우면 그 Take에서 나온 근거 값 사본 · 다시 평가 결과 · 목표 기준값을 지우고 그 Take를 근거로 한 답 본문 · 요약은 가린다(기존 삭제 코드는 바꾸지 않고 연쇄 삭제 · 읽을 때 가림 · 정리 작업으로).
+  - 대화는 마지막 사용자 활동(사용자가 보낸 메시지 · 대화를 연 시각) 뒤 180일, 실행 상태는 끝난 지 7일 뒤 지운다. 에이전트의 자동 메시지는 기한을 늘리지 않는다. 진단 기록은 따로 기한 없이 대화를 지울 때 함께 지운다. 대화 요약도 대화를 지울 때 함께 지운다. 코칭 프로필 항목은 마지막으로 모델 입력에 쓰인 뒤 180일이 지나면 지우고, 사용자가 지우면 바로 실제로 지운다. 기억 설정은 계정을 지울 때 지운다. 끝난 실행의 운영 기록(본문 없음)은 180일 뒤 지운다. 계정을 지우면 기억 설정 · 코칭 프로필 · 운영 기록을 함께 지운다. 피치 · 계정을 지우면 그 대화를 함께 지운다. Take를 지우면 그 Take에서 나온 근거 값 사본 · 다시 평가 결과 · 목표 기준값을 지우고 그 Take를 근거로 한 답 본문 · 요약은 가린다(기존 삭제 코드는 바꾸지 않고 연쇄 삭제 · 읽을 때 가림 · 정리 작업으로).
 - **발표 · Take를 지울 때**: 사용자가 발표나 Take를 지우면 BE는 그 Take의 실시간 STT 연결을 바로 끊는다. 진행 중인지는 Take 상태가 아니라 STT 연결이 열려 있는지로 본다(탭을 닫고 떠나 `RUNNING`으로 남은 Take도 지울 수 있게). 그다음 저장 지도의 해당 행을 함께 지운다(`SCRIPT_COVERAGE_PENDING` · `take_slide_events` · 발표를 지우면 `coaching_plans` 포함). 백그라운드 작업(finalize · 채점 · 리뷰 · 계획)은 결과를 저장하기 직전에 그 Take(계획은 발표)가 아직 있는지 보고, 없으면 저장하지 않고 끝낸다. AI 쪽에는 지울 것이 없다.
 - 1초 원자료는 얼굴 영상 · 랜드마크 같은 생체 정보가 아니라 시선 구역 · 음량 같은 파생값만 담는다. AI 로그에는 대본 · STT 원문을 남기지 않는다(11절).
 - **크기**: 저장 지도의 JSON 값에 크기 상한을 두지 않는다. 기능 문서 12-1에 잰 크기를 적고, BE는 크기가 그보다 크게 벗어나면 로그로 남긴다.
@@ -209,7 +209,7 @@ sequenceDiagram
 | 채점 · 확인이 끝난 뒤 (확인을 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나도, 1-3) | `POST /takes/review` | 리뷰 에이전트 | 보고서 · 점수 · 미션 결과 · 다음 미션 · 반복 문제 | 리포트, 다음 Take 준비 |
 | 사용자가 대화할 때 · 행동 결과를 돌려줄 때 · 대화 목표가 있는 피치에 새 리뷰가 생겼을 때(BE 백그라운드 작업) | `POST /agent/turn` | 대화 에이전트 루프 | 답 또는 행동 | 대화창 |
 
-BE는 `/coach/evaluate` · `/evaluation-criteria/parse` · `/takes/rescore`를 요청 안에서 동기로 부르고, 나머지는 백그라운드로 부른다. API마다 LLM을 쓰는지와 시간 예산 · 재시도는 3절 표다. 대화 에이전트는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들고 서비스에 탑재하며, 탑재 전에는 BE가 `/agent/turn`을 부르지 않는다([chat-agent.md](features/chat-agent.md) 4-1).
+BE는 `/coach/evaluate` · `/evaluation-criteria/parse` · `/takes/rescore`를 요청 안에서 동기로 부르고, `/agent/turn`은 메시지를 202로 접수한 뒤 BE 턴 실행기가 부르는 대화 호출(3절 '대화 LLM', 스트림을 끝 줄까지 받음)이며, 나머지는 백그라운드로 부른다. API마다 LLM을 쓰는지와 시간 예산 · 재시도는 3절 표다. 대화 에이전트는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들고 서비스에 탑재하며, 탑재 전에는 BE가 `/agent/turn`을 부르지 않는다([chat-agent.md](features/chat-agent.md) 4-1).
 
 ## 1-3. Take 한 번의 순서 (BE 기준)
 1. **Take 시작**: FE가 WS `/api/ws/takes/{take_id}`에 붙어 `auth`를 보낸다. BE는 Take 상태를 `RUNNING`으로 바꾸고 `ready`를 보낸다. Take 생성 때 저장한 `script_version_id`의 장별 대본을 읽고 코칭·채점·재계산에 같은 버전을 계속 사용한다(발표의 최신 버전으로 대신하지 않는다). 평가 기준 생성이 PENDING이면 생성 종료 후 같은 버전의 보존된 기준을 읽어 최초 채점에 사용하고, rescore에는 실제 채점에 쓴 기준을 그대로 싣는다. 이때 BE는 그 Take에 쓸 값 셋을 `takes`에 고정하고, 뒤에 발표의 값이 바뀌어도 이 칸은 바꾸지 않는다.
@@ -325,7 +325,7 @@ BE와 FE 사이의 계약이고, AI 입력의 출처라 여기에 둔다. BE가 
 | 대본 전달도 채점 · 확인 | 확인 화면에서 항목마다 `as_script` · `as_stt` 답 (REST) | 백그라운드로 `/takes/analyze`를 부른다. 최초 채점 저장 · 실패한 장의 재채점 · 새로 성공한 장이 있을 때만 하는 병합 rescore · 보류는 1-7이다. 확인할 것이 있으면 FE에 알리고, 답을 받으면 `/takes/rescore`. 답은 리뷰를 부르기 전까지만 받고(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게), 같은 답이 두 번 오면 한 번만 반영한다 | `/takes/analyze` · `/takes/rescore` | `take_ai_results` (`SCRIPT_COVERAGE`, rescore 성공 때만 확정본 교체하고 `revision`을 올림; `SCRIPT_COVERAGE_PENDING`, 병합 후보), `take_summaries.speak_accuracy`, `takes` (`coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at`) |
 | 리뷰 | 리포트 화면 (REST 조회) | 채점 · 확인이 끝나면(확인을 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나도) 백그라운드로 `/takes/review`. 리뷰 · 미션을 저장하고 `take_summaries`의 `summary` · `score`를 채운다(미션 판정은 행의 `take_id`가 이 Take일 때만 덮는다. 끝내 실패하면 1-3) | `/takes/review` | `take_ai_results` (`REVIEW`), `take_summaries`, `missions`, `takes` (`review_status` · `completed_at`) |
 | 다음 Take 준비 | — | 리뷰를 저장한 직후(리뷰가 끝내 실패해도 `previous_review` null로) 백그라운드로 `/coach/plan`. 응답마다 한 행을 넣는다 | `/coach/plan` | `coaching_plans` |
-| 대화 에이전트 | 오른쪽 아래 버튼 · 대화창. 메시지를 보내고, 실행 중에는 1초마다 실행 이벤트를 커서로 조회해 답 문장을 글자 단위로 보인다. 목표 저장 · 다시 평가는 확인 카드에서 승인 · 거절을 보낸다. 기억 설정 · 코칭 프로필을 보고 지운다 (REST) | 메시지를 접수(202)하고 턴 실행기로 `/agent/turn`을 부른다. 진행 줄과 답 문장 줄(`claim`)은 실행 이벤트로 저장하고, `NEEDS_ACTION`의 읽기 행동은 권한을 확인해 실행하고 승인이 필요한 행동(`ASK`)은 사용자가 승인한 뒤 실행해 결과를 붙여 이어 부른다. `DONE`에 실린 연습 준비 버튼(`START_PRACTICE`)은 답과 함께 저장하고 이어 부르지 않는다. 기억 설정 · 코칭 프로필 · 대화 요약을 저장해 요청에 싣는다. 대화 목표가 있는 대화는 새 리뷰 뒤 자동 목표 확인 턴을 부른다 | `/agent/turn` | BE가 정함(대화 · 메시지 · 실행 · 행동 · 근거 · 기억). 저장 요구 · BE가 할 일은 [chat-agent.md](features/chat-agent.md) 12-1 · 12-3 |
+| 대화 에이전트 | 오른쪽 아래 버튼 · 대화창. 메시지를 보내고, 실행 중에는 1초마다 실행 이벤트를 커서로 조회해 답 문장을 글자 단위로 보인다. 목표 저장 · 다시 평가는 확인 카드에서 승인 · 거절을 보낸다. 목표 제안 카드에서 고른 안은 그 안의 승인으로 보낸다. 기억 설정 · 코칭 프로필을 보고 지운다 (REST) | 메시지를 접수(202)하고 턴 실행기로 `/agent/turn`을 부른다. 진행 줄과 답 문장 줄(`claim`)은 실행 이벤트로 저장하고, `NEEDS_ACTION`의 읽기 행동은 권한을 확인해 실행하고 승인이 필요한 행동(`ASK`)은 사용자가 승인한 뒤(목표 제안에서 고른 안은 0-2의 대조를 통과하면 그 클릭이 승인) 실행해 결과를 붙여 이어 부른다. `DONE`에 실린 연습 준비 버튼(`START_PRACTICE`)은 답과 함께 저장하고 이어 부르지 않는다. 기억 설정 · 코칭 프로필 · 대화 요약을 저장해 요청에 싣는다. 대화 목표가 있는 대화는 새 리뷰 뒤 자동 목표 확인 턴을 부른다 | `/agent/turn` | BE가 정함(대화 · 메시지 · 실행 · 행동 · 근거 · 기억). 저장 요구 · BE가 할 일은 [chat-agent.md](features/chat-agent.md) 12-1 · 12-3 |
 
 ## 1-7. 평가 기준 보존과 장별 재시도·병합 (BE 기준)
 
@@ -671,6 +671,7 @@ features/<모듈>/
 
 - research와 service가 같은 이름을 쓴다. 로컬에서는 `ai/.env` 하나를 함께 쓴다.
 - **대화 에이전트가 켜졌는데 서명 키가 없거나 32바이트 미만이면** 대화 경로만 503 `AGENT_DISABLED`이고 기존 기능 · 헬스체크는 그대로다. 반영 위치는 [chat-agent.md](features/chat-agent.md) 11-1이고, 서버 시크릿 설정은 BE(인프라)에 요청한다.
+- **대화 변수 넷(`AGENT_*`)은 서비스 탑재 전이라 아직 `settings.py` · `ai/.env.example`에 없다.** 서비스에 탑재할 때 아래 '새 환경변수를 더할 때'대로 두 곳에 더한다. 그 전에는 서버에 넣지 않는다.
 - **값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적는다.** `docker run --env-file`은 따옴표와 줄 끝 주석을 값에 그대로 넣어서, 주소나 키가 틀어져 LLM 연결이 실패한다. 주석은 자기 줄에 쓴다. 서버의 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)도 같다.
 - **`ai/.env.example`을 그대로 복사해 키만 비운 묶음은 일부만 채운 묶음이라 서비스가 시작할 때 오류를 낸다.** 쓰지 않는 묶음은 세 줄을 주석으로 두고, 키 없이 띄워 볼 때는 `--env-file` 없이 띄운다.
 - **키가 없어도 서버는 뜨고 `/health`는 응답한다**(CI · 로컬 확인용, 묶음 값이 아예 없을 때). LLM을 쓰는 요청은 503(`LLM_UNAVAILABLE`)으로 실패하고, 코칭 계획 · 리뷰는 기본 결과를 200으로 돌려준다(`fallback_reason`).
@@ -758,6 +759,6 @@ features/<모듈>/
 | DB 마이그레이션 | 배포 전 `alembic upgrade head`, 실패하면 멈춤 (BE) | 11절 |
 | 대화 에이전트 호출 | `POST /agent/turn`(성공 응답은 `application/x-ndjson` 스트림, 끝 줄 `final` · `error` 정확히 하나). AI 45초 / BE 50초(끝 줄까지), 한 턴 120초, 재시도 없음. 다시 평가로 부른 `/takes/review`는 다시 부르지 않고 결과를 공식 칸에 쓰지 않음. 서비스 탑재 전에는 BE가 부르지 않음 | 0-2 · 1-2 · 2 · 3절, [chat-agent.md](features/chat-agent.md) 8-1 |
 | 대화 오류 코드 | `AGENT_DISABLED`(503) · `AGENT_BUSY`(429) · `AGENT_STATE_INVALID`(409) · `AGENT_CONTEXT_TOO_LARGE`(413), 스트림 중 `error` 줄(출력 한도를 넘으면 `AGENT_OUTPUT_TOO_LARGE`). BE는 `error.code`를 허용 목록으로만 실행 오류에 두고 나머지는 `AGENT_UPSTREAM_ERROR` | 4절 |
-| 대화 보관 | 대화: 마지막 사용자 활동 뒤 180일, 실행 상태: 끝난 지 7일, 진단 기록: 따로 기한 없이 대화를 지울 때 함께 | 1-1 |
+| 대화 보관 | 대화: 마지막 사용자 활동 뒤 180일, 실행 상태: 끝난 지 7일, 진단 기록: 따로 기한 없이 대화를 지울 때 함께, 대화 요약: 대화와 함께, 코칭 프로필 항목: 마지막 사용 뒤 180일 · 사용자가 지우면 바로, 기억 설정: 계정 삭제 때, 운영 기록: 180일 | 1-1 |
 | 대화 `meta` | `prompt_version` · `corpus_version` 추가, `criteria_versions.chat_agent`, 모델 없이 만든 답은 `model` null | 5절 |
 | 대화 환경변수 | `AGENT_ENABLED`(기본 false) · `AGENT_MAX_CONCURRENCY`(기본 4) · `AGENT_STATE_SECRET`(32바이트 이상, 기본값 없음) · `AGENT_STATE_SECRET_PREVIOUS`(선택) | 10절 |

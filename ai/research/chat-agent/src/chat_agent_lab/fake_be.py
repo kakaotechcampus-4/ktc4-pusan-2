@@ -64,7 +64,7 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from chat_agent import memory as memory_rules
-from chat_agent.actions import action_args_hash
+from chat_agent.actions import ACTION_ERROR_CODES, action_args_hash
 from chat_agent.config import DEFAULT_CONFIG
 from chat_agent.schemas import ClaimLineData, FinalData, StreamLine
 from chat_agent.templates import SystemText
@@ -122,6 +122,8 @@ CLOSING_TEXT = {
     ("CANCELLED", "SAVE_GOAL"): SystemText.APPROVAL_CANCELLED,
     ("CANCELLED", "REASSESS"): SystemText.APPROVAL_CANCELLED,
 }
+#: [취소] 버튼으로 끝낸 승인 대기(새 메시지가 없었으므로 '새 메시지를 받아' 문장을 쓰지 않는다)
+CANCEL_BUTTON_TEXT = SystemText.APPROVAL_CANCELLED_BY_USER
 #: 행동 끝 상태 → 실행 끝 상태(12-3 상태 전이). 거절은 실행이 `DONE`
 RUN_STATUS_AFTER = {"REJECTED": "DONE", "EXPIRED": "EXPIRED", "CANCELLED": "CANCELLED"}
 MAX_HISTORY_MESSAGES = 20
@@ -319,6 +321,11 @@ class Run:
     approved_hash: dict[str, str] = field(default_factory=dict)
     #: 거절 · 만료 · 취소로 끝났을 때 저장한 메시지(이미 낸 문장 + 고정 문장, AI 를 다시 부르지 않는다)
     closed_message: dict[str, Any] | None = None
+    #: 승인 대기 응답(`NEEDS_ACTION`)에서 받아 이미 저장한 코칭 프로필의 `MEMORY_SAVED` 카드. 이 실행의 답 메시지가
+    #: 저장될 때(승인 뒤 끝 · 거절 · 만료 · 취소) 그 메시지에 붙인다(6-14, #900 리뷰)
+    memory_cards: list[dict[str, Any]] = field(default_factory=list)
+    #: 이 실행에서 저장한 코칭 프로필 key(같은 실행의 끝 응답에 같은 값이 다시 실려도 한 번만)
+    memory_saved: set[str] = field(default_factory=set)
     #: 이 실행에 보낸 피치 · Take id. 이어 부를 때 다시 확인해 지워진 것을 removed_sources 로 보낸다
     sent_sources: set[str] = field(default_factory=set)
     #: 이 실행이 FETCH_TAKE 로 가져온 Take(이어 부를 때 loaded_takes 로 다시 싣는다)
@@ -832,6 +839,10 @@ class FakeBe:
                     # 끝 줄 없이 끊김 · error 끝 줄 · 앞부분 불일치여도 받은 문장은 PARTIAL 로 남긴다(L2-44 · L2-45)
                     self._store_received(run, conv)
                     return run
+                if run.claim_lines:
+                    # 앞 호출에서 이미 보인 문장(승인 전 답 등)은 이 호출이 실패해도 메시지로 남긴다(P13 · L1-41, #915 리뷰).
+                    # 실행은 오류 코드 규칙(5-9)대로 FAILED 이고, 화면은 실행 오류 문구를 따로 보인다
+                    self._store_received(run, conv, status="FAILED")
                 return self._fail(run, call.error_code or "AGENT_UPSTREAM_ERROR")
             scope_changed = False
             if run.trigger != "TAKE_REVIEWED" and final["scope_pitch_id"] != conv.scope_pitch_id:
@@ -847,6 +858,8 @@ class FakeBe:
                 run.state_revision += 1
             action = final["actions"][0]
             if action["autonomy"] == "ASK" and action.get("preapproved") is None:
+                # 같은 말의 기억 요청은 승인 결과와 상관없이 지금 저장한다(거절 · 만료 · 취소여도 사라지지 않게, 6-14)
+                run.memory_cards += self._store_profile(run, conv, final.get("profile_updates"))
                 self._wait_for_approval(run, action, final)
                 return run
             req = self._run_action(run, conv, action)
@@ -895,7 +908,7 @@ class FakeBe:
         )
         run.status = "WAITING_APPROVAL"
 
-    def _store_received(self, run: Run, conv: Conversation) -> None:
+    def _store_received(self, run: Run, conv: Conversation, *, status: str = "PARTIAL") -> None:
         """이 실행에서 받은 문장 줄로 `PARTIAL` 메시지를 남긴다(L2-44 · L2-45): 문장 · 판단 · 근거 · 자료 사본을 그대로 보존하고
         행동은 실행하지 않는다. 근거 표시 · 계획 · 기록은 앞 응답의 끝 줄에서 가져온다(없으면 비움)."""
         lines = run.claim_lines
@@ -926,7 +939,7 @@ class FakeBe:
             "history_summary": None,
             "goal_result": None,
         }
-        self._store_final(run, conv, received, status="PARTIAL")
+        self._store_final(run, conv, received, status=status)
 
     def events_after(self, run_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
         """실행 조회(12-3 · L2-46): `after_seq` 커서 뒤의 실행 이벤트만 `event_seq` 순서대로. 같은 커서로 다시 읽으면 같은 것과
@@ -976,8 +989,10 @@ class FakeBe:
         action["args"] = copy.deepcopy(pend.args)
         req = self._run_action(run, conv, action)
         if req is None:
-            if run.status == "PARTIAL":
-                # 호출 한도에 닿아 이어 부르지 못해도 승인 대기 때 받은 문장 · 판단 · 근거는 대화에 남긴다
+            stored = any(m.run_id == run.run_id for m in conv.messages)
+            if run.status == "PARTIAL" and not stored:
+                # 호출 한도에 닿아 이어 부르지 못해도 승인 대기 때 받은 문장 · 판단 · 근거는 대화에 남긴다. 받은 문장 줄로
+                # 이미 저장했으면(`_run_action`) 다시 저장하지 않는다(메시지 · 기억 카드가 두 번 생기지 않게)
                 self._store_final(run, conv, copy.deepcopy(pend.final), status="PARTIAL")
             return run
         return self._drive(run, conv, req)
@@ -997,7 +1012,9 @@ class FakeBe:
         with self._lock:
             self.expire_due()
             if run.status == "WAITING_APPROVAL" and run.pending is not None:
-                self._close(run, self.conversations[run.conversation_id], "CANCELLED")
+                self._close(
+                    run, self.conversations[run.conversation_id], "CANCELLED", by_button=True
+                )
         return run
 
     def _decide(
@@ -1081,7 +1098,9 @@ class FakeBe:
                 break
         return run
 
-    def _close(self, run: Run, conv: Conversation, outcome: str) -> None:
+    def _close(
+        self, run: Run, conv: Conversation, outcome: str, *, by_button: bool = False
+    ) -> None:
         """승인 대기를 거절 · 만료 · 취소로 끝낸다: 행동 `REJECTED` · `EXPIRED` · `CANCELLED`, 이미 낸 문장 뒤에 고정 문장(7-10)을 덧붙여 저장.
 
         AI 를 부르지 않고 판단 · 근거는 지우지 않는다. 실행은 거절이면 `DONE`, 만료면 `EXPIRED`, 취소면 `CANCELLED`.
@@ -1113,7 +1132,9 @@ class FakeBe:
             {
                 "kind": "SYSTEM",
                 "assessment_id": None,
-                "text": str(CLOSING_TEXT[(outcome, action["type"])]),
+                "text": str(
+                    CANCEL_BUTTON_TEXT if by_button else CLOSING_TEXT[(outcome, action["type"])]
+                ),
                 "evidence_ids": [],
                 "source_ids": [],
                 "action_id": action["action_id"],
@@ -1346,7 +1367,7 @@ class FakeBe:
                 run_id=run.run_id,
                 status=status or final["status"],
                 claims=copy.deepcopy(msg["claims"]),
-                cards=copy.deepcopy(msg["cards"]),
+                cards=copy.deepcopy(msg["cards"]) + run.memory_cards,
                 assessments=copy.deepcopy(final["assessments"]),
                 evidence=copy.deepcopy(final["evidence"]),
                 sources=copy.deepcopy(msg["sources"]),
@@ -1365,7 +1386,7 @@ class FakeBe:
         if (
             status is None
         ):  # BE 가 끝낸 실행(거절 · 만료 · 취소 · 받은 문장 보존)은 AI 의 저장 후보가 아니다
-            self._store_profile(run, conv, final.get("profile_updates"))
+            conv.messages[-1].cards += self._store_profile(run, conv, final.get("profile_updates"))
         gr = final.get("goal_result")
         goal = conv.goal
         if (
@@ -1398,12 +1419,13 @@ class FakeBe:
         # 굴리는 요약이므로 앞 요약의 원천도 그대로 이어진다
         conv.summary_sources |= {s for m in covered for s in m.source_ids}
 
-    def _store_profile(self, run: Run, conv: Conversation, updates: Any) -> None:
+    def _store_profile(self, run: Run, conv: Conversation, updates: Any) -> list[dict[str, Any]]:
         """코칭 프로필 저장(6-14 · L2-47 · L2-48): 사용자 말로 시작한 실행 · 설정 켜짐 · '기억 없이'가 아님 · 지금 기억 번호가
         실행을 시작할 때와 같을 때만, AI 와 같은 검사(①~⑥)를 다시 해 통과한 것만 저장한다(`key`마다 하나, 새 값이 덮음).
-        저장에 성공한 값으로만 `MEMORY_SAVED` 카드를 만들어 그 답 메시지에 붙인다."""
+        저장에 성공한 값으로만 `MEMORY_SAVED` 카드를 만들어 돌려준다(호출한 쪽이 그 답 메시지에 붙인다). 같은 key 에 같은 값이
+        이미 있으면 다시 저장하지 않고 카드도 내지 않는다(승인 대기 응답에서 저장한 뒤 끝 응답에 다시 실려도 한 번)"""
         if not updates:
-            return
+            return []
         s = self.memory_setting(conv.user_id)
         text = run.original.get("user_message")
         if (
@@ -1414,18 +1436,33 @@ class FakeBe:
             or s["version"] != run.memory_version
         ):
             self.log.append({"event": "PROFILE_NOT_SAVED", "run_id": run.run_id})
-            return
+            return []
         kept, _dropped = memory_rules.check_profile_updates(
             updates, user_message=text, cfg=DEFAULT_CONFIG
         )
         items = self.profiles.setdefault(conv.user_id, {})
-        msg = conv.messages[-1]
+        out: list[dict[str, Any]] = []
         for u in kept:
             if u["key"] not in items and len(items) >= DEFAULT_CONFIG.max_profile_items:
                 continue
+            if (
+                u["key"] in items
+                and items[u["key"]]["value"] == u["value"]
+                and u["key"] in run.memory_saved
+            ):
+                continue
             item = {"item_id": self._next("mem"), "key": u["key"], "value": u["value"]}
             items[u["key"]] = item
-            msg.cards.append({"type": "MEMORY_SAVED", **copy.deepcopy(item)})
+            run.memory_saved.add(u["key"])
+            out.append({"type": "MEMORY_SAVED", **copy.deepcopy(item)})
+        return out
+
+    def seed_profile(self, user_id: str, items: list[tuple[str, str]]) -> None:
+        """검사 없이 프로필을 저장한다(오염된 프로필 시험용). 기억 번호(`memory_version`)는 올리지 않는다:
+        시나리오 시작 전 상태라 실행 중 바뀜이 아니다(#920 리뷰)."""
+        self.profiles[user_id] = {
+            k: {"item_id": self._next("mem"), "key": k, "value": v} for k, v in items
+        }
 
     def click_practice(self, run: Run) -> dict[str, Any]:
         """사용자가 [연습 준비로] 버튼을 누름: FE 가 화면을 옮기고 BE 는 이동 기록만 남긴다. BE 가 행동으로 실행하지 않는다(5-8)."""
@@ -1547,6 +1584,7 @@ class FakeBe:
 
     @staticmethod
     def _failed(action: dict[str, Any], code: str) -> dict[str, Any]:
+        assert code in ACTION_ERROR_CODES, code  # 행동 결과 실패 코드는 5-8 닫힌 목록만
         return {
             "action_id": action["action_id"],
             "type": action["type"],

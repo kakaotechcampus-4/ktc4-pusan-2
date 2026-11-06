@@ -73,7 +73,7 @@ def test_real_files_load_and_counts(corpus):
     kinds = [c.kind for c in corpus.cards]
     assert kinds.count("method") == 20
     assert kinds.count("usage") == 25
-    assert corpus.version == "guides-4"
+    assert corpus.version == "guides-6"
     assert all(c.license == "team" for c in corpus.cards)
 
 
@@ -103,6 +103,7 @@ def test_cause_and_myth_cards_exist(corpus, raw):
         for cards in files.values():
             for c in cards:
                 c["review"] = "APPROVED"
+                _add_reference(c)
 
     assert _rebuilt(raw, approve, allow_unreviewed=False).is_approved_cause_source("g-19")
     assert not corpus.is_approved_cause_source("g-01")
@@ -171,6 +172,7 @@ def test_fm_L4_29_approved_cards_pass_for_service(raw):
         for cards in files.values():
             for c in cards:
                 c["review"] = "APPROVED"
+                _add_reference(c)
 
     corpus = _rebuilt(raw, mut, allow_unreviewed=False)
     assert len(corpus) == 45
@@ -427,3 +429,29 @@ def test_bad_synonym_group_is_rejected(raw, groups):
     """묶음은 빈 말 없이 2개 이상, 대표어(첫 말)는 찾을 수 있는 두 글자 이상 낱말이 있어야 한다."""
     with pytest.raises(CorpusInvalid):
         _rebuilt(raw, lambda m, f: m.update(synonyms=groups))
+
+
+def _add_reference(c):
+    """검수 완료로 쓰는 시험 사본: 참고 문헌이 없는 발표법 카드에 시험용 문헌을 단다(6-10, NO_REFERENCE 검사)."""
+    if c["kind"] == "method" and "참고:" not in c["source"]:
+        c["source"] += " 참고: 시험용 문헌"
+
+
+def test_approved_method_card_without_reference_is_refused_for_service(raw):
+    """서비스(검수 완료만)는 참고 문헌이 없는 발표법 카드를 받지 않는다(6-10 '카드마다 참고 문헌', #885 리뷰)."""
+
+    def approve_only(_m, files):
+        for cards in files.values():
+            for c in cards:
+                c["review"] = "APPROVED"
+
+    with pytest.raises(CorpusInvalid) as e:
+        _rebuilt(raw, approve_only, allow_unreviewed=False)
+    assert e.value.reason_code == "NO_REFERENCE"
+
+
+@pytest.mark.parametrize("q", ["질문에 결론부터 답하려면?", "결론을 먼저 말하는 게 좋아?"])
+def test_conclusion_first_questions_find_the_qa_card(corpus, q):
+    """'결론부터 말하기'(답변 순서)는 질의응답 카드 g-13 이 1위다. 동의어 사전이 '결론'을 '마무리'로 넓혀 g-10 이
+    앞서던 회귀를 막는다(#918 리뷰, 사전에서 '결론'은 #938 에서 뺐다)."""
+    assert corpus.search(q)[0].card.source_id == "g-13"
