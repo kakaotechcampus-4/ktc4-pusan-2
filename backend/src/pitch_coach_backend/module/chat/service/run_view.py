@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.api_dto import (
+    RESPONSE_MAX_BYTES,
     RunErrorDTO,
     RunEventDTO,
     RunStatusResponse,
@@ -31,8 +32,6 @@ from pitch_coach_backend.module.chat.service.waiting import (
 # 화면이 바로 취소할 수 있는 상태.
 # 승인 대기는 대기 행동을 함께 끝내고 고정 문장을 남겨서 따로 처리한다
 CANCELLABLE = ("QUEUED", "RUNNING")
-# 한 응답은 직렬화 뒤 2 MiB 이하다(12-3). 끝맺는 칸 몫을 남긴다
-RESPONSE_MAX_BYTES = 2 * 1024 * 1024 - 4096
 EVENTS_PAGE = 200
 
 
