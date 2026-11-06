@@ -227,6 +227,7 @@ def test_cleanup_failure_does_not_replace_the_storage_error(
     db_session: Session,
     user_id: uuid.UUID,
     upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     make_pdf: Callable[[int], bytes],
 ):
