@@ -609,7 +609,7 @@ def test_report_is_written(tmp_path: Path) -> None:
 
 def test_cli_validate_and_dry_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert ev.main(["--validate", "--set", "all"]) == 0
-    assert "84개" in capsys.readouterr().out
+    assert "103개" in capsys.readouterr().out
     out = tmp_path / "dry"
     code = ev.main(["--fake", "--ids", "refuse-out-of-scope", "--repeat", "1", "--out", str(out)])
     assert code == 0 and (out / "report.md").exists()

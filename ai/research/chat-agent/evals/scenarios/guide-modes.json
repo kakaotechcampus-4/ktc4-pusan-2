@@ -31,7 +31,8 @@
         "observe": "answer",
         "compare": "contains",
         "expect": "u-16",
-        "path": "source_ids"
+        "path": "source_ids",
+        "metric": "advice"
       },
       {
         "check_id": "guide-quote-verbatim",

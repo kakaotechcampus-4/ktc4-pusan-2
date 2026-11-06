@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-general-no-guide",
+  "set": "agent_service",
+  "group": "general",
+  "split": "dev",
+  "act": "should",
+  "title": "자료에 없는 발표 질문(손 두는 법) — 자료를 찾은 뒤 고정 안내 + 일반 조언(GENERAL)으로 답한다",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표할 때 손은 어떻게 두는 게 좋아?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "searched",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "search_guides",
+        "path": "tools"
+      },
+      {
+        "check_id": "general-intro",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.GENERAL_INTRO",
+        "grader": "template"
+      },
+      {
+        "check_id": "general-kind",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GENERAL",
+        "path": "claim_kinds"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "GENERAL 문장의 금지 목록 · 3문장 · 120자는 'GENERAL 금지 위반' 지표(채점기 general_violations)로 센다"
+}

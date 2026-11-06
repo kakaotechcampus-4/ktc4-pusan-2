@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-oos-plan",
+  "set": "agent_service",
+  "group": "out_of_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "연습 계획(일정 짜기) — REFUSED 와 이유별 고정 문장",
+  "expect_refusal": true,
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표까지 일주일 남았는데 연습 일정 짜 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status"
+      },
+      {
+        "check_id": "reason-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.PRACTICE_PLAN",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      }
+    ]
+  }
+}

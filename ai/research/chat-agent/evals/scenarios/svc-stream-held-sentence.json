@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-stream-held-sentence",
+  "set": "agent_service",
+  "group": "stream",
+  "split": "dev",
+  "act": "should",
+  "title": "앞 문장이 검사에 걸리면(틀린 숫자) 그 문장과 뒤의 정상 문장을 보류했다가 고쳐 원래 순서로 낸다 — 낸 문장은 끝 줄 앞부분과 같다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4와 Take 5의 3장 청중 시선 비율이 각각 몇 %였어?",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "corrupt_answer",
+          "from_text": "31%",
+          "to_text": "35%"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "check-caught",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "CHECK:NUMBER_MISMATCH",
+        "path": "diag"
+      },
+      {
+        "check_id": "not-dropped",
+        "observe": "trace",
+        "compare": "absent",
+        "expect": "CHECK:NUMBER_MISMATCH:DROPPED",
+        "path": "diag",
+        "note": "걸린 문장은 고쳐서 내야 한다(버리고 코드 템플릿 PARTIAL 로 끝나면 실패)"
+      },
+      {
+        "check_id": "stream-consistent",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": true,
+        "path": "stream_ok"
+      },
+      {
+        "check_id": "second-kept",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3",
+        "path": "record_texts[1]",
+        "note": "보류했던 뒤 기록 문장이 그 뒤 자리"
+      },
+      {
+        "check_id": "first-fixed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "31%",
+        "grader": "number",
+        "derive": "t-4:GAZE.audience_ratio@3",
+        "path": "record_texts[0]",
+        "note": "걸렸다 고친 앞 기록 문장이 그대로 첫 자리(행동 결과 문장은 빼고 센다)"
+      },
+      {
+        "check_id": "no-wrong-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "35%",
+        "grader": "number"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}
