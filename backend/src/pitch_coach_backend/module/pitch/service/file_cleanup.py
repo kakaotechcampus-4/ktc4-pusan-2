@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import SessionLocal, with_session
-from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix
+from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix, pitch_prefix
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,6 @@ logger = logging.getLogger(__name__)
 RETRY_AFTER = timedelta(minutes=1)
 # 한 번에 다시 하는 경로 수. 남은 것은 다음 주기에 한다
 RETRY_BATCH = 100
-
-
-def pitch_prefix(pitch_id: uuid.UUID) -> str:
-    return f"pitches/{pitch_id}/"
 
 
 def reserve(db: Session, pitch_ids: list[uuid.UUID]) -> None:

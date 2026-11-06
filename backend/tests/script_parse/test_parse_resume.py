@@ -3,6 +3,7 @@
 import asyncio
 import threading
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,7 +45,7 @@ async def test_pending_parse_is_resumed_and_finished(
     script_id = _create_ok(client, pitch_id, auth_headers)
     parser = FakeParser()
 
-    await _runner(db_session, parser).resume_all()
+    await _runner(db_session, parser).resume_all(started_before=datetime.now(UTC))
 
     assert parser.calls == [SCRIPT_TEXT]
     assert parser.targets == [TARGET_MS]
@@ -66,7 +67,7 @@ async def test_resume_restarts_the_expiry_clock(
     assert script is not None
     before = script.parse_requested_at
 
-    tickets = script_service.resume_parses(db_session)
+    tickets = script_service.resume_parses(db_session, started_before=datetime.now(UTC))
 
     db_session.refresh(script)
     assert [ticket.script_version_id for ticket in tickets] == [script_id]
@@ -85,7 +86,7 @@ async def test_expired_pending_is_left_for_the_user_to_retry(
     _age(db_session, script_id, 100)
     parser = FakeParser()
 
-    await _runner(db_session, parser).resume_all()
+    await _runner(db_session, parser).resume_all(started_before=datetime.now(UTC))
 
     assert parser.calls == []
     assert _status(client, pitch_id, script_id, auth_headers) == ("FAILED", "PARSE_EXPIRED")
@@ -105,7 +106,7 @@ async def test_finished_parses_are_not_resumed(
     failed_id = _create_ok(client, pitch_id, auth_headers)
     resumed = FakeParser()
 
-    await _runner(db_session, resumed).resume_all()
+    await _runner(db_session, resumed).resume_all(started_before=datetime.now(UTC))
 
     assert resumed.calls == []
     assert _status(client, pitch_id, done_id, auth_headers) == ("DONE", None)
@@ -125,7 +126,7 @@ def test_pending_without_original_text_is_not_resumed(
     script.content = None
     db_session.commit()
 
-    assert script_service.resume_parses(db_session) == []
+    assert script_service.resume_parses(db_session, started_before=datetime.now(UTC)) == []
 
 
 def test_old_job_cannot_overwrite_after_resume(
@@ -138,9 +139,9 @@ def test_old_job_cannot_overwrite_after_resume(
     script_id = _create_ok(client, pitch_id, auth_headers)
     script = db_session.get(ScriptVersion, script_id)
     assert script is not None
-    old = ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS)
+    old = ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS, pitch_id=uuid.uuid4())
 
-    [resumed] = script_service.resume_parses(db_session)
+    [resumed] = script_service.resume_parses(db_session, started_before=datetime.now(UTC))
 
     assert script_service.complete_parse(db_session, old, TWO_SLIDES) is ParseSaved.STALE
     assert script_service.complete_parse(db_session, resumed, TWO_SLIDES) is ParseSaved.APPLIED
@@ -154,7 +155,7 @@ async def test_resume_does_not_raise_when_db_is_down(caplog: pytest.LogCaptureFi
 
     parser = FakeParser()
 
-    await ScriptParseRunner(parser, session_factory=broken).resume_all()
+    await ScriptParseRunner(parser, session_factory=broken).resume_all(started_before=datetime.now(UTC))
 
     assert parser.calls == []
     assert "남은 대본 파싱 작업을 읽지 못했다" in caplog.text
@@ -195,14 +196,14 @@ async def test_resume_does_not_take_over_a_new_live_parse(
         return resume(*args, **kwargs)
 
     monkeypatch.setattr(runner, "_resume", delayed_resume)
-    recovery = asyncio.create_task(runner.resume_all())
+    recovery = asyncio.create_task(runner.resume_all(started_before=datetime.now(UTC)))
     live = None
     try:
         assert await asyncio.to_thread(reading.wait, 5)
         script_id = _create_ok(client, pitch_id, auth_headers)
         script = db_session.get(ScriptVersion, script_id)
         assert script is not None
-        ticket = ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS)
+        ticket = ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS, pitch_id=uuid.uuid4())
         live = asyncio.create_task(runner.run(ticket))
         async with asyncio.timeout(5):
             await parsing.wait()
