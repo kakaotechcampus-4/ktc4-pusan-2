@@ -334,3 +334,98 @@ def test_answer_with_someone_elses_pitch_fails_as_upstream_error(
         )
         is None
     )
+
+
+def _remembering(db_session: Session, run_id: uuid.UUID) -> None:
+    row = db_session.get(ChatRun, run_id)
+    row.input = {**row.input, "user_message": MEMORY_MESSAGE}
+    db_session.flush()
+
+
+def _reassess(run_id: str) -> dict[str, Any]:
+    return {
+        "action_id": "a1",
+        "type": "REASSESS",
+        "args": {"take_id": str(uuid.uuid4()), "change": {"script_used": True}},
+        "autonomy": "ASK",
+        "args_hash": "sha256:" + "0" * 64,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "다시 평가",
+        "authorized_by": None,
+    }
+
+
+def _profile_items(db_session: Session, user_id: uuid.UUID) -> list[ChatProfileItem]:
+    return list(
+        db_session.scalars(select(ChatProfileItem).where(ChatProfileItem.user_id == user_id))
+    )
+
+
+def test_waiting_for_approval_saves_memory(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    run_id = str(queued_run)
+    _remembering(db_session, queued_run)
+    waiting = {**_needs_action(_reassess(run_id)), "profile_updates": [UPDATE]}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", waiting))))
+
+    _run(queued_run, session_factory)
+
+    run = _reload(db_session, queued_run)
+    assert run.status == "WAITING_APPROVAL"
+    assert [(i.key, i.value) for i in _profile_items(db_session, user_id)] == [
+        ("EXPLAIN_STYLE", "짧게 설명")
+    ]
+    assert [card["key"] for card in run.interim_message["memory_saved"]] == ["EXPLAIN_STYLE"]
+
+
+def test_same_memory_in_the_final_answer_is_carded_once(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    run_id = str(queued_run)
+    _remembering(db_session, queued_run)
+    waiting = {**_needs_action(_reassess(run_id)), "profile_updates": [UPDATE]}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", waiting))))
+    _run(queued_run, session_factory)
+    run = _reload(db_session, queued_run)
+    run.status = "RUNNING"
+    db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)).approved = True
+    db_session.flush()
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final(profile_updates=[UPDATE])))))
+
+    asyncio.run(
+        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
+    )
+
+    answer = db_session.scalar(
+        select(ChatMessage).where(
+            ChatMessage.run_id == queued_run, ChatMessage.role == "assistant"
+        )
+    )
+    assert [card["type"] for card in answer.cards] == ["MEMORY_SAVED"]
+    assert len(_profile_items(db_session, user_id)) == 1
+
+
+def test_auto_action_reply_does_not_save_memory(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    run_id = str(queued_run)
+    _remembering(db_session, queued_run)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_TAKE",
+        "args": {"pitch_id": str(uuid.uuid4()), "take_id": str(uuid.uuid4())},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "기록을 더 본다",
+        "authorized_by": None,
+    }
+    fetching = {**_needs_action(action), "profile_updates": [UPDATE]}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", fetching))))
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    _run(queued_run, session_factory)
+
+    assert _reload(db_session, queued_run).status == "DONE"
+    assert _profile_items(db_session, user_id) == []
