@@ -24,7 +24,6 @@ from pitch_coach_backend.module.chat.service.run import SEOUL, add_run_log
 from pitch_coach_backend.module.chat.service.stale import uses_deleted
 from pitch_coach_backend.module.chat.service.waiting import (
     CANCELLED_TEXT,
-    NOT_DONE_TEXT,
     close_waiting,
     read_emitted,
 )
@@ -101,15 +100,14 @@ def _cancel_waiting(db: Session, run: ChatRun) -> RunStatusResponse:
         repo.lock_conversation_of(run)
         db.refresh(run, with_for_update=True)
         if run.status == "WAITING_APPROVAL":
-            action = repo.waiting_action(run.id)
             close_waiting(
                 db,
                 run,
-                action,
+                repo.waiting_action(run.id),
                 emitted,
                 action_status="CANCELLED",
                 run_status="CANCELLED",
-                text=NOT_DONE_TEXT[action.type] if action else CANCELLED_TEXT,
+                text=CANCELLED_TEXT,
                 now=datetime.now(UTC),
             )
         db.commit()

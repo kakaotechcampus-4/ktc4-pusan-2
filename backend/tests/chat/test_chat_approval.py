@@ -28,6 +28,7 @@ from pitch_coach_backend.module.chat.service import turn as turn_service
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS
 from pitch_coach_backend.module.chat.service.run import SEOUL
 from pitch_coach_backend.module.chat.service.waiting import (
+    CANCELLED_TEXT,
     EXPIRED_TEXT,
     NEW_MESSAGE_TEXT,
     NOT_DONE_TEXT,
@@ -534,7 +535,8 @@ def test_cancel_during_the_wait_closes_the_action_and_keeps_sentences(
     assert response.json()["error"] == {"code": "AGENT_CANCELLED"}
     assert response.json()["cards"] == []
     [answer] = _answers(db_session, seeded.conversation.id)
-    assert answer.text == f"{CLAIM['text']}\n{NOT_DONE_TEXT['SAVE_GOAL']}"
+    # 새 메시지로 취소될 때와 다른 문장이다(7-10)
+    assert answer.text == f"{CLAIM['text']}\n{CANCELLED_TEXT}"
     assert db_session.get(ChatAction, seeded.action.id).status == "CANCELLED"
 
 

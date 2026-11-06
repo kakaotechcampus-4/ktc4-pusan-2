@@ -24,7 +24,7 @@ from pitch_coach_backend.module.chat.service.run import add_run_log, lock_ids
 APPROVAL_WINDOW = timedelta(minutes=30)
 EXPIRED_TEXT = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
 NEW_MESSAGE_TEXT = "새 메시지를 받아 앞의 확인 요청은 취소했어요."
-CANCELLED_TEXT = "요청을 취소했어요."
+CANCELLED_TEXT = "확인 요청을 취소했어요."
 NOT_DONE_TEXT = {
     "SAVE_GOAL": "목표를 저장하지 않았어요.",
     "REASSESS": "다시 평가하지 않았어요.",
