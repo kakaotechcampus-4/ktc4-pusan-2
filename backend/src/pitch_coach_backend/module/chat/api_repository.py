@@ -132,16 +132,6 @@ class ChatApiRepository:
             )
         )
 
-    def list_claim_events(self, run_id: uuid.UUID) -> list[dict[str, Any]]:
-        """이 실행에서 이미 낸 문장 줄의 내용. 순번순이다."""
-        return list(
-            self.db.scalars(
-                select(ChatRunEvent.data)
-                .where(ChatRunEvent.run_id == run_id, ChatRunEvent.event == "claim")
-                .order_by(ChatRunEvent.event_seq)
-            )
-        )
-
     def waiting_action(self, run_id: uuid.UUID) -> ChatAction | None:
         """승인 · 거절을 기다리는 행동. 승인 대기는 한 번에 하나다."""
         return self.db.scalar(

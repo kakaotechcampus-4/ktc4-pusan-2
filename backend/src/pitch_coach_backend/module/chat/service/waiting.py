@@ -49,7 +49,8 @@ def read_emitted(db: Session, run_id: uuid.UUID) -> Emitted:
     evidence: list[Any] = []
     sources: list[Any] = []
     assessments: list[Any] = []
-    for data in ChatApiRepository(db).list_claim_events(run_id):
+    for event in ChatRepository(db).list_claim_events(run_id):
+        data = event.data
         claims.append(data["claim"])
         evidence.extend(item for item in data.get("evidence") or [] if isinstance(item, dict))
         sources.extend(data.get("sources") or [])
