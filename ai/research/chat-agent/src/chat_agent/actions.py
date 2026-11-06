@@ -319,6 +319,15 @@ def named_take_ids(message: str | None, ctx: RunCtx) -> set[str] | None:
     return {tid for tid, summ in ctx.summaries.items() if summ.take_number in nums or tid in ids}
 
 
+def unresolved_take_numbers(message: str | None, ctx: RunCtx) -> set[int]:
+    """사용자 말이 번호로 집어 말한 Take 가운데 범위 피치에 없는 번호(지워졌거나 없는 Take). 예: Take 4 가 지워졌으면
+    "Take 4 3장 값 알려 줘" → {4}."""
+    if not message:
+        return set()
+    nums = {int(n) for n in _NAMED_TAKE_NUM.findall(message)}
+    return nums - {s.take_number for s in ctx.summaries.values()}
+
+
 def action_args_hash(action_type: str, args: dict[str, Any]) -> str:
     """`args_hash`(5-8): 행동 `type`과 확정한 `args`를 정렬한 JSON(`canonical_json`)의 SHA-256, `"sha256:<hex>"` 꼴.
 
@@ -428,6 +437,22 @@ def propose(
                 reason_code="NOT_FOUND",
                 tool_message=_err("NOT_FOUND", "이 실행에서 찾을 수 없던 Take 다"),
             )
+        named = named_take_ids(original_message, ctx)
+        missing = ctx.not_found or unresolved_take_numbers(original_message, ctx)
+        if named is not None and missing and a.take_id in ctx.summaries and a.take_id not in named:
+            # 사용자가 Take 를 집어 말했는데 그 Take 를 가져오지 못했거나(이 실행의 가져오기 실패) 범위 피치에 없으면(지워짐 ·
+            # 번호 없음), 말하지 않은 Take 를 대신 가져와 그것으로 답하지 않는다(다시 평가와 같은 규칙, 4회차 fail-action ·
+            # 6회차 stale-deleted: 지워진 Take 4 대신 Take 3 을 가져와 답함). 지워진 Take 는 기본 자료에서도 빠져 `named`에
+            # 없을 수 있으므로 실패한 Take 가 `named`에 있는지는 보지 않는다. 범위 피치에 없는 Take(말한 그 Take 일 수 있다)를
+            # 가져오는 것은 막지 않는다(BE 가 없다고 돌려준다, L2-22)
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="NOT_NAMED_TAKE",
+                tool_message=_err(
+                    "NOT_FOUND",
+                    "사용자가 말한 Take 를 찾지 못했다(지워졌거나 없음). 다른 Take 로 바꿔 답하지 않고 찾을 수 없다고 답한다",
+                ),
+            )
         args = {"pitch_id": ctx.scope_pitch_id, "take_id": a.take_id}
     elif isinstance(a, ReassessArgs):
         if a.take_id not in ctx.summaries:
@@ -445,6 +470,17 @@ def propose(
                 tool_message=_err(
                     "NOT_FOUND",
                     "사용자가 말한 Take 가 아니다. 그 Take 를 찾지 못했으면 다시 평가하지 않는다",
+                ),
+            )
+        if clm.measurement_dispute(original_message or "", ctx.cfg):
+            # 다시 평가는 입력을 바꾸는 조건(대본 사용 · 내 기준)을 사용자가 말했을 때만 한다. 측정값 이의('카메라가 낮았어')는
+            # 다시 평가로 바뀌지 않는다(6-6, 4회차 ra-measurement)
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="CONDITION_NOT_STATED",
+                tool_message=_err(
+                    "CONDITION_NOT_STATED",
+                    "사용자가 이 조건(대본 사용 · 내 기준)을 말하지 않았다. 측정값 이의는 다시 평가하지 않는다",
                 ),
             )
         change = (

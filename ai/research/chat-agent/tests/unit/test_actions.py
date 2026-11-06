@@ -50,6 +50,7 @@ from chat_agent_lab.fixtures import review, sample_pitch, take_snapshot
 from .test_tools import EXAMPLES, base_request, focus_snapshot, load, make_ctx, run
 
 MSG = "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"
+RA_MSG = "대본 보고 한 걸로 다시 평가해 줘"
 SAVE_ARGS = {
     "metric": "audience_ratio",
     "slide_number": 3,
@@ -84,6 +85,9 @@ def do(
     trigger: str = "USER_MESSAGE",
     seq: int = 1,
 ):  # noqa: ANN202
+    if tool == "reassess" and message == MSG:
+        # 다시 평가는 사용자가 조건을 말한 말에서만 낸다(측정값 이의 말이면 TOOL_ERROR, 6-6). 동작 시험의 기본 말
+        message = RA_MSG
     ctx = ctx or ctx_for(message)
     return propose(
         tool,
@@ -1420,3 +1424,33 @@ def test_args_hash_serialization_rule_example_in_the_feature_doc() -> None:
     assert action_args_hash("REASSESS", args) == action_args_hash(
         "REASSESS", {"change": args["change"], "take_id": "t-5"}
     )  # 키 순서는 해시에 영향이 없다
+
+
+def test_fetch_take_does_not_swap_in_another_take_after_the_named_one_was_not_found() -> None:
+    """사용자가 말한 Take 를 가져오지 못했으면 다른 Take 를 가져와 그것으로 답하지 않는다(4회차 fail-action)."""
+    msg = "Take 4보다 Take 5에서 3장 시선이 좋아졌어?"
+    ctx = ctx_for(msg)
+    ctx.not_found.add("t-4")
+    p = do("fetch_take", {"take_id": "t-3", "reason": "대신"}, ctx=ctx, message=msg)
+    assert (p.result, p.reason_code) == ("TOOL_ERROR", "NOT_NAMED_TAKE")
+    # 말한 Take 가 지워져 기본 자료에서 빠졌어도(번호로 ID 를 못 찾음) 같다
+    gone = ctx_for(msg)
+    gone.summaries.pop("t-4", None)
+    gone.not_found.add("t-4")
+    r = do("fetch_take", {"take_id": "t-3", "reason": "대신"}, ctx=gone, message=msg)
+    assert (r.result, r.reason_code) == ("TOOL_ERROR", "NOT_NAMED_TAKE")
+    # 가져오기가 실패한 일이 없으면 막지 않는다
+    q = do("fetch_take", {"take_id": "t-3", "reason": "비교"}, ctx=ctx_for(msg), message=msg)
+    assert q.reason_code != "NOT_NAMED_TAKE"
+
+
+def test_fetch_take_does_not_swap_in_another_take_when_the_named_one_is_gone() -> None:
+    """말한 Take 가 범위 피치에 없으면(지워짐) 가져오기를 시도하기 전이라도 다른 Take 로 바꿔 가져오지 않는다(6회차
+    stale-deleted). 말한 Take 가 있으면 막지 않는다."""
+    msg = "아까 말한 Take 4 3장 값 다시 알려 줘"
+    gone = ctx_for(msg)
+    gone.summaries.pop("t-4", None)
+    p = do("fetch_take", {"take_id": "t-3", "reason": "대신"}, ctx=gone, message=msg)
+    assert (p.result, p.reason_code) == ("TOOL_ERROR", "NOT_NAMED_TAKE")
+    q = do("fetch_take", {"take_id": "t-3", "reason": "비교"}, ctx=ctx_for(msg), message=msg)
+    assert q.reason_code != "NOT_NAMED_TAKE"

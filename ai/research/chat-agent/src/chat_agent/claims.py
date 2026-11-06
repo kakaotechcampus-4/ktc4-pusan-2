@@ -60,7 +60,9 @@ VersionOf = Callable[[TakeSnapshot], RecordVersion]
 
 #: 대본 사용 주장의 지표 이름(모델이 명시한다). 지표 표에는 없는 가상 이름이다
 SCRIPT_USE_METRIC = "script_mode"
-_SCRIPT_USE_RE = re.compile(r"(대본|원고)\s*(을|를)?\s*(보고|보면서|보며|켜고|켜 놓고|띄우고)")
+_SCRIPT_USE_RE = re.compile(
+    r"(대본|원고)\s*(을|를)?\s*(보고|보면서|보며|켜고|켜 놓고|띄우고|사용하고|사용해서|사용했|사용하며|사용하면서)"
+)
 CLAIM_OPS = ("OVERALL", "ISSUE", "VALUE", "CHANGE")
 
 #: 근거 문구용 표시 이름
@@ -412,6 +414,7 @@ def _split_check_indexed(
     valid: list[AssessmentDraft] = []
     valid_idx: list[int] = []
     problems: list[Problem] = []
+    drafts = [_script_statement_as_claim(d) for d in drafts]
     for i, d in enumerate(drafts):
         if not d.quote.strip():
             problems.append(Problem("EMPTY_QUOTE", d.quote, i))
@@ -655,6 +658,44 @@ def _is_script_claim(draft: AssessmentDraft) -> bool:
         and sub.dimension in (None, "script_independence")
         and bool(_SCRIPT_USE_RE.search(draft.quote))
     )
+
+
+#: 요청 · 질문 어미(이것이 있으면 진술이 아니다)
+_ASK_END_RE = re.compile(r"(줘|주세요|주라|줄래|해\s*봐|할까|해도\s*돼|돼\?|되나|\?)")
+
+
+def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
+    """`REQUEST`로 온 과거형 대본 사용 진술("Take 5는 대본 보고 한 발표였어")을 대본 주장(`MEASURED`)으로 바로잡는다.
+
+    대본 주장에는 판정과 상관없이 화면 대본 사실 문장을 붙인다(L6-06). 모델이 "… 다시 평가해 줘"와 함께 온 진술을 요청으로
+    분류하면 그 문장이 빠진다(4회차 ra-script). 요청 · 질문 어미가 있으면("대본 보고 한 걸로 다시 평가해 줘") 그대로 둔다.
+    """
+    if draft.type != "REQUEST" or draft.claim_op is not None or not _is_script_claim(draft):
+        return draft
+    if not any(ch in draft.quote for ch in _PAST_CHARS) or _ASK_END_RE.search(draft.quote):
+        return draft
+    subject = draft.subject.model_copy(
+        update={"dimension": "script_independence", "metric": SCRIPT_USE_METRIC}
+    )
+    return draft.model_copy(update={"type": "MEASURED", "claim_op": "VALUE", "subject": subject})
+
+
+def states_script_use(text: str) -> bool:
+    """글이 대본 · 원고를 보고 했다고 말하는가("대본 보고 한 발표였어")."""
+    return bool(_SCRIPT_USE_RE.search(text))
+
+
+#: 다시 평가가 바꿀 수 있는 조건(대본 사용 · 내 기준, 6-6 표)을 가리키는 낱말. 앞 턴의 조건을 가리키는 '그 조건으로'도
+#: 조건으로 본다. '측정 기준' · '(시선) 기준 잡기'(측정 보정)는 측정 쪽 말이라 조건이 아니다('시선 기준 30%로'는 내 기준)
+_CONDITION_WORD_RE = re.compile(r"대본|원고|조건|(?<!측정 )(?<!측정)기준(?!\s*잡)")
+
+
+def measurement_dispute(text: str, cfg: ChatAgentConfig) -> bool:
+    """측정 항목(시선 · 말 속도 …)을 말했지만 다시 평가가 바꿀 수 있는 조건(대본 · 원고 · 조건 · 기준)은 한 낱말도 말하지 않았는가.
+
+    이런 말의 다시 평가 요청은 측정값 이의다: 다시 평가해도 바뀌지 않는다(6-6). 조건 낱말이 있으면(앞 턴의 조건을
+    가리키는 '대본 조건으로'도) 측정값 이의로 보지 않는다."""
+    return bool(_measure_hits(text, cfg)) and not _CONDITION_WORD_RE.search(text)
 
 
 def _take_prefix(t: _Target, slide: int | None) -> str:

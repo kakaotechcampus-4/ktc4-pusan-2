@@ -1192,3 +1192,43 @@ def test_request_without_template_does_not_require_first_sentence():
     assert run([ok], **kw) == []
     agree = Claim(kind="ASSESSMENT", assessment_id="a1", text="맞아요. 장마다 나눠 넣어요.")
     assert CheckId.VERDICT_CONFLICT in ids_of(run([agree], **kw))
+
+
+# ── 문장 글의 근거 · 자료 id(6-9, 4회차) ─────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("text", "want"),
+    [
+        (
+            "Take 5의 3장 청중 시선 비율은 28%였습니다 (e-0e00ac50bb).",
+            "Take 5의 3장 청중 시선 비율은 28%였습니다.",
+        ),
+        ("청중 시선은 강점이에요(근거: e-6c73d565a9, c-0123456789).", "청중 시선은 강점이에요."),
+        (
+            "렌즈를 청중 한 사람이라고 생각해 보세요 [g-13]",
+            "렌즈를 청중 한 사람이라고 생각해 보세요",
+        ),
+        ("근거: e-0e00ac50bb 3장 시선은 28%예요.", "3장 시선은 28%예요."),
+        ("Take 5 3장 시선은 28%예요.", "Take 5 3장 시선은 28%예요."),
+        ("e-mail 로 보내 주세요", "e-mail 로 보내 주세요"),
+    ],
+)
+def test_ref_ids_in_sentence_text_are_removed_so_their_digits_are_not_values(
+    text: str, want: str
+) -> None:
+    """모델이 문장 글에 적은 근거 · 자료 id 는 지운다. id 속 숫자(0 · 00 · 50)를 문장의 값으로 세지 않는다."""
+    from chat_agent.checks import extract_numbers
+    from chat_agent.compose import strip_ref_ids
+
+    assert strip_ref_ids(text) == want
+    assert extract_numbers(strip_ref_ids(text)).values == extract_numbers(want).values
+
+
+def test_code_template_sentences_keep_their_source_ids() -> None:
+    """id 지우기는 모델이 쓴 글에만 한다: 코드가 만드는 문장(판단 첫 문장의 "발표법 자료(g-18)")은 그대로다(6회차 회귀)."""
+    from chat_agent.compose import _claim
+
+    head = "말씀하신 '발표는 빠를수록 좋다며?'는 기록과 달라요: 발표법 자료(g-18)."
+    c = _claim("ASSESSMENT", head)
+    assert c is not None and c.text == head

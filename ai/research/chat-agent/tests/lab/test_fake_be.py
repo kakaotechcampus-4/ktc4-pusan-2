@@ -1014,3 +1014,114 @@ def test_fm_L5_02_missing_or_partial_model_bundle_gives_llm_unavailable(
     run = FakeBe(app).send_message(None, MSG, page_take_id="t-5")
     assert (run.calls[0].http_status, run.calls[0].error_code) == (503, "LLM_UNAVAILABLE")
     assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
+
+
+def test_fm_L2_22_take_deleted_before_fetch_fails_and_the_run_goes_on() -> None:
+    """가져오려던 Take 가 행동 실행 전에 지워지면 그 행동은 실패다. 아직 읽지 않은 대상이라 떼어 낼 것이 없으므로 멈추지 않고
+    "해당 연습 기록을 가져오지 못했어요"로 이어 간다(L2-22, 4회차 fail-action). 가져온 뒤 지워지면 멈춘다(위 L4-38)."""
+    llm = F.FakeLlm(compare_with_fetch_script())
+    be = make_be(llm)
+    be.before_action = lambda b, r, a: b.delete_take("t-4")
+    run = be.send_message(None, MSG, page_take_id="t-5")
+    assert run.calls[1].request["context"]["removed_sources"] == ["t-4"]
+    assert run.calls[1].request["resume"]["action_results"][0]["status"] == "FAILED"
+    fd = ok(run.final)
+    text = fd.message.text  # type: ignore[union-attr]
+    assert templates.SystemText.TAKE_FETCH_FAILED.value in text
+    assert templates.SystemText.SOURCE_DELETED_STOP.value not in text
+    assert len(llm.calls) > 3  # 이어 부른 뒤 모델을 다시 불렀다
+
+
+def test_scope_is_not_switched_again_before_reading_the_new_scope() -> None:
+    """범위를 바꾼 뒤 그 피치의 Take 를 하나도 읽지 않고 다시 바꾸려 하면 도구 오류로 돌려준다(6-5, 4회차 nc-different-pitch:
+    두 피치 사이를 세 번 오가다 입력 토큰 한도에 걸림)."""
+    llm = F.FakeLlm(
+        [
+            F.plan(),
+            F.tools(
+                ("fetch_pitch", {"name": "회사 소개 발표", "reason": "다른 발표"}), prefix="fp"
+            ),
+            F.tools(("fetch_pitch", {"pitch_id": "p-1", "reason": "돌아가기"}), prefix="fb"),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm, pitches=[fx.sample_pitch(), other_pitch("p-2", "회사 소개 발표")])
+    conv = be.new_conversation(scope_pitch_id="p-1")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["type"])
+    run = be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
+    assert actions == ["FETCH_PITCH"]
+    assert "SCOPE_NOT_READ" in texts_after(llm, 3)
+    assert ok(run.final).scope_pitch_id == "p-2"
+
+
+def test_scope_can_switch_again_after_reading_a_take_of_the_new_scope() -> None:
+    """새 범위 피치의 Take 를 읽은 뒤에는 다시 바꿀 수 있다(여러 피치 질문은 피치마다 따로 답한다)."""
+    llm = F.FakeLlm(
+        [
+            F.plan(),
+            F.tools(
+                ("fetch_pitch", {"name": "회사 소개 발표", "reason": "다른 발표"}), prefix="fp"
+            ),
+            fetch("p-2-t1", "ft"),
+            F.tools(("fetch_pitch", {"pitch_id": "p-1", "reason": "돌아가기"}), prefix="fb"),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm, pitches=[fx.sample_pitch(), other_pitch("p-2", "회사 소개 발표")])
+    conv = be.new_conversation(scope_pitch_id="p-1")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["type"])
+    be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
+    assert actions == ["FETCH_PITCH", "FETCH_TAKE", "FETCH_PITCH"]
+
+
+def test_scope_switch_counts_a_reread_take_after_coming_back() -> None:
+    """다른 피치에서 돌아와 이미 읽었던 Take 를 다시 읽어도(캐시 적중 포함) 읽은 것이다. 원천 집합의 차이로 세면 다시
+    읽기를 못 세어 다음 범위 바꾸기를 막는다."""
+    takes = ("list_takes", {"completed_fully": True})
+    llm = F.FakeLlm(
+        [
+            F.plan(),
+            F.tools(takes, prefix="l1"),
+            F.tools(
+                ("fetch_pitch", {"name": "회사 소개 발표", "reason": "다른 발표"}), prefix="f1"
+            ),
+            F.tools(takes, prefix="l2"),
+            F.tools(("fetch_pitch", {"pitch_id": "p-1", "reason": "돌아가기"}), prefix="f2"),
+            F.tools(takes, prefix="l3"),
+            F.tools(("fetch_pitch", {"pitch_id": "p-2", "reason": "다시"}), prefix="f3"),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm, pitches=[fx.sample_pitch(), other_pitch("p-2", "회사 소개 발표")])
+    conv = be.new_conversation(scope_pitch_id="p-1")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["type"])
+    be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
+    assert actions == ["FETCH_PITCH", "FETCH_PITCH", "FETCH_PITCH"]
+    assert "SCOPE_NOT_READ" not in texts_after(llm, 0)
+
+
+def test_named_take_missing_from_the_scope_gets_the_fetch_failed_notice() -> None:
+    """말한 Take 가 범위 피치에 없으면(지워짐) 가져오기를 시도하지 않아도 "해당 연습 기록을 가져오지 못했어요"를 붙이고,
+    다른 Take 를 대신 가져오지 않는다(L2-22, 6회차 stale-deleted)."""
+    msg = "아까 말한 Take 4 3장 값 다시 알려 줘"
+    llm = F.FakeLlm(
+        [F.plan(assessments=[request_draft(msg)]), fetch("t-3", "f"), F.done()],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm)
+    be.delete_take("t-4")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["args"]["take_id"])
+    run = be.send_message(None, msg, page_take_id="t-5")
+    assert actions == []  # Take 3 으로 바꿔 가져오지 않았다
+    assert templates.SystemText.TAKE_FETCH_FAILED.value in ok(run.final).message.text  # type: ignore[union-attr]

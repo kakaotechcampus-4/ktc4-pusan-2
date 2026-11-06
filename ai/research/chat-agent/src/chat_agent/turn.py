@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import threading
 import traceback
 from collections.abc import Callable, Iterator
@@ -337,11 +338,14 @@ def _orchestrate(
     if trigger == "ACTION_RESULT":
         # 이어 부를 때는 어떤 한도 종료보다 먼저 지워진 원천을 처리하고 행동 결과를 검증 · 반영한다.
         # 한도로 모델 없이 끝나도 승인된 행동의 결과 문장 · 카드와 삭제 중단이 지워지지 않게 하려는 것이다(5-5 · 6-1)
-        if not lp.drop_removed(req.context.removed_sources):
+        assert req.resume is not None
+        # 데이터 없는 FAILED 만 '대상을 읽지 못한 가져오기'다(AMBIGUOUS 후보 · 실패에 실린 값에는 지운 원천이 있을 수 있다)
+        first = req.resume.action_results[0]
+        failed = first.status == "FAILED" and first.data is None
+        if not lp.drop_removed(req.context.removed_sources, fetch_failed=failed):
             return finish(
                 status="PARTIAL", reason="OTHER", system=[templates.SystemText.SOURCE_DELETED_STOP]
             )
-        assert req.resume is not None
         applied = lp.apply_action_result(req.resume.action_results[0])
         if applied.mismatch:
             return finish(
@@ -806,6 +810,8 @@ def _pre_claims(
         if lp.record_changed:
             system.append(templates.SystemText.RECORD_CHANGED_DURING.value)
         system += _action_notes(lp)
+        system += _measurement_notes(lp)
+        system += _missing_take_notes(lp)
         out += [Claim(kind="SYSTEM", text=t) for t in dict.fromkeys(system) if t not in said]
     out += [
         Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"])
@@ -873,6 +879,41 @@ def _action_notes(lp: Loop) -> list[str]:
         if removed and st.SCRIPT_POINTS_REMOVED.value not in out:
             out.append(st.SCRIPT_POINTS_REMOVED.value)
     return out
+
+
+#: 다시 평가를 바라는 말(6-6)
+_REASSESS_ASK = re.compile(
+    r"다시\s*(평가|채점|매겨|판정)|다시\s*봐\s*(줘|주세요|줄래)|재평가|재채점"
+)
+
+
+def _measurement_notes(lp: Loop) -> list[str]:
+    """측정값 이의로 다시 평가를 바랐는데 다시 평가하지 않은 답에 붙일 안내(6-6 · 7-10):
+    "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요."
+
+    사용자 말이 다시 평가를 바라는 측정값 이의이고(`clm.measurement_dispute`: 측정 항목을 말했지만 대본 · 원고 · 기준은
+    말하지 않음), 이 실행에서 다시 평가를 내지도 하지도 않았을 때만 붙인다. 까닭과 다음 Take에서 확인할 방법은 모델이 쓴다."""
+    msg = lp.original or ""
+    if not _REASSESS_ASK.search(msg) or not clm.measurement_dispute(msg, lp.cfg):
+        return []
+    pending = lp.st.pending_action or {}
+    if pending.get("type") == "REASSESS" or any(
+        e.get("type") == "REASSESS" for e in lp.st.executed
+    ):
+        return []
+    return [templates.SystemText.MEASUREMENT_FIXED.value]
+
+
+def _missing_take_notes(lp: Loop) -> list[str]:
+    """사용자가 번호로 집어 말한 Take 가 범위 피치에 없으면(지워짐 · 없는 번호) "해당 연습 기록을 가져오지 못했어요"(L2-22).
+
+    가져오기를 시도하지 않고 다른 Take 로 답하거나 그 Take 이야기를 빼먹지 않게 한다(6회차 stale-deleted). 전체 범위
+    (범위 피치 없음)에서는 Take 번호를 피치에 묶을 수 없으므로 붙이지 않는다."""
+    if lp.ctx.pitch is None or not lp.ctx.summaries:
+        return []
+    if not act.unresolved_take_numbers(lp.original, lp.ctx):
+        return []
+    return [templates.SystemText.TAKE_FETCH_FAILED.value]
 
 
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)

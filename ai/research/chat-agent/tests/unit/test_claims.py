@@ -1681,3 +1681,61 @@ def test_metric_name_pointing_to_two_metrics_is_left_unknown():
     d = issue_draft("Take 5 속도 느렸지?", polarity=NEG, metric="말 속도")
     assert _metric_key(d, cfg).subject.metric == "말 속도"
     assert _metric_key(d, CFG).subject.metric == "cpm"
+
+
+def test_script_statement_typed_request_is_retyped_but_script_requests_stay() -> None:
+    """과거형 대본 사용 진술만 대본 주장(MEASURED)으로 바로잡고, '대본 보고 한 걸로 다시 평가해 줘' 같은 요청은 그대로 둔다."""
+    from chat_agent.claims import AssessmentDraft, split_check
+    from chat_agent.config import DEFAULT_CONFIG
+
+    from . import fakes as F
+
+    msg = "Take 5는 대본 보고 한 발표였어. 대본 보고 한 걸로 다시 평가해 줘"
+    drafts = [
+        AssessmentDraft.model_validate(
+            F.draft(q, type_="REQUEST", claim_op=None, take_numbers=[5], polarity="NEUTRAL")
+        )
+        for q in ("Take 5는 대본 보고 한 발표였어", "대본 보고 한 걸로 다시 평가해 줘")
+    ]
+    valid, problems = split_check(msg, drafts, DEFAULT_CONFIG)
+    assert [(d.type, d.claim_op) for d in valid] == [("MEASURED", "VALUE"), ("REQUEST", None)]
+    assert valid[0].subject.metric == "script_mode"
+    assert valid[0].subject.take_numbers == [5]
+    assert not [p for p in problems if p.code == "TYPE_MISMATCH"]
+
+
+@pytest.mark.parametrize(
+    ("msg", "dispute"),
+    [
+        ("Take 5는 카메라가 낮아서 시선이 낮게 나온 거야. 다시 평가해 줘", True),
+        ("시선 측정 기준이 틀렸어, 다시 평가해 줘", True),
+        ("시선 기준 잡기를 잘못해서 시선이 낮게 나왔어", True),
+        ("그 조건으로 시선도 다시 평가해 줘", False),
+        ("대본 보고 했으니까 시선 다시 평가해 줘", False),
+        ("내 기준으로 말 속도 다시 평가해 줘", False),
+        ("다시 평가해 줘", False),
+    ],
+)
+def test_measurement_dispute_is_a_measure_word_without_a_condition_word(
+    msg: str, dispute: bool
+) -> None:
+    """측정값 이의: 측정 항목을 말했지만 대본 · 원고 · 조건 · (내) 기준은 말하지 않음. 측정 기준 · 기준 잡기는 조건이 아니다."""
+    from chat_agent.claims import measurement_dispute
+    from chat_agent.config import DEFAULT_CONFIG
+
+    assert measurement_dispute(msg, DEFAULT_CONFIG) is dispute
+
+
+def test_script_statement_with_saying_used_is_also_retyped() -> None:
+    """'대본을 사용했어' 같은 표현도 대본 사용 진술이다."""
+    from chat_agent.claims import AssessmentDraft, split_check
+    from chat_agent.config import DEFAULT_CONFIG
+
+    from . import fakes as F
+
+    msg = "Take 5는 대본을 사용했어"
+    d = AssessmentDraft.model_validate(
+        F.draft(msg, type_="REQUEST", claim_op=None, take_numbers=[5], polarity="NEUTRAL")
+    )
+    (v,), _ = split_check(msg, [d], DEFAULT_CONFIG)
+    assert (v.type, v.subject.metric) == ("MEASURED", "script_mode")

@@ -128,6 +128,10 @@ class LoopState:
     memory_version: int | None = None
     #: 실행 중 기억 번호가 한 번이라도 바뀌었는가. 바뀌면 그 실행의 프로필 저장 후보를 내지 않는다
     memory_changed: bool = False
+    #: 범위를 바꾼(FETCH_PITCH 성공) 뒤 새 범위 피치의 Take 를 아직 하나도 읽지 않았다. 이 동안에는 범위를 다시 바꾸지
+    #: 않는다(6-5: 여러 피치 질문에서 범위만 오가다 한도에 걸리지 않게, 4회차). 그 피치의 Take 를 읽으면(다시 읽기 ·
+    #: 캐시 적중 · FETCH_TAKE 성공 포함) 풀린다
+    scope_switch_unread: bool = False
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -735,6 +739,8 @@ class Loop:
                         self.st.guide_searched = (
                             True  # 캐시 적중도 찾은 것이다(자료 묶음 준비 실패는 ok 아님)
                         )
+                    if tr.ok and set(tr.target_ids or []) & set(self.ctx.summaries):
+                        self.st.scope_switch_unread = False  # 지금 범위 피치의 Take 를 읽었다
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq)
@@ -824,6 +830,18 @@ class Loop:
                     },
                 }
             }
+        if call.name == "fetch_pitch" and self._switched_without_reading():
+            return {
+                "message": {
+                    "ok": False,
+                    "error": {
+                        "code": "SCOPE_NOT_READ",
+                        "message": "방금 바꾼 범위 피치의 기록을 아직 읽지 않았다. 그 피치의 Take 를 먼저 읽고, "
+                        "피치마다 따로 답한다(피치가 다르면 수치를 비교하지 않는다)",
+                    },
+                },
+                "valid": False,
+            }
         self.st.action_seq += 1
         p = act.propose(
             call.name,
@@ -859,6 +877,10 @@ class Loop:
             self.st.cards.append(p.card)
         return {"message": p.tool_message, "valid": True, "progressed": p.card is not None}
 
+    def _switched_without_reading(self) -> bool:
+        """범위를 바꾼 뒤 새 범위 피치의 Take 를 하나도 읽지 않았는가(읽을 Take 가 없는 피치는 아니다)."""
+        return self.st.scope_switch_unread and bool(self.ctx.summaries)
+
     def _demote_changed_records(self) -> bool:
         """이어 부를 때 Take 결과 판이 서명 때와 다르면 그 Take 의 옛 근거를 사본으로 낮춘다(새 문장의 근거로 못 씀)."""
         reg = self.ctx.registry
@@ -880,8 +902,10 @@ class Loop:
         return changed
 
     # ── 이어 부르기 · 지워진 원천 ─────────────────────────────────────
-    def drop_removed(self, removed: list[str]) -> bool:
-        """지워진 원천에 기댄 근거 · 캐시 · 도구 결과 메시지를 버린다(5-6 · L1-32 · L4-38). 떼어 낼 수 없으면 False."""
+    def drop_removed(self, removed: list[str], *, fetch_failed: bool = False) -> bool:
+        """지워진 원천에 기댄 근거 · 캐시 · 도구 결과 메시지를 버린다(5-6 · L1-32 · L4-38). 떼어 낼 수 없으면 False.
+
+        `fetch_failed`: 대기 행동의 결과가 데이터 없는 실패다(가져오기 행동이면 대상을 읽지 못했다)."""
         if not removed:
             return True
         rs = set(removed)
@@ -946,7 +970,14 @@ class Loop:
         pending = self.st.pending_action
         if self.emitted_removed:
             return False
-        if pending is not None and set(_action_targets(pending)) & rs:
+        # 대기 행동의 대상이 지워졌으면 멈춘다. 다만 가져오기 행동(FETCH_TAKE · FETCH_PITCH)이 실패해 대상을 읽지 못했으면
+        # 떼어 낼 것이 없으므로 멈추지 않고 그 실패를 받아 "해당 연습 기록을 가져오지 못했어요"로 이어 간다(L2-22, 4회차
+        # fail-action). 가져온 뒤 지워졌으면(성공 결과에 지운 값이 있다) 멈춘다(L4-38)
+        if (
+            pending is not None
+            and set(_action_targets(pending)) & rs
+            and not (fetch_failed and pending.get("type") in _FETCH_ACTIONS)
+        ):
             return False
         self.ctx.read_sources -= rs
         return True
@@ -972,6 +1003,10 @@ class Loop:
         }
         if applied.review_versions:
             self.st.review_versions.update(applied.review_versions)
+        if applied.ok and pending["type"] == "FETCH_PITCH":
+            self.st.scope_switch_unread = True
+        elif applied.ok and pending["type"] == "FETCH_TAKE":
+            self.st.scope_switch_unread = False
         self.st.executed.append(rec)
         if applied.card is not None:
             self.st.cards.append(applied.card)
@@ -1159,6 +1194,10 @@ def _assessment_sources(a: dict[str, Any]) -> list[str]:
         out.append(rec.get("pitch_id"))
         out.extend(t.get("take_id") for t in rec.get("takes", []))
     return [x for x in out if x]
+
+
+#: 읽기만 하는 가져오기 행동(대상이 지워지면 실패 결과로 이어 간다, L2-22)
+_FETCH_ACTIONS = ("FETCH_TAKE", "FETCH_PITCH")
 
 
 def _action_targets(action: dict[str, Any]) -> list[str]:

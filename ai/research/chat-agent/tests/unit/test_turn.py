@@ -958,7 +958,7 @@ def _review_side(score: int, gaze: str) -> dict[str, Any]:
 
 def test_fm_L1_32_changed_revision_during_reassess_supersedes_exported_judgement() -> None:
     """다시 평가 전 내보낸 판단이 있고 대기 중 기록 판이 바뀌면, 새 자료로 다시 판단해 앞 판단을 대체로 잇는다."""
-    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    req = F.with_loaded(F.request(user_message=MSG + " 내 기준으로 다시 평가해 줘"), "t-4")
     reassess = (
         "reassess",
         {"take_id": "t-5", "change": {"script_used": False}, "reason": "대본 조건"},
@@ -1208,3 +1208,19 @@ def test_assessment_head_does_not_render_supported_template_for_request() -> Non
     assert _assessment_head(outcome("MEASURED")).startswith(
         "말씀하신 '3장 시선 몇 %였어?'는 기록과 맞아요"
     )
+
+
+def test_fix_text_with_an_evidence_id_keeps_the_fixed_sentence_without_the_id() -> None:
+    """고치기 응답이 문장 글에 근거 id 를 적어도(4회차: "28%였습니다 (e-…)") id 숫자를 틀린 값으로 세어 빼지 않고, id 는 지운다."""
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    llm = F.FakeLlm(
+        [
+            *basic_script(compare_answer(record_text="Take 5의 3장 청중 시선 비율은 30%예요.")),
+            F.fix({2: "Take 5의 3장 청중 시선 비율은 28%예요 (e-0e00ac50bb)."}),
+        ]
+    )
+    _, _, data = F.run_turn(req, llm)
+    fd = final_ok(data)
+    text = fd.message.text  # type: ignore[union-attr]
+    assert "Take 5의 3장 청중 시선 비율은 28%예요." in text
+    assert "e-0e00ac50bb" not in text and "30%" not in text

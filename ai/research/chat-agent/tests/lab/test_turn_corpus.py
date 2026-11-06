@@ -105,3 +105,45 @@ def test_guide_sentence_citing_unread_source_is_dropped(corpus: Any) -> None:
 def test_no_guide_route_without_claims_is_refused(corpus: Any) -> None:
     fd = run(corpus, F.answer([], route="NO_GUIDE"))
     assert fd.status == "REFUSED"
+
+
+def test_knowledge_head_keeps_its_source_id_while_model_ids_are_removed(corpus: Any) -> None:
+    """판단 첫 문장(코드 템플릿)의 "발표법 자료(g-…)"는 남고, 모델이 뒷부분 글에 적은 id 만 지운다(6회차 회귀: 코드 문장의
+    id 까지 지워 판단 문장이 검사에서 빠짐)."""
+    msg = "발표는 빠를수록 좋다며?"
+    know = F.draft(
+        msg,
+        type_="KNOWLEDGE",
+        claim_op=None,
+        dimension="pacing_rhythm",
+        polarity="NEUTRAL",
+        verdict="UNVERIFIABLE",
+    )
+
+    def answer(r: Any) -> Any:
+        sid = first_item(r)["source_id"]
+        a = {**know, "verdict": "CONTRADICTED", "source_ids": [sid]}
+        body = f"자료에는 너무 빠르면 전달이 어렵다고 나와 있어요({sid})."
+        return F.answer(
+            [F.claim("ASSESSMENT", body, source_ids=[sid], assessment_index=0)], assessments=[a]
+        )
+
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[know]),
+            F.tools(("search_guides", {"query": "발표 속도 빠르게"})),
+            F.done(),
+        ],
+        answers=[answer],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(
+        F.request(user_message=msg), llm, corpus=corpus, corpus_version=corpus.version
+    )
+    fd = FinalData.model_validate(data)
+    (a,) = fd.assessments
+    sid = a.source_ids[0]
+    text = fd.message.text  # type: ignore[union-attr]
+    assert a.verdict == "CONTRADICTED"
+    assert f"발표법 자료({sid})" in text
+    assert text.count(sid) == 1  # 모델이 뒷부분에 적은 id 는 지웠다
