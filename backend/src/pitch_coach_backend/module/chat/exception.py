@@ -21,6 +21,13 @@ class ChatTargetNotFound(NotFoundException):
     message = "기록을 찾을 수 없어요."
 
 
+class ChatCursorInvalid(AppException):
+    # 대화 목록 커서를 읽을 수 없다. FE 는 받은 값만 보내므로 주소를 손댄 경우에 생긴다
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "VALIDATION_ERROR"
+    message = "대화 목록을 이어서 읽을 수 없어요. 처음부터 다시 불러와 주세요."
+
+
 class ChatRequestConflict(ConflictException):
     # 같은 client_request_id 로 다른 내용을 보냈다.
     # 정상 화면에서는 생기지 않는 화면 버그 · 탭 경합이다
