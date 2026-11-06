@@ -108,8 +108,13 @@ export type TransportSignal =
        */
       endedWhileWaiting: boolean;
     }
-  /** 15초 넘게 접수를 확인하지 못함 — "전송 여부를 확인하지 못했으니 다시 확인해 주세요." */
-  | { type: 'unconfirmed'; sendId: string }
+  /**
+   * 접수를 확인하지 못함 — 같은 키로 다시 보내 확인합니다(L3-15).
+   * `notAccepted` 는 서버가 접수하지 못했다고 알린 때(503 `AGENT_NOT_ACCEPTED`) —
+   * "요청을 접수하지 못했으니 다시 보내 주세요."(12-4 F8). 그 밖(15초 · 끊김 · 5xx)은
+   * "전송 여부를 확인하지 못했으니 다시 확인해 주세요."
+   */
+  | { type: 'unconfirmed'; sendId: string; notAccepted: boolean }
   /** 보내기 · 대화 만들기가 거절됨 — 코드별 안내(F8) */
   | { type: 'sendFailed'; code: string; status: number }
   /**
@@ -977,14 +982,14 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       sendTimer = null;
       if (store().pending?.sendId !== ticket.sendId) return;
       store().markUnconfirmed(ticket);
-      emit({ type: 'unconfirmed', sendId: ticket.sendId! });
+      emit({ type: 'unconfirmed', sendId: ticket.sendId!, notAccepted: false });
     }, SEND_UNCONFIRMED_MS);
   };
 
   function onSendFailure(ticket: ChatTicket, error: unknown): SendResult {
-    const unconfirmed = (): SendResult => {
+    const unconfirmed = (notAccepted = false): SendResult => {
       store().markUnconfirmed(ticket);
-      emit({ type: 'unconfirmed', sendId: ticket.sendId! });
+      emit({ type: 'unconfirmed', sendId: ticket.sendId!, notAccepted });
       return 'unconfirmed';
     };
     // 네트워크 끊김 · 시간 초과 — 서버가 받았는지 모릅니다(L3-15)
@@ -1007,7 +1012,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     }
     // 접수 중 DB 가 잠깐 안 됨 — BE 는 "FE 는 같은 client_request_id 로 다시 보낸다" 고 정했습니다.
     // 자동으로 다시 보내지 않고, 미확정으로 두어 사용자가 [다시 확인]을 누르면 같은 키로 보냅니다(L3-18)
-    if (status === 503 && code === 'AGENT_NOT_ACCEPTED') return unconfirmed();
+    if (status === 503 && code === 'AGENT_NOT_ACCEPTED') return unconfirmed(true);
     // 그 밖의 503 은 커밋 전 실패(12-3 "커밋 전 실패는 503") — 접수되지 않았습니다. 그 밖 5xx 는 받았는지 모릅니다
     if (status >= 500 && status !== 503) return unconfirmed();
     store().failSend(ticket);
@@ -1156,7 +1161,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       if (s.pending) {
         // 되살린 보내기는 자동으로 다시 보내지 않습니다 — 미확정으로 알려 사용자가 다시 확인하게 합니다.
         // 아직 결과를 기다리던 보내기(앞 통신 계층이 보낸 것)는 여기서 15초를 다시 셉니다
-        if (s.pending.unconfirmed) emit({ type: 'unconfirmed', sendId: s.pending.sendId });
+        if (s.pending.unconfirmed)
+          emit({ type: 'unconfirmed', sendId: s.pending.sendId, notAccepted: false });
         else armUnconfirmed(pendingSendTicket()!);
       }
     },

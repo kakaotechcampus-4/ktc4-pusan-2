@@ -39,7 +39,8 @@ import { createTypingQueue, feedProgress, type TypingQueue } from './chatTyping'
  */
 
 export type ChatNotice =
-  | { kind: 'unconfirmed' }
+  /** 접수를 확인하지 못함 — `notAccepted` 면 서버가 접수하지 못했다고 알림(503 `AGENT_NOT_ACCEPTED`) */
+  | { kind: 'unconfirmed'; notAccepted: boolean }
   | { kind: 'sendFailed'; code: string }
   | { kind: 'sessionExpired' }
   | { kind: 'criteriaTooLong' }
@@ -510,7 +511,7 @@ function handleSignal(signal: TransportSignal, h: SignalHandlers) {
       h.markDisabled();
       return;
     case 'unconfirmed':
-      h.setNotice({ kind: 'unconfirmed' });
+      h.setNotice({ kind: 'unconfirmed', notAccepted: signal.notAccepted });
       return;
     case 'sendFailed':
       // 범위의 피치가 없어짐 — 범위를 다시 고르게 합니다(L3-07). BE 는 대화 · 피치 · 제안의 404 를 같은 코드로 줘서

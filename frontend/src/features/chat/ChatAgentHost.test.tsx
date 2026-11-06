@@ -259,12 +259,18 @@ const go = async (path: string) => {
 const launcher = () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
 const panel = () => host.querySelector<HTMLElement>('[role="dialog"]');
 const input = () => host.querySelector('textarea')!;
+/** 버튼의 보이는 글 — 화면 읽기 프로그램에만 주는 잠긴 이유(sr-only)는 뺍니다 */
+const visibleText = (el: Element) => {
+  const copy = el.cloneNode(true) as Element;
+  copy.querySelectorAll('.sr-only').forEach((s) => s.remove());
+  return copy.textContent;
+};
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent === label);
+  [...host.querySelectorAll('button')].find((b) => visibleText(b) === label);
 const sendButton = () => button('입력')!;
 const sentMessages = () =>
   [...panel()!.querySelectorAll('p.self-end')].map((message) => message.textContent);
-const scopeText = () => panel()!.querySelector('[data-chat-scope]')!.textContent;
+const scopeText = () => visibleText(panel()!.querySelector('[data-chat-scope]')!);
 const transport = () => transports.at(-1)!;
 const alerts = () => [...host.querySelectorAll('[role="alert"]')].map((a) => a.textContent);
 
@@ -716,7 +722,9 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
   it('미확정이면 [다시 확인]을 보이고, 누르면 같은 요청을 다시 확인한다', async () => {
     await visit('/');
     await openPanel();
-    await act(async () => transport().emit({ type: 'unconfirmed', sendId: 's1' }));
+    await act(async () =>
+      transport().emit({ type: 'unconfirmed', sendId: 's1', notAccepted: false }),
+    );
     expect(alerts()).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.다시 확인');
     await act(async () => button('다시 확인')!.click());
     expect(transport().retried).toBe(1);
@@ -1728,7 +1736,7 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
       '여기까지 확인했어요. 남은 일: 자료 찾기',
     ]);
     const more = [...panel()!.querySelectorAll('button')].filter(
-      (b) => b.textContent === '이어서 확인',
+      (b) => visibleText(b) === '이어서 확인',
     );
     expect(more).toHaveLength(1);
     expect(panel()!.querySelector('[data-message="m4"]')!.contains(more[0]!)).toBe(true);
@@ -2044,5 +2052,113 @@ describe('근거 배지 · 최신 아님 (12-4 F5)', () => {
     });
     await settle();
     expect(panel()!.querySelector('[data-basis]')!.textContent).toBe('Take 5 · 기준 v4 기준');
+  });
+});
+
+// ── 두 번째 점검 반영 ─────────────────────────────────────
+
+describe('두 번째 점검 반영', () => {
+  const answerMsg = (id: string, runId: string, status: string, stale: string[] = []) => ({
+    message_id: id,
+    role: 'assistant',
+    status,
+    text: '답.',
+    run_id: runId,
+    claims: [
+      {
+        kind: 'GENERAL',
+        text: '답.',
+        evidence_ids: [],
+        source_ids: [],
+        assessment_id: null,
+        action_id: null,
+      },
+    ],
+    cards: [],
+    plan: null,
+    trace: null,
+    masked: false,
+    basis: null,
+    stale_reasons: stale,
+  });
+  const q = { message_id: 'm1', role: 'user', text: '질문', run_id: 'r1' };
+
+  async function conv(messages: unknown[], runId: string | null = null) {
+    server.messages = () => Promise.resolve({ messages, next_before_seq: null });
+    await visit('/');
+    await openPanel();
+    const st = useChatStore.getState();
+    st.selectConversation('c1', { pitchId: null, title: null });
+    st.resolveConversation(chatTicket(), runId ? { runId, phase: 'RUNNING' } : null);
+    await settle();
+  }
+
+  it('범위를 다시 고를 때까지는 카드 · 답 아래 버튼으로도 보내지 않는다 (L3-07)', async () => {
+    await conv([q, answerMsg('m2', 'r1', 'PARTIAL')]);
+    // 범위가 피치인 대화에서 보내기가 404 — 범위를 다시 고를 때까지 막힙니다
+    await act(async () => {
+      useChatStore.setState({ scope: { pitchId: 'p-1', title: '발표' } });
+    });
+    await act(async () => transport().emit({ type: 'sendFailed', code: 'NOT_FOUND', status: 404 }));
+    const more = button('이어서 확인')!;
+    expect(more.getAttribute('aria-disabled')).toBe('true');
+    expect(more.querySelector('.sr-only')!.textContent).toContain(
+      '범위를 다시 고른 뒤 누를 수 있어요',
+    );
+    await act(async () => more.click());
+    expect(transport().sent).toEqual([]);
+  });
+
+  it('위로 올려 읽는 중이어도 [최신 기준으로 다시 묻기]로 보내면 맨 아래로 간다', async () => {
+    await conv([q, answerMsg('m2', 'r1', 'DONE', ['NEW_TAKE'])]);
+    const box = panel()!.querySelector<HTMLElement>('[aria-label="채팅 메시지"]')!;
+    let height = 500;
+    Object.defineProperty(box, 'scrollHeight', { configurable: true, get: () => height });
+    Object.defineProperty(box, 'clientHeight', { configurable: true, get: () => 100 });
+    box.scrollTop = 0;
+    await act(async () => box.dispatchEvent(new Event('scroll')));
+    height = 700;
+    await act(async () => button('최신 기준으로 다시 묻기')!.click());
+    expect(box.scrollTop).toBe(700);
+  });
+
+  it('다른 탭이 로그아웃했다가 같은 계정으로 다시 로그인하면, 세션을 다시 확인한 뒤 다시 보인다', async () => {
+    state.session = { ...state.session, dataUpdatedAt: 1 } as typeof state.session;
+    await visit('/');
+    expect(launcher()).not.toBeNull();
+    await act(async () => useChatStore.getState().signOut());
+    await go('/pitches');
+    // 세션 값은 그 전에 확인한 것 — 바로 다시 보이지 않습니다
+    expect(launcher()).toBeNull();
+    // 세션을 다시 확인했더니 같은 계정
+    state.session = { ...state.session, dataUpdatedAt: 2 } as typeof state.session;
+    await go('/');
+    expect(launcher()).not.toBeNull();
+    expect(useChatStore.getState().userId).toBe('u1');
+  });
+
+  it('서버가 접수하지 못했다고 알리면 "요청을 접수하지 못했으니 다시 보내 주세요." 와 [다시 보내기](같은 키)', async () => {
+    await visit('/');
+    await openPanel();
+    await act(async () =>
+      transport().emit({ type: 'unconfirmed', sendId: 's1', notAccepted: true }),
+    );
+    expect(alerts()).toContain('요청을 접수하지 못했으니 다시 보내 주세요.다시 보내기');
+    await act(async () => button('다시 보내기')!.click());
+    expect(transport().retried).toBe(1);
+  });
+
+  it('잠긴 버튼 · 칩은 왜 잠겼는지 화면 읽기 프로그램에 알린다', async () => {
+    await conv([q, answerMsg('m2', 'r1', 'PARTIAL')], 'r9');
+    expect(button('이어서 확인')!.querySelector('.sr-only')!.textContent).toContain(
+      '답을 만드는 중이에요',
+    );
+    const chip = panel()!.querySelector('[data-chat-scope]')!;
+    expect(chip.querySelector('.sr-only')!.textContent).toContain(
+      '답을 만드는 동안에는 범위를 바꿀 수 없어요',
+    );
+    await act(async () => useChatStore.getState().endRun('r9'));
+    expect(button('이어서 확인')!.querySelector('.sr-only')).toBeNull();
+    expect(chip.querySelector('.sr-only')).toBeNull();
   });
 });

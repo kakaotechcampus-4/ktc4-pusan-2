@@ -4,6 +4,7 @@ import { getPitchResources } from '@/shared/api/pitch';
 import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
 import { CardList, type CardActions } from './ChatCards';
 import { ChipList } from './ChatChips';
+import { LockedReason } from './LockedReason';
 import { partialHeader } from './chatNotices';
 import { basisBadge, basisPitches, staleTexts } from './chatBasis';
 import {
@@ -178,6 +179,7 @@ export function StoredAnswer({
               className="mt-1 min-h-11 rounded-lg border border-line-strong px-3 font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
             >
               최신 기준으로 다시 묻기
+              <LockedReason reason={actions.canSend ? null : actions.lockedReason} />
             </button>
           )}
         </div>
@@ -192,6 +194,7 @@ export function StoredAnswer({
           className="mt-2 min-h-11 rounded-lg border border-line-strong px-3 text-xs font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
         >
           이어서 확인
+          <LockedReason reason={actions.canSend ? null : actions.lockedReason} />
         </button>
       )}
     </div>
@@ -249,12 +252,17 @@ export function LiveAnswer({
   const hasBody =
     progress !== null &&
     (lines.length > 0 || (progress.plan?.length ?? 0) > 0 || progress.cards.length > 0);
+  // 진행 단계가 바뀔 때만 알립니다(조회마다가 아니라 "하는 중" 단계가 바뀔 때, 12-4 "키보드 · 접근성")
+  const doing = progress?.plan?.find((step) => step.status === 'DOING')?.step ?? null;
   // 판단 문장이 먼저, 확인 카드는 그 뒤에 — 문장이 다 보인 뒤에 답니다 (12-4 F3)
   const typed = lines.every((line) => line.done);
   return (
     <>
       <p aria-live="polite" className="sr-only" data-chat-announce="">
         {announce}
+      </p>
+      <p aria-live="polite" className="sr-only" data-chat-stage="">
+        {doing ? `하는 중: ${doing}` : ''}
       </p>
       {hasBody && (
         <div className={AGENT_BUBBLE} data-live-run={progress.runId}>

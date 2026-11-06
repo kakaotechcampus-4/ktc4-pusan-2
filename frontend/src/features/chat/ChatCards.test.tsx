@@ -60,8 +60,14 @@ const render = (node: ReactNode) =>
     ),
   );
 
+/** 버튼의 보이는 글 — 화면 읽기 프로그램에만 주는 잠긴 이유(sr-only)는 뺍니다 */
+const visibleText = (el: Element) => {
+  const copy = el.cloneNode(true) as Element;
+  copy.querySelectorAll('.sr-only').forEach((s) => s.remove());
+  return copy.textContent;
+};
 const button = (text: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent === text);
+  [...host.querySelectorAll('button')].find((b) => visibleText(b) === text);
 const alerts = () => [...host.querySelectorAll('[role="alert"]')].map((a) => a.textContent);
 
 function actions(over: Partial<CardActions> = {}): CardActions & {

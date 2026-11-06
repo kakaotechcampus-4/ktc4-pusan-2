@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type UIEvent,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
 import { useSession } from '@/shared/api/useSession';
 import { isChatAgentBuildEnabled } from '@/shared/lib/chatAgent';
@@ -30,6 +31,8 @@ import {
 import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
 import { useChatStore } from './chatStore';
 import { useCanSend } from './useCanSend';
+import { sendLockReason } from './chatLock';
+import { LockedReason } from './LockedReason';
 import { ConversationList, ScopeChip } from './ChatPanelParts';
 import { useChatSession, type ChatNotice, type ChatSession } from './useChatSession';
 
@@ -101,14 +104,29 @@ function ChatLayer() {
  */
 function SignedInOnly({ children }: { children: (userId: string) => ReactNode }) {
   const session = useSession();
+  const queryClient = useQueryClient();
   const id = session.data?.id ?? null;
   const signedOut = session.data === null;
+  const checkedAt = session.dataUpdatedAt;
   const storeUser = useChatStore((s) => s.userId);
+  /** 저장소에 알린 때의 세션 확인 시각 */
+  const appliedAt = useRef<number | null>(null);
 
   useEffect(() => {
-    if (id) useChatStore.getState().setUser(id);
-    else if (signedOut) useChatStore.getState().setUser(null);
-  }, [id, signedOut]);
+    if (!id) {
+      if (signedOut) useChatStore.getState().setUser(null);
+      return;
+    }
+    if (storeUser === id) return;
+    // 저장소가 비워졌는데(다른 탭의 로그아웃 신호) 세션 값은 그 전에 확인한 것 — 세션을 다시 확인한 뒤에만 다시
+    // 알립니다. 같은 계정으로 다시 로그인했으면 그때 다시 보이고, 로그아웃 상태면 숨은 채로 둡니다
+    if (storeUser === null && appliedAt.current !== null && appliedAt.current === checkedAt) {
+      void queryClient.invalidateQueries({ queryKey: ['session'] });
+      return;
+    }
+    appliedAt.current = checkedAt;
+    useChatStore.getState().setUser(id);
+  }, [id, signedOut, storeUser, checkedAt, queryClient]);
 
   return id && storeUser === id ? children(id) : null;
 }
@@ -198,7 +216,9 @@ function ChatSessionView({
 function noticeText(notice: ChatNotice): string {
   switch (notice.kind) {
     case 'unconfirmed':
-      return '전송 여부를 확인하지 못했으니 다시 확인해 주세요.';
+      return notice.notAccepted
+        ? '요청을 접수하지 못했으니 다시 보내 주세요.'
+        : '전송 여부를 확인하지 못했으니 다시 확인해 주세요.';
     case 'criteriaTooLong':
       return '평가 기준이 2,000자를 넘어 보낼 수 없어요.';
     case 'sessionExpired':
@@ -241,7 +261,14 @@ function useFollowBottom(active: boolean) {
     toBottom();
     const observer = new MutationObserver(toBottom);
     observer.observe(el, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
+    // 입력칸이든 [다시 묻기] · [이어서 확인] · [다시 보내기] · [이 안으로]든, 보내기가 시작되면 그 말을 보이게 따라갑니다
+    const offStore = useChatStore.subscribe((now, before) => {
+      if (!before.pending && now.pending) stick.current = true;
+    });
+    return () => {
+      observer.disconnect();
+      offStore();
+    };
   }, [active]);
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const el = event.currentTarget;
@@ -405,7 +432,8 @@ function ChatPanel({
                 onClick={session.retryUnconfirmed}
                 className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
               >
-                다시 확인
+                {/* 접수하지 못했으면 같은 키로 다시 보내기, 결과를 모르면 같은 키로 다시 확인 — 하는 일은 같습니다 */}
+                {session.notice.notAccepted ? '다시 보내기' : '다시 확인'}
               </button>
             )}
           </div>
@@ -496,13 +524,17 @@ function PanelBody({
 /** 지난 메시지와 지금 실행의 답 — 카드는 8-3 에서 붙입니다 */
 function MessageList({ session }: { session: ChatSession }) {
   const pending = useChatStore((s) => s.pending?.request.text ?? null);
-  const sendable = useCanSend();
+  const canSendNow = useCanSend();
+  // 범위를 다시 고를 때까지는 입력칸과 같이 카드 · 답 아래 버튼으로도 보내지 않습니다 (L3-07)
+  const sendable = canSendNow && !session.scopeBlocked;
+  const lockedReason = useChatStore((s) => sendLockReason(s, session.scopeBlocked));
   const syncing = useChatStore((s) => s.syncing);
   const actions: CardActions = {
     decide: session.decide,
     undo: session.undo,
     choose: session.choose,
     canSend: sendable,
+    lockedReason: sendable ? null : lockedReason,
   };
   const shown = session.messages;
   const progress = session.progress;
@@ -584,6 +616,7 @@ function MessageList({ session }: { session: ChatSession }) {
               // 그 뒤에 이미 다른 말이 있으면(다시 보냈음 등) 같은 질문을 또 보내지 않게 버튼을 두지 않습니다
               question={i === shown.length - 1 ? questionOf(message.run_id) : null}
               canSend={sendable}
+              lockedReason={actions.lockedReason ?? null}
               onResend={(text) => void session.send(text)}
             />
           )}
@@ -598,6 +631,7 @@ function MessageList({ session }: { session: ChatSession }) {
             notice={notice}
             question={questionOf(runId)}
             canSend={sendable}
+            lockedReason={actions.lockedReason ?? null}
             onResend={(text) => void session.send(text)}
           />
         ))}
@@ -697,11 +731,13 @@ function EndNoticeView({
   notice,
   question,
   canSend,
+  lockedReason,
   onResend,
 }: {
   notice: EndNotice | undefined;
   question: string | null;
   canSend: boolean;
+  lockedReason: string | null;
   onResend: (text: string) => void;
 }) {
   if (!notice) return null;
@@ -718,6 +754,7 @@ function EndNoticeView({
           className="mt-1 min-h-11 border border-line-strong px-3 font-bold text-ink hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
         >
           다시 보내기
+          <LockedReason reason={canSend ? null : lockedReason} />
         </button>
       )}
     </div>

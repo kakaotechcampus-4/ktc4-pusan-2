@@ -1086,6 +1086,8 @@ describe('503 AGENT_NOT_ACCEPTED — BE 는 같은 키로 다시 보내라고 �
     });
     expect(await sendNow(draft())).toBe('unconfirmed');
     expect(of('sendFailed')).toEqual([]);
+    // 서버가 접수하지 못했다고 알렸으니 "접수하지 못했으니 다시 보내 주세요" 로 가를 수 있게 알립니다
+    expect(of('unconfirmed').map((s) => s.notAccepted)).toEqual([true]);
     expect(await transport.retryUnconfirmed()).toBe('accepted');
     expect(new Set(keys).size).toBe(1);
   });

@@ -4,6 +4,8 @@ import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared
 import type { Card, ProfileKey, ReassessSide } from '@/types/chat';
 import { ChipList } from './ChatChips';
 import { plain, reassessRows } from './chatCardRows';
+import { pickReason } from './chatLock';
+import { LockedReason } from './LockedReason';
 import { asGoal, goalText } from './chatGoal';
 import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
 import type { DecideResult, UndoResult } from './chatTransport';
@@ -29,6 +31,8 @@ export interface CardActions {
   choose: (proposalId: string, option: 'USER' | 'EXPERT') => Promise<boolean>;
   /** 지금 보낼 수 있는지 — 고르기 버튼의 잠금 */
   canSend: boolean;
+  /** 보낼 수 없는 이유 — 잠긴 버튼에 숨겨 읽게 합니다 */
+  lockedReason?: string | null;
 }
 
 export const EXPIRED_PROPOSAL_TEXT = '시간이 지나 다시 물어봐 주세요.';
@@ -213,6 +217,7 @@ function GoalSavedCard({
           className={`${BUTTON_CLASS} mt-1`}
         >
           되돌리기
+          <LockedReason reason={pickReason([done, '되돌렸어요'], [busy, '되돌리는 중이에요'])} />
         </button>
       )}
     </div>
@@ -256,6 +261,12 @@ function GoalProposalCard({
                 className={`${BUTTON_CLASS} mt-1`}
               >
                 이 안으로
+                <LockedReason
+                  reason={pickReason(
+                    [busy, '보내는 중이에요'],
+                    [locked, actions.lockedReason ?? ''],
+                  )}
+                />
               </button>
             )}
           </li>
@@ -395,6 +406,7 @@ function AskConfirmCard({
   // 결정이 받아들여지면 카드가 사라질 때까지 버튼을 잠가 둡니다 — 다음 진행 신호가 와야 카드가 빠집니다
   const [decided, setDecided] = useState(false);
   const locked = busy || decided;
+  const decidedReason = pickReason([decided, '이미 결정했어요'], [busy, '보내는 중이에요']);
   const rows =
     card.action_type === 'REASSESS'
       ? reassessRows(card.before, card.after)
@@ -455,6 +467,7 @@ function AskConfirmCard({
           className={BUTTON_CLASS}
         >
           승인
+          <LockedReason reason={decidedReason} />
         </button>
         <button
           type="button"
@@ -463,6 +476,7 @@ function AskConfirmCard({
           className={BUTTON_CLASS}
         >
           거절
+          <LockedReason reason={decidedReason} />
         </button>
       </div>
     </div>

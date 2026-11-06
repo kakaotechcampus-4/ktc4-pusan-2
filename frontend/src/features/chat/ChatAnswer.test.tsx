@@ -237,10 +237,17 @@ describe('지금 실행의 답 (12-4 F12)', () => {
     expect(host.querySelector('a')!.textContent).toBe('Take 5 · 3장');
     // 다 보인 문장 하나만 알립니다 — 효과 글 자체에는 aria-live 가 없습니다
     expect(host.querySelector('[data-chat-announce]')!.textContent).toBe('3장 시선이 낮았어요.');
-    expect(host.querySelectorAll('[aria-live]')).toHaveLength(1);
+    // 글자 효과가 그리는 답 말풍선에는 aria-live 가 없습니다 — 알림은 숨은 알림 영역으로만
+    expect(
+      host.querySelector('[data-live-run] [aria-live], [data-live-run][aria-live]'),
+    ).toBeNull();
   });
 
-  it('할 일은 문장보다 먼저 보이고, 하는 중 표시를 단다', async () => {
+  it('할 일은 문장보다 먼저 보이고, 하는 중 표시를 단다 — 단계가 바뀔 때만 알린다', async () => {
+    await renderLive();
+    expect(host.querySelector('[data-chat-stage]')!.textContent).toBe('하는 중: 기록 확인');
+    await renderLive({ ...progress, plan: [{ step: '기록 확인', status: 'DONE', note: null }] });
+    expect(host.querySelector('[data-chat-stage]')!.textContent).toBe('');
     await renderLive();
     expect(host.querySelector('[data-plan-status="DOING"]')!.textContent).toBe(
       '⟳ 하는 중: 기록 확인',

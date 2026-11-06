@@ -8,6 +8,8 @@ import {
   lastActivityText,
   scopeLabel,
 } from './chatConversations';
+import { scopeLockReason } from './chatLock';
+import { LockedReason } from './LockedReason';
 import { canChangeScope, useChatStore, type ChatScope } from './chatStore';
 
 /**
@@ -29,6 +31,7 @@ function usePitches(enabled: boolean) {
 export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }) {
   const scope = useChatStore((s) => s.scope);
   const changeable = useChatStore((s) => canChangeScope(s) && s.scope !== null);
+  const chipLockedReason = useChatStore(scopeLockReason);
   const [menuWanted, setMenuOpen] = useState(false);
   // 바꿀 수 없게 되면(실행이 붙음 등) 펼친 목록을 보이지 않습니다
   const menuOpen = menuWanted && changeable;
@@ -63,6 +66,7 @@ export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }
         className="min-h-8 rounded-full border border-line-strong bg-cream px-3 text-xs font-bold aria-disabled:cursor-not-allowed aria-disabled:text-stone"
       >
         {scopeLabel(scope, titleOf)}
+        <LockedReason reason={chipLockedReason} />
       </button>
       {menuOpen && (
         <div
