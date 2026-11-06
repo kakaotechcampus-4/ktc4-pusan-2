@@ -116,6 +116,37 @@ export const reviewFixture: ReviewResult = {
 };
 
 /** 홈 · 준비 목의 p1 과 같은 피치입니다 — 화면마다 제목이 어긋나지 않게 */
+/**
+ * 정상 Take 의 지난 Take 비교 — AI 가 내는 순서(차원 표의 지표 순 → 발표 전체 → 장)로 여러 차원을 채웁니다.
+ * 리포트 비교 카드의 차원별 표를 볼 수 있게 하려는 것입니다 (#929). 숫자는 위 측정값 · 근거와 맞춥니다.
+ */
+const comparisonFixture: ReviewResult['comparison'] = (
+  [
+    ['audience_ratio', null, 0.69, 0.74, true],
+    ['script_ratio', null, 0.27, 0.22, true],
+    ['script_ratio', 3, 0.7, 0.62, true],
+    ['reading_runs', null, 4, 2, true],
+    ['cpm', null, 371, 352, true],
+    ['pause_count', null, 14, 9, null],
+    ['long_silence_count', null, 3, 1, true],
+    ['duration_ms', null, 312_000, 278_000, true],
+    ['slide_duration_ms', 1, 70_000, 58_000, true],
+    ['slide_duration_ms', 2, 52_000, 55_000, false],
+    ['slide_duration_ms', 3, 81_000, 74_000, true],
+    ['voice_diff_db', null, -2, -1, true],
+    ['filler_per_min', null, 3.1, 2.4, true],
+    ['filler_count', null, 10, 7, true],
+    ['content_coverage', null, 0.86, 0.92, true],
+  ] as const
+).map(([metric, slide_number, previous, current, improved]) => ({
+  metric,
+  slide_number,
+  previous,
+  current,
+  improved,
+  script_mode: null,
+}));
+
 const done: TakeReport = {
   take_id: 't3',
   pitch_id: 'p1',
@@ -128,7 +159,7 @@ const done: TakeReport = {
   review_status: 'DONE',
   analysis_hold_reason: null,
   measures: measuresFixture,
-  review: reviewFixture,
+  review: { ...reviewFixture, comparison: comparisonFixture },
 };
 
 /** 5-5 경계 — LLM 실패. 숫자 · 상태 · 점수는 같고 문장만 기본 문장입니다 */
