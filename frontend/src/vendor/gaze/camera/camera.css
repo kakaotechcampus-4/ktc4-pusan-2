@@ -519,13 +519,14 @@
   padding-top: 12px;
   background:
     repeating-linear-gradient(0deg, rgba(42, 39, 35, 0.05) 0 1px, transparent 1px 26px),
-    rgba(230, 223, 213, 0.62);
+    rgba(230, 223, 213, 0.7);
   border-top: 1px dashed rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
 .gzc-script em {
-  color: var(--stone);
+  /* 영상 위에 반투명으로 얹히는 칸이라 stone 으로는 어두운 영상에서 4.5:1 이 안 나온다 */
+  color: var(--ink);
   font-weight: 500;
 }
 .gzc[data-phase='calib'][data-cue='BOTTOM'] .gzc-script {

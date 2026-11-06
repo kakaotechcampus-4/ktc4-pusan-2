@@ -52,6 +52,19 @@ function glassRgba(css: string): [number, number, number, number] {
   return [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])];
 }
 
+// 대본 자리 칸은 --glass 가 아닌 자기 반투명 배경(블록의 마지막 rgba)을 쓴다.
+function scriptAreaRgba(css: string): [number, number, number, number] {
+  const body = css.match(/\.gzc-script\s*\{([^}]*)\}/)?.[1];
+  // border-top 의 rgba 가 아니라 background 선언에서만 읽는다.
+  const background = body?.match(/background:([^;]*);/)?.[1];
+  const colors = [
+    ...(background ?? '').matchAll(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/g),
+  ];
+  const last = colors.at(-1);
+  if (!last) throw new Error('CSS .gzc-script background not found');
+  return [Number(last[1]), Number(last[2]), Number(last[3]), Number(last[4])];
+}
+
 // 유리 카드(rgba) 를 영상 색 위에 얹었을 때 실제로 보이는 색
 function overBackdrop(glass: [number, number, number, number], backdrop: string): string {
   const [r, g, b, alpha] = glass;
@@ -159,6 +172,30 @@ describe('stone text contrast (WCAG AA, normal text)', () => {
       const under = video ?? colorToken(camera, '.gzc', '--backdrop');
       const card = overBackdrop(glassRgba(camera), under);
       expect(contrast(stone, card)).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  // 대본 자리 라벨은 stone 이 아닌 ink 로 쓴다. 같은 이유로 영상이 검정일 때가 최악이다.
+  it('gaze calibration (.gzc-script): the label uses ink, not stone', () => {
+    // `.gzc-lens em,\n.gzc-script em {` 처럼 목록에 든 블록도 있어서 `.gzc-script em` 이 든 블록을 모두 본다.
+    const label = [...camera.matchAll(/([^{}]*\.gzc-script em\s*)\{([^}]*)\}/g)]
+      .map((block) => block[2])
+      .join('\n');
+    expect(label).toMatch(/color:\s*var\(--ink\)/);
+    expect(label).not.toMatch(/var\(--stone\)/);
+  });
+
+  it.each([
+    ['black', '#000000'],
+    ['backdrop', null],
+    ['white', '#ffffff'],
+  ])(
+    'gaze calibration (.gzc-script): ink label over %s video is at least 4.5:1',
+    (_name, video) => {
+      const ink = colorToken(camera, '.gzc', '--ink');
+      const under = video ?? colorToken(camera, '.gzc', '--backdrop');
+      const area = overBackdrop(scriptAreaRgba(camera), under);
+      expect(contrast(ink, area)).toBeGreaterThanOrEqual(4.5);
     },
   );
 
