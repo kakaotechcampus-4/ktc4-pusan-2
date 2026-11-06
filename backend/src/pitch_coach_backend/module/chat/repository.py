@@ -306,9 +306,18 @@ class ChatRepository:
         )
 
     def latest_corpus_version(self, since: datetime) -> str | None:
+        """같은 배포에서 가장 최근에 성공한 AI 응답의 자료 판(chat-agent.md 12-3).
+
+        AI 응답으로 만들지 않은 메시지(실패 · 시간 초과 · 승인 대기 종료)는 판이 없어 고르지 않는다.
+        """
+        version = ChatMessage.meta["corpus_version"].astext
         return self.db.scalar(
-            select(ChatMessage.meta["corpus_version"].astext)
-            .where(ChatMessage.role == "assistant", ChatMessage.created_at >= since)
+            select(version)
+            .where(
+                ChatMessage.role == "assistant",
+                ChatMessage.created_at >= since,
+                version.is_not(None),
+            )
             .order_by(ChatMessage.created_at.desc())
             .limit(1)
         )

@@ -19,7 +19,6 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.memory import memory_cards
-from pitch_coach_backend.module.chat.service.request import APP_STARTED_AT
 from pitch_coach_backend.module.chat.service.run import add_run_log, lock_ids
 
 APPROVAL_WINDOW = timedelta(minutes=30)
@@ -110,9 +109,6 @@ def close_waiting(
             trace=run.trace,
             evidence=emitted.evidence,
             usage=run.usage,
-            # AI 응답이 아니라 자료 묶음 판을 모른다. 최신 판을 찾는 쿼리가 이 메시지에서 끊기지
-            # 않게 앞의 값을 잇는다
-            meta={"corpus_version": chat_repo.latest_corpus_version(APP_STARTED_AT)},
             source_pitch_ids=emitted.pitch_ids,
             source_take_ids=emitted.take_ids,
         )
