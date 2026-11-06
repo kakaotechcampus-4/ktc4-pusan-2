@@ -2,12 +2,12 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal, Protocol
+from typing import Annotated, Protocol
 
 from fastapi import File, UploadFile
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
-from pitch_coach_backend.core.validation import reject_nul, reject_unstorable_json
+from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.take.dto import ScriptMode, TakeSummaryDTO
 
@@ -286,51 +286,6 @@ class StandardTextDTO(BaseModel):
     ]
 
 
-class StandardTargetDTO(BaseModel):
-    display: str
-    metric: str
-    operator: Literal["LTE", "GTE", "LT", "GT"]
-    value: float = Field(strict=True, allow_inf_nan=False)
-
-
-class StandardAIResponseDTO(BaseModel):
-    # AI의 표시 문장은 자르거나 다듬지 않는다. 조건과 targets의 display 짝이 달라질 수 있다.
-    display_criteria: list[
-        Annotated[
-            str,
-            StringConstraints(min_length=1, max_length=50, pattern=r"\S"),
-            AfterValidator(reject_nul),
-        ]
-    ] = Field(max_length=10)
-    excluded: list[Annotated[str, AfterValidator(reject_nul)]] | None = None
-    values: dict[str, Any]
-    targets: list[dict[str, Any]] = Field(max_length=20)
-    meta: dict[str, Any]
-
-    @model_validator(mode="after")
-    def _analysis_is_storable(self) -> StandardAIResponseDTO:
-        for key, value in self.values.items():
-            if key == "script_used":
-                if value is not None and type(value) is not bool:
-                    raise ValueError("script_used는 bool 또는 null이어야 합니다.")
-            elif value is not None and not isinstance(value, str):
-                raise ValueError("요소 값은 문자열 또는 null이어야 합니다.")
-        for target in self.targets:
-            checked = StandardTargetDTO.model_validate(target)
-            if checked.display not in self.display_criteria:
-                raise ValueError("목표에 해당하는 표시 기준이 없습니다.")
-        version = self.meta.get("schema_version")
-        if not isinstance(version, str) or version.split(".", 1)[0] != "1":
-            raise ValueError("지원하지 않는 평가 기준 응답 버전입니다.")
-        if not isinstance(self.meta.get("feature_version"), str):
-            raise ValueError("기능 버전이 없습니다.")
-        if self.meta.get("model") is not None and not isinstance(self.meta["model"], str):
-            raise ValueError("모델 정보가 올바르지 않습니다.")
-        payload = self.model_dump(mode="python")
-        reject_unstorable_json(payload)
-        return self
-
-
 class StandardDTO(BaseModel):
     standard: str
 
@@ -343,11 +298,6 @@ class StandardInputDTO(BaseModel):
         ),
         AfterValidator(reject_nul),
     ]
-
-
-class StandardParseResponseDTO(BaseModel):
-    standards: list[str]
-    except_standard: str | None = None
 
 
 class StandardsSaveRequestDTO(BaseModel):
