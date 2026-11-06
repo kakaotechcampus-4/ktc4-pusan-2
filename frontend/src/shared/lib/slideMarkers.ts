@@ -27,9 +27,12 @@ export function toAsciiDigits(text: string): string {
   return text.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
 }
 
-/** 예전 표기 — 구분으로는 세지 않고 안내에만 씁니다 */
-const LEGACY_MARKER =
-  /^[ \t]*(?:(?:slide|슬라이드)[ \t]*(\d{1,4})(?=[\s:.\-–)]|$)|(\d{1,2})[ \t]*[.)](?=[ \t]|$))/i;
+/**
+ * 예전 표기 — 구분으로는 세지 않고 안내에만 씁니다. `Slide 1` · `슬라이드 1` 처럼 장을 가리킨 것과
+ * `1.` · `1)` 꼴(본문 번호 목록과 생김새가 같습니다)을 나눠 둡니다
+ */
+const LEGACY_NAMED = /^[ \t]*(?:slide|슬라이드)[ \t]*\d{1,4}(?=[\s:.\-–)]|$)/i;
+const LEGACY_NUMBERED = /^[ \t]*\d{1,2}[ \t]*[.)](?=[ \t]|$)/;
 
 /** Python `str.splitlines()` 와 같은 줄바꿈 (CRLF · VT · FF · FS/GS/RS · NEL · LS · PS) */
 function splitLines(text: string): string[] {
@@ -51,7 +54,13 @@ export function stripMarker(line: string): string {
 
 /** 구분자는 아니지만 예전에 구분으로 쓰던 표기(`Slide 1` · `1.` 등)로 보이는 줄 */
 export function isLegacyMarker(line: string): boolean {
-  return markerNumber(line) === null && LEGACY_MARKER.test(toAsciiDigits(line));
+  const ascii = toAsciiDigits(line);
+  return markerNumber(line) === null && (LEGACY_NAMED.test(ascii) || LEGACY_NUMBERED.test(ascii));
+}
+
+/** 예전 표기 중 `Slide 1` · `슬라이드 1` 처럼 장을 가리킨 게 분명한 줄 (`1.` · `1)` 꼴은 아님) */
+export function isNamedLegacyMarker(line: string): boolean {
+  return markerNumber(line) === null && LEGACY_NAMED.test(toAsciiDigits(line));
 }
 
 export interface MarkerScan {
@@ -63,12 +72,11 @@ export interface MarkerScan {
    */
   numbersValid: boolean;
   /**
-   * 첫 구분자 앞에 구분되지 않은 글이 있나. 있으면 AI 는 대본 전체를 나누지 않습니다
-   * ("일부 구간에만 구분이 있으면 fail").
-   *
-   * 맨 위 **한 줄**은 세지 않습니다 — AI 는 "대본 최상단에 제목이 있으면 제거"하고 나눕니다
-   * (`ai/research/script-parser/script_parser/prompt.py` 전처리 규칙). 두 줄 이상이면 제목이 아니라
-   * 구분 없는 본문으로 봅니다.
+   * 첫 구분자 앞에 제목이 아닌 글이 있어 보이나 — **어림입니다**. AI 는 첫 구분 앞(머리글)에서
+   * LLM 이 고른 제목 줄을 빼고도 글이 남으면 대본 전체를 나누지 않습니다
+   * (`script_parser/core.py` 4단계). 제목 판정은 LLM 이 해서 FE 가 미리 알 수 없으므로,
+   * 빈 줄이 아닌 줄이 **두 줄 이상**이면 알립니다. 그래서 제목 + 부제 두 줄은 AI 가 나누는데 FE 는
+   * 알리고, 인사말 한 줄은 AI 가 나누지 않는데 FE 는 넘어갑니다.
    */
   leadingText: boolean;
   /**

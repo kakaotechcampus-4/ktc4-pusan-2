@@ -22,7 +22,8 @@ const PARSE_MS = 1500;
 export function splitScript(text: string): { segmented: boolean; slides: ScriptSlide[] } {
   // AI 처럼 원문에 적힌 번호를 그대로 씁니다 — "슬라이드 4" 는 4번입니다
   const sections: { number: number; lines: string[] }[] = [];
-  // 첫 구분자 앞의 글. AI 처럼 제목 한 줄은 지우고, 두 줄 이상이면 나누지 않습니다 (slideMarkers)
+  // 첫 구분자 앞의 글. AI 는 LLM 이 고른 제목 줄을 지우는데, 목은 FE 어림대로 한 줄은 제목으로 지우고
+  // 두 줄 이상이면 나누지 않습니다 (slideMarkers `leadingText`)
   const lead: string[] = [];
   // 나누지 못했을 때(fail) 쓸, 구분자만 뺀 대본 전체 — AI 도 그렇게 합니다
   const stripped: string[] = [];

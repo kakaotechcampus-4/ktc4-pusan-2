@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isLegacyMarker,
+  isNamedLegacyMarker,
   markerNumber,
   scanSlideMarkers,
   stripMarker,
@@ -141,14 +142,14 @@ describe('슬라이드 구분자 — 그 밖의 규칙', () => {
     expect(scanSlideMarkers('안녕하세요\n\n오늘은\n\n반갑습니다').numbers).toEqual([]);
   });
 
-  it('첫 구분자 앞의 제목 한 줄은 괜찮다 — AI 가 지우고 나눈다', () => {
+  it('첫 구분자 앞의 한 줄은 제목으로 어림한다 — AI 는 LLM 이 제목으로 고르면 지우고 나눈다', () => {
     expect(scanSlideMarkers('피치코치 소개\n\n[슬라이드 1]\n가')).toMatchObject({
       numbers: [1],
       leadingText: false,
     });
   });
 
-  it('첫 구분자 앞에 두 줄 이상 글이 있으면 알려 준다 — AI 는 그때 나누지 않는다', () => {
+  it('첫 구분자 앞에 두 줄 이상 글이 있으면 어림으로 알린다 — AI 는 제목이 아닌 줄이 남으면 나누지 않는다(제목 판정은 LLM)', () => {
     expect(scanSlideMarkers('제목\n인사말\n[슬라이드 1]\n가')).toMatchObject({
       numbers: [1],
       leadingText: true,
@@ -185,6 +186,15 @@ describe('예전 표기 안내', () => {
     '첫째로',
   ])('%s 는 예전 표기로 알리지 않는다', (line) => {
     expect(isLegacyMarker(line)).toBe(false);
+  });
+
+  it('장을 가리킨 표기와 번호 목록 꼴을 나눈다', () => {
+    for (const line of ['Slide 1', 'slide 2: 도입', '슬라이드 3', '슬라이드１']) {
+      expect(isNamedLegacyMarker(line)).toBe(true);
+    }
+    for (const line of ['1.', '2) 도입', '[1]', '슬라이드 1:']) {
+      expect(isNamedLegacyMarker(line)).toBe(false);
+    }
   });
 
   it('첫 구분자 앞의 줄만 앞뒤 공백 없이 모아 준다', () => {
