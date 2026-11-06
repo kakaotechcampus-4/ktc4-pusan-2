@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.database import in_session as _in_session
 from pitch_coach_backend.core.rounding import round_half_up
-from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.adapter.ai_client import request_analyze, request_rescore
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, validate_coverage_reply
@@ -354,7 +353,7 @@ def _claim_coverage(db: Session, take_id: uuid.UUID, takeover: bool) -> dict | N
     assert take is not None
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     candidate = take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND)
-    slides = PitchRepository(db).get_slides(take.script_version_id)
+    slides = script_service.script_slides(db, take.script_version_id)
     job = {
         "rubric_pending": False,
         "requested_at": requested_at,

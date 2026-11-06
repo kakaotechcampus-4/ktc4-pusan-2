@@ -28,6 +28,15 @@ def reject_nul(value: str) -> str:
 MAX_JSON_DEPTH = 32
 
 
+def is_storable(value: Any) -> bool:
+    """`reject_unstorable_json` 을 통과하는가. 항목별로 버릴지 고르는 곳에서 쓴다."""
+    try:
+        reject_unstorable_json(value)
+    except ValueError:
+        return False
+    return True
+
+
 def reject_unstorable_json(value: Any, *, _depth: int = 0) -> Any:
     """JSONB 에 넣을 값을 안쪽까지 보고 NUL 문자열 · NaN · Infinity 를 거절한다. 키도 본다.
 

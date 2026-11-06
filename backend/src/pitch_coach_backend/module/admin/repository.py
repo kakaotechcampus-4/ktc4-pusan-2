@@ -1,7 +1,7 @@
 """관리자 콘솔 집계 쿼리. 읽기만 한다."""
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -44,7 +44,6 @@ from pitch_coach_backend.module.user.entity import User
 # SQL 은 DB 가 아는 시간대 이름을, 파이썬은 고정 오프셋을 쓴다.
 # 컨테이너에 시간대 자료가 없어도 되게. 한국은 일광 절약 시간이 없어 둘이 같다
 DAY_TIMEZONE = "Asia/Seoul"
-KST = timezone(timedelta(hours=9), "KST")
 
 # 실제로 연습한 시간(초). duration_sec 은 분석 결과가 와야 채워진다.
 # 그 전에는 시작 · 끝 시각으로 잰다.
@@ -266,15 +265,19 @@ def take_summary(db: Session, take_id: uuid.UUID) -> TakeSummary | None:
 
 
 def take_settings(db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
-    row = db.execute(
-        select(
-            Take.script_mode,
-            Take.standard_version,
-            Take.mission_ids,
-            Take.raw_data_consent,
-            Take.utterance_ends,
-        ).where(Take.id == take_id)
-    ).mappings().first()
+    row = (
+        db.execute(
+            select(
+                Take.script_mode,
+                Take.standard_version,
+                Take.mission_ids,
+                Take.raw_data_consent,
+                Take.utterance_ends,
+            ).where(Take.id == take_id)
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else dict(row)
 
 
@@ -438,9 +441,7 @@ def _fetch(db: Session, stmt: Select[Any]) -> list[dict[str, Any]]:
 def _count_total_and_since(
     db: Session, created_at: InstrumentedAttribute[datetime], since: datetime
 ) -> tuple[int, int]:
-    total, recent = db.execute(
-        select(func.count(), func.count().filter(created_at >= since))
-    ).one()
+    total, recent = db.execute(select(func.count(), func.count().filter(created_at >= since))).one()
     return int(total), int(recent)
 
 
@@ -448,9 +449,7 @@ def _count_per_day(
     db: Session, created_at: InstrumentedAttribute[datetime], since: datetime
 ) -> dict[date, int]:
     day = func.date(func.timezone(DAY_TIMEZONE, created_at))
-    rows = db.execute(
-        select(day, func.count()).where(created_at >= since).group_by(day)
-    ).all()
+    rows = db.execute(select(day, func.count()).where(created_at >= since).group_by(day)).all()
     return {value: count for value, count in rows}
 
 

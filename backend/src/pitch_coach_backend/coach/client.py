@@ -42,7 +42,6 @@ import httpx
 from pydantic import ValidationError
 
 from pitch_coach_backend.coach.replies import (
-    MAX_T_MS,
     EvaluateReply,
     FinalizeReply,
     PlanReply,
@@ -57,6 +56,7 @@ from pitch_coach_backend.core.ai_http import (
     ai_error_code,
     retryable_status,
 )
+from pitch_coach_backend.core.limits import MAX_T_MS
 
 logger = logging.getLogger(__name__)
 

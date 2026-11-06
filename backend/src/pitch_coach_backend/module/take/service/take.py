@@ -16,7 +16,7 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptNotParsed,
     SlideCountMismatch,
 )
-from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import lookup as pitch_lookup
 from pitch_coach_backend.module.take.dto import (
     ActiveTakeDTO,
     ActiveTakeResponseDTO,
@@ -39,7 +39,8 @@ from pitch_coach_backend.module.take.exception import (
     TakeTimeOutOfRange,
 )
 from pitch_coach_backend.module.take.measures import take_count, take_metric
-from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
+from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES
 
 # 시작 · 끝 시각으로 받는 범위의 여유. Take 를 만든 때보다 이만큼 앞부터 지금보다 이만큼 뒤까지
 # 받는다. FE 시계로 잰 값이라 서버 시계와 어긋날 수 있다. 앞뒤로 같은 여유를 둔다 — 끝내기 PUT 이
@@ -50,35 +51,30 @@ TAKE_TIME_TOLERANCE = timedelta(days=1)
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
 def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequestDTO):
     take_repository = TakeRepository(db)
-    pitch_repository = PitchRepository(db)
-
     # 버전 ID 가 이 pitch 의 것인지 확인한다. 없으면 다른 pitch 의 버전도 저장되고,
     # 아예 없는 ID 는 FK 위반(500)이 된다
-    presentation = pitch_repository.get_presentation_detail(
-        pitch_id, take_dto.presentation_version_id
+    presentation = pitch_lookup.presentation_in_pitch(
+        db, pitch_id, take_dto.presentation_version_id
     )
     if presentation is None:
         raise NonExistentPresentationVersion()
-    script = pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id)
+    script = pitch_lookup.script_in_pitch(db, pitch_id, take_dto.script_version_id)
     if script is None:
         raise NonExistentScript()
     # 슬라이드가 없으면 리허설이 대본을 띄울 수 없고 코치 · 분석도 장별로 나눌 수 없다
     if script.parse_status != ScriptParseStatus.DONE:
         raise ScriptNotParsed()
     # 장마다 슬라이드 한 쪽을 띄운다. 쪽수를 아직 모르는 옛 발표자료는 검사하지 않는다
-    if (
-        presentation.page_count is not None
-        and presentation.page_count != pitch_repository.count_slides(script.id)
+    if presentation.page_count is not None and presentation.page_count != pitch_lookup.count_slides(
+        db, script.id
     ):
         raise SlideCountMismatch()
 
     # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금).
     # 같은 세션으로 동시에 온 재시도도 여기서 줄을 서서 뒤의 요청이 앞의 Take 를 찾는다
-    pitch_repository.lock_for_new_version(pitch_id)
+    pitch_lookup.lock_for_new_version(db, pitch_id)
     if take_dto.client_session_id is not None:
-        existing_take = take_repository.get_by_client_session(
-            pitch_id, take_dto.client_session_id
-        )
+        existing_take = take_repository.get_by_client_session(pitch_id, take_dto.client_session_id)
         if existing_take is not None:
             if (
                 existing_take.mode,
@@ -98,7 +94,7 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
                 raise TakeAlreadyEnded()
             return existing_take
 
-    pitch = pitch_repository.get_by_id(pitch_id)
+    pitch = pitch_lookup.pitch_by_id(db, pitch_id)
     if pitch is None:
         raise NonExistentPitch()
 
@@ -211,7 +207,7 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
         face_detected=calibration_dto.face_detected,
         mic_detected=calibration_dto.mic_detected,
         base_volume=calibration_dto.base_volume,
-        gaze_confidence=calibration_dto.gaze_confidence
+        gaze_confidence=calibration_dto.gaze_confidence,
     )
 
     saved_calibration = take_repository.save_calibration(calibration_data)
@@ -235,21 +231,23 @@ def _achieved_mission_count(mission_ids: Any, results: Any) -> int:
     if not isinstance(mission_ids, list) or not isinstance(results, list):
         return 0
     fixed_ids = {mission_id for mission_id in mission_ids if isinstance(mission_id, str)}
-    return len({
-        result["mission_id"]
-        for result in results
-        if isinstance(result, dict)
-        and result.get("status") == "ACHIEVED"
-        and isinstance(result.get("mission_id"), str)
-        and result["mission_id"] in fixed_ids
-    })
+    return len(
+        {
+            result["mission_id"]
+            for result in results
+            if isinstance(result, dict)
+            and result.get("status") == "ACHIEVED"
+            and isinstance(result.get("mission_id"), str)
+            and result["mission_id"] in fixed_ids
+        }
+    )
 
 
 def list_takes_service(
     db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
 ) -> TakeHistoryResponseDTO:
     """Take 기록 · Take 비교 화면의 Take 목록. 남의 발표나 없는 발표를 주면 404 다."""
-    if pitch_id is not None and PitchRepository(db).get_owned(pitch_id, user_id) is None:
+    if pitch_id is not None and pitch_lookup.owned_pitch(db, pitch_id, user_id) is None:
         raise NonExistentPitch()
     rows = TakeRepository(db).list_started_takes(user_id, pitch_id)
     return TakeHistoryResponseDTO(
@@ -318,9 +316,7 @@ def _take_measures(take: Take, take_result: Mapping[str, Any] | None) -> TakeMea
     )
 
 
-def get_take_report_service(
-    db: Session, take_id: uuid.UUID, user_id: uuid.UUID
-) -> TakeReportDTO:
+def get_take_report_service(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> TakeReportDTO:
     take_repository = TakeRepository(db)
     owned = take_repository.get_owned_with_pitch_title(take_id, user_id)
     if owned is None:

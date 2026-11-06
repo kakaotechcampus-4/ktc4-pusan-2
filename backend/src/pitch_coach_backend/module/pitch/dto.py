@@ -1,5 +1,3 @@
-
-import json
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -32,6 +30,7 @@ class PitchSaveRequestDTO(BaseModel):
     lower_deviation: int = Field(default=0, ge=0, le=MAX_DEVIATION_SEC)
     presentation_date: date | None = None
 
+
 class PitchInfoResponseDTO(BaseModel):
     pitch_id: uuid.UUID
     title: str
@@ -39,6 +38,7 @@ class PitchInfoResponseDTO(BaseModel):
     upper_deviation: int
     lower_deviation: int
     presentation_date: date | None = None
+
 
 class PitchListItemDTO(BaseModel):
     pitch_id: uuid.UUID
@@ -49,11 +49,14 @@ class PitchListItemDTO(BaseModel):
     presentation_date: date | None = None
     takes: list[TakeSummaryDTO]
 
+
 class PitchListResponseDTO(BaseModel):
     pitches: list[PitchListItemDTO]
-      
+
+
 class UploadPresentationDTO(BaseModel):
     presentation_file: UploadFile = File(...)
+
 
 class UploadPresentationResultDTO(BaseModel):
     pitch_id: uuid.UUID
@@ -178,23 +181,28 @@ class ParseRequestedDTO(BaseModel):
     script_version_id: uuid.UUID
     parse_status: ScriptParseStatus
 
+
 class VersionDTO(BaseModel):
     id: uuid.UUID
     version: int
+
 
 class PresentationVersionDTO(VersionDTO):
     # 쪽수를 아직 채우지 않은 옛 발표자료는 None
     page_count: int | None
 
+
 class ParsedScriptDTO(VersionDTO):
     # 슬라이드로 나눈 장 수. 발표자료 쪽수와 같아야 짝이다
     slide_count: int
+
 
 class VersionSummaryDTO(BaseModel):
     pitch_id: uuid.UUID
     presentation_versions: list[PresentationVersionDTO]
     script_versions: list[VersionDTO]
     evaluation_versions: list[VersionDTO]
+
 
 class NewerScriptDTO(BaseModel):
     """연습에 쓸 대본보다 새로 올렸지만 아직 쓸 수 없는 대본. FE 가 왜 옛 대본인지 알린다."""
@@ -205,10 +213,12 @@ class NewerScriptDTO(BaseModel):
     parse_status: ScriptParseStatus
     error_code: ScriptParseErrorCode | None
 
+
 class PrepareMissionTargetDTO(BaseModel):
     metric: str
     operator: str
     value: float
+
 
 class PrepareMissionDTO(BaseModel):
     mission_id: uuid.UUID
@@ -222,6 +232,7 @@ class PrepareMissionDTO(BaseModel):
     # 리뷰한 Take 기준으로 쓴 문장이다
     reason: str | None
 
+
 class PrepareMissionsDTO(BaseModel):
     """이번 Take 에 실릴 미션. Take 를 시작할 때 다시 고르므로 그사이 리뷰가 끝나면 바뀔 수 있다."""
 
@@ -229,6 +240,7 @@ class PrepareMissionsDTO(BaseModel):
     source_take_number: int
     # 리뷰가 미션을 읽는 순서. 리뷰가 다음 미션을 내지 않았으면 빈 목록
     items: list[PrepareMissionDTO]
+
 
 class PrepareDTO(BaseModel):
     """장치 점검 화면이 Take 를 만들 때 쓰는 값. 피치 생성을 거치지 않고 들어와도 버전을 안다."""
@@ -250,9 +262,11 @@ class PrepareDTO(BaseModel):
     # Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 가 없으면 None
     missions: PrepareMissionsDTO | None
 
+
 class Versioned(Protocol):
     id: uuid.UUID
     version: int
+
 
 class PresentationDetailDTO(BaseModel):
     pitch_id: uuid.UUID
@@ -262,6 +276,8 @@ class PresentationDetailDTO(BaseModel):
     page_count: int | None
     description: str | None = None
     created_at: date
+
+
 class StandardTextDTO(BaseModel):
     standard_text: Annotated[
         str,
@@ -308,17 +324,16 @@ class StandardAIResponseDTO(BaseModel):
             raise ValueError("지원하지 않는 평가 기준 응답 버전입니다.")
         if not isinstance(self.meta.get("feature_version"), str):
             raise ValueError("기능 버전이 없습니다.")
-        if self.meta.get("model") is not None and not isinstance(
-            self.meta["model"], str
-        ):
+        if self.meta.get("model") is not None and not isinstance(self.meta["model"], str):
             raise ValueError("모델 정보가 올바르지 않습니다.")
         payload = self.model_dump(mode="python")
         reject_unstorable_json(payload)
-        json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
         return self
+
 
 class StandardDTO(BaseModel):
     standard: str
+
 
 class StandardInputDTO(BaseModel):
     standard: Annotated[
@@ -329,14 +344,18 @@ class StandardInputDTO(BaseModel):
         AfterValidator(reject_nul),
     ]
 
+
 class StandardParseResponseDTO(BaseModel):
     standards: list[str]
     except_standard: str | None = None
+
+
 class StandardsSaveRequestDTO(BaseModel):
     # 사용자가 고친 표시 기준. 화면에 보인 순서 그대로 한 줄씩 온다. 한 줄이 `standards.title`
     # (String(50)) 한 행이 되고 10개까지다 (evaluation-criteria.md 15절). 줄을 합쳐 다시 분석하므로
     # 한 줄 안에 줄바꿈은 받지 않는다
     standards: list[StandardInputDTO] = Field(min_length=1, max_length=10)
+
 
 class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID

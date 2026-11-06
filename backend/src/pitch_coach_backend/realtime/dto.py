@@ -11,14 +11,12 @@ from typing import Annotated, Any, Literal, get_args
 
 from pydantic import AfterValidator, BaseModel, Field, TypeAdapter, model_validator
 
+from pitch_coach_backend.core.limits import INT4_MAX, MAX_T_MS
 from pitch_coach_backend.core.validation import reject_unstorable_json
 
-# metrics 의 Take 시각 상한. 코치 AI 가 받는 `t_ms` 상한과 같다 (Take 최대 1시간 + 60초 여유,
-# `docs/ai/architecture.md` 1-4)
-MAX_METRICS_T_MS = 3_660_000
 # `take_metric_seconds.slide_number` 는 PostgreSQL integer(int4). 넘으면 저장에서 터지고, 실패한
 # 행이 버퍼에 남아 같은 묶음의 정상 행까지 계속 못 넣는다
-MAX_SLIDE_NUMBER = 2_147_483_647
+MAX_SLIDE_NUMBER = INT4_MAX
 # 시선 · 음량 1초 기록 하나의 JSON 크기 상한(바이트). 실제 기록은 200바이트 안팎이다. Take 하나가
 # 저장 못 한 기록을 600초까지 메모리에 들고 있으므로 크기를 묶는다
 MAX_SECOND_RECORD_BYTES = 4_096
@@ -66,7 +64,7 @@ class MetricsMessage(BaseModel):
     """
 
     type: Literal["metrics"]
-    t_ms: int = Field(ge=0, le=MAX_METRICS_T_MS)
+    t_ms: int = Field(ge=0, le=MAX_T_MS)
     gaze: SecondRecord | None
     voice: SecondRecord | None
     slide_number: Annotated[int, Field(ge=1, le=MAX_SLIDE_NUMBER)] | None
@@ -92,7 +90,7 @@ class SlideMessage(BaseModel):
 
     type: Literal["slide"]
     slide_number: int = Field(ge=1, le=MAX_SLIDE_NUMBER)
-    t_ms: int = Field(ge=0, le=MAX_METRICS_T_MS)
+    t_ms: int = Field(ge=0, le=MAX_T_MS)
 
 
 ClientMessage = Annotated[

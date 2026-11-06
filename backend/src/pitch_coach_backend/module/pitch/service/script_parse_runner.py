@@ -9,7 +9,7 @@
     묶여 풀(기본 5 + 15)이 마른다. 대본 텍스트는 요청에서 이미 읽어 ticket 에 담아 온다
   - 요청의 `get_db` 세션을 쓰지 않는다. FastAPI 는 백그라운드 작업 전에 그 세션을 닫는다.
     그래서 저장할 때 새 세션을 열고, 동기 SQLAlchemy 라 threadpool 에서 돌린다
-    (realtime/transcript_store.py 와 같은 방식)
+    (realtime/storage/store.py 와 같은 방식)
 
 실패는 밖으로 던지지 않는다. 응답은 이미 나갔으니 받을 사람이 없고, 던지면 ASGI 로그만 남는다.
 AI 실패는 FAILED 로 저장한다. 결과 저장이 실패하면(값 문제 등) 새 세션으로 FAILED(INTERNAL_ERROR)

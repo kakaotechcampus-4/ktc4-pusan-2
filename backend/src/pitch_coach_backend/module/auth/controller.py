@@ -43,6 +43,7 @@ from pitch_coach_backend.module.auth.exception import (
     ServiceNotOpen,
     TooManyLoginStarts,
 )
+from pitch_coach_backend.module.auth.state_store import STATE_TTL_SECONDS
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,7 +58,7 @@ REFRESH_COOKIE_PATH = "/api/auth"
 CSRF_COOKIE_PATH = "/"
 
 # 로그인 시작부터 콜백까지만 살면 된다. state 의 만료 시간과 맞춘다.
-BROWSER_COOKIE_MAX_AGE = 600
+BROWSER_COOKIE_MAX_AGE = STATE_TTL_SECONDS
 
 # 로그인 시작은 인증 없이 부를 수 있고 부를 때마다 인증 요청을 DB 에 넣고 커밋한다. 반복 호출이
 # DB 쓰기를 붙잡지 못하게 IP 별로 센다. 같은 와이파이의 수강생 수십 명이 한꺼번에 로그인해도

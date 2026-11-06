@@ -1,4 +1,4 @@
-"""AI 대본 파서 어댑터. DB 를 모른다 (auth/google.py, realtime/stt_adapter.py 와 같은 자리).
+"""AI 대본 파서 어댑터. DB 를 모른다 (auth/google.py, realtime/stt/adapter.py 와 같은 자리).
 
     BE ──POST /scripts/parse {script_text, target_ms}──▶ AI ──▶ status · slides · terms · meta
 
@@ -38,6 +38,8 @@ from pitch_coach_backend.core.ai_http import (
     ai_error_code,
     retryable_status,
 )
+from pitch_coach_backend.core.limits import INT4_MAX
+from pitch_coach_backend.core.validation import is_storable
 from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
 
 logger = logging.getLogger(__name__)
@@ -59,7 +61,6 @@ _HIGHLIGHT_RE = re.compile(r"^(\d+):(\d+)$")
 
 # script_slides 의 slide_number · script_chars · expected_ms 는 PostgreSQL integer(int4).
 # 넘으면 저장에서 터지므로 받을 때 거절한다
-_PG_INTEGER_MAX = 2_147_483_647
 
 
 @dataclass(frozen=True)
@@ -128,8 +129,8 @@ class _WireSlide(BaseModel):
     keywords: list[str]
     # 모양은 항목마다 _span 이 본다. 여기서 정하면 하나만 틀려도 응답 전체가 실패한다
     highlights: list[Any] = []
-    script_chars: int | None = Field(default=None, ge=0, le=_PG_INTEGER_MAX)
-    expected_ms: int | None = Field(default=None, ge=0, le=_PG_INTEGER_MAX)
+    script_chars: int | None = Field(default=None, ge=0, le=INT4_MAX)
+    expected_ms: int | None = Field(default=None, ge=0, le=INT4_MAX)
 
 
 class _WireMeta(BaseModel):
@@ -182,29 +183,27 @@ def _invalid(detail: str) -> ScriptParseError:
     return ScriptParseError(ScriptParseErrorCode.AI_INVALID_OUTPUT, detail, retryable=True)
 
 
-def _has_nul(wire: _WireResult) -> bool:
-    # PostgreSQL 은 TEXT 에 NUL(\x00) 을, JSONB 에 \u0000 을 넣지 못한다. 그대로 저장하면
-    # DataError 로 저장이 통째로 실패하니 받는 단계에서 거절한다
+def _unstorable_texts(wire: _WireResult) -> bool:
     texts = list(wire.terms)
     for slide in wire.slides:
         texts.append(slide.script)
         texts.extend(slide.keywords)
     if wire.meta is not None:
         texts += [wire.meta.schema_version, wire.meta.feature_version, wire.meta.model or ""]
-    return any("\x00" in text for text in texts)
+    return not is_storable(texts)
 
 
 def to_parsed_script(wire: _WireResult) -> ParsedScript:
     segmented = wire.status == "success"
 
-    if _has_nul(wire):
+    if _unstorable_texts(wire):
         raise _invalid("NUL 문자가 들어 있다")
 
     if segmented:
         if not wire.slides:
             raise _invalid("success 인데 slides 가 비었다")
         numbers = [slide.slide_number for slide in wire.slides]
-        if any(number is None or not 1 <= number <= _PG_INTEGER_MAX for number in numbers):
+        if any(number is None or not 1 <= number <= INT4_MAX for number in numbers):
             raise _invalid(f"success 인데 slide_number 가 올바르지 않다: {numbers}")
         if len(set(numbers)) != len(numbers):
             raise _invalid(f"slide_number 가 겹친다: {numbers}")

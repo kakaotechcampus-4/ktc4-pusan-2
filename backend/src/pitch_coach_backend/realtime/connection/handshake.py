@@ -32,6 +32,7 @@ from pitch_coach_backend.core.security import decode_access_token
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.take.service import take as take_service
+from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.realtime.dto import (
     TAKE_END_REASONS,
@@ -70,7 +71,7 @@ TOO_MANY_STREAMS_MESSAGE = "다른 창에서 진행 중인 연습이 있어요. 
 # 오디오를 받아도 되는 Take 상태 (FE `TakeStatus` 와 같은 값). 나머지(ANALYZING·COMPLETED·
 # FAILED)는 이미 끝난 연습이라 전사를 더 붙이면 리포트가 오염된다.
 # READY 는 첫 연결이다. 인가를 통과하면 RUNNING 으로 바꾼다 (`docs/ai/architecture.md` 1-3).
-STREAMABLE_TAKE_STATUSES = frozenset({"READY", "RUNNING"})
+STREAMABLE_TAKE_STATUSES = frozenset(IN_PROGRESS_STATUSES)
 
 
 def origin_allowed(origin: str | None) -> bool:

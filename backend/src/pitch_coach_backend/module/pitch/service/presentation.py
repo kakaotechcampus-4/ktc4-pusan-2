@@ -5,6 +5,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.limits import KST
 from pitch_coach_backend.module.pitch.adapter.presentation_file import (
     MAX_PRESENTATION_BYTES,
     count_pdf_pages,
@@ -25,7 +26,6 @@ from pitch_coach_backend.module.pitch.exception import (
     NonExistentPresentationVersion,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.service.pitch import KST
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         pitch_id=pitch_id,
         presentation_version_id=presentation.id,
         file_url=file_url,
-        page_count=page_count
+        page_count=page_count,
     )
 
 
@@ -103,7 +103,7 @@ def _discard_upload(
     db: Session, presentation_id: uuid.UUID, key: str, thumbnail_key: str | None
 ) -> None:
     """
-    presentation_id 로 버전 행이 없을 때만 이 요청이 올린 PDF · 썸네일을 지운다. 
+    presentation_id 로 버전 행이 없을 때만 이 요청이 올린 PDF · 썸네일을 지운다.
     커밋 응답만 잃었으면 행이 이미 있는 상태라 남긴다
     """
     try:
@@ -117,7 +117,7 @@ def _discard_upload(
         )
         return
     finally:
-        db.rollback() # 성공 시 트랜잭션 정리용, 실패 시 잠금 해제용
+        db.rollback()  # 성공 시 트랜잭션 정리용, 실패 시 잠금 해제용
 
     if not exists:
         for k in (key, thumbnail_key):

@@ -27,7 +27,7 @@ from pitch_coach_backend.core.ai_http import (
     ai_error_code,
     retryable_status,
 )
-from pitch_coach_backend.core.validation import reject_unstorable_json
+from pitch_coach_backend.core.validation import is_storable
 
 logger = logging.getLogger(__name__)
 
@@ -117,17 +117,6 @@ def _slide_number(rubric: dict[str, Any]) -> int | None:
     return number if type(number) is int else None
 
 
-def _unstorable(value: Any) -> bool:
-    # PostgreSQL JSONB 는 NUL 문자 · NaN · Infinity 를 넣지 못해, 그대로 저장하면 그 응답의 저장이
-    # 통째로 실패한다. 직렬화한 글에서 이스케이프를 찾지 않는다 — 대본에 글자 그대로 적힌
-    # 역슬래시 u0000 까지 걸린다
-    try:
-        reject_unstorable_json(value)
-    except ValueError:
-        return True
-    return False
-
-
 def to_reply(wire: _WireResult, targets: set[int]) -> RubricReply:
     """고른 장의 기준만 남긴다. 장 번호가 없거나 고르지 않은 장 · 겹친 장 · 저장할 수 없는 장은
     버린다."""
@@ -135,13 +124,13 @@ def to_reply(wire: _WireResult, targets: set[int]) -> RubricReply:
     if major != SCHEMA_MAJOR:
         raise RubricCallError(f"모르는 schema_version {wire.meta.schema_version}", retryable=False)
     meta = wire.meta.model_dump()
-    if _unstorable(meta):
+    if not is_storable(meta):
         raise RubricCallError("meta 에 저장할 수 없는 값이 들어 있다", retryable=False)
 
     rubrics: dict[int, dict[str, Any]] = {}
     for rubric in wire.rubrics:
         number = _slide_number(rubric)
-        if number is None or number not in targets or number in rubrics or _unstorable(rubric):
+        if number is None or number not in targets or number in rubrics or not is_storable(rubric):
             logger.warning("평가 기준 한 장을 버림 slide_number=%s", number)
             continue
         rubrics[number] = rubric

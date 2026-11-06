@@ -1,4 +1,4 @@
-"""AI 를 부르는 백그라운드 호출의 자리. 프로세스 전체에서 같이 센다 (architecture.md 3절).
+"""AI 호출의 자리. 프로세스 전체에서 같이 센다 (architecture.md 3절).
 
   - 코치 plan · finalize, Take 분석(채점 · 리뷰), 대본 파싱, 대본 등록(`/scripts/rubric`)이 합계
     `BACKGROUND_LIMIT` 자리를 나눠 쓴다. 긴 LLM 요청이 AI 스레드 풀을 채우면 1초마다 오는

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.database import in_session as _in_session
-from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, confirmation_items
 from pitch_coach_backend.module.take.dto import ConfirmationAnswerDTO, ConfirmationsDTO
 from pitch_coach_backend.module.take.entity import Take
@@ -40,7 +40,7 @@ def _awaiting(take: Take) -> bool:
 
 
 def _rubrics(db: Session, take: Take) -> dict[int, Any]:
-    slides = PitchRepository(db).get_slides(take.script_version_id)
+    slides = script_service.script_slides(db, take.script_version_id)
     return {slide.slide_number: slide.rubric for slide in slides}
 
 
