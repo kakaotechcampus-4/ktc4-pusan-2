@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module import hooks
-from pitch_coach_backend.module.auth.dependencies import CurrentUser
+from pitch_coach_backend.module.auth.dependencies import CurrentUser, ReleasedUserId
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.dependencies import OwnedTake
 from pitch_coach_backend.module.take.dto import (
@@ -149,9 +149,9 @@ def get_confirmations(
 @takes_router.post("/{take_id}/confirmations", response_model=ConfirmationsSentDTO)
 async def send_confirmations(
     take_id: uuid.UUID,
-    current_user: CurrentUser,
+    user_id: ReleasedUserId,
     body: ConfirmationsRequestDTO,
 ):
     # 빈 answers 는 건너뛰기다. 답은 /takes/rescore 로 반영한 뒤 리뷰로 넘긴다
-    stage = await send_confirmations_service(take_id, current_user.id, body.answers)
+    stage = await send_confirmations_service(take_id, user_id, body.answers)
     return ConfirmationsSentDTO(analysis_stage=stage)
