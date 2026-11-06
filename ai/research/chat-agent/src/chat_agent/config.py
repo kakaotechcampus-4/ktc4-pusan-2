@@ -512,7 +512,7 @@ class ChatAgentConfig(_Frozen):
         return f"{FEATURE_VERSION}+{self.config_hash()}"
 
     def goal_rule_version(self) -> str:
-        """목표 판정 규칙 판 = goal-<비교 방향 · 목표 지표 · min_delta 해시 12자리>. 저장 때 목표에 고정한다(9절)."""
+        """목표 판정 규칙 판 = <계산식 판>+<비교 방향 · 목표 지표 · min_delta 해시 12자리>. 저장 때 목표에 고정한다(9절)."""
         blob = json.dumps(
             {
                 "algorithm": GOAL_ALGORITHM_VERSION,
@@ -523,7 +523,8 @@ class ChatAgentConfig(_Frozen):
             sort_keys=True,
             ensure_ascii=False,
         )
-        return "goal-" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+        # 앞부분은 계산식 판, 뒷부분은 저장 때의 설정 해시. 판정 지원 여부는 앞부분으로 가린다(version.SUPPORTED_GOAL_ALGORITHMS)
+        return f"{GOAL_ALGORITHM_VERSION}+" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 
     def dimension_of_metric(self, metric: str) -> str | None:
         for dim, spec in self.dimensions.items():

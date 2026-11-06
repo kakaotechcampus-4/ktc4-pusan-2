@@ -18,6 +18,9 @@ STATE_V = 1
 #: 목표 판정 계산식(6-4 판정 순서 · 비교식)의 판. 계산식을 바꾸면 올린다. 목표 규칙 판(goal_rule_version)에 들어가므로
 #: 옛 판으로 저장한 목표는 판이 달라 새 목표를 정하자고 한다(설정 해시만으로는 계산식 변경을 알 수 없다)
 GOAL_ALGORITHM_VERSION = "goal-algo-1"
+#: 판정할 수 있는 목표 계산식 판. 저장된 목표는 자기 min_delta · 범위 · operator 를 고정해 두므로, 계산식만 지원하면
+#: 설정이 바뀌어도 같은 결과로 판정한다(6-4 · L4-12). 여기 없는 판의 목표는 새로 정하자고 한다
+SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),
 #: 새 판을 배포해도 아직 지원하는 옛 판이면 여기에 남겨 둔다. 지원하지 않는 판은 409.

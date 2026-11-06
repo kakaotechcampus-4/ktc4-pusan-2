@@ -30,7 +30,7 @@ def test_config_hash_and_versions_are_stable() -> None:
     assert DEFAULT_CONFIG.config_hash() == load_config().config_hash()
     assert load_config(max_tool_calls=6).config_hash() != DEFAULT_CONFIG.config_hash()
     assert DEFAULT_CONFIG.criteria_version() == f"{FEATURE_VERSION}+{DEFAULT_CONFIG.config_hash()}"
-    assert re.fullmatch(r"goal-[0-9a-f]{12}", DEFAULT_CONFIG.goal_rule_version())
+    assert re.fullmatch(r"goal-algo-1\+[0-9a-f]{12}", DEFAULT_CONFIG.goal_rule_version())
     # 한도 값을 바꿔도 목표 판정 규칙 판은 그대로다(저장된 목표에 고정되는 값만 들어감)
     assert load_config(max_tool_calls=6).goal_rule_version() == DEFAULT_CONFIG.goal_rule_version()
     assert load_config(goal_metrics={"audience_ratio": {"min_delta": 0.1}}).goal_rule_version() != (
