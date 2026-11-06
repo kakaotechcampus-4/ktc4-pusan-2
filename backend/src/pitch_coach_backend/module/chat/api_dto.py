@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
+from pitch_coach_backend.module.chat.dto import ProfileKey
 
 # 사용자 말 길이. 유니코드 문자(코드 포인트) 수로 센다. 넘으면 자르지 않고 422 다
 MESSAGE_MAX_CHARS = 2000
@@ -184,3 +185,18 @@ class GoalUndoneResponse(BaseModel):
 
 class AvailabilityResponse(BaseModel):
     enabled: bool
+
+
+class MemorySettingRequest(_Request):
+    enabled: StrictBool
+
+
+class MemoryItemResponse(BaseModel):
+    item_id: uuid.UUID
+    key: ProfileKey
+    value: str
+
+
+class MemorySettingResponse(BaseModel):
+    enabled: bool
+    items: list[MemoryItemResponse]
