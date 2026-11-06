@@ -533,7 +533,7 @@ class ChatAgentConfig(_Frozen):
     )
 
     # ── 8-2 한도 · 8-1 시간 ───────────────────────────────────────
-    max_model_calls: int = 8
+    max_model_calls: int = 18
     #: 답 쓰기 · 고치기 몫으로 남기는 호출 수와 그 시간(각 12초)
     reserved_answer_calls: int = 2
     reserved_answer_seconds: float = 24.0
@@ -548,9 +548,10 @@ class ChatAgentConfig(_Frozen):
     max_plan_edits: int = 3
     plan_steps_min: int = 1
     plan_steps_max: int = 8
-    max_input_tokens: int = 64_000
-    max_output_reserve: int = 16_000
-    #: 호출 한 번의 출력 상한(추론 포함). 실행 출력 예약 16k 를 8번에 나눈 값 이하
+    #: 입력은 전송 전 예약량의 누적(72k). 출력은 전송 전에 그 호출의 상한을 예약하고 응답 뒤 공급자 실측으로 정산한 누적(8k, 8-2 · 8-3)
+    max_input_tokens: int = 72_000
+    max_output_tokens: int = 8_000
+    #: 호출 한 번의 출력 상한(추론 포함) = 한 번 보낼 때 예약하는 출력량. 사용량을 모르면 예약 전체를 쓴 것으로 둔다
     output_tokens_per_call: int = 2_000
     turn_seconds: float = 120.0
     call_seconds: float = 45.0

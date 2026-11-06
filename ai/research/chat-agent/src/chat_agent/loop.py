@@ -5,7 +5,10 @@
   1. 처음(USER_MESSAGE)이면 계획 호출(구조화)로 할 일 목록 · 판단 초안을 받는다. 무효면 형식 고치기 1회(조사 몫), 그래도 무효면 기본 계획.
      판단은 근거를 읽을 때까지 내보내지 않는다(실행 상태 안에만 둔다).
   2. 조사: 모델이 도구를 고르면 실행해 결과를 돌려주고, 행동을 고르면 그 지점에서 멈추고 NEEDS_ACTION 을 낸다(한 응답에서 첫 행동까지만).
-     한도(8-2)에 닿거나, 같은 (도구, 인자, 범위, 자료 판)을 새 근거 없이 연속 2회, 무효 도구 응답이 연속 2회면 조사를 끝낸다.
+     한도(8-2: 모델 호출 18번 중 조사는 16번째 시도까지 · 도구 12번 · 시간 · 토큰)에 닿거나, 같은 (도구, 인자, 범위, 자료 판)을 새 근거 없이
+     연속 2회, 최근 네 요청이 A-B-A-B로 번갈아 되풀이(교대 반복, 캐시 적중 포함), 무효 도구 응답이 연속 2회면 조사를 끝낸다.
+     끝난 까닭은 `stop_reason`(TIME · MODEL_CALLS · TOOL_CALLS · TOKENS · 반복 계열)에 남기고 turn.py 가 진단 `end.reason`으로 옮긴다.
+  2-1. 모델 한 번(`_call`)마다 출력 예약을 응답 뒤 공급자 실측으로 정산한다(budget.py `settle_output`).
   3. 답 쓰기(구조화) → 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 · 결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9).
      걸리면 걸린 문장과 까닭을 알려 한 번 고치게 하고 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
@@ -28,7 +31,7 @@ from . import actions as act
 from . import checks as chk
 from . import claims as clm
 from . import prompts, templates
-from .budget import Budget, Counters, LimitHit, estimate_tokens
+from .budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
 from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, finish_code
 from .evidence import EvidenceRegistry
@@ -80,6 +83,8 @@ class LoopState:
     action_seq: int = 0
     repeat_key: str | None = None
     repeat_count: int = 0
+    #: 최근 요청 열쇠 네 개(같은 열쇠와 같은 열쇠 규칙, 캐시 적중 포함). 교대 반복(A-B-A-B)을 가린다(5-7)
+    recent_keys: list[str] = field(default_factory=list)
     invalid_streak: int = 0
     failed_action_key: str | None = None
     failed_action_count: int = 0
@@ -196,6 +201,8 @@ class Loop:
         self.scope_changed = False
         self.model_name: str | None = None
         self.model_used = False
+        #: 이 호출에서 모델 전송이 한도로 막힌 까닭(진단 끝 사유 TIME · MODEL_CALLS · TOKENS …). 답 단계 실패를 나눌 때 쓴다
+        self.limit_end: str | None = None
         #: 연결이 끊겼는가(turn.py 가 넣는다). 끊기면 새 모델 · 도구 호출을 하지 않는다(L1-08)
         self.cancelled: Callable[[], bool] = lambda: False
         self._last_model_seq: int | None = None
@@ -220,6 +227,7 @@ class Loop:
         est = estimate_tokens(messages, tools)
         max_out = self.cfg.output_tokens_per_call
         hit_holder: list[LimitHit] = []
+        reserved = [0]  # 이 호출에서 예약한 전송 시도 수
 
         def before(_n: int) -> bool:
             if self.cancelled():
@@ -228,6 +236,7 @@ class Loop:
             if hit is not None:
                 hit_holder.append(hit)
                 return False
+            reserved[0] += 1
             return True
 
         llm = self.deps.llm
@@ -258,6 +267,7 @@ class Loop:
             )
             if hit_holder:
                 self._limit(hit_holder[-1])
+                self.limit_end = limit_end_reason(hit_holder[-1].code)
                 return hit_holder[-1]
             return e
         except LlmError as e:
@@ -271,6 +281,9 @@ class Loop:
         self.model_name = res.model or llm.model_name or self.model_name
         usages = list(res.attempt_usages) or [res.usage]
         self._count_usage(usages)
+        # 응답을 받은 시도(마지막)의 출력 예약을 실측으로 바꾼다. 실패한 앞 시도 · 실측이 없는 시도는 예약 그대로(8-3)
+        if reserved[0]:
+            self.budget.settle_output(max_out, res.usage.output_tokens)
         # 실패한 앞 시도(재시도 전)도 진단 단계로 남긴다
         self._failed_steps(
             purpose, llm.model_name, usages[:-1], list(res.attempt_errors), start, fix_for
@@ -538,7 +551,7 @@ class Loop:
             ]
             res = self._call("RESEARCH", msgs, tools=tools)
             if isinstance(res, LimitHit):
-                self.st.research_done, self.st.stop_reason = True, "LIMIT"
+                self.st.research_done, self.st.stop_reason = True, limit_end_reason(res.code)
                 break
             if isinstance(res, LlmError):
                 self.st.research_done = True
@@ -618,6 +631,7 @@ class Loop:
                     self.st.repeat_count += 1
                 else:
                     self.st.repeat_key, self.st.repeat_count = key, 1
+                self.st.recent_keys = [*self.st.recent_keys, key][-4:]
                 cached = call.name != "update_plan" and self._is_cached(call.name, args)
                 if not cached:
                     hit = self.budget.reserve_tool()
@@ -632,7 +646,7 @@ class Loop:
                                 },
                             )
                         )
-                        self.st.research_done, self.st.stop_reason = True, "LIMIT"
+                        self.st.research_done, self.st.stop_reason = True, "TOOL_CALLS"
                         continue
                 if call.name == "update_plan":
                     plan = [s.model_dump() for s in args.steps]  # type: ignore[attr-defined]
@@ -678,6 +692,8 @@ class Loop:
                 self.st.invalid_streak = 0
             if self.st.repeat_count >= self.cfg.repeat_stop and not progressed:
                 self.st.research_done, self.st.stop_reason = True, "NO_PROGRESS"
+            elif not progressed and _alternating(self.st.recent_keys):
+                self.st.research_done, self.st.stop_reason = True, "ALTERNATING"
         return None
 
     def _is_cached(self, name: str, args: Any) -> bool:
@@ -990,6 +1006,14 @@ def _script_points_removed(card: dict[str, Any] | None) -> bool:
         and isinstance(after, int)
         and after > before
     )
+
+
+def _alternating(keys: list[str]) -> bool:
+    """최근 네 요청이 A-B-A-B(첫째 = 셋째, 둘째 = 넷째, 두 요청은 서로 다름)인가(5-7 '호출 제한')."""
+    if len(keys) < 4:
+        return False
+    a, b, c, d = keys[-4:]
+    return a == c and b == d and a != b
 
 
 def _action_key(name: Any, args: Any) -> str:

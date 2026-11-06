@@ -660,7 +660,7 @@ def build() -> dict[str, Any]:
                 "final",
                 1,
                 _final_simple(
-                    "PARTIAL", "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요.", "LIMIT"
+                    "PARTIAL", "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요.", "TIME"
                 ),
             )
         ]

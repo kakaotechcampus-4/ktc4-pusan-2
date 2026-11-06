@@ -1,4 +1,4 @@
-"""budget.py 단위 시험: 남은 시간 · 마감 · 모델 호출 예약(조사 몫 6 · 답 몫 2 · 24초) · 토큰 예약 · 도구 · 행동 · 턴 한도 (기능 문서 8-1 · 8-2 · 8-3).
+"""budget.py 단위 시험: 남은 시간 · 마감 · 모델 호출 예약(조사 몫 16 · 답 몫 2 · 24초) · 토큰 예약 · 출력 정산 · 도구 · 행동 · 턴 한도 (기능 문서 8-1 · 8-2 · 8-3).
 
 시간은 가짜 단조 시계로 흘린다. 이름의 L 번호는 기능 문서 7절 실패 행이다.
 """
@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from chat_agent.budget import Budget, Counters, LimitHit, estimate_tokens
+from chat_agent.budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
 from chat_agent.config import DEFAULT_CONFIG as CFG
 from chat_agent.schemas import LimitDetail
 
@@ -86,32 +86,48 @@ def test_l1_04_exhausted_turn_blocks_every_model_call() -> None:
 # ── 모델 호출 수 (8-2 · 8-3 · L1-13) ─────────────────────────────────────────
 
 
-def test_l1_13_research_stops_at_six_and_keeps_two_for_answer_and_fix() -> None:
+def test_l1_13_research_stops_at_sixteen_and_keeps_two_for_answer_and_fix() -> None:
+    """이번 시도를 포함한 누적 시도 수가 16을 넘으면(17번째 시도) 조사를 하지 않는다. 답 쓰기 · 고치기가 17 · 18번째."""
     b, _ = start()
-    for _ in range(6):
+    for _ in range(16):
         assert b.reserve_model("RESEARCH", 100, 100) is None
     hit = assert_detail(b.reserve_model("RESEARCH", 100, 100))
-    assert (hit.code, hit.used, hit.limit) == ("MODEL_CALLS", 6, 6)
-    assert b.counters.model_calls == 6
-    assert b.reserve_model("ANSWER", 100, 100) is None
-    assert b.reserve_model("FIX", 100, 100) is None
-    hit = assert_detail(b.reserve_model("ANSWER", 100, 100))
-    assert (hit.code, hit.used, hit.limit) == ("MODEL_CALLS", 8, 8)
-    assert b.counters.model_calls == 8
+    assert (hit.code, hit.used, hit.limit) == ("MODEL_CALLS", 16, 16)
+    assert b.counters.model_calls == 16
+    assert b.reserve_model("ANSWER", 100, 100) is None  # 17번째
+    assert b.reserve_model("FIX", 100, 100) is None  # 18번째
+    hit = assert_detail(b.reserve_model("ANSWER", 100, 100))  # 19번째는 없다
+    assert (hit.code, hit.used, hit.limit) == ("MODEL_CALLS", 18, 18)
+    assert b.counters.model_calls == 18
     assert [h.code for h in b.hits] == ["MODEL_CALLS", "MODEL_CALLS"]
 
 
 def test_l1_13_research_after_answer_share_is_used_is_refused() -> None:
-    """재개를 걸쳐 누적 시도가 6이면(답 몫 2만 남음) 조사는 더 보내지 않는다."""
-    b, _ = start(model_calls=6)
+    """재개를 걸쳐 누적 시도가 16이면(답 몫 2만 남음) 조사는 더 보내지 않는다."""
+    b, _ = start(model_calls=16)
     assert b.reserve_model("RESEARCH", 10, 10).code == "MODEL_CALLS"
     assert b.reserve_model("ANSWER", 10, 10) is None
 
 
+def test_research_attempt_fifteen_to_sixteen_boundary() -> None:
+    """누적 15에서 16번째 시도(이번 포함 16)는 보내고, 누적 16에서 17번째는 막는다."""
+    ok, _ = start(model_calls=15)
+    assert ok.reserve_model("RESEARCH", 10, 10) is None
+    assert ok.counters.model_calls == 16
+    assert ok.reserve_model("RESEARCH", 10, 10).code == "MODEL_CALLS"
+
+
 def test_time_is_checked_before_call_count() -> None:
     """호출 전 확인 순서: 남은 시간 → 모델 호출 수(8-3)."""
-    b, _ = start(120_000, model_calls=8)
+    b, _ = start(120_000, model_calls=18)
     assert b.reserve_model("ANSWER", 10, 10).code == "CALL_TIME"
+
+
+@pytest.mark.parametrize(("calls", "short"), [(0, False), (16, False), (17, True), (18, True)])
+def test_answer_slots_short_when_two_calls_cannot_be_left(calls: int, short: bool) -> None:
+    """이어 부를 때 남은 호출 수가 2번보다 적으면 모델 없이 끝낸다(8-3)."""
+    b, _ = start(model_calls=calls)
+    assert b.answer_slots_short() is short
 
 
 # ── 조사 시간 조건 (8-3: 전송 뒤 24초 보장) ─────────────────────────────────
@@ -187,34 +203,103 @@ def test_call_timeout(spent: float, research: float, answer: float) -> None:
 
 
 def test_l1_39_research_must_leave_input_tokens_for_answer_and_fix() -> None:
-    """조사는 이번 입력 + 답 · 고치기 두 번 몫이 64k 안이어야 한다. 예약은 이번 몫만 한다."""
+    """조사는 이번 입력 + 답 · 고치기 두 번 몫이 72k 안이어야 한다. 예약은 이번 몫만 한다."""
     b, _ = start()
-    hit = assert_detail(b.reserve_model("RESEARCH", 21_334, 100))
-    assert (hit.code, hit.used, hit.limit, hit.attempted) == ("INPUT_TOKENS", 0, 64_000, 64_002)
-    assert b.reserve_model("RESEARCH", 21_333, 100) is None
-    assert b.counters.input_tokens == 21_333
+    hit = assert_detail(b.reserve_model("RESEARCH", 24_001, 100))
+    assert (hit.code, hit.used, hit.limit, hit.attempted) == ("INPUT_TOKENS", 0, 72_000, 72_003)
+    assert b.reserve_model("RESEARCH", 24_000, 100) is None
+    assert b.counters.input_tokens == 24_000
 
 
-def test_l1_39_input_tokens_are_cumulative_up_to_64k() -> None:
+def test_l1_39_input_tokens_are_cumulative_up_to_72k() -> None:
     b, _ = start(input_tokens=40_000)
-    assert b.reserve_model("ANSWER", 24_000, 100) is None  # 정확히 64k
+    assert b.reserve_model("ANSWER", 32_000, 100) is None  # 정확히 72k
     hit = assert_detail(b.reserve_model("FIX", 1, 100))
-    assert (hit.code, hit.used) == ("INPUT_TOKENS", 64_000)
+    assert (hit.code, hit.used) == ("INPUT_TOKENS", 72_000)
     assert b.counters.model_calls == 1
 
 
-def test_l1_39_output_reserve_is_cumulative_up_to_16k() -> None:
-    b, _ = start(output_tokens=10_001)
-    hit = assert_detail(b.reserve_model("RESEARCH", 10, 2_000))  # 2,000 × 3 = 6,000 → 16,001
-    assert (hit.code, hit.attempted) == ("OUTPUT_RESERVE", 6_000)
+def test_l1_39_output_tokens_are_cumulative_up_to_8k() -> None:
+    b, _ = start(output_tokens=2_001)
+    hit = assert_detail(b.reserve_model("RESEARCH", 10, 2_000))  # 2,000 × 3 = 6,000 → 8,001
+    assert (hit.code, hit.limit, hit.attempted) == ("OUTPUT_RESERVE", 8_000, 6_000)
     assert b.reserve_model("ANSWER", 10, 2_000) is None
-    assert b.counters.output_tokens == 12_001
-    edge, _ = start(output_tokens=10_000)
-    assert edge.reserve_model("RESEARCH", 10, 2_000) is None  # 정확히 16k
+    assert b.counters.output_tokens == 4_001
+    edge, _ = start(output_tokens=2_000)
+    assert edge.reserve_model("RESEARCH", 10, 2_000) is None  # 정확히 8k
 
 
-def test_default_output_per_call_fits_eight_calls() -> None:
-    assert CFG.output_tokens_per_call * CFG.max_model_calls <= CFG.max_output_reserve
+def test_default_values_of_18_calls_and_per_call_output() -> None:
+    assert (CFG.max_model_calls, CFG.max_input_tokens, CFG.max_output_tokens) == (18, 72_000, 8_000)
+    # 한 번 보내기 전 조사 예약(이번 + 답 · 고치기 두 번 몫)이 출력 누적 안에 들어간다
+    assert CFG.output_tokens_per_call * (1 + CFG.reserved_answer_calls) <= CFG.max_output_tokens
+
+
+# ── 출력 정산 (8-3: 전송 전 예약 → 응답 뒤 실측) ─────────────────────────────
+
+
+def test_settle_output_replaces_reservation_with_measured_usage() -> None:
+    b, _ = start()
+    assert b.reserve_model("RESEARCH", 100, 2_000) is None
+    assert b.counters.output_tokens == 2_000
+    b.settle_output(2_000, 350)
+    assert b.counters.output_tokens == 350  # 쓰지 않은 1,650을 돌려줌
+    assert b.reserve_model("ANSWER", 100, 2_000) is None
+    b.settle_output(2_000, 120)
+    assert b.counters.output_tokens == 470
+    assert b.counters.budget_used()["output_tokens"] == 470
+
+
+def test_settle_output_without_measurement_keeps_the_reservation() -> None:
+    b, _ = start()
+    assert b.reserve_model("RESEARCH", 100, 2_000) is None
+    b.settle_output(2_000, None)
+    assert b.counters.output_tokens == 2_000
+
+
+def test_settle_output_counts_measured_above_the_reservation() -> None:
+    b, _ = start()
+    assert b.reserve_model("ANSWER", 100, 1_000) is None
+    b.settle_output(1_000, 1_400)
+    assert b.counters.output_tokens == 1_400
+
+
+def test_settle_output_never_goes_below_the_value_at_call_start() -> None:
+    """내보낸 `budget_used`는 줄지 않는다: 호출을 받을 때의 값 아래로는 정산하지 않는다(8-3)."""
+    b, _ = start(output_tokens=3_000)
+    assert b.reserve_model("ANSWER", 100, 2_000) is None
+    b.settle_output(2_000, 0)
+    assert b.counters.output_tokens == 3_000
+    assert b.counters.output_tokens >= b.output_floor
+
+
+def test_settled_output_frees_room_for_more_calls() -> None:
+    """실측으로 정산하면 8k 안에서 더 보낼 수 있고, 정산하지 않으면 막힌다."""
+    settled, _ = start()
+    unsettled, _ = start()
+    for _ in range(4):
+        assert settled.reserve_model("ANSWER", 10, 2_000) is None
+        settled.settle_output(2_000, 200)
+        assert unsettled.reserve_model("ANSWER", 10, 2_000) is None
+    assert unsettled.reserve_model("ANSWER", 10, 2_000).code == "OUTPUT_RESERVE"
+    assert settled.reserve_model("ANSWER", 10, 2_000) is None
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"),
+    [
+        ("CALL_TIME", "TIME"),
+        ("TURN_TIME", "TIME"),
+        ("MODEL_CALLS", "MODEL_CALLS"),
+        ("TOOL_CALLS", "TOOL_CALLS"),
+        ("INPUT_TOKENS", "TOKENS"),
+        ("OUTPUT_RESERVE", "TOKENS"),
+        ("ACTIONS", "LIMIT"),
+        ("TURN_CALLS", "LIMIT"),
+    ],
+)
+def test_limit_code_to_end_reason(code: str, reason: str) -> None:
+    assert limit_end_reason(code) == reason
 
 
 # ── 도구 · 행동 · 계획 · 턴 (8-2 · L1-16 · L1-23 · L1-31) ───────────────────

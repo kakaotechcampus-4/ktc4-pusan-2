@@ -33,7 +33,7 @@ from . import actions as act
 from . import checks as chk
 from . import claims as clm
 from . import compose, prompts, state, templates
-from .budget import Counters
+from .budget import LIMIT_END_REASONS, Counters
 from .diagnostics import DiagRecorder, reduce_to_fit, safe_request_id
 from .evidence import canonical_json
 from .goals import judge_goal
@@ -326,15 +326,7 @@ def _orchestrate(
         return finish(status="PARTIAL", reason="LIMIT", system=[templates.SystemText.TURN_LIMIT])
     if budget.exhausted_at_start():
         lp._limit(budget._hit("TURN_TIME", lp.counters.elapsed_ms, int(cfg.turn_seconds * 1000)))
-        partial = compose.template_partial(lp.ctx, list(lp.ctx.registry.items))
-        if partial:
-            return finish(
-                status="PARTIAL",
-                reason="LIMIT",
-                system=[templates.SystemText.LIMIT_PARTIAL],
-                claims=partial,
-            )
-        return finish(error="AGENT_TIMEOUT", reason="LIMIT")
+        return _end_without_model(lp, finish, "TIME")
 
     trigger = req.run.trigger
     if trigger == "TAKE_REVIEWED":
@@ -351,7 +343,11 @@ def _orchestrate(
             return finish(
                 status="PARTIAL", reason="OTHER", system=[templates.SystemText.ACTION_MISMATCH]
             )
+        if budget.answer_slots_short():
+            return _slots_short_end(lp, finish)
     else:
+        if req.choice is None and budget.answer_slots_short():
+            return _slots_short_end(lp, finish)
         if req.choice is not None:
             # 제안 카드에서 고른 목표: 내용 · 근거가 그대로면 다시 따지지 않고 저장한다. 선택이 허용 근거다(6-3 '제안을 고른 뒤')
             action = _choice_action(lp, req)
@@ -575,6 +571,29 @@ def _guide_texts(lp: Loop) -> dict[str, str]:
     return out
 
 
+def _end_without_model(
+    lp: Loop, finish: Callable[..., _Result], reason: str, *, notes: list[str] | None = None
+) -> _Result:
+    """모델 없이 끝낸다(시간 · 호출 몫 부족): 검증된 근거를 템플릿으로, 없으면 `AGENT_TIMEOUT`(8-3)."""
+    partial = compose.template_partial(lp.ctx, list(lp.ctx.registry.items))
+    notes_claims = [Claim(kind="SYSTEM", text=n) for n in notes or []]
+    if partial or notes_claims:
+        return finish(
+            status="PARTIAL",
+            reason=reason,
+            system=[templates.SystemText.LIMIT_PARTIAL] if not notes_claims else [],
+            claims=[*notes_claims, *partial],
+        )
+    return finish(error="AGENT_TIMEOUT", reason=reason)
+
+
+def _slots_short_end(lp: Loop, finish: Callable[..., _Result]) -> _Result:
+    """이어 부를 때 남은 호출 수로 답 쓰기 · 고치기 두 몫을 남길 수 없다: 모델 없이 끝낸다(8-3)."""
+    c, cfg = lp.counters, lp.cfg
+    lp._limit(lp.budget._hit("MODEL_CALLS", c.model_calls, cfg.max_model_calls))
+    return _end_without_model(lp, finish, "MODEL_CALLS", notes=_action_notes(lp))
+
+
 def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
     cfg = lp.cfg
     ctx = lp.ctx
@@ -588,18 +607,23 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             return finish(
                 status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER]
             )
+        # 한도 때문에 못 썼으면 어느 한도인지 나눠 남긴다(11-5). 한도가 아니면 모델 오류
+        limit = (
+            stop_reason
+            if stop_reason in LIMIT_END_REASONS
+            else lp.limit_end or ("TIME" if lp.budget.left() <= 0 else None)
+        )
         partial = compose.template_partial(ctx, list(ctx.registry.items))
         if partial:
             return finish(
                 status="PARTIAL",
-                reason="LLM_ERROR",
+                reason=limit or "LLM_ERROR",
                 system=[templates.SystemText.PARTIAL_CHECKED],
                 claims=partial,
             )
-        timed_out = stop_reason == "LIMIT" or lp.budget.left() <= 0
         return finish(
-            error="AGENT_TIMEOUT" if timed_out else "INTERNAL_ERROR",
-            reason="LIMIT" if timed_out else "LLM_ERROR",
+            error="AGENT_TIMEOUT" if limit else "INTERNAL_ERROR",
+            reason=limit or "LLM_ERROR",
         )
     draft = ans["draft"]
     route = draft.get("route")
@@ -897,14 +921,14 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         if partial:
             return finish(
                 status="PARTIAL",
-                reason="ALL_CLAIMS_DROPPED",
+                reason="CHECK_ALL_DROPPED",
                 system=[templates.SystemText.VERIFIED_ONLY],
                 claims=partial,
                 assessments=all_assessments,
             )
         return finish(
             status="PARTIAL",
-            reason="ALL_CLAIMS_DROPPED",
+            reason="CHECK_ALL_DROPPED",
             system=[templates.SystemText.PARTIAL_CHECKED],
             assessments=all_assessments,
         )
@@ -1007,11 +1031,16 @@ def _action_notes(lp: Loop) -> list[str]:
 
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)
 _RESEARCH_STOP = {
+    "TIME": ("TIME", templates.SystemText.LIMIT_PARTIAL),
+    "MODEL_CALLS": ("MODEL_CALLS", templates.SystemText.LIMIT_PARTIAL),
+    "TOOL_CALLS": ("TOOL_CALLS", templates.SystemText.LIMIT_PARTIAL),
+    "TOKENS": ("TOKENS", templates.SystemText.LIMIT_PARTIAL),
     "LIMIT": ("LIMIT", templates.SystemText.LIMIT_PARTIAL),
     "LLM_ERROR": ("LLM_ERROR", templates.SystemText.PARTIAL_CHECKED),
-    "INVALID_TOOLS": ("OTHER", templates.SystemText.PARTIAL_CHECKED),
-    "NO_PROGRESS": ("OTHER", templates.SystemText.NO_MORE_SOURCES),
-    "REPEATED_FAILED_ACTION": ("OTHER", templates.SystemText.SOME_ACTIONS_FAILED),
+    "INVALID_TOOLS": ("REPEAT", templates.SystemText.PARTIAL_CHECKED),
+    "NO_PROGRESS": ("REPEAT", templates.SystemText.NO_MORE_SOURCES),
+    "ALTERNATING": ("REPEAT", templates.SystemText.NO_MORE_SOURCES),
+    "REPEATED_FAILED_ACTION": ("REPEAT", templates.SystemText.SOME_ACTIONS_FAILED),
 }
 
 
