@@ -53,6 +53,7 @@ interface FakeTransport {
   listenedBeforeResume: boolean;
   disposed: boolean;
   retried: number;
+  cancelled: number;
   emit: (signal: TransportSignal) => void;
 }
 const transports = vi.hoisted(() => [] as FakeTransport[]);
@@ -69,6 +70,7 @@ vi.mock('./chatTransport', async () => {
         listenedBeforeResume: false,
         disposed: false,
         retried: 0,
+        cancelled: 0,
         emit: (signal) => listeners.forEach((listener) => listener(signal)),
       };
       transports.push(t);
@@ -100,7 +102,12 @@ vi.mock('./chatTransport', async () => {
           t.disposed = true;
         },
         decide: async () => 'locked',
-        cancel: async () => false,
+        cancel: async () => {
+          // 화면이 부른 횟수를 셉니다 — 잠금은 화면이 지켜야 합니다
+          t.cancelled++;
+          const run = store.getState().run;
+          return !!run && store.getState().beginCancel(run.runId);
+        },
         changeScope: async () => false,
         checkNow: () => undefined,
       };
@@ -422,7 +429,7 @@ const claim = (text: string) =>
     text,
     chips: [],
     missing: 0,
-    general: true,
+    general: false,
     assessment: null,
     actionId: null,
     masked: false,
@@ -681,8 +688,8 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
         status: 'RUNNING',
         events: [],
         claims: [claim('첫 문장')],
-        restart: false,
-        catchUp: false,
+        restart: true,
+        catchUp: true,
         contractError: null,
         plan: null,
         trace: null,
@@ -690,7 +697,7 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
         cards: [],
       }),
     );
-    expect(panel()!.querySelector('[aria-live="polite"]')!.textContent).toBe('첫 문장');
+    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('첫 문장');
 
     server.messages = () =>
       Promise.resolve({
@@ -712,7 +719,7 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     );
     await settle();
     expect(reads().length).toBeGreaterThan(before);
-    expect(panel()!.querySelector('[aria-live="polite"]')).toBeNull();
+    expect(panel()!.querySelector('[data-live-run]')).toBeNull();
     expect(sentMessages()).toEqual(['질문']);
     expect(panel()!.textContent).toContain('확인 시간이 지나 취소했어요.');
   });
@@ -723,5 +730,187 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     expect(useChatStore.getState().open).toBe(true);
     await go('/takes/t1/rehearsal');
     expect(useChatStore.getState().open).toBe(false);
+  });
+});
+
+// ── 8-2 답 그리기 ─────────────────────────────────────────
+
+describe('답 그리기 (12-4 F3 · F12)', () => {
+  const progressOf = (
+    runId: string,
+    texts: string[],
+    over: Partial<Extract<TransportSignal, { type: 'progress' }>> = {},
+  ): TransportSignal => ({
+    type: 'progress',
+    runId,
+    conversationId: 'c1',
+    status: 'RUNNING',
+    events: [],
+    claims: texts.map((text, index) => ({ ...claim(text), index })),
+    restart: false,
+    catchUp: false,
+    contractError: null,
+    plan: null,
+    trace: null,
+    progressDropped: false,
+    cards: [],
+    ...over,
+  });
+
+  async function watching(runId: string, phase: 'QUEUED' | 'RUNNING' = 'RUNNING') {
+    await visit('/');
+    const store = useChatStore.getState();
+    store.selectConversation('c1', { pitchId: null, title: null });
+    store.resolveConversation(chatTicket(), { runId, phase });
+    await openPanel();
+    await settle();
+  }
+
+  const live = () => panel()!.querySelector('[data-live-run]');
+
+  it('기다리는 동안 "기록을 확인하고 있어요" 와 [취소] — 누르면 취소하고 확정될 때까지 잠근다', async () => {
+    await watching('r1', 'QUEUED');
+    const waiting = () => panel()!.querySelector('[data-run-waiting]');
+    expect(waiting()!.textContent).toContain('기록을 확인하고 있어요');
+
+    await act(async () => button('취소')!.click());
+    expect(transport().cancelled).toBe(1);
+    const locked = button('취소 중')!;
+    expect(locked.getAttribute('aria-disabled')).toBe('true');
+    await act(async () => locked.click());
+    expect(transport().cancelled).toBe(1);
+
+    // 끝나면 사라집니다
+    await act(async () => useChatStore.getState().endRun('r1'));
+    expect(waiting()).toBeNull();
+  });
+
+  it('승인 대기에서는 기다림 줄을 보이지 않는다 — 확인 카드가 대신한다', async () => {
+    await watching('r1');
+    await act(async () => useChatStore.getState().setRunPhase('r1', 'WAITING_APPROVAL'));
+    expect(panel()!.querySelector('[data-run-waiting]')).toBeNull();
+  });
+
+  it('이 화면에서 보낸 실행의 문장은 글자 효과로 보인다', async () => {
+    await watching('r1');
+    await act(async () => transport().emit(progressOf('r1', ['첫 문장입니다'], { restart: true })));
+    // 효과 — 아직 다 보이지 않았습니다
+    expect(live()!.textContent).not.toBe('첫 문장입니다');
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
+    expect(live()!.textContent).toBe('첫 문장입니다');
+  });
+
+  it('따라잡기(새로고침 · 다시 열기)는 효과 없이 곧바로 보인다', async () => {
+    await watching('r1');
+    await act(async () =>
+      transport().emit(progressOf('r1', ['이미 만든 문장'], { restart: true, catchUp: true })),
+    );
+    expect(live()!.textContent).toBe('이미 만든 문장');
+  });
+
+  it('다른 실행의 진행이 오면 앞 실행의 문장을 비우고 새로 그린다', async () => {
+    await watching('r1');
+    await act(async () =>
+      transport().emit(progressOf('r1', ['앞 실행'], { restart: true, catchUp: true })),
+    );
+    await act(async () =>
+      // 다른 실행의 첫 신호가 처음부터 다시 보냄(restart)이 아니어도 앞 실행의 문장을 남기지 않습니다 —
+      // 같은 순번(0)이라 남겨 두면 새 문장이 이미 본 순번으로 버려집니다
+      transport().emit(progressOf('r2', ['새 실행'], { catchUp: true })),
+    );
+    expect(live()!.textContent).toBe('새 실행');
+    expect(live()!.getAttribute('data-live-run')).toBe('r2');
+  });
+
+  it('그 실행의 답이 목록에 먼저 들어오면 목록 쪽 하나만 보인다', async () => {
+    await watching('r1');
+    await act(async () =>
+      transport().emit(progressOf('r1', ['저장된 문장'], { restart: true, catchUp: true })),
+    );
+    server.messages = () =>
+      Promise.resolve({
+        messages: [
+          {
+            message_id: 'm2',
+            role: 'system',
+            text: '저장된 문장',
+            run_id: 'r1',
+          },
+          {
+            message_id: 'm3',
+            role: 'assistant',
+            status: 'PARTIAL',
+            text: '',
+            run_id: 'r1',
+            claims: [],
+            cards: [],
+            masked: false,
+          },
+        ],
+        next_before_seq: null,
+      });
+    await act(async () => queryClient.invalidateQueries());
+    await settle();
+    expect(live()).toBeNull();
+  });
+
+  it('끝나면 남은 글자를 다 보인 뒤 목록을 다시 읽어 저장된 답 하나만 남긴다', async () => {
+    await watching('r1');
+    await act(async () =>
+      transport().emit(
+        progressOf('r1', ['아주 긴 문장이 아직 다 보이지 않았어요'], { restart: true }),
+      ),
+    );
+    const answer = held<unknown>();
+    server.messages = () => answer.promise;
+    await act(async () =>
+      transport().emit({
+        type: 'ended',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'DONE',
+        errorCode: null,
+        endedWhileWaiting: false,
+      }),
+    );
+    // 목록을 읽는 동안에도 받은 답은 다 보입니다 — 비었다가 다시 나타나지 않게
+    expect(live()!.textContent).toBe('아주 긴 문장이 아직 다 보이지 않았어요');
+
+    answer.resolve({
+      messages: [
+        { message_id: 'm1', role: 'user', text: '질문', run_id: 'r1' },
+        {
+          message_id: 'm2',
+          role: 'assistant',
+          status: 'DONE',
+          text: '아주 긴 문장이 아직 다 보이지 않았어요',
+          run_id: 'r1',
+          claims: [
+            {
+              kind: 'GENERAL',
+              text: '아주 긴 문장이 아직 다 보이지 않았어요',
+              evidence_ids: [],
+              source_ids: [],
+              assessment_id: null,
+              action_id: null,
+            },
+          ],
+          cards: [],
+          evidence: [],
+          sources: [],
+          assessments: [],
+          plan: null,
+          trace: null,
+          masked: false,
+        },
+      ],
+      next_before_seq: null,
+    });
+    await settle();
+    expect(live()).toBeNull();
+    expect(panel()!.querySelectorAll('[data-claim]')).toHaveLength(1);
+    expect(panel()!.querySelector('[data-message="m2"]')!.textContent).toContain(
+      '아주 긴 문장이 아직 다 보이지 않았어요',
+    );
   });
 });

@@ -13,7 +13,8 @@ import { useLocation } from 'react-router';
 import { useSession } from '@/shared/api/useSession';
 import { isChatAgentBuildEnabled } from '@/shared/lib/chatAgent';
 import type { ChatMessage } from '@/types/chat';
-import { ANSWER_FAILED_TEXT, errorText, readMessage } from './chatResponse';
+import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
+import { ANSWER_FAILED_TEXT } from './chatResponse';
 import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
 import { canSend, useChatStore, type ScreenScope } from './chatStore';
 import { useChatSession, type ChatNotice, type ChatSession } from './useChatSession';
@@ -369,48 +370,66 @@ function ChatPanel({
   );
 }
 
-/** 지난 메시지와 실행 중에 받은 문장 — 글자 효과 · 칩 · 카드는 8-2 · 8-3 에서 붙입니다 */
+/** 지난 메시지와 지금 실행의 답 — 카드는 8-3 에서 붙입니다 */
 function MessageList({ session }: { session: ChatSession }) {
   const pending = useChatStore((s) => s.pending?.request.text ?? null);
   const shown = session.messages;
-  const liveRunInList =
-    session.live !== null &&
-    shown.some((m) => m.role === 'assistant' && m.run_id === session.live!.runId);
+  const progress = session.progress;
+  // 끝난 실행의 답이 목록에 들어왔으면 목록 쪽 하나만 보입니다
+  const liveInList =
+    progress !== null && shown.some((m) => m.role === 'assistant' && m.run_id === progress.runId);
 
   return (
     <>
       {shown.length === 0 && !pending && (
-        <p className="self-start rounded-xl border border-line-strong bg-white px-4 py-3 text-sm leading-6">
-          발표 기록과 연습에 대해 물어보세요.
-        </p>
+        <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
       )}
       {shown.map((message) => (
         <MessageItem key={message.message_id} message={message} />
       ))}
       {pending && <p className={SELF_CLASS}>{pending}</p>}
-      {session.live && !liveRunInList && session.live.claims.length > 0 && (
-        <p aria-live="polite" className={AGENT_CLASS}>
-          {session.live.claims.map((claim) => claim.text).join('\n')}
-        </p>
-      )}
+      <LiveAnswer
+        progress={liveInList ? null : progress}
+        typing={session.typing}
+        announce={session.announce}
+        waiting={<RunWaiting onCancel={session.cancel} />}
+      />
     </>
+  );
+}
+
+/**
+ * 기다리는 동안 — "기록을 확인하고 있어요" 와 [취소] (12-4 F3). 접수 대기 · 실행 중에만 보이고,
+ * 승인 대기는 확인 카드(8-3)가 대신합니다. 취소를 누르면 확정될 때까지 버튼을 잠급니다
+ */
+function RunWaiting({ onCancel }: { onCancel: () => void }) {
+  const phase = useChatStore((s) => s.run?.phase ?? null);
+  const cancelling = useChatStore((s) => s.cancelling !== null);
+  if (phase !== 'QUEUED' && phase !== 'RUNNING') return null;
+  return (
+    <div className="flex items-center gap-3 self-start text-xs text-stone" data-run-waiting="">
+      <span>{WAITING_TEXT}</span>
+      {/* `disabled` 로 두면 초점이 body 로 빠집니다 (#818) — aria-disabled 로 두고 누름을 무시합니다 */}
+      <button
+        type="button"
+        aria-disabled={cancelling}
+        onClick={() => {
+          if (!cancelling) onCancel();
+        }}
+        className="min-h-11 border border-line-strong px-3 font-bold text-ink hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
+      >
+        {cancelling ? '취소 중' : '취소'}
+      </button>
+    </div>
   );
 }
 
 const SELF_CLASS =
   'max-w-[88%] self-end whitespace-pre-wrap break-words rounded-xl bg-cream px-4 py-3 text-sm leading-6';
-const AGENT_CLASS =
-  'max-w-[88%] self-start whitespace-pre-wrap break-words rounded-xl border border-line-strong bg-white px-4 py-3 text-sm leading-6';
 
 function MessageItem({ message }: { message: ChatMessage }) {
   if (message.role === 'user') return <p className={SELF_CLASS}>{message.text}</p>;
   if (message.role === 'system' || message.masked)
-    return <p className={AGENT_CLASS}>{message.text}</p>;
-  const answer = readMessage(message);
-  return (
-    <div className={AGENT_CLASS}>
-      {answer.claims.length > 0 && <p>{answer.claims.map((claim) => claim.text).join('\n')}</p>}
-      {answer.error && <p className="mt-1 text-coral-deep">{errorText(answer.error)}</p>}
-    </div>
-  );
+    return <p className={AGENT_BUBBLE}>{message.text}</p>;
+  return <StoredAnswer message={message} />;
 }

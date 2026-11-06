@@ -1,0 +1,243 @@
+// @vitest-environment jsdom
+import { act, type ReactNode } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ChatMessage } from '@/types/chat';
+import { LiveAnswer, StoredAnswer, SUPERSEDED_TEXT, type LiveProgress } from './ChatAnswer';
+import { GENERAL_LABEL, type ShownClaim } from './chatResponse';
+import { ManualClock } from './chatTransport.testkit';
+import { createTypingQueue, TYPING_MAX_LAG_MS, type TypingQueue } from './chatTyping';
+
+const TAKE = '11111111-1111-4111-8111-111111111111';
+
+let host: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  host.remove();
+  vi.unstubAllGlobals();
+});
+
+const render = (node: ReactNode) =>
+  act(async () => root.render(<MemoryRouter>{node}</MemoryRouter>));
+const buttonByText = (text: string) =>
+  [...host.querySelectorAll('button')].find((b) => b.textContent === text);
+
+const claims = [
+  { kind: 'RECORD', text: '3장 시선이 낮았어요.', evidence_ids: ['e1'], source_ids: [] },
+  { kind: 'GUIDE', text: '첫 낱말만 보고 이어 가 보세요.', evidence_ids: [], source_ids: ['s1'] },
+  { kind: 'GENERAL', text: '숨을 고르고 시작해 보세요.', evidence_ids: [], source_ids: [] },
+  {
+    kind: 'ASSESSMENT',
+    assessment_id: 'a1',
+    text: '말이 빨랐다는 말은 일부 맞아요.',
+    evidence_ids: ['e2'],
+    source_ids: [],
+  },
+].map((c) => ({ assessment_id: null, action_id: null, ...c }));
+
+function storedMessage(over: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    message_id: 'm1',
+    seq: 2,
+    role: 'assistant',
+    text: claims.map((c) => c.text).join('\n'),
+    status: 'DONE',
+    run_id: 'r1',
+    again_of_message_id: null,
+    created_at: '2026-11-06T00:00:00Z',
+    claims,
+    cards: [],
+    evidence: [
+      {
+        evidence_id: 'e1',
+        origin: 'RECORD',
+        take_id: TAKE,
+        take_number: 5,
+        slide_number: 3,
+        value: 0.24,
+      },
+      // 형식이 맞지 않는 Take ID — 링크를 만들지 않습니다
+      {
+        evidence_id: 'e2',
+        origin: 'RECORD',
+        take_id: '../admin',
+        take_number: 4,
+        slide_number: null,
+        value: 180,
+      },
+    ],
+    sources: [{ source_id: 's1', title: '대본 의존 줄이기', quote: '첫 낱말만 보세요.' }],
+    assessments: [
+      {
+        assessment_id: 'a1',
+        quote: '말이 빨랐어',
+        type: 'MEASURED',
+        verdict: 'PARTLY',
+        evidence_ids: ['e2'],
+        source_ids: [],
+        reason: '분당 180자',
+        supersedes: [],
+        superseded_by: 'a9',
+      },
+    ],
+    basis: null,
+    plan: [
+      { step: '최근 Take 비교', status: 'DONE', note: null },
+      { step: '자료 찾기', status: 'SKIPPED', note: null },
+    ],
+    trace: [
+      {
+        seq: 1,
+        tool: 'compare_takes',
+        args_summary: 'Take 4 · 5 비교',
+        result_summary: '3장 시선 둘 다 낮음',
+        ms: 30,
+        outcome: 'OK',
+      },
+    ],
+    masked: false,
+    stale_reasons: [],
+    ...over,
+  } as unknown as ChatMessage;
+}
+
+describe('지난 답 (12-4 F4 · F7 · F13)', () => {
+  it('문장마다 근거 칩 — 내 기록은 형식이 맞는 Take 만 리포트로 잇는다', async () => {
+    await render(<StoredAnswer message={storedMessage()} />);
+    const link = host.querySelector('a')!;
+    expect(link.textContent).toBe('Take 5 · 3장');
+    expect(link.getAttribute('href')).toBe(`/takes/${TAKE}`);
+    expect(host.querySelectorAll('a')).toHaveLength(1);
+    expect(host.textContent).toContain('Take 4');
+  });
+
+  it('자료 칩은 펼치면 인용 · 출처 · 라이선스, 빠진 칸은 "정보 없음"', async () => {
+    await render(<StoredAnswer message={storedMessage()} />);
+    const chip = buttonByText('자료: 대본 의존 줄이기')!;
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => chip.click());
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+    const details = document.getElementById(chip.getAttribute('aria-controls')!)!;
+    expect(details.textContent).toContain('첫 낱말만 보세요.');
+    expect(details.textContent!.match(/정보 없음/g)).toHaveLength(2);
+  });
+
+  it('일반 조언은 칩 없이 글 라벨, 판단은 판정 배지 — 대체된 판단은 흐리게 표시를 붙인다', async () => {
+    await render(<StoredAnswer message={storedMessage()} />);
+    const lines = [...host.querySelectorAll('[data-claim]')];
+    expect(lines[2]!.textContent).toContain(GENERAL_LABEL);
+    expect(lines[2]!.querySelector('ul')).toBeNull();
+    expect(lines[3]!.querySelector('[data-verdict]')!.textContent).toBe('일부 맞음');
+    expect(lines[3]!.textContent).toContain(SUPERSEDED_TEXT);
+    expect(lines[3]!.className).toContain('opacity-60');
+    expect(lines[0]!.textContent).not.toContain(SUPERSEDED_TEXT);
+  });
+
+  it('할 일은 답 위에 표시와 읽는 글로, 확인한 것은 접어 둔다', async () => {
+    await render(<StoredAnswer message={storedMessage()} />);
+    const plan = host.querySelector('ol[aria-label="할 일"]')!;
+    expect(plan.textContent).toBe('☑ 끝: 최근 Take 비교— 건너뜀: 자료 찾기');
+    const trace = host.querySelector('details')!;
+    expect(trace.open).toBe(false);
+    expect(trace.querySelector('summary')!.textContent).toBe('확인한 것');
+    expect(trace.textContent).toContain('Take 4 · 5 비교 → 3장 시선 둘 다 낮음');
+  });
+
+  it('검사에 걸린 답은 걸리기 전 문장만 보이고 안내를 붙인다', async () => {
+    const broken = storedMessage({
+      claims: [claims[0], { ...claims[1], kind: 'NEW_KIND' }] as never,
+    });
+    await render(<StoredAnswer message={broken} />);
+    expect(host.querySelectorAll('[data-claim]')).toHaveLength(1);
+    expect(host.textContent).toContain('답의 근거를 확인하지 못했으니 다시 물어봐 주세요.');
+  });
+});
+
+describe('지금 실행의 답 (12-4 F12)', () => {
+  const shown = (text: string, over: Partial<ShownClaim> = {}): ShownClaim => ({
+    index: 0,
+    kind: 'RECORD',
+    text,
+    chips: [{ type: 'RECORD', key: 'r', takeId: TAKE, takeNumber: 5, slideNumber: 3 }],
+    missing: 0,
+    general: false,
+    assessment: null,
+    actionId: null,
+    masked: false,
+    ...over,
+  });
+  const progress: LiveProgress = {
+    runId: 'r1',
+    conversationId: 'c1',
+    plan: [{ step: '기록 확인', status: 'DOING', note: null }],
+    trace: null,
+    contractError: null,
+    progressDropped: false,
+  };
+
+  let clock: ManualClock;
+  let queue: TypingQueue<ShownClaim>;
+  let announced: string;
+
+  beforeEach(() => {
+    clock = new ManualClock();
+    announced = '';
+    queue = createTypingQueue<ShownClaim>({
+      clock,
+      reducedMotion: () => false,
+      onLineDone: (line) => {
+        announced = line.item.text;
+      },
+    });
+  });
+
+  const renderLive = (p: LiveProgress | null = progress) =>
+    render(<LiveAnswer progress={p} typing={queue} announce={announced} waiting={null} />);
+
+  it('글자 단위로 보이고, 칩은 문장이 다 보인 뒤에 단다', async () => {
+    await renderLive();
+    await act(async () => queue.push([shown('3장 시선이 낮았어요.')]));
+    const line = () => host.querySelector('[data-claim]')!;
+    expect(line().textContent).toBe('');
+
+    await act(async () => clock.advance(100));
+    expect(line().textContent!.length).toBeGreaterThan(0);
+    expect(line().textContent!.length).toBeLessThan('3장 시선이 낮았어요.'.length);
+    expect(host.querySelector('a')).toBeNull();
+
+    await act(async () => clock.advance(TYPING_MAX_LAG_MS));
+    await renderLive();
+    expect(line().textContent).toContain('3장 시선이 낮았어요.');
+    expect(host.querySelector('a')!.textContent).toBe('Take 5 · 3장');
+    // 다 보인 문장 하나만 알립니다 — 효과 글 자체에는 aria-live 가 없습니다
+    expect(host.querySelector('[data-chat-announce]')!.textContent).toBe('3장 시선이 낮았어요.');
+    expect(host.querySelectorAll('[aria-live]')).toHaveLength(1);
+  });
+
+  it('할 일은 문장보다 먼저 보이고, 하는 중 표시를 단다', async () => {
+    await renderLive();
+    expect(host.querySelector('[data-plan-status="DOING"]')!.textContent).toBe(
+      '⟳ 하는 중: 기록 확인',
+    );
+  });
+
+  it('진행이 없으면 답 말풍선을 그리지 않는다', async () => {
+    await renderLive(null);
+    expect(host.querySelector('[data-live-run]')).toBeNull();
+  });
+
+  it('계약 오류 · 빠진 진행 정보는 안내를 붙인다', async () => {
+    await renderLive({ ...progress, contractError: 'UNKNOWN_KIND', progressDropped: true });
+    expect(host.textContent).toContain('답의 근거를 확인하지 못했으니 다시 물어봐 주세요.');
+    expect(host.textContent).toContain('일부 진행 정보를 표시하지 못했어요.');
+  });
+});

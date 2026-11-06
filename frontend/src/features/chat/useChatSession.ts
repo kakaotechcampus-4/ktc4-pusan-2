@@ -5,10 +5,12 @@ import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 import type { ChatMessage, ChatPage } from '@/types/chat';
 import { useChatAvailability, type ChatAvailability } from './chatAvailability';
 import { fetchMessages } from './chatApi';
+import type { LiveProgress } from './ChatAnswer';
 import type { ShownClaim } from './chatResponse';
 import type { ChatRouteInfo } from './chatRoutes';
 import { WHOLE_SCOPE, useChatStore, type ScreenScope } from './chatStore';
 import { createChatTransport, type ChatTransport, type TransportSignal } from './chatTransport';
+import { createTypingQueue, feedProgress, type TypingQueue } from './chatTyping';
 
 /**
  * 대화창 한 세션의 연결 (`docs/ai/features/chat-agent.md` 12-4 F1 · F2 · F3) — 로그인 사용자 하나 · 허용 화면 위에서만 삽니다.
@@ -18,7 +20,8 @@ import { createChatTransport, type ChatTransport, type TransportSignal } from '.
  * - 처음 범위는 연 화면으로 정합니다. Take 화면은 그 Take 를 조회해 피치를 알기 전까지 "범위 확인 중"(null)입니다.
  * - 보낼 때마다 지금 화면 `page`(`{route, pitch_id, take_id, screen}`)를 싣습니다. 화면 상태는 보내는 순간에만 읽습니다.
  * - 메시지 목록은 서버 값이라 TanStack Query 에 두고, 새 실행이 붙거나 끝나면 다시 읽습니다.
- *   실행 중에 받은 문장은 끝날 때까지 여기 두었다가 목록이 다시 읽히면 비웁니다.
+ * - 실행 중에 받은 문장은 글자 효과 큐(`chatTyping`)로 보입니다 — 큐는 지금 실행 하나의 답만 듭니다.
+ *   끝나면(`ended` · `lost`) 남은 글자를 다 보이고, 목록을 다시 읽은 뒤 저장된 답으로 바꿉니다(F12 "final 을 받으면 큐를 비우고 최종 답으로").
  */
 
 export type ChatNotice =
@@ -26,12 +29,6 @@ export type ChatNotice =
   | { kind: 'sendFailed'; code: string }
   | { kind: 'sessionExpired' }
   | { kind: 'criteriaTooLong' };
-
-export interface LiveRun {
-  runId: string;
-  conversationId: string;
-  claims: ShownClaim[];
-}
 
 export const messagesKey = (userId: string, conversationId: string | null) =>
   ['chat', 'messages', userId, conversationId] as const;
@@ -45,11 +42,18 @@ export interface ChatSession {
   scopeFailed: boolean;
   retryScope: () => void;
   messages: ChatMessage[];
-  live: LiveRun | null;
+  /** 지금 실행의 진행 — 보고 있는 대화의 것만 */
+  progress: LiveProgress | null;
+  /** 지금 실행의 문장 큐 */
+  typing: TypingQueue<ShownClaim>;
+  /** 화면 읽기 프로그램에 알릴 마지막 문장 — 다 보일 때마다 하나씩 (L3-37) */
+  announce: string;
   notice: ChatNotice | null;
   /** 보냅니다 — 접수됐거나(미확정 포함) 같은 요청을 다시 확인할 수 있으면 true(입력을 비워도 됨) */
   send: (text: string) => Promise<boolean>;
   retryUnconfirmed: () => void;
+  /** [취소] — 결과는 신호로 옵니다 */
+  cancel: () => void;
 }
 
 export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession {
@@ -61,7 +65,15 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   } = useChatAvailability(userId);
   const transport = useRef<ChatTransport | null>(null);
   const [notice, setNotice] = useState<ChatNotice | null>(null);
-  const [live, setLive] = useState<LiveRun | null>(null);
+  const [progress, setProgress] = useState<LiveProgress | null>(null);
+  const [announce, setAnnounce] = useState('');
+  // 큐는 세션마다 하나. 화면에서 빠질 때 비우기만 하고 닫지 않습니다 — 엄격 모드에서 다시 붙어도 쓰게
+  const [typing] = useState(() =>
+    createTypingQueue<ShownClaim>({ onLineDone: (line) => setAnnounce(line.item.text) }),
+  );
+  /** 큐가 들고 있는 실행 — 신호 처리 안에서 곧바로 견줍니다 */
+  const liveRun = useRef<string | null>(null);
+  useEffect(() => () => typing.reset(), [typing]);
   const conversationId = useChatStore((s) => s.conversationId);
   const runId = useChatStore((s) => s.run?.runId ?? null);
   const open = useChatStore((s) => s.open);
@@ -105,7 +117,32 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       handleSignal(signal, {
         markDisabled,
         setNotice,
-        setLive,
+        live: {
+          take: (signal) => {
+            if (liveRun.current !== signal.runId) {
+              typing.reset();
+              liveRun.current = signal.runId;
+            }
+            feedProgress(typing, signal);
+            setProgress({
+              runId: signal.runId,
+              conversationId: signal.conversationId,
+              plan: signal.plan,
+              trace: signal.trace,
+              contractError: signal.contractError,
+              progressDropped: signal.progressDropped,
+            });
+          },
+          finish: (runId) => {
+            if (liveRun.current === runId) typing.finish();
+          },
+          clear: (runId) => {
+            if (liveRun.current !== runId) return;
+            typing.reset();
+            liveRun.current = null;
+            setProgress(null);
+          },
+        },
         reread: (id, then) =>
           void queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) }).then(then),
       }),
@@ -116,7 +153,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       created.dispose();
       if (transport.current === created) transport.current = null;
     };
-  }, [on, queryClient, userId, markDisabled]);
+  }, [on, queryClient, userId, markDisabled, typing]);
 
   // 새 실행이 붙으면 사용자 말이 저장돼 있으니 목록을 다시 읽습니다
   useEffect(() => {
@@ -166,6 +203,8 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     void current.retryUnconfirmed();
   }, []);
 
+  const cancel = useCallback(() => void transport.current?.cancel(), []);
+
   return {
     availability,
     retryAvailability,
@@ -173,10 +212,13 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     scopeFailed: info.needsTake && take.isError && !take.data,
     retryScope: () => void take.refetch(),
     messages: messages.data?.messages ?? [],
-    live: live && live.conversationId === conversationId ? live : null,
+    progress: progress && progress.conversationId === conversationId ? progress : null,
+    typing,
+    announce,
     notice,
     send,
     retryUnconfirmed,
+    cancel,
   };
 }
 
@@ -190,7 +232,14 @@ function screenScopeOf(info: ChatRouteInfo, takeScope: ScreenScope): ScreenScope
 interface SignalHandlers {
   markDisabled: () => void;
   setNotice: (notice: ChatNotice | null) => void;
-  setLive: (update: (live: LiveRun | null) => LiveRun | null) => void;
+  live: {
+    /** 진행 신호를 큐에 넣습니다 — 다른 실행이면 큐를 비우고 새로 */
+    take: (signal: Extract<TransportSignal, { type: 'progress' }>) => void;
+    /** 남은 글자를 다 보입니다 */
+    finish: (runId: string) => void;
+    /** 저장된 답으로 바꾼 뒤 비웁니다 */
+    clear: (runId: string) => void;
+  };
   /** 그 대화의 메시지 목록을 다시 읽고, 다 읽으면 `then` */
   reread: (conversationId: string, then: () => void) => void;
 }
@@ -199,26 +248,18 @@ interface SignalHandlers {
 function handleSignal(signal: TransportSignal, h: SignalHandlers) {
   switch (signal.type) {
     case 'progress':
-      h.setLive((live) => {
-        const same = live?.runId === signal.runId && !signal.restart;
-        return {
-          runId: signal.runId,
-          conversationId: signal.conversationId,
-          claims: same ? [...live.claims, ...signal.claims] : signal.claims,
-        };
-      });
+      h.live.take(signal);
       return;
     case 'ended':
-      h.reread(signal.conversationId, () =>
-        h.setLive((live) => (live?.runId === signal.runId ? null : live)),
-      );
+      h.live.finish(signal.runId);
+      h.reread(signal.conversationId, () => h.live.clear(signal.runId));
       return;
     case 'lost': {
       // 실행을 더 읽을 수 없으니 저장된 답을 찾으러 지금 대화의 목록을 다시 읽습니다 (L3-21)
       const conversationId = useChatStore.getState().conversationId;
-      const clear = () => h.setLive((live) => (live?.runId === signal.runId ? null : live));
-      if (conversationId) h.reread(conversationId, clear);
-      else clear();
+      h.live.finish(signal.runId);
+      if (conversationId) h.reread(conversationId, () => h.live.clear(signal.runId));
+      else h.live.clear(signal.runId);
       return;
     }
     case 'disabled':
