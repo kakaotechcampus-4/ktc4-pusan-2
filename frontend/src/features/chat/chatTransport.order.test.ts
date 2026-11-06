@@ -288,13 +288,12 @@ describe('실행 조회', () => {
     start({ run: run.fn });
     await transport.send(draft());
     await flush();
-    const { runId, afterSeq } = store().run!;
+    const { runId } = store().run!;
     store().startNewConversation(WHOLE);
     const mark = signals.length;
     run.calls[0]!.answer(runView(runId, conversationOf.get(runId)!, 'DONE', [1, 2]));
     await flush();
     await clock.advance(10_000);
-    expect(afterSeq).toBe(0);
     expect(store().run).toBeNull();
     expect(signals.slice(mark)).toEqual([]);
     expect(run.calls).toHaveLength(1);
@@ -641,6 +640,27 @@ describe('범위 바꾸기', () => {
     list.calls[0]!.answer({
       conversations: [
         { conversation_id: store().conversationId, scope_pitch_id: null, scope_pitch_title: null },
+      ],
+    } as never);
+    await flush();
+    expect(store().scope).toEqual(PITCH);
+  });
+
+  it('끝난 직후 다음 메시지로 새 실행이 붙어도, 앞 실행이 바꾼 범위를 늦은 목록으로 바로 맞춘다 (#957 리뷰)', async () => {
+    const list = line(mockApi.listConversations);
+    start({ listConversations: list.fn });
+    const conversationId = await idleConversation();
+    expect(list.calls).toHaveLength(1);
+    // 목록을 기다리는 사이 다음 질문 — 새 실행이 붙습니다
+    expect(await transport.send(draft('다음 질문'))).toBe('accepted');
+    expect(store().run).not.toBeNull();
+    list.calls[0]!.answer({
+      conversations: [
+        {
+          conversation_id: conversationId,
+          scope_pitch_id: PITCH.pitchId,
+          scope_pitch_title: PITCH.title,
+        },
       ],
     } as never);
     await flush();

@@ -53,6 +53,7 @@ import {
  * 3. 한 번에 하나여야 하거나 뒤 요청이 앞 요청을 대신하면 `slot` 을 씁니다.
  * 4. 응답을 `fate` 로 나눕니다 — `current` 만 신호 · 다시 조회 · 안내를 내고, `stale` · `closed` 는 자기 잠금만 풉니다.
  *    반환값도 같습니다: 지금 화면에 반영되지 않았으면 성공으로 답하지 않습니다('stale' · false).
+ *    예외 — `cancel` 의 `true` 는 "요청을 처리했다" 는 뜻이라 늦은 응답에도 `true` 입니다(결과는 신호로)
  * 5. 응답을 받은 뒤 다른 요청을 더 기다렸으면 반영 전에 `stillCurrent()` 로 다시 봅니다.
  * 6. `chatTransport.order.test.ts` 에 그 요청의 네 칸(늦게 온다 · 두 번 온다 · 순서가 바뀐다 · 그사이 닫힌다)을 더하고,
  *    새 응답 모양이면 `mocks/chat.contract.test.ts` 에 BE 칸을 더합니다.
@@ -231,7 +232,11 @@ export interface ChatTransport {
     decision: ActionDecisionRequest['decision'],
     argsHash: string,
   ) => Promise<DecideResult>;
-  /** [취소] */
+  /**
+   * [취소]. `true` 는 "취소 요청을 처리했다"(보냈고 응답을 받았거나 잃었다)는 뜻이고 **취소됐다는 뜻이 아닙니다** —
+   * 결과는 신호(`ended` · `cancelFailed` · `cancelChecking`)로 옵니다. 늦은 · 닫힌 뒤 응답이어도 `true` 입니다.
+   * `false` 는 보내지 않았음(지켜보는 실행이 없거나 이미 취소 중 · 닫힘)
+   */
   cancel: () => Promise<boolean>;
   /** 범위 칩 — 새 대화는 바로, 있는 대화는 서버에 바꾸기를 요청합니다 */
   changeScope: (scope: ChatScope) => Promise<boolean>;
@@ -721,8 +726,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (disposed) return;
     const ticket = chatTicket();
     if (ticket.conversationId !== conversationId) return;
-    // 범위 칩도 견줍니다 — 응답이 오기 전에 사용자가 칩을 바꿨으면(바꾸기가 이미 끝났어도) 늦은 목록으로 덮지 않습니다
-    serverScope(conversationId, [...DEFAULT_WATCH, 'scope', 'scopeChange'])
+    // 범위 칩도 견줍니다 — 응답이 오기 전에 사용자가 칩을 바꿨으면(바꾸기가 이미 끝났어도) 늦은 목록으로 덮지 않습니다.
+    // 실행은 견주지 않습니다 — 범위는 실행이 아니라 대화의 값이라, 끝난 직후 다음 메시지로 새 실행이 붙어도 앞 실행이
+    // 바꾼 범위(FETCH_PITCH)를 칩에 바로 맞춥니다(#957 리뷰). 실행 중에는 칩이 잠겨 사용자 바꾸기와 겹치지 않습니다
+    serverScope(conversationId, ['generation', 'attempt', 'conversation', 'scope', 'scopeChange'])
       .then(({ fate, scope: server }) => {
         if (fate !== 'current' || !server) return;
         const now = store().scope;

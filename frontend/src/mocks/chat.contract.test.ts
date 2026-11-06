@@ -13,6 +13,8 @@ import { chatPaths } from '@/shared/api/chatPaths';
  * - 오류 코드: `module/chat/exception.py`, 오류 본문: `core/exceptions.py` `{code, message, detail}`
  *
  * BE 가 바뀌면 이 표부터 그 커밋에 맞춰 고치고, 그다음 목 · 타입을 맞춥니다. 시험이 깨지면 목이 BE 와 어긋난 것입니다.
+ * **한계**: 이 표는 FE 쪽 상수라 BE 코드가 바뀌어도 저절로 깨지지 않습니다 — BE 기준 커밋을 올릴 때 사람이 맞춥니다.
+ * #933 이 확정되면 BE 의 OpenAPI 를 파일로 떠 두고 이 표를 거기서 읽는 방식을 BE 와 정할 예정입니다(#957 리뷰).
  * BE 에 아직 없는 기능(기억 · '기억 없이' · 되돌리기)은 여기서 보지 않습니다 — 목에만 `(BE 미구현)` 으로 있습니다.
  */
 const BE = {
@@ -35,6 +37,8 @@ const BE = {
     'stale',
   ],
   ConversationListResponse: ['conversations'],
+  /** 요청 본문 — 모르는 칸은 422(extra="forbid") */
+  CreateConversationRequest: ['pitch_id'],
   MessageAcceptedResponse: ['conversation_id', 'message_id', 'run_id', 'status'],
   RunStatusResponse: [
     'run_id',
@@ -335,22 +339,25 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
   });
 
   /**
-   * 알려진 차이 — BE `CreateConversationRequest` 는 `pitch_id` 만 받고 모르는 칸은 422 입니다(extra="forbid").
-   * FE 는 '기억 없이' 새 대화에 `memory_off: true` 를 실어 보내므로 **지금 BE 에서는 늘 실패합니다**. 목은 (BE 미구현)
-   * 기능이라 받아 줍니다. 그래서 이 시험은 실패하는 것이 정상입니다(`it.fails`).
-   * BE 가 `memory_off` 를 열면 이 시험이 "통과" 해 깨집니다 — 그때 `it` 으로 바꾸고 BE 칸 표에 더합니다.
-   * 그 전까지 화면은 '기억 없이' 토글을 숨기거나 기능 스위치 뒤에 둡니다(10단계)
+   * 목과 BE 의 **알려진 차이** — FE 는 '기억 없이' 새 대화에 `memory_off: true` 를 보내고 목은 (BE 미구현) 기능이라 받지만,
+   * BE `CreateConversationRequest` 는 `pitch_id` 만 받아 **지금 BE 에서는 422** 입니다. 그 전까지 화면은 '기억 없이'
+   * 토글을 두지 않습니다(10단계).
+   * 이 시험은 차이를 기록할 뿐, BE 가 칸을 열었는지 스스로 알지는 못합니다(위 "한계"). BE 기준 커밋을 올리며 BE 표에
+   * `memory_off` 를 더하면 첫 단언이 깨져, 이 차이를 지우고 화면을 열 때라는 것을 알려 줍니다
    */
-  it.fails(
-    "새 대화의 '기억 없이'(memory_off) 는 BE 가 아직 받지 않는다 — 목은 받는다",
-    async () => {
-      await expectError(
-        await call(chatPaths.conversations, 'POST', { pitch_id: null, memory_off: true }),
-        422,
-        'VALIDATION_ERROR',
-      );
-    },
-  );
+  it('알려진 차이: 목은 새 대화의 memory_off 를 받지만 BE 표에는 없다 — 그 밖의 모르는 칸은 목도 BE 처럼 422', async () => {
+    expect(BE.CreateConversationRequest).not.toContain('memory_off');
+    const created = await call(chatPaths.conversations, 'POST', {
+      pitch_id: null,
+      memory_off: true,
+    });
+    expect(created.status).toBe(201);
+    await expectError(
+      await call(chatPaths.conversations, 'POST', { pitch_id: null, unknown: 1 }),
+      422,
+      'VALIDATION_ERROR',
+    );
+  });
 
   it('로그인하지 않으면 401 UNAUTHORIZED', async () => {
     user = null;

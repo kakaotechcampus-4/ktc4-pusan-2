@@ -606,7 +606,15 @@ export const useChatStore = create<ChatState>()((set, get) => {
     },
 
     applyServerScope: (ticket, scope) => {
-      if (get().scopeChange || !isCurrent(ticket)) return;
+      const s = get();
+      // 범위는 대화의 값이라 세대 · 시도 · 대화만 견줍니다 — 그사이 새 실행이 붙어도 받습니다(#957 리뷰)
+      if (
+        s.scopeChange ||
+        ticket.generation !== s.generation ||
+        ticket.attempt !== s.attempt ||
+        ticket.conversationId !== s.conversationId
+      )
+        return;
       set({ scope, scopeFixed: true });
       save();
     },

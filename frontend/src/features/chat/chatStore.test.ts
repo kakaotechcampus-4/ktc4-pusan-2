@@ -135,16 +135,23 @@ describe('열기 · 범위', () => {
     expect(store().scope).toEqual(WHOLE_SCOPE);
   });
 
-  it('서버가 확정한 범위는 지금 실행의 응답일 때만, 사용자가 바꾸는 중이 아닐 때만 반영한다', () => {
+  it('서버가 확정한 범위는 같은 대화의 응답이면 실행이 바뀌어도 받고, 다른 대화 · 사용자가 바꾸는 중이면 받지 않는다 (#957 리뷰)', () => {
     openConversation('conv-1', WHOLE_SCOPE);
     sendAndAccept('run-1', 'conv-1');
     const poll = chatTicket();
     store().applyServerScope(poll, pitchB);
     expect(store().scope).toEqual(pitchB);
 
+    // 범위는 대화의 값 — 그사이 실행이 끝나도(다음 실행이 붙어도) 같은 대화의 응답이면 받습니다
     store().endRun('run-1');
     store().applyServerScope(poll, pitchA);
-    expect(store().scope).toEqual(pitchB);
+    expect(store().scope).toEqual(pitchA);
+
+    // 다른 대화로 옮긴 뒤 온 응답은 받지 않습니다
+    const before = chatTicket();
+    openConversation('conv-2', WHOLE_SCOPE);
+    store().applyServerScope(before, pitchB);
+    expect(store().scope).toEqual(WHOLE_SCOPE);
 
     const change = store().beginScopeChange(WHOLE_SCOPE)!;
     store().applyServerScope(chatTicket(), pitchA);
