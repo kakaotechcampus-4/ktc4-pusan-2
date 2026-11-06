@@ -193,6 +193,15 @@ class ChatRepository:
         )
         return (last or 0) + 1
 
+    def list_claim_events(self, run_id: uuid.UUID) -> list[ChatRunEvent]:
+        return list(
+            self.db.scalars(
+                select(ChatRunEvent)
+                .where(ChatRunEvent.run_id == run_id, ChatRunEvent.event == "claim")
+                .order_by(ChatRunEvent.event_seq)
+            )
+        )
+
     def list_recent_messages(
         self, conversation_id: uuid.UUID, *, before_seq: int | None, limit: int
     ) -> list[ChatMessage]:

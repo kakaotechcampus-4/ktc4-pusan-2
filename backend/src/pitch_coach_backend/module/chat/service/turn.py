@@ -27,11 +27,16 @@ from pitch_coach_backend.module.chat.service.run import (
     claimed,
     digest,
     lock_current,
+    lock_ids,
     lock_or_cancel,
 )
 
 
 class ScopeChangeRejected(Exception):
+    pass
+
+
+class SourceDeleted(Exception):
     pass
 
 
@@ -240,8 +245,14 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
     row = lock_current(db, run)
     if row is None:
         return False
+    try:
+        message = save_claim_message(db, row, "PARTIAL")
+    except SourceDeleted:
+        db.rollback()
+        cancel(db, run)
+        return True
     now = datetime.now(UTC)
-    row.status = "FAILED"
+    row.status = "PARTIAL" if message else "FAILED"
     row.error_code = failure.code
     row.retry_after_s = failure.retry_after_s
     row.finished_at = now
@@ -251,6 +262,42 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
         _add_diagnostics(repo, row, row.turn_calls[-1]["turn_call"], failure.diagnostics, now)
     db.commit()
     return True
+
+
+def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | None:
+    repo = ChatRepository(db)
+    events = repo.list_claim_events(row.id)
+    if not events:
+        return None
+    claims = [event.data["claim"] for event in events]
+    evidence = [item for event in events for item in event.data.get("evidence") or []]
+    sources = [item for event in events for item in event.data.get("sources") or []]
+    assessments = [item for event in events for item in event.data.get("assessments") or []]
+    pitch_ids, take_ids = _answer_sources({"evidence": evidence})
+    if not lock_ids(db, pitch_ids, take_ids):
+        raise SourceDeleted(row.id)
+    conversation = repo.lock_conversation(row.conversation_id)
+    message = ChatMessage(
+        conversation_id=conversation.id,
+        user_id=row.user_id,
+        seq=repo.next_message_seq(conversation.id),
+        role="assistant",
+        text="\n".join(claim["text"] for claim in claims),
+        status=status,
+        run_id=row.id,
+        claims=claims,
+        cards=[],
+        sources=sources,
+        assessments=assessments,
+        plan=row.plan,
+        trace=row.trace,
+        evidence=evidence,
+        usage=row.usage,
+        source_pitch_ids=sorted(pitch_ids),
+        source_take_ids=sorted(take_ids),
+    )
+    repo.add(message)
+    return message
 
 
 def _apply_scope(row: ChatRun, conversation: ChatConversation, data: dict[str, Any]) -> bool:
