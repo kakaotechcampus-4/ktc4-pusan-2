@@ -24,7 +24,7 @@ class TakeStats(BaseModel):
 
 
 class PracticeTimeStats(BaseModel):
-    """연습 시간. 시작 · 끝 시각이 다 있는 Take 만 센다."""
+    """연습 시간. 잰 시간(`duration_sec`)이나 시작 · 끝 시각으로 잴 수 있는 Take 만 센다."""
 
     measured_takes: int
     total_sec: float

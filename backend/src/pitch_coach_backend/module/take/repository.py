@@ -19,6 +19,7 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
+from pitch_coach_backend.module.take.measures import word_text
 from pitch_coach_backend.module.take.states import (
     ANALYZING,
     AWAITING_CONFIRMATION,
@@ -572,11 +573,7 @@ class TakeRepository:
             .where(TakeTranscriptSegment.take_id == take_id)
             .order_by(TakeTranscriptSegment.seq)
         ).all()
-        return [
-            (word.get("punctuated_word") or word["word"], word["start_ms"])
-            for words in segments
-            for word in words
-        ]
+        return [(word_text(word), word["start_ms"]) for words in segments for word in words]
 
     def complete_take(self, take_id: uuid.UUID, review_status: str) -> None:
         # completed_at 은 '가장 늦게 끝난 Take' 의 순서다 (docs/ai/architecture.md 1-3 'Take 상태')

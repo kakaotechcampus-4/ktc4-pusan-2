@@ -33,11 +33,16 @@ from pitch_coach_backend.module.take.entity import (
     Take,
     TakeAIResults,
     TakeMetricSecond,
-    TakeSlideEvent,
     TakeSummary,
     TakeTranscriptSegment,
 )
 from pitch_coach_backend.module.take.repository import last_active_at
+from pitch_coach_backend.module.take.states import (
+    COVERAGE_CANDIDATE_KIND,
+    COVERAGE_KIND,
+    REVIEW,
+    TAKE_RESULT,
+)
 from pitch_coach_backend.module.user.entity import User
 
 # 일별 집계의 날짜 기준. 사용자가 모두 한국에 있다.
@@ -84,25 +89,27 @@ def count_takes_by(
     return {value: count for value, count in db.execute(stmt).all()}
 
 
-def practice_time(db: Session) -> tuple[int, float, float | None, float | None, float | None]:
-    """(잰 Take 수, 합계, 평균, 중앙값, 목표 시간 대비 평균 비율)."""
+def take_breakdowns(db: Session) -> dict[str, dict[str | None, int]]:
+    """Take 수를 상태 · 모드 · 대본 모드 · 끝난 이유별로 센다."""
+    return {
+        "by_status": count_takes_by(db, Take.status),
+        "by_mode": count_takes_by(db, Take.mode),
+        "by_script_mode": count_takes_by(db, Take.script_mode),
+        "by_end_reason": count_takes_by(db, Take.end_reason, ended_only=True),
+    }
+
+
+def practice_time(db: Session) -> dict[str, int | float | None]:
     row = db.execute(
         select(
-            func.count(ELAPSED_SEC),
-            func.coalesce(func.sum(ELAPSED_SEC), 0),
-            func.avg(ELAPSED_SEC),
-            func.percentile_cont(0.5).within_group(ELAPSED_SEC),
-            func.avg(ELAPSED_SEC / _GOAL_SEC),
+            func.count(ELAPSED_SEC).label("measured_takes"),
+            func.coalesce(func.sum(ELAPSED_SEC), 0).label("total_sec"),
+            func.avg(ELAPSED_SEC).label("avg_sec"),
+            func.percentile_cont(0.5).within_group(ELAPSED_SEC).label("median_sec"),
+            func.avg(ELAPSED_SEC / _GOAL_SEC).label("avg_goal_ratio"),
         )
     ).one()
-    count, total, avg, median, ratio = row
-    return (
-        int(count),
-        float(total),
-        _float_or_none(avg),
-        _float_or_none(median),
-        _float_or_none(ratio),
-    )
+    return dict(row._mapping)
 
 
 def daily_signups(db: Session, since: datetime) -> dict[date, int]:
@@ -220,7 +227,7 @@ def live_seconds(
     return _fetch(db, stmt.order_by(TakeMetricSecond.t_ms).limit(limit))
 
 
-AI_RESULT_KINDS = ("TAKE_RESULT", "SCRIPT_COVERAGE", "SCRIPT_COVERAGE_PENDING", "REVIEW")
+AI_RESULT_KINDS = (TAKE_RESULT, COVERAGE_KIND, COVERAGE_CANDIDATE_KIND, REVIEW)
 
 
 def ai_results(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -293,15 +300,6 @@ def transcript_words(db: Session, take_id: uuid.UUID, limit: int) -> list[dict[s
         .where(TakeTranscriptSegment.take_id == take_id)
         .order_by(TakeTranscriptSegment.seq)
         .limit(limit)
-    )
-    return _fetch(db, stmt)
-
-
-def slide_events(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
-    stmt = (
-        select(TakeSlideEvent.started_ms, TakeSlideEvent.slide_number)
-        .where(TakeSlideEvent.take_id == take_id)
-        .order_by(TakeSlideEvent.started_ms)
     )
     return _fetch(db, stmt)
 
@@ -438,6 +436,11 @@ def _fetch(db: Session, stmt: Select[Any]) -> list[dict[str, Any]]:
     return [dict(row) for row in db.execute(stmt).mappings()]
 
 
+def _fetch_page(db: Session, stmt: Select[Any], limit: int, offset: int) -> list[dict[str, Any]]:
+    """한 행 더 읽는다. `service._page` 가 이것으로 다음 쪽이 있는지 안다."""
+    return _fetch(db, stmt.offset(offset).limit(limit + 1))
+
+
 def _count_total_and_since(
     db: Session, created_at: InstrumentedAttribute[datetime], since: datetime
 ) -> tuple[int, int]:
@@ -451,11 +454,6 @@ def _count_per_day(
     day = func.date(func.timezone(DAY_TIMEZONE, created_at))
     rows = db.execute(select(day, func.count()).where(created_at >= since).group_by(day)).all()
     return {value: count for value, count in rows}
-
-
-def _float_or_none(value: Any) -> float | None:
-    # AVG · percentile 은 Decimal 을 돌려주고 대상이 없으면 NULL 이다
-    return None if value is None else float(value)
 
 
 def take_survey_summary(db: Session) -> list[dict[str, Any]]:
@@ -490,18 +488,14 @@ def list_take_surveys(db: Session, *, limit: int, offset: int) -> list[dict[str,
         .outerjoin(Take, Take.id == TakeSurvey.take_id)
         .outerjoin(Pitch, Pitch.id == Take.pitch_id)
     )
-    return _fetch(
-        db,
-        stmt.order_by(TakeSurvey.created_at.desc(), TakeSurvey.id.desc())
-        .offset(offset)
-        .limit(limit + 1),
+    return _fetch_page(
+        db, stmt.order_by(TakeSurvey.created_at.desc(), TakeSurvey.id.desc()), limit, offset
     )
 
 
 def list_suggestions(
     db: Session,
     *,
-    source: str | None,
     limit: int,
     offset: int,
     category: str | None = None,
@@ -515,15 +509,10 @@ def list_suggestions(
         UserSuggestion.category,
         UserSuggestion.created_at,
     )
-    if source is not None:
-        stmt = stmt.where(UserSuggestion.source == source)
     if category is not None:
         stmt = stmt.where(UserSuggestion.category == category)
     if user_id is not None:
         stmt = stmt.where(UserSuggestion.user_id == user_id)
-    return _fetch(
-        db,
-        stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc())
-        .offset(offset)
-        .limit(limit + 1),
+    return _fetch_page(
+        db, stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc()), limit, offset
     )
