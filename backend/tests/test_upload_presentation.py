@@ -1,5 +1,4 @@
 import threading
-import time
 import uuid
 from collections.abc import Callable
 from datetime import date
@@ -109,29 +108,38 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
 ) -> None:
     """같은 pitch 에 발표자료 둘이 동시에 와도 둘 다 성공하고 버전·S3 키가 갈린다.
 
-    잠금이 없으면 둘 다 max(version)+1 = 1 을 받아 같은 S3 키(.../1.pdf)에 올리고(앞 파일이
-    덮어쓰임), 두 번째 INSERT 가 unique 위반(500)이 된다. 트랜잭션 두 개가 실제로 겹쳐야 해서
-    테스트 세션(savepoint) 대신 진짜 세션 둘을 쓰고, 만든 데이터는 끝에 지운다.
+    S3 업로드는 잠그기 전에 끝나므로 첫 요청을 잠금 안(조회 URL 만들기)에서 멈춘다. 잠금이 없으면
+    둘 다 max(version)+1 = 1 을 받아 두 번째 INSERT 가 unique 위반(500)이 된다. 트랜잭션 두 개가
+    실제로 겹쳐야 해서 테스트 세션(savepoint) 대신 진짜 세션 둘을 쓰고, 만든 데이터는 끝에 지운다.
     """
     from pitch_coach_backend.module.pitch.entity import Pitch
     from pitch_coach_backend.module.user.entity import User
 
-    first_request_uploading = threading.Event()
+    first_request_locked = threading.Event()
+    second_request_uploaded = threading.Event()
+    second_request_locked = threading.Event()
     uploaded_keys: list[str] = []
+    entered_together: list[bool] = []
 
-    def slow_upload(file: UploadFile, key: str, content_type: str | None = None) -> str:
-        # 첫 요청이 S3 에 올리는 중(잠금을 쥔 채)에 두 번째 요청이 들어오게 한다
+    def record_upload(file: UploadFile, key: str, content_type: str | None = None) -> str:
         uploaded_keys.append(key)
-        if not first_request_uploading.is_set():
-            first_request_uploading.set()
-            time.sleep(0.3)
+        if first_request_locked.is_set():
+            second_request_uploaded.set()
         return key
 
-    monkeypatch.setattr(presentation_service, "upload", slow_upload)
-    monkeypatch.setattr(presentation_service, "upload_bytes", lambda data, key, content_type: key)
-    monkeypatch.setattr(
-        presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}"
-    )
+    def presign_in_lock(key: str) -> str:
+        if not first_request_locked.is_set():
+            # 첫 요청이 잠금을 쥔 채로 두 번째 요청이 잠금 앞까지 오기를 기다린다. 잠금이 있으면
+            # 두 번째 요청은 여기에 오지 못하고 대기 시간이 끝난다
+            first_request_locked.set()
+            assert second_request_uploaded.wait(5)
+            entered_together.append(second_request_locked.wait(0.3))
+        else:
+            second_request_locked.set()
+        return f"https://fake/{key}"
+
+    monkeypatch.setattr(presentation_service, "upload", record_upload)
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", presign_in_lock)
 
     with Session(engine) as setup:
         user = User(email=f"{uuid.uuid4()}@example.com", name="동시 업로드")
@@ -157,7 +165,7 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
     try:
         first = threading.Thread(target=upload, args=("a",))
         first.start()
-        assert first_request_uploading.wait(5)
+        assert first_request_locked.wait(5)
         second = threading.Thread(target=upload, args=("b",))
         second.start()
         first.join(10)
@@ -165,6 +173,7 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
 
         # 잠금이 없으면 한쪽이 IntegrityError(unique 위반) 다
         assert not any(isinstance(v, Exception) for v in results.values()), results
+        assert entered_together == [False]
         assert sorted(uploaded_keys) == sorted(
             f"pitches/{target}/presentations/{r.presentation_version_id}.pdf"
             for r in results.values()
