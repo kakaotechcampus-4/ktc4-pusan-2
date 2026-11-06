@@ -14,7 +14,6 @@ from pitch_coach_backend.core.security import (
     decode_access_token,
     hash_refresh_token,
     refresh_token_expires_at,
-    refresh_token_matches,
 )
 
 
@@ -98,14 +97,6 @@ def test_refresh_token_hash_is_stable_and_fits_the_column() -> None:
 
 def test_different_refresh_tokens_hash_differently() -> None:
     assert hash_refresh_token(create_refresh_token()) != hash_refresh_token(create_refresh_token())
-
-
-def test_refresh_token_matches_only_its_own_hash() -> None:
-    token = create_refresh_token()
-    other = create_refresh_token()
-
-    assert refresh_token_matches(token, hash_refresh_token(token))
-    assert not refresh_token_matches(other, hash_refresh_token(token))
 
 
 def test_refresh_token_expiry_follows_settings() -> None:

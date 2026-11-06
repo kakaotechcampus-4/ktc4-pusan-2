@@ -8,6 +8,8 @@ from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 SuggestionSource = Literal["MY_PAGE"]
+# DB 제약(`ck_user_suggestions_content`)과 같은 값이다
+MAX_CONTENT_CHARS = 2000
 
 
 def normalize_suggestion(value: str | None) -> str | None:
@@ -15,8 +17,8 @@ def normalize_suggestion(value: str | None) -> str | None:
         return None
     reject_nul(value)
     value = value.strip()
-    if len(value) > 2000:
-        raise ValueError("의견은 2000자까지 보낼 수 있습니다.")
+    if len(value) > MAX_CONTENT_CHARS:
+        raise ValueError(f"의견은 {MAX_CONTENT_CHARS}자까지 보낼 수 있습니다.")
     return value or None
 
 
