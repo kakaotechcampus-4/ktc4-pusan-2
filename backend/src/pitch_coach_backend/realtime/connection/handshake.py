@@ -92,10 +92,9 @@ def origin_allowed(origin: str | None) -> bool:
         return True
     try:
         given = urlsplit(origin)
-        allowed = urlsplit(settings.frontend_base_url)
     except ValueError:
         return False
-    return (given.scheme, given.netloc) == (allowed.scheme, allowed.netloc) and bool(given.netloc)
+    return bool(given.netloc) and f"{given.scheme}://{given.netloc}" == settings.frontend_origin
 
 
 class _PendingAuth:

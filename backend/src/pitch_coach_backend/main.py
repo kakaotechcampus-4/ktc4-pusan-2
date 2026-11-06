@@ -150,7 +150,7 @@ register_exception_handlers(app)
 # 그래서 프론트 주소를 명시한다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_base_url.rstrip("/")],
+    allow_origins=[settings.frontend_origin],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", CSRF_HEADER_NAME],
