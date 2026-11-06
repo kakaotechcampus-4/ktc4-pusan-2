@@ -113,6 +113,7 @@ class ActionResultDTO(_AgentDTO):
     status: ActionStatus
     data: dict[str, Any] | None
     error: AgentErrorDTO | None
+    executed_args_hash: str | None = None
 
 
 class AgentResumeDTO(_AgentDTO):
