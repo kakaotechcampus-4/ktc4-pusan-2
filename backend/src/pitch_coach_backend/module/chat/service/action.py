@@ -11,7 +11,7 @@ from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.fetch import fetch_pitch, fetch_take
 from pitch_coach_backend.module.chat.service.goal import save_goal
-from pitch_coach_backend.module.chat.service.result import close_action, failed
+from pitch_coach_backend.module.chat.service.result import UNCONFIRMED, close_action, failed
 from pitch_coach_backend.module.chat.service.run import (
     ClaimedRun,
     RunLost,
@@ -38,9 +38,7 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
             {key: value for key, value in saved.result.items() if key != "review_revision"}
         )
     if _invalid(action):
-        return close_action(
-            db, row, action, failed(action, "VALIDATION_ERROR", "실행할 수 없는 행동이에요.")
-        )
+        return close_action(db, row, action, failed(action, "INVALID_ACTION", UNCONFIRMED))
     saved.status = "RUNNING"
     db.commit()
     return None
@@ -53,9 +51,7 @@ def hold_for_approval(
     if row is None:
         raise RunLost(run.run_id)
     if _invalid(action):
-        return close_action(
-            db, row, action, failed(action, "VALIDATION_ERROR", "실행할 수 없는 행동이에요.")
-        )
+        return close_action(db, row, action, failed(action, "INVALID_ACTION", UNCONFIRMED))
     row.status = "WAITING_APPROVAL"
     row.approval_started_at = datetime.now(UTC)
     row.row_revision += 1

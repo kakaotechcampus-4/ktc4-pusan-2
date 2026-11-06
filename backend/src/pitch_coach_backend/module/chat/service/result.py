@@ -7,6 +7,8 @@ from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import digest
 
+UNCONFIRMED = "작업 완료를 확인하지 못했어요."
+
 
 def executed_args_hash(action: dict[str, Any]) -> str | None:
     if action.get("autonomy") != "ASK":
