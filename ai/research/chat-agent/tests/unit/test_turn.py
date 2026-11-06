@@ -180,6 +180,133 @@ def test_out_of_scope_is_refused_after_plan() -> None:
     assert len(llm.calls) == 1
 
 
+@pytest.mark.parametrize(
+    ("reason", "text"),
+    [
+        ("CONTENT_COACHING", templates.SystemText.CONTENT_COACHING),
+        ("QA_PRACTICE", templates.SystemText.QA_PRACTICE),
+        ("PRACTICE_PLAN", templates.SystemText.PRACTICE_PLAN),
+        ("OTHER", templates.SystemText.OUT_OF_SCOPE),
+        (None, templates.SystemText.OUT_OF_SCOPE),
+        ("NOT_A_REASON", templates.SystemText.OUT_OF_SCOPE),
+    ],
+)
+def test_out_of_scope_plan_refuses_with_fixed_sentence_per_reason(
+    reason: str | None, text: templates.SystemText
+) -> None:
+    llm = F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=[], scope_reason=reason)])
+    _, _, data = F.run_turn(F.request(user_message="3장 대본 고쳐 줘"), llm)
+    fd = final_ok(data)
+    assert fd.status == "REFUSED"
+    assert fd.message is not None and fd.message.text == text.value
+    assert [c.kind for c in fd.message.claims] == ["SYSTEM"]
+    assert len(llm.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("reason", "text"),
+    [
+        ("QA_PRACTICE", templates.SystemText.QA_PRACTICE),
+        ("PRACTICE_PLAN", templates.SystemText.PRACTICE_PLAN),
+        (None, templates.SystemText.OUT_OF_SCOPE),
+    ],
+)
+def test_out_of_scope_answer_route_refuses_with_fixed_sentence_per_reason(
+    reason: str | None, text: templates.SystemText
+) -> None:
+    llm = F.FakeLlm(
+        [F.plan(route="ANSWER_DIRECT", steps=[])],
+        answers=[F.answer([], route="OUT_OF_SCOPE", scope_reason=reason)],
+    )
+    _, _, data = F.run_turn(F.request(user_message="예상 질문 만들어 줘"), llm)
+    fd = final_ok(data)
+    assert fd.status == "REFUSED"
+    assert fd.message is not None and fd.message.text == text.value
+
+
+def test_mixed_request_appends_fixed_scope_sentences_and_stays_done() -> None:
+    """섞인 요청: 범위 안 답 뒤에 이유별 고정 문장(중복 · 모르는 값 · 4개째는 버림)을 덧붙이고 DONE 이다."""
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    notes = [
+        "CONTENT_COACHING",
+        "CONTENT_COACHING",
+        "NOPE",
+        "QA_PRACTICE",
+        "PRACTICE_PLAN",
+        "OTHER",
+    ]
+    base = compare_answer()
+
+    def with_notes(r: Any) -> Any:
+        res = base(r)
+        res.parsed["scope_notes"] = notes  # type: ignore[index]
+        return res
+
+    fd = final_ok(F.run_turn(req, F.FakeLlm(basic_script(with_notes)))[2])
+    assert fd.status == "DONE"
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    st = templates.SystemText
+    assert texts[-3:] == [st.CONTENT_COACHING.value, st.QA_PRACTICE.value, st.PRACTICE_PLAN.value]
+    assert "3장 청중 시선: Take 4의 31% → Take 5의 28%, 나빠졌어요." in fd.message.text  # type: ignore[union-attr]
+    assert [c.kind for c in fd.message.claims][-3:] == ["SYSTEM"] * 3  # type: ignore[union-attr]
+
+
+def test_scope_rule_drops_model_sentence_without_fix_and_logs_check() -> None:
+    """범위 밖 낱말이 든 모델 문장은 고치기에 보내지 않고 버린다. 고치기 호출이 없고 진단 기록에 SCOPE_RULE 이 남는다."""
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    bad = F.claim(
+        "RECORD", "Take 5의 3장 청중 시선 비율은 28%예요. 이렇게 고쳐 쓰세요.", evidence_ids=[]
+    )
+
+    def make(r: Any) -> Any:
+        ro = roles(r)
+        bad["evidence_ids"] = [ro["current"]]
+        return compare_answer(bad)(r)
+
+    # 고치기 응답을 하나 준비해 두고, 쓰이지 않았는지(남은 응답 수)로 확인한다
+    llm = F.FakeLlm(
+        [*basic_script(make)], fixes=[F.fix({3: "Take 5의 3장 청중 시선 비율은 28%예요."})]
+    )
+    fd = final_ok(F.run_turn(req, llm)[2])
+    assert fd.status == "DONE"
+    assert all("이렇게 고쳐" not in c.text for c in fd.message.claims)  # type: ignore[union-attr]
+    assert not [s for s in fd.diagnostics.steps if s.kind == "MODEL" and s.code == "FIX"]  # type: ignore[union-attr]
+    steps = [s for s in fd.diagnostics.steps if s.kind == "CHECK" and s.code == "SCOPE_RULE"]  # type: ignore[union-attr]
+    assert len(steps) == 1 and steps[0].detail.result == "DROPPED"
+
+
+def test_check_diagnostics_use_original_sentence_numbers_after_fix_drops_earlier_sentence() -> None:
+    """앞 문장이 고치기에서 버려져 번호가 밀려도, SCOPE_RULE 로 버린 문장 · 고친 뒤에도 실패한 문장의 CHECK 가 모두 남는다."""
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    s3 = F.claim("RECORD", "Take 5의 3장 청중 시선 비율은 77%예요.", evidence_ids=[])
+    s4 = F.claim(
+        "RECORD", "Take 5의 3장 청중 시선 비율은 28%예요. 이렇게 고쳐 쓰세요.", evidence_ids=[]
+    )
+    s5 = F.claim("RECORD", "Take 5의 3장 청중 시선 비율은 66%예요.", evidence_ids=[])
+
+    def make(r: Any) -> Any:
+        cur = roles(r)["current"]
+        for c in (s3, s4, s5):
+            c["evidence_ids"] = [cur]
+        return compare_answer(s3, s4, s5)(r)
+
+    llm = F.FakeLlm(
+        [*basic_script(make)],
+        fixes=[F.fix({3: None, 5: "Take 5의 3장 청중 시선 비율은 55%예요."})],
+    )
+    fd = final_ok(F.run_turn(req, llm)[2])
+    steps = [s for s in fd.diagnostics.steps if s.kind == "CHECK" and s.code != "SUMMARY"]  # type: ignore[union-attr]
+    dropped = sorted(
+        s.detail.claim_index
+        for s in steps
+        if s.detail.result == "DROPPED" and s.detail.round in (0, 1)
+    )
+    assert 4 in dropped  # SCOPE_RULE 로 처음에 버린 문장
+    assert [s.detail.claim_index for s in steps if s.detail.round == 1] == [
+        5
+    ]  # 고친 뒤에도 실패한 문장, 원래 번호
+
+
 def test_plan_with_unbacked_number_falls_back_to_default_plan() -> None:
     bad_plan = F.plan(steps=["Take 5 시선 28% 확인", "답 쓰기"], assessments=[change_draft()])
     req = F.with_loaded(F.request(user_message=MSG), "t-4")

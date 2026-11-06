@@ -593,7 +593,6 @@ class SignedState(BaseModel):
 
 
 ActionType = Literal["FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"]
-P1ActionType = Literal["SET_CRITERIA", "SET_TIME_LIMIT", "PREVIEW_CRITERIA"]
 
 
 class ErrorDetail(BaseModel):
@@ -771,6 +770,7 @@ CHECK_IDS = (
     "AUTHORIZATION",
     "ACTION_ARGS",
     "FIX_NEW_CONTENT",
+    "SCOPE_RULE",
 )
 LIMIT_CODES = (
     "MODEL_CALLS",
@@ -801,9 +801,6 @@ DIAG_CODES: dict[str, tuple[str, ...]] = {
         "REASSESS",
         "SAVE_GOAL",
         "START_PRACTICE",
-        "SET_CRITERIA",
-        "SET_TIME_LIMIT",
-        "PREVIEW_CRITERIA",
     ),
     "LIMIT": LIMIT_CODES,
 }

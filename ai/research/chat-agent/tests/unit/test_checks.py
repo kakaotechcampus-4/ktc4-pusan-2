@@ -250,6 +250,84 @@ def test_fm_L1_36_system_text_only_enum_values():
     assert ids_of(f) == [CheckId.SYSTEM_TEXT]
 
 
+def test_scope_rule_catches_out_of_scope_words_in_model_sentences():
+    r = reg()
+    e = rec(r, 0.28)
+    for text in (
+        "3장 청중 시선 비율은 28%예요. 대본 3장은 이렇게 고쳐 보세요.",
+        "3장 청중 시선 비율은 28%예요. 예상 질문을 먼저 준비해 보세요.",
+        "3장 청중 시선 비율은 28%예요. 연습 계획을 주 단위로 세워 보세요.",
+    ):
+        f = run([claim(text, e.evidence_id)], r)
+        assert CheckId.SCOPE_RULE in ids_of(f), text
+
+
+def test_scope_rule_catches_reworded_edit_suggestions():
+    """낱말 목록에 없는 돌려 말한 수정안도 대상 낱말 뒤 같은 절에 고치라는 동사가 있으면 건다."""
+    r = reg()
+    e = rec(r, 0.28)
+    for text in (
+        "평가 기준에는 명료성을 넣으세요.",
+        "대본 3장 첫 문장을 짧게 바꿔 보세요.",
+        "제한 시간을 7분으로 정하세요.",
+        "슬라이드에 그림을 추가하세요.",
+        "대본에서 덜 중요한 부분을 빼세요.",
+        "대본을 보는 시간을 줄이세요 그리고 첫 문장을 바꾸세요.",
+        "평가 기준 항목을 정하세요.",
+    ):
+        f = run([claim("3장 청중 시선 비율은 28%예요. " + text, e.evidence_id)], r)
+        assert CheckId.SCOPE_RULE in ids_of(f), text
+
+
+def test_scope_rule_edit_rule_lets_record_and_practice_advice_pass():
+    r = reg()
+    e = rec(r, 0.28)
+    for text in (
+        "대본을 덜 보고 말해 보세요.",
+        "대본 의존이 높았어요.",
+        "평가 기준의 숫자 목표는 280자예요.",
+        "제한 시간 안에 끝났어요.",
+        "다음 Take에서 대본을 보는 시간을 줄여 보세요.",
+        "대본을 보는 시간을 줄이세요.",
+        "슬라이드를 넘기는 속도를 줄이세요.",
+        "제한 시간 안에 말하는 속도를 줄이세요.",
+        "대본을 보는 시간을 줄여 보세요.",
+        "대본은 그대로 두세요, 말하기를 바꿔 보세요.",  # 절이 달라 대상과 동사가 만나지 않는다
+    ):
+        f = run([claim("3장 청중 시선 비율은 28%예요. " + text, e.evidence_id)], r)
+        assert CheckId.SCOPE_RULE not in ids_of(f), text
+
+
+def test_scope_rule_applies_inside_guide_quotes():
+    """자료에 있는 문장을 그대로 인용해도 범위 밖 내용이면 문장을 버린다."""
+    texts = {"g1": "발표 전에 예상 질문 목록을 만드세요."}
+    g = Claim(
+        kind="GUIDE", text="자료에는 '예상 질문 목록을 만드세요'라고 나와요", source_ids=["g1"]
+    )
+    assert CheckId.SCOPE_RULE in ids_of(run([g], guide_texts=texts))
+    texts2 = {"g2": "평가 기준에 명료성을 넣으세요."}
+    g2 = Claim(kind="GUIDE", text="'평가 기준에 명료성을 넣으세요'라고 해요", source_ids=["g2"])
+    assert CheckId.SCOPE_RULE in ids_of(run([g2], guide_texts=texts2))
+
+
+def test_scope_rule_lets_normal_record_sentences_pass():
+    r = reg()
+    e = rec(r, 0.28)
+    for text in (
+        "3장 청중 시선 비율은 28%예요.",
+        "대본 의존이 높았어요. 3장 청중 시선 비율은 28%예요.",
+        "대본을 본 시간이 길었어요. 3장 청중 시선 비율은 28%예요.",
+    ):
+        f = run([claim(text, e.evidence_id)], r)
+        assert CheckId.SCOPE_RULE not in ids_of(f), text
+
+
+def test_scope_rule_skips_system_sentences():
+    """고정 문장(예: 연습 계획 거절)은 코드 문장이라 범위 밖 낱말 검사를 받지 않는다."""
+    assert run([Claim(kind="SYSTEM", text=SystemText.PRACTICE_PLAN.value)]) == []
+    assert run([Claim(kind="SYSTEM", text=SystemText.QA_PRACTICE.value)]) == []
+
+
 def test_fm_L1_36_causal_claim_needs_approved_guide_source():
     r = reg()
     e = rec(r, 0.28)

@@ -162,6 +162,8 @@ class Loop:
         self.cfg = deps.cfg
         self.st = state
         self.original = original_message
+        #: 계획 단계에서 모델이 고른 범위 밖 이유(route 가 OUT_OF_SCOPE 일 때만, 1-3). 한 호출 안에서만 쓰고 저장하지 않는다
+        self.scope_reason: str | None = None
         self.counters = counters
         self.budget = Budget.start(self.cfg, counters, deps.monotonic)
         self.diag = diag
@@ -428,7 +430,7 @@ class Loop:
 
     # ── 1. 계획 ─────────────────────────────────────────────────────
     def plan_phase(self) -> str:
-        """계획 · 판단 초안. 돌려주는 값: route(RESEARCH · ANSWER_DIRECT · OUT_OF_SCOPE)."""
+        """계획 · 판단 초안. 돌려주는 값: route(RESEARCH · ANSWER_DIRECT · OUT_OF_SCOPE). OUT_OF_SCOPE 면 `scope_reason`도 남는다."""
         msgs = [self._system(prompts.PLAN), prompts.data_message(self.data_block())]
         res = self._call("RESEARCH", msgs, schema=prompts.PLAN_SCHEMA)
         if not isinstance(res, LlmResult) or res.parsed is None:
@@ -440,6 +442,8 @@ class Loop:
             if parsed.get("route") in ("RESEARCH", "ANSWER_DIRECT", "OUT_OF_SCOPE")
             else "RESEARCH"
         )
+        if route == "OUT_OF_SCOPE":
+            self.scope_reason = parsed.get("scope_reason")
         drafts = self._parse_drafts(parsed.get("assessments") or [])
         valid, problems = clm.split_check(self.original or "", drafts, self.cfg)
         plan_ok = self._plan_valid(parsed.get("plan") or [], allow_empty=route != "RESEARCH")

@@ -397,3 +397,27 @@ def test_diag_step_code_allowlist_and_reduced_tool_detail() -> None:
     # 줄이기 ①에서 TOOL detail 을 비워도 TOOL 로 읽힌다
     reduced = s.DiagStep.model_validate({**tool, "detail": {}})
     assert isinstance(reduced.detail, s.ToolDetail)
+
+
+@pytest.mark.parametrize("removed", ["SET_CRITERIA", "SET_TIME_LIMIT", "PREVIEW_CRITERIA"])
+def test_removed_p1_action_types_are_rejected(removed: str) -> None:
+    """사용자가 입력한 내용은 코칭하지 않으므로 P1 행동(평가 기준 · 제한 시간)은 계약에서 없앴다(1-3 · 5-8)."""
+    from pydantic import TypeAdapter
+
+    with pytest.raises(ValidationError):
+        TypeAdapter(s.ActionType).validate_python(removed)
+    assert not hasattr(s, "P1ActionType")
+    step = {"seq": 1, "kind": "ACTION", "code": removed, "start_ms": 0, "detail": {}}
+    with pytest.raises(ValidationError):
+        s.DiagStep.model_validate(step)
+
+
+def test_scope_rule_is_a_check_id_in_diagnostics() -> None:
+    step = {
+        "seq": 1,
+        "kind": "CHECK",
+        "code": "SCOPE_RULE",
+        "start_ms": 0,
+        "detail": {"claim_index": 0, "claim_kind": "RECORD", "round": 0, "result": "DROPPED"},
+    }
+    assert s.DiagStep.model_validate(step).code == "SCOPE_RULE"
