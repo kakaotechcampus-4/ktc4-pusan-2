@@ -267,6 +267,8 @@ cd web && npm run dev                                  # 브라우저 데모 htt
 
 ### 테스트
 
+- macOS · Linux에서는 `npm run smoke`를 처음 돌리기 전에, 이 폴더(`ai/research/gaze-tracking`)에서 `uv run python tools/make_y4m.py`로 가짜 카메라 영상(`web/.cache/static_face.y4m`)을 한 번 만듭니다. smoke는 이 파일이 없으면 Windows 경로의 Python(`.venv/Scripts/python.exe`)으로 만들려 하고, 그것이 없으면 `python`을 부르는데 macOS에는 보통 `python` 명령이 없습니다. Chrome은 `/Applications/Google Chrome.app`에 설치돼 있으면 찾습니다.
+
 ```bash
 uv run python -m pytest                    # 기준 구현(lab)
 # 서버 판정 모듈은 ai/service 에서: uv run python -m pytest tests/unit/gaze
@@ -279,8 +281,6 @@ npm run smoke                              # 실제 브라우저 (Chrome. CHROME
 npm run smoke:prod                         # 운영처럼 격리 헤더 없이
 cd ..
 ```
-
-- macOS · Linux에서는 `npm run smoke`를 처음 돌리기 전에, 이 폴더(`ai/research/gaze-tracking`)에서 `uv run python tools/make_y4m.py`로 가짜 카메라 영상(`web/.cache/static_face.y4m`)을 한 번 만듭니다. smoke는 이 파일이 없으면 Windows 경로의 Python(`.venv/Scripts/python.exe`)으로 만들려 하고, 그것이 없으면 `python`을 부르는데 macOS에는 보통 `python` 명령이 없습니다. Chrome은 `/Applications/Google Chrome.app`에 설치돼 있으면 찾습니다.
 
 ### 생성 파일 · 평가
 

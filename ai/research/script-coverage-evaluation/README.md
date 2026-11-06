@@ -426,6 +426,10 @@ cp ../../archive/workspaces/jewon-kim/script-coverage-evaluation/v1/local/output
 ```bash
 # PowerShell
 $env:OPENAI_BASE_URL = "http://127.0.0.1:9"; $env:OPENAI_API_KEY = "dummy"; $env:OPENAI_MODEL = "openai/gpt-5.6-luna"
+uv run python experiments/01_build_rubrics.py
+```
+
+```bash
 # macOS · Linux (zsh · bash). 끝나면 unset OPENAI_BASE_URL OPENAI_API_KEY OPENAI_MODEL
 export OPENAI_BASE_URL="http://127.0.0.1:9" OPENAI_API_KEY="dummy" OPENAI_MODEL="openai/gpt-5.6-luna"
 uv run python experiments/01_build_rubrics.py
