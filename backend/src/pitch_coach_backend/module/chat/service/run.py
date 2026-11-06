@@ -1,9 +1,11 @@
 import hashlib
 import json
+import os
+import socket
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -14,6 +16,8 @@ from pitch_coach_backend.module.chat.entity import ChatRun, ChatRunLog
 from pitch_coach_backend.module.chat.repository import ChatRepository
 
 SEOUL = ZoneInfo("Asia/Seoul")
+OWNER = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+LEASE = timedelta(seconds=30)
 
 
 class RunLost(Exception):
@@ -46,9 +50,21 @@ def claim(db: Session, run_id: uuid.UUID) -> ClaimedRun | None:
     if row is None:
         return None
     row.status = "RUNNING"
+    take_lease(row)
     row.row_revision += 1
     db.commit()
     return claimed(row)
+
+
+def take_lease(row: ChatRun) -> None:
+    row.lease_owner = OWNER
+    row.lease_until = datetime.now(UTC) + LEASE
+
+
+def renew_lease(db: Session, run_id: uuid.UUID) -> bool:
+    renewed = ChatRepository(db).renew_run_lease(run_id, OWNER, datetime.now(UTC) + LEASE)
+    db.commit()
+    return renewed
 
 
 def lock_current(db: Session, run: ClaimedRun) -> ChatRun | None:

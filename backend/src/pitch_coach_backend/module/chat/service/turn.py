@@ -2,12 +2,12 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal
-from pitch_coach_backend.module.chat.ai_response import StreamLine
+from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
@@ -20,7 +20,11 @@ from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
 from pitch_coach_backend.module.chat.service.memory import save_profile_updates, save_summary
 from pitch_coach_backend.module.chat.service.practice import start_practice
+from pitch_coach_backend.module.chat.service.request import goal_view
+from pitch_coach_backend.module.chat.service.result import failed, succeeded
 from pitch_coach_backend.module.chat.service.run import (
+    LEASE,
+    OWNER,
     ClaimedRun,
     add_run_log,
     cancel,
@@ -30,6 +34,7 @@ from pitch_coach_backend.module.chat.service.run import (
     lock_current,
     lock_ids,
     lock_or_cancel,
+    take_lease,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,21 +171,41 @@ def resume_point(db: Session, run_id: uuid.UUID) -> ResumePoint | None:
     saved = repo.get_approved_action(row.id)
     if saved is None:
         return None
+    return _resume_from(db, row, saved)
+
+
+def recovery_point(db: Session, run_id: uuid.UUID) -> ResumePoint | None:
+    repo = ChatRepository(db)
+    row = repo.lock_run(run_id, statuses=("RUNNING",))
+    if row is None or not row.turn_calls or row.state is None:
+        return None
+    saved = repo.get_last_action(row.id)
+    if saved is None:
+        return None
+    return _resume_from(db, row, saved)
+
+
+def _resume_from(db: Session, row: ChatRun, saved: ChatAction) -> ResumePoint:
+    take_lease(row)
     point = ResumePoint(
         run=claimed(row),
-        action={
-            "action_id": saved.action_id,
-            "type": saved.type,
-            "args": saved.args,
-            "autonomy": saved.autonomy,
-            "authorized_by": None,
-        },
+        action=_action_view(saved),
         turn_call=row.turn_calls[-1]["turn_call"],
         state=row.state,
         budget_used=row.budget_used,
     )
     db.commit()
     return point
+
+
+def _action_view(saved: ChatAction) -> dict[str, Any]:
+    return {
+        "action_id": saved.action_id,
+        "type": saved.type,
+        "args": saved.args,
+        "autonomy": saved.autonomy,
+        "authorized_by": None,
+    }
 
 
 def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bool:
@@ -271,6 +296,71 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
         _add_diagnostics(repo, row, row.turn_calls[-1]["turn_call"], failure.diagnostics, now)
     db.commit()
     return True
+
+
+def recover_run(db: Session, run_id: uuid.UUID, now: datetime) -> Literal["START", "RESUME"] | None:
+    repo = ChatRepository(db)
+    row = repo.lock_run(run_id, statuses=("QUEUED", "RUNNING"))
+    if row is None or (row.lease_until is not None and row.lease_until > now):
+        db.rollback()
+        return None
+    row.lease_owner = OWNER
+    row.lease_until = now + LEASE
+    for saved in repo.list_actions(row.id):
+        if saved.status == "RUNNING":
+            _settle_action(repo, saved)
+    row.row_revision += 1
+    last = row.turn_calls[-1] if row.turn_calls else None
+    if row.deadline_at > now:
+        if last is None:
+            row.status = "QUEUED"
+            db.commit()
+            return "START"
+        if last["stage"] == "DONE":
+            step = _after_needs_action(repo, row, now)
+            if step != "END":
+                db.commit()
+                return "RESUME" if step == "RESUME" else None
+    if last is not None and last["stage"] == "SENDING":
+        row.usage = {**(row.usage or {}), "measured": False, "missing_reason": "RESPONSE_LOST"}
+    row.status = "RUNNING"
+    db.commit()
+    code = "AGENT_TIMEOUT" if row.deadline_at <= now else UPSTREAM_ERROR
+    fail(db, claimed(row), TurnFailure(code))
+    return None
+
+
+def _after_needs_action(
+    repo: ChatRepository, row: ChatRun, now: datetime
+) -> Literal["RESUME", "WAIT", "END"]:
+    saved = repo.get_last_action(row.id)
+    if saved is None or row.state is None or saved.status not in ("PENDING", "SUCCEEDED", "FAILED"):
+        return "END"
+    if saved.autonomy == "ASK" and saved.status == "PENDING" and not saved.approved:
+        if _has_confirm_card(row, saved.action_id):
+            row.status = "WAITING_APPROVAL"
+            row.approval_started_at = now
+            return "WAIT"
+        _settle_action(repo, saved)
+    return "RESUME"
+
+
+def _settle_action(repo: ChatRepository, saved: ChatAction) -> None:
+    action = _action_view(saved)
+    goal = repo.get_goal_from_action(saved.id) if saved.type == "SAVE_GOAL" else None
+    if goal is not None:
+        result = succeeded(action, {"goal": goal_view(goal)})
+    else:
+        result = failed(action, "IDEMPOTENCY_CONFLICT", "작업 완료를 확인하지 못했어요.")
+    saved.status = result.status
+    saved.result = result.model_dump(mode="json")
+
+
+def _has_confirm_card(row: ChatRun, action_id: str) -> bool:
+    cards = ((row.interim_message or {}).get("message") or {}).get("cards") or []
+    return any(
+        card.get("type") == "ASK_CONFIRM" and card.get("action_id") == action_id for card in cards
+    )
 
 
 def _sent_claims_differ(repo: ChatRepository, row: ChatRun, data: dict[str, Any]) -> bool:

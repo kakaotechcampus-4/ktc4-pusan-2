@@ -23,6 +23,7 @@ from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup_sweep
 from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
+from pitch_coach_backend.module.chat.run_recovery import start as start_run_recovery
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.pitch.dependencies import (
     resume_script_parses,
@@ -100,6 +101,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_analysis = start_analysis_runner()
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
+    stop_run_recovery = start_run_recovery()
     stop_goal_sweep = start_goal_sweep()
     stop_cleanup_sweep = start_cleanup_sweep()
     # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
@@ -121,6 +123,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_all_streams()
     await stop_ready_sweep()
     await stop_goal_sweep()
+    await stop_run_recovery()
     await turn_runner.stop_all()
     await stop_cleanup_sweep()
     await stop_file_cleanup()

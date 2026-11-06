@@ -1,8 +1,6 @@
 import asyncio
 import contextlib
 import logging
-import os
-import socket
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -13,11 +11,11 @@ from starlette.concurrency import run_in_threadpool
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.service import goal_check as goal_check_service
+from pitch_coach_backend.module.chat.service.run import OWNER
 
 logger = logging.getLogger(__name__)
 
 SWEEP_INTERVAL_SEC = 60.0
-OWNER = f"{socket.gethostname()}:{os.getpid()}"
 
 
 def _in_session[T](session_factory: Callable[[], Session], fn: Callable[..., T], *args: Any) -> T:

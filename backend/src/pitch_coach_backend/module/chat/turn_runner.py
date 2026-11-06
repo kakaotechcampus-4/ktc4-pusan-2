@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import uuid
 import weakref
@@ -32,9 +33,11 @@ logger = logging.getLogger(__name__)
 CHAT_SLOT_LIMIT = 4
 MAX_TURN_CALLS = 6
 STOP_TIMEOUT_SEC = 5.0
+LEASE_RENEW_SEC = 10.0
 
 # Callable[매개변수, 반환값] : 해당 함수 자체를 매개변수와 반환값으로 지정할 수 있다.
 type SessionFactory = Callable[[], Session]
+type ResumeWith = Callable[[Session, uuid.UUID], turn_service.ResumePoint | None]
 
 _running = TaskRegistry()
 _slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
@@ -86,31 +89,42 @@ async def _in_session[T](session_factory: SessionFactory, fn: Callable[..., T], 
 def start(
     run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
 ) -> asyncio.Task[None] | None:
-    return _spawn(run_id, session_factory, approved=False)
+    return _spawn(run_id, session_factory, None)
 
 
 def resume(
     run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
 ) -> asyncio.Task[None] | None:
-    return _spawn(run_id, session_factory, approved=True)
+    return _spawn(run_id, session_factory, turn_service.resume_point)
+
+
+def recover(
+    run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
+) -> asyncio.Task[None] | None:
+    return _spawn(run_id, session_factory, turn_service.recovery_point)
 
 
 def _spawn(
-    run_id: uuid.UUID, session_factory: SessionFactory, *, approved: bool
+    run_id: uuid.UUID, session_factory: SessionFactory, resume_with: ResumeWith | None
 ) -> asyncio.Task[None] | None:
     if _running.running(run_id):
         return None
     return _running.spawn(
-        run(run_id, session_factory, approved=approved), name=f"chat-turn:{run_id}", key=run_id
+        run(run_id, session_factory, resume_with=resume_with),
+        name=f"chat-turn:{run_id}",
+        key=run_id,
     )
 
 
 async def run(
-    run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal, *, approved: bool = False
+    run_id: uuid.UUID,
+    session_factory: SessionFactory = SessionLocal,
+    *,
+    resume_with: ResumeWith | None = None,
 ) -> None:
     turn = _Turn(session_factory)
     try:
-        await turn.run(run_id, approved=approved)
+        await turn.run(run_id, resume_with=resume_with)
     except asyncio.CancelledError:
         logger.info("대화 턴을 멈춘다 (앱 종료) run=%s", run_id)
         raise
@@ -129,16 +143,17 @@ class _Turn:
         self._run: ClaimedRun | None = None
 
     # 세션을 열고, 실행을 claim 한 뒤, 턴을 반복한다. 턴이 끝나면 종료 상태를 저장한다.
-    async def run(self, run_id: uuid.UUID, *, approved: bool) -> None:
+    async def run(self, run_id: uuid.UUID, *, resume_with: ResumeWith | None) -> None:
         point = None
-        if approved:
-            point = await _in_session(self._session_factory, turn_service.resume_point, run_id)
+        if resume_with is not None:
+            point = await _in_session(self._session_factory, resume_with, run_id)
             self._run = point.run if point else None
         else:
             self._run = await _in_session(self._session_factory, run_service.claim, run_id)
         if self._run is None:
             return
         remaining = (self._run.deadline - datetime.now(UTC)).total_seconds()
+        heartbeat = asyncio.create_task(self._keep_lease(run_id), name=f"chat-lease:{run_id}")
         try:
             async with asyncio.timeout(max(0.0, remaining)):
                 if point is None:
@@ -149,6 +164,18 @@ class _Turn:
             await self.give_up(TurnFailure("AGENT_TIMEOUT"))
         except RunLost:
             logger.info("대화 턴을 놓았다 (취소됐거나 다른 작업이 이어받음) run=%s", run_id)
+        finally:
+            heartbeat.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat
+
+    async def _keep_lease(self, run_id: uuid.UUID) -> None:
+        while True:
+            await asyncio.sleep(LEASE_RENEW_SEC)
+            try:
+                await _in_session(self._session_factory, run_service.renew_lease, run_id)
+            except Exception:
+                logger.exception("대화 실행 임대를 늘리지 못했다 run=%s", run_id)
 
     async def give_up(self, failure: TurnFailure) -> None:
         if self._run is None:

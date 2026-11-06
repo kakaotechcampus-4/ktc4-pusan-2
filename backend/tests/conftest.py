@@ -252,6 +252,7 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     monkeypatch.setattr(main, "resume_script_parses", _no_resume)
     monkeypatch.setattr(main, "start_goal_sweep", _no_ready_sweep)
     monkeypatch.setattr(main, "start_cleanup_sweep", _no_ready_sweep)
+    monkeypatch.setattr(main, "start_run_recovery", _no_ready_sweep)
     app.dependency_overrides[get_db] = lambda: db_session
     # 업로드 뒤 백그라운드 대본 파싱이 실제 AI 서버를 부르지 않게 막는다.
     # 파싱을 확인하는 테스트는 가짜 파서를 끼운 runner 로 다시 바꿔 끼운다

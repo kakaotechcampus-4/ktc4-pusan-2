@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select
+from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -371,6 +371,34 @@ class ChatRepository:
 
     def list_actions(self, run_id: uuid.UUID) -> list[ChatAction]:
         return list(self.db.scalars(select(ChatAction).where(ChatAction.run_id == run_id)))
+
+    def list_unfinished_run_ids(self) -> list[uuid.UUID]:
+        return list(
+            self.db.scalars(select(ChatRun.id).where(ChatRun.status.in_(("QUEUED", "RUNNING"))))
+        )
+
+    def get_goal_from_action(self, action_pk: uuid.UUID) -> ChatGoal | None:
+        return self.db.scalar(select(ChatGoal).where(ChatGoal.action_id == action_pk))
+
+    def get_last_action(self, run_id: uuid.UUID) -> ChatAction | None:
+        return self.db.scalar(
+            select(ChatAction)
+            .where(ChatAction.run_id == run_id)
+            .order_by(ChatAction.created_at.desc(), ChatAction.id.desc())
+            .limit(1)
+        )
+
+    def renew_run_lease(self, run_id: uuid.UUID, owner: str, until: datetime) -> bool:
+        result = self.db.execute(
+            update(ChatRun)
+            .where(
+                ChatRun.id == run_id,
+                ChatRun.lease_owner == owner,
+                ChatRun.status.in_(("QUEUED", "RUNNING")),
+            )
+            .values(lease_until=until)
+        )
+        return result.rowcount > 0
 
     def delete_run_events(self, run_id: uuid.UUID) -> None:
         self.db.execute(delete(ChatRunEvent).where(ChatRunEvent.run_id == run_id))
