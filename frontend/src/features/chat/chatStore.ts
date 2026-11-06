@@ -784,8 +784,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
 });
 
 /**
- * 로그아웃 신호(이 탭 · 다른 탭)에 저장소를 묶습니다. 대화창을 붙이는 공통 레이아웃이 한 번 부르고,
- * 돌려준 함수로 풉니다. 모듈을 읽기만 해도 듣기 시작하지 않게 따로 둡니다
+ * 로그아웃 신호(이 탭 · 다른 탭)에 저장소를 묶습니다. **앱 진입점(`main.tsx`)이 화면을 그리기 전에 한 번** 부릅니다 —
+ * 경로 · 로그인 조건 안(대화창 등)에서 부르면, 대화창이 없는 화면(리허설 헤더 · 새로 연 `/welcome`)에서 로그아웃할 때
+ * 이 탭의 사본이 남습니다(#952 리뷰). 돌려준 함수로 풉니다. 모듈을 읽기만 해도 듣기 시작하지 않게 따로 둡니다
  */
 export function bindChatToSession(): () => void {
   return onSignedOut(() => useChatStore.getState().signOut());
