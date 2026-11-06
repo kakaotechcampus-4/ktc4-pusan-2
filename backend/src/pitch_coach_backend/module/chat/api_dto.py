@@ -11,6 +11,8 @@ from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_js
 # 사용자 말 길이. 유니코드 문자(코드 포인트) 수로 센다. 넘으면 자르지 않고 422 다
 MESSAGE_MAX_CHARS = 2000
 MESSAGES_PAGE_MAX = 50
+# 대화 목록 커서 길이. BE 가 만드는 값은 92자로 일정하다. 넘으면 풀어 보지 않고 거절한다
+CONVERSATION_CURSOR_MAX_CHARS = 128
 
 RunStatus = Literal[
     "QUEUED",
@@ -106,6 +108,8 @@ class ConversationListItem(ConversationResponse):
 
 class ConversationListResponse(BaseModel):
     conversations: list[ConversationListItem]
+    # 다음 쪽을 읽을 커서. 값을 해석하지 않고 그대로 보낸다. 없으면 끝까지 다 읽었다
+    next_cursor: str | None
 
 
 class RunErrorDTO(BaseModel):

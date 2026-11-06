@@ -13,9 +13,11 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.core.validation import NulFreeStr
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.api_dto import (
+    CONVERSATION_CURSOR_MAX_CHARS,
     MESSAGES_PAGE_MAX,
     ActionDecisionRequest,
     AvailabilityResponse,
@@ -87,9 +89,12 @@ def post_conversation(
 
 @router.get("/conversations", response_model=ConversationListResponse, dependencies=[Enabled])
 def get_conversations(
-    current_user: CurrentUser, db: DbSession, pitch_id: uuid.UUID | None = None
+    current_user: CurrentUser,
+    db: DbSession,
+    pitch_id: uuid.UUID | None = None,
+    cursor: Annotated[NulFreeStr | None, Query(max_length=CONVERSATION_CURSOR_MAX_CHARS)] = None,
 ) -> ConversationListResponse:
-    return list_conversations(db, current_user.id, pitch_id)
+    return list_conversations(db, current_user.id, pitch_id, cursor=cursor)
 
 
 @router.patch(

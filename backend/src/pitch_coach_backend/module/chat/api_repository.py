@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, select
+from sqlalchemy import Row, Select, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -50,8 +50,14 @@ class ChatApiRepository:
         return self.db.scalar(_locked(stmt) if lock else stmt)
 
     def list_conversations(
-        self, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, limit: int
+        self,
+        user_id: uuid.UUID,
+        pitch_id: uuid.UUID | None,
+        *,
+        limit: int,
+        after: tuple[datetime, uuid.UUID] | None,
     ) -> list[Row]:
+        """`after`(마지막 활동 시각, 대화 ID) 다음부터 최근 활동 순으로 읽는다."""
         stmt = (
             select(ChatConversation, Pitch.title.label("pitch_title"))
             .outerjoin(Pitch, Pitch.id == ChatConversation.scope_pitch_id)
@@ -61,6 +67,11 @@ class ChatApiRepository:
         )
         if pitch_id is not None:
             stmt = stmt.where(ChatConversation.scope_pitch_id == pitch_id)
+        if after is not None:
+            # 정렬과 같은 순서의 행 비교다. 같은 시각의 대화도 ID 로 갈려 빠짐 · 중복이 없다
+            stmt = stmt.where(
+                tuple_(ChatConversation.last_user_activity_at, ChatConversation.id) < after
+            )
         return list(self.db.execute(stmt).all())
 
     def get_owned_run(
