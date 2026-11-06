@@ -1,3 +1,4 @@
+import math
 import uuid
 from typing import Any
 
@@ -196,9 +197,7 @@ def _check_rule(goal: dict[str, Any]) -> None:
 
 
 def _finite(value: Any) -> bool:
-    return (
-        isinstance(value, int | float)
-        and not isinstance(value, bool)
-        and value == value
-        and value not in (float("inf"), float("-inf"))
-    )
+    """bool 이 아닌 유한한 수인가. 정수는 float 로 바꾸면 넘칠 수 있어 그대로 통과시킨다."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    return isinstance(value, int) or math.isfinite(value)
