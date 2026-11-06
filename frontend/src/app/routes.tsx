@@ -20,7 +20,7 @@ import {
   TakesPage,
   ComparisonPage,
 } from './LazyScreens';
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, Outlet } from 'react-router';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
 import { DesktopGate } from './DesktopGate';
@@ -31,6 +31,7 @@ import { AppHeader } from '@/shared/ui/AppHeader';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
 import { HomePage } from '@/features/pitch/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
+import { ChatAgentHost } from '@/features/chat/ChatAgentHost';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -173,4 +174,16 @@ export const appRoutes = screenRoutes.map((route) =>
     ? { ...route, element: <DesktopGate>{route.element}</DesktopGate> }
     : route,
 );
-export const router = createBrowserRouter(appRoutes);
+// 모든 화면 위에 늘 붙어 있는 층입니다. 화면을 옮겨도 채팅 상태가 남고, 로그인 · 기기 확인은 화면마다 그대로입니다.
+// 오류 화면(RouteLoadError)은 화면마다 있고 채팅은 자기 오류 경계를 가져서, 이 층에는 errorElement 를 두지 않습니다
+export const router = createBrowserRouter([
+  {
+    element: (
+      <>
+        <Outlet />
+        <ChatAgentHost />
+      </>
+    ),
+    children: appRoutes,
+  },
+]);

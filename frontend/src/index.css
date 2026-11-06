@@ -195,8 +195,8 @@ body {
   .loading-dot { animation: none; }
 }
 
-/* 피치 생성 화면의 밝은 지면. */
-.pitch-create {
+/* 피치 생성 화면의 밝은 지면. `.light-surface` 는 화면 밖 공용 층(채팅)이 같은 지면을 쓰는 이름입니다. */
+.pitch-create, .light-surface {
   --color-greige: #faf9f6;
   --color-cream: #f1f0eb;
   --color-panel: #ffffff;
@@ -215,4 +215,10 @@ body {
 /* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */
 .pitch-create-square :is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-r) {
   border-radius: 0;
+}
+
+/* 장치 점검은 오른쪽 열이 화면 끝까지 차서, 채팅 런처(오른쪽 0.5rem · 44px)가 떠 있을 때만 오른쪽 여백을
+   런처 자리만큼 넓힙니다 — 시작 버튼 · 대본 표시 선택을 가리지 않습니다 (features/chat, #941 리뷰) */
+body:has([data-chat-launcher]) .prepare-screen {
+  padding-right: 4rem;
 }
