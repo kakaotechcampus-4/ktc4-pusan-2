@@ -1051,10 +1051,12 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       kick();
     }
     hungPoll?.abort();
-    // 확인 중에 다른 대화를 고르면 앞 대화의 실패 대기를 기다리지 않고 바로 조회합니다
+    // 확인 중에 다른 대화를 고르거나 같은 대화를 다시 고르면(시도 번호가 바뀜) 앞 조회의 실패 대기를 기다리지 않고
+    // 바로 조회합니다
     const otherConversation = now.conversationId !== before.conversationId;
-    if (now.syncing && now.conversationId && (!before.syncing || otherConversation)) {
-      if (otherConversation) lookupFailures = 0;
+    const reselected = now.attempt !== before.attempt;
+    if (now.syncing && now.conversationId && (!before.syncing || otherConversation || reselected)) {
+      if (otherConversation || reselected) lookupFailures = 0;
       const hung = lookingUp ? slots.lookup.controller : null;
       lookup().catch(() => undefined);
       // 앞 대화의 조회가 걸려 있으면 끊습니다 — 끝나기를 기다리지 않고 곧바로 새 대화를 조회합니다
@@ -1140,9 +1142,13 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         emit({ type: 'disabled' });
         return true;
       }
-      // 응답을 잃음(끊김 · 시간 초과 · 5xx) — 서버가 취소했을 수 있습니다. "취소 중" 은 그대로 두고
-      // 같은 실행의 상태부터 확인해 확정합니다(L3-34 "응답 유실 때 같은 run_id 상태부터 확인")
-      if (!answer.ok && isUnknownResult(answer.error)) {
+      // 응답을 잃음(끊김 · 시간 초과 · 5xx) · 응답은 왔지만 읽을 수 없음 — 서버가 취소했을 수 있습니다.
+      // "취소 중" 은 그대로 두고 같은 실행의 상태부터 확인해 확정합니다(L3-34 "응답 유실 때 같은 run_id 상태부터 확인").
+      // 읽을 수 없는 응답을 거절로 보면, 취소됐는데 "취소하지 못했어요" 라고 알리게 됩니다
+      const unknown = answer.ok
+        ? view === null || view.run_id !== run.runId
+        : isUnknownResult(answer.error);
+      if (unknown) {
         cancelUnsure = run.runId;
         emit({ type: 'cancelChecking', runId: run.runId });
         kick();
@@ -1200,10 +1206,22 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       const ticket = store().beginScopeChange(scope);
       if (!ticket) return false;
       const watch: readonly WatchKey[] = [...DEFAULT_WATCH, 'scopeChange'];
-      const answer = await request({
-        watch,
-        start: (signal) => api.changeScope(ticket.conversationId!, scope.pitchId, signal),
-      });
+      const once = () =>
+        request({
+          watch,
+          start: (signal) => api.changeScope(ticket.conversationId!, scope.pitchId, signal),
+        });
+      let answer = await once();
+      // 빨리 실패해 결과를 모르면(끊김 · 5xx) 같은 요청을 한 번 더 보냅니다 — 같은 범위로 바꾸기는 여러 번 해도
+      // 결과가 같아, 서버의 지금 범위를 바로 받습니다. 대화 목록(최근 50개)에서 찾는 것보다 정확합니다 — 오래된
+      // 대화는 목록에 없을 수 있습니다. 시간 초과(20초)는 다시 보내지 않습니다 — 또 걸리면 칩이 40초 넘게 잠깁니다
+      if (
+        !answer.ok &&
+        answer.fate === 'current' &&
+        isUnknownResult(answer.error) &&
+        !(answer.error instanceof RequestTimeout)
+      )
+        answer = await once();
       // 잠금은 늦은 · 닫힌 뒤 응답이어도 풉니다(저장소가 그 바꾸기의 표일 때만 받습니다). 바뀌었다고 답하는 것은
       // 지금 화면의 칩이 바뀌었을 때뿐입니다
       if (answer.ok) {
@@ -1251,8 +1269,13 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         idleDelay = 0;
         rereads = 0;
         kick();
-      } else if (store().syncing) {
+      }
+      // 상태 확인 중이면 실행이 있어도(새로고침 직후) 대화 조회를 곧바로 다시 합니다 — 실패 뒤 다시 하기를 기다리는
+      // 중이어도 기다리지 않습니다. 그러지 않으면 [다시 확인]을 눌러도 최대 30초 보내기 · 칩이 잠긴 채입니다
+      if (store().syncing) {
         lookupFailures = 0;
+        clearTimer(lookupTimer);
+        lookupTimer = null;
         ensureLookup();
       }
     },

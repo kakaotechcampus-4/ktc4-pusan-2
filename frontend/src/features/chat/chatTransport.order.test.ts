@@ -750,3 +750,91 @@ describe('대화 만들기', () => {
     expect(await transport.send(draft())).toBe('accepted');
   });
 });
+
+// ── 1~7단계 점검에서 찾은 것 ───────────────────────────────────────
+
+describe('상태 확인이 실패해 다시 하기를 기다리는 중', () => {
+  /** 새로고침처럼 대화 · 실행이 되살아나 상태 확인 중이고, 첫 대화 조회는 실패합니다 */
+  async function restoredAndFailed() {
+    seedRun('c-1', 'r-1');
+    let fail = true;
+    start({
+      conversationRun: async (id, after) => {
+        if (fail) throw new TypeError('offline');
+        return serverConversationRun(id, after);
+      },
+    });
+    useChatStore.setState({
+      conversationId: 'c-1',
+      syncing: true,
+      run: { runId: 'r-1', conversationId: 'c-1', phase: 'RUNNING', afterSeq: 0 },
+    });
+    transport.resume();
+    await flush();
+    expect(of('pollTrouble')).toHaveLength(1);
+    return () => {
+      fail = false;
+    };
+  }
+
+  it('[다시 확인]은 실행이 있어도 대화 조회를 곧바로 다시 해 잠금을 푼다', async () => {
+    const recover = await restoredAndFailed();
+    recover();
+    const before = callsOf('conversationRun').length;
+    transport.checkNow();
+    await flush();
+    expect(callsOf('conversationRun').length).toBe(before + 1);
+    expect(store().syncing).toBe(false);
+  });
+
+  it('같은 대화를 다시 골라도 기다리지 않고 곧바로 조회한다', async () => {
+    const recover = await restoredAndFailed();
+    recover();
+    store().selectConversation('c-1', WHOLE);
+    await flush();
+    expect(store().syncing).toBe(false);
+    expect(store().run?.runId).toBe('r-1');
+  });
+});
+
+describe('취소 응답을 읽을 수 없음', () => {
+  it('거절로 보지 않고 "확인 중" 으로 두어 다음 조회로 확정한다', async () => {
+    // 서버는 취소했는데 응답이 깨져 옵니다
+    start({
+      cancel: async (runId) => {
+        runStatus.set(runId, 'CANCELLED');
+        return { nope: true } as never;
+      },
+    });
+    const { runId } = await sendRunning();
+    expect(await transport.cancel()).toBe(true);
+    expect(of('cancelFailed')).toEqual([]);
+    expect(of('cancelChecking')).toHaveLength(1);
+    expect(store().cancelling).toBe(runId);
+    // 다음 조회의 끝남으로 확정합니다
+    await clock.advance(1_000);
+    expect(of('ended')).toMatchObject([{ status: 'CANCELLED' }]);
+    expect(store().cancelling).toBeNull();
+  });
+});
+
+describe('범위 바꾸기의 결과를 모름', () => {
+  it('같은 요청을 한 번 더 보내 서버의 범위를 받는다 — 대화 목록을 찾지 않는다', async () => {
+    let calls = 0;
+    start({
+      changeScope: async (id, pitchId) => {
+        calls += 1;
+        const changed = await mockApi.changeScope(id, pitchId);
+        if (calls === 1) throw new TypeError('offline');
+        return changed;
+      },
+    });
+    await idleConversation();
+    const lists = callsOf('listConversations').length;
+    expect(await transport.changeScope(PITCH)).toBe(true);
+    expect(calls).toBe(2);
+    expect(store().scope).toEqual(PITCH);
+    expect(callsOf('listConversations')).toHaveLength(lists);
+    expect(of('scopeFailed')).toEqual([]);
+  });
+});

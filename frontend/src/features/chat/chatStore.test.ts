@@ -344,6 +344,21 @@ describe('대화 고르기 · 실행', () => {
     expect([isCurrent(poll), isCurrent(chatTicket())]).toEqual([false, true]);
   });
 
+  it('표는 세대 · 시도 · 대화 · 실행을 모두 견준다 — 실행이 같아도 대화가 다르면 지금 것이 아니다', () => {
+    sendAndAccept('run-1', 'conv-1');
+    const poll = chatTicket();
+    // 시도 번호는 그대로 두고 대화만 다른 모습 — 실행 ID 만 보면 지금 것으로 잘못 봅니다
+    useChatStore.setState({ conversationId: 'conv-2' });
+    expect(isCurrent(poll)).toBe(false);
+    // 실행이 없던 때의 표에 실행이 붙어도 지금 것이 아니다
+    useChatStore.setState({ conversationId: 'conv-1', run: null });
+    const idle = chatTicket();
+    useChatStore.setState({
+      run: { runId: 'run-2', conversationId: 'conv-1', phase: 'QUEUED', afterSeq: 0 },
+    });
+    expect(isCurrent(idle)).toBe(false);
+  });
+
   it('사용자가 바뀌면 세대가 올라 앞 세대의 응답을 버린다', () => {
     const before = chatTicket();
     store().setUser('user-2');

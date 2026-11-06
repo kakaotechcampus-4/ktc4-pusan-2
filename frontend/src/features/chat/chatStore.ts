@@ -815,7 +815,10 @@ export function pendingSendTicket(): ChatTicket | null {
  */
 export function isCurrent(ticket: ChatTicket): boolean {
   const now = chatTicket();
-  if (ticket.generation !== now.generation || ticket.attempt !== now.attempt) return false;
-  if (ticket.runId !== null) return ticket.runId === now.runId;
-  return ticket.conversationId === now.conversationId;
+  return (
+    ticket.generation === now.generation &&
+    ticket.attempt === now.attempt &&
+    ticket.conversationId === now.conversationId &&
+    ticket.runId === now.runId
+  );
 }

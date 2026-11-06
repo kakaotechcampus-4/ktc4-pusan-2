@@ -334,6 +334,24 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
     await expectError(response, 429, 'AGENT_DAILY_LIMIT');
   });
 
+  /**
+   * 알려진 차이 — BE `CreateConversationRequest` 는 `pitch_id` 만 받고 모르는 칸은 422 입니다(extra="forbid").
+   * FE 는 '기억 없이' 새 대화에 `memory_off: true` 를 실어 보내므로 **지금 BE 에서는 늘 실패합니다**. 목은 (BE 미구현)
+   * 기능이라 받아 줍니다. 그래서 이 시험은 실패하는 것이 정상입니다(`it.fails`).
+   * BE 가 `memory_off` 를 열면 이 시험이 "통과" 해 깨집니다 — 그때 `it` 으로 바꾸고 BE 칸 표에 더합니다.
+   * 그 전까지 화면은 '기억 없이' 토글을 숨기거나 기능 스위치 뒤에 둡니다(10단계)
+   */
+  it.fails(
+    "새 대화의 '기억 없이'(memory_off) 는 BE 가 아직 받지 않는다 — 목은 받는다",
+    async () => {
+      await expectError(
+        await call(chatPaths.conversations, 'POST', { pitch_id: null, memory_off: true }),
+        422,
+        'VALIDATION_ERROR',
+      );
+    },
+  );
+
   it('로그인하지 않으면 401 UNAUTHORIZED', async () => {
     user = null;
     await expectError(await call(chatPaths.conversations), 401, 'UNAUTHORIZED');
