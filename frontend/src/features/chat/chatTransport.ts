@@ -21,7 +21,6 @@ import {
 } from './chatResponse';
 import {
   chatTicket,
-  isCurrent,
   needsCreate,
   pendingSendTicket,
   useChatStore,
@@ -45,7 +44,18 @@ import {
  * - 같은 순번은 한 번만 처리하고, 건너뛴 순번이 있으면 같은 커서로 다시 읽습니다(L3-46).
  * - 130초가 지나도 끝나지 않으면 자동 조회를 늦추고 알립니다 — 화면은 `checkNow` 로 직접 확인하게 합니다(L3-21).
  * - 404 는 실행 기록이 없어진 것 — 실행을 놓고 알립니다. 화면은 메시지 목록을 다시 읽어 복구할 답을 찾습니다(L3-21).
- * - 늦게 온 응답은 저장소의 표(`isCurrent`)로 버립니다(L3-20).
+ * - 모든 요청은 `request` 를 거칩니다 — 보낼 때의 모습과 견줘 늦은 응답 · 닫힌 뒤 응답을 가립니다(L3-20).
+ *
+ * 새 요청을 더할 때 (점검표)
+ * 1. `api.*` 를 직접 부르지 않고 `request` 로 부릅니다 — 시간 제한 · 끊기 · 늦은 응답 가리기가 함께 옵니다.
+ * 2. `watch` 에 이 응답이 "지금 것" 이려면 그대로여야 하는 칸을 고릅니다. 모르겠으면 기본값(`DEFAULT_WATCH`),
+ *    이 요청이 잡은 잠금(`send` · `scopeChange` · `create`)이 있으면 그것도 넣습니다.
+ * 3. 한 번에 하나여야 하거나 뒤 요청이 앞 요청을 대신하면 `slot` 을 씁니다.
+ * 4. 응답을 `fate` 로 나눕니다 — `current` 만 신호 · 다시 조회 · 안내를 내고, `stale` · `closed` 는 자기 잠금만 풉니다.
+ *    반환값도 같습니다: 지금 화면에 반영되지 않았으면 성공으로 답하지 않습니다('stale' · false).
+ * 5. 응답을 받은 뒤 다른 요청을 더 기다렸으면 반영 전에 `stillCurrent()` 로 다시 봅니다.
+ * 6. `chatTransport.order.test.ts` 에 그 요청의 네 칸(늦게 온다 · 두 번 온다 · 순서가 바뀐다 · 그사이 닫힌다)을 더하고,
+ *    새 응답 모양이면 `mocks/chat.contract.test.ts` 에 BE 칸을 더합니다.
  */
 
 /** 화면이 받는 신호 */
@@ -330,6 +340,88 @@ function takeEvents(afterSeq: number, events: RunEvent[]) {
 const asPhase = (status: RunStatus): RunPhase =>
   (PHASES.includes(status) ? status : 'RUNNING') as RunPhase;
 
+/** 대화 목록 응답에서 그 대화의 범위 — 없거나 모양이 틀리면 null */
+function scopeIn(list: unknown, conversationId: string): ChatScope | null {
+  const items = (list as { conversations?: unknown } | null)?.conversations;
+  const found = Array.isArray(items)
+    ? (items as { conversation_id?: unknown }[]).find((c) => c.conversation_id === conversationId)
+    : undefined;
+  if (!found) return null;
+  const { scope_pitch_id: pitchId, scope_pitch_title: title } = found as {
+    scope_pitch_id?: unknown;
+    scope_pitch_title?: unknown;
+  };
+  if (!(pitchId === null || typeof pitchId === 'string')) return null;
+  return { pitchId, title: typeof title === 'string' ? title : null };
+}
+
+// ── 요청 공통 도구의 부품 ─────────────────────────────────────────
+
+/**
+ * 응답이 지금 것인지 볼 때 견주는 칸.
+ * - `generation` · `attempt`: 사용자 바뀜 · 로그아웃 · 새 대화 · 대화 고르기
+ * - `conversation` · `run`: 보고 있는 대화 · 지켜보는 실행
+ * - `send` · `scopeChange` · `create`: 그 요청이 잡은 잠금 — 잠금이 바뀌었으면 다른 요청의 일입니다
+ * - `scope`: 범위 칩(같은 값이어도 새로 고르면 다른 것으로 봅니다)
+ */
+export type WatchKey =
+  'generation' | 'attempt' | 'conversation' | 'run' | 'send' | 'scopeChange' | 'create' | 'scope';
+
+/** 따로 고르지 않은 요청이 견주는 칸 — 대화 · 실행이 함께 바뀌지 않았는지까지 봅니다 */
+const DEFAULT_WATCH: readonly WatchKey[] = ['generation', 'attempt', 'conversation', 'run'];
+
+function look(key: WatchKey): unknown {
+  const s = useChatStore.getState();
+  switch (key) {
+    case 'generation':
+      return s.generation;
+    case 'attempt':
+      return s.attempt;
+    case 'conversation':
+      return s.conversationId;
+    case 'run':
+      return s.run?.runId ?? null;
+    case 'send':
+      return s.pending?.sendId ?? null;
+    case 'scopeChange':
+      return s.scopeChange?.id ?? null;
+    case 'create':
+      return s.creating?.id ?? null;
+    case 'scope':
+      return s.scope;
+  }
+}
+
+const snapshot = (watch: readonly WatchKey[]) => watch.map(look);
+const sameAs = (before: unknown[], now: unknown[]) => before.every((v, i) => Object.is(v, now[i]));
+
+/** 응답의 처지 — 지금 것 · 늦은 것(그사이 바뀜 · 뒤 요청이 있음) · 닫힌 뒤 온 것 */
+export type Fate = 'current' | 'stale' | 'closed';
+
+interface Slot {
+  seq: number;
+  controller: AbortController | null;
+}
+const newSlot = (): Slot => ({ seq: 0, controller: null });
+
+interface RequestOptions<T> {
+  start: (signal: AbortSignal) => Promise<T>;
+  /** 견줄 칸 — 빼면 `DEFAULT_WATCH` */
+  watch?: readonly WatchKey[];
+  /** 같은 종류의 앞 요청을 끊을 자리 */
+  slot?: Slot;
+  /** 응답 한도 — 빼면 `REQUEST_TIMEOUT_MS`, null 이면 없음(보내기는 15초 미확정이 따로 있습니다) */
+  timeoutMs?: number | null;
+}
+
+type Answer<T> = ({ ok: true; value: T } | { ok: false; error: unknown }) & {
+  fate: Fate;
+  /** 같은 자리에서 뒤에 보낸 요청이 없음 */
+  latest: boolean;
+  /** 지금도 지금 것인지 — 응답을 받은 뒤 다른 요청을 더 기다린 다음 다시 볼 때 */
+  stillCurrent: () => boolean;
+};
+
 export function createChatTransport(options: ChatTransportOptions = {}): ChatTransport {
   const api = options.api ?? chatApi;
   const clock = options.clock ?? defaultClock;
@@ -401,26 +493,66 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (handle !== null) clock.clearTimeout(handle);
   };
 
-  /** 끊을 수 있는 조회 — 닫을 때 · 대화를 바꿀 때 걸린 요청을 끊습니다 */
-  let pollController: AbortController | null = null;
-  let lookupController: AbortController | null = null;
+  // ── 요청 공통 도구 ─────────────────────────────────────────────
 
   /**
-   * 응답을 정한 시간까지만 기다리고, 넘으면 요청을 끊습니다 — 걸린 요청이 연결을 쌓아 다른 API 까지 막지 않게.
+   * 같은 종류의 요청 자리 — 새 요청이 들어오면 앞 요청을 끊고, 앞 요청의 늦은 응답은 `latest: false` 로 돌려줍니다.
+   * 조회 · 대화 조회는 닫을 때 끊고, 보내기는 끊지 않습니다(닫힌 뒤 온 접수도 저장소에 붙여 새 통신 계층이 이어 봅니다)
+   */
+  const slots = {
+    poll: newSlot(),
+    lookup: newSlot(),
+    send: newSlot(),
+  };
+
+  /**
+   * 모든 요청이 거치는 길 — 시간 제한 · 같은 자리의 앞 요청 끊기 · 늦은 응답 가리기 · 닫힘 알리기를 여기서만 합니다.
+   *
+   * 보낼 때 고른 칸(`watch`)의 모습을 기억해 두고, 응답이 오면 하나라도 달라졌는지 봅니다(L3-20).
+   * 응답은 버리지 않고 `fate` 를 붙여 돌려줍니다 — 늦은 응답(`stale`) · 닫힌 뒤 응답(`closed`)도 자기 잠금은 풀어야
+   * 하기 때문입니다. 부른 쪽은 `current` 일 때만 신호 · 다시 조회 · 안내를 냅니다.
    * 끊어도 서버는 이미 처리했을 수 있어, 결과를 모르는 경우는 부른 쪽이 상태를 다시 읽어 확정합니다
    */
-  const timed = <T>(
-    start: (signal: AbortSignal) => Promise<T>,
-    hold?: (controller: AbortController) => void,
-  ): Promise<T> => {
+  async function request<T>(options: RequestOptions<T>): Promise<Answer<T>> {
+    const watch = options.watch ?? DEFAULT_WATCH;
+    const before = snapshot(watch);
+    const slot = options.slot;
     const controller = new AbortController();
-    hold?.(controller);
-    return new Promise<T>((resolve, reject) => {
+    let mine = 0;
+    if (slot) {
+      slot.controller?.abort();
+      slot.controller = controller;
+      mine = ++slot.seq;
+    }
+    let settled: { ok: true; value: T } | { ok: false; error: unknown };
+    try {
+      const pending = options.start(controller.signal);
+      const timeoutMs = options.timeoutMs === undefined ? REQUEST_TIMEOUT_MS : options.timeoutMs;
+      settled = {
+        ok: true,
+        value: timeoutMs === null ? await pending : await limit(pending, controller, timeoutMs),
+      };
+    } catch (error) {
+      settled = { ok: false, error };
+    } finally {
+      if (slot?.controller === controller) slot.controller = null;
+    }
+    const latest = !slot || slot.seq === mine;
+    const stillCurrent = () => !disposed && latest && sameAs(before, snapshot(watch));
+    let fate: Fate = 'current';
+    if (disposed) fate = 'closed';
+    else if (!stillCurrent()) fate = 'stale';
+    return { ...settled, fate, latest, stillCurrent };
+  }
+
+  /** 정한 시간까지만 기다리고, 넘으면 요청을 끊습니다 — 걸린 요청이 연결을 쌓아 다른 API 까지 막지 않게(L3-19) */
+  const limit = <T>(pending: Promise<T>, controller: AbortController, ms: number) =>
+    new Promise<T>((resolve, reject) => {
       const handle = clock.setTimeout(() => {
         reject(new RequestTimeout());
         controller.abort();
-      }, REQUEST_TIMEOUT_MS);
-      start(controller.signal).then(
+      }, ms);
+      pending.then(
         (value) => {
           clock.clearTimeout(handle);
           resolve(value);
@@ -431,7 +563,6 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         },
       );
     });
-  };
 
   const clearPoll = () => {
     clearTimer(pollTimer);
@@ -566,11 +697,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (disposed) return;
     const ticket = chatTicket();
     if (ticket.conversationId !== conversationId) return;
-    // 요청한 때의 범위 — 응답이 오기 전에 사용자가 칩을 바꿨으면(바꾸기가 이미 끝났어도) 늦은 목록으로 덮지 않습니다
-    const asked = store().scope;
-    serverScope(conversationId)
-      .then((server) => {
-        if (disposed || !server || store().scope !== asked) return;
+    // 범위 칩도 견줍니다 — 응답이 오기 전에 사용자가 칩을 바꿨으면(바꾸기가 이미 끝났어도) 늦은 목록으로 덮지 않습니다
+    serverScope(conversationId, [...DEFAULT_WATCH, 'scope', 'scopeChange'])
+      .then(({ fate, scope: server }) => {
+        if (fate !== 'current' || !server) return;
         const now = store().scope;
         if (now?.pitchId === server.pitchId && now?.title === server.title) return;
         store().applyServerScope(ticket, server);
@@ -584,29 +714,18 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (!run || polling) return;
     polling = true;
     pollAgain = false;
-    const ticket = chatTicket();
-    let view: RunView;
-    try {
-      const response = readRunView(
-        await timed(
-          (signal) => api.run(run.runId, run.afterSeq, signal),
-          (c) => (pollController = c),
-        ),
-      );
-      if (!response || response.run_id !== run.runId) throw new FormatError();
-      view = response;
-    } catch (error) {
-      polling = false;
-      if (disposed) return;
-      // 실패도 늦은 응답이면 버리고 지금 실행을 조회합니다 — 지난 실행의 404 로 새 실행의 고리가 멈추지 않게
-      if (!isCurrent(ticket) || pollAgain) return kick();
-      onPollFailure(run.runId, error);
-      return;
-    }
+    const answer = await request({
+      slot: slots.poll,
+      start: (signal) => api.run(run.runId, run.afterSeq, signal),
+    });
     polling = false;
-    if (disposed) return;
-    // 그사이 실행 · 대화 · 세대가 바뀌었으면 이 응답은 버리고 지금 상태로 다시 (L3-20)
-    if (!isCurrent(ticket) || pollAgain) return kick();
+    if (answer.fate === 'closed') return;
+    // 그사이 실행 · 대화 · 세대가 바뀌었으면 이 응답은 버리고 지금 상태로 다시 (L3-20) — 실패도 같습니다.
+    // 지난 실행의 404 로 새 실행의 고리가 멈추지 않게
+    if (answer.fate === 'stale' || pollAgain) return kick();
+    if (!answer.ok) return onPollFailure(run.runId, answer.error);
+    const view = readRunView(answer.value);
+    if (!view || view.run_id !== run.runId) return onPollFailure(run.runId, new FormatError());
     recovered();
 
     const { taken, gap } = takeEvents(run.afterSeq, view.events);
@@ -732,55 +851,56 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const ticket = chatTicket();
     const conversationId = s.conversationId;
     const before = s.run?.runId ?? null;
-    try {
-      // BE 는 이 대화의 마지막 실행을 끝났어도 돌려주고, 한 번도 없으면 null 입니다
-      const response = await timed(
-        (signal) => api.conversationRun(conversationId, STATUS_ONLY_AFTER_SEQ, signal),
-        (c) => (lookupController = c),
-      );
-      const run = response === null ? null : readRunView(response);
-      if (response !== null && (!run || run.conversation_id !== conversationId))
-        throw new FormatError();
-      lookingUp = false;
-      if (disposed) return;
-      // 이미 끝낸 실행을 서버가 아직 진행 중으로 보낸 늦은 모습이면 끝난 것으로 봅니다
-      const found =
-        run && !isTerminalRun(run.status) && !finishedRuns.has(run.run_id)
-          ? { runId: run.run_id, phase: asPhase(run.status) }
-          : null;
-      const applied = store().resolveConversation(ticket, found);
-      if (applied) {
-        recovered();
-        // 새 실행이면 저장소 구독이 조회를 시작합니다. 되살린 그 실행이면 여기서 이어 갑니다
-        if (found && found.runId === before) {
-          watch(found.runId);
-          kick();
-        }
-      }
-      if (lookupAgain || (!applied && store().syncing)) return lookup();
-    } catch (error) {
-      lookingUp = false;
-      if (disposed) return;
-      if (lookupAgain || !isCurrent(ticket)) return lookup();
-      if (error instanceof ApiFailure && error.status === 404) {
-        store().resolveConversation(ticket, null);
-        emit({ type: 'conversationMissing', conversationId });
-        return;
-      }
-      if (isSignedOut(error)) {
-        halted = 'session';
-        emit({ type: 'sessionExpired' });
-        return;
-      }
-      if (isDisabled(error)) {
-        halted = 'disabled';
-        emit({ type: 'disabled' });
-        return;
-      }
-      lookupFailures += 1;
-      emit({ type: 'pollTrouble', failures: lookupFailures, reason: troubleOf(error) });
-      scheduleLookup(failureDelay(lookupFailures));
+    // BE 는 이 대화의 마지막 실행을 끝났어도 돌려주고, 한 번도 없으면 null 입니다
+    const answer = await request({
+      slot: slots.lookup,
+      start: (signal) => api.conversationRun(conversationId, STATUS_ONLY_AFTER_SEQ, signal),
+    });
+    lookingUp = false;
+    if (answer.fate === 'closed') return;
+    // 그사이 대화 · 실행이 바뀌었거나 또 불렸으면 지금 대화로 다시 — 앞 대화의 늦은 응답은 버립니다
+    if (answer.fate === 'stale' || lookupAgain) return lookup();
+    if (!answer.ok) return onLookupFailure(ticket, conversationId, answer.error);
+    const run = answer.value === null ? null : readRunView(answer.value);
+    if (answer.value !== null && (!run || run.conversation_id !== conversationId))
+      return onLookupFailure(ticket, conversationId, new FormatError());
+    // 이미 끝낸 실행을 서버가 아직 진행 중으로 보낸 늦은 모습이면 끝난 것으로 봅니다
+    const found =
+      run && !isTerminalRun(run.status) && !finishedRuns.has(run.run_id)
+        ? { runId: run.run_id, phase: asPhase(run.status) }
+        : null;
+    const applied = store().resolveConversation(ticket, found);
+    if (!applied) {
+      if (store().syncing) return lookup();
+      return;
     }
+    recovered();
+    // 새 실행이면 저장소 구독이 조회를 시작합니다. 되살린 그 실행이면 여기서 이어 갑니다
+    if (found && found.runId === before) {
+      watch(found.runId);
+      kick();
+    }
+  }
+
+  function onLookupFailure(ticket: ChatTicket, conversationId: string, error: unknown) {
+    if (error instanceof ApiFailure && error.status === 404) {
+      store().resolveConversation(ticket, null);
+      emit({ type: 'conversationMissing', conversationId });
+      return;
+    }
+    if (isSignedOut(error)) {
+      halted = 'session';
+      emit({ type: 'sessionExpired' });
+      return;
+    }
+    if (isDisabled(error)) {
+      halted = 'disabled';
+      emit({ type: 'disabled' });
+      return;
+    }
+    lookupFailures += 1;
+    emit({ type: 'pollTrouble', failures: lookupFailures, reason: troubleOf(error) });
+    scheduleLookup(failureDelay(lookupFailures));
   }
 
   /** 조회 중이 아니면 조회 — 같은 상태를 여러 곳에서 깨워도 겹쳐 부르지 않습니다 */
@@ -842,89 +962,73 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   }
 
   /**
-   * 보내기 시도 번호와 그 요청 — [다시 확인]을 거듭 누르면 앞 시도를 끊습니다. 같은 `client_request_id` 라 끊어도
+   * 보내기 — [다시 확인]을 거듭 누르면 앞 시도를 끊습니다(`slots.send`). 같은 `client_request_id` 라 끊어도
    * 안전하고(서버가 받았으면 다음 시도가 같은 202 를 받음), 걸린 POST 가 쌓여 연결을 막지 않습니다.
    * 앞 시도의 늦은 결과는 버려 뒤 시도의 15초 타이머를 지우지 않습니다
    */
-  let sendAttempt = 0;
-  let sendController: AbortController | null = null;
-
   async function post(ticket: ChatTicket): Promise<SendResult> {
     const pending = store().pending;
     if (disposed || !pending || pending.sendId !== ticket.sendId) return 'stale';
-    const attempt = ++sendAttempt;
-    sendController?.abort();
-    const controller = new AbortController();
-    sendController = controller;
     armUnconfirmed(ticket);
-    try {
-      const accepted = await api.send(pending.request, controller.signal);
-      // 접수는 몇 번째 시도의 응답이든 반영합니다(같은 키라 같은 실행) — 타이머는 마지막 시도 것만 지웁니다
-      if (attempt === sendAttempt) clearSendTimer();
-      // 접수는 닫힌 뒤에도 반영합니다 — 잠금을 풀고, 새 통신 계층이 저장소 구독으로 조회를 시작합니다
-      // 저장소에 붙이기 전에 표시합니다 — 붙이는 순간 구독이 조회를 시작합니다
-      startedHere.add(accepted.run_id);
-      if (!store().beginRun(ticket, accepted.run_id, accepted.conversation_id)) return 'stale';
+    const answer = await request({
+      slot: slots.send,
+      watch: ['generation', 'send'],
+      timeoutMs: null,
+      start: (signal) => api.send(pending.request, signal),
+    });
+    // 타이머는 마지막 시도 것만 지웁니다
+    if (answer.latest) clearSendTimer();
+    if (answer.ok) {
+      // 접수는 몇 번째 시도의 응답이든 · 닫힌 뒤에도 반영합니다(같은 키라 같은 실행) — 잠금을 풀고, 새 통신 계층이
+      // 저장소 구독으로 조회를 시작합니다. 붙이는 순간 구독이 조회를 시작하므로 그 전에 표시합니다
+      startedHere.add(answer.value.run_id);
+      if (!store().beginRun(ticket, answer.value.run_id, answer.value.conversation_id))
+        return 'stale';
       return 'accepted';
-    } catch (error) {
-      // 뒤 시도가 있으면 이 시도의 실패(끊김 포함)는 버립니다
-      if (attempt !== sendAttempt) return 'stale';
-      clearSendTimer();
-      // 닫혔으면 결과를 모르는 채로 둡니다 — 새 통신 계층이 미확정으로 알립니다
-      if (disposed || store().pending?.sendId !== ticket.sendId) return 'stale';
-      return onSendFailure(ticket, error);
-    } finally {
-      if (sendController === controller) sendController = null;
     }
+    // 뒤 시도가 있거나(끊김 포함) 그 보내기를 놓았으면 버립니다. 닫혔으면 결과를 모르는 채로 둡니다 —
+    // 새 통신 계층이 미확정으로 알립니다
+    if (answer.fate !== 'current') return 'stale';
+    return onSendFailure(ticket, answer.error);
   }
 
-  async function createIfNeeded(): Promise<boolean> {
-    if (!needsCreate(store())) return true;
+  /**
+   * '기억 없이' 새 대화면 대화부터 만듭니다. 'ready' 면 보낼 수 있습니다 — 만들 필요가 없었거나 만든 대화에 있습니다.
+   * 만드는 중이면 'locked'(겹쳐 누름), 그사이 대화 · 사용자가 바뀌었거나 닫혔으면 'stale' 입니다
+   */
+  async function createIfNeeded(): Promise<'ready' | 'locked' | 'failed' | 'stale'> {
+    if (!needsCreate(store())) return 'ready';
     const ticket = store().beginCreate();
-    if (!ticket) return false;
+    if (!ticket) return 'locked';
     const scope = store().scope;
-    try {
-      // (BE 미구현) `memory_off` — 지금 BE 는 모르는 칸이라 422 로 거절합니다. 목은 받습니다
-      // 결과를 모른 채 실패로 알리면 대화가 하나 더 생길 수 있습니다 — '기억 없이' 는 아직 BE 가 받지 않아(422)
-      // 실제로는 생기지 않고, BE 가 칸을 열 때 멱등 키를 함께 맞춥니다
-      const created = await timed((signal) =>
+    // (BE 미구현) `memory_off` — 지금 BE 는 모르는 칸이라 422 로 거절합니다. 목은 받습니다
+    // 결과를 모른 채 실패로 알리면 대화가 하나 더 생길 수 있습니다 — '기억 없이' 는 아직 BE 가 받지 않아(422)
+    // 실제로는 생기지 않고, BE 가 칸을 열 때 멱등 키를 함께 맞춥니다
+    const answer = await request({
+      watch: ['generation', 'attempt', 'create'],
+      start: (signal) =>
         api.createConversation({ pitch_id: scope?.pitchId ?? null, memory_off: true }, signal),
-      );
-      store().finishCreate(ticket, created.conversation_id);
-      return !disposed && store().conversationId === created.conversation_id;
-    } catch (error) {
-      // 그사이 대화 · 사용자가 바뀌었으면 잠금만 풀고 안내하지 않습니다 — 새 화면에 엉뚱한 실패가 뜨지 않게
-      const current = isCurrent(ticket);
-      store().finishCreate(ticket, null);
-      if (!current || disposed) return false;
-      if (error instanceof ApiFailure) {
-        if (error.status === 503 && error.code === 'AGENT_DISABLED') emit({ type: 'disabled' });
-        else emit({ type: 'sendFailed', code: error.code, status: error.status });
-      } else emit({ type: 'sendFailed', code: 'REQUEST_FAILED', status: 0 });
-      return false;
-    }
+    });
+    // 잠금은 늦은 · 닫힌 뒤 응답이어도 풉니다(저장소가 그 만들기의 표일 때만 받습니다)
+    store().finishCreate(ticket, answer.ok ? answer.value.conversation_id : null);
+    if (answer.fate !== 'current') return 'stale';
+    if (answer.ok)
+      return store().conversationId === answer.value.conversation_id ? 'ready' : 'stale';
+    const { error } = answer;
+    if (isDisabled(error)) emit({ type: 'disabled' });
+    else if (error instanceof ApiFailure)
+      emit({ type: 'sendFailed', code: error.code, status: error.status });
+    else emit({ type: 'sendFailed', code: 'REQUEST_FAILED', status: 0 });
+    return 'failed';
   }
 
-  /** 대화 목록에서 그 대화의 범위 — 읽지 못하면 null */
-  async function serverScope(conversationId: string): Promise<ChatScope | null> {
-    try {
-      const list = await timed((signal) => api.listConversations(signal));
-      const items = (list as { conversations?: unknown } | null)?.conversations;
-      const found = Array.isArray(items)
-        ? (items as { conversation_id?: unknown }[]).find(
-            (c) => c.conversation_id === conversationId,
-          )
-        : undefined;
-      if (!found) return null;
-      const { scope_pitch_id: pitchId, scope_pitch_title: title } = found as {
-        scope_pitch_id?: unknown;
-        scope_pitch_title?: unknown;
-      };
-      if (!(pitchId === null || typeof pitchId === 'string')) return null;
-      return { pitchId, title: typeof title === 'string' ? title : null };
-    } catch {
-      return null;
-    }
+  /** 대화 목록에서 그 대화의 범위 — 읽지 못하면 null. `fate` 는 `watch` 로 견준 그 응답의 처지 */
+  async function serverScope(
+    conversationId: string,
+    watch: readonly WatchKey[],
+  ): Promise<{ fate: Fate; scope: ChatScope | null }> {
+    const answer = await request({ watch, start: (signal) => api.listConversations(signal) });
+    return { fate: answer.fate, scope: answer.ok ? scopeIn(answer.value, conversationId) : null };
   }
 
   // ── 저장소 · 연결 구독 ───────────────────────────────────────
@@ -939,7 +1043,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const runChanged = (before.run?.runId ?? null) !== (now.run?.runId ?? null);
     if (before.run && runChanged) readers.delete(before.run.runId);
     // 지켜보던 실행이 바뀌었는데 앞 실행의 조회가 걸려 있으면 끊습니다 — 새 실행을 시간 초과(20초)까지 기다리지 않게
-    const hungPoll = runChanged && polling ? pollController : null;
+    const hungPoll = runChanged && polling ? slots.poll.controller : null;
     if (now.run && runChanged) {
       // 새 실행이 붙었다는 것은 서버가 다시 받았다는 뜻이라 멈춤을 풉니다
       halted = null;
@@ -951,7 +1055,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const otherConversation = now.conversationId !== before.conversationId;
     if (now.syncing && now.conversationId && (!before.syncing || otherConversation)) {
       if (otherConversation) lookupFailures = 0;
-      const hung = lookingUp ? lookupController : null;
+      const hung = lookingUp ? slots.lookup.controller : null;
       lookup().catch(() => undefined);
       // 앞 대화의 조회가 걸려 있으면 끊습니다 — 끝나기를 기다리지 않고 곧바로 새 대화를 조회합니다
       hung?.abort();
@@ -971,7 +1075,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   return {
     send: async (draft) => {
       if (disposed) return 'stale';
-      if (!(await createIfNeeded())) return needsCreate(store()) ? 'failed' : 'locked';
+      const created = await createIfNeeded();
+      if (created !== 'ready') return created;
       const ticket = store().beginSend(draft);
       if (!ticket) return 'locked';
       return post(ticket);
@@ -1004,59 +1109,50 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       if (disposed) return false;
       const run = store().run;
       if (!run || !store().beginCancel(run.runId)) return false;
-      try {
-        const view = readRunView(await timed((signal) => api.cancel(run.runId, signal)));
-        // 닫혔어도 잠금을 푸는 저장소 정리는 합니다 — 새 통신 계층은 이 취소를 모르므로, 그대로 두면
-        // "취소 중" 이 실행이 끝날 때까지 남아 다시 취소할 수 없습니다. 신호 · 다시 조회만 건너뜁니다
-        if (disposed) {
-          if (view && view.run_id === run.runId && isTerminalRun(view.status))
-            store().endRun(run.runId, view.retry_after_s);
-          else store().abortCancel(run.runId);
-          return true;
-        }
-        // 끝남은 그 실행을 아직 지켜볼 때만 알립니다 — 조회가 먼저 끝냈으면 취소 중 표시만 지웁니다
-        if (view && view.run_id === run.runId && isTerminalRun(view.status))
-          finishRun(run.runId, run.conversationId, view);
-        else {
-          // 서버가 취소하지 않고 그 상태를 그대로 돌려줌(예: 다른 탭이 먼저 승인해 RUNNING) —
-          // "취소 중" 을 풀어 보내기 · 다시 취소를 막지 않고, 상태부터 다시 확인합니다
-          store().abortCancel(run.runId);
-          if (store().run?.runId === run.runId) {
-            emit({ type: 'cancelFailed', runId: run.runId });
-            kick();
-          }
-        }
-      } catch (error) {
-        if (disposed) {
-          store().abortCancel(run.runId);
-          return true;
-        }
-        const mine = store().run?.runId === run.runId;
-        // 꺼짐 — 취소되지 않았습니다. 잠금을 풀고 버튼을 숨기게 알립니다
-        if (isDisabled(error)) {
-          store().abortCancel(run.runId);
-          emit({ type: 'disabled' });
-          return true;
-        }
-        // 서버가 거절했으면(4xx) 취소되지 않은 것이 확실합니다 — 풀고 다시 취소할 수 있게 둡니다
-        if (error instanceof ApiFailure && error.status < 500) {
-          store().abortCancel(run.runId);
-          if (mine) {
-            emit({ type: 'cancelFailed', runId: run.runId });
-            kick();
-          }
-          return true;
-        }
-        // 응답을 잃음(끊김 · 시간 초과 · 5xx) — 서버가 취소했을 수 있습니다. "취소 중" 은 그대로 두고
-        // 같은 실행의 상태부터 확인해 확정합니다(L3-34 "응답 유실 때 같은 run_id 상태부터 확인")
-        if (!mine) {
-          store().abortCancel(run.runId);
-          return true;
-        }
+      const answer = await request({
+        // 그 실행에 대한 응답인지만 봅니다 — 승인 대기 · 실행 중 같은 단계 변화는 견주지 않습니다
+        watch: ['generation', 'attempt', 'run'],
+        start: (signal) => api.cancel(run.runId, signal),
+      });
+      const view = answer.ok ? readRunView(answer.value) : null;
+      const ended = view !== null && view.run_id === run.runId && isTerminalRun(view.status);
+      // 닫혔으면 잠금을 푸는 저장소 정리만 합니다 — 새 통신 계층은 이 취소를 모르므로, 그대로 두면
+      // "취소 중" 이 실행이 끝날 때까지 남아 다시 취소할 수 없습니다
+      if (answer.fate === 'closed') {
+        if (ended) store().endRun(run.runId, view.retry_after_s);
+        else store().abortCancel(run.runId);
+        return true;
+      }
+      // 늦은 응답 — 끝났으면 그 실행을 끝낸 것으로 적고(늦은 조회가 되살리지 않게), 아니면 취소 중 표시만 지웁니다.
+      // 끝남은 그 실행을 아직 지켜볼 때만 알립니다(`finishRun`)
+      if (answer.fate === 'stale') {
+        if (ended) finishRun(run.runId, run.conversationId, view);
+        else store().abortCancel(run.runId);
+        return true;
+      }
+      if (ended) {
+        finishRun(run.runId, run.conversationId, view);
+        return true;
+      }
+      // 꺼짐 — 취소되지 않았습니다. 잠금을 풀고 버튼을 숨기게 알립니다
+      if (!answer.ok && isDisabled(answer.error)) {
+        store().abortCancel(run.runId);
+        emit({ type: 'disabled' });
+        return true;
+      }
+      // 응답을 잃음(끊김 · 시간 초과 · 5xx) — 서버가 취소했을 수 있습니다. "취소 중" 은 그대로 두고
+      // 같은 실행의 상태부터 확인해 확정합니다(L3-34 "응답 유실 때 같은 run_id 상태부터 확인")
+      if (!answer.ok && isUnknownResult(answer.error)) {
         cancelUnsure = run.runId;
         emit({ type: 'cancelChecking', runId: run.runId });
         kick();
+        return true;
       }
+      // 서버가 거절했거나(4xx) 취소하지 않고 그 상태를 그대로 돌려줌(예: 다른 탭이 먼저 승인해 RUNNING) —
+      // "취소 중" 을 풀어 보내기 · 다시 취소를 막지 않고, 상태부터 다시 확인합니다
+      store().abortCancel(run.runId);
+      emit({ type: 'cancelFailed', runId: run.runId });
+      kick();
       return true;
     },
 
@@ -1065,18 +1161,27 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       const run = store().run;
       if (!run || run.phase !== 'WAITING_APPROVAL' || deciding.has(actionId)) return 'locked';
       deciding.add(actionId);
-      const ticket = chatTicket();
-      const request = { decision, args_hash: argsHash };
-      const once = () => timed((signal) => api.decide(run.runId, actionId, request, signal));
+      const body = { decision, args_hash: argsHash };
+      const once = () =>
+        request({ start: (signal) => api.decide(run.runId, actionId, body, signal) });
       try {
         // 응답을 잃으면 같은 요청으로 한 번 다시 보냅니다 — BE 는 같은 결정에 처음 결과(그때의 상태)를 줍니다(L3-39)
-        const raw = await once().catch((error: unknown) => {
-          if (!isUnknownResult(error) || disposed || !isCurrent(ticket)) throw error;
-          return once();
-        });
-        const view = readRunView(raw);
-        if (!view || view.run_id !== run.runId) throw new FormatError();
-        if (disposed || !isCurrent(ticket)) return 'stale';
+        let answer = await once();
+        if (!answer.ok && answer.fate === 'current' && isUnknownResult(answer.error))
+          answer = await once();
+        if (answer.fate !== 'current') return 'stale';
+        const view = answer.ok ? readRunView(answer.value) : null;
+        if (!view || view.run_id !== run.runId) {
+          const error = answer.ok ? new FormatError() : answer.error;
+          if (isDisabled(error)) {
+            emit({ type: 'disabled' });
+            return 'failed';
+          }
+          emit({ type: 'decisionFailed', runId: run.runId, actionId, code: decisionCode(error) });
+          // 카드가 바뀌었거나 끝났을 수 있습니다 — 지금 상태로 카드를 다시 읽습니다
+          kick();
+          return 'failed';
+        }
         // 거절이면 DONE 으로 끝납니다. 승인이면 RUNNING — 이어지는 문장은 자기 커서로 조회합니다
         if (isTerminalRun(view.status)) finishRun(run.runId, run.conversationId, view);
         else {
@@ -1084,21 +1189,6 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
           kick();
         }
         return 'decided';
-      } catch (error) {
-        if (disposed || !isCurrent(ticket)) return 'stale';
-        if (isDisabled(error)) {
-          emit({ type: 'disabled' });
-          return 'failed';
-        }
-        emit({
-          type: 'decisionFailed',
-          runId: run.runId,
-          actionId,
-          code: decisionCode(error),
-        });
-        // 카드가 바뀌었거나 끝났을 수 있습니다 — 지금 상태로 카드를 다시 읽습니다
-        kick();
-        return 'failed';
       } finally {
         deciding.delete(actionId);
       }
@@ -1109,39 +1199,44 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       if (store().conversationId === null) return store().chooseScope(scope);
       const ticket = store().beginScopeChange(scope);
       if (!ticket) return false;
-      try {
-        const changed = await timed((signal) =>
-          api.changeScope(ticket.conversationId!, scope.pitchId, signal),
-        );
+      const watch: readonly WatchKey[] = [...DEFAULT_WATCH, 'scopeChange'];
+      const answer = await request({
+        watch,
+        start: (signal) => api.changeScope(ticket.conversationId!, scope.pitchId, signal),
+      });
+      // 잠금은 늦은 · 닫힌 뒤 응답이어도 풉니다(저장소가 그 바꾸기의 표일 때만 받습니다). 바뀌었다고 답하는 것은
+      // 지금 화면의 칩이 바뀌었을 때뿐입니다
+      if (answer.ok) {
         store().finishScopeChange(ticket, {
-          pitchId: changed.scope_pitch_id,
-          title: changed.scope_pitch_title,
+          pitchId: answer.value.scope_pitch_id,
+          title: answer.value.scope_pitch_title,
         });
-        return true;
-      } catch (error) {
-        // 결과를 모름(끊김 · 시간 초과 · 5xx) — 서버가 바꿨을 수 있어 대화 목록에서 서버의 범위를 읽어 맞춥니다
-        if (isUnknownResult(error) && !disposed && isCurrent(ticket)) {
-          const server = await serverScope(ticket.conversationId!);
-          if (server && isCurrent(ticket)) {
-            store().finishScopeChange(ticket, server);
-            if (server.pitchId === scope.pitchId) return true;
-            emit({ type: 'scopeFailed', code: 'REQUEST_FAILED' });
-            return false;
-          }
-        }
-        const current = isCurrent(ticket);
-        store().finishScopeChange(ticket, null);
-        if (!current || disposed) return false;
-        if (isDisabled(error)) {
-          emit({ type: 'disabled' });
+        return answer.fate === 'current';
+      }
+      const { error } = answer;
+      // 결과를 모름(끊김 · 시간 초과 · 5xx) — 서버가 바꿨을 수 있어 대화 목록에서 서버의 범위를 읽어 맞춥니다
+      if (answer.fate === 'current' && isUnknownResult(error)) {
+        const server = await serverScope(ticket.conversationId!, watch);
+        if (server.fate === 'current' && server.scope) {
+          store().finishScopeChange(ticket, server.scope);
+          if (server.scope.pitchId === scope.pitchId) return true;
+          emit({ type: 'scopeFailed', code: 'REQUEST_FAILED' });
           return false;
         }
-        emit({
-          type: 'scopeFailed',
-          code: error instanceof ApiFailure ? error.code : 'REQUEST_FAILED',
-        });
+      }
+      // 목록을 기다린 사이에 바뀌었을 수 있어 앞 범위로 돌리기 전에 다시 봅니다
+      const current = answer.stillCurrent();
+      store().finishScopeChange(ticket, null);
+      if (!current) return false;
+      if (isDisabled(error)) {
+        emit({ type: 'disabled' });
         return false;
       }
+      emit({
+        type: 'scopeFailed',
+        code: error instanceof ApiFailure ? error.code : 'REQUEST_FAILED',
+      });
+      return false;
     },
 
     checkNow: () => {
@@ -1169,8 +1264,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
 
     dispose: () => {
       disposed = true;
-      pollController?.abort();
-      lookupController?.abort();
+      slots.poll.controller?.abort();
+      slots.lookup.controller?.abort();
       clearPoll();
       clearTimer(lookupTimer);
       lookupTimer = null;
