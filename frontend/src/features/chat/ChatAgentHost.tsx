@@ -519,6 +519,15 @@ function MessageList({ session }: { session: ChatSession }) {
   });
   // [이어서 확인]은 목록의 마지막 메시지가 답일 때 그 답에만
   const lastAnswer = shown.at(-1)?.role === 'assistant' ? shown.length - 1 : -1;
+  /**
+   * [최신 기준으로 다시 묻기] — 그 답의 질문을 새 메시지로, `again_of_message_id` 는 그 답(최신 아님 사유가 붙은 메시지).
+   * 질문을 모르면(앞 페이지에 있음 등) 버튼을 두지 않습니다
+   */
+  const askAgainFor = (message: ChatMessage) => {
+    if (message.role !== 'assistant' || !message.run_id) return undefined;
+    const question = questionOf(message.run_id);
+    return question ? () => void session.send(question, null, message.message_id) : undefined;
+  };
   /** 그 실행을 시작한 내 말 — [다시 보내기]가 같은 질문을 새 메시지로 보냅니다 */
   const questionOf = (runId: string) =>
     shown.find((m) => m.role === 'user' && m.run_id === runId)?.text ??
@@ -567,6 +576,7 @@ function MessageList({ session }: { session: ChatSession }) {
             message={message}
             actions={actions}
             onContinue={i === lastAnswer ? () => void session.send(CONTINUE_TEXT) : undefined}
+            onAskAgain={askAgainFor(message)}
           />
           {message.run_id && lastOfRun.get(message.run_id) === i && (
             <EndNoticeView
@@ -662,15 +672,24 @@ function MessageItem({
   message,
   actions,
   onContinue,
+  onAskAgain,
 }: {
   message: ChatMessage;
   actions: CardActions;
   onContinue?: () => void;
+  onAskAgain?: () => void;
 }) {
   if (message.role === 'user') return <p className={SELF_CLASS}>{message.text}</p>;
   if (message.role === 'system' || message.masked)
     return <p className={AGENT_BUBBLE}>{message.text}</p>;
-  return <StoredAnswer message={message} actions={actions} onContinue={onContinue} />;
+  return (
+    <StoredAnswer
+      message={message}
+      actions={actions}
+      onContinue={onContinue}
+      onAskAgain={onAskAgain}
+    />
+  );
 }
 
 /** 실행이 끝나며 붙는 안내 — 오류는 한 번 알립니다(role="alert"). [다시 보내기]는 같은 질문을 새 메시지로 */

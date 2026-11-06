@@ -1,8 +1,11 @@
+import { useQuery } from '@tanstack/react-query';
 import { useSyncExternalStore, type ReactNode } from 'react';
+import { getPitchResources } from '@/shared/api/pitch';
 import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
 import { CardList, type CardActions } from './ChatCards';
 import { ChipList } from './ChatChips';
 import { partialHeader } from './chatNotices';
+import { basisBadge, basisPitches, staleTexts } from './chatBasis';
 import {
   errorText,
   GENERAL_LABEL,
@@ -110,27 +113,38 @@ export function StoredAnswer({
   message,
   actions,
   onContinue,
+  onAskAgain,
 }: {
   message: ChatMessage;
   actions: CardActions;
   /** [이어서 확인] — 중간까지만 답한 마지막 답에만 둡니다 (12-4 F8 `PARTIAL`) */
   onContinue?: () => void;
+  /** [최신 기준으로 다시 묻기] — 최신이 아닌 답에, 그 답의 질문을 알 때만 (12-4 F5) */
+  onAskAgain?: () => void;
 }) {
+  const pitches = basisPitches(message.basis);
+  const stale = staleTexts(message.stale_reasons);
   const answer = readMessage(message);
   const plan = readPlan(message.plan);
   const trace = readTrace(message.trace);
   const header = partialHeader(message.status, answer.claims.at(-1)?.text ?? null, plan.items);
   return (
-    <div className={AGENT_BUBBLE} data-message={message.message_id}>
+    <div
+      className={AGENT_BUBBLE}
+      data-message={message.message_id}
+      data-stale={stale.length > 0 || undefined}
+    >
       {header && (
         <p className="mb-1 text-xs font-bold text-stone" data-partial="">
           {header}
         </p>
       )}
       <PlanList plan={plan.items} />
-      {answer.claims.map((claim) => (
-        <ClaimLine key={claim.index} claim={claim} shown={claim.text} done />
-      ))}
+      <div className={stale.length > 0 ? 'opacity-60' : undefined}>
+        {answer.claims.map((claim) => (
+          <ClaimLine key={claim.index} claim={claim} shown={claim.text} done />
+        ))}
+      </div>
       {answer.error && <p className="mt-1 text-coral-deep">{errorText(answer.error)}</p>}
       {(plan.dropped || trace.dropped) && (
         <p className="mt-1 text-xs text-stone">{PROGRESS_DROPPED_TEXT}</p>
@@ -144,6 +158,30 @@ export function StoredAnswer({
         actions={actions}
       />
       <TraceList trace={trace.items} />
+      {(pitches.length > 0 || stale.length > 0) && (
+        <div className="mt-2 border-t border-line-strong pt-2 text-xs leading-5">
+          {pitches.map((pitch) => (
+            <BasisBadge key={pitch.pitch_id} pitch={pitch} />
+          ))}
+          {stale.map((text) => (
+            <p key={text} className="font-bold text-coral-deep" data-stale-reason="">
+              최신 아님 · {text}
+            </p>
+          ))}
+          {stale.length > 0 && onAskAgain && (
+            <button
+              type="button"
+              aria-disabled={!actions.canSend}
+              onClick={() => {
+                if (actions.canSend) onAskAgain();
+              }}
+              className="mt-1 min-h-11 rounded-lg border border-line-strong px-3 font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
+            >
+              최신 기준으로 다시 묻기
+            </button>
+          )}
+        </div>
+      )}
       {header && onContinue && (
         <button
           type="button"
@@ -157,6 +195,24 @@ export function StoredAnswer({
         </button>
       )}
     </div>
+  );
+}
+
+/** 피치 하나의 근거 배지 — 대본 버전 이름은 그 피치의 버전 목록에서 찾습니다 */
+function BasisBadge({ pitch }: { pitch: ReturnType<typeof basisPitches>[number] }) {
+  const resources = useQuery({
+    queryKey: ['pitches', pitch.pitch_id, 'resources'],
+    queryFn: () => getPitchResources(pitch.pitch_id),
+    // 대본 버전이 없으면 이름을 찾을 일이 없습니다
+    enabled: pitch.script_version_id !== null,
+    staleTime: 5 * 60_000,
+  });
+  const text = basisBadge(pitch, resources.data);
+  if (!text) return null;
+  return (
+    <p className="text-stone" data-basis="">
+      {text}
+    </p>
   );
 }
 

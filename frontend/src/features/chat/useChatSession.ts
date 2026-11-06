@@ -110,7 +110,11 @@ export interface ChatSession {
   announce: string;
   notice: ChatNotice | null;
   /** 보냅니다 — 접수됐거나(미확정 포함) 같은 요청을 다시 확인할 수 있으면 true(입력을 비워도 됨) */
-  send: (text: string) => Promise<boolean>;
+  send: (
+    text: string,
+    choice?: SendDraft['choice'],
+    againOfMessageId?: string | null,
+  ) => Promise<boolean>;
   retryUnconfirmed: () => void;
   /** [취소] — 결과는 신호로 옵니다 */
   cancel: () => void;
@@ -303,7 +307,11 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
 
   // ── 보내기 ───────────────────────────────────────────
   const send = useCallback(
-    async (text: string, choice: SendDraft['choice'] = null) => {
+    async (
+      text: string,
+      choice: SendDraft['choice'] = null,
+      againOfMessageId: string | null = null,
+    ) => {
       const current = transport.current;
       if (!current) return false;
       const snapshot = takeScreenSnapshot(info.route);
@@ -321,7 +329,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       const result = await current.send({
         text,
         page,
-        again_of_message_id: null,
+        again_of_message_id: againOfMessageId,
         choice,
       });
       // 다른 탭의 실행이 있어 받지 못함 — 저장소가 그 실행을 조회합니다(L3-17)

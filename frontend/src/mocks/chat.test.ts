@@ -179,6 +179,16 @@ describe('보내기 → 조회', () => {
     expect((await messages(conversation_id)).items.map((m) => m.role)).toEqual(['user']);
   });
 
+  it('사용자 말에는 그 말이 시작한 실행(run_id)을 단다 — BE accept.py 처럼', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const { items } = await messages(conversation_id);
+    expect(items.filter((m) => m.role !== 'system').map((m) => [m.role, m.run_id])).toEqual([
+      ['user', run_id],
+      ['assistant', run_id],
+    ]);
+  });
+
   it('받은 문장이 있으면 PARTIAL 로 남긴다 (12-3 "앞서 받은 답이 있으면 그것으로 PARTIAL")', async () => {
     controls.partial('AGENT_TIMEOUT');
     const { run_id, conversation_id } = await accepted('비교해 줘');

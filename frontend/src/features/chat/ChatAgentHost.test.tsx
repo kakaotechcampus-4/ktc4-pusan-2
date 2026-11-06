@@ -33,6 +33,7 @@ const server = vi.hoisted(() => ({
     Promise.resolve({ messages: [], next_before_seq: null }),
   conversations: (): Promise<unknown> => Promise.resolve({ conversations: [] }),
   pitches: (): Promise<unknown> => Promise.resolve({ pitches: [] }),
+  resources: (_pitchId: string): Promise<unknown> => Promise.reject(new Error('버전 목록 없음')),
   report: (takeId: string): Promise<unknown> =>
     Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' }),
 }));
@@ -44,6 +45,8 @@ vi.mock('@/shared/api/client', async (original) => ({
     if (path.startsWith('/api/chat/conversations/')) return server.messages(path);
     if (path === '/api/chat/conversations') return server.conversations();
     if (path === '/api/pitches/') return server.pitches();
+    const resources = /^\/api\/pitches\/([^/]+)\/resources$/.exec(path);
+    if (resources) return server.resources(resources[1]!);
     const take = /^\/api\/takes\/([^/]+)\/report$/.exec(path);
     if (take) return server.report(take[1]!);
     return Promise.reject(new Error(`모르는 경로 ${path}`));
@@ -176,6 +179,7 @@ beforeEach(() => {
   server.messages = () => Promise.resolve({ messages: [], next_before_seq: null });
   server.conversations = () => Promise.resolve({ conversations: [] });
   server.pitches = () => Promise.resolve({ pitches: [] });
+  server.resources = () => Promise.reject(new Error('버전 목록 없음'));
   scopeMode.value = 'ok';
   server.report = (takeId) =>
     Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
@@ -1916,5 +1920,129 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
       await press(input(), { key: 'Enter' });
       expect(box().scrollTop).toBe(600);
     });
+  });
+});
+
+// ── 8-6 근거 배지 · 최신 아님 · 다시 묻기 ───────────────────────
+
+describe('근거 배지 · 최신 아님 (12-4 F5)', () => {
+  const answerWith = (over: Record<string, unknown> = {}) => ({
+    message_id: 'm2',
+    role: 'assistant',
+    status: 'DONE',
+    text: '3장 시선이 낮았어요.',
+    run_id: 'r1',
+    claims: [
+      {
+        kind: 'GENERAL',
+        text: '3장 시선이 낮았어요.',
+        evidence_ids: [],
+        source_ids: [],
+        assessment_id: null,
+        action_id: null,
+      },
+    ],
+    cards: [],
+    plan: null,
+    trace: null,
+    masked: false,
+    basis: {
+      pitches: [
+        {
+          pitch_id: 'p-1',
+          script_version_id: 'sv-2',
+          presentation_version_id: 'pv-2',
+          standard_version: 4,
+          takes: [{ take_id: 't-5', take_number: 5 }],
+        },
+      ],
+    },
+    stale_reasons: ['NEW_TAKE'],
+    ...over,
+  });
+  const question = { message_id: 'm1', role: 'user', text: '3장 어땠어?', run_id: 'r1' };
+
+  async function inConversation(messages: unknown[]) {
+    server.messages = () => Promise.resolve({ messages, next_before_seq: null });
+    server.resources = () =>
+      Promise.resolve({
+        pitch_id: 'p-1',
+        presentation_versions: [],
+        script_versions: [{ id: 'sv-2', version: 2 }],
+        evaluation_versions: [],
+      });
+    await visit('/');
+    await openPanel();
+    const st = useChatStore.getState();
+    st.selectConversation('c1', { pitchId: null, title: null });
+    st.resolveConversation(chatTicket(), null);
+    await settle();
+    // 배지의 버전 목록은 메시지를 그린 뒤에 읽습니다
+    await settle();
+  }
+
+  it('답마다 "Take 5 · 대본 V2 · 기준 v4 기준", 최신이 아니면 사유를 붙이고 본문을 흐린다', async () => {
+    await inConversation([question, answerWith()]);
+    const bubble = panel()!.querySelector('[data-message="m2"]')!;
+    expect(bubble.querySelector('[data-basis]')!.textContent).toBe(
+      'Take 5 · 대본 V2 · 기준 v4 기준',
+    );
+    expect(bubble.querySelector('[data-stale-reason]')!.textContent).toBe(
+      '최신 아님 · 이 답 뒤에 새 Take가 있어요',
+    );
+    expect(bubble.querySelector('.opacity-60')!.textContent).toContain('3장 시선이 낮았어요.');
+  });
+
+  it('최신이면 사유 · 흐림 · 다시 묻기가 없다', async () => {
+    await inConversation([question, answerWith({ stale_reasons: [] })]);
+    const bubble = panel()!.querySelector('[data-message="m2"]')!;
+    expect(bubble.querySelector('[data-basis]')).not.toBeNull();
+    expect(bubble.querySelector('[data-stale-reason]')).toBeNull();
+    expect(bubble.querySelector('.opacity-60')).toBeNull();
+    expect(button('최신 기준으로 다시 묻기')).toBeUndefined();
+  });
+
+  it('[최신 기준으로 다시 묻기]는 같은 질문을 again_of_message_id(그 답)와 함께 새로 보내고, 옛 답은 그대로 둔다', async () => {
+    await inConversation([question, answerWith()]);
+    await act(async () => button('최신 기준으로 다시 묻기')!.click());
+    expect(transport().sent).toHaveLength(1);
+    expect(transport().sent[0]).toMatchObject({
+      text: '3장 어땠어?',
+      again_of_message_id: 'm2',
+      conversation_id: 'c1',
+    });
+    expect(panel()!.querySelector('[data-message="m2"]')).not.toBeNull();
+  });
+
+  it('질문을 모르면(앞 페이지 등) 다시 묻기 버튼을 두지 않는다', async () => {
+    await inConversation([answerWith()]);
+    expect(panel()!.querySelector('[data-stale-reason]')).not.toBeNull();
+    expect(button('최신 기준으로 다시 묻기')).toBeUndefined();
+  });
+
+  it('실행 중에는 다시 묻기를 잠근다', async () => {
+    await inConversation([question, answerWith()]);
+    await act(async () => {
+      useChatStore.getState().selectConversation('c1', { pitchId: null, title: null });
+      useChatStore.getState().resolveConversation(chatTicket(), { runId: 'r9', phase: 'RUNNING' });
+    });
+    await settle();
+    const again = button('최신 기준으로 다시 묻기')!;
+    expect(again.getAttribute('aria-disabled')).toBe('true');
+    await act(async () => again.click());
+    expect(transport().sent).toEqual([]);
+  });
+
+  it('버전 목록을 읽지 못하면 대본 칸만 빼고 보인다', async () => {
+    await inConversation([question, answerWith()]);
+    server.resources = () => Promise.reject(new Error('끊김'));
+    queryClient.removeQueries({ queryKey: ['pitches', 'p-1', 'resources'] });
+    await act(async () => useChatStore.getState().startNewConversation(null));
+    await act(async () => {
+      useChatStore.getState().selectConversation('c1', { pitchId: null, title: null });
+      useChatStore.getState().resolveConversation(chatTicket(), null);
+    });
+    await settle();
+    expect(panel()!.querySelector('[data-basis]')!.textContent).toBe('Take 5 · 기준 v4 기준');
   });
 });
