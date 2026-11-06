@@ -1302,13 +1302,16 @@ class Loop:
                 what = "문제 구간: " + clm.ISSUE_LABEL.get(ev.value, ev.value)
             else:
                 what = ev.path.rsplit(".", 1)[-1]
+            shown = compose.value_display(self.ctx, ev)
             rows.append(
                 {
                     "id": eid,
                     "take": ev.take_number,
                     "slide": ev.slide_number,
                     "what": what,
-                    "value": compose.value_display(self.ctx, ev),
+                    # 화면 표기를 만들 수 없는 값(지표가 없는 화면 숫자 등)은 저장된 값 그대로 · 단위와 함께 보인다(값이 없다고 읽히지 않게)
+                    "value": shown if shown is not None else ev.value,
+                    **({"unit": ev.unit} if shown is None and ev.unit else {}),
                     **({"saved": ev.saved} if ev.origin == "SCREEN" else {}),
                 }
             )

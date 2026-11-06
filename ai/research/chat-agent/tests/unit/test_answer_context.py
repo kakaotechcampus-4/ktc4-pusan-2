@@ -22,6 +22,20 @@ def research_block(req: Any) -> dict[str, Any]:
     raise AssertionError("<research> 블록이 없다")
 
 
+def test_screen_numbers_without_a_metric_keep_their_raw_value() -> None:
+    # 화면 숫자(제한 시간 등)는 지표가 없어 표기를 만들 수 없다: 값이 비어 보이지 않고 저장 여부와 함께 실린다
+    from .test_tools import pitch_screen
+
+    req = F.request(user_message="지금 제한 시간이 몇 분이야?")
+    req["page"]["screen"] = pitch_screen()
+    d = F.draft("지금 제한 시간이 몇 분이야", type_="REQUEST", claim_op=None, polarity="NEUTRAL")
+    llm = F.FakeLlm([F.plan(assessments=[d]), F.tools(("get_screen", {})), F.done(), F.answer([])])
+    F.run_turn(req, llm)
+    table = research_block(next(c for c in llm.calls if c.purpose == "ANSWER"))["evidence_table"]
+    rows = [r for r in table if r["what"] == "time_limit_sec"]
+    assert sorted((r["value"], r["saved"]) for r in rows) == [(240, True), (300, False)]
+
+
 def test_answer_call_gets_value_table_and_per_question_evidence() -> None:
     drafts = [
         F.draft(
