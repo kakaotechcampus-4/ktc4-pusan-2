@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select, update
+from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -460,11 +460,16 @@ class ChatRepository:
             )
         )
 
-    def list_takes_from(self, pitch_id: uuid.UUID, first_take_number: int) -> list[Row]:
+    def list_takes_from(self, first_take_numbers: dict[uuid.UUID, int]) -> list[Row]:
+        """피치마다 그 번호부터의 Take 와 리뷰 판. 피치 · 번호 순이다."""
+        if not first_take_numbers:
+            return []
         return list(
             self.db.execute(
                 select(
                     Take.id,
+                    Take.pitch_id,
+                    Take.take_number,
                     Take.status,
                     Take.review_status,
                     TakeAIResults.revision.label("review_revision"),
@@ -473,8 +478,15 @@ class ChatRepository:
                     TakeAIResults,
                     and_(TakeAIResults.take_id == Take.id, TakeAIResults.kind == "REVIEW"),
                 )
-                .where(Take.pitch_id == pitch_id, Take.take_number >= first_take_number)
-                .order_by(Take.take_number)
+                .where(
+                    or_(
+                        *(
+                            and_(Take.pitch_id == pitch_id, Take.take_number >= first)
+                            for pitch_id, first in first_take_numbers.items()
+                        )
+                    )
+                )
+                .order_by(Take.pitch_id, Take.take_number)
             )
         )
 
@@ -539,13 +551,15 @@ class ChatRepository:
             )
         )
 
-    def list_goal_leases(self, conversation_id: uuid.UUID, goal_version: int) -> list[ChatLease]:
+    def list_goal_leases(self, goals: Sequence[tuple[uuid.UUID, int]]) -> list[ChatLease]:
+        """(대화, 목표 판) 들의 목표 확인 기록."""
+        if not goals:
+            return []
         return list(
             self.db.scalars(
                 select(ChatLease).where(
                     ChatLease.kind == "GOAL_CHECK",
-                    ChatLease.conversation_id == conversation_id,
-                    ChatLease.goal_version == goal_version,
+                    tuple_(ChatLease.conversation_id, ChatLease.goal_version).in_(goals),
                 )
             )
         )

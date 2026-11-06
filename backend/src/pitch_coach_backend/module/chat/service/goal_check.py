@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -6,7 +7,7 @@ from typing import Any
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.chat.entity import ChatConversation, ChatGoal, ChatRun
+from pitch_coach_backend.module.chat.entity import ChatConversation, ChatGoal, ChatLease, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import SEOUL
 
@@ -29,10 +30,27 @@ class GoalCheckTarget:
 
 
 def pick_targets(db: Session, now: datetime) -> list[GoalCheckTarget]:
+    """열린 목표마다 다음에 확인할 리뷰를 고른다. 목표 수와 관계없이 쿼리 세 번으로 읽는다."""
     repo = ChatRepository(db)
+    goals = repo.list_open_goals()
+    pitch_ids = {goal.conversation_id: uuid.UUID(goal.pitch_id) for goal in goals}
+    first_numbers: dict[uuid.UUID, int] = {}
+    for goal in goals:
+        pitch_id = pitch_ids[goal.conversation_id]
+        first_numbers[pitch_id] = min(
+            goal.first_take_number, first_numbers.get(pitch_id, goal.first_take_number)
+        )
+    takes: dict[uuid.UUID, list[Row]] = defaultdict(list)
+    for take in repo.list_takes_from(first_numbers):
+        takes[take.pitch_id].append(take)
+    leases = {
+        (lease.conversation_id, lease.goal_version, lease.take_id, lease.review_revision): lease
+        for lease in repo.list_goal_leases([(goal.conversation_id, goal.version) for goal in goals])
+    }
     targets: list[GoalCheckTarget] = []
-    for goal in repo.list_open_goals():
-        target = _next_review(repo, goal, now)
+    for goal in goals:
+        pitch_id = pitch_ids[goal.conversation_id]
+        target = _next_review(goal, pitch_id, takes[pitch_id], leases, now)
         if target is not None:
             targets.append(target)
         if len(targets) == GOAL_CHECKS_PER_CYCLE:
@@ -40,18 +58,21 @@ def pick_targets(db: Session, now: datetime) -> list[GoalCheckTarget]:
     return targets
 
 
-def _next_review(repo: ChatRepository, goal: Row, now: datetime) -> GoalCheckTarget | None:
-    leases = {
-        (lease.take_id, lease.review_revision): lease
-        for lease in repo.list_goal_leases(goal.conversation_id, goal.version)
-    }
-    pitch_id = uuid.UUID(goal.pitch_id)
-    for take in repo.list_takes_from(pitch_id, goal.first_take_number):
+def _next_review(
+    goal: Row,
+    pitch_id: uuid.UUID,
+    takes: list[Row],
+    leases: dict[tuple[uuid.UUID, int, uuid.UUID, int], ChatLease],
+    now: datetime,
+) -> GoalCheckTarget | None:
+    for take in takes:
+        if take.take_number < goal.first_take_number:
+            continue
         if take.status == "FAILED" or take.review_status in REVIEW_GIVEN_UP:
             continue
         if take.review_status != "DONE" or take.review_revision is None:
             return None
-        lease = leases.get((take.id, take.review_revision))
+        lease = leases.get((goal.conversation_id, goal.version, take.id, take.review_revision))
         if lease is not None and lease.status == "DONE":
             continue
         if lease is not None and lease.lease_until > now:
