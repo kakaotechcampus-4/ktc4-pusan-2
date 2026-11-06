@@ -1,3 +1,4 @@
+import uuid
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import UploadFile
@@ -6,21 +7,28 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.s3 import get_s3
 
 
-def upload(file: UploadFile, key: str, content_type: str | None = None):
-    # content_type 을 주지 않으면 클라이언트가 보낸 값, 그것도 없으면 octet-stream 으로 처리한다.
+def pitch_prefix(pitch_id: uuid.UUID) -> str:
+    """발표의 파일이 모두 들어가는 경로. 발표를 지울 때 이 아래를 지운다."""
+    return f"pitches/{pitch_id}/"
+
+
+def presentation_key(pitch_id: uuid.UUID, presentation_id: object, suffix: str) -> str:
+    return f"{pitch_prefix(pitch_id)}presentations/{presentation_id}.{suffix}"
+
+
+def upload(file: UploadFile, key: str, content_type: str):
     try:
         get_s3().upload_fileobj(
             file.file,
             settings.s3_bucket_name,
             key,
-            ExtraArgs={
-                "ContentType": content_type or file.content_type or "application/octet-stream"
-            },
+            ExtraArgs={"ContentType": content_type},
         )
     except (ClientError, BotoCoreError) as e:
         raise Exception(f"S3에 파일 업로드 실패: {str(e)}") from e
 
     return key
+
 
 def upload_bytes(data: bytes, key: str, content_type: str) -> str:
     try:
@@ -31,12 +39,13 @@ def upload_bytes(data: bytes, key: str, content_type: str) -> str:
         raise Exception(f"S3에 파일 업로드 실패: {str(e)}") from e
     return key
 
+
 def generate_presigned_url(key: str, expiration: int = 3600):
     try:
         url = get_s3().generate_presigned_url(
             "get_object",
             Params={"Bucket": settings.s3_bucket_name, "Key": key},
-            ExpiresIn=expiration
+            ExpiresIn=expiration,
         )
     except (ClientError, BotoCoreError) as e:
         raise Exception(f"S3 presigned URL 생성 실패: {str(e)}") from e

@@ -5261,6 +5261,17 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/AreaResult-Input"
             },
+            "propertyNames": {
+              "enum": [
+                "GAZE",
+                "SPEED",
+                "VOLUME",
+                "PAUSE",
+                "FILLER",
+                "CONTENT",
+                "TIME"
+              ]
+            },
             "title": "Areas",
             "type": "object"
           },

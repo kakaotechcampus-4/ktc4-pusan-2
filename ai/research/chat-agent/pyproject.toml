@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# 배포 이름. import 패키지는 두 개다.
+#   chat_agent     — 코어. 서비스 탑재 때 ai/service 의 features/chat_agent/ 로 폴더째 옮긴다
+#   chat_agent_lab — 연구 전용(도구 호출 LLM · 서비스 계층 대역 · 가짜 BE · 평가). 옮기지 않는다
+#                    (도구 호출 LLM 함수만 서비스 common/llm.py 의 tool_llm 으로 옮긴다)
+name = "chat-agent"
+version = "0.1.0"
+description = "Pitch Coach chat coach agent - research (core + lab)"
+# service 가 쓸 Python 버전(3.12)에서 검증한다
+requires-python = ">=3.12"
+dependencies = [
+    # ── 코어(chat_agent)가 쓰는 것은 pydantic 하나뿐이다. 서비스로 옮길 때 이것만 가져간다.
+    #    판은 서비스 패키지가 가져오는 것(ai/service/uv.lock)과 같게 맞춘다
+    "pydantic>=2.14,<3",
+    # ── 연구 전용 (chat_agent_lab)
+    #    pitch-coach-ai: 가짜 BE 가 다시 평가(REASSESS)에서 실제 리뷰 코드(review_take)를 부르고,
+    #    계약 시험이 리뷰의 비교 방향 표 · 차원 표와 코어 config 를 대조한다
+    "pitch-coach-ai",
+    #    openai: 도구 호출 LLM(chat_agent_lab/llm.py). 서비스가 가져오는 판과 같은 3.x
+    "openai>=3.29",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "ruff>=0.16",
+]
+
+[tool.uv.sources]
+pitch-coach-ai = { path = "../../service", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["chat_agent*"]
+
+[tool.setuptools.package-data]
+# 자료 묶음 · 예시 JSON 은 코어 패키지 안의 데이터 파일이다(서비스 탑재 때 함께 옮긴다)
+chat_agent = ["guides/*.json", "examples/*.json", "examples/**/*.json", "examples/**/*.ndjson"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# live: 실제 LLM API 를 부르는 평가 · 시험 (과금). slow: 오래 걸리는 시험(부하 등).
+# 둘 다 기본 실행에서 빼고 README 의 명령으로 요청할 때만 돌린다 (기능 문서 10-5)
+markers = [
+    "live: 실제 LLM API 를 호출한다 (과금)",
+    "slow: 오래 걸린다 (부하 등)",
+    "prefetch: 조사 흐름(코드가 먼저 읽기)을 켠 시험 — tests/conftest.py",
+    "no_prefetch: prefetch 를 단 파일 안에서 조사 흐름을 끄는 시험(모델 호출 순서 대본) — tests/conftest.py",
+]
+addopts = "-m 'not live and not slow'"
+
+# backend/pyproject.toml 과 같은 규칙
+[tool.ruff]
+line-length = 100
+src = ["src", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# 남는 긴 줄은 한국어 docstring · 주석 · 문구(한글은 폭 2칸)와 모델 · 화면에 그대로 가는 글이다.
+# 코드 줄은 ruff format 이 100 안으로 맞춘다(서비스 pyproject 의 script_coverage · evaluation_criteria 와 같은 규칙)
+"src/**" = ["E501"]
+"tests/**" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chat_agent", "chat_agent_lab"]

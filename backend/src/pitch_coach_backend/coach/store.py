@@ -181,7 +181,6 @@ def load_finalize_source(
         segments=rows.segments,
         utterance_ends=rows.utterance_ends,
         events=rows.events,
-        raw_data_consent=rows.raw_data_consent,
     )
 
 

@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-memory-explicit",
+  "set": "agent_service",
+  "group": "memory",
+  "split": "dev",
+  "act": "should",
+  "title": "'앞으로는 짧게 설명해 줘, 기억해 줘' — 명시한 선호만 코칭 프로필에 저장하고 저장 카드",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "앞으로는 짧게 설명해 줘, 기억해 줘. Take 5 3장 시선은 어땠어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "profile-saved",
+        "observe": "db_diff",
+        "compare": "one_of",
+        "expect": [
+          "TONE",
+          "EXPLAIN_STYLE"
+        ],
+        "path": "after.memory.profile[].key"
+      },
+      {
+        "check_id": "saved-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "MEMORY_SAVED",
+        "path": "card_types"
+      },
+      {
+        "check_id": "record-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "저장 값의 인용(사용자 말의 부분 문자열) · 값 규칙(⑤)은 가짜 BE 가 AI 와 같은 검사를 다시 해 통과한 것만 저장하므로, profile-saved 가 통과하면 함께 맞다"
+}

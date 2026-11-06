@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-mixed",
+  "set": "objectivity",
+  "group": "mixed",
+  "split": "dev",
+  "act": "should_not",
+  "title": "여러 주장 '시선도 좋았고 군더더기도 없었지?'(시선 우선 개선 · 유창성 강점) — 주장마다 판단과 판단 문장 둘",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 시선도 좋았고 군더더기도 없었지?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "gaze-contradicted",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "dimension": "audience_gaze",
+          "verdict": "CONTRADICTED",
+          "has_evidence": true,
+          "text@": "CONTRADICTED"
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "filler-supported",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "dimension": "fluency",
+          "verdict": "SUPPORTED",
+          "has_evidence": true,
+          "text@": "SUPPORTED"
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-agreement-on-gaze",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": {
+          "dimension": "audience_gaze",
+          "text~": "맞아요"
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

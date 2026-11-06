@@ -143,7 +143,6 @@ def create_stream(
     store: TranscriptStore,
     segment_no: int = 1,
     stt_session_no: int = 0,
-    grace_sec: float | None = None,
     auto_end: AutoEndPolicy | None = None,
     coach: CoachDeps | None = None,
 ) -> TakeStream:
@@ -162,7 +161,6 @@ def create_stream(
         host=_HOST,
         segment_no=segment_no,
         stt_session_no=stt_session_no,
-        grace_sec=grace_sec,
         auto_end=policy,
         coach=coach,
     )
@@ -199,14 +197,11 @@ async def attach(
 
         if stream is not None and stream.is_stopping:
             # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
-            # 끝나기를 기다렸다가 새로 만든다. 정상 종료(stop)와 같은 시간을 기다린다 —
-            # 더 일찍 끊으면 Deepgram 이 아직 보내지 않은 마지막 문장이 사라진다
-            if not await stream.wait_closed():
-                # 그래도 안 끝나면 강제로 끊고, 끊긴 스트림이 실제로 끝나기를 기다린다.
-                # forget() 만 하면 옛 스트림은 Deepgram 연결을 붙든 채 계속 돈다. 끝나기 전에
-                # 아래에서 번호를 읽으면 옛 스트림이 저장 중인 seq 를 새 스트림이 또 쓴다
-                stream.cancel()
-                await stream.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
+            # 끝나기를 기다렸다가 새로 만든다. 일찍 끊으면 Deepgram 이 아직 보내지 않은 마지막
+            # 문장이 사라진다. 그래도 안 끝나면 강제로 끊고, 끊긴 스트림이 실제로 끝나기를 기다린다.
+            # forget() 만 하면 옛 스트림은 Deepgram 연결을 붙든 채 계속 돈다. 끝나기 전에
+            # 아래에서 번호를 읽으면 옛 스트림이 저장 중인 seq 를 새 스트림이 또 쓴다
+            await stream.close_or_cancel()
             forget(stream)
             stream = None
 
@@ -250,12 +245,12 @@ async def attach(
                 )
                 state.streams[take_id] = stream
                 for ms in restored:
-                    stream._record.coach.on_utterance_end(ms)
+                    stream.coach.on_utterance_end(ms)
                 stream.start()
         elif stream.owner_id != owner_id:
             raise StreamOwnerMismatch
         if coach is not None and coach_context is not None:
-            stream._record.coach.enable(coach_context, client=coach.client, store=coach.store)
+            stream.coach.enable(coach_context, client=coach.client, store=coach.store)
 
     await stream.attach(ws)
     return stream
@@ -301,12 +296,10 @@ async def _make_room(owner_id: uuid.UUID) -> None:
             stream.release_idle()
         else:
             stream.request_stop()
-        if not await stream.wait_closed():
-            stream.cancel()
-            # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
-            # 곧 닫히므로 다시 붙을 수 있게 알린다
-            if not await stream.wait_closed(stt_loop.ABORT_TIMEOUT_SEC):
-                raise StreamClosing
+        # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
+        # 곧 닫히므로 다시 붙을 수 있게 알린다
+        if not await stream.close_or_cancel(confirm=False):
+            raise StreamClosing
 
 
 def has_room(owner_id: uuid.UUID, take_id: uuid.UUID) -> bool:
@@ -416,7 +409,7 @@ async def _end_abandoned(
         try:
             marked = await asyncio.wait_for(
                 store.mark_abandoned(take_id, closed_at, end_reason, utterance_ends),
-                finish.MARK_AUTO_END_TIMEOUT_SEC,
+                finish.MARK_ENDED_TIMEOUT_SEC,
             )
         except Exception:
             # 못 적으면 다음에 앱이 뜰 때 DB 를 보고 다시 건다
@@ -534,7 +527,7 @@ def _finishing_sec() -> float:
     return (
         runtime.FINAL_METRICS_WAIT_SEC
         + max(finish.FLUSH_METRICS_TIMEOUT_SEC, 2 * SEAL_WAIT_SEC)
-        + finish.MARK_AUTO_END_TIMEOUT_SEC
+        + finish.MARK_ENDED_TIMEOUT_SEC
         + stt_loop.ABORT_TIMEOUT_SEC
     )
 
@@ -548,9 +541,7 @@ def stop_all_max_sec() -> float:
 
 
 async def _close_for_shutdown(stream: TakeStream) -> None:
-    if not await stream.wait_closed(timeout=SHUTDOWN_CLOSE_WAIT_SEC):
-        stream.cancel()
-        await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
+    await stream.close_or_cancel(drain_sec=SHUTDOWN_CLOSE_WAIT_SEC, confirm=False)
 
 
 async def stop_all() -> None:
@@ -586,7 +577,7 @@ async def stop_all() -> None:
     # 진행 중인 코치 판단을 끊고 저장 못 한 코치 이벤트도 넣는다. 다시 뜨면 메모리에 없다. 서로
     # 다른 기록이라 같이 저장한다
     await asyncio.gather(
-        *(finish.flush_metrics(take_id) for take_id in unsaved),
+        *(finish.flush_records(take_id) for take_id in unsaved),
         *(_save_utterance_ends(take_id, record) for take_id, record in live),
         *(
             record.coach.shutdown(finish.FLUSH_METRICS_TIMEOUT_SEC)

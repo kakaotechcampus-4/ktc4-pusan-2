@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "id": "ana-why-score",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "'Take 5 점수가 왜 이래?' — 점수 68점과 우선 개선(청중 시선 · 대본 의존)을 근거와 함께",
+  "expect_refusal": false,
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 점수가 왜 이렇게 나왔어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "followups": [
+    {
+      "message": "Take 5에서 우선 개선으로 잡힌 영역과 점수를 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "score",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "68점",
+        "grader": "number",
+        "derive": "t-5:review.score"
+      },
+      {
+        "check_id": "priority-dims",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "청중|시선|대본",
+        "grader": "regex"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

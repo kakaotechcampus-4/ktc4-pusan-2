@@ -295,7 +295,7 @@ async def test_coverage_treats_a_too_large_body_as_a_failed_call(
 ) -> None:
     transport = httpx.MockTransport(lambda request: httpx.Response(200, content=b"x" * 64))
     monkeypatch.setattr(
-        coverage_service.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
+        httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
     )
 
     with pytest.raises(coverage_service.CoverageCallError):

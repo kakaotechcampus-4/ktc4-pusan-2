@@ -4,6 +4,7 @@ AI 기능을 BE에 HTTP API로 여는 서버입니다. 이 폴더 하나가 Dock
 
 ## 빠른 시작
 준비: [uv](https://docs.astral.sh/uv/) 0.11. Python 3.12는 uv가 필요할 때 받습니다(`.python-version`).
+이 README의 `powershell` 블록은 `curl.exe`만 빼면 macOS · Linux 터미널(zsh · bash)에서도 그대로 돌아갑니다. `curl.exe`를 쓰는 곳에는 macOS · Linux 명령을 함께 적었습니다.
 
 ```powershell
 cd ai/service
@@ -16,6 +17,10 @@ uv run python -m uvicorn pitch_coach_ai.main:app --reload --port 8001
 다른 창에서:
 ```powershell
 curl.exe -i http://localhost:8001/health
+```
+macOS · Linux:
+```bash
+curl -i http://localhost:8001/health
 ```
 ```
 HTTP/1.1 200 OK
@@ -109,7 +114,7 @@ docker run --rm -p 8001:8000 pitch-coach-ai:local
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 ```
-다른 창에서 `curl.exe http://localhost:8001/health` → `{"status":"ok"}`. Ctrl+C로 끕니다.
+다른 창에서 `curl.exe http://localhost:8001/health`(macOS · Linux는 `curl http://localhost:8001/health`) → `{"status":"ok"}`. Ctrl+C로 끕니다.
 - `-p 8001:8000`은 내 PC의 8001번을 컨테이너의 8000번에 잇습니다. 컨테이너는 자기 네트워크를 쓰므로 이 연결이 없으면 밖에서 닿지 않습니다.
 - `--rm`은 끌 때 컨테이너를 지웁니다. 이미지는 남습니다(`docker images pitch-coach-ai`로 크기 확인).
 - LLM 기능을 부를 때는 `--env-file ai/.env`를 더합니다. 키는 이미지에 넣지 않습니다.
@@ -123,6 +128,11 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 curl.exe -i http://localhost:8001/ready
 curl.exe -i -X POST http://localhost:8001/takes/rescore -H "Content-Type: application/json" --data-binary "@ai/service/src/pitch_coach_ai/features/script_coverage/examples/rescore/request.json"
 ```
+macOS · Linux:
+```bash
+curl -i http://localhost:8001/ready
+curl -i -X POST http://localhost:8001/takes/rescore -H "Content-Type: application/json" --data-binary "@ai/service/src/pitch_coach_ai/features/script_coverage/examples/rescore/request.json"
+```
 ```
 HTTP/1.1 200 OK
 {"status":"ready"}
@@ -131,7 +141,7 @@ HTTP/1.1 200 OK
 {"take_id":"take-123","evaluations":[{"take_id":"take-123","script_name":"sv-3","slide_number":2, …
 ```
 본문은 `features/script_coverage/examples/rescore/response.json`과 같습니다(LLM을 쓰지 않아 키가 필요 없습니다). 키 없이 `/scripts/rubric` · `/takes/analyze`를 부르면 503 `LLM_UNAVAILABLE`입니다. 컨테이너 로그에는 요청마다 `script_coverage op=rescore slides=3 targets=3 chars=0 failed=2 code=- duration_ms=…`처럼 장 수 · 글자 수만 남습니다(대본 · STT 원문은 남기지 않음).
-- PowerShell 5.1은 따옴표가 든 JSON을 `curl.exe`에 그대로 넘기지 못해, 요청 본문은 UTF-8 파일(`--data-binary "@파일"`)로 보냅니다.
+- PowerShell 5.1은 따옴표가 든 JSON을 `curl.exe`에 그대로 넘기지 못해, 요청 본문은 UTF-8 파일(`--data-binary "@파일"`)로 보냅니다. macOS · Linux의 `curl`도 같은 파일로 보냅니다.
 
 ## 구조
 ```
@@ -196,7 +206,7 @@ ai/service/
 | `src/pitch_coach_ai/features/script_parser/` | 대본 파싱 코어(`docs/ai/features/script-parser.md`). `core.py`의 `parse_script(request, llm)` · `EmptyScriptError`, 구분자 `splitter.py`, 정제 · 글자 수 · 하이라이트 `cleaner.py`, 요청 · 응답 · LLM 출력 `schemas.py`, 프롬프트 `prompts/parse.py`, 기준값 `config.py`, `version.py`(`script_parser-1.1`), `examples/`. LLM 은 인자로 받고 예외를 잡지 않는다. 파일마다의 역할은 연구 폴더(`ai/research/script-parser`) README '구조' | 대본 원문 · 목표 시간 → 장별 대본 · 키워드 · 하이라이트 · 예상 시간 · 용어 | 연구 폴더 `run.py` | 연구 폴더가 editable로 import한다. 프롬프트 · 구분자 · 정제 규칙을 바꾸면 `feature_version`을 올리고 `examples/`를 확인한다 |
 | `src/pitch_coach_ai/features/coach/` | 코치 코어(`docs/ai/features/coach-agent.md`). 진입 함수 `plan_coaching` · `decide` · `decide_safe` · `finalize`, 시간 판정 `timing.py`, 판정 모듈 묶음 `judges.py`(`Judges`), `schemas.py` · `config.py` · `version.py`(`coach-1.3`) · `examples/` · `prompts/`. 엔드포인트는 `/coach/evaluate` · `/coach/finalize` · `/coach/plan`. 파일마다의 역할은 연구 폴더(`ai/research/coach-agent`) README 3-1 | 요청 · `coach_state` · 판정 모듈 묶음 → 응답 | `api/coach.py` | 연구 폴더가 editable로 import한다. 예시를 바꾸면 연구 폴더 `python -m coach_lab.examples`(실제 판정 모듈 넷으로 만든다. BE 테스트도 이 서비스 예시를 읽는다) |
 | `src/pitch_coach_ai/features/review/` | 리뷰 코어(`docs/ai/features/review-agent.md`). 진입 함수 `core.py`의 `review_take(request, llm, *, model)` · `apply_rules` · `check_numbers`, 규칙 단계 `evaluable.py` · `missions.py` · `burden.py` · `dimensions.py` · `comparison.py` · `next_missions.py` · `recurring.py` · `score.py`, LLM 입력 `llm_input.py`, 기본 문장 `text.py`, 요청 · 응답 · LLM 출력 `schemas.py`, 프롬프트 `prompts/review.py`, 기준값 `config.py`, `version.py`(`review-1.2`), `examples/`. LLM 예외는 코어가 잡아 기본 결과 + `fallback_reason`. 파일마다의 역할은 연구 폴더(`ai/research/review-agent`) README 1절 | 요청 + LLM 객체 → 리뷰 | `api/review.py` | 연구 폴더가 editable로 import한다(`review_lab`). `config.py`를 바꾸면 `criteria_version`이 바뀌어 예시 · 평가 결과를 다시 만든다(연구 README 2절) |
-| `src/pitch_coach_ai/features/evaluation_criteria/` | 평가 기준 분석 코어(`docs/ai/features/evaluation-criteria.md`). 진입 함수 `core.py`의 `analyze_criteria` · `check_targets`, 요청 · LLM 출력 · 응답 `schemas.py`, 요소 → 지표 연결 · 상한 `config.py`, `version.py`(`evaluation_criteria-1.0`), `prompts/system.py`, `examples/`(요청 · 응답 3쌍). 파일마다의 역할은 연구 폴더(`ai/research/evaluation-criteria`) README '구조' | 기준 문장 + LLM 객체 → 응답 | `api/evaluation_criteria.py` | 연구 폴더가 editable로 import한다(`run.py`). 프롬프트 · 요소 → 지표 연결을 바꾸면 `FEATURE_VERSION`을 올리고 연구 폴더 `run.py --eval`로 다시 잰다. 프롬프트 원문은 줄을 나누지 않는다(E501 제외) |
+| `src/pitch_coach_ai/features/evaluation_criteria/` | 평가 기준 분석 코어(`docs/ai/features/evaluation-criteria.md`). 진입 함수 `core.py`의 `analyze_criteria` · `check_targets`, 요청 · LLM 출력 · 응답 `schemas.py`, 요소 → 지표 연결 · 상한 `config.py`, `version.py`(`evaluation_criteria-1.1`), `prompts/system.py`, `examples/`(요청 · 응답 3쌍). 파일마다의 역할은 연구 폴더(`ai/research/evaluation-criteria`) README '구조' | 기준 문장 + LLM 객체 → 응답 | `api/evaluation_criteria.py` | 연구 폴더가 editable로 import한다(`run.py`). 프롬프트 · 요소 → 지표 연결을 바꾸면 `FEATURE_VERSION`을 올리고 연구 폴더 `run.py --eval`로 다시 잰다. 프롬프트 원문은 줄을 나누지 않는다(E501 제외) |
 | `tests/conftest.py` | 묶음 환경변수를 비운 뒤 앱 import(실제 키를 읽지 않음), `client` · `ready_client`(시작할 때 불러오는 모델까지 기다림) · `probe_client`(실패를 내는 테스트 경로) · `log_records` | — | 모든 앱 테스트 | — |
 | `tests/test_health.py` | `/health` 200(fixture 앱 · uvicorn 이 쓰는 `app` 둘 다), 등록된 경로에 `/api` 접두어 없음 | — | pytest | — |
 | `tests/test_errors.py` · `test_request_log.py` | 에러 본문 · 상태 코드, `X-Request-ID`, 요청 로그(본문 · 쿼리 · 입력값 없음) | — | pytest | — |

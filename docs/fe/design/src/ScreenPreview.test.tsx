@@ -392,9 +392,10 @@ it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴�
   await render('stage');
   expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
   await act(async () => root.render(null));
-  // 시작 전 세팅은 상단바 없이 자체 틀을 쓴다(#738 최종, #706에서 정함)
+  // 시작 전 세팅도 상단바를 얹고, 지금 메뉴는 표시하지 않는다(#694)
   await render('prepare-mission');
-  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeTruthy();
+  expect(current()).toBeNull();
 });
 
 it('끝내기 확인은 장이 바뀌면 풀리고, 마지막 장에서는 안내 글자가 없다', async () => {

@@ -1,0 +1,40 @@
+{
+  "action_id": "run-82:a1",
+  "type": "FETCH_PITCH",
+  "status": "AMBIGUOUS",
+  "data": {
+    "candidates": [
+      {
+        "pitch_id": "p-1",
+        "title": "졸업 발표",
+        "take_count": 3,
+        "last_practiced_at": "2026-11-01T10:00:00+09:00",
+        "last_review": {
+          "take_id": "t-5",
+          "take_number": 5,
+          "score": 68,
+          "priority_dimensions": [
+            "audience_gaze",
+            "script_independence"
+          ]
+        }
+      },
+      {
+        "pitch_id": "p-9",
+        "title": "졸업 발표(리허설)",
+        "take_count": 3,
+        "last_practiced_at": "2026-11-01T10:00:00+09:00",
+        "last_review": {
+          "take_id": "t-5",
+          "take_number": 5,
+          "score": 68,
+          "priority_dimensions": [
+            "audience_gaze",
+            "script_independence"
+          ]
+        }
+      }
+    ]
+  },
+  "error": null
+}

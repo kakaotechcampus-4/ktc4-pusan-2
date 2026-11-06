@@ -73,3 +73,14 @@ def test_launch_at_keeps_its_timezone() -> None:
 def test_blank_launch_at_means_no_launch_gate(monkeypatch) -> None:
     monkeypatch.setenv("LAUNCH_AT", " ")
     assert Settings(jwt_secret_key=JWT, _env_file=None).launch_at is None
+
+
+def test_frontend_origin_drops_the_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(frontend_base_url="https://example.com/app/")
+    assert settings.frontend_origin == "https://example.com"
+
+
+@pytest.mark.parametrize("value", ["example.com", "ftp://example.com", "http://", "http://["])
+def test_frontend_base_url_without_an_origin_is_refused(value: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(frontend_base_url=value)

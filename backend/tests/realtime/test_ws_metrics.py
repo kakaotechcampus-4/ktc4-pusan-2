@@ -300,7 +300,7 @@ async def test_metrics_from_an_evicted_tab_are_dropped():
 
     stream.push_metrics(MetricsMessage.model_validate(metrics(1000)), source=old_tab)
     stream.push_metrics(MetricsMessage.model_validate(metrics(2000)), source=new_tab)
-    await finish.flush_metrics(TAKE_ID)
+    await finish.flush_records(TAKE_ID)
 
     assert sorted(store.metrics) == [2000]
 
@@ -327,7 +327,7 @@ async def test_close_t_ms_flood_stays_under_the_take_limit(monkeypatch: pytest.M
     await stream.attach(ws)
 
     _push(stream, *(metrics(1_000 + i) for i in range(500)), source=ws)
-    await finish.flush_metrics(TAKE_ID)
+    await finish.flush_records(TAKE_ID)
 
     assert sorted(store.metrics) == list(range(1_000, 1_050))
     coach = stream._record.coach
@@ -367,7 +367,7 @@ async def test_normal_seconds_short_pieces_and_buffered_resends_are_all_kept():
         metrics(5_700, duration_ms=300),
         source=new_tab,
     )
-    await finish.flush_metrics(TAKE_ID)
+    await finish.flush_records(TAKE_ID)
 
     assert sorted(store.metrics) == [1_000, 2_000, 2_400, 3_400, 4_400, 5_400, 5_700]
     assert store.metrics[2_000].slide_number == 1
