@@ -286,17 +286,17 @@ def delete_pitch_files(pitch_id: uuid.UUID) -> None:
     file_cleanup.delete_files(file_cleanup.pitch_prefix(pitch_id))
 
 
-def reserve_pitch_file_deletions(db: Session, pitch_ids: list[uuid.UUID]) -> None:
-    """회원 탈퇴처럼 발표를 한꺼번에 지울 때, 지우는 커밋에 같이 묶을 파일 삭제 기록을 남긴다."""
+def reserve_user_pitch_deletions(
+    db: Session, user_id: uuid.UUID
+) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
+    """회원 탈퇴 전에 부른다. 지울 발표 파일 기록을 남기고 (발표 id, Take id) 를 돌려준다.
+
+    지운 뒤에는 CASCADE 로 사라져 읽을 수 없고, 기록은 회원을 지우는 커밋에 같이 묶여야 한다."""
+    repository = PitchRepository(db)
+    pitch_ids = repository.get_ids_by_user(user_id)
+    take_ids = repository.get_take_ids_by_user(user_id)
     file_cleanup.reserve(db, pitch_ids)
-
-
-def get_pitch_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
-    return PitchRepository(db).get_ids_by_user(user_id)
-
-
-def get_take_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
-    return PitchRepository(db).get_take_ids_by_user(user_id)
+    return pitch_ids, take_ids
 
 
 def lock_for_new_version(db: Session, pitch_id: uuid.UUID) -> None:

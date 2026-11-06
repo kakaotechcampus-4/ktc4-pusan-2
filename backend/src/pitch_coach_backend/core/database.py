@@ -123,6 +123,11 @@ class SessionPerCall:
         return with_session(self._session_factory, fn, *args)
 
 
+def constraint_name(error: sa_exc.IntegrityError) -> str | None:
+    """어느 제약에 걸렸는가. psycopg 가 알려 주는 이름이다."""
+    return getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+
+
 def is_transient_db_error(error: BaseException) -> bool:
     """다시 하면 될 수 있는 DB 실패인가 — 연결 끊김 · 잠금 대기 · 교착 · 시간 초과.
 

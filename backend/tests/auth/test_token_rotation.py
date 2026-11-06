@@ -31,7 +31,7 @@ def test_rotate_revokes_the_used_token(db_session: Session, fake_google: dict[st
     issued = login(db_session)
     service.rotate(db_session, issued.refresh_token)
 
-    old = repository.get_refresh_token(
+    old = repository.get_refresh_token_for_update(
         db_session, security.hash_refresh_token(issued.refresh_token)
     )
     assert old is not None
@@ -44,10 +44,10 @@ def test_rotate_links_the_used_token_to_the_new_one(
     issued = login(db_session)
     rotated = service.rotate(db_session, issued.refresh_token)
 
-    old = repository.get_refresh_token(
+    old = repository.get_refresh_token_for_update(
         db_session, security.hash_refresh_token(issued.refresh_token)
     )
-    new = repository.get_refresh_token(
+    new = repository.get_refresh_token_for_update(
         db_session, security.hash_refresh_token(rotated.refresh_token)
     )
     assert old is not None and new is not None

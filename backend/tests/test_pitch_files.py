@@ -12,6 +12,7 @@ from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.adapter import storage
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import file_cleanup
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.take.entity import Take
@@ -63,8 +64,8 @@ def test_ids_of_user_cover_every_pitch_and_only_theirs(
     take_ids = {_add_take(db_session, first), _add_take(db_session, second)}
     _add_take(db_session, _add_pitch(db_session, other.id))
 
-    assert set(pitch_service.get_pitch_ids_of_user(db_session, user_id)) == {first, second}
-    assert set(pitch_service.get_take_ids_of_user(db_session, user_id)) == take_ids
+    assert set(PitchRepository(db_session).get_ids_by_user(user_id)) == {first, second}
+    assert set(PitchRepository(db_session).get_take_ids_by_user(user_id)) == take_ids
 
 
 def test_delete_prefix_deletes_every_page(monkeypatch: pytest.MonkeyPatch) -> None:
