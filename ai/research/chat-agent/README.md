@@ -56,6 +56,8 @@ chat-agent/
 | `tools/` | 읽기 도구 8개(5-7): 엄격한 인자, 결과에 근거 id, 캐시, trace 요약(사용자 글 없음) | 맥락 · 인자 → `ToolResult` · `TraceItem` | 루프(조사) | 도구를 더하면 `TOOL_SCHEMA_VERSION`과 5-7 |
 | `actions.py` | 행동(5-8): 행동 도구 인자, 허용 근거 검사(6-2), 목표 제안 카드로 낮추기, 결과 짝 · 반영 | 모델 호출 → 행동 · 카드, BE 결과 → 반영 · 성공 문장 | 루프 | 자율 등급 표는 5-8 |
 | `budget.py` | 한도(8-2 · 8-3): 모델 · 도구 · 행동 · 토큰 · 시간 예약, 답 쓰기 · 고치기 몫 남기기 | 누적량 → 예약 또는 `LimitHit` | 행동 · 루프 | 숫자는 `config.py` |
+| `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 라이선스 · 검수)와 검색(6-10) | manifest · 카드 → `Corpus`, 질의 → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스 탑재 때는 `allow_unreviewed=False` |
+| `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시) | — | `corpus.py` | 카드를 고치면 해시를 다시 만들고 `corpus_version`을 올린다 |
 | `examples/` | 요청 · 스트림 · 오류 · 행동 결과 예시 JSON(5-10) | — | 계약 시험 · BE 계약 시험 | `python -m chat_agent_lab.examples` 로 다시 만든다 |
 
 ### 2-2. 연구 전용 `src/chat_agent_lab/`
