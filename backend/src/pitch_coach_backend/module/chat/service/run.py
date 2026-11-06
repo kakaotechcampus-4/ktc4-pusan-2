@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.dto import AgentTrigger
-from pitch_coach_backend.module.chat.entity import ChatRun, ChatRunLog
+from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatRunLog
 from pitch_coach_backend.module.chat.repository import ChatRepository
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -71,6 +71,12 @@ def lock_current(db: Session, run: ClaimedRun) -> ChatRun | None:
     return ChatRepository(db).lock_run(
         run.run_id, statuses=("RUNNING",), row_revision=run.row_revision
     )
+
+
+def lock_conversation_of(db: Session, run: ClaimedRun) -> ChatConversation | None:
+    repo = ChatRepository(db)
+    row = repo.get_run(run.run_id)
+    return repo.lock_conversation(row.conversation_id) if row is not None else None
 
 
 def _parse_ids(values: Iterable[Any]) -> tuple[set[uuid.UUID], bool]:

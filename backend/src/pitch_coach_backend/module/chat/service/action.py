@@ -21,6 +21,7 @@ from pitch_coach_backend.module.chat.service.result import UNCONFIRMED, close_ac
 from pitch_coach_backend.module.chat.service.run import (
     ClaimedRun,
     RunLost,
+    lock_conversation_of,
     lock_current,
     lock_or_cancel,
 )
@@ -61,13 +62,13 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
 def hold_for_approval(
     db: Session, run: ClaimedRun, action: dict[str, Any], profile_updates: Any
 ) -> ActionResultDTO | None:
+    conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)
     if _invalid(action):
         return close_action(db, row, action, failed(action, "INVALID_ACTION", UNCONFIRMED))
     repo = ChatRepository(db)
-    conversation = repo.lock_conversation(row.conversation_id)
     saved = memory_cards(row)
     new = new_memory_cards(repo, row, conversation, profile_updates, saved)
     row.interim_message = {**(row.interim_message or {}), "memory_saved": [*saved, *new]}
@@ -83,6 +84,7 @@ def run_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> ActionRe
     if isinstance(args, SaveGoalArgs):
         goal = args.goal
         lock_or_cancel(db, run, {goal.get("pitch_id")}, {(goal.get("base") or {}).get("take_id")})
+        lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)

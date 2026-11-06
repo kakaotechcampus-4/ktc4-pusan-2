@@ -36,6 +36,7 @@ from pitch_coach_backend.module.chat.service.run import (
     check_sources,
     claimed,
     digest,
+    lock_conversation_of,
     lock_current,
     lock_ids,
     lock_or_cancel,
@@ -118,13 +119,13 @@ def wait_for_action(
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
+    conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         return None
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return None
-    conversation = repo.lock_conversation(row.conversation_id)
     action = data["actions"][0]
     row.state = data["state"]
     row.budget_used = data["budget_used"]
@@ -228,13 +229,13 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
+    conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         return False
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return True
-    conversation = repo.lock_conversation(row.conversation_id)
     if row.first_trigger == "TAKE_REVIEWED" and not settle_goal_check(
         repo, row, conversation, data["goal_result"]
     ):
@@ -288,6 +289,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
 
 def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
     repo = ChatRepository(db)
+    lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         return False
