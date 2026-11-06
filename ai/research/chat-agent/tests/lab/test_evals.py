@@ -181,6 +181,15 @@ def test_pass_k_needs_exactly_k_distinct_repetitions() -> None:
     assert (u["pass_k"]["num"], u["pass_k"]["den"]) == (0, 1)
 
 
+def test_baseline_turns_code_prefetch_off_and_agent_keeps_it() -> None:
+    # 고정 순서 기준선(13-3)은 정한 순서의 도구만 쓴다: 코드가 먼저 읽는 조사 흐름(6-1)을 끈다
+    sc = BY_ID["refuse-out-of-scope"]
+    base = ev._Ctx(sc, _refuse_llm(), F.SECRET, ev.RunnerConfig(repeat=1, baseline=True))
+    agent = ev._Ctx(sc, _refuse_llm(), F.SECRET, ev.RunnerConfig(repeat=1))
+    assert base.be.app.cfg.research_prefetch is False
+    assert agent.be.app.cfg.research_prefetch is True
+
+
 def test_forbidden_official_change_fails_the_run() -> None:
     sc = BY_ID["refuse-out-of-scope"]
     ctx = ev._Ctx(sc, _refuse_llm(), F.SECRET, ev.RunnerConfig(repeat=1))

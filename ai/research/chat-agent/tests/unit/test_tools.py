@@ -362,11 +362,16 @@ def test_list_pitches_items_and_score_evidence() -> None:
     assert (res.data["total"], res.data["shown"]) == (1, 1)
     row = res.data["items"][0]
     assert (row["pitch_id"], row["title"], row["take_count"]) == ("p-1", "졸업 발표", 3)
-    assert row["last_review"]["priority_dimensions"] == ["audience_gaze", "script_independence"]
+    dims = row["last_review"]["priority_dimensions"]
+    assert [d["dimension"] for d in dims] == ["audience_gaze", "script_independence"]
+    for d in dims:
+        dv = ctx.registry.get(d["evidence_id"])
+        assert dv.value == "PRIORITY" and dv.take_id == "t-5"
+        assert dv.path == f"pitches[pitch_id=p-1].last_review.dimensions.{d['dimension']}"
     score = row["last_review"]["score"]
     ev = ctx.registry.get(score["evidence_id"])
     assert score["value"] == 68 and ev.value == 68 and ev.origin == "RECORD" and ev.take_id == "t-5"
-    assert res.evidence_ids == [score["evidence_id"]]
+    assert res.evidence_ids == [*(d["evidence_id"] for d in dims), score["evidence_id"]]
     assert trace.result_summary == "피치 1개(전체 1개)"
 
 

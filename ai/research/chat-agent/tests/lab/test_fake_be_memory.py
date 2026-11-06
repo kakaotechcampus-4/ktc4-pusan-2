@@ -18,6 +18,9 @@ from .test_fake_be import make_be
 from .test_fake_be_stream import TamperApp
 
 #: 기록 주장이 없는 기억 요청(계획 단계의 판단 초안이 필요 없게)
+# 배포 기본값(조사 흐름 켬)으로 돌린다. 모델 호출 순서를 대본으로 정한 시험만 no_prefetch 로 끈다(tests/conftest.py)
+pytestmark = pytest.mark.prefetch
+
 MSG = "고마워. 앞으로는 설명을 짧게 해 줘"
 UPD = {"key": "TONE", "value": "설명을 짧게", "quote": "앞으로는 설명을 짧게 해 줘"}
 

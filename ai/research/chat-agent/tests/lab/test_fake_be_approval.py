@@ -38,6 +38,9 @@ from .test_fake_be import (
     script_drafts,
 )
 
+# 배포 기본값(조사 흐름 켬)으로 돌린다. 모델 호출 순서를 대본으로 정한 시험만 no_prefetch 로 끈다(tests/conftest.py)
+pytestmark = pytest.mark.prefetch
+
 REJECT_TEXT = templates.SystemText.REJECTED_SAVE_GOAL.value
 FIRST = F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])
 
