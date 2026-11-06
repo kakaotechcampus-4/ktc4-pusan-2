@@ -13,6 +13,7 @@ from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch import file_cleanup_sweep
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import PendingFileDeletion
+from pitch_coach_backend.module.pitch.exception import StorageError
 from pitch_coach_backend.module.pitch.service import file_cleanup
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 
@@ -96,7 +97,7 @@ def test_failed_delete_keeps_the_record_and_counts_the_failure(
     file_cleanup.reserve(db_session, [pitch_id])
 
     def fail(prefix: str) -> None:
-        raise Exception("S3 파일 삭제 실패")
+        raise StorageError()
 
     monkeypatch.setattr(file_cleanup, "delete_prefix", fail)
 
@@ -144,7 +145,7 @@ async def test_sweep_retries_what_an_earlier_failure_left(
     def flaky(prefix: str) -> None:
         calls.append(prefix)
         if len(calls) == 1:
-            raise Exception("S3 파일 삭제 실패")
+            raise StorageError()
 
     monkeypatch.setattr(file_cleanup, "delete_prefix", flaky)
 

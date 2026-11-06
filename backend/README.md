@@ -534,6 +534,7 @@ AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스�
 | 409 | `CONFLICT` | `ConflictException` |
 | 422 | `VALIDATION_ERROR` | FastAPI 검증 실패 (자동, `detail` 에 필드별 오류) |
 | 500 | `INTERNAL_SERVER_ERROR` | 처리되지 않은 예외 (자동, 원인은 서버 로그에만 남는다) |
+| 503 | `STORAGE_UNAVAILABLE` | `pitch/exception.py` `StorageError`. S3 를 쓰지 못함 (원인은 서버 로그에만 남는다) |
 
 도메인 예외는 `module/<name>/exception.py` 에서 위 클래스를 상속하고 `message` 만 바꾼다.
 `HTTPException` 을 직접 던지지 않는다. 라우터가 만드는 404·405 와 처리되지 않은 예외도
