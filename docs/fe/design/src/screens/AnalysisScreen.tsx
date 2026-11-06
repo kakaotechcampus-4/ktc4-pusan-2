@@ -117,8 +117,28 @@ export function ProcessingScreen({
   return (
     <DuskScreen report={SAMPLE_REPORT}>
       <h1 className="sr-only">분석 대기</h1>
+      {stateId === 'auto-end' && <AutoEndAlert />}
       {body}
     </DuskScreen>
+  );
+}
+
+/**
+ * 서버가 말 없음으로 Take 를 끝냈다는 안내(#925). 제품은 무대가 라우터 state 로 넘긴 이유를 띄우고,
+ * 둘째 줄은 서버 문구 그대로다(최대 시간이면 "연습은 최대 1시간까지라 자동으로 끝냈어요.").
+ */
+function AutoEndAlert() {
+  return (
+    <div
+      role="alert"
+      className="w-full border-2 border-dusk-accent px-4 py-3 text-left text-sm leading-relaxed"
+    >
+      <p className="font-mono text-xs font-bold text-dusk-accent">자동 종료</p>
+      <p className="mt-1 font-bold">2분 넘게 말이 없어 연습을 자동으로 끝냈어요.</p>
+      <p className="mt-0.5">
+        발표 목표 시간과는 상관없이, 말이 오래 없으면 끝나요. 끝난 곳까지의 기록만 분석에 들어가요.
+      </p>
+    </div>
   );
 }
 
