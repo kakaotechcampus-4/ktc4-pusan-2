@@ -84,6 +84,16 @@ def _client_error(code: str, status: int) -> ClientError:
     )
 
 
+def _verdict(error: Exception) -> BaseException | None:
+    """판정 결과를 값으로 받는다. 건너뛰기가 시험 밖으로 나가면 시험은 실패가 아니라 건너뜀으로
+    끝나서 판정이 다시 느슨해져도 드러나지 않는다."""
+    try:
+        _check_bucket(_s3_raising(error), "fake-bucket")
+    except (pytest.skip.Exception, pytest.fail.Exception, ClientError) as e:
+        return e
+    return None
+
+
 @pytest.mark.parametrize(
     ("code", "status", "message"),
     [
@@ -96,8 +106,9 @@ def _client_error(code: str, status: int) -> ClientError:
     ],
 )
 def test_wrong_bucket_settings_fail_instead_of_skip(code: str, status: int, message: str) -> None:
-    with pytest.raises(pytest.fail.Exception, match=message):
-        _check_bucket(_s3_raising(_client_error(code, status)), "fake-bucket")
+    verdict = _verdict(_client_error(code, status))
+    assert isinstance(verdict, pytest.fail.Exception), verdict
+    assert message in str(verdict)
 
 
 @pytest.mark.parametrize(
@@ -112,10 +123,10 @@ def test_wrong_bucket_settings_fail_instead_of_skip(code: str, status: int, mess
     ids=["no-credentials", "token-retrieval", "head-400", "expired-token", "request-expired"],
 )
 def test_missing_or_expired_credentials_skip(error: Exception) -> None:
-    with pytest.raises(pytest.skip.Exception):
-        _check_bucket(_s3_raising(error), "fake-bucket")
+    verdict = _verdict(error)
+    assert isinstance(verdict, pytest.skip.Exception), verdict
 
 
 def test_other_s3_errors_are_not_hidden() -> None:
-    with pytest.raises(ClientError):
-        _check_bucket(_s3_raising(_client_error("InternalError", 500)), "fake-bucket")
+    verdict = _verdict(_client_error("InternalError", 500))
+    assert isinstance(verdict, ClientError), verdict
