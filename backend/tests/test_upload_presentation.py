@@ -20,6 +20,7 @@ from pitch_coach_backend.module.pitch.adapter.presentation_file import (
 )
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO, UploadPresentationDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
+from pitch_coach_backend.module.pitch.exception import StorageError
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
@@ -220,6 +221,51 @@ def test_url_failure_leaves_neither_a_version_nor_the_file(
 
     assert _versions(db_session, pitch_id) == []
     assert deleted == [upload_mock.call_args.args[1]]
+
+
+def test_cleanup_failure_does_not_replace_the_storage_error(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    """올린 파일을 지우다 또 실패해도 사용자는 처음 실패를 받는다."""
+    pitch_id = _make_pitch(db_session, user_id)
+    url_failure = StorageError()
+
+    def broken_url(key: str) -> str:
+        raise url_failure
+
+    def broken_delete(key: str) -> None:
+        raise StorageError()
+
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", broken_url)
+    monkeypatch.setattr(presentation_service, "delete", broken_delete)
+
+    with pytest.raises(StorageError) as raised:
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert raised.value is url_failure
+    assert _versions(db_session, pitch_id) == []
+
+
+def test_thumbnail_failure_keeps_the_upload(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
+    make_pdf: Callable[[int], bytes],
+):
+    pitch_id = _make_pitch(db_session, user_id)
+    upload_bytes_mock.side_effect = StorageError()
+
+    result = _upload_one(db_session, pitch_id, make_pdf)
+
+    presentation = db_session.get(PresentationVersion, result.presentation_version_id)
+    assert presentation is not None
+    assert presentation.thumbnail_key is None
 
 
 def test_save_failure_deletes_the_uploaded_file(
