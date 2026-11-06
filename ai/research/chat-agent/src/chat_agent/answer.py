@@ -10,8 +10,11 @@
   3. 초안을 다 받으면 같은 순서로 다시 만들고, 이미 낸 문장은 그대로 둔 채 나머지만 검사 → 한 번 고치기 → 다시 검사한다.
      판단 문장의 모델 설명만 걸렸으면 그 자리에 코드가 확정한 첫 문장을 남긴다.
 - 문장 순서: 앞 문장 → 판단 문장(코드 첫 문장 + 모델 설명, 판단 순서) → 다루지 못한 말 안내 → 초안의 결론 · 기록 · 자료
-  문장(초안 순서). 판단 설명(`ASSESSMENT` 원소)은 초안 `claims` 맨 앞에 이어 온 것만 쓰고, 다른 종류가 나온 뒤의 설명은
-  버린다. 스트림에서 판단 문장을 일찍 확정하려는 것이고, 프롬프트도 설명을 맨 앞에 쓰게 한다.
+  문장(초안 순서) → 일반 조언 안내(고정 SYSTEM) + 일반 조언(`GENERAL`, 6-10). 판단 설명(`ASSESSMENT` 원소)은 초안 `claims`
+  맨 앞에 이어 온 것만 쓰고, 다른 종류가 나온 뒤의 설명은 버린다. 스트림에서 판단 문장을 일찍 확정하려는 것이고, 프롬프트도
+  설명을 맨 앞에 쓰게 한다. 같은 까닭으로 일반 조언은 초안 맨 끝에 이어 온 것만 쓴다: 첫 일반 조언 뒤의 다른 종류는 버리고,
+  일반 조언은 앞의 `max_general_claims`개만 쓴다(승인 대기 전 답에 낸 수를 뺀다). 판단 · 비교 결론에 이은 일반 조언 원소는 쓰지 않는다.
+  안내는 첫 일반 조언과 함께 나가고(실행에 한 번), 일반 조언이 모두 빠지면 뺀다.
 - 문장 줄에는 실행 전체에서 이어지는 번호와 그 줄이 처음 쓰는 근거 · 자료 사본, 아직 보내지 않은 확정 판단을 싣는다
   (`ClaimLines`). 그래서 문장 줄을 하나라도 받았으면 그때까지 확정된 판단이 모두 BE에 있다.
 - 스레드: 응답 조각은 LLM 실행 풀의 스레드에서 들어온다. 잠금 하나로 묶고, 답 쓰기 호출이 끝나면 `close()`로 늦게 온 조각을
@@ -38,6 +41,22 @@ from .stream_json import AssessmentsDone, ClaimClosed, StreamTracker, ValueDone
 
 #: 모델 문장을 스트림으로 내도 되는 답 초안 route. 범위 밖 답(OUT_OF_SCOPE)은 고정 거절 문장으로 끝나므로 내지 않는다
 STREAM_ROUTES = ("ANSWER", "NO_GUIDE")
+#: 일반 조언 묶음 바로 앞의 고정 안내(6-10)
+GENERAL_INTRO = templates.SystemText.GENERAL_INTRO.value
+
+
+def is_general_intro(c: Claim) -> bool:
+    return c.kind == "SYSTEM" and c.text == GENERAL_INTRO
+
+
+def _drop_lone_intro(claims: list[Claim]) -> list[Claim]:
+    """뒤에 일반 조언이 하나도 남지 않은 안내 문장을 뺀다(일반 조언이 검사로 모두 빠진 때)."""
+    out = list(claims)
+    for i, c in enumerate(out):
+        if is_general_intro(c) and not any(x.kind == "GENERAL" for x in out[i + 1 :]):
+            del out[i]
+            break
+    return out
 
 
 def assessment_head(o: Any) -> str:
@@ -208,6 +227,14 @@ class Composer:
         self.pre_texts = {c.text for c in pre}
         #: 코드가 그린 앞 문장(행동 결과)의 글자: 검사의 코드 문장 모음에 넣는다
         self.pre_code = {c.text for c in pre if c.kind == "ACTION_RESULT"}
+        #: 앞 응답(승인 대기 전)에 이미 낸 일반 조언 수 — 한 답의 상한은 실행 전체에서 센다
+        self.prior_general = sum(1 for d in st.emitted if d.get("kind") == "GENERAL")
+        #: 이 실행에서 일반 조언 안내를 이미 냈는가(앞 응답). 냈으면 다시 붙이지 않는다(FE 는 일반 조언마다 라벨을 단다, L3-42)
+        self.intro_said = any(
+            d.get("kind") == "SYSTEM" and d.get("text") == GENERAL_INTRO for d in st.emitted
+        )
+        #: 마지막 `_build`에서 쓰지 않은 일반 조언 원소 수(수 초과 · 판단에 이음). finish 가 진단에 남긴다
+        self.general_skipped = 0
         self.closed = False
         self.broken = False
         self.attempt = 0
@@ -281,12 +308,19 @@ class Composer:
             return
         out, _flags, code = self._build(closed=False)
         while len(self.sent) < len(out):
-            c = out[len(self.sent)]
-            if self._check([c], code):
+            n = len(self.sent)
+            c = out[n]
+            # 일반 조언 안내는 바로 뒤 첫 일반 조언이 검사를 통과할 때 함께 낸다(안내만 나가고 일반 조언이 모두 빠지지 않게).
+            # `_build`는 안내를 언제나 일반 조언 바로 앞에 둔다
+            batch = out[n : n + 2] if is_general_intro(c) else [c]
+            if len(batch) < 2 and is_general_intro(c):
+                return  # 뒤 일반 조언을 기다린다
+            if self._check(batch, code):
                 self.blocked = True  # 걸린 문장과 그 뒤는 초안이 끝난 뒤 고쳐 원래 순서로 낸다
                 return
-            self.lines.send(c, self._confirmed())
-            self.sent.append(c)
+            for b in batch:
+                self.lines.send(b, self._confirmed())
+                self.sent.append(b)
 
     def _confirmed(self) -> list[dict[str, Any]]:
         if self.fin is None:
@@ -366,25 +400,48 @@ class Composer:
         if fin.result is not None:
             for s in [*fin.result.uncovered_sentences, *fin.result.dropped_notice]:
                 add(compose._claim("SYSTEM", s), False)
+        in_general = False
+        n_general = 0
+        #: 이 답에서 더 쓸 수 있는 일반 조언 수: 한 답(실행)의 상한에서 앞 응답(승인 대기 전)에 이미 낸 수를 뺀다
+        room = max(0, self.lp.cfg.max_general_claims - self.prior_general)
+        self.general_skipped = 0
         for c in elems[lead:]:
             kind = c.get("kind")
+            if kind == "GENERAL":
+                in_general = True
+            elif in_general:
+                continue  # 일반 조언 묶음 뒤의 다른 종류는 버린다(안내 문장이 일반 조언 묶음 바로 앞에만 오게)
             if kind == "CONCLUSION":
                 r = compose.conclusion_sentence(ctx, c.get("comparison_evidence_id") or "")
                 if r is not None:
                     add(compose._claim("RECORD", r[0], evidence_ids=r[1]), False)
-            elif kind in ("RECORD", "GUIDE"):
+            elif kind in ("RECORD", "GUIDE", "GENERAL"):
                 text = (c.get("text") or "").strip()
+                if not text:
+                    continue  # 빈 원소는 문장이 아니다(일반 조언 수 · 진단에도 세지 않는다)
                 if text in code or text in self.prior_texts or text in self.pre_texts:
                     continue  # 코드 문장 · 이미 낸 문장과 글자만 같은 모델 문장은 버린다(검사 면제를 흉내 내지 못하게 · 되풀이 없이)
-                add(
-                    compose._claim(
-                        kind,
-                        text,
-                        evidence_ids=list(c.get("evidence_ids") or []),
-                        source_ids=list(c.get("source_ids") or []),
-                    ),
-                    True,
+                if kind == "GENERAL" and (
+                    n_general >= room
+                    or c.get("assessment_index") is not None
+                    or c.get("comparison_evidence_id")
+                ):
+                    # 수를 넘긴 일반 조언, 판단 · 비교 결론에 이은 일반 조언(근거가 있으면 일반 조언이 아니다)은 쓰지 않는다
+                    # (6-10). 버린 수는 finish 가 진단에 남긴다
+                    self.general_skipped += 1
+                    continue
+                claim = compose._claim(
+                    kind,
+                    text,
+                    evidence_ids=list(c.get("evidence_ids") or []),
+                    source_ids=list(c.get("source_ids") or []),
                 )
+                if kind == "GENERAL" and claim is not None:
+                    if n_general == 0 and not self.intro_said:
+                        # 첫 일반 조언 바로 앞에 고정 안내(6-10). 스트림에서는 뒤 일반 조언이 통과할 때 함께 낸다(`_advance`)
+                        add(compose._claim("SYSTEM", GENERAL_INTRO), False)
+                    n_general += 1
+                add(claim, True)
         return out, flags, code
 
     def _check(self, claims: list[Claim], code: set[str]) -> list[chk.CheckFailure]:
@@ -398,6 +455,7 @@ class Composer:
             succeeded_actions=self.succeeded,
             approved_cause_sources=self.approved,
             code_sentences=code,
+            guide_searched=lp.st.guide_searched,
             cfg=lp.cfg,
         )
 
@@ -429,7 +487,8 @@ class Composer:
                     continue
                 rest.append(c)
                 rflags.append(f)
-        resolved = self._check_and_fix(rest, rflags, code, messages, offset=n)
+        resolved = _drop_lone_intro(self._check_and_fix(rest, rflags, code, messages, offset=n))
+        self._note_general_over()
         return Composed(
             out=out,
             pre=list(self.pre),
@@ -437,6 +496,17 @@ class Composer:
             all_assessments=fin.all_assessments,
             amap=fin.amap,
         )
+
+    def _note_general_over(self) -> None:
+        """마지막 `_build`(초안 전체)가 쓰지 않은 일반 조언 원소(수 초과 · 판단 · 비교에 이음)를 진단에 남긴다(원소마다
+        `GENERAL_RULE` DROPPED, 6-10). 글이 비었거나 이미 낸 문장과 같아 건너뛴 원소는 세지 않는다."""
+        for _ in range(self.general_skipped):
+            self.lp.diag.step(
+                "CHECK",
+                chk.CheckId.GENERAL_RULE,
+                {"claim_kind": "GENERAL", "round": 0, "result": "DROPPED"},
+                parent_seq=self.lp._last_model_seq,
+            )
 
     def _check_and_fix(
         self,
@@ -461,15 +531,18 @@ class Composer:
         pre_dropped = len(self.pre_all) - len(self.pre)
         failures = recheck(rest)
         answer_seq = lp._last_model_seq
-        # 범위 밖 낱말(SCOPE_RULE)이 걸린 문장은 고치기에 보내지 않고 바로 버린다(6-9). 한 문장에 다른 검사도 걸렸어도 같다
-        scope_dropped = {f.claim_index for f in failures if f.check_id == chk.CheckId.SCOPE_RULE}
+        # 범위 밖 낱말(SCOPE_RULE)이 걸린 문장은 고치기에 보내지 않고 바로 버린다(6-9). 한 문장에 다른 검사도 걸렸어도 같다.
+        # 글만 고쳐서는 풀리지 않는 것(자료를 찾지 않은 일반 조언 등)도 같다
+        drop_now = {
+            f.claim_index for f in failures if f.check_id == chk.CheckId.SCOPE_RULE or f.unfixable
+        }
         check_seqs: list[int] = []
         for f in failures:
             detail = {
                 "claim_index": pos(f.claim_index),
                 "claim_kind": f.claim_kind,
                 "round": 0,
-                "result": "DROPPED" if f.claim_index in scope_dropped else "FIX_REQUESTED",
+                "result": "DROPPED" if f.claim_index in drop_now else "FIX_REQUESTED",
             }
             check_seqs.append(lp.diag.step("CHECK", f.check_id, detail, parent_seq=answer_seq))
         if not failures:
@@ -480,9 +553,7 @@ class Composer:
         fixable = [
             f
             for f in failures
-            if f.claim_index is not None
-            and flags[f.claim_index]
-            and f.claim_index not in scope_dropped
+            if f.claim_index is not None and flags[f.claim_index] and f.claim_index not in drop_now
         ]
         asked = {f.claim_index for f in fixable}
         fixed_texts: dict[int, str | None] | None = None
@@ -555,7 +626,7 @@ class Composer:
                 if f.claim_index is not None and f.claim_index < len(origin)
                 else f.claim_index
             )
-            if oi in scope_dropped:
+            if oi in drop_now:
                 continue  # 이미 처음 검사에서 DROPPED 로 남겼다
             detail = {
                 "claim_index": pos(oi),

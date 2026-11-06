@@ -237,7 +237,7 @@ class Evidence(_Out):
         return self
 
 
-ClaimKind = Literal["RECORD", "GUIDE", "ACTION_RESULT", "SYSTEM", "ASSESSMENT"]
+ClaimKind = Literal["RECORD", "GUIDE", "GENERAL", "ACTION_RESULT", "SYSTEM", "ASSESSMENT"]
 
 
 class Claim(_Out):
@@ -885,6 +885,7 @@ CHECK_IDS = (
     "FIX_NEW_CONTENT",
     "SCOPE_RULE",
     "MEMORY_RULE",
+    "GENERAL_RULE",
 )
 LIMIT_CODES = (
     "MODEL_CALLS",
