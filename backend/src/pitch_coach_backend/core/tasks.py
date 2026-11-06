@@ -84,6 +84,7 @@ class TaskRegistry:
 
     def __init__(self) -> None:
         self._tasks: dict[Hashable, asyncio.Task[None]] = {}
+        self._cancel_requested: set[Hashable] = set()
 
     def __len__(self) -> int:
         return len(self._tasks)
@@ -109,10 +110,26 @@ class TaskRegistry:
     def _done(self, key: Hashable, task: asyncio.Task[None]) -> None:
         if self._tasks.get(key) is task:
             del self._tasks[key]
+            self._cancel_requested.discard(key)
         # 아무도 await 하지 않는 태스크라 예외를 여기서 꺼내 남긴다. 안 그러면 GC 될 때
         # "Task exception was never retrieved" 로만 찍히고 어느 작업인지 알 수 없다
         if not task.cancelled() and (error := task.exception()) is not None:
             logger.error("백그라운드 태스크 실패 %s", task.get_name(), exc_info=error)
+
+    def cancel(self, key: Hashable) -> bool:
+        """그 키의 태스크만 끊으라고 알린다. 끝나기를 기다리지 않는다. 돌고 있지 않으면 False 다.
+
+        `Task.cancel` 은 스레드에 안전하지 않아 태스크와 같은 이벤트 루프에서 불러야 한다."""
+        task = self._tasks.get(key)
+        if task is None or task.done():
+            return False
+        self._cancel_requested.add(key)
+        task.cancel()
+        return True
+
+    def cancel_requested(self, key: Hashable) -> bool:
+        """`cancel` 로 끊는 중인가. `stop_all` 로 끊긴 것과 가른다. 태스크가 끝나면 지운다."""
+        return key in self._cancel_requested
 
     async def stop_all(self, timeout: float) -> None:
         """앱 종료. 돌고 있는 것을 끊고 끝나기를 `timeout` 까지 기다린다."""
