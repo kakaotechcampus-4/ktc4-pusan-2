@@ -174,7 +174,7 @@ ai/research/volume-analysis/
 | `LONG_SILENCE` | `PAUSE` | `silence_ms`가 긴 침묵 기준 초과 | `silence_ms` (길수록) | true |
 
 - `VOLUME`은 오디오가 멈췄거나 기준 음량이 없거나 말한 1초가 부족하면 `UNKNOWN`이고 문제를 내지 않는다. `PAUSE`는 오디오가 흐르면 기준 음량 · 말한 1초 수와 관계없이 판정하고, 오디오가 멈추면 `UNKNOWN`이다. 판정 시각(`t_ms`)에 끝나는 1초 기록이 없으면(기록이 끊김) 두 영역 모두 `UNKNOWN`이다. 마지막으로 받은 기록으로 `LOW` · `SILENT`를 이어 가지 않는다. 측정 불가 문제 이름은 없다(`architecture.md` 6-3).
-- `severity`는 공통 규칙을 따른다. `LONG_SILENCE`의 `persistence_sec`은 `silence_ms ÷ 1000`이다. `VOLUME_LOW`의 `persistence_sec`은 마지막 1초부터 거꾸로, 그 1초에서 끝나는 짧은 창의 `voice_diff_db`가 작음 기준 미만인 1초가 이어진 시간이다. 기록 사이가 비거나 잴 수 없는 1초를 만나면 거기서 멈춘다.
+- `severity`는 공통 규칙을 따른다. `LONG_SILENCE`의 `persistence_sec`은 `silence_ms ÷ 1000`이다. `VOLUME_LOW`의 `persistence_sec`은 마지막 1초부터 거꾸로, 그 1초에서 끝나는 짧은 창의 `voice_diff_db`가 작음 기준 미만인 1초가 이어진 시간이다. 앞 기록의 끝과 다음 기록의 시작이 이어지지 않거나(비거나 겹침) 잴 수 없는 1초를 만나면 거기서 멈춘다.
 - 코치는 `VOLUME_LOW`에 `SPEAK_LOUDER` → `SPEAK_LOUDER`(뒷자리 기준) → 그만둠, `LONG_SILENCE`에 `RESUME`(그만두지 않음)을 쓰고, 효과는 `voice_diff_db` · 다시 말함으로 잰다(`coach-agent.md` 6-1).
 
 ## 5-5. 예시
