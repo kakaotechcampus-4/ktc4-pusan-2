@@ -159,8 +159,11 @@
         "summary": {
           "anyOf": [
             {
-              "maxLength": 4000,
-              "type": "string"
+              "items": {
+                "$ref": "#/$defs/SummaryItemSpec"
+              },
+              "maxItems": 12,
+              "type": "array"
             },
             {
               "type": "null"
@@ -983,6 +986,34 @@
         }
       },
       "title": "ReviewSpec",
+      "type": "object"
+    },
+    "SummaryItemSpec": {
+      "additionalProperties": false,
+      "description": "대화에 이미 있는 대화 요약 항목(5-2 `SummaryItem`, 6-14).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "TOPIC",
+            "INTENT",
+            "DECISION",
+            "OPEN"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "SummaryItemSpec",
       "type": "object"
     },
     "TakeSpec": {

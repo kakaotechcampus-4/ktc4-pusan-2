@@ -5,7 +5,9 @@
 - 하는 일
   1. 저장소: 사용자 → 피치(`fixtures.PitchRecord`) → Take(`TakeRecord`, 저장된 코치 결과 · 공식 리뷰), 대화(범위 · 대화 목표와 판 번호 ·
      이전 판 · 메시지 · 판단 · 목표 제안 카드 · 다시 평가 참고 결과), 실행(호출 기록 · 행동 기록 · 서명 상태 · 누적량).
-  2. 메시지 받기(`send_message`): 대화 기록(요약 + 최근 메시지 20개 + 앞 판단 50개)과 기본 자료(5-3 `context`)를 모아 `/agent/turn`을 부른다.
+  2. 메시지 받기(`send_message`): 대화 기록(요약 항목 + 최근 메시지 20개 + 앞 판단 50개 + 요약 뒤로 밀린 메시지 최대 10개와 앞 요약의
+     판 번호)과 기본 자료(5-3 `context`), 기억(`memory`: 설정이 꺼졌거나 '기억 없이' 대화면 꺼짐, 아니면 지금 코칭 프로필과 기억 번호)을
+     모아 `/agent/turn`을 부른다. 기억 설정 · 항목 지우기 · 전체 지우기는 기억 번호를 올린다(6-14).
   3. 스트림 검사(12-3 '스트림 검사' · '최종 응답 검사'): 줄마다 모양 · `run_id` · 1부터 연속인 `seq`, 끝 줄 정확히 하나 · 마지막,
      `final` 모양(5-5), 빈 DONE · 등록되지 않은 행동 · 자율 등급 위조. 어기면 행동을 실행하지 않고 실행을 `AGENT_UPSTREAM_ERROR`로 끝낸다.
      진단 기록은 본체와 따로 검사해(`request_id` · `run_id` · `turn_call`) 틀리면 진단 기록만 버린다.
@@ -28,7 +30,10 @@
      취소 · 만료가 확정된 뒤 온 승인은 실행하지 않는다(`AGENT_CANCELLED` · `AGENT_EXPIRED`). 선승인 `SAVE_GOAL`(`preapproved`)은 실제 `args.goal`에서
      내용 해시를 다시 계산해 저장된 제안의 `content_hash` · 제안 id · 고른 안과 모두 같을 때만 실행하고 다르면 `FAILED`(`PREAPPROVAL_MISMATCH`)로 실행하지 않는다.
      `START_PRACTICE`(`BUTTON`)는 실행하지 않고 카드만 저장하며, 사용자가 누른 것은 `click_practice`가 이동 기록으로만 남긴다.
-  5. 끝 줄: 답 · 판단 · 카드 · 근거를 메시지로 추가 저장하고(고치지 않음), 목표 제안 카드 · 대화 요약을 남긴다.
+  5. 끝 줄: 답 · 판단 · 카드 · 근거를 메시지로 추가 저장하고(고치지 않음), 목표 제안 카드를 남긴다. 대화 요약은 이 실행이 보낸 앞
+     요약의 판 번호가 지금과 같을 때만 바꾸고 덮은 메시지 수를 늘린다(L2-49). 코칭 프로필 저장 후보는 사용자 말로 시작한 실행 · 설정 켜짐 ·
+     '기억 없이'가 아님 · 기억 번호가 실행을 시작할 때와 같을 때만, AI 와 같은 검사(memory.py)를 다시 해 통과한 것만 저장하고 그 값으로
+     `MEMORY_SAVED` 카드를 답 메시지에 붙인다(L2-47 · L2-48).
      자동 목표 확인 결과가 끝(terminal)이면 목표 상태를 바꾼다(목표 판 번호가 그대로일 때만).
   6. 자동 목표 확인(`auto_goal_check`): 목표가 `OPEN`인 대화에서 목표 저장 뒤 시작한 Take 의 리뷰를 Take 번호 순으로 `TAKE_REVIEWED`로 보낸다.
      `(대화, 목표 판, Take, 리뷰 판)`마다 한 번이다.
@@ -58,7 +63,9 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
+from chat_agent import memory as memory_rules
 from chat_agent.actions import action_args_hash
+from chat_agent.config import DEFAULT_CONFIG
 from chat_agent.schemas import ClaimLineData, FinalData, StreamLine
 from chat_agent.templates import SystemText
 
@@ -212,7 +219,14 @@ class Conversation:
     #: 목표 저장 때 그 피치의 가장 큰 Take 번호. 이보다 큰 번호가 '저장 뒤 시작한 Take'(단순화)
     goal_after_take: int = 0
     messages: list[StoredMessage] = field(default_factory=list)
+    #: 대화 요약 항목(6-14) · 판 번호 · 요약이 덮은 메시지 수(앞에서부터)
     summary: list[dict[str, Any]] | None = None
+    summary_version: int = 0
+    summary_covered: int = 0
+    #: 요약이 덮은 메시지들이 기댄 피치 · Take id(지워지면 요약을 가린다, 12-1 · L2-49)
+    summary_sources: set[str] = field(default_factory=set)
+    #: '기억 없이' 대화: 코칭 프로필을 읽지도 쓰지도 않는다(기록 · 요약은 보관, 6-14 · L2-48)
+    no_memory: bool = False
     #: 메시지와 함께 저장한 목표 제안 카드(proposal_id → 카드). choice 가 오면 selected_proposal 로 싣는다
     proposals: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: 자동 목표 확인 중복 방지 키 (목표 판, take_id, 리뷰 판)
@@ -313,6 +327,8 @@ class Run:
     #: 승인 결정 때 예약한 다시 평가 횟수의 결과: `RESERVED` · `PER_TURN`(이 실행에서 이미 승인함) · `DAILY_LIMIT`
     reassess_slot: str | None = None
     review_event: dict[str, Any] | None = None
+    #: 실행을 시작할 때의 기억 번호. 프로필 저장은 지금 번호가 이것과 같을 때만(6-14 · L2-47)
+    memory_version: int | None = None
 
     @property
     def final(self) -> dict[str, Any] | None:
@@ -372,6 +388,9 @@ class FakeBe:
             self.add_pitch(p)
         self.conversations: dict[str, Conversation] = {}
         self.runs: dict[str, Run] = {}
+        #: 사용자별 기억 설정(켜짐 · 기억 번호)과 코칭 프로필(key → 항목, 6-14 · 12-1 '기억 설정')
+        self.memory_settings: dict[str, dict[str, Any]] = {}
+        self.profiles: dict[str, dict[str, dict[str, Any]]] = {}
         #: (사용자, 행동 종류, idempotency_key) → (인자 해시, 결과)
         self.action_results: dict[tuple[str, str, str], tuple[str, dict[str, Any]]] = {}
         #: 리뷰 호출 기록(다시 평가 A · B): {"take_id", "side", "request"}
@@ -478,13 +497,45 @@ class FakeBe:
         }
 
     def new_conversation(
-        self, user_id: str = "u-3", scope_pitch_id: str | None = "p-1"
+        self, user_id: str = "u-3", scope_pitch_id: str | None = "p-1", *, no_memory: bool = False
     ) -> Conversation:
         if scope_pitch_id is not None and self.owned_pitch(scope_pitch_id, user_id) is None:
             raise LookupError("NOT_FOUND")  # 없는 · 남의 피치는 같은 404
-        conv = Conversation(self._next("c"), user_id, scope_pitch_id)
+        conv = Conversation(self._next("c"), user_id, scope_pitch_id, no_memory=no_memory)
         self.conversations[conv.conversation_id] = conv
         return conv
+
+    # ── 기억 설정 · 코칭 프로필 (6-14 · 12-3 B16 · B17) ───────────────────
+    def memory_setting(self, user_id: str) -> dict[str, Any]:
+        """사용자별 기억 설정(기본 켜짐, 번호 0)."""
+        return self.memory_settings.setdefault(user_id, {"enabled": True, "version": 0})
+
+    def _bump_memory(self, user_id: str) -> None:
+        self.memory_setting(user_id)["version"] += 1
+
+    def set_memory_enabled(self, user_id: str, enabled: bool) -> None:
+        """설정 '코칭 프로필 기억' 켜기 · 끄기. 바꾸면 기억 번호를 올린다."""
+        self.memory_setting(user_id)["enabled"] = enabled
+        self._bump_memory(user_id)
+
+    def profile_items(self, user_id: str) -> list[dict[str, Any]]:
+        order = {k: i for i, k in enumerate(memory_rules.PROFILE_KEYS)}
+        items = self.profiles.get(user_id, {}).values()
+        return [copy.deepcopy(i) for i in sorted(items, key=lambda i: order[i["key"]])]
+
+    def delete_profile_item(self, user_id: str, item_id: str) -> None:
+        """항목 하나를 바로 실제로 지우고 기억 번호를 올린다(없는 · 남의 항목은 404)."""
+        items = self.profiles.get(user_id, {})
+        key = next((k for k, v in items.items() if v["item_id"] == item_id), None)
+        if key is None:
+            raise LookupError("NOT_FOUND")
+        del items[key]
+        self._bump_memory(user_id)
+
+    def delete_all_profile(self, user_id: str) -> None:
+        """전체 지우기: 항목을 모두 지우고 기억 번호를 올린다."""
+        self.profiles.pop(user_id, None)
+        self._bump_memory(user_id)
 
     # ── 메시지 받기 · 자동 목표 확인 ───────────────────────────────────
     def send_message(
@@ -632,6 +683,7 @@ class FakeBe:
             trigger,
             original=copy.deepcopy(original),
             history=history,
+            memory_version=self.memory_setting(conv.user_id)["version"],
         )
         self.runs[run.run_id] = run
         return run
@@ -724,10 +776,36 @@ class FakeBe:
             if any(self._gone(s, conv.user_id) for s in m.source_ids):
                 continue
             prior.extend(copy.deepcopy(a) for a in m.assessments)
+        # 앞 요약 뒤로 쌓여 최근 20개 밖으로 밀린 메시지(최대 10개)와 앞 요약의 판 번호(6-14 · L2-49)
+        pushed = conv.messages[
+            conv.summary_covered : max(0, len(conv.messages) - MAX_HISTORY_MESSAGES)
+        ]
+        overflow = (
+            {
+                "messages": [
+                    {
+                        "role": m.role,
+                        # 4,000자를 넘는 이전 답은 대화 기록처럼 문장을 앞에서부터 줄여 싣는다(5-3)
+                        "text": MASKED_TEXT
+                        if any(self._gone(s, conv.user_id) for s in m.source_ids)
+                        else self._clip(m)[0],
+                    }
+                    for m in pushed[: DEFAULT_CONFIG.max_overflow_messages]
+                ],
+                "prev_summary_version": conv.summary_version,
+            }
+            if pushed
+            else None
+        )
+        summary = copy.deepcopy(conv.summary)
+        if summary and any(self._gone(s, conv.user_id) for s in conv.summary_sources):
+            # 요약이 덮은 답의 근거가 지워졌으면 요약을 가린다(L2-37 · L2-49)
+            summary = [{"kind": "TOPIC", "text": MASKED_TEXT}]
         return {
-            "summary": conv.summary,
+            "summary": summary,
             "messages": messages,
             "prior_assessments": prior[-MAX_PRIOR_ASSESSMENTS:],
+            "overflow": overflow,
         }
 
     @staticmethod
@@ -1070,8 +1148,15 @@ class FakeBe:
         }
 
     def _memory(self, conv: Conversation) -> dict[str, Any]:
-        """요청의 `memory`(5-3). 기억 설정 · 코칭 프로필 저장은 아직 흉내 내지 않아 꺼짐으로 보낸다."""
-        return {"enabled": False, "memory_version": 0, "profile": None}
+        """요청의 `memory`(5-3): 설정이 꺼졌거나 '기억 없이' 대화면 `enabled:false` · `profile:null`, 아니면 지금 프로필."""
+        s = self.memory_setting(conv.user_id)
+        if conv.no_memory or not s["enabled"]:
+            return {"enabled": False, "memory_version": s["version"], "profile": None}
+        return {
+            "enabled": True,
+            "memory_version": s["version"],
+            "profile": self.profile_items(conv.user_id),
+        }
 
     def _call(self, run: Run, req: dict[str, Any]) -> Call:
         n = len(run.calls) + 1
@@ -1276,8 +1361,11 @@ class FakeBe:
         for card in msg["cards"]:
             if card.get("type") == "GOAL_PROPOSAL":
                 conv.proposals[card["proposal_id"]] = copy.deepcopy(card)
-        if final.get("history_summary"):
-            conv.summary = final["history_summary"]
+        self._store_summary(run, conv, final.get("history_summary"))
+        if (
+            status is None
+        ):  # BE 가 끝낸 실행(거절 · 만료 · 취소 · 받은 문장 보존)은 AI 의 저장 후보가 아니다
+            self._store_profile(run, conv, final.get("profile_updates"))
         gr = final.get("goal_result")
         goal = conv.goal
         if (
@@ -1291,6 +1379,53 @@ class FakeBe:
             # 목표 판이 그대로이고 OPEN 일 때만 한 번 바꾼다(6-4). 판 번호는 올리지 않는다
             conv.goal = {**goal, "status": gr["status"]}
         run.status = status or final["status"]
+
+    def _store_summary(self, run: Run, conv: Conversation, items: Any) -> None:
+        """대화 요약 조건부 갱신(6-14 · L2-49): 이 실행이 보낸 앞 요약의 판 번호가 지금과 같을 때만 바꾸고, 덮은 메시지 수를
+        보낸 밀린 메시지만큼 늘린다. null 이면 바꾸지 않는다(다음 턴에 같은 메시지를 다시 보낸다)."""
+        overflow = (run.history or {}).get("overflow")
+        if items is None or overflow is None:
+            return  # 빈 목록은 유효한 갱신이고, null 만 '못 만듦'이다(6-14)
+        if overflow["prev_summary_version"] != conv.summary_version:
+            self.log.append({"event": "SUMMARY_VERSION_CONFLICT", "run_id": run.run_id})
+            return
+        covered = conv.messages[
+            conv.summary_covered : conv.summary_covered + len(overflow["messages"])
+        ]
+        conv.summary = copy.deepcopy(items)
+        conv.summary_version += 1
+        conv.summary_covered += len(overflow["messages"])
+        # 굴리는 요약이므로 앞 요약의 원천도 그대로 이어진다
+        conv.summary_sources |= {s for m in covered for s in m.source_ids}
+
+    def _store_profile(self, run: Run, conv: Conversation, updates: Any) -> None:
+        """코칭 프로필 저장(6-14 · L2-47 · L2-48): 사용자 말로 시작한 실행 · 설정 켜짐 · '기억 없이'가 아님 · 지금 기억 번호가
+        실행을 시작할 때와 같을 때만, AI 와 같은 검사(①~⑥)를 다시 해 통과한 것만 저장한다(`key`마다 하나, 새 값이 덮음).
+        저장에 성공한 값으로만 `MEMORY_SAVED` 카드를 만들어 그 답 메시지에 붙인다."""
+        if not updates:
+            return
+        s = self.memory_setting(conv.user_id)
+        text = run.original.get("user_message")
+        if (
+            run.trigger != "USER_MESSAGE"
+            or not text
+            or conv.no_memory
+            or not s["enabled"]
+            or s["version"] != run.memory_version
+        ):
+            self.log.append({"event": "PROFILE_NOT_SAVED", "run_id": run.run_id})
+            return
+        kept, _dropped = memory_rules.check_profile_updates(
+            updates, user_message=text, cfg=DEFAULT_CONFIG
+        )
+        items = self.profiles.setdefault(conv.user_id, {})
+        msg = conv.messages[-1]
+        for u in kept:
+            if u["key"] not in items and len(items) >= DEFAULT_CONFIG.max_profile_items:
+                continue
+            item = {"item_id": self._next("mem"), "key": u["key"], "value": u["value"]}
+            items[u["key"]] = item
+            msg.cards.append({"type": "MEMORY_SAVED", **copy.deepcopy(item)})
 
     def click_practice(self, run: Run) -> dict[str, Any]:
         """사용자가 [연습 준비로] 버튼을 누름: FE 가 화면을 옮기고 BE 는 이동 기록만 남긴다. BE 가 행동으로 실행하지 않는다(5-8)."""

@@ -1047,9 +1047,12 @@ def _profile_updates(lp: Loop, req: TurnRequest, payload: Any) -> list[dict[str,
         or lp.st.memory_changed
         or not lp.original
     ):
-        lp.diag.step(
-            "CHECK", "MEMORY_RULE", {"field": "profile_updates", "round": 0, "result": "DROPPED"}
-        )
+        for _ in raw if isinstance(raw, list) else [raw]:  # 버린 후보마다 한 단계(11-5)
+            lp.diag.step(
+                "CHECK",
+                "MEMORY_RULE",
+                {"field": "profile_updates", "round": 0, "result": "DROPPED"},
+            )
         return None
     kept, dropped = memory.check_profile_updates(raw, user_message=lp.original, cfg=lp.cfg)
     for d in dropped:
@@ -1083,20 +1086,23 @@ def _finish(
     #: 이 실행에서 이미 낸 문장 수(앞 응답 + 이 응답의 문장 줄). 끝 줄 message 의 앞부분은 이 문장들과 같다(5-4)
     n_sent = len(st.emitted)
     terminal = error is None and status in ("DONE", "PARTIAL", "REFUSED")
-    # 대화 요약 · 프로필 저장 후보(6-14): 종결 응답에서만. 요약 호출은 사용량에 들어가므로 사용량을 세기 전에 한다
-    history_summary = _history_summary(lp) if terminal else None
+    # 코칭 프로필 저장 후보(6-14): 종결 응답에서만(모델 호출 없음)
     profile_updates = _profile_updates(lp, req, payload) if terminal else None
-    lp.budget.sync_elapsed()
     c = lp.counters
-    usage = {
-        "model_calls": c.model_calls,
-        "tool_calls": c.tool_calls,
-        "elapsed_ms": c.elapsed_ms,
-        "input_tokens": st.usage_in if st.usage_seen_in else None,
-        "output_tokens": st.usage_out if st.usage_seen_out else None,
-        "measured": not st.usage_missing,
-        "missing_reason": "PROVIDER_USAGE_MISSING" if st.usage_missing else None,
-    }
+
+    def usage_now() -> dict[str, Any]:
+        lp.budget.sync_elapsed()
+        return {
+            "model_calls": c.model_calls,
+            "tool_calls": c.tool_calls,
+            "elapsed_ms": c.elapsed_ms,
+            "input_tokens": st.usage_in if st.usage_seen_in else None,
+            "output_tokens": st.usage_out if st.usage_seen_out else None,
+            "measured": not st.usage_missing,
+            "missing_reason": "PROVIDER_USAGE_MISSING" if st.usage_missing else None,
+        }
+
+    usage = usage_now()
     if error is not None:
         d = lp.diag.finish(error, reason, usage=usage, max_bytes=cfg.max_diagnostics_bytes)
         return None, error, d.model_dump(mode="json")
@@ -1155,6 +1161,17 @@ def _finish(
     ev_ids += [
         e for cd in cards for o in cd.get("options") or [] for e in o.get("evidence_ids") or []
     ]
+    tail_sent = False
+    history_summary = None
+    if terminal:
+        if msg is not None:
+            # 답 문장은 요약보다 먼저 다 낸다(6-1 8번: 사용자는 요약을 기다리지 않는다)
+            for d in msg["claims"][n_sent:]:
+                lines.send(Claim.model_validate(d), assessments_out, record=False)
+            tail_sent = True
+        # 대화 요약(6-14): 답 쓰기 · 고치기 뒤 남은 몫에서. 이 호출도 사용량에 들어가므로 사용량을 다시 센다
+        history_summary = _history_summary(lp)
+        usage = usage_now()
     final: dict[str, Any] = {
         "status": status,
         "message": msg,
@@ -1166,7 +1183,6 @@ def _finish(
         "basis": ctx.basis(sources or []),
         "evidence": compose.referenced(ctx, ev_ids),
         "history_summary": history_summary,
-        "profile_updates": profile_updates,
         "budget_used": c.budget_used(),
         "usage": usage,
         "assessments": assessments_out,
@@ -1244,10 +1260,11 @@ def _finish(
                 },
             )
             reason = "LIMIT"
-    d = lp.diag.finish(final["status"], reason, usage=usage, max_bytes=cfg.max_diagnostics_bytes)
-    final["diagnostics"] = d.model_dump(mode="json")
+    if profile_updates:
+        final["profile_updates"] = profile_updates
     try:
-        FinalData.model_validate(final)
+        # 본체를 먼저 검사하고 진단 기록은 끝을 안 뒤 한 번만 만든다(진단 기록은 코드가 닫힌 모양으로 만든다)
+        FinalData.model_validate({**final, "diagnostics": None})
     except ValidationError as e:
         deps.log(
             {
@@ -1256,10 +1273,16 @@ def _finish(
                 "errors": [list(x.get("loc", ())) for x in e.errors()][:10],
             }
         )
-        return None, "INTERNAL_ERROR", None
+        # 실패해도 그때까지의 단계 · 사용량(요약 호출 포함)은 error 줄의 진단 기록으로 남긴다
+        d = lp.diag.finish(
+            "INTERNAL_ERROR", "OTHER", usage=usage, max_bytes=cfg.max_diagnostics_bytes
+        )
+        return None, "INTERNAL_ERROR", d.model_dump(mode="json")
+    d = lp.diag.finish(final["status"], reason, usage=usage, max_bytes=cfg.max_diagnostics_bytes)
+    final["diagnostics"] = d.model_dump(mode="json")
     # 아직 줄로 내지 않은 문장(보류했다 통과한 문장 · 끝에 붙는 안내 · 모델 없이 만든 답)도 끝 줄 앞에 문장 줄로 낸다.
     # 그래서 문장 줄 번호는 실행 전체 답에서의 자리와 같고 빈 번호가 없다(5-4)
-    for d in (final["message"] or {}).get("claims", [])[n_sent:]:
+    for d in [] if tail_sent else (final["message"] or {}).get("claims", [])[n_sent:]:
         lines.send(Claim.model_validate(d), final["assessments"], record=False)
     return final, None, None
 
