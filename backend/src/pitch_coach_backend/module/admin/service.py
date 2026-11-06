@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.limits import KST
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin import repository
 from pitch_coach_backend.module.admin.dto import (
@@ -40,7 +41,6 @@ from pitch_coach_backend.module.admin.dto import (
     TakeStats,
     UserStats,
 )
-from pitch_coach_backend.module.admin.repository import KST
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.exception import NonExistentTake

@@ -11,10 +11,10 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.core.database import in_session as _in_session
+from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, confirmation_items
 from pitch_coach_backend.module.take.dto import ConfirmationAnswerDTO, ConfirmationsDTO
 from pitch_coach_backend.module.take.entity import Take
@@ -40,7 +40,7 @@ def _awaiting(take: Take) -> bool:
 
 
 def _rubrics(db: Session, take: Take) -> dict[int, Any]:
-    slides = PitchRepository(db).get_slides(take.script_version_id)
+    slides = script_service.script_slides(db, take.script_version_id)
     return {slide.slide_number: slide.rubric for slide in slides}
 
 
@@ -65,19 +65,6 @@ def get_confirmations_service(
         remaining_ms=max(0, int(left.total_seconds() * 1000)),
         items=confirmation_items(confirmed.payload, _rubrics(db, take)),
     )
-
-
-async def _in_session[T](
-    session_factory: Callable[[], Session], fn: Callable[..., T], *args: Any
-) -> T:
-    def call() -> T:
-        db = session_factory()
-        try:
-            return fn(db, *args)
-        finally:
-            db.close()
-
-    return await run_in_threadpool(call)
 
 
 def _skip(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> None:

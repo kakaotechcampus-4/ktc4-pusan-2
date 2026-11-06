@@ -15,8 +15,9 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 
 from pitch_coach_backend.coach import finalize as coach_finalize
-from pitch_coach_backend.coach.session import FinalizeSnapshot, being_cancelled
+from pitch_coach_backend.coach.session import FinalizeSnapshot
 from pitch_coach_backend.core.retry import retry_transient
+from pitch_coach_backend.core.tasks import being_cancelled
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore

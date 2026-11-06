@@ -1,8 +1,11 @@
-from pitch_coach_backend.core.exceptions import AppException, ConflictException
+from pitch_coach_backend.core.exceptions import (
+    AppException,
+    ConflictException,
+    NotFoundException,
+)
 
 
-class NonExistentTake(AppException):
-    status_code = 404
+class NonExistentTake(NotFoundException):
     code = "TAKE_NOT_FOUND"
     message = "존재하지 않는 연습 기록입니다."
 

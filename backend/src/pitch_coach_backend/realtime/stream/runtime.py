@@ -62,6 +62,7 @@ from fastapi import WebSocket
 from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent
 from pitch_coach_backend.coach.session import MAX_SLIDE_CHANGES
+from pitch_coach_backend.core.tasks import quiet
 from pitch_coach_backend.module.take.dto import (
     MetricSecondCreateDTO,
 )
@@ -87,7 +88,7 @@ from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
 from pitch_coach_backend.realtime.stream.audio_queue import AudioQueue
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, TimeLimit
-from pitch_coach_backend.realtime.stream.client import ClientSlot, close_with, quiet
+from pitch_coach_backend.realtime.stream.client import ClientSlot, close_with
 from pitch_coach_backend.realtime.stream.heard import HeardRange
 from pitch_coach_backend.realtime.stream.record import CoachDeps, StreamHost, TakeRecord
 from pitch_coach_backend.realtime.stt import loop as stt_loop

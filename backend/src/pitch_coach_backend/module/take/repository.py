@@ -17,9 +17,9 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
+from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES
 
 # 아직 끝나지 않은 Take. 실시간 STT 가 붙을 수 있는 상태와 같다 (realtime/service.py)
-IN_PROGRESS_STATUSES = ("READY", "RUNNING")
 
 
 def last_active_at() -> ColumnElement[datetime]:
@@ -75,14 +75,10 @@ class TakeRepository:
         return list(self.db.execute(stmt).all())
 
     def get_take(self, take_id: uuid.UUID) -> Take | None:
-        return self.db.scalar(
-            select(Take).where(Take.id == take_id)
-        )
+        return self.db.scalar(select(Take).where(Take.id == take_id))
 
     def get_pitch_id_of_take(self, take_id: uuid.UUID) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(Take.pitch_id).where(Take.id == take_id)
-        )
+        return self.db.scalar(select(Take.pitch_id).where(Take.id == take_id))
 
     def get_owned(self, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
         """사용자의 pitch 에 속한 take. 없거나 남의 것이면 None — 둘을 구분하지 않는다."""
@@ -119,7 +115,7 @@ class TakeRepository:
             .order_by(TakeSummary.score.desc().nulls_last())
             .limit(1)
         )
-    
+
     def save(self, take: Take) -> Take:
         self.db.add(take)
         self.db.flush()
@@ -219,11 +215,9 @@ class TakeRepository:
         return self.db.scalar(query.order_by(*finished_order()).limit(1))
 
     def get_take_number(self, take_id: uuid.UUID) -> int | None:
-        return self.db.scalar(
-            select(Take.take_number).where(Take.id == take_id)
-        )
+        return self.db.scalar(select(Take.take_number).where(Take.id == take_id))
 
-    def get_previous_take_results(self, take_id: uuid.UUID, standard_take_num: int, limit:int = 3):
+    def get_previous_take_results(self, take_id: uuid.UUID, standard_take_num: int, limit: int = 3):
         result = aliased(TakeAIResults)
         coverage = aliased(TakeAIResults)
 
@@ -231,8 +225,9 @@ class TakeRepository:
             select(result.payload, coverage.payload)
             .select_from(Take)
             .join(result, (result.take_id == Take.id) & (result.kind == "TAKE_RESULT"))
-            .outerjoin(coverage, (coverage.take_id == Take.id) 
-                       & (coverage.kind == "SCRIPT_COVERAGE"))
+            .outerjoin(
+                coverage, (coverage.take_id == Take.id) & (coverage.kind == "SCRIPT_COVERAGE")
+            )
             .where(
                 Take.pitch_id == self.get_pitch_id_of_take(take_id),
                 Take.take_number < standard_take_num,
@@ -244,8 +239,9 @@ class TakeRepository:
 
         return [(take_result, script_coverage) for take_result, script_coverage in rows]
 
-    def get_previous_review_payload(self, 
-                                    take_id: uuid.UUID, standard_take_num: int) -> dict | None:
+    def get_previous_review_payload(
+        self, take_id: uuid.UUID, standard_take_num: int
+    ) -> dict | None:
         return self.db.scalar(
             select(TakeAIResults.payload)
             .join(Take, TakeAIResults.take_id == Take.id)
@@ -273,22 +269,18 @@ class TakeRepository:
             )
         )
 
-
-    def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
+    def get_take_infos(self, take_id: uuid.UUID, kind: str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
-        
+
         return self.db.scalar(
-            select(TakeAIResults.payload).where(
-                TakeAIResults.take_id == take_id,
-                kind_filter
-            )
+            select(TakeAIResults.payload).where(TakeAIResults.take_id == take_id, kind_filter)
         )
 
     def save_missions(self, missions: list[Mission]) -> list[Mission]:
         self.db.add_all(missions)
         self.db.flush()
         return missions
-    
+
     def last_transcript_cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         """저장된 마지막 (seq, stt_session_no). 하나도 없으면 (0, 0).
 
@@ -315,14 +307,14 @@ class TakeRepository:
             .on_conflict_do_nothing(index_elements=["take_id", "t_ms"])
         )
 
-    def save_total_result(self, 
-                          take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None
-                          ) -> TakeAIResults:
+    def save_total_result(
+        self, take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None
+    ) -> TakeAIResults:
         values = {
             "take_id": take_id,
             "kind": "REVIEW",
             "payload": total_result_json,
-            "meta": meta_json
+            "meta": meta_json,
         }
         stmt = insert(TakeAIResults).values(**values)
         stmt = stmt.on_conflict_do_update(
@@ -344,27 +336,26 @@ class TakeRepository:
         stmt = stmt.on_conflict_do_update(
             index_elements=[Mission.source_take_id, Mission.priority],
             set_={
-                key: stmt.excluded[key] 
+                key: stmt.excluded[key]
                 for key in ("area", "slide_number", "target", "description", "reason")
-                },
+            },
             where=Mission.status == "ACTIVE",
         ).returning(Mission)
         return self.db.scalars(stmt, execution_options={"populate_existing": True}).all()
 
-    def update_mission_result(self,
-                               mission_id: uuid.UUID, take_id: uuid.UUID, status: str, 
-                               observed: float | None) -> Mission:
+    def update_mission_result(
+        self, mission_id: uuid.UUID, take_id: uuid.UUID, status: str, observed: float | None
+    ) -> Mission:
         self.db.execute(
             update(Mission)
             .where(Mission.id == mission_id, Mission.take_id == take_id)
             .values(status=status, observed=observed, complete=(status == "ACHIEVED"))
         )
 
-    def upsert_summary_review(self, 
-                              take_id: uuid.UUID, summary: str, score: int | None) -> TakeSummary:
-        stmt = insert(TakeSummary).values(
-            take_id=take_id, summary=summary, score=score
-        )
+    def upsert_summary_review(
+        self, take_id: uuid.UUID, summary: str, score: int | None
+    ) -> TakeSummary:
+        stmt = insert(TakeSummary).values(take_id=take_id, summary=summary, score=score)
 
         stmt = stmt.on_conflict_do_update(
             index_elements=[TakeSummary.take_id],
@@ -504,18 +495,21 @@ class TakeRepository:
 
     def awaiting_confirmation(self, take_id: uuid.UUID) -> bool:
         """아직 확인 답을 기다리는가. 10분 안이거나, 지났어도 받은 답을 반영하는 중이면 기다린다."""
-        return self.db.scalar(
-            select(Take.id).where(
-                Take.id == take_id,
-                Take.status == "ANALYZING",
-                Take.analysis_stage == "AWAITING_CONFIRMATION",
-                Take.analysis_hold_reason.is_(None),
-                or_(
-                    Take.analysis_stage_at > func.clock_timestamp() - CONFIRMATION_WAIT,
-                    ~confirmation_free(),
-                ),
+        return (
+            self.db.scalar(
+                select(Take.id).where(
+                    Take.id == take_id,
+                    Take.status == "ANALYZING",
+                    Take.analysis_stage == "AWAITING_CONFIRMATION",
+                    Take.analysis_hold_reason.is_(None),
+                    or_(
+                        Take.analysis_stage_at > func.clock_timestamp() - CONFIRMATION_WAIT,
+                        ~confirmation_free(),
+                    ),
+                )
             )
-        ) is not None
+            is not None
+        )
 
     def get_ai_result(self, take_id: uuid.UUID, kind: str) -> TakeAIResults | None:
         return self.db.scalar(
@@ -597,15 +591,14 @@ class TakeRepository:
                 review_request_id=None,
             )
         )
+
     def mark_running(self, take_id: uuid.UUID) -> bool:
         """`READY` 인 Take 를 `RUNNING` 으로 바꾼다. 바꿨으면 True.
 
         이미 `RUNNING` 이거나(다시 붙은 연결) 끝났으면 아무것도 바꾸지 않고 False.
         """
         result = self.db.execute(
-            update(Take)
-            .where(Take.id == take_id, Take.status == "READY")
-            .values(status="RUNNING")
+            update(Take).where(Take.id == take_id, Take.status == "READY").values(status="RUNNING")
         )
         return result.rowcount > 0
 
@@ -796,9 +789,7 @@ class TakeRepository:
                 )
                 .exists(),
                 or_(
-                    and_(
-                        Take.analysis_stage == "REVIEWING", Take.review_request_id.is_(None)
-                    ),
+                    and_(Take.analysis_stage == "REVIEWING", Take.review_request_id.is_(None)),
                     awaiting,
                     Take.analysis_stage.is_(None),
                     abandoned_review,
@@ -891,6 +882,7 @@ def finished_order() -> tuple[ColumnElement[Any], ...]:
 ENDED_STATUS = "ANALYZING"
 
 FINALIZING_STAGE = "FINALIZING"
+
 
 def json_ints(values: Any) -> list[int]:
     """JSONB 정수 목록(`takes.utterance_ends` 등)을 읽는다. 정수가 아닌 값은 뺀다."""

@@ -12,13 +12,13 @@ from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.pitch.entity import ScriptVersion
 from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
 from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT, TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
-from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_take_ai_validation import claim, coverage, release
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW, TAKE_ID
@@ -42,7 +42,7 @@ def isolated_runner(monkeypatch, db_session: Session):
 
     monkeypatch.setattr(analysis_runner, "_in_session", in_current_session)
     monkeypatch.setattr(coverage_service, "_in_session", in_current_session)
-    monkeypatch.setattr(review_service, "REVIEW_RETRY_DELAY_SEC", 0)
+    monkeypatch.setattr(take_ai_client, "REVIEW_RETRY_DELAY_SEC", 0)
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def _states(db: Session, take: Take) -> tuple[str, str | None, str | None]:
 def test_scored_take_is_reviewed_and_plans_the_next_take(db_session, user_id, monkeypatch, plans):
     take = _analyzing(db_session, user_id, "SCORING")
     reviewer = AsyncMock(return_value=_review(take))
-    monkeypatch.setattr(review_service, "request_review_async", reviewer)
+    monkeypatch.setattr(take_ai_client, "request_review_async", reviewer)
 
     asyncio.run(analysis_runner.run(take.id))
 
@@ -93,7 +93,7 @@ def test_review_failure_completes_the_take_and_still_plans(
 ):
     take = _analyzing(db_session, user_id, "REVIEWING")
     monkeypatch.setattr(
-        review_service,
+        take_ai_client,
         "request_review_async",
         AsyncMock(side_effect=InvalidReviewResponse()),
     )
@@ -109,7 +109,7 @@ def test_review_failure_completes_the_take_and_still_plans(
 def test_take_not_ready_for_review_is_left_alone(db_session, user_id, monkeypatch, plans, stage):
     take = _analyzing(db_session, user_id, stage)
     reviewer = AsyncMock(side_effect=AssertionError("리뷰를 부르면 안 된다"))
-    monkeypatch.setattr(review_service, "request_review_async", reviewer)
+    monkeypatch.setattr(take_ai_client, "request_review_async", reviewer)
 
     asyncio.run(analysis_runner.run(take.id))
 
@@ -123,7 +123,7 @@ def test_held_take_is_not_reviewed(db_session, user_id, monkeypatch, plans):
         db_session, user_id, "SCORING", analysis_hold_reason="COVERAGE_RESCORE_FAILED"
     )
     reviewer = AsyncMock(side_effect=AssertionError("리뷰를 부르면 안 된다"))
-    monkeypatch.setattr(review_service, "request_review_async", reviewer)
+    monkeypatch.setattr(take_ai_client, "request_review_async", reviewer)
 
     asyncio.run(analysis_runner.run(take.id))
 
@@ -138,7 +138,7 @@ def test_confirmation_waits_until_its_deadline(db_session, user_id, monkeypatch,
     take.analysis_stage_at = datetime.now(UTC) - CONFIRMATION_WAIT + timedelta(seconds=0.3)
     db_session.commit()
     monkeypatch.setattr(
-        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+        take_ai_client, "request_review_async", AsyncMock(return_value=_review(take))
     )
 
     started = time.monotonic()
@@ -153,7 +153,7 @@ def test_expired_confirmation_is_reviewed_at_once(db_session, user_id, monkeypat
     take.analysis_stage_at = datetime.now(UTC) - timedelta(minutes=30)
     db_session.commit()
     monkeypatch.setattr(
-        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+        take_ai_client, "request_review_async", AsyncMock(return_value=_review(take))
     )
 
     started = time.monotonic()
@@ -172,7 +172,7 @@ def test_answered_confirmation_is_reviewed_without_waiting(
         db_session, user_id, "AWAITING_CONFIRMATION", analysis_stage_at=datetime.now(UTC)
     )
     monkeypatch.setattr(
-        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+        take_ai_client, "request_review_async", AsyncMock(return_value=_review(take))
     )
 
     async def run():
@@ -201,7 +201,7 @@ def test_expired_confirmation_waits_for_the_answer_being_applied(
     take.analysis_stage_at = datetime.now(UTC) - CONFIRMATION_WAIT - timedelta(seconds=1)
     db_session.commit()
     review = AsyncMock(return_value=_review(take))
-    monkeypatch.setattr(review_service, "request_review_async", review)
+    monkeypatch.setattr(take_ai_client, "request_review_async", review)
 
     async def run():
         runner = asyncio.create_task(analysis_runner.run(take.id))
@@ -266,7 +266,7 @@ def test_runner_polls_until_the_rubric_is_ready(db_session, user_id, monkeypatch
 
     monkeypatch.setattr(script_service, "rubric_pending", pending)
     monkeypatch.setattr(
-        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+        take_ai_client, "request_review_async", AsyncMock(return_value=_review(take))
     )
 
     asyncio.run(analysis_runner.run(take.id))
@@ -372,7 +372,7 @@ def test_fresh_review_is_not_taken_over_without_a_restart(db_session, user_id, m
     take = _interrupted_review(db_session, user_id)
     owner = take.review_request_id
     reviewer = AsyncMock(side_effect=AssertionError("돌고 있는 리뷰를 가로채면 안 된다"))
-    monkeypatch.setattr(review_service, "request_review_async", reviewer)
+    monkeypatch.setattr(take_ai_client, "request_review_async", reviewer)
 
     asyncio.run(analysis_runner.run(take.id))
 
@@ -388,7 +388,7 @@ def test_restart_takes_over_a_review_cut_off_by_the_restart(
     take = _interrupted_review(db_session, user_id)
     owner = take.review_request_id
     monkeypatch.setattr(
-        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+        take_ai_client, "request_review_async", AsyncMock(return_value=_review(take))
     )
 
     asyncio.run(analysis_runner.run(take.id, restarted=True))

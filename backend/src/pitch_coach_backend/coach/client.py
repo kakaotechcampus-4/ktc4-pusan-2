@@ -31,20 +31,17 @@ AI 응답을 BE 형식으로 바꾸는 곳은 이 파일 하나다(architecture.
 import asyncio
 import json
 import logging
-import ssl
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from functools import cache
 from typing import Any, Protocol
 
 import httpx
 from pydantic import ValidationError
 
 from pitch_coach_backend.coach.replies import (
-    MAX_T_MS,
     EvaluateReply,
     FinalizeReply,
     PlanReply,
@@ -52,7 +49,14 @@ from pitch_coach_backend.coach.replies import (
     Reply,
 )
 from pitch_coach_backend.core import ai_slots
-from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
+from pitch_coach_backend.core.ai_http import (
+    REQUEST_ID_HEADER,
+    SCHEMA_MAJOR,
+    ai_client,
+    ai_error_code,
+    retryable_status,
+)
+from pitch_coach_backend.core.limits import MAX_T_MS
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +95,6 @@ EVALUATE_PAUSE_SEC = 10.0
 EVALUATE_WARN_INTERVAL_SEC = 60.0
 
 
-# 이 major 버전의 응답만 읽는다. major 가 다르면 필드 이름 · 뜻이 바뀐 것이라(architecture.md 5절)
-# 이 코드로 읽으면 엉뚱한 값을 저장하거나 FE 에 보낸다
-SCHEMA_MAJOR = "1"
-
-REQUEST_ID_HEADER = "X-Request-ID"
-
 REPLAY_REQUIRED_CODE = "REPLAY_REQUIRED"
 
 
@@ -106,18 +104,8 @@ REPLAY_REQUIRED_CODE = "REPLAY_REQUIRED"
 _LARGE_BODY_BYTES = {EVALUATE_PATH: 64_000, FINALIZE_PATH: 256_000, PLAN_PATH: 64_000}
 
 
-# 4xx 인데 다시 부르면 나을 수 있는 것: 408 Request Timeout, 429 Too Many Requests
-_RETRYABLE_CLIENT_STATUSES = frozenset({408, 429})
-
-
 # AI 가 아직 없다는 뜻의 상태 코드. 404 는 그 경로가 배포 전, 503 은 시작 중(`NOT_READY`)이다
 _UNAVAILABLE_STATUSES = frozenset({404, 503})
-
-
-@cache
-def _ssl_context() -> ssl.SSLContext:
-    # 클라이언트마다 CA 번들을 다시 읽지 않게 한 번만 만든다 (script_parser.py 와 같은 이유)
-    return httpx.create_ssl_context()
 
 
 class EvaluateMiss(StrEnum):
@@ -330,12 +318,8 @@ class HttpCoachClient:
         try:
             async with (
                 asyncio.timeout(timeout_sec),
-                httpx.AsyncClient(
-                    base_url=self._base_url,
-                    timeout=timeout_sec,
-                    transport=self._transport,
-                    verify=_ssl_context(),
-                    event_hooks=AI_RESPONSE_HOOKS,
+                ai_client(
+                    timeout_sec, base_url=self._base_url, transport=self._transport
                 ) as client,
             ):
                 response = await client.post(
@@ -359,12 +343,12 @@ class HttpCoachClient:
 
         status = response.status_code
         if status >= 400:
-            code = _error_code(response)
+            code = ai_error_code(response)
             if status == 409 and code == REPLAY_REQUIRED_CODE and endpoint.path == FINALIZE_PATH:
                 return ReplayRequired()
             raise _Failure(
                 f"status={status} code={code}",
-                retryable=status >= 500 or status in _RETRYABLE_CLIENT_STATUSES,
+                retryable=retryable_status(status),
                 unavailable=status in _UNAVAILABLE_STATUSES,
             )
 
@@ -416,14 +400,3 @@ def _subject(request: dict[str, Any]) -> str:
     if "take_id" in request:
         return f"take={request['take_id']}"
     return f"pitch={request.get('pitch_id')}"
-
-
-def _error_code(response: httpx.Response) -> str:
-    """AI 공통 에러 본문의 code. 본문 전체는 남기지 않는다 (사용자 입력이 되돌아올 수 있다)."""
-    try:
-        body = response.json()
-    except ValueError:
-        return "-"
-    if isinstance(body, dict) and isinstance(body.get("error"), dict):
-        return str(body["error"].get("code", "-"))
-    return "-"

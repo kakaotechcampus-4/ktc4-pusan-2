@@ -30,11 +30,6 @@ from tests.script_parse.conftest import (
 # ── runner: 저장이 실패해도 던지지 않는다 ─────────────────────────────
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def _broken_session() -> Session:
     raise RuntimeError("DB 연결 실패")
 

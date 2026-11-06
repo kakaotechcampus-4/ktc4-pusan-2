@@ -17,10 +17,6 @@ from tests.coach_fakes import (
 )
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
 @pytest.mark.anyio
 async def test_plan_is_requested_and_saved_with_the_time_it_was_sent():
     client = FakeClient()

@@ -141,11 +141,6 @@ def test_parse_ignores_unknown_and_malformed():
 # ── 세션 (가짜 Deepgram 서버) ──────────────────────────────────────────
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 class FakeDeepgram:
     """받은 것을 기록하고, 오디오마다 RESULTS 를, CloseStream 에 Metadata 를 돌려준다."""
 

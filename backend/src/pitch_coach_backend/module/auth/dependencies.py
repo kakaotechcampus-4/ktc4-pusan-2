@@ -68,9 +68,7 @@ def _origin_of(url: str) -> str | None:
 
 
 def _allowed_origins() -> set[str]:
-    # 설정이 출처로 읽히지 않으면 빈 집합이다. 그때는 전부 막는 쪽이 맞다.
-    allowed = _origin_of(settings.frontend_base_url)
-    return {allowed} if allowed is not None else set()
+    return {settings.frontend_origin}
 
 
 def _source_origin(request: Request) -> str | None:

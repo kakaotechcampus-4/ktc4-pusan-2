@@ -155,11 +155,6 @@ async def test_sweep_retries_what_an_earlier_failure_left(
     assert _rows(db_session) == {}
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def test_persistent_failures_do_not_starve_later_deletions(
     db_session: Session,
     session_factory: Callable[[], Session],

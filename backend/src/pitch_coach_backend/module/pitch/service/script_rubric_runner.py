@@ -29,10 +29,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionLocal, in_session
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_rubric import (
     RETRYABLE_SLIDE_CODES,
@@ -217,11 +216,4 @@ class ScriptRubricRunner:
 
     async def _db(self, step: Callable[..., Any], *args: Any) -> Any:
         """service 함수 하나를 짧은 세션으로 threadpool 에서 돌린다."""
-        return await run_in_threadpool(self._in_session, step, *args)
-
-    def _in_session(self, step: Callable[..., Any], *args: Any) -> Any:
-        db = self._session_factory()
-        try:
-            return step(db, *args)
-        finally:
-            db.close()
+        return await in_session(self._session_factory, step, *args)

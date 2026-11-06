@@ -9,7 +9,7 @@
     묶여 풀(기본 5 + 15)이 마른다. 대본 텍스트는 요청에서 이미 읽어 ticket 에 담아 온다
   - 요청의 `get_db` 세션을 쓰지 않는다. FastAPI 는 백그라운드 작업 전에 그 세션을 닫는다.
     그래서 저장할 때 새 세션을 열고, 동기 SQLAlchemy 라 threadpool 에서 돌린다
-    (realtime/transcript_store.py 와 같은 방식)
+    (realtime/storage/store.py 와 같은 방식)
 
 실패는 밖으로 던지지 않는다. 응답은 이미 나갔으니 받을 사람이 없고, 던지면 ASGI 로그만 남는다.
 AI 실패는 FAILED 로 저장한다. 결과 저장이 실패하면(값 문제 등) 새 세션으로 FAILED(INTERNAL_ERROR)
@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionLocal, with_session
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
@@ -181,22 +181,12 @@ class ScriptParseRunner:
     # ── threadpool 에서 도는 부분. 저장할 때마다 짧은 세션을 열고 닫는다 ──
 
     def _complete(self, ticket: ParseTicket, parsed: ParsedScript) -> ParseSaved:
-        db = self._session_factory()
-        try:
-            return script_service.complete_parse(db, ticket, parsed)
-        finally:
-            db.close()
+        return with_session(self._session_factory, script_service.complete_parse, ticket, parsed)
 
     def _resume(self, started_before: datetime) -> list[ParseTicket]:
-        db = self._session_factory()
-        try:
-            return script_service.resume_parses(db, started_before=started_before)
-        finally:
-            db.close()
+        return with_session(
+            self._session_factory, script_service.resume_parses, started_before=started_before
+        )
 
     def _fail(self, ticket: ParseTicket, code: ScriptParseErrorCode) -> bool:
-        db = self._session_factory()
-        try:
-            return script_service.fail_parse(db, ticket, code)
-        finally:
-            db.close()
+        return with_session(self._session_factory, script_service.fail_parse, ticket, code)

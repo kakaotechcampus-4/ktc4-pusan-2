@@ -55,6 +55,7 @@ from pitch_coach_backend.coach.windows import (
     window_inputs,
 )
 from pitch_coach_backend.core.row_buffer import RowBuffer
+from pitch_coach_backend.core.tasks import being_cancelled
 from pitch_coach_backend.module.take.dto import StoredEvent
 from pitch_coach_backend.module.take.exception import NonExistentTake
 
@@ -78,12 +79,6 @@ NOTIFY_TIMEOUT_SEC = 1.0
 
 # WS `coach` 를 보내는 쪽 (stream/runtime). 붙어 있는 클라이언트에게만 보낸다
 type Notify = Callable[[int, EvaluateReply], Awaitable[None]]
-
-
-def being_cancelled() -> bool:
-    """지금 태스크가 취소되는 중인가. 기다리던 다른 태스크가 끊겨 난 CancelledError 와 가른다."""
-    current = asyncio.current_task()
-    return current is not None and current.cancelling() > 0
 
 
 async def _cancel_and_wait(task: asyncio.Task[None]) -> None:

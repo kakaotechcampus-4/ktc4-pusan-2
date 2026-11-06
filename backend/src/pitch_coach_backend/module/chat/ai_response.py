@@ -4,12 +4,12 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pitch_coach_backend.core.ai_http import SCHEMA_MAJOR
 from pitch_coach_backend.core.validation import reject_unstorable_json
 from pitch_coach_backend.module.chat.dto import ActionType, AgentTrigger
 
 MAX_LINE_BYTES = 2 * 1024 * 1024
 MAX_DIAGNOSTICS_BYTES = 65_536
-SCHEMA_MAJOR = "1"
 
 PRE_STREAM_ERROR_CODES = frozenset(
     {"AGENT_DISABLED", "AGENT_BUSY", "AGENT_STATE_INVALID", "AGENT_CONTEXT_TOO_LARGE"}

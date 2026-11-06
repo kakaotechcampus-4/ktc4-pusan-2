@@ -3,18 +3,16 @@
 채점 payload는 받은 그대로 보존한다.
 """
 
-import json
 import uuid
 from collections.abc import Mapping
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from pitch_coach_backend.core.ai_http import SCHEMA_MAJOR
 from pitch_coach_backend.core.validation import reject_unstorable_json
 from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
-
-SCHEMA_MAJOR = "1"
 
 
 class CoverageCallError(Exception):
@@ -88,16 +86,10 @@ def _supported_schema(version: str) -> None:
         raise ValueError("지원하지 않는 AI 응답 버전")
 
 
-def _storable_json(reply: Any) -> None:
-    reject_unstorable_json(reply)
-    # JSON의 이스케이프된 고립 surrogate도 PostgreSQL JSONB에는 저장할 수 없다.
-    json.dumps(reply, ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
 def validate_coverage_reply(reply: Any, take_id: uuid.UUID | str) -> dict:
     try:
         view = _Coverage.model_validate(reply)
-        _storable_json(reply)
+        reject_unstorable_json(reply)
         _supported_schema(view.meta.schema_version)
         if uuid.UUID(view.take_id) != uuid.UUID(str(take_id)):
             raise ValueError("다른 Take의 채점")
@@ -170,7 +162,7 @@ def confirmation_items(
 def validate_review_reply(reply: Any, take_id: uuid.UUID) -> ReviewResponseDTO:
     try:
         view = ReviewResponseDTO.model_validate(reply)
-        _storable_json(reply)
+        reject_unstorable_json(reply)
         _supported_schema(view.meta.schema_version)
         if view.take_id != take_id:
             raise ValueError("다른 Take의 리뷰")

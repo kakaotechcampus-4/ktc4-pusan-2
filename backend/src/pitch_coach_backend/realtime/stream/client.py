@@ -5,13 +5,12 @@
 """
 
 import asyncio
-import contextlib
-from collections.abc import Awaitable
 
 import anyio
 from fastapi import WebSocket
 from pydantic import BaseModel
 
+from pitch_coach_backend.core.tasks import quiet
 from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
 
 # 끊는 연결에 오류를 알리고 닫는 단계마다 기다리는 상한. 상대가 받지 않으면 전송이 끝나지 않는다 —
@@ -95,12 +94,3 @@ async def close_with(ws: WebSocket, error: ErrorMessage) -> None:
         await quiet(ws.send_text(error.model_dump_json()))
     with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
         await quiet(ws.close(code=1008, reason=error.code))
-
-
-async def quiet(awaitable: Awaitable[object]) -> None:
-    """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다.
-
-    정리 경로라서 넓게 잡는다 — 여기서 예외가 새면 그다음 정리가 통째로 멈춘다.
-    """
-    with contextlib.suppress(Exception):
-        await awaitable

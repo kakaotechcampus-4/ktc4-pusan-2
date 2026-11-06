@@ -53,11 +53,6 @@ TAKE_ID = uuid.uuid7()
 WS_PATH = f"/api/ws/takes/{TAKE_ID}"
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 def frame(seq: int, offset_ms: int, duration_ms: int = 100, fill: int = 1) -> bytes:
     return struct.pack("<II", seq, offset_ms) + bytes([fill]) * (duration_ms * BYTES_PER_MS)
 

@@ -5,31 +5,33 @@ from pitch_coach_backend.core.exceptions import (
 )
 
 
-class NonExistentPitch(AppException):
-    status_code = 404
+class NonExistentPitch(NotFoundException):
     code = "PITCH_NOT_FOUND"
     message = "존재하지 않는 발표자료입니다."
 
-class NonExistentPresentationVersion(AppException):
-    status_code = 404
+
+class NonExistentPresentationVersion(NotFoundException):
     code = "PRESENTATION_VERSION_NOT_FOUND"
     message = "존재하지 않는 발표자료 버전입니다."
+
 
 class InvalidPresentation(AppException):
     code = "INVALID_PRESENTATION"
     message = "40MB 이하의 PDF 만 올릴 수 있습니다. 암호가 걸린 PDF 는 풀어서 올려 주세요."
 
+
 class PresentationTooComplex(AppException):
     code = "PRESENTATION_TOO_COMPLEX"
     message = "쪽이나 구성 요소가 너무 많은 PDF 입니다. 나눠서 올려 주세요."
+
 
 class PresentationBusy(AppException):
     status_code = 503
     code = "PRESENTATION_BUSY"
     message = "발표자료를 올리는 사람이 많습니다. 잠시 후 다시 올려 주세요."
 
-class NonExistentEvaluation(AppException):
-    status_code = 404
+
+class NonExistentEvaluation(NotFoundException):
     code = "EVALUATION_NOT_FOUND"
     message = "존재하지 않는 평가 기준 버전입니다."
 
