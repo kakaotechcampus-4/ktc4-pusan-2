@@ -4,13 +4,14 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import { useLocation } from 'react-router';
 import { useSession } from '@/shared/api/useSession';
-import { canShowChat } from './chatRoutes';
+import { canShowChat, chatLauncherBottom } from './chatRoutes';
 
 /**
  * Frontend-only preview. No message is sent to a server and no AI reply is
@@ -19,6 +20,10 @@ import { canShowChat } from './chatRoutes';
  * 채팅에서 오류가 나면 채팅만 사라지고 화면은 그대로 남습니다.
  */
 export function ChatAgentHost() {
+  // 연동이 끝나 빌드 스위치를 켜기 전까지는 배포에 섞여도 아무것도 그리지 않습니다 (12-4 F1 "사용 가능 여부").
+  // #951 의 isChatAgentBuildEnabled() 와 같은 식입니다 — #951 이 합쳐지면 그 함수로 바꿉니다
+  if (import.meta.env.VITE_CHAT_AGENT !== 'true') return null;
+
   return (
     <ChatErrorBoundary>
       <ChatLayer />
@@ -38,19 +43,27 @@ class ChatErrorBoundary extends Component<{ children: ReactNode }, { failed: boo
   }
 }
 
+/** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
+const MAX_MESSAGE_LENGTH = 2000;
+
 /**
  * 입력과 메시지는 여기 두어 채팅이 숨는 화면을 지나도 남습니다.
- * 계정이 바뀌는 길(로그아웃 · 탈퇴 · Google 로그인)은 모두 페이지를 새로 열어 이 상태도 함께 사라집니다.
+ * 같은 탭에서 계정이 바뀌는 길(로그아웃 · 탈퇴 · Google 로그인)은 모두 페이지를 새로 열어 이 상태도 함께 사라집니다.
+ * 다른 탭에서 계정을 바꾸면 이 탭의 입력 · 메시지는 남습니다 — 서버로 가지 않는 로컬 글이라 두고,
+ * 연동할 때 사용자가 바뀌면 비우는 저장소(#952 chatStore)로 옮깁니다.
  */
 function ChatLayer() {
   const { pathname } = useLocation();
   const allowed = canShowChat(pathname);
+  const launcherBottom = chatLauncherBottom(pathname);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<string[]>([]);
   const launcherRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const id = useId();
+  const content = draft.trim();
+  const tooLong = [...content].length > MAX_MESSAGE_LENGTH;
 
   // 숨는 화면으로 가면 닫습니다. 돌아왔을 때 패널이 다시 열려 초점을 빼앗지 않게 합니다
   if (!allowed && open) setOpen(false);
@@ -67,8 +80,8 @@ function ChatLayer() {
 
   const submit = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    const content = draft.trim();
-    if (!content) return;
+    // 비었거나 너무 길면 보내지 않고 입력을 그대로 둡니다
+    if (!content || tooLong) return;
     setMessages((current) => [...current, content]);
     setDraft('');
   };
@@ -85,13 +98,17 @@ function ChatLayer() {
   return (
     <SignedInOnly>
       {/* 런처는 오른쪽 아래의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 오른쪽에 붙은
-          컨트롤과 자리를 나눠 씁니다. 아래 32px 는 홈의 "사용방법 살펴보기"와 바닥글 "개인정보 처리방침" 사이 빈칸이고,
-          리포트 맨 끝 "내 피치로" 버튼의 오른쪽 아래 모서리에만 닿습니다(글자는 가리지 않고 버튼도 그대로 눌림).
-          아래 8px 이면 바닥글 글자를, 40px 넘게 올리면 "사용방법 살펴보기"를 가립니다 (1366×650 · 1920×950 · 125% 확대에서 잼, #941 리뷰) */}
-      <div className="light-surface fixed bottom-8 right-2 z-[70] text-ink">
+          컨트롤과 자리를 나눠 씁니다. 화면마다의 아래 여백과 그 이유는 chatLauncherBottom 에 있습니다 */}
+      <div
+        // data-chat-launcher: 장치 점검이 런처 자리만큼 오른쪽 여백을 넓히는 표시입니다 (index.css)
+        data-chat-launcher=""
+        style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
+        className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
+      >
         {/* 패널은 런처 위 오른쪽에 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
-            6.25rem = 런처 자리(아래 2rem + 높이 2.75rem) + 위아래 간격 0.75rem 둘.
-            낮은 창에서는 높이가 줄고 메시지 목록만 스크롤되며, 입력칸과 버튼은 늘 보입니다 */}
+            4.25rem = 런처 높이 2.75rem + 위아래 간격 0.75rem 둘.
+            낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
+            머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성") */}
         {open && (
           <section
             id={`${id}-panel`}
@@ -104,14 +121,14 @@ function ChatLayer() {
                 close();
               }
             }}
-            className="absolute bottom-full right-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-6.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
+            className="absolute bottom-full right-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
           >
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-strong px-5 py-3">
               <div>
                 <h2 id={`${id}-title`} className="text-base font-bold">
                   채팅 에이전트
                 </h2>
-                <p className="mt-1 text-xs text-stone">화면 미리보기 · AI 연결 전</p>
+                <p className="mt-1 text-xs text-stone">AI 연결 전 미리보기</p>
               </div>
               <button
                 type="button"
@@ -123,10 +140,11 @@ function ChatLayer() {
               </button>
             </header>
 
-            {/* AI 답을 붙일 때는 그 답 요소에만 aria-live 를 둡니다. 목록 전체에 두면 사용자가 보낸 말까지 다시 읽힙니다 */}
+            {/* AI 답을 붙일 때는 그 답 요소에만 aria-live 를 둡니다. 목록 전체에 두면 사용자가 보낸 말까지 다시 읽힙니다.
+                min-h-16: 패널이 낮아져도 한두 줄은 보이고, 그보다 낮으면 패널이 스크롤됩니다 */}
             <div
               aria-label="채팅 메시지"
-              className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
+              className="flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
             >
               <p className="self-start rounded-xl border border-line-strong bg-white px-4 py-3 text-sm leading-6">
                 발표 기록과 연습에 대해 질문하는 기능을 준비하고 있어요.
@@ -143,30 +161,41 @@ function ChatLayer() {
 
             <form onSubmit={submit} className="shrink-0 border-t border-line-strong p-3">
               <p className="mb-2 text-xs leading-5 text-stone">
-                현재는 UI 시연입니다. 입력한 메시지는 서버에 전송되지 않으며 새로고침하면
-                사라집니다.
+                메시지는 서버로 보내지 않고 새로고침하면 사라져요.
               </p>
               <label htmlFor={`${id}-input`} className="sr-only">
                 채팅 메시지
               </label>
+              {/* maxLength 는 UTF-16 으로 세고(이모지 하나가 2자) 넘친 글을 말없이 잘라서 쓰지 않습니다.
+                  넘으면 입력을 그대로 두고 보내기만 막습니다 (12-4 F3) */}
               <textarea
                 ref={inputRef}
                 id={`${id}-input`}
                 value={draft}
-                maxLength={2000}
                 rows={2}
                 placeholder="메시지를 입력하세요"
+                aria-invalid={tooLong}
+                aria-describedby={tooLong ? `${id}-limit` : undefined}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={onComposerKeyDown}
-                className="w-full resize-none rounded-lg border-2 border-line-strong bg-white p-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-coral"
+                className="w-full resize-none rounded-lg border-2 border-line-strong bg-white p-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-coral aria-invalid:border-coral-deep"
               />
+              {tooLong && (
+                <p
+                  id={`${id}-limit`}
+                  role="alert"
+                  className="mt-1 text-xs font-bold text-coral-deep"
+                >
+                  {MAX_MESSAGE_LENGTH.toLocaleString('ko-KR')}자까지 보낼 수 있어요.
+                </p>
+              )}
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="text-xs text-stone">Enter 전송 · Shift+Enter 줄바꿈</span>
                 {/* `disabled` 로 두면 누른 직후 초점이 body 로 빠져 Esc 로 닫히지 않습니다 (#818).
-                    그래서 `aria-disabled` 로 두고, 빈 입력은 submit 이 무시합니다 */}
+                    그래서 `aria-disabled` 로 두고, 빈 입력 · 너무 긴 입력은 submit 이 무시합니다 */}
                 <button
                   type="submit"
-                  aria-disabled={!draft.trim()}
+                  aria-disabled={!content || tooLong}
                   className="min-h-11 shrink-0 rounded-lg border-2 border-ink bg-coral-deep px-5 text-sm font-bold text-white hover:bg-ink aria-disabled:cursor-not-allowed aria-disabled:border-line-strong aria-disabled:bg-cream aria-disabled:text-stone aria-disabled:hover:bg-cream"
                 >
                   입력
@@ -181,7 +210,7 @@ function ChatLayer() {
           type="button"
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-controls={`${id}-panel`}
+          aria-controls={open ? `${id}-panel` : undefined}
           onClick={() => (open ? close() : setOpen(true))}
           aria-label="채팅 에이전트"
           title="채팅 에이전트"

@@ -22,6 +22,7 @@ let router: ReturnType<typeof createMemoryRouter>;
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubEnv('VITE_CHAT_AGENT', 'true');
   state.calls = 0;
   state.session = { isPending: false, isError: false, data: { id: 'u1' } };
   host = document.createElement('div');
@@ -33,6 +34,7 @@ afterEach(async () => {
   router.dispose();
   host.remove();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 // routes.tsx 의 최상위 레이아웃과 같은 모양 — 화면이 바뀌어도 채팅은 같은 자리에 남습니다
@@ -49,6 +51,8 @@ async function visit(path: string) {
         children: [
           { path: '/', element: <button type="button">홈 버튼</button> },
           { path: '/takes/:takeId', element: <p>리포트</p> },
+          { path: '/takes/:takeId/rehearsal', element: <p>리허설</p> },
+          { path: '/pitch/new', element: <p>피치 만들기</p> },
           { path: '/pitch/:pitchId/device-check', element: <p>장치 점검</p> },
           { path: '/welcome', element: <p>서비스 소개</p> },
         ],
@@ -159,7 +163,7 @@ it('채팅이 숨는 화면에 갔다 돌아와도 패널을 다시 열어 초�
   await visit('/');
   await openPanel();
   await type('남길 말');
-  await go('/pitch/p1/device-check');
+  await go('/takes/t1/rehearsal');
   expect(launcher()).toBeNull();
 
   await go('/');
@@ -188,11 +192,60 @@ it('로그인 정보가 없으면 그리지 않는다', async () => {
 
 it('채팅을 띄우지 않는 화면에서는 세션을 구독하지 않는다', async () => {
   await visit('/welcome');
-  await go('/pitch/p1/device-check');
+  await go('/takes/t1/rehearsal');
   expect(state.calls).toBe(0);
   expect(launcher()).toBeNull();
 
   await go('/');
   expect(state.calls).toBeGreaterThan(0);
   expect(launcher()).not.toBeNull();
+});
+
+it('빌드 스위치가 꺼져 있으면 그리지 않고 세션도 구독하지 않는다', async () => {
+  vi.stubEnv('VITE_CHAT_AGENT', 'false');
+  await visit('/');
+  expect(launcher()).toBeNull();
+  expect(state.calls).toBe(0);
+});
+
+it('열린 패널은 피치 만들기 · 장치 점검으로 옮겨도 남고, 리허설에 들어가면 숨는다', async () => {
+  await visit('/');
+  await openPanel();
+  await type('연습 준비 중');
+  await go('/pitch/new');
+  expect(panel()).not.toBeNull();
+  await go('/pitch/p1/device-check');
+  expect(panel()).not.toBeNull();
+  expect(input().value).toBe('연습 준비 중');
+
+  await go('/takes/t1/rehearsal');
+  expect(launcher()).toBeNull();
+  expect(panel()).toBeNull();
+});
+
+it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내지 않는다', async () => {
+  await visit('/');
+  await openPanel();
+  // 이모지는 UTF-16 으로 2자지만 서버(Python len)처럼 1자로 셉니다
+  await type('😀'.repeat(2000));
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await press(input(), { key: 'Enter' });
+  expect(sentMessages()).toHaveLength(1);
+
+  const tooLong = 'a'.repeat(2001);
+  await type(tooLong);
+  expect(host.querySelector('[role="alert"]')!.textContent).toContain('2,000자까지');
+  expect(input().getAttribute('aria-invalid')).toBe('true');
+  expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+  await press(input(), { key: 'Enter' });
+  await act(async () => sendButton().click());
+  expect(sentMessages()).toHaveLength(1);
+  expect(input().value).toBe(tooLong);
+});
+
+it('닫혀 있을 때는 런처가 없는 패널을 가리키지 않는다', async () => {
+  await visit('/');
+  expect(launcher()!.hasAttribute('aria-controls')).toBe(false);
+  await openPanel();
+  expect(launcher()!.getAttribute('aria-controls')).toBe(panel()!.id);
 });
