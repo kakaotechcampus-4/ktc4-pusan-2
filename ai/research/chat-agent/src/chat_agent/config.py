@@ -367,7 +367,8 @@ class ChatAgentConfig(_Frozen):
     #: 행동마다 인용에 드러나야 하는 행동 낱말 (명사 하나만으로는 부족하고 요청형까지 필요)
     action_words: Mapping[str, tuple[str, ...]] = Field(
         default_factory=lambda: {
-            "SAVE_GOAL": ("목표", "잡", "정해", "저장"),
+            # 명사 '목표'만으로는 저장 요청이 아니다(동사가 있어야 함, L1-24)
+            "SAVE_GOAL": ("잡", "정해", "정하", "저장", "세워", "설정"),
             "START_PRACTICE": ("연습", "발표", "시작", "가자"),
         }
     )
@@ -408,6 +409,11 @@ class ChatAgentConfig(_Frozen):
         "하지 마",
         "하지마",
         "하지 말",
+        "지 마",  # 따르지 마 · 저장하지 마세요
+        "지마",
+        "지 말",
+        "안 할",
+        "안할",
         "말고",
         "취소",
         "빼고",
@@ -436,6 +442,10 @@ class ChatAgentConfig(_Frozen):
         "라더라",
         "랬어",
         "래요",
+        "라는",  # "저장해 줘라는 말"
+        "라 했",
+        "라 하",
+        "라고",
     )
 
     # ── 8-2 한도 · 8-1 시간 ───────────────────────────────────────
@@ -443,6 +453,8 @@ class ChatAgentConfig(_Frozen):
     #: 답 쓰기 · 고치기 몫으로 남기는 호출 수와 그 시간(각 12초)
     reserved_answer_calls: int = 2
     reserved_answer_seconds: float = 24.0
+    #: 조사 호출이 의미 있게 끝날 최소 시간(초). 남은 시간 − 답 몫(24초)이 이보다 짧으면 조사를 보내지 않는다(전송 뒤 24초는 항상 남음)
+    min_research_call_seconds: float = 3.0
     max_tool_calls: int = 12
     max_tools_per_response: int = 8
     max_turn_calls: int = 6
