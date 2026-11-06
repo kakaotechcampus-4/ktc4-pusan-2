@@ -68,7 +68,7 @@ class UploadPresentationResultDTO(BaseModel):
 class ScriptCreateDTO(BaseModel):
     """대본 한 버전. FE 는 textarea 내용을 그대로 보낸다 (JSON 이라 인코딩 걱정이 없다).
 
-    길이·빈 값·NUL 검사는 service.validate_script_text 가 한다 — 여기서 pydantic 으로 막으면
+    길이·빈 값·문자 검사는 service.validate_script_text 가 한다 — 여기서 pydantic 으로 막으면
     422 VALIDATION_ERROR 로 나가 다른 대본 오류(400 INVALID_SCRIPT)와 코드가 갈린다.
     """
 

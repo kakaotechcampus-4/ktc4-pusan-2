@@ -6,6 +6,7 @@ AI 만 가짜 파서로 바꾸고 나머지(엔드포인트·BackgroundTasks·ru
 "아직 PENDING" 은 conftest 의 기본값(아무것도 안 하는 runner)으로 본다.
 """
 
+import json
 import uuid
 from datetime import timedelta
 
@@ -100,8 +101,11 @@ def _create(
     headers: dict[str, str],
     content: str = SCRIPT_TEXT,
 ):
+    # httpx 의 json= 은 짝 없는 서로게이트를 UTF-8 로 바꾸지 못해 보내기 전에 터진다
     return client.post(
-        f"/api/pitches/{pitch_id}/scripts", json={"content": content}, headers=headers
+        f"/api/pitches/{pitch_id}/scripts",
+        content=json.dumps({"content": content}),
+        headers={**headers, "Content-Type": "application/json"},
     )
 
 
