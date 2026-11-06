@@ -1,3 +1,4 @@
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -30,6 +31,8 @@ from pitch_coach_backend.module.chat.service.run import (
     lock_ids,
     lock_or_cancel,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ScopeChangeRejected(Exception):
@@ -102,6 +105,9 @@ def wait_for_action(
     repo = ChatRepository(db)
     row = lock_current(db, run)
     if row is None:
+        return None
+    if _sent_claims_differ(repo, row, data):
+        _end_with_sent_claims(db, run, row, turn_call, final)
         return None
     conversation = repo.lock_conversation(row.conversation_id)
     action = data["actions"][0]
@@ -188,6 +194,9 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     row = lock_current(db, run)
     if row is None:
         return False
+    if _sent_claims_differ(repo, row, data):
+        _end_with_sent_claims(db, run, row, turn_call, final)
+        return True
     conversation = repo.lock_conversation(row.conversation_id)
     if row.first_trigger == "TAKE_REVIEWED" and not settle_goal_check(
         repo, row, conversation, data["goal_result"]
@@ -262,6 +271,38 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
         _add_diagnostics(repo, row, row.turn_calls[-1]["turn_call"], failure.diagnostics, now)
     db.commit()
     return True
+
+
+def _sent_claims_differ(repo: ChatRepository, row: ChatRun, data: dict[str, Any]) -> bool:
+    sent = [event.data["claim"] for event in repo.list_claim_events(row.id)]
+    claims = (data.get("message") or {}).get("claims") or []
+    return claims[: len(sent)] != sent
+
+
+def _end_with_sent_claims(
+    db: Session, run: ClaimedRun, row: ChatRun, turn_call: int, final: TurnFinal
+) -> None:
+    logger.warning("final 앞부분이 보낸 claim 과 다르다 run=%s call=%s", row.id, turn_call)
+    try:
+        save_claim_message(db, row, "PARTIAL")
+    except SourceDeleted:
+        db.rollback()
+        cancel(db, run)
+        return
+    repo = ChatRepository(db)
+    now = datetime.now(UTC)
+    row.status = "PARTIAL"
+    row.budget_used = final.data["budget_used"]
+    row.usage = final.data.get("usage")
+    row.finished_at = now
+    row.row_revision += 1
+    row.turn_calls = [
+        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
+        for call in row.turn_calls or []
+    ]
+    add_run_log(repo, row, now)
+    _add_diagnostics(repo, row, turn_call, final.diagnostics, now)
+    db.commit()
 
 
 def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | None:
