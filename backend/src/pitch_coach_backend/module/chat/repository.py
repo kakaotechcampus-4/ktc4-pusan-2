@@ -119,6 +119,27 @@ class ChatRepository:
         )
         return self.db.scalar(stmt) is not None
 
+    def release_service_turn(self, day: date) -> None:
+        self.db.execute(
+            update(ChatDailyUsage)
+            .where(
+                ChatDailyUsage.user_id.is_(None),
+                ChatDailyUsage.day == day,
+                ChatDailyUsage.reserved > 0,
+            )
+            .values(reserved=ChatDailyUsage.reserved - 1)
+        )
+
+    def add_service_turn(self, day: date) -> None:
+        self.db.execute(
+            insert(ChatDailyUsage)
+            .values(id=uuid.uuid7(), user_id=None, day=day, sent=1)
+            .on_conflict_do_update(
+                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
+                set_={"sent": ChatDailyUsage.sent + 1},
+            )
+        )
+
     def count_succeeded_actions(self, run_id: uuid.UUID, kind: str) -> int:
         return self.db.scalar(
             select(func.count()).where(

@@ -227,7 +227,11 @@ class _Turn:
             action = outcome.data["actions"][0]
             if action["autonomy"] == "ASK" and action.get("preapproved") is None:
                 result = await in_session(
-                    self._session_factory, action_service.hold_for_approval, self._current, action
+                    self._session_factory,
+                    action_service.hold_for_approval,
+                    self._current,
+                    action,
+                    outcome.data.get("profile_updates"),
                 )
                 if result is None:
                     return

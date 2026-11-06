@@ -103,6 +103,10 @@ async def _read(response: httpx.Response, run_id: str, on_progress: OnProgress) 
     return reader.finish()
 
 
+class ReviewTakeMismatch(Exception):
+    pass
+
+
 async def request_review_once(take_id: uuid.UUID, body: dict[str, Any]) -> dict[str, Any]:
     async with (
         asyncio.timeout(REVIEW_TIMEOUT_SEC),
@@ -113,5 +117,14 @@ async def request_review_once(take_id: uuid.UUID, body: dict[str, Any]) -> dict[
         )
     response.raise_for_status()
     reply = response.json()
+    if _other_take(reply, take_id):
+        raise ReviewTakeMismatch(take_id)
     validate_review_reply(reply, take_id)
     return reply
+
+
+def _other_take(reply: Any, take_id: uuid.UUID) -> bool:
+    try:
+        return uuid.UUID(str(reply["take_id"])) != take_id
+    except (KeyError, TypeError, ValueError):
+        return False
