@@ -31,11 +31,13 @@ CONVERSATIONS_LIMIT = 50
 
 
 def create_conversation(
-    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, memory_off: bool
 ) -> ConversationResponse:
     pitch_title = _owned_pitch_title(db, user_id, pitch_id)
     # 제목은 첫 질문 앞부분이다. 첫 메시지를 받을 때 채운다
-    conversation = ChatConversation(user_id=user_id, scope_pitch_id=pitch_id, title="")
+    conversation = ChatConversation(
+        user_id=user_id, scope_pitch_id=pitch_id, title="", without_memory=memory_off
+    )
     db.add(conversation)
     db.commit()
     return _conversation_view(conversation, pitch_title)
@@ -223,6 +225,7 @@ def _conversation_view(
         scope_pitch_title=pitch_title,
         last_user_activity_at=conversation.last_user_activity_at,
         created_at=conversation.created_at,
+        memory_off=conversation.without_memory,
     )
 
 
