@@ -191,14 +191,14 @@ ai/research/volume-analysis/
 ```json
 [
   {
-    "evaluator": "volume", "area": "VOLUME", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.1+<config 해시>",
+    "evaluator": "volume", "area": "VOLUME", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.2+<config 해시>",
     "measurable": true, "state": "NORMAL",
     "metrics": {"level_db": -31.0, "voice_diff_db": -1.5},
     "tally": [{"t_ms": 40000, "values": {"voiced_ms": 820, "voiced_energy": 0.622, "low_ms": 0, "level_voiced_ms": 820, "base_db_ms": -24190.0, "audio_live_ms": 1000, "total_ms": 1000}}],
     "issues": []
   },
   {
-    "evaluator": "volume", "area": "PAUSE", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.1+<config 해시>",
+    "evaluator": "volume", "area": "PAUSE", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.2+<config 해시>",
     "measurable": true, "state": "NORMAL",
     "metrics": {"silence_ms": 0},
     "tally": [{"t_ms": 40000, "values": {"long_silence_count": 0, "audio_live_ms": 1000, "total_ms": 1000}}],
@@ -373,6 +373,6 @@ sequenceDiagram
 | 진입 함수 | `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline` (자기 HTTP 엔드포인트 없음) | 4-2 |
 | 영역 · 상태 · 문제 | `VOLUME`(`LOW` · `NORMAL` · `UNKNOWN`, `VOLUME_LOW`), `PAUSE`(`SILENT` · `NORMAL` · `UNKNOWN`, `LONG_SILENCE`) | 5-3 · 5-4 |
 | Take 지표 | `level_db` · `voice_diff_db` · `low_ratio` · `measured_ratio` (+ 코치가 붙이는 `base_level_source`), `long_silence_count` · `measured_ratio` | 5-3 |
-| 버전 | `volume-1.1` · `criteria_version` `volume-1.1+<config 해시 12자리>` | 9절 |
+| 버전 | `volume-1.2` · `criteria_version` `volume-1.2+<config 해시 12자리>` | 9절 |
 | 저장 | 저장 요구: 12-1 · 12-2(기준 음량은 Take마다 하나, 음량 1초 기록은 Take와 시각마다 하나, Take 지표 · 리포트 소리 크기). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `calibrations.base_level_db`, `take_metric_seconds.voice`, Take 결과 `areas.VOLUME` · `PAUSE`, `take_summaries.volume` | 12-1 |
 | 의존성 | pydantic 하나, Python 3.12, 서비스 `features/volume/` (연구 폴더 `ai/research/volume-analysis/`) | 4절 · 11절 |
