@@ -20,6 +20,7 @@ from pitch_coach_ai.features.chat_agent.llm_types import (
     LlmInvalidOutput,
     LlmRefused,
     LlmRequest,
+    LlmTimeout,
     LlmUnavailable,
 )
 
@@ -453,3 +454,116 @@ def test_log_line_has_counts_but_no_prompt_or_answer(log_records: list[Any]) -> 
     assert "role=chat_agent purpose=ANSWER" in line and "outcome=ok" in line
     assert "tokens_in=120 tokens_out=30" in line
     assert "안녕" not in line and "비밀 답" not in line
+
+
+def test_read_timeout_mid_stream_is_a_timeout_and_retried_only_before_showing() -> None:
+    """스트림 도중 시간 초과(httpx2.ReadTimeout)는 LlmTimeout 이다.
+
+    화면에 낸 것이 없을 때만 다시 보낸다."""
+    cut = httpx2.ReadTimeout("느림")
+    llm, fake, _ = make(
+        [CutStream([chunk(content='{"a"')]), [chunk(content="{}"), chunk(finish="stop")]]
+    )
+    fake.outcomes[0].__class__ = type(
+        "TimeoutStream", (CutStream,), {"__iter__": lambda s: _cut_with(s, cut)}
+    )
+    r = llm.invoke(sink_req(Sink(commit_after=None)), always)
+    assert r.attempts == 2 and r.attempt_errors == ["LLM_TIMEOUT"]
+
+    llm, fake, sleeps = make(
+        [CutStream([chunk(content='{"a"')]), [chunk(content="{}"), chunk(finish="stop")]]
+    )
+    fake.outcomes[0].__class__ = type(
+        "TimeoutStream", (CutStream,), {"__iter__": lambda s: _cut_with(s, cut)}
+    )
+    with pytest.raises(LlmTimeout) as ei:
+        llm.invoke(sink_req(Sink(commit_after=1)), always)
+    assert ei.value.cause == "stream_timeout" and len(fake.kwargs) == 1 and sleeps == []
+
+
+def _cut_with(stream: Any, exc: Exception) -> Any:
+    yield from stream.chunks
+    raise exc
+
+
+def test_tool_llm_is_none_for_an_unknown_role(log_records: list[Any]) -> None:
+    from pitch_coach_ai.common.llm import tool_llm
+
+    assert tool_llm("no_such_role", pool_size=2) is None
+    assert any("cause=UnknownRole" in r.getMessage() for r in log_records)
+
+
+def test_tool_llm_build_failure_is_none_and_logs_only_the_class(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[Any]
+) -> None:
+    """클라이언트를 만들다 예외가 나면 None 이다.
+
+    로그에는 예외 종류만 남는다(메시지에 설정값이 섞일 수 있다)."""
+    from pitch_coach_ai.common import llm as llm_module
+    from pitch_coach_ai.settings import Settings
+
+    def boom(**_kw: Any) -> Any:
+        raise ValueError("secret-key-sk-123")
+
+    monkeypatch.setattr(llm_module.openai, "OpenAI", boom)
+    s = Settings(
+        _env_file=None,
+        openai_base_url="http://gateway.test/v1",
+        openai_api_key="test",
+        openai_model="openai/gpt-6-luna",
+    )
+    assert llm_module.tool_llm(pool_size=2, app_settings=s) is None
+    msgs = [r.getMessage() for r in log_records]
+    assert any("llm_build_failed" in m and "cause=ValueError" in m for m in msgs)
+    assert not any("secret-key" in m for m in msgs)
+    # 예외 원문을 traceback 으로도 남기지 않는다
+    assert all(r.exc_info is None for r in log_records)
+
+
+def test_queued_call_that_timed_out_before_starting_is_cancelled_and_resent() -> None:
+    """풀이 차서 시작도 못 한 호출이 시간 초과되면 취소한다.
+
+    보내지 않음이 확실하므로 다시 보낼 수 있다."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    gate = threading.Event()
+    pool = ThreadPoolExecutor(max_workers=1)
+    pool.submit(gate.wait)  # 자리 하나를 막아 둔다
+    try:
+        llm = ToolLlmClient(
+            base_url="http://gateway.test/v1",
+            api_key="test",
+            model="openai/gpt-6-luna",
+            role=ToolRole(max_output_tokens=2000, reasoning_effort="low", timeout_seconds=0.2),
+            executor=pool,
+            pool_size=1,
+            sleep=lambda _s: gate.set(),  # 다시 보내기 전 대기에서 자리를 풀어 준다
+        )
+        fake = FakeCompletions([[chunk(content="{}"), chunk(finish="stop")]])
+        llm._client = NS(chat=NS(completions=fake))  # type: ignore[assignment]
+        r = llm.invoke(req(tools=False), always)
+        assert r.attempts == 2 and r.attempt_errors == ["LLM_TIMEOUT"] and len(fake.kwargs) == 1
+        # 취소된 호출 · 끝난 재시도 모두 자리를 돌려줬다(풀 크기 1 이라 하나라도 남으면 포화)
+        assert llm._inflight == 0 and not llm.saturated()
+    finally:
+        gate.set()
+        pool.shutdown(wait=True)
+
+
+def test_closed_pool_returns_the_slot_and_fails_without_sending() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    pool = ThreadPoolExecutor(max_workers=1)
+    pool.shutdown()
+    llm = ToolLlmClient(
+        base_url="http://gateway.test/v1",
+        api_key="test",
+        model="openai/gpt-6-luna",
+        role=ROLE,
+        executor=pool,
+        pool_size=1,
+    )
+    with pytest.raises(LlmCallFailed) as ei:
+        llm.invoke(req(tools=False), always)
+    assert ei.value.cause == "executor_closed" and not llm.saturated()

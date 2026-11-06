@@ -494,11 +494,25 @@ class ToolLlmClient:
         holder: dict[str, Any] = {"attempt": attempt}
         with self._inflight_lock:
             self._inflight += 1
-        future = self._executor.submit(self._stream, req, holder)
+        try:
+            future = self._executor.submit(self._stream, req, holder)
+        except RuntimeError as exc:
+            if "shutdown" not in str(exc):
+                # 스레드 시작 실패 등: 작업이 이미 대기열에 들어갔을 수 있어 자리를 그대로 둔다
+                raise
+            # 실행 풀이 닫힘(프로세스 종료 중): 대기열에 넣기 전 거절이라 보내지 않음이 확실하다.
+            # 센 자리를 돌려주고 보내지 않은 실패로 끝낸다
+            self._done(None)
+            raise chat_llm.LlmCallFailed(cause="executor_closed") from None
         future.add_done_callback(self._done)
         try:
             return future.result(timeout=timeout)
         except FutureTimeout:
+            if future.cancel():
+                # 풀이 차서 아직 시작하지 않았다(보내지 않음이 확실): 다시 보낼 수 있다
+                raise _Retryable(
+                    chat_llm.LlmTimeout(cause="queued_timeout"), "queued_timeout", None
+                ) from None
             stream = holder.get("stream")
             if stream is not None:
                 # 전송 취소 · 응답 close 시도(6-11).
@@ -748,7 +762,12 @@ def tool_llm(
     - 역할의 묶음이 설정되지 않았거나 클라이언트를 만들다 예외가 나면 None 이다. 코어는 LLM 이
       None 이면 스트림 전 503 `LLM_UNAVAILABLE` 로 답한다. 만들다 난 예외는 클래스 이름만 남긴다
     """
-    bundle = app_settings.bundle(LLM_ROLES[role].bundle)
+    llm_role = LLM_ROLES.get(role)
+    if llm_role is None:
+        # 없는 역할도 '모델 없음'으로 통일한다(기능 문서 L1-05)
+        logger.error("llm_build_failed role=%s cause=UnknownRole", log_safe(role))
+        return None
+    bundle = app_settings.bundle(llm_role.bundle)
     if bundle is None:
         return None
     try:
