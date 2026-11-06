@@ -73,10 +73,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from chat_agent import prompts
-from chat_agent.actions import action_args_hash
-from chat_agent.config import load_config
-from chat_agent.llm_types import (
+from pitch_coach_ai.features.chat_agent import prompts
+from pitch_coach_ai.features.chat_agent.actions import action_args_hash
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.llm_types import (
     LlmBudgetStop,
     LlmError,
     LlmRequest,
@@ -85,11 +85,11 @@ from chat_agent.llm_types import (
     ToolLlm,
     Usage,
 )
-from chat_agent.version import FEATURE_VERSION
+from pitch_coach_ai.features.chat_agent.version import FEATURE_VERSION
 
 from . import grading as gr
 from . import scenario as scn
-from .app import AgentApp, from_env
+from .app import GUIDES, AgentApp, from_env
 from .fake_be import FakeBe, Run, StoredMessage
 from .judge import sentence_key
 from .llm import ROLE_CHAT_AGENT
@@ -1790,9 +1790,7 @@ def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -
         name: hashlib.sha256((LAB / name).read_bytes()).hexdigest()
         for name in ("grading.py", "scenario.py", "evals.py", "judge.py")
     }
-    manifest = json.loads(
-        (LAB.parent / "chat_agent" / "guides" / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
     return {
         "feature_version": FEATURE_VERSION,
         "prompt_version": prompts.PROMPT_VERSION,

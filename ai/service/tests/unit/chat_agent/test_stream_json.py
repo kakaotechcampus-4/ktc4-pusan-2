@@ -7,7 +7,12 @@ import random
 
 import pytest
 
-from chat_agent.stream_json import AssessmentsDone, ClaimClosed, StreamTracker, ValueDone
+from pitch_coach_ai.features.chat_agent.stream_json import (
+    AssessmentsDone,
+    ClaimClosed,
+    StreamTracker,
+    ValueDone,
+)
 
 DRAFT = {
     "route": "ANSWER",

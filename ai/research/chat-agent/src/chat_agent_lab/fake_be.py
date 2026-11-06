@@ -61,16 +61,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Protocol
 
+from pitch_coach_ai.features.chat_agent import memory as memory_rules
+from pitch_coach_ai.features.chat_agent.actions import ACTION_ERROR_CODES, action_args_hash
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+from pitch_coach_ai.features.chat_agent.schemas import ClaimLineData, FinalData, StreamLine
+from pitch_coach_ai.features.chat_agent.templates import SystemText
 from pydantic import ValidationError
 
-from chat_agent import memory as memory_rules
-from chat_agent.actions import ACTION_ERROR_CODES, action_args_hash
-from chat_agent.config import DEFAULT_CONFIG
-from chat_agent.schemas import ClaimLineData, FinalData, StreamLine
-from chat_agent.templates import SystemText
-
-from . import fixtures as fx
 from .app import AgentApp
+from .service_tests import fixtures as fx
 
 KST = timezone(timedelta(hours=9))
 #: BE가 행동마다 고정해 두는 자율 등급(6-2). final 의 값이 다르면 위조로 보고 실행하지 않는다

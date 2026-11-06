@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from chat_agent import templates
-from chat_agent.config import DEFAULT_CONFIG, load_config
-from chat_agent.version import FEATURE_VERSION
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, load_config
+from pitch_coach_ai.features.chat_agent.version import FEATURE_VERSION
 
 #: 기능 문서. 연구 모듈에서는 저장소 루트의 docs/ai/features/chat-agent.md 다(서비스로 옮기면 경로가 바뀐다)
 DOC = Path(__file__).resolve().parents[5] / "docs" / "ai" / "features" / "chat-agent.md"
@@ -144,7 +144,7 @@ def test_fm_L4_12_invalid_goal_metric_config_is_rejected_at_start(bad) -> None:
 
 
 def test_goal_rule_version_includes_algorithm_version(monkeypatch) -> None:
-    from chat_agent import config as cfg_mod
+    from pitch_coach_ai.features.chat_agent import config as cfg_mod
 
     before = DEFAULT_CONFIG.goal_rule_version()
     monkeypatch.setattr(cfg_mod, "GOAL_ALGORITHM_VERSION", "goal-algo-2")
@@ -178,7 +178,7 @@ def test_knowledge_supported_uses_guide_wording() -> None:
 
 def test_fill_chooses_particle_by_final_consonant() -> None:
     """7-9 · 7-10 문구의 '{x}으로' · '{x}예요'는 값의 받침에 맞춰 읽힌다."""
-    from chat_agent.templates import ACTION_SUCCESS, PRESSURE, fill
+    from pitch_coach_ai.features.chat_agent.templates import ACTION_SUCCESS, PRESSURE, fill
 
     tpl = ACTION_SUCCESS["FETCH_PITCH"]
     assert fill(tpl, title="졸업 발표") == "졸업 발표로 범위를 바꿨어요."
@@ -193,7 +193,7 @@ def test_fill_chooses_particle_by_final_consonant() -> None:
 
 
 def test_fill_does_not_reinterpret_braces_in_values() -> None:
-    from chat_agent.templates import ACTION_SUCCESS, fill
+    from pitch_coach_ai.features.chat_agent.templates import ACTION_SUCCESS, fill
 
     assert (
         fill(ACTION_SUCCESS["FETCH_PITCH"], title="발표 {A} {0:>3}")

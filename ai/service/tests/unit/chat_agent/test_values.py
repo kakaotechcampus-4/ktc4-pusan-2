@@ -6,8 +6,8 @@ import math
 
 import pytest
 
-from chat_agent.config import DEFAULT_CONFIG as CFG
-from chat_agent.values import (
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.values import (
     InvalidDataError,
     problem_issues,
     range_for,
@@ -302,7 +302,7 @@ def test_missing_problem_segments_is_insufficient_not_empty():
 
 
 def test_range_sources_report_the_bound_paths():
-    from chat_agent.values import OmittedDataError, range_sources
+    from pitch_coach_ai.features.chat_agent.values import OmittedDataError, range_sources
 
     rng, src = range_sources(make_take(5), "cpm", None, CFG)
     assert rng == (275.0, 350.0)
@@ -322,7 +322,7 @@ def test_range_sources_report_the_bound_paths():
 
 
 def test_is_omitted_ancestor_equal_descendant_with_path_boundaries():
-    from chat_agent.values import is_omitted
+    from pitch_coach_ai.features.chat_agent.values import is_omitted
 
     def om(*paths):
         return make_take(5, omitted_paths=list(paths))

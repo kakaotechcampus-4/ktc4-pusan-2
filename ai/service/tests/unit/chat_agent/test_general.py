@@ -9,14 +9,14 @@ from typing import Any
 
 import pytest
 
-from chat_agent import templates
-from chat_agent.checks import CheckId, check_claims
-from chat_agent.config import DEFAULT_CONFIG
-from chat_agent.evidence import EvidenceRegistry
-from chat_agent.schemas import Claim, FinalData
-from chat_agent_lab.app import load_corpus
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.checks import CheckId, check_claims
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
+from pitch_coach_ai.features.chat_agent.schemas import Claim, FinalData
 
 from . import fakes as F
+from .fakes import load_corpus
 from .test_approval import SAVE as SAVE_GOAL
 from .test_approval import drafts, payload_of, saved_result
 from .test_stream_answer import Feeder, assert_prefix_invariant, claim_lines

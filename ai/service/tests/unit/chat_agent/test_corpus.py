@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from chat_agent.config import DEFAULT_CONFIG, load_config
-from chat_agent.corpus import (
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, load_config
+from pitch_coach_ai.features.chat_agent.corpus import (
     CorpusInvalid,
     GuideCardData,
     build_corpus,
@@ -21,7 +21,9 @@ from chat_agent.corpus import (
 
 def _read(name: str) -> Any:
     return json.loads(
-        resources.files("chat_agent").joinpath("guides", name).read_text(encoding="utf-8")
+        resources.files("pitch_coach_ai.features.chat_agent")
+        .joinpath("guides", name)
+        .read_text(encoding="utf-8")
     )
 
 
@@ -54,7 +56,7 @@ def _rebuilt(raw, mutate, *, rehash=True, allow_unreviewed=True, cfg=DEFAULT_CON
     if allow_unreviewed:
         return build_corpus(manifest, files, cfg=cfg, allow_unreviewed=True)
     # 서비스 모드는 고정표에 등록한 판만 받는다: 시험용 판을 잠시 등록한다
-    from chat_agent import corpus as corpus_mod
+    from pitch_coach_ai.features.chat_agent import corpus as corpus_mod
 
     added = manifest["corpus_version"] not in corpus_mod.CORPUS_VERSION_HASHES
     if added:
@@ -366,7 +368,7 @@ def test_fm_L4_29_blank_source_is_rejected(raw):
 
 
 def test_screen_match_needs_colon_boundary():
-    from chat_agent.corpus import _screen_match
+    from pitch_coach_ai.features.chat_agent.corpus import _screen_match
 
     assert _screen_match("pitch_create", "pitch_create:slides")
     assert _screen_match("pitch_create:slides", "pitch_create")

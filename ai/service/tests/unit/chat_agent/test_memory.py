@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from chat_agent import memory
-from chat_agent.config import DEFAULT_CONFIG, load_config
-from chat_agent.llm_types import LlmTimeout, Usage
-from chat_agent.schemas import FinalData
+from pitch_coach_ai.features.chat_agent import memory
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, load_config
+from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout, Usage
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
 from . import fakes as F
 from .test_approval import drafts, first_request, record_answer, saved_result
@@ -381,7 +381,7 @@ def test_overflow_messages_go_to_the_summary_call_whole() -> None:
 
 
 def test_remaining_claim_lines_go_out_before_the_summary_call(monkeypatch: Any) -> None:
-    from chat_agent import answer
+    from pitch_coach_ai.features.chat_agent import answer
 
     order: list[str] = []
     real = answer.ClaimLines.send
@@ -452,8 +452,8 @@ def test_final_check_failure_after_summary_keeps_diagnostics_with_its_usage(
     monkeypatch: Any,
 ) -> None:
     """요약 호출 뒤 끝 줄 검사가 실패해도 error 줄의 진단 기록에 요약 호출 단계 · 사용량이 남는다."""
-    from chat_agent import turn
-    from chat_agent.schemas import FinalData as RealFinal
+    from pitch_coach_ai.features.chat_agent import turn
+    from pitch_coach_ai.features.chat_agent.schemas import FinalData as RealFinal
 
     class Broken:
         @staticmethod

@@ -9,9 +9,9 @@ import dataclasses
 import json
 from typing import Any
 
-from chat_agent import templates
-from chat_agent.llm_types import LlmRefused, LlmTimeout, Usage
-from chat_agent.schemas import ClaimLineData, FinalData
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.llm_types import LlmRefused, LlmTimeout, Usage
+from pitch_coach_ai.features.chat_agent.schemas import ClaimLineData, FinalData
 
 from . import fakes as F
 from .test_approval import first_request, record_answer, save_script, saved_result
@@ -359,7 +359,7 @@ def test_chunks_of_another_attempt_or_after_close_are_ignored() -> None:
 
 
 def test_stream_processing_error_does_not_break_the_answer(monkeypatch: Any) -> None:
-    from chat_agent import stream_json
+    from pitch_coach_ai.features.chat_agent import stream_json
 
     def boom(self: Any, text: str) -> list[Any]:
         raise RuntimeError("추적기 오류")

@@ -10,7 +10,7 @@ from dataclasses import replace
 
 import pytest
 
-from chat_agent.checks import (
+from pitch_coach_ai.features.chat_agent.checks import (
     CheckFailure,
     CheckId,
     apply_fix_round,
@@ -22,10 +22,21 @@ from chat_agent.checks import (
     failing_indices,
     summary_counts,
 )
-from chat_agent.config import load_config
-from chat_agent.evidence import EvidenceRegistry
-from chat_agent.schemas import Assessment, Claim, EvidenceBasis, PlanStep, Subject, TraceItem
-from chat_agent.templates import ACTION_SUCCESS, SystemText, assessment_sentence
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
+from pitch_coach_ai.features.chat_agent.schemas import (
+    Assessment,
+    Claim,
+    EvidenceBasis,
+    PlanStep,
+    Subject,
+    TraceItem,
+)
+from pitch_coach_ai.features.chat_agent.templates import (
+    ACTION_SUCCESS,
+    SystemText,
+    assessment_sentence,
+)
 
 CFG = load_config()
 
@@ -1159,7 +1170,7 @@ def test_fm_L6_04_display_label_alone_triggers_evidence_requirement():
     assert run([c], r, assessments={"a1": a3}, first_sentences={"a1": first}) == []
     # 설정에 없는 표시 이름("화면 응시")도 지표 언급이다
     assert extract_numbers("화면 응시 30%").values
-    from chat_agent.checks import _metric_mentions
+    from pitch_coach_ai.features.chat_agent.checks import _metric_mentions
 
     assert _metric_mentions("화면 응시는 낮아요", CFG) == ["screen_ratio"]
 
@@ -1220,8 +1231,8 @@ def test_ref_ids_in_sentence_text_are_removed_so_their_digits_are_not_values(
     text: str, want: str
 ) -> None:
     """모델이 문장 글에 적은 근거 · 자료 id 는 지운다. id 속 숫자(0 · 00 · 50)를 문장의 값으로 세지 않는다."""
-    from chat_agent.checks import extract_numbers
-    from chat_agent.compose import strip_ref_ids
+    from pitch_coach_ai.features.chat_agent.checks import extract_numbers
+    from pitch_coach_ai.features.chat_agent.compose import strip_ref_ids
 
     assert strip_ref_ids(text) == want
     assert extract_numbers(strip_ref_ids(text)).values == extract_numbers(want).values
@@ -1229,7 +1240,7 @@ def test_ref_ids_in_sentence_text_are_removed_so_their_digits_are_not_values(
 
 def test_code_template_sentences_keep_their_source_ids() -> None:
     """id 지우기는 모델이 쓴 글에만 한다: 코드가 만드는 문장(판단 첫 문장의 "발표법 자료(g-18)")은 그대로다(6회차 회귀)."""
-    from chat_agent.compose import _claim
+    from pitch_coach_ai.features.chat_agent.compose import _claim
 
     head = "말씀하신 '발표는 빠를수록 좋다며?'는 기록과 달라요: 발표법 자료(g-18)."
     c = _claim("ASSESSMENT", head)
@@ -1252,7 +1263,7 @@ def test_code_template_sentences_keep_their_source_ids() -> None:
     ],
 )
 def test_scope_edit_rule_lets_delivery_advice_through(text: str, caught: bool) -> None:
-    from chat_agent.checks import _scope_edit
+    from pitch_coach_ai.features.chat_agent.checks import _scope_edit
 
     assert (_scope_edit(text, CFG) is not None) is caught
 
@@ -1278,13 +1289,13 @@ def test_check_claims_checks_each_claim_independently() -> None:
 
 def test_scope_performance_exception_stays_inside_the_clause() -> None:
     """수행 명사 예외는 같은 절 안에서만: 쉼표 너머의 '시선'으로 내용 수정안이 빠지지 않는다."""
-    from chat_agent.checks import _scope_edit
+    from pitch_coach_ai.features.chat_agent.checks import _scope_edit
 
     assert _scope_edit("대본 시선, 첫 문장을 바꾸세요", CFG) is not None
 
 
 def test_scope_performance_exception_uses_the_same_clause_separators() -> None:
-    from chat_agent.checks import _scope_edit
+    from pitch_coach_ai.features.chat_agent.checks import _scope_edit
 
     assert _scope_edit("대본 시선， 첫 문장을 바꾸세요", CFG) is not None
     assert _scope_edit("대본 시선; 첫 문장을 바꾸세요", CFG) is not None
@@ -1302,6 +1313,6 @@ def test_scope_performance_exception_uses_the_same_clause_separators() -> None:
 def test_content_rewrite_with_audience_or_speaking_modifiers_is_still_caught(text: str) -> None:
     """'청중이 알기 쉽게' · '말하기 쉽게' 같은 꾸밈말이 붙은 내용 수정안도 범위 검사에 걸린다(1-3, #948 리뷰).
     수행 예외는 낱말 하나가 아니라 동작 구('청중을 보' · '말하는 부분' …)이고, 목적어(을/를)인 내용 명사 뒤 꾸밈 구간은 보지 않는다."""
-    from chat_agent.checks import _scope_edit
+    from pitch_coach_ai.features.chat_agent.checks import _scope_edit
 
     assert _scope_edit(text, CFG) is not None

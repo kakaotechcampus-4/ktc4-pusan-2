@@ -24,16 +24,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from chat_agent import templates
-from chat_agent.config import DEFAULT_CONFIG, ChatAgentConfig
-from chat_agent.corpus import Corpus, build_corpus
-from chat_agent.llm_types import ToolLlm
-from chat_agent.loop import TurnDeps
-from chat_agent.turn import handle_turn
+from pitch_coach_ai.features import chat_agent as _core
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, ChatAgentConfig
+from pitch_coach_ai.features.chat_agent.corpus import Corpus, build_corpus
+from pitch_coach_ai.features.chat_agent.llm_types import ToolLlm
+from pitch_coach_ai.features.chat_agent.loop import TurnDeps
+from pitch_coach_ai.features.chat_agent.turn import handle_turn
 
-from . import fixtures as fx
+from .service_tests import fixtures as fx
 
-GUIDES = Path(__file__).resolve().parents[1] / "chat_agent" / "guides"
+GUIDES = Path(_core.__file__).parent / "guides"  # 서비스 코어의 자료 묶음
 ENV_FILE = Path(__file__).resolve().parents[4] / ".env"  # ai/.env
 
 

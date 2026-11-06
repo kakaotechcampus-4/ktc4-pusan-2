@@ -11,9 +11,9 @@ import threading
 from typing import Any
 
 import pytest
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.actions import action_args_hash
 
-from chat_agent import templates
-from chat_agent.actions import action_args_hash
 from chat_agent_lab.fake_be import (
     APPROVAL_WAIT_MS,
     ApprovalError,
@@ -22,7 +22,7 @@ from chat_agent_lab.fake_be import (
     Run,
     content_hash,
 )
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 from .test_fake_be import (
     GOAL_MSG,

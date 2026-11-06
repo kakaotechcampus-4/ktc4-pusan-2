@@ -10,9 +10,15 @@ import math
 
 import pytest
 
-from chat_agent.budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
-from chat_agent.config import DEFAULT_CONFIG as CFG
-from chat_agent.schemas import LimitDetail
+from pitch_coach_ai.features.chat_agent.budget import (
+    Budget,
+    Counters,
+    LimitHit,
+    estimate_tokens,
+    limit_end_reason,
+)
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.schemas import LimitDetail
 
 
 class Clock:

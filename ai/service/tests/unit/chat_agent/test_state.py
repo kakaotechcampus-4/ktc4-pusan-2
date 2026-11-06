@@ -12,8 +12,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from chat_agent.config import load_config
-from chat_agent.state import (
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.state import (
     RunVersions,
     StateInvalid,
     StatePayload,
@@ -27,7 +27,7 @@ from chat_agent.state import (
     strict_json_loads,
     verify,
 )
-from chat_agent.version import FEATURE_VERSION, TOOL_SCHEMA_VERSION
+from pitch_coach_ai.features.chat_agent.version import FEATURE_VERSION, TOOL_SCHEMA_VERSION
 
 SECRET = b"k" * 32
 OTHER = b"o" * 32

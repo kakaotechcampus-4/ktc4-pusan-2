@@ -14,11 +14,11 @@ from typing import Any
 
 import pytest
 
-from chat_agent import compose, templates
-from chat_agent.checks import CheckId, check_claims
-from chat_agent.config import load_config
-from chat_agent.evidence import EvidenceRegistry
-from chat_agent.schemas import Claim, FinalData
+from pitch_coach_ai.features.chat_agent import compose, templates
+from pitch_coach_ai.features.chat_agent.checks import CheckId, check_claims
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
+from pitch_coach_ai.features.chat_agent.schemas import Claim, FinalData
 
 from . import fakes as F
 

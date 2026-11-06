@@ -1,6 +1,6 @@
 """도구 8개 단위 시험 — 인자 검사 · 결과 모양 · 근거 id · 읽기 상태 · 범위 대조 · 캐시 · 도구 기록 (기능 문서 5-7).
 
-요청은 예시 `request_user_message.json`(범위 p-1 · 보던 Take t-5)에서 시작하고, 필요하면 가상 기록(chat_agent_lab.fixtures)의
+요청은 예시 `request_user_message.json`(범위 p-1 · 보던 Take t-5)에서 시작하고, 필요하면 가상 기록(fixtures.py)의
 Take 를 `loaded_takes`에 싣는다. 이름의 L 번호는 기능 문서 7절 실패 행이다.
 """
 
@@ -14,12 +14,19 @@ from typing import Any
 
 import pytest
 
-from chat_agent.config import DEFAULT_CONFIG as CFG
-from chat_agent.evidence import EvidenceRegistry
-from chat_agent.goals import build_goal_draft
-from chat_agent.runctx import RunCtx
-from chat_agent.schemas import GuideCard, PitchContext, TakeSnapshot, TraceItem, TurnRequest
-from chat_agent.tools import (
+from pitch_coach_ai.features import chat_agent as _core
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
+from pitch_coach_ai.features.chat_agent.goals import build_goal_draft
+from pitch_coach_ai.features.chat_agent.runctx import RunCtx
+from pitch_coach_ai.features.chat_agent.schemas import (
+    GuideCard,
+    PitchContext,
+    TakeSnapshot,
+    TraceItem,
+    TurnRequest,
+)
+from pitch_coach_ai.features.chat_agent.tools import (
     P0_TOOLS,
     ToolResult,
     cache_key,
@@ -29,9 +36,10 @@ from chat_agent.tools import (
     run_tool,
     validate_args,
 )
-from chat_agent_lab.fixtures import sample_pitch, take_snapshot
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "src" / "chat_agent" / "examples"
+from .fixtures import sample_pitch, take_snapshot
+
+EXAMPLES = Path(_core.__file__).parent / "examples"
 SECRET = "비밀문구-7731"
 
 
@@ -999,7 +1007,7 @@ def test_fm_L1_17_result_with_omitted_values_is_not_cached() -> None:
 
 
 def test_list_cache_key_follows_summary_changes() -> None:
-    from chat_agent.tools import cache_key, validate_args
+    from pitch_coach_ai.features.chat_agent.tools import cache_key, validate_args
 
     req = load(base_request(), "t-4")
     a = validate_args("list_pitches", {})
@@ -1020,7 +1028,7 @@ def test_old_focus_take_outside_recent_list_is_kept() -> None:
 
 
 def test_cache_key_changes_with_omitted_paths_and_pitch_total() -> None:
-    from chat_agent.tools import cache_key, validate_args
+    from pitch_coach_ai.features.chat_agent.tools import cache_key, validate_args
 
     req = load(base_request(), "t-4")
     a = validate_args("get_take_report", {"take_id": "t-4", "section": "slides"})

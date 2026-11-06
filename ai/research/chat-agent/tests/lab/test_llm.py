@@ -9,8 +9,7 @@ from typing import Any
 import httpx
 import openai
 import pytest
-
-from chat_agent.llm_types import (
+from pitch_coach_ai.features.chat_agent.llm_types import (
     LlmBudgetStop,
     LlmCallFailed,
     LlmInvalidOutput,
@@ -18,6 +17,7 @@ from chat_agent.llm_types import (
     LlmRequest,
     LlmUnavailable,
 )
+
 from chat_agent_lab.llm import OpenAiToolLlm
 
 
@@ -237,7 +237,8 @@ def test_fm_L1_14_timed_out_attempt_not_confirmed_is_not_resent() -> None:
     """시간 초과된 앞 시도가 끝났는지 확인하지 못하면 같은 요청을 다시 보내지 않는다(6-11)."""
     import threading
 
-    from chat_agent.llm_types import LlmTimeout
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
+
     from chat_agent_lab.llm import Role
 
     gate = threading.Event()

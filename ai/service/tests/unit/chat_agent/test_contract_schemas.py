@@ -8,20 +8,26 @@ from importlib import resources
 import pytest
 from pydantic import ValidationError
 
-from chat_agent import schemas as s
+from pitch_coach_ai.features.chat_agent import schemas as s
 
 BASE = json.loads(
-    (resources.files("chat_agent") / "examples" / "request_user_message.json").read_text(
-        encoding="utf-8"
-    )
+    (
+        resources.files("pitch_coach_ai.features.chat_agent")
+        / "examples"
+        / "request_user_message.json"
+    ).read_text(encoding="utf-8")
 )
 FINAL_DONE = json.loads(
-    (resources.files("chat_agent") / "examples" / "stream_done.ndjson")
+    (resources.files("pitch_coach_ai.features.chat_agent") / "examples" / "stream_done.ndjson")
     .read_text(encoding="utf-8")
     .splitlines()[-1]
 )["data"]
 FINAL_NA = json.loads(
-    (resources.files("chat_agent") / "examples" / "stream_needs_action.ndjson")
+    (
+        resources.files("pitch_coach_ai.features.chat_agent")
+        / "examples"
+        / "stream_needs_action.ndjson"
+    )
     .read_text(encoding="utf-8")
     .splitlines()[-1]
 )["data"]
@@ -347,9 +353,11 @@ def test_diag_step_detail_must_match_kind() -> None:
 
 
 RESUME = json.loads(
-    (resources.files("chat_agent") / "examples" / "request_action_result.json").read_text(
-        encoding="utf-8"
-    )
+    (
+        resources.files("pitch_coach_ai.features.chat_agent")
+        / "examples"
+        / "request_action_result.json"
+    ).read_text(encoding="utf-8")
 )
 
 
