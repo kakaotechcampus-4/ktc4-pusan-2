@@ -3,17 +3,14 @@ import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { useLogout, useSession } from './useSession';
 
 /**
- * @param bright 이름 · 로그아웃 줄을 아래 화면과 같은 밝은 지면(`pitch-create`)으로 둡니다.
- *   리허설 무대는 기본 지면이라 끕니다 — 켜면 무대 위에 밝은 띠가 생깁니다
- * @param header 주면 이름 · 로그아웃 줄 대신 이것을 얹습니다 (홈 · Take 기록 · 마이페이지의 상단바)
+ * @param stageBar 리허설 무대 위에 이름 · 로그아웃 한 줄을 얹고 무대가 남은 높이를 받게 합니다
+ * @param header 주면 이것을 얹습니다 (홈 · 피치 생성 · 시작 전 세팅 등의 상단바)
  */
 export function RequireSession({
-  showHeader = true,
-  bright = true,
+  stageBar = false,
   header,
 }: {
-  showHeader?: boolean;
-  bright?: boolean;
+  stageBar?: boolean;
   header?: ReactNode;
 }) {
   const session = useSession();
@@ -61,37 +58,31 @@ export function RequireSession({
       </div>
     );
 
+  if (!stageBar)
+    return (
+      <div className="contents">
+        <Outlet />
+      </div>
+    );
+
   return (
-    <div className={bright ? 'contents' : 'rehearsal-shell'}>
-      {showHeader && (
-        <div
-          className={`${bright ? 'pitch-create flex-wrap bg-greige text-ink [&>a]:shrink-0 [&>button]:shrink-0 ' : ''}flex items-center justify-end gap-4 px-6 py-3 text-sm`}
-        >
-          {/* 리허설은 헤더 높이로 무대 위치가 달라지지 않도록 한 줄을 유지합니다. */}
-          <span
-            title={session.data.name}
-            className={bright ? 'min-w-0 max-w-full [overflow-wrap:anywhere]' : 'min-w-0 truncate'}
-          >
-            {session.data.name}
-          </span>
-          <NavLink to="/takes" end className="underline aria-[current=page]:font-bold">
-            Take 기록
-          </NavLink>
-          <NavLink to="/me" className="underline aria-[current=page]:font-bold">
-            마이페이지
-          </NavLink>
-          <button
-            disabled={signOut.isPending}
-            onClick={() => signOut.mutate()}
-            className="underline"
-          >
-            {signOut.isPending ? '로그아웃 중…' : '로그아웃'}
-          </button>
-          {signOut.isError && (
-            <span role="alert">로그아웃에 실패했습니다. 다시 시도해 주세요.</span>
-          )}
-        </div>
-      )}
+    <div className="rehearsal-shell">
+      <div className="flex items-center justify-end gap-4 px-6 py-3 text-sm">
+        {/* 헤더 높이로 무대 위치가 달라지지 않도록 한 줄을 유지합니다. */}
+        <span title={session.data.name} className="min-w-0 truncate">
+          {session.data.name}
+        </span>
+        <NavLink to="/takes" end className="underline aria-[current=page]:font-bold">
+          Take 기록
+        </NavLink>
+        <NavLink to="/me" className="underline aria-[current=page]:font-bold">
+          마이페이지
+        </NavLink>
+        <button disabled={signOut.isPending} onClick={() => signOut.mutate()} className="underline">
+          {signOut.isPending ? '로그아웃 중…' : '로그아웃'}
+        </button>
+        {signOut.isError && <span role="alert">로그아웃에 실패했습니다. 다시 시도해 주세요.</span>}
+      </div>
       <Outlet />
     </div>
   );

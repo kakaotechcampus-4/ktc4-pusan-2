@@ -101,7 +101,7 @@ const practicePaths = [
 ];
 
 // 홈과 같은 상단바(AppHeader)를 얹는 화면. 메뉴를 옮기거나 기록을 열어도 상단바가 바뀌지 않게 합니다.
-// 장치 점검 · 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다 (장치 점검은 #706 에서 단순화하며 같이 정리)
+// 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다
 const appHeaderPaths = [
   '/',
   '/pitches',
@@ -111,6 +111,7 @@ const appHeaderPaths = [
   '/pitch/:id/comparison',
   '/pitch/new',
   '/pitch/:id/edit',
+  '/pitch/:pitchId/device-check',
 ];
 
 const screenRoutes = routes.map((route) => {
@@ -144,21 +145,10 @@ const screenRoutes = routes.map((route) => {
         element: (
           <PageTitle title={route.title}>
             <LaunchGate>
-              {/* 분석 대기 · 대본 확인은 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
+              {/* 이름 · 로그아웃 줄은 리허설 무대에만 얹습니다. 분석 대기 · 대본 확인은 화면 전체가 그림이고,
+                  리포트는 화면 안에서 공용 헤더를 표시합니다 */}
               <RequireSession
-                showHeader={
-                  ![
-                    '/',
-                    '/pitches',
-                    '/pitch/new',
-                    '/pitch/:id/edit',
-                    '/takes/:takeId/processing',
-                    // 리포트는 화면 안에서 공용 헤더를 표시합니다.
-                    '/takes/:takeId',
-                    '/takes/:takeId/confirm',
-                  ].includes(route.path)
-                }
-                bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
+                stageBar={['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
                 header={appHeaderPaths.includes(route.path) ? <AppHeader /> : undefined}
               />
             </LaunchGate>
