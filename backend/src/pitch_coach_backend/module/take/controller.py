@@ -38,11 +38,10 @@ from pitch_coach_backend.module.take.service.take import (
 
 router = APIRouter(prefix="/pitches/{pitch_id}/takes", tags=["Take"])
 
+
 @router.post("/")
 def create_take(
-    pitch_id: OwnedPitch,
-    db: Annotated[Session, Depends(get_db)],
-    take_dto: TakeInitRequestDTO
+    pitch_id: OwnedPitch, db: Annotated[Session, Depends(get_db)], take_dto: TakeInitRequestDTO
 ):
     take = create_take_service(db, pitch_id, take_dto)
     # 번호는 FE 가 장치 점검에서 미리 본 next_take_number 와 다를 수 있다. 이 값이 실제 번호다
@@ -52,15 +51,14 @@ def create_take(
         "take_number": take.take_number,
     }
 
+
 @router.delete("/{take_id}")
-def delete_take(
-    take_id: OwnedTake,
-    db: Annotated[Session, Depends(get_db)]
-):
+def delete_take(take_id: OwnedTake, db: Annotated[Session, Depends(get_db)]):
     result = delete_take_service(db, take_id)
     # 진행 중이던 연습이면 실시간 STT(Deepgram) · 코치도 끊는다
     hooks.live_takes().discard([take_id])
     return {"message": "Take deleted successfully", "take_id": result}
+
 
 @router.put("/{take_id}")
 def update_take(
@@ -80,6 +78,7 @@ def update_take(
         )
     return {"message": "Take updated successfully", "take_id": result}
 
+
 @router.post("/{take_id}/abandon")
 def abandon_take(
     db: Annotated[Session, Depends(get_db)],
@@ -98,11 +97,10 @@ def abandon_take(
         hooks.live_takes().end_closed_tab(take_id, replaced=replace)
     return {"message": "Take abandoned", "take_id": take_id, "status": status}
 
+
 @router.post("/{take_id}/calibration")
 def create_calibration(
-    db: Annotated[Session, Depends(get_db)],
-    take_id: OwnedTake,
-    calibration_dto: CalibrationDTO
+    db: Annotated[Session, Depends(get_db)], take_id: OwnedTake, calibration_dto: CalibrationDTO
 ):
     result = create_calibration_service(db, take_id, calibration_dto)
     return {"message": "Calibration created successfully", "calibration_id": result}
@@ -111,6 +109,7 @@ def create_calibration(
 # 발표를 가리지 않는 Take 조회. Take 기록은 모든 발표의 Take 를 한 번에 보여 준다
 takes_router = APIRouter(prefix="/takes", tags=["Take"])
 
+
 @takes_router.get("/", response_model=TakeHistoryResponseDTO)
 def list_takes(
     current_user: CurrentUser,
@@ -118,6 +117,7 @@ def list_takes(
     pitch_id: uuid.UUID | None = None,
 ):
     return list_takes_service(db, current_user.id, pitch_id)
+
 
 # 새 Take 를 시작하기 전에 FE 가 부른다. 사용자는 한 번에 연습 하나만 하므로 어느 창 · 기기에서
 # 발표 중인 Take 가 있으면 끝낼지 묻는다 (끝내기는 /abandon?replace=true)
@@ -129,6 +129,7 @@ def get_active_take(
     take_id = hooks.live_takes().blocking_take(current_user.id)
     return active_take_service(db, current_user.id, take_id)
 
+
 @takes_router.get("/{take_id}/report", response_model=TakeReportDTO)
 def get_take_report(
     take_id: uuid.UUID,
@@ -136,6 +137,7 @@ def get_take_report(
     db: Annotated[Session, Depends(get_db)],
 ):
     return get_take_report_service(db, take_id, current_user.id)
+
 
 @takes_router.get("/{take_id}/confirmations", response_model=ConfirmationsDTO)
 def get_confirmations(
@@ -145,6 +147,7 @@ def get_confirmations(
 ):
     # 확인 대기가 아니면(이미 넘어감) 빈 항목과 지금 단계를 준다. FE 는 리포트로 넘어간다
     return get_confirmations_service(db, take_id, current_user.id)
+
 
 @takes_router.post("/{take_id}/confirmations", response_model=ConfirmationsSentDTO)
 async def send_confirmations(
