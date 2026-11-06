@@ -1,6 +1,6 @@
 """실제 자료 묶음(guides)을 쓰는 루프 시험 — 자료 검색 → GUIDE 문장 → 인용 대조 · 자료 카드 (기능 문서 6-9 · 6-10).
 
-가짜 모델(tests/unit/fakes.py)로 돌리고 자료 묶음은 실제 파일을 읽는다(chat_agent_lab.app.load_corpus).
+가짜 모델(서비스 tests/unit/chat_agent/fakes.py)로 돌리고 자료 묶음은 실제 파일을 읽는다(chat_agent_lab.app.load_corpus).
 """
 
 from __future__ import annotations

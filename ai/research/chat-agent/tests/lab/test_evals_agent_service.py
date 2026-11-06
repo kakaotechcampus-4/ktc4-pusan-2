@@ -1,6 +1,6 @@
 """에이전트 서비스 세트(13-2) 평가 도구 시험 — 기억 fixtures · 스트림 끊김 장애 · 새 지표(14-1) · GENERAL 금지 위반 채점기.
 
-실제 모델을 부르지 않는다(가짜 모델 tests/unit/fakes.py). 시나리오 검사 경로가 실제 관찰값에 닿는지를 정해 둔 모델 응답으로 본다.
+실제 모델을 부르지 않는다(가짜 모델: 서비스 tests/unit/chat_agent/fakes.py). 시나리오 검사 경로가 실제 관찰값에 닿는지를 정해 둔 모델 응답으로 본다.
 """
 
 from __future__ import annotations
