@@ -42,7 +42,9 @@ def _rebuilt(raw, mutate, *, rehash=True, allow_unreviewed=True, cfg=DEFAULT_CON
     manifest, files = copy.deepcopy(raw[0]), copy.deepcopy(raw[1])
     mutate(manifest, files)
     if rehash:
-        manifest["sha256"] = manifest_hash([c for cards in files.values() for c in cards])
+        manifest["sha256"] = manifest_hash(
+            [c for cards in files.values() for c in cards], manifest.get("synonyms") or None
+        )
         # 본문을 바꾼 사본은 새 판이다(같은 판에 다른 본문은 VERSION_REUSED)
         if (
             manifest["corpus_version"] == raw[0]["corpus_version"]
@@ -71,13 +73,15 @@ def test_real_files_load_and_counts(corpus):
     kinds = [c.kind for c in corpus.cards]
     assert kinds.count("method") == 20
     assert kinds.count("usage") == 25
-    assert corpus.version == "guides-1"
+    assert corpus.version == "guides-2"
     assert all(c.license == "team" for c in corpus.cards)
 
 
 def test_manifest_hash_matches_stored(raw):
     manifest, files = raw
-    assert manifest["sha256"] == manifest_hash([c for cards in files.values() for c in cards])
+    assert manifest["sha256"] == manifest_hash(
+        [c for cards in files.values() for c in cards], manifest.get("synonyms") or None
+    )
 
 
 def test_method_cards_are_short_and_quotable(corpus):
@@ -334,7 +338,9 @@ def test_fm_L4_30_same_version_with_new_text_is_rejected(raw):
 def _rebuilt_same_version(raw, mutate):
     manifest, files = copy.deepcopy(raw[0]), copy.deepcopy(raw[1])
     mutate(manifest, files)
-    manifest["sha256"] = manifest_hash([c for cards in files.values() for c in cards])
+    manifest["sha256"] = manifest_hash(
+        [c for cards in files.values() for c in cards], manifest.get("synonyms") or None
+    )
     return build_corpus(manifest, files, allow_unreviewed=True)
 
 
@@ -372,8 +378,52 @@ def test_fm_L4_30_service_mode_rejects_unregistered_version(raw):
     for cards in files.values():
         for c in cards:
             c["review"] = "APPROVED"
-    manifest["sha256"] = manifest_hash([c for cards in files.values() for c in cards])
+    manifest["sha256"] = manifest_hash(
+        [c for cards in files.values() for c in cards], manifest.get("synonyms") or None
+    )
     manifest["corpus_version"] = "guides-unregistered"
     with pytest.raises(CorpusInvalid) as e:
         build_corpus(manifest, files, allow_unreviewed=False)
     assert e.value.reason_code == "UNKNOWN_VERSION"
+
+
+# ── 동의어 사전 (6-10) ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("원고만 보게 돼요", "g-02"),  # 원고 → 대표어 대본
+        ("클로징은 어떻게 해", "g-10"),  # 클로징 → 마무리
+        ("무대 공포가 심해요", "g-07"),  # 무대 공포 → 긴장
+        ("필러가 많대요", "g-05"),  # 필러 → 군더더기
+    ],
+)
+def test_synonym_dictionary_finds_cards_the_query_words_miss(raw, corpus, query, expected):
+    """카드가 쓰지 않는 말로 물어도 대표어로 찾는다(사전을 빼면 상위 3장에 없다)."""
+    plain = _rebuilt(raw, lambda m, f: m.pop("synonyms"))
+    assert expected in [h.card.source_id for h in corpus.search(query)[:3]]
+    assert expected not in [h.card.source_id for h in plain.search(query)[:3]]
+
+
+def test_synonyms_expand_one_way_only(corpus):
+    """대표어를 쓴 질문은 다른 말로 넓히지 않는다: "시선 기준" 질문에서 눈맞춤 카드가 시선 기준 카드를 앞지르지 않는다."""
+    plain = [h.card.source_id for h in corpus.search("시선 기준이 안 잡혀요")]
+    assert plain[0] == "u-13"
+    with_variant = [h.card.source_id for h in corpus.search("눈맞춤이 어려워요")]
+    assert with_variant[0] == "g-01" and "u-13" in with_variant  # 눈맞춤 → 대표어 시선
+
+
+def test_synonyms_are_part_of_the_bundle_hash(raw):
+    manifest, files = raw
+    cards = [c for cs in files.values() for c in cs]
+    assert manifest_hash(cards, manifest["synonyms"]) != manifest_hash(cards)
+    changed = [*manifest["synonyms"], ["새말", "다른말"]]
+    assert manifest_hash(cards, changed) != manifest["sha256"]
+
+
+@pytest.mark.parametrize("groups", [[["외톨이"]], [["시선", " "]], [["쉼", "멈춤"]]])
+def test_bad_synonym_group_is_rejected(raw, groups):
+    """묶음은 빈 말 없이 2개 이상, 대표어(첫 말)는 찾을 수 있는 두 글자 이상 낱말이 있어야 한다."""
+    with pytest.raises(CorpusInvalid):
+        _rebuilt(raw, lambda m, f: m.update(synonyms=groups))
