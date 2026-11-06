@@ -11,9 +11,9 @@
 - prompt_version(프롬프트 해시) · corpus_version(자료 묶음 판)은 각각 prompts/ · corpus.py 가 계산한다.
 """
 
-FEATURE_VERSION = "chat_agent-0.8.0"
+FEATURE_VERSION = "chat_agent-0.9.0"
 SCHEMA_VERSION = "1.0"
-TOOL_SCHEMA_VERSION = "tools-3"
+TOOL_SCHEMA_VERSION = "tools-4"
 STATE_V = 1
 #: 목표 판정 계산식(6-4 판정 순서 · 비교식)의 판. 계산식을 바꾸면 올린다. 목표 규칙 판(goal_rule_version)에 들어가므로
 #: 옛 판으로 저장한 목표는 판이 달라 새 목표를 정하자고 한다(설정 해시만으로는 계산식 변경을 알 수 없다)
