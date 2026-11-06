@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -24,6 +24,27 @@ from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSlideEvent
 
 FINISHED_RUN_STATUSES = ("DONE", "PARTIAL", "REFUSED", "FAILED", "CANCELLED", "EXPIRED")
+
+# 사용자 하루 사용량 중 선점해 세는 칸
+DailyCounter = Literal["turns", "reassessments", "goal_checks"]
+
+
+def charge_daily(
+    db: Session, column: DailyCounter, user_id: uuid.UUID, day: date, limit: int
+) -> bool:
+    """사용자 하루 사용량 칸을 1 선점한다. 한도에 닿았으면 늘리지 않고 False."""
+    counter = getattr(ChatDailyUsage, column)
+    stmt = (
+        insert(ChatDailyUsage)
+        .values(id=uuid.uuid7(), user_id=user_id, day=day, **{column: 1})
+        .on_conflict_do_update(
+            index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
+            set_={column: counter + 1},
+            where=counter < limit,
+        )
+        .returning(ChatDailyUsage.id)
+    )
+    return db.scalar(stmt) is not None
 
 
 class ChatRepository:
@@ -81,30 +102,10 @@ class ChatRepository:
         )
 
     def charge_reassess(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
-        stmt = (
-            insert(ChatDailyUsage)
-            .values(id=uuid.uuid7(), user_id=user_id, day=day, reassessments=1)
-            .on_conflict_do_update(
-                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
-                set_={"reassessments": ChatDailyUsage.reassessments + 1},
-                where=ChatDailyUsage.reassessments < limit,
-            )
-            .returning(ChatDailyUsage.id)
-        )
-        return self.db.scalar(stmt) is not None
+        return charge_daily(self.db, "reassessments", user_id, day, limit)
 
     def charge_goal_check(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
-        stmt = (
-            insert(ChatDailyUsage)
-            .values(id=uuid.uuid7(), user_id=user_id, day=day, goal_checks=1)
-            .on_conflict_do_update(
-                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
-                set_={"goal_checks": ChatDailyUsage.goal_checks + 1},
-                where=ChatDailyUsage.goal_checks < limit,
-            )
-            .returning(ChatDailyUsage.id)
-        )
-        return self.db.scalar(stmt) is not None
+        return charge_daily(self.db, "goal_checks", user_id, day, limit)
 
     def reserve_service_turn(self, day: date, limit: int) -> bool:
         stmt = (
