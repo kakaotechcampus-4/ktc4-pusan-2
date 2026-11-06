@@ -34,6 +34,8 @@ def pitch_id(db_session: Session, user_id: uuid.UUID) -> uuid.UUID:
 def upload_mock(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
     monkeypatch.setattr(presentation_service, "upload", mock)
+    # 진짜 PDF 라 썸네일도 그려 올린다. 막지 않으면 AWS 세션이 있는 PC 에서 실제 버킷에 남는다
+    monkeypatch.setattr(presentation_service, "upload_bytes", lambda data, key, content_type: key)
     monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
     return mock
 
