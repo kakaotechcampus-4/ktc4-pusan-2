@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_response import FetchPitchArgs, FetchTakeArgs
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
-from pitch_coach_backend.module.chat.entity import ChatRun
+from pitch_coach_backend.module.chat.entity import ChatAction, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.owned import owned_pitch, owned_take_in
 from pitch_coach_backend.module.chat.service.request import (
@@ -19,28 +19,26 @@ from pitch_coach_backend.module.chat.service.result import ambiguous, failed, su
 
 
 def fetch_take(
-    db: Session, row: ChatRun, action: dict[str, Any], args: FetchTakeArgs
+    db: Session, row: ChatRun, saved: ChatAction, action: dict[str, Any], args: FetchTakeArgs
 ) -> ActionResultDTO:
     repo = ChatRepository(db)
     conversation = repo.get_conversation(row.conversation_id)
     take = owned_take_in(db, row.user_id, args.pitch_id, args.take_id)
     if take is None or str(run_scope(row, conversation)) != args.pitch_id:
         return failed(action, "NOT_FOUND", "기록을 찾을 수 없어요.")
-    _remember_take(repo, row, action, take.Take.id)
+    _remember_take(row, saved, take.Take.id)
     return succeeded(action, {"take": take_snapshot(repo, take)})
 
 
-def _remember_take(
-    repo: ChatRepository, row: ChatRun, action: dict[str, Any], take_id: uuid.UUID
-) -> None:
+def _remember_take(row: ChatRun, saved: ChatAction, take_id: uuid.UUID) -> None:
     sources = row.read_sources or {"pitches": [], "takes": []}
     if str(take_id) not in sources["takes"]:
         row.read_sources = {**sources, "takes": [*sources["takes"], str(take_id)]}
-    repo.get_action(row.id, action["action_id"]).source_take_ids = [str(take_id)]
+    saved.source_take_ids = [str(take_id)]
 
 
 def fetch_pitch(
-    db: Session, row: ChatRun, action: dict[str, Any], args: FetchPitchArgs
+    db: Session, row: ChatRun, saved: ChatAction, action: dict[str, Any], args: FetchPitchArgs
 ) -> ActionResultDTO:
     repo = ChatRepository(db)
     if args.pitch_id is not None:

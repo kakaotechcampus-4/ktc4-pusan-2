@@ -19,6 +19,7 @@ from pitch_coach_backend.module.chat.service.result import (
     UNCONFIRMED,
     close_action,
     failed,
+    save_result,
     succeeded,
 )
 from pitch_coach_backend.module.chat.service.run import (
@@ -53,13 +54,12 @@ class PreparedReassess:
 
 
 def prepare_reassess(
-    db: Session, run: ClaimedRun, action: dict[str, Any]
+    db: Session, run: ClaimedRun, action: dict[str, Any], args: ReassessArgs
 ) -> PreparedReassess | ActionResultDTO:
     repo = ChatRepository(db)
     row = lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)
-    args = ReassessArgs.model_validate(action["args"])
     take = owned_take(db, row.user_id, args.take_id)
     conversation = repo.get_conversation(row.conversation_id)
     if take is None or take.Take.pitch_id != run_scope(row, conversation):
@@ -166,8 +166,7 @@ def finish_reassess(
             action, {"before": replies[0], "after": replies[1], "official": prepared.official}
         )
     saved = repo.get_action(row.id, action["action_id"])
-    saved.status = "SUCCEEDED" if result.status == "SUCCEEDED" else "FAILED"
-    saved.result = {**result.model_dump(mode="json"), "review_revision": prepared.review_revision}
+    save_result(saved, result, review_revision=prepared.review_revision)
     saved.source_take_ids = [str(prepared.take_id)]
     db.commit()
     return result

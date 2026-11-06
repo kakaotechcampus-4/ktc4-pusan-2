@@ -230,6 +230,38 @@ def test_failed_action_is_sent_back_and_the_turn_finishes(
     assert resumed["resume"]["action_results"][0]["status"] == "FAILED"
 
 
+def test_ambiguous_pitch_lookup_is_saved_as_a_finished_action(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch
+
+    # 후보가 여럿이라 되묻는 결과도 행동은 끝까지 실행한 것이라 성공으로 둔다
+    db_session.add_all(
+        [Pitch(user_id=user_id, title=title, time_limit_sec=300) for title in ("발표 A", "발표 B")]
+    )
+    db_session.flush()
+    run_id = str(queued_run)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_PITCH",
+        "args": {"pitch_id": None, "name": "발표"},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "어느 발표인지 찾는다",
+        "authorized_by": None,
+    }
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _needs_action(action)))))
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    _run(queued_run, session_factory)
+
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    assert (saved.status, saved.result["status"]) == ("SUCCEEDED", "AMBIGUOUS")
+    sent = agent.requests[1]["resume"]["action_results"][0]
+    assert len(sent["data"]["candidates"]) == 2
+
+
 def test_answer_on_a_deleted_take_cancels_the_run(
     db_session, session_factory, agent, queued_run
 ) -> None:

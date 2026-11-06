@@ -25,7 +25,7 @@ from pitch_coach_backend.module.chat.service.memory import (
 )
 from pitch_coach_backend.module.chat.service.practice import start_practice
 from pitch_coach_backend.module.chat.service.request import goal_view
-from pitch_coach_backend.module.chat.service.result import failed, succeeded
+from pitch_coach_backend.module.chat.service.result import failed, save_result, succeeded
 from pitch_coach_backend.module.chat.service.run import (
     LEASE,
     OWNER,
@@ -367,8 +367,7 @@ def _settle_action(repo: ChatRepository, saved: ChatAction) -> None:
         result = succeeded(action, {"goal": goal_view(goal)})
     else:
         result = failed(action, "IDEMPOTENCY_CONFLICT", "작업 완료를 확인하지 못했어요.")
-    saved.status = result.status
-    saved.result = result.model_dump(mode="json")
+    save_result(saved, result)
 
 
 def _has_confirm_card(row: ChatRun, action_id: str) -> bool:

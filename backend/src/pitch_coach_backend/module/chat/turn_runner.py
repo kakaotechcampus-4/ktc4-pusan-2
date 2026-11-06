@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.database import SessionLocal, in_session
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, request_turn
-from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
+from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, ReassessArgs, StreamLine
 from pitch_coach_backend.module.chat.dto import (
     NO_BUDGET_USED,
     ActionResultDTO,
@@ -272,21 +272,22 @@ class _Turn:
     async def _act(self, action: dict[str, Any]) -> tuple[ActionResultDTO, int]:
         loop = asyncio.get_running_loop()
         started = loop.time()
-        result = await in_session(
+        begun = await in_session(
             self._session_factory, action_service.begin_action, self._current, action
         )
-        if result is None:
-            if action["type"] == "REASSESS":
-                result = await self._reassess(action)
-            else:
-                result = await in_session(
-                    self._session_factory, action_service.run_action, self._current, action
-                )
+        if isinstance(begun, ActionResultDTO):
+            result = begun
+        elif isinstance(begun, ReassessArgs):
+            result = await self._reassess(action, begun)
+        else:
+            result = await in_session(
+                self._session_factory, action_service.run_action, self._current, action, begun
+            )
         return result, round((loop.time() - started) * 1000)
 
-    async def _reassess(self, action: dict[str, Any]) -> ActionResultDTO:
+    async def _reassess(self, action: dict[str, Any], args: ReassessArgs) -> ActionResultDTO:
         prepared = await in_session(
-            self._session_factory, reassess_service.prepare_reassess, self._current, action
+            self._session_factory, reassess_service.prepare_reassess, self._current, action, args
         )
         if isinstance(prepared, ActionResultDTO):
             return prepared

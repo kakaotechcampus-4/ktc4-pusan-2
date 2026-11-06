@@ -178,11 +178,11 @@ class FinalView(_View):
         return self
 
 
-class _Args(BaseModel):
+class ActionArgs(BaseModel):
     model_config = ConfigDict(strict=True, allow_inf_nan=False, extra="forbid")
 
 
-class FetchPitchArgs(_Args):
+class FetchPitchArgs(ActionArgs):
     pitch_id: str | None
     name: str | None
 
@@ -195,12 +195,12 @@ class FetchPitchArgs(_Args):
         return self
 
 
-class FetchTakeArgs(_Args):
+class FetchTakeArgs(ActionArgs):
     pitch_id: str
     take_id: str
 
 
-class ReassessArgs(_Args):
+class ReassessArgs(ActionArgs):
     take_id: str
     change: dict[str, Any]
 
@@ -211,16 +211,16 @@ class ReassessArgs(_Args):
         return self
 
 
-class StartPracticeArgs(_Args):
+class StartPracticeArgs(ActionArgs):
     pitch_id: str
 
 
-class SaveGoalArgs(_Args):
+class SaveGoalArgs(ActionArgs):
     expected_goal_version: int = Field(ge=0)
     goal: dict[str, Any]
 
 
-ACTION_ARGS: dict[str, type[_Args]] = {
+ACTION_ARGS: dict[str, type[ActionArgs]] = {
     "FETCH_PITCH": FetchPitchArgs,
     "FETCH_TAKE": FetchTakeArgs,
     "REASSESS": ReassessArgs,

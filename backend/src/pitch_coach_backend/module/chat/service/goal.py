@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_response import SaveGoalArgs
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
-from pitch_coach_backend.module.chat.entity import ChatGoal, ChatRun
+from pitch_coach_backend.module.chat.entity import ChatAction, ChatGoal, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.authorization import authorization
 from pitch_coach_backend.module.chat.service.owned import owned_take_in
@@ -35,7 +35,7 @@ class GoalRejected(Exception):
 
 
 def save_goal(
-    db: Session, row: ChatRun, action: dict[str, Any], args: SaveGoalArgs
+    db: Session, row: ChatRun, saved: ChatAction, action: dict[str, Any], args: SaveGoalArgs
 ) -> ActionResultDTO:
     repo = ChatRepository(db)
     if row.first_trigger == "TAKE_REVIEWED":
@@ -44,7 +44,7 @@ def save_goal(
     if preapproved is not None:
         if not _preapproval_matches(repo, row, preapproved, args.goal):
             return failed(action, "PREAPPROVAL_MISMATCH", UNCONFIRMED)
-    elif not _goal_authorized(repo, row, action):
+    elif not _goal_authorized(row, saved, action):
         return failed(action, "APPROVAL_REQUIRED", UNCONFIRMED)
     if repo.count_succeeded_actions(row.id, "SAVE_GOAL") > 0:
         return failed(action, "NOT_ALLOWED", UNCONFIRMED)
@@ -55,7 +55,6 @@ def save_goal(
     conversation = repo.lock_conversation(row.conversation_id)
     if conversation.goal_version != args.expected_goal_version:
         return failed(action, "GOAL_VERSION_CONFLICT", "이미 다른 목표로 바뀌었어요.")
-    saved = repo.get_action(row.id, action["action_id"])
     version = conversation.goal_version + 1
     repo.add(
         ChatGoal(
@@ -74,8 +73,8 @@ def save_goal(
     return succeeded(action, {"goal": goal_view(repo.get_goal(conversation.id, version))})
 
 
-def _goal_authorized(repo: ChatRepository, row: ChatRun, action: dict[str, Any]) -> bool:
-    if repo.get_action(row.id, action["action_id"]).approved:
+def _goal_authorized(row: ChatRun, saved: ChatAction, action: dict[str, Any]) -> bool:
+    if saved.approved:
         return True
     original = row.input.get("user_message")
     return authorization(original, action.get("authorized_by"), "SAVE_GOAL") == "OK"
