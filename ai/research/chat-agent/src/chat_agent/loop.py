@@ -771,10 +771,11 @@ class Loop:
                         and len((tr.data or {}).get("items") or []) >= 2
                     ):
                         self.st.ambiguous_name = True
-                    if call.name == "search_guides" and tr.ok:
-                        self.st.guide_searched = (
-                            True  # 캐시 적중도 찾은 것이다(자료 묶음 준비 실패는 ok 아님)
-                        )
+                    if call.name == "search_guides" and (
+                        tr.ok or (tr.error or {}).get("code") == "CORPUS_UNAVAILABLE"
+                    ):
+                        # 찾은 것이다: 캐시 적중, 그리고 자료 묶음 준비 실패도(결과 0건처럼 일반 조언 규칙, L1-21)
+                        self.st.guide_searched = True
                     if (
                         call.name in _TAKE_READ_TOOLS
                         and tr.ok

@@ -250,12 +250,56 @@ def _general_rule_steps(data: dict) -> list[Any]:
     ]
 
 
-def test_failed_search_does_not_allow_general() -> None:
-    """자료 묶음 준비 실패로 자료 찾기가 실패하면 찾은 것이 아니다: 일반 조언은 고치기 없이 버리고 거절(L1-21)."""
-    _, data, llm = _run(F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"), corpus=None, fixes=[])
+def test_fm_L1_21_corpus_unavailable_still_allows_general() -> None:
+    """자료 묶음 준비 실패도 자료 찾기를 한 것으로 센다: 결과 0건처럼 고정 안내 + 일반 조언(DONE, L1-21 · 6-10)."""
+    lines, data, llm = _run(
+        F.answer([F.claim("GENERAL", G1), F.claim("GENERAL", G2)], route="NO_GUIDE"),
+        corpus=None,
+        fixes=[],
+    )
+    assert data["status"] == "DONE"
+    assert _texts(data) == [("SYSTEM", INTRO), ("GENERAL", G1), ("GENERAL", G2)]
+    assert _general_rule_steps(data) == []
+    assert [c for c in llm.calls if c.purpose == "FIX"] == []
+    assert_prefix_invariant(lines, data)
+
+
+def test_fm_L1_21_corpus_unavailable_still_blocks_guide_claims() -> None:
+    """자료 묶음 준비 실패에서 자료 근거 문장(GUIDE)은 이을 자료가 없어 나가지 않는다. 일반 조언만 남는다."""
+    _, data, _ = _run(
+        F.answer(
+            [
+                F.claim("GUIDE", '"핵심어만 적어 연습하세요"', source_ids=["g-1"]),
+                F.claim("GENERAL", G1),
+            ],
+            route="NO_GUIDE",
+        ),
+        corpus=None,
+        fixes=[F.fix({0: None})],
+    )
+    assert data["status"] == "DONE"
+    assert [k for k, _ in _texts(data)] == ["SYSTEM", "GENERAL"]
+    assert not data["message"].get("sources")
+
+
+def test_fm_L1_21_corpus_unavailable_and_general_all_dropped_refuses() -> None:
+    """자료 묶음 준비 실패에서 일반 조언도 검사에 모두 걸리면 그때만 거절(7-9 '자료에서 근거를 찾지 못해 답하지 않을게요.')."""
+    _, data, _ = _run(
+        F.answer([F.claim("GENERAL", "연구에 따르면 쉼이 중요해요.")], route="NO_GUIDE"),
+        corpus=None,
+        fixes=[F.fix({0: None})],
+    )
     assert data["status"] == "REFUSED"
     assert _texts(data) == [("SYSTEM", templates.SystemText.NO_GUIDE.value)]
-    assert [c for c in llm.calls if c.purpose == "FIX"] == []
+
+
+def test_general_needs_a_search_attempt_even_without_corpus() -> None:
+    """자료 묶음이 없어도 자료 찾기를 하지 않은 실행의 일반 조언은 걸린다(찾기를 '시도'한 것만 센다)."""
+    _, data, _ = _run(
+        F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"), search=False, corpus=None, fixes=[]
+    )
+    assert ("GENERAL", G1) not in _texts(data)
+    assert _general_rule_steps(data)
 
 
 def test_guide_and_general_all_dropped_refuses_even_on_answer_route() -> None:
