@@ -19,7 +19,6 @@ from tests import test_pitch_standards as base
 from tests.test_standard_analysis_storage import make_take, saved
 
 pitch_id = base.pitch_id
-auth_headers = base.auth_headers
 ai = base.ai
 
 EDITED = ["추임새 3번 이하", "청중 보기"]

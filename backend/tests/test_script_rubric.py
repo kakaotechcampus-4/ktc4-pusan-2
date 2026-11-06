@@ -43,11 +43,6 @@ META = {"schema_version": "1.0", "feature_version": "script_coverage-1.0", "mode
 SLIDES = ((1, "안녕하세요."), (2, "매출은 37% 늘었습니다."), (3, "감사합니다."))
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def _rubric(slide_number: int) -> dict[str, Any]:
     return {
         "meta": {"rubric_id": f"r-{slide_number}", "slide_number": slide_number},

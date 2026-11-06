@@ -24,11 +24,6 @@ from tests.script_parse.conftest import (
 )
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def _runner(db: Session, parser: FakeParser) -> ScriptParseRunner:
     return ScriptParseRunner(parser, session_factory=lambda: db)
 

@@ -25,11 +25,6 @@ from tests.coach_fakes import (
 )
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 @pytest.fixture(autouse=True)
 def isolated_pending_finalizes(monkeypatch):
     monkeypatch.setattr(finalize, "_pending", {})

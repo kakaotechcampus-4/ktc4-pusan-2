@@ -24,7 +24,6 @@ from pitch_coach_backend.module.take.entity import Take
 from tests import test_pitch_standards as base
 
 pitch_id = base.pitch_id
-auth_headers = base.auth_headers
 
 
 def reply(**changes):

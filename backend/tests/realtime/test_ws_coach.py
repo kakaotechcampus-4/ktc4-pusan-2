@@ -73,11 +73,6 @@ def _no_leftover_finalize(monkeypatch: pytest.MonkeyPatch):
         task.cancel()
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 def receive_type(ws, kind: str) -> dict:
     """그 type 의 메시지가 올 때까지 읽는다."""
     while True:

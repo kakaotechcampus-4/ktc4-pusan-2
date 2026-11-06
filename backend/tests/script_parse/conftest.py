@@ -13,7 +13,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
@@ -78,11 +77,6 @@ def parser(db_session: Session, client: TestClient) -> FakeParser:
     runner = ScriptParseRunner(fake, session_factory=lambda: db_session)
     app.dependency_overrides[get_script_parse_runner] = lambda: runner
     return fake
-
-
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
 def _new_pitch(client: TestClient, headers: dict[str, str]) -> uuid.UUID:

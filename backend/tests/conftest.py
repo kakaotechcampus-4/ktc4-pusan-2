@@ -134,6 +134,29 @@ def user_id(db_session: Session) -> uuid.UUID:
 
 
 @pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.fixture
+def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
+    from pitch_coach_backend.core.security import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
+@pytest.fixture
+def other_user_headers(db_session: Session) -> dict[str, str]:
+    from pitch_coach_backend.core.security import create_access_token
+    from pitch_coach_backend.module.user.entity import User
+
+    user = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
+    db_session.add(user)
+    db_session.flush()
+    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+
+@pytest.fixture
 def make_pdf() -> Callable[[int], bytes]:
     """쪽수가 pages 인 빈 PDF. 발표자료 업로드는 파일을 직접 열어 쪽수를 센다."""
     from pypdf import PdfWriter

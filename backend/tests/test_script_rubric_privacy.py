@@ -24,11 +24,6 @@ pytestmark = pytest.mark.anyio
 PRIVATE = "RUBRIC_PRIVATE_SENTINEL"
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 def _assert_private(caplog):
     assert PRIVATE not in caplog.text
     assert all(record.exc_info is None for record in caplog.records)

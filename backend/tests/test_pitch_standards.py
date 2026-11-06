@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.adapter import standard_parser
 from pitch_coach_backend.module.pitch.entity import Standards
 
@@ -25,11 +24,6 @@ AI_RESPONSE = {
     "targets": [],
     "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": None},
 }
-
-
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
 @pytest.fixture
