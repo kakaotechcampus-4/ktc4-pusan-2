@@ -26,7 +26,7 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.storage import transcripts as transcripts_module
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer, TranscriptBuffer
-from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
+from pitch_coach_backend.realtime.stream import finish, registry, state, transcript_sender
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -290,7 +290,7 @@ async def test_interim_does_not_hold_up_stt_while_the_client_is_slow():
         await asyncio.wait_for(stream._on_transcript(transcript(0, 200, text, is_final=False)), 0.1)
     stuck.stuck = False
     stuck.release.set()
-    await asyncio.wait_for(stream._interim_task, 1.0)
+    await asyncio.wait_for(stream._sender._interim_task, 1.0)
 
     assert _texts(stuck) == [("0-1", "하나"), ("0-1", "하나 둘 셋")]
 
@@ -299,7 +299,7 @@ async def test_interim_does_not_hold_up_stt_while_the_client_is_slow():
 async def test_old_interim_does_not_arrive_after_its_final(monkeypatch: pytest.MonkeyPatch):
     """같은 구간의 interim 이 final 뒤에 닿으면 FE 는 같은 `segment_id` 로 덮는다. final 앞에서
     남은 interim 을 버리고 보내는 중인 것은 상한까지 기다렸다 끊는다."""
-    monkeypatch.setattr(runtime, "INTERIM_SEND_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(transcript_sender, "INTERIM_SEND_TIMEOUT_SEC", 0.05)
     stream = _final_stream(FakeTranscriptStore())
     stuck = StuckWebSocket()
     await stream.attach(stuck)
