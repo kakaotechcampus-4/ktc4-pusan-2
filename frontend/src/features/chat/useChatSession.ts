@@ -8,8 +8,14 @@ import { fetchMessages } from './chatApi';
 import type { LiveProgress } from './ChatAnswer';
 import type { ShownClaim } from './chatResponse';
 import type { ChatRouteInfo } from './chatRoutes';
-import { WHOLE_SCOPE, useChatStore, type ScreenScope } from './chatStore';
-import { createChatTransport, type ChatTransport, type TransportSignal } from './chatTransport';
+import { WHOLE_SCOPE, useChatStore, type ScreenScope, type SendDraft } from './chatStore';
+import {
+  createChatTransport,
+  type ChatTransport,
+  type DecideResult,
+  type TransportSignal,
+  type UndoResult,
+} from './chatTransport';
 import { createTypingQueue, feedProgress, type TypingQueue } from './chatTyping';
 
 /**
@@ -54,7 +60,20 @@ export interface ChatSession {
   retryUnconfirmed: () => void;
   /** [취소] — 결과는 신호로 옵니다 */
   cancel: () => void;
+  /** 승인 확인 카드의 [승인] · [거절] */
+  decide: (
+    actionId: string,
+    decision: 'APPROVE' | 'REJECT',
+    argsHash: string,
+  ) => Promise<DecideResult>;
+  /** 목표 저장 카드의 [되돌리기] — 되돌렸으면 메시지 목록을 다시 읽습니다("목표를 되돌렸어요.") */
+  undo: (runId: string, actionId: string) => Promise<UndoResult>;
+  /** 목표 제안의 [이 안으로] — "{고른 안}으로 목표를 잡아 줘" 와 `choice` 를 함께 보냅니다 (12-4 F6) */
+  choose: (proposalId: string, option: 'USER' | 'EXPERT') => Promise<boolean>;
 }
+
+/** 목표 제안에서 고른 안의 이름 — 보낼 글에 씁니다 */
+const CHOSEN_LABEL = { USER: '사용자 안', EXPERT: '추천 안' } as const;
 
 export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession {
   const queryClient = useQueryClient();
@@ -131,6 +150,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
               trace: signal.trace,
               contractError: signal.contractError,
               progressDropped: signal.progressDropped,
+              cards: signal.cards,
             });
           },
           finish: (runId) => {
@@ -170,7 +190,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
 
   // ── 보내기 ───────────────────────────────────────────
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, choice: SendDraft['choice'] = null) => {
       const current = transport.current;
       if (!current) return false;
       const snapshot = takeScreenSnapshot(info.route);
@@ -189,7 +209,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
         text,
         page,
         again_of_message_id: null,
-        choice: null,
+        choice,
       });
       return result === 'accepted' || result === 'unconfirmed';
     },
@@ -205,6 +225,31 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
 
   const cancel = useCallback(() => void transport.current?.cancel(), []);
 
+  const decide = useCallback<ChatSession['decide']>(
+    async (actionId, decision, argsHash) =>
+      transport.current ? transport.current.decide(actionId, decision, argsHash) : 'stale',
+    [],
+  );
+
+  const undo = useCallback<ChatSession['undo']>(
+    async (runId, actionId) => {
+      const current = transport.current;
+      if (!current) return 'stale';
+      const result = await current.undo(runId, actionId);
+      const id = useChatStore.getState().conversationId;
+      if (result === 'undone' && id)
+        void queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) });
+      return result;
+    },
+    [queryClient, userId],
+  );
+
+  const choose = useCallback<ChatSession['choose']>(
+    (proposalId, option) =>
+      send(`${CHOSEN_LABEL[option]}으로 목표를 잡아 줘`, { proposal_id: proposalId, option }),
+    [send],
+  );
+
   return {
     availability,
     retryAvailability,
@@ -219,6 +264,9 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     send,
     retryUnconfirmed,
     cancel,
+    decide,
+    undo,
+    choose,
   };
 }
 

@@ -9,7 +9,7 @@ import { registerChatScreen, resetChatScreen, type ScreenBody } from '@/shared/l
 import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
 import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
-import type { ShownClaim } from './chatResponse';
+import { emptyBasis, readCard, type ShownClaim } from './chatResponse';
 import { chatTicket, useChatStore } from './chatStore';
 import type { TransportSignal } from './chatTransport';
 
@@ -54,6 +54,8 @@ interface FakeTransport {
   disposed: boolean;
   retried: number;
   cancelled: number;
+  decided: unknown[][];
+  undone: unknown[][];
   emit: (signal: TransportSignal) => void;
 }
 const transports = vi.hoisted(() => [] as FakeTransport[]);
@@ -71,6 +73,8 @@ vi.mock('./chatTransport', async () => {
         disposed: false,
         retried: 0,
         cancelled: 0,
+        decided: [],
+        undone: [],
         emit: (signal) => listeners.forEach((listener) => listener(signal)),
       };
       transports.push(t);
@@ -101,7 +105,14 @@ vi.mock('./chatTransport', async () => {
         dispose: () => {
           t.disposed = true;
         },
-        decide: async () => 'locked',
+        decide: async (...args: unknown[]) => {
+          t.decided.push(args);
+          return 'decided';
+        },
+        undo: async (...args: unknown[]) => {
+          t.undone.push(args);
+          return 'undone';
+        },
         cancel: async () => {
           // 화면이 부른 횟수를 셉니다 — 잠금은 화면이 지켜야 합니다
           t.cancelled++;
@@ -912,5 +923,160 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
     expect(panel()!.querySelector('[data-message="m2"]')!.textContent).toContain(
       '아주 긴 문장이 아직 다 보이지 않았어요',
     );
+  });
+});
+
+// ── 8-3 카드 ─────────────────────────────────────────────
+
+describe('카드 연결 (12-4 F6 · F10)', () => {
+  const PITCH = '22222222-2222-4222-8222-222222222222';
+  const goal = {
+    metric: 'audience_ratio',
+    slide_number: 3,
+    operator: 'gt_base',
+    base: { take_id: 't', take_number: 2, value: 0.31, range: null },
+  };
+  const assistant = (id: string, runId: string, status: string, cards: unknown[]) => ({
+    message_id: id,
+    role: 'assistant',
+    status,
+    text: '확인했어요.',
+    run_id: runId,
+    claims: [
+      {
+        kind: 'GENERAL',
+        text: '확인했어요.',
+        evidence_ids: [],
+        source_ids: [],
+        assessment_id: null,
+        action_id: null,
+      },
+    ],
+    cards,
+    evidence: [],
+    sources: [],
+    assessments: [],
+    plan: null,
+    trace: null,
+    masked: false,
+  });
+  const proposal = {
+    type: 'GOAL_PROPOSAL',
+    proposal_id: 'p-1',
+    options: [
+      {
+        label: 'EXPERT',
+        goal: { ...goal, version: 1 },
+        reason: '추천',
+        evidence_ids: [],
+        content_hash: 'h',
+      },
+    ],
+  };
+
+  async function inConversation(messages: unknown[]) {
+    server.messages = () => Promise.resolve({ messages, next_before_seq: null });
+    await visit('/');
+    const store = useChatStore.getState();
+    store.selectConversation('c1', { pitchId: null, title: null });
+    store.resolveConversation(chatTicket(), null);
+    await openPanel();
+    await settle();
+  }
+
+  it('[이 안으로]는 "{안}으로 목표를 잡아 줘" 와 choice 를 함께 보낸다', async () => {
+    await inConversation([assistant('m1', 'r1', 'DONE', [proposal])]);
+    await act(async () => button('이 안으로')!.click());
+    expect(transport().sent).toHaveLength(1);
+    expect(transport().sent[0]).toMatchObject({
+      text: '추천 안으로 목표를 잡아 줘',
+      choice: { proposal_id: 'p-1', option: 'EXPERT' },
+      conversation_id: 'c1',
+    });
+  });
+
+  it('만료된 실행의 제안은 고를 수 없다', async () => {
+    await inConversation([assistant('m1', 'r1', 'EXPIRED', [proposal])]);
+    expect(button('이 안으로')).toBeUndefined();
+    expect(panel()!.textContent).toContain('시간이 지나 다시 물어봐 주세요.');
+  });
+
+  it('[되돌리기]는 그 메시지의 실행 · 행동으로 보내고, 되돌리면 목록을 다시 읽는다', async () => {
+    await inConversation([
+      assistant('m1', 'r1', 'DONE', [
+        {
+          type: 'GOAL_SAVED',
+          action_id: 'a-1',
+          goal: { ...goal, version: 1 },
+          reason: '',
+          evidence_ids: [],
+          undo: true,
+        },
+      ]),
+    ]);
+    const reads = () =>
+      server.seen.filter((x) => x.path.startsWith('/api/chat/conversations/c1')).length;
+    const before = reads();
+    await act(async () => button('되돌리기')!.click());
+    await settle();
+    expect(transport().undone).toEqual([['r1', 'a-1']]);
+    expect(reads()).toBeGreaterThan(before);
+  });
+
+  it('승인 대기 카드는 문장이 다 보인 뒤에 달고, [승인]은 카드의 args_hash 로 보낸다', async () => {
+    await visit('/');
+    const store = useChatStore.getState();
+    store.selectConversation('c1', { pitchId: null, title: null });
+    store.resolveConversation(chatTicket(), { runId: 'r1', phase: 'WAITING_APPROVAL' });
+    await openPanel();
+    await settle();
+    const ask = readCard(
+      {
+        type: 'ASK_CONFIRM',
+        action_id: 'a-9',
+        action_type: 'SAVE_GOAL',
+        title: '목표를 저장할까요?',
+        summary: '3장 청중 응시',
+        before: null,
+        after: { metric: 'audience_ratio' },
+        notes: [],
+        expires_at: '2026-11-06T05:30:00Z',
+        args_hash: 'sha-1',
+      },
+      emptyBasis(),
+    );
+    await act(async () =>
+      transport().emit({
+        type: 'progress',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'WAITING_APPROVAL',
+        events: [],
+        claims: [{ ...claim('먼저 판단을 보여 드릴게요.'), index: 0 }],
+        restart: true,
+        catchUp: false,
+        contractError: null,
+        plan: null,
+        trace: null,
+        progressDropped: false,
+        cards: [ask],
+      }),
+    );
+    // 문장이 아직 다 보이지 않았습니다
+    expect(button('승인')).toBeUndefined();
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 600)));
+    await act(async () => button('승인')!.click());
+    expect(transport().decided).toEqual([['a-9', 'APPROVE', 'sha-1']]);
+  });
+
+  it('[연습 준비로]는 장치 점검 화면으로 옮기고 대화창은 열린 채로 남는다', async () => {
+    await inConversation([
+      assistant('m1', 'r1', 'DONE', [{ type: 'START_PRACTICE', pitch_id: PITCH }]),
+    ]);
+    await act(async () => button('연습 준비로')!.click());
+    await settle();
+    expect(router.state.location.pathname).toBe(`/pitch/${PITCH}/device-check`);
+    expect(panel()).not.toBeNull();
+    expect(panel()!.textContent).toContain('연습 준비 화면으로 옮겼어요.');
   });
 });

@@ -589,6 +589,104 @@ describe('승인 · 거절', () => {
   });
 });
 
+// ── 되돌리기 ──────────────────────────────────────────────────
+
+describe('되돌리기', () => {
+  const undone = (runId: string) => ({
+    run_id: runId,
+    action_id: 'a-1',
+    goal_version: 3,
+    goal: null,
+  });
+
+  it('늦게 온다 — 새 대화로 옮긴 뒤 온 성공은 지금 화면의 결과로 답하지 않는다', async () => {
+    const undo = line(mockApi.undo);
+    start({ undo: undo.fn });
+    const { runId } = await sendRunning('DONE');
+    await clock.advance(1_000);
+    const undoing = transport.undo(runId, 'a-1');
+    await flush();
+    store().startNewConversation(WHOLE);
+    undo.calls[0]!.answer(undone(runId));
+    expect(await undoing).toBe('stale');
+  });
+
+  it('두 번 온다 — 같은 카드를 겹쳐 누르면 한 번만 보내고, 결과를 모르면 같은 요청을 한 번만 다시 보낸다', async () => {
+    const undo = line(mockApi.undo);
+    start({ undo: undo.fn });
+    const { runId } = await sendRunning('DONE');
+    await clock.advance(1_000);
+    const first = transport.undo(runId, 'a-1');
+    expect(await transport.undo(runId, 'a-1')).toBe('locked');
+    await flush();
+    expect(undo.calls).toHaveLength(1);
+
+    // 끊김 — BE 는 같은 요청에 처음 결과를 주므로 한 번 다시 보냅니다
+    undo.calls[0]!.fail(new TypeError('끊김'));
+    await flush();
+    expect(undo.calls).toHaveLength(2);
+    expect(undo.calls[1]!.args.slice(0, 2)).toEqual([runId, 'a-1']);
+    undo.calls[1]!.answer(undone(runId));
+    expect(await first).toBe('undone');
+
+    // 끝나면 다시 누를 수 있습니다
+    const again = transport.undo(runId, 'a-1');
+    await flush();
+    expect(undo.calls).toHaveLength(3);
+    undo.calls[2]!.answer(undone(runId));
+    expect(await again).toBe('undone');
+  });
+
+  it('순서가 바뀐다 — 그사이 같은 대화에 새 실행이 붙어도 되돌린 결과는 이 대화의 것으로 받는다', async () => {
+    const undo = line(mockApi.undo);
+    start({ undo: undo.fn });
+    const conversationId = await idleConversation();
+    const runId = lastRunOf.get(conversationId)!;
+    const undoing = transport.undo(runId, 'a-1');
+    await flush();
+    // 다음 메시지로 새 실행이 먼저 붙음
+    expect(await transport.send(draft('다음 질문'))).toBe('accepted');
+    expect(store().conversationId).toBe(conversationId);
+    expect(store().run?.runId).not.toBe(runId);
+    undo.calls[0]!.answer(undone(runId));
+    expect(await undoing).toBe('undone');
+  });
+
+  it('그사이 닫힌다 — 닫힌 쪽은 결과로 답하지 않고 요청 · 타이머를 남기지 않는다', async () => {
+    const undo = line(mockApi.undo);
+    start({ undo: undo.fn });
+    const { runId } = await sendRunning('DONE');
+    await clock.advance(1_000);
+    const undoing = transport.undo(runId, 'a-1');
+    await flush();
+    close();
+    undo.calls[0]!.answer(undone(runId));
+    expect(await undoing).toBe('stale');
+    expect(undo.calls).toHaveLength(1);
+    expect(clock.pending()).toEqual([]);
+  });
+
+  it('409 는 충돌, AGENT_DISABLED 는 꺼짐 신호 — 다시 보내지 않는다', async () => {
+    const undo = line(mockApi.undo);
+    start({ undo: undo.fn });
+    const { runId } = await sendRunning('DONE');
+    await clock.advance(1_000);
+
+    const conflict = transport.undo(runId, 'a-1');
+    await flush();
+    undo.calls[0]!.fail(new ApiFailure(409, 'AGENT_STATE_INVALID'));
+    expect(await conflict).toBe('conflict');
+
+    const mark = signals.length;
+    const disabled = transport.undo(runId, 'a-1');
+    await flush();
+    undo.calls[1]!.fail(new ApiFailure(503, 'AGENT_DISABLED'));
+    expect(await disabled).toBe('failed');
+    expect(of('disabled', mark)).toHaveLength(1);
+    expect(undo.calls).toHaveLength(2);
+  });
+});
+
 // ── 범위 바꾸기 · 범위 맞추기 ─────────────────────────────────────
 
 describe('범위 바꾸기', () => {

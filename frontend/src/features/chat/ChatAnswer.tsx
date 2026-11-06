@@ -1,16 +1,16 @@
-import { useId, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
+import { CardList, type CardActions } from './ChatCards';
+import { ChipList } from './ChatChips';
 import {
-  chipLabel,
   errorText,
   GENERAL_LABEL,
   PROGRESS_DROPPED_TEXT,
   readMessage,
   readPlan,
   readTrace,
-  type Chip,
   type ContractError,
+  type ShownCard,
   type ShownClaim,
 } from './chatResponse';
 import type { TypedLine, TypingQueue } from './chatTyping';
@@ -43,7 +43,6 @@ const PLAN_MARK: Record<PlanStep['status'], { mark: string; label: string }> = {
 
 export const SUPERSEDED_TEXT = '갱신된 기록을 다시 확인했어요';
 export const WAITING_TEXT = '기록을 확인하고 있어요';
-const MISSING_INFO = '정보 없음';
 
 export const AGENT_BUBBLE =
   'max-w-[88%] self-start whitespace-pre-wrap break-words rounded-xl border border-line-strong bg-white px-4 py-3 text-sm leading-6';
@@ -65,59 +64,8 @@ function ClaimLine({ claim, shown, done }: { claim: ShownClaim; shown: string; d
       <span>{shown}</span>
       {done && superseded && <p className="mt-1 text-xs text-stone">{SUPERSEDED_TEXT}</p>}
       {done && claim.general && <p className="mt-1 text-xs text-stone">{GENERAL_LABEL}</p>}
-      {done && claim.chips.length > 0 && (
-        <ul aria-label="근거" className="mt-1 flex flex-wrap gap-1.5">
-          {claim.chips.map((chip) => (
-            <li key={chip.key}>
-              <ChipView chip={chip} />
-            </li>
-          ))}
-        </ul>
-      )}
+      {done && <ChipList chips={claim.chips} />}
     </div>
-  );
-}
-
-const CHIP_CLASS =
-  'inline-flex min-h-8 items-center rounded-full border border-line-strong bg-cream px-2.5 text-xs font-bold';
-
-function ChipView({ chip }: { chip: Chip }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  const label = chipLabel(chip);
-  if (chip.type === 'RECORD' && chip.takeId)
-    return (
-      <Link
-        to={`/takes/${chip.takeId}`}
-        className={`${CHIP_CLASS} underline-offset-2 hover:underline`}
-      >
-        {label}
-      </Link>
-    );
-  if (chip.type !== 'SOURCE') return <span className={CHIP_CLASS}>{label}</span>;
-  // 자료 칩은 펼치면 인용 · 출처 · 라이선스. 빠진 칸은 "정보 없음" (12-4 F4)
-  return (
-    <>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={() => setOpen((v) => !v)}
-        className={CHIP_CLASS}
-      >
-        {label}
-      </button>
-      {open && (
-        <dl id={id} className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs leading-5">
-          <dt className="text-stone">인용</dt>
-          <dd>{chip.quote ?? MISSING_INFO}</dd>
-          <dt className="text-stone">출처</dt>
-          <dd>{chip.source ?? MISSING_INFO}</dd>
-          <dt className="text-stone">라이선스</dt>
-          <dd>{chip.license ?? MISSING_INFO}</dd>
-        </dl>
-      )}
-    </>
   );
 }
 
@@ -153,8 +101,11 @@ export function TraceList({ trace }: { trace: readonly TraceItem[] }) {
   );
 }
 
+/** 만료 · 취소로 끝난 실행 — 확정 전 제안의 버튼을 끕니다 (12-4 F6) */
+const isExpired = (status: ChatMessage['status']) => status === 'EXPIRED' || status === 'CANCELLED';
+
 /** 지난 답 하나 — 효과 없이 그립니다 */
-export function StoredAnswer({ message }: { message: ChatMessage }) {
+export function StoredAnswer({ message, actions }: { message: ChatMessage; actions: CardActions }) {
   const answer = readMessage(message);
   const plan = readPlan(message.plan);
   const trace = readTrace(message.trace);
@@ -168,6 +119,12 @@ export function StoredAnswer({ message }: { message: ChatMessage }) {
       {(plan.dropped || trace.dropped) && (
         <p className="mt-1 text-xs text-stone">{PROGRESS_DROPPED_TEXT}</p>
       )}
+      <CardList
+        cards={answer.cards}
+        runId={message.run_id}
+        expired={isExpired(message.status)}
+        actions={actions}
+      />
       <TraceList trace={trace.items} />
     </div>
   );
@@ -180,6 +137,8 @@ export interface LiveProgress {
   trace: TraceItem[] | null;
   contractError: ContractError | null;
   progressDropped: boolean;
+  /** 승인 대기 중 카드 — 문장이 다 보인 뒤에 답니다 */
+  cards: ShownCard[];
 }
 
 /**
@@ -191,15 +150,21 @@ export function LiveAnswer({
   typing,
   announce,
   waiting,
+  actions,
 }: {
   progress: LiveProgress | null;
   typing: TypingQueue<ShownClaim>;
   announce: string;
   /** 기다리는 동안 보일 줄 — 진행 중이고 아직 문장이 없을 때 */
   waiting: ReactNode;
+  actions: CardActions;
 }) {
   const lines = useSyncExternalStore(typing.subscribe, typing.lines);
-  const hasBody = progress !== null && (lines.length > 0 || (progress.plan?.length ?? 0) > 0);
+  const hasBody =
+    progress !== null &&
+    (lines.length > 0 || (progress.plan?.length ?? 0) > 0 || progress.cards.length > 0);
+  // 판단 문장이 먼저, 확인 카드는 그 뒤에 — 문장이 다 보인 뒤에 답니다 (12-4 F3)
+  const typed = lines.every((line) => line.done);
   return (
     <>
       <p aria-live="polite" className="sr-only" data-chat-announce="">
@@ -216,6 +181,14 @@ export function LiveAnswer({
           )}
           {progress.progressDropped && (
             <p className="mt-1 text-xs text-stone">{PROGRESS_DROPPED_TEXT}</p>
+          )}
+          {typed && (
+            <CardList
+              cards={progress.cards}
+              runId={progress.runId}
+              expired={false}
+              actions={actions}
+            />
           )}
           <TraceList trace={progress.trace ?? []} />
         </div>

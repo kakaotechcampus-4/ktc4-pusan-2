@@ -201,6 +201,12 @@ const isUnknownResult = (error: unknown) =>
 /** 승인 · 거절 결과 — 'locked' 는 이미 보내는 중이거나 승인 대기가 아님 */
 export type DecideResult = 'decided' | 'locked' | 'failed' | 'stale';
 
+/**
+ * 되돌리기 결과 — 'conflict' 는 그사이 다른 목표가 저장됐거나 기준 기록이 지워짐(409),
+ * 'locked' 는 같은 카드를 이미 되돌리는 중
+ */
+export type UndoResult = 'undone' | 'conflict' | 'locked' | 'failed' | 'stale';
+
 export type SendResult =
   'accepted' | 'locked' | 'unconfirmed' | 'conflict' | 'failed' | 'stale' | 'none';
 
@@ -238,6 +244,12 @@ export interface ChatTransport {
    * `false` 는 보내지 않았음(지켜보는 실행이 없거나 이미 취소 중 · 닫힘)
    */
   cancel: () => Promise<boolean>;
+  /**
+   * 목표 저장 카드의 [되돌리기] — 그 카드의 실행 · 행동으로. 실행이 끝났다는 이유로 막지 않습니다(12-4 F6).
+   * 같은 카드는 한 번에 하나만, 결과를 모르면 같은 요청을 한 번 다시 보냅니다(BE 는 처음 결과를 줍니다).
+   * 성공하면 BE 가 대화에 "목표를 되돌렸어요." 를 남기니 화면은 메시지 목록을 다시 읽습니다
+   */
+  undo: (runId: string, actionId: string) => Promise<UndoResult>;
   /** 범위 칩 — 새 대화는 바로, 있는 대화는 서버에 바꾸기를 요청합니다 */
   changeScope: (scope: ChatScope) => Promise<boolean>;
   /** 사용자가 직접 확인 — 늦어진 실행 · 조회 실패 뒤 */
@@ -500,6 +512,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   let cancelUnsure: string | null = null;
   /** 보내는 중인 승인 · 거절 (L3-39 "`action_id` 별로 막는다") */
   const deciding = new Set<string>();
+  /** 보내는 중인 되돌리기 — 카드(`action_id`)별로 막습니다 */
+  const undoing = new Set<string>();
   /** 마지막으로 알린 계획 · 진행 기록 — 이벤트가 없어도(BE 커서 미구현) 진행 패널이 바뀌게 */
   let lastShape: string | null = null;
   /** 실행마다 잰 시간. 승인 대기 시간은 뺍니다(12-3 "대기한 시간은 실행의 120초에서 뺀다") */
@@ -1237,6 +1251,33 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         return 'decided';
       } finally {
         deciding.delete(actionId);
+      }
+    },
+
+    undo: async (runId, actionId) => {
+      if (disposed) return 'stale';
+      if (undoing.has(actionId)) return 'locked';
+      undoing.add(actionId);
+      // 목표는 대화의 값이라 세대 · 시도 · 대화만 견줍니다 — 그사이 새 실행이 붙어도 이 대화의 결과입니다
+      const once = () =>
+        request({
+          watch: ['generation', 'attempt', 'conversation'],
+          start: (signal) => api.undo(runId, actionId, signal),
+        });
+      try {
+        let answer = await once();
+        if (!answer.ok && answer.fate === 'current' && isUnknownResult(answer.error))
+          answer = await once();
+        if (answer.fate !== 'current') return 'stale';
+        if (answer.ok) return 'undone';
+        if (isDisabled(answer.error)) {
+          emit({ type: 'disabled' });
+          return 'failed';
+        }
+        if (answer.error instanceof ApiFailure && answer.error.status === 409) return 'conflict';
+        return 'failed';
+      } finally {
+        undoing.delete(actionId);
       }
     },
 

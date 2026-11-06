@@ -5,11 +5,19 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '@/types/chat';
 import { LiveAnswer, StoredAnswer, SUPERSEDED_TEXT, type LiveProgress } from './ChatAnswer';
+import type { CardActions } from './ChatCards';
 import { GENERAL_LABEL, type ShownClaim } from './chatResponse';
 import { ManualClock } from './chatTransport.testkit';
 import { createTypingQueue, TYPING_MAX_LAG_MS, type TypingQueue } from './chatTyping';
 
 const TAKE = '11111111-1111-4111-8111-111111111111';
+
+const noActions: CardActions = {
+  decide: async () => 'locked',
+  undo: async () => 'locked',
+  choose: async () => false,
+  canSend: true,
+};
 
 let host: HTMLDivElement;
 let root: Root;
@@ -112,7 +120,7 @@ function storedMessage(over: Partial<ChatMessage> = {}): ChatMessage {
 
 describe('지난 답 (12-4 F4 · F7 · F13)', () => {
   it('문장마다 근거 칩 — 내 기록은 형식이 맞는 Take 만 리포트로 잇는다', async () => {
-    await render(<StoredAnswer message={storedMessage()} />);
+    await render(<StoredAnswer message={storedMessage()} actions={noActions} />);
     const link = host.querySelector('a')!;
     expect(link.textContent).toBe('Take 5 · 3장');
     expect(link.getAttribute('href')).toBe(`/takes/${TAKE}`);
@@ -121,7 +129,7 @@ describe('지난 답 (12-4 F4 · F7 · F13)', () => {
   });
 
   it('자료 칩은 펼치면 인용 · 출처 · 라이선스, 빠진 칸은 "정보 없음"', async () => {
-    await render(<StoredAnswer message={storedMessage()} />);
+    await render(<StoredAnswer message={storedMessage()} actions={noActions} />);
     const chip = buttonByText('자료: 대본 의존 줄이기')!;
     expect(chip.getAttribute('aria-expanded')).toBe('false');
     await act(async () => chip.click());
@@ -132,7 +140,7 @@ describe('지난 답 (12-4 F4 · F7 · F13)', () => {
   });
 
   it('일반 조언은 칩 없이 글 라벨, 판단은 판정 배지 — 대체된 판단은 흐리게 표시를 붙인다', async () => {
-    await render(<StoredAnswer message={storedMessage()} />);
+    await render(<StoredAnswer message={storedMessage()} actions={noActions} />);
     const lines = [...host.querySelectorAll('[data-claim]')];
     expect(lines[2]!.textContent).toContain(GENERAL_LABEL);
     expect(lines[2]!.querySelector('ul')).toBeNull();
@@ -143,7 +151,7 @@ describe('지난 답 (12-4 F4 · F7 · F13)', () => {
   });
 
   it('할 일은 답 위에 표시와 읽는 글로, 확인한 것은 접어 둔다', async () => {
-    await render(<StoredAnswer message={storedMessage()} />);
+    await render(<StoredAnswer message={storedMessage()} actions={noActions} />);
     const plan = host.querySelector('ol[aria-label="할 일"]')!;
     expect(plan.textContent).toBe('☑ 끝: 최근 Take 비교— 건너뜀: 자료 찾기');
     const trace = host.querySelector('details')!;
@@ -156,7 +164,7 @@ describe('지난 답 (12-4 F4 · F7 · F13)', () => {
     const broken = storedMessage({
       claims: [claims[0], { ...claims[1], kind: 'NEW_KIND' }] as never,
     });
-    await render(<StoredAnswer message={broken} />);
+    await render(<StoredAnswer message={broken} actions={noActions} />);
     expect(host.querySelectorAll('[data-claim]')).toHaveLength(1);
     expect(host.textContent).toContain('답의 근거를 확인하지 못했으니 다시 물어봐 주세요.');
   });
@@ -182,6 +190,7 @@ describe('지금 실행의 답 (12-4 F12)', () => {
     trace: null,
     contractError: null,
     progressDropped: false,
+    cards: [],
   };
 
   let clock: ManualClock;
@@ -201,7 +210,15 @@ describe('지금 실행의 답 (12-4 F12)', () => {
   });
 
   const renderLive = (p: LiveProgress | null = progress) =>
-    render(<LiveAnswer progress={p} typing={queue} announce={announced} waiting={null} />);
+    render(
+      <LiveAnswer
+        progress={p}
+        typing={queue}
+        announce={announced}
+        waiting={null}
+        actions={noActions}
+      />,
+    );
 
   it('글자 단위로 보이고, 칩은 문장이 다 보인 뒤에 단다', async () => {
     await renderLive();

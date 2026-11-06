@@ -66,6 +66,7 @@ function start(override: Partial<ChatApi> = {}) {
     decide: counted(api.decide),
     createConversation: counted(api.createConversation),
     changeScope: counted(api.changeScope),
+    undo: counted(api.undo),
     listConversations: counted(api.listConversations),
   };
   transport = createChatTransport({

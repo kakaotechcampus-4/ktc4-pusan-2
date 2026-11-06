@@ -103,6 +103,7 @@ export const mockApi: ChatApi = {
   cancel: (runId) => call(chatPaths.cancel(runId), { method: 'POST' }),
   decide: (runId, actionId, request) =>
     call(chatPaths.decision(runId, actionId), json('POST', request)),
+  undo: (runId, actionId) => call(chatPaths.undo(runId, actionId), { method: 'POST' }),
   listConversations: () => call(chatPaths.conversations),
   createConversation: (request) => call(chatPaths.conversations, json('POST', request)),
   changeScope: (id, pitchId) => call(chatPaths.scope(id), json('PATCH', { pitch_id: pitchId })),

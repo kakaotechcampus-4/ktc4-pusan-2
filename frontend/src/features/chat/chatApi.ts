@@ -9,6 +9,7 @@ import type {
   ScopeChangeResponse,
   SendMessageAccepted,
   SendMessageRequest,
+  UndoResponse,
 } from '@/types/chat';
 import { MAX_RESPONSE_BYTES } from './chatResponse';
 
@@ -51,6 +52,11 @@ export interface ChatApi {
     pitchId: string | null,
     signal?: AbortSignal,
   ) => Promise<ScopeChangeResponse>;
+  /**
+   * 목표 저장 카드의 [되돌리기] (BE #934). 실행이 끝난 뒤에도 쓸 수 있고, 같은 요청은 처음 결과를 줍니다.
+   * 그사이 다른 목표가 저장됐거나 기준 기록이 지워졌으면 409 `AGENT_STATE_INVALID`
+   */
+  undo: (runId: string, actionId: string, signal?: AbortSignal) => Promise<UndoResponse>;
   /** 대화 목록 — 범위 바꾸기의 결과를 모를 때 서버의 범위를 다시 읽습니다 */
   listConversations: (signal?: AbortSignal) => Promise<unknown>;
 }
@@ -91,6 +97,9 @@ export const chatApi: ChatApi = {
       body: JSON.stringify({ pitch_id: pitchId }),
       signal,
     }),
+  // BE 되돌리기는 본문을 받지 않습니다
+  undo: (runId, actionId, signal) =>
+    apiRequest<UndoResponse>(chatPaths.undo(runId, actionId), { method: 'POST', signal }),
   listConversations: (signal) => apiRequest<unknown>(chatPaths.conversations, { signal }, within),
 };
 

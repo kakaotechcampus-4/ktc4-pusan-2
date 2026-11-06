@@ -106,6 +106,19 @@ describe('chatApi — 실제 호출 모양', () => {
     );
   });
 
+  it('되돌리기는 본문 없는 POST — 없는 행동은 404 ApiFailure', async () => {
+    const accepted = (await chatApi.send(message('질문'))) as SendMessageAccepted;
+    await expect(chatApi.undo(accepted.run_id, 'a-없음')).rejects.toMatchObject({
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+    expect(last()).toMatchObject({
+      method: 'POST',
+      path: `/api/chat/runs/${accepted.run_id}/actions/${encodeURIComponent('a-없음')}/undo`,
+      body: null,
+    });
+  });
+
   it('메시지 목록은 limit 쿼리로 읽고, 앞 페이지는 before_seq 를 더한다', async () => {
     const accepted = (await chatApi.send(message('질문'))) as SendMessageAccepted;
     await fetchMessages(accepted.conversation_id);

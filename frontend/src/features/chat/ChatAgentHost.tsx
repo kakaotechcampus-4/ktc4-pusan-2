@@ -14,6 +14,7 @@ import { useSession } from '@/shared/api/useSession';
 import { isChatAgentBuildEnabled } from '@/shared/lib/chatAgent';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
+import type { CardActions } from './ChatCards';
 import { ANSWER_FAILED_TEXT } from './chatResponse';
 import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
 import { canSend, useChatStore, type ScreenScope } from './chatStore';
@@ -373,6 +374,13 @@ function ChatPanel({
 /** 지난 메시지와 지금 실행의 답 — 카드는 8-3 에서 붙입니다 */
 function MessageList({ session }: { session: ChatSession }) {
   const pending = useChatStore((s) => s.pending?.request.text ?? null);
+  const sendable = useChatStore((s) => canSend(s));
+  const actions: CardActions = {
+    decide: session.decide,
+    undo: session.undo,
+    choose: session.choose,
+    canSend: sendable,
+  };
   const shown = session.messages;
   const progress = session.progress;
   // 끝난 실행의 답이 목록에 들어왔으면 목록 쪽 하나만 보입니다
@@ -385,7 +393,7 @@ function MessageList({ session }: { session: ChatSession }) {
         <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
       )}
       {shown.map((message) => (
-        <MessageItem key={message.message_id} message={message} />
+        <MessageItem key={message.message_id} message={message} actions={actions} />
       ))}
       {pending && <p className={SELF_CLASS}>{pending}</p>}
       <LiveAnswer
@@ -393,6 +401,7 @@ function MessageList({ session }: { session: ChatSession }) {
         typing={session.typing}
         announce={session.announce}
         waiting={<RunWaiting onCancel={session.cancel} />}
+        actions={actions}
       />
     </>
   );
@@ -427,9 +436,9 @@ function RunWaiting({ onCancel }: { onCancel: () => void }) {
 const SELF_CLASS =
   'max-w-[88%] self-end whitespace-pre-wrap break-words rounded-xl bg-cream px-4 py-3 text-sm leading-6';
 
-function MessageItem({ message }: { message: ChatMessage }) {
+function MessageItem({ message, actions }: { message: ChatMessage; actions: CardActions }) {
   if (message.role === 'user') return <p className={SELF_CLASS}>{message.text}</p>;
   if (message.role === 'system' || message.masked)
     return <p className={AGENT_BUBBLE}>{message.text}</p>;
-  return <StoredAnswer message={message} />;
+  return <StoredAnswer message={message} actions={actions} />;
 }
