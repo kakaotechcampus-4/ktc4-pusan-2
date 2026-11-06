@@ -868,3 +868,64 @@ def test_fm_L1_12_research_refusal_ends_refused() -> None:
     assert fd.status == "REFUSED"
     assert fd.message.text == templates.SystemText.CANNOT_ANSWER.value  # type: ignore[union-attr]
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]
+
+
+def test_failed_fetch_take_adds_fixed_notice() -> None:
+    """가져오기 행동이 실패하면 7-10 고정 안내 "해당 연습 기록을 가져오지 못했어요."를 답에 붙인다."""
+    req = F.request(user_message=MSG)
+    _, _, d1 = F.run_turn(req, F.FakeLlm(fetch_take_script()))
+    a1 = d1["actions"][0]
+    r1 = [
+        {
+            "action_id": a1["action_id"],
+            "type": "FETCH_TAKE",
+            "status": "FAILED",
+            "data": None,
+            "error": {"code": "NOT_FOUND", "message": "없음"},
+        }
+    ]
+    fd = final_ok(
+        F.run_turn(resume_request(req, d1, r1), F.FakeLlm([F.done()], answers=[F.answer([])]))[2]
+    )
+    assert templates.SystemText.TAKE_FETCH_FAILED.value in fd.message.text  # type: ignore[union-attr]
+
+
+def test_fm_L2_31_success_in_between_resets_repeated_failure() -> None:
+    """같은 실패 행동은 '연속'일 때만 막는다: 실패 A → 다른 행동 성공 B → A 는 다시 실행할 수 있다(5-8)."""
+    req = F.request(user_message=MSG)
+    fetch3 = ("fetch_take", {"take_id": "t-3", "reason": "Take 3"})
+    _, _, d1 = F.run_turn(
+        req, F.FakeLlm([F.plan(assessments=[change_draft()]), F.tools(fetch3, prefix="a1")])
+    )
+    a1 = d1["actions"][0]
+    r1 = [
+        {
+            "action_id": a1["action_id"],
+            "type": "FETCH_TAKE",
+            "status": "FAILED",
+            "data": None,
+            "error": {"code": "TIMEOUT", "message": "시간 초과"},
+        }
+    ]
+    req2 = resume_request(req, d1, r1)
+    _, _, d2 = F.run_turn(
+        req2, F.FakeLlm([F.tools(("fetch_take", {"take_id": "t-4"}), prefix="a2")])
+    )
+    assert d2["status"] == "NEEDS_ACTION"
+    a2 = d2["actions"][0]
+    r2 = [
+        {
+            "action_id": a2["action_id"],
+            "type": "FETCH_TAKE",
+            "status": "SUCCEEDED",
+            "data": {"take": fetched_take("t-4")},
+            "error": None,
+        }
+    ]
+    req3 = resume_request(req2, d2, r2)
+    req3["context"]["loaded_takes"] = [fetched_take("t-4")]
+    _, _, d3 = F.run_turn(
+        req3,
+        F.FakeLlm([F.tools(("fetch_take", {"take_id": "t-3", "reason": "다시"}), prefix="a3")]),
+    )
+    assert d3["status"] == "NEEDS_ACTION" and d3["actions"][0]["args"]["take_id"] == "t-3"

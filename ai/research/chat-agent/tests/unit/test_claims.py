@@ -1007,7 +1007,7 @@ def test_fm_L6_21_other_speaker_keeps_label_and_judges_content_only():
     assert o.assessment.verdict == "CONTRADICTED"  # 발언 여부가 아니라 내용만 판정
     assert (
         o.sentence
-        == "친구의 말씀은 확인할 수 없지만, 기록에서는 Take 5 청중 시선 31%, 우선 개선예요."
+        == "친구의 말씀은 확인할 수 없지만, 기록에서는 Take 5 청중 시선 31%, 우선 개선이에요."
     )
     un = fin([d], msg, t5(dims=None), focus="take-5").outcomes[0]
     assert un.sentence == templates.UNVERIFIABLE.format(quote="시선이 좋았다고")
@@ -1225,7 +1225,7 @@ def test_fm_L6_09_pressure_keeps_prior_verdict_for_same_claim_and_basis():
         again.verdict_kept and again.prior_assessment_id == "a-1" and again.basis_changed is False
     )
     assert again.assessment.verdict == "CONTRADICTED"
-    assert again.sentence == "답답하실 수 있지만 기록은 Take 5 청중 시선 31%, 우선 개선예요."
+    assert again.sentence == "답답하실 수 있지만 기록은 Take 5 청중 시선 31%, 우선 개선이에요."
     assert again.assessment.supersedes == []  # 같은 주장 · 같은 근거 → 대체가 아니라 유지
     # 앞 판정이 (어떤 이유로) 달랐어도 같은 키 · 같은 지문이면 앞 판정을 유지한다
     tampered = [prior[0].model_copy(update={"verdict": "PARTLY"})]

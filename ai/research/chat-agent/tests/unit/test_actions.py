@@ -729,7 +729,7 @@ def test_fetch_pitch_success_changes_scope() -> None:
         ctx=ctx,
     )
     assert applied.ok and applied.scope_changed
-    assert applied.success_text == templates.ACTION_SUCCESS["FETCH_PITCH"].format(title="다른 발표")
+    assert applied.success_text == "다른 발표로 범위를 바꿨어요."  # 받침 없는 제목은 '로'
     assert (
         ctx.scope_pitch_id == "p-2" and "t-4" not in ctx.snapshots
     )  # 이전 범위에서 가져온 Take 는 버린다
@@ -1038,3 +1038,33 @@ def test_l1_30_reassess_with_wrong_types_is_mismatch(bad: dict[str, Any]) -> Non
         ctx=ctx,
     )
     assert (applied.mismatch, applied.reason_code) == (True, "BAD_DATA")
+
+
+def test_fetch_pitch_of_current_scope_is_not_a_scope_change() -> None:
+    """이름으로 찾은 피치가 지금 범위와 같으면 범위 전환이 아니다(판 번호를 올리지 않는다, 5-6)."""
+    ctx = ctx_for()
+    pending = _pending(do("fetch_pitch", {"name": "졸업 발표", "reason": "이름으로 찾기"}, ctx=ctx))
+    pc = ctx.req.context.pitch.model_dump(mode="json")  # type: ignore[union-attr]
+    applied = apply_result(
+        pending,
+        _result(action_id=pending["action_id"], type="FETCH_PITCH", data={"pitch": pc}),
+        ctx=ctx,
+    )
+    assert applied.ok and applied.scope_changed is False
+
+
+def test_l4_20_reassess_with_different_schema_versions_is_rules_differ() -> None:
+    ctx = ctx_for()
+    pending = _reassess_pending(ctx)
+    after = _review_resp()
+    after["meta"]["schema_version"] = "9.9"
+    applied = apply_result(
+        pending,
+        _result(
+            action_id=pending["action_id"],
+            type="REASSESS",
+            data={"before": _review_resp(), "after": after, "official": OFFICIAL},
+        ),
+        ctx=ctx,
+    )
+    assert (applied.ok, applied.reason_code) == (False, "RULES_DIFFER")
