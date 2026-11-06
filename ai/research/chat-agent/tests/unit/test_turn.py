@@ -576,22 +576,32 @@ def test_client_disconnect_stops_new_calls() -> None:
     import threading
 
     gate = threading.Event()
+    entered = threading.Event()
+    finished = threading.Event()
 
     def slow_tools(_r: Any) -> Any:
+        entered.set()  # 두 번째 모델 호출(조사)이 시작됐다
         gate.wait(2)
         return F.tools(COMPARE)
 
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
     llm = F.FakeLlm([F.plan(assessments=[change_draft()]), slow_tools, F.done(), compare_answer()])
-    resp = handle_turn(json.dumps(req, ensure_ascii=False).encode(), F.deps(llm), secret=F.SECRET)
+    log: list[dict[str, Any]] = []
+    deps = F.deps(llm, log=log)
+    resp = handle_turn(json.dumps(req, ensure_ascii=False).encode(), deps, secret=F.SECRET)
     assert resp.lines is not None
     first = next(resp.lines)
     assert json.loads(first)["event"] == "plan"
+    assert entered.wait(2)  # 조사 호출 안에서 기다리는 중에 연결을 끊는다(타이밍에 기대지 않게)
     resp.lines.close()  # type: ignore[attr-defined]
     gate.set()
-    import time
-
-    time.sleep(0.2)
+    # 실행이 끝까지 정리될 때까지(agent_end 로그) 기다린 뒤 호출 수를 본다
+    for _ in range(100):
+        if any(e.get("event") == "agent_end" for e in log):
+            finished.set()
+            break
+        threading.Event().wait(0.02)
+    assert finished.is_set()
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]
 
 
@@ -929,3 +939,87 @@ def test_fm_L2_31_success_in_between_resets_repeated_failure() -> None:
         F.FakeLlm([F.tools(("fetch_take", {"take_id": "t-3", "reason": "다시"}), prefix="a3")]),
     )
     assert d3["status"] == "NEEDS_ACTION" and d3["actions"][0]["args"]["take_id"] == "t-3"
+
+
+def test_value_question_is_not_judged_unverifiable() -> None:
+    """값만 묻는 질문('3장 시선 몇 %였어?')은 주장이 아니다: '확인할 수 없어요' 판단 문장을 만들지 않는다."""
+    msg = "Take 5 3장 시선 몇 %였어?"
+    d = F.draft(
+        "Take 5 3장 시선 몇 %였어",
+        claim_op="VALUE",
+        dimension="audience_gaze",
+        metric="audience_ratio",
+        slide_number=3,
+        take_numbers=[5],
+        polarity="NEUTRAL",
+        verdict="UNVERIFIABLE",
+    )
+    report = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
+
+    def ans(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio")
+        return F.answer(
+            [F.claim("RECORD", "Take 5의 3장 청중 시선 비율은 28%예요.", evidence_ids=[eid])]
+        )
+
+    fd = final_ok(
+        F.run_turn(
+            F.request(user_message=msg),
+            F.FakeLlm([F.plan(assessments=[d]), F.tools(report), F.done()], answers=[ans]),
+        )[2]
+    )
+    assert "확인할 수 없어요" not in fd.message.text  # type: ignore[union-attr]
+    assert "28%" in fd.message.text  # type: ignore[union-attr]
+    assert all(a.type == "REQUEST" for a in fd.assessments)
+
+
+def test_script_points_removed_notice_condition() -> None:
+    """대본 허용으로 다시 평가해 점수가 오르면 7-10 "평가 항목이 빠져 오른 점수예요…"를 붙인다."""
+    from chat_agent.loop import _script_points_removed
+
+    before = {"score": 88, "dimensions": {"script_independence": "PRIORITY"}}
+    after = {"score": 100, "dimensions": {"script_independence": "NOT_EVALUABLE"}}
+    card = {
+        "type": "REASSESS_RESULT",
+        "change": {"script_used": True},
+        "before": before,
+        "after": after,
+    }
+    assert _script_points_removed(card) is True
+    assert _script_points_removed({**card, "after": {**after, "score": 88}}) is False
+    assert _script_points_removed({**card, "change": {"targets": []}}) is False
+    # 대본 차원이 빠지지 않았으면 원인을 단정하지 않는다
+    unchanged = {"score": 100, "dimensions": {"script_independence": "IMPROVED"}}
+    assert _script_points_removed({**card, "after": unchanged}) is False
+
+
+@pytest.mark.parametrize(
+    ("quote", "message", "kept"),
+    [
+        (
+            "군더더기가 몇 번이나 나왔는데 문제없었어",
+            "군더더기가 몇 번이나 나왔는데 문제없었어",
+            True,
+        ),
+        ("3장 시선 몇 %였어", "3장 시선 몇 %였어?", False),
+        ("3장 시선이 몇 %였는지 알아", "3장 시선이 몇 %였는지 알아.", True),
+    ],
+)
+def test_value_question_conversion_only_for_plain_questions(
+    quote: str, message: str, kept: bool
+) -> None:
+    """값을 묻는 말이 있어도 물음표로 끝나는 단순 질문일 때만 요청으로 바꾼다."""
+    from chat_agent import claims as clm
+    from chat_agent.turn import _value_question_as_request
+
+    d = clm.AssessmentDraft.model_validate(
+        F.draft(
+            quote,
+            claim_op="VALUE",
+            dimension="fluency",
+            metric="filler_per_min",
+            polarity="NEUTRAL",
+        )
+    )
+    out = _value_question_as_request(d, message)
+    assert (out.type == "MEASURED") is kept

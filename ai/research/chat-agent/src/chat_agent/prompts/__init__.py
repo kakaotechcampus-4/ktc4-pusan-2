@@ -33,7 +33,7 @@ PLAN = """[단계: 계획]
 - plan: 할 일 목록 1~8단계(조사가 필요할 때만, 쉬운 질문은 빈 목록). 단계 이름은 60자 이하, 첫 단계 상태 DOING, 나머지 TODO.
 - assessments: 사용자 말 속 주장 · 요청마다 판단 초안 하나. 측정 항목(시선 · 대본 · 속도 · 쉼 · 군더더기 · 목소리 · 시간 · 내용)을 말한 절마다 그 절을 덮는 판단이 있어야 한다.
   - quote: 사용자 말 원문의 부분 문자열을 글자 그대로(한 절만).
-  - type: MEASURED(내 Take 의 측정 사실 주장. '좋아졌어?'처럼 측정 사실을 묻는 질문도 그 사실을 주장으로 보고 MEASURED) · PREFERENCE(내 방식 · 기준 의견) · KNOWLEDGE(발표법 일반 주장) · REQUEST(요청: 방법 · 조언을 묻는 질문, 목표 저장 · 연습 이동 · 다시 평가 등).
+  - type: MEASURED(내 Take 의 측정 사실 주장. '좋아졌어?'처럼 사실이 맞는지 묻는 질문도 그 사실을 주장으로 보고 MEASURED. '몇 %였어?'처럼 값만 묻는 질문은 주장이 아니므로 REQUEST) · PREFERENCE(내 방식 · 기준 의견) · KNOWLEDGE(발표법 일반 주장) · REQUEST(요청: 방법 · 조언을 묻는 질문, 목표 저장 · 연습 이동 · 다시 평가 등).
   - speaker: 다른 사람의 평가를 옮긴 것이면 OTHER 와 speaker_label(예: 친구), 아니면 USER.
   - claim_op(MEASURED 만): OVERALL(Take 전체 평가) · ISSUE(문제가 있었다) · VALUE(값이 얼마였다) · CHANGE(지난번보다 늘었다 · 줄었다).
   - subject: dimension(audience_gaze · script_independence · pacing_rhythm · vocal_delivery · fluency · content_delivery), metric(지표 이름), slide_number, take_numbers(사용자가 Take 번호를 말했으면), relation(여러 Take 면 ALL · SOME · COMPARE).
