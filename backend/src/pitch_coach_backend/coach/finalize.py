@@ -42,7 +42,12 @@ from pitch_coach_backend.coach.store import CoachStore
 from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.core.retry import retry_transient
-from pitch_coach_backend.core.tasks import TaskRegistry
+from pitch_coach_backend.core.tasks import (
+    SemaphoreByLoop,
+    TaskRegistry,
+    loop_semaphore,
+    run_periodic,
+)
 from pitch_coach_backend.module.take.dto import StoredEvent
 
 logger = logging.getLogger(__name__)
@@ -68,10 +73,8 @@ STALE_FINALIZING = timedelta(minutes=10)
 _running = TaskRegistry()
 # 앱 시작 · 주기 복구가 겹쳐 같은 backlog 를 동시에 훑지 않게 한다
 _recovery = TaskRegistry()
-# 테스트의 여러 이벤트 루프에서도 각각 같은 상한을 쓴다 (`core/ai_slots.py` 와 같은 방식)
-_slots_by_loop: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
-    weakref.WeakKeyDictionary()
-)
+# 시험의 여러 이벤트 루프에서도 각각 같은 상한을 쓴다
+_slots_by_loop: SemaphoreByLoop = weakref.WeakKeyDictionary()
 # DB 재시도를 다 쓴 Take 의 재료. 스트림은 이미 놓았으므로 다음 sweep 까지 여기서 보관한다.
 # 저장소도 함께 둬 앱 종료 때 대기 중인 이벤트를 DB 에 한 번 더 넣어 볼 수 있게 한다.
 _pending: dict[uuid.UUID, tuple[FinalizeSnapshot, CoachStore]] = {}
@@ -154,11 +157,7 @@ async def run(
 
 
 def _slots() -> asyncio.Semaphore:
-    loop = asyncio.get_running_loop()
-    if (slots := _slots_by_loop.get(loop)) is None:
-        slots = asyncio.Semaphore(FINALIZE_CONCURRENCY)
-        _slots_by_loop[loop] = slots
-    return slots
+    return loop_semaphore(_slots_by_loop, FINALIZE_CONCURRENCY)
 
 
 async def _keep_events(
@@ -285,9 +284,7 @@ def _merged(
     return merged
 
 
-async def resume(
-    *, client: CoachClient, store: CoachStore, stale_before: datetime | None = None
-) -> None:
+def resume(*, client: CoachClient, store: CoachStore, stale_before: datetime | None = None) -> None:
     """Take 결과를 기다리는 중으로 남은 Take 를 replay 로 이어 간다. 앱이 뜰 때와 주기 작업
     (`sweep_forever`)이 부른다. 이 프로세스에서 이미 돌고 있는 Take 는 건너뛴다 (`spawn`).
 
@@ -361,9 +358,11 @@ async def sweep_forever(
     client: CoachClient, store: CoachStore, interval_sec: float = SWEEP_INTERVAL_SEC
 ) -> None:
     """Take 결과를 기다리는 채 오래 남은 Take 를 주기적으로 다시 띄운다."""
-    while True:
-        await asyncio.sleep(interval_sec)
-        await resume(client=client, store=store, stale_before=datetime.now(UTC) - STALE_FINALIZING)
+
+    async def step() -> None:
+        resume(client=client, store=store, stale_before=datetime.now(UTC) - STALE_FINALIZING)
+
+    await run_periodic(step, interval_sec, delay_first=True)
 
 
 async def stop_all(timeout: float) -> None:

@@ -11,9 +11,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import in_session as _in_session
 from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import script as script_service
@@ -198,19 +198,6 @@ def _conclude_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) 
     take_repository.set_analysis_stage(take_id, "REVIEWING")
     db.commit()
     return "NO_COVERAGE" if confirmed is None else "READY_FOR_REVIEW"
-
-
-async def _in_session[T](
-    session_factory: Callable[[], Session], fn: Callable[..., T], *args: Any
-) -> T:
-    def call() -> T:
-        db = session_factory()
-        try:
-            return fn(db, *args)
-        finally:
-            db.close()
-
-    return await run_in_threadpool(call)
 
 
 async def _merge_candidate(

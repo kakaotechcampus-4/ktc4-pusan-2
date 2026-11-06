@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionLocal, with_session
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
@@ -181,22 +181,12 @@ class ScriptParseRunner:
     # ── threadpool 에서 도는 부분. 저장할 때마다 짧은 세션을 열고 닫는다 ──
 
     def _complete(self, ticket: ParseTicket, parsed: ParsedScript) -> ParseSaved:
-        db = self._session_factory()
-        try:
-            return script_service.complete_parse(db, ticket, parsed)
-        finally:
-            db.close()
+        return with_session(self._session_factory, script_service.complete_parse, ticket, parsed)
 
     def _resume(self, started_before: datetime) -> list[ParseTicket]:
-        db = self._session_factory()
-        try:
-            return script_service.resume_parses(db, started_before=started_before)
-        finally:
-            db.close()
+        return with_session(
+            self._session_factory, script_service.resume_parses, started_before=started_before
+        )
 
     def _fail(self, ticket: ParseTicket, code: ScriptParseErrorCode) -> bool:
-        db = self._session_factory()
-        try:
-            return script_service.fail_parse(db, ticket, code)
-        finally:
-            db.close()
+        return with_session(self._session_factory, script_service.fail_parse, ticket, code)

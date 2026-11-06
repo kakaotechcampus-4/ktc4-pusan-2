@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import in_session as _in_session
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, request_turn
 from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
@@ -73,17 +73,6 @@ async def _double_slot() -> AsyncGenerator[None]:
     finally:
         slots.release()
         slots.release()
-
-
-async def _in_session[T](session_factory: SessionFactory, fn: Callable[..., T], *args: Any) -> T:
-    def call() -> T:
-        db = session_factory()
-        try:
-            return fn(db, *args)
-        finally:
-            db.close()
-
-    return await run_in_threadpool(call)
 
 
 def start(

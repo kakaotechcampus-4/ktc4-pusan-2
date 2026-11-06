@@ -237,7 +237,7 @@ def _no_ready_sweep() -> Callable[[], Awaitable[None]]:
     return stop
 
 
-async def _no_coach_background(client: object, store: object, on_take_result: object = None):
+def _no_coach_background(client: object, store: object, on_take_result: object = None):
     async def stop() -> None:
         return None
 

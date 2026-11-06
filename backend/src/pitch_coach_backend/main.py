@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
     await arm_abandoned_takes(get_transcript_store())
     # 만들다 만 Take 결과를 이어 가고, 기한이 지난 1초 원자료를 지우는 주기 작업을 건다
-    stop_coach_background = await start_coach_background(
+    stop_coach_background = start_coach_background(
         get_coach_client(), get_coach_store(), on_take_result=analysis_runner.start
     )
     stop_analysis = start_analysis_runner()
