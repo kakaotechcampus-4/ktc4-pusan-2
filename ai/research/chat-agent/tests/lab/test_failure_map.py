@@ -2,8 +2,9 @@
 
 - 기능 문서 표: 7-3 ~ 7-8 의 `| L?-?? |` 행을 읽고, '시험' 열 앞의 `[층] (담당)`으로 AI 몫을 가린다(규칙은 `ai_owned`, README 설명과 같다).
 - README 표: 행마다 층 · 시험(`경로::이름`, 여럿이면 ` · `로 잇는다) 또는 '서비스 탑재 때' · '평가셋' · 메모.
-- 시험 이름은 연구 모듈 tests/ 와 서비스 ai/service/tests/unit/chat_agent/ 아래 test_*.py 를 ast 로 읽어 모은 함수 이름과
-  대조한다(가져와 실행하지 않는다). 연구 시험은 `tests/…`, 서비스로 옮긴 코어 시험은 `ai/service/tests/unit/chat_agent/…`로 적는다.
+- 시험 이름은 연구 모듈 tests/ 와 서비스 ai/service/tests/ 아래 test_*.py 를 ast 로 읽어 모은 함수 이름과
+  대조한다(가져와 실행하지 않는다). 연구 시험은 `tests/…`, 서비스 시험(옮긴 코어 시험 · 도구 호출 LLM 시험)은
+  `ai/service/tests/…`로 적는다.
 - 고칠 때: 기능 문서에 행이 늘거나 담당이 바뀌면 README 표에 그 행을 더한다. AI 몫 규칙을 바꾸면 README 설명도 같이 고친다.
 """
 
@@ -20,7 +21,7 @@ README = MODULE / "README.md"
 DOC = MODULE.parents[2] / "docs" / "ai" / "features" / "chat-agent.md"
 ROOT = MODULE.parents[2]  # 저장소 루트
 TESTS = MODULE / "tests"
-SERVICE_TESTS = ROOT / "ai" / "service" / "tests" / "unit" / "chat_agent"
+SERVICE_TESTS = ROOT / "ai" / "service" / "tests"
 
 SERVICE = "서비스 탑재 때"
 EVAL = "평가셋"
@@ -110,7 +111,7 @@ def table_rows() -> list[MapRow]:
 
 @cache
 def all_test_nodes() -> frozenset[str]:
-    """연구 tests/ · 서비스 tests/unit/chat_agent/ 아래 모든 시험 함수(`경로::이름`, 클래스 안의 것 포함)."""
+    """연구 tests/ · 서비스 tests/ 아래 모든 시험 함수(`경로::이름`, 클래스 안의 것 포함)."""
     nodes: set[str] = set()
     files = [(f, f.relative_to(MODULE)) for f in TESTS.rglob("test_*.py")]
     files += [(f, f.relative_to(ROOT)) for f in SERVICE_TESTS.rglob("test_*.py")]

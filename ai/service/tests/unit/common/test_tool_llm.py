@@ -1,4 +1,7 @@
-"""연구용 도구 호출 LLM 함수(chat_agent_lab/llm.py) 시험 — 공급자 대신 가짜 스트림으로 조립 · 재시도 · 실패 분류를 본다 (6-11 · 8-3)."""
+"""도구 호출 LLM(`common/llm.py` 의 `ToolLlmClient`) 시험.
+
+공급자 대신 가짜 스트림으로 조립 · 재시도 · 실패 분류를 본다(대화 기능 문서 6-11 · 8-3).
+연구 모듈 chat_agent_lab/llm.py 의 시험을 옮겼다."""
 
 from __future__ import annotations
 
@@ -6,9 +9,11 @@ import time
 from types import SimpleNamespace as NS
 from typing import Any
 
-import httpx
+import httpx2
 import openai
 import pytest
+
+from pitch_coach_ai.common.llm import ToolLlmClient, ToolRole
 from pitch_coach_ai.features.chat_agent.llm_types import (
     LlmBudgetStop,
     LlmCallFailed,
@@ -17,8 +22,6 @@ from pitch_coach_ai.features.chat_agent.llm_types import (
     LlmRequest,
     LlmUnavailable,
 )
-
-from chat_agent_lab.llm import OpenAiToolLlm
 
 
 def chunk(
@@ -55,10 +58,10 @@ class Stream:
 
 def status_error(code: int, retry_after: str | None = None) -> openai.APIStatusError:
     headers = {"retry-after": retry_after} if retry_after else {}
-    resp = httpx.Response(
+    resp = httpx2.Response(
         code,
         headers=headers,
-        request=httpx.Request("POST", "http://gateway.test/v1/chat/completions"),
+        request=httpx2.Request("POST", "http://gateway.test/v1/chat/completions"),
     )
     return openai.APIStatusError("오류", response=resp, body=None)
 
@@ -76,12 +79,17 @@ class FakeCompletions:
         return Stream(out)
 
 
-def make(outcomes: list[Any]) -> tuple[OpenAiToolLlm, FakeCompletions, list[float]]:
+#: 연구 모듈의 역할 상수와 같은 값(서비스는 settings.LLM_ROLES['chat_agent'] + LLM_TIMEOUT_SECONDS)
+ROLE = ToolRole(max_output_tokens=2000, reasoning_effort="low", timeout_seconds=12.0)
+
+
+def make(outcomes: list[Any]) -> tuple[ToolLlmClient, FakeCompletions, list[float]]:
     sleeps: list[float] = []
-    llm = OpenAiToolLlm(
+    llm = ToolLlmClient(
         base_url="http://gateway.test/v1",
         api_key="test",
         model="openai/gpt-6-luna",
+        role=ROLE,
         sleep=sleeps.append,
     )
     fake = FakeCompletions(outcomes)
@@ -155,7 +163,9 @@ def test_schema_mode_parses_json_with_role_reasoning() -> None:
     ],
 )
 def test_invalid_or_refused_output_is_not_retried(chunks: list[NS], exc: type) -> None:
-    """빈 답 · 잘림 · 형식 오류 · 모르는 finish_reason 은 같은 호출을 다시 보내지 않는다(8-3). 거절은 REFUSED 로 구분한다."""
+    """빈 답 · 잘림 · 형식 오류 · 모르는 finish_reason 은 같은 호출을 다시 보내지 않는다(8-3).
+
+    거절은 REFUSED 로 구분한다."""
     llm, fake, _ = make([chunks, [chunk(content="{}"), chunk(finish="stop")]])
     with pytest.raises(exc) as ei:
         llm.invoke(req(tools=False), always)
@@ -239,11 +249,9 @@ def test_fm_L1_14_timed_out_attempt_not_confirmed_is_not_resent() -> None:
 
     from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
 
-    from chat_agent_lab.llm import Role
-
     gate = threading.Event()
     llm, fake, _ = make([])
-    llm._role = Role(max_output_tokens=2000, reasoning_effort="low", timeout_seconds=0.3)  # type: ignore[attr-defined]
+    llm._role = ToolRole(max_output_tokens=2000, reasoning_effort="low", timeout_seconds=0.3)  # type: ignore[attr-defined]
     fake.outcomes = [BlockingStream(gate)]
     fake.create = lambda **kw: (fake.kwargs.append(kw), fake.outcomes.pop(0))[1]  # type: ignore[method-assign]
     try:
@@ -294,10 +302,9 @@ class SlowStream:
 
 
 def test_fm_L1_14_result_finished_right_after_timeout_is_used_not_resent() -> None:
-    from chat_agent_lab.llm import Role
 
     llm, fake, _ = make([])
-    llm._role = Role(max_output_tokens=2000, reasoning_effort="low", timeout_seconds=0.2)  # type: ignore[attr-defined]
+    llm._role = ToolRole(max_output_tokens=2000, reasoning_effort="low", timeout_seconds=0.2)  # type: ignore[attr-defined]
     fake.outcomes = [SlowStream(0.35, [chunk(content="{}"), chunk(finish="stop")])]
     fake.create = lambda **kw: (fake.kwargs.append(kw), fake.outcomes.pop(0))[1]  # type: ignore[method-assign]
     r = llm.invoke(req(tools=False), always)
@@ -312,7 +319,7 @@ class CutStream(Stream):
 
     def __iter__(self) -> Any:
         yield from self.chunks
-        raise httpx.ReadError("끊김")
+        raise httpx2.ReadError("끊김")
 
 
 class Sink:
@@ -365,3 +372,84 @@ def test_call_that_showed_nothing_is_resent_and_the_sink_restarts() -> None:
     r = llm.invoke(sink_req(sink), always)
     assert r.attempts == 2 and len(fake.kwargs) == 2
     assert sink.starts == [1, 2] and sink.feeds[-1] == (2, "{}")
+
+
+# ── 서비스에서 더한 것: 역할 · 만들기 · 끊김 예외 · 같은 키 · 로그 ─────────────────────────────
+
+
+def test_tool_role_reads_the_chat_agent_role_and_call_timeout() -> None:
+    """역할 `chat_agent` 은 settings.LLM_ROLES(출력 2,000 · 추론 low)와
+    LLM_TIMEOUT_SECONDS(12초)를 쓴다."""
+    from pitch_coach_ai.common.llm import tool_role
+
+    assert tool_role() == ROLE
+
+
+def test_tool_llm_is_none_without_a_model_bundle() -> None:
+    """묶음이 없으면 None — 코어가 스트림 전 503 LLM_UNAVAILABLE 로 답한다(키 없는 CI · 로컬)."""
+    from pitch_coach_ai.common.llm import tool_llm
+    from pitch_coach_ai.settings import Settings
+
+    assert tool_llm(pool_size=8, app_settings=Settings(_env_file=None)) is None
+
+
+def test_tool_llm_builds_a_client_with_the_bundle_and_pool_size() -> None:
+    from pitch_coach_ai.common.llm import tool_llm
+    from pitch_coach_ai.settings import Settings
+
+    s = Settings(
+        _env_file=None,
+        openai_base_url="http://gateway.test/v1",
+        openai_api_key="test",
+        openai_model="openai/gpt-6-luna",
+    )
+    llm = tool_llm(pool_size=3, app_settings=s)
+    assert isinstance(llm, ToolLlmClient)
+    assert (llm._model, llm._pool_size, llm._role) == ("openai/gpt-6-luna", 3, ROLE)  # type: ignore[union-attr]
+
+
+def test_transport_error_before_the_stream_is_retried() -> None:
+    """스트림을 열기 전 전송 오류(httpx2 예외)도 다시 부를 수 있는 연결 실패다."""
+
+    class Fake(FakeCompletions):
+        def create(self, **kwargs: Any) -> Any:
+            if not self.kwargs:
+                self.kwargs.append(kwargs)
+                raise httpx2.ConnectError("연결 실패")
+            return super().create(**kwargs)
+
+    llm, _, _ = make([])
+    fake = Fake([[chunk(content="{}"), chunk(finish="stop")]])
+    llm._client = NS(chat=NS(completions=fake))  # type: ignore[assignment]
+    r = llm.invoke(req(tools=False), always)
+    assert r.attempts == 2 and r.attempt_errors == ["LLM_ERROR"]
+
+
+def test_fm_L1_46_duplicate_top_level_key_is_invalid_output() -> None:
+    """구조화 출력에서 같은 키가 두 번이면 무효 출력.
+
+    흘려 낸 앞 값과 파싱한 뒤 값이 갈라지지 않게 한다(L1-46)."""
+    llm, fake, _ = make([[chunk(content='{"route": "A", "route": "B"}'), chunk(finish="stop")]])
+    with pytest.raises(LlmInvalidOutput) as ei:
+        llm.invoke(req(tools=False), always)
+    assert ei.value.cause == "json" and len(fake.kwargs) == 1
+
+
+def test_log_line_has_counts_but_no_prompt_or_answer(log_records: list[Any]) -> None:
+    """기본 로그는 서비스 로거 한 줄(역할 · 목적 · 모델 · 시도 · 결과 · 토큰 · 시간).
+
+    프롬프트 · 답은 남기지 않는다."""
+    llm = ToolLlmClient(
+        base_url="http://gateway.test/v1", api_key="test", model="openai/gpt-6-luna", role=ROLE
+    )
+    fake = FakeCompletions(
+        [[chunk(content='{"route": "비밀 답"}'), chunk(finish="stop"), chunk(usage=(120, 30))]]
+    )
+    llm._client = NS(chat=NS(completions=fake))  # type: ignore[assignment]
+    llm.invoke(req(tools=False), always)
+    lines = [r.getMessage() for r in log_records if r.getMessage().startswith("llm_call ")]
+    assert len(lines) == 1
+    line = lines[0]
+    assert "role=chat_agent purpose=ANSWER" in line and "outcome=ok" in line
+    assert "tokens_in=120 tokens_out=30" in line
+    assert "안녕" not in line and "비밀 답" not in line

@@ -15,7 +15,7 @@ dependencies = [
     #    pitch-coach-ai: 대화 에이전트 코어(features.chat_agent)와, 가짜 BE 가 다시 평가(REASSESS)에서 부르는
     #    실제 리뷰 코드(review_take)
     "pitch-coach-ai",
-    #    openai: 도구 호출 LLM(chat_agent_lab/llm.py). 서비스가 가져오는 판과 같은 3.x
+    #    openai: 서비스 도구 호출 LLM(pitch_coach_ai.common.llm.ToolLlmClient)을 평가 · live 에서 부른다. 3.x
     "openai>=3.29",
     "python-dotenv>=1.0",
 ]

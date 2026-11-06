@@ -168,8 +168,7 @@ def from_env(
 ) -> AgentApp:
     """`ai/.env`에서 모델 묶음(`OPENAI_*`, 비교 시험은 `OPENAI_SOL_*`)과 서명 키를 읽어 앱을 만든다. 키 값은 출력하지 않는다."""
     from dotenv import load_dotenv
-
-    from .llm import OpenAiToolLlm
+    from pitch_coach_ai.common.llm import ToolLlmClient, tool_role
 
     if env_file is not None and env_file.exists():
         load_dotenv(env_file)
@@ -177,12 +176,12 @@ def from_env(
     api_key = os.environ.get(f"{bundle}_API_KEY")
     model = os.environ.get(f"{bundle}_MODEL")
     llm = (
-        OpenAiToolLlm(
+        ToolLlmClient(
             base_url=base_url,
             api_key=api_key,
             model=model,
+            role=role if role is not None else tool_role(),
             log=log or (lambda _l: None),
-            **({"role": role} if role is not None else {}),
         )
         if base_url and api_key and model
         else None

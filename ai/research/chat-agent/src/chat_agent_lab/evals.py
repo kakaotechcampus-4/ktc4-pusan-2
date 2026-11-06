@@ -73,6 +73,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from pitch_coach_ai.common.llm import tool_role
 from pitch_coach_ai.features.chat_agent import prompts
 from pitch_coach_ai.features.chat_agent.actions import action_args_hash
 from pitch_coach_ai.features.chat_agent.config import load_config
@@ -92,7 +93,6 @@ from . import scenario as scn
 from .app import GUIDES, AgentApp, from_env
 from .fake_be import FakeBe, Run, StoredMessage
 from .judge import sentence_key
-from .llm import ROLE_CHAT_AGENT
 
 OUTPUTS = Path(__file__).resolve().parents[2] / "outputs" / "evals"
 LAB = Path(__file__).resolve().parent
@@ -1779,8 +1779,6 @@ def summarize(
 
 
 def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -> dict[str, Any]:
-    from .llm import ROLE_CHAT_AGENT
-
     files = {
         s.id: scn.file_hash(scn.SCENARIO_DIR / f"{s.id}.json")
         for s in scenarios
@@ -1798,7 +1796,7 @@ def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -
         "corpus_sha256": manifest.get("sha256"),
         "model": model,
         "bundle": bundle,
-        "role": dataclasses.asdict(ROLE_CHAT_AGENT),
+        "role": dataclasses.asdict(tool_role()),
         "scenario_ids": sorted(files),
         "scenario_hashes": files,
         "scenarios_sha256": _h(sorted(files.items())),
@@ -1884,7 +1882,7 @@ def retry_plan(
         "repeat": a.repeat,
         "baseline": a.baseline,
         "followups": a.followups,
-        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+        "reasoning": dict(efforts) or {"default": tool_role().reasoning_effort},
     }
     now = freeze_info(scenarios, None, a.bundle)
     old_hashes = info.get("grader_sha256")
@@ -2154,7 +2152,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as e:
         print(f"--reasoning: {e}", file=sys.stderr)
         return 2
-    role = dataclasses.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts) if efforts else None
+    role = dataclasses.replace(tool_role(), purpose_efforts=efforts) if efforts else None
     kept: list[RunResult] = []
     redo: list[tuple[scn.Scenario, int]] | None = None
     if a.fake:
@@ -2214,7 +2212,7 @@ def main(argv: list[str] | None = None) -> int:
         "followups": cfg.followups,
         "fake": a.fake,
         #: 목적별 추론 강도(없으면 역할 기본값 low, 도구 모드는 none)
-        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+        "reasoning": dict(efforts) or {"default": tool_role().reasoning_effort},
         "retried_from": str(a.retry_from) if a.retry_from is not None else None,
         "retried_runs": len(redo) if redo is not None else 0,
     }

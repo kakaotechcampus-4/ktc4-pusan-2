@@ -598,15 +598,15 @@ def test_successful_call_resets_the_provider_failure_streak() -> None:
 def test_reasoning_per_purpose_parses_and_falls_back_to_the_role_default() -> None:
     import dataclasses as dc
 
-    from chat_agent_lab.llm import ROLE_CHAT_AGENT
+    from pitch_coach_ai.common.llm import tool_role
 
     efforts = ev.parse_reasoning(["answer=Medium", "FIX=high"])
     assert efforts == (("ANSWER", "medium"), ("FIX", "high"))
-    role = dc.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts)
+    role = dc.replace(tool_role(), purpose_efforts=efforts)
     assert (role.effort("ANSWER"), role.effort("FIX"), role.effort("RESEARCH")) == (
         "medium",
         "high",
-        ROLE_CHAT_AGENT.reasoning_effort,
+        tool_role().reasoning_effort,
     )
     with pytest.raises(ValueError):
         ev.parse_reasoning(["TOOLS=high"])
