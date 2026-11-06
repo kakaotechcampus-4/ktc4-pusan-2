@@ -35,8 +35,8 @@ class ChatRunInProgress(ConflictException):
 
 class ChatCardChanged(ConflictException):
     # 화면이 보낸 args_hash 가 저장한 대기 행동과 다르다. 화면이 본 카드와 실행할 인자가 다르다
-    code = "AGENT_STATE_INVALID"
-    message = "확인 내용이 바뀌었어요. 다시 확인해 주세요."
+    code = "APPROVAL_HASH_MISMATCH"
+    message = "요청이 변경되어 다시 확인이 필요해요."
 
 
 class ChatExpired(ConflictException):

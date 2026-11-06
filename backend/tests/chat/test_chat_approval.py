@@ -320,7 +320,7 @@ def test_changed_card_is_409_and_nothing_runs(
 
     response = _decide(client, user_id, seeded.run.id, args_hash="other")
 
-    assert (response.status_code, response.json()["code"]) == (409, "AGENT_STATE_INVALID")
+    assert (response.status_code, response.json()["code"]) == (409, "APPROVAL_HASH_MISMATCH")
     assert resumed == []
     db_session.expire_all()
     assert db_session.get(ChatRun, seeded.run.id).status == "WAITING_APPROVAL"
