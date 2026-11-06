@@ -472,6 +472,57 @@ def test_ask_action_without_confirm_card_fails_the_run(
     _upstream_error_without_action(db_session, queued_run)
 
 
+def test_changed_args_after_approval_are_not_run(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    action = _reassess(run_id)
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _waiting(action)))))
+    _run(queued_run, session_factory)
+    run = _reload(db_session, queued_run)
+    run.status = "RUNNING"
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    saved.approved = True
+    saved.args = {**saved.args, "change": {"script_used": False}}
+    db_session.flush()
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    asyncio.run(
+        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
+    )
+
+    sent = agent.requests[1]["resume"]["action_results"][0]
+    assert (sent["status"], sent["error"]["code"]) == ("FAILED", "APPROVAL_ARGS_CHANGED")
+    assert sent["executed_args_hash"] == action["args_hash"]
+    db_session.expire_all()
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    assert (saved.status, saved.result["error"]["code"]) == ("FAILED", "APPROVAL_ARGS_CHANGED")
+
+
+def test_float_args_survive_storage_and_run_after_approval(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    target = {"display": "시선", "metric": "audience_ratio", "operator": "GTE", "value": 1e16}
+    args = {"take_id": str(uuid.uuid4()), "change": {"targets": [target]}}
+    action = {**_reassess(run_id), "args": args, "args_hash": args_hash("REASSESS", args)}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _waiting(action)))))
+    _run(queued_run, session_factory)
+    run = _reload(db_session, queued_run)
+    run.status = "RUNNING"
+    db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)).approved = True
+    db_session.flush()
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    asyncio.run(
+        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
+    )
+
+    sent = agent.requests[1]["resume"]["action_results"][0]
+    assert sent["error"]["code"] == "NOT_FOUND"
+    assert sent["executed_args_hash"] == action["args_hash"]
+
+
 def test_args_hash_follows_the_doc_example() -> None:
     args = {
         "take_id": "t-5",

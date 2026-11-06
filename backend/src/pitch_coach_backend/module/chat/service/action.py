@@ -5,7 +5,12 @@ from typing import Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.chat.ai_response import ACTION_ARGS, ACTION_AUTONOMY, SaveGoalArgs
+from pitch_coach_backend.module.chat.ai_response import (
+    ACTION_ARGS,
+    ACTION_AUTONOMY,
+    SaveGoalArgs,
+    args_hash,
+)
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
@@ -40,6 +45,11 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
         )
     if _invalid(action):
         return close_action(db, row, action, failed(action, "INVALID_ACTION", UNCONFIRMED))
+    if action["autonomy"] == "ASK" and args_hash(action["type"], action["args"]) != action["args_hash"]:
+        changed = failed(action, "APPROVAL_ARGS_CHANGED", UNCONFIRMED).model_copy(
+            update={"executed_args_hash": action["args_hash"]}
+        )
+        return close_action(db, row, action, changed)
     saved.status = "RUNNING"
     db.commit()
     return None

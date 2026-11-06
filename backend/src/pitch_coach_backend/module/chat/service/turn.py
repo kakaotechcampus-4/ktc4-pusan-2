@@ -209,6 +209,7 @@ def _action_view(saved: ChatAction) -> dict[str, Any]:
         "type": saved.type,
         "args": saved.args,
         "autonomy": saved.autonomy,
+        "args_hash": saved.args_hash,
         "authorized_by": None,
     }
 
