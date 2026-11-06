@@ -157,10 +157,6 @@ class SttLoop:
             self._base_offset_ms = None
             self._bytes_sent = 0
             self._filled_ms = []
-            if self._carry is None:
-                # 넘겨받은 프레임이 있으면 지우지 않는다. 세션을 가는 동안 드롭된 것은 그
-                # 프레임 **뒤**의 오디오라 새 세션에서 무음으로 메워야 한다 (_send_frame)
-                self._pending_silence_ms = 0
             await self._on_state("ok")
 
             try:
