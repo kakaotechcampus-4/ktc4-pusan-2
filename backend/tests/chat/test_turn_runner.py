@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from typing import Any
 
@@ -15,12 +15,14 @@ from pitch_coach_backend.module.chat.ai_response import args_hash
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
+    ChatDailyUsage,
     ChatMessage,
     ChatProfileItem,
     ChatRun,
     ChatRunLog,
 )
 from pitch_coach_backend.module.chat.service import turn as turn_service
+from pitch_coach_backend.module.chat.service.run import SEOUL
 
 META = {
     "schema_version": "1.0",
@@ -521,6 +523,44 @@ def test_float_args_survive_storage_and_run_after_approval(
     sent = agent.requests[1]["resume"]["action_results"][0]
     assert sent["error"]["code"] == "NOT_FOUND"
     assert sent["executed_args_hash"] == action["args_hash"]
+
+
+def _reserve(db_session: Session) -> date:
+    day = datetime.now(SEOUL).date()
+    db_session.add(ChatDailyUsage(user_id=None, day=day, reserved=1))
+    db_session.flush()
+    return day
+
+
+def _service_usage(db_session: Session, day: date) -> tuple[int, int]:
+    db_session.expire_all()
+    row = db_session.scalar(
+        select(ChatDailyUsage).where(ChatDailyUsage.user_id.is_(None), ChatDailyUsage.day == day)
+    )
+    return row.reserved, row.sent
+
+
+def test_sent_calls_confirm_the_service_reservation(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    day = _reserve(db_session)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_TAKE",
+        "args": {"pitch_id": str(uuid.uuid4()), "take_id": str(uuid.uuid4())},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "기록을 더 본다",
+        "authorized_by": None,
+    }
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _needs_action(action)))))
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    _run(queued_run, session_factory)
+
+    assert _service_usage(db_session, day) == (0, 2)
 
 
 def test_args_hash_follows_the_doc_example() -> None:

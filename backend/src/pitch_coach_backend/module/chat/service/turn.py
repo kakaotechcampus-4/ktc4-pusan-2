@@ -29,6 +29,7 @@ from pitch_coach_backend.module.chat.service.result import failed, succeeded
 from pitch_coach_backend.module.chat.service.run import (
     LEASE,
     OWNER,
+    SEOUL,
     ClaimedRun,
     add_run_log,
     cancel,
@@ -38,6 +39,7 @@ from pitch_coach_backend.module.chat.service.run import (
     lock_current,
     lock_ids,
     lock_or_cancel,
+    release_unsent,
     take_lease,
 )
 
@@ -64,6 +66,10 @@ def mark_sending(
     row = lock_current(db, run)
     if row is None:
         return None
+    repo = ChatRepository(db)
+    if turn_call == 1:
+        repo.release_service_turn(row.accepted_at.astimezone(SEOUL).date())
+    repo.add_service_turn(datetime.now(SEOUL).date())
     row.turn_calls = [
         *(row.turn_calls or []),
         {
@@ -292,6 +298,7 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
         cancel(db, run)
         return True
     now = datetime.now(UTC)
+    release_unsent(repo, row)
     row.status = "PARTIAL" if message else "FAILED"
     row.error_code = failure.code
     row.retry_after_s = failure.retry_after_s

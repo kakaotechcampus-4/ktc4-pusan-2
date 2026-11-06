@@ -130,6 +130,7 @@ def cancel(db: Session, run: ClaimedRun) -> None:
     if row is None:
         return
     now = datetime.now(UTC)
+    release_unsent(ChatRepository(db), row)
     row.status = "CANCELLED"
     row.state = None
     row.error_code = "AGENT_CANCELLED"
@@ -137,6 +138,11 @@ def cancel(db: Session, run: ClaimedRun) -> None:
     row.row_revision += 1
     add_run_log(ChatRepository(db), row, now)
     db.commit()
+
+
+def release_unsent(repo: ChatRepository, row: ChatRun) -> None:
+    if not row.turn_calls:
+        repo.release_service_turn(row.accepted_at.astimezone(SEOUL).date())
 
 
 def add_run_log(repo: ChatRepository, row: ChatRun, now: datetime) -> None:
