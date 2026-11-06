@@ -223,7 +223,7 @@ class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     args_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     autonomy: Mapped[str] = mapped_column(String(10), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    args_hash: Mapped[str | None] = mapped_column(String(64))
+    args_hash: Mapped[str | None] = mapped_column(String(100))
     approved: Mapped[bool | None] = mapped_column(Boolean)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="PENDING")
