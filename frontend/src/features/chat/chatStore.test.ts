@@ -195,6 +195,11 @@ describe('열기 · 범위', () => {
 describe('보내기 · 접수', () => {
   beforeEach(() => store().openChat(pitchA));
 
+  it('보낼 본문은 앞뒤 공백을 지운 글이다 — BE 는 받은 그대로 세고 저장한다', () => {
+    store().beginSend({ ...draft, text: '  지난번보다 청중을 더 봤어?\n\n  ' });
+    expect(store().pending?.request.text).toBe('지난번보다 청중을 더 봤어?');
+  });
+
   it('보내기를 시작하면 접수 전에도 바로 잠근다 — 두 번 보내기 · 범위 칩을 막는다', () => {
     const ticket = store().beginSend(draft)!;
     expect([store().beginSend(draft), store().chooseScope(pitchB)]).toEqual([null, false]);

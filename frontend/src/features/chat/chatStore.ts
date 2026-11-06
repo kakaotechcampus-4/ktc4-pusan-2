@@ -631,6 +631,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
         scopeFixedBefore: s.scopeFixed,
         request: {
           ...draft,
+          // 앞뒤 공백은 FE 가 지워 보냅니다 — BE 는 받은 그대로 세고 저장합니다(`types/chat.ts` `SendMessageRequest.text`)
+          text: draft.text.trim(),
           conversation_id: s.conversationId,
           scope_pitch_id: s.scope!.pitchId,
           client_request_id: sendId,

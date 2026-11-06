@@ -9,7 +9,7 @@
  *
  * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 연구 모듈의
  * `ai/research/chat-agent/src/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `feat/ai-chat-agent-svc-guide-facts`
- * `8ed5a688` (#921, 머지 전). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
+ * `8ed5a688` (#921, 머지됨 — 머지 뒤 바뀐 것은 `FinalData` 검증뿐이라 이 타입에는 영향이 없습니다). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
  *
  * BE 그대로 snake_case 입니다. 없음은 `?` 가 아니라 `| null` 입니다(frontend/AGENTS.md 6절).
  */
@@ -406,6 +406,12 @@ export type ChatScreen =
 
 /** 대화창을 연 화면 (5-3 `page`). 메시지마다 함께 보냅니다 */
 export interface ChatPage {
+  /**
+   * 화면 **경로 패턴** — `app/routes.tsx` 의 경로 문자열 그대로(예: `/takes/:takeId`, `/pitch/:id/edit`).
+   * 실제 ID 는 `pitch_id` · `take_id` 로 따로 보내므로 경로에 섞지 않습니다 — UUID 가 든 실제 경로는 BE 한도
+   * (`ChatPageDTO.route` 1~64자)를 넘을 수 있고, 패턴이어야 #941 의 노출 목록(`chatRoutes.ts`)과 같은 이름으로 씁니다.
+   * 문서 5-3 은 `string` 이라고만 하고 예시가 `"report"`, AI 연구 모듈 예시는 `"/takes/t-5"` 라 정해 두었습니다
+   */
   route: string;
   pitch_id: string | null;
   take_id: string | null;
@@ -431,7 +437,11 @@ export type CreateConversationResponse = ConversationSummary;
 export interface SendMessageRequest {
   conversation_id: string | null;
   scope_pitch_id: string | null;
-  /** 앞뒤 공백을 지운 1~2,000자(코드 포인트) */
+  /**
+   * 앞뒤 공백을 지운 1~2,000자(코드 포인트). **FE 가 지워서 보냅니다**(저장소 `beginSend`) — BE 는 지우지 않고
+   * 받은 그대로 길이를 세고 저장합니다(`api_dto.py` `_text_in_range`: 공백뿐이면 422, 2,000자 넘으면 422).
+   * 그래서 화면은 지운 뒤의 글로 빈 값 · 2,000자를 막고(12-4 F3), 서버에도 지운 글이 갑니다
+   */
   text: string;
   page: ChatPage;
   client_request_id: string;
