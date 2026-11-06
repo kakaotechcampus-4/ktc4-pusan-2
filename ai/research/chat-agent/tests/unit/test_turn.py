@@ -89,12 +89,14 @@ def test_done_path_streams_progress_then_one_final() -> None:
     llm = F.FakeLlm(basic_script())
     status, lines, data = F.run_turn(req, llm)
     assert status == 200
-    assert [ln["event"] for ln in lines] == ["plan", "tool_done", "final"]
-    assert [ln["seq"] for ln in lines] == [1, 2, 3]
-    assert all(ln["run_id"] == "run-81" for ln in lines)
     fd = final_ok(data)
     assert fd.status == "DONE"
     assert fd.message is not None
+    # 진행 줄 → 답 문장마다 문장 줄 → 끝 줄 하나(5-4)
+    n = len(fd.message.claims)
+    assert [ln["event"] for ln in lines] == ["plan", "tool_done", *["claim"] * n, "final"]
+    assert [ln["seq"] for ln in lines] == list(range(1, n + 4))
+    assert all(ln["run_id"] == "run-81" for ln in lines)
     assert fd.message.text == "\n".join(c.text for c in fd.message.claims)
     # 판단은 코드 판정(28% < 31% → 나빠짐)이고 첫 문장은 템플릿이다
     a = fd.assessments[0]

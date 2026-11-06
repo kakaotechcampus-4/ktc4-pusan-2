@@ -65,10 +65,29 @@ def test_fm_L1_07_stream_examples_have_exactly_one_terminal_line_last(name: str)
                 s.PlanStep.model_validate(step)
         elif sl.event == "tool_done":
             s.TraceItem.model_validate(sl.data["trace"])
+        elif sl.event == "claim":
+            s.ClaimLineData.model_validate(sl.data)
         elif sl.event == "error":
             assert set(sl.data["error"]) == {"code", "message"}
     terminal = [e for e in events if e in ("final", "error")]
     assert terminal == [events[-1]]
+
+
+@pytest.mark.parametrize("name", STREAMS)
+def test_claim_lines_are_the_tail_of_final_message_in_order(name: str) -> None:
+    """5-4: 문장 줄은 끝 줄 message 문장과 글자 · 종류 · 근거까지 같고, 번호는 실행 전체 답의 자리로 1씩 이어진다.
+    문장 줄을 하나라도 받았으면 끝 줄의 판단이 모두 그 앞 줄들에 실려 있다(이어 부른 응답은 앞 응답에서 보낸 것 제외)."""
+    objs = [json.loads(x) for x in _read(name).splitlines()]
+    claim_lines = [o["data"] for o in objs if o["event"] == "claim"]
+    if objs[-1]["event"] != "final" or not claim_lines:
+        return
+    claims = objs[-1]["data"]["message"]["claims"]
+    base = claim_lines[0]["index"]
+    assert [c["index"] for c in claim_lines] == list(range(base, base + len(claim_lines)))
+    assert [c["claim"] for c in claim_lines] == claims[base:]
+    sent = {a["assessment_id"] for c in claim_lines for a in c["assessments"]}
+    if base == 0:
+        assert sent == {a["assessment_id"] for a in objs[-1]["data"]["assessments"]}
 
 
 def test_needs_action_example_has_one_action_and_state() -> None:

@@ -632,6 +632,67 @@ def _line(event: str, seq: int, data: dict) -> str:
     )
 
 
+def _referenced(ev: dict[str, dict], ids: list[str]) -> list[dict]:
+    """근거 id 와 그 입력(계산 근거)을 따라간 사본(코어 compose.referenced 와 같은 순서)."""
+    out: dict[str, dict] = {}
+    stack = list(ids)
+    while stack:
+        i = stack.pop()
+        if i in out or i not in ev:
+            continue
+        out[i] = ev[i]
+        stack.extend(ev[i].get("inputs") or [])
+    return list(out.values())
+
+
+def _claim_lines(final: dict, seq: int, *, before: dict | None = None) -> list[str]:
+    """끝 줄 message 의 문장 중 아직 줄로 내지 않은 문장마다 문장 줄(5-4). `before`는 같은 실행의 앞 응답 끝 줄이다:
+    그 문장 수부터 번호를 잇고, 그 문장 · 판단이 쓴 근거 · 자료 · 판단은 이미 보낸 것으로 센다(answer.py `ClaimLines`)."""
+    msg = final["message"]
+    ev = {e["evidence_id"]: e for e in final["evidence"]}
+    src = {g["source_id"]: g for g in msg["sources"]}
+    base = 0
+    sent_ev: set[str] = set()
+    sent_src: set[str] = set()
+    sent_as: set[str] = set()
+    if before is not None:
+        prev_claims = before["message"]["claims"]
+        base = len(prev_claims)
+        prev_ev = {e["evidence_id"]: e for e in before["evidence"]}
+        ids = [e for c in prev_claims for e in c["evidence_ids"]]
+        ids += [e for a in before["assessments"] for e in a.get("evidence_ids") or []]
+        sent_ev = {e["evidence_id"] for e in _referenced(prev_ev, ids)}
+        sent_src = {s for c in prev_claims for s in c["source_ids"]}
+        sent_as = {a["assessment_id"] for a in before["assessments"]}
+    out = []
+    for k, c in enumerate(msg["claims"][base:]):
+        new_as = [a for a in final["assessments"] if a["assessment_id"] not in sent_as]
+        ids = [*c["evidence_ids"], *(e for a in new_as for e in a.get("evidence_ids") or [])]
+        evs = [e for e in _referenced(ev, ids) if e["evidence_id"] not in sent_ev]
+        sids = [*c["source_ids"], *(s for a in new_as for s in a.get("source_ids") or [])]
+        sids = [s for s in dict.fromkeys(sids) if s not in sent_src and s in src]
+        data = {
+            "index": base + k,
+            "claim": c,
+            "evidence": evs,
+            "sources": [src[s] for s in sids],
+            "assessments": new_as,
+        }
+        out.append(_line("claim", seq + k, data))
+        sent_ev.update(e["evidence_id"] for e in evs)
+        sent_src.update(sids)
+        sent_as.update(a["assessment_id"] for a in new_as)
+    return out
+
+
+def _stream(progress: list[tuple[str, dict]], final: dict, *, before: dict | None = None) -> str:
+    """진행 줄 → 문장 줄 → 끝 줄(5-4)."""
+    lines = [_line(ev, i, data) for i, (ev, data) in enumerate(progress, start=1)]
+    lines += _claim_lines(final, len(lines) + 1, before=before)
+    lines.append(_line("final", len(lines) + 1, final))
+    return "\n".join(lines)
+
+
 def build() -> dict[str, Any]:
     """파일 이름 → 내용(JSON 객체 또는 NDJSON 문자열)."""
     pitch = fx.sample_pitch()
@@ -710,33 +771,20 @@ def build() -> dict[str, Any]:
         "resume": None,
         "budget_used": budget0,
     }
-    needs_action = "\n".join(
-        [
-            _line("plan", 1, {"plan": _plan(False)}),
-            _line("tool_done", 2, {"trace": TRACE}),
-            _line("final", 3, _final_needs_action()),
-        ]
+    paused = _final_needs_action()
+    needs_action = _stream(
+        [("plan", {"plan": _plan(False)}), ("tool_done", {"trace": TRACE})], paused
     )
-    done = "\n".join([_line("final", 1, _final_done())])
-    partial = "\n".join(
-        [
-            _line(
-                "final",
-                1,
-                _final_simple(
-                    "PARTIAL", "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요.", "TIME"
-                ),
-            )
-        ]
+    # 승인 뒤 이어 부른 응답: 문장 줄 번호는 멈추기 전 문장 수부터 잇는다
+    done = _stream([], _final_done(), before=paused)
+    partial = _stream(
+        [],
+        _final_simple(
+            "PARTIAL", "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요.", "TIME"
+        ),
     )
-    refused = "\n".join(
-        [
-            _line(
-                "final",
-                1,
-                _final_simple("REFUSED", "발표 연습과 관계없는 질문이에요.", "OUT_OF_SCOPE"),
-            )
-        ]
+    refused = _stream(
+        [], _final_simple("REFUSED", "발표 연습과 관계없는 질문이에요.", "OUT_OF_SCOPE")
     )
     error = "\n".join(
         [

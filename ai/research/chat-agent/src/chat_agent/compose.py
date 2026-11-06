@@ -172,3 +172,19 @@ def guide_cards(ctx: Any, source_ids: list[str]) -> list[GuideCard]:
             )
         )
     return out
+
+
+def referenced(ctx: Any, ids: list[str]) -> list[dict[str, Any]]:
+    """답 · 판단 · 카드가 가리킨 근거와 그 입력(계산 근거를 따라감)의 사본(5-5: 입력 근거도 같은 목록에)."""
+    out: dict[str, Any] = {}
+    stack = list(ids)
+    while stack:
+        i = stack.pop()
+        if i in out:
+            continue
+        ev = ctx.registry.get(i)
+        if ev is None:
+            continue
+        out[i] = ev.model_dump(mode="json")
+        stack.extend(ev.inputs or [])
+    return list(out.values())

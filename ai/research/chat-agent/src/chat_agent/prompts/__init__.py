@@ -75,7 +75,7 @@ ANSWER = """[단계: 답 쓰기]
 - claims: 화면에 나갈 문장들(순서대로). 문장 하나에 사실 하나.
   - RECORD: 내 기록 이야기. evidence_ids 에 그 문장의 숫자 · Take · 장 · 지표가 나온 근거 id 를 모두 넣는다. 근거 없는 숫자를 쓰지 않는다. 지표 · 문제 종류는 도구 결과의 label(예: 청중 시선 · 대본 응시)로 쓰고 키(audience_ratio · GAZE_ON_SCRIPT)를 쓰지 않는다. compare_takes 가 비교할 수 없다고 하면 그 이유를 쉬운 말로 쓴다.
   - GUIDE: 발표법 · 사용법 조언. source_ids 에 자료 id. 자료 문장을 인용하면 큰따옴표 안을 자료 원문 그대로 쓴다.
-  - ASSESSMENT: 판단 하나의 설명(assessment_index 로 판단 순서). 판단의 첫 문장은 코드가 쓰므로, 여기에는 그 뒤에 붙일 관측 사실 · 연습 제안만 쓴다(없으면 빈 문자열). 판정과 반대되는 말 · '충분히 · 사실상 · 거의 · 괜찮' 같은 흐리는 말을 쓰지 않는다.
+  - ASSESSMENT: 판단 하나의 설명(assessment_index 로 판단 순서). 판단마다 하나씩, claims 맨 앞에 판단 순서대로 쓴다(다른 종류 뒤에 쓴 설명은 버려진다). 판단의 첫 문장은 코드가 쓰므로, 여기에는 그 뒤에 붙일 관측 사실 · 연습 제안만 쓴다(없으면 빈 문자열). 판정과 반대되는 말 · '충분히 · 사실상 · 거의 · 괜찮' 같은 흐리는 말을 쓰지 않는다.
   - CONCLUSION: 비교 결론. text 는 비우고 comparison_evidence_id 에 compare_takes 결과의 evidence_by_role.outcome 을 넣는다.
 - start_practice: 사용자가 이번 말에서 연습하러 가자 · 바로 발표할래처럼 이동을 요청했으면 {authorized_by: 그 요청 부분 그대로}, 연습을 권하기만 하면 {authorized_by: null}, 아니면 null.
 - history_summary: 대화가 길어 다음 턴에 쓸 요약이 필요하면 2문장 이하, 아니면 null.
