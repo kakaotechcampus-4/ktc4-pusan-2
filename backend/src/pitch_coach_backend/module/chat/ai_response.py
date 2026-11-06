@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Any, Literal, Self
 
@@ -67,6 +68,13 @@ class _Preapproved(_View):
     by: Literal["CHOICE"]
     proposal_id: str
     content_hash: str
+
+
+def args_hash(kind: str, args: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        {"type": kind, "args": args}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class _Action(_View):
