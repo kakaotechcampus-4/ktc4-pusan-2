@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "id": "refuse-out-of-scope",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should_not",
+  "title": "발표와 무관한 질문 — REFUSED 와 '발표 연습과 관계없는 질문이에요'",
+  "expect_refusal": true,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "오늘 저녁 메뉴 추천해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status"
+      },
+      {
+        "check_id": "out-of-scope",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.OUT_OF_SCOPE",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      }
+    ]
+  }
+}

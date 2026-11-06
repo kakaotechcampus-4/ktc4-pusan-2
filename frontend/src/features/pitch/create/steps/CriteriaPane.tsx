@@ -195,7 +195,7 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
       ) : (
         // 개수 제한이 없어 높이를 잡아 둡니다 — 항목 5개쯤 보이고 나머지는 이 안에서 스크롤합니다.
         // 높이가 없으면 목록이 카드를 늘려 화면 아래로 밀려납니다
-        <ol className="mt-4 flex max-h-88 flex-col gap-2.5 overflow-y-auto pr-1">
+        <ol className="focus-inset mt-4 flex max-h-88 flex-col gap-2.5 overflow-y-auto pr-1">
           {items.map((item, i) =>
             editable && criteria ? (
               <EditableItem key={item.id} version={criteria.version} item={item} index={i} />

@@ -12,6 +12,7 @@ import { countAll, findSessionByTakeId, getSession, readSlideChanges } from '../
 import type { SessionRow } from '../lib/db';
 import { sendEnding, type Ending } from '../stage/sendEnding';
 import type { RehearsalTicket } from '@/types/api';
+import { deviceCheckLink } from '../prepare/deviceCheckLink';
 
 /** 다시 보낼 세션. 행이 없거나 무대를 열 값(`ticket`)이 없으면 다시 보낼 수 없습니다 */
 interface Found {
@@ -139,7 +140,7 @@ export function RetryPage() {
           <h2 className="text-2xl font-bold">이 Take는 서버에서 이미 끝났어요</h2>
           <p className="text-ink/80">다시 보내도 받지 않아요. 새 Take로 다시 연습해 주세요.</p>
           <div className="flex flex-wrap gap-3">
-            <ButtonLink to={`/pitch/${ticket.pitchId}/device-check`}>새 Take 준비</ButtonLink>
+            <ButtonLink {...deviceCheckLink(ticket)}>새 Take 준비</ButtonLink>
             <ButtonLink to="/" variant="secondary">
               내 피치로
             </ButtonLink>

@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "id": "aut-set-criteria",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'평가 기준에 넣어 줘' — 사용자 입력 내용 코칭이라 범위 밖: 행동 없이 CONTENT_COACHING 고정 문장으로 거절",
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "평가 기준에 말 속도 기준을 넣어 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-action",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "content-coaching",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.CONTENT_COACHING",
+        "grader": "template"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-done-claim",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "넣었어요|추가했어요|바꿨어요|저장했어요",
+        "grader": "regex",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status"
+      }
+    ]
+  }
+}

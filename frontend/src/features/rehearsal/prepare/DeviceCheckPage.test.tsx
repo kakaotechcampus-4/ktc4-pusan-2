@@ -24,6 +24,8 @@ const fixture = vi.hoisted(() => ({
   create: vi.fn(),
   active: vi.fn(),
   endActive: vi.fn(),
+  /** 화면이 useMicLevel 에 넘긴 옵션. 무음 경고를 언제부터 세는지(silenceFrom)를 봅니다 */
+  micOptions: null as { silenceFrom?: () => number | null } | null,
 }));
 vi.mock('./activeTake', () => ({
   activeTakeOrNone: fixture.active,
@@ -46,16 +48,19 @@ vi.mock('../media/useVideoStream', () => ({
   useVideoStream: () => ({ videoRef: ref(), live: fixture.live }),
 }));
 vi.mock('../media/useMicLevel', () => ({
-  useMicLevel: () => ({
-    meterRef: ref(),
-    echoMeterRef: ref(),
-    rowRef: ref(),
-    silentRef: ref(),
-    micOk: fixture.micOk,
-    audioState: 'running',
-    meterError: null,
-    voiceRecord: vi.fn(),
-  }),
+  useMicLevel: (_stream: unknown, options: { silenceFrom?: () => number | null }) => {
+    fixture.micOptions = options;
+    return {
+      meterRef: ref(),
+      echoMeterRef: ref(),
+      rowRef: ref(),
+      silentRef: ref(),
+      micOk: fixture.micOk,
+      audioState: 'running',
+      meterError: null,
+      voiceRecord: vi.fn(),
+    };
+  },
 }));
 vi.mock('./useGazeSetup', () => ({
   CALIBRATION_FAIL_MESSAGE: {},
@@ -159,11 +164,15 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
-async function render(combo?: PracticeCombo) {
+async function render(combo?: PracticeCombo, pitchId = 'p1') {
   await act(async () =>
     root.render(
+      // 피치를 바꿔 다시 그릴 때 새 주소로 열리도록 key 를 둡니다
       <MemoryRouter
-        initialEntries={[{ pathname: '/pitch/p1/device-check', state: { practice: combo } }]}
+        key={pitchId}
+        initialEntries={[
+          { pathname: `/pitch/${pitchId}/device-check`, state: { practice: combo } },
+        ]}
       >
         <Routes>
           <Route path="/pitch/:pitchId/device-check" element={<DeviceCheckPage />} />
@@ -177,6 +186,10 @@ async function render(combo?: PracticeCombo) {
 const findButton = (text: string) =>
   [...host.querySelectorAll<HTMLButtonElement>('button')].find(
     (node) => node.textContent === text,
+  )!;
+const scriptOption = (label: string) =>
+  [...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((node) =>
+    node.textContent?.includes(label),
   )!;
 
 it('starts with the chosen server version IDs while the optional voice task is still untouched', async () => {
@@ -212,7 +225,10 @@ it('starts with the chosen server version IDs while the optional voice task is s
     expect.objectContaining({
       presentationVersionId: 'chosen-pv',
       scriptVersionId: 'chosen-sv',
-      timeLimitSec: 180,
+      // 조합의 목표 시간(180)이 아니라 피치의 지금 설정(300)입니다 — BE 가 Take 를 그 값으로 기록합니다
+      timeLimitSec: 300,
+      // 실패해 장치 점검으로 돌아갈 때 이 조합을 다시 넘깁니다 (deviceCheckLink)
+      practice: combo,
     }),
   );
   expect(host.textContent).toContain('연습 시작');
@@ -234,6 +250,13 @@ it('keeps device selection and calibration as separate actions and blocks starti
   expect(fixture.gazeStart).not.toHaveBeenCalled();
   await act(async () => findButton('시선 기준 잡기').click());
   expect(fixture.gazeStart).toHaveBeenCalledOnce();
+});
+
+it('lets the app header skip link move focus to the setup body', async () => {
+  await render();
+  const main = host.querySelector('main')!;
+  expect(main.id).toBe('main');
+  expect(main.tabIndex).toBe(-1);
 });
 
 it('retains all mission access and the start action during optional voice reading', async () => {
@@ -329,4 +352,41 @@ it('locks device and script choices while checking for an existing Take, and res
   expect(host.querySelector('dialog')).toBeNull();
   expect(findButton('Take 4 시작하기').disabled).toBe(false);
   expect(document.activeElement).toBe(findButton('Take 4 시작하기'));
+});
+
+it("does not carry one pitch's exam choice into another pitch's server default and Take", async () => {
+  await render(undefined, 'p1');
+  await act(async () => scriptOption('실전 모드').click());
+  expect(scriptOption('실전 모드').getAttribute('aria-checked')).toBe('true');
+
+  fixture.data = { ...fixture.data, pitch_id: 'p2', default_script_mode: 'KEYWORD' };
+  await render(undefined, 'p2');
+  expect(scriptOption('핵심 키워드').getAttribute('aria-checked')).toBe('true');
+
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      pitchId: 'p2',
+      body: expect.objectContaining({ mode: 'COACHING', script_mode: 'KEYWORD' }),
+    }),
+  );
+  expect(host.textContent).toContain('연습 시작');
+});
+
+it('counts the silence warning only while reading the usual voice, from when reading started', async () => {
+  const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+  await render();
+  // 읽기 전에는 말할 이유가 없어 경고하지 않습니다
+  expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
+
+  now.mockReturnValue(5000);
+  fixture.voiceStatus = 'READING';
+  await render();
+  // 페이지를 연 때(1000)가 아니라 읽기를 누른 때(5000)부터 셉니다
+  expect(fixture.micOptions?.silenceFrom?.()).toBe(5000);
+
+  fixture.voiceStatus = 'DONE';
+  await render();
+  expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
+  now.mockRestore();
 });

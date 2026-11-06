@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-general-guide-found",
+  "set": "agent_service",
+  "group": "general",
+  "split": "dev",
+  "act": "should",
+  "title": "자료가 뒷받침하는 조언 질문 — GUIDE(자료 인용 원문 그대로)로 답한다",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표 시작할 때 긴장 줄이는 방법 있어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "guide-card",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": [
+          "g-07",
+          "g-09"
+        ],
+        "path": "source_ids",
+        "metric": "advice"
+      },
+      {
+        "check_id": "guide-kind",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GUIDE",
+        "path": "claim_kinds",
+        "metric": "advice"
+      },
+      {
+        "check_id": "quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote",
+        "metric": "advice"
+      },
+      {
+        "check_id": "searched",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "search_guides",
+        "path": "tools"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

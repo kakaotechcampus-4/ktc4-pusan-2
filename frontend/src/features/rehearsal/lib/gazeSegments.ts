@@ -2,18 +2,37 @@ import type { GazeSegment, GazePayload, GazeZone, Ms } from '@/types/api';
 import type { GazeSampleRecord } from '@/workers/gaze.contract';
 
 /**
- * 엔진 상태 → FE 3구역. **접는 규칙은 이 함수에만 둡니다** (테두리 · 코치 비율 · 종료 구간).
+ * 엔진 상태 → FE 3구역. 종료 구간(`compressToSegments`)이 쓰는 형식이라 바꾸지 않습니다 (BE 약속).
  *
  *   CAMERA                          → CAMERA     청중
  *   SCREEN · BOTTOM                 → BOTTOM     화면 · 대본
  *   OTHER · UNCERTAIN · UNMEASURED  → UNCERTAIN  판정 불가 (OTHER 는 AI 기본값 `otherAs` 와 같습니다)
  *
- * 서버로 가는 1초 기록은 접지 않은 상태 그대로입니다. 이건 화면과 지금의 종료 형식용입니다.
+ * 서버로 가는 1초 기록은 접지 않은 상태 그대로입니다. 테두리는 화면과 대본을 나눠 `borderOf` 가 정합니다.
  */
 export function zoneOf(state: GazeSampleRecord['state']): GazeZone {
   if (state === 'CAMERA') return 'CAMERA';
   if (state === 'SCREEN' || state === 'BOTTOM') return 'BOTTOM';
   return 'UNCERTAIN';
+}
+
+/** 무대 테두리 상태 — `.stage` 의 `data-gaze` 값입니다 (`stage.css`) */
+export type GazeBorder = 'AUDIENCE' | 'SCREEN' | 'SCRIPT' | 'UNKNOWN';
+
+/**
+ * 엔진 상태 → 무대 테두리. `zoneOf` 와 달리 **화면과 대본을 나눕니다** —
+ * 리포트가 대본 응시 비율(`script_ratio`, 엔진의 `BOTTOM`)을 따로 보여 주므로 발표 중에도 따로 보입니다.
+ *
+ *   CAMERA                          → AUDIENCE  청중
+ *   SCREEN                          → SCREEN    화면(슬라이드)
+ *   BOTTOM                          → SCRIPT    대본 (화면 아래 대본 띠)
+ *   OTHER · UNCERTAIN · UNMEASURED  → UNKNOWN   판정 불가
+ */
+export function borderOf(state: GazeSampleRecord['state']): GazeBorder {
+  if (state === 'CAMERA') return 'AUDIENCE';
+  if (state === 'SCREEN') return 'SCREEN';
+  if (state === 'BOTTOM') return 'SCRIPT';
+  return 'UNKNOWN';
 }
 
 /**

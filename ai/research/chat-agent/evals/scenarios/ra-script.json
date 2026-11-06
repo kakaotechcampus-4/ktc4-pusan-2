@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "id": "ra-script",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "'대본 보고 한 발표였어' → 대본 사용 조건(script_used=true)으로 A · B 를 불러 바뀐 칸만, 공식 결과는 그대로",
+  "source": "ra-script",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "one-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "two-review-calls",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 2,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "before-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 88,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "PRIORITY",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].before",
+        "note": "규칙 칸 전체(점수 · 차원 · 사용자 기준 판정)를 규칙 리뷰 코드로 계산했다(test_scenarios 가 다시 계산)"
+      },
+      {
+        "check_id": "after-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 100,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "NOT_EVALUABLE",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].after",
+        "note": "규칙 칸 전체(점수 · 차원 · 사용자 기준 판정)를 규칙 리뷰 코드로 계산했다(test_scenarios 가 다시 계산)"
+      },
+      {
+        "check_id": "changed-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": ["score", "dimensions.script_independence"],
+        "path": "cards[type=REASSESS_RESULT].changed_fields"
+      },
+      {
+        "check_id": "official-same-as-a",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": false,
+        "path": "cards[type=REASSESS_RESULT].official_differs"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "script-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "SCRIPT_FACT",
+          "fields": {
+            "state": "꺼져"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "score-rise-notice",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_POINTS_REMOVED",
+        "grader": "template",
+        "note": "규칙 리뷰 점수 A 88 → B 100(대본 의존 차원이 판단 불가로 빠짐, 6-6)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -569,7 +569,7 @@ function MappingEditor({
       />
 
       <div className="grid min-h-36 flex-1 grid-cols-[170px_minmax(0,1fr)] gap-4 [&_nav]:overflow-y-auto [&_nav]:border [&_nav]:border-line [&_nav_button]:block [&_nav_button]:min-h-11 [&_nav_button]:w-full [&_nav_button]:px-3 [&_nav_button]:py-2 [&_nav_button]:text-left [&_nav_button]:text-sm [&_nav_button:hover]:bg-cream [&_nav_button[aria-current]]:bg-coral-wash [&_nav_button[aria-current]]:font-bold [&_nav_button[aria-current]]:text-coral-deep max-[760px]:grid-cols-1 max-[760px]:[&_nav]:max-h-32">
-        <nav aria-label="매핑 슬라이드 목록">
+        <nav aria-label="매핑 슬라이드 목록" className="focus-inset">
           {rows.map((block, i) => (
             <button
               type="button"

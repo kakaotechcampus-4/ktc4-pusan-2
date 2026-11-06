@@ -178,6 +178,10 @@ ai/service/
 ```powershell
 curl.exe -i http://localhost:8001/health
 ```
+macOS · Linux
+```bash
+curl -i http://localhost:8001/health
+```
 기대 응답 (본문)
 ```json
 {"status": "ok"}

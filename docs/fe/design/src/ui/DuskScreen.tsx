@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { formatDuration } from '@/lib/clock';
+import { publicUrl } from '@/lib/publicUrl';
 import { PitchCoachWordmark } from '@/ui/PitchCoachWordmark';
 
 /** 머리 오른쪽 줄에 필요한 값만. 제품 `types/report.ts`의 TakeReport에서 이 틀이 읽는 칸만 남겼다 */
@@ -26,7 +27,7 @@ export function DuskScreen({
   return (
     <div className="relative flex min-h-dvh flex-col overflow-hidden bg-dusk">
       <img
-        src="/loading/sunset-wide-bird.png"
+        src={publicUrl('loading/sunset-wide-bird.png')}
         alt="노을 진 바닷가 도시 위를 가방을 멘 치치가 날아가는 그림"
         width={1672}
         height={941}

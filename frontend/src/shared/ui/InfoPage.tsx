@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 /**
  * 글 위주 화면의 틀 — 분석 방식 설명(P14) · 미지원 브라우저(P18) · 404 · 마이페이지(P9).
@@ -32,7 +33,11 @@ export function InfoPage({
         <h1 className="text-lg font-bold">{title}</h1>
       </header>
 
-      <main className="mx-auto flex max-w-page flex-col gap-6 px-6 pb-12 pt-5 lg:px-10">
+      <main
+        id={MAIN_ID}
+        tabIndex={-1}
+        className="mx-auto flex max-w-page flex-col gap-6 px-6 pb-12 pt-5 lg:px-10"
+      >
         {children}
       </main>
     </div>

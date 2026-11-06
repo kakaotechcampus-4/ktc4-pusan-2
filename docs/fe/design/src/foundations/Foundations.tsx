@@ -419,7 +419,7 @@ export function SurfacesFoundation() {
       </Section>
       <Section
         title="포커스"
-        description="키보드 조작이 요구사항이라 포커스 링을 지우지 않는다. 기본은 코랄 2px 선, 2px 띄움(`:focus-visible`). 예외: 밝은 지면의 입력칸(피치 생성의 대본 · 평가기준 · 정보, 설문 창, 의견 종류)은 ink(`focus-visible:outline-ink`), 대본 확인은 dusk 색이다. 제품에 남은 예외(FE 확인): 슬라이드 칸 한 곳이 outline-none이다."
+        description="키보드 조작이 요구사항이라 포커스 링을 지우지 않는다. 기본은 코랄 2px 선, 2px 띄움(`:focus-visible`). 스크롤 영역 안 요소는 가장자리에서 바깥 테두리가 잘리므로 그 영역에 `focus-inset`을 달아 안쪽(-2px)에 그린다. 예외: 밝은 지면의 입력칸(피치 생성의 대본 · 평가기준 · 정보, 설문 창, 의견 종류)은 ink(`focus-visible:outline-ink`), 대본 확인은 dusk 색이다. 제품에 남은 예외(FE 확인): 슬라이드 칸 한 곳이 outline-none이다."
       >
         <span className="inline-flex min-h-11 items-center border-2 border-ink bg-panel px-6 text-sm font-bold outline outline-2 outline-offset-2 outline-coral">
           포커스된 버튼
@@ -554,7 +554,7 @@ export function ResponsiveFoundation() {
       </Section>
       <Section
         title="확인할 크기"
-        description="제품은 노트북 · 데스크톱 전용이고 팀 기준 크기는 1366 × 650 · 1920 × 950이다. 이 두 크기와 브라우저 확대 125% · 150%(배율을 올린 노트북)에서 가로 넘침 · 잘림이 없어야 한다. 휴대폰 · 태블릿 크기는 참고용이다(#710에서 모바일 접속 차단 예정). 미리보기 크기 맨 위의 팀 기준을 고르고 브라우저 확대를 바꿔 본다."
+        description="제품은 노트북 · 데스크톱 전용이고 팀 기준 크기는 1366 × 650 · 1920 × 950이다. 이 두 크기와 브라우저 확대 125% · 150%(배율을 올린 노트북)에서 가로 넘침 · 잘림이 없어야 한다. 휴대폰 · 태블릿 크기는 참고용이고, 제품은 그 기기에서 연습 화면(장치 점검 · 리허설 · 실전)만 막는다(#710). 미리보기 크기 맨 위의 팀 기준을 고르고 브라우저 확대를 바꿔 본다."
       />
     </Page>
   );

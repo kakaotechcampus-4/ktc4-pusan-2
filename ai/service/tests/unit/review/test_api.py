@@ -136,6 +136,26 @@ def test_missions_limit_is_20(make_client, count, status) -> None:
         assert llm.messages is None
 
 
+@pytest.mark.parametrize("where", ["take_result", "previous_take"])
+def test_unknown_area_key_is_422(make_client, where) -> None:
+    # areas key 는 일곱 영역(architecture.md 6-3) 중 하나.
+    # 모르는 영역은 출력 검증(500)이 아니라 입력에서 422
+    req = sample_request()
+    if where == "take_result":
+        areas = req["take_result"]["areas"]
+    else:
+        req["previous_takes"] = [{"take_result": sample_request()["take_result"]}]
+        areas = req["previous_takes"][0]["take_result"]["areas"]
+    areas["gaze"] = areas.pop("GAZE")
+    llm = FakeLLM(full_draft)
+    res = make_client(llm).post("/takes/review", json=req)
+    assert res.status_code == 422
+    assert res.json() == {
+        "error": {"code": "VALIDATION_ERROR", "message": "요청 형식이 올바르지 않습니다."}
+    }
+    assert llm.messages is None
+
+
 def test_review_llm_gets_the_25_second_budget_its_role_and_the_draft_schema(make_client) -> None:
     client = make_client(FakeLLM(full_draft))
     before = time.monotonic()

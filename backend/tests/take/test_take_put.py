@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
 from tests.take.conftest import Versions, _make_take
@@ -303,6 +304,7 @@ def test_put_end_revives_a_take_ended_as_abandoned(
     take = _make_take(db_session, pitch_id, versions, 1)
     take.status = "FAILED"
     take.end_reason = "ABANDONED"
+    take.started_at = _NOW
     take.ended_at = _NOW + timedelta(minutes=1)
     db_session.flush()
     ended = _at(50)
@@ -325,6 +327,70 @@ def test_put_end_revives_a_take_ended_as_abandoned(
         datetime.fromisoformat(ended),
         logs,
     )
+
+
+def test_put_end_revives_a_started_take_with_only_the_end_time(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """FE 는 끝낼 때 `ended_at` 만 보낸다. 첫 연결이 적은 시작 시각으로 시작한 Take 임을 안다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    repo = CoachRepository(db_session)
+    assert repo.mark_started(take.id) == 1
+    assert repo.mark_abandoned(take.id, _NOW + timedelta(minutes=1)) is True
+    db_session.flush()
+    db_session.refresh(take)
+    started_at = take.started_at
+    ended = _at(50)
+
+    response = _put(client, take, auth_headers, {"ended_at": ended})
+
+    assert response.is_success
+    db_session.refresh(take)
+    assert (take.status, take.end_reason, take.started_at, take.ended_at) == (
+        "ANALYZING",
+        None,
+        started_at,
+        datetime.fromisoformat(ended),
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"ended_at": _at(5)}, {"started_at": _at(0), "ended_at": _at(5)}],
+    ids=["only_end_time", "with_start_time"],
+)
+def test_put_end_rejects_an_abandoned_take_that_never_started(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    body: dict[str, str],
+) -> None:
+    """시작하지 않은 채 정리된 Take 는 실시간 연결이 붙은 적이 없어 남은 기록이 없다. 끝내기로
+    되살리면 처리 화면으로 갔다가 실패한다. `READY` 때와 같이 거절하고 아무것도 바꾸지 않는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    assert TakeRepository(db_session).abandon_ready_takes(pitch_id) == 1
+    db_session.flush()
+    db_session.refresh(take)
+    ended_at = take.ended_at
+
+    response = _put(client, take, auth_headers, body)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_NOT_STARTED"
+    db_session.refresh(take)
+    assert (
+        take.status,
+        take.end_reason,
+        take.started_at,
+        take.ended_at,
+        take.analysis_stage,
+    ) == ("FAILED", "ABANDONED", None, ended_at, None)
 
 
 def test_put_end_does_not_revive_a_take_closed_with_its_tab(

@@ -130,7 +130,7 @@ const productScreens: GuideScreen[] = [
     route: '/pitch/new',
     status: '시안',
     summary:
-      'PM 승인 전 디자인 검토용. 발표 자료부터 연습 설정까지 한 페이지에서 준비하는 A안이다. 제품 구현은 포함하지 않는다.',
+      '발표 자료부터 연습 설정까지 한 페이지에서 준비하는 A안이다. PM이 승인해 제품에 적용됐고(#802), 이 샘플이 그 구조를 그린다.',
     states: [
       state('default', '시안 · 슬라이드 준비', '예시 슬라이드를 올린 뒤 대본을 연결한다.'),
       state('empty', '시안 · 빈 화면', '모든 섹션은 보이고 슬라이드부터 시작한다.'),
@@ -160,7 +160,7 @@ const productScreens: GuideScreen[] = [
       state('many', '시안 · 버전 30개', '긴 버전 목록의 스크롤과 읽기 전용 열람을 확인한다.'),
     ],
     rules: [
-      'PM 승인 전 독립 시안이다. 파일 업로드·저장·매핑은 메모리의 예시 데이터이며 API·카메라·마이크를 사용하지 않는다.',
+      '제품 구조를 그린 샘플이다. 파일 업로드·저장·매핑은 메모리의 예시 데이터이며 API·카메라·마이크를 사용하지 않는다.',
       '슬라이드, 대본 연결, 발표정보, 평가기준(선택)을 한 페이지에 둔다. 날짜 항목은 없고 시간 편차는 0초/0초로 시작한다.',
       '섹션 배경은 발표 생성용 밝은 지면의 panel과 cream을 번갈아 쓴다. 슬라이드·발표정보는 panel, 대본 연결·평가기준은 cream이다. 경계는 1px line-strong이고 입력칸은 흰색을 유지한다.',
       '현재 단계 강조 시안은 기존 panel·cream을 섞어 색 차이를 줄이고 일반 구분선을 없앤다. 준비 순서 선택·본문 클릭·키보드 입력에 맞춰 한 섹션의 1px coral-deep 테두리만 이동한다. 기존 교차 배경 A안도 상태 선택에서 비교한다.',
@@ -174,9 +174,17 @@ const productScreens: GuideScreen[] = [
     ],
     components: ['시안 전용 폴더 트리 · 연결 메뉴 · 매핑 창'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
-    sources: ['frontend/src/features/pitch/create/PitchCreatePage.tsx'],
+    sources: [
+      'frontend/src/features/pitch/create/PitchCreatePage.tsx',
+      'frontend/src/features/pitch/create/FinalReviewDialog.tsx',
+      'frontend/src/features/pitch/create/VersionPreviewDialog.tsx',
+      'frontend/src/features/pitch/create/steps/SlidePane.tsx',
+      'frontend/src/features/pitch/create/steps/ScriptPane.tsx',
+      'frontend/src/features/pitch/create/steps/InfoPane.tsx',
+      'frontend/src/features/pitch/create/steps/CriteriaPane.tsx',
+    ],
     productNote:
-      '현재 제품은 단계별 본문과 날짜 입력을 사용한다. 이 항목은 제품을 설명하는 샘플이 아닌 PM 검토 시안이다. 기존 제품 샘플은 피치 생성 · 수정에서 비교한다. #802의 제품 구현 PR은 후속 피드백 검토를 위해 Draft로 전환했다. 현재 단계 강조 상태는 추가 검토 시안이며, 실제 제품 반영은 승인 후 별도 작업이다. PDF 확인 상태는 FE 메모리에만 둔다. 이번 화면에서 새로 업로드한 미확인 버전만 확인 필요로 보고, 서버에서 불러온 기존 버전은 확인 완료로 본다. 확인 전 새로고침해도 수정 화면에서 다시 불러오면 확인 완료가 되는 한계가 있다. PDF는 업로드 때 이미 서버에 저장되므로 확인 완료 버튼은 추가 저장 API를 부르지 않는다. 슬라이드는 PDF를 읽지 않고 3장의 예시 자료를 그린다. 입력한 원문은 화면에 보관하고, 매핑과 평가기준 정리 결과는 고정 fixture로 표현한다. API 응답·장비·서버 저장·실제 파일 선택은 검증 대상이 아니다.',
+      '제품은 이 시안의 한 페이지 구조를 이미 쓴다(#802 · 현재 단계 강조와 최종 확인 창까지 반영). 아직 시안으로 표시하는 것은 상태를 "제품에 있음"으로 올릴지와 단계형이던 "피치 생성 · 수정" 샘플을 어떻게 정리할지를 FE가 정하지 않았기 때문이다. 제품과 다른 점: 목표 발표 시간은 제품이 1~60분(편차 ±10초 버튼, 1초 단위)이고 샘플은 30분까지(30초 단위)다. 제품에는 슬라이드 제목줄의 N장 · 확인 상태 배지와 새 버전 버튼, 대본의 구분 수 · 글자 수 · 예상 시간 안내와 장수 불일치 안내, 업로드 실패 사유별 문구가 있지만 샘플은 그리지 않는다. 제품의 읽기용 버전 창은 실제 PDF를 그린다. PDF 확인 상태는 FE 메모리에만 둔다. 이번 화면에서 새로 업로드한 미확인 버전만 확인 필요로 보고, 서버에서 불러온 기존 버전은 확인 완료로 본다. 확인 전 새로고침해도 수정 화면에서 다시 불러오면 확인 완료가 되는 한계가 있다. PDF는 업로드 때 이미 서버에 저장되므로 확인 완료 버튼은 추가 저장 API를 부르지 않는다. 슬라이드는 PDF를 읽지 않고 3장의 예시 자료를 그린다. 입력한 원문은 화면에 보관하고, 매핑과 평가기준 정리 결과는 고정 fixture로 표현한다. API 응답·장비·서버 저장·실제 파일 선택은 검증 대상이 아니다.',
     next: [next('현재 제품 샘플과 비교', 'pitch-create'), next('시작 전 점검', 'prepare-mission')],
   },
   {
@@ -236,7 +244,7 @@ const productScreens: GuideScreen[] = [
       ),
     ],
     rules: [
-      '공용 상단바(AppHeader)는 두지 않고 자체 틀(ScreenFrame)을 쓴다. 상단바 높이만큼 시작 버튼이 첫 화면 밖으로 밀려서다. 상단바는 시작 전 세팅을 단순화할 때(#706) 같이 정한다.',
+      '위에 공용 상단바(AppHeader)가 얹히고, 그 아래 본문은 자체 틀(ScreenFrame)을 쓴다(#694). 상단바 높이(약 85px)를 빼고도 폭 1024px 이상 · 높이 606px 이상에서 페이지 스크롤 없이 시작 버튼까지 보이도록, 높이 749px 이하에서는 여백을 줄이고(compact) 659px 이하에서는 점검 행 · 미션 칸 · 카메라 열 폭(640px)까지 줄인다(low). 내용은 가운데 정렬 그대로다(왼쪽 위로 옮길지는 #706에서 정한다).',
       'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
       '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
       '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중(다른 곳의 연습을 끝낼지 묻는 동안은 그 안내) → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
@@ -424,7 +432,7 @@ const productScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
       'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
-      'frontend/src/dev/stage/CoachStrip.tsx',
+      'frontend/src/features/rehearsal/stage/CoachStrip.tsx',
       'frontend/src/features/rehearsal/stage/stage.css',
       'frontend/src/features/rehearsal/stage/canEnd.ts',
       'frontend/src/features/rehearsal/stage/useEndConfirm.ts',
@@ -728,12 +736,16 @@ const infoScreens: GuideScreen[] = [
     summary: '이 브라우저 · 기기에서 연습할 수 없는 이유와 쓸 브라우저를 알린다.',
     states: [
       state('browser', '시선 분석 불가', '시선 분석에 필요한 브라우저 기능이 없다.'),
-      state('mobile', '터치 기기', '터치만 되는 기기라 PC에서 연습하라고 알린다.'),
+      state(
+        'mobile',
+        '터치 기기',
+        '휴대폰 · 태블릿에서 연습 화면(장치 점검 · 리허설 · 실전)을 열면 이 안내로 온다. 노트북 · 데스크톱에서 연습하라고 알린다.',
+      ),
       state('supported', '연습 가능', '이 주소로 바로 들어왔지만 이 브라우저는 연습할 수 있다.'),
     ],
     rules: [
-      '사유는 이 화면이 직접 고른다. 시선 분석 기능이 없으면 그게 먼저고, 그다음 터치 전용 기기(`pointer: coarse`)다.',
-      '지금 제품에는 이 화면으로 자동으로 보내는 곳이 없다. 연습은 PC 정책이고, 이 화면이 그 안내다.',
+      '사유는 이 화면이 직접 고른다. 시선 분석 기능이 없으면 그게 먼저고, 그다음 터치 전용 기기다(주 입력이 `pointer: coarse` 이고 마우스 · 트랙패드가 없을 때).',
+      '터치 전용 기기가 연습 화면(장치 점검 · 리허설 · 실전)을 열면 `DesktopGate` 가 로그인보다 먼저 이 화면으로 보낸다. 홈 · 피치 · 리포트 · 마이페이지는 모바일에서도 열린다.',
       '"링크 복사"는 주소를 복사하고, 복사할 수 없으면 주소를 직접 옮기라고 알린다.',
     ],
     components: ['InfoPage 틀(로고 줄)', 'Card', 'Button'],
@@ -741,6 +753,7 @@ const infoScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/info/UnsupportedPage.tsx',
       'frontend/src/features/info/unsupportedReason.ts',
+      'frontend/src/app/DesktopGate.tsx',
     ],
     productNote: '"링크 복사"는 샘플에서 클립보드를 쓰지 않고 복사 결과 문구도 띄우지 않는다.',
     productLinks: [

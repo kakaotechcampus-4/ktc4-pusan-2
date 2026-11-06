@@ -53,11 +53,6 @@ TAKE_ID = uuid.uuid7()
 WS_PATH = f"/api/ws/takes/{TAKE_ID}"
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 def frame(seq: int, offset_ms: int, duration_ms: int = 100, fill: int = 1) -> bytes:
     return struct.pack("<II", seq, offset_ms) + bytes([fill]) * (duration_ms * BYTES_PER_MS)
 
@@ -68,7 +63,6 @@ def transcript(start_ms: int, end_ms: int, text: str, *, is_final: bool) -> Tran
         end_ms=end_ms,
         is_final=is_final,
         speech_final=is_final,
-        from_finalize=False,
         transcript=text,
         confidence=0.9,
         words=(Word(text, text, start_ms, end_ms, 0.9),),
@@ -545,7 +539,6 @@ def empty_final(start_ms: int, end_ms: int) -> Transcript:
         end_ms=end_ms,
         is_final=True,
         speech_final=False,
-        from_finalize=False,
         transcript="",
         confidence=0.0,
         words=(),

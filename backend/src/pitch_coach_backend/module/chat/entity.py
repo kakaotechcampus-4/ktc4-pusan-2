@@ -1,0 +1,410 @@
+import uuid
+from datetime import date, datetime
+from typing import Any
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSON, JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from pitch_coach_backend.core.database import (
+    Base,
+    CreatedAtMixin,
+    TimestampMixin,
+    UUIDPrimaryKeyMixin,
+)
+
+# 파이썬 None 을 JSON null 이 아니라 SQL NULL 로 저장한다. JSON null 은 `IS NULL` 제약 · 조회에서
+# 값이 있는 칸으로 잡힌다
+NullableJSONB = JSONB(none_as_null=True)
+
+
+class ChatConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "chat_conversations"
+    __table_args__ = (CheckConstraint("goal_version >= 0", name="check_chat_goal_version"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    scope_pitch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    goal_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_user_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    without_memory: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+
+class ChatGoal(CreatedAtMixin, Base):
+    __tablename__ = "chat_goals"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('OPEN', 'ACHIEVED', 'NOT_ACHIEVED', 'BASELINE_MISMATCH')",
+            name="check_chat_goal_status",
+        ),
+        CheckConstraint("(goal IS NULL) = (status IS NULL)", name="check_chat_goal_status_set"),
+    )
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    goal: Mapped[Any | None] = mapped_column(NullableJSONB)
+    status: Mapped[str | None] = mapped_column(String(20))
+    base_take_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    first_take_number: Mapped[int | None] = mapped_column(Integer)
+    action_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("chat_actions.id", ondelete="SET NULL")
+    )
+
+
+class ChatMessage(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "seq", name="uq_chat_messages_conversation_seq"),
+        UniqueConstraint(
+            "user_id", "client_request_id", name="uq_chat_messages_user_client_request"
+        ),
+        CheckConstraint("role IN ('user', 'assistant', 'system')", name="check_chat_message_role"),
+        CheckConstraint(
+            "status IN ('DONE', 'PARTIAL', 'REFUSED')", name="check_chat_message_status"
+        ),
+        CheckConstraint(
+            "(client_request_id IS NULL) = (request_hash IS NULL)",
+            name="check_chat_message_request_key",
+        ),
+    )
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str | None] = mapped_column(String(16))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    client_request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    request_hash: Mapped[str | None] = mapped_column(String(64))
+    again_of_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("chat_messages.id")
+    )
+    claims: Mapped[Any | None] = mapped_column(NullableJSONB)
+    cards: Mapped[Any | None] = mapped_column(NullableJSONB)
+    assessments: Mapped[Any | None] = mapped_column(NullableJSONB)
+    plan: Mapped[Any | None] = mapped_column(NullableJSONB)
+    trace: Mapped[Any | None] = mapped_column(NullableJSONB)
+    basis: Mapped[Any | None] = mapped_column(NullableJSONB)
+    evidence: Mapped[Any | None] = mapped_column(NullableJSONB)
+    sources: Mapped[Any | None] = mapped_column(NullableJSONB)
+    usage: Mapped[Any | None] = mapped_column(NullableJSONB)
+    meta: Mapped[Any | None] = mapped_column(NullableJSONB)
+    source_pitch_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+    source_take_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+
+
+class ChatRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "chat_runs"
+    __table_args__ = (
+        Index(
+            "uq_chat_runs_one_active",
+            "conversation_id",
+            unique=True,
+            postgresql_where=text("status IN ('QUEUED', 'RUNNING', 'WAITING_APPROVAL')"),
+        ),
+        CheckConstraint(
+            "first_trigger IN ('USER_MESSAGE', 'TAKE_REVIEWED')",
+            name="check_chat_run_first_trigger",
+        ),
+        CheckConstraint(
+            "status IN ('QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'DONE', 'PARTIAL', "
+            "'REFUSED', 'FAILED', 'CANCELLED', 'EXPIRED')",
+            name="check_chat_run_status",
+        ),
+        CheckConstraint(
+            "row_revision >= 0 AND state_revision >= 0", name="check_chat_run_revisions"
+        ),
+    )
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("chat_messages.id", ondelete="CASCADE")
+    )
+    first_trigger: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="QUEUED")
+    row_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    state_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    scope_pitch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    input: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    state: Mapped[Any | None] = mapped_column(NullableJSONB)
+    turn_calls: Mapped[Any | None] = mapped_column(NullableJSONB)
+    progress_turn_call: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    progress_seq: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    plan: Mapped[Any | None] = mapped_column(NullableJSONB)
+    trace: Mapped[Any | None] = mapped_column(NullableJSONB)
+    interim_message: Mapped[Any | None] = mapped_column(NullableJSONB)
+    budget_used: Mapped[Any | None] = mapped_column(NullableJSONB)
+    usage: Mapped[Any | None] = mapped_column(NullableJSONB)
+    read_sources: Mapped[Any | None] = mapped_column(NullableJSONB)
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    retry_after_s: Mapped[int | None] = mapped_column(Integer)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    approval_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(100))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fencing_token: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+
+
+class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "chat_actions"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "type", "idempotency_key", name="uq_chat_actions_user_type_key"
+        ),
+        UniqueConstraint("run_id", "action_id", name="uq_chat_actions_run_action"),
+        CheckConstraint(
+            "type IN ('FETCH_PITCH', 'FETCH_TAKE', 'REASSESS', 'SAVE_GOAL', 'START_PRACTICE')",
+            name="check_chat_action_type",
+        ),
+        CheckConstraint("autonomy IN ('AUTO', 'ASK', 'BUTTON')", name="check_chat_action_autonomy"),
+        CheckConstraint(
+            "status IN ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'REJECTED', 'EXPIRED', "
+            "'CANCELLED')",
+            name="check_chat_action_status",
+        ),
+    )
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    action_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    args: Mapped[Any] = mapped_column(JSON, nullable=False)
+    args_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    autonomy: Mapped[str] = mapped_column(String(10), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    args_hash: Mapped[str | None] = mapped_column(String(100))
+    approved: Mapped[bool | None] = mapped_column(Boolean)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="PENDING")
+    result: Mapped[Any | None] = mapped_column(NullableJSONB)
+    source_take_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatDailyUsage(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "chat_daily_usage"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "day",
+            name="uq_chat_daily_usage_user_day",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint(
+            "turns >= 0 AND reassessments >= 0 AND goal_checks >= 0 "
+            "AND reserved >= 0 AND sent >= 0",
+            name="check_chat_daily_usage_counts",
+        ),
+        CheckConstraint(
+            "(user_id IS NULL AND turns = 0 AND reassessments = 0 AND goal_checks = 0) "
+            "OR (user_id IS NOT NULL AND reserved = 0 AND sent = 0)",
+            name="check_chat_daily_usage_scope",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE")
+    )
+    day: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    turns: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    reassessments: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    goal_checks: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class ChatLease(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "chat_leases"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "goal_version",
+            "take_id",
+            "review_revision",
+            name="uq_chat_leases_goal_check",
+        ),
+        Index(
+            "uq_chat_leases_one_cleanup",
+            "kind",
+            unique=True,
+            postgresql_where=text("kind = 'CLEANUP'"),
+        ),
+        CheckConstraint("kind IN ('GOAL_CHECK', 'CLEANUP')", name="check_chat_lease_kind"),
+        CheckConstraint("status IN ('PENDING', 'DONE')", name="check_chat_lease_status"),
+        CheckConstraint(
+            "(kind = 'GOAL_CHECK') = (conversation_id IS NOT NULL AND goal_version IS NOT NULL "
+            "AND take_id IS NOT NULL AND review_revision IS NOT NULL AND status IS NOT NULL)",
+            name="check_chat_lease_goal_key",
+        ),
+    )
+
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE")
+    )
+    goal_version: Mapped[int | None] = mapped_column(Integer)
+    take_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    review_revision: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str | None] = mapped_column(String(10))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    owner: Mapped[str | None] = mapped_column(String(100))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    fencing_token: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+
+
+class ChatRunLog(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    __tablename__ = "chat_run_logs"
+
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, unique=True, nullable=False)
+    day: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+
+
+class ChatDiagnostic(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "chat_diagnostics"
+    __table_args__ = (UniqueConstraint("run_id", "turn_call", name="uq_chat_diagnostics_run_call"),)
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    turn_call: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    diagnostics: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ChatMemorySetting(TimestampMixin, Base):
+    __tablename__ = "chat_memory_settings"
+    __table_args__ = (CheckConstraint("memory_version >= 0", name="check_chat_memory_version"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    memory_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+
+class ChatProfileItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "chat_profile_items"
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_chat_profile_items_user_key"),
+        CheckConstraint(
+            "key IN ('TONE', 'EXPLAIN_STYLE', 'FOCUS_AREA', 'CONTEXT')",
+            name="check_chat_profile_item_key",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(String(20), nullable=False)
+    value: Mapped[str] = mapped_column(String(80), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatSummary(TimestampMixin, Base):
+    __tablename__ = "chat_summaries"
+    __table_args__ = (CheckConstraint("summary_version >= 0", name="check_chat_summary_version"),)
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    items: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    summary_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    covered_message_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_messages.id"), nullable=False
+    )
+    source_pitch_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+    source_take_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+
+
+class ChatRunEvent(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    __tablename__ = "chat_run_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "event_seq", name="uq_chat_run_events_run_seq"),
+        CheckConstraint(
+            "event IN ('plan', 'tool_done', 'claim')", name="check_chat_run_event_event"
+        ),
+    )
+
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    event_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    event: Mapped[str] = mapped_column(String(10), nullable=False)
+    data: Mapped[Any] = mapped_column(JSONB, nullable=False)

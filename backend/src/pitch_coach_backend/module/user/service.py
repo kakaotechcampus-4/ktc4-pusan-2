@@ -1,6 +1,6 @@
 """User 비즈니스 로직.
 
-다른 도메인(auth)은 이 service 만 호출한다. repository·entity 를 직접 import 하지 않는다.
+다른 도메인(auth)은 이 service 를 호출한다.
 """
 
 import uuid
@@ -66,8 +66,3 @@ def delete(db: Session, user: User) -> None:
     """
     repository.delete(db, user)
     db.commit()
-
-
-def exists(db: Session, user_id: uuid.UUID) -> bool:
-    """인증 뒤 탈퇴한 경우도 확인하도록 캐시 없이 DB를 읽는다."""
-    return repository.exists(db, user_id)

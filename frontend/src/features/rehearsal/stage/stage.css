@@ -173,6 +173,9 @@
 .stage[data-gaze='SCREEN'] .viewport {
   border-color: var(--color-gaze-screen);
 }
+.stage[data-gaze='SCRIPT'] .viewport {
+  border-color: var(--color-gaze-script);
+}
 .stage[data-gaze='UNKNOWN'] .viewport {
   border-color: var(--color-gaze-unknown);
   border-style: dashed;
@@ -351,7 +354,7 @@
   font-size: 11px;
 }
 
-/* 테두리 3색이 무슨 뜻인지 한 줄로. 배지를 따로 두지 않는 대신
+/* 테두리 4색이 무슨 뜻인지 한 줄로. 배지를 따로 두지 않는 대신
    여기서 색의 의미만 알려준다 (CLAUDE.md 3번) */
 .rail .legend {
   background: none;
@@ -382,6 +385,9 @@
 }
 .rail .legend .screen {
   color: var(--color-gaze-screen);
+}
+.rail .legend .script-gaze {
+  color: var(--color-gaze-script);
 }
 .rail .legend .unknown {
   color: var(--color-gaze-unknown);
@@ -806,7 +812,7 @@
   --color-stage-panel: #ffffff;
   --color-stage-deep: #f1f0eb;
   --color-ink-stage: #17191e;
-  --color-stone: #6b7280;
+  --color-stone: #626976; /* 밝은 지면 3종 위에서 4.5:1 이상 (stoneContrast.test.ts) */
   --stage-line: 2px solid var(--color-ink-stage);
   --rail-w: clamp(200px, 18vw, 320px);
   /* 코치 확대분은 슬라이드 행이 받는다. 대본 예약 행과 하단 좌표는 유지한다. */
@@ -1000,6 +1006,10 @@
   color: var(--color-gaze-screen);
 }
 
+.stage-live .rail .legend .script-gaze::before {
+  color: var(--color-gaze-script);
+}
+
 .stage-live .rail .legend .unknown::before {
   color: var(--color-gaze-unknown);
   border-top-style: solid;
@@ -1018,6 +1028,7 @@
 
 .stage-live[data-gaze='AUDIENCE'] .rail .legend .audience,
 .stage-live[data-gaze='SCREEN'] .rail .legend .screen,
+.stage-live[data-gaze='SCRIPT'] .rail .legend .script-gaze,
 .stage-live[data-gaze='UNKNOWN'] .rail .legend .unknown {
   background: var(--color-ink-stage);
   color: var(--color-stage-panel);

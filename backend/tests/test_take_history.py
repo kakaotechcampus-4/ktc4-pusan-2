@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.entity import (
@@ -20,11 +19,6 @@ from pitch_coach_backend.module.take.entity import (
 from pitch_coach_backend.module.user.entity import User
 
 T0 = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
-
-
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
 def _pitch(db: Session, user_id: uuid.UUID, title: str = "발표") -> Pitch:

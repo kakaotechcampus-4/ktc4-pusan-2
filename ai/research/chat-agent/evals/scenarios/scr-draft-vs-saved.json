@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-draft-vs-saved",
+  "set": "eval",
+  "group": "screen",
+  "split": "dev",
+  "act": "should",
+  "title": "저장 전 값과 저장된 값이 다를 때 — 저장된 제한 시간 4분(240초)과 입력 중인 5분(300초)을 구분한다",
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "screens": {
+      "info-changed": {
+        "name": "pitch_edit",
+        "snapshot_id": "scr-7",
+        "step": "info",
+        "version_label": "V1",
+        "version_id": "sv-1",
+        "saved": {
+          "title": "졸업 발표",
+          "time_limit_sec": 240,
+          "criteria_text": "청중을 보며 말하기",
+          "script_chars": 2400
+        },
+        "draft": {
+          "title": "졸업 발표",
+          "slide_count": 4,
+          "script_chars": 2400,
+          "time_limit_sec": 300,
+          "criteria_text": "청중을 보며 말하기"
+        },
+        "changed": ["time_limit_sec"]
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "지금 제한 시간이 몇 분으로 돼 있어?",
+      "screen": "info-changed"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "saved-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "4분",
+        "grader": "number",
+        "metric": "screen"
+      },
+      {
+        "check_id": "draft-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "5분",
+        "grader": "number",
+        "metric": "screen"
+      },
+      {
+        "check_id": "draft-marked",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "입력 중|저장하지 않|저장 전|저장되지 않",
+        "grader": "regex",
+        "metric": "screen"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "id": "stale-new-take",
+  "set": "eval",
+  "group": "stale",
+  "split": "holdout",
+  "act": "should",
+  "title": "옛 답(Take 5 3장 28%) 뒤 Take 6 이 생김 — '지금도 그래?'에 Take 6 3장 41%로",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "add_takes": [
+          {
+            "take_id": "t-6",
+            "take_number": 6,
+            "completed_at": "2026-11-04T10:00:00+09:00",
+            "result": {
+              "audience": [0.6, 0.6, 0.41, 0.6],
+              "script_ratio": [0.15, 0.2, 0.3, 0.18]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STRENGTH",
+                "fluency": "STRENGTH"
+              },
+              "score": 79
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 5 3장 시선 어땠어?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 5의 3장 청중 시선 비율은 28%예요.",
+          "source_ids": ["t-5"]
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "지난번에 말한 3장 시선, 지금도 그래?",
+      "page_take_id": "t-6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "now-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "41%",
+        "grader": "number",
+        "derive": "t-6:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "now-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 6,
+          "slide": 3
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

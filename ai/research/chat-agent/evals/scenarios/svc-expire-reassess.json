@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-expire-reassess",
+  "set": "agent_service",
+  "group": "approval",
+  "split": "dev",
+  "act": "should",
+  "title": "다시 평가 요청 — 확인 카드를 30분 안에 고르지 않으면 실행하지 않고 만료 문장",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘",
+      "page_take_id": "t-5",
+      "approval": "EXPIRE"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-reassess",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": "REASSESS",
+        "path": "types"
+      },
+      {
+        "check_id": "no-review-call",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "expired-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.APPROVAL_EXPIRED",
+        "grader": "template"
+      },
+      {
+        "check_id": "ai-not-called-again",
+        "observe": "trace",
+        "compare": "absent",
+        "expect": "DONE",
+        "path": "statuses",
+        "note": "거절 · 만료는 BE 가 고정 문장을 덧붙여 끝내고 AI 를 다시 부르지 않는다: AI 끝 줄에 DONE 이 없다(6-2 · 5-8)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "EXPIRED",
+        "path": "status"
+      }
+    ]
+  }
+}
