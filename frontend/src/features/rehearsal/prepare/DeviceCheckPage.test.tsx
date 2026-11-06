@@ -390,3 +390,12 @@ it('counts the silence warning only while reading the usual voice, from when rea
   expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
   now.mockRestore();
 });
+
+// #925 말 없이 오래 있으면 서버가 끝냅니다. 목표 시간보다 일찍 끝나 놀라지 않게 시작 전에 알립니다
+it('tells before starting that a long silence ends the take, apart from the goal time', async () => {
+  await render();
+  const footer = host.querySelector('.prepare-footer')!;
+  expect(footer.textContent).toContain('말 없이 2분이 지나면 연습이 자동으로 끝나요.');
+  // 바뀌지 않는 말이라 안내 알림 영역 밖에 둡니다 — 안내가 바뀔 때마다 다시 읽히지 않게
+  expect(footer.querySelector('[role="status"]')!.textContent).not.toContain('말 없이 2분');
+});
