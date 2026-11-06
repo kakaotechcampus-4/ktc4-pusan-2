@@ -62,9 +62,10 @@ def test_update_pitch_overwrites_every_editable_field(
     dto = PitchSaveRequestDTO(
         title="수정된 발표", time_limit_sec=600, presentation_date=date(2026, 7, 7))
 
-    returned = pitch_service.update_pitch_service(db_session, pitch_id, dto)
+    returned, timing_changed = pitch_service.update_pitch_service(db_session, pitch_id, dto)
 
     assert returned == pitch_id
+    assert timing_changed is True
     saved = db_session.get(Pitch, pitch_id)
     assert saved is not None
     assert saved.title == "수정된 발표"

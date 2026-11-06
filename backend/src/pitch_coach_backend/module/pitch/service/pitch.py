@@ -229,6 +229,11 @@ def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
     )
 
 
+def _timing(pitch: Pitch) -> tuple[int, int, int]:
+    """제한 시간 · 허용 초과 · 허용 미달 (초)."""
+    return pitch.time_limit_sec, pitch.upper_deviation, pitch.lower_deviation
+
+
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
@@ -236,6 +241,7 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     if not existing_pitch:
         raise NonExistentPitch()
 
+    before = _timing(existing_pitch)
     existing_pitch.title = pitch_dto.title
     existing_pitch.time_limit_sec = pitch_dto.time_limit_sec
     existing_pitch.presentation_date = pitch_dto.presentation_date
@@ -245,7 +251,8 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     updated_pitch = pitch_repository.save(existing_pitch)
     db.commit()
 
-    return updated_pitch.id
+    # 코칭 계획의 바탕 값이라 바뀌면 계획을 다시 만든다
+    return updated_pitch.id, _timing(updated_pitch) != before
 
 
 def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
@@ -349,11 +356,3 @@ def add_coaching_plan(
             meta=meta,
         )
     )
-
-
-def pitch_timing(db: Session, pitch_id: uuid.UUID) -> tuple[int, int, int] | None:
-    """제한 시간 · 허용 초과 · 허용 미달 (초). 코칭 계획의 바탕 값이라 바뀌면 계획을 다시 만든다."""
-    pitch = PitchRepository(db).get_by_id(pitch_id)
-    if pitch is None:
-        return None
-    return pitch.time_limit_sec, pitch.upper_deviation, pitch.lower_deviation
