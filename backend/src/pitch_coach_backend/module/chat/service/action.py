@@ -45,7 +45,10 @@ def begin_action(db: Session, run: ClaimedRun, action: dict[str, Any]) -> Action
         )
     if _invalid(action):
         return close_action(db, row, action, failed(action, "INVALID_ACTION", UNCONFIRMED))
-    if action["autonomy"] == "ASK" and args_hash(action["type"], action["args"]) != action["args_hash"]:
+    if (
+        action["autonomy"] == "ASK"
+        and args_hash(action["type"], action["args"]) != action["args_hash"]
+    ):
         changed = failed(action, "APPROVAL_ARGS_CHANGED", UNCONFIRMED).model_copy(
             update={"executed_args_hash": action["args_hash"]}
         )
