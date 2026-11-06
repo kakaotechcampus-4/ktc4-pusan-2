@@ -437,7 +437,17 @@ class TakeStream:
         """`drain_sec` 까지 기다렸다 안 끝나면 끊고 `cancel_sec` 까지 더 기다린다. 끝났으면 True.
 
         `warn` 을 주면 끊을 때 경고로 남긴다. `confirm` 이면 끊은 뒤에도 안 끝날 때 닫힌 것으로
-        확정한다 (`wait_cancelled`). 값을 하나로 맞추는 것은 별도 결정이라 부르는 쪽이 정한다.
+        확정한다 (`wait_cancelled`).
+
+        상한은 부르는 쪽이 정한다. 그동안 기다리는 쪽이 달라 값이 일부러 다르다.
+
+        - 자동 종료(`_finish_auto_end`): 백그라운드라 붙잡히는 요청이 없다. 세션이 스스로 닫히는
+          상한(`stt_loop.self_close_max_sec`)까지 끊지 않는다.
+        - stop(`RealtimeSession._stop`): Take 를 끝난 것으로 적는 일이 뒤에 기다린다. drain 은
+          끝까지 보되 소켓 닫기까지 다 기다리지 않는다 (`STOP_TIMEOUT_SEC` · `CANCEL_TIMEOUT_SEC`).
+        - 기본값(`attach` 의 넘겨받기 · `_make_room` · `end_without_stop`): 새 연결이나 끝내기
+          PUT 이 기다린다. 마지막 결과는 drain 안에 오므로 `DRAIN_TIMEOUT_SEC` 가 지나면 끊는다.
+        - 앱 종료(`_close_for_shutdown`): 컨테이너 종료 상한 안에 기록을 저장해야 해 가장 짧다.
         """
         if await self.wait_closed(drain_sec):
             return True
@@ -851,9 +861,7 @@ class TakeStream:
             await self._client.send(
                 AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
             )
-        await self.close_or_cancel(
-            drain_sec=stt_loop.DRAIN_TIMEOUT_SEC + stt_loop.ABORT_TIMEOUT_SEC, warn="자동 종료"
-        )
+        await self.close_or_cancel(drain_sec=stt_loop.self_close_max_sec(), warn="자동 종료")
         if self._client.connected:
             # FE 는 auto_end 를 받고 마지막 1초 조각을 보낸 뒤 stop 을 보낸다. Deepgram 정리가
             # 먼저 끝났으면 그 조각이 아직 안 왔을 수 있다 — stop 이 오거나 연결이 떠날 때까지

@@ -63,6 +63,11 @@ _ROTATE = "rotate"  # 타임라인이 끊겨 새 세션이 필요하다
 _LOST = "lost"  # Deepgram 이 끊었다
 
 
+def self_close_max_sec() -> float:
+    """CloseStream 을 보낸 세션이 스스로 닫히는 상한. 남은 결과를 기다리고 소켓을 닫는다."""
+    return DRAIN_TIMEOUT_SEC + ABORT_TIMEOUT_SEC
+
+
 def _backoff(attempt: int) -> float:
     return BACKOFF_SEC[min(attempt, len(BACKOFF_SEC)) - 1]
 
