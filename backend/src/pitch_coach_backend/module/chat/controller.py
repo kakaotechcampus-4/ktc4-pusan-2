@@ -75,6 +75,10 @@ async def _resume_turn(run_id: uuid.UUID) -> None:
     turn_runner.resume(run_id)
 
 
+async def _stop_turn(run_id: uuid.UUID) -> None:
+    turn_runner.cancel(run_id)
+
+
 # 버튼을 보일지. 스위치 값만 본다. 꺼져 있어도 503 이 아니라 enabled:false 로 답한다
 @router.get("/availability", response_model=AvailabilityResponse)
 def get_availability(current_user: CurrentUser) -> AvailabilityResponse:
@@ -179,8 +183,17 @@ def get_run(
 
 
 @router.post("/runs/{run_id}/cancel", response_model=RunStatusResponse, dependencies=[Enabled])
-def post_cancel(run_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> RunStatusResponse:
-    return cancel_run(db, current_user.id, run_id)
+def post_cancel(
+    run_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+) -> RunStatusResponse:
+    view = cancel_run(db, current_user.id, run_id)
+    # 취소가 커밋된 뒤 루프에서 끊는다. 다른 상태로 먼저 끝난 실행은 그 결과를 그대로 둔다
+    if view.status == "CANCELLED":
+        background_tasks.add_task(_stop_turn, run_id)
+    return view
 
 
 # 확인 카드의 [승인] · [거절]. 같은 요청은 처음 결과를 준다. 거절은 AI 를 부르지 않는다
