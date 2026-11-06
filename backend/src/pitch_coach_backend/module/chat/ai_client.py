@@ -6,8 +6,7 @@ from typing import Any
 
 import httpx
 
-from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
-from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.core.ai_http import REQUEST_ID_HEADER, ai_client
 from pitch_coach_backend.module.chat.ai_response import (
     UPSTREAM_ERROR,
     FinalView,
@@ -59,12 +58,9 @@ async def request_turn(
     try:
         async with (
             asyncio.timeout(TURN_TIMEOUT_SEC),
-            httpx.AsyncClient(timeout=TURN_TIMEOUT_SEC, event_hooks=AI_RESPONSE_HOOKS) as client,
+            ai_client(TURN_TIMEOUT_SEC) as client,
             client.stream(
-                "POST",
-                f"{settings.ai_base_url}/agent/turn",
-                json=body,
-                headers={"X-Request-ID": request_id},
+                "POST", "/agent/turn", json=body, headers={REQUEST_ID_HEADER: request_id}
             ) as response,
         ):
             if response.status_code != 200:
@@ -110,12 +106,10 @@ async def _read(response: httpx.Response, run_id: str, on_progress: OnProgress) 
 async def request_review_once(take_id: uuid.UUID, body: dict[str, Any]) -> dict[str, Any]:
     async with (
         asyncio.timeout(REVIEW_TIMEOUT_SEC),
-        httpx.AsyncClient(timeout=REVIEW_TIMEOUT_SEC, event_hooks=AI_RESPONSE_HOOKS) as client,
+        ai_client(REVIEW_TIMEOUT_SEC) as client,
     ):
         response = await client.post(
-            f"{settings.ai_base_url}/takes/review",
-            json=body,
-            headers={"X-Request-ID": uuid.uuid4().hex},
+            "/takes/review", json=body, headers={REQUEST_ID_HEADER: uuid.uuid4().hex}
         )
     response.raise_for_status()
     reply = response.json()

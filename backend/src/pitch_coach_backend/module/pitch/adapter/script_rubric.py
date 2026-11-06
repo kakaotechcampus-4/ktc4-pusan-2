@@ -20,30 +20,30 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
+from pitch_coach_backend.core.ai_http import (
+    REQUEST_ID_HEADER,
+    SCHEMA_MAJOR,
+    ai_client,
+    ai_error_code,
+    retryable_status,
+)
 from pitch_coach_backend.core.validation import reject_unstorable_json
-from pitch_coach_backend.module.pitch.adapter.script_parser import _error_code, _ssl_context
 
 logger = logging.getLogger(__name__)
 
 RUBRIC_PATH = "/scripts/rubric"
-REQUEST_ID_HEADER = "X-Request-ID"
 
 # 계약의 BE 시간 제한은 호출 한 번 130초다 (AI 예산 120초, architecture.md 3절).
 # httpx 타임아웃은 단계별 상한이라 시도 한 번 전체를 ATTEMPT_TIMEOUT_SEC 로 묶는다
 # (script_parser 와 같다)
 DEFAULT_TIMEOUT = httpx.Timeout(130.0, connect=5.0)
 ATTEMPT_TIMEOUT_SEC = 130.0
-# 응답 meta.schema_version 의 major 가 이것과 다르면 필드 뜻이 바뀐 응답이라 읽지 않는다 (5절)
-SCHEMA_MAJOR = "1"
 
 # 최초 200 의 failed 중 이 코드인 장만 slide_numbers 로 한 번 다시 부른다.
 # RUBRIC_MISSING 같은 입력 오류 장은 다시 불러도 같다 (architecture.md 1-7)
 RETRYABLE_SLIDE_CODES = frozenset(
     {"LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"}
 )
-
-_RETRYABLE_CLIENT_STATUSES = frozenset({408, 429})
 
 
 @dataclass(frozen=True)
@@ -190,11 +190,10 @@ class HttpRubricClient:
 
         status = response.status_code
         if status >= 400:
-            retryable = status >= 500 or status in _RETRYABLE_CLIENT_STATUSES
-            code = _error_code(response)
+            code = ai_error_code(response)
             raise RubricCallError(
                 f"status={status} ai_error_code={code}",
-                retryable=retryable,
+                retryable=retryable_status(status),
                 status_code=status,
                 ai_error_code=code,
             )
@@ -209,12 +208,8 @@ class HttpRubricClient:
 
     async def _post(self, payload: dict[str, Any], request_id: str) -> httpx.Response:
         try:
-            async with httpx.AsyncClient(
-                base_url=self._base_url,
-                timeout=self._timeout,
-                transport=self._transport,
-                verify=_ssl_context(),
-                event_hooks=AI_RESPONSE_HOOKS,
+            async with ai_client(
+                self._timeout, base_url=self._base_url, transport=self._transport
             ) as client:
                 return await client.post(
                     RUBRIC_PATH, json=payload, headers={REQUEST_ID_HEADER: request_id}

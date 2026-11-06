@@ -1,14 +1,10 @@
 """리뷰 요청 조립 · AI 호출 · 결과 저장. 결과 · 미션 · 요약 · Take 완료는 한 트랜잭션이다."""
 
-import asyncio
 import logging
 import uuid
 
-import httpx
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
-from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.service import standard as standard_service
 from pitch_coach_backend.module.take.ai_response import validate_review_reply
 from pitch_coach_backend.module.take.dto import (
@@ -21,7 +17,6 @@ from pitch_coach_backend.module.take.dto import (
 )
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.exception import (
-    InvalidReviewResponse,
     NonExistentTake,
 )
 from pitch_coach_backend.module.take.repository import TakeRepository
@@ -97,15 +92,6 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
     )
 
 
-REVIEW_RETRY_DELAY_SEC = 1.0
-
-REVIEW_TIMEOUT_SEC = 30.0
-
-
-def _retryable_status(status_code: int) -> bool:
-    return status_code >= 500 or status_code in (408, 429)
-
-
 def claim_review(
     db: Session, take_id: uuid.UUID, request_id: uuid.UUID, *, takeover: bool = False
 ) -> uuid.UUID | None:
@@ -116,42 +102,6 @@ def claim_review(
     pitch_id = take_repository.get_pitch_id_of_take(take_id)
     db.commit()
     return pitch_id
-
-
-async def request_review_async(
-    take_id: uuid.UUID, review_request: ReviewRequestDTO
-) -> ReviewResponseDTO:
-    """AI 서버에 리뷰를 요청한다. 응답이 계약과 다르거나 다른 Take 의 것이면
-    InvalidReviewResponse(502). 저장하다 DB 제약에 걸리기 전에 여기서 거른다."""
-    request_id = uuid.uuid4().hex
-    body = review_request.model_dump(mode="json")
-    async with httpx.AsyncClient(
-        timeout=REVIEW_TIMEOUT_SEC, event_hooks=AI_RESPONSE_HOOKS
-    ) as client:
-        for attempt in range(2):
-            try:
-                # httpx timeout 은 읽기 한 번의 제한이라 조금씩 오는 응답은 끝없이 기다린다.
-                # 시도마다 전체 시간을 따로 막는다.
-                async with asyncio.timeout(REVIEW_TIMEOUT_SEC):
-                    response = await client.post(
-                        f"{settings.ai_base_url}/takes/review",
-                        json=body,
-                        headers={"X-Request-ID": request_id},
-                    )
-            except (httpx.HTTPError, TimeoutError) as exc:
-                if attempt:
-                    raise InvalidReviewResponse() from exc
-            else:
-                if response.status_code == 200:
-                    try:
-                        reply = response.json()
-                    except ValueError as exc:
-                        raise InvalidReviewResponse() from exc
-                    return validate_review_reply(reply, take_id)
-                if attempt or not _retryable_status(response.status_code):
-                    raise InvalidReviewResponse()
-            await asyncio.sleep(REVIEW_RETRY_DELAY_SEC)
-    raise AssertionError("unreachable")
 
 
 def save_review(

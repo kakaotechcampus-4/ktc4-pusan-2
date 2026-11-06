@@ -17,6 +17,7 @@ from pitch_coach_backend.module.take.dto import (
 from pitch_coach_backend.module.take.entity import Mission, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_analysis_review_ownership import run_review
 from tests.test_take_history import _pitch, _take
@@ -25,12 +26,12 @@ from tests.test_take_review_response import REVIEW, TAKE_ID, request_review
 
 @pytest.fixture(autouse=True)
 def no_retry_delay(monkeypatch):
-    monkeypatch.setattr(review_service, "REVIEW_RETRY_DELAY_SEC", 0)
+    monkeypatch.setattr(take_ai_client, "REVIEW_RETRY_DELAY_SEC", 0)
 
 
 def ai(monkeypatch, handler) -> None:
     client = partial(httpx.AsyncClient, transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(review_service.httpx, "AsyncClient", client)
+    monkeypatch.setattr(httpx, "AsyncClient", client)
 
 
 @pytest.mark.parametrize("case", ["major", "nul", "nan", "surrogate", "score-overflow"])
@@ -104,7 +105,7 @@ async def _trickle(body: bytes):
 @pytest.mark.parametrize("slow", ["trickled-body", "late-response"])
 def test_review_attempt_is_limited_as_a_whole(monkeypatch, slow) -> None:
     """읽기 간격이 짧아도 시도 하나가 전체 제한을 넘으면 버리고 한 번만 다시 부른다."""
-    monkeypatch.setattr(review_service, "REVIEW_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(take_ai_client, "REVIEW_TIMEOUT_SEC", 0.1)
     body = json.dumps(REVIEW).encode()
     calls = []
 
@@ -125,7 +126,7 @@ def test_review_attempt_is_limited_as_a_whole(monkeypatch, slow) -> None:
 
 
 def test_review_retry_after_an_attempt_runs_out_of_time(monkeypatch) -> None:
-    monkeypatch.setattr(review_service, "REVIEW_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(take_ai_client, "REVIEW_TIMEOUT_SEC", 0.1)
     body = json.dumps(REVIEW).encode()
     calls = []
 

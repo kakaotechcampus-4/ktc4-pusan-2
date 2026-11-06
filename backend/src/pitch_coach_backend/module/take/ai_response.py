@@ -10,11 +10,10 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from pitch_coach_backend.core.ai_http import SCHEMA_MAJOR
 from pitch_coach_backend.core.validation import reject_unstorable_json
 from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
-
-SCHEMA_MAJOR = "1"
 
 
 class CoverageCallError(Exception):

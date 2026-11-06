@@ -14,6 +14,7 @@ from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
@@ -64,9 +65,7 @@ async def run(
         logger.exception("Take 분석 실패 take=%s", take_id)
 
 
-async def _in_session[T](
-    session_factory: SessionFactory, fn: Callable[..., T], *args: Any
-) -> T:
+async def _in_session[T](session_factory: SessionFactory, fn: Callable[..., T], *args: Any) -> T:
     def call() -> T:
         db = session_factory()
         try:
@@ -130,7 +129,7 @@ async def _review(
             review_request = await _in_session(
                 session_factory, review_service.build_review_request, take_id
             )
-            reply = await review_service.request_review_async(take_id, review_request)
+            reply = await take_ai_client.request_review_async(take_id, review_request)
             saved = await _in_session(
                 session_factory,
                 partial(review_service.save_review, request_id=request_id),

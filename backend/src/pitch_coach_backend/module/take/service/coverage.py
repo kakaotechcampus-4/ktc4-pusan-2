@@ -3,7 +3,6 @@
 /takes/analyze · 장별 재시도 · /takes/rescore 병합 · 다음 분석 단계 정하기.
 """
 
-import asyncio
 import bisect
 import logging
 import uuid
@@ -11,16 +10,14 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import httpx
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
-from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.take.adapter.ai_client import request_analyze, request_rescore
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, validate_coverage_reply
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
@@ -39,41 +36,11 @@ COVERAGE_RETRYABLE_FAILED_CODES = frozenset(
 RUBRIC_WAIT = timedelta(minutes=5)
 
 
-async def _post_ai(path: str, body: dict, request_id: str, timeout_sec: float) -> dict:
-    try:
-        async with asyncio.timeout(timeout_sec):
-            async with httpx.AsyncClient(
-                timeout=timeout_sec, event_hooks=AI_RESPONSE_HOOKS
-            ) as client:
-                response = await client.post(
-                    f"{settings.ai_base_url}{path}", json=body, headers={"X-Request-ID": request_id}
-                )
-    except (httpx.HTTPError, TimeoutError) as e:
-        raise CoverageCallError(type(e).__name__, retryable=True) from e
-    if response.status_code != 200:
-        raise CoverageCallError(
-            f"status={response.status_code}",
-            retryable=response.status_code >= 500 or response.status_code in (408, 429),
-        )
-    try:
-        reply = response.json()
-    except ValueError as exc:
-        raise CoverageCallError("invalid coverage JSON", retryable=False) from exc
-    return validate_coverage_reply(reply, body["take_id"])
-
-
-async def request_analyze(body: dict, request_id: str) -> dict:
-    return await _post_ai("/takes/analyze", body, request_id, 130.0)
-
-
-async def request_rescore(body: dict, request_id: str) -> dict:
-    return await _post_ai("/takes/rescore", body, request_id, 10.0)
-
-
 def slide_stt(
     slide_numbers: Iterable[int],
     slide_events: Iterable[tuple[int, int]],
-    words: Iterable[tuple[str, int]]) -> list[dict]:
+    words: Iterable[tuple[str, int]],
+) -> list[dict]:
     events = sorted(slide_events, key=lambda event: event[1])
     starts = [started_ms for _, started_ms in events]
     spoken: dict[int, list[str]] = {number: [] for number in sorted(slide_numbers)}
@@ -86,11 +53,13 @@ def slide_stt(
 
 
 def retry_targets(failed: Iterable[Mapping[str, Any]]) -> list[int]:
-    return sorted({
-        item["slide_number"]
-        for item in failed
-        if (item.get("error") or {}).get("code") in COVERAGE_RETRYABLE_FAILED_CODES
-    })
+    return sorted(
+        {
+            item["slide_number"]
+            for item in failed
+            if (item.get("error") or {}).get("code") in COVERAGE_RETRYABLE_FAILED_CODES
+        }
+    )
 
 
 def merge_retry(
@@ -134,9 +103,7 @@ def _lock_open_take(
     return take if _coverage_open(take) else None
 
 
-def _mark_retry_used(
-    db: Session, take_id: uuid.UUID, requested_at: datetime, column: str
-) -> bool:
+def _mark_retry_used(db: Session, take_id: uuid.UUID, requested_at: datetime, column: str) -> bool:
     take = _lock_open_take(TakeRepository(db), take_id, requested_at)
     if take is None or getattr(take, column):
         db.rollback()
@@ -247,8 +214,12 @@ async def _in_session[T](
 
 
 async def _merge_candidate(
-    session_factory: Callable[[], Session], take_id: uuid.UUID, requested_at: datetime,
-    rubrics: list[dict], candidate: dict) -> None:
+    session_factory: Callable[[], Session],
+    take_id: uuid.UUID,
+    requested_at: datetime,
+    rubrics: list[dict],
+    candidate: dict,
+) -> None:
     body = {
         "take_id": str(take_id),
         "evaluations": candidate["evaluations"],
@@ -279,12 +250,22 @@ async def _merge_candidate(
 
 
 async def _retry_failed_slides(
-    session_factory: Callable[[], Session], take_id: uuid.UUID, requested_at: datetime,
-    body: dict, script_version_id: str, confirmed: dict, revision: int,
-    retry_used: bool) -> None:
+    session_factory: Callable[[], Session],
+    take_id: uuid.UUID,
+    requested_at: datetime,
+    body: dict,
+    script_version_id: str,
+    confirmed: dict,
+    revision: int,
+    retry_used: bool,
+) -> None:
     targets = retry_targets(confirmed.get("failed", []))
-    if not targets or retry_used or not await _in_session(
-        session_factory, _mark_retry_used, take_id, requested_at, "coverage_retry_used"
+    if (
+        not targets
+        or retry_used
+        or not await _in_session(
+            session_factory, _mark_retry_used, take_id, requested_at, "coverage_retry_used"
+        )
     ):
         return
     try:
@@ -312,7 +293,8 @@ async def _first_analyze(
     requested_at: datetime,
     body: dict,
     script_version_id: str,
-    retry_used: bool) -> None:
+    retry_used: bool,
+) -> None:
     # 전체 재시도를 보낸 뒤 확정본을 저장하기 전에 재시작했을 수 있다.
     # 이미 쓴 한도를 새 최초 호출로 취급하지 않는다.
     if retry_used:
@@ -333,16 +315,20 @@ async def _first_analyze(
         try:
             reply = await request_analyze(body, request_id)
         except CoverageCallError as retry_error:
-            logger.warning(
-                "take %s: coverage analyze retry failed: %s", take_id, retry_error
-            )
+            logger.warning("take %s: coverage analyze retry failed: %s", take_id, retry_error)
             return
         await _in_session(session_factory, _save_confirmed, take_id, requested_at, reply)
         return
     confirmed = await _in_session(session_factory, _save_confirmed, take_id, requested_at, reply)
     if confirmed is not None:
         await _retry_failed_slides(
-            session_factory, take_id, requested_at, body, script_version_id, confirmed, 0,
+            session_factory,
+            take_id,
+            requested_at,
+            body,
+            script_version_id,
+            confirmed,
+            0,
             retry_used,
         )
 
@@ -432,12 +418,21 @@ async def analyze_script_coverage(
             )
     elif job["confirmed"] is None:
         await _first_analyze(
-            session_factory, take_id, requested_at, body, job["script_version_id"],
+            session_factory,
+            take_id,
+            requested_at,
+            body,
+            job["script_version_id"],
             job["retry_used"],
         )
     else:
         await _retry_failed_slides(
-            session_factory, take_id, requested_at, body, job["script_version_id"],
-            *job["confirmed"], job["retry_used"],
+            session_factory,
+            take_id,
+            requested_at,
+            body,
+            job["script_version_id"],
+            *job["confirmed"],
+            job["retry_used"],
         )
     return await _in_session(session_factory, _conclude_coverage, take_id, requested_at)
