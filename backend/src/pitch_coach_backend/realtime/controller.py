@@ -1,4 +1,4 @@
-"""WebSocket 엔드포인트. 프로토콜은 dto.py, 흐름은 service.py.
+"""WebSocket 엔드포인트. 프로토콜은 dto.py, 흐름은 connection/session.py.
 
 경로는 /api/ws/takes/{take_id} 가 된다 — Caddy 가 /api/* 만 백엔드로 넘기므로
 FE 문서의 /ws/takes/{id} 그대로는 안 된다. /api 는 main.py 가 붙인다.

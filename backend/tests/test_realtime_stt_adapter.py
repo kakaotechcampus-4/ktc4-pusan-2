@@ -15,7 +15,6 @@ from pitch_coach_backend.realtime.stt import adapter as stt_adapter
 from pitch_coach_backend.realtime.stt.adapter import (
     DeepgramSttAdapter,
     Metadata,
-    SpeechStarted,
     SttConfig,
     SttConfigRejected,
     SttConnectError,
@@ -94,7 +93,7 @@ def test_parse_results_converts_seconds_to_ms_int():
 
     assert isinstance(event, Transcript)
     assert (event.start_ms, event.end_ms) == (10240, 11260)
-    assert event.is_final and event.speech_final and not event.from_finalize
+    assert event.is_final and event.speech_final
     assert event.transcript == "안녕하세요 피치코치입니다"
     assert event.confidence == pytest.approx(0.93)
     first, second = event.words
@@ -121,9 +120,8 @@ def test_parse_other_message_types():
     assert parse_message('{"type":"UtteranceEnd","channel":[0,1],"last_word_end":2.5}') == (
         UtteranceEnd(last_word_end_ms=2500)
     )
-    assert parse_message('{"type":"SpeechStarted","channel":[0,1],"timestamp":0.15}') == (
-        SpeechStarted(timestamp_ms=150)
-    )
+    # vad_events=true 라 오지만 쓰지 않는 이벤트다
+    assert parse_message('{"type":"SpeechStarted","channel":[0,1],"timestamp":0.15}') is None
     assert parse_message('{"type":"Metadata","request_id":"r","duration":612.4}') == (
         Metadata(request_id="r", duration_ms=612400)
     )
@@ -181,14 +179,13 @@ async def test_session_roundtrip():
 
         session = await adapter.connect(SttConfig(keyterms=("음",)))
         await session.send_audio(b"\x00" * 3200)
-        await session.finalize()
         await session.close_stream()
         events = [event async for event in session]
 
     assert fake.auth_header == "Token test-key"
     assert "keyterm=%EC%9D%8C" in fake.request_path
     assert fake.audio == [b"\x00" * 3200]
-    assert fake.controls == [{"type": "Finalize"}, {"type": "CloseStream"}]
+    assert fake.controls == [{"type": "CloseStream"}]
     assert isinstance(events[0], Transcript)
     assert events[-1] == Metadata(request_id="r", duration_ms=100)
 
