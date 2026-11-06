@@ -504,8 +504,7 @@ def _pending_parse(db_session: Session, version_id: uuid.UUID) -> ParseTicket:
     script.parse_requested_at = now
     db_session.commit()
     return ParseTicket(
-        script_version_id=version_id, requested_at=now, script_text="원문", target_ms=None
-    )
+        script_version_id=version_id, requested_at=now, script_text="원문", target_ms=None, pitch_id=uuid.uuid4())
 
 
 def test_same_reparse_reuses_stored_slides(db_session: Session, version_id: uuid.UUID) -> None:
@@ -579,8 +578,7 @@ async def test_mismatched_reparse_does_not_make_rubrics(
             script_version_id=version_id,
             requested_at=script.parse_requested_at,
             script_text="원문",
-            target_ms=None,
-        )
+            target_ms=None,pitch_id=uuid.uuid4())
     )
 
     assert fake.calls == []

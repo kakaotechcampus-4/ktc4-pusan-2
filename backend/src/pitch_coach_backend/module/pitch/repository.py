@@ -2,7 +2,19 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, and_, case, delete, func, literal, or_, select, union_all, update
+from sqlalchemy import (
+    ColumnElement,
+    Row,
+    and_,
+    case,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+    union_all,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, defer
 
@@ -53,13 +65,6 @@ class PitchRepository:
             .scalars()
             .all()
         )
-
-    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
-        return self.db.execute(
-            select(Take, TakeSummary.score)
-            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
-            .where(Take.pitch_id == pitch_id)
-        ).all()
 
     def get_takes_with_scores_in_pitches(
         self, pitch_ids: list[uuid.UUID]
@@ -139,7 +144,7 @@ class PitchRepository:
         그 경로끼리는 여전히 같은 번호를 받을 수 있다.
           - 잡는 곳: service/script.create_script_service (next_script_version),
             service/presentation.upload_presentation_service (next_presentation_version),
-            service/standard.add_pitch_standard_service (next_standard_version),
+            service/standard._save (next_standard_version),
             take/service/take.create_take_service (next_take_number)
         pitch 안에서 max + 1 로 번호를 매기는 경로에 잠금을 걸면 위 목록도 같이 고친다.
 
@@ -303,15 +308,6 @@ class PitchRepository:
         self.db.add(analysis)
         self.db.flush()
 
-    def get_evaluations_by_version(
-        self, pitch_id: uuid.UUID, version: int
-    ) -> list[Standards] | None:
-        return self.db.scalars(
-            select(Standards)
-            .where(Standards.pitch_id == pitch_id, Standards.version == version)
-            .order_by(Standards.position.asc())
-        ).all()
-
     def get_latest_standard_version(self, pitch_id: uuid.UUID) -> int | None:
         return self.db.scalar(
             select(
@@ -327,7 +323,8 @@ class PitchRepository:
         )
 
     # ── 대본 파싱 ────────────────────────────────────────────────────
-    # 상태 전이는 전부 조건부 UPDATE 한 번으로 한다. "읽고 → 검사하고 → 쓰기" 로 나누면
+    # 상태 전이는 조건부 UPDATE 한 번이나 조건을 건 행 잠금으로 한다.
+    # "읽고 → 검사하고 → 쓰기" 로 나누면
     # 그 사이에 다른 요청(재시도 버튼 두 번)이나 늦게 끝난 옛 작업이 끼어들 수 있다.
     # 조건을 WHERE 에 넣으면 DB 가 행 잠금으로 줄을 세워 주고, 바뀐 행 수로 이겼는지 안다.
 
@@ -398,10 +395,8 @@ class PitchRepository:
         script_version_id: uuid.UUID,
         read_at: datetime,
         now: datetime,
-        *,
-        expired_before: datetime,
     ) -> bool:
-        """읽은 표식이 그대로이고 아직 만료 전인 PENDING 이면 표식을 새 시각으로 바꾼다.
+        """읽은 표식이 그대로인 PENDING 이면 표식을 새 시각으로 바꾼다.
 
         바꿨으면 True. 옛 작업은 표식이 달라 아무것도 쓰지 못한다.
         """
@@ -411,11 +406,28 @@ class PitchRepository:
                 ScriptVersion.id == script_version_id,
                 ScriptVersion.parse_status == ScriptParseStatus.PENDING,
                 ScriptVersion.parse_requested_at == read_at,
-                ScriptVersion.parse_requested_at >= expired_before,
             )
             .values(parse_requested_at=now)
         )
         return result.rowcount == 1
+
+    def _live_parse(
+        self, script_version_id: uuid.UUID, requested_at: datetime, expired_before: datetime
+    ) -> tuple[ColumnElement[bool], ...]:
+        """이 작업(requested_at)이 아직 유효한 PENDING 인가.
+
+        유효하지 않은 경우는 셋이다. 한쪽만 고치면 옛 작업이 결과를 덮는 경쟁이 생긴다.
+          - 재시도로 parse_requested_at 이 바뀜 (옛 작업)
+          - 이미 DONE/FAILED
+          - 만료됨. FE 는 이미 FAILED(PARSE_EXPIRED) 를 봤으니 뒤늦게 DONE 으로 바꾸지 않는다 —
+            FAILED → DONE 으로 뒤집히면 재시도 버튼이 409 를 받는다
+        """
+        return (
+            ScriptVersion.id == script_version_id,
+            ScriptVersion.parse_status == ScriptParseStatus.PENDING,
+            ScriptVersion.parse_requested_at == requested_at,
+            ScriptVersion.parse_requested_at >= expired_before,
+        )
 
     def mark_parse_failed(
         self,
@@ -425,38 +437,10 @@ class PitchRepository:
         *,
         expired_before: datetime,
     ) -> bool:
-        return self._finish_parse(
-            script_version_id,
-            requested_at,
-            expired_before,
-            parse_status=ScriptParseStatus.FAILED,
-            parse_error=error_code,
-        )
-
-    def _finish_parse(
-        self,
-        script_version_id: uuid.UUID,
-        requested_at: datetime,
-        expired_before: datetime,
-        **values: Any,
-    ) -> bool:
-        """이 작업(requested_at)이 아직 유효한 PENDING 일 때만 결과를 쓴다. 썼으면 True.
-
-        유효하지 않은 경우는 셋이고 모두 0행이 바뀌어 False 다.
-          - 재시도로 parse_requested_at 이 바뀜 (옛 작업)
-          - 이미 DONE/FAILED
-          - 만료됨. FE 는 이미 FAILED(PARSE_EXPIRED) 를 봤으니 뒤늦게 DONE 으로 바꾸지 않는다 —
-            FAILED → DONE 으로 뒤집히면 재시도 버튼이 409 를 받는다
-        """
         result = self.db.execute(
             update(ScriptVersion)
-            .where(
-                ScriptVersion.id == script_version_id,
-                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
-                ScriptVersion.parse_requested_at == requested_at,
-                ScriptVersion.parse_requested_at >= expired_before,
-            )
-            .values(**values)
+            .where(*self._live_parse(script_version_id, requested_at, expired_before))
+            .values(parse_status=ScriptParseStatus.FAILED, parse_error=error_code)
         )
         return result.rowcount == 1
 
@@ -519,16 +503,11 @@ class PitchRepository:
     ) -> ScriptVersion | None:
         """이 작업(requested_at)이 아직 유효한 PENDING 이면 그 행을 잠가 돌려준다.
 
-        조건은 _finish_parse 와 같다. 잠근 뒤 저장본과 비교해 무엇을 쓸지 정한다.
+        잠근 뒤 저장본과 비교해 무엇을 쓸지 정한다.
         """
         return self.db.scalar(
             select(ScriptVersion)
-            .where(
-                ScriptVersion.id == script_version_id,
-                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
-                ScriptVersion.parse_requested_at == requested_at,
-                ScriptVersion.parse_requested_at >= expired_before,
-            )
+            .where(*self._live_parse(script_version_id, requested_at, expired_before))
             .with_for_update()
             # 잠근 뒤의 값을 읽는다. 세션에 남은 옛 값을 쓰지 않게
             .execution_options(populate_existing=True)

@@ -134,11 +134,7 @@ class ScriptRubricRunner:
         except RubricCallError as exc:
             if not exc.retryable or not await self._db(script_service.use_rubric_retry, ticket):
                 return
-            try:
-                reply = await self._call(ticket, None, request_id)
-            except RubricCallError:
-                return
-            await self._save(ticket, reply)
+            await self._call_and_save(ticket, None, request_id)
             return
 
         if not await self._save(ticket, reply):
@@ -152,12 +148,8 @@ class ScriptRubricRunner:
         )
         if not retry or not await self._db(script_service.use_rubric_retry, ticket):
             return
-        try:
-            again = await self._call(ticket, retry, uuid.uuid4().hex)
-        except RubricCallError:
-            # 최초 응답에서 저장한 기준은 그대로 둔다
-            return
-        await self._save(ticket, again)
+        # 실패해도 최초 응답에서 저장한 기준은 그대로 둔다
+        await self._call_and_save(ticket, retry, uuid.uuid4().hex)
 
     async def _resume(self, ticket: RubricTicket) -> None:
         """앞 작업이 어디까지 보냈는지 모르니 남은 한도(재시도)로 기준이 없는 장만 다시 부른다."""
@@ -166,8 +158,13 @@ class ScriptRubricRunner:
         if not await self._db(script_service.use_rubric_retry, ticket):
             return
         numbers = None if len(ticket.missing) == len(ticket.slides) else ticket.missing
+        await self._call_and_save(ticket, numbers, uuid.uuid4().hex)
+
+    async def _call_and_save(
+        self, ticket: RubricTicket, slide_numbers: Sequence[int] | None, request_id: str
+    ) -> None:
         try:
-            reply = await self._call(ticket, numbers, uuid.uuid4().hex)
+            reply = await self._call(ticket, slide_numbers, request_id)
         except RubricCallError:
             return
         await self._save(ticket, reply)
