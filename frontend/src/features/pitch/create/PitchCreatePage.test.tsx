@@ -10,6 +10,7 @@ import { parseStandards } from '@/shared/api/standards';
 import { createPitch, updatePitch } from '@/shared/api/pitch';
 import { PitchCreatePage } from './PitchCreatePage';
 import { useCreateStore } from './createStore';
+import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 
 vi.mock('@/shared/api/standards', () => ({ parseStandards: vi.fn(), saveStandards: vi.fn() }));
 vi.mock('@/shared/api/useLogout', () => ({ useLogout: () => ({ mutate: vi.fn() }) }));
@@ -622,4 +623,21 @@ it('완료된 단계의 표시는 aria-label이 아니라 글자로 읽힌다', 
   expect(doneSteps.length).toBeGreaterThan(0);
   expect(doneSteps[0]!.textContent).toContain('완료');
   expect(host.querySelector('[aria-label="완료"]')).toBeNull();
+});
+
+it('대화창에 지금 화면 상태를 알린다 — 보내는 순간 피치 만들기 상태를 읽는다 (대화 6단계)', async () => {
+  vi.stubEnv('VITE_CHAT_AGENT', 'true');
+  ready();
+  await mount();
+  expect(takeScreenSnapshot('/pitch/new')).toMatchObject({
+    ok: true,
+    screen: {
+      name: 'pitch_create',
+      step: 'slides',
+      version_label: 'V1',
+      version_id: 'pv1',
+      draft: { title: '원래 제목', slide_count: 1 },
+    },
+  });
+  vi.unstubAllEnvs();
 });
