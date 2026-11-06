@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
 
@@ -84,6 +84,8 @@ class MessageAcceptedResponse(BaseModel):
 
 class CreateConversationRequest(_Request):
     pitch_id: uuid.UUID | None = None
+    # '기억 없이' 대화. 만들 때만 정하고 바꾸지 않는다(6-14)
+    memory_off: StrictBool = False
 
 
 class ChangeScopeRequest(_Request):
@@ -97,6 +99,7 @@ class ConversationResponse(BaseModel):
     scope_pitch_title: str | None
     last_user_activity_at: datetime
     created_at: datetime
+    memory_off: bool
 
 
 class ConversationListItem(ConversationResponse):

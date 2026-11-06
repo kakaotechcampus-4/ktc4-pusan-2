@@ -82,7 +82,7 @@ def get_availability(current_user: CurrentUser) -> AvailabilityResponse:
 def post_conversation(
     body: CreateConversationRequest, current_user: CurrentUser, db: DbSession
 ) -> ConversationResponse:
-    return create_conversation(db, current_user.id, body.pitch_id)
+    return create_conversation(db, current_user.id, body.pitch_id, memory_off=body.memory_off)
 
 
 @router.get("/conversations", response_model=ConversationListResponse, dependencies=[Enabled])
