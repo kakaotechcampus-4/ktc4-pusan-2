@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.memory import memory_cards
 from pitch_coach_backend.module.chat.service.request import APP_STARTED_AT
 from pitch_coach_backend.module.chat.service.run import add_run_log, lock_ids
 
@@ -101,7 +102,8 @@ def close_waiting(
             status="DONE" if run_status == "DONE" else "PARTIAL",
             run_id=run.id,
             claims=claims,
-            cards=[],
+            # 승인 대기 때 저장한 기억은 결정과 상관없이 남는다. 카드도 함께 남긴다
+            cards=memory_cards(run),
             sources=emitted.sources,
             assessments=emitted.assessments,
             plan=run.plan,
