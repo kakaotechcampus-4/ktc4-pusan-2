@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "id": "stale-then",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should",
+  "title": "옛 대화(Take 4 때)를 연 뒤 '그때 3장 어땠지?' — 그때(Take 4) 기준 31%, 옛 답 숫자 대신 다시 읽어서",
+  "source": "stale-slide3",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 4 3장 시선 어땠어?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 4의 3장 청중 시선 비율은 31%예요.",
+          "source_ids": ["t-4"],
+          "basis": {
+            "pitches": [
+              {
+                "pitch_id": "p-1",
+                "takes": [
+                  {
+                    "take_id": "t-4",
+                    "take_number": 4
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "그때 3장 어땠지?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "followups": [
+    {
+      "message": "그때 말한 Take 4 3장 청중 시선 비율을 기록에서 다시 확인해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "then-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 4,
+          "slide": 3
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "then-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "31%",
+        "grader": "number",
+        "derive": "t-4:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "re-read",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "FETCH_TAKE",
+        "path": "types"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

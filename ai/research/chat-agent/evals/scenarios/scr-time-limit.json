@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-time-limit",
+  "set": "eval",
+  "group": "screen",
+  "split": "holdout",
+  "act": "should",
+  "title": "발표 정보 단계 '제한 시간 몇 분이 좋아?' — 지난 Take 길이(4분)를 근거로, 새 숫자를 계산하지 않는다",
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "screens": {
+      "info-step": {
+        "name": "pitch_edit",
+        "snapshot_id": "scr-4",
+        "step": "info",
+        "version_label": "V1",
+        "version_id": "sv-1",
+        "saved": {
+          "title": "졸업 발표",
+          "time_limit_sec": 240,
+          "criteria_text": "청중을 보며 말하기",
+          "script_chars": 2400
+        },
+        "draft": {
+          "title": "졸업 발표",
+          "slide_count": 4,
+          "script_chars": 2400,
+          "time_limit_sec": 240,
+          "criteria_text": "청중을 보며 말하기"
+        },
+        "changed": []
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "제한 시간 몇 분이 좋을까?",
+      "screen": "info-step"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "past-duration",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "4분",
+        "grader": "number",
+        "derive": "t-5:TIME.duration_ms",
+        "metric": "screen"
+      },
+      {
+        "check_id": "no-fill",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "입력했어요|바꿔 뒀|저장했어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

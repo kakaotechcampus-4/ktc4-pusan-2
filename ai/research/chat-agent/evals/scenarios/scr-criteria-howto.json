@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-criteria-howto",
+  "set": "eval",
+  "group": "screen",
+  "split": "dev",
+  "act": "should",
+  "title": "피치 만들기 평가 기준 단계에서 '평가 기준은 어떻게 써?' — 그 단계의 사용법 자료로 답한다",
+  "expect_refusal": false,
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    },
+    "screens": {
+      "criteria-empty": {
+        "name": "pitch_create",
+        "snapshot_id": "scr-1",
+        "step": "criteria",
+        "version_label": null,
+        "version_id": null,
+        "saved": null,
+        "draft": {
+          "title": "신제품 발표",
+          "slide_count": 8,
+          "script_chars": 3200,
+          "time_limit_sec": 300,
+          "criteria_text": null
+        },
+        "changed": []
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "평가 기준은 어떻게 써?",
+      "screen": "criteria-empty"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "usage-card",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": ["u-06", "u-07"],
+        "path": "source_ids",
+        "metric": "screen"
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

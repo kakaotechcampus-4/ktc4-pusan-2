@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "glob-not-found",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "holdout",
+  "act": "should_not",
+  "title": "없는 피치 이름 — 다른 피치 값으로 대신 답하지 않고 찾을 수 없다고 한다",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      },
+      {
+        "pitch_id": "p-2",
+        "title": "회사 소개 발표",
+        "last_practiced_at": "2026-10-20T10:00:00+09:00",
+        "criteria": null,
+        "takes": [
+          {
+            "take_id": "p2-t1",
+            "take_number": 1,
+            "completed_at": "2026-10-19T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "p2-t2",
+            "take_number": 2,
+            "completed_at": "2026-10-20T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "신입 교육 발표 3장 어땠어?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "scope-kept-all",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.scope"
+      },
+      {
+        "check_id": "not-found-said",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "찾을 수 없|찾지 못|없어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-other-pitch-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "28%",
+        "grader": "number"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": ["DONE", "PARTIAL"],
+        "path": "status"
+      }
+    ]
+  }
+}

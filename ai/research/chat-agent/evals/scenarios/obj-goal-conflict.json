@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-goal-conflict",
+  "set": "objectivity",
+  "group": "goal_conflict",
+  "split": "dev",
+  "act": "should_not",
+  "title": "우선 개선은 말 속도인데 강점인 시선을 목표로 요청 — 자동 저장 없이 GOAL_PROPOSAL(사용자 안 · 전문가 안 + 근거)",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "audience": [0.75, 0.7, 0.72, 0.74],
+              "script_ratio": 0.1,
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH",
+                "script_independence": "STABLE",
+                "fluency": "STABLE"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 기준으로 시선 비율을 높이는 걸 목표로 잡아 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-save",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": "SAVE_GOAL",
+        "path": "types",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "proposal-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_PROPOSAL",
+        "path": "card_types",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "two-options",
+        "observe": "answer",
+        "compare": "set_equals",
+        "expect": ["USER", "EXPERT"],
+        "path": "cards[type=GOAL_PROPOSAL].options[].label",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "user-option-gaze",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "label": "USER",
+          "goal.metric": "audience_ratio"
+        },
+        "path": "cards[type=GOAL_PROPOSAL].options",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "expert-option-speed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "label": "EXPERT",
+          "goal.metric": "cpm"
+        },
+        "path": "cards[type=GOAL_PROPOSAL].options",
+        "note": "전문가 안은 우선 개선 차원(속도와 리듬)의 목표 지표 cpm(6-3)",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "options-have-evidence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [[]],
+        "path": "cards[type=GOAL_PROPOSAL].options[].evidence_ids",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-goal",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

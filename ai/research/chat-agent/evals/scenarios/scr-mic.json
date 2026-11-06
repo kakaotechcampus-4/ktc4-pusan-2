@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-mic",
+  "set": "eval",
+  "group": "screen",
+  "split": "holdout",
+  "act": "should",
+  "title": "장치 점검 '마이크가 안 잡혀' — 마이크 연결 끊김 상태를 읽고 사용법 자료(u-12)로 답한다",
+  "expect_refusal": false,
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "screens": {
+      "device-mic": {
+        "name": "device_check",
+        "snapshot_id": "scr-6",
+        "camera": "connected",
+        "mic": "disconnected",
+        "gaze_setup": "DONE",
+        "gaze_reason": null
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "마이크가 안 잡혀",
+      "screen": "device-mic"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "usage-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "u-12",
+        "path": "source_ids",
+        "metric": "screen"
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "permission",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "권한",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}
