@@ -149,6 +149,7 @@ beforeEach(() => {
   vi.mocked(createPitch).mockResolvedValue({ pitch_id: 'pitch-new', message: 'ok' });
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await act(async () => root.unmount());
   host.remove();
   vi.clearAllMocks();
@@ -639,5 +640,4 @@ it('대화창에 지금 화면 상태를 알린다 — 보내는 순간 피치 �
       draft: { title: '원래 제목', slide_count: 1 },
     },
   });
-  vi.unstubAllEnvs();
 });

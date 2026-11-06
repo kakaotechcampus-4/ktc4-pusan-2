@@ -161,6 +161,7 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
@@ -394,5 +395,4 @@ it('tells the chat panel the current check state when a message is sent (chat st
     ok: true,
     screen: { name: 'device_check', camera: 'connected', mic: 'checking', gaze_setup: 'RUNNING' },
   });
-  vi.unstubAllEnvs();
 });

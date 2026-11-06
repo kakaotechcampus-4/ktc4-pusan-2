@@ -89,7 +89,12 @@ export function takeScreenSnapshot(route: string): ScreenSnapshot {
     console.error('화면 상태를 읽지 못했어요', error);
     return { ok: true, screen: null };
   }
-  if (body === null || !isScreenBody(body)) return { ok: true, screen: null };
+  if (body === null) return { ok: true, screen: null };
+  if (!isScreenBody(body)) {
+    // 화면 쪽 실수라 개발 중에 알아채게 남깁니다 — 내용은 사용자 입력이라 남기지 않고 어느 화면인지만
+    console.warn('화면 상태가 계약 모양이 아니라 싣지 않았어요', { route: reg.route });
+    return { ok: true, screen: null };
+  }
   if (
     body.name !== 'device_check' &&
     body.draft.criteria_text !== null &&

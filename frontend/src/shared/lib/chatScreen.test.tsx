@@ -87,10 +87,14 @@ describe('화면 상태 등록 · 스냅숏 (12-4 F2)', () => {
     expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
     expect(errors).toHaveBeenCalled();
     errors.mockRestore();
+    const warns = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     registerChatScreen(ROUTE, () => ({ ...device, deviceId: 'cam-1' }) as unknown as ScreenBody);
     expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
     registerChatScreen(ROUTE, () => ({ ...device, mic: 'loud' }) as unknown as ScreenBody);
     expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
+    // 어느 화면인지만 남기고 내용(사용자 입력)은 남기지 않습니다
+    expect(warns).toHaveBeenCalledWith(expect.any(String), { route: ROUTE });
+    warns.mockRestore();
   });
 
   it('평가 기준 원문이 2,000자(코드 포인트)를 넘으면 자르지 않고 보내지 않게 알린다', () => {
