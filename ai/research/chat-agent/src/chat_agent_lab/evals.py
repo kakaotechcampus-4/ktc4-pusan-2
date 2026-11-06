@@ -376,13 +376,15 @@ class DryRunLlm:
             }
         elif name == "fix_draft":
             parsed = {"claims": []}
+        elif name == "history_summary":
+            parsed = {"items": []}
         else:
             parsed = {
                 "route": "ANSWER",
                 "assessments": [],
                 "claims": [],
                 "start_practice": None,
-                "history_summary": None,
+                "profile_updates": [],
             }
         return LlmResult(
             message=json.dumps(parsed, ensure_ascii=False),

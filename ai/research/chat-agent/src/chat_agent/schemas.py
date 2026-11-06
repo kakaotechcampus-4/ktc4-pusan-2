@@ -552,12 +552,68 @@ class HistoryMessage(_In):
     stale_reasons: list[StrictStr] = Field(default_factory=list)
 
 
+ProfileKey = Literal["TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT"]
+SummaryKind = Literal["TOPIC", "INTENT", "DECISION", "OPEN"]
+
+
+class ProfileItem(_In):
+    """코칭 프로필 항목 하나(5-2 · 6-14). BE 가 저장해 싣는다. 말투 · 설명 방식에만 쓰고 숫자 · 판정 · 행동의 근거가 아니다."""
+
+    item_id: StrictStr
+    key: ProfileKey
+    value: Annotated[StrictStr, Field(min_length=1, max_length=80)]
+
+
+class SummaryItemIn(_In):
+    """요청의 대화 요약 항목(5-2 `SummaryItem`, 6-14)."""
+
+    kind: SummaryKind
+    text: Annotated[StrictStr, Field(min_length=1, max_length=120)]
+
+
+class SummaryItem(_Out):
+    """끝 줄의 대화 요약 항목(5-5 `history_summary`)."""
+
+    kind: SummaryKind
+    text: Annotated[StrictStr, Field(min_length=1, max_length=120)]
+
+
+class OverflowMessage(_In):
+    role: Literal["user", "assistant", "system"]
+    text: Annotated[StrictStr, Field(max_length=4000)]
+
+
+class Overflow(_In):
+    """앞 요약 뒤로 쌓여 최근 20개 밖으로 밀린 메시지(최대 10개)와 앞 요약의 판 번호. 있을 때만 새 요약을 만든다(6-14)."""
+
+    messages: Annotated[list[OverflowMessage], Field(min_length=1, max_length=10)]
+    prev_summary_version: NonNegInt
+
+
 class History(_In):
-    summary: Annotated[StrictStr, Field(max_length=4000)] | None = None
+    summary: Annotated[list[SummaryItemIn], Field(max_length=12)] | None = None
     messages: Annotated[list[HistoryMessage], Field(max_length=20)] = Field(default_factory=list)
     prior_assessments: Annotated[list[Assessment], Field(max_length=50)] = Field(
         default_factory=list
     )
+    overflow: Overflow | None = None
+
+
+class Memory(_In):
+    """코칭 프로필 기억(5-3 `memory`, 6-14). 꺼졌거나 '기억 없이' 대화면 `enabled:false` · `profile:null`."""
+
+    enabled: StrictBool
+    memory_version: NonNegInt
+    profile: Annotated[list[ProfileItem], Field(max_length=4)] | None = None
+
+    @model_validator(mode="after")
+    def _rules(self) -> Memory:
+        if not self.enabled and self.profile is not None:
+            raise ValueError("memory.enabled 가 false 면 profile 은 null 이다")
+        keys = [p.key for p in self.profile or []]
+        if len(keys) != len(set(keys)):
+            raise ValueError("코칭 프로필은 key 마다 하나다")
+        return self
 
 
 class PitchInfo(_In):
@@ -658,6 +714,7 @@ class TurnRequest(_In):
     context: Context
     resume: Resume | None = None
     budget_used: Budget
+    memory: Memory
 
     @model_validator(mode="after")
     def _trigger_rules(self) -> TurnRequest:
@@ -760,7 +817,7 @@ class ToolDetail(_Out):
 class CheckDetail(_Out):
     claim_index: NonNegInt | None = None
     claim_kind: ClaimKind | None = None
-    field: Literal["cards", "plan", "trace", "history_summary"] | None = None
+    field: Literal["cards", "plan", "trace", "history_summary", "profile_updates"] | None = None
     round: Literal[0, 1] | None = None
     result: Literal["FIX_REQUESTED", "DROPPED", "ACTION_DROPPED"] | None = None
     # SUMMARY 만
@@ -827,6 +884,7 @@ CHECK_IDS = (
     "ACTION_ARGS",
     "FIX_NEW_CONTENT",
     "SCOPE_RULE",
+    "MEMORY_RULE",
 )
 LIMIT_CODES = (
     "MODEL_CALLS",
@@ -847,7 +905,7 @@ LIMIT_CODES = (
 )
 #: 종류별 code 허용 목록(11-5). 진단 기록에 문장이 들어가지 않게 닫힌 목록만 받는다
 DIAG_CODES: dict[str, tuple[str, ...]] = {
-    "MODEL": ("RESEARCH", "ANSWER", "FIX"),
+    "MODEL": ("RESEARCH", "ANSWER", "FIX", "HISTORY_SUMMARY"),
     "TOOL": TOOL_NAMES,
     "CHECK": (*CHECK_IDS, "SUMMARY"),
     "ASSESS": ("SUPPORTED", "PARTLY", "CONTRADICTED", "UNVERIFIABLE"),
@@ -1010,6 +1068,15 @@ class Basis(_Out):
     sources: list[StrictStr] = Field(default_factory=list)
 
 
+class ProfileUpdate(_Out):
+    """코칭 프로필 저장 후보(5-5 `profile_updates`, 6-14). BE 가 같은 검사를 다시 해 저장한다."""
+
+    key: ProfileKey
+    value: Annotated[StrictStr, Field(min_length=1, max_length=80)]
+    #: 이번 사용자 말에서 기억을 요청한 부분(글자 그대로)
+    quote: Annotated[StrictStr, Field(min_length=1, max_length=2000)]
+
+
 class FinalData(_Out):
     status: FinalStatus
     message: Message | None
@@ -1020,7 +1087,10 @@ class FinalData(_Out):
     trace: list[TraceItem]
     basis: Basis
     evidence: list[Evidence]
-    history_summary: StrictStr | None = None
+    #: 요청에 `history.overflow`가 있었던 실행의 종결 응답에서만(6-14). 만들지 못하면 null
+    history_summary: Annotated[list[SummaryItem], Field(max_length=12)] | None = None
+    #: 코칭 프로필 저장 후보(0~2개, 선택). 사용자가 이번 말에서 명시로 요청했을 때만(6-14)
+    profile_updates: Annotated[list[ProfileUpdate], Field(max_length=2)] | None = None
     budget_used: BudgetOut
     usage: Usage
     assessments: list[Assessment]
@@ -1074,6 +1144,11 @@ class FinalData(_Out):
                     raise ValueError("DONE 의 actions 는 START_PRACTICE 0~1개")
             elif self.actions:
                 raise ValueError("PARTIAL · REFUSED 의 actions 는 빈 목록")
+        if s == "NEEDS_ACTION" and (self.history_summary or self.profile_updates):
+            raise ValueError("history_summary · profile_updates 는 종결 응답에만 싣는다(6-14)")
+        keys = [u.key for u in self.profile_updates or []]
+        if len(keys) != len(set(keys)):
+            raise ValueError("profile_updates 는 key 마다 하나다")
         return self
 
 

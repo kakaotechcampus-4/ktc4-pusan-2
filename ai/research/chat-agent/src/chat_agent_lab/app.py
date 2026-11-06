@@ -204,8 +204,11 @@ def build_request(
     history: dict[str, Any] | None = None,
     pitch: fx.PitchRecord | None = None,
     screen: dict[str, Any] | None = None,
+    memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """가상 기록(fixtures.sample_pitch)으로 처음 `/agent/turn` 요청을 만든다(평가 · 손으로 해 보기)."""
+    """가상 기록(fixtures.sample_pitch)으로 처음 `/agent/turn` 요청을 만든다(평가 · 손으로 해 보기).
+
+    `memory`를 주지 않으면 기억 꺼짐(`enabled:false`)으로 보낸다(5-3)."""
     p = pitch or fx.sample_pitch()
     focus = page_take_id if page_take_id and p.take(page_take_id) else None
     return {
@@ -247,6 +250,7 @@ def build_request(
             "input_tokens": 0,
             "output_tokens": 0,
         },
+        "memory": memory or {"enabled": False, "memory_version": 0, "profile": None},
     }
 
 

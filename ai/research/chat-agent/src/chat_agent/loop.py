@@ -34,7 +34,7 @@ from pydantic import ValidationError
 from . import actions as act
 from . import checks as chk
 from . import claims as clm
-from . import prompts, templates
+from . import memory, prompts, templates
 from .budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
 from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, finish_code
@@ -122,6 +122,10 @@ class LoopState:
     #: 크기 · 시간 등으로 조사를 끝낸 까닭(진단 · PARTIAL)
     stop_reason: str | None = None
     corpus_version: str | None = None
+    #: 처음 요청의 기억 번호(6-14). 프로필 · 요약 본문은 담지 않는다(5-6)
+    memory_version: int | None = None
+    #: 실행 중 기억 번호가 한 번이라도 바뀌었는가. 바뀌면 그 실행의 프로필 저장 후보를 내지 않는다
+    memory_changed: bool = False
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -220,11 +224,14 @@ class Loop:
         self.model_used = False
         #: 이 호출에서 모델 전송이 한도로 막힌 까닭(진단 끝 사유 TIME · MODEL_CALLS · TOKENS …). 답 단계 실패를 나눌 때 쓴다
         self.limit_end: str | None = None
+        #: 답 초안의 코칭 프로필 저장 후보(검사 전, turn.py `_finish`가 종결 응답에서만 검사해 싣는다)
+        self.profile_candidates: Any = None
         #: 연결이 끊겼는가(turn.py 가 넣는다). 끊기면 새 모델 · 도구 호출을 하지 않는다(L1-08)
         self.cancelled: Callable[[], bool] = lambda: False
         self._last_model_seq: int | None = None
         #: 문장 줄(`claim`)을 내는 쪽(turn.py 가 넣는다, answer.py `ClaimLines`)
         self.lines: Any = None
+        memory.sync_version(state, req.memory)
 
     # ── 모델 호출 공통 ───────────────────────────────────────────────
     def _call(
@@ -266,7 +273,9 @@ class Loop:
             return LlmError(cause="client_disconnected")
         timeout_left = self.budget.call_timeout(kind)  # type: ignore[arg-type]
         deadline = (
-            self.deps.monotonic() + timeout_left if purpose == "RESEARCH" else self.budget.deadline
+            self.deps.monotonic() + timeout_left
+            if purpose in ("RESEARCH", "HISTORY_SUMMARY")
+            else self.budget.deadline
         )
         req = LlmRequest(
             purpose=purpose,  # type: ignore[arg-type]
@@ -370,8 +379,11 @@ class Loop:
         )
 
     # ── 모델이 보는 데이터 ───────────────────────────────────────────
-    def data_block(self) -> dict[str, Any]:
-        """외부 문자열을 모은 데이터 블록(6-1 · 6-10). 키 · 서명 상태 · 내부 판단 키는 넣지 않는다(L1-22)."""
+    def data_block(self, *, profile: bool = False) -> dict[str, Any]:
+        """외부 문자열을 모은 데이터 블록(6-1 · 6-10). 키 · 서명 상태 · 내부 판단 키는 넣지 않는다(L1-22).
+
+        대화 요약 항목은 대화 기록의 일부로 모든 호출에 싣는다. 코칭 프로필은 `profile`(답 쓰기 · 고치기)일 때만, 켜져
+        있을 때만 싣는다(6-14). 계획 · 조사 호출은 주장 나누기 · 대상 고르기 · 도구 · 행동 인자를 정하므로 받지 않는다(P14)."""
         ctx, req = self.ctx, self.req
         pitch = ctx.pitch
         takes = []
@@ -455,9 +467,19 @@ class Loop:
                 if goal is not None
                 else None
             ),
-            "history": {"summary": (hist.summary or "")[:600] or None, "messages": messages},
+            "history": {
+                "summary": [{"kind": s.kind, "text": s.text} for s in hist.summary]
+                if hist.summary
+                else None,
+                "messages": messages,
+            },
             "prior_assessments": prior,
             "actions_done": [{"type": e["type"], "status": e["status"]} for e in self.st.executed],
+            **(
+                {"coaching_profile": prof}
+                if profile and (prof := memory.profile_for_model(req.memory))
+                else {}
+            ),
         }
 
     def _system(self, phase: str) -> dict[str, str]:
@@ -1006,7 +1028,8 @@ class Loop:
             research_block["pending_action"] = {"type": pending.type}
         msgs = [
             self._system(prompts.ANSWER),
-            prompts.data_message(self.data_block()),
+            # 코칭 프로필은 답 쓰기 · 고치기 호출의 데이터 칸에만(고치기는 이 메시지를 그대로 쓴다, 6-14)
+            prompts.data_message(self.data_block(profile=True)),
             {
                 "role": "user",
                 "content": "<research>\n"
@@ -1063,6 +1086,31 @@ class Loop:
                 t = c.get("text")
                 out[c["index"]] = t if isinstance(t, str) and t.strip() else None
         return out
+
+    # ── 4. 대화 요약 (6-14) ──────────────────────────────────────────
+    def summary_phase(self) -> list[Any] | None:
+        """요청에 `history.overflow`가 있으면 '앞 요약 + 밀린 메시지'를 새 요약 항목으로 만든다(굴리는 요약, 모델 1번).
+
+        답 쓰기 · 고치기가 끝난 뒤에만 부르고, 모델 호출 · 시간(호출 한 번 + 끝 줄 몫) · 출력이 남을 때만 보낸다
+        (`Budget.summary_room`). 재시도 없음. 못 만들면 None(BE 는 다음 턴에 같은 메시지를 다시 보낸다). 거르기는 호출자가
+        memory.check_summary_items 로 한다. 프로필은 주지 않는다.
+        """
+        ov = self.req.history.overflow
+        if ov is None or self.cancelled() or not self.budget.summary_room():
+            return None
+        prev = self.req.history.summary or []
+        block = {
+            "prev_summary": [{"kind": s.kind, "text": s.text} for s in prev],
+            "overflow": [{"role": m.role, "text": m.text[:1000]} for m in ov.messages],
+        }
+        msgs = [self._system(prompts.HISTORY_SUMMARY), prompts.data_message(block)]
+        res = self._call(
+            "HISTORY_SUMMARY", msgs, schema=prompts.HISTORY_SUMMARY_SCHEMA, max_attempts=1
+        )
+        if not isinstance(res, LlmResult) or res.parsed is None:
+            return None
+        items = res.parsed.get("items")
+        return items if isinstance(items, list) else None
 
 
 def _script_points_removed(card: dict[str, Any] | None) -> bool:

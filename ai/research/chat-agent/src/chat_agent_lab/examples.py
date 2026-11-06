@@ -709,10 +709,12 @@ def build() -> dict[str, Any]:
         "choice": None,
         "review_event": None,
         "page": PAGE,
-        "history": {"summary": None, "messages": [], "prior_assessments": []},
+        "history": {"summary": None, "messages": [], "prior_assessments": [], "overflow": None},
         "context": _context(pitch),
         "resume": None,
         "budget_used": budget0,
+        # 코칭 프로필 기억(5-3 · 6-14): 켜짐, 저장한 항목 없음
+        "memory": {"enabled": True, "memory_version": 0, "profile": []},
     }
     saved_goal = _goal_saved()
     req_resume = {
@@ -766,10 +768,12 @@ def build() -> dict[str, Any]:
         "choice": None,
         "review_event": {"take_id": "t-6", "review_revision": 1, "goal_version": 1},
         "page": {"route": "", "pitch_id": "p-1", "take_id": None, "screen": None},
-        "history": {"summary": None, "messages": [], "prior_assessments": []},
+        "history": {"summary": None, "messages": [], "prior_assessments": [], "overflow": None},
         "context": _context(pitch6, focus="t-6", goal=saved_goal, goal_version=1),
         "resume": None,
         "budget_used": budget0,
+        # 코칭 프로필 기억(5-3 · 6-14): 켜짐, 저장한 항목 없음
+        "memory": {"enabled": True, "memory_version": 0, "profile": []},
     }
     paused = _final_needs_action()
     needs_action = _stream(

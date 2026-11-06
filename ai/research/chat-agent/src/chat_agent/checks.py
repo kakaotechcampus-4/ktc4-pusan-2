@@ -73,9 +73,10 @@ class CheckId(StrEnum):
     ACTION_ARGS = "ACTION_ARGS"
     FIX_NEW_CONTENT = "FIX_NEW_CONTENT"
     SCOPE_RULE = "SCOPE_RULE"
+    MEMORY_RULE = "MEMORY_RULE"
 
 
-DISPLAY_FIELDS = ("cards", "plan", "trace", "history_summary")
+DISPLAY_FIELDS = ("cards", "plan", "trace", "history_summary", "profile_updates")
 
 
 @dataclass(frozen=True)
@@ -1262,6 +1263,32 @@ def _strings(value: Any, key: str = "") -> Iterable[str]:
     elif isinstance(value, list | tuple):
         for v in value:
             yield from _strings(v, key)
+
+
+def check_memory_text(
+    text: str, field: str, cfg: ChatAgentConfig = DEFAULT_CONFIG
+) -> list[CheckFailure]:
+    """기억 문자열(대화 요약 항목 · 코칭 프로필 후보, 6-14)의 공통 검사: 금지 주장 · 한글 수 · 개인정보, 링크 · 제어 문자 ·
+    지시문 표지(`DISPLAY_TEXT`), 동의 · 칭찬 낱말(기억은 판정 근거가 아니므로 근거와 이어 줄 수 없다). 숫자 · Take · 장
+    규칙과 기억 고유 규칙은 memory.py 가 따로 본다. `field`는 `history_summary` · `profile_updates`."""
+    out = list(_word_checks(None, None, text, cfg, field=field, causal=False))
+    if _URL.search(text):
+        out.append(CheckFailure(None, CheckId.DISPLAY_TEXT, "링크는 담을 수 없음", field=field))
+    if _CONTROL.search(text):
+        out.append(CheckFailure(None, CheckId.DISPLAY_TEXT, "제어 문자가 들어 있음", field=field))
+    if any(m in text.lower() for m in _INJECTION):
+        out.append(
+            CheckFailure(
+                None, CheckId.DISPLAY_TEXT, "지시문처럼 보이는 문장이 들어 있음", field=field
+            )
+        )
+    if w := _found(cfg.agreement_words, text):
+        out.append(
+            CheckFailure(
+                None, CheckId.AGREEMENT_WORD, f"'{w[0]}' 같은 판정 낱말은 담을 수 없음", field=field
+            )
+        )
+    return out
 
 
 def check_display_strings(

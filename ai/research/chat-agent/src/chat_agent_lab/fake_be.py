@@ -212,7 +212,7 @@ class Conversation:
     #: 목표 저장 때 그 피치의 가장 큰 Take 번호. 이보다 큰 번호가 '저장 뒤 시작한 Take'(단순화)
     goal_after_take: int = 0
     messages: list[StoredMessage] = field(default_factory=list)
-    summary: str | None = None
+    summary: list[dict[str, Any]] | None = None
     #: 메시지와 함께 저장한 목표 제안 카드(proposal_id → 카드). choice 가 오면 selected_proposal 로 싣는다
     proposals: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: 자동 목표 확인 중복 방지 키 (목표 판, take_id, 리뷰 판)
@@ -556,6 +556,7 @@ class FakeBe:
             "context": ctx,
             "resume": None,
             "budget_used": dict(ZERO_BUDGET),
+            "memory": self._memory(conv),
         }
         run = self._drive(run, conv, req)
         return self.settle(run, approval) if approval is not None else run
@@ -616,6 +617,7 @@ class FakeBe:
             "context": ctx,
             "resume": None,
             "budget_used": dict(ZERO_BUDGET),
+            "memory": self._memory(conv),
         }
         return self._drive(run, conv, req)
 
@@ -1063,7 +1065,13 @@ class FakeBe:
             "context": ctx,
             "resume": {"state": run.state, "action_results": [copy.deepcopy(rec.result)]},
             "budget_used": budget,
+            # 이어 부를 때도 지금의 기억 설정을 다시 싣는다(번호가 바뀌었으면 AI 가 그 실행의 저장 후보를 버린다, 6-14)
+            "memory": self._memory(conv),
         }
+
+    def _memory(self, conv: Conversation) -> dict[str, Any]:
+        """요청의 `memory`(5-3). 기억 설정 · 코칭 프로필 저장은 아직 흉내 내지 않아 꺼짐으로 보낸다."""
+        return {"enabled": False, "memory_version": 0, "profile": None}
 
     def _call(self, run: Run, req: dict[str, Any]) -> Call:
         n = len(run.calls) + 1
