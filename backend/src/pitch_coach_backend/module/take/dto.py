@@ -479,7 +479,6 @@ class FinalizeRows:
     utterance_ends: tuple[int, ...]
     # 받은 순서대로 (coach_events.seq). 이벤트 JSON 그대로
     events: tuple[dict[str, Any], ...]
-    raw_data_consent: bool
 
 
 @dataclass(frozen=True)
