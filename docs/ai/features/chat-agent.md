@@ -1571,7 +1571,9 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 
 # 10. 실행 · 테스트
 ## 10-1. 준비 · 명령
-지금은 연구 모듈 단계다(4-1). 서비스 탑재 뒤의 명령은 `ai-service.md`에 둔다. Windows 기준이고 실행 파일 대신 `python -m`으로 부른다.
+지금은 연구 모듈 단계다(4-1). 서비스 탑재 뒤의 명령은 `ai-service.md`에 둔다. 실행 파일 대신 `python -m`으로 부른다. Windows(PowerShell)와 macOS · Linux(터미널)는 `.venv` 안 Python 경로만 다르다.
+
+Windows (PowerShell)
 
 ```powershell
 cd ai/research/chat-agent
@@ -1580,6 +1582,17 @@ uv sync                                        # .venv, 서비스 패키지(pitc
 .\.venv\Scripts\python.exe -m pytest -m live tests/live   # 실제 모델 3개(ai/.env 의 기본 모델 묶음, 요금이 듦)
 .\.venv\Scripts\python.exe -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
 .\.venv\Scripts\python.exe -m chat_agent_lab.examples   # 5-10 예시 JSON 다시 만들기
+```
+
+macOS · Linux (터미널)
+
+```bash
+cd ai/research/chat-agent
+uv sync                                        # .venv, 서비스 패키지(pitch-coach-ai) 편집 설치
+.venv/bin/python -m pytest                     # 단위 · 루프 · 계약 · 연구 도구 시험(가짜 모델). live · slow 제외
+.venv/bin/python -m pytest -m live tests/live  # 실제 모델 3개(ai/.env 의 기본 모델 묶음, 요금이 듦)
+.venv/bin/python -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
+.venv/bin/python -m chat_agent_lab.examples    # 5-10 예시 JSON 다시 만들기
 ```
 
 - 기대 결과: 기본 실행은 LLM 키 · 서명 키 없이 모두 통과한다. live 는 계약 모양 · 끝 줄 하나 · 코드 판정 · 범위 밖 거절 · 주입 문장 미노출을 본다(답의 질은 13절 평가셋).
