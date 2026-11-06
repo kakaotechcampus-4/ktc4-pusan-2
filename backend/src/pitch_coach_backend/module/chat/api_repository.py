@@ -12,6 +12,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
     ChatDailyUsage,
+    ChatGoal,
     ChatMessage,
     ChatRun,
     ChatRunEvent,
@@ -199,6 +200,14 @@ class ChatApiRepository:
                 select(Take.id)
                 .join(Pitch, Pitch.id == Take.pitch_id)
                 .where(Take.id.in_(take_ids), Pitch.user_id == user_id)
+            )
+        )
+
+    def goal_saved_by(self, conversation_id: uuid.UUID, action_pk: uuid.UUID) -> ChatGoal | None:
+        """그 목표 저장 행동이 만든 목표 판."""
+        return self.db.scalar(
+            select(ChatGoal).where(
+                ChatGoal.conversation_id == conversation_id, ChatGoal.action_id == action_pk
             )
         )
 

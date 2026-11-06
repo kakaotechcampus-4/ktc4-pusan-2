@@ -23,6 +23,7 @@ from pitch_coach_backend.module.chat.api_dto import (
     ConversationListResponse,
     ConversationResponse,
     CreateConversationRequest,
+    GoalUndoneResponse,
     MessageAcceptedResponse,
     MessageListResponse,
     RunStatusResponse,
@@ -37,6 +38,7 @@ from pitch_coach_backend.module.chat.service.conversation import (
     list_conversations,
     list_messages,
 )
+from pitch_coach_backend.module.chat.service.goal_undo import undo_goal
 from pitch_coach_backend.module.chat.service.run_view import (
     cancel_run,
     latest_run_status,
@@ -193,3 +195,18 @@ def post_decision(
     if decided.resume:
         background_tasks.add_task(_resume_turn, run_id)
     return decided.view
+
+
+# 목표 저장 카드의 [되돌리기]. 실행이 끝난 뒤에도 쓸 수 있다. 같은 요청은 처음 결과를 준다
+@router.post(
+    "/runs/{run_id}/actions/{action_id}/undo",
+    response_model=GoalUndoneResponse,
+    dependencies=[Enabled],
+)
+def post_undo(
+    run_id: uuid.UUID,
+    action_id: Annotated[str, Path(min_length=1, max_length=64)],
+    current_user: CurrentUser,
+    db: DbSession,
+) -> GoalUndoneResponse:
+    return undo_goal(db, current_user.id, run_id, action_id, datetime.now(UTC))
