@@ -18,7 +18,8 @@ import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnsw
 import type { CardActions } from './ChatCards';
 import { ANSWER_FAILED_TEXT } from './chatResponse';
 import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
-import { canSend, useChatStore, type ScreenScope } from './chatStore';
+import { canSend, useChatStore } from './chatStore';
+import { ConversationList, ScopeChip } from './ChatPanelParts';
 import { useChatSession, type ChatNotice, type ChatSession } from './useChatSession';
 
 /**
@@ -146,6 +147,7 @@ function ChatSessionView({
       {open && (
         <ChatPanel
           id={id}
+          userId={userId}
           session={session}
           onClose={close}
           draft={draft}
@@ -182,13 +184,6 @@ function ChatSessionView({
   );
 }
 
-/** 칩 자리의 범위 이름 — 칩 · 피치 고르기는 8-4 에서 붙입니다 */
-function scopeLabel(scope: ScreenScope): string {
-  if (scope === null) return '범위 확인 중';
-  if (scope.pitchId === null) return '전체';
-  return scope.title ? `피치: ${scope.title}` : '피치';
-}
-
 function noticeText(notice: ChatNotice): string {
   switch (notice.kind) {
     case 'unconfirmed':
@@ -197,6 +192,13 @@ function noticeText(notice: ChatNotice): string {
       return '평가 기준이 2,000자를 넘어 보낼 수 없어요.';
     case 'sessionExpired':
       return '로그인이 만료됐으니 다시 로그인해 주세요.';
+    case 'scopeMissing':
+      return '발표를 찾을 수 없으니 범위를 다시 선택해 주세요.';
+    case 'scopeFailed':
+      // FE 가 정한 문구 — 문서에 없습니다
+      return '범위를 바꾸지 못했으니 다시 시도해 주세요.';
+    case 'conversationMissing':
+      return '대화를 찾을 수 없어요.';
     case 'sendFailed':
       // 코드별 문구(F8)는 8-5 에서 채웁니다
       return notice.code === 'AGENT_BUSY'
@@ -207,6 +209,7 @@ function noticeText(notice: ChatNotice): string {
 
 function ChatPanel({
   id,
+  userId,
   session,
   onClose,
   focusRequested,
@@ -215,6 +218,7 @@ function ChatPanel({
   setDraft,
 }: {
   id: string;
+  userId: string;
   session: ChatSession;
   onClose: () => void;
   /** 런처로 연 때만 true — 그때만 입력칸에 초점을 주고 `onFocused` 로 알립니다 */
@@ -226,12 +230,12 @@ function ChatPanel({
   useEffect(() => {
     latestDraft.current = draft;
   });
-  const scope = useChatStore((s) => s.scope);
   const sendable = useChatStore((s) => canSend(s));
+  const [listOpen, setListOpen] = useState(false);
   const content = draft.trim();
   const tooLong = [...content].length > MAX_MESSAGE_LENGTH;
   const failed = session.availability === 'failed';
-  const blocked = failed || !sendable;
+  const blocked = failed || !sendable || session.scopeBlocked;
 
   // 사용자가 런처로 연 순간에만 입력칸으로 초점을 옮깁니다
   useEffect(() => {
@@ -289,10 +293,16 @@ function ChatPanel({
           <h2 id={`${id}-title`} className="text-base font-bold">
             채팅 에이전트
           </h2>
-          <p className="mt-1 text-xs text-stone" data-chat-scope="">
-            {scopeLabel(scope)}
-          </p>
+          <ScopeChip onChange={(next) => void session.changeScope(next)} />
         </div>
+        <button
+          type="button"
+          aria-pressed={listOpen}
+          onClick={() => setListOpen(!listOpen)}
+          className="ml-auto min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
+        >
+          대화 목록
+        </button>
         <button
           type="button"
           onClick={onClose}
@@ -309,20 +319,13 @@ function ChatPanel({
         aria-label="채팅 메시지"
         className="flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
       >
-        {failed ? (
-          <div role="alert" className="self-start text-sm leading-6">
-            <p>코치를 불러오지 못했으니 다시 시도해 주세요.</p>
-            <button
-              type="button"
-              onClick={session.retryAvailability}
-              className="mt-2 min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
-            >
-              다시 시도
-            </button>
-          </div>
-        ) : (
-          <MessageList session={session} />
-        )}
+        <PanelBody
+          failed={failed}
+          listOpen={listOpen}
+          userId={userId}
+          session={session}
+          closeList={() => setListOpen(false)}
+        />
       </div>
 
       <form
@@ -394,10 +397,55 @@ function ChatPanel({
   );
 }
 
+/** 패널 몸통 — 코치를 못 불러옴 · 대화 목록 · 메시지 중 하나 */
+function PanelBody({
+  failed,
+  listOpen,
+  userId,
+  session,
+  closeList,
+}: {
+  failed: boolean;
+  listOpen: boolean;
+  userId: string;
+  session: ChatSession;
+  closeList: () => void;
+}) {
+  if (failed)
+    return (
+      <div role="alert" className="self-start text-sm leading-6">
+        <p>코치를 불러오지 못했으니 다시 시도해 주세요.</p>
+        <button
+          type="button"
+          onClick={session.retryAvailability}
+          className="mt-2 min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
+        >
+          다시 시도
+        </button>
+      </div>
+    );
+  if (listOpen)
+    return (
+      <ConversationList
+        userId={userId}
+        onNew={() => {
+          closeList();
+          session.startNew();
+        }}
+        onPick={(item) => {
+          closeList();
+          session.selectConversation(item);
+        }}
+      />
+    );
+  return <MessageList session={session} />;
+}
+
 /** 지난 메시지와 지금 실행의 답 — 카드는 8-3 에서 붙입니다 */
 function MessageList({ session }: { session: ChatSession }) {
   const pending = useChatStore((s) => s.pending?.request.text ?? null);
   const sendable = useChatStore((s) => canSend(s));
+  const syncing = useChatStore((s) => s.syncing);
   const actions: CardActions = {
     decide: session.decide,
     undo: session.undo,
@@ -416,15 +464,40 @@ function MessageList({ session }: { session: ChatSession }) {
   const liveInList =
     progress !== null && shown.some((m) => m.role === 'assistant' && m.run_id === progress.runId);
 
+  const restoring = syncing || session.messagesLoading;
   return (
     <>
-      {shown.length === 0 &&
-        !pending &&
-        !echo &&
-        !session.messagesLoading &&
-        !session.messagesFailed && (
-          <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
-        )}
+      {session.hasEarlier && (
+        <button
+          type="button"
+          aria-disabled={session.loadingEarlier}
+          onClick={() => {
+            if (!session.loadingEarlier) session.loadEarlier();
+          }}
+          className="min-h-11 self-center rounded-lg border border-line-strong px-3 text-xs font-bold hover:bg-cream aria-disabled:text-stone"
+        >
+          이전 대화 더 보기
+        </button>
+      )}
+      {shown.length === 0 && restoring && (
+        <p className="self-start text-xs text-stone">이전 대화를 불러오고 있어요.</p>
+      )}
+      {shown.length === 0 && session.messagesFailed && (
+        <div role="alert" className="self-start text-xs leading-5 text-coral-deep">
+          {/* FE 가 정한 문구 — 문서에 없습니다 */}
+          <p>대화를 불러오지 못했으니 다시 시도해 주세요.</p>
+          <button
+            type="button"
+            onClick={session.retryMessages}
+            className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+      {shown.length === 0 && !pending && !echo && !restoring && !session.messagesFailed && (
+        <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
+      )}
       {shown.map((message) => (
         <MessageItem key={message.message_id} message={message} actions={actions} />
       ))}

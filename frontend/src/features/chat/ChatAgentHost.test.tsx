@@ -29,7 +29,10 @@ const server = vi.hoisted(() => ({
   seen: [] as { path: string; signal: AbortSignal | null }[],
   availability: (_signal: AbortSignal | null): Promise<unknown> =>
     Promise.resolve({ enabled: true }),
-  messages: (): Promise<unknown> => Promise.resolve({ messages: [], next_before_seq: null }),
+  messages: (_path?: string): Promise<unknown> =>
+    Promise.resolve({ messages: [], next_before_seq: null }),
+  conversations: (): Promise<unknown> => Promise.resolve({ conversations: [] }),
+  pitches: (): Promise<unknown> => Promise.resolve({ pitches: [] }),
   report: (takeId: string): Promise<unknown> =>
     Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' }),
 }));
@@ -38,7 +41,9 @@ vi.mock('@/shared/api/client', async (original) => ({
   apiRequest: (path: string, init: RequestInit = {}) => {
     server.seen.push({ path, signal: init.signal ?? null });
     if (path === '/api/chat/availability') return server.availability(init.signal ?? null);
-    if (path.startsWith('/api/chat/conversations/')) return server.messages();
+    if (path.startsWith('/api/chat/conversations/')) return server.messages(path);
+    if (path === '/api/chat/conversations') return server.conversations();
+    if (path === '/api/pitches/') return server.pitches();
     const take = /^\/api\/takes\/([^/]+)\/report$/.exec(path);
     if (take) return server.report(take[1]!);
     return Promise.reject(new Error(`모르는 경로 ${path}`));
@@ -56,9 +61,12 @@ interface FakeTransport {
   cancelled: number;
   decided: unknown[][];
   undone: unknown[][];
+  scopes: unknown[];
   emit: (signal: TransportSignal) => void;
 }
 const transports = vi.hoisted(() => [] as FakeTransport[]);
+/** 범위 바꾸기 결과 — 'missing' 이면 서버가 그 피치를 찾지 못함(404) */
+const scopeMode = vi.hoisted(() => ({ value: 'ok' as 'ok' | 'missing' }));
 /** 보내기 결과 — 'failed' 면 접수되지 않음이 확정된 것처럼 잠금을 풉니다 */
 const sendMode = vi.hoisted(() => ({ value: 'accepted' as 'accepted' | 'failed' }));
 vi.mock('./chatTransport', async () => {
@@ -75,6 +83,7 @@ vi.mock('./chatTransport', async () => {
         cancelled: 0,
         decided: [],
         undone: [],
+        scopes: [],
         emit: (signal) => listeners.forEach((listener) => listener(signal)),
       };
       transports.push(t);
@@ -119,7 +128,22 @@ vi.mock('./chatTransport', async () => {
           const run = store.getState().run;
           return !!run && store.getState().beginCancel(run.runId);
         },
-        changeScope: async () => false,
+        // 범위 바꾸기 — 새 대화는 칩만, 있는 대화는 서버가 받아들인 것처럼(또는 거절)
+        changeScope: async (scope: { pitchId: string | null; title: string | null }) => {
+          t.scopes.push(scope);
+          const st = store.getState();
+          if (st.conversationId === null) return st.chooseScope(scope);
+          const ticket = st.beginScopeChange(scope);
+          if (!ticket) return false;
+          await Promise.resolve();
+          if (scopeMode.value === 'missing') {
+            store.getState().finishScopeChange(ticket, null);
+            t.emit({ type: 'scopeFailed', code: 'NOT_FOUND' });
+            return false;
+          }
+          store.getState().finishScopeChange(ticket, scope);
+          return true;
+        },
         checkNow: () => undefined,
       };
     },
@@ -139,6 +163,9 @@ beforeEach(() => {
   server.seen = [];
   server.availability = () => Promise.resolve({ enabled: true });
   server.messages = () => Promise.resolve({ messages: [], next_before_seq: null });
+  server.conversations = () => Promise.resolve({ conversations: [] });
+  server.pitches = () => Promise.resolve({ pitches: [] });
+  scopeMode.value = 'ok';
   server.report = (takeId) =>
     Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
   transports.length = 0;
@@ -1258,5 +1285,303 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     // 돌아온 대화의 실행이 아직 진행 중이면 통신 계층이 처음부터 다시 보내 다시 그려집니다
     await act(async () => transport().emit(progressIn('r1', 'c1', '다시 받은 문장')));
     expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('다시 받은 문장');
+  });
+});
+
+// ── 8-4 범위 칩 · 대화 목록 ─────────────────────────────────
+
+describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
+  const P1 = '10000000-0000-4000-8000-000000000001';
+  const P2 = '10000000-0000-4000-8000-000000000002';
+  const pitchList = {
+    pitches: [
+      { pitch_id: P1, pitch_title: '졸업 발표', pitch_time: 300, thumbnail_url: null, takes: [] },
+      { pitch_id: P2, pitch_title: '회사 소개', pitch_time: 300, thumbnail_url: null, takes: [] },
+    ],
+  };
+  const chip = () => panel()!.querySelector<HTMLButtonElement>('[data-chat-scope]')!;
+  const option = (label: string) =>
+    [...panel()!.querySelectorAll<HTMLButtonElement>('[aria-label="범위 고르기"] button')].find(
+      (b) => b.textContent === label,
+    );
+
+  async function inConversation(conversationId: string, run: { runId: string } | null = null) {
+    const s = useChatStore.getState();
+    s.selectConversation(conversationId, { pitchId: null, title: null });
+    s.resolveConversation(chatTicket(), run ? { runId: run.runId, phase: 'RUNNING' } : null);
+    await settle();
+  }
+
+  it('피치 화면에서 연 범위는 내 피치 목록에서 이름을 찾아 "피치: 이름" 으로 보인다', async () => {
+    server.pitches = () => Promise.resolve(pitchList);
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await settle();
+    expect(chip().textContent).toBe('피치: 졸업 발표');
+  });
+
+  it('칩을 누르면 전체 · 내 피치에서 고르고, 고르면 그 범위로 바꾼다 — Esc 는 목록만 닫는다', async () => {
+    server.pitches = () => Promise.resolve(pitchList);
+    await visit('/');
+    await openPanel();
+    await act(async () => chip().click());
+    await settle();
+    expect(chip().getAttribute('aria-expanded')).toBe('true');
+    expect(option('전체')!.getAttribute('aria-pressed')).toBe('true');
+
+    await press(option('피치: 회사 소개')!, { key: 'Escape' });
+    expect(chip().getAttribute('aria-expanded')).toBe('false');
+    expect(panel()).not.toBeNull();
+
+    await act(async () => chip().click());
+    // 고른 뒤 초점은 칩으로 돌아옵니다 — 다른 곳에 있던 초점에서 시작합니다
+    input().focus();
+    await act(async () => option('피치: 회사 소개')!.click());
+    await settle();
+    expect(transport().scopes).toEqual([{ pitchId: P2, title: '회사 소개' }]);
+    expect(useChatStore.getState().scope).toEqual({ pitchId: P2, title: '회사 소개' });
+    expect(chip().textContent).toBe('피치: 회사 소개');
+    expect(document.activeElement).toBe(chip());
+  });
+
+  it('실행이 끝나기 전에는 칩을 막고, 막힌 동안 누른 것은 끝난 뒤에 저절로 열리지 않는다', async () => {
+    await visit('/');
+    await openPanel();
+    await inConversation('c1', { runId: 'r1' });
+    expect(chip().getAttribute('aria-disabled')).toBe('true');
+    await act(async () => chip().click());
+    expect(chip().getAttribute('aria-expanded')).toBe('false');
+    await act(async () => useChatStore.getState().endRun('r1'));
+    expect(chip().getAttribute('aria-disabled')).toBe('false');
+    expect(chip().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('펼친 범위 목록은 실행이 붙으면 닫힌다', async () => {
+    server.pitches = () => Promise.resolve(pitchList);
+    await visit('/');
+    await openPanel();
+    await inConversation('c1');
+    await act(async () => chip().click());
+    expect(chip().getAttribute('aria-expanded')).toBe('true');
+    await act(async () => {
+      const s = useChatStore.getState();
+      s.selectConversation('c1', { pitchId: null, title: null });
+      useChatStore.getState().resolveConversation(chatTicket(), { runId: 'r2', phase: 'RUNNING' });
+    });
+    expect(chip().getAttribute('aria-expanded')).toBe('false');
+    expect(panel()!.querySelector('[aria-label="범위 고르기"]')).toBeNull();
+  });
+
+  it('피치 목록을 읽지 못하면 지금 선택을 두고 다시 시도하게 한다 (L3-07)', async () => {
+    server.pitches = () => Promise.reject(new Error('끊김'));
+    await visit('/');
+    await openPanel();
+    await act(async () => chip().click());
+    await settle();
+    expect(alerts()).toContain('피치 목록을 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+    expect(useChatStore.getState().scope).toEqual({ pitchId: null, title: null });
+
+    server.pitches = () => Promise.resolve(pitchList);
+    await act(async () => button('다시 시도')!.click());
+    await settle();
+    expect(option('피치: 졸업 발표')).toBeDefined();
+  });
+
+  it('있는 대화의 범위 바꾸기가 404 면 앞 범위로 돌리고 "발표를 찾을 수 없으니…" 를 보인다', async () => {
+    server.pitches = () => Promise.resolve(pitchList);
+    scopeMode.value = 'missing';
+    await visit('/');
+    await openPanel();
+    await inConversation('c1');
+    await act(async () => chip().click());
+    await settle();
+    await act(async () => option('피치: 졸업 발표')!.click());
+    await settle();
+    expect(useChatStore.getState().scope).toEqual({ pitchId: null, title: null });
+    expect(alerts()).toContain('발표를 찾을 수 없으니 범위를 다시 선택해 주세요.');
+  });
+
+  it('보내기가 범위의 피치를 찾지 못하면(404) 범위를 다시 고를 때까지 보내기를 막는다', async () => {
+    server.pitches = () => Promise.resolve(pitchList);
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await settle();
+    await act(async () => transport().emit({ type: 'sendFailed', code: 'NOT_FOUND', status: 404 }));
+    expect(alerts()).toContain('발표를 찾을 수 없으니 범위를 다시 선택해 주세요.');
+    await type('질문');
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent).toEqual([]);
+
+    await act(async () => chip().click());
+    await settle();
+    await act(async () => option('전체')!.click());
+    await settle();
+    expect(sendButton().getAttribute('aria-disabled')).toBe('false');
+  });
+
+  it('대화 목록은 제목 · 범위 · 마지막 시각 · 최신 아님을 보이고, 고르면 그 대화로 옮긴다', async () => {
+    server.conversations = () =>
+      Promise.resolve({
+        conversations: [
+          {
+            conversation_id: 'c7',
+            title: '3장 시선 어땠어?',
+            scope_pitch_id: P1,
+            scope_pitch_title: '졸업 발표',
+            last_user_activity_at: '2026-11-05T12:30:00Z',
+            created_at: '2026-11-05T12:00:00Z',
+            stale: true,
+          },
+          { conversation_id: 'broken' },
+        ],
+      });
+    await visit('/');
+    await openPanel();
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    const items = [...panel()!.querySelectorAll('[aria-label="지난 대화"] button')];
+    // 깨진 줄은 빼고 나머지만 보입니다
+    expect(items).toHaveLength(1);
+    expect(items[0]!.textContent).toContain('3장 시선 어땠어?');
+    expect(items[0]!.textContent).toContain('피치: 졸업 발표');
+    expect(items[0]!.textContent).toContain('최신 아님');
+
+    await act(async () => (items[0] as HTMLButtonElement).click());
+    await settle();
+    expect(useChatStore.getState().conversationId).toBe('c7');
+    expect(useChatStore.getState().scope).toEqual({ pitchId: P1, title: '졸업 발표' });
+    expect(panel()!.querySelector('[data-conversation-list]')).toBeNull();
+  });
+
+  it('대화를 옮기면 앞 대화의 마지막 문장을 화면 읽기 영역에 남기지 않는다', async () => {
+    await visit('/');
+    await openPanel();
+    await inConversation('c1', { runId: 'r1' });
+    await act(async () =>
+      transport().emit({
+        type: 'progress',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'RUNNING',
+        events: [],
+        claims: [{ ...claim('앞 대화 문장'), index: 0 }],
+        restart: true,
+        catchUp: false,
+        contractError: null,
+        plan: null,
+        trace: null,
+        progressDropped: false,
+        cards: [],
+      }),
+    );
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
+    const announce = () => host.querySelector('[data-chat-announce]')!.textContent;
+    expect(announce()).toBe('앞 대화 문장');
+    await act(async () => useChatStore.getState().startNewConversation(null));
+    expect(announce()).toBe('');
+  });
+
+  it('[새 대화]는 지금 화면 범위의 새 대화로 옮긴다', async () => {
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await inConversation('c1');
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    await act(async () => button('새 대화')!.click());
+    expect(useChatStore.getState().conversationId).toBeNull();
+    expect(useChatStore.getState().scope).toEqual({ pitchId: P1, title: null });
+  });
+
+  it('대화 목록을 읽지 못하면 다시 시도하게 한다', async () => {
+    server.conversations = () => Promise.reject(new Error('끊김'));
+    await visit('/');
+    await openPanel();
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    expect(alerts()).toContain('대화 목록을 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+    server.conversations = () => Promise.resolve({ conversations: [] });
+    await act(async () => button('다시 시도')!.click());
+    await settle();
+    expect(panel()!.textContent).toContain('지난 대화가 없어요.');
+  });
+
+  it('[이전 대화 더 보기]는 앞 페이지를 읽어 위에 잇는다', async () => {
+    const msg = (id: string, text: string) => ({ message_id: id, role: 'user', text, run_id: id });
+    server.messages = (path) =>
+      Promise.resolve(
+        path?.includes('before_seq=11')
+          ? { messages: [msg('m1', '첫 질문')], next_before_seq: null }
+          : { messages: [msg('m11', '나중 질문')], next_before_seq: 11 },
+      );
+    await visit('/');
+    await openPanel();
+    await inConversation('c1');
+    expect(sentMessages()).toEqual(['나중 질문']);
+    await act(async () => button('이전 대화 더 보기')!.click());
+    await settle();
+    expect(sentMessages()).toEqual(['첫 질문', '나중 질문']);
+    expect(button('이전 대화 더 보기')).toBeUndefined();
+  });
+
+  it('지난 대화를 되살리는 동안은 "이전 대화를 불러오고 있어요." — 읽지 못하면 다시 시도', async () => {
+    const list = held<unknown>();
+    server.messages = () => list.promise;
+    await visit('/');
+    await openPanel();
+    await act(async () =>
+      useChatStore.getState().selectConversation('c1', { pitchId: null, title: null }),
+    );
+    await settle();
+    expect(panel()!.textContent).toContain('이전 대화를 불러오고 있어요.');
+
+    await act(async () => useChatStore.getState().resolveConversation(chatTicket(), null));
+    await act(async () => list.reject(new Error('끊김')));
+    await settle();
+    expect(alerts()).toContain('대화를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+    expect(panel()!.textContent).not.toContain('물어보세요');
+    server.messages = () =>
+      Promise.resolve({
+        messages: [{ message_id: 'm1', role: 'user', text: '지난 질문', run_id: 'r0' }],
+        next_before_seq: null,
+      });
+    await act(async () => button('다시 시도')!.click());
+    await settle();
+    expect(sentMessages()).toEqual(['지난 질문']);
+  });
+
+  it('보던 대화가 없어지면 "대화를 찾을 수 없어요." 를 보이고 지금 화면 범위의 새 대화로 옮긴다', async () => {
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await inConversation('c1');
+    await act(async () => transport().emit({ type: 'conversationMissing', conversationId: 'c1' }));
+    expect(useChatStore.getState().conversationId).toBeNull();
+    expect(useChatStore.getState().scope).toEqual({ pitchId: P1, title: null });
+    expect(alerts()).toContain('대화를 찾을 수 없어요.');
+  });
+
+  it('실행이 끝나면 대화 목록을 다시 읽는다 — 제목 · 시각 · 범위가 바뀌었을 수 있다', async () => {
+    let reads = 0;
+    server.conversations = () => {
+      reads += 1;
+      return Promise.resolve({ conversations: [] });
+    };
+    await visit('/');
+    await openPanel();
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    const before = reads;
+    await act(async () =>
+      transport().emit({
+        type: 'ended',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'DONE',
+        errorCode: null,
+        endedWhileWaiting: false,
+      }),
+    );
+    await settle();
+    expect(reads).toBeGreaterThan(before);
   });
 });

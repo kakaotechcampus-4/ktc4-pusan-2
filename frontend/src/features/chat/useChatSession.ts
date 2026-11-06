@@ -1,14 +1,21 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchTakeReport } from '@/shared/api/report';
 import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
-import type { ChatMessage, ChatPage } from '@/types/chat';
+import type { ChatMessage, ChatPage, ConversationListItem } from '@/types/chat';
 import { useChatAvailability, type ChatAvailability } from './chatAvailability';
 import { fetchMessages } from './chatApi';
+import { conversationsKey } from './chatConversations';
 import type { LiveProgress } from './ChatAnswer';
 import type { ShownClaim } from './chatResponse';
 import type { ChatRouteInfo } from './chatRoutes';
-import { WHOLE_SCOPE, useChatStore, type ScreenScope, type SendDraft } from './chatStore';
+import {
+  WHOLE_SCOPE,
+  useChatStore,
+  type ChatScope,
+  type ScreenScope,
+  type SendDraft,
+} from './chatStore';
 import {
   createChatTransport,
   type ChatTransport,
@@ -34,7 +41,13 @@ export type ChatNotice =
   | { kind: 'unconfirmed' }
   | { kind: 'sendFailed'; code: string }
   | { kind: 'sessionExpired' }
-  | { kind: 'criteriaTooLong' };
+  | { kind: 'criteriaTooLong' }
+  /** 고른 피치가 없어짐(404) — 범위를 다시 고를 때까지 보내기를 막습니다 (L3-07) */
+  | { kind: 'scopeMissing' }
+  /** 범위 바꾸기가 받아들여지지 않음 — 칩은 앞 범위로 돌아갔습니다 */
+  | { kind: 'scopeFailed' }
+  /** 보던 대화가 없어짐 — 새 대화로 옮겼습니다 (L3-35) */
+  | { kind: 'conversationMissing' };
 
 /**
  * 접수된 내 말 — 접수(202)로 "보내는 중" 이 풀린 뒤, 목록을 다시 읽어 그 말이 들어올 때까지 이것으로 그립니다.
@@ -58,6 +71,20 @@ export interface ChatSession {
   scopeFailed: boolean;
   retryScope: () => void;
   messages: ChatMessage[];
+  /** 더 앞의 메시지가 있음 · 읽기 · 읽는 중 */
+  hasEarlier: boolean;
+  loadEarlier: () => void;
+  loadingEarlier: boolean;
+  /** 메시지 목록을 다시 읽습니다 — 읽지 못했을 때 */
+  retryMessages: () => void;
+  /** 범위를 다시 고를 때까지 보내기를 막음 (L3-07) */
+  scopeBlocked: boolean;
+  /** 범위 칩 — 새 대화는 바로, 있는 대화는 서버에 바꾸기를 요청합니다 */
+  changeScope: (scope: ChatScope) => Promise<boolean>;
+  /** [새 대화] — 지금 화면 범위의 새 대화 입력 상태로 */
+  startNew: () => void;
+  /** 대화 목록에서 고름 */
+  selectConversation: (item: ConversationListItem) => void;
   /** 메시지 목록을 처음 읽는 중 — 빈 대화 안내를 미룹니다 */
   messagesLoading: boolean;
   /** 메시지 목록을 읽지 못함 — 빈 대화로 보이지 않게 합니다 */
@@ -103,6 +130,9 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   const [progress, setProgress] = useState<LiveProgress | null>(null);
   const [announce, setAnnounce] = useState('');
   const [sentEcho, setSentEcho] = useState<SentEcho | null>(null);
+  const [scopeBlocked, setScopeBlocked] = useState(false);
+  /** 지금 화면 범위 — 신호 처리(대화 없어짐 → 새 대화)에서 씁니다 */
+  const screenScopeRef = useRef<ScreenScope>(null);
   // 큐는 세션마다 하나. 화면에서 빠질 때 비우기만 하고 닫지 않습니다 — 엄격 모드에서 다시 붙어도 쓰게
   const [typing] = useState(() =>
     createTypingQueue<ShownClaim>({ onLineDone: (line) => setAnnounce(line.item.text) }),
@@ -124,11 +154,14 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
             conversationId: now.run.conversationId,
             text: before.pending.request.text,
           });
+        if (now.scope !== before.scope || now.attempt !== before.attempt) setScopeBlocked(false);
         if (now.attempt !== before.attempt) {
           typing.reset();
           liveRun.current = null;
           setProgress(null);
           setSentEcho(null);
+          // 앞 대화의 마지막 문장을 화면 읽기 영역에 남기지 않습니다
+          setAnnounce('');
         }
       }),
     [typing],
@@ -150,6 +183,9 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       ? { pitchId: take.data.pitch_id, title: take.data.pitch_title }
       : null;
   const screenScope = screenScopeOf(info, takeScope);
+  useEffect(() => {
+    screenScopeRef.current = screenScope;
+  });
   const scopePitchId = screenScope?.pitchId;
   const scopeTitle = screenScope?.title;
   const scopeKnown = screenScope !== null;
@@ -180,6 +216,10 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       handleSignal(signal, {
         markDisabled,
         setNotice,
+        blockScope: () => setScopeBlocked(true),
+        startNew: () => useChatStore.getState().startNewConversation(screenScopeRef.current),
+        rereadConversations: () =>
+          void queryClient.invalidateQueries({ queryKey: conversationsKey(userId) }),
         live: {
           take: (signal) => {
             if (liveRun.current !== signal.runId) {
@@ -225,16 +265,24 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
 
   // 새 실행이 붙으면 사용자 말이 저장돼 있으니 목록을 다시 읽습니다
   useEffect(() => {
-    if (runId && conversationId)
-      void queryClient.invalidateQueries({ queryKey: messagesKey(userId, conversationId) });
+    if (!runId || !conversationId) return;
+    void queryClient.invalidateQueries({ queryKey: messagesKey(userId, conversationId) });
+    void queryClient.invalidateQueries({ queryKey: conversationsKey(userId) });
   }, [runId, conversationId, queryClient, userId]);
 
   // ── 메시지 목록 ───────────────────────────────────────
-  const messages = useQuery({
+  // 최근 한 페이지부터, [이전 대화 더 보기]로 앞 페이지를 이어 읽습니다(`next_before_seq`)
+  const messages = useInfiniteQuery({
     queryKey: messagesKey(userId, conversationId),
-    queryFn: () => fetchMessages(conversationId!),
+    queryFn: ({ pageParam }) => fetchMessages(conversationId!, pageParam),
+    initialPageParam: null as number | null,
+    getNextPageParam: (page) => page.next_before_seq ?? undefined,
     enabled: on && open && conversationId !== null,
   });
+  // 페이지는 최근 것부터 쌓이고, 한 페이지 안은 오래된 순입니다
+  const shown = messages.data
+    ? [...messages.data.pages].reverse().flatMap((page) => page.messages)
+    : [];
 
   // ── 보내기 ───────────────────────────────────────────
   const send = useCallback(
@@ -273,6 +321,26 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
 
   const cancel = useCallback(() => void transport.current?.cancel(), []);
 
+  const changeScope = useCallback<ChatSession['changeScope']>(async (scope) => {
+    const current = transport.current;
+    if (!current) return false;
+    setNotice(null);
+    return current.changeScope(scope);
+  }, []);
+
+  const startNew = useCallback(() => {
+    setNotice(null);
+    useChatStore.getState().startNewConversation(screenScopeRef.current);
+  }, []);
+
+  const selectConversation = useCallback<ChatSession['selectConversation']>((item) => {
+    setNotice(null);
+    useChatStore.getState().selectConversation(item.conversation_id, {
+      pitchId: item.scope_pitch_id,
+      title: item.scope_pitch_title,
+    });
+  }, []);
+
   const decide = useCallback<ChatSession['decide']>(
     async (actionId, decision, argsHash) =>
       transport.current ? transport.current.decide(actionId, decision, argsHash) : 'stale',
@@ -304,7 +372,15 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     screenScope,
     scopeFailed: info.needsTake && take.isError && !take.data,
     retryScope: () => void take.refetch(),
-    messages: messages.data?.messages ?? [],
+    messages: shown,
+    hasEarlier: messages.hasNextPage,
+    loadEarlier: () => void messages.fetchNextPage(),
+    loadingEarlier: messages.isFetchingNextPage,
+    retryMessages: () => void messages.refetch(),
+    scopeBlocked,
+    changeScope,
+    startNew,
+    selectConversation,
     messagesLoading: messages.isPending && messages.fetchStatus === 'fetching',
     messagesFailed: messages.isError,
     sentEcho: sentEcho && sentEcho.conversationId === conversationId ? sentEcho : null,
@@ -331,6 +407,12 @@ function screenScopeOf(info: ChatRouteInfo, takeScope: ScreenScope): ScreenScope
 interface SignalHandlers {
   markDisabled: () => void;
   setNotice: (notice: ChatNotice | null) => void;
+  /** 범위를 다시 고를 때까지 보내기를 막습니다 */
+  blockScope: () => void;
+  /** 지금 화면 범위의 새 대화로 */
+  startNew: () => void;
+  /** 대화 목록을 다시 읽습니다 — 제목 · 마지막 시각 · 최신 아님 · 범위가 바뀌었을 수 있습니다 */
+  rereadConversations: () => void;
   live: {
     /** 진행 신호를 큐에 넣습니다 — 다른 실행이면 큐를 비우고 새로 */
     take: (signal: Extract<TransportSignal, { type: 'progress' }>) => void;
@@ -350,6 +432,7 @@ function handleSignal(signal: TransportSignal, h: SignalHandlers) {
       h.live.take(signal);
       return;
     case 'ended':
+      h.rereadConversations();
       h.live.finish(signal.runId);
       h.reread(signal.conversationId, () => h.live.clear(signal.runId));
       return;
@@ -368,7 +451,22 @@ function handleSignal(signal: TransportSignal, h: SignalHandlers) {
       h.setNotice({ kind: 'unconfirmed' });
       return;
     case 'sendFailed':
+      // 범위의 피치가 없어짐 — 범위를 다시 고르게 합니다(L3-07). BE 는 대화 · 피치 · 제안의 404 를 같은 코드로 줘서
+      // 범위가 피치일 때만 이 안내로 봅니다
+      if (signal.code === 'NOT_FOUND' && useChatStore.getState().scope?.pitchId) {
+        h.blockScope();
+        h.setNotice({ kind: 'scopeMissing' });
+        return;
+      }
       h.setNotice({ kind: 'sendFailed', code: signal.code });
+      return;
+    case 'scopeFailed':
+      h.setNotice(signal.code === 'NOT_FOUND' ? { kind: 'scopeMissing' } : { kind: 'scopeFailed' });
+      return;
+    case 'conversationMissing':
+      h.startNew();
+      h.setNotice({ kind: 'conversationMissing' });
+      h.rereadConversations();
       return;
     case 'sessionExpired':
       h.setNotice({ kind: 'sessionExpired' });
