@@ -895,7 +895,10 @@ class FakeBe:
             "status": "FAILED",
             "data": None,
             "error": {"code": code, "message": code},
-            "executed_args_hash": None,
+            # 실패한 `ASK` 행동의 결과에도 해시를 싣는다(5-8)
+            "executed_args_hash": action_args_hash(action["type"], action["args"])
+            if action.get("autonomy") == "ASK"
+            else None,
         }
 
     def _send_pitch(self, run: Run, p: fx.PitchRecord) -> dict[str, Any]:

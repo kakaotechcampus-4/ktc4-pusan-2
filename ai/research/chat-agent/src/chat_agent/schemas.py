@@ -696,6 +696,16 @@ class Preapproved(_Out):
     content_hash: StrictStr
 
 
+#: 행동 종류 → 자율 등급 고정 대응(6-2). 코드(`actions.AUTONOMY`)와 같은 표
+_FIXED_AUTONOMY: dict[str, str] = {
+    "FETCH_PITCH": "AUTO",
+    "FETCH_TAKE": "AUTO",
+    "SAVE_GOAL": "ASK",
+    "REASSESS": "ASK",
+    "START_PRACTICE": "BUTTON",
+}
+
+
 class Action(_Out):
     action_id: StrictStr
     type: ActionType
@@ -710,6 +720,9 @@ class Action(_Out):
 
     @model_validator(mode="after")
     def _ask_needs_hash(self) -> Action:
+        # 행동 종류와 자율 등급의 대응은 고정이다(6-2 · 12-3): 다르면 확인 카드 · 해시 없이 실행되는 길이 열린다
+        if _FIXED_AUTONOMY.get(self.type) != self.autonomy:
+            raise ValueError("행동 type 과 autonomy 가 고정 대응과 다르다")
         if self.autonomy == "ASK" and not self.args_hash:
             raise ValueError("ASK 행동은 args_hash 가 필수다")
         if self.preapproved is not None and (self.autonomy != "ASK" or self.type != "SAVE_GOAL"):

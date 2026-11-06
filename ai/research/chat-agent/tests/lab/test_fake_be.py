@@ -563,6 +563,10 @@ def test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchange
     llm = reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([]))
     be = make_be(llm)
     be.pitches["p-1"].criteria = None
+    for t in be.pitches[
+        "p-1"
+    ].takes:  # 기준 없이 리뷰받은 Take: standard_version 도 없다(리뷰 입력 5-2)
+        t.standard_version = None
     be.use_rule_reviews()
     run = be.send_message(None, msg, page_take_id="t-5")
     a, b = be.review_calls
