@@ -62,13 +62,16 @@ interface FakeTransport {
   decided: unknown[][];
   undone: unknown[][];
   scopes: unknown[];
+  checks: number;
   emit: (signal: TransportSignal) => void;
 }
 const transports = vi.hoisted(() => [] as FakeTransport[]);
 /** 범위 바꾸기 결과 — 'missing' 이면 서버가 그 피치를 찾지 못함(404) */
 const scopeMode = vi.hoisted(() => ({ value: 'ok' as 'ok' | 'missing' }));
 /** 보내기 결과 — 'failed' 면 접수되지 않음이 확정된 것처럼 잠금을 풉니다 */
-const sendMode = vi.hoisted(() => ({ value: 'accepted' as 'accepted' | 'failed' }));
+const sendMode = vi.hoisted(() => ({
+  value: 'accepted' as 'accepted' | 'failed' | 'conflict',
+}));
 vi.mock('./chatTransport', async () => {
   const { useChatStore: store } = await import('./chatStore');
   return {
@@ -84,6 +87,7 @@ vi.mock('./chatTransport', async () => {
         decided: [],
         undone: [],
         scopes: [],
+        checks: 0,
         emit: (signal) => listeners.forEach((listener) => listener(signal)),
       };
       transports.push(t);
@@ -92,6 +96,11 @@ vi.mock('./chatTransport', async () => {
           const ticket = store.getState().beginSend(draft);
           if (!ticket) return 'locked';
           t.sent.push(store.getState().pending!.request);
+          if (sendMode.value === 'conflict') {
+            await Promise.resolve();
+            store.getState().conflictSend(ticket);
+            return 'conflict';
+          }
           if (sendMode.value === 'failed') {
             await Promise.resolve();
             store.getState().failSend(ticket);
@@ -144,7 +153,9 @@ vi.mock('./chatTransport', async () => {
           store.getState().finishScopeChange(ticket, scope);
           return true;
         },
-        checkNow: () => undefined,
+        checkNow: () => {
+          t.checks++;
+        },
       };
     },
   };
@@ -1583,5 +1594,327 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     );
     await settle();
     expect(reads).toBeGreaterThan(before);
+  });
+});
+
+// ── 8-5 안내 · 자동 스크롤 ───────────────────────────────────
+
+describe('안내 · 자동 스크롤 (12-4 F8)', () => {
+  const userMsg = (id: string, text: string, runId: string) => ({
+    message_id: id,
+    role: 'user',
+    text,
+    run_id: runId,
+  });
+  const answer = (
+    id: string,
+    runId: string,
+    status: string,
+    texts: string[],
+    plan: unknown = null,
+  ) => ({
+    message_id: id,
+    role: 'assistant',
+    status,
+    text: texts.join('\n'),
+    run_id: runId,
+    claims: texts.map((text) => ({
+      kind: 'GENERAL',
+      text,
+      evidence_ids: [],
+      source_ids: [],
+      assessment_id: null,
+      action_id: null,
+    })),
+    cards: [],
+    plan,
+    trace: null,
+    masked: false,
+  });
+  const ended = (
+    runId: string,
+    status: string,
+    errorCode: string | null,
+    endedWhileWaiting = false,
+  ): TransportSignal => ({
+    type: 'ended',
+    runId,
+    conversationId: 'c1',
+    status: status as never,
+    errorCode,
+    endedWhileWaiting,
+  });
+
+  async function inConversation(messages: unknown[], runId: string | null = null) {
+    server.messages = () => Promise.resolve({ messages, next_before_seq: null });
+    await visit('/');
+    await openPanel();
+    const s = useChatStore.getState();
+    s.selectConversation('c1', { pitchId: null, title: null });
+    s.resolveConversation(chatTicket(), runId ? { runId, phase: 'RUNNING' } : null);
+    await settle();
+  }
+  const endNotices = () =>
+    [...panel()!.querySelectorAll('[data-end-notice]')].map((n) => n.textContent);
+
+  it('실패로 끝나면 그 실행의 메시지 뒤에 안내를 붙이고, [다시 보내기]는 같은 질문을 새로 보낸다', async () => {
+    await inConversation([userMsg('m1', '3장 시선 어땠어?', 'r1')], 'r1');
+    await act(async () => transport().emit(ended('r1', 'FAILED', 'AGENT_TIMEOUT')));
+    await act(async () => useChatStore.getState().endRun('r1'));
+    await settle();
+    expect(endNotices()).toEqual(['답이 늦어지고 있으니 다시 보내 주세요.다시 보내기']);
+    // 안내는 그 실행의 마지막 메시지(내 말) 바로 뒤에 붙습니다
+    const notice = panel()!.querySelector('[data-end-notice]')!;
+    expect(notice.previousElementSibling!.textContent).toBe('3장 시선 어땠어?');
+
+    await act(async () => button('다시 보내기')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual(['3장 시선 어땠어?']);
+  });
+
+  it('그 뒤에 다른 말이 이어졌으면 앞 실패 안내에는 [다시 보내기]를 두지 않는다', async () => {
+    await inConversation(
+      [userMsg('m1', '3장 시선 어땠어?', 'r1'), userMsg('m2', '3장 시선 어땠어?', 'r2')],
+      'r1',
+    );
+    await act(async () => transport().emit(ended('r1', 'FAILED', 'AGENT_TIMEOUT')));
+    await settle();
+    expect(endNotices()).toEqual(['답이 늦어지고 있으니 다시 보내 주세요.']);
+    expect(button('다시 보내기')).toBeUndefined();
+  });
+
+  it('승인 대기에서 만료로 끝났으면 BE 고정 문장만 — 실행 만료 안내를 함께 붙이지 않는다', async () => {
+    await inConversation(
+      [
+        userMsg('m1', '목표 잡아 줘', 'r1'),
+        answer('m2', 'r1', 'PARTIAL', [
+          '먼저 판단을 보여 드릴게요.',
+          '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.',
+        ]),
+      ],
+      'r1',
+    );
+    await act(async () => transport().emit(ended('r1', 'EXPIRED', 'AGENT_EXPIRED', true)));
+    await settle();
+    expect(endNotices()).toEqual([]);
+    // PARTIAL 이어도 고정 문장으로 끝났으니 "여기까지 확인했어요" 도 붙이지 않습니다
+    expect(panel()!.querySelector('[data-partial]')).toBeNull();
+  });
+
+  it('실행 오류가 꺼짐(AGENT_DISABLED)이면 버튼을 숨긴다', async () => {
+    await inConversation([], 'r1');
+    await act(async () => transport().emit(ended('r1', 'FAILED', 'AGENT_DISABLED')));
+    await settle();
+    expect(launcher()).toBeNull();
+  });
+
+  it('중간까지만 답했으면 "여기까지 확인했어요. 남은 일" 과, 마지막 답에만 [이어서 확인]', async () => {
+    const plan = [
+      { step: '기록 비교', status: 'DONE', note: null },
+      { step: '자료 찾기', status: 'TODO', note: null },
+    ];
+    await inConversation([
+      userMsg('m1', '앞 질문', 'r0'),
+      answer('m2', 'r0', 'PARTIAL', ['앞 답'], plan),
+      userMsg('m3', '비교해 줘', 'r1'),
+      answer('m4', 'r1', 'PARTIAL', ['비교한 데까지'], plan),
+    ]);
+    const headers = [...panel()!.querySelectorAll('[data-partial]')].map((h) => h.textContent);
+    expect(headers).toEqual([
+      '여기까지 확인했어요. 남은 일: 자료 찾기',
+      '여기까지 확인했어요. 남은 일: 자료 찾기',
+    ]);
+    const more = [...panel()!.querySelectorAll('button')].filter(
+      (b) => b.textContent === '이어서 확인',
+    );
+    expect(more).toHaveLength(1);
+    expect(panel()!.querySelector('[data-message="m4"]')!.contains(more[0]!)).toBe(true);
+    await act(async () => more[0]!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual(['이어서 확인해 줘']);
+  });
+
+  it.each([
+    ['AGENT_DAILY_LIMIT', '오늘 이용 횟수를 모두 썼으니 내일 다시 이용해 주세요.'],
+    ['AGENT_CONTEXT_TOO_LARGE', '자료가 너무 많으니 범위를 좁혀 다시 물어봐 주세요.'],
+    ['VALIDATION_ERROR', '메시지를 확인해 주세요.'],
+  ])('보내기 거절 %s → 코드별 문구', async (code, text) => {
+    await visit('/');
+    await openPanel();
+    await act(async () => transport().emit({ type: 'sendFailed', code, status: 400 }));
+    expect(alerts()).toContain(text);
+  });
+
+  it('다른 탭의 실행이 있어 받지 못하면 "이 대화의 답변을 만들고 있어요."', async () => {
+    sendMode.value = 'conflict';
+    await inConversation([]);
+    await type('질문');
+    await press(input(), { key: 'Enter' });
+    await settle();
+    expect(alerts()).toContain('이 대화의 답변을 만들고 있어요.');
+    // 받지 못했으니 입력을 되돌립니다
+    expect(input().value).toBe('질문');
+  });
+
+  it('승인 · 거절이 받아들여지지 않으면 코드별 문구', async () => {
+    await visit('/');
+    await openPanel();
+    await act(async () =>
+      transport().emit({
+        type: 'decisionFailed',
+        runId: 'r1',
+        actionId: 'a-1',
+        code: 'APPROVAL_HASH_MISMATCH',
+      }),
+    );
+    expect(alerts()).toContain('요청이 변경되어 다시 확인이 필요해요.');
+  });
+
+  it('기다리라는 시각이 지나면 보내기 잠금을 저절로 푼다 (429 Retry-After)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await visit('/');
+    await openPanel();
+    await type('질문');
+    await act(async () => {
+      const s = useChatStore.getState();
+      const ticket = s.beginSend({
+        text: '질문',
+        page: { route: '/', pitch_id: null, take_id: null, screen: null },
+        again_of_message_id: null,
+        choice: null,
+      })!;
+      useChatStore.getState().failSend(ticket, 5);
+    });
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+    await wait(4_000);
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+    await wait(1_100);
+    expect(sendButton().getAttribute('aria-disabled')).toBe('false');
+  });
+
+  it('조회 실패 · 늦어짐은 [상태 확인]과 함께, 진행을 받거나 끝나면 사라진다', async () => {
+    await inConversation([], 'r1');
+    const status = () => panel()!.querySelector('[data-run-notice]')?.textContent ?? null;
+    await act(async () => transport().emit({ type: 'pollTrouble', failures: 2, reason: 'FAILED' }));
+    expect(status()).toBe('진행 상태를 확인하지 못해 다시 연결하고 있어요.상태 확인');
+    await act(async () => button('상태 확인')!.click());
+    expect(transport().checks).toBe(1);
+    expect(status()).toBeNull();
+
+    await act(async () => transport().emit({ type: 'slow', runId: 'r1' }));
+    expect(status()).toBe('결과 확인이 늦어지고 있으니 상태를 다시 확인해 주세요.상태 확인');
+    await act(async () =>
+      transport().emit({
+        type: 'progress',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'RUNNING',
+        events: [],
+        claims: [],
+        restart: true,
+        catchUp: true,
+        contractError: null,
+        plan: null,
+        trace: null,
+        progressDropped: false,
+        cards: [],
+      }),
+    );
+    expect(status()).toBeNull();
+
+    await act(async () =>
+      transport().emit({ type: 'pollTrouble', failures: 1, reason: 'TOO_LARGE' }),
+    );
+    // 크기 초과는 다시 확인해도 같아 버튼을 두지 않습니다
+    expect(status()).toBe('일부 진행 정보를 표시하지 못했어요.');
+    await act(async () => transport().emit({ type: 'pollRecovered' }));
+    expect(status()).toBeNull();
+  });
+
+  it('취소 확인 중 안내는 진행을 받아도 남고, 끝나면 사라진다', async () => {
+    await inConversation([], 'r1');
+    const status = () => panel()!.querySelector('[data-run-notice]')?.textContent ?? null;
+    await act(async () => transport().emit({ type: 'cancelChecking', runId: 'r1' }));
+    expect(status()).toBe('취소 여부를 확인하고 있어요.');
+    await act(async () =>
+      transport().emit({
+        type: 'progress',
+        runId: 'r1',
+        conversationId: 'c1',
+        status: 'RUNNING',
+        events: [],
+        claims: [],
+        restart: true,
+        catchUp: true,
+        contractError: null,
+        plan: null,
+        trace: null,
+        progressDropped: false,
+        cards: [],
+      }),
+    );
+    expect(status()).toBe('취소 여부를 확인하고 있어요.');
+    await act(async () => transport().emit(ended('r1', 'CANCELLED', 'AGENT_CANCELLED')));
+    expect(status()).toBeNull();
+    expect(endNotices()).toEqual(['요청을 취소했어요.']);
+  });
+
+  describe('자동 스크롤', () => {
+    /** jsdom 은 배치를 계산하지 않아 높이를 정해 둡니다 */
+    function fakeBox(el: HTMLElement, height: () => number) {
+      Object.defineProperty(el, 'scrollHeight', { configurable: true, get: height });
+      Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 100 });
+    }
+    const box = () => panel()!.querySelector<HTMLElement>('[aria-label="채팅 메시지"]')!;
+    const grow = (text: string) =>
+      act(async () =>
+        transport().emit({
+          type: 'progress',
+          runId: 'r1',
+          conversationId: 'c1',
+          status: 'RUNNING',
+          events: [],
+          claims: [{ ...claim(text), index: 0 }],
+          restart: true,
+          catchUp: true,
+          contractError: null,
+          plan: null,
+          trace: null,
+          progressDropped: false,
+          cards: [],
+        }),
+      );
+
+    it('맨 아래를 보고 있으면 새 글을 따라 내려가고, 위로 올려 읽는 중에는 끌어내리지 않는다', async () => {
+      await inConversation([], 'r1');
+      let height = 500;
+      fakeBox(box(), () => height);
+      await grow('첫 문장');
+      expect(box().scrollTop).toBe(500);
+
+      // 위로 올려 읽음
+      box().scrollTop = 100;
+      await act(async () => box().dispatchEvent(new Event('scroll')));
+      height = 800;
+      await grow('다음 문장');
+      expect(box().scrollTop).toBe(100);
+
+      // 다시 맨 아래로 오면 따라갑니다
+      box().scrollTop = 700;
+      await act(async () => box().dispatchEvent(new Event('scroll')));
+      height = 900;
+      await grow('세 번째 문장');
+      expect(box().scrollTop).toBe(900);
+    });
+
+    it('위로 올려 읽는 중이어도 내가 보내면 맨 아래로 간다', async () => {
+      await inConversation([]);
+      let height = 500;
+      fakeBox(box(), () => height);
+      box().scrollTop = 0;
+      await act(async () => box().dispatchEvent(new Event('scroll')));
+      height = 600;
+      await type('질문');
+      await press(input(), { key: 'Enter' });
+      expect(box().scrollTop).toBe(600);
+    });
   });
 });

@@ -6,6 +6,7 @@ import type { ChatMessage, ChatPage, ConversationListItem } from '@/types/chat';
 import { useChatAvailability, type ChatAvailability } from './chatAvailability';
 import { fetchMessages } from './chatApi';
 import { conversationsKey } from './chatConversations';
+import { runEndNotice, type EndNotice, type RunNotice } from './chatNotices';
 import type { LiveProgress } from './ChatAnswer';
 import type { ShownClaim } from './chatResponse';
 import type { ChatRouteInfo } from './chatRoutes';
@@ -47,7 +48,11 @@ export type ChatNotice =
   /** 범위 바꾸기가 받아들여지지 않음 — 칩은 앞 범위로 돌아갔습니다 */
   | { kind: 'scopeFailed' }
   /** 보던 대화가 없어짐 — 새 대화로 옮겼습니다 (L3-35) */
-  | { kind: 'conversationMissing' };
+  | { kind: 'conversationMissing' }
+  /** 승인 · 거절이 받아들여지지 않음 — 카드를 다시 읽습니다 (L3-39 · L3-40) */
+  | { kind: 'decisionFailed'; code: string }
+  /** 다른 탭의 실행이 있어 받지 못함 — 그 실행을 이어 봅니다 (L3-17) */
+  | { kind: 'runInProgress' };
 
 /**
  * 접수된 내 말 — 접수(202)로 "보내는 중" 이 풀린 뒤, 목록을 다시 읽어 그 말이 들어올 때까지 이것으로 그립니다.
@@ -77,6 +82,12 @@ export interface ChatSession {
   loadingEarlier: boolean;
   /** 메시지 목록을 다시 읽습니다 — 읽지 못했을 때 */
   retryMessages: () => void;
+  /** 실행이 끝나며 답 아래에 붙일 안내 — 실행 ID 별 (12-4 F8) */
+  endNotices: Readonly<Record<string, EndNotice>>;
+  /** 진행 중 상태 안내 — 조회 실패 · 늦어짐 · 취소 확인 */
+  runNotice: RunNotice | null;
+  /** [상태 확인] — 늦어지거나 조회가 실패한 뒤 사용자가 직접 확인 (L3-19 · L3-21) */
+  checkNow: () => void;
   /** 범위를 다시 고를 때까지 보내기를 막음 (L3-07) */
   scopeBlocked: boolean;
   /** 범위 칩 — 새 대화는 바로, 있는 대화는 서버에 바꾸기를 요청합니다 */
@@ -131,6 +142,8 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   const [announce, setAnnounce] = useState('');
   const [sentEcho, setSentEcho] = useState<SentEcho | null>(null);
   const [scopeBlocked, setScopeBlocked] = useState(false);
+  const [endNotices, setEndNotices] = useState<Record<string, EndNotice>>({});
+  const [runNotice, setRunNotice] = useState<RunNotice | null>(null);
   /** 지금 화면 범위 — 신호 처리(대화 없어짐 → 새 대화)에서 씁니다 */
   const screenScopeRef = useRef<ScreenScope>(null);
   // 큐는 세션마다 하나. 화면에서 빠질 때 비우기만 하고 닫지 않습니다 — 엄격 모드에서 다시 붙어도 쓰게
@@ -162,6 +175,8 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
           setSentEcho(null);
           // 앞 대화의 마지막 문장을 화면 읽기 영역에 남기지 않습니다
           setAnnounce('');
+          setEndNotices({});
+          setRunNotice(null);
         }
       }),
     [typing],
@@ -217,6 +232,8 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
         markDisabled,
         setNotice,
         blockScope: () => setScopeBlocked(true),
+        setRunNotice,
+        addEndNotice: (runId, notice) => setEndNotices((all) => ({ ...all, [runId]: notice })),
         startNew: () => useChatStore.getState().startNewConversation(screenScopeRef.current),
         rereadConversations: () =>
           void queryClient.invalidateQueries({ queryKey: conversationsKey(userId) }),
@@ -307,6 +324,8 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
         again_of_message_id: null,
         choice,
       });
+      // 다른 탭의 실행이 있어 받지 못함 — 저장소가 그 실행을 조회합니다(L3-17)
+      if (result === 'conflict') setNotice({ kind: 'runInProgress' });
       return result === 'accepted' || result === 'unconfirmed';
     },
     [info.route, info.takeId, scopePitchId],
@@ -320,6 +339,11 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   }, []);
 
   const cancel = useCallback(() => void transport.current?.cancel(), []);
+
+  const checkNow = useCallback(() => {
+    setRunNotice(null);
+    transport.current?.checkNow();
+  }, []);
 
   const changeScope = useCallback<ChatSession['changeScope']>(async (scope) => {
     const current = transport.current;
@@ -378,6 +402,9 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     loadingEarlier: messages.isFetchingNextPage,
     retryMessages: () => void messages.refetch(),
     scopeBlocked,
+    endNotices,
+    runNotice,
+    checkNow,
     changeScope,
     startNew,
     selectConversation,
@@ -409,6 +436,8 @@ interface SignalHandlers {
   setNotice: (notice: ChatNotice | null) => void;
   /** 범위를 다시 고를 때까지 보내기를 막습니다 */
   blockScope: () => void;
+  setRunNotice: (update: RunNotice | null | ((now: RunNotice | null) => RunNotice | null)) => void;
+  addEndNotice: (runId: string, notice: EndNotice) => void;
   /** 지금 화면 범위의 새 대화로 */
   startNew: () => void;
   /** 대화 목록을 다시 읽습니다 — 제목 · 마지막 시각 · 최신 아님 · 범위가 바뀌었을 수 있습니다 */
@@ -429,13 +458,38 @@ interface SignalHandlers {
 function handleSignal(signal: TransportSignal, h: SignalHandlers) {
   switch (signal.type) {
     case 'progress':
+      // 진행을 받았으면 조회가 되고 있습니다 — 취소 확인 중 안내만 남깁니다
+      h.setRunNotice((now) => (now?.kind === 'cancelChecking' ? now : null));
       h.live.take(signal);
       return;
-    case 'ended':
+    case 'pollTrouble':
+      h.setRunNotice({ kind: 'pollTrouble', tooLarge: signal.reason === 'TOO_LARGE' });
+      return;
+    case 'pollRecovered':
+      h.setRunNotice((now) => (now?.kind === 'pollTrouble' ? null : now));
+      return;
+    case 'slow':
+      h.setRunNotice({ kind: 'slow' });
+      return;
+    case 'cancelChecking':
+      h.setRunNotice({ kind: 'cancelChecking' });
+      return;
+    case 'cancelFailed':
+      h.setRunNotice({ kind: 'cancelFailed' });
+      return;
+    case 'decisionFailed':
+      h.setNotice({ kind: 'decisionFailed', code: signal.code });
+      return;
+    case 'ended': {
+      h.setRunNotice(null);
+      if (signal.errorCode === 'AGENT_DISABLED') h.markDisabled();
+      const notice = runEndNotice(signal);
+      if (notice) h.addEndNotice(signal.runId, notice);
       h.rereadConversations();
       h.live.finish(signal.runId);
       h.reread(signal.conversationId, () => h.live.clear(signal.runId));
       return;
+    }
     case 'lost': {
       // 실행을 더 읽을 수 없으니 저장된 답을 찾으러 지금 대화의 목록을 다시 읽습니다 (L3-21)
       const conversationId = useChatStore.getState().conversationId;

@@ -2,6 +2,7 @@ import { useSyncExternalStore, type ReactNode } from 'react';
 import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
 import { CardList, type CardActions } from './ChatCards';
 import { ChipList } from './ChatChips';
+import { partialHeader } from './chatNotices';
 import {
   errorText,
   GENERAL_LABEL,
@@ -105,12 +106,27 @@ export function TraceList({ trace }: { trace: readonly TraceItem[] }) {
 const isExpired = (status: ChatMessage['status']) => status === 'EXPIRED' || status === 'CANCELLED';
 
 /** 지난 답 하나 — 효과 없이 그립니다 */
-export function StoredAnswer({ message, actions }: { message: ChatMessage; actions: CardActions }) {
+export function StoredAnswer({
+  message,
+  actions,
+  onContinue,
+}: {
+  message: ChatMessage;
+  actions: CardActions;
+  /** [이어서 확인] — 중간까지만 답한 마지막 답에만 둡니다 (12-4 F8 `PARTIAL`) */
+  onContinue?: () => void;
+}) {
   const answer = readMessage(message);
   const plan = readPlan(message.plan);
   const trace = readTrace(message.trace);
+  const header = partialHeader(message.status, answer.claims.at(-1)?.text ?? null, plan.items);
   return (
     <div className={AGENT_BUBBLE} data-message={message.message_id}>
+      {header && (
+        <p className="mb-1 text-xs font-bold text-stone" data-partial="">
+          {header}
+        </p>
+      )}
       <PlanList plan={plan.items} />
       {answer.claims.map((claim) => (
         <ClaimLine key={claim.index} claim={claim} shown={claim.text} done />
@@ -128,6 +144,18 @@ export function StoredAnswer({ message, actions }: { message: ChatMessage; actio
         actions={actions}
       />
       <TraceList trace={trace.items} />
+      {header && onContinue && (
+        <button
+          type="button"
+          aria-disabled={!actions.canSend}
+          onClick={() => {
+            if (actions.canSend) onContinue();
+          }}
+          className="mt-2 min-h-11 rounded-lg border border-line-strong px-3 text-xs font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
+        >
+          이어서 확인
+        </button>
+      )}
     </div>
   );
 }

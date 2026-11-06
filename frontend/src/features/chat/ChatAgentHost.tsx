@@ -1,5 +1,6 @@
 import {
   Component,
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -9,6 +10,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type UIEvent,
 } from 'react';
 import { useLocation } from 'react-router';
 import { useSession } from '@/shared/api/useSession';
@@ -16,9 +18,18 @@ import { isChatAgentBuildEnabled } from '@/shared/lib/chatAgent';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
 import type { CardActions } from './ChatCards';
-import { ANSWER_FAILED_TEXT } from './chatResponse';
+import {
+  CONTINUE_TEXT,
+  decisionFailedText,
+  RUN_IN_PROGRESS_TEXT,
+  runNoticeText,
+  sendFailedText,
+  type EndNotice,
+  type RunNotice,
+} from './chatNotices';
 import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
-import { canSend, useChatStore } from './chatStore';
+import { useChatStore } from './chatStore';
+import { useCanSend } from './useCanSend';
 import { ConversationList, ScopeChip } from './ChatPanelParts';
 import { useChatSession, type ChatNotice, type ChatSession } from './useChatSession';
 
@@ -200,11 +211,47 @@ function noticeText(notice: ChatNotice): string {
     case 'conversationMissing':
       return '대화를 찾을 수 없어요.';
     case 'sendFailed':
-      // 코드별 문구(F8)는 8-5 에서 채웁니다
-      return notice.code === 'AGENT_BUSY'
-        ? '오늘은 사용량이 많아 잠시 뒤 다시 이용해 주세요.'
-        : ANSWER_FAILED_TEXT;
+      return sendFailedText(notice.code);
+    case 'decisionFailed':
+      return decisionFailedText(notice.code);
+    case 'runInProgress':
+      return RUN_IN_PROGRESS_TEXT;
   }
+}
+
+/** 맨 아래에서 이만큼 안이면 "맨 아래를 보고 있음" 으로 봅니다 */
+const FOLLOW_SLACK_PX = 48;
+
+/**
+ * 새 글(받은 문장 · 글자 효과 · 목록)이 붙으면 맨 아래를 보고 있을 때만 따라 내려갑니다.
+ * 글자 효과는 이 컴포넌트를 거치지 않고 그려져서, 그려진 결과(DOM 변화)를 지켜봅니다.
+ * 대화 목록을 보는 동안에는 따라가지 않고, 메시지로 돌아오면 맨 아래에서 시작합니다
+ */
+function useFollowBottom(active: boolean) {
+  const scroller = useRef<HTMLDivElement>(null);
+  /** 맨 아래를 보고 있음 — 이때만 새 글을 따라 내려갑니다. 위로 올려 읽는 중에는 끌어내리지 않습니다 */
+  const stick = useRef(true);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || !active) return;
+    stick.current = true;
+    const toBottom = () => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    };
+    toBottom();
+    const observer = new MutationObserver(toBottom);
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [active]);
+  const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_SLACK_PX;
+  }, []);
+  /** 다음 새 글부터 다시 따라갑니다 — 내가 보낸 말은 언제나 보이게 */
+  const follow = useCallback(() => {
+    stick.current = true;
+  }, []);
+  return { scroller, onScroll, follow };
 }
 
 function ChatPanel({
@@ -230,8 +277,9 @@ function ChatPanel({
   useEffect(() => {
     latestDraft.current = draft;
   });
-  const sendable = useChatStore((s) => canSend(s));
+  const sendable = useCanSend();
   const [listOpen, setListOpen] = useState(false);
+  const { scroller, onScroll, follow } = useFollowBottom(!listOpen);
   const content = draft.trim();
   const tooLong = [...content].length > MAX_MESSAGE_LENGTH;
   const failed = session.availability === 'failed';
@@ -253,6 +301,8 @@ function ChatPanel({
     const off = useChatStore.subscribe((now, before) => {
       if (!before.pending && now.pending) setDraft('');
     });
+    // 내가 보낸 말은 언제나 보이게 맨 아래로 갑니다
+    follow();
     let sent = false;
     try {
       sent = await session.send(content);
@@ -316,7 +366,9 @@ function ChatPanel({
       {/* AI 답을 붙일 때는 그 답 요소에만 aria-live 를 둡니다. 목록 전체에 두면 사용자가 보낸 말까지 다시 읽힙니다.
           min-h-16: 패널이 낮아져도 한두 줄은 보이고, 그보다 낮으면 패널이 스크롤됩니다 */}
       <div
+        ref={scroller}
         aria-label="채팅 메시지"
+        onScroll={onScroll}
         className="flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
       >
         <PanelBody
@@ -444,7 +496,7 @@ function PanelBody({
 /** 지난 메시지와 지금 실행의 답 — 카드는 8-3 에서 붙입니다 */
 function MessageList({ session }: { session: ChatSession }) {
   const pending = useChatStore((s) => s.pending?.request.text ?? null);
-  const sendable = useChatStore((s) => canSend(s));
+  const sendable = useCanSend();
   const syncing = useChatStore((s) => s.syncing);
   const actions: CardActions = {
     decide: session.decide,
@@ -460,6 +512,17 @@ function MessageList({ session }: { session: ChatSession }) {
     !shown.some((m) => m.role === 'user' && m.run_id === session.sentEcho!.runId)
       ? session.sentEcho
       : null;
+  // 실행마다 그 실행의 마지막 메시지 자리 — 끝남 안내를 그 뒤에 붙입니다
+  const lastOfRun = new Map<string, number>();
+  shown.forEach((m, i) => {
+    if (m.run_id) lastOfRun.set(m.run_id, i);
+  });
+  // [이어서 확인]은 목록의 마지막 메시지가 답일 때 그 답에만
+  const lastAnswer = shown.at(-1)?.role === 'assistant' ? shown.length - 1 : -1;
+  /** 그 실행을 시작한 내 말 — [다시 보내기]가 같은 질문을 새 메시지로 보냅니다 */
+  const questionOf = (runId: string) =>
+    shown.find((m) => m.role === 'user' && m.run_id === runId)?.text ??
+    (session.sentEcho?.runId === runId ? session.sentEcho.text : null);
   // 끝난 실행의 답이 목록에 들어왔으면 목록 쪽 하나만 보입니다
   const liveInList =
     progress !== null && shown.some((m) => m.role === 'assistant' && m.run_id === progress.runId);
@@ -498,19 +561,71 @@ function MessageList({ session }: { session: ChatSession }) {
       {shown.length === 0 && !pending && !echo && !restoring && !session.messagesFailed && (
         <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
       )}
-      {shown.map((message) => (
-        <MessageItem key={message.message_id} message={message} actions={actions} />
+      {shown.map((message, i) => (
+        <Fragment key={message.message_id}>
+          <MessageItem
+            message={message}
+            actions={actions}
+            onContinue={i === lastAnswer ? () => void session.send(CONTINUE_TEXT) : undefined}
+          />
+          {message.run_id && lastOfRun.get(message.run_id) === i && (
+            <EndNoticeView
+              notice={session.endNotices[message.run_id]}
+              // 그 뒤에 이미 다른 말이 있으면(다시 보냈음 등) 같은 질문을 또 보내지 않게 버튼을 두지 않습니다
+              question={i === shown.length - 1 ? questionOf(message.run_id) : null}
+              canSend={sendable}
+              onResend={(text) => void session.send(text)}
+            />
+          )}
+        </Fragment>
       ))}
+      {/* 목록에 아직 그 실행의 메시지가 없으면(다시 읽는 중 · 저장된 답이 없음) 끝에 붙입니다 */}
+      {Object.entries(session.endNotices)
+        .filter(([runId]) => !lastOfRun.has(runId))
+        .map(([runId, notice]) => (
+          <EndNoticeView
+            key={runId}
+            notice={notice}
+            question={questionOf(runId)}
+            canSend={sendable}
+            onResend={(text) => void session.send(text)}
+          />
+        ))}
       {echo && <p className={SELF_CLASS}>{echo.text}</p>}
       {pending && <p className={SELF_CLASS}>{pending}</p>}
       <LiveAnswer
         progress={liveInList ? null : progress}
         typing={session.typing}
         announce={session.announce}
-        waiting={<RunWaiting onCancel={session.cancel} />}
+        waiting={
+          <>
+            <RunWaiting onCancel={session.cancel} />
+            <RunNoticeView notice={session.runNotice} onCheck={session.checkNow} />
+          </>
+        }
         actions={actions}
       />
     </>
+  );
+}
+
+/** 진행 중 상태 안내 — 늦어짐 · 조회 실패에는 [상태 확인](L3-19 · L3-21) */
+function RunNoticeView({ notice, onCheck }: { notice: RunNotice | null; onCheck: () => void }) {
+  if (!notice) return null;
+  const canCheck = notice.kind === 'slow' || (notice.kind === 'pollTrouble' && !notice.tooLarge);
+  return (
+    <div role="status" className="self-start text-xs leading-5 text-stone" data-run-notice="">
+      <p>{runNoticeText(notice)}</p>
+      {canCheck && (
+        <button
+          type="button"
+          onClick={onCheck}
+          className="mt-1 min-h-11 border border-line-strong px-3 font-bold text-ink hover:bg-cream"
+        >
+          상태 확인
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -543,9 +658,49 @@ function RunWaiting({ onCancel }: { onCancel: () => void }) {
 const SELF_CLASS =
   'max-w-[88%] self-end whitespace-pre-wrap break-words rounded-xl bg-cream px-4 py-3 text-sm leading-6';
 
-function MessageItem({ message, actions }: { message: ChatMessage; actions: CardActions }) {
+function MessageItem({
+  message,
+  actions,
+  onContinue,
+}: {
+  message: ChatMessage;
+  actions: CardActions;
+  onContinue?: () => void;
+}) {
   if (message.role === 'user') return <p className={SELF_CLASS}>{message.text}</p>;
   if (message.role === 'system' || message.masked)
     return <p className={AGENT_BUBBLE}>{message.text}</p>;
-  return <StoredAnswer message={message} actions={actions} />;
+  return <StoredAnswer message={message} actions={actions} onContinue={onContinue} />;
+}
+
+/** 실행이 끝나며 붙는 안내 — 오류는 한 번 알립니다(role="alert"). [다시 보내기]는 같은 질문을 새 메시지로 */
+function EndNoticeView({
+  notice,
+  question,
+  canSend,
+  onResend,
+}: {
+  notice: EndNotice | undefined;
+  question: string | null;
+  canSend: boolean;
+  onResend: (text: string) => void;
+}) {
+  if (!notice) return null;
+  return (
+    <div role="alert" className="self-start text-xs leading-5 text-coral-deep" data-end-notice="">
+      <p>{notice.text}</p>
+      {notice.resend && question && (
+        <button
+          type="button"
+          aria-disabled={!canSend}
+          onClick={() => {
+            if (canSend) onResend(question);
+          }}
+          className="mt-1 min-h-11 border border-line-strong px-3 font-bold text-ink hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
+        >
+          다시 보내기
+        </button>
+      )}
+    </div>
+  );
 }
