@@ -633,3 +633,89 @@ def test_args_hash_follows_the_doc_example() -> None:
     }
 
     assert args_hash("REASSESS", args).startswith("sha256:afdfa41878305b56")
+
+
+def _practice_answer(run_id: str, pitch_id: str, authorized_by: str | None = None) -> dict:
+    action = {
+        "action_id": "p1",
+        "type": "START_PRACTICE",
+        "args": {"pitch_id": pitch_id},
+        "autonomy": "BUTTON",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:p1",
+        "reason": "연습을 권한다",
+        "authorized_by": authorized_by,
+    }
+    message = {
+        "text": "연습해 봐요",
+        "claims": [{"kind": "SYSTEM", "text": "연습해 봐요"}],
+        # AI 가 직접 넣은 버튼 카드는 버리고 BE 가 확인한 카드만 남긴다
+        "cards": [{"type": "START_PRACTICE", "pitch_id": "ai-made"}, {"type": "NOTE"}],
+        "sources": [],
+    }
+    return _final(message=message, actions=[action])
+
+
+def _answer_cards(db_session: Session, run_id: uuid.UUID) -> list[dict[str, Any]]:
+    answer = db_session.scalar(
+        select(ChatMessage).where(ChatMessage.run_id == run_id, ChatMessage.role == "assistant")
+    )
+    return answer.cards
+
+
+def test_start_practice_shows_a_button_for_an_owned_pitch(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch
+
+    pitch = Pitch(user_id=user_id, title="내 발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    run_id = str(queued_run)
+    answer = _practice_answer(run_id, str(pitch.id).upper())
+    agent.replies.append(_ndjson(_stream(run_id, ("final", answer))))
+
+    _run(queued_run, session_factory)
+
+    assert _reload(db_session, queued_run).status == "DONE"
+    button = {"type": "START_PRACTICE", "pitch_id": str(pitch.id)}
+    assert _answer_cards(db_session, queued_run) == [{"type": "NOTE"}, button]
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    assert (saved.type, saved.status, saved.result) == (
+        "START_PRACTICE",
+        "SUCCEEDED",
+        {"pitch_id": str(pitch.id)},
+    )
+
+
+@pytest.mark.parametrize("case", ["someone_else", "not_a_uuid", "rejected"])
+def test_start_practice_without_a_usable_pitch_shows_no_button(
+    db_session, session_factory, agent, queued_run, user_id, case
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch
+    from pitch_coach_backend.module.user.entity import User
+
+    other = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
+    db_session.add(other)
+    db_session.flush()
+    owner = other.id if case == "someone_else" else user_id
+    pitch = Pitch(user_id=owner, title="발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    authorized_by = None
+    if case == "rejected":
+        # 사용자가 연습하지 말라고 한 말을 근거로 단 버튼은 내지 않는다
+        row = db_session.get(ChatRun, queued_run)
+        row.input = {**row.input, "user_message": "지금은 연습 시작하지 마"}
+        db_session.flush()
+        authorized_by = "연습 시작하지 마"
+    pitch_id = "not-a-uuid" if case == "not_a_uuid" else str(pitch.id)
+    run_id = str(queued_run)
+    answer = _practice_answer(run_id, pitch_id, authorized_by)
+    agent.replies.append(_ndjson(_stream(run_id, ("final", answer))))
+
+    _run(queued_run, session_factory)
+
+    assert _reload(db_session, queued_run).status == "DONE"
+    assert _answer_cards(db_session, queued_run) == [{"type": "NOTE"}]
+    assert db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)) is None
