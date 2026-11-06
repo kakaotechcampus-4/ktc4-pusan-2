@@ -657,7 +657,7 @@
       "operator": "gt_base",
       "script_version_id": "sv-1",
       "standard_version": 1,
-      "goal_rule_version": "goal-e6b795227503",
+      "goal_rule_version": "goal-algo-1+e6b795227503",
       "base": {
         "take_id": "t-5",
         "take_number": 5,

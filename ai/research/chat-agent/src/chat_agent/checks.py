@@ -614,7 +614,17 @@ PRAISE_VALUES = frozenset({"STRENGTH", "IMPROVED"})
 #: 최상급 칭찬 낱말(`agreement_words`의 부분 문자열). 나아짐(IMPROVED)만으로는 부족하고 강점(STRENGTH) 근거가 있어야 한다
 SUPERLATIVE_STEMS = ("완벽", "훌륭")
 #: 판정과 반대되는 동의 표현. config.py의 동의 낱말에 더해 쓴다(config로 옮기기 전까지 여기에 둔다, 7-8 L6-04)
-EXTRA_AGREEMENT_WORDS = ("정확합니다", "맞는 말", "말씀대로", "옳아요")
+#: "맞는 말"은 동의 표현일 때만(“맞는 말 속도”처럼 수식어로 쓴 것은 빼려고 어미까지 적는다)
+EXTRA_AGREEMENT_WORDS = (
+    "정확합니다",
+    "맞는 말이",
+    "맞는 말입",
+    "맞는 말.",
+    "맞는 말,",
+    "맞는 말씀",
+    "말씀대로",
+    "옳아요",
+)
 #: 비교 · 차이 · 목표 결론 낱말. 결론 문장은 모델이 쓰지 않고 코드가 그린다(P3, 6-9). 이 낱말이 든 문장은
 #: `code_sentences`(코드가 그린 문장)에 글자까지 같게 들어 있지 않으면 걸린다
 CONCLUSION_WORDS = (
@@ -683,6 +693,14 @@ def _found(words: Iterable[str], text: str) -> list[str]:
 def agreement_words(cfg: ChatAgentConfig) -> tuple[str, ...]:
     """동의 · 칭찬 낱말 전체(설정 목록 + 판정과 반대되는 동의 표현)."""
     return tuple(dict.fromkeys((*cfg.agreement_words, *EXTRA_AGREEMENT_WORDS)))
+
+
+_QUOTED = re.compile(r'"[^"]*"|“[^”]*”|‘[^’]*’|「[^」]*」')
+
+
+def _unquoted(text: str) -> str:
+    """GUIDE 문장의 따옴표 안(자료 원문 인용, 글자 그대로 대조함)을 뺀 글. 동의 · 결론 · 완화 낱말은 모델이 쓴 부분에서만 본다."""
+    return _QUOTED.sub(" ", text)
 
 
 def _conclusion_word(text: str) -> str | None:
@@ -993,6 +1011,8 @@ def _check_one(
     )
     if code_made:
         return f
+    if c.kind == "GUIDE":
+        scan = _unquoted(scan)  # 인용은 QUOTE_MISMATCH 로 원문과 대조했다
     if (w := _conclusion_word(scan)) is not None and c.kind != "ASSESSMENT":
         fail(
             CheckId.VERDICT_CONFLICT,

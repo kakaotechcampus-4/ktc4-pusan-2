@@ -128,7 +128,7 @@
       "slide_number": 3,
       "value": 0.13,
       "unit": "ratio",
-      "rule_version": "goal-e6b795227503",
+      "rule_version": "goal-algo-1+e6b795227503",
       "saved": null,
       "screen_snapshot_id": null,
       "inputs": [
@@ -169,10 +169,10 @@
     "schema_version": "1.0",
     "feature_version": "chat_agent-0.1.0",
     "model": "openai/gpt-6-luna",
-    "prompt_version": "a1b2c3d4e5f6",
+    "prompt_version": "fcc5380ea2ee",
     "corpus_version": "guides-1",
     "criteria_versions": {
-      "chat_agent": "chat_agent-0.1.0+bb258e007440"
+      "chat_agent": "chat_agent-0.1.0+f54049a39c38"
     }
   },
   "diagnostics": {
@@ -182,7 +182,7 @@
     "turn_call": 1,
     "versions": {
       "feature_version": "chat_agent-0.1.0",
-      "prompt_version": "a1b2c3d4e5f6",
+      "prompt_version": "fcc5380ea2ee",
       "tool_schema": "tools-1",
       "corpus_version": "guides-1"
     },

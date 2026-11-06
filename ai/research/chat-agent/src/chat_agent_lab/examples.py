@@ -5,7 +5,9 @@
   읽어 5절 모양과 맞는지 보고, BE는 서비스 탑재 뒤 같은 파일로 계약 시험을 한다.
 - 실행: 연구 폴더에서 `.\\.venv\\Scripts\\python.exe -m chat_agent_lab.examples` (파일을 다시 쓴다).
 - 값: 가상 기록(fixtures.sample_pitch: '졸업 발표' Take 4 · 5의 3장 시선 31% · 28%)으로 만든다.
-  `state` 서명 · 판단 키 같은 코드 값은 형식만 맞춘 자리 값이다. 루프가 생기면 가짜 모델 실행 결과로 다시 만든다.
+  `state`는 예시 전용 키(`EXAMPLE_STATE_KEY`, 비밀 아님)로 실제 서명한다. 대기 행동 · 누적량이 이어 부르기 예시와 맞아,
+  같은 키로 서명 검사 · 행동 결과 짝 검사를 통과한다(test_contract_examples). 판단 키 · 지문은 형식만 맞춘 자리 값이다.
+- 프롬프트 · 설정을 바꾸면 판 값이 바뀌므로 이 파일로 다시 만든다(예시 파일이 만들기 결과와 같은지 시험이 본다).
 - 고칠 때: 5절 모양을 바꾸면 이 파일로 예시를 다시 만들고 같은 PR에 넣는다.
 """
 
@@ -15,7 +17,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from chat_agent import state as st
 from chat_agent.config import DEFAULT_CONFIG
+from chat_agent.prompts import PROMPT_VERSION
 from chat_agent.version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
 
 from . import fixtures as fx
@@ -30,15 +34,20 @@ META = {
     "schema_version": SCHEMA_VERSION,
     "feature_version": FEATURE_VERSION,
     "model": "openai/gpt-6-luna",
-    "prompt_version": "a1b2c3d4e5f6",
+    "prompt_version": PROMPT_VERSION,
     "corpus_version": "guides-1",
     "criteria_versions": {"chat_agent": DEFAULT_CONFIG.criteria_version()},
 }
-SIGNED_STATE = {
-    "v": 1,
-    "kid": "Qk3vX9aZ",
-    "payload": "eyJydW5faWQiOiJydW4tODEifQ",
-    "signature": "c2lnbmF0dXJlLXBsYWNlaG9sZGVy",
+#: 예시 전용 서명 키(비밀 아님). 실제 키는 AGENT_STATE_SECRET 이다
+EXAMPLE_STATE_KEY = b"pitchcoach-example-state-key-not-secret"
+#: 예시 상태의 발급 시각(ms, 2026-11-04 10:04:00+09:00). 시험은 이 시각으로 검증한다
+EXAMPLE_ISSUED_MS = 1_793_754_240_000
+NEEDS_ACTION_BUDGET = {
+    "model_calls": 3,
+    "tool_calls": 4,
+    "elapsed_ms": 8400,
+    "input_tokens": 12000,
+    "output_tokens": 6000,
 }
 FP = "5f2a9c0d1e3b4a67"
 
@@ -262,23 +271,59 @@ def _model_step(
     }
 
 
+def _save_goal_action() -> dict:
+    return {
+        "action_id": "run-81:a1",
+        "type": "SAVE_GOAL",
+        "args": {"expected_goal_version": 0, "goal": _goal_draft()},
+        "autonomy": "AUTO_UNDO",
+        "args_hash": None,
+        "idempotency_key": "run-81:1",
+        "reason": "3장 시선 비율을 Take 5보다 높이는 목표",
+        "authorized_by": "그걸 목표로 잡고",
+    }
+
+
+def _signed_state() -> dict:
+    """행동 요청 예시의 서명 상태. 대기 행동은 위 SAVE_GOAL, 누적량은 NEEDS_ACTION_BUDGET 이다."""
+    pending = {
+        **_save_goal_action(),
+        "_call_id": "call-3",
+        "_tool_name": "save_goal",
+        "_tool_args": None,
+    }
+    payload = st.StatePayload(
+        run_id=RUN["run_id"],
+        conversation_id=RUN["conversation_id"],
+        user_id=RUN["user_id"],
+        state_revision=0,
+        scope_pitch_id=RUN["scope_pitch_id"],
+        trigger="USER_MESSAGE",
+        original_user_message=USER_MESSAGE,
+        versions=st.RunVersions(
+            feature=FEATURE_VERSION,
+            prompt=PROMPT_VERSION,
+            tool_schema=TOOL_SCHEMA_VERSION,
+            corpus="guides-1",
+        ),
+        issued_at=EXAMPLE_ISSUED_MS,
+        expires_at=EXAMPLE_ISSUED_MS + DEFAULT_CONFIG.state_ttl_seconds * 1000,
+        turn_count=1,
+        loop={
+            "pending_action": pending,
+            "counters": {**NEEDS_ACTION_BUDGET, "turn_count": 1},
+            "action_seq": 1,
+        },
+    )
+    return st.sign(payload, EXAMPLE_STATE_KEY)
+
+
 def _final_needs_action() -> dict:
     return {
         "status": "NEEDS_ACTION",
         "message": None,
-        "actions": [
-            {
-                "action_id": "run-81:a1",
-                "type": "SAVE_GOAL",
-                "args": {"expected_goal_version": 0, "goal": _goal_draft()},
-                "autonomy": "AUTO_UNDO",
-                "args_hash": None,
-                "idempotency_key": "run-81:1",
-                "reason": "3장 시선 비율을 Take 5보다 높이는 목표",
-                "authorized_by": "그걸 목표로 잡고",
-            }
-        ],
-        "state": SIGNED_STATE,
+        "actions": [_save_goal_action()],
+        "state": _signed_state(),
         "scope_pitch_id": "p-1",
         "plan": _plan(False),
         "trace": [TRACE],
@@ -290,13 +335,7 @@ def _final_needs_action() -> dict:
         },
         "evidence": [_evidence("e1", 4, 0.31), _evidence("e2", 5, 0.28)],
         "history_summary": None,
-        "budget_used": {
-            "model_calls": 3,
-            "tool_calls": 4,
-            "elapsed_ms": 8400,
-            "input_tokens": 12000,
-            "output_tokens": 6000,
-        },
+        "budget_used": dict(NEEDS_ACTION_BUDGET),
         "usage": {
             "model_calls": 3,
             "tool_calls": 4,
@@ -560,7 +599,7 @@ def build() -> dict[str, Any]:
         "run": {**RUN, "trigger": "ACTION_RESULT", "state_revision": 0},
         "user_message": None,
         "resume": {
-            "state": SIGNED_STATE,
+            "state": _signed_state(),
             "action_results": [
                 {
                     "action_id": "run-81:a1",

@@ -1069,3 +1069,23 @@ def test_fm_L6_04_display_label_alone_triggers_evidence_requirement():
     from chat_agent.checks import _metric_mentions
 
     assert _metric_mentions("화면 응시는 낮아요", CFG) == ["screen_ratio"]
+
+
+def test_guide_quote_words_are_not_agreement_or_conclusion() -> None:
+    """GUIDE 문장의 따옴표 안은 자료 원문 인용이라 동의 · 결론 낱말로 보지 않는다("맞는 말 속도" 같은 수식어 포함)."""
+    reg = EvidenceRegistry("run-1")
+    text = '자료에 따르면 "모든 발표에 맞는 말 속도의 정답 숫자는 없고" 청중이 따라오는지가 기준이에요.'
+    guide = {
+        "g-03": "모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다."
+    }
+    c = Claim(kind="GUIDE", text=text, source_ids=["g-03"])
+    assert check_claims([c], registry=reg, guide_texts=guide) == []
+    # 따옴표 밖에서 모델이 쓴 동의 표현은 그대로 걸린다
+    c2 = Claim(
+        kind="GUIDE",
+        text='맞는 말이에요. 자료에도 "모든 발표에 맞는 말 속도의 정답 숫자는 없고"라고 해요.',
+        source_ids=["g-03"],
+    )
+    assert any(
+        f.check_id == "AGREEMENT_WORD" for f in check_claims([c2], registry=reg, guide_texts=guide)
+    )

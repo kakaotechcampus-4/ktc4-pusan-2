@@ -1433,7 +1433,20 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 
 # 10. 실행 · 테스트
 ## 10-1. 준비 · 명령
-> **작성 필요** — 준비 · 실행 · 시험 명령과 기대 결과(구현 뒤). 목표 수치를 측정 결과처럼 옮기지 않는다.
+지금은 연구 모듈 단계다(4-1). 서비스 탑재 뒤의 명령은 `ai-service.md`에 둔다. Windows 기준이고 실행 파일 대신 `python -m`으로 부른다.
+
+```powershell
+cd ai/research/chat-agent
+uv sync                                        # .venv, 서비스 패키지(pitch-coach-ai) 편집 설치
+.\.venv\Scripts\python.exe -m pytest                 # 단위 · 루프 · 계약 · 연구 도구 시험(가짜 모델). live · slow 제외
+.\.venv\Scripts\python.exe -m pytest -m live tests/live   # 실제 모델 3개(ai/.env 의 기본 모델 묶음, 요금이 듦)
+.\.venv\Scripts\python.exe -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
+.\.venv\Scripts\python.exe -m chat_agent_lab.examples   # 5-10 예시 JSON 다시 만들기
+```
+
+- 기대 결과: 기본 실행은 LLM 키 · 서명 키 없이 모두 통과한다. live 는 계약 모양 · 끝 줄 하나 · 코드 판정 · 범위 밖 거절 · 주입 문장 미노출을 본다(답의 질은 13절 평가셋).
+- 한 턴 해 보기(`chat_agent_lab.app`)는 가상 기록으로 실제 모델을 불러 진행 줄과 끝 줄을 출력한다. `AGENT_STATE_SECRET`이 없으면 연구용 임의 키를 쓴다(서비스는 키가 없으면 대화 경로를 끈다, 11-1).
+- 평가셋 실행 명령과 결과는 연구 모듈 README의 결과 표에 둔다(13-6). 목표 수치(14-2)를 측정 결과처럼 옮기지 않는다.
 
 ## 10-2. 시험 층
 | 층 | 무엇을 | 어디서 | 기본 실행 | 걸리는 실패 행 |

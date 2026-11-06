@@ -60,6 +60,10 @@ chat-agent/
 | `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시) | — | `corpus.py` | 카드를 고치면 해시를 다시 만들고 `corpus_version`을 올린다 |
 | `llm_types.py` | 코어가 받는 도구 호출 LLM 의 모양(6-11): 요청 · 결과 · 실패 종류 · `before_attempt` 예약 | — | 루프 · 연구용 LLM 함수 · 가짜 모델 | 서비스로 옮길 때 `common/errors.py` 이름과 맞춘다 |
 | `diagnostics.py` | 진단 기록(11-5): 단계 · 끝, 닫힌 detail, 65,536바이트 줄이기 순서, `agent_step` · `agent_end` 로그 줄 | 단계 → `Diagnostics` | 루프 · 턴 | detail 필드는 `schemas.py` 닫힌 모델과 11-5 표 |
+| `prompts/` | 고정 지시문(계획 · 조사 · 답 쓰기 · 고치기)과 구조화 출력 모양, `PROMPT_VERSION`(해시) | — | 루프 | 바꾸면 평가셋을 다시 돌리고 예시를 다시 만든다(판이 바뀜) |
+| `loop.py` | 루프 단계(6-1): 계획 → 조사(도구 · 행동) → 답 쓰기 → 고치기, 이어 부를 때 지워진 원천 버리기 · 행동 결과 반영 | 요청 · 의존성 → 단계별 결과 | 턴 | 한도 숫자는 `config.py`, 순서 규칙은 `budget.py` |
+| `compose.py` | 코드가 그리는 문장: 비교 결론 · 목표 판정 · 근거 템플릿 부분 답 · 자료 카드 | 근거 → 문장 · 카드 | 턴 | 문구는 `templates.py` |
+| `turn.py` | `/agent/turn` 한 번(5-3 · 5-4): 스트림 전 검사 → 실행 → 진행 줄 · 끝 줄, 행동이면 서명, 판단 확정 · 답 검사 · 한 번 고치기 · 최종 출력 검사 | 요청 바이트 · 의존성 → 스트림 전 오류 또는 NDJSON 줄 | 서비스 계층(연구는 `chat_agent_lab/app.py`) | 크기 한도는 `config.py` |
 | `examples/` | 요청 · 스트림 · 오류 · 행동 결과 예시 JSON(5-10) | — | 계약 시험 · BE 계약 시험 | `python -m chat_agent_lab.examples` 로 다시 만든다 |
 
 ### 2-2. 연구 전용 `src/chat_agent_lab/`
@@ -67,8 +71,9 @@ chat-agent/
 | 파일 | 하는 일 | 입력 → 출력 | 부르는 곳 | 고칠 때 |
 |---|---|---|---|---|
 | `fixtures.py` | 가상 피치 · Take · 코치 Take 결과 · 리뷰 · '끝까지 한 발표' 계산(12-3) | 매개변수 → 저장 payload 모양 dict | 예시 만들기 · 가짜 BE · 평가 | 코치 · 리뷰 결과 모양이 바뀌면 서비스 예시 파일과 맞춘다 |
-| `examples.py` | 코어 `examples/` 파일 만들기 | 가상 기록 → JSON · NDJSON 파일 | 사람이 실행 | 5절 모양을 바꾸면 다시 만든다 |
+| `examples.py` | 코어 `examples/` 파일 만들기. `state`는 예시 전용 키로 실제 서명 | 가상 기록 → JSON · NDJSON 파일 | 사람이 실행 | 5절 모양 · 프롬프트 · 설정을 바꾸면 다시 만든다(예시가 만들기 결과와 같은지 시험이 본다) |
 | `llm.py` | 도구 호출 LLM 함수(6-11): OpenAI 호환 스트리밍, 도구 · 구조화 모드, 시도마다 한도 예약, 재시도(429 · 503 · 5xx 한 번), `finish_reason` 허용 목록 | `LlmRequest` → `LlmResult` 또는 실패 | 서비스 계층 대역 · live 시험 · 평가 | 서비스 탑재 때 `common/llm.py`의 `tool_llm`으로 옮긴다 |
+| `app.py` | 서비스 계층 대역: `ai/.env` 읽기, 자료 묶음 읽기, 동시 실행 자리(429 `AGENT_BUSY`), `handle_turn` 부르기, 한 턴 해 보기 명령 | 요청 dict → 줄 목록 | live 시험 · 평가 · 손으로 해 보기 | 서비스 탑재 때 `api/chat_agent.py`가 같은 일을 한다 |
 
 ## 3. 실행
 
@@ -78,8 +83,12 @@ Windows 기준이고, 실행 파일 대신 `python -m` 으로 부릅니다.
 cd ai/research/chat-agent
 uv sync                                             # .venv 를 만들고 서비스 패키지(pitch-coach-ai)를 편집 설치
 .\.venv\Scripts\python.exe -m pytest                # 기본 실행: live · slow 는 빠진다(pyproject addopts)
+.\.venv\Scripts\python.exe -m pytest -m live tests/live   # 실제 모델(ai/.env 의 OPENAI_*) 3개, 약 30초
+.\.venv\Scripts\python.exe -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
 .\.venv\Scripts\python.exe -m chat_agent_lab.examples   # 예시 JSON 다시 만들기
 ```
 
 - 새 `.venv`에서 첫 `pytest` 수집이 앱 제어 정책 때문에 한 번 실패할 수 있습니다. 다시 돌리면 통과합니다.
-- 기본 실행은 LLM 키 · 서명 키 없이 통과합니다(가짜 모델). 실제 모델 평가(`live`)는 요금이 들고 요청할 때만 돌립니다.
+- 기본 실행은 LLM 키 · 서명 키 없이 통과합니다(가짜 모델 `tests/unit/fakes.py`). 실제 모델 시험(`live`)과 평가는 요금이 들고 요청할 때만 돌립니다.
+- `chat_agent_lab.app`은 가상 기록('졸업 발표' Take 3 · 4 · 5)으로 한 턴을 돌려 진행 줄 · 끝 줄을 출력합니다. `--loaded`는 BE가 미리 읽어 둔 Take입니다.
+  `AGENT_STATE_SECRET`이 없으면 프로세스마다 임의 서명 키를 씁니다(연구용).
