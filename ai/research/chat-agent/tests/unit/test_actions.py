@@ -1378,3 +1378,45 @@ def test_number_range_is_not_a_take_id() -> None:
         message="시선 기준 30-40%로 다시 평가해 줘",
     )
     assert p.result == "PROPOSED"
+
+
+def test_args_hash_serialization_rule_example_in_the_feature_doc() -> None:
+    """기능 문서 5-8 '해시 직렬화 규칙'의 예와 같다: 키 정렬 · 공백 없음 · 한글 그대로 · 정수와 실수 구분 유지."""
+    import hashlib
+    from pathlib import Path
+
+    from chat_agent.actions import action_args_hash
+    from chat_agent.evidence import canonical_json
+
+    args = {
+        "take_id": "t-5",
+        "change": {
+            "targets": [
+                {
+                    "display": "3장 시선 30% 넘기기",
+                    "metric": "audience_ratio",
+                    "operator": "GTE",
+                    "value": 0.3,
+                }
+            ]
+        },
+    }
+    text = canonical_json({"type": "REASSESS", "args": args})
+    assert text == (
+        '{"args":{"change":{"targets":[{"display":"3장 시선 30% 넘기기","metric":"audience_ratio",'
+        '"operator":"GTE","value":0.3}]},"take_id":"t-5"},"type":"REASSESS"}'
+    )
+    got = action_args_hash("REASSESS", args)
+    assert got == "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert got.startswith("sha256:afdfa41878305b56")
+    # 문서의 예가 이 값과 같다(문서를 고치면 시험도 같이 고친다)
+    doc = (Path(__file__).resolve().parents[5] / "docs/ai/features/chat-agent.md").read_text(
+        encoding="utf-8"
+    )
+    assert text in doc and "sha256:afdfa41878305b56" in doc
+    # 정수와 실수는 다른 문자열이다(1 ≠ 1.0), 실수는 최단 표기
+    assert canonical_json({"v": 1}) != canonical_json({"v": 1.0})
+    assert canonical_json({"v": [1.0, 1e-07, 100000.0, 1e16]}) == '{"v":[1.0,1e-07,100000.0,1e+16]}'
+    assert action_args_hash("REASSESS", args) == action_args_hash(
+        "REASSESS", {"change": args["change"], "take_id": "t-5"}
+    )  # 키 순서는 해시에 영향이 없다

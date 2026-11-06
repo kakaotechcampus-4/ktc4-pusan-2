@@ -374,7 +374,7 @@ def test_save_goal_then_take_reviewed_closes_goal_without_model() -> None:
     llm = save_goal_llm()
     be = make_be(llm, pitches=[fx.sample_pitch(), other_pitch("p-2", "회사 소개 발표")])
     conv = be.new_conversation(scope_pitch_id="p-1")
-    run = be.send_message(conv.conversation_id, GOAL_MSG, page_take_id="t-5")
+    run = be.send_message(conv.conversation_id, GOAL_MSG, page_take_id="t-5", approval="APPROVE")
     fd = ok(run.final)
     assert fd.status == "DONE"
     assert templates.ACTION_SUCCESS["SAVE_GOAL"] in fd.message.text  # type: ignore[union-attr]
@@ -426,7 +426,7 @@ def test_fm_L1_32_goal_changed_in_other_tab_is_not_overwritten() -> None:
         c.goal, c.goal_version = dict(other_tab_goal), 1
 
     be.before_action = other_tab
-    run = be.send_message(conv.conversation_id, GOAL_MSG, page_take_id="t-5")
+    run = be.send_message(conv.conversation_id, GOAL_MSG, page_take_id="t-5", approval="APPROVE")
     (rec,) = run.actions
     assert rec.result["error"]["code"] == "GOAL_VERSION_CONFLICT"
     assert templates.SystemText.GOAL_CHANGED_ELSEWHERE.value in ok(run.final).message.text  # type: ignore[union-attr]
@@ -524,12 +524,12 @@ def test_fm_L6_07_reassess_calls_real_review_with_changed_input_and_keeps_offici
     be.use_rule_reviews()  # 공식 리뷰도 같은 규칙 코드로 만든 상태에서 시작
     before = official_reviews(be)
     conv = be.new_conversation()
-    run = be.send_message(conv.conversation_id, SCRIPT_MSG, page_take_id="t-5")
+    run = be.send_message(conv.conversation_id, SCRIPT_MSG, page_take_id="t-5", approval="APPROVE")
     assert run.status == "DONE"
-    # 판단을 먼저 보인다: REASSESS 를 담은 NEEDS_ACTION 에 판단 문장이 있고 BE가 interim_message 로 저장한다
+    # 판단을 먼저 보인다: REASSESS 를 담은 NEEDS_ACTION 에 판단 문장이 있고, 승인 뒤 최종 답이 그 문장을 앞부분에 그대로 싣는다
     first = ok(run.calls[0].final)
     assert first.status == "NEEDS_ACTION" and first.message is not None and first.assessments
-    assert run.interim_message is not None and run.interim_message["text"] == first.message.text
+    assert ok(run.final).message.text.startswith(first.message.text)  # type: ignore[union-attr]
     # A(지금 기록 그대로) · B(허용 칸 하나만 바꿈)로 실제 리뷰 코드를 한 번씩 부른다
     a, b = be.review_calls
     assert (a["side"], b["side"]) == ("A", "B")
@@ -568,7 +568,7 @@ def test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchange
     ].takes:  # 기준 없이 리뷰받은 Take: standard_version 도 없다(리뷰 입력 5-2)
         t.standard_version = None
     be.use_rule_reviews()
-    run = be.send_message(None, msg, page_take_id="t-5")
+    run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
     a, b = be.review_calls
     assert a["request"]["user_criteria"] is None
     assert b["request"]["user_criteria"] == {
@@ -594,7 +594,7 @@ def test_reassess_card_is_kept_when_target_display_has_numbers() -> None:
     msg = "내 기준으로 다시 평가해 줘"
     be = make_be(reassess_llm({"targets": [target]}, [request_draft(msg)], F.answer([])))
     be.use_rule_reviews()
-    run = be.send_message(None, msg, page_take_id="t-5")
+    run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
     assert [c["type"] for c in cards(run)] == ["REASSESS_RESULT"]
 
 
@@ -602,7 +602,7 @@ def test_reassess_final_meta_carries_review_criteria_versions() -> None:
     llm = reassess_llm({"script_used": True}, script_drafts(), F.answer([]))
     be = make_be(llm)
     be.use_rule_reviews()
-    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5")
+    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5", approval="APPROVE")
     review_versions = default_review(be.review_calls[0]["request"])["meta"]["criteria_versions"]
     assert set(review_versions) <= set(ok(run.final).meta.criteria_versions)
 
@@ -612,7 +612,7 @@ def test_fm_L4_22_reassess_flags_official_difference_when_record_changed() -> No
     llm = reassess_llm({"script_used": True}, script_drafts(), F.answer([]))
     be = make_be(llm)  # use_rule_reviews 를 하지 않아 공식 리뷰가 지금 규칙 결과와 다르다
     before = official_reviews(be)
-    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5")
+    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5", approval="APPROVE")
     (card,) = cards(run, "REASSESS_RESULT")
     assert card["official_differs"] is True
     assert card["changed_fields"]  # A · B 비교는 그대로 유효
@@ -631,7 +631,7 @@ def test_fm_L4_20_reassess_with_different_rule_versions_fails_without_card() -> 
     llm = reassess_llm({"script_used": True}, script_drafts(), F.answer([]))
     be = make_be(llm, review=mixed)
     before = official_reviews(be)
-    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5")
+    run = be.send_message(None, SCRIPT_MSG, page_take_id="t-5", approval="APPROVE")
     (rec,) = run.actions
     assert (rec.result["status"], rec.result["error"]["code"]) == ("FAILED", "RULES_DIFFER")
     assert templates.SystemText.REASSESS_RULES_DIFFER.value in ok(run.final).message.text  # type: ignore[union-attr]
@@ -817,7 +817,7 @@ def test_fm_L2_08_switch_off_mid_run_keeps_committed_action() -> None:
     be = make_be(save_goal_llm())
     conv = be.new_conversation()
     be.before_resume = lambda b, r, rec: setattr(b.app, "enabled", False)
-    run = be.send_message(conv.conversation_id, GOAL_MSG, page_take_id="t-5")
+    run = be.send_message(conv.conversation_id, GOAL_MSG, page_take_id="t-5", approval="APPROVE")
     assert (run.calls[1].http_status, run.status, run.error_code) == (
         503,
         "FAILED",

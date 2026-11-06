@@ -5,7 +5,7 @@
   "group": "representative",
   "split": "dev",
   "act": "should",
-  "title": "목표 저장 → '연습하러 가자'면 연습 준비 화면으로 바로 이동(START_PRACTICE auto)",
+  "title": "목표 저장 → '연습하러 가자'면 [연습 준비로] 버튼 카드를 낸다(START_PRACTICE BUTTON, 화면은 누를 때만 옮김)",
   "source": "rep-goal",
   "baseline_type": "goal",
   "fixtures": {
@@ -39,8 +39,8 @@
         "turn": 0
       },
       {
-        "check_id": "practice-move",
-        "observe": "actions_executed",
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
         "compare": "contains",
         "expect": "START_PRACTICE",
         "path": "types",

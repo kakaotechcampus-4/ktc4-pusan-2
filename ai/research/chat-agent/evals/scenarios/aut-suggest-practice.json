@@ -5,7 +5,7 @@
   "group": "autonomy",
   "split": "holdout",
   "act": "should_not",
-  "title": "연습을 권하기만 할 때 — 화면을 옮기지 않고 버튼(auto:false)만",
+  "title": "연습을 권하기만 할 때 — 화면을 옮기지 않고 버튼 카드만",
   "baseline_type": "record",
   "fixtures": {
     "pitches": [
@@ -34,14 +34,11 @@
         "metric": "autonomy"
       },
       {
-        "check_id": "no-auto-card",
-        "observe": "answer",
+        "check_id": "no-screen-move",
+        "observe": "db_diff",
         "compare": "absent",
-        "expect": {
-          "type": "START_PRACTICE",
-          "auto": true
-        },
-        "path": "cards",
+        "expect": "conversation.practice_moves",
+        "path": "changed",
         "metric": "autonomy"
       },
       {

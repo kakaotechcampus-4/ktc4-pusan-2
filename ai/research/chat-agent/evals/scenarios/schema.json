@@ -1212,6 +1212,17 @@
           "title": "Auto Goal Check",
           "type": "boolean"
         },
+        "approval": {
+          "default": "APPROVE",
+          "enum": [
+            "APPROVE",
+            "REJECT",
+            "EXPIRE",
+            "NEW_MESSAGE"
+          ],
+          "title": "Approval",
+          "type": "string"
+        },
         "faults": {
           "items": {
             "$ref": "#/$defs/Fault"

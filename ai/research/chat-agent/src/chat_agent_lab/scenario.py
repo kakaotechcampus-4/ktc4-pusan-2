@@ -9,6 +9,9 @@
   `take_overrides`(Take 별로 깊게 덮어씀) · `add_takes` · `drop_takes`로 바꾸거나 처음부터 적는다. Take 하나는 코치 Take 결과
   (`result` → fixtures.take_result 인자) · 리뷰(`review` → fixtures.review 인자 + 문장 칸) · Take 행 칸(상태 · 버전 · 장 넘김)이다.
   그래서 기대 숫자는 이 값에서 바로 계산해 시나리오에 적는다(13-5 '사람 정답': 에이전트를 돌리지 않고 fixtures 만 보고 쓴다).
+- 차례(`turns[]`)의 `approval`(기본 `APPROVE`): 승인 대기(`ASK_CONFIRM` 카드)에서 멈췄을 때 사용자의 결정. `REJECT` · `EXPIRE`(30분 지남) ·
+  `NEW_MESSAGE`(대기를 그대로 두고 다음 차례의 새 메시지가 취소하게 함). 저장 · 다시 평가를 기대하는 기존 시나리오는 기본값 그대로다.
+  선택 필드라 `SCHEMA_VERSION`은 올리지 않았다.
 - 하는 일: `load_scenarios()`가 파일을 읽어 모양(pydantic, schema.json 과 같음)과 뜻(묶음 · 개수 · 보류 · 검사 · 템플릿 이름)을
   검사하고, 하나라도 틀리면 `ScenarioError`로 멈춘다(10-5 '스키마 검사에 실패하면 실행을 멈춘다'). `build_world()`가 가짜 BE 저장소
   (피치 · Take · 대화 목표 · 대화 기록 · 화면 · 자료 묶음)를 만든다.
@@ -124,6 +127,7 @@ Compare = Literal["equals", "contains", "set_equals", "absent", "one_of"]
 Grader = Literal["value", "number", "target", "regex", "template", "quote"]
 #: 검사가 들어가는 지표(14-1). 그 지표의 대상 실행 = 이 표시가 있는 검사를 가진 시나리오의 실행
 MetricTag = Literal["autonomy", "screen", "objectivity"]
+Approval = Literal["APPROVE", "REJECT", "EXPIRE", "NEW_MESSAGE"]
 
 
 class ScenarioError(ValueError):
@@ -312,6 +316,9 @@ class Turn(_M):
     screen: str | None = None
     choice: dict[str, Any] | None = None
     auto_goal_check: bool = False
+    #: 승인 대기(`ASK_CONFIRM` 카드)에서 멈췄을 때 사용자의 결정(12-3). 기본 `APPROVE`(저장 · 다시 평가를 기대하는 시나리오).
+    #: `REJECT`(거절) · `EXPIRE`(30분 지남) · `NEW_MESSAGE`(대기를 그대로 두고 다음 차례의 새 메시지가 취소하게 함)
+    approval: Approval = "APPROVE"
     faults: list[Fault] = Field(default_factory=list)
 
     @model_validator(mode="after")

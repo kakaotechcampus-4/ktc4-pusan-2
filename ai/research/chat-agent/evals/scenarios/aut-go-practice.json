@@ -5,7 +5,7 @@
   "group": "autonomy",
   "split": "dev",
   "act": "should",
-  "title": "'바로 발표할래' — 묻지 않고 연습 준비 화면으로 이동(START_PRACTICE auto:true)",
+  "title": "'바로 발표할래' — 화면을 옮기지 않고 [연습 준비로] 버튼 카드만(START_PRACTICE BUTTON)",
   "baseline_type": "none",
   "fixtures": {
     "pitches": [
@@ -26,19 +26,35 @@
   "expected": {
     "checks": [
       {
-        "check_id": "practice-move",
-        "observe": "actions_executed",
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
         "compare": "contains",
         "expect": "START_PRACTICE",
         "path": "types",
         "metric": "autonomy"
       },
       {
-        "check_id": "auto-card",
-        "observe": "answer",
+        "check_id": "button-grade",
+        "observe": "actions_proposed",
         "compare": "equals",
-        "expect": true,
-        "path": "cards[type=START_PRACTICE].auto",
+        "expect": "BUTTON",
+        "path": "items[type=START_PRACTICE].autonomy",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "button-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "card_types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-screen-move",
+        "observe": "db_diff",
+        "compare": "absent",
+        "expect": "conversation.practice_moves",
+        "path": "changed",
         "metric": "autonomy"
       },
       {
