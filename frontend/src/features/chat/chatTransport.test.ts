@@ -12,6 +12,7 @@ import { MAX_RESPONSE_BYTES } from './chatResponse';
 import { canSend, useChatStore } from './chatStore';
 import {
   MAX_REREADS,
+  MAX_TOO_LARGE,
   REQUEST_TIMEOUT_MS,
   STATUS_ONLY_AFTER_SEQ,
   createChatTransport,
@@ -1885,5 +1886,40 @@ describe('다시 해도 같은 거절 (#953 리뷰)', () => {
     expect(store().syncing).toBe(false);
     expect(of('conversationMissing')).toMatchObject([{ conversationId }]);
     expect(of('pollTrouble')).toEqual([]);
+  });
+});
+
+describe('크기 초과가 같은 커서에서 계속될 때 (#955 리뷰)', () => {
+  it('MAX_TOO_LARGE 번 잇달아 넘으면 실행을 놓고 lost 로 넘긴다 — 30초 간격으로 끝없이 다시 읽지 않는다', async () => {
+    start({
+      run: async () => {
+        throw new ResponseTooLargeError(MAX_RESPONSE_BYTES);
+      },
+    });
+    await sendNow(draft());
+    await clock.advance(120_000);
+    expect(of('pollTrouble').map((s) => s.reason)).toEqual(
+      Array(MAX_TOO_LARGE - 1).fill('TOO_LARGE'),
+    );
+    expect(of('lost')).toHaveLength(1);
+    expect(store().run).toBeNull();
+    const calls = runCalls.length;
+    await clock.advance(120_000);
+    expect(runCalls.length).toBe(calls);
+  });
+
+  it('사이에 조회가 되면 다시 처음부터 센다', async () => {
+    let polls = 0;
+    start({
+      run: async (runId) => {
+        polls += 1;
+        if (polls % 2 === 1) throw new ResponseTooLargeError(MAX_RESPONSE_BYTES);
+        return runView(runId, store().run!.conversationId, 'RUNNING', []);
+      },
+    });
+    await sendNow(draft());
+    await clock.advance(60_000);
+    expect(of('lost')).toEqual([]);
+    expect(store().run).not.toBeNull();
   });
 });

@@ -502,6 +502,35 @@ describe('응답 크기 (L3-22)', () => {
     });
     await expect(read(response)).rejects.toBeInstanceOf(ResponseTooLargeError);
   });
+
+  it('Content-Length 가 없어도(압축 응답 등) 받으면서 세다가 넘는 순간 끊는다 — 끝까지 받지 않는다 (#955 리뷰)', async () => {
+    const chunk = new Uint8Array(1024).fill(0x20); // 1 KiB 공백
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 64) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    const response = new Response(stream); // 스트림이라 Content-Length 가 없습니다
+    expect(response.headers.get('Content-Length')).toBeNull();
+    await expect(readJsonWithin(1024)(response)).rejects.toBeInstanceOf(ResponseTooLargeError);
+    // 64 KiB 를 다 받지 않고 한도를 넘긴 두 번째 조각 근처에서 끊습니다
+    expect(pulled).toBeLessThan(5);
+  });
+
+  it('여러 조각으로 온 한글도 바이트로 이어 붙여 그대로 읽는다', async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify({ text: '가나다라마바사' }));
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        // 한 글자(3바이트)를 가르도록 1바이트씩 보냅니다
+        for (const b of bytes) controller.enqueue(new Uint8Array([b]));
+        controller.close();
+      },
+    });
+    expect(await read<{ text: string }>(new Response(stream))).toEqual({ text: '가나다라마바사' });
+  });
 });
 
 // ── 목의 모든 시나리오 ────────────────────────────────────────

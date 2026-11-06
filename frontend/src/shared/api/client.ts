@@ -73,8 +73,12 @@ export class ResponseTooLargeError extends Error {
 }
 
 /**
- * 크기(UTF-8 바이트)를 재고 JSON 으로 읽습니다 — 넘으면 `ResponseTooLargeError`.
- * `Content-Length` 가 이미 넘으면 본문을 받지 않습니다. 대화 에이전트의 2 MiB 제한(`chat-agent.md` L3-22)에 씁니다
+ * 받은 크기(UTF-8 바이트)를 세며 JSON 으로 읽습니다 — 넘으면 `ResponseTooLargeError`. 대화 에이전트의 2 MiB 제한
+ * (`chat-agent.md` L3-22)에 씁니다.
+ *
+ * **받는 양까지 제한합니다.** `Content-Length` 가 이미 넘으면 본문을 받지 않고, 헤더가 없거나 압축 응답이어서
+ * (브라우저는 압축된 크기를 헤더에 그대로 두고 풀린 본문을 줍니다) 미리 알 수 없으면 받으면서 세다가 넘는 순간 끊습니다.
+ * 세는 것은 풀린 본문이라 처리할 크기와 같습니다(#955 리뷰 — 압축을 켜도 끝까지 받지 않게)
  */
 export const readJsonWithin =
   (maxBytes: number) =>
@@ -84,11 +88,27 @@ export const readJsonWithin =
       await response.body?.cancel().catch(() => undefined);
       throw new ResponseTooLargeError(maxBytes);
     }
-    const text = await response.text();
-    // UTF-16 한 단위는 UTF-8 로 3바이트까지라(짝 단위 둘은 4바이트), 단위 수가 1/3 이하면 재지 않아도 됩니다
-    if (text.length * 3 > maxBytes && new TextEncoder().encode(text).length > maxBytes)
-      throw new ResponseTooLargeError(maxBytes);
-    return JSON.parse(text) as T;
+    if (!response.body) return JSON.parse(await response.text()) as T;
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new ResponseTooLargeError(maxBytes);
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let at = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
   };
 
 /**

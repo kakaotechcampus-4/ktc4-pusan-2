@@ -140,7 +140,8 @@ export type TransportSignal =
   /** 130초가 지나도 끝나지 않음 — "결과 확인이 늦어지고 있으니 상태를 다시 확인해 주세요." */
   | { type: 'slow'; runId: string }
   /**
-   * 실행을 더 읽을 수 없음 — 기록이 없어졌거나(404) 다시 해도 같은 거절(그 밖 4xx, 408 · 429 제외).
+   * 실행을 더 읽을 수 없음 — 기록이 없어졌거나(404) 다시 해도 같은 거절(그 밖 4xx, 408 · 429 제외)이거나,
+   * 같은 커서에서 크기 초과가 `MAX_TOO_LARGE` 번 잇달았음.
    * 조회를 멈췄으니 메시지 목록을 다시 읽어 복구합니다
    */
   | { type: 'lost'; runId: string }
@@ -265,6 +266,12 @@ export const SLOW_POLL_MS = 30_000;
 export const DEFAULT_RETRY_AFTER_SEC = 5;
 /** 곧바로 다시 읽기를 잇달아 몇 번까지 — 그 뒤에는 보통 간격으로 (FE 가 정함) */
 export const MAX_REREADS = 3;
+/**
+ * 같은 커서에서 크기 초과(2 MiB)가 잇달아 이만큼이면 실행을 놓고 메시지 목록으로 넘깁니다 (FE 가 정함, #955 리뷰).
+ * 같은 커서로 다시 읽으면 BE 는 같은 이벤트를 같은 순서로 주고(L2-46), 첫 이벤트는 크기와 상관없이 실어서
+ * 다시 해도 결과가 같습니다 — 그대로 두면 30초 간격으로 끝없이 실패하고 끝남도 읽지 못합니다
+ */
+export const MAX_TOO_LARGE = 3;
 
 const defaultClock: ChatClock = {
   now: () => Date.now(),
@@ -461,6 +468,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   let idleDelay = 0;
   /** 곧바로 다시 읽기를 잇달아 한 횟수 — 건너뛴 순번이 메워지지 않거나 다음 커서가 끝없이 와도 멈추지 않게 */
   let rereads = 0;
+  /** 크기 초과가 잇달아 난 실행 · 커서와 횟수 — 조회가 되면 비웁니다 */
+  let tooLarge: { key: string; count: number } | null = null;
   /**
    * 실행마다 문장 읽기 — 커서와 수명을 같이 합니다. 읽기가 없는 실행을 지켜보기 시작하면(새 통신 계층 ·
    * 다시 연 화면) 커서를 처음으로 되감아, 앞 문장부터 다시 받고 순번이 0부터 이어지게 합니다
@@ -738,9 +747,11 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     // 그사이 실행 · 대화 · 세대가 바뀌었으면 이 응답은 버리고 지금 상태로 다시 (L3-20) — 실패도 같습니다.
     // 지난 실행의 404 로 새 실행의 고리가 멈추지 않게
     if (answer.fate === 'stale' || pollAgain) return kick();
-    if (!answer.ok) return onPollFailure(run.runId, answer.error);
+    if (!answer.ok) return onPollFailure(run.runId, run.afterSeq, answer.error);
     const view = readRunView(answer.value);
-    if (!view || view.run_id !== run.runId) return onPollFailure(run.runId, new FormatError());
+    if (!view || view.run_id !== run.runId)
+      return onPollFailure(run.runId, run.afterSeq, new FormatError());
+    tooLarge = null;
     recovered();
 
     const { taken, gap } = takeEvents(run.afterSeq, view.events);
@@ -809,7 +820,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     schedulePoll(nextDelay(run.runId, view.status));
   }
 
-  function onPollFailure(runId: string, error: unknown) {
+  function onPollFailure(runId: string, afterSeq: number, error: unknown) {
     // 로그인이 풀림 — 같은 토큰으로 계속 두드리지 않습니다. 다시 로그인하면 사용자 전환이 상태를 새로 엽니다
     if (isSignedOut(error)) {
       halted = 'session';
@@ -824,7 +835,12 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     }
     // 실행 기록이 없어짐(404) · 다시 해도 같은 거절(그 밖 4xx) — 계속 두드리지 않고 놓은 뒤 목록에서 복구합니다(L3-21).
     // 그대로 두면 2 → 30초 간격으로 끝없이 다시 조회하며 "다시 연결하고 있어요" 를 띄웁니다(#953 리뷰)
-    if (isPermanent(error)) {
+    // 같은 커서에서 크기 초과가 잇달아 나면 다시 해도 같습니다 — 다시 해도 같은 거절처럼 놓습니다
+    const key = `${runId}:${afterSeq}`;
+    if (error instanceof ResponseTooLargeError)
+      tooLarge = { key, count: tooLarge?.key === key ? tooLarge.count + 1 : 1 };
+    if (isPermanent(error) || (tooLarge?.key === key && tooLarge.count >= MAX_TOO_LARGE)) {
+      tooLarge = null;
       store().endRun(runId);
       forget(runId);
       recovered();
