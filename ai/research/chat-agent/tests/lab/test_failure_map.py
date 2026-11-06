@@ -1,7 +1,7 @@
 """실패 행 대응표 시험 — README '실패 행 대응표 (10-3)'가 기능 문서 7-3 ~ 7-8 의 AI 몫 행 · 시험 파일과 맞는지 본다 (기능 문서 10-3).
 
 - 기능 문서 표: 7-3 ~ 7-8 의 `| L?-?? |` 행을 읽고, '시험' 열 앞의 `[층] (담당)`으로 AI 몫을 가린다(규칙은 `ai_owned`, README 설명과 같다).
-- README 표: 행마다 층 · 시험(`경로::이름`, 여럿이면 ` · `로 잇는다) 또는 '서비스 탑재 때' · '평가셋' · 메모.
+- README 표: 행마다 층 · 시험(`경로::이름`, 여럿이면 ` · `로 잇는다) 또는 '미검증' · '평가셋' · 메모.
 - 시험 이름은 연구 모듈 tests/ 와 서비스 ai/service/tests/ 아래 test_*.py 를 ast 로 읽어 모은 함수 이름과
   대조한다(가져와 실행하지 않는다). 연구 시험은 `tests/…`, 서비스 시험(옮긴 코어 시험 · 도구 호출 LLM 시험)은
   `ai/service/tests/…`로 적는다.
@@ -23,7 +23,7 @@ ROOT = MODULE.parents[2]  # 저장소 루트
 TESTS = MODULE / "tests"
 SERVICE_TESTS = ROOT / "ai" / "service" / "tests"
 
-SERVICE = "서비스 탑재 때"
+SERVICE = "미검증"  # 서비스에서 아직 확인하지 않은 행(배포 사양 부하 시험 등)
 EVAL = "평가셋"
 #: 담당 표시가 없는 L2 ~ L6 행 중 처리가 AI 코드 · 설정인 행(README '실패 행 대응표'의 규칙 ③)
 AI_WITHOUT_MARKER = frozenset({"L4-29", "L5-12", "L5-32", "L5-33"})
@@ -171,14 +171,14 @@ def test_every_referenced_test_exists() -> None:
 
 
 def test_each_row_names_tests_or_a_reason() -> None:
-    """칸은 시험 이름만이거나 '서비스 탑재 때'(메모에 까닭) · '평가셋'(기능 문서가 평가셋 층으로 둔 행) 하나다."""
+    """칸은 시험 이름만이거나 '미검증'(메모에 까닭) · '평가셋'(기능 문서가 평가셋 층으로 둔 행) 하나다."""
     docs = doc_rows()
     for r in table_rows():
         if r.refs:
             rest = _REF.sub("", r.cell).replace("·", "").strip()
             assert rest == "", f"{r.row_id}: 시험 이름 밖의 글이 있다({rest})"
         elif r.cell == SERVICE:
-            assert r.memo, f"{r.row_id}: '서비스 탑재 때'의 까닭이 메모에 없다"
+            assert r.memo, f"{r.row_id}: '{SERVICE}'의 까닭이 메모에 없다"
         elif r.cell == EVAL:
             assert EVAL in docs[r.row_id].layers, (
                 f"{r.row_id}: 기능 문서가 평가셋 층으로 두지 않은 행이다"

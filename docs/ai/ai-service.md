@@ -417,7 +417,7 @@ docker compose $FILES restart ai                # AI만 다시 띄우기
 | 배포가 `docker compose pull`에서 실패 | ai 이미지를 push하지 않음 | 배포 워크플로의 build · push 대상 |
 | CI의 `uv sync --locked` 실패 | `pyproject.toml`을 고치고 `uv.lock`을 안 올림 | `uv lock` 뒤 함께 커밋 |
 | 대화의 모든 턴이 503 `AGENT_DISABLED` | 서버 `ai/.env`에 `AGENT_ENABLED=true`가 없음, 서명 키 없음 · 32바이트 미만 | 서버 `ai/.env`(값은 출력하지 않고 이름만 확인), BE 쪽 스위치 |
-| 대화 이어 부르기가 409 `AGENT_STATE_INVALID` | 서명 키를 바꾸며 이전 키를 `AGENT_STATE_SECRET_PREVIOUS`에 두지 않음, 워커마다 키가 다름 | `chat-agent.md` 11-3, AI 로그의 `agent_stream` · 진단 기록 |
+| 대화 이어 부르기가 409 `AGENT_STATE_INVALID` | 서명 키를 바꾸며 이전 키를 `AGENT_STATE_SECRET_PREVIOUS`에 두지 않음, 워커마다 키가 다름 | `chat-agent.md` 11-3, 서버의 서명 키 설정(이름만 확인). 스트림 전 오류라 AI 요청 로그의 `code=AGENT_STATE_INVALID`로 보이고 `agent_stream` · 진단 기록은 없다 |
 | 대화가 429 `AGENT_BUSY`를 자주 받음 | 동시 상한(`AGENT_MAX_CONCURRENCY`) · 대화 전용 실행 풀이 참(끝나지 않은 LLM 호출이 자리를 차지) | AI 로그의 `agent_stream` · `llm_call`(`outcome` · `duration_ms`) |
 | 대화 로그에 `chat_agent_corpus_unavailable reason=UNREVIEWED` | 발표법 · 사용법 자료 카드가 검수 전이라 자료 묶음 없이 시작함(발표법 질문은 일반 조언으로 답함) | 정상. 카드를 검수(`APPROVED`)하고 판을 등록하면 자료 묶음이 켜진다(`chat-agent.md` 6-10) |
 
