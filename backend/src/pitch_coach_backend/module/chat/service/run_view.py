@@ -20,7 +20,7 @@ from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.exception import ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.conversation import owned_sources
-from pitch_coach_backend.module.chat.service.run import SEOUL, add_run_log
+from pitch_coach_backend.module.chat.service.run import add_run_log, release_unsent
 from pitch_coach_backend.module.chat.service.stale import uses_deleted
 from pitch_coach_backend.module.chat.service.waiting import (
     CANCELLED_TEXT,
@@ -79,9 +79,7 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
     chat_repo = ChatRepository(db)
     if run.first_trigger == "TAKE_REVIEWED":
         _close_goal_check(chat_repo, run)
-    if not run.turn_calls:
-        # 아직 /agent/turn 을 보내지 않았다. 접수 때 잡은 서비스 전체 예약을 돌려준다
-        repo.release_service_turn(run.accepted_at.astimezone(SEOUL).date())
+    release_unsent(chat_repo, run)
     run.status = "CANCELLED"
     run.state = None
     run.error_code = "AGENT_CANCELLED"

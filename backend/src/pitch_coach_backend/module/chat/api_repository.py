@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, select, update
+from sqlalchemy import Row, Select, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -215,15 +215,3 @@ class ChatApiRepository:
             .returning(ChatDailyUsage.id)
         )
         return self.db.scalar(stmt) is not None
-
-    def release_service_turn(self, day: date) -> None:
-        """보내지 않고 끝난 처음 호출의 서비스 전체 예약을 돌려준다."""
-        self.db.execute(
-            update(ChatDailyUsage)
-            .where(
-                ChatDailyUsage.user_id.is_(None),
-                ChatDailyUsage.day == day,
-                ChatDailyUsage.reserved > 0,
-            )
-            .values(reserved=ChatDailyUsage.reserved - 1)
-        )

@@ -270,7 +270,7 @@ def _charge(
     retry_after = {"Retry-After": str(seconds_until_tomorrow(now))}
     if not repo.charge_turn(user_id, day, USER_DAILY_TURNS):
         raise ChatDailyLimit(headers=retry_after)
-    # 서비스 전체 하루 상한에 처음 호출 1회를 예약한다. 보내지 않고 끝나면 돌려준다(실행 취소)
+    # 서비스 전체 하루 상한에 처음 호출 1회를 예약한다. 보내지 않고 끝나면 돌려준다
     if not chat_repo.reserve_service_turn(day, SERVICE_DAILY_TURNS):
         raise ChatBusy(headers=retry_after)
 
