@@ -23,6 +23,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRunLog,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service import conversation as conversation_service
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS, seconds_until_tomorrow
 from pitch_coach_backend.module.chat.service.goal_check import SERVICE_DAILY_TURNS
 from pitch_coach_backend.module.chat.service.run import SEOUL
@@ -903,6 +904,198 @@ def test_masked_answer_is_not_shown_as_the_replacement(
     )
 
     assert first_judgement()["superseded_by"] == "a3"
+
+
+def _read_to_the_start(
+    client: TestClient, user_id: uuid.UUID, conversation_id: uuid.UUID, limit: int = 50
+) -> list[Response]:
+    """커서를 따라 첫 메시지까지 읽어 응답을 페이지마다 돌려준다."""
+    path = f"/api/chat/conversations/{conversation_id}/messages?limit={limit}"
+    pages = [client.get(path, headers=bearer(user_id))]
+    while (cursor := pages[-1].json()["next_before_seq"]) is not None:
+        # 커서는 이번 페이지의 첫 메시지다. 그 앞을 읽으므로 늘 줄어들어 반드시 끝난다
+        assert cursor == pages[-1].json()["messages"][0]["seq"]
+        pages.append(client.get(f"{path}&before_seq={cursor}", headers=bearer(user_id)))
+    return pages
+
+
+def _oldest_first(pages: list[Response]) -> list[dict[str, Any]]:
+    return [message for page in reversed(pages) for message in page.json()["messages"]]
+
+
+def test_message_list_is_split_under_two_mib_and_reads_back_whole(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    for seq in range(2, 32):
+        _answer(db_session, conversation_id, user_id, seq, trace=[{"text": "가" * 40_000}])
+
+    pages = _read_to_the_start(client, user_id, conversation_id)
+
+    assert len(pages) > 1
+    assert all(len(page.content) <= 2 * 1024 * 1024 for page in pages)
+    assert [message["seq"] for message in _oldest_first(pages)] == list(range(1, 32))
+
+
+def test_message_size_is_counted_as_it_is_sent(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    for seq in range(2, 5):
+        _answer(db_session, conversation_id, user_id, seq, trace=[{"text": "한글 값"}])
+    path = f"/api/chat/conversations/{conversation_id}/messages"
+    whole = client.get(path, headers=bearer(user_id))
+    # 메시지 밖의 칸을 빼고, 메시지마다 세는 쉼표 몫(마지막 메시지는 쓰지 않는다)을 더한다
+    counted = len(whole.content) - len(b'{"messages":[],"next_before_seq":null}') + 1
+
+    # 한도와 딱 맞으면 그대로 싣는다
+    monkeypatch.setattr(conversation_service, "RESPONSE_MAX_BYTES", counted)
+    fits = client.get(path, headers=bearer(user_id))
+    assert fits.content == whole.content
+
+    # 1바이트 모자라면 가장 앞 메시지를 다음 페이지로 넘긴다
+    monkeypatch.setattr(conversation_service, "RESPONSE_MAX_BYTES", counted - 1)
+    short = client.get(path, headers=bearer(user_id)).json()
+    assert [message["seq"] for message in short["messages"]] == [2, 3, 4]
+    assert short["next_before_seq"] == 2
+
+
+def test_message_over_the_size_limit_still_moves_the_cursor(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    for seq in range(2, 5):
+        _answer(db_session, conversation_id, user_id, seq)
+    # 어느 메시지도 한도에 들어가지 않아도 최근 메시지 하나는 싣는다
+    monkeypatch.setattr(conversation_service, "RESPONSE_MAX_BYTES", 10)
+
+    pages = _read_to_the_start(client, user_id, conversation_id)
+
+    assert [[m["seq"] for m in page.json()["messages"]] for page in pages] == [[4], [3], [2], [1]]
+    assert pages[-1].json()["next_before_seq"] is None
+
+
+def test_size_split_and_limit_split_share_one_cursor(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    for seq in range(2, 8):
+        _answer(db_session, conversation_id, user_id, seq, trace=[{"text": "가" * 1000}])
+    path = f"/api/chat/conversations/{conversation_id}/messages"
+    one = len(client.get(f"{path}?limit=1", headers=bearer(user_id)).content)
+    # 답 메시지 두 개만 들어가는 한도
+    monkeypatch.setattr(conversation_service, "RESPONSE_MAX_BYTES", one * 2 + one // 2)
+
+    def read(query: str) -> tuple[list[int], int | None]:
+        page = client.get(f"{path}?{query}", headers=bearer(user_id)).json()
+        return [message["seq"] for message in page["messages"]], page["next_before_seq"]
+
+    # limit 으로만 나뉜다
+    assert read("limit=2") == ([6, 7], 6)
+    # limit 과 크기 둘 다 걸린다. 남긴 메시지 앞에서 이어 읽는다
+    assert read("limit=3") == ([6, 7], 6)
+    # limit 안에 다 읽혔어도 크기로 줄었으면 커서를 준다. 없으면 앞 메시지를 영영 못 읽는다
+    assert read("limit=10&before_seq=6") == ([4, 5], 4)
+    # 둘 다 안 걸리면 끝이다
+    assert read("limit=10&before_seq=3") == ([1, 2], None)
+
+    pages = _read_to_the_start(client, user_id, conversation_id, limit=3)
+    assert [message["seq"] for message in _oldest_first(pages)] == list(range(1, 8))
+
+
+def test_masked_message_counts_only_what_is_sent(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    # 저장된 값은 한도를 넘지만 가리면 내보내지 않으니 페이지를 나누지 않는다
+    big = [{"text": "가" * 10_000}]
+    _answer(
+        db_session,
+        conversation_id,
+        user_id,
+        2,
+        trace=big,
+        source_take_ids=[str(uuid.uuid4())],
+    )
+    _answer(db_session, conversation_id, user_id, 3)
+    monkeypatch.setattr(conversation_service, "RESPONSE_MAX_BYTES", 4000)
+
+    pages = _read_to_the_start(client, user_id, conversation_id)
+    assert len(pages) == 1
+    masked = _oldest_first(pages)[1]
+    assert (masked["seq"], masked["masked"], masked["trace"]) == (2, True, None)
+
+    # 가리지 않은 같은 크기의 값은 한도를 넘어 앞 메시지를 다음 페이지로 넘긴다
+    _answer(db_session, conversation_id, user_id, 4, trace=big)
+    pages = _read_to_the_start(client, user_id, conversation_id)
+    assert [[m["seq"] for m in page.json()["messages"]] for page in pages] == [[4], [1, 2, 3]]
+
+
+def test_split_pages_show_the_same_messages_as_one_page(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 크기로 나눠 읽어도 가림 · 대체 표시 · '최신 아님' 사유가 한 번에 읽을 때와 같다(12-3)
+    _, sent = _send(client, user_id)
+    conversation_id = uuid.UUID(sent["conversation_id"])
+    pitch_id = str(_pitch(db_session, user_id))
+    gone_take = str(uuid.uuid4())
+    _answer(db_session, conversation_id, user_id, 2, assessments=[_judgement("a1")])
+    _answer(db_session, conversation_id, user_id, 3, assessments=[_judgement("a2")])
+    _answer(
+        db_session,
+        conversation_id,
+        user_id,
+        4,
+        assessments=[_judgement("a3", "a1")],
+        source_pitch_ids=[pitch_id],
+        basis={"conversation_goal_version": 99},
+    )
+    # 가린 답의 대체는 잇지 않는다
+    _answer(
+        db_session,
+        conversation_id,
+        user_id,
+        5,
+        assessments=[_judgement("a4", "a2")],
+        source_take_ids=[gone_take],
+    )
+    _answer(db_session, conversation_id, user_id, 6, assessments=[_judgement("a5", "a3")])
+
+    whole = _read_to_the_start(client, user_id, conversation_id)
+    assert len(whole) == 1
+    monkeypatch.setattr(conversation_service, "RESPONSE_MAX_BYTES", 10)
+    split = _read_to_the_start(client, user_id, conversation_id)
+
+    assert len(split) == 6
+    messages = _oldest_first(split)
+    assert messages == whole[0].json()["messages"]
+    # 비교한 값이 실제로 그 경우를 담고 있는지 본다
+    by_seq = {message["seq"]: message for message in messages}
+    assert by_seq[2]["assessments"][0]["superseded_by"] == "a3"
+    assert by_seq[3]["assessments"][0]["superseded_by"] is None
+    assert by_seq[4]["assessments"][0]["superseded_by"] == "a5"
+    assert by_seq[4]["stale_reasons"] == ["GOAL_CHANGED"]
+    assert (by_seq[5]["masked"], by_seq[5]["stale_reasons"]) == (True, ["SOURCE_DELETED"])
 
 
 @pytest.mark.parametrize("enabled", [True, False])
