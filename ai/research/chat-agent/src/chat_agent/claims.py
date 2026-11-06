@@ -117,6 +117,13 @@ ISSUE_LABEL: dict[str, str] = {
 }
 #: 같은 지표의 반대 방향 문제 (6-3 ISSUE '반대 방향 문제만 있음')
 _OPPOSITE_ISSUE = {"PACE_FAST": "PACE_SLOW", "PACE_SLOW": "PACE_FAST"}
+#: 문제 낱말 뒤에서 그 말을 부정하는 표현("빠르지 않았어" · "빠르진 않아" · "빨랐던 건 아니죠").
+#: 문제 주장(ISSUE)의 부정은 극성이 아니라 이 말로 가린다: 모델은 "느렸지?"처럼 문제를 말한 부정적 평가에도 NEGATIVE 를 붙인다
+_NEG_AFTER = re.compile(r"않|지\s*못|진\s*못|아니|아닌")
+#: 문제 낱말 바로 앞의 부정("안 빨랐어" · "안빨랐어")
+_NEG_BEFORE = re.compile(r"(?:^|\s)안\s?$")
+#: 절을 끊는 말: 부정이 이 말 너머의 다른 절에 걸리지 않게 한다("안정적이지 않고 빨랐어"의 '않'은 '빨랐'을 부정하지 않음)
+_NEG_CLAUSE_BREAK = re.compile(r"[,.!?]|(?:지만|는데|은데|고)\s")
 #: 차원만 말하고 지표를 말하지 않은 값 · 비교 주장에서 쓰는 대표 지표
 PRIMARY_METRIC: dict[str, str] = {
     "audience_gaze": "audience_ratio",
@@ -592,6 +599,25 @@ def _resolve_targets(
     return [_Target(snap.summary.take_id, snap.summary.take_number, snap)]
 
 
+def _metric_key(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft:
+    """초안의 지표를 도구 결과의 표시 이름(label, 예 '말 속도')이나 문장용 이름으로 적었으면 기록의 지표 키로 바꾼다.
+
+    이름 사전(`METRIC_LABEL` · `cfg.metric_names`)에 글자 그대로 있는 이름만 바꾼다. 모르는 이름은 그대로 두어
+    `UNKNOWN_METRIC`으로 걸린다(6-3 '대상을 기록의 이름으로 정하지 못하면 UNVERIFIABLE').
+    """
+    m = draft.subject.metric
+    if m is None or m in cfg.direction or m in cfg.metric_units:
+        return draft
+    name = m.strip()
+    found = {k for k, label in METRIC_LABEL.items() if label == name}
+    if name in cfg.metric_names:
+        found.add(cfg.metric_names[name])
+    if len(found) != 1:
+        return draft  # 모르는 이름 · 여러 지표를 가리키는 이름은 그대로(확인 불가)
+    key = next(iter(found))
+    return draft.model_copy(update={"subject": draft.subject.model_copy(update={"metric": key})})
+
+
 def _resolve_subject(
     draft: AssessmentDraft, cfg: ChatAgentConfig
 ) -> tuple[str | None, str | None, str | None]:
@@ -736,7 +762,7 @@ def _one_issue(d: AssessmentDraft, t: _Target, dim: str, ctx: _Ctx) -> _One:
     if pr.state != "OK":
         return _unv(pr.reason or pr.state)
     present = any(c in pr.issues for c in claimed)
-    if d.polarity == "NEGATIVE":
+    if issue_negated(d.quote, claimed, ctx.cfg):
         verdict: Verdict = "CONTRADICTED" if present else "SUPPORTED"
     else:
         verdict = "SUPPORTED" if present else "CONTRADICTED"
@@ -906,12 +932,17 @@ def _topic_tokens(quote: str) -> set[str]:
 
 
 def _knowledge_ok(
-    d: AssessmentDraft, registry: EvidenceRegistry, guide_texts: Mapping[str, str] | None
+    d: AssessmentDraft,
+    registry: EvidenceRegistry,
+    guide_texts: Mapping[str, str] | None,
+    cfg: ChatAgentConfig | None = None,
 ) -> tuple[bool, str | None]:
     """발표법 주장을 `SUPPORTED` · `CONTRADICTED`로 둘 수 있는가(6-3, L6-12).
 
     인용한 자료마다 ① 이번 실행에서 읽은 것이고 ② 원문이 주어져 있으며 ③ 원문이 주장의 주제 낱말을 하나 이상
     공유해야 한다. 관련 없는 인용으로는 동의하지 않는다(정밀한 인용 원문 일치는 checks.py).
+    주제 낱말은 주장의 낱말 앞 두 글자와, 주장이 가리킨 차원의 측정 항목 낱말(예: 말 속도 차원이면 '속도')이다.
+    "빠를수록"처럼 활용으로 앞 두 글자가 달라지는 말도 같은 차원의 자료와 이을 수 있게 한다.
     """
     if not d.source_ids:
         return False, "NO_SOURCE"
@@ -921,6 +952,8 @@ def _knowledge_ok(
     if not all(sid in texts for sid in d.source_ids):
         return False, "NO_GUIDE_TEXT"
     topics = _topic_tokens(d.quote)
+    if cfg is not None and d.subject.dimension in cfg.dimensions:
+        topics |= {w for w, dim in cfg.measure_words.items() if dim == d.subject.dimension}
     if not any(tok in texts[sid] for sid in d.source_ids for tok in topics):
         return False, "IRRELEVANT_SOURCE"
     return True, None
@@ -939,7 +972,7 @@ def _model_verdict(
     phrase = ""
     evidence_ids: list[str] = []
     if d.type == "KNOWLEDGE":
-        ok, why = _knowledge_ok(d, registry, guide_texts)
+        ok, why = _knowledge_ok(d, registry, guide_texts, cfg)
         if verdict in ("SUPPORTED", "CONTRADICTED") and not ok:
             verdict, reason = "UNVERIFIABLE", why
         if ok:
@@ -1073,6 +1106,7 @@ def code_verdict(
         ``verdict="CONTRADICTED"``, ``evidence_phrase="Take 5 청중 시선 31%, 우선 개선"``.
     """
     ctx = _Ctx(pitch_id, registry, version_of, cfg, takes, script_used)
+    draft = _metric_key(draft, cfg)
     if draft.type == "PREFERENCE":
         return _preference_verdict(draft, ctx, focus_take_id)
     if draft.type != "MEASURED":
@@ -1219,6 +1253,26 @@ def claimed_issues(quote: str, dimension: str | None, cfg: ChatAgentConfig) -> l
     )
 
 
+def issue_negated(quote: str, issues: Sequence[str], cfg: ChatAgentConfig) -> bool:
+    """문제 주장이 그 문제를 부정하는가("빠르지 않았어" · "안 빨랐어"). 문제 낱말 자리를 기준으로 본다.
+
+    문제 낱말 바로 앞의 '안', 또는 문제 낱말 뒤 같은 절 안의 부정 표현(않 · 못 · 아니)만 센다. 다른 절의 부정
+    ("안정적이지 않고 빨랐어")은 세지 않는다.
+    """
+    words = sorted({w for i in issues for w in cfg.issue_words.get(i, ())}, key=len, reverse=True)
+    for w in words:
+        at = quote.find(w)
+        while at != -1:
+            if _NEG_BEFORE.search(quote[:at]):
+                return True
+            rest = quote[at + len(w) :]
+            cut = _NEG_CLAUSE_BREAK.search(rest)
+            if _NEG_AFTER.search(rest[: cut.start()] if cut else rest):
+                return True
+            at = quote.find(w, at + 1)
+    return False
+
+
 def _claim_core(
     type_: str,
     subject: Subject,
@@ -1234,9 +1288,11 @@ def _claim_core(
         # 문제 주장은 어느 방향의 문제인지(PACE_FAST ↔ PACE_SLOW)도 '대상'이다: 반대 방향이 같은 키가 되면
         # 앞 판정을 압력으로 유지해 반대 주장을 맞다고 하게 된다
         issues = claimed_issues(quote, subject.dimension, cfg) if claim_op == "ISSUE" else []
+        # 문제 주장의 부정("빠르지 않았어")은 극성이 아니라 말로 가리므로 키에도 따로 넣는다
+        negated = issue_negated(quote, issues, cfg) if issues else None
         return [
             "M", subject.dimension, subject.metric, subject.slide_number, claim_op, polarity,
-            subject.relation, _normalized_value(value, value_unit, subject, cfg), issues,
+            subject.relation, _normalized_value(value, value_unit, subject, cfg), issues, negated,
         ]  # fmt: skip
     return [type_, subject.dimension, subject.metric, subject.slide_number, normalize_quote(quote)]
 
@@ -1302,7 +1358,7 @@ def claim_link_key(
 class AssessmentOutcome:
     """확정한 판단 하나와 그에 딸린 문장 · 진단 값.
 
-    - `sentence`: 코드 템플릿으로 그린 첫 문장(`REQUEST`가 `SUPPORTED`면 빈 문자열).
+    - `sentence`: 코드 템플릿으로 그린 첫 문장(`REQUEST`가 `SUPPORTED` · `UNVERIFIABLE`이면 빈 문자열).
     - `extra_sentences`: 판정 문장 뒤에 붙일 사실 문장(대본 주장의 화면 대본 기록 · 대본 허용 없음).
     - `pressure`: 같은 주장 · 같은 근거를 되풀이해 앞 판정을 유지했는가(`verdict_kept`와 같다).
     - `prior_assessment_id` / `basis_changed`: 같은 `claim_key`의 가장 최근 앞 판단과 그 근거 지문이 바뀌었는지(진단용).
@@ -1465,7 +1521,9 @@ def finalize(
                 if state_facts
                 else templates.UNVERIFIABLE.format(quote=d.quote)
             )
-        elif d.type == "REQUEST" and verdict == "SUPPORTED":
+        elif d.type == "REQUEST" and (verdict in ("SUPPORTED", "UNVERIFIABLE") or not phrase):
+            # 요청 · 정보 질문은 참 · 거짓을 가릴 사실 주장이 아니다: '이 기록으로는 확인할 수 없어요'를 붙이지 않는다.
+            # 요청에 응할 수 없으면 답 · 행동 결과가 그 까닭을 말한다(근거가 있고 기록과 어긋난 요청만 템플릿 문장을 쓴다)
             sentence = ""
         else:
             sentence = templates.assessment_sentence(

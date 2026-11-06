@@ -629,7 +629,7 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 - 사용자가 요청하지 않았는데 연습을 권할 때는 화면을 옮기지 않고 [연습 준비로] 버튼 카드(`START_PRACTICE` `auto:false`)만 낸다.
 - **횟수**: 한 실행의 행동은 최대 5개, 그중 저장(`SAVE_GOAL` · `SET_*`)은 1개다. `REASSESS`는 한 턴 1번 · 사용자당 하루 30번이다(반복 · 주입 남용을 막는 안전장치). 누적 횟수는 서명 상태로 세고, 상한을 넘는 행동은 버린다.
 - 사용자 말이 없는 턴(`TAKE_REVIEWED`)에서는 저장 · 이동 행동을 내지 않는다.
-- `REASSESS`는 `AUTO`라 허용 근거 검사를 하지 않는다. 한도 · 소유권 · 허용 칸만 본다(12-3).
+- `REASSESS`는 `AUTO`라 허용 근거 검사를 하지 않는다. 한도 · 소유권 · 허용 칸만 본다(12-3). 다만 사용자가 Take를 번호 · ID로 집어 말했는데 그 Take가 아니면(찾지 못한 Take를 지금 화면의 Take로 바꾸는 경우 등) AI가 행동을 내지 않는다(`NOT_NAMED_TAKE`).
 - `ASK` 행동에는 `args_hash`(확인 카드에 보인 내용의 해시)를 붙이고, 승인한 내용과 실행할 내용이 다르면 BE가 실행하지 않는다.
 - 권한(이 사용자의 피치 · Take인가)은 등급과 상관없이 BE가 매번 확인한다.
 
@@ -677,7 +677,7 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 | `OVERALL` 부정(예: "시선이 별로였어") | `PRIORITY` → `SUPPORTED`, `IMPROVED` · `STABLE` → `PARTLY`, `STRENGTH` → `CONTRADICTED`, `NOT_EVALUABLE` · 리뷰 없음 → `UNVERIFIABLE` | |
 | 장 · 구간 긍정(예: "3장은 잘했어") | 그 장에 그 차원 문제 있음 → `CONTRADICTED`, 측정됐고 문제 없음 → `PARTLY`(문제로 잡히지 않았다는 것만 확인), 측정 안 됨 → `UNVERIFIABLE` | |
 | 장 · 구간 부정(예: "3장 시선이 약했어") | 문제 있음 → `SUPPORTED`, 측정됐고 문제 없음 → `CONTRADICTED` | |
-| `ISSUE`(예: "속도가 너무 빨랐어") | 그 방향의 문제(`PACE_FAST`)가 Take 결과 `problem_segments[].issue_type`에 있음. 리뷰 개선점은 `area`만 있어 방향을 가르지 못하므로 근거로 쓰지 않는다 | `SUPPORTED` |
+| `ISSUE`(예: "속도가 너무 빨랐어") | 그 방향의 문제(`PACE_FAST`)가 Take 결과 `problem_segments[].issue_type`에 있음. 리뷰 개선점은 `area`만 있어 방향을 가르지 못하므로 근거로 쓰지 않는다. 문제를 부정한 주장("빠르지 않았어" · "안 빨랐어")은 극성이 아니라 말 속 부정 표현으로 가려 이 줄과 아래 줄의 판정을 맞바꾼다(문제를 말한 부정적 평가에도 모델이 `NEGATIVE`를 붙이기 때문) | `SUPPORTED` |
 | | 반대 방향 문제(`PACE_SLOW`)만 있음 · 충분히 측정됐고 그 차원에 문제 없음 | `CONTRADICTED` |
 | `VALUE`(예: "시선이 31%였어") | `value`를 `value_unit`으로 지표의 기본 단위로 바꾼다(31% → 0.31, 단위를 정하지 못하면 `UNVERIFIABLE`). 같은 대상의 측정값을 화면 표시 자리수로 반올림해 비교하고, 긍정은 같음 → `SUPPORTED` · 다름 → `CONTRADICTED`, 부정(`polarity:"NEGATIVE"`, 예: "31%가 아니었어")은 다름 → `SUPPORTED` · 같음 → `CONTRADICTED`(실제 값을 근거로) | |
 | `CHANGE`(예: "지난번보다 늘었어") | `compare_takes` 결과 방향이 주장과 같음 → `SUPPORTED`, 같음 · 반대 → `CONTRADICTED`, 비교할 수 없음 → `UNVERIFIABLE` | |
@@ -687,7 +687,8 @@ HTTP 409 {"error": {"code": "AGENT_STATE_INVALID", "message": "…"}}        ←
 - **대본 주장**: 기록으로 확인되는 것은 화면 대본 표시뿐이다. 어느 경우든 사실 문장 "기록에는 화면 대본이 {전체로 켜져 · 핵심어로 켜져 · 꺼져} 있었어요"를 붙이고, 실제로 봤는지는 기록으로 알 수 없다고 말한다(사용자가 틀렸다고 단정하지도, 맞다고 하지도 않는다). 평가 기준의 `script_used`가 false · null이면 "공식 평가에는 대본 사용 허용이 없어요"를 함께 말한 뒤, 원하면 그 조건의 참고 결과를 보인다(6-6).
 - 차원 이름 · 문제 이름 · 방향 대응표(예: `PACE_FAST`는 `pacing_rhythm` 차원의 "빠름")와 측정 항목 낱말 사전은 `chat_agent/config.py`에 두고, 리뷰의 차원 표(`review-agent.md` 5-3)와 같은지 계약 시험으로 확인한다.
 - **다른 사람 평가 인용**(`speaker:"OTHER"`): 화자와 평가 내용을 나눈다. 발언이 있었는지는 확인할 수 없다고 두고, 평가 내용만 위 표로 판정하며 원래 화자를 그대로 쓴다. 템플릿 "{화자}의 말씀은 확인할 수 없지만, 기록에서는 {근거}예요". 발언 자체를 부정하면 전문가가 아니라 고집이 되기 때문이다.
-- `PREFERENCE`(목표 · 기준 의견) · `KNOWLEDGE`(발표법 주장) · `REQUEST`(행동 요청)는 모델이 판정한다.
+- `PREFERENCE`(목표 · 기준 의견) · `KNOWLEDGE`(발표법 주장) · `REQUEST`(행동 요청 · 정보 질문)는 모델이 판정한다.
+  - `REQUEST`는 참 · 거짓을 가릴 사실 주장이 아니다. "3장 어땠어?" · "몇 %였어?"처럼 내세운 값 · 평가 없이 묻는 정보 질문도 `REQUEST`다("좋아졌지?"처럼 사실 · 평가를 내세운 질문은 `MEASURED`). 판단은 남기되 첫 문장 템플릿은 근거가 있고 기록과 어긋날 때(`PARTLY` · `CONTRADICTED`)만 그리고, `SUPPORTED` · `UNVERIFIABLE`이면 그리지 않는다. 요청에 응할 수 없으면 답 · 행동 결과가 까닭을 말한다.
   - `PREFERENCE`는 참 · 거짓을 판정하지 않는다. 판정 칸은 기록 · 평가 기준과 어울리는지를 뜻한다(어긋남 `PARTLY`, 어울림 `SUPPORTED`, 근거 없으면 둘 다 못 냄). 측정 주장용 템플릿을 쓰지 않고 선호 전용 "말씀하신 방식은 존중해요. 다만 이 피치의 기록에서는 {근거}예요"를 쓴다.
   - `KNOWLEDGE`는 인용한 자료 원문이 실제로 뒷받침하면 `SUPPORTED`, 반대하면 `CONTRADICTED`이고, 둘 다 `source_ids`와 인용 원문 일치 검사가 필요하다. 관련 없는 인용으로는 동의하지 않는다. 검색 결과가 없거나 관련 자료가 없으면 `UNVERIFIABLE`(반박하지 않는다).
   - `REQUEST`의 목표 저장은 아래 규칙을 따른다.
@@ -1339,7 +1340,7 @@ BE가 메시지를 접수해 `/agent/turn`을 부르고, 행동을 실행하고,
 | "목표를 저장했어요." | 성공한 `SAVE_GOAL`의 `ACTION_RESULT` 문장 | AI 코드 템플릿(6-9) |
 | "Take {번호} 기록을 가져왔어요." | 성공한 `FETCH_TAKE`의 `ACTION_RESULT` 문장 | AI 코드 템플릿(6-9) |
 | "참고 결과를 만들었어요. 공식 리뷰는 그대로예요." | 성공한 `REASSESS`의 `ACTION_RESULT` 문장 | AI 코드 템플릿(6-9) |
-| "말씀하신 '{quote}'는 기록과 맞아요: {근거}." | 기록으로 판정한 `SUPPORTED` 판단(`MEASURED` · `REQUEST`)의 문장을 모델이 쓰지 않았을 때(다시 평가 전 판단 문장 등) | AI 코드 템플릿(6-3) |
+| "말씀하신 '{quote}'는 기록과 맞아요: {근거}." | 기록으로 판정한 `SUPPORTED` 측정 주장(`MEASURED`)의 문장을 모델이 쓰지 않았을 때(다시 평가 전 판단 문장 등). 요청 · 정보 질문(`REQUEST`)에는 쓰지 않는다(6-3) | AI 코드 템플릿(6-3) |
 | "말씀하신 '{quote}'는 발표법 자료와 맞아요: {근거}." | 자료로 뒷받침된 `KNOWLEDGE` 판단의 문장을 모델이 쓰지 않았을 때 | AI 코드 템플릿(6-3) |
 | "말씀하신 방식은 이 피치의 기록과도 어울려요: {근거}." | `PREFERENCE` 판단이 기록 · 평가 기준과 어울릴 때(`SUPPORTED`) | AI 코드 템플릿(6-3) |
 | "실제로 대본을 봤는지는 기록으로 확인할 수 없어요." | 대본 사용 주장에 사실 문장("기록에는 화면 대본이 …")과 함께(판정과 상관없이) | AI 코드 템플릿(6-3) |

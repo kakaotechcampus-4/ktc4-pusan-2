@@ -43,8 +43,8 @@ DESCRIPTIONS = {
     "get_screen": "대화창을 연 화면의 상태(입력 중인 값과 저장된 값)를 읽는다. 피치 만들기 · 수정 · 장치 점검 화면에서만 값이 있다.",
     "list_pitches": "내 피치 목록에서 이름(query)으로 찾는다. query 가 null 이면 전체 목록 요약.",
     "list_takes": "지금 범위 피치의 최근 Take 요약을 조건으로 거른다(대본 버전 · 끝까지 한 발표 · 모드).",
-    "get_take_report": "Take 하나의 결과에서 필요한 부분만 읽는다. section: dimensions(차원 상태 · 점수) · improvements(강점 · 개선점) · problem_segments(문제 구간) · slides(장별 지표, slide_number 로 한 장만) · mission_results(미션 결과). 기본 자료에 없으면 NOT_LOADED → fetch_take 행동을 쓴다.",
-    "compare_takes": "같은 피치의 두 Take 를 같은 지표로 비교한다. 비교할 수 없으면 이유만 돌려준다. 결론(좋아짐 · 나빠짐)은 결과의 outcome 을 쓴다.",
+    "get_take_report": "Take 하나의 결과에서 필요한 부분만 읽는다. section: slides(지표값: slide_number 가 null 이면 Take 전체 값과 장별 요약, 있으면 그 장의 값) · dimensions(차원 상태 · 점수) · improvements(강점 · 개선점) · problem_segments(문제 구간: 어디서 · 무슨 문제) · mission_results(미션 결과). 질문에 답할 section 만 읽는다. 기본 자료에 없으면 NOT_LOADED → fetch_take 행동을 쓴다.",
+    "compare_takes": "같은 피치의 두 Take 를 같은 지표로 비교한다. metric 은 지표 키(audience_ratio · script_ratio · cpm · filler_per_min · duration_ms 등). 비교할 수 없으면 이유(reason)만 돌려준다. 결론(좋아짐 · 나빠짐)은 결과의 outcome 을 쓴다.",
     "get_goals": "공식 미션 · 평가 기준 목표 · 대화 목표를 출처와 함께 읽는다.",
     "search_guides": "발표법 · 화면별 사용법 자료에서 찾는다(최대 5개). 자료에 없는 발표법은 답하지 않는다.",
 }

@@ -280,6 +280,28 @@ class Proposal:
     tool_message: dict[str, Any] = field(default_factory=dict)
 
 
+#: 사용자 말 속 Take 지칭: 'Take 5' · '테이크 5' 번호와 ID 모양의 낱말('p9-t1')
+_NAMED_TAKE_NUM = re.compile(r"(?:take|테이크)\s*(\d+)", re.IGNORECASE)
+_NAMED_ID = re.compile(
+    r"(?<![A-Za-z0-9-])(?=[A-Za-z0-9-]*[A-Za-z])[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+(?![A-Za-z0-9-])"
+)
+
+
+def named_take_ids(message: str | None, ctx: RunCtx) -> set[str] | None:
+    """사용자 말이 Take 를 번호 · ID 로 집어 말했으면 그 Take ID 들(찾지 못한 것은 빠진다), 말하지 않았으면 None.
+
+    예: "Take 4 다시 평가해 줘" → {Take 4의 ID}, "p9-t1 Take를 다시 평가해 줘"(범위에 없는 ID) → 빈 집합,
+    "대본 보고 한 걸로 다시 평가해 줘" → None(지금 화면의 Take 를 쓸 수 있다).
+    """
+    if not message:
+        return None
+    nums = {int(n) for n in _NAMED_TAKE_NUM.findall(message)}
+    ids = set(_NAMED_ID.findall(message))
+    if not nums and not ids:
+        return None
+    return {tid for tid, summ in ctx.summaries.items() if summ.take_number in nums or tid in ids}
+
+
 def args_hash(args: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_json(args).encode("utf-8")).hexdigest()[:16]
 
@@ -365,6 +387,17 @@ def propose(
                 result="TOOL_ERROR",
                 reason_code="NOT_IN_SCOPE",
                 tool_message=_err("NOT_FOUND", "범위 피치의 Take 가 아니다"),
+            )
+        named = named_take_ids(original_message, ctx)
+        if named is not None and a.take_id not in named:
+            # 사용자가 말한 Take 를 찾지 못했는데 다른 Take(예: 지금 화면의 Take)로 바꿔 다시 평가하지 않는다
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="NOT_NAMED_TAKE",
+                tool_message=_err(
+                    "NOT_FOUND",
+                    "사용자가 말한 Take 가 아니다. 그 Take 를 찾지 못했으면 다시 평가하지 않는다",
+                ),
             )
         change = (
             {"script_used": a.change.script_used}

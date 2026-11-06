@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..claims import format_metric_value
+from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value
 from ..goals import compare_takes, record_read_value
 from ..schemas import PlanStep, TakeSnapshot
 from ..values import read_dimension_state, read_metric
@@ -183,7 +183,24 @@ def _get_screen(ctx: RunCtx, _a: NoArgs) -> ToolResult:
             draft[k] = {"value": v, "evidence_id": ev.evidence_id, "saved": ev.saved}
         data["draft"] = draft
         data["changed"] = list(sc.changed)
-        saved = sc.saved.model_dump() if sc.saved is not None else None
+        saved = None
+        if sc.saved is not None:
+            # 저장된 값도 근거 id 를 붙여 돌려준다("저장된 값은 4분"을 근거와 이을 수 있게, 6-8 입력 중 값 · 저장 값 구분)
+            saved = {}
+            for k, v in sc.saved.model_dump().items():
+                if v is None:
+                    saved[k] = None
+                    continue
+                ev = ctx.registry.screen(
+                    pitch_id=pid,
+                    snapshot_id=sc.snapshot_id,
+                    path=f"screen.saved.{k}",
+                    value=v,
+                    saved=True,
+                    unit="s" if k == "time_limit_sec" else None,
+                )
+                eids.append(ev.evidence_id)
+                saved[k] = {"value": v, "evidence_id": ev.evidence_id}
     else:
         for k in ("camera", "mic", "gaze_setup", "gaze_reason"):
             v = getattr(sc, k)
@@ -345,6 +362,9 @@ def _num(ctx: RunCtx, snap: TakeSnapshot, rv: Any) -> dict[str, Any]:
         ctx.registry, ctx.scope_pitch_id or "", snap, rv, ctx.cfg, ctx.version_of
     )
     item: dict[str, Any] = {"metric": rv.metric, "value": rv.value, "evidence_id": eid}
+    if rv.metric in METRIC_LABEL:
+        # 답 문장에는 지표 키(audience_ratio) 대신 이 이름을 쓴다(답 검사의 지표 이름 사전에 있는 이름)
+        item["label"] = METRIC_LABEL[rv.metric]
     if isinstance(rv.value, (int, float)) and rv.metric in ctx.cfg.metric_units:
         item["display"] = format_metric_value(rv.metric, rv.value, ctx.cfg)
     return item
@@ -446,6 +466,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                             row["values"].append(
                                 {
                                     "metric": metric,
+                                    "label": METRIC_LABEL.get(metric, metric),
                                     "value": v,
                                     "display": format_metric_value(metric, v, ctx.cfg)
                                     if metric in ctx.cfg.metric_units
@@ -477,6 +498,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 items.append(
                     {
                         "issue_type": seg.get("issue_type"),
+                        "label": ISSUE_LABEL.get(str(seg.get("issue_type")), seg.get("issue_type")),
                         "area": seg.get("area"),
                         "slide_number": seg.get("slide_number"),
                         "start_ms": seg.get("start_ms"),
