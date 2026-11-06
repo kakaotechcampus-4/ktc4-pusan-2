@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from pitch_coach_backend.core.limits import INT4_MAX
 from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
@@ -57,7 +58,7 @@ class TakeSurveyCreate(BaseModel):
     usefulness_rating: Rating
     # 생략 · null · 공백만이면 남기지 않은 것으로 본다
     comment: str | None = None
-    question_version: Annotated[int, Field(strict=True, ge=1)] = 1
+    question_version: Annotated[int, Field(strict=True, ge=1, le=INT4_MAX)] = 1
 
     _normalize = field_validator("comment")(normalize_suggestion)
 
