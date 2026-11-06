@@ -174,7 +174,7 @@ ai/research/volume-analysis/
 | `LONG_SILENCE` | `PAUSE` | `silence_ms`가 긴 침묵 기준 초과 | `silence_ms` (길수록) | true |
 
 - `VOLUME`은 오디오가 멈췄거나 기준 음량이 없거나 말한 1초가 부족하면 `UNKNOWN`이고 문제를 내지 않는다. `PAUSE`는 오디오가 흐르면 기준 음량 · 말한 1초 수와 관계없이 판정하고, 오디오가 멈추면 `UNKNOWN`이다. 판정 시각(`t_ms`)에 끝나는 1초 기록이 없으면(기록이 끊김) 두 영역 모두 `UNKNOWN`이다. 마지막으로 받은 기록으로 `LOW` · `SILENT`를 이어 가지 않는다. 측정 불가 문제 이름은 없다(`architecture.md` 6-3).
-- `severity`는 공통 규칙을 따른다. `LONG_SILENCE`의 `persistence_sec`은 `silence_ms ÷ 1000`이다.
+- `severity`는 공통 규칙을 따른다. `LONG_SILENCE`의 `persistence_sec`은 `silence_ms ÷ 1000`이다. `VOLUME_LOW`의 `persistence_sec`은 마지막 1초부터 거꾸로, 그 1초에서 끝나는 짧은 창의 `voice_diff_db`가 작음 기준 미만인 1초가 이어진 시간이다. 앞 기록의 끝과 다음 기록의 시작이 이어지지 않거나(비거나 겹침) 잴 수 없는 1초를 만나면 거기서 멈춘다.
 - 코치는 `VOLUME_LOW`에 `SPEAK_LOUDER` → `SPEAK_LOUDER`(뒷자리 기준) → 그만둠, `LONG_SILENCE`에 `RESUME`(그만두지 않음)을 쓰고, 효과는 `voice_diff_db` · 다시 말함으로 잰다(`coach-agent.md` 6-1).
 
 ## 5-5. 예시
@@ -191,14 +191,14 @@ ai/research/volume-analysis/
 ```json
 [
   {
-    "evaluator": "volume", "area": "VOLUME", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.1+<config 해시>",
+    "evaluator": "volume", "area": "VOLUME", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.2+<config 해시>",
     "measurable": true, "state": "NORMAL",
     "metrics": {"level_db": -31.0, "voice_diff_db": -1.5},
     "tally": [{"t_ms": 40000, "values": {"voiced_ms": 820, "voiced_energy": 0.622, "low_ms": 0, "level_voiced_ms": 820, "base_db_ms": -24190.0, "audio_live_ms": 1000, "total_ms": 1000}}],
     "issues": []
   },
   {
-    "evaluator": "volume", "area": "PAUSE", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.1+<config 해시>",
+    "evaluator": "volume", "area": "PAUSE", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.2+<config 해시>",
     "measurable": true, "state": "NORMAL",
     "metrics": {"silence_ms": 0},
     "tally": [{"t_ms": 40000, "values": {"long_silence_count": 0, "audio_live_ms": 1000, "total_ms": 1000}}],
@@ -224,7 +224,7 @@ ai/research/volume-analysis/
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. `judge` 요청 하나가 도는 과정
 1. **기록 정리**: 같은 `t_ms`가 두 번 오면 먼저 온 것만 쓴다. `t_ms + duration_ms`가 판정 시각 이하인 기록만 본다.
-2. **`VOLUME`**: 판정 시각 앞 짧은 창(평활 창) 안의 말한 1초들로 에너지 Leq를 내 `level_db`로, 기준 음량이 있으면 `voice_diff_db`를 낸다. 마지막 1초에 오디오가 흐르지 않거나, 기준 음량이 없거나, 말한 1초가 기준 개수 미만이면 잴 수 없다. `voice_diff_db`가 작음 기준 미만이면 `LOW`와 `VOLUME_LOW`다.
+2. **`VOLUME`**: 판정 시각 앞 짧은 창(평활 창) 안의 말한 1초들로 에너지 Leq를 내 `level_db`로, 기준 음량이 있으면 `voice_diff_db`를 낸다. 마지막 1초에 오디오가 흐르지 않거나, 기준 음량이 없거나, 말한 1초가 기준 개수 미만이면 잴 수 없다. `level_db`는 소수 둘째 자리로 반올림하고, `voice_diff_db`는 반올림한 `level_db`에서 기준 음량을 뺀 뒤 다시 둘째 자리로 반올림한다. 작음 기준과는 이 반올림한 `voice_diff_db`로 비교한다. `voice_diff_db`가 작음 기준 미만이면 `LOW`와 `VOLUME_LOW`다.
 3. **`PAUSE`**: 마지막 기록의 `silence_ms`를 오디오가 다시 흐른 뒤 시간으로 자른 값을 `silence_ms`로 낸다. 오디오가 흐르지 않으면 잴 수 없다. 긴 침묵 기준을 넘으면 `SILENT`와 `LONG_SILENCE`다.
 4. **새 몫 세기 (`tally`)**: `since_ms` 이상의 새 1초마다 5-3 표의 값을 그 1초의 `t_ms`로 낸다. `low_ms`는 그 1초에서 끝나는 짧은 창으로 잰다(그 1초 시점까지의 기록만). 한 번 센 몫은 바꾸지 않는다.
 5. **커서**: `counted_until_ms = max(t_ms, since_ms)`로 돌려주어 커서를 되돌리지 않는다. 같은 입력이면 같은 결과다.
@@ -351,7 +351,8 @@ sequenceDiagram
 - **`voice_diff_db`** (판정 결과): `level_db − base_level_db`.
 - **`level_db`** (Take · 장): `10·log10(voiced_energy ÷ voiced_ms)`.
 - **`voice_diff_db`** (Take · 장): `level_db − base_db_ms ÷ level_voiced_ms`.
-- **`low_ratio`**: 작다고 판정된 1초의 발화 시간 ÷ 전체 발화 시간.
+- 위 `level_db` · `voice_diff_db`는 소수 둘째 자리로 반올림한다. `voice_diff_db`는 반올림한 `level_db`로 계산한 뒤 다시 반올림한다(6-1 2번).
+- **`low_ratio`**: 작다고 판정된 1초의 발화 시간 ÷ 전체 발화 시간. 소수 넷째 자리로 반올림한다(`measured_ratio`도 같다).
 - **`long_silence_count`**: 오디오가 흐르는 동안 연속 무음이 긴 침묵 기준을 넘은 횟수(한 침묵은 한 번).
 - **`measured_ratio`**: 5-3 표.
 - **침묵 감지 지연**: 정답 침묵이 긴 침묵 기준 길이에 닿은 시각부터 `LONG_SILENCE`가 처음 나온 판정 시각까지의 차이 평균.
@@ -372,6 +373,6 @@ sequenceDiagram
 | 진입 함수 | `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline` (자기 HTTP 엔드포인트 없음) | 4-2 |
 | 영역 · 상태 · 문제 | `VOLUME`(`LOW` · `NORMAL` · `UNKNOWN`, `VOLUME_LOW`), `PAUSE`(`SILENT` · `NORMAL` · `UNKNOWN`, `LONG_SILENCE`) | 5-3 · 5-4 |
 | Take 지표 | `level_db` · `voice_diff_db` · `low_ratio` · `measured_ratio` (+ 코치가 붙이는 `base_level_source`), `long_silence_count` · `measured_ratio` | 5-3 |
-| 버전 | `volume-1.1` · `criteria_version` `volume-1.1+<config 해시 12자리>` | 9절 |
+| 버전 | `volume-1.2` · `criteria_version` `volume-1.2+<config 해시 12자리>` | 9절 |
 | 저장 | 저장 요구: 12-1 · 12-2(기준 음량은 Take마다 하나, 음량 1초 기록은 Take와 시각마다 하나, Take 지표 · 리포트 소리 크기). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `calibrations.base_level_db`, `take_metric_seconds.voice`, Take 결과 `areas.VOLUME` · `PAUSE`, `take_summaries.volume` | 12-1 |
 | 의존성 | pydantic 하나, Python 3.12, 서비스 `features/volume/` (연구 폴더 `ai/research/volume-analysis/`) | 4절 · 11절 |
