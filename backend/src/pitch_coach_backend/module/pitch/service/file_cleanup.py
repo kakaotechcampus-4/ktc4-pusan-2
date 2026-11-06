@@ -15,8 +15,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix
+from pitch_coach_backend.core.database import SessionLocal, with_session
+from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix, pitch_prefix
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,6 @@ logger = logging.getLogger(__name__)
 RETRY_AFTER = timedelta(minutes=1)
 # 한 번에 다시 하는 경로 수. 남은 것은 다음 주기에 한다
 RETRY_BATCH = 100
-
-
-def pitch_prefix(pitch_id: uuid.UUID) -> str:
-    return f"pitches/{pitch_id}/"
 
 
 def reserve(db: Session, pitch_ids: list[uuid.UUID]) -> None:
@@ -50,13 +46,12 @@ def delete_files(prefix: str, session_factory: Callable[[], Session] = SessionLo
 
 def retry_pending(session_factory: Callable[[], Session] = SessionLocal) -> int:
     """남은 기록을 다시 지운다. 지운 경로 수를 돌려준다."""
-    db = session_factory()
-    try:
-        prefixes = PitchRepository(db).list_file_deletions(
+    prefixes = with_session(
+        session_factory,
+        lambda db: PitchRepository(db).list_file_deletions(
             datetime.now(UTC) - RETRY_AFTER, RETRY_BATCH
-        )
-    finally:
-        db.close()
+        ),
+    )
     return sum(delete_files(prefix, session_factory) for prefix in prefixes)
 
 

@@ -3,7 +3,8 @@
 - 누가 쓰나: turn.py. 답 초안(모델 구조화 출력)을 받아 화면에 나갈 `message`(문장 · 카드 · 자료)와 `assessments`를 만든다.
 - 처리 순서
   1. 판단 확정: 초안을 `claims.finalize()`로 코드 판정 · 키 · 근거 지문 · 첫 문장(템플릿)까지 확정한다.
-  2. 문장 만들기: 판단 문장 = 코드 첫 문장 + 모델 설명. 결론(CONCLUSION) · 행동 성공 · 확인 못 한 절 · 목표 판정 문장은 코드 템플릿이다.
+  2. 문장 만들기: 판단 문장 = 코드 첫 문장 + 모델 설명. 결론(CONCLUSION) · 행동 성공 · 확인 못 한 절 · 목표 판정 · 비교할 수 없는
+     까닭(`not_comparable_sentence`) 문장은 코드 템플릿이다.
      모델이 쓴 RECORD · GUIDE 문장은 그대로 두고 검사한다.
   3. 답 검사(`checks.check_claims` · `check_display_strings`). 걸리면 걸린 모델 문장만 한 번 고치게 하고 다시 검사, 그래도 걸리면 지운다.
   4. 남은 문장이 없으면 검증된 근거 값을 템플릿으로 그린 PARTIAL, 근거도 없으면 고정 SYSTEM 안내(6-9 '고친 뒤').
@@ -84,6 +85,66 @@ def _num_display(ctx: Any, ev: Any) -> str | None:
     if ev.metric not in ctx.cfg.metric_units:
         return None
     return clm.format_metric_value(ev.metric, ev.value, ctx.cfg)
+
+
+def obj(word: str) -> str:
+    """목적격 조사 '을/를': 마지막 한글 음절에 받침이 있으면 '을'."""
+    w = word.rstrip(" )")
+    last = w[-1] if w else ""
+    if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28:
+        return word + "을"
+    return word + "를"
+
+
+#: 비교할 수 없는 까닭 → 문장 틀(7-10). 두 Take 의 조건이 다른 까닭만 틀로, 값이 없는 등 그 밖의 까닭은 고정 문장(templates)
+_NC_PAIR = {
+    "DIFFERENT_SCRIPT_VERSION": "대본 버전이 달라",
+    "DIFFERENT_CRITERIA_VERSION": "평가 기준 버전이 달라",
+    "RULE_VERSION_CHANGED": "판정 기준 버전이 달라",
+    "MISSING_VERSION": "버전 정보가 없어",
+}
+_NC_FIXED = {
+    "NO_VALUE": templates.SystemText.METRIC_UNMEASURED,
+    "OMITTED": templates.SystemText.OMITTED,
+    "NO_DIRECTION": templates.SystemText.NO_DIRECTION,
+    "INVALID_DATA": templates.SystemText.INVALID_DATA,
+}
+
+
+def not_comparable_sentence(rec: dict[str, Any]) -> str:
+    """`compare_takes`가 비교할 수 없다고 한 까닭 문장(코드 템플릿, 7-10).
+
+    예: 'Take 4 기록은 끝까지 한 발표가 아니라 Take 5 기록과 3장 청중 시선을 비교할 수 없어요.'
+    숫자 바로 뒤에 조사를 붙이지 않는다(읽는 소리에 따라 은/는 · 과/와가 달라 틀리기 쉽다)."""
+    a, b = rec["previous"], rec["current"]
+    where = f"{rec['slide_number']}장 " if rec.get("slide_number") else ""
+    what = obj(where + metric_label(rec.get("metric")))
+    reason = rec.get("reason")
+    if reason == "NOT_COMPLETED_FULLY":
+        if rec.get("previous_complete") is None or rec.get("current_complete") is None:
+            # 끝까지 했는지 모르는 Take(null)는 '끝까지 하지 않았다'고 단정하지 않는다(12-3)
+            return templates.SystemText.COMPLETION_UNKNOWN.value
+        pa, pb = rec.get("previous_complete") is not True, rec.get("current_complete") is not True
+        if pa and pb:
+            return (
+                f"Take {a} · Take {b} 기록은 모두 끝까지 한 발표가 아니라 {what} 비교할 수 없어요."
+            )
+        n, other = (a, b) if pa else (b, a)
+        return (
+            f"Take {n} 기록은 끝까지 한 발표가 아니라 Take {other} 기록과 {what} 비교할 수 없어요."
+        )
+    if reason in _NC_PAIR:
+        return f"Take {a} · Take {b} 기록은 {_NC_PAIR[reason]} {what} 비교할 수 없어요."
+    fixed = _NC_FIXED.get(reason or "")
+    return fixed.value if fixed is not None else templates.SystemText.NOT_COMPARABLE.value
+
+
+def value_display(ctx: Any, ev: Any) -> str | None:
+    """근거 값을 화면 표기로(숫자 지표는 단위 · 자리수, 글 값은 그대로)."""
+    shown = _num_display(ctx, ev)
+    if shown is not None:
+        return shown
+    return ev.value if isinstance(ev.value, str) else None
 
 
 def topic(word: str) -> str:

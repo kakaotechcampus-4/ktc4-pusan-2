@@ -16,7 +16,6 @@ Deepgram 세션마다 바뀌는 상태(base · 보낸 길이 · 메운 무음 ·
 """
 
 import asyncio
-import contextlib
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -25,6 +24,7 @@ from dataclasses import replace
 import anyio
 from websockets.exceptions import ConnectionClosed
 
+from pitch_coach_backend.core.tasks import quiet
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.dto import SttState
 from pitch_coach_backend.realtime.event_ingestion import MAX_SILENCE_FILL_MS, Accepted
@@ -63,12 +63,6 @@ _ROTATE = "rotate"  # 타임라인이 끊겨 새 세션이 필요하다
 _LOST = "lost"  # Deepgram 이 끊었다
 
 
-async def _quiet(awaitable: Awaitable[object]) -> None:
-    """닫힌 소켓을 닫을 때 나는 예외는 무시한다 (`stream/client.py` 의 `quiet` 과 같다)."""
-    with contextlib.suppress(Exception):
-        await awaitable
-
-
 def _backoff(attempt: int) -> float:
     return BACKOFF_SEC[min(attempt, len(BACKOFF_SEC)) - 1]
 
@@ -101,7 +95,6 @@ class SttLoop:
         self._on_utterance_end = on_utterance_end
         # Take 기준이다. 스트림이 새로 만들어질 때 저장된 마지막 값에서 이어 받는다
         self.stt_session_no = stt_session_no
-        self._ever_connected = False
 
         # ── Deepgram 세션마다 리셋 ──
         self._base_offset_ms: int | None = None
@@ -160,7 +153,6 @@ class SttLoop:
                 continue
 
             attempt = 0
-            self._ever_connected = True
             self.stt_session_no += 1
             self._base_offset_ms = None
             self._bytes_sent = 0
@@ -259,7 +251,7 @@ class SttLoop:
             # 다시 취소되어 연결이 그대로 남는다. 다만 shield 안이라 바깥에서는 끊을 수
             # 없으므로 상한을 둔다 — 상대가 close 에 답하지 않으면 그냥 버리고 나온다
             with anyio.CancelScope(shield=True), anyio.move_on_after(ABORT_TIMEOUT_SEC) as scope:
-                await _quiet(session.abort())
+                await quiet(session.abort())
             if scope.cancelled_caught:
                 logger.warning("Deepgram 소켓 닫기 타임아웃 take=%s. 버리고 나온다", self.take_id)
         return reason

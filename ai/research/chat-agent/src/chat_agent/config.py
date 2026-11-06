@@ -583,6 +583,39 @@ class ChatAgentConfig(_Frozen):
     #: 조사 호출이 의미 있게 끝날 최소 시간(초). 남은 시간 − 답 몫(24초)이 이보다 짧으면 조사를 보내지 않는다(전송 뒤 24초는 항상 남음)
     min_research_call_seconds: float = 3.0
     max_tool_calls: int = 12
+    #: 조사 흐름(6-1): 계획의 판단 초안이 집은 기록을 모델이 고르기 전에 코드가 먼저 읽는다. 고정 순서 기준선(13-3)은 끈다
+    research_prefetch: bool = True
+    #: 코드가 먼저 내는 요청(읽기 · 가져오기) 수의 한 실행 상한. 도구 호출 한도(`max_tool_calls`) 안에서 센다
+    research_prefetch_max: int = 4
+    #: 문제 구간(issue_type) → 그 문제가 직접 뒷받침하는 지표(6-9 대상 일치). 같은 차원이라도 다른 지표는 다른 대상이다
+    #: (빠름 문제로 '긴 침묵'을, 대본 응시로 '대본 읽기 비율'을 말하지 않는다)
+    issue_metrics: Mapping[str, tuple[str, ...]] = Field(
+        default_factory=lambda: {
+            "GAZE_LOW_EYE_CONTACT": ("audience_ratio",),
+            "GAZE_AWAY": ("audience_ratio",),
+            "GAZE_ON_SCRIPT": ("script_ratio",),
+            "PACE_FAST": ("cpm",),
+            "PACE_SLOW": ("cpm",),
+            "LONG_SILENCE": ("long_silence_count",),
+            "BEHIND_SCHEDULE": ("slide_duration_ms",),
+            "AHEAD_OF_SCHEDULE": ("slide_duration_ms",),
+            "SLIDE_OVER": ("slide_duration_ms",),
+            "TIME_OVER": ("duration_ms",),
+            "VOLUME_LOW": ("voice_diff_db", "low_ratio"),
+            "FILLER_FREQUENT": ("filler_per_min", "filler_count"),
+        }
+    )
+    #: 여러 발표를 함께 묻는 말. 이름으로 찾은 피치가 여럿이어도 이 말이 있으면 어느 발표인지 되묻지 않는다(L2-21)
+    plural_request_words: tuple[str, ...] = (
+        "발표들",
+        "피치들",
+        "각각",
+        "모두",
+        "전부",
+        "둘 다",
+        "다 알려",
+        "모든",
+    )
     max_tools_per_response: int = 8
     max_turn_calls: int = 6
     max_actions: int = 5

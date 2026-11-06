@@ -371,6 +371,10 @@ def _targets_of(ev: Evidence, cfg: ChatAgentConfig) -> set[str]:
         dim = cfg.dimension_of_metric(ev.metric)
         if dim:
             out.add(dim)
+    elif (m := _DIM_PATH.search(ev.path)) is not None and m.group(1) in cfg.dimensions:
+        # 차원 상태 근거(`.dimensions.<차원>`)의 대상은 그 차원과 그 지표들이다(대상 없는 근거로 아무 대상의 칭찬을 받치지 않게)
+        out.add(m.group(1))
+        out.update(cfg.dimensions[m.group(1)].metrics)
     return out
 
 
@@ -378,10 +382,21 @@ def _mention_in(metric: str, targets: set[str], cfg: ChatAgentConfig) -> bool:
     return metric in targets or (cfg.dimension_of_metric(metric) or "\0") in targets
 
 
+#: 차원 상태 근거의 경로 끝(`review.dimensions.audience_gaze` · `pitches[…].last_review.dimensions.audience_gaze`)
+_DIM_PATH = re.compile(r"\.dimensions\.([a-z_]+)$")
+
+
 def _metric_is(mention: str, ev: Evidence, cfg: ChatAgentConfig) -> bool:
     """문장 속 지표가 근거의 지표와 **같은 지표**인가. 근거가 차원 이름이면 그 차원 안의 지표만 인정한다.
     같은 차원의 다른 지표(대본 응시 비율 ↔ 대본 읽기 비율)는 다른 대상이다(6-9 대상 일치)."""
     if ev.metric is None:
+        # 문제 구간 근거(값이 문제 종류)는 그 문제가 속한 차원의 지표 이름과 같은 대상이다('대본 응시' 문제 ↔ 대본 응시)
+        if ev.path.endswith(".issue_type") and isinstance(ev.value, str):
+            return mention in cfg.issue_metrics.get(ev.value, ())
+        # 차원 상태 근거(경로 끝이 `.dimensions.<차원>`)는 그 차원의 지표 이름과 같은 대상이다('청중 시선이 우선 개선')
+        m = _DIM_PATH.search(ev.path)
+        if m is not None and m.group(1) in cfg.dimensions:
+            return mention in cfg.dimensions[m.group(1)].metrics
         return False
     if ev.metric == mention:
         return True
@@ -1281,10 +1296,11 @@ def _check_assessment(
                 claim_kind=c.kind,
             )
         )
-    # 템플릿 뒤 설명 속 숫자 · Take · 장 · 지표 이름은 판단의 근거와 맞아야 한다
+    # 템플릿 뒤 설명 속 숫자 · Take · 장 · 지표 이름은 판단의 근거 또는 설명이 이은 이번 턴 근거와 맞아야 한다
     ex = extract_numbers(scan)
     if ex.values or ex.takes or ex.slides or _metric_mentions(scan, cfg):
-        f.extend(_check_record_text(i, c.kind, scan, a.evidence_ids, registry, cfg))
+        ids = list(dict.fromkeys([*a.evidence_ids, *c.evidence_ids]))
+        f.extend(_check_record_text(i, c.kind, scan, ids, registry, cfg))
     return scan, f
 
 

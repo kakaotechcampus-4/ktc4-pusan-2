@@ -43,11 +43,6 @@ META = {"schema_version": "1.0", "feature_version": "script_coverage-1.0", "mode
 SLIDES = ((1, "안녕하세요."), (2, "매출은 37% 늘었습니다."), (3, "감사합니다."))
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def _rubric(slide_number: int) -> dict[str, Any]:
     return {
         "meta": {"rubric_id": f"r-{slide_number}", "slide_number": slide_number},
@@ -509,8 +504,7 @@ def _pending_parse(db_session: Session, version_id: uuid.UUID) -> ParseTicket:
     script.parse_requested_at = now
     db_session.commit()
     return ParseTicket(
-        script_version_id=version_id, requested_at=now, script_text="원문", target_ms=None
-    )
+        script_version_id=version_id, requested_at=now, script_text="원문", target_ms=None, pitch_id=uuid.uuid4())
 
 
 def test_same_reparse_reuses_stored_slides(db_session: Session, version_id: uuid.UUID) -> None:
@@ -584,8 +578,7 @@ async def test_mismatched_reparse_does_not_make_rubrics(
             script_version_id=version_id,
             requested_at=script.parse_requested_at,
             script_text="원문",
-            target_ms=None,
-        )
+            target_ms=None,pitch_id=uuid.uuid4())
     )
 
     assert fake.calls == []

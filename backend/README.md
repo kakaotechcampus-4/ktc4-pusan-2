@@ -323,7 +323,8 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 이 규칙이 순환 import 를 막는다. 어기고 싶어지면 구조를 다시 논의한다.
 
 - **도메인 안**: `controller → service → repository → entity`. 역방향 없음. controller 가 repository 를 직접 부르지 않는다.
-- **도메인 사이**: 상대 도메인의 **service 만** 부른다. 다른 도메인의 repository·entity 를 import 하지 않는다.
+- **도메인 사이**: 상대 도메인의 **service 만** 부른다. 다른 도메인의 repository 를 import 하지 않는다.
+  예외: join · FK 타입에 쓰는 entity import 와, 표를 읽어 모으는 `admin`.
 - **realtime, coach, task → module**: 도메인 service 를 호출한다. module 은 controller 까지 포함해 realtime·coach·task
   를 import 하지 않는다. HTTP 요청이 그쪽에 알릴 일(Take 지움 · 끝내기 PUT · 리뷰 뒤 코칭 계획 등)은
   `module/hooks.py` 를 거쳐 부르고, 실제 구현은 `main.py` 가 꽂는다 (realtime 쪽 구현은 `realtime/live_takes.py` 가

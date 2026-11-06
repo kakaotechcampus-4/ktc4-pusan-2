@@ -31,7 +31,6 @@ from pitch_coach_backend.module.admin.dto import (
     AdminUserRow,
     StatsResponse,
 )
-from pitch_coach_backend.module.service_feedback.dto import SuggestionSource
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -150,12 +149,11 @@ def take_survey_summary(db: Annotated[Session, Depends(get_db)]) -> list[AdminTa
 @router.get("/api/suggestions", response_model=AdminPage[AdminSuggestionRow])
 def suggestions(
     db: Annotated[Session, Depends(get_db)],
-    source: SuggestionSource | None = None,
     category: SuggestionCategory | None = None,
     user_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AdminPage[AdminSuggestionRow]:
     return service.list_suggestions(
-        db, source=source, category=category, limit=limit, offset=offset, user_id=user_id
+        db, category=category, limit=limit, offset=offset, user_id=user_id
     )

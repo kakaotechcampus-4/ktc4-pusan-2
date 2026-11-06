@@ -1,11 +1,81 @@
-"""백그라운드 태스크를 들고 있다가 앱을 내릴 때 끊는다 (finalize · 코칭 계획 · Take 끝내기 정리)."""
+"""백그라운드 태스크 부품. 들고 있다가 앱을 내릴 때 끊고, 주기 작업을 띄운다."""
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import Coroutine, Hashable
+import weakref
+from collections.abc import Awaitable, Callable, Coroutine, Hashable
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+type Stop = Callable[[], Awaitable[None]]
+type SemaphoreByLoop = weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]
+
+
+def being_cancelled() -> bool:
+    """지금 태스크가 취소되는 중인가. 기다리던 다른 태스크가 끊겨 난 CancelledError 와 가른다."""
+    current = asyncio.current_task()
+    return current is not None and current.cancelling() > 0
+
+
+async def quiet(awaitable: Awaitable[object]) -> None:
+    """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다.
+
+    정리 경로라서 넓게 잡는다 — 여기서 예외가 새면 그다음 정리가 통째로 멈춘다.
+    """
+    with contextlib.suppress(Exception):
+        await awaitable
+
+
+def loop_semaphore(by_loop: SemaphoreByLoop, limit: int) -> asyncio.Semaphore:
+    """이벤트 루프마다 하나인 세마포어. asyncio.Semaphore 는 처음 기다린 루프에 묶여서, 하나를 여러
+    루프가 쓰면(시험의 TestClient 마다 루프가 다르다) 다른 루프에서 기다리는 순간 RuntimeError 다.
+    운영은 uvicorn 루프 하나라 프로세스 전체에 하나다."""
+    loop = asyncio.get_running_loop()
+    if (slots := by_loop.get(loop)) is None:
+        slots = asyncio.Semaphore(limit)
+        by_loop[loop] = slots
+    return slots
+
+
+async def run_periodic(
+    step: Callable[[], Awaitable[object]], interval_sec: float, *, delay_first: bool = False
+) -> None:
+    """step 을 주기마다 부른다. step 의 예외는 step 이 잡아 다음 주기로 넘긴다."""
+    if delay_first:
+        await asyncio.sleep(interval_sec)
+    while True:
+        await step()
+        await asyncio.sleep(interval_sec)
+
+
+def start_task(coro: Coroutine[Any, Any, None], *, name: str) -> Stop:
+    """태스크를 띄우고, 앱을 내릴 때 부를 함수를 돌려준다."""
+    task = asyncio.create_task(coro, name=name)
+
+    async def stop() -> None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            # 뒤따르는 종료 절차가 멈추지 않게 남기고 넘어간다
+            logger.exception("주기 작업이 실패해 멈춰 있었다 %s", name)
+
+    return stop
+
+
+def start_periodic(
+    step: Callable[[], Awaitable[object]],
+    interval_sec: float,
+    *,
+    name: str,
+    delay_first: bool = False,
+) -> Stop:
+    """주기 작업을 띄우고, 앱을 내릴 때 부를 함수를 돌려준다."""
+    return start_task(run_periodic(step, interval_sec, delay_first=delay_first), name=name)
 
 
 class TaskRegistry:

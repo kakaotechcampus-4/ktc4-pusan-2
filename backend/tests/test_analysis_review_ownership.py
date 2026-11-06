@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import delete, update
 
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
-from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_take_ai_validation import claim, coverage
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW
@@ -68,7 +68,7 @@ def test_scored_take_starts_review_immediately(db_session, user_id, monkeypatch)
         "READY_FOR_REVIEW"
     )
     monkeypatch.setattr(
-        review_service, "request_review_async", AsyncMock(return_value=review(take))
+        take_ai_client, "request_review_async", AsyncMock(return_value=review(take))
     )
     assert run_review(monkeypatch, db_session, take.id) == take.pitch_id
     db_session.refresh(take)
@@ -107,7 +107,7 @@ def test_replaced_worker_cannot_change_new_review(db_session, user_id, monkeypat
             return review(take, summary="옛 리뷰", score=10)
         return review(take)
 
-    monkeypatch.setattr(review_service, "request_review_async", respond)
+    monkeypatch.setattr(take_ai_client, "request_review_async", respond)
     assert run_review(monkeypatch, db_session, take.id) is None
     db_session.expire_all()
     current = db_session.get(Take, take.id)
@@ -129,7 +129,7 @@ def test_deleted_take_does_not_receive_review_or_failure(db_session, user_id, mo
         db_session.commit()
         return reply
 
-    monkeypatch.setattr(review_service, "request_review_async", respond)
+    monkeypatch.setattr(take_ai_client, "request_review_async", respond)
     assert run_review(monkeypatch, db_session, take_id) is None
     assert TakeRepository(db_session).get_ai_result(take_id, "REVIEW") is None
     assert db_session.query(TakeSummary).filter_by(take_id=take_id).count() == 0
@@ -142,7 +142,7 @@ def test_storage_failure_rolls_back_review_and_missions(db_session, user_id, mon
     body = copy.deepcopy(REVIEW)
     body["take_id"] = str(take.id)
     monkeypatch.setattr(
-        review_service,
+        take_ai_client,
         "request_review_async",
         AsyncMock(return_value=ReviewResponseDTO.model_validate(body)),
     )

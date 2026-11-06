@@ -9,9 +9,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionLocal, in_session
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, request_turn
 from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
@@ -75,17 +74,6 @@ async def _double_slot() -> AsyncGenerator[None]:
         slots.release()
 
 
-async def _in_session[T](session_factory: SessionFactory, fn: Callable[..., T], *args: Any) -> T:
-    def call() -> T:
-        db = session_factory()
-        try:
-            return fn(db, *args)
-        finally:
-            db.close()
-
-    return await run_in_threadpool(call)
-
-
 def start(
     run_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
 ) -> asyncio.Task[None] | None:
@@ -146,10 +134,10 @@ class _Turn:
     async def run(self, run_id: uuid.UUID, *, resume_with: ResumeWith | None) -> None:
         point = None
         if resume_with is not None:
-            point = await _in_session(self._session_factory, resume_with, run_id)
+            point = await in_session(self._session_factory, resume_with, run_id)
             self._run = point.run if point else None
         else:
-            self._run = await _in_session(self._session_factory, run_service.claim, run_id)
+            self._run = await in_session(self._session_factory, run_service.claim, run_id)
         if self._run is None:
             return
         remaining = (self._run.deadline - datetime.now(UTC)).total_seconds()
@@ -173,7 +161,7 @@ class _Turn:
         while True:
             await asyncio.sleep(LEASE_RENEW_SEC)
             try:
-                await _in_session(self._session_factory, run_service.renew_lease, run_id)
+                await in_session(self._session_factory, run_service.renew_lease, run_id)
             except Exception:
                 logger.exception("대화 실행 임대를 늘리지 못했다 run=%s", run_id)
 
@@ -181,7 +169,7 @@ class _Turn:
         if self._run is None:
             return
         try:
-            await _in_session(self._session_factory, turn_service.fail, self._run, failure)
+            await in_session(self._session_factory, turn_service.fail, self._run, failure)
         except Exception:
             logger.exception("대화 턴 실패를 저장하지 못했다 run=%s", self._run.run_id)
 
@@ -196,7 +184,7 @@ class _Turn:
     ) -> None:
         for turn_call in range(first_call, MAX_TURN_CALLS + 1):
             try:
-                request = await _in_session(
+                request = await in_session(
                     self._session_factory,
                     request_service.build_request,
                     self._current,
@@ -229,7 +217,7 @@ class _Turn:
                 await self.give_up(outcome)
                 return
             if outcome.view.status != "NEEDS_ACTION":
-                await _in_session(
+                await in_session(
                     self._session_factory, turn_service.finish, self._current, turn_call, outcome
                 )
                 return
@@ -238,7 +226,7 @@ class _Turn:
             await self._advance(turn_service.wait_for_action, turn_call, outcome)
             action = outcome.data["actions"][0]
             if action["autonomy"] == "ASK" and action.get("preapproved") is None:
-                result = await _in_session(
+                result = await in_session(
                     self._session_factory,
                     action_service.hold_for_approval,
                     self._current,
@@ -272,27 +260,27 @@ class _Turn:
     async def _act(self, action: dict[str, Any]) -> tuple[ActionResultDTO, int]:
         loop = asyncio.get_running_loop()
         started = loop.time()
-        result = await _in_session(
+        result = await in_session(
             self._session_factory, action_service.begin_action, self._current, action
         )
         if result is None:
             if action["type"] == "REASSESS":
                 result = await self._reassess(action)
             else:
-                result = await _in_session(
+                result = await in_session(
                     self._session_factory, action_service.run_action, self._current, action
                 )
         return result, round((loop.time() - started) * 1000)
 
     async def _reassess(self, action: dict[str, Any]) -> ActionResultDTO:
-        prepared = await _in_session(
+        prepared = await in_session(
             self._session_factory, reassess_service.prepare_reassess, self._current, action
         )
         if isinstance(prepared, ActionResultDTO):
             return prepared
         async with _double_slot():
             replies = await reassess_service.call_reassess(prepared)
-        return await _in_session(
+        return await in_session(
             self._session_factory,
             reassess_service.finish_reassess,
             self._current,
@@ -302,14 +290,14 @@ class _Turn:
         )
 
     async def _progress(self, turn_call: int, line: StreamLine) -> None:
-        saved = await _in_session(
+        saved = await in_session(
             self._session_factory, turn_service.save_progress, self._current, turn_call, line
         )
         if not saved:
             raise RunLost()
 
     async def _advance(self, fn: Callable[..., ClaimedRun | None], *args: Any) -> None:
-        advanced = await _in_session(self._session_factory, fn, self._current, *args)
+        advanced = await in_session(self._session_factory, fn, self._current, *args)
         if advanced is None:
             raise RunLost()
         self._run = advanced

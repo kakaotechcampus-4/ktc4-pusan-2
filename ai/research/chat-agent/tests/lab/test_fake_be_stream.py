@@ -46,6 +46,10 @@ class TamperApp:
         return TurnOutcome(status=200, lines=gen())
 
 
+# 배포 기본값(조사 흐름 켬)으로 돌린다. 모델 호출 순서를 대본으로 정한 시험만 no_prefetch 로 끈다(tests/conftest.py)
+pytestmark = pytest.mark.prefetch
+
+
 def done_be(tamper: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None) -> FakeBe:
     be = make_be(F.FakeLlm(compare_with_fetch_script()))
     if tamper is not None:
@@ -105,6 +109,7 @@ def only_last_call(fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]]) -
 # ── 실행 이벤트 · 커서 (L2-46) ─────────────────────────────────────────────
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_events_get_run_wide_seq_and_cursor_reads_only_newer_ones() -> None:
     be = done_be()
     run = be.send_message(None, MSG, page_take_id="t-5")
@@ -161,6 +166,7 @@ def test_fm_L2_45_eof_after_claims_stores_received_claims_as_partial() -> None:
     }
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_fm_L2_45_error_line_after_claims_is_partial_and_without_claims_is_upstream_error() -> None:
     def to_error(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         last = objs[-1]
@@ -185,6 +191,7 @@ def test_fm_L2_45_error_line_after_claims_is_partial_and_without_claims_is_upstr
     assert (run2.status, run2.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_fm_L2_44_final_prefix_mismatch_keeps_received_claims_and_runs_no_action() -> None:
     log: list[dict[str, Any]] = []
 
@@ -205,6 +212,7 @@ def test_fm_L2_44_final_prefix_mismatch_keeps_received_claims_and_runs_no_action
     assert all("바뀜" not in c["text"] for c in stored(be, run).claims)
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_claim_index_gap_or_repeat_is_rejected_and_received_claims_are_kept() -> None:
     def gap(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         cl = [o for o in objs if o["event"] == "claim"]
@@ -307,6 +315,7 @@ def one_slot(be: FakeBe) -> Any:
     return be.app
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_lines_are_stored_as_they_arrive_and_cursor_sees_them_before_the_end() -> None:
     be = done_be()
     seen: list[tuple[int, int]] = []
@@ -387,6 +396,7 @@ class ReplayError:
         return TurnOutcome(status=self.status, error={"error": {"code": self.code, "message": "x"}})
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_invalid_final_after_claims_keeps_them() -> None:
     def bad_text(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         objs[-1]["data"]["message"]["text"] = (
@@ -416,6 +426,7 @@ def test_call_limit_after_claims_keeps_them_without_running_the_action() -> None
     assert stored(be, out).claims == claims_of(out)
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_claim_index_repeat_or_wrong_first_index_is_rejected() -> None:
     def repeat(objs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         cl = [o for o in objs if o["event"] == "claim"]
@@ -434,6 +445,7 @@ def test_claim_index_repeat_or_wrong_first_index_is_rejected() -> None:
     assert claims_of(run2) == []
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_first_claim_time_counts_from_before_the_call_and_reads_parsed_lines() -> None:
     be = done_be()
     be.app = StreamApp(be.app, delay=0.03, reformat=True)  # type: ignore[assignment]

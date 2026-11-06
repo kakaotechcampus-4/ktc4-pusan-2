@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.adapter import presentation_file
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
@@ -20,21 +19,6 @@ def s3_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(presentation_service, "upload", lambda file, key, content_type=None: key)
     monkeypatch.setattr(presentation_service, "upload_bytes", lambda data, key, content_type: key)
     monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
-
-
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
-
-
-@pytest.fixture
-def other_user_headers(db_session: Session) -> dict[str, str]:
-    from pitch_coach_backend.module.user.entity import User
-
-    user = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
-    db_session.add(user)
-    db_session.flush()
-    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
 
 @pytest.fixture

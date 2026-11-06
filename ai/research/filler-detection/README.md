@@ -79,7 +79,7 @@ flowchart LR
 | `tools/evaluate.py` · `make_examples.py` · `export_keyterms.py` | 다시 만든 `filler_eval.json` · 예시 · `keyterms.json`이 옮기기 전과 같음 |
 
 ## 준비 · 실행
-Python 3.12. LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 모든 명령은 `ai/research/filler-detection`에서 돌립니다. Windows에서 `pytest.exe` 같은 실행 파일이 막히면 아래처럼 `python -m`으로 부르고, 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`을 붙입니다.
+Python 3.12. LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 모든 명령은 `ai/research/filler-detection`에서 돌립니다. Windows에서 `pytest.exe` 같은 실행 파일이 막히면 아래처럼 `python -m`으로 부르고, 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`을 붙입니다. macOS · Linux에서도 아래 명령을 그대로 씁니다.
 
 ```bash
 cd ai/research/filler-detection

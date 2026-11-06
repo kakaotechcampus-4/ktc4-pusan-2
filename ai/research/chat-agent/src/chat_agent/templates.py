@@ -35,6 +35,8 @@ class SystemText(StrEnum):
     OUT_OF_SCOPE_UNKNOWN = "이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요."
     NO_GUIDE = "자료에서 근거를 찾지 못해 답하지 않을게요."
     CANNOT_ANSWER = "이 요청에는 답할 수 없어요."
+    #: 공식 결과를 바꿔 달라는 요청(답 초안 route CANNOT_DO, 6-2 하지 않는 일)
+    CANNOT_CHANGE_RECORD = "점수 · 차원 상태 · 공식 미션 · 리뷰 결과는 바꿀 수 없어요. 기록은 그대로이고 다음 Take에서 달라지는지 볼 수 있어요."
     ANSWER_INCOMPLETE = "답을 완성하지 못했어요."
     LIMIT_PARTIAL = "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요."
     NO_MORE_SOURCES = "추가로 확인할 자료를 찾지 못해 확인한 내용만 알려드릴게요."

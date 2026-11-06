@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
-from pitch_coach_backend.module.pitch.adapter.standard_parser import parse_standard_text
+from pitch_coach_backend.module.pitch.adapter.standard_parser import (
+    StandardReply,
+    parse_standard_text,
+)
 from pitch_coach_backend.module.pitch.dto import (
-    StandardAIResponseDTO,
     StandardsSaveRequestDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
@@ -72,7 +74,7 @@ async def _analyze_and_save(
 
 
 def _save(
-    db: Session, pitch_id: uuid.UUID, standards_result: StandardAIResponseDTO
+    db: Session, pitch_id: uuid.UUID, standards_result: StandardReply
 ) -> StandardTextResponseDTO:
     pitch_repository = PitchRepository(db)
     if not pitch_repository.lock_for_new_version(pitch_id):
@@ -80,9 +82,7 @@ def _save(
     version = pitch_repository.next_standard_version(pitch_id)
     for position, title in enumerate(standards_result.display_criteria, start=1):
         pitch_repository.save_standard(
-            Standards(
-                pitch_id=pitch_id, version=version, position=position, title=title
-            )
+            Standards(pitch_id=pitch_id, version=version, position=position, title=title)
         )
     pitch_repository.save_standard_analysis(
         StandardAnalyses(
@@ -90,7 +90,7 @@ def _save(
             version=version,
             values=standards_result.values,
             targets=standards_result.targets,
-            script_used=standards_result.values.get("script_used"),
+            script_used=standards_result.script_used,
             excluded=standards_result.excluded or [],
             meta=standards_result.meta,
         )
@@ -100,18 +100,14 @@ def _save(
     return StandardTextResponseDTO(
         pitch_id=pitch_id,
         version=version,
-        standards=[
-            {"standard": standard} for standard in standards_result.display_criteria
-        ],
+        standards=[{"standard": standard} for standard in standards_result.display_criteria],
         except_standard=", ".join(standards_result.excluded or []) or None,
     )
 
 
 def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):
     pitch_repository = PitchRepository(db)
-    standards = pitch_repository.get_evaluations_by_version(
-        pitch_id, evaluation_version
-    )
+    standards = pitch_repository.get_standards_in_version(pitch_id, evaluation_version)
     if (
         not standards
         and pitch_repository.get_standard_analysis(pitch_id, evaluation_version) is None

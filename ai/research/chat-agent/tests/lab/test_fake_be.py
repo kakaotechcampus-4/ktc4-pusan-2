@@ -21,6 +21,9 @@ from chat_agent_lab.app import AgentApp, TurnOutcome, build_request, from_env
 from chat_agent_lab.fake_be import MASKED_TEXT, FakeBe, Run, default_review
 from tests.unit import fakes as F
 
+# 배포 기본값(조사 흐름 켬)으로 돌린다. 모델 호출 순서를 대본으로 정한 시험만 no_prefetch 로 끈다(tests/conftest.py)
+pytestmark = pytest.mark.prefetch
+
 MSG = "Take 4보다 Take 5에서 3장 시선이 좋아졌어?"
 COMPARE = (
     "compare_takes",
@@ -166,6 +169,7 @@ def texts_after(llm: F.FakeLlm, start: int) -> str:
 # ── 처음부터 끝까지 ──────────────────────────────────────────────────────
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_message_action_resume_answer_is_stored_with_history() -> None:
     llm = F.FakeLlm(compare_with_fetch_script())
     be = make_be(llm)
@@ -228,6 +232,7 @@ def test_fm_L1_31_budget_and_turn_count_accumulate_across_resumes() -> None:
     assert last.diagnostics is not None and last.diagnostics.turn_call == 3
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_fm_L2_31_budget_reset_on_resume_is_rejected() -> None:
     """이어 부르기마다 누적량을 0 으로 되돌려 보내면 409 이고 모델을 더 부르지 않는다."""
     llm = F.FakeLlm(compare_with_fetch_script()[:3])
@@ -252,6 +257,7 @@ def test_fm_L2_31_same_failed_action_twice_stops() -> None:
     assert run.status in ("PARTIAL", "DONE")
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_fm_L5_16_action_time_counts_toward_the_turn_budget() -> None:
     """BE 행동 시간이 누적 시간에 들어가 120초를 넘으면 이어 부른 호출은 모델 없이 끝난다(8-3)."""
     llm = F.FakeLlm(compare_with_fetch_script()[:3])
@@ -368,6 +374,129 @@ def save_goal_llm() -> F.FakeLlm:
         answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)]), F.answer([])],
         fixes=[F.fix({})],
     )
+
+
+def take4_slide3_draft() -> dict[str, Any]:
+    """조사 흐름이 먼저 읽을 대상: 기본 자료에 없는 Take 4 의 3장 청중 시선(요청)."""
+    return F.draft(
+        "Take 4 3장 시선",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        metric="audience_ratio",
+        slide_number=3,
+        take_numbers=[4],
+        polarity="NEUTRAL",
+    )
+
+
+PREFETCH_MSG = "Take 4 3장 시선 몇 %였어?"
+PREFETCH_READ = ("get_take_report", {"take_id": "t-4", "section": "slides", "slide_number": 3})
+
+
+def take4_answer(r: Any) -> Any:
+    eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio")
+    return F.answer(
+        [F.claim("RECORD", "Take 4의 3장 청중 시선 비율은 31%예요.", evidence_ids=[eid])]
+    )
+
+
+def prefetched_result(req: Any) -> dict[str, Any]:
+    """모델 요청 속 코드가 먼저 읽은 `PREFETCH_READ` 호출의 도구 결과(호출 id 로 짝지음)."""
+    ids = [
+        tc["id"]
+        for m in req.messages
+        for tc in m.get("tool_calls") or []
+        if (tc["function"]["name"], json.loads(tc["function"]["arguments"])) == PREFETCH_READ
+    ]
+    assert ids, "코드가 먼저 읽은 호출이 없다"
+    (msg,) = [
+        m for m in req.messages if m.get("role") == "tool" and m.get("tool_call_id") == ids[0]
+    ]
+    return json.loads(msg["content"])
+
+
+def test_prefetch_fetch_resume_then_waits_for_approval() -> None:
+    """조사 흐름(배포 기본값): 판단 초안이 집은 Take 4 가 기본 자료에 없으면 모델 조사 호출 없이 `fetch_take`(AUTO)로 멈추고,
+    BE 가 실행해 이어 부르면 코드가 Take 4 3장을 먼저 읽은 뒤 모델이 낸 저장(ASK)은 승인 대기로 간다(6-1 2번 · 6-2)."""
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[take4_slide3_draft(), request_draft(GOAL_MSG)]),
+            F.tools(("save_goal", SAVE_ARGS), prefix="sg"),
+            F.done(),
+        ],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=1)]), F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm)
+    conv = be.new_conversation()
+    run = be.send_message(
+        conv.conversation_id, "Take 4 3장 시선 보고, " + GOAL_MSG, page_take_id="t-5"
+    )
+    # 첫 호출: 계획 한 번 뒤 코드가 가져오기를 냈고, BE 가 실행했다
+    assert [c.final["status"] for c in run.calls if c.final] == ["NEEDS_ACTION", "NEEDS_ACTION"]
+    assert [c.purpose for c in llm.calls[:1]] == ["RESEARCH"]
+    (rec,) = run.actions
+    assert rec.action["type"] == "FETCH_TAKE" and rec.action["args"]["take_id"] == "t-4"
+    assert rec.executed and rec.result["status"] == "SUCCEEDED"
+    # 이어 부른 뒤 첫 모델 조사 호출 앞에 코드가 읽은 Take 4 3장 결과(성공 · 그 장의 청중 시선 근거)가 있다
+    resumed = [c for c in llm.calls if c.purpose == "RESEARCH"][1]
+    got = prefetched_result(resumed)
+    assert got["ok"] is True and got["data"]["take_id"] == "t-4"
+    (item,) = got["data"]["items"]
+    assert item["slide_number"] == 3
+    assert any(v["metric"] == "audience_ratio" and v["evidence_id"] for v in item["values"])
+    # 모델이 낸 저장은 실행하지 않고 승인을 기다린다
+    assert run.status == "WAITING_APPROVAL" and run.pending is not None
+    assert run.pending.action["type"] == "SAVE_GOAL" and conv.goal is None
+    assert run.calls[1].request["run"]["trigger"] == "ACTION_RESULT"
+
+
+def test_prefetch_fetched_take_deleted_before_resume_stops_before_model() -> None:
+    """조사 흐름이 낸 `fetch_take`로 가져온 Take 가 이어 부르기 전에 지워지면 removed_sources 로 알리고, AI는 모델 없이
+    끝낸다(L4-38 을 조사 흐름 켬으로)."""
+    llm = F.FakeLlm([F.plan(assessments=[take4_slide3_draft()])])
+    be = make_be(llm)
+    be.before_resume = lambda b, r, rec: b.delete_take("t-4")
+    run = be.send_message(None, PREFETCH_MSG, page_take_id="t-5")
+    (rec,) = run.actions
+    assert rec.action["type"] == "FETCH_TAKE" and rec.result["status"] == "SUCCEEDED"
+    assert run.calls[1].request["context"]["removed_sources"] == ["t-4"]
+    fd = ok(run.final)
+    assert fd.status == "PARTIAL" and fd.state is None
+    assert fd.message.text == templates.SystemText.SOURCE_DELETED_STOP.value  # type: ignore[union-attr]
+    assert len(llm.calls) == 1  # 계획 한 번뿐, 이어 부른 뒤 모델 0회
+
+
+@pytest.mark.parametrize(("keep_previous", "status"), [(True, "DONE"), (False, "FAILED")])
+def test_prefetch_state_resumes_on_other_instance_after_key_rotation(
+    keep_previous: bool, status: str
+) -> None:
+    """조사 흐름이 멈춘 서명 상태(`prefetched` 포함)를 새 키의 다른 인스턴스가 받는다: 이전 키를 검증용으로 두면 이어져
+    코드가 읽은 결과로 답하고, 없으면 409(L1-33 · L5-06 · L5-07 을 조사 흐름 켬으로)."""
+    llm = F.FakeLlm([F.plan(assessments=[take4_slide3_draft()]), F.done(), take4_answer])
+    be = make_be(llm)
+
+    def rotate(b: FakeBe, r: Run, rec: Any) -> None:
+        old = b.app
+        b.app = AgentApp(
+            llm=old.llm,
+            secret=OTHER_SECRET,
+            previous_secret=F.SECRET if keep_previous else None,
+            corpus=None,
+            clock_ms=old.clock_ms,
+            monotonic=old.monotonic,
+        )
+
+    be.before_resume = rotate
+    run = be.send_message(None, PREFETCH_MSG, page_take_id="t-5")
+    assert run.status == status
+    if keep_previous:
+        assert prefetched_result(llm.calls[1])["ok"] is True
+        assert "31%" in ok(run.final).message.text  # type: ignore[union-attr]
+    else:
+        assert run.calls[1].http_status == 409 and run.error_code == "AGENT_STATE_INVALID"
+        assert len(llm.calls) == 1
 
 
 def test_save_goal_then_take_reviewed_closes_goal_without_model() -> None:
@@ -700,6 +829,7 @@ def test_measurement_objection_runs_no_reassess() -> None:
 # ── 지워진 원천 ──────────────────────────────────────────────────────────
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_fm_L4_38_take_deleted_while_waiting_stops_before_model() -> None:
     """가져온 Take 가 이어 부르기 전에 지워지면 removed_sources 로 알리고, AI는 모델 없이 끝낸다."""
     llm = F.FakeLlm(compare_with_fetch_script()[:3])
@@ -737,6 +867,7 @@ def test_fm_L1_32_deleted_focus_take_is_dropped_before_the_model_sees_it() -> No
     assert "0.28" not in resumed and "28%" not in resumed  # Take 5 의 3장 값
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_deleted_take_between_turns_masks_history_and_prior_assessments() -> None:
     """앞 답의 근거 Take 가 지워지면 다음 턴 기록에서 그 답을 가리고 그 판단을 싣지 않는다(12-2 '읽을 때 가림')."""
     llm = F.FakeLlm(compare_with_fetch_script())
@@ -821,6 +952,7 @@ def test_fm_L6_10_new_take_supersedes_prior_turn_assessment_by_id() -> None:
 # ── 키 교체 · 스위치 · 오류 코드 ─────────────────────────────────────────
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 @pytest.mark.parametrize(("keep_previous", "status"), [(True, "DONE"), (False, "FAILED")])
 def test_fm_L1_33_resume_on_other_instance_after_key_rotation(
     keep_previous: bool, status: str
@@ -1007,6 +1139,7 @@ def test_fm_L2_12_instruction_in_record_does_not_authorize_save() -> None:
     assert run.status in ("DONE", "PARTIAL")
 
 
+@pytest.mark.no_prefetch  # 모델이 먼저 읽는 대본
 def test_fm_L5_31_logs_and_diagnostics_hold_no_user_text_values_or_keys() -> None:
     """서비스 로그 · BE가 저장한 진단 기록에 사용자 말 · 모델 문장 · 기록 값 · 키 · 서명 상태가 없다(11-5)."""
     log: list[dict[str, Any]] = []
@@ -1077,6 +1210,32 @@ def test_scope_is_not_switched_again_before_reading_the_new_scope() -> None:
             F.tools(
                 ("fetch_pitch", {"name": "회사 소개 발표", "reason": "다른 발표"}), prefix="fp"
             ),
+            F.tools(("fetch_pitch", {"pitch_id": "p-1", "reason": "돌아가기"}), prefix="fb"),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm, pitches=[fx.sample_pitch(), other_pitch("p-2", "회사 소개 발표")])
+    conv = be.new_conversation(scope_pitch_id="p-1")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["type"])
+    run = be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
+    assert actions == ["FETCH_PITCH"]
+    assert "SCOPE_NOT_READ" in texts_after(llm, 3)
+    assert ok(run.final).scope_pitch_id == "p-2"
+
+
+def test_listing_pitches_does_not_count_as_reading_the_new_scope() -> None:
+    """범위를 바꾼 뒤 list_pitches 만 불러도 새 피치의 Take 를 읽은 것이 아니다. 목록 결과의 target_ids 에 마지막 리뷰
+    Take id 가 들어 있어도(지워진 원천의 캐시 버리기용) 다시 바꾸기는 SCOPE_NOT_READ 로 막힌다(6-5)."""
+    llm = F.FakeLlm(
+        [
+            F.plan(),
+            F.tools(
+                ("fetch_pitch", {"name": "회사 소개 발표", "reason": "다른 발표"}), prefix="fp"
+            ),
+            F.tools(("list_pitches", {}), prefix="lp"),
             F.tools(("fetch_pitch", {"pitch_id": "p-1", "reason": "돌아가기"}), prefix="fb"),
             F.done(),
         ],

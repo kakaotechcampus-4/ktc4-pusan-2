@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from tests.test_take_history import _pitch, _take
 
@@ -123,7 +124,7 @@ INVALID = [
 
 def ai(monkeypatch, handler) -> None:
     client = partial(httpx.AsyncClient, transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(coverage_service.httpx, "AsyncClient", client)
+    monkeypatch.setattr(httpx, "AsyncClient", client)
 
 
 @pytest.mark.parametrize("endpoint", ["analyze", "rescore"])
@@ -302,7 +303,7 @@ def test_coverage_attempt_has_an_overall_deadline(monkeypatch) -> None:
 
     ai(monkeypatch, handler)
     with pytest.raises(coverage_service.CoverageCallError) as error:
-        asyncio.run(coverage_service._post_ai("/takes/analyze", {}, "id", 0.01))
+        asyncio.run(take_ai_client.post_coverage("/takes/analyze", {}, "id", 0.01))
     assert error.value.retryable is True
 
 

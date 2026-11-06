@@ -149,10 +149,12 @@ function renderCounts(id, counts) {
   ], rows);
 }
 
+const PAGE_SIZE = 50;
+const shortText = (id) => `${id.slice(0, 8)}…${id.slice(-4)}`;
 const statusBadge = (status) => el('span', { className: `badge ${status}`, textContent: label(status) });
 
 function takeIdCell(take) {
-  const short = `${take.id.slice(0, 8)}…${take.id.slice(-4)}`;
+  const short = shortText(take.id);
   const button = el('button', { type: 'button', className: 'copy', title: take.id, textContent: short });
   button.addEventListener('click', async () => {
     try {
@@ -169,7 +171,7 @@ function takeIdCell(take) {
 }
 
 const subText = (text) => el('small', { className: 'muted block', textContent: text });
-const shortId = (id) => el('span', { title: id, textContent: `${id.slice(0, 8)}…${id.slice(-4)}` });
+const shortId = (id) => el('span', { title: id, textContent: shortText(id) });
 
 function stageCell(take) {
   if (take.analysis_stage == null) return '—';
@@ -264,7 +266,7 @@ async function loadFeedbackPage(id, offset) {
   const error = document.getElementById(`${id}-error`);
   previous.disabled = next.disabled = true;
   error.hidden = true;
-  const query = new URLSearchParams({ limit: '50', offset: String(offset) });
+  const query = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
   if (id === 'suggestions') {
     const category = document.getElementById('suggestions-category').value;
     if (category) query.set('category', category);
@@ -306,17 +308,19 @@ function showFeedbackError(error) {
   node.textContent = error.message;
   node.hidden = false;
 }
-for (const id of ['suggestions-category']) {
-  document.getElementById(id).addEventListener('change', () => {
-    loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
-  });
-}
+document.getElementById('suggestions-category').addEventListener('change', () => {
+  loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
+});
 
 // ---------- 연습 기록 ----------
 
 const LIVE_POLL_MS = 3000;
 const LIVE_STATUSES = ['READY', 'RUNNING'];
-const live = { takeId: null, timer: null, request: 0, segments: [], seconds: [], slideEvents: [], script: [] };
+const live = { request: 0 };
+// 지금 보는 Take 를 바꾼다. 요청 번호는 늦은 응답을 버리는 데 쓰니 그대로 둔다
+const resetLive = (takeId) =>
+  Object.assign(live, { takeId, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
+resetLive(null);
 const scriptLoad = { request: 0 };
 
 function clock(ms) {
@@ -351,7 +355,7 @@ function liveButton(take) {
 function openLive(take) {
   clearTimeout(live.timer);
   live.request += 1;
-  Object.assign(live, { takeId: take.id, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
+  resetLive(take.id);
   document.getElementById('live-title').textContent =
     `${take.user_name} · ${take.pitch_title} · ${take.take_number}회차`;
   document.getElementById('live-error').hidden = true;
@@ -369,7 +373,7 @@ function closeLive() {
   live.request += 1;
   results.request += 1;
   scriptLoad.request += 1;
-  Object.assign(live, { takeId: null, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
+  resetLive(null);
   document.getElementById('live').hidden = true;
 }
 
@@ -738,8 +742,8 @@ const SECTIONS = [
   }],
   ['api/takes/stuck', (rows) => renderTable('stuck-takes', TAKE_COLUMNS, rows)],
   ['api/takes/stalled-analysis', (rows) => renderTable('stalled-analyses', TAKE_COLUMNS, rows)],
-  ['api/takes?status=FAILED&limit=50', (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
-  ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
+  [`api/takes?status=FAILED&limit=${PAGE_SIZE}`, (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
+  [`api/takes?limit=${PAGE_SIZE}`, (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
   ['api/take-surveys/summary', renderTakeSurveySummary],
 ];
@@ -749,10 +753,10 @@ async function load() {
   error.hidden = true;
   const requests = SECTIONS.map(([path]) => getJSON(path));
   const feedbackRequests = Object.keys(feedbackPages).map((id) => loadFeedbackPage(id, 0));
-  const results = await Promise.allSettled(requests);
+  const settled = await Promise.allSettled(requests);
   await Promise.all(feedbackRequests);
   const failures = [];
-  results.forEach((result, i) => {
+  settled.forEach((result, i) => {
     if (result.status !== 'fulfilled') {
       failures.push(result.reason.message);
       return;

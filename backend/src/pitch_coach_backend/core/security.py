@@ -88,11 +88,6 @@ def hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def refresh_token_matches(token: str, token_hash: str) -> bool:
-    """해시 비교. 타이밍 공격을 피하려 compare_digest 를 쓴다."""
-    return hmac.compare_digest(hash_refresh_token(token), token_hash)
-
-
 def refresh_token_expires_at() -> datetime:
     return datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
 
