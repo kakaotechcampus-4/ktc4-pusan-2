@@ -19,7 +19,7 @@ stateDiagram-v2
     READY --> CLOSED : abandon API
     RUNNING --> ABANDONED : 창을 닫지 않고 끊긴 뒤 5분
     READY --> ABANDONED : 같은 발표에서 새 Take 를 만듦 · 10분
-    ABANDONED --> ANALYZING : 끝내기 PUT (되살림)
+    ABANDONED --> ANALYZING : 시작한 Take 의 끝내기 PUT (되살림)
 
     note right of CLOSED : 되살리지 않는다
 ```
@@ -169,7 +169,7 @@ GET /api/takes/active
 | 방법 | 누가 | 결과 |
 |---|---|---|
 | 끝내기 버튼 | FE 가 WS `stop` | 마지막 확정 전사와 1초 원자료(`metrics`)까지 저장한 뒤 `ANALYZING`. 이어서 FE 가 PUT 으로 시작 · 끝 시각을 보냄 |
-| STT 없이 끝냄 | FE 가 PUT `ended_at` | 발표 중(`RUNNING`)이면 `ANALYZING`. 시작하지 않은 Take(`READY`)는 409 `TAKE_NOT_STARTED`. 연결이 붙어 있으면 그 연결에 맡기고, 끊긴 뒤 30초 안이라 스트림이 남아 있으면 `stop` 처럼 전사 · 1초 원자료까지 저장한 뒤 바꿈 |
+| STT 없이 끝냄 | FE 가 PUT `ended_at` | 발표 중(`RUNNING`)이면 `ANALYZING`. 시작하지 않은 Take(`READY`, 시작하지 않은 채 `ABANDONED` 로 끝난 Take)는 409 `TAKE_NOT_STARTED`. 연결이 붙어 있으면 그 연결에 맡기고, 끊긴 뒤 30초 안이라 스트림이 남아 있으면 `stop` 처럼 전사 · 1초 원자료까지 저장한 뒤 바꿈 |
 | 자동 종료 `SILENCE` | BE | 최근 2분 동안 말이 없고 직전 5분 중 80% 이상이 말 없음. 소리 크기가 아니라 전사로 판단하고, STT 가 죽어 있던 구간은 세지 않음 → `ANALYZING` |
 | 자동 종료 `TIME_LIMIT` | BE | 프레임의 Take 시각이 1시간을 넘음. 시각이 멈춘 Take 는 서버 시계(스트림이 열려 있던 시간의 합)가 1시간 + 60초에서 끝냄 → `ANALYZING` |
 | 창을 닫음 | BE (3절) · FE (abandon) | `FAILED`(`CLOSED`) |
@@ -210,7 +210,7 @@ Take 는 장치 점검에서 시작을 누를 때 만들어 곧바로 연결이 
 | `READY` | `ended_at` 을 뺀 것 | `ended_at` 이 있으면 409 `TAKE_NOT_STARTED` (시작하지 않은 Take 는 끝내지 않음) |
 | `RUNNING` | 전부 | — |
 | `ANALYZING` | 시각(`started_at` · `ended_at`)만 | `event_logs` 는 409 |
-| `FAILED`(`ABANDONED`) | `ended_at` 이 있는 끝내기 (되살림) | 409 |
+| `FAILED`(`ABANDONED`) | 시작한 Take(`started_at` 있음)의 `ended_at` 이 있는 끝내기 (되살림) | 시작하지 않은 Take 의 끝내기는 409 `TAKE_NOT_STARTED`, 그 밖은 409 |
 | `FAILED`(`CLOSED`) · 그 밖의 `FAILED` · `COMPLETED` | 없음 | 409 `TAKE_ENDED` |
 
 `ended_at` 이 `started_at` 보다 앞서면 400 `INVALID_TAKE_TIME` 입니다.
