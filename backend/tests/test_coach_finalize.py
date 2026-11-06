@@ -442,18 +442,17 @@ async def test_events_only_in_the_snapshot_are_kept_when_the_app_stops():
             await asyncio.Event().wait()
 
     client, store = Slow(), FakeStore()
-    running = asyncio.create_task(
-        finalize.run(TAKE_ID, snapshot(events=[EVENT]), client=client, store=store)
-    )
+    finalize.spawn(TAKE_ID, snapshot(events=[EVENT]), client=client, store=store)
     for _ in range(50):
         if client.finalized:
             break
         await asyncio.sleep(0.01)
-    running.cancel()
 
-    with pytest.raises(asyncio.CancelledError):
-        await running
+    await finalize.stop_all(1.0)
+
+    # 끊긴 경로와 대기 중인 경로가 따로 저장하지 않는다
     assert [e["event_id"] for e, _ in store.events] == ["iv-1"]
+    finalize._pending.clear()
 
 
 @pytest.mark.anyio

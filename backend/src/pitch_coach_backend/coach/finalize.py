@@ -120,9 +120,8 @@ async def run(
             await _run(take_id, snapshot, client, store)
     except asyncio.CancelledError:
         # 앱을 내린다. Take 는 FINALIZING 으로 남고 다시 뜰 때 이어 간다
+        # 재료는 `_pending` 에 남아 `stop_all` 이 코치 이벤트를 넣어 둔다
         logger.info("finalize 를 멈춘다 (앱 종료) take=%s", take_id)
-        if snapshot is not None and snapshot.events:
-            await _keep_events(take_id, snapshot.events, store)
         raise
     except Exception as error:
         if is_transient_db_error(error):
@@ -142,7 +141,7 @@ async def run(
             sqlstate(error),
         )
         try:
-            await _retrying("실패 적기", take_id, lambda: store.fail_take_result(take_id))
+            await _fail_take_result(take_id, store)
         except Exception as mark_error:
             logger.error(
                 "Take 를 FAILED 로 적지 못했다 take=%s error=%s sqlstate=%s",
@@ -181,75 +180,87 @@ async def _retrying[T](what: str, take_id: uuid.UUID, step: Callable[[], Awaitab
     return await retry_transient(step, RETRY_DELAYS_SEC, what=f"finalize {what} take={take_id}")
 
 
-async def _run(
-    take_id: uuid.UUID,
-    snapshot: FinalizeSnapshot | None,
-    client: CoachClient,
-    store: CoachStore,
-) -> None:
-    source: FinalizeSource | None = None
-    live = (
-        snapshot is not None and snapshot.constants is not None and snapshot.coach_state is not None
-    )
-    if live:
-        assert snapshot is not None and snapshot.constants is not None
-        t_end_ms = snapshot.t_ms
+async def _fail_take_result(take_id: uuid.UUID, store: CoachStore) -> None:
+    await _retrying("실패 적기", take_id, lambda: store.fail_take_result(take_id))
+
+
+async def _load_source(take_id: uuid.UUID, store: CoachStore) -> FinalizeSource | None:
+    return await _retrying("원자료 읽기", take_id, lambda: store.load_finalize_source(take_id))
+
+
+async def _first_request(
+    take_id: uuid.UUID, snapshot: FinalizeSnapshot | None, store: CoachStore
+) -> tuple[dict[str, Any], int, FinalizeSource | None] | None:
+    """첫 호출의 요청 · 끝 시각 · 읽은 원자료. 부를 것이 없으면 None."""
+    if snapshot is not None and snapshot.constants is not None and snapshot.coach_state is not None:
         saved_events = await _retrying("이벤트 읽기", take_id, lambda: store.load_events(take_id))
         if saved_events is None:
             logger.info("Take 결과를 기다리는 Take 가 아니다 (지웠거나 이미 끝남) take=%s", take_id)
-            return
-        events = _merged(saved_events, snapshot.events)
+            return None
         request = finalize_request(
-            snapshot.constants, t_end_ms, snapshot.inputs, snapshot.coach_state, events
+            snapshot.constants,
+            snapshot.t_ms,
+            snapshot.inputs,
+            snapshot.coach_state,
+            _merged(saved_events, snapshot.events),
         )
-    else:
-        source = await _retrying(
-            "원자료 읽기", take_id, lambda: store.load_finalize_source(take_id)
-        )
-        if source is None:
-            logger.info("Take 결과를 기다리는 Take 가 아니다 (지웠거나 이미 끝남) take=%s", take_id)
-            return
-        t_end_ms = snapshot.t_ms if snapshot is not None else source.t_end_ms
-        if t_end_ms is None:
-            # 발표 중 1초 원자료가 하나도 오지 않았다 (실시간 연결 없이 끝낸 Take). 셀 것이 없다
-            logger.warning("1초 원자료가 없어 Take 결과를 만들 수 없다 take=%s", take_id)
-            await _retrying("실패 적기", take_id, lambda: store.fail_take_result(take_id))
-            return
-        events = _merged(source.events, snapshot.events if snapshot else ())
-        constants = (
-            snapshot.constants
-            if snapshot is not None and snapshot.constants is not None
-            else source.context.constants
-        )
-        replay = source.replay(t_end_ms)
-        inputs = snapshot.inputs if snapshot is not None else source.last_window(replay, t_end_ms)
-        request = finalize_request(constants, t_end_ms, inputs, None, events, replay=replay)
+        return request, snapshot.t_ms, None
 
+    source = await _load_source(take_id, store)
+    if source is None:
+        logger.info("Take 결과를 기다리는 Take 가 아니다 (지웠거나 이미 끝남) take=%s", take_id)
+        return None
+    t_end_ms = snapshot.t_ms if snapshot is not None else source.t_end_ms
+    if t_end_ms is None:
+        # 발표 중 1초 원자료가 하나도 오지 않았다 (실시간 연결 없이 끝낸 Take). 셀 것이 없다
+        logger.warning("1초 원자료가 없어 Take 결과를 만들 수 없다 take=%s", take_id)
+        await _fail_take_result(take_id, store)
+        return None
+    events = _merged(source.events, snapshot.events if snapshot else ())
+    constants = (
+        snapshot.constants
+        if snapshot is not None and snapshot.constants is not None
+        else source.context.constants
+    )
+    replay = source.replay(t_end_ms)
+    inputs = snapshot.inputs if snapshot is not None else source.last_window(replay, t_end_ms)
+    request = finalize_request(constants, t_end_ms, inputs, None, events, replay=replay)
+    return request, t_end_ms, source
+
+
+async def _finalize_with_replay(
+    take_id: uuid.UUID,
+    request: dict[str, Any],
+    t_end_ms: int,
+    source: FinalizeSource | None,
+    client: CoachClient,
+    store: CoachStore,
+) -> FinalizeReply | None:
+    """AI 를 부른다. 코치 상태가 끊겼다고 하면 원자료를 붙여 한 번 더 부른다."""
     reply = await client.finalize(request)
-    if isinstance(reply, ReplayRequired):
+    if not isinstance(reply, ReplayRequired):
+        return reply
+    if source is None:
+        source = await _load_source(take_id, store)
         if source is None:
-            source = await _retrying(
-                "원자료 읽기", take_id, lambda: store.load_finalize_source(take_id)
-            )
-            if source is None:
-                logger.info("replay 를 만들 Take 가 없다 (지워졌거나 이미 끝남) take=%s", take_id)
-                return
-        logger.info("finalize 가 replay 를 요청했다 take=%s", take_id)
-        replay = request.get("replay") or source.replay(t_end_ms)
-        reply = await client.finalize({**request, "replay": replay})
-        if isinstance(reply, ReplayRequired):
-            # 원자료를 다 보냈는데도 못 셌다 (클라이언트가 None 으로 바꾸지만 한 번 더 막는다)
-            reply = None
+            logger.info("replay 를 만들 Take 가 없다 (지워졌거나 이미 끝남) take=%s", take_id)
+            return None
+    logger.info("finalize 가 replay 를 요청했다 take=%s", take_id)
+    replay = request.get("replay") or source.replay(t_end_ms)
+    reply = await client.finalize({**request, "replay": replay})
+    # 원자료를 다 보냈는데도 못 셌다 (클라이언트가 None 으로 바꾸지만 한 번 더 막는다)
+    return None if isinstance(reply, ReplayRequired) else reply
 
-    if reply is None:
-        logger.warning("Take 결과를 만들지 못해 Take 를 FAILED 로 둔다 take=%s", take_id)
-        await _retrying("실패 적기", take_id, lambda: store.fail_take_result(take_id))
-        return
-    assert isinstance(reply, FinalizeReply)
-    result = reply
+
+async def _save(
+    take_id: uuid.UUID,
+    reply: FinalizeReply,
+    snapshot: FinalizeSnapshot | None,
+    store: CoachStore,
+) -> None:
     unsaved = snapshot.events if snapshot is not None else ()
     saved = await _retrying(
-        "결과 저장", take_id, lambda: store.save_take_result(take_id, result, unsaved)
+        "결과 저장", take_id, lambda: store.save_take_result(take_id, reply, unsaved)
     )
     if not saved:
         logger.info("Take 결과를 버렸다 (그 사이 지워졌거나 단계가 바뀜) take=%s", take_id)
@@ -265,6 +276,24 @@ async def _run(
             _on_take_result(take_id)
         except Exception:
             logger.exception("Take 결과 뒤 분석을 띄우지 못했다 take=%s", take_id)
+
+
+async def _run(
+    take_id: uuid.UUID,
+    snapshot: FinalizeSnapshot | None,
+    client: CoachClient,
+    store: CoachStore,
+) -> None:
+    first = await _first_request(take_id, snapshot, store)
+    if first is None:
+        return
+    request, t_end_ms, source = first
+    reply = await _finalize_with_replay(take_id, request, t_end_ms, source, client, store)
+    if reply is None:
+        logger.warning("Take 결과를 만들지 못해 Take 를 FAILED 로 둔다 take=%s", take_id)
+        await _fail_take_result(take_id, store)
+        return
+    await _save(take_id, reply, snapshot, store)
 
 
 def _merged(
@@ -370,7 +399,7 @@ async def stop_all(timeout: float) -> None:
     deadline = asyncio.get_running_loop().time() + timeout
     await _recovery.stop_all(timeout)
     await _running.stop_all(max(0.0, deadline - asyncio.get_running_loop().time()))
-    # 재시도 소진 뒤 sweep 을 기다리던 Take 는 실행 태스크가 없어 위 취소 경로를 타지 않는다.
+    # 끊긴 작업과 재시도를 다 써 sweep 을 기다리던 Take 의 재료에만 있는 코치 이벤트를 넣어 둔다
     if pending := [
         _keep_events(take_id, snapshot.events, store)
         for take_id, (snapshot, store) in list(_pending.items())
