@@ -20,6 +20,10 @@ from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
+from pitch_coach_backend.module.chat import turn_runner
+from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup_sweep
+from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
+from pitch_coach_backend.module.chat.run_recovery import start as start_run_recovery
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.pitch.dependencies import (
     resume_script_parses,
@@ -76,6 +80,7 @@ def shutdown_max_sec() -> float:
         # 코치 finalize 와 계획 요청을 차례로 끊는다
         + 2 * COACH_STOP_TIMEOUT_SEC
         + analysis_runner.STOP_TIMEOUT_SEC
+        + turn_runner.STOP_TIMEOUT_SEC
     )
 
 
@@ -96,6 +101,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_analysis = start_analysis_runner()
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
+    stop_run_recovery = start_run_recovery()
+    stop_goal_sweep = start_goal_sweep()
+    stop_cleanup_sweep = start_cleanup_sweep()
     # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
     stop_file_cleanup = start_file_cleanup_sweep()
     # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
@@ -114,6 +122,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
     await stop_ready_sweep()
+    await stop_goal_sweep()
+    await stop_run_recovery()
+    await turn_runner.stop_all()
+    await stop_cleanup_sweep()
     await stop_file_cleanup()
     await stop_coach_background()
     await stop_analysis()
