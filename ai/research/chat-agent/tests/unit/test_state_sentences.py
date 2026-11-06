@@ -31,7 +31,13 @@ def _ids(claims: list[Claim], r: EvidenceRegistry) -> list[str]:
 
 def _state(r: EvidenceRegistry, path: str, value: str, *, take: int = 5):
     return r.record(
-        pitch_id="p1", take_id=f"t{take}", take_number=take, kind="REVIEW", revision=1, path=path, value=value
+        pitch_id="p1",
+        take_id=f"t{take}",
+        take_number=take,
+        kind="REVIEW",
+        revision=1,
+        path=path,
+        value=value,
     )
 
 
@@ -41,9 +47,13 @@ def _state(r: EvidenceRegistry, path: str, value: str, *, take: int = 5):
 def test_dimension_state_evidence_matches_its_metric_names_only() -> None:
     r = EvidenceRegistry(run_id="run")
     gaze = _state(r, "review.dimensions.audience_gaze", "PRIORITY")
-    ok = Claim(kind="RECORD", text="Take 5는 청중 시선이 우선 개선이에요.", evidence_ids=[gaze.evidence_id])
+    ok = Claim(
+        kind="RECORD", text="Take 5는 청중 시선이 우선 개선이에요.", evidence_ids=[gaze.evidence_id]
+    )
     assert _ids([ok], r) == []
-    other = Claim(kind="RECORD", text="Take 5는 말 속도가 우선 개선이에요.", evidence_ids=[gaze.evidence_id])
+    other = Claim(
+        kind="RECORD", text="Take 5는 말 속도가 우선 개선이에요.", evidence_ids=[gaze.evidence_id]
+    )
     assert CheckId.TARGET_MISMATCH in _ids([other], r)
 
 
@@ -59,17 +69,23 @@ def test_problem_segment_evidence_matches_its_dimension_metric_name() -> None:
         value="GAZE_ON_SCRIPT",
         slide_number=3,
     )
-    ok = Claim(kind="RECORD", text="Take 5 3장에 대본 응시 구간이 있어요.", evidence_ids=[seg.evidence_id])
+    ok = Claim(
+        kind="RECORD", text="Take 5 3장에 대본 응시 구간이 있어요.", evidence_ids=[seg.evidence_id]
+    )
     assert _ids([ok], r) == []
     # 대본 응시 문제를 청중 시선 문제로 말하면 대상이 다르다(같은 GAZE 영역이어도 다른 차원)
-    bad = Claim(kind="RECORD", text="Take 5 3장에 청중 시선 문제가 있어요.", evidence_ids=[seg.evidence_id])
+    bad = Claim(
+        kind="RECORD", text="Take 5 3장에 청중 시선 문제가 있어요.", evidence_ids=[seg.evidence_id]
+    )
     assert CheckId.TARGET_MISMATCH in _ids([bad], r)
 
 
 def test_pitch_list_dimension_path_is_a_dimension_state() -> None:
     r = EvidenceRegistry(run_id="run")
     d = _state(r, "pitches[pitch_id=p-1].last_review.dimensions.script_independence", "PRIORITY")
-    c = Claim(kind="RECORD", text="Take 5는 대본 응시가 우선 개선이에요.", evidence_ids=[d.evidence_id])
+    c = Claim(
+        kind="RECORD", text="Take 5는 대본 응시가 우선 개선이에요.", evidence_ids=[d.evidence_id]
+    )
     assert _ids([c], r) == []
 
 
@@ -90,7 +106,14 @@ def test_assessment_explanation_may_cite_its_own_read_value() -> None:
     def ans(r: Any) -> Any:
         eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio")
         return F.answer(
-            [F.claim("ASSESSMENT", "3장 청중 시선은 28%로 기록됐어요.", evidence_ids=[eid], assessment_index=0)]
+            [
+                F.claim(
+                    "ASSESSMENT",
+                    "3장 청중 시선은 28%로 기록됐어요.",
+                    evidence_ids=[eid],
+                    assessment_index=0,
+                )
+            ]
         )
 
     llm = F.FakeLlm([F.plan(assessments=[d]), F.tools(read), F.done(), ans])
@@ -111,7 +134,11 @@ def test_assessment_explanation_may_cite_its_own_read_value() -> None:
             "Take 4 기록은 끝까지 한 발표가 아니라 Take 5 기록과 3장 청중 시선을 비교할 수 없어요.",
         ),
         (
-            {"previous_complete": False, "current_complete": False, "reason": "NOT_COMPLETED_FULLY"},
+            {
+                "previous_complete": False,
+                "current_complete": False,
+                "reason": "NOT_COMPLETED_FULLY",
+            },
             "Take 4 · Take 5 기록은 모두 끝까지 한 발표가 아니라 3장 청중 시선을 비교할 수 없어요.",
         ),
         (
@@ -139,10 +166,17 @@ def _incomplete_take4(req: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_not_comparable_compare_gets_the_code_reason_sentence() -> None:
-    req = _incomplete_take4(F.with_loaded(F.request(user_message="Take 4랑 5 3장 시선 비교해 줘"), "t-4"))
+    req = _incomplete_take4(
+        F.with_loaded(F.request(user_message="Take 4랑 5 3장 시선 비교해 줘"), "t-4")
+    )
     compare = (
         "compare_takes",
-        {"previous_take_id": "t-4", "current_take_id": "t-5", "metric": "audience_ratio", "slide_number": 3},
+        {
+            "previous_take_id": "t-4",
+            "current_take_id": "t-5",
+            "metric": "audience_ratio",
+            "slide_number": 3,
+        },
     )
     d = F.draft(
         "Take 4랑 5 3장 시선 비교해 줘",
@@ -157,7 +191,10 @@ def test_not_comparable_compare_gets_the_code_reason_sentence() -> None:
     _, _, data = F.run_turn(req, llm)
     fd = FinalData.model_validate(data)
     texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
-    assert "Take 4 기록은 끝까지 한 발표가 아니라 Take 5 기록과 3장 청중 시선을 비교할 수 없어요." in texts
+    assert (
+        "Take 4 기록은 끝까지 한 발표가 아니라 Take 5 기록과 3장 청중 시선을 비교할 수 없어요."
+        in texts
+    )
     assert fd.status == "DONE"
 
 
@@ -182,7 +219,9 @@ def test_same_name_pitches_without_a_scope_choice_ask_which() -> None:
     other.update({"pitch_id": "p-2", "title": "회사 소개 발표 영어"})
     req["context"]["pitches"].append(other)
     req["context"]["pitches_total"] = len(req["context"]["pitches"])
-    llm = F.FakeLlm([F.plan(), F.tools(("list_pitches", {"query": "회사 소개"})), F.done(), F.answer([])])
+    llm = F.FakeLlm(
+        [F.plan(), F.tools(("list_pitches", {"query": "회사 소개"})), F.done(), F.answer([])]
+    )
     _, _, data = F.run_turn(req, llm)
     fd = FinalData.model_validate(data)
     assert fd.message.claims[-1].text == templates.SystemText.WHICH_PITCH.value  # type: ignore[union-attr]

@@ -39,7 +39,9 @@ def slide_draft(take_numbers: list[int]) -> dict[str, Any]:
 
 def value_answer(r: Any) -> Any:
     eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio")
-    return F.answer([F.claim("RECORD", "Take 4의 3장 청중 시선 비율은 31%예요.", evidence_ids=[eid])])
+    return F.answer(
+        [F.claim("RECORD", "Take 4의 3장 청중 시선 비율은 31%예요.", evidence_ids=[eid])]
+    )
 
 
 def tool_calls_in(req: Any) -> list[tuple[str, dict[str, Any]]]:
@@ -57,7 +59,9 @@ def test_missing_target_take_is_fetched_before_any_research_call() -> None:
     fd = FinalData.model_validate(data)
     assert fd.status == "NEEDS_ACTION"
     assert [(a.type, a.args["take_id"]) for a in fd.actions] == [("FETCH_TAKE", "t-4")]
-    assert [c.purpose for c in llm.calls] == ["RESEARCH"]  # 계획 한 번뿐: 조사 모델 호출 없이 가져오기를 냈다
+    assert [c.purpose for c in llm.calls] == [
+        "RESEARCH"
+    ]  # 계획 한 번뿐: 조사 모델 호출 없이 가져오기를 냈다
 
     res = [
         {
@@ -74,7 +78,10 @@ def test_missing_target_take_is_fetched_before_any_research_call() -> None:
     assert fd2.status == "DONE"
     # 이어 부른 뒤 첫 조사 호출 앞에 코드가 읽은 Take 4 3장 값이 있다
     first = llm2.calls[0]
-    assert ("get_take_report", {"take_id": "t-4", "section": "slides", "slide_number": 3}) in tool_calls_in(first)
+    assert (
+        "get_take_report",
+        {"take_id": "t-4", "section": "slides", "slide_number": 3},
+    ) in tool_calls_in(first)
     assert "31%" in fd2.message.text  # type: ignore[union-attr]
 
 

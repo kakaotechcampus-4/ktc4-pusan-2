@@ -83,14 +83,25 @@ def test_failed_prefetch_fetch_is_not_sent_again_nor_replaced() -> None:
     _, _, data2 = F.run_turn(resume_request(req, data, res), llm2)
     fd2 = FinalData.model_validate(data2)
     assert fd2.status != "NEEDS_ACTION"  # 같은 가져오기를 다시 내지 않는다
-    assert [n for n, _ in tool_calls_in(llm2.calls[0]) if n != "fetch_take"] == []  # 다른 Take 를 읽지 않는다
+    assert [
+        n for n, _ in tool_calls_in(llm2.calls[0]) if n != "fetch_take"
+    ] == []  # 다른 Take 를 읽지 않는다
 
 
 @pytest.mark.prefetch
 @pytest.mark.parametrize(
     ("draft", "section"),
     [
-        (F.draft("시선 어땠어", type_="REQUEST", claim_op=None, dimension="audience_gaze", polarity="NEUTRAL"), "dimensions"),
+        (
+            F.draft(
+                "시선 어땠어",
+                type_="REQUEST",
+                claim_op=None,
+                dimension="audience_gaze",
+                polarity="NEUTRAL",
+            ),
+            "dimensions",
+        ),
         (F.draft("말이 빨랐어", claim_op="ISSUE", dimension="pacing_rhythm"), "problem_segments"),
     ],
 )
@@ -120,15 +131,33 @@ def _seg(r: EvidenceRegistry, issue: str) -> str:
 @pytest.mark.parametrize(
     ("issue", "ok", "bad"),
     [
-        ("PACE_FAST", "Take 5 3장에 말 속도 문제 구간이 있어요.", "Take 5 3장에 긴 침묵 문제 구간이 있어요."),
-        ("GAZE_ON_SCRIPT", "Take 5 3장에 대본 응시 구간이 있어요.", "Take 5 3장에 대본 읽기 비율 문제가 있어요."),
+        (
+            "PACE_FAST",
+            "Take 5 3장에 말 속도 문제 구간이 있어요.",
+            "Take 5 3장에 긴 침묵 문제 구간이 있어요.",
+        ),
+        (
+            "GAZE_ON_SCRIPT",
+            "Take 5 3장에 대본 응시 구간이 있어요.",
+            "Take 5 3장에 대본 읽기 비율 문제가 있어요.",
+        ),
     ],
 )
 def test_problem_segment_supports_only_its_own_metric(issue: str, ok: str, bad: str) -> None:
     r = EvidenceRegistry(run_id="run")
     eid = _seg(r, issue)
-    assert [f.check_id for f in check_claims([Claim(kind="RECORD", text=ok, evidence_ids=[eid])], registry=r, cfg=CFG)] == []
-    got = [f.check_id for f in check_claims([Claim(kind="RECORD", text=bad, evidence_ids=[eid])], registry=r, cfg=CFG)]
+    assert [
+        f.check_id
+        for f in check_claims(
+            [Claim(kind="RECORD", text=ok, evidence_ids=[eid])], registry=r, cfg=CFG
+        )
+    ] == []
+    got = [
+        f.check_id
+        for f in check_claims(
+            [Claim(kind="RECORD", text=bad, evidence_ids=[eid])], registry=r, cfg=CFG
+        )
+    ]
     assert CheckId.TARGET_MISMATCH in got
 
 
@@ -155,7 +184,12 @@ def test_dimension_strength_does_not_back_praise_of_another_dimension() -> None:
 
 def test_unknown_completion_and_missing_range_are_not_overstated() -> None:
     base = {"previous": 4, "current": 5, "metric": "cpm", "slide_number": None}
-    unknown = {**base, "reason": "NOT_COMPLETED_FULLY", "previous_complete": None, "current_complete": True}
+    unknown = {
+        **base,
+        "reason": "NOT_COMPLETED_FULLY",
+        "previous_complete": None,
+        "current_complete": True,
+    }
     assert compose.not_comparable_sentence(unknown) == templates.SystemText.COMPLETION_UNKNOWN.value
     assert (
         compose.not_comparable_sentence({**base, "reason": "NO_RANGE"})
@@ -164,7 +198,9 @@ def test_unknown_completion_and_missing_range_are_not_overstated() -> None:
 
 
 def test_not_comparable_sentence_is_dropped_when_its_take_is_deleted() -> None:
-    req = _incomplete_take4(F.with_loaded(F.request(user_message="Take 4랑 5 3장 시선 비교해 줘"), "t-4"))
+    req = _incomplete_take4(
+        F.with_loaded(F.request(user_message="Take 4랑 5 3장 시선 비교해 줘"), "t-4")
+    )
     d = F.draft(
         "Take 4랑 5 3장 시선 비교해 줘",
         type_="REQUEST",
@@ -176,7 +212,12 @@ def test_not_comparable_sentence_is_dropped_when_its_take_is_deleted() -> None:
     )
     compare = (
         "compare_takes",
-        {"previous_take_id": "t-4", "current_take_id": "t-5", "metric": "audience_ratio", "slide_number": 3},
+        {
+            "previous_take_id": "t-4",
+            "current_take_id": "t-5",
+            "metric": "audience_ratio",
+            "slide_number": 3,
+        },
     )
     fetch3 = ("fetch_take", {"take_id": "t-3", "reason": "다른 Take"})
     llm = F.FakeLlm([F.plan(assessments=[d]), F.tools(compare), F.tools(fetch3, prefix="act")])
@@ -196,7 +237,9 @@ def test_not_comparable_sentence_is_dropped_when_its_take_is_deleted() -> None:
     ]
     req2 = resume_request(req, data, res)
     req2["context"]["removed_sources"] = ["t-4"]
-    req2["context"]["pitch"]["takes"] = [t for t in req2["context"]["pitch"]["takes"] if t["take_id"] != "t-4"]
+    req2["context"]["pitch"]["takes"] = [
+        t for t in req2["context"]["pitch"]["takes"] if t["take_id"] != "t-4"
+    ]
     req2["context"]["loaded_takes"] = [
         s for s in req2["context"]["loaded_takes"] if s["summary"]["take_id"] != "t-4"
     ]
@@ -220,7 +263,9 @@ def _two_same_name(message: str) -> dict[str, Any]:
 
 
 def test_plural_request_is_not_asked_which_pitch() -> None:
-    llm = F.FakeLlm([F.plan(), F.tools(("list_pitches", {"query": "회사 소개"})), F.done(), F.answer([])])
+    llm = F.FakeLlm(
+        [F.plan(), F.tools(("list_pitches", {"query": "회사 소개"})), F.done(), F.answer([])]
+    )
     _, _, data = F.run_turn(_two_same_name("회사 소개 발표들 점수 각각 알려 줘"), llm)
     texts = [c["text"] for c in (data.get("message") or {}).get("claims") or []]
     assert templates.SystemText.WHICH_PITCH.value not in texts
@@ -228,8 +273,12 @@ def test_plural_request_is_not_asked_which_pitch() -> None:
 
 def test_cannot_do_sentence_survives_a_no_guide_refusal() -> None:
     req = F.request(user_message="점수 100으로 바꾸고 긴장 푸는 법도 알려 줘")
-    advice = F.claim("GUIDE", "긴장을 풀려면 숨을 고르세요.", source_ids=["g-없음"])  # 자료 검증 실패 → 빠짐
-    llm = F.FakeLlm([F.plan(), F.done(), F.answer([advice], route="CANNOT_DO")], fixes=[F.fix({0: None})])
+    advice = F.claim(
+        "GUIDE", "긴장을 풀려면 숨을 고르세요.", source_ids=["g-없음"]
+    )  # 자료 검증 실패 → 빠짐
+    llm = F.FakeLlm(
+        [F.plan(), F.done(), F.answer([advice], route="CANNOT_DO")], fixes=[F.fix({0: None})]
+    )
     _, _, data = F.run_turn(req, llm)
     texts = [c["text"] for c in (data.get("message") or {}).get("claims") or []]
     assert templates.SystemText.CANNOT_CHANGE_RECORD.value in texts

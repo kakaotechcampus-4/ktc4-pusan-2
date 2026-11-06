@@ -10,7 +10,9 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _no_prefetch_unless_marked(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_prefetch_unless_marked(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
     if request.node.get_closest_marker("prefetch") is None:
         from chat_agent.loop import Loop
 

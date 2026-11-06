@@ -882,12 +882,17 @@ class Loop:
             for tid in takes:
                 if slide is not None or sub.get("metric") in self.cfg.metric_units:
                     wanted.append(
-                        ("get_take_report", {"take_id": tid, "section": "slides", "slide_number": slide})
+                        (
+                            "get_take_report",
+                            {"take_id": tid, "section": "slides", "slide_number": slide},
+                        )
                     )
                 elif dim is not None:
                     wanted.append(("get_take_report", {"take_id": tid, "section": "dimensions"}))
                 if op == "ISSUE" or (d.get("type") == "MEASURED" and slide is not None):
-                    wanted.append(("get_take_report", {"take_id": tid, "section": "problem_segments"}))
+                    wanted.append(
+                        ("get_take_report", {"take_id": tid, "section": "problem_segments"})
+                    )
         out: list[ToolCall] = []
         for name, args in wanted:
             needed = (
@@ -921,6 +926,7 @@ class Loop:
             self.st.prefetched.append(key)
             out.append(ToolCall(id=f"pf-{len(self.st.prefetched)}", name=name, args=args))
         return out
+
     def _judged_take(self) -> str | None:
         """Take 를 말하지 않은 초안의 대상(6-3 '판정 대상 Take'): 지금 보던 Take → 보던 Take(focus) → 가장 최근 완료 Take.
         기본 자료에 없어도 고른다(없으면 조사 흐름이 가져온다)."""
@@ -1102,9 +1108,7 @@ class Loop:
         self.ctx.registry.drop_sources(rs)
         # 비교할 수 없다는 기록도 그 Take 에 기댄다(지워진 기록의 완료 여부 · 버전을 다시 말하지 않게)
         self.st.not_comparable = [
-            r
-            for r in self.st.not_comparable
-            if not set(r.get("take_ids") or []) & rs
+            r for r in self.st.not_comparable if not set(r.get("take_ids") or []) & rs
         ]
         self.ctx.tool_cache = {
             k: v for k, v in self.ctx.tool_cache.items() if not (set(v.get("target_ids", [])) & rs)

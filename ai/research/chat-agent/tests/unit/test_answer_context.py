@@ -59,5 +59,7 @@ def test_answer_call_gets_value_table_and_per_question_evidence() -> None:
     assert (row["take"], row["slide"], row["value"]) == (5, 3, "28%")
     assert all(r["id"].startswith("e-") for r in table)  # 계산 근거(c-)는 표에 없다
     questions = block["questions"]
-    assert [q["quote"] for q in questions] == ["Take 5 3장 청중 시선 몇 %였어"]  # 발표법 주장은 빠진다
+    assert [q["quote"] for q in questions] == [
+        "Take 5 3장 청중 시선 몇 %였어"
+    ]  # 발표법 주장은 빠진다
     assert questions[0]["evidence_ids"] == [row["id"]]
