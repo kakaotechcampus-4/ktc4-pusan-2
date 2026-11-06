@@ -58,6 +58,8 @@ chat-agent/
 | `budget.py` | 한도(8-2 · 8-3): 모델 · 도구 · 행동 · 토큰 · 시간 예약, 답 쓰기 · 고치기 몫 남기기 | 누적량 → 예약 또는 `LimitHit` | 행동 · 루프 | 숫자는 `config.py` |
 | `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 라이선스 · 검수)와 검색(6-10) | manifest · 카드 → `Corpus`, 질의 → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스 탑재 때는 `allow_unreviewed=False` |
 | `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시) | — | `corpus.py` | 카드를 고치면 해시를 다시 만들고 `corpus_version`을 올린다 |
+| `llm_types.py` | 코어가 받는 도구 호출 LLM 의 모양(6-11): 요청 · 결과 · 실패 종류 · `before_attempt` 예약 | — | 루프 · 연구용 LLM 함수 · 가짜 모델 | 서비스로 옮길 때 `common/errors.py` 이름과 맞춘다 |
+| `diagnostics.py` | 진단 기록(11-5): 단계 · 끝, 닫힌 detail, 65,536바이트 줄이기 순서, `agent_step` · `agent_end` 로그 줄 | 단계 → `Diagnostics` | 루프 · 턴 | detail 필드는 `schemas.py` 닫힌 모델과 11-5 표 |
 | `examples/` | 요청 · 스트림 · 오류 · 행동 결과 예시 JSON(5-10) | — | 계약 시험 · BE 계약 시험 | `python -m chat_agent_lab.examples` 로 다시 만든다 |
 
 ### 2-2. 연구 전용 `src/chat_agent_lab/`
@@ -66,6 +68,7 @@ chat-agent/
 |---|---|---|---|---|
 | `fixtures.py` | 가상 피치 · Take · 코치 Take 결과 · 리뷰 · '끝까지 한 발표' 계산(12-3) | 매개변수 → 저장 payload 모양 dict | 예시 만들기 · 가짜 BE · 평가 | 코치 · 리뷰 결과 모양이 바뀌면 서비스 예시 파일과 맞춘다 |
 | `examples.py` | 코어 `examples/` 파일 만들기 | 가상 기록 → JSON · NDJSON 파일 | 사람이 실행 | 5절 모양을 바꾸면 다시 만든다 |
+| `llm.py` | 도구 호출 LLM 함수(6-11): OpenAI 호환 스트리밍, 도구 · 구조화 모드, 시도마다 한도 예약, 재시도(429 · 503 · 5xx 한 번), `finish_reason` 허용 목록 | `LlmRequest` → `LlmResult` 또는 실패 | 서비스 계층 대역 · live 시험 · 평가 | 서비스 탑재 때 `common/llm.py`의 `tool_llm`으로 옮긴다 |
 
 ## 3. 실행
 
