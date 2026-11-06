@@ -56,10 +56,12 @@ logger = logging.getLogger(__name__)
 # 브라우저가 창을 닫거나 새로고침하며 끊었다. 네트워크가 끊기면 닫힘 프레임이 없어 1006 이 된다
 CLOSE_GOING_AWAY = 1001
 
-# stop 뒤 스트림 정리를 기다리는 상한. 스트림이 Deepgram 을 기다리는 시간과 별개다 —
-# FE 를 무한정 붙잡아 두지 않으려는 값이다
+# stop 뒤 스트림 정리를 기다리는 상한. Deepgram 의 마지막 결과를 기다리는 시간
+# (`stt_loop.DRAIN_TIMEOUT_SEC`)보다 길어야 마지막 문장을 끊지 않는다. FE 는 먼저 닫고 나가므로
+# 여기 붙잡히는 것은 Take 를 끝난 것으로 적는 일이다 (`TakeStream.close_or_cancel`)
 STOP_TIMEOUT_SEC = 12.0
-# 정상 종료가 실패해 태스크를 끊은 뒤 정리를 기다리는 상한
+# 정상 종료가 실패해 태스크를 끊은 뒤 정리를 기다리는 상한. 넘으면 닫힌 것으로 확정하고 Take 를
+# 적는다. 남은 소켓 닫기는 reaper 가 마저 한다
 CANCEL_TIMEOUT_SEC = 2.0
 
 

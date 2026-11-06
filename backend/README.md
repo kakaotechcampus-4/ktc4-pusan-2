@@ -275,6 +275,7 @@ backend/
     │   │   ├── record.py         # TakeRecord · StreamHost · CoachDeps. 스트림과 위 파일들의 경계
     │   │   ├── client.py         # 붙어 있는 연결 · 이전 연결 쫓아내기 · FE 로 보내기
     │   │   ├── audio_queue.py    # Deepgram 으로 보낼 오디오 큐. 차면 오래된 것부터 버린다
+    │   │   ├── transcript_sender.py  # 전사를 FE 화면으로. interim 은 가장 새것만, 못 보낸 final 은 모았다 다시
     │   │   ├── auto_end.py       # 자동 종료 조건(말 없음·최대 시간)과 최대 시간 타이머. 네트워크를 모른다
     │   │   └── heard.py          # 끊김 없이 받은 오디오 범위 → 1초 원자료의 STT 상태
     │   ├── stt/                  # 외부 음성 인식. FE 연결 · Take 상태를 모른다
@@ -362,7 +363,7 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
   → stream/state → stream/runtime → stt/loop → stt/adapter`, `runtime → storage/transcripts · storage/metrics →
   storage/store → take service`.
   - stt · storage 는 connection · stream 을 import 하지 않는다. STT 이벤트는 받은 콜백으로 돌려준다.
-  - runtime 과 그 부품(client · audio_queue · heard · auto_end)은 registry · finish · state 를 import 하지 않는다.
+  - runtime 과 그 부품(client · audio_queue · transcript_sender · heard · auto_end)은 registry · finish · state 를 import 하지 않는다.
     Take 별 기록은 registry 가 만들어(`state.take_record`) 넘기고, 알릴 일은 `record.StreamHost` 로 넘긴다.
     부품은 `TakeStream` 도 모르고 값과 콜백만 받는다. abandon 도 registry 를 모르고 만료 콜백을 받는다.
   - 옮긴 이름을 옛 모듈에서 다시 내보내지 않는다. 테스트의 monkeypatch 가 옛 이름에만 걸린다.
