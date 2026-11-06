@@ -11,6 +11,8 @@ from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_js
 # 사용자 말 길이. 유니코드 문자(코드 포인트) 수로 센다. 넘으면 자르지 않고 422 다
 MESSAGE_MAX_CHARS = 2000
 MESSAGES_PAGE_MAX = 50
+# 한 응답은 직렬화 뒤 2 MiB 이하다(12-3). 끝맺는 칸 몫을 남긴다
+RESPONSE_MAX_BYTES = 2 * 1024 * 1024 - 4096
 
 RunStatus = Literal[
     "QUEUED",
