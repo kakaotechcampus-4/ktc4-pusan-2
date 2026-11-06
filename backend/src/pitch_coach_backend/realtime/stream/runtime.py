@@ -61,12 +61,13 @@ from fastapi import WebSocket
 
 from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent
-from pitch_coach_backend.coach.session import MAX_SLIDE_CHANGES
+from pitch_coach_backend.coach.session import MAX_SLIDE_CHANGES, CoachSession
 from pitch_coach_backend.core.tasks import quiet
 from pitch_coach_backend.module.take.dto import (
     MetricSecondCreateDTO,
 )
 from pitch_coach_backend.realtime.dto import (
+    CLOSE_NORMAL,
     AutoEndMessage,
     AutoEndReason,
     CoachMessage,
@@ -120,6 +121,10 @@ LIVE_AUDIO_SEC = 10.0
 INTERIM_SEND_TIMEOUT_SEC = 1.0
 
 
+# 끝난 Take 의 마지막 final 을 FE 로 보내는 상한
+FINAL_SEND_TIMEOUT_SEC = 3.0
+
+
 class TakeStream:
     def __init__(
         self,
@@ -133,8 +138,7 @@ class TakeStream:
         host: StreamHost,
         segment_no: int = 1,
         stt_session_no: int = 0,
-        grace_sec: float | None = None,
-        auto_end: AutoEndPolicy | None = None,
+        auto_end: AutoEndPolicy,
         coach: CoachDeps | None = None,
     ) -> None:
         self.take_id = take_id
@@ -143,8 +147,7 @@ class TakeStream:
         # 어긋나는 일이 생겨도 남의 스트림에 붙지 못하게 하는 이중 안전장치다
         self.owner_id = owner_id
         self._store = store
-        self._grace_sec = GRACE_SEC if grace_sec is None else grace_sec
-        self.auto_end_policy = AutoEndPolicy.from_settings() if auto_end is None else auto_end
+        self.auto_end_policy = auto_end
         self._coach = coach
         self._host = host
 
@@ -178,7 +181,7 @@ class TakeStream:
         self._client = ClientSlot()
         # 확정 전사의 번호 · 저장 재시도 · 화면에 못 보낸 final. 번호는 저장된 마지막 값에서 이어
         # 받는다
-        self._transcripts = TranscriptBuffer(take_id, store, segment_no=segment_no)
+        self._transcripts = TranscriptBuffer(take_id, segment_no=segment_no)
         # 놓친 final 을 다시 보내기 시작한 연결 (`resend_missed`). ready 를 받은 연결이다
         self._caught_up: WebSocket | None = None
         # 보낼 가장 새 interim 과 보내는 태스크 (`_show_interim`). STT 처리는 전송을 기다리지 않는다
@@ -190,11 +193,8 @@ class TakeStream:
         # 태스크를 약하게만 잡고 있어서, 아무도 참조하지 않는 태스크는 GC 에 끝나기 전에
         # 사라질 수 있다 (asyncio.create_task 문서의 경고)
         self._reaper: asyncio.Task[None] | None = None
-        # Take 가 지워져 끊었다 (`discard`). 붙어 있던 연결에 알리는 태스크도 위와 같은 이유로 든다
+        # Take 가 지워져 끊었다 (`discard`)
         self._discarded = False
-        self._closer: asyncio.Task[None] | None = None
-        # 다른 Take 에 자리를 내주며 붙어 있던 연결을 닫는 태스크 (`release_idle`)
-        self._releaser: asyncio.Task[None] | None = None
         # 마지막 연결이 창을 닫아(닫힘 코드 1001) 끊겼다. 다시 붙으면 지운다
         self._tab_closed = False
         self._stopping = False
@@ -329,7 +329,7 @@ class TakeStream:
 
     async def _expire_grace(self) -> None:
         try:
-            await asyncio.sleep(self._grace_sec)
+            await asyncio.sleep(GRACE_SEC)
         except asyncio.CancelledError:
             return
         logger.info("재연결 없이 grace 만료 take=%s", self.take_id)
@@ -356,6 +356,10 @@ class TakeStream:
         # stop 앞에 온 마지막 1초 조각은 이미 받았다
         self._client.done.set()
         self.request_stop()
+
+    @property
+    def coach(self) -> CoachSession:
+        return self._record.coach
 
     async def wait_closed(self, timeout: float | None = None) -> bool:
         try:
@@ -422,6 +426,27 @@ class TakeStream:
         self._finish()
         return False
 
+    async def close_or_cancel(
+        self,
+        *,
+        drain_sec: float | None = None,
+        cancel_sec: float | None = None,
+        warn: str | None = None,
+        confirm: bool = True,
+    ) -> bool:
+        """`drain_sec` 까지 기다렸다 안 끝나면 끊고 `cancel_sec` 까지 더 기다린다. 끝났으면 True.
+
+        `warn` 을 주면 끊을 때 경고로 남긴다. `confirm` 이면 끊은 뒤에도 안 끝날 때 닫힌 것으로
+        확정한다 (`wait_cancelled`). 값을 하나로 맞추는 것은 별도 결정이라 부르는 쪽이 정한다.
+        """
+        if await self.wait_closed(drain_sec):
+            return True
+        if warn is not None:
+            logger.warning("%s drain 타임아웃 take=%s. 스트림을 끊는다", warn, self.take_id)
+        self.cancel()
+        timeout = stt_loop.ABORT_TIMEOUT_SEC if cancel_sec is None else cancel_sec
+        return await (self.wait_cancelled(timeout) if confirm else self.wait_closed(timeout))
+
     def discard(self) -> None:
         """Take 가 지워졌다. 남은 전사를 기다리지 않고 끊고, 붙어 있는 연결에 알린 뒤 닫는다.
 
@@ -444,7 +469,7 @@ class TakeStream:
         client = self._client.detach()
         self._caught_up = None
         if client is not None:
-            self._releaser = asyncio.create_task(
+            self._host.spawn(
                 close_with(
                     client,
                     ErrorMessage(
@@ -496,9 +521,7 @@ class TakeStream:
         client = self._client.detach()
         self.cancel()
         if client is not None:
-            self._closer = asyncio.create_task(
-                close_with(client, error), name=f"take-stream-cut:{self.take_id}"
-            )
+            self._host.spawn(close_with(client, error), name=f"take-stream-cut:{self.take_id}")
 
     def _finish(self) -> None:
         if self._closed.is_set():
@@ -758,7 +781,7 @@ class TakeStream:
         if current is not None and current is not target and current is self._caught_up:
             # 보내는 동안 다른 탭이 이어받았고 그 연결은 놓친 final 을 이미 받았다. 다음 재연결까지
             # 기다리지 않고 지금 보낸다. 아직 ready 전인 연결이면 그 연결이 따라잡을 때 같이 간다
-            with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
+            with anyio.move_on_after(FINAL_SEND_TIMEOUT_SEC):
                 await self.resend_missed()
 
     async def _send_final_to(self, message: TranscriptMessage, target: WebSocket) -> bool:
@@ -828,10 +851,9 @@ class TakeStream:
             await self._client.send(
                 AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
             )
-        if not await self.wait_closed(stt_loop.DRAIN_TIMEOUT_SEC + stt_loop.ABORT_TIMEOUT_SEC):
-            logger.warning("자동 종료 drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
-            self.cancel()
-            await self.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
+        await self.close_or_cancel(
+            drain_sec=stt_loop.DRAIN_TIMEOUT_SEC + stt_loop.ABORT_TIMEOUT_SEC, warn="자동 종료"
+        )
         if self._client.connected:
             # FE 는 auto_end 를 받고 마지막 1초 조각을 보낸 뒤 stop 을 보낸다. Deepgram 정리가
             # 먼저 끝났으면 그 조각이 아직 안 왔을 수 있다 — stop 이 오거나 연결이 떠날 때까지
@@ -852,7 +874,7 @@ class TakeStream:
             # FE 가 떨어져 있다. 다시 붙으면 TAKE_ENDED 로 이유를 받는다
             return
         await self.send_status()
-        await quiet(client.close(code=1000))
+        await quiet(client.close(code=CLOSE_NORMAL))
 
     # ── FE 로 ─────────────────────────────────────────────────────────
 

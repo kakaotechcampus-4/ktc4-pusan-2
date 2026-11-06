@@ -34,15 +34,12 @@ MAX_UNSAVED_FINALS = 1_500
 
 
 class TranscriptBuffer:
-    def __init__(self, take_id: uuid.UUID, store: TranscriptStore, *, segment_no: int = 1) -> None:
+    def __init__(self, take_id: uuid.UUID, *, segment_no: int = 1) -> None:
         self.take_id = take_id
-        self._store = store
         # Take 기준이다. 스트림이 새로 만들어질 때 저장된 마지막 값에서 이어 받는다
         self.segment_no = segment_no
         # FE 가 떨어져 있는 동안 온 final. 다시 붙으면 순서대로 보낸다
         self.missed_finals: list[TranscriptMessage] = []
-        # 저장에 실패한 final. 번호 순서대로 다시 저장한다 (`save_unsaved`)
-        self.unsaved: list[TranscriptSegmentCreateDTO] = []
         # resend() 를 감싼다. 탭 두 개가 거의 동시에 붙으면(예: 재연결이 겹칠 때)
         # 서로 다른 RealtimeSession 이 이 메서드를 동시에 부를 수 있다. 락 없이 같은
         # 리스트를 각자 확인(while)->접근([0])->제거(pop) 하면, await 로 갈라진 그 틈에

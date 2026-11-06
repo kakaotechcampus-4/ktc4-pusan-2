@@ -14,6 +14,16 @@ from pydantic import AfterValidator, BaseModel, Field, TypeAdapter, model_valida
 from pitch_coach_backend.core.limits import INT4_MAX, MAX_T_MS
 from pitch_coach_backend.core.validation import reject_unstorable_json
 
+# WebSocket 닫힘 코드
+CLOSE_NORMAL = 1000
+CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
+CLOSE_INTERNAL_ERROR = 1011  # 서버 쪽 일시 오류. FE 는 백오프로 다시 붙는다
+CLOSE_TRY_AGAIN_LATER = 1013  # 받을 자리가 없다. FE 는 백오프로 다시 붙는다
+
+# 떠난 것으로 끝낸 Take 의 이유. ABANDONED 는 FE 가 STT 없이 발표를 이어 가는 중일 수 있어 끝내기
+# PUT 이 오면 되살린다 (take repository `mark_ended`)
+type LeftReason = Literal["ABANDONED", "CLOSED"]
+
 # `take_metric_seconds.slide_number` 는 PostgreSQL integer(int4). 넘으면 저장에서 터지고, 실패한
 # 행이 버퍼에 남아 같은 묶음의 정상 행까지 계속 못 넣는다
 MAX_SLIDE_NUMBER = INT4_MAX

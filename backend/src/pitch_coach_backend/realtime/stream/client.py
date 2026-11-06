@@ -11,7 +11,7 @@ from fastapi import WebSocket
 from pydantic import BaseModel
 
 from pitch_coach_backend.core.tasks import quiet
-from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
+from pitch_coach_backend.realtime.dto import CLOSE_POLICY_VIOLATION, ErrorMessage, WsErrorCode
 
 # 끊는 연결에 오류를 알리고 닫는 단계마다 기다리는 상한. 상대가 받지 않으면 전송이 끝나지 않는다 —
 # 다른 탭이 이어받을 때 그 탭의 ready 가, 로그아웃할 때 응답이 이 연결 하나에 붙잡힌다
@@ -80,9 +80,13 @@ class ClientSlot:
             return False
         try:
             await ws.send_text(message.model_dump_json())
-        except Exception:  # noqa: BLE001 - 어떤 전송 실패든 "재시도 대상" 으로 취급한다
+        except Exception:  # 어떤 전송 실패든 "재시도 대상" 으로 취급한다
             return False
         return True
+
+
+async def send_model(ws: WebSocket, message: BaseModel) -> None:
+    await ws.send_text(message.model_dump_json())
 
 
 async def close_with(ws: WebSocket, error: ErrorMessage) -> None:
@@ -93,4 +97,4 @@ async def close_with(ws: WebSocket, error: ErrorMessage) -> None:
     with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
         await quiet(ws.send_text(error.model_dump_json()))
     with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
-        await quiet(ws.close(code=1008, reason=error.code))
+        await quiet(ws.close(code=CLOSE_POLICY_VIOLATION, reason=error.code))

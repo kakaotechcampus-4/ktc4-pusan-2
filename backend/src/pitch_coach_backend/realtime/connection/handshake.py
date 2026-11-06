@@ -7,18 +7,18 @@
 스트림 · 전사 상태를 보관하지 않는다. 도메인 service(user · take · pitch)와 코치 저장소만 부른다.
 """
 
-import contextlib
 import logging
 import time
 import uuid
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import cast
 from urllib.parse import urlsplit
 
 import anyio
-from fastapi import WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, ValidationError
+from fastapi import WebSocket
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -29,12 +29,16 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import decode_access_token
+from pitch_coach_backend.core.tasks import quiet
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.take.service import take as take_service
-from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES
+from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES, READY
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.realtime.dto import (
+    CLOSE_INTERNAL_ERROR,
+    CLOSE_POLICY_VIOLATION,
+    CLOSE_TRY_AGAIN_LATER,
     TAKE_END_REASONS,
     AuthMessage,
     AutoEndMessage,
@@ -45,17 +49,17 @@ from pitch_coach_backend.realtime.dto import (
     client_message_adapter,
 )
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
+from pitch_coach_backend.realtime.stream.client import (
+    CLOSE_STEP_TIMEOUT_SEC,
+    close_with,
+    send_model,
+)
 
 logger = logging.getLogger(__name__)
 
 # RFC 6455 close code
-CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
-CLOSE_INTERNAL_ERROR = 1011  # 서버 쪽 일시 오류. FE 는 다시 붙는다
-CLOSE_TRY_AGAIN_LATER = 1013  # 받을 자리가 없다. 받기 전이라 브라우저에는 연결 실패로 보인다
 
 AUTH_TIMEOUT_SEC = 5.0
-# 인증 실패 알림을 받지 않는 상대도 슬롯을 계속 붙잡지 못하게 단계마다 기다림을 묶는다.
-REJECT_STEP_TIMEOUT_SEC = 1.0
 
 # 인증 전(연결을 받고 auth 를 기다리는 동안) 연결 수 상한. 정상 FE 는 연결하자마자 auth 를 보내 이
 # 상태가 왕복 한 번이면 끝난다. 같은 와이파이의 수강생 수십 명이 동시에 새로고침해도 IP 하나에 몇
@@ -95,6 +99,30 @@ def origin_allowed(origin: str | None) -> bool:
     except ValueError:
         return False
     return bool(given.netloc) and f"{given.scheme}://{given.netloc}" == settings.frontend_origin
+
+
+def _auth_message(text: str | None) -> AuthMessage | None:
+    if text is None:
+        return None
+    try:
+        parsed = client_message_adapter.validate_json(text)
+    except ValidationError:
+        return None
+    return parsed if isinstance(parsed, AuthMessage) else None
+
+
+@dataclass(frozen=True)
+class _Loaded:
+    """인가 때 DB 에서 읽은 값."""
+
+    user_found: bool
+    take_found: bool
+    status: str | None
+    end_reason: str | None
+    blocked: bool
+    terms: list[str]
+    started: bool = True
+    context: TakeContext | None = None
 
 
 class _PendingAuth:
@@ -203,16 +231,8 @@ class Handshake:
         if message["type"] == "websocket.disconnect":
             return None
 
-        text = message.get("text")
-        if text is None:
-            await self.reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
-            return None
-        try:
-            parsed = client_message_adapter.validate_json(text)
-        except ValidationError:
-            await self.reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
-            return None
-        if not isinstance(parsed, AuthMessage):
+        parsed = _auth_message(message.get("text"))
+        if parsed is None:
             await self.reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
             return None
 
@@ -240,135 +260,120 @@ class Handshake:
         need_context = self._needs_coach_context()
         # 레지스트리는 이벤트 루프에서만 본다. threadpool 에 들어가기 전에 묻는다
         room = self._has_room(user_id)
-
-        def load() -> tuple[
-            bool, bool, bool, bool, str | None, str | None, list[str], TakeContext | None
-        ]:
-            # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다.
-            # 그래서 threadpool 이고, 왕복을 아끼려 한 함수에서 전부 읽는다
-            user = user_service.find(self.db, user_id)
-            take = (
-                take_service.find_owned(self.db, self.take_id, user_id)
-                if user is not None
-                else None
-            )
-            # rollback() 전에 값을 읽어 둔다. rollback() 은 세션의 객체를 전부 expire 시켜서
-            # 그 뒤에 take.status 를 읽으면 SQLAlchemy 가 **커넥션을 다시 꺼내 SELECT 를
-            # 한 번 더** 날린다 — 커넥션을 돌려준 의미가 없어진다. user 도 같은 이유로
-            # id 를 안 읽고 이미 아는 user_id 를 그대로 쓴다
-            status = take.status if take is not None else None
-            end_reason = take.end_reason if take is not None else None
-            terms: list[str] = []
-            if status in STREAMABLE_TAKE_STATUSES:
-                # 용어는 부가 기능이다. 조회가 실패해도 filler 만으로 STT 는 돈다 — 여기서
-                # 예외를 흘리면 연결이 1011 로 닫히고 FE 재연결이 같은 실패를 되풀이한다.
-                # 실패한 트랜잭션은 아래 rollback() 이 정리한다
-                try:
-                    terms = script_service.stt_keyterm_candidates(
-                        self.db, take.pitch_id, take.script_version_id
-                    )
-                except Exception:
-                    logger.exception("대본 용어 조회 실패, filler 만 쓴다 take=%s", self.take_id)
-            # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
-            # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
-            self.db.rollback()
-            take_found = take is not None
-            started = True
-            blocked = status == "READY" and not room
-            if status == "READY" and not blocked:
-                # 첫 연결이 Take 를 시작한다. 위 조회와 따로 짧은 트랜잭션 하나로 쓴다 — 용어 조회가
-                # 실패해 트랜잭션이 깨졌어도 적히고, 커밋하면 커넥션도 돌려준다.
-                # 미션 · 평가 기준 버전 · 원자료 사용 동의가 고정되기 전에는 ready 를 보내지 않는다
-                # (`docs/ai/architecture.md` 1-3 1번). 못 적으면 연결을 받지 않는다.
-                # READY 로 남은 채 발표하면 BE 가 시작하지 않은 Take 로 끝내고
-                # (`abandon_stale_ready_takes`) 끝내기도 받지 않는다. FE 는 ready 를 받기 전이라
-                # 발표를 시작하지 않았고 다시 붙는다
-                for attempt in range(2):
-                    try:
-                        if not lifecycle_service.mark_running(self.db, self.take_id):
-                            # 그사이 다른 연결이 시작했거나 시작하지 않은 Take 로 끝났다.
-                            # 다시 읽는다
-                            again = take_service.find_owned(self.db, self.take_id, user_id)
-                            take_found = again is not None
-                            status = again.status if again is not None else None
-                            end_reason = again.end_reason if again is not None else None
-                            self.db.rollback()
-                        break
-                    except Exception as error:
-                        self.db.rollback()
-                        if attempt == 0 and is_transient_db_error(error):
-                            logger.warning("Take 시작 값 저장을 다시 한다 take=%s", self.take_id)
-                            continue
-                        logger.exception("Take 를 RUNNING 으로 못 바꿨다 take=%s", self.take_id)
-                        started = False
-                        break
-            context = None
-            if started and not blocked and status in STREAMABLE_TAKE_STATUSES and need_context:
-                # 코칭은 부가 기능이다. 못 읽어도 STT 는 돈다
-                try:
-                    context = coach_store.load_take_context(self.db, self.take_id)
-                except Exception:
-                    logger.exception("코치 값을 읽지 못해 코칭 없이 돈다 take=%s", self.take_id)
-                self.db.rollback()
-            return (
-                user is not None,
-                take_found,
-                started,
-                blocked,
-                status,
-                end_reason,
-                terms,
-                context,
-            )
-
-        (
-            user_found,
-            take_found,
-            started,
-            blocked,
-            status,
-            end_reason,
-            terms,
-            context,
-        ) = await run_in_threadpool(load)
-        if not user_found:
+        # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다.
+        # 그래서 threadpool 이고, 왕복을 아끼려 한 함수에서 전부 읽는다
+        loaded = await run_in_threadpool(self._load_take, user_id, need_context, room)
+        if not loaded.user_found:
             await self.reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return False
-        if not take_found:
+        if not loaded.take_found:
             await self.reject(WsErrorCode.TAKE_NOT_FOUND, "연습을 찾을 수 없습니다.")
             return False
-        if blocked:
+        if loaded.blocked:
             await self.reject(WsErrorCode.TOO_MANY_STREAMS, TOO_MANY_STREAMS_MESSAGE)
             return False
-        if not started:
+        if not loaded.started:
             # 잠깐 DB 가 안 됐다. 1011 이면 FE 가 백오프로 다시 붙는다 (1000 · 1008 만 포기한다)
-            await self._quiet(self.ws.close(code=CLOSE_INTERNAL_ERROR, reason="take not started"))
+            await quiet(self.ws.close(code=CLOSE_INTERNAL_ERROR, reason="take not started"))
             return False
-        if status not in STREAMABLE_TAKE_STATUSES:
-            await self.reject_ended(end_reason)
+        if loaded.status not in STREAMABLE_TAKE_STATUSES:
+            await self.reject_ended(loaded.end_reason)
             return False
-        self.script_terms = terms
-        self.coach_context = context
+        self.script_terms = loaded.terms
+        self.coach_context = loaded.context
         return True
+
+    def _load_take(self, user_id: uuid.UUID, need_context: bool, room: bool) -> _Loaded:
+        user = user_service.find(self.db, user_id)
+        take = take_service.find_owned(self.db, self.take_id, user_id) if user is not None else None
+        # rollback() 전에 값을 읽어 둔다. rollback() 은 세션의 객체를 전부 expire 시켜서
+        # 그 뒤에 take.status 를 읽으면 SQLAlchemy 가 **커넥션을 다시 꺼내 SELECT 를
+        # 한 번 더** 날린다 — 커넥션을 돌려준 의미가 없어진다. user 도 같은 이유로
+        # id 를 안 읽고 이미 아는 user_id 를 그대로 쓴다
+        status = take.status if take is not None else None
+        terms: list[str] = []
+        if status in STREAMABLE_TAKE_STATUSES:
+            # 용어는 부가 기능이다. 조회가 실패해도 filler 만으로 STT 는 돈다 — 여기서
+            # 예외를 흘리면 연결이 1011 로 닫히고 FE 재연결이 같은 실패를 되풀이한다.
+            # 실패한 트랜잭션은 아래 rollback() 이 정리한다
+            try:
+                terms = script_service.stt_keyterm_candidates(
+                    self.db, take.pitch_id, take.script_version_id
+                )
+            except Exception:
+                logger.exception("대본 용어 조회 실패, filler 만 쓴다 take=%s", self.take_id)
+        loaded = _Loaded(
+            user_found=user is not None,
+            take_found=take is not None,
+            status=status,
+            end_reason=take.end_reason if take is not None else None,
+            blocked=status == READY and not room,
+            terms=terms,
+        )
+        # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
+        # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
+        self.db.rollback()
+        if status == READY and not loaded.blocked:
+            loaded = self._start_take(user_id, loaded)
+        if (
+            loaded.started
+            and not loaded.blocked
+            and loaded.status in STREAMABLE_TAKE_STATUSES
+            and need_context
+        ):
+            # 코칭은 부가 기능이다. 못 읽어도 STT 는 돈다
+            context = None
+            try:
+                context = coach_store.load_take_context(self.db, self.take_id)
+            except Exception:
+                logger.exception("코치 값을 읽지 못해 코칭 없이 돈다 take=%s", self.take_id)
+            self.db.rollback()
+            loaded = replace(loaded, context=context)
+        return loaded
+
+    def _start_take(self, user_id: uuid.UUID, loaded: _Loaded) -> _Loaded:
+        """첫 연결이 Take 를 시작한다. 위 조회와 따로 짧은 트랜잭션 하나로 쓴다 — 용어 조회가 실패해
+        트랜잭션이 깨졌어도 적히고, 커밋하면 커넥션도 돌려준다.
+
+        미션 · 평가 기준 버전 · 원자료 사용 동의가 고정되기 전에는 ready 를 보내지 않는다
+        (`docs/ai/architecture.md` 1-3 1번). 못 적으면 연결을 받지 않는다.
+        READY 로 남은 채 발표하면 BE 가 시작하지 않은 Take 로 끝내고
+        (`abandon_stale_ready_takes`) 끝내기도 받지 않는다. FE 는 ready 를 받기 전이라
+        발표를 시작하지 않았고 다시 붙는다.
+        """
+        for attempt in range(2):
+            try:
+                if not lifecycle_service.mark_running(self.db, self.take_id):
+                    # 그사이 다른 연결이 시작했거나 시작하지 않은 Take 로 끝났다. 다시 읽는다
+                    again = take_service.find_owned(self.db, self.take_id, user_id)
+                    loaded = replace(
+                        loaded,
+                        take_found=again is not None,
+                        status=again.status if again is not None else None,
+                        end_reason=again.end_reason if again is not None else None,
+                    )
+                    self.db.rollback()
+                break
+            except Exception as error:
+                self.db.rollback()
+                if attempt == 0 and is_transient_db_error(error):
+                    logger.warning("Take 시작 값 저장을 다시 한다 take=%s", self.take_id)
+                    continue
+                logger.exception("Take 를 RUNNING 으로 못 바꿨다 take=%s", self.take_id)
+                return replace(loaded, started=False)
+        return loaded
 
     async def reject(
         self, code: WsErrorCode, message: str, *, end_reason: TakeEndReason | None = None
     ) -> None:
         """인증 단계 거절. 에러를 한 번 보내고 1008 로 닫는다."""
-        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
-            await self._quiet(
-                self._send(ErrorMessage(code=code, message=message, end_reason=end_reason))
-            )
-        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
-            await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
+        await close_with(self.ws, ErrorMessage(code=code, message=message, end_reason=end_reason))
 
     async def reject_busy(self) -> None:
         """잠시 받을 수 없어 1013 으로 닫는다. 오류는 보내지 않는다 — FE 는 1013 을 연결 실패로 보고
         백오프로 다시 붙는다 (1000 · 1008 만 포기한다)."""
-        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
-            await self._quiet(
-                self.ws.close(code=CLOSE_TRY_AGAIN_LATER, reason="previous stream closing")
-            )
+        with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
+            await quiet(self.ws.close(code=CLOSE_TRY_AGAIN_LATER, reason="previous stream closing"))
 
     async def reject_ended(self, end_reason: str | None) -> None:
         """끝난 Take 라 `TAKE_ENDED` 로 거절한다.
@@ -389,14 +394,5 @@ class Handshake:
             await self.reject(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.", end_reason=known)
             return
         message = AutoEndPolicy.from_settings().message(reason)
-        await self._quiet(self._send(AutoEndMessage(reason=reason, message=message)))
+        await quiet(send_model(self.ws, AutoEndMessage(reason=reason, message=message)))
         await self.reject(WsErrorCode.TAKE_ENDED, message, end_reason=known)
-
-    async def _send(self, message: BaseModel) -> None:
-        await self.ws.send_text(message.model_dump_json())
-
-    @staticmethod
-    async def _quiet(awaitable: Awaitable[object]) -> None:
-        """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다."""
-        with contextlib.suppress(WebSocketDisconnect, RuntimeError, OSError):
-            await awaitable
