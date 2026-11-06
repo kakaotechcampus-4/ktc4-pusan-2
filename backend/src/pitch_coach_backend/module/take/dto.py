@@ -23,15 +23,17 @@ class TakeInitRequestDTO(BaseModel):
     # 본문이 처음과 다르거나 그 Take 가 이미 끝났으면 409
     client_session_id: uuid.UUID | None = None
 
+
 # 보낸 필드만 반영한다 (service 가 exclude_none 으로 읽는다).
 # 시각은 시간대가 있어야 한다. 없으면 DB 의 시각과 앞뒤를 비교할 수 없다
 class TakeUpdateRequestDTO(BaseModel):
     started_at: AwareDatetime | None = None
     ended_at: AwareDatetime | None = None
     # takes.event_logs(JSONB) 에 그대로 들어간다
-    event_logs: (
-        Annotated[list[dict[str, Any]], AfterValidator(reject_unstorable_json)] | None
-    ) = None
+    event_logs: Annotated[list[dict[str, Any]], AfterValidator(reject_unstorable_json)] | None = (
+        None
+    )
+
 
 # Take 기록 · Take 비교 화면의 한 줄. FE types/takeHistory.ts 와 같은 모양이다.
 # 못 잰 값은 0 이 아니라 null 이다
@@ -58,8 +60,10 @@ class TakeHistoryRowDTO(BaseModel):
     # 장치 점검 때의 시선 엔진 버전. 다르면 FE 가 시선 값을 나란히 비교하지 않는다
     gaze_engine: str | None
 
+
 class TakeHistoryResponseDTO(BaseModel):
     takes: list[TakeHistoryRowDTO]
+
 
 class ActiveTakeDTO(BaseModel):
     """어느 창 · 기기에서 발표 중인 Take. 새 Take 를 시작하기 전에 FE 가 끝낼지 묻는다."""
@@ -69,9 +73,11 @@ class ActiveTakeDTO(BaseModel):
     pitch_title: str
     take_number: int
 
+
 class ActiveTakeResponseDTO(BaseModel):
     # 발표 중인 Take 가 없으면 null
     take: ActiveTakeDTO | None
+
 
 class TakeMeasuresDTO(BaseModel):
     duration_ms: int
@@ -83,6 +89,7 @@ class TakeMeasuresDTO(BaseModel):
     unmeasured_ms: int | None
     cpm: float | None
     filler_count: int | None
+
 
 class TakeReportDTO(BaseModel):
     take_id: uuid.UUID
@@ -98,6 +105,7 @@ class TakeReportDTO(BaseModel):
     measures: TakeMeasuresDTO | None
     review: dict[str, Any] | None
 
+
 # 대본 전달도 확인 (FE types/confirmation.ts). 항목 · 답의 필드는 AI 계약
 # (`script-coverage-evaluation.md` 5-3 `confirmations[]` · 5-6 `similar_items[]`) 이름 그대로다
 class ConfirmationItemDTO(BaseModel):
@@ -110,6 +118,7 @@ class ConfirmationItemDTO(BaseModel):
     script_sentence: str | None
     stt_sentence: str | None
 
+
 class ConfirmationsDTO(BaseModel):
     take_id: uuid.UUID
     analysis_stage: str | None
@@ -118,17 +127,21 @@ class ConfirmationsDTO(BaseModel):
     remaining_ms: int | None
     items: list[ConfirmationItemDTO]
 
+
 class ConfirmationAnswerDTO(BaseModel):
     slide_number: int
     item_id: NulFreeStr
     answer: Literal["as_script", "as_stt"]
 
+
 class ConfirmationsRequestDTO(BaseModel):
     # 빈 배열이면 건너뛰기다. 고르지 않은 항목은 판단 보류로 남는다 (계약 6-3)
     answers: list[ConfirmationAnswerDTO] = Field(max_length=500)
 
+
 class ConfirmationsSentDTO(BaseModel):
     analysis_stage: str
+
 
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
@@ -142,6 +155,7 @@ class TakeSummaryDTO(BaseModel):
     delta: int | None = None
     created_at: datetime | None = None
 
+
 # calibrations.result(JSONB) 에 그대로 들어가서 NUL 문자열과 NaN · Infinity 를 받지 않는다
 class CalibrationResultDTO(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
@@ -151,6 +165,7 @@ class CalibrationResultDTO(BaseModel):
     separability: float | None = None
     loo_accuracy: float | None = None
     warnings: list[NulFreeStr] | None = None
+
 
 class CalibrationDTO(BaseModel):
     base_level_db: float | None = None
@@ -162,11 +177,13 @@ class CalibrationDTO(BaseModel):
     # DB 는 Float. bool 을 넘기면 psycopg 가 타입이 안 맞는다고 거절해 저장이 항상 500 이었다
     gaze_confidence: float = 0.0
 
+
 class MissionInputDTO(BaseModel):
     mission_id: uuid.UUID
     area: str
     slide_number: int | None = None
     target: TargetInfoDTO
+
 
 class PreviousTakeDTO(BaseModel):
     take_result: dict[str, Any]
@@ -213,42 +230,20 @@ class DetailDTO(BaseModel):
     text: str
     evidence: dict[str, float] = {}
 
-class StandardResultDTO(BaseModel):
-    display: str
-    status: bool = False
-    target: int
-    observed: int
 
 class UserCriteriaDTO(BaseModel):
     display_criteria: list[str] = []
     targets: list[TargetInfoDTO] = []
     script_used: bool | None = None
+
+
 class TargetInfoDTO(BaseModel):
     display: str | None = None
     metric: str
     operator: str
     value: float
 
-class MissionResultDTO(BaseModel):
-    mission_id: uuid.UUID
-    status: str
-    slide_number: int
-    target: TargetInfoDTO
-    observed: int
-class NextMissionDTO(BaseModel):
-    area: str
-    slide_number: int
-    description: str
-    priority: int
-class ReviewResultDTO(BaseModel):
-    take_id: uuid.UUID
-    overall_summary: str
-    score: int
-    strengths: list[DetailDTO] = []
-    improvements: list[DetailDTO] = []
-    criteria_results: list[StandardResultDTO] = []
-    mission_results: list[MissionResultDTO] = []
-    next_missions: list[NextMissionDTO] = []
+
 class ReviewRequestDTO(BaseModel):
     take_result: dict[str, Any]
     script_coverage: dict[str, Any] | None = None
@@ -257,7 +252,9 @@ class ReviewRequestDTO(BaseModel):
     missions: list[MissionInputDTO] = []
     user_criteria: UserCriteriaDTO | None = None
 
+
 DimensionState = Literal["IMPROVED", "PRIORITY", "STABLE", "STRENGTH", "NOT_EVALUABLE"]
+
 
 class DimensionStatus(BaseModel):
     audience_gaze: DimensionState
@@ -267,9 +264,11 @@ class DimensionStatus(BaseModel):
     fluency: DimensionState
     content_delivery: DimensionState
 
+
 class ScriptModeChangeDTO(BaseModel):
     previous: str
     current: str
+
 
 class ComparisonDTO(BaseModel):
     metric: str
@@ -278,6 +277,7 @@ class ComparisonDTO(BaseModel):
     current: float
     improved: bool | None = None
     script_mode: ScriptModeChangeDTO | None = None
+
 
 class ReviewMissionResultDTO(BaseModel):
     mission_id: uuid.UUID
@@ -288,6 +288,7 @@ class ReviewMissionResultDTO(BaseModel):
     target: float
     observed: float | None = None
 
+
 class ReviewCriteriaResultDTO(BaseModel):
     display: str
     metric: str
@@ -296,8 +297,10 @@ class ReviewCriteriaResultDTO(BaseModel):
     observed: float | None = None
     status: Literal["ACHIEVED", "PARTIAL", "FAILED", "NOT_EVALUABLE"]
 
+
 # 영역 이름 (docs/ai/architecture.md 6-3). missions.area(String(16)) 에 들어간다
 ReviewArea = Literal["GAZE", "SPEED", "VOLUME", "PAUSE", "FILLER", "CONTENT", "TIME"]
+
 
 class ReviewNextMissionDTO(BaseModel):
     area: ReviewArea
@@ -307,23 +310,32 @@ class ReviewNextMissionDTO(BaseModel):
     priority: int
     reason: str | None = None
 
+
 class ReviewRecurringIssueInputDTO(BaseModel):
     area: str
     slide_number: int | None = None
     dimension: str | None = None
+
+
 class ReviewRecurringIssueDTO(BaseModel):
     area: str
     slide_number: int | None = None
     dimension: Literal[
-        "audience_gaze", "script_independence", "pacing_rhythm",
-        "vocal_delivery", "fluency", "content_delivery",
+        "audience_gaze",
+        "script_independence",
+        "pacing_rhythm",
+        "vocal_delivery",
+        "fluency",
+        "content_delivery",
     ]
+
 
 class ReviewMetaDTO(BaseModel):
     schema_version: str
     feature_version: str
     criteria_versions: dict[str, str]
     model: str | None = None
+
 
 class ReviewResponseDTO(BaseModel):
     take_id: uuid.UUID
@@ -339,9 +351,9 @@ class ReviewResponseDTO(BaseModel):
     next_missions: list[ReviewNextMissionDTO] = Field(default=[], max_length=20)
     # 20개 이하, 차원마다 하나 (review-agent.md 5-3). 넘으면 다음 리뷰 입력 · 코칭 계획이 막힌다
     recurring_issues: list[ReviewRecurringIssueDTO] = Field(default=[], max_length=20)
-    fallback_reason: Literal[
-        "LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"
-        ] | None = None
+    fallback_reason: (
+        Literal["LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"] | None
+    ) = None
     meta: ReviewMetaDTO
 
     @model_validator(mode="after")

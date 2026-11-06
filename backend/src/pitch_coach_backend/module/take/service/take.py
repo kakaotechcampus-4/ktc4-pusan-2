@@ -216,11 +216,6 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
     return saved_calibration.id
 
 
-def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
-    # 미션 생성 로직
-    pass
-
-
 def _percent_to_ratio(value: int | None) -> float | None:
     # take_summaries 는 비율 × 100 정수로 둔다 (architecture.md 1-1 반올림)
     return None if value is None else value / 100

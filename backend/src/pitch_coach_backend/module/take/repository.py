@@ -1,10 +1,12 @@
+import logging
 import uuid
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import ColumnElement, Row, and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, aliased, defer
+from sqlalchemy.orm import Session, aliased
 
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import (
@@ -19,8 +21,6 @@ from pitch_coach_backend.module.take.entity import (
 )
 from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES
 
-# 아직 끝나지 않은 Take. 실시간 STT 가 붙을 수 있는 상태와 같다 (realtime/service.py)
-
 
 def last_active_at() -> ColumnElement[datetime]:
     """만든 시각 · 시작 시각 · 마지막 확정 전사 저장 시각 중 가장 늦은 것."""
@@ -32,6 +32,20 @@ def last_active_at() -> ColumnElement[datetime]:
     )
     # GREATEST 는 NULL 을 건너뛴다 (시작 전 · 전사 없음)
     return func.greatest(Take.created_at, Take.started_at, last_final)
+
+
+logger = logging.getLogger(__name__)
+
+
+def parse_mission_ids(values: Any) -> list[uuid.UUID]:
+    """`takes.mission_ids` 의 값. UUID 가 아닌 값은 남기고 건너뛴다."""
+    ids: list[uuid.UUID] = []
+    for value in values or []:
+        try:
+            ids.append(uuid.UUID(str(value)))
+        except ValueError:
+            logger.warning("takes.mission_ids 에 UUID 가 아닌 값이 있다 value=%r", value)
+    return ids
 
 
 class TakeRepository:
@@ -80,6 +94,9 @@ class TakeRepository:
     def get_pitch_id_of_take(self, take_id: uuid.UUID) -> uuid.UUID | None:
         return self.db.scalar(select(Take.pitch_id).where(Take.id == take_id))
 
+    def take_id_in_pitch(self, pitch_id: uuid.UUID, take_id: uuid.UUID) -> uuid.UUID | None:
+        return self.db.scalar(select(Take.id).where(Take.id == take_id, Take.pitch_id == pitch_id))
+
     def get_owned(self, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
         """사용자의 pitch 에 속한 take. 없거나 남의 것이면 None — 둘을 구분하지 않는다."""
         return self.db.scalar(
@@ -105,16 +122,6 @@ class TakeRepository:
             )
         ).all()
         return {kind: payload for kind, payload in rows}
-
-    def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(TakeSummary.take_id)
-            .join(Take, TakeSummary.take_id == Take.id)
-            .where(Take.pitch_id == pitch_id)
-            # null인 score는 제일 뒤로 변경. 가장 낮은 점수로 취급한다.
-            .order_by(TakeSummary.score.desc().nulls_last())
-            .limit(1)
-        )
 
     def save(self, take: Take) -> Take:
         self.db.add(take)
@@ -142,9 +149,9 @@ class TakeRepository:
         self, pitch_id: uuid.UUID, client_session_id: uuid.UUID
     ) -> Take | None:
         return self.db.scalar(
-            select(Take)
-            .where(Take.pitch_id == pitch_id, Take.client_session_id == client_session_id)
-            .options(defer(Take.event_logs))
+            select(Take).where(
+                Take.pitch_id == pitch_id, Take.client_session_id == client_session_id
+            )
         )
 
     def abandon_ready_takes(self, pitch_id: uuid.UUID) -> int:
@@ -186,11 +193,9 @@ class TakeRepository:
 
     def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
         # 부르는 곳(장치 점검)은 번호 · 대본 표시 방식만 본다. 시선 1초 기록이 쌓이는
-        # event_logs 는 읽지 않는다
         return self.db.scalar(
             select(Take)
             .where(Take.pitch_id == pitch_id)
-            .options(defer(Take.event_logs))
             # created_at 은 같은 트랜잭션 안에서 같아질 수 있다. 번호는 pitch 안에서 유일하다
             .order_by(Take.take_number.desc())
             .limit(1)
@@ -205,19 +210,14 @@ class TakeRepository:
         12-2). 장치 점검 화면과 Take 를 시작할 때 미션을 싣는 쪽(`coach_repository`)이 이 함수
         하나로 고른다. 리뷰 결과(`REVIEW`)와 `review_status` `DONE` 은 한 트랜잭션에 적힌다.
         """
-        query = (
-            select(Take)
-            .where(Take.pitch_id == pitch_id, Take.review_status == "DONE")
-            .options(defer(Take.event_logs))
-        )
+        query = select(Take).where(Take.pitch_id == pitch_id, Take.review_status == "DONE")
         if before is not None:
             query = query.where(Take.take_number < before)
         return self.db.scalar(query.order_by(*finished_order()).limit(1))
 
-    def get_take_number(self, take_id: uuid.UUID) -> int | None:
-        return self.db.scalar(select(Take.take_number).where(Take.id == take_id))
-
-    def get_previous_take_results(self, take_id: uuid.UUID, standard_take_num: int, limit: int = 3):
+    def get_previous_take_results(
+        self, pitch_id: uuid.UUID, standard_take_num: int, limit: int = 3
+    ):
         result = aliased(TakeAIResults)
         coverage = aliased(TakeAIResults)
 
@@ -229,7 +229,7 @@ class TakeRepository:
                 coverage, (coverage.take_id == Take.id) & (coverage.kind == "SCRIPT_COVERAGE")
             )
             .where(
-                Take.pitch_id == self.get_pitch_id_of_take(take_id),
+                Take.pitch_id == pitch_id,
                 Take.take_number < standard_take_num,
                 Take.status == "COMPLETED",
             )
@@ -240,13 +240,13 @@ class TakeRepository:
         return [(take_result, script_coverage) for take_result, script_coverage in rows]
 
     def get_previous_review_payload(
-        self, take_id: uuid.UUID, standard_take_num: int
+        self, pitch_id: uuid.UUID, standard_take_num: int
     ) -> dict | None:
         return self.db.scalar(
             select(TakeAIResults.payload)
             .join(Take, TakeAIResults.take_id == Take.id)
             .where(
-                Take.pitch_id == self.get_pitch_id_of_take(take_id),
+                Take.pitch_id == pitch_id,
                 Take.take_number < standard_take_num,
                 TakeAIResults.kind == "REVIEW",
             )
@@ -254,32 +254,13 @@ class TakeRepository:
             .limit(1)
         )
 
-    def get_mission_ids_of_take(self, take_id: uuid.UUID) -> list[uuid.UUID]:
-        mission_ids = self.db.scalar(select(Take.mission_ids).where(Take.id == take_id))
-        return [uuid.UUID(mission_id) for mission_id in mission_ids or []]
-
-    def get_missions_by_ids(self, mission_ids: list[uuid.UUID]) -> list[Mission]:
-        if not mission_ids:
+    def get_missions_by_ids(self, mission_ids: Iterable[uuid.UUID]) -> list[Mission]:
+        """id 목록의 미션. 지운 미션은 빠진다. 목록의 순서를 지킨다."""
+        ids = list(mission_ids)
+        if not ids:
             return []
-        return list(
-            self.db.scalars(
-                select(Mission)
-                .where(Mission.id.in_(mission_ids))
-                .order_by(Mission.priority, Mission.slide_number)
-            )
-        )
-
-    def get_take_infos(self, take_id: uuid.UUID, kind: str = None) -> TakeAIResults | None:
-        kind_filter = True if kind is None else (TakeAIResults.kind == kind)
-
-        return self.db.scalar(
-            select(TakeAIResults.payload).where(TakeAIResults.take_id == take_id, kind_filter)
-        )
-
-    def save_missions(self, missions: list[Mission]) -> list[Mission]:
-        self.db.add_all(missions)
-        self.db.flush()
-        return missions
+        rows = {m.id: m for m in self.db.scalars(select(Mission).where(Mission.id.in_(ids)))}
+        return [rows[i] for i in ids if i in rows]
 
     def last_transcript_cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         """저장된 마지막 (seq, stt_session_no). 하나도 없으면 (0, 0).
@@ -307,25 +288,32 @@ class TakeRepository:
             .on_conflict_do_nothing(index_elements=["take_id", "t_ms"])
         )
 
-    def save_total_result(
-        self, take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None
-    ) -> TakeAIResults:
-        values = {
-            "take_id": take_id,
-            "kind": "REVIEW",
-            "payload": total_result_json,
-            "meta": meta_json,
-        }
-        stmt = insert(TakeAIResults).values(**values)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
-            set_={
-                **{key: stmt.excluded[key] for key in values if key not in ("take_id", "kind")},
-                # payload 를 바꿀 때마다 1 올린다 (script-coverage-evaluation.md 12-1)
-                "revision": TakeAIResults.revision + 1,
-            },
-        ).returning(TakeAIResults)
-        return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
+    def save_ai_result(
+        self,
+        take_id: uuid.UUID,
+        kind: str,
+        payload: Mapping[str, Any],
+        meta: Mapping[str, Any] | None,
+    ) -> None:
+        """(take_id, kind) 에 하나만 둔다. 이미 있으면 덮고 revision 을 1 올린다
+        (script-coverage-evaluation.md 12-1)."""
+        stmt = insert(TakeAIResults).values(
+            take_id=take_id,
+            kind=kind,
+            payload=dict(payload),
+            meta=None if meta is None else dict(meta),
+            revision=0,
+        )
+        self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
+                set_={
+                    "payload": stmt.excluded.payload,
+                    "meta": stmt.excluded.meta,
+                    "revision": TakeAIResults.revision + 1,
+                },
+            )
+        )
 
     def upsert_next_missions(self, missions: list[dict[str, Any]]) -> list[Mission]:
         """다음 Take 에서 보여 줄 미션을 upsert 한다. source_take_id 는 take_id 로 고정이다."""
@@ -380,7 +368,6 @@ class TakeRepository:
         return self.db.scalar(
             select(Take)
             .where(Take.id == take_id)
-            .options(defer(Take.event_logs))
             .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         )
@@ -425,7 +412,6 @@ class TakeRepository:
                 Take.analysis_stage == "SCORING",
                 Take.coverage_requested_at == requested_at,
             )
-            .options(defer(Take.event_logs))
             .with_for_update()
             .execution_options(populate_existing=True)
         )
@@ -466,7 +452,6 @@ class TakeRepository:
                 Take.analysis_hold_reason.is_(None),
                 Take.coverage_requested_at == requested_at,
             )
-            .options(defer(Take.event_logs))
             .with_for_update()
             .execution_options(populate_existing=True)
         )
@@ -561,9 +546,9 @@ class TakeRepository:
 
     def get_slide_events(self, take_id: uuid.UUID) -> list[tuple[int, int]]:
         rows = self.db.execute(
-            select(TakeSlideEvent.slide_number, TakeSlideEvent.started_ms).where(
-                TakeSlideEvent.take_id == take_id
-            )
+            select(TakeSlideEvent.slide_number, TakeSlideEvent.started_ms)
+            .where(TakeSlideEvent.take_id == take_id)
+            .order_by(TakeSlideEvent.started_ms)
         ).all()
         return [(slide_number, started_ms) for slide_number, started_ms in rows]
 
@@ -591,16 +576,6 @@ class TakeRepository:
                 review_request_id=None,
             )
         )
-
-    def mark_running(self, take_id: uuid.UUID) -> bool:
-        """`READY` 인 Take 를 `RUNNING` 으로 바꾼다. 바꿨으면 True.
-
-        이미 `RUNNING` 이거나(다시 붙은 연결) 끝났으면 아무것도 바꾸지 않고 False.
-        """
-        result = self.db.execute(
-            update(Take).where(Take.id == take_id, Take.status == "READY").values(status="RUNNING")
-        )
-        return result.rowcount > 0
 
     def mark_ended(
         self,

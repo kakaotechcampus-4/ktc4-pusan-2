@@ -48,7 +48,7 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             name="check_take_review_status",
         ),
         CheckConstraint(
-            "analysis_stage IN (" \
+            "analysis_stage IN ("
             "'FINALIZING', 'SCORING', 'AWAITING_CONFIRMATION', 'REVIEWING', 'DONE')",
             name="check_take_analysis_stage",
         ),
@@ -86,10 +86,10 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     script_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="READY")
-    analysis_stage: Mapped[str | None] = mapped_column(String(32), 
-                                                       nullable=True)
-    analysis_stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), 
-                                                               nullable=True)
+    analysis_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    analysis_stage_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     review_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # 리뷰를 실행한 작업의 표식. 새 작업이 이어받으면 이전 응답은 저장하지 않는다.
     review_request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
@@ -109,8 +109,8 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     #   CLOSED             : 창을 닫았다 (닫힘 코드 1001 뒤 2분 동안 다시 안 붙음, 또는 다시 연 창이
     #                        abandon API 를 부름). 이어 가지 않는다 — FAILED 로 두고 되살리지 않는다
     end_reason: Mapped[str | None] = mapped_column(String(20))
-    # 슬라이드 넘김·일시정지 같은 원본 이벤트열. 재생과 재분석에 쓴다.
-    event_logs: Mapped[Any | None] = mapped_column(JSONB)
+    # FE 가 끝내기 PUT 으로 보내는 원본 이벤트열. 저장만 하고 아직 읽는 곳이 없어 지연 로딩한다
+    event_logs: Mapped[Any | None] = mapped_column(JSONB, deferred=True)
     # FE 가 Take 를 만들기 전에 정한 연습 세션 id (IndexedDB 기록의 키). 생성 요청의 멱등 키다
     client_session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     mission_ids: Mapped[list[str] | None] = mapped_column(JSONB)
@@ -145,9 +145,7 @@ class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """
 
     __tablename__ = "take_ai_results"
-    __table_args__ = (
-        UniqueConstraint("take_id", "kind", name="uq_take_ai_results_take_version"),
-    )
+    __table_args__ = (UniqueConstraint("take_id", "kind", name="uq_take_ai_results_take_version"),)
 
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
@@ -155,9 +153,8 @@ class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     payload: Mapped[Any | None] = mapped_column(JSONB, nullable=False)
     meta: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
-    revision: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
 
 class TakeSummary(Base):
     """take 의 분석 집계. take 당 1행이라 take_id 를 그대로 PK 로 쓴다."""
@@ -312,7 +309,6 @@ class TakeMetricSecond(CreatedAtMixin, Base):
     stt_status: Mapped[str] = mapped_column(String(16), nullable=False)
 
 
-
 class TakeSlideEvent(CreatedAtMixin, Base):
     __tablename__ = "take_slide_events"
 
@@ -332,9 +328,7 @@ class CoachEvent(CreatedAtMixin, Base):
     """
 
     __tablename__ = "coach_events"
-    __table_args__ = (
-        UniqueConstraint("take_id", "event_id", name="uq_coach_events_take_event"),
-    )
+    __table_args__ = (UniqueConstraint("take_id", "event_id", name="uq_coach_events_take_event"),)
 
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
