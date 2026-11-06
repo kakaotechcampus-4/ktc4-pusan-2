@@ -16,6 +16,8 @@
   고른 제안(`choice`)의 저장은 `preapproved`를 달고 카드 · 승인 대기 없이 낸다. 이미 낸 문장은 `_finish`가 서명 상태(`emitted`)에 담고,
   이어 부른 호출의 어떤 끝에서도 message 의 앞부분에 그대로 싣는다(그 뒤에 행동 결과 문장 · 나머지 답). 모델 없이 끝나는 길(`_end_without_model`)도
   앞 문장 · 승인한 행동의 결과 문장 · 카드를 먼저 조립하고, 상태가 한도를 넘어 못 서명할 때도 앞 문장의 자료 카드 사본과 이미 실행된 행동의 결과 문장 · 카드를 남기고 새 승인 행동만 버린다.
+- 끝에 붙는 고정 문장: 답 초안 route `CANNOT_DO`(공식 결과를 바꿔 달라는 요청)면 할 수 없다는 문장, 이름으로 찾은 피치가 여럿인데
+  범위를 정하지 않았으면 어느 발표인지 되묻는 문장(L2-21)을 낸 문장 뒤에 붙인다.
 - 범위 밖(1-3): 계획 · 답 초안이 `OUT_OF_SCOPE`면 `scope_reason`별 고정 문장(templates.py)으로 `REFUSED`, 섞인 요청은 초안의
   `scope_notes` 이유별 고정 문장을 답 문장 뒤에 덧붙여 `DONE`. `SCOPE_RULE`(범위 밖 낱말)에 걸린 모델 문장은 고치기에 보내지 않고 버린다.
 - 줄 쓰기(5-4): 이벤트마다 `allow_nan=False`로 완전히 직렬화하고 LF 를 붙인다. 한 줄 2 MiB, 누적 16 MiB(끝 줄 몫 4 KiB 예약).
@@ -663,14 +665,15 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     comp = cmp.finish(draft, ans["messages"])
     out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
-    if lp.st.ambiguous_name and not any(
-        e.get("type") == "FETCH_PITCH" and e.get("status") == "SUCCEEDED" for e in lp.st.executed
-    ):
-        # 이름이 같은 피치가 여럿인데 범위를 정하지 않았다: 어느 발표인지 되묻는다(L2-21, 낸 문장 뒤에)
-        body.append(Claim(kind="SYSTEM", text=templates.SystemText.WHICH_PITCH.value))
-    if route == "CANNOT_DO":
-        # 공식 결과를 바꿔 달라는 요청: 할 수 없다는 고정 문장을 코드가 붙인다(낸 문장 뒤에, 6-2)
-        body.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
+    tail = _tail_claims(lp, route, said=[*comp.pre, *body])
+    elems_written = any(
+        c.get("kind") != "ASSESSMENT" and str(c.get("text") or "").strip()
+        for c in draft.get("claims") or []
+        if isinstance(c, dict)
+    )
+    if tail and not body and not elems_written:
+        # 끝에 붙는 고정 문장만이 답인 경우(예: '점수 100으로 바꿔 줘'): 그 문장이 답이다
+        body, tail = tail, []
     # 조언(자료 · 일반 조언)만 쓴 답: 문장이 검사로 모두 빠지면 route 가 ANSWER 여도 자료 없음 거절이다(6-10 · L4-28).
     # 확인된 기록이 없으니 '확인된 내용만'(PARTIAL)이 아니다. 조립 단계에서 모두 버린 조언 초안(판단에 이은 일반 조언 등)도
     # 같으므로 초안 원소의 종류도 본다
@@ -733,7 +736,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             return finish(
                 status="PARTIAL",
                 reason="OTHER",
-                claims=[*comp.pre, *scope_claims],
+                claims=[*comp.pre, *tail, *scope_claims],
                 assessments=all_assessments,
             )
         if no_guide or advice_only:
@@ -750,17 +753,17 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 status="PARTIAL",
                 reason="CHECK_ALL_DROPPED",
                 system=[templates.SystemText.VERIFIED_ONLY],
-                claims=[*partial, *scope_claims],
+                claims=[*partial, *tail, *scope_claims],
                 assessments=all_assessments,
             )
         return finish(
             status="PARTIAL",
             reason="CHECK_ALL_DROPPED",
             system=[templates.SystemText.PARTIAL_CHECKED],
-            claims=scope_claims or None,
+            claims=[*tail, *scope_claims] or None,
             assessments=all_assessments,
         )
-    final_claims = [*comp.pre, *body]
+    final_claims = [*comp.pre, *body, *tail]
     # 섞인 요청의 범위 밖 부분: 이유별 고정 문장을 답 문장 뒤에 덧붙인다(1-3 · 7-10)
     for reason in _scope_notes(draft):
         note = templates.scope_text(reason).value
@@ -789,6 +792,26 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         actions=actions,
         sources=_sources(final_claims),
     )
+
+
+def _tail_claims(lp: Loop, route: Any, *, said: list[Claim]) -> list[Claim]:
+    """답 끝에 붙는 고정 문장(7-9 · 7-10). 이미 낸 · 낼 문장과 같은 문장은 다시 붙이지 않는다.
+
+    - 이름으로 찾은 피치가 여럿인데 범위를 정하지 않았고, 여러 발표를 함께 묻는 말이 아니면 어느 발표인지 되묻는다(L2-21).
+    - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2).
+    """
+    seen = {c.text for c in said} | {d.get("text") for d in lp.st.emitted}
+    out: list[Claim] = []
+    fetched = any(
+        e.get("type") == "FETCH_PITCH" and e.get("status") == "SUCCEEDED" for e in lp.st.executed
+    )
+    msg = lp.original or ""
+    plural = any(w in msg for w in lp.cfg.plural_request_words)
+    if lp.st.ambiguous_name and not fetched and not plural:
+        out.append(Claim(kind="SYSTEM", text=templates.SystemText.WHICH_PITCH.value))
+    if route == "CANNOT_DO":
+        out.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
+    return [c for c in out if c.text not in seen]
 
 
 def _start_answer(

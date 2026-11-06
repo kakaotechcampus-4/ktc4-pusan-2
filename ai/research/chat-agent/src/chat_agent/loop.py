@@ -4,7 +4,9 @@
 - 처리 순서
   1. 처음(USER_MESSAGE)이면 계획 호출(구조화)로 할 일 목록 · 판단 초안을 받는다. 무효면 형식 고치기 1회(조사 몫), 그래도 무효면 기본 계획.
      판단은 근거를 읽을 때까지 내보내지 않는다(실행 상태 안에만 둔다).
-  2. 조사: 모델이 도구를 고르면 실행해 결과를 돌려주고, 행동을 고르면 그 지점에서 멈추고 NEEDS_ACTION 을 낸다(한 응답에서 첫 행동까지만).
+  2. 조사: 먼저 조사 흐름(`_prefetch_calls`) — 판단 초안이 집은 Take · 장 · 지표 · 차원을 코드가 읽는다(없는 Take 는 FETCH_TAKE,
+     말한 Take 가 없으면 읽지 않음, 실행에 최대 4개, 기준선은 끔). 같은 실행 길(캐시 · 한도 · 근거 · 진행 줄)이고 반복 판정에는 세지 않는다.
+     그 뒤 모델이 도구를 고르면 실행해 결과를 돌려주고, 행동을 고르면 그 지점에서 멈추고 NEEDS_ACTION 을 낸다(한 응답에서 첫 행동까지만).
      `ASK` 행동(저장 · 다시 평가)이면 멈추기 전에 turn.py 가 그때까지 확인한 것으로 답 문장을 먼저 쓰고 검사해 확인 카드와 함께 낸다(6-1 4번).
      그 문장 · 판단 · 자료 카드는 `LoopState.emitted` 등으로 서명 상태에 실려 이어 부른 뒤 최종 답의 앞부분에 그대로 싣는다(5-5).
      한도(8-2: 모델 호출 18번 중 조사는 16번째 시도까지 · 도구 12번 · 시간 · 토큰)에 닿거나, 같은 (도구, 인자, 범위, 자료 판)을 새 근거 없이
@@ -12,7 +14,7 @@
      교대 반복은 요청마다 판정해 그 응답의 남은 요청은 실행하지 않고, 새 근거가 생긴 요청에서 기록을 비운다. 이미 한도로 정해진 끝난 이유는 덮지 않는다.
      끝난 까닭은 `stop_reason`(TIME · MODEL_CALLS · TOOL_CALLS · TOKENS · 반복 계열)에 남기고 turn.py 가 진단 `end.reason`으로 옮긴다.
   2-1. 모델 한 번(`_call`)마다 입력 · 출력 예약을 응답 뒤 공급자 실측으로 정산한다(budget.py `settle_input` · `settle_output`).
-  3. 답 쓰기(구조화, `answer_phase`). 응답 조각은 answer.py 가 받아 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 ·
+  3. 답 쓰기(구조화, `answer_phase`). 도구 결과와 함께 이번 턴 근거 값 표(`evidence_table`)와 질문별 근거 목록(`questions`)을 준다. 응답 조각은 answer.py 가 받아 판단 확정(코드 판정이 모델 판정을 덮음) → 판단 첫 문장 ·
      결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9)를 하고 통과한 문장부터 문장 줄로 낸다. 걸린 문장은 까닭을 알려 한 번
      고치게 하고(`fix_call`) 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
@@ -823,6 +825,8 @@ class Loop:
         """
         if not self.cfg.research_prefetch or self.ctx.pitch is None:
             return []
+        if self.st.scope_switched or self.ctx.scope_switched:
+            return []  # 범위를 바꾼 실행: 초안의 Take 번호가 어느 피치의 것인지 알 수 없다(새 피치 번호로 대응하지 않는다)
         if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
             return []
         summaries = self.ctx.summaries
@@ -849,13 +853,8 @@ class Loop:
                 continue  # 말한 Take 가 이 피치에 없다(다른 Take 로 바꿔 읽지 않는다, L2-22)
             takes = [by_number[n] for n in named]
             if not takes:
-                page = self.req.page.take_id
-                if page in summaries:
-                    takes = [page]
-                else:
-                    latest = self.ctx.latest_completed()
-                    if latest is not None and latest.summary.take_id in summaries:
-                        takes = [latest.summary.take_id]
+                target = self._judged_take()
+                takes = [target] if target is not None else []
             if not takes:
                 continue
             op = d.get("claim_op")
@@ -902,6 +901,8 @@ class Loop:
                 fkey = json.dumps(["fetch_take", tid])
                 if fkey in self.st.prefetched:
                     continue  # 이미 가져오려 했는데 아직 없다 = 실패했다(다시 내지 않는다)
+                if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
+                    break
                 self.st.prefetched.append(fkey)
                 # 행동은 한 번에 하나만(6-1). 가져온 뒤 이어 부르면 나머지를 읽는다
                 return [
@@ -920,6 +921,21 @@ class Loop:
             self.st.prefetched.append(key)
             out.append(ToolCall(id=f"pf-{len(self.st.prefetched)}", name=name, args=args))
         return out
+    def _judged_take(self) -> str | None:
+        """Take 를 말하지 않은 초안의 대상(6-3 '판정 대상 Take'): 지금 보던 Take → 보던 Take(focus) → 가장 최근 완료 Take.
+        기본 자료에 없어도 고른다(없으면 조사 흐름이 가져온다)."""
+        summaries = self.ctx.summaries
+        page = self.req.page.take_id
+        if page in summaries:
+            return page
+        pitch = self.ctx.pitch
+        if pitch is not None and pitch.focus_take is not None:
+            fid = pitch.focus_take.summary.take_id
+            if fid in summaries:
+                return fid
+        done = [s for s in summaries.values() if s.status == "COMPLETED"]
+        return max(done, key=lambda s: s.take_number).take_id if done else None
+
     def _note_not_comparable(self, args: Any, data: dict[str, Any]) -> None:
         """비교할 수 없다는 결과를 남긴다(같은 두 Take · 지표 · 장 · 까닭은 한 번). 답 쓰기가 까닭 문장을 코드로 그린다."""
         s = self.ctx.summaries
@@ -927,6 +943,7 @@ class Loop:
         if prev is None or cur is None:
             return
         rec = {
+            "take_ids": [args.previous_take_id, args.current_take_id],
             "previous": prev.take_number,
             "current": cur.take_number,
             "previous_complete": prev.completed_fully,
@@ -1082,6 +1099,12 @@ class Loop:
             return True
         rs = set(removed)
         self.ctx.registry.drop_sources(rs)
+        # 비교할 수 없다는 기록도 그 Take 에 기댄다(지워진 기록의 완료 여부 · 버전을 다시 말하지 않게)
+        self.st.not_comparable = [
+            r
+            for r in self.st.not_comparable
+            if not (set(r.get("take_ids") or []) | {self.ctx.scope_pitch_id}) & rs
+        ]
         self.ctx.tool_cache = {
             k: v for k, v in self.ctx.tool_cache.items() if not (set(v.get("target_ids", [])) & rs)
         }
@@ -1290,6 +1313,18 @@ class Loop:
             )
         return rows[-40:]
 
+    def _evidence_metrics(self, eid: str) -> set[str]:
+        """근거가 말하는 지표: 지표 값은 그 지표, 문제 구간은 그 문제의 지표(`issue_metrics`), 차원 상태는 그 차원의 지표."""
+        ev = self.ctx.registry.get(eid)
+        if ev is None:
+            return set()
+        if ev.metric:
+            return {ev.metric}
+        if ev.path.endswith(".issue_type") and isinstance(ev.value, str):
+            return set(self.cfg.issue_metrics.get(ev.value, ()))
+        dim = ev.path.rsplit(".dimensions.", 1)[-1] if ".dimensions." in ev.path else None
+        return set(self.cfg.dimensions[dim].metrics) if dim in self.cfg.dimensions else set()
+
     def _question_checklist(self, table: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """판단 초안(기록 질문 · 주장)마다 그 대상(Take · 장 · 지표 · 차원)에 맞는 근거 id. 답이 질문을 빠뜨리지 않게 한다."""
         out: list[dict[str, Any]] = []
@@ -1309,13 +1344,16 @@ class Loop:
                 metrics |= set(self.cfg.dimensions[sub["dimension"]].metrics)
             if not (takes or slide or metrics):
                 continue
-            labels = {compose.metric_label(m) for m in metrics}
+            if not takes:
+                target = self._judged_take()
+                if target in num_of:
+                    takes = {num_of[target]}
             ids = [
                 r["id"]
                 for r in table
                 if (not takes or r["take"] in takes)
                 and (slide is None or r["slide"] == slide)
-                and (not labels or r["what"] in labels or r["what"].startswith("문제 구간"))
+                and (not metrics or self._evidence_metrics(r["id"]) & metrics)
             ]
             out.append({"quote": d.get("quote"), "evidence_ids": ids[:8]})
         return out

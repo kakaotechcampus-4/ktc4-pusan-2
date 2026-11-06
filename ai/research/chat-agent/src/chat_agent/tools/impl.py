@@ -285,7 +285,8 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
         error=None,
         evidence_ids=eids,
         # 지워진 피치가 이어 부르기에서 removed_sources 로 오면 이 캐시도 버린다
-        target_ids=[r["pitch_id"] for r in out if isinstance(r.get("pitch_id"), str)],
+        target_ids=[r["pitch_id"] for r in out if isinstance(r.get("pitch_id"), str)]
+        + [p.last_review.take_id for p in items if p.last_review is not None and p.last_review.take_id],
         read_state=None if out else "EMPTY",
         args_summary="피치 목록" + (" 이름 검색" if a.query else ""),
         result_summary=f"피치 {len(out)}개(전체 {ctx.pitches_total}개)",

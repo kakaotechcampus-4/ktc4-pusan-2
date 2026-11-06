@@ -3,7 +3,8 @@
 - 누가 쓰나: turn.py. 답 초안(모델 구조화 출력)을 받아 화면에 나갈 `message`(문장 · 카드 · 자료)와 `assessments`를 만든다.
 - 처리 순서
   1. 판단 확정: 초안을 `claims.finalize()`로 코드 판정 · 키 · 근거 지문 · 첫 문장(템플릿)까지 확정한다.
-  2. 문장 만들기: 판단 문장 = 코드 첫 문장 + 모델 설명. 결론(CONCLUSION) · 행동 성공 · 확인 못 한 절 · 목표 판정 문장은 코드 템플릿이다.
+  2. 문장 만들기: 판단 문장 = 코드 첫 문장 + 모델 설명. 결론(CONCLUSION) · 행동 성공 · 확인 못 한 절 · 목표 판정 · 비교할 수 없는
+     까닭(`not_comparable_sentence`) 문장은 코드 템플릿이다.
      모델이 쓴 RECORD · GUIDE 문장은 그대로 두고 검사한다.
   3. 답 검사(`checks.check_claims` · `check_display_strings`). 걸리면 걸린 모델 문장만 한 번 고치게 하고 다시 검사, 그래도 걸리면 지운다.
   4. 남은 문장이 없으면 검증된 근거 값을 템플릿으로 그린 PARTIAL, 근거도 없으면 고정 SYSTEM 안내(6-9 '고친 뒤').
@@ -104,7 +105,6 @@ _NC_PAIR = {
 }
 _NC_FIXED = {
     "NO_VALUE": templates.SystemText.METRIC_UNMEASURED,
-    "NO_RANGE": templates.SystemText.METRIC_UNMEASURED,
     "OMITTED": templates.SystemText.OMITTED,
     "NO_DIRECTION": templates.SystemText.NO_DIRECTION,
     "INVALID_DATA": templates.SystemText.INVALID_DATA,
@@ -121,6 +121,9 @@ def not_comparable_sentence(rec: dict[str, Any]) -> str:
     what = obj(where + metric_label(rec.get("metric")))
     reason = rec.get("reason")
     if reason == "NOT_COMPLETED_FULLY":
+        if rec.get("previous_complete") is None or rec.get("current_complete") is None:
+            # 끝까지 했는지 모르는 Take(null)는 '끝까지 하지 않았다'고 단정하지 않는다(12-3)
+            return templates.SystemText.COMPLETION_UNKNOWN.value
         pa, pb = rec.get("previous_complete") is not True, rec.get("current_complete") is not True
         if pa and pb:
             return f"Take {a} · Take {b} 기록은 모두 끝까지 한 발표가 아니라 {what} 비교할 수 없어요."

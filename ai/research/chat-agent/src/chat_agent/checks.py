@@ -371,6 +371,10 @@ def _targets_of(ev: Evidence, cfg: ChatAgentConfig) -> set[str]:
         dim = cfg.dimension_of_metric(ev.metric)
         if dim:
             out.add(dim)
+    elif (m := _DIM_PATH.search(ev.path)) is not None and m.group(1) in cfg.dimensions:
+        # 차원 상태 근거(`.dimensions.<차원>`)의 대상은 그 차원과 그 지표들이다(대상 없는 근거로 아무 대상의 칭찬을 받치지 않게)
+        out.add(m.group(1))
+        out.update(cfg.dimensions[m.group(1)].metrics)
     return out
 
 
@@ -388,8 +392,7 @@ def _metric_is(mention: str, ev: Evidence, cfg: ChatAgentConfig) -> bool:
     if ev.metric is None:
         # 문제 구간 근거(값이 문제 종류)는 그 문제가 속한 차원의 지표 이름과 같은 대상이다('대본 응시' 문제 ↔ 대본 응시)
         if ev.path.endswith(".issue_type") and isinstance(ev.value, str):
-            dim = cfg.dimension_of_issue(ev.value)
-            return dim is not None and mention in cfg.dimensions[dim].metrics
+            return mention in cfg.issue_metrics.get(ev.value, ())
         # 차원 상태 근거(경로 끝이 `.dimensions.<차원>`)는 그 차원의 지표 이름과 같은 대상이다('청중 시선이 우선 개선')
         m = _DIM_PATH.search(ev.path)
         if m is not None and m.group(1) in cfg.dimensions:
