@@ -906,10 +906,11 @@ def test_masked_answer_is_not_shown_as_the_replacement(
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_goal_sweep_runs_only_while_chat_is_on(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, enabled: bool
+@pytest.mark.parametrize("starter", ["start_goal_sweep", "start_run_recovery"])
+def test_ai_sweeps_run_only_while_chat_is_on(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, enabled: bool, starter: str
 ) -> None:
-    # 꺼 두면 자동 목표 확인이 AI 를 부르지 않는다. 다른 주기 작업은 client 픽스처가 막아 두었다
+    # 꺼 두면 주기 작업이 AI 를 부르지 않는다. 다른 주기 작업은 client 픽스처가 막아 두었다
     from pitch_coach_backend import main
     from pitch_coach_backend.core.config import settings
 
@@ -922,7 +923,7 @@ def test_goal_sweep_runs_only_while_chat_is_on(
         started.append(True)
         return stop_nothing
 
-    monkeypatch.setattr(main, "start_goal_sweep", start)
+    monkeypatch.setattr(main, starter, start)
     monkeypatch.setattr(settings, "agent_enabled", enabled)
 
     async def run_app() -> None:
