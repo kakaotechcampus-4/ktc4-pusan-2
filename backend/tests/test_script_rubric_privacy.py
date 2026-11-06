@@ -59,6 +59,7 @@ async def test_db_failure_omits_sql_parameters_and_keeps_pending(
         )
 
     monkeypatch.setattr(script_rubric_runner.script_service, step, fail)
+    monkeypatch.setattr(script_rubric_runner, "DB_RETRY_DELAYS_SEC", ())
     with caplog.at_level(logging.INFO):
         if step == "resume_rubrics":
             await runner.resume_all()
