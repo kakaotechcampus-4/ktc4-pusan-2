@@ -1093,6 +1093,32 @@ def test_scope_is_not_switched_again_before_reading_the_new_scope() -> None:
     assert ok(run.final).scope_pitch_id == "p-2"
 
 
+def test_listing_pitches_does_not_count_as_reading_the_new_scope() -> None:
+    """범위를 바꾼 뒤 list_pitches 만 불러도 새 피치의 Take 를 읽은 것이 아니다. 목록 결과의 target_ids 에 마지막 리뷰
+    Take id 가 들어 있어도(지워진 원천의 캐시 버리기용) 다시 바꾸기는 SCOPE_NOT_READ 로 막힌다(6-5)."""
+    llm = F.FakeLlm(
+        [
+            F.plan(),
+            F.tools(
+                ("fetch_pitch", {"name": "회사 소개 발표", "reason": "다른 발표"}), prefix="fp"
+            ),
+            F.tools(("list_pitches", {}), prefix="lp"),
+            F.tools(("fetch_pitch", {"pitch_id": "p-1", "reason": "돌아가기"}), prefix="fb"),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    be = make_be(llm, pitches=[fx.sample_pitch(), other_pitch("p-2", "회사 소개 발표")])
+    conv = be.new_conversation(scope_pitch_id="p-1")
+    actions: list[str] = []
+    be.before_action = lambda b, r, a: actions.append(a["type"])
+    run = be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
+    assert actions == ["FETCH_PITCH"]
+    assert "SCOPE_NOT_READ" in texts_after(llm, 3)
+    assert ok(run.final).scope_pitch_id == "p-2"
+
+
 def test_scope_can_switch_again_after_reading_a_take_of_the_new_scope() -> None:
     """새 범위 피치의 Take 를 읽은 뒤에는 다시 바꿀 수 있다(여러 피치 질문은 피치마다 따로 답한다)."""
     llm = F.FakeLlm(

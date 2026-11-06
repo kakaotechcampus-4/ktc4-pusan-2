@@ -775,8 +775,14 @@ class Loop:
                         self.st.guide_searched = (
                             True  # 캐시 적중도 찾은 것이다(자료 묶음 준비 실패는 ok 아님)
                         )
-                    if tr.ok and set(tr.target_ids or []) & set(self.ctx.summaries):
-                        self.st.scope_switch_unread = False  # 지금 범위 피치의 Take 를 읽었다
+                    if (
+                        call.name in _TAKE_READ_TOOLS
+                        and tr.ok
+                        and set(tr.target_ids or []) & set(self.ctx.summaries)
+                    ):
+                        # 지금 범위 피치의 Take 를 읽었다. list_pitches 의 target_ids 에도 마지막 리뷰 Take id 가
+                        # 들지만 그것은 캐시를 버리기 위한 것이라 읽음으로 세지 않는다(6-5)
+                        self.st.scope_switch_unread = False
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq, args)
@@ -1476,6 +1482,10 @@ def _assessment_sources(a: dict[str, Any]) -> list[str]:
 
 #: 읽기만 하는 가져오기 행동(대상이 지워지면 실패 결과로 이어 간다, L2-22)
 _FETCH_ACTIONS = ("FETCH_TAKE", "FETCH_PITCH")
+
+#: 범위 피치의 Take 를 실제로 읽는 도구. 범위를 바꾼 뒤 이 도구로 그 피치 Take 를 읽어야 다시 바꿀 수 있다(6-5).
+#: list_pitches 는 피치 목록만 보여 주므로 넣지 않는다(FETCH_TAKE 성공은 행동 결과에서 따로 센다)
+_TAKE_READ_TOOLS = frozenset({"list_takes", "get_take_report", "compare_takes"})
 
 
 def _action_targets(action: dict[str, Any]) -> list[str]:
