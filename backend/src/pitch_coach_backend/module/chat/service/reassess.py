@@ -1,10 +1,12 @@
 import asyncio
 import copy
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import httpx
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
@@ -31,6 +33,8 @@ from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import UserCriteriaDTO
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service.review import build_review_request
+
+logger = logging.getLogger(__name__)
 
 REASSESS_DAILY_LIMIT = 30
 EMPTY_CRITERIA = {"display_criteria": [], "targets": [], "script_used": None}
@@ -126,8 +130,24 @@ async def call_reassess(prepared: PreparedReassess) -> tuple[dict, dict] | str:
             before = group.create_task(request_review_once(prepared.take_id, prepared.before))
             after = group.create_task(request_review_once(prepared.take_id, prepared.after))
     except ExceptionGroup as failure:
+        # 응답 원문이 실릴 수 있어 예외 문구는 남기지 않고 종류(와 HTTP 상태)만 남긴다
+        logger.warning(
+            "다시 평가 호출 실패 take=%s 종류=%s", prepared.take_id, _failure_kinds(failure)
+        )
         return REVIEW_TAKE_MISMATCH if failure.subgroup(ReviewTakeMismatch) else REVIEW_FAILED
     return before.result(), after.result()
+
+
+def _failure_kinds(failure: BaseExceptionGroup) -> list[str]:
+    kinds = []
+    for exc in failure.exceptions:
+        if isinstance(exc, BaseExceptionGroup):
+            kinds.extend(_failure_kinds(exc))
+        elif isinstance(exc, httpx.HTTPStatusError):
+            kinds.append(f"{type(exc).__name__}({exc.response.status_code})")
+        else:
+            kinds.append(type(exc).__name__)
+    return sorted(kinds)
 
 
 def finish_reassess(
@@ -144,9 +164,7 @@ def finish_reassess(
         raise RunLost(run.run_id)
     review = repo.list_ai_results(prepared.take_id, ["REVIEW"])
     if replies == REVIEW_FAILED:
-        result = failed(
-            action, REVIEW_FAILED, "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요."
-        )
+        result = failed(action, REVIEW_FAILED, "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요.")
     elif replies == REVIEW_TAKE_MISMATCH:
         result = failed(action, REVIEW_TAKE_MISMATCH, UNCONFIRMED)
     elif (
