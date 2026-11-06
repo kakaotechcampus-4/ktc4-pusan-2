@@ -4,12 +4,11 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_response import FetchPitchArgs, FetchTakeArgs
-from pitch_coach_backend.module.chat.dto import ActionResultDTO
+from pitch_coach_backend.module.chat.dto import PITCH_SUMMARIES, ActionResultDTO
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.owned import owned_pitch, owned_take_in
 from pitch_coach_backend.module.chat.service.request import (
-    PITCH_SUMMARIES,
     pitch_context,
     pitch_summary,
     run_scope,

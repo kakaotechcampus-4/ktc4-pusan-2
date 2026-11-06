@@ -3,10 +3,10 @@ from typing import Annotated, Any
 
 from pydantic import Field, TypeAdapter, ValidationError
 
-from pitch_coach_backend.module.chat.dto import AgentSummaryItemDTO
+from pitch_coach_backend.module.chat.dto import HISTORY_MESSAGES, AgentSummaryItemDTO
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatSummary
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.request import HISTORY_MESSAGES, overflow_messages
+from pitch_coach_backend.module.chat.service.request import overflow_messages
 
 PROFILE_KEYS = ("TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT")
 VALUE_LIMIT = 80

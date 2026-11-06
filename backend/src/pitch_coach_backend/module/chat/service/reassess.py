@@ -3,7 +3,6 @@ import copy
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 import httpx
@@ -23,12 +22,12 @@ from pitch_coach_backend.module.chat.service.result import (
     succeeded,
 )
 from pitch_coach_backend.module.chat.service.run import (
-    SEOUL,
     ClaimedRun,
     RunLost,
     digest,
     lock_current,
     lock_or_cancel,
+    seoul_day,
 )
 from pitch_coach_backend.module.take.dto import UserCriteriaDTO
 from pitch_coach_backend.module.take.exception import NonExistentTake
@@ -77,7 +76,7 @@ def prepare_reassess(
         after = _changed_request(before, args.change)
     except ValueError:
         return close_action(db, row, action, failed(action, "INVALID_CHANGE", UNCONFIRMED))
-    if not repo.charge_reassess(row.user_id, datetime.now(SEOUL).date(), REASSESS_DAILY_LIMIT):
+    if not repo.charge_reassess(row.user_id, seoul_day(), REASSESS_DAILY_LIMIT):
         return close_action(
             db,
             row,

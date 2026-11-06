@@ -7,6 +7,11 @@ from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.dto import (
+    HISTORY_MESSAGES,
+    HISTORY_TEXT_LIMIT,
+    OVERFLOW_MESSAGES,
+    PITCH_SUMMARIES,
+    PRIOR_ASSESSMENTS,
     AgentChoiceDTO,
     AgentContextDTO,
     AgentHistoryDTO,
@@ -46,11 +51,6 @@ from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.repository import TakeRepository
 
-HISTORY_MESSAGES = 20
-OVERFLOW_MESSAGES = 10
-PRIOR_ASSESSMENTS = 50
-HISTORY_TEXT_LIMIT = 4000
-PITCH_SUMMARIES = 20
 RECENT_TAKES = 10
 CONTEXT_LIMIT_BYTES = 524_288
 SNAPSHOT_RESULTS = {

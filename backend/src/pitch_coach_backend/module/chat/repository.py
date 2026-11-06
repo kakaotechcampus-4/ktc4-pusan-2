@@ -23,6 +23,9 @@ from pitch_coach_backend.module.chat.entity import (
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSlideEvent
 
+# 턴 실행기가 쥐고 있는 실행. 승인 대기까지 더하면 대화에서 진행 중인 실행이다
+UNFINISHED_RUN_STATUSES = ("QUEUED", "RUNNING")
+ACTIVE_RUN_STATUSES = (*UNFINISHED_RUN_STATUSES, "WAITING_APPROVAL")
 FINISHED_RUN_STATUSES = ("DONE", "PARTIAL", "REFUSED", "FAILED", "CANCELLED", "EXPIRED")
 
 
@@ -404,7 +407,7 @@ class ChatRepository:
 
     def list_unfinished_run_ids(self) -> list[uuid.UUID]:
         return list(
-            self.db.scalars(select(ChatRun.id).where(ChatRun.status.in_(("QUEUED", "RUNNING"))))
+            self.db.scalars(select(ChatRun.id).where(ChatRun.status.in_(UNFINISHED_RUN_STATUSES)))
         )
 
     def get_goal_from_action(self, action_pk: uuid.UUID) -> ChatGoal | None:
@@ -424,7 +427,7 @@ class ChatRepository:
             .where(
                 ChatRun.id == run_id,
                 ChatRun.lease_owner == owner,
-                ChatRun.status.in_(("QUEUED", "RUNNING")),
+                ChatRun.status.in_(UNFINISHED_RUN_STATUSES),
             )
             .values(lease_until=until)
         )
@@ -496,7 +499,7 @@ class ChatRepository:
                 select(ChatRun.id)
                 .where(
                     ChatRun.conversation_id == conversation_id,
-                    ChatRun.status.in_(("QUEUED", "RUNNING", "WAITING_APPROVAL")),
+                    ChatRun.status.in_(ACTIVE_RUN_STATUSES),
                 )
                 .limit(1)
             )

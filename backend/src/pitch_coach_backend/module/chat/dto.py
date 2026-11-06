@@ -19,8 +19,15 @@ ActionStatus = Literal["SUCCEEDED", "FAILED", "AMBIGUOUS"]
 ProfileKey = Literal["TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT"]
 SummaryKind = Literal["TOPIC", "INTENT", "DECISION", "OPEN"]
 
+# AI 요청에 싣는 기록 · 목록의 상한. 요청을 만드는 쪽(request.py)과 검사하는 모델이 같이 쓴다
+HISTORY_MESSAGES = 20
+OVERFLOW_MESSAGES = 10
+PRIOR_ASSESSMENTS = 50
+HISTORY_TEXT_LIMIT = 4000
+PITCH_SUMMARIES = 20
+
 Count = Annotated[int, Field(ge=0)]
-HistoryText = Annotated[str, Field(max_length=4000)]
+HistoryText = Annotated[str, Field(max_length=HISTORY_TEXT_LIMIT)]
 
 
 class _AgentDTO(BaseModel):
@@ -73,19 +80,19 @@ class AgentOverflowMessageDTO(_AgentDTO):
 
 
 class AgentOverflowDTO(_AgentDTO):
-    messages: list[AgentOverflowMessageDTO] = Field(min_length=1, max_length=10)
+    messages: list[AgentOverflowMessageDTO] = Field(min_length=1, max_length=OVERFLOW_MESSAGES)
     prev_summary_version: Count
 
 
 class AgentHistoryDTO(_AgentDTO):
     summary: Annotated[list[AgentSummaryItemDTO], Field(max_length=12)] | None
-    messages: list[AgentHistoryMessageDTO] = Field(max_length=20)
-    prior_assessments: list[dict[str, Any]] = Field(max_length=50)
+    messages: list[AgentHistoryMessageDTO] = Field(max_length=HISTORY_MESSAGES)
+    prior_assessments: list[dict[str, Any]] = Field(max_length=PRIOR_ASSESSMENTS)
     overflow: AgentOverflowDTO | None
 
 
 class AgentContextDTO(_AgentDTO):
-    pitches: list[dict[str, Any]] = Field(max_length=20)
+    pitches: list[dict[str, Any]] = Field(max_length=PITCH_SUMMARIES)
     pitches_total: Count
     pitch: dict[str, Any] | None
     conversation_goal: dict[str, Any] | None

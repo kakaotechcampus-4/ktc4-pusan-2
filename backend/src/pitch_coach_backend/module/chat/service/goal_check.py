@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatGoal, ChatLease, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.run import SEOUL
+from pitch_coach_backend.module.chat.service.run import seoul_day
 
 GOAL_CHECKS_PER_CYCLE = 100
 GOAL_CHECK_DAILY_LIMIT = 30
@@ -112,7 +112,7 @@ def claim_target(
         until=now + GOAL_LEASE,
         now=now,
     )
-    day = now.astimezone(SEOUL).date()
+    day = seoul_day(now)
     if (
         lease is None
         or not repo.charge_goal_check(target.user_id, day, GOAL_CHECK_DAILY_LIMIT)

@@ -16,7 +16,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
     ChatRunEvent,
 )
-from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.repository import UNFINISHED_RUN_STATUSES, ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
 from pitch_coach_backend.module.chat.service.memory import (
     memory_cards,
@@ -34,7 +34,6 @@ from pitch_coach_backend.module.chat.service.result import (
 from pitch_coach_backend.module.chat.service.run import (
     LEASE,
     OWNER,
-    SEOUL,
     ClaimedRun,
     add_run_log,
     cancel,
@@ -45,6 +44,7 @@ from pitch_coach_backend.module.chat.service.run import (
     lock_ids,
     lock_or_cancel,
     release_unsent,
+    seoul_day,
     take_lease,
 )
 
@@ -73,8 +73,8 @@ def mark_sending(
         return None
     repo = ChatRepository(db)
     if turn_call == 1:
-        repo.release_service_turn(row.accepted_at.astimezone(SEOUL).date())
-    repo.add_service_turn(datetime.now(SEOUL).date())
+        repo.release_service_turn(seoul_day(row.accepted_at))
+    repo.add_service_turn(seoul_day())
     row.turn_calls = [
         *(row.turn_calls or []),
         {
@@ -290,7 +290,7 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
 
 def recover_run(db: Session, run_id: uuid.UUID, now: datetime) -> Literal["START", "RESUME"] | None:
     repo = ChatRepository(db)
-    row = repo.lock_run(run_id, statuses=("QUEUED", "RUNNING"))
+    row = repo.lock_run(run_id, statuses=UNFINISHED_RUN_STATUSES)
     if row is None or (row.lease_until is not None and row.lease_until > now):
         db.rollback()
         return None
