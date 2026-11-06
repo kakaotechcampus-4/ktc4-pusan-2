@@ -295,8 +295,13 @@ def test_fm_L1_21_corpus_unavailable_and_general_all_dropped_refuses() -> None:
     )
     assert data["status"] == "REFUSED"
     assert _texts(data) == [("SYSTEM", templates.SystemText.NO_GUIDE.value)]
-    # 자료를 찾지 않아서가 아니라 내용(금지 낱말) 때문에 걸렸다: 찾지 않은 일반 조언은 고치기 없이 버린다
+    # 자료를 찾지 않아서가 아니라 내용(금지 낱말) 때문에 걸렸다: 찾지 않은 일반 조언은 고치기 없이 버린다.
+    # 그 문장의 GENERAL_RULE 이 처음에는 고치기 요청, 고친 뒤에는 버림으로 남는다
     assert [c.purpose for c in llm.calls].count("FIX") == 1
+    steps = [
+        (s.detail.claim_index, s.detail.round, s.detail.result) for s in _general_rule_steps(data)
+    ]
+    assert steps[0] == (1, 0, "FIX_REQUESTED")  # 0번은 고정 안내 문장, 1번이 일반 조언
 
 
 def test_general_needs_a_search_attempt_even_without_corpus() -> None:
