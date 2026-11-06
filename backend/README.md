@@ -511,6 +511,11 @@ AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스�
 
 없거나 남의 대화 · 실행 · 피치 · Take 는 모두 같은 `404 NOT_FOUND` 다.
 
+관리자 콘솔(`/admin/`)의 '코치 대화' 표는 끝난 실행의 날짜별 운영 기록이다(대화 본문 없음).
+`GET /admin/api/chat/days?days=`(기본 14, 최대 180)는 사용자 수 · 턴 수 · 상태별 수 · 평균 · 상위 5% 시간 · 토큰을,
+`GET /admin/api/chat/diagnostics?run_id=` 또는 `?conversation_id=`(둘 중 하나만)는 `/agent/turn` 호출별 진단 기록을 최신부터 `limit`(기본 50, 최대 200) · `offset` 쪽으로 준다.
+두 API 는 조회한 사실을 ID · 조건만 로그에 남긴다.
+
 ## 에러 응답 형식
 
 모든 에러는 `core/exceptions.py` 의 핸들러를 거쳐 같은 형태로 나간다. 프론트엔드는 `code` 로 분기한다.

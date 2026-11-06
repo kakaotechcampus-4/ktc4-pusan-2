@@ -6,8 +6,10 @@ from typing import Any
 
 from sqlalchemy import (
     ColumnElement,
+    Integer,
     Select,
     case,
+    cast,
     distinct,
     extract,
     func,
@@ -18,6 +20,7 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.module.chat.entity import ChatDiagnostic, ChatRunLog
 from pitch_coach_backend.module.pitch.entity import (
     CoachingPlan,
     Pitch,
@@ -515,4 +518,65 @@ def list_suggestions(
         stmt = stmt.where(UserSuggestion.user_id == user_id)
     return _fetch_page(
         db, stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc()), limit, offset
+    )
+
+
+def chat_days(db: Session, since: date) -> list[dict[str, Any]]:
+    """코치 대화 실행의 운영 기록을 날짜(한국 시간)별로 모은다. 대화 본문은 없다."""
+
+    def count(status: str) -> ColumnElement[int]:
+        return func.count().filter(ChatRunLog.status == status)
+
+    rows = db.execute(
+        select(
+            ChatRunLog.day,
+            func.count(distinct(ChatRunLog.user_id)).label("users"),
+            func.count().label("runs"),
+            count("DONE").label("done"),
+            count("PARTIAL").label("partial"),
+            count("REFUSED").label("refused"),
+            count("FAILED").label("failed"),
+            count("CANCELLED").label("cancelled"),
+            count("EXPIRED").label("expired"),
+            cast(func.round(func.avg(ChatRunLog.ms)), Integer).label("avg_ms"),
+            # 상위 5% 시간은 그날 ms 를 정렬한 ceil(0.95 × N) 번째 값이다(chat-agent.md 12-3).
+            # percentile_disc 가 같은 값을 준다
+            func.percentile_disc(0.95).within_group(ChatRunLog.ms).label("p95_ms"),
+            func.sum(ChatRunLog.input_tokens).label("input_tokens"),
+            func.sum(ChatRunLog.output_tokens).label("output_tokens"),
+            func.count()
+            .filter(or_(ChatRunLog.input_tokens.is_(None), ChatRunLog.output_tokens.is_(None)))
+            .label("tokens_missing"),
+        )
+        .where(ChatRunLog.day >= since)
+        .group_by(ChatRunLog.day)
+        .order_by(ChatRunLog.day.desc())
+    ).mappings()
+    return [dict(row) for row in rows]
+
+
+def chat_diagnostics(
+    db: Session,
+    *,
+    run_id: uuid.UUID | None,
+    conversation_id: uuid.UUID | None,
+    limit: int,
+    offset: int,
+) -> list[ChatDiagnostic]:
+    """진단 기록을 최신부터. 다음 쪽이 있는지 보려고 한 행 더 읽는다."""
+    stmt = select(ChatDiagnostic)
+    if run_id is not None:
+        stmt = stmt.where(ChatDiagnostic.run_id == run_id)
+    if conversation_id is not None:
+        stmt = stmt.where(ChatDiagnostic.conversation_id == conversation_id)
+    return list(
+        db.scalars(
+            stmt.order_by(
+                ChatDiagnostic.received_at.desc(),
+                ChatDiagnostic.turn_call.desc(),
+                ChatDiagnostic.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit + 1)
+        )
     )
