@@ -4,6 +4,7 @@ AI 기능을 BE에 HTTP API로 여는 서버입니다. 이 폴더 하나가 Dock
 
 ## 빠른 시작
 준비: [uv](https://docs.astral.sh/uv/) 0.11. Python 3.12는 uv가 필요할 때 받습니다(`.python-version`).
+이 README의 `powershell` 블록은 `curl.exe`만 빼면 macOS · Linux 터미널(zsh · bash)에서도 그대로 돌아갑니다. `curl.exe`를 쓰는 곳에는 macOS · Linux 명령을 함께 적었습니다.
 
 ```powershell
 cd ai/service
@@ -16,6 +17,10 @@ uv run python -m uvicorn pitch_coach_ai.main:app --reload --port 8001
 다른 창에서:
 ```powershell
 curl.exe -i http://localhost:8001/health
+```
+macOS · Linux:
+```bash
+curl -i http://localhost:8001/health
 ```
 ```
 HTTP/1.1 200 OK
@@ -109,7 +114,7 @@ docker run --rm -p 8001:8000 pitch-coach-ai:local
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 ```
-다른 창에서 `curl.exe http://localhost:8001/health` → `{"status":"ok"}`. Ctrl+C로 끕니다.
+다른 창에서 `curl.exe http://localhost:8001/health`(macOS · Linux는 `curl http://localhost:8001/health`) → `{"status":"ok"}`. Ctrl+C로 끕니다.
 - `-p 8001:8000`은 내 PC의 8001번을 컨테이너의 8000번에 잇습니다. 컨테이너는 자기 네트워크를 쓰므로 이 연결이 없으면 밖에서 닿지 않습니다.
 - `--rm`은 끌 때 컨테이너를 지웁니다. 이미지는 남습니다(`docker images pitch-coach-ai`로 크기 확인).
 - LLM 기능을 부를 때는 `--env-file ai/.env`를 더합니다. 키는 이미지에 넣지 않습니다.
@@ -123,6 +128,11 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 curl.exe -i http://localhost:8001/ready
 curl.exe -i -X POST http://localhost:8001/takes/rescore -H "Content-Type: application/json" --data-binary "@ai/service/src/pitch_coach_ai/features/script_coverage/examples/rescore/request.json"
 ```
+macOS · Linux:
+```bash
+curl -i http://localhost:8001/ready
+curl -i -X POST http://localhost:8001/takes/rescore -H "Content-Type: application/json" --data-binary "@ai/service/src/pitch_coach_ai/features/script_coverage/examples/rescore/request.json"
+```
 ```
 HTTP/1.1 200 OK
 {"status":"ready"}
@@ -131,7 +141,7 @@ HTTP/1.1 200 OK
 {"take_id":"take-123","evaluations":[{"take_id":"take-123","script_name":"sv-3","slide_number":2, …
 ```
 본문은 `features/script_coverage/examples/rescore/response.json`과 같습니다(LLM을 쓰지 않아 키가 필요 없습니다). 키 없이 `/scripts/rubric` · `/takes/analyze`를 부르면 503 `LLM_UNAVAILABLE`입니다. 컨테이너 로그에는 요청마다 `script_coverage op=rescore slides=3 targets=3 chars=0 failed=2 code=- duration_ms=…`처럼 장 수 · 글자 수만 남습니다(대본 · STT 원문은 남기지 않음).
-- PowerShell 5.1은 따옴표가 든 JSON을 `curl.exe`에 그대로 넘기지 못해, 요청 본문은 UTF-8 파일(`--data-binary "@파일"`)로 보냅니다.
+- PowerShell 5.1은 따옴표가 든 JSON을 `curl.exe`에 그대로 넘기지 못해, 요청 본문은 UTF-8 파일(`--data-binary "@파일"`)로 보냅니다. macOS · Linux의 `curl`도 같은 파일로 보냅니다.
 
 ## 구조
 ```
