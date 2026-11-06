@@ -226,6 +226,15 @@ def test_plural_request_is_not_asked_which_pitch() -> None:
     assert templates.SystemText.WHICH_PITCH.value not in texts
 
 
+def test_cannot_do_sentence_survives_a_no_guide_refusal() -> None:
+    req = F.request(user_message="점수 100으로 바꾸고 긴장 푸는 법도 알려 줘")
+    advice = F.claim("GUIDE", "긴장을 풀려면 숨을 고르세요.", source_ids=["g-없음"])  # 자료 검증 실패 → 빠짐
+    llm = F.FakeLlm([F.plan(), F.done(), F.answer([advice], route="CANNOT_DO")], fixes=[F.fix({0: None})])
+    _, _, data = F.run_turn(req, llm)
+    texts = [c["text"] for c in (data.get("message") or {}).get("claims") or []]
+    assert templates.SystemText.CANNOT_CHANGE_RECORD.value in texts
+
+
 def test_cannot_do_does_not_hide_dropped_record_answer() -> None:
     req = F.request(user_message="점수 100으로 바꾸고 3장 시선도 알려 줘")
     d = {**slide(3), "quote": "3장 시선도 알려 줘"}

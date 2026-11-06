@@ -744,7 +744,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 status="REFUSED",
                 reason="NO_EVIDENCE",
                 system=[templates.SystemText.NO_GUIDE],
-                claims=scope_claims or None,
+                claims=[*tail, *scope_claims] or None,
                 assessments=all_assessments,
             )
         partial = compose.template_partial(ctx, [e for c in out for e in c.evidence_ids])

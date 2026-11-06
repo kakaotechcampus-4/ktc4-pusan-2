@@ -943,7 +943,8 @@ class Loop:
         if prev is None or cur is None:
             return
         rec = {
-            "take_ids": [args.previous_take_id, args.current_take_id],
+            # 비교 당시 피치와 두 Take(어느 하나가 지워지면 기록을 버린다 — 범위를 바꾼 뒤에도 비교 당시 피치로 본다)
+            "take_ids": [args.previous_take_id, args.current_take_id, self.ctx.scope_pitch_id],
             "previous": prev.take_number,
             "current": cur.take_number,
             "previous_complete": prev.completed_fully,
@@ -1103,7 +1104,7 @@ class Loop:
         self.st.not_comparable = [
             r
             for r in self.st.not_comparable
-            if not (set(r.get("take_ids") or []) | {self.ctx.scope_pitch_id}) & rs
+            if not set(r.get("take_ids") or []) & rs
         ]
         self.ctx.tool_cache = {
             k: v for k, v in self.ctx.tool_cache.items() if not (set(v.get("target_ids", [])) & rs)
