@@ -564,6 +564,31 @@ def test_cancel_during_the_wait_closes_the_action_and_keeps_sentences(
     assert db_session.get(ChatAction, seeded.action.id).status == "CANCELLED"
 
 
+@pytest.mark.parametrize("ending", ["REJECT", "EXPIRE", "CANCEL", "NEW_MESSAGE"])
+def test_memory_saved_during_the_wait_keeps_its_card_however_the_wait_ends(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, ending: str
+) -> None:
+    # 승인 대기 응답의 기억은 받은 때 저장하고 결정과 상관없이 둔다(chat-agent.md 5-5).
+    # 저장했으니 "기억했어요" 와 [지우기] 카드도 남아야 한다
+    waited = timedelta(minutes=31 if ending == "EXPIRE" else 1)
+    seeded = _waiting(db_session, user_id, waited=waited)
+    card = {"type": "MEMORY_SAVED", "item_id": str(uuid.uuid4()), "key": "tone", "value": "짧게"}
+    seeded.run.interim_message = {**seeded.run.interim_message, "memory_saved": [card]}
+    db_session.commit()
+
+    if ending == "REJECT":
+        _decide(client, user_id, seeded.run.id, "REJECT")
+    elif ending == "EXPIRE":
+        _decide(client, user_id, seeded.run.id)
+    elif ending == "CANCEL":
+        client.post(f"/api/chat/runs/{seeded.run.id}/cancel", headers=bearer(user_id))
+    else:
+        _send(client, user_id, seeded.conversation.id)
+
+    [answer] = _answers(db_session, seeded.conversation.id)
+    assert answer.cards == [card]
+
+
 # ── 턴 실행기까지 ────────────────────────────────────────────────────
 
 
