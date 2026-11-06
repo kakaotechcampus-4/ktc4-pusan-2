@@ -106,6 +106,19 @@ def test_runner_end_to_end_with_a_fake_model() -> None:
     assert all(c["input_tokens"] == 100 and c["output_tokens"] == 20 for c in calls)
     turn = by["ana-slide3-gaze"].turns[0]
     assert turn["model_calls"] == len(calls) and turn["input_tokens"] == 100 * len(calls)
+    # 문장 줄(5-4): 답 문장마다 한 줄, 첫 문장까지 시간, 끝 줄 앞부분과 같음
+    assert turn["claim_lines"] >= 1 and turn["stream_ok"] is True
+    assert isinstance(turn["first_claim_ms"], int)
+    m = ev.unit_metrics(results, None, None, 1)
+    assert m["stream_mismatch"] == 0 and m["first_claim_p95_s"] is not None
+
+
+def test_stream_metrics_count_a_turn_whose_lines_differ_from_the_final() -> None:
+    """받은 문장 줄과 끝 줄 앞부분이 다르면(BE 가 PARTIAL 로 남김) 그 턴을 불일치로 센다."""
+    (r0,) = _run(["ana-slide3-gaze"])
+    t0 = r0.turns[0]
+    r = dataclasses.replace(r0, turns=[{**t0, "stream_ok": True}, {**t0, "stream_ok": False}])
+    assert ev.unit_metrics([r], None, None, 1)["stream_mismatch"] == 1
 
 
 def test_objectivity_judgement_and_its_sentence_are_graded_together() -> None:

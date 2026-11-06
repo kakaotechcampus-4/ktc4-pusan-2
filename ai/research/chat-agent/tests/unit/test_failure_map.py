@@ -135,7 +135,7 @@ def test_doc_parser_reads_every_row_of_the_failure_tables() -> None:
     for rid in doc_rows():
         got[rid[:2]] = got.get(rid[:2], 0) + 1
     assert got == layer_counts()
-    assert sum(got.values()) == 239
+    assert sum(got.values()) == 241
 
 
 def test_every_ai_owned_row_is_in_the_table_once() -> None:

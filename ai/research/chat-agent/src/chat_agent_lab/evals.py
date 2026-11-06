@@ -755,6 +755,30 @@ def executed_obs(runs: list[Run], review_calls: int) -> dict[str, Any]:
     }
 
 
+def stream_obs(runs: list[Run]) -> dict[str, Any]:
+    """한 턴의 문장 줄(5-4): 받은 문장 줄 수, 턴 시작부터 첫 문장 줄까지 시간(호출 시간 합, 행동 시간 제외 · 실제 시계),
+    문장 줄이 끝 줄 `message.claims` 앞부분과 같고 BE 문장 줄 검사에 걸리지 않았는가."""
+    first: int | None = None
+    elapsed = 0
+    ok = True
+    for run in runs:
+        for c in run.calls:
+            if first is None and c.first_claim_ms is not None:
+                first = elapsed + c.first_claim_ms
+            elapsed += c.end_ms or 0
+            if c.error_code in ("CLAIM_PREFIX_MISMATCH", "CLAIM_INVALID"):
+                ok = False
+        got = [d["claim"] for d in run.claim_lines]
+        final_claims = ((run.final or {}).get("message") or {}).get("claims") or []
+        if run.final is not None and final_claims[: len(got)] != got:
+            ok = False
+    return {
+        "claim_lines": sum(len(r.claim_lines) for r in runs),
+        "first_claim_ms": first,
+        "stream_ok": ok,
+    }
+
+
 def trace_obs(runs: list[Run]) -> dict[str, Any]:
     tools: list[str] = []
     diag: list[str] = []
@@ -1125,6 +1149,7 @@ def run_one(
                 "model_calls": sum(1 for c in calls if not c.synthetic),
                 "tool_calls": (last_final.get("usage") or {}).get("tool_calls"),
                 **_token_sums(calls),
+                **stream_obs(rec.runs),
             }
         )
     meta = next(
@@ -1299,6 +1324,15 @@ def unit_metrics(
         (t["wall_ms"] + t.get("injected_ms", 0)) / 1000 for t in msg if not t["reassess"]
     ]
     out["turn_p95_with_injected_s"] = p95(with_injected)
+    # 문장 줄(5-4): 일반 턴의 첫 문장까지 시간과, 받은 문장 줄이 끝 줄 앞부분과 다른 턴 수(0 이어야 한다)
+    firsts = [
+        t["first_claim_ms"] / 1000
+        for t in msg
+        if not t["reassess"] and t.get("first_claim_ms") is not None
+    ]
+    out["first_claim_median_s"] = round(statistics.median(firsts), 3) if firsts else None
+    out["first_claim_p95_s"] = p95(firsts)
+    out["stream_mismatch"] = sum(1 for t in turns if t.get("stream_ok") is False)
     out["turns"] = len(turns)
     out["followup_turns"] = sum(1 for t in turns if t["followup"])
     msg_turns = [t for t in turns if t["kind"] == "message"]
@@ -1568,6 +1602,8 @@ def _markdown(rep: dict[str, Any]) -> str:
             f"- 일반 턴 중간값 {_fmt(u['turn_median_s'])}초 · 상위 5% {_fmt(u['turn_p95_s'])}초 · 다시 평가 턴 상위 5%"
             f" {_fmt(u['reassess_turn_p95_s'])}초 (턴 {u['turns']}개, 후속 말 턴 {u['followup_turns']}개 포함,"
             f" 실제 시계). 장애 주입 지연을 더한 일반 턴 상위 5% {_fmt(u['turn_p95_with_injected_s'])}초",
+            f"- 문장 줄(5-4): 일반 턴의 첫 문장까지 중간값 {_fmt(u['first_claim_median_s'])}초 · 상위 5%"
+            f" {_fmt(u['first_claim_p95_s'])}초, 문장 줄이 끝 줄 앞부분과 다른 턴 {u['stream_mismatch']}개",
             f"- 숫자 정확도의 대조 불가(원본 경로를 읽지 못한 근거로만 맞은 숫자, 맞음에 넣지 않음) {u['number_unverified']}개",
             f"- 토큰: 입력 {tok['input']} (캐시 {tok['cached_input']}) · 출력 {tok['output']} · 턴당 입력"
             f" {tok['per_turn_input']} · 출력 {tok['per_turn_output']} · 턴당 모델 호출 {tok['model_calls_per_turn']}"
