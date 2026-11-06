@@ -15,6 +15,10 @@ export function markerHint(scan: MarkerScan, pageCount: number, tooLong: boolean
     return `대본은 ${MAX_SCRIPT_CHARS.toLocaleString()}자(공백 포함)까지 매핑할 수 있어요. 조금 줄여 주세요.`;
   }
   if (scan.numbers.length === 0) {
+    // `## [슬라이드 1]` 처럼 구분을 꾸며 적었으면 무엇을 고칠지 그 줄을 짚습니다 — 개수에는 넣지 않습니다
+    if (scan.wrapped.length > 0) {
+      return `“${scan.wrapped[0]}”처럼 구분 앞에 다른 글자가 있으면 인식되지 않아요. “[슬라이드 1]”을 줄 맨 앞에 두세요.`;
+    }
     // `1.` · `1)` 꼴만 있으면 본문 번호 목록일 수 있어 기본 안내를 냅니다 — 바꾸라고 하면 목록을 구분으로 바꿀 수 있습니다
     const named = scan.legacy.filter(isNamedLegacyMarker);
     return named.length > 0
@@ -35,6 +39,24 @@ export function markerHint(scan: MarkerScan, pageCount: number, tooLong: boolean
   // 바꾸라고 하면 번호가 [1, 1, …] 로 겹쳐 오히려 나뉘지 않습니다
   if (scan.legacy.length > 0 && scan.numbers[0] !== 1) return legacyHint(scan.legacy);
   return null;
+}
+
+/**
+ * 매핑했는데 나뉘지 않았을 때(`segmented: false`)의 안내. AI 가 나누지 못하는 경우는 셋입니다 —
+ * 구분자 없음 · 번호 0 · 겹침 · 거꾸로 · 첫 구분 앞에 제목이 아닌 글 (`find_slides` · `core.py` 4단계).
+ * 매핑한 원문을 다시 훑어 입력 화면 안내(`markerHint`)와 같은 원인을 말합니다. 구분과 번호가 맞는데도
+ * 나뉘지 않았으면 남은 원인은 첫 구분 앞의 글입니다 — 한 줄이어도 LLM 이 제목이 아니라고 보면 나누지 않습니다.
+ */
+export function unsegmentedNotice(scan: MarkerScan): string {
+  if (scan.numbers.length === 0) {
+    return scan.wrapped.length > 0
+      ? `“${scan.wrapped[0]}”처럼 구분 앞에 다른 글자가 있어 대본 전체를 한 슬라이드로 연결했어요. “[슬라이드 1]”을 줄 맨 앞에 두세요.`
+      : '구분자가 없어 대본 전체를 한 슬라이드로 연결했어요. “[슬라이드 1]”처럼 나눠 적으면 장마다 연결돼요.';
+  }
+  if (!scan.numbersValid) {
+    return '구분 번호가 1부터 앞 번호보다 크게 이어지지 않아 대본 전체를 한 슬라이드로 연결했어요. 원문에서 번호를 고쳐 주세요.';
+  }
+  return '첫 구분 앞의 글을 발표할 말로 보고 대본 전체를 한 슬라이드로 연결했어요. 제목이 아니라면 “[슬라이드 1]”을 앞으로 옮겨 주세요.';
 }
 
 function legacyHint(legacy: string[]): string {

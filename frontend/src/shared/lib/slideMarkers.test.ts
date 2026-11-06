@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isLegacyMarker,
   isNamedLegacyMarker,
+  isWrappedMarker,
   markerNumber,
   scanSlideMarkers,
   stripMarker,
@@ -135,6 +136,7 @@ describe('슬라이드 구분자 — 그 밖의 규칙', () => {
       numbersValid: true,
       leadingText: false,
       legacy: [],
+      wrapped: [],
     });
   });
 
@@ -215,7 +217,36 @@ describe('예전 표기 안내', () => {
       numbersValid: true,
       leadingText: false,
       legacy: [],
+      wrapped: [],
     });
+  });
+});
+
+describe('마크다운으로 꾸민 구분자', () => {
+  it.each([
+    '## [슬라이드 1]',
+    '**[슬라이드 1]**',
+    '> [1] 도입',
+    '- 슬라이드 2: 문제',
+    '  # ** [３]',
+  ])('%s 는 구분으로 세지 않고 꾸민 구분자로 알려 준다', (line) => {
+    expect(markerNumber(line)).toBeNull();
+    expect(isWrappedMarker(line)).toBe(true);
+  });
+
+  it.each(['[슬라이드 1]', '## 문제 상황', '- 첫째로', '## Slide 1', '본문 ## [1]'])(
+    '%s 는 꾸민 구분자가 아니다',
+    (line) => {
+      expect(isWrappedMarker(line)).toBe(false);
+    },
+  );
+
+  it('첫 구분자 앞의 줄만 모은다', () => {
+    expect(scanSlideMarkers('## [슬라이드 1]\n가\n## [슬라이드 2]\n나')).toMatchObject({
+      numbers: [],
+      wrapped: ['## [슬라이드 1]', '## [슬라이드 2]'],
+    });
+    expect(scanSlideMarkers('[슬라이드 1]\n가\n## [슬라이드 2]\n나').wrapped).toEqual([]);
   });
 });
 

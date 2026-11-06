@@ -63,6 +63,21 @@ export function isNamedLegacyMarker(line: string): boolean {
   return markerNumber(line) === null && LEGACY_NAMED.test(toAsciiDigits(line));
 }
 
+/** 줄 앞의 마크다운 꾸밈(`#` · `*` · `>` · `-`)과 공백 */
+const MARKDOWN_PREFIX = /^[ \t]*(?:[#*>-][ \t]*)+/;
+
+/**
+ * 앞에 마크다운 꾸밈이 붙어 구분으로 인식되지 않는 줄 (`## [슬라이드 1]` · `**[슬라이드 1]**`).
+ * AI 가 만든 대본은 장 제목을 이렇게 감싸는 일이 많습니다. AI 는 구분자를 줄 맨 앞에서만 찾으므로
+ * 구분으로 세지 않고 안내에만 씁니다
+ */
+export function isWrappedMarker(line: string): boolean {
+  const m = MARKDOWN_PREFIX.exec(line);
+  return (
+    m !== null && markerNumber(line) === null && markerNumber(line.slice(m[0].length)) !== null
+  );
+}
+
 export interface MarkerScan {
   /** 찾은 구분자의 번호, 나온 순서대로 */
   numbers: number[];
@@ -84,22 +99,26 @@ export interface MarkerScan {
    * 셉니다 — 구분자 뒤의 "1. 첫째 이유는" · "Slide 3 shows" 는 본문의 번호 목록 · 문장입니다.
    */
   legacy: string[];
+  /** 앞에 마크다운 꾸밈이 붙어 구분으로 안 세는 줄의 글 (앞뒤 공백 제외). 첫 구분자 앞의 줄만 셉니다 */
+  wrapped: string[];
 }
 
 export function scanSlideMarkers(text: string): MarkerScan {
   const numbers: number[] = [];
   const legacy: string[] = [];
+  const wrapped: string[] = [];
   let leadingLines = 0;
   for (const line of splitLines(text)) {
     const n = markerNumber(line);
     if (n !== null) numbers.push(n);
     else if (numbers.length === 0) {
       if (isLegacyMarker(line)) legacy.push(line.trim());
+      if (isWrappedMarker(line)) wrapped.push(line.trim());
       if (line.trim() !== '') leadingLines++;
     }
   }
   const numbersValid = numbers.every((n, i) => n >= 1 && (i === 0 || n > numbers[i - 1]));
-  return { numbers, numbersValid, leadingText: leadingLines > 1, legacy };
+  return { numbers, numbersValid, leadingText: leadingLines > 1, legacy, wrapped };
 }
 
 /** 줄 단위로 나누는 규칙도 AI 와 같아야 해서 목이 같이 씁니다 */

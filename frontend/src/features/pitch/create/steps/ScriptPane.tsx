@@ -13,7 +13,7 @@ import {
   type SlideVersion,
 } from '../lib/draft';
 import { computeGate } from '../lib/gate';
-import { markerHint } from '../lib/markerHint';
+import { markerHint, unsegmentedNotice } from '../lib/markerHint';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -298,18 +298,18 @@ function SlideThumb({ slide, pageNumber }: { slide: SlideVersion | null; pageNum
 
 /** 나눈 결과가 슬라이드와 맞지 않을 때의 안내. 고칠 곳은 대본의 구분자입니다 */
 function MappingNotice({
+  text,
   segmented,
   blockCount,
   pageCount,
 }: {
+  text: string;
   segmented: boolean | null;
   blockCount: number;
   pageCount: number;
 }) {
   const message = (() => {
-    if (segmented === false) {
-      return '구분자가 없어 대본 전체를 한 슬라이드로 연결했어요. “[슬라이드 1]”처럼 나눠 적으면 장마다 연결돼요.';
-    }
+    if (segmented === false) return unsegmentedNotice(scanSlideMarkers(text));
     if (pageCount > 0 && blockCount !== pageCount) {
       return `대본은 ${blockCount}장, 슬라이드는 ${pageCount}장으로 나뉘었어요. 대본의 구분을 확인해 주세요.`;
     }
@@ -468,7 +468,12 @@ function MappingReview({
           매핑 확인/수정
         </button>
       </div>
-      <MappingNotice segmented={script.segmented} blockCount={blocks.length} pageCount={pages} />
+      <MappingNotice
+        text={script.text}
+        segmented={script.segmented}
+        blockCount={blocks.length}
+        pageCount={pages}
+      />
       {script.parse.status === 'failed' && (
         <p role="alert" className="mt-3 text-sm">
           {script.parse.message}
@@ -554,6 +559,7 @@ function MappingEditor({
         </p>
       )}
       <MappingNotice
+        text={script.text}
         segmented={script.segmented}
         blockCount={blocks.length}
         pageCount={pageCount}
