@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.adapter.script_parser import ParsedScript
 from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
@@ -56,9 +57,11 @@ def validate_script_text(content: str) -> str:
         raise InvalidScript("대본이 비어 있습니다.")
     if len(content) > MAX_SCRIPT_CHARS:
         raise InvalidScript(f"대본은 {MAX_SCRIPT_CHARS:,}자까지 올릴 수 있습니다.")
-    # JSON 은 "\u0000" 을 허용하지만 PostgreSQL TEXT 는 NUL 을 넣지 못해 커밋에서 500 이 난다
-    if "\x00" in content:
-        raise InvalidScript("대본에 쓸 수 없는 문자(NUL)가 있습니다.")
+    # JSON 은 NUL · 짝 없는 서로게이트를 허용하지만 PostgreSQL TEXT 에 넣지 못해 500 이 난다
+    try:
+        reject_nul(content)
+    except ValueError as exc:
+        raise InvalidScript("대본에 쓸 수 없는 문자가 있습니다.") from exc
     return content
 
 
