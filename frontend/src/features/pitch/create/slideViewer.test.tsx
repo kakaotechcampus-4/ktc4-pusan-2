@@ -73,3 +73,36 @@ it('확대를 끝까지 눌러도 포커스가 뷰어 안에 남아 ← →가 �
   await press(zoomIn, 'ArrowRight');
   expect(counter()).toBe('2 / 3');
 });
+
+const pointerDown = (el: HTMLElement) =>
+  act(async () => {
+    el.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  });
+const viewerBox = () => container.querySelector<HTMLElement>('[tabindex="-1"]')!;
+
+it('마우스로 쥔 다음 버튼에서 ←를 누르면 포커스를 뷰어로 옮겨 우측 버튼에 링이 남지 않는다 (#924)', async () => {
+  const next = button('다음 슬라이드');
+  await pointerDown(next);
+  next.focus();
+  await click(next);
+  expect(counter()).toBe('2 / 3');
+
+  await press(next, 'ArrowLeft');
+  expect(counter()).toBe('1 / 3');
+  expect(document.activeElement).toBe(viewerBox());
+
+  // 뷰어에 포커스가 남아 있으니 ← →는 계속 동작한다 (#818)
+  await press(viewerBox(), 'ArrowRight');
+  expect(counter()).toBe('2 / 3');
+});
+
+it('Tab 으로 닿은 버튼은 키보드 초점이라 ←를 눌러도 포커스를 옮기지 않는다', async () => {
+  const next = button('다음 슬라이드');
+  await pointerDown(next);
+  await press(next, 'Tab');
+  next.focus();
+
+  await press(next, 'ArrowRight');
+  expect(counter()).toBe('2 / 3');
+  expect(document.activeElement).toBe(next);
+});
