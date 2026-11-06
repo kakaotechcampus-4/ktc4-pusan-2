@@ -8,12 +8,17 @@ from typing import Any
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.chat.ai_client import request_review_once
+from pitch_coach_backend.module.chat.ai_client import ReviewTakeMismatch, request_review_once
 from pitch_coach_backend.module.chat.ai_response import ReassessArgs
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.request import run_scope
-from pitch_coach_backend.module.chat.service.result import close_action, failed, succeeded
+from pitch_coach_backend.module.chat.service.result import (
+    UNCONFIRMED,
+    close_action,
+    failed,
+    succeeded,
+)
 from pitch_coach_backend.module.chat.service.run import (
     SEOUL,
     ClaimedRun,
@@ -30,6 +35,8 @@ from pitch_coach_backend.module.take.service.review import build_review_request
 REASSESS_DAILY_LIMIT = 30
 EMPTY_CRITERIA = {"display_criteria": [], "targets": [], "script_used": None}
 NO_REVIEW = "이 연습은 다시 평가할 자료가 부족해요."
+REVIEW_FAILED = "REVIEW_FAILED"
+REVIEW_TAKE_MISMATCH = "REVIEW_TAKE_MISMATCH"
 
 
 @dataclass(frozen=True)
@@ -56,19 +63,17 @@ def prepare_reassess(
         return close_action(db, row, action, failed(action, "NOT_FOUND", "기록을 찾을 수 없어요."))
     review = repo.list_ai_results(take.Take.id, ["REVIEW"])
     if not review:
-        return close_action(db, row, action, failed(action, "VALIDATION_ERROR", NO_REVIEW))
+        return close_action(db, row, action, failed(action, "NO_OFFICIAL_REVIEW", NO_REVIEW))
     if repo.count_succeeded_actions(row.id, "REASSESS") > 0:
-        return close_action(
-            db,
-            row,
-            action,
-            failed(action, "VALIDATION_ERROR", "다시 평가는 한 번에 한 번만 해요."),
-        )
+        return close_action(db, row, action, failed(action, "REASSESS_PER_TURN", UNCONFIRMED))
     try:
         before = build_review_request(db, take.Take.id).model_dump(mode="json")
-        after = _changed_request(before, args.change)
     except ValueError, NonExistentTake:
-        return close_action(db, row, action, failed(action, "VALIDATION_ERROR", NO_REVIEW))
+        return close_action(db, row, action, failed(action, "NO_OFFICIAL_REVIEW", NO_REVIEW))
+    try:
+        after = _changed_request(before, args.change)
+    except ValueError:
+        return close_action(db, row, action, failed(action, "INVALID_CHANGE", UNCONFIRMED))
     if not repo.charge_reassess(row.user_id, datetime.now(SEOUL).date(), REASSESS_DAILY_LIMIT):
         return close_action(
             db,
@@ -76,7 +81,7 @@ def prepare_reassess(
             action,
             failed(
                 action,
-                "AGENT_DAILY_LIMIT",
+                "REASSESS_DAILY_LIMIT",
                 "오늘은 다시 평가를 더 할 수 없지만 다른 질문은 계속할 수 있어요.",
             ),
         )
@@ -115,13 +120,13 @@ def _changed_request(before: dict[str, Any], change: dict[str, Any]) -> dict[str
     return after
 
 
-async def call_reassess(prepared: PreparedReassess) -> tuple[dict, dict] | None:
+async def call_reassess(prepared: PreparedReassess) -> tuple[dict, dict] | str:
     try:
         async with asyncio.TaskGroup() as group:
             before = group.create_task(request_review_once(prepared.take_id, prepared.before))
             after = group.create_task(request_review_once(prepared.take_id, prepared.after))
-    except Exception:
-        return None
+    except ExceptionGroup as failure:
+        return REVIEW_TAKE_MISMATCH if failure.subgroup(ReviewTakeMismatch) else REVIEW_FAILED
     return before.result(), after.result()
 
 
@@ -130,7 +135,7 @@ def finish_reassess(
     run: ClaimedRun,
     action: dict[str, Any],
     prepared: PreparedReassess,
-    replies: tuple[dict, dict] | None,
+    replies: tuple[dict, dict] | str,
 ) -> ActionResultDTO:
     lock_or_cancel(db, run, set(), {str(prepared.take_id)})
     repo = ChatRepository(db)
@@ -138,17 +143,20 @@ def finish_reassess(
     if row is None:
         raise RunLost(run.run_id)
     review = repo.list_ai_results(prepared.take_id, ["REVIEW"])
-    if (
-        replies is None
-        or _request_changed(db, prepared)
-        or replies[0]["meta"].get("criteria_versions")
-        != replies[1]["meta"].get("criteria_versions")
+    if replies == REVIEW_FAILED:
+        result = failed(
+            action, REVIEW_FAILED, "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요."
+        )
+    elif replies == REVIEW_TAKE_MISMATCH:
+        result = failed(action, REVIEW_TAKE_MISMATCH, UNCONFIRMED)
+    elif (
+        _request_changed(db, prepared)
         or not review
         or review[0].revision != prepared.review_revision
     ):
-        result = failed(
-            action, "AGENT_UPSTREAM_ERROR", "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요."
-        )
+        result = failed(action, "REVIEW_REQUEST_CHANGED", UNCONFIRMED)
+    elif replies[0]["meta"].get("criteria_versions") != replies[1]["meta"].get("criteria_versions"):
+        result = failed(action, "RULES_DIFFER", "평가 규칙이 달라 같은 조건으로 비교할 수 없어요.")
     else:
         result = succeeded(
             action, {"before": replies[0], "after": replies[1], "official": prepared.official}

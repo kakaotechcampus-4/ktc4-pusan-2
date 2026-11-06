@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Any, Literal, Self
 
@@ -69,6 +70,13 @@ class _Preapproved(_View):
     content_hash: str
 
 
+def args_hash(kind: str, args: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        {"type": kind, "args": args}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 class _Action(_View):
     action_id: str
     type: ActionType
@@ -79,6 +87,12 @@ class _Action(_View):
     reason: str
     authorized_by: str | None
     preapproved: _Preapproved | None = None
+
+    @model_validator(mode="after")
+    def _hash_matches_args(self) -> Self:
+        if self.autonomy == "ASK" and self.args_hash != args_hash(self.type, self.args):
+            raise ValueError("args_hash 가 args 로 계산한 값과 다르다")
+        return self
 
 
 class _Budget(_View):
@@ -138,6 +152,15 @@ class FinalView(_View):
                 raise ValueError("NEEDS_ACTION 은 기다리는 행동 하나가 필요하다")
             if self.state is None:
                 raise ValueError("NEEDS_ACTION 은 state 가 필요하다")
+            action = self.actions[0]
+            if action.autonomy == "ASK":
+                if self.message is None:
+                    raise ValueError("ASK 행동 응답은 message 가 필요하다")
+                if action.preapproved is None and not any(
+                    card.get("type") == "ASK_CONFIRM" and card.get("action_id") == action.action_id
+                    for card in self.message.cards
+                ):
+                    raise ValueError("승인을 기다리는 행동에 ASK_CONFIRM 카드가 없다")
         else:
             if self.state is not None or self.message is None:
                 raise ValueError("종결 응답은 message 가 필요하고 state 가 없다")

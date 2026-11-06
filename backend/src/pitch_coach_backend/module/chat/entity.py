@@ -18,7 +18,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSON, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pitch_coach_backend.core.database import (
@@ -219,7 +219,7 @@ class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     run_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     action_id: Mapped[str] = mapped_column(String(64), nullable=False)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
-    args: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    args: Mapped[Any] = mapped_column(JSON, nullable=False)
     args_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     autonomy: Mapped[str] = mapped_column(String(10), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
