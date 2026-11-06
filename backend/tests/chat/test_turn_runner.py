@@ -15,9 +15,11 @@ from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
     ChatMessage,
+    ChatProfileItem,
     ChatRun,
     ChatRunLog,
 )
+from pitch_coach_backend.module.chat.service import turn as turn_service
 
 META = {
     "schema_version": "1.0",
@@ -35,6 +37,8 @@ BUDGET = {
     "output_tokens": 1,
 }
 STATE = {"v": 1, "kid": "k1", "payload": "p", "signature": "s"}
+MEMORY_MESSAGE = "앞으로 짧게 설명해 줘"
+UPDATE = {"key": "EXPLAIN_STYLE", "value": "짧게 설명", "quote": MEMORY_MESSAGE}
 
 
 def _final(status: str = "DONE", **extra: Any) -> dict[str, Any]:
