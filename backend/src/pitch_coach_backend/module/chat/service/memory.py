@@ -24,7 +24,23 @@ REQUEST_WORDS = (
     "매번",
     "항상",
 )
-WITHDRAW_WORDS = ("잊어", "기억하지 마", "기억하지마", "지워", "지우고")
+WITHDRAW_WORDS = ("잊어", "기억하지 마", "기억하지마")
+WITHDRAW_VERBS = ("지워", "지우고", "지워 줘")
+WITHDRAW_TARGETS = ("기억", "그거", "그건", "그 말", "방금 말", "아까 말")
+WISH_WORDS = ("좋겠", "고맙", "좋아", "좋을", "감사")
+INJECTION_MARKERS = (
+    "이전 지시",
+    "지시를 무시",
+    "시스템 프롬프트",
+    "ignore previous",
+    "ignore all previous",
+    "system prompt",
+)
+SECRET = re.compile(r"sk-[A-Za-z0-9_-]{16,}|Bearer\s+[A-Za-z0-9._-]{16,}|AKIA[0-9A-Z]{16}")
+NEGATED_AFTER = re.compile(r"[가-힣]{0,4}?(?:지마|지말|말고)")
+REQUEST_FILLERS = re.compile(
+    r"(?:줘요|줘|둬요|둬|주세요|두세요|줄래|줄래요|해요|해|요|꼭|제발|좀|~)"
+)
 QUOTES = (
     '"',
     "“",
@@ -198,7 +214,7 @@ def _valid(item: Any, message: str) -> bool:
     if not any(word in quote for word in REQUEST_WORDS):
         return False
     clause = _clause_of(message, quote)
-    if any(word in message for word in WITHDRAW_WORDS):
+    if _withdrawn(message):
         return False
     if any(mark in clause for mark in QUOTES) or _conditional(clause):
         return False
@@ -206,10 +222,30 @@ def _valid(item: Any, message: str) -> bool:
         return False
     if _has_number(value) or any(word in value for word in DIRECTIVE_WORDS):
         return False
-    request_clauses = [
-        part for part in CLAUSE_SPLIT.split(quote) if any(word in part for word in REQUEST_WORDS)
-    ]
-    return any(_squash(value) in _squash(part) for part in request_clauses)
+    if _unsafe(value):
+        return False
+    squashed = _squash(value)
+    request_clauses = _request_clauses(quote)
+    if not any(squashed in _squash(part) for part in request_clauses):
+        return False
+    return not any(_negated(squashed, part) for part in request_clauses)
+
+
+def _unsafe(value: str) -> bool:
+    lowered = value.lower()
+    return (
+        any(marker in lowered for marker in INJECTION_MARKERS) or SECRET.search(value) is not None
+    )
+
+
+def _withdrawn(message: str) -> bool:
+    if any(word in message for word in WITHDRAW_WORDS):
+        return True
+    return any(
+        any(verb in part for verb in WITHDRAW_VERBS)
+        and any(target in part for target in WITHDRAW_TARGETS)
+        for part in CLAUSE_SPLIT.split(message)
+    )
 
 
 def _clause_of(message: str, quote: str) -> str:
@@ -227,9 +263,39 @@ def _conditional(clause: str) -> bool:
         len(words),
     )
     return any(
-        len(word) > 1 and word.endswith(CONDITION_SUFFIXES)
-        for word in words[:first] + words[first + 1 :]
+        len(word) > 1 and word.endswith(CONDITION_SUFFIXES) and not _wish(words, i)
+        for i, word in enumerate(words)
+        if i != first
     )
+
+
+def _wish(words: list[str], i: int) -> bool:
+    return i + 1 < len(words) and words[i + 1].startswith(WISH_WORDS)
+
+
+def _request_clauses(quote: str) -> list[str]:
+    parts = [part for part in CLAUSE_SPLIT.split(quote) if part.strip()]
+    clauses: list[str] = []
+    for i, part in enumerate(parts):
+        if any(word in part for word in REQUEST_WORDS):
+            clauses.append(part)
+            if i > 0 and _only_request(part):
+                clauses.append(parts[i - 1])
+    return clauses
+
+
+def _only_request(clause: str) -> bool:
+    rest = clause
+    for word in sorted(REQUEST_WORDS, key=len, reverse=True):
+        if word.startswith("기억"):
+            rest = rest.replace(word, " ")
+    return not _squash(REQUEST_FILLERS.sub("", _squash(rest)))
+
+
+def _negated(value: str, clause: str) -> bool:
+    squashed = _squash(clause)
+    at = squashed.find(value)
+    return at >= 0 and NEGATED_AFTER.match(squashed[at + len(value) :]) is not None
 
 
 def _has_number(text: str) -> bool:
