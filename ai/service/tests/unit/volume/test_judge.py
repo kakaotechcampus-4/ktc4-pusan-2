@@ -340,12 +340,14 @@ def test_tally_only_new_seconds() -> None:
     assert [i.t_ms for i in volume.tally] == [8000, 9000]
 
 
-def test_since_in_the_middle_of_a_second_counts_only_the_rest() -> None:
-    # 40000~41000 기록에 since_ms 40500: 이미 센 앞 절반은 다시 세지 않고 500 만 센다
+def test_since_in_the_middle_of_a_record_drops_it_and_counts_the_rest_as_no_record() -> None:
+    # 40000~41000 기록에 since_ms 40500: 기록 중간부터는 그 기록을 버리고 남은 시간을 기록 없는
+    # 시간으로 센다. 1초 기록의 voiced_ms · 에너지는 나눌 수 없어 남은 절반의 값을 추측하지 않는다
     volume, pause = run([rec(40000)], 41000, since_ms=40500)
     assert [(i.t_ms, i.values.total_ms) for i in volume.tally] == [(40500, 500)]
     assert [(i.t_ms, i.values.total_ms) for i in pause.tally] == [(40500, 500)]
-    assert volume.tally[0].values.voiced_ms == 0
+    assert volume.tally[0].values.voiced_ms == volume.tally[0].values.audio_live_ms == 0
+    assert pause.tally[0].values.audio_live_ms == 0
 
 
 def test_recall_with_cursor_has_empty_tally() -> None:
