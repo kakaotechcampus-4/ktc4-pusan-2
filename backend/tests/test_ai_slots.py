@@ -128,6 +128,32 @@ async def test_rubric_waiting_for_its_slot_leaves_the_total_to_others() -> None:
     assert held == 3
 
 
+async def test_reassess_takes_two_chat_slots_at_once_apart_from_background() -> None:
+    # 대화 자리는 백그라운드 자리와 따로 센다. 다시 평가는 두 자리가 한꺼번에 빌 때까지 기다린다
+    chat = ai_slots.chat()
+    pair_held = asyncio.Event()
+
+    async def reassess() -> None:
+        async with ai_slots.chat_pair():
+            pair_held.set()
+
+    for _ in range(ai_slots.CHAT_LIMIT - 1):
+        await chat.acquire()
+    waiting = asyncio.create_task(reassess())
+    await asyncio.sleep(0.01)
+    assert not pair_held.is_set()
+    async with asyncio.timeout(1), ai_slots.background():
+        pass
+
+    chat.release()
+    async with asyncio.timeout(1):
+        await waiting
+    assert pair_held.is_set()
+    for _ in range(ai_slots.CHAT_LIMIT - 2):
+        chat.release()
+    assert chat._value == ai_slots.CHAT_LIMIT
+
+
 async def test_time_waiting_for_a_slot_is_not_an_attempt_timeout() -> None:
     # 시도 하나는 0.2초라 마감(0.3초) 안이다. 뒤의 둘은 앞 둘이 끝나기를 0.2초 기다렸다 보낸다 —
     # 기다린 시간까지 세면 0.4초라 마감을 넘는다

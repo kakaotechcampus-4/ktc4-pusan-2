@@ -7,6 +7,9 @@
     (script-coverage-evaluation.md 8절)
   - 자리가 없으면 실패시키지 않고 기다린다. 부르는 쪽은 자리를 받은 뒤에 시도 시간 제한을 건다 —
     기다린 시간이 시간 초과로 이어지지 않는다. 대본 파싱만 만료(90초) 때문에 20초까지만 기다린다
+  - 대화 AI 요청(`/agent/turn` 한 번, 다시 평가의 리뷰 두 번)은 `CHAT_LIMIT` 자리를 따로 센다
+    (chat-agent.md 12-3 대화 자리). 자리를 기다린 시간도 실행 마감(120초)에 들어간다.
+    설계의 `CHAT_AI_SLOTS_PER_PROCESS` 설정과 시작 때 합계 검사는 아직 없고 상수로 둔다
 
 자리를 쥔 채 자리를 또 잡지 않는다. 바깥에서 모든 자리를 쥐고 있으면 안쪽은 끝없이 기다린다.
 BE 프로세스를 늘리면 프로세스마다 이만큼 잡으므로 합계가 넘지 않게 나눈다.
@@ -29,6 +32,13 @@ _standard: SemaphoreByLoop = weakref.WeakKeyDictionary()
 
 STANDARD_LIMIT = 4
 
+CHAT_LIMIT = 4
+
+_chat: SemaphoreByLoop = weakref.WeakKeyDictionary()
+_chat_pairs: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
+    weakref.WeakKeyDictionary()
+)
+
 
 def background() -> asyncio.Semaphore:
     """백그라운드 AI 호출 하나의 자리."""
@@ -45,3 +55,33 @@ async def rubric() -> AsyncIterator[None]:
 
 def standard() -> asyncio.Semaphore:
     return loop_semaphore(_standard, STANDARD_LIMIT)
+
+
+def chat() -> asyncio.Semaphore:
+    """대화 AI 요청 하나의 자리. 백그라운드 자리와 따로 센다."""
+    return loop_semaphore(_chat, CHAT_LIMIT)
+
+
+@asynccontextmanager
+async def chat_pair() -> AsyncIterator[None]:
+    """다시 평가(리뷰 두 번을 함께 보냄)의 대화 자리 두 개를 한 번에 잡는다.
+
+    하나씩 잡으면 두 다시 평가가 한 자리씩 쥔 채 서로 기다릴 수 있다. 두 자리를 잡는 동안은 다른
+    다시 평가가 끼어들지 못하게 줄을 세운다.
+    """
+    loop = asyncio.get_running_loop()
+    slots = chat()
+    if (lock := _chat_pairs.get(loop)) is None:
+        lock = _chat_pairs[loop] = asyncio.Lock()
+    async with lock:
+        await slots.acquire()
+        try:
+            await slots.acquire()
+        except BaseException:
+            slots.release()
+            raise
+    try:
+        yield
+    finally:
+        slots.release()
+        slots.release()

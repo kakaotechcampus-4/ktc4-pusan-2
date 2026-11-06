@@ -2,15 +2,14 @@ import asyncio
 import contextlib
 import logging
 import uuid
-import weakref
-from collections.abc import AsyncGenerator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import partial
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal, in_session
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal, request_turn
@@ -31,7 +30,6 @@ from pitch_coach_backend.module.chat.service.run import ClaimedRun, RunLost
 
 logger = logging.getLogger(__name__)
 
-CHAT_SLOT_LIMIT = 4
 MAX_TURN_CALLS = 6
 STOP_TIMEOUT_SEC = 5.0
 LEASE_RENEW_SEC = 10.0
@@ -41,39 +39,6 @@ type SessionFactory = Callable[[], Session]
 type ResumeWith = Callable[[Session, uuid.UUID], turn_service.ResumePoint | None]
 
 _running = TaskRegistry()
-_slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
-    weakref.WeakKeyDictionary()
-)
-_slot_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
-    weakref.WeakKeyDictionary()
-)
-
-
-def _chat_slot() -> asyncio.Semaphore:
-    loop = asyncio.get_running_loop()
-    if (slots := _slots.get(loop)) is None:
-        slots = asyncio.Semaphore(CHAT_SLOT_LIMIT)
-        _slots[loop] = slots
-    return slots
-
-
-@asynccontextmanager
-async def _double_slot() -> AsyncGenerator[None]:
-    loop = asyncio.get_running_loop()
-    slots = _chat_slot()
-    lock = _slot_locks.setdefault(loop, asyncio.Lock())
-    async with lock:
-        await slots.acquire()
-        try:
-            await slots.acquire()
-        except BaseException:
-            slots.release()
-            raise
-    try:
-        yield
-    finally:
-        slots.release()
-        slots.release()
 
 
 def start(
@@ -222,7 +187,7 @@ class _Turn:
             return TurnFailure("AGENT_CONTEXT_TOO_LARGE")
         request_id = uuid.uuid4().hex
         overflow = request.history.overflow
-        async with _chat_slot():
+        async with ai_slots.chat():
             await self._advance(
                 turn_service.mark_sending,
                 turn_call,
@@ -300,7 +265,7 @@ class _Turn:
         )
         if isinstance(prepared, ActionResultDTO):
             return prepared
-        async with _double_slot():
+        async with ai_slots.chat_pair():
             replies = await reassess_service.call_reassess(prepared)
         return await in_session(
             self._session_factory,

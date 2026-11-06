@@ -112,6 +112,8 @@ def fresh_ai_slots(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(ai_slots, "_background", weakref.WeakKeyDictionary())
     monkeypatch.setattr(ai_slots, "_rubric", weakref.WeakKeyDictionary())
+    monkeypatch.setattr(ai_slots, "_chat", weakref.WeakKeyDictionary())
+    monkeypatch.setattr(ai_slots, "_chat_pairs", weakref.WeakKeyDictionary())
 
 
 @pytest.fixture(autouse=True)
