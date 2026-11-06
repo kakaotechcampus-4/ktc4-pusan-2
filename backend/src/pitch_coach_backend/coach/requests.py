@@ -21,7 +21,7 @@ import logging
 import math
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 from typing import Any
 
@@ -156,12 +156,9 @@ class TakeConstants:
     base_level_db: float | None = None
     script_mode: str | None = None
 
+    @cached_property
     def common(self) -> dict[str, Any]:
         """evaluate · finalize 가 같이 싣는 칸. Take 동안 바뀌지 않아 한 번만 만든다."""
-        return self._common
-
-    @cached_property
-    def _common(self) -> dict[str, Any]:
         mode = self.mode.upper()
         base_level_db = self.base_level_db
         if base_level_db is not None and not math.isfinite(base_level_db):
@@ -204,7 +201,6 @@ class FinalizeSource:
     utterance_ends: tuple[int, ...]
     # 받은 순서대로 (coach_events.seq). 이벤트 JSON 그대로
     events: tuple[dict[str, Any], ...]
-    raw_data_consent: bool
 
     @property
     def t_end_ms(self) -> int | None:
@@ -223,10 +219,7 @@ class FinalizeSource:
     def last_window(self, replay: Mapping[str, Any], t_end_ms: int) -> dict[str, Any]:
         """마지막 창. `replay`(이 원자료로 만든 것)에서 발표 중과 같은 규칙으로 고른다. STT 상태는
         마지막 1초의 것이다."""
-        words = [
-            FinalWord(w["word"], w["start_ms"], w["end_ms"], w["final_at_ms"])
-            for w in replay["words"]
-        ]
+        words = [FinalWord(w["word"], w["start_ms"], w["end_ms"]) for w in replay["words"]]
         last = max(self.seconds, key=lambda s: s.t_ms, default=None)
         return window_inputs(
             t_end_ms,
@@ -235,9 +228,7 @@ class FinalizeSource:
             words=words,
             utterance_ends=self.utterance_ends,
             stt_status=(last.stt_status if last is not None and last.stt_status else "connecting"),
-            slide=slide_at(
-                t_end_ms, slide_changes(self.context.slides, normalize_start=False)
-            ),
+            slide=slide_at(t_end_ms, slide_changes(self.context.slides, normalize_start=False)),
         )
 
 
@@ -250,7 +241,7 @@ def evaluate_request(
 ) -> dict[str, Any]:
     """`/coach/evaluate`. `t_ms` 는 그 `metrics` 의 바깥 `t_ms`, `coach_state` 는 지난 응답 그대로
     (첫 요청은 None)."""
-    return {**constants.common(), "t_ms": t_ms, "inputs": inputs, "coach_state": coach_state}
+    return {**constants.common, "t_ms": t_ms, "inputs": inputs, "coach_state": coach_state}
 
 
 def finalize_request(
@@ -272,7 +263,7 @@ def finalize_request(
     """
     script_mode = (constants.script_mode or "").upper()
     request = {
-        **constants.common(),
+        **constants.common,
         "t_ms": t_ms,
         # 모르는 값은 싣지 않는다. AI 가 finalize 를 422 로 거절해 Take 결과를 잃는다
         "script_mode": script_mode if script_mode in _SCRIPT_MODES else None,
@@ -330,13 +321,7 @@ def plan_request(
     for i, mission in enumerate(mission_list):
         description = mission.description
         if description is not None and len(description) > PLAN_MAX_MISSION_DESCRIPTION:
-            mission_list[i] = MissionInput(
-                mission_id=mission.mission_id,
-                area=mission.area,
-                slide_number=mission.slide_number,
-                target=mission.target,
-                priority=mission.priority,
-            )
+            mission_list[i] = replace(mission, description=None)
             trimmed += 1
     if trimmed:
         logger.info("코칭 계획 요청에서 긴 미션 설명을 뺐다 pitch=%s count=%d", pitch_id, trimmed)

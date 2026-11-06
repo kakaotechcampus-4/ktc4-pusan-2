@@ -243,7 +243,6 @@ def finalize_rows(
         ),
         utterance_ends=tuple(json_ints(take.utterance_ends)),
         events=tuple(dict(e.payload) for e in repo.coach_events(take_id)),
-        raw_data_consent=take.raw_data_consent,
     )
 
 

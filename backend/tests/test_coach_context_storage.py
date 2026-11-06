@@ -76,7 +76,7 @@ def test_take_context_has_the_take_constants(db_session: Session, take_parts):
 
     assert context is not None
     constants = context.constants
-    common = constants.common()
+    common = constants.common
     assert common["take_id"] == str(take.id)
     assert common["mode"] == "EXAM"
     assert common["plan"]["target_ms"] == 240_000
