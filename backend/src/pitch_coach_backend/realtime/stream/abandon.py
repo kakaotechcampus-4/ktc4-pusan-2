@@ -13,9 +13,9 @@ import logging
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Literal
 
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
+from pitch_coach_backend.realtime.dto import LeftReason
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,6 @@ CLOSED_TAB_WAIT_SEC = 2 * 60.0
 ARM_ABANDONED_TIMEOUT_SEC = 10.0
 
 # 떠난 것으로 끝낸 Take 의 `end_reason`. 창을 닫았으면 CLOSED, 그 밖은 ABANDONED 다 —
-# ABANDONED 는 FE 가 STT 없이 발표를 이어 가는 중일 수 있어 끝내기 PUT 이 오면 되살린다
-# (take repository `mark_ended`)
-type LeftReason = Literal["ABANDONED", "CLOSED"]
-
 # 타이머가 만료되면 부른다. (Take, 마지막으로 연결이 끊긴 시각, 이유)
 type OnExpire = Callable[[uuid.UUID, datetime, LeftReason], None]
 

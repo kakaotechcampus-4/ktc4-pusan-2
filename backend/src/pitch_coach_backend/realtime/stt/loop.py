@@ -95,7 +95,6 @@ class SttLoop:
         self._on_utterance_end = on_utterance_end
         # Take 기준이다. 스트림이 새로 만들어질 때 저장된 마지막 값에서 이어 받는다
         self.stt_session_no = stt_session_no
-        self._ever_connected = False
 
         # ── Deepgram 세션마다 리셋 ──
         self._base_offset_ms: int | None = None
@@ -154,7 +153,6 @@ class SttLoop:
                 continue
 
             attempt = 0
-            self._ever_connected = True
             self.stt_session_no += 1
             self._base_offset_ms = None
             self._bytes_sent = 0

@@ -12,20 +12,20 @@
 STT 재접속 · 전사 저장 재시도는 직접 하지 않는다 (스트림이 한다). 받은 프레임과 stop 을 넘길 뿐이다.
 """
 
-import contextlib
 import logging
 import uuid
-from collections.abc import Awaitable
 
 from fastapi import WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.requests import TakeContext
 from pitch_coach_backend.coach.store import CoachStore
+from pitch_coach_backend.core.tasks import quiet
 from pitch_coach_backend.realtime.connection.handshake import TOO_MANY_STREAMS_MESSAGE, Handshake
 from pitch_coach_backend.realtime.dto import (
+    CLOSE_NORMAL,
     ErrorMessage,
     MetricsMessage,
     ReadyMessage,
@@ -37,6 +37,7 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import finish, registry
+from pitch_coach_backend.realtime.stream.client import send_model
 from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stream.registry import (
     StreamClosing,
@@ -52,7 +53,6 @@ from pitch_coach_backend.realtime.stt.keyterms import build_keyterms, normalize_
 logger = logging.getLogger(__name__)
 
 # RFC 6455 close code
-CLOSE_NORMAL = 1000
 # 브라우저가 창을 닫거나 새로고침하며 끊었다. 네트워크가 끊기면 닫힘 프레임이 없어 1006 이 된다
 CLOSE_GOING_AWAY = 1001
 
@@ -86,8 +86,6 @@ class RealtimeSession:
             else None
         )
 
-        # entity 가 아니라 id 만 들고 있는다. realtime 은 다른 도메인의 service 만 부른다
-        self.user_id: uuid.UUID | None = None
         # Take 대본의 STT 용어 (우선순위 순, 자르기 전). 인가 때 같은 DB 왕복에서 읽는다
         self.script_terms: list[str] = []
         # 코치가 Take 동안 들고 있을 값. 인가 때 읽는다. 못 읽으면 코칭 없이 STT 만 돈다
@@ -112,7 +110,6 @@ class RealtimeSession:
             return
         assert handshake.user_id is not None  # admit() 를 통과했다
         user_id = handshake.user_id
-        self.user_id = user_id
         self.script_terms = handshake.script_terms
         self.coach_context = handshake.coach_context
         try:
@@ -148,12 +145,13 @@ class RealtimeSession:
         try:
             # Deepgram 연결을 기다리지 않는다. 아직 붙기 전이면 stt_state 가 connecting 이고
             # 오디오는 큐에 쌓인다. 상태가 바뀌면 stt_status 가 뒤따른다
-            await self._send(
+            await send_model(
+                self.ws,
                 ReadyMessage(
                     take_id=self.take_id,
                     stt_session_no=stream.stt_session_no,
                     stt_state=stream.state,
-                )
+                ),
             )
             # 떨어져 있는 동안 화면에 못 간 final 을 먼저 따라잡는다
             await stream.resend_missed(source=self.ws)
@@ -188,11 +186,7 @@ class RealtimeSession:
 
     async def _pump_client(self, stream: TakeStream) -> None:
         while True:
-            try:
-                message = await self.ws.receive()
-            except WebSocketDisconnect as e:
-                self.close_code = e.code
-                return
+            message = await self.ws.receive()
             if message["type"] == "websocket.disconnect":
                 self.close_code = message.get("code")
                 return
@@ -208,8 +202,9 @@ class RealtimeSession:
             try:
                 parsed = client_message_adapter.validate_json(text)
             except ValidationError:
-                await self._send(
-                    ErrorMessage(code=WsErrorCode.BAD_MESSAGE, message="알 수 없는 메시지입니다.")
+                await send_model(
+                    self.ws,
+                    ErrorMessage(code=WsErrorCode.BAD_MESSAGE, message="알 수 없는 메시지입니다."),
                 )
                 continue
             if isinstance(parsed, MetricsMessage):
@@ -235,7 +230,9 @@ class RealtimeSession:
             self.invalid_frames += 1
             if self.invalid_frames == 1:
                 # 한 번만 알린다. 매 프레임 알리면 잘못된 클라이언트가 우리 큐를 채운다
-                await self._send(ErrorMessage(code=WsErrorCode.BAD_AUDIO_FRAME, message=str(e)))
+                await send_model(
+                    self.ws, ErrorMessage(code=WsErrorCode.BAD_AUDIO_FRAME, message=str(e))
+                )
 
     async def _stop(self, stream: TakeStream) -> None:
         """큐에 남은 오디오까지 보내고 Deepgram 을 정리한 뒤 Take 를 끝내고 닫는다.
@@ -245,15 +242,13 @@ class RealtimeSession:
         """
         # 이 순간부터 같은 Take 로 새로 붙는 연결은 거절된다. DB 는 아래에서 적는다
         stream.end()
-        if not await stream.wait_closed(STOP_TIMEOUT_SEC):
-            # Deepgram 이 CloseStream 에 응답하지 않았다. 그냥 잊으면 스트림은 계속 돌면서
-            # 레지스트리에서만 사라진다 — 태스크를 끊고 소켓을 닫은 뒤에 보낸다
-            logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
-            stream.cancel()
-            # 취소마저 제때 안 끝나면 (abort 가 ABORT_TIMEOUT_SEC 까지 걸리는 경우) 스트림
-            # 쪽에서 닫힌 것으로 확정한다. FE 를 더 붙잡아 둘 이유가 없다 — final 은 이미
-            # 저장됐고, 남은 소켓 정리는 reaper 가 마저 한다
-            await stream.wait_cancelled(CANCEL_TIMEOUT_SEC)
+        # Deepgram 이 CloseStream 에 응답하지 않으면 끊는다. 그냥 잊으면 스트림은 계속 돌면서
+        # 레지스트리에서만 사라진다. 취소마저 제때 안 끝나면 (abort 가 ABORT_TIMEOUT_SEC 까지 걸리는
+        # 경우) 스트림 쪽에서 닫힌 것으로 확정한다. FE 를 더 붙잡아 둘 이유가 없다 — 받은 final 은
+        # 아래에서 저장하고, 남은 소켓 정리는 reaper 가 마저 한다
+        await stream.close_or_cancel(
+            drain_sec=STOP_TIMEOUT_SEC, cancel_sec=CANCEL_TIMEOUT_SEC, warn="Deepgram"
+        )
         # 마지막 확정 전사와 1초 원자료를 저장한 뒤에 끝난 것으로 적는다. Take 뒤 분석은 ANALYZING
         # 을 보고 시작하므로 그때 원자료가 다 있어야 한다. FE 는 마지막 1초 조각을 stop 앞에 보낸다.
         # FE 가 `auto_end` 를 받고 보낸 stop 이면 자동 종료 이유를 같이 적는다 — 자동 종료 정리와
@@ -270,15 +265,6 @@ class RealtimeSession:
         # FE 가 그 사이 끊겼어도(탭 닫힘) 아래 둘은 조용히 실패하고, 스트림 정리와 저장은
         # 이미 끝났다 — FE 가 있든 없든 서버 쪽 종료 절차는 같다
         await stream.send_status()
-        await self._quiet(self.ws.close(code=CLOSE_NORMAL))
+        await quiet(self.ws.close(code=CLOSE_NORMAL))
 
     # ── 보조 ──────────────────────────────────────────────────────────
-
-    async def _send(self, message: BaseModel) -> None:
-        await self.ws.send_text(message.model_dump_json())
-
-    @staticmethod
-    async def _quiet(awaitable: Awaitable[object]) -> None:
-        """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다."""
-        with contextlib.suppress(WebSocketDisconnect, RuntimeError, OSError):
-            await awaitable

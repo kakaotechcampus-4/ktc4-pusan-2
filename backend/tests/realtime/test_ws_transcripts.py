@@ -642,7 +642,7 @@ def test_put_end_waits_for_finals_that_are_not_saved_yet(
     store = use_store(FakeTranscriptStore(fail=True))
     record = state.take_record(TAKE_ID, AutoEndPolicy.from_settings(), store)
     record.finals.add(
-        TranscriptBuffer(TAKE_ID, store).segment(transcript_message("1-1", "마지막"), 100, 1)
+        TranscriptBuffer(TAKE_ID).segment(transcript_message("1-1", "마지막"), 100, 1)
     )
     started = datetime.now(UTC)
     response = client.put(
@@ -712,7 +712,7 @@ async def test_invalid_final_does_not_drop_the_valid_finals_queued_after_it(
     store = OneInvalidFinalStore()
     take_id = uuid.uuid7()
     buffer = FinalBuffer(take_id, store)
-    transcripts = TranscriptBuffer(take_id, store)
+    transcripts = TranscriptBuffer(take_id)
     for text in ("첫", PRIVATE_TRANSCRIPT, "셋"):
         buffer.add(transcripts.segment(transcript_message("1-1", text), 100, 1))
         transcripts.next_segment()
@@ -761,7 +761,7 @@ async def test_save_failure_log_omits_transcript_text(caplog: pytest.LogCaptureF
     store = FakeTranscriptStore(errors=[error])
     take_id = uuid.uuid7()
     buffer = FinalBuffer(take_id, store)
-    segment = TranscriptBuffer(take_id, store).segment(
+    segment = TranscriptBuffer(take_id).segment(
         transcript_message("1-1", PRIVATE_TRANSCRIPT), 100, 1
     )
 
