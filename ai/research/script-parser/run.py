@@ -107,11 +107,11 @@ def score(text: str, label: dict, response: ParseResponse, picked: LLMOutput) ->
     joined = "\n".join(scripts.values())
     keywords = [(s.slide_number, k) for s in picked.slides for k in s.keywords]
     # 장이 나뉘었으면 그 장 대본에서만 찾는다. 없는 장 번호의 키워드는 대본에 없는 것으로 센다(14절).
-    # fail이면 장이 하나로 합쳐지므로 대본 전체에서 찾는다
+    # fail이면 장이 하나로 합쳐지므로 대본 전체에서 찾는다. 빈 키워드는 늘 "있음"이 되므로 세지 않는다
     keywords_in = sum(
         1
         for n, k in keywords
-        if k in (scripts.get(n, "") if response.status == "success" else joined)
+        if k and k in (scripts.get(n, "") if response.status == "success" else joined)
     )
     terms_in = sum(1 for t in picked.terms if t in text)
     # 제목 줄이 정제 뒤에도 장 대본의 한 줄로 남았는지 (앞의 # 표시는 정제가 걷어 내므로 빼고 본다)

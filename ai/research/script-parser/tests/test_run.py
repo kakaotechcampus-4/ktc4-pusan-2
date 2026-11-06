@@ -81,6 +81,13 @@ def test_fail_script_looks_for_keywords_in_the_whole_script():
     assert (response.status, result["keywords_in_script"]) == ("fail", 1)
 
 
+def test_empty_keyword_is_not_in_script():
+    # 빈 문자열은 어느 대본에나 들어 있으므로 '대본에 있음'으로 세지 않는다
+    response, picked = parsed(TWO_SLIDES, [(1, ["", "둘째"]), (2, [])])
+    result = run.score(TWO_SLIDES, label([("", ""), ("", "")]), response, picked)
+    assert (result["keywords"], result["keywords_in_script"]) == (2, 1)
+
+
 def test_recording_llm_keeps_elapsed_time_when_the_call_fails():
     class Boom:
         def invoke(self, messages):
