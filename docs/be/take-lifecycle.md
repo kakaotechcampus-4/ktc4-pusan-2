@@ -196,8 +196,9 @@ Take 는 장치 점검에서 시작을 누를 때 만들어 곧바로 연결이 
 
 ### 되살리기
 
-`ABANDONED` 로 끝난 Take 에 `ended_at` 이 든 끝내기 PUT 이 오면 기록을 받고 `ANALYZING` 으로 되살립니다
-(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 5분 넘게 발표를 이어 간 경우입니다.
+시작한 뒤 `ABANDONED` 로 끝난 Take 에 `ended_at` 이 든 끝내기 PUT 이 오면 기록을 받고 `ANALYZING` 으로
+되살립니다(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 5분 넘게 발표를 이어 간 경우입니다.
+시작하지 않은 채(`started_at` 없음) 정리된 Take 는 409 `TAKE_NOT_STARTED` 로 거절합니다.
 
 `CLOSED` 는 되살리지 않습니다. 창을 닫은 Take 는 이어 가지 않습니다.
 
