@@ -407,14 +407,10 @@ def test_same_memory_in_the_final_answer_is_carded_once(
     db_session.flush()
     agent.replies.append(_ndjson(_stream(run_id, ("final", _final(profile_updates=[UPDATE])))))
 
-    asyncio.run(
-        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
-    )
+    asyncio.run(turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point))
 
     answer = db_session.scalar(
-        select(ChatMessage).where(
-            ChatMessage.run_id == queued_run, ChatMessage.role == "assistant"
-        )
+        select(ChatMessage).where(ChatMessage.run_id == queued_run, ChatMessage.role == "assistant")
     )
     assert [card["type"] for card in answer.cards] == ["MEMORY_SAVED"]
     assert len(_profile_items(db_session, user_id)) == 1
@@ -451,9 +447,39 @@ def _upstream_error_without_action(db_session, queued_run) -> None:
     assert db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)) is None
 
 
-def test_mismatched_args_hash_fails_the_run(
-    db_session, session_factory, agent, queued_run
+@pytest.mark.parametrize(
+    "unknown",
+    [
+        {"state": {**STATE, "extra": 1}},
+        {"budget_used": {**BUDGET, "extra": 1}},
+    ],
+    ids=["state", "budget_used"],
+)
+def test_unknown_field_in_resume_parts_fails_before_the_action(
+    db_session, session_factory, agent, queued_run, unknown
 ) -> None:
+    # 다음 호출에 되돌려 보낼 칸에 모르는 칸이 오면 행동을 실행하기 전에 응답을 거절한다
+    run_id = str(queued_run)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_TAKE",
+        "args": {"pitch_id": str(uuid.uuid4()), "take_id": str(uuid.uuid4())},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "기록을 더 본다",
+        "authorized_by": None,
+    }
+    reply = {**_needs_action(action), **unknown}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", reply))))
+
+    _run(queued_run, session_factory)
+
+    _upstream_error_without_action(db_session, queued_run)
+    assert len(agent.requests) == 1
+
+
+def test_mismatched_args_hash_fails_the_run(db_session, session_factory, agent, queued_run) -> None:
     run_id = str(queued_run)
     action = {**_reassess(run_id), "args_hash": "sha256:" + "0" * 64}
     agent.replies.append(_ndjson(_stream(run_id, ("final", _waiting(action)))))
@@ -489,9 +515,7 @@ def test_changed_args_after_approval_are_not_run(
     db_session.flush()
     agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
 
-    asyncio.run(
-        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
-    )
+    asyncio.run(turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point))
 
     sent = agent.requests[1]["resume"]["action_results"][0]
     assert (sent["status"], sent["error"]["code"]) == ("FAILED", "APPROVAL_ARGS_CHANGED")
@@ -516,9 +540,7 @@ def test_float_args_survive_storage_and_run_after_approval(
     db_session.flush()
     agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
 
-    asyncio.run(
-        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
-    )
+    asyncio.run(turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point))
 
     sent = agent.requests[1]["resume"]["action_results"][0]
     assert sent["error"]["code"] == "NOT_FOUND"

@@ -122,11 +122,16 @@ class AgentResumeDTO(_AgentDTO):
 
 
 class BudgetUsedDTO(_AgentDTO):
-    model_calls: Count = 0
-    tool_calls: Count = 0
-    elapsed_ms: Count = 0
-    input_tokens: Count = 0
-    output_tokens: Count = 0
+    model_calls: Count
+    tool_calls: Count
+    elapsed_ms: Count
+    input_tokens: Count
+    output_tokens: Count
+
+
+NO_BUDGET_USED = BudgetUsedDTO(
+    model_calls=0, tool_calls=0, elapsed_ms=0, input_tokens=0, output_tokens=0
+)
 
 
 class AgentProfileItemDTO(_AgentDTO):

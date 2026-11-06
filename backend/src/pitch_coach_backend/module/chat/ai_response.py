@@ -6,7 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from pitch_coach_backend.core.ai_http import SCHEMA_MAJOR
 from pitch_coach_backend.core.validation import reject_unstorable_json
-from pitch_coach_backend.module.chat.dto import ActionType, AgentTrigger
+from pitch_coach_backend.module.chat.dto import (
+    ActionType,
+    AgentTrigger,
+    BudgetUsedDTO,
+    SignedStateDTO,
+)
 
 MAX_LINE_BYTES = 2 * 1024 * 1024
 MAX_DIAGNOSTICS_BYTES = 65_536
@@ -57,11 +62,10 @@ class _Message(_View):
     sources: list[dict[str, Any]]
 
 
-class _SignedState(_View):
-    v: Literal[1]
-    kid: str
-    payload: str
-    signature: str
+# 다음 호출에 그대로 되돌려 보내는 칸은 요청 모델을 물려받아 칸과 extra 규칙(forbid)을 같이 쓴다.
+# 응답이라 strict 만 더한다. 모르는 칸은 여기서 걸려 행동을 실행하기 전에 응답 전체를 거절한다
+class _SignedState(SignedStateDTO):
+    model_config = ConfigDict(strict=True)
 
 
 class _Preapproved(_View):
@@ -95,12 +99,8 @@ class _Action(_View):
         return self
 
 
-class _Budget(_View):
-    model_calls: int = Field(ge=0)
-    tool_calls: int = Field(ge=0)
-    elapsed_ms: int = Field(ge=0)
-    input_tokens: int = Field(ge=0)
-    output_tokens: int = Field(ge=0)
+class _Budget(BudgetUsedDTO):
+    model_config = ConfigDict(strict=True)
 
 
 class _GoalResult(_View):
@@ -137,6 +137,8 @@ class FinalView(_View):
     budget_used: _Budget
     assessments: list[dict[str, Any]] | None = None
     goal_result: _GoalResult | None = None
+    # 기억 요청. 항목 검사는 저장할 때 한다(memory.new_memory_cards)
+    profile_updates: Any = None
     meta: _Meta
 
     @model_validator(mode="after")

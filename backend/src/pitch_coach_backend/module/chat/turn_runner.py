@@ -15,6 +15,7 @@ from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, request_turn
 from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
 from pitch_coach_backend.module.chat.dto import (
+    NO_BUDGET_USED,
     ActionResultDTO,
     AgentResumeDTO,
     BudgetUsedDTO,
@@ -155,7 +156,7 @@ class _Turn:
         try:
             async with asyncio.timeout(max(0.0, remaining)):
                 if point is None:
-                    await self._turns(1, None, BudgetUsedDTO())
+                    await self._turns(1, None, NO_BUDGET_USED)
                 else:
                     await self._continue(point)
         except TimeoutError:
@@ -234,26 +235,27 @@ class _Turn:
             if turn_call == MAX_TURN_CALLS:
                 break
             await self._advance(turn_service.wait_for_action, turn_call, outcome)
-            action = outcome.data["actions"][0]
-            if action["autonomy"] == "ASK" and action.get("preapproved") is None:
+            view = outcome.view
+            assert view.state is not None
+            pending = view.actions[0]
+            action = pending.model_dump(mode="json")
+            if pending.autonomy == "ASK" and pending.preapproved is None:
                 result = await in_session(
                     self._session_factory,
                     action_service.hold_for_approval,
                     self._current,
                     action,
-                    outcome.data.get("profile_updates"),
+                    view.profile_updates,
                 )
                 if result is None:
                     return
                 action_ms = 0
             else:
                 result, action_ms = await self._act(action)
-            resume = AgentResumeDTO(
-                state=SignedStateDTO.model_validate(outcome.data["state"]),
-                action_results=[result],
+            resume = AgentResumeDTO(state=view.state, action_results=[result])
+            budget = view.budget_used.model_copy(
+                update={"elapsed_ms": view.budget_used.elapsed_ms + action_ms}
             )
-            budget = BudgetUsedDTO.model_validate(outcome.data["budget_used"])
-            budget = budget.model_copy(update={"elapsed_ms": budget.elapsed_ms + action_ms})
         await self.give_up(TurnFailure(UPSTREAM_ERROR))
 
     async def _continue(self, point: turn_service.ResumePoint) -> None:
