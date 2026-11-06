@@ -50,6 +50,7 @@ markers = [
     "live: 실제 LLM API 를 호출한다 (과금)",
     "slow: 오래 걸린다 (부하 등)",
     "prefetch: 조사 흐름(코드가 먼저 읽기)을 켠 시험 — tests/conftest.py",
+    "no_prefetch: prefetch 를 단 파일 안에서 조사 흐름을 끄는 시험(모델 호출 순서 대본) — tests/conftest.py",
 ]
 addopts = "-m 'not live and not slow'"
 

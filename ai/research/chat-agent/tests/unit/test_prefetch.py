@@ -128,3 +128,38 @@ def test_baseline_config_turns_prefetch_off() -> None:
     llm = F.FakeLlm([F.plan(assessments=[slide_draft([4])]), F.done(), F.answer([])])
     F.run_turn(req, llm, cfg=load_config(research_prefetch=False))
     assert tool_calls_in(llm.calls[1]) == []
+
+
+def test_prefetch_reads_stop_at_the_tool_limit() -> None:
+    """조사 흐름 중 한도: 코드가 먼저 읽는 것도 도구 한도(8-2)에 들어간다. 읽을 장 셋 중 한도(2번)까지만 읽고, 모델 조사
+    호출 없이 그때까지 읽은 근거로 답을 써 `TOOL_CALLS`로 끝낸다(한도 뒤 요청은 실행하지 않음)."""
+
+    def slide1_answer(r: Any) -> Any:
+        # 마지막으로 읽은 결과(1장)의 청중 시선 근거. 그 뒤 세 번째 읽기는 LIMIT 도구 오류다
+        eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio")
+        return F.answer(
+            [F.claim("RECORD", "Take 5의 1장 청중 시선 비율은 62%예요.", evidence_ids=[eid])]
+        )
+
+    drafts = [
+        F.draft(
+            f"{n}장 시선",
+            type_="REQUEST",
+            claim_op=None,
+            dimension="audience_gaze",
+            metric="audience_ratio",
+            slide_number=n,
+            take_numbers=[5],
+            polarity="NEUTRAL",
+        )
+        for n in (3, 1, 2)
+    ]
+    req = F.request(user_message="3장 시선, 1장 시선, 2장 시선 몇 %였어?")
+    llm = F.FakeLlm([F.plan(assessments=drafts)], answers=[slide1_answer], fixes=[F.fix({})])
+    _, _, data = F.run_turn(req, llm, cfg=load_config(max_tool_calls=2))
+    fd = FinalData.model_validate(data)
+    assert fd.diagnostics is not None and fd.diagnostics.end.reason == "TOOL_CALLS"
+    assert fd.status == "PARTIAL" and fd.actions == []
+    assert len(fd.trace) == 2  # 3장 · 1장만 읽었다(세 번째 읽기는 실행하지 않음)
+    assert "62%" in fd.message.text  # type: ignore[union-attr]
+    assert [c.purpose for c in llm.calls].count("RESEARCH") == 1  # 계획 뒤 모델 조사 호출 없음
