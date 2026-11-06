@@ -157,7 +157,7 @@ def post_message(
     )
 
 
-# FE 가 실행 중에는 1초마다, 그 밖에는 늘려 가며 부른다
+# FE 가 실행 중에는 1초마다, 그 밖에는 2초마다 부른다. 실패하면 간격을 늘린다
 @router.get("/runs/{run_id}", response_model=RunStatusResponse, dependencies=[Enabled])
 def get_run(
     run_id: uuid.UUID,
