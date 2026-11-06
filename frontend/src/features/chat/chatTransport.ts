@@ -139,7 +139,10 @@ export type TransportSignal =
   | { type: 'pollRecovered' }
   /** 130초가 지나도 끝나지 않음 — "결과 확인이 늦어지고 있으니 상태를 다시 확인해 주세요." */
   | { type: 'slow'; runId: string }
-  /** 실행 기록을 찾을 수 없음(404) — 메시지 목록을 다시 읽어 복구합니다 */
+  /**
+   * 실행을 더 읽을 수 없음 — 기록이 없어졌거나(404) 다시 해도 같은 거절(그 밖 4xx, 408 · 429 제외).
+   * 조회를 멈췄으니 메시지 목록을 다시 읽어 복구합니다
+   */
   | { type: 'lost'; runId: string }
   /** 대화를 찾을 수 없음 — "대화를 찾을 수 없어요." */
   | { type: 'conversationMissing'; conversationId: string }
@@ -178,6 +181,18 @@ const isSignedOut = (error: unknown) => error instanceof ApiFailure && error.sta
 const isDisabled = (error: unknown) =>
   error instanceof ApiFailure && error.status === 503 && error.code === 'AGENT_DISABLED';
 /** 결과를 모름 — 끊김 · 시간 초과 · 꺼짐이 아닌 5xx. 서버가 처리했을 수 있습니다 */
+/**
+ * 다시 해도 결과가 같은 거절 — 4xx 중 시간 초과(408) · 너무 많음(429)을 뺀 것. BE 실행 · 대화 조회가 직접 내는 4xx 는
+ * 404(없거나 남의 것)뿐이고(`run_view.py` `ChatTargetNotFound`), 그 밖(403 · 400 · 422 등)은 프록시나 잘못된 요청이라
+ * 같은 요청을 다시 보내도 바뀌지 않습니다. 로그인(401) · 꺼짐(503)은 따로 다룹니다
+ */
+const isPermanent = (error: unknown) =>
+  error instanceof ApiFailure &&
+  error.status >= 400 &&
+  error.status < 500 &&
+  error.status !== 401 &&
+  error.status !== 408 &&
+  error.status !== 429;
 const isUnknownResult = (error: unknown) =>
   !(error instanceof ApiFailure) || (error.status >= 500 && !isDisabled(error));
 
@@ -795,14 +810,6 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   }
 
   function onPollFailure(runId: string, error: unknown) {
-    if (error instanceof ApiFailure && error.status === 404) {
-      // 실행 기록이 없어짐 — 놓고 목록에서 복구합니다(L3-21)
-      store().endRun(runId);
-      forget(runId);
-      recovered();
-      emit({ type: 'lost', runId });
-      return;
-    }
     // 로그인이 풀림 — 같은 토큰으로 계속 두드리지 않습니다. 다시 로그인하면 사용자 전환이 상태를 새로 엽니다
     if (isSignedOut(error)) {
       halted = 'session';
@@ -813,6 +820,15 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (isDisabled(error)) {
       halted = 'disabled';
       emit({ type: 'disabled' });
+      return;
+    }
+    // 실행 기록이 없어짐(404) · 다시 해도 같은 거절(그 밖 4xx) — 계속 두드리지 않고 놓은 뒤 목록에서 복구합니다(L3-21).
+    // 그대로 두면 2 → 30초 간격으로 끝없이 다시 조회하며 "다시 연결하고 있어요" 를 띄웁니다(#953 리뷰)
+    if (isPermanent(error)) {
+      store().endRun(runId);
+      forget(runId);
+      recovered();
+      emit({ type: 'lost', runId });
       return;
     }
     failures += 1;
@@ -883,11 +899,6 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   }
 
   function onLookupFailure(ticket: ChatTicket, conversationId: string, error: unknown) {
-    if (error instanceof ApiFailure && error.status === 404) {
-      store().resolveConversation(ticket, null);
-      emit({ type: 'conversationMissing', conversationId });
-      return;
-    }
     if (isSignedOut(error)) {
       halted = 'session';
       emit({ type: 'sessionExpired' });
@@ -896,6 +907,12 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (isDisabled(error)) {
       halted = 'disabled';
       emit({ type: 'disabled' });
+      return;
+    }
+    // 대화가 없어짐(404) · 다시 해도 같은 거절(그 밖 4xx) — 상태 확인을 풀고 알립니다. 다시 조회하지 않습니다
+    if (isPermanent(error)) {
+      store().resolveConversation(ticket, null);
+      emit({ type: 'conversationMissing', conversationId });
       return;
     }
     lookupFailures += 1;

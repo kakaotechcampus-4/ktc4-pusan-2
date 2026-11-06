@@ -1832,3 +1832,58 @@ describe('꺼짐 · 로그인 만료로 멈춘 뒤 연결 복귀', () => {
     expect(runCalls.length).toBe(calls + 1);
   });
 });
+
+describe('다시 해도 같은 거절 (#953 리뷰)', () => {
+  it.each([403, 400, 422])(
+    '실행 조회가 %i 이면 다시 조회하지 않고 놓은 뒤 lost 로 알린다',
+    async (status) => {
+      start({
+        run: async () => {
+          throw new ApiFailure(status, 'X');
+        },
+      });
+      await sendNow(draft());
+      const calls = runCalls.length;
+      await clock.advance(120_000);
+      expect(runCalls.length).toBe(calls);
+      expect(of('lost')).toHaveLength(1);
+      expect(of('pollTrouble')).toEqual([]);
+      expect(store().run).toBeNull();
+    },
+  );
+
+  it.each([408, 429, 500])('실행 조회가 %i 이면 간격을 늘려 다시 조회한다', async (status) => {
+    start({
+      run: async () => {
+        throw new ApiFailure(status, 'X');
+      },
+    });
+    await sendNow(draft());
+    const calls = runCalls.length;
+    await clock.advance(10_000);
+    expect(runCalls.length).toBeGreaterThan(calls);
+    expect(of('lost')).toEqual([]);
+    expect(of('pollTrouble').length).toBeGreaterThan(0);
+  });
+
+  it('대화 조회가 403 이면 상태 확인을 풀고 다시 조회하지 않는다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const conversationId = store().conversationId!;
+    let lookups = 0;
+    start({
+      conversationRun: async () => {
+        lookups += 1;
+        throw new ApiFailure(403, 'X');
+      },
+    });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    await clock.advance(60_000);
+    expect(lookups).toBe(1);
+    expect(store().syncing).toBe(false);
+    expect(of('conversationMissing')).toMatchObject([{ conversationId }]);
+    expect(of('pollTrouble')).toEqual([]);
+  });
+});
