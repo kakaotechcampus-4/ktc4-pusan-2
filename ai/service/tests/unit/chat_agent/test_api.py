@@ -12,11 +12,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import threading
 import time
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import anyio
@@ -41,7 +43,8 @@ def _settings(**kw: Any) -> Settings:
 
 def _runtime(llm: Any, *, max_concurrency: int = 4, secret: bytes | None = F.SECRET) -> Any:
     clock = F.Clock()
-    return api.AgentRuntime(
+    events: list[dict[str, Any]] = []
+    rt = api.AgentRuntime(
         llm=llm,
         corpus=None,
         secret=secret,
@@ -49,7 +52,15 @@ def _runtime(llm: Any, *, max_concurrency: int = 4, secret: bytes | None = F.SEC
         max_concurrency=max_concurrency,
         clock_ms=clock.clock_ms,
         monotonic=clock.monotonic,
+        log=events.append,
     )
+    rt.events = events  # type: ignore[attr-defined]
+    return rt
+
+
+def _run_ended(rt: Any) -> bool:
+    """코어 실행이 끝났다(agent_end 진단 기록). 이 뒤에는 새 모델 · 도구 호출이 없다."""
+    return any(e.get("event") == "agent_end" for e in rt.events)
 
 
 @pytest.fixture
@@ -94,6 +105,22 @@ def test_disabled_is_503_agent_disabled_and_builds_nothing() -> None:
         assert set(r.json()["error"]) == {"code", "message"}
         assert getattr(c.app.state, "chat_agent_runtime", None) is None  # 모델 · 자료를 만들지 않음
         assert c.get("/health").status_code == 200
+
+
+def test_existing_review_path_is_unchanged_when_chat_is_enabled(
+    enabled_client: TestClient,
+) -> None:
+    """대화를 켜도(서명 키 · 모델 없음) 기존 리뷰는 기본 결과 200 그대로다(L5-01 · L5-33)."""
+    from pitch_coach_ai.features.review import core as review_core
+
+    req = json.loads(
+        (Path(review_core.__file__).parent / "examples" / "review" / "request.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert enabled_client.post(URL, json=_compare_request()).status_code == 503
+    r = enabled_client.post("/takes/review", json=req)
+    assert r.status_code == 200 and r.json()["fallback_reason"] == "LLM_UNAVAILABLE"
 
 
 def test_enabled_without_signing_key_is_503_agent_disabled_only_on_the_chat_path(
@@ -144,7 +171,16 @@ def test_blank_signing_key_in_env_is_none() -> None:
 def test_stream_is_ndjson_with_one_terminal_line_and_request_id_reaches_diagnostics(
     enabled_client: TestClient, log_records: list[logging.LogRecord]
 ) -> None:
-    rt = _runtime(_compare_llm())
+    clock = F.Clock()
+    rt = api.AgentRuntime(
+        llm=_compare_llm(),
+        corpus=None,
+        secret=F.SECRET,
+        previous_secret=None,
+        max_concurrency=4,
+        clock_ms=clock.clock_ms,
+        monotonic=clock.monotonic,
+    )  # 진단 기록은 서비스 로거(기본)로
     enabled_client.app.state.chat_agent_runtime = rt
     status, headers, lines = _post_stream(
         enabled_client, _compare_request(), headers={"X-Request-ID": "req-abc-1"}
@@ -210,9 +246,24 @@ def test_busy_when_the_model_pool_is_saturated(enabled_client: TestClient) -> No
 
 
 def test_five_concurrent_entries_get_at_most_four_slots() -> None:
+    """다섯 스레드가 장벽에서 동시에 자리를 얻으려 하면 정확히 넷만 얻는다(L1-06)."""
     rt = _runtime(_compare_llm(), max_concurrency=4)
-    got = [rt.try_acquire() for _ in range(5)]
-    assert got == [True, True, True, True, False]
+    barrier = threading.Barrier(5)
+    got: list[bool] = []
+    lock = threading.Lock()
+
+    def enter() -> None:
+        barrier.wait()
+        ok = rt.try_acquire()
+        with lock:
+            got.append(ok)
+
+    threads = [threading.Thread(target=enter) for _ in range(5)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(3)
+    assert sorted(got) == [False, True, True, True, True] and rt.active == 4
     for _ in range(4):
         rt.release()
     assert rt.active == 0
@@ -273,10 +324,16 @@ def _slow_llm(entered: threading.Event, gate: threading.Event) -> F.FakeLlm:
     return F.FakeLlm([F.plan(assessments=[change_draft()]), slow_tools, F.done(), compare_answer()])
 
 
-def _asgi_scope(body: bytes) -> dict[str, Any]:
+def _asgi_scope(
+    body: bytes, *, spec: str = "2.4", content_length: int | None = -1
+) -> dict[str, Any]:
+    headers = [(b"content-type", b"application/json")]
+    if content_length is not None:
+        n = len(body) if content_length == -1 else content_length
+        headers.append((b"content-length", str(n).encode()))
     return {
         "type": "http",
-        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "asgi": {"version": "3.0", "spec_version": spec},
         "http_version": "1.1",
         "method": "POST",
         "scheme": "http",
@@ -284,16 +341,14 @@ def _asgi_scope(body: bytes) -> dict[str, Any]:
         "raw_path": URL.encode(),
         "query_string": b"",
         "root_path": "",
-        "headers": [
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body)).encode()),
-        ],
+        "headers": headers,
         "client": ("test", 1),
         "server": ("test", 80),
     }
 
 
-def test_client_disconnect_stops_new_model_calls_and_returns_the_slot() -> None:
+@pytest.mark.parametrize("spec", ["2.3", "2.4"])  # uvicorn 은 2.3(Starlette 가 듣는다), 2.4 는 직접
+def test_client_disconnect_stops_new_model_calls_and_returns_the_slot(spec: str) -> None:
     """첫 줄을 받은 뒤 연결이 끊기면 다음 줄을 보낼 때까지 기다리지 않고 새 모델 호출을 멈춘다(L1-08).
 
     ASGI 앱을 직접 불러 실제 연결 끊김 메시지(`http.disconnect`)를 보낸다(TestClient 는 끊김을 흉내 내지 않는다).
@@ -310,6 +365,11 @@ def test_client_disconnect_stops_new_model_calls_and_returns_the_slot() -> None:
         first_line = anyio.Event()
         state = {"read": False}
 
+        async def send(message: Any) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                sent.append(message["body"])
+                first_line.set()
+
         async def receive() -> Any:
             if not state["read"]:
                 state["read"] = True
@@ -318,18 +378,96 @@ def test_client_disconnect_stops_new_model_calls_and_returns_the_slot() -> None:
             await anyio.to_thread.run_sync(entered.wait, 3)  # 조사 호출 안에서 기다리는 중에 끊는다
             return {"type": "http.disconnect"}
 
-        async def send(message: Any) -> None:
-            if message["type"] == "http.response.body" and message.get("body"):
-                sent.append(message["body"])
-                first_line.set()
-
-        await app(_asgi_scope(body), receive, send)
+        await app(_asgi_scope(body, spec=spec), receive, send)
 
     anyio.run(main)
+    assert entered.is_set()  # 모델 호출 도중에 끊었다
     gate.set()
     assert json.loads(sent[0])["event"] == "plan"
-    assert _wait(lambda: rt.active == 0)
+    assert _wait(lambda: rt.active == 0 and _run_ended(rt))
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]  # 답 쓰기를 부르지 않음
+
+
+@pytest.mark.parametrize("spec", ["2.3", "2.4"])
+def test_disconnect_before_the_first_line_returns_the_slot_without_answering(spec: str) -> None:
+    """첫 줄(헤더)을 보내기 전에 끊겨도 새 호출을 멈추고 자리를 돌려준다(L1-08 헤더 전 단절)."""
+    entered, gate = threading.Event(), threading.Event()
+
+    def slow_plan(_r: Any) -> Any:
+        entered.set()
+        gate.wait(3)
+        return F.plan(assessments=[change_draft()])
+
+    llm = F.FakeLlm([slow_plan, F.tools(COMPARE), F.done(), compare_answer()])
+    rt = _runtime(llm)
+    app = create_app(_settings(agent_enabled=True))
+    app.state.chat_agent_runtime = rt
+    body = json.dumps(_compare_request()).encode()
+
+    start_entered = threading.Event()
+
+    async def main() -> None:
+        state = {"read": False}
+        started = anyio.Event()
+
+        async def receive() -> Any:
+            if not state["read"]:
+                state["read"] = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            await started.wait()  # 헤더를 보내는 중에 끊는다
+            return {"type": "http.disconnect"}
+
+        async def send(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                start_entered.set()
+                started.set()
+                await anyio.to_thread.run_sync(entered.wait, 3)
+                raise OSError("연결이 끊겨 헤더를 보내지 못함")
+
+        with contextlib.suppress(Exception):
+            await app(_asgi_scope(body, spec=spec), receive, send)
+
+    anyio.run(main)
+    assert start_entered.is_set() and entered.is_set()
+    gate.set()
+    assert _wait(lambda: rt.active == 0 and _run_ended(rt))
+    assert [c.purpose for c in llm.calls] == ["RESEARCH"]
+
+
+@pytest.mark.parametrize("content_length", [None, 10])  # 길이 없음 · 실제보다 작은 거짓 길이
+def test_body_in_many_chunks_is_counted_not_trusted_from_content_length(
+    content_length: int | None,
+) -> None:
+    rt = _runtime(_compare_llm())
+    app = create_app(_settings(agent_enabled=True))
+    app.state.chat_agent_runtime = rt
+    limit = rt.cfg.max_request_bytes
+    parts = [b"{" + b" " * (limit // 3)] * 4  # 넷째 조각에서 한도를 넘는다
+    sent: list[dict[str, Any]] = []
+
+    async def main() -> None:
+        queue = list(parts)
+
+        async def receive() -> Any:
+            if queue:
+                chunk = queue.pop(0)
+                return {"type": "http.request", "body": chunk, "more_body": bool(queue)}
+            return {"type": "http.disconnect"}
+
+        async def send(message: Any) -> None:
+            sent.append(message)
+
+        await app(
+            _asgi_scope(b"".join(parts), spec="2.3", content_length=content_length),
+            receive,
+            send,
+        )
+
+    anyio.run(main)
+    assert sent[0]["status"] == 413
+    body = json.loads(b"".join(m.get("body", b"") for m in sent[1:]))
+    assert body["error"]["code"] == "AGENT_CONTEXT_TOO_LARGE"
+    assert rt.active == 0 and rt.llm.calls == []
 
 
 def test_send_blocked_over_two_seconds_cancels_the_turn(monkeypatch: pytest.MonkeyPatch) -> None:

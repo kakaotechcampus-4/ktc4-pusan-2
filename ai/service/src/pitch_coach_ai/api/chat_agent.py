@@ -9,17 +9,17 @@
 - 하는 일 (서비스 계층 몫, 코어는 `features/chat_agent/turn.py` 의 `handle_turn`)
   1. 꺼져 있으면(`AGENT_ENABLED=false`) 503 `AGENT_DISABLED`. 이때는 모델 · 자료 묶음을 만들지
      않는다.
-  2. 실행 자리: 대화 동시 상한(`AGENT_MAX_CONCURRENCY`)과 대화 전용 실행 풀(그 × 2)을 한 잠금
-     안에서 함께 보고, 대기열 없이 자리를 얻는다. 없으면 429 `AGENT_BUSY`(모델 호출 0회,
-     L1-06 · L1-14). 자리는 그 턴의 코어 반복자가 끝나 닫힌 뒤 한 번 돌려준다(스트림 끝 · 예외 ·
-     연결 끊김 모두).
-  3. 본문은 2 MiB 까지만 읽는다(Content-Length 를 믿지 않고 읽으며 센다, 넘으면 413, L1-02).
+  2. 본문은 2 MiB 까지만 읽는다(Content-Length 를 믿지 않고 읽으며 센다, 넘으면 413, L1-02).
+  3. 실행 자리: 본문을 다 읽은 뒤 대화 동시 상한(`AGENT_MAX_CONCURRENCY`)과 대화 전용 실행 풀
+     (그 × 2)을 한 잠금 안에서 함께 보고, 대기열 없이 자리를 얻는다. 없으면 429 `AGENT_BUSY`
+     (모델 호출 0회, L1-06 · L1-14). 자리는 그 턴의 코어 반복자가 끝나 닫힌 뒤 한 번 돌려준다
+     (스트림 끝 · 예외 · 연결 끊김 모두).
   4. `handle_turn` 을 대화 전용 스레드 자리에서 부른다(공용 스레드 풀 40 을 쓰지 않는다,
      6-11 · 8-4).
   5. 스트림: 턴마다 읽기 스레드 하나가 코어 줄을 받아 이벤트 루프의 큐로 넘긴다. 연결이 끊기거나
      보내기가 2초 넘게 막히면(L1-08) 코어에 취소 신호(`TurnResponse.cancel`)를 먼저 보내 새
      모델 · 도구 호출을 멈추고, 반복자는 읽기 스레드가 닫는다(읽는 중인 생성기를 다른 스레드에서
-     닫지 않는다).
+     닫지 않는다). 끊김은 ASGI 2.3(uvicorn)이면 Starlette 가, 2.4 면 이 응답이 직접 듣는다.
 - 자료 묶음: 서비스는 검수를 마친 카드만 읽는다(`allow_unreviewed=False`). 검수 전 카드 ·
   판 미등록 · 파일 오류면 자료 묶음 없이 시작하고 이유 코드만 로그에 남긴다. 그때 발표법 질문은
   일반 조언으로 답한다(기능 문서 6-10 · L1-21).
@@ -309,6 +309,17 @@ class TurnStreamResponse(StreamingResponse):
         await super().stream_response(timed_send)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        spec = tuple(map(int, scope.get("asgi", {}).get("spec_version", "2.0").split(".")))
+        if spec < (2, 4):
+            # ASGI 2.4 미만(uvicorn 은 2.3)은 Starlette 가 끊김을 듣고 응답을 멈춘다. 그러면 아래
+            # finally 가 곧바로 새 호출을 멈춘다. 같은 receive 를 두 곳에서 기다리지 않게
+            # 감시자를 두지 않는다
+            try:
+                await super().__call__(scope, receive, send)
+            finally:
+                self._finish()
+            return
+
         async def watch_disconnect() -> None:
             # 본문은 이미 다 읽었으므로 다음 메시지는 연결 끊김뿐이다. 다음 줄을 보낼 때까지
             # 기다리지 않고 끊긴 즉시 새 모델 · 도구 호출을 멈춘다(L1-08).
@@ -337,10 +348,13 @@ class TurnStreamResponse(StreamingResponse):
             if error is not None:
                 raise error
         finally:
-            # 헤더를 보내기 전 끊김 · 보내기 실패 · 취소 등 어떤 끝이든 새 호출을 멈춘다
-            # (끝난 턴이면 아무 일 없음)
-            if self._turn.reason == "done" and self._turn._thread.is_alive():
-                self._turn.stop("client_gone")
+            self._finish()
+
+    def _finish(self) -> None:
+        # 헤더를 보내기 전 끊김 · 보내기 실패 · 취소 등 어떤 끝이든 새 호출을 멈춘다
+        # (끝난 턴이면 아무 일 없음)
+        if self._turn.reason == "done" and self._turn._thread.is_alive():
+            self._turn.stop("client_gone")
 
 
 # ── 라우터 ────────────────────────────────────────────────────────────────────
@@ -405,14 +419,19 @@ async def _read_body(request: Request, limit: int) -> bytes | None:
 async def turn(request: Request) -> Response:
     if not request.app.state.settings.agent_enabled:
         return _error(request, 503, "AGENT_DISABLED")
-    rt = runtime_for(request.app)
+    # 첫 요청에 자원(자료 파일 · 모델 클라이언트)을 만든다. 이벤트 루프를 막지 않게 스레드에서.
+    # 이미 만들었으면 스레드를 쓰지 않는다
+    rt = getattr(request.app.state, "chat_agent_runtime", None)
+    if rt is None:
+        rt = await anyio.to_thread.run_sync(runtime_for, request.app)
+    # 본문을 다 읽은 뒤에 자리를 얻는다(본문을 천천히 보내는 연결이 자리를 잡고 있지 않게)
+    body = await _read_body(request, rt.cfg.max_request_bytes)
+    if body is None:
+        return _error(request, 413, "AGENT_CONTEXT_TOO_LARGE")
     if not rt.try_acquire():
         return _error(request, 429, "AGENT_BUSY")
     handed_over = False
     try:
-        body = await _read_body(request, rt.cfg.max_request_bytes)
-        if body is None:
-            return _error(request, 413, "AGENT_CONTEXT_TOO_LARGE")
         request_id = current_request_id() or "-"
         resp = await anyio.to_thread.run_sync(
             partial(
