@@ -7,14 +7,14 @@
      출력 토큰 누적(8k). 조사(RESEARCH · 형식 고치기) 시도는 "이번 시도를 포함한 누적 시도 수가 16을 넘거나 전송 뒤 24초를
      보장하지 못하면" 보내지 않는다(답 쓰기 1번 · 고치기 1번 몫과 그 24초는 `/agent/turn` 응답마다 남긴다).
      이어 부를 때 남은 호출 수로 두 몫을 남길 수 없으면 모델 없이 검증된 결과로 끝낸다(`answer_slots_short`).
-  3. 응답을 받으면 출력 예약을 공급자 실측(`usage.output_tokens`)으로 바꿔 쓰지 않은 몫을 돌려준다(`settle_output`).
-     실측이 없거나 실패한 시도는 예약 그대로 남긴다.
+  3. 응답을 받으면 입력 · 출력 예약을 공급자 실측(`usage.input_tokens`(캐시 포함 전체 입력) · `usage.output_tokens`)으로 바꿔
+     쓰지 않은 몫을 돌려준다(`settle_input` · `settle_output`). 실측이 없거나 실패한 시도는 예약 그대로 남긴다.
   4. 도구 · 행동 · 저장 행동 · 다시 평가 · 계획 수정 수도 여기서 센다. 넘으면 그 일을 하지 않고 `LIMIT` 진단 단계를 남긴다.
   5. 한도에 닿은 코드를 진단 끝 사유(`TIME` · `MODEL_CALLS` · `TOOL_CALLS` · `TOKENS`)로 옮긴다(`limit_end_reason`, 11-5).
 - 숫자: 모든 카운터는 엄격한 비음수 정수이고 내보내는 값은 줄지 않는다(재개 때 요청 값이 서명값보다 작으면 turn.py 가 409).
-  출력 정산은 이 호출이 방금 예약한 몫만 줄이고 호출을 받을 때의 값 아래로는 내리지 않는다(`output_floor`).
-- 토큰: 입력은 실측이 아니라 전송 전 예약량(UTF-8 바이트 ÷ 3 올림 + 메시지당 8, 한글 한 글자 ≈ 한 토큰으로 넉넉히 셈)이고,
-  출력은 전송 전에는 그 호출의 출력 상한, 응답 뒤에는 실측이다. 관측 사용량(`usage`)은 따로 모은다(5-5).
+  입력 · 출력 정산은 이 호출이 방금 예약한 몫만 줄이고 호출을 받을 때의 값 아래로는 내리지 않는다(`input_floor` · `output_floor`).
+- 토큰: 전송 전에는 입력 추정량(UTF-8 바이트 ÷ 3 올림 + 메시지당 8, 한글 한 글자 ≈ 한 토큰으로 넉넉히 셈)과 그 호출의 출력 상한을
+  예약하고, 응답 뒤에는 둘 다 공급자 실측이다(추정량은 전송 전 검사에만 쓴다). 관측 사용량(`usage`)은 따로 모은다(5-5).
 - 고칠 때: 한도 값은 config.py, 이 파일은 순서 · 예약 · 정산 규칙만 둔다. 순서는 8-3 '호출 전 확인 순서'(남은 시간 → 모델 호출 수 →
   도구 호출 수 → 행동 수)다.
 """
@@ -115,7 +115,8 @@ class Budget:
     #: 이 호출을 받을 때까지 실행이 쓴 시간(ms, BE 행동 실행 시간 포함)
     elapsed_at_start_ms: int
     hits: list[LimitHit] = field(default_factory=list)
-    #: 이 호출을 받을 때의 출력 누적. 정산이 이 아래로 내리지 않는다(내보낸 값은 줄지 않음)
+    #: 이 호출을 받을 때의 입력 · 출력 누적. 정산이 이 아래로 내리지 않는다(내보낸 값은 줄지 않음)
+    input_floor: int = 0
     output_floor: int = 0
 
     @classmethod
@@ -128,6 +129,7 @@ class Budget:
             monotonic=monotonic,
             started=monotonic(),
             elapsed_at_start_ms=counters.elapsed_ms,
+            input_floor=counters.input_tokens,
             output_floor=counters.output_tokens,
         )
 
@@ -195,6 +197,13 @@ class Budget:
         c.input_tokens += est_input
         c.output_tokens += max_output
         return None
+
+    def settle_input(self, reserved: int, measured: int | None) -> None:
+        """응답을 받은 시도의 입력 예약(추정량)을 공급자 실측 입력(캐시 포함 전체)으로 바꾼다(8-3). 규칙은 출력과 같다."""
+        if measured is None:
+            return
+        c = self.counters
+        c.input_tokens = max(self.input_floor, c.input_tokens - reserved + max(0, measured))
 
     def settle_output(self, reserved: int, measured: int | None) -> None:
         """응답을 받은 시도의 출력 예약을 공급자 실측으로 바꾼다(8-3). 실측이 없으면 예약 그대로 둔다.

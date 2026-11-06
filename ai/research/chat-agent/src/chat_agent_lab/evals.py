@@ -23,7 +23,8 @@
   3. 차례마다 관찰값(answer · actions_proposed · actions_executed · db_diff · trace)을 만들어 채점기(grading.py)로 검사한다.
      금지된 일(공식 결과 변경 · 다른 사람 기록 · 승인 없는 ASK 행동, 14-1)은 검사와 따로 세고 하나라도 있으면 실패다.
   4. 지표(14-1)를 모아 `outputs/evals/<시각>/`에 report.json · report.md · runs.jsonl 을 쓴다(git 무시). 목표 수치(14-2)는
-     `TARGETS`에 그대로 두고 비교만 한다(측정 결과에 맞춰 바꾸지 않는다).
+     `TARGETS`에 그대로 두고 비교만 한다(측정 결과에 맞춰 바꾸지 않는다). 말 턴마다 최종 응답 진단 기록의 `end.reason`을 모아
+     '한도 때문의 PARTIAL' 수 · 비율과 이유별 수를 보고에 더한다(`limit_partial`, 14-1).
 - 고정 순서 기준선(`--baseline`, 13-3): 같은 모델 · 도구 · 한도 · 답 검사를 쓰고, 조사 단계에서 모델에 줄 도구를 입력 유형별
   순서(`BASELINE_SEQUENCES`)의 다음 하나로만 좁힌다(모델은 인자만 채우고 다음 도구를 고르지 않는다). 그 도구를 지금 쓸 수
   없으면(코어가 주지 않음) 전체 도구로 되돌리지 않고 그 단계를 사유와 함께 건너뛰고, 순서가 끝나면 모델을 부르지 않고 조사를
@@ -1092,6 +1093,7 @@ def run_one(
             ar.action.get("type") == "REASSESS" for run in rec.runs for ar in run.actions
         )
         last_final = (rec.runs[-1].final or {}) if rec.runs else {}
+        end = (last_final.get("diagnostics") or {}).get("end") or {}
         turns.append(
             {
                 "index": rec.index,
@@ -1101,6 +1103,9 @@ def run_one(
                 "injected_ms": rec.injected_ms,
                 "reassess": reassess,
                 "status": rec.runs[-1].status if rec.runs else None,
+                #: 최종 응답 진단 기록의 끝난 이유(11-5). 끝 줄이 없으면 None
+                "end_status": end.get("status"),
+                "end_reason": end.get("reason"),
                 "error": rec.error,
                 "model_calls": sum(1 for c in calls if not c.synthetic),
                 "tool_calls": (last_final.get("usage") or {}).get("tool_calls"),
@@ -1206,6 +1211,10 @@ def run_suite(
 # ── 지표 ──────────────────────────────────────────────────────────────────
 
 
+#: 한도 때문에 끝났음을 뜻하는 `end.reason`(11-5 · 14-1 '한도 때문의 PARTIAL')
+LIMIT_REASONS = ("TIME", "MODEL_CALLS", "TOOL_CALLS", "TOKENS", "REPEAT")
+
+
 def ratio(num: int | float, den: int | float) -> dict[str, Any]:
     """분자 · 분모 · 소수 넷째 자리(분모 0 이면 null · 측정 불가, 14-1). 목표 비교는 raw 로 한다."""
     if not den:
@@ -1304,6 +1313,21 @@ def unit_metrics(
         }
     else:
         out["cost_usd"] = None
+    # 한도 때문의 PARTIAL(14-1): 최종 응답 진단 기록 end.reason 이 한도 이유인 PARTIAL 수 / 시작한 전체 말 턴 수.
+    # 끝 줄이 없어 끝난 이유를 보지 못한 턴은 분모에 두고 수를 따로 보인다(no_end_line)
+    finals = [t for t in msg_turns if t.get("end_status") is not None]
+    by_reason = {
+        reason: sum(
+            1 for t in finals if t["end_status"] == "PARTIAL" and t.get("end_reason") == reason
+        )
+        for reason in LIMIT_REASONS
+    }
+    out["limit_partial"] = {
+        **ratio(sum(by_reason.values()), len(msg_turns)),
+        "no_end_line": len(msg_turns) - len(finals),
+        "by_reason": by_reason,
+        "check_all_dropped": sum(1 for t in finals if t.get("end_reason") == "CHECK_ALL_DROPPED"),
+    }
     tools = [t["tool_calls"] for t in msg_turns if isinstance(t.get("tool_calls"), int)]
     out["tool_calls_per_turn"] = round(sum(tools) / len(tools), 2) if tools else None
     fu = [r for r in results if r.followups_used]
@@ -1533,6 +1557,9 @@ def _markdown(rep: dict[str, Any]) -> str:
             f"- 토큰: 입력 {tok['input']} (캐시 {tok['cached_input']}) · 출력 {tok['output']} · 턴당 입력"
             f" {tok['per_turn_input']} · 출력 {tok['per_turn_output']} · 턴당 모델 호출 {tok['model_calls_per_turn']}"
             f" · 비용 미확인 호출 {tok['calls_cost_unknown']}",
+            f"- 한도 때문의 PARTIAL(14-1): {_fmt(u['limit_partial'])} · 이유별 {u['limit_partial']['by_reason']}"
+            f" · 끝 줄 없어 이유를 못 본 턴 {u['limit_partial']['no_end_line']}"
+            f" · 답 검사 때문(CHECK_ALL_DROPPED) {u['limit_partial']['check_all_dropped']}",
             f"- 비용(USD): {u['cost_usd'] if u['cost_usd'] else '단가 미입력(--price-*)'}",
             f"- 턴당 도구 호출 {u['tool_calls_per_turn']} · 후속 말 {u['followups']}",
             f"- 해야 할 때 / 하지 말아야 할 때: {u['act']}",

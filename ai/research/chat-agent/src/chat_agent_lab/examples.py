@@ -8,6 +8,7 @@
   `state`는 예시 전용 키(`EXAMPLE_STATE_KEY`, 비밀 아님)로 실제 서명한다. 대기 행동 · 누적량이 이어 부르기 예시와 맞아,
   같은 키로 서명 검사 · 행동 결과 짝 검사를 통과한다(test_contract_examples). 판단 키 · 지문은 형식만 맞춘 자리 값이다.
 - 프롬프트 · 설정을 바꾸면 판 값이 바뀌므로 이 파일로 다시 만든다(예시 파일이 만들기 결과와 같은지 시험이 본다).
+- 누적량: `budget_used`의 입력 · 출력 토큰은 예약 뒤 공급자 실측으로 정산한 값이라 같은 예시의 `usage` 실측과 같다(5-3 · 8-3).
 - 고칠 때: 5절 모양을 바꾸면 이 파일로 예시를 다시 만들고 같은 PR에 넣는다.
 """
 
@@ -46,8 +47,8 @@ NEEDS_ACTION_BUDGET = {
     "model_calls": 3,
     "tool_calls": 4,
     "elapsed_ms": 8400,
-    "input_tokens": 12000,
-    "output_tokens": 6000,
+    "input_tokens": 9300,
+    "output_tokens": 720,
 }
 FP = "5f2a9c0d1e3b4a67"
 
@@ -495,8 +496,8 @@ def _final_done() -> dict:
             "model_calls": 5,
             "tool_calls": 4,
             "elapsed_ms": 15800,
-            "input_tokens": 21000,
-            "output_tokens": 10000,
+            "input_tokens": 16100,
+            "output_tokens": 1240,
         },
         "usage": {
             "model_calls": 5,
@@ -545,8 +546,8 @@ def _final_simple(status: str, text: str, reason: str) -> dict:
             "model_calls": 1,
             "tool_calls": 0,
             "elapsed_ms": 2300,
-            "input_tokens": 4000,
-            "output_tokens": 2000,
+            "input_tokens": 2900,
+            "output_tokens": 80,
         },
         "usage": {
             "model_calls": 1,
@@ -615,8 +616,8 @@ def build() -> dict[str, Any]:
             "model_calls": 3,
             "tool_calls": 4,
             "elapsed_ms": 9100,
-            "input_tokens": 12000,
-            "output_tokens": 6000,
+            "input_tokens": 9300,
+            "output_tokens": 720,
         },
     }
     # 자동 목표 확인: Take 6(3장 시선 41%)의 리뷰가 저장된 뒤

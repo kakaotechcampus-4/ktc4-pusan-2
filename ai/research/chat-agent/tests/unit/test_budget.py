@@ -273,6 +273,47 @@ def test_settle_output_never_goes_below_the_value_at_call_start() -> None:
     assert b.counters.output_tokens >= b.output_floor
 
 
+def test_settle_input_replaces_estimate_with_measured_usage() -> None:
+    """입력도 출력처럼: 추정량을 예약하고 응답 뒤 실측(캐시 포함 전체 입력)으로 바꿔 쓰지 않은 몫을 돌려준다."""
+    b, _ = start()
+    assert b.reserve_model("RESEARCH", 5_000, 2_000) is None
+    assert b.counters.input_tokens == 5_000
+    b.settle_input(5_000, 3_200)
+    assert b.counters.input_tokens == 3_200
+    assert b.reserve_model("ANSWER", 4_000, 2_000) is None
+    b.settle_input(4_000, 6_000)  # 실측이 추정보다 커도 실측으로 센다
+    assert b.counters.input_tokens == 3_200 + 6_000
+    assert b.counters.budget_used()["input_tokens"] == 9_200
+
+
+def test_settle_input_without_measurement_keeps_the_estimate() -> None:
+    b, _ = start()
+    assert b.reserve_model("RESEARCH", 5_000, 2_000) is None
+    b.settle_input(5_000, None)
+    assert b.counters.input_tokens == 5_000
+
+
+def test_settle_input_never_goes_below_the_value_at_call_start() -> None:
+    """내보낸 `budget_used`는 줄지 않는다: 호출을 받을 때의 입력 누적 아래로는 정산하지 않는다(8-3)."""
+    b, _ = start(input_tokens=3_000)
+    assert b.reserve_model("ANSWER", 2_000, 100) is None
+    b.settle_input(2_000, 0)
+    assert b.counters.input_tokens == 3_000 == b.input_floor
+
+
+def test_settled_input_frees_room_for_more_calls() -> None:
+    """추정 5k 로는 72k 에 14번째 시도가 막히지만 실측(1k)으로 정산하면 18번 시도가 모두 들어간다."""
+    settled, _ = start()
+    unsettled, _ = start()
+    n_settled = n_unsettled = 0
+    while n_settled < 18 and settled.reserve_model("ANSWER", 5_000, 100) is None:
+        settled.settle_input(5_000, 1_000)
+        n_settled += 1
+    while n_unsettled < 18 and unsettled.reserve_model("ANSWER", 5_000, 100) is None:
+        n_unsettled += 1
+    assert (n_settled, n_unsettled) == (18, 14)  # 72k ÷ 5k = 14
+
+
 def test_settled_output_frees_room_for_more_calls() -> None:
     """실측으로 정산하면 8k 안에서 더 보낼 수 있고, 정산하지 않으면 막힌다."""
     settled, _ = start()
