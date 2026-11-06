@@ -25,7 +25,12 @@ from pitch_coach_backend.module.chat.service.memory import (
 )
 from pitch_coach_backend.module.chat.service.practice import start_practice
 from pitch_coach_backend.module.chat.service.request import goal_view
-from pitch_coach_backend.module.chat.service.result import failed, save_result, succeeded
+from pitch_coach_backend.module.chat.service.result import (
+    action_row,
+    failed,
+    save_result,
+    succeeded,
+)
 from pitch_coach_backend.module.chat.service.run import (
     LEASE,
     OWNER,
@@ -35,7 +40,6 @@ from pitch_coach_backend.module.chat.service.run import (
     cancel,
     check_sources,
     claimed,
-    digest,
     lock_conversation_of,
     lock_current,
     lock_ids,
@@ -126,10 +130,7 @@ def wait_for_action(
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return None
-    action = data["actions"][0]
     row.state = data["state"]
-    row.budget_used = data["budget_used"]
-    row.usage = data.get("usage")
     row.plan = data.get("plan")
     row.trace = data.get("trace")
     if data.get("message") is not None:
@@ -139,29 +140,10 @@ def wait_for_action(
             "evidence": data.get("evidence"),
             "memory_saved": memory_cards(row),
         }
-    row.turn_calls = [
-        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
-        for call in row.turn_calls or []
-    ]
-    repo.add(
-        ChatAction(
-            conversation_id=row.conversation_id,
-            user_id=row.user_id,
-            run_id=row.id,
-            action_id=action["action_id"],
-            type=action["type"],
-            args=action["args"],
-            args_digest=digest(action["args"]),
-            autonomy=action["autonomy"],
-            idempotency_key=action["idempotency_key"],
-            args_hash=action["args_hash"],
-            status="PENDING",
-        )
-    )
-    _add_diagnostics(repo, row, turn_call, final.diagnostics, datetime.now(UTC))
+    repo.add(action_row(row, data["actions"][0], status="PENDING"))
+    _save_turn_output(repo, row, turn_call, final, datetime.now(UTC))
     if _apply_scope(row, conversation, data):
         row.state_revision += 1
-    row.row_revision += 1
     db.commit()
     return claimed(row)
 
@@ -242,10 +224,10 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
         cancel(db, run)
         return False
     _apply_scope(row, conversation, data)
-    start_practice(db, repo, row, data)
-    save_profile_updates(repo, row, conversation, data)
-    save_summary(repo, row, turn_call, data)
     message = data["message"]
+    cards = start_practice(db, repo, row, data["actions"], message["cards"])
+    cards = save_profile_updates(repo, row, conversation, data.get("profile_updates"), cards)
+    save_summary(repo, row, turn_call, data)
     now = datetime.now(UTC)
     repo.add(
         ChatMessage(
@@ -257,7 +239,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
             status=data["status"],
             run_id=row.id,
             claims=message["claims"],
-            cards=message["cards"],
+            cards=cards,
             sources=message["sources"],
             assessments=data.get("assessments"),
             plan=data.get("plan"),
@@ -273,16 +255,9 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     row.status = data["status"]
     row.plan = data.get("plan")
     row.trace = data.get("trace")
-    row.budget_used = data["budget_used"]
-    row.usage = data.get("usage")
     row.finished_at = now
-    row.row_revision += 1
-    row.turn_calls = [
-        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
-        for call in row.turn_calls or []
-    ]
+    _save_turn_output(repo, row, turn_call, final, now)
     add_run_log(repo, row, now)
-    _add_diagnostics(repo, row, turn_call, final.diagnostics, now)
     db.commit()
     return True
 
@@ -396,16 +371,9 @@ def _end_with_sent_claims(
     repo = ChatRepository(db)
     now = datetime.now(UTC)
     row.status = "PARTIAL"
-    row.budget_used = final.data["budget_used"]
-    row.usage = final.data.get("usage")
     row.finished_at = now
-    row.row_revision += 1
-    row.turn_calls = [
-        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
-        for call in row.turn_calls or []
-    ]
+    _save_turn_output(repo, row, turn_call, final, now)
     add_run_log(repo, row, now)
-    _add_diagnostics(repo, row, turn_call, final.diagnostics, now)
     db.commit()
 
 
@@ -471,6 +439,20 @@ def _answer_sources(data: dict[str, Any]) -> tuple[set[str], set[str]]:
     pitch_ids.discard(None)
     take_ids.discard(None)
     return pitch_ids, take_ids
+
+
+def _save_turn_output(
+    repo: ChatRepository, row: ChatRun, turn_call: int, final: TurnFinal, now: datetime
+) -> None:
+    """받은 끝 줄의 사용량을 적고 그 호출을 끝난 것으로 둔다. 진단이 있으면 함께 남긴다."""
+    row.budget_used = final.data["budget_used"]
+    row.usage = final.data.get("usage")
+    row.turn_calls = [
+        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
+        for call in row.turn_calls or []
+    ]
+    row.row_revision += 1
+    _add_diagnostics(repo, row, turn_call, final.diagnostics, now)
 
 
 def _add_diagnostics(

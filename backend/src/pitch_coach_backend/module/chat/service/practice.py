@@ -3,39 +3,33 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_response import StartPracticeArgs
-from pitch_coach_backend.module.chat.entity import ChatAction, ChatRun
+from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.authorization import authorization
 from pitch_coach_backend.module.chat.service.owned import owned_pitch
-from pitch_coach_backend.module.chat.service.run import digest
+from pitch_coach_backend.module.chat.service.result import action_row
 
 
-def start_practice(db: Session, repo: ChatRepository, row: ChatRun, data: dict[str, Any]) -> None:
-    actions = [action for action in data["actions"] if action["type"] == "START_PRACTICE"]
-    if not actions:
-        return
-    action = actions[0]
+def start_practice(
+    db: Session,
+    repo: ChatRepository,
+    row: ChatRun,
+    actions: list[dict[str, Any]],
+    cards: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """연습 시작 행동이 있으면 BE 가 확인한 버튼 카드로 바꾼 답 카드를 돌려준다.
+
+    AI 가 직접 넣은 연습 시작 카드는 버린다. 쓸 수 있는 피치가 아니면 버튼을 내지 않는다.
+    """
+    action = next((action for action in actions if action["type"] == "START_PRACTICE"), None)
+    if action is None:
+        return cards
     decision = _practice_decision(db, row, action)
-    cards = [card for card in data["message"]["cards"] if card.get("type") != "START_PRACTICE"]
-    if decision is not None:
-        cards.append({"type": "START_PRACTICE", **decision})
-        repo.add(
-            ChatAction(
-                conversation_id=row.conversation_id,
-                user_id=row.user_id,
-                run_id=row.id,
-                action_id=action["action_id"],
-                type="START_PRACTICE",
-                args=action["args"],
-                args_digest=digest(action["args"]),
-                autonomy=action["autonomy"],
-                idempotency_key=action["idempotency_key"],
-                args_hash=action["args_hash"],
-                status="SUCCEEDED",
-                result=decision,
-            )
-        )
-    data["message"]["cards"] = cards
+    kept = [card for card in cards if card.get("type") != "START_PRACTICE"]
+    if decision is None:
+        return kept
+    repo.add(action_row(row, action, status="SUCCEEDED", result=decision))
+    return [*kept, {"type": "START_PRACTICE", **decision}]
 
 
 def _practice_decision(db: Session, row: ChatRun, action: dict[str, Any]) -> dict[str, Any] | None:

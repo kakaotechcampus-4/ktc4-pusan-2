@@ -101,12 +101,17 @@ CLAUSE_SPLIT = re.compile(r"[.,!?\n]")
 
 
 def save_profile_updates(
-    repo: ChatRepository, row: ChatRun, conversation: ChatConversation, data: dict[str, Any]
-) -> None:
+    repo: ChatRepository,
+    row: ChatRun,
+    conversation: ChatConversation,
+    profile_updates: Any,
+    cards: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """기억 요청을 저장하고, 이 실행에서 저장한 기억 카드를 붙인 답 카드를 돌려준다."""
     saved = memory_cards(row)
-    cards = [card for card in data["message"]["cards"] if card.get("type") != "MEMORY_SAVED"]
-    new = new_memory_cards(repo, row, conversation, data.get("profile_updates"), saved)
-    data["message"]["cards"] = [*cards, *saved, *new]
+    kept = [card for card in cards if card.get("type") != "MEMORY_SAVED"]
+    new = new_memory_cards(repo, row, conversation, profile_updates, saved)
+    return [*kept, *saved, *new]
 
 
 def memory_cards(row: ChatRun) -> list[dict[str, Any]]:

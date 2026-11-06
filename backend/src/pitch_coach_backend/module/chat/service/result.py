@@ -6,8 +6,29 @@ from pitch_coach_backend.module.chat.ai_response import args_hash
 from pitch_coach_backend.module.chat.dto import ActionResultDTO, AgentErrorDTO
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.run import digest
 
 UNCONFIRMED = "작업 완료를 확인하지 못했어요."
+
+
+def action_row(
+    row: ChatRun, action: dict[str, Any], *, status: str, result: dict[str, Any] | None = None
+) -> ChatAction:
+    """AI 가 낸 행동을 이 실행의 행동 행으로 만든다."""
+    return ChatAction(
+        conversation_id=row.conversation_id,
+        user_id=row.user_id,
+        run_id=row.id,
+        action_id=action["action_id"],
+        type=action["type"],
+        args=action["args"],
+        args_digest=digest(action["args"]),
+        autonomy=action["autonomy"],
+        idempotency_key=action["idempotency_key"],
+        args_hash=action["args_hash"],
+        status=status,
+        result=result,
+    )
 
 
 def executed_args_hash(action: dict[str, Any]) -> str | None:
