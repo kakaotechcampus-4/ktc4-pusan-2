@@ -40,7 +40,14 @@ from pitch_coach_backend.module.take.exception import (
 )
 from pitch_coach_backend.module.take.measures import take_count, take_metric
 from pitch_coach_backend.module.take.repository import TakeRepository
-from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    COMPLETED,
+    IN_PROGRESS_STATUSES,
+    READY,
+    REVIEW,
+    TAKE_RESULT,
+)
 
 # 시작 · 끝 시각으로 받는 범위의 여유. Take 를 만든 때보다 이만큼 앞부터 지금보다 이만큼 뒤까지
 # 받는다. FE 시계로 잰 값이라 서버 시계와 어긋날 수 있다. 앞뒤로 같은 여유를 둔다 — 끝내기 PUT 이
@@ -132,7 +139,7 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
 
     # 실시간 연결이 한 번도 붙지 않은 Take 는 끝내지 않는다. FE 는 첫 `ready` 를 받은 뒤에
     # 발표를 시작하므로 남은 기록이 없다. 만든 지 10분이 지나면 BE 가 ABANDONED 로 끝낸다
-    if existing_take.status == "READY" and "ended_at" in changes:
+    if existing_take.status == READY and "ended_at" in changes:
         raise TakeNotStarted()
 
     # 떠난 것으로 끝낸 Take 에 온 끝내기다. 재연결을 포기하고 STT 없이 발표를 이어 간 FE 라
@@ -144,7 +151,7 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
     if (
         not abandoned_end
         and existing_take.status not in IN_PROGRESS_STATUSES
-        and (existing_take.status != "ANALYZING" or "event_logs" in changes)
+        and (existing_take.status != ANALYZING or "event_logs" in changes)
     ):
         raise TakeAlreadyEnded()
 
@@ -194,7 +201,7 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
         raise NonExistentTake()
     # 점검은 발표 전에 한다. 시작한 Take 의 기준값(평소 목소리 크기 등)을 바꾸면
     # 이미 잰 발표를 다른 기준으로 분석하게 된다
-    if existing_take.status != "READY":
+    if existing_take.status != READY:
         raise TakeAlreadyStarted()
 
     ## calibration result 로직
@@ -214,11 +221,6 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
     db.commit()
 
     return saved_calibration.id
-
-
-def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
-    # 미션 생성 로직
-    pass
 
 
 def _percent_to_ratio(value: int | None) -> float | None:
@@ -322,7 +324,7 @@ def get_take_report_service(db: Session, take_id: uuid.UUID, user_id: uuid.UUID)
     if owned is None:
         raise NonExistentTake()
     take, pitch_title = owned
-    payloads = take_repository.get_ai_payloads(take_id, ("TAKE_RESULT", "REVIEW"))
+    payloads = take_repository.get_ai_payloads(take_id, (TAKE_RESULT, REVIEW))
     return TakeReportDTO(
         take_id=take.id,
         pitch_id=take.pitch_id,
@@ -334,8 +336,8 @@ def get_take_report_service(db: Session, take_id: uuid.UUID, user_id: uuid.UUID)
         analysis_stage=take.analysis_stage,
         review_status=take.review_status,
         analysis_hold_reason=take.analysis_hold_reason,
-        measures=_take_measures(take, payloads.get("TAKE_RESULT")),
-        review=payloads.get("REVIEW"),
+        measures=_take_measures(take, payloads.get(TAKE_RESULT)),
+        review=payloads.get(REVIEW),
     )
 
 
@@ -353,7 +355,7 @@ def has_report(db: Session, take: Take) -> bool:
 
     AI 리뷰가 실패하거나 건너뛰어도 측정 결과가 있으면 리포트가 있다.
     """
-    return take.status == "COMPLETED" and TakeRepository(db).has_take_result(take.id)
+    return take.status == COMPLETED and TakeRepository(db).has_take_result(take.id)
 
 
 def list_reported_takes(

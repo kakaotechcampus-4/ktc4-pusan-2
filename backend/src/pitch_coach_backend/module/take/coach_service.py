@@ -1,4 +1,4 @@
-"""코치 연동의 도메인 작업. 기능별 PR에서 단계적으로 연결한다."""
+"""코치 연동의 도메인 작업."""
 
 import logging
 import uuid
@@ -14,12 +14,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.pitch.service import standard as standard_service
-from pitch_coach_backend.module.take.coach_repository import (
-    REVIEW,
-    TAKE_RESULT,
-    CoachRepository,
-    is_waiting_for_result,
-)
+from pitch_coach_backend.module.take.coach_repository import CoachRepository, is_waiting_for_result
 from pitch_coach_backend.module.take.dto import (
     FinalizeRows,
     MetricSecond,
@@ -33,8 +28,11 @@ from pitch_coach_backend.module.take.dto import (
 )
 from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
-from pitch_coach_backend.module.take.repository import json_ints
+from pitch_coach_backend.module.take.repository import json_ints, parse_mission_ids
+from pitch_coach_backend.module.take.states import REVIEW, SCORING, TAKE_RESULT
 from pitch_coach_backend.module.user import service as user_service
+
+logger = logging.getLogger(__name__)
 
 
 def start_take(db: Session, take_id: uuid.UUID) -> bool:
@@ -48,7 +46,7 @@ def start_take(db: Session, take_id: uuid.UUID) -> bool:
     순서가 거꾸로면 둘이 서로를 기다린다.
     """
     repo = CoachRepository(db)
-    pitch_id = repo.pitch_id_of(take_id)
+    pitch_id = repo.get_pitch_id_of_take(take_id)
     if pitch_id is None:
         return False
     pitch_service.lock_for_new_version(db, pitch_id)
@@ -125,13 +123,15 @@ def _take_coach_values(db: Session, repo: CoachRepository, take: Take) -> TakeCo
         script_version_id=take.script_version_id,
         slides=_slide_timings(script_service.script_slides(db, take.script_version_id)),
         parsed_target_ms=_parsed_target_ms(script.parse_meta if script else None),
-        missions=tuple(_mission_input(m) for m in repo.missions(_mission_ids(take.mission_ids))),
+        missions=tuple(
+            _mission_input(m) for m in repo.get_missions_by_ids(parse_mission_ids(take.mission_ids))
+        ),
         recurring_issues=_recurring_issues(repo, reviewed),
         source_take_id=repo.latest_completed_take(take.pitch_id, before=take.take_number),
         script_used=standard_service.script_used(db, take.pitch_id, take.standard_version),
         base_level_db=repo.base_level_db(take.id),
         slide_events=tuple(
-            SlideEvent(e.slide_number, e.started_ms) for e in repo.slide_events(take.id)
+            SlideEvent(number, started_ms) for number, started_ms in repo.get_slide_events(take.id)
         ),
     )
 
@@ -151,16 +151,6 @@ def _parsed_target_ms(parse_meta: Any) -> int | None:
     return value
 
 
-def _mission_ids(values: Any) -> list[uuid.UUID]:
-    ids: list[uuid.UUID] = []
-    for value in values or []:
-        try:
-            ids.append(uuid.UUID(str(value)))
-        except ValueError:
-            logger.warning("takes.mission_ids 에 UUID 가 아닌 값이 있다 value=%r", value)
-    return ids
-
-
 def _mission_input(mission: Mission) -> MissionInput:
     return MissionInput(
         mission_id=str(mission.id),
@@ -178,7 +168,7 @@ def _recurring_issues(
     """그 Take 의 리뷰가 꼽은 반복 문제. BE 는 항목을 고치지 않고 그대로 싣는다 (1-5)."""
     if reviewed is None:
         return ()
-    review = repo.ai_result(reviewed, REVIEW)
+    review = repo.get_ai_result(reviewed, REVIEW)
     payload = review.payload if review is not None else None
     issues = payload.get("recurring_issues") if isinstance(payload, dict) else None
     if not isinstance(issues, list):
@@ -228,9 +218,6 @@ def chosen_plan_payload(
         max_ms=max_ms,
     )
     return dict(plan.payload) if plan is not None else None
-
-
-logger = logging.getLogger(__name__)
 
 
 def finalize_rows(
@@ -290,7 +277,7 @@ def save_take_result(
     repo.save_ai_result(take_id, TAKE_RESULT, take_result, meta)
     repo.save_summary_measures(take_id, measures)
     take.duration_sec = duration_sec
-    take.analysis_stage = "SCORING"
+    take.analysis_stage = SCORING
     take.analysis_stage_at = func.now()
     if not take.raw_data_consent:
         # Take 결과가 생기면 replay 에 쓸 일이 없다
@@ -361,8 +348,8 @@ def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
     slides = script_service.script_slides(db, script.id)
     source = repo.latest_completed_take(pitch_id, before=None)
     reviewed = repo.latest_reviewed_take(pitch_id, before=None)
-    previous_result = repo.ai_result(source, TAKE_RESULT) if source else None
-    previous_review = repo.ai_result(source, REVIEW) if source else None
+    previous_result = repo.get_ai_result(source, TAKE_RESULT) if source else None
+    previous_review = repo.get_ai_result(source, REVIEW) if source else None
     return PlanValues(
         pitch_id=pitch_id,
         time_limit_sec=pitch.time_limit_sec,

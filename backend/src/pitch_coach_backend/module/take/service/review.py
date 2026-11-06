@@ -19,18 +19,19 @@ from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.exception import (
     NonExistentTake,
 )
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.repository import TakeRepository, parse_mission_ids
+from pitch_coach_backend.module.take.states import COVERAGE_KIND, DONE, FAILED, REVIEW, TAKE_RESULT
 
 logger = logging.getLogger(__name__)
 
 
-def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list[MissionInputDTO]:
-    mission_ids = take_repository.get_mission_ids_of_take(take_id)
+def _build_missions(take_repository: TakeRepository, take: Take) -> list[MissionInputDTO]:
+    mission_ids = parse_mission_ids(take.mission_ids)
     missions = take_repository.get_missions_by_ids(mission_ids)
     if len(missions) < len(mission_ids):
         logger.warning(
-            "take %s: %d of %d missions not found",
-            take_id,
+            "take=%s %d of %d missions not found",
+            take.id,
             len(mission_ids) - len(missions),
             len(mission_ids),
         )
@@ -46,21 +47,21 @@ def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list
 
 
 def _build_previous_takes(
-    take_repository: TakeRepository, take_id: uuid.UUID, take_number: int
+    take_repository: TakeRepository, pitch_id: uuid.UUID, take_number: int
 ) -> list[PreviousTakeDTO]:
     return [
         PreviousTakeDTO(
             take_result=result,
             take_scores=coverage.get("take_scores") if coverage else None,
         )
-        for result, coverage in take_repository.get_previous_take_results(take_id, take_number)
+        for result, coverage in take_repository.get_previous_take_results(pitch_id, take_number)
     ]
 
 
 def _build_previous_recurring_issues(
-    take_repository: TakeRepository, take_id: uuid.UUID, take_number: int
+    take_repository: TakeRepository, pitch_id: uuid.UUID, take_number: int
 ) -> list[dict]:
-    previous_review = take_repository.get_previous_review_payload(take_id, take_number)
+    previous_review = take_repository.get_previous_review_payload(pitch_id, take_number)
     return previous_review.get("recurring_issues", []) if previous_review else []
 
 
@@ -74,20 +75,19 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
     take = take_repository.get_take(take_id)
     if take is None:
         raise NonExistentTake()
-    take_number = take.take_number
-    result = take_repository.get_take_infos(take_id, "TAKE_RESULT")
-    coverage = take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE")
+    payloads = take_repository.get_ai_payloads(take_id, (TAKE_RESULT, COVERAGE_KIND))
+    coverage = payloads.get(COVERAGE_KIND)
     # 전체 실패 진단은 저장본에 보존하고 리뷰에는 채점 없음으로 보낸다.
     if coverage is not None and not coverage.get("evaluations"):
         coverage = None
     return ReviewRequestDTO(
-        take_result=result,
+        take_result=payloads.get(TAKE_RESULT),
         script_coverage=coverage,
-        previous_takes=_build_previous_takes(take_repository, take_id, take_number),
+        previous_takes=_build_previous_takes(take_repository, take.pitch_id, take.take_number),
         previous_recurring_issues=_build_previous_recurring_issues(
-            take_repository, take_id, take_number
+            take_repository, take.pitch_id, take.take_number
         ),
-        missions=_build_missions(take_repository, take_id),
+        missions=_build_missions(take_repository, take),
         user_criteria=_build_user_criteria(db, take),
     )
 
@@ -109,15 +109,16 @@ def save_review(
     take_id: uuid.UUID,
     review_data: ReviewResponseDTO,
     *,
-    request_id: uuid.UUID | None = None,
+    request_id: uuid.UUID,
 ) -> bool:
     review_data = validate_review_reply(review_data.model_dump(mode="json"), take_id)
     take_repository = TakeRepository(db)
-    if request_id is None or take_repository.lock_review(take_id, request_id) is None:
+    if take_repository.lock_review(take_id, request_id) is None:
         db.rollback()
         return False
-    take_repository.save_total_result(
+    take_repository.save_ai_result(
         take_id,
+        REVIEW,
         review_data.model_dump(mode="json", exclude={"meta"}),
         review_data.meta.model_dump(mode="json"),
     )
@@ -141,8 +142,8 @@ def save_review(
             result.mission_id, take_id, result.status, result.observed
         )
     take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
-    take_repository.set_analysis_stage(take_id, "DONE")
-    take_repository.complete_take(take_id, "DONE")
+    take_repository.set_analysis_stage(take_id, DONE)
+    take_repository.complete_take(take_id, DONE)
     db.commit()
     return True
 
@@ -152,7 +153,7 @@ def fail_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> bool:
     if repository.lock_review(take_id, request_id) is None:
         db.rollback()
         return False
-    repository.set_analysis_stage(take_id, "DONE")
-    repository.complete_take(take_id, "FAILED")
+    repository.set_analysis_stage(take_id, DONE)
+    repository.complete_take(take_id, FAILED)
     db.commit()
     return True

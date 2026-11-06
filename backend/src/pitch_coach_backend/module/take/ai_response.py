@@ -159,6 +159,12 @@ def confirmation_items(
     return items
 
 
+def coverage_to_store(reply: dict, take_id: uuid.UUID | str) -> tuple[dict, Any]:
+    """저장 직전에 다시 검사하고 (payload, meta) 로 나눈다."""
+    validate_coverage_reply(reply, take_id)
+    return {key: value for key, value in reply.items() if key != "meta"}, reply.get("meta")
+
+
 def validate_review_reply(reply: Any, take_id: uuid.UUID) -> ReviewResponseDTO:
     try:
         view = ReviewResponseDTO.model_validate(reply)

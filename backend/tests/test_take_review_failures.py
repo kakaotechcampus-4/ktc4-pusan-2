@@ -16,7 +16,7 @@ from pitch_coach_backend.module.take.dto import (
 )
 from pitch_coach_backend.module.take.entity import Mission, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.repository import TakeRepository, parse_mission_ids
 from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_analysis_review_ownership import run_review
@@ -176,7 +176,7 @@ def test_review_storage_validates_again_before_any_write(db_session, user_id, ca
         review.recurring_issues = [issue] * (21 if case == "recurring-too-many" else 2)
 
     with pytest.raises(InvalidReviewResponse):
-        review_service.save_review(db_session, take.id, review)
+        review_service.save_review(db_session, take.id, review, request_id=uuid.uuid4())
 
     assert TakeRepository(db_session).get_ai_result(take.id, "REVIEW") is None
     assert db_session.query(Mission).filter_by(source_take_id=take.id).count() == 0
@@ -205,3 +205,10 @@ def test_review_failure_completes_the_take_and_keeps_measurements(
     repo = TakeRepository(db_session)
     assert repo.get_ai_result(take.id, "REVIEW") is None
     assert repo.get_ai_result(take.id, "TAKE_RESULT") is not None
+
+
+def test_mission_ids_skip_values_that_are_not_uuids():
+    good = uuid.uuid4()
+
+    assert parse_mission_ids([str(good), "미션이 아닌 값"]) == [good]
+    assert parse_mission_ids(None) == []

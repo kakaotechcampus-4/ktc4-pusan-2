@@ -29,9 +29,7 @@ class PitchRepository:
         return self.db.get(Pitch, pitch_id)
 
     def get_owned(self, pitch_id: uuid.UUID, user_id: uuid.UUID) -> Pitch | None:
-        return self.db.scalar(
-            select(Pitch).where(Pitch.id == pitch_id, Pitch.user_id == user_id)
-        )
+        return self.db.scalar(select(Pitch).where(Pitch.id == pitch_id, Pitch.user_id == user_id))
 
     def get_all_by_user(self, user_id: uuid.UUID, today: date) -> list[Pitch]:
         """홈 목록 순서. 다가오는 발표(오늘 포함) → 날짜 없는 발표 → 지난 발표.
@@ -40,24 +38,29 @@ class PitchRepository:
         같은 날짜면 최근에 만든 발표가 위다.
         """
         upcoming = Pitch.presentation_date >= today
-        return self.db.execute(
-            select(Pitch).where(Pitch.user_id == user_id)
-            .order_by(
-                case((upcoming, 0), (Pitch.presentation_date.is_(None), 1), else_=2),
-                case((upcoming, Pitch.presentation_date)).asc(),
-                Pitch.presentation_date.desc(),
-                Pitch.created_at.desc(),
-                Pitch.id,
+        return (
+            self.db.execute(
+                select(Pitch)
+                .where(Pitch.user_id == user_id)
+                .order_by(
+                    case((upcoming, 0), (Pitch.presentation_date.is_(None), 1), else_=2),
+                    case((upcoming, Pitch.presentation_date)).asc(),
+                    Pitch.presentation_date.desc(),
+                    Pitch.created_at.desc(),
+                    Pitch.id,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
         return self.db.execute(
             select(Take, TakeSummary.score)
             .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
             .where(Take.pitch_id == pitch_id)
-            ).all()
-    
+        ).all()
+
     def get_takes_with_scores_in_pitches(
         self, pitch_ids: list[uuid.UUID]
     ) -> list[tuple[Take, int | None]]:
@@ -67,7 +70,6 @@ class PitchRepository:
             select(Take, TakeSummary.score)
             .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
             .where(Take.pitch_id.in_(pitch_ids))
-            .options(defer(Take.event_logs))
             .order_by(Take.pitch_id, Take.take_number)
         ).all()
 
@@ -195,7 +197,7 @@ class PitchRepository:
         return self.db.scalar(
             select(PresentationVersion).where(
                 PresentationVersion.pitch_id == pitch_id,
-                PresentationVersion.id == presentation_version_id
+                PresentationVersion.id == presentation_version_id,
             )
         )
 
@@ -206,10 +208,11 @@ class PitchRepository:
         self.db.add(standard)
         self.db.flush()
         return standard
- 
+
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(
-            select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
+            select(PresentationVersion)
+            .where(PresentationVersion.pitch_id == pitch_id)
             .order_by(PresentationVersion.version.asc())
         ).all()
 
@@ -269,9 +272,9 @@ class PitchRepository:
             select(Standards.id, Standards.version, literal(0).label("source")).where(
                 Standards.pitch_id == pitch_id
             ),
-            select(
-                StandardAnalyses.id, StandardAnalyses.version, literal(1).label("source")
-            ).where(StandardAnalyses.pitch_id == pitch_id),
+            select(StandardAnalyses.id, StandardAnalyses.version, literal(1).label("source")).where(
+                StandardAnalyses.pitch_id == pitch_id
+            ),
         ).subquery()
         return list(
             self.db.execute(
@@ -283,10 +286,8 @@ class PitchRepository:
 
     def get_standards_in_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards]:
         return self.db.scalars(
-            select(Standards).where(
-                Standards.pitch_id == pitch_id,
-                Standards.version == version
-            )
+            select(Standards)
+            .where(Standards.pitch_id == pitch_id, Standards.version == version)
             .order_by(Standards.position.asc())
         ).all()
 
@@ -303,12 +304,11 @@ class PitchRepository:
         self.db.flush()
 
     def get_evaluations_by_version(
-            self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
+        self, pitch_id: uuid.UUID, version: int
+    ) -> list[Standards] | None:
         return self.db.scalars(
-            select(Standards).where(
-                Standards.pitch_id == pitch_id,
-                Standards.version == version
-            )
+            select(Standards)
+            .where(Standards.pitch_id == pitch_id, Standards.version == version)
             .order_by(Standards.position.asc())
         ).all()
 
@@ -348,9 +348,12 @@ class PitchRepository:
         ).all()
 
     def count_slides(self, script_version_id: uuid.UUID) -> int:
-        return self.db.scalar(
-            select(func.count()).where(ScriptSlide.script_version_id == script_version_id)
-        ) or 0
+        return (
+            self.db.scalar(
+                select(func.count()).where(ScriptSlide.script_version_id == script_version_id)
+            )
+            or 0
+        )
 
     def restart_parse(
         self, script_version_id: uuid.UUID, now: datetime, expired_before: datetime

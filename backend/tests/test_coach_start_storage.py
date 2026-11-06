@@ -159,8 +159,8 @@ def test_rewriting_an_ai_result_bumps_its_revision(db_session: Session, take_par
     take = make_take(db_session, *take_parts, 1, status="COMPLETED")
     repo = TakeRepository(db_session)
 
-    repo.save_total_result(take.id, {"overall_summary": "처음"}, META)
-    repo.save_total_result(take.id, {"overall_summary": "다시"}, META)
+    repo.save_ai_result(take.id, "REVIEW", {"overall_summary": "처음"}, META)
+    repo.save_ai_result(take.id, "REVIEW", {"overall_summary": "다시"}, META)
 
     row = db_session.scalar(select(TakeAIResults).where(TakeAIResults.take_id == take.id))
     db_session.refresh(row)
