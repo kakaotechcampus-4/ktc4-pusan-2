@@ -36,6 +36,16 @@ export type ChatNotice =
   | { kind: 'sessionExpired' }
   | { kind: 'criteriaTooLong' };
 
+/**
+ * 접수된 내 말 — 접수(202)로 "보내는 중" 이 풀린 뒤, 목록을 다시 읽어 그 말이 들어올 때까지 이것으로 그립니다.
+ * 그 사이 말풍선이 사라졌다 나타나지 않게 합니다
+ */
+export interface SentEcho {
+  runId: string;
+  conversationId: string;
+  text: string;
+}
+
 export const messagesKey = (userId: string, conversationId: string | null) =>
   ['chat', 'messages', userId, conversationId] as const;
 
@@ -48,6 +58,12 @@ export interface ChatSession {
   scopeFailed: boolean;
   retryScope: () => void;
   messages: ChatMessage[];
+  /** 메시지 목록을 처음 읽는 중 — 빈 대화 안내를 미룹니다 */
+  messagesLoading: boolean;
+  /** 메시지 목록을 읽지 못함 — 빈 대화로 보이지 않게 합니다 */
+  messagesFailed: boolean;
+  /** 접수됐지만 아직 목록에 없는 내 말 */
+  sentEcho: SentEcho | null;
   /** 지금 실행의 진행 — 보고 있는 대화의 것만 */
   progress: LiveProgress | null;
   /** 지금 실행의 문장 큐 */
@@ -86,6 +102,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   const [notice, setNotice] = useState<ChatNotice | null>(null);
   const [progress, setProgress] = useState<LiveProgress | null>(null);
   const [announce, setAnnounce] = useState('');
+  const [sentEcho, setSentEcho] = useState<SentEcho | null>(null);
   // 큐는 세션마다 하나. 화면에서 빠질 때 비우기만 하고 닫지 않습니다 — 엄격 모드에서 다시 붙어도 쓰게
   const [typing] = useState(() =>
     createTypingQueue<ShownClaim>({ onLineDone: (line) => setAnnounce(line.item.text) }),
@@ -93,6 +110,29 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   /** 큐가 들고 있는 실행 — 신호 처리 안에서 곧바로 견줍니다 */
   const liveRun = useRef<string | null>(null);
   useEffect(() => () => typing.reset(), [typing]);
+
+  // 저장소의 바뀜을 따라갑니다(외부 저장소 구독)
+  // - 보내는 중 → 실행이 붙음: 그 말을 목록에 들어올 때까지 붙잡아 둡니다
+  // - 대화를 옮김(시도 번호가 바뀜): 앞 대화의 진행 답을 비웁니다. 돌아왔을 때 실행이 진행 중이면 통신 계층이
+  //   처음부터 다시 보내(restart) 다시 그려지고, 이미 끝났으면 남지 않습니다
+  useEffect(
+    () =>
+      useChatStore.subscribe((now, before) => {
+        if (before.pending && !now.pending && now.run && now.run.runId !== before.run?.runId)
+          setSentEcho({
+            runId: now.run.runId,
+            conversationId: now.run.conversationId,
+            text: before.pending.request.text,
+          });
+        if (now.attempt !== before.attempt) {
+          typing.reset();
+          liveRun.current = null;
+          setProgress(null);
+          setSentEcho(null);
+        }
+      }),
+    [typing],
+  );
   const conversationId = useChatStore((s) => s.conversationId);
   const runId = useChatStore((s) => s.run?.runId ?? null);
   const open = useChatStore((s) => s.open);
@@ -127,6 +167,10 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
 
   // ── 통신 계층 ─────────────────────────────────────────
   const on = availability === 'on';
+  // 꺼지면 닫습니다 — 다시 켜졌을 때 패널이 저절로 열려 초점을 빼앗지 않게(숨는 화면과 같은 규칙)
+  useEffect(() => {
+    if (availability === 'off' && useChatStore.getState().open) useChatStore.getState().closeChat();
+  }, [availability]);
   useEffect(() => {
     if (!on) return;
     const created = createChatTransport();
@@ -163,8 +207,12 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
             setProgress(null);
           },
         },
+        // 다시 읽기가 실패하면(`invalidateQueries` 는 실패해도 끝납니다) 받은 답을 지우지 않습니다 — 목록에 답이
+        // 들어오면 화면이 진행 답을 숨기므로 남겨 둬도 두 번 보이지 않습니다
         reread: (id, then) =>
-          void queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) }).then(then),
+          void queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) }).then(() => {
+            if (queryClient.getQueryState(messagesKey(userId, id))?.status !== 'error') then();
+          }),
       }),
     );
     created.resume();
@@ -257,6 +305,9 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     scopeFailed: info.needsTake && take.isError && !take.data,
     retryScope: () => void take.refetch(),
     messages: messages.data?.messages ?? [],
+    messagesLoading: messages.isPending && messages.fetchStatus === 'fetching',
+    messagesFailed: messages.isError,
+    sentEcho: sentEcho && sentEcho.conversationId === conversationId ? sentEcho : null,
     progress: progress && progress.conversationId === conversationId ? progress : null,
     typing,
     announce,

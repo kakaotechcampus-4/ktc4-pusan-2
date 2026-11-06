@@ -1,5 +1,6 @@
 import {
   Component,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -120,6 +121,9 @@ function ChatSessionView({
   const launcherBottom = chatLauncherBottom(pathname);
   const open = useChatStore((s) => s.open);
   const launcherRef = useRef<HTMLButtonElement>(null);
+  /** 런처로 열었음 — 패널은 이때만 입력칸에 초점을 줍니다(꺼졌다 켜짐 · 모달이 닫힘으로 다시 그려질 때는 주지 않음) */
+  const [focusRequested, setFocusRequested] = useState(false);
+  const focused = useCallback(() => setFocusRequested(false), []);
   const id = useId();
 
   // 조회 중 · 꺼짐이면 숨깁니다. 실패가 잇달면 버튼은 보이고 열면 다시 시도를 보입니다 (12-4 F1 "사용 가능 여부")
@@ -140,7 +144,15 @@ function ChatSessionView({
       className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
     >
       {open && (
-        <ChatPanel id={id} session={session} onClose={close} draft={draft} setDraft={setDraft} />
+        <ChatPanel
+          id={id}
+          session={session}
+          onClose={close}
+          draft={draft}
+          setDraft={setDraft}
+          focusRequested={focusRequested}
+          onFocused={focused}
+        />
       )}
 
       <button
@@ -149,7 +161,11 @@ function ChatSessionView({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? `${id}-panel` : undefined}
-        onClick={() => (open ? close() : useChatStore.getState().openChat(session.screenScope))}
+        onClick={() => {
+          if (open) return close();
+          setFocusRequested(true);
+          useChatStore.getState().openChat(session.screenScope);
+        }}
         aria-label="채팅 에이전트"
         title="채팅 에이전트"
         className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
@@ -193,12 +209,17 @@ function ChatPanel({
   id,
   session,
   onClose,
+  focusRequested,
+  onFocused,
   draft,
   setDraft,
 }: {
   id: string;
   session: ChatSession;
   onClose: () => void;
+  /** 런처로 연 때만 true — 그때만 입력칸에 초점을 주고 `onFocused` 로 알립니다 */
+  focusRequested: boolean;
+  onFocused: () => void;
 } & DraftProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const latestDraft = useRef(draft);
@@ -212,10 +233,12 @@ function ChatPanel({
   const failed = session.availability === 'failed';
   const blocked = failed || !sendable;
 
-  // 패널은 런처로만 열리므로, 그려진 순간이 곧 사용자가 연 순간입니다
+  // 사용자가 런처로 연 순간에만 입력칸으로 초점을 옮깁니다
   useEffect(() => {
+    if (!focusRequested) return;
     inputRef.current?.focus();
-  }, []);
+    onFocused();
+  }, [focusRequested, onFocused]);
 
   const submit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
@@ -383,18 +406,29 @@ function MessageList({ session }: { session: ChatSession }) {
   };
   const shown = session.messages;
   const progress = session.progress;
+  // 접수된 내 말 — 목록에 그 실행의 내 말이 들어올 때까지 그립니다
+  const echo =
+    session.sentEcho &&
+    !shown.some((m) => m.role === 'user' && m.run_id === session.sentEcho!.runId)
+      ? session.sentEcho
+      : null;
   // 끝난 실행의 답이 목록에 들어왔으면 목록 쪽 하나만 보입니다
   const liveInList =
     progress !== null && shown.some((m) => m.role === 'assistant' && m.run_id === progress.runId);
 
   return (
     <>
-      {shown.length === 0 && !pending && (
-        <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
-      )}
+      {shown.length === 0 &&
+        !pending &&
+        !echo &&
+        !session.messagesLoading &&
+        !session.messagesFailed && (
+          <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
+        )}
       {shown.map((message) => (
         <MessageItem key={message.message_id} message={message} actions={actions} />
       ))}
+      {echo && <p className={SELF_CLASS}>{echo.text}</p>}
       {pending && <p className={SELF_CLASS}>{pending}</p>}
       <LiveAnswer
         progress={liveInList ? null : progress}

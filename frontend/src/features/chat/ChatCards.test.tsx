@@ -15,6 +15,7 @@ import {
   UNDO_FAILED_TEXT,
   type CardActions,
 } from './ChatCards';
+import { reassessRows } from './chatCardRows';
 import { emptyBasis, readCard, UNSUPPORTED_CARD_TEXT } from './chatResponse';
 import type { DecideResult, UndoResult } from './chatTransport';
 
@@ -210,12 +211,18 @@ describe('참고 결과 (12-4 F6)', () => {
     before: {
       score: 72,
       dimensions: { audience_gaze: 'PRIORITY', pacing_rhythm: 'STABLE' },
-      criteria_results: [{ display: '3분 안에 끝내기', status: 'FAILED' }],
+      criteria_results: [
+        { display: '3분 안에 끝내기', status: 'FAILED' },
+        { display: '군더더기 5회 이하', status: 'ACHIEVED' },
+      ],
     },
     after: {
       score: 78,
       dimensions: { audience_gaze: null, pacing_rhythm: 'STABLE' },
-      criteria_results: [{ display: '3분 안에 끝내기', status: 'ACHIEVED' }],
+      criteria_results: [
+        { display: '3분 안에 끝내기', status: 'ACHIEVED' },
+        { display: '군더더기 5회 이하', status: 'ACHIEVED' },
+      ],
     },
     changed_fields: ['score', 'dimensions.audience_gaze', 'criteria_results'],
     official_differs: false,
@@ -237,6 +244,8 @@ describe('참고 결과 (12-4 F6)', () => {
       ['청중 응시 (바뀜)', '먼저 고칠 것', NO_VERDICT, true],
       ['속도 · 리듬', '유지', '유지', false],
       ['3분 안에 끝내기 (바뀜)', '미달성', '달성', true],
+      // AI 는 기준이 바뀌었는지만 한 덩어리로 알려 주지만, 바뀌지 않은 줄은 강조하지 않습니다
+      ['군더더기 5회 이하', '달성', '달성', false],
     ]);
     // 대본을 보고 한 발표로 점수가 오름
     expect(host.textContent).toContain(SCRIPT_SCORE_TEXT);
@@ -290,7 +299,10 @@ describe('연습 준비 · 승인 확인 · 결과 카드', () => {
     };
     await render(<CardList cards={show(ask)} runId="r-1" expired={false} actions={a} />);
     expect(host.textContent).toContain('다시 평가할까요?');
-    expect(host.textContent).toContain('false → true');
+    // 칸 이름 · 참 거짓을 우리말로, Take ID 는 보이지 않습니다
+    const rows = host.querySelector('[data-change-rows]')!.textContent;
+    expect(rows).toBe('대본 보며 발표아니요 → 예');
+    expect(host.textContent).not.toContain('script_used');
     expect(host.textContent).toContain('참고 결과이고 공식 결과는 그대로예요');
     expect(host.textContent).toContain('까지 확인해 주세요.');
 
@@ -300,6 +312,10 @@ describe('연습 준비 · 승인 확인 · 결과 카드', () => {
     await act(async () => button('거절')!.click());
     expect(a.decide).toHaveBeenCalledTimes(1);
     await act(async () => answer.resolve('decided'));
+    // 받아들여졌으면 카드가 사라질 때까지 잠근 채로 둡니다
+    expect(button('승인')!.getAttribute('aria-disabled')).toBe('true');
+    await act(async () => button('거절')!.click());
+    expect(a.decide).toHaveBeenCalledTimes(1);
   });
 
   it('목표 저장 확인은 전 · 후를 목표 문장으로 — 목표 모양이 아니면 받은 칸 그대로', async () => {
@@ -346,6 +362,44 @@ describe('연습 준비 · 승인 확인 · 결과 카드', () => {
     );
     expect(change()).toBeNull();
     expect(host.textContent).toContain('예전 모양');
+  });
+
+  it('승인 · 거절이 받아들여지지 않으면 다시 누를 수 있다', async () => {
+    const a = actions({ decide: vi.fn(async (): Promise<DecideResult> => 'failed') });
+    const ask = {
+      type: 'ASK_CONFIRM',
+      action_id: 'a-9',
+      action_type: 'REASSESS',
+      title: '다시 평가할까요?',
+      summary: 's',
+      before: null,
+      after: { script_used: true },
+      notes: [],
+      expires_at: '2026-11-06T05:30:00Z',
+      args_hash: 'sha-1',
+    };
+    await render(<CardList cards={show(ask)} runId="r-1" expired={false} actions={a} />);
+    await act(async () => button('승인')!.click());
+    expect(button('승인')!.getAttribute('aria-disabled')).toBe('false');
+  });
+
+  it('다시 평가 확인의 바뀌는 내용 — 대상은 Take 번호로, Take ID 는 숨기고, 조건은 우리말로', () => {
+    const take = { take_id: TAKE, take_number: 5 };
+    expect(reassessRows({ ...take, script_used: false }, { ...take, script_used: true })).toEqual([
+      { key: 'take_number', label: '대상', value: 'Take 5' },
+      { key: 'script_used', label: '대본 보며 발표', value: '아니요 → 예' },
+    ]);
+    expect(
+      reassessRows({ ...take, targets: [{}, {}] }, { ...take, targets: [{}, {}, {}] }),
+    ).toEqual([
+      { key: 'take_number', label: '대상', value: 'Take 5' },
+      { key: 'targets', label: '내 평가 기준', value: '2개 → 3개' },
+    ]);
+    // 모르는 칸은 받은 그대로 — 바뀌는 내용을 숨기지 않습니다
+    expect(reassessRows(null, { ...take, new_field: 'x' })).toEqual([
+      { key: 'take_number', label: '대상', value: 'Take 5' },
+      { key: 'new_field', label: 'new_field', value: 'x' },
+    ]);
   });
 
   it('목표 확인 결과 · 기억했어요는 버튼 없이, 모르는 카드는 대체 표시 — 다른 카드는 그대로', async () => {

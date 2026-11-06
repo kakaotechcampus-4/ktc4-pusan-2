@@ -1080,3 +1080,183 @@ describe('카드 연결 (12-4 F6 · F10)', () => {
     expect(panel()!.textContent).toContain('연습 준비 화면으로 옮겼어요.');
   });
 });
+
+// ── 점검에서 찾은 문제 — 다시 생기지 않게 ──────────────────────
+
+describe('점검 반영 (8-1 ~ 8-3)', () => {
+  const progressIn = (runId: string, conversationId: string, text: string): TransportSignal => ({
+    type: 'progress',
+    runId,
+    conversationId,
+    status: 'RUNNING',
+    events: [],
+    claims: [{ ...claim(text), index: 0 }],
+    restart: true,
+    catchUp: true,
+    contractError: null,
+    plan: null,
+    trace: null,
+    progressDropped: false,
+    cards: [],
+  });
+  const ended = (runId: string, conversationId: string): TransportSignal => ({
+    type: 'ended',
+    runId,
+    conversationId,
+    status: 'DONE',
+    errorCode: null,
+    endedWhileWaiting: false,
+  });
+
+  async function watching(conversationId: string, runId: string | null) {
+    await visit('/');
+    const s = useChatStore.getState();
+    s.selectConversation(conversationId, { pitchId: null, title: null });
+    s.resolveConversation(chatTicket(), runId ? { runId, phase: 'RUNNING' } : null);
+    await openPanel();
+    await settle();
+  }
+
+  it('접수 직후 목록을 다시 읽는 동안에도 보낸 말이 남고, 목록에 들어오면 한 번만 보인다', async () => {
+    await visit('/');
+    await openPanel();
+    await type('질문');
+    await press(input(), { key: 'Enter' });
+    const list = held<unknown>();
+    server.messages = () => list.promise;
+    await act(async () => {
+      const s = useChatStore.getState();
+      s.beginRun({ ...chatTicket(), sendId: s.pending!.sendId }, 'r1', 'c1');
+    });
+    await settle();
+    expect(sentMessages()).toEqual(['질문']);
+    expect(panel()!.textContent).not.toContain('물어보세요');
+
+    list.resolve({
+      messages: [{ message_id: 'm1', role: 'user', text: '질문', run_id: 'r1' }],
+      next_before_seq: null,
+    });
+    await settle();
+    expect(sentMessages()).toEqual(['질문']);
+  });
+
+  it('지난 대화를 여는 동안에는 빈 대화 안내를 보이지 않는다', async () => {
+    const list = held<unknown>();
+    server.messages = () => list.promise;
+    await watching('c1', null);
+    expect(panel()!.textContent).not.toContain('물어보세요');
+    list.resolve({
+      messages: [{ message_id: 'm1', role: 'user', text: '지난 질문', run_id: 'r0' }],
+      next_before_seq: null,
+    });
+    await settle();
+    expect(sentMessages()).toEqual(['지난 질문']);
+  });
+
+  it('끝난 뒤 목록 다시 읽기가 실패하면 받은 답을 지우지 않고, 빈 대화로 보이지 않는다', async () => {
+    await watching('c1', 'r1');
+    await act(async () => transport().emit(progressIn('r1', 'c1', '받은 답 문장')));
+    server.messages = () => Promise.reject(new Error('끊김'));
+    await act(async () => transport().emit(ended('r1', 'c1')));
+    await settle();
+    await settle();
+    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('받은 답 문장');
+    expect(panel()!.textContent).not.toContain('물어보세요');
+  });
+
+  it('꺼지면 패널을 닫고, 다시 켜져도 저절로 열려 초점을 가져가지 않는다', async () => {
+    await visit('/');
+    await openPanel();
+    await act(async () => transport().emit({ type: 'disabled' }));
+    await settle();
+    expect(useChatStore.getState().open).toBe(false);
+
+    const home = button('홈 버튼')!;
+    home.focus();
+    await act(async () => queryClient.setQueryData(['chat', 'availability', 'u1'], true));
+    await settle();
+    expect(launcher()).not.toBeNull();
+    expect(panel()).toBeNull();
+    expect(document.activeElement).toBe(home);
+  });
+
+  it('모달이 닫혀 패널이 다시 보일 때는 초점을 가져가지 않는다 — 런처로 연 때만', async () => {
+    await visit('/');
+    await openPanel();
+    expect(document.activeElement).toBe(input());
+    await act(async () => useChatStore.getState().coverByModal());
+    const home = button('홈 버튼')!;
+    home.focus();
+    await act(async () => useChatStore.getState().uncoverByModal());
+    expect(panel()).not.toBeNull();
+    expect(document.activeElement).toBe(home);
+  });
+
+  it('지난 메시지에 남은 승인 확인 카드는 "새로고침" 대체 표시로 그리지 않는다', async () => {
+    server.messages = () =>
+      Promise.resolve({
+        messages: [
+          {
+            message_id: 'm1',
+            role: 'assistant',
+            status: 'EXPIRED',
+            text: '확인할게요.',
+            run_id: 'r1',
+            claims: [
+              {
+                kind: 'GENERAL',
+                text: '확인할게요.',
+                evidence_ids: [],
+                source_ids: [],
+                assessment_id: null,
+                action_id: null,
+              },
+            ],
+            cards: [
+              {
+                type: 'ASK_CONFIRM',
+                action_id: 'a-1',
+                action_type: 'SAVE_GOAL',
+                title: '목표 저장',
+                summary: 's',
+                before: null,
+                after: {},
+                notes: [],
+                expires_at: '2026-11-06T05:30:00Z',
+                args_hash: 'h',
+              },
+              { type: 'NEW_CARD' },
+            ],
+            masked: false,
+          },
+        ],
+        next_before_seq: null,
+      });
+    await watching('c1', null);
+    const cards = [...panel()!.querySelectorAll('[data-card]')];
+    // 모르는 카드의 대체 표시는 그대로, 지난 승인 카드만 뺍니다
+    expect(cards.map((c) => c.textContent)).toEqual([
+      '이 카드를 표시할 수 없으니 새로고침해 주세요.',
+    ]);
+  });
+
+  it('다른 대화로 옮기면 앞 대화의 진행 답을 비워, 돌아와도 끝난 실행의 답이 남지 않는다', async () => {
+    await watching('c1', 'r1');
+    await act(async () => transport().emit(progressIn('r1', 'c1', '실패하기 전 받은 문장')));
+    expect(panel()!.querySelector('[data-live-run]')).not.toBeNull();
+    await act(async () => {
+      useChatStore.getState().selectConversation('c2', { pitchId: null, title: null });
+      useChatStore.getState().resolveConversation(chatTicket(), null);
+    });
+    await act(async () => {
+      useChatStore.getState().selectConversation('c1', { pitchId: null, title: null });
+      useChatStore.getState().resolveConversation(chatTicket(), null);
+    });
+    await settle();
+    expect(panel()!.querySelector('[data-live-run]')).toBeNull();
+
+    // 돌아온 대화의 실행이 아직 진행 중이면 통신 계층이 처음부터 다시 보내 다시 그려집니다
+    await act(async () => transport().emit(progressIn('r1', 'c1', '다시 받은 문장')));
+    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('다시 받은 문장');
+  });
+});

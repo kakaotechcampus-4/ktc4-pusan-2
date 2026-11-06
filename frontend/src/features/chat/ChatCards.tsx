@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
 import type { Card, ProfileKey, ReassessSide } from '@/types/chat';
 import { ChipList } from './ChatChips';
+import { plain, reassessRows } from './chatCardRows';
 import { asGoal, goalText } from './chatGoal';
 import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
 import type { DecideResult, UndoResult } from './chatTransport';
@@ -304,12 +305,13 @@ function ReassessCard({ card }: { card: Extract<Card, { type: 'REASSESS_RESULT' 
       b: sideValue(card.after.dimensions[d], dimensionStatusLabel),
       changed: changed.has(`dimensions.${d}`),
     })),
+    // AI 는 기준 판정이 바뀌었는지만 한 덩어리(`criteria_results`)로 알려 줘서, 줄마다 전 · 후를 직접 견줍니다
     ...Array.from({ length: critCount }, (_, i) => ({
       key: `criteria.${i}`,
       name: critName(i),
       a: sideValue(crit(card.before, i), judgeStatusLabel),
       b: sideValue(crit(card.after, i), judgeStatusLabel),
-      changed: changed.has('criteria_results'),
+      changed: crit(card.before, i) !== crit(card.after, i),
     })),
   ];
   // 대본을 보고 한 발표로 다시 평가해 점수가 오르면 함께 알립니다
@@ -382,13 +384,6 @@ function StartPracticeCard({ pitchId }: { pitchId: string }) {
   );
 }
 
-/** 바뀌는 내용 한 줄 — 값은 받은 그대로 글자로 */
-const plain = (v: unknown) => {
-  if (v === null || v === undefined) return '없음';
-  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
-  return JSON.stringify(v);
-};
-
 function AskConfirmCard({
   card,
   actions,
@@ -397,14 +392,27 @@ function AskConfirmCard({
   actions: CardActions;
 }) {
   const { busy, run } = useBusy();
-  const keys = [...new Set([...Object.keys(card.before ?? {}), ...Object.keys(card.after)])];
+  // 결정이 받아들여지면 카드가 사라질 때까지 버튼을 잠가 둡니다 — 다음 진행 신호가 와야 카드가 빠집니다
+  const [decided, setDecided] = useState(false);
+  const locked = busy || decided;
+  const rows =
+    card.action_type === 'REASSESS'
+      ? reassessRows(card.before, card.after)
+      : [...new Set([...Object.keys(card.before ?? {}), ...Object.keys(card.after)])].map((k) => ({
+          key: k,
+          label: k,
+          value: `${card.before ? `${plain(card.before[k])} → ` : ''}${plain(card.after[k])}`,
+        }));
   // 목표 저장은 전 · 후가 목표(문서 5-2) — 목표 문장으로 그립니다. 모양이 다르면 받은 칸 그대로
   const after = card.action_type === 'SAVE_GOAL' ? asGoal(card.after) : null;
   const beforeGoal = card.before === null ? null : asGoal(card.before);
   const goalChange =
     after && (card.before === null || beforeGoal) ? { after, before: beforeGoal } : null;
   const decide = (decision: 'APPROVE' | 'REJECT') => {
-    if (!busy) void run(() => actions.decide(card.action_id, decision, card.args_hash));
+    if (locked) return;
+    void run(() => actions.decide(card.action_id, decision, card.args_hash)).then((result) => {
+      if (result === 'decided') setDecided(true);
+    });
   };
   const until = new Date(card.expires_at).toLocaleTimeString('ko-KR', {
     hour: 'numeric',
@@ -422,15 +430,12 @@ function AskConfirmCard({
           <dd>{goalText(goalChange.after)}</dd>
         </dl>
       ) : (
-        keys.length > 0 && (
-          <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs">
-            {keys.map((k) => (
-              <div key={k} className="contents">
-                <dt className="text-stone">{k}</dt>
-                <dd>
-                  {card.before ? `${plain(card.before[k])} → ` : ''}
-                  {plain(card.after[k])}
-                </dd>
+        rows.length > 0 && (
+          <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs" data-change-rows="">
+            {rows.map((row) => (
+              <div key={row.key} className="contents">
+                <dt className="text-stone">{row.label}</dt>
+                <dd>{row.value}</dd>
               </div>
             ))}
           </dl>
@@ -445,7 +450,7 @@ function AskConfirmCard({
       <div className="mt-1 flex gap-2">
         <button
           type="button"
-          aria-disabled={busy}
+          aria-disabled={locked}
           onClick={() => decide('APPROVE')}
           className={BUTTON_CLASS}
         >
@@ -453,7 +458,7 @@ function AskConfirmCard({
         </button>
         <button
           type="button"
-          aria-disabled={busy}
+          aria-disabled={locked}
           onClick={() => decide('REJECT')}
           className={BUTTON_CLASS}
         >

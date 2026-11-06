@@ -120,7 +120,9 @@ export function StoredAnswer({ message, actions }: { message: ChatMessage; actio
         <p className="mt-1 text-xs text-stone">{PROGRESS_DROPPED_TEXT}</p>
       )}
       <CardList
-        cards={answer.cards}
+        // 지난 메시지의 승인 확인 카드는 버튼 없는 대체 표시로 바뀌어 옵니다(`readMessage`). "새로고침해 주세요" 는
+        // 새로고침해도 같아 틀린 안내라 그리지 않습니다 — 만료 · 취소 사정은 BE 가 저장한 고정 문장이 알립니다
+        cards={answer.cards.filter((c) => c.ok || c.type !== 'ASK_CONFIRM')}
         runId={message.run_id}
         expired={isExpired(message.status)}
         actions={actions}
