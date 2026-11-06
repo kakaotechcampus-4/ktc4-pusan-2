@@ -23,7 +23,7 @@ from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.conversation import owned_sources
 from pitch_coach_backend.module.chat.service.goal_check import close_goal_lease
 from pitch_coach_backend.module.chat.service.run import mark_cancelled
-from pitch_coach_backend.module.chat.service.stale import uses_deleted
+from pitch_coach_backend.module.chat.service.stale import run_source_ids, uses_deleted
 from pitch_coach_backend.module.chat.service.waiting import (
     CANCELLED_TEXT,
     close_waiting,
@@ -218,18 +218,11 @@ def _uses_deleted_sources(db: Session, run: ChatRun) -> bool:
     """실행이 읽은 피치 · Take 가 지워졌거나 남의 것인지. 진행 전체를 가릴 때 쓴다.
 
     정리 작업(cleanup.py `_mask_runs`)이 1시간마다 비우지만 그 사이에도 보이면 안 되므로
-    메시지 목록처럼 읽을 때 다시 본다(12-2 ①). 보는 근거도 정리 작업과 같다.
+    메시지 목록처럼 읽을 때 다시 본다(12-2 ①). 보는 근거는 `run_source_ids` 로 정리 작업과 같다.
     """
-    read = run.read_sources or {}
-    pitch_ids = set(read.get("pitches") or [])
-    take_ids = {
-        *(read.get("takes") or []),
-        *(
-            take_id
-            for action_take_ids in ChatApiRepository(db).action_source_take_ids(run.id)
-            for take_id in action_take_ids or []
-        ),
-    }
+    pitch_ids, take_ids = run_source_ids(
+        run.read_sources, ChatApiRepository(db).action_source_take_ids(run.id)
+    )
     if not pitch_ids and not take_ids:
         return False
     current = owned_sources(db, run.user_id, pitch_ids, take_ids)
