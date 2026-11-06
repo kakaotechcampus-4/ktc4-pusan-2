@@ -7,8 +7,9 @@ import bisect
 import logging
 import uuid
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
@@ -17,16 +18,21 @@ from pitch_coach_backend.core.database import in_session as _in_session
 from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.adapter.ai_client import request_analyze, request_rescore
-from pitch_coach_backend.module.take.ai_response import CoverageCallError, validate_coverage_reply
+from pitch_coach_backend.module.take.ai_response import CoverageCallError, coverage_to_store
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    AWAITING_CONFIRMATION,
+    COVERAGE_CANDIDATE_KIND,
+    COVERAGE_KIND,
+    REVIEWING,
+    SCORING,
+    CoverageOutcome,
+)
 
 logger = logging.getLogger(__name__)
 
-
-COVERAGE_KIND = "SCRIPT_COVERAGE"
-
-COVERAGE_CANDIDATE_KIND = "SCRIPT_COVERAGE_PENDING"
 
 COVERAGE_RETRYABLE_FAILED_CODES = frozenset(
     {"LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"}
@@ -88,8 +94,8 @@ def speak_accuracy(payload: Mapping[str, Any]) -> int | None:
 def _coverage_open(take: Take | None) -> bool:
     return (
         take is not None
-        and take.status == "ANALYZING"
-        and take.analysis_stage == "SCORING"
+        and take.status == ANALYZING
+        and take.analysis_stage == SCORING
         and take.analysis_hold_reason is None
     )
 
@@ -100,6 +106,19 @@ def _lock_open_take(
     # 이 작업이 아직 표식을 쥐고 있을 때만 쓴다. 이어받힌 작업의 늦은 응답은 여기서 걸러진다
     take = take_repository.lock_coverage(take_id, requested_at)
     return take if _coverage_open(take) else None
+
+
+@dataclass(frozen=True)
+class CoverageJob:
+    """표식을 잡은 채점 작업이 이어 갈 재료."""
+
+    requested_at: datetime
+    body: dict
+    script_version_id: str
+    retry_used: bool
+    rescore_retry_used: bool
+    confirmed: tuple[dict, int] | None
+    candidate: dict | None
 
 
 def _mark_retry_used(db: Session, take_id: uuid.UUID, requested_at: datetime, column: str) -> bool:
@@ -115,14 +134,11 @@ def _mark_retry_used(db: Session, take_id: uuid.UUID, requested_at: datetime, co
 def _save_confirmed(
     db: Session, take_id: uuid.UUID, requested_at: datetime, reply: dict
 ) -> dict | None:
-    validate_coverage_reply(reply, take_id)
+    payload, meta = coverage_to_store(reply, take_id)
     take_repository = TakeRepository(db)
-    payload = {key: value for key, value in reply.items() if key != "meta"}
     if _lock_open_take(
         take_repository, take_id, requested_at
-    ) is None or not take_repository.insert_ai_result(
-        take_id, COVERAGE_KIND, payload, reply.get("meta")
-    ):
+    ) is None or not take_repository.insert_ai_result(take_id, COVERAGE_KIND, payload, meta):
         db.rollback()
         return None
     take_repository.upsert_summary_speak_accuracy(take_id, speak_accuracy(payload))
@@ -151,13 +167,12 @@ def _save_candidate(
 def _apply_merged(
     db: Session, take_id: uuid.UUID, requested_at: datetime, base_revision: int, reply: dict
 ) -> bool:
-    validate_coverage_reply(reply, take_id)
+    payload, meta = coverage_to_store(reply, take_id)
     take_repository = TakeRepository(db)
-    payload = {key: value for key, value in reply.items() if key != "meta"}
     if _lock_open_take(
         take_repository, take_id, requested_at
     ) is None or not take_repository.replace_ai_result(
-        take_id, COVERAGE_KIND, base_revision, payload, reply.get("meta")
+        take_id, COVERAGE_KIND, base_revision, payload, meta
     ):
         db.rollback()
         return False
@@ -176,7 +191,7 @@ def _hold_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) -> N
     db.commit()
 
 
-def _conclude_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) -> str:
+def _conclude_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) -> CoverageOutcome:
     take_repository = TakeRepository(db)
     take = take_repository.lock_coverage(take_id, requested_at)
     if take is None:
@@ -191,10 +206,10 @@ def _conclude_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) 
         return "HELD"
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     if confirmed is not None and confirmed.payload.get("confirmations"):
-        take_repository.set_analysis_stage(take_id, "AWAITING_CONFIRMATION")
+        take_repository.set_analysis_stage(take_id, AWAITING_CONFIRMATION)
         db.commit()
         return "AWAITING_CONFIRMATION"
-    take_repository.set_analysis_stage(take_id, "REVIEWING")
+    take_repository.set_analysis_stage(take_id, REVIEWING)
     db.commit()
     return "NO_COVERAGE" if confirmed is None else "READY_FOR_REVIEW"
 
@@ -202,10 +217,11 @@ def _conclude_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) 
 async def _merge_candidate(
     session_factory: Callable[[], Session],
     take_id: uuid.UUID,
-    requested_at: datetime,
-    rubrics: list[dict],
+    job: CoverageJob,
     candidate: dict,
 ) -> None:
+    requested_at = job.requested_at
+    rubrics = job.body["rubrics"]
     body = {
         "take_id": str(take_id),
         "evaluations": candidate["evaluations"],
@@ -217,7 +233,7 @@ async def _merge_candidate(
     try:
         reply = await request_rescore(body, request_id)
     except CoverageCallError as e:
-        logger.warning("take %s: coverage merge rescore failed: %s", take_id, e)
+        logger.warning("take=%s coverage merge rescore failed: %s", take_id, e)
         if not e.retryable or not await _in_session(
             session_factory, _mark_retry_used, take_id, requested_at, "coverage_rescore_retry_used"
         ):
@@ -226,25 +242,25 @@ async def _merge_candidate(
         try:
             reply = await request_rescore(body, request_id)
         except CoverageCallError as retry_error:
-            logger.warning("take %s: coverage merge rescore retry failed: %s", take_id, retry_error)
+            logger.warning("take=%s coverage merge rescore retry failed: %s", take_id, retry_error)
             await _in_session(session_factory, _hold_coverage, take_id, requested_at)
             return
     if not await _in_session(
         session_factory, _apply_merged, take_id, requested_at, candidate["base_revision"], reply
     ):
-        logger.info("take %s: stale coverage merge result discarded", take_id)
+        logger.info("take=%s stale coverage merge result discarded", take_id)
 
 
 async def _retry_failed_slides(
     session_factory: Callable[[], Session],
     take_id: uuid.UUID,
-    requested_at: datetime,
-    body: dict,
-    script_version_id: str,
+    job: CoverageJob,
     confirmed: dict,
     revision: int,
+    *,
     retry_used: bool,
 ) -> None:
+    requested_at, body = job.requested_at, job.body
     targets = retry_targets(confirmed.get("failed", []))
     if (
         not targets
@@ -257,66 +273,49 @@ async def _retry_failed_slides(
     try:
         reply = await request_analyze({**body, "slide_numbers": targets}, uuid.uuid4().hex)
     except CoverageCallError as e:
-        logger.warning("take %s: coverage partial retry failed: %s", take_id, e)
+        logger.warning("take=%s coverage partial retry failed: %s", take_id, e)
         return
     merged = merge_retry(confirmed, reply, targets)
     if merged is None:
         return
     candidate = {
-        "script_version_id": script_version_id,
+        "script_version_id": job.script_version_id,
         "base_revision": revision,
         "evaluations": merged[0],
         "failed": merged[1],
         "retry_meta": reply.get("meta"),
     }
     if await _in_session(session_factory, _save_candidate, take_id, requested_at, candidate):
-        await _merge_candidate(session_factory, take_id, requested_at, body["rubrics"], candidate)
+        await _merge_candidate(session_factory, take_id, job, candidate)
 
 
 async def _first_analyze(
-    session_factory: Callable[[], Session],
-    take_id: uuid.UUID,
-    requested_at: datetime,
-    body: dict,
-    script_version_id: str,
-    retry_used: bool,
+    session_factory: Callable[[], Session], take_id: uuid.UUID, job: CoverageJob
 ) -> None:
     # 전체 재시도를 보낸 뒤 확정본을 저장하기 전에 재시작했을 수 있다.
     # 이미 쓴 한도를 새 최초 호출로 취급하지 않는다.
-    if retry_used:
+    if job.retry_used:
         return
+    requested_at, body = job.requested_at, job.body
     request_id = uuid.uuid4().hex
     try:
         reply = await request_analyze(body, request_id)
     except CoverageCallError as e:
-        logger.warning("take %s: coverage analyze failed: %s", take_id, e)
-        if (
-            not e.retryable
-            or retry_used
-            or not await _in_session(
-                session_factory, _mark_retry_used, take_id, requested_at, "coverage_retry_used"
-            )
+        logger.warning("take=%s coverage analyze failed: %s", take_id, e)
+        if not e.retryable or not await _in_session(
+            session_factory, _mark_retry_used, take_id, requested_at, "coverage_retry_used"
         ):
             return
         try:
             reply = await request_analyze(body, request_id)
         except CoverageCallError as retry_error:
-            logger.warning("take %s: coverage analyze retry failed: %s", take_id, retry_error)
+            logger.warning("take=%s coverage analyze retry failed: %s", take_id, retry_error)
             return
         await _in_session(session_factory, _save_confirmed, take_id, requested_at, reply)
         return
     confirmed = await _in_session(session_factory, _save_confirmed, take_id, requested_at, reply)
     if confirmed is not None:
-        await _retry_failed_slides(
-            session_factory,
-            take_id,
-            requested_at,
-            body,
-            script_version_id,
-            confirmed,
-            0,
-            retry_used,
-        )
+        await _retry_failed_slides(session_factory, take_id, job, confirmed, 0, retry_used=False)
 
 
 def _waiting_for_rubric(db: Session, take: Take) -> bool:
@@ -326,12 +325,15 @@ def _waiting_for_rubric(db: Session, take: Take) -> bool:
     return started_at is not None and datetime.now(UTC) < started_at + RUBRIC_WAIT
 
 
-def _claim_coverage(db: Session, take_id: uuid.UUID, takeover: bool) -> dict | None:
+def _claim_coverage(
+    db: Session, take_id: uuid.UUID, takeover: bool
+) -> CoverageJob | Literal["RUBRIC_PENDING"] | None:
     """채점 작업 표식을 잡고 이어 갈 재료를 읽는다.
 
     못 잡았으면(다른 작업이 채점 중이거나 단계가 넘어감) None 이다.
 
-    기준을 기다리는 동안에는 잡지 않는다 (잡으면 기다리는 동안 다른 작업이 이어받지 못한다).
+    기준을 기다리는 동안에는 잡지 않고 `RUBRIC_PENDING` 을 돌려준다 (잡으면 기다리는 동안 다른
+    작업이 이어받지 못한다).
     """
     take_repository = TakeRepository(db)
     take = take_repository.get_take(take_id)
@@ -342,7 +344,7 @@ def _claim_coverage(db: Session, take_id: uuid.UUID, takeover: bool) -> dict | N
         and take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND) is None
         and _waiting_for_rubric(db, take)
     ):
-        return {"rubric_pending": True}
+        return "RUBRIC_PENDING"
     requested_at = take_repository.claim_coverage(take_id, takeover=takeover)
     if requested_at is None:
         db.rollback()
@@ -354,10 +356,9 @@ def _claim_coverage(db: Session, take_id: uuid.UUID, takeover: bool) -> dict | N
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     candidate = take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND)
     slides = script_service.script_slides(db, take.script_version_id)
-    job = {
-        "rubric_pending": False,
-        "requested_at": requested_at,
-        "body": {
+    job = CoverageJob(
+        requested_at=requested_at,
+        body={
             "take_id": str(take_id),
             "slides": slide_stt(
                 [slide.slide_number for slide in slides],
@@ -367,12 +368,12 @@ def _claim_coverage(db: Session, take_id: uuid.UUID, takeover: bool) -> dict | N
             "rubrics": [slide.rubric for slide in slides if slide.rubric is not None],
             "slide_numbers": None,
         },
-        "script_version_id": str(take.script_version_id),
-        "retry_used": take.coverage_retry_used,
-        "rescore_retry_used": take.coverage_rescore_retry_used,
-        "confirmed": (confirmed.payload, confirmed.revision) if confirmed else None,
-        "candidate": candidate.payload if candidate else None,
-    }
+        script_version_id=str(take.script_version_id),
+        retry_used=take.coverage_retry_used,
+        rescore_retry_used=take.coverage_rescore_retry_used,
+        confirmed=(confirmed.payload, confirmed.revision) if confirmed else None,
+        candidate=candidate.payload if candidate else None,
+    )
     db.commit()
     return job
 
@@ -382,7 +383,7 @@ async def analyze_script_coverage(
     session_factory: Callable[[], Session] = SessionLocal,
     *,
     takeover: bool = False,
-) -> str:
+) -> CoverageOutcome:
     """Take 하나의 대본 전달도 채점을 저장된 것 다음 걸음부터 끝까지 한다 (architecture.md 1-7).
 
     최초 호출부터 단계 전환까지 표식(`takes.coverage_requested_at`)을 잡은 작업 하나만 한다.
@@ -391,34 +392,17 @@ async def analyze_script_coverage(
     job = await _in_session(session_factory, _claim_coverage, take_id, takeover)
     if job is None:
         return "SKIPPED"
-    if job["rubric_pending"]:
+    if job == "RUBRIC_PENDING":
         return "RUBRIC_PENDING"
-    requested_at = job["requested_at"]
-    body = job["body"]
-    if job["candidate"] is not None:
-        if job["rescore_retry_used"]:
-            await _in_session(session_factory, _hold_coverage, take_id, requested_at)
+    if job.candidate is not None:
+        if job.rescore_retry_used:
+            await _in_session(session_factory, _hold_coverage, take_id, job.requested_at)
         else:
-            await _merge_candidate(
-                session_factory, take_id, requested_at, body["rubrics"], job["candidate"]
-            )
-    elif job["confirmed"] is None:
-        await _first_analyze(
-            session_factory,
-            take_id,
-            requested_at,
-            body,
-            job["script_version_id"],
-            job["retry_used"],
-        )
+            await _merge_candidate(session_factory, take_id, job, job.candidate)
+    elif job.confirmed is None:
+        await _first_analyze(session_factory, take_id, job)
     else:
         await _retry_failed_slides(
-            session_factory,
-            take_id,
-            requested_at,
-            body,
-            job["script_version_id"],
-            *job["confirmed"],
-            job["retry_used"],
+            session_factory, take_id, job, *job.confirmed, retry_used=job.retry_used
         )
-    return await _in_session(session_factory, _conclude_coverage, take_id, requested_at)
+    return await _in_session(session_factory, _conclude_coverage, take_id, job.requested_at)

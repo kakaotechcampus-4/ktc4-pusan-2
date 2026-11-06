@@ -14,12 +14,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.pitch.service import standard as standard_service
-from pitch_coach_backend.module.take.coach_repository import (
-    REVIEW,
-    TAKE_RESULT,
-    CoachRepository,
-    is_waiting_for_result,
-)
+from pitch_coach_backend.module.take.coach_repository import CoachRepository, is_waiting_for_result
 from pitch_coach_backend.module.take.dto import (
     FinalizeRows,
     MetricSecond,
@@ -34,6 +29,7 @@ from pitch_coach_backend.module.take.dto import (
 from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import json_ints, parse_mission_ids
+from pitch_coach_backend.module.take.states import REVIEW, SCORING, TAKE_RESULT
 from pitch_coach_backend.module.user import service as user_service
 
 logger = logging.getLogger(__name__)
@@ -281,7 +277,7 @@ def save_take_result(
     repo.save_ai_result(take_id, TAKE_RESULT, take_result, meta)
     repo.save_summary_measures(take_id, measures)
     take.duration_sec = duration_sec
-    take.analysis_stage = "SCORING"
+    take.analysis_stage = SCORING
     take.analysis_stage_at = func.now()
     if not take.raw_data_consent:
         # Take 결과가 생기면 replay 에 쓸 일이 없다

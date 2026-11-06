@@ -20,6 +20,7 @@ from pitch_coach_backend.module.take.exception import (
     NonExistentTake,
 )
 from pitch_coach_backend.module.take.repository import TakeRepository, parse_mission_ids
+from pitch_coach_backend.module.take.states import COVERAGE_KIND, DONE, FAILED, REVIEW, TAKE_RESULT
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +75,13 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
     take = take_repository.get_take(take_id)
     if take is None:
         raise NonExistentTake()
-    payloads = take_repository.get_ai_payloads(take_id, ("TAKE_RESULT", "SCRIPT_COVERAGE"))
-    coverage = payloads.get("SCRIPT_COVERAGE")
+    payloads = take_repository.get_ai_payloads(take_id, (TAKE_RESULT, COVERAGE_KIND))
+    coverage = payloads.get(COVERAGE_KIND)
     # 전체 실패 진단은 저장본에 보존하고 리뷰에는 채점 없음으로 보낸다.
     if coverage is not None and not coverage.get("evaluations"):
         coverage = None
     return ReviewRequestDTO(
-        take_result=payloads.get("TAKE_RESULT"),
+        take_result=payloads.get(TAKE_RESULT),
         script_coverage=coverage,
         previous_takes=_build_previous_takes(take_repository, take.pitch_id, take.take_number),
         previous_recurring_issues=_build_previous_recurring_issues(
@@ -117,7 +118,7 @@ def save_review(
         return False
     take_repository.save_ai_result(
         take_id,
-        "REVIEW",
+        REVIEW,
         review_data.model_dump(mode="json", exclude={"meta"}),
         review_data.meta.model_dump(mode="json"),
     )
@@ -141,8 +142,8 @@ def save_review(
             result.mission_id, take_id, result.status, result.observed
         )
     take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
-    take_repository.set_analysis_stage(take_id, "DONE")
-    take_repository.complete_take(take_id, "DONE")
+    take_repository.set_analysis_stage(take_id, DONE)
+    take_repository.complete_take(take_id, DONE)
     db.commit()
     return True
 
@@ -152,7 +153,7 @@ def fail_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> bool:
     if repository.lock_review(take_id, request_id) is None:
         db.rollback()
         return False
-    repository.set_analysis_stage(take_id, "DONE")
-    repository.complete_take(take_id, "FAILED")
+    repository.set_analysis_stage(take_id, DONE)
+    repository.complete_take(take_id, FAILED)
     db.commit()
     return True

@@ -20,10 +20,16 @@ from pitch_coach_backend.module.take.entity import (
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import (
-    ENDED_STATUS,
-    FINALIZING_STAGE,
     TakeRepository,
     finished_order,
+)
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    COMPLETED,
+    FAILED,
+    FINALIZING,
+    READY,
+    RUNNING,
 )
 
 
@@ -36,8 +42,8 @@ class CoachRepository(TakeRepository):
         """
         return self.db.scalar(
             update(Take)
-            .where(Take.id == take_id, Take.status == "READY")
-            .values(status="RUNNING", started_at=func.coalesce(Take.started_at, func.now()))
+            .where(Take.id == take_id, Take.status == READY)
+            .values(status=RUNNING, started_at=func.coalesce(Take.started_at, func.now()))
             .returning(Take.take_number)
         )
 
@@ -113,7 +119,7 @@ class CoachRepository(TakeRepository):
     def latest_completed_take(self, pitch_id: uuid.UUID, *, before: int | None) -> uuid.UUID | None:
         """`COMPLETED` Take 중 가장 늦게 끝난 것 (리뷰가 끝내 실패한 Take 포함). 코칭 계획의 바탕
         Take 다. `before` 가 있으면 번호가 그보다 작은 것만 본다."""
-        query = select(Take.id).where(Take.pitch_id == pitch_id, Take.status == "COMPLETED")
+        query = select(Take.id).where(Take.pitch_id == pitch_id, Take.status == COMPLETED)
         if before is not None:
             query = query.where(Take.take_number < before)
         return self.db.scalar(query.order_by(*finished_order()).limit(1))
@@ -225,7 +231,7 @@ class CoachRepository(TakeRepository):
     def fail_finalizing(self, take_id: uuid.UUID) -> bool:
         """Take 결과를 끝내 만들지 못했다. `FAILED` 로 바꾸고 단계는 그대로 둔다. 바꿨으면 True."""
         result = self.db.execute(
-            update(Take).where(Take.id == take_id, waiting_for_result()).values(status="FAILED")
+            update(Take).where(Take.id == take_id, waiting_for_result()).values(status=FAILED)
         )
         return result.rowcount > 0
 
@@ -242,7 +248,7 @@ class CoachRepository(TakeRepository):
         잠그지 않는다. 잠근 Take id 와 지운 행 수.
         """
         query = select(Take.id).where(
-            Take.status == "FAILED",
+            Take.status == FAILED,
             Take.raw_data_consent.is_(False),
             func.coalesce(Take.ended_at, Take.created_at) < before,
             select(TakeMetricSecond.take_id).where(TakeMetricSecond.take_id == Take.id).exists(),
@@ -262,16 +268,11 @@ class CoachRepository(TakeRepository):
         return expired, result.rowcount
 
 
-REVIEW = "REVIEW"
-
-TAKE_RESULT = "TAKE_RESULT"
-
-
 def waiting_for_result() -> ColumnElement[bool]:
     """Take 결과(finalize)를 기다리는 Take — 상태 `ANALYZING` · 분석 단계 `FINALIZING`."""
-    return and_(Take.status == ENDED_STATUS, Take.analysis_stage == FINALIZING_STAGE)
+    return and_(Take.status == ANALYZING, Take.analysis_stage == FINALIZING)
 
 
 def is_waiting_for_result(take: Take) -> bool:
     """읽어 둔 Take 에 `waiting_for_result` 를 본다."""
-    return take.status == ENDED_STATUS and take.analysis_stage == FINALIZING_STAGE
+    return take.status == ANALYZING and take.analysis_stage == FINALIZING

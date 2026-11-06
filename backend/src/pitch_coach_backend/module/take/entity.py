@@ -6,7 +6,7 @@ presentation_version_id / script_version_id 를 같이 박아둔다.
 
 측정값은 성격에 따라 나뉜다.
   - TakeSummary   : 연습이 끝난 뒤 한 번 계산되는 집계. take 당 1행.
-  - LiveFeedback  : 연습 도중 실시간으로 쌓이는 이벤트. take 당 N행.
+  - LiveFeedback  : 연습 도중 이벤트를 쌓으려던 표. 지금은 읽고 쓰는 곳이 없다.
   - Calibration   : 시작 전 카메라·마이크 점검 결과.
   - Mission       : 결과에서 뽑아낸 다음 연습 과제.
 """

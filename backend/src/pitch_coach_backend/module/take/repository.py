@@ -19,7 +19,23 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
-from pitch_coach_backend.module.take.states import IN_PROGRESS_STATUSES
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    AWAITING_CONFIRMATION,
+    COMPLETED,
+    COVERAGE_CANDIDATE_KIND,
+    COVERAGE_KIND,
+    DONE,
+    FAILED,
+    FINALIZING,
+    IN_PROGRESS_STATUSES,
+    READY,
+    REVIEW,
+    REVIEWING,
+    RUNNING,
+    SCORING,
+    TAKE_RESULT,
+)
 
 
 def last_active_at() -> ColumnElement[datetime]:
@@ -56,7 +72,7 @@ class TakeRepository:
         return self.db.scalar(
             select(
                 select(TakeAIResults.id)
-                .where(TakeAIResults.take_id == take_id, TakeAIResults.kind == "TAKE_RESULT")
+                .where(TakeAIResults.take_id == take_id, TakeAIResults.kind == TAKE_RESULT)
                 .exists()
             )
         )
@@ -76,10 +92,10 @@ class TakeRepository:
             .join(Pitch, Pitch.id == Take.pitch_id)
             .where(
                 Pitch.user_id == user_id,
-                Take.status == "COMPLETED",
+                Take.status == COMPLETED,
                 Take.completed_at >= completed_after,
                 select(TakeAIResults.id)
-                .where(TakeAIResults.take_id == Take.id, TakeAIResults.kind == "TAKE_RESULT")
+                .where(TakeAIResults.take_id == Take.id, TakeAIResults.kind == TAKE_RESULT)
                 .exists(),
             )
             .order_by(Take.completed_at.desc(), Take.id.desc())
@@ -176,9 +192,9 @@ class TakeRepository:
         # 끝난 시각은 알 수 없어 만든 시각으로 적는다
         result = self.db.execute(
             update(Take)
-            .where(Take.status == "READY", *where)
+            .where(Take.status == READY, *where)
             .values(
-                status="FAILED",
+                status=FAILED,
                 end_reason="ABANDONED",
                 ended_at=func.coalesce(Take.ended_at, Take.created_at),
             )
@@ -210,7 +226,7 @@ class TakeRepository:
         12-2). 장치 점검 화면과 Take 를 시작할 때 미션을 싣는 쪽(`coach_repository`)이 이 함수
         하나로 고른다. 리뷰 결과(`REVIEW`)와 `review_status` `DONE` 은 한 트랜잭션에 적힌다.
         """
-        query = select(Take).where(Take.pitch_id == pitch_id, Take.review_status == "DONE")
+        query = select(Take).where(Take.pitch_id == pitch_id, Take.review_status == DONE)
         if before is not None:
             query = query.where(Take.take_number < before)
         return self.db.scalar(query.order_by(*finished_order()).limit(1))
@@ -224,14 +240,12 @@ class TakeRepository:
         rows = self.db.execute(
             select(result.payload, coverage.payload)
             .select_from(Take)
-            .join(result, (result.take_id == Take.id) & (result.kind == "TAKE_RESULT"))
-            .outerjoin(
-                coverage, (coverage.take_id == Take.id) & (coverage.kind == "SCRIPT_COVERAGE")
-            )
+            .join(result, (result.take_id == Take.id) & (result.kind == TAKE_RESULT))
+            .outerjoin(coverage, (coverage.take_id == Take.id) & (coverage.kind == COVERAGE_KIND))
             .where(
                 Take.pitch_id == pitch_id,
                 Take.take_number < standard_take_num,
-                Take.status == "COMPLETED",
+                Take.status == COMPLETED,
             )
             .order_by(Take.take_number.desc())
             .limit(limit)
@@ -248,7 +262,7 @@ class TakeRepository:
             .where(
                 Take.pitch_id == pitch_id,
                 Take.take_number < standard_take_num,
-                TakeAIResults.kind == "REVIEW",
+                TakeAIResults.kind == REVIEW,
             )
             .order_by(*finished_order())
             .limit(1)
@@ -388,8 +402,8 @@ class TakeRepository:
             update(Take)
             .where(
                 Take.id == take_id,
-                Take.status == "ANALYZING",
-                Take.analysis_stage == "SCORING",
+                Take.status == ANALYZING,
+                Take.analysis_stage == SCORING,
                 Take.analysis_hold_reason.is_(None),
                 *(() if takeover else (free,)),
             )
@@ -408,8 +422,8 @@ class TakeRepository:
             select(Take)
             .where(
                 Take.id == take_id,
-                Take.status == "ANALYZING",
-                Take.analysis_stage == "SCORING",
+                Take.status == ANALYZING,
+                Take.analysis_stage == SCORING,
                 Take.coverage_requested_at == requested_at,
             )
             .with_for_update()
@@ -431,8 +445,8 @@ class TakeRepository:
             update(Take)
             .where(
                 Take.id == take_id,
-                Take.status == "ANALYZING",
-                Take.analysis_stage == "AWAITING_CONFIRMATION",
+                Take.status == ANALYZING,
+                Take.analysis_stage == AWAITING_CONFIRMATION,
                 Take.analysis_hold_reason.is_(None),
                 Take.analysis_stage_at > func.clock_timestamp() - CONFIRMATION_WAIT,
                 confirmation_free(),
@@ -447,8 +461,8 @@ class TakeRepository:
             select(Take)
             .where(
                 Take.id == take_id,
-                Take.status == "ANALYZING",
-                Take.analysis_stage == "AWAITING_CONFIRMATION",
+                Take.status == ANALYZING,
+                Take.analysis_stage == AWAITING_CONFIRMATION,
                 Take.analysis_hold_reason.is_(None),
                 Take.coverage_requested_at == requested_at,
             )
@@ -469,12 +483,12 @@ class TakeRepository:
             update(Take)
             .where(
                 Take.id == take_id,
-                Take.status == "ANALYZING",
-                Take.analysis_stage == "AWAITING_CONFIRMATION",
+                Take.status == ANALYZING,
+                Take.analysis_stage == AWAITING_CONFIRMATION,
                 Take.analysis_hold_reason.is_(None),
                 confirmation_free(),
             )
-            .values(analysis_stage="REVIEWING", analysis_stage_at=func.now())
+            .values(analysis_stage=REVIEWING, analysis_stage_at=func.now())
         )
         return result.rowcount > 0
 
@@ -484,8 +498,8 @@ class TakeRepository:
             self.db.scalar(
                 select(Take.id).where(
                     Take.id == take_id,
-                    Take.status == "ANALYZING",
-                    Take.analysis_stage == "AWAITING_CONFIRMATION",
+                    Take.status == ANALYZING,
+                    Take.analysis_stage == AWAITING_CONFIRMATION,
                     Take.analysis_hold_reason.is_(None),
                     or_(
                         Take.analysis_stage_at > func.clock_timestamp() - CONFIRMATION_WAIT,
@@ -570,7 +584,7 @@ class TakeRepository:
             update(Take)
             .where(Take.id == take_id)
             .values(
-                status="COMPLETED",
+                status=COMPLETED,
                 review_status=review_status,
                 completed_at=func.now(),
                 review_request_id=None,
@@ -599,19 +613,19 @@ class TakeRepository:
         분석 단계는 `FINALIZING` 이다 — 이어서 Take 결과(finalize)를 만든다. 문장 끝 신호가
         주어지면 같이 쓰고, 없으면(메모리에 없음) 있던 값을 둔다.
         """
-        abandoned = and_(Take.status == "FAILED", Take.end_reason == "ABANDONED")
+        abandoned = and_(Take.status == FAILED, Take.end_reason == "ABANDONED")
         values: dict[str, Any] = {
-            "status": ENDED_STATUS,
+            "status": ANALYZING,
             "end_reason": end_reason,
             "ended_at": func.coalesce(Take.ended_at, func.now()),
-            "analysis_stage": FINALIZING_STAGE,
+            "analysis_stage": FINALIZING,
             "analysis_stage_at": func.now(),
         }
         if utterance_ends is not None:
             values["utterance_ends"] = utterance_ends
         result = self.db.execute(
             update(Take)
-            .where(Take.id == take_id, or_(Take.status == "RUNNING", abandoned))
+            .where(Take.id == take_id, or_(Take.status == RUNNING, abandoned))
             .values(**values)
         )
         return result.rowcount > 0
@@ -631,7 +645,7 @@ class TakeRepository:
         `mark_ended` 처럼 UPDATE 하나로, 진행 중일 때만 바꾼다.
         """
         values: dict[str, Any] = {
-            "status": "FAILED",
+            "status": FAILED,
             "end_reason": end_reason,
             "ended_at": func.coalesce(Take.ended_at, ended_at),
         }
@@ -682,7 +696,7 @@ class TakeRepository:
             .outerjoin(Calibration, Calibration.take_id == Take.id)
             .outerjoin(
                 TakeAIResults,
-                (TakeAIResults.take_id == Take.id) & (TakeAIResults.kind == "REVIEW"),
+                (TakeAIResults.take_id == Take.id) & (TakeAIResults.kind == REVIEW),
             )
             .where(Pitch.user_id == user_id, Take.started_at.is_not(None))
             .order_by(Take.started_at.desc(), Take.take_number.desc())
@@ -699,8 +713,8 @@ class TakeRepository:
         limit: int = 100,
     ) -> list[uuid.UUID]:
         stmt = select(Take.id).where(
-            Take.status == "ANALYZING",
-            Take.analysis_stage.in_(("SCORING", "AWAITING_CONFIRMATION", "REVIEWING")),
+            Take.status == ANALYZING,
+            Take.analysis_stage.in_((SCORING, AWAITING_CONFIRMATION, REVIEWING)),
             Take.analysis_hold_reason.is_(None),
         )
         if stale_before is not None:
@@ -716,7 +730,7 @@ class TakeRepository:
         마지막 확정 전사를 저장한 시각 중 가장 늦은 것으로 대신한다.
         """
         rows = self.db.execute(
-            select(Take.id, last_active_at()).where(Take.status == "RUNNING")
+            select(Take.id, last_active_at()).where(Take.status == RUNNING)
         ).all()
         return [(take_id, last_active_at) for take_id, last_active_at in rows]
 
@@ -739,15 +753,15 @@ class TakeRepository:
         리뷰가 답을 반영하기 전 채점을 읽게 된다 (같은 문서 1-7).
         """
         awaiting = (
-            Take.analysis_stage == "AWAITING_CONFIRMATION"
+            Take.analysis_stage == AWAITING_CONFIRMATION
             if takeover
-            else and_(Take.analysis_stage == "AWAITING_CONFIRMATION", confirmation_free())
+            else and_(Take.analysis_stage == AWAITING_CONFIRMATION, confirmation_free())
         )
         abandoned_review = (
-            Take.analysis_stage == "REVIEWING"
+            Take.analysis_stage == REVIEWING
             if takeover
             else and_(
-                Take.analysis_stage == "REVIEWING",
+                Take.analysis_stage == REVIEWING,
                 Take.analysis_stage_at < func.now() - REVIEW_STALE_AFTER,
             )
         )
@@ -755,23 +769,23 @@ class TakeRepository:
             update(Take)
             .where(
                 Take.id == take_id,
-                Take.status == "ANALYZING",
+                Take.status == ANALYZING,
                 Take.analysis_hold_reason.is_(None),
                 ~select(TakeAIResults.id)
                 .where(
                     TakeAIResults.take_id == take_id,
-                    TakeAIResults.kind == "SCRIPT_COVERAGE_PENDING",
+                    TakeAIResults.kind == COVERAGE_CANDIDATE_KIND,
                 )
                 .exists(),
                 or_(
-                    and_(Take.analysis_stage == "REVIEWING", Take.review_request_id.is_(None)),
+                    and_(Take.analysis_stage == REVIEWING, Take.review_request_id.is_(None)),
                     awaiting,
                     Take.analysis_stage.is_(None),
                     abandoned_review,
                 ),
             )
             .values(
-                analysis_stage="REVIEWING",
+                analysis_stage=REVIEWING,
                 analysis_stage_at=func.now(),
                 review_request_id=request_id or uuid.uuid4(),
             )
@@ -784,8 +798,8 @@ class TakeRepository:
             select(Take)
             .where(
                 Take.id == take_id,
-                Take.status == "ANALYZING",
-                Take.analysis_stage == "REVIEWING",
+                Take.status == ANALYZING,
+                Take.analysis_stage == REVIEWING,
                 Take.review_request_id == request_id,
                 Take.analysis_hold_reason.is_(None),
             )
@@ -822,7 +836,7 @@ class TakeRepository:
         ).first()
         if stage is None:
             return None
-        return stage[0] in (None, FINALIZING_STAGE)
+        return stage[0] in (None, FINALIZING)
 
 
 REVIEW_STALE_AFTER = timedelta(minutes=2)
@@ -852,11 +866,6 @@ def finished_order() -> tuple[ColumnElement[Any], ...]:
     칸을 만들기 전에 끝나 completed_at 이 없는 Take 는 뒤로 가고, 같은 시각이면 번호가 큰 것이다.
     """
     return (Take.completed_at.desc().nulls_last(), Take.take_number.desc())
-
-
-ENDED_STATUS = "ANALYZING"
-
-FINALIZING_STAGE = "FINALIZING"
 
 
 def json_ints(values: Any) -> list[int]:

@@ -15,7 +15,11 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.database import in_session as _in_session
 from pitch_coach_backend.module.pitch.service import script as script_service
-from pitch_coach_backend.module.take.ai_response import CoverageCallError, confirmation_items
+from pitch_coach_backend.module.take.ai_response import (
+    CoverageCallError,
+    confirmation_items,
+    coverage_to_store,
+)
 from pitch_coach_backend.module.take.dto import ConfirmationAnswerDTO, ConfirmationsDTO
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.exception import (
@@ -27,14 +31,20 @@ from pitch_coach_backend.module.take.exception import (
 from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT, TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    AWAITING_CONFIRMATION,
+    COVERAGE_KIND,
+    REVIEWING,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _awaiting(take: Take) -> bool:
     return (
-        take.status == "ANALYZING"
-        and take.analysis_stage == "AWAITING_CONFIRMATION"
+        take.status == ANALYZING
+        and take.analysis_stage == AWAITING_CONFIRMATION
         and take.analysis_hold_reason is None
     )
 
@@ -51,7 +61,7 @@ def get_confirmations_service(
     take = take_repository.get_owned(take_id, user_id)
     if take is None:
         raise NonExistentTake()
-    confirmed = take_repository.get_ai_result(take_id, coverage_service.COVERAGE_KIND)
+    confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     if not _awaiting(take) or confirmed is None:
         return ConfirmationsDTO(
             take_id=take.id, analysis_stage=take.analysis_stage, remaining_ms=None, items=[]
@@ -93,7 +103,7 @@ def _claim(
     if take is None:
         raise NonExistentTake()
     requested_at = take_repository.claim_confirmation(take_id)
-    confirmed = take_repository.get_ai_result(take_id, coverage_service.COVERAGE_KIND)
+    confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     if requested_at is None or confirmed is None:
         db.rollback()
         raise ConfirmationClosed()
@@ -124,21 +134,19 @@ def _apply(
 
     표식과 읽은 revision 이 그대로일 때만 반영한다.
     """
+    payload, meta = coverage_to_store(reply, take_id)
     take_repository = TakeRepository(db)
-    payload = {key: value for key, value in reply.items() if key != "meta"}
     take = take_repository.lock_confirmation(take_id, requested_at)
     if take is None:
         db.rollback()
         return False
-    if not take_repository.replace_ai_result(
-        take_id, coverage_service.COVERAGE_KIND, revision, payload, reply.get("meta")
-    ):
+    if not take_repository.replace_ai_result(take_id, COVERAGE_KIND, revision, payload, meta):
         # 표식 아래에서는 생기지 않지만 생기면 표식을 놓아 리뷰가 막히지 않게 한다
         db.rollback()
         _release(db, take_id, requested_at)
         return False
     take_repository.upsert_summary_speak_accuracy(take_id, coverage_service.speak_accuracy(payload))
-    take_repository.set_analysis_stage(take_id, "REVIEWING")
+    take_repository.set_analysis_stage(take_id, REVIEWING)
     take.coverage_requested_at = None
     db.commit()
     return True
@@ -155,7 +163,7 @@ async def _rescore(take_id: uuid.UUID, body: dict) -> dict:
     try:
         return await coverage_service.request_rescore(body, request_id)
     except CoverageCallError as e:
-        logger.warning("take %s: confirmation rescore failed: %s", take_id, e)
+        logger.warning("take=%s confirmation rescore failed: %s", take_id, e)
         if not e.retryable:
             raise
     return await coverage_service.request_rescore(body, request_id)
@@ -178,7 +186,7 @@ async def send_confirmations_service(
         try:
             reply = await _rescore(take_id, job["body"])
         except CoverageCallError as e:
-            logger.warning("take %s: confirmation rescore gave up: %s", take_id, e)
+            logger.warning("take=%s confirmation rescore gave up: %s", take_id, e)
             await _in_session(session_factory, _release, take_id, job["requested_at"])
             raise ConfirmationRescoreFailed() from e
         if not await _in_session(
@@ -188,4 +196,4 @@ async def send_confirmations_service(
     # 확인을 기다리던 분석 실행기가 단계가 바뀐 것을 보고 리뷰한다.
     # 실행기가 없으면(재시작 등) 띄운다
     analysis_runner.start(take_id)
-    return "REVIEWING"
+    return REVIEWING
