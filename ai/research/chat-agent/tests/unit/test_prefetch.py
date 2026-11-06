@@ -161,9 +161,14 @@ def test_prefetch_reads_stop_at_the_tool_limit() -> None:
     assert fd.diagnostics is not None and fd.diagnostics.end.reason == "TOOL_CALLS"
     assert fd.status == "PARTIAL" and fd.actions == []
     assert len(fd.trace) == 2  # 실행한 읽기는 둘
-    # 답 쓰기에 간 결과: 초안 순서대로 3장 · 1장을 읽었고, 세 번째(2장)는 실행하지 않고 LIMIT 도구 오류
-    results = F.tool_results(llm.calls[-1])
-    assert [r["data"]["items"][0]["slide_number"] for r in results if r["ok"]] == [3, 1]
-    assert [r["error"]["code"] for r in results if not r["ok"]] == ["LIMIT"]
+    # 답 쓰기에 간 결과는 호출 순서 그대로다. 코드가 낸 요청은 초안 순서(3 · 1 · 2장) 셋뿐이므로, Take 5 3장 성공 →
+    # 1장 성공 → 세 번째(2장)는 실행하지 않고 LIMIT 도구 오류
+    seen = [
+        (True, r["data"]["take_id"], r["data"]["items"][0]["slide_number"])
+        if r["ok"]
+        else (False, r["error"]["code"], None)
+        for r in F.tool_results(llm.calls[-1])
+    ]
+    assert seen == [(True, "t-5", 3), (True, "t-5", 1), (False, "LIMIT", None)]
     assert "62%" in fd.message.text  # type: ignore[union-attr]
     assert [c.purpose for c in llm.calls].count("RESEARCH") == 1  # 계획 뒤 모델 조사 호출 없음
