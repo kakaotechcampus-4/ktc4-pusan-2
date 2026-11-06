@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import copy
+import threading
 from typing import Any
 
 import pytest
@@ -16,6 +18,7 @@ from chat_agent_lab.fake_be import (
     APPROVAL_WAIT_MS,
     ApprovalError,
     FakeBe,
+    PendingApproval,
     Run,
     content_hash,
 )
@@ -240,6 +243,40 @@ def test_fm_L2_43_new_message_while_waiting_cancels_then_accepts() -> None:
     assert e.value.code == "AGENT_CANCELLED" and conv.goal is None and len(run.actions) == 1
 
 
+def test_new_message_right_after_approval_claimed_the_wait_is_409_and_a_waiting_one_is_cancelled() -> (
+    None
+):
+    """승인이 대기를 선점한 직후(행동 실행 전)에 온 새 메시지는 409, 대기만 있으면 취소 뒤 접수(12-3)."""
+    be, _llm, run = waiting_save()
+    conv = be.conversations[run.conversation_id]
+    pend = run.pending
+    assert pend is not None
+    seen: list[str] = []
+
+    def race(b: FakeBe, r: Run, action: dict[str, Any]) -> None:
+        assert r.status == "RUNNING"
+        n_runs, n_msgs = len(b.runs), len(conv.messages)
+        with pytest.raises(ApprovalError) as e:
+            b.send_message(conv.conversation_id, "그리고 하나 더")
+        assert (e.value.http, e.value.code) == (409, "AGENT_RUN_IN_PROGRESS")
+        # 거절된 접수는 실행 · 메시지를 만들지 않는다
+        assert len(b.runs) == n_runs and len(conv.messages) == n_msgs
+        seen.append("raced")
+
+    be.before_action = race
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert seen == ["raced"] and run.status == "DONE" and conv.goal is not None
+    # 끝난 뒤에는 접수된다
+    be.before_action = None
+    be.app.llm = F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"])])
+    assert be.send_message(conv.conversation_id, "오늘 날씨 어때?").run_id != run.run_id
+    # 대기만 있으면 취소 뒤 접수된다
+    be2, _llm2, run2 = waiting_save()
+    be2.app.llm = F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"])])
+    new = be2.send_message(run2.conversation_id, "오늘 날씨 어때?")
+    assert run2.status == "CANCELLED" and new.run_id != run2.run_id
+
+
 def test_fm_L2_41_cancel_then_approve_runs_nothing_and_approve_then_cancel_keeps_the_result() -> (
     None
 ):
@@ -401,3 +438,171 @@ def test_fm_L1_45_take_reviewed_run_never_executes_save_even_if_asked() -> None:
     result = be._save_goal(auto, conv, pend.action)
     assert (result["status"], result["error"]["code"]) == ("FAILED", "NOT_ALLOWED")
     assert conv.goal is None
+
+
+# ── I3b 검증 반영 ─────────────────────────────────────────────────────────
+
+
+def test_redecided_action_returns_only_its_previous_result_while_another_is_pending() -> None:
+    """이미 결정된 A 의 승인 · 거절 재요청이 지금 대기 중인 B 를 승인 · 거절하지 않는다(새 전이는 대기 행동 id 와 해시가 맞을 때만)."""
+    be, _llm, run = waiting_save()
+    pend_a = run.pending
+    assert pend_a is not None
+    aid = pend_a.action["action_id"]
+    be.approve(run.run_id, aid, pend_a.args_hash)
+    assert run.status == "DONE"
+    # 같은 실행이 다시 평가 B 를 기다리는 상황을 만든다
+    pend_b = PendingApproval(
+        action={**pend_a.action, "action_id": "run-1:a9", "type": "REASSESS"},
+        args=pend_a.args,
+        args_hash="sha256:" + "3" * 64,
+        card=pend_a.card,
+        started_ms=be.clock.clock_ms(),
+        final=pend_a.final,
+    )
+    run.pending, run.status = pend_b, "WAITING_APPROVAL"
+    n_actions, n_calls = len(run.actions), len(run.calls)
+    for call in (be.approve, be.reject):
+        assert call(run.run_id, aid, pend_a.args_hash) is run
+        assert run.pending is pend_b and run.status == "WAITING_APPROVAL"
+        assert len(run.actions) == n_actions and len(run.calls) == n_calls
+    assert "run-1:a9" not in run.decided
+
+
+def race_approve_and_cancel(
+    be: FakeBe, run: Run, pend: PendingApproval, *, approve_first: bool
+) -> list[ApprovalError]:
+    """승인 스레드와 취소 스레드를 같은 순간에 출발시킨다. 승인 쪽에서 난 `ApprovalError`를 돌려준다."""
+    barrier = threading.Barrier(2)
+    errors: list[ApprovalError] = []
+
+    def do_approve() -> None:
+        barrier.wait()
+        try:
+            be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+        except ApprovalError as e:
+            errors.append(e)
+
+    def do_cancel() -> None:
+        barrier.wait()
+        be.cancel(run.run_id)
+
+    order = [do_approve, do_cancel] if approve_first else [do_cancel, do_approve]
+    threads = [threading.Thread(target=f) for f in order]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return errors
+
+
+@pytest.mark.parametrize("approve_first", [True, False])
+def test_fm_L2_41_concurrent_approve_and_cancel_have_exactly_one_winner(
+    approve_first: bool,
+) -> None:
+    """두 스레드가 동시에 승인 · 취소를 내면 한쪽만 이긴다. 취소가 이기면 실행 0번, 승인이 이기면 취소는 아무것도 바꾸지 않는다."""
+    for _ in range(25):
+        be, _llm, run = waiting_save()
+        conv = be.conversations[run.conversation_id]
+        pend = run.pending
+        assert pend is not None
+        errors = race_approve_and_cancel(be, run, pend, approve_first=approve_first)
+        if run.status == "CANCELLED":
+            assert conv.goal is None and [r.executed for r in run.actions] == [False]
+            assert [e.code for e in errors] == ["AGENT_CANCELLED"]
+        else:
+            assert run.status == "DONE" and conv.goal is not None and errors == []
+            assert [r.decision for r in run.actions] == ["APPROVED"]
+
+
+def test_approval_executes_the_stored_args_even_if_the_pending_action_was_changed() -> None:
+    be, _llm, run = waiting_save()
+    conv = be.conversations[run.conversation_id]
+    pend = run.pending
+    assert pend is not None
+    approved_args = pend.args
+    pend.action["args"] = {**pend.action["args"], "expected_goal_version": 7}  # 대기 중 변조
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    (rec,) = run.actions
+    assert rec.executed and rec.action["args"] == approved_args  # 승인한 인자로만 실행
+    assert rec.approved_hash == pend.args_hash and conv.goal is not None
+    assert rec.result["executed_args_hash"] == pend.args_hash
+
+
+def test_stored_args_changed_before_execution_runs_nothing() -> None:
+    """실행 직전 갈고리가 인자를 바꾸거나 보관한 args 자체가 바뀌면, 보관한 해시와 맞지 않아 실행하지 않는다."""
+    be, _llm, run = waiting_save()
+    conv = be.conversations[run.conversation_id]
+    pend = run.pending
+    assert pend is not None
+
+    def tamper(_b: FakeBe, _r: Run, action: dict[str, Any]) -> None:
+        action["args"]["expected_goal_version"] = 9
+
+    be.before_action = tamper
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    (rec,) = run.actions
+    assert not rec.executed and rec.result["error"]["code"] == "APPROVAL_ARGS_CHANGED"
+    assert conv.goal is None and rec.result["executed_args_hash"] == pend.args_hash
+    # 보관한 args 를 바꾼 경우도 같다
+    be2, _llm2, run2 = waiting_save()
+    pend2 = run2.pending
+    assert pend2 is not None
+    pend2.args["expected_goal_version"] = 5
+    be2.approve(run2.run_id, pend2.action["action_id"], pend2.args_hash)
+    assert not run2.actions[0].executed and be2.conversations[run2.conversation_id].goal is None
+
+
+def test_reassess_daily_count_is_reserved_at_approval_even_if_later_checks_fail() -> None:
+    be, _llm, run = waiting_reassess()
+    pend = run.pending
+    assert pend is not None and be.reassess_today == {}
+    found = be.owned_take("t-5", "u-3")
+    assert found is not None
+    found[1].review = None  # 승인 직후 공식 리뷰가 없어진 것처럼
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    (rec,) = run.actions
+    assert not rec.executed and rec.result["error"]["code"] == "NO_OFFICIAL_REVIEW"
+    assert be.reassess_today == {"u-3": 1}  # 뒤 검사에서 실패해도 차감
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)  # 같은 승인 재요청
+    assert be.reassess_today == {"u-3": 1}
+
+
+def test_call_limit_after_approval_still_stores_the_waiting_message_as_partial() -> None:
+    llm = save_goal_llm()
+    be = make_be(llm, max_calls=1)
+    _be, _llm, run = waiting_save(be)
+    conv = be.conversations[run.conversation_id]
+    pend = run.pending
+    assert pend is not None and stored_texts(be, run) == []
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)
+    assert run.status == "PARTIAL" and conv.goal is None
+    (msg,) = [m for m in conv.messages if m.run_id == run.run_id]
+    assert msg.status == "PARTIAL" and msg.text == pend.final["message"]["text"]
+    assert msg.assessments == pend.final["assessments"]
+
+
+def test_invalid_new_message_keeps_the_pending_approval() -> None:
+    be, _llm, run = waiting_save()
+    conv = be.conversations[run.conversation_id]
+    pend = run.pending
+    assert pend is not None
+    n_messages = len(conv.messages)
+    with pytest.raises((LookupError, ValueError)):
+        be.send_message(
+            conv.conversation_id, "이 안으로 해줘", choice={"proposal_id": "nope", "option": "USER"}
+        )
+    assert run.status == "WAITING_APPROVAL" and run.pending is pend
+    assert len(conv.messages) == n_messages and run.actions == []
+    be.approve(run.run_id, pend.action["action_id"], pend.args_hash)  # 대기는 그대로 승인할 수 있다
+    assert run.status == "DONE"
+
+
+def test_ask_action_without_a_confirmed_decision_is_blocked_and_counted() -> None:
+    be, _llm, run = waiting_save()
+    conv = be.conversations[run.conversation_id]
+    pend = run.pending
+    assert pend is not None
+    rec = be._execute(run, conv, copy.deepcopy(pend.action))  # 승인 없이 실행 시도
+    assert not rec.executed and rec.decision is None and rec.blocked == "NO_DECISION"
+    assert rec.result["error"]["code"] == "APPROVAL_REQUIRED" and conv.goal is None

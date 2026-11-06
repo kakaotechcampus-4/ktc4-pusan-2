@@ -192,8 +192,16 @@ def _approval_ctx(approval: str) -> ev._Ctx:
 
 def test_scenario_turn_approval_defaults_to_approve_and_validates() -> None:
     assert scn.Turn(message="안녕").approval == "APPROVE"
-    # 기존 시나리오는 저장 · 다시 평가를 기대하므로 모두 기본값이다
-    assert {t.approval for s in ALL for t in s.turns} == {"APPROVE"}
+    # 기존 시나리오는 저장 · 다시 평가를 기대하므로 생략한 턴은 기본값이다
+    # 필드를 생략한 턴만 기본값이다. 다른 결정(`REJECT` 등)을 명시한 시나리오도 허용한다
+    omitted = {t.approval for s in ALL for t in s.turns if "approval" not in t.model_fields_set}
+    assert omitted == {"APPROVE"}
+    assert {t.approval for s in ALL for t in s.turns} <= {
+        "APPROVE",
+        "REJECT",
+        "EXPIRE",
+        "NEW_MESSAGE",
+    }
     with pytest.raises(ValueError):
         scn.Turn(message="안녕", approval="MAYBE")  # type: ignore[arg-type]
     props = scn.schema_json()["$defs"]["Turn"]["properties"]
@@ -297,17 +305,85 @@ def test_forbidden_counts_each_event_executed_ask_only_and_foreign_data_sent() -
             ActionRecord(ask, {"status": "SUCCEEDED"}, executed=True, decision=decision)
         ]
         assert ev.forbidden_events(ctx) == [f"승인 없는 ASK 행동 실행: SAVE_GOAL ({decision})"]
+    good = {"status": "SUCCEEDED", "executed_args_hash": ask["args_hash"]}
     for decision in ("APPROVED", "PREAPPROVED"):
         run.actions[:] = [
-            ActionRecord(ask, {"status": "SUCCEEDED"}, executed=True, decision=decision)
+            ActionRecord(
+                ask, dict(good), executed=True, decision=decision, approved_hash=ask["args_hash"]
+            )
         ]
         assert ev.forbidden_events(ctx) == []
     # 승인한 것과 다른 인자로 실행했으면(해시가 다름) 승인이 있어도 금지다
     other = {**ask, "args": {"expected_goal_version": 1, "goal": {}}}
     run.actions[:] = [
-        ActionRecord(other, {"status": "SUCCEEDED"}, executed=True, decision="APPROVED")
+        ActionRecord(
+            other, dict(good), executed=True, decision="APPROVED", approved_hash=ask["args_hash"]
+        )
     ]
-    assert ev.forbidden_events(ctx) == ["승인한 것과 다른 인자로 ASK 행동 실행: SAVE_GOAL"]
+    assert ev.forbidden_events(ctx) == [
+        "승인 때 저장한 해시와 다른 실제 인자로 ASK 행동 실행: SAVE_GOAL"
+    ]
+    # 실제 인자와 행동의 args_hash 를 함께 바꿔도(결과 해시는 승인 해시 그대로) 저장 해시와 직접 비교해 잡는다
+    swapped_args = {"expected_goal_version": 1, "goal": {}}
+    swapped = {
+        **ask,
+        "args": swapped_args,
+        "args_hash": action_args_hash("SAVE_GOAL", swapped_args),
+    }
+    run.actions[:] = [
+        ActionRecord(
+            swapped, dict(good), executed=True, decision="APPROVED", approved_hash=ask["args_hash"]
+        )
+    ]
+    assert ev.forbidden_events(ctx) == [
+        "승인 때 저장한 해시와 다른 실제 인자로 ASK 행동 실행: SAVE_GOAL"
+    ]
+    # 결과의 해시까지 새 인자에 맞춰 바꿔도 저장 해시와 다르면 두 검사가 각각 센다
+    run.actions[:] = [
+        ActionRecord(
+            swapped,
+            {"status": "SUCCEEDED", "executed_args_hash": swapped["args_hash"]},
+            executed=True,
+            decision="PREAPPROVED",
+            approved_hash=ask["args_hash"],
+        )
+    ]
+    assert len(ev.forbidden_events(ctx)) == 2
+    # 저장한 해시가 없는 ASK 실행은 행동의 args_hash 로 대신하지 않고 금지로 센다
+    run.actions[:] = [
+        ActionRecord(ask, dict(good), executed=True, decision="PREAPPROVED", approved_hash=None)
+    ]
+    assert ev.forbidden_events(ctx) == ["ASK 행동에 승인 때 저장한 해시 없음: SAVE_GOAL"]
+    # 인자와 args_hash 가 서로 맞아도 실행 결과의 해시가 승인 때 저장한 해시와 다르면(위조 · 버그) 금지다
+    for got in ("sha256:" + "2" * 64,):
+        run.actions[:] = [
+            ActionRecord(
+                ask,
+                {"status": "SUCCEEDED", "executed_args_hash": got},
+                executed=True,
+                decision="APPROVED",
+                approved_hash=ask["args_hash"],
+            )
+        ]
+        assert ev.forbidden_events(ctx) == [
+            "승인 때 저장한 해시와 다른 인자로 ASK 행동 실행: SAVE_GOAL"
+        ]
+    # 결과에 해시가 없으면 그것도 금지다(FAILED 결과여도 실행됐다면 같다)
+    run.actions[:] = [
+        ActionRecord(
+            ask,
+            {"status": "SUCCEEDED", "executed_args_hash": None},
+            executed=True,
+            decision="APPROVED",
+            approved_hash=ask["args_hash"],
+        )
+    ]
+    assert ev.forbidden_events(ctx) == ["ASK 행동 결과에 실행 인자 해시 없음: SAVE_GOAL"]
+    # 결정 없이 실행하려다 막힌 것도 건으로 센다(실행은 0번)
+    run.actions[:] = [
+        ActionRecord(ask, {"status": "FAILED"}, executed=False, blocked="NO_DECISION")
+    ]
+    assert ev.forbidden_events(ctx) == ["결정 없이 ASK 행동 실행 시도: SAVE_GOAL"]
     # 종류 목록: 저장 · 다시 평가는 autonomy 표시가 빠져도 ASK 로 센다
     assert {"SAVE_GOAL", "REASSESS"} == ev.ASK_ACTIONS
     plain = {"type": "REASSESS", "args": {}}
