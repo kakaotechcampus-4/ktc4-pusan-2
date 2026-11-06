@@ -53,7 +53,7 @@ WS /api/ws/takes/{take_id}
   |---|---|
   | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다. 연결 중에 그 사용자가 로그아웃해도 이 코드로 닫는다(Take 는 끝내지 않고 grace 를 건다). FE 는 토큰을 한 번 새로 받아 다시 붙는다 |
   | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
-  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다**. BE 가 끝냈으면 `end_reason`(`SILENCE`·`TIME_LIMIT`·`ABANDONED`·`CLOSED`)을 싣는다 — `CLOSED` 는 이어 가지 않고, `ABANDONED` 는 끝내기 PUT 이 되살린다 |
+  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다**. BE 가 끝냈으면 `end_reason`(`SILENCE`·`TIME_LIMIT`·`ABANDONED`·`CLOSED`)을 싣는다 — `CLOSED` 는 이어 가지 않고, 시작한 뒤 `ABANDONED` 로 끝난 Take 는 끝내기 PUT 이 되살린다 |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
@@ -159,9 +159,10 @@ WS /api/ws/takes/{take_id}
   연결이 붙어 있고 최근 10초 안에 오디오가 왔으면 다른 창이 발표 중이라 `409 TAKE_IN_PROGRESS` 로 거절한다.
 - **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 발표 중에 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
   종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `RUNNING` 을 `ANALYZING`
-  으로 바꾼다. 시작하지 않은 Take(`READY`)는 `409 TAKE_NOT_STARTED` 로 거절하고 시각도 적지 않는다.
+  으로 바꾼다. 시작하지 않은 Take(`READY`, 시작하지 않은 채 `ABANDONED` 로 끝난 Take)는 `409 TAKE_NOT_STARTED` 로
+  거절하고 시각도 적지 않는다.
   연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
-  `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다. 떠난 것으로 끝낸 Take(`ABANDONED`)도 `ANALYZING` 으로 되살리고
+  `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다. 시작한 뒤 떠난 것으로 끝낸 Take(`ABANDONED`)도 `ANALYZING` 으로 되살리고
   이유를 지운다. 창을 닫아 끝낸 Take(`CLOSED`)는 되살리지 않는다.
 - Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
   (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다 (`CLOSED` 는 409).
