@@ -1,4 +1,3 @@
-import uuid
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -7,8 +6,8 @@ from pitch_coach_backend.module.chat.ai_response import StartPracticeArgs
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.authorization import authorization
+from pitch_coach_backend.module.chat.service.owned import owned_pitch
 from pitch_coach_backend.module.chat.service.run import digest
-from pitch_coach_backend.module.pitch.repository import PitchRepository
 
 
 def start_practice(db: Session, repo: ChatRepository, row: ChatRun, data: dict[str, Any]) -> None:
@@ -44,14 +43,14 @@ def _practice_decision(db: Session, row: ChatRun, action: dict[str, Any]) -> dic
         return None
     try:
         args = StartPracticeArgs.model_validate(action["args"])
-        pitch_id = uuid.UUID(args.pitch_id)
     except ValueError:
         return None
-    if PitchRepository(db).get_owned(pitch_id, row.user_id) is None:
+    pitch = owned_pitch(db, row.user_id, args.pitch_id)
+    if pitch is None:
         return None
     verdict = authorization(
         row.input.get("user_message"), action.get("authorized_by"), "START_PRACTICE"
     )
     if verdict == "REJECTED":
         return None
-    return {"pitch_id": str(pitch_id)}
+    return {"pitch_id": str(pitch.id)}

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatRunLog
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.owned import parse_uuid
 
 SEOUL = ZoneInfo("Asia/Seoul")
 OWNER = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
@@ -85,10 +86,10 @@ def _parse_ids(values: Iterable[Any]) -> tuple[set[uuid.UUID], bool]:
     for value in values:
         if value is None:
             continue
-        try:
-            parsed.add(uuid.UUID(str(value)))
-        except ValueError:
+        if (parsed_id := parse_uuid(value)) is None:
             valid = False
+        else:
+            parsed.add(parsed_id)
     return parsed, valid
 
 

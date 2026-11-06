@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import deactivate_goals_without_base
+from pitch_coach_backend.module.chat.service.owned import parse_uuid
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 
 CLEANUP_LEASE = timedelta(hours=1)
@@ -98,17 +99,11 @@ def _clear_goals(repo: ChatRepository) -> int:
 def _deleted_ids(repo: ChatRepository, pitch_ids: set[Any], take_ids: set[Any]) -> set[str]:
     pitches = _parse(pitch_ids)
     takes = _parse(take_ids)
-    deleted = {str(value) for value in pitch_ids | take_ids if _parse({value}) == set()}
+    deleted = {str(value) for value in pitch_ids | take_ids if parse_uuid(value) is None}
     deleted |= {str(p) for p in pitches - repo.existing_pitch_ids(pitches)} if pitches else set()
     deleted |= {str(t) for t in takes - repo.existing_take_ids(takes)} if takes else set()
     return deleted
 
 
 def _parse(values: set[Any]) -> set[uuid.UUID]:
-    parsed: set[uuid.UUID] = set()
-    for value in values:
-        try:
-            parsed.add(uuid.UUID(str(value)))
-        except ValueError:
-            continue
-    return parsed
+    return {parsed for value in values if (parsed := parse_uuid(value)) is not None}

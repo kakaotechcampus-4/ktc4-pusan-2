@@ -8,7 +8,7 @@ from pitch_coach_backend.module.chat.dto import ActionResultDTO
 from pitch_coach_backend.module.chat.entity import ChatGoal, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.authorization import authorization
-from pitch_coach_backend.module.chat.service.fetch import owned_take
+from pitch_coach_backend.module.chat.service.owned import owned_take_in
 from pitch_coach_backend.module.chat.service.request import (
     ProposalNotFound,
     completed_fully,
@@ -105,7 +105,7 @@ def _rebuild_goal(
     if goal.get("operator") != operator or (metric == "duration_ms" and slide_number is not None):
         raise GoalRejected(OPERATOR_MISMATCH)
     base = goal.get("base") or {}
-    take = owned_take(db, repo, user_id, str(goal.get("pitch_id")), str(base.get("take_id")))
+    take = owned_take_in(db, user_id, goal.get("pitch_id"), base.get("take_id"))
     if take is None:
         raise GoalRejected(BASE_MISMATCH)
     slides = repo.slide_numbers([take.Take.id]).get(take.Take.id, set())

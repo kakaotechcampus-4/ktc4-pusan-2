@@ -18,6 +18,7 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage
 from pitch_coach_backend.module.chat.exception import ChatRunInProgress, ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.owned import parse_uuid
 from pitch_coach_backend.module.chat.service.request import APP_STARTED_AT, current_sources
 from pitch_coach_backend.module.chat.service.stale import (
     MASKED_TEXT,
@@ -253,14 +254,8 @@ def owned_sources(
 
 
 def _parsed(values: set[Any]) -> dict[str, uuid.UUID]:
-    parsed: dict[str, uuid.UUID] = {}
-    for value in values:
-        try:
-            parsed[str(value)] = uuid.UUID(str(value))
-        except ValueError:
-            # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 키를 두지 않아 지워진 것으로 남는다
-            continue
-    return parsed
+    # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 키를 두지 않아 지워진 것으로 남는다
+    return {str(value): parsed for value in values if (parsed := parse_uuid(value)) is not None}
 
 
 def _uses_gone_source(item: ChatMessage | Row, current: dict[str, dict[str, Any]]) -> bool:

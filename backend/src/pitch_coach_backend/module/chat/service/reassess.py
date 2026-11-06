@@ -7,13 +7,13 @@ from datetime import datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import ReviewTakeMismatch, request_review_once
 from pitch_coach_backend.module.chat.ai_response import ReassessArgs
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.owned import owned_take
 from pitch_coach_backend.module.chat.service.request import run_scope
 from pitch_coach_backend.module.chat.service.result import (
     UNCONFIRMED,
@@ -29,7 +29,6 @@ from pitch_coach_backend.module.chat.service.run import (
     lock_current,
     lock_or_cancel,
 )
-from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import UserCriteriaDTO
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service.review import build_review_request
@@ -61,7 +60,7 @@ def prepare_reassess(
     if row is None:
         raise RunLost(run.run_id)
     args = ReassessArgs.model_validate(action["args"])
-    take = _owned_take_by_id(db, repo, row.user_id, args.take_id)
+    take = owned_take(db, row.user_id, args.take_id)
     conversation = repo.get_conversation(row.conversation_id)
     if take is None or take.Take.pitch_id != run_scope(row, conversation):
         return close_action(db, row, action, failed(action, "NOT_FOUND", "기록을 찾을 수 없어요."))
@@ -99,19 +98,6 @@ def prepare_reassess(
         after=after,
         before_digest=digest(before),
     )
-
-
-def _owned_take_by_id(
-    db: Session, repo: ChatRepository, user_id: uuid.UUID, take_id: str
-) -> Row | None:
-    try:
-        take_uuid = uuid.UUID(take_id)
-    except ValueError:
-        return None
-    take = repo.get_take_with_review(take_uuid)
-    if take is None or PitchRepository(db).get_owned(take.Take.pitch_id, user_id) is None:
-        return None
-    return take
 
 
 def _changed_request(before: dict[str, Any], change: dict[str, Any]) -> dict[str, Any]:
