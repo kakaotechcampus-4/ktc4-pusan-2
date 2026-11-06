@@ -39,8 +39,11 @@ class FakeLlm:
         answers: list[Item] | None = None,
         fixes: list[Item] | None = None,
         usage: Usage | None = DEFAULT_USAGE,
+        stream_chunk: int | None = 7,
     ) -> None:
         self.script = list(script)
+        #: 구조화 응답을 받는 쪽(`text_sink`)에 이 글자 수씩 흘린다(None 이면 흘리지 않음 — 시험이 직접 흘릴 때)
+        self.stream_chunk = stream_chunk
         #: 단계별 줄: 주면 답 쓰기(ANSWER) · 고치기(FIX) 호출은 여기서 꺼낸다(조사가 몇 번 돌지 모를 때)
         self.queues: dict[str, list[Item] | None] = {
             "ANSWER": None if answers is None else list(answers),
@@ -63,6 +66,11 @@ class FakeLlm:
         out = item(req) if callable(item) and not isinstance(item, (LlmResult, LlmError)) else item
         if isinstance(out, LlmError):
             raise out
+        sink = req.text_sink
+        if sink is not None and self.stream_chunk and out.message and req.response_schema:
+            sink.start(1)
+            for i in range(0, len(out.message), self.stream_chunk):
+                sink.feed(1, out.message[i : i + self.stream_chunk])
         if self.usage is not None and out.usage == Usage():
             out = LlmResult(
                 out.message,

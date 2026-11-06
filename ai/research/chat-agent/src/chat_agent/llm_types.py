@@ -7,6 +7,8 @@
 - 한도: 코어는 전송 시도마다 `before_attempt(n)`으로 예산을 원자적으로 예약한다(8-3). False 면 LLM 쪽은 보내지 않고
   `LlmBudgetStop`을 올린다. 그래서 내부 재시도도 모델 호출 수에 들어간다.
 - 실패는 `LlmError` 하위 예외이고 `attempts` · `usage`(모르면 None)를 달고 온다. 공급자 거절은 `LlmRefused`.
+- 응답 조각: 요청에 `text_sink`가 있으면 LLM 쪽은 시도마다 `start(n)`을 부르고 받은 글 조각을 `feed(n, 조각)`으로 넘긴다.
+  받는 쪽이 화면에 낸 것이 생겼으면(`committed()`) 그 호출은 다시 보내지 않는다(5-4 문장 줄 · 6-11).
 - 서비스로 옮길 때 `common/errors.py`의 같은 이름(`LlmTimeout` 등)과 맞춘다.
 """
 
@@ -35,6 +37,19 @@ class Usage:
     cached_input_tokens: int | None = None
 
 
+class TextSink(Protocol):
+    """구조화 호출의 응답 조각을 받는 쪽(답 쓰기의 문장 줄, 5-4). LLM 쪽은 다른 스레드에서 부를 수 있다."""
+
+    def start(self, attempt: int) -> None:
+        """새 전송 시도가 시작된다. 앞 시도의 조각은 버린다."""
+
+    def feed(self, attempt: int, text: str) -> None:
+        """시도 `attempt`의 응답 조각. 지난 시도(시간 초과 뒤 늦게 온 것)의 조각은 받는 쪽이 버린다."""
+
+    def committed(self) -> bool:
+        """이 호출에서 화면에 낸 것이 있는가. 있으면 LLM 쪽은 다시 보내지 않는다(낸 문장이 다른 초안과 섞이지 않게)."""
+
+
 @dataclass(frozen=True)
 class LlmRequest:
     purpose: Purpose
@@ -48,6 +63,8 @@ class LlmRequest:
     deadline: float = 0.0
     #: 이 호출 안의 최대 시도 수(고치기는 1)
     max_attempts: int = 2
+    #: 응답 조각을 받는 쪽(답 쓰기만). 없으면 조각을 넘기지 않는다
+    text_sink: TextSink | None = None
 
 
 @dataclass(frozen=True)
