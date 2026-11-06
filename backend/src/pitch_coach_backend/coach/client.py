@@ -34,6 +34,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
@@ -106,6 +107,10 @@ _LARGE_BODY_BYTES = {EVALUATE_PATH: 64_000, FINALIZE_PATH: 256_000, PLAN_PATH: 6
 
 # AI 가 아직 없다는 뜻의 상태 코드. 404 는 그 경로가 배포 전, 503 은 시작 중(`NOT_READY`)이다
 _UNAVAILABLE_STATUSES = frozenset({404, 503})
+
+
+class _ReplayNeeded(Exception):
+    """AI 가 finalize 에 원자료를 붙여 달라고 했다 (409). 다시 부르는 실패가 아니다."""
 
 
 class EvaluateMiss(StrEnum):
@@ -187,7 +192,7 @@ class HttpCoachClient:
 
     async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | EvaluateMiss:
         if not _t_ms_in_range(request):
-            # AI 가 422 로 거절한다. Take 자동 종료(최대 1시간)가 지켜지면 나오지 않는다
+            # AI 가 422 로 거절한다. 시각 상한은 `realtime/dto.py` 의 metrics 검증이 먼저 막는다
             self._warn_evaluate(
                 "t_ms",
                 "t_ms 가 범위 밖이라 evaluate 를 부르지 않는다 %s t_ms=%s",
@@ -218,7 +223,6 @@ class HttpCoachClient:
                 # 시간 초과 · 5xx. 그 1초만 건너뛴다. 계속되면 코칭이 멈춘 것이라 묶어서 남긴다
                 self._warn_evaluate("transient", "evaluate 가 제때 답하지 못했다: %s", exc)
             return EvaluateMiss.TIMEOUT if exc.timeout else EvaluateMiss.FAILED
-        assert isinstance(reply, EvaluateReply)
         return reply
 
     async def finalize(self, request: dict[str, Any]) -> FinalizeReply | ReplayRequired | None:
@@ -232,21 +236,21 @@ class HttpCoachClient:
         replay = request.get("replay") is not None
         timeout_sec = self._replay_timeout_sec if replay else self._finalize_timeout_sec
         try:
-            reply = await self._call(self._finalize, request, FinalizeReply, timeout_sec)
+            return await self._call(self._finalize, request, FinalizeReply, timeout_sec)
         except _Failure:
             return None
-        if isinstance(reply, ReplayRequired) and replay:
+        except _ReplayNeeded:
+            if not replay:
+                return ReplayRequired()
             # 원자료를 다 보냈는데도 못 셌다. 다시 불러도 같다 (8절: replay 를 붙여도 409 면 실패)
             logger.warning("replay 를 붙였는데도 REPLAY_REQUIRED 다 %s", _subject(request))
             return None
-        return reply
 
     async def plan(self, request: dict[str, Any]) -> PlanReply | None:
         try:
             reply = await self._call(self._plan, request, PlanReply, self._plan_timeout_sec)
         except _Failure:
             return None
-        assert isinstance(reply, PlanReply)
         if reply.fallback_reason is not None:
             logger.info(
                 "코칭 계획이 기본 계획으로 돌아갔다 pitch=%s reason=%s",
@@ -259,7 +263,7 @@ class HttpCoachClient:
 
     async def _call[T: Reply](
         self, endpoint: _Endpoint, request: dict[str, Any], reply_type: type[T], timeout_sec: float
-    ) -> T | ReplayRequired:
+    ) -> T:
         """정해진 횟수만큼 부른다. 끝내 실패하면 마지막 `_Failure` 를 던진다."""
         try:
             # httpx 의 json= 과 같은 규칙이다. 직접 만드는 건 실패를 잡으려고다 — UUID 같은 값이나
@@ -279,18 +283,15 @@ class HttpCoachClient:
         request_id = uuid.uuid4().hex
         for attempt in range(1, endpoint.attempts + 1):
             try:
-                if endpoint.background:
-                    # 자리를 기다린 시간은 시간 제한에 넣지 않는다
-                    async with ai_slots.background():
-                        return await self._attempt(
-                            endpoint, request, body, reply_type, timeout_sec, request_id
-                        )
-                return await self._attempt(
-                    endpoint, request, body, reply_type, timeout_sec, request_id
-                )
+                # 자리를 기다린 시간은 시간 제한에 넣지 않는다
+                slot = ai_slots.background() if endpoint.background else nullcontext()
+                async with slot:
+                    return await self._attempt(
+                        endpoint, request, body, reply_type, timeout_sec, request_id
+                    )
             except _Failure as exc:
                 last = attempt == endpoint.attempts or not exc.retryable
-                if endpoint is not self._evaluate:
+                if endpoint.background:
                     # evaluate 는 매초 오므로 evaluate() 가 묶어서 남긴다
                     logger.warning(
                         "코치 호출 실패 path=%s %s request_id=%s attempt=%d/%d: %s",
@@ -314,7 +315,7 @@ class HttpCoachClient:
         reply_type: type[T],
         timeout_sec: float,
         request_id: str,
-    ) -> T | ReplayRequired:
+    ) -> T:
         try:
             async with (
                 asyncio.timeout(timeout_sec),
@@ -345,7 +346,7 @@ class HttpCoachClient:
         if status >= 400:
             code = ai_error_code(response)
             if status == 409 and code == REPLAY_REQUIRED_CODE and endpoint.path == FINALIZE_PATH:
-                return ReplayRequired()
+                raise _ReplayNeeded
             raise _Failure(
                 f"status={status} code={code}",
                 retryable=retryable_status(status),
