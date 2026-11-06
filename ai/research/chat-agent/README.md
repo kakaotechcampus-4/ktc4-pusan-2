@@ -125,9 +125,9 @@ uv sync                                             # .venv 를 만들고 서비
 ```
 
 ```bash
-# macOS · Linux: 위 두 명령의 `.\.venv\Scripts\python.exe` 를 `.venv/bin/python` 으로
-.venv/bin/python -m chat_agent_lab.evals --set all --judge --followups --workers 4 --out outputs/evals/<이름>-main
-.venv/bin/python -m chat_agent_lab.evals --set eval --baseline --followups --workers 4 --out outputs/evals/<이름>-baseline
+# macOS · Linux: 위 두 명령의 `.\.venv\Scripts\python.exe` 를 `.venv/bin/python` 으로. my-run 은 원하는 이름으로 바꾼다
+.venv/bin/python -m chat_agent_lab.evals --set all --judge --followups --workers 4 --out outputs/evals/my-run-main
+.venv/bin/python -m chat_agent_lab.evals --set eval --baseline --followups --workers 4 --out outputs/evals/my-run-baseline
 ```
 
 - 결과는 `outputs/evals/<이름>/`(git 무시)의 `report.md` · `report.json` · `runs.jsonl`입니다. 보고에는 '한도 때문의 PARTIAL' 수 · 비율과 이유별(`TIME` · `MODEL_CALLS` · `TOOL_CALLS` · `TOKENS` · `REPEAT`) 수가 들어 있습니다(14-1). 문장 줄(5-4)은 일반 턴의 첫 문장까지 시간(중간값 · 상위 5%, 호출 시간 합 · 실제 시계)과, 받은 문장 줄이 끝 줄 앞부분과 다른 턴 수(0 이어야 함)를 냅니다.

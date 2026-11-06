@@ -11,7 +11,7 @@ python ai/tools/docs-check/check.py --base origin/develop-next --head HEAD --pr-
 python -m unittest discover -s ai/tools/docs-check -p "test_*.py"
 ```
 
-macOS·Linux는 `python` 대신 `python3`를 씁니다(macOS에는 보통 `python` 명령이 없습니다).
+macOS·Linux는 `python` 대신 `python3`를 씁니다(macOS에는 보통 `python` 명령이 없습니다). Xcode 명령줄 도구의 `python3`는 3.10보다 낮을 수 있으니 먼저 `python3 --version`으로 3.10 이상인지 확인합니다.
 
 ```bash
 python3 ai/tools/docs-check/check.py --base origin/develop-next --head HEAD --pr-body-file pr-body.md

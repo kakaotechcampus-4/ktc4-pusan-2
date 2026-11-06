@@ -22,5 +22,5 @@
 - Python 명령은 해당 폴더의 `.venv` Python으로 실행한다. 기본 실행에는 `-m`을 덧붙이지 않는다. 기본 실행에서 빠지는 테스트(`live`·`slow`)는 각 `pyproject.toml`의 `addopts`가 정하고(없는 폴더는 모든 테스트가 기본 실행이다), `-m`을 덧붙이면 그 설정을 덮어 과금되는 `live`나 오래 걸리는 `slow`가 돌 수 있다. `live`·`slow`는 README·기능 문서 10절의 명령으로 요청 범위에서만 돌린다. Windows 연구 폴더의 예시는 `.\.venv\Scripts\python.exe -m pytest`다. macOS·Linux는 `.venv/bin/python -m pytest`다. 서비스는 README의 `uv run python -m pytest`를 쓴다.
 - 시선 브라우저 코드는 `ai/research/gaze-tracking/web/README.md`의 검증 명령을 쓴다.
 - 실제 LLM·실험·노트북은 README에서 과금과 실행 범위를 확인한 뒤 요청 범위에 맞게 실행한다. `.env`의 비밀값은 출력·커밋하지 않는다.
-- 커밋한 문서는 루트에서 `python ai/tools/docs-check/check.py --base <PR-base-ref> --head HEAD --pr-body-file <PR본문파일>`로 검사한다. macOS처럼 `python` 명령이 없으면 `python3`로 부른다. 검사한 head와 미커밋 변경을 보고한다. 도구가 없으면 경로·절을 직접 확인하고 미구현이라고 보고한다.
+- 커밋한 문서는 루트에서 `python ai/tools/docs-check/check.py --base <PR-base-ref> --head HEAD --pr-body-file <PR본문파일>`로 검사한다. macOS처럼 `python` 명령이 없으면 `python3`(3.10 이상)로 부른다. 검사한 head와 미커밋 변경을 보고한다. 도구가 없으면 경로·절을 직접 확인하고 미구현이라고 보고한다.
 - 결과에는 실행 위치·명령·성공/실패·실행하지 못한 범위를 적는다. 계약·담당·합의 판단을 검사 도구의 통과만으로 대신하지 않는다.
