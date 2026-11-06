@@ -26,7 +26,7 @@ from pitch_coach_backend.module.chat.entity import (
 from pitch_coach_backend.module.chat.service import run_view
 from pitch_coach_backend.module.chat.service import turn as turn_service
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS
-from pitch_coach_backend.module.chat.service.run import SEOUL
+from pitch_coach_backend.module.chat.service.run import OWNER, SEOUL
 from pitch_coach_backend.module.chat.service.waiting import (
     CANCELLED_TEXT,
     EXPIRED_TEXT,
@@ -283,6 +283,30 @@ def test_approve_marks_the_action_and_shifts_the_deadline(
     # 기다린 5분은 120초에 넣지 않는다
     assert run.deadline_at - old_deadline >= timedelta(minutes=5)
     assert run.deadline_at > datetime.now(UTC) + timedelta(seconds=100)
+    assert resumed == [run_id]
+
+
+def test_approve_takes_the_lease_so_recovery_leaves_the_run(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    resumed: list[uuid.UUID],
+) -> None:
+    seeded = _waiting(db_session, user_id, waited=timedelta(minutes=5))
+    run_id = seeded.run.id
+    # 턴 실행기가 멈춘 뒤로 임대를 늘리는 쪽이 없어 대기하는 동안 지나 있다
+    seeded.run.lease_owner = "그만둔 작업자"
+    seeded.run.lease_until = datetime.now(UTC) - timedelta(minutes=4)
+    db_session.commit()
+
+    assert _decide(client, user_id, run_id).status_code == 200
+
+    db_session.expire_all()
+    revision = db_session.get(ChatRun, run_id).row_revision
+    assert turn_service.recover_run(db_session, run_id, datetime.now(UTC)) is None
+    db_session.expire_all()
+    run = db_session.get(ChatRun, run_id)
+    assert (run.lease_owner, run.status, run.row_revision) == (OWNER, "RUNNING", revision)
     assert resumed == [run_id]
 
 
