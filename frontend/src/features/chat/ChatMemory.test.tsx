@@ -142,7 +142,7 @@ describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
     expect(queryClient.getQueryData(['chat', 'memory', 'u1'])).toEqual(settings(true, focus));
   });
 
-  it('누르는 동안 같은 item_id 의 카드는 모두 막히고 연타해도 한 번만 보낸다 — 다른 항목은 막지 않는다', async () => {
+  it('누르는 동안 카드는 모두 막히고 연타해도 한 번만 보낸다 — 다른 항목도 막아 응답이 엇갈리지 않게 한다', async () => {
     server.get = () => Promise.resolve(settings(true, tone(), focus));
     const pending = held<unknown>();
     server.remove = () => pending.promise;
@@ -163,7 +163,10 @@ describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
     expect(a!.getAttribute('aria-disabled')).toBe('true');
     expect(b!.getAttribute('aria-disabled')).toBe('true');
     expect(b!.textContent).toBe('지우는 중');
-    expect(c!.getAttribute('aria-disabled')).toBe('false');
+    expect(c!.getAttribute('aria-disabled')).toBe('true');
+    expect(c!.textContent).toBe('지우기');
+    await click(c!);
+    expect(removeCalls()).toHaveLength(1);
 
     await act(async () => pending.resolve(settings(true, focus)));
     await settle();
@@ -210,6 +213,16 @@ describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
     expect(oldCard!.querySelector('button')).toBeNull();
     expect(oldCard!.textContent).toContain(MEMORY_CHANGED_TEXT);
     expect(newCard!.querySelector('button')!.textContent).toBe('지우기');
+  });
+
+  it('카드가 다시 그려져도(목록 열고 닫기 · 지난 메시지) 30초 안에는 기억 목록을 다시 읽지 않는다', async () => {
+    server.get = () => Promise.resolve(settings(true, tone()));
+    await render(cards(memoryCard(I1, '짧게')));
+    const reads = () => server.calls.filter((c) => c === 'GET /api/chat/memory').length;
+    expect(reads()).toBe(1);
+    await act(async () => root.render(<></>));
+    await render(cards(memoryCard(I1, '짧게')));
+    expect(reads()).toBe(1);
   });
 
   it('설정 화면에서 지운 항목은 카드에서도 지운 것으로 보인다 (L3-45 설정에서 지운 뒤 카드)', async () => {
@@ -321,6 +334,7 @@ describe('기억 설정 화면 (F14 · L3-43)', () => {
     server.clear = () => Promise.reject(new Error('끊김'));
     await render(screen());
     await click(button('전체 지우기')!);
+    await click(button('모두 지우기')!);
     await settle();
     expect(rows()).toHaveLength(2);
     expect(alerts()).toEqual([`${MEMORY_TEXT.clearFailed}다시 시도`]);
@@ -332,6 +346,34 @@ describe('기억 설정 화면 (F14 · L3-43)', () => {
     expect(host.textContent).toContain(MEMORY_TEXT.empty);
     expect(status()).toBe(MEMORY_TEXT.cleared);
     expect(button('전체 지우기')!.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('[전체 지우기]는 같은 자리에서 한 번 더 묻고 초점을 [취소]에 둔다 — [취소] · Esc 는 보내지 않고 돌아온다', async () => {
+    server.get = () => Promise.resolve(settings(true, tone(), focus));
+    // 대화창 자리 — Esc 가 여기까지 오면 대화창이 닫힙니다
+    const outer = vi.fn();
+    await render(<div onKeyDown={outer}>{screen()}</div>);
+    const clears = () => server.calls.filter((c) => c === 'DELETE /api/chat/memory/items');
+
+    await click(button('전체 지우기')!);
+    expect(host.textContent).toContain(MEMORY_TEXT.clearConfirm);
+    expect(document.activeElement).toBe(button('취소'));
+    await click(button('취소')!);
+    expect(button('모두 지우기')).toBeUndefined();
+    expect(document.activeElement).toBe(button('전체 지우기'));
+
+    await click(button('전체 지우기')!);
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    await act(async () => document.activeElement!.dispatchEvent(esc));
+    expect(outer).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(button('전체 지우기'));
+    expect(clears()).toHaveLength(0);
+
+    await click(button('전체 지우기')!);
+    await click(button('모두 지우기')!);
+    await settle();
+    expect(clears()).toHaveLength(1);
+    expect(document.activeElement).toBe(button('전체 지우기'));
   });
 
   it('설정을 읽지 못하면 [다시 시도]로 다시 읽는다', async () => {

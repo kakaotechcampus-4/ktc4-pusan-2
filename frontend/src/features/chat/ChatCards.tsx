@@ -9,7 +9,7 @@ import { LockedReason } from './LockedReason';
 import { asGoal, goalText } from './chatGoal';
 import { memoryItemState, PROFILE_KEY_LABEL } from './chatMemory';
 import { useChatStore } from './chatStore';
-import { useMemorySettings, useRemoveMemoryItem } from './useChatMemory';
+import { useMemoryChanging, useMemorySettings, useRemoveMemoryItem } from './useChatMemory';
 import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
 import type { DecideResult, UndoResult } from './chatTransport';
 
@@ -182,6 +182,8 @@ function MemoryRemove({
 }) {
   const memory = useMemorySettings(userId);
   const { remove, busy, failed } = useRemoveMemoryItem(userId, itemId);
+  // 다른 항목을 지우는 중이어도 막습니다 — 응답이 엇갈려 지운 항목이 되살아나지 않게
+  const changing = useMemoryChanging(userId);
   const state = memoryItemState(memory.data, itemId, value);
   if (state === 'removed') return <p className="text-xs text-stone">{MEMORY_REMOVED_TEXT}</p>;
   if (state === 'changed') return <p className="text-xs text-stone">{MEMORY_CHANGED_TEXT}</p>;
@@ -190,9 +192,9 @@ function MemoryRemove({
       {/* `disabled` 로 두면 초점이 body 로 빠집니다 (#818) — aria-disabled 로 두고 누름을 무시합니다 */}
       <button
         type="button"
-        aria-disabled={busy}
+        aria-disabled={changing}
         onClick={() => {
-          if (!busy) remove();
+          if (!changing) remove();
         }}
         className={BUTTON_CLASS}
       >

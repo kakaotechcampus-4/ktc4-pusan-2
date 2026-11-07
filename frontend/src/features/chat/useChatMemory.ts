@@ -13,16 +13,18 @@ import {
 /**
  * 기억 설정 화면 · '기억했어요' 카드 · '기억 없이' 스위치가 함께 읽는 서버 값 (12-4 F14 · F15 · F16).
  *
- * - 다른 탭 · 기기에서 바뀐 값은 화면을 다시 열거나 창으로 돌아올 때 다시 읽어 맞춥니다(L3-43 "다른 탭에서 바뀜").
- *   앱 기본값(30초 동안 다시 읽지 않음 · 창 초점에 안 읽음)과 달리 여기서는 매번 다시 읽습니다.
+ * - 다른 탭 · 기기에서 바뀐 값은 창으로 돌아올 때 다시 읽어 맞춥니다(L3-43 "다른 탭에서 바뀜").
+ * - 설정 화면(`fresh`)은 열 때마다 다시 읽습니다. 카드 · 스위치는 30초 안에 다시 그려져도(목록 열고 닫기 ·
+ *   지난 메시지 불러오기) 다시 읽지 않습니다.
  * - 바꾸는 요청은 모두 바뀐 뒤의 설정 전체를 돌려주므로 받은 값으로 캐시를 바꿉니다. 성공 표시는 그 뒤에만 합니다.
  *   실패하면 캐시를 건드리지 않아 이전 상태가 그대로 보입니다.
  */
-export function useMemorySettings(userId: string) {
+export function useMemorySettings(userId: string, { fresh = false }: { fresh?: boolean } = {}) {
   return useQuery({
     queryKey: memoryKey(userId),
     queryFn: ({ signal }) => fetchMemory(signal),
-    staleTime: 0,
+    staleTime: 30_000,
+    refetchOnMount: fresh ? 'always' : true,
     refetchOnWindowFocus: true,
   });
 }
@@ -32,7 +34,10 @@ const changeKey = (userId: string) => [...memoryKey(userId), 'change'] as const;
 const removeKey = (userId: string, itemId: string) =>
   [...changeKey(userId), 'remove', itemId] as const;
 
-/** 설정 화면 — 바꾸는 요청이 하나라도 나가 있으면 모든 버튼을 막습니다 */
+/**
+ * 바꾸는 요청이 하나라도 나가 있음 — 설정 화면의 모든 버튼과 카드 [지우기]가 함께 봅니다.
+ * 응답마다 설정 전체로 캐시를 덮어쓰므로, 둘이 겹치면 늦게 온 앞 응답이 지운 항목을 되살립니다
+ */
 export const useMemoryChanging = (userId: string) =>
   useIsMutating({ mutationKey: changeKey(userId) }) > 0;
 
@@ -73,7 +78,8 @@ const isGone = (error: unknown) => error instanceof ApiFailure && error.status =
 /**
  * 항목 하나 [지우기] — 설정 화면의 줄과 '기억했어요' 카드가 같이 씁니다 (L3-45).
  *
- * - 누르는 동안 그 `item_id` 만 막습니다. 같은 항목의 카드 · 줄이 여럿이어도 함께 막힙니다(키가 같음).
+ * - 누르는 동안 그 `item_id` 를 막습니다. 같은 항목의 카드 · 줄이 여럿이어도 함께 막힙니다(키가 같음).
+ *   다른 항목까지 막는 일은 부르는 쪽이 `useMemoryChanging` 으로 합니다.
  * - 이미 지운 항목(404)은 지운 것으로 봅니다("이미 지워졌으면 처음 결과로") — 목록에서 빼고 다시 읽습니다.
  * - `onRemoved` 는 서버가 지운 뒤에만 부릅니다(성공 표시).
  */

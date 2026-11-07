@@ -80,6 +80,7 @@ export const MEMORY_TEXT = {
   enabledOff: '코칭 프로필 기억을 껐어요.',
   enabledFailed: '설정을 바꾸지 못했으니 다시 시도해 주세요.',
   cleared: '기억을 모두 지웠어요.',
+  clearConfirm: '정말 모두 지울까요? 지운 기억은 되돌릴 수 없어요.',
   clearFailed: '기억을 지우지 못했으니 다시 시도해 주세요.',
   removed: '기억을 지웠어요.',
 } as const;

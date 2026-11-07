@@ -224,6 +224,7 @@ function ChatSessionView({
  *
  * - 버튼이 사라지는 때가 누른 순간 · 응답이 온 뒤 · 실행이 끝난 뒤로 여러 갈래라, 경로마다 막지 않고 패널의 DOM 변화를 지켜봅니다.
  * - 사용자가 패널 밖을 눌러 초점을 놓은 것(놓은 요소가 그대로 있음)은 되돌리지 않습니다
+ * - 입력칸이 숨겨져 있으면(기억 설정 화면) 초점을 받지 못하니 패널 자체로 옮깁니다
  */
 function useKeepFocusInPanel(
   panelRef: RefObject<HTMLElement | null>,
@@ -254,7 +255,9 @@ function useKeepFocusInPanel(
         inside = false;
         return;
       }
-      inputRef.current?.focus();
+      const input = inputRef.current;
+      if (input && !input.closest('[hidden]')) input.focus();
+      else panel.focus();
     };
     const observer = new MutationObserver(rescue);
     observer.observe(panel, { childList: true, subtree: true });
@@ -379,6 +382,7 @@ function ChatPanel({
 } & DraftProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const memoryButtonRef = useRef<HTMLButtonElement>(null);
   useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
@@ -434,13 +438,15 @@ function ChatPanel({
       role="dialog"
       aria-modal="false"
       aria-labelledby={`${id}-title`}
+      // 누른 버튼이 사라졌는데 입력칸도 숨겨져 있을 때 초점을 받는 자리입니다 (useKeepFocusInPanel)
+      tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.stopPropagation();
           onClose();
         }
       }}
-      className="absolute bottom-full right-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
+      className="absolute bottom-full right-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
     >
       {/* 좁은 창(휴대폰)에서는 버튼 묶음이 제목 아래 줄로 내려갑니다 — 글자가 쪼개지지 않게 */}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line-strong px-5 py-3">
@@ -463,6 +469,7 @@ function ChatPanel({
             대화 목록
           </button>
           <button
+            ref={memoryButtonRef}
             type="button"
             aria-pressed={view === 'memory'}
             onClick={() => toggleView('memory')}
@@ -496,6 +503,11 @@ function ChatPanel({
           userId={userId}
           session={session}
           backToMessages={() => setView('messages')}
+          leaveMemory={() => {
+            // 설정 화면이 사라지기 전에 연 버튼으로 초점을 돌려 둡니다 — body 로 빠지지 않게
+            memoryButtonRef.current?.focus();
+            setView('messages');
+          }}
         />
       </div>
 
@@ -583,12 +595,15 @@ function PanelBody({
   userId,
   session,
   backToMessages,
+  leaveMemory,
 }: {
   failed: boolean;
   view: PanelView;
   userId: string;
   session: ChatSession;
   backToMessages: () => void;
+  /** 기억 설정 [돌아가기] — [기억 설정] 버튼으로 초점을 돌립니다 */
+  leaveMemory: () => void;
 }) {
   if (failed)
     return (
@@ -603,7 +618,7 @@ function PanelBody({
         </button>
       </div>
     );
-  if (view === 'memory') return <ChatMemorySettings userId={userId} onBack={backToMessages} />;
+  if (view === 'memory') return <ChatMemorySettings userId={userId} onBack={leaveMemory} />;
   if (view === 'list')
     return (
       <ConversationList

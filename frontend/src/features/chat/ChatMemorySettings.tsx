@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ProfileItem } from '@/types/chat';
 import { MEMORY_INTRO_TEXT, MEMORY_TEXT, PROFILE_KEY_LABEL } from './chatMemory';
 import {
@@ -17,6 +17,7 @@ import {
  * - 성공 표시는 서버 응답 뒤에만 합니다. 실패하면 이전 상태를 그대로 두고 [다시 시도]를 보입니다.
  * - 바꾸는 요청이 나가 있는 동안에는 모든 버튼을 막습니다(설정 번호 `memory_version` 이 요청마다 오릅니다).
  * - 열 때마다 · 창으로 돌아올 때마다 서버 값을 다시 읽습니다(다른 탭에서 바뀜).
+ * - [전체 지우기]는 되돌릴 수 없어 같은 자리에서 한 번 더 묻습니다(모달 없이). 물을 때 초점은 [취소]에 둡니다.
  *
  * 시안이 없어 지금 카드 · 버튼 모양을 그대로 씁니다.
  */
@@ -25,13 +26,29 @@ const BUTTON =
   'min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone aria-disabled:hover:bg-transparent';
 
 export function ChatMemorySettings({ userId, onBack }: { userId: string; onBack: () => void }) {
-  const memory = useMemorySettings(userId);
+  const memory = useMemorySettings(userId, { fresh: true });
   const changing = useMemoryChanging(userId);
   const toggle = useSaveMemoryEnabled(userId);
   const clear = useClearMemory(userId);
   /** 서버가 받은 뒤의 결과 한 줄 — 다음 요청을 보내면 지웁니다 */
   const [done, setDone] = useState<string | null>(null);
   const switchLabel = useId();
+  /** [전체 지우기]를 한 번 눌러 "정말 모두 지울까요?" 를 묻는 중 */
+  const [confirming, setConfirming] = useState(false);
+  const clearRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  /** 묻기를 열고 닫으면 누른 버튼이 사라지므로, 다시 그린 뒤 초점을 옮길 곳 */
+  const focusNext = useRef<'cancel' | 'clear' | null>(null);
+  const setAsking = (asking: boolean) => {
+    focusNext.current = asking ? 'cancel' : 'clear';
+    setConfirming(asking);
+  };
+  useEffect(() => {
+    const target = focusNext.current === 'cancel' ? cancelRef : clearRef;
+    if (!focusNext.current) return;
+    focusNext.current = null;
+    target.current?.focus();
+  });
 
   const saveEnabled = (enabled: boolean) => {
     if (changing) return;
@@ -120,16 +137,54 @@ export function ChatMemorySettings({ userId, onBack }: { userId: string; onBack:
             </ul>
           )}
 
-          <button
-            type="button"
-            aria-disabled={changing || memory.data.items.length === 0}
-            onClick={() => {
-              if (memory.data.items.length > 0) clearAll();
-            }}
-            className={`${BUTTON} self-start`}
-          >
-            {clear.isPending ? '지우는 중' : '전체 지우기'}
-          </button>
+          {confirming ? (
+            <div
+              role="group"
+              aria-label="전체 지우기 확인"
+              onKeyDown={(event) => {
+                // 묻기만 닫습니다 — 대화창까지 닫지 않게
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  setAsking(false);
+                }
+              }}
+              className="flex flex-col gap-2"
+            >
+              <p className="font-bold">{MEMORY_TEXT.clearConfirm}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAsking(false);
+                    clearAll();
+                  }}
+                  className={BUTTON}
+                >
+                  모두 지우기
+                </button>
+                <button
+                  ref={cancelRef}
+                  type="button"
+                  onClick={() => setAsking(false)}
+                  className={BUTTON}
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              ref={clearRef}
+              type="button"
+              aria-disabled={changing || memory.data.items.length === 0}
+              onClick={() => {
+                if (!changing && memory.data.items.length > 0) setAsking(true);
+              }}
+              className={`${BUTTON} self-start`}
+            >
+              {clear.isPending ? '지우는 중' : '전체 지우기'}
+            </button>
+          )}
           {clear.isError && <Failure text={MEMORY_TEXT.clearFailed} onRetry={clearAll} />}
         </>
       )}

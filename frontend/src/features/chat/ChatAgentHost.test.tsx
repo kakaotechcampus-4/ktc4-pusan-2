@@ -34,6 +34,7 @@ const server = vi.hoisted(() => ({
   conversations: (): Promise<unknown> => Promise.resolve({ conversations: [] }),
   memory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
   pitches: (): Promise<unknown> => Promise.resolve({ pitches: [] }),
+  removeMemory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
   resources: (_pitchId: string): Promise<unknown> => Promise.reject(new Error('버전 목록 없음')),
   report: (takeId: string): Promise<unknown> =>
     Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' }),
@@ -46,6 +47,7 @@ vi.mock('@/shared/api/client', async (original) => ({
     if (path.startsWith('/api/chat/conversations/')) return server.messages(path);
     if (path === '/api/chat/conversations') return server.conversations();
     if (path === '/api/chat/memory') return server.memory();
+    if (path.startsWith('/api/chat/memory/items/')) return server.removeMemory();
     if (path === '/api/pitches/') return server.pitches();
     const resources = /^\/api\/pitches\/([^/]+)\/resources$/.exec(path);
     if (resources) return server.resources(resources[1]!);
@@ -2400,6 +2402,30 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
     expect(panel()!.querySelector('[data-memory-settings]')).toBeNull();
     expect(panel()!.querySelector('form')!.hidden).toBe(false);
     expect(input().value).toBe('쓰던 글');
+  });
+
+  it('[돌아가기]는 초점을 [기억 설정]으로 돌리고, 설정 화면에서 누른 줄이 사라지면 초점을 패널에 둬 Esc 로 닫힌다', async () => {
+    server.memory = () =>
+      Promise.resolve({ enabled: true, items: [{ item_id: 'i-1', key: 'TONE', value: '짧게' }] });
+    await visit('/');
+    await openPanel();
+    await act(async () => button('기억 설정')!.click());
+    await settle();
+    button('돌아가기')!.focus();
+    await act(async () => button('돌아가기')!.click());
+    await settle();
+    expect(document.activeElement).toBe(button('기억 설정'));
+
+    await act(async () => button('기억 설정')!.click());
+    await settle();
+    const remove = panel()!.querySelector<HTMLButtonElement>('[data-memory-row] button')!;
+    remove.focus();
+    await act(async () => remove.click());
+    await settle();
+    expect(panel()!.querySelector('[data-memory-row]')).toBeNull();
+    expect(document.activeElement).toBe(panel());
+    await press(document.activeElement!, { key: 'Escape' });
+    expect(useChatStore.getState().open).toBe(false);
   });
 
   it("'기억 없이'는 새 대화에서 보내기 전에만 고르고, 고르면 머리에 표시한다 — 대화가 생기면 스위치가 사라진다 (L3-44)", async () => {
