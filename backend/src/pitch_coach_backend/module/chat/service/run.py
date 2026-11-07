@@ -19,6 +19,7 @@ from pitch_coach_backend.module.chat.service.owned import parse_uuid
 SEOUL = ZoneInfo("Asia/Seoul")
 OWNER = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 LEASE = timedelta(seconds=30)
+TURN_DEADLINE = timedelta(seconds=120)
 
 
 def seoul_day(at: datetime | None = None) -> date:

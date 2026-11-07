@@ -28,9 +28,8 @@ from pitch_coach_backend.module.chat.exception import (
     ChatTargetNotFound,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.goal_check import TURN_DEADLINE
 from pitch_coach_backend.module.chat.service.request import ProposalNotFound, selected_proposal
-from pitch_coach_backend.module.chat.service.run import SEOUL, digest, seoul_day
+from pitch_coach_backend.module.chat.service.run import SEOUL, TURN_DEADLINE, digest, seoul_day
 from pitch_coach_backend.module.chat.service.waiting import (
     NEW_MESSAGE_TEXT,
     Emitted,
