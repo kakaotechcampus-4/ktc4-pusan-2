@@ -11,6 +11,11 @@ from typing import Any
 from pitch_coach_backend.core.rounding import round_half_up
 
 
+def word_text(word: Mapping[str, Any]) -> str:
+    """전사 단어의 글자. 문장 부호가 붙은 값을 먼저 쓴다."""
+    return word.get("punctuated_word") or word["word"]
+
+
 def take_metric(areas: Mapping[str, Any], area: str, name: str) -> float | None:
     """`areas.<area>.take.<name>`. 영역 값이 없거나(측정 비율 미달) 지표가 null(분모 0)이면 None."""
     values = (areas.get(area) or {}).get("take") or {}

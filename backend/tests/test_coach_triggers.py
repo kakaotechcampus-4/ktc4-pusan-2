@@ -107,7 +107,3 @@ async def test_parsing_a_script_asks_for_the_first_plan(db_session: Session, pit
         await runner.run(ticket)
 
     assert asked == [pitch.id]
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"

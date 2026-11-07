@@ -67,10 +67,13 @@ export function themeTokens(): Token[] {
   return themeGroups().flatMap((group) => group.tokens);
 }
 
-/** 밝은 지면(`.pitch-create`)이 바꾸는 값. 이름 → 값 */
+/** 밝은 지면(`.pitch-create, .light-surface`)이 바꾸는 값. 이름 → 값 */
 export function lightOverrides(): Map<string, string> {
   return new Map(
-    [...block('.pitch-create').matchAll(declaration)].map((match) => [match[1]!, clean(match[2]!)]),
+    [...block('.pitch-create, .light-surface').matchAll(declaration)].map((match) => [
+      match[1]!,
+      clean(match[2]!),
+    ]),
   );
 }
 

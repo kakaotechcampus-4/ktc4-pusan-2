@@ -151,7 +151,7 @@ def test_missions_leave_out_missing_priority_and_description():
     [("COACHING", "COACHING"), ("EXAM", "EXAM"), ("exam", "EXAM"), ("PRACTICE", "COACHING")],
 )
 def test_mode_outside_the_contract_falls_back_to_coaching(mode: str, sent: str):
-    assert constants(mode=mode).common()["mode"] == sent
+    assert constants(mode=mode).common["mode"] == sent
 
 
 @pytest.mark.parametrize(
@@ -165,8 +165,8 @@ def test_script_mode_outside_the_contract_is_not_sent(script_mode: str | None, s
 
 
 def test_broken_base_level_is_not_sent():
-    assert constants(base_level_db=float("nan")).common()["calibration"] == {"base_level_db": None}
-    assert constants(base_level_db=-29.5).common()["calibration"] == {"base_level_db": -29.5}
+    assert constants(base_level_db=float("nan")).common["calibration"] == {"base_level_db": None}
+    assert constants(base_level_db=-29.5).common["calibration"] == {"base_level_db": -29.5}
 
 
 # ── 요청 모양 ─────────────────────────────────────────────────────────

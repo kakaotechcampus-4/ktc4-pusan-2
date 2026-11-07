@@ -243,6 +243,8 @@ def test_parse_failure_is_failed_with_code(
         pytest.param("가" * (script_service.MAX_SCRIPT_CHARS + 1), id="too-many-chars"),
         # JSON 은 \u0000 을 허용하지만 PostgreSQL TEXT 는 NUL 을 넣지 못한다
         pytest.param("가\x00나", id="nul"),
+        # 이모지가 반쯤 잘린 글. UTF-8 로 바꿀 수 없어 저장할 때 터진다
+        pytest.param("가\ud83d나", id="lone-surrogate"),
     ],
 )
 def test_invalid_script_is_rejected_and_nothing_is_stored(

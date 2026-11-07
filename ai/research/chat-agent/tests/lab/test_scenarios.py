@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from chat_agent_lab import fixtures as fx
 from chat_agent_lab import grading as gr
 from chat_agent_lab import scenario as scn
+from chat_agent_lab.service_tests import fixtures as fx
 
 ALL = scn.load_scenarios()
 BY_ID = {s.id: s for s in ALL}

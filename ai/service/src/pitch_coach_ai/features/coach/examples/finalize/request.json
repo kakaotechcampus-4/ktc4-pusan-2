@@ -1151,14 +1151,14 @@
       "filler": "filler-1.0+3e62c0c87d2a",
       "pace": "pace-1.0+b24c6ce0efd4",
       "gaze": "gaze-1.3+1c10b82348a2",
-      "volume": "volume-1.1+19f685ae6d67",
+      "volume": "volume-1.2+19f685ae6d67",
       "timing": "timing-1.1+305f8e44237d"
     },
     "latest_criteria_versions": {
       "filler": "filler-1.0+3e62c0c87d2a",
       "pace": "pace-1.0+b24c6ce0efd4",
       "gaze": "gaze-1.3+1c10b82348a2",
-      "volume": "volume-1.1+19f685ae6d67",
+      "volume": "volume-1.2+19f685ae6d67",
       "timing": "timing-1.1+305f8e44237d"
     },
     "criteria_changed": false,
