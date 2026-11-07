@@ -245,26 +245,9 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
           <br />
           멀리 닿을 수 있도록.
         </h2>
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {[
-            ['피코 교수', '발표를 꼼꼼히 살피고 다음 연습을 안내하는 코치'],
-            ['치치', '조금씩 성장하며 발표를 연습하는 연구실의 새'],
-          ].map(([name, description]) => (
-            <article key={name} className="border-2 border-ink bg-cream p-6 shadow-[4px_4px_0_var(--color-ink)]">
-              <p className="font-mono text-xs tracking-widest">LAB MEMBER</p>
-              <h3 className="mt-3 text-xl font-extrabold">{name}</h3>
-              <p className="mt-2 text-sm leading-7">{description}</p>
-            </article>
-          ))}
-        </div>
-        <article className="mt-6 flex flex-col gap-5 border-2 border-ink bg-panel p-6 shadow-[4px_4px_0_var(--color-ink)] sm:flex-row sm:items-center">
-          <img src={publicUrl('semini.png')} alt="새미나이 캐릭터" className="h-24 w-24 shrink-0 object-contain [image-rendering:pixelated]" />
-          <div>
-            <p className="font-mono text-xs font-bold tracking-widest">CHICHI'S FAVORITE APP · AI 비서 앱</p>
-            <h3 className="mt-2 text-2xl font-extrabold">새미나이 <span className="text-base font-medium">(Semini)</span></h3>
-            <p className="mt-3 text-sm leading-7">치치가 발표를 준비할 때 자주 찾는 AI 비서 앱이에요. 궁금한 점을 물어보고 연습에 필요한 도움을 받아요.</p>
-          </div>
-        </article>
+        <p className="mt-8 border-2 border-dashed border-line-strong p-6 text-sm text-stone">
+          연구실 소개 글 · 구성원(피코 교수 · 치치) 카드 자리
+        </p>
       </section>
 
       <section id="faq" className="border-t border-line-strong px-6 py-20">
