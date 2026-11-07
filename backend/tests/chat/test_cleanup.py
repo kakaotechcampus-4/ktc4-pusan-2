@@ -16,6 +16,7 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.cleanup import clean_deleted_sources
+from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 from pitch_coach_backend.module.pitch.entity import Pitch
 
 
@@ -27,7 +28,7 @@ def conversation(db_session: Session, user_id: uuid.UUID) -> ChatConversation:
     return row
 
 
-def _answer(db_session: Session, conversation: ChatConversation, take_id: uuid.UUID) -> None:
+def _answer(db_session: Session, conversation: ChatConversation, take_id: object) -> None:
     db_session.add(
         ChatMessage(
             conversation_id=conversation.id,
@@ -73,6 +74,53 @@ def test_goal_with_deleted_base_take_is_emptied(
     )
     assert emptied == 1
     assert clean_deleted_sources(db_session) == 0
+
+
+def test_answer_is_masked_when_its_deleted_source_id_is_not_in_canonical_form(
+    db_session: Session, conversation: ChatConversation
+) -> None:
+    """저장된 근거 ID 가 대문자여도 지워졌으면 가린다."""
+    _answer(db_session, conversation, str(uuid.uuid4()).upper())
+
+    assert clean_deleted_sources(db_session) == 1
+
+    message = db_session.scalar(
+        select(ChatMessage).where(ChatMessage.conversation_id == conversation.id)
+    )
+    assert message.text == MASKED_TEXT
+
+
+def test_answer_stays_when_its_existing_source_id_is_not_in_canonical_form(
+    db_session: Session, conversation: ChatConversation, user_id: uuid.UUID
+) -> None:
+    pitch = Pitch(user_id=user_id, title="졸업 발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    db_session.add(
+        ChatMessage(
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+            seq=1,
+            role="assistant",
+            text="말이 빨랐어요",
+            status="DONE",
+            source_pitch_ids=[str(pitch.id).upper()],
+        )
+    )
+    db_session.commit()
+
+    assert clean_deleted_sources(db_session) == 0
+
+
+def test_summary_is_emptied_when_its_deleted_source_id_is_not_in_canonical_form(
+    db_session: Session, conversation: ChatConversation
+) -> None:
+    summary = _summary(db_session, conversation, pitch_ids=[], take_ids=[str(uuid.uuid4()).upper()])
+
+    assert clean_deleted_sources(db_session) == 1
+
+    db_session.expire_all()
+    assert summary.items == []
 
 
 def test_masked_answer_does_not_break_recent_assessments(
