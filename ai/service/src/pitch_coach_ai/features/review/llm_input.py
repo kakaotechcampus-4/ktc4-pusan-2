@@ -59,9 +59,36 @@ def _content_slides(rules: RuleResult) -> list[dict[str, Any]]:
     return slides
 
 
+def _focus_slides(candidates: Candidates) -> set[int]:
+    """후보(강점 · 개선점 · 다음 미션)가 가리키는 장. LLM 이 장 이야기를 하는 곳은 여기뿐이다"""
+    items = [c.item for c in (*candidates.strengths.values(), *candidates.improvements.values())]
+    slides = {i["slide_number"] for i in items} | {
+        m["slide_number"] for m in candidates.next_missions.values()
+    }
+    return slides - {None}
+
+
+def llm_comparison(rules: RuleResult, candidates: Candidates) -> list[dict[str, Any]]:
+    """LLM 에 싣는 이전 Take 비교 (명세 6-2).
+
+    Take 값 비교(slide_number null)와 후보가 가리키는 장의 비교만 싣는다. 장이 많은 대본에서
+    장마다의 비교를 모두 실으면 입력이 장 수에 비례해 커지는데,
+    후보 밖의 장은 LLM 이 말할 곳이 없다.
+    응답의 comparison 은 그대로 전부다 (FE 리포트 · 저장).
+    """
+    slides = _focus_slides(candidates)
+    keys = ("metric", "slide_number", "previous", "current", "improved", "script_mode")
+    return [
+        {k: r[k] for k in keys}
+        for r in rules.comparison
+        if r["slide_number"] is None or r["slide_number"] in slides
+    ]
+
+
 def review_message(rules: RuleResult, candidates: Candidates) -> str:
     """LLM 에 보내는 입력. 같은 규칙 단계 결과면 같은 문자열이 나온다."""
     metrics: set[str] = set()
+    comparison = llm_comparison(rules, candidates)
 
     def text_candidates(items: dict[str, TextCandidate]) -> list[dict[str, Any]]:
         out = []
@@ -96,7 +123,7 @@ def review_message(rules: RuleResult, candidates: Candidates) -> str:
 
     metrics.update(r["metric"] for r in rules.mission_results)
     metrics.update(r["metric"] for r in rules.criteria_results)
-    metrics.update(r["metric"] for r in rules.comparison)
+    metrics.update(r["metric"] for r in comparison)
     payload: dict[str, Any] = {
         "score": rules.score,
         "dimensions": [
@@ -116,20 +143,7 @@ def review_message(rules: RuleResult, candidates: Candidates) -> str:
             {k: r[k] for k in ("display", "metric", "operator", "target", "observed", "status")}
             for r in rules.criteria_results
         ],
-        "comparison": [
-            {
-                k: r[k]
-                for k in (
-                    "metric",
-                    "slide_number",
-                    "previous",
-                    "current",
-                    "improved",
-                    "script_mode",
-                )
-            }
-            for r in rules.comparison
-        ],
+        "comparison": comparison,
         "content_slides": _content_slides(rules),
         "metric_labels": {m: METRIC_LABELS[m] for m in sorted(metrics) if m in METRIC_LABELS},
     }

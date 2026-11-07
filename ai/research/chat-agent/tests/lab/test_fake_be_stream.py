@@ -14,7 +14,7 @@ import pytest
 
 from chat_agent_lab.app import TurnOutcome
 from chat_agent_lab.fake_be import FakeBe, Run
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 from .test_fake_be import (
     GOAL_MSG,

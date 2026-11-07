@@ -6,9 +6,9 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 사라진 뒤 다시 붙어도 `segment_id` 가 `"1-1"` 부터 다시 나오지 않아야 FE 가 앞부분을 덮어쓰지 않고,
 `UNIQUE(take_id, seq)` 도 지켜진다. 저장에 실패한 final 은 Take 가 들고 있다가 다시 넣는다.
 
-FE 가 떨어져 있는 동안 온 final 은 모아 두었다가 다시 붙으면 보낸다. 실제 WebSocket 전송은 스트림
-(`stream/runtime.py`)이 하고, 여기서는 그 결과를 받아 목록을 고친다. connection · stream 을
-import 하지 않는다.
+FE 가 떨어져 있는 동안 온 final 은 모아 두었다가 다시 붙으면 보낸다. 실제 WebSocket 전송은
+`stream/transcript_sender.py` 가 하고, 여기서는 그 결과를 받아 목록을 고친다. connection · stream
+을 import 하지 않는다.
 """
 
 import asyncio
@@ -62,7 +62,7 @@ class TranscriptBuffer:
     async def resend(self, send: Callable[[TranscriptMessage], Awaitable[bool]]) -> None:
         """떨어져 있는 동안 온 final 을 순서대로 다시 보낸다.
 
-        `ready` 뒤에 스트림이 부른다 (`TakeStream.resend_missed`). `send` 는 실제 전송이고 성공
+        `ready` 뒤에 부른다 (`TranscriptSender.resend_missed`). `send` 는 실제 전송이고 성공
         여부를 돌려준다. 저장은 화면과 따로 하므로 리포트에는 영향이 없다 — 이건 실시간
         화면(자막·2단 코치)이 끊긴 구간을 건너뛰지 않게 하는 용도다.
 

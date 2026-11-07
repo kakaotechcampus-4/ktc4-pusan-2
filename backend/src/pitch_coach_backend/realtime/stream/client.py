@@ -7,8 +7,9 @@
 import asyncio
 
 import anyio
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from starlette.websockets import WebSocketState
 
 from pitch_coach_backend.core.tasks import quiet
 from pitch_coach_backend.realtime.dto import CLOSE_POLICY_VIOLATION, ErrorMessage, WsErrorCode
@@ -86,7 +87,18 @@ class ClientSlot:
 
 
 async def send_model(ws: WebSocket, message: BaseModel) -> None:
-    await ws.send_text(message.model_dump_json())
+    """보낸다. 서버가 이미 닫은 연결이면 끊긴 상대에게 보낼 때처럼 `WebSocketDisconnect` 를 던진다.
+
+    Starlette 는 끊긴 상대에게 보내면 `WebSocketDisconnect` 를, close 를 보낸 뒤에 보내면
+    `RuntimeError` 를 던진다. 둘 다 흔한 종료라 받는 쪽이 하나로 다루게 맞춘다. 연결이 열려 있는데
+    난 `RuntimeError` 는 그대로 올린다
+    """
+    try:
+        await ws.send_text(message.model_dump_json())
+    except RuntimeError:
+        if ws.application_state != WebSocketState.DISCONNECTED:
+            raise
+        raise WebSocketDisconnect(code=1006) from None
 
 
 async def close_with(ws: WebSocket, error: ErrorMessage) -> None:

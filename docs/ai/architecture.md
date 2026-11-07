@@ -628,7 +628,7 @@ features/<모듈>/
 | `review` | 보고서 · 점수 · 다음 미션 · 반복 문제 | `review_take` |
 | `chat_agent` | 대화 에이전트 루프: 사용자 말 · 행동 결과 · 새 리뷰를 받아 검사한 답 또는 행동을 낸다 | `api/chat_agent.py`(라우터 `POST /agent/turn`) |
 
-`chat_agent`는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들고 서비스에 탑재한다. 탑재 전 코어는 연구 모듈 `src/chat_agent/`에 있고 이 절의 규칙을 그대로 지킨다([chat-agent.md](features/chat-agent.md) 4-1).
+`chat_agent`는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들어 서비스에 탑재했다. 코어는 서비스 `features/chat_agent/`에 있고 이 절의 규칙을 지킨다. 연구 모듈에는 가짜 BE · 평가가 남는다([chat-agent.md](features/chat-agent.md) 4-1).
 
 # 9. LLM 공통 규칙
 - **LLM 객체는 서비스의 `common/llm.py`에서만 만든다.** 기능 코드는 `ChatOpenAI`를 직접 만들지 않는다. `structured_llm(schema)`에 출력 pydantic 스키마를 넘기면 `with_structured_output(schema)`가 적용된 객체를 돌려준다. 코어는 그 객체의 `.invoke`만 쓴다.
@@ -650,7 +650,7 @@ features/<모듈>/
 - **응답한 모델 기록**: 실제로 응답한 모델 이름을 LangChain 콜백으로 잡아 로그에 남기고 응답 `meta.model`에 싣는다(결과가 기본 결과면 `meta.model`은 null, 5절). 코어가 받는 반환값은 바뀌지 않는다.
 - **예비 모델(fallback)**: 모델 하나가 실패할 때 다른 묶음으로 넘기는 기능은 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 넘어갈 때는 그 묶음의 주소 · 키를 쓰고, 다른 묶음의 주소 · 키를 빌리지 않는다. 설정되지 않은 묶음은 건너뛴다. 넘어갈 오류 종류와 순서는 이 기능을 만들 때 정한다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
 - **프롬프트**는 `features/<기능>/prompts/`에 둔다. 프롬프트를 바꿔 결과가 달라지면 기능 버전을 올린다.
-- **숫자 검사**: LLM 문장 속 숫자는 코드가 입력 · 규칙 단계 결과와 0-2의 표기 규칙으로 대조한다. 리뷰는 맞지 않는 문장만 기본 문장으로 바꾸고 `fallback_reason`을 달지 않는다(바꾼 문장 수는 로그). LLM을 다시 부르지 않는다. 대화 에이전트는 검사에 걸린 문장과 이유를 모델에 알려 한 번 고치게 하고 다시 검사한다. 그래도 걸린 문장은 내보내지 않는다(검사를 통과한 문장만 흘려보내므로 화면에 나간 문장은 지우지 않는다). 고치는 호출도 모델 호출 한도에 센다.
+- **숫자 검사**: LLM 문장 속 숫자는 코드가 입력 · 규칙 단계 결과와 0-2의 표기 규칙으로 대조한다. 리뷰는 숫자가 맞지 않는 항목(요약 · 강점 한 줄 · 개선점 한 줄 · 다음 미션 설명 · 이유)만 통째로 기본 문장으로 바꾸고 `fallback_reason`을 달지 않는다(바꾼 항목 수는 로그, `review-agent.md` 6-2). LLM을 다시 부르지 않는다. 대화 에이전트는 검사에 걸린 문장과 이유를 모델에 알려 한 번 고치게 하고 다시 검사한다. 그래도 걸린 문장은 내보내지 않는다(검사를 통과한 문장만 흘려보내므로 화면에 나간 문장은 지우지 않는다). 고치는 호출도 모델 호출 한도에 센다.
 - **테스트**: 단위 테스트는 가짜 LLM(`.invoke`가 정해진 스키마 객체를 돌려주는 객체)으로 한다. 실제 호출은 `tests/live/`에 `live` 표시를 달아 따로 돌린다.
 
 # 10. 환경변수와 비밀값
@@ -671,7 +671,7 @@ features/<모듈>/
 
 - research와 service가 같은 이름을 쓴다. 로컬에서는 `ai/.env` 하나를 함께 쓴다.
 - **대화 에이전트가 켜졌는데 서명 키가 없거나 32바이트 미만이면** 대화 경로만 503 `AGENT_DISABLED`이고 기존 기능 · 헬스체크는 그대로다. 반영 위치는 [chat-agent.md](features/chat-agent.md) 11-1이고, 서버 시크릿 설정은 BE(인프라)에 요청한다.
-- **대화 변수 넷(`AGENT_*`)은 서비스 탑재 전이라 아직 `settings.py` · `ai/.env.example`에 없다.** 서비스에 탑재할 때 아래 '새 환경변수를 더할 때'대로 두 곳에 더한다. 그 전에는 서버에 넣지 않는다.
+- **대화 변수 넷(`AGENT_*`)은 `settings.py` · `ai/.env.example`에 있다.** `AGENT_ENABLED` 기본값이 false라 서버 값을 넣기 전에는 `/agent/turn`만 503 `AGENT_DISABLED`다. 켤 때 서버 시크릿에 `AGENT_ENABLED=true` · `AGENT_STATE_SECRET`을 넣고 BE 쪽 스위치와 함께 바꾼다(`ai-service.md` 11-4).
 - **값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적는다.** `docker run --env-file`은 따옴표와 줄 끝 주석을 값에 그대로 넣어서, 주소나 키가 틀어져 LLM 연결이 실패한다. 주석은 자기 줄에 쓴다. 서버의 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)도 같다.
 - **`ai/.env.example`을 그대로 복사해 키만 비운 묶음은 일부만 채운 묶음이라 서비스가 시작할 때 오류를 낸다.** 쓰지 않는 묶음은 세 줄을 주석으로 두고, 키 없이 띄워 볼 때는 `--env-file` 없이 띄운다.
 - **키가 없어도 서버는 뜨고 `/health`는 응답한다**(CI · 로컬 확인용, 묶음 값이 아예 없을 때). LLM을 쓰는 요청은 503(`LLM_UNAVAILABLE`)으로 실패하고, 코칭 계획 · 리뷰는 기본 결과를 200으로 돌려준다(`fallback_reason`).

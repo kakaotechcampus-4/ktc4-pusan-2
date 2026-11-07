@@ -6,7 +6,6 @@ presentation_version_id / script_version_id 를 같이 박아둔다.
 
 측정값은 성격에 따라 나뉜다.
   - TakeSummary   : 연습이 끝난 뒤 한 번 계산되는 집계. take 당 1행.
-  - LiveFeedback  : 연습 도중 이벤트를 쌓으려던 표. 지금은 읽고 쓰는 곳이 없다.
   - Calibration   : 시작 전 카메라·마이크 점검 결과.
   - Mission       : 결과에서 뽑아낸 다음 연습 과제.
 """
@@ -196,21 +195,6 @@ class Calibration(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     base_level_db: Mapped[float | None] = mapped_column(Float)
     gaze_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     result: Mapped[Any | None] = mapped_column(JSONB)
-
-
-class LiveFeedback(UUIDPrimaryKeyMixin, Base):
-    """연습 도중 실시간으로 띄운 피드백 1건."""
-
-    __tablename__ = "live_feedbacks"
-
-    take_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
-    )
-    type: Mapped[str] = mapped_column(String(20), nullable=False)
-    message: Mapped[str] = mapped_column(String(255), nullable=False)
-    # take 시작 시점부터의 경과 시간(ms). 녹화 재생 위치와 맞춘다.
-    triggered_at_ms: Mapped[int] = mapped_column(Integer, nullable=False)
-    confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class Mission(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):

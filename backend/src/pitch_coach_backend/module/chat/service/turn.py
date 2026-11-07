@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal
 from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
@@ -16,7 +17,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
     ChatRunEvent,
 )
-from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.repository import UNFINISHED_RUN_STATUSES, ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
 from pitch_coach_backend.module.chat.service.memory import (
     memory_cards,
@@ -25,22 +26,27 @@ from pitch_coach_backend.module.chat.service.memory import (
 )
 from pitch_coach_backend.module.chat.service.practice import start_practice
 from pitch_coach_backend.module.chat.service.request import goal_view
-from pitch_coach_backend.module.chat.service.result import failed, succeeded
+from pitch_coach_backend.module.chat.service.result import (
+    action_row,
+    failed,
+    save_result,
+    succeeded,
+)
 from pitch_coach_backend.module.chat.service.run import (
     LEASE,
     OWNER,
-    SEOUL,
     ClaimedRun,
     add_run_log,
     cancel,
+    canonical_ids,
     check_sources,
     claimed,
-    digest,
     lock_conversation_of,
     lock_current,
     lock_ids,
     lock_or_cancel,
     release_unsent,
+    seoul_day,
     take_lease,
 )
 
@@ -63,14 +69,16 @@ def mark_sending(
     sources: dict[str, list[str]],
     memory_version: int,
     summary_version: int | None,
+    profile_item_ids: list[uuid.UUID],
 ) -> ClaimedRun | None:
     row = lock_current(db, run)
     if row is None:
         return None
     repo = ChatRepository(db)
+    repo.touch_profile_items(profile_item_ids, datetime.now(UTC))
     if turn_call == 1:
-        repo.release_service_turn(row.accepted_at.astimezone(SEOUL).date())
-    repo.add_service_turn(datetime.now(SEOUL).date())
+        repo.release_service_turn(seoul_day(row.accepted_at))
+    repo.add_service_turn(seoul_day())
     row.turn_calls = [
         *(row.turn_calls or []),
         {
@@ -118,6 +126,7 @@ def wait_for_action(
     pitch_ids, take_ids = _answer_sources(data)
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
+    _lock_sent_sources(db, run)
     repo = ChatRepository(db)
     conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
@@ -126,10 +135,7 @@ def wait_for_action(
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return None
-    action = data["actions"][0]
     row.state = data["state"]
-    row.budget_used = data["budget_used"]
-    row.usage = data.get("usage")
     row.plan = data.get("plan")
     row.trace = data.get("trace")
     if data.get("message") is not None:
@@ -139,29 +145,10 @@ def wait_for_action(
             "evidence": data.get("evidence"),
             "memory_saved": memory_cards(row),
         }
-    row.turn_calls = [
-        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
-        for call in row.turn_calls or []
-    ]
-    repo.add(
-        ChatAction(
-            conversation_id=row.conversation_id,
-            user_id=row.user_id,
-            run_id=row.id,
-            action_id=action["action_id"],
-            type=action["type"],
-            args=action["args"],
-            args_digest=digest(action["args"]),
-            autonomy=action["autonomy"],
-            idempotency_key=action["idempotency_key"],
-            args_hash=action["args_hash"],
-            status="PENDING",
-        )
-    )
-    _add_diagnostics(repo, row, turn_call, final.diagnostics, datetime.now(UTC))
+    repo.add(action_row(row, data["actions"][0], status="PENDING"))
+    _save_turn_output(repo, row, turn_call, final, datetime.now(UTC))
     if _apply_scope(row, conversation, data):
         row.state_revision += 1
-    row.row_revision += 1
     db.commit()
     return claimed(row)
 
@@ -224,10 +211,11 @@ def _action_view(saved: ChatAction) -> dict[str, Any]:
 def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bool:
     data = final.data
     pitch_ids, take_ids = _answer_sources(data)
-    if run.first_trigger == "TAKE_REVIEWED":
+    if run.first_trigger == AgentTrigger.TAKE_REVIEWED:
         take_ids.add(data["goal_result"]["take_id"])
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
+    _lock_sent_sources(db, run)
     repo = ChatRepository(db)
     conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
@@ -236,16 +224,16 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return True
-    if row.first_trigger == "TAKE_REVIEWED" and not settle_goal_check(
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED and not settle_goal_check(
         repo, row, conversation, data["goal_result"]
     ):
         cancel(db, run)
         return False
     _apply_scope(row, conversation, data)
-    start_practice(db, repo, row, data)
-    save_profile_updates(repo, row, conversation, data)
-    save_summary(repo, row, turn_call, data)
     message = data["message"]
+    cards = start_practice(db, repo, row, data["actions"], message["cards"])
+    cards = save_profile_updates(repo, row, conversation, data.get("profile_updates"), cards)
+    save_summary(repo, row, turn_call, data)
     now = datetime.now(UTC)
     repo.add(
         ChatMessage(
@@ -257,7 +245,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
             status=data["status"],
             run_id=row.id,
             claims=message["claims"],
-            cards=message["cards"],
+            cards=cards,
             sources=message["sources"],
             assessments=data.get("assessments"),
             plan=data.get("plan"),
@@ -273,22 +261,16 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     row.status = data["status"]
     row.plan = data.get("plan")
     row.trace = data.get("trace")
-    row.budget_used = data["budget_used"]
-    row.usage = data.get("usage")
     row.finished_at = now
-    row.row_revision += 1
-    row.turn_calls = [
-        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
-        for call in row.turn_calls or []
-    ]
+    _save_turn_output(repo, row, turn_call, final, now)
     add_run_log(repo, row, now)
-    _add_diagnostics(repo, row, turn_call, final.diagnostics, now)
     db.commit()
     return True
 
 
 def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
     repo = ChatRepository(db)
+    _lock_sent_sources(db, run)
     lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
@@ -315,7 +297,7 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
 
 def recover_run(db: Session, run_id: uuid.UUID, now: datetime) -> Literal["START", "RESUME"] | None:
     repo = ChatRepository(db)
-    row = repo.lock_run(run_id, statuses=("QUEUED", "RUNNING"))
+    row = repo.lock_run(run_id, statuses=UNFINISHED_RUN_STATUSES)
     if row is None or (row.lease_until is not None and row.lease_until > now):
         db.rollback()
         return None
@@ -367,8 +349,7 @@ def _settle_action(repo: ChatRepository, saved: ChatAction) -> None:
         result = succeeded(action, {"goal": goal_view(goal)})
     else:
         result = failed(action, "IDEMPOTENCY_CONFLICT", "작업 완료를 확인하지 못했어요.")
-    saved.status = result.status
-    saved.result = result.model_dump(mode="json")
+    save_result(saved, result)
 
 
 def _has_confirm_card(row: ChatRun, action_id: str) -> bool:
@@ -397,17 +378,21 @@ def _end_with_sent_claims(
     repo = ChatRepository(db)
     now = datetime.now(UTC)
     row.status = "PARTIAL"
-    row.budget_used = final.data["budget_used"]
-    row.usage = final.data.get("usage")
     row.finished_at = now
-    row.row_revision += 1
-    row.turn_calls = [
-        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
-        for call in row.turn_calls or []
-    ]
+    _save_turn_output(repo, row, turn_call, final, now)
     add_run_log(repo, row, now)
-    _add_diagnostics(repo, row, turn_call, final.diagnostics, now)
     db.commit()
+
+
+def _lock_sent_sources(db: Session, run: ClaimedRun) -> None:
+    """이미 보낸 문장의 근거 피치 · Take 를 대화보다 먼저 잠근다(잠그는 순서는 waiting.py).
+
+    보낸 문장으로 메시지를 남기면 `save_claim_message` 가 같은 근거를 다시 잠그며 지워졌는지 본다.
+    대화를 잡은 뒤 처음 잠그면 피치를 잡고 CASCADE 로 대화를 지우는 피치 삭제와 서로 기다린다.
+    """
+    events = ChatRepository(db).list_claim_events(run.run_id)
+    evidence = [item for event in events for item in event.data.get("evidence") or []]
+    lock_ids(db, *_answer_sources({"evidence": evidence}))
 
 
 def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | None:
@@ -439,15 +424,15 @@ def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | 
         trace=row.trace,
         evidence=evidence,
         usage=row.usage,
-        source_pitch_ids=sorted(pitch_ids),
-        source_take_ids=sorted(take_ids),
+        source_pitch_ids=canonical_ids(pitch_ids),
+        source_take_ids=canonical_ids(take_ids),
     )
     repo.add(message)
     return message
 
 
 def _apply_scope(row: ChatRun, conversation: ChatConversation, data: dict[str, Any]) -> bool:
-    if row.first_trigger == "TAKE_REVIEWED":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED:
         return False
     new = data["scope_pitch_id"]
     current = str(conversation.scope_pitch_id) if conversation.scope_pitch_id else None
@@ -472,6 +457,20 @@ def _answer_sources(data: dict[str, Any]) -> tuple[set[str], set[str]]:
     pitch_ids.discard(None)
     take_ids.discard(None)
     return pitch_ids, take_ids
+
+
+def _save_turn_output(
+    repo: ChatRepository, row: ChatRun, turn_call: int, final: TurnFinal, now: datetime
+) -> None:
+    """받은 끝 줄의 사용량을 적고 그 호출을 끝난 것으로 둔다. 진단이 있으면 함께 남긴다."""
+    row.budget_used = final.data["budget_used"]
+    row.usage = final.data.get("usage")
+    row.turn_calls = [
+        {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
+        for call in row.turn_calls or []
+    ]
+    row.row_revision += 1
+    _add_diagnostics(repo, row, turn_call, final.diagnostics, now)
 
 
 def _add_diagnostics(

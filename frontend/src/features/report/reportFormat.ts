@@ -36,51 +36,8 @@ const AREA: Record<Area, string> = {
 
 export const OP: Record<Operator, string> = { LT: '미만', LTE: '이하', GT: '초과', GTE: '이상' };
 
-/** 지표 이름은 `architecture.md` 6-3 */
-const METRIC: Record<
-  string,
-  { label: string; unit: 'ratio' | 'count' | 'perMin' | 'cpm' | 'ms' | 'db' }
-> = {
-  audience_ratio: { label: '청중 응시', unit: 'ratio' },
-  script_ratio: { label: '대본 응시', unit: 'ratio' },
-  reading_ratio: { label: '대본 읽기', unit: 'ratio' },
-  reading_runs: { label: '대본 읽기 횟수', unit: 'count' },
-  cpm: { label: '말하기 속도', unit: 'cpm' },
-  pause_count: { label: '멈춤', unit: 'count' },
-  voice_diff_db: { label: '평소 대비 목소리', unit: 'db' },
-  low_ratio: { label: '작은 목소리', unit: 'ratio' },
-  long_silence_count: { label: '긴 침묵', unit: 'count' },
-  filler_count: { label: '군더더기', unit: 'count' },
-  filler_per_min: { label: '분당 군더더기', unit: 'perMin' },
-  duration_ms: { label: '발표 시간', unit: 'ms' },
-  slide_duration_ms: { label: '장 시간', unit: 'ms' },
-  content_coverage: { label: '핵심 내용 전달', unit: 'ratio' },
-  critical_fact_accuracy: { label: '핵심 수치 정확도', unit: 'ratio' },
-};
-
-/** 모르는 지표는 이름을 그대로 보여 줍니다 — AI 가 지표를 늘려도 화면이 깨지지 않게 */
-export function metricLabel(metric: string) {
-  return METRIC[metric]?.label ?? metric;
-}
-
-export function fmt(metric: string, v: number) {
-  switch (METRIC[metric]?.unit) {
-    case 'ratio':
-      return `${Math.round(v * 100)}%`;
-    case 'count':
-      return `${v}회`;
-    case 'perMin':
-      return `${v}회/분`;
-    case 'cpm':
-      return `${v}자/분`;
-    case 'ms':
-      return formatDuration(v);
-    case 'db':
-      return `${v}dB`;
-    default:
-      return String(v);
-  }
-}
+// 지표 이름 · 값 표기는 대화 에이전트와 함께 써서 shared 로 옮겼습니다
+export { fmt, metricLabel } from '@/shared/lib/metricLabels';
 
 /* ── 지난 Take와 비교 ───────────────────────────────────────────── */
 

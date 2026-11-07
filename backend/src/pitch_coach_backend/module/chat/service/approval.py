@@ -23,7 +23,7 @@ from pitch_coach_backend.module.chat.exception import (
     ChatTargetNotFound,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.run import take_lease
+from pitch_coach_backend.module.chat.service.run import end_approval_wait, take_lease
 from pitch_coach_backend.module.chat.service.run_view import view_of
 from pitch_coach_backend.module.chat.service.waiting import (
     EXPIRED_TEXT,
@@ -117,9 +117,7 @@ def _approve(run: ChatRun, action: ChatAction, now: datetime) -> None:
     # 턴 실행기가 승인된 PENDING 행동을 찾아 실행하며 RUNNING 으로 바꾼다
     action.approved = True
     action.approved_at = now
-    # 사용자를 기다린 시간은 실행의 120초에 넣지 않는다(12-3 '만료 · 시간 초과')
-    run.deadline_at += now - run.approval_started_at
-    run.approval_ended_at = now
+    end_approval_wait(run, now)
     run.status = "RUNNING"
     # 대기하는 동안 임대가 지났다. 그대로 RUNNING 이 되면 턴 실행기가 잡기 전에
     # 재시작 복구(run_recovery.py)가 죽은 실행으로 보고 가져간다

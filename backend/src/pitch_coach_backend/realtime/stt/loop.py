@@ -63,6 +63,11 @@ _ROTATE = "rotate"  # 타임라인이 끊겨 새 세션이 필요하다
 _LOST = "lost"  # Deepgram 이 끊었다
 
 
+def self_close_max_sec() -> float:
+    """CloseStream 을 보낸 세션이 스스로 닫히는 상한. 남은 결과를 기다리고 소켓을 닫는다."""
+    return DRAIN_TIMEOUT_SEC + ABORT_TIMEOUT_SEC
+
+
 def _backoff(attempt: int) -> float:
     return BACKOFF_SEC[min(attempt, len(BACKOFF_SEC)) - 1]
 
@@ -157,10 +162,6 @@ class SttLoop:
             self._base_offset_ms = None
             self._bytes_sent = 0
             self._filled_ms = []
-            if self._carry is None:
-                # 넘겨받은 프레임이 있으면 지우지 않는다. 세션을 가는 동안 드롭된 것은 그
-                # 프레임 **뒤**의 오디오라 새 세션에서 무음으로 메워야 한다 (_send_frame)
-                self._pending_silence_ms = 0
             await self._on_state("ok")
 
             try:

@@ -99,6 +99,11 @@ def test_cpm_closer_to_each_takes_range(req):
     req["previous_takes"] = [prev]
     assert by_key(run(req)[0])[("cpm", None)].improved is True
 
+    # 두 Take 의 범위가 다르면 각자 범위로 잰다 (명세 6-1). 이전 340 은 300~350 안(0),
+    # 이번 318.5 는 250~300 밖(18.5)이라 나빠졌다. 이번 범위를 양쪽에 쓰면 40 → 18.5 로 True 가 된다
+    prev["take_result"]["criteria"]["SPEED"] = _speed_criteria(300, 350)
+    assert by_key(run(req)[0])[("cpm", None)].improved is False
+
     del prev["take_result"]["criteria"]["SPEED"]  # 한쪽 기준이 없으면 방향을 정할 수 없다
     assert by_key(run(req)[0])[("cpm", None)].improved is None
 
@@ -126,6 +131,12 @@ def test_slide_duration_uses_each_slide_target(req):
     slide["target_ms"], slide["metrics"]["slide_duration_ms"] = 50_000, 70_000  # 20초 넘음
     req["previous_takes"] = [prev]  # 이번 3번 장 목표 60초에 60초
     assert by_key(run(req)[0])[("slide_duration_ms", 3)].improved is True
+
+    # 장 목표가 Take 마다 다르면 각자 목표로 잰다. 이전 70초 목표에 70초(0), 이번 60초 목표에
+    # 65초(5초 넘음)라 나빠졌다. 이번 목표 60초를 양쪽에 쓰면 10초 → 5초로 True 가 된다
+    slide["target_ms"], slide["metrics"]["slide_duration_ms"] = 70_000, 70_000
+    req["take_result"]["areas"]["TIME"]["slides"][0]["metrics"]["slide_duration_ms"] = 65_000
+    assert by_key(run(req)[0])[("slide_duration_ms", 3)].improved is False
 
 
 def test_content_take_scores(req):

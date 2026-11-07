@@ -1,0 +1,217 @@
+{
+  "status": "DONE",
+  "message": {
+    "text": "Take 6의 3장 시선 비율은 41%로 Take 5의 28%보다 13%p 높아 목표를 이뤘어요",
+    "claims": [
+      {
+        "kind": "RECORD",
+        "assessment_id": null,
+        "text": "Take 6의 3장 시선 비율은 41%로 Take 5의 28%보다 13%p 높아 목표를 이뤘어요",
+        "evidence_ids": [
+          "e5",
+          "e6",
+          "c1"
+        ],
+        "source_ids": [],
+        "action_id": null
+      }
+    ],
+    "cards": [
+      {
+        "type": "GOAL_RESULT",
+        "goal_version": 1,
+        "take_id": "t-6",
+        "status": "ACHIEVED",
+        "observed": 0.41,
+        "reason": "3장 시선 비율 0.41 ≥ 기준 0.28 + 0.05"
+      }
+    ],
+    "sources": []
+  },
+  "actions": [],
+  "state": null,
+  "scope_pitch_id": "p-1",
+  "plan": [],
+  "trace": [],
+  "basis": {
+    "pitches": [
+      {
+        "pitch_id": "p-1",
+        "script_version_id": "sv-1",
+        "presentation_version_id": "pv-1",
+        "standard_version": 1,
+        "takes": [
+          {
+            "take_id": "t-6",
+            "take_number": 6,
+            "script_version_id": "sv-1",
+            "presentation_version_id": "pv-1",
+            "standard_version": 1,
+            "results": {
+              "TAKE_RESULT": 1,
+              "REVIEW": 1
+            },
+            "rule_versions": {
+              "GAZE": "gaze-1.3+1c10b82348a2"
+            }
+          },
+          {
+            "take_id": "t-5",
+            "take_number": 5,
+            "script_version_id": "sv-1",
+            "presentation_version_id": "pv-1",
+            "standard_version": 1,
+            "results": {
+              "TAKE_RESULT": 1,
+              "REVIEW": 1
+            },
+            "rule_versions": {
+              "GAZE": "gaze-1.3+1c10b82348a2"
+            }
+          }
+        ]
+      }
+    ],
+    "conversation_goal_version": 1,
+    "corpus_version": "guides-6",
+    "sources": []
+  },
+  "evidence": [
+    {
+      "evidence_id": "e5",
+      "origin": "RECORD",
+      "pitch_id": "p-1",
+      "take_id": "t-5",
+      "take_number": 5,
+      "kind": "TAKE_RESULT",
+      "revision": 1,
+      "path": "take_result.areas.GAZE.slides[slide_number=3].metrics.audience_ratio",
+      "metric": "audience_ratio",
+      "slide_number": 3,
+      "value": 0.28,
+      "unit": "ratio",
+      "rule_version": "gaze-1.3+1c10b82348a2",
+      "saved": null,
+      "screen_snapshot_id": null,
+      "inputs": null,
+      "calc": null
+    },
+    {
+      "evidence_id": "e6",
+      "origin": "RECORD",
+      "pitch_id": "p-1",
+      "take_id": "t-6",
+      "take_number": 6,
+      "kind": "TAKE_RESULT",
+      "revision": 1,
+      "path": "take_result.areas.GAZE.slides[slide_number=3].metrics.audience_ratio",
+      "metric": "audience_ratio",
+      "slide_number": 3,
+      "value": 0.41,
+      "unit": "ratio",
+      "rule_version": "gaze-1.3+1c10b82348a2",
+      "saved": null,
+      "screen_snapshot_id": null,
+      "inputs": null,
+      "calc": null
+    },
+    {
+      "evidence_id": "c1",
+      "origin": "COMPUTED",
+      "pitch_id": "p-1",
+      "take_id": null,
+      "take_number": null,
+      "kind": null,
+      "revision": null,
+      "path": "goal.audience_ratio.slide3.diff",
+      "metric": "audience_ratio",
+      "slide_number": 3,
+      "value": 0.13,
+      "unit": "ratio",
+      "rule_version": "goal-algo-1+e6b795227503",
+      "saved": null,
+      "screen_snapshot_id": null,
+      "inputs": [
+        "e5",
+        "e6"
+      ],
+      "calc": "GOAL_DIFF"
+    }
+  ],
+  "history_summary": null,
+  "budget_used": {
+    "model_calls": 1,
+    "tool_calls": 0,
+    "elapsed_ms": 2300,
+    "input_tokens": 2900,
+    "output_tokens": 80
+  },
+  "usage": {
+    "model_calls": 1,
+    "tool_calls": 0,
+    "elapsed_ms": 2300,
+    "input_tokens": 2900,
+    "output_tokens": 80,
+    "measured": true,
+    "missing_reason": null
+  },
+  "assessments": [],
+  "goal_result": {
+    "goal_version": 1,
+    "take_id": "t-6",
+    "review_revision": 1,
+    "status": "ACHIEVED",
+    "observed": 0.41,
+    "reason": "3장 시선 비율 0.41 ≥ 기준 0.28 + 0.05",
+    "terminal": true
+  },
+  "meta": {
+    "schema_version": "1.0",
+    "feature_version": "chat_agent-0.10.0",
+    "model": "openai/gpt-6-luna",
+    "prompt_version": "d9e2cfcc16a1",
+    "corpus_version": "guides-6",
+    "criteria_versions": {
+      "chat_agent": "chat_agent-0.10.0+a25a390d36c5"
+    }
+  },
+  "diagnostics": {
+    "v": 1,
+    "request_id": "req-90-1",
+    "run_id": "run-90",
+    "turn_call": 1,
+    "versions": {
+      "feature_version": "chat_agent-0.10.0",
+      "prompt_version": "d9e2cfcc16a1",
+      "tool_schema": "tools-4",
+      "corpus_version": "guides-6"
+    },
+    "steps": [
+      {
+        "seq": 1,
+        "kind": "MODEL",
+        "code": "ANSWER",
+        "start_ms": 5,
+        "ms": 2100,
+        "parent_seq": null,
+        "detail": {
+          "model": "openai/gpt-6-luna",
+          "success": true,
+          "input_tokens": 3100,
+          "cached_input_tokens": 0,
+          "output_tokens": 240,
+          "finish_reason": "STOP",
+          "tool_call_count": 0,
+          "error_code": null,
+          "fix_for": null
+        }
+      }
+    ],
+    "end": {
+      "status": "DONE",
+      "reason": "ANSWERED",
+      "omitted_steps": 0
+    },
+    "truncated": false
+  }
+}

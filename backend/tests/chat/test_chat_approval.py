@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat import approval_sweep, turn_runner
+from pitch_coach_backend.module.chat.ai_client import TurnFailure
 from pitch_coach_backend.module.chat.ai_response import args_hash
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
@@ -23,10 +24,18 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRunEvent,
     ChatRunLog,
 )
+from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service import conversation as conversation_service
 from pitch_coach_backend.module.chat.service import run_view
 from pitch_coach_backend.module.chat.service import turn as turn_service
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS
-from pitch_coach_backend.module.chat.service.run import OWNER, SEOUL
+from pitch_coach_backend.module.chat.service.run import (
+    OWNER,
+    SEOUL,
+    add_run_log,
+    claimed,
+    end_approval_wait,
+)
 from pitch_coach_backend.module.chat.service.waiting import (
     CANCELLED_TEXT,
     EXPIRED_TEXT,
@@ -56,6 +65,8 @@ CLAIM = {
     "action_id": None,
 }
 HOME = {"route": "home", "pitch_id": None, "take_id": None, "screen": None}
+CORPUS = "guides-1"
+LONG_AGO = datetime(2000, 1, 1, tzinfo=UTC)
 
 
 def _claim_data(evidence: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -439,6 +450,60 @@ def test_reject_does_not_bring_back_a_deleted_source(
     assert (answer.evidence, answer.assessments) == ([], [])
 
 
+# ── 운영 기록 시간 ───────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("decision", "waited", "status"),
+    [("REJECT", timedelta(minutes=5), "DONE"), ("APPROVE", timedelta(minutes=31), "EXPIRED")],
+)
+def test_run_log_time_leaves_out_the_wait(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    resumed: list[uuid.UUID],
+    decision: str,
+    waited: timedelta,
+    status: str,
+) -> None:
+    # 접수하자마자 승인을 기다렸다. 관리자 화면의 실행 시간에 기다린 시간을 넣지 않는다
+    seeded = _waiting(db_session, user_id, waited=waited)
+
+    _decide(client, user_id, seeded.run.id, decision)
+
+    log = db_session.scalar(select(ChatRunLog).where(ChatRunLog.run_id == seeded.run.id))
+    assert log.status == status
+    assert 0 <= log.ms < 60_000
+
+
+class _AddedRows:
+    def __init__(self) -> None:
+        self.rows: list[Any] = []
+
+    def add(self, row: Any) -> None:
+        self.rows.append(row)
+
+
+def test_run_log_time_leaves_out_every_wait_of_a_run() -> None:
+    accepted = datetime(2026, 11, 7, 12, tzinfo=UTC)
+    row = ChatRun(
+        user_id=uuid.uuid4(),
+        status="DONE",
+        accepted_at=accepted,
+        deadline_at=accepted + timedelta(seconds=120),
+    )
+    # 10초 일하고 3분 기다린 뒤, 5초 일하고 7분 기다리고, 2초 더 일해 끝냈다
+    row.approval_started_at = accepted + timedelta(seconds=10)
+    end_approval_wait(row, row.approval_started_at + timedelta(minutes=3))
+    row.approval_started_at = row.approval_ended_at + timedelta(seconds=5)
+    end_approval_wait(row, row.approval_started_at + timedelta(minutes=7))
+    added = _AddedRows()
+
+    add_run_log(added, row, row.approval_ended_at + timedelta(seconds=2))
+
+    assert [log.ms for log in added.rows] == [17_000]
+
+
 # ── 만료 ─────────────────────────────────────────────────────────────
 
 
@@ -725,6 +790,129 @@ def test_messages_and_list_show_stale_reasons(
 
     listed = client.get("/api/chat/conversations", headers=bearer(user_id)).json()["conversations"]
     assert listed[0]["stale"] is True
+
+
+def _corpus_answer(db: Session, user_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
+    """자료를 근거로 한 하루 전 답. AI 가 지금 판과 같은 판으로 답했다."""
+    answer = ChatMessage(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        seq=1,
+        role="assistant",
+        text="자료를 근거로 한 답",
+        status="DONE",
+        basis={
+            "pitches": [],
+            "sources": ["g-07#2"],
+            "corpus_version": CORPUS,
+            "conversation_goal_version": 0,
+        },
+        meta={"corpus_version": CORPUS},
+        created_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    db.add(answer)
+    db.flush()
+
+
+def _stale_reasons(
+    client: TestClient, user_id: uuid.UUID, conversation_id: uuid.UUID
+) -> list[list[str]]:
+    response = client.get(
+        f"/api/chat/conversations/{conversation_id}/messages", headers=bearer(user_id)
+    )
+    return [message["stale_reasons"] for message in response.json()["messages"]]
+
+
+def test_failed_run_does_not_make_corpus_answers_unknown(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """실패로 저장한 PARTIAL 에는 자료 판이 없다. 앞서 성공한 응답의 판과 그대로 비교한다."""
+    monkeypatch.setattr(conversation_service, "APP_STARTED_AT", LONG_AGO)
+    conversation = ChatConversation(user_id=user_id, title="자료 근거 답")
+    interrupted = ChatConversation(user_id=user_id, title="끊긴 대화")
+    db_session.add_all([conversation, interrupted])
+    db_session.flush()
+    _corpus_answer(db_session, user_id, conversation.id)
+    now = datetime.now(UTC)
+    run = ChatRun(
+        conversation_id=interrupted.id,
+        user_id=user_id,
+        first_trigger="USER_MESSAGE",
+        status="RUNNING",
+        input={"user_message": "질문", "page": HOME, "choice": None},
+        turn_calls=[
+            {"turn_call": 1, "request_id": "r", "state_revision": None, "stage": "SENDING"}
+        ],
+        row_revision=2,
+        accepted_at=now,
+        deadline_at=now + timedelta(seconds=120),
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(ChatRunEvent(run_id=run.id, event_seq=1, event="claim", data=_claim_data()))
+    db_session.commit()
+    assert _stale_reasons(client, user_id, conversation.id) == [[]]
+
+    assert turn_service.fail(db_session, claimed(run), TurnFailure("AGENT_UPSTREAM_ERROR"))
+
+    [partial] = _answers(db_session, interrupted.id)
+    assert (partial.status, partial.meta) == ("PARTIAL", None)
+    assert _stale_reasons(client, user_id, conversation.id) == [[]]
+
+
+def test_closing_a_wait_stores_no_corpus_version_and_keeps_answers_current(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(conversation_service, "APP_STARTED_AT", LONG_AGO)
+    conversation = ChatConversation(user_id=user_id, title="자료 근거 답")
+    db_session.add(conversation)
+    db_session.flush()
+    _corpus_answer(db_session, user_id, conversation.id)
+    seeded = _waiting(db_session, user_id)
+
+    assert _decide(client, user_id, seeded.run.id, "REJECT").json()["status"] == "DONE"
+
+    [closed] = _answers(db_session, seeded.conversation.id)
+    assert closed.meta is None
+    assert _stale_reasons(client, user_id, conversation.id) == [[]]
+
+
+def test_latest_corpus_version_skips_messages_without_one(
+    db_session: Session, user_id: uuid.UUID
+) -> None:
+    """같은 배포(since 이후)에서 자료 판을 가진 가장 최근 메시지만 본다."""
+    conversation = ChatConversation(user_id=user_id, title="자료 근거 답")
+    db_session.add(conversation)
+    db_session.flush()
+    since = datetime.now(UTC)
+    repo = ChatRepository(db_session)
+
+    def add(seq: int, meta: dict[str, Any] | None, seconds: int) -> None:
+        db_session.add(
+            ChatMessage(
+                conversation_id=conversation.id,
+                user_id=user_id,
+                seq=seq,
+                role="assistant",
+                text="답",
+                status="DONE",
+                meta=meta,
+                created_at=since + timedelta(seconds=seconds),
+            )
+        )
+        db_session.flush()
+
+    add(1, {"corpus_version": "guides-0"}, -60)
+    assert repo.latest_corpus_version(since) is None
+
+    add(2, None, 1)
+    add(3, {"corpus_version": None}, 2)
+    assert repo.latest_corpus_version(since) is None
+
+    add(4, {"corpus_version": CORPUS}, 3)
+    add(5, None, 4)
+    add(6, {"corpus_version": None}, 5)
+    assert repo.latest_corpus_version(since) == CORPUS
 
 
 def test_conversation_without_answer_is_not_stale(client: TestClient, user_id: uuid.UUID) -> None:

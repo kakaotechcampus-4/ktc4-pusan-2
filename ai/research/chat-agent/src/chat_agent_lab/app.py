@@ -6,8 +6,9 @@
 - 쓰는 곳: 평가(evals) · live 시험 · 손으로 해 보기.
   `.\\.venv\\Scripts\\python.exe -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4`
 - 서명 키: `AGENT_STATE_SECRET`이 없으면 프로세스마다 임의 키를 만든다(연구용. 서비스는 키가 없으면 대화 경로를 끈다, 11-1).
-- 서비스로 옮길 때: 환경변수 읽기는 settings, 자리 · 실행 풀은 api/chat_agent.py, 모델은 common/llm.py 의 `tool_llm`,
-  자료 묶음은 `allow_unreviewed=False`(모든 카드 검수 뒤)로 읽는다.
+- 서비스의 같은 자리: 환경변수 읽기는 settings, 자리 · 실행 풀 · HTTP 스트림은 api/chat_agent.py, 모델은 common/llm.py 의
+  `tool_llm`, 자료 묶음은 `allow_unreviewed=False`(검수 전이면 자료 없이 시작)로 읽는다. 여기서는 모델을 서비스의
+  `ToolLlmClient` 로 만들고 자료 묶음은 검수 전 카드까지 읽는다(평가용).
 """
 
 from __future__ import annotations
@@ -24,16 +25,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from chat_agent import templates
-from chat_agent.config import DEFAULT_CONFIG, ChatAgentConfig
-from chat_agent.corpus import Corpus, build_corpus
-from chat_agent.llm_types import ToolLlm
-from chat_agent.loop import TurnDeps
-from chat_agent.turn import handle_turn
+from pitch_coach_ai.features import chat_agent as _core
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, ChatAgentConfig
+from pitch_coach_ai.features.chat_agent.corpus import Corpus, build_corpus
+from pitch_coach_ai.features.chat_agent.llm_types import ToolLlm
+from pitch_coach_ai.features.chat_agent.loop import TurnDeps
+from pitch_coach_ai.features.chat_agent.turn import handle_turn
 
-from . import fixtures as fx
+from .service_tests import fixtures as fx
 
-GUIDES = Path(__file__).resolve().parents[1] / "chat_agent" / "guides"
+GUIDES = Path(_core.__file__).parent / "guides"  # 서비스 코어의 자료 묶음
 ENV_FILE = Path(__file__).resolve().parents[4] / ".env"  # ai/.env
 
 
@@ -167,8 +169,7 @@ def from_env(
 ) -> AgentApp:
     """`ai/.env`에서 모델 묶음(`OPENAI_*`, 비교 시험은 `OPENAI_SOL_*`)과 서명 키를 읽어 앱을 만든다. 키 값은 출력하지 않는다."""
     from dotenv import load_dotenv
-
-    from .llm import OpenAiToolLlm
+    from pitch_coach_ai.common.llm import ToolLlmClient, tool_role
 
     if env_file is not None and env_file.exists():
         load_dotenv(env_file)
@@ -176,12 +177,18 @@ def from_env(
     api_key = os.environ.get(f"{bundle}_API_KEY")
     model = os.environ.get(f"{bundle}_MODEL")
     llm = (
-        OpenAiToolLlm(
+        ToolLlmClient(
             base_url=base_url,
             api_key=api_key,
             model=model,
+            # 호출 한 번 상한: 서비스(`api/chat_agent.py` AgentRuntime)와 같이 코어 답 몫(24초 / 2 = 12초)을 넘지 않는다
+            role=role
+            if role is not None
+            else tool_role(
+                max_call_seconds=DEFAULT_CONFIG.reserved_answer_seconds
+                / DEFAULT_CONFIG.reserved_answer_calls
+            ),
             log=log or (lambda _l: None),
-            **({"role": role} if role is not None else {}),
         )
         if base_url and api_key and model
         else None
