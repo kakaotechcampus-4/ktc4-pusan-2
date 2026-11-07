@@ -18,6 +18,8 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
   query.error = null;
   query.data = {
     take_id: 't3',
@@ -112,14 +114,20 @@ it('shows 같음, not 나빠짐, when the visible values are equal even if impro
     ],
   };
   await render();
+  await openComparisonDetail();
   const cell = (dimension: string, row: number) =>
-    comparisonCard().querySelector(
+    host.querySelector('dialog')!.querySelector(
       `section[aria-label="${dimension}"] tbody tr:nth-of-type(${row}) td`,
     )!.textContent;
   expect(cell('대본에서 벗어나기', 1)).toContain('같음');
   expect(cell('군더더기 없이', 1)).toContain('같음');
   expect(cell('군더더기 없이', 2)).toContain('나빠짐');
 });
+
+async function openComparisonDetail() {
+  const button = [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('슬라이드별 상세 비교표 보기'))!;
+  await act(async () => button.click());
+}
 
 function comparisonCard() {
   return [...host.querySelectorAll('main section')].find(
@@ -140,8 +148,9 @@ it('lays the comparison out one column per metric and one row per slide, grouped
     ],
   };
   await render();
-  const card = comparisonCard();
-  const tables = [...card.querySelectorAll('section')].map((s) => ({
+  await openComparisonDetail();
+  const card = host.querySelector('dialog')!;
+  const tables = [...card.querySelectorAll('section').map((s) => ({
     title: s.querySelector('h3')?.textContent,
     columns: [...s.querySelectorAll('thead th')].map((th) => th.textContent),
     rows: [...s.querySelectorAll('tbody th')].map((th) => th.textContent),
@@ -176,4 +185,22 @@ it('says once that the script modes differed instead of repeating it in every ce
   };
   await render();
   expect(comparisonCard().textContent!.match(/대본 보기가 달랐어요/g)).toHaveLength(1);
+});
+
+it('shows per-metric improved and worsened slides before opening details', async () => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      { metric: 'audience_ratio', slide_number: 2, previous: 0.3, current: 0.5, improved: true, script_mode: null },
+      { metric: 'audience_ratio', slide_number: 3, previous: 0.6, current: 0.4, improved: false, script_mode: null },
+    ],
+  };
+  await render();
+  expect(comparisonCard().textContent).toContain('나아진 슬라이드');
+  expect(comparisonCard().textContent).toContain('나빠진 슬라이드');
+  expect(comparisonCard().textContent).toContain('2번');
+  expect(comparisonCard().textContent).toContain('3번');
+  await openComparisonDetail();
+  expect(host.querySelector('dialog[open]')).not.toBeNull();
+  expect(host.querySelector('dialog table')).not.toBeNull();
 });
