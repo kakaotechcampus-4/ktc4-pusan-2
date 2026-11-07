@@ -79,22 +79,26 @@ describe('화면 상태 등록 · 스냅숏 (12-4 F2)', () => {
     expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
   });
 
-  it('읽다가 실패하거나 계약 모양이 아니면 화면 상태 없이 보낸다', () => {
+  it('읽다가 실패하거나 계약 모양이 아니면 보내지 않게 알린다 (L3-10)', () => {
+    const unavailable = { ok: false, reason: 'SCREEN_UNAVAILABLE' };
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     registerChatScreen(ROUTE, () => {
       throw new Error('화면 쪽 실수');
     });
-    expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
+    expect(takeScreenSnapshot(ROUTE)).toEqual(unavailable);
     expect(errors).toHaveBeenCalled();
     errors.mockRestore();
     const warns = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     registerChatScreen(ROUTE, () => ({ ...device, deviceId: 'cam-1' }) as unknown as ScreenBody);
-    expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
+    expect(takeScreenSnapshot(ROUTE)).toEqual(unavailable);
     registerChatScreen(ROUTE, () => ({ ...device, mic: 'loud' }) as unknown as ScreenBody);
-    expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
+    expect(takeScreenSnapshot(ROUTE)).toEqual(unavailable);
     // 어느 화면인지만 남기고 내용(사용자 입력)은 남기지 않습니다
     expect(warns).toHaveBeenCalledWith(expect.any(String), { route: ROUTE });
     warns.mockRestore();
+    // 화면이 null 을 주면 알릴 상태가 없다는 뜻 — 막지 않고 화면 상태 없이 보냅니다
+    registerChatScreen(ROUTE, () => null);
+    expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
   });
 
   it('평가 기준 원문이 2,000자(코드 포인트)를 넘으면 자르지 않고 보내지 않게 알린다', () => {

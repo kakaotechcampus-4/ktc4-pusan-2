@@ -203,10 +203,16 @@ const isUnknownResult = (error: unknown) =>
 export type DecideResult = 'decided' | 'locked' | 'failed' | 'stale';
 
 /**
- * 되돌리기 결과 — 'conflict' 는 그사이 다른 목표가 저장됐거나 기준 기록이 지워짐(409),
+ * 되돌리기 결과 — 'conflict' 는 그사이 다른 목표가 저장됨, 'baseDeleted' 는 목표의 기준 Take 가 지워짐(둘 다 409),
  * 'locked' 는 같은 카드를 이미 되돌리는 중
  */
-export type UndoResult = 'undone' | 'conflict' | 'locked' | 'failed' | 'stale';
+export type UndoResult = 'undone' | 'conflict' | 'baseDeleted' | 'locked' | 'failed' | 'stale';
+
+/**
+ * 되돌리기 409 의 "기준 기록 삭제" 문구 (12-2 · L4-36, BE `goal_undo.BASE_DELETED`). BE 는 두 사유를 같은
+ * `AGENT_STATE_INVALID` 로 줘서 서버 문구로만 가립니다 — 문구가 다르면 일반 충돌로 봅니다
+ */
+const UNDO_BASE_DELETED_MESSAGE = '목표의 기준 기록이 삭제되어 새 목표가 필요해요.';
 
 export type SendResult =
   'accepted' | 'locked' | 'unconfirmed' | 'conflict' | 'failed' | 'stale' | 'none';
@@ -1275,7 +1281,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
           emit({ type: 'disabled' });
           return 'failed';
         }
-        if (answer.error instanceof ApiFailure && answer.error.status === 409) return 'conflict';
+        if (answer.error instanceof ApiFailure && answer.error.status === 409)
+          return answer.error.serverMessage === UNDO_BASE_DELETED_MESSAGE
+            ? 'baseDeleted'
+            : 'conflict';
         return 'failed';
       } finally {
         undoing.delete(actionId);

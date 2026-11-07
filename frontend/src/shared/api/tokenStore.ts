@@ -30,12 +30,23 @@ export class ApiFailure extends Error {
   public code: string;
   /** 서버가 `Retry-After` 로 알린 기다릴 초. 없거나 읽을 수 없으면 null — 429 를 다루는 화면이 씁니다 */
   public retryAfterSec: number | null;
+  /**
+   * 서버 응답의 `message`. 없으면 null. 화면에 그대로 보이지 않습니다 — 같은 코드 안에서 사유를 가려야 할 때만
+   * 정해진 문구와 견줍니다(예: 되돌리기 409 의 "기준 기록 삭제")
+   */
+  public serverMessage: string | null;
 
-  constructor(status: number, code: string, retryAfterSec: number | null = null) {
+  constructor(
+    status: number,
+    code: string,
+    retryAfterSec: number | null = null,
+    serverMessage: string | null = null,
+  ) {
     super(code);
     this.status = status;
     this.code = code;
     this.retryAfterSec = retryAfterSec;
+    this.serverMessage = serverMessage;
   }
 }
 

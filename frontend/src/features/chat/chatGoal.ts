@@ -6,7 +6,9 @@ export function goalText(
   goal: Pick<ProposedGoal, 'metric' | 'slide_number' | 'operator' | 'base'>,
 ) {
   const where = goal.slide_number === null ? null : `${goal.slide_number}장`;
-  const base = `Take ${goal.base.take_number} ${fmt(goal.metric, goal.base.value)}`;
+  // Take 번호를 모르면 값만 — "Take null 31%" 처럼 보이지 않게
+  const take = goal.base.take_number === null ? '' : `Take ${goal.base.take_number} `;
+  const base = `${take}${fmt(goal.metric, goal.base.value)}`;
   const range = goal.base.range;
   const rangeText =
     range && range.low !== null && range.high !== null

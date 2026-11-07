@@ -280,7 +280,6 @@ export const infoReady = (form: InfoForm): form is KnownInfo =>
   form.upperToleranceSec >= 0 &&
   form.upperToleranceSec <= MAX_TOLERANCE_SEC;
 
-/** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 /**
  * 화면에 보이는 버전 — 고른 버전이 있으면 그것, 없거나(null) 목록에 없으면 최신, 목록이 비었으면 null.
  * 피치 만들기 화면과 대화창의 화면 상태(`chatScreen.ts`)가 함께 씁니다 — 둘이 다른 버전을 보지 않게
@@ -292,6 +291,7 @@ export function shownVersion<T extends { version: number }>(
   return list.find((v) => v.version === version) ?? list.at(-1) ?? null;
 }
 
+/** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 export const latestSlides = (d: PitchDraft): SlideVersion | null => d.slides.at(-1) ?? null;
 export const latestScript = (d: PitchDraft): ScriptVersion | null => d.scripts.at(-1) ?? null;
 export const latestCriteria = (d: PitchDraft): CriteriaVersion | null => d.criteria.at(-1) ?? null;

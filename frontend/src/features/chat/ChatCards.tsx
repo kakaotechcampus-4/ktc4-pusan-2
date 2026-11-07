@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
 import type { Card, ProfileKey, ReassessSide } from '@/types/chat';
@@ -42,6 +42,8 @@ export const REASSESS_CURRENT_TEXT = '지금 기록 기준이에요';
 export const SCRIPT_SCORE_TEXT = '평가 항목이 빠져 오른 점수예요. 실력이 바뀐 건 아니에요.';
 /** BE 되돌리기 409 의 기본 문구(`ChatStateInvalid.message`) */
 export const UNDO_CONFLICT_TEXT = '이미 다른 목표로 바뀌었어요.';
+/** 되돌리려는 목표의 기준 Take 가 지워짐 (L4-36) */
+export const UNDO_BASE_DELETED_TEXT = '목표의 기준 기록이 삭제되어 새 목표가 필요해요.';
 /** FE 가 정한 문구 — 문서에 없습니다 */
 export const UNDO_FAILED_TEXT = '목표를 되돌리지 못했으니 다시 시도해 주세요.';
 export const NO_VERDICT = '판정 없음';
@@ -187,6 +189,7 @@ function GoalSavedCard({
 }) {
   const { busy, run } = useBusy();
   const [result, setResult] = useState<UndoResult | null>(null);
+  const titleId = useId();
   const done = result === 'undone';
   const undo = () => {
     if (!runId || done) return;
@@ -198,14 +201,21 @@ function GoalSavedCard({
       .catch(() => setResult('failed'));
   };
   return (
-    <div className={CARD_CLASS}>
-      <p className="font-bold">대화에서 정한 목표</p>
+    <div className={CARD_CLASS} role="group" aria-labelledby={titleId}>
+      <p id={titleId} className="font-bold">
+        대화에서 정한 목표
+      </p>
       <p>{goalText(card.goal)}</p>
       {card.reason && <p className="text-xs text-stone">{card.reason}</p>}
       <ChipList chips={chips} />
       {result === 'conflict' && (
         <p role="alert" className="text-xs text-coral-deep">
           {UNDO_CONFLICT_TEXT}
+        </p>
+      )}
+      {result === 'baseDeleted' && (
+        <p role="alert" className="text-xs text-coral-deep">
+          {UNDO_BASE_DELETED_TEXT}
         </p>
       )}
       {result === 'failed' && (
@@ -241,16 +251,25 @@ function GoalProposalCard({
 }) {
   const { busy, run } = useBusy();
   const locked = busy || expired || !actions.canSend;
+  const id = useId();
   return (
-    <div className={CARD_CLASS}>
-      <p className="font-bold">
+    <div className={CARD_CLASS} role="group" aria-labelledby={`${id}-title`}>
+      <p id={`${id}-title`} className="font-bold">
         목표 제안{' '}
         <span className="ml-1 rounded border border-line-strong px-1 text-xs">저장 전</span>
       </p>
       <ul className="mt-1 flex flex-col gap-2">
         {card.options.map((option, i) => (
-          <li key={option.label} data-option={option.label}>
-            <p className="font-bold">{OPTION_LABEL[option.label]}</p>
+          // 안마다 묶어 이름을 둡니다 — [이 안으로]가 어느 안의 버튼인지 함께 읽힙니다 (12-4 "모든 카드에 이름")
+          <li
+            key={option.label}
+            data-option={option.label}
+            role="group"
+            aria-labelledby={`${id}-${option.label}`}
+          >
+            <p id={`${id}-${option.label}`} className="font-bold">
+              {OPTION_LABEL[option.label]}
+            </p>
             {option.goal && <p>{goalText(option.goal)}</p>}
             <p className="text-xs text-stone">{option.reason}</p>
             <ChipList chips={optionChips[i] ?? []} />
@@ -412,6 +431,7 @@ function AskConfirmCard({
   const { busy, run } = useBusy();
   // 결정이 받아들여지면 카드가 사라질 때까지 버튼을 잠가 둡니다 — 다음 진행 신호가 와야 카드가 빠집니다
   const [decided, setDecided] = useState(false);
+  const titleId = useId();
   const locked = busy || decided;
   const decidedReason = pickReason([decided, '이미 결정했어요'], [busy, '보내는 중이에요']);
   const rows =
@@ -441,8 +461,10 @@ function AskConfirmCard({
     minute: '2-digit',
   });
   return (
-    <div className={CARD_CLASS} data-action={card.action_id}>
-      <p className="font-bold">{card.title}</p>
+    <div className={CARD_CLASS} data-action={card.action_id} role="group" aria-labelledby={titleId}>
+      <p id={titleId} className="font-bold">
+        {card.title}
+      </p>
       <p>{card.summary}</p>
       {goalChange ? (
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs" data-goal-change="">
