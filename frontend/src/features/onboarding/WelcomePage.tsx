@@ -439,7 +439,9 @@ export function WelcomePage() {
                     AI 비서 앱
                   </span>
                 </div>
-                <h3 id="semini-title" className="mt-3 text-2xl font-extrabold">새미나이 (Semini)</h3>
+                <h3 id="semini-title" className="mt-3 text-2xl font-extrabold">
+                  새미나이 (Semini)
+                </h3>
                 <p className="mt-3 font-bold">치치가 요즘 푹 빠져 있는 AI 비서 앱.</p>
                 <p className="mt-3 text-sm leading-7">
                   치치가 발표를 준비하다 막히면 가장 먼저 찾는 AI 비서 앱이에요.
