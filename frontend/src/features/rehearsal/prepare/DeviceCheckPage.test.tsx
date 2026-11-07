@@ -395,7 +395,9 @@ it('counts the silence warning only while reading the usual voice, from when rea
 it('tells before starting that a long silence ends the take, apart from the goal time', async () => {
   await render();
   const footer = host.querySelector('.prepare-footer')!;
-  expect(footer.textContent).toContain('말 없이 2분이 지나면 연습이 자동으로 끝나요.');
+  expect(footer.textContent).toContain(
+    '말이 없는 상태가 2분 넘게 이어지면 연습이 자동으로 끝날 수 있어요.',
+  );
   // 바뀌지 않는 말이라 안내 알림 영역 밖에 둡니다 — 안내가 바뀔 때마다 다시 읽히지 않게
-  expect(footer.querySelector('[role="status"]')!.textContent).not.toContain('말 없이 2분');
+  expect(footer.querySelector('[role="status"]')!.textContent).not.toContain('2분 넘게');
 });

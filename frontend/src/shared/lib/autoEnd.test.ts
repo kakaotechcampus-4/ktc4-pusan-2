@@ -49,6 +49,8 @@ describe('autoEndText', () => {
 
 // BE `take_silence_end_sec = 120` 과 같아야 합니다. 바꾸면 BE 와 같이 바꿉니다
 it('warns before the take with the server silence limit and not the goal time', () => {
-  expect(SILENCE_END_NOTICE).toContain('말 없이 2분');
+  expect(SILENCE_END_NOTICE).toContain('말이 없는 상태가 2분 넘게 이어지면');
+  // 2분만으로 끝나지 않습니다(최근 5분 중 80% 조건도 봅니다). 단정하지 않습니다
+  expect(SILENCE_END_NOTICE).toContain('끝날 수 있어요');
   expect(SILENCE_END_NOTICE).toContain('발표 목표 시간과는 상관없어요');
 });

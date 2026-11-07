@@ -136,7 +136,8 @@ function AutoEndAlert() {
       <p className="font-mono text-xs font-bold text-dusk-accent">자동 종료</p>
       <p className="mt-1 font-bold">2분 넘게 말이 없어 연습을 자동으로 끝냈어요.</p>
       <p className="mt-0.5">
-        발표 목표 시간과는 상관없이, 말이 오래 없으면 끝나요. 끝난 곳까지의 기록만 분석에 들어가요.
+        발표 목표 시간과는 상관없이, 말이 없는 상태가 오래 이어지면 끝날 수 있어요. 끝난 곳까지의
+        기록만 분석에 들어가요.
       </p>
     </div>
   );

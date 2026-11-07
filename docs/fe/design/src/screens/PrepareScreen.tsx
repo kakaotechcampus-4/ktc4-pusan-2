@@ -133,7 +133,8 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
               <p className="text-stone">{check.hint}</p>
               {/* 바뀌지 않는 안내라 위 안내 줄(제품은 role="status")과 따로 둔다 (#925) */}
               <p className="text-stone">
-                말 없이 2분이 지나면 연습이 자동으로 끝나요. 발표 목표 시간과는 상관없어요.
+                말이 없는 상태가 2분 넘게 이어지면 연습이 자동으로 끝날 수 있어요. 발표 목표
+                시간과는 상관없어요.
               </p>
             </div>
             <div className="ml-auto flex flex-wrap gap-3">
