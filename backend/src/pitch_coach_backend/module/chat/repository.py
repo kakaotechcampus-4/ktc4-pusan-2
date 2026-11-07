@@ -199,6 +199,22 @@ class ChatRepository:
             select(ChatConversation).where(ChatConversation.id == conversation_id).with_for_update()
         )
 
+    def lock_unfinished_runs_of(self, user_id: uuid.UUID) -> list[ChatRun]:
+        """그 사용자의 끝나지 않은 실행. 대화 → 실행 순서로 잠근다."""
+        mine = (
+            ChatRun.user_id == user_id,
+            ChatRun.status.in_(("QUEUED", "RUNNING", "WAITING_APPROVAL")),
+        )
+        self.db.execute(
+            select(ChatConversation.id)
+            .where(ChatConversation.id.in_(select(ChatRun.conversation_id).where(*mine)))
+            .order_by(ChatConversation.id)
+            .with_for_update()
+        )
+        return list(
+            self.db.scalars(select(ChatRun).where(*mine).order_by(ChatRun.id).with_for_update())
+        )
+
     def get_message(self, message_id: uuid.UUID) -> ChatMessage | None:
         return self.db.get(ChatMessage, message_id)
 
