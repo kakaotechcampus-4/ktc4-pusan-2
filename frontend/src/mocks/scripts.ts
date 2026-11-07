@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
-import { markerNumber, splitLines, stripMarker } from '@/shared/lib/slideMarkers';
+import { matchMarker, splitLines } from '@/shared/lib/slideMarkers';
 import type {
   ParseRequested,
   ScriptCreateRequest,
@@ -11,9 +11,10 @@ import type {
 /**
  * 대본 목. BE 처럼 올리면 바로 PENDING 으로 돌려주고, 잠시 뒤 폴링에서 DONE 이 됩니다.
  *
- * 나누는 규칙은 AI(script-parser v1)를 흉내 냅니다 — "[슬라이드 1]", "[1]", "슬라이드 1:" 세
- * **명시적 구분자**로만 나누고, 구분자가 없거나 앞부분에 구분 안 된 글이 있거나 번호가
- * 0 · 겹침 · 거꾸로면 나누지 않고 전체를 한 슬라이드로 둡니다 (`segmented: false`, 정상 결과).
+ * 나누는 규칙은 AI(`script_parser-1.3`)를 흉내 냅니다 — `[1]` · `[슬라이드 1]` · `슬라이드 1:` ·
+ * `Slide 1` · `## Slide 1 — 제목` 같은 **명시적 구분자**로만 나누고(`shared/lib/slideMarkers`),
+ * 구분자가 없거나 앞부분에 구분 안 된 글이 있거나 번호가 0 · 겹침 · 거꾸로면 나누지 않고
+ * 전체를 한 슬라이드로 둡니다 (`segmented: false`, 정상 결과).
  */
 
 /** 이만큼 지나야 DONE. "나누는 중" 화면을 눈으로 확인할 수 있게 */
@@ -28,11 +29,12 @@ export function splitScript(text: string): { segmented: boolean; slides: ScriptS
   // 나누지 못했을 때(fail) 쓸, 구분자만 뺀 대본 전체 — AI 도 그렇게 합니다
   const stripped: string[] = [];
   for (const line of splitLines(text)) {
-    const n = markerNumber(line);
-    if (n !== null) {
-      const rest = stripMarker(line);
-      sections.push({ number: n, lines: [rest] });
-      if (rest.trim() !== '') stripped.push(rest.trim());
+    const marker = matchMarker(line);
+    if (marker) {
+      // 구분자 뒤 같은 줄의 글은 그 장의 본문입니다 — AI `find_slides` 처럼 비었으면 줄을 두지 않습니다
+      const { number, rest } = marker;
+      sections.push({ number, lines: rest ? [rest] : [] });
+      if (rest) stripped.push(rest);
     } else {
       stripped.push(line);
       if (sections.length > 0) sections.at(-1)!.lines.push(line);

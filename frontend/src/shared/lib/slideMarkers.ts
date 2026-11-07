@@ -1,81 +1,156 @@
 /**
- * 대본 속 슬라이드 구분자 찾기 — `[N]` · `[슬라이드 N]` · `슬라이드 N:` 세 형식만 인식합니다.
+ * 대본 속 슬라이드 구분자 찾기 — AI `script_parser-1.3` 과 같은 규칙입니다.
  *
- * AI script-parser(`features/script_parser/splitter.py` `DELIMITER_RE`)가 대본을 나누는 규칙을
+ * AI script-parser(`features/script_parser/splitter.py` `match_delimiter`)가 대본을 나누는 규칙을
  * FE 에서 미리 따라 해 보는 것입니다. 대본 입력 화면은 이걸로 "구분 3 / 8" 을 보여 주고,
  * 목(`mocks/scripts.ts`)은 이걸로 나눕니다 — 세 곳이 같은 규칙을 써야 화면에 보인 개수와
- * 서버에 저장되는 장수가 어긋나지 않습니다.
+ * 서버에 저장되는 장수가 어긋나지 않습니다. 규칙 표는 `docs/ai/features/script-parser.md` 5-2 입니다.
  *
- * ★ 이 정규식은 AI 와 **글자 그대로 같은 정의**여야 합니다 (줄 맨 앞 · 번호 1~4자리 · 콜론 필수 등).
- *   AI 가 형식을 넓히면 이 파일과 테스트(`slideMarkers.test.ts` 의 공통 목록)를 함께 고칩니다.
- *   예전에 FE 가 인식하던 넓은 표기(`Slide 1` · `1.` · `슬라이드 1` 등)는 구분으로 세지 않고,
- *   첫 구분자 앞에서만 `isLegacyMarker` 로 찾아 "구분으로 인식되지 않아요" 라고 안내합니다.
- *   구분자 뒤 본문의 "1. 첫째 이유는" 같은 번호 목록은 예전 표기가 아니라 본문입니다.
- *   이 결과는 **안내용**이고, 이걸로 매핑을 막지는 않습니다.
- *   "첫째", "다음으로" 같은 전환 표현과 빈 줄은 AI 도 구분자로 보지 않습니다.
- * ★ 숫자 `\d` 의 뜻이 다릅니다 — Python 은 전각 숫자(１２３)도 숫자로 봐서 AI 는 `[１]` 을 구분자로
- *   나누는데 JS 는 ASCII 만 봅니다. 그래서 검사할 때만 전각 숫자(０~９)를 ASCII 로 바꿔 AI 와 맞춥니다
- *   (`toAsciiDigits`). 사용자 대본 원문은 바꾸지 않습니다. 그 밖의 유니코드 숫자(아라비아 · 데바나가리 등)는
- *   AI 만 숫자로 봅니다 — 한글 입력기로는 칠 수 없어 맞추지 않았습니다.
+ * 구분자는 줄 맨 앞(앞 공백 · 탭 허용, 그 뒤 마크다운 제목 표시 `#`~`######` + 공백 허용)의
+ *   ① 대괄호:  `[1]` · `[슬라이드 1]` · `[Slide 1]`            → 뒤 같은 줄 글은 본문
+ *   ② 콜론:    `슬라이드 1:` · `Slide 1 :` · `슬라이드 1：`    → 뒤 같은 줄 글은 본문
+ *   ③ 줄 전체: `슬라이드 1` · `Slide1` (뒤에 글이 없음)
+ *   ④ 제목 표시 뒤: `## Slide 1 — 제목` · `# 슬라이드 2 개요` → 구분 기호(— – - | : .)를 걷은 뒤 글은 본문
+ * 입니다. `슬라이드`와 번호 사이 공백은 없어도 되고, `Slide` 는 대소문자를 가리지 않습니다. 번호는 1~4자리.
+ * 구분자가 아닌 것:
+ *   - 제목 표시 없이 뒤에 글이 붙은 `슬라이드 3 보시면 …` (문장일 수 있습니다)
+ *   - 번호 목록 `1.` · `1)` (본문 나열과 헷갈립니다)
+ *   - 대괄호 바로 뒤가 `(` 인 마크다운 링크 `[3](https://…)`
+ *   - 제목 표시 뒤 구분 기호 바로 다음이 숫자인 범위 · 소수 `## Slide 1-2` · `## Slide 3.14`
+ *   - `**[슬라이드 1]**` · `> [1]` 처럼 `#` 말고 다른 꾸밈, `【슬라이드 1】` 같은 다른 괄호
+ *
+ * ★ 이 정규식은 AI 와 **같은 결과**를 내야 합니다. 공통 입력 목록
+ *   `docs/ai/features/script-parser-markers.json` 을 FE(`slideMarkers.test.ts`)와
+ *   AI(`test_splitter.py`)가 함께 읽습니다. 규칙을 바꾸면 그 목록과 AI 를 같이 고칩니다 —
+ *   FE 가 AI 보다 넓게 인식하면 화면에서는 나뉘는데 서버에는 1장으로 저장됩니다.
+ *   구분처럼 보이지만 인식되지 않는 줄은 개수에 넣지 않고 첫 구분 앞에서만 찾아 안내합니다(`MarkerScan.near`).
+ * ★ Python 과 JS 가 다른 곳을 맞췄습니다.
+ *   - 숫자 `\d`: Python 은 전각 숫자(１２３)도 숫자로 봅니다. 검사할 때만 전각 숫자(０~９)를 ASCII 로
+ *     바꿔 맞춥니다(`toAsciiDigits`). 사용자 대본 원문은 바꾸지 않습니다. 그 밖의 유니코드 숫자
+ *     (아라비아 · 데바나가리 등)는 AI 만 숫자로 봅니다 — 한글 입력기로는 칠 수 없어 맞추지 않았습니다.
+ *   - 대소문자: Python `re.IGNORECASE` 는 `slide` 의 s · i 에 `ſ` · `ı` · `İ` 도 맞춥니다. JS `i` 는
+ *     그러지 않아 글자 묶음으로 적었습니다(`SLIDE`).
+ *   - 공백 걷기: Python `str.strip()` 과 JS `trim()` 이 걷는 글자가 다릅니다(BOM · `\x1f`). `pyStrip` 을 씁니다.
+ *   - 줄 나누기: Python `str.splitlines()` 와 같게 나눕니다(`splitLines`).
  */
 
-export const SLIDE_MARKER =
-  /^[ \t]*(?:\[(\d{1,4})\]|\[슬라이드[ \t]+(\d{1,4})\]|슬라이드[ \t]+(\d{1,4}):)/;
+const SLIDE = '(?:슬라이드|[sSſ][lL][iIıİ][dD][eE])[ \\t]*';
+const HEADING = /^#{1,6}[ \t]+/;
+const BRACKET = new RegExp(`^\\[(?:${SLIDE})?(\\d{1,4})\\](?!\\()`);
+const WORD = new RegExp(`^${SLIDE}(\\d{1,4})(?!\\d)`);
+const COLON = /^[ \t]*[:：]/;
+// 제목 표시 뒤 번호와 제목 사이는 공백이나 구분 기호로 띄웁니다 ("## Slide 1a" 는 아닙니다)
+const HEADING_SEP = /^(?:[ \t]*[—–\-|:：.]?[ \t]+|[ \t]*[—–\-|:：.])/;
+// 구분 기호 바로 다음 숫자: 범위(1-2) · 소수(3.14)
+const HEADING_RANGE = /^[ \t]*[—–\-|.]\d/;
+
+/** Python `str.isspace()` 인 글자 — `str.strip()` 이 걷는 것 */
+const PY_SPACE =
+  '\\t\\n\\v\\f\\r\\x1c-\\x20\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000';
+const PY_STRIP = new RegExp(`^[${PY_SPACE}]+|[${PY_SPACE}]+$`, 'g');
+
+/** Python `str.strip()` 과 같은 앞뒤 공백 걷기 */
+function pyStrip(text: string): string {
+  return text.replace(PY_STRIP, '');
+}
 
 /** 전각 숫자(０~９)를 ASCII 숫자로. 한 글자가 한 글자로 바뀌어 길이와 위치가 그대로입니다 */
 export function toAsciiDigits(text: string): string {
   return text.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
 }
 
-/**
- * 예전 표기 — 구분으로는 세지 않고 안내에만 씁니다. `Slide 1` · `슬라이드 1` 처럼 장을 가리킨 것과
- * `1.` · `1)` 꼴(본문 번호 목록과 생김새가 같습니다)을 나눠 둡니다
- */
-const LEGACY_NAMED = /^[ \t]*(?:slide|슬라이드)[ \t]*\d{1,4}(?=[\s:.\-–)]|$)/i;
-const LEGACY_NUMBERED = /^[ \t]*\d{1,2}[ \t]*[.)](?=[ \t]|$)/;
-
 /** Python `str.splitlines()` 와 같은 줄바꿈 (CRLF · VT · FF · FS/GS/RS · NEL · LS · PS) */
-function splitLines(text: string): string[] {
+export function splitLines(text: string): string[] {
   // oxlint-disable-next-line no-control-regex -- 제어문자 줄바꿈이 의도된 규칙입니다
   return text.split(/\r\n|[\n\r\v\f\x1c-\x1e\u0085\u2028\u2029]/);
 }
 
-/** 이 줄이 구분자로 시작하면 그 번호, 아니면 null */
-export function markerNumber(line: string): number | null {
-  const m = SLIDE_MARKER.exec(toAsciiDigits(line));
-  return m ? Number(m[1] ?? m[2] ?? m[3]) : null;
+export interface MarkerMatch {
+  /** 장 번호. 0 이면 구분자 줄이지만 대본 전체가 나뉘지 않습니다 */
+  number: number;
+  /** 구분자 뒤 같은 줄의 글(앞뒤 공백 제외) — 그 장의 본문입니다. 원문(전각 숫자 포함)에서 자릅니다 */
+  rest: string;
 }
 
-/** 구분자 뒤 같은 줄의 글 — 구분자가 아니면 줄 그대로. 원문(전각 숫자 포함)에서 자릅니다 */
-export function stripMarker(line: string): string {
-  const m = SLIDE_MARKER.exec(toAsciiDigits(line));
-  return m ? line.slice(m[0].length) : line;
-}
-
-/** 구분자는 아니지만 예전에 구분으로 쓰던 표기(`Slide 1` · `1.` 등)로 보이는 줄 */
-export function isLegacyMarker(line: string): boolean {
+/** AI `match_delimiter` 와 같습니다 — 구분자 줄이면 번호와 뒤 글, 아니면 null */
+export function matchMarker(line: string): MarkerMatch | null {
   const ascii = toAsciiDigits(line);
-  return markerNumber(line) === null && (LEGACY_NAMED.test(ascii) || LEGACY_NUMBERED.test(ascii));
+  // 위치만 ASCII 쪽에서 재고 글은 원문에서 자릅니다 — 두 글은 길이가 같습니다
+  let at = ascii.length - ascii.replace(/^[ \t]+/, '').length;
+  const heading = HEADING.exec(ascii.slice(at));
+  if (heading) at += heading[0].length;
+
+  const bracket = BRACKET.exec(ascii.slice(at));
+  if (bracket)
+    return { number: Number(bracket[1]), rest: pyStrip(line.slice(at + bracket[0].length)) };
+
+  const word = WORD.exec(ascii.slice(at));
+  if (!word) return null;
+  const number = Number(word[1]);
+  at += word[0].length;
+  const after = ascii.slice(at);
+
+  const colon = COLON.exec(after);
+  if (colon) return { number, rest: pyStrip(line.slice(at + colon[0].length)) };
+  if (pyStrip(after) === '') return { number, rest: '' };
+  if (heading && !HEADING_RANGE.test(after)) {
+    const sep = HEADING_SEP.exec(after);
+    if (sep) return { number, rest: pyStrip(line.slice(at + sep[0].length)) };
+  }
+  return null;
 }
 
-/** 예전 표기 중 `Slide 1` · `슬라이드 1` 처럼 장을 가리킨 게 분명한 줄 (`1.` · `1)` 꼴은 아님) */
-export function isNamedLegacyMarker(line: string): boolean {
-  return markerNumber(line) === null && LEGACY_NAMED.test(toAsciiDigits(line));
+/** 이 줄이 구분자면 그 번호, 아니면 null */
+export function markerNumber(line: string): number | null {
+  return matchMarker(line)?.number ?? null;
 }
 
-/** 줄 앞의 마크다운 꾸밈(`#` · `*` · `>` · `-`)과 공백 */
-const MARKDOWN_PREFIX = /^[ \t]*(?:[#*>-][ \t]*)+/;
+/** 구분자 뒤 같은 줄의 글(앞뒤 공백 제외) — 구분자가 아니면 줄 그대로 */
+export function stripMarker(line: string): string {
+  return matchMarker(line)?.rest ?? line;
+}
 
 /**
- * 앞에 마크다운 꾸밈이 붙어 구분으로 인식되지 않는 줄 (`## [슬라이드 1]` · `**[슬라이드 1]**`).
- * AI 가 만든 대본은 장 제목을 이렇게 감싸는 일이 많습니다. AI 는 구분자를 줄 맨 앞에서만 찾으므로
- * 구분으로 세지 않고 안내에만 씁니다
+ * 구분처럼 보이지만 인식되지 않는 줄 — 개수에는 넣지 않고 안내에만 씁니다.
+ * - `space`: 줄 맨 앞에 전각 공백 · NBSP · BOM 같은 특수 공백이 있어 인식되지 않음 (`\u3000[1]`)
+ * - `form`: 꾸밈이나 다른 괄호를 걷으면 구분자 (`**[슬라이드 1]**` · `> [1]` · `【슬라이드 1】` · `#Slide 1` · `[ 1 ]`)
+ * - `named`: `슬라이드 1.` · `슬라이드 1 - 도입` 처럼 장을 가리켰지만 구분자 꼴이 아님
+ * - `numbered`: `1.` · `1)` 꼴. 본문 번호 목록과 생김새가 같아 바꾸라고 하지 않을 때가 많습니다
  */
-export function isWrappedMarker(line: string): boolean {
-  const m = MARKDOWN_PREFIX.exec(line);
-  return (
-    m !== null && markerNumber(line) === null && markerNumber(line.slice(m[0].length)) !== null
-  );
+export type NearMarkerKind = 'space' | 'form' | 'named' | 'numbered';
+
+const LEADING_SPACE = /^\s+/;
+/** 줄 앞의 마크다운 꾸밈(`#` · `*` · `_` · `>` · `-` · `+` · `•`)과 공백 */
+const DECORATION = /^(?:[#*_>+•-]+\s*)+/;
+const TRAILING_DECORATION = /[*_\s]+$/;
+const OPEN_BRACKETS = /[【〔［〖「『]/g;
+const CLOSE_BRACKETS = /[】〕］〗」』]/g;
+const NAMED = /^[ \t]*(?:slide|슬라이드)[ \t]*\d{1,4}(?=[\s:.\-–)]|$)/i;
+const NUMBERED = /^[ \t]*\d{1,2}[ \t]*[.)](?=[ \t]|$)/;
+
+export function nearMarkerKind(line: string): NearMarkerKind | null {
+  if (markerNumber(line) !== null || line.trim() === '') return null;
+  const body = line.replace(LEADING_SPACE, '');
+  if (body !== line.replace(/^[ \t]+/, '') && markerNumber(body) !== null) return 'space';
+  const loose = body
+    .replace(DECORATION, '')
+    .replace(TRAILING_DECORATION, '')
+    .replace(OPEN_BRACKETS, '[')
+    .replace(CLOSE_BRACKETS, ']')
+    .replace(/\[\s+/g, '[')
+    .replace(/\s+\]/g, ']')
+    .replace(/\s/g, ' ');
+  if (markerNumber(loose) !== null) return 'form';
+  const ascii = toAsciiDigits(line);
+  if (NAMED.test(ascii)) return 'named';
+  if (NUMBERED.test(ascii)) return 'numbered';
+  return null;
+}
+
+export interface NearMarker {
+  /** 줄의 글 (앞뒤 공백 제외) */
+  line: string;
+  kind: NearMarkerKind;
 }
 
 export interface MarkerScan {
@@ -95,31 +170,25 @@ export interface MarkerScan {
    */
   leadingText: boolean;
   /**
-   * 구분으로는 안 세지만 예전 표기처럼 보이는 줄의 글 (앞뒤 공백 제외). **첫 구분자 앞의 줄만**
-   * 셉니다 — 구분자 뒤의 "1. 첫째 이유는" · "Slide 3 shows" 는 본문의 번호 목록 · 문장입니다.
+   * 구분처럼 보이지만 인식되지 않는 줄 (`nearMarkerKind`). **첫 구분자 앞의 줄만** 셉니다 —
+   * 구분자 뒤의 "1. 첫째 이유는" · "Slide 3 shows" · "> [1] 인용" 은 본문입니다.
    */
-  legacy: string[];
-  /** 앞에 마크다운 꾸밈이 붙어 구분으로 안 세는 줄의 글 (앞뒤 공백 제외). 첫 구분자 앞의 줄만 셉니다 */
-  wrapped: string[];
+  near: NearMarker[];
 }
 
 export function scanSlideMarkers(text: string): MarkerScan {
   const numbers: number[] = [];
-  const legacy: string[] = [];
-  const wrapped: string[] = [];
+  const near: NearMarker[] = [];
   let leadingLines = 0;
   for (const line of splitLines(text)) {
     const n = markerNumber(line);
     if (n !== null) numbers.push(n);
     else if (numbers.length === 0) {
-      if (isLegacyMarker(line)) legacy.push(line.trim());
-      if (isWrappedMarker(line)) wrapped.push(line.trim());
+      const kind = nearMarkerKind(line);
+      if (kind) near.push({ line: line.trim(), kind });
       if (line.trim() !== '') leadingLines++;
     }
   }
   const numbersValid = numbers.every((n, i) => n >= 1 && (i === 0 || n > numbers[i - 1]));
-  return { numbers, numbersValid, leadingText: leadingLines > 1, legacy, wrapped };
+  return { numbers, numbersValid, leadingText: leadingLines > 1, near };
 }
-
-/** 줄 단위로 나누는 규칙도 AI 와 같아야 해서 목이 같이 씁니다 */
-export { splitLines };
