@@ -110,14 +110,18 @@ it('칩의 호버·키보드 초점·터치 클릭으로 예시가 열리고 Esc
     expect(tooltip?.classList.contains('visible')).toBe(true);
 
     await act(async () => {
-      chip!.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+      chip!.dispatchEvent(
+        new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }),
+      );
     });
     expect(tooltip?.classList.contains('invisible')).toBe(true);
 
     await act(async () => chip!.focus());
     expect(tooltip?.classList.contains('visible')).toBe(true);
 
-    await act(async () => chip!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    await act(async () => {
+      chip!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
     expect(tooltip?.classList.contains('invisible')).toBe(true);
     expect(document.activeElement).not.toBe(chip);
 
