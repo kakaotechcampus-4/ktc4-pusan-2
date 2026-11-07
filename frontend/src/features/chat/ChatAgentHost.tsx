@@ -17,7 +17,6 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
 import { useSession } from '@/shared/api/useSession';
-import { isChatAgentBuildEnabled } from '@/shared/lib/chatAgent';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
 import type { CardActions } from './ChatCards';
@@ -46,9 +45,6 @@ import { useChatSession, type ChatNotice, type ChatSession } from './useChatSess
  * 채팅에서 오류가 나면 채팅만 사라지고 화면은 그대로 남습니다.
  */
 export function ChatAgentHost() {
-  // 연동이 끝나 빌드 스위치를 켜기 전까지는 배포에 섞여도 아무것도 그리지 않습니다 (12-4 F1 "사용 가능 여부")
-  if (!isChatAgentBuildEnabled()) return null;
-
   return (
     <ChatErrorBoundary>
       <ChatLayer />

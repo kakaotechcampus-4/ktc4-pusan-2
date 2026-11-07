@@ -394,7 +394,6 @@ it('counts the silence warning only while reading the usual voice, from when rea
 });
 
 it('tells the chat panel the current check state when a message is sent (chat step 6)', async () => {
-  vi.stubEnv('VITE_CHAT_AGENT', 'true');
   fixture.micOk = false;
   fixture.gazeStatus = 'RUNNING';
   await render();

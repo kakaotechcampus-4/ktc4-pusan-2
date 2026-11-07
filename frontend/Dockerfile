@@ -11,8 +11,6 @@ COPY . .
 # 크기 · sha256 을 확인합니다. 다르면 여기서 빌드가 멈춥니다 (scripts/models.mjs)
 RUN npm run models -- --download
 ARG VITE_LAUNCH_GATE_ENABLED=false
-# 대화형 코치 에이전트 버튼. 미설정은 꺼짐이고, 켜는 환경(dev 등)은 compose 의 build args 로 "true" 를 넘깁니다
-ARG VITE_CHAT_AGENT=false
 RUN npm run build
 
 FROM caddy:2.6.4-alpine
