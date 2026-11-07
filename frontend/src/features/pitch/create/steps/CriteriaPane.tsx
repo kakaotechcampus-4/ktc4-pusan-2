@@ -152,12 +152,6 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
             </li>
           ))}
         </ul>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-ink/80">추가 설정</span>
-          <span className="rounded-full border border-dashed border-line-strong bg-cream px-3 py-1 text-xs font-bold text-ink/80">
-            대본 사용 허용
-          </span>
-        </div>
         <p className="mt-2 text-xs leading-relaxed text-ink/80">
           위 항목을 참고해 아래에 기준을 작성해 주세요. 발표 시간은 발표정보에서 설정해 주세요.
         </p>
