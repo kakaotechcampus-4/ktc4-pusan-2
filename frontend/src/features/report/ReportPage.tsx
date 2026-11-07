@@ -241,7 +241,7 @@ function GazeBreakdown({ m }: { m: TakeMeasures }) {
               <span className={`h-2.5 w-2.5 ${row.color}`} aria-hidden="true" />
               {row.label}
             </dt>
-            <dd className="tabular mt-1 font-mono text-3xl font-bold">{pct(row.value)}</dd>
+            <dd className="tabular mt-1 tabular-nums text-3xl font-bold">{pct(row.value)}</dd>
           </div>
         ))}
       </dl>

@@ -146,7 +146,7 @@ export function TakesPage() {
                     <p className="[overflow-wrap:anywhere] text-xs text-stone">
                       {takeDay(t.started_at)} · {t.pitch_title}
                     </p>
-                    <p className="mt-0.5 font-mono font-bold">TAKE {t.take_number}</p>
+                    <p className="mt-0.5 tabular-nums font-bold">TAKE {t.take_number}</p>
                   </div>
                   <TakeStatusBadge status={status} />
                   <dl className="tabular col-span-2 grid grid-cols-2 items-center gap-x-4 gap-y-2 text-sm sm:grid-cols-3 lg:col-span-1 lg:grid-cols-[minmax(0,1fr)_8rem_5rem]">

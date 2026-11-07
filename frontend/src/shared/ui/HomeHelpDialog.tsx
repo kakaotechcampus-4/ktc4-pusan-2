@@ -64,7 +64,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
         <ol className="mt-7 space-y-6">
           {steps.map(([title, description], index) => (
             <li key={title} className="flex gap-4 border-t border-line-strong pt-5">
-              <span aria-hidden="true" className="font-mono text-2xl font-bold text-coral-deep">
+              <span aria-hidden="true" className="tabular-nums text-2xl font-bold text-coral-deep">
                 0{index + 1}
               </span>
               <div>

@@ -44,7 +44,7 @@ export function AboutPage() {
       <div className="grid gap-4 md:grid-cols-2">
         {ANALYSES.map((a) => (
           <Card key={a.title} title={a.title}>
-            <p className="font-mono text-xs tracking-wide text-coral-deep">{a.where}</p>
+            <p className="tabular-nums text-xs tracking-wide text-coral-deep">{a.where}</p>
             <p className="text-sm leading-relaxed">{a.body}</p>
           </Card>
         ))}
