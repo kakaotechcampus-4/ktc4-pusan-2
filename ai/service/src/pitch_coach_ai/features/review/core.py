@@ -30,7 +30,7 @@ from .missions import judge_missions, judge_user_criteria
 from .next_missions import build_next_missions, merge_picked_missions, select_next_missions
 from .prompts.review import REVIEW_SYSTEM_PROMPT
 from .recurring import build_recurring_issues
-from .schemas import ReviewDraft, ReviewRequest, ReviewResponse
+from .schemas import MAX_DESCRIPTION_CHARS, ReviewDraft, ReviewRequest, ReviewResponse
 from .score import compute_score
 from .text import TextCandidate, default_text, text_candidates
 from .version import FEATURE_VERSION, SCHEMA_VERSION
@@ -184,6 +184,10 @@ def _numbers(sentence: str) -> list[tuple[str, float, int]]:
     return found
 
 
+#: 숫자 검사가 보는 소수 자리 상한. float 의 유효 숫자(약 15자리)를 넘는 자리는 비교할 수 없다
+_MAX_PLACES = 15
+
+
 def _round_half_up(value: float, places: int) -> float:
     """보여 준 자리까지 반올림 (0.625 → 0.63). 부동소수 오차는 1e-9 로 덮는다"""
     scale = 10**places
@@ -207,6 +211,10 @@ def check_numbers(sentence: str, allowed_numbers: Iterable[float | int | None]) 
     """
     allowed = [abs(float(a)) for a in allowed_numbers if a is not None and not isinstance(a, bool)]
     for unit, value, places in _numbers(sentence):
+        if places > _MAX_PLACES:
+            # float 로 비교할 수 없는 자리 수는 입력에 없는 숫자다. 반올림(10**places)이
+            # OverflowError 를 내면 apply_draft 밖으로 나가 200 이 아니라 500 이 된다 (명세 7절)
+            return False
         scale = _UNIT_SCALE[unit]
         if places == 0 and unit in _EXACT_UNITS:
             same = any(abs(a * scale - value) < 1e-9 for a in allowed)
@@ -295,8 +303,10 @@ def apply_draft(
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int, int]:
     """LLM 초안을 후보에 붙인다 → (문장, 다음 미션, 버린 항목 수, 숫자 검사로 바꾼 문장 수).
 
-    - 숫자 검사: LLM 문장마다 check_numbers. 걸린 문장은 쓰지 않아 그 후보의 기본 문장이 된다
-      (문장 단위로 바꾸므로 fallback_reason 은 달지 않는다, 명세 6-2)
+    - 숫자 검사: LLM 이 쓴 항목(요약 · 강점 한 줄 · 개선점 한 줄 · 미션 설명 · 이유)마다
+      check_numbers. 걸린 항목은 쓰지 않아 그 후보의 기본 문장이 된다
+      (항목 단위로 바꾸므로 fallback_reason 은 달지 않는다, 명세 6-2).
+      미션 설명은 자른 뒤 검사한다
     - 강점 · 개선점: 어느 차원을 말할지는 규칙 단계가 정했으므로 후보를 모두 낸다 (_texts)
     - 다음 미션: 사용자 기준 FAILED 를 맨 앞에, 이어서 LLM 이 고른 순서 (merge_picked_missions)
     - 요약이 비었거나 숫자 검사에 걸리면 기본 요약
@@ -321,10 +331,12 @@ def apply_draft(
         for i, m in enumerate(candidates.next_missions.values())
         if i < candidates.n_fixed and m["description"] is not None
     }
+    # 설명은 먼저 MAX_DESCRIPTION_CHARS 자로 자른 뒤 검사한다. 검사 뒤에 자르면 잘린 자리의
+    # 숫자("…52%" → "…52")가 검사 밖 값으로 나간다
     picks = [
         (
             index[cid],
-            None if index[cid] in keep else checked(m.description),
+            None if index[cid] in keep else checked(m.description.strip()[:MAX_DESCRIPTION_CHARS]),
             checked(m.reason),
         )
         for cid, m in missions.items()
@@ -378,13 +390,11 @@ def review_take(
     if llm is not None:
         candidates = build_candidates(rules, texts)
         message = review_message(rules, candidates)
+        # try 에는 LLM 호출 · 초안 검증만 둔다. 초안을 붙이는 코드(apply_draft)의 예외는
+        # 규칙 쪽 코드 오류라 LLM 오류(200 기본 결과)로 숨기지 않고 500 으로 올린다 (명세 7절)
         try:
             out = llm.invoke([("system", REVIEW_SYSTEM_PROMPT), ("user", message)])
             draft = out if isinstance(out, ReviewDraft) else ReviewDraft.model_validate(out)
-            text, next_missions, dropped, replaced = apply_draft(
-                draft, candidates, text["overall_summary"], message_numbers(message)
-            )
-            reason = None
         except Exception as exc:  # noqa: BLE001 — 규칙 단계 결과가 본체라 LLM 장애로 끊지 않는다
             reason = _fallback_reason(exc)
             # 예외 메시지에 LLM 문장이 들어 있을 수 있어 종류만 남긴다 (명세 11절 로그)
@@ -394,6 +404,11 @@ def review_take(
                 reason,
                 type(exc).__name__,
             )
+        else:
+            text, next_missions, dropped, replaced = apply_draft(
+                draft, candidates, text["overall_summary"], message_numbers(message)
+            )
+            reason = None
 
     log.info(
         "review take_id=%s score=%s dimensions=%s fallback_reason=%s replaced=%d dropped=%d",
