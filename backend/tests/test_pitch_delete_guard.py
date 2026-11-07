@@ -145,6 +145,24 @@ def test_delete_api_answers_409_with_the_code_and_keeps_the_pitch(
     assert db_session.get(Pitch, pitch_id) is not None
 
 
+def test_home_list_tells_the_same_answer_as_delete(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, auth_headers: dict[str, str]
+) -> None:
+    expected = {}
+    for answer, cases in ((False, BUSY), (True, FREE)):
+        for fields in cases.values():
+            pitch_id = _add_pitch(db_session, user_id)
+            _add_take(db_session, pitch_id, **fields)
+            expected[str(pitch_id)] = answer
+    empty = _add_pitch(db_session, user_id)
+    expected[str(empty)] = True
+
+    response = client.get("/api/pitches/", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert {p["pitch_id"]: p["can_delete"] for p in response.json()["pitches"]} == expected
+
+
 def test_stalled_analysis_means_the_same_as_the_admin_screen(
     db_session: Session, user_id: uuid.UUID
 ) -> None:

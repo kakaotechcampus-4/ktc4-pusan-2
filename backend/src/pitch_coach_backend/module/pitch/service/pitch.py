@@ -67,6 +67,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
     for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):
         rows_by_pitch[row.Take.pitch_id].append(row)
     latest = pitch_repository.get_latest_presentations([p.id for p in pitches])
+    now = datetime.now(UTC)
 
     results = []
     for pitch in pitches:
@@ -111,6 +112,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
             ),
             presentation_date=pitch.presentation_date,
             takes=take_summaries,
+            can_delete=not any(take_lookup.blocks_pitch_deletion(row.Take, now) for row in takes),
         )
 
         results.append(pitch_dto)
