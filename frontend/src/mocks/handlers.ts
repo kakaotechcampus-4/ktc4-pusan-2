@@ -128,7 +128,7 @@ const SLIDE_KEYWORDS = [
 const sampleScript: ScriptDetail = {
   script_version_id: prepare.script!.id,
   version: prepare.script!.version,
-  original_content: SCRIPT_PARAGRAPHS.map((p, i) => `슬라이드 ${i + 1}\n${p}`).join('\n'),
+  original_content: SCRIPT_PARAGRAPHS.map((p, i) => `[슬라이드 ${i + 1}]\n${p}`).join('\n'),
   parse_status: 'DONE',
   segmented: true,
   slides: SCRIPT_PARAGRAPHS.map((content, i) => ({
