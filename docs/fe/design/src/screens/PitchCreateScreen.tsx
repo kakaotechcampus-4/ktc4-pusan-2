@@ -18,7 +18,7 @@ const GROUPS = ['슬라이드', '대본', '평가기준'] as const;
 type Kind = (typeof GROUPS)[number];
 type Preview = { kind: Kind | '매핑' | '슬라이드 확인' | '최종 확인'; version: number };
 const sections = ['슬라이드', '대본 연결', '발표정보', '평가기준'];
-const CRITERIA_HINTS = ['발표 속도', '발음 명확성', '군더더기 표현', '시선 처리', '목소리 크기', '시간 준수', '내용 구성', '논리적 연결', '전달력'] as const;
+const CRITERIA_HINTS = ['말 속도', '말 사이 멈춤', '긴 침묵', '소리 크기', '군더더기 말', '시선', '대본 의존도', '대본 유사도'] as const;
 
 function Icon({ kind }: { kind: 'folder' | 'caret' | 'doc' | 'check' }) {
   const paths = {
@@ -521,8 +521,7 @@ export function PitchCreateScreen({
                     <span>V1 · 3장 · PDF</span>
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <p role="status">{slidesConfirmed ? '확인 완료' : '업로드 완료 · 확인 필요'}</p>
+                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     className="create-secondary"
@@ -531,17 +530,6 @@ export function PitchCreateScreen({
                     슬라이드 확인
                   </button>
                 </div>
-                <details className="create-slide-preview">
-                  <summary>슬라이드 미리보기</summary>
-                  <SampleSlide page={0} version={1} />
-                  <button
-                    type="button"
-                    className="create-secondary"
-                    onClick={() => setPreview({ kind: '슬라이드', version: 1 })}
-                  >
-                    크게 보기
-                  </button>
-                </details>
               </>
             ) : (
               <div className="border-2 border-dashed border-line-strong bg-white p-8 text-center">
@@ -744,7 +732,7 @@ export function PitchCreateScreen({
                     setCriteria([]);
                     setCriteriaSaved(false);
                   }}
-                  placeholder="예: 발표 속도와 발음 명확성을 평가해 주세요."
+                  placeholder={"예: 군더더기 말은 5회 이하로 줄이고 싶어요.\n예: 청중을 70% 이상 바라보고 싶어요."}
                 />
                 <div className="mt-3" aria-label="평가 가능한 지표 예시">
                   <p className="mb-2 text-xs text-ink/80">다음 지표를 참고해 평가기준을 작성할 수 있어요.</p>
@@ -769,7 +757,7 @@ export function PitchCreateScreen({
                 </button>
               </div>
               <div>
-                <h3 className="mb-3 font-bold">정리된 평가기준</h3>
+                <h3 className="mb-3 font-bold">이번 발표에 반영된 기준</h3>
                 {criteria.length ? (
                   <ol className="list-decimal space-y-3 pl-5">
                     {criteria.map((text) => (
