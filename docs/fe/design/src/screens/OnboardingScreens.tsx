@@ -260,7 +260,7 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
         <article className="mt-6 flex flex-col gap-5 border-2 border-ink bg-panel p-6 shadow-[4px_4px_0_var(--color-ink)] sm:flex-row sm:items-center">
           <img src={publicUrl('semini.png')} alt="새미나이 캐릭터" className="h-24 w-24 shrink-0 object-contain [image-rendering:pixelated]" />
           <div>
-            <p className="font-mono text-xs font-bold tracking-widest">CHICHI'S FAVORITE APP · AI 비서 앱</p>
+            <p className="font-mono text-xs font-bold tracking-widest">CHICHI'S FAVORITE APP · AI ASSISTANT</p>
             <h3 className="mt-2 text-2xl font-extrabold">새미나이 <span className="text-base font-medium">(Semini)</span></h3>
             <p className="mt-3 text-sm leading-7">치치가 발표를 준비할 때 자주 찾는 AI 비서 앱이에요. 궁금한 점을 물어보고 연습에 필요한 도움을 받아요.</p>
           </div>
