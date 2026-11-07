@@ -9,11 +9,7 @@ import { registerChatScreen, resetChatScreen, type ScreenBody } from '@/shared/l
 import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
 import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
-import {
-  ASK_HELP_ABILITIES,
-  ASK_HELP_EXAMPLES,
-  ASK_HELP_TITLE,
-} from './askHelpText';
+import { ASK_HELP_ABILITIES, ASK_HELP_EXAMPLES, ASK_HELP_TITLE } from './askHelpText';
 import { emptyBasis, readCard, type ShownClaim } from './chatResponse';
 import { chatTicket, useChatStore } from './chatStore';
 import type { TransportSignal } from './chatTransport';
@@ -1904,7 +1900,9 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
       userMsg('m1', '날씨 알려 줘', 'r0'),
       answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
       userMsg('m3', '주식 추천해 줘', 'r1'),
-      answer('m4', 'r1', 'REFUSED', ['이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요.']),
+      answer('m4', 'r1', 'REFUSED', [
+        '이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요.',
+      ]),
     ]);
     const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
     expect(helps).toHaveLength(1);
