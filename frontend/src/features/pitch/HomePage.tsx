@@ -22,14 +22,16 @@ const HOME_TIPS = [
 
 const HOME_TIP_INTERVAL_MS = 8000;
 
+function initiallyPauseTips() {
+  if (typeof window === 'undefined') return false;
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  return reducedMotion?.matches ?? false;
+}
+
 export function HomePage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
-  const [tipPaused, setTipPaused] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
-  );
+  const [tipPaused, setTipPaused] = useState(initiallyPauseTips);
   const home = usePitchList();
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
