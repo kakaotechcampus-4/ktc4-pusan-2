@@ -126,8 +126,8 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
               className="min-w-0 max-w-full overflow-x-auto p-1"
             >
               <div
-                className="mx-auto w-fit max-w-full"
-                style={{ minWidth: `${series.length * 6}rem`, width: `min(100%, ${Math.max(series.length * 8, 40)}rem)` }}
+                className="mx-auto"
+                style={{ minWidth: `${series.length * 6}rem`, width: `min(100%, ${Math.max(series.length * 8, 24)}rem)` }}
               >
                 <ol
                   className="flex h-48 gap-4 border-b-2 border-ink"
