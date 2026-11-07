@@ -84,6 +84,28 @@ const screenGroup = {
 const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
+    id: 'semini',
+    title: '새미나이 · 채팅 패널 시안',
+    group: screenGroup.review,
+    route: '/',
+    status: '시안',
+    summary: 'Draft #1104·#1110의 왼쪽 하단 런처, 분리된 패널, 대화 범위, 추천 질문과 composer를 재현한다.',
+    states: [base],
+    rules: [
+      '런처와 패널은 왼쪽 하단에 정렬하며 패널은 잉크색 3px 테두리와 오프셋 그림자로 배경과 구분한다.',
+      '추천 질문은 입력창에만 채우고 자동으로 전송하지 않는다.',
+      '대화 목록과 기억 설정에서는 입력 폼을 숨기고 작성 중인 초안을 보존한다.',
+      '실제 API·메시지 기록·기억 설정은 호출하지 않는다.',
+    ],
+    components: ['새미나이 런처', 'ChatPanelHeader', '추천 질문', '메시지 입력 composer'],
+    tokens: ['panel', 'ink', 'coral-deep', 'cream'],
+    sources: ['frontend/src/features/chat/ChatAgentHost.tsx'],
+    productNote: 'Draft #1104·#1110 기준 UI 시안으로, 실제 채팅 API·오류 경계·라우트별 하단 오프셋은 재현하지 않는다.',
+    productLinks: [link('홈 · 채팅 레이어', '/')],
+    next: [next('홈', 'home')],
+  },
+  {
+    kind: 'screen',
     id: 'tutorial',
     title: '첫 미션 · 샘플 발표 튜토리얼',
     group: screenGroup.pitch,
