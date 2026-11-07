@@ -71,20 +71,3 @@ it('정리된 기준과 제외된 입력 및 수정 방법을 함께 안내한�
   expect(html).toContain('발표 내용은 창의적으로');
   expect(html).toContain('측정 가능한 행동으로 바꿔 적어 주세요.');
 });
-
-it('temporary format diagnostic', async () => {
-  const { readFileSync } = await import('node:fs');
-  const { format, resolveConfig } = await import('prettier');
-  const path = 'src/features/pitch/create/steps/CriteriaPane.tsx';
-  const original = readFileSync(path, 'utf8');
-  const formatted = await format(original, { ...(await resolveConfig(path)), filepath: path });
-  if (formatted !== original) {
-    const before = original.split('\n');
-    const after = formatted.split('\n');
-    let n = 0;
-    while (n < before.length && before[n] === after[n]) n++;
-    console.log('PRETTIER_FIRST_DIFF_LINE', n + 1);
-    console.log('PRETTIER_BEFORE', before.slice(n, n + 18).join('\n'));
-    console.log('PRETTIER_AFTER', after.slice(n, n + 18).join('\n'));
-  }
-});
