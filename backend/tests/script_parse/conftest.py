@@ -6,6 +6,7 @@ AI 만 가짜 파서로 바꾸고 나머지(엔드포인트·BackgroundTasks·ru
 "아직 PENDING" 은 conftest 의 기본값(아무것도 안 하는 runner)으로 본다.
 """
 
+import json
 import uuid
 from datetime import timedelta
 
@@ -13,7 +14,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
@@ -80,11 +80,6 @@ def parser(db_session: Session, client: TestClient) -> FakeParser:
     return fake
 
 
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
-
-
 def _new_pitch(client: TestClient, headers: dict[str, str]) -> uuid.UUID:
     response = client.post(
         "/api/pitches/add",
@@ -106,8 +101,11 @@ def _create(
     headers: dict[str, str],
     content: str = SCRIPT_TEXT,
 ):
+    # httpx 의 json= 은 짝 없는 서로게이트를 UTF-8 로 바꾸지 못해 보내기 전에 터진다
     return client.post(
-        f"/api/pitches/{pitch_id}/scripts", json={"content": content}, headers=headers
+        f"/api/pitches/{pitch_id}/scripts",
+        content=json.dumps({"content": content}),
+        headers={**headers, "Content-Type": "application/json"},
     )
 
 

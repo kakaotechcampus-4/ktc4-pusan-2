@@ -26,6 +26,9 @@ from pitch_coach_ai.features.script_parser.cleaner import clean_script, count_ch
         ("a  \t b", "a b"),
         ("a\n\n\n\nb", "a\n\nb"),
         ("  앞뒤 공백  \n", "앞뒤 공백"),
+        # 공백 · 탭만 있는 줄도 빈 줄로 보고 줄인다
+        ("가\n \n\t\n \n나", "가\n\n나"),
+        ("가 \n나", "가\n나"),
     ],
 )
 def test_clean_script(text, expected):
@@ -46,7 +49,9 @@ def test_find_highlights_first_occurrence():
 
 def test_find_highlights_skips_missing(caplog):
     assert find_highlights("발표 시간", ["발표", "없는말"]) == [{"start": 0, "end": 2}]
-    assert "없는말" in caplog.text
+    # 못 찾은 사실만 남기고 키워드(대본 내용)는 남기지 않는다(문서 11절)
+    assert "keyword not found" in caplog.text
+    assert "없는말" not in caplog.text
 
 
 def test_find_highlights_code_points():

@@ -11,6 +11,7 @@ from sqlalchemy.orm import (
     mapped_column,
     sessionmaker,
 )
+from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.config import settings
 
@@ -91,6 +92,22 @@ def get_db() -> Generator[Session]:
         db.close()
 
 
+def with_session[T](session_factory: Callable[[], Session], fn: Callable[..., T], *args, **kw) -> T:
+    """짧은 세션을 열어 fn(db, ...) 를 부르고 닫는다. 동기 코드라 threadpool 안에서 부른다."""
+    db = session_factory()
+    try:
+        return fn(db, *args, **kw)
+    finally:
+        db.close()
+
+
+async def in_session[T](
+    session_factory: Callable[[], Session], fn: Callable[..., T], *args, **kw
+) -> T:
+    """`with_session` 을 threadpool 에서 돌린다. AI 를 기다리는 동안 세션을 쥐지 않게 한다."""
+    return await run_in_threadpool(with_session, session_factory, fn, *args, **kw)
+
+
 class SessionPerCall:
     """요청 밖(WebSocket · 백그라운드 태스크)에서 DB 를 쓰는 저장소의 바탕.
 
@@ -103,11 +120,12 @@ class SessionPerCall:
 
     def _with[T](self, fn: Callable[..., T], *args: object) -> T:
         """짧은 세션을 열어 fn(db, *args) 를 부르고 닫는다 (threadpool 안에서 돈다)."""
-        db = self._session_factory()
-        try:
-            return fn(db, *args)
-        finally:
-            db.close()
+        return with_session(self._session_factory, fn, *args)
+
+
+def constraint_name(error: sa_exc.IntegrityError) -> str | None:
+    """어느 제약에 걸렸는가. psycopg 가 알려 주는 이름이다."""
+    return getattr(getattr(error.orig, "diag", None), "constraint_name", None)
 
 
 def is_transient_db_error(error: BaseException) -> bool:

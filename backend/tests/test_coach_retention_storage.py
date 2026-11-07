@@ -7,7 +7,6 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
 from sqlalchemy import delete, select, text
@@ -16,7 +15,6 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
-    ScriptSlide,
     ScriptVersion,
 )
 from pitch_coach_backend.module.take import coach_service
@@ -26,84 +24,15 @@ from pitch_coach_backend.module.take.entity import (
     TakeMetricSecond,
 )
 from pitch_coach_backend.module.user.entity import User
+from tests.coach_storage_seed import (  # noqa: F401
+    make_take,
+    pitch,
+    presentation,
+    script,
+    take_parts,
+    user,
+)
 
-
-@pytest.fixture
-def user(db_session: Session) -> User:
-    user = User(email=f"{uuid.uuid4()}@example.com", name="코치")
-    db_session.add(user)
-    db_session.flush()
-    return user
-
-@pytest.fixture
-def pitch(db_session: Session, user: User) -> Pitch:
-    pitch = Pitch(
-        user_id=user.id, title="발표", time_limit_sec=300, upper_deviation=30, lower_deviation=30
-    )
-    db_session.add(pitch)
-    db_session.flush()
-    return pitch
-
-@pytest.fixture
-def script(db_session: Session, pitch: Pitch) -> ScriptVersion:
-    script = ScriptVersion(
-        pitch_id=pitch.id,
-        version=1,
-        content="대본",
-        parse_status="DONE",
-        # 파싱할 때의 목표는 제한 시간(300초)이었다
-        parse_meta={"target_ms": 300_000},
-    )
-    db_session.add(script)
-    db_session.flush()
-    db_session.add_all(
-        [
-            ScriptSlide(
-                script_version_id=script.id,
-                slide_number=n,
-                full_content=f"{n}번 장 대본",
-                script_chars=100,
-                expected_ms=100_000,
-            )
-            for n in (1, 2, 3)
-        ]
-    )
-    db_session.flush()
-    return script
-
-@pytest.fixture
-def presentation(db_session: Session, pitch: Pitch) -> PresentationVersion:
-    presentation = PresentationVersion(pitch_id=pitch.id, version=1, file_key="deck.pdf")
-    db_session.add(presentation)
-    db_session.flush()
-    return presentation
-
-def make_take(
-    db: Session,
-    pitch: Pitch,
-    script: ScriptVersion,
-    presentation: PresentationVersion,
-    number: int,
-    **fields: Any,
-) -> Take:
-    take = Take(
-        pitch_id=pitch.id,
-        take_number=number,
-        presentation_version_id=presentation.id,
-        script_version_id=script.id,
-        mode=fields.pop("mode", "COACHING"),
-        script_mode=fields.pop("script_mode", "HIGHLIGHT"),
-        goal_time_sec=fields.pop("goal_time_sec", 300),
-        status=fields.pop("status", "READY"),
-        **fields,
-    )
-    db.add(take)
-    db.flush()
-    return take
-
-@pytest.fixture
-def take_parts(pitch: Pitch, script: ScriptVersion, presentation: PresentationVersion):
-    return pitch, script, presentation
 
 def test_raw_data_of_failed_takes_without_consent_is_purged_after_seven_days(
     db_session: Session, take_parts

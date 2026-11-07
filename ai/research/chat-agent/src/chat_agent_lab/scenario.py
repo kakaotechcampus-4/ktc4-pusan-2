@@ -35,15 +35,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+from pitch_coach_ai.features.chat_agent.corpus import Corpus, build_corpus, manifest_hash
+from pitch_coach_ai.features.chat_agent.goals import build_goal_draft
+from pitch_coach_ai.features.chat_agent.schemas import Screen, TakeSnapshot
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
-from chat_agent.config import DEFAULT_CONFIG
-from chat_agent.corpus import Corpus, build_corpus, manifest_hash
-from chat_agent.goals import build_goal_draft
-from chat_agent.schemas import Screen, TakeSnapshot
-
-from . import fixtures as fx
 from .app import GUIDES
+from .service_tests import fixtures as fx
 
 SCHEMA_VERSION = "1.0"
 SCENARIO_DIR = Path(__file__).resolve().parents[2] / "evals" / "scenarios"
