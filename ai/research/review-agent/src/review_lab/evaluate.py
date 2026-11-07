@@ -170,7 +170,9 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             if x["error"]:
                 errors[x["error"]] = errors.get(x["error"], 0) + 1
         missing = sum(len(x["numbers_not_in_input"]) for x in drafted)
-        # 스키마 유효율은 답을 받은 호출로만 센다. 시간 초과는 출력이 없어 스키마를 볼 수 없다
+        # 스키마 유효율은 시간 초과가 아닌 호출로 센다. 시간 초과는 출력이 없어 스키마를 볼 수 없다.
+        # 그 밖의 오류(LLM_ERROR)는 출력을 받고 읽지 못한 경우도 섞일 수 있어 분모에 남긴다
+        # (명세 14절)
         answered = [x for x in llm if x["fallback_reason"] != "LLM_TIMEOUT"]
         out["llm"] = {
             "calls": len(llm),
