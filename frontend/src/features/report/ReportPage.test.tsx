@@ -19,7 +19,10 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
-  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
+  };
   query.error = null;
   query.data = {
     take_id: 't3',
@@ -203,4 +206,16 @@ it('shows per-metric improved and worsened slides before opening details', async
   await openComparisonDetail();
   expect(host.querySelector('dialog[open]')).not.toBeNull();
   expect(host.querySelector('dialog table')).not.toBeNull();
+});
+
+it('restores focus to the detail trigger after closing the dialog', async () => {
+  await render();
+  await openComparisonDetail();
+  const trigger = [...host.querySelectorAll('button')].find((button) =>
+    button.textContent?.includes('슬라이드별 상세 비교표 보기'),
+  )!;
+  const closeButton = host.querySelector<HTMLButtonElement>('dialog button[aria-label="상세 비교 닫기"]')!;
+  await act(async () => closeButton.click());
+  expect(host.querySelector('dialog[open]')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
 });
