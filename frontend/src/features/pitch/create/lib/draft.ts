@@ -168,7 +168,10 @@ export interface ScriptVersion {
    */
   remote: { id: string; version: number } | null;
   parse: ScriptParse;
-  /** 서버가 구분자로 나눴나. false 는 구분자가 없어 대본 전체를 한 슬라이드로 둔 정상 결과 */
+  /**
+   * 서버가 구분자로 나눴나. false 는 나누지 못해 대본 전체를 한 슬라이드로 둔 정상 결과 —
+   * 구분자 없음 · 번호 0 · 겹침 · 거꾸로 · 첫 구분 앞에 제목이 아닌 글 (`markerHint` `unsegmentedNotice`)
+   */
   segmented: boolean | null;
   /**
    * 이 대본을 나눌 슬라이드 버전 — 목업의 "연결할 슬라이드 V1 · 12장".
