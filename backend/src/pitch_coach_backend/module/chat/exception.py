@@ -10,7 +10,8 @@ from pitch_coach_backend.core.exceptions import (
 
 
 class ChatDisabled(AppException):
-    # 끄기 스위치(`agent_enabled`)가 꺼져 있다. FE 는 버튼을 숨긴다
+    # 끄기 스위치(`agent_enabled`)가 꺼져 있거나 대화 자리 설정이 어긋났다(availability.py).
+    # FE 는 버튼을 숨긴다
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "AGENT_DISABLED"
     message = "지금은 코치 대화를 쓸 수 없어요."
