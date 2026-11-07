@@ -1,0 +1,122 @@
+import { fetchPitchList } from '@/shared/api/home';
+import { createPitch, getPitchResources } from '@/shared/api/pitch';
+import { uploadPresentation } from '@/shared/api/presentation';
+import { createScript, getScript, reparseScript } from '@/shared/api/script';
+import { ApiFailure } from '@/shared/api/tokenStore';
+import type { ScriptDetail } from '@/types/script';
+import { createFirstTakePdf } from './firstTakePdf';
+import {
+  FIRST_TAKE_SCRIPT,
+  FIRST_TAKE_SLIDES,
+  FIRST_TAKE_TIME_SEC,
+  FIRST_TAKE_TITLE,
+} from './firstTakeMaterials';
+
+type Progress = (message: string) => void;
+const POLL_MS = 1000;
+const PARSE_TIMEOUT_MS = 100_000;
+
+function validMapping(result: ScriptDetail): boolean {
+  return (
+    result.segmented === true &&
+    result.slides.length === FIRST_TAKE_SLIDES.length &&
+    result.slides.every((slide, index) => slide.slide_number === index + 1)
+  );
+}
+
+async function waitForScript(pitchId: string, scriptVersionId: string, progress: Progress) {
+  const start = Date.now();
+  let retried = false;
+
+  while (Date.now() - start < PARSE_TIMEOUT_MS) {
+    const detail = await getScript(pitchId, scriptVersionId);
+    if (detail.parse_status === 'DONE') {
+      if (!validMapping(detail)) {
+        throw new Error('샘플 대본이 5개 슬라이드에 맞게 나뉘지 않았어요. 내 피치에서 대본을 확인해 주세요.');
+      }
+      return;
+    }
+
+    if (detail.parse_status === 'FAILED') {
+      if (retried) throw new Error('샘플 대본 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요.');
+      progress('대본 분석을 다시 요청하고 있어요…');
+      try {
+        await reparseScript(pitchId, scriptVersionId);
+      } catch (error) {
+        // 다른 탭이 분석을 시작했거나 이미 완료한 경우에는 상태 조회를 계속합니다.
+        if (
+          !(error instanceof ApiFailure) ||
+          error.status !== 409 ||
+          !['SCRIPT_PARSE_IN_PROGRESS', 'SCRIPT_ALREADY_PARSED'].includes(error.code)
+        ) {
+          throw error;
+        }
+      }
+      retried = true;
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS));
+  }
+  throw new Error('대본 분석이 오래 걸리고 있어요. 다시 시도하면 기존 작업을 이어서 확인합니다.');
+}
+
+/**
+ * 샘플 피치를 실제 사용자 계정에 등록하고 기존 장치 점검 화면으로 넘길 준비를 합니다.
+ * Take는 여기서 생성하지 않습니다. 기존 DeviceCheckPage의 시작 버튼에서만 만들어집니다.
+ *
+ * FE에서 제목으로 기존 샘플을 찾는 MVP입니다. 서로 다른 탭에서 최초 클릭을 동시에
+ * 진행하는 완전한 멱등성 및 is_demo 저장은 추후 BE API가 필요합니다 (#931).
+ */
+export async function ensureFirstTakePitch(progress: Progress): Promise<string> {
+  progress('기존 샘플 발표를 확인하고 있어요…');
+  const list = await fetchPitchList();
+  const matches = list.pitches.filter((pitch) => pitch.pitch_title === FIRST_TAKE_TITLE);
+
+  if (matches.length > 1) {
+    throw new Error('샘플 발표가 여러 개 있어요. 내 피치에서 중복된 샘플을 정리해 주세요.');
+  }
+
+  let pitchId = matches[0]?.pitch_id;
+  if (!pitchId) {
+    progress('첫 미션을 등록하고 있어요…');
+    const created = await createPitch({
+      title: FIRST_TAKE_TITLE,
+      time_limit_sec: FIRST_TAKE_TIME_SEC,
+      lower_deviation: 30,
+      upper_deviation: 60,
+      presentation_date: null,
+    });
+    pitchId = created.pitch_id;
+  }
+
+  // 각 저장 단계가 중단되더라도 다음 방문에서 서버에 남은 버전을 이어 씁니다.
+  const resources = await getPitchResources(pitchId);
+  const presentation = [...resources.presentation_versions].sort((a, b) => b.version - a.version)[0];
+  const script = [...resources.script_versions].sort((a, b) => b.version - a.version)[0];
+
+  if (!presentation) {
+    progress('튜토리얼 발표자료 5장을 준비하고 있어요…');
+    const file = await createFirstTakePdf();
+    const uploaded = await uploadPresentation(pitchId, file);
+    if (
+      uploaded.presentation.page_count !== undefined &&
+      uploaded.presentation.page_count !== FIRST_TAKE_SLIDES.length
+    ) {
+      throw new Error('업로드된 PDF 장수가 샘플 자료와 달라요. 내 피치에서 확인해 주세요.');
+    }
+  } else if (presentation.page_count != null && presentation.page_count !== FIRST_TAKE_SLIDES.length) {
+    throw new Error('기존 샘플 PDF가 5장이 아니에요. 내 피치에서 자료를 확인해 주세요.');
+  }
+
+  let scriptId = script?.id;
+  if (!scriptId) {
+    progress('슬라이드에 맞는 대본을 등록하고 있어요…');
+    const created = await createScript(pitchId, FIRST_TAKE_SCRIPT);
+    scriptId = created.script_version_id;
+  }
+
+  progress('슬라이드별 대본을 연결하고 있어요…');
+  await waitForScript(pitchId, scriptId, progress);
+  progress('준비가 완료되었어요. 장치 점검으로 이동합니다.');
+  return pitchId;
+}
