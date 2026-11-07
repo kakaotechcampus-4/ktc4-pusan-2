@@ -99,3 +99,18 @@
 | #10 | 로그인 인증 | 오래된 PR이므로 현행 인증 흐름과 차이 확인 후 보존/제외 결정 | 검토 보류 |
 
 통합 작업에서는 #1115를 기준으로 별도 후속 브랜치를 생성하는 것이 안전하다. #1111 → #1114 → #1115 의존 관계를 유지하고, 다른 제품 Draft PR은 병합된 것으로 가정하지 않는다. 디자인 화면을 갱신할 때 `catalog.ts`의 `sources`, `productNote`, 상태 설명 및 관련 테스트를 함께 수정한다. 브라우저 렌더링·반응형·접근성 검증이 끝나기 전에는 시각적 동기화 완료로 표시하지 않는다.
+
+
+## 2026-11-08 추가 Draft PR 시안 동기화 (#1116)
+
+| PR | 실제 변경 | 설계서 반영 |
+| --- | --- | --- |
+| #1102 (추가 커밋) | 8개 평가기준 칩에 예시 툴팁·키보드/터치 접근 | `src/screens/PitchCreateScreen.tsx` |
+| #1117 | 홈 발표 준비 공용 secondary 버튼 | `src/ui/HomePitchCard.tsx` |
+| #1118 | RUNNING 전용 STAGE LIVE, 분석 대기 Take 접수 표시 | `src/screens/StageScreen.tsx`, `src/ui/stage.css`, `src/screens/AnalysisScreens.tsx` |
+| #1119 | Take 비교 차트 너비 제한·막대 최대 3rem | `src/screens/TakesScreen.tsx` |
+| #1120 | 리포트 지표별 개선/악화 슬라이드 요약·상세 비교 모달 | `src/screens/ReportScreen.tsx` |
+
+- `src/catalog.ts`의 제품 규칙 및 미병합 PR 추적 목록을 갱신했습니다.
+- 이 설계서 샘플은 제품 데이터·API를 호출하지 않습니다.
+- **검증 대기:** 디자인 프로젝트의 typecheck, lint, test, format:check, build, 브라우저 수동 확인. 각 PR의 추가 커밋은 머지 전 다시 비교해야 합니다.
