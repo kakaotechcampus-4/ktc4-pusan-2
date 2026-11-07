@@ -31,7 +31,8 @@ describe('readMemorySettings — BE MemorySettingResponse 읽기', () => {
     expect(() => readMemorySettings(body)).toThrow();
   });
 
-  it('깨진 항목 · 모르는 종류의 항목만 빼고 나머지는 읽는다', () => {
+  it('깨진 항목 · 모르는 종류의 항목만 빼고 나머지는 읽고, 뺀 개수만 경고로 남긴다', () => {
+    const warns = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const settings = readMemorySettings({
       enabled: true,
       items: [
@@ -44,6 +45,17 @@ describe('readMemorySettings — BE MemorySettingResponse 읽기', () => {
       ],
     });
     expect(settings.items).toEqual([ITEM]);
+    // 값(사용자 정보)은 남기지 않고 개수만
+    expect(warns.mock.calls).toEqual([['기억 항목이 계약 모양이 아니라 뺐어요', { dropped: 5 }]]);
+    warns.mockRestore();
+  });
+
+  it('뺀 항목이 없으면 경고하지 않는다', () => {
+    const warns = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    readMemorySettings({ enabled: true, items: [ITEM] });
+    readMemorySettings({ enabled: false, items: [] });
+    expect(warns).not.toHaveBeenCalled();
+    warns.mockRestore();
   });
 });
 
