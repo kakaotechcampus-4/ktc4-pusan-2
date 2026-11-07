@@ -78,12 +78,14 @@ it('이번 매핑이 성공하면 확인 창을 열고 실패나 기존 자료 �
   expect(host.querySelector('dialog')).toBeNull();
   await act(async () => {
     state().unmapScript(1);
-    state().patchScript(1, { parse: { status: 'pending' } });
+    state().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } });
   });
   expect(host.querySelector('dialog')).toBeNull();
   await act(async () => state().patchScript(1, { parse: { status: 'failed', message: '실패' } }));
   expect(host.querySelector('dialog')).toBeNull();
-  await act(async () => state().patchScript(1, { parse: { status: 'pending' } }));
+  await act(async () =>
+    state().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } }),
+  );
   await act(async () =>
     state().patchScript(1, { parse: { status: 'idle' }, blocks: ['새 매핑 결과'] }),
   );
@@ -571,7 +573,9 @@ it('재매핑 중 중복 저장·닫기를 막고 실패하면 창과 편집 내
   await mount();
   await act(async () => button('매핑 확인/수정').click());
   await act(async () => state().editMappingBlock(1, 0, '보존할 수정 대본'));
-  await act(async () => state().patchScript(1, { parse: { status: 'pending' } }));
+  await act(async () =>
+    state().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } }),
+  );
   expect(button('저장').disabled).toBe(true);
   expect(button('닫기').disabled).toBe(true);
   const cancel = new Event('cancel', { cancelable: true });

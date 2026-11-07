@@ -17,6 +17,7 @@ import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
+import { ParseWaitHint } from './ParseWaitHint';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -249,6 +250,8 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           {hint}
         </p>
       )}
+
+      {script.parse.status === 'pending' && <ParseWaitHint startedAt={script.parse.startedAt} />}
 
       {failure && (
         <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-ink">
@@ -562,6 +565,7 @@ function MappingEditor({
           {script.parse.message}
         </p>
       )}
+      {script.parse.status === 'pending' && <ParseWaitHint startedAt={script.parse.startedAt} />}
       <MappingNotice
         segmented={script.segmented}
         blockCount={blocks.length}

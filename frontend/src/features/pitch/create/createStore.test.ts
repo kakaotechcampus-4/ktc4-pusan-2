@@ -129,7 +129,7 @@ it('빈 버전에 시작한 업로드는 화면을 옮겨도 그 버전에 들�
 
 it('파싱 중에는 매핑을 바꾸거나 저장할 수 없다', () => {
   store().editMappingBlock(1, 0, '수정');
-  store().patchScript(1, { parse: { status: 'pending' } });
+  store().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } });
   store().editMappingBlock(1, 0, '다른 내용');
   store().saveMapping(1);
   expect(store().draft.scripts[0]?.blocks?.[0]).toBe('수정');
