@@ -85,7 +85,8 @@ function Guide({ except }: { except: string | null }) {
           평가기준에 넣지 않은 내용
         </p>
         <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
-          현재 지원하지 않는 항목이라 제외했어요. 말 속도·시선처럼 측정 가능한 행동으로 바꿔 적어 주세요.
+          현재 지원하지 않는 항목이라 제외했어요. 말 속도·시선처럼 측정 가능한 행동으로 바꿔 적어
+          주세요.
           <br />
           발표 시간은 발표정보에서 설정해 주세요.
         </p>
