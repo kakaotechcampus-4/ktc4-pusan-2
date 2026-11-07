@@ -568,7 +568,17 @@ function ChatPanel({
             aria-disabled={!content || tooLong || blocked}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-coral-deep text-white hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral aria-disabled:cursor-not-allowed aria-disabled:bg-cream aria-disabled:text-stone aria-disabled:hover:bg-cream"
           >
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>
             <span className="sr-only">입력</span>
@@ -642,7 +652,13 @@ function PanelBody({
 }
 
 /** 지난 메시지와 지금 실행의 답 — 카드는 8-3 에서 붙입니다 */
-function MessageList({ session, onSuggest }: { session: ChatSession; onSuggest: (text: string) => void }) {
+function MessageList({
+  session,
+  onSuggest,
+}: {
+  session: ChatSession;
+  onSuggest: (text: string) => void;
+}) {
   const pending = useChatStore((s) => s.pending?.request.text ?? null);
   const canSendNow = useCanSend();
   // 범위를 다시 고를 때까지는 입력칸과 같이 카드 · 답 아래 버튼으로도 보내지 않습니다 (L3-07)
