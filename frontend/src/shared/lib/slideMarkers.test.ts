@@ -10,9 +10,13 @@ import {
 } from './slideMarkers';
 
 /**
- * ★ FE · AI 공통 입력 목록 — AI `find_slides`(`tests/unit/script_parser/test_splitter.py`)도
- * 같은 목록으로 같은 번호를 내야 합니다. 한쪽을 고치면 다른 쪽 목록도 함께 고칩니다.
+ * ★ FE · AI 공통 입력 목록 — AI `find_slides` 도 같은 입력에 같은 번호를 내야 합니다.
  * 값은 "구분자로 인식하는 번호", 구분자가 아니면 null.
+ *
+ * 지금은 **FE 에만 있습니다.** AI `ai/service/tests/unit/script_parser/test_splitter.py` 에는 이 목록이
+ * 없어서, AI 정규식(`splitter.py` `DELIMITER_RE`)이 바뀌어도 어느 시험도 잡지 못합니다. 같은 목록을
+ * 넣어 달라는(가능하면 두 쪽이 같은 JSON 을 읽게) 요청은 #1023 입니다. 그 전까지는 AI 정규식이
+ * 바뀌면 이 목록을 AI 에 직접 넣어 대조합니다 (#826 리뷰에서 57줄 · 17개가 같은 것을 확인).
  */
 const LINE_CASES: [string, number | null][] = [
   // 인식하는 세 형식
