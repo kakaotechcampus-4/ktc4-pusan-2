@@ -1182,3 +1182,27 @@
     white-space: nowrap;
   }
 }
+
+/* 발표가 실제로 시작된 뒤에만 보이는 작은 스테이지 상태 표시.
+   무대 그리드와 계측 영역을 건드리지 않고, 반복 애니메이션을 사용하지 않는다. */
+.stage-head .stage-mission-label {
+  flex: none;
+  padding: 4px 7px;
+  border: 2px solid var(--color-coral);
+  color: var(--color-ink-stage);
+  background: color-mix(in srgb, var(--color-coral) 12%, transparent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  animation: stage-mission-enter 180ms steps(2, end) both;
+}
+
+@keyframes stage-mission-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-head .stage-mission-label { animation: none; }
+}
