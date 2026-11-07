@@ -182,43 +182,49 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   tabIndex={0}
                   className="min-w-0 max-w-full overflow-x-auto p-1"
                 >
-                  <div className="mx-auto" style={{ minWidth: `${samples.length * 6}rem`, width: `min(100%, ${Math.max(samples.length * 8, 24)}rem)` }}>
-                  <ol className="flex h-48 gap-4 border-b-2 border-ink">
-                    {samples.map((take) => {
-                      const value = take[metric];
-                      const max = Math.max(...samples.map((t) => t[metric] ?? 0), 1);
-                      return (
-                        <li
-                          key={take.take}
-                          className="flex min-w-0 flex-1 flex-col items-center gap-2"
-                        >
-                          <span className="tabular font-mono text-sm font-bold">
-                            {display(value, metric)}
-                          </span>
-                          <div className="flex w-full flex-1 items-end justify-center">
-                            <div
-                              className={
-                                value === null
-                                  ? 'w-full max-w-12 border-2 border-dashed border-line-strong'
-                                  : 'w-full max-w-12 bg-coral'
-                              }
-                              style={{
-                                height: value === null ? '8%' : (value / max) * 100 + '%',
-                              }}
-                            />
-                          </div>
+                  <div
+                    className="mx-auto"
+                    style={{
+                      minWidth: `${samples.length * 6}rem`,
+                      width: `min(100%, ${Math.max(samples.length * 8, 24)}rem)`,
+                    }}
+                  >
+                    <ol className="flex h-48 gap-4 border-b-2 border-ink">
+                      {samples.map((take) => {
+                        const value = take[metric];
+                        const max = Math.max(...samples.map((t) => t[metric] ?? 0), 1);
+                        return (
+                          <li
+                            key={take.take}
+                            className="flex min-w-0 flex-1 flex-col items-center gap-2"
+                          >
+                            <span className="tabular font-mono text-sm font-bold">
+                              {display(value, metric)}
+                            </span>
+                            <div className="flex w-full flex-1 items-end justify-center">
+                              <div
+                                className={
+                                  value === null
+                                    ? 'w-full max-w-12 border-2 border-dashed border-line-strong'
+                                    : 'w-full max-w-12 bg-coral'
+                                }
+                                style={{
+                                  height: value === null ? '8%' : (value / max) * 100 + '%',
+                                }}
+                              />
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <ol className="flex gap-4 text-center text-xs font-bold">
+                      {samples.map((take) => (
+                        <li key={take.take} className="flex-1">
+                          TAKE {take.take}
                         </li>
-                      );
-                    })}
-                  </ol>
-                  <ol className="flex gap-4 text-center text-xs font-bold">
-                    {samples.map((take) => (
-                      <li key={take.take} className="flex-1">
-                        TAKE {take.take}
-                      </li>
-                    ))}
-                  </ol>
-                  </div>
+                      ))}
+                    </ol>
+                    </div>
                 </div>
                 <p className="text-xs text-stone">
                   {selected.hint}점선은 측정하지 못했거나 시선 엔진이 달라 비교하지 않는 Take예요.
