@@ -826,6 +826,11 @@ export function RehearsalPage() {
               />
             )}
             <header className="stage-head">
+              {running && (
+                <span className="stage-mission-label" aria-label="발표 연습 진행 중">
+                  STAGE LIVE
+                </span>
+              )}
               <span className="elapsed" ref={elapsedRef}>
                 00:00
               </span>
