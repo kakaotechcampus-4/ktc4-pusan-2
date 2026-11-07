@@ -39,6 +39,8 @@ function readItem(v: unknown): ConversationListItem | null {
     last_user_activity_at: c.last_user_activity_at as string,
     created_at:
       typeof c.created_at === 'string' ? c.created_at : (c.last_user_activity_at as string),
+    // '기억 없이' 표시 — 칸이 없거나 깨졌으면 기억을 쓰는 대화로 봅니다(BE 기본값)
+    memory_off: c.memory_off === true,
     stale: c.stale === true,
   };
 }

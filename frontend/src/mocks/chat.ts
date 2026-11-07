@@ -125,8 +125,6 @@ interface Info {
 }
 
 interface Conversation extends ConversationSummary {
-  /** (BE 미구현) '기억 없이' 대화 — 목 안에서만 들고 있습니다. 만든 뒤에는 바뀌지 않습니다 */
-  memory_off: boolean;
   messages: ChatMessage[];
   /** 이 대화의 목표 판 번호 — 처음 0, 저장 · 되돌리기마다 1 올립니다 (5-3 "이 대화의 목표 판 번호") */
   goalVersion: number;
@@ -674,6 +672,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     scope_pitch_title: c.scope_pitch_title,
     last_user_activity_at: c.last_user_activity_at,
     created_at: c.created_at,
+    memory_off: c.memory_off,
   });
 
   function withUser(fn: (state: UserState, info: Info) => Response | Promise<Response>) {
@@ -707,7 +706,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     http.post(
       `*${chatPaths.conversations}`,
       withUser(async (state, { request }) => {
-        // BE `CreateConversationRequest` 는 `pitch_id` 만 받습니다. `memory_off` 는 (BE 미구현)이라 목만 받습니다
+        // BE `CreateConversationRequest` — `pitch_id` 와 '기억 없이'(`memory_off`, true · false 만, 빼면 false)
         const body = (await request.json().catch(() => null)) as {
           pitch_id?: unknown;
           memory_off?: unknown;
@@ -1009,8 +1008,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     http.put(
       `*${chatPaths.memory}`,
       withUser(async (state, { request }) => {
-        const body = (await request.json().catch(() => null)) as { enabled?: unknown } | null;
-        if (typeof body?.enabled !== 'boolean') return error('VALIDATION_ERROR', 422);
+        // BE `MemorySettingRequest` — `enabled` 하나, true · false 만(`StrictBool`), 모르는 칸은 422
+        const body = (await request.json().catch(() => null)) as unknown;
+        if (!isBody(body) || !onlyKeys(body, ['enabled']) || typeof body.enabled !== 'boolean')
+          return error('VALIDATION_ERROR', 422);
         state.memory = { ...state.memory, enabled: body.enabled };
         return HttpResponse.json(state.memory);
       }),
@@ -1028,6 +1029,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       `*${chatPaths.memoryItem(':itemId')}`,
       withUser((state, { params }) => {
         const itemId = String(params.itemId);
+        // BE 는 경로의 항목 ID 를 UUID 로 읽습니다 — 아니면 422, 없거나 남의 항목이면 404
+        if (!UUID.test(itemId)) return error('VALIDATION_ERROR', 422);
         if (!state.memory.items.some((i) => i.item_id === itemId)) return error('NOT_FOUND', 404);
         state.memory = {
           ...state.memory,

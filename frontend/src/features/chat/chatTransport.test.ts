@@ -68,6 +68,10 @@ function start(override: Partial<ChatApi> = {}) {
     changeScope: counted(api.changeScope),
     undo: counted(api.undo),
     listConversations: counted(api.listConversations),
+    getMemory: counted(api.getMemory),
+    setMemoryEnabled: counted(api.setMemoryEnabled),
+    deleteMemoryItems: counted(api.deleteMemoryItems),
+    deleteMemoryItem: counted(api.deleteMemoryItem),
   };
   transport = createChatTransport({
     api: tracked,

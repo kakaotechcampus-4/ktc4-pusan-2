@@ -1014,7 +1014,7 @@ describe('대화의 실행 조회', () => {
 });
 
 describe('BE #933 모양', () => {
-  it('새 대화는 201 과 대화 하나 — 본문은 `pitch_id` 만(목은 `memory_off` 도) 받는다', async () => {
+  it('새 대화는 201 과 대화 하나 — 본문은 `pitch_id` 와 `memory_off`(BE #1002)를 받는다', async () => {
     const r = await call(chatPaths.conversations, 'POST', { pitch_id: null });
     expect(r.status).toBe(201);
     const created = (await r.json()) as Record<string, unknown>;
@@ -1023,11 +1023,13 @@ describe('BE #933 모양', () => {
         'conversation_id',
         'created_at',
         'last_user_activity_at',
+        'memory_off',
         'scope_pitch_id',
         'scope_pitch_title',
         'title',
       ].sort(),
     );
+    expect(created.memory_off).toBe(false);
     expect((await call(chatPaths.conversations, 'POST', { pitch_id: 42 })).status).toBe(422);
     expect(
       (await call(chatPaths.conversations, 'POST', { pitch_id: null, memory_off: 'yes' })).status,
