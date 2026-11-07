@@ -55,11 +55,13 @@ export function FirstTakePage() {
       className="pitch-create flex flex-1 flex-col bg-greige px-6 py-10 text-ink lg:px-10"
     >
       <div className="mx-auto w-full max-w-4xl">
-        <p className="text-xs font-bold tracking-widest text-coral-deep">PITCHCOACH · FIRST MISSION</p>
+        <p className="text-xs font-bold tracking-widest text-coral-deep">
+          PITCHCOACH · FIRST MISSION
+        </p>
         <h1 className="mt-4 text-3xl font-bold">치치와 함께하는 첫 번째 Take</h1>
         <p className="mt-4 text-sm leading-7 text-stone">
-          별도의 PDF나 대본 없이 피치코치를 체험해 보세요. 준비된 발표를 직접 읽으며
-          슬라이드 이동부터 실시간 코칭, 결과 리포트까지 익힙니다.
+          별도의 PDF나 대본 없이 피치코치를 체험해 보세요. 준비된 발표를 직접 읽으며 슬라이드
+          이동부터 실시간 코칭, 결과 리포트까지 익힙니다.
         </p>
 
         <section className="mt-8 border-2 border-ink bg-panel p-6">
