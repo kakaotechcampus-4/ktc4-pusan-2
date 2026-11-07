@@ -26,16 +26,17 @@ function readItem(v: unknown): ProfileItem | null {
 
 /**
  * 기억 설정 응답을 읽습니다 — 설정 모양이 아니면 실패(던짐), 깨진 항목 · 모르는 종류의 항목은 뺍니다.
- * 뺀 항목은 보이지 않을 뿐 서버에는 남습니다 — [전체 지우기]는 그것까지 지웁니다
+ * 뺀 항목은 보이지 않을 뿐 서버에는 남습니다 — [전체 지우기]는 그것까지 지웁니다.
+ * 빼면 BE 모양이 바뀐 것(새 키 등)을 알아채게 개수만 남깁니다 — 값은 사용자 정보라 남기지 않습니다
  */
 export function readMemorySettings(v: unknown): MemorySettings {
   const body = v as { enabled?: unknown; items?: unknown } | null;
   if (typeof body?.enabled !== 'boolean' || !Array.isArray(body.items))
     throw new Error('기억 설정 응답 모양이 달라요');
-  return {
-    enabled: body.enabled,
-    items: body.items.map(readItem).filter((item): item is ProfileItem => item !== null),
-  };
+  const items = body.items.map(readItem).filter((item): item is ProfileItem => item !== null);
+  const dropped = body.items.length - items.length;
+  if (dropped > 0) console.warn('기억 항목이 계약 모양이 아니라 뺐어요', { dropped });
+  return { enabled: body.enabled, items };
 }
 
 /** 서버 호출 — 시험에서는 `api` 를 바꿔 끼웁니다 */
