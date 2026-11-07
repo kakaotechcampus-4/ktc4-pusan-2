@@ -125,7 +125,10 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
               tabIndex={0}
               className="min-w-0 max-w-full overflow-x-auto p-1"
             >
-              <div style={{ minWidth: `${series.length * 6}rem` }}>
+              <div
+                className="mx-auto w-fit max-w-full"
+                style={{ minWidth: `${series.length * 6}rem`, width: `min(100%, ${Math.max(series.length * 8, 40)}rem)` }}
+              >
                 <ol
                   className="flex h-48 gap-4 border-b-2 border-ink"
                   aria-label={`${m.label} Take별 값`}
@@ -144,12 +147,12 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
                           {empty ? '—' : m.fmt(v)}
                         </span>
                         {/* 막대 높이의 기준이 되는 칸. 숫자 줄을 뺀 나머지 높이입니다 */}
-                        <div className="flex w-full flex-1 items-end">
+                        <div className="flex w-full flex-1 items-end justify-center">
                           <div
                             className={
                               empty
-                                ? 'w-full border-2 border-dashed border-line-strong'
-                                : 'w-full bg-coral'
+                                ? 'w-full max-w-12 border-2 border-dashed border-line-strong'
+                                : 'w-full max-w-12 bg-coral'
                             }
                             style={{ height: `${empty ? 8 : (v / max) * 100}%` }}
                           />
