@@ -270,7 +270,10 @@ def test_description_is_cut_before_number_check(req):
     base = review_take(req)
     assert "52%" in base.next_missions[1].description  # 0.52 는 입력에 있다
     resp = review_take(req, FakeLLM(make), model="m")
+    # LLM 은 성공했고(기본 결과가 아님) 자른 뒤 검사에 걸린 그 항목만 기본 문장이다
+    assert resp.fallback_reason is None
     assert resp.next_missions[1].description == base.next_missions[1].description
+    assert resp.next_missions[1].reason == "LLM 이유"  # 같은 미션의 이유는 LLM 문장 그대로
 
 
 def test_fixed_missions_stay_first_whatever_llm_order(req):
