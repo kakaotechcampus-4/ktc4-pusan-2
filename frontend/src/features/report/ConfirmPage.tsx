@@ -168,7 +168,7 @@ function ConfirmForm({
         잘 모르겠거나 건너뛰면 해당 항목은 보류로 남고 내용 점수는 잠정값을 유지해요. 보류한 부분은
         수치 정확도와 대본 충실도 계산에서 제외돼요.
       </p>
-      <p role="timer" className="tabular font-mono text-xs text-dusk-accent">
+      <p role="timer" className="tabular tabular-nums text-xs text-dusk-accent">
         남은 시간 {remainingLabel(left)}
       </p>
 
@@ -223,7 +223,7 @@ function ItemCard({
 
   return (
     <li className="border-2 border-dusk-line p-3">
-      <p className="font-mono text-xs font-bold text-dusk-accent">
+      <p className="tabular-nums text-xs font-bold text-dusk-accent">
         {item.slide_number}번 장 · {kindLabel}
       </p>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm leading-relaxed">

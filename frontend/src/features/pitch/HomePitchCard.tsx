@@ -36,7 +36,7 @@ export function HomePitchCard({
             onError={() => setFailedImage(pitch.thumbnail_url)}
           />
         ) : (
-          <span className="font-mono text-[10px] text-ink/80">
+          <span className="tabular-nums text-[10px] text-ink/80">
             {String(index + 1).padStart(2, '0')}
           </span>
         )}
@@ -68,11 +68,11 @@ export function HomePitchCard({
             aria-label={`${pitch.pitch_title} Take 기록 ${takes}개 보기`}
             className={rowLink}
           >
-            Take 기록 <span className="font-mono">{takes}</span> →
+            Take 기록 <span className="tabular-nums">{takes}</span> →
           </Link>
         ) : (
           <span className="whitespace-nowrap text-xs text-ink/80">
-            Take 기록 <span className="font-mono">{takes}</span>
+            Take 기록 <span className="tabular-nums">{takes}</span>
           </span>
         )}
       </span>

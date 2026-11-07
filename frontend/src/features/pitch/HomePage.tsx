@@ -66,7 +66,7 @@ export function HomePage() {
       >
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
-            <p className="mb-2 font-mono text-[10px] tracking-widest text-ink/80">MY PITCHES</p>
+            <p className="mb-2 tabular-nums text-[10px] tracking-widest text-ink/80">MY PITCHES</p>
             <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold">
               내 피치
             </h1>
@@ -110,7 +110,7 @@ export function HomePage() {
                   <div className="px-5 py-3">
                     <p className="text-xs text-ink/80">내 발표 노트</p>
                     <p className="mt-1">
-                      <strong className="font-mono text-xl">
+                      <strong className="tabular-nums text-xl">
                         {data.pitches.length.toString().padStart(2, '0')}
                       </strong>
                       <span className="ml-2 text-sm">개의 피치</span>
@@ -119,7 +119,7 @@ export function HomePage() {
                   <div className="px-5 py-3">
                     <p className="text-xs text-ink/80">지금까지 쌓은 연습</p>
                     <p className="mt-1">
-                      <strong className="font-mono text-xl">
+                      <strong className="tabular-nums text-xl">
                         {count.toString().padStart(2, '0')}
                       </strong>
                       <span className="ml-2 text-sm">TAKES</span>
@@ -160,7 +160,7 @@ export function HomePage() {
                   </ul>
                 ) : (
                   <div className="border-2 border-dashed border-line-strong bg-white px-6 py-8 text-center">
-                    <p className="font-mono text-xs tracking-widest text-coral-deep">
+                    <p className="tabular-nums text-xs tracking-widest text-coral-deep">
                       YOUR FIRST PITCH
                     </p>
                     <h3 className="mt-4 text-2xl font-bold">아직은 빈 노트, 곧 멋진 발표.</h3>
@@ -183,7 +183,7 @@ export function HomePage() {
         {data?.pitches.length !== 0 && (
           <aside className="mt-6 flex flex-wrap items-center justify-between gap-4 border-y border-line-strong py-3 text-sm lg:mt-5">
             <p>
-              <span className="mr-3 font-mono text-coral-deep">TIP /</span>연습 전, 슬라이드와
+              <span className="mr-3 tabular-nums text-coral-deep">TIP /</span>연습 전, 슬라이드와
               대본을 한 번 확인해 보세요.
             </p>
             <button
@@ -198,7 +198,7 @@ export function HomePage() {
       </main>
       <footer className="border-t border-line-strong">
         <div className="mx-auto flex max-w-page flex-wrap justify-between gap-4 px-6 py-4 text-xs text-ink/80 lg:px-10">
-          <span className="font-mono tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
+          <span className="tabular-nums tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
           <div className="flex gap-5">
             <Link to="/terms?from=home" className="hover:text-ink">
               이용약관

@@ -313,7 +313,7 @@ export function MediaDevPage() {
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         <header className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-bold text-coral-deep">DEV</span>
+            <span className="tabular-nums text-xs font-bold text-coral-deep">DEV</span>
             <h1 className="text-xl font-bold">프레임 예산 · 기록 · 제외 경로</h1>
           </div>
           <div className="flex items-baseline gap-3">
@@ -482,7 +482,9 @@ export function MediaDevPage() {
           </Cell>
         </section>
 
-        {sessionId && <p className="font-mono text-xs text-stone">clientSessionId: {sessionId}</p>}
+        {sessionId && (
+          <p className="tabular-nums text-xs text-stone">clientSessionId: {sessionId}</p>
+        )}
 
         {/* 장치 에러 — useCameraStream 의 문구를 그대로 쓴다. 새로 만들지 않는다 */}
         {deviceError && (
@@ -507,7 +509,7 @@ export function MediaDevPage() {
               &ldquo;0% 봤다&rdquo;가 아니라 &ldquo;측정한 구간이 없다&rdquo;는 뜻이고,{' '}
               <b>리포트의 null 은 서버가 만듭니다.</b>
             </p>
-            <pre className="max-h-80 overflow-auto rounded-lg border border-line bg-panel p-3 font-mono text-xs">
+            <pre className="max-h-80 overflow-auto rounded-lg border border-line bg-panel p-3 tabular-nums text-xs">
               {payloadJson}
             </pre>
           </section>
