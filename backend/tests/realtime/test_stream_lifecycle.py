@@ -49,7 +49,7 @@ def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
     client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
 ):
     """drain 이 실패해도 레지스트리에서만 사라지고 태스크가 계속 도는 일이 없어야 한다."""
-    monkeypatch.setattr(session, "STOP_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(stt_loop, "self_close_max_sec", lambda: 0.1)
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 5.0)
     adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
@@ -447,7 +447,7 @@ async def test_abort_is_bounded_so_cancel_cannot_hang_on_deepgram(
 
 @pytest.mark.anyio
 async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.MonkeyPatch):
-    """CANCEL_TIMEOUT_SEC 안에 정리가 안 끝나면 (코드 리뷰 케이스 1) 닫힌 것으로 확정한다.
+    """취소 뒤 상한 안에 정리가 안 끝나면 (코드 리뷰 케이스 1) 닫힌 것으로 확정한다.
     FE 는 더 붙잡히지 않고, 뒤늦게 끝난 정리는 idempotent 한 _finish 로 흡수된다."""
     monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 1.0)
     adapter = FakeSttAdapter(Plan(abort_delay=0.3))
