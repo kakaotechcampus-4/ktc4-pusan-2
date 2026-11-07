@@ -24,6 +24,25 @@ describe('화면 설계서 목록', () => {
     }
   });
 
+  it('제품의 한 페이지형 피치 생성 상태와 공유 URL을 유지한다', () => {
+    const create = screens.find((screen) => screen.id === 'pitch-create');
+    expect(create?.status).toBe('제품에 있음');
+    expect(create?.route).toBe('/pitch/new');
+    expect(create?.states.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['default', 'empty', 'error', 'preview', 'upload-review', 'mapping', 'final-review']),
+    );
+    expect(create?.sources).toContain('frontend/src/features/pitch/create/VersionRail.tsx');
+  });
+
+  it('제품에 있는 두 정책 문서를 안내 화면에 포함한다', () => {
+    const terms = screens.find((screen) => screen.id === 'terms');
+    const privacy = screens.find((screen) => screen.id === 'privacy');
+    expect(terms?.productLinks?.some((link) => link.path === '/terms')).toBe(true);
+    expect(privacy?.productLinks?.some((link) => link.path === '/privacy')).toBe(true);
+    expect(terms?.group).toBe('안내 · 계정');
+    expect(privacy?.group).toBe('안내 · 계정');
+  });
+
   it('검토 시안은 제품 샘플과 다른 그룹에 둔다', () => {
     for (const screen of screens) {
       if (screen.status === '시안') {
