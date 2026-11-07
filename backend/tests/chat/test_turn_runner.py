@@ -289,6 +289,31 @@ def test_answer_on_a_deleted_take_cancels_the_run(
     )
 
 
+def test_goal_check_on_a_deleted_pitch_cancels_the_run(
+    db_session, session_factory, agent, queued_run, caplog
+) -> None:
+    # 자동 목표 확인 실행의 범위 피치는 외래키가 없어 피치를 지워도 실행이 남는다
+    take_id = str(uuid.uuid4())
+    row = db_session.get(ChatRun, queued_run)
+    row.first_trigger = "TAKE_REVIEWED"
+    row.scope_pitch_id = uuid.uuid4()
+    row.input = {
+        "review_event": {"take_id": take_id, "review_revision": 1, "goal_version": 1},
+        "page": {"route": "report", "pitch_id": str(row.scope_pitch_id), "take_id": take_id},
+    }
+    db_session.flush()
+
+    with caplog.at_level(logging.INFO, logger=turn_runner.__name__):
+        _run(queued_run, session_factory)
+
+    run = _reload(db_session, queued_run)
+    assert (run.status, run.error_code) == ("CANCELLED", "AGENT_CANCELLED")
+    assert agent.requests == []
+    log = db_session.scalar(select(ChatRunLog).where(ChatRunLog.run_id == run.id))
+    assert log.status == "CANCELLED"
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
 def _answer_with_pitch_source(
     db_session, session_factory, agent, queued_run, pitch_id: str
 ) -> ChatRun:

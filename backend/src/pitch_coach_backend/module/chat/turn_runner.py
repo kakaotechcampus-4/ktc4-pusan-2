@@ -189,6 +189,11 @@ class _Turn:
             )
         except request_service.ContextTooLarge:
             return TurnFailure("AGENT_CONTEXT_TOO_LARGE")
+        except request_service.PitchNotFound:
+            # 범위 피치가 지워졌다. 자동 목표 확인 실행은 피치에 외래키가 없어 남는다.
+            # 근거가 지워진 실행은 실패가 아니라 취소다(12-2 '삭제와 저장이 겹칠 때')
+            await in_session(self._session_factory, run_service.cancel, self._current)
+            raise RunLost(self._current.run_id) from None
         request_id = uuid.uuid4().hex
         overflow = request.history.overflow
         async with ai_slots.chat():
