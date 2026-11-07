@@ -107,6 +107,10 @@ export const mockApi: ChatApi = {
   listConversations: () => call(chatPaths.conversations),
   createConversation: (request) => call(chatPaths.conversations, json('POST', request)),
   changeScope: (id, pitchId) => call(chatPaths.scope(id), json('PATCH', { pitch_id: pitchId })),
+  getMemory: () => call(chatPaths.memory),
+  setMemoryEnabled: (enabled) => call(chatPaths.memory, json('PUT', { enabled })),
+  deleteMemoryItems: () => call(chatPaths.memoryItems, { method: 'DELETE' }),
+  deleteMemoryItem: (itemId) => call(chatPaths.memoryItem(itemId), { method: 'DELETE' }),
 };
 
 export const draft = (text = '비교해 줘') => ({

@@ -1014,7 +1014,7 @@ describe('대화의 실행 조회', () => {
 });
 
 describe('BE #933 모양', () => {
-  it('새 대화는 201 과 대화 하나 — 본문은 `pitch_id` 만(목은 `memory_off` 도) 받는다', async () => {
+  it('새 대화는 201 과 대화 하나 — 본문은 `pitch_id` 와 `memory_off`(BE #1002)를 받는다', async () => {
     const r = await call(chatPaths.conversations, 'POST', { pitch_id: null });
     expect(r.status).toBe(201);
     const created = (await r.json()) as Record<string, unknown>;
@@ -1023,11 +1023,13 @@ describe('BE #933 모양', () => {
         'conversation_id',
         'created_at',
         'last_user_activity_at',
+        'memory_off',
         'scope_pitch_id',
         'scope_pitch_title',
         'title',
       ].sort(),
     );
+    expect(created.memory_off).toBe(false);
     expect((await call(chatPaths.conversations, 'POST', { pitch_id: 42 })).status).toBe(422);
     expect(
       (await call(chatPaths.conversations, 'POST', { pitch_id: null, memory_off: 'yes' })).status,
@@ -1092,7 +1094,7 @@ describe('BE #933 모양', () => {
     expect((await send(message('비교해 줘', { client_request_id: 'req-1' }))).status).toBe(422);
   });
 });
-// ── 1~5단계 최종 점검 반영 — 목을 BE a6264abc 에 맞춤 ───────────────
+// ── 1~5단계 최종 점검 반영 — 목을 BE 37e3a9df 에 맞춤 ───────────────
 
 describe('목이 BE 와 같게', () => {
   it('문장을 낸 뒤 실패하면 BE `turn.fail` 처럼 PARTIAL 로 끝나고 메시지 목록에 그 문장이 남는다', async () => {

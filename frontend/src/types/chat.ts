@@ -2,10 +2,9 @@
  * 대화형 코치 에이전트 — 화면 ↔ BE 계약 (잠정).
  *
  * 원본: `docs/ai/features/chat-agent.md` 5-2 · 5-5 · 12-3 · 12-4 (개정판 PR #900, #899).
- * 화면 ↔ BE 모양(경로 · 목록 키 · 칸 이름)은 **BE #933 `feat/be-chat-api-834` a6264abc (`module/chat/api_dto.py`)** 에
- * 맞췄습니다 — 실행 이벤트 커서 · 승인 · 거절 · 최신 아님 사유까지 들어온 판입니다. BE 도 머지 전입니다.
- * BE 가 아직 열지 않은 것(기억 · '기억 없이')은 문서 계약대로 두고 `(BE 미구현)` 으로 표시했습니다.
- * 목(`mocks/chat.ts`)은 그것까지 문서대로 흉내 냅니다.
+ * 화면 ↔ BE 모양(경로 · 목록 키 · 칸 이름)은 **develop-next `37e3a9df` 의 BE (`module/chat/api_dto.py`)** 에
+ * 맞췄습니다 — #933(메시지 · 실행 · 승인 · 대화 목록) 위에 되돌리기(#935) · 기억 · '기억 없이'(#1002)가 들어온 판입니다.
+ * 목(`mocks/chat.ts`)은 같은 모양으로 답하고, 계약 시험(`mocks/chat.contract.test.ts`)이 그것을 지킵니다.
  *
  * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 서비스의
  * `ai/service/src/pitch_coach_ai/features/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `develop-next`
@@ -346,7 +345,7 @@ export interface MessagePage {
 
 /**
  * 대화 하나 (BE `ConversationResponse`) — 목록 · 만들기 · 범위 바꾸기가 같은 모양을 돌려줍니다.
- * "최신 아님 여부"(`stale`)는 목록 한 줄(`ConversationListItem`)에만 있습니다. '기억 없이' 표시는 (BE 미구현)
+ * "최신 아님 여부"(`stale`)는 목록 한 줄(`ConversationListItem`)에만 있습니다.
  */
 export interface ConversationSummary {
   conversation_id: string;
@@ -358,6 +357,8 @@ export interface ConversationSummary {
   scope_pitch_title: string | null;
   last_user_activity_at: string;
   created_at: string;
+  /** '기억 없이' 대화 — 만들 때만 정하고 바뀌지 않습니다(6-14, BE #1002) */
+  memory_off: boolean;
 }
 
 /** 대화 목록 한 줄 (BE `ConversationListItem`) — 만들기 · 범위 바꾸기 응답에는 `stale` 이 없습니다 */
@@ -424,16 +425,12 @@ export interface ChatPage {
 }
 
 /**
- * 새 대화 (BE `CreateConversationRequest`). `memory_off` 는 (BE 미구현) — 문서 12-3 "'기억 없이' 선택(대화를 만들 때만)".
- * 지금 BE 는 모르는 칸을 422 로 거절하므로(`extra="forbid"`), BE 가 칸을 열기 전에는 '기억 없이' 대화를 만들 수 없습니다
+ * 새 대화 (BE `CreateConversationRequest`). `memory_off` 는 문서 12-3 "'기억 없이' 선택(대화를 만들 때만)" —
+ * 빼면 BE 기본 false 입니다. BE 는 true · false 만 받습니다(`StrictBool`, 그 밖은 422)
  */
 export interface CreateConversationRequest {
   pitch_id: string | null;
-}
-
-/** (BE 미구현) '기억 없이' 새 대화 — 목만 받습니다. 지금 BE 에 보내면 422 입니다 */
-export interface CreateMemoryOffConversationRequest extends CreateConversationRequest {
-  memory_off: true;
+  memory_off?: boolean;
 }
 
 export type CreateConversationResponse = ConversationSummary;
@@ -501,7 +498,10 @@ export interface ProfileItem {
   value: string;
 }
 
-/** (BE 미구현) 기억 설정 · 코칭 프로필 (12-3) */
+/**
+ * 기억 설정 · 코칭 프로필 (12-3, BE `MemorySettingResponse`) — 읽기 · 켜고 끄기 · 지우기가 모두 이 모양을 돌려줍니다.
+ * 설정을 한 번도 바꾸지 않았으면 켜짐입니다. 항목은 사용자 말의 저장으로만 늘고 화면이 직접 쓰지 않습니다
+ */
 export interface MemorySettings {
   enabled: boolean;
   items: ProfileItem[];

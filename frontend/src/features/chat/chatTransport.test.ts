@@ -68,6 +68,10 @@ function start(override: Partial<ChatApi> = {}) {
     changeScope: counted(api.changeScope),
     undo: counted(api.undo),
     listConversations: counted(api.listConversations),
+    getMemory: counted(api.getMemory),
+    setMemoryEnabled: counted(api.setMemoryEnabled),
+    deleteMemoryItems: counted(api.deleteMemoryItems),
+    deleteMemoryItem: counted(api.deleteMemoryItem),
   };
   transport = createChatTransport({
     api: tracked,
@@ -1137,7 +1141,7 @@ describe('늦게 온 실패 · 대화 바꾸기', () => {
   });
 });
 
-// ── 새 BE (a6264abc) 에 맞춤 ──────────────────────────────────
+// ── 새 BE (37e3a9df) 에 맞춤 ──────────────────────────────────
 
 describe('이벤트 커서 — next_after_seq 는 늘 다음 커서, 남은 것은 has_more', () => {
   it('BE 처럼 다음 커서가 늘 와도 곧바로 다시 읽지 않고 실행 중 1초 간격을 지킨다', async () => {

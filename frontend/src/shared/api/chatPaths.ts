@@ -1,6 +1,6 @@
 /**
- * 대화형 코치 에이전트 API 경로 — BE #933 `feat/be-chat-api-834` a6264abc (`module/chat/controller.py`) 에 맞췄습니다.
- * 되돌리기는 #935. 기억은 BE 가 아직 열지 않아 문서(12-3)대로 둔 **(BE 미구현)** 경로입니다.
+ * 대화형 코치 에이전트 API 경로 — develop-next `37e3a9df` 의 BE (`module/chat/controller.py`) 에 맞췄습니다.
+ * 메시지 · 실행 · 승인은 #933, 되돌리기는 #935, 기억은 #1002 입니다.
  * 목(`mocks/chat.ts`)과 통신 계층이 이 파일만 봅니다.
  */
 const BASE = '/api/chat';
@@ -34,7 +34,7 @@ export const chatPaths = {
   /** POST → 목표 저장 되돌리기 (BE #935) */
   undo: (runId: string, actionId: string) =>
     `${BASE}/runs/${id(runId)}/actions/${id(actionId)}/undo`,
-  /** (BE 미구현) GET → 기억 설정 · 항목 · PUT `{enabled}` → 켜기 · 끄기 */
+  /** GET → 기억 설정 · 항목 · PUT `{enabled}` → 켜기 · 끄기 (BE #1002) */
   memory: `${BASE}/memory`,
   /** DELETE → 전체 지우기 */
   memoryItems: `${BASE}/memory/items`,

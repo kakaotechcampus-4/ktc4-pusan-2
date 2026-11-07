@@ -174,7 +174,7 @@ const troubleOf = (error: unknown): PollTroubleReason => {
 
 /**
  * 승인 · 거절 실패의 코드 — BE 가 준 코드 그대로입니다. 바뀐 카드(해시 불일치)는 409 `APPROVAL_HASH_MISMATCH`
- * (BE #933 a6264abc `ChatCardChanged`, 12-4 F8 · 5-9). 응답을 받지 못했으면 `REQUEST_FAILED` 입니다
+ * (develop-next 37e3a9df `ChatCardChanged`, 12-4 F8 · 5-9). 응답을 받지 못했으면 `REQUEST_FAILED` 입니다
  */
 const decisionCode = (error: unknown) =>
   error instanceof ApiFailure ? error.code : 'REQUEST_FAILED';
@@ -1062,9 +1062,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     const ticket = store().beginCreate();
     if (!ticket) return 'locked';
     const scope = store().scope;
-    // (BE 미구현) `memory_off` — 지금 BE 는 모르는 칸이라 422 로 거절합니다. 목은 받습니다
-    // 결과를 모른 채 실패로 알리면 대화가 하나 더 생길 수 있습니다 — '기억 없이' 는 아직 BE 가 받지 않아(422)
-    // 실제로는 생기지 않고, BE 가 칸을 열 때 멱등 키를 함께 맞춥니다
+    // `memory_off` 는 BE #1002 가 받습니다. 대화 만들기에는 멱등 키가 없어, 결과를 모른 채(끊김 · 시간 초과)
+    // 실패로 알리면 서버에 빈 '기억 없이' 대화가 하나 더 남을 수 있습니다(BE 에 멱등 키를 요청할 안건)
     const answer = await request({
       watch: ['generation', 'attempt', 'create'],
       start: (signal) =>

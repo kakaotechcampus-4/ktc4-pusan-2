@@ -3,7 +3,6 @@ import { chatPaths } from '@/shared/api/chatPaths';
 import type {
   ActionDecisionRequest,
   CreateConversationRequest,
-  CreateMemoryOffConversationRequest,
   CreateConversationResponse,
   MessagePage,
   ScopeChangeResponse,
@@ -44,7 +43,7 @@ export interface ChatApi {
     signal?: AbortSignal,
   ) => Promise<unknown>;
   createConversation: (
-    request: CreateConversationRequest | CreateMemoryOffConversationRequest,
+    request: CreateConversationRequest,
     signal?: AbortSignal,
   ) => Promise<CreateConversationResponse>;
   changeScope: (
@@ -59,6 +58,15 @@ export interface ChatApi {
   undo: (runId: string, actionId: string, signal?: AbortSignal) => Promise<UndoResponse>;
   /** 대화 목록 — 범위 바꾸기의 결과를 모를 때 서버의 범위를 다시 읽습니다 */
   listConversations: (signal?: AbortSignal) => Promise<unknown>;
+  /**
+   * 기억 설정 · 항목 (BE #1002, 12-3). 네 요청 모두 바뀐 뒤의 설정 전체(`MemorySettings` 모양)를 돌려주고,
+   * 응답은 `unknown` — `chatMemory.ts` 의 `readMemorySettings` 가 모양을 검사하며 읽습니다.
+   * 없는 항목을 지우면 404 `NOT_FOUND`
+   */
+  getMemory: (signal?: AbortSignal) => Promise<unknown>;
+  setMemoryEnabled: (enabled: boolean, signal?: AbortSignal) => Promise<unknown>;
+  deleteMemoryItems: (signal?: AbortSignal) => Promise<unknown>;
+  deleteMemoryItem: (itemId: string, signal?: AbortSignal) => Promise<unknown>;
 }
 
 const postBody = (body: unknown, signal?: AbortSignal): RequestInit => ({
@@ -101,6 +109,19 @@ export const chatApi: ChatApi = {
   undo: (runId, actionId, signal) =>
     apiRequest<UndoResponse>(chatPaths.undo(runId, actionId), { method: 'POST', signal }),
   listConversations: (signal) => apiRequest<unknown>(chatPaths.conversations, { signal }, within),
+  getMemory: (signal) => apiRequest<unknown>(chatPaths.memory, { signal }),
+  setMemoryEnabled: (enabled, signal) =>
+    apiRequest<unknown>(chatPaths.memory, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+      signal,
+    }),
+  // BE 지우기는 본문을 받지 않습니다
+  deleteMemoryItems: (signal) =>
+    apiRequest<unknown>(chatPaths.memoryItems, { method: 'DELETE', signal }),
+  deleteMemoryItem: (itemId, signal) =>
+    apiRequest<unknown>(chatPaths.memoryItem(itemId), { method: 'DELETE', signal }),
 };
 
 /** 메시지 목록 한 번에 읽는 개수 — BE 기본 30, 상한 50 */

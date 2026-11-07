@@ -7,18 +7,18 @@ import { chatPaths } from '@/shared/api/chatPaths';
 /**
  * 계약 시험 — 목이 **실제 BE** 와 같은 칸 · 값 · 상태 코드로 답하는지 봅니다(문서가 아니라 BE 코드 기준).
  *
- * 기준: BE #933 `feat/be-chat-api-834` `a6264abc`
+ * 기준: develop-next `37e3a9df` — BE #933(메시지 · 실행 · 승인 · 대화 목록) + #935(되돌리기) + #1002(기억 · '기억 없이').
+ * (#933 브랜치의 옛 기준 `55aa10d0` 는 브랜치가 다시 쓰여 저장소에 남아 있지 않습니다)
  * - 응답 칸: `backend/src/pitch_coach_backend/module/chat/api_dto.py`
  * - 경로 · 상태 코드: `module/chat/controller.py` (새 대화 201 · 메시지 접수 202 · 나머지 200)
  * - 오류 코드: `module/chat/exception.py`, 오류 본문: `core/exceptions.py` `{code, message, detail}`
  *
  * BE 가 바뀌면 이 표부터 그 커밋에 맞춰 고치고, 그다음 목 · 타입을 맞춥니다. 시험이 깨지면 목이 BE 와 어긋난 것입니다.
  * **한계**: 이 표는 FE 쪽 상수라 BE 코드가 바뀌어도 저절로 깨지지 않습니다 — BE 기준 커밋을 올릴 때 사람이 맞춥니다.
- * #933 이 확정되면 BE 의 OpenAPI 를 파일로 떠 두고 이 표를 거기서 읽는 방식을 BE 와 정할 예정입니다(#957 리뷰).
- * BE 에 아직 없는 기능(기억 · '기억 없이' · 되돌리기)은 여기서 보지 않습니다 — 목에만 `(BE 미구현)` 으로 있습니다.
+ * BE 의 OpenAPI 를 파일로 떠 두고 이 표를 거기서 읽는 방식을 BE 와 정할 예정입니다(#957 리뷰).
  */
 const BE = {
-  commit: 'a6264abc',
+  commit: '37e3a9df',
   ConversationResponse: [
     'conversation_id',
     'title',
@@ -26,6 +26,7 @@ const BE = {
     'scope_pitch_title',
     'last_user_activity_at',
     'created_at',
+    'memory_off',
   ],
   ConversationListItem: [
     'conversation_id',
@@ -34,11 +35,18 @@ const BE = {
     'scope_pitch_title',
     'last_user_activity_at',
     'created_at',
+    'memory_off',
     'stale',
   ],
   ConversationListResponse: ['conversations'],
   /** 요청 본문 — 모르는 칸은 422(extra="forbid") */
-  CreateConversationRequest: ['pitch_id'],
+  CreateConversationRequest: ['pitch_id', 'memory_off'],
+  GoalUndoneResponse: ['run_id', 'action_id', 'goal_version', 'goal'],
+  MemorySettingRequest: ['enabled'],
+  MemorySettingResponse: ['enabled', 'items'],
+  MemoryItemResponse: ['item_id', 'key', 'value'],
+  /** `module/chat/dto.py` `ProfileKey` */
+  ProfileKey: ['TONE', 'EXPLAIN_STYLE', 'FOCUS_AREA', 'CONTEXT'],
   MessageAcceptedResponse: ['conversation_id', 'message_id', 'run_id', 'status'],
   RunStatusResponse: [
     'run_id',
@@ -268,6 +276,78 @@ describe(`응답 모양 — BE ${BE.commit} api_dto.py`, () => {
       expect(Array.isArray(item.stale_reasons)).toBe(true);
     }
   });
+
+  it("'기억 없이' 새 대화 — 응답과 목록에 memory_off 가 그대로", async () => {
+    const created = await call(chatPaths.conversations, 'POST', {
+      pitch_id: null,
+      memory_off: true,
+    });
+    expect(created.status).toBe(201);
+    const conversation = await read(created);
+    expectShape(conversation, BE.ConversationResponse);
+    expect(conversation.memory_off).toBe(true);
+    // 빼면 BE 기본값 false
+    const plain = await read(await call(chatPaths.conversations, 'POST', { pitch_id: null }));
+    expect(plain.memory_off).toBe(false);
+
+    const list = (await read(await call(chatPaths.conversations))).conversations as Json[];
+    const listed = list.find((c) => c.conversation_id === conversation.conversation_id)!;
+    expect(listed.memory_off).toBe(true);
+  });
+
+  it('목표 되돌리기(BE #935) — 승인해 저장한 목표를 되돌린다', async () => {
+    const accepted = await accept('3장 시선을 목표로 잡아 줘');
+    const runId = accepted.run_id as string;
+    const card = ((await settle(runId)).at(-1)!.cards as Json[])[0]!;
+    await call(chatPaths.decision(runId, card.action_id as string), 'POST', {
+      decision: 'APPROVE',
+      args_hash: card.args_hash,
+    });
+    await settle(runId);
+    const response = await call(chatPaths.undo(runId, card.action_id as string), 'POST');
+    expect(response.status).toBe(200);
+    const undone = await read(response);
+    expectShape(undone, BE.GoalUndoneResponse);
+    expect(Number.isInteger(undone.goal_version)).toBe(true);
+  });
+
+  it('기억 설정 · 항목 지우기(BE #1002) — 네 요청 모두 바뀐 뒤의 설정 전체를 돌려준다', async () => {
+    const expectSettings = (body: Json) => {
+      expectShape(body, BE.MemorySettingResponse);
+      expect(typeof body.enabled).toBe('boolean');
+      for (const item of body.items as Json[]) {
+        expectShape(item, BE.MemoryItemResponse);
+        expect(BE.ProfileKey).toContain(item.key);
+      }
+    };
+    // 한 번도 바꾸지 않았으면 켜짐
+    const first = await read(await call(chatPaths.memory));
+    expectSettings(first);
+    expect(first.enabled).toBe(true);
+
+    // 항목은 사용자 말의 저장으로만 늡니다
+    await settle((await accept('짧게 설명해 달라는 걸 기억해 줘')).run_id as string);
+    const saved = await read(await call(chatPaths.memory));
+    expectSettings(saved);
+    const [item] = saved.items as Json[];
+    expect(item).toBeDefined();
+
+    const off = await call(chatPaths.memory, 'PUT', { enabled: false });
+    expect(off.status).toBe(200);
+    const offBody = await read(off);
+    expectSettings(offBody);
+    expect(offBody.enabled).toBe(false);
+
+    const one = await call(chatPaths.memoryItem(item!.item_id as string), 'DELETE');
+    expect(one.status).toBe(200);
+    const oneBody = await read(one);
+    expectSettings(oneBody);
+    expect(oneBody.items).toEqual([]);
+
+    const all = await call(chatPaths.memoryItems, 'DELETE');
+    expect(all.status).toBe(200);
+    expectSettings(await read(all));
+  });
 });
 
 describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => {
@@ -323,12 +403,14 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
     );
   });
 
-  it('꺼지면 503 AGENT_DISABLED — 보내기 · 조회 · 목록 모두', async () => {
+  it('꺼지면 503 AGENT_DISABLED — 보내기 · 조회 · 목록 · 기억 모두', async () => {
     const accepted = await accept('지난번보다 청중을 더 봤어?');
     controls.disable();
     await expectError(await call(chatPaths.send, 'POST', message('안녕')), 503, 'AGENT_DISABLED');
     await expectError(await call(chatPaths.run(accepted.run_id as string)), 503, 'AGENT_DISABLED');
     await expectError(await call(chatPaths.conversations), 503, 'AGENT_DISABLED');
+    await expectError(await call(chatPaths.memory), 503, 'AGENT_DISABLED');
+    await expectError(await call(chatPaths.memoryItems, 'DELETE'), 503, 'AGENT_DISABLED');
   });
 
   it('429 는 Retry-After 를 싣는다', async () => {
@@ -338,22 +420,25 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
     await expectError(response, 429, 'AGENT_DAILY_LIMIT');
   });
 
-  /**
-   * 목과 BE 의 **알려진 차이** — FE 는 '기억 없이' 새 대화에 `memory_off: true` 를 보내고 목은 (BE 미구현) 기능이라 받지만,
-   * BE `CreateConversationRequest` 는 `pitch_id` 만 받아 **지금 BE 에서는 422** 입니다. 그 전까지 화면은 '기억 없이'
-   * 토글을 두지 않습니다(10단계).
-   * 이 시험은 차이를 기록할 뿐, BE 가 칸을 열었는지 스스로 알지는 못합니다(위 "한계"). BE 기준 커밋을 올리며 BE 표에
-   * `memory_off` 를 더하면 첫 단언이 깨져, 이 차이를 지우고 화면을 열 때라는 것을 알려 줍니다
-   */
-  it('알려진 차이: 목은 새 대화의 memory_off 를 받지만 BE 표에는 없다 — 그 밖의 모르는 칸은 목도 BE 처럼 422', async () => {
-    expect(BE.CreateConversationRequest).not.toContain('memory_off');
-    const created = await call(chatPaths.conversations, 'POST', {
-      pitch_id: null,
-      memory_off: true,
-    });
-    expect(created.status).toBe(201);
+  it('새 대화 · 기억 설정은 true · false 만 받는다(StrictBool) — 모르는 칸은 422', async () => {
+    for (const body of [
+      { pitch_id: null, memory_off: 'true' },
+      { pitch_id: null, memory_off: 1 },
+      { pitch_id: null, unknown: 1 },
+    ])
+      await expectError(await call(chatPaths.conversations, 'POST', body), 422, 'VALIDATION_ERROR');
+    for (const body of [{ enabled: 'false' }, { enabled: 0 }, {}, { enabled: true, unknown: 1 }])
+      await expectError(await call(chatPaths.memory, 'PUT', body), 422, 'VALIDATION_ERROR');
+  });
+
+  it('기억 항목 지우기 — 없거나 남의 항목은 404 NOT_FOUND, UUID 가 아니면 422', async () => {
     await expectError(
-      await call(chatPaths.conversations, 'POST', { pitch_id: null, unknown: 1 }),
+      await call(chatPaths.memoryItem('99999999-0000-4000-8000-000000000000'), 'DELETE'),
+      404,
+      'NOT_FOUND',
+    );
+    await expectError(
+      await call(chatPaths.memoryItem('not-a-uuid'), 'DELETE'),
       422,
       'VALIDATION_ERROR',
     );
