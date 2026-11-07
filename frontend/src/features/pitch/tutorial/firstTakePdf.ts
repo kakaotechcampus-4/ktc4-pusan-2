@@ -86,7 +86,10 @@ export function buildImagePdf(images: readonly Uint8Array[]): Blob {
   object(1, '<< /Type /Catalog /Pages 2 0 R >>');
   const pageIds = images.map((_, index) => 3 + index * 3);
   const totalObjects = images.length * 3 + 2;
-  object(2, `<< /Type /Pages /Count ${images.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] >>`);
+  object(
+    2,
+    `<< /Type /Pages /Count ${images.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] >>`,
+  );
 
   images.forEach((jpeg, index) => {
     const pageId = pageIds[index];
@@ -105,7 +108,10 @@ export function buildImagePdf(images: readonly Uint8Array[]): Blob {
     append('\nendstream\nendobj\n');
 
     const content = `q\n${PAGE_WIDTH} 0 0 ${PAGE_HEIGHT} 0 0 cm\n/Im0 Do\nQ\n`;
-    object(contentId, `<< /Length ${encoder.encode(content).byteLength} >>\nstream\n${content}endstream`);
+    object(
+      contentId,
+      `<< /Length ${encoder.encode(content).byteLength} >>\nstream\n${content}endstream`,
+    );
   });
 
   const crossReferenceStart = byteLength;
@@ -113,7 +119,9 @@ export function buildImagePdf(images: readonly Uint8Array[]): Blob {
   for (let id = 1; id <= totalObjects; id += 1) {
     append(`${String(offsets[id]).padStart(10, '0')} 00000 n \n`);
   }
-  append(`trailer\n<< /Size ${totalObjects + 1} /Root 1 0 R >>\nstartxref\n${crossReferenceStart}\n%%EOF\n`);
+  append(
+    `trailer\n<< /Size ${totalObjects + 1} /Root 1 0 R >>\nstartxref\n${crossReferenceStart}\n%%EOF\n`,
+  );
 
   const result = new Uint8Array(byteLength);
   let cursor = 0;
