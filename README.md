@@ -26,6 +26,8 @@
     - 연습 화면 이동
 
 ## 시스템 아키텍처 구조도
+<img width="4632" height="2418" alt="pitch-coach-fe-be-ai-develop-next" src="https://github.com/user-attachments/assets/1994491c-676e-44a2-9fe0-dc3d5393eb43" />
+
 
 ## 폴더 구조
 
@@ -52,43 +54,86 @@ pitch-coach/
 ```
 
 ## 실행 방법
-0. 공통 준비
-uv: BE는 Python 3.14, AI는 3.12를 씁니다. 버전은 각 폴더의 .python-version대로 uv가 받습니다.
-Node 24(nvm use 24). 버전이 다르면 .npmrc의 engine-strict 때문에 npm ci가 멈춥니다.
-Docker. 로컬 DB를 띄울 때 씁니다.
-환경 파일 세 개를 만듭니다.
-backend/.env ← backend/.env.example. JWT_SECRET_KEY는 openssl rand -hex 32로 만듭니다.
-ai/.env ← ai/.env.example
-frontend/.env.local ← frontend/.env.example
+## 로컬 개발 환경 세팅
 
-2. DB (PostgreSQL)
+### 0. 공통 준비
 
+| 도구 | 버전 | 비고 |
+|---|---|---|
+| [uv](https://docs.astral.sh/uv/) | BE: Python 3.14 / AI: Python 3.12 | 각 폴더의 `.python-version`에 적힌 버전을 uv가 받아 옵니다 |
+| Node | 24 (`nvm use 24`) | 버전이 다르면 `.npmrc`의 `engine-strict` 때문에 `npm ci`가 멈춥니다 |
+| Docker | — | 로컬 DB를 띄울 때 씁니다 |
+
+#### 환경변수 파일 만들기
+* frontend/.env
+* backend/.env
+* ai/.env 
+
+> [!TIP]
+> `backend/.env`에는 JWT 인증을 위한 `JWT_SECRET_KEY`가 있습니다.
+>  이는 `openssl rand -hex 32`로 만들면 됩니다.
+
+---
+
+### 실행 순서
+
+```
+1. DB  →  2. AI (8001)  →  3. BE (8000)  →  4. FE (3000)
+```
+
+### 1. DB (PostgreSQL)
+
+```bash
 cd infra
 docker compose up -d db
-db 서비스는 backend/.env의 POSTGRES_* 값을 읽습니다. 그래서 backend/.env를 먼저 만들어 두셔야 합니다.
+```
 
-2. AI 서버 (포트 8001)
+> [!WARNING]
+> `db` 서비스는 `backend/.env`의 `POSTGRES_*` 값을 읽습니다. **`backend/.env`를 먼저** 만들어 두세요.
 
+### 2. AI 서버 (포트 8001)
+
+```bash
 cd ai/service
 uv sync --locked
 uv run python -m uvicorn pitch_coach_ai.main:app --reload --port 8001
-/health가 뜨는 데는 LLM 키가 필요 없습니다. 실제 LLM 기능을 부를 때만 ai/.env에 키를 채우면 됩니다.
+```
 
-3. BE (포트 8000)
+> [!NOTE]
+> `/health`는 LLM 키 없이도 뜹니다. 실제 LLM 기능을 부를 때만 `ai/.env`에 키를 채우면 됩니다.
 
+### 3. BE (포트 8000)
+
+```bash
 cd backend
 uv sync
-uv run alembic upgrade head          # DB가 떠 있어야 합니다
+uv run alembic upgrade head   # DB가 떠 있어야 합니다
 uv run fastapi dev src/pitch_coach_backend/main.py
-AI_BASE_URL 기본값은 http://localhost:8001이라 2번과 맞습니다. Deepgram 키, S3 버킷, 구글 OAuth 값이 비어 있으면 서버는 뜨지만 실시간 STT, 업로드, 로그인은 동작하지 않습니다.
+```
 
-4. FE (포트 3000)
+`AI_BASE_URL` 기본값이 `http://localhost:8001`이라 2번과 그대로 맞습니다.
 
+> [!NOTE]
+> 아래 값이 비어 있어도 서버는 뜨지만, 해당 기능은 동작하지 않습니다.
+>
+> | 비어 있는 값 | 동작하지 않는 기능 | 필요사항 |
+> |---|---|---|
+> | Deepgram 키 | 실시간 STT | API Key 발급 후 환경변수에 삽입 |
+> | S3 버킷 | 업로드 | S3 버킷 생성 후 이름과 리전을 환경변수에 삽입(Presigned URL) |
+> | 구글 OAuth | 로그인 | 리다이렉션 URL 지정, Google OAuth API Client ID와 Secret 발급 후 환경변수에 삽입|
+
+### 4. FE (포트 3000)
+
+```bash
 cd frontend
 npm ci
-npm run doctor     # 실패 0개면 세팅이 끝난 것입니다
+npm run doctor   # 실패 0개면 세팅 완료
 npm run dev
-FE는 기본이 MSW 목 서버입니다. 실제 BE에 붙이려면 .env.local에 VITE_USE_MOCK=false를 넣어야 합니다.
+```
+
+> [!IMPORTANT]
+> FE는 기본으로 **MSW 목 서버**를 씁니다. 실제 BE에 붙이려면 `frontend/.env.local`에 `VITE_USE_MOCK=false`를 넣으세요.
+
 
 ## 직군별 README.md
 
