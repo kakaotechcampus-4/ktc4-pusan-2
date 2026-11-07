@@ -33,6 +33,8 @@ import { useChatStore } from './chatStore';
 import { useCanSend } from './useCanSend';
 import { sendLockReason } from './chatLock';
 import { LockedReason } from './LockedReason';
+import { ChatMemorySettings } from './ChatMemorySettings';
+import { MemoryIntro, MemoryOffBadge, MemoryOffSwitch } from './ChatMemoryParts';
 import { ConversationList, ScopeChip } from './ChatPanelParts';
 import { useChatSession, type ChatNotice, type ChatSession } from './useChatSession';
 
@@ -305,8 +307,10 @@ function ChatPanel({
     latestDraft.current = draft;
   });
   const sendable = useCanSend();
-  const [listOpen, setListOpen] = useState(false);
-  const { scroller, onScroll, follow } = useFollowBottom(!listOpen);
+  /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
+  const [view, setView] = useState<PanelView>('messages');
+  const toggleView = (next: PanelView) => setView(view === next ? 'messages' : next);
+  const { scroller, onScroll, follow } = useFollowBottom(view === 'messages');
   const content = draft.trim();
   const tooLong = [...content].length > MAX_MESSAGE_LENGTH;
   const failed = session.availability === 'failed';
@@ -365,29 +369,43 @@ function ChatPanel({
       }}
       className="absolute bottom-full right-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-strong px-5 py-3">
+      {/* 좁은 창(휴대폰)에서는 버튼 묶음이 제목 아래 줄로 내려갑니다 — 글자가 쪼개지지 않게 */}
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line-strong px-5 py-3">
         <div>
-          <h2 id={`${id}-title`} className="text-base font-bold">
+          <h2 id={`${id}-title`} className="whitespace-nowrap text-base font-bold">
             채팅 에이전트
           </h2>
-          <ScopeChip onChange={(next) => session.changeScope(next).catch(() => undefined)} />
+          <div className="flex items-center gap-2">
+            <ScopeChip onChange={(next) => session.changeScope(next).catch(() => undefined)} />
+            <MemoryOffBadge />
+          </div>
         </div>
-        <button
-          type="button"
-          aria-pressed={listOpen}
-          onClick={() => setListOpen(!listOpen)}
-          className="ml-auto min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
-        >
-          대화 목록
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="채팅 에이전트 닫기"
-          className="min-h-11 min-w-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
-        >
-          닫기
-        </button>
+        <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            aria-pressed={view === 'list'}
+            onClick={() => toggleView('list')}
+            className="min-h-11 whitespace-nowrap border border-line-strong px-2 text-sm font-bold hover:bg-cream"
+          >
+            대화 목록
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === 'memory'}
+            onClick={() => toggleView('memory')}
+            className="min-h-11 whitespace-nowrap border border-line-strong px-2 text-sm font-bold hover:bg-cream"
+          >
+            기억 설정
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="채팅 에이전트 닫기"
+            className="min-h-11 min-w-11 whitespace-nowrap border border-line-strong px-2 text-sm font-bold hover:bg-cream"
+          >
+            닫기
+          </button>
+        </div>
       </header>
 
       {/* AI 답이 글자 효과로 채워지는 요소에는 aria-live 를 두지 않습니다(글자마다 읽힐 수 있음). 완성된 문장만
@@ -401,17 +419,20 @@ function ChatPanel({
       >
         <PanelBody
           failed={failed}
-          listOpen={listOpen}
+          view={view}
           userId={userId}
           session={session}
-          closeList={() => setListOpen(false)}
+          backToMessages={() => setView('messages')}
         />
       </div>
 
+      {/* 기억 설정 화면에서는 입력칸을 숨깁니다 — 쓰던 글(draft)은 그대로 남습니다 */}
       <form
+        hidden={view === 'memory'}
         onSubmit={(event) => submit(event).catch(() => undefined)}
         className="shrink-0 border-t border-line-strong p-3"
       >
+        {view === 'messages' && <MemoryOffSwitch userId={userId} />}
         {session.scopeFailed && (
           <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
             <p>연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.</p>
@@ -478,19 +499,21 @@ function ChatPanel({
   );
 }
 
-/** 패널 몸통 — 코치를 못 불러옴 · 대화 목록 · 메시지 중 하나 */
+type PanelView = 'messages' | 'list' | 'memory';
+
+/** 패널 몸통 — 코치를 못 불러옴 · 대화 목록 · 기억 설정 · 메시지 중 하나 */
 function PanelBody({
   failed,
-  listOpen,
+  view,
   userId,
   session,
-  closeList,
+  backToMessages,
 }: {
   failed: boolean;
-  listOpen: boolean;
+  view: PanelView;
   userId: string;
   session: ChatSession;
-  closeList: () => void;
+  backToMessages: () => void;
 }) {
   if (failed)
     return (
@@ -505,21 +528,27 @@ function PanelBody({
         </button>
       </div>
     );
-  if (listOpen)
+  if (view === 'memory') return <ChatMemorySettings userId={userId} onBack={backToMessages} />;
+  if (view === 'list')
     return (
       <ConversationList
         userId={userId}
         onNew={() => {
-          closeList();
+          backToMessages();
           session.startNew();
         }}
         onPick={(item) => {
-          closeList();
+          backToMessages();
           session.selectConversation(item);
         }}
       />
     );
-  return <MessageList session={session} />;
+  return (
+    <>
+      <MemoryIntro userId={userId} />
+      <MessageList session={session} />
+    </>
+  );
 }
 
 /** 지난 메시지와 지금 실행의 답 — 카드는 8-3 에서 붙입니다 */

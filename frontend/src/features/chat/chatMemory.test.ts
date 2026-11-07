@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearMemoryItems,
   fetchMemory,
+  markMemoryIntroSeen,
+  memoryIntroSeen,
+  memoryItemState,
   memoryKey,
   readMemorySettings,
   removeMemoryItem,
@@ -70,5 +73,51 @@ describe('기억 요청 — 응답을 검사해 돌려준다', () => {
 
   it('캐시 키는 사용자별 — 사용자가 바뀌면 앞 사람의 기억을 쓰지 않는다', () => {
     expect(memoryKey('a')).not.toEqual(memoryKey('b'));
+  });
+});
+
+describe('카드 항목 상태 (L3-45)', () => {
+  const I = ITEM.item_id;
+  const settings = (...items: { item_id: string; key: 'TONE'; value: string }[]) => ({
+    enabled: true,
+    items,
+  });
+
+  it('목록을 모르면 unknown, 같은 id · 값이면 kept, 값만 다르면 changed, 없으면 removed', () => {
+    expect(memoryItemState(undefined, I, '짧게 설명')).toBe('unknown');
+    expect(memoryItemState(settings({ ...ITEM, key: 'TONE' }), I, '짧게 설명')).toBe('kept');
+    expect(memoryItemState(settings({ ...ITEM, key: 'TONE', value: '자세히' }), I, '짧게 설명')).toBe(
+      'changed',
+    );
+    expect(memoryItemState(settings(), I, '짧게 설명')).toBe('removed');
+  });
+});
+
+describe('첫 안내를 보였는지 (L3-43, BE 미구현 — 이 브라우저에 둠)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const fakeStorage = () => {
+    const map = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => map.set(k, v),
+    });
+  };
+
+  it('사용자마다 따로 적는다', () => {
+    fakeStorage();
+    expect(memoryIntroSeen('u1')).toBe(false);
+    markMemoryIntroSeen('u1');
+    expect(memoryIntroSeen('u1')).toBe(true);
+    expect(memoryIntroSeen('u2')).toBe(false);
+  });
+
+  it('저장소를 못 쓰면 안 본 것으로 치고, 적기 실패는 던지지 않는다', () => {
+    const broken = () => {
+      throw new Error('막힘');
+    };
+    vi.stubGlobal('localStorage', { getItem: broken, setItem: broken });
+    expect(memoryIntroSeen('u1')).toBe(false);
+    expect(() => markMemoryIntroSeen('u1')).not.toThrow();
   });
 });

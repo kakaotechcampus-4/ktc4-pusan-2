@@ -378,7 +378,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     useChatStore.getState().selectConversation(item.conversation_id, {
       pitchId: item.scope_pitch_id,
       title: item.scope_pitch_title,
-    });
+    }, item.memory_off);
   }, []);
 
   const decide = useCallback<ChatSession['decide']>(
