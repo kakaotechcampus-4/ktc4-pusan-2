@@ -399,6 +399,16 @@ class ChatRepository:
             )
         )
 
+    def lock_unmasked_summaries(self) -> list[ChatSummary]:
+        """항목이 남은 대화 요약. 턴이 바꾸고 있는 요약은 건너뛰고 다음 주기에 본다."""
+        return list(
+            self.db.scalars(
+                select(ChatSummary)
+                .where(func.jsonb_array_length(ChatSummary.items) > 0)
+                .with_for_update(skip_locked=True)
+            )
+        )
+
     def list_finished_runs_with_content(self) -> list[ChatRun]:
         return list(
             self.db.scalars(
