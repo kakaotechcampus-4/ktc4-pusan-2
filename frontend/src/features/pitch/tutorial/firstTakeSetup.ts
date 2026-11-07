@@ -16,6 +16,28 @@ type Progress = (message: string) => void;
 const POLL_MS = 1000;
 const PARSE_TIMEOUT_MS = 100_000;
 
+function ensureNotAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw new DOMException('샘플 준비가 중단되었어요.', 'AbortError');
+}
+
+function pauseUntilNextPoll(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('샘플 준비가 중단되었어요.', 'AbortError'));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException('샘플 준비가 중단되었어요.', 'AbortError'));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, POLL_MS);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 function validMapping(result: ScriptDetail): boolean {
   return (
     result.segmented === true &&
@@ -24,12 +46,19 @@ function validMapping(result: ScriptDetail): boolean {
   );
 }
 
-async function waitForScript(pitchId: string, scriptVersionId: string, progress: Progress) {
+async function waitForScript(
+  pitchId: string,
+  scriptVersionId: string,
+  progress: Progress,
+  signal?: AbortSignal,
+) {
   const start = Date.now();
   let retried = false;
 
   while (Date.now() - start < PARSE_TIMEOUT_MS) {
+    ensureNotAborted(signal);
     const detail = await getScript(pitchId, scriptVersionId);
+    ensureNotAborted(signal);
     if (detail.parse_status === 'DONE') {
       if (!validMapping(detail)) {
         throw new Error(
@@ -57,7 +86,7 @@ async function waitForScript(pitchId: string, scriptVersionId: string, progress:
       retried = true;
     }
 
-    await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS));
+    await pauseUntilNextPoll(signal);
   }
   throw new Error('대본 분석이 오래 걸리고 있어요. 다시 시도하면 기존 작업을 이어서 확인합니다.');
 }
@@ -69,9 +98,14 @@ async function waitForScript(pitchId: string, scriptVersionId: string, progress:
  * FE에서 제목으로 기존 샘플을 찾는 MVP입니다. 서로 다른 탭에서 최초 클릭을 동시에
  * 진행하는 완전한 멱등성 및 is_demo 저장은 추후 BE API가 필요합니다 (#931).
  */
-export async function ensureFirstTakePitch(progress: Progress): Promise<string> {
+export async function ensureFirstTakePitch(
+  progress: Progress,
+  signal?: AbortSignal,
+): Promise<string> {
+  ensureNotAborted(signal);
   progress('기존 샘플 발표를 확인하고 있어요…');
   const list = await fetchPitchList();
+  ensureNotAborted(signal);
   const matches = list.pitches.filter((pitch) => pitch.pitch_title === FIRST_TAKE_TITLE);
 
   if (matches.length > 1) {
@@ -89,10 +123,12 @@ export async function ensureFirstTakePitch(progress: Progress): Promise<string> 
       presentation_date: null,
     });
     pitchId = created.pitch_id;
+    ensureNotAborted(signal);
   }
 
   // 각 저장 단계가 중단되더라도 다음 방문에서 서버에 남은 버전을 이어 씁니다.
   const resources = await getPitchResources(pitchId);
+  ensureNotAborted(signal);
   const presentation = [...resources.presentation_versions].sort(
     (a, b) => b.version - a.version,
   )[0];
@@ -101,6 +137,7 @@ export async function ensureFirstTakePitch(progress: Progress): Promise<string> 
   if (!presentation) {
     progress('튜토리얼 발표자료 5장을 준비하고 있어요…');
     const file = await createFirstTakePdf();
+    ensureNotAborted(signal);
     const uploaded = await uploadPresentation(pitchId, file);
     if (
       uploaded.presentation.page_count !== undefined &&
@@ -120,10 +157,12 @@ export async function ensureFirstTakePitch(progress: Progress): Promise<string> 
     progress('슬라이드에 맞는 대본을 등록하고 있어요…');
     const created = await createScript(pitchId, FIRST_TAKE_SCRIPT);
     scriptId = created.script_version_id;
+    ensureNotAborted(signal);
   }
 
   progress('슬라이드별 대본을 연결하고 있어요…');
-  await waitForScript(pitchId, scriptId, progress);
+  await waitForScript(pitchId, scriptId, progress, signal);
+  ensureNotAborted(signal);
   progress('준비가 완료되었어요. 장치 점검으로 이동합니다.');
   return pitchId;
 }
