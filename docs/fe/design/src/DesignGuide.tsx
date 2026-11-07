@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Navigate, Route, Routes, useParams, useSearchParams } from 'react-router';
 import { Button } from '@/ui/Button';
-import { PRODUCT_ORIGIN, entries, screens } from './catalog';
+import { GUIDE_GROUP_ORDER, PRODUCT_ORIGIN, entries, screens } from './catalog';
 import { FramePage } from './FramePage';
 import {
   CUSTOM_LIMIT,
@@ -99,7 +99,9 @@ function Navigation({
       .toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase()),
   );
-  const groups = [...new Set(filtered.map((screen) => screen.group))];
+  const groups = [...new Set(filtered.map((screen) => screen.group))].sort(
+    (a, b) => GUIDE_GROUP_ORDER.indexOf(a) - GUIDE_GROUP_ORDER.indexOf(b),
+  );
 
   return (
     <div className="flex flex-col gap-5">
