@@ -8,19 +8,6 @@
   font-display: swap;
   src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
 }
-/* 숫자 · 영문만 담은 latin 조각. 한글은 아래 --font-mono 의 Pretendard 로 넘어갑니다 */
-@font-face {
-  font-family: "IBM Plex Mono";
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/IBMPlexMono-Regular-latin.woff2") format("woff2");
-}
-@font-face {
-  font-family: "IBM Plex Mono";
-  font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/IBMPlexMono-Bold-latin.woff2") format("woff2");
-}
 
 /* 홈을 한 화면에 고정할 만큼 넓고 높은 창. 낮으면(배율 125~150% 노트북) 목록이 몇 줄만 남아
    고정하지 않고 페이지를 스크롤합니다 (PR #669 리뷰) */
@@ -102,7 +89,9 @@
   /* ── 타이포 ────────────────────────────────────────────────── */
   --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
                "Apple SD Gothic Neo", sans-serif;
-  --font-mono: "IBM Plex Mono", "Pretendard", ui-monospace, monospace;
+  /* 글꼴은 Pretendard 하나입니다. 라벨 · 숫자는 고정폭 글꼴 대신 `tabular-nums` 로 숫자 폭만 맞춥니다.
+     Tailwind 기본 `font-mono` 를 지워 두어, 붙여도 시스템 고정폭 글꼴로 바뀌지 않습니다 */
+  --font-mono: initial;
 }
 
 /* 시작 전 세팅이 시작 버튼까지 첫 화면에 들어오게 줄이는 단계. 높이 기준은 상단바(약 85px)를 얹은
