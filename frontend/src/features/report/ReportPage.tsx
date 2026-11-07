@@ -340,7 +340,6 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
 
   function closeDetail() {
     setOpen(false);
-    openerRef.current?.focus();
   }
 
   const visible = rows.filter((r) => r.metric !== 'filler_per_min');
@@ -419,7 +418,10 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
           <dialog
             ref={dialogRef}
             aria-labelledby="report-comparison-detail-title"
-            onClose={() => { setOpen(false); openerRef.current?.focus(); }}
+            onClose={() => {
+              setOpen(false);
+              openerRef.current?.focus();
+            }}
             onCancel={() => setOpen(false)}
             className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
           >
