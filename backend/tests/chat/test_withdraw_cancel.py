@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.entity import ChatDailyUsage, ChatRun
 from pitch_coach_backend.module.user.entity import User
@@ -60,7 +61,7 @@ def test_withdraw_closes_the_open_ai_call_and_gives_the_chat_slot_back(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(turn_runner, "CHAT_SLOT_LIMIT", 1)
+    monkeypatch.setattr(ai_slots, "CHAT_LIMIT", 1)
     run_id = _send(client, user_id)
     assert hanging_agent.opened.get(timeout=WAIT_SEC) == run_id
     assert _slot_taken(client)

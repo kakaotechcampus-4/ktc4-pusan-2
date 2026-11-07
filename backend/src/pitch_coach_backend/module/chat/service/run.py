@@ -5,7 +5,7 @@ import socket
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -14,10 +14,16 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatRunLog
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.owned import parse_uuid
 
 SEOUL = ZoneInfo("Asia/Seoul")
 OWNER = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 LEASE = timedelta(seconds=30)
+
+
+def seoul_day(at: datetime | None = None) -> date:
+    """하루 한도를 세는 서울 날짜. 시각을 주지 않으면 지금이다."""
+    return (datetime.now(UTC) if at is None else at).astimezone(SEOUL).date()
 
 
 class RunLost(Exception):
@@ -85,10 +91,10 @@ def _parse_ids(values: Iterable[Any]) -> tuple[set[uuid.UUID], bool]:
     for value in values:
         if value is None:
             continue
-        try:
-            parsed.add(uuid.UUID(str(value)))
-        except ValueError:
+        if (parsed_id := parse_uuid(value)) is None:
             valid = False
+        else:
+            parsed.add(parsed_id)
     return parsed, valid
 
 

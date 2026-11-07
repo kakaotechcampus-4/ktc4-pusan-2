@@ -230,6 +230,38 @@ def test_failed_action_is_sent_back_and_the_turn_finishes(
     assert resumed["resume"]["action_results"][0]["status"] == "FAILED"
 
 
+def test_ambiguous_pitch_lookup_is_saved_as_a_finished_action(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch
+
+    # 후보가 여럿이라 되묻는 결과도 행동은 끝까지 실행한 것이라 성공으로 둔다
+    db_session.add_all(
+        [Pitch(user_id=user_id, title=title, time_limit_sec=300) for title in ("발표 A", "발표 B")]
+    )
+    db_session.flush()
+    run_id = str(queued_run)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_PITCH",
+        "args": {"pitch_id": None, "name": "발표"},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "어느 발표인지 찾는다",
+        "authorized_by": None,
+    }
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _needs_action(action)))))
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    _run(queued_run, session_factory)
+
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    assert (saved.status, saved.result["status"]) == ("SUCCEEDED", "AMBIGUOUS")
+    sent = agent.requests[1]["resume"]["action_results"][0]
+    assert len(sent["data"]["candidates"]) == 2
+
+
 def test_answer_on_a_deleted_take_cancels_the_run(
     db_session, session_factory, agent, queued_run
 ) -> None:
@@ -407,14 +439,10 @@ def test_same_memory_in_the_final_answer_is_carded_once(
     db_session.flush()
     agent.replies.append(_ndjson(_stream(run_id, ("final", _final(profile_updates=[UPDATE])))))
 
-    asyncio.run(
-        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
-    )
+    asyncio.run(turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point))
 
     answer = db_session.scalar(
-        select(ChatMessage).where(
-            ChatMessage.run_id == queued_run, ChatMessage.role == "assistant"
-        )
+        select(ChatMessage).where(ChatMessage.run_id == queued_run, ChatMessage.role == "assistant")
     )
     assert [card["type"] for card in answer.cards] == ["MEMORY_SAVED"]
     assert len(_profile_items(db_session, user_id)) == 1
@@ -451,9 +479,39 @@ def _upstream_error_without_action(db_session, queued_run) -> None:
     assert db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)) is None
 
 
-def test_mismatched_args_hash_fails_the_run(
-    db_session, session_factory, agent, queued_run
+@pytest.mark.parametrize(
+    "unknown",
+    [
+        {"state": {**STATE, "extra": 1}},
+        {"budget_used": {**BUDGET, "extra": 1}},
+    ],
+    ids=["state", "budget_used"],
+)
+def test_unknown_field_in_resume_parts_fails_before_the_action(
+    db_session, session_factory, agent, queued_run, unknown
 ) -> None:
+    # 다음 호출에 되돌려 보낼 칸에 모르는 칸이 오면 행동을 실행하기 전에 응답을 거절한다
+    run_id = str(queued_run)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_TAKE",
+        "args": {"pitch_id": str(uuid.uuid4()), "take_id": str(uuid.uuid4())},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "기록을 더 본다",
+        "authorized_by": None,
+    }
+    reply = {**_needs_action(action), **unknown}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", reply))))
+
+    _run(queued_run, session_factory)
+
+    _upstream_error_without_action(db_session, queued_run)
+    assert len(agent.requests) == 1
+
+
+def test_mismatched_args_hash_fails_the_run(db_session, session_factory, agent, queued_run) -> None:
     run_id = str(queued_run)
     action = {**_reassess(run_id), "args_hash": "sha256:" + "0" * 64}
     agent.replies.append(_ndjson(_stream(run_id, ("final", _waiting(action)))))
@@ -489,9 +547,7 @@ def test_changed_args_after_approval_are_not_run(
     db_session.flush()
     agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
 
-    asyncio.run(
-        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
-    )
+    asyncio.run(turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point))
 
     sent = agent.requests[1]["resume"]["action_results"][0]
     assert (sent["status"], sent["error"]["code"]) == ("FAILED", "APPROVAL_ARGS_CHANGED")
@@ -516,9 +572,7 @@ def test_float_args_survive_storage_and_run_after_approval(
     db_session.flush()
     agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
 
-    asyncio.run(
-        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
-    )
+    asyncio.run(turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point))
 
     sent = agent.requests[1]["resume"]["action_results"][0]
     assert sent["error"]["code"] == "NOT_FOUND"
@@ -579,3 +633,89 @@ def test_args_hash_follows_the_doc_example() -> None:
     }
 
     assert args_hash("REASSESS", args).startswith("sha256:afdfa41878305b56")
+
+
+def _practice_answer(run_id: str, pitch_id: str, authorized_by: str | None = None) -> dict:
+    action = {
+        "action_id": "p1",
+        "type": "START_PRACTICE",
+        "args": {"pitch_id": pitch_id},
+        "autonomy": "BUTTON",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:p1",
+        "reason": "연습을 권한다",
+        "authorized_by": authorized_by,
+    }
+    message = {
+        "text": "연습해 봐요",
+        "claims": [{"kind": "SYSTEM", "text": "연습해 봐요"}],
+        # AI 가 직접 넣은 버튼 카드는 버리고 BE 가 확인한 카드만 남긴다
+        "cards": [{"type": "START_PRACTICE", "pitch_id": "ai-made"}, {"type": "NOTE"}],
+        "sources": [],
+    }
+    return _final(message=message, actions=[action])
+
+
+def _answer_cards(db_session: Session, run_id: uuid.UUID) -> list[dict[str, Any]]:
+    answer = db_session.scalar(
+        select(ChatMessage).where(ChatMessage.run_id == run_id, ChatMessage.role == "assistant")
+    )
+    return answer.cards
+
+
+def test_start_practice_shows_a_button_for_an_owned_pitch(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch
+
+    pitch = Pitch(user_id=user_id, title="내 발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    run_id = str(queued_run)
+    answer = _practice_answer(run_id, str(pitch.id).upper())
+    agent.replies.append(_ndjson(_stream(run_id, ("final", answer))))
+
+    _run(queued_run, session_factory)
+
+    assert _reload(db_session, queued_run).status == "DONE"
+    button = {"type": "START_PRACTICE", "pitch_id": str(pitch.id)}
+    assert _answer_cards(db_session, queued_run) == [{"type": "NOTE"}, button]
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    assert (saved.type, saved.status, saved.result) == (
+        "START_PRACTICE",
+        "SUCCEEDED",
+        {"pitch_id": str(pitch.id)},
+    )
+
+
+@pytest.mark.parametrize("case", ["someone_else", "not_a_uuid", "rejected"])
+def test_start_practice_without_a_usable_pitch_shows_no_button(
+    db_session, session_factory, agent, queued_run, user_id, case
+) -> None:
+    from pitch_coach_backend.module.pitch.entity import Pitch
+    from pitch_coach_backend.module.user.entity import User
+
+    other = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
+    db_session.add(other)
+    db_session.flush()
+    owner = other.id if case == "someone_else" else user_id
+    pitch = Pitch(user_id=owner, title="발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    authorized_by = None
+    if case == "rejected":
+        # 사용자가 연습하지 말라고 한 말을 근거로 단 버튼은 내지 않는다
+        row = db_session.get(ChatRun, queued_run)
+        row.input = {**row.input, "user_message": "지금은 연습 시작하지 마"}
+        db_session.flush()
+        authorized_by = "연습 시작하지 마"
+    pitch_id = "not-a-uuid" if case == "not_a_uuid" else str(pitch.id)
+    run_id = str(queued_run)
+    answer = _practice_answer(run_id, pitch_id, authorized_by)
+    agent.replies.append(_ndjson(_stream(run_id, ("final", answer))))
+
+    _run(queued_run, session_factory)
+
+    assert _reload(db_session, queued_run).status == "DONE"
+    assert _answer_cards(db_session, queued_run) == [{"type": "NOTE"}]
+    assert db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)) is None

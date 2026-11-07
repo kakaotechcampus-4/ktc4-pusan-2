@@ -18,13 +18,12 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
     ChatRunEvent,
 )
-from pitch_coach_backend.module.chat.repository import charge_daily
+from pitch_coach_backend.module.chat.repository import ACTIVE_RUN_STATUSES, charge_daily
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take
 
 # 한 주기에 끝낼 승인 대기 수. 남은 건은 다음 주기에 고른다
 OVERDUE_LIMIT = 100
-ACTIVE_RUN_STATUSES = ("QUEUED", "RUNNING", "WAITING_APPROVAL")
 
 
 def _locked(stmt: Select) -> Select:
