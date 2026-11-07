@@ -39,6 +39,17 @@ describe('ensureFirstTakePitch', () => {
     vi.mocked(getScript).mockResolvedValue(mapped);
   });
 
+  it('이미 취소된 요청은 데이터를 생성하지 않는다', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(ensureFirstTakePitch(vi.fn(), controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(fetchPitchList).not.toHaveBeenCalled();
+    expect(createPitch).not.toHaveBeenCalled();
+  });
+
   it('기존 샘플은 재사용하고 Take를 만들지 않는다', async () => {
     vi.mocked(fetchPitchList).mockResolvedValue({
       pitches: [
