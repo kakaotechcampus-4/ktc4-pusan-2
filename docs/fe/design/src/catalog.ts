@@ -27,8 +27,8 @@ export const PRODUCT_CHECKED: {
   pending: [
     {
       pr: 874,
-      head: 'c95f52db',
-      what: '처리 중 · 끝 장 버튼은 aria-disabled로 막음(Button 모양 추가), 설문 · 동의 · 수정 대본 매핑 뒤 초점 이동',
+      head: '71a64d35',
+      what: '처리 중 · 끝 장 버튼은 aria-disabled로 막음(Button 모양 · 키보드 가드 추가), 설문 · 동의 · 수정 대본 매핑 뒤 초점 이동',
     },
   ],
 };
