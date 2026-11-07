@@ -753,3 +753,46 @@ def test_provider_streak_counts_calls_in_completion_order_across_runs() -> None:
             m.invoke(req, lambda _n: True)
     assert [ev.provider_failure(c) for c in seen] == [True, True, False, True]
     assert seen == [*a.records[:2], *b.records, a.records[2]]
+
+
+# ── 자료 묶음 없이 일반 조언: '찾은 것' 기준이 코어와 같은가 (6-10 · L1-21, #977 리뷰) ─────────────
+
+
+def test_search_without_a_corpus_counts_as_searched_so_general_advice_is_no_violation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """자료 묶음 준비 실패(`search_guides` 의 `ERROR` · `CORPUS_UNAVAILABLE`)도 찾은 것이다. 그 뒤의 일반 조언
+    문장을 'GENERAL 금지 위반'으로 세지 않는다(제품 규칙과 지표가 같아야 한다)."""
+    import dataclasses
+
+    real = ev.scn.build_world
+    monkeypatch.setattr(
+        ev.scn, "build_world", lambda sc: dataclasses.replace(real(sc), corpus=None)
+    )
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[_request(_msg("svc-general-guide-found"))]),
+            F.tools(("search_guides", {"query": "긴장"})),
+            F.done(),
+        ],
+        answers=[F.answer([F.claim("GENERAL", "긴장될 때는 첫 문장을 천천히 말해 보세요.")])],
+        fixes=[F.fix({})],
+    )
+    r = ev.run_one(BY_ID["svc-general-guide-found"], 0, llm, F.SECRET, ev.RunnerConfig(repeat=1))
+    assert r.general_violations == []
+
+
+def test_searched_reads_the_corpus_error_from_diagnostics_not_other_errors() -> None:
+    """진행 줄 trace 에는 오류 코드가 없다: `ERROR` 는 진단 기록 `TOOL` 단계의 `error_code` 로 가린다."""
+    from types import SimpleNamespace as NS
+
+    def run(error_code: str | None) -> Any:
+        progress = [
+            {"event": "tool_done", "data": {"trace": {"tool": "search_guides", "outcome": "ERROR"}}}
+        ]
+        step = {"kind": "TOOL", "code": "search_guides", "detail": {"error_code": error_code}}
+        return NS(progress=progress, calls=[NS(diagnostics={"steps": [step]})])
+
+    assert ev._searched([run("CORPUS_UNAVAILABLE")]) is True
+    assert ev._searched([run("TOOL_FAILED")]) is False
+    assert ev._searched([run(None)]) is False

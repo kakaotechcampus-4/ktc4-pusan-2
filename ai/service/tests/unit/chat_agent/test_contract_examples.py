@@ -170,7 +170,11 @@ def test_example_files_match_builder() -> None:
             else json.dumps(content, ensure_ascii=False, indent=2, allow_nan=False)
         )
         on_disk = _read(name).replace("\r\n", "\n")  # 줄 끝 자동 변환(CRLF)은 무시한다
-        assert on_disk == text + "\n", f"{name} 이 오래됐다: python -m chat_agent_lab.examples"
+        assert on_disk == text + "\n", (
+            f"{name} 이 오래됐다. ai/service 에서 "
+            "`uv run python -m tests.unit.chat_agent.example_builder` 로 다시 만든다 "
+            "(또는 연구 폴더에서 `python -m chat_agent_lab.examples`)"
+        )
 
 
 def test_resume_example_passes_state_and_pairing_checks() -> None:

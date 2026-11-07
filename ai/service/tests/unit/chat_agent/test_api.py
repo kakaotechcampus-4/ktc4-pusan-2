@@ -65,6 +65,14 @@ def _run_ended(rt: Any) -> bool:
 
 @pytest.fixture
 def enabled_client() -> Iterator[TestClient]:
+    """켜짐 + 서명 키. 시험이 `app.state.chat_agent_runtime` 에 가짜 모델 자원을 넣는다."""
+    with TestClient(create_app(_settings(agent_enabled=True, agent_state_secret=SECRET))) as c:
+        yield c
+
+
+@pytest.fixture
+def keyless_client() -> Iterator[TestClient]:
+    """켜졌지만 서명 키가 없다."""
     with TestClient(create_app(_settings(agent_enabled=True))) as c:
         yield c
 
@@ -108,7 +116,7 @@ def test_disabled_is_503_agent_disabled_and_builds_nothing() -> None:
 
 
 def test_existing_review_path_is_unchanged_when_chat_is_enabled(
-    enabled_client: TestClient,
+    keyless_client: TestClient,
 ) -> None:
     """대화를 켜도(서명 키 · 모델 없음) 기존 리뷰는 기본 결과 200 그대로다(L5-01 · L5-33)."""
     from pitch_coach_ai.features.review import core as review_core
@@ -118,17 +126,31 @@ def test_existing_review_path_is_unchanged_when_chat_is_enabled(
             encoding="utf-8"
         )
     )
-    assert enabled_client.post(URL, json=_compare_request()).status_code == 503
-    r = enabled_client.post("/takes/review", json=req)
+    assert keyless_client.post(URL, json=_compare_request()).status_code == 503
+    r = keyless_client.post("/takes/review", json=req)
     assert r.status_code == 200 and r.json()["fallback_reason"] == "LLM_UNAVAILABLE"
 
 
 def test_enabled_without_signing_key_is_503_agent_disabled_only_on_the_chat_path(
-    enabled_client: TestClient,
+    keyless_client: TestClient,
 ) -> None:
-    r = enabled_client.post(URL, json=_compare_request())
+    r = keyless_client.post(URL, json=_compare_request())
     assert (r.status_code, r.json()["error"]["code"]) == (503, "AGENT_DISABLED")
-    assert enabled_client.get("/health").status_code == 200
+    assert keyless_client.get("/health").status_code == 200
+
+
+@pytest.mark.parametrize("secret", [None, SecretStr("short")])
+@pytest.mark.parametrize(
+    "body", [b"{not json", b"x" * (2 * 1024 * 1024 + 1)], ids=["bad-json", "over-2mib"]
+)
+def test_missing_or_short_key_is_503_before_building_or_reading_anything(
+    secret: SecretStr | None, body: bytes
+) -> None:
+    """키가 없거나 짧으면 본문이 잘못됐거나 커도 503 `AGENT_DISABLED` 이고 자원을 만들지 않는다(11-1)."""
+    with TestClient(create_app(_settings(agent_enabled=True, agent_state_secret=secret))) as c:
+        r = c.post(URL, content=body, headers={"content-type": "application/json"})
+        assert (r.status_code, r.json()["error"]["code"]) == (503, "AGENT_DISABLED")
+        assert getattr(c.app.state, "chat_agent_runtime", None) is None
 
 
 def test_enabled_with_key_but_no_model_bundle_is_503_llm_unavailable() -> None:
@@ -356,7 +378,7 @@ def test_client_disconnect_stops_new_model_calls_and_returns_the_slot(spec: str)
     entered, gate = threading.Event(), threading.Event()
     llm = _slow_llm(entered, gate)
     rt = _runtime(llm)
-    app = create_app(_settings(agent_enabled=True))
+    app = create_app(_settings(agent_enabled=True, agent_state_secret=SECRET))
     app.state.chat_agent_runtime = rt
     body = json.dumps(_compare_request()).encode()
     sent: list[bytes] = []
@@ -400,7 +422,7 @@ def test_disconnect_before_the_first_line_returns_the_slot_without_answering(spe
 
     llm = F.FakeLlm([slow_plan, F.tools(COMPARE), F.done(), compare_answer()])
     rt = _runtime(llm)
-    app = create_app(_settings(agent_enabled=True))
+    app = create_app(_settings(agent_enabled=True, agent_state_secret=SECRET))
     app.state.chat_agent_runtime = rt
     body = json.dumps(_compare_request()).encode()
 
@@ -439,7 +461,7 @@ def test_body_in_many_chunks_is_counted_not_trusted_from_content_length(
     content_length: int | None,
 ) -> None:
     rt = _runtime(_compare_llm())
-    app = create_app(_settings(agent_enabled=True))
+    app = create_app(_settings(agent_enabled=True, agent_state_secret=SECRET))
     app.state.chat_agent_runtime = rt
     limit = rt.cfg.max_request_bytes
     parts = [b"{" + b" " * (limit // 3)] * 4  # 넷째 조각에서 한도를 넘는다
@@ -470,8 +492,12 @@ def test_body_in_many_chunks_is_counted_not_trusted_from_content_length(
     assert rt.active == 0 and rt.llm.calls == []
 
 
-def test_send_blocked_over_two_seconds_cancels_the_turn(monkeypatch: pytest.MonkeyPatch) -> None:
-    """보내기가 상한을 넘게 막히면 턴에 취소 신호를 보내고 자리를 돌려준다(쓰기 대기 상한, L1-08)."""
+def test_send_blocked_over_two_seconds_cancels_the_turn(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[logging.LogRecord]
+) -> None:
+    """보내기가 상한을 넘게 막히면 턴에 취소 신호를 보내고 자리를 돌려준다(쓰기 대기 상한, L1-08).
+
+    느린 소비자는 계약이 예상한 상황이라 예외로 올리지 않고 한 줄만 남긴다."""
     monkeypatch.setattr(api, "WRITE_TIMEOUT_SECONDS", 0.05)
     entered, gate = threading.Event(), threading.Event()
     llm = _slow_llm(entered, gate)
@@ -496,10 +522,7 @@ def test_send_blocked_over_two_seconds_cancels_the_turn(monkeypatch: pytest.Monk
             return {"type": "http.disconnect"}
 
         scope = {"type": "http", "asgi": {"spec_version": "2.4"}}
-        # 보내기 시간 초과는 OSError 계열이라 Starlette 가 연결 끊김(ClientDisconnect)으로 바꾼다
-        with pytest.raises(Exception) as ei:  # noqa: B017  # 아래에서 종류를 본다
-            await response(scope, receive, send)
-        assert type(ei.value).__name__ in ("ClientDisconnect", "TimeoutError")
+        await response(scope, receive, send)  # 예외로 올리지 않는다
         return stream.reason
 
     reason = anyio.run(main)
@@ -507,6 +530,266 @@ def test_send_blocked_over_two_seconds_cancels_the_turn(monkeypatch: pytest.Monk
     assert reason == "write_timeout"
     assert _wait(lambda: rt.active == 0)
     assert "ANSWER" not in [c.purpose for c in llm.calls]
+    msgs = [r.getMessage() for r in log_records]
+    assert [m for m in msgs if m.startswith("agent_stream_write_timeout")] == [
+        "agent_stream_write_timeout request_id=req-w lines=0"
+    ]
+    assert [m.split(" duration_ms")[0] for m in msgs if m.startswith("agent_stream ")] == [
+        "agent_stream request_id=req-w end=write_timeout lines=0"
+    ]
+
+
+def test_send_blocked_through_the_whole_app_leaves_no_unhandled_error(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[logging.LogRecord]
+) -> None:
+    """운영 구성(ASGI 2.3 + 요청 로그 미들웨어)으로 앱 전체를 부르고 서버 쪽 보내기를 계속 막는다.
+
+    - 2초 상한은 서버로 실제로 보내는 곳에서 잰다(미들웨어 내부 큐가 아니라): 막힌 보내기를 끊고
+      앱이 돌아온다(서버가 연결을 닫는다). 예외 · 처리되지 않은 오류 로그로 올라가지 않는다.
+    - 요약 줄의 `lines=` 는 서버로 실제로 보낸 줄 수다. 받는 쪽은 끝 줄 없는 응답으로 본다(5-4)."""
+    monkeypatch.setattr(api, "WRITE_TIMEOUT_SECONDS", 0.05)
+    rt = _runtime(_compare_llm())
+    app = create_app(_settings(agent_enabled=True, agent_state_secret=SECRET))
+    app.state.chat_agent_runtime = rt
+    body = json.dumps(_compare_request()).encode()
+    sent: list[bytes] = []
+
+    async def main() -> None:
+        state = {"read": False}
+
+        async def receive() -> Any:
+            if not state["read"]:
+                state["read"] = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            await anyio.sleep(10)
+            return {"type": "http.disconnect"}
+
+        async def send(message: Any) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                if sent:
+                    await anyio.sleep_forever()  # 첫 줄 뒤로는 읽지 않는 소비자(서버 버퍼가 참)
+                sent.append(message["body"])
+
+        with anyio.fail_after(5):
+            await app(_asgi_scope(body, spec="2.3"), receive, send)  # 예외 없이 끝난다
+
+    anyio.run(main)
+    assert _wait(lambda: rt.active == 0)
+    msgs = [r.getMessage() for r in log_records]
+    assert not any(m.startswith("unhandled_error") for m in msgs)
+    assert not any(r.levelno >= logging.ERROR for r in log_records)
+    assert [m for m in msgs if m.startswith("agent_stream_write_timeout")] == [
+        "agent_stream_write_timeout request_id=" + _rid(msgs) + " lines=1"
+    ]
+    ends = [m for m in msgs if m.startswith("agent_stream ")]
+    assert len(ends) == 1 and " end=write_timeout lines=1 " in ends[0]  # 실제로 보낸 줄 수
+    got = [json.loads(x) for x in b"".join(sent).splitlines() if x]
+    assert [ln["event"] for ln in got] == ["plan"]
+    assert not any(ln["event"] in ("final", "error") for ln in got)  # 끝 줄 없이 끝남
+
+
+def test_send_blocked_during_a_model_call_ends_the_response_without_waiting_for_the_model(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[logging.LogRecord]
+) -> None:
+    """앱 전체(ASGI 2.3)에서 첫 줄 뒤 서버 보내기가 막히고 모델 호출은 아직 도는 중이어도, 상한이 지나면
+    모델을 기다리지 않고 앱이 돌아온다(연결 정리). 자리는 코어가 끝난 뒤 돌려준다."""
+    monkeypatch.setattr(api, "WRITE_TIMEOUT_SECONDS", 0.05)
+    entered, gate = threading.Event(), threading.Event()
+    llm = _slow_llm(entered, gate)
+    rt = _runtime(llm)
+    app = create_app(_settings(agent_enabled=True, agent_state_secret=SECRET))
+    app.state.chat_agent_runtime = rt
+    body = json.dumps(_compare_request()).encode()
+
+    async def main() -> float:
+        state = {"read": False}
+
+        async def receive() -> Any:
+            if not state["read"]:
+                state["read"] = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            await anyio.sleep(10)
+            return {"type": "http.disconnect"}
+
+        async def send(message: Any) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                # 모델이 조사 호출 안에서 기다리는 동안 첫 줄 보내기가 막힌다(서버 버퍼가 참)
+                await anyio.to_thread.run_sync(entered.wait, 3)
+                await anyio.sleep_forever()
+
+        started = time.monotonic()
+        with anyio.fail_after(5):
+            await app(_asgi_scope(body, spec="2.3"), receive, send)
+        return time.monotonic() - started
+
+    took = anyio.run(main)
+    assert not gate.is_set()  # 모델 호출이 아직 막혀 있는 동안 돌아왔다
+    assert took < 2.5
+    gate.set()
+    assert _wait(lambda: rt.active == 0)
+    assert "ANSWER" not in [c.purpose for c in llm.calls]
+    msgs = [r.getMessage() for r in log_records]
+    ends = [m for m in msgs if m.startswith("agent_stream ")]
+    assert len(ends) == 1 and " end=write_timeout " in ends[0]
+
+
+def test_send_guard_is_the_outermost_user_middleware() -> None:
+    """보내기 상한 미들웨어는 요청 로그(`BaseHTTPMiddleware`)보다 바깥이어야 실제 보내기를 잰다(안쪽이면
+    조용히 내부 큐까지만 잰다). 미들웨어를 더하거나 순서를 바꿔도 이 순서가 깨지지 않게 고정한다."""
+    app = create_app(_settings())
+    assert app.user_middleware[0].cls is api.StreamSendGuard
+
+
+@pytest.mark.parametrize(
+    ("root_path", "path", "guarded"),
+    [
+        ("", "/agent/turn", True),
+        ("/ai", "/ai/agent/turn", True),  # 경로 접두어를 붙여 배포해도 건다(라우터와 같은 기준)
+        ("", "/agent/turns", False),
+        ("", "/health", False),
+        ("/ai", "/aiagent/turn", False),
+    ],
+)
+def test_send_guard_matches_the_route_path_like_the_router(
+    root_path: str, path: str, guarded: bool
+) -> None:
+    seen: list[bool] = []
+
+    async def inner(scope: Any, _receive: Any, _send: Any) -> None:
+        seen.append(api.SEND_METER in scope)
+
+    async def noop(*_a: Any) -> Any:
+        return None
+
+    scope = {"type": "http", "path": path, "root_path": root_path}
+    anyio.run(api.StreamSendGuard(inner), scope, noop, noop)
+    assert seen == [guarded]
+
+
+def test_core_lines_start_with_the_event_key_for_end_line_detection() -> None:
+    """읽기 스레드는 줄을 다시 해석하지 않고 앞부분(`{"event":"final"` · `{"event":"error"`)으로 끝 줄을
+    알고, seq 는 줄 수로 센다. 코어 줄 쓰기가 이 모양을 지키는지 고정한다."""
+    rt = _runtime(_compare_llm())
+    resp = api.handle_turn(json.dumps(_compare_request()).encode(), rt.deps(), secret=F.SECRET)
+    assert resp.lines is not None and resp.run_id == "run-81"
+    lines = list(resp.lines)
+    for i, line in enumerate(lines, start=1):
+        obj = json.loads(line)
+        assert line.startswith('{"event":"' + obj["event"] + '"') and obj["seq"] == i
+    assert lines[-1].startswith(api._TERMINAL_PREFIXES)
+    assert not any(x.startswith(api._TERMINAL_PREFIXES) for x in lines[:-1])
+
+
+def _rid(msgs: list[str]) -> str:
+    """요청 로그 줄에서 요청 ID(미들웨어가 만든 값)를 꺼낸다."""
+    line = next(m for m in msgs if m.startswith("request_id=") and "path=/agent/turn" in m)
+    return line.split()[0].removeprefix("request_id=")
+
+
+def test_normal_end_is_never_logged_as_client_gone() -> None:
+    """코어 줄을 모두 보낸 정상 끝은 늘 `done` 이다. 읽기 스레드가 끝 표시를 넣은 직후 아직 돌아오지
+    않았어도(스레드가 살아 있음) 끊김으로 세지 않는다(정상 끝 경쟁 조건)."""
+
+    def fast_lines() -> Iterator[str]:
+        yield '{"event":"final","run_id":"run-f","seq":1,"data":{}}\n'
+
+    async def one() -> str:
+        resp = api.TurnResponse(lines=fast_lines(), cancel=lambda: None, run_id="run-f")
+        stream = api.TurnStream(resp, lambda: None, request_id="req-f")
+
+        async def send(_m: Any) -> None:
+            return None
+
+        async def receive() -> Any:
+            await anyio.sleep(10)
+            return {"type": "http.disconnect"}
+
+        await api.TurnStreamResponse(stream)(
+            {"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send
+        )
+        return stream.reason
+
+    async def many() -> list[str]:
+        return [await one() for _ in range(300)]
+
+    assert set(anyio.run(many)) == {"done"}
+
+
+def test_disconnect_while_sending_the_end_line_shows_in_the_summary(
+    log_records: list[logging.LogRecord],
+) -> None:
+    """코어가 끝난 뒤 끝 줄을 보내다 끊겨도 요약 줄의 `end=` 에 드러난다(펌프가 다 읽은 때가 아니라
+    응답이 끝난 때 남긴다)."""
+    rt = _runtime(_compare_llm())
+
+    async def main() -> None:
+        resp = await anyio.to_thread.run_sync(
+            lambda: api.handle_turn(
+                json.dumps(_compare_request()).encode(), rt.deps(), secret=F.SECRET
+            )
+        )
+        assert rt.try_acquire()
+        stream = api.TurnStream(resp, rt.release, request_id="req-end")
+        response = api.TurnStreamResponse(stream)
+
+        async def send(message: Any) -> None:
+            if b'"event":"final"' in message.get("body", b""):
+                raise OSError("끊김")
+
+        async def receive() -> Any:
+            await anyio.sleep(10)
+            return {"type": "http.disconnect"}
+
+        with pytest.raises(Exception):  # noqa: B017  # 2.4 는 Starlette 가 ClientDisconnect 로 바꾼다
+            await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+
+    anyio.run(main)
+    assert _wait(lambda: rt.active == 0)
+    ends = [r.getMessage() for r in log_records if r.getMessage().startswith("agent_stream ")]
+    assert len(ends) == 1 and " end=client_gone " in ends[0]
+
+
+def test_core_iterator_exception_still_sends_one_error_end_line(
+    log_records: list[logging.LogRecord],
+) -> None:
+    """코어 반복자가 끝 줄 없이 예외로 멈추면 읽기 스레드가 `error` 끝 줄 하나를 대신 낸다(두 번째 방어,
+    5-4 '끝 줄은 정확히 하나' · L1-08). 자리는 돌려준다."""
+    plan = json.dumps(
+        {"event": "plan", "run_id": "run-x", "seq": 1, "data": {}}, separators=(",", ":")
+    )
+
+    def lines() -> Iterator[str]:
+        yield plan + "\n"
+        raise RuntimeError("코어 버그")
+
+    released: list[int] = []
+    sent: list[bytes] = []
+
+    async def main() -> str:
+        resp = api.TurnResponse(lines=lines(), cancel=lambda: None, run_id="run-x")
+        stream = api.TurnStream(resp, lambda: released.append(1), request_id="req-p")
+        response = api.TurnStreamResponse(stream)
+
+        async def send(message: Any) -> None:
+            if message.get("body"):
+                sent.append(message["body"])
+
+        async def receive() -> Any:
+            await anyio.sleep(10)
+            return {"type": "http.disconnect"}
+
+        await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        return stream.reason
+
+    assert anyio.run(main) == "pump_error"
+    got = [json.loads(x) for x in b"".join(sent).splitlines() if x]
+    assert [ln["event"] for ln in got] == ["plan", "error"]
+    assert got[1]["run_id"] == "run-x" and got[1]["seq"] == 2
+    assert got[1]["data"]["error"]["code"] == "INTERNAL_ERROR"
+    assert released == [1]
+    msgs = [r.getMessage() for r in log_records]
+    assert "agent_stream_error request_id=req-p cause=RuntimeError" in msgs
+    assert not any("코어 버그" in m for m in msgs)
 
 
 # ── 자료 묶음 (6-10 · L1-21 · L4-29) ─────────────────────────────────────────────
@@ -522,6 +805,41 @@ def test_service_reads_only_reviewed_cards_and_starts_without_them_now(
     assert lines == ["chat_agent_corpus_unavailable reason=UNREVIEWED"]  # 이유 코드만, 카드 id 없음
     # 검수 여부만 빼면 묶음 자체(목록 · 해시 · 라이선스 · 형식)는 온전하다
     assert api.load_corpus(allow_unreviewed=True) is not None
+
+
+def test_runtime_is_built_once_per_app_even_under_concurrent_first_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`tool_llm` 은 부를 때마다 새 실행 풀을 만들므로, 자원은 앱(프로세스)에서 한 번만 만든다."""
+    built: list[dict[str, Any]] = []
+
+    def fake_tool_llm(*_a: Any, **kw: Any) -> Any:
+        built.append(kw)
+        time.sleep(0.05)  # 만드는 동안 다른 요청이 들어온다
+        return F.FakeLlm([])
+
+    monkeypatch.setattr(api, "tool_llm", fake_tool_llm)
+    app = create_app(_settings(agent_enabled=True, agent_state_secret=SECRET))
+    got: list[Any] = []
+    threads = [threading.Thread(target=lambda: got.append(api.runtime_for(app))) for _ in range(4)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    got.append(api.runtime_for(app))
+    assert len(built) == 1
+    assert all(rt is got[0] and rt.llm is got[0].llm for rt in got)
+
+
+def test_runtime_caps_one_model_call_at_the_core_answer_share(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """대화 호출 한 번의 상한은 코어 설정의 답 몫(24초 / 2 = 12초)이다(`LLM_TIMEOUT_SECONDS` 를 올려도)."""
+    seen: list[dict[str, Any]] = []
+    monkeypatch.setattr(api, "tool_llm", lambda *_a, **kw: seen.append(kw) or None)
+    s = _settings(agent_enabled=True, agent_state_secret=SECRET, llm_timeout_seconds=20)
+    api.AgentRuntime.from_settings(s)
+    assert seen[0]["max_call_seconds"] == 12.0 and seen[0]["pool_size"] == 8
 
 
 def test_runtime_built_from_settings_has_no_corpus_until_cards_are_reviewed() -> None:

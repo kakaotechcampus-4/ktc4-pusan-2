@@ -1,6 +1,9 @@
 """가상 기록 만들기 — 피치 · Take · 코치 Take 결과 · 리뷰 · 대본 전달도 (연구 전용).
 
-- 누가 쓰나: 예시 JSON 만들기(examples.py) · 가짜 BE(fake_be.py) · 평가 시나리오 실행기(evals/).
+- 누가 쓰나: 예시 JSON 만들기(example_builder.py) · 서비스 단위 시험, 그리고 연구 모듈의 가짜 BE(fake_be.py) ·
+  평가 시나리오 실행기(evals.py · scenario.py).
+- 연구 모듈도 쓴다: 연구 `chat_agent_lab.service_tests`가 이 파일을 실행 코드(가짜 BE · 평가 · 예시 명령)에서 가져다 쓴다
+  (기능 문서 4-1 · 10-2). 이름 · 모양을 바꾸면 연구 모듈 시험(`ai/research/chat-agent`에서 pytest)도 돌린다.
 - 모양은 실제 저장 payload 와 같다: 코치 Take 결과는 서비스 `features/coach/examples/finalize/response.json`의
   `take_result`, 리뷰는 `features/review/examples/review/response.json`. 숫자는 가상이고 실제 사용자 기록이 아니다
   (기능 문서 13-1: 실제 사용자 기록은 동의 없이 쓰지 않는다).

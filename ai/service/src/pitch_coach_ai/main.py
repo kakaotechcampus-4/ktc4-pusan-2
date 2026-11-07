@@ -72,6 +72,8 @@ def create_app(
     # 모든 에러를 {"error": {"code", "message"}} 로, 요청마다 X-Request-ID 와 한 줄 로그
     register_exception_handlers(app)
     register_request_log(app)
+    # 대화 스트림의 실제 보내기에 2초 상한(가장 바깥, 요청 로그보다 뒤에 더해야 바깥이 된다)
+    app.add_middleware(chat_agent.StreamSendGuard)
     app.include_router(health.router)
     app.include_router(script_parser.router)
     app.include_router(script_coverage.router)
