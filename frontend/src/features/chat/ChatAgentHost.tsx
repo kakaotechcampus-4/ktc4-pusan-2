@@ -1,5 +1,4 @@
 import {
-  Component,
   useEffect,
   useId,
   useRef,
@@ -10,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useLocation } from 'react-router';
+import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { useSession } from '@/shared/api/useSession';
 import { canShowChat, chatLauncherBottom } from './chatRoutes';
 
@@ -29,18 +29,6 @@ export function ChatAgentHost() {
       <ChatLayer />
     </ChatErrorBoundary>
   );
-}
-
-class ChatErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
 }
 
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
