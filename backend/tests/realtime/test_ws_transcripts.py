@@ -26,9 +26,8 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.storage import transcripts as transcripts_module
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer, TranscriptBuffer
-from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
+from pitch_coach_backend.realtime.stream import finish, registry, state, transcript_sender
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
-from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
@@ -245,7 +244,7 @@ async def test_final_that_fails_to_send_is_resent_on_reconnect():
 
 @pytest.mark.anyio
 async def test_final_that_times_out_is_resent_on_reconnect(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(transcript_sender, "FINAL_SEND_TIMEOUT_SEC", 0.05)
     store = FakeTranscriptStore()
     stream = _final_stream(store)
     stuck = StuckWebSocket()
@@ -290,7 +289,7 @@ async def test_interim_does_not_hold_up_stt_while_the_client_is_slow():
         await asyncio.wait_for(stream._on_transcript(transcript(0, 200, text, is_final=False)), 0.1)
     stuck.stuck = False
     stuck.release.set()
-    await asyncio.wait_for(stream._interim_task, 1.0)
+    await asyncio.wait_for(stream._sender._interim_task, 1.0)
 
     assert _texts(stuck) == [("0-1", "하나"), ("0-1", "하나 둘 셋")]
 
@@ -299,7 +298,7 @@ async def test_interim_does_not_hold_up_stt_while_the_client_is_slow():
 async def test_old_interim_does_not_arrive_after_its_final(monkeypatch: pytest.MonkeyPatch):
     """같은 구간의 interim 이 final 뒤에 닿으면 FE 는 같은 `segment_id` 로 덮는다. final 앞에서
     남은 interim 을 버리고 보내는 중인 것은 상한까지 기다렸다 끊는다."""
-    monkeypatch.setattr(runtime, "INTERIM_SEND_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(transcript_sender, "INTERIM_SEND_TIMEOUT_SEC", 0.05)
     stream = _final_stream(FakeTranscriptStore())
     stuck = StuckWebSocket()
     await stream.attach(stuck)
@@ -322,7 +321,7 @@ async def test_final_that_failed_while_another_tab_caught_up_goes_to_that_tab(
 ):
     """옛 연결로 보내는 동안 다른 탭이 이어받아 놓친 final 을 이미 받았다. 실패한 final 을 다음
     재연결까지 들고 있으면 지금 탭의 화면에서 그 구간이 빈다."""
-    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(transcript_sender, "FINAL_SEND_TIMEOUT_SEC", 0.2)
     store = FakeTranscriptStore()
     stream = _final_stream(store)
     old_tab = StuckWebSocket()
@@ -839,14 +838,37 @@ def test_deleting_the_take_cuts_its_live_stream(
     assert registry.active_count() == 0
 
 
-def test_deleting_the_pitch_cuts_the_live_streams_of_its_takes(
+def test_deleting_the_pitch_is_refused_while_its_take_is_running(
     client: TestClient, stt: FakeSttAdapter, token: str, take: Take
 ):
-    """발표를 지우면 Take 가 CASCADE 로 같이 지워진다. 그 Take 의 스트림도 같이 끊는다."""
+    """발표 중인 Take 가 있으면 지우지 않는다. 그 스트림도 그대로 돈다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+        response = client.delete(
+            f"/api/pitches/delete/{take.pitch_id}", headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "PITCH_BUSY"
+        assert registry.active_count() == 1
+        session = stt.session
+        assert session is not None
+        assert not session.aborted
+
+
+def test_deleting_the_pitch_cuts_a_stream_left_on_a_stalled_take(
+    client: TestClient, db_session: Session, stt: FakeSttAdapter, token: str, take: Take
+):
+    """지워도 되는 Take 에 스트림이 남아 있으면 Take 가 CASCADE 로 지워질 때 같이 끊는다."""
     pitch_id = take.pitch_id
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
+        take.status = "ANALYZING"
+        take.analysis_hold_reason = "COVERAGE_RESCORE_FAILED"
+        db_session.commit()
 
         response = client.delete(
             f"/api/pitches/delete/{pitch_id}", headers={"Authorization": f"Bearer {token}"}

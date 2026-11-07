@@ -8,4 +8,6 @@
 #: voiced_ms 기준 · audio_live, 침묵은 오디오가 다시 흐른 첫 1초의 시작부터 센다
 #: volume-1.1: 판정 시각에 끝나는 1초가 없으면 두 영역 UNKNOWN, 기록이 없는 시간의 tally 는
 #: 1초씩(끝 조각 포함) 낸다 (#589)
-FEATURE_VERSION = "volume-1.1"
+#: volume-1.2: VOLUME_LOW persistence_sec 을 앞 기록의 끝과 다음 기록의 시작이 이어지지 않는 곳에서
+#: 멈춤 (#589 4-3)
+FEATURE_VERSION = "volume-1.2"

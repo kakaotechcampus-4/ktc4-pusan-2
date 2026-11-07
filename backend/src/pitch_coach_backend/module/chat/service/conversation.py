@@ -1,12 +1,14 @@
 """대화 만들기 · 목록 · 범위 바꾸기 · 메시지 목록(chat-agent.md 12-3 대화 API)."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.api_dto import (
+    RESPONSE_MAX_BYTES,
     ChatMessageResponse,
     ConversationListItem,
     ConversationListResponse,
@@ -17,6 +19,8 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage
 from pitch_coach_backend.module.chat.exception import ChatRunInProgress, ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.conversation_cursor import decode_cursor, encode_cursor
+from pitch_coach_backend.module.chat.service.owned import parse_uuid
 from pitch_coach_backend.module.chat.service.request import APP_STARTED_AT, current_sources
 from pitch_coach_backend.module.chat.service.stale import (
     MASKED_TEXT,
@@ -30,25 +34,32 @@ CONVERSATIONS_LIMIT = 50
 
 
 def create_conversation(
-    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, memory_off: bool
 ) -> ConversationResponse:
     pitch_title = _owned_pitch_title(db, user_id, pitch_id)
     # 제목은 첫 질문 앞부분이다. 첫 메시지를 받을 때 채운다
-    conversation = ChatConversation(user_id=user_id, scope_pitch_id=pitch_id, title="")
+    conversation = ChatConversation(
+        user_id=user_id, scope_pitch_id=pitch_id, title="", without_memory=memory_off
+    )
     db.add(conversation)
     db.commit()
     return _conversation_view(conversation, pitch_title)
 
 
 def list_conversations(
-    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, cursor: str | None
 ) -> ConversationListResponse:
+    after = decode_cursor(cursor) if cursor is not None else None
     repo = ChatApiRepository(db)
-    rows = repo.list_conversations(user_id, pitch_id, limit=CONVERSATIONS_LIMIT)
+    rows = repo.list_conversations(user_id, pitch_id, limit=CONVERSATIONS_LIMIT + 1, after=after)
+    has_more = len(rows) > CONVERSATIONS_LIMIT
+    # 더 읽은 한 행은 다음 쪽이 있는지만 알린다. '최신 아님' 계산에 넣지 않는다
+    rows = rows[:CONVERSATIONS_LIMIT]
     answers = repo.latest_answers([row.ChatConversation.id for row in rows])
     goal_versions = {row.ChatConversation.id: row.ChatConversation.goal_version for row in rows}
     reasons = _stale_reasons_of(db, user_id, answers, goal_versions)
     stale = {answer.conversation_id: bool(reasons[answer.id]) for answer in answers}
+    last = rows[-1].ChatConversation if has_more else None
     return ConversationListResponse(
         conversations=[
             ConversationListItem(
@@ -56,7 +67,8 @@ def list_conversations(
                 stale=stale.get(row.ChatConversation.id, False),
             )
             for row in rows
-        ]
+        ],
+        next_cursor=encode_cursor(last.last_user_activity_at, last.id) if last else None,
     )
 
 
@@ -95,6 +107,9 @@ def list_messages(
     conversation = repo.get_owned_conversation(conversation_id, user_id)
     if conversation is None:
         raise ChatTargetNotFound()
+    if before_seq is None:
+        ChatRepository(db).touch_conversation_opened(conversation_id, datetime.now(UTC))
+        db.commit()
     messages = ChatRepository(db).list_recent_messages(
         conversation_id, before_seq=before_seq, limit=limit + 1
     )
@@ -115,12 +130,29 @@ def list_messages(
         [row.assessments for row in judged if not _uses_gone_source(row, current)]
     )
     reasons = _stale_reasons_of(db, user_id, messages, {conversation_id: conversation.goal_version})
+    views = [
+        _message_view(message, current, superseded, reasons[message.id]) for message in messages
+    ]
+    # 가린 메시지는 가린 크기로 세야 하므로 응답 모양을 만든 뒤에 줄인다. 큰 칸을 다시 읽지 않는다
+    kept = _newest_within_size(views)
     return MessageListResponse(
-        messages=[
-            _message_view(message, current, superseded, reasons[message.id]) for message in messages
-        ],
-        next_before_seq=messages[0].seq if has_more else None,
+        messages=kept,
+        next_before_seq=kept[0].seq if has_more or len(kept) < len(views) else None,
     )
+
+
+def _newest_within_size(views: list[ChatMessageResponse]) -> list[ChatMessageResponse]:
+    """최근 메시지부터 보내는 그대로의 크기를 세어, 한도를 넘는 앞쪽 메시지를 뺀다(12-3).
+
+    최근 메시지 하나는 크기와 상관없이 싣는다. 안 그러면 커서가 나아가지 못한다.
+    """
+    total = 0
+    for index in range(len(views) - 1, -1, -1):
+        # 메시지 사이의 쉼표 몫까지 센다
+        total += len(views[index].model_dump_json().encode("utf-8")) + 1
+        if total > RESPONSE_MAX_BYTES and index < len(views) - 1:
+            return views[index + 1 :]
+    return views
 
 
 def _stale_reasons_of(
@@ -205,6 +237,7 @@ def _conversation_view(
         scope_pitch_title=pitch_title,
         last_user_activity_at=conversation.last_user_activity_at,
         created_at=conversation.created_at,
+        memory_off=conversation.without_memory,
     )
 
 
@@ -232,14 +265,8 @@ def owned_sources(
 
 
 def _parsed(values: set[Any]) -> dict[str, uuid.UUID]:
-    parsed: dict[str, uuid.UUID] = {}
-    for value in values:
-        try:
-            parsed[str(value)] = uuid.UUID(str(value))
-        except ValueError:
-            # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 키를 두지 않아 지워진 것으로 남는다
-            continue
-    return parsed
+    # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 키를 두지 않아 지워진 것으로 남는다
+    return {str(value): parsed for value in values if (parsed := parse_uuid(value)) is not None}
 
 
 def _uses_gone_source(item: ChatMessage | Row, current: dict[str, dict[str, Any]]) -> bool:

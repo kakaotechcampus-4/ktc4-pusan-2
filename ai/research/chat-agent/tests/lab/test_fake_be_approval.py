@@ -1,6 +1,6 @@
 """가짜 BE 승인 흐름 시험 — 승인 대기 · 승인 · 거절 · 만료 · 대기 중 새 메시지 · 해시 불일치 · 승인과 취소 경합 · 선승인 해시 재계산 (기능 문서 6-2 · 12-3).
 
-실제 모델 없이 정해 둔 응답(tests/unit/fakes.py)을 쓰고, BE 쪽은 chat_agent_lab/fake_be.py 가 맡는다.
+실제 모델 없이 정해 둔 응답(서비스 tests/unit/chat_agent/fakes.py)을 쓰고, BE 쪽은 chat_agent_lab/fake_be.py 가 맡는다.
 이름의 L 번호는 기능 문서 7절 실패 행이다(README '실패 행 대응표').
 """
 
@@ -11,9 +11,9 @@ import threading
 from typing import Any
 
 import pytest
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.actions import action_args_hash
 
-from chat_agent import templates
-from chat_agent.actions import action_args_hash
 from chat_agent_lab.fake_be import (
     APPROVAL_WAIT_MS,
     ApprovalError,
@@ -22,7 +22,7 @@ from chat_agent_lab.fake_be import (
     Run,
     content_hash,
 )
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 from .test_fake_be import (
     GOAL_MSG,

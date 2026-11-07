@@ -340,6 +340,12 @@ def script_versions(db: Session, pitch_id: uuid.UUID) -> list[dict[str, Any]]:
             .filter(ScriptSlide.rubric.is_(None))
             .label("missing_rubric_slides"),
         )
+        # 이 발표의 버전만 센다. 조건 없이 묶으면 모든 사용자의 장을 집계한 뒤 바깥에서 거른다
+        .where(
+            ScriptSlide.script_version_id.in_(
+                select(ScriptVersion.id).where(ScriptVersion.pitch_id == pitch_id)
+            )
+        )
         .group_by(ScriptSlide.script_version_id)
         .subquery()
     )

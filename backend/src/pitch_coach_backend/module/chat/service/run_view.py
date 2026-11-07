@@ -11,17 +11,20 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.api_dto import (
+    RESPONSE_MAX_BYTES,
     RunErrorDTO,
     RunEventDTO,
     RunStatusResponse,
 )
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.exception import ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.conversation import owned_sources
-from pitch_coach_backend.module.chat.service.run import add_run_log, release_unsent
-from pitch_coach_backend.module.chat.service.stale import uses_deleted
+from pitch_coach_backend.module.chat.service.goal_check import close_goal_lease
+from pitch_coach_backend.module.chat.service.run import mark_cancelled
+from pitch_coach_backend.module.chat.service.stale import run_source_ids, uses_deleted
 from pitch_coach_backend.module.chat.service.waiting import (
     CANCELLED_TEXT,
     close_waiting,
@@ -31,8 +34,6 @@ from pitch_coach_backend.module.chat.service.waiting import (
 # 화면이 바로 취소할 수 있는 상태.
 # 승인 대기는 대기 행동을 함께 끝내고 고정 문장을 남겨서 따로 처리한다
 CANCELLABLE = ("QUEUED", "RUNNING")
-# 한 응답은 직렬화 뒤 2 MiB 이하다(12-3). 끝맺는 칸 몫을 남긴다
-RESPONSE_MAX_BYTES = 2 * 1024 * 1024 - 4096
 EVENTS_PAGE = 200
 
 
@@ -75,17 +76,12 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
         view = _view(db, run)
         db.rollback()
         return view
-    now = datetime.now(UTC)
     chat_repo = ChatRepository(db)
-    if run.first_trigger == "TAKE_REVIEWED":
-        _close_goal_check(chat_repo, run)
-    release_unsent(chat_repo, run)
-    run.status = "CANCELLED"
-    run.state = None
-    run.error_code = "AGENT_CANCELLED"
-    run.finished_at = now
-    run.row_revision += 1
-    add_run_log(chat_repo, run, now)
+    if run.first_trigger == AgentTrigger.TAKE_REVIEWED:
+        # 임대가 PENDING 으로 남으면 5분 임대가 풀린 뒤 주기 작업이 같은 리뷰로 실행을 다시
+        # 만들고 확인 횟수를 또 줄인다
+        close_goal_lease(chat_repo, run)
+    mark_cancelled(chat_repo, run, datetime.now(UTC))
     db.commit()
     return _view(db, run)
 
@@ -118,17 +114,6 @@ def _cancel_waiting(db: Session, run: ChatRun) -> RunStatusResponse:
 def view_of(db: Session, run: ChatRun) -> RunStatusResponse:
     """이벤트 없이 상태만. 취소 · 승인 · 거절의 응답이다. 이벤트는 화면이 자기 커서로 조회한다."""
     return _view(db, run)
-
-
-def _close_goal_check(repo: ChatRepository, run: ChatRun) -> None:
-    """자동 목표 확인 실행을 취소하면 그 확인도 끝난 것으로 닫는다.
-
-    임대가 PENDING 으로 남으면 5분 임대가 풀린 뒤 주기 작업이 같은 리뷰로 실행을 다시 만들고
-    확인 횟수를 또 줄인다. 실행 → 임대 순서로 잠근다(턴 실행기의 settle_goal_check 와 같다).
-    """
-    lease = repo.lock_goal_check(run.id)
-    if lease is not None and lease.status == "PENDING" and lease.fencing_token == run.fencing_token:
-        lease.status = "DONE"
 
 
 def _view(db: Session, run: ChatRun, after_seq: int | None = None) -> RunStatusResponse:
@@ -234,18 +219,11 @@ def _uses_deleted_sources(db: Session, run: ChatRun) -> bool:
     """실행이 읽은 피치 · Take 가 지워졌거나 남의 것인지. 진행 전체를 가릴 때 쓴다.
 
     정리 작업(cleanup.py `_mask_runs`)이 1시간마다 비우지만 그 사이에도 보이면 안 되므로
-    메시지 목록처럼 읽을 때 다시 본다(12-2 ①). 보는 근거도 정리 작업과 같다.
+    메시지 목록처럼 읽을 때 다시 본다(12-2 ①). 보는 근거는 `run_source_ids` 로 정리 작업과 같다.
     """
-    read = run.read_sources or {}
-    pitch_ids = set(read.get("pitches") or [])
-    take_ids = {
-        *(read.get("takes") or []),
-        *(
-            take_id
-            for action_take_ids in ChatApiRepository(db).action_source_take_ids(run.id)
-            for take_id in action_take_ids or []
-        ),
-    }
+    pitch_ids, take_ids = run_source_ids(
+        run.read_sources, ChatApiRepository(db).action_source_take_ids(run.id)
+    )
     if not pitch_ids and not take_ids:
         return False
     current = owned_sources(db, run.user_id, pitch_ids, take_ids)

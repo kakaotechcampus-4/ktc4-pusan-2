@@ -48,6 +48,8 @@ class PitchListItemDTO(BaseModel):
     # 발표일은 생성 때 비워 둘 수 있다 (PitchSaveRequestDTO.presentation_date)
     presentation_date: date | None = None
     takes: list[TakeSummaryDTO]
+    # 지금 지울 수 있는가. 연습이나 분석이 도는 중이면 false 이고 삭제는 409 `PITCH_BUSY` 다
+    can_delete: bool
 
 
 class PitchListResponseDTO(BaseModel):

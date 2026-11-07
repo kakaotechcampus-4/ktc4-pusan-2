@@ -19,8 +19,12 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.memory import memory_cards
-from pitch_coach_backend.module.chat.service.request import APP_STARTED_AT
-from pitch_coach_backend.module.chat.service.run import add_run_log, lock_ids
+from pitch_coach_backend.module.chat.service.run import (
+    add_run_log,
+    canonical_ids,
+    end_approval_wait,
+    lock_ids,
+)
 
 APPROVAL_WINDOW = timedelta(minutes=30)
 EXPIRED_TEXT = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
@@ -61,7 +65,9 @@ def read_emitted(db: Session, run_id: uuid.UUID) -> Emitted:
     if not lock_ids(db, pitch_ids, take_ids):
         # 지운 기록이 대화에 되살아나지 않게 고정 문장만 남긴다
         return Emitted([], [], [], [], [], [])
-    return Emitted(claims, evidence, sources, assessments, sorted(pitch_ids), sorted(take_ids))
+    return Emitted(
+        claims, evidence, sources, assessments, canonical_ids(pitch_ids), canonical_ids(take_ids)
+    )
 
 
 def close_waiting(
@@ -83,7 +89,7 @@ def close_waiting(
             action.approved_at = now
     run.status = run_status
     run.state = None
-    run.approval_ended_at = now
+    end_approval_wait(run, now)
     run.finished_at = now
     run.row_revision += 1
     if run_status in ("EXPIRED", "CANCELLED"):
@@ -110,9 +116,6 @@ def close_waiting(
             trace=run.trace,
             evidence=emitted.evidence,
             usage=run.usage,
-            # AI 응답이 아니라 자료 묶음 판을 모른다. 최신 판을 찾는 쿼리가 이 메시지에서 끊기지
-            # 않게 앞의 값을 잇는다
-            meta={"corpus_version": chat_repo.latest_corpus_version(APP_STARTED_AT)},
             source_pitch_ids=emitted.pitch_ids,
             source_take_ids=emitted.take_ids,
         )

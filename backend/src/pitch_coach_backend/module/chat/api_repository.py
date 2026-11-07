@@ -4,19 +4,21 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, select
+from sqlalchemy import Row, Select, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
-    ChatDailyUsage,
     ChatGoal,
+    ChatMemorySetting,
     ChatMessage,
+    ChatProfileItem,
     ChatRun,
     ChatRunEvent,
 )
+from pitch_coach_backend.module.chat.repository import ACTIVE_RUN_STATUSES, charge_daily
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take
 
@@ -50,8 +52,14 @@ class ChatApiRepository:
         return self.db.scalar(_locked(stmt) if lock else stmt)
 
     def list_conversations(
-        self, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, limit: int
+        self,
+        user_id: uuid.UUID,
+        pitch_id: uuid.UUID | None,
+        *,
+        limit: int,
+        after: tuple[datetime, uuid.UUID] | None,
     ) -> list[Row]:
+        """`after`(마지막 활동 시각, 대화 ID) 다음부터 최근 활동 순으로 읽는다."""
         stmt = (
             select(ChatConversation, Pitch.title.label("pitch_title"))
             .outerjoin(Pitch, Pitch.id == ChatConversation.scope_pitch_id)
@@ -61,6 +69,11 @@ class ChatApiRepository:
         )
         if pitch_id is not None:
             stmt = stmt.where(ChatConversation.scope_pitch_id == pitch_id)
+        if after is not None:
+            # 정렬과 같은 순서의 행 비교다. 같은 시각의 대화도 ID 로 갈려 빠짐 · 중복이 없다
+            stmt = stmt.where(
+                tuple_(ChatConversation.last_user_activity_at, ChatConversation.id) < after
+            )
         return list(self.db.execute(stmt).all())
 
     def get_owned_run(
@@ -114,10 +127,16 @@ class ChatApiRepository:
             select(ChatRun)
             .where(
                 ChatRun.conversation_id == conversation_id,
-                ChatRun.status.in_(("QUEUED", "RUNNING", "WAITING_APPROVAL")),
+                ChatRun.status.in_(ACTIVE_RUN_STATUSES),
             )
             .limit(1)
             .execution_options(populate_existing=True)
+        )
+
+    def active_run_ids(self) -> list[uuid.UUID]:
+        """승인 대기까지 포함한 끝나지 않은 실행 전체. 대화 스위치를 끈 채 뜰 때 정리한다."""
+        return list(
+            self.db.scalars(select(ChatRun.id).where(ChatRun.status.in_(ACTIVE_RUN_STATUSES)))
         )
 
     def overdue_waiting_run_ids(self, started_before: datetime) -> list[uuid.UUID]:
@@ -213,14 +232,63 @@ class ChatApiRepository:
 
     def charge_turn(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
         """사용자 하루 턴을 1 선점한다. 한도에 닿았으면 늘리지 않고 False."""
-        stmt = (
-            insert(ChatDailyUsage)
-            .values(id=uuid.uuid7(), user_id=user_id, day=day, turns=1)
-            .on_conflict_do_update(
-                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
-                set_={"turns": ChatDailyUsage.turns + 1},
-                where=ChatDailyUsage.turns < limit,
-            )
-            .returning(ChatDailyUsage.id)
+        return charge_daily(self.db, "turns", user_id, day, limit)
+
+    def memory_enabled(self, user_id: uuid.UUID) -> bool | None:
+        """기억 설정 값. 설정 행이 없으면 None 이다."""
+        return self.db.scalar(
+            select(ChatMemorySetting.enabled).where(ChatMemorySetting.user_id == user_id)
         )
-        return self.db.scalar(stmt) is not None
+
+    def lock_active_runs(self, user_id: uuid.UUID) -> None:
+        """이 사용자의 끝나지 않은 실행을 잠근다. 프로필 저장은 실행 행을 잠근 채로 한다."""
+        self.db.scalars(
+            select(ChatRun.id)
+            .where(ChatRun.user_id == user_id, ChatRun.status.in_(ACTIVE_RUN_STATUSES))
+            .order_by(ChatRun.id)
+            .with_for_update(read=True)
+        ).all()
+
+    def set_memory_enabled(self, user_id: uuid.UUID, enabled: bool) -> None:
+        """값이 실제로 바뀔 때만 `memory_version` 을 올린다. 행이 없을 때 기본값은 켜짐이다."""
+        self.db.execute(
+            insert(ChatMemorySetting)
+            .values(user_id=user_id, enabled=enabled, memory_version=0 if enabled else 1)
+            .on_conflict_do_update(
+                index_elements=[ChatMemorySetting.user_id],
+                set_={
+                    "enabled": enabled,
+                    "memory_version": ChatMemorySetting.memory_version + 1,
+                    "updated_at": func.now(),
+                },
+                where=ChatMemorySetting.enabled.is_distinct_from(enabled),
+            )
+        )
+
+    def bump_memory_version(self, user_id: uuid.UUID) -> None:
+        """`memory_version` 을 올리고 커밋까지 설정 행을 쥔다. 행이 없으면 켜짐으로 만든다."""
+        self.db.execute(
+            insert(ChatMemorySetting)
+            .values(user_id=user_id, memory_version=1)
+            .on_conflict_do_update(
+                index_elements=[ChatMemorySetting.user_id],
+                set_={
+                    "memory_version": ChatMemorySetting.memory_version + 1,
+                    "updated_at": func.now(),
+                },
+            )
+        )
+
+    def delete_profile_items(self, user_id: uuid.UUID) -> int:
+        """전체 실제 삭제. 지운 수를 돌려준다."""
+        result = self.db.execute(delete(ChatProfileItem).where(ChatProfileItem.user_id == user_id))
+        return result.rowcount
+
+    def delete_profile_item(self, user_id: uuid.UUID, item_id: uuid.UUID) -> int:
+        """하나 실제 삭제. 없거나 남의 항목이면 0 이다."""
+        result = self.db.execute(
+            delete(ChatProfileItem).where(
+                ChatProfileItem.id == item_id, ChatProfileItem.user_id == user_id
+            )
+        )
+        return result.rowcount

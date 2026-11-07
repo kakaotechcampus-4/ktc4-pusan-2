@@ -9,6 +9,7 @@ import type { DeviceError } from '../media/useCameraStream';
 import { DeviceCheckPage } from './DeviceCheckPage';
 import { usePrepareStore } from './prepareStore';
 import { setSessionTicket } from '../lib/db';
+import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 
 const fixture = vi.hoisted(() => ({
   live: true,
@@ -160,6 +161,7 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
@@ -400,4 +402,14 @@ it('tells before starting that a long silence ends the take, apart from the goal
   );
   // 바뀌지 않는 말이라 안내 알림 영역 밖에 둡니다 — 안내가 바뀔 때마다 다시 읽히지 않게
   expect(footer.querySelector('[role="status"]')!.textContent).not.toContain('2분 넘게');
+});
+
+it('tells the chat panel the current check state when a message is sent (chat step 6)', async () => {
+  fixture.micOk = false;
+  fixture.gazeStatus = 'RUNNING';
+  await render();
+  expect(takeScreenSnapshot('/pitch/:pitchId/device-check')).toMatchObject({
+    ok: true,
+    screen: { name: 'device_check', camera: 'connected', mic: 'checking', gaze_setup: 'RUNNING' },
+  });
 });

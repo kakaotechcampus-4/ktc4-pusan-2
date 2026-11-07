@@ -48,10 +48,10 @@ from pitch_coach_backend.module.admin.exception import AdminChatQueryInvalid
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.measures import word_text
-from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT, TakeRepository
-from pitch_coach_backend.module.take.service.analysis_runner import (
-    STALE_ANALYSIS,
-    SWEEP_INTERVAL_SEC,
+from pitch_coach_backend.module.take.repository import (
+    ANALYSIS_STALL_AFTER,
+    CONFIRMATION_WAIT,
+    TakeRepository,
 )
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 from pitch_coach_backend.module.take.states import REVIEW, TAKE_RESULT
@@ -63,7 +63,6 @@ USER_LIMIT = 500
 # 이탈 대기보다 여유만큼 더 지났으면 멈춘 것으로 본다
 STUCK_MARGIN = timedelta(minutes=10)
 STUCK_LIMIT = 50
-ANALYSIS_STALL_AFTER = STALE_ANALYSIS + timedelta(seconds=SWEEP_INTERVAL_SEC)
 # 사용자가 직접 끝낸 Take 는 end_reason 이 비어 있다.
 # 비율에서 자동 종료와 나란히 보이게 이름을 붙인다
 USER_ENDED = "USER"

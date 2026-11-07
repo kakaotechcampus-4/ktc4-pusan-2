@@ -46,6 +46,7 @@ from pitch_coach_backend.realtime.stream.registry import (
     TooManyStreams,
 )
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import SttAdapter, SttConfig
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt.keyterms import build_keyterms, normalize_term
@@ -55,12 +56,6 @@ logger = logging.getLogger(__name__)
 # RFC 6455 close code
 # 브라우저가 창을 닫거나 새로고침하며 끊었다. 네트워크가 끊기면 닫힘 프레임이 없어 1006 이 된다
 CLOSE_GOING_AWAY = 1001
-
-# stop 뒤 스트림 정리를 기다리는 상한. 스트림이 Deepgram 을 기다리는 시간과 별개다 —
-# FE 를 무한정 붙잡아 두지 않으려는 값이다
-STOP_TIMEOUT_SEC = 12.0
-# 정상 종료가 실패해 태스크를 끊은 뒤 정리를 기다리는 상한
-CANCEL_TIMEOUT_SEC = 2.0
 
 
 class RealtimeSession:
@@ -158,7 +153,8 @@ class RealtimeSession:
             await self._pump_client(stream)
         except WebSocketDisconnect:
             # ready 나 재전송 도중 클라이언트가 사라졌다 (Starlette 는 끊긴 상대에게 보내면
-            # 이 예외를 던진다). 오류가 아니라 흔한 종료라 여기서 삼킨다 — 밖으로 새면 uvicorn
+            # 이 예외를 던진다. 서버가 먼저 닫은 연결에 보낸 것도 `send_model` 이 이 예외로
+            # 바꾼다). 오류가 아니라 흔한 종료라 여기서 삼킨다 — 밖으로 새면 uvicorn
             # 이 연결마다 "Exception in ASGI application" 트레이스를 남긴다
             logger.info("ready/재전송 중 클라이언트가 끊겼다 take=%s", self.take_id)
         finally:
@@ -242,13 +238,11 @@ class RealtimeSession:
         """
         # 이 순간부터 같은 Take 로 새로 붙는 연결은 거절된다. DB 는 아래에서 적는다
         stream.end()
-        # Deepgram 이 CloseStream 에 응답하지 않으면 끊는다. 그냥 잊으면 스트림은 계속 돌면서
-        # 레지스트리에서만 사라진다. 취소마저 제때 안 끝나면 (abort 가 ABORT_TIMEOUT_SEC 까지 걸리는
-        # 경우) 스트림 쪽에서 닫힌 것으로 확정한다. FE 를 더 붙잡아 둘 이유가 없다 — 받은 final 은
-        # 아래에서 저장하고, 남은 소켓 정리는 reaper 가 마저 한다
-        await stream.close_or_cancel(
-            drain_sec=STOP_TIMEOUT_SEC, cancel_sec=CANCEL_TIMEOUT_SEC, warn="Deepgram"
-        )
+        # 세션이 스스로 닫히는 상한까지 기다리고 그래도 안 닫히면 끊는다. 그냥 잊으면 스트림은 계속
+        # 돌면서 레지스트리에서만 사라진다. 취소마저 제때 안 끝나면 스트림 쪽에서 닫힌 것으로
+        # 확정한다. FE 를 더 붙잡아 둘 이유가 없다 — 받은 final 은 아래에서 저장하고, 남은 소켓
+        # 정리는 reaper 가 마저 한다
+        await stream.close_or_cancel(drain_sec=stt_loop.self_close_max_sec(), warn="Deepgram")
         # 마지막 확정 전사와 1초 원자료를 저장한 뒤에 끝난 것으로 적는다. Take 뒤 분석은 ANALYZING
         # 을 보고 시작하므로 그때 원자료가 다 있어야 한다. FE 는 마지막 1초 조각을 stop 앞에 보낸다.
         # FE 가 `auto_end` 를 받고 보낸 stop 이면 자동 종료 이유를 같이 적는다 — 자동 종료 정리와

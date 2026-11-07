@@ -16,6 +16,11 @@ import type {
 } from '@/types/report';
 import { AutoEndAlert } from './AutoEndAlert';
 import { QueryState, ReportFrame } from './ReportFrame';
+import {
+  DIMENSION_LABEL,
+  DIMENSION_STATUS_LABEL,
+  JUDGE_STATUS_LABEL,
+} from '@/shared/lib/metricLabels';
 import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
 import { TakeSurvey } from './TakeSurvey';
 import { scriptModeLabel } from './takeHistoryFormat';
@@ -339,21 +344,12 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
 
 /* ── 영역별 상태 ────────────────────────────────────────────────── */
 
-const DIMENSION_LABEL: Record<Dimension, string> = {
-  audience_gaze: '청중 응시',
-  script_independence: '대본에서 벗어나기',
-  pacing_rhythm: '속도 · 리듬',
-  vocal_delivery: '목소리',
-  fluency: '군더더기 없이',
-  content_delivery: '내용 전달',
-};
-
 const DIMENSION_STATUS: Record<DimensionStatus, { label: string; tone: Tone }> = {
-  PRIORITY: { label: '먼저 고칠 것', tone: 'bad' },
-  IMPROVED: { label: '나아짐', tone: 'good' },
-  STRENGTH: { label: '강점', tone: 'strong' },
-  STABLE: { label: '유지', tone: 'plain' },
-  NOT_EVALUABLE: { label: '판단 불가', tone: 'muted' },
+  PRIORITY: { label: DIMENSION_STATUS_LABEL.PRIORITY, tone: 'bad' },
+  IMPROVED: { label: DIMENSION_STATUS_LABEL.IMPROVED, tone: 'good' },
+  STRENGTH: { label: DIMENSION_STATUS_LABEL.STRENGTH, tone: 'strong' },
+  STABLE: { label: DIMENSION_STATUS_LABEL.STABLE, tone: 'plain' },
+  NOT_EVALUABLE: { label: DIMENSION_STATUS_LABEL.NOT_EVALUABLE, tone: 'muted' },
 };
 
 function Dimensions({ value }: { value: ReviewResult['dimensions'] }) {
@@ -380,10 +376,10 @@ function Dimensions({ value }: { value: ReviewResult['dimensions'] }) {
 /* ── 미션 결과 · 평가기준 ───────────────────────────────────────── */
 
 const JUDGE: Record<JudgeStatus, { label: string; tone: Tone }> = {
-  ACHIEVED: { label: '달성', tone: 'strong' },
-  PARTIAL: { label: '거의 달성', tone: 'good' },
-  FAILED: { label: '미달성', tone: 'bad' },
-  NOT_EVALUABLE: { label: '판단 불가', tone: 'muted' },
+  ACHIEVED: { label: JUDGE_STATUS_LABEL.ACHIEVED, tone: 'strong' },
+  PARTIAL: { label: JUDGE_STATUS_LABEL.PARTIAL, tone: 'good' },
+  FAILED: { label: JUDGE_STATUS_LABEL.FAILED, tone: 'bad' },
+  NOT_EVALUABLE: { label: JUDGE_STATUS_LABEL.NOT_EVALUABLE, tone: 'muted' },
 };
 
 /** 미션 결과 · 사용자 평가기준 — 판정 모양이 같아 한 목록으로 그립니다 */

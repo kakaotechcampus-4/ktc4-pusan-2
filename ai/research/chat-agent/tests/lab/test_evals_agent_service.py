@@ -1,6 +1,6 @@
 """에이전트 서비스 세트(13-2) 평가 도구 시험 — 기억 fixtures · 스트림 끊김 장애 · 새 지표(14-1) · GENERAL 금지 위반 채점기.
 
-실제 모델을 부르지 않는다(가짜 모델 tests/unit/fakes.py). 시나리오 검사 경로가 실제 관찰값에 닿는지를 정해 둔 모델 응답으로 본다.
+실제 모델을 부르지 않는다(가짜 모델: 서비스 tests/unit/chat_agent/fakes.py). 시나리오 검사 경로가 실제 관찰값에 닿는지를 정해 둔 모델 응답으로 본다.
 """
 
 from __future__ import annotations
@@ -12,11 +12,13 @@ import pytest
 from chat_agent_lab import evals as ev
 from chat_agent_lab import grading as gr
 from chat_agent_lab.app import load_corpus
-from tests.unit import fakes as F
-from tests.unit.test_turn import COMPARE, roles
+from chat_agent_lab.service_tests import fakes as F
+from chat_agent_lab.service_tests import turn_tests
 
 from .test_evals import BY_ID, _request, _save_goal_llm, _slide3_answer
 from .test_fake_be import reassess_llm, script_drafts
+
+COMPARE, roles = turn_tests.COMPARE, turn_tests.roles
 
 SLIDE3_REPORT = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
 
@@ -544,7 +546,7 @@ class _DownLlm:
     model_name = None
 
     def invoke(self, req: Any, before_attempt: Any) -> Any:
-        from chat_agent.llm_types import LlmCallFailed, Usage
+        from pitch_coach_ai.features.chat_agent.llm_types import LlmCallFailed, Usage
 
         before_attempt(1)
         raise LlmCallFailed(attempts=1, usage=[Usage()], cause="PermissionDeniedError:403")
@@ -596,15 +598,15 @@ def test_successful_call_resets_the_provider_failure_streak() -> None:
 def test_reasoning_per_purpose_parses_and_falls_back_to_the_role_default() -> None:
     import dataclasses as dc
 
-    from chat_agent_lab.llm import ROLE_CHAT_AGENT
+    from pitch_coach_ai.common.llm import tool_role
 
     efforts = ev.parse_reasoning(["answer=Medium", "FIX=high"])
     assert efforts == (("ANSWER", "medium"), ("FIX", "high"))
-    role = dc.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts)
+    role = dc.replace(tool_role(), purpose_efforts=efforts)
     assert (role.effort("ANSWER"), role.effort("FIX"), role.effort("RESEARCH")) == (
         "medium",
         "high",
-        ROLE_CHAT_AGENT.reasoning_effort,
+        tool_role().reasoning_effort,
     )
     with pytest.raises(ValueError):
         ev.parse_reasoning(["TOOLS=high"])
@@ -722,7 +724,12 @@ def test_provider_streak_counts_calls_in_completion_order_across_runs() -> None:
     # 끝난 순서로 세므로 B 의 성공이 연속을 끊는다(실행이 끝나기를 기다렸다 세면 A 의 3번이 이어 보인다)
     import contextlib
 
-    from chat_agent.llm_types import LlmCallFailed, LlmRequest, LlmResult, Usage
+    from pitch_coach_ai.features.chat_agent.llm_types import (
+        LlmCallFailed,
+        LlmRequest,
+        LlmResult,
+        Usage,
+    )
 
     seen: list[Any] = []
 
@@ -746,3 +753,46 @@ def test_provider_streak_counts_calls_in_completion_order_across_runs() -> None:
             m.invoke(req, lambda _n: True)
     assert [ev.provider_failure(c) for c in seen] == [True, True, False, True]
     assert seen == [*a.records[:2], *b.records, a.records[2]]
+
+
+# ── 자료 묶음 없이 일반 조언: '찾은 것' 기준이 코어와 같은가 (6-10 · L1-21, #977 리뷰) ─────────────
+
+
+def test_search_without_a_corpus_counts_as_searched_so_general_advice_is_no_violation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """자료 묶음 준비 실패(`search_guides` 의 `ERROR` · `CORPUS_UNAVAILABLE`)도 찾은 것이다. 그 뒤의 일반 조언
+    문장을 'GENERAL 금지 위반'으로 세지 않는다(제품 규칙과 지표가 같아야 한다)."""
+    import dataclasses
+
+    real = ev.scn.build_world
+    monkeypatch.setattr(
+        ev.scn, "build_world", lambda sc: dataclasses.replace(real(sc), corpus=None)
+    )
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[_request(_msg("svc-general-guide-found"))]),
+            F.tools(("search_guides", {"query": "긴장"})),
+            F.done(),
+        ],
+        answers=[F.answer([F.claim("GENERAL", "긴장될 때는 첫 문장을 천천히 말해 보세요.")])],
+        fixes=[F.fix({})],
+    )
+    r = ev.run_one(BY_ID["svc-general-guide-found"], 0, llm, F.SECRET, ev.RunnerConfig(repeat=1))
+    assert r.general_violations == []
+
+
+def test_searched_reads_the_corpus_error_from_diagnostics_not_other_errors() -> None:
+    """진행 줄 trace 에는 오류 코드가 없다: `ERROR` 는 진단 기록 `TOOL` 단계의 `error_code` 로 가린다."""
+    from types import SimpleNamespace as NS
+
+    def run(error_code: str | None) -> Any:
+        progress = [
+            {"event": "tool_done", "data": {"trace": {"tool": "search_guides", "outcome": "ERROR"}}}
+        ]
+        step = {"kind": "TOOL", "code": "search_guides", "detail": {"error_code": error_code}}
+        return NS(progress=progress, calls=[NS(diagnostics={"steps": [step]})])
+
+    assert ev._searched([run("CORPUS_UNAVAILABLE")]) is True
+    assert ev._searched([run("TOOL_FAILED")]) is False
+    assert ev._searched([run(None)]) is False

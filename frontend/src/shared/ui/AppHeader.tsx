@@ -51,7 +51,7 @@ export function AppHeader() {
             <button
               type="button"
               onClick={() => setHelpOpen(true)}
-              className="min-h-11 cursor-pointer hover:text-ink"
+              className="min-h-11 hover:text-ink"
             >
               사용방법
             </button>
@@ -59,7 +59,7 @@ export function AppHeader() {
             <button
               disabled={logout.isPending}
               onClick={() => logout.mutate()}
-              className="min-h-11 cursor-pointer text-ink/80 hover:text-ink disabled:cursor-not-allowed"
+              className="min-h-11 text-ink/80 hover:text-ink disabled:cursor-not-allowed"
             >
               {logout.isPending ? '로그아웃 중…' : '로그아웃'}
             </button>

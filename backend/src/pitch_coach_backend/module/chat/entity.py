@@ -15,11 +15,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    event,
     func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSON, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.schema import DDL
 
 from pitch_coach_backend.core.database import (
     Base,
@@ -50,6 +52,7 @@ class ChatConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_user_activity_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    last_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     without_memory: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
@@ -82,6 +85,8 @@ class ChatMessage(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     __tablename__ = "chat_messages"
     __table_args__ = (
         UniqueConstraint("conversation_id", "seq", name="uq_chat_messages_conversation_seq"),
+        # 최신 자료 판을 고르는 쿼리(`latest_corpus_version`)가 메시지 목록과 턴마다 돈다
+        Index("ix_chat_messages_created_at", "created_at"),
         UniqueConstraint(
             "user_id", "client_request_id", name="uq_chat_messages_user_client_request"
         ),
@@ -93,6 +98,8 @@ class ChatMessage(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "(client_request_id IS NULL) = (request_hash IS NULL)",
             name="check_chat_message_request_key",
         ),
+        Index("ix_chat_messages_source_pitch_ids", "source_pitch_ids", postgresql_using="gin"),
+        Index("ix_chat_messages_source_take_ids", "source_take_ids", postgresql_using="gin"),
     )
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(
@@ -146,6 +153,10 @@ class ChatRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "row_revision >= 0 AND state_revision >= 0", name="check_chat_run_revisions"
         ),
+        Index(
+            "ix_chat_runs_read_pitches", text("(read_sources -> 'pitches')"), postgresql_using="gin"
+        ),
+        Index("ix_chat_runs_read_takes", text("(read_sources -> 'takes')"), postgresql_using="gin"),
     )
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(
@@ -212,6 +223,7 @@ class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "'CANCELLED')",
             name="check_chat_action_status",
         ),
+        Index("ix_chat_actions_source_take_ids", "source_take_ids", postgresql_using="gin"),
     )
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(
@@ -377,7 +389,11 @@ class ChatProfileItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class ChatSummary(TimestampMixin, Base):
     __tablename__ = "chat_summaries"
-    __table_args__ = (CheckConstraint("summary_version >= 0", name="check_chat_summary_version"),)
+    __table_args__ = (
+        CheckConstraint("summary_version >= 0", name="check_chat_summary_version"),
+        Index("ix_chat_summaries_source_pitch_ids", "source_pitch_ids", postgresql_using="gin"),
+        Index("ix_chat_summaries_source_take_ids", "source_take_ids", postgresql_using="gin"),
+    )
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), primary_key=True
@@ -391,6 +407,21 @@ class ChatSummary(TimestampMixin, Base):
     )
     source_pitch_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
     source_take_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+
+
+class ChatDeletedSource(Base):
+    """지워진 피치 · Take 의 id. 정리 작업이 이 id 를 근거로 가진 행만 고른다.
+
+    삭제 코드를 고치지 않고 연쇄 삭제까지 잡도록 DB 트리거가 채운다(아래 `DELETED_SOURCE_DDL`).
+    삭제를 되돌리면 기록도 함께 사라진다.
+    """
+
+    __tablename__ = "chat_deleted_sources"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    deleted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class ChatRunEvent(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
@@ -408,3 +439,22 @@ class ChatRunEvent(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     event_seq: Mapped[int] = mapped_column(Integer, nullable=False)
     event: Mapped[str] = mapped_column(String(10), nullable=False)
     data: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
+
+# `create_all` 로 만든 DB(시험)에도 마이그레이션과 같은 트리거를 건다. autogenerate 는 트리거를 보지
+# 않으므로 바꾸면 마이그레이션을 따로 쓴다
+DELETED_SOURCE_DDL = """
+CREATE OR REPLACE FUNCTION chat_record_deleted_source() RETURNS trigger AS $$
+BEGIN
+    INSERT INTO chat_deleted_sources (source_id) VALUES (OLD.id) ON CONFLICT DO NOTHING;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS chat_record_deleted_pitch ON pitches;
+CREATE TRIGGER chat_record_deleted_pitch AFTER DELETE ON pitches
+    FOR EACH ROW EXECUTE FUNCTION chat_record_deleted_source();
+DROP TRIGGER IF EXISTS chat_record_deleted_take ON takes;
+CREATE TRIGGER chat_record_deleted_take AFTER DELETE ON takes
+    FOR EACH ROW EXECUTE FUNCTION chat_record_deleted_source();
+"""
+event.listen(Base.metadata, "after_create", DDL(DELETED_SOURCE_DDL))

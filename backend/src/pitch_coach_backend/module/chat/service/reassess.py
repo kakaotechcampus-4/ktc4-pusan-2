@@ -1,36 +1,39 @@
 import asyncio
 import copy
+import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Row
+import httpx
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import ReviewTakeMismatch, request_review_once
 from pitch_coach_backend.module.chat.ai_response import ReassessArgs
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.owned import owned_take
 from pitch_coach_backend.module.chat.service.request import run_scope
 from pitch_coach_backend.module.chat.service.result import (
     UNCONFIRMED,
     close_action,
     failed,
+    save_result,
     succeeded,
 )
 from pitch_coach_backend.module.chat.service.run import (
-    SEOUL,
     ClaimedRun,
     RunLost,
     digest,
     lock_current,
     lock_or_cancel,
+    seoul_day,
 )
-from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import UserCriteriaDTO
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service.review import build_review_request
+
+logger = logging.getLogger(__name__)
 
 REASSESS_DAILY_LIMIT = 30
 EMPTY_CRITERIA = {"display_criteria": [], "targets": [], "script_used": None}
@@ -50,14 +53,13 @@ class PreparedReassess:
 
 
 def prepare_reassess(
-    db: Session, run: ClaimedRun, action: dict[str, Any]
+    db: Session, run: ClaimedRun, action: dict[str, Any], args: ReassessArgs
 ) -> PreparedReassess | ActionResultDTO:
     repo = ChatRepository(db)
     row = lock_current(db, run)
     if row is None:
         raise RunLost(run.run_id)
-    args = ReassessArgs.model_validate(action["args"])
-    take = _owned_take_by_id(db, repo, row.user_id, args.take_id)
+    take = owned_take(db, row.user_id, args.take_id)
     conversation = repo.get_conversation(row.conversation_id)
     if take is None or take.Take.pitch_id != run_scope(row, conversation):
         return close_action(db, row, action, failed(action, "NOT_FOUND", "기록을 찾을 수 없어요."))
@@ -74,7 +76,7 @@ def prepare_reassess(
         after = _changed_request(before, args.change)
     except ValueError:
         return close_action(db, row, action, failed(action, "INVALID_CHANGE", UNCONFIRMED))
-    if not repo.charge_reassess(row.user_id, datetime.now(SEOUL).date(), REASSESS_DAILY_LIMIT):
+    if not repo.charge_reassess(row.user_id, seoul_day(), REASSESS_DAILY_LIMIT):
         return close_action(
             db,
             row,
@@ -97,19 +99,6 @@ def prepare_reassess(
     )
 
 
-def _owned_take_by_id(
-    db: Session, repo: ChatRepository, user_id: uuid.UUID, take_id: str
-) -> Row | None:
-    try:
-        take_uuid = uuid.UUID(take_id)
-    except ValueError:
-        return None
-    take = repo.get_take_with_review(take_uuid)
-    if take is None or PitchRepository(db).get_owned(take.Take.pitch_id, user_id) is None:
-        return None
-    return take
-
-
 def _changed_request(before: dict[str, Any], change: dict[str, Any]) -> dict[str, Any]:
     after = copy.deepcopy(before)
     criteria = after["user_criteria"] or copy.deepcopy(EMPTY_CRITERIA)
@@ -126,8 +115,24 @@ async def call_reassess(prepared: PreparedReassess) -> tuple[dict, dict] | str:
             before = group.create_task(request_review_once(prepared.take_id, prepared.before))
             after = group.create_task(request_review_once(prepared.take_id, prepared.after))
     except ExceptionGroup as failure:
+        # 응답 원문이 실릴 수 있어 예외 문구는 남기지 않고 종류(와 HTTP 상태)만 남긴다
+        logger.warning(
+            "다시 평가 호출 실패 take=%s 종류=%s", prepared.take_id, _failure_kinds(failure)
+        )
         return REVIEW_TAKE_MISMATCH if failure.subgroup(ReviewTakeMismatch) else REVIEW_FAILED
     return before.result(), after.result()
+
+
+def _failure_kinds(failure: BaseExceptionGroup) -> list[str]:
+    kinds = []
+    for exc in failure.exceptions:
+        if isinstance(exc, BaseExceptionGroup):
+            kinds.extend(_failure_kinds(exc))
+        elif isinstance(exc, httpx.HTTPStatusError):
+            kinds.append(f"{type(exc).__name__}({exc.response.status_code})")
+        else:
+            kinds.append(type(exc).__name__)
+    return sorted(kinds)
 
 
 def finish_reassess(
@@ -144,9 +149,7 @@ def finish_reassess(
         raise RunLost(run.run_id)
     review = repo.list_ai_results(prepared.take_id, ["REVIEW"])
     if replies == REVIEW_FAILED:
-        result = failed(
-            action, REVIEW_FAILED, "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요."
-        )
+        result = failed(action, REVIEW_FAILED, "다시 평가하지 못했으니 잠시 뒤 다시 시도해 주세요.")
     elif replies == REVIEW_TAKE_MISMATCH:
         result = failed(action, REVIEW_TAKE_MISMATCH, UNCONFIRMED)
     elif (
@@ -162,8 +165,7 @@ def finish_reassess(
             action, {"before": replies[0], "after": replies[1], "official": prepared.official}
         )
     saved = repo.get_action(row.id, action["action_id"])
-    saved.status = "SUCCEEDED" if result.status == "SUCCEEDED" else "FAILED"
-    saved.result = {**result.model_dump(mode="json"), "review_revision": prepared.review_revision}
+    save_result(saved, result, review_revision=prepared.review_revision)
     saved.source_take_ids = [str(prepared.take_id)]
     db.commit()
     return result
