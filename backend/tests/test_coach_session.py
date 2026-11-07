@@ -27,10 +27,6 @@ from tests.coach_fakes import (
 )
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
 @pytest.mark.anyio
 async def test_each_metrics_calls_evaluate_with_the_window_and_the_last_state():
     client, store = FakeClient(), FakeStore()

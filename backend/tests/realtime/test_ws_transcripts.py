@@ -26,7 +26,7 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.storage import transcripts as transcripts_module
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer, TranscriptBuffer
-from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
+from pitch_coach_backend.realtime.stream import finish, registry, state, transcript_sender
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -290,7 +290,7 @@ async def test_interim_does_not_hold_up_stt_while_the_client_is_slow():
         await asyncio.wait_for(stream._on_transcript(transcript(0, 200, text, is_final=False)), 0.1)
     stuck.stuck = False
     stuck.release.set()
-    await asyncio.wait_for(stream._interim_task, 1.0)
+    await asyncio.wait_for(stream._sender._interim_task, 1.0)
 
     assert _texts(stuck) == [("0-1", "하나"), ("0-1", "하나 둘 셋")]
 
@@ -299,7 +299,7 @@ async def test_interim_does_not_hold_up_stt_while_the_client_is_slow():
 async def test_old_interim_does_not_arrive_after_its_final(monkeypatch: pytest.MonkeyPatch):
     """같은 구간의 interim 이 final 뒤에 닿으면 FE 는 같은 `segment_id` 로 덮는다. final 앞에서
     남은 interim 을 버리고 보내는 중인 것은 상한까지 기다렸다 끊는다."""
-    monkeypatch.setattr(runtime, "INTERIM_SEND_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(transcript_sender, "INTERIM_SEND_TIMEOUT_SEC", 0.05)
     stream = _final_stream(FakeTranscriptStore())
     stuck = StuckWebSocket()
     await stream.attach(stuck)
@@ -642,7 +642,7 @@ def test_put_end_waits_for_finals_that_are_not_saved_yet(
     store = use_store(FakeTranscriptStore(fail=True))
     record = state.take_record(TAKE_ID, AutoEndPolicy.from_settings(), store)
     record.finals.add(
-        TranscriptBuffer(TAKE_ID, store).segment(transcript_message("1-1", "마지막"), 100, 1)
+        TranscriptBuffer(TAKE_ID).segment(transcript_message("1-1", "마지막"), 100, 1)
     )
     started = datetime.now(UTC)
     response = client.put(
@@ -712,7 +712,7 @@ async def test_invalid_final_does_not_drop_the_valid_finals_queued_after_it(
     store = OneInvalidFinalStore()
     take_id = uuid.uuid7()
     buffer = FinalBuffer(take_id, store)
-    transcripts = TranscriptBuffer(take_id, store)
+    transcripts = TranscriptBuffer(take_id)
     for text in ("첫", PRIVATE_TRANSCRIPT, "셋"):
         buffer.add(transcripts.segment(transcript_message("1-1", text), 100, 1))
         transcripts.next_segment()
@@ -761,7 +761,7 @@ async def test_save_failure_log_omits_transcript_text(caplog: pytest.LogCaptureF
     store = FakeTranscriptStore(errors=[error])
     take_id = uuid.uuid7()
     buffer = FinalBuffer(take_id, store)
-    segment = TranscriptBuffer(take_id, store).segment(
+    segment = TranscriptBuffer(take_id).segment(
         transcript_message("1-1", PRIVATE_TRANSCRIPT), 100, 1
     )
 

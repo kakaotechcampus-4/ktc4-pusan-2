@@ -47,7 +47,7 @@
 
   /* ── 글자 ──────────────────────────────────────────────────── */
   --color-ink: #2A2723;             /* 본문 */
-  --color-stone: #8C8375;           /* 보조 · 캡션 */
+  --color-stone: #696055;           /* 보조 · 캡션 */
   --color-ink-stage: #F5F0E9;       /* 무대 위 본문 */
 
   /* ── 강조 ──────────────────────────────────────────────────── */
@@ -105,11 +105,14 @@
   --font-mono: "IBM Plex Mono", "Pretendard", ui-monospace, monospace;
 }
 
+/* 시작 전 세팅이 시작 버튼까지 첫 화면에 들어오게 줄이는 단계. 높이 기준은 상단바(약 85px)를 얹은
+   페이지 높이로 정했습니다 — 기본 배치 746px, compact 658px, low 606px (#872).
+   본문이나 상단바 높이가 바뀌면 다시 재서 맞춥니다 */
 @custom-variant prepare-compact {
-  @media (max-width: 1199px), (max-height: 699px) { @slot; }
+  @media (max-width: 1199px), (max-height: 749px) { @slot; }
 }
 @custom-variant prepare-low {
-  @media (max-height: 650px) and (min-width: 1024px) { @slot; }
+  @media (max-height: 659px) and (min-width: 1024px) { @slot; }
 }
 
 html, body, #root { height: 100%; }
@@ -195,15 +198,15 @@ body {
   .loading-dot { animation: none; }
 }
 
-/* 피치 생성 화면의 밝은 지면. */
-.pitch-create {
+/* 피치 생성 화면의 밝은 지면. `.light-surface` 는 화면 밖 공용 층(채팅)이 같은 지면을 쓰는 이름입니다. */
+.pitch-create, .light-surface {
   --color-greige: #faf9f6;
   --color-cream: #f1f0eb;
   --color-panel: #ffffff;
   --color-line: #e3e3e3;
   --color-line-strong: #d0d1d4;
   --color-ink: #17191e;
-  --color-stone: #6b7280;
+  --color-stone: #626976;
   --color-coral-wash: #fff0e9;
 }
 
@@ -215,4 +218,10 @@ body {
 /* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */
 .pitch-create-square :is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-r) {
   border-radius: 0;
+}
+
+/* 장치 점검은 오른쪽 열이 화면 끝까지 차서, 채팅 런처(오른쪽 0.5rem · 44px)가 떠 있을 때만 오른쪽 여백을
+   런처 자리만큼 넓힙니다 — 시작 버튼 · 대본 표시 선택을 가리지 않습니다 (features/chat, #941 리뷰) */
+body:has([data-chat-launcher]) .prepare-screen {
+  padding-right: 4rem;
 }

@@ -18,22 +18,29 @@ from pitch_coach_backend.module.chat.entity import (
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import settle_goal_check
-from pitch_coach_backend.module.chat.service.memory import save_profile_updates, save_summary
+from pitch_coach_backend.module.chat.service.memory import (
+    memory_cards,
+    save_profile_updates,
+    save_summary,
+)
 from pitch_coach_backend.module.chat.service.practice import start_practice
 from pitch_coach_backend.module.chat.service.request import goal_view
 from pitch_coach_backend.module.chat.service.result import failed, succeeded
 from pitch_coach_backend.module.chat.service.run import (
     LEASE,
     OWNER,
+    SEOUL,
     ClaimedRun,
     add_run_log,
     cancel,
     check_sources,
     claimed,
     digest,
+    lock_conversation_of,
     lock_current,
     lock_ids,
     lock_or_cancel,
+    release_unsent,
     take_lease,
 )
 
@@ -60,6 +67,10 @@ def mark_sending(
     row = lock_current(db, run)
     if row is None:
         return None
+    repo = ChatRepository(db)
+    if turn_call == 1:
+        repo.release_service_turn(row.accepted_at.astimezone(SEOUL).date())
+    repo.add_service_turn(datetime.now(SEOUL).date())
     row.turn_calls = [
         *(row.turn_calls or []),
         {
@@ -108,13 +119,13 @@ def wait_for_action(
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
+    conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         return None
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return None
-    conversation = repo.lock_conversation(row.conversation_id)
     action = data["actions"][0]
     row.state = data["state"]
     row.budget_used = data["budget_used"]
@@ -126,6 +137,7 @@ def wait_for_action(
             "message": data["message"],
             "assessments": data.get("assessments"),
             "evidence": data.get("evidence"),
+            "memory_saved": memory_cards(row),
         }
     row.turn_calls = [
         {**call, "stage": "DONE"} if call["turn_call"] == turn_call else call
@@ -204,6 +216,7 @@ def _action_view(saved: ChatAction) -> dict[str, Any]:
         "type": saved.type,
         "args": saved.args,
         "autonomy": saved.autonomy,
+        "args_hash": saved.args_hash,
         "authorized_by": None,
     }
 
@@ -216,13 +229,13 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
     repo = ChatRepository(db)
+    conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         return False
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return True
-    conversation = repo.lock_conversation(row.conversation_id)
     if row.first_trigger == "TAKE_REVIEWED" and not settle_goal_check(
         repo, row, conversation, data["goal_result"]
     ):
@@ -276,6 +289,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
 
 def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
     repo = ChatRepository(db)
+    lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
         return False
@@ -286,6 +300,7 @@ def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
         cancel(db, run)
         return True
     now = datetime.now(UTC)
+    release_unsent(repo, row)
     row.status = "PARTIAL" if message else "FAILED"
     row.error_code = failure.code
     row.retry_after_s = failure.retry_after_s
@@ -417,7 +432,7 @@ def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | 
         status=status,
         run_id=row.id,
         claims=claims,
-        cards=[],
+        cards=memory_cards(row),
         sources=sources,
         assessments=assessments,
         plan=row.plan,

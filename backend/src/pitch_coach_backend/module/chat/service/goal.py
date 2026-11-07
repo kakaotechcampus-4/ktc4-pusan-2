@@ -15,7 +15,7 @@ from pitch_coach_backend.module.chat.service.request import (
     goal_view,
     selected_proposal,
 )
-from pitch_coach_backend.module.chat.service.result import failed, succeeded
+from pitch_coach_backend.module.chat.service.result import UNCONFIRMED, failed, succeeded
 from pitch_coach_backend.module.chat.service.run import digest
 from pitch_coach_backend.module.take.repository import TakeRepository
 
@@ -25,6 +25,9 @@ GOAL_METRICS = {
     "cpm": ("SPEED", "in_range"),
     "duration_ms": ("TIME", "in_range"),
 }
+METRIC_NOT_ALLOWED = "GOAL_METRIC_NOT_ALLOWED"
+OPERATOR_MISMATCH = "GOAL_OPERATOR_MISMATCH"
+BASE_MISMATCH = "GOAL_BASE_MISMATCH"
 
 
 class GoalRejected(Exception):
@@ -36,22 +39,22 @@ def save_goal(
 ) -> ActionResultDTO:
     repo = ChatRepository(db)
     if row.first_trigger == "TAKE_REVIEWED":
-        return failed(action, "VALIDATION_ERROR", "자동 확인에서는 목표를 저장하지 않아요.")
+        return failed(action, "NOT_ALLOWED", UNCONFIRMED)
     preapproved = action.get("preapproved")
     if preapproved is not None:
         if not _preapproval_matches(repo, row, preapproved, args.goal):
-            return failed(action, "PREAPPROVAL_MISMATCH", "작업 완료를 확인하지 못했어요.")
+            return failed(action, "PREAPPROVAL_MISMATCH", UNCONFIRMED)
     elif not _goal_authorized(repo, row, action):
-        return failed(action, "VALIDATION_ERROR", "목표를 저장해 달라는 요청을 확인하지 못했어요.")
+        return failed(action, "APPROVAL_REQUIRED", UNCONFIRMED)
     if repo.count_succeeded_actions(row.id, "SAVE_GOAL") > 0:
-        return failed(action, "VALIDATION_ERROR", "한 번에 목표는 하나만 저장해요.")
+        return failed(action, "NOT_ALLOWED", UNCONFIRMED)
     try:
         goal = _rebuild_goal(db, repo, row.user_id, args.goal)
-    except GoalRejected:
-        return failed(action, "VALIDATION_ERROR", "기록과 맞지 않는 목표예요.")
+    except GoalRejected as rejected:
+        return failed(action, rejected.args[0], UNCONFIRMED)
     conversation = repo.lock_conversation(row.conversation_id)
     if conversation.goal_version != args.expected_goal_version:
-        return failed(action, "AGENT_REQUEST_CONFLICT", "이미 다른 목표로 바뀌었어요.")
+        return failed(action, "GOAL_VERSION_CONFLICT", "이미 다른 목표로 바뀌었어요.")
     saved = repo.get_action(row.id, action["action_id"])
     version = conversation.goal_version + 1
     repo.add(
@@ -96,24 +99,24 @@ def _rebuild_goal(
 ) -> dict[str, Any]:
     metric = goal.get("metric")
     if metric not in GOAL_METRICS:
-        raise GoalRejected(metric)
+        raise GoalRejected(METRIC_NOT_ALLOWED)
     area, operator = GOAL_METRICS[metric]
     slide_number = goal.get("slide_number")
     if goal.get("operator") != operator or (metric == "duration_ms" and slide_number is not None):
-        raise GoalRejected(metric)
+        raise GoalRejected(OPERATOR_MISMATCH)
     base = goal.get("base") or {}
     take = owned_take(db, repo, user_id, str(goal.get("pitch_id")), str(base.get("take_id")))
     if take is None:
-        raise GoalRejected(base.get("take_id"))
+        raise GoalRejected(BASE_MISMATCH)
     slides = repo.slide_numbers([take.Take.id]).get(take.Take.id, set())
     if completed_fully(take.Take, take.page_count, slides) is not True:
-        raise GoalRejected(base.get("take_id"))
+        raise GoalRejected(BASE_MISMATCH)
     result = next(iter(repo.list_ai_results(take.Take.id, ["TAKE_RESULT"])), None)
     if result is None or not isinstance(result.payload, dict):
-        raise GoalRejected(base.get("take_id"))
+        raise GoalRejected(BASE_MISMATCH)
     rule_version = ((result.payload.get("criteria") or {}).get(area) or {}).get("criteria_version")
     if not isinstance(rule_version, str):
-        raise GoalRejected(area)
+        raise GoalRejected(BASE_MISMATCH)
     rebuilt = {
         "pitch_id": str(take.Take.pitch_id),
         "metric": metric,
@@ -135,7 +138,7 @@ def _rebuild_goal(
     }
     _check_rule(rebuilt)
     if rebuilt != goal:
-        raise GoalRejected("MISMATCH")
+        raise GoalRejected(BASE_MISMATCH)
     return rebuilt
 
 
@@ -144,7 +147,7 @@ def _metric_value(
 ) -> float:
     section = (payload.get("areas") or {}).get(area) or {}
     if section.get("unmeasured_reason"):
-        raise GoalRejected(area)
+        raise GoalRejected(BASE_MISMATCH)
     if slide_number is None:
         value = (section.get("take") or {}).get(metric)
     else:
@@ -153,10 +156,10 @@ def _metric_value(
             None,
         )
         if item is None:
-            raise GoalRejected(slide_number)
+            raise GoalRejected(BASE_MISMATCH)
         value = (item.get("metrics") or {}).get(metric)
     if not _finite(value) or value < 0 or (metric == "audience_ratio" and value > 1):
-        raise GoalRejected(metric)
+        raise GoalRejected(BASE_MISMATCH)
     return value
 
 
@@ -173,24 +176,24 @@ def _metric_range(payload: dict[str, Any], metric: str) -> dict[str, Any] | None
     else:
         return None
     if low is None and high is None:
-        raise GoalRejected("NO_RANGE")
+        raise GoalRejected(BASE_MISMATCH)
     if any(bound is not None and not _finite(bound) for bound in (low, high)):
-        raise GoalRejected("INVALID_DATA")
+        raise GoalRejected(BASE_MISMATCH)
     if low is not None and high is not None and low > high:
-        raise GoalRejected("INVALID_DATA")
+        raise GoalRejected(BASE_MISMATCH)
     return {"low": low, "high": high}
 
 
 def _check_rule(goal: dict[str, Any]) -> None:
     rule_version = goal["goal_rule_version"]
     if not isinstance(rule_version, str) or not rule_version:
-        raise GoalRejected("goal_rule_version")
+        raise GoalRejected(OPERATOR_MISMATCH)
     min_delta = goal["min_delta"]
     if goal["operator"] == "in_range":
         if min_delta is not None:
-            raise GoalRejected("min_delta")
+            raise GoalRejected(OPERATOR_MISMATCH)
     elif not _finite(min_delta) or min_delta <= 0:
-        raise GoalRejected("min_delta")
+        raise GoalRejected(OPERATOR_MISMATCH)
 
 
 def _finite(value: Any) -> bool:

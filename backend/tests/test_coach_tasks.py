@@ -7,10 +7,6 @@ import pytest
 from pitch_coach_backend.core.tasks import TaskRegistry
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
 async def settle() -> None:
     for _ in range(5):
         await asyncio.sleep(0)

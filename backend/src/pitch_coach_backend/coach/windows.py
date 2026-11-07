@@ -26,12 +26,11 @@ WORDS_WINDOW_MS = 60_000
 # ── 창 ────────────────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class FinalWord:
-    """STT 확정 단어. `final_at_ms` 는 그 단어가 확정된 Take 시각(replay 에서 넣는 순서)."""
+    """STT 확정 단어."""
 
     word: str
     start_ms: int
     end_ms: int
-    final_at_ms: int
 
 
 def slide_changes(
@@ -104,14 +103,11 @@ def _records_between(
     records: Iterable[Mapping[str, Any]], lo_ms: int, hi_ms: int
 ) -> list[dict[str, Any]]:
     """[lo_ms 에 시작, hi_ms 까지 끝남] 인 1초 기록을 시작 순으로. 같은 시작은 먼저 온 것만."""
-    picked: dict[int, dict[str, Any]] = {}
-    for record in records:
-        start = record["t_ms"]
-        if start in picked or start < lo_ms:
-            continue
-        if start + record.get("duration_ms", 1000) <= hi_ms:
-            picked[start] = dict(record)
-    return [picked[start] for start in sorted(picked)]
+    return _first_per_start(
+        record
+        for record in records
+        if record["t_ms"] >= lo_ms and record["t_ms"] + record.get("duration_ms", 1000) <= hi_ms
+    )
 
 
 # ── replay ────────────────────────────────────────────────────────────

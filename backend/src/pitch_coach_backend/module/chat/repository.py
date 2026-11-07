@@ -119,6 +119,27 @@ class ChatRepository:
         )
         return self.db.scalar(stmt) is not None
 
+    def release_service_turn(self, day: date) -> None:
+        self.db.execute(
+            update(ChatDailyUsage)
+            .where(
+                ChatDailyUsage.user_id.is_(None),
+                ChatDailyUsage.day == day,
+                ChatDailyUsage.reserved > 0,
+            )
+            .values(reserved=ChatDailyUsage.reserved - 1)
+        )
+
+    def add_service_turn(self, day: date) -> None:
+        self.db.execute(
+            insert(ChatDailyUsage)
+            .values(id=uuid.uuid7(), user_id=None, day=day, sent=1)
+            .on_conflict_do_update(
+                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
+                set_={"sent": ChatDailyUsage.sent + 1},
+            )
+        )
+
     def count_succeeded_actions(self, run_id: uuid.UUID, kind: str) -> int:
         return self.db.scalar(
             select(func.count()).where(
@@ -285,9 +306,18 @@ class ChatRepository:
         )
 
     def latest_corpus_version(self, since: datetime) -> str | None:
+        """같은 배포에서 가장 최근에 성공한 AI 응답의 자료 판(chat-agent.md 12-3).
+
+        AI 응답으로 만들지 않은 메시지(실패 · 시간 초과 · 승인 대기 종료)는 판이 없어 고르지 않는다.
+        """
+        version = ChatMessage.meta["corpus_version"].astext
         return self.db.scalar(
-            select(ChatMessage.meta["corpus_version"].astext)
-            .where(ChatMessage.role == "assistant", ChatMessage.created_at >= since)
+            select(version)
+            .where(
+                ChatMessage.role == "assistant",
+                ChatMessage.created_at >= since,
+                version.is_not(None),
+            )
             .order_by(ChatMessage.created_at.desc())
             .limit(1)
         )

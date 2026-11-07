@@ -29,11 +29,6 @@ BASE_URL = "http://ai.test"
 pytestmark = pytest.mark.anyio
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def _slide(number: int | None, script: str, highlights: list[str] | None = None) -> dict:
     return {
         "slide_number": number,
