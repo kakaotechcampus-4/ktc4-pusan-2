@@ -100,7 +100,7 @@ function ChatFailed({
     <div
       data-chat-launcher=""
       style={{ '--chat-launcher-bottom': `${chatLauncherBottom(pathname)}px` } as CSSProperties}
-      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
+      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] left-4 z-[70] text-ink"
     >
       {folded ? (
         <button
