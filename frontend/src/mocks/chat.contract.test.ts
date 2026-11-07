@@ -389,7 +389,7 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
     );
   });
 
-  it('바뀐 카드로 승인하면 409 AGENT_STATE_INVALID (문서 이름은 APPROVAL_HASH_MISMATCH — FE 가 바꿔 알림)', async () => {
+  it('바뀐 카드로 승인하면 409 APPROVAL_HASH_MISMATCH (`ChatCardChanged`)', async () => {
     const accepted = await accept('3장 시선을 목표로 잡아 줘');
     const waiting = (await settle(accepted.run_id as string)).at(-1)!;
     const card = (waiting.cards as Json[])[0]!;
@@ -399,7 +399,7 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
         args_hash: 'changed',
       }),
       409,
-      'AGENT_STATE_INVALID',
+      'APPROVAL_HASH_MISMATCH',
     );
   });
 
