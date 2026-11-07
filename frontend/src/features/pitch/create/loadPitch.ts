@@ -58,28 +58,39 @@ function parseOf(progress: ReturnType<typeof fromScriptDetail>): ScriptParse {
 }
 
 /**
- * 대본 한 버전. 서버는 "어느 슬라이드에 맞춘 대본인가"를 따로 두지 않아(Take 에만 남습니다)
- * 장수가 같은 슬라이드 중 가장 최근 것에 연결합니다. 맞는 것이 없으면 최신 슬라이드에 둡니다 —
- * 그러면 매핑 확인 화면이 장수가 다르다고 알려 줍니다.
+ * 대본 한 버전. 서버는 "어느 슬라이드에 맞춘 대본인가"를 따로 두지 않아(Take 에만 남습니다) 여기서 정합니다.
+ *
+ * - **가장 최근 대본은 최신 슬라이드**에 붙입니다. 장수가 달라도 그렇습니다 — 장수가 같은 예전 슬라이드에 붙이면
+ *   새 슬라이드를 올린 뒤 새로고침했을 때 모든 단계가 완료로 보이고 예전 슬라이드로 연습합니다(멘토 리뷰 #923).
+ *   장수가 다르면 진행 조건이 막고, 슬라이드를 올린 그 자리(`createStore` 의 `relinkScripts`)처럼 매핑을 다시 확인받습니다.
+ * - 지난 대본 버전은 장수가 같은 슬라이드 중 가장 최근 것에, 맞는 것이 없으면 최신 슬라이드에 붙입니다 —
+ *   예전 조합을 골라 연습할 수 있게 둡니다.
  */
 async function loadScript(
   pitchId: string,
   ref: VersionRef,
   slides: SlideVersion[],
+  latest: boolean,
 ): Promise<ScriptVersion> {
   const detail = await getScript(pitchId, ref.id);
   const progress = fromScriptDetail(detail);
   const blocks = progress.status === 'done' ? progress.blocks : null;
+  const newest = slides.at(-1);
   const matching = slides.findLast((s) => blocks !== null && s.pageCount === blocks.length);
+  const linked = latest ? newest : (matching ?? newest);
+  // 장수를 둘 다 알고 다를 때만 — 모르는 것을 다르다고 하지 않습니다
+  const pageCount = linked?.pageCount ?? null;
+  const countsDiffer = blocks !== null && pageCount !== null && pageCount !== blocks.length;
   return {
     version: ref.version,
     text: detail.original_content ?? blocks?.join('\n\n') ?? '',
     remote: { id: ref.id, version: ref.version },
     parse: parseOf(progress),
     segmented: progress.status === 'done' ? progress.segmented : null,
-    slideVersion: (matching ?? slides.at(-1))?.version ?? null,
+    slideVersion: linked?.version ?? null,
     blocks,
-    saved: true,
+    // 매핑을 다시 확인받는 것은 가장 최근 대본만입니다. 지난 버전까지 저장 안 함으로 두면 "+ 새 버전"이 막힙니다(`pendingVersion`)
+    saved: !(latest && countsDiffer),
   };
 }
 
@@ -100,7 +111,9 @@ export async function loadPitch(pitchId: string): Promise<PitchDraft> {
   );
   const [scripts, criteria] = await Promise.all([
     Promise.all(
-      [...resources.script_versions].sort(byVersion).map((ref) => loadScript(pitchId, ref, slides)),
+      [...resources.script_versions]
+        .sort(byVersion)
+        .map((ref, i, all) => loadScript(pitchId, ref, slides, i === all.length - 1)),
     ),
     Promise.all(
       [...resources.evaluation_versions].sort(byVersion).map((ref) => loadCriteria(pitchId, ref)),

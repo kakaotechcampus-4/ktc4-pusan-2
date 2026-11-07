@@ -5,6 +5,7 @@ import { pendingVersion, toPracticeCombo } from './lib/draft';
 import { loadPitch } from './loadPitch';
 import { getPitch, getPitchResources } from '@/shared/api/pitch';
 import { openPdf } from '@/shared/lib/pdf';
+import { getScript } from '@/shared/api/script';
 
 /**
  * 수정 화면 불러오기. 네트워크와 PDF 는 BE 응답 모양 그대로 흉내 냅니다.
@@ -78,9 +79,18 @@ const script = (id: string, version: number, n: number): ScriptDetail => ({
   terms: [],
   error_code: null,
 });
+// 기본: 대본 V1 은 3장(슬라이드 V1 과 같음), 대본 V2 는 4장(슬라이드 V2 와 같음)
 vi.mock('@/shared/api/script', () => ({
-  getScript: vi.fn(async (_pitchId: string, id: string) => script(id, id === 'sv1' ? 1 : 2, 3)),
+  getScript: vi.fn(async (_pitchId: string, id: string) =>
+    id === 'sv1' ? script(id, 1, 3) : script(id, 2, 4),
+  ),
 }));
+/** 슬라이드 V2(4장)를 올렸는데 최근 대본 V2 는 아직 3장 — 멘토 리뷰 #923 동선 */
+const latestScriptIsShort = () =>
+  vi
+    .mocked(getScript)
+    .mockImplementationOnce(async (_pitchId, id) => script(id, 1, 3))
+    .mockImplementationOnce(async (_pitchId, id) => script(id, 2, 3));
 vi.mock('@/shared/api/standards', () => ({
   getEvaluation: vi.fn(async () => ({
     pitch_id: 'p1',
@@ -116,10 +126,30 @@ describe('수정 화면 — 서버의 피치를 초안으로 읽는다', () => {
     ]);
   });
 
-  it('대본은 장수가 같은 가장 최근 슬라이드에 연결한다', async () => {
+  it('지난 대본은 장수가 같은 가장 최근 슬라이드에, 가장 최근 대본은 최신 슬라이드에 연결한다', async () => {
     const draft = await loadPitch('p1');
-    // 대본은 3장이라 4장짜리 V2 가 아니라 3장짜리 V1 에 붙습니다
-    expect(draft.scripts.map((s) => s.slideVersion)).toEqual([1, 1]);
+    expect(draft.scripts.map((s) => s.slideVersion)).toEqual([1, 2]);
+  });
+
+  it('가장 최근 대본은 장수가 달라도 최신 슬라이드에 붙고, 매핑을 다시 확인받는다 (멘토 리뷰 #923)', async () => {
+    latestScriptIsShort();
+    const draft = await loadPitch('p1');
+    // 3장짜리 예전 슬라이드(V1)에 붙이면 새로고침 뒤 모든 단계가 완료로 보이고 V1 으로 연습합니다
+    expect(draft.scripts.map((s) => [s.slideVersion, s.saved])).toEqual([
+      [1, true],
+      [2, false],
+    ]);
+  });
+
+  it('지난 대본은 맞는 슬라이드가 없어도 저장된 채로 둔다 — "+ 새 버전"을 막지 않는다', async () => {
+    vi.mocked(getScript)
+      .mockImplementationOnce(async (_pitchId, id) => script(id, 1, 5))
+      .mockImplementationOnce(async (_pitchId, id) => script(id, 2, 4));
+    const draft = await loadPitch('p1');
+    expect(draft.scripts.map((s) => [s.slideVersion, s.saved])).toEqual([
+      [2, true],
+      [2, true],
+    ]);
   });
 
   it('BE 가 센 쪽수가 있으면 PDF 를 열지 않는다 — 없을 때(옛 발표자료)만 연다 (#298)', async () => {
@@ -147,15 +177,20 @@ describe('수정 화면 — 서버의 피치를 초안으로 읽는다', () => {
 });
 
 describe('수정 화면 — 불러온 초안으로 시작한다 (hydrate)', () => {
-  it('최신 대본과 그 대본이 맞춘 슬라이드로 바로 연습할 수 있다', async () => {
+  it('최신 대본과 최신 슬라이드로 바로 연습할 수 있다', async () => {
     store().hydrate('key1', 'p1', await loadPitch('p1'));
 
     expect(store()).toMatchObject({ pitchId: 'p1', entryKey: 'key1', node: 'slides' });
-    // "최신끼리"(슬라이드 V2 · 대본 V2)면 장수가 달라 시작할 수 없습니다
     expect(toPracticeCombo(store().draft, store().chosen)).toMatchObject({
-      presentationVersionId: 'pv1',
+      presentationVersionId: 'pv2',
       scriptVersionId: 'sv2',
     });
+  });
+
+  it('최신 슬라이드와 최근 대본의 장수가 다르면 예전 슬라이드로 연습을 시작하지 않는다 (멘토 리뷰 #923)', async () => {
+    latestScriptIsShort();
+    store().hydrate('key1', 'p1', await loadPitch('p1'));
+    expect(toPracticeCombo(store().draft, store().chosen)).toBeNull();
   });
 
   it('불러온 버전은 저장된 것이라 새 버전을 바로 만들 수 있다', async () => {
