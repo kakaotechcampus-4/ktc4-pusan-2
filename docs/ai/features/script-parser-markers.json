@@ -61,18 +61,18 @@
     },
     {
       "line": "슬라이드 1",
-      "number": null,
-      "group": "구분자가 아닌 표기 — 예전 FE 는 세던 것들"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "슬라이드1:",
-      "number": null,
-      "group": "구분자가 아닌 표기 — 예전 FE 는 세던 것들"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "슬라이드 1 :",
-      "number": null,
-      "group": "구분자가 아닌 표기 — 예전 FE 는 세던 것들"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "슬라이드 1.",
@@ -86,18 +86,18 @@
     },
     {
       "line": "Slide 1",
-      "number": null,
-      "group": "구분자가 아닌 표기 — 예전 FE 는 세던 것들"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "slide 1:",
-      "number": null,
-      "group": "구분자가 아닌 표기 — 예전 FE 는 세던 것들"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "Slide 1: 도입",
-      "number": null,
-      "group": "구분자가 아닌 표기 — 예전 FE 는 세던 것들"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "1.",
@@ -121,13 +121,13 @@
     },
     {
       "line": "[Slide 1]",
-      "number": null,
-      "group": "처음부터 아니던 표기"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "[슬라이드1]",
-      "number": null,
-      "group": "처음부터 아니던 표기"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "[ 1 ]",
@@ -136,8 +136,8 @@
     },
     {
       "line": "# 슬라이드 1",
-      "number": null,
-      "group": "처음부터 아니던 표기"
+      "number": 1,
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "[1",
@@ -259,9 +259,9 @@
     },
     {
       "line": "슬라이드 ３",
-      "number": null,
+      "number": 3,
       "note": "콜론 없음",
-      "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
+      "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "슬라이드 ３.",
@@ -295,6 +295,178 @@
       "line": "３. 도입",
       "number": null,
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
+    },
+    {
+      "line": "[slide 2] 도입",
+      "number": 2,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "[Slide2]",
+      "number": 2,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "SLIDE 3:",
+      "number": 3,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "Slide3:",
+      "number": 3,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "슬라이드 2： 도입",
+      "number": 2,
+      "note": "전각 콜론",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "슬라이드1",
+      "number": 1,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "Slide1",
+      "number": 1,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "  슬라이드 5  ",
+      "number": 5,
+      "note": "앞뒤 공백",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## Slide 1 — 문제 정의",
+      "number": 1,
+      "note": "제목 표시 뒤 구분 기호는 걷고 '문제 정의'가 본문",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## Slide 2 - 셀프 어텐션",
+      "number": 2,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "### Slide 3 | 결론",
+      "number": 3,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## Slide 4. 정리",
+      "number": 4,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## Slide1—제목",
+      "number": 1,
+      "note": "구분 기호를 붙여 씀",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "# 슬라이드 2 개요",
+      "number": 2,
+      "note": "제목 표시가 있으면 공백 뒤 글도 본문",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## 슬라이드 3:",
+      "number": 3,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## [슬라이드 1]",
+      "number": 1,
+      "note": "제목 표시 뒤 대괄호",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "###### Slide 6",
+      "number": 6,
+      "note": "제목 표시 6개까지",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "Slide 9999",
+      "number": 9999,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "슬라이드 3 보시면 매출이 늘었습니다",
+      "number": null,
+      "note": "제목 표시 없이 뒤에 글이 붙음 — 문장일 수 있다",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "Slide 2 shows the result.",
+      "number": null,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## Slide 1a",
+      "number": null,
+      "note": "번호 뒤에 바로 글자",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "#Slide 1",
+      "number": null,
+      "note": "'#' 뒤 공백 없음은 마크다운 제목이 아님",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "####### Slide 1",
+      "number": null,
+      "note": "제목 표시 7개는 아님",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## 01. 문제 상황",
+      "number": null,
+      "note": "제목 표시가 있어도 번호 목록은 아님",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "**[슬라이드 1]**",
+      "number": null,
+      "note": "굵게 꾸밈은 아님",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "> [1]",
+      "number": null,
+      "note": "인용 꾸밈은 아님",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "- [1]",
+      "number": null,
+      "note": "목록 꾸밈은 아님",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "슬라이드 제작 팁",
+      "number": null,
+      "note": "번호 없음",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "Slides 1",
+      "number": null,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "Slide 10000",
+      "number": null,
+      "note": "5자리 이상은 본문",
+      "group": "script_parser-1.3에서 더한 형식의 경계"
+    },
+    {
+      "line": "## Slide 10000 — 본문",
+      "number": null,
+      "group": "script_parser-1.3에서 더한 형식의 경계"
     }
   ],
   "scripts": [
@@ -360,10 +532,13 @@
       "numbers": []
     },
     {
-      "name": "예전 표기뿐",
+      "name": "Slide N 줄 전체",
       "script": "Slide 1\n가\nSlide 2\n나",
-      "status": "fail",
-      "numbers": []
+      "status": "success",
+      "numbers": [
+        1,
+        2
+      ]
     },
     {
       "name": "CRLF",
@@ -444,6 +619,49 @@
       "numbers": [
         9,
         10
+      ]
+    },
+    {
+      "name": "FE가 다시 조립한 슬라이드 N",
+      "script": "슬라이드 1\n가\n\n슬라이드 2\n나",
+      "status": "success",
+      "numbers": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "제목 표시 뒤 Slide N — 제목",
+      "script": "# 발표 제목\n\n## Slide 1 — 도입\n가\n## Slide 2 — 결론\n나",
+      "status": "success",
+      "numbers": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "새 형식 섞기",
+      "script": "[Slide 1] 가\nSlide 2:\n나\n슬라이드3\n다",
+      "status": "success",
+      "numbers": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "번호 목록뿐",
+      "script": "1. 가\n2. 나",
+      "status": "fail",
+      "numbers": []
+    },
+    {
+      "name": "문장 속 슬라이드 N",
+      "script": "[1]\n슬라이드 3 보시면 늘었습니다\n[2]\n나",
+      "status": "success",
+      "numbers": [
+        1,
+        2
       ]
     }
   ]
