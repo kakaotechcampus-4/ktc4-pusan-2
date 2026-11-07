@@ -77,9 +77,17 @@ export function HomePage() {
                 : '발표 자료와 지금까지의 연습 기록을 확인해 보세요.'}
             </p>
           </div>
-          <Link to="/pitch/new" className={primary}>
-            <span aria-hidden="true">＋</span> 새 피치 만들기
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/pitch/tutorial"
+              className="inline-flex items-center justify-center border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream"
+            >
+              첫 미션 체험하기 →
+            </Link>
+            <Link to="/pitch/new" className={primary}>
+              <span aria-hidden="true">＋</span> 새 피치 만들기
+            </Link>
+          </div>
         </div>
         {home.isPending && (
           <div
