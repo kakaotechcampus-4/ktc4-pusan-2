@@ -84,6 +84,27 @@ const screenGroup = {
 const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
+    id: 'tutorial',
+    title: '첫 미션 · 샘플 발표 튜토리얼',
+    group: screenGroup.pitch,
+    route: '/pitch/tutorial',
+    status: '시안',
+    summary: 'Draft #1105의 샘플 발표 자동 준비 과정과 시작 전 장치 점검 진입을 단계별로 체험한다.',
+    states: [base],
+    rules: [
+      '샘플은 5장의 슬라이드와 대본을 자동으로 준비하고 기존 발표 준비 API를 재사용한다.',
+      '설계서에서는 서버 요청·PDF 생성·폴링 없이 준비 단계와 오류 상태만 시연한다.',
+      '실제 제품의 중복 피치 재사용·다중 탭 충돌·BE 지원은 별도로 검증해야 한다.',
+    ],
+    components: ['샘플 준비 진행 단계', '오류 안내', '장치 점검 진입'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
+    sources: ['frontend/src/features/pitch/tutorial/TutorialPage.tsx'],
+    productNote: '실제 API를 호출하지 않고 준비 단계를 버튼으로 진행한다. 제품 Draft #1105의 FE MVP이며 BE 중복 생성 정책은 확정되지 않았다.',
+    productLinks: [link('튜토리얼', '/pitch/tutorial')],
+    next: [next('시작 전 세팅', 'prepare-mission'), next('홈', 'home')],
+  },
+  {
+    kind: 'screen',
     id: 'home',
     title: '홈 · 내 피치',
     group: screenGroup.pitch,
