@@ -33,7 +33,7 @@
 | `accuracy_rating` | 1~5. 분석 결과의 체감 정확도 |
 | `usefulness_rating` | 1~5. 피드백의 구체성·유용성 |
 | `comment` | 선택, 1~2,000자. 부정확하거나 아쉬웠던 점 |
-| `question_version` | 정수 ≥1, 기본 1. FE 가 보여 준 문항 문구의 버전 |
+| `question_version` | 정수 1 ~ 2,147,483,647, 기본 1. FE 가 보여 준 문항 문구의 버전 |
 
 문항 문구를 고칠 예정이라(회의록 3절 "문구 수정") 버전을 같이 남긴다. 고친 앞뒤 응답을 섞어 평균 내지 않는다.
 척도나 문항 수가 바뀌면 칸을 고치는 마이그레이션이 필요하다.
@@ -55,7 +55,7 @@ BE 는 동의를 기록만 하고 Take 생성을 막지 않는다. 동의 화면
 | `POST /api/takes/{take_id}/survey` | 저장. 최초 201, 같은 답 재전송 200, 다른 답 409 `TAKE_SURVEY_ALREADY_SUBMITTED` |
 | `GET /api/takes/{take_id}/survey` | `{submitted, survey}`. 제출 전 `survey` 는 null |
 | `GET /api/take-surveys/pending` | 홈 알림용 미작성 목록 `{items: [{take_id, pitch_id, pitch_title, take_number, completed_at}]}` |
-| `PATCH /api/users/me` | `{test_consent_version: 1}` 로 동의. 응답에 `test_consent_at`·`test_consent_version` |
+| `PATCH /api/users/me` | `{test_consent_version: 1}` 로 동의(1 ~ 2,147,483,647). 응답에 `test_consent_at`·`test_consent_version` |
 
 ```json
 {"accuracy_rating": 4, "usefulness_rating": 3, "comment": "말 빠르기가 실제보다 느리게 나왔어요", "question_version": 1}

@@ -22,7 +22,7 @@ def test_expired_refresh_token_is_rejected(
     db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     issued = login(db_session)
-    stored = repository.get_refresh_token(
+    stored = repository.get_refresh_token_for_update(
         db_session, security.hash_refresh_token(issued.refresh_token)
     )
     assert stored is not None
@@ -40,7 +40,7 @@ def test_expired_refresh_token_is_rejected(
 
 
 def _stored(db: Session, refresh_token: str) -> RefreshToken:
-    stored = repository.get_refresh_token(db, security.hash_refresh_token(refresh_token))
+    stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     assert stored is not None
     return stored
 

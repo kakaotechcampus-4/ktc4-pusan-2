@@ -99,7 +99,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
      "highlights": [{"start": 7, "end": 9}], "expected_ms": 160000}
   ],
   "terms": ["..."],
-  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": null}
+  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.2", "model": null}
 }
 ```
 전체 계약 · 예시는 설계 문서 5절입니다. `meta.model`은 서비스 라우터가 채웁니다.
@@ -146,7 +146,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
 
 옛 대본 이름이고, 옛 `script6`–`20`은 지금 대본과 내용이 다르다.
 
-2026-10-24, `uv run python run.py --eval [--reasoning-effort low]` (옛 대본 20개, 대본마다 LLM 1번, 목표 시간 없음, 출력 상한은 정하지 않음 = 게이트웨이 기본 2,000토큰). 결과 JSON은 마지막에 돌린 `gpt-6-luna` · `low` 것이다 → [`reports/results/script_parser_eval.json`](reports/results/script_parser_eval.json)
+2026-10-24, `uv run python run.py --eval [--reasoning-effort low]` (옛 대본 20개, 대본마다 LLM 1번, 목표 시간 없음, 출력 상한은 정하지 않음 = 게이트웨이 기본 2,000토큰). 이 측정의 결과 JSON은 남아 있지 않다. 같은 경로(`reports/results/script_parser_eval.json`)는 위 '평가 결과'의 지금 대본 15개 결과로 덮어썼다.
 
 | 지표 | `gpt-6-luna` · 추론 `low` | `gpt-6-luna` · 추론 기본값 | `gpt-5.6-luna` · 추론 기본값 (참고) |
 |---|---|---|---|

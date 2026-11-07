@@ -50,6 +50,22 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+def get_released_user_id(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> uuid.UUID:
+    """인증을 끝내고 DB 연결을 돌려준 뒤 사용자 ID 만 넘긴다.
+
+    async 라우트는 세션을 응답이 끝날 때 닫으므로 그대로 두면 AI 를 기다리는 내내 연결을 쥔다.
+    """
+    user_id = current_user.id
+    db.commit()
+    return user_id
+
+
+ReleasedUserId = Annotated[uuid.UUID, Depends(get_released_user_id)]
+
+
 def _origin_of(url: str) -> str | None:
     """URL 에서 스킴+호스트+포트만 남긴다. 출처 비교는 이 단위로만 해야 한다.
 
@@ -68,9 +84,7 @@ def _origin_of(url: str) -> str | None:
 
 
 def _allowed_origins() -> set[str]:
-    # 설정이 출처로 읽히지 않으면 빈 집합이다. 그때는 전부 막는 쪽이 맞다.
-    allowed = _origin_of(settings.frontend_base_url)
-    return {allowed} if allowed is not None else set()
+    return {settings.frontend_origin}
 
 
 def _source_origin(request: Request) -> str | None:

@@ -12,8 +12,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.entity import Take
-from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
@@ -174,7 +174,7 @@ def test_take_ended_while_starting_is_rejected_with_its_reason(
         db.execute(
             update(Take).where(Take.id == take_id).values(status="FAILED", end_reason="ABANDONED")
         )
-        return TakeRepository(db).mark_running(take_id)
+        return coach_service.start_take(db, take_id)
 
     monkeypatch.setattr(lifecycle_service, "mark_running", swept_first)
     with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:

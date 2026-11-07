@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 export function ScreenFrame({
   title,
@@ -18,9 +19,14 @@ export function ScreenFrame({
   children: ReactNode;
 }) {
   return (
-    <main className="pitch-create prepare-screen bg-greige px-6 pt-3 pb-4 text-ink prepare-compact:px-5 prepare-compact:py-2 max-[600px]:px-3 selection:bg-coral-wash selection:text-ink [&_:focus-visible]:outline-coral-deep">
+    // 상단바의 본문 건너뛰기 링크가 초점을 옮기는 자리
+    <main
+      id={MAIN_ID}
+      tabIndex={-1}
+      className="pitch-create prepare-screen flex-1 bg-greige px-6 pt-3 pb-4 text-ink prepare-compact:px-5 prepare-compact:py-2 prepare-low:py-1 max-[600px]:px-3 selection:bg-coral-wash selection:text-ink [&_:focus-visible]:outline-coral-deep"
+    >
       <div className="prepare-frame mx-auto max-w-page">
-        <header className="prepare-heading mb-3 flex min-h-14 items-center gap-3.5 prepare-compact:mb-2 prepare-compact:min-h-11 max-lg:flex-wrap [&>h1]:shrink-0 [&>h1]:text-[22px] [&>h1]:font-bold prepare-compact:[&>h1]:text-xl">
+        <header className="prepare-heading mb-3 flex min-h-14 items-center gap-3.5 prepare-compact:mb-2 prepare-compact:min-h-11 prepare-low:mb-1 prepare-low:min-h-10 max-lg:flex-wrap [&>h1]:shrink-0 [&>h1]:text-[22px] [&>h1]:font-bold prepare-compact:[&>h1]:text-xl">
           <button
             type="button"
             onClick={onBack}
@@ -49,7 +55,7 @@ export function ScreenFrame({
           </span>
         </header>
         {children}
-        <footer className="prepare-footer mt-4 flex items-center gap-4 border-t border-line-strong pt-3 prepare-compact:mt-2 prepare-compact:pt-2 max-[600px]:flex-col max-[600px]:items-stretch [&>p]:min-w-0 [&>p]:flex-1 [&>p]:text-[13px] [&>p]:leading-5 [&>p]:wrap-anywhere">
+        <footer className="prepare-footer mt-4 flex items-center gap-4 border-t border-line-strong pt-3 prepare-compact:mt-2 prepare-compact:pt-2 prepare-low:mt-1.5 prepare-low:pt-1.5 max-[600px]:flex-col max-[600px]:items-stretch [&>p]:min-w-0 [&>p]:flex-1 [&>p]:text-[13px] [&>p]:leading-5 [&>p]:wrap-anywhere">
           <p role="status">{hint}</p>
           <div className="prepare-start shrink-0 [&>button]:min-h-11 [&>button]:min-w-[180px] [&>button]:border [&>button]:shadow-none max-[600px]:[&>button]:w-full">
             {actions}

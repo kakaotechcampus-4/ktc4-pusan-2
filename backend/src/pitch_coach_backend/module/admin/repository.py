@@ -1,13 +1,15 @@
 """관리자 콘솔 집계 쿼리. 읽기만 한다."""
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     ColumnElement,
+    Integer,
     Select,
     case,
+    cast,
     distinct,
     extract,
     func,
@@ -18,6 +20,7 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.module.chat.entity import ChatDiagnostic, ChatRunLog
 from pitch_coach_backend.module.pitch.entity import (
     CoachingPlan,
     Pitch,
@@ -33,18 +36,22 @@ from pitch_coach_backend.module.take.entity import (
     Take,
     TakeAIResults,
     TakeMetricSecond,
-    TakeSlideEvent,
     TakeSummary,
     TakeTranscriptSegment,
 )
 from pitch_coach_backend.module.take.repository import last_active_at
+from pitch_coach_backend.module.take.states import (
+    COVERAGE_CANDIDATE_KIND,
+    COVERAGE_KIND,
+    REVIEW,
+    TAKE_RESULT,
+)
 from pitch_coach_backend.module.user.entity import User
 
 # 일별 집계의 날짜 기준. 사용자가 모두 한국에 있다.
 # SQL 은 DB 가 아는 시간대 이름을, 파이썬은 고정 오프셋을 쓴다.
 # 컨테이너에 시간대 자료가 없어도 되게. 한국은 일광 절약 시간이 없어 둘이 같다
 DAY_TIMEZONE = "Asia/Seoul"
-KST = timezone(timedelta(hours=9), "KST")
 
 # 실제로 연습한 시간(초). duration_sec 은 분석 결과가 와야 채워진다.
 # 그 전에는 시작 · 끝 시각으로 잰다.
@@ -85,25 +92,27 @@ def count_takes_by(
     return {value: count for value, count in db.execute(stmt).all()}
 
 
-def practice_time(db: Session) -> tuple[int, float, float | None, float | None, float | None]:
-    """(잰 Take 수, 합계, 평균, 중앙값, 목표 시간 대비 평균 비율)."""
+def take_breakdowns(db: Session) -> dict[str, dict[str | None, int]]:
+    """Take 수를 상태 · 모드 · 대본 모드 · 끝난 이유별로 센다."""
+    return {
+        "by_status": count_takes_by(db, Take.status),
+        "by_mode": count_takes_by(db, Take.mode),
+        "by_script_mode": count_takes_by(db, Take.script_mode),
+        "by_end_reason": count_takes_by(db, Take.end_reason, ended_only=True),
+    }
+
+
+def practice_time(db: Session) -> dict[str, int | float | None]:
     row = db.execute(
         select(
-            func.count(ELAPSED_SEC),
-            func.coalesce(func.sum(ELAPSED_SEC), 0),
-            func.avg(ELAPSED_SEC),
-            func.percentile_cont(0.5).within_group(ELAPSED_SEC),
-            func.avg(ELAPSED_SEC / _GOAL_SEC),
+            func.count(ELAPSED_SEC).label("measured_takes"),
+            func.coalesce(func.sum(ELAPSED_SEC), 0).label("total_sec"),
+            func.avg(ELAPSED_SEC).label("avg_sec"),
+            func.percentile_cont(0.5).within_group(ELAPSED_SEC).label("median_sec"),
+            func.avg(ELAPSED_SEC / _GOAL_SEC).label("avg_goal_ratio"),
         )
     ).one()
-    count, total, avg, median, ratio = row
-    return (
-        int(count),
-        float(total),
-        _float_or_none(avg),
-        _float_or_none(median),
-        _float_or_none(ratio),
-    )
+    return dict(row._mapping)
 
 
 def daily_signups(db: Session, since: datetime) -> dict[date, int]:
@@ -221,7 +230,7 @@ def live_seconds(
     return _fetch(db, stmt.order_by(TakeMetricSecond.t_ms).limit(limit))
 
 
-AI_RESULT_KINDS = ("TAKE_RESULT", "SCRIPT_COVERAGE", "SCRIPT_COVERAGE_PENDING", "REVIEW")
+AI_RESULT_KINDS = (TAKE_RESULT, COVERAGE_KIND, COVERAGE_CANDIDATE_KIND, REVIEW)
 
 
 def ai_results(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -266,15 +275,19 @@ def take_summary(db: Session, take_id: uuid.UUID) -> TakeSummary | None:
 
 
 def take_settings(db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
-    row = db.execute(
-        select(
-            Take.script_mode,
-            Take.standard_version,
-            Take.mission_ids,
-            Take.raw_data_consent,
-            Take.utterance_ends,
-        ).where(Take.id == take_id)
-    ).mappings().first()
+    row = (
+        db.execute(
+            select(
+                Take.script_mode,
+                Take.standard_version,
+                Take.mission_ids,
+                Take.raw_data_consent,
+                Take.utterance_ends,
+            ).where(Take.id == take_id)
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else dict(row)
 
 
@@ -290,15 +303,6 @@ def transcript_words(db: Session, take_id: uuid.UUID, limit: int) -> list[dict[s
         .where(TakeTranscriptSegment.take_id == take_id)
         .order_by(TakeTranscriptSegment.seq)
         .limit(limit)
-    )
-    return _fetch(db, stmt)
-
-
-def slide_events(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]]:
-    stmt = (
-        select(TakeSlideEvent.started_ms, TakeSlideEvent.slide_number)
-        .where(TakeSlideEvent.take_id == take_id)
-        .order_by(TakeSlideEvent.started_ms)
     )
     return _fetch(db, stmt)
 
@@ -435,12 +439,15 @@ def _fetch(db: Session, stmt: Select[Any]) -> list[dict[str, Any]]:
     return [dict(row) for row in db.execute(stmt).mappings()]
 
 
+def _fetch_page(db: Session, stmt: Select[Any], limit: int, offset: int) -> list[dict[str, Any]]:
+    """한 행 더 읽는다. `service._page` 가 이것으로 다음 쪽이 있는지 안다."""
+    return _fetch(db, stmt.offset(offset).limit(limit + 1))
+
+
 def _count_total_and_since(
     db: Session, created_at: InstrumentedAttribute[datetime], since: datetime
 ) -> tuple[int, int]:
-    total, recent = db.execute(
-        select(func.count(), func.count().filter(created_at >= since))
-    ).one()
+    total, recent = db.execute(select(func.count(), func.count().filter(created_at >= since))).one()
     return int(total), int(recent)
 
 
@@ -448,15 +455,8 @@ def _count_per_day(
     db: Session, created_at: InstrumentedAttribute[datetime], since: datetime
 ) -> dict[date, int]:
     day = func.date(func.timezone(DAY_TIMEZONE, created_at))
-    rows = db.execute(
-        select(day, func.count()).where(created_at >= since).group_by(day)
-    ).all()
+    rows = db.execute(select(day, func.count()).where(created_at >= since).group_by(day)).all()
     return {value: count for value, count in rows}
-
-
-def _float_or_none(value: Any) -> float | None:
-    # AVG · percentile 은 Decimal 을 돌려주고 대상이 없으면 NULL 이다
-    return None if value is None else float(value)
 
 
 def take_survey_summary(db: Session) -> list[dict[str, Any]]:
@@ -491,18 +491,14 @@ def list_take_surveys(db: Session, *, limit: int, offset: int) -> list[dict[str,
         .outerjoin(Take, Take.id == TakeSurvey.take_id)
         .outerjoin(Pitch, Pitch.id == Take.pitch_id)
     )
-    return _fetch(
-        db,
-        stmt.order_by(TakeSurvey.created_at.desc(), TakeSurvey.id.desc())
-        .offset(offset)
-        .limit(limit + 1),
+    return _fetch_page(
+        db, stmt.order_by(TakeSurvey.created_at.desc(), TakeSurvey.id.desc()), limit, offset
     )
 
 
 def list_suggestions(
     db: Session,
     *,
-    source: str | None,
     limit: int,
     offset: int,
     category: str | None = None,
@@ -516,15 +512,71 @@ def list_suggestions(
         UserSuggestion.category,
         UserSuggestion.created_at,
     )
-    if source is not None:
-        stmt = stmt.where(UserSuggestion.source == source)
     if category is not None:
         stmt = stmt.where(UserSuggestion.category == category)
     if user_id is not None:
         stmt = stmt.where(UserSuggestion.user_id == user_id)
-    return _fetch(
-        db,
-        stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc())
-        .offset(offset)
-        .limit(limit + 1),
+    return _fetch_page(
+        db, stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc()), limit, offset
+    )
+
+
+def chat_days(db: Session, since: date) -> list[dict[str, Any]]:
+    """코치 대화 실행의 운영 기록을 날짜(한국 시간)별로 모은다. 대화 본문은 없다."""
+
+    def count(status: str) -> ColumnElement[int]:
+        return func.count().filter(ChatRunLog.status == status)
+
+    rows = db.execute(
+        select(
+            ChatRunLog.day,
+            func.count(distinct(ChatRunLog.user_id)).label("users"),
+            func.count().label("runs"),
+            count("DONE").label("done"),
+            count("PARTIAL").label("partial"),
+            count("REFUSED").label("refused"),
+            count("FAILED").label("failed"),
+            count("CANCELLED").label("cancelled"),
+            count("EXPIRED").label("expired"),
+            cast(func.round(func.avg(ChatRunLog.ms)), Integer).label("avg_ms"),
+            # 상위 5% 시간은 그날 ms 를 정렬한 ceil(0.95 × N) 번째 값이다(chat-agent.md 12-3).
+            # percentile_disc 가 같은 값을 준다
+            func.percentile_disc(0.95).within_group(ChatRunLog.ms).label("p95_ms"),
+            func.sum(ChatRunLog.input_tokens).label("input_tokens"),
+            func.sum(ChatRunLog.output_tokens).label("output_tokens"),
+            func.count()
+            .filter(or_(ChatRunLog.input_tokens.is_(None), ChatRunLog.output_tokens.is_(None)))
+            .label("tokens_missing"),
+        )
+        .where(ChatRunLog.day >= since)
+        .group_by(ChatRunLog.day)
+        .order_by(ChatRunLog.day.desc())
+    ).mappings()
+    return [dict(row) for row in rows]
+
+
+def chat_diagnostics(
+    db: Session,
+    *,
+    run_id: uuid.UUID | None,
+    conversation_id: uuid.UUID | None,
+    limit: int,
+    offset: int,
+) -> list[ChatDiagnostic]:
+    """진단 기록을 최신부터. 다음 쪽이 있는지 보려고 한 행 더 읽는다."""
+    stmt = select(ChatDiagnostic)
+    if run_id is not None:
+        stmt = stmt.where(ChatDiagnostic.run_id == run_id)
+    if conversation_id is not None:
+        stmt = stmt.where(ChatDiagnostic.conversation_id == conversation_id)
+    return list(
+        db.scalars(
+            stmt.order_by(
+                ChatDiagnostic.received_at.desc(),
+                ChatDiagnostic.turn_call.desc(),
+                ChatDiagnostic.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit + 1)
+        )
     )

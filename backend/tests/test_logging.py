@@ -8,6 +8,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError, OperationalError, StatementError
+from uvicorn.logging import AccessFormatter
 
 from pitch_coach_backend.core.database import engine
 from pitch_coach_backend.core.logging import APP_LOGGER, configure_logging, sqlstate
@@ -159,3 +160,52 @@ def test_engine_hides_bind_parameters():
     error = StatementError("오류", "SELECT :email", params, None, engine.hide_parameters)
 
     assert "secret@example.com" not in str(error)
+
+
+@pytest.fixture
+def access_log() -> Iterator[io.StringIO]:
+    """uvicorn 접근 로그를 실제 형식으로 받는다. 로거는 프로세스 전체에서 하나라 끝나면 되돌린다."""
+    logger = logging.getLogger("uvicorn.access")
+    filters, handlers, level = list(logger.filters), list(logger.handlers), logger.level
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(AccessFormatter('"%(request_line)s" %(status_code)s', use_colors=False))
+    logger.handlers[:] = [handler]
+    logger.setLevel(logging.INFO)
+    yield stream
+    logger.filters[:] = filters
+    logger.handlers[:] = handlers
+    logger.setLevel(level)
+
+
+def _access(path: str) -> None:
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %d', "1.2.3.4:5", "GET", path, "1.1", 303
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/auth/google/callback?code=SECRET&state=SECRET",
+        "/api/auth/google/callback?error=access_denied&state=SECRET",
+        "/api/auth/google/callback/?code=SECRET&state=SECRET",
+    ],
+)
+def test_google_callback_query_is_not_in_access_log(access_log: io.StringIO, path: str):
+    configure_logging("info")
+
+    _access(path)
+
+    line = access_log.getvalue()
+    assert "SECRET" not in line
+    assert "GET /api/auth/google/callback" in line
+    assert "303" in line
+
+
+def test_other_paths_keep_their_query_in_access_log(access_log: io.StringIO):
+    configure_logging("info")
+
+    _access("/api/pitches?limit=5")
+
+    assert "GET /api/pitches?limit=5 HTTP/1.1" in access_log.getvalue()

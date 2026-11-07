@@ -46,7 +46,7 @@ def test_error_and_runner_logs_omit_response_body(status, body, caplog):
     )
     runner = ScriptParseRunner(parser)
     runner._save_failure = AsyncMock()
-    ticket = ParseTicket(uuid.uuid4(), datetime.now(UTC), PRIVATE, 300000)
+    ticket = ParseTicket(uuid.uuid4(), datetime.now(UTC), PRIVATE, 300000, pitch_id=uuid.uuid4())
     with caplog.at_level(logging.WARNING):
         asyncio.run(runner.run(ticket))
     assert PRIVATE not in caplog.text
@@ -119,7 +119,7 @@ PARSED = ParsedScript(
 
 
 def _ticket() -> ParseTicket:
-    return ParseTicket(uuid.uuid4(), datetime.now(UTC), PRIVATE, 300000)
+    return ParseTicket(uuid.uuid4(), datetime.now(UTC), PRIVATE, 300000, pitch_id=uuid.uuid4())
 
 
 def test_result_save_failure_log_omits_script_text(monkeypatch, caplog):

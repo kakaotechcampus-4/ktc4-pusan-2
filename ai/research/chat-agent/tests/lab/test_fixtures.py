@@ -7,7 +7,7 @@ from importlib import resources
 
 import pytest
 
-from chat_agent_lab import fixtures as fx
+from chat_agent_lab.service_tests import fixtures as fx
 
 COACH = json.loads(
     (

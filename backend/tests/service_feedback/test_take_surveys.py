@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from pitch_coach_backend.core.limits import INT4_MAX
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.service_feedback.entity import TakeSurvey
 from pitch_coach_backend.module.user.entity import User
@@ -143,6 +144,7 @@ def test_other_users_or_missing_take_is_404(client, auth, db_session):
         {"comment": "\ud800"},
         {"question_version": 0},
         {"question_version": "1"},
+        {"question_version": INT4_MAX + 1},
         {"user_id": str(uuid.uuid4())},
     ],
 )
@@ -153,6 +155,13 @@ def test_invalid_answer_is_422(client, auth, report, change):
         content=json.dumps({**ANSWERS, **change}),
     )
     assert response.status_code == 422
+
+
+def test_largest_question_version_is_stored(client, auth, report):
+    body = {**ANSWERS, "question_version": INT4_MAX}
+    response = client.post(path(report.id), headers=auth, json=body)
+    assert response.status_code == 201
+    assert response.json()["question_version"] == INT4_MAX
 
 
 def test_missing_rating_is_422(client, auth, report):

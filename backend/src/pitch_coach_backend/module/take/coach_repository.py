@@ -7,14 +7,12 @@ from typing import Any
 
 from sqlalchemy import ColumnElement, and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.entity import (
     Calibration,
     CoachEvent,
     Mission,
     Take,
-    TakeAIResults,
     TakeMetricSecond,
     TakeSlideEvent,
     TakeSummary,
@@ -22,20 +20,20 @@ from pitch_coach_backend.module.take.entity import (
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import (
-    ENDED_STATUS,
-    FINALIZING_STAGE,
     TakeRepository,
     finished_order,
 )
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    COMPLETED,
+    FAILED,
+    FINALIZING,
+    READY,
+    RUNNING,
+)
 
 
-class CoachRepository:
-    def __init__(self, db: Session):
-        self.db = db
-
-    def pitch_id_of(self, take_id: uuid.UUID) -> uuid.UUID | None:
-        return self.db.scalar(select(Take.pitch_id).where(Take.id == take_id))
-
+class CoachRepository(TakeRepository):
     def mark_started(self, take_id: uuid.UUID) -> int | None:
         """`READY` 인 Take 를 `RUNNING` 으로 바꾸고 그 번호를 돌려준다. 바꾸지 않았으면 None.
 
@@ -44,8 +42,8 @@ class CoachRepository:
         """
         return self.db.scalar(
             update(Take)
-            .where(Take.id == take_id, Take.status == "READY")
-            .values(status="RUNNING", started_at=func.coalesce(Take.started_at, func.now()))
+            .where(Take.id == take_id, Take.status == READY)
+            .values(status=RUNNING, started_at=func.coalesce(Take.started_at, func.now()))
             .returning(Take.take_number)
         )
 
@@ -118,41 +116,17 @@ class CoachRepository:
         # 값을 읽어야 하므로 DB 에서 다시 채운다
         return self.db.get(Take, take_id, populate_existing=True)
 
-    def missions(self, mission_ids: Iterable[uuid.UUID]) -> list[Mission]:
-        """id 목록의 미션. 지운 미션은 빠진다. 목록의 순서를 지킨다."""
-        ids = list(mission_ids)
-        if not ids:
-            return []
-        rows = {m.id: m for m in self.db.scalars(select(Mission).where(Mission.id.in_(ids)))}
-        return [rows[i] for i in ids if i in rows]
-
     def latest_completed_take(self, pitch_id: uuid.UUID, *, before: int | None) -> uuid.UUID | None:
         """`COMPLETED` Take 중 가장 늦게 끝난 것 (리뷰가 끝내 실패한 Take 포함). 코칭 계획의 바탕
         Take 다. `before` 가 있으면 번호가 그보다 작은 것만 본다."""
-        query = select(Take.id).where(Take.pitch_id == pitch_id, Take.status == "COMPLETED")
+        query = select(Take.id).where(Take.pitch_id == pitch_id, Take.status == COMPLETED)
         if before is not None:
             query = query.where(Take.take_number < before)
         return self.db.scalar(query.order_by(*finished_order()).limit(1))
 
-    def ai_result(self, take_id: uuid.UUID, kind: str) -> TakeAIResults | None:
-        return self.db.scalar(
-            select(TakeAIResults).where(
-                TakeAIResults.take_id == take_id, TakeAIResults.kind == kind
-            )
-        )
-
     def base_level_db(self, take_id: uuid.UUID) -> float | None:
         return self.db.scalar(
             select(Calibration.base_level_db).where(Calibration.take_id == take_id)
-        )
-
-    def slide_events(self, take_id: uuid.UUID) -> list[TakeSlideEvent]:
-        return list(
-            self.db.scalars(
-                select(TakeSlideEvent)
-                .where(TakeSlideEvent.take_id == take_id)
-                .order_by(TakeSlideEvent.started_ms)
-            )
         )
 
     def metric_seconds(self, take_id: uuid.UUID) -> list[TakeMetricSecond]:
@@ -241,24 +215,6 @@ class CoachRepository:
             return None
         return take
 
-    def save_ai_result(
-        self, take_id: uuid.UUID, kind: str, payload: Mapping[str, Any], meta: Mapping[str, Any]
-    ) -> None:
-        """(take_id, kind) 에 하나만 둔다. 이미 있으면 덮고 revision 을 1 올린다."""
-        stmt = insert(TakeAIResults).values(
-            take_id=take_id, kind=kind, payload=dict(payload), meta=dict(meta), revision=0
-        )
-        self.db.execute(
-            stmt.on_conflict_do_update(
-                index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
-                set_={
-                    "payload": stmt.excluded.payload,
-                    "meta": stmt.excluded.meta,
-                    "revision": TakeAIResults.revision + 1,
-                },
-            )
-        )
-
     def save_summary_measures(self, take_id: uuid.UUID, measures: Mapping[str, Any]) -> None:
         """take_summaries 의 측정 칸만 바꾼다. 리뷰 · 대본 전달도 칸은 그대로 둔다."""
         stmt = insert(TakeSummary).values(take_id=take_id, **measures)
@@ -275,7 +231,7 @@ class CoachRepository:
     def fail_finalizing(self, take_id: uuid.UUID) -> bool:
         """Take 결과를 끝내 만들지 못했다. `FAILED` 로 바꾸고 단계는 그대로 둔다. 바꿨으면 True."""
         result = self.db.execute(
-            update(Take).where(Take.id == take_id, waiting_for_result()).values(status="FAILED")
+            update(Take).where(Take.id == take_id, waiting_for_result()).values(status=FAILED)
         )
         return result.rowcount > 0
 
@@ -292,7 +248,7 @@ class CoachRepository:
         잠그지 않는다. 잠근 Take id 와 지운 행 수.
         """
         query = select(Take.id).where(
-            Take.status == "FAILED",
+            Take.status == FAILED,
             Take.raw_data_consent.is_(False),
             func.coalesce(Take.ended_at, Take.created_at) < before,
             select(TakeMetricSecond.take_id).where(TakeMetricSecond.take_id == Take.id).exists(),
@@ -312,16 +268,11 @@ class CoachRepository:
         return expired, result.rowcount
 
 
-REVIEW = "REVIEW"
-
-TAKE_RESULT = "TAKE_RESULT"
-
-
 def waiting_for_result() -> ColumnElement[bool]:
     """Take 결과(finalize)를 기다리는 Take — 상태 `ANALYZING` · 분석 단계 `FINALIZING`."""
-    return and_(Take.status == ENDED_STATUS, Take.analysis_stage == FINALIZING_STAGE)
+    return and_(Take.status == ANALYZING, Take.analysis_stage == FINALIZING)
 
 
 def is_waiting_for_result(take: Take) -> bool:
     """읽어 둔 Take 에 `waiting_for_result` 를 본다."""
-    return take.status == ENDED_STATUS and take.analysis_stage == FINALIZING_STAGE
+    return take.status == ANALYZING and take.analysis_stage == FINALIZING

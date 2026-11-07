@@ -6,10 +6,11 @@
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.limits import KST
 from pitch_coach_backend.module.pitch.adapter.storage import generate_presigned_url
 from pitch_coach_backend.module.pitch.dto import (
     NewerScriptDTO,
@@ -34,11 +35,10 @@ from pitch_coach_backend.module.pitch.service import file_cleanup
 from pitch_coach_backend.module.pitch.service.script import effective_status
 from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import lookup as take_lookup
 
 # 발표일은 사용자가 고른 한국 날짜다. 오늘도 한국 날짜로 봐야 0~9시에 오늘 발표가 지난 발표가
 # 되지 않는다. 관리자 콘솔(admin/repository.py)과 같은 고정 오프셋이다
-KST = timezone(timedelta(hours=9), "KST")
 
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveRequestDTO):
@@ -48,7 +48,7 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveReque
         time_limit_sec=pitch_dto.time_limit_sec,
         presentation_date=pitch_dto.presentation_date,
         upper_deviation=pitch_dto.upper_deviation,
-        lower_deviation=pitch_dto.lower_deviation
+        lower_deviation=pitch_dto.lower_deviation,
     )
 
     pitch_repository = PitchRepository(db)
@@ -94,7 +94,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
                 script_mode=take.script_mode,
                 score=take_score,
                 delta=d,
-                created_at = take.created_at
+                created_at=take.created_at,
             )
 
             take_summaries.append(take_summary)
@@ -110,7 +110,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
                 else None
             ),
             presentation_date=pitch.presentation_date,
-            takes=take_summaries
+            takes=take_summaries,
         )
 
         results.append(pitch_dto)
@@ -122,6 +122,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
 # Versioned 타입을 가진 객체들을 VersionDTO로 변환
 def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:
     return [VersionDTO(id=row.id, version=row.version) for row in rows]
+
 
 def get_pitch_info(db: Session, pitch_id: uuid.UUID) -> PitchInfoResponseDTO:
     pitch_repository = PitchRepository(db)
@@ -135,8 +136,9 @@ def get_pitch_info(db: Session, pitch_id: uuid.UUID) -> PitchInfoResponseDTO:
         time_limit_sec=pitch.time_limit_sec,
         presentation_date=pitch.presentation_date,
         upper_deviation=pitch.upper_deviation,
-        lower_deviation=pitch.lower_deviation
+        lower_deviation=pitch.lower_deviation,
     )
+
 
 # 발표 자료 버전 들고오기
 def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
@@ -161,7 +163,7 @@ def _prepare_missions(db: Session, pitch_id: uuid.UUID) -> PrepareMissionsDTO | 
 
     지금 있는 Take 는 모두 다음 번호보다 작아서 `before` 없이 고른 것과 같다.
     """
-    source = TakeRepository(db).get_latest_reviewed_take_in_pitch(pitch_id)
+    source = take_lookup.latest_reviewed_take(db, pitch_id)
     if source is None:
         return None
     return PrepareMissionsDTO(
@@ -198,7 +200,7 @@ def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
     if presentation is None:
         presentation = pitch_repository.get_latest_presentation(pitch_id)
     latest_script = pitch_repository.get_latest_script(pitch_id)
-    latest_take = TakeRepository(db).get_latest_take_in_pitch(pitch_id)
+    latest_take = take_lookup.latest_take(db, pitch_id)
 
     newer_script = None
     if latest_script is not None and (script is None or latest_script.version > script.version):
@@ -227,6 +229,11 @@ def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
     )
 
 
+def _timing(pitch: Pitch) -> tuple[int, int, int]:
+    """제한 시간 · 허용 초과 · 허용 미달 (초)."""
+    return pitch.time_limit_sec, pitch.upper_deviation, pitch.lower_deviation
+
+
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
@@ -234,6 +241,7 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     if not existing_pitch:
         raise NonExistentPitch()
 
+    before = _timing(existing_pitch)
     existing_pitch.title = pitch_dto.title
     existing_pitch.time_limit_sec = pitch_dto.time_limit_sec
     existing_pitch.presentation_date = pitch_dto.presentation_date
@@ -243,7 +251,8 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     updated_pitch = pitch_repository.save(existing_pitch)
     db.commit()
 
-    return updated_pitch.id
+    # 코칭 계획의 바탕 값이라 바뀌면 계획을 다시 만든다
+    return updated_pitch.id, _timing(updated_pitch) != before
 
 
 def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
@@ -277,17 +286,17 @@ def delete_pitch_files(pitch_id: uuid.UUID) -> None:
     file_cleanup.delete_files(file_cleanup.pitch_prefix(pitch_id))
 
 
-def reserve_pitch_file_deletions(db: Session, pitch_ids: list[uuid.UUID]) -> None:
-    """회원 탈퇴처럼 발표를 한꺼번에 지울 때, 지우는 커밋에 같이 묶을 파일 삭제 기록을 남긴다."""
+def reserve_user_pitch_deletions(
+    db: Session, user_id: uuid.UUID
+) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
+    """회원 탈퇴 전에 부른다. 지울 발표 파일 기록을 남기고 (발표 id, Take id) 를 돌려준다.
+
+    지운 뒤에는 CASCADE 로 사라져 읽을 수 없고, 기록은 회원을 지우는 커밋에 같이 묶여야 한다."""
+    repository = PitchRepository(db)
+    pitch_ids = repository.get_ids_by_user(user_id)
+    take_ids = repository.get_take_ids_by_user(user_id)
     file_cleanup.reserve(db, pitch_ids)
-
-
-def get_pitch_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
-    return PitchRepository(db).get_ids_by_user(user_id)
-
-
-def get_take_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
-    return PitchRepository(db).get_take_ids_by_user(user_id)
+    return pitch_ids, take_ids
 
 
 def lock_for_new_version(db: Session, pitch_id: uuid.UUID) -> None:
@@ -307,7 +316,8 @@ def chosen_coaching_plan(
     script_version_id: uuid.UUID | None,
     target_ms: int | None,
     min_ms: int | None,
-    max_ms: int | None) -> CoachingPlan | None:
+    max_ms: int | None,
+) -> CoachingPlan | None:
     """바탕 값이 모두 같은 계획 중 요청 시각이 가장 늦은 것 (coach-agent.md 12-2 계획 고르기)."""
     return PitchRepository(db).get_chosen_coaching_plan(
         pitch_id,
@@ -330,7 +340,8 @@ def add_coaching_plan(
     max_ms: int | None,
     requested_at: datetime,
     payload: dict,
-    meta: dict) -> bool:
+    meta: dict,
+) -> bool:
     """계획 응답 하나를 한 행으로 더한다. 발표가 그 사이 지워졌으면 넣지 않고 False."""
     return PitchRepository(db).add_coaching_plan(
         CoachingPlan(
@@ -345,11 +356,3 @@ def add_coaching_plan(
             meta=meta,
         )
     )
-
-
-def pitch_timing(db: Session, pitch_id: uuid.UUID) -> tuple[int, int, int] | None:
-    """제한 시간 · 허용 초과 · 허용 미달 (초). 코칭 계획의 바탕 값이라 바뀌면 계획을 다시 만든다."""
-    pitch = PitchRepository(db).get_by_id(pitch_id)
-    if pitch is None:
-        return None
-    return pitch.time_limit_sec, pitch.upper_deviation, pitch.lower_deviation

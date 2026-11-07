@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 
 import pytest
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
-from chat_agent.schemas import FinalData
 from chat_agent_lab.app import build_request, from_env
 
 pytestmark = pytest.mark.live
