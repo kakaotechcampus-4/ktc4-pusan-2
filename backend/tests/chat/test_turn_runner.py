@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -615,6 +616,33 @@ def test_sent_calls_confirm_the_service_reservation(
     _run(queued_run, session_factory)
 
     assert _service_usage(db_session, day) == (0, 2)
+
+
+def test_turn_reaching_the_call_limit_is_told_apart_in_the_log(
+    db_session, session_factory, agent, queued_run, caplog
+) -> None:
+    run_id = str(queued_run)
+    for call in range(1, turn_runner.MAX_TURN_CALLS + 1):
+        action = {
+            "action_id": f"a{call}",
+            "type": "FETCH_TAKE",
+            "args": {"pitch_id": str(uuid.uuid4()), "take_id": str(uuid.uuid4())},
+            "autonomy": "AUTO",
+            "args_hash": None,
+            "idempotency_key": f"{run_id}:{call}",
+            "reason": "기록을 더 본다",
+            "authorized_by": None,
+        }
+        agent.replies.append(_ndjson(_stream(run_id, ("final", _needs_action(action)))))
+
+    with caplog.at_level(logging.WARNING, logger=turn_runner.__name__):
+        _run(queued_run, session_factory)
+
+    db_session.expire_all()
+    run = db_session.get(ChatRun, queued_run)
+    assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
+    assert len(agent.requests) == turn_runner.MAX_TURN_CALLS
+    assert any("호출 한도" in record.getMessage() for record in caplog.records)
 
 
 def test_args_hash_follows_the_doc_example() -> None:

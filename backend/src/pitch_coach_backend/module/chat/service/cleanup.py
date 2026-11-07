@@ -118,13 +118,19 @@ def _clear_goals(repo: ChatRepository) -> int:
     return cleared
 
 
-def _deleted_ids(repo: ChatRepository, pitch_ids: set[Any], take_ids: set[Any]) -> set[str]:
+def _deleted_ids(repo: ChatRepository, pitch_ids: set[Any], take_ids: set[Any]) -> set[Any]:
+    """없는 근거 ID 를 저장된 값 그대로 돌려준다. 부르는 쪽이 저장된 값과 바로 대조한다.
+
+    AI 가 대문자나 하이픈 없는 UUID 를 냈어도 저장된 문자열로 맞으므로 빠지지 않는다. 읽지 못하는
+    ID 도 없는 것으로 본다.
+    """
     pitches = _parse(pitch_ids)
     takes = _parse(take_ids)
-    deleted = {str(value) for value in pitch_ids | take_ids if parse_uuid(value) is None}
-    deleted |= {str(p) for p in pitches - repo.existing_pitch_ids(pitches)} if pitches else set()
-    deleted |= {str(t) for t in takes - repo.existing_take_ids(takes)} if takes else set()
-    return deleted
+    existing_pitches = repo.existing_pitch_ids(pitches) if pitches else set()
+    existing_takes = repo.existing_take_ids(takes) if takes else set()
+    return {value for value in pitch_ids if parse_uuid(value) not in existing_pitches} | {
+        value for value in take_ids if parse_uuid(value) not in existing_takes
+    }
 
 
 def _parse(values: set[Any]) -> set[uuid.UUID]:
