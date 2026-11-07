@@ -91,19 +91,16 @@ afterEach(async () => {
   }
 });
 
-it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대기로 이동한다', async () => {
-  await render();
-  await click('다음 · 대본 →');
-  expect(host.textContent).toContain('대본 입력');
-  await click('대본 매핑');
-  expect(host.textContent).toContain('목표 발표시간');
-  await click('다음 →');
-  // 저장한 평가기준이 없으면 "연습 시작"은 막히고 "건너뛰기"로 시작한다
-  expect(button('연습 시작 →')?.disabled).toBe(true);
-  await click('건너뛰기');
+it('단일 페이지 피치 생성의 최종 확인부터 세팅·무대 종료·분석 대기로 이동한다', async () => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  await render('pitch-create', 'ready');
+  await click('최종 확인 →');
+  expect(host.querySelector('dialog')?.textContent).toContain('발표 준비 최종 확인');
+  await click('확인하고 시작 전 점검 →');
   await click('Take 3 시작하기');
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('HIGHLIGHT');
-  // 마지막 장이 아니면 끝낼 수 없다(#697)
   expect(button('발표 끝내기')?.disabled).toBe(true);
   expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
   expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
@@ -204,6 +201,10 @@ it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 
 it('개별 보기에서 최신 슬라이드 확인 창을 모달로 열고 닫는다', async () => {
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
     this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
   };
   await render();
   await click('슬라이드 확인');
