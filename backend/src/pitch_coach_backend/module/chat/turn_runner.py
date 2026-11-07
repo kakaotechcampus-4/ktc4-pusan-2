@@ -215,6 +215,7 @@ class _Turn:
                     request.history.overflow.prev_summary_version
                     if request.history.overflow
                     else None,
+                    [item.item_id for item in request.memory.profile or []],
                 )
                 outcome = await request_turn(
                     request,
