@@ -236,8 +236,12 @@ def google_callback(
     """
     if code is None or state is None:
         if state:
-            # 남은 인증 요청을 지운다. 만료로도 거절되지만 즉시 정리한다.
-            service.cancel_login(db, state)
+            # 남은 인증 요청을 지운다. 만료로도 거절되므로 못 지워도 프론트로 보낸다.
+            # 세션은 get_db 가 닫으며 되돌린다. 바인드 값은 엔진이 예외 문구에서 뺀다
+            try:
+                service.cancel_login(db, state)
+            except Exception:
+                logger.exception("구글 로그인 취소 뒤 인증 요청을 지우지 못함")
         response = RedirectResponse(
             _frontend_url("/", auth_error=error or "invalid_request"),
             status_code=status.HTTP_302_FOUND,
