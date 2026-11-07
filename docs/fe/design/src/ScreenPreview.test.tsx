@@ -272,7 +272,9 @@ it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한�
   await act(async () => link!.click());
   expect(host.textContent).toContain('검토용 초안 · 시행 전');
   expect(host.textContent).toContain('카메라 영상과 음성의 차이');
-  const terms = [...host.querySelectorAll('a')].find((item) => item.textContent?.trim() === '이용약관');
+  const terms = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '이용약관',
+  );
   expect(terms).toBeDefined();
   await act(async () => terms!.click());
   expect(host.textContent).toContain('서비스의 목적');
