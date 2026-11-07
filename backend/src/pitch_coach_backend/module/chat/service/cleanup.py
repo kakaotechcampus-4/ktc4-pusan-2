@@ -1,13 +1,12 @@
 import uuid
-from collections.abc import Callable
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import deactivate_goals_without_base
-from pitch_coach_backend.module.chat.service.run import SEOUL
+from pitch_coach_backend.module.chat.service.run import seoul_day
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 
 CLEANUP_LEASE = timedelta(hours=1)
@@ -45,7 +44,7 @@ def delete_expired(db: Session, now: datetime) -> int:
         db, lambda: repo.delete_inactive_conversations(now - CONVERSATION_RETENTION, DELETE_BATCH)
     )
     deleted += _in_batches(db, lambda: repo.delete_finished_runs(now - RUN_RETENTION, DELETE_BATCH))
-    deleted += repo.delete_run_logs_before((now - RUN_LOG_RETENTION).astimezone(SEOUL).date())
+    deleted += repo.delete_run_logs_before(seoul_day(now - RUN_LOG_RETENTION))
     deleted += repo.delete_unused_profile_items(now - PROFILE_ITEM_RETENTION)
     db.commit()
     return deleted

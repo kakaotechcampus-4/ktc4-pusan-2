@@ -199,6 +199,7 @@ class _Turn:
                 request_service.offered_sources(request),
                 request.memory.memory_version,
                 overflow.prev_summary_version if overflow else None,
+                [item.item_id for item in request.memory.profile or []],
             )
             return await request_turn(
                 request,
