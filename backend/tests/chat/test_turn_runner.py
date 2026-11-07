@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from typing import Any
 
@@ -11,13 +11,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat import ai_client, turn_runner
+from pitch_coach_backend.module.chat.ai_response import args_hash
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
+    ChatDailyUsage,
     ChatMessage,
+    ChatProfileItem,
     ChatRun,
     ChatRunLog,
 )
+from pitch_coach_backend.module.chat.service import turn as turn_service
+from pitch_coach_backend.module.chat.service.run import SEOUL
 
 META = {
     "schema_version": "1.0",
@@ -35,6 +40,8 @@ BUDGET = {
     "output_tokens": 1,
 }
 STATE = {"v": 1, "kid": "k1", "payload": "p", "signature": "s"}
+MEMORY_MESSAGE = "앞으로 짧게 설명해 줘"
+UPDATE = {"key": "EXPLAIN_STYLE", "value": "짧게 설명", "quote": MEMORY_MESSAGE}
 
 
 def _final(status: str = "DONE", **extra: Any) -> dict[str, Any]:
@@ -330,3 +337,245 @@ def test_answer_with_someone_elses_pitch_fails_as_upstream_error(
         )
         is None
     )
+
+
+def _remembering(db_session: Session, run_id: uuid.UUID) -> None:
+    row = db_session.get(ChatRun, run_id)
+    row.input = {**row.input, "user_message": MEMORY_MESSAGE}
+    db_session.flush()
+
+
+def _reassess(run_id: str) -> dict[str, Any]:
+    args = {"take_id": str(uuid.uuid4()), "change": {"script_used": True}}
+    return {
+        "action_id": "a1",
+        "type": "REASSESS",
+        "args": args,
+        "autonomy": "ASK",
+        "args_hash": args_hash("REASSESS", args),
+        "idempotency_key": f"{run_id}:1",
+        "reason": "다시 평가",
+        "authorized_by": None,
+    }
+
+
+def _waiting(action: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    message = {
+        "text": "확인해 주세요",
+        "claims": [{"kind": "SYSTEM", "text": "확인해 주세요"}],
+        "cards": [{"type": "ASK_CONFIRM", "action_id": action["action_id"]}],
+        "sources": [],
+    }
+    return _final("NEEDS_ACTION", message=message, actions=[action], state=STATE, **extra)
+
+
+def _profile_items(db_session: Session, user_id: uuid.UUID) -> list[ChatProfileItem]:
+    return list(
+        db_session.scalars(select(ChatProfileItem).where(ChatProfileItem.user_id == user_id))
+    )
+
+
+def test_waiting_for_approval_saves_memory(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    run_id = str(queued_run)
+    _remembering(db_session, queued_run)
+    waiting = _waiting(_reassess(run_id), profile_updates=[UPDATE])
+    agent.replies.append(_ndjson(_stream(run_id, ("final", waiting))))
+
+    _run(queued_run, session_factory)
+
+    run = _reload(db_session, queued_run)
+    assert run.status == "WAITING_APPROVAL"
+    assert [(i.key, i.value) for i in _profile_items(db_session, user_id)] == [
+        ("EXPLAIN_STYLE", "짧게 설명")
+    ]
+    assert [card["key"] for card in run.interim_message["memory_saved"]] == ["EXPLAIN_STYLE"]
+
+
+def test_same_memory_in_the_final_answer_is_carded_once(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    run_id = str(queued_run)
+    _remembering(db_session, queued_run)
+    waiting = _waiting(_reassess(run_id), profile_updates=[UPDATE])
+    agent.replies.append(_ndjson(_stream(run_id, ("final", waiting))))
+    _run(queued_run, session_factory)
+    run = _reload(db_session, queued_run)
+    run.status = "RUNNING"
+    db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)).approved = True
+    db_session.flush()
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final(profile_updates=[UPDATE])))))
+
+    asyncio.run(
+        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
+    )
+
+    answer = db_session.scalar(
+        select(ChatMessage).where(
+            ChatMessage.run_id == queued_run, ChatMessage.role == "assistant"
+        )
+    )
+    assert [card["type"] for card in answer.cards] == ["MEMORY_SAVED"]
+    assert len(_profile_items(db_session, user_id)) == 1
+
+
+def test_auto_action_reply_does_not_save_memory(
+    db_session, session_factory, agent, queued_run, user_id
+) -> None:
+    run_id = str(queued_run)
+    _remembering(db_session, queued_run)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_TAKE",
+        "args": {"pitch_id": str(uuid.uuid4()), "take_id": str(uuid.uuid4())},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "기록을 더 본다",
+        "authorized_by": None,
+    }
+    fetching = {**_needs_action(action), "profile_updates": [UPDATE]}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", fetching))))
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    _run(queued_run, session_factory)
+
+    assert _reload(db_session, queued_run).status == "DONE"
+    assert _profile_items(db_session, user_id) == []
+
+
+def _upstream_error_without_action(db_session, queued_run) -> None:
+    run = _reload(db_session, queued_run)
+    assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
+    assert db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)) is None
+
+
+def test_mismatched_args_hash_fails_the_run(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    action = {**_reassess(run_id), "args_hash": "sha256:" + "0" * 64}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _waiting(action)))))
+
+    _run(queued_run, session_factory)
+
+    _upstream_error_without_action(db_session, queued_run)
+
+
+def test_ask_action_without_confirm_card_fails_the_run(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _needs_action(_reassess(run_id))))))
+
+    _run(queued_run, session_factory)
+
+    _upstream_error_without_action(db_session, queued_run)
+
+
+def test_changed_args_after_approval_are_not_run(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    action = _reassess(run_id)
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _waiting(action)))))
+    _run(queued_run, session_factory)
+    run = _reload(db_session, queued_run)
+    run.status = "RUNNING"
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    saved.approved = True
+    saved.args = {**saved.args, "change": {"script_used": False}}
+    db_session.flush()
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    asyncio.run(
+        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
+    )
+
+    sent = agent.requests[1]["resume"]["action_results"][0]
+    assert (sent["status"], sent["error"]["code"]) == ("FAILED", "APPROVAL_ARGS_CHANGED")
+    assert sent["executed_args_hash"] == action["args_hash"]
+    db_session.expire_all()
+    saved = db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run))
+    assert (saved.status, saved.result["error"]["code"]) == ("FAILED", "APPROVAL_ARGS_CHANGED")
+
+
+def test_float_args_survive_storage_and_run_after_approval(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    target = {"display": "시선", "metric": "audience_ratio", "operator": "GTE", "value": 1e16}
+    args = {"take_id": str(uuid.uuid4()), "change": {"targets": [target]}}
+    action = {**_reassess(run_id), "args": args, "args_hash": args_hash("REASSESS", args)}
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _waiting(action)))))
+    _run(queued_run, session_factory)
+    run = _reload(db_session, queued_run)
+    run.status = "RUNNING"
+    db_session.scalar(select(ChatAction).where(ChatAction.run_id == queued_run)).approved = True
+    db_session.flush()
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    asyncio.run(
+        turn_runner.run(queued_run, session_factory, resume_with=turn_service.resume_point)
+    )
+
+    sent = agent.requests[1]["resume"]["action_results"][0]
+    assert sent["error"]["code"] == "NOT_FOUND"
+    assert sent["executed_args_hash"] == action["args_hash"]
+
+
+def _reserve(db_session: Session) -> date:
+    day = datetime.now(SEOUL).date()
+    db_session.add(ChatDailyUsage(user_id=None, day=day, reserved=1))
+    db_session.flush()
+    return day
+
+
+def _service_usage(db_session: Session, day: date) -> tuple[int, int]:
+    db_session.expire_all()
+    row = db_session.scalar(
+        select(ChatDailyUsage).where(ChatDailyUsage.user_id.is_(None), ChatDailyUsage.day == day)
+    )
+    return row.reserved, row.sent
+
+
+def test_sent_calls_confirm_the_service_reservation(
+    db_session, session_factory, agent, queued_run
+) -> None:
+    run_id = str(queued_run)
+    day = _reserve(db_session)
+    action = {
+        "action_id": "a1",
+        "type": "FETCH_TAKE",
+        "args": {"pitch_id": str(uuid.uuid4()), "take_id": str(uuid.uuid4())},
+        "autonomy": "AUTO",
+        "args_hash": None,
+        "idempotency_key": f"{run_id}:1",
+        "reason": "기록을 더 본다",
+        "authorized_by": None,
+    }
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _needs_action(action)))))
+    agent.replies.append(_ndjson(_stream(run_id, ("final", _final()))))
+
+    _run(queued_run, session_factory)
+
+    assert _service_usage(db_session, day) == (0, 2)
+
+
+def test_args_hash_follows_the_doc_example() -> None:
+    args = {
+        "take_id": "t-5",
+        "change": {
+            "targets": [
+                {
+                    "display": "3장 시선 30% 넘기기",
+                    "metric": "audience_ratio",
+                    "operator": "GTE",
+                    "value": 0.3,
+                }
+            ]
+        },
+    }
+
+    assert args_hash("REASSESS", args).startswith("sha256:afdfa41878305b56")

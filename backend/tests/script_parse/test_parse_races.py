@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ScriptParseError,
 )
@@ -21,16 +20,6 @@ from pitch_coach_backend.module.pitch.entity import Pitch, ScriptParseStatus, Sc
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import script as script_service
 from tests.script_parse.conftest import FakeParser, _age, _create_ok, _get, _new_pitch, _reparse
-
-
-@pytest.fixture
-def other_user_headers(db_session: Session) -> dict[str, str]:
-    from pitch_coach_backend.module.user.entity import User
-
-    user = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
-    db_session.add(user)
-    db_session.flush()
-    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
 
 # ── 권한 ───────────────────────────────────────────────────────────

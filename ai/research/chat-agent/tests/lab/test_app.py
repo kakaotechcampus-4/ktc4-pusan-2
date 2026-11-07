@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from chat_agent_lab.app import AgentApp
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 
 def app(**kw: object) -> AgentApp:

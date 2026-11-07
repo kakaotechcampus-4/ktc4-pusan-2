@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.dto import AgentTrigger
-from pitch_coach_backend.module.chat.entity import ChatRun, ChatRunLog
+from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatRunLog
 from pitch_coach_backend.module.chat.repository import ChatRepository
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -73,6 +73,12 @@ def lock_current(db: Session, run: ClaimedRun) -> ChatRun | None:
     )
 
 
+def lock_conversation_of(db: Session, run: ClaimedRun) -> ChatConversation | None:
+    repo = ChatRepository(db)
+    row = repo.get_run(run.run_id)
+    return repo.lock_conversation(row.conversation_id) if row is not None else None
+
+
 def _parse_ids(values: Iterable[Any]) -> tuple[set[uuid.UUID], bool]:
     parsed: set[uuid.UUID] = set()
     valid = True
@@ -130,6 +136,7 @@ def cancel(db: Session, run: ClaimedRun) -> None:
     if row is None:
         return
     now = datetime.now(UTC)
+    release_unsent(ChatRepository(db), row)
     row.status = "CANCELLED"
     row.state = None
     row.error_code = "AGENT_CANCELLED"
@@ -137,6 +144,11 @@ def cancel(db: Session, run: ClaimedRun) -> None:
     row.row_revision += 1
     add_run_log(ChatRepository(db), row, now)
     db.commit()
+
+
+def release_unsent(repo: ChatRepository, row: ChatRun) -> None:
+    if not row.turn_calls:
+        repo.release_service_turn(row.accepted_at.astimezone(SEOUL).date())
 
 
 def add_run_log(repo: ChatRepository, row: ChatRun, now: datetime) -> None:

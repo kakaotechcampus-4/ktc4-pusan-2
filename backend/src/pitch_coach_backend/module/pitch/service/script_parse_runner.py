@@ -9,7 +9,7 @@
     묶여 풀(기본 5 + 15)이 마른다. 대본 텍스트는 요청에서 이미 읽어 ticket 에 담아 온다
   - 요청의 `get_db` 세션을 쓰지 않는다. FastAPI 는 백그라운드 작업 전에 그 세션을 닫는다.
     그래서 저장할 때 새 세션을 열고, 동기 SQLAlchemy 라 threadpool 에서 돌린다
-    (realtime/transcript_store.py 와 같은 방식)
+    (realtime/storage/store.py 와 같은 방식)
 
 실패는 밖으로 던지지 않는다. 응답은 이미 나갔으니 받을 사람이 없고, 던지면 ASGI 로그만 남는다.
 AI 실패는 FAILED 로 저장한다. 결과 저장이 실패하면(값 문제 등) 새 세션으로 FAILED(INTERNAL_ERROR)
@@ -28,13 +28,13 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionLocal, with_session
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
@@ -67,15 +67,13 @@ class ScriptParseRunner:
         # 이어서 장별 평가 기준을 만든다 (architecture.md 1-7)
         self._rubric_runner = rubric_runner
 
-    async def resume_all(self, *, started_before: datetime | None = None) -> None:
+    async def resume_all(self, *, started_before: datetime) -> None:
         """BE 가 뜰 때 부른다. 만료 전 PENDING 으로 남은 파싱을 이어 간다.
 
         이어받으며 만료 시각을 다시 센 작업들이라 차례로 돌리면 뒤의 것이 만료된다. 한꺼번에 띄운다.
         """
         # threadpool 에서 DB 를 읽을 때는 이미 새 업로드가 시작됐을 수 있다. 기준 시각은
         # 첫 await 전에 고정한다. lifespan 은 요청을 받기 전의 앱 시작 시각을 넘긴다
-        if started_before is None:
-            started_before = datetime.now(UTC)
         try:
             tickets = await run_in_threadpool(self._resume, started_before)
         except Exception as exc:
@@ -155,7 +153,7 @@ class ScriptParseRunner:
         if saved is ParseSaved.MISMATCH:
             # 저장본과 달라 적용하지 않았다. 바뀐 것이 없으니 계획도 평가 기준도 만들지 않는다
             return
-        if self._on_parsed is not None and ticket.pitch_id is not None:
+        if self._on_parsed is not None:
             try:
                 await self._on_parsed(ticket.pitch_id)
             except Exception:
@@ -181,22 +179,12 @@ class ScriptParseRunner:
     # ── threadpool 에서 도는 부분. 저장할 때마다 짧은 세션을 열고 닫는다 ──
 
     def _complete(self, ticket: ParseTicket, parsed: ParsedScript) -> ParseSaved:
-        db = self._session_factory()
-        try:
-            return script_service.complete_parse(db, ticket, parsed)
-        finally:
-            db.close()
+        return with_session(self._session_factory, script_service.complete_parse, ticket, parsed)
 
     def _resume(self, started_before: datetime) -> list[ParseTicket]:
-        db = self._session_factory()
-        try:
-            return script_service.resume_parses(db, started_before=started_before)
-        finally:
-            db.close()
+        return with_session(
+            self._session_factory, script_service.resume_parses, started_before=started_before
+        )
 
     def _fail(self, ticket: ParseTicket, code: ScriptParseErrorCode) -> bool:
-        db = self._session_factory()
-        try:
-            return script_service.fail_parse(db, ticket, code)
-        finally:
-            db.close()
+        return with_session(self._session_factory, script_service.fail_parse, ticket, code)

@@ -390,7 +390,8 @@ function ChatPanel({
         </button>
       </header>
 
-      {/* AI 답을 붙일 때는 그 답 요소에만 aria-live 를 둡니다. 목록 전체에 두면 사용자가 보낸 말까지 다시 읽힙니다.
+      {/* AI 답이 글자 효과로 채워지는 요소에는 aria-live 를 두지 않습니다(글자마다 읽힐 수 있음). 완성된 문장만
+          따로 둔 알림 영역(ChatAnswer 의 data-chat-announce)에 넣습니다(#956). 목록 전체에도 두지 않습니다 — 사용자가 보낸 말까지 다시 읽힙니다.
           min-h-16: 패널이 낮아져도 한두 줄은 보이고, 그보다 낮으면 패널이 스크롤됩니다 */}
       <div
         ref={scroller}

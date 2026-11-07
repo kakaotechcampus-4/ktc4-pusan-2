@@ -1,4 +1,4 @@
-"""AI 를 부르는 백그라운드 호출의 자리. 프로세스 전체에서 같이 센다 (architecture.md 3절).
+"""AI 호출의 자리. 프로세스 전체에서 같이 센다 (architecture.md 3절).
 
   - 코치 plan · finalize, Take 분석(채점 · 리뷰), 대본 파싱, 대본 등록(`/scripts/rubric`)이 합계
     `BACKGROUND_LIMIT` 자리를 나눠 쓴다. 긴 LLM 요청이 AI 스레드 풀을 채우면 1초마다 오는
@@ -17,42 +17,31 @@ import weakref
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from pitch_coach_backend.core.tasks import SemaphoreByLoop, loop_semaphore
+
 BACKGROUND_LIMIT = 4
 
 RUBRIC_LIMIT = 2
 
-type _ByLoop = weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]
-
-# 이벤트 루프마다 하나. asyncio.Semaphore 는 처음 기다린 루프에 묶여서, 하나를 여러 루프가
-# 쓰면(테스트의 TestClient 마다 루프가 다르다) 다른 루프에서 기다리는 순간 RuntimeError 다.
-# 운영은 uvicorn 루프 하나라 프로세스 전체에 하나다
-_background: _ByLoop = weakref.WeakKeyDictionary()
-_rubric: _ByLoop = weakref.WeakKeyDictionary()
-_standard: _ByLoop = weakref.WeakKeyDictionary()
+_background: SemaphoreByLoop = weakref.WeakKeyDictionary()
+_rubric: SemaphoreByLoop = weakref.WeakKeyDictionary()
+_standard: SemaphoreByLoop = weakref.WeakKeyDictionary()
 
 STANDARD_LIMIT = 4
 
 
 def background() -> asyncio.Semaphore:
     """백그라운드 AI 호출 하나의 자리."""
-    return _slots(_background, BACKGROUND_LIMIT)
+    return loop_semaphore(_background, BACKGROUND_LIMIT)
 
 
 @asynccontextmanager
 async def rubric() -> AsyncIterator[None]:
     """대본 등록 하나의 자리. 대본 등록 자리를 먼저 받고 합계 자리를 받는다 — 거꾸로 하면 합계
     자리를 쥔 채 기다려 다른 호출이 쓸 자리가 준다."""
-    async with _slots(_rubric, RUBRIC_LIMIT), background():
+    async with loop_semaphore(_rubric, RUBRIC_LIMIT), background():
         yield
 
 
 def standard() -> asyncio.Semaphore:
-    return _slots(_standard, STANDARD_LIMIT)
-
-
-def _slots(by_loop: _ByLoop, limit: int) -> asyncio.Semaphore:
-    loop = asyncio.get_running_loop()
-    if (slots := by_loop.get(loop)) is None:
-        slots = asyncio.Semaphore(limit)
-        by_loop[loop] = slots
-    return slots
+    return loop_semaphore(_standard, STANDARD_LIMIT)

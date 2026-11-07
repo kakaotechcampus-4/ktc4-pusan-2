@@ -323,7 +323,7 @@ ai/research/filler-detection/
 cd ai/research/filler-detection
 uv sync
 ```
-- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`.
+- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`. macOS · Linux에서도 같은 명령을 그대로 쓴다.
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|

@@ -24,8 +24,8 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
   다음 업로드가 덮어쓰고 발표를 지울 때 같이 지워진다.
 - **대본은 발표자료와 따로 올린다.** 대본만 여러 번 고치는 게 정상 흐름이라, 발표자료 업로드에 묶으면 PDF 를 매번 다시 올려야 한다.
   버전은 pitch 안에서 자동으로 1, 2, … 로 매기고, 발표자료 버전과는 따로 센다.
-- 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL 문자가 있으면
-  `400 INVALID_SCRIPT` 이고 아무것도 저장하지 않는다. NUL 은 JSON(`\u0000`)으로는 오지만 PostgreSQL TEXT 가 받지 못한다.
+- 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL · 짝 없는 서로게이트가 있으면
+  `400 INVALID_SCRIPT` 이고 아무것도 저장하지 않는다. 둘 다 JSON(`\u0000`, `\ud800`)으로는 오지만 PostgreSQL TEXT 가 받지 못한다.
   AI 응답에 NUL 이 있어도 `AI_INVALID_OUTPUT`.
 - 대본을 올리면 pitch 행을 `FOR NO KEY UPDATE` 로 잠그고 버전을 매긴다. 같은 pitch 에 동시에 올려도 버전이 겹치지 않는다
   (잠금이 없으면 둘 다 `max+1` 을 받아 한쪽이 unique 위반 500). `FOR UPDATE` 는 같은 pitch 의 Take 생성까지 막아서 쓰지 않는다.

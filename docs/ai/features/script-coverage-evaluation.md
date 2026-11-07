@@ -580,7 +580,7 @@ cd ai/research/script-coverage-evaluation
 uv sync
 ```
 - 실험과 live 테스트는 `ai/.env`의 기본 묶음(`OPENAI_BASE_URL` · `OPENAI_API_KEY` · `OPENAI_MODEL`)을 쓰고 과금된다. 단위 테스트는 LLM을 부르지 않는다.
-- Windows에서는 `pytest.exe` · `jupyter` 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`.
+- Windows에서는 `pytest.exe` · `jupyter` 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`. macOS · Linux에서도 같은 명령을 그대로 쓴다.
 - 과금 없이 돌리기: 연구 캐시(`outputs/rubrics.sqlite`)가 있으면 `OPENAI_BASE_URL`을 닿지 않는 주소(예: `http://127.0.0.1:9/v1`)로 두고 실험을 돌린다. 캐시에 있는 호출만 성공한다. 캐시 키에는 단계마다 그 단계의 프롬프트 · 스키마 · 모델이 들어가므로, 바꾼 단계의 호출만 다시 부른다(6-5).
 
 | 하는 일 | 명령 | 기대 결과 |

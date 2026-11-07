@@ -12,7 +12,7 @@ TakeStream 은 WebSocket 요청보다 오래 사는 백그라운드 태스크라
 
 import uuid
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Protocol
 
 from starlette.concurrency import run_in_threadpool
 
@@ -25,6 +25,7 @@ from pitch_coach_backend.module.take.dto import (
 )
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.take.service import record as record_service
+from pitch_coach_backend.realtime.dto import LeftReason
 
 
 class TranscriptStore(Protocol):
@@ -59,7 +60,7 @@ class TranscriptStore(Protocol):
         self,
         take_id: uuid.UUID,
         ended_at: datetime,
-        end_reason: Literal["ABANDONED", "CLOSED"] = "ABANDONED",
+        end_reason: LeftReason = "ABANDONED",
         utterance_ends: list[int] | None = None,
     ) -> bool:
         """사용자가 떠난 Take 를 끝냈다 (상태 `FAILED`, 이유 `end_reason`, Take 동안 모은 문장 끝
@@ -108,7 +109,7 @@ class DbTranscriptStore(SessionPerCall):
         self,
         take_id: uuid.UUID,
         ended_at: datetime,
-        end_reason: Literal["ABANDONED", "CLOSED"] = "ABANDONED",
+        end_reason: LeftReason = "ABANDONED",
         utterance_ends: list[int] | None = None,
     ) -> bool:
         return await run_in_threadpool(

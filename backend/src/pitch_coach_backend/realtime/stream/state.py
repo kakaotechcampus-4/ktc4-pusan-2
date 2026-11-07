@@ -12,6 +12,7 @@ import contextlib
 import uuid
 from collections import OrderedDict
 from collections.abc import Coroutine, Hashable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 
 from pitch_coach_backend.coach.session import CoachSession
@@ -64,16 +65,12 @@ attach_locks: dict[uuid.UUID, _KeyedLock] = {}
 owner_locks: dict[uuid.UUID, _KeyedLock] = {}
 
 
-@contextlib.asynccontextmanager
-async def attach_lock(take_id: uuid.UUID):
-    async with _keyed_lock(attach_locks, take_id):
-        yield
+def attach_lock(take_id: uuid.UUID) -> AbstractAsyncContextManager[None]:
+    return _keyed_lock(attach_locks, take_id)
 
 
-@contextlib.asynccontextmanager
-async def stream_owner_lock(owner_id: uuid.UUID):
-    async with _keyed_lock(owner_locks, owner_id):
-        yield
+def stream_owner_lock(owner_id: uuid.UUID) -> AbstractAsyncContextManager[None]:
+    return _keyed_lock(owner_locks, owner_id)
 
 
 @contextlib.asynccontextmanager
