@@ -1728,7 +1728,8 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     await act(async () => button('대화 목록')!.click());
     await settle();
-    expect(button('새 대화')).toBeFalsy();
+    // 헤더의 새 대화 버튼은 항상 보이지만, 대화 목록 내부의 버튼은 사라집니다.
+    expect(panel()!.querySelector('[data-conversation-list]')).toBeNull();
     expect(document.activeElement).toBe(document.body);
   });
 
