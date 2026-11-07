@@ -167,10 +167,10 @@ function ChatSessionView({
   };
 
   return (
-    // 런처는 오른쪽 아래의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 오른쪽에 붙은
-    // 컨트롤과 자리를 나눠 씁니다. 화면마다의 아래 여백과 그 이유는 chatLauncherBottom 에 있습니다
+    // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
+    // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: 장치 점검이 런처 자리만큼 오른쪽 여백을 넓히는 표시입니다 (index.css)
+      // data-chat-launcher: 오류 경계 및 테스트가 공통 런처 위치를 식별하는 표시입니다
       data-chat-launcher=""
       style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
       className="light-surface fixed bottom-[var(--chat-launcher-bottom)] left-4 z-[70] text-ink"
