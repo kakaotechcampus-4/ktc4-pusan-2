@@ -355,7 +355,9 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
           e.currentTarget.focus({ preventScroll: true });
         }
       }}
-      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-line bg-white outline-none"
+      // 포커스 링은 전역 `:focus-visible` 이 그립니다. 방향키로 포커스가 옮겨 온 뒤에는 링이 뜨고,
+      // 빈 곳을 마우스로 눌렀을 때는 브라우저가 링을 켜지 않습니다 — 그래서 `outline-none` 을 두지 않습니다
+      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-line bg-white"
     >
       <Toolbar
         fileName={slide.fileName ?? `슬라이드 V${slide.version}.pdf`}

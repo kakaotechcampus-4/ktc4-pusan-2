@@ -96,13 +96,39 @@ it('마우스로 쥔 다음 버튼에서 ←를 누르면 포커스를 뷰어로
   expect(counter()).toBe('2 / 3');
 });
 
-it('Tab 으로 닿은 버튼은 키보드 초점이라 ←를 눌러도 포커스를 옮기지 않는다', async () => {
+it('마우스 클릭 → ← → Tab → → 흐름: Tab 으로 닿은 버튼은 키보드 초점이라 포커스를 옮기지 않는다 (#924)', async () => {
   const next = button('다음 슬라이드');
+  const prev = button('이전 슬라이드');
   await pointerDown(next);
-  await press(next, 'Tab');
   next.focus();
+  await click(next);
+  await press(next, 'ArrowLeft');
+  expect(document.activeElement).toBe(viewerBox());
 
-  await press(next, 'ArrowRight');
+  // Tab 은 뷰어 상자에서 첫 버튼(이전)으로 간다. jsdom 은 Tab 이동을 하지 않아 직접 옮긴다
+  await press(viewerBox(), 'Tab');
+  prev.focus();
+  await press(prev, 'ArrowRight');
   expect(counter()).toBe('2 / 3');
-  expect(document.activeElement).toBe(next);
+  expect(document.activeElement).toBe(prev);
+
+  await press(prev, 'ArrowLeft');
+  expect(counter()).toBe('1 / 3');
+  expect(document.activeElement).toBe(prev);
+});
+
+it('마우스로 쥔 썸네일에서도 방향키를 누르면 포커스를 뷰어로 옮긴다', async () => {
+  const thumb = button('3번 슬라이드');
+  await pointerDown(thumb);
+  thumb.focus();
+  await click(thumb);
+  expect(counter()).toBe('3 / 3');
+
+  await press(thumb, 'ArrowLeft');
+  expect(counter()).toBe('2 / 3');
+  expect(document.activeElement).toBe(viewerBox());
+});
+
+it('뷰어 상자는 outline-none 을 두지 않아 방향키로 포커스가 옮겨 오면 전역 포커스 링이 그려진다', () => {
+  expect(viewerBox().className).not.toContain('outline-none');
 });
