@@ -38,7 +38,7 @@ def test_one_direction_metrics(req):
     assert c[("script_ratio", None)].improved is True
     slide = c[("script_ratio", 3)]
     assert (slide.previous, slide.current, slide.improved) == (0.70, 0.62, True)
-    assert c[("reading_runs", None)].improved is False  # 값이 같으면 좋아지지 않음
+    assert c[("reading_runs", None)].improved is None  # 값이 같으면 나아지지도 나빠지지도 않음 (#787)
     assert c[("pause_count", None)].improved is None  # 방향을 정하지 않은 지표
 
 
@@ -123,6 +123,30 @@ def test_duration_uses_plan_range_or_target(req):
 
     req["take_result"]["plan"] = None
     assert by_key(run(req)[0])[("duration_ms", None)].improved is None
+
+
+def test_range_same_distance_is_none(req):
+    """기준까지의 거리가 같으면 값이 달라도 나빠졌다고 하지 않는다 (#787)"""
+    prev = previous_take(req)
+    time = prev["take_result"]["areas"]["TIME"]["take"]
+    plan = {"target_ms": 300_000, "min_ms": 240_000, "max_ms": 360_000}
+    prev["take_result"]["plan"] = plan
+    req["take_result"]["plan"] = plan
+    req["previous_takes"] = [prev]
+
+    # 둘 다 범위 안: 05:12 → 04:38, 거리 0 · 0
+    time["duration_ms"] = 312_000
+    req["take_result"]["areas"]["TIME"]["take"]["duration_ms"] = 278_000
+    assert by_key(run(req)[0])[("duration_ms", None)].improved is None
+
+    # 둘 다 범위 밖이고 거리가 같음: 위로 10초 → 아래로 10초
+    time["duration_ms"] = 370_000
+    req["take_result"]["areas"]["TIME"]["take"]["duration_ms"] = 230_000
+    assert by_key(run(req)[0])[("duration_ms", None)].improved is None
+
+    # 범위 안 → 밖은 그대로 나빠짐
+    time["duration_ms"] = 312_000
+    assert by_key(run(req)[0])[("duration_ms", None)].improved is False
 
 
 def test_slide_duration_uses_each_slide_target(req):
