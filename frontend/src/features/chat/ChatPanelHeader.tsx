@@ -79,8 +79,8 @@ export function ChatPanelHeader({
     <header className="shrink-0 border-b border-line-strong bg-panel px-4 pb-3 pt-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-line-strong bg-white">
-            <img src="/icon-192.png" alt="" className="h-9 w-9 object-contain" />
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-line-strong bg-cream">
+            <img src="/semini.png" alt="" className="h-full w-full object-cover [image-rendering:pixelated]" />
           </div>
           <div className="min-w-0">
             <h2 id={titleId} className="truncate text-base font-bold leading-5">
