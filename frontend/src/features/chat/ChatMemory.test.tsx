@@ -157,8 +157,11 @@ describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
       first.click();
       first.click();
     });
+    // 다시 그려지기 전의 세 번째 누름 — 나가 있는 요청을 직접 세어 막는지 봅니다
     await click(first);
     expect(removeCalls()).toHaveLength(1);
+    // `useIsMutating` 구독 알림은 다음 틱(setTimeout 0)에 오므로 기다린 뒤 막힘을 봅니다
+    await settle();
     const [a, b, c] = buttons();
     expect(a!.getAttribute('aria-disabled')).toBe('true');
     expect(b!.getAttribute('aria-disabled')).toBe('true');
