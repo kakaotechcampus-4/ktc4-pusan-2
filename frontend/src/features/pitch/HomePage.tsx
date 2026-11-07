@@ -11,8 +11,27 @@ import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
+const HOME_TIPS = [
+  '연습 전, 슬라이드와 대본을 한 번 확인해 보세요.',
+  '시작 전 세팅에서 대본 표시 방식을 선택할 수 있어요.',
+  '첫 연습에서는 한 가지 목표에 집중해 보세요.',
+  '연습 후에는 Take 리포트에서 지난 연습과 달라진 점을 확인해 보세요.',
+  '발표 중에는 슬라이드를 넘기며 연습할 수 있어요.',
+  '사용방법 살펴보기에서 연습 순서를 확인할 수 있어요.',
+];
+
+const HOME_TIP_INTERVAL_MS = 8000;
+
+function initiallyPauseTips() {
+  if (typeof window === 'undefined') return false;
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  return reducedMotion?.matches ?? false;
+}
+
 export function HomePage() {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [tipIndex, setTipIndex] = useState(0);
+  const [tipPaused, setTipPaused] = useState(initiallyPauseTips);
   const home = usePitchList();
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
@@ -33,6 +52,15 @@ export function HomePage() {
     focusAfter.current?.();
     focusAfter.current = null;
   }, [deleting]);
+
+  useEffect(() => {
+    if (tipPaused) return;
+    const timer = window.setInterval(
+      () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
+      HOME_TIP_INTERVAL_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [tipPaused]);
 
   const cancelDelete = () => {
     const opener = deleting?.opener;
@@ -179,34 +207,46 @@ export function HomePage() {
             </>
           )
         )}
-        {/* 피치가 없으면 확인할 슬라이드 · 대본이 없어 TIP 을 빼고 빈 화면을 한 화면에 둡니다. 사용방법은 상단바에 있습니다 */}
-        {data?.pitches.length !== 0 && (
-          <aside className="mt-6 flex flex-wrap items-center justify-between gap-4 border-y border-line-strong py-3 text-sm lg:mt-5">
-            <p>
-              <span className="mr-3 tabular-nums text-coral-deep">TIP /</span>연습 전, 슬라이드와
-              대본을 한 번 확인해 보세요.
+      </main>
+      <footer className="border-t border-line-strong">
+        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 md:flex-nowrap lg:px-10">
+          <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
+            <span className="shrink-0 tabular-nums text-coral-deep">TIP /</span>
+            {/* 자동 전환 문구는 화면 낭독기가 계속 읽지 않도록 합니다. */}
+            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
+              {HOME_TIPS[tipIndex]}
             </p>
             <button
               type="button"
-              onClick={() => setHelpOpen(true)}
-              className="text-ink/80 hover:text-coral-deep"
+              onClick={() => setTipPaused((current) => !current)}
+              aria-pressed={tipPaused}
+              aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
+              className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
-              사용방법 살펴보기
+              {tipPaused ? '재개' : '일시정지'}
             </button>
-          </aside>
-        )}
-      </main>
-      <footer className="border-t border-line-strong">
-        <div className="mx-auto flex max-w-page flex-wrap justify-between gap-4 px-6 py-4 text-xs text-ink/80 lg:px-10">
-          <span className="tabular-nums tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
-          <div className="flex gap-5">
-            <Link to="/terms?from=home" className="hover:text-ink">
+          </div>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="min-h-9 shrink-0 whitespace-nowrap hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            사용방법 살펴보기
+          </button>
+          <span className="hidden shrink-0 whitespace-nowrap tabular-nums tracking-widest 2xl:inline">
+            PITCH COACH · ONE TAKE AT A TIME.
+          </span>
+          <nav
+            aria-label="서비스 정책"
+            className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1"
+          >
+            <Link to="/terms?from=home" className="whitespace-nowrap hover:text-ink">
               이용약관
             </Link>
-            <Link to="/privacy?from=home" className="hover:text-ink">
+            <Link to="/privacy?from=home" className="whitespace-nowrap hover:text-ink">
               개인정보 처리방침
             </Link>
-          </div>
+          </nav>
         </div>
       </footer>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
