@@ -203,8 +203,8 @@ flowchart LR
 ```
 **경계 — LLM 실패** (200, 문장은 기본 문장, 다음 미션은 후보 상위, 숫자 · 상태 · 점수는 같다)
 ```json
-{"take_id": "take-123", "overall_summary": "먼저 고칠 차원: 대본 의존(3번 장). 점수 78.", "score": 78, "dimensions": "<위와 같음>",
- "strengths": [{"area": "CONTENT", "slide_number": null, "text": "내용 전달: 핵심 내용 전달률 0.92", "evidence": {"content_coverage": 0.92}}],
+{"take_id": "take-123", "overall_summary": "좋았던 점은 목소리 크기, 말의 매끄러움, 핵심 내용 전달입니다. 먼저 다듬을 점은 3번 장 대본 의존도입니다.", "score": 78, "dimensions": "<위와 같음>",
+ "strengths": [{"area": "CONTENT", "slide_number": null, "text": "핵심 내용을 빠짐없이 전달했습니다", "evidence": {"content_coverage": 0.92}}],
  "...": "...",
  "fallback_reason": "LLM_TIMEOUT",
  "meta": {"schema_version": "1.0", "feature_version": "review-1.3", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.3+<config 해시>"}, "model": null}}
