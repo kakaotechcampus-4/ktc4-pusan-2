@@ -1137,7 +1137,7 @@ describe('늦게 온 실패 · 대화 바꾸기', () => {
   });
 });
 
-// ── 새 BE (55aa10d0) 에 맞춤 ──────────────────────────────────
+// ── 새 BE (a6264abc) 에 맞춤 ──────────────────────────────────
 
 describe('이벤트 커서 — next_after_seq 는 늘 다음 커서, 남은 것은 has_more', () => {
   it('BE 처럼 다음 커서가 늘 와도 곧바로 다시 읽지 않고 실행 중 1초 간격을 지킨다', async () => {
@@ -1276,7 +1276,7 @@ describe('승인 · 거절 (L3-39 · L3-40)', () => {
     const before = runCalls.length;
     expect(await transport.decide(ask.action_id, 'APPROVE', 'stale-hash')).toBe('failed');
     expect(of('decisionFailed')).toMatchObject([
-      // BE 는 AGENT_STATE_INVALID 를 주지만 화면에는 문서의 바뀐 카드 코드로 알립니다
+      // BE 는 바뀐 카드에 409 APPROVAL_HASH_MISMATCH 를 줍니다 — 그대로 알립니다
       { actionId: ask.action_id, code: 'APPROVAL_HASH_MISMATCH' },
     ]);
     await flush();
