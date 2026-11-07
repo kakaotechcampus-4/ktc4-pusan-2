@@ -381,7 +381,8 @@ export const useCreateStore = create<CreateState>((set) => ({
           ...v,
           ...DETACHED,
           blocks,
-          text: blocks.map((block, i) => `슬라이드 ${i + 1}\n${block}`).join('\n\n'),
+          // 다시 매핑하면 이 글이 서버로 갑니다 — AI 가 구분자로 보는 형식이어야 장마다 다시 나뉩니다 (slideMarkers)
+          text: blocks.map((block, i) => `[슬라이드 ${i + 1}]\n${block}`).join('\n\n'),
         };
       }),
     })),
