@@ -309,7 +309,7 @@ describe('승인 카드', () => {
     expect(await late.json()).toMatchObject({ code: 'AGENT_EXPIRED' });
   });
 
-  it('만료 · 승인 대기 중 [취소]는 BE 처럼 메시지 상태 PARTIAL · 카드 없음 · 행동별 문장', async () => {
+  it('만료 · 승인 대기 중 [취소]는 BE 처럼 메시지 상태 PARTIAL · 카드 없음 · 고정 문장', async () => {
     const expired = await accepted('목표로 잡아 줘');
     await settle(expired.run_id);
     controls.expire();
@@ -331,7 +331,7 @@ describe('승인 카드', () => {
     const afterCancel = (await messages(waiting.conversation_id)).items.at(-1)!;
     expect([afterCancel.status, afterCancel.claims.at(-1)!.text]).toEqual([
       'PARTIAL',
-      '목표를 저장하지 않았어요.',
+      '확인 요청을 취소했어요.',
     ]);
   });
 
