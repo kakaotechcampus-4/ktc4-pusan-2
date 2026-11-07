@@ -19,7 +19,7 @@ def test_rotate_returns_new_tokens(db_session: Session, fake_google: dict[str, A
 
     rotated = service.rotate(db_session, issued.refresh_token)
 
-    assert rotated.user.id == issued.user.id
+    assert rotated.user_id == issued.user_id
     assert rotated.refresh_token != issued.refresh_token
     # 같은 브라우저 세션이 이어진다
     assert rotated.device_id == issued.device_id
@@ -92,7 +92,7 @@ def test_reuse_does_not_touch_other_devices(
     with pytest.raises(RefreshTokenReused):
         service.rotate(db_session, laptop.refresh_token)
 
-    assert service.rotate(db_session, phone.refresh_token).user.id == phone.user.id
+    assert service.rotate(db_session, phone.refresh_token).user_id == phone.user_id
 
 
 # --- 잘못된 토큰 -------------------------------------------------------

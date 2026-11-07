@@ -44,7 +44,7 @@ class LoginStart:
 class IssuedSession:
     """로그인·회전의 결과. controller 가 이걸로 쿠키와 응답을 만든다."""
 
-    user: User
+    user_id: uuid.UUID
     access_token: str
     refresh_token: str
     device_id: uuid.UUID
@@ -134,7 +134,9 @@ def complete_login(
     identity = google.verify_id_token(id_token, expected_nonce=pending.nonce)
 
     user = _find_or_create_user(db, identity)
-    session = _issue_session(db, user=user, device_id=uuid.uuid7(), return_to=pending.return_to)
+    session = _issue_session(
+        db, user_id=user.id, device_id=uuid.uuid7(), return_to=pending.return_to
+    )
     db.commit()
     return session
 
@@ -188,7 +190,7 @@ def _find_or_create_user(db: Session, identity: google.GoogleIdentity) -> User:
 def _issue_session(
     db: Session,
     *,
-    user: User,
+    user_id: uuid.UUID,
     device_id: uuid.UUID,
     return_to: str = "/",
     replaces: RefreshToken | None = None,
@@ -205,7 +207,7 @@ def _issue_session(
     refresh_token = security.create_refresh_token()
     issued = repository.create_refresh_token(
         db,
-        user_id=user.id,
+        user_id=user_id,
         token_hash=security.hash_refresh_token(refresh_token),
         device_id=device_id,
         expires_at=min(security.refresh_token_expires_at(), session_expires_at),
@@ -214,8 +216,8 @@ def _issue_session(
     if replaces is not None:
         replaces.replaced_by_id = issued.id
     return IssuedSession(
-        user=user,
-        access_token=security.create_access_token(user.id),
+        user_id=user_id,
+        access_token=security.create_access_token(user_id),
         refresh_token=refresh_token,
         device_id=device_id,
         return_to=return_to,
@@ -246,12 +248,12 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
         db.commit()
         raise InvalidRefreshToken()
 
-    user = user_service.get(db, stored.user_id)
-
     # 폐기와 신규 발급이 한 트랜잭션이다. 중간에 실패하면 둘 다 없던 일이 된다.
     # 행을 잠갔으니 읽은 뒤 다른 요청이 먼저 폐기할 수 없다
     repository.revoke(db, stored)
-    session = _issue_session(db, user=user, device_id=stored.device_id, replaces=stored)
+    session = _issue_session(
+        db, user_id=stored.user_id, device_id=stored.device_id, replaces=stored
+    )
     db.commit()
     return session
 
@@ -280,8 +282,9 @@ def _rotate_again(db: Session, stored: RefreshToken) -> IssuedSession:
     ):
         _reject_reuse(db, stored)
 
-    user = user_service.get(db, stored.user_id)
-    session = _issue_session(db, user=user, device_id=stored.device_id, replaces=stored)
+    session = _issue_session(
+        db, user_id=stored.user_id, device_id=stored.device_id, replaces=stored
+    )
     db.commit()
     return session
 

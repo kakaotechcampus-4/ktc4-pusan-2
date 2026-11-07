@@ -13,6 +13,7 @@ from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.module.auth import repository, service
 from pitch_coach_backend.module.auth.entity import RefreshToken
 from pitch_coach_backend.module.auth.exception import InvalidRefreshToken
+from pitch_coach_backend.module.user.entity import User
 from tests.auth.conftest import login
 
 # --- 만료 · 세션의 끝 ---------------------------------------------------
@@ -85,7 +86,7 @@ def test_deleting_a_user_kills_their_refresh_tokens(
     """
     issued = login(db_session)
 
-    db_session.delete(issued.user)
+    db_session.delete(db_session.get(User, issued.user_id))
     db_session.commit()
 
     assert db_session.scalars(select(RefreshToken)).all() == []
@@ -144,7 +145,7 @@ def test_repeated_logout_does_not_request_another_websocket_disconnect(
 ) -> None:
     issued = login(db_session)
 
-    assert service.logout(db_session, issued.refresh_token) == issued.user.id
+    assert service.logout(db_session, issued.refresh_token) == issued.user_id
     # 이미 끝난 세션의 토큰으로 다른 기기의 새 발표 연결까지 계속 끊으면 안 된다.
     assert service.logout(db_session, issued.refresh_token) is None
 
@@ -156,6 +157,6 @@ def test_logout_with_rotated_token_still_disconnects_the_active_device(
     service.rotate(db_session, issued.refresh_token)
 
     # 회전 응답을 못 받아 이전 토큰으로 로그아웃해도 살아 있는 후손을 폐기한다.
-    assert service.logout(db_session, issued.refresh_token) == issued.user.id
+    assert service.logout(db_session, issued.refresh_token) == issued.user_id
     alive = db_session.scalars(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
     assert alive == []
