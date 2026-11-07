@@ -892,10 +892,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       withUser((state, { params }) => {
         const run = state.runs.get(String(params.runId));
         if (!run) return error('NOT_FOUND', 404);
-        // 승인 대기 취소 — BE `_cancel_waiting` 처럼 "목표를 저장하지 않았어요." 같은 행동별 문장을 남깁니다
-        // (문서 L2-41 · 7-10 은 "요청을 취소했어요." — BE 와 다른 점은 BE 담당에게 확인 중)
-        if (run.status === 'WAITING_APPROVAL')
-          settleAsk(state, run, 'CANCELLED', NOT_DONE_TEXT[run.ask!.action_type]);
+        // 승인 대기 취소 — BE `_cancel_waiting` 처럼 행동과 상관없이 "확인 요청을 취소했어요."를 남깁니다 (7-10).
+        // 행동별 문장("목표를 저장하지 않았어요.")은 [거절]일 때만 씁니다
+        if (run.status === 'WAITING_APPROVAL') settleAsk(state, run, 'CANCELLED', CANCELLED_TEXT);
         else if (!isTerminalRun(run.status)) {
           // BE `cancel_run` 처럼 — 오류 코드만 남기고 답 메시지는 만들지 않습니다
           run.status = 'CANCELLED';
@@ -1074,6 +1073,7 @@ function titleOf(text: string) {
 /** BE `waiting.py` 의 고정 문장 (7-10) */
 const EXPIRED_TEXT = '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.';
 const NEW_MESSAGE_TEXT = '새 메시지를 받아 앞의 확인 요청은 취소했어요.';
+const CANCELLED_TEXT = '확인 요청을 취소했어요.';
 const NOT_DONE_TEXT = {
   SAVE_GOAL: '목표를 저장하지 않았어요.',
   REASSESS: '다시 평가하지 않았어요.',
