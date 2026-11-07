@@ -172,12 +172,23 @@ it('확인 창은 제목 · 되돌릴 수 없음 · 함께 지워지는 것을 �
   expect(text).toContain('캡스톤 최종 발표');
   expect(text).toContain('되돌릴 수 없어요');
   expect(text).toContain('Take 기록 2개와 리포트');
+  // 설문 답은 지워지지 않아서(BE SET NULL) 따로 알립니다
+  expect(text).toContain('설문을 남기셨다면 그 답은 지워지지 않고');
+  expect(text).toContain('2026년 12월 31일까지 따로 보관돼요');
   expect(document.activeElement).toBe(dialogButton('취소'));
 
   await click(dialogButton('취소'));
   expect(dialog()).toBeNull();
   expect(document.activeElement).toBe(more('캡스톤 최종 발표'));
   expect(deletes()).toHaveLength(0);
+});
+
+it('Take 가 없는 피치는 남을 설문이 없어 보관 안내를 빼고 지워지는 것만 알린다', async () => {
+  await render();
+  await openDialog('창업 경진대회 본선');
+  const text = dialog()!.textContent;
+  expect(text).toContain('발표 자료 · 대본 · 평가 기준은 모두 함께 지워져요');
+  expect(text).not.toContain('설문');
 });
 
 it('지우면 목록에서 빼고 관련 캐시를 지운 뒤, 같은 자리의 다음 줄로 초점을 옮긴다', async () => {
@@ -281,6 +292,19 @@ it('처리 중에는 두 버튼을 aria-disabled 로 막고, 실패하면 창과
   expect(titles()).toContain('창업 경진대회 본선');
 });
 
+it('실패 문구에 원인별 공통 오류 문구를 붙인다 — 로그인이 끝났으면 다시 시도하라고 하지 않는다', async () => {
+  onDelete = async () => {
+    throw new ApiFailure(401, 'REFRESH_FAILED');
+  };
+  await render();
+  await openDialog('창업 경진대회 본선');
+  await click(dialogButton('삭제'));
+  await flush();
+  expect(dialog()!.querySelector('[role="alert"]')!.textContent).toBe(
+    '피치를 삭제하지 못했어요. 로그인이 만료됐어요. 다시 로그인해 주세요.',
+  );
+});
+
 it('누르는 순간 다시 물어 연습이 시작됐으면 지우지 않고 알린다', async () => {
   await render();
   await openDialog('창업 경진대회 본선');
@@ -293,6 +317,25 @@ it('누르는 순간 다시 물어 연습이 시작됐으면 지우지 않고 �
     '연습하거나 분석하는 중',
   );
   expect(titles()).toContain('창업 경진대회 본선');
+});
+
+it('다시 받은 목록에 피치가 이미 없어도(다른 창에서 지움) 확인 창이 알던 Take 의 캐시를 지운다', async () => {
+  await render();
+  await openDialog('캡스톤 최종 발표');
+  client.setQueryData(['takes', 't1', 'report'], { old: true });
+  client.setQueryData(takeSurveyKeys.state('t2'), { old: true });
+  client.setQueryData(['takes', 't3', 'report'], { keep: true });
+  list = { pitches: list.pitches.filter((p) => p.pitch_id !== 'p1') };
+
+  await click(dialogButton('삭제'));
+  await flush();
+
+  expect(deletes()).toHaveLength(0);
+  expect(dialog()).toBeNull();
+  expect(titles()).not.toContain('캡스톤 최종 발표');
+  expect(client.getQueryData(['takes', 't1', 'report'])).toBeUndefined();
+  expect(client.getQueryData(takeSurveyKeys.state('t2'))).toBeUndefined();
+  expect(client.getQueryData(['takes', 't3', 'report'])).toEqual({ keep: true });
 });
 
 it('서버가 이미 없다고(404) 하면 지운 것으로 본다', async () => {

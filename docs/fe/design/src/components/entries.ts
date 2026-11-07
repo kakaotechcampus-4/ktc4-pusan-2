@@ -295,9 +295,17 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     summary:
       '홈 더보기 메뉴의 삭제(#807). 영구 삭제라 되돌릴 수 없다는 것과 함께 지워지는 것을 알린다.',
     states: [
-      view('open', '열림', '피치 제목 · 되돌릴 수 없음 · 함께 지워지는 것. 처음 초점은 취소.'),
+      view(
+        'open',
+        '열림',
+        '피치 제목 · 되돌릴 수 없음 · 함께 지워지는 것 · 남는 설문 답. 처음 초점은 취소.',
+      ),
       view('busy', '처리 중', '취소 · 삭제를 aria-disabled로 막고 Esc도 막는다.'),
-      view('error', '실패', '창을 닫지 않고 실패를 알린다(role="alert"). 다시 누를 수 있다.'),
+      view(
+        'error',
+        '실패',
+        '창을 닫지 않고 실패를 알린다(role="alert"). 원인별 공통 오류 문구를 붙인다. 다시 누를 수 있다.',
+      ),
     ],
     rules: [
       '확인 창(ReplaceTakeDialog)과 같은 틀이다. showModal()로 열고 useLayoutEffect 정리에서 close()한다.',
@@ -305,7 +313,12 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '되돌릴 수 없는 쪽이 삭제라 처음 초점은 취소에 둔다(autoFocus).',
       '처리 중 버튼은 disabled 대신 aria-disabled다. 누른 버튼이 초점을 쥔 채 막힌다(#845). 요청은 한 번만 보낸다.',
       '누르는 순간 연습 · 분석이 시작된 것을 알면 지우지 않고 그 이유를 알린다.',
+      '그 밖의 실패는 "피치를 삭제하지 못했어요." 뒤에 원인별 공통 오류 문구(toMessage)를 붙인다. 로그인이 끝난 것처럼 다시 시도해도 안 되는 실패를 같은 말로 덮지 않는다.',
+      '설문 답은 피치를 지워도 남는다(BE take_surveys.take_id SET NULL). "모두 함께 지워져요"가 그것까지 가리지 않게 Take가 있는 피치에는 "지워지지 않고 기한까지 따로 보관돼요"를 한 줄 더 적는다. 설문은 동의하지 않아도 리포트에서 남길 수 있고 홈 목록은 Take별 설문 여부를 모르므로, 동의 여부로 가리지 않고 "남기셨다면"으로 적는다.',
       '닫힌 뒤 초점은 부모가 옮긴다. 취소면 연 ··· 버튼, 지웠으면 다음 줄의 제목이다.',
+    ],
+    knownIssues: [
+      '보관 기한 "2026년 12월 31일"은 동의 안내(테스트 참여 안내 창)와 같은 임시 값이다. BE 삭제 일정과 함께 팀이 정하면 두 곳을 같이 고친다(제품은 SURVEY_RETENTION_UNTIL 한 곳).',
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
     sources: ['frontend/src/features/pitch/DeletePitchDialog.tsx'],

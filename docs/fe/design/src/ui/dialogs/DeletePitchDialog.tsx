@@ -2,7 +2,10 @@
 import { useId, useLayoutEffect, useRef } from 'react';
 import { Button } from '../Button';
 
-/** 실패 문구. 제품은 누르는 순간 목록을 다시 받아 연습 · 분석이 시작됐으면 `busy`, 요청이 실패하면 `failed`다 */
+/**
+ * 실패 문구. 제품은 누르는 순간 목록을 다시 받아 연습 · 분석이 시작됐으면 `busy`, 요청이 실패하면 `failed`다.
+ * `failed`는 원인별 공통 오류 문구(`toMessage`)를 뒤에 붙인다. 샘플은 원인을 모를 때의 기본 문구를 보인다
+ */
 export type DeletePitchError = 'failed' | 'busy' | null;
 
 /**
@@ -70,14 +73,17 @@ export function DeletePitchDialog({
         <p id={bodyId} className="mt-3 text-sm leading-7">
           삭제하면 되돌릴 수 없어요.{' '}
           {takeCount > 0
-            ? `이 피치의 Take 기록 ${takeCount}개와 리포트, 발표 자료 · 대본 · 평가 기준이 모두 함께 지워져요.`
-            : '이 피치의 발표 자료 · 대본 · 평가 기준이 모두 함께 지워져요.'}
+            ? `이 피치의 Take 기록 ${takeCount}개와 리포트, 발표 자료 · 대본 · 평가 기준은 모두 함께 지워져요.`
+            : '이 피치의 발표 자료 · 대본 · 평가 기준은 모두 함께 지워져요.'}
+          {/* 설문 답은 Take 가 지워져도 남는다. Take 가 있는 피치에만 알린다(제품 DeletePitchDialog 참고) */}
+          {takeCount > 0 &&
+            ' 리포트에 설문을 남기셨다면 그 답은 지워지지 않고, 피치와 떨어져 2026년 12월 31일까지 따로 보관돼요.'}
         </p>
         {error && (
           <p role="alert" className="mt-3 text-sm leading-6 font-bold text-coral-deep">
             {error === 'busy'
               ? '지금 이 피치로 연습하거나 분석하는 중이에요. 끝난 뒤 다시 삭제해 주세요.'
-              : '피치를 삭제하지 못했어요. 잠시 뒤 다시 시도해 주세요.'}
+              : '피치를 삭제하지 못했어요. 요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.'}
           </p>
         )}
         <div className="mt-6 flex flex-wrap justify-end gap-3">

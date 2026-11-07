@@ -100,7 +100,7 @@ const productScreens: GuideScreen[] = [
       state(
         'delete-confirm',
         '삭제 확인 · 시안',
-        '시안(#807). 피치 제목, 되돌릴 수 없음, 함께 지워지는 Take 기록 수 · 리포트 · 자료를 알린다. 처음 초점은 취소.',
+        '시안(#807). 피치 제목, 되돌릴 수 없음, 함께 지워지는 Take 기록 수 · 리포트 · 자료와, 지워지지 않고 남는 설문 답을 알린다. 처음 초점은 취소.',
       ),
       state(
         'delete-pending',

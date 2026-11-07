@@ -1,7 +1,9 @@
 import { useId, useLayoutEffect, useRef } from 'react';
+import { toMessage } from '@/shared/api/errorMessage';
 import { PitchBusyError, useDeletePitch } from '@/shared/api/pitch';
 import { Button } from '@/shared/ui/Button';
 import type { HomePitch } from '@/types/home';
+import { SURVEY_RETENTION_UNTIL } from './HomeSurveyNotice';
 
 /**
  * 홈에서 피치를 지울지 묻습니다 (#807). 영구 삭제라 되돌릴 수 없다는 것과 함께 지워지는 것을 적고,
@@ -45,12 +47,15 @@ export function DeletePitchDialog({
   const confirm = () => {
     if (sending.current) return;
     sending.current = true;
-    remove.mutate(pitch.pitch_id, {
-      onSuccess: onDeleted,
-      onSettled: () => {
-        sending.current = false;
+    remove.mutate(
+      { pitchId: pitch.pitch_id, takeIds: pitch.takes.map((take) => take.take_id) },
+      {
+        onSuccess: onDeleted,
+        onSettled: () => {
+          sending.current = false;
+        },
       },
-    });
+    );
   };
 
   const takes = pitch.takes.length;
@@ -84,14 +89,18 @@ export function DeletePitchDialog({
         <p id={bodyId} className="mt-3 text-sm leading-7">
           삭제하면 되돌릴 수 없어요.{' '}
           {takes > 0
-            ? `이 피치의 Take 기록 ${takes}개와 리포트, 발표 자료 · 대본 · 평가 기준이 모두 함께 지워져요.`
-            : '이 피치의 발표 자료 · 대본 · 평가 기준이 모두 함께 지워져요.'}
+            ? `이 피치의 Take 기록 ${takes}개와 리포트, 발표 자료 · 대본 · 평가 기준은 모두 함께 지워져요.`
+            : '이 피치의 발표 자료 · 대본 · 평가 기준은 모두 함께 지워져요.'}
+          {/* 설문 답은 Take 가 지워져도 연결만 끊고 남습니다 (BE take_surveys.take_id SET NULL).
+              홈 목록은 Take 마다 설문 여부를 알려 주지 않고, 설문은 동의하지 않아도 리포트에서 남길 수 있어 Take 가 있으면 알립니다 */}
+          {takes > 0 &&
+            ` 리포트에 설문을 남기셨다면 그 답은 지워지지 않고, 피치와 떨어져 ${SURVEY_RETENTION_UNTIL}까지 따로 보관돼요.`}
         </p>
         {remove.isError && (
           <p role="alert" className="mt-3 text-sm leading-6 font-bold text-coral-deep">
             {remove.error instanceof PitchBusyError
               ? '지금 이 피치로 연습하거나 분석하는 중이에요. 끝난 뒤 다시 삭제해 주세요.'
-              : '피치를 삭제하지 못했어요. 잠시 뒤 다시 시도해 주세요.'}
+              : `피치를 삭제하지 못했어요. ${toMessage(remove.error)}`}
           </p>
         )}
         <div className="mt-6 flex flex-wrap justify-end gap-3">

@@ -59,19 +59,20 @@ export class PitchBusyError extends Error {}
 /**
  * 홈의 피치 삭제. 확인 창을 연 사이 다른 창에서 연습을 시작했을 수 있어, 지우기 직전에 목록을
  * 다시 받아 진행 중인 Take 를 봅니다. 묻지 못하면 지우지 않습니다 — 되돌릴 수 없는 쪽이라서입니다.
- * 목록에 없거나 서버가 404 면 이미 지워진 것으로 봅니다
+ * 목록에 없거나 서버가 404 면 이미 지워진 것으로 봅니다. 이때 그 피치의 Take 캐시도 지워야 해서,
+ * 목록에서 못 찾으면 확인 창이 알던 Take id(`takeIds`)를 씁니다
  */
 export function useDeletePitch() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (pitchId: string) => {
+    mutationFn: async ({ pitchId, takeIds }: { pitchId: string; takeIds: readonly string[] }) => {
       const list = await client.fetchQuery({
         queryKey: pitchListKey,
         queryFn: fetchPitchList,
         staleTime: 0,
       });
       const pitch = list.pitches.find((item) => item.pitch_id === pitchId);
-      if (!pitch) return [];
+      if (!pitch) return takeIds;
       if (hasActiveTake(pitch.takes)) throw new PitchBusyError();
       try {
         await deletePitch(pitchId);
@@ -80,7 +81,7 @@ export function useDeletePitch() {
       }
       return pitch.takes.map((take) => take.take_id);
     },
-    onSuccess: (takeIds, pitchId) => forgetPitch(client, pitchId, takeIds),
+    onSuccess: (takeIds, { pitchId }) => forgetPitch(client, pitchId, takeIds),
   });
 }
 
