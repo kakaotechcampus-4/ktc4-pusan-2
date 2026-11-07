@@ -18,11 +18,13 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
-  HTMLDialogElement.prototype.close = function () {
+  vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (this: HTMLDialogElement) {
     this.removeAttribute('open');
     this.dispatchEvent(new Event('close'));
-  };
+  });
   query.error = null;
   query.data = {
     take_id: 't3',
@@ -46,6 +48,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 async function render() {
   await act(async () =>
