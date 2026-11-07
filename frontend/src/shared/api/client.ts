@@ -1,7 +1,23 @@
-import { apiBase, ApiFailure, clearTokens, getAccessToken, refresh } from './tokenStore';
+import {
+  apiBase,
+  ApiFailure,
+  clearTokens,
+  getAccessToken,
+  refresh,
+  tokenSubject,
+} from './tokenStore';
 
-/** Only API paths are accepted, so a Bearer token cannot be sent to another origin. */
-export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+export { tokenSubject };
+
+/**
+ * Only API paths are accepted, so a Bearer token cannot be sent to another origin.
+ * `read` turns a successful body into the result — JSON by default (see `readJsonWithin`).
+ */
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  read: (response: Response) => Promise<T> = (response) => response.json() as Promise<T>,
+): Promise<T> {
   if (path.startsWith('/api/auth/')) throw new Error('Use the cookie authentication functions');
   if (!path.startsWith('/api/') || path.includes('\\') || path.includes('..'))
     throw new Error('Invalid API path');
@@ -22,6 +38,11 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     // A late 401 may arrive after another request already rotated the token.
     const current = getAccessToken();
     const token = current && current !== sentToken ? current : await refresh();
+    // 다른 탭에서 다른 계정으로 로그인해 쿠키가 바뀌었으면 그 토큰으로 다시 보내지 않습니다 —
+    // 앞 사용자가 쓴 글이 새 계정으로 접수되지 않게 (chat-agent.md L3-16 "갱신 전후 사용자 ID 가 다르면 재전송 중단").
+    // 새로 받은 토큰은 `refresh` 가 받아들이지 않습니다. 여기서는 다른 요청이 먼저 바꿔 둔 토큰을 봅니다
+    if (sentToken && tokenSubject(sentToken) !== tokenSubject(token))
+      throw new ApiFailure(401, 'SESSION_CHANGED');
     response = await send(token);
   }
 
@@ -37,8 +58,38 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     throw new ApiFailure(response.status, code, retryAfterSec(response.headers.get('Retry-After')));
   }
 
-  return response.status === 204 ? (undefined as T) : response.json();
+  return response.status === 204 ? (undefined as T) : read(response);
 }
+
+/** 성공 응답이 정한 크기를 넘음 — 본문은 읽지 않고 버립니다 */
+export class ResponseTooLargeError extends Error {
+  readonly maxBytes: number;
+
+  constructor(maxBytes: number) {
+    super('응답이 너무 커요');
+    this.name = 'ResponseTooLargeError';
+    this.maxBytes = maxBytes;
+  }
+}
+
+/**
+ * 크기(UTF-8 바이트)를 재고 JSON 으로 읽습니다 — 넘으면 `ResponseTooLargeError`.
+ * `Content-Length` 가 이미 넘으면 본문을 받지 않습니다. 대화 에이전트의 2 MiB 제한(`chat-agent.md` L3-22)에 씁니다
+ */
+export const readJsonWithin =
+  (maxBytes: number) =>
+  async <T>(response: Response): Promise<T> => {
+    const declared = Number(response.headers.get('Content-Length'));
+    if (declared > maxBytes) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new ResponseTooLargeError(maxBytes);
+    }
+    const text = await response.text();
+    // UTF-16 한 단위는 UTF-8 로 3바이트까지라(짝 단위 둘은 4바이트), 단위 수가 1/3 이하면 재지 않아도 됩니다
+    if (text.length * 3 > maxBytes && new TextEncoder().encode(text).length > maxBytes)
+      throw new ResponseTooLargeError(maxBytes);
+    return JSON.parse(text) as T;
+  };
 
 /**
  * `Retry-After` 를 초로 — 초 숫자와 HTTP 날짜 둘 다 받습니다. 없거나 잘못됐으면 null 이고,

@@ -223,6 +223,11 @@ interface ChatState {
   /** 처리한 이벤트 순번까지 커서를 옮깁니다. 다른 실행이거나 뒤로 가는 값이면 무시하고 false */
   advanceCursor: (runId: string, seq: number) => boolean;
   /**
+   * 커서를 처음(0)으로 — 문장을 읽는 쪽(통신 계층)이 새로 생겨 앞 문장을 들고 있지 않을 때,
+   * 처음부터 다시 받아 순번이 0부터 이어지게 합니다. 다른 실행이면 무시하고 false
+   */
+  rewindCursor: (runId: string) => boolean;
+  /**
    * 실행이 종결됐을 때. 그 실행의 취소 중 표시도 지웁니다(지켜보던 실행이 바뀐 뒤여도).
    * `retryAfterSec`(실행 오류의 `retry_after_s`)가 있으면 그때까지 보내기를 막습니다
    */
@@ -725,6 +730,13 @@ export const useChatStore = create<ChatState>()((set, get) => {
       if (!run || run.runId !== runId || !Number.isInteger(seq) || seq <= run.afterSeq)
         return false;
       set({ run: { ...run, afterSeq: seq } });
+      return true;
+    },
+
+    rewindCursor: (runId) => {
+      const { run } = get();
+      if (!run || run.runId !== runId) return false;
+      if (run.afterSeq !== 0) set({ run: { ...run, afterSeq: 0 } });
       return true;
     },
 

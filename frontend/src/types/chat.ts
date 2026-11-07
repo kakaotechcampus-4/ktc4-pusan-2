@@ -2,10 +2,10 @@
  * 대화형 코치 에이전트 — 화면 ↔ BE 계약 (잠정).
  *
  * 원본: `docs/ai/features/chat-agent.md` 5-2 · 5-5 · 12-3 · 12-4 (개정판 PR #900, #899).
- * 화면 ↔ BE 모양(경로 · 목록 키 · 칸 이름)은 **BE #933 `feat/be-chat-api-834` (`module/chat/api_dto.py`)** 에
- * 맞췄습니다 — BE 도 머지 전이고, 본문에 "경로와 응답 모양을 FE 와 맞춘다" 가 남은 일입니다.
- * BE 가 아직 열지 않은 것(실행 이벤트 커서 · 승인 · 기억 · 최신 아님 사유 · '기억 없이')은 문서 계약대로 두고
- * `(BE 미구현)` 으로 표시했습니다. 목(`mocks/chat.ts`)은 그것까지 문서대로 흉내 냅니다.
+ * 화면 ↔ BE 모양(경로 · 목록 키 · 칸 이름)은 **BE #933 `feat/be-chat-api-834` 55aa10d0 (`module/chat/api_dto.py`)** 에
+ * 맞췄습니다 — 실행 이벤트 커서 · 승인 · 거절 · 최신 아님 사유까지 들어온 판입니다. BE 도 머지 전입니다.
+ * BE 가 아직 열지 않은 것(기억 · '기억 없이')은 문서 계약대로 두고 `(BE 미구현)` 으로 표시했습니다.
+ * 목(`mocks/chat.ts`)은 그것까지 문서대로 흉내 냅니다.
  *
  * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 서비스의
  * `ai/service/src/pitch_coach_ai/features/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `develop-next`
@@ -244,9 +244,13 @@ export interface ClaimEventData {
  * 저장된 이벤트의 순번 · 내용은 바뀌지 않습니다.
  */
 export type RunEvent =
-  | { event_seq: number; event: 'plan'; data: { plan: PlanStep[] } }
-  | { event_seq: number; event: 'tool_done'; data: { trace: TraceItem } }
-  | { event_seq: number; event: 'claim'; data: ClaimEventData };
+  | { event_seq: number; event: 'plan'; data: { plan: PlanStep[] }; masked: boolean }
+  | { event_seq: number; event: 'tool_done'; data: { trace: TraceItem }; masked: boolean }
+  /**
+   * 문장 줄. 근거 피치 · Take 가 지워졌거나 남의 것이면 BE 가 `data: null, masked: true` 로 가립니다 —
+   * 그 줄도 문장 순번 하나를 차지합니다(BE `RunEventDTO`)
+   */
+  | { event_seq: number; event: 'claim'; data: ClaimEventData | null; masked: boolean };
 
 /** 실행 조회 응답 (12-3 '실행 상태 조회') */
 export interface RunView {
@@ -256,14 +260,13 @@ export interface RunView {
   /** BE 는 아직 진행이 없거나 근거가 지워졌으면 null 을 줍니다 */
   plan: PlanStep[] | null;
   trace: TraceItem[] | null;
-  /**
-   * (BE 미구현 — #933 "이후 남은 작업: 실행 이벤트 커서 조회") `after_seq` 뒤의 이벤트, 순번순.
-   * BE 가 아직 싣지 않으므로 통신 계층은 빠진 칸을 빈 목록으로 읽습니다
-   */
+  /** `after_seq` 뒤의 이벤트, 순번순. 취소 · 승인 · 거절의 응답에는 싣지 않습니다(빈 목록) */
   events: RunEvent[];
-  /** (BE 미구현 · FE 잠정 칸) 크기 때문에 나눠 보냈으면 다음 커서. 다 보냈으면 null */
+  /** 다음 조회에 보낼 커서(받은 마지막 순번, 없으면 보낸 커서). 이벤트를 읽지 않은 응답은 null */
   next_after_seq: number | null;
-  /** (BE 미구현 — 승인 API 와 함께) 대기 중 카드와 그 행동의 `args_hash` */
+  /** 크기 한도로 나눠 남은 이벤트가 있음 — 기다리지 않고 곧바로 다시 조회합니다 */
+  has_more: boolean;
+  /** 승인 대기 중인 확인 카드(ASK_CONFIRM). 그 밖에는 빈 목록 */
   cards: Card[];
   error: { code: ChatErrorCode } | null;
   retry_after_s: number | null;
@@ -285,7 +288,6 @@ export type StaleReason =
   | 'VERSION_UNKNOWN'
   | 'CORPUS_UPDATED';
 
-/** 메시지 목록 한 줄 (12-3 '메시지 목록') */
 /**
  * 근거 표시 (6-8 `basis`) — 이 답이 읽은 피치 · Take 와 그때의 버전. 배지 글자("Take 5 · 대본 V2 · 기준 v4 기준")는
  * 화면이 이것으로 만듭니다. BE 는 AI 가 준 값을 그대로 넘기므로(`Any`) 모르는 칸은 무시하고,
@@ -327,7 +329,7 @@ export interface ChatMessage {
   trace: TraceItem[] | null;
   /** 근거가 된 피치 · Take 가 지워져 본문과 근거를 가렸음(사유 `SOURCE_DELETED`) */
   masked: boolean;
-  /** (BE 미구현 — #933 "메시지 목록의 최신 아님 사유") 6-8 사유. 목만 싣습니다 */
+  /** 6-8 최신 아님 사유. 모르는 값은 "일부 기준이 바뀌었어요" 로 보입니다(L3-27) */
   stale_reasons: string[];
 }
 
@@ -340,7 +342,7 @@ export interface MessagePage {
 
 /**
  * 대화 하나 (BE `ConversationResponse`) — 목록 · 만들기 · 범위 바꾸기가 같은 모양을 돌려줍니다.
- * 문서 12-3 의 "최신 아님 여부" 와 '기억 없이' 표시는 (BE 미구현)이라 아직 칸이 없습니다
+ * "최신 아님 여부"(`stale`)는 목록 한 줄(`ConversationListItem`)에만 있습니다. '기억 없이' 표시는 (BE 미구현)
  */
 export interface ConversationSummary {
   conversation_id: string;
@@ -354,8 +356,14 @@ export interface ConversationSummary {
   created_at: string;
 }
 
+/** 대화 목록 한 줄 (BE `ConversationListItem`) — 만들기 · 범위 바꾸기 응답에는 `stale` 이 없습니다 */
+export interface ConversationListItem extends ConversationSummary {
+  /** 마지막 답이 지금 기록과 달라졌음(6-8). 답이 없으면 false */
+  stale: boolean;
+}
+
 export interface ConversationList {
-  conversations: ConversationSummary[];
+  conversations: ConversationListItem[];
 }
 
 // ── 요청 ──────────────────────────────────────────────────────
@@ -443,21 +451,14 @@ export interface ScopeChangeRequest {
 /** 범위 바꾸기 응답 — 바뀐 대화 그대로 */
 export type ScopeChangeResponse = ConversationSummary;
 
-/** (BE 미구현) 승인 · 거절 (12-3). 인자는 보내지 않고 화면에 보인 `args_hash` 만 보냅니다 */
+/**
+ * 승인 · 거절 (12-3, BE `ActionDecisionRequest`). 인자는 보내지 않고 화면에 보인 `args_hash` 만 보냅니다.
+ * 응답은 이벤트 없이 실행 상태만인 `RunView` 입니다 — 승인이면 RUNNING, 거절이면 DONE.
+ * 같은 결정을 다시 보내면 그때의 실행 상태를 줍니다
+ */
 export interface ActionDecisionRequest {
   decision: 'APPROVE' | 'REJECT';
   args_hash: string;
-}
-
-/**
- * (FE 잠정 모양) 승인 · 거절의 응답 — 그 뒤의 행동 · 실행 상태입니다. 같은 `action_id` 로 다시 보내면
- * 처음 결과를 그대로 돌려줍니다(12-3). 그래서 승인 직후의 `RUNNING` 이 남을 수 있고, 지금 상태는 실행 조회로 봅니다
- */
-export interface ActionDecisionResponse {
-  action_id: string;
-  action_status: ActionStatus;
-  run_id: string;
-  run_status: RunStatus;
 }
 
 /** 되돌리기 응답 (BE #935 `GoalUndoneResponse`) */
@@ -510,5 +511,7 @@ export type ChatErrorCode =
   | 'AGENT_EXPIRED'
   | 'AGENT_TIMEOUT'
   | 'AGENT_UPSTREAM_ERROR'
-  /** BE: 접수 중 DB 가 잠깐 안 됨(503) — 커밋 전 실패라 접수되지 않았습니다 */
-  | 'AGENT_NOT_ACCEPTED';
+  /** BE: 접수 중 DB 가 잠깐 안 됨(503) — 같은 `client_request_id` 로 다시 보냅니다 */
+  | 'AGENT_NOT_ACCEPTED'
+  /** 승인 · 거절의 `args_hash` 가 저장한 대기 행동과 다름 — 카드를 다시 읽습니다(문서 #948 5-9) */
+  | 'APPROVAL_HASH_MISMATCH';

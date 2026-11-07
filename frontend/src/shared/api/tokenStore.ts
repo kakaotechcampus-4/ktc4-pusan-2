@@ -1,6 +1,27 @@
 let accessToken: string | null = null;
 let pending: Promise<string> | null = null;
 let generation = 0;
+/**
+ * 이 페이지가 마지막으로 받아들인 사용자(토큰의 `sub`). 토큰을 지워도(401) 남겨 두고, 로그아웃할 때만 비웁니다 —
+ * 다른 탭에서 다른 계정으로 로그인해 쿠키가 바뀌면 그 계정의 토큰을 받아들이지 않습니다(chat-agent.md L3-16).
+ * 계정을 바꾸는 길(로그인 · 탈퇴)은 페이지를 새로 엽니다
+ */
+let knownSubject: string | null = null;
+
+/** 액세스 토큰(JWT)의 사용자(`sub`) — 읽을 수 없으면 null (서명은 서버가 봅니다) */
+export function tokenSubject(token: string | null): string | null {
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const body: unknown = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')));
+    return body && typeof body === 'object' && 'sub' in body && typeof body.sub === 'string'
+      ? body.sub
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 export const apiBase = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
 
@@ -69,7 +90,12 @@ export function refresh(): Promise<string> {
 
     if (version !== generation) throw new ApiFailure(401, 'SESSION_CHANGED');
 
+    // 다른 계정의 토큰은 메모리에 넣지 않습니다 — 넣으면 다음 요청부터 그 계정으로 나갑니다
+    const subject = tokenSubject(body.access_token);
+    if (knownSubject !== null && subject !== null && subject !== knownSubject)
+      throw new ApiFailure(401, 'SESSION_CHANGED');
     accessToken = body.access_token;
+    if (subject !== null) knownSubject = subject;
     return body.access_token as string;
   })()
     .catch((error) => {
@@ -93,4 +119,5 @@ export async function logout() {
     throw new ApiFailure(response.status, 'LOGOUT_FAILED');
 
   clearTokens();
+  knownSubject = null;
 }

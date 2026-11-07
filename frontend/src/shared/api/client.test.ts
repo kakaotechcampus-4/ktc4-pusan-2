@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest } from './client';
+import { apiRequest, tokenSubject } from './client';
 import { clearTokens, getAccessToken, refresh, logout } from './tokenStore';
 
 beforeEach(() => {
@@ -113,6 +113,47 @@ describe('인증 갱신', () => {
     expect(mock).not.toHaveBeenCalled();
   });
 
+  it('갱신한 토큰이 다른 사용자(sub)면 다시 보내지 않는다 — 다른 탭에서 계정이 바뀐 경우 (L3-16)', async () => {
+    const jwt = (sub: string) =>
+      `h.${btoa(JSON.stringify({ sub })).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')}.s`;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.endsWith('/refresh')
+            ? Response.json({ access_token: jwt('user-a') })
+            : new Response(null, { status: 401 }),
+        ),
+      ),
+    );
+    await refresh();
+    expect(tokenSubject(getAccessToken())).toBe('user-a');
+
+    const sent: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init: RequestInit) => {
+        if (url.endsWith('/refresh'))
+          return Promise.resolve(Response.json({ access_token: jwt('user-b') }));
+        sent.push(new Headers(init.headers).get('Authorization') ?? '');
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }),
+    );
+    await expect(
+      apiRequest('/api/chat/messages', { method: 'POST', body: '{}' }),
+    ).rejects.toMatchObject({ status: 401, code: 'SESSION_CHANGED' });
+    // 처음 한 번만 — B 의 토큰으로 다시 보내지 않았습니다
+    expect(sent).toEqual([`Bearer ${jwt('user-a')}`]);
+  });
+
+  it('토큰에서 사용자를 읽지 못하면 null', () => {
+    expect([tokenSubject(null), tokenSubject('opaque'), tokenSubject('a.!!!.b')]).toEqual([
+      null,
+      null,
+      null,
+    ]);
+  });
+
   it('갱신 뒤에도 401이면 요청을 한 번만 재시도한다', async () => {
     const mock = vi.fn((url: string) =>
       Promise.resolve(
@@ -126,5 +167,65 @@ describe('인증 갱신', () => {
     await expect(apiRequest('/api/a')).rejects.toMatchObject({ status: 401 });
     expect(mock).toHaveBeenCalledTimes(3);
     expect(getAccessToken()).toBeNull();
+  });
+});
+
+describe('계정이 바뀐 토큰 (L3-16)', () => {
+  const jwt = (sub: string) =>
+    `h.${btoa(JSON.stringify({ sub })).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')}.s`;
+
+  /** 쿠키가 `sub` 의 토큰을 주고, 그 밖의 요청은 늘 401 인 서버 — 보낸 Authorization 을 모읍니다 */
+  function server(sub: string) {
+    const sent: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init: RequestInit) => {
+        if (url.endsWith('/refresh'))
+          return Promise.resolve(Response.json({ access_token: jwt(sub) }));
+        if (url.endsWith('/logout')) return Promise.resolve(Response.json({}));
+        sent.push(new Headers(init.headers).get('Authorization') ?? 'none');
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }),
+    );
+    return sent;
+  }
+
+  beforeEach(async () => {
+    server('nobody');
+    await logout();
+  });
+
+  it('다른 계정의 토큰은 메모리에 넣지 않아, 다음 요청도 그 계정으로 나가지 않는다', async () => {
+    server('user-a');
+    await refresh();
+    const sent = server('user-b');
+    await expect(apiRequest('/api/chat/messages', { method: 'POST' })).rejects.toMatchObject({
+      code: 'SESSION_CHANGED',
+    });
+    expect(tokenSubject(getAccessToken())).not.toBe('user-b');
+    await expect(apiRequest('/api/chat/messages', { method: 'POST' })).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(sent.filter((h) => h === `Bearer ${jwt('user-b')}`)).toEqual([]);
+  });
+
+  it('토큰을 지운 뒤(앞 요청의 401)에도 다른 계정의 토큰으로 다시 보내지 않는다', async () => {
+    server('user-a');
+    await refresh();
+    clearTokens();
+    const sent = server('user-b');
+    await expect(apiRequest('/api/chat/messages', { method: 'POST' })).rejects.toMatchObject({
+      code: 'SESSION_CHANGED',
+    });
+    expect(sent).toEqual(['none']);
+  });
+
+  it('로그아웃하면 다음 계정의 토큰을 받아들인다', async () => {
+    server('user-a');
+    await refresh();
+    server('user-a');
+    await logout();
+    server('user-b');
+    expect(tokenSubject(await refresh())).toBe('user-b');
   });
 });

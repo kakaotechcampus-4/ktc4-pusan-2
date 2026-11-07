@@ -4,7 +4,6 @@ vi.mock('./auth', () => ({ currentMockUserId: () => null }));
 import { createChatHandlers, type MockChatControls } from './chat';
 import { chatPaths } from '@/shared/api/chatPaths';
 import type {
-  ActionDecisionResponse,
   Card,
   ConversationList,
   MessagePage,
@@ -35,6 +34,8 @@ const call = (path: string, method = 'GET', body?: unknown) =>
   });
 
 let key = 0;
+/** 형식은 맞지만 없는 ID — 없음(404)과 형식 오류(422)를 나눠 보려고 씁니다 */
+const MISSING = '99999999-0000-4000-8000-000000000000';
 const message = (text: string, extra: Record<string, unknown> = {}) => ({
   conversation_id: null,
   scope_pitch_id: null,
@@ -105,7 +106,7 @@ describe('보내기 → 조회', () => {
     } while (!['DONE', 'PARTIAL', 'FAILED'].includes(view.status));
 
     expect(events.map((e) => e.event_seq)).toEqual(events.map((_, i) => i + 1));
-    const claims = events.flatMap((e) => (e.event === 'claim' ? [e.data] : []));
+    const claims = events.flatMap((e) => (e.event === 'claim' && e.data ? [e.data] : []));
     expect(claims.map((c) => c.index)).toEqual([0, 1, 2, 3]);
     // 일반 조언 묶음 바로 앞에는 고정 안내가 붙습니다(7-10)
     expect(claims.map((c) => c.claim.kind)).toEqual(['RECORD', 'GUIDE', 'SYSTEM', 'GENERAL']);
@@ -196,6 +197,15 @@ describe('보내기 → 조회', () => {
     );
     expect((await poll(run_id)).status).toBe('CANCELLED');
   });
+
+  it('[취소]는 BE 처럼 오류 코드 AGENT_CANCELLED 만 남기고 답 메시지를 만들지 않는다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await poll(run_id);
+    await poll(run_id);
+    const cancelled = await call(chatPaths.cancel(run_id), 'POST').then(json<RunView>);
+    expect(cancelled.error).toEqual({ code: 'AGENT_CANCELLED' });
+    expect((await messages(conversation_id)).items.map((m) => m.role)).toEqual(['user']);
+  });
 });
 
 describe('승인 카드', () => {
@@ -206,20 +216,28 @@ describe('승인 카드', () => {
     const ask = askOf(waiting);
     expect(ask).toMatchObject({ action_type: 'SAVE_GOAL' });
 
-    const wrong = await call(chatPaths.decision(ask.action_id), 'POST', {
+    const wrong = await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: 'x',
     });
     expect(wrong.status).toBe(409);
 
     const body = { decision: 'APPROVE', args_hash: ask.args_hash };
-    const first = await call(chatPaths.decision(ask.action_id), 'POST', body).then(
-      json<ActionDecisionResponse>,
+    // BE 처럼 이벤트 없이 실행 상태만 — 승인이면 RUNNING. 같은 결정은 그때의 상태를 줍니다
+    const first = await call(chatPaths.decision(run_id, ask.action_id), 'POST', body).then(
+      json<RunView>,
     );
-    const again = await call(chatPaths.decision(ask.action_id), 'POST', body).then(
-      json<ActionDecisionResponse>,
+    expect(first).toMatchObject({ run_id, status: 'RUNNING', events: [], next_after_seq: null });
+    const again = await call(chatPaths.decision(run_id, ask.action_id), 'POST', body).then(
+      json<RunView>,
     );
     expect(again).toEqual(first);
+    // 다른 실행의 경로로는 그 카드를 찾지 못합니다
+    const other = await accepted('비교해 줘');
+    expect((await call(chatPaths.decision(other.run_id, ask.action_id), 'POST', body)).status).toBe(
+      404,
+    );
+    expect(conversation_id).not.toBe(other.conversation_id);
 
     expect((await settle(run_id)).status).toBe('DONE');
     const answer = (await messages(conversation_id)).items.at(-1)!;
@@ -234,13 +252,19 @@ describe('승인 카드', () => {
   it('[거절]하면 AI 를 다시 부르지 않고 거절 문장으로 끝난다', async () => {
     const { run_id, conversation_id } = await accepted('목표로 잡아 줘');
     const ask = askOf(await settle(run_id));
-    const r = await call(chatPaths.decision(ask.action_id), 'POST', {
+    const r = await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'REJECT',
       args_hash: ask.args_hash,
     });
-    expect(await r.json()).toMatchObject({ action_status: 'REJECTED', run_status: 'DONE' });
+    expect(await r.json()).toMatchObject({ run_id, status: 'DONE', events: [], error: null });
+    // BE `close_waiting` 처럼 — 고정 문장은 메시지에만, 카드는 비우고, 거절이면 메시지 상태 DONE
     const answer = (await messages(conversation_id)).items.at(-1)!;
     expect(answer.claims.at(-1)!.text).toBe('목표를 저장하지 않았어요.');
+    expect([answer.status, answer.cards]).toEqual(['DONE', []]);
+    const events = (await poll(run_id)).events;
+    expect(
+      events.some((e) => e.event === 'claim' && e.data?.claim.text === '목표를 저장하지 않았어요.'),
+    ).toBe(false);
   });
 
   it('승인 대기 중 새 메시지는 앞 확인을 취소하고 받는다 — 그 뒤 승인은 AGENT_CANCELLED', async () => {
@@ -252,7 +276,7 @@ describe('승인 카드', () => {
     expect(texts.some((t) => t.endsWith('새 메시지를 받아 앞의 확인 요청은 취소했어요.'))).toBe(
       true,
     );
-    const late = await call(chatPaths.decision(ask.action_id), 'POST', {
+    const late = await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
@@ -263,18 +287,54 @@ describe('승인 카드', () => {
     const { run_id } = await accepted('목표로 잡아 줘');
     const ask = askOf(await settle(run_id));
     controls.expire();
-    expect((await poll(run_id)).status).toBe('EXPIRED');
-    const late = await call(chatPaths.decision(ask.action_id), 'POST', {
+    const expired = await poll(run_id);
+    expect([expired.status, expired.error]).toEqual(['EXPIRED', { code: 'AGENT_EXPIRED' }]);
+    const late = await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
     expect(await late.json()).toMatchObject({ code: 'AGENT_EXPIRED' });
   });
 
+  it('만료 · 승인 대기 중 [취소]는 BE 처럼 메시지 상태 PARTIAL · 카드 없음 · 행동별 문장', async () => {
+    const expired = await accepted('목표로 잡아 줘');
+    await settle(expired.run_id);
+    controls.expire();
+    const afterExpire = (await messages(expired.conversation_id)).items.at(-1)!;
+    expect([afterExpire.status, afterExpire.cards, afterExpire.claims.at(-1)!.text]).toEqual([
+      'PARTIAL',
+      [],
+      '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.',
+    ]);
+
+    const waiting = await accepted('목표로 잡아 줘');
+    await settle(waiting.run_id);
+    const cancelled = await call(chatPaths.cancel(waiting.run_id), 'POST').then(json<RunView>);
+    expect([cancelled.status, cancelled.error, cancelled.events]).toEqual([
+      'CANCELLED',
+      { code: 'AGENT_CANCELLED' },
+      [],
+    ]);
+    const afterCancel = (await messages(waiting.conversation_id)).items.at(-1)!;
+    expect([afterCancel.status, afterCancel.claims.at(-1)!.text]).toEqual([
+      'PARTIAL',
+      '목표를 저장하지 않았어요.',
+    ]);
+  });
+
+  it('조회는 다음 커서를 늘 주고, 남은 이벤트가 없으면 has_more 는 false', async () => {
+    const { run_id } = await accepted('비교해 줘');
+    const view = await poll(run_id);
+    expect(view.has_more).toBe(false);
+    expect(view.next_after_seq).toBe(view.events.at(-1)?.event_seq ?? 0);
+    const later = await poll(run_id, 99);
+    expect([later.events, later.next_after_seq]).toEqual([[], 99]);
+  });
+
   it('[되돌리기]는 처음 결과를 다시 주고 대화에 시스템 메시지를 남긴다', async () => {
     const { run_id, conversation_id } = await accepted('목표로 잡아 줘');
     const ask = askOf(await settle(run_id));
-    await call(chatPaths.decision(ask.action_id), 'POST', {
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
@@ -355,7 +415,7 @@ describe('그 밖의 시나리오', () => {
     const ask = askOf(await settle(run_id));
     expect(ask.action_type).toBe('REASSESS');
     expect(ask.notes).toContain('참고 결과이고 공식 결과는 그대로예요');
-    await call(chatPaths.decision(ask.action_id), 'POST', {
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
@@ -428,11 +488,11 @@ describe('그 밖의 시나리오', () => {
   it('이 대화에 없는 제안 · 대화 없는 고르기는 404', async () => {
     const { conversation_id } = await proposalConversation();
     const unknown = await send(
-      message('골라 줘', { conversation_id, choice: { proposal_id: 'nope', option: 'EXPERT' } }),
+      message('골라 줘', { conversation_id, choice: { proposal_id: MISSING, option: 'EXPERT' } }),
     );
     expect(unknown.status).toBe(404);
     const orphan = await send(
-      message('골라 줘', { choice: { proposal_id: 'nope', option: 'USER' } }),
+      message('골라 줘', { choice: { proposal_id: MISSING, option: 'USER' } }),
     );
     expect(orphan.status).toBe(404);
   });
@@ -488,8 +548,8 @@ describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
   });
 
   it('없는 피치를 범위로 보내거나 새 대화를 만들면 404', async () => {
-    expect((await send(message('비교해 줘', { scope_pitch_id: 'nope' }))).status).toBe(404);
-    const created = await call(chatPaths.conversations, 'POST', { pitch_id: 'nope' });
+    expect((await send(message('비교해 줘', { scope_pitch_id: MISSING }))).status).toBe(404);
+    const created = await call(chatPaths.conversations, 'POST', { pitch_id: MISSING });
     expect(created.status).toBe(404);
   });
 
@@ -520,7 +580,7 @@ describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
   it('저장된 목표는 자동 확인 결과를 사용자 말 없이 그 대화에 남긴다', async () => {
     const { run_id, conversation_id } = await accepted('목표로 잡아 줘');
     const ask = askOf(await settle(run_id));
-    await call(chatPaths.decision(ask.action_id), 'POST', {
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
@@ -577,7 +637,7 @@ describe('대기 · 범위 · 판정 · 목표 확인 · 화면 값', () => {
 
     const { run_id, conversation_id } = await accepted('대본 보고 한 발표였어');
     const ask = askOf(await settle(run_id));
-    await call(chatPaths.decision(ask.action_id), 'POST', {
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
@@ -605,7 +665,7 @@ describe('계약 경계', () => {
     await settle(run_id);
     const old = (await messages(conversation_id)).items.at(-1)!;
     expect(
-      (await send(message('다시', { conversation_id, again_of_message_id: 'nope' }))).status,
+      (await send(message('다시', { conversation_id, again_of_message_id: MISSING }))).status,
     ).toBe(404);
     expect((await send(message('다시', { again_of_message_id: old.message_id }))).status).toBe(404);
     const before = (await call(chatPaths.conversations).then(json<ConversationList>)).conversations
@@ -623,7 +683,7 @@ describe('계약 경계', () => {
   it('자동 목표 확인은 같은 목표에 한 번만 남는다', async () => {
     const { run_id, conversation_id } = await accepted('목표로 잡아 줘');
     const ask = askOf(await settle(run_id));
-    await call(chatPaths.decision(ask.action_id), 'POST', {
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
@@ -655,8 +715,11 @@ describe('계약 경계', () => {
       422,
     );
     expect(
-      (await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: 'nope' })).status,
+      (await call(chatPaths.scope(conversation_id), 'PATCH', { pitch_id: MISSING })).status,
     ).toBe(404);
+    // BE 처럼 — UUID 가 아니거나 pitch_id 가 빠졌거나 모르는 칸이 있으면 저장 전 422
+    for (const body of [{ pitch_id: 'nope' }, {}, { pitch_id: null, title: 'x' }])
+      expect((await call(chatPaths.scope(conversation_id), 'PATCH', body)).status).toBe(422);
   });
 });
 
@@ -666,7 +729,7 @@ describe('독립 리뷰 반영', () => {
       conversation_id: conversationId,
     });
     const ask = askOf(await settle(run_id));
-    await call(chatPaths.decision(ask.action_id), 'POST', {
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
@@ -814,9 +877,33 @@ describe('독립 리뷰 반영', () => {
     });
   });
 
-  it('ID 칸의 형식이 틀리면 저장 전 422', async () => {
+  it('ID 칸의 형식이 틀리면 저장 전 422 — 숫자도, UUID 가 아닌 글자도', async () => {
     expect((await send(message('비교해 줘', { conversation_id: 123 }))).status).toBe(422);
     expect((await send(message('비교해 줘', { scope_pitch_id: 42 }))).status).toBe(422);
+    for (const id of ['nope', '1234', `${MISSING}x`]) {
+      expect((await send(message('비교해 줘', { scope_pitch_id: id }))).status).toBe(422);
+      expect((await send(message('비교해 줘', { conversation_id: id }))).status).toBe(422);
+      expect((await send(message('비교해 줘', { again_of_message_id: id }))).status).toBe(422);
+    }
+    const goodPage = message('').page;
+    for (const page of [
+      { ...goodPage, take_id: 'abc' },
+      { ...goodPage, pitch_id: 'abc' },
+      { ...goodPage, route: '' },
+      { ...goodPage, route: '/'.repeat(65) },
+      { ...goodPage, extra: 1 },
+    ])
+      expect((await send(message('비교해 줘', { page }))).status).toBe(422);
+    expect(
+      (await send(message('골라 줘', { choice: { proposal_id: 'gp-1', option: 'USER' } }))).status,
+    ).toBe(422);
+  });
+
+  it('BE 처럼 모르는 칸 · 공백을 더해 2,000자를 넘는 글은 422', async () => {
+    expect((await send(message('비교해 줘', { memory_off: true }))).status).toBe(422);
+    expect((await send(message(` ${'가'.repeat(2000)}`))).status).toBe(422);
+    expect((await send(message('가'.repeat(2000)))).status).toBe(202);
+    expect((await call(chatPaths.conversations, 'POST', { pitch_id: 'nope' })).status).toBe(422);
   });
 });
 
@@ -875,7 +962,7 @@ describe('AI 코드(schemas.py)와 같은 모양', () => {
   it('다시 평가 결과의 change 는 객체, criteria_results 는 배열', async () => {
     const { run_id, conversation_id } = await accepted('대본 보고 한 발표였어');
     const ask = askOf(await settle(run_id));
-    await call(chatPaths.decision(ask.action_id), 'POST', {
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
       decision: 'APPROVE',
       args_hash: ask.args_hash,
     });
