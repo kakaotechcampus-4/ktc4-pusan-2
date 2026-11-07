@@ -256,12 +256,13 @@ export function LiveAnswer({
   const doing = progress?.plan?.find((step) => step.status === 'DOING')?.step ?? null;
   // 판단 문장이 먼저, 확인 카드는 그 뒤에 — 문장이 다 보인 뒤에 답니다 (12-4 F3)
   const typed = lines.every((line) => line.done);
+  // 알림 영역은 `role="status"` 입니다(#956 합의) — 정중히(polite) 알리고, 바뀐 글자만이 아니라 줄 전체를 읽습니다
   return (
     <>
-      <p aria-live="polite" className="sr-only" data-chat-announce="">
+      <p role="status" className="sr-only" data-chat-announce="">
         {announce}
       </p>
-      <p aria-live="polite" className="sr-only" data-chat-stage="">
+      <p role="status" className="sr-only" data-chat-stage="">
         {doing ? `하는 중: ${doing}` : ''}
       </p>
       {hasBody && (

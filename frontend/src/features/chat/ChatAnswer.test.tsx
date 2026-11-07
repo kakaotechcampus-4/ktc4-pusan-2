@@ -237,6 +237,9 @@ describe('지금 실행의 답 (12-4 F12)', () => {
     expect(host.querySelector('a')!.textContent).toBe('Take 5 · 3장');
     // 다 보인 문장 하나만 알립니다 — 효과 글 자체에는 aria-live 가 없습니다
     expect(host.querySelector('[data-chat-announce]')!.textContent).toBe('3장 시선이 낮았어요.');
+    // 알림 영역은 role="status"(#956 합의) — 진행 단계 줄도 같습니다
+    expect(host.querySelector('[data-chat-announce]')!.getAttribute('role')).toBe('status');
+    expect(host.querySelector('[data-chat-stage]')!.getAttribute('role')).toBe('status');
     // 글자 효과가 그리는 답 말풍선에는 aria-live 가 없습니다 — 알림은 숨은 알림 영역으로만
     expect(
       host.querySelector('[data-live-run] [aria-live], [data-live-run][aria-live]'),
