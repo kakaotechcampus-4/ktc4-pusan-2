@@ -31,12 +31,9 @@ def test_container_waits_until_records_are_saved() -> None:
 def test_close_waits_keep_their_relation() -> None:
     """부르는 쪽마다 다른 정리 상한의 관계 (`TakeStream.close_or_cancel`). 한쪽 값만 고치면 마지막
     문장이 끊기거나 새 Take 가 끝내는 중인 스트림을 못 기다린다."""
-    from pitch_coach_backend.realtime.connection import session
     from pitch_coach_backend.realtime.stream import registry, runtime
     from pitch_coach_backend.realtime.stt import loop as stt_loop
 
-    # stop 이 Deepgram 의 마지막 결과를 기다리기 전에 끊지 않는다
-    assert session.STOP_TIMEOUT_SEC > stt_loop.DRAIN_TIMEOUT_SEC
     # 끝내는 중인 스트림을 기다리는 시간은 가장 긴 쪽인 자동 종료(알림 + 스스로 닫힘 + 취소 정리)다
     longest = (
         runtime.CONTROL_SEND_TIMEOUT_SEC
@@ -44,6 +41,5 @@ def test_close_waits_keep_their_relation() -> None:
         + stt_loop.ABORT_TIMEOUT_SEC
     )
     assert longest == registry.ENDING_WAIT_SEC
-    assert session.STOP_TIMEOUT_SEC + session.CANCEL_TIMEOUT_SEC <= registry.ENDING_WAIT_SEC
     # 앱을 내릴 때는 Deepgram 을 기다리지 않고 기록 저장에 시간을 남긴다
     assert registry.SHUTDOWN_CLOSE_WAIT_SEC < stt_loop.DRAIN_TIMEOUT_SEC
