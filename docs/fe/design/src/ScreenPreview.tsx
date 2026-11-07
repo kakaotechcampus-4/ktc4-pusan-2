@@ -158,6 +158,13 @@ export function ScreenPreview({
   );
 }
 
+/** 기존 화면·상태 링크는 유지하면서 최신 제품형 미리보기 상태에 연결한다. */
+function productCreateState(stateId: string): string {
+  if (stateId === 'preview') return 'upload-review';
+  if (stateId === 'default') return 'focus-outline';
+  return stateId;
+}
+
 function CurrentScreen({
   screenId,
   stateId,
@@ -191,7 +198,7 @@ function CurrentScreen({
       // preview는 기존 공유 URL을 유지하면서 슬라이드 확인 창으로 대응한다.
       return (
         <CreateConceptScreen
-          stateId={stateId === 'preview' ? 'upload-review' : stateId === 'default' ? 'focus-outline' : stateId}
+          stateId={productCreateState(stateId)}
           onNavigate={onNavigate}
           inline={inline}
         />
