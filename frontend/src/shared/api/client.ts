@@ -34,10 +34,26 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
         ? body.code
         : 'REQUEST_FAILED';
 
-    throw new ApiFailure(response.status, code);
+    throw new ApiFailure(response.status, code, retryAfterSec(response.headers.get('Retry-After')));
   }
 
   return response.status === 204 ? (undefined as T) : response.json();
+}
+
+/**
+ * `Retry-After` 를 초로 — 초 숫자와 HTTP 날짜 둘 다 받습니다. 없거나 잘못됐으면 null 이고,
+ * 그때 얼마나 기다릴지는 부른 쪽이 정합니다(예: 대화 에이전트는 5초, `chat-agent.md` L3-18).
+ */
+export function retryAfterSec(value: string | null, now = Date.now()): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // 날짜는 HTTP 형식(IMF-fixdate)만 — 브라우저의 Date.parse 는 "5.5" · "-1" 같은 값도 날짜로 받아 0초가 됩니다
+  if (!/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(trimmed))
+    return null;
+  const at = Date.parse(trimmed);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, Math.ceil((at - now) / 1000));
 }
 
 /**

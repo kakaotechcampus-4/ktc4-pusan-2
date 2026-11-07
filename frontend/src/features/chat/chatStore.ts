@@ -9,11 +9,12 @@ import type { SendMessageRequest } from '@/types/chat';
  * 아니며(메시지 · 실행 상태는 TanStack Query), 프레임 단위도 아닙니다. frontend/AGENTS.md 상태 배치표의 가운데 칸입니다.
  *
  * 서버를 부르는 일은 통신 계층이 하고, 이 저장소는 값과 그 값을 바꿔도 되는지만 정합니다.
- * 통신 계층이 할 순서:
+ * 통신 계층이 할 순서 — 실제 코드는 `chatTransport.ts` 입니다:
  *   새 대화  '기억 없이' 면 보내기 전에 대화부터 만듭니다(12-3 "'기억 없이' 선택(대화를 만들 때만)") —
  *            needsCreate 면 beginCreate → POST /conversations(memory_off) → finishCreate(표, 대화 ID) → 보내기
- *   보내기   beginSend(초안) → `pending.request` 를 그대로 POST → (15초 넘게 모름) markUnconfirmed →
- *            같은 `pending.request` 로 다시 보내기 → 202 면 beginRun(표)
+ *   보내기   beginSend(초안) → `pending.request` 를 그대로 POST → 202 면 beginRun(표)
+ *            · 15초 넘게 모르면 markUnconfirmed — **자동으로 다시 보내지 않고**(L3-18 "사용자 재시도만"), 사용자가
+ *              [다시 확인]을 누를 때 같은 `pending.request` 로 다시 보냅니다
  *            · 접수 안 됨이 확정되면 failSend(표, 기다릴 초) — 429 는 Retry-After, 없거나 잘못되면 5초
  *            · 409 AGENT_RUN_IN_PROGRESS(다른 탭이 실행 중)면 conflictSend(표) → 대화의 실행 조회 →
  *              resolveConversation — 조회가 끝날 때까지 잠근 채로 둡니다(L3-17 "409 실행 중은 상태 조회")
@@ -22,9 +23,10 @@ import type { SendMessageRequest } from '@/types/chat';
  *   취소     beginCancel → POST → 종결을 보면 endRun · 취소 요청이 실패하면 abortCancel
  *   대화 열기 selectConversation · 새로고침 복원 → 대화의 실행 조회 → resolveConversation(표, 찾은 실행)
  *            — 되살린 보내기를 다시 보내는 것과 동시에 해도 됩니다. 202 로 실행이 먼저 붙으면 늦게 온 조회는 버려집니다
- *   되살린 보내기 새로고침 전에 보내던 요청이 있으면(`pending`) 대화가 있든 없든 `pendingSendTicket()` 과
- *            `pending.request` 로 같은 키를 다시 보냅니다(L3-15 "같은 키 · 본문으로 재시도") — 접수됐던 요청이면
- *            BE 가 같은 202 를, 못 받았던 요청이면 새로 접수합니다. 접수되지 않음이 확정될 때만 failSend 합니다
+ *   되살린 보내기 새로고침 전에 보내던 요청이 있으면(`pending`) 미확정으로 알리고, 사용자가 [다시 확인]을 누르면
+ *            대화가 있든 없든 `pendingSendTicket()` 과 `pending.request` 로 같은 키를 다시 보냅니다(L3-15 "같은 키 ·
+ *            본문으로 재시도") — 접수됐던 요청이면 BE 가 같은 202 를, 못 받았던 요청이면 새로 접수합니다.
+ *            접수되지 않음이 확정될 때만 failSend 합니다
  *   범위     새 대화는 chooseScope, 있는 대화는 beginScopeChange → PUT → finishScopeChange(표, 결과)
  *
  * **잠그는 것** (12-4 F2 · F3) — 화면은 `canSend` · `canChangeScope` 로 읽습니다
