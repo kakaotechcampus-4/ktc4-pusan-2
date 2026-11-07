@@ -7,7 +7,7 @@ import { chatPaths } from '@/shared/api/chatPaths';
 /**
  * 계약 시험 — 목이 **실제 BE** 와 같은 칸 · 값 · 상태 코드로 답하는지 봅니다(문서가 아니라 BE 코드 기준).
  *
- * 기준: develop-next `37e3a9df` — BE #933(메시지 · 실행 · 승인 · 대화 목록) + #935(되돌리기) + #1002(기억 · '기억 없이').
+ * 기준: develop-next `da309aa2` — BE #933(메시지 · 실행 · 승인 · 대화 목록) + #935(되돌리기) + #1002(기억 · '기억 없이') + #1000(대화 목록 커서).
  * (#933 브랜치의 옛 기준 `55aa10d0` 는 브랜치가 다시 쓰여 저장소에 남아 있지 않습니다)
  * - 응답 칸: `backend/src/pitch_coach_backend/module/chat/api_dto.py`
  * - 경로 · 상태 코드: `module/chat/controller.py` (새 대화 201 · 메시지 접수 202 · 나머지 200)
@@ -18,7 +18,7 @@ import { chatPaths } from '@/shared/api/chatPaths';
  * BE 의 OpenAPI 를 파일로 떠 두고 이 표를 거기서 읽는 방식을 BE 와 정할 예정입니다(#957 리뷰).
  */
 const BE = {
-  commit: '37e3a9df',
+  commit: 'da309aa2',
   ConversationResponse: [
     'conversation_id',
     'title',
@@ -38,7 +38,7 @@ const BE = {
     'memory_off',
     'stale',
   ],
-  ConversationListResponse: ['conversations'],
+  ConversationListResponse: ['conversations', 'next_cursor'],
   /** 요청 본문 — 모르는 칸은 422(extra="forbid") */
   CreateConversationRequest: ['pitch_id', 'memory_off'],
   GoalUndoneResponse: ['run_id', 'action_id', 'goal_version', 'goal'],
@@ -214,6 +214,26 @@ describe(`응답 모양 — BE ${BE.commit} api_dto.py`, () => {
     });
     expect(changed.status).toBe(200);
     expectShape(await read(changed), BE.ConversationResponse);
+  });
+
+  it('대화 목록은 50개씩 쪽으로 나뉘고 next_cursor 로 이어 읽는다 — 깨진 커서는 422 (BE #1000)', async () => {
+    for (let i = 0; i < 51; i += 1) await call(chatPaths.conversations, 'POST', { pitch_id: null });
+    const first = await read(await call(chatPaths.conversations));
+    expect(first.conversations as Json[]).toHaveLength(50);
+    expect(typeof first.next_cursor).toBe('string');
+
+    const second = await read(
+      await call(`${chatPaths.conversations}?cursor=${first.next_cursor as string}`),
+    );
+    expectShape(second, BE.ConversationListResponse);
+    expect((second.conversations as Json[]).length).toBeGreaterThan(0);
+    expect(second.next_cursor).toBeNull();
+
+    await expectError(
+      await call(`${chatPaths.conversations}?cursor=broken`),
+      422,
+      'VALIDATION_ERROR',
+    );
   });
 
   it('메시지 접수(202) — 상태는 늘 QUEUED', async () => {
