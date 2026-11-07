@@ -397,22 +397,35 @@ it('세션 재조회가 실패해도 로그인 정보가 있으면 열린 패널
   expect(panel()).not.toBeNull();
 });
 
-it('대화창이 렌더 중에 던져도 페이지는 그대로이고, [다시 시도]로 런처가 돌아온다 (L3-36)', async () => {
+it('대화창이 렌더 중에 던져도 페이지는 그대로이고, [다시 시도]는 처음엔 닫기만 · 되풀이되면 새 대화로 (L3-36)', async () => {
   const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   const silence = (event: ErrorEvent) => event.preventDefault();
   window.addEventListener('error', silence);
-  try {
-    await visit('/takes/t1');
-    await openPanel();
-    expect(document.activeElement).toBe(input());
-    const ok = state.session;
+  const ok = state.session;
+  /** 세션 훅이 던지게 하고 화면을 옮겨 대화창을 다시 그립니다 */
+  const crash = (path: string) => {
     state.session = {
       ...ok,
       get data(): { id: string } {
         throw new Error('session boom');
       },
     };
-    await go('/takes/t2');
+    return go(path);
+  };
+  const retry = async () => {
+    state.session = ok;
+    await act(async () => button('다시 시도')!.click());
+    await settle();
+  };
+  try {
+    await visit('/takes/t1');
+    await act(async () =>
+      useChatStore.getState().selectConversation('c-1', { pitchId: null, title: null }),
+    );
+    await settle();
+    await openPanel();
+    input().focus();
+    await crash('/takes/t2');
 
     expect(alerts()).toEqual([CHAT_FAILED_TEXT]);
     expect(launcher()).toBeNull();
@@ -420,10 +433,21 @@ it('대화창이 렌더 중에 던져도 페이지는 그대로이고, [다시 �
     // 입력칸이 사라졌으니 초점은 body 가 아니라 [다시 시도]로 갑니다
     expect(document.activeElement).toBe(button('다시 시도'));
 
-    state.session = ok;
-    await act(async () => button('다시 시도')!.click());
-    await settle();
+    // 첫 실패: 대화창만 닫고 보던 대화는 그대로 둡니다
+    await retry();
     expect(alerts()).not.toContain(CHAT_FAILED_TEXT);
+    expect(panel()).toBeNull();
+    expect(launcher()!.getAttribute('aria-expanded')).toBe('false');
+    expect(useChatStore.getState().conversationId).toBe('c-1');
+    expect(document.activeElement).toBe(launcher());
+
+    // 이 페이지에서 두 번째 실패: [새 대화]처럼 보던 대화에서 나옵니다
+    await openPanel();
+    await crash('/takes/t3');
+    expect(alerts()).toEqual([CHAT_FAILED_TEXT]);
+    await retry();
+    expect(panel()).toBeNull();
+    expect(useChatStore.getState().conversationId).toBeNull();
     expect(document.activeElement).toBe(launcher());
   } finally {
     window.removeEventListener('error', silence);
