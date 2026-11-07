@@ -23,14 +23,18 @@ export const componentEntries: GuideComponent[] = [
     summary: '동작은 Button, 화면 이동은 ButtonLink. 세 종류 × 두 크기.',
     states: [
       view('variants', '종류 · 크기', 'primary · secondary · quiet와 md · sm, 그리고 ButtonLink.'),
-      view('disabled', '막힘 · 진행 중', '누를 수 없을 때와 처리 중 문구.'),
+      view(
+        'disabled',
+        '막힘 · 진행 중',
+        '처음부터 누를 수 없으면 disabled, 누른 버튼이 처리 중이 되면 aria-disabled(문구도 바꾼다).',
+      ),
     ],
     rules: [
       '한 덩어리에 primary는 하나만 둔다. 나머지는 secondary, 덜 중요한 것은 quiet.',
       '화면을 옮기면 ButtonLink(라우터 링크), 그 자리에서 무언가 하면 Button이다.',
       'Button은 기본으로 type="button"이다. 폼을 제출할 때만 type="submit"을 준다.',
       '처리 중에는 막고 문구를 "…하는 중…"으로 바꾼다. 같은 요청을 두 번 보내지 않는다.',
-      '누른 버튼이 그 자리에서 막히면(처리 중 · 끝 장) disabled 대신 aria-disabled를 주고 onClick에서 무시한다. disabled는 쥐고 있던 초점을 body로 떨어뜨려 창 밖으로 빠진다(#818 · #845). 모양은 둘이 같다.',
+      '누른 버튼이 그 자리에서 막히면(처리 중 · 끝 장) disabled 대신 aria-disabled를 준다. aria-disabled는 마우스만 막으므로 Button이 Enter · Space의 click도 onClick에 넘기지 않고 제출도 막는다(#874 리뷰). disabled는 쥐고 있던 초점을 body로 떨어뜨려 창 밖으로 빠진다(#818 · #845). 모양은 둘이 같다.',
       'sm(36px)은 표 · 카드 안처럼 좁은 곳에서만 쓴다. 기본은 md(44px).',
     ],
     tokens: ['coral-deep', 'ink', 'panel', 'cream'],
