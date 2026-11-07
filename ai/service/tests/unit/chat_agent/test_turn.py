@@ -767,8 +767,11 @@ def test_cancel_signal_from_another_thread_stops_new_calls_and_ends_with_one_lin
     reader.join(5)
     assert not reader.is_alive()
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]
-    events = [json.loads(x)["event"] for x in lines]
+    parsed = [json.loads(x) for x in lines]
+    events = [x["event"] for x in parsed]
     assert events[-1] in ("final", "error") and events.count("final") + events.count("error") == 1
+    # 끝난 까닭은 연결 끊김(취소)으로 남는다(11-5 end.reason)
+    assert parsed[-1]["data"]["diagnostics"]["end"]["reason"] == "CLIENT_DISCONNECTED"
 
 
 # ── 자동 목표 확인(TAKE_REVIEWED) ────────────────────────────────────────────
