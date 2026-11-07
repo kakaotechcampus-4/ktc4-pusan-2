@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Draft #1106: 세로 스크롤 유무와 무관하게 헤더의 수평 정렬을 유지한다. */
+html { scrollbar-gutter: stable; }
+
 /* 화면 설계서의 디자인 값. 제품 frontend/src/index.css 에서 복사해 시작했고, 이제 설계서가 직접 관리합니다.
    디자인을 바꾸면 여기를 먼저 고치고, 제품과의 차이는 `npm run tokens` 로 확인합니다 (README "제품으로 옮기기").
    글꼴은 직접 둡니다. 라이선스는 public/fonts/*-OFL.txt */
