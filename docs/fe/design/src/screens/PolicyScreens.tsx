@@ -67,7 +67,7 @@ export function PolicyScreen({ kind }: { kind: 'terms' | 'privacy' }) {
   const title = kind === 'terms' ? '이용약관' : '개인정보 처리방침';
 
   return (
-    <main className="min-h-dvh bg-panel px-6 py-10">
+    <div className="min-h-dvh bg-panel px-6 py-10">
       <article className="mx-auto max-w-3xl">
         <Link to="/welcome" className="text-sm underline underline-offset-4">
           ← 피치코치로 돌아가기
@@ -98,6 +98,6 @@ export function PolicyScreen({ kind }: { kind: 'terms' | 'privacy' }) {
           </section>
         ))}
       </article>
-    </main>
+    </div>
   );
 }
