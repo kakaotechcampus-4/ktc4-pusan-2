@@ -108,7 +108,6 @@ it('동의했으면 설문을 남기지 않은 리포트로 가는 링크를 보
 
 it('남은 설문이 없으면 아무것도 두지 않는다', async () => {
   session.user = { ...base, test_consent_at: '2026-10-30T00:00:00Z', test_consent_version: 1 };
-  request.mockResolvedValue({ items: [] });
   await render();
   expect(host.textContent).toBe('');
 });
@@ -134,4 +133,109 @@ it('안내문은 동의로 달라지는 것과 동의와 상관없이 저장되�
   expect(text).toContain('동의와 상관없이 저장되는 것');
   for (const stored of ['발표자료', '대본', '시선 구간', '음성 · 영상 원본은 저장하지 않습니다'])
     expect(text).toContain(stored);
+});
+
+const pendingOne = {
+  items: [
+    {
+      take_id: 't1',
+      pitch_id: 'p1',
+      pitch_title: '캡스톤 최종 발표',
+      take_number: 2,
+      completed_at: '2026-10-30T01:00:00Z',
+    },
+  ],
+};
+
+// 동의 저장과 남은 설문 목록을 각각 손으로 끝냅니다
+function holdRequests(list: { items: unknown[] } = pendingOne) {
+  const held = { save: () => {}, list: () => {} };
+  request.mockImplementation((path: string) => {
+    if (path === '/api/users/me')
+      return new Promise<User>((resolve) => {
+        held.save = () => {
+          session.user = {
+            ...base,
+            test_consent_at: '2026-10-30T00:00:00Z',
+            test_consent_version: 1,
+          };
+          resolve(session.user);
+        };
+      });
+    return new Promise((resolve) => {
+      held.list = () => resolve(list);
+    });
+  });
+  return held;
+}
+const completion = () => host.querySelector<HTMLParagraphElement>('[role="status"]');
+
+it('저장하는 동안 누른 버튼이 초점을 쥐고, 동의하면 목록을 기다리지 않고 초점을 옮긴다 (#845)', async () => {
+  session.user = base;
+  const held = holdRequests();
+  await render();
+  await act(async () => button('안내 보고 참여하기')!.click());
+  const agree = button('동의하고 참여하기')!;
+  agree.focus();
+  await act(async () => agree.click());
+  await flush();
+
+  // disabled 면 브라우저가 초점을 body 로 옮깁니다. aria-disabled 로 막아 초점을 남깁니다
+  expect(agree.textContent).toBe('저장하는 중…');
+  expect(agree.disabled).toBe(false);
+  expect(agree.getAttribute('aria-disabled')).toBe('true');
+  await act(async () => button('나중에')!.click());
+  expect(host.querySelector('dialog')?.open).toBe(true);
+  expect(document.activeElement).toBe(agree);
+
+  // 동의하면 카드가 사라져도 완료 안내에 초점이 남습니다. 목록 응답은 기다리지 않습니다
+  await act(async () => held.save());
+  await flush();
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(host.querySelector('section[aria-label="남은 설문"]')).toBeNull();
+  expect(completion()?.textContent).toContain('사용자 테스트 참여에 동의했어요');
+  expect(completion()?.getAttribute('tabindex')).toBe('-1');
+  expect(document.activeElement).toBe(completion());
+
+  await act(async () => held.list());
+  await flush();
+  expect(host.querySelector('section[aria-label="남은 설문"]')).not.toBeNull();
+  expect(document.activeElement).toBe(completion());
+});
+
+it('목록 응답이 늦을 때 그사이 옮긴 초점은 지킨다 (#874 리뷰)', async () => {
+  session.user = base;
+  const held = holdRequests();
+  const elsewhere = document.createElement('button');
+  document.body.append(elsewhere);
+  try {
+    await render();
+    await act(async () => button('안내 보고 참여하기')!.click());
+    await act(async () => button('동의하고 참여하기')!.click());
+    await act(async () => held.save());
+    await flush();
+    expect(document.activeElement).toBe(completion());
+
+    elsewhere.focus();
+    await act(async () => held.list());
+    await flush();
+    expect(host.textContent).toContain('설문을 기다리는 리포트가 1개 있어요');
+    expect(document.activeElement).toBe(elsewhere);
+  } finally {
+    elsewhere.remove();
+  }
+});
+
+it('남은 설문이 없어도 동의한 뒤 초점이 body 로 빠지지 않는다', async () => {
+  session.user = base;
+  const held = holdRequests({ items: [] });
+  await render();
+  await act(async () => button('안내 보고 참여하기')!.click());
+  await act(async () => button('동의하고 참여하기')!.click());
+  await act(async () => held.save());
+  await flush();
+  await act(async () => held.list());
+  await flush();
+  expect(host.querySelector('section')).toBeNull();
+  expect(document.activeElement).toBe(completion());
 });
