@@ -6,9 +6,9 @@
  * 맞췄습니다 — #933(메시지 · 실행 · 승인 · 대화 목록) 위에 되돌리기(#935) · 기억 · '기억 없이'(#1002)가 들어온 판입니다.
  * 목(`mocks/chat.ts`)은 같은 모양으로 답하고, 계약 시험(`mocks/chat.contract.test.ts`)이 그것을 지킵니다.
  *
- * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 연구 모듈의
- * `ai/research/chat-agent/src/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `feat/ai-chat-agent-svc-guide-facts`
- * `8ed5a688` (#921, 머지됨 — 머지 뒤 바뀐 것은 `FinalData` 검증뿐이라 이 타입에는 영향이 없습니다). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
+ * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 서비스의
+ * `ai/service/src/pitch_coach_ai/features/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `develop-next`
+ * (#974 에서 연구 폴더로부터 옮김. #921 `8ed5a688` 뒤 바뀐 것은 `FinalData` 검증뿐이라 이 타입에는 영향이 없습니다). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
  *
  * BE 그대로 snake_case 입니다. 없음은 `?` 가 아니라 `| null` 입니다(frontend/AGENTS.md 6절).
  */
