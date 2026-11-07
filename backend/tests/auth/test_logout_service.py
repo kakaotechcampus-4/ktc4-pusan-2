@@ -81,7 +81,7 @@ def test_deleting_a_user_kills_their_refresh_tokens(
     """탈퇴하면 남은 Refresh 로 다시 들어올 수 없다.
 
     FK 의 ON DELETE CASCADE 가 토큰 행을 지운다. 그래서 "사용자는 없는데 토큰은 살아 있는"
-    상태 자체가 DB 에 존재할 수 없다 (service 의 user is None 분기는 그 뒤를 받치는 방어선).
+    상태 자체가 DB 에 존재할 수 없다.
     """
     issued = login(db_session)
 

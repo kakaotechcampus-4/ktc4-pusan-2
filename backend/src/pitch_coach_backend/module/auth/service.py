@@ -246,22 +246,11 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
         db.commit()
         raise InvalidRefreshToken()
 
-    user = user_service.find(db, stored.user_id)
-    if user is None:
-        # 보통은 여기까지 오지 않는다. FK 의 ON DELETE CASCADE 가 탈퇴 시점에
-        # 토큰 행까지 지우므로 위에서 이미 걸린다. FK 정책이 바뀌었을 때
-        # 500 대신 401 로 막기 위한 방어선이다.
-        repository.revoke(db, stored)
-        db.commit()
-        raise InvalidRefreshToken()
+    user = user_service.get(db, stored.user_id)
 
     # 폐기와 신규 발급이 한 트랜잭션이다. 중간에 실패하면 둘 다 없던 일이 된다.
-    # 행을 잠갔으니 읽은 뒤 다른 요청이 먼저 폐기하는 일은 없어야 한다. 그래도 그렇게 되면
-    # 둘 다 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은
-    # 이미 폐기된 토큰이 들어온 것과 같게 다룬다
-    if not repository.revoke_if_active(db, stored.id):
-        db.refresh(stored)
-        return _rotate_again(db, stored)
+    # 행을 잠갔으니 읽은 뒤 다른 요청이 먼저 폐기할 수 없다
+    repository.revoke(db, stored)
     session = _issue_session(db, user=user, device_id=stored.device_id, replaces=stored)
     db.commit()
     return session
