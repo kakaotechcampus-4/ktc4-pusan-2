@@ -417,6 +417,46 @@ export function WelcomePage() {
               </article>
             ))}
           </div>
+          <aside
+            aria-labelledby="semini-title"
+            className="mt-6 border border-line-strong bg-greige p-6 lg:p-8"
+          >
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+              <div className="w-20 shrink-0 border border-ink bg-panel p-2 shadow-[3px_3px_0_var(--color-line-strong)]">
+                <img
+                  src="/semini.png"
+                  alt=""
+                  width={64}
+                  height={64}
+                  loading="lazy"
+                  className="aspect-square w-full object-contain"
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="tabular-nums text-[10px] tracking-widest">CHICHI'S FAVORITE APP</p>
+                  <span className="border border-ink bg-coral-wash px-2 py-1 text-[10px] font-bold">
+                    AI 비서 앱
+                  </span>
+                </div>
+                <h3 id="semini-title" className="mt-3 text-2xl font-extrabold">
+                  새미나이 (Semini)
+                </h3>
+                <p className="mt-3 font-bold">치치가 요즘 푹 빠져 있는 AI 비서 앱.</p>
+                <p className="mt-3 text-sm leading-7">
+                  치치가 발표를 준비하다 막히면 가장 먼저 찾는 AI 비서 앱이에요.
+                </p>
+                <p className="mt-2 text-sm leading-7">
+                  작은 질문부터 발표 연습에 관한 고민까지, 새미나이는 언제든 이야기를 나눌 준비가
+                  되어 있답니다.
+                </p>
+                <p className="mt-5 border-t border-line-strong pt-4 text-sm font-bold">
+                  “잠깐, 이건 새미나이한테 물어봐야겠다!”{' '}
+                  <span className="font-normal">— 치치</span>
+                </p>
+              </div>
+            </div>
+          </aside>
         </section>
         <section
           id="faq"
