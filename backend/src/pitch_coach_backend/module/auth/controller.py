@@ -123,6 +123,10 @@ def clear_session_cookies(response: Response) -> None:
 # 구글이 돌려주는 오류 코드는 소문자와 밑줄뿐이다. 그 밖의 값은 URL 에 싣지 않는다.
 _ERROR_CODE = re.compile(r"\A[a-z_]{1,40}\Z")
 
+# 돌아갈 주소의 길이 상한. 프론트는 '/login?next=<앱 경로>' 를 보내므로 수백 자를 넘지 않는다.
+# 브라우저·프록시가 무난히 받는 URL 길이 관례(2,048자)에 맞췄다. 인증 요청 행에 그대로 저장된다.
+_RETURN_TO_MAX_LENGTH = 2048
+
 # 로그인 시작·콜백 처리 중 난 도메인 예외 -> 프론트로 넘기는 auth_error. 구글 오류 코드와 같은
 # 모양이다. 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다.
 # 표에 없는 예외(DB 오류 등)는 login_failed 다
@@ -163,8 +167,13 @@ def _safe_return_to(value: str | None) -> str:
     - '/https://evil.com' 앞의 '/' 를 떼면 절대 URL 이 된다. urljoin 이 그대로 승격시킨다
 
     셋째는 실제로 뚫렸던 경로다. 여기서 막고 _frontend_url 에서 한 번 더 확인한다.
+
+    탭·줄바꿈 같은 제어 문자도 막는다. 브라우저와 urljoin 은 이를 지우고 읽어 '/\\t/evil.com' 이
+    '//evil.com' 이 된다. 이 값은 인증 요청 행에 저장되므로 길이 상한을 넘는 값도 루트로 돌린다.
     """
     if not value or not value.startswith("/"):
+        return "/"
+    if len(value) > _RETURN_TO_MAX_LENGTH or not value.isprintable():
         return "/"
     if value.startswith(("//", "/\\")):
         return "/"
