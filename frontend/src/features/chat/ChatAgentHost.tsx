@@ -19,6 +19,7 @@ import { useLocation } from 'react-router';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
+import { RefusedHelp } from './ChatRefusedHelp';
 import type { CardActions } from './ChatCards';
 import {
   CONTINUE_TEXT,
@@ -753,6 +754,14 @@ function MessageList({ session }: { session: ChatSession }) {
               canSend={sendable}
               lockedReason={actions.lockedReason ?? null}
               onResend={(text) => session.send(text).catch(() => undefined)}
+            />
+          )}
+          {/* 거절 답이 목록의 마지막일 때만 — 거절이 이어져도 안내가 쌓이지 않습니다 (12-4 F8 `REFUSED`) */}
+          {i === lastAnswer && message.status === 'REFUSED' && (
+            <RefusedHelp
+              canSend={sendable}
+              lockedReason={actions.lockedReason ?? null}
+              onAsk={(text) => session.send(text).catch(() => undefined)}
             />
           )}
         </Fragment>
