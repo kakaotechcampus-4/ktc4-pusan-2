@@ -2,6 +2,7 @@ import { beforeEach, expect, it } from 'vitest';
 import { splitScript } from '@/mocks/scripts';
 import { useCreateStore } from './createStore';
 import { CHOOSE_LATEST, toPracticeCombo, type UploadedSlides } from './lib/draft';
+import { mappingEditNotice } from './lib/markerHint';
 
 const uploaded: UploadedSlides = {
   pageCount: 2,
@@ -44,6 +45,34 @@ it('매핑을 고친 원문을 다시 매핑해도 같은 장수 · 같은 글�
   const { segmented, slides } = splitScript(text);
   expect(segmented).toBe(true);
   expect(slides.map((s) => s.content)).toEqual(['수정한 문장', '마지막']);
+});
+
+// #826 리뷰: 장 대본에 구분자처럼 생긴 줄을 쓰면 다시 매핑할 때 장이 달라집니다 — 매핑 편집이 그 줄을 짚습니다
+it.each([
+  ['수정\n[1] 통계청 자료(2025)', '[1] 통계청 자료(2025)'],
+  ['슬라이드 2: 요약으로 넘어가면', '슬라이드 2: 요약으로 넘어가면'],
+  ['요약\n슬라이드 3', '슬라이드 3'], // script_parser-1.3 부터 구분자
+])(
+  '장 대본에 구분자로 읽히는 줄이 있으면 다시 매핑한 장이 달라지고, 편집 안내가 그 줄을 짚는다: %j',
+  (block, line) => {
+    store().editMappingBlock(1, 0, block);
+    const { text, blocks } = store().draft.scripts[0]!;
+    const { segmented, slides } = splitScript(text);
+    expect(segmented && slides.length === 2).toBe(false);
+    expect(mappingEditNotice(blocks!)).toContain(
+      `1장 대본의 “${line}” 줄은 슬라이드 구분으로 읽혀요`,
+    );
+  },
+);
+
+it('구분자가 아닌 줄은 짚지 않고, 다시 매핑해도 같은 장수로 나뉜다', () => {
+  store().editMappingBlock(1, 0, '출처는 [1] 통계청 자료\n슬라이드 3 보시면');
+  const { text, blocks } = store().draft.scripts[0]!;
+  expect(mappingEditNotice(blocks!)).toBeNull();
+  expect(splitScript(text).slides.map((s) => s.content)).toEqual([
+    '출처는 [1] 통계청 자료\n슬라이드 3 보시면',
+    '마지막',
+  ]);
 });
 
 it('서버가 수정 대본을 반환하고 저장한 뒤 새 서버 id로 연습한다', () => {

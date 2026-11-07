@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { splitScript } from './scripts';
 
 describe('대본 목 — AI 처럼 명시적 구분자로만 나눈다', () => {
-  it.each(['[1]', '[슬라이드 1]', '슬라이드 1:'])(
+  it.each(['[1]', '[슬라이드 1]', '슬라이드 1:', '[Slide 1]', 'Slide 1:', '## Slide 1'])(
     '%s 형식으로 나누고 구분자를 제거한다',
     (marker) => {
       const { segmented, slides } = splitScript(
@@ -19,10 +19,21 @@ describe('대본 목 — AI 처럼 명시적 구분자로만 나눈다', () => {
   });
 
   it.each([
-    '슬라이드 1\n안녕하세요.\n\n슬라이드 2\n문제는…',
-    'Slide 1 도입\n가\nSlide 2\n나',
+    ['슬라이드 1\n안녕하세요.\n\n슬라이드 2\n문제는…', ['안녕하세요.', '문제는…']],
+    ['Slide 1\n가\nSlide 2\n나', ['가', '나']],
+    ['# 슬라이드 1 도입\n가\n## Slide 2 - 문제\n나', ['도입\n가', '문제\n나']],
+  ])('줄 전체 · 제목 표시 뒤 형식도 나눈다 (script_parser-1.3): %j', (text, contents) => {
+    const { segmented, slides } = splitScript(text);
+    expect(segmented).toBe(true);
+    expect(slides.map((s) => s.content)).toEqual(contents);
+  });
+
+  it.each([
+    'Slide 1 도입\n가\nSlide 2 도입\n나',
     '1. 가\n2. 나\n3. 다',
-  ])('예전 표기는 구분자가 아니다 — AI 와 같다: %j', (text) => {
+    '**[슬라이드 1]**\n가\n**[슬라이드 2]**\n나',
+    '[1](https://a.b) 링크\n가',
+  ])('구분자가 아닌 표기로는 나누지 않는다 — AI 와 같다: %j', (text) => {
     const { segmented, slides } = splitScript(text);
     expect(segmented).toBe(false);
     expect(slides).toHaveLength(1);
