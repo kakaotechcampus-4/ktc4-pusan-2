@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { scanSlideMarkers } from '@/shared/lib/slideMarkers';
-import { markerHint, unsegmentedNotice } from './markerHint';
+import { joinScriptBlocks } from './draft';
+import {
+  mappingEditNotice,
+  markerHint,
+  markerLinesInBlocks,
+  unsegmentedNotice,
+} from './markerHint';
 
 /** 대본 입력 칸 아래 안내 — 실제 대본을 훑은 결과로 봅니다 */
 const hint = (script: string, pageCount: number) =>
@@ -168,6 +174,40 @@ describe('매핑했는데 나뉘지 않았을 때 안내', () => {
   it('구분과 번호가 맞는데 나뉘지 않았으면 첫 구분 앞 한 줄을 LLM 이 발표할 말로 본 것이다', () => {
     expect(notice('안녕하세요, 발표를 시작하겠습니다.\n[1]\n가\n[2]\n나')).toContain(
       '첫 구분 앞의 글을 발표할 말로 보고',
+    );
+  });
+});
+
+describe('매핑 편집에서 구분자로 읽히는 줄', () => {
+  it.each([
+    { name: '각주 꼴', block: '나\n[1] 통계청 자료(2025)', line: '[1] 통계청 자료(2025)' },
+    { name: '콜론', block: '슬라이드 3: 요약으로 넘어가면', line: '슬라이드 3: 요약으로 넘어가면' },
+    // script_parser-1.3 에서 넓어진 꼴
+    { name: '줄 전체', block: '슬라이드 3\n요약', line: '슬라이드 3' },
+    { name: '제목 표시', block: '## Slide 2 — 해결', line: '## Slide 2 — 해결' },
+  ])('$name — 짚어 주고, 다시 만든 원문은 1..N 으로 나뉘지 않는다', ({ block, line }) => {
+    const blocks = ['가', block, '다'];
+    expect(markerLinesInBlocks(blocks)).toEqual([{ index: 1, line }]);
+    expect(mappingEditNotice(blocks)).toBe(
+      `2장 대본의 “${line}” 줄은 슬라이드 구분으로 읽혀요. 그대로 다시 매핑하면 장이 다르게 나뉘어요. 줄 맨 앞에 다른 글자를 두거나 문장 안으로 옮겨 주세요.`,
+    );
+    expect(scanSlideMarkers(joinScriptBlocks(blocks)).numbers).not.toEqual([1, 2, 3]);
+  });
+
+  it.each([
+    '출처는 [1] 통계청 자료입니다',
+    '슬라이드 3 보시면 알 수 있듯',
+    '1. 첫째 이유는',
+    '> [1] 인용',
+  ])('%j 는 구분자가 아니라 짚지 않고, 다시 만든 원문도 1..N 으로 나뉜다', (line) => {
+    const blocks = ['가', `나\n${line}`, '다'];
+    expect(mappingEditNotice(blocks)).toBeNull();
+    expect(scanSlideMarkers(joinScriptBlocks(blocks)).numbers).toEqual([1, 2, 3]);
+  });
+
+  it('여러 줄이면 첫 줄을 짚고 나머지 수를 알린다', () => {
+    expect(mappingEditNotice(['[1] 가', '나', 'Slide 9'])).toContain(
+      '1장 대본의 “[1] 가” 줄은 슬라이드 구분으로 읽혀요 (그 밖에 1줄 더).',
     );
   });
 });

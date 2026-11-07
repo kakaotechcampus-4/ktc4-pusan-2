@@ -1,4 +1,9 @@
-import type { MarkerScan, NearMarker } from '@/shared/lib/slideMarkers';
+import {
+  markerNumber,
+  splitLines,
+  type MarkerScan,
+  type NearMarker,
+} from '@/shared/lib/slideMarkers';
 import { MAX_SCRIPT_CHARS } from './draft';
 
 /**
@@ -84,4 +89,25 @@ function nearHint(near: NearMarker[], mapped: boolean): string | null {
       ? '꾸밈이나 다른 괄호 없이 “[슬라이드 1]”처럼 줄 맨 앞에 적어 주세요.'
       : '“[슬라이드 1]”처럼 바꿔 주세요.';
   return `${subject} ${reason} ${fix}`;
+}
+
+/**
+ * 매핑 편집에서 장 대본에 쓴, 구분자로 읽히는 줄 (`[1] 통계청 자료` · `슬라이드 3: 요약` · `슬라이드 3`).
+ * 다시 만든 원문(`joinScriptBlocks`)을 다시 매핑하면 그 줄에서 장이 새로 나뉘어 1..N 이 되지 않습니다.
+ */
+export function markerLinesInBlocks(blocks: string[]): { index: number; line: string }[] {
+  return blocks.flatMap((block, index) =>
+    splitLines(block)
+      .filter((line) => markerNumber(line) !== null)
+      .map((line) => ({ index, line: line.trim() })),
+  );
+}
+
+/** 매핑 편집 안내 — 장 대본에 구분자로 읽히는 줄이 있으면 첫 줄을 짚습니다. 막지는 않습니다 */
+export function mappingEditNotice(blocks: string[]): string | null {
+  const found = markerLinesInBlocks(blocks);
+  if (found.length === 0) return null;
+  const { index, line } = found[0];
+  const more = found.length > 1 ? ` (그 밖에 ${found.length - 1}줄 더)` : '';
+  return `${index + 1}장 대본의 “${line}” 줄은 슬라이드 구분으로 읽혀요${more}. 그대로 다시 매핑하면 장이 다르게 나뉘어요. 줄 맨 앞에 다른 글자를 두거나 문장 안으로 옮겨 주세요.`;
 }

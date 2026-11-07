@@ -5,12 +5,13 @@ import { getEvaluation } from '@/shared/api/standards';
 import { openPdf } from '@/shared/lib/pdf';
 import type { VersionRef } from '@/types/pitch';
 import { fromEvaluation, fromPitchDetail, fromScriptDetail } from './lib/beAdapter';
-import type {
-  CriteriaVersion,
-  PitchDraft,
-  ScriptParse,
-  ScriptVersion,
-  SlideVersion,
+import {
+  joinScriptBlocks,
+  type CriteriaVersion,
+  type PitchDraft,
+  type ScriptParse,
+  type ScriptVersion,
+  type SlideVersion,
 } from './lib/draft';
 
 /**
@@ -73,7 +74,9 @@ async function loadScript(
   const matching = slides.findLast((s) => blocks !== null && s.pageCount === blocks.length);
   return {
     version: ref.version,
-    text: detail.original_content ?? blocks?.join('\n\n') ?? '',
+    // 원문이 없는 예전 대본(파싱 기능 전)은 장 대본을 구분자와 함께 잇습니다 — 빈 줄로만 이으면 구분 0 으로
+    // 보이고 다시 매핑할 때 한 장으로 합쳐집니다
+    text: detail.original_content ?? (blocks ? joinScriptBlocks(blocks) : ''),
     remote: { id: ref.id, version: ref.version },
     parse: parseOf(progress),
     segmented: progress.status === 'done' ? progress.segmented : null,

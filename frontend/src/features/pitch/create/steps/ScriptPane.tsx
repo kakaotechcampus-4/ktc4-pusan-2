@@ -13,7 +13,7 @@ import {
   type SlideVersion,
 } from '../lib/draft';
 import { computeGate } from '../lib/gate';
-import { markerHint, unsegmentedNotice } from '../lib/markerHint';
+import { mappingEditNotice, markerHint, unsegmentedNotice } from '../lib/markerHint';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -540,6 +540,9 @@ function MappingEditor({
   // ★ 장수가 맞아야 저장합니다. 맞지 않는 조합을 저장하면 "저장 완료"인데 "다음"이 막혀 헷갈립니다
   const countsMatch = pageCount > 0 && blocks.length === pageCount;
   const canSave = !script.saved && canSaveMapping(script, linked);
+  // 고친 장 대본은 다시 매핑할 때 원문으로 이어집니다 — 구분자로 읽히는 줄이 있으면 장이 달라지니 짚어 줍니다
+  const editNotice = script.remote ? null : mappingEditNotice(blocks);
+  const editNoticeId = useId();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -556,6 +559,15 @@ function MappingEditor({
       {!script.remote && (
         <p role="status" className="mb-3 text-sm text-ink">
           수정한 문장은 원문에도 반영됩니다. 수정 대본을 다시 매핑한 뒤 저장해 주세요.
+        </p>
+      )}
+      {editNotice && (
+        <p
+          id={editNoticeId}
+          role="status"
+          className="mb-3 rounded-lg border border-coral/40 bg-coral-wash px-4 py-3 text-sm"
+        >
+          {editNotice}
         </p>
       )}
       {script.parse.status === 'failed' && (
@@ -594,6 +606,7 @@ function MappingEditor({
             <span className="font-bold">{active + 1}장 대본</span>
             <textarea
               aria-label={`슬라이드 ${active + 1} 대본`}
+              aria-describedby={editNotice ? editNoticeId : undefined}
               value={rows[active] ?? ''}
               readOnly={pending || active >= blocks.length}
               onChange={(e) => editMappingBlock(script.version, active, e.target.value)}
