@@ -553,7 +553,10 @@ export const useChatStore = create<ChatState>()((set, get) => {
         ticket.generation !== s.generation ||
         ticket.attempt !== s.attempt ||
         ticket.conversationId === null ||
-        ticket.conversationId !== s.conversationId
+        ticket.conversationId !== s.conversationId ||
+        // 조회를 시작한 뒤 지켜보던 실행이 끝났거나 바뀌었으면 이 응답은 그 전의 모습입니다 — 끝난 실행을
+        // "실행 중" 으로 되살리지 않게 버리고, 부른 쪽이 지금 상태로 다시 조회합니다(L3-20 "종결 뒤 진행으로 되돌리지 않는다")
+        ticket.runId !== (s.run?.runId ?? null)
       )
         return false;
       const conversationId = ticket.conversationId;

@@ -157,7 +157,6 @@ interface UserState {
 const SEND_FAILURE_STATUS = {
   AGENT_BUSY: 429,
   AGENT_DAILY_LIMIT: 429,
-  AGENT_CONTEXT_TOO_LARGE: 413,
   VALIDATION_ERROR: 422,
   AGENT_DISABLED: 503,
   AGENT_NOT_ACCEPTED: 503,
@@ -183,12 +182,18 @@ type RunErrorCode = Extract<
 >;
 
 type RunFailure =
-  { when: 'start'; code: RunErrorCode } | { when: 'afterFirstClaim'; code: RunErrorCode | null };
+  | { when: 'start'; code: RunErrorCode }
+  /** 문서(L2-45) 동작 — 받은 문장이 있으면 그 문장으로 PARTIAL 메시지를 남깁니다(BE 미구현) */
+  | { when: 'afterFirstClaim'; code: RunErrorCode | null }
+  /** BE 55aa10d0 동작 — 문장을 낸 뒤 실패해도 FAILED 로 끝내고 답 메시지를 남기지 않습니다(`turn.fail`) */
+  | { when: 'failAfterClaim'; code: RunErrorCode };
 
 export interface MockChatControls {
   fail: (code?: SendFailureCode) => void;
   runFail: (code?: RunErrorCode) => void;
   partial: (code?: RunErrorCode) => void;
+  /** 문장을 낸 뒤 실패 — 지금 BE 처럼 FAILED 로 끝나고 메시지 목록에는 그 문장이 없습니다 */
+  failAfterClaim: (code?: RunErrorCode) => void;
   expire: () => void;
   goalCheck: (status?: 'ACHIEVED' | 'NOT_ACHIEVED') => void;
   disable: () => void;
@@ -220,6 +225,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     },
     partial: (code) => {
       runFailure = { when: 'afterFirstClaim', code: code ?? null };
+    },
+    failAfterClaim: (code = 'AGENT_TIMEOUT') => {
+      runFailure = { when: 'failAfterClaim', code };
     },
     expire: () => {
       for (const state of users.values())
@@ -473,7 +481,6 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     if (status !== 'DONE')
       run.error = { code: status === 'EXPIRED' ? 'AGENT_EXPIRED' : 'AGENT_CANCELLED' };
     const conversation = state.conversations.get(run.conversation_id)!;
-    const readTakes = run.trace.some((t) => t.tool === 'compare_takes');
     conversation.messages.push(
       assistantMessage(
         run.run_id,
@@ -482,7 +489,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         [],
         run.plan,
         run.trace,
-        readTakes ? basisOf(take3!.take_version) : null,
+        // BE `close_waiting` 은 근거 표시(`basis`)를 싣지 않습니다 — 그래서 배지 · 최신 아님 표시도 없습니다
+        null,
       ),
     );
     state.decisions.set(ask.action_id, {
@@ -538,6 +546,14 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         // 받은 문장이 있으면 PARTIAL (12-3). 행동 성공 문장 뒤에서는 끊지 않습니다
         if (run.failure?.when === 'afterFirstClaim' && !isAction)
           failRun(state, run, 'PARTIAL', run.failure.code);
+        else if (run.failure?.when === 'failAfterClaim' && !isAction) {
+          // BE `turn.fail` — 실행만 FAILED 로 끝내고 메시지는 만들지 않습니다(받은 문장은 이벤트에만 남음)
+          run.status = 'FAILED';
+          run.error = { code: run.failure.code };
+          run.retry_after_s = run.failure.code === 'AGENT_BUSY' ? 5 : null;
+          run.cards = [];
+          run.ask = null;
+        }
         return;
       }
       case 'ask': {
@@ -716,9 +732,16 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         if (!conversation) return error('NOT_FOUND', 404);
         // 최근부터 한 페이지 — 더 앞은 before_seq 로 (BE `MessageListResponse`)
         const query = new URL(request.url).searchParams;
-        const beforeSeq = Number(query.get('before_seq') ?? Infinity);
-        const limit = Math.min(Number(query.get('limit') ?? 30), 50);
-        if (!(beforeSeq >= 1) || !Number.isInteger(limit) || limit < 1)
+        // BE `Query` 처럼 — before_seq 는 1 이상 정수, limit 은 1~50 정수(넘으면 422, 줄여 주지 않음)
+        const rawBefore = query.get('before_seq');
+        const beforeSeq = rawBefore === null ? Infinity : Number(rawBefore);
+        const limit = Number(query.get('limit') ?? 30);
+        if (
+          (rawBefore !== null && !(Number.isInteger(beforeSeq) && beforeSeq >= 1)) ||
+          !Number.isInteger(limit) ||
+          limit < 1 ||
+          limit > 50
+        )
           return error('VALIDATION_ERROR', 422);
         const all = withSupersededBy(conversation.messages).map((msg, i) => ({
           ...msg,
@@ -737,30 +760,35 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     // 조회만 하고 실행을 나아가게 하지 않습니다(나아가는 것은 실행 조회 GET 입니다)
     http.get(
       `*${chatPaths.conversationRun(':conversationId')}`,
-      withUser((state, { params }) => {
+      withUser((state, { params, request }) => {
         const conversation = state.conversations.get(String(params.conversationId));
         if (!conversation) return error('NOT_FOUND', 404);
+        // BE 처럼 `after_seq`(0 이상 정수, 기본 0) 뒤의 이벤트만
+        const raw = new URL(request.url).searchParams.get('after_seq');
+        const afterSeq = raw === null ? 0 : Number(raw);
+        if (!Number.isInteger(afterSeq) || afterSeq < 0) return error('VALIDATION_ERROR', 422);
         const runs = [...state.runs.values()].filter(
           (r) => r.conversation_id === conversation.conversation_id,
         );
         const last = runs.at(-1);
-        return HttpResponse.json(last ? runView(last, 0) : null);
+        return HttpResponse.json(last ? runView(last, afterSeq) : null);
       }),
     ),
 
     http.patch(
       `*${chatPaths.scope(':conversationId')}`,
       withUser(async (state, { params, request }) => {
-        const conversation = state.conversations.get(String(params.conversationId));
-        if (!conversation) return error('NOT_FOUND', 404);
-        if (activeRun(state, conversation.conversation_id))
-          return error('AGENT_RUN_IN_PROGRESS', 409);
-        // BE `ChangeScopeRequest` — `pitch_id` 는 빠지면 안 되고(전체는 null), 다른 칸은 받지 않습니다
+        // BE `ChangeScopeRequest` — `pitch_id` 는 빠지면 안 되고(전체는 null), 다른 칸은 받지 않습니다.
+        // 본문 검사(422)가 대화 찾기 · 실행 중(404 · 409)보다 먼저입니다(FastAPI 가 본문부터 검사)
         const body: unknown = await request.json().catch(() => null);
         if (!isBody(body) || !('pitch_id' in body) || !onlyKeys(body, ['pitch_id']))
           return error('VALIDATION_ERROR', 422);
         const pitchId = body.pitch_id;
         if (!uuidOrNull(pitchId)) return error('VALIDATION_ERROR', 422);
+        const conversation = state.conversations.get(String(params.conversationId));
+        if (!conversation) return error('NOT_FOUND', 404);
+        if (activeRun(state, conversation.conversation_id))
+          return error('AGENT_RUN_IN_PROGRESS', 409);
         if (!knownScope(pitchId)) return error('NOT_FOUND', 404);
         conversation.scope_pitch_id = pitchId ?? null;
         conversation.scope_pitch_title = pitchId ? pitch.pitch_title : null;
@@ -783,8 +811,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           const code = sendFailure;
           const status = SEND_FAILURE_STATUS[code];
           sendFailure = null;
-          if (code === 'AGENT_BUSY') return error(code, status, { 'Retry-After': '5' });
-          if (code === 'AGENT_DAILY_LIMIT')
+          // 보내기의 429 는 둘 다 다음 서울 00:00 까지 — `AGENT_BUSY` 는 서비스 전체 하루 상한(BE `accept._charge`).
+          // 동시 실행 상한의 5초는 실행 오류(`retry_after_s`)로만 옵니다
+          if (code === 'AGENT_BUSY' || code === 'AGENT_DAILY_LIMIT')
             return error(code, status, { 'Retry-After': String(secondsToSeoulMidnight()) });
           return error(code, status);
         }
@@ -812,7 +841,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           settleAsk(state, running, 'CANCELLED', NEW_MESSAGE_TEXT);
         else if (running) return error('AGENT_RUN_IN_PROGRESS', 409);
 
-        if (!conversation.title) conversation.title = [...body.text].slice(0, 30).join('');
+        if (!conversation.title) conversation.title = titleOf(body.text);
         const message = userMessage(body.text);
         conversation.messages.push(message);
         conversation.last_user_activity_at = message.created_at;
@@ -845,6 +874,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         };
         runFailure = null;
         state.runs.set(run.run_id, run);
+        // BE `accept.py` 처럼 사용자 메시지에도 그 말이 시작한 실행 ID 를 답니다
+        message.run_id = run.run_id;
         const accepted: SendMessageAccepted = {
           conversation_id: conversation.conversation_id,
           message_id: message.message_id,
@@ -896,6 +927,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         const actionId = String(params.actionId);
         const body: unknown = await request.json().catch(() => null);
         if (
+          actionId.length < 1 ||
+          actionId.length > 64 ||
           !isBody(body) ||
           !onlyKeys(body, ['decision', 'args_hash']) ||
           (body.decision !== 'APPROVE' && body.decision !== 'REJECT') ||
@@ -1006,7 +1039,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
   ) {
     const conversation: Conversation = {
       conversation_id: newConversationId(),
-      title: [...title].slice(0, 30).join(''),
+      title: title ? titleOf(title) : '',
       scope_pitch_id: scope,
       scope_pitch_title: scope === PITCH_ID ? pitch.pitch_title : null,
       last_user_activity_at: new Date().toISOString(),
@@ -1042,6 +1075,13 @@ const basisOf = (takeNumber: number): MessageBasis => ({
     },
   ],
 });
+
+/** 대화 제목 — BE `accept._title`: 공백을 하나로 줄이고 40자를 넘으면 39자 + "…" */
+function titleOf(text: string) {
+  const first = text.split(/\s+/).filter(Boolean).join(' ');
+  const chars = [...first];
+  return chars.length <= 40 ? first : `${chars.slice(0, 39).join('')}…`;
+}
 
 /** BE `waiting.py` 의 고정 문장 (7-10) */
 const EXPIRED_TEXT = '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.';

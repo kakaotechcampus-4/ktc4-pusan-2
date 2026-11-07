@@ -707,8 +707,8 @@ describe('대화 API 의 크기 제한 연결 (L3-22)', () => {
     await fetchMessages('c-1');
     // 앞의 API 주소(VITE_API_BASE)는 환경마다 달라 경로만 봅니다
     expect(fetchMock.mock.calls.map(([url]) => url.slice(url.indexOf('/api/')))).toEqual([
-      '/api/chat/conversations/c-1/messages?before_seq=31',
-      '/api/chat/conversations/c-1/messages',
+      '/api/chat/conversations/c-1/messages?limit=30&before_seq=31',
+      '/api/chat/conversations/c-1/messages?limit=30',
     ]);
   });
 });
@@ -820,5 +820,77 @@ describe('가린 문장 줄 · 공백 글', () => {
   it('공백뿐인 문장도 AI 스키마(min_length=1)처럼 받는다', () => {
     const answer = readMessage(message({ claims: [claim('SYSTEM', ' ')] }));
     expect([answer.error, answer.claims.length]).toEqual([null, 1]);
+  });
+});
+// ── 1~5단계 최종 점검 반영 ───────────────────────────────────
+
+describe('카드 검사 보강', () => {
+  const basis = emptyBasis();
+  const goal = {
+    version: 1,
+    metric: 'audience_ratio',
+    operator: 'gt_base',
+    slide_number: 3,
+    base: { take_id: TAKE, take_number: 3, value: 0.24 },
+  };
+  const proposal = (option: Record<string, unknown>) =>
+    readCard({ type: 'GOAL_PROPOSAL', proposal_id: 'p', options: [option] }, basis).ok;
+
+  it('고를 수 있는 안(goal 있음)은 내용 해시가 있어야 한다 — 잴 수 없는 안은 null 이어도 된다', () => {
+    const option = { label: 'EXPERT', goal, reason: '', evidence_ids: [], content_hash: 'h' };
+    expect(proposal(option)).toBe(true);
+    expect(proposal({ ...option, content_hash: null })).toBe(false);
+    expect(proposal({ ...option, goal: null, content_hash: null })).toBe(true);
+  });
+
+  it('지난 메시지의 승인 확인 카드는 버튼 없는 대체 표시로 바꾼다', () => {
+    const ask = {
+      type: 'ASK_CONFIRM',
+      action_id: 'a-1',
+      action_type: 'SAVE_GOAL',
+      title: '저장할까요?',
+      summary: '',
+      before: null,
+      after: {},
+      notes: [],
+      expires_at: '2026-11-05T00:10:00Z',
+      args_hash: 'h',
+    };
+    const answer = readMessage(message({ claims: [claim('SYSTEM', '안내')], cards: [ask] }));
+    expect(answer.cards).toEqual([{ ok: false, type: 'ASK_CONFIRM' }]);
+    // 실행 조회(대기 중)의 카드는 그대로 그립니다
+    expect(createRunReader().cards([ask])[0]!.ok).toBe(true);
+  });
+});
+
+describe('메시지 목록이 2 MiB 를 넘을 때', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('한 번에 읽는 개수를 줄여 다시 읽는다 — 30 → 10 → 3 → 1', async () => {
+    const limits: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        const limit = new URL(url, 'http://x').searchParams.get('limit')!;
+        limits.push(limit);
+        if (limit !== '3')
+          return Promise.resolve(
+            new Response(JSON.stringify({ pad: 'x'.repeat(MAX_RESPONSE_BYTES) })),
+          );
+        return Promise.resolve(Response.json({ messages: [], next_before_seq: 5 }));
+      }),
+    );
+    expect((await fetchMessages('c-1')).next_before_seq).toBe(5);
+    expect(limits).toEqual(['30', '10', '3']);
+  });
+
+  it('하나씩 읽어도 넘으면 크기 초과로 끝낸다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify({ pad: 'x'.repeat(MAX_RESPONSE_BYTES) }))),
+      ),
+    );
+    await expect(fetchMessages('c-1')).rejects.toBeInstanceOf(ResponseTooLargeError);
   });
 });

@@ -68,6 +68,12 @@ export type TransportSignal =
        * 다른 대화로 갔다 돌아오거나 통신 계층이 새로 생겼을 때 첫 진행 신호에만 true 입니다
        */
       restart: boolean;
+      /**
+       * 이미 만들어진 문장을 따라잡는 묶음 — 새로고침 · 다시 열기 · 대화를 다시 고름 · 다른 탭이 시작한 실행.
+       * 화면은 글자 효과 없이 그립니다(12-4 F12 "새로고침 · 다시 열기 · 지난 메시지는 효과 없이"). 이 화면에서 보낸
+       * 실행을 처음 받을 때는 false 라 효과로 보입니다
+       */
+      catchUp: boolean;
       /** 이 실행에서 난 계약 오류. 한 번 나면 끝날 때까지 그대로 */
       contractError: ContractError | null;
       /** 아직 진행이 없으면 null (BE). 깨진 항목은 빠집니다 */
@@ -352,7 +358,23 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
    * 실행마다 문장 읽기 — 커서와 수명을 같이 합니다. 읽기가 없는 실행을 지켜보기 시작하면(새 통신 계층 ·
    * 다시 연 화면) 커서를 처음으로 되감아, 앞 문장부터 다시 받고 순번이 0부터 이어지게 합니다
    */
-  const readers = new Map<string, { reader: RunReader; fresh: boolean }>();
+  const readers = new Map<string, { reader: RunReader; fresh: boolean; catchUp: boolean }>();
+  /**
+   * 새 읽기가 따라잡기로 시작하는지 — 전에 문장을 보여 준 실행이거나(다시 열기 · 대화를 다시 고름) 이 화면에서
+   * 보내지 않은 실행이면(새로고침 · 다른 탭) 이미 만들어진 문장부터 받습니다
+   */
+  const newReader = (runId: string) => ({
+    reader: createRunReader(),
+    fresh: true,
+    catchUp: everShown.has(runId) || !startedHere.has(runId),
+  });
+  /** 이 통신 계층이 보내 시작한 실행 · 문장을 한 번이라도 보낸 실행 — 글자 효과를 줄지(`catchUp`) 정합니다 */
+  const startedHere = new Set<string>();
+  /** 이 통신 계층이 끝낸 실행 — 늦게 온 대화 조회가 다시 붙이지 않게(`forget` 이 지우지 않습니다) */
+  const finishedRuns = new Set<string>();
+  const everShown = new Set<string>();
+  /** 조회를 멈춘 이유 — 꺼짐 · 로그인 만료. 연결이 돌아와도 다시 두드리지 않습니다 */
+  let halted: 'disabled' | 'session' | null = null;
   /** 응답을 잃은 취소의 실행 — 다음 조회가 확정합니다 */
   let cancelUnsure: string | null = null;
   /** 보내는 중인 승인 · 거절 (L3-39 "`action_id` 별로 막는다") */
@@ -447,7 +469,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     rereads = 0;
     lastShape = null;
     if (!readers.has(runId)) {
-      readers.set(runId, { reader: createRunReader(), fresh: true });
+      readers.set(runId, newReader(runId));
       store().rewindCursor(runId);
     }
   };
@@ -456,6 +478,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     runClocks.delete(runId);
     slowNotified.delete(runId);
     readers.delete(runId);
+    startedHere.delete(runId);
+    everShown.delete(runId);
     if (cancelUnsure === runId) cancelUnsure = null;
   };
 
@@ -511,6 +535,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
 
   /** 끝남 — 지켜보는 실행일 때만 끝남을 알립니다. 이미 끝나 놓은 실행이면 그 실행의 취소 중 표시만 지웁니다 */
   const finishRun = (runId: string, conversationId: string, view: RunView) => {
+    finishedRuns.add(runId);
     forget(runId);
     if (store().run?.runId !== runId) {
       store().endRun(runId);
@@ -541,9 +566,11 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (disposed) return;
     const ticket = chatTicket();
     if (ticket.conversationId !== conversationId) return;
+    // 요청한 때의 범위 — 응답이 오기 전에 사용자가 칩을 바꿨으면(바꾸기가 이미 끝났어도) 늦은 목록으로 덮지 않습니다
+    const asked = store().scope;
     serverScope(conversationId)
       .then((server) => {
-        if (disposed || !server) return;
+        if (disposed || !server || store().scope !== asked) return;
         const now = store().scope;
         if (now?.pitchId === server.pitchId && now?.title === server.title) return;
         store().applyServerScope(ticket, server);
@@ -591,7 +618,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     // 지켜보기 전에 응답이 먼저 온 실행도 읽기를 갖게 합니다(되감기는 하지 않음 — 이미 처음부터 받는 중)
     let entry = readers.get(run.runId);
     if (!entry) {
-      entry = { reader: createRunReader(), fresh: true };
+      entry = newReader(run.runId);
       readers.set(run.runId, entry);
     }
     const { reader } = entry;
@@ -605,6 +632,13 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     if (taken.length > 0 || view.cards.length > 0 || shapeChanged || reader.error !== errorBefore) {
       const restart = entry.fresh;
       entry.fresh = false;
+      // 따라잡기는 이 읽기가 처음 문장을 받을 때까지 이어집니다 — 첫 응답이 할 일 목록뿐이어도 그 뒤의 옛 문장을
+      // 효과로 다시 보이지 않게. 첫 문장 묶음 뒤로 오는 문장은 새로 만들어진 것이라 효과로 보입니다
+      const catchUp = entry.catchUp;
+      if (claims.length > 0) {
+        entry.catchUp = false;
+        everShown.add(run.runId);
+      }
       emit({
         type: 'progress',
         runId: run.runId,
@@ -613,6 +647,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         events: taken,
         claims,
         restart,
+        catchUp,
         contractError: reader.error,
         plan: view.plan === null ? null : plan.items,
         trace: view.trace === null ? null : trace.items,
@@ -651,11 +686,13 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     }
     // 로그인이 풀림 — 같은 토큰으로 계속 두드리지 않습니다. 다시 로그인하면 사용자 전환이 상태를 새로 엽니다
     if (isSignedOut(error)) {
+      halted = 'session';
       emit({ type: 'sessionExpired' });
       return;
     }
     // 실행 중에 스위치가 꺼짐 — 다시 연결 중으로 계속 두드리지 않고 멈춥니다
     if (isDisabled(error)) {
+      halted = 'disabled';
       emit({ type: 'disabled' });
       return;
     }
@@ -706,8 +743,9 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         throw new FormatError();
       lookingUp = false;
       if (disposed) return;
+      // 이미 끝낸 실행을 서버가 아직 진행 중으로 보낸 늦은 모습이면 끝난 것으로 봅니다
       const found =
-        run && !isTerminalRun(run.status)
+        run && !isTerminalRun(run.status) && !finishedRuns.has(run.run_id)
           ? { runId: run.run_id, phase: asPhase(run.status) }
           : null;
       const applied = store().resolveConversation(ticket, found);
@@ -730,10 +768,12 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         return;
       }
       if (isSignedOut(error)) {
+        halted = 'session';
         emit({ type: 'sessionExpired' });
         return;
       }
       if (isDisabled(error)) {
+        halted = 'disabled';
         emit({ type: 'disabled' });
         return;
       }
@@ -801,21 +841,40 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     return 'failed';
   }
 
+  /**
+   * 보내기 시도 번호와 그 요청 — [다시 확인]을 거듭 누르면 앞 시도를 끊습니다. 같은 `client_request_id` 라 끊어도
+   * 안전하고(서버가 받았으면 다음 시도가 같은 202 를 받음), 걸린 POST 가 쌓여 연결을 막지 않습니다.
+   * 앞 시도의 늦은 결과는 버려 뒤 시도의 15초 타이머를 지우지 않습니다
+   */
+  let sendAttempt = 0;
+  let sendController: AbortController | null = null;
+
   async function post(ticket: ChatTicket): Promise<SendResult> {
     const pending = store().pending;
     if (disposed || !pending || pending.sendId !== ticket.sendId) return 'stale';
+    const attempt = ++sendAttempt;
+    sendController?.abort();
+    const controller = new AbortController();
+    sendController = controller;
     armUnconfirmed(ticket);
     try {
-      const accepted = await api.send(pending.request);
-      clearSendTimer();
+      const accepted = await api.send(pending.request, controller.signal);
+      // 접수는 몇 번째 시도의 응답이든 반영합니다(같은 키라 같은 실행) — 타이머는 마지막 시도 것만 지웁니다
+      if (attempt === sendAttempt) clearSendTimer();
       // 접수는 닫힌 뒤에도 반영합니다 — 잠금을 풀고, 새 통신 계층이 저장소 구독으로 조회를 시작합니다
+      // 저장소에 붙이기 전에 표시합니다 — 붙이는 순간 구독이 조회를 시작합니다
+      startedHere.add(accepted.run_id);
       if (!store().beginRun(ticket, accepted.run_id, accepted.conversation_id)) return 'stale';
       return 'accepted';
     } catch (error) {
+      // 뒤 시도가 있으면 이 시도의 실패(끊김 포함)는 버립니다
+      if (attempt !== sendAttempt) return 'stale';
       clearSendTimer();
       // 닫혔으면 결과를 모르는 채로 둡니다 — 새 통신 계층이 미확정으로 알립니다
       if (disposed || store().pending?.sendId !== ticket.sendId) return 'stale';
       return onSendFailure(ticket, error);
+    } finally {
+      if (sendController === controller) sendController = null;
     }
   }
 
@@ -877,11 +936,17 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   const offStore = useChatStore.subscribe((now, before) => {
     if (disposed) return;
     // 지켜보던 실행을 떠나면(다른 대화 · 로그아웃) 그 읽기를 버립니다 — 돌아오면 처음부터 다시 받습니다(restart)
-    if (before.run && before.run.runId !== now.run?.runId) readers.delete(before.run.runId);
-    if (now.run && now.run.runId !== before.run?.runId) {
+    const runChanged = (before.run?.runId ?? null) !== (now.run?.runId ?? null);
+    if (before.run && runChanged) readers.delete(before.run.runId);
+    // 지켜보던 실행이 바뀌었는데 앞 실행의 조회가 걸려 있으면 끊습니다 — 새 실행을 시간 초과(20초)까지 기다리지 않게
+    const hungPoll = runChanged && polling ? pollController : null;
+    if (now.run && runChanged) {
+      // 새 실행이 붙었다는 것은 서버가 다시 받았다는 뜻이라 멈춤을 풉니다
+      halted = null;
       watch(now.run.runId);
       kick();
     }
+    hungPoll?.abort();
     // 확인 중에 다른 대화를 고르면 앞 대화의 실패 대기를 기다리지 않고 바로 조회합니다
     const otherConversation = now.conversationId !== before.conversationId;
     if (now.syncing && now.conversationId && (!before.syncing || otherConversation)) {
@@ -894,6 +959,8 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   });
 
   const offOnline = (options.onOnline ?? defaultOnOnline)(() => {
+    // 꺼짐 · 로그인 만료로 멈췄으면 연결이 돌아와도 다시 두드리지 않습니다 — `resume()` · `checkNow()` 가 엽니다
+    if (halted) return;
     // 연결이 돌아오면 바로 (L3-19)
     if (store().syncing) ensureLookup();
     if (store().run) kick();
@@ -918,6 +985,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
 
     resume: () => {
       if (disposed) return;
+      halted = null;
       const s = store();
       if (s.syncing && s.conversationId) ensureLookup();
       else if (s.run) {
@@ -938,7 +1006,14 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       if (!run || !store().beginCancel(run.runId)) return false;
       try {
         const view = readRunView(await timed((signal) => api.cancel(run.runId, signal)));
-        if (disposed) return true;
+        // 닫혔어도 잠금을 푸는 저장소 정리는 합니다 — 새 통신 계층은 이 취소를 모르므로, 그대로 두면
+        // "취소 중" 이 실행이 끝날 때까지 남아 다시 취소할 수 없습니다. 신호 · 다시 조회만 건너뜁니다
+        if (disposed) {
+          if (view && view.run_id === run.runId && isTerminalRun(view.status))
+            store().endRun(run.runId, view.retry_after_s);
+          else store().abortCancel(run.runId);
+          return true;
+        }
         // 끝남은 그 실행을 아직 지켜볼 때만 알립니다 — 조회가 먼저 끝냈으면 취소 중 표시만 지웁니다
         if (view && view.run_id === run.runId && isTerminalRun(view.status))
           finishRun(run.runId, run.conversationId, view);
@@ -952,7 +1027,10 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
           }
         }
       } catch (error) {
-        if (disposed) return true;
+        if (disposed) {
+          store().abortCancel(run.runId);
+          return true;
+        }
         const mine = store().run?.runId === run.runId;
         // 꺼짐 — 취소되지 않았습니다. 잠금을 풀고 버튼을 숨기게 알립니다
         if (isDisabled(error)) {
@@ -1068,6 +1146,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
 
     checkNow: () => {
       if (disposed) return;
+      halted = null;
       const run = store().run;
       if (run) {
         // 직접 확인하면 늦어짐을 처음부터 다시 셉니다 — 받은 문장 · 커서는 그대로 둬 같은 문장을 다시 받지 않습니다

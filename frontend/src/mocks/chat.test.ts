@@ -155,10 +155,13 @@ describe('보내기 → 조회', () => {
     expect(await r.json()).toMatchObject({ code: 'AGENT_RUN_IN_PROGRESS' });
   });
 
-  it('붐빔 · 하루 한도는 429 와 Retry-After 를 준다', async () => {
+  it('붐빔 · 하루 한도는 429 와 다음 자정까지의 Retry-After 를 준다', async () => {
+    // 보내기의 AGENT_BUSY 는 BE 에서 서비스 전체 하루 상한 — 5초가 아니라 자정까지입니다
     controls.fail('AGENT_BUSY');
     const busy = await send(message('비교해 줘'));
-    expect([busy.status, busy.headers.get('Retry-After')]).toEqual([429, '5']);
+    const busyWait = Number(busy.headers.get('Retry-After'));
+    expect(busy.status).toBe(429);
+    expect(busyWait > 0 && busyWait <= 86_400).toBe(true);
     controls.fail('AGENT_DAILY_LIMIT');
     const limit = await send(message('비교해 줘'));
     const wait = Number(limit.headers.get('Retry-After'));
@@ -1077,5 +1080,79 @@ describe('BE #933 모양', () => {
 
   it('보내기 키가 UUID 가 아니면 저장 전 422', async () => {
     expect((await send(message('비교해 줘', { client_request_id: 'req-1' }))).status).toBe(422);
+  });
+});
+// ── 1~5단계 최종 점검 반영 — 목을 BE 55aa10d0 에 맞춤 ───────────────
+
+describe('목이 BE 와 같게', () => {
+  it('문장을 낸 뒤 실패하면(BE 지금 동작) FAILED 로 끝나고 메시지 목록에 그 문장이 없다', async () => {
+    controls.failAfterClaim('AGENT_TIMEOUT');
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    const view = await settle(run_id);
+    expect([view.status, view.error]).toEqual(['FAILED', { code: 'AGENT_TIMEOUT' }]);
+    const events = (await poll(run_id)).events.filter((e) => e.event === 'claim');
+    expect(events.length).toBeGreaterThan(0);
+    expect((await messages(conversation_id)).items.map((m) => m.role)).toEqual(['user']);
+  });
+
+  it('사용자 메시지에도 그 말이 시작한 실행 ID 가 있다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const items = (await messages(conversation_id)).items;
+    expect(items.map((m) => [m.role, m.run_id])).toEqual([
+      ['user', run_id],
+      ['assistant', run_id],
+    ]);
+  });
+
+  it('메시지 목록 limit 은 1~50, before_seq 는 1 이상 정수 — 아니면 422', async () => {
+    const { conversation_id } = await accepted('비교해 줘');
+    for (const query of ['?limit=51', '?limit=0', '?before_seq=1.5', '?before_seq=0'])
+      expect((await call(`${chatPaths.messages(conversation_id)}${query}`)).status).toBe(422);
+    expect((await call(`${chatPaths.messages(conversation_id)}?limit=50`)).status).toBe(200);
+  });
+
+  it('대화의 실행 조회는 after_seq 뒤의 이벤트만 준다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    await settle(run_id);
+    const view = await call(
+      `${chatPaths.conversationRun(conversation_id)}?after_seq=2147483647`,
+    ).then(json<RunView>);
+    expect([view.events, view.next_after_seq]).toEqual([[], 2147483647]);
+  });
+
+  it('대화 제목은 공백을 하나로 줄이고 40자를 넘으면 39자 + …', async () => {
+    const long = `가   나 ${'다'.repeat(60)}`;
+    const { conversation_id } = await accepted(long);
+    const title = (await conversations()).conversations.find(
+      (c) => c.conversation_id === conversation_id,
+    )!.title;
+    expect([...title]).toHaveLength(40);
+    expect(title.startsWith('가 나 ')).toBe(true);
+    expect(title.endsWith('…')).toBe(true);
+  });
+
+  it('범위 바꾸기는 본문 검사(422)가 대화 찾기(404)보다 먼저다', async () => {
+    expect((await call(chatPaths.scope(MISSING), 'PATCH', { pitch_id: 'nope' })).status).toBe(422);
+    expect((await call(chatPaths.scope(MISSING), 'PATCH', { pitch_id: null })).status).toBe(404);
+  });
+
+  it('결정 경로의 action_id 는 64자까지', async () => {
+    const { run_id } = await accepted('목표로 잡아 줘');
+    const r = await call(chatPaths.decision(run_id, 'a'.repeat(65)), 'POST', {
+      decision: 'APPROVE',
+      args_hash: 'h',
+    });
+    expect(r.status).toBe(422);
+  });
+
+  it('승인 대기를 끝낸 메시지에는 근거 표시가 없다', async () => {
+    const { run_id, conversation_id } = await accepted('목표로 잡아 줘');
+    const ask = askOf(await settle(run_id));
+    await call(chatPaths.decision(run_id, ask.action_id), 'POST', {
+      decision: 'REJECT',
+      args_hash: ask.args_hash,
+    });
+    expect((await messages(conversation_id)).items.at(-1)!.basis).toBeNull();
   });
 });

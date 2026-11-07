@@ -465,8 +465,9 @@ describe('보내기 실패', () => {
     controls.fail('AGENT_BUSY');
     expect(await sendNow(draft())).toBe('failed');
     expect(of('sendFailed')).toMatchObject([{ code: 'AGENT_BUSY', status: 429 }]);
+    // 목도 BE 처럼 자정까지의 Retry-After 를 줍니다 — 그때까지 막습니다
     expect(canSend(store(), Date.now())).toBe(false);
-    expect(canSend(store(), Date.now() + 6_000)).toBe(true);
+    expect(canSend(store(), Date.now() + 86_400_000)).toBe(true);
 
     useChatStore.setState({ blockedUntil: null });
     start({
@@ -1609,7 +1610,9 @@ describe('끝남 신호 · 범위 맞추기', () => {
     await transport.cancel();
     expect(of('ended')).toMatchObject([{ status: 'CANCELLED', endedWhileWaiting: true }]);
 
+    // 새 대화에서 새 실행 — 같은 대화로 보내면 목의 앞 실행 때문에 409 가 나서, 끝낸 실행을 다시 찾게 됩니다
     status = 'RUNNING';
+    store().startNewConversation(WHOLE);
     await sendNow(draft());
     status = 'DONE';
     await untilEnded();
@@ -1695,5 +1698,262 @@ describe('승인 · 거절의 결과를 모를 때 (L3-39)', () => {
     expect(await transport.decide('a-1', 'APPROVE', 'h')).toBe('failed');
     expect(calls).toBe(1);
     expect(of('decisionFailed')).toMatchObject([{ code: 'AGENT_EXPIRED' }]);
+  });
+});
+
+// ── 글자 효과를 줄지 (5단계, 12-4 F12) ───────────────────────
+
+describe('따라잡는 묶음(catchUp)', () => {
+  const withClaims = () => of('progress').filter((s) => s.claims.length > 0);
+  async function untilClaims(n = 1) {
+    for (let i = 0; i < 30 && withClaims().flatMap((s) => s.claims).length < n; i++)
+      await clock.advance(1_000);
+  }
+
+  it('이 화면에서 보낸 실행은 처음부터 효과로 보인다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    expect(withClaims().map((s) => s.catchUp)).toEqual(withClaims().map(() => false));
+  });
+
+  it('첫 응답에 문장이 없어도 따라잡기는 첫 문장 묶음까지 이어진다', async () => {
+    await sendNow(draft());
+    await untilClaims(2);
+    let polls = 0;
+    signals.length = 0;
+    start({
+      // 다시 연 뒤 첫 응답은 할 일 목록만 — 문장은 그다음에 옵니다
+      run: async (runId, afterSeq) => {
+        polls += 1;
+        const view = (await mockApi.run(runId, afterSeq)) as RunView;
+        return polls === 1
+          ? {
+              ...view,
+              events: view.events.filter((e) => e.event !== 'claim').slice(0, 1),
+              has_more: true,
+            }
+          : view;
+      },
+    });
+    transport.resume();
+    await flush();
+    await untilClaims(1);
+    expect(withClaims()[0]!.catchUp).toBe(true);
+  });
+
+  it('화면을 다시 열어(새 통신 계층) 이어 받으면 이미 있던 문장은 효과 없이', async () => {
+    await sendNow(draft());
+    await untilClaims(2);
+    signals.length = 0;
+    start();
+    transport.resume();
+    await flush();
+    const first = withClaims()[0]!;
+    expect([first.restart, first.catchUp]).toEqual([true, true]);
+  });
+
+  it('다른 대화로 갔다 돌아와도 효과 없이 다시 그린다', async () => {
+    await sendNow(draft());
+    await untilClaims(2);
+    const conversationId = store().conversationId!;
+    signals.length = 0;
+    store().startNewConversation(WHOLE);
+    store().selectConversation(conversationId, WHOLE);
+    await flush();
+    await untilClaims(1);
+    const first = withClaims()[0]!;
+    expect([first.restart, first.catchUp]).toEqual([true, true]);
+    // 따라잡은 뒤 새로 오는 문장은 다시 효과로
+    await untilEnded();
+    expect(
+      withClaims()
+        .slice(1)
+        .every((s) => !s.catchUp),
+    ).toBe(true);
+  });
+});
+
+// ── 1~5단계 최종 점검 반영 ───────────────────────────────────
+
+describe('늦게 온 대화 조회가 끝난 실행을 되살리지 않는다 (L3-20)', () => {
+  it('조회를 시작한 뒤 실행이 끝났으면 그 응답을 버리고, 끝낸 실행은 다시 붙이지 않는다', async () => {
+    await sendNow(draft());
+    for (let i = 0; i < 5 && store().run?.phase !== 'RUNNING'; i++) await clock.advance(1_000);
+    const runId = store().run!.runId;
+    const conversationId = store().conversationId!;
+    // 새로고침처럼 상태 확인을 켜고, 대화 조회는 붙잡아 둡니다(서버는 아직 실행 중일 때 읽음)
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    start({
+      conversationRun: async () => {
+        await gate;
+        return runView(runId, conversationId, 'RUNNING', []);
+      },
+      run: async (id) => runView(id, conversationId, 'DONE', []),
+    });
+    // 새로고침처럼 실행 조회와 대화 조회가 함께 돕니다 — 대화 조회는 붙잡혀 있고, 실행 조회가 먼저 끝남을 받습니다
+    useChatStore.setState({ syncing: true });
+    transport.resume();
+    transport.checkNow();
+    await flush();
+    await clock.advance(1_000);
+    expect(store().run).toBeNull();
+    const ended = of('ended').length;
+    release();
+    await flush();
+    await clock.advance(5_000);
+    expect(store().run).toBeNull();
+    expect(of('ended')).toHaveLength(ended);
+  });
+});
+
+describe('범위 맞추기와 사용자의 범위 바꾸기가 겹칠 때', () => {
+  it('목록을 읽는 사이 사용자가 바꾼 범위를 늦은 목록이 되돌리지 않는다', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const B = { pitchId: '10000000-0000-4000-8000-000000000001', title: '캡스톤 최종 발표' };
+    start({
+      listConversations: async () => {
+        await gate;
+        return {
+          conversations: [
+            {
+              conversation_id: store().conversationId,
+              scope_pitch_id: null,
+              scope_pitch_title: null,
+            },
+          ],
+        };
+      },
+    });
+    await sendNow(draft());
+    await untilEnded();
+    expect(await transport.changeScope(B)).toBe(true);
+    release();
+    await flush();
+    expect(store().scope).toEqual(B);
+  });
+});
+
+describe('닫힌 뒤 온 취소 응답', () => {
+  it('결과를 모르는 응답이어도 "취소 중" 을 풀어, 새 통신 계층에서 다시 취소할 수 있다', async () => {
+    let fail!: () => void;
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'RUNNING', []),
+      cancel: () => new Promise((_, reject) => (fail = () => reject(new TypeError('offline')))),
+    });
+    await sendNow(draft());
+    const cancelling = transport.cancel();
+    await flush();
+    expect(store().cancelling).not.toBeNull();
+    start({ run: async (runId) => runView(runId, store().run!.conversationId, 'RUNNING', []) });
+    transport.resume();
+    fail();
+    await cancelling;
+    expect(store().cancelling).toBeNull();
+  });
+
+  it('닫힌 뒤 끝남 응답이 오면 실행을 끝낸다', async () => {
+    let done!: () => void;
+    start({
+      run: async (runId) => runView(runId, store().run!.conversationId, 'RUNNING', []),
+      cancel: (runId) =>
+        new Promise((resolve) => {
+          const conversationId = store().run!.conversationId;
+          done = () => resolve(runView(runId, conversationId, 'CANCELLED', []));
+        }),
+    });
+    await sendNow(draft());
+    const cancelling = transport.cancel();
+    await flush();
+    transport.dispose();
+    started = false;
+    done();
+    await cancelling;
+    expect([store().run, store().cancelling]).toEqual([null, null]);
+  });
+});
+
+describe('실행이 바뀌면 걸린 실행 조회를 끊는다', () => {
+  it('다른 대화의 실행으로 바뀌면 앞 실행의 걸린 조회를 기다리지 않고 새 실행을 조회한다', async () => {
+    await sendNow(draft());
+    await untilEnded();
+    const first = store().conversationId!;
+    store().startNewConversation(WHOLE);
+    await sendNow(draft());
+    await untilEnded();
+    const second = store().conversationId!;
+    const asked: string[] = [];
+    start({
+      conversationRun: async (id) => runView(id === first ? 'r-1' : 'r-2', id, 'RUNNING', []),
+      run: (runId, _afterSeq, signal) => {
+        asked.push(runId);
+        if (runId === 'r-1')
+          return new Promise((_, reject) =>
+            signal!.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            ),
+          );
+        return Promise.resolve(runView(runId, second, 'RUNNING', []));
+      },
+    });
+    store().startNewConversation(WHOLE);
+    store().selectConversation(first, WHOLE);
+    await flush();
+    expect(asked).toEqual(['r-1']);
+    // 시간을 흘리지 않고도(20초 시간 초과를 기다리지 않고) 곧바로 새 실행을 조회합니다
+    const t0 = clock.t;
+    store().selectConversation(second, WHOLE);
+    await flush();
+    expect(asked).toContain('r-2');
+    expect(clock.t).toBe(t0);
+  });
+});
+
+describe('[다시 확인]을 거듭 누를 때', () => {
+  it('앞 보내기를 끊고, 앞 시도의 늦은 실패가 뒤 시도의 미확정 타이머를 지우지 않는다', async () => {
+    const seen: AbortSignal[] = [];
+    const rejects: ((e: unknown) => void)[] = [];
+    start({
+      send: (_request, signal) => {
+        seen.push(signal!);
+        return new Promise((_, reject) => rejects.push(reject));
+      },
+    });
+    transport.send(draft()).catch(() => undefined);
+    await flush();
+    await clock.advance(15_000);
+    expect(of('unconfirmed')).toHaveLength(1);
+    transport.retryUnconfirmed().catch(() => undefined);
+    await flush();
+    expect(seen[0]!.aborted).toBe(true);
+    expect(seen[1]!.aborted).toBe(false);
+    // 앞 시도가 늦게 실패해도 뒤 시도는 그대로 — 15초가 지나야 미확정이 다시 뜹니다
+    rejects[0]!(new TypeError('offline'));
+    await flush();
+    expect(of('unconfirmed')).toHaveLength(1);
+    await clock.advance(15_000);
+    expect(of('unconfirmed')).toHaveLength(2);
+  });
+});
+
+describe('꺼짐 · 로그인 만료로 멈춘 뒤 연결 복귀', () => {
+  it('연결이 돌아와도 다시 두드리지 않고, resume 으로만 다시 시작한다', async () => {
+    let off = true;
+    start({
+      run: async (runId) => {
+        if (off) throw new ApiFailure(503, 'AGENT_DISABLED');
+        return runView(runId, store().run!.conversationId, 'RUNNING', []);
+      },
+    });
+    await sendNow(draft());
+    const calls = runCalls.length;
+    online();
+    await flush();
+    expect(runCalls.length).toBe(calls);
+    off = false;
+    transport.resume();
+    await flush();
+    expect(runCalls.length).toBe(calls + 1);
   });
 });

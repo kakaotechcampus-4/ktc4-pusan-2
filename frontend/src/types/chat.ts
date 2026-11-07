@@ -313,7 +313,10 @@ export interface ChatMessage {
   text: string;
   /** 답을 만든 실행의 끝 상태. 사용자 · 시스템 메시지는 null */
   status: RunStatus | null;
-  /** 이 메시지를 만든 실행. 사용자 · 시스템 메시지는 null */
+  /**
+   * 이 메시지의 실행 — 답 메시지는 그 답을 만든 실행, **사용자 메시지는 그 말이 시작한 실행**(BE `accept.py`),
+   * 시스템 메시지(되돌리기 등)는 null. 같은 `run_id` 가 사용자 말과 답 두 메시지에 있으니 답은 `role` 로 고릅니다
+   */
   run_id: string | null;
   /** 최신 기준으로 다시 물은 메시지면 원래 메시지 */
   again_of_message_id: string | null;

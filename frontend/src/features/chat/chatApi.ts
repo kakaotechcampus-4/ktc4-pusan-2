@@ -1,4 +1,4 @@
-import { apiRequest, postJson, readJsonWithin } from '@/shared/api/client';
+import { apiRequest, readJsonWithin, ResponseTooLargeError } from '@/shared/api/client';
 import { chatPaths } from '@/shared/api/chatPaths';
 import type {
   ActionDecisionRequest,
@@ -22,7 +22,8 @@ const within = readJsonWithin(MAX_RESPONSE_BYTES);
  * 통신 계층이 이 모양에만 기대게 해서, 시험에서는 가짜로 바꿔 끼울 수 있습니다.
  */
 export interface ChatApi {
-  send: (request: SendMessageRequest) => Promise<SendMessageAccepted>;
+  /** `signal` 은 [다시 확인]을 거듭 누를 때 앞 시도를 끊는 데 씁니다(다시 보내지는 않습니다) */
+  send: (request: SendMessageRequest, signal?: AbortSignal) => Promise<SendMessageAccepted>;
   /**
    * 실행 조회 · 대화의 실행 · 취소 · 승인 · 거절의 응답은 `unknown` — 통신 계층이 모양을 검사하며 읽습니다.
    * `signal` 은 통신 계층이 시간 초과 · 대화 바꾸기 때 걸린 요청을 끊는 데 씁니다
@@ -62,7 +63,8 @@ const postBody = (body: unknown, signal?: AbortSignal): RequestInit => ({
 });
 
 export const chatApi: ChatApi = {
-  send: (request) => postJson<SendMessageAccepted>(chatPaths.send, request),
+  send: (request, signal) =>
+    apiRequest<SendMessageAccepted>(chatPaths.send, postBody(request, signal)),
   run: (runId, afterSeq, signal) =>
     apiRequest<unknown>(
       `${chatPaths.run(runId)}?after_seq=${encodeURIComponent(afterSeq)}`,
@@ -92,17 +94,42 @@ export const chatApi: ChatApi = {
   listConversations: (signal) => apiRequest<unknown>(chatPaths.conversations, { signal }, within),
 };
 
+/** 메시지 목록 한 번에 읽는 개수 — BE 기본 30, 상한 50 */
+export const MESSAGES_PAGE = 30;
+/** 한 페이지가 2 MiB 를 넘으면 이만큼씩 줄여 다시 읽습니다 — 무거운 답이 몇 개 쌓여도 대화를 열 수 있게 */
+const SMALLER_PAGES = [10, 3, 1];
+
 /**
  * 메시지 목록 한 페이지 — 최근부터, `beforeSeq` 가 있으면 그 앞. 화면(8단계)이 부르고,
- * 문장 · 카드는 `readMessage` 로 읽은 뒤 그립니다. 2 MiB 를 넘으면 `ResponseTooLargeError`
+ * 문장 · 카드는 `readMessage` 로 읽은 뒤 그립니다.
+ * 응답이 2 MiB 를 넘으면 한 번에 읽는 개수를 줄여(30 → 10 → 3 → 1) 다시 읽습니다 — 받은 페이지의
+ * `next_before_seq` 로 나머지를 이어 읽으면 됩니다. 메시지 하나도 넘으면 `ResponseTooLargeError`
  */
 export async function fetchMessages(
   conversationId: string,
   beforeSeq: number | null = null,
 ): Promise<MessagePage> {
-  const query = beforeSeq === null ? '' : `?before_seq=${encodeURIComponent(beforeSeq)}`;
+  let error: unknown = null;
+  for (const limit of [MESSAGES_PAGE, ...SMALLER_PAGES]) {
+    try {
+      return await fetchMessagePage(conversationId, beforeSeq, limit);
+    } catch (e) {
+      if (!(e instanceof ResponseTooLargeError)) throw e;
+      error = e;
+    }
+  }
+  throw error;
+}
+
+async function fetchMessagePage(
+  conversationId: string,
+  beforeSeq: number | null,
+  limit: number,
+): Promise<MessagePage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (beforeSeq !== null) params.set('before_seq', String(beforeSeq));
   const page = await apiRequest<MessagePage>(
-    `${chatPaths.messages(conversationId)}${query}`,
+    `${chatPaths.messages(conversationId)}?${params.toString()}`,
     {},
     within,
   );
