@@ -241,9 +241,7 @@ function CurrentScreen({
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'slide-preview':
       // 피치 생성 샘플 안의 그 창을 그대로 보인다
-      return (
-        <PitchCreateScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />
-      );
+      return <PitchCreateScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />;
     default:
       if (componentEntries.some((entry) => entry.id === screenId))
         return <ComponentDoc id={screenId} stateId={stateId} />;
