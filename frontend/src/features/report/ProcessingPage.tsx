@@ -172,7 +172,14 @@ function DialogContent({
       </div>
     );
 
-  return <Progress takeId={takeId} states={states} />;
+  return (
+    <>
+      <p className="border-2 border-dusk-line px-3 py-2 text-center text-xs font-bold tracking-wider text-dusk-accent" role="status">
+        TAKE RECORDED · 발표 기록 접수
+      </p>
+      <Progress takeId={takeId} states={states} />
+    </>
+  );
 }
 
 function Progress({ takeId, states }: { takeId: string; states: StepState[] }) {
