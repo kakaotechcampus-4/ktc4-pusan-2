@@ -52,6 +52,43 @@ pitch-coach/
 ```
 
 ## 실행 방법
+0. 공통 준비
+uv: BE는 Python 3.14, AI는 3.12를 씁니다. 버전은 각 폴더의 .python-version대로 uv가 받습니다.
+Node 24(nvm use 24). 버전이 다르면 .npmrc의 engine-strict 때문에 npm ci가 멈춥니다.
+Docker. 로컬 DB를 띄울 때 씁니다.
+환경 파일 세 개를 만듭니다.
+backend/.env ← backend/.env.example. JWT_SECRET_KEY는 openssl rand -hex 32로 만듭니다.
+ai/.env ← ai/.env.example
+frontend/.env.local ← frontend/.env.example
+
+2. DB (PostgreSQL)
+
+cd infra
+docker compose up -d db
+db 서비스는 backend/.env의 POSTGRES_* 값을 읽습니다. 그래서 backend/.env를 먼저 만들어 두셔야 합니다.
+
+2. AI 서버 (포트 8001)
+
+cd ai/service
+uv sync --locked
+uv run python -m uvicorn pitch_coach_ai.main:app --reload --port 8001
+/health가 뜨는 데는 LLM 키가 필요 없습니다. 실제 LLM 기능을 부를 때만 ai/.env에 키를 채우면 됩니다.
+
+3. BE (포트 8000)
+
+cd backend
+uv sync
+uv run alembic upgrade head          # DB가 떠 있어야 합니다
+uv run fastapi dev src/pitch_coach_backend/main.py
+AI_BASE_URL 기본값은 http://localhost:8001이라 2번과 맞습니다. Deepgram 키, S3 버킷, 구글 OAuth 값이 비어 있으면 서버는 뜨지만 실시간 STT, 업로드, 로그인은 동작하지 않습니다.
+
+4. FE (포트 3000)
+
+cd frontend
+npm ci
+npm run doctor     # 실패 0개면 세팅이 끝난 것입니다
+npm run dev
+FE는 기본이 MSW 목 서버입니다. 실제 BE에 붙이려면 .env.local에 VITE_USE_MOCK=false를 넣어야 합니다.
 
 ## 직군별 README.md
 
