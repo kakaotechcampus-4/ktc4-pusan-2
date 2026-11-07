@@ -18,12 +18,20 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) {
-    this.setAttribute('open', '');
+  // jsdom does not implement native dialog methods. Define own properties so
+  // the test double can be removed without leaking into other tests.
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    },
   });
-  vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (this: HTMLDialogElement) {
-    this.removeAttribute('open');
-    this.dispatchEvent(new Event('close'));
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+      this.dispatchEvent(new Event('close'));
+    },
   });
   query.error = null;
   query.data = {
@@ -48,6 +56,8 @@ afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
+  delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).showModal;
+  delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).close;
   vi.restoreAllMocks();
 });
 async function render() {
