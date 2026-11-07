@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_response import SaveGoalArgs
-from pitch_coach_backend.module.chat.dto import ActionResultDTO
+from pitch_coach_backend.module.chat.dto import ActionResultDTO, AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatGoal, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.authorization import authorization
@@ -39,7 +39,7 @@ def save_goal(
     db: Session, row: ChatRun, saved: ChatAction, action: dict[str, Any], args: SaveGoalArgs
 ) -> ActionResultDTO:
     repo = ChatRepository(db)
-    if row.first_trigger == "TAKE_REVIEWED":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED:
         return failed(action, "NOT_ALLOWED", UNCONFIRMED)
     preapproved = action.get("preapproved")
     if preapproved is not None:

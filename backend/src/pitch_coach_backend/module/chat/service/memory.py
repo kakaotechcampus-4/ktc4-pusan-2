@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from pydantic import Field, TypeAdapter, ValidationError
 
-from pitch_coach_backend.module.chat.dto import HISTORY_MESSAGES, AgentSummaryItemDTO
+from pitch_coach_backend.module.chat.dto import HISTORY_MESSAGES, AgentSummaryItemDTO, AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatSummary
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.request import overflow_messages
@@ -191,7 +191,7 @@ def _summary_items(raw: Any) -> list[dict[str, str]] | None:
 def _accepted(
     repo: ChatRepository, row: ChatRun, conversation: ChatConversation, raw: Any
 ) -> list[dict[str, str]]:
-    if row.first_trigger != "USER_MESSAGE" or not isinstance(raw, list):
+    if row.first_trigger != AgentTrigger.USER_MESSAGE or not isinstance(raw, list):
         return []
     if conversation.without_memory:
         return []

@@ -173,6 +173,10 @@ class _Turn:
             if follow_up is None:
                 return
             resume, budget = follow_up
+        # 응답 코드는 AI 오류와 같다. 호출 한도에 닿은 턴을 로그로 가른다
+        logger.warning(
+            "대화 턴이 호출 한도 %d번에 닿았다 run=%s", MAX_TURN_CALLS, self._current.run_id
+        )
         await self.give_up(TurnFailure(UPSTREAM_ERROR))
 
     async def _call_agent(

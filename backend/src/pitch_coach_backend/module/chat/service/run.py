@@ -45,7 +45,7 @@ class ClaimedRun:
 def claimed(row: ChatRun) -> ClaimedRun:
     return ClaimedRun(
         run_id=row.id,
-        first_trigger=row.first_trigger,
+        first_trigger=AgentTrigger(row.first_trigger),
         row_revision=row.row_revision,
         deadline=row.deadline_at,
     )

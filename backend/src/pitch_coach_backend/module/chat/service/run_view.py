@@ -17,6 +17,7 @@ from pitch_coach_backend.module.chat.api_dto import (
     RunStatusResponse,
 )
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.exception import ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
@@ -76,7 +77,7 @@ def cancel_run(db: Session, user_id: uuid.UUID, run_id: uuid.UUID) -> RunStatusR
         db.rollback()
         return view
     chat_repo = ChatRepository(db)
-    if run.first_trigger == "TAKE_REVIEWED":
+    if run.first_trigger == AgentTrigger.TAKE_REVIEWED:
         # 임대가 PENDING 으로 남으면 5분 임대가 풀린 뒤 주기 작업이 같은 리뷰로 실행을 다시
         # 만들고 확인 횟수를 또 줄인다
         close_goal_lease(chat_repo, run)

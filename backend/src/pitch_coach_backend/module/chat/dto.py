@@ -1,4 +1,5 @@
 import uuid
+from enum import StrEnum
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -6,14 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pitch_coach_backend.core.validation import NulFreeStr
 
 
-class ChatInfoDTO(BaseModel):
-    chat_id: str
-    user_id: str
-    message: str
-    timestamp: str
+class AgentTrigger(StrEnum):
+    """AI 를 부른 이유. `chat_runs.first_trigger` 에는 `ACTION_RESULT` 를 빼고 저장한다."""
+
+    USER_MESSAGE = "USER_MESSAGE"
+    ACTION_RESULT = "ACTION_RESULT"
+    TAKE_REVIEWED = "TAKE_REVIEWED"
 
 
-AgentTrigger = Literal["USER_MESSAGE", "ACTION_RESULT", "TAKE_REVIEWED"]
 ActionType = Literal["FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"]
 ActionStatus = Literal["SUCCEEDED", "FAILED", "AMBIGUOUS"]
 ProfileKey = Literal["TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT"]
@@ -175,7 +176,7 @@ class AgentTurnRequestDTO(_AgentDTO):
     def _matches_trigger(self) -> Self:
         trigger = self.run.trigger
         message = self.user_message
-        if trigger == "USER_MESSAGE":
+        if trigger == AgentTrigger.USER_MESSAGE:
             if message is None or not message.strip() or len(message) > 2000:
                 raise ValueError("USER_MESSAGE 는 1~2,000자 사용자 말이 필요하다")
             if self.resume is not None or self.review_event is not None:
@@ -185,7 +186,7 @@ class AgentTurnRequestDTO(_AgentDTO):
             return self
         if message is not None or self.choice is not None:
             raise ValueError(f"{trigger} 에는 사용자 말 · choice 를 싣지 않는다")
-        if trigger == "ACTION_RESULT":
+        if trigger == AgentTrigger.ACTION_RESULT:
             if self.resume is None or self.review_event is not None:
                 raise ValueError("ACTION_RESULT 는 resume 만 싣는다")
         elif self.review_event is None or self.resume is not None:

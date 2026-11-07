@@ -84,6 +84,8 @@ class ChatMessage(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     __tablename__ = "chat_messages"
     __table_args__ = (
         UniqueConstraint("conversation_id", "seq", name="uq_chat_messages_conversation_seq"),
+        # 최신 자료 판을 고르는 쿼리(`latest_corpus_version`)가 메시지 목록과 턴마다 돈다
+        Index("ix_chat_messages_created_at", "created_at"),
         UniqueConstraint(
             "user_id", "client_request_id", name="uq_chat_messages_user_client_request"
         ),

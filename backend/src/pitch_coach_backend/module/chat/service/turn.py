@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal
 from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
@@ -207,7 +208,7 @@ def _action_view(saved: ChatAction) -> dict[str, Any]:
 def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bool:
     data = final.data
     pitch_ids, take_ids = _answer_sources(data)
-    if run.first_trigger == "TAKE_REVIEWED":
+    if run.first_trigger == AgentTrigger.TAKE_REVIEWED:
         take_ids.add(data["goal_result"]["take_id"])
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
@@ -219,7 +220,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
     if _sent_claims_differ(repo, row, data):
         _end_with_sent_claims(db, run, row, turn_call, final)
         return True
-    if row.first_trigger == "TAKE_REVIEWED" and not settle_goal_check(
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED and not settle_goal_check(
         repo, row, conversation, data["goal_result"]
     ):
         cancel(db, run)
@@ -415,7 +416,7 @@ def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | 
 
 
 def _apply_scope(row: ChatRun, conversation: ChatConversation, data: dict[str, Any]) -> bool:
-    if row.first_trigger == "TAKE_REVIEWED":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED:
         return False
     new = data["scope_pitch_id"]
     current = str(conversation.scope_pitch_id) if conversation.scope_pitch_id else None

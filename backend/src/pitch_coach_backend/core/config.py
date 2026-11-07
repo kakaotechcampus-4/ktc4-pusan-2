@@ -94,6 +94,8 @@ class Settings(BaseSettings):
     chat_ai_slots_per_process: int = 4
     # 승인된 대화 자리 전체 상한. 4 로 시작하고 부하 시험을 통과하면 8 까지 올린다
     chat_ai_slots_total: int = 4
+    # 서비스 전체 하루 대화 턴 상한. 실제 /agent/turn 호출 수로 센다 (chat-agent.md 8-2)
+    chat_global_daily_turns: int = 1000
     # BE 프로세스 수. uvicorn 은 --workers 가 없으면 같은 환경 변수로 워커 수를 정한다.
     # 지금은 워커 하나로 띄운다 (README '운영 전제')
     web_concurrency: int = 1
