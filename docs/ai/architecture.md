@@ -628,7 +628,7 @@ features/<모듈>/
 | `review` | 보고서 · 점수 · 다음 미션 · 반복 문제 | `review_take` |
 | `chat_agent` | 대화 에이전트 루프: 사용자 말 · 행동 결과 · 새 리뷰를 받아 검사한 답 또는 행동을 낸다 | `api/chat_agent.py`(라우터 `POST /agent/turn`) |
 
-`chat_agent`는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들고 서비스에 탑재한다. 탑재 전 코어는 연구 모듈 `src/chat_agent/`에 있고 이 절의 규칙을 그대로 지킨다([chat-agent.md](features/chat-agent.md) 4-1).
+`chat_agent`는 다른 기능처럼 연구 모듈(`ai/research/chat-agent/`)에서 먼저 만들어 서비스에 탑재했다. 코어는 서비스 `features/chat_agent/`에 있고 이 절의 규칙을 지킨다. 연구 모듈에는 가짜 BE · 평가가 남는다([chat-agent.md](features/chat-agent.md) 4-1).
 
 # 9. LLM 공통 규칙
 - **LLM 객체는 서비스의 `common/llm.py`에서만 만든다.** 기능 코드는 `ChatOpenAI`를 직접 만들지 않는다. `structured_llm(schema)`에 출력 pydantic 스키마를 넘기면 `with_structured_output(schema)`가 적용된 객체를 돌려준다. 코어는 그 객체의 `.invoke`만 쓴다.
@@ -671,7 +671,7 @@ features/<모듈>/
 
 - research와 service가 같은 이름을 쓴다. 로컬에서는 `ai/.env` 하나를 함께 쓴다.
 - **대화 에이전트가 켜졌는데 서명 키가 없거나 32바이트 미만이면** 대화 경로만 503 `AGENT_DISABLED`이고 기존 기능 · 헬스체크는 그대로다. 반영 위치는 [chat-agent.md](features/chat-agent.md) 11-1이고, 서버 시크릿 설정은 BE(인프라)에 요청한다.
-- **대화 변수 넷(`AGENT_*`)은 서비스 탑재 전이라 아직 `settings.py` · `ai/.env.example`에 없다.** 서비스에 탑재할 때 아래 '새 환경변수를 더할 때'대로 두 곳에 더한다. 그 전에는 서버에 넣지 않는다.
+- **대화 변수 넷(`AGENT_*`)은 `settings.py` · `ai/.env.example`에 있다.** `AGENT_ENABLED` 기본값이 false라 서버 값을 넣기 전에는 `/agent/turn`만 503 `AGENT_DISABLED`다. 켤 때 서버 시크릿에 `AGENT_ENABLED=true` · `AGENT_STATE_SECRET`을 넣고 BE 쪽 스위치와 함께 바꾼다(`ai-service.md` 11-4).
 - **값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적는다.** `docker run --env-file`은 따옴표와 줄 끝 주석을 값에 그대로 넣어서, 주소나 키가 틀어져 LLM 연결이 실패한다. 주석은 자기 줄에 쓴다. 서버의 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)도 같다.
 - **`ai/.env.example`을 그대로 복사해 키만 비운 묶음은 일부만 채운 묶음이라 서비스가 시작할 때 오류를 낸다.** 쓰지 않는 묶음은 세 줄을 주석으로 두고, 키 없이 띄워 볼 때는 `--env-file` 없이 띄운다.
 - **키가 없어도 서버는 뜨고 `/health`는 응답한다**(CI · 로컬 확인용, 묶음 값이 아예 없을 때). LLM을 쓰는 요청은 503(`LLM_UNAVAILABLE`)으로 실패하고, 코칭 계획 · 리뷰는 기본 결과를 200으로 돌려준다(`fallback_reason`).
