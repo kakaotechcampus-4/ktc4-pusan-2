@@ -367,8 +367,12 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
           <div className="grid gap-4 lg:grid-cols-2">
             {[...byMetric].map(([metric, metricRows]) => {
               const slides = metricRows.filter((r) => r.slide_number !== null);
-              const improved = slides.filter((r) => trend(r) === TREND.true).map((r) => r.slide_number!);
-              const worsened = slides.filter((r) => trend(r) === TREND.false).map((r) => r.slide_number!);
+              const improved = slides
+                .filter((r) => trend(r) === TREND.true)
+                .map((r) => r.slide_number!);
+              const worsened = slides
+                .filter((r) => trend(r) === TREND.false)
+                .map((r) => r.slide_number!);
               const same = slides.filter((r) => trend(r) === TREND.same).length;
               const unknown = slides.filter((r) => trend(r) === TREND.null).length;
               const overall = metricRows.find((r) => r.slide_number === null);
@@ -380,11 +384,25 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                       <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                         <div className="bg-cream p-3">
                           <p className="font-bold text-ink">나아진 슬라이드</p>
-                          <p className="mt-1">{improved.length ? [...new Set(improved)].sort((a,b)=>a-b).map((n) => `${n}번`).join(', ') : '없음'}</p>
+                          <p className="mt-1">
+                            {improved.length
+                              ? [...new Set(improved)]
+                                  .sort((a, b) => a - b)
+                                  .map((n) => `${n}번`)
+                                  .join(', ')
+                              : '없음'}
+                          </p>
                         </div>
                         <div className="bg-panel p-3">
                           <p className="font-bold text-ink">나빠진 슬라이드</p>
-                          <p className="mt-1">{worsened.length ? [...new Set(worsened)].sort((a,b)=>a-b).map((n) => `${n}번`).join(', ') : '없음'}</p>
+                          <p className="mt-1">
+                            {worsened.length
+                              ? [...new Set(worsened)]
+                                  .sort((a, b) => a - b)
+                                  .map((n) => `${n}번`)
+                                  .join(', ')
+                              : '없음'}
+                          </p>
                         </div>
                       </div>
                       {(same > 0 || unknown > 0) && (
@@ -400,7 +418,8 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                   )}
                   {overall && (
                     <p className="mt-2 text-xs text-ink/80">
-                      발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)} · {trend(overall).label}
+                      발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)} ·{' '}
+                      {trend(overall).label}
                     </p>
                   )}
                 </section>
@@ -427,13 +446,24 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
           >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <h2 id="report-comparison-detail-title" className="text-lg font-bold">지난 Take 상세 비교</h2>
+                <h2 id="report-comparison-detail-title" className="text-lg font-bold">
+                  지난 Take 상세 비교
+                </h2>
                 <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
               </div>
-              <button type="button" onClick={closeDetail} className="min-h-11 shrink-0 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep" aria-label="상세 비교 닫기">닫기</button>
+              <button
+                type="button"
+                onClick={closeDetail}
+                className="min-h-11 shrink-0 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
+                aria-label="상세 비교 닫기"
+              >
+                닫기
+              </button>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
-              {groups.map((g) => <ComparisonTable key={g.dimension ?? 'other'} group={g} />)}
+              {groups.map((g) => (
+                <ComparisonTable key={g.dimension ?? 'other'} group={g} />
+              ))}
             </div>
           </dialog>
         </>
