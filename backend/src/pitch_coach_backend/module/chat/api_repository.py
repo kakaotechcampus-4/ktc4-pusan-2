@@ -134,6 +134,12 @@ class ChatApiRepository:
             .execution_options(populate_existing=True)
         )
 
+    def active_run_ids(self) -> list[uuid.UUID]:
+        """승인 대기까지 포함한 끝나지 않은 실행 전체. 대화 스위치를 끈 채 뜰 때 정리한다."""
+        return list(
+            self.db.scalars(select(ChatRun.id).where(ChatRun.status.in_(ACTIVE_RUN_STATUSES)))
+        )
+
     def overdue_waiting_run_ids(self, started_before: datetime) -> list[uuid.UUID]:
         return list(
             self.db.scalars(
