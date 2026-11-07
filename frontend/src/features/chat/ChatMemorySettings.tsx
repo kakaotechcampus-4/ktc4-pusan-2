@@ -93,7 +93,10 @@ export function ChatMemorySettings({ userId, onBack }: { userId: string; onBack:
             </button>
           </div>
           {toggle.isError && (
-            <Failure text={MEMORY_TEXT.enabledFailed} onRetry={() => saveEnabled(toggle.variables!)} />
+            <Failure
+              text={MEMORY_TEXT.enabledFailed}
+              onRetry={() => saveEnabled(toggle.variables!)}
+            />
           )}
 
           {memory.data.items.length === 0 ? (

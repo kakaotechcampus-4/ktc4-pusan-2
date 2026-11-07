@@ -86,9 +86,9 @@ describe('카드 항목 상태 (L3-45)', () => {
   it('목록을 모르면 unknown, 같은 id · 값이면 kept, 값만 다르면 changed, 없으면 removed', () => {
     expect(memoryItemState(undefined, I, '짧게 설명')).toBe('unknown');
     expect(memoryItemState(settings({ ...ITEM, key: 'TONE' }), I, '짧게 설명')).toBe('kept');
-    expect(memoryItemState(settings({ ...ITEM, key: 'TONE', value: '자세히' }), I, '짧게 설명')).toBe(
-      'changed',
-    );
+    expect(
+      memoryItemState(settings({ ...ITEM, key: 'TONE', value: '자세히' }), I, '짧게 설명'),
+    ).toBe('changed');
     expect(memoryItemState(settings(), I, '짧게 설명')).toBe('removed');
   });
 });

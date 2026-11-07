@@ -2179,7 +2179,9 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
     await visit('/');
     await openPanel();
     expect(intro()!.textContent).toContain(INTRO);
-    expect(intro()!.textContent).toContain("'기억 없이' 대화를 골라도 그 대화의 기록 · 요약은 보관되고");
+    expect(intro()!.textContent).toContain(
+      "'기억 없이' 대화를 골라도 그 대화의 기록 · 요약은 보관되고",
+    );
 
     await act(async () => button('닫기')!.click());
     await openPanel();
@@ -2285,7 +2287,9 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
     await openPanel();
     await act(async () => button('대화 목록')!.click());
     await settle();
-    const rows = () => [...panel()!.querySelectorAll<HTMLButtonElement>('[aria-label="지난 대화"] button')];
+    const rows = () => [
+      ...panel()!.querySelectorAll<HTMLButtonElement>('[aria-label="지난 대화"] button'),
+    ];
     expect(rows()[0]!.textContent).toContain('기억 없이');
     expect(rows()[1]!.textContent).not.toContain('기억 없이');
 

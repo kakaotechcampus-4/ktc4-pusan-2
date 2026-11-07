@@ -109,7 +109,8 @@ const button = (text: string) => buttons().find((b) => b.textContent === text);
 const alerts = () => [...host.querySelectorAll('[role="alert"]')].map((a) => a.textContent);
 const status = () => host.querySelector('[role="status"]')?.textContent ?? '';
 const click = (el: Element) => act(async () => (el as HTMLElement).click());
-const removeCalls = () => server.calls.filter((c) => c.startsWith('DELETE /api/chat/memory/items/'));
+const removeCalls = () =>
+  server.calls.filter((c) => c.startsWith('DELETE /api/chat/memory/items/'));
 
 // ── F16 '기억했어요' 카드 ─────────────────────────────
 

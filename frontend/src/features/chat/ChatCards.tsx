@@ -169,7 +169,15 @@ function MemorySavedCard({ card }: { card: Extract<Card, { type: 'MEMORY_SAVED' 
   );
 }
 
-function MemoryRemove({ userId, itemId, value }: { userId: string; itemId: string; value: string }) {
+function MemoryRemove({
+  userId,
+  itemId,
+  value,
+}: {
+  userId: string;
+  itemId: string;
+  value: string;
+}) {
   const memory = useMemorySettings(userId);
   const { remove, busy, failed } = useRemoveMemoryItem(userId, itemId);
   const state = memoryItemState(memory.data, itemId, value);
