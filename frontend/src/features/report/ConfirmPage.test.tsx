@@ -213,7 +213,9 @@ function confirmationResponse() {
   return {
     take_id: 't1',
     analysis_stage: 'AWAITING_CONFIRMATION',
-    remaining_ms: 1000,
+    // 실제 시간으로 기한이 지나지 않게 넉넉히 둡니다. 1초로 두면 전체 시험이 느릴 때 제출 실패 전에
+    // 폼이 '확인 시간이 끝났어요'로 바뀝니다. 기한이 지난 경우는 performance.now()를 밀어 시험합니다.
+    remaining_ms: 600000,
     items: [
       {
         slide_number: 1,
@@ -268,9 +270,9 @@ it.each([false, true])(
 it.each([false, true])(
   'waits for the server past the local deadline (closed: %s)',
   async (closed) => {
-    await withSubmission(async ({ container, submission }) => {
+    await withSubmission(async ({ container, response, submission }) => {
       const current = performance.now();
-      vi.spyOn(performance, 'now').mockReturnValue(current + 2000);
+      vi.spyOn(performance, 'now').mockReturnValue(current + response.remaining_ms + 1000);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 1100));
       });
