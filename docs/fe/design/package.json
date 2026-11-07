@@ -11,7 +11,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint --max-warnings=0",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write src/catalog.ts src/catalog.test.ts src/ScreenPreview.tsx src/ScreenPreview.test.tsx src/screens/PolicyScreens.tsx && node scripts/ci-format-export.cjs && prettier --check .",
     "tokens": "node scripts/compare-tokens.mjs",
     "drift": "node scripts/product-drift.mjs"
   },
