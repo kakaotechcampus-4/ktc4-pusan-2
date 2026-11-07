@@ -446,12 +446,13 @@ class ChatRepository:
 
     def delete_finished_runs(self, cutoff: datetime, limit: int) -> int:
         finished = and_(ChatRun.status.in_(FINISHED_RUN_STATUSES), ChatRun.finished_at < cutoff)
-        result = self.db.execute(
-            delete(ChatRun).where(
-                ChatRun.id.in_(select(ChatRun.id).where(finished).limit(limit)),
-                finished,
-            )
+        run_ids = list(self.db.scalars(select(ChatRun.id).where(finished).limit(limit)))
+        if not run_ids:
+            return 0
+        self.db.execute(
+            update(ChatAction).where(ChatAction.run_id.in_(run_ids)).values(result=None)
         )
+        result = self.db.execute(delete(ChatRun).where(ChatRun.id.in_(run_ids), finished))
         return result.rowcount
 
     def delete_run_logs_before(self, day: date) -> int:

@@ -64,6 +64,7 @@ def _action(db: Session, run: ChatRun) -> ChatAction:
         autonomy="ASK",
         idempotency_key=f"key-{run.id}",
         status="SUCCEEDED",
+        result={"status": "SUCCEEDED"},
     )
     db.add(action)
     db.flush()
@@ -140,6 +141,7 @@ def test_finished_run_is_deleted_after_7_days_but_its_action_stays(
     assert db_session.get(ChatRun, old_id) is None
     assert db_session.scalars(select(ChatRunEvent).where(ChatRunEvent.run_id == old_id)).all() == []
     assert db_session.get(ChatAction, action_id) is not None
+    assert db_session.get(ChatAction, action_id).result is None
     assert db_session.get(ChatRun, recent_id) is not None
     assert db_session.get(ChatRun, running_id) is not None
 
