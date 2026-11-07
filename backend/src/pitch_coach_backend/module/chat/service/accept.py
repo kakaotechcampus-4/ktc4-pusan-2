@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.module.chat.api_dto import ChatChoiceDTO, SendMessageRequest
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
@@ -26,7 +27,7 @@ from pitch_coach_backend.module.chat.exception import (
     ChatTargetNotFound,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.goal_check import SERVICE_DAILY_TURNS, TURN_DEADLINE
+from pitch_coach_backend.module.chat.service.goal_check import TURN_DEADLINE
 from pitch_coach_backend.module.chat.service.request import ProposalNotFound, selected_proposal
 from pitch_coach_backend.module.chat.service.run import SEOUL, digest
 from pitch_coach_backend.module.chat.service.waiting import (
@@ -271,7 +272,7 @@ def _charge(
     if not repo.charge_turn(user_id, day, USER_DAILY_TURNS):
         raise ChatDailyLimit(headers=retry_after)
     # 서비스 전체 하루 상한에 처음 호출 1회를 예약한다. 보내지 않고 끝나면 돌려준다
-    if not chat_repo.reserve_service_turn(day, SERVICE_DAILY_TURNS):
+    if not chat_repo.reserve_service_turn(day, settings.chat_global_daily_turns):
         raise ChatBusy(headers=retry_after)
 
 

@@ -544,6 +544,7 @@ AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스�
 `CHAT_AI_SLOTS_PER_PROCESS` 가 2보다 작거나 `WEB_CONCURRENCY` × 그 값이 `CHAT_AI_SLOTS_TOTAL` 을 넘어도
 꺼진 것과 같다(`module/chat/availability.py`). 재시작 복구와 자동 목표 확인
 주기 작업도 띄우지 않는다. 근거가 지워진 답을 가리는 정리 작업과 30분이 지난 승인 대기를 끝내는 작업은 꺼져 있어도 돈다.
+서비스 전체 하루 턴 상한은 `CHAT_GLOBAL_DAILY_TURNS`(기본 1000)이고 넘으면 `429 AGENT_BUSY` 다.
 
 | 엔드포인트 | 내용 |
 |---|---|

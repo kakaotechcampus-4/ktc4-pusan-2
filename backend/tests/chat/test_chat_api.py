@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import (
     ChatConversation,
@@ -25,7 +26,6 @@ from pitch_coach_backend.module.chat.entity import (
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service import conversation as conversation_service
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS, seconds_until_tomorrow
-from pitch_coach_backend.module.chat.service.goal_check import SERVICE_DAILY_TURNS
 from pitch_coach_backend.module.chat.service.run import SEOUL
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 from pitch_coach_backend.module.pitch.entity import Pitch
@@ -85,7 +85,6 @@ def _service_reserved(db: Session) -> int | None:
 def test_availability_follows_the_switch(
     client: TestClient, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from pitch_coach_backend.core.config import settings
 
     assert client.get("/api/chat/availability", headers=bearer(user_id)).json() == {"enabled": True}
     monkeypatch.setattr(settings, "agent_enabled", False)
@@ -436,10 +435,12 @@ def test_daily_limit_is_429_with_retry_after_and_charges_nothing(
 
 
 def test_service_limit_is_429_busy_and_returns_the_user_turn(
-    client: TestClient, db_session: Session, user_id: uuid.UUID
+    client: TestClient, db_session: Session, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # 서비스 전체 하루 상한에 닿으면 사용자 하루 턴도 줄이지 않는다(한 트랜잭션으로 되돌린다)
-    db_session.add(ChatDailyUsage(user_id=None, day=_today(), reserved=SERVICE_DAILY_TURNS))
+    # 서비스 전체 하루 상한에 닿으면 사용자 하루 턴도 줄이지 않는다(한 트랜잭션으로 되돌린다).
+    # 상한은 설정(`CHAT_GLOBAL_DAILY_TURNS`)으로 바꿀 수 있다
+    monkeypatch.setattr(settings, "chat_global_daily_turns", 3)
+    db_session.add(ChatDailyUsage(user_id=None, day=_today(), reserved=3))
     # 접수가 rollback 하는 경로다. 준비 데이터가 함께 되돌아가지 않게 commit 한다
     db_session.commit()
 
@@ -479,7 +480,6 @@ def test_seconds_until_tomorrow_uses_seoul_midnight() -> None:
 def test_frontend_on_another_origin_can_read_retry_after(
     client: TestClient, user_id: uuid.UUID
 ) -> None:
-    from pitch_coach_backend.core.config import settings
 
     origin = settings.frontend_base_url.rstrip("/")
     response = client.get("/api/chat/availability", headers={**bearer(user_id), "Origin": origin})
@@ -1105,7 +1105,6 @@ def test_ai_sweeps_run_only_while_chat_is_on(
 ) -> None:
     # 꺼 두면 주기 작업이 AI 를 부르지 않는다. 다른 주기 작업은 client 픽스처가 막아 두었다
     from pitch_coach_backend import main
-    from pitch_coach_backend.core.config import settings
 
     started: list[bool] = []
 

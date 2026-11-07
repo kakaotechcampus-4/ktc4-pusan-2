@@ -7,13 +7,13 @@ from typing import Any
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatGoal, ChatLease, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import seoul_day
 
 GOAL_CHECKS_PER_CYCLE = 100
 GOAL_CHECK_DAILY_LIMIT = 30
-SERVICE_DAILY_TURNS = 1000
 GOAL_LEASE = timedelta(minutes=5)
 TURN_DEADLINE = timedelta(seconds=120)
 REVIEW_GIVEN_UP = ("FAILED", "SKIPPED")
@@ -116,7 +116,7 @@ def claim_target(
     if (
         lease is None
         or not repo.charge_goal_check(target.user_id, day, GOAL_CHECK_DAILY_LIMIT)
-        or not repo.reserve_service_turn(day, SERVICE_DAILY_TURNS)
+        or not repo.reserve_service_turn(day, settings.chat_global_daily_turns)
     ):
         db.rollback()
         return None
