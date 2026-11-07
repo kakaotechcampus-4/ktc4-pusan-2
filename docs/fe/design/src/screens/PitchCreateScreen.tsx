@@ -18,7 +18,39 @@ const GROUPS = ['슬라이드', '대본', '평가기준'] as const;
 type Kind = (typeof GROUPS)[number];
 type Preview = { kind: Kind | '매핑' | '슬라이드 확인' | '최종 확인'; version: number };
 const sections = ['슬라이드', '대본 연결', '발표정보', '평가기준'];
-const CRITERIA_HINTS = ['말 속도', '말 사이 멈춤', '긴 침묵', '소리 크기', '군더더기 말', '시선', '대본 의존도', '대본 유사도'] as const;
+const CRITERIA_HINTS = [
+  { label: '말 속도', example: '1분에 300자 이하로 말하기' },
+  { label: '말 사이 멈춤', example: '말 사이 멈춤은 5회 이하로 하기' },
+  { label: '긴 침묵', example: '긴 침묵은 2회 이하로 줄이기' },
+  { label: '소리 크기', example: '평소보다 목소리를 크게 내기', note: '소리 크기는 평소 목소리 대비 변화로 측정해요. 숫자 목표로 판정하지 않을 수 있어요.' },
+  { label: '군더더기 말', example: '군더더기 말은 5회 이하로 하기' },
+  { label: '시선', example: '청중을 70% 이상 바라보기' },
+  { label: '대본 의존도', example: '대본을 보는 비율 20% 이하로 하기' },
+  { label: '대본 유사도', example: '대본 내용의 80% 이상 전달하기' },
+] as const;
+
+function CriterionHintChip({ criterion }: { criterion: (typeof CRITERIA_HINTS)[number] }) {
+  const [open, setOpen] = useState(false);
+  const tooltipId = useId();
+  return (
+    <li className="relative" onMouseEnter={() => setOpen(true)}
+      onMouseLeave={(event) => { if (!event.currentTarget.contains(document.activeElement)) setOpen(false); }}>
+      <button type="button" aria-label={`${criterion.label} 작성 예시 보기`} aria-describedby={tooltipId}
+        onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+        onClick={() => setOpen(true)}
+        onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); event.currentTarget.blur(); } }}
+        className="cursor-help rounded-full border border-line-strong bg-white px-3 py-1 text-xs font-bold hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
+        {criterion.label} <span aria-hidden="true" className="text-ink/60">ⓘ</span>
+      </button>
+      <div id={tooltipId} role="tooltip"
+        className={`pointer-events-none fixed inset-x-4 bottom-4 z-30 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:left-0 sm:mt-2 sm:w-max sm:max-w-72 ${open ? 'visible' : 'invisible'}`}>
+        <p className="font-bold">{criterion.label} 작성 예시</p>
+        <p className="mt-1 leading-relaxed">{criterion.example}</p>
+        {'note' in criterion && <p className="mt-1 text-xs leading-relaxed text-ink/80">{criterion.note}</p>}
+      </div>
+    </li>
+  );
+}
 
 function Icon({ kind }: { kind: 'folder' | 'caret' | 'doc' | 'check' }) {
   const paths = {
@@ -734,15 +766,16 @@ export function PitchCreateScreen({
                   }}
                   placeholder={"예: 군더더기 말은 5회 이하로 줄이고 싶어요.\n예: 청중을 70% 이상 바라보고 싶어요."}
                 />
-                <div className="mt-3" aria-label="평가 가능한 지표 예시">
-                  <p className="mb-2 text-xs text-ink/80">다음 지표를 참고해 평가기준을 작성할 수 있어요.</p>
-                  <div className="flex flex-wrap gap-2">
-                    {CRITERIA_HINTS.map((hint) => (
-                      <span key={hint} className="rounded-full border border-line-strong bg-panel px-3 py-1 text-xs">
-                        {hint}
-                      </span>
+                <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-3">
+                  <p className="text-sm font-bold">작성 가능한 평가 항목</p>
+                  <ul aria-label="측정 가능한 항목" className="mt-2 flex flex-wrap gap-2">
+                    {CRITERIA_HINTS.map((criterion) => (
+                      <CriterionHintChip key={criterion.label} criterion={criterion} />
                     ))}
-                  </div>
+                  </ul>
+                  <p className="mt-2 text-xs leading-relaxed text-ink/80">
+                    칩에 마우스를 올리거나 눌러 예시를 확인해 보세요. 발표 시간은 발표정보에서 설정해 주세요.
+                  </p>
                 </div>
                 <button
                   type="button"
