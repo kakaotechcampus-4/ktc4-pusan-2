@@ -168,7 +168,7 @@ function holdRequests(list: { items: unknown[] } = pendingOne) {
   });
   return held;
 }
-const wrapper = () => host.firstElementChild;
+const completion = () => host.querySelector<HTMLParagraphElement>('[role="status"]');
 
 it('저장하는 동안 누른 버튼이 초점을 쥐고, 동의하면 목록을 기다리지 않고 초점을 옮긴다 (#845)', async () => {
   session.user = base;
@@ -188,17 +188,19 @@ it('저장하는 동안 누른 버튼이 초점을 쥐고, 동의하면 목록�
   expect(host.querySelector('dialog')?.open).toBe(true);
   expect(document.activeElement).toBe(agree);
 
-  // 연 버튼은 동의하면 카드와 함께 사라집니다. 남은 설문 목록이 오기 전에도 body 로 빠지지 않고 감싸개에 있습니다
+  // 동의하면 카드가 사라져도 완료 안내에 초점이 남습니다. 목록 응답은 기다리지 않습니다
   await act(async () => held.save());
   await flush();
   expect(host.querySelector('dialog')).toBeNull();
   expect(host.querySelector('section[aria-label="남은 설문"]')).toBeNull();
-  expect(document.activeElement).toBe(wrapper());
+  expect(completion()?.textContent).toContain('사용자 테스트 참여에 동의했어요');
+  expect(completion()?.getAttribute('tabindex')).toBe('-1');
+  expect(document.activeElement).toBe(completion());
 
   await act(async () => held.list());
   await flush();
-  expect(wrapper()?.querySelector('section[aria-label="남은 설문"]')).not.toBeNull();
-  expect(document.activeElement).toBe(wrapper());
+  expect(host.querySelector('section[aria-label="남은 설문"]')).not.toBeNull();
+  expect(document.activeElement).toBe(completion());
 });
 
 it('목록 응답이 늦을 때 그사이 옮긴 초점은 지킨다 (#874 리뷰)', async () => {
@@ -212,7 +214,7 @@ it('목록 응답이 늦을 때 그사이 옮긴 초점은 지킨다 (#874 리�
     await act(async () => button('동의하고 참여하기')!.click());
     await act(async () => held.save());
     await flush();
-    expect(document.activeElement).toBe(wrapper());
+    expect(document.activeElement).toBe(completion());
 
     elsewhere.focus();
     await act(async () => held.list());
@@ -235,5 +237,5 @@ it('남은 설문이 없어도 동의한 뒤 초점이 body 로 빠지지 않는
   await act(async () => held.list());
   await flush();
   expect(host.querySelector('section')).toBeNull();
-  expect(document.activeElement).toBe(wrapper());
+  expect(document.activeElement).toBe(completion());
 });
