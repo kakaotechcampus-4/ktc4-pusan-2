@@ -102,11 +102,7 @@ def revoke(db: Session, token: RefreshToken) -> None:
 
 
 def revoke_if_active(db: Session, token_id: uuid.UUID) -> bool:
-    """아직 살아 있을 때만 폐기한다. 이 요청이 폐기했으면 True.
-
-    읽고 나서 쓰기 전 사이에 다른 요청이 같은 토큰을 먼저 폐기했을 수 있다. 조건을 WHERE 에
-    넣으면 DB 가 행 잠금으로 줄을 세우고, 늦은 쪽은 0행을 바꿔 진 것을 안다.
-    """
+    """아직 살아 있을 때만 폐기한다. 이 요청이 폐기했으면 True, 이미 폐기됐으면 False."""
     result = db.execute(
         update(RefreshToken)
         .where(RefreshToken.id == token_id, RefreshToken.revoked_at.is_(None))
