@@ -173,6 +173,19 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
           </aside>
         )}
       </div>
+      <footer className="border-t border-line-strong">
+        <div className="mx-auto flex max-w-page flex-wrap justify-between gap-4 px-6 py-4 text-xs text-ink/80 lg:px-10">
+          <span className="tabular-nums tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
+          <div className="flex gap-5">
+            <Link to="/terms?from=home" className="hover:text-ink">
+              이용약관
+            </Link>
+            <Link to="/privacy?from=home" className="hover:text-ink">
+              개인정보 처리방침
+            </Link>
+          </div>
+        </div>
+      </footer>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
       {(dialogState || asking) && (
         <DeletePitchDialog
