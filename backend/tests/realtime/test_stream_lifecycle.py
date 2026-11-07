@@ -780,6 +780,42 @@ async def test_dropped_restart_frame_still_rotates(monkeypatch: pytest.MonkeyPat
     await stream.wait_closed(timeout=1.0)
 
 
+@pytest.mark.anyio
+async def test_audio_dropped_while_reconnecting_is_absorbed_by_the_new_base(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Deepgram 이 끊겨 다시 붙는 동안 드롭된 것은 새 세션 첫 프레임 **앞**의 오디오다. 새 세션의
+    base 가 흡수한다. 세션을 갈 때와 달리 무음으로 메우면 이후 전사 시각이 그만큼 밀린다."""
+    monkeypatch.setattr(runtime, "QUEUE_MAX_FRAMES", 5)
+    adapter = FakeSttAdapter(Plan(die_after=1))
+    _slow_after_first(adapter, 0.1)
+    stream = registry.create_stream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    ws = FakeWebSocket()
+    await stream.attach(ws)
+    stream.push(frame(1, 0), source=ws)
+    await _wait_for(lambda: adapter.sessions and not adapter.sessions[0].alive)
+
+    # 다시 붙기를 기다리는 동안 들어온 프레임. 큐(5)를 넘어 앞의 다섯 개가 드롭된다
+    for i in range(1, 11):
+        stream.push(frame(i + 1, i * 100), source=ws)
+    await _wait_for(lambda: len(adapter.sessions) == 2 and adapter.sessions[1].audio_ms > 0)
+    await asyncio.sleep(0.05)
+
+    assert stream.dropped_audio_ms == 500
+    # 살아남은 첫 프레임(seq 7, 600ms)이 새 세션의 base 고 무음 없이 다섯 프레임만 나간다
+    assert stream._stt.base_offset_ms == 600
+    assert adapter.sessions[1].audio_ms == 500
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
 # ── 그 밖의 예외 케이스 ───────────────────────────────────────────────
 
 

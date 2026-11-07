@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 
 from pitch_coach_backend.coach.client import HttpCoachClient
 
@@ -34,11 +33,6 @@ PLAN_RESPONSE: dict[str, Any] = {
     "planner_hash": "0123456789ab",
     "meta": {"schema_version": "1.0", "feature_version": "coach-1.2", "model": "openai/gpt"},
 }
-
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
 
 
 class Clock:

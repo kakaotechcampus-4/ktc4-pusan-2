@@ -14,13 +14,10 @@ from typing import Annotated, Any
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from pitch_coach_backend.core.limits import INT4_MAX, MAX_T_MS
 from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.core.validation import reject_unstorable_json
 from pitch_coach_backend.module.take.measures import take_count, take_metric
-
-# 요청 `t_ms` 의 상한. Take 최대 1시간 + 60초 (architecture.md 1-3). 넘으면 AI 가 422 를 준다
-MAX_T_MS = 3_660_000
-
 
 # Take 결과의 영역 중 센서 · STT 로 잰 것. TIME 의 measured_ratio 는 "목표 시간이 있던 시간의
 # 비율"이라 측정 품질이 아니다 — BE 는 목표 시간을 늘 싣으므로 늘 1 이고, 평균에 넣으면 다른 영역이
@@ -31,8 +28,6 @@ _MEASURED_AREAS = ("GAZE", "SPEED", "VOLUME", "PAUSE", "FILLER")
 # take_summaries 칸에 들어가는 범위. 벗어난 값은 잘못 잰 것이다 — 그대로 넣으면 Take 결과 저장이
 # 통째로 실패하므로 그 칸만 None 으로 둔다
 _VOLUME_LIMIT_DB = 999.99  # volume 은 Numeric(5, 2)
-
-_INTEGER_LIMIT = 2**31 - 1  # Integer 칸
 
 
 # ── AI 응답 ───────────────────────────────────────────────────────────
@@ -64,7 +59,7 @@ class _EventView(_View):
     event_id: str
     kind: str
     # Integer 칸이다. 넘는 값을 넣으면 그 저장이 끝내 실패해 뒤 이벤트까지 막힌다
-    t_ms: int = Field(ge=0, le=_INTEGER_LIMIT)
+    t_ms: int = Field(ge=0, le=INT4_MAX)
 
 
 class _AreaView(_View):
@@ -219,4 +214,4 @@ def summary_measures(take_result: dict[str, Any]) -> SummaryMeasures:
 
 
 def _fits(value: int) -> int | None:
-    return value if abs(value) <= _INTEGER_LIMIT else None
+    return value if abs(value) <= INT4_MAX else None

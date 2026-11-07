@@ -34,6 +34,8 @@ def pitch_id(db_session: Session, user_id: uuid.UUID) -> uuid.UUID:
 def upload_mock(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
     monkeypatch.setattr(presentation_service, "upload", mock)
+    # 진짜 PDF 라 썸네일도 그려 올린다. 막지 않으면 AWS 세션이 있는 PC 에서 실제 버킷에 남는다
+    monkeypatch.setattr(presentation_service, "upload_bytes", lambda data, key, content_type: key)
     monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
     return mock
 
@@ -62,9 +64,10 @@ def test_update_pitch_overwrites_every_editable_field(
     dto = PitchSaveRequestDTO(
         title="수정된 발표", time_limit_sec=600, presentation_date=date(2026, 7, 7))
 
-    returned = pitch_service.update_pitch_service(db_session, pitch_id, dto)
+    returned, timing_changed = pitch_service.update_pitch_service(db_session, pitch_id, dto)
 
     assert returned == pitch_id
+    assert timing_changed is True
     saved = db_session.get(Pitch, pitch_id)
     assert saved is not None
     assert saved.title == "수정된 발표"

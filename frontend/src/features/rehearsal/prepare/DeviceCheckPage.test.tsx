@@ -252,6 +252,13 @@ it('keeps device selection and calibration as separate actions and blocks starti
   expect(fixture.gazeStart).toHaveBeenCalledOnce();
 });
 
+it('lets the app header skip link move focus to the setup body', async () => {
+  await render();
+  const main = host.querySelector('main')!;
+  expect(main.id).toBe('main');
+  expect(main.tabIndex).toBe(-1);
+});
+
 it('retains all mission access and the start action during optional voice reading', async () => {
   fixture.voiceStatus = 'READING';
   await render();

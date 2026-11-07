@@ -24,11 +24,6 @@ pytestmark = pytest.mark.anyio
 PRIVATE = "RUBRIC_PRIVATE_SENTINEL"
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 def _assert_private(caplog):
     assert PRIVATE not in caplog.text
     assert all(record.exc_info is None for record in caplog.records)
@@ -64,6 +59,7 @@ async def test_db_failure_omits_sql_parameters_and_keeps_pending(
         )
 
     monkeypatch.setattr(script_rubric_runner.script_service, step, fail)
+    monkeypatch.setattr(script_rubric_runner, "DB_RETRY_DELAYS_SEC", ())
     with caplog.at_level(logging.INFO):
         if step == "resume_rubrics":
             await runner.resume_all()

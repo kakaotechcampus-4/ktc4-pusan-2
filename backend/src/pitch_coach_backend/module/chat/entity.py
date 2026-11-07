@@ -18,7 +18,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSON, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pitch_coach_backend.core.database import (
@@ -27,6 +27,10 @@ from pitch_coach_backend.core.database import (
     TimestampMixin,
     UUIDPrimaryKeyMixin,
 )
+
+# 파이썬 None 을 JSON null 이 아니라 SQL NULL 로 저장한다. JSON null 은 `IS NULL` 제약 · 조회에서
+# 값이 있는 칸으로 잡힌다
+NullableJSONB = JSONB(none_as_null=True)
 
 
 class ChatConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -65,7 +69,7 @@ class ChatGoal(CreatedAtMixin, Base):
         Uuid, ForeignKey("chat_conversations.id", ondelete="CASCADE"), primary_key=True
     )
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
-    goal: Mapped[Any | None] = mapped_column(JSONB)
+    goal: Mapped[Any | None] = mapped_column(NullableJSONB)
     status: Mapped[str | None] = mapped_column(String(20))
     base_take_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
     first_take_number: Mapped[int | None] = mapped_column(Integer)
@@ -107,18 +111,18 @@ class ChatMessage(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     again_of_message_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("chat_messages.id")
     )
-    claims: Mapped[Any | None] = mapped_column(JSONB)
-    cards: Mapped[Any | None] = mapped_column(JSONB)
-    assessments: Mapped[Any | None] = mapped_column(JSONB)
-    plan: Mapped[Any | None] = mapped_column(JSONB)
-    trace: Mapped[Any | None] = mapped_column(JSONB)
-    basis: Mapped[Any | None] = mapped_column(JSONB)
-    evidence: Mapped[Any | None] = mapped_column(JSONB)
-    sources: Mapped[Any | None] = mapped_column(JSONB)
-    usage: Mapped[Any | None] = mapped_column(JSONB)
-    meta: Mapped[Any | None] = mapped_column(JSONB)
-    source_pitch_ids: Mapped[list[str] | None] = mapped_column(JSONB)
-    source_take_ids: Mapped[list[str] | None] = mapped_column(JSONB)
+    claims: Mapped[Any | None] = mapped_column(NullableJSONB)
+    cards: Mapped[Any | None] = mapped_column(NullableJSONB)
+    assessments: Mapped[Any | None] = mapped_column(NullableJSONB)
+    plan: Mapped[Any | None] = mapped_column(NullableJSONB)
+    trace: Mapped[Any | None] = mapped_column(NullableJSONB)
+    basis: Mapped[Any | None] = mapped_column(NullableJSONB)
+    evidence: Mapped[Any | None] = mapped_column(NullableJSONB)
+    sources: Mapped[Any | None] = mapped_column(NullableJSONB)
+    usage: Mapped[Any | None] = mapped_column(NullableJSONB)
+    meta: Mapped[Any | None] = mapped_column(NullableJSONB)
+    source_pitch_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+    source_take_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
 
 
 class ChatRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -163,20 +167,20 @@ class ChatRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     scope_pitch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     input: Mapped[Any] = mapped_column(JSONB, nullable=False)
-    state: Mapped[Any | None] = mapped_column(JSONB)
-    turn_calls: Mapped[Any | None] = mapped_column(JSONB)
+    state: Mapped[Any | None] = mapped_column(NullableJSONB)
+    turn_calls: Mapped[Any | None] = mapped_column(NullableJSONB)
     progress_turn_call: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
     progress_seq: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
-    plan: Mapped[Any | None] = mapped_column(JSONB)
-    trace: Mapped[Any | None] = mapped_column(JSONB)
-    interim_message: Mapped[Any | None] = mapped_column(JSONB)
-    budget_used: Mapped[Any | None] = mapped_column(JSONB)
-    usage: Mapped[Any | None] = mapped_column(JSONB)
-    read_sources: Mapped[Any | None] = mapped_column(JSONB)
+    plan: Mapped[Any | None] = mapped_column(NullableJSONB)
+    trace: Mapped[Any | None] = mapped_column(NullableJSONB)
+    interim_message: Mapped[Any | None] = mapped_column(NullableJSONB)
+    budget_used: Mapped[Any | None] = mapped_column(NullableJSONB)
+    usage: Mapped[Any | None] = mapped_column(NullableJSONB)
+    read_sources: Mapped[Any | None] = mapped_column(NullableJSONB)
     error_code: Mapped[str | None] = mapped_column(String(40))
     retry_after_s: Mapped[int | None] = mapped_column(Integer)
     accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -219,7 +223,7 @@ class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     run_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     action_id: Mapped[str] = mapped_column(String(64), nullable=False)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
-    args: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    args: Mapped[Any] = mapped_column(JSON, nullable=False)
     args_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     autonomy: Mapped[str] = mapped_column(String(10), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -227,8 +231,8 @@ class ChatAction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     approved: Mapped[bool | None] = mapped_column(Boolean)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="PENDING")
-    result: Mapped[Any | None] = mapped_column(JSONB)
-    source_take_ids: Mapped[list[str] | None] = mapped_column(JSONB)
+    result: Mapped[Any | None] = mapped_column(NullableJSONB)
+    source_take_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
     undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -385,8 +389,8 @@ class ChatSummary(TimestampMixin, Base):
     covered_message_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("chat_messages.id"), nullable=False
     )
-    source_pitch_ids: Mapped[list[str] | None] = mapped_column(JSONB)
-    source_take_ids: Mapped[list[str] | None] = mapped_column(JSONB)
+    source_pitch_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
+    source_take_ids: Mapped[list[str] | None] = mapped_column(NullableJSONB)
 
 
 class ChatRunEvent(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):

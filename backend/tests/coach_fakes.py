@@ -239,7 +239,6 @@ def source(*, seconds=ONE_SECOND, events=()) -> FinalizeSource:
         ),
         utterance_ends=(500,),
         events=tuple(events),
-        raw_data_consent=False,
     )
 
 
