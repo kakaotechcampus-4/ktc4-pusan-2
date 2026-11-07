@@ -41,14 +41,16 @@ describe('ensureFirstTakePitch', () => {
 
   it('기존 샘플은 재사용하고 Take를 만들지 않는다', async () => {
     vi.mocked(fetchPitchList).mockResolvedValue({
-      pitches: [{
-        pitch_id: 'existing',
-        pitch_title: FIRST_TAKE_TITLE,
-        pitch_time: 180,
-        thumbnail_url: null,
-        takes: [],
-        can_delete: true,
-      }],
+      pitches: [
+        {
+          pitch_id: 'existing',
+          pitch_title: FIRST_TAKE_TITLE,
+          pitch_time: 180,
+          thumbnail_url: null,
+          takes: [],
+          can_delete: true,
+        },
+      ],
     });
     vi.mocked(getPitchResources).mockResolvedValue({
       pitch_id: 'existing',
@@ -72,7 +74,9 @@ describe('ensureFirstTakePitch', () => {
       script_versions: [],
       evaluation_versions: [],
     });
-    vi.mocked(createFirstTakePdf).mockResolvedValue(new File(['pdf'], 'sample.pdf', { type: 'application/pdf' }));
+    vi.mocked(createFirstTakePdf).mockResolvedValue(
+      new File(['pdf'], 'sample.pdf', { type: 'application/pdf' }),
+    );
     vi.mocked(uploadPresentation).mockResolvedValue({
       message: 'ok',
       presentation: {
@@ -95,14 +99,16 @@ describe('ensureFirstTakePitch', () => {
 
   it('대본 슬라이드 개수가 맞지 않으면 이동하지 않는다', async () => {
     vi.mocked(fetchPitchList).mockResolvedValue({
-      pitches: [{
-        pitch_id: 'existing',
-        pitch_title: FIRST_TAKE_TITLE,
-        pitch_time: 180,
-        thumbnail_url: null,
-        takes: [],
-        can_delete: true,
-      }],
+      pitches: [
+        {
+          pitch_id: 'existing',
+          pitch_title: FIRST_TAKE_TITLE,
+          pitch_time: 180,
+          thumbnail_url: null,
+          takes: [],
+          can_delete: true,
+        },
+      ],
     });
     vi.mocked(getPitchResources).mockResolvedValue({
       pitch_id: 'existing',
@@ -110,7 +116,11 @@ describe('ensureFirstTakePitch', () => {
       script_versions: [{ id: 'script-1', version: 1 }],
       evaluation_versions: [],
     });
-    vi.mocked(getScript).mockResolvedValue({ ...mapped, segmented: false, slides: mapped.slides.slice(0, 1) });
+    vi.mocked(getScript).mockResolvedValue({
+      ...mapped,
+      segmented: false,
+      slides: mapped.slides.slice(0, 1),
+    });
     await expect(ensureFirstTakePitch(vi.fn())).rejects.toThrow('5개 슬라이드');
   });
 });
