@@ -40,7 +40,7 @@ export interface EndNotice {
  * 실행이 끝났을 때 답 아래에 붙일 안내 (12-4 F8). 붙일 것이 없으면 null.
  * - 끝까지 답했거나(`DONE`) 중간까지 답했으면(`PARTIAL`, "여기까지 확인했어요" 는 메시지에서) 붙이지 않습니다.
  * - 승인 대기에서 곧바로 끝났으면 BE 가 저장한 고정 문장만 보이고 '실행 만료 · 취소' 를 함께 보이지 않습니다.
- * - 범위 밖 거절(`REFUSED`)은 BE · AI 의 고정 문장이 답이라 붙이지 않습니다. 질문 예시는 `ChatRefusedHelp` 가 붙입니다.
+ * - 범위 밖 거절(`REFUSED`)은 BE · AI 의 고정 문장이 답이라 붙이지 않습니다. 질문 예시는 `ChatAskHelp` 가 붙입니다.
  * - 꺼짐(`AGENT_DISABLED`)은 문구 없이 버튼을 숨깁니다 — 부른 쪽이 처리합니다.
  */
 export function runEndNotice(end: {

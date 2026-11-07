@@ -10,10 +10,10 @@ import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
 import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
 import {
-  REFUSED_HELP_ABILITIES,
-  REFUSED_HELP_EXAMPLES,
-  REFUSED_HELP_TITLE,
-} from './refusedHelpText';
+  ASK_HELP_ABILITIES,
+  ASK_HELP_EXAMPLES,
+  ASK_HELP_TITLE,
+} from './askHelpText';
 import { emptyBasis, readCard, type ShownClaim } from './chatResponse';
 import { chatTicket, useChatStore } from './chatStore';
 import type { TransportSignal } from './chatTransport';
@@ -1906,18 +1906,18 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
       userMsg('m3', '주식 추천해 줘', 'r1'),
       answer('m4', 'r1', 'REFUSED', ['이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요.']),
     ]);
-    const helps = [...panel()!.querySelectorAll('[data-refused-help]')];
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
     expect(helps).toHaveLength(1);
     // 마지막 거절 답(m4) 뒤에 붙고, 앞의 거절 답(m2) 뒤에는 없습니다
     const m4 = panel()!.querySelector('[data-message="m4"]')!;
     expect(m4.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(helps[0]!.textContent).toContain(REFUSED_HELP_TITLE);
-    for (const ability of REFUSED_HELP_ABILITIES) expect(helps[0]!.textContent).toContain(ability);
+    expect(helps[0]!.textContent).toContain(ASK_HELP_TITLE);
+    for (const ability of ASK_HELP_ABILITIES) expect(helps[0]!.textContent).toContain(ability);
     const examples = [...helps[0]!.querySelectorAll('button')].map(visibleText);
-    expect(examples).toEqual([...REFUSED_HELP_EXAMPLES]);
+    expect(examples).toEqual([...ASK_HELP_EXAMPLES]);
 
     await act(async () => helps[0]!.querySelector('button')!.click());
-    expect(transport().sent.map((r) => r.text)).toEqual([REFUSED_HELP_EXAMPLES[0]]);
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
   });
 
   it('거절이 아닌 답이 마지막이면 질문 예시를 붙이지 않는다', async () => {
@@ -1927,7 +1927,18 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
       userMsg('m3', '비교해 줘', 'r1'),
       answer('m4', 'r1', 'DONE', ['비교했어요.']),
     ]);
-    expect(panel()!.querySelector('[data-refused-help]')).toBeNull();
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('빈 대화에서는 첫 인사 아래에 같은 안내를 보이고, 예시를 누르면 그 질문을 보낸다', async () => {
+    await inConversation([]);
+    expect(panel()!.textContent).toContain('발표 기록과 연습에 대해 물어보세요.');
+    const help = panel()!.querySelector('[data-ask-help]')!;
+    expect(help.textContent).toContain(ASK_HELP_TITLE);
+    expect([...help.querySelectorAll('button')].map(visibleText)).toEqual([...ASK_HELP_EXAMPLES]);
+
+    await act(async () => help.querySelectorAll('button')[1]!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[1]]);
   });
 
   it.each([
