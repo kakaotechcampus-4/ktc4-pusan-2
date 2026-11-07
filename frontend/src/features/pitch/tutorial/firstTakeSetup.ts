@@ -139,6 +139,7 @@ export async function ensureFirstTakePitch(
     const file = await createFirstTakePdf();
     ensureNotAborted(signal);
     const uploaded = await uploadPresentation(pitchId, file);
+    ensureNotAborted(signal);
     if (
       uploaded.presentation.page_count !== undefined &&
       uploaded.presentation.page_count !== FIRST_TAKE_SLIDES.length
