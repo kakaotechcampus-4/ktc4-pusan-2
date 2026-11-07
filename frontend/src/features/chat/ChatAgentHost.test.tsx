@@ -277,7 +277,9 @@ const visibleText = (el: Element) => {
   return copy.textContent;
 };
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => visibleText(b) === label || b.getAttribute('aria-label') === label);
+  [...host.querySelectorAll('button')].find(
+    (b) => visibleText(b) === label || b.getAttribute('aria-label') === label,
+  );
 const sendButton = () => panel()!.querySelector<HTMLButtonElement>('button[type="submit"]')!;
 const sentMessages = () =>
   [...panel()!.querySelectorAll('p.self-end')].map((message) => message.textContent);
