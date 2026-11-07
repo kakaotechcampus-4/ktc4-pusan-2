@@ -55,14 +55,13 @@ export function HomePage() {
     setDeleting(null);
   };
   return (
-    // 넓고 높은 창(one-screen, index.css)은 한 화면에 고정합니다 — 남은 높이만 받고, 피치가 많으면 목록 안에서만 스크롤됩니다.
-    // flex-1 의 basis 0% 는 부모(min-h-dvh) 높이가 정해지지 않아 내용 높이로 풀려 basis-0 을 따로 줍니다
-    <div className="pitch-create flex flex-1 flex-col bg-greige text-ink one-screen:min-h-0 one-screen:basis-0">
+    // 상위 min-h-dvh flex 셸에서 남은 높이를 채우되, 피치가 많아지면 페이지 전체가 자연스럽게 늘어납니다.
+    <div className="pitch-create flex flex-1 flex-col bg-greige text-ink">
       <HomeSurveyNotice />
       <main
         id={MAIN_ID}
         tabIndex={-1}
-        className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 one-screen:flex one-screen:min-h-0 one-screen:flex-col lg:px-10 one-screen:pb-5"
+        className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 lg:px-10"
       >
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
@@ -133,15 +132,12 @@ export function HomePage() {
                   </div>
                 </div>
               )}
-              {/* 피치가 많으면 페이지가 아니라 이 목록 상자 안에서만 스크롤됩니다 */}
-              <section
-                aria-label="발표 목록"
-                className="mt-5 one-screen:flex one-screen:min-h-0 one-screen:flex-1 one-screen:flex-col"
-              >
+              {/* 피치 목록의 높이를 제한하지 않아 페이지 스크롤로 모든 피치를 탐색합니다. */}
+              <section aria-label="발표 목록" className="mt-5">
                 {data.pitches.length ? (
                   <ul
                     ref={listRef}
-                    className="divide-y divide-line border-2 border-ink bg-white one-screen:min-h-0 one-screen:overflow-y-auto"
+                    className="divide-y divide-line border-2 border-ink bg-white"
                   >
                     {data.pitches.map((pitch, index) => (
                       <HomePitchCard
