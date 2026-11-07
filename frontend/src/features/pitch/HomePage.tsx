@@ -135,10 +135,7 @@ export function HomePage() {
               {/* 피치 목록의 높이를 제한하지 않아 페이지 스크롤로 모든 피치를 탐색합니다. */}
               <section aria-label="발표 목록" className="mt-5">
                 {data.pitches.length ? (
-                  <ul
-                    ref={listRef}
-                    className="divide-y divide-line border-2 border-ink bg-white"
-                  >
+                  <ul ref={listRef} className="divide-y divide-line border-2 border-ink bg-white">
                     {data.pitches.map((pitch, index) => (
                       <HomePitchCard
                         key={pitch.pitch_id}
