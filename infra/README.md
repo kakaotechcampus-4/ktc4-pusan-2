@@ -69,9 +69,9 @@ develop/main branch에 push를 할 때 해당 과정이 진행됩니다.
     docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
     ```
 * main branch(운영 사이트)의 경우
-    1. 각각의 컨테이너 정보가 담겨있는 docker-compose.yml과 운영 사이트의 정보가 담겨있는 docker-compose.prod.yml을 동시에 엮어 실행합니다.
+    1. 각각의 컨테이너 정보가 담겨있는 docker-compose.yml과 운영 사이트의 정보가 담겨있는 docker-compose.release.yml을 동시에 엮어 실행합니다.
     ```
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+    docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
     ```
 
 ## 주의사항
