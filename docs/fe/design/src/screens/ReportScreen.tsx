@@ -74,14 +74,14 @@ function ComparisonSummary() {
           );
         }))}
       </div>
-      <button ref={openerRef} type="button" onClick={() => setOpen(true)} className="mt-5 min-h-11 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream">슬라이드별 상세 비교표 보기</button>
+      <button ref={openerRef} type="button" onClick={() => setOpen(true)} className="mt-5 min-h-11 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep">슬라이드별 상세 비교표 보기</button>
       <dialog ref={dialogRef} aria-labelledby="comparison-detail-title"
         onClose={() => { setOpen(false); openerRef.current?.focus(); }}
         onCancel={() => setOpen(false)}
         className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div><h2 id="comparison-detail-title" className="text-lg font-bold">지난 Take 상세 비교</h2><p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p></div>
-          <button type="button" onClick={() => setOpen(false)} aria-label="상세 비교 닫기" className="min-h-11 border-2 border-ink px-4 font-bold">닫기</button>
+          <button type="button" onClick={() => setOpen(false)} aria-label="상세 비교 닫기" className="min-h-11 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep">닫기</button>
         </div>
               {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
               <div className="grid gap-4 lg:grid-cols-2">
@@ -133,7 +133,6 @@ function ComparisonSummary() {
                     </table>
                   </section>
                 ))}
-              </div>
       </dialog>
     </Card>
   );
