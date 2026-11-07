@@ -387,3 +387,45 @@ it('서버가 이미 없다고(404) 하면 지운 것으로 보고, 확인 창�
   expect(client.getQueryData(takeSurveyKeys.state('t2'))).toBeUndefined();
   expect(client.getQueryData(['takes', 't3', 'report'])).toEqual({ keep: true });
 });
+
+it.each([0, 1, 15])(
+  '홈 피치 %i개여도 목록 안에 별도 스크롤을 만들지 않고 푸터를 유지한다',
+  async (pitchCount) => {
+    list = {
+      pitches: Array.from({ length: pitchCount }, (_, index) =>
+        pitch(`p${index}`, `발표 ${index + 1}`),
+      ),
+    };
+    await render();
+
+    const shell = host.querySelector<HTMLElement>('.pitch-create')!;
+    const main = shell.querySelector<HTMLElement>('main')!;
+    const section = main.querySelector<HTMLElement>('section[aria-label="발표 목록"]')!;
+    const pitchList = section.querySelector<HTMLUListElement>('ul');
+
+    // 상위 min-h-dvh 셸의 남은 높이는 채우고, 피치가 많으면 문서 높이가 늘어납니다.
+    expect(shell.classList.contains('flex-1')).toBe(true);
+    expect(main.classList.contains('flex-1')).toBe(true);
+    for (const element of [shell, main, section, pitchList]) {
+      if (!element) continue;
+      expect(element.className).not.toMatch(/one-screen:|overflow-y-auto|min-h-0|basis-0/);
+    }
+    expect(section.querySelectorAll('li[data-pitch-id]')).toHaveLength(pitchCount);
+    expect(pitchList === null).toBe(pitchCount === 0);
+    expect(main.nextElementSibling?.tagName).toBe('FOOTER');
+  },
+);
+
+it('피치 삭제 후에도 목록은 콘텐츠 높이에 따라 줄고 푸터가 남는다', async () => {
+  list = { pitches: [pitch('p1', '첫 발표'), pitch('p2', '두 번째 발표')] };
+  await render();
+
+  await openDialog('두 번째 발표');
+  await click(dialogButton('삭제'));
+  await flush();
+
+  const section = host.querySelector<HTMLElement>('section[aria-label="발표 목록"]')!;
+  expect(section.querySelectorAll('li[data-pitch-id]')).toHaveLength(1);
+  expect(section.querySelector('ul')?.className).not.toMatch(/overflow-y-auto|one-screen:/);
+  expect(host.querySelector('footer')).not.toBeNull();
+});
