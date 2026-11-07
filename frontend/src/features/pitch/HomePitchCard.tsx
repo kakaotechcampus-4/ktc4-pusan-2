@@ -2,7 +2,6 @@ import { duration } from './homeFormat';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ButtonLink } from '@/shared/ui/Button';
-import { hasActiveTake } from '@/shared/api/pitch';
 import type { HomePitch } from '@/types/home';
 import { PitchMoreMenu } from './PitchMoreMenu';
 
@@ -91,9 +90,7 @@ export function HomePitchCard({
       {pitch.pitch_id && onDelete && (
         <PitchMoreMenu
           pitchTitle={pitch.pitch_title}
-          blockedReason={
-            hasActiveTake(pitch.takes) ? '연습이나 분석이 끝난 뒤 지울 수 있어요.' : null
-          }
+          blockedReason={pitch.can_delete ? null : '연습이나 분석이 끝난 뒤 지울 수 있어요.'}
           onDelete={() => onDelete(pitch)}
         />
       )}
