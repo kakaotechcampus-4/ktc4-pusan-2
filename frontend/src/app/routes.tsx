@@ -6,6 +6,7 @@ import {
   SttDevPage,
   PolicyPage,
   DeviceCheckPage,
+  FirstTakePage,
   PitchCreatePage,
   PitchEditPage,
   RehearsalPage,
@@ -49,6 +50,7 @@ const routes = [
   { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <AboutPage /> },
   { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <HomePage /> },
   { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <PitchCreatePage /> },
+  { path: '/pitch/tutorial', title: '첫 번째 Take 체험 | 피치코치', element: <FirstTakePage /> },
   { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <PitchEditPage /> },
   { path: '/takes',       title: 'Take 기록 | 피치코치', element: <TakesPage /> },
   // ★ Take는 준비 화면의 시작 CTA에서 생긴다.
@@ -110,6 +112,7 @@ const appHeaderPaths = [
   '/me',
   '/takes/:takeId/retry',
   '/pitch/new',
+  '/pitch/tutorial',
   '/pitch/:id/edit',
   '/pitch/:pitchId/device-check',
 ];
