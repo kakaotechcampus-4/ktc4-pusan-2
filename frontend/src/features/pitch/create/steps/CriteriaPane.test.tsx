@@ -6,7 +6,7 @@ import { CriteriaPane } from './CriteriaPane';
 
 /** 서버 렌더링에서는 Zustand의 초기 스냅샷이 사용되므로 화면 테스트에서는 작성 상태를 고정합니다. */
 vi.mock('../createStore', () => {
-  const state = {
+  const mockStore = {
     draftId: 'test-draft',
     pitchId: 'test-pitch',
     criteriaSourceEdits: {},
@@ -16,7 +16,7 @@ vi.mock('../createStore', () => {
     applyParsedCriteria: () => {},
   };
   return {
-    useCreateStore: (selector: (state: typeof state) => unknown) => selector(state),
+    useCreateStore: (selector: (snapshot: typeof mockStore) => unknown) => selector(mockStore),
     isCurrentDraft: () => true,
   };
 });
