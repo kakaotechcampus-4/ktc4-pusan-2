@@ -29,7 +29,7 @@ function renderCriteria(criteria: CriteriaVersion | null = null): string {
   );
 }
 
-it('지원되는 측정 영역 8개와 대본 사용 설정을 읽기 전용 안내 칩으로 표시한다', () => {
+it('지원되는 측정 영역 8개만 읽기 전용 안내 칩으로 표시한다', () => {
   const html = renderCriteria();
   const measurable = [
     '말 속도',
@@ -47,8 +47,8 @@ it('지원되는 측정 영역 8개와 대본 사용 설정을 읽기 전용 안
   }
   expect(html.match(/<li class="rounded-full/g)).toHaveLength(8);
   expect(html).toContain('aria-label="측정 가능한 항목"');
-  expect(html).toContain('추가 설정');
-  expect(html).toContain('대본 사용 허용');
+  expect(html).not.toContain('추가 설정');
+  expect(html).not.toContain('대본 사용 허용');
   expect(html).toContain('발표 시간은 발표정보에서 설정해 주세요.');
   expect(html).toContain('예: 군더더기 말은 5회 이하로 줄이고 싶어요.');
   expect(html).not.toContain('시장 규모와 출처');
