@@ -173,7 +173,7 @@ function ChatSessionView({
       // data-chat-launcher: 장치 점검이 런처 자리만큼 오른쪽 여백을 넓히는 표시입니다 (index.css)
       data-chat-launcher=""
       style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
-      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
+      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] left-4 z-[70] text-ink"
     >
       {open && (
         <ChatPanel
@@ -447,7 +447,7 @@ function ChatPanel({
   };
 
   return (
-    // 패널은 런처 위 오른쪽에 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
+    // 패널은 런처 위 왼쪽에 정렬해 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
     // 4.25rem = 런처 높이 2.75rem + 위아래 간격 0.75rem 둘.
     // 낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
     // 머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성")
@@ -465,7 +465,7 @@ function ChatPanel({
           onClose();
         }
       }}
-      className="absolute bottom-full right-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-[3px] border-ink bg-white shadow-[6px_6px_0_var(--color-ink),0_18px_36px_rgba(42,39,35,0.2)]"
+      className="absolute bottom-full left-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-[3px] border-ink bg-white shadow-[6px_6px_0_var(--color-ink),0_18px_36px_rgba(42,39,35,0.2)]"
     >
       <ChatPanelHeader
         titleId={`${id}-title`}
