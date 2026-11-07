@@ -88,6 +88,15 @@ class Settings(BaseSettings):
     # 코치 대화(대화 에이전트) 끄기 스위치. AI 서비스에 /agent/turn 이 올라가기 전에는 꺼 둔다.
     # 꺼져 있으면 대화 API 가 AGENT_DISABLED(503)를 돌려주고 FE 는 버튼을 숨긴다
     agent_enabled: bool = False
+    # 대화 AI 요청의 프로세스별 자리 수(core/ai_slots.py `chat`). 프로세스마다 이 값을 그대로 쓴다.
+    # 2 이상이고 프로세스 수 × 이 값이 전체 상한 이하여야 한다. 어기면 대화 기능만 꺼진다
+    # (chat-agent.md L2-13). 값 검사는 core/ai_slots.py `chat_slots_problem` 한 곳에서 한다
+    chat_ai_slots_per_process: int = 4
+    # 승인된 대화 자리 전체 상한. 4 로 시작하고 부하 시험을 통과하면 8 까지 올린다
+    chat_ai_slots_total: int = 4
+    # BE 프로세스 수. uvicorn 은 --workers 가 없으면 같은 환경 변수로 워커 수를 정한다.
+    # 지금은 워커 하나로 띄운다 (README '운영 전제')
+    web_concurrency: int = 1
 
     # AWS S3 Configuration
     # SSO로 로그인, 그래서 따로 액세스&시크릿 키를 발급받지 않아도 됨.
