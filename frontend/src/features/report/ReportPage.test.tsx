@@ -82,7 +82,9 @@ it('shows the previous Take comparison immediately after the summary and before 
   const comparison = summary.nextElementSibling!;
   expect(comparison.querySelector('h2')?.textContent).toBe('지난 Take와 비교');
   expect(comparison.nextElementSibling?.getAttribute('aria-label')).toBe('측정값');
-  expect([...main.querySelectorAll('h2')].filter((heading) => !heading.closest('dialog'))).toHaveLength(8);
+  expect([...main.querySelectorAll('h2')].filter((heading) => !heading.closest('dialog'))).toHaveLength(
+    8,
+  );
 });
 
 it('shows the script modes in Korean when the two Takes used different ones', async () => {
@@ -141,7 +143,9 @@ it('shows 같음, not 나빠짐, when the visible values are equal even if impro
 });
 
 async function openComparisonDetail() {
-  const button = [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('슬라이드별 상세 비교표 보기'))!;
+  const button = [...host.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('슬라이드별 상세 비교표 보기'),
+  )!;
   await act(async () => button.click());
 }
 
@@ -207,8 +211,22 @@ it('shows per-metric improved and worsened slides before opening details', async
   query.data!.review = {
     ...reviewFixture,
     comparison: [
-      { metric: 'audience_ratio', slide_number: 2, previous: 0.3, current: 0.5, improved: true, script_mode: null },
-      { metric: 'audience_ratio', slide_number: 3, previous: 0.6, current: 0.4, improved: false, script_mode: null },
+      {
+        metric: 'audience_ratio',
+        slide_number: 2,
+        previous: 0.3,
+        current: 0.5,
+        improved: true,
+        script_mode: null,
+      },
+      {
+        metric: 'audience_ratio',
+        slide_number: 3,
+        previous: 0.6,
+        current: 0.4,
+        improved: false,
+        script_mode: null,
+      },
     ],
   };
   await render();
@@ -243,7 +261,9 @@ it('restores focus to the detail trigger after closing the dialog', async () => 
   const trigger = [...host.querySelectorAll('button')].find((button) =>
     button.textContent?.includes('슬라이드별 상세 비교표 보기'),
   )!;
-  const closeButton = host.querySelector<HTMLButtonElement>('dialog button[aria-label="상세 비교 닫기"]')!;
+  const closeButton = host.querySelector<HTMLButtonElement>(
+    'dialog button[aria-label="상세 비교 닫기"]',
+  )!;
   await act(async () => closeButton.click());
   expect(host.querySelector('dialog[open]')).toBeNull();
   expect(document.activeElement).toBe(trigger);
