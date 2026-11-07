@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import deactivate_goals_without_base
-from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
+from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT, run_source_ids
 
 CLEANUP_LEASE = timedelta(hours=1)
 ALERT_AFTER = timedelta(hours=2)
@@ -89,9 +89,10 @@ def _mask_runs(repo: ChatRepository) -> int:
     masked = 0
     for run in repo.list_finished_runs_with_content():
         actions = repo.list_actions(run.id)
-        read = run.read_sources or {}
-        take_ids = {*read.get("takes", []), *(t for a in actions for t in a.source_take_ids or [])}
-        if not _deleted_ids(repo, set(read.get("pitches", [])), take_ids):
+        pitch_ids, take_ids = run_source_ids(
+            run.read_sources, (action.source_take_ids for action in actions)
+        )
+        if not _deleted_ids(repo, pitch_ids, take_ids):
             continue
         run.state = None
         run.interim_message = None

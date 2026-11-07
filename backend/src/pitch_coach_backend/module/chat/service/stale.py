@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -17,6 +18,22 @@ def sources_of(groups: Any) -> tuple[set[str], set[str]]:
         take_ids.update(take.get("take_id") for take in group.get("takes") or [])
     pitch_ids.discard(None)
     take_ids.discard(None)
+    return pitch_ids, take_ids
+
+
+def run_source_ids(
+    read_sources: Any, action_take_ids: Iterable[Iterable[Any] | None]
+) -> tuple[set[Any], set[Any]]:
+    """실행이 읽은 피치 · Take ID. 실행에 적힌 읽은 근거에 행동이 근거로 쓴 Take 를 더한다.
+
+    실행 조회가 진행을 가릴 때와 정리 작업이 실행을 비울 때 같은 근거를 보게 한다(12-2 ①).
+    """
+    read = read_sources if isinstance(read_sources, dict) else {}
+    pitch_ids = set(read.get("pitches") or [])
+    take_ids = {
+        *(read.get("takes") or []),
+        *(take_id for ids in action_take_ids for take_id in ids or []),
+    }
     return pitch_ids, take_ids
 
 

@@ -145,13 +145,23 @@ def deactivate_goals_without_base(db: Session) -> int:
     return deactivated
 
 
-def settle_goal_check(
-    repo: ChatRepository, row: ChatRun, conversation: ChatConversation, result: dict[str, Any]
-) -> bool:
+def close_goal_lease(repo: ChatRepository, row: ChatRun) -> bool:
+    """이 실행이 쥔 자동 목표 확인 임대를 DONE 으로 닫는다. 쥔 임대가 아니면 False.
+
+    실행 → 임대 순서로 잠근다. 부르는 쪽이 실행 행을 먼저 잠가 둔다.
+    """
     lease = repo.lock_goal_check(row.id)
     if lease is None or lease.status != "PENDING" or lease.fencing_token != row.fencing_token:
         return False
     lease.status = "DONE"
+    return True
+
+
+def settle_goal_check(
+    repo: ChatRepository, row: ChatRun, conversation: ChatConversation, result: dict[str, Any]
+) -> bool:
+    if not close_goal_lease(repo, row):
+        return False
     event = row.input["review_event"]
     goal = repo.get_goal(conversation.id, event["goal_version"])
     if (

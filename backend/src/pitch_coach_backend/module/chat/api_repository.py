@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
-    ChatDailyUsage,
     ChatGoal,
     ChatMemorySetting,
     ChatMessage,
@@ -19,6 +18,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
     ChatRunEvent,
 )
+from pitch_coach_backend.module.chat.repository import charge_daily
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take
 
@@ -227,17 +227,7 @@ class ChatApiRepository:
 
     def charge_turn(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
         """사용자 하루 턴을 1 선점한다. 한도에 닿았으면 늘리지 않고 False."""
-        stmt = (
-            insert(ChatDailyUsage)
-            .values(id=uuid.uuid7(), user_id=user_id, day=day, turns=1)
-            .on_conflict_do_update(
-                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
-                set_={"turns": ChatDailyUsage.turns + 1},
-                where=ChatDailyUsage.turns < limit,
-            )
-            .returning(ChatDailyUsage.id)
-        )
-        return self.db.scalar(stmt) is not None
+        return charge_daily(self.db, "turns", user_id, day, limit)
 
     def memory_enabled(self, user_id: uuid.UUID) -> bool | None:
         """기억 설정 값. 설정 행이 없으면 None 이다."""
