@@ -91,19 +91,16 @@ afterEach(async () => {
   }
 });
 
-it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대기로 이동한다', async () => {
-  await render();
-  await click('다음 · 대본 →');
-  expect(host.textContent).toContain('대본 입력');
-  await click('대본 매핑');
-  expect(host.textContent).toContain('목표 발표시간');
-  await click('다음 →');
-  // 저장한 평가기준이 없으면 "연습 시작"은 막히고 "건너뛰기"로 시작한다
-  expect(button('연습 시작 →')?.disabled).toBe(true);
-  await click('건너뛰기');
+it('단일 페이지 피치 생성의 최종 확인부터 세팅·무대 종료·분석 대기로 이동한다', async () => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  await render('pitch-create', 'ready');
+  await click('최종 확인 →');
+  expect(host.querySelector('dialog')?.textContent).toContain('발표 준비 최종 확인');
+  await click('확인하고 시작 전 점검 →');
   await click('Take 3 시작하기');
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('HIGHLIGHT');
-  // 마지막 장이 아니면 끝낼 수 없다(#697)
   expect(button('발표 끝내기')?.disabled).toBe(true);
   expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
   expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
@@ -166,12 +163,18 @@ it('카메라 · 마이크 · 시선 기준이 모두 돼야 시작할 수 있�
   expect(host.textContent).toContain('마이크에 대고 한 마디 해보세요');
 });
 
-it('슬라이드가 없을 때는 다음 단계 버튼이 없고 샘플 파일 선택 뒤 진행할 수 있다', async () => {
+it('제품과 같이 단일 페이지에서 네 영역을 보여주고 PDF 선택 후 확인 창을 연다', async () => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
   await render('pitch-create', 'empty');
-  expect(button('다음 · 대본 →')).toBeUndefined();
+  expect(host.querySelector('nav[aria-label="준비 순서"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="슬라이드"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="대본 연결"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="발표정보"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="평가기준 (선택)"]')).toBeTruthy();
   await click('PDF 파일 선택');
-  await click('다음 · 대본 →');
-  expect(host.textContent).toContain('대본 입력');
+  expect(host.querySelector('dialog')?.textContent).toContain('슬라이드 확인');
 });
 
 it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 확인에서도 유지한다', async () => {
@@ -195,16 +198,20 @@ it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 
   expect(host.textContent).toContain('분석 중');
 });
 
-it('개별 보기에서는 슬라이드 미리보기를 페이지를 막는 창으로 열고, 닫으면 생성 화면으로 돌아간다', async () => {
+it('개별 보기에서 최신 슬라이드 확인 창을 모달로 열고 닫는다', async () => {
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
     this.open = true;
   };
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
+  };
   await render();
-  await click('슬라이드 크게 보기');
+  await click('슬라이드 확인');
   expect(host.querySelector('dialog')?.open).toBe(true);
   await click('닫기');
   expect(host.querySelector('dialog')).toBeNull();
-  expect(host.textContent).toContain('슬라이드 크게 보기');
+  expect(host.textContent).toContain('슬라이드 확인');
 });
 
 it('전체 보기(inline)에서는 창을 페이지를 막지 않게 그 자리에 연다', async () => {
@@ -254,6 +261,23 @@ it('제품 링크 · 옛 시안 주소를 설계서 안에서 처리하고 가�
   await act(async () => anchor.click());
   expect(navigate).toHaveBeenCalledTimes(2);
   expect(host.textContent).toContain('연결하지 않은 화면');
+});
+
+it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한다', async () => {
+  await render('home');
+  const link = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '개인정보 처리방침',
+  );
+  expect(link).toBeDefined();
+  await act(async () => link!.click());
+  expect(host.textContent).toContain('검토용 초안 · 시행 전');
+  expect(host.textContent).toContain('카메라 영상과 음성의 차이');
+  const terms = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '이용약관',
+  );
+  expect(terms).toBeDefined();
+  await act(async () => terms!.click());
+  expect(host.textContent).toContain('서비스의 목적');
 });
 
 it('제품 문구대로 그린다: 재시도의 서버 종료, 리포트의 지표 이름', async () => {
