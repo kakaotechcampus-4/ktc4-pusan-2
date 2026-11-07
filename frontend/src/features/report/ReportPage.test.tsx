@@ -69,7 +69,7 @@ it('shows the previous Take comparison immediately after the summary and before 
   const comparison = summary.nextElementSibling!;
   expect(comparison.querySelector('h2')?.textContent).toBe('지난 Take와 비교');
   expect(comparison.nextElementSibling?.getAttribute('aria-label')).toBe('측정값');
-  expect(main.querySelectorAll('h2')).toHaveLength(8);
+  expect([...main.querySelectorAll('h2')].filter((heading) => !heading.closest('dialog'))).toHaveLength(8);
 });
 
 it('shows the script modes in Korean when the two Takes used different ones', async () => {
