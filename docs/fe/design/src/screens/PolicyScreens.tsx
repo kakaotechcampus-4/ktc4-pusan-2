@@ -84,10 +84,18 @@ export function PolicyScreen({ kind }: { kind: 'terms' | 'privacy' }) {
           </p>
         </div>
         <nav aria-label="정책 문서" className="mb-8 flex gap-6 text-sm">
-          <Link to="/terms" aria-current={kind === 'terms' ? 'page' : undefined} className="underline">
+          <Link
+            to="/terms"
+            aria-current={kind === 'terms' ? 'page' : undefined}
+            className="underline"
+          >
             이용약관
           </Link>
-          <Link to="/privacy" aria-current={kind === 'privacy' ? 'page' : undefined} className="underline">
+          <Link
+            to="/privacy"
+            aria-current={kind === 'privacy' ? 'page' : undefined}
+            className="underline"
+          >
             개인정보 처리방침
           </Link>
         </nav>
