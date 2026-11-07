@@ -208,6 +208,22 @@ it('shows per-metric improved and worsened slides before opening details', async
   expect(host.querySelector('dialog table')).not.toBeNull();
 });
 
+it('restores focus after cancelling the detail dialog with Escape', async () => {
+  await render();
+  await openComparisonDetail();
+  const dialog = host.querySelector('dialog')!;
+  const trigger = [...host.querySelectorAll('button')].find((button) =>
+    button.textContent?.includes('슬라이드별 상세 비교표 보기'),
+  )!;
+  await act(async () => {
+    const cancel = new Event('cancel', { cancelable: true });
+    dialog.dispatchEvent(cancel);
+    if (!cancel.defaultPrevented) dialog.close();
+  });
+  expect(dialog.hasAttribute('open')).toBe(false);
+  expect(document.activeElement).toBe(trigger);
+});
+
 it('restores focus to the detail trigger after closing the dialog', async () => {
   await render();
   await openComparisonDetail();
