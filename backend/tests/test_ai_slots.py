@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from pitch_coach_backend.core import ai_slots
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.adapter.script_rubric import RUBRIC_PATH, HttpRubricClient
 from pitch_coach_backend.module.pitch.dto import RubricTicket
 from pitch_coach_backend.module.pitch.service.script_rubric_runner import ScriptRubricRunner
@@ -128,8 +129,15 @@ async def test_rubric_waiting_for_its_slot_leaves_the_total_to_others() -> None:
     assert held == 3
 
 
+async def test_chat_slots_follow_the_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "chat_ai_slots_per_process", 3)
+
+    assert ai_slots.chat()._value == 3
+
+
 async def test_reassess_takes_two_chat_slots_at_once_apart_from_background() -> None:
     # 대화 자리는 백그라운드 자리와 따로 센다. 다시 평가는 두 자리가 한꺼번에 빌 때까지 기다린다
+    limit = settings.chat_ai_slots_per_process
     chat = ai_slots.chat()
     pair_held = asyncio.Event()
 
@@ -137,7 +145,7 @@ async def test_reassess_takes_two_chat_slots_at_once_apart_from_background() -> 
         async with ai_slots.chat_pair():
             pair_held.set()
 
-    for _ in range(ai_slots.CHAT_LIMIT - 1):
+    for _ in range(limit - 1):
         await chat.acquire()
     waiting = asyncio.create_task(reassess())
     await asyncio.sleep(0.01)
@@ -149,9 +157,9 @@ async def test_reassess_takes_two_chat_slots_at_once_apart_from_background() -> 
     async with asyncio.timeout(1):
         await waiting
     assert pair_held.is_set()
-    for _ in range(ai_slots.CHAT_LIMIT - 2):
+    for _ in range(limit - 2):
         chat.release()
-    assert chat._value == ai_slots.CHAT_LIMIT
+    assert chat._value == limit
 
 
 async def test_time_waiting_for_a_slot_is_not_an_attempt_timeout() -> None:

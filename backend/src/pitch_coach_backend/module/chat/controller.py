@@ -11,7 +11,6 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.core.validation import NulFreeStr
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
@@ -33,6 +32,7 @@ from pitch_coach_backend.module.chat.api_dto import (
     RunStatusResponse,
     SendMessageRequest,
 )
+from pitch_coach_backend.module.chat.availability import chat_enabled
 from pitch_coach_backend.module.chat.exception import ChatDisabled
 from pitch_coach_backend.module.chat.service.accept import accept_message
 from pitch_coach_backend.module.chat.service.approval import decide_action
@@ -61,7 +61,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 def _require_enabled() -> None:
-    if not settings.agent_enabled:
+    if not chat_enabled():
         raise ChatDisabled()
 
 
@@ -81,10 +81,10 @@ async def _stop_turn(run_id: uuid.UUID) -> None:
     turn_runner.cancel(run_id)
 
 
-# 버튼을 보일지. 스위치 값만 본다. 꺼져 있어도 503 이 아니라 enabled:false 로 답한다
+# 버튼을 보일지. 스위치와 대화 자리 설정만 본다. 꺼져 있어도 503 이 아니라 enabled:false 로 답한다
 @router.get("/availability", response_model=AvailabilityResponse)
 def get_availability(current_user: CurrentUser) -> AvailabilityResponse:
-    return AvailabilityResponse(enabled=settings.agent_enabled)
+    return AvailabilityResponse(enabled=chat_enabled())
 
 
 @router.post(
