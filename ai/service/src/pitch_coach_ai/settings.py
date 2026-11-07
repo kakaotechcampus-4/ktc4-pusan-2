@@ -99,6 +99,11 @@ LLM_ROLES: dict[str, LlmRole] = {
     # 평가 기준 분석: 잰 최대 출력 720토큰 × 2 를 1,024 단위로 올림(최소 2,048).
     # 호출 한 번은 LLM_TIMEOUT_SECONDS (평가 기준 기능 문서 8절)
     "evaluation_criteria": LlmRole(bundle="default", max_output_tokens=2048),
+    # 대화 에이전트: 도구 호출 함수(`common/llm.py` 의 `tool_llm`)만 쓴다.
+    # 출력 상한은 실행 출력 예약을 호출 수로 나눈 2,000, 추론 low 는 연구 모듈 5회차 평가에서
+    # 고른 값(대화 기능 문서 6-11 · 15-3). 도구 모드(조사)는 게이트웨이 제약으로 추론을 보내지
+    # 않는다(none). 호출 한 번은 LLM_TIMEOUT_SECONDS
+    "chat_agent": LlmRole(bundle="default", max_output_tokens=2000, reasoning_effort="low"),
 }
 
 
