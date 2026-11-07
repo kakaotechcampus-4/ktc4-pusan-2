@@ -183,39 +183,35 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
         )}
       </div>
       <footer className="border-t border-line-strong">
-        <div className="mx-auto w-full max-w-page px-6 lg:px-10">
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line-strong py-3 text-sm">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
-              <p aria-live="off" className="min-w-0">
-                {HOME_TIPS[tipIndex]}
-              </p>
-              <button
-                type="button"
-                onClick={() => setTipPaused((current) => !current)}
-                aria-pressed={tipPaused}
-                aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
-                className="min-h-9 px-1 text-xs text-ink/70 underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-              >
-                {tipPaused ? '재개' : '일시정지'}
-              </button>
-            </div>
+        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 md:flex-nowrap lg:px-10">
+          <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
+            <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
+            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
+              {HOME_TIPS[tipIndex]}
+            </p>
             <button
               type="button"
-              onClick={() => setHelpOpen(true)}
-              className="min-h-9 text-ink/80 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              onClick={() => setTipPaused((current) => !current)}
+              aria-pressed={tipPaused}
+              aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
+              className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
-              사용방법 살펴보기
+              {tipPaused ? '재개' : '일시정지'}
             </button>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 py-4 text-xs text-ink/80">
-            <span className="font-mono tracking-widest">
-              PITCH COACH · ONE TAKE AT A TIME.
-            </span>
-            <div className="flex flex-wrap gap-5">
-              <span>이용약관</span>
-              <span>개인정보 처리방침</span>
-            </div>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="min-h-9 shrink-0 whitespace-nowrap hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            사용방법 살펴보기
+          </button>
+          <span className="hidden shrink-0 whitespace-nowrap font-mono tracking-widest 2xl:inline">
+            PITCH COACH · ONE TAKE AT A TIME.
+          </span>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="whitespace-nowrap">이용약관</span>
+            <span className="whitespace-nowrap">개인정보 처리방침</span>
           </div>
         </div>
       </footer>
