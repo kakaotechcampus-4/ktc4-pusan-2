@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:lan": "vite --mode lan --host",
     "format": "prettier --write .",
-    "format:check": "prettier --write src/features/onboarding/WelcomePage.tsx && node -e 'const fs=require(\"node:fs\");for(const f of [\"src/features/onboarding/WelcomePage.tsx\"])console.log(\"FMTFILE:\"+f+\":\"+fs.readFileSync(f).toString(\"base64\"))' && true",
+    "format:check": "prettier --check .",
     "doctor": "node scripts/doctor.mjs",
     "models": "node scripts/models.mjs"
   },
