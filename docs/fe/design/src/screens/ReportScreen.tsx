@@ -1,5 +1,5 @@
 // 제품 Take 리포트(`frontend/src/features/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/ui/Button';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { Card, Stat } from '@/ui/Panel';
@@ -40,49 +40,49 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
   },
 ];
 
-export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
-  const noGaze = stateId === 'no-gaze';
-  const noReview = stateId === 'no-review';
-  const surveySent = stateId === 'survey-sent';
-  const ready = stateId === 'default' || noGaze || noReview || surveySent;
+function ComparisonSummary() {
+  const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
   return (
-    <Frame title="발표 리포트" meta="10월 28일 오후 3:12">
-      {stateId === 'loading' && (
-        <p role="status" className="border-2 border-ink bg-panel p-8 text-center text-stone">
-          연습 기록을 불러오는 중이에요.
-        </p>
-      )}
-      {stateId === 'error' && (
-        <div role="alert" className="border-2 border-ink bg-panel p-8 text-center">
-          <p className="font-bold">연습 기록을 불러오지 못했어요.</p>
-          <p className="mt-2 text-sm text-stone">잠시 후 다시 시도해 주세요.</p>
-          <div className="mt-5 flex justify-center">
-            <Button variant="secondary" onClick={() => onNavigate('home')}>
-              홈으로
-            </Button>
-          </div>
+    <Card title="지난 Take와 비교">
+      <p className="mb-4 text-sm text-ink/80">지표별로 지난 연습보다 달라진 슬라이드를 모았어요.</p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {COMPARISON.flatMap((group) => group.columns.map((metric, index) => {
+          const slides = group.rows.filter((row) => row[0] !== '발표 전체' && row[index + 1]);
+          const improved = slides.filter((row) => row[index + 1]?.[3] === 'good').map((row) => row[0]);
+          const worsened = slides.filter((row) => row[index + 1]?.[3] === 'bad').map((row) => row[0]);
+          const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
+          const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 없음').length;
+          const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
+          return (
+            <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
+              <h3 className="font-bold">{metric}</h3>
+              {slides.length ? <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-cream p-3"><p className="font-bold">나아진 슬라이드</p><p className="mt-1">{improved.join(', ') || '없음'}</p></div>
+                <div className="bg-panel p-3"><p className="font-bold">나빠진 슬라이드</p><p className="mt-1">{worsened.join(', ') || '없음'}</p></div>
+              </div> : <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 데이터가 없어요.</p>}
+              {(same > 0 || unknown > 0) && <p className="mt-2 text-xs text-ink/80">{same > 0 ? `변화 없음 ${same}개` : ''}{unknown > 0 ? ` · 방향 판단 불가 ${unknown}개` : ''}</p>}
+              {overall && <p className="mt-2 text-xs text-ink/80">발표 전체: {overall[0]} → {overall[1]} · {overall[2]}</p>}
+            </section>
+          );
+        }))}
+      </div>
+      <button ref={openerRef} type="button" onClick={() => setOpen(true)} className="mt-5 min-h-11 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream">슬라이드별 상세 비교표 보기</button>
+      <dialog ref={dialogRef} aria-labelledby="comparison-detail-title"
+        onClose={() => { setOpen(false); openerRef.current?.focus(); }}
+        onCancel={() => setOpen(false)}
+        className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div><h2 id="comparison-detail-title" className="text-lg font-bold">지난 Take 상세 비교</h2><p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p></div>
+          <button type="button" onClick={() => setOpen(false)} aria-label="상세 비교 닫기" className="min-h-11 border-2 border-ink px-4 font-bold">닫기</button>
         </div>
-      )}
-      {ready && (
-        <>
-          <p className="border-b border-line pb-4 font-bold">
-            {PITCH} <span className="mx-2 text-line-strong">/</span> TAKE 2
-          </p>
-          <section className="flex items-center gap-5 border-2 border-ink bg-panel p-6 shadow-[4px_4px_0_var(--color-line)] sm:p-8">
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-ink/80">피코의 코칭 노트</p>
-              <p role="status" className="mt-3 max-w-3xl text-xl font-bold leading-relaxed">
-                {noReview
-                  ? '이번 Take는 총평을 만들지 못했어요. 측정값은 그대로 확인할 수 있어요.'
-                  : '흐름은 차분했어요. 다음에는 문장 끝에서 청중을 바라보는 시간을 늘려 보세요.'}
-              </p>
-            </div>
-          </section>
-          {!noReview && (
-            <Card
-              title="지난 Take와 비교"
-              action={<p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>}
-            >
               {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
               <div className="grid gap-4 lg:grid-cols-2">
                 {COMPARISON.map((g) => (
@@ -134,8 +134,50 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
                   </section>
                 ))}
               </div>
-            </Card>
-          )}
+      </dialog>
+    </Card>
+  );
+}
+
+export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
+  const noGaze = stateId === 'no-gaze';
+  const noReview = stateId === 'no-review';
+  const surveySent = stateId === 'survey-sent';
+  const ready = stateId === 'default' || noGaze || noReview || surveySent;
+  return (
+    <Frame title="발표 리포트" meta="10월 28일 오후 3:12">
+      {stateId === 'loading' && (
+        <p role="status" className="border-2 border-ink bg-panel p-8 text-center text-stone">
+          연습 기록을 불러오는 중이에요.
+        </p>
+      )}
+      {stateId === 'error' && (
+        <div role="alert" className="border-2 border-ink bg-panel p-8 text-center">
+          <p className="font-bold">연습 기록을 불러오지 못했어요.</p>
+          <p className="mt-2 text-sm text-stone">잠시 후 다시 시도해 주세요.</p>
+          <div className="mt-5 flex justify-center">
+            <Button variant="secondary" onClick={() => onNavigate('home')}>
+              홈으로
+            </Button>
+          </div>
+        </div>
+      )}
+      {ready && (
+        <>
+          <p className="border-b border-line pb-4 font-bold">
+            {PITCH} <span className="mx-2 text-line-strong">/</span> TAKE 2
+          </p>
+          <section className="flex items-center gap-5 border-2 border-ink bg-panel p-6 shadow-[4px_4px_0_var(--color-line)] sm:p-8">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-ink/80">피코의 코칭 노트</p>
+              <p role="status" className="mt-3 max-w-3xl text-xl font-bold leading-relaxed">
+                {noReview
+                  ? '이번 Take는 총평을 만들지 못했어요. 측정값은 그대로 확인할 수 있어요.'
+                  : '흐름은 차분했어요. 다음에는 문장 끝에서 청중을 바라보는 시간을 늘려 보세요.'}
+              </p>
+            </div>
+          </section>
+          {!noReview && <ComparisonSummary />}
           <section aria-label="측정값" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="발표 시간" value="04:38">
               목표 05:00 · 00:22 남김
