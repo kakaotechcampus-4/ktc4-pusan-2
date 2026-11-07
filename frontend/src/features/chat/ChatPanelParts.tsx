@@ -56,7 +56,6 @@ export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }
         ref={chipRef}
         type="button"
         data-chat-scope=""
-        aria-label={`범위: ${scopeLabel(scope, titleOf)}`}
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? menuId : undefined}
         aria-disabled={!changeable}
@@ -65,6 +64,8 @@ export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }
         }}
         className="min-h-8 rounded-full border border-line-strong bg-cream px-3 text-xs font-bold aria-disabled:cursor-not-allowed aria-disabled:text-stone"
       >
+        {/* 이름은 글자로 둡니다 — aria-label 을 두면 안쪽 잠긴 이유(sr-only)가 덮여 읽히지 않습니다 */}
+        <span className="sr-only">범위: </span>
         {scopeLabel(scope, titleOf)}
         <LockedReason reason={chipLockedReason} />
       </button>

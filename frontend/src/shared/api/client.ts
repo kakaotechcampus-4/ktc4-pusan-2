@@ -55,7 +55,17 @@ export async function apiRequest<T>(
         ? body.code
         : 'REQUEST_FAILED';
 
-    throw new ApiFailure(response.status, code, retryAfterSec(response.headers.get('Retry-After')));
+    const message =
+      body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
+        ? body.message
+        : null;
+
+    throw new ApiFailure(
+      response.status,
+      code,
+      retryAfterSec(response.headers.get('Retry-After')),
+      message,
+    );
   }
 
   return response.status === 204 ? (undefined as T) : read(response);

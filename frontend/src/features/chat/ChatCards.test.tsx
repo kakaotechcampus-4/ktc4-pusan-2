@@ -11,6 +11,7 @@ import {
   REASSESS_CURRENT_TEXT,
   REASSESS_TITLE,
   SCRIPT_SCORE_TEXT,
+  UNDO_BASE_DELETED_TEXT,
   UNDO_CONFLICT_TEXT,
   UNDO_FAILED_TEXT,
   type CardActions,
@@ -141,6 +142,7 @@ describe('목표 저장됨 (12-4 F6)', () => {
 
   it.each([
     ['conflict', UNDO_CONFLICT_TEXT],
+    ['baseDeleted', UNDO_BASE_DELETED_TEXT],
     ['failed', UNDO_FAILED_TEXT],
   ] as const)('%s 면 안내를 보이고 다시 누를 수 있다', async (result, text) => {
     const a = actions({ undo: vi.fn(async () => result) });
@@ -148,6 +150,13 @@ describe('목표 저장됨 (12-4 F6)', () => {
     await act(async () => button('되돌리기')!.click());
     expect(alerts()).toEqual([text]);
     expect(button('되돌리기')!.getAttribute('aria-disabled')).toBe('false');
+  });
+
+  it('기준 Take 번호를 모르면(null) "Take …" 없이 값만 보인다', async () => {
+    const card = { ...savedCard, goal: { ...goal, base: { ...goal.base, take_number: null } } };
+    await render(<CardList cards={show(card)} runId="r-1" expired={false} actions={actions()} />);
+    expect(host.textContent).toContain('청중 응시 · 3장 · 31%보다 높게');
+    expect(host.textContent).not.toContain('Take null');
   });
 
   it('실행을 모르면 [되돌리기]를 두지 않는다', async () => {
@@ -191,6 +200,19 @@ describe('목표 제안 (12-4 F6)', () => {
     expect(expert.textContent).toContain('추천 안');
     await act(async () => expert.querySelector('button')!.click());
     expect(a.choose).toHaveBeenCalledWith('p-1', 'EXPERT');
+  });
+
+  it('카드와 안마다 이름을 둔다 — [이 안으로]가 어느 안의 버튼인지 함께 읽힌다', async () => {
+    await render(
+      <CardList cards={show(proposal)} runId="r-1" expired={false} actions={actions()} />,
+    );
+    const nameOf = (el: Element) =>
+      document.getElementById(el.getAttribute('aria-labelledby')!)!.textContent;
+    const card = host.querySelector('[role="group"]')!;
+    expect(nameOf(card)).toContain('목표 제안');
+    const expert = host.querySelector('[data-option="EXPERT"]')!;
+    expect(expert.getAttribute('role')).toBe('group');
+    expect(nameOf(expert)).toBe('추천 안');
   });
 
   it('보낼 수 없을 때는 잠그고 보내지 않는다', async () => {
@@ -305,6 +327,12 @@ describe('연습 준비 · 승인 확인 · 결과 카드', () => {
     };
     await render(<CardList cards={show(ask)} runId="r-1" expired={false} actions={a} />);
     expect(host.textContent).toContain('다시 평가할까요?');
+    // 승인 · 거절이 어느 카드의 것인지 카드 이름으로 묶입니다
+    const group = host.querySelector('[data-action="a-9"]')!;
+    expect(group.getAttribute('role')).toBe('group');
+    expect(document.getElementById(group.getAttribute('aria-labelledby')!)!.textContent).toBe(
+      '다시 평가할까요?',
+    );
     // 칸 이름 · 참 거짓을 우리말로, Take ID 는 보이지 않습니다
     const rows = host.querySelector('[data-change-rows]')!.textContent;
     expect(rows).toBe('대본 보며 발표아니요 → 예');

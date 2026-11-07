@@ -10,7 +10,8 @@ import type { ChatClock, TransportSignal } from './chatTransport';
  *   1초 넘게 늦춰도, 다시 깨어난 틱이 지난 시간만큼 한꺼번에 보이고 2초가 지났으면 남은 글자를 다 보입니다(#956 리뷰).
  * - 글자는 한글 결합 문자 · 이모지가 깨지지 않게 "보이는 한 글자"(grapheme) 단위로 셉니다(`Intl.Segmenter`).
  *   없는 환경의 한계는 `graphemes` 에 적었습니다.
- * - `prefers-reduced-motion` 이면 문장째 보입니다. 새로고침 · 다시 열기 · 지난 메시지도 효과 없이 그립니다.
+ * - `prefers-reduced-motion` 이면 문장째 보입니다. 효과 중에 켜면 `onReducedMotion` 으로 남은 글을 다 보입니다.
+ *   새로고침 · 다시 열기 · 지난 메시지도 효과 없이 그립니다.
  * - 문장은 받은 순서대로 하나씩 보이고, 보인 글은 지우거나 되감지 않습니다(낸 문장은 최종 답의 앞부분).
  * - 근거 칩은 문장이 다 보인 뒤에 답니다 — 화면은 `done` 인 줄에만 칩을 그립니다.
  * - 실행이 끝나 최종 답을 받으면 `finish()` 로 큐를 비우고 최종 답으로 맞춥니다.
@@ -97,10 +98,27 @@ const browserClock: Pick<ChatClock, 'setTimeout' | 'clearTimeout' | 'now'> = {
   now: () => globalThis.performance.now(),
 };
 
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
 /** 운영체제의 '움직임 줄이기' — 물을 수 없는 환경(시험 · 서버)에서는 꺼진 것으로 봅니다 */
 export const prefersReducedMotion = () =>
   typeof globalThis.matchMedia === 'function' &&
-  globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  globalThis.matchMedia(REDUCED_MOTION_QUERY).matches;
+
+/**
+ * '움직임 줄이기'가 켜지면 부릅니다 — 큐는 `push` 할 때만 설정을 읽으므로, 효과 중에 켜면 화면이
+ * `finish()` 로 남은 글을 다 보입니다(#956 리뷰). 끄는 것은 다음 답부터 반영되면 충분해 부르지 않습니다.
+ * 물을 수 없는 환경에서는 아무것도 하지 않습니다. 돌려준 함수로 풉니다
+ */
+export function onReducedMotion(listener: () => void): () => void {
+  if (typeof globalThis.matchMedia !== 'function') return () => undefined;
+  const query = globalThis.matchMedia(REDUCED_MOTION_QUERY);
+  const changed = (event: MediaQueryListEvent) => {
+    if (event.matches) listener();
+  };
+  query.addEventListener('change', changed);
+  return () => query.removeEventListener('change', changed);
+}
 
 export function createTypingQueue<T extends TypingItem>(
   options: TypingOptions<T> = {},

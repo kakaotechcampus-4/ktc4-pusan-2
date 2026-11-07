@@ -5,6 +5,7 @@ import {
   createTypingQueue,
   feedProgress,
   graphemes,
+  onReducedMotion,
   type TypingItem,
 } from './chatTyping';
 
@@ -261,5 +262,73 @@ describe('점검 반영 — 알림 · 다시 그리기', () => {
     clock.advance(TYPING_TICK_MS);
     expect(queue.lines()[0]).toBe(first);
     expect(queue.lines()[1]!.done).toBe(false);
+  });
+});
+
+describe("'움직임 줄이기'를 효과 중에 켜기 (#956 리뷰)", () => {
+  /** `matchMedia` 를 흉내 냅니다 — `set` 으로 설정을 바꾸면 듣는 쪽을 부릅니다 */
+  const fakeMedia = () => {
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    const query = {
+      matches: false,
+      addEventListener: (_: 'change', l: (event: MediaQueryListEvent) => void) => listeners.add(l),
+      removeEventListener: (_: 'change', l: (event: MediaQueryListEvent) => void) =>
+        listeners.delete(l),
+    };
+    vi.stubGlobal('matchMedia', () => query);
+    return {
+      listeners,
+      set: (matches: boolean) => {
+        query.matches = matches;
+        for (const l of [...listeners]) l({ matches } as MediaQueryListEvent);
+      },
+    };
+  };
+
+  it('켜면 부르고, 끄는 것으로는 부르지 않으며, 풀면 더 듣지 않는다', () => {
+    try {
+      const media = fakeMedia();
+      const listener = vi.fn();
+      const off = onReducedMotion(listener);
+      media.set(false);
+      expect(listener).not.toHaveBeenCalled();
+      media.set(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+      off();
+      expect(media.listeners.size).toBe(0);
+      media.set(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('켜는 순간 효과 중인 문장을 끝까지 보인다 — 화면이 finish 를 부르는 길', () => {
+    try {
+      const media = fakeMedia();
+      const clock = new Clock();
+      const queue = createTypingQueue<TypingItem>({ clock, reducedMotion: () => false });
+      const off = onReducedMotion(() => queue.finish());
+      queue.push([{ index: 0, text: '3장 시선이 낮았어요.' }]);
+      clock.advance(TYPING_TICK_MS);
+      expect(queue.lines()[0]!.done).toBe(false);
+      media.set(true);
+      expect(queue.lines()[0]).toMatchObject({ shown: '3장 시선이 낮았어요.', done: true });
+      off();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('물을 수 없는 환경에서는 아무것도 하지 않는다', () => {
+    try {
+      vi.stubGlobal('matchMedia', undefined);
+      const listener = vi.fn();
+      const off = onReducedMotion(listener);
+      expect(() => off()).not.toThrow();
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

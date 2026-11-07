@@ -267,4 +267,49 @@ describe('지금 실행의 답 (12-4 F12)', () => {
     expect(host.textContent).toContain('답의 근거를 확인하지 못했으니 다시 물어봐 주세요.');
     expect(host.textContent).toContain('일부 진행 정보를 표시하지 못했어요.');
   });
+
+  it('채워지는 중인 글은 화면 읽기 프로그램에서 숨기고, 다 보이면 푼다 (#956 리뷰)', async () => {
+    await renderLive();
+    await act(async () => queue.push([shown('3장 시선이 낮았어요.')]));
+    await act(async () => clock.advance(100));
+    const text = () => host.querySelector('[data-claim] > span')!;
+    expect(text().getAttribute('aria-hidden')).toBe('true');
+
+    await act(async () => clock.advance(TYPING_MAX_LAG_MS));
+    expect(text().textContent).toBe('3장 시선이 낮았어요.');
+    expect(text().hasAttribute('aria-hidden')).toBe(false);
+  });
+
+  it('[건너뛰기]는 남은 글을 다 보이고 칩을 단다 — 마지막 문장만 알리고, 버튼은 남아 잠긴다', async () => {
+    await renderLive();
+    await act(async () =>
+      queue.push([shown('3장 시선이 낮았어요.'), shown('첫 낱말만 보세요.', { index: 1 })]),
+    );
+    await act(async () => clock.advance(100));
+    const skip = () => host.querySelector<HTMLButtonElement>('[data-chat-skip]')!;
+    expect(skip().getAttribute('aria-disabled')).toBe('false');
+    expect(host.querySelector('a')).toBeNull();
+
+    skip().focus();
+    await act(async () => skip().click());
+    await renderLive();
+    expect([...host.querySelectorAll('[data-claim] > span')].map((s) => s.textContent)).toEqual([
+      '3장 시선이 낮았어요.',
+      '첫 낱말만 보세요.',
+    ]);
+    expect(host.querySelectorAll('a')).toHaveLength(2);
+    expect(host.querySelector('[data-chat-announce]')!.textContent).toBe('첫 낱말만 보세요.');
+    // 사라지지 않고 잠겨 키보드 초점을 지킵니다
+    expect(skip().getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(skip());
+
+    // 잠긴 뒤 다시 눌러도 아무 일도 없습니다
+    await act(async () => skip().click());
+    expect(host.querySelectorAll('[data-claim]')).toHaveLength(2);
+  });
+
+  it('문장이 없으면 [건너뛰기]를 두지 않는다', async () => {
+    await renderLive();
+    expect(host.querySelector('[data-chat-skip]')).toBeNull();
+  });
 });

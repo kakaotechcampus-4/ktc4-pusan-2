@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSyncExternalStore, type ReactNode } from 'react';
 import { getPitchResources } from '@/shared/api/pitch';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
 import { CardList, type CardActions } from './ChatCards';
 import { ChipList } from './ChatChips';
@@ -10,6 +11,7 @@ import { basisBadge, basisPitches, staleTexts } from './chatBasis';
 import {
   errorText,
   GENERAL_LABEL,
+  isUuid,
   PROGRESS_DROPPED_TEXT,
   readMessage,
   readPlan,
@@ -66,7 +68,9 @@ function ClaimLine({ claim, shown, done }: { claim: ShownClaim; shown: string; d
           {VERDICT_LABEL[assessment.verdict]}
         </span>
       )}
-      <span>{shown}</span>
+      {/* 채워지는 중인 글은 화면 읽기 프로그램에서 숨깁니다 — 반쪽 문장이 읽히지 않게. 다 보이면 풀어
+          읽기 모드에서 완성된 답을 읽습니다. 완성 문장은 알림 영역(`data-chat-announce`)이 알립니다 (#956 리뷰) */}
+      <span aria-hidden={done ? undefined : true}>{shown}</span>
       {done && superseded && <p className="mt-1 text-xs text-stone">{SUPERSEDED_TEXT}</p>}
       {done && claim.general && <p className="mt-1 text-xs text-stone">{GENERAL_LABEL}</p>}
       {done && <ChipList chips={claim.chips} />}
@@ -201,13 +205,20 @@ export function StoredAnswer({
   );
 }
 
+/** 근거 배지의 버전 목록 요청을 다시 해 볼 횟수 — TanStack Query 기본값과 같습니다 */
+const BASIS_RETRIES = 3;
+
 /** 피치 하나의 근거 배지 — 대본 버전 이름은 그 피치의 버전 목록에서 찾습니다 */
 function BasisBadge({ pitch }: { pitch: ReturnType<typeof basisPitches>[number] }) {
   const resources = useQuery({
     queryKey: ['pitches', pitch.pitch_id, 'resources'],
     queryFn: () => getPitchResources(pitch.pitch_id),
-    // 대본 버전이 없으면 이름을 찾을 일이 없습니다
-    enabled: pitch.script_version_id !== null,
+    // 대본 버전이 없으면 이름을 찾을 일이 없습니다. 근거의 ID 는 서버 · 모델 값이라 UUID 일 때만 경로에 넣습니다
+    // (`chatPaths` 와 같은 방침 — 이 요청은 공용 API 라 인코딩 대신 모양을 봅니다)
+    enabled: pitch.script_version_id !== null && isUuid(pitch.pitch_id),
+    // 지워진 피치(404)는 다시 물어도 같습니다 — 메시지마다 되풀이하지 않습니다
+    retry: (count, error) =>
+      !(error instanceof ApiFailure && error.status === 404) && count < BASIS_RETRIES,
     staleTime: 5 * 60_000,
   });
   const text = basisBadge(pitch, resources.data);
@@ -229,6 +240,9 @@ export interface LiveProgress {
   /** 승인 대기 중 카드 — 문장이 다 보인 뒤에 답니다 */
   cards: ShownCard[];
 }
+
+const SKIP_BUTTON =
+  'mt-1 min-h-11 rounded-lg border border-line-strong px-3 text-xs font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone';
 
 /**
  * 지금 실행의 답 — 받은 문장이 글자 효과로 보입니다(F12). 화면 읽기 프로그램에는 문장이 다 보일 때마다
@@ -271,6 +285,24 @@ export function LiveAnswer({
           {lines.map((line: TypedLine<ShownClaim>) => (
             <ClaimLine key={line.index} claim={line.item} shown={line.shown} done={line.done} />
           ))}
+          {lines.length > 0 && (
+            // [건너뛰기] — 남은 글을 한 번에 다 보입니다(`finish`). 알림은 마지막 문장 하나만 갑니다(같은 틱에 바뀌어
+            // 마지막 값만 그려짐). 다 보인 뒤에도 없애지 않고 잠급니다 — 누른 버튼이 사라지면 키보드 초점을 잃습니다
+            <button
+              type="button"
+              aria-disabled={typed}
+              onClick={() => {
+                if (!typed) typing.finish();
+              }}
+              className={SKIP_BUTTON}
+              data-chat-skip=""
+            >
+              건너뛰기
+              <span className="sr-only">
+                {typed ? ' — 답이 다 보였어요' : ' — 답을 한 번에 다 보기'}
+              </span>
+            </button>
+          )}
           {progress.contractError && (
             <p className="mt-1 text-coral-deep">{errorText(progress.contractError)}</p>
           )}

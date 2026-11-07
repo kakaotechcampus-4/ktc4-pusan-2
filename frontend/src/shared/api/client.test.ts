@@ -170,6 +170,32 @@ describe('인증 갱신', () => {
   });
 });
 
+describe('실패 응답', () => {
+  it('본문의 code · message 를 ApiFailure 에 싣는다 — message 가 없으면 null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          Response.json({ code: 'AGENT_STATE_INVALID', message: '바뀌었어요.' }, { status: 409 }),
+        ),
+      ),
+    );
+    await expect(apiRequest('/api/a')).rejects.toMatchObject({
+      status: 409,
+      code: 'AGENT_STATE_INVALID',
+      serverMessage: '바뀌었어요.',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(null, { status: 500 }))),
+    );
+    await expect(apiRequest('/api/a')).rejects.toMatchObject({
+      code: 'REQUEST_FAILED',
+      serverMessage: null,
+    });
+  });
+});
+
 describe('계정이 바뀐 토큰 (L3-16)', () => {
   const jwt = (sub: string) =>
     `h.${btoa(JSON.stringify({ sub })).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')}.s`;

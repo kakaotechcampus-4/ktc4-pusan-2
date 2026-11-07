@@ -4,12 +4,14 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
   type UIEvent,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -157,6 +159,7 @@ function ChatSessionView({
   const [focusRequested, setFocusRequested] = useState(false);
   const focused = useCallback(() => setFocusRequested(false), []);
   const id = useId();
+  useRestoreRejected(draft, setDraft);
 
   // 조회 중 · 꺼짐이면 숨깁니다. 실패가 잇달면 버튼은 보이고 열면 다시 시도를 보입니다 (12-4 F1 "사용 가능 여부")
   if (session.availability === 'checking' || session.availability === 'off') return null;
@@ -215,6 +218,77 @@ function ChatSessionView({
   );
 }
 
+/**
+ * 패널 안에서 초점을 가진 버튼이 사라지면(목록 닫힘 · 다시 시도 · 취소 · 카드 버튼 등) 초점이 body 로 빠져
+ * Esc 가 패널에 닿지 않습니다(#818 과 같은 문제, 12-4 "Esc 로 닫는다"). 그때 입력칸으로 되돌립니다.
+ *
+ * - 버튼이 사라지는 때가 누른 순간 · 응답이 온 뒤 · 실행이 끝난 뒤로 여러 갈래라, 경로마다 막지 않고 패널의 DOM 변화를 지켜봅니다.
+ * - 사용자가 패널 밖을 눌러 초점을 놓은 것(놓은 요소가 그대로 있음)은 되돌리지 않습니다
+ */
+function useKeepFocusInPanel(
+  panelRef: RefObject<HTMLElement | null>,
+  inputRef: RefObject<HTMLTextAreaElement | null>,
+) {
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    /** 초점이 패널 안에 있었나 — 패널 밖 요소로 옮기거나, 남아 있는 요소에서 놓으면 false */
+    let inside = panel.contains(document.activeElement);
+    /** 초점을 놓은 요소 — 브라우저마다 사라질 때 blur 를 주기도 하고 안 주기도 합니다 */
+    let left: Element | null = null;
+    const onIn = () => {
+      inside = true;
+      left = null;
+    };
+    const onOut = (event: FocusEvent) => {
+      const to = event.relatedTarget as Node | null;
+      if (to && panel.contains(to)) return;
+      if (to) inside = false;
+      else left = event.target as Element;
+    };
+    const rescue = () => {
+      const active = document.activeElement;
+      if (!inside || (active && active !== document.body)) return;
+      // 놓은 요소가 그대로 있으면 사용자가 패널 밖을 누른 것입니다
+      if (left?.isConnected) {
+        inside = false;
+        return;
+      }
+      inputRef.current?.focus();
+    };
+    const observer = new MutationObserver(rescue);
+    observer.observe(panel, { childList: true, subtree: true });
+    panel.addEventListener('focusin', onIn);
+    panel.addEventListener('focusout', onOut);
+    return () => {
+      observer.disconnect();
+      panel.removeEventListener('focusin', onIn);
+      panel.removeEventListener('focusout', onOut);
+    };
+  }, [panelRef, inputRef]);
+}
+
+/**
+ * 접수되지 않음이 확정된 보내기(`chatStore.rejected`)의 글을 입력에 되돌립니다 — 그사이 새로 쓴 글이 있으면 둡니다.
+ * 첫 보내기뿐 아니라 [다시 확인] · [다시 보내기] · 새로고침으로 되살린 요청도 같습니다. 패널이 닫혀 있어도 되돌립니다
+ */
+function useRestoreRejected(draft: string, setDraft: (text: string) => void) {
+  const latest = useRef({ draft, setDraft });
+  useLayoutEffect(() => {
+    latest.current = { draft, setDraft };
+  });
+  useEffect(
+    () =>
+      useChatStore.subscribe((now, before) => {
+        if (!now.rejected || now.rejected === before.rejected) return;
+        // 입력을 비운 것이 아직 그려지기 전이면 입력은 보낸 글 그대로입니다 — 그때도 되돌립니다(비우기 뒤에 놓임)
+        const draft = latest.current.draft.trim();
+        if (draft === '' || draft === now.rejected.text) latest.current.setDraft(now.rejected.text);
+      }),
+    [],
+  );
+}
+
 function noticeText(notice: ChatNotice): string {
   switch (notice.kind) {
     case 'unconfirmed':
@@ -223,6 +297,8 @@ function noticeText(notice: ChatNotice): string {
         : '전송 여부를 확인하지 못했으니 다시 확인해 주세요.';
     case 'criteriaTooLong':
       return '평가 기준이 2,000자를 넘어 보낼 수 없어요.';
+    case 'screenUnavailable':
+      return '현재 입력 상태를 확인하지 못했으니 다시 시도해 주세요.';
     case 'sessionExpired':
       return '로그인이 만료됐으니 다시 로그인해 주세요.';
     case 'scopeMissing':
@@ -302,10 +378,8 @@ function ChatPanel({
   onFocused: () => void;
 } & DraftProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const latestDraft = useRef(draft);
-  useEffect(() => {
-    latestDraft.current = draft;
-  });
+  const panelRef = useRef<HTMLElement>(null);
+  useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
   const [view, setView] = useState<PanelView>('messages');
@@ -315,6 +389,7 @@ function ChatPanel({
   const tooLong = [...content].length > MAX_MESSAGE_LENGTH;
   const failed = session.availability === 'failed';
   const blocked = failed || !sendable || session.scopeBlocked;
+  const lockReason = useChatStore((s) => sendLockReason(s, session.scopeBlocked));
 
   // 사용자가 런처로 연 순간에만 입력칸으로 초점을 옮깁니다
   useEffect(() => {
@@ -328,20 +403,17 @@ function ChatPanel({
     // 비었거나 너무 길거나 잠겨 있으면 보내지 않고 입력을 그대로 둡니다
     if (!content || tooLong || blocked) return;
     // 저장소가 보내기를 잠그는 순간(보내는 중) 입력을 비웁니다 — 보낸 글은 보내는 중 말풍선으로 보입니다.
-    // 접수되지 않음이 확정되면 그 글을 입력에 되돌립니다(그사이 새로 쓴 글이 있으면 두고)
+    // 접수되지 않음이 확정되면 그 글을 입력에 되돌리는 일은 `useRestoreRejected` 가 합니다
     const off = useChatStore.subscribe((now, before) => {
       if (!before.pending && now.pending) setDraft('');
     });
     // 내가 보낸 말은 언제나 보이게 맨 아래로 갑니다
     follow();
-    let sent = false;
     try {
-      sent = await session.send(content);
+      await session.send(content);
     } finally {
       off();
     }
-    if (!sent && useChatStore.getState().pending === null && latestDraft.current.trim() === '')
-      setDraft(content);
   };
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -357,6 +429,7 @@ function ChatPanel({
     // 낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
     // 머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성")
     <section
+      ref={panelRef}
       id={`${id}-panel`}
       role="dialog"
       aria-modal="false"
@@ -492,6 +565,8 @@ function ChatPanel({
             className="min-h-11 shrink-0 rounded-lg border-2 border-ink bg-coral-deep px-5 text-sm font-bold text-white hover:bg-ink aria-disabled:cursor-not-allowed aria-disabled:border-line-strong aria-disabled:bg-cream aria-disabled:text-stone aria-disabled:hover:bg-cream"
           >
             입력
+            {/* 글을 썼는데 잠겨 있으면 이유를 함께 읽습니다 — 빈 입력 · 너무 긴 입력은 입력칸이 이미 알립니다 */}
+            <LockedReason reason={content && !tooLong && blocked && !failed ? lockReason : null} />
           </button>
         </div>
       </form>
@@ -568,6 +643,7 @@ function MessageList({ session }: { session: ChatSession }) {
   };
   const shown = session.messages;
   const progress = session.progress;
+  const messagesAlert = useAlertOnce(session.messagesFailed ? session.messagesError : null);
   // 접수된 내 말 — 목록에 그 실행의 내 말이 들어올 때까지 그립니다
   const echo =
     session.sentEcho &&
@@ -619,7 +695,7 @@ function MessageList({ session }: { session: ChatSession }) {
         <p className="self-start text-xs text-stone">이전 대화를 불러오고 있어요.</p>
       )}
       {shown.length === 0 && session.messagesFailed && (
-        <div role="alert" className="self-start text-xs leading-5 text-coral-deep">
+        <div role={messagesAlert} className="self-start text-xs leading-5 text-coral-deep">
           {/* FE 가 정한 문구 — 문서에 없습니다 */}
           <p>대화를 불러오지 못했으니 다시 시도해 주세요.</p>
           <button
@@ -762,6 +838,28 @@ function MessageItem({
   );
 }
 
+/** 이미 알린 안내 — 대화 목록을 열었다 닫거나 자리를 옮겨 다시 그려져도 또 읽지 않습니다 (12-4 "오류는 한 번 알린다") */
+const announced = new WeakSet<object>();
+
+/**
+ * 처음 그리는 안내에만 `role="alert"` 를 줍니다. `token` 은 그 안내 하나를 가리키는 값(안내 객체 · 오류 객체)입니다.
+ * 같은 자리에서 그 안내를 계속 그리는 동안에는 role 을 바꾸지 않습니다
+ */
+function useAlertOnce(token: object | null): 'alert' | undefined {
+  const fresh = (t: object | null) => ({ token: t, alert: t !== null && !announced.has(t) });
+  // 이 자리에서 그 안내를 처음 그릴 때 정해 둡니다 — 안내가 바뀌면 그릴 때 다시 정합니다
+  const [seen, setSeen] = useState(() => fresh(token));
+  let now = seen;
+  if (seen.token !== token) {
+    now = fresh(token);
+    setSeen(now);
+  }
+  useEffect(() => {
+    if (token) announced.add(token);
+  }, [token]);
+  return now.alert ? 'alert' : undefined;
+}
+
 /** 실행이 끝나며 붙는 안내 — 오류는 한 번 알립니다(role="alert"). [다시 보내기]는 같은 질문을 새 메시지로 */
 function EndNoticeView({
   notice,
@@ -776,9 +874,10 @@ function EndNoticeView({
   lockedReason: string | null;
   onResend: (text: string) => void;
 }) {
+  const role = useAlertOnce(notice ?? null);
   if (!notice) return null;
   return (
-    <div role="alert" className="self-start text-xs leading-5 text-coral-deep" data-end-notice="">
+    <div role={role} className="self-start text-xs leading-5 text-coral-deep" data-end-notice="">
       <p>{notice.text}</p>
       {notice.resend && question && (
         <button

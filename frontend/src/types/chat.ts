@@ -139,7 +139,8 @@ export interface Goal {
   goal_rule_version: string;
   base: {
     take_id: string;
-    take_number: number;
+    /** 카드 검사(`chatResponse` `isGoal`)는 null 도 받습니다 — 그때 화면은 Take 번호를 빼고 보입니다 */
+    take_number: number | null;
     kind: string;
     revision: number;
     value: number;

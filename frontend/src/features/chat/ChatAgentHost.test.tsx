@@ -74,6 +74,7 @@ const transports = vi.hoisted(() => [] as FakeTransport[]);
 /** 범위 바꾸기 결과 — 'missing' 이면 서버가 그 피치를 찾지 못함(404) */
 const scopeMode = vi.hoisted(() => ({ value: 'ok' as 'ok' | 'missing' }));
 /** 보내기 결과 — 'failed' 면 접수되지 않음이 확정된 것처럼 잠금을 풉니다 */
+const undoMode = vi.hoisted(() => ({ value: 'undone' as 'undone' | 'conflict' }));
 const sendMode = vi.hoisted(() => ({
   value: 'accepted' as 'accepted' | 'failed' | 'conflict',
 }));
@@ -134,7 +135,7 @@ vi.mock('./chatTransport', async () => {
         },
         undo: async (...args: unknown[]) => {
           t.undone.push(args);
-          return 'undone';
+          return undoMode.value;
         },
         cancel: async () => {
           // 화면이 부른 횟수를 셉니다 — 잠금은 화면이 지켜야 합니다
@@ -188,6 +189,7 @@ beforeEach(() => {
     Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
   transports.length = 0;
   sendMode.value = 'accepted';
+  undoMode.value = 'undone';
   sessionStorage.clear();
   localStorage.clear();
   useChatStore.getState().signOut();
@@ -262,6 +264,9 @@ const go = async (path: string) => {
 };
 const launcher = () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
 const panel = () => host.querySelector<HTMLElement>('[role="dialog"]');
+/** 답 말풍선의 답 글 — 문장(`[data-claim]`)만 이어 읽습니다([건너뛰기] 버튼 글자는 빼고) */
+const answerText = (bubble: Element | null) =>
+  [...(bubble?.querySelectorAll('[data-claim]') ?? [])].map((c) => c.textContent).join('');
 const input = () => host.querySelector('textarea')!;
 /** 버튼의 보이는 글 — 화면 읽기 프로그램에만 주는 잠긴 이유(sr-only)는 뺍니다 */
 const visibleText = (el: Element) => {
@@ -689,6 +694,21 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     expect(input().value).toBe('기준 괜찮아?');
   });
 
+  it('화면 상태를 만들지 못하면 보내지 않고 다시 시도하라고 알린다 (L3-10)', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    registerChatScreen('/pitch/new', () => {
+      throw new Error('화면 쪽 실수');
+    });
+    await visit('/pitch/new');
+    await openPanel();
+    await type('이 대본 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent).toEqual([]);
+    expect(alerts()).toContain('현재 입력 상태를 확인하지 못했으니 다시 시도해 주세요.');
+    expect(input().value).toBe('이 대본 괜찮아?');
+    errors.mockRestore();
+  });
+
   it('보내기 전에는 화면을 따라가고, 보낸 뒤에는 화면을 옮겨도 범위가 바뀌지 않는다', async () => {
     await visit('/');
     await openPanel();
@@ -711,6 +731,37 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     expect(transport().sent).toHaveLength(1);
     expect(sentMessages()).toEqual([]);
     expect(input().value).toBe('다시 보낼 말');
+  });
+
+  it('[다시 확인] · [다시 보내기] 뒤에 접수되지 않음이 확정돼도 보낸 글을 입력에 되돌린다', async () => {
+    await visit('/');
+    await openPanel();
+    await type('미확정이 된 말');
+    await press(input(), { key: 'Enter' });
+    await settle();
+    expect(input().value).toBe('');
+    // 다시 확인했더니 4xx — 통신 계층이 그 보내기를 놓습니다
+    const sendId = useChatStore.getState().pending!.sendId;
+    await act(async () => useChatStore.getState().failSend({ ...chatTicket(), sendId }));
+    expect(input().value).toBe('미확정이 된 말');
+  });
+
+  it('되돌릴 때 그사이 새로 쓴 글이 있으면 두고, 다른 탭 실행과 부딪혀도 되돌린다', async () => {
+    await visit('/');
+    await openPanel();
+    await type('먼저 보낸 말');
+    await press(input(), { key: 'Enter' });
+    await settle();
+    await type('새로 쓰는 말');
+    let sendId = useChatStore.getState().pending!.sendId;
+    await act(async () => useChatStore.getState().failSend({ ...chatTicket(), sendId }));
+    expect(input().value).toBe('새로 쓰는 말');
+
+    await press(input(), { key: 'Enter' });
+    await settle();
+    sendId = useChatStore.getState().pending!.sendId;
+    await act(async () => useChatStore.getState().conflictSend({ ...chatTicket(), sendId }));
+    expect(input().value).toBe('새로 쓰는 말');
   });
 
   it('입력은 사용자별 — 다른 사용자로 바뀌면 앞 사용자의 글을 보이지 않는다', async () => {
@@ -762,7 +813,7 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
         cards: [],
       }),
     );
-    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('첫 문장');
+    expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('첫 문장');
 
     server.messages = () =>
       Promise.resolve({
@@ -860,9 +911,9 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
     await watching('r1');
     await act(async () => transport().emit(progressOf('r1', ['첫 문장입니다'], { restart: true })));
     // 효과 — 아직 다 보이지 않았습니다
-    expect(live()!.textContent).not.toBe('첫 문장입니다');
+    expect(answerText(live())).not.toBe('첫 문장입니다');
     await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
-    expect(live()!.textContent).toBe('첫 문장입니다');
+    expect(answerText(live())).toBe('첫 문장입니다');
   });
 
   it('따라잡기(새로고침 · 다시 열기)는 효과 없이 곧바로 보인다', async () => {
@@ -870,7 +921,7 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
     await act(async () =>
       transport().emit(progressOf('r1', ['이미 만든 문장'], { restart: true, catchUp: true })),
     );
-    expect(live()!.textContent).toBe('이미 만든 문장');
+    expect(answerText(live())).toBe('이미 만든 문장');
   });
 
   it('다른 실행의 진행이 오면 앞 실행의 문장을 비우고 새로 그린다', async () => {
@@ -883,7 +934,7 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
       // 같은 순번(0)이라 남겨 두면 새 문장이 이미 본 순번으로 버려집니다
       transport().emit(progressOf('r2', ['새 실행'], { catchUp: true })),
     );
-    expect(live()!.textContent).toBe('새 실행');
+    expect(answerText(live())).toBe('새 실행');
     expect(live()!.getAttribute('data-live-run')).toBe('r2');
   });
 
@@ -939,7 +990,7 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
       }),
     );
     // 목록을 읽는 동안에도 받은 답은 다 보입니다 — 비었다가 다시 나타나지 않게
-    expect(live()!.textContent).toBe('아주 긴 문장이 아직 다 보이지 않았어요');
+    expect(answerText(live())).toBe('아주 긴 문장이 아직 다 보이지 않았어요');
 
     answer.resolve({
       messages: [
@@ -1074,6 +1125,29 @@ describe('카드 연결 (12-4 F6 · F10)', () => {
     await act(async () => button('되돌리기')!.click());
     await settle();
     expect(transport().undone).toEqual([['r1', 'a-1']]);
+    expect(reads()).toBeGreaterThan(before);
+  });
+
+  it('[되돌리기]가 409 면 충돌을 알리고 목록을 다시 읽어 지금 목표를 보인다 (L3-29)', async () => {
+    undoMode.value = 'conflict';
+    await inConversation([
+      assistant('m1', 'r1', 'DONE', [
+        {
+          type: 'GOAL_SAVED',
+          action_id: 'a-1',
+          goal: { ...goal, version: 1 },
+          reason: '',
+          evidence_ids: [],
+          undo: true,
+        },
+      ]),
+    ]);
+    const reads = () =>
+      server.seen.filter((x) => x.path.startsWith('/api/chat/conversations/c1')).length;
+    const before = reads();
+    await act(async () => button('되돌리기')!.click());
+    await settle();
+    expect(alerts()).toContain('이미 다른 목표로 바뀌었어요.');
     expect(reads()).toBeGreaterThan(before);
   });
 
@@ -1214,7 +1288,7 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     await act(async () => transport().emit(ended('r1', 'c1')));
     await settle();
     await settle();
-    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('받은 답 문장');
+    expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('받은 답 문장');
     expect(panel()!.textContent).not.toContain('물어보세요');
   });
 
@@ -1311,7 +1385,7 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
 
     // 돌아온 대화의 실행이 아직 진행 중이면 통신 계층이 처음부터 다시 보내 다시 그려집니다
     await act(async () => transport().emit(progressIn('r1', 'c1', '다시 받은 문장')));
-    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('다시 받은 문장');
+    expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('다시 받은 문장');
   });
 });
 
@@ -1344,7 +1418,8 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await visit(`/pitch/${P1}/edit`);
     await openPanel();
     await settle();
-    expect(chip().textContent).toBe('피치: 졸업 발표');
+    expect(visibleText(chip())).toBe('피치: 졸업 발표');
+    expect(chip().textContent).toBe('범위: 피치: 졸업 발표');
   });
 
   it('칩을 누르면 전체 · 내 피치에서 고르고, 고르면 그 범위로 바꾼다 — Esc 는 목록만 닫는다', async () => {
@@ -1367,7 +1442,7 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await settle();
     expect(transport().scopes).toEqual([{ pitchId: P2, title: '회사 소개' }]);
     expect(useChatStore.getState().scope).toEqual({ pitchId: P2, title: '회사 소개' });
-    expect(chip().textContent).toBe('피치: 회사 소개');
+    expect(visibleText(chip())).toBe('피치: 회사 소개');
     expect(document.activeElement).toBe(chip());
   });
 
@@ -1428,12 +1503,28 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     expect(alerts()).toContain('발표를 찾을 수 없으니 범위를 다시 선택해 주세요.');
   });
 
-  it('보내기가 범위의 피치를 찾지 못하면(404) 범위를 다시 고를 때까지 보내기를 막는다', async () => {
+  it('보내기가 404 여도 범위의 피치가 목록에 있으면 막지 않는다 — 대화 · Take 등 다른 404 (accept.py)', async () => {
     server.pitches = () => Promise.resolve(pitchList);
     await visit(`/pitch/${P1}/edit`);
     await openPanel();
     await settle();
     await act(async () => transport().emit({ type: 'sendFailed', code: 'NOT_FOUND', status: 404 }));
+    await settle();
+    expect(alerts()).not.toContain('발표를 찾을 수 없으니 범위를 다시 선택해 주세요.');
+    await type('질문');
+    expect(sendButton().getAttribute('aria-disabled')).toBe('false');
+  });
+
+  it('보내기가 범위의 피치를 찾지 못하면(404) 범위를 다시 고를 때까지 보내기를 막는다', async () => {
+    server.pitches = () => Promise.resolve(pitchList);
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await settle();
+    // 그사이 피치가 지워졌습니다 — 다시 읽은 목록에 없습니다
+    server.pitches = () =>
+      Promise.resolve({ pitches: pitchList.pitches.filter((p) => p.pitch_id !== P1) });
+    await act(async () => transport().emit({ type: 'sendFailed', code: 'NOT_FOUND', status: 404 }));
+    await settle();
     expect(alerts()).toContain('발표를 찾을 수 없으니 범위를 다시 선택해 주세요.');
     await type('질문');
     expect(sendButton().getAttribute('aria-disabled')).toBe('true');
@@ -1518,6 +1609,37 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await act(async () => button('새 대화')!.click());
     expect(useChatStore.getState().conversationId).toBeNull();
     expect(useChatStore.getState().scope).toEqual({ pitchId: P1, title: null });
+  });
+
+  it('누른 버튼이 사라지면 초점을 입력칸으로 옮겨 Esc 로 닫힌다 — [새 대화] · [다시 확인] (#818)', async () => {
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await inConversation('c1');
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    button('새 대화')!.focus();
+    await act(async () => button('새 대화')!.click());
+    await settle();
+    expect(document.activeElement).toBe(input());
+
+    await act(async () =>
+      transport().emit({ type: 'unconfirmed', sendId: 's1', notAccepted: false }),
+    );
+    button('다시 확인')!.focus();
+    await act(async () => button('다시 확인')!.click());
+    await settle();
+    expect(document.activeElement).toBe(input());
+    await press(document.activeElement!, { key: 'Escape' });
+    expect(panel()).toBeNull();
+  });
+
+  it('사용자가 초점을 놓았으면(남아 있는 요소에서) 패널이 바뀌어도 초점을 끌어오지 않는다', async () => {
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    input().blur();
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('대화 목록을 읽지 못하면 다시 시도하게 한다', async () => {
@@ -1685,6 +1807,22 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
 
     await act(async () => button('다시 보내기')!.click());
     expect(transport().sent.map((r) => r.text)).toEqual(['3장 시선 어땠어?']);
+  });
+
+  it('대화 목록을 열었다 닫아도 지난 안내는 다시 알리지 않는다 — 글은 그대로 보인다 (오류는 한 번 알린다)', async () => {
+    await inConversation([userMsg('m1', '3장 시선 어땠어?', 'r1')], 'r1');
+    await act(async () => transport().emit(ended('r1', 'FAILED', 'AGENT_TIMEOUT')));
+    await act(async () => useChatStore.getState().endRun('r1'));
+    await settle();
+    const notice = () => panel()!.querySelector('[data-end-notice]')!;
+    expect(notice().getAttribute('role')).toBe('alert');
+
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    expect(endNotices()).toEqual(['답이 늦어지고 있으니 다시 보내 주세요.다시 보내기']);
+    expect(notice().hasAttribute('role')).toBe(false);
   });
 
   it('그 뒤에 다른 말이 이어졌으면 앞 실패 안내에는 [다시 보내기]를 두지 않는다', async () => {
@@ -1938,6 +2076,7 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
 // ── 8-6 근거 배지 · 최신 아님 · 다시 묻기 ───────────────────────
 
 describe('근거 배지 · 최신 아님 (12-4 F5)', () => {
+  const BASIS_PITCH = '40000000-0000-4000-8000-000000000004';
   const answerWith = (over: Record<string, unknown> = {}) => ({
     message_id: 'm2',
     role: 'assistant',
@@ -1961,7 +2100,7 @@ describe('근거 배지 · 최신 아님 (12-4 F5)', () => {
     basis: {
       pitches: [
         {
-          pitch_id: 'p-1',
+          pitch_id: BASIS_PITCH,
           script_version_id: 'sv-2',
           presentation_version_id: 'pv-2',
           standard_version: 4,
@@ -1978,7 +2117,7 @@ describe('근거 배지 · 최신 아님 (12-4 F5)', () => {
     server.messages = () => Promise.resolve({ messages, next_before_seq: null });
     server.resources = () =>
       Promise.resolve({
-        pitch_id: 'p-1',
+        pitch_id: BASIS_PITCH,
         presentation_versions: [],
         script_versions: [{ id: 'sv-2', version: 2 }],
         evaluation_versions: [],
@@ -2045,10 +2184,47 @@ describe('근거 배지 · 최신 아님 (12-4 F5)', () => {
     expect(transport().sent).toEqual([]);
   });
 
+  it('근거의 피치 ID 가 UUID 가 아니면 버전 목록을 읽지 않고, 지워진 피치(404)는 다시 묻지 않는다', async () => {
+    const reads = () => server.seen.filter((x) => x.path.endsWith('/resources')).length;
+    await inConversation([
+      question,
+      answerWith({
+        basis: {
+          pitches: [
+            {
+              pitch_id: '../../x',
+              script_version_id: 'sv-2',
+              standard_version: 4,
+              takes: [{ take_id: 't-5', take_number: 5 }],
+            },
+          ],
+        },
+      }),
+    ]);
+    expect(reads()).toBe(0);
+  });
+
+  it('지워진 피치(404)의 버전 목록은 다시 묻지 않는다', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const reads = () => server.seen.filter((x) => x.path.endsWith('/resources')).length;
+    server.messages = () =>
+      Promise.resolve({ messages: [question, answerWith()], next_before_seq: null });
+    server.resources = () => Promise.reject(new ApiFailure(404, 'PITCH_NOT_FOUND'));
+    await visit('/');
+    await openPanel();
+    const st = useChatStore.getState();
+    st.selectConversation('c1', { pitchId: null, title: null });
+    st.resolveConversation(chatTicket(), null);
+    await settle();
+    await wait(5_000);
+    expect(reads()).toBe(1);
+    expect(panel()!.querySelector('[data-basis]')!.textContent).toBe('Take 5 · 기준 v4 기준');
+  });
+
   it('버전 목록을 읽지 못하면 대본 칸만 빼고 보인다', async () => {
     await inConversation([question, answerWith()]);
     server.resources = () => Promise.reject(new Error('끊김'));
-    queryClient.removeQueries({ queryKey: ['pitches', 'p-1', 'resources'] });
+    queryClient.removeQueries({ queryKey: ['pitches', BASIS_PITCH, 'resources'] });
     await act(async () => useChatStore.getState().startNewConversation(null));
     await act(async () => {
       useChatStore.getState().selectConversation('c1', { pitchId: null, title: null });
@@ -2157,13 +2333,18 @@ describe('두 번째 점검 반영', () => {
     expect(button('이어서 확인')!.querySelector('.sr-only')!.textContent).toContain(
       '답을 만드는 중이에요',
     );
+    // 칩은 aria-label 없이 글자로 이름을 두어 잠긴 이유까지 이름에 들어갑니다
     const chip = panel()!.querySelector('[data-chat-scope]')!;
-    expect(chip.querySelector('.sr-only')!.textContent).toContain(
-      '답을 만드는 동안에는 범위를 바꿀 수 없어요',
-    );
+    expect(chip.hasAttribute('aria-label')).toBe(false);
+    expect(chip.textContent).toContain('답을 만드는 동안에는 범위를 바꿀 수 없어요');
+    // [입력]은 글을 썼을 때만 이유를 붙입니다
+    expect(sendButton().querySelector('.sr-only')).toBeNull();
+    await type('질문');
+    expect(sendButton().textContent).toBe('입력 (답을 만드는 중이에요)');
     await act(async () => useChatStore.getState().endRun('r9'));
     expect(button('이어서 확인')!.querySelector('.sr-only')).toBeNull();
-    expect(chip.querySelector('.sr-only')).toBeNull();
+    expect(chip.textContent).not.toContain('바꿀 수 없어요');
+    expect(sendButton().querySelector('.sr-only')).toBeNull();
   });
 });
 
