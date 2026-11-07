@@ -753,18 +753,6 @@ describe('닫힘 · 늦은 응답 · 늦어짐 (리뷰)', () => {
   });
 });
 
-describe('대기 간격', () => {
-  it('승인 대기 중에는 2초에서 1.5배씩 15초까지 늘려 조회한다', async () => {
-    start({
-      run: async (runId) => runView(runId, store().run!.conversationId, 'WAITING_APPROVAL', []),
-    });
-    await sendNow(draft());
-    await clock.advance(80_000);
-    const gaps = runCalls.slice(1, 8).map((t, i) => t - runCalls[i]!);
-    expect(gaps).toEqual([2_000, 3_000, 4_500, 6_750, 10_125, 15_000, 15_000]);
-  });
-});
-
 // ── BE #933 모양 ────────────────────────────────────────────
 
 /** BE `RunStatusResponse` 그대로 — 이벤트 · 카드 · 다음 커서 칸이 없고, 진행이 없으면 계획 · 기록이 null */
@@ -1459,7 +1447,7 @@ describe('스위치가 꺼짐 (503 AGENT_DISABLED)', () => {
   });
 });
 
-describe('조회 간격 — 접수 대기는 2초 고정, 승인 대기만 늘림', () => {
+describe('조회 간격 — 접수 대기 · 승인 대기 모두 2초', () => {
   it('접수 대기가 길어도 2초마다 조회한다', async () => {
     start({
       run: async (runId) => runView(runId, store().run!.conversationId, 'QUEUED', []),
@@ -1470,14 +1458,14 @@ describe('조회 간격 — 접수 대기는 2초 고정, 승인 대기만 늘�
     expect(new Set(gaps)).toEqual(new Set([2_000]));
   });
 
-  it('승인 대기는 2초에서 늘린다', async () => {
+  it('승인 대기가 길어도 늘리지 않고 2초마다 조회한다', async () => {
     start({
       run: async (runId) => runView(runId, store().run!.conversationId, 'WAITING_APPROVAL', []),
     });
     await sendNow(draft());
     await clock.advance(30_000);
     const gaps = runCalls.slice(1).map((t, i) => t - runCalls[i]!);
-    expect(gaps.slice(0, 3)).toEqual([2_000, 3_000, 4_500]);
+    expect(new Set(gaps)).toEqual(new Set([2_000]));
   });
 });
 
