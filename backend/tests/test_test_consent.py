@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.limits import INT4_MAX
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.user.entity import User
 
@@ -48,12 +49,20 @@ def test_same_version_keeps_first_time_and_new_version_renews(
     assert unchanged.json()["test_consent_version"] == 2
 
 
-@pytest.mark.parametrize("version", [0, -1, "1", 1.0, True])
+@pytest.mark.parametrize("version", [0, -1, "1", 1.0, True, INT4_MAX + 1])
 def test_invalid_version_is_422(client: TestClient, headers: dict[str, str], version):
     response = client.patch(
         "/api/users/me", json={"test_consent_version": version}, headers=headers
     )
     assert response.status_code == 422
+
+
+def test_largest_version_is_stored(client: TestClient, headers: dict[str, str]):
+    response = client.patch(
+        "/api/users/me", json={"test_consent_version": INT4_MAX}, headers=headers
+    )
+    assert response.status_code == 200
+    assert response.json()["test_consent_version"] == INT4_MAX
 
 
 def test_db_keeps_time_and_version_together(db_session: Session, user_id: uuid.UUID):

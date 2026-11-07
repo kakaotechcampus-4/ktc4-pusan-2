@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
@@ -23,11 +22,6 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import take as take_service
 
 Versions = tuple[uuid.UUID, uuid.UUID]
-
-
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
 def _make_pitch(db: Session, user_id: uuid.UUID) -> uuid.UUID:

@@ -1,19 +1,18 @@
 import asyncio
-import contextlib
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from functools import partial
-from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.core.tasks import TaskRegistry
+from pitch_coach_backend.core.database import in_session as _in_session
+from pitch_coach_backend.core.tasks import Stop, TaskRegistry, run_periodic, start_task
 from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
@@ -62,19 +61,6 @@ async def run(
         raise
     except Exception:
         logger.exception("Take 분석 실패 take=%s", take_id)
-
-
-async def _in_session[T](
-    session_factory: SessionFactory, fn: Callable[..., T], *args: Any
-) -> T:
-    def call() -> T:
-        db = session_factory()
-        try:
-            return fn(db, *args)
-        finally:
-            db.close()
-
-    return await run_in_threadpool(call)
 
 
 async def _score(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> str:
@@ -130,7 +116,7 @@ async def _review(
             review_request = await _in_session(
                 session_factory, review_service.build_review_request, take_id
             )
-            reply = await review_service.request_review_async(take_id, review_request)
+            reply = await take_ai_client.request_review_async(take_id, review_request)
             saved = await _in_session(
                 session_factory,
                 partial(review_service.save_review, request_id=request_id),
@@ -202,9 +188,10 @@ async def _resume(
 async def sweep_forever(
     session_factory: SessionFactory = SessionLocal, interval_sec: float = SWEEP_INTERVAL_SEC
 ) -> None:
-    while True:
-        await asyncio.sleep(interval_sec)
+    async def step() -> None:
         resume(session_factory, stale_before=datetime.now(UTC) - STALE_ANALYSIS)
+
+    await run_periodic(step, interval_sec, delay_first=True)
 
 
 async def stop_all(timeout: float = STOP_TIMEOUT_SEC) -> None:
@@ -213,14 +200,12 @@ async def stop_all(timeout: float = STOP_TIMEOUT_SEC) -> None:
     await _running.stop_all(max(0.0, deadline - asyncio.get_running_loop().time()))
 
 
-def start_background() -> Callable[[], Awaitable[None]]:
+def start_background() -> Stop:
     resume(restarted=True)
-    sweep = asyncio.create_task(sweep_forever(), name="take-analysis-sweep")
+    stop_sweep = start_task(sweep_forever(), name="take-analysis-sweep")
 
     async def stop() -> None:
-        sweep.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await sweep
+        await stop_sweep()
         await stop_all()
 
     return stop

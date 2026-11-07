@@ -73,9 +73,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from chat_agent import prompts
-from chat_agent.actions import action_args_hash
-from chat_agent.llm_types import (
+from pitch_coach_ai.common.llm import tool_role
+from pitch_coach_ai.features.chat_agent import prompts
+from pitch_coach_ai.features.chat_agent.actions import action_args_hash
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.llm_types import (
     LlmBudgetStop,
     LlmError,
     LlmRequest,
@@ -84,14 +86,13 @@ from chat_agent.llm_types import (
     ToolLlm,
     Usage,
 )
-from chat_agent.version import FEATURE_VERSION
+from pitch_coach_ai.features.chat_agent.version import FEATURE_VERSION
 
 from . import grading as gr
 from . import scenario as scn
-from .app import AgentApp, from_env
+from .app import GUIDES, AgentApp, from_env
 from .fake_be import FakeBe, Run, StoredMessage
 from .judge import sentence_key
-from .llm import ROLE_CHAT_AGENT
 
 OUTPUTS = Path(__file__).resolve().parents[2] / "outputs" / "evals"
 LAB = Path(__file__).resolve().parent
@@ -508,6 +509,8 @@ class _Ctx:
             clock_ms=self.clock.clock_ms,
             monotonic=self.clock.monotonic,
             log=self.log.append,
+            # 고정 순서 기준선(13-3)은 정한 순서의 도구만 쓴다: 코드가 먼저 읽는 조사 흐름(6-1)을 끈다
+            **({"cfg": load_config(research_prefetch=False)} if cfg.baseline else {}),
         )
         self.be = FakeBe(app, pitches=self.world.pitches, clock=self.clock)
         if self.world.official_reviews == "rule":
@@ -1776,8 +1779,6 @@ def summarize(
 
 
 def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -> dict[str, Any]:
-    from .llm import ROLE_CHAT_AGENT
-
     files = {
         s.id: scn.file_hash(scn.SCENARIO_DIR / f"{s.id}.json")
         for s in scenarios
@@ -1787,9 +1788,7 @@ def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -
         name: hashlib.sha256((LAB / name).read_bytes()).hexdigest()
         for name in ("grading.py", "scenario.py", "evals.py", "judge.py")
     }
-    manifest = json.loads(
-        (LAB.parent / "chat_agent" / "guides" / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
     return {
         "feature_version": FEATURE_VERSION,
         "prompt_version": prompts.PROMPT_VERSION,
@@ -1797,7 +1796,7 @@ def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -
         "corpus_sha256": manifest.get("sha256"),
         "model": model,
         "bundle": bundle,
-        "role": dataclasses.asdict(ROLE_CHAT_AGENT),
+        "role": dataclasses.asdict(tool_role()),
         "scenario_ids": sorted(files),
         "scenario_hashes": files,
         "scenarios_sha256": _h(sorted(files.items())),
@@ -1883,7 +1882,7 @@ def retry_plan(
         "repeat": a.repeat,
         "baseline": a.baseline,
         "followups": a.followups,
-        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+        "reasoning": dict(efforts) or {"default": tool_role().reasoning_effort},
     }
     now = freeze_info(scenarios, None, a.bundle)
     old_hashes = info.get("grader_sha256")
@@ -2153,7 +2152,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as e:
         print(f"--reasoning: {e}", file=sys.stderr)
         return 2
-    role = dataclasses.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts) if efforts else None
+    role = dataclasses.replace(tool_role(), purpose_efforts=efforts) if efforts else None
     kept: list[RunResult] = []
     redo: list[tuple[scn.Scenario, int]] | None = None
     if a.fake:
@@ -2213,7 +2212,7 @@ def main(argv: list[str] | None = None) -> int:
         "followups": cfg.followups,
         "fake": a.fake,
         #: 목적별 추론 강도(없으면 역할 기본값 low, 도구 모드는 none)
-        "reasoning": dict(efforts) or {"default": ROLE_CHAT_AGENT.reasoning_effort},
+        "reasoning": dict(efforts) or {"default": tool_role().reasoning_effort},
         "retried_from": str(a.retry_from) if a.retry_from is not None else None,
         "retried_runs": len(redo) if redo is not None else 0,
     }

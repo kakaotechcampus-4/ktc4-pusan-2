@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from chat_agent_lab import grading as gr
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 
 @pytest.mark.parametrize(
@@ -355,7 +355,8 @@ class _JudgeStub:
 
 
 def test_judge_gives_only_the_cited_cards_and_scores_one_or_zero() -> None:
-    from chat_agent.llm_types import LlmTimeout
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
+
     from chat_agent_lab import judge as jg
 
     stub = _JudgeStub({"supported": 1, "reason": "원문과 같다"}, {"supported": 7, "reason": "?"})

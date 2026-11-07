@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from functools import partial
 
 import httpx
@@ -24,7 +25,6 @@ from pitch_coach_backend.module.take.entity import Take
 from tests import test_pitch_standards as base
 
 pitch_id = base.pitch_id
-auth_headers = base.auth_headers
 
 
 def reply(**changes):
@@ -284,3 +284,19 @@ def test_total_timeout_closes_slow_response(monkeypatch):
     with pytest.raises(StandardParseFailed):
         asyncio.run(standard_parser.parse_standard_text("기준"))
     assert closed
+
+
+@pytest.mark.anyio
+async def test_analysis_failure_leaves_status_and_request_id_in_the_log(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    transport = httpx.MockTransport(lambda request: httpx.Response(500, json={"secret": "본문"}))
+    monkeypatch.setattr(
+        standard_parser.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
+    )
+
+    with caplog.at_level(logging.WARNING), pytest.raises(StandardParseFailed):
+        await standard_parser.parse_standard_text("사용자 입력")
+
+    assert "status=500" in caplog.text and "request_id=" in caplog.text
+    assert "사용자 입력" not in caplog.text and "본문" not in caplog.text

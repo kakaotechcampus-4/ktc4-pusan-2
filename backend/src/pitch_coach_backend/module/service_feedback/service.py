@@ -9,6 +9,7 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.database import constraint_name
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.module.service_feedback import repository
 from pitch_coach_backend.module.service_feedback.dto import (
@@ -27,7 +28,6 @@ from pitch_coach_backend.module.service_feedback.exception import (
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service import take as take_service
-from pitch_coach_backend.module.user import service as user_service
 
 
 def submit_suggestion(
@@ -52,12 +52,8 @@ def submit_suggestion(
         return suggestion, created
     except IntegrityError as exc:
         db.rollback()
-        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-        if constraint == "fk_user_suggestions_user" and not user_service.exists(db, user_id):
+        if constraint_name(exc) == "fk_user_suggestions_user":
             raise UnauthorizedException() from None
-        raise
-    except Exception:
-        db.rollback()
         raise
 
 
@@ -99,14 +95,11 @@ def submit_survey(
     except IntegrityError as exc:
         db.rollback()
         # 확인한 뒤 저장하기 전에 탈퇴했거나 Take 를 지운 경우다
-        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-        if constraint == "fk_take_surveys_user" and not user_service.exists(db, user_id):
+        constraint = constraint_name(exc)
+        if constraint == "fk_take_surveys_user":
             raise UnauthorizedException() from None
         if constraint == "fk_take_surveys_take":
             raise NonExistentTake() from None
-        raise
-    except Exception:
-        db.rollback()
         raise
 
 

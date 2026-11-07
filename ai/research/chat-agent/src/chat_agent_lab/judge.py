@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from chat_agent.llm_types import LlmError, LlmRequest, ToolLlm
+from pitch_coach_ai.features.chat_agent.llm_types import LlmError, LlmRequest, ToolLlm
 
 JUDGE_PROMPT = """너는 발표 코칭 답의 근거성을 판정하는 채점기다.
 입력: <sentence>는 코치가 사용자에게 한 일반 조언 문장 하나, <sources>는 그 문장이 인용한 자료 카드 원문이다.
