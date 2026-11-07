@@ -38,6 +38,18 @@ def test_recurring_resolved_is_improved(req):
     assert resp.dimensions["script_independence"] == "IMPROVED"
 
 
+def test_recurring_with_small_burden_is_improved(req):
+    """반복 차원은 부담이 0이 아니어도 PRIORITY 기준 미만이면 IMPROVED"""
+    segs = req["take_result"]["problem_segments"]
+    req["take_result"]["problem_segments"] = [
+        s for s in segs if s["issue_type"] != "GAZE_ON_SCRIPT"
+    ] + [segment("GAZE_ON_SCRIPT", "GAZE", 3, 88_000, 93_000, 0.71)]
+    resp, trace = run(req)
+    total = trace.burden["script_independence"]["total"]
+    assert 0 < total < load_config().dimension.priority_burden_min
+    assert resp.dimensions["script_independence"] == "IMPROVED"
+
+
 def test_recurring_cut_by_priority_max_is_stable(req):
     """부담은 기준 이상인데 개수 상한에서 밀린 반복 문제는 좋아진 것이 아니다"""
     req["take_result"]["problem_segments"].append(

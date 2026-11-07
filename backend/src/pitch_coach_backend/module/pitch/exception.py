@@ -10,6 +10,11 @@ class NonExistentPitch(NotFoundException):
     message = "존재하지 않는 발표자료입니다."
 
 
+class PitchBusy(ConflictException):
+    code = "PITCH_BUSY"
+    message = "연습이나 분석이 끝난 뒤 다시 삭제해 주세요."
+
+
 class NonExistentPresentationVersion(NotFoundException):
     code = "PRESENTATION_VERSION_NOT_FOUND"
     message = "존재하지 않는 발표자료 버전입니다."

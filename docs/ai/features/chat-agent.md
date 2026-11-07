@@ -231,16 +231,18 @@ ai/research/chat-agent/
 │   ├── fake_be.py               가짜 BE 실행기 (BE의 참조 구현, 12-3)
 │   ├── evals.py · scenario.py · grading.py · judge.py   평가 실행기 · 시나리오 · 채점기 · 근거성 판정 · 고정 순서 기준선 (13절)
 │   ├── examples.py              예시 JSON 다시 만들기 명령(만드는 코드는 서비스 시험 도우미)
+│   ├── replay.py                기록 · 재생: 기록한 모델 응답으로 코어 · 서비스 HTTP 경로의 스트림 줄을 바이트로 비교
 │   └── service_tests.py         서비스 시험 도우미(가상 기록 · 가짜 모델 · 예시 만들기)를 읽는다
-├── tests/lab/                   가짜 BE 통합 시험 · 채점기 시험 · 실패 행 대응표 시험
+├── tests/lab/                   가짜 BE 통합 시험 · 채점기 시험 · 실패 행 대응표 시험 · 재생 고정 시험(data/replay/)
 ├── tests/live/                  실제 모델 시험 (live)
 └── evals/scenarios/<id>.json    평가셋 · 안전 세트 · 객관성 세트 · 에이전트 서비스 세트 (schema.json · 예시 포함)
 ```
 
 - 이 문서에서 `chat_agent/<파일>` · `features/chat_agent/<파일>`은 코어 패키지 안의 파일이고, 서비스 `ai/service/src/pitch_coach_ai/features/chat_agent/<파일>`이다.
 - 코어는 처음부터 서비스 코어 규칙(`architecture.md` 8절)을 지킨다: 패키지 안은 상대 import만, 파일 · DB · 네트워크 · 환경변수를 직접 쓰지 않음, 시계 · 서명 키 · 자료 묶음 · LLM은 인자로 받음, 의존성은 pydantic 하나. 그래서 폴더째 옮겨 그대로 쓴다.
-- 자료 파일 · 설정 · 서명 키 · 시계는 서비스 계층(`api/chat_agent.py` · `settings.py`, 연구 모듈에서는 대역 `chat_agent_lab/app.py`)이 읽어 기능에 넘긴다. 코어는 받은 것만 쓴다. 스트림 전 검사(5-4) 중 끄기 스위치 · 본문 크기 · 동시 실행 자리는 서비스 계층이, 요청 · 서명 키 유무와 길이 · 서명 · 기본 자료 크기 검사는 코어 `turn.py`가 한다.
+- 자료 파일 · 설정 · 서명 키 · 시계는 서비스 계층(`api/chat_agent.py` · `settings.py`, 연구 모듈에서는 대역 `chat_agent_lab/app.py`)이 읽어 기능에 넘긴다. 코어는 받은 것만 쓴다. 스트림 전 검사(5-4) 중 끄기 스위치 · 서명 키 유무와 길이(자원을 만들거나 본문을 읽기 전에 먼저 거른다) · 본문 크기 · 동시 실행 자리는 서비스 계층이, 요청 · 서명 키 유무와 길이(두 번째 방어) · 서명 · 기본 자료 크기 검사는 코어 `turn.py`가 한다.
 - 가짜 BE 실행기는 BE의 참조 구현이고, 코어 `examples/`(서비스 `features/chat_agent/examples/`)의 입출력 예시 JSON은 AI · BE 계약 시험이 함께 쓴다.
+- 예외: 서비스 시험 도우미 중 가상 기록(`fixtures.py`)과 예시 만들기(`example_builder.py`)는 연구 모듈의 실행 코드(가짜 BE · 평가 · 예시 명령)도 `chat_agent_lab/service_tests.py`로 읽어 쓴다. 코어 단위 시험이 CI에서 같은 도우미를 써서 원본을 한 곳에 두기 때문이다. 두 파일의 이름 · 모양을 바꾸면 연구 모듈 시험도 돌린다(10-2).
 - 서비스 탑재(라우터 · 공통 LLM 함수 · 대화 전용 실행 풀 · 환경변수 · `ai-service.md`)에서 바뀐 서비스 문서 문장은 15-1에 있다.
 
 ## 4-2. 누가 무엇을
@@ -1617,7 +1619,7 @@ uv sync                                        # .venv, 서비스 패키지(pitc
 | 부하 | 대화 동시 0 · 4 · 8 조건과 다시 평가 동시 실행 조건에서 기존 코치 · 리뷰 시간 · 오류율(10-4, `slow`) | 배포 사양 | 아니오(요청할 때만) | 10 (L1 2 · L2 2 · L4 1 · L5 5) |
 
 - 한 행이 둘 이상의 층에 걸리면 각 층에 한 번씩 센다(걸린 행 합계 299, 행 수 244, 둘 이상 걸린 행 54).
-- AI의 단위 · 루프 · 계약 시험과 엔드포인트 시험은 서비스 `tests/unit/chat_agent/`에 있어 AI CI가 돈다(AI CI는 `ai/service/`만 돌린다, `architecture.md` 11절). 연구 모듈 시험은 로컬로 돈다. BE 시험(BE 단위 · 계약 · 통합 · 실제 경계)은 BE CI, FE 단위(vitest)와 화면 E2E는 FE CI에 넣는다(E2E는 Playwright 도입 뒤). 연구 폴더의 가짜 BE 통합 시험(가짜 모델)은 기본 실행에 들고, 실제 모델 평가만 `live`로 표시해 CI 밖에서 요청할 때 돌린다.
+- AI의 단위 · 루프 · 계약 시험과 엔드포인트 시험은 서비스 `tests/unit/chat_agent/`에 있어 AI CI가 돈다(AI CI는 `ai/service/`만 돌린다, `architecture.md` 11절). 연구 모듈 시험은 로컬로 돈다. 서비스 시험 도우미 `fixtures.py` · `example_builder.py`는 연구 모듈도 쓰므로(4-1의 예외) 이 둘을 바꾸면 연구 모듈 시험도 로컬에서 돌린다. 예시 파일은 `ai/service`에서 `uv run python -m tests.unit.chat_agent.example_builder`로 다시 만든다. BE 시험(BE 단위 · 계약 · 통합 · 실제 경계)은 BE CI, FE 단위(vitest)와 화면 E2E는 FE CI에 넣는다(E2E는 Playwright 도입 뒤). 연구 폴더의 가짜 BE 통합 시험(가짜 모델)은 기본 실행에 들고, 실제 모델 평가만 `live`로 표시해 CI 밖에서 요청할 때 돌린다.
 - AI 단위 시험은 처음부터 서비스 시험 관례(키 차단 · 가짜 LLM 주입)를 따르고, 서명 키 · LLM 키 없이도 통과해야 한다(옮긴 뒤 AI CI가 키 없이 돈다).
 
 ## 10-3. 실패 행을 시험으로 옮기기

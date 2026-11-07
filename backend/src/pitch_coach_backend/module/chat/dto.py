@@ -1,4 +1,5 @@
 import uuid
+from enum import StrEnum
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -6,21 +7,28 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pitch_coach_backend.core.validation import NulFreeStr
 
 
-class ChatInfoDTO(BaseModel):
-    chat_id: str
-    user_id: str
-    message: str
-    timestamp: str
+class AgentTrigger(StrEnum):
+    """AI 를 부른 이유. `chat_runs.first_trigger` 에는 `ACTION_RESULT` 를 빼고 저장한다."""
+
+    USER_MESSAGE = "USER_MESSAGE"
+    ACTION_RESULT = "ACTION_RESULT"
+    TAKE_REVIEWED = "TAKE_REVIEWED"
 
 
-AgentTrigger = Literal["USER_MESSAGE", "ACTION_RESULT", "TAKE_REVIEWED"]
 ActionType = Literal["FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"]
 ActionStatus = Literal["SUCCEEDED", "FAILED", "AMBIGUOUS"]
 ProfileKey = Literal["TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT"]
 SummaryKind = Literal["TOPIC", "INTENT", "DECISION", "OPEN"]
 
+# AI 요청에 싣는 기록 · 목록의 상한. 요청을 만드는 쪽(request.py)과 검사하는 모델이 같이 쓴다
+HISTORY_MESSAGES = 20
+OVERFLOW_MESSAGES = 10
+PRIOR_ASSESSMENTS = 50
+HISTORY_TEXT_LIMIT = 4000
+PITCH_SUMMARIES = 20
+
 Count = Annotated[int, Field(ge=0)]
-HistoryText = Annotated[str, Field(max_length=4000)]
+HistoryText = Annotated[str, Field(max_length=HISTORY_TEXT_LIMIT)]
 
 
 class _AgentDTO(BaseModel):
@@ -73,19 +81,19 @@ class AgentOverflowMessageDTO(_AgentDTO):
 
 
 class AgentOverflowDTO(_AgentDTO):
-    messages: list[AgentOverflowMessageDTO] = Field(min_length=1, max_length=10)
+    messages: list[AgentOverflowMessageDTO] = Field(min_length=1, max_length=OVERFLOW_MESSAGES)
     prev_summary_version: Count
 
 
 class AgentHistoryDTO(_AgentDTO):
     summary: Annotated[list[AgentSummaryItemDTO], Field(max_length=12)] | None
-    messages: list[AgentHistoryMessageDTO] = Field(max_length=20)
-    prior_assessments: list[dict[str, Any]] = Field(max_length=50)
+    messages: list[AgentHistoryMessageDTO] = Field(max_length=HISTORY_MESSAGES)
+    prior_assessments: list[dict[str, Any]] = Field(max_length=PRIOR_ASSESSMENTS)
     overflow: AgentOverflowDTO | None
 
 
 class AgentContextDTO(_AgentDTO):
-    pitches: list[dict[str, Any]] = Field(max_length=20)
+    pitches: list[dict[str, Any]] = Field(max_length=PITCH_SUMMARIES)
     pitches_total: Count
     pitch: dict[str, Any] | None
     conversation_goal: dict[str, Any] | None
@@ -122,11 +130,16 @@ class AgentResumeDTO(_AgentDTO):
 
 
 class BudgetUsedDTO(_AgentDTO):
-    model_calls: Count = 0
-    tool_calls: Count = 0
-    elapsed_ms: Count = 0
-    input_tokens: Count = 0
-    output_tokens: Count = 0
+    model_calls: Count
+    tool_calls: Count
+    elapsed_ms: Count
+    input_tokens: Count
+    output_tokens: Count
+
+
+NO_BUDGET_USED = BudgetUsedDTO(
+    model_calls=0, tool_calls=0, elapsed_ms=0, input_tokens=0, output_tokens=0
+)
 
 
 class AgentProfileItemDTO(_AgentDTO):
@@ -163,7 +176,7 @@ class AgentTurnRequestDTO(_AgentDTO):
     def _matches_trigger(self) -> Self:
         trigger = self.run.trigger
         message = self.user_message
-        if trigger == "USER_MESSAGE":
+        if trigger == AgentTrigger.USER_MESSAGE:
             if message is None or not message.strip() or len(message) > 2000:
                 raise ValueError("USER_MESSAGE 는 1~2,000자 사용자 말이 필요하다")
             if self.resume is not None or self.review_event is not None:
@@ -173,7 +186,7 @@ class AgentTurnRequestDTO(_AgentDTO):
             return self
         if message is not None or self.choice is not None:
             raise ValueError(f"{trigger} 에는 사용자 말 · choice 를 싣지 않는다")
-        if trigger == "ACTION_RESULT":
+        if trigger == AgentTrigger.ACTION_RESULT:
             if self.resume is None or self.review_event is not None:
                 raise ValueError("ACTION_RESULT 는 resume 만 싣는다")
         elif self.review_event is None or self.resume is not None:

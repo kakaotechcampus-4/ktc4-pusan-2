@@ -15,6 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core import ai_slots
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.chat import ai_client, controller, turn_runner
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.user.entity import User
@@ -92,7 +94,7 @@ def _cancel(client: TestClient, user_id: uuid.UUID, run_id: str) -> dict[str, An
 
 def _slot_taken(client: TestClient) -> bool:
     async def check() -> bool:
-        return turn_runner._chat_slot().locked()
+        return ai_slots.chat().locked()
 
     return client.portal.call(check)
 
@@ -129,8 +131,14 @@ def test_cancel_gives_the_chat_slot_back(
     user_id: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # 자리가 하나면 취소한 턴이 돌려주어야 다음 턴이 AI 를 부른다
-    monkeypatch.setattr(turn_runner, "CHAT_SLOT_LIMIT", 1)
+    # 남은 자리가 하나면 취소한 턴이 돌려주어야 다음 턴이 AI 를 부른다. 자리 설정은 2 이상이어야
+    # 대화가 켜지므로 두 자리 중 하나를 미리 쥔다
+    monkeypatch.setattr(settings, "chat_ai_slots_per_process", 2)
+
+    async def hold_one() -> None:
+        await ai_slots.chat().acquire()
+
+    client.portal.call(hold_one)
     first = _send(client, user_id)
     assert hanging_agent.opened.get(timeout=WAIT_SEC) == first
     assert _slot_taken(client)

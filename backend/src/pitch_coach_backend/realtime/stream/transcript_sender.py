@@ -13,12 +13,11 @@ from fastapi import WebSocket
 from pitch_coach_backend.realtime.dto import TranscriptMessage
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
 from pitch_coach_backend.realtime.stream.client import ClientSlot
-from pitch_coach_backend.realtime.stt import loop as stt_loop
 
 # 중간 자막(interim) 하나를 보내는 상한. 받는 쪽이 멈춰 있어도 다음 것을 보낼 수 있게 한다 — 다음
 # interim 이 덮으므로 못 보낸 것은 버린다
 INTERIM_SEND_TIMEOUT_SEC = 1.0
-# 끝난 Take 의 마지막 final 을 FE 로 보내는 상한
+# final 을 FE 로 보내는 상한. 넘으면 모아 두었다가 다시 붙은 연결에 보낸다 (`show_final`)
 FINAL_SEND_TIMEOUT_SEC = 3.0
 
 
@@ -120,6 +119,6 @@ class TranscriptSender:
         if not self._client.holds(target):
             return False
         sent = False
-        with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
+        with anyio.move_on_after(FINAL_SEND_TIMEOUT_SEC):
             sent = await self._client.send_checked(message)
         return sent and self._client.holds(target)

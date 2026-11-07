@@ -1,8 +1,12 @@
+import os
+import sys
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 from unittest.mock import ANY, MagicMock
 
@@ -12,6 +16,7 @@ from PIL import Image
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.adapter import presentation_file
 from pitch_coach_backend.module.pitch.adapter.presentation_file import (
     THUMBNAIL_HEIGHT,
     THUMBNAIL_WIDTH,
@@ -66,6 +71,99 @@ def test_render_first_page_returns_none_for_broken_pdf() -> None:
     assert file.tell() == 0
 
 
+# 그리는 프로세스 대신 띄운다. 끝에 "%slow" 를 붙인 PDF 는 pid 를 남기고 오래 멈추고, 나머지는
+# 진짜로 그린다. 부모에서 함수를 바꿔치면 자식 프로세스에는 닿지 않아서 명령째 바꾼다
+_SLOW_RENDER = """
+import os, sys, time
+from pitch_coach_backend.module.pitch.adapter.pdf_thumbnail import render_webp
+data = sys.stdin.buffer.read()
+if data.rstrip().endswith(b"%slow"):
+    with open(os.environ["SLOW_RENDER_PID_FILE"], "w") as f:
+        f.write(str(os.getpid()))
+    time.sleep(60)
+sys.stdout.buffer.write(render_webp(data, int(sys.argv[1]), int(sys.argv[2])))
+"""
+
+RENDER_TIMEOUT = 2.0
+
+
+@pytest.fixture
+def slow_render(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """오래 걸리는 그리기를 흉내 낸다. 멈춘 자식이 pid 를 적는 파일을 돌려준다."""
+    pid_file = tmp_path / "render.pid"
+    monkeypatch.setenv("SLOW_RENDER_PID_FILE", str(pid_file))
+    monkeypatch.setattr(
+        presentation_file, "_THUMBNAIL_COMMAND", [sys.executable, "-c", _SLOW_RENDER]
+    )
+    monkeypatch.setattr(presentation_file, "THUMBNAIL_TIMEOUT_SECONDS", RENDER_TIMEOUT)
+    return pid_file
+
+
+def _slow_pdf(make_pdf: Callable[[int], bytes]) -> bytes:
+    return make_pdf(1) + b"%slow\n"
+
+
+def _assert_killed(pid_file: Path) -> None:
+    # 자식이 바꾼 명령을 실제로 실행했고, 상한을 넘긴 뒤에는 끝났는지 본다
+    pid = int(pid_file.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_render_first_page_kills_render_over_time_limit(
+    slow_render: Path, make_pdf: Callable[[int], bytes]
+) -> None:
+    file = BytesIO(_slow_pdf(make_pdf))
+
+    started = time.monotonic()
+    thumbnail = render_first_page(file)
+    elapsed = time.monotonic() - started
+
+    assert thumbnail is None
+    assert RENDER_TIMEOUT <= elapsed < RENDER_TIMEOUT + 2
+    _assert_killed(slow_render)
+    assert file.tell() == 0
+
+
+def test_slow_render_does_not_take_thumbnail_from_other_upload(
+    slow_render: Path, make_pdf: Callable[[int], bytes]
+) -> None:
+    """그리기 하나가 오래 걸려도 그동안 들어온 다른 업로드는 썸네일을 받는다."""
+    slow_result: list[bytes | None] = []
+    slow = threading.Thread(
+        target=lambda: slow_result.append(render_first_page(BytesIO(_slow_pdf(make_pdf))))
+    )
+    slow.start()
+    deadline = time.monotonic() + RENDER_TIMEOUT
+    while not slow_render.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert slow_render.exists()
+
+    thumbnail = render_first_page(BytesIO(make_pdf(1)))
+    still_rendering = slow.is_alive()
+    slow.join(RENDER_TIMEOUT + 2)
+
+    assert thumbnail is not None
+    assert still_rendering
+    assert slow_result == [None]
+    _assert_killed(slow_render)
+
+
+def test_render_first_page_skips_when_render_slots_are_full(
+    monkeypatch: pytest.MonkeyPatch, make_pdf: Callable[[int], bytes]
+) -> None:
+    """그리는 프로세스가 이미 꽉 찼으면 기다리지 않고 썸네일만 건너뛴다."""
+    slots = threading.BoundedSemaphore(presentation_file.THUMBNAIL_SLOTS)
+    for _ in range(presentation_file.THUMBNAIL_SLOTS):
+        slots.acquire()
+    monkeypatch.setattr(presentation_file, "_thumbnail_slots", slots)
+    run = MagicMock()
+    monkeypatch.setattr(presentation_file.subprocess, "run", run)
+
+    assert render_first_page(BytesIO(make_pdf(1))) is None
+    run.assert_not_called()
+
+
 def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -> uuid.UUID:
     return pitch_service.add_pitch_service(
         db,
@@ -102,6 +200,31 @@ def test_upload_presentation_service(
     presentation = db_session.get(PresentationVersion, result.presentation_version_id)
     assert presentation is not None
     assert presentation.thumbnail_key == expected_thumbnail_key
+
+
+def test_upload_finishes_without_thumbnail_when_render_is_too_slow(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
+    slow_render: Path,
+    make_pdf: Callable[[int], bytes],
+) -> None:
+    pitch_id = _make_pitch(db_session, user_id)
+    file = UploadFile(filename="deck.pdf", file=BytesIO(_slow_pdf(make_pdf)))
+
+    started = time.monotonic()
+    result = presentation_service.upload_presentation_service(
+        db_session, pitch_id, UploadPresentationDTO(presentation_file=file)
+    )
+
+    assert time.monotonic() - started < RENDER_TIMEOUT + 2
+    upload_mock.assert_called_once()
+    upload_bytes_mock.assert_not_called()
+    presentation = db_session.get(PresentationVersion, result.presentation_version_id)
+    assert presentation is not None
+    assert presentation.thumbnail_key is None
+    _assert_killed(slow_render)
 
 
 def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(

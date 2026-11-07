@@ -1292,3 +1292,51 @@ def test_mixed_request_keeps_the_scope_sentence_when_every_answer_sentence_is_dr
     texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
     assert texts[-1] == templates.SystemText.CONTENT_COACHING.value
     assert all("99%" not in t for t in texts)
+
+
+# ── 끝 줄은 정확히 하나: 반복자 자신이 도는 코드의 예외(5-4 · L1-08) ─────────────────────────
+
+
+class _RaisingLog(list):
+    """진단 기록을 남기려 하면 예외를 내는 기록 함수(로그 출력기 고장)."""
+
+    def append(self, _entry: Any) -> None:
+        raise RuntimeError("로그 출력기 고장")
+
+
+def _one_terminal(lines: list[dict[str, Any]]) -> None:
+    assert [ln["event"] in ("final", "error") for ln in lines].count(True) == 1
+    assert lines[-1]["event"] in ("final", "error")
+    assert [ln["seq"] for ln in lines] == list(range(1, len(lines) + 1))
+
+
+def test_exception_while_building_the_end_line_still_ends_with_one_error_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """끝 줄 만들기(`_final_line`)에서 예외가 나도 끝 줄 없이 닫지 않고 `INTERNAL_ERROR` 한 줄로 끝낸다.
+
+    로그에는 예외 종류와 위치만 남고 예외 메시지(사용자 글이 섞일 수 있음)는 남지 않는다."""
+    from pitch_coach_ai.features.chat_agent import turn as turn_mod
+
+    def boom(*_a: Any, **_k: Any) -> str:
+        raise RuntimeError("사용자 글이 섞인 메시지")
+
+    monkeypatch.setattr(turn_mod, "_final_line", boom)
+    sink: list[dict[str, Any]] = []
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    status, lines, data = F.run_turn(req, F.FakeLlm(basic_script()), log=sink)
+    assert status == 200
+    _one_terminal(lines)
+    assert lines[-1]["event"] == "error" and data["error"]["code"] == "INTERNAL_ERROR"
+    crash = [e for e in sink if e.get("event") == "agent_crash"]
+    assert len(crash) == 1 and crash[0]["cause"] == "RuntimeError" and crash[0]["where"]
+    assert "사용자 글" not in json.dumps(sink, ensure_ascii=False)
+
+
+def test_broken_log_sink_still_ends_with_one_error_line() -> None:
+    """진단 기록 함수가 예외를 내도(코어 작업 · 끝 줄 처리 모두) 끝 줄 하나로 끝난다."""
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    status, lines, data = F.run_turn(req, F.FakeLlm(basic_script()), log=_RaisingLog())
+    assert status == 200
+    _one_terminal(lines)
+    assert data is not None and "error" in data and data["error"]["code"] == "INTERNAL_ERROR"

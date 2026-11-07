@@ -6,10 +6,12 @@ on:
     paths:
       - 'ai/service/**'
       - '.github/workflows/ai-ci.yml'
+      - 'docs/ai/features/script-parser-markers.json'
   pull_request:
     paths:
       - 'ai/service/**'
       - '.github/workflows/ai-ci.yml'
+      - 'docs/ai/features/script-parser-markers.json'
 
 jobs:
   ai:

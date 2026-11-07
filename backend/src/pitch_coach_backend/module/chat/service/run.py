@@ -5,7 +5,7 @@ import socket
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -14,10 +14,16 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatRunLog
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.owned import parse_uuid
 
 SEOUL = ZoneInfo("Asia/Seoul")
 OWNER = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 LEASE = timedelta(seconds=30)
+
+
+def seoul_day(at: datetime | None = None) -> date:
+    """하루 한도를 세는 서울 날짜. 시각을 주지 않으면 지금이다."""
+    return (datetime.now(UTC) if at is None else at).astimezone(SEOUL).date()
 
 
 class RunLost(Exception):
@@ -39,7 +45,7 @@ class ClaimedRun:
 def claimed(row: ChatRun) -> ClaimedRun:
     return ClaimedRun(
         run_id=row.id,
-        first_trigger=row.first_trigger,
+        first_trigger=AgentTrigger(row.first_trigger),
         row_revision=row.row_revision,
         deadline=row.deadline_at,
     )
@@ -85,10 +91,10 @@ def _parse_ids(values: Iterable[Any]) -> tuple[set[uuid.UUID], bool]:
     for value in values:
         if value is None:
             continue
-        try:
-            parsed.add(uuid.UUID(str(value)))
-        except ValueError:
+        if (parsed_id := parse_uuid(value)) is None:
             valid = False
+        else:
+            parsed.add(parsed_id)
     return parsed, valid
 
 
@@ -99,6 +105,15 @@ def lock_ids(db: Session, pitch_ids: set[str], take_ids: set[str]) -> bool:
     locked = all(repo.lock_pitch_id(pitch_id) for pitch_id in sorted(pitches))
     locked = all(repo.lock_take_id(take_id) for take_id in sorted(takes)) and locked
     return locked and pitches_valid and takes_valid
+
+
+def canonical_ids(values: Iterable[str]) -> list[str]:
+    """저장할 근거 ID. `lock_ids` 를 통과한 값만 받는다.
+
+    AI 가 낸 문장의 ID 는 대문자이거나 하이픈이 없어도 잠글 수 있다. 정리 작업이 문자열로 찾으므로
+    표준 형식으로 바꿔 저장한다.
+    """
+    return sorted(str(uuid.UUID(str(value))) for value in values)
 
 
 def check_sources(db: Session, run: ClaimedRun, pitch_ids: set[str], take_ids: set[str]) -> None:
@@ -135,15 +150,22 @@ def cancel(db: Session, run: ClaimedRun) -> None:
     row = lock_current(db, run)
     if row is None:
         return
-    now = datetime.now(UTC)
-    release_unsent(ChatRepository(db), row)
+    mark_cancelled(ChatRepository(db), row, datetime.now(UTC))
+    db.commit()
+
+
+def mark_cancelled(repo: ChatRepository, row: ChatRun, now: datetime) -> None:
+    """잠근 실행을 CANCELLED 로 끝내고 운영 기록을 남긴다. 커밋은 부르는 쪽이 한다.
+
+    판 번호를 올려 그 뒤에 도착한 턴 실행기의 저장이 반영되지 않게 한다.
+    """
+    release_unsent(repo, row)
     row.status = "CANCELLED"
     row.state = None
     row.error_code = "AGENT_CANCELLED"
     row.finished_at = now
     row.row_revision += 1
-    add_run_log(ChatRepository(db), row, now)
-    db.commit()
+    add_run_log(repo, row, now)
 
 
 def release_unsent(repo: ChatRepository, row: ChatRun) -> None:

@@ -76,8 +76,9 @@ chat-agent/
 
 | 파일 | 하는 일 | 입력 → 출력 | 부르는 곳 | 고칠 때 |
 |---|---|---|---|---|
-| `service_tests.py` | 서비스 시험 도우미를 읽는다: 가상 기록 `fixtures`(가상 피치 · Take · 코치 Take 결과 · 리뷰 · '끝까지 한 발표' 계산, 12-3) · 예시 만들기 `example_builder` · 가짜 모델 `fakes` · `snapshots` · `turn_tests`. 고유한 패키지 이름으로 읽어 import 경로를 바꾸지 않고, 시험 전용 모듈은 처음 쓸 때 읽는다 | — | 가짜 BE · 평가 · 예시 명령 · 연구 시험 | 도우미의 원본은 서비스 `ai/service/tests/unit/chat_agent/`에만 둔다 |
+| `service_tests.py` | 서비스 시험 도우미를 읽는다: 가상 기록 `fixtures`(가상 피치 · Take · 코치 Take 결과 · 리뷰 · '끝까지 한 발표' 계산, 12-3) · 예시 만들기 `example_builder` · 가짜 모델 `fakes` · `snapshots` · `turn_tests`. 고유한 패키지 이름으로 읽어 import 경로를 바꾸지 않고, `fixtures` 말고는 처음 쓸 때 읽는다 | — | 가짜 BE · 평가 · 예시 명령 · 연구 시험 | 도우미의 원본은 서비스 `ai/service/tests/unit/chat_agent/`에만 둔다. 서비스 쪽 `fixtures.py` · `example_builder.py`를 바꾸면 이 폴더 시험도 돌린다 |
 | `examples.py` | 예시 JSON 다시 만들기 명령. 만드는 코드는 서비스 `tests/unit/chat_agent/example_builder.py`(`state`는 예시 전용 키로 실제 서명) | 가상 기록 → 서비스 코어 `examples/`의 JSON · NDJSON 파일 | 사람이 실행 | 5절 모양 · 프롬프트 · 설정을 바꾸면 다시 만든다(서비스 CI 가 예시가 만들기 결과와 같은지 본다) |
+| `replay.py` | 기록 · 재생: 실제 모델로 시나리오를 한 번 돌려 모델 호출마다 결과 · 응답 조각 순서를 기록하고, 고정 시계로 다시 돌려 턴마다 상태 · 오류 본문 · NDJSON 줄을 그대로 모은다. 연구 앱 대역(코어)과 서비스 `/agent/turn`(앱 전체) 두 길로 재생한다 | 시나리오 · 기록 → 턴 줄 · 요청 지문 | 고정 시험 `tests/lab/test_replay.py`(기록 · 기대 줄은 `tests/lab/data/replay/`), 코어를 옮기거나 크게 고칠 때 전 · 후 비교 | 줄이 바뀐 것이 의도한 변경이면 `replay update`, 프롬프트 · 도구 설명을 바꿔 모델 요청이 바뀌면 `replay record`(요금이 듦)로 다시 만든다 |
 | `evals.py` · `scenario.py` · `grading.py` · `judge.py` | 평가 실행기(시나리오마다 가짜 BE 로 돌리고 모델 호출 · 비용 · 장애 주입 · 고정 순서 기준선) · 시나리오 파일 읽기 · 검사(`schema.json`) · 채점기(제품 답 검사와 따로) · 근거성 판정(모델) | 시나리오 · 모델 → 결과 파일 · 보고 | 사람이 실행(`python -m chat_agent_lab.evals`) | 평가 결과 · 명령은 아래 '평가 결과' |
 | `app.py` | 서비스 계층 대역: `ai/.env` 읽기, 자료 묶음 읽기(검수 전 카드 포함), 동시 실행 자리(429 `AGENT_BUSY`), `handle_turn` 부르기, 서비스 도구 호출 LLM(`ToolLlmClient` · `tool_role`) 만들기, 한 턴 해 보기 명령 | 요청 dict → 줄 목록 | live 시험 · 평가 · 손으로 해 보기 | 서비스의 같은 자리는 `api/chat_agent.py`(HTTP · 스트림 · 실행 풀) |
 | `fake_be.py` | 가짜 BE 실행기(12-3 흉내): 저장소(피치 · Take · 공식 리뷰 · 대화 · 목표 · 메시지 · 판단), 기본 자료 · 대화 기록 모으기, 스트림 · final 검사, 실행 이벤트(진행 줄 · 문장 줄을 `event_seq`로 저장, `events_after`로 `after_seq` 커서 조회, 문장 줄 번호 · 끝 줄 앞부분 대조, 끊김 · `error` 끝 줄 · 불일치면 받은 문장으로 `PARTIAL`), 행동 실행(소유권 · 한 번만 · 다시 평가는 실제 리뷰 코드로 A · B), 승인 흐름(`ASK` 행동은 `args` · `args_hash` 저장 뒤 `WAITING_APPROVAL`에서 멈추고 `approve` · `reject` · `cancel` · 30분 만료 · 대기 중 새 메시지로 이어짐, 거절 · 만료 · 취소는 AI를 부르지 않고 고정 문장을 덧붙여 저장, 선승인 `SAVE_GOAL`은 내용 해시를 다시 계산해 맞을 때만 실행, 연습 이동 버튼은 실행하지 않고 `click_practice`로만 기록), `ACTION_RESULT` 이어 부르기(누적량 + 행동 시간 · `loaded_takes` · `removed_sources` · 범위 확정과 `state_revision`), 답 저장, 기억(설정 켜기 · 끄기 · '기억 없이' 대화 · 항목 · 전체 지우기와 기억 번호, 요청 `memory` · 밀린 메시지 `overflow`, 프로필 저장은 다시 검사 · 번호 조건 · `MEMORY_SAVED` 카드, 요약은 판 번호가 같을 때만 갱신), 자동 목표 확인 | `AgentApp` · 메시지 → `Run`(호출 · 행동 · final 기록) | 통합 시험 · 평가 | 계약(5절) · BE 할 일(12-3)이 바뀌면 같이 고친다. 실제 BE가 아니다(DB · 동시성 · 재시작 복구 없음, 머리 설명의 '단순화') |
@@ -95,6 +96,7 @@ uv sync                                             # .venv 를 만들고 서비
 .\.venv\Scripts\python.exe -m pytest -m live tests/live   # 실제 모델(ai/.env 의 OPENAI_*) 3개, 약 30초
 .\.venv\Scripts\python.exe -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
 .\.venv\Scripts\python.exe -m chat_agent_lab.examples   # 예시 JSON 다시 만들기
+.\.venv\Scripts\python.exe -m chat_agent_lab.replay update ana-compare-4-5   # 고정 시험의 기대 줄 다시 쓰기(모델 호출 없음)
 ```
 
 macOS · Linux (터미널):
@@ -106,6 +108,7 @@ uv sync                                             # .venv 를 만들고 서비
 .venv/bin/python -m pytest -m live tests/live       # 실제 모델(ai/.env 의 OPENAI_*) 3개, 약 30초
 .venv/bin/python -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
 .venv/bin/python -m chat_agent_lab.examples         # 예시 JSON 다시 만들기
+.venv/bin/python -m chat_agent_lab.replay update ana-compare-4-5   # 고정 시험의 기대 줄 다시 쓰기(모델 호출 없음)
 ```
 
 - Windows에서는 새 `.venv`에서 첫 `pytest` 수집이 앱 제어 정책 때문에 한 번 실패할 수 있습니다. 다시 돌리면 통과합니다.

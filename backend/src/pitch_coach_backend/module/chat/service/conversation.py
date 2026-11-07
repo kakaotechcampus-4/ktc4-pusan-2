@@ -18,6 +18,8 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage
 from pitch_coach_backend.module.chat.exception import ChatRunInProgress, ChatTargetNotFound
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.conversation_cursor import decode_cursor, encode_cursor
+from pitch_coach_backend.module.chat.service.owned import parse_uuid
 from pitch_coach_backend.module.chat.service.request import APP_STARTED_AT, current_sources
 from pitch_coach_backend.module.chat.service.stale import (
     MASKED_TEXT,
@@ -44,14 +46,19 @@ def create_conversation(
 
 
 def list_conversations(
-    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, cursor: str | None
 ) -> ConversationListResponse:
+    after = decode_cursor(cursor) if cursor is not None else None
     repo = ChatApiRepository(db)
-    rows = repo.list_conversations(user_id, pitch_id, limit=CONVERSATIONS_LIMIT)
+    rows = repo.list_conversations(user_id, pitch_id, limit=CONVERSATIONS_LIMIT + 1, after=after)
+    has_more = len(rows) > CONVERSATIONS_LIMIT
+    # 더 읽은 한 행은 다음 쪽이 있는지만 알린다. '최신 아님' 계산에 넣지 않는다
+    rows = rows[:CONVERSATIONS_LIMIT]
     answers = repo.latest_answers([row.ChatConversation.id for row in rows])
     goal_versions = {row.ChatConversation.id: row.ChatConversation.goal_version for row in rows}
     reasons = _stale_reasons_of(db, user_id, answers, goal_versions)
     stale = {answer.conversation_id: bool(reasons[answer.id]) for answer in answers}
+    last = rows[-1].ChatConversation if has_more else None
     return ConversationListResponse(
         conversations=[
             ConversationListItem(
@@ -59,7 +66,8 @@ def list_conversations(
                 stale=stale.get(row.ChatConversation.id, False),
             )
             for row in rows
-        ]
+        ],
+        next_cursor=encode_cursor(last.last_user_activity_at, last.id) if last else None,
     )
 
 
@@ -253,14 +261,8 @@ def owned_sources(
 
 
 def _parsed(values: set[Any]) -> dict[str, uuid.UUID]:
-    parsed: dict[str, uuid.UUID] = {}
-    for value in values:
-        try:
-            parsed[str(value)] = uuid.UUID(str(value))
-        except ValueError:
-            # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 키를 두지 않아 지워진 것으로 남는다
-            continue
-    return parsed
+    # 읽을 수 없는 ID 는 있는 것으로 볼 수 없다. 키를 두지 않아 지워진 것으로 남는다
+    return {str(value): parsed for value in values if (parsed := parse_uuid(value)) is not None}
 
 
 def _uses_gone_source(item: ChatMessage | Row, current: dict[str, dict[str, Any]]) -> bool:

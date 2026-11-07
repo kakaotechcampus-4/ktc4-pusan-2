@@ -26,6 +26,8 @@ import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
 import { useMicLevel } from '../media/useMicLevel';
 import type { ReadStage, ShortReason } from '../media/baseVoice';
 import { useVideoStream } from '../media/useVideoStream';
+import { useChatScreen } from '@/shared/lib/chatScreen';
+import { deviceScreen } from './chatScreen';
 
 /**
  * 평소 목소리로 읽을 문단. 발표를 여는 말투입니다. 처음부터 한 번에 보여 주고, 다 읽으면 사용자가
@@ -245,6 +247,16 @@ export function DeviceCheckPage() {
     }),
   );
   const cal = useGazeSetup({ stream, videoRef, live });
+  // 대화창에 지금 점검 상태를 알립니다 — 보내는 순간에만 읽고, 장치 원본 · 식별자는 싣지 않습니다 (12-4 F2)
+  useChatScreen('/pitch/:pitchId/device-check', () =>
+    deviceScreen({
+      live,
+      hasStream: stream !== null,
+      micOk,
+      gazeStatus: cal.status,
+      failReason: cal.failReason,
+    }),
+  );
   const createTake = useCreateTake();
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
