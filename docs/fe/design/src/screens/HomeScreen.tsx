@@ -214,9 +214,16 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
           <span className="hidden shrink-0 whitespace-nowrap tabular-nums tracking-widest 2xl:inline">
             PITCH COACH · ONE TAKE AT A TIME.
           </span>
-          <nav aria-label="서비스 정책" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
-            <a href="/terms?from=home" className="whitespace-nowrap hover:text-ink">이용약관</a>
-            <a href="/privacy?from=home" className="whitespace-nowrap hover:text-ink">개인정보 처리방침</a>
+          <nav
+            aria-label="서비스 정책"
+            className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1"
+          >
+            <a href="/terms?from=home" className="whitespace-nowrap hover:text-ink">
+              이용약관
+            </a>
+            <a href="/privacy?from=home" className="whitespace-nowrap hover:text-ink">
+              개인정보 처리방침
+            </a>
           </nav>
         </div>
       </footer>
