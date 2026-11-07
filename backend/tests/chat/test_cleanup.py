@@ -1,4 +1,4 @@
-"""대화 정리 작업이 지워진 근거의 답 · 실행 · 목표를 비우고 다시 고르지 않는다."""
+"""대화 정리 작업이 지워진 근거의 답 · 실행 · 목표 · 요약을 비우고 다시 고르지 않는다."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -12,9 +12,11 @@ from pitch_coach_backend.module.chat.entity import (
     ChatGoal,
     ChatMessage,
     ChatRun,
+    ChatSummary,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.cleanup import clean_deleted_sources
+from pitch_coach_backend.module.pitch.entity import Pitch
 
 
 @pytest.fixture
@@ -108,3 +110,58 @@ def test_masked_run_is_not_picked_again(
     assert clean_deleted_sources(db_session) == 1
 
     assert ChatRepository(db_session).list_finished_runs_with_content() == []
+
+
+def _summary(
+    db_session: Session,
+    conversation: ChatConversation,
+    *,
+    pitch_ids: list[str],
+    take_ids: list[str],
+) -> ChatSummary:
+    message = ChatMessage(
+        conversation_id=conversation.id,
+        user_id=conversation.user_id,
+        seq=1,
+        role="user",
+        text="3장을 어떻게 고칠까?",
+        status="DONE",
+    )
+    db_session.add(message)
+    db_session.flush()
+    summary = ChatSummary(
+        conversation_id=conversation.id,
+        items=[{"kind": "TOPIC", "text": "3장 시선 고치기"}],
+        summary_version=2,
+        covered_message_id=message.id,
+        source_pitch_ids=pitch_ids,
+        source_take_ids=take_ids,
+    )
+    db_session.add(summary)
+    db_session.commit()
+    return summary
+
+
+def test_summary_from_deleted_take_is_emptied_once(
+    db_session: Session, conversation: ChatConversation, user_id: uuid.UUID
+) -> None:
+    pitch = Pitch(user_id=user_id, title="졸업 발표", time_limit_sec=300)
+    other = ChatConversation(user_id=user_id, title="다른 질문")
+    db_session.add_all([pitch, other])
+    db_session.commit()
+    masked = _summary(db_session, conversation, pitch_ids=[], take_ids=[str(uuid.uuid4())])
+    kept = _summary(db_session, other, pitch_ids=[str(pitch.id)], take_ids=[])
+    covered = masked.covered_message_id
+
+    assert clean_deleted_sources(db_session) == 1
+
+    db_session.expire_all()
+    assert masked.items == []
+    assert masked.source_pitch_ids == []
+    assert masked.source_take_ids == []
+    assert masked.summary_version == 3
+    assert masked.covered_message_id == covered
+    assert kept.items == [{"kind": "TOPIC", "text": "3장 시선 고치기"}]
+    assert kept.source_pitch_ids == [str(pitch.id)]
+    assert kept.summary_version == 2
+    assert clean_deleted_sources(db_session) == 0
