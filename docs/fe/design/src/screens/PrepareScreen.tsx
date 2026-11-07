@@ -55,7 +55,14 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
               {/* 카메라 자기 화면 자리. 제품은 여기서 AI 카메라 화면 모듈이 시선 기준을 잡는다 */}
               <div className="relative grid aspect-video max-h-[360px] w-full place-items-center bg-stage text-sm text-ink-stage">
                 {check.camera ? (
-                  <span>카메라 미리보기 · 얼굴 인식됨</span>
+                  <>
+                    <span>카메라 미리보기 · 얼굴 인식됨</span>
+                    {stateId === 'calibration' && (
+                      <div className="absolute right-4 top-4 rounded-xl px-[10px] py-[5px] text-xs font-bold shadow-md" style={{ backgroundColor: '#161412', color: '#E8532A' }}>
+                        <span aria-hidden="true">↗ </span>렌즈
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <button
                     type="button"
