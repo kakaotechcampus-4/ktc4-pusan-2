@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,7 @@ from pitch_coach_backend.module.chat.service import cleanup as cleanup_service
 from pitch_coach_backend.module.chat.service import run as run_service
 from pitch_coach_backend.module.chat.service import turn as turn_service
 from pitch_coach_backend.module.chat.service.cleanup import delete_expired
+from tests.chat.api_helpers import bearer
 
 
 def _conversation(db: Session, user_id: uuid.UUID, last_active: datetime) -> ChatConversation:
@@ -243,3 +245,36 @@ def test_sweep_deletes_expired_rows_and_logs_the_count(
     assert db_session.get(ChatConversation, old_id) is None
     assert db_session.get(ChatRunLog, log_id) is None
     assert "보관 기간이 지난 대화 자료 2개를 지웠다" in [r.getMessage() for r in caplog.records]
+
+
+def test_recently_opened_conversation_is_kept(db_session: Session, user_id: uuid.UUID) -> None:
+    now = datetime.now(UTC)
+    opened = _conversation(db_session, user_id, now - timedelta(days=181))
+    opened.last_opened_at = now - timedelta(days=10)
+    stale = _conversation(db_session, user_id, now - timedelta(days=181))
+    stale.last_opened_at = now - timedelta(days=181)
+    db_session.commit()
+    opened_id, stale_id = opened.id, stale.id
+
+    delete_expired(db_session, now)
+
+    db_session.expire_all()
+    assert db_session.get(ChatConversation, opened_id) is not None
+    assert db_session.get(ChatConversation, stale_id) is None
+
+
+@pytest.mark.usefixtures("chat_app")
+def test_opening_the_first_page_records_when_it_was_opened(
+    client: TestClient, db_session: Session, user_id: uuid.UUID
+) -> None:
+    conversation = _conversation(db_session, user_id, datetime.now(UTC))
+    db_session.commit()
+    path = f"/api/chat/conversations/{conversation.id}/messages"
+
+    assert client.get(f"{path}?before_seq=5", headers=bearer(user_id)).status_code == 200
+    db_session.expire_all()
+    assert db_session.get(ChatConversation, conversation.id).last_opened_at is None
+
+    assert client.get(path, headers=bearer(user_id)).status_code == 200
+    db_session.expire_all()
+    assert db_session.get(ChatConversation, conversation.id).last_opened_at is not None
