@@ -1,12 +1,15 @@
 import { useId, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
-import type { Card, ProfileKey, ReassessSide } from '@/types/chat';
+import type { Card, ReassessSide } from '@/types/chat';
 import { ChipList } from './ChatChips';
 import { plain, reassessRows } from './chatCardRows';
 import { pickReason } from './chatLock';
 import { LockedReason } from './LockedReason';
 import { asGoal, goalText } from './chatGoal';
+import { memoryItemState, PROFILE_KEY_LABEL } from './chatMemory';
+import { useChatStore } from './chatStore';
+import { useMemoryChanging, useMemorySettings, useRemoveMemoryItem } from './useChatMemory';
 import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
 import type { DecideResult, UndoResult } from './chatTransport';
 
@@ -56,14 +59,6 @@ const GOAL_RESULT_LABEL: Record<Extract<Card, { type: 'GOAL_RESULT' }>['status']
   NOT_ACHIEVED: '못 이룸',
   UNKNOWN: '알 수 없음',
   BASELINE_MISMATCH: '기준 불일치',
-};
-
-/** 코칭 프로필 항목 이름 (문서 5-2 `ProfileItem`) */
-const PROFILE_KEY_LABEL: Record<ProfileKey, string> = {
-  TONE: '답 말투 · 길이',
-  EXPLAIN_STYLE: '설명 방식',
-  FOCUS_AREA: '먼저 보고 싶은 영역',
-  CONTEXT: '발표 상황',
 };
 
 const CARD_CLASS = 'mt-2 rounded-lg border border-line-strong bg-panel px-3 py-2 text-sm leading-6';
@@ -149,16 +144,69 @@ function CardView({
         </div>
       );
     case 'MEMORY_SAVED':
-      // [지우기]는 BE 기억 API 가 열리면 붙입니다 (BE 미구현, 12-3 기억)
-      return (
-        <div className={CARD_CLASS}>
-          <p className="font-bold">기억했어요</p>
-          <p>
-            {PROFILE_KEY_LABEL[card.key]}: {card.value}
-          </p>
-        </div>
-      );
+      return <MemorySavedCard card={card} />;
   }
+}
+
+/** FE 가 정한 문구 — 문서에 없습니다 */
+export const MEMORY_REMOVED_TEXT = '지운 기억이에요.';
+export const MEMORY_CHANGED_TEXT = '지금은 다른 값으로 기억하고 있어요.';
+export const MEMORY_REMOVE_FAILED_TEXT = '기억을 지우지 못했으니 다시 시도해 주세요.';
+
+/**
+ * '기억했어요' (F16 · L3-45) — BE 가 저장한 값(`item_id` · `key` · `value`)을 그대로 그리고 [지우기]를 둡니다.
+ * 지운 항목 · 값이 바뀐 항목의 카드는 [지우기]만 끄고 지난 메시지에 그대로 둡니다.
+ * 로그인 사용자를 아직 모르면(저장소가 비어 있음) 버튼 없이 그립니다
+ */
+function MemorySavedCard({ card }: { card: Extract<Card, { type: 'MEMORY_SAVED' }> }) {
+  const userId = useChatStore((s) => s.userId);
+  return (
+    <div className={CARD_CLASS} data-memory-item={card.item_id}>
+      <p className="font-bold">기억했어요</p>
+      <p>
+        {PROFILE_KEY_LABEL[card.key]}: {card.value}
+      </p>
+      {userId && <MemoryRemove userId={userId} itemId={card.item_id} value={card.value} />}
+    </div>
+  );
+}
+
+function MemoryRemove({
+  userId,
+  itemId,
+  value,
+}: {
+  userId: string;
+  itemId: string;
+  value: string;
+}) {
+  const memory = useMemorySettings(userId);
+  const { remove, busy, failed } = useRemoveMemoryItem(userId, itemId);
+  // 다른 항목을 지우는 중이어도 막습니다 — 응답이 엇갈려 지운 항목이 되살아나지 않게
+  const changing = useMemoryChanging(userId);
+  const state = memoryItemState(memory.data, itemId, value);
+  if (state === 'removed') return <p className="text-xs text-stone">{MEMORY_REMOVED_TEXT}</p>;
+  if (state === 'changed') return <p className="text-xs text-stone">{MEMORY_CHANGED_TEXT}</p>;
+  return (
+    <div className="mt-1">
+      {/* `disabled` 로 두면 초점이 body 로 빠집니다 (#818) — aria-disabled 로 두고 누름을 무시합니다 */}
+      <button
+        type="button"
+        aria-disabled={changing}
+        onClick={() => {
+          if (!changing) remove();
+        }}
+        className={BUTTON_CLASS}
+      >
+        {busy ? '지우는 중' : '지우기'}
+      </button>
+      {failed && (
+        <p role="alert" className="mt-1 text-xs text-coral-deep">
+          {MEMORY_REMOVE_FAILED_TEXT}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** 버튼 하나의 잠금 — 누르는 동안 다시 누르지 못하게 합니다 */

@@ -578,7 +578,13 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             return { ...card, goal };
           }
           if (card.type === 'MEMORY_SAVED') {
-            const item: ProfileItem = { item_id: newItemId(), key: card.key, value: card.value };
+            // BE 처럼 같은 key 는 그 항목의 값만 바꿉니다 — item_id 는 그대로입니다 (`upsert_profile_item`, L2-47)
+            const same = state.memory.items.find((i) => i.key === card.key);
+            const item: ProfileItem = {
+              item_id: same?.item_id ?? newItemId(),
+              key: card.key,
+              value: card.value,
+            };
             state.memory.items = [...state.memory.items.filter((i) => i.key !== item.key), item];
             return { ...card, item_id: item.item_id };
           }

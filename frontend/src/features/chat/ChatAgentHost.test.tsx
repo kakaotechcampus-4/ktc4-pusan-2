@@ -32,7 +32,9 @@ const server = vi.hoisted(() => ({
   messages: (_path?: string): Promise<unknown> =>
     Promise.resolve({ messages: [], next_before_seq: null }),
   conversations: (): Promise<unknown> => Promise.resolve({ conversations: [] }),
+  memory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
   pitches: (): Promise<unknown> => Promise.resolve({ pitches: [] }),
+  removeMemory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
   resources: (_pitchId: string): Promise<unknown> => Promise.reject(new Error('버전 목록 없음')),
   report: (takeId: string): Promise<unknown> =>
     Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' }),
@@ -44,6 +46,8 @@ vi.mock('@/shared/api/client', async (original) => ({
     if (path === '/api/chat/availability') return server.availability(init.signal ?? null);
     if (path.startsWith('/api/chat/conversations/')) return server.messages(path);
     if (path === '/api/chat/conversations') return server.conversations();
+    if (path === '/api/chat/memory') return server.memory();
+    if (path.startsWith('/api/chat/memory/items/')) return server.removeMemory();
     if (path === '/api/pitches/') return server.pitches();
     const resources = /^\/api\/pitches\/([^/]+)\/resources$/.exec(path);
     if (resources) return server.resources(resources[1]!);
@@ -179,6 +183,7 @@ beforeEach(() => {
   server.availability = () => Promise.resolve({ enabled: true });
   server.messages = () => Promise.resolve({ messages: [], next_before_seq: null });
   server.conversations = () => Promise.resolve({ conversations: [] });
+  server.memory = () => Promise.resolve({ enabled: true, items: [] });
   server.pitches = () => Promise.resolve({ pitches: [] });
   server.resources = () => Promise.reject(new Error('버전 목록 없음'));
   scopeMode.value = 'ok';
@@ -188,6 +193,7 @@ beforeEach(() => {
   sendMode.value = 'accepted';
   undoMode.value = 'undone';
   sessionStorage.clear();
+  localStorage.clear();
   useChatStore.getState().signOut();
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   host = document.createElement('div');
@@ -2355,5 +2361,169 @@ describe('두 번째 점검 반영', () => {
     expect(button('이어서 확인')!.querySelector('.sr-only')).toBeNull();
     expect(chip.textContent).not.toContain('바꿀 수 없어요');
     expect(sendButton().querySelector('.sr-only')).toBeNull();
+  });
+});
+
+// ── 10단계 기억 설정 · '기억 없이' ─────────────────────────────
+describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
+  const INTRO = '코칭 프로필 기억 — 말투';
+  const intro = () => panel()!.querySelector('[data-memory-intro]');
+  const memorySwitch = () =>
+    panel()!.querySelector<HTMLInputElement>('[data-memory-off-switch] input');
+  const badge = () => panel()!.querySelector('[data-memory-off]');
+
+  it('첫 안내는 처음 연 때 한 번만 보이고, 다시 열면 보이지 않는다 — 사용자마다 따로 (L3-43)', async () => {
+    await visit('/');
+    await openPanel();
+    expect(intro()!.textContent).toContain(INTRO);
+    expect(intro()!.textContent).toContain(
+      "'기억 없이' 대화를 골라도 그 대화의 기록 · 요약은 보관되고",
+    );
+
+    await act(async () => button('닫기')!.click());
+    await openPanel();
+    expect(intro()).toBeNull();
+
+    // 다른 사용자는 처음입니다
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    state.session = { ...state.session, data: { id: 'u2' } };
+    try {
+      await visit('/');
+      await openPanel();
+      expect(intro()).not.toBeNull();
+    } finally {
+      state.session = { ...state.session, data: { id: 'u1' } };
+    }
+  });
+
+  it('[기억 설정]은 대화창 안에서 설정 화면으로 바꾸고 입력칸을 숨긴다 — [돌아가기]로 대화로 돌아온다', async () => {
+    server.memory = () =>
+      Promise.resolve({ enabled: true, items: [{ item_id: 'i-1', key: 'TONE', value: '짧게' }] });
+    await visit('/');
+    await openPanel();
+    await type('쓰던 글');
+    await act(async () => button('기억 설정')!.click());
+    await settle();
+    expect(button('기억 설정')!.getAttribute('aria-pressed')).toBe('true');
+    const settings = panel()!.querySelector('[data-memory-settings]')!;
+    expect(settings.textContent).toContain(INTRO);
+    expect(settings.textContent).toContain('답 말투 · 길이');
+    expect(settings.textContent).toContain('짧게');
+    expect(panel()!.querySelector('form')!.hidden).toBe(true);
+
+    await act(async () => button('돌아가기')!.click());
+    expect(panel()!.querySelector('[data-memory-settings]')).toBeNull();
+    expect(panel()!.querySelector('form')!.hidden).toBe(false);
+    expect(input().value).toBe('쓰던 글');
+  });
+
+  it('[돌아가기]는 초점을 [기억 설정]으로 돌리고, 설정 화면에서 누른 줄이 사라지면 초점을 패널에 둬 Esc 로 닫힌다', async () => {
+    server.memory = () =>
+      Promise.resolve({ enabled: true, items: [{ item_id: 'i-1', key: 'TONE', value: '짧게' }] });
+    await visit('/');
+    await openPanel();
+    await act(async () => button('기억 설정')!.click());
+    await settle();
+    button('돌아가기')!.focus();
+    await act(async () => button('돌아가기')!.click());
+    await settle();
+    expect(document.activeElement).toBe(button('기억 설정'));
+
+    await act(async () => button('기억 설정')!.click());
+    await settle();
+    const remove = panel()!.querySelector<HTMLButtonElement>('[data-memory-row] button')!;
+    remove.focus();
+    await act(async () => remove.click());
+    await settle();
+    expect(panel()!.querySelector('[data-memory-row]')).toBeNull();
+    expect(document.activeElement).toBe(panel());
+    await press(document.activeElement!, { key: 'Escape' });
+    expect(useChatStore.getState().open).toBe(false);
+  });
+
+  it("'기억 없이'는 새 대화에서 보내기 전에만 고르고, 고르면 머리에 표시한다 — 대화가 생기면 스위치가 사라진다 (L3-44)", async () => {
+    await visit('/');
+    await openPanel();
+    await settle();
+    expect(memorySwitch()!.checked).toBe(false);
+    expect(badge()).toBeNull();
+
+    await act(async () => memorySwitch()!.click());
+    expect(useChatStore.getState().memoryOff).toBe(true);
+    expect(memorySwitch()!.checked).toBe(true);
+    expect(badge()!.textContent).toBe('기억 없이');
+
+    // 대화가 생긴 뒤에는 바꿀 수 없습니다 — 스위치를 거두고 표시는 남깁니다
+    await act(async () => {
+      useChatStore.setState({ conversationId: 'c-new' });
+    });
+    expect(memorySwitch()).toBeNull();
+    expect(useChatStore.getState().setMemoryOff(false)).toBe(false);
+    expect(badge()!.textContent).toBe('기억 없이');
+  });
+
+  it("코칭 프로필 기억이 꺼져 있으면 '기억 없이' 스위치는 꺼진 채 막힌다 (L3-44 설정 꺼짐)", async () => {
+    server.memory = () => Promise.resolve({ enabled: false, items: [] });
+    await visit('/');
+    useChatStore.getState().setMemoryOff(true);
+    await openPanel();
+    await settle();
+    expect(memorySwitch()!.checked).toBe(false);
+    expect(memorySwitch()!.disabled).toBe(true);
+    expect(panel()!.querySelector('[data-memory-off-switch]')!.textContent).toContain(
+      '기억 설정이 꺼져 있어요',
+    );
+    // 보이는 것과 보낼 값이 같게 고른 것을 풉니다
+    expect(useChatStore.getState().memoryOff).toBe(false);
+  });
+
+  it("대화 목록의 '기억 없이' 대화는 줄에 표시하고, 고르면 그 값을 저장소에 넘겨 머리에도 표시한다", async () => {
+    server.conversations = () =>
+      Promise.resolve({
+        conversations: [
+          {
+            conversation_id: 'c8',
+            title: '기억 없이 물어본 것',
+            scope_pitch_id: null,
+            scope_pitch_title: null,
+            last_user_activity_at: '2026-11-05T12:30:00Z',
+            created_at: '2026-11-05T12:00:00Z',
+            stale: false,
+            memory_off: true,
+          },
+          {
+            conversation_id: 'c9',
+            title: '보통 대화',
+            scope_pitch_id: null,
+            scope_pitch_title: null,
+            last_user_activity_at: '2026-11-05T12:30:00Z',
+            created_at: '2026-11-05T12:00:00Z',
+            stale: false,
+            memory_off: false,
+          },
+        ],
+      });
+    await visit('/');
+    await openPanel();
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    const rows = () => [
+      ...panel()!.querySelectorAll<HTMLButtonElement>('[aria-label="지난 대화"] button'),
+    ];
+    expect(rows()[0]!.textContent).toContain('기억 없이');
+    expect(rows()[1]!.textContent).not.toContain('기억 없이');
+
+    await act(async () => rows()[0]!.click());
+    await settle();
+    expect(useChatStore.getState().memoryOff).toBe(true);
+    expect(badge()!.textContent).toBe('기억 없이');
+
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    await act(async () => rows()[1]!.click());
+    await settle();
+    expect(useChatStore.getState().memoryOff).toBe(false);
+    expect(badge()).toBeNull();
   });
 });

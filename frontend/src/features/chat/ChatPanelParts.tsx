@@ -190,6 +190,7 @@ export function ConversationList({
                   {scopeLabel({ pitchId: c.scope_pitch_id, title: c.scope_pitch_title })} ·{' '}
                   {lastActivityText(c.last_user_activity_at)}
                   {c.stale && <span className="ml-1 font-bold text-coral-deep">· 최신 아님</span>}
+                  {c.memory_off && <span className="ml-1 font-bold">· 기억 없이</span>}
                 </span>
               </button>
             </li>
