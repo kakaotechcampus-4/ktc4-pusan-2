@@ -420,7 +420,7 @@ docker compose $FILES restart ai                # AI만 다시 띄우기
 | 대화 이어 부르기가 409 `AGENT_STATE_INVALID` | 서명 키를 바꾸며 이전 키를 `AGENT_STATE_SECRET_PREVIOUS`에 두지 않음, 워커마다 키가 다름 | `chat-agent.md` 11-3, 서버의 서명 키 설정(이름만 확인). 스트림 전 오류라 AI 요청 로그의 `code=AGENT_STATE_INVALID`로 보이고 `agent_stream` · 진단 기록은 없다 |
 | 대화가 429 `AGENT_BUSY`를 자주 받음 | 동시 상한(`AGENT_MAX_CONCURRENCY`) · 대화 전용 실행 풀이 참(끝나지 않은 LLM 호출이 자리를 차지) | AI 로그의 `agent_stream` · `llm_call`(`outcome` · `duration_ms`) |
 | 배포 직후 대화가 끝 줄 없이 끊김(BE는 `PARTIAL` · `AGENT_UPSTREAM_ERROR`) | 컨테이너 종료 대기(compose `stop_grace_period`)가 한 턴보다 짧아 진행 중인 턴이 잘림 | 끊긴 시각이 배포 시각과 겹치는지, 그 요청 ID의 `agent_stream` 줄이 없는지. 종료 대기를 늘리는 것은 BE(인프라) 몫이다 |
-| AI 로그에 `agent_stream_write_timeout` | 받는 쪽(BE)이 줄을 2초 넘게 읽지 않음(느린 소비자, `chat-agent.md` L1-09). 턴을 멈추고 남은 줄을 보내지 않는다. 바로 뒤 uvicorn의 'ASGI callable returned without completing response.' 한 줄과 함께 연결이 닫히는 것은 의도한 동작이다 | 같은 요청 ID의 `agent_stream ... end=write_timeout`, BE 쪽 스트림 읽기 지연 |
+| AI 로그에 `agent_stream_write_timeout` | 받는 쪽(BE)이 줄을 2초 넘게 읽지 않음(느린 소비자, `chat-agent.md` L1-09). 턴을 멈추고 남은 줄을 보내지 않는다. 바로 뒤 uvicorn의 'ASGI callable returned without completing response.' 한 줄과 함께 연결이 닫히는 것은 의도한 동작이다. 이 uvicorn 줄은 ERROR 수준이지만, 바로 앞에 같은 요청 ID의 `agent_stream_write_timeout`(WARNING)이 있으면 무시한다(오류 로그 알림 규칙에서 빼기) | 같은 요청 ID의 `agent_stream ... end=write_timeout`, BE 쪽 스트림 읽기 지연 |
 | 대화 로그에 `chat_agent_corpus_unavailable reason=UNREVIEWED` | 발표법 · 사용법 자료 카드가 검수 전이라 자료 묶음 없이 시작함(발표법 질문은 일반 조언으로 답함) | 정상. 카드를 검수(`APPROVED`)하고 판을 등록하면 자료 묶음이 켜진다(`chat-agent.md` 6-10) |
 
 - **로그**: 표준 출력으로만 낸다(파일에 쓰지 않는다). Docker가 모으고 `docker compose logs ai`로 본다. 남기는 것 · 남기지 않는 것은 `architecture.md` 11절이다.
