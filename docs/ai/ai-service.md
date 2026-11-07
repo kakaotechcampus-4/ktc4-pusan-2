@@ -285,7 +285,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
 | 모델 로딩 중 | 그 모델을 쓰는 기능 요청(지금은 대본 전달도 세 경로)을 받지 않는다. 모델을 쓰지 않는 `/coach/plan` · `/health`는 받는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
 | 처리되지 않은 예외 | 내부 예외 내용(stack trace)은 AI 로그에만 남긴다 | 500 `INTERNAL_ERROR` | 내부 정보를 응답에 내보내지 않는다 |
 | 시작 중 예외 (import 오류 · 모델 로딩 실패 · 메모리 부족) | 컨테이너가 재시작을 되풀이한다 | 헬스체크 실패 | 11절 '증상별 원인' |
-| 배포로 컨테이너가 바뀌는 중 | 처리 중인 요청은 종료 대기(60초) 안에서 끝낸다(더 긴 요청은 8절 '종료 대기'). 새 요청은 몇 초 동안 연결 실패 | BE 쪽 `AI_UNAVAILABLE` | 백그라운드 호출은 BE가 한 번 더 부르고, 실시간 코칭은 다음 1초 요청으로 이어진다. 빠진 시간이 창보다 길면 종료 때 `replay`로 Take 결과를 다시 만든다 |
+| 배포로 컨테이너가 바뀌는 중 | 처리 중인 요청이 끝나도록 종료 대기(60초)만큼 기다린다(그 안에 끝나지 않으면 끊길 수 있다, 8절 '종료 대기'). 새 요청은 몇 초 동안 연결 실패 | BE 쪽 `AI_UNAVAILABLE` | 백그라운드 호출은 BE가 한 번 더 부르고, 실시간 코칭은 다음 1초 요청으로 이어진다. 빠진 시간이 창보다 길면 종료 때 `replay`로 Take 결과를 다시 만든다 |
 
 # 8. 시간 예산과 호출 규칙
 API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스가 지킬 운영 값은 다음과 같다.
@@ -297,7 +297,7 @@ API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스�
 | 실시간 경로 보호 | `/coach/evaluate`(진행 중인 Take마다 1초에 한 번, BE 약 300 ms)가 긴 LLM 요청에 밀리지 않게, BE는 백그라운드 AI 호출의 동시 개수를 제한하고 AI는 `/coach/evaluate` 처리 시간을 로그로 남긴다 | 긴 LLM 요청이 스레드 풀을 채우면 실시간 요청이 스레드를 기다리다 시간 제한을 넘긴다 |
 | LLM 호출 한 번 | 기본 12초, 요청 마감 시각 안에서만 재시도 1회 | `architecture.md` 9절 |
 | 대화 전용 실행 풀 | `AGENT_MAX_CONCURRENCY`(기본 4) × 2, `/agent/turn` 동시 상한은 `AGENT_MAX_CONCURRENCY` | 대화 LLM 호출이 공용 스레드 풀(40)을 쓰지 않게 따로 둔다. 풀이 차면(끝나지 않은 호출 포함) 새 `/agent/turn`은 429 `AGENT_BUSY`다(`chat-agent.md` 6-11 · 8-4). 부하 시험(대화 동시 0 · 4 · 8에서 기존 코치 · 리뷰 지연)은 배포 사양에서 요청할 때 한다(`chat-agent.md` 10-4) |
-| 종료 대기 | 60초 (`stop_grace_period: 60s`) | Docker는 기본 10초만 기다린다. LLM 한 번짜리 요청은 예산이 약 25초라 기본값이면 배포할 때마다 처리 중인 요청이 끊긴다. 대화 한 번(`/agent/turn`, AI 45초)도 종료 대기 안에 든다(11-4). 장별 LLM(120초)은 종료 대기보다 길어 배포 때 끊길 수 있고, BE는 응답을 받지 못했으므로 `architecture.md` 3절대로 전체를 1번 다시 부른다. `replay`를 붙인 finalize는 BE 시간 제한(60초)이 종료 대기와 같다. 종료 신호 전에 시작한 요청이라 시간 제한 안에 끝나는 요청은 대개 종료 대기 안에도 끝나지만, 여유가 없어 끊길 수도 있다. 끊기면 BE는 `architecture.md` 3절대로 1번 다시 부른다 |
+| 종료 대기 | 60초 (`stop_grace_period: 60s`) | Docker는 기본 10초만 기다린다. LLM 한 번짜리 요청은 예산이 약 25초라 기본값이면 배포할 때마다 처리 중인 요청이 끊긴다. 대화 한 번(`/agent/turn`, AI 45초)도 종료 대기 안에 든다(11-4). 장별 LLM(120초)은 종료 대기보다 길어 배포 때 끊길 수 있고, BE는 응답을 받지 못했으므로 `architecture.md` 3절대로 전체를 1번 다시 부른다. `replay`를 붙인 finalize는 BE 시간 제한(60초)이 종료 대기와 같다. 종료 신호 전에 시작한 요청이라 시간 제한 안에 끝나면 종료 대기 안에도 끝나는 셈이지만, 남는 여유가 없다. 끊기면 BE는 `architecture.md` 3절대로 1번 다시 부른다 |
 | 헬스체크 | `/ready`, 간격 10초 · 시간 제한 3초 · 재시도 5번 · 시작 유예 10초 | 서버 안 모델(Kiwi)을 불러와 준비되기까지 약 6초라 10초 안에 든다(6-3). 모델이 늘어 준비 시간이 길어지면 시작 유예를 그에 맞춰 늘린다 |
 
 # 9. 버전
@@ -366,7 +366,7 @@ API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스�
 변수 목록 · 작성 규칙 · 비밀값이 가는 길은 `architecture.md` 10절이다. 서비스에서는 `settings.py`만 환경변수를 읽고, 값이 없어도 서버가 뜨도록 기본값을 둔다. 새 변수를 더하는 순서도 `architecture.md` 10절을 따른다.
 
 - **대화 에이전트(`AGENT_*`)**: `AGENT_ENABLED` 기본값이 false라 서버 값을 넣기 전에는 `/agent/turn`만 503 `AGENT_DISABLED`이고 대화용 모델 · 자료 묶음도 만들지 않는다. 켤 때는 서버 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)에 `AGENT_ENABLED=true`와 `AGENT_STATE_SECRET`(32바이트 이상, 모든 워커 · 재시작에서 같은 값)을 넣고, BE 쪽 스위치와 함께 바꾼다(`chat-agent.md` 11-2 · 11-4). 서명 키를 바꿀 때는 새 키를 `AGENT_STATE_SECRET`에, 이전 키를 `AGENT_STATE_SECRET_PREVIOUS`에 35분 이상 둔다(`chat-agent.md` 11-3).
-- 켠 뒤에는 종료 대기(60초)가 대화 한 번의 AI 예산(45초)보다 길어, AI가 배포로 내려가도 진행 중인 `/agent/turn`은 대개 끝 줄까지 보낸다. 그래도 끝 줄 없이 끊기면 BE는 그 호출을 실패로 처리한다(`chat-agent.md` 12-3, 원인 찾기는 11-6).
+- 켠 뒤에는 종료 대기(60초)가 대화 한 번의 AI 예산(45초)보다 길어, AI가 배포로 내려갈 때 진행 중인 `/agent/turn`이 예산 안에 끝나면 끝 줄까지 보낼 시간이 있다. 그래도 끝 줄 없이 끊기면 BE는 그 호출을 실패로 처리한다(`chat-agent.md` 12-3, 원인 찾기는 11-6).
 
 ## 11-5. CI와 배포
 - **CI** (`.github/workflows/ai-ci.yml`): `ai/service/**`나 이 워크플로 파일이 바뀐 PR과 `main` · `develop` · `release` · `develop-next` push에서 job `ai` 하나가 `uv sync --locked` → `ruff check` → `ruff format --check` → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build`를 돈다. 실제 LLM은 부르지 않으므로 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다. 브랜치 보호의 필수 체크로 둘지는 15 열린 질문이다.
@@ -419,7 +419,7 @@ docker compose $FILES restart ai                # AI만 다시 띄우기
 | 대화의 모든 턴이 503 `AGENT_DISABLED` | 서버 `ai/.env`에 `AGENT_ENABLED=true`가 없음, 서명 키 없음 · 32바이트 미만 | 서버 `ai/.env`(값은 출력하지 않고 이름만 확인), BE 쪽 스위치 |
 | 대화 이어 부르기가 409 `AGENT_STATE_INVALID` | 서명 키를 바꾸며 이전 키를 `AGENT_STATE_SECRET_PREVIOUS`에 두지 않음, 워커마다 키가 다름 | `chat-agent.md` 11-3, 서버의 서명 키 설정(이름만 확인). 스트림 전 오류라 AI 요청 로그의 `code=AGENT_STATE_INVALID`로 보이고 `agent_stream` · 진단 기록은 없다 |
 | 대화가 429 `AGENT_BUSY`를 자주 받음 | 동시 상한(`AGENT_MAX_CONCURRENCY`) · 대화 전용 실행 풀이 참(끝나지 않은 LLM 호출이 자리를 차지) | AI 로그의 `agent_stream` · `llm_call`(`outcome` · `duration_ms`) |
-| 배포 직후 대화가 끝 줄 없이 끊김(BE는 `PARTIAL` · `AGENT_UPSTREAM_ERROR`) | 턴이 AI 예산(45초)을 넘겨 종료 대기(compose `stop_grace_period`, 60초) 끝에 강제로 끝남, 또는 같은 배포로 BE가 다시 시작해 진행 중인 호출을 끝까지 받지 못함(재시작 복구는 보낸 호출을 다시 보내지 않는다, `chat-agent.md` 12-3) | 끊긴 시각이 배포 시각과 겹치는지. 그 요청 ID의 `agent_stream` 줄이 없으면 AI가 강제 종료된 것이고, `end=client_gone`이면 BE 쪽에서 끊은 것이다. 종료 대기를 늘리는 것은 BE(인프라) 몫이다 |
+| 배포 직후 대화가 끝 줄 없이 끊김(BE는 `PARTIAL` · `AGENT_UPSTREAM_ERROR`) | AI가 종료 신호 뒤 종료 대기(compose `stop_grace_period`, 60초) 안에 턴을 끝내지 못해 강제로 끝남, 또는 같은 배포로 BE가 다시 시작해 진행 중인 호출을 끝까지 받지 못함(재시작 복구는 보낸 호출을 다시 보내지 않는다, `chat-agent.md` 12-3) | 끊긴 시각이 배포 시각과 겹치는지. 그 요청 ID의 `agent_stream` 줄이 없으면 AI가 요약 줄을 남기기 전에 강제 종료됐을 수 있다. `end=client_gone`이면 AI가 끝까지 보내기 전에 응답이 끊긴 것이라 BE 쪽(재시작 · 시간 제한)과 대조한다. 종료 대기를 늘리는 것은 BE(인프라) 몫이다 |
 | AI 로그에 `agent_stream_write_timeout` | 받는 쪽(BE)이 줄을 2초 넘게 읽지 않음(느린 소비자, `chat-agent.md` L1-09). 턴을 멈추고 남은 줄을 보내지 않는다. 바로 뒤 uvicorn의 'ASGI callable returned without completing response.' 한 줄과 함께 연결이 닫히는 것은 의도한 동작이다. 이 uvicorn 줄은 ERROR 수준이지만, 바로 앞에 같은 요청 ID의 `agent_stream_write_timeout`(WARNING)이 있으면 무시한다(오류 로그 알림 규칙에서 빼기) | 같은 요청 ID의 `agent_stream ... end=write_timeout`, BE 쪽 스트림 읽기 지연 |
 | 대화 로그에 `chat_agent_corpus_unavailable reason=UNREVIEWED` | 발표법 · 사용법 자료 카드가 검수 전이라 자료 묶음 없이 시작함(발표법 질문은 일반 조언으로 답함) | 정상. 카드를 검수(`APPROVED`)하고 판을 등록하면 자료 묶음이 켜진다(`chat-agent.md` 6-10) |
 
