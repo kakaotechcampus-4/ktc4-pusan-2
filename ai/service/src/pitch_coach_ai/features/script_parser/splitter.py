@@ -12,14 +12,18 @@ from typing import Literal
 # 이다. "슬라이드"와 N 사이 공백은 없어도 되고, "Slide"는 대소문자를 가리지 않는다.
 # 제목 표시가 없는 "슬라이드 3 보시면 …"은 문장일 수 있어 구분자가 아니다.
 # 번호 목록(1. · 1))은 본문 나열과 헷갈려 구분자가 아니다.
+# 대괄호 바로 뒤가 "("면 마크다운 링크([3](https://…))라 구분자가 아니다.
+# 제목 표시 뒤 구분 기호 바로 다음이 숫자면 범위 · 소수(## Slide 1-2 · 3.14)라 구분자가 아니다.
 # N은 1~4자리이고, 더 길면 본문 줄로 본다(아주 긴 번호에서 int()가 ValueError를 내지 않게)
 _HEADING_RE = re.compile(r"#{1,6}[ \t]+")
 _WORD = r"(?:슬라이드|slide)[ \t]*"
-_BRACKET_RE = re.compile(rf"\[(?:{_WORD})?(\d{{1,4}})\]", re.IGNORECASE)
+_BRACKET_RE = re.compile(rf"\[(?:{_WORD})?(\d{{1,4}})\](?!\()", re.IGNORECASE)
 _WORD_RE = re.compile(rf"{_WORD}(\d{{1,4}})(?!\d)", re.IGNORECASE)
 _COLON_RE = re.compile(r"[ \t]*[:：]")
 # 제목 표시 뒤 번호와 제목 사이는 공백이나 구분 기호(— – - | : .)로 띄운다 ("## Slide 1a"는 아님)
 _HEADING_SEP_RE = re.compile(r"[ \t]*[—–\-|:：.]?[ \t]+|[ \t]*[—–\-|:：.]")
+# 구분 기호 바로 다음 숫자: 범위(1-2) · 소수(3.14)
+_HEADING_RANGE_RE = re.compile(r"[ \t]*[—–\-|.]\d")
 
 
 def match_delimiter(line: str) -> tuple[int, str] | None:
@@ -40,7 +44,7 @@ def match_delimiter(line: str) -> tuple[int, str] | None:
         return number, rest[colon.end() :].strip()
     if not rest.strip():
         return number, ""
-    if heading and (sep := _HEADING_SEP_RE.match(rest)):
+    if heading and not _HEADING_RANGE_RE.match(rest) and (sep := _HEADING_SEP_RE.match(rest)):
         return number, rest[sep.end() :].strip()
     return None
 
