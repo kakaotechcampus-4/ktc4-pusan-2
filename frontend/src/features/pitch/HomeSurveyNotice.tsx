@@ -19,33 +19,31 @@ const PENDING_SHOWN = 3;
 
 export function HomeSurveyNotice() {
   const { data: user } = useSession();
-  // 동의하면 연 버튼이 창과 함께 사라집니다. 초점은 그 자리에 오는 남은 설문 줄로 옮깁니다 (#845)
+  // 동의하면 연 버튼이 창과 함께 사라집니다 (#845). 남은 설문 줄은 목록을 받은 뒤에야 그려져, 그 줄을 기다리면
+  // 그동안 초점이 body 에 있고 늦게 오면 그사이 옮긴 초점을 빼앗습니다. 늘 그려 두는 감싸개로 동의한 즉시
+  // 옮깁니다 — 남은 설문이 없어도 body 로 빠지지 않습니다 (#874 리뷰). 목록에 기대지 않아 목록을 다시 받아도
+  // 다시 옮기지 않습니다
+  const wrapper = useRef<HTMLDivElement>(null);
   const [agreed, setAgreed] = useState(false);
+  const consented = Boolean(user?.test_consent_at);
+  useEffect(() => {
+    if (consented && agreed) wrapper.current?.focus();
+  }, [consented, agreed]);
   if (!user) return null;
-  return user.test_consent_at ? (
-    <PendingSurveyList focusOnShow={agreed} />
-  ) : (
-    <ConsentPrompt onAgreed={() => setAgreed(true)} />
+  return (
+    <div ref={wrapper} tabIndex={-1}>
+      {consented ? <PendingSurveyList /> : <ConsentPrompt onAgreed={() => setAgreed(true)} />}
+    </div>
   );
 }
 
-function PendingSurveyList({ focusOnShow }: { focusOnShow: boolean }) {
+function PendingSurveyList() {
   const pending = usePendingSurveys(true);
   const items = pending.data?.items ?? [];
-  const ref = useRef<HTMLElement>(null);
-  const shown = items.length > 0;
-  useEffect(() => {
-    if (focusOnShow && shown) ref.current?.focus();
-  }, [focusOnShow, shown]);
   // 목록을 못 받으면 아무것도 두지 않습니다. 설문은 리포트에서도 남길 수 있습니다
-  if (!shown) return null;
+  if (items.length === 0) return null;
   return (
-    <section
-      ref={ref}
-      tabIndex={-1}
-      aria-label="남은 설문"
-      className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10"
-    >
+    <section aria-label="남은 설문" className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-2 border-ink bg-coral-wash px-4 py-3 text-sm">
         <p className="font-bold">설문을 기다리는 리포트가 {items.length}개 있어요.</p>
         <ul className="flex flex-wrap gap-x-4 gap-y-1">
