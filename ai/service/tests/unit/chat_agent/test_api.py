@@ -633,6 +633,53 @@ def test_send_blocked_during_a_model_call_ends_the_response_without_waiting_for_
     assert len(ends) == 1 and " end=write_timeout " in ends[0]
 
 
+def test_send_guard_is_the_outermost_user_middleware() -> None:
+    """보내기 상한 미들웨어는 요청 로그(`BaseHTTPMiddleware`)보다 바깥이어야 실제 보내기를 잰다(안쪽이면
+    조용히 내부 큐까지만 잰다). 미들웨어를 더하거나 순서를 바꿔도 이 순서가 깨지지 않게 고정한다."""
+    app = create_app(_settings())
+    assert app.user_middleware[0].cls is api.StreamSendGuard
+
+
+@pytest.mark.parametrize(
+    ("root_path", "path", "guarded"),
+    [
+        ("", "/agent/turn", True),
+        ("/ai", "/ai/agent/turn", True),  # 경로 접두어를 붙여 배포해도 건다(라우터와 같은 기준)
+        ("", "/agent/turns", False),
+        ("", "/health", False),
+        ("/ai", "/aiagent/turn", False),
+    ],
+)
+def test_send_guard_matches_the_route_path_like_the_router(
+    root_path: str, path: str, guarded: bool
+) -> None:
+    seen: list[bool] = []
+
+    async def inner(scope: Any, _receive: Any, _send: Any) -> None:
+        seen.append(api.SEND_METER in scope)
+
+    async def noop(*_a: Any) -> Any:
+        return None
+
+    scope = {"type": "http", "path": path, "root_path": root_path}
+    anyio.run(api.StreamSendGuard(inner), scope, noop, noop)
+    assert seen == [guarded]
+
+
+def test_core_lines_start_with_the_event_key_for_end_line_detection() -> None:
+    """읽기 스레드는 줄을 다시 해석하지 않고 앞부분(`{"event":"final"` · `{"event":"error"`)으로 끝 줄을
+    알고, seq 는 줄 수로 센다. 코어 줄 쓰기가 이 모양을 지키는지 고정한다."""
+    rt = _runtime(_compare_llm())
+    resp = api.handle_turn(json.dumps(_compare_request()).encode(), rt.deps(), secret=F.SECRET)
+    assert resp.lines is not None and resp.run_id == "run-81"
+    lines = list(resp.lines)
+    for i, line in enumerate(lines, start=1):
+        obj = json.loads(line)
+        assert line.startswith('{"event":"' + obj["event"] + '"') and obj["seq"] == i
+    assert lines[-1].startswith(api._TERMINAL_PREFIXES)
+    assert not any(x.startswith(api._TERMINAL_PREFIXES) for x in lines[:-1])
+
+
 def _rid(msgs: list[str]) -> str:
     """요청 로그 줄에서 요청 ID(미들웨어가 만든 값)를 꺼낸다."""
     line = next(m for m in msgs if m.startswith("request_id=") and "path=/agent/turn" in m)

@@ -26,8 +26,9 @@
      2초는 서버로 실제로 보내는 곳에서 잰다: 요청 로그 미들웨어(`BaseHTTPMiddleware`)는 응답을
      내부 큐로 한 번 더 넘기므로, 가장 바깥의 순수 ASGI 미들웨어 `StreamSendGuard`(main.py 에
      등록)가 이 경로의 보내기에 상한을 걸고, 막히면 남은 메시지를 버린다. 그러면 앱이 돌아오고
-     uvicorn 이 'ASGI callable returned without completing response.' 한 줄을 남기며 연결을
-     닫는다(의도한 동작). 미들웨어 없이 이 응답을 부르면 응답이 직접 잰다.
+     uvicorn 이 'ASGI callable returned without completing response.' 한 줄을 ERROR 수준으로
+     남기며 연결을 닫는다(의도한 동작, 바로 앞에 같은 요청 ID 의 `agent_stream_write_timeout`
+     WARNING 이 있다. `ai-service.md` 11-6). 미들웨어 없이 이 응답을 부르면 응답이 직접 잰다.
   6. 끝 줄 방어: 코어가 끝 줄 없이 예외로 멈추면(코어가 잡지 못한 곳) 읽기 스레드가 `error`
      `INTERNAL_ERROR` 끝 줄 하나를 대신 낸다(연결이 살아 있을 때, 5-4 '끝 줄은 정확히 하나').
 - 자료 묶음: 서비스는 검수를 마친 카드만 읽는다(`allow_unreviewed=False`). 검수 전 카드 ·
@@ -225,6 +226,10 @@ def runtime_for(app: FastAPI) -> AgentRuntime:
 # ── 스트림 ────────────────────────────────────────────────────────────────────
 
 
+#: 끝 줄(`final` · `error`)의 앞부분(코어 줄 쓰기의 키 순서)
+_TERMINAL_PREFIXES = ('{"event":"final"', '{"event":"error"')
+
+
 def _fallback_error_line(run_id: str, seq: int) -> str:
     """코어가 끝 줄 없이 멈췄을 때 읽기 스레드가 대신 내는 `error` 끝 줄.
 
@@ -272,9 +277,8 @@ class TurnStream:
         #: 큐에서 끝 표시(_END)를 받았다(코어 줄을 모두 넘겼다)
         self._ended = False
         self.reason = "done"
-        #: 코어가 낸 줄 수 · 마지막 seq · 끝 줄을 냈는지(읽기 스레드가 센다)
+        #: 코어가 낸 줄 수(= 마지막 줄의 seq, 코어 줄은 1부터 빈틈없이 잇는다) · 끝 줄을 냈는지
         self.count = 0
-        self._last_seq = 0
         self._terminal = False
         #: 서버로 보낸 줄 수(보내는 쪽 `_SendMeter` 가 센다)
         self.sent = 0
@@ -286,14 +290,13 @@ class TurnStream:
             self._loop.call_soon_threadsafe(self._queue.put_nowait, item)
 
     def _note(self, line: str) -> None:
-        """끝 줄 방어에 쓸 seq 와 끝 줄 여부를 기록한다(코어 줄은 늘 JSON 한 줄)."""
-        with contextlib.suppress(Exception):
-            obj = json.loads(line)
-            self._last_seq = int(obj.get("seq", self._last_seq))
-            if self._run_id == "-":
-                self._run_id = str(obj.get("run_id", "-"))
-            if obj.get("event") in ("final", "error"):
-                self._terminal = True
+        """끝 줄 방어에 쓸 끝 줄 여부를 기록한다. 줄을 다시 해석하지 않고 앞부분만 본다.
+
+        코어 줄 쓰기(`turn._Writer`)는 늘 `{"event":"<종류>",…` 로 시작하는 줄을 낸다(시험이 고정).
+        seq 는 줄 수로, run_id 는 `TurnResponse.run_id` 로 안다.
+        """
+        if line.startswith(_TERMINAL_PREFIXES):
+            self._terminal = True
 
     def _pump(self) -> None:
         try:
@@ -313,7 +316,7 @@ class TurnStream:
             if not self._terminal and not self._stopped.is_set():
                 # 두 번째 방어: 끝 줄 없이 200 으로 닫지 않는다(5-4 · L1-08)
                 self._terminal = True
-                self._put(_fallback_error_line(self._run_id, self._last_seq + 1))
+                self._put(_fallback_error_line(self._run_id, self.count + 1))
         finally:
             close = getattr(self._lines, "close", None)
             if close is not None:
@@ -418,12 +421,28 @@ class _SendMeter:
                 self.completed = True
 
 
+def _route_path(scope: Scope) -> str:
+    """라우터가 맞추는 경로: `root_path` 를 뗀 `path`.
+
+    Starlette 라우터의 `get_route_path` 와 같은 규칙이다.
+    """
+    path: str = scope.get("path", "")
+    root = scope.get("root_path", "")
+    if root and path.startswith(root) and (path == root or path[len(root)] == "/"):
+        return path[len(root) :]
+    return path
+
+
 class StreamSendGuard:
     """`/agent/turn` 의 실제 보내기(서버 쪽)에 줄마다 2초 상한을 건다(L1-08 · L1-09). 순수 ASGI.
 
-    main.py 에서 가장 바깥에 둔다. 요청 로그 미들웨어(`BaseHTTPMiddleware`)는 응답을 내부 큐로
-    넘기므로 응답 안에서 재면 큐까지만 잰다. 막히면 턴을 멈추고 남은 메시지는 버린다. 그러면 앱이
-    돌아오고 서버(uvicorn)가 연결을 닫는다. 다른 경로는 그대로 지나간다.
+    main.py 에서 가장 바깥에 둔다(시험 `test_send_guard_is_the_outermost_user_middleware` 가 고정).
+    요청 로그 미들웨어(`BaseHTTPMiddleware`)보다 안쪽이면 응답을 내부 큐로 넘긴 뒤를 재므로
+    조용히 큐까지만 재게 된다. 막히면 턴을 멈추고 남은 메시지는 버린다. 그러면 앱이 돌아오고
+    서버(uvicorn)가 연결을 닫는다. 다른 경로는 그대로 지나간다.
+
+    경로는 라우터와 같은 기준으로 맞춘다: `root_path`(앞에 붙은 경로 접두어)를 뗀 경로가
+    `/agent/turn` 이면 건다. 그래서 접두어를 붙여 배포해도 보호가 빠지지 않는다.
     """
 
     def __init__(self, app: Any, path: str = "/agent/turn") -> None:
@@ -431,7 +450,7 @@ class StreamSendGuard:
         self.path = path
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http" or scope.get("path") != self.path:
+        if scope.get("type") != "http" or _route_path(scope) != self.path:
             await self.app(scope, receive, send)
             return
         meter = _SendMeter(send)
