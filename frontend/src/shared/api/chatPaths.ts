@@ -18,6 +18,8 @@ export const chatPaths = {
   scope: (conversationId: string) => `${BASE}/conversations/${conversationId}/scope`,
   /** POST → 202 메시지 접수 */
   send: `${BASE}/messages`,
+  /** GET → 이 대화에서 끝나지 않은 실행 (12-3 "실행 상태 조회 | `run_id` 또는 `conversation_id`") */
+  conversationRun: (conversationId: string) => `${BASE}/conversations/${conversationId}/run`,
   /** GET `?after_seq=` → 실행 상태 · 이벤트 */
   run: (runId: string) => `${BASE}/runs/${runId}`,
   /** POST → 실행 취소 */

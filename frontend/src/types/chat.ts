@@ -330,6 +330,14 @@ export interface ConversationList {
   items: ConversationSummary[];
 }
 
+/**
+ * (FE 잠정 모양) 대화로 실행 상태 조회 — 그 대화에서 끝나지 않은 실행. 없으면 null.
+ * 대화를 열거나 되살렸을 때 · 보내기가 409 `AGENT_RUN_IN_PROGRESS` 일 때 씁니다 (12-3 · L3-17)
+ */
+export interface ConversationRunView {
+  run: RunView | null;
+}
+
 // ── 요청 ──────────────────────────────────────────────────────
 
 /** 화면 상태 (12-4 `Screen`). 그 밖의 화면은 null 입니다 */

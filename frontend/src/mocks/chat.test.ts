@@ -865,3 +865,17 @@ describe('AI 코드(schemas.py)와 같은 모양', () => {
     ]).toEqual([true, true]);
   });
 });
+
+describe('대화의 실행 조회', () => {
+  it('끝나지 않은 실행이 있으면 그 실행을, 없으면 null 을 돌려주고 실행을 나아가게 하지 않는다', async () => {
+    const { run_id, conversation_id } = await accepted('비교해 줘');
+    const lookup = () =>
+      call(chatPaths.conversationRun(conversation_id)).then(json<{ run: RunView | null }>);
+    const found = await lookup();
+    expect(found.run).toMatchObject({ run_id, status: 'QUEUED' });
+    expect((await lookup()).run?.status).toBe('QUEUED');
+    await settle(run_id);
+    expect((await lookup()).run).toBeNull();
+    expect((await call(chatPaths.conversationRun('nope'))).status).toBe(404);
+  });
+});
