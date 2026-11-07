@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSyncExternalStore, type ReactNode } from 'react';
 import { getPitchResources } from '@/shared/api/pitch';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
 import { CardList, type CardActions } from './ChatCards';
 import { ChipList } from './ChatChips';
@@ -10,6 +11,7 @@ import { basisBadge, basisPitches, staleTexts } from './chatBasis';
 import {
   errorText,
   GENERAL_LABEL,
+  isUuid,
   PROGRESS_DROPPED_TEXT,
   readMessage,
   readPlan,
@@ -203,13 +205,20 @@ export function StoredAnswer({
   );
 }
 
+/** 근거 배지의 버전 목록 요청을 다시 해 볼 횟수 — TanStack Query 기본값과 같습니다 */
+const BASIS_RETRIES = 3;
+
 /** 피치 하나의 근거 배지 — 대본 버전 이름은 그 피치의 버전 목록에서 찾습니다 */
 function BasisBadge({ pitch }: { pitch: ReturnType<typeof basisPitches>[number] }) {
   const resources = useQuery({
     queryKey: ['pitches', pitch.pitch_id, 'resources'],
     queryFn: () => getPitchResources(pitch.pitch_id),
-    // 대본 버전이 없으면 이름을 찾을 일이 없습니다
-    enabled: pitch.script_version_id !== null,
+    // 대본 버전이 없으면 이름을 찾을 일이 없습니다. 근거의 ID 는 서버 · 모델 값이라 UUID 일 때만 경로에 넣습니다
+    // (`chatPaths` 와 같은 방침 — 이 요청은 공용 API 라 인코딩 대신 모양을 봅니다)
+    enabled: pitch.script_version_id !== null && isUuid(pitch.pitch_id),
+    // 지워진 피치(404)는 다시 물어도 같습니다 — 메시지마다 되풀이하지 않습니다
+    retry: (count, error) =>
+      !(error instanceof ApiFailure && error.status === 404) && count < BASIS_RETRIES,
     staleTime: 5 * 60_000,
   });
   const text = basisBadge(pitch, resources.data);

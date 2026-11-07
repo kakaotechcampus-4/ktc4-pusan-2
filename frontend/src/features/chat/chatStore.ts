@@ -136,6 +136,11 @@ interface ChatState {
   /** '기억 없이' 대화인지 — 새 대화에서는 고른 값, 고른 대화에서는 그 대화의 값. 대화를 만든 뒤에는 바꾸지 않습니다 */
   memoryOff: boolean;
   pending: PendingSend | null;
+  /**
+   * 마지막으로 접수되지 않음이 확정된 보내기(`failSend` · `conflictSend`) — 대화창이 보낸 글을 입력에 되돌립니다.
+   * 첫 보내기 · [다시 확인] · [다시 보내기] · 새로고침으로 되살린 요청 모두 여기로 옵니다
+   */
+  rejected: { sendId: string; text: string } | null;
   run: ActiveRun | null;
   /** 취소를 눌렀고 아직 확정되지 않은 실행 */
   cancelling: string | null;
@@ -386,6 +391,7 @@ const emptyForUser = {
   scopeFixed: false,
   memoryOff: false,
   pending: null,
+  rejected: null,
   run: null,
   cancelling: null,
   syncing: false,
@@ -684,6 +690,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       if (!isPendingSend(ticket)) return;
       set((s) => ({
         pending: null,
+        rejected: { sendId: s.pending!.sendId, text: s.pending!.request.text },
         scopeFixed: s.conversationId !== null || s.pending!.scopeFixedBefore,
         syncing: s.conversationId !== null,
       }));
@@ -700,6 +707,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       // 새 대화의 첫 보내기가 실패하면 대화가 없으니, 범위는 보내기 전처럼 다시 화면을 따라갈 수 있습니다
       set((s) => ({
         pending: null,
+        rejected: { sendId: s.pending!.sendId, text: s.pending!.request.text },
         scopeFixed: s.conversationId !== null || s.pending!.scopeFixedBefore,
         blockedUntil: blockFor(retryAfterSec) ?? s.blockedUntil,
       }));

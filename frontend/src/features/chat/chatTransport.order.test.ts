@@ -677,13 +677,26 @@ describe('되돌리기', () => {
     undo.calls[0]!.fail(new ApiFailure(409, 'AGENT_STATE_INVALID'));
     expect(await conflict).toBe('conflict');
 
+    // 같은 409 라도 기준 기록이 지워졌다는 문구면 그 사유로 (BE goal_undo.BASE_DELETED)
+    const gone = transport.undo(runId, 'a-1');
+    await flush();
+    undo.calls[1]!.fail(
+      new ApiFailure(
+        409,
+        'AGENT_STATE_INVALID',
+        null,
+        '목표의 기준 기록이 삭제되어 새 목표가 필요해요.',
+      ),
+    );
+    expect(await gone).toBe('baseDeleted');
+
     const mark = signals.length;
     const disabled = transport.undo(runId, 'a-1');
     await flush();
-    undo.calls[1]!.fail(new ApiFailure(503, 'AGENT_DISABLED'));
+    undo.calls[2]!.fail(new ApiFailure(503, 'AGENT_DISABLED'));
     expect(await disabled).toBe('failed');
     expect(of('disabled', mark)).toHaveLength(1);
-    expect(undo.calls).toHaveLength(2);
+    expect(undo.calls).toHaveLength(3);
   });
 });
 

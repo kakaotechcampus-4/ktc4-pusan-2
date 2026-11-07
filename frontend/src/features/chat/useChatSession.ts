@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchPitchList, pitchListKey } from '@/shared/api/home';
 import { fetchTakeReport } from '@/shared/api/report';
 import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 import type { ChatMessage, ChatPage, ConversationListItem } from '@/types/chat';
@@ -44,6 +45,8 @@ export type ChatNotice =
   | { kind: 'sendFailed'; code: string }
   | { kind: 'sessionExpired' }
   | { kind: 'criteriaTooLong' }
+  /** 화면 상태를 만들지 못함 — 화면을 모른 채 답하지 않게 보내지 않습니다 (L3-10) */
+  | { kind: 'screenUnavailable' }
   /** 고른 피치가 없어짐(404) — 범위를 다시 고를 때까지 보내기를 막습니다 (L3-07) */
   | { kind: 'scopeMissing' }
   /** 범위 바꾸기가 받아들여지지 않음 — 칩은 앞 범위로 돌아갔습니다 */
@@ -101,6 +104,8 @@ export interface ChatSession {
   messagesLoading: boolean;
   /** 메시지 목록을 읽지 못함 — 빈 대화로 보이지 않게 합니다 */
   messagesFailed: boolean;
+  /** 메시지 목록을 읽지 못한 오류 — 같은 실패를 한 번만 알리는 데 씁니다. 실패가 아니면 null */
+  messagesError: Error | null;
   /** 접수됐지만 아직 목록에 없는 내 말 */
   sentEcho: SentEcho | null;
   /** 지금 실행의 진행 — 보고 있는 대화의 것만 */
@@ -239,6 +244,14 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
         markDisabled,
         setNotice,
         blockScope: () => setScopeBlocked(true),
+        isPitchGone: (pitchId) =>
+          queryClient
+            .fetchQuery({ queryKey: pitchListKey, queryFn: fetchPitchList, staleTime: 0 })
+            .then(
+              (list) => !list.pitches.some((p) => p.pitch_id === pitchId),
+              // 목록을 못 읽으면 없어졌는지 모릅니다 — 막지 않습니다
+              () => false,
+            ),
         setRunNotice,
         addEndNotice: (runId, notice) => setEndNotices((all) => ({ ...all, [runId]: notice })),
         startNew: () => useChatStore.getState().startNewConversation(screenScopeRef.current),
@@ -326,7 +339,11 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       if (!current) return false;
       const snapshot = takeScreenSnapshot(info.route);
       if (!snapshot.ok) {
-        setNotice({ kind: 'criteriaTooLong' });
+        setNotice(
+          snapshot.reason === 'CRITERIA_TOO_LONG'
+            ? { kind: 'criteriaTooLong' }
+            : { kind: 'screenUnavailable' },
+        );
         return false;
       }
       const page: ChatPage = {
@@ -395,7 +412,9 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       if (!current) return 'stale';
       const result = await current.undo(runId, actionId);
       const id = useChatStore.getState().conversationId;
-      if (result === 'undone' && id)
+      // 되돌렸거나 충돌(409)이면 목록을 다시 읽습니다 — 충돌이면 지금 목표가 담긴 메시지를 다시 보입니다 (L3-29)
+      const reread = result === 'undone' || result === 'conflict' || result === 'baseDeleted';
+      if (reread && id)
         queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) }).catch(() => undefined);
       return result;
     },
@@ -428,6 +447,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     selectConversation,
     messagesLoading: messages.isPending && messages.fetchStatus === 'fetching',
     messagesFailed: messages.isError,
+    messagesError: messages.error,
     sentEcho: sentEcho && sentEcho.conversationId === conversationId ? sentEcho : null,
     progress: progress && progress.conversationId === conversationId ? progress : null,
     typing,
@@ -454,6 +474,8 @@ interface SignalHandlers {
   setNotice: (notice: ChatNotice | null) => void;
   /** 범위를 다시 고를 때까지 보내기를 막습니다 */
   blockScope: () => void;
+  /** 피치 목록을 다시 읽어 그 피치가 정말 없어졌는지 — 읽지 못하면 false */
+  isPitchGone: (pitchId: string) => Promise<boolean>;
   setRunNotice: (update: RunNotice | null | ((now: RunNotice | null) => RunNotice | null)) => void;
   addEndNotice: (runId: string, notice: EndNotice) => void;
   /** 지금 화면 범위의 새 대화로 */
@@ -522,16 +544,23 @@ function handleSignal(signal: TransportSignal, h: SignalHandlers) {
     case 'unconfirmed':
       h.setNotice({ kind: 'unconfirmed', notAccepted: signal.notAccepted });
       return;
-    case 'sendFailed':
-      // 범위의 피치가 없어짐 — 범위를 다시 고르게 합니다(L3-07). BE 는 대화 · 피치 · 제안의 404 를 같은 코드로 줘서
-      // 범위가 피치일 때만 이 안내로 봅니다
-      if (signal.code === 'NOT_FOUND' && useChatStore.getState().scope?.pitchId) {
-        h.blockScope();
-        h.setNotice({ kind: 'scopeMissing' });
+    case 'sendFailed': {
+      // 범위의 피치가 없어짐 — 범위를 다시 고르게 합니다(L3-07). BE 는 대화 · 범위 피치 · 화면의 피치 · Take ·
+      // 다시 묻는 메시지 · 목표 제안의 404 를 같은 NOT_FOUND 로 줘서(accept.py), 피치 목록을 다시 읽어
+      // 범위의 피치가 정말 없을 때만 막습니다. 그 밖의 404 는 일반 실패로 둡니다
+      const pitchId = signal.code === 'NOT_FOUND' ? useChatStore.getState().scope?.pitchId : null;
+      if (!pitchId) {
+        h.setNotice({ kind: 'sendFailed', code: signal.code });
         return;
       }
-      h.setNotice({ kind: 'sendFailed', code: signal.code });
+      void h.isPitchGone(pitchId).then((gone) => {
+        if (gone && useChatStore.getState().scope?.pitchId === pitchId) {
+          h.blockScope();
+          h.setNotice({ kind: 'scopeMissing' });
+        } else h.setNotice({ kind: 'sendFailed', code: signal.code });
+      });
       return;
+    }
     case 'scopeFailed':
       h.setNotice(signal.code === 'NOT_FOUND' ? { kind: 'scopeMissing' } : { kind: 'scopeFailed' });
       return;
