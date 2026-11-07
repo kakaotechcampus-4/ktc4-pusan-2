@@ -133,6 +133,7 @@ function ComparisonSummary() {
                     </table>
                   </section>
                 ))}
+              </div>
       </dialog>
     </Card>
   );
