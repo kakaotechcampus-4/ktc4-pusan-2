@@ -558,10 +558,7 @@ function Viewer({ slide }: { slide: SlideVersion }) {
           </span>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p role="status" className="text-sm">
-          {needsReview ? '업로드 완료 · 확인 필요' : '확인 완료'}
-        </p>
+      <div className="mt-4 flex justify-end">
         <button
           ref={trigger}
           type="button"
@@ -581,10 +578,6 @@ function Viewer({ slide }: { slide: SlideVersion }) {
           {body}
         </SlideReviewDialog>
       )}
-      <details className="[&>summary]:min-h-11 [&>summary]:cursor-pointer [&>summary]:py-3 [&>summary]:text-sm [&>summary]:underline [&>summary]:underline-offset-4">
-        <summary>슬라이드 미리보기</summary>
-        <div className="flex h-[min(34rem,75dvh)] min-h-80">{!reviewOpen && body}</div>
-      </details>
     </div>
   );
 }
