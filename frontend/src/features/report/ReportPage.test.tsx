@@ -88,20 +88,92 @@ it('shows the script modes in Korean when the two Takes used different ones', as
 });
 
 it('shows 같음, not 나빠짐, when the visible values are equal even if improved is false', async () => {
-  const row = { slide_number: null, script_mode: null };
+  const row = { script_mode: null };
   query.data!.review = {
     ...reviewFixture,
     comparison: [
-      { ...row, metric: 'filler_count', previous: 0, current: 0, improved: false },
-      { ...row, metric: 'script_ratio', previous: 0.621, current: 0.624, improved: false },
-      { ...row, metric: 'filler_count', previous: 0, current: 2, improved: false },
+      {
+        ...row,
+        metric: 'filler_count',
+        slide_number: null,
+        previous: 0,
+        current: 0,
+        improved: false,
+      },
+      {
+        ...row,
+        metric: 'script_ratio',
+        slide_number: null,
+        previous: 0.621,
+        current: 0.624,
+        improved: false,
+      },
+      { ...row, metric: 'filler_count', slide_number: 2, previous: 0, current: 2, improved: false },
     ],
   };
   await render();
-  const badges = [...host.querySelectorAll('main section:nth-of-type(2) li')].map(
-    (li) => li.textContent,
-  );
-  expect(badges[0]).toContain('같음');
-  expect(badges[1]).toContain('같음');
-  expect(badges[2]).toContain('나빠짐');
+  const cell = (dimension: string, row: number) =>
+    comparisonCard().querySelector(
+      `section[aria-label="${dimension}"] tbody tr:nth-of-type(${row}) td`,
+    )!.textContent;
+  expect(cell('대본에서 벗어나기', 1)).toContain('같음');
+  expect(cell('군더더기 없이', 1)).toContain('같음');
+  expect(cell('군더더기 없이', 2)).toContain('나빠짐');
+});
+
+function comparisonCard() {
+  return [...host.querySelectorAll('main section')].find(
+    (s) => s.querySelector('h2')?.textContent === '지난 Take와 비교',
+  )!;
+}
+
+it('lays the comparison out one column per metric and one row per slide, grouped by dimension (#929)', async () => {
+  const row = { previous: 0.7, current: 0.62, improved: true, script_mode: null };
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      { ...row, metric: 'script_ratio', slide_number: null },
+      { ...row, metric: 'script_ratio', slide_number: 3 },
+      { ...row, metric: 'reading_runs', slide_number: null, previous: 4, current: 2 },
+      { ...row, metric: 'filler_per_min', slide_number: null, previous: 2, current: 1 },
+      { ...row, metric: 'filler_count', slide_number: null, previous: 10, current: 7 },
+    ],
+  };
+  await render();
+  const card = comparisonCard();
+  const tables = [...card.querySelectorAll('section')].map((s) => ({
+    title: s.querySelector('h3')?.textContent,
+    columns: [...s.querySelectorAll('thead th')].map((th) => th.textContent),
+    rows: [...s.querySelectorAll('tbody th')].map((th) => th.textContent),
+  }));
+  expect(tables).toEqual([
+    {
+      title: '대본에서 벗어나기',
+      columns: ['구간', '대본 응시', '대본 읽기 횟수'],
+      rows: ['발표 전체', '3번 장'],
+    },
+    { title: '군더더기 없이', columns: ['구간', '군더더기'], rows: ['발표 전체'] },
+  ]);
+  // 장 값이 없는 지표는 빈칸 대신 — 로
+  expect(card.querySelector('tbody tr:nth-of-type(2) td:nth-of-type(2)')?.textContent).toBe('—');
+  expect(card.textContent).not.toContain('분당 군더더기');
+  expect(card.textContent).toContain('지난 Take → 이번 Take');
+});
+
+it('says once that the script modes differed instead of repeating it in every cell', async () => {
+  const row = {
+    previous: 0.7,
+    current: 0.62,
+    improved: true,
+    script_mode: { previous: 'HIGHLIGHT', current: 'OFF' },
+  };
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      { ...row, metric: 'script_ratio', slide_number: null },
+      { ...row, metric: 'audience_ratio', slide_number: null },
+    ],
+  };
+  await render();
+  expect(comparisonCard().textContent!.match(/대본 보기가 달랐어요/g)).toHaveLength(1);
 });
