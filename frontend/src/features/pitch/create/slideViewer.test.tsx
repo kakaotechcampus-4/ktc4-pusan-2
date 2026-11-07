@@ -132,3 +132,24 @@ it('마우스로 쥔 썸네일에서도 방향키를 누르면 포커스를 뷰�
 it('뷰어 상자는 outline-none 을 두지 않아 방향키로 포커스가 옮겨 오면 전역 포커스 링이 그려진다', () => {
   expect(viewerBox().className).not.toContain('outline-none');
 });
+
+it('뷰어 밖에 다녀온 뒤 Tab 으로 돌아온 버튼도 키보드 초점이라 포커스를 옮기지 않는다 (#924)', async () => {
+  const outside = document.createElement('button');
+  document.body.append(outside);
+  try {
+    const next = button('다음 슬라이드');
+    await pointerDown(next);
+    next.focus();
+    await click(next);
+
+    // 뷰어 밖으로 나갔다가 Tab 으로 돌아온다 — 그 Tab 은 밖에서 일어나 뷰어의 keydown 에 닿지 않는다
+    await act(async () => outside.focus());
+    await act(async () => next.focus());
+
+    await press(next, 'ArrowLeft');
+    expect(counter()).toBe('1 / 3');
+    expect(document.activeElement).toBe(next);
+  } finally {
+    outside.remove();
+  }
+});

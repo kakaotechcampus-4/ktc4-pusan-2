@@ -344,6 +344,11 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
       onPointerDown={() => {
         pointerFocus.current = true;
       }}
+      // 포커스가 뷰어 밖으로 나가면 표시를 끕니다 — 밖에서 일어난 Tab 은 아래 onKeyDown 에 닿지 않아,
+      // 밖에 다녀와 Tab 으로 돌아온 버튼이 마우스로 쥔 버튼으로 취급돼 포커스를 빼앗기기 때문입니다
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) pointerFocus.current = false;
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Tab') pointerFocus.current = false;
         const next = e.key === 'ArrowRight' || e.key === 'PageDown';
