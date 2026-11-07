@@ -255,11 +255,23 @@ const productScreens: GuideScreen[] = [
     summary:
       '슬라이드 · 대본 연결 · 발표정보 · 평가기준(선택)을 한 페이지에서 준비한다. 왼쪽 준비 순서와 자료 버전 목록, 고정 하단 확인 버튼을 사용한다. 생성과 수정은 같은 구성을 공유한다.',
     states: [
-      state('default', '기본 · 작성한 자료', '한 페이지에서 필수 준비 항목을 확인하고 다음 행동을 고른다.'),
+      state(
+        'default',
+        '기본 · 작성한 자료',
+        '한 페이지에서 필수 준비 항목을 확인하고 다음 행동을 고른다.',
+      ),
       state('empty', '새 피치 · 자료 없음', '슬라이드 업로드 전에도 네 영역이 모두 보인다.'),
       state('error', '슬라이드 업로드 실패', 'PDF 업로드 오류를 표시하고 재선택할 수 있다.'),
-      state('preview', '슬라이드 확인 창 · 이전 상태 주소', '기존 preview 링크를 보존하며 최신 슬라이드 확인 창으로 연결한다.'),
-      state('upload-review', '슬라이드 확인', '업로드한 PDF의 장 순서를 확인하고 확인 완료를 누른다.'),
+      state(
+        'preview',
+        '슬라이드 확인 창 · 이전 상태 주소',
+        '기존 preview 링크를 보존하며 최신 슬라이드 확인 창으로 연결한다.',
+      ),
+      state(
+        'upload-review',
+        '슬라이드 확인',
+        '업로드한 PDF의 장 순서를 확인하고 확인 완료를 누른다.',
+      ),
       state('mapping', '대본 매핑 확인', '슬라이드와 장별 대본을 확인·수정하는 창이다.'),
       state('mapping-error', '대본 매핑 실패', '대본 원문을 보존하고 매핑을 다시 시도한다.'),
       state('final-review', '최종 확인', '자료와 발표 설정을 검토하고 시작 전 세팅으로 이동한다.'),
@@ -767,7 +779,8 @@ const infoScreens: GuideScreen[] = [
     group: infoGroup,
     route: '/terms',
     status: '제품에 있음',
-    summary: '제품에 공개 경로가 있는 시행 전 이용약관 초안. 서비스 목적과 자료 권리, 장치 권한, 삭제 및 미확정 운영 정책을 안내한다.',
+    summary:
+      '제품에 공개 경로가 있는 시행 전 이용약관 초안. 서비스 목적과 자료 권리, 장치 권한, 삭제 및 미확정 운영 정책을 안내한다.',
     states: [base],
     rules: [
       '실제 제품도 시행 중인 약관이 아니라 검토용 초안으로 표시한다. 운영 주체·시행일·문의처는 아직 확정되지 않았다.',
@@ -776,9 +789,14 @@ const infoScreens: GuideScreen[] = [
     components: ['정책 문서 머리 · 검토용 초안 안내', '7개 정책 조항 · 문서 전환 링크'],
     tokens: ['panel', 'ink', 'coral-wash', 'line'],
     sources: ['frontend/src/features/onboarding/PolicyPage.tsx'],
-    productNote: '7개 조항의 텍스트를 제품 코드에서 가져온 독립 샘플이다. 현재 경로의 from=home에 따른 돌아가기 차이는 미리보기에서 고정된 이동으로 표현한다. 외부 작성지침 링크는 포함하지 않는다.',
+    productNote:
+      '7개 조항의 텍스트를 제품 코드에서 가져온 독립 샘플이다. 현재 경로의 from=home에 따른 돌아가기 차이는 미리보기에서 고정된 이동으로 표현한다. 외부 작성지침 링크는 포함하지 않는다.',
     productLinks: [link('이용약관', '/terms'), link('홈에서 연 이용약관', '/terms?from=home')],
-    next: [next('개인정보 처리방침', 'privacy'), next('서비스 소개', 'welcome'), next('내 피치로', 'home')],
+    next: [
+      next('개인정보 처리방침', 'privacy'),
+      next('서비스 소개', 'welcome'),
+      next('내 피치로', 'home'),
+    ],
   },
   {
     kind: 'screen',
@@ -787,7 +805,8 @@ const infoScreens: GuideScreen[] = [
     group: infoGroup,
     route: '/privacy',
     status: '제품에 있음',
-    summary: '서버에 전송하지 않는 카메라 영상과 서버로 전송하는 음성을 구분하고, 데이터 처리·보관 및 삭제를 설명하는 시행 전 초안.',
+    summary:
+      '서버에 전송하지 않는 카메라 영상과 서버로 전송하는 음성을 구분하고, 데이터 처리·보관 및 삭제를 설명하는 시행 전 초안.',
     states: [base],
     rules: [
       '시행 전 검토용 초안임을 반드시 표시한다. 미확정 외부 처리 사업자·국외 이전·보관기간을 확정된 정책으로 표현하지 않는다.',
@@ -796,8 +815,12 @@ const infoScreens: GuideScreen[] = [
     components: ['정책 문서 머리 · 검토용 초안 안내', '7개 정책 조항 · 문서 전환 링크'],
     tokens: ['panel', 'ink', 'coral-wash', 'line'],
     sources: ['frontend/src/features/onboarding/PolicyPage.tsx'],
-    productNote: '제품의 공개 정책 7개 조항을 독립적으로 재현한다. 서버·계정과 무관하며 from=home 쿼리에 따른 돌아가기 구분과 외부 작성지침 링크는 재현하지 않는다.',
-    productLinks: [link('개인정보 처리방침', '/privacy'), link('홈에서 연 처리방침', '/privacy?from=home')],
+    productNote:
+      '제품의 공개 정책 7개 조항을 독립적으로 재현한다. 서버·계정과 무관하며 from=home 쿼리에 따른 돌아가기 구분과 외부 작성지침 링크는 재현하지 않는다.',
+    productLinks: [
+      link('개인정보 처리방침', '/privacy'),
+      link('홈에서 연 처리방침', '/privacy?from=home'),
+    ],
     next: [next('이용약관', 'terms'), next('서비스 소개', 'welcome'), next('내 피치로', 'home')],
   },
 
