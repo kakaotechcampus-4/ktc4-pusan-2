@@ -138,7 +138,8 @@ class Settings(BaseSettings):
     # 대화 에이전트 `/agent/turn` (docs/ai/architecture.md 10절, 대화 기능 문서 11-1).
     # 꺼져 있으면 대화 경로만 스트림 전 503 AGENT_DISABLED 이고, 대화용 모델 · 자료 묶음도
     # 만들지 않는다. 서명 키가 없거나 32바이트 미만이면 켜져 있어도 대화 경로만 503 이다
-    # (앱 시작은 막지 않는다)
+    # (앱 시작은 막지 않는다). 이 길이 검사는 여기가 아니라 라우터(`api/chat_agent.py` 의
+    # `_secret_ready`)와 코어(`features/chat_agent/turn.py` 의 `handle_turn`)에 있다
     agent_enabled: bool = False
     # AI 프로세스별 대화 동시 상한(추가 방어, 필수 상한은 BE 대화 자리).
     # 대화 전용 실행 풀 = 이 값 × 2

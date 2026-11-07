@@ -345,18 +345,34 @@ class ToolRole:
     reasoning_effort: str | None
     timeout_seconds: float
     purpose_efforts: tuple[tuple[str, str], ...] = ()
+    #: 역할 이름(호출 로그의 `role=`)
+    name: str = "chat_agent"
 
     def effort(self, purpose: str) -> str | None:
         return dict(self.purpose_efforts).get(purpose, self.reasoning_effort)
 
 
-def tool_role(name: str = "chat_agent", *, app_settings: Settings = settings) -> ToolRole:
-    """역할 이름으로 `ToolRole` 을 만든다. 예: `tool_role()` → 출력 2,000 · 추론 low · 12초."""
+def tool_role(
+    name: str = "chat_agent",
+    *,
+    app_settings: Settings = settings,
+    max_call_seconds: float | None = None,
+) -> ToolRole:
+    """역할 이름으로 `ToolRole` 을 만든다. 예: `tool_role()` → 출력 2,000 · 추론 low · 12초.
+
+    - max_call_seconds: 호출 한 번의 상한. 대화 코어는 답 쓰기 · 고치기 몫을 호출 한 번
+      12초로 잡아 두므로(기능 문서 8-3) 부르는 쪽이 그 값을 넘긴다. 설정
+      (`LLM_TIMEOUT_SECONDS`)이 더 작으면 설정을 따르고, 더 커도 이 상한을 넘지 않는다
+    """
     role = LLM_ROLES[name]
+    timeout = app_settings.timeout_for(role)
+    if max_call_seconds is not None:
+        timeout = min(timeout, max_call_seconds)
     return ToolRole(
         max_output_tokens=role.max_output_tokens,
         reasoning_effort=role.reasoning_effort,
-        timeout_seconds=app_settings.timeout_for(role),
+        timeout_seconds=timeout,
+        name=name,
     )
 
 
@@ -448,7 +464,7 @@ class ToolLlmClient:
             try:
                 result = self._once(req, mode, timeout, attempt)
             except _Retryable as r:
-                usages.append(chat_llm.Usage())
+                usages.append(r.usage if r.usage is not None else chat_llm.Usage())
                 errors.append(r.error.code)
                 last = r.error
                 last.attempts, last.usage = attempt, list(usages)
@@ -526,6 +542,12 @@ class ToolLlmClient:
                 raise chat_llm.LlmTimeout(cause="timeout_unconfirmed") from None
             except chat_llm.LlmError:
                 raise  # 끝났고 무효 출력 · 거절이면 다시 보내지 않는다
+            except (
+                _Retryable
+            ) as r:  # 닫혀서 끊긴 것 등: 끝났으니 다시 보낼 수 있다(받은 사용량은 둔다)
+                raise _Retryable(
+                    chat_llm.LlmTimeout(cause="timeout"), "timeout", None, r.usage
+                ) from None
             except Exception:  # noqa: BLE001  # 닫혀서 끊긴 것 등: 끝났으니 다시 보낼 수 있다
                 raise _Retryable(chat_llm.LlmTimeout(cause="timeout"), "timeout", None) from None
             return late  # 마감 직후 끝난 결과는 그대로 쓴다
@@ -603,11 +625,19 @@ class ToolLlmClient:
                         finish = ch.finish_reason
         except (httpx2.TimeoutException, openai.APITimeoutError):
             raise _Retryable(
-                chat_llm.LlmTimeout(cause="stream_timeout"), "stream_timeout", None
+                chat_llm.LlmTimeout(cause="stream_timeout"), "stream_timeout", None, _seen(usage)
             ) from None
         except (httpx2.TransportError, openai.APIConnectionError):
             raise _Retryable(
-                chat_llm.LlmCallFailed(cause="stream_cut"), "stream_cut", None
+                chat_llm.LlmCallFailed(cause="stream_cut"), "stream_cut", None, _seen(usage)
+            ) from None
+        except openai.APIError:
+            # 스트림 도중 공급자가 SSE `error` 이벤트를 보내면 openai 는 기본 APIError 를
+            # 던진다(위 둘의 상위 클래스라 위에서 걸리지 않음). 연결 실패처럼 다룬다: 화면에
+            # 낸 문장이 없으면 한 번 다시 보내고, 있으면 실패로 끝내 코어가 받은 문장으로
+            # PARTIAL 을 만든다(7 · L1-11)
+            raise _Retryable(
+                chat_llm.LlmCallFailed(cause="stream_error"), "stream_error", None, _seen(usage)
             ) from None
         mode = "schema" if req.response_schema is not None else "tools"
         if refusal or finish == "content_filter":
@@ -667,7 +697,7 @@ class ToolLlmClient:
         self._log(
             {
                 "event": "llm_call",
-                "role": "chat_agent",
+                "role": self._role.name,
                 "purpose": req.purpose,
                 "attempt": attempt,
                 "outcome": outcome,
@@ -686,11 +716,24 @@ def _quiet_close(stream: Any) -> None:
 
 
 class _Retryable(Exception):
-    def __init__(self, error: chat_llm.LlmError, cause: str, retry_after: float | None) -> None:
+    def __init__(
+        self,
+        error: chat_llm.LlmError,
+        cause: str,
+        retry_after: float | None,
+        usage: chat_llm.Usage | None = None,
+    ) -> None:
         super().__init__(cause)
         self.error = error
         self.cause = cause
         self.retry_after = retry_after
+        #: 스트림 도중 끊겼을 때 그 전에 받은 사용량(없으면 모름)
+        self.usage = usage
+
+
+def _seen(usage: chat_llm.Usage) -> chat_llm.Usage | None:
+    """스트림 도중 받은 사용량. 사용량 조각을 아직 받지 못했으면 None(모름)."""
+    return usage if usage != chat_llm.Usage() else None
 
 
 def _with_usage(err: chat_llm.LlmError, usage: chat_llm.Usage) -> chat_llm.LlmError:
@@ -754,6 +797,7 @@ def tool_llm(
     *,
     pool_size: int,
     app_settings: Settings = settings,
+    max_call_seconds: float | None = None,
 ) -> ToolLlmClient | None:
     """도구 호출 LLM 을 만든다(대화 에이전트, 기능 문서 6-11). 프로세스에서 한 번 만들어 같이 쓴다.
 
@@ -775,7 +819,7 @@ def tool_llm(
             base_url=bundle.base_url,
             api_key=bundle.api_key.get_secret_value(),
             model=bundle.model,
-            role=tool_role(role, app_settings=app_settings),
+            role=tool_role(role, app_settings=app_settings, max_call_seconds=max_call_seconds),
             pool_size=pool_size,
         )
     except Exception as exc:  # noqa: BLE001  # 설정 값 · 라이브러리 오류는 '모델 없음'으로 본다

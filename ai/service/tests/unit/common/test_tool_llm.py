@@ -567,3 +567,102 @@ def test_closed_pool_returns_the_slot_and_fails_without_sending() -> None:
     with pytest.raises(LlmCallFailed) as ei:
         llm.invoke(req(tools=False), always)
     assert ei.value.cause == "executor_closed" and not llm.saturated()
+
+
+# ── 리뷰 후속: 스트림 도중 공급자 오류 · 호출 한 번 상한 · 로그 역할 이름 ─────────────────────────
+
+
+class ProviderErrorStream(Stream):
+    """조각 몇 개를 낸 뒤 공급자가 SSE `error` 이벤트를 보내는 스트림.
+
+    openai 는 이때 기본 APIError 를 던진다.
+    """
+
+    def __iter__(self) -> Any:
+        yield from self.chunks
+        raise openai.APIError(
+            "공급자 오류",
+            request=httpx2.Request("POST", "http://gateway.test/v1/chat/completions"),
+            body=None,
+        )
+
+
+def test_provider_error_mid_stream_is_resent_when_nothing_was_shown() -> None:
+    """반복 도중 `openai.APIError` 도 연결 실패처럼 다룬다: 낸 문장이 없으면 한 번 다시 보낸다."""
+    llm, fake, _ = make(
+        [
+            ProviderErrorStream([chunk(content='{"claims":[')]),
+            [chunk(content="{}"), chunk(finish="stop")],
+        ]
+    )
+    sink = Sink(commit_after=None)
+    r = llm.invoke(sink_req(sink), always)
+    assert r.parsed == {} and r.attempts == 2 and len(fake.kwargs) == 2
+
+
+def test_provider_error_mid_stream_after_a_shown_sentence_fails_without_resend() -> None:
+    """낸 문장이 있으면 다시 보내지 않고 `LlmCallFailed` 로 끝난다(코어가 받은 문장으로 PARTIAL)."""
+    llm, fake, sleeps = make(
+        [
+            ProviderErrorStream([chunk(content='{"claims":[')]),
+            [chunk(content="{}"), chunk(finish="stop")],
+        ]
+    )
+    sink = Sink(commit_after=1)
+    with pytest.raises(LlmCallFailed) as ei:
+        llm.invoke(sink_req(sink), always)
+    assert ei.value.cause == "stream_error"
+    assert len(fake.kwargs) == 1 and sleeps == []
+
+
+def test_usage_received_before_a_mid_stream_error_is_kept() -> None:
+    """공급자 오류 전에 받은 사용량은 버리지 않는다(실측 정산, 5-5). 받지 못했으면 모름(None)."""
+    from pitch_coach_ai.features.chat_agent.llm_types import Usage
+
+    llm, _, _ = make([ProviderErrorStream([chunk(content='{"claims":['), chunk(usage=(120, 30))])])
+    with pytest.raises(LlmCallFailed) as ei:
+        llm.invoke(sink_req(Sink(commit_after=1)), always)
+    assert ei.value.usage == [Usage(120, 30, None)]
+    llm, _, _ = make([CutStream([chunk(content='{"claims":[')])])
+    with pytest.raises(LlmCallFailed) as ei:
+        llm.invoke(sink_req(Sink(commit_after=1)), always)
+    assert ei.value.usage == [Usage()]
+
+
+def test_usage_is_kept_when_the_error_comes_during_the_timeout_grace() -> None:
+    """호출 시간을 넘긴 뒤 기다리는 사이(유예) 공급자 오류로 끝나도 그 전에 받은 사용량은 남는다."""
+    from pitch_coach_ai.features.chat_agent.llm_types import Usage
+
+    class LateError(ProviderErrorStream):
+        def __iter__(self) -> Any:
+            time.sleep(0.3)  # 시간 제한(0.2초)은 넘기고 유예 안에서
+            yield from super().__iter__()
+
+    llm, fake, _ = make([])
+    llm._role = ToolRole(max_output_tokens=2000, reasoning_effort="low", timeout_seconds=0.2)  # type: ignore[attr-defined]
+    fake.outcomes = [LateError([chunk(content='{"claims":['), chunk(usage=(120, 30))])]
+    with pytest.raises(LlmTimeout) as ei:
+        llm.invoke(sink_req(Sink(commit_after=1)), always)
+    assert ei.value.usage == [Usage(120, 30, None)]
+
+
+@pytest.mark.parametrize(("global_seconds", "expected"), [(20.0, 12.0), (8.0, 8.0)])
+def test_call_cap_keeps_one_chat_call_within_the_core_answer_share(
+    global_seconds: float, expected: float
+) -> None:
+    """`LLM_TIMEOUT_SECONDS` 를 올려도 대화 호출 한 번은 12초(코어 답 몫 24초 / 2)를 넘지 않고,
+    내리면 따라 내려간다(8-3)."""
+    from pitch_coach_ai.common.llm import tool_llm, tool_role
+    from pitch_coach_ai.settings import Settings
+
+    s = Settings(
+        _env_file=None,
+        llm_timeout_seconds=global_seconds,
+        openai_base_url="http://gateway.test/v1",
+        openai_api_key="test",
+        openai_model="openai/gpt-6-luna",
+    )
+    assert tool_role(app_settings=s, max_call_seconds=12.0).timeout_seconds == expected
+    assert tool_role(app_settings=s).timeout_seconds == global_seconds  # 상한을 안 주면 설정 그대로
+    llm = tool_llm(pool_size=2, app_settings=s, max_call_seconds=12.0)
+    assert llm is not None and llm._role.timeout_seconds == expected  # type: ignore[attr-defined]
