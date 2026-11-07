@@ -38,6 +38,7 @@ from pitch_coach_backend.module.chat.service.run import (
     ClaimedRun,
     add_run_log,
     cancel,
+    canonical_ids,
     check_sources,
     claimed,
     lock_conversation_of,
@@ -407,8 +408,8 @@ def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | 
         trace=row.trace,
         evidence=evidence,
         usage=row.usage,
-        source_pitch_ids=sorted(pitch_ids),
-        source_take_ids=sorted(take_ids),
+        source_pitch_ids=canonical_ids(pitch_ids),
+        source_take_ids=canonical_ids(take_ids),
     )
     repo.add(message)
     return message

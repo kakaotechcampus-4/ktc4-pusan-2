@@ -107,6 +107,15 @@ def lock_ids(db: Session, pitch_ids: set[str], take_ids: set[str]) -> bool:
     return locked and pitches_valid and takes_valid
 
 
+def canonical_ids(values: Iterable[str]) -> list[str]:
+    """저장할 근거 ID. `lock_ids` 를 통과한 값만 받는다.
+
+    AI 가 낸 문장의 ID 는 대문자이거나 하이픈이 없어도 잠글 수 있다. 정리 작업이 문자열로 찾으므로
+    표준 형식으로 바꿔 저장한다.
+    """
+    return sorted(str(uuid.UUID(str(value))) for value in values)
+
+
 def check_sources(db: Session, run: ClaimedRun, pitch_ids: set[str], take_ids: set[str]) -> None:
     pitches, pitches_valid = _parse_ids(pitch_ids)
     takes, takes_valid = _parse_ids(take_ids)

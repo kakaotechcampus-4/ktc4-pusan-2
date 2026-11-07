@@ -7,6 +7,7 @@ from pitch_coach_backend.module.chat.dto import HISTORY_MESSAGES, AgentSummaryIt
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatRun, ChatSummary
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.request import overflow_messages
+from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 
 PROFILE_KEYS = ("TONE", "EXPLAIN_STYLE", "FOCUS_AREA", "CONTEXT")
 VALUE_LIMIT = 80
@@ -165,11 +166,14 @@ def save_summary(repo: ChatRepository, row: ChatRun, turn_call: int, data: dict[
     if summary is None:
         summary = ChatSummary(conversation_id=row.conversation_id, summary_version=0)
         repo.add(summary)
-    summary.items = items
+    # 이미 가린 답을 덮으면 처음부터 비운다. 삭제 기록이 없어진 뒤라면 정리 작업이 이 요약을 고르지
+    # 못해, 근거를 옮겨 적으면 비워지지 않은 채 읽을 때마다 가려진다
+    masked = any(message.text == MASKED_TEXT for message in covered)
+    summary.items = [] if masked else items
     summary.summary_version += 1
     summary.covered_message_id = covered[-1].id
-    summary.source_pitch_ids = sorted(pitch_ids)
-    summary.source_take_ids = sorted(take_ids)
+    summary.source_pitch_ids = [] if masked else sorted(pitch_ids)
+    summary.source_take_ids = [] if masked else sorted(take_ids)
 
 
 def _summary_items(raw: Any) -> list[dict[str, str]] | None:

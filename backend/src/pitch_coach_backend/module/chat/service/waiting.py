@@ -19,7 +19,7 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.memory import memory_cards
-from pitch_coach_backend.module.chat.service.run import add_run_log, lock_ids
+from pitch_coach_backend.module.chat.service.run import add_run_log, canonical_ids, lock_ids
 
 APPROVAL_WINDOW = timedelta(minutes=30)
 EXPIRED_TEXT = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
@@ -60,7 +60,9 @@ def read_emitted(db: Session, run_id: uuid.UUID) -> Emitted:
     if not lock_ids(db, pitch_ids, take_ids):
         # 지운 기록이 대화에 되살아나지 않게 고정 문장만 남긴다
         return Emitted([], [], [], [], [], [])
-    return Emitted(claims, evidence, sources, assessments, sorted(pitch_ids), sorted(take_ids))
+    return Emitted(
+        claims, evidence, sources, assessments, canonical_ids(pitch_ids), canonical_ids(take_ids)
+    )
 
 
 def close_waiting(
