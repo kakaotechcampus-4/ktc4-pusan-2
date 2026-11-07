@@ -29,7 +29,7 @@ from pitch_coach_backend.module.pitch.dto import (
     VersionSummaryDTO,
 )
 from pitch_coach_backend.module.pitch.entity import CoachingPlan, Pitch, PresentationVersion
-from pitch_coach_backend.module.pitch.exception import NonExistentPitch
+from pitch_coach_backend.module.pitch.exception import NonExistentPitch, PitchBusy
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import file_cleanup
 from pitch_coach_backend.module.pitch.service.script import effective_status
@@ -67,6 +67,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
     for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):
         rows_by_pitch[row.Take.pitch_id].append(row)
     latest = pitch_repository.get_latest_presentations([p.id for p in pitches])
+    now = datetime.now(UTC)
 
     results = []
     for pitch in pitches:
@@ -111,6 +112,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
             ),
             presentation_date=pitch.presentation_date,
             takes=take_summaries,
+            can_delete=not any(take_lookup.blocks_pitch_deletion(row.Take, now) for row in takes),
         )
 
         results.append(pitch_dto)
@@ -258,13 +260,17 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
 def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
     """pitch 를 지운다. Take 와 그 아래 행은 CASCADE 로 같이 지워진다.
 
-    지운 Take 의 id 를 돌려준다. 진행 중이던 Take 의 실시간 STT 는 호출자가 끊는다.
+    연습이나 분석이 도는 중이면 `PitchBusy` 다. 지운 Take 의 id 를 돌려준다. 그 Take 에 남은 실시간
+    연결은 호출자가 끊는다.
     """
     pitch_repository = PitchRepository(db)
-    existing_pitch = pitch_repository.get_by_id(pitch_id)
+    # 잠금을 쥔 동안에는 새 연습이 시작되지 못한다. 잠금을 기다렸을 수 있어 시각은 잡은 뒤에 잰다
+    existing_pitch = pitch_repository.lock_for_delete(pitch_id)
 
     if not existing_pitch:
         raise NonExistentPitch()
+    if take_lookup.pitch_has_take_blocking_deletion(db, pitch_id, datetime.now(UTC)):
+        raise PitchBusy()
 
     # 지운 뒤에는 CASCADE 로 사라져 읽을 수 없다
     take_ids = pitch_repository.get_take_ids(pitch_id)
