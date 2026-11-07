@@ -37,6 +37,30 @@ CREATE TRIGGER chat_record_deleted_take AFTER DELETE ON takes
     FOR EACH ROW EXECUTE FUNCTION chat_record_deleted_source();
 """
 
+# 정리 작업은 근거 칸을 문자열로 찾는다. AI 가 낸 문장에서 온 대문자 · 하이픈 없는 UUID 를 표준
+# 형식으로 맞춘다. 행동 근거와 읽은 근거는 BE 가 만든 값이라 이미 표준 형식이다
+UUID_TEXT = "[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}"
+CANONICAL_UUID_TEXT = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+SOURCE_COLUMNS = (
+    ("chat_messages", "source_pitch_ids"),
+    ("chat_messages", "source_take_ids"),
+    ("chat_summaries", "source_pitch_ids"),
+    ("chat_summaries", "source_take_ids"),
+)
+NORMALIZE = """
+UPDATE {table} SET {column} = (
+    SELECT jsonb_agg(
+        CASE WHEN value ~* '^{uuid}$' THEN value::uuid::text ELSE value END ORDER BY ordinality
+    )
+    FROM jsonb_array_elements_text({column}) WITH ORDINALITY AS item(value, ordinality)
+)
+WHERE jsonb_typeof({column}) = 'array' AND jsonb_array_length({column}) > 0
+    AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text({column}) AS item(value)
+        WHERE value ~* '^{uuid}$' AND value !~ '^{canonical}$'
+    )
+"""
+
 # 트리거를 걸기 전에 지워져 아직 정리되지 않은 근거를 채운다. 저장 경로는 형식이 틀린 id 를
 # 받지 않는다. 옛 정리 작업이 이미 가린 행이라 형식 검사로 걸러도 놓치는 답이 없다
 BACKFILL = """
@@ -66,9 +90,9 @@ FROM (
     UNION ALL
     SELECT base_take_id::text FROM chat_goals WHERE base_take_id IS NOT NULL
 ) AS referenced
-WHERE referenced.id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    AND NOT EXISTS (SELECT 1 FROM pitches WHERE pitches.id::text = lower(referenced.id))
-    AND NOT EXISTS (SELECT 1 FROM takes WHERE takes.id::text = lower(referenced.id))
+WHERE referenced.id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    AND NOT EXISTS (SELECT 1 FROM pitches WHERE pitches.id::text = referenced.id)
+    AND NOT EXISTS (SELECT 1 FROM takes WHERE takes.id::text = referenced.id)
 """
 
 
@@ -82,6 +106,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("source_id"),
     )
     op.execute(CREATE_TRIGGERS)
+    for table, column in SOURCE_COLUMNS:
+        op.execute(
+            NORMALIZE.format(
+                table=table, column=column, uuid=UUID_TEXT, canonical=CANONICAL_UUID_TEXT
+            )
+        )
     op.execute(BACKFILL)
     for name, table, columns in JSONB_INDEXES:
         op.create_index(name, table, columns, postgresql_using="gin")

@@ -22,6 +22,8 @@ from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service import cleanup as cleanup_service
 from pitch_coach_backend.module.chat.service.memory import save_summary
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
+from pitch_coach_backend.module.chat.service.turn import save_claim_message
+from pitch_coach_backend.module.chat.service.waiting import read_emitted
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take
 
@@ -370,3 +372,55 @@ def test_summary_covering_masked_answer_is_saved_empty(
     assert summary.items == []
     assert summary.source_take_ids == []
     assert summary.summary_version == 1
+
+
+def _claim_with(db_session: Session, run: ChatRun, take_id: uuid.UUID, pitch_id: uuid.UUID) -> None:
+    db_session.add(
+        ChatRunEvent(
+            run_id=run.id,
+            event_seq=1,
+            event="claim",
+            data={
+                "claim": {"kind": "OBSERVATION", "text": "말이 빨랐어요"},
+                "evidence": [
+                    {"pitch_id": str(pitch_id).upper(), "take_id": str(take_id).replace("-", "")}
+                ],
+            },
+        )
+    )
+    db_session.commit()
+
+
+def test_claim_answer_with_odd_id_format_is_masked(
+    db_session: Session, conversation: ChatConversation, user_id: uuid.UUID
+) -> None:
+    pitch = _pitch(db_session, user_id)
+    take = _take(db_session, pitch)
+    run = _finished_run(db_session, conversation, None)
+    _claim_with(db_session, run, take.id, pitch.id)
+
+    message = save_claim_message(db_session, run, "PARTIAL")
+    db_session.commit()
+    assert message.source_pitch_ids == [str(pitch.id)]
+    assert message.source_take_ids == [str(take.id)]
+
+    db_session.delete(take)
+    db_session.commit()
+
+    assert _clean(db_session) >= 1
+    db_session.expire_all()
+    assert message.text == MASKED_TEXT
+
+
+def test_read_emitted_keeps_canonical_ids(
+    db_session: Session, conversation: ChatConversation, user_id: uuid.UUID
+) -> None:
+    pitch = _pitch(db_session, user_id)
+    take = _take(db_session, pitch)
+    run = _finished_run(db_session, conversation, None)
+    _claim_with(db_session, run, take.id, pitch.id)
+
+    emitted = read_emitted(db_session, run.id)
+
+    assert emitted.pitch_ids == [str(pitch.id)]
+    assert emitted.take_ids == [str(take.id)]
