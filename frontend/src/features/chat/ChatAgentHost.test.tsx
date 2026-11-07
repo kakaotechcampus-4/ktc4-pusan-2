@@ -310,7 +310,7 @@ it('새미나이 브랜드와 추천 질문을 표시하고, 질문을 누르면
   await visit('/');
   await openPanel();
   expect(panel()!.textContent).toContain('새미나이');
-  expect(panel()!.querySelector('img[src="/icon-192.png"]')).not.toBeNull();
+  expect(panel()!.querySelectorAll('img[src="/semini.png"]')).toHaveLength(2);
   const question = panel()!.querySelector<HTMLButtonElement>('[data-chat-empty] button')!;
   expect(question).not.toBeNull();
   await act(async () => question.click());
