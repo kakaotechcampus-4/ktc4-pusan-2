@@ -150,7 +150,7 @@ it('lays the comparison out one column per metric and one row per slide, grouped
   await render();
   await openComparisonDetail();
   const card = host.querySelector('dialog')!;
-  const tables = [...card.querySelectorAll('section').map((s) => ({
+  const tables = [...card.querySelectorAll('section')].map((s) => ({
     title: s.querySelector('h3')?.textContent,
     columns: [...s.querySelectorAll('thead th')].map((th) => th.textContent),
     rows: [...s.querySelectorAll('tbody th')].map((th) => th.textContent),
