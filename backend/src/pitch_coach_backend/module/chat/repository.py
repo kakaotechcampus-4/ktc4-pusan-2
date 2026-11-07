@@ -471,6 +471,12 @@ class ChatRepository:
                 .values(last_used_at=now)
             )
 
+    def list_summaries(self) -> list[ChatSummary]:
+        return list(self.db.scalars(select(ChatSummary)))
+
+    def delete_summary(self, summary: ChatSummary) -> None:
+        self.db.delete(summary)
+
     def list_goals_with_base(self) -> list[ChatGoal]:
         return list(
             self.db.scalars(

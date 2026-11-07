@@ -66,7 +66,7 @@ def cleanup_delayed(db: Session, now: datetime) -> bool:
 def clean_deleted_sources(db: Session) -> int:
     deactivate_goals_without_base(db)
     repo = ChatRepository(db)
-    cleaned = _mask_answers(repo) + _mask_runs(repo) + _clear_goals(repo)
+    cleaned = _mask_answers(repo) + _mask_runs(repo) + _clear_goals(repo) + _delete_summaries(repo)
     db.commit()
     return cleaned
 
@@ -123,6 +123,21 @@ def _clear_goals(repo: ChatRepository) -> int:
             goal.status = None
             cleared += 1
     return cleared
+
+
+def _delete_summaries(repo: ChatRepository) -> int:
+    summaries = repo.list_summaries()
+    deleted = _deleted_ids(
+        repo,
+        {pitch_id for summary in summaries for pitch_id in summary.source_pitch_ids or []},
+        {take_id for summary in summaries for take_id in summary.source_take_ids or []},
+    )
+    removed = 0
+    for summary in summaries:
+        if deleted & {*(summary.source_pitch_ids or []), *(summary.source_take_ids or [])}:
+            repo.delete_summary(summary)
+            removed += 1
+    return removed
 
 
 def _deleted_ids(repo: ChatRepository, pitch_ids: set[Any], take_ids: set[Any]) -> set[str]:
