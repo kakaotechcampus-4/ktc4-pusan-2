@@ -132,7 +132,7 @@ export type TransportSignal =
    */
   | { type: 'cancelChecking'; runId: string }
   /**
-   * 승인 · 거절이 받아들여지지 않음 — 카드가 바뀌었거나(`AGENT_STATE_INVALID`) 이미 만료 · 취소됐거나
+   * 승인 · 거절이 받아들여지지 않음 — 카드가 바뀌었거나(`APPROVAL_HASH_MISMATCH`) 이미 만료 · 취소됐거나
    * (`AGENT_EXPIRED` · `AGENT_CANCELLED`) 결과를 모릅니다. 상태를 다시 읽어 카드를 새로 보입니다(L3-39 · L3-40).
    * 결과를 모르는 경우는 같은 요청을 다시 보내면 처음 결과를 받습니다
    */
@@ -168,15 +168,11 @@ const troubleOf = (error: unknown): PollTroubleReason => {
 };
 
 /**
- * 승인 · 거절 실패의 코드 — 바뀐 카드(해시 불일치)는 문서 이름 `APPROVAL_HASH_MISMATCH` 로 맞춥니다.
- * 지금 BE 는 이 409 에 `AGENT_STATE_INVALID` 를 주는데, 그 코드는 화면에서 "실행 상태가 만료되었거나 …"(실행 오류)
- * 문구라 카드에는 맞지 않습니다. 승인 응답에서 온 409 만 바꿉니다(12-4 F8 · 5-9)
+ * 승인 · 거절 실패의 코드 — BE 가 준 코드 그대로입니다. 바뀐 카드(해시 불일치)는 409 `APPROVAL_HASH_MISMATCH`
+ * (BE #933 a6264abc `ChatCardChanged`, 12-4 F8 · 5-9). 응답을 받지 못했으면 `REQUEST_FAILED` 입니다
  */
-const decisionCode = (error: unknown) => {
-  if (!(error instanceof ApiFailure)) return 'REQUEST_FAILED';
-  if (error.status === 409 && error.code === 'AGENT_STATE_INVALID') return 'APPROVAL_HASH_MISMATCH';
-  return error.code;
-};
+const decisionCode = (error: unknown) =>
+  error instanceof ApiFailure ? error.code : 'REQUEST_FAILED';
 
 const isSignedOut = (error: unknown) => error instanceof ApiFailure && error.status === 401;
 /** 대화 스위치가 꺼짐 — BE 는 실행 조회 · 취소 · 승인에도 이 503 을 줍니다(`Enabled` 의존성) */

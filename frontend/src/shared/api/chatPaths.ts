@@ -1,5 +1,5 @@
 /**
- * 대화형 코치 에이전트 API 경로 — BE #933 `feat/be-chat-api-834` 55aa10d0 (`module/chat/controller.py`) 에 맞췄습니다.
+ * 대화형 코치 에이전트 API 경로 — BE #933 `feat/be-chat-api-834` a6264abc (`module/chat/controller.py`) 에 맞췄습니다.
  * 되돌리기는 #935. 기억은 BE 가 아직 열지 않아 문서(12-3)대로 둔 **(BE 미구현)** 경로입니다.
  * 목(`mocks/chat.ts`)과 통신 계층이 이 파일만 봅니다.
  */
