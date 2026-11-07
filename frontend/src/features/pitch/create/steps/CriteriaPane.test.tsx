@@ -102,31 +102,31 @@ it('칩의 호버·키보드 초점·터치 클릭으로 예시가 열리고 Esc
     const tooltip = document.getElementById(tooltipId!);
     expect(tooltip?.getAttribute('role')).toBe('tooltip');
     expect(tooltip?.textContent).toContain('1분에 300자 이하로 말하기');
-    expect(tooltip?.className).toContain('invisible');
+    expect(tooltip?.classList.contains('invisible')).toBe(true);
 
     await act(async () => {
       chip!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     });
-    expect(tooltip?.className).toContain('visible');
+    expect(tooltip?.classList.contains('visible')).toBe(true);
 
     await act(async () => {
       chip!.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
     });
-    expect(tooltip?.className).toContain('invisible');
+    expect(tooltip?.classList.contains('invisible')).toBe(true);
 
     await act(async () => chip!.focus());
-    expect(tooltip?.className).toContain('visible');
+    expect(tooltip?.classList.contains('visible')).toBe(true);
 
     await act(async () => chip!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-    expect(tooltip?.className).toContain('invisible');
+    expect(tooltip?.classList.contains('invisible')).toBe(true);
     expect(document.activeElement).not.toBe(chip);
 
     await act(async () => chip!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-    expect(tooltip?.className).toContain('visible');
+    expect(tooltip?.classList.contains('visible')).toBe(true);
 
     await act(async () => chip!.focus());
     await act(async () => chip!.blur());
-    expect(tooltip?.className).toContain('invisible');
+    expect(tooltip?.classList.contains('invisible')).toBe(true);
   } finally {
     await act(async () => root.unmount());
     host.remove();
