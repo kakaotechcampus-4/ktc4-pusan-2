@@ -181,6 +181,15 @@ function savedGoal(version: number): Goal {
   };
 }
 
+/** 저장할 목표 — 판 · 상태 · 만든 시각을 뺀 Goal (문서 5-2 `GOAL_PROPOSAL` · `ASK_CONFIRM`) */
+function goalDraft(): Record<string, unknown> {
+  const draft: Record<string, unknown> = { ...savedGoal(0) };
+  delete draft.version;
+  delete draft.status;
+  delete draft.created_at;
+  return draft;
+}
+
 // ── 실행 시나리오 ─────────────────────────────────────────────
 
 export type Step =
@@ -403,13 +412,8 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
         title: '대화 목표를 저장할까요?',
         summary: `3장 청중 보기 비율을 Take ${take3!.take_version}의 24%보다 5%p 넘게 올리기`,
         before: null,
-        after: {
-          metric: 'audience_ratio',
-          slide_number: 3,
-          operator: 'gt_base',
-          base: 0.24,
-          min_delta: 0.05,
-        },
+        // 문서 5-2 `ASK_CONFIRM` — SAVE_GOAL 의 after 는 저장할 Goal(판 · 상태 · 만든 시각 제외)
+        after: goalDraft(),
         notes: [],
         approved: [
           { t: 'claim', data: say('ACTION_RESULT', '목표를 저장했어요.') },
@@ -446,12 +450,12 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
                 change: { script_used: true },
                 before: {
                   score: take2!.score,
-                  dimensions: { audience_gaze: 'NEEDS_WORK', delivery: 'STABLE' },
+                  dimensions: { audience_gaze: 'PRIORITY', pacing_rhythm: 'STABLE' },
                   criteria_results: [],
                 },
                 after: {
                   score: 78,
-                  dimensions: { audience_gaze: null, delivery: 'STABLE' },
+                  dimensions: { audience_gaze: null, pacing_rhythm: 'STABLE' },
                   criteria_results: [],
                 },
                 changed_fields: ['score', 'dimensions.audience_gaze'],

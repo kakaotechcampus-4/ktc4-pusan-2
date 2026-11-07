@@ -272,6 +272,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     const id = newConversationId();
     // 그 뒤에 끝난 Take 3 이 있어 최신 아님(NEW_TAKE)입니다
     const [claim] = compareClaims(take1, take2, [0.22, 0.31], 'ev-old');
+    const seedRunId = newRunId();
     state.conversations.set(id, {
       conversation_id: id,
       title: '지난번보다 청중을 더 봤어?',
@@ -283,10 +284,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       goalVersion: 0,
       goal: null,
       messages: [
-        userMessage('지난번보다 청중을 더 봤어?', '2026-10-28T08:59:50Z'),
+        userMessage('지난번보다 청중을 더 봤어?', '2026-10-28T08:59:50Z', seedRunId),
         {
           ...assistantMessage(
-            newRunId(),
+            seedRunId,
             'DONE',
             [claim!],
             [],
@@ -366,7 +367,12 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     );
   }
 
-  function userMessage(text: string, at = new Date().toISOString()): ChatMessage {
+  /** 사용자 말 — BE 처럼 그 말이 시작한 실행(`run_id`)을 답니다(`accept.py`). 시스템 메시지는 null */
+  function userMessage(
+    text: string,
+    at = new Date().toISOString(),
+    runId: string | null = null,
+  ): ChatMessage {
     return {
       message_id: newMessageId(),
       // 순번은 목록을 돌려줄 때 붙입니다 — 메시지는 뒤에만 쌓여 자리가 곧 순번입니다
@@ -374,7 +380,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       role: 'user',
       text,
       status: null,
-      run_id: null,
+      run_id: runId,
       again_of_message_id: null,
       created_at: at,
       // BE 처럼 사용자 · 시스템 메시지의 답 칸은 비어(null) 있습니다
@@ -830,11 +836,12 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         else if (running) return error('AGENT_RUN_IN_PROGRESS', 409);
 
         if (!conversation.title) conversation.title = titleOf(body.text);
-        const message = userMessage(body.text);
+        const runId = newRunId();
+        const message = userMessage(body.text, undefined, runId);
         conversation.messages.push(message);
         conversation.last_user_activity_at = message.created_at;
         const run: Run = {
-          run_id: newRunId(),
+          run_id: runId,
           conversation_id: conversation.conversation_id,
           status: 'QUEUED',
           steps: scenario(body.text, {
@@ -1048,8 +1055,9 @@ const basisOf = (takeNumber: number): MessageBasis => ({
   pitches: [
     {
       pitch_id: PITCH_ID,
-      script_version_id: 'sv2',
-      presentation_version_id: 'pv2',
+      // 피치 목(mocks/pitchEdit.ts)의 버전 ID 와 같게 — 배지가 "대본 V2" 를 찾습니다
+      script_version_id: 'edit-sv2',
+      presentation_version_id: 'edit-pv2',
       standard_version: 4,
       takes: [
         {
