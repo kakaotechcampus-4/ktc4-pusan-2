@@ -312,6 +312,27 @@ def test_cancelled_consent_clears_the_temporary_cookie(client: TestClient) -> No
     assert client.cookies.get(browser_cookie_name(state)) is None
 
 
+def test_cancelled_consent_still_redirects_when_cleanup_fails(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """인증 요청을 지우다 DB 오류가 나도 500 JSON 대신 프론트로 보낸다. 남은 요청은 만료된다."""
+    state = start_login(client)
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise OperationalError("DELETE", {}, Exception("lock timeout"))
+
+    monkeypatch.setattr(service, "cancel_login", fail)
+
+    res = client.get(
+        CALLBACK, params={"error": "access_denied", "state": state}, follow_redirects=False
+    )
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=access_denied" in res.headers["location"]
+    assert client.cookies.get(browser_cookie_name(state)) is None
+
+
 def test_google_error_code_is_not_reflected_verbatim(client: TestClient) -> None:
     """error 값은 구글이 주지만 URL 에 그대로 실으면 주입 통로가 된다."""
     res = client.get(
