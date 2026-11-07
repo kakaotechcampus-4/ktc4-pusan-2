@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -15,8 +16,10 @@ from pydantic import ValidationError
 
 from pitch_coach_ai.features.review import core as review_core
 from pitch_coach_ai.features.review import review_take
+from pitch_coach_ai.features.review.llm_input import Candidates, llm_comparison
 from pitch_coach_ai.features.review.prompts.review import REVIEW_SYSTEM_PROMPT
 from pitch_coach_ai.features.review.schemas import MAX_DESCRIPTION_CHARS, ReviewDraft
+from pitch_coach_ai.features.review.text import TextCandidate
 
 from .conftest import sample_coverage
 
@@ -141,8 +144,34 @@ def test_llm_comparison_is_take_values_and_candidate_slides(req):
     returned = {(c.metric, c.slide_number) for c in resp.comparison}
     assert ("script_ratio", 5) in returned and ("script_ratio", 5) not in sent
     assert ("script_ratio", 3) in sent  # 개선점 · 다음 미션이 가리키는 장
-    assert {k for k in returned if k[1] is None} <= sent  # Take 값 비교는 모두
+    take_values = {k for k in returned if k[1] is None}
+    assert take_values  # 이 요청에는 Take 값 비교가 있다 (비어서 아래 단정이 그냥 통과하지 않게)
+    assert take_values <= sent  # Take 값 비교는 모두
     assert resp.overall_summary == base.overall_summary
+
+
+def _text_candidate(slide_number: int | None) -> TextCandidate:
+    item = {"area": "GAZE", "slide_number": slide_number, "text": "기본", "evidence": {}}
+    return TextCandidate("audience_gaze", "STRENGTH", item)
+
+
+@pytest.mark.parametrize("kind", ["strength", "improvement", "next_mission"])
+def test_llm_comparison_takes_each_kind_of_candidate_slide(kind):
+    # 강점 · 개선점 · 다음 미션이 각자 혼자 가리키는 장(7번)도 싣고,
+    # 아무도 가리키지 않는 장(8번)은 뺀다
+    comparison = [
+        {"metric": m, "slide_number": s, "previous": 1, "current": 2, "improved": True}
+        | {"script_mode": None}
+        for m, s in [("cpm", None), ("script_ratio", 7), ("script_ratio", 8)]
+    ]
+    candidates = Candidates(
+        strengths={"s1": _text_candidate(7 if kind == "strength" else None)},
+        improvements={"i1": _text_candidate(7 if kind == "improvement" else None)},
+        next_missions={"n1": {"slide_number": 7 if kind == "next_mission" else None}},
+        n_fixed=0,
+    )
+    sent = llm_comparison(SimpleNamespace(comparison=comparison), candidates)
+    assert [(c["metric"], c["slide_number"]) for c in sent] == [("cpm", None), ("script_ratio", 7)]
 
 
 def test_dict_output_is_accepted(req):
