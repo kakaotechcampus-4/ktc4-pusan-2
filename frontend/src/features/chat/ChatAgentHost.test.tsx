@@ -1644,6 +1644,20 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it('버튼에서 패널 밖으로 나간 뒤 그 버튼이 사라져도 초점을 끌어오지 않는다', async () => {
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    button('새 대화')!.focus();
+    button('새 대화')!.blur();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    await act(async () => button('대화 목록')!.click());
+    await settle();
+    expect(button('새 대화')).toBeFalsy();
+    expect(document.activeElement).toBe(document.body);
+  });
+
   it('대화 목록을 읽지 못하면 다시 시도하게 한다', async () => {
     server.conversations = () => Promise.reject(new Error('끊김'));
     await visit('/');
