@@ -25,6 +25,7 @@ from pitch_coach_backend.module.chat.dto import (
     AgentReviewEventDTO,
     AgentRunDTO,
     AgentSummaryItemDTO,
+    AgentTrigger,
     AgentTurnRequestDTO,
     BudgetUsedDTO,
 )
@@ -98,7 +99,7 @@ def build_request(
             conversation_id=row.conversation_id,
             user_id=row.user_id,
             scope_pitch_id=scope_pitch_id,
-            trigger=run.first_trigger if first else "ACTION_RESULT",
+            trigger=run.first_trigger if first else AgentTrigger.ACTION_RESULT,
             state_revision=row.state_revision,
         ),
         user_message=source.get("user_message"),
@@ -152,7 +153,7 @@ def offered_sources(request: AgentTurnRequestDTO) -> dict[str, list[str]]:
 
 
 def run_scope(row: ChatRun, conversation: ChatConversation) -> uuid.UUID | None:
-    if row.first_trigger == "TAKE_REVIEWED":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED:
         return row.scope_pitch_id
     return conversation.scope_pitch_id
 

@@ -8,6 +8,7 @@ from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatGoal, ChatLease, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.run import seoul_day
@@ -123,7 +124,7 @@ def claim_target(
     run = ChatRun(
         conversation_id=target.conversation_id,
         user_id=target.user_id,
-        first_trigger="TAKE_REVIEWED",
+        first_trigger=AgentTrigger.TAKE_REVIEWED,
         status="QUEUED",
         scope_pitch_id=target.pitch_id,
         input={

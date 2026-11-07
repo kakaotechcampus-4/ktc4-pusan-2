@@ -307,10 +307,14 @@ def validate_final(data: dict[str, Any], trigger: AgentTrigger) -> FinalView:
         view = FinalView.model_validate(data)
         if view.meta.schema_version.split(".", 1)[0] != SCHEMA_MAJOR:
             raise ValueError("지원하지 않는 응답 버전")
-        if trigger == "USER_MESSAGE" and view.status != "NEEDS_ACTION" and view.assessments is None:
+        if (
+            trigger == AgentTrigger.USER_MESSAGE
+            and view.status != "NEEDS_ACTION"
+            and view.assessments is None
+        ):
             raise ValueError("사용자 말로 시작한 실행의 답에 판단이 없다")
         if (
-            trigger == "TAKE_REVIEWED"
+            trigger == AgentTrigger.TAKE_REVIEWED
             and view.status != "NEEDS_ACTION"
             and (view.goal_result is None or view.actions)
         ):

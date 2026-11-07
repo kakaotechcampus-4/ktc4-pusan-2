@@ -3,6 +3,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_response import StartPracticeArgs
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.authorization import authorization
@@ -33,7 +34,7 @@ def start_practice(
 
 
 def _practice_decision(db: Session, row: ChatRun, action: dict[str, Any]) -> dict[str, Any] | None:
-    if row.first_trigger == "TAKE_REVIEWED" or action["autonomy"] != "BUTTON":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED or action["autonomy"] != "BUTTON":
         return None
     try:
         args = StartPracticeArgs.model_validate(action["args"])

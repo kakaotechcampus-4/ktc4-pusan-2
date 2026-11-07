@@ -17,6 +17,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.module.chat.api_dto import ChatChoiceDTO, SendMessageRequest
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.exception import (
     ChatBusy,
@@ -29,7 +30,7 @@ from pitch_coach_backend.module.chat.exception import (
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import TURN_DEADLINE
 from pitch_coach_backend.module.chat.service.request import ProposalNotFound, selected_proposal
-from pitch_coach_backend.module.chat.service.run import SEOUL, digest
+from pitch_coach_backend.module.chat.service.run import SEOUL, digest, seoul_day
 from pitch_coach_backend.module.chat.service.waiting import (
     NEW_MESSAGE_TEXT,
     Emitted,
@@ -152,7 +153,7 @@ def _accept(
         conversation_id=conversation.id,
         user_id=user_id,
         message_id=message.id,
-        first_trigger="USER_MESSAGE",
+        first_trigger=AgentTrigger.USER_MESSAGE,
         status="QUEUED",
         scope_pitch_id=conversation.scope_pitch_id,
         # 처음 /agent/turn 요청을 다시 만들 원래 입력. 재시작 복구도 이 값으로 처음 호출한다
@@ -267,7 +268,7 @@ def _check_choice(
 def _charge(
     repo: ChatApiRepository, chat_repo: ChatRepository, user_id: uuid.UUID, now: datetime
 ) -> None:
-    day = now.astimezone(SEOUL).date()
+    day = seoul_day(now)
     retry_after = {"Retry-After": str(seconds_until_tomorrow(now))}
     if not repo.charge_turn(user_id, day, USER_DAILY_TURNS):
         raise ChatDailyLimit(headers=retry_after)

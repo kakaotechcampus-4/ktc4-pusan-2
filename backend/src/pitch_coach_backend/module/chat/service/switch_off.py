@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
+from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import close_goal_lease
@@ -33,7 +34,7 @@ def cancel_active_run(db: Session, run_id: uuid.UUID, now: datetime) -> bool:
         # 승인 대기는 대화부터 잠가야 해서 이 잠금을 풀고 따로 한다
         db.rollback()
         return _cancel_waiting(db, run_id, now)
-    if row.first_trigger == "TAKE_REVIEWED":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED:
         # 임대가 PENDING 으로 남으면 스위치를 켠 뒤 같은 리뷰로 실행을 다시 만든다
         close_goal_lease(repo, row)
     mark_cancelled(repo, row, now)
