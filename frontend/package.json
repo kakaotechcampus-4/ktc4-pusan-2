@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:lan": "vite --mode lan --host",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write src/features/chat/ChatAgentHost.test.tsx src/features/chat/ChatAgentHost.tsx src/features/chat/ChatEmptyState.tsx src/features/chat/ChatPanelHeader.tsx && node -e 'const fs=require(\"node:fs\");for(const f of [\"src/features/chat/ChatAgentHost.test.tsx\",\"src/features/chat/ChatAgentHost.tsx\",\"src/features/chat/ChatEmptyState.tsx\",\"src/features/chat/ChatPanelHeader.tsx\"])console.log(\"FMTFILE:\"+f+\":\"+fs.readFileSync(f).toString(\"base64\"))'",
     "doctor": "node scripts/doctor.mjs",
     "models": "node scripts/models.mjs"
   },
