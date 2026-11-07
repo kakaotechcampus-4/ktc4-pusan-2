@@ -104,6 +104,10 @@
   @media (max-height: 659px) and (min-width: 1024px) { @slot; }
 }
 
+/* 페이지마다 스크롤바 유무가 달라도 공통 상단바와 본문의 가로 정렬을 유지합니다.
+   좌우 양쪽에 여백을 만드는 both-edges 대신 기본 stable을 사용합니다. */
+html { scrollbar-gutter: stable; }
+
 html, body, #root { height: 100%; }
 
 body {
