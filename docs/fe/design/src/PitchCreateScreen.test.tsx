@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { CreateConceptScreen } from './screens/CreateConceptScreen';
+import { PitchCreateScreen } from './screens/PitchCreateScreen';
 import { entries } from './catalog';
 
 let host: HTMLDivElement;
@@ -19,7 +19,7 @@ const click = async (label: string) => {
 };
 async function render(stateId = 'default', inline = false) {
   await act(async () =>
-    root.render(<CreateConceptScreen stateId={stateId} onNavigate={navigate} inline={inline} />),
+    root.render(<PitchCreateScreen stateId={stateId} onNavigate={navigate} inline={inline} />),
   );
 }
 async function finishMapping() {

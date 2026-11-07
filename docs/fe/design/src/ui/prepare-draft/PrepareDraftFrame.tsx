@@ -1,6 +1,6 @@
 // PM 검토용 독립 시안. 닫힌 #789의 표시 코드를 가져왔으며 제품 모듈·API·장비와 연결하지 않는다.
 import type { ReactNode } from 'react';
-import '../screens/prepare-draft.css';
+import './prepare-draft.css';
 
 export function PrepareDraftFrame({
   title,

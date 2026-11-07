@@ -1,17 +1,17 @@
 import { useState } from 'react';
-import { PrepareDraftCheckCard } from '@/ui/PrepareDraftCheckCard';
-import { PrepareDraftFrame } from '@/ui/PrepareDraftFrame';
-import { PrepareDraftMissionCard } from '@/ui/PrepareDraftMissionCard';
-import { PrepareDraftScriptMode } from '@/ui/PrepareDraftScriptMode';
-import { PrepareDraftAudioMeter } from '@/ui/PrepareDraftAudioMeter';
+import { PrepareDraftCheckCard } from '@/ui/prepare-draft/PrepareDraftCheckCard';
+import { PrepareDraftFrame } from '@/ui/prepare-draft/PrepareDraftFrame';
+import { PrepareDraftMissionCard } from '@/ui/prepare-draft/PrepareDraftMissionCard';
+import { PrepareDraftScriptMode } from '@/ui/prepare-draft/PrepareDraftScriptMode';
+import { PrepareDraftAudioMeter } from '@/ui/prepare-draft/PrepareDraftAudioMeter';
 import type { ScriptMode } from '@/ui/ScriptModeChoice';
-import { prepareDraftFixture } from './prepareDraftFixtures';
+import { prepareDraftFixture } from '../samples/prepareDraft';
 import { PITCH, type Navigate } from './shared';
 
 const READING =
   '안녕하세요. 지금부터 발표를 시작하겠습니다. 오늘 준비한 내용을 차근차근 말씀드리겠습니다. 먼저 이번 발표에서 다룰 문제를 소개하고, 이어서 해결 방법을 설명드리겠습니다.';
 
-export function PrepareLayoutDraft({
+export function PrepareLayoutDraftScreen({
   stateId,
   onNavigate,
 }: {

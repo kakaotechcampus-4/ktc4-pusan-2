@@ -429,7 +429,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     rules: ['보기만 하는 창이라 닫기 하나와 이전 · 다음만 둔다.', '닫으면 보던 단계로 돌아간다.'],
     tokens: ['panel', 'ink'],
     sources: [],
-    file: 'src/screens/CreateScreen.tsx',
+    file: 'src/screens/PitchCreateScreen.tsx',
     props: [],
     code: `// 제품에는 없다. 설계서 샘플 안의 창만 그린다`,
     productNote:
