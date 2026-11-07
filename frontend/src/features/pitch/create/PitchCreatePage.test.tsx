@@ -628,7 +628,6 @@ it('완료된 단계의 표시는 aria-label이 아니라 글자로 읽힌다', 
 });
 
 it('대화창에 지금 화면 상태를 알린다 — 보내는 순간 피치 만들기 상태를 읽는다 (대화 6단계)', async () => {
-  vi.stubEnv('VITE_CHAT_AGENT', 'true');
   ready();
   await mount();
   expect(takeScreenSnapshot('/pitch/new')).toMatchObject({
@@ -644,7 +643,6 @@ it('대화창에 지금 화면 상태를 알린다 — 보내는 순간 피치 �
 });
 
 it('수정 화면은 pitch_edit · /pitch/:id/edit 로 알리고, 화면을 떠나면 등록을 푼다 (대화 6단계)', async () => {
-  vi.stubEnv('VITE_CHAT_AGENT', 'true');
   ready();
   await mount('/pitch/pitch-test/edit');
   expect(takeScreenSnapshot('/pitch/:id/edit')).toMatchObject({

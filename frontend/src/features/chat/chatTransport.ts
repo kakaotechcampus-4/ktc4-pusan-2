@@ -277,12 +277,8 @@ export const REQUEST_TIMEOUT_MS = 20_000;
  */
 export const STATUS_ONLY_AFTER_SEQ = 2_147_483_647;
 export const POLL_RUNNING_MS = 1_000;
-/**
- * 그 밖의 조회 — 접수 대기는 2초 고정, 승인 대기만 2초에서 1.5배씩 15초까지. 문서 #900 은 "2초 · 늘림",
- * #948 은 "2초마다" 라 조율 중입니다(BE `get_run` 주석은 "늘려 가며")
- */
-export const POLL_IDLE_START_MS = 2_000;
-export const POLL_IDLE_MAX_MS = 15_000;
+/** 그 밖의 조회(접수 대기 · 승인 대기) — 2초마다 (12-4 F3 "그 밖(승인 대기 포함)에는 2초마다") */
+export const POLL_IDLE_MS = 2_000;
 export const FAILURE_STEPS_MS = [2_000, 4_000, 8_000, 16_000, 30_000];
 export const SLOW_AFTER_MS = 130_000;
 export const SLOW_POLL_MS = 30_000;
@@ -489,7 +485,6 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
   let polling = false;
   let pollAgain = false;
   let failures = 0;
-  let idleDelay = 0;
   /** 곧바로 다시 읽기를 잇달아 한 횟수 — 건너뛴 순번이 메워지지 않거나 다음 커서가 끝없이 와도 멈추지 않게 */
   let rereads = 0;
   /** 크기 초과가 잇달아 난 실행 · 커서와 횟수 — 조회가 되면 비웁니다 */
@@ -643,10 +638,9 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     return runClocks.get(runId)!;
   };
 
-  /** 새로 지켜보는 실행 — 간격 · 다시 읽기 횟수를 처음부터 */
+  /** 새로 지켜보는 실행 — 다시 읽기 횟수를 처음부터 */
   const watch = (runId: string) => {
     ensureClock(runId);
-    idleDelay = 0;
     rereads = 0;
     lastShape = null;
     if (!readers.has(runId)) {
@@ -692,18 +686,7 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
       }
       return SLOW_POLL_MS;
     }
-    if (status === 'RUNNING') {
-      idleDelay = 0;
-      return POLL_RUNNING_MS;
-    }
-    // 접수 대기는 곧 실행으로 바뀌니 2초 그대로 — 늘리면 실행이 시작된 뒤 첫 문장이 최대 15초 늦게 보입니다
-    if (status !== 'WAITING_APPROVAL') {
-      idleDelay = 0;
-      return POLL_IDLE_START_MS;
-    }
-    // 승인 대기는 사용자를 기다리는 동안이라(최대 30분) 2초에서 늘립니다 — 문서 #948 "2초마다" 와 조율 중
-    idleDelay = idleDelay === 0 ? POLL_IDLE_START_MS : Math.min(idleDelay * 1.5, POLL_IDLE_MAX_MS);
-    return idleDelay;
+    return status === 'RUNNING' ? POLL_RUNNING_MS : POLL_IDLE_MS;
   };
 
   /** 조회가 다시 됨 — 실패 안내를 거둡니다 */
@@ -724,7 +707,6 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
     }
     const endedWhileWaiting = store().run?.phase === 'WAITING_APPROVAL';
     store().endRun(runId, view.retry_after_s);
-    idleDelay = 0;
     rereads = 0;
     recovered();
     emit({
@@ -1357,7 +1339,6 @@ export function createChatTransport(options: ChatTransportOptions = {}): ChatTra
         runClocks.delete(run.runId);
         slowNotified.delete(run.runId);
         ensureClock(run.runId);
-        idleDelay = 0;
         rereads = 0;
         kick();
       }

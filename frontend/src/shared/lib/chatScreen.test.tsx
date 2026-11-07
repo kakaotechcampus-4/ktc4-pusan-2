@@ -128,7 +128,6 @@ describe('useChatScreen', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it('그리면 등록하고 마지막으로 그린 때의 값을 읽으며, 사라지면 푼다', () => {
-    vi.stubEnv('VITE_CHAT_AGENT', 'true');
     const host = document.createElement('div');
     const root = createRoot(host);
     function Screen({ mic }: { mic: 'checking' | 'detected' }) {
@@ -141,18 +140,5 @@ describe('useChatScreen', () => {
     expect(takeScreenSnapshot(ROUTE)).toMatchObject({ screen: { mic: 'detected' } });
     act(() => root.unmount());
     expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
-  });
-
-  it('대화 빌드 스위치가 꺼져 있으면 등록하지 않는다', () => {
-    vi.stubEnv('VITE_CHAT_AGENT', 'false');
-    const host = document.createElement('div');
-    const root = createRoot(host);
-    function Screen() {
-      useChatScreen(ROUTE, () => device);
-      return null;
-    }
-    act(() => root.render(<Screen />));
-    expect(takeScreenSnapshot(ROUTE)).toEqual({ ok: true, screen: null });
-    act(() => root.unmount());
   });
 });

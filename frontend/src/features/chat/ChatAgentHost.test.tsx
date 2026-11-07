@@ -176,7 +176,6 @@ let queryClient: QueryClient;
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  vi.stubEnv('VITE_CHAT_AGENT', 'true');
   state.calls = 0;
   state.session = { isPending: false, isError: false, data: { id: 'u1' } };
   server.seen = [];
@@ -412,13 +411,6 @@ it('채팅을 띄우지 않는 화면에서는 세션을 구독하지 않는다'
   await go('/');
   expect(state.calls).toBeGreaterThan(0);
   expect(launcher()).not.toBeNull();
-});
-
-it('빌드 스위치가 꺼져 있으면 그리지 않고 세션도 구독하지 않는다', async () => {
-  vi.stubEnv('VITE_CHAT_AGENT', 'false');
-  await visit('/');
-  expect(launcher()).toBeNull();
-  expect(state.calls).toBe(0);
 });
 
 it('열린 패널은 피치 만들기 · 장치 점검으로 옮겨도 남고, 리허설에 들어가면 숨는다', async () => {

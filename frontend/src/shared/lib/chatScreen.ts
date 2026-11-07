@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ChatScreen } from '@/types/chat';
-import { isChatAgentBuildEnabled } from './chatAgent';
 import { onSignedOut } from './sessionSignal';
 
 /**
@@ -71,7 +70,6 @@ export function registerChatScreen(route: string, read: () => ScreenBody | null)
 /**
  * 화면이 지금 상태를 대화창에 알립니다. `read` 는 보내는 순간에 불리고, 늘 마지막으로 그린 때의 함수를 씁니다.
  * `route` 는 `app/routes.tsx` 의 경로 패턴(`ChatPage.route` 와 같은 값)입니다.
- * 대화 빌드 스위치(`VITE_CHAT_AGENT`)가 꺼져 있으면 등록하지 않습니다 — 로그아웃 채널도 열지 않습니다
  */
 export function useChatScreen(route: string, read: () => ScreenBody | null): void {
   const latest = useRef(read);
@@ -79,7 +77,6 @@ export function useChatScreen(route: string, read: () => ScreenBody | null): voi
     latest.current = read;
   });
   useEffect(() => {
-    if (!isChatAgentBuildEnabled()) return;
     return registerChatScreen(route, () => latest.current());
   }, [route]);
 }
