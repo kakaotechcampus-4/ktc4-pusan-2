@@ -13,7 +13,6 @@ describe('chat route visibility', () => {
     '/takes/123/processing',
     '/takes/123/confirm',
     '/takes/123/retry',
-    '/pitch/p1/comparison',
     '/me',
     '/about',
   ])('allows chat on %s', (path) => {
@@ -24,6 +23,7 @@ describe('chat route visibility', () => {
     '/login',
     '/welcome',
     '/pitch/p1/prepare',
+    '/pitch/p1/comparison',
     '/takes/123/rehearsal',
     '/takes/123/exam',
     '/terms',
@@ -59,11 +59,6 @@ describe('지금 화면 (12-4 F2)', () => {
       '/pitch/p1/device-check',
       '',
       { route: '/pitch/:pitchId/device-check', pitchId: 'p1', takeId: null, needsTake: false },
-    ],
-    [
-      '/pitch/p1/comparison',
-      '',
-      { route: '/pitch/:id/comparison', pitchId: 'p1', takeId: null, needsTake: false },
     ],
     ['/takes', '', { route: '/takes', pitchId: null, takeId: null, needsTake: false }],
     ['/takes', '?pitch=p2', { route: '/takes', pitchId: 'p2', takeId: null, needsTake: false }],

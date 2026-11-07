@@ -77,14 +77,6 @@ export function HomePitchCard({
           </span>
         )}
       </span>
-      {/* 비교는 Take 가 둘 이상일 때만 뜻이 있어, 없을 때도 자리를 비워 줄을 맞춥니다 */}
-      <span className="w-20 shrink-0 text-right">
-        {pitch.pitch_id && takes >= 2 && (
-          <Link to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/comparison`} className={rowLink}>
-            Take 비교 →
-          </Link>
-        )}
-      </span>
       {pitch.pitch_id && (
         <ButtonLink
           to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
