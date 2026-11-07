@@ -136,3 +136,18 @@ it('칩의 호버·키보드 초점·터치 클릭으로 예시가 열리고 Esc
     host.remove();
   }
 });
+
+it('temporary Prettier diagnostic', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { format, resolveConfig } = await import('prettier');
+  const path = 'src/features/pitch/create/steps/CriteriaPane.test.tsx';
+  const original = readFileSync(path, 'utf8');
+  const formatted = await format(original, { ...(await resolveConfig(path)), filepath: path });
+  const before = original.split('\n');
+  const after = formatted.split('\n');
+  let i = 0;
+  while (i < before.length && before[i] === after[i]) i++;
+  console.log('DIFF_LINE', i + 1);
+  console.log('DIFF_BEFORE', before.slice(i, i + 22).join('\n'));
+  console.log('DIFF_AFTER', after.slice(i, i + 22).join('\n'));
+});
