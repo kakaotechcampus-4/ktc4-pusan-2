@@ -246,7 +246,8 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
           멀리 닿을 수 있도록.
         </h2>
         <p className="mt-8 border-2 border-dashed border-line-strong p-6 text-sm text-stone">
-          연구실 소개 글 · 구성원(피코 교수 · 치치) 2명 카드 · 새미나이(Semini) 애용 AI 비서 앱 소개 카드 자리
+          연구실 소개 글 · 구성원(피코 교수 · 치치) 2명 카드 · 새미나이(Semini) 애용 AI 비서 앱
+          소개 카드 자리
         </p>
       </section>
 
