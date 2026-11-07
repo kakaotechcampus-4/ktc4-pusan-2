@@ -6,9 +6,9 @@
  * 그래서 **값과 동작은 문서 그대로, 감싸는 모양(목록 키 · 페이지 칸)은 FE 가 임시로 정했습니다.**
  * BE 초안이 나오면 이 파일과 `mocks/chat.ts` · `shared/api/chatPaths.ts` 부터 맞춥니다.
  *
- * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 연구 모듈의
- * `ai/research/chat-agent/src/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `feat/ai-chat-agent-svc-guide-facts`
- * `8ed5a688` (#921, 머지 전). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
+ * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 서비스의
+ * `ai/service/src/pitch_coach_ai/features/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `develop-next`
+ * (#974 에서 연구 폴더로부터 옮김. #921 `8ed5a688` 뒤 바뀐 것은 `FinalData` 검증뿐이라 이 타입에는 영향이 없습니다). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
  *
  * BE 그대로 snake_case 입니다. 없음은 `?` 가 아니라 `| null` 입니다(frontend/AGENTS.md 6절).
  */
