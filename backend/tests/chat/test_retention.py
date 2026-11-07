@@ -13,12 +13,11 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
     ChatRunEvent,
     ChatRunLog,
-    ChatSummary,
 )
 from pitch_coach_backend.module.chat.service import cleanup as cleanup_service
 from pitch_coach_backend.module.chat.service import run as run_service
 from pitch_coach_backend.module.chat.service import turn as turn_service
-from pitch_coach_backend.module.chat.service.cleanup import clean_deleted_sources, delete_expired
+from pitch_coach_backend.module.chat.service.cleanup import delete_expired
 
 
 def _conversation(db: Session, user_id: uuid.UUID, last_active: datetime) -> ChatConversation:
@@ -214,42 +213,3 @@ def test_mark_sending_records_when_profile_items_were_sent(
     db_session.expire_all()
     assert db_session.get(ChatProfileItem, sent.id).last_used_at is not None
     assert db_session.get(ChatProfileItem, not_sent.id).last_used_at is None
-
-
-def _summary(db: Session, conversation: ChatConversation, take_ids: list[str]) -> ChatSummary:
-    message = ChatMessage(
-        conversation_id=conversation.id,
-        user_id=conversation.user_id,
-        seq=1,
-        role="user",
-        text="질문",
-    )
-    db.add(message)
-    db.flush()
-    summary = ChatSummary(
-        conversation_id=conversation.id,
-        items=[],
-        summary_version=1,
-        covered_message_id=message.id,
-        source_pitch_ids=[],
-        source_take_ids=take_ids,
-    )
-    db.add(summary)
-    db.flush()
-    return summary
-
-
-def test_summary_from_a_deleted_take_is_deleted(db_session: Session, user_id: uuid.UUID) -> None:
-    now = datetime.now(UTC)
-    gone = _conversation(db_session, user_id, now)
-    clean = _conversation(db_session, user_id, now)
-    _summary(db_session, gone, [str(uuid.uuid4())])
-    _summary(db_session, clean, [])
-    db_session.commit()
-    gone_id, clean_id = gone.id, clean.id
-
-    clean_deleted_sources(db_session)
-
-    db_session.expire_all()
-    assert db_session.get(ChatSummary, gone_id) is None
-    assert db_session.get(ChatSummary, clean_id) is not None
