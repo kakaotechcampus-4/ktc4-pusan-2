@@ -110,6 +110,8 @@ ai/service/src/pitch_coach_ai/features/script_parser/   코어 (단위 테스트
 
 **구분자**: 줄 맨 앞(앞 공백 허용)의 `[N]` · `[슬라이드 N]` · `슬라이드 N:` (N은 1~4자리 숫자)만 구분자다. 5자리 이상이면 구분자가 아니라 본문 줄이다. 구분자 뒤 같은 줄의 글은 그 장의 본문이다(예: "[1] 안녕하세요, …"). 제목이면 LLM이 제목 줄로 골라 코드가 걷어 낸다. '첫째' · '다음으로' 같은 말은 구분자가 아니다. 구분자 형식을 넓힐지는 아직 정하지 않았다(15절 열린 질문).
 
+**FE · AI 공통 입력 목록**: [`script-parser-markers.json`](script-parser-markers.json)에 줄마다 구분자 번호(아니면 null)와 대본마다 `status` · 찾은 번호를 적는다(#819 · #1023). AI는 `test_splitter.py`가 이 파일을 읽어 확인하고, FE 구분자 안내(`slideMarkers`)도 같은 결과를 내야 한다. 번호의 숫자는 Python `\d`라 전각 숫자(`１`)도 받는다(FE는 전각만 ASCII로 바꿔 맞춘다). 구분자 규칙을 바꾸면 이 절과 목록을 함께 고친다.
+
 ## 5-3. 출력
 | 필드 | 타입 | 뜻 |
 |---|---|---|
@@ -209,7 +211,7 @@ LLM은 장 대본을 다시 쓰지 않고 키워드 · 제목 줄 · 용어만 �
 | 연구 폴더의 준비 확인 · 실제 LLM 테스트 · 대본 실행 · 평가 | `ai/research/script-parser/README.md` '실행' | 평가는 13절 지표 (실제 LLM은 과금) |
 
 - Windows에서는 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다.
-- 테스트가 볼 것: 구분자 세 형식 · 줄 맨 앞이 아닌 표시 · '첫째' 같은 말, 머리글이 제목 줄뿐(`success`) · 본문 있음(`fail`), 구분자 뒤 같은 줄 본문, 정제(`#1` · `4 * 6` 남김), 코드 포인트 위치(이모지 뒤 하이라이트), 예상 시간 합 · 마지막 장 0자 · 목표 없음, 대본에 없는 키워드 · 용어 버림, 키워드 대본 순서 · `fail`로 바뀐 대본의 키워드가 장마다 고르게 남음, 번호 0 · 겹침 · 거꾸로는 `fail`, 정제 뒤 0자 422, 공백뿐 · 구분자만 있음 422, LLM 예외가 잡히지 않고 올라감, `examples/` 계약(예시 요청을 가짜 LLM으로 돌린 응답이 예시 응답과 같음).
+- 테스트가 볼 것: 구분자 세 형식 · 줄 맨 앞이 아닌 표시 · '첫째' 같은 말, FE · AI 공통 입력 목록(`script-parser-markers.json`, 5-2)의 줄마다 번호 · 대본마다 `status` · 번호, 머리글이 제목 줄뿐(`success`) · 본문 있음(`fail`), 구분자 뒤 같은 줄 본문, 정제(`#1` · `4 * 6` 남김), 코드 포인트 위치(이모지 뒤 하이라이트), 예상 시간 합 · 마지막 장 0자 · 목표 없음, 대본에 없는 키워드 · 용어 버림, 키워드 대본 순서 · `fail`로 바뀐 대본의 키워드가 장마다 고르게 남음, 번호 0 · 겹침 · 거꾸로는 `fail`, 정제 뒤 0자 422, 공백뿐 · 구분자만 있음 422, LLM 예외가 잡히지 않고 올라감, `examples/` 계약(예시 요청을 가짜 LLM으로 돌린 응답이 예시 응답과 같음).
 
 # 11. 배포
 **어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/script_parser/`, 단위 테스트는 서비스 `tests/unit/script_parser/`, `run.py`(`build_llm`)를 쓰는 실제 LLM 테스트는 연구 폴더 `tests/live/`에 있다. 라우터 `api/script_parser.py`가 `POST /scripts/parse`를 연다. 라우터는 요청마다 마감 시각(25초)을 만들고 `structured_llm(LLMOutput, "script_parser", deadline)`을 `parse_script`에 넘긴다. 역할 `script_parser`는 출력 상한 2,000 · 추론 `low`다(8절의 잰 값, `settings.py`의 `LLM_ROLES`). 모델 설정이 없어도 입력 검사가 먼저라 빈 대본은 422 `EMPTY_SCRIPT`이고, LLM을 부를 때만 503 `LLM_UNAVAILABLE`이다. 코어의 `EmptyScriptError`는 라우터가 422 `EMPTY_SCRIPT`로, LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. `meta.model`에는 실제로 응답한 모델 이름을 싣는다.

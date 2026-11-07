@@ -11,6 +11,15 @@ DELIMITER_RE = re.compile(
 )
 
 
+def match_delimiter(line: str) -> tuple[int, str] | None:
+    """구분자 줄이면 (장 번호, 구분자 뒤 같은 줄의 글)을, 아니면 None을 돌려줍니다."""
+    match = DELIMITER_RE.match(line)
+    if match is None:
+        return None
+    number = int(next(g for g in match.groups() if g is not None))
+    return number, line[match.end() :].strip()
+
+
 @dataclass(frozen=True)
 class SlideCandidate:
     slide_number: int
@@ -37,16 +46,15 @@ def find_slides(script_text: str) -> SplitResult:
     valid = True
 
     for line in script_text.splitlines():
-        match = DELIMITER_RE.match(line)
-        if match is None:
+        delimiter = match_delimiter(line)
+        if delimiter is None:
             (slides[-1][1] if slides else preface).append(line)
             stripped.append(line)
             continue
 
-        number = int(next(g for g in match.groups() if g is not None))
+        number, rest = delimiter
         if number == 0 or (slides and number <= slides[-1][0]):
             valid = False
-        rest = line[match.end() :].strip()
         slides.append((number, [rest] if rest else []))
         if rest:
             stripped.append(rest)

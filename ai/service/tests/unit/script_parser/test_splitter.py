@@ -1,6 +1,33 @@
+import json
+from pathlib import Path
+
 import pytest
 
-from pitch_coach_ai.features.script_parser.splitter import SlideCandidate, find_slides
+from pitch_coach_ai.features.script_parser.splitter import (
+    SlideCandidate,
+    find_slides,
+    match_delimiter,
+)
+
+# FE · AI 공통 입력 목록 (#819 · #1023). FE slideMarkers.test.ts도 같은 결과를 내야 한다
+MARKERS = json.loads(
+    (Path(__file__).resolve().parents[5] / "docs/ai/features/script-parser-markers.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+@pytest.mark.parametrize("case", MARKERS["lines"], ids=lambda c: repr(c["line"]))
+def test_shared_line_cases(case):
+    delimiter = match_delimiter(case["line"])
+    assert (None if delimiter is None else delimiter[0]) == case["number"]
+
+
+@pytest.mark.parametrize("case", MARKERS["scripts"], ids=lambda c: c["name"])
+def test_shared_script_cases(case):
+    numbers = [d[0] for line in case["script"].splitlines() if (d := match_delimiter(line))]
+    assert numbers == case["numbers"]
+    assert find_slides(case["script"]).status == case["status"]
 
 
 @pytest.mark.parametrize(
