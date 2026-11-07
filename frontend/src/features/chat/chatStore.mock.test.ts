@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 vi.mock('@/mocks/auth', () => ({ currentMockUserId: () => 'u' }));
 import { createChatHandlers } from '@/mocks/chat';
 import { chatPaths } from '@/shared/api/chatPaths';
-import type { RunView, SendMessageAccepted } from '@/types/chat';
+import type { MessagePage, RunView, SendMessageAccepted } from '@/types/chat';
 import { canSend, chatTicket, isCurrent, pendingSendTicket, useChatStore } from './chatStore';
 
 /**
@@ -110,9 +110,9 @@ describe('목 BE 와 붙인 순서', () => {
 
 describe('대화의 실행 조회 · 409 · 기억 없이 (네 번째 리뷰)', () => {
   const convRun = async (conversationId: string) =>
-    (await (await fetch(base + chatPaths.conversationRun(conversationId))).json()) as {
-      run: RunView | null;
-    };
+    (await (
+      await fetch(base + chatPaths.conversationRun(conversationId))
+    ).json()) as RunView | null;
 
   /** 다른 탭: 같은 대화에 직접 보냄 */
   const otherTabSends = (conversationId: string) =>
@@ -120,7 +120,7 @@ describe('대화의 실행 조회 · 409 · 기억 없이 (네 번째 리뷰)', 
       ...draft,
       conversation_id: conversationId,
       scope_pitch_id: null,
-      client_request_id: `other-${Math.random()}`,
+      client_request_id: crypto.randomUUID(),
     });
 
   it('409(다른 탭이 실행 중)면 대화의 실행을 찾아 이어 가고, 그동안 다시 보내지 못한다', async () => {
@@ -137,7 +137,7 @@ describe('대화의 실행 조회 · 409 · 기억 없이 (네 번째 리뷰)', 
     expect(canSend(store())).toBe(false);
 
     const lookupTicket = chatTicket();
-    const found = (await convRun(conversationId)).run;
+    const found = await convRun(conversationId);
     expect(found).not.toBeNull();
     store().resolveConversation(lookupTicket, {
       runId: found!.run_id,
@@ -153,8 +153,7 @@ describe('대화의 실행 조회 · 409 · 기억 없이 (네 번째 리뷰)', 
     const create = store().beginCreate()!;
     const created = (await (
       await post(chatPaths.conversations, {
-        scope_pitch_id: null,
-        page: draft.page,
+        pitch_id: null,
         memory_off: true,
       })
     ).json()) as { conversation_id: string };
@@ -165,8 +164,8 @@ describe('대화의 실행 조회 · 409 · 기억 없이 (네 번째 리뷰)', 
     await untilSettled();
     const page = (await (
       await fetch(base + chatPaths.messages(created.conversation_id))
-    ).json()) as { items: { cards: { type: string }[] }[] };
-    expect(page.items.at(-1)!.cards).toEqual([]);
+    ).json()) as MessagePage;
+    expect(page.messages.at(-1)!.cards).toEqual([]);
     expect(store().memoryOff).toBe(true);
   });
 });
@@ -185,8 +184,9 @@ describe('다섯 번째 리뷰', () => {
     const lookupTicket = chatTicket();
     const lookup = (await (
       await fetch(base + chatPaths.conversationRun(first.conversation_id))
-    ).json()) as { run: RunView | null };
-    expect(lookup.run).toBeNull();
+    ).json()) as RunView | null;
+    // 마지막 실행은 끝나 있습니다 — 그래서 조회 결과를 "이어 갈 실행 없음"(null)으로 반영합니다
+    expect(lookup?.status).toBe('DONE');
     const again = await sendPending();
     expect(store().beginRun(pendingSendTicket()!, again.run_id, again.conversation_id)).toBe(true);
     expect(store().resolveConversation(lookupTicket, null)).toBe(false);

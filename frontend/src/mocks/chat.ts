@@ -7,7 +7,6 @@ import {
   take1,
   take2,
   take3,
-  BASIS_LABEL,
   say,
   percent,
   compareClaims,
@@ -24,6 +23,8 @@ import type {
   ChatErrorCode,
   ChatMessage,
   ConversationSummary,
+  MessageBasis,
+  UndoResponse,
   PlanStep,
   ProfileItem,
   RunEvent,
@@ -125,6 +126,8 @@ interface Info {
 }
 
 interface Conversation extends ConversationSummary {
+  /** (BE 미구현) '기억 없이' 대화 — 목 안에서만 들고 있습니다. 만든 뒤에는 바뀌지 않습니다 */
+  memory_off: boolean;
   messages: ChatMessage[];
   /** 이 대화의 목표 판 번호 — 처음 0, 저장 · 되돌리기마다 1 올립니다 (5-3 "이 대화의 목표 판 번호") */
   goalVersion: number;
@@ -143,7 +146,7 @@ interface UserState {
   runs: Map<string, Run>;
   requests: Map<string, { body: string; accepted: SendMessageAccepted }>;
   decisions: Map<string, ActionDecisionResponse>;
-  undone: Map<string, { action_id: string; goal_version: number }>;
+  undone: Map<string, UndoResponse>;
   memory: { enabled: boolean; items: ProfileItem[] };
 }
 
@@ -154,6 +157,7 @@ const SEND_FAILURE_STATUS = {
   AGENT_CONTEXT_TOO_LARGE: 413,
   VALIDATION_ERROR: 422,
   AGENT_DISABLED: 503,
+  AGENT_NOT_ACCEPTED: 503,
   AGENT_RUN_IN_PROGRESS: 409,
   AGENT_REQUEST_CONFLICT: 409,
   NOT_FOUND: 404,
@@ -271,9 +275,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       conversation_id: id,
       title: '지난번보다 청중을 더 봤어?',
       scope_pitch_id: PITCH_ID,
-      scope_title: pitch.pitch_title,
-      last_message_at: '2026-10-28T09:00:00Z',
-      has_stale: true,
+      scope_pitch_title: pitch.pitch_title,
+      last_user_activity_at: '2026-10-28T08:59:50Z',
+      created_at: '2026-10-28T08:59:50Z',
       memory_off: false,
       goalVersion: 0,
       goal: null,
@@ -359,26 +363,30 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         basisOf(nextTake),
       ),
     );
-    conversation.last_message_at = new Date().toISOString();
   }
 
   function userMessage(text: string, at = new Date().toISOString()): ChatMessage {
     return {
       message_id: newMessageId(),
+      // 순번은 목록을 돌려줄 때 붙입니다 — 메시지는 뒤에만 쌓여 자리가 곧 순번입니다
+      seq: 0,
       role: 'user',
       text,
-      created_at: at,
-      run_id: null,
       status: null,
-      claims: [],
-      cards: [],
-      assessments: [],
-      evidence: [],
-      sources: [],
-      basis_label: null,
+      run_id: null,
+      again_of_message_id: null,
+      created_at: at,
+      // BE 처럼 사용자 · 시스템 메시지의 답 칸은 비어(null) 있습니다
+      claims: null,
+      cards: null,
+      assessments: null,
+      evidence: null,
+      sources: null,
+      basis: null,
+      plan: null,
+      trace: null,
+      masked: false,
       stale_reasons: [],
-      plan: [],
-      trace: [],
     };
   }
 
@@ -389,25 +397,28 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     cards: Card[],
     planSteps: PlanStep[],
     traceItems: TraceItem[],
-    basisLabel: string | null,
+    basis: MessageBasis | null,
   ): ChatMessage {
     const assessments: Assessment[] = claims.flatMap((c) => c.assessments);
     return {
       message_id: newMessageId(),
+      seq: 0,
       role: 'assistant',
       text: claims.map((c) => c.claim.text).join('\n'),
-      created_at: new Date().toISOString(),
-      run_id: runId,
       status,
+      run_id: runId,
+      again_of_message_id: null,
+      created_at: new Date().toISOString(),
       claims: claims.map((c) => c.claim),
       cards,
       assessments: assessments.map((a) => ({ ...a, superseded_by: null })),
       evidence: claims.flatMap((c) => c.evidence),
       sources: claims.flatMap((c) => c.sources),
-      basis_label: basisLabel,
-      stale_reasons: [],
+      basis,
       plan: planSteps,
       trace: traceItems,
+      masked: false,
+      stale_reasons: [],
     };
   }
 
@@ -441,10 +452,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           cards,
           run.plan,
           run.trace,
-          readTakes ? BASIS_LABEL : null,
+          readTakes ? basisOf(take3!.take_version) : null,
         ),
       );
-      conversation.last_message_at = new Date().toISOString();
     }
   }
 
@@ -589,7 +599,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     choice: NonNullable<SendMessageRequest['choice']>,
   ) {
     for (const message of conversation.messages)
-      for (const card of message.cards)
+      for (const card of message.cards ?? [])
         if (card.type === 'GOAL_PROPOSAL' && card.proposal_id === choice.proposal_id)
           return card.options.find((o) => o.label === choice.option) ?? null;
     return null;
@@ -604,10 +614,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     conversation_id: c.conversation_id,
     title: c.title,
     scope_pitch_id: c.scope_pitch_id,
-    scope_title: c.scope_title,
-    last_message_at: c.last_message_at,
-    has_stale: c.has_stale,
-    memory_off: c.memory_off,
+    scope_pitch_title: c.scope_pitch_title,
+    last_user_activity_at: c.last_user_activity_at,
+    created_at: c.created_at,
   });
 
   function withUser(fn: (state: UserState, info: Info) => Response | Promise<Response>) {
@@ -630,65 +639,80 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       `*${chatPaths.conversations}`,
       withUser((state, { request }) => {
         const pitchId = new URL(request.url).searchParams.get('pitch_id');
-        const items = [...state.conversations.values()]
+        const conversations = [...state.conversations.values()]
           .filter((c) => !pitchId || c.scope_pitch_id === pitchId)
           .map(summary)
-          .sort((a, b) => (b.last_message_at ?? '').localeCompare(a.last_message_at ?? ''));
-        return HttpResponse.json({ items });
+          .sort((a, b) => b.last_user_activity_at.localeCompare(a.last_user_activity_at));
+        return HttpResponse.json({ conversations });
       }),
     ),
 
     http.post(
       `*${chatPaths.conversations}`,
       withUser(async (state, { request }) => {
+        // BE `CreateConversationRequest` 는 `pitch_id` 만 받습니다. `memory_off` 는 (BE 미구현)이라 목만 받습니다
         const body = (await request.json().catch(() => null)) as {
-          scope_pitch_id?: unknown;
+          pitch_id?: unknown;
           memory_off?: unknown;
         } | null;
+        const pitchId = body?.pitch_id ?? null;
         if (
           !body ||
-          typeof body.memory_off !== 'boolean' ||
-          !(body.scope_pitch_id === null || typeof body.scope_pitch_id === 'string')
+          !(pitchId === null || typeof pitchId === 'string') ||
+          !(body.memory_off === undefined || typeof body.memory_off === 'boolean')
         )
           return error('VALIDATION_ERROR', 422);
-        if (!knownScope(body.scope_pitch_id)) return error('NOT_FOUND', 404);
+        if (!knownScope(pitchId)) return error('NOT_FOUND', 404);
         const conversation = createConversation(
           state,
-          body.scope_pitch_id as string | null,
+          pitchId as string | null,
           '',
-          body.memory_off,
+          body.memory_off === true,
         );
-        return HttpResponse.json(
-          { conversation_id: conversation.conversation_id },
-          { status: 201 },
-        );
+        return HttpResponse.json(summary(conversation), { status: 201 });
       }),
     ),
 
     http.get(
       `*${chatPaths.messages(':conversationId')}`,
-      withUser((state, { params }) => {
+      withUser((state, { params, request }) => {
         const conversation = state.conversations.get(String(params.conversationId));
         if (!conversation) return error('NOT_FOUND', 404);
+        // 최근부터 한 페이지 — 더 앞은 before_seq 로 (BE `MessageListResponse`)
+        const query = new URL(request.url).searchParams;
+        const beforeSeq = Number(query.get('before_seq') ?? Infinity);
+        const limit = Math.min(Number(query.get('limit') ?? 30), 50);
+        if (!(beforeSeq >= 1) || !Number.isInteger(limit) || limit < 1)
+          return error('VALIDATION_ERROR', 422);
+        const all = withSupersededBy(conversation.messages).map((msg, i) => ({
+          ...msg,
+          seq: i + 1,
+        }));
+        const earlier = all.filter((msg) => msg.seq < beforeSeq);
+        const page = earlier.slice(-limit);
         return HttpResponse.json({
-          items: withSupersededBy(conversation.messages),
-          next_cursor: null,
+          messages: page,
+          next_before_seq: earlier.length > page.length ? page[0]!.seq : null,
         });
       }),
     ),
 
-    // 대화로 실행 조회 — 조회만 하고 실행을 나아가게 하지 않습니다(나아가는 것은 실행 조회 GET 입니다)
+    // 대화의 마지막 실행 — 끝났어도 돌려주고, 한 번도 없으면 null (BE `latest_run_status`).
+    // 조회만 하고 실행을 나아가게 하지 않습니다(나아가는 것은 실행 조회 GET 입니다)
     http.get(
       `*${chatPaths.conversationRun(':conversationId')}`,
       withUser((state, { params }) => {
         const conversation = state.conversations.get(String(params.conversationId));
         if (!conversation) return error('NOT_FOUND', 404);
-        const run = activeRun(state, conversation.conversation_id);
-        return HttpResponse.json({ run: run && runView(run, 0) });
+        const runs = [...state.runs.values()].filter(
+          (r) => r.conversation_id === conversation.conversation_id,
+        );
+        const last = runs.at(-1);
+        return HttpResponse.json(last ? runView(last, 0) : null);
       }),
     ),
 
-    http.put(
+    http.patch(
       `*${chatPaths.scope(':conversationId')}`,
       withUser(async (state, { params, request }) => {
         const conversation = state.conversations.get(String(params.conversationId));
@@ -700,12 +724,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         if (pitchId !== null && typeof pitchId !== 'string') return error('VALIDATION_ERROR', 422);
         if (!knownScope(pitchId)) return error('NOT_FOUND', 404);
         conversation.scope_pitch_id = pitchId;
-        conversation.scope_title = pitchId ? pitch.pitch_title : null;
-        return HttpResponse.json({
-          conversation_id: conversation.conversation_id,
-          scope_pitch_id: conversation.scope_pitch_id,
-          scope_title: conversation.scope_title,
-        });
+        conversation.scope_pitch_title = pitchId ? pitch.pitch_title : null;
+        return HttpResponse.json(summary(conversation));
       }),
     ),
 
@@ -756,7 +776,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         if (!conversation.title) conversation.title = [...body.text].slice(0, 30).join('');
         const message = userMessage(body.text);
         conversation.messages.push(message);
-        conversation.last_message_at = message.created_at;
+        conversation.last_user_activity_at = message.created_at;
         const run: Run = {
           run_id: newRunId(),
           conversation_id: conversation.conversation_id,
@@ -767,7 +787,8 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             screen: body.page.screen,
             assessmentId: newAssessmentId(),
             priorAssessmentId:
-              conversation.messages.flatMap((msg) => msg.assessments).at(-1)?.assessment_id ?? null,
+              conversation.messages.flatMap((msg) => msg.assessments ?? []).at(-1)?.assessment_id ??
+              null,
           }),
           events: [],
           plan: [],
@@ -864,14 +885,20 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     ),
 
     http.post(
-      `*${chatPaths.undo(':actionId')}`,
+      `*${chatPaths.undo(':runId', ':actionId')}`,
       withUser((state, { params }) => {
         const actionId = String(params.actionId);
+        const runId = String(params.runId);
         const again = state.undone.get(actionId);
-        if (again) return HttpResponse.json(again);
+        // 같은 실행 경로로 다시 되돌리면 처음 결과 그대로 — 다른 실행의 경로는 그 행동을 찾지 못합니다
+        if (again?.run_id === runId) return HttpResponse.json(again);
         const conversation = [...state.conversations.values()].find((c) =>
-          c.messages.some((msg) =>
-            msg.cards.some((card) => card.type === 'GOAL_SAVED' && card.action_id === actionId),
+          c.messages.some(
+            (msg) =>
+              msg.run_id === runId &&
+              (msg.cards ?? []).some(
+                (card) => card.type === 'GOAL_SAVED' && card.action_id === actionId,
+              ),
           ),
         );
         // 없거나 남의 대상은 같은 404, 그 뒤 다른 목표가 저장됐으면 409 (12-3)
@@ -879,7 +906,13 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         if (conversation.goal?.action_id !== actionId) return error('AGENT_STATE_INVALID', 409);
         conversation.goalVersion += 1;
         conversation.goal = null;
-        const result = { action_id: actionId, goal_version: conversation.goalVersion };
+        // 처음 저장을 되돌렸으니 목표 내용이 없습니다(BE `GoalUndoneResponse.goal` null)
+        const result: UndoResponse = {
+          run_id: runId,
+          action_id: actionId,
+          goal_version: conversation.goalVersion,
+          goal: null,
+        };
         state.undone.set(actionId, result);
         conversation.messages.push({ ...userMessage('목표를 되돌렸어요.'), role: 'system' });
         return HttpResponse.json(result);
@@ -933,9 +966,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       conversation_id: newConversationId(),
       title: [...title].slice(0, 30).join(''),
       scope_pitch_id: scope,
-      scope_title: scope === PITCH_ID ? pitch.pitch_title : null,
-      last_message_at: null,
-      has_stale: false,
+      scope_pitch_title: scope === PITCH_ID ? pitch.pitch_title : null,
+      last_user_activity_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
       memory_off: memoryOff,
       goalVersion: 0,
       goal: null,
@@ -948,21 +981,41 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
   return { handlers, controls };
 }
 
-/** 근거 배지 글자 — 그 Take 를 읽은 답 */
-const basisOf = (takeNumber: number) => `Take ${takeNumber} · 대본 V2 · 기준 v4 기준`;
+/** 근거 표시 — 그 Take 를 읽은 답 (6-8 `basis`). 배지 글자는 화면이 이것으로 만듭니다 */
+const basisOf = (takeNumber: number): MessageBasis => ({
+  pitches: [
+    {
+      pitch_id: PITCH_ID,
+      script_version_id: 'sv2',
+      presentation_version_id: 'pv2',
+      standard_version: 4,
+      takes: [
+        {
+          take_id:
+            pitch.takes.find((t) => t.take_version === takeNumber)?.take_id ??
+            `20000000-0000-4000-8000-${String(takeNumber).padStart(12, '0')}`,
+          take_number: takeNumber,
+        },
+      ],
+    },
+  ],
+});
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 판단마다 그 판단을 대체한 새 판단의 ID — 대화 전체의 `supersedes` 로 계산합니다 (12-3 메시지 목록) */
 function withSupersededBy(messages: ChatMessage[]): ChatMessage[] {
   const by = new Map<string, string>();
   for (const message of messages)
-    for (const a of message.assessments)
+    for (const a of message.assessments ?? [])
       for (const old of a.supersedes) by.set(old, a.assessment_id);
   return messages.map((message) => ({
     ...message,
-    assessments: message.assessments.map((a) => ({
-      ...a,
-      superseded_by: by.get(a.assessment_id) ?? null,
-    })),
+    assessments:
+      message.assessments?.map((a) => ({
+        ...a,
+        superseded_by: by.get(a.assessment_id) ?? null,
+      })) ?? null,
   }));
 }
 
@@ -992,7 +1045,8 @@ function parseSend(raw: string): SendMessageRequest | null {
   }
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   if (!text || codePoints(text) > 2000) return null;
-  if (typeof body.client_request_id !== 'string' || !body.client_request_id) return null;
+  // BE 는 보내기 키를 UUID 로만 받습니다(`client_request_id: uuid.UUID`)
+  if (typeof body.client_request_id !== 'string' || !UUID.test(body.client_request_id)) return null;
   if (!body.page || typeof body.page !== 'object') return null;
   // ID 칸은 문자열 · null · 빠짐만 — 다른 형식은 저장 전 422 (12-3 "잘못된 UUID · 열거값은 저장 전 422")
   const idOrNull = (v: unknown) => v === undefined || v === null || typeof v === 'string';
