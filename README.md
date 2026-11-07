@@ -116,7 +116,7 @@ uv run fastapi dev src/pitch_coach_backend/main.py
 > [!NOTE]
 > 아래 값이 비어 있어도 서버는 뜨지만, 해당 기능은 동작하지 않습니다.
 >
-> | 비어 있는 값 | 동작하지 않는 기능 | 필요사항 |
+> | 비어 있는 값 | 동작하지 않는 기능 | 해결방책 |
 > |---|---|---|
 > | Deepgram 키 | 실시간 STT | API Key 발급 후 환경변수에 삽입 |
 > | S3 버킷 | 업로드 | S3 버킷 생성 후 이름과 리전을 환경변수에 삽입(Presigned URL) |
