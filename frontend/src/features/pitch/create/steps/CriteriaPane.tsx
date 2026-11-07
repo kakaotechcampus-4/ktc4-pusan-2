@@ -40,9 +40,21 @@ function parseErrorMessage(error: unknown): string {
   return `기준을 정리하지 못했어요. ${toMessage(error)}`;
 }
 
+/** AI 평가기준 계약의 측정 영역 8개. 대본 사용 허용 여부는 별도 설정입니다. */
+const MEASURABLE_CRITERIA = [
+  '말 속도',
+  '말 사이 멈춤',
+  '긴 침묵',
+  '소리 크기',
+  '군더더기 말',
+  '시선',
+  '대본 의존도',
+  '대본 유사도',
+] as const;
+
 const PLACEHOLDER = [
-  '이번 발표에서 확인하고 싶은 기준을 자유롭게 적어 주세요.',
-  '예: 시장 규모와 출처를 말하고, 채움말은 5회 이하로 줄이고 싶어요.',
+  '예: 군더더기 말은 5회 이하로 줄이고 싶어요.',
+  '예: 청중을 70% 이상 바라보고 싶어요.',
 ].join('\n');
 
 function parseButtonLabel(pending: boolean, hasItems: boolean): string {
@@ -73,7 +85,10 @@ function Guide({ except }: { except: string | null }) {
           평가기준에 넣지 않은 내용
         </p>
         <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
-          연습 중에 측정할 수 없는 항목이라 평가기준에서 뺐어요. 발표 시간은 발표정보에서 정해요.
+          현재 지원하지 않는 항목이라 제외했어요. 말 속도·시선처럼 측정 가능한 행동으로 바꿔 적어
+          주세요.
+          <br />
+          발표 시간은 발표정보에서 설정해 주세요.
         </p>
         <p className="mt-1 pl-6 text-sm font-bold leading-relaxed">“{except}”</p>
       </div>
@@ -86,9 +101,9 @@ function Guide({ except }: { except: string | null }) {
         작성 안내
       </p>
       <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
-        구체적인 행동이나 목표를 적어 주세요.
+        측정 지표와 연결되는 숫자 목표를 적으면 리포트에서 달성 여부를 확인할 수 있어요.
         <br />
-        정리 과정에서 반영하지 못한 내용이 있으면 이유와 안내를 이곳에 알려드려요.
+        정리 과정에서 제외된 내용은 이곳에서 알려드려요.
       </p>
     </div>
   );
@@ -124,6 +139,20 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
       <div>
         <h3 className="text-lg font-bold">평가기준 작성</h3>
         <p className="mt-1 text-sm text-ink/80">문장이나 목록으로 2,000자까지 작성해 주세요.</p>
+      </div>
+
+      <div className="rounded-lg border border-line bg-panel px-3 py-3">
+        <p className="text-sm font-bold">작성 가능한 평가 항목</p>
+        <ul aria-label="측정 가능한 항목" className="mt-2 flex flex-wrap gap-2">
+          {MEASURABLE_CRITERIA.map((item) => (
+            <li key={item} className="rounded-full border bg-white px-3 py-1 text-xs font-bold">
+              {item}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs leading-relaxed text-ink/80">
+          위 항목을 참고해 아래에 기준을 작성해 주세요. 발표 시간은 발표정보에서 설정해 주세요.
+        </p>
       </div>
 
       <textarea
@@ -165,11 +194,6 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
       )}
 
       <Guide except={except} />
-      {except && (
-        <p className="text-xs text-ink/80">
-          측정할 수 있는 행동(속도 · 음량 · 시선 등)으로 바꿔 적으면 기준에 넣을 수 있어요.
-        </p>
-      )}
     </section>
   );
 }
@@ -182,13 +206,16 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
     <section className="flex min-w-0 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h3 className="text-lg font-bold">정리된 평가기준</h3>
+          <h3 className="text-lg font-bold">이번 발표에 반영된 기준</h3>
           <span className="tabular rounded-md bg-panel px-2.5 py-1 text-xs font-bold text-ink/80">
             {items.length}개 항목
           </span>
         </div>
         <SavedBadge criteria={criteria} />
       </div>
+      <p className="mt-1 text-xs text-ink/80">
+        정리된 기준 중 숫자 목표가 없는 항목은 달성 여부를 판정하지 않아요.
+      </p>
 
       {items.length === 0 ? (
         <EmptyResult editable={editable} edited={criteria?.edited === true} />
