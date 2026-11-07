@@ -111,6 +111,58 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
     stream.cancel()
 
 
+class ExplodingWebSocket(FakeWebSocket):
+    """열려 있는데도 send 가 RuntimeError 를 던진다. 닫힌 연결과 상관없는 오류다."""
+
+    async def send_text(self, text: str) -> None:
+        raise RuntimeError("boom")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("server_closed", [True, False])
+async def test_runtime_error_is_a_disconnect_only_after_the_server_closed(
+    db_session: Session,
+    user: User,
+    token: str,
+    monkeypatch: pytest.MonkeyPatch,
+    server_closed: bool,
+):
+    """서버가 먼저 닫은 연결에 보내면 Starlette 는 RuntimeError 를 던진다. 이것도 흔한 종료라
+    run() 밖으로 새면 안 된다. 열린 연결에서 난 RuntimeError 는 진짜 오류라 그대로 올린다.
+    어느 쪽이든 detach() 는 돈다."""
+    auth = {"type": "websocket.receive", "text": json.dumps({"type": "auth", "token": token})}
+    ws = FakeWebSocket(inbound=[auth]) if server_closed else ExplodingWebSocket(inbound=[auth])
+    realtime = session.RealtimeSession(
+        ws,
+        take_id=TAKE_ID,
+        db=db_session,
+        stt_adapter=FakeSttAdapter(),
+        transcript_store=FakeTranscriptStore(),
+    )
+    attached: list[TakeStream] = []
+    attach = registry.attach
+
+    async def spy(*args, **kwargs) -> TakeStream:
+        stream = await attach(*args, **kwargs)
+        attached.append(stream)
+        if server_closed:
+            # ready 를 보내기 전에 서버가 이 연결을 닫았다 (reaper · 이어받기와 경합)
+            await ws.close(code=1008)
+        return stream
+
+    monkeypatch.setattr(registry, "attach", spy)
+
+    if server_closed:
+        await realtime.run()  # 예외가 새지 않는다
+    else:
+        with pytest.raises(RuntimeError, match="boom"):
+            await realtime.run()
+
+    stream = attached[0]
+    assert not stream.has_client, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
+    stream.cancel()
+
+
 # ── 종료 중 동시 재연결이 스트림을 두 번 만드는 문제 ────────────────────
 
 

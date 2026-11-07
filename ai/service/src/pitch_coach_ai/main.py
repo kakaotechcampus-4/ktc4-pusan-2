@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from pitch_coach_ai.api import (
+    chat_agent,
     coach,
     evaluation_criteria,
     health,
@@ -77,6 +78,7 @@ def create_app(
     app.include_router(coach.router)
     app.include_router(review.router)
     app.include_router(evaluation_criteria.router)
+    app.include_router(chat_agent.router)
     return app
 
 

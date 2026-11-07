@@ -27,6 +27,7 @@ from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup
 from pitch_coach_backend.module.chat.controller import router as chat_router
 from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
 from pitch_coach_backend.module.chat.run_recovery import start as start_run_recovery
+from pitch_coach_backend.module.chat.switch_off_sweep import start as start_switch_off_sweep
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.pitch.dependencies import (
     resume_script_parses,
@@ -110,11 +111,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_ready_sweep = start_ready_sweep()
     # 재시작 복구 · 자동 목표 확인은 AI 를 부르므로 대화 기능이 꺼져 있으면 띄우지 않는다
     # (chat-agent.md 11-2). 스위치가 켜져 있어도 대화 자리 설정이 어긋나면 꺼진 것과 같다(L2-13).
-    # 끝나지 않은 실행은 다시 켠 뒤 복구가 마감을 보고 끝내거나 잇는다.
+    # 꺼져 있으면 끝나지 않은 실행을 한 번 CANCELLED 로 끝낸다. 승인을 기다리던 행동도 함께
+    # 취소한다. 실행이 많을 수 있어 앱이 뜨는 것을 막지 않게 따로 띄운다.
     # 근거가 지워진 답을 가리는 정리 작업은 꺼져 있어도 돈다
     chat_on = check_chat_on_startup()
     stop_run_recovery = start_run_recovery() if chat_on else _nothing_to_stop
     stop_goal_sweep = start_goal_sweep() if chat_on else _nothing_to_stop
+    stop_switch_off = _nothing_to_stop if chat_on else start_switch_off_sweep()
     stop_cleanup_sweep = start_cleanup_sweep()
     # 30분이 지난 승인 대기를 끝낸다. AI 를 부르지 않으므로 꺼져 있어도 돈다
     stop_approval_sweep = start_approval_sweep()
@@ -138,6 +141,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_ready_sweep()
     await stop_goal_sweep()
     await stop_run_recovery()
+    await stop_switch_off()
     await turn_runner.stop_all()
     await stop_cleanup_sweep()
     await stop_approval_sweep()

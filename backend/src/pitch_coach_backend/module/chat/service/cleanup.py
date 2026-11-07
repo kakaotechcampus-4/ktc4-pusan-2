@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import deactivate_goals_without_base
 from pitch_coach_backend.module.chat.service.owned import parse_uuid
-from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
+from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT, run_source_ids
 
 CLEANUP_LEASE = timedelta(hours=1)
 ALERT_AFTER = timedelta(hours=2)
@@ -37,7 +37,7 @@ def cleanup_delayed(db: Session, now: datetime) -> bool:
 def clean_deleted_sources(db: Session) -> int:
     deactivate_goals_without_base(db)
     repo = ChatRepository(db)
-    cleaned = _mask_answers(repo) + _mask_runs(repo) + _clear_goals(repo)
+    cleaned = _mask_answers(repo) + _mask_runs(repo) + _clear_goals(repo) + _mask_summaries(repo)
     db.commit()
     return cleaned
 
@@ -65,13 +65,35 @@ def _mask_answers(repo: ChatRepository) -> int:
     return masked
 
 
+def _mask_summaries(repo: ChatRepository) -> int:
+    summaries = repo.lock_unmasked_summaries()
+    deleted = _deleted_ids(
+        repo,
+        {pitch_id for summary in summaries for pitch_id in summary.source_pitch_ids or []},
+        {take_id for summary in summaries for take_id in summary.source_take_ids or []},
+    )
+    masked = 0
+    for summary in summaries:
+        if deleted & {*(summary.source_pitch_ids or []), *(summary.source_take_ids or [])}:
+            # 항목마다 근거를 나눌 수 없어 통째로 비운다. 덮은 메시지는 그대로 두어
+            # 가린 답을 다시 요약하지 않고, 판을 올려 지우기 전 요약을 받은 턴이
+            # 새 요약을 저장하지 못하게 한다
+            summary.items = []
+            summary.source_pitch_ids = []
+            summary.source_take_ids = []
+            summary.summary_version += 1
+            masked += 1
+    return masked
+
+
 def _mask_runs(repo: ChatRepository) -> int:
     masked = 0
     for run in repo.list_finished_runs_with_content():
         actions = repo.list_actions(run.id)
-        read = run.read_sources or {}
-        take_ids = {*read.get("takes", []), *(t for a in actions for t in a.source_take_ids or [])}
-        if not _deleted_ids(repo, set(read.get("pitches", [])), take_ids):
+        pitch_ids, take_ids = run_source_ids(
+            run.read_sources, (action.source_take_ids for action in actions)
+        )
+        if not _deleted_ids(repo, pitch_ids, take_ids):
             continue
         run.state = None
         run.interim_message = None

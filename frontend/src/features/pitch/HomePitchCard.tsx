@@ -2,17 +2,28 @@ import { duration } from './homeFormat';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ButtonLink } from '@/shared/ui/Button';
+import { hasActiveTake } from '@/shared/api/pitch';
 import type { HomePitch } from '@/types/home';
+import { PitchMoreMenu } from './PitchMoreMenu';
 
 const rowLink = 'whitespace-nowrap text-xs font-bold hover:text-coral-deep';
 
 /** 홈 발표 목록의 한 줄. 목록 상자(`HomePage`)의 `<ul>` 안에 놓입니다 */
-export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: number }) {
+export function HomePitchCard({
+  pitch,
+  index,
+  onDelete,
+}: {
+  pitch: HomePitch;
+  index: number;
+  /** 더보기(···) 메뉴의 삭제. 없으면 메뉴를 두지 않습니다 */
+  onDelete?: (pitch: HomePitch) => void;
+}) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const takes = pitch.takes.length;
   const titleStyle = 'inline-flex min-w-0 items-center gap-2 font-bold';
   return (
-    <li className="flex items-center gap-4 px-4 py-2 sm:px-5">
+    <li data-pitch-id={pitch.pitch_id} className="flex items-center gap-4 px-4 py-2 sm:px-5">
       <div
         aria-hidden="true"
         className="hidden h-8 w-12 shrink-0 items-center justify-center overflow-hidden border border-line-strong bg-cream sm:flex"
@@ -83,6 +94,16 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
         >
           발표 준비
         </ButtonLink>
+      )}
+      {/* 삭제는 되돌릴 수 없어 발표 준비 옆에 버튼으로 두지 않고 메뉴 안에 둡니다 (#807) */}
+      {pitch.pitch_id && onDelete && (
+        <PitchMoreMenu
+          pitchTitle={pitch.pitch_title}
+          blockedReason={
+            hasActiveTake(pitch.takes) ? '연습이나 분석이 끝난 뒤 지울 수 있어요.' : null
+          }
+          onDelete={() => onDelete(pitch)}
+        />
       )}
     </li>
   );

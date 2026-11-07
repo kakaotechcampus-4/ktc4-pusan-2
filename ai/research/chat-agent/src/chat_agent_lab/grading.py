@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, NamedTuple
 
-from chat_agent import templates
+from pitch_coach_ai.features.chat_agent import templates
 
 MISSING: Any = object()
 

@@ -1,6 +1,6 @@
 """가짜 BE 통합 시험 — 메시지 → 행동 → 이어 부르기 → 답 저장을 처음부터 끝까지 돌린다 (기능 문서 5 · 6-6 · 10-2 '통합' · 12-3).
 
-실제 모델 없이 정해 둔 응답(tests/unit/fakes.py)을 쓰고, BE 쪽은 chat_agent_lab/fake_be.py 가 맡는다.
+실제 모델 없이 정해 둔 응답(서비스 tests/unit/chat_agent/fakes.py)을 쓰고, BE 쪽은 chat_agent_lab/fake_be.py 가 맡는다.
 다시 평가는 실제 리뷰 코드(pitch_coach_ai 의 review_take, LLM 없이)를 바꾼 입력으로 부른다.
 이름의 L 번호는 기능 문서 7절 실패 행이다(README '실패 행 대응표').
 """
@@ -13,13 +13,13 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
-from chat_agent import templates
-from chat_agent.schemas import FinalData
-from chat_agent_lab import fixtures as fx
 from chat_agent_lab.app import AgentApp, TurnOutcome, build_request, from_env
 from chat_agent_lab.fake_be import MASKED_TEXT, FakeBe, Run, default_review
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
+from chat_agent_lab.service_tests import fixtures as fx
 
 # 배포 기본값(조사 흐름 켬)으로 돌린다. 모델 호출 순서를 대본으로 정한 시험만 no_prefetch 로 끈다(tests/conftest.py)
 pytestmark = pytest.mark.prefetch
@@ -1356,7 +1356,7 @@ def test_reassess_on_take_without_official_review_says_not_enough_data() -> None
 def test_reassess_failure_codes_map_only_listed_codes(
     code: str, note: templates.SystemText
 ) -> None:
-    from chat_agent import turn as turn_mod
+    from pitch_coach_ai.features.chat_agent import turn as turn_mod
 
     class _St:
         executed = [
@@ -1374,7 +1374,7 @@ def test_feature_doc_action_error_codes_equal_the_code_list() -> None:
     import re
     from pathlib import Path
 
-    from chat_agent.actions import ACTION_ERROR_CODES
+    from pitch_coach_ai.features.chat_agent.actions import ACTION_ERROR_CODES
 
     doc = (Path(__file__).resolve().parents[5] / "docs/ai/features/chat-agent.md").read_text(
         "utf-8"

@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
@@ -27,6 +27,27 @@ from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults,
 UNFINISHED_RUN_STATUSES = ("QUEUED", "RUNNING")
 ACTIVE_RUN_STATUSES = (*UNFINISHED_RUN_STATUSES, "WAITING_APPROVAL")
 FINISHED_RUN_STATUSES = ("DONE", "PARTIAL", "REFUSED", "FAILED", "CANCELLED", "EXPIRED")
+
+# 사용자 하루 사용량 중 선점해 세는 칸
+DailyCounter = Literal["turns", "reassessments", "goal_checks"]
+
+
+def charge_daily(
+    db: Session, column: DailyCounter, user_id: uuid.UUID, day: date, limit: int
+) -> bool:
+    """사용자 하루 사용량 칸을 1 선점한다. 한도에 닿았으면 늘리지 않고 False."""
+    counter = getattr(ChatDailyUsage, column)
+    stmt = (
+        insert(ChatDailyUsage)
+        .values(id=uuid.uuid7(), user_id=user_id, day=day, **{column: 1})
+        .on_conflict_do_update(
+            index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
+            set_={column: counter + 1},
+            where=counter < limit,
+        )
+        .returning(ChatDailyUsage.id)
+    )
+    return db.scalar(stmt) is not None
 
 
 class ChatRepository:
@@ -84,30 +105,10 @@ class ChatRepository:
         )
 
     def charge_reassess(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
-        stmt = (
-            insert(ChatDailyUsage)
-            .values(id=uuid.uuid7(), user_id=user_id, day=day, reassessments=1)
-            .on_conflict_do_update(
-                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
-                set_={"reassessments": ChatDailyUsage.reassessments + 1},
-                where=ChatDailyUsage.reassessments < limit,
-            )
-            .returning(ChatDailyUsage.id)
-        )
-        return self.db.scalar(stmt) is not None
+        return charge_daily(self.db, "reassessments", user_id, day, limit)
 
     def charge_goal_check(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
-        stmt = (
-            insert(ChatDailyUsage)
-            .values(id=uuid.uuid7(), user_id=user_id, day=day, goal_checks=1)
-            .on_conflict_do_update(
-                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
-                set_={"goal_checks": ChatDailyUsage.goal_checks + 1},
-                where=ChatDailyUsage.goal_checks < limit,
-            )
-            .returning(ChatDailyUsage.id)
-        )
-        return self.db.scalar(stmt) is not None
+        return charge_daily(self.db, "goal_checks", user_id, day, limit)
 
     def reserve_service_turn(self, day: date, limit: int) -> bool:
         stmt = (
@@ -200,6 +201,22 @@ class ChatRepository:
     def lock_conversation(self, conversation_id: uuid.UUID) -> ChatConversation | None:
         return self.db.scalar(
             select(ChatConversation).where(ChatConversation.id == conversation_id).with_for_update()
+        )
+
+    def lock_unfinished_runs_of(self, user_id: uuid.UUID) -> list[ChatRun]:
+        """그 사용자의 끝나지 않은 실행. 대화 → 실행 순서로 잠근다."""
+        mine = (
+            ChatRun.user_id == user_id,
+            ChatRun.status.in_(("QUEUED", "RUNNING", "WAITING_APPROVAL")),
+        )
+        self.db.execute(
+            select(ChatConversation.id)
+            .where(ChatConversation.id.in_(select(ChatRun.conversation_id).where(*mine)))
+            .order_by(ChatConversation.id)
+            .with_for_update()
+        )
+        return list(
+            self.db.scalars(select(ChatRun).where(*mine).order_by(ChatRun.id).with_for_update())
         )
 
     def get_message(self, message_id: uuid.UUID) -> ChatMessage | None:
@@ -383,6 +400,16 @@ class ChatRepository:
                     ChatMessage.role == "assistant",
                     ChatMessage.text != masked_text,
                 )
+            )
+        )
+
+    def lock_unmasked_summaries(self) -> list[ChatSummary]:
+        """항목이 남은 대화 요약. 턴이 바꾸고 있는 요약은 건너뛰고 다음 주기에 본다."""
+        return list(
+            self.db.scalars(
+                select(ChatSummary)
+                .where(func.jsonb_array_length(ChatSummary.items) > 0)
+                .with_for_update(skip_locked=True)
             )
         )
 
