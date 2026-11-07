@@ -183,17 +183,16 @@ type RunErrorCode = Extract<
 
 type RunFailure =
   | { when: 'start'; code: RunErrorCode }
-  /** 문서(L2-45) 동작 — 받은 문장이 있으면 그 문장으로 PARTIAL 메시지를 남깁니다(BE 미구현) */
-  | { when: 'afterFirstClaim'; code: RunErrorCode | null }
-  /** BE 55aa10d0 동작 — 문장을 낸 뒤 실패해도 FAILED 로 끝내고 답 메시지를 남기지 않습니다(`turn.fail`) */
-  | { when: 'failAfterClaim'; code: RunErrorCode };
+  /**
+   * 받은 문장이 있으면 그 문장으로 PARTIAL 메시지를 남깁니다 — 문서(L2-45) · BE a6264abc `turn.fail` 동작.
+   * 예전 BE 는 FAILED 로 끝내고 메시지를 남기지 않았습니다(`081c50d1` 에서 바뀜)
+   */
+  | { when: 'afterFirstClaim'; code: RunErrorCode | null };
 
 export interface MockChatControls {
   fail: (code?: SendFailureCode) => void;
   runFail: (code?: RunErrorCode) => void;
   partial: (code?: RunErrorCode) => void;
-  /** 문장을 낸 뒤 실패 — 지금 BE 처럼 FAILED 로 끝나고 메시지 목록에는 그 문장이 없습니다 */
-  failAfterClaim: (code?: RunErrorCode) => void;
   expire: () => void;
   goalCheck: (status?: 'ACHIEVED' | 'NOT_ACHIEVED') => void;
   disable: () => void;
@@ -225,9 +224,6 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     },
     partial: (code) => {
       runFailure = { when: 'afterFirstClaim', code: code ?? null };
-    },
-    failAfterClaim: (code = 'AGENT_TIMEOUT') => {
-      runFailure = { when: 'failAfterClaim', code };
     },
     expire: () => {
       for (const state of users.values())
@@ -546,14 +542,6 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
         // 받은 문장이 있으면 PARTIAL (12-3). 행동 성공 문장 뒤에서는 끊지 않습니다
         if (run.failure?.when === 'afterFirstClaim' && !isAction)
           failRun(state, run, 'PARTIAL', run.failure.code);
-        else if (run.failure?.when === 'failAfterClaim' && !isAction) {
-          // BE `turn.fail` — 실행만 FAILED 로 끝내고 메시지는 만들지 않습니다(받은 문장은 이벤트에만 남음)
-          run.status = 'FAILED';
-          run.error = { code: run.failure.code };
-          run.retry_after_s = run.failure.code === 'AGENT_BUSY' ? 5 : null;
-          run.cards = [];
-          run.ask = null;
-        }
         return;
       }
       case 'ask': {
@@ -904,10 +892,9 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       withUser((state, { params }) => {
         const run = state.runs.get(String(params.runId));
         if (!run) return error('NOT_FOUND', 404);
-        // 승인 대기 취소 — BE `_cancel_waiting` 처럼 "목표를 저장하지 않았어요." 같은 행동별 문장을 남깁니다
-        // (문서 L2-41 · 7-10 은 "요청을 취소했어요." — BE 와 다른 점은 BE 담당에게 확인 중)
-        if (run.status === 'WAITING_APPROVAL')
-          settleAsk(state, run, 'CANCELLED', NOT_DONE_TEXT[run.ask!.action_type]);
+        // 승인 대기 취소 — BE `_cancel_waiting` 처럼 행동과 상관없이 "확인 요청을 취소했어요."를 남깁니다 (7-10).
+        // 행동별 문장("목표를 저장하지 않았어요.")은 [거절]일 때만 씁니다
+        if (run.status === 'WAITING_APPROVAL') settleAsk(state, run, 'CANCELLED', CANCELLED_TEXT);
         else if (!isTerminalRun(run.status)) {
           // BE `cancel_run` 처럼 — 오류 코드만 남기고 답 메시지는 만들지 않습니다
           run.status = 'CANCELLED';
@@ -945,7 +932,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
           return HttpResponse.json(statusView(run));
         if (done?.status === 'EXPIRED') return error('AGENT_EXPIRED', 409);
         if (done?.status === 'CANCELLED' || !run.ask) return error('AGENT_CANCELLED', 409);
-        if (body.args_hash !== run.ask.args_hash) return error('AGENT_STATE_INVALID', 409);
+        if (body.args_hash !== run.ask.args_hash) return error('APPROVAL_HASH_MISMATCH', 409);
         if (body.decision === 'REJECT') {
           settleAsk(state, run, 'DONE', NOT_DONE_TEXT[run.ask.action_type]);
           return HttpResponse.json(statusView(run));
@@ -1086,6 +1073,7 @@ function titleOf(text: string) {
 /** BE `waiting.py` 의 고정 문장 (7-10) */
 const EXPIRED_TEXT = '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.';
 const NEW_MESSAGE_TEXT = '새 메시지를 받아 앞의 확인 요청은 취소했어요.';
+const CANCELLED_TEXT = '확인 요청을 취소했어요.';
 const NOT_DONE_TEXT = {
   SAVE_GOAL: '목표를 저장하지 않았어요.',
   REASSESS: '다시 평가하지 않았어요.',

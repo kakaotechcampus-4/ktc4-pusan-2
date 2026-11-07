@@ -7,7 +7,7 @@ import { chatPaths } from '@/shared/api/chatPaths';
 /**
  * 계약 시험 — 목이 **실제 BE** 와 같은 칸 · 값 · 상태 코드로 답하는지 봅니다(문서가 아니라 BE 코드 기준).
  *
- * 기준: BE #933 `feat/be-chat-api-834` `55aa10d0`
+ * 기준: BE #933 `feat/be-chat-api-834` `a6264abc`
  * - 응답 칸: `backend/src/pitch_coach_backend/module/chat/api_dto.py`
  * - 경로 · 상태 코드: `module/chat/controller.py` (새 대화 201 · 메시지 접수 202 · 나머지 200)
  * - 오류 코드: `module/chat/exception.py`, 오류 본문: `core/exceptions.py` `{code, message, detail}`
@@ -18,7 +18,7 @@ import { chatPaths } from '@/shared/api/chatPaths';
  * BE 에 아직 없는 기능(기억 · '기억 없이' · 되돌리기)은 여기서 보지 않습니다 — 목에만 `(BE 미구현)` 으로 있습니다.
  */
 const BE = {
-  commit: '55aa10d0',
+  commit: 'a6264abc',
   ConversationResponse: [
     'conversation_id',
     'title',
@@ -309,7 +309,7 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
     );
   });
 
-  it('바뀐 카드로 승인하면 409 AGENT_STATE_INVALID (문서 이름은 APPROVAL_HASH_MISMATCH — FE 가 바꿔 알림)', async () => {
+  it('바뀐 카드로 승인하면 409 APPROVAL_HASH_MISMATCH (`ChatCardChanged`)', async () => {
     const accepted = await accept('3장 시선을 목표로 잡아 줘');
     const waiting = (await settle(accepted.run_id as string)).at(-1)!;
     const card = (waiting.cards as Json[])[0]!;
@@ -319,7 +319,7 @@ describe(`오류 — BE ${BE.commit} exception.py · core/exceptions.py`, () => 
         args_hash: 'changed',
       }),
       409,
-      'AGENT_STATE_INVALID',
+      'APPROVAL_HASH_MISMATCH',
     );
   });
 
