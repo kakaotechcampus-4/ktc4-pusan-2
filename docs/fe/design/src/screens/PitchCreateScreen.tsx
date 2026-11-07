@@ -1,7 +1,7 @@
-// PM 검토용 독립 시안. 모든 자료와 저장·매핑 결과는 메모리의 예시 데이터다.
+// 현행 피치 생성 화면의 독립 샘플. 제품 적용 당시의 A안 검토 링크에서도 재사용하며 API는 호출하지 않는다.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { Navigate } from './shared';
-import './create-concept.css';
+import './pitch-create.css';
 
 const TITLES = ['발표 연습을 더 편하게', '말하기와 시선을 함께', '연습마다 달라지는 나'];
 const SCRIPT = [
@@ -351,7 +351,7 @@ function PreviewDialog({
   );
 }
 
-export function CreateConceptScreen({
+export function PitchCreateScreen({
   stateId,
   onNavigate,
   inline,

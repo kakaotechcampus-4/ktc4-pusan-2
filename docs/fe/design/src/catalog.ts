@@ -310,7 +310,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/create/lib/draft.ts',
     ],
     productNote:
-      '기존 단계별 CreateScreen 대신 한 페이지형 CreateConceptScreen 샘플을 기본 화면에서도 재사용한다. 이것은 제품 구조를 참고한 독립 시안이며 서버 저장·실제 PDF·AI 정리·파일 선택은 재현하지 않는다. 현재 단계 강조·자료 확인·매핑·최종 확인은 예시 상태다. 제품의 실제 버전별 자료·평가기준 편집·오류 분기·문구와 차이가 있으므로 이 샘플만으로 동작 완료를 판단하지 않는다. 이전 preview 상태는 슬라이드 확인 창으로 호환한다. 피치 수정에서 자료 불러오기 실패·없는 피치 상태는 샘플에 없다.',
+      '기존 단계형 샘플을 정리하고, 한 페이지형 PitchCreateScreen 샘플을 기본 화면과 A안 검토 기록에서 재사용한다. 이것은 제품 구조를 참고한 독립 시안이며 서버 저장·실제 PDF·AI 정리·파일 선택은 재현하지 않는다. 현재 단계 강조·자료 확인·매핑·최종 확인은 예시 상태다. 제품의 실제 버전별 자료·평가기준 편집·오류 분기·문구와 차이가 있으므로 이 샘플만으로 동작 완료를 판단하지 않는다. 이전 preview 상태는 슬라이드 확인 창으로 호환한다. 피치 수정에서 자료 불러오기 실패·없는 피치 상태는 샘플에 없다.',
     productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
     next: [next('최종 확인 → 시작 전 세팅', 'prepare-mission'), next('내 피치로', 'home')],
   },
