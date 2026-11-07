@@ -851,6 +851,12 @@ COVERAGE_STALE_AFTER = timedelta(minutes=10)
 # 확인 답을 기다리는 시간 (`docs/ai/architecture.md` 1-3). 이 단계의 `analysis_stage_at` 부터 잰다
 CONFIRMATION_WAIT = timedelta(minutes=10)
 
+# 끊긴 분석을 다시 잡는 주기와, 단계 시각이 이보다 오래되면 끊겼다고 보는 시간 (`analysis_runner`)
+ANALYSIS_SWEEP_INTERVAL_SEC = 5 * 60.0
+STALE_ANALYSIS = timedelta(minutes=10)
+# 다시 잡는 주기가 한 번 더 지나도 단계가 그대로면 멈춘 분석이다
+ANALYSIS_STALL_AFTER = STALE_ANALYSIS + timedelta(seconds=ANALYSIS_SWEEP_INTERVAL_SEC)
+
 # 확인 답 반영이 끊긴 것으로 보는 시간. rescore 와 그 재시도(10초씩)를 다 해도 이보다 짧다
 CONFIRMATION_STALE_AFTER = timedelta(minutes=1)
 
