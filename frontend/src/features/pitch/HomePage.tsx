@@ -213,11 +213,7 @@ export function HomePage() {
           <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
             <span className="shrink-0 tabular-nums text-coral-deep">TIP /</span>
             {/* 자동 전환 문구는 화면 낭독기가 계속 읽지 않도록 합니다. */}
-            <p
-              aria-live="off"
-              title={HOME_TIPS[tipIndex]}
-              className="min-w-0 flex-1 truncate"
-            >
+            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
               {HOME_TIPS[tipIndex]}
             </p>
             <button
