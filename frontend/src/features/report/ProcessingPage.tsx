@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import { isSettled, useTakeReport } from '@/shared/api/report';
 import { toMessage } from '@/shared/api/errorMessage';
+import { autoEndState, readAutoEnd } from '@/shared/lib/autoEnd';
 import { ButtonLink } from '@/shared/ui/Button';
+import { AutoEndAlert } from './AutoEndAlert';
 import { DuskScreen, StatusLine } from './DuskScreen';
 import { stepStates, type StepState } from './reportFormat';
 
@@ -17,6 +19,9 @@ import { stepStates, type StepState } from './reportFormat';
  * ★ 대본 확인(`AWAITING_CONFIRMATION`) 동안은 확인 화면(`/takes/:takeId/confirm`)으로 가는 버튼을 띄웁니다.
  *   저절로 넘기지 않습니다 — 확인 화면에서 돌아온 사용자를 다시 튕겨 보내게 됩니다.
  *   답이 없어도 BE 가 정한 시간이 지나면 그대로 진행됩니다.
+ *
+ * 서버가 Take 를 자동으로 끝냈으면(말 없음 · 최대 시간) 무대가 넘긴 이유를 맨 위에 알립니다 (#925).
+ * 리포트로 넘어갈 때도 같이 넘겨 리포트가 한 번 더 보여 줍니다 — 분석이 빨리 끝나면 여기서 놓칩니다.
  */
 
 const STEP_NAMES = ['발표 기록 정리', '말한 내용 채점', '코치 총평'];
@@ -68,20 +73,30 @@ export function ProcessingPage() {
   const { takeId = '' } = useParams();
   const report = useTakeReport(takeId);
   const navigate = useNavigate();
+  const location = useLocation();
+  const autoEnd = readAutoEnd(location.state);
   const data = report.data;
   const failed = data?.status === 'FAILED';
   const held = Boolean(data?.analysis_hold_reason);
   const settled = isSettled(data);
 
+  // 자동 종료 안내는 리포트까지 들고 갑니다. 그 밖의 state 는 리포트가 쓰지 않습니다
+  const autoEndReason = autoEnd?.reason;
+  const autoEndMessage = autoEnd?.message ?? '';
   useEffect(() => {
-    if (settled && !failed && !held) navigate(`/takes/${takeId}`, { replace: true });
-  }, [settled, failed, held, navigate, takeId]);
+    if (!settled || failed || held) return;
+    navigate(`/takes/${takeId}`, {
+      replace: true,
+      state: autoEndReason ? autoEndState(autoEndReason, autoEndMessage) : undefined,
+    });
+  }, [settled, failed, held, navigate, takeId, autoEndReason, autoEndMessage]);
 
   if (!takeId) return <Navigate replace to="/" />;
 
   return (
     <DuskScreen report={data}>
       <h1 className="sr-only">분석 대기</h1>
+      {autoEnd && <AutoEndAlert notice={autoEnd} tone="dusk" />}
       <DialogContent
         takeId={takeId}
         isPending={report.isPending}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
+import { SILENCE_END_NOTICE } from '@/shared/lib/autoEnd';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
@@ -508,6 +509,8 @@ export function DeviceCheckPage() {
       badge={`TAKE ${takeNumber || '—'}`}
       onBack={() => navigate(-1)}
       hint={hint}
+      // 발표 중 말이 오래 없으면 서버가 끝냅니다. 목표 시간보다 일찍 끝나 놀라지 않게 미리 알립니다 (#925)
+      note={SILENCE_END_NOTICE}
       actions={
         <>
           <Button
