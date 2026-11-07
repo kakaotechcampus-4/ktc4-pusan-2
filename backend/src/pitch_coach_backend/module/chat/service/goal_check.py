@@ -11,12 +11,11 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.chat.dto import AgentTrigger
 from pitch_coach_backend.module.chat.entity import ChatConversation, ChatGoal, ChatLease, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
-from pitch_coach_backend.module.chat.service.run import seoul_day
+from pitch_coach_backend.module.chat.service.run import TURN_DEADLINE, seoul_day
 
 GOAL_CHECKS_PER_CYCLE = 100
 GOAL_CHECK_DAILY_LIMIT = 30
 GOAL_LEASE = timedelta(minutes=5)
-TURN_DEADLINE = timedelta(seconds=120)
 REVIEW_GIVEN_UP = ("FAILED", "SKIPPED")
 
 

@@ -29,7 +29,13 @@ from pitch_coach_backend.module.chat.service import conversation as conversation
 from pitch_coach_backend.module.chat.service import run_view
 from pitch_coach_backend.module.chat.service import turn as turn_service
 from pitch_coach_backend.module.chat.service.accept import USER_DAILY_TURNS
-from pitch_coach_backend.module.chat.service.run import OWNER, SEOUL, claimed
+from pitch_coach_backend.module.chat.service.run import (
+    OWNER,
+    SEOUL,
+    add_run_log,
+    claimed,
+    end_approval_wait,
+)
 from pitch_coach_backend.module.chat.service.waiting import (
     CANCELLED_TEXT,
     EXPIRED_TEXT,
@@ -442,6 +448,60 @@ def test_reject_does_not_bring_back_a_deleted_source(
     [answer] = _answers(db_session, seeded.conversation.id)
     assert answer.text == NOT_DONE_TEXT["SAVE_GOAL"]
     assert (answer.evidence, answer.assessments) == ([], [])
+
+
+# ── 운영 기록 시간 ───────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("decision", "waited", "status"),
+    [("REJECT", timedelta(minutes=5), "DONE"), ("APPROVE", timedelta(minutes=31), "EXPIRED")],
+)
+def test_run_log_time_leaves_out_the_wait(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    resumed: list[uuid.UUID],
+    decision: str,
+    waited: timedelta,
+    status: str,
+) -> None:
+    # 접수하자마자 승인을 기다렸다. 관리자 화면의 실행 시간에 기다린 시간을 넣지 않는다
+    seeded = _waiting(db_session, user_id, waited=waited)
+
+    _decide(client, user_id, seeded.run.id, decision)
+
+    log = db_session.scalar(select(ChatRunLog).where(ChatRunLog.run_id == seeded.run.id))
+    assert log.status == status
+    assert 0 <= log.ms < 60_000
+
+
+class _AddedRows:
+    def __init__(self) -> None:
+        self.rows: list[Any] = []
+
+    def add(self, row: Any) -> None:
+        self.rows.append(row)
+
+
+def test_run_log_time_leaves_out_every_wait_of_a_run() -> None:
+    accepted = datetime(2026, 11, 7, 12, tzinfo=UTC)
+    row = ChatRun(
+        user_id=uuid.uuid4(),
+        status="DONE",
+        accepted_at=accepted,
+        deadline_at=accepted + timedelta(seconds=120),
+    )
+    # 10초 일하고 3분 기다린 뒤, 5초 일하고 7분 기다리고, 2초 더 일해 끝냈다
+    row.approval_started_at = accepted + timedelta(seconds=10)
+    end_approval_wait(row, row.approval_started_at + timedelta(minutes=3))
+    row.approval_started_at = row.approval_ended_at + timedelta(seconds=5)
+    end_approval_wait(row, row.approval_started_at + timedelta(minutes=7))
+    added = _AddedRows()
+
+    add_run_log(added, row, row.approval_ended_at + timedelta(seconds=2))
+
+    assert [log.ms for log in added.rows] == [17_000]
 
 
 # ── 만료 ─────────────────────────────────────────────────────────────

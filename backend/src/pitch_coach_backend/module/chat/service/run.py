@@ -19,6 +19,7 @@ from pitch_coach_backend.module.chat.service.owned import parse_uuid
 SEOUL = ZoneInfo("Asia/Seoul")
 OWNER = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 LEASE = timedelta(seconds=30)
+TURN_DEADLINE = timedelta(seconds=120)
 
 
 def seoul_day(at: datetime | None = None) -> date:
@@ -173,15 +174,26 @@ def release_unsent(repo: ChatRepository, row: ChatRun) -> None:
         repo.release_service_turn(row.accepted_at.astimezone(SEOUL).date())
 
 
+def end_approval_wait(row: ChatRun, now: datetime) -> None:
+    """승인 대기를 끝낸다. 기다린 시간만큼 마감을 늦춰 실행의 120초에 넣지 않는다(12-3).
+
+    마감을 늦춘 만큼이 한 실행에서 승인을 기다린 시간의 합이다. 운영 기록이 이 값을 뺀다.
+    """
+    row.deadline_at += now - row.approval_started_at
+    row.approval_ended_at = now
+
+
 def add_run_log(repo: ChatRepository, row: ChatRun, now: datetime) -> None:
     usage = row.usage or {}
+    # 사용자의 승인을 기다린 시간은 실행에 걸린 시간에 넣지 않는다
+    waited = row.deadline_at - row.accepted_at - TURN_DEADLINE
     repo.add(
         ChatRunLog(
             run_id=row.id,
             day=now.astimezone(SEOUL).date(),
             user_id=row.user_id,
             status=row.status,
-            ms=round((now - row.accepted_at).total_seconds() * 1000),
+            ms=round((now - row.accepted_at - waited).total_seconds() * 1000),
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
         )

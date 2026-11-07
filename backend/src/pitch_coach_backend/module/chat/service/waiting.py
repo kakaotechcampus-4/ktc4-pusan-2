@@ -19,7 +19,12 @@ from pitch_coach_backend.module.chat.api_repository import ChatApiRepository
 from pitch_coach_backend.module.chat.entity import ChatAction, ChatMessage, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.memory import memory_cards
-from pitch_coach_backend.module.chat.service.run import add_run_log, canonical_ids, lock_ids
+from pitch_coach_backend.module.chat.service.run import (
+    add_run_log,
+    canonical_ids,
+    end_approval_wait,
+    lock_ids,
+)
 
 APPROVAL_WINDOW = timedelta(minutes=30)
 EXPIRED_TEXT = "확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요."
@@ -84,7 +89,7 @@ def close_waiting(
             action.approved_at = now
     run.status = run_status
     run.state = None
-    run.approval_ended_at = now
+    end_approval_wait(run, now)
     run.finished_at = now
     run.row_revision += 1
     if run_status in ("EXPIRED", "CANCELLED"):
