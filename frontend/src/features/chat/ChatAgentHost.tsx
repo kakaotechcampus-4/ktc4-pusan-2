@@ -1,5 +1,4 @@
 import {
-  Component,
   Fragment,
   useCallback,
   useEffect,
@@ -16,6 +15,7 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
+import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
@@ -42,26 +42,25 @@ import { useChatSession, type ChatNotice, type ChatSession } from './useChatSess
 /**
  * 대화형 코치 에이전트의 버튼 · 팝업 (`docs/ai/features/chat-agent.md` 12-4 F1). 라우터 최상위 레이아웃에 있어
  * 화면을 옮겨도 대화가 이어지고, 대화 상태는 저장소(`chatStore`)에 둡니다.
- * 채팅에서 오류가 나면 채팅만 사라지고 화면은 그대로 남습니다.
+ * 채팅에서 오류가 나면 대화만 닫고 런처 자리에 안내와 [다시 시도]를 둡니다. 화면은 그대로 씁니다 (12-4 F8 · L3-36).
  */
 export function ChatAgentHost() {
   return (
-    <ChatErrorBoundary>
+    <ChatErrorBoundary onReset={resetChatAfterFailure}>
       <ChatLayer />
     </ChatErrorBoundary>
   );
 }
 
-class ChatErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
+/**
+ * [다시 시도] 직전에 저장소를 정리합니다 — 저장소는 React 밖이라 경계만 다시 그리면 같은 상태로 또 던질 수 있습니다.
+ * 처음에는 대화창만 닫아 보던 대화 · 보내던 요청 · 실행을 그대로 둡니다. 이 페이지에서 두 번째 실패부터는 [새 대화]와
+ * 같은 길로 보던 대화에서 나옵니다 — 서버의 대화는 목록에서 다시 열 수 있고, 늦은 응답은 버립니다
+ */
+function resetChatAfterFailure(failures: number) {
+  const chat = useChatStore.getState();
+  chat.closeChat();
+  if (failures >= 2) chat.startNewConversation(chat.scope);
 }
 
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
