@@ -735,6 +735,42 @@ def test_client_disconnect_stops_new_calls() -> None:
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]
 
 
+def test_cancel_signal_from_another_thread_stops_new_calls_and_ends_with_one_line() -> None:
+    """L1-08: 다른 스레드가 반복자를 읽는(기다리는) 중에도 `cancel()`로 새 모델 호출을 멈춘다.
+
+    서비스 계층은 연결이 끊기면 읽는 스레드와 상관없이 이 신호를 먼저 보낸다. 반복자는 끝 줄 하나로 끝난다.
+    """
+    import threading
+
+    gate = threading.Event()
+    entered = threading.Event()
+
+    def slow_tools(_r: Any) -> Any:
+        entered.set()
+        gate.wait(2)
+        return F.tools(COMPARE)
+
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    llm = F.FakeLlm([F.plan(assessments=[change_draft()]), slow_tools, F.done(), compare_answer()])
+    resp = handle_turn(json.dumps(req, ensure_ascii=False).encode(), F.deps(llm), secret=F.SECRET)
+    assert resp.lines is not None and resp.cancel is not None
+    lines: list[str] = []
+
+    def read() -> None:
+        lines.extend(resp.lines)  # type: ignore[arg-type]
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    assert entered.wait(2)  # 읽는 스레드가 next() 안에서 기다리는 중
+    resp.cancel()
+    gate.set()
+    reader.join(5)
+    assert not reader.is_alive()
+    assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]
+    events = [json.loads(x)["event"] for x in lines]
+    assert events[-1] in ("final", "error") and events.count("final") + events.count("error") == 1
+
+
 # ── 자동 목표 확인(TAKE_REVIEWED) ────────────────────────────────────────────
 
 

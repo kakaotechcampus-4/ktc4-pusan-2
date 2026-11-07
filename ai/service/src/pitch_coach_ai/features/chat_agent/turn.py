@@ -74,6 +74,9 @@ class PreStreamError:
 class TurnResponse:
     error: PreStreamError | None = None
     lines: Iterator[str] | None = None
+    #: 취소 신호(어느 스레드에서 불러도 된다). 부르면 새 모델 · 도구 호출을 하지 않고 곧 끝 줄을 낸다.
+    #: 반복자를 닫는 것과 같지만, 다른 스레드가 반복자를 읽는 중에도 부를 수 있다(서비스 계층의 연결 끊김, L1-08)
+    cancel: Callable[[], None] | None = None
 
 
 def _err(status: int, code: str) -> TurnResponse:
@@ -187,7 +190,11 @@ def handle_turn(
         emit=lambda _e, _d: None,
         corpus_ok=corpus_ok,
     )
-    return TurnResponse(lines=_stream(lp, req, deps, payload=payload, secret=secret))
+    cancelled = threading.Event()
+    return TurnResponse(
+        lines=_stream(lp, req, deps, payload=payload, secret=secret, cancelled=cancelled),
+        cancel=cancelled.set,
+    )
 
 
 # ── 줄 쓰기 ────────────────────────────────────────────────────────────────
@@ -239,11 +246,16 @@ class _Writer:
 
 
 def _stream(
-    lp: Loop, req: TurnRequest, deps: TurnDeps, *, payload: Any, secret: bytes
+    lp: Loop,
+    req: TurnRequest,
+    deps: TurnDeps,
+    *,
+    payload: Any,
+    secret: bytes,
+    cancelled: threading.Event,
 ) -> Iterator[str]:
-    """루프를 다른 스레드에서 돌리고 진행 줄을 바로 내보낸다. 반복자를 닫으면 새 호출을 멈춘다."""
+    """루프를 다른 스레드에서 돌리고 진행 줄을 바로 내보낸다. 반복자를 닫거나 `cancelled`를 켜면 새 호출을 멈춘다."""
     q: queue.Queue[tuple[str, Any]] = queue.Queue()
-    cancelled = threading.Event()
     writer = _Writer(req.run.run_id, deps.cfg)
     lp.emit = lambda event, data: q.put(("progress", (event, data)))
     lp.cancelled = cancelled.is_set

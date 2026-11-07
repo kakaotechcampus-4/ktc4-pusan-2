@@ -135,6 +135,18 @@ class Settings(BaseSettings):
     # (compose env_file · docker run --env-file 은 진짜 환경변수로 넣어 먹는다)
     web_concurrency: int = Field(1, ge=1)
 
+    # 대화 에이전트 `/agent/turn` (docs/ai/architecture.md 10절, 대화 기능 문서 11-1).
+    # 꺼져 있으면 대화 경로만 스트림 전 503 AGENT_DISABLED 이고, 대화용 모델 · 자료 묶음도
+    # 만들지 않는다. 서명 키가 없거나 32바이트 미만이면 켜져 있어도 대화 경로만 503 이다
+    # (앱 시작은 막지 않는다)
+    agent_enabled: bool = False
+    # AI 프로세스별 대화 동시 상한(추가 방어, 필수 상한은 BE 대화 자리).
+    # 대화 전용 실행 풀 = 이 값 × 2
+    agent_max_concurrency: int = Field(4, ge=1)
+    # 실행 상태 서명 키(비밀값)와 바로 전 키(검증만, 키를 바꾼 뒤 35분 이상 둔다, 기능 문서 11-3)
+    agent_state_secret: SecretStr | None = None
+    agent_state_secret_previous: SecretStr | None = None
+
     @field_validator(
         "openai_base_url",
         "openai_api_key",
@@ -143,13 +155,16 @@ class Settings(BaseSettings):
         "openai_sol_api_key",
         "openai_sol_model",
         "script_coverage_llm_timeout_seconds",
+        "agent_state_secret",
+        "agent_state_secret_previous",
         mode="before",
     )
     @classmethod
     def _blank_is_none(cls, value: object) -> object:
         """`OPENAI_API_KEY=` 처럼 빈 값은 '없음'으로 본다 (예시 파일을 복사한 칸).
 
-        기능별 시간 제한도 빈 값이면 없음(→ `LLM_TIMEOUT_SECONDS`)이다.
+        기능별 시간 제한도 빈 값이면 없음(→ `LLM_TIMEOUT_SECONDS`)이다. 대화 서명 키도 빈 값이면
+        없음(→ 켜져 있어도 대화 경로만 503 `AGENT_DISABLED`)이다.
         """
         if isinstance(value, str) and value.strip() == "":
             return None
