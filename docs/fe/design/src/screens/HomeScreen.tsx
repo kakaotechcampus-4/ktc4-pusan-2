@@ -8,8 +8,6 @@ import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
 import { HomePitchCard, type HomePitch } from '@/ui/HomePitchCard';
 import { PITCH, type Navigate } from './shared';
 
-const HOME_TIPS = ['연습 전, 슬라이드와 대본을 한 번 확인해 보세요.', '목표 발표 시간을 정하고 한 번 끝까지 연습해 보세요.', '연습을 마친 뒤 Take 기록에서 달라진 점을 확인해 보세요.'];
-
 const HOME_PITCHES: HomePitch[] = [
   { pitch_id: 'p1', pitch_title: PITCH, pitch_time: 300, thumbnail_url: null, takes: [1, 2] },
   {
@@ -46,15 +44,33 @@ const DIALOG_STATES: Record<string, { busy: boolean; error: 'failed' | null }> =
 const homePrimary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
 
+const HOME_TIPS = [
+  '연습 전, 슬라이드와 대본을 한 번 확인해 보세요.',
+  '시작 전 세팅에서 대본 표시 방식을 선택할 수 있어요.',
+  '첫 연습에서는 한 가지 목표에 집중해 보세요.',
+  '연습 후에는 Take 리포트에서 지난 연습과 달라진 점을 확인해 보세요.',
+  '발표 중에는 슬라이드를 넘기며 연습할 수 있어요.',
+  '사용방법 살펴보기에서 연습 순서를 확인할 수 있어요.',
+];
+
+const HOME_TIP_INTERVAL_MS = 8000;
+
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
-  const [tipPaused, setTipPaused] = useState(false);
+  const [tipPaused, setTipPaused] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+  );
   useEffect(() => {
-    if (tipPaused || stateId === 'empty') return;
-    const timer = window.setInterval(() => setTipIndex((index) => (index + 1) % HOME_TIPS.length), 8000);
+    if (tipPaused) return;
+    const timer = window.setInterval(
+      () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
+      HOME_TIP_INTERVAL_MS,
+    );
     return () => window.clearInterval(timer);
-  }, [tipPaused, stateId]);
+  }, [tipPaused]);
   // 기본 상태에서 메뉴로 지우면 그 줄만 이 미리보기에서 뺀다. 서버 요청은 없다
   const [removed, setRemoved] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
@@ -166,20 +182,37 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
           </section>
         )}
       </div>
-      <footer className="mt-auto border-t border-line-strong">
-        <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4 text-xs text-ink/80 lg:px-10">
-          <span className="tabular-nums tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
-          {stateId !== 'empty' && (
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" aria-label="연습 도움말">
-              <span role="status" aria-live="polite"><span className="font-mono text-coral-deep">TIP / </span>{HOME_TIPS[tipIndex]}</span>
-              <button type="button" className="underline hover:text-ink" onClick={() => setTipPaused((paused) => !paused)} aria-label={tipPaused ? 'TIP 자동 전환 재개' : 'TIP 자동 전환 일시정지'}>{tipPaused ? '재개' : '일시정지'}</button>
-              <button type="button" onClick={() => setHelpOpen(true)} className="underline hover:text-ink">사용방법 살펴보기</button>
-            </div>
-          )}
-          <nav className="flex gap-5" aria-label="정책 안내">
-            <Link to="/terms?from=home" className="hover:text-ink">이용약관</Link>
-            <Link to="/privacy?from=home" className="hover:text-ink">개인정보 처리방침</Link>
-          </nav>
+      <footer className="border-t border-line-strong">
+        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 md:flex-nowrap lg:px-10">
+          <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
+            <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
+            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
+              {HOME_TIPS[tipIndex]}
+            </p>
+            <button
+              type="button"
+              onClick={() => setTipPaused((current) => !current)}
+              aria-pressed={tipPaused}
+              aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
+              className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              {tipPaused ? '재개' : '일시정지'}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="min-h-9 shrink-0 whitespace-nowrap hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            사용방법 살펴보기
+          </button>
+          <span className="hidden shrink-0 whitespace-nowrap font-mono tracking-widest 2xl:inline">
+            PITCH COACH · ONE TAKE AT A TIME.
+          </span>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="whitespace-nowrap">이용약관</span>
+            <span className="whitespace-nowrap">개인정보 처리방침</span>
+          </div>
         </div>
       </footer>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
