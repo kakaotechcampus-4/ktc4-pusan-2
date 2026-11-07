@@ -1,6 +1,6 @@
 """가짜 BE 통합 시험 — 메시지 → 행동 → 이어 부르기 → 답 저장을 처음부터 끝까지 돌린다 (기능 문서 5 · 6-6 · 10-2 '통합' · 12-3).
 
-실제 모델 없이 정해 둔 응답(tests/unit/fakes.py)을 쓰고, BE 쪽은 chat_agent_lab/fake_be.py 가 맡는다.
+실제 모델 없이 정해 둔 응답(서비스 tests/unit/chat_agent/fakes.py)을 쓰고, BE 쪽은 chat_agent_lab/fake_be.py 가 맡는다.
 다시 평가는 실제 리뷰 코드(pitch_coach_ai 의 review_take, LLM 없이)를 바꾼 입력으로 부른다.
 이름의 L 번호는 기능 문서 7절 실패 행이다(README '실패 행 대응표').
 """

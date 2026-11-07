@@ -6,8 +6,9 @@
 - 쓰는 곳: 평가(evals) · live 시험 · 손으로 해 보기.
   `.\\.venv\\Scripts\\python.exe -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4`
 - 서명 키: `AGENT_STATE_SECRET`이 없으면 프로세스마다 임의 키를 만든다(연구용. 서비스는 키가 없으면 대화 경로를 끈다, 11-1).
-- 서비스로 옮길 때: 환경변수 읽기는 settings, 자리 · 실행 풀은 api/chat_agent.py, 모델은 common/llm.py 의 `tool_llm`,
-  자료 묶음은 `allow_unreviewed=False`(모든 카드 검수 뒤)로 읽는다.
+- 서비스의 같은 자리: 환경변수 읽기는 settings, 자리 · 실행 풀 · HTTP 스트림은 api/chat_agent.py, 모델은 common/llm.py 의
+  `tool_llm`, 자료 묶음은 `allow_unreviewed=False`(검수 전이면 자료 없이 시작)로 읽는다. 여기서는 모델을 서비스의
+  `ToolLlmClient` 로 만들고 자료 묶음은 검수 전 카드까지 읽는다(평가용).
 """
 
 from __future__ import annotations

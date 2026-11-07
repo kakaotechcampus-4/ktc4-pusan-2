@@ -1,7 +1,7 @@
 """코어가 부르는 도구 호출 LLM 의 모양 (기능 문서 6-11). 코어는 LLM 객체를 만들지 않고 인자로 받는다.
 
-- 누가 만드나: 연구 모듈은 `chat_agent_lab/llm.py`(OpenAI 호환 스트리밍), 서비스 탑재 뒤에는 `common/llm.py`의
-  `tool_llm`. 시험은 정해 둔 답을 차례로 내는 가짜 모델(tests/unit/fakes.py).
+- 누가 만드나: 서비스 `common/llm.py`의 `tool_llm`(`ToolLlmClient`, OpenAI 호환 스트리밍. 연구 모듈도 이것을 쓴다).
+  시험은 정해 둔 답을 차례로 내는 가짜 모델(서비스 tests/unit/chat_agent/fakes.py).
 - 호출 결과는 도구 호출 · 구조화(`response_schema`) 모드 모두 같은 모양이다:
   `{message, tool_calls[{id, name, args}], finish_reason, model, usage{input_tokens, output_tokens}, attempts}`.
 - 한도: 코어는 전송 시도마다 `before_attempt(n)`으로 예산을 원자적으로 예약한다(8-3). False 면 LLM 쪽은 보내지 않고
@@ -9,7 +9,8 @@
 - 실패는 `LlmError` 하위 예외이고 `attempts` · `usage`(모르면 None)를 달고 온다. 공급자 거절은 `LlmRefused`.
 - 응답 조각: 요청에 `text_sink`가 있으면 LLM 쪽은 시도마다 `start(n)`을 부르고 받은 글 조각을 `feed(n, 조각)`으로 넘긴다.
   받는 쪽이 화면에 낸 것이 생겼으면(`committed()`) 그 호출은 다시 보내지 않는다(5-4 문장 줄 · 6-11).
-- 서비스로 옮길 때 `common/errors.py`의 같은 이름(`LlmTimeout` 등)과 맞춘다.
+- 이름이 공통 예외(`common/errors.py`의 `LlmTimeout` 등)와 같지만 다른 클래스다. 서비스 공통 모듈은 이 모듈을 별칭
+  (`chat_llm`)으로만 가져와 섞지 않는다.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """평가 실행기 시험 — 가짜 모델로 처음부터 끝까지, 반복 · pass^k, 금지된 일, 기준선, 지표 · 목표 수치, 보고서 · 명령 (기능 문서 10-5 · 13 · 14).
 
-실제 모델을 부르지 않는다(가짜 모델 tests/unit/fakes.py). 실제 모델 평가는 `python -m chat_agent_lab.evals`(요금, README).
+실제 모델을 부르지 않는다(가짜 모델: 서비스 tests/unit/chat_agent/fakes.py). 실제 모델 평가는 `python -m chat_agent_lab.evals`(요금, README).
 """
 
 from __future__ import annotations
