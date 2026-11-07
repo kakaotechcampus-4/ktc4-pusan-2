@@ -11,16 +11,21 @@ from typing import Any
 
 import pytest
 
-from chat_agent.config import DEFAULT_CONFIG as CFG
-from chat_agent.evidence import EvidenceRegistry
-from chat_agent.llm_types import LlmInvalidOutput, LlmRefused, LlmResult, ToolCall
-from chat_agent.runctx import RunCtx
-from chat_agent.schemas import FinalData, TurnRequest
-from chat_agent.tools import run_tool, validate_args
-from chat_agent.turn import handle_turn
-from chat_agent_lab import fixtures as fx
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
+from pitch_coach_ai.features.chat_agent.llm_types import (
+    LlmInvalidOutput,
+    LlmRefused,
+    LlmResult,
+    ToolCall,
+)
+from pitch_coach_ai.features.chat_agent.runctx import RunCtx
+from pitch_coach_ai.features.chat_agent.schemas import FinalData, TurnRequest
+from pitch_coach_ai.features.chat_agent.tools import run_tool, validate_args
+from pitch_coach_ai.features.chat_agent.turn import handle_turn
 
 from . import fakes as F
+from . import fixtures as fx
 
 MSG = "Take 4보다 Take 5에서 3장 시선이 좋아졌어?"
 COMPARE = (

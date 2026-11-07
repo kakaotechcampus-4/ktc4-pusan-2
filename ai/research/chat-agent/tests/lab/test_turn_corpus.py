@@ -8,10 +8,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
-from chat_agent.schemas import FinalData
 from chat_agent_lab.app import load_corpus
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 MSG = "청중과 눈을 잘 맞추려면 어떻게 해야 해?"
 SEARCH = ("search_guides", {"query": "청중 눈맞춤"})

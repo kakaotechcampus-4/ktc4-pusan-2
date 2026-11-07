@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from chat_agent.diagnostics import (
+from pitch_coach_ai.features.chat_agent.diagnostics import (
     DiagRecorder,
     code_enum,
     finish_code,

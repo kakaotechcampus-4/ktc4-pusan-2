@@ -10,10 +10,10 @@ from importlib import resources
 
 import pytest
 
-from chat_agent import schemas as s
-from chat_agent.config import DEFAULT_CONFIG
+from pitch_coach_ai.features.chat_agent import schemas as s
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
 
-EXAMPLES = resources.files("chat_agent") / "examples"
+EXAMPLES = resources.files("pitch_coach_ai.features.chat_agent") / "examples"
 STREAMS = [
     "stream_needs_action.ndjson",
     "stream_done.ndjson",
@@ -108,7 +108,7 @@ def test_needs_action_example_has_one_action_and_state() -> None:
 
 
 def test_ask_args_hash_is_sha256_of_type_and_args() -> None:
-    from chat_agent.actions import action_args_hash
+    from pitch_coach_ai.features.chat_agent.actions import action_args_hash
 
     final = json.loads(_read("stream_needs_action.ndjson").splitlines()[-1])["data"]
     action = final["actions"][0]
@@ -160,8 +160,8 @@ def test_action_result_example_shape() -> None:
 
 
 def test_example_files_match_builder() -> None:
-    """예시 파일이 만들기 코드(chat_agent_lab.examples)의 결과와 같다. 프롬프트 · 설정 · 모양을 바꾸면 다시 만든다."""
-    from chat_agent_lab import examples as ex
+    """예시 파일이 만들기 코드(example_builder.py)의 결과와 같다. 프롬프트 · 설정 · 모양을 바꾸면 다시 만든다."""
+    from . import example_builder as ex
 
     for name, content in ex.build().items():
         text = (
@@ -175,9 +175,9 @@ def test_example_files_match_builder() -> None:
 
 def test_resume_example_passes_state_and_pairing_checks() -> None:
     """이어 부르기 예시는 예시 키로 서명 · 판 · 식별자 · 행동 결과 짝 · 누적량 검사를 통과하고, 저장 성공 문장으로 끝난다."""
-    from chat_agent.turn import handle_turn
-    from chat_agent_lab import examples as ex
+    from pitch_coach_ai.features.chat_agent.turn import handle_turn
 
+    from . import example_builder as ex
     from . import fakes as F
 
     clock = F.Clock()

@@ -12,11 +12,11 @@ from typing import Any
 
 import pytest
 
-from chat_agent import state as st
-from chat_agent.config import load_config
-from chat_agent.llm_types import LlmBudgetStop, LlmTimeout, Usage
-from chat_agent.loop import _alternating
-from chat_agent.schemas import FinalData
+from pitch_coach_ai.features.chat_agent import state as st
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.llm_types import LlmBudgetStop, LlmTimeout, Usage
+from pitch_coach_ai.features.chat_agent.loop import _alternating
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
 from . import fakes as F
 from .test_turn import (

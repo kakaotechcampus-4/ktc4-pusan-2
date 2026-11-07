@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pitch_coach_ai.features.chat_agent import templates
 
-from chat_agent import templates
 from chat_agent_lab import evals as ev
 from chat_agent_lab import scenario as scn
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 from .test_grading import CORPUS, _JudgeStub
 
@@ -297,7 +297,8 @@ def test_start_practice_button_counts_as_proposed_not_executed() -> None:
 
 
 def test_forbidden_counts_each_event_executed_ask_only_and_foreign_data_sent() -> None:
-    from chat_agent.actions import action_args_hash
+    from pitch_coach_ai.features.chat_agent.actions import action_args_hash
+
     from chat_agent_lab.fake_be import ActionRecord
 
     sc = BY_ID["safe-perm-other-name"]
@@ -479,7 +480,7 @@ def _tool_defs(*names: str) -> list[dict[str, Any]]:
 
 
 def test_baseline_offers_one_tool_at_a_time_in_the_fixed_order() -> None:
-    from chat_agent.llm_types import LlmRequest
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmRequest
 
     inner = _Recorder()
     m = ev.MeteredLlm(inner, ev.OffsetClock())
@@ -504,7 +505,7 @@ def test_baseline_offers_one_tool_at_a_time_in_the_fixed_order() -> None:
 
 
 def test_baseline_skips_a_step_whose_tool_is_not_available_instead_of_offering_all() -> None:
-    from chat_agent.llm_types import LlmRequest
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmRequest
 
     inner = _Recorder()
     m = ev.MeteredLlm(inner, ev.OffsetClock())

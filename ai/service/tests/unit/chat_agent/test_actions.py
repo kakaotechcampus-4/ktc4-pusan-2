@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from chat_agent import templates
-from chat_agent.actions import (
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.actions import (
     ACTION_TOOL_ARGS,
     AUTONOMY,
     ResultMismatch,
@@ -29,11 +29,11 @@ from chat_agent.actions import (
     propose,
     start_practice_action,
 )
-from chat_agent.budget import Budget, Counters
-from chat_agent.config import DEFAULT_CONFIG as CFG
-from chat_agent.goals import build_goal_draft
-from chat_agent.runctx import RunCtx
-from chat_agent.schemas import (
+from pitch_coach_ai.features.chat_agent.budget import Budget, Counters
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.goals import build_goal_draft
+from pitch_coach_ai.features.chat_agent.runctx import RunCtx
+from pitch_coach_ai.features.chat_agent.schemas import (
     Action,
     ActionResult,
     AskConfirmCard,
@@ -45,8 +45,8 @@ from chat_agent.schemas import (
     ReassessResultCard,
     StartPracticeCard,
 )
-from chat_agent_lab.fixtures import review, sample_pitch, take_snapshot
 
+from .fixtures import review, sample_pitch, take_snapshot
 from .test_tools import EXAMPLES, base_request, focus_snapshot, load, make_ctx, run
 
 MSG = "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"
@@ -1403,8 +1403,8 @@ def test_args_hash_serialization_rule_example_in_the_feature_doc() -> None:
     import hashlib
     from pathlib import Path
 
-    from chat_agent.actions import action_args_hash
-    from chat_agent.evidence import canonical_json
+    from pitch_coach_ai.features.chat_agent.actions import action_args_hash
+    from pitch_coach_ai.features.chat_agent.evidence import canonical_json
 
     args = {
         "take_id": "t-5",
@@ -1472,7 +1472,7 @@ def test_fetch_take_does_not_swap_in_another_take_when_the_named_one_is_gone() -
 
 def test_named_take_ids_need_letters_and_digits() -> None:
     """하이픈 낱말 중 영문자와 숫자가 모두 든 것만 Take ID 후보다('Q-A' · 'B-roll'로 다시 평가를 막지 않음, #895 리뷰)."""
-    from chat_agent.actions import _NAMED_ID
+    from pitch_coach_ai.features.chat_agent.actions import _NAMED_ID
 
     assert _NAMED_ID.findall("Q-A 대본 보고 한 걸로 다시 평가해 줘, co-presenter B-roll") == []
     assert _NAMED_ID.findall("p9-t1 하고 t-4 다시 봐 줘") == ["p9-t1", "t-4"]
@@ -1501,7 +1501,7 @@ def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
 def test_take_numbers_are_not_unresolved_after_switching_the_scope_pitch() -> None:
     """범위 피치를 다른 피치로 바꾼 실행은 말한 Take 번호를 한 피치에 묶을 수 없어 '없는 번호'로 보지 않는다
     ("졸업 발표 Take 5랑 회사 소개 Take 2 비교해 줘"에서 회사 소개로 바꾼 뒤 Take 5, #940 리뷰)."""
-    from chat_agent.actions import unresolved_take_numbers
+    from pitch_coach_ai.features.chat_agent.actions import unresolved_take_numbers
 
     msg = "졸업 발표 Take 5랑 회사 소개 발표 Take 9 시선 비교해 줘"
     ctx = ctx_for(msg)

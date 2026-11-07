@@ -8,10 +8,15 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from chat_agent.config import DEFAULT_CONFIG as CFG
-from chat_agent.config import load_config
-from chat_agent.goals import build_goal_draft, compare_takes, judge_goal, range_distance
-from chat_agent.schemas import Goal, GoalDraft
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.goals import (
+    build_goal_draft,
+    compare_takes,
+    judge_goal,
+    range_distance,
+)
+from pitch_coach_ai.features.chat_agent.schemas import Goal, GoalDraft
 
 from .snapshots import make_take, make_version_of, new_registry, set_value
 
@@ -804,7 +809,7 @@ def test_goal_delta_direction_is_recomputed_from_the_operator_input_only():
 
 
 def test_fm_L4_05_omitted_descendant_paths_block_range_sources():
-    from chat_agent.values import OmittedDataError, range_sources
+    from pitch_coach_ai.features.chat_agent.values import OmittedDataError, range_sources
 
     cpm = make_take(5, omitted_paths=["take_result.criteria.SPEED.issues.PACE_FAST.threshold"])
     with pytest.raises(OmittedDataError):

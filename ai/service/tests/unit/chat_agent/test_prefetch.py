@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from chat_agent.config import load_config
-from chat_agent.schemas import FinalData
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
 from . import fakes as F
 from .test_turn import fetched_take, resume_request

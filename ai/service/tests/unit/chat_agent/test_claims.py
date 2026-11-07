@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from chat_agent import templates
-from chat_agent.claims import (
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.claims import (
     UNSET,
     AssessmentDraft,
     DraftSubject,
@@ -22,9 +22,9 @@ from chat_agent.claims import (
     split_check,
     to_base_unit,
 )
-from chat_agent.claims import _aggregate as aggregate
-from chat_agent.config import DEFAULT_CONFIG as CFG
-from chat_agent.schemas import Subject
+from pitch_coach_ai.features.chat_agent.claims import _aggregate as aggregate
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.schemas import Subject
 
 from .snapshots import make_take, make_version_of, new_registry, takes_map
 
@@ -1349,7 +1349,7 @@ def test_fm_L6_10_link_key_uses_take_numbers_without_relative_expression():
 
 
 def test_fm_L6_10_relative_target_longest_match_first():
-    from chat_agent.claims import relative_target
+    from pitch_coach_ai.features.chat_agent.claims import relative_target
 
     assert (
         relative_target("최근 세 번 모두", CFG) == "RECENT_3"
@@ -1674,8 +1674,8 @@ def test_issue_negation_is_part_of_claim_key():
 
 def test_metric_name_pointing_to_two_metrics_is_left_unknown():
     """표시 이름과 설정의 문장용 이름이 다른 지표를 가리키면 바꾸지 않는다(확인 불가)."""
-    from chat_agent.claims import _metric_key
-    from chat_agent.config import load_config
+    from pitch_coach_ai.features.chat_agent.claims import _metric_key
+    from pitch_coach_ai.features.chat_agent.config import load_config
 
     cfg = load_config(metric_names={**dict(CFG.metric_names), "말 속도": "slide_duration_ms"})
     d = issue_draft("Take 5 속도 느렸지?", polarity=NEG, metric="말 속도")
@@ -1685,8 +1685,8 @@ def test_metric_name_pointing_to_two_metrics_is_left_unknown():
 
 def test_script_statement_typed_request_is_retyped_but_script_requests_stay() -> None:
     """과거형 대본 사용 진술만 대본 주장(MEASURED)으로 바로잡고, '대본 보고 한 걸로 다시 평가해 줘' 같은 요청은 그대로 둔다."""
-    from chat_agent.claims import AssessmentDraft, split_check
-    from chat_agent.config import DEFAULT_CONFIG
+    from pitch_coach_ai.features.chat_agent.claims import AssessmentDraft, split_check
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
 
     from . import fakes as F
 
@@ -1720,16 +1720,16 @@ def test_measurement_dispute_is_a_measure_word_without_a_condition_word(
     msg: str, dispute: bool
 ) -> None:
     """측정값 이의: 측정 항목을 말했지만 대본 · 원고 · 조건 · (내) 기준은 말하지 않음. 측정 기준 · 기준 잡기는 조건이 아니다."""
-    from chat_agent.claims import measurement_dispute
-    from chat_agent.config import DEFAULT_CONFIG
+    from pitch_coach_ai.features.chat_agent.claims import measurement_dispute
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
 
     assert measurement_dispute(msg, DEFAULT_CONFIG) is dispute
 
 
 def test_script_statement_with_saying_used_is_also_retyped() -> None:
     """'대본을 사용했어' 같은 표현도 대본 사용 진술이다."""
-    from chat_agent.claims import AssessmentDraft, split_check
-    from chat_agent.config import DEFAULT_CONFIG
+    from pitch_coach_ai.features.chat_agent.claims import AssessmentDraft, split_check
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
 
     from . import fakes as F
 
@@ -1743,7 +1743,7 @@ def test_script_statement_with_saying_used_is_also_retyped() -> None:
 
 def test_choice_questions_are_not_issue_negation() -> None:
     """'아니면' · '아닌지'는 고르는 질문이라 문제 주장의 부정이 아니다(#895 리뷰). 진짜 부정은 그대로."""
-    from chat_agent.claims import _NEG_AFTER
+    from pitch_coach_ai.features.chat_agent.claims import _NEG_AFTER
 
     assert not _NEG_AFTER.search(" 아니면 느렸어?")
     assert not _NEG_AFTER.search("는지 아닌지 알려줘")
@@ -1754,8 +1754,8 @@ def test_choice_questions_are_not_issue_negation() -> None:
 def test_goal_and_script_synonyms_state_a_reassess_condition() -> None:
     """'시선 목표 30%로 다시 평가해 줘'(내 기준)와 '스크립트 · 프롬프터 보고 했어'(대본 사용)는 조건을 말한 다시 평가 요청이라
     측정값 이의가 아니다. 측정값만 문제 삼으면 그대로 이의다(6-6, #940 리뷰)."""
-    from chat_agent import claims as clm
-    from chat_agent.config import load_config
+    from pitch_coach_ai.features.chat_agent import claims as clm
+    from pitch_coach_ai.features.chat_agent.config import load_config
 
     cfg = load_config()
     assert not clm.measurement_dispute("시선 목표 30%로 다시 평가해 줘", cfg)
@@ -1766,8 +1766,8 @@ def test_goal_and_script_synonyms_state_a_reassess_condition() -> None:
 
 def test_goal_only_counts_as_a_condition_when_a_number_is_set() -> None:
     """'목표치보다 낮게 나왔어'는 값과 견주기만 한 측정값 이의다('목표 30%로'처럼 정해 말해야 조건)."""
-    from chat_agent import claims as clm
-    from chat_agent.config import load_config
+    from pitch_coach_ai.features.chat_agent import claims as clm
+    from pitch_coach_ai.features.chat_agent.config import load_config
 
     cfg = load_config()
     assert clm.measurement_dispute("시선 목표치보다 낮게 나왔어. 다시 봐 줘", cfg)

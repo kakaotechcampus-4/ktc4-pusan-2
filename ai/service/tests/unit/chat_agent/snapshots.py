@@ -20,9 +20,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from chat_agent.evidence import EvidenceRegistry, RecordVersion
-from chat_agent.schemas import TakeSnapshot
-from chat_agent.values import ISSUE_AREA
+from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry, RecordVersion
+from pitch_coach_ai.features.chat_agent.schemas import TakeSnapshot
+from pitch_coach_ai.features.chat_agent.values import ISSUE_AREA
 
 DEFAULT_CRITERIA: dict[str, str] = {
     "GAZE": "gaze-1.3+aaaaaaaaaaaa",

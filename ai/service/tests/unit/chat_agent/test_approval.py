@@ -14,11 +14,11 @@ from typing import Any
 
 import pytest
 
-from chat_agent import templates
-from chat_agent.actions import action_args_hash
-from chat_agent.config import DEFAULT_CONFIG
-from chat_agent.llm_types import LlmCallFailed, LlmRefused, LlmTimeout
-from chat_agent.schemas import FinalData
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.actions import action_args_hash
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+from pitch_coach_ai.features.chat_agent.llm_types import LlmCallFailed, LlmRefused, LlmTimeout
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
 from . import fakes as F
 from .test_actions import _proposal_request
@@ -244,7 +244,7 @@ def test_fm_L1_43_card_that_cannot_be_drawn_gives_no_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """확인 카드를 그릴 수 없으면 승인받을 수 없으니 행동을 내지 않고 PARTIAL 로 끝낸다(L1-43)."""
-    from chat_agent import turn as turn_mod
+    from pitch_coach_ai.features.chat_agent import turn as turn_mod
 
     monkeypatch.setattr(turn_mod.act, "ask_confirm_card", lambda *a, **k: None)
     _, _, data = pause()
@@ -592,7 +592,7 @@ def test_resume_without_room_keeps_the_front_and_tells_the_approved_result_with_
 
 def _resume_with_state_turn_count(req: Any, data: dict[str, Any], turn_count: int) -> Any:
     """서명 상태의 호출 번호를 바꿔 다시 서명한다(7번째 호출 한도 시험)."""
-    from chat_agent import state as st
+    from pitch_coach_ai.features.chat_agent import state as st
 
     p = payload_of(data["state"])
     p["turn_count"] = turn_count
@@ -656,7 +656,7 @@ def test_end_without_model_with_only_the_front_is_partial_not_agent_timeout() ->
     """저장된 앞 문장이 있으면, 결과 문장 · 근거가 없어도 AGENT_TIMEOUT 으로 버리지 않고 PARTIAL 로 끝낸다(앞 문장은 `_finish`가 싣는다)."""
     from types import SimpleNamespace
 
-    from chat_agent import turn as turn_mod
+    from pitch_coach_ai.features.chat_agent import turn as turn_mod
 
     captured: dict[str, Any] = {}
 
@@ -697,7 +697,7 @@ GUIDE_CARD = {
 
 def with_guide_front(data: dict[str, Any]) -> dict[str, Any]:
     """첫 멈춤의 서명 상태에 자료를 인용한 앞 문장 + 그 자료 카드 사본을 더해 다시 서명한다."""
-    from chat_agent import state as st
+    from pitch_coach_ai.features.chat_agent import state as st
 
     p = payload_of(data["state"])
     p["loop"]["emitted"] = [*p["loop"]["emitted"], GUIDE_CLAIM]
@@ -707,8 +707,8 @@ def with_guide_front(data: dict[str, Any]) -> dict[str, Any]:
 
 def test_state_too_large_keeps_the_front_sentences_and_their_source_cards(monkeypatch: Any) -> None:
     """둘째 승인 대기 상태가 한도를 넘으면 행동 없이 PARTIAL 로 끝내되, 앞 문장이 쓰는 자료 카드 사본은 버리지 않는다."""
-    from chat_agent import state as st
-    from chat_agent import turn as turn_mod
+    from pitch_coach_ai.features.chat_agent import state as st
+    from pitch_coach_ai.features.chat_agent import turn as turn_mod
 
     req, _, data = pause(req=first_request(GOAL_AND_REASSESS_MSG))
     data = with_guide_front(data)
@@ -733,8 +733,8 @@ def test_state_too_large_keeps_the_front_sentences_and_their_source_cards(monkey
 
 def test_state_too_large_keeps_the_executed_result_sentence_and_card(monkeypatch: Any) -> None:
     """둘째 승인 상태가 크기 한도를 넘어 새 승인 행동을 버려도, 이미 실행 · 검증된 저장 결과 문장과 GOAL_SAVED 카드는 남는다."""
-    from chat_agent import state as st
-    from chat_agent import turn as turn_mod
+    from pitch_coach_ai.features.chat_agent import state as st
+    from pitch_coach_ai.features.chat_agent import turn as turn_mod
 
     req, _, data = pause(req=first_request(GOAL_AND_REASSESS_MSG))
     said = data["message"]["claims"]

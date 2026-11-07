@@ -6,12 +6,11 @@
 
 from __future__ import annotations
 
+from pitch_coach_ai.features.chat_agent import schemas as s
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
 from pitch_coach_ai.features.review import config as review_config
 from pitch_coach_ai.features.review import schemas as review_schemas
 from pitch_coach_ai.features.review import vocab as review_vocab
-
-from chat_agent import schemas as s
-from chat_agent.config import DEFAULT_CONFIG
 
 
 def test_fm_L4_10_direction_table_equals_review() -> None:

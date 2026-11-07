@@ -30,8 +30,7 @@ from typing import Any
 
 import httpx
 import openai
-
-from chat_agent.llm_types import (
+from pitch_coach_ai.features.chat_agent.llm_types import (
     LlmBudgetStop,
     LlmCallFailed,
     LlmError,

@@ -11,14 +11,14 @@ from typing import Any
 
 import pytest
 
-from chat_agent import templates
-from chat_agent.config import load_config
-from chat_agent.llm_types import LlmTimeout, Usage
-from chat_agent.schemas import FinalData
-from chat_agent.turn import handle_turn
-from chat_agent_lab.fixtures import sample_pitch, take_snapshot
+from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout, Usage
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
+from pitch_coach_ai.features.chat_agent.turn import handle_turn
 
 from . import fakes as F
+from .fixtures import sample_pitch, take_snapshot
 
 MSG = "Take 4보다 Take 5에서 3장 시선이 좋아졌어?"
 COMPARE = (
@@ -605,7 +605,7 @@ def test_seventh_turn_call_ends_without_model() -> None:
     """L1-31: 이어 부르기로 /agent/turn 6회를 넘기면 모델 없이 PARTIAL."""
     req = F.request(user_message=MSG)
     _, _, data = F.run_turn(req, F.FakeLlm(fetch_take_script()))
-    from chat_agent import state as st
+    from pitch_coach_ai.features.chat_agent import state as st
 
     payload = json.loads(st.base64.urlsafe_b64decode(data["state"]["payload"] + "=="))
     payload["turn_count"] = 6
@@ -781,7 +781,7 @@ def test_fm_L1_39_partial_usage_keeps_unknown_side_null() -> None:
 
 
 def test_fm_L1_39_failed_attempt_usage_marks_unmeasured_and_logs_model_step() -> None:
-    from chat_agent.llm_types import LlmResult
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmResult
 
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
 
@@ -916,8 +916,8 @@ def test_fm_L1_32_changed_revision_between_calls_demotes_old_evidence() -> None:
 
 
 def test_fm_L1_06_too_large_final_shrinks_diagnostics_before_dropping() -> None:
-    from chat_agent.diagnostics import DiagRecorder
-    from chat_agent.turn import _final_line, _Writer
+    from pitch_coach_ai.features.chat_agent.diagnostics import DiagRecorder
+    from pitch_coach_ai.features.chat_agent.turn import _final_line, _Writer
 
     d = DiagRecorder(
         request_id="r",
@@ -950,7 +950,7 @@ def test_fm_L1_06_too_large_final_shrinks_diagnostics_before_dropping() -> None:
 
 
 def _review_side(score: int, gaze: str) -> dict[str, Any]:
-    from chat_agent_lab.fixtures import review
+    from .fixtures import review
 
     r = review(take_id="t-5", dimensions={"audience_gaze": gaze}, score=score)
     r["criteria_results"] = []
@@ -1007,7 +1007,7 @@ def test_fm_L1_32_changed_revision_during_reassess_supersedes_exported_judgement
 
 
 def test_fm_L1_12_research_refusal_ends_refused() -> None:
-    from chat_agent.llm_types import LlmRefused
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmRefused
 
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
     llm = F.FakeLlm([F.plan(assessments=[change_draft()]), LlmRefused()])
@@ -1112,7 +1112,7 @@ def test_value_question_is_not_judged_unverifiable() -> None:
 
 def test_script_points_removed_notice_condition() -> None:
     """대본 허용으로 다시 평가해 점수가 오르면 7-10 "평가 항목이 빠져 오른 점수예요…"를 붙인다."""
-    from chat_agent.loop import _script_points_removed
+    from pitch_coach_ai.features.chat_agent.loop import _script_points_removed
 
     before = {"score": 88, "dimensions": {"script_independence": "PRIORITY"}}
     after = {"score": 100, "dimensions": {"script_independence": "NOT_EVALUABLE"}}
@@ -1154,9 +1154,9 @@ def test_question_conversion_only_for_plain_questions(
     quote: str, message: str, claim_op: str, polarity: str, kept: bool
 ) -> None:
     """묻는 말이 있어도 값 · 방향 없이 물음표로 끝나는 단순 질문일 때만 요청으로 바꾼다."""
-    from chat_agent import claims as clm
-    from chat_agent.config import DEFAULT_CONFIG
-    from chat_agent.turn import _question_as_request
+    from pitch_coach_ai.features.chat_agent import claims as clm
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+    from pitch_coach_ai.features.chat_agent.turn import _question_as_request
 
     d = clm.AssessmentDraft.model_validate(
         F.draft(
@@ -1206,7 +1206,7 @@ def test_assessment_head_does_not_render_supported_template_for_request() -> Non
     """요청 · 정보 질문은 근거가 있어도 '기록과 맞아요'를 그리지 않는다(측정 주장은 그린다)."""
     from types import SimpleNamespace
 
-    from chat_agent.turn import _assessment_head
+    from pitch_coach_ai.features.chat_agent.turn import _assessment_head
 
     def outcome(type_: str) -> Any:
         a = SimpleNamespace(verdict="SUPPORTED", type=type_, quote="3장 시선 몇 %였어?")

@@ -12,11 +12,13 @@ import pytest
 from chat_agent_lab import evals as ev
 from chat_agent_lab import grading as gr
 from chat_agent_lab.app import load_corpus
-from tests.unit import fakes as F
-from tests.unit.test_turn import COMPARE, roles
+from chat_agent_lab.service_tests import fakes as F
+from chat_agent_lab.service_tests import turn_tests
 
 from .test_evals import BY_ID, _request, _save_goal_llm, _slide3_answer
 from .test_fake_be import reassess_llm, script_drafts
+
+COMPARE, roles = turn_tests.COMPARE, turn_tests.roles
 
 SLIDE3_REPORT = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
 
@@ -544,7 +546,7 @@ class _DownLlm:
     model_name = None
 
     def invoke(self, req: Any, before_attempt: Any) -> Any:
-        from chat_agent.llm_types import LlmCallFailed, Usage
+        from pitch_coach_ai.features.chat_agent.llm_types import LlmCallFailed, Usage
 
         before_attempt(1)
         raise LlmCallFailed(attempts=1, usage=[Usage()], cause="PermissionDeniedError:403")
@@ -722,7 +724,12 @@ def test_provider_streak_counts_calls_in_completion_order_across_runs() -> None:
     # 끝난 순서로 세므로 B 의 성공이 연속을 끊는다(실행이 끝나기를 기다렸다 세면 A 의 3번이 이어 보인다)
     import contextlib
 
-    from chat_agent.llm_types import LlmCallFailed, LlmRequest, LlmResult, Usage
+    from pitch_coach_ai.features.chat_agent.llm_types import (
+        LlmCallFailed,
+        LlmRequest,
+        LlmResult,
+        Usage,
+    )
 
     seen: list[Any] = []
 

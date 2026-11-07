@@ -4,6 +4,7 @@
   함수 항목은 앞 도구 결과(요청 메시지)를 읽어 근거 id 를 고르는 데 쓴다. 호출마다 `before_attempt`로 한도를 예약한다(실제와 같음).
 - `plan()` · `tools()` · `answer()` · `fix()`: 구조화 · 도구 응답 만들기. `tool_results(req)`: 요청 속 도구 결과 JSON 목록.
 - `request(**바꿀 것)`: 예시 `request_user_message.json`에서 시작한 요청 dict.
+- `load_corpus()`: 코어 패키지의 자료 묶음(검수 전 카드 포함, 연구 단계와 같음).
 - `run_turn(req, llm, ...)`: `handle_turn`을 불러 (상태 코드 · 줄 목록 · final 데이터)를 돌려준다.
 """
 
@@ -15,12 +16,21 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from chat_agent.config import DEFAULT_CONFIG, ChatAgentConfig
-from chat_agent.llm_types import LlmBudgetStop, LlmError, LlmRequest, LlmResult, ToolCall, Usage
-from chat_agent.loop import TurnDeps
-from chat_agent.turn import handle_turn
+from pitch_coach_ai.features import chat_agent as _core
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, ChatAgentConfig
+from pitch_coach_ai.features.chat_agent.corpus import Corpus, build_corpus
+from pitch_coach_ai.features.chat_agent.llm_types import (
+    LlmBudgetStop,
+    LlmError,
+    LlmRequest,
+    LlmResult,
+    ToolCall,
+    Usage,
+)
+from pitch_coach_ai.features.chat_agent.loop import TurnDeps
+from pitch_coach_ai.features.chat_agent.turn import handle_turn
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "src" / "chat_agent" / "examples"
+EXAMPLES = Path(_core.__file__).parent / "examples"
 SECRET = b"k" * 32
 NOW_MS = 1_793_000_000_000
 
@@ -265,9 +275,20 @@ def request(**changes: Any) -> dict[str, Any]:
     return req
 
 
+def load_corpus(cfg: ChatAgentConfig = DEFAULT_CONFIG) -> Corpus:
+    """코어 패키지의 자료 묶음(`guides/`)을 검수 전 카드까지 읽는다(시험용, 연구 단계와 같은 `allow_unreviewed=True`)."""
+    guides = Path(_core.__file__).parent / "guides"
+    manifest = json.loads((guides / "manifest.json").read_text(encoding="utf-8"))
+    files = {
+        name: json.loads((guides / name).read_text(encoding="utf-8"))
+        for name in manifest.get("files", [])
+    }
+    return build_corpus(manifest, files, cfg=cfg, allow_unreviewed=True)
+
+
 def with_loaded(req: dict[str, Any], *take_ids: str) -> dict[str, Any]:
     """예시 피치(가상 기록)의 Take 결과를 `context.loaded_takes`에 싣는다(BE가 이미 읽어 둔 Take)."""
-    from chat_agent_lab.fixtures import sample_pitch, take_snapshot
+    from .fixtures import sample_pitch, take_snapshot
 
     p = sample_pitch(req["run"]["user_id"])
     req["context"]["loaded_takes"] = [take_snapshot(p.take(t)) for t in take_ids]  # type: ignore[arg-type]
