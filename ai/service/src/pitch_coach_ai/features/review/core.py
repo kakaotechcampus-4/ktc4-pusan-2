@@ -184,6 +184,10 @@ def _numbers(sentence: str) -> list[tuple[str, float, int]]:
     return found
 
 
+#: 숫자 검사가 보는 소수 자리 상한. float 의 유효 숫자(약 15자리)를 넘는 자리는 비교할 수 없다
+_MAX_PLACES = 15
+
+
 def _round_half_up(value: float, places: int) -> float:
     """보여 준 자리까지 반올림 (0.625 → 0.63). 부동소수 오차는 1e-9 로 덮는다"""
     scale = 10**places
@@ -207,6 +211,10 @@ def check_numbers(sentence: str, allowed_numbers: Iterable[float | int | None]) 
     """
     allowed = [abs(float(a)) for a in allowed_numbers if a is not None and not isinstance(a, bool)]
     for unit, value, places in _numbers(sentence):
+        if places > _MAX_PLACES:
+            # float 로 비교할 수 없는 자리 수는 입력에 없는 숫자다. 반올림(10**places)이
+            # OverflowError 를 내면 apply_draft 밖으로 나가 200 이 아니라 500 이 된다 (명세 7절)
+            return False
         scale = _UNIT_SCALE[unit]
         if places == 0 and unit in _EXACT_UNITS:
             same = any(abs(a * scale - value) < 1e-9 for a in allowed)

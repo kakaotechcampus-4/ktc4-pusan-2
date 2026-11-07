@@ -231,6 +231,20 @@ def test_number_check_replaces_only_bad_sentences(req):
     assert resp.next_missions[1].reason == base.next_missions[1].reason
 
 
+def test_very_long_decimal_replaces_only_that_item(req):
+    # 소수 자리가 아주 긴 숫자는 반올림이 넘쳐(OverflowError) 500 이 나던 경로다.
+    # 입력에 없는 숫자로 보고 그 항목만 기본 문장으로 바꾼다 (200)
+    def make(p: dict[str, Any]) -> dict[str, Any]:
+        draft = full_draft(p).model_dump()
+        draft["overall_summary"] = "점수는 0." + "1" * 400 + "점입니다."
+        return draft
+
+    base = review_take(req)
+    resp = review_take(req, FakeLLM(make), model="m")
+    assert resp.fallback_reason is None
+    assert resp.overall_summary == base.overall_summary
+
+
 def test_number_check_on_improvement_and_mission_description(req):
     def make(p: dict[str, Any]) -> dict[str, Any]:
         draft = full_draft(p).model_dump()

@@ -60,6 +60,10 @@ def test_architecture_contract_table(allowed, sentence, same):
         ([2.4], "2번", False),
         ([5.0], "5번", True),  # 문자열에서 되돌린 5.0 도 같은 개수
         ([318.5], "319자", True),  # 자는 보인 자리까지 반올림
+        # 소수 15자리까지는 비교하고, 그보다 길면 입력에 없는 숫자 (반올림이 넘치지 않게)
+        ([0.123456789012345], "0.123456789012345", True),
+        ([0.5], "0." + "1" * 16, False),
+        ([0.5], "점수는 0." + "1" * 400 + "점입니다.", False),
     ],
 )
 def test_check_numbers_edges(allowed, sentence, same):
