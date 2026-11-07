@@ -18,6 +18,7 @@ const GROUPS = ['슬라이드', '대본', '평가기준'] as const;
 type Kind = (typeof GROUPS)[number];
 type Preview = { kind: Kind | '매핑' | '슬라이드 확인' | '최종 확인'; version: number };
 const sections = ['슬라이드', '대본 연결', '발표정보', '평가기준'];
+const CRITERIA_HINTS = ['발표 속도', '발음 명확성', '군더더기 표현', '시선 처리', '목소리 크기', '시간 준수', '내용 구성', '논리적 연결', '전달력'] as const;
 
 function Icon({ kind }: { kind: 'folder' | 'caret' | 'doc' | 'check' }) {
   const paths = {
@@ -743,8 +744,18 @@ export function PitchCreateScreen({
                     setCriteria([]);
                     setCriteriaSaved(false);
                   }}
-                  placeholder="핵심 주장을 먼저 말하고, 근거와 출처를 설명하고 싶어요."
+                  placeholder="예: 발표 속도와 발음 명확성을 평가해 주세요."
                 />
+                <div className="mt-3" aria-label="평가 가능한 지표 예시">
+                  <p className="mb-2 text-xs text-ink/80">다음 지표를 참고해 평가기준을 작성할 수 있어요.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CRITERIA_HINTS.map((hint) => (
+                      <span key={hint} className="rounded-full border border-line-strong bg-panel px-3 py-1 text-xs">
+                        {hint}
+                      </span>
+                    ))}
+                  </div>
+                </div>
                 <button
                   type="button"
                   className="create-primary mt-3"
