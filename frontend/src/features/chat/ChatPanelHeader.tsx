@@ -80,7 +80,11 @@ export function ChatPanelHeader({
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-line-strong bg-cream">
-            <img src="/semini.png" alt="" className="h-full w-full object-cover [image-rendering:pixelated]" />
+            <img
+              src="/semini.png"
+              alt=""
+              className="h-full w-full object-cover [image-rendering:pixelated]"
+            />
           </div>
           <div className="min-w-0">
             <h2 id={titleId} className="truncate text-base font-bold leading-5">
@@ -90,16 +94,43 @@ export function ChatPanelHeader({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          <button type="button" aria-label="새 대화" title="새 대화" onClick={onNew} className={HEADER_ACTION}>
+          <button
+            type="button"
+            aria-label="새 대화"
+            title="새 대화"
+            onClick={onNew}
+            className={HEADER_ACTION}
+          >
             <ActionIconGraphic kind="new" />
           </button>
-          <button type="button" aria-label="대화 목록" title="대화 목록" aria-pressed={view === 'list'} onClick={() => onToggleView('list')} className={HEADER_ACTION}>
+          <button
+            type="button"
+            aria-label="대화 목록"
+            title="대화 목록"
+            aria-pressed={view === 'list'}
+            onClick={() => onToggleView('list')}
+            className={HEADER_ACTION}
+          >
             <ActionIconGraphic kind="history" />
           </button>
-          <button ref={memoryButtonRef} type="button" aria-label="기억 설정" title="기억 설정" aria-pressed={view === 'memory'} onClick={() => onToggleView('memory')} className={HEADER_ACTION}>
+          <button
+            ref={memoryButtonRef}
+            type="button"
+            aria-label="기억 설정"
+            title="기억 설정"
+            aria-pressed={view === 'memory'}
+            onClick={() => onToggleView('memory')}
+            className={HEADER_ACTION}
+          >
             <ActionIconGraphic kind="memory" />
           </button>
-          <button type="button" aria-label="닫기" title="닫기" onClick={onClose} className={HEADER_ACTION}>
+          <button
+            type="button"
+            aria-label="닫기"
+            title="닫기"
+            onClick={onClose}
+            className={HEADER_ACTION}
+          >
             <ActionIconGraphic kind="close" />
           </button>
         </div>
