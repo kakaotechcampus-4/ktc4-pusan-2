@@ -3,6 +3,7 @@ import type { PracticeCombo, PrepareResponse } from '@/types/api';
 import {
   fromPrepare,
   missionSourceNote,
+  newerComboNotice,
   newerScriptNotice,
   prepareProblem,
   takeChoice,
@@ -122,6 +123,36 @@ describe('이번 연습의 조합', () => {
 
   it('둘 다 없으면 Take 를 만들 수 없다', () => {
     expect(takeChoice(null, null)).toBeNull();
+  });
+});
+
+describe('넘겨받은 조합보다 새 조합이 있다는 안내', () => {
+  const picked = (slideVersion: number, scriptVersion: number): PracticeCombo => ({
+    ...combo,
+    slideVersion,
+    scriptVersion,
+  });
+  const latest = fromPrepare(res); // 자료 v2 · 대본 v2
+
+  it.each([
+    ['대본만 새 것', picked(2, 1)],
+    ['자료만 새 것', picked(1, 2)],
+    ['둘 다 새 것', picked(1, 1)],
+  ])('%s이면 최신 조합을 알린다', (_, older) => {
+    expect(newerComboNotice(older, latest)).toBe('최신 조합이 있어요: 자료 v2 · 대본 v2');
+  });
+
+  it('같은 조합이면 알리지 않는다', () => {
+    expect(newerComboNotice(picked(2, 2), latest)).toBeNull();
+  });
+
+  it('한쪽이라도 조합이 더 새 것이면(엇갈림) 무엇이 최신인지 말할 수 없어 알리지 않는다', () => {
+    expect(newerComboNotice(picked(1, 3), latest)).toBeNull();
+  });
+
+  it('최신 조합으로 시작할 수 없으면 알리지 않는다', () => {
+    const broken = fromPrepare({ ...res, script: { id: 'sv2', version: 2, slide_count: 9 } });
+    expect(newerComboNotice(picked(1, 1), broken)).toBeNull();
   });
 });
 

@@ -234,6 +234,42 @@ it('starts with the chosen server version IDs while the optional voice task is s
   expect(host.textContent).toContain('연습 시작');
 });
 
+it('넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고, [최신으로]를 누르면 최신 조합으로 Take 를 만든다', async () => {
+  const old: PracticeCombo = {
+    title: '고른 발표',
+    presentationVersionId: 'old-pv',
+    scriptVersionId: 'old-sv',
+    slideVersion: 2,
+    scriptVersion: 3,
+    goalTimeSec: 180,
+  };
+  await render(old);
+  const notice = host.querySelector('[data-newer-combo]')!;
+  expect(notice.textContent).toContain('최신 조합이 있어요: 자료 v9 · 대본 v9');
+
+  await act(async () => findButton('최신으로').click());
+  expect(host.querySelector('[data-newer-combo]')).toBeNull();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        presentation_version_id: 'latest-pv',
+        script_version_id: 'latest-sv',
+      }),
+    }),
+  );
+  // 예전 조합을 티켓에 남기지 않습니다 — 실패해 돌아와도 최신 조합으로 엽니다 (deviceCheckLink)
+  expect(setSessionTicket).toHaveBeenCalledWith(
+    'client-session',
+    expect.objectContaining({ practice: null }),
+  );
+});
+
+it('조합 없이 들어오면 최신 조합 안내를 띄우지 않는다', async () => {
+  await render();
+  expect(host.querySelector('[data-newer-combo]')).toBeNull();
+});
+
 it('keeps device selection and calibration as separate actions and blocks starting before calibration', async () => {
   fixture.gazeStatus = 'IDLE';
   await render();

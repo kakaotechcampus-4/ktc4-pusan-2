@@ -20,7 +20,13 @@ import { activeTakeOrNone, endActiveTake } from './activeTake';
 import type { ActiveTake } from '@/types/take';
 import { MissionCard } from './MissionCard';
 import { DEFAULT_SCRIPT_MODE, practiceModeFor, usePrepareStore } from './prepareStore';
-import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
+import {
+  fromPrepare,
+  newerComboNotice,
+  newerScriptNotice,
+  prepareProblem,
+  takeChoice,
+} from './prepareInfo';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
 import { useMicLevel } from '../media/useMicLevel';
@@ -198,7 +204,8 @@ function calibrationLabel(cal: Pick<ReturnType<typeof useGazeSetup>, 'status' | 
 export function DeviceCheckPage() {
   const { pitchId = '' } = useParams();
   // 피치 생성에서 매핑을 저장하며 고른 조합. 홈에서 바로 왔거나 새로고침했으면 없습니다
-  const combo = (useLocation().state as { practice?: PracticeCombo } | null)?.practice ?? null;
+  const location = useLocation();
+  const combo = (location.state as { practice?: PracticeCombo } | null)?.practice ?? null;
   const navigate = useNavigate();
   const prepare = usePrepare(pitchId);
   const info = useMemo(() => (prepare.data ? fromPrepare(prepare.data) : null), [prepare.data]);
@@ -487,6 +494,10 @@ export function DeviceCheckPage() {
   // 새 대본을 아직 못 써서 옛 대본으로 연습하면 알립니다. 피치 생성에서 고른 조합이면 해당 없습니다
   const notice = combo || !info ? null : newerScriptNotice(info);
   const subtitle = [choice?.label, notice].filter(Boolean).join(' · ');
+  // 넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고 [최신으로]를 둡니다 (멘토 리뷰 #923)
+  const newerCombo = combo && info ? newerComboNotice(combo, info) : null;
+  // 조합을 지우면 준비 정보(서버 최신 조합)로 정합니다. 기록을 바꿔(replace) 새로고침 · 앞으로 가기에도 예전 조합이 돌아오지 않습니다
+  const switchToLatest = () => navigate(location.pathname, { replace: true, state: null });
   const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
@@ -535,6 +546,23 @@ export function DeviceCheckPage() {
         </div>
 
         <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5">
+          {newerCombo && (
+            <div
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-2 border border-coral bg-coral-wash px-3 py-2 text-sm text-ink"
+              data-newer-combo=""
+            >
+              <span>{newerCombo}</span>
+              <button
+                type="button"
+                disabled={starting}
+                onClick={switchToLatest}
+                className="inline-flex min-h-8 shrink-0 items-center border border-ink bg-panel px-2.5 text-xs font-semibold hover:bg-cream disabled:cursor-default disabled:border-dashed disabled:border-line-strong"
+              >
+                최신으로
+              </button>
+            </div>
+          )}
           <CheckCard
             title="장비 준비"
             action={

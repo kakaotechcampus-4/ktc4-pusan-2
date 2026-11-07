@@ -93,6 +93,26 @@ export function newerScriptNotice(info: PrepareInfo): string | null {
 }
 
 /**
+ * 넘겨받은 조합보다 서버의 최신 조합이 새 것일 때의 안내. 해당 없으면 null (멘토 리뷰 #923).
+ *
+ * 조합은 라우터 state 라 새로고침 · 앞으로 가기에도 남아, 그사이 새로 매핑한 대본 대신 예전 조합이 쓰일 수 있습니다.
+ * 예전 조합으로 연습하는 것은 막지 않습니다 — 피치 수정에서 예전 버전을 골라 연습할 수 있고, 실패한 Take 에서
+ * 돌아올 때도 같은 조합을 넘깁니다(`deviceCheckLink`). 그래서 알리고 [최신으로]만 둡니다.
+ *
+ * 최신 조합으로 시작할 수 없거나(`prepareProblem`) 어느 한쪽이라도 조합보다 낮으면(서로 엇갈리면) 알리지 않습니다 —
+ * 무엇이 "최신"인지 말할 수 없습니다.
+ */
+export function newerComboNotice(combo: PracticeCombo, info: PrepareInfo): string | null {
+  if (!info.presentation || !info.script || prepareProblem(info) !== null) return null;
+  const slide = info.presentation.version;
+  const script = info.script.version;
+  if (slide < combo.slideVersion || script < combo.scriptVersion) return null;
+  if (slide === combo.slideVersion && script === combo.scriptVersion) return null;
+  // 조사는 숫자 뒤에 붙이지 않습니다 — "v3예요"처럼 읽기 어렵지 않게
+  return `최신 조합이 있어요: 자료 v${slide} · 대본 v${script}`;
+}
+
+/**
  * 미션이 바로 앞 Take 가 아니라 그 전 Take 의 리뷰에서 왔을 때의 안내. 해당 없으면 null 입니다.
  *
  * "분석 중"이라고 말하지 않습니다 — 뒤 Take 의 리뷰가 실패했을 수도 있는데 `/prepare` 로는
