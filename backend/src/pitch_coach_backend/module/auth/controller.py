@@ -43,6 +43,7 @@ from pitch_coach_backend.module.auth.exception import (
     ServiceNotOpen,
     TooManyLoginStarts,
 )
+from pitch_coach_backend.module.auth.state_store import STATE_TTL_SECONDS
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,7 +58,7 @@ REFRESH_COOKIE_PATH = "/api/auth"
 CSRF_COOKIE_PATH = "/"
 
 # 로그인 시작부터 콜백까지만 살면 된다. state 의 만료 시간과 맞춘다.
-BROWSER_COOKIE_MAX_AGE = 600
+BROWSER_COOKIE_MAX_AGE = STATE_TTL_SECONDS
 
 # 로그인 시작은 인증 없이 부를 수 있고 부를 때마다 인증 요청을 DB 에 넣고 커밋한다. 반복 호출이
 # DB 쓰기를 붙잡지 못하게 IP 별로 센다. 같은 와이파이의 수강생 수십 명이 한꺼번에 로그인해도
@@ -88,8 +89,8 @@ def _delete_browser_cookie(response: Response, state: str | None) -> None:
         response.delete_cookie(browser_cookie_name(state), path=REFRESH_COOKIE_PATH)
 
 
-def _set_session_cookies(response: Response, issued: service.IssuedSession) -> str:
-    """Refresh·CSRF 쿠키를 심고 새 CSRF 토큰을 돌려준다. 회전할 때마다 둘 다 갱신한다."""
+def _set_session_cookies(response: Response, issued: service.IssuedSession) -> None:
+    """Refresh·CSRF 쿠키를 심는다. 회전할 때마다 둘 다 갱신한다."""
     response.set_cookie(
         REFRESH_COOKIE_NAME,
         issued.refresh_token,
@@ -110,7 +111,6 @@ def _set_session_cookies(response: Response, issued: service.IssuedSession) -> s
         secure=settings.cookie_secure,
         samesite="lax",
     )
-    return csrf_token
 
 
 def clear_session_cookies(response: Response) -> None:
@@ -136,8 +136,21 @@ _LOGIN_ERROR_CODES: dict[type[Exception], str] = {
 }
 
 
-def _login_error_code(exc: Exception) -> str:
-    return _LOGIN_ERROR_CODES.get(type(exc), "login_failed")
+def _login_failure(exc: Exception, *, state: str | None = None) -> RedirectResponse:
+    """브라우저가 최상위로 이동해 온 요청이라 JSON 을 돌려주면 사용자가 그대로 본다. 프론트로
+    돌려보내고 원인은 auth_error 코드로만 알린다. 사유는 서버 로그에 남긴다 (except 안에서 부른다).
+
+    `AppException` 의 문구는 고정 사유라 사용자 값이 없다."""
+    if isinstance(exc, AppException):
+        logger.warning("구글 로그인 실패 code=%s reason=%s", exc.code, exc.message)
+    else:
+        logger.exception("구글 로그인 처리 중 예상하지 못한 오류")
+    response = RedirectResponse(
+        _frontend_url("/", auth_error=_LOGIN_ERROR_CODES.get(type(exc), "login_failed")),
+        status_code=status.HTTP_302_FOUND,
+    )
+    _delete_browser_cookie(response, state)
+    return response
 
 
 def _safe_return_to(value: str | None) -> str:
@@ -188,13 +201,7 @@ def google_start(
             raise TooManyLoginStarts()
         started = service.start_login(db, return_to=_safe_return_to(return_to))
     except Exception as e:
-        # 로그인 버튼이 화면째 이 주소로 옮겨 온다. 출시 전이거나 DB 오류 등으로 JSON 을 주면
-        # 사용자가 그대로 보므로 콜백 실패와 같이 프론트로 돌려보낸다
-        if not isinstance(e, AppException):
-            logger.exception("구글 로그인 시작 중 예상하지 못한 오류")
-        return RedirectResponse(
-            _frontend_url("/", auth_error=_login_error_code(e)), status_code=status.HTTP_302_FOUND
-        )
+        return _login_failure(e)
 
     response = RedirectResponse(started.authorization_url, status_code=status.HTTP_302_FOUND)
     # state 를 훔쳐도 이 쿠키가 없으면 콜백을 완성할 수 없다.
@@ -246,17 +253,7 @@ def google_callback(
             browser_token=request.cookies.get(browser_cookie_name(state)),
         )
     except Exception as e:
-        # 브라우저가 최상위로 이동해 온 요청이라 JSON 을 돌려주면 사용자가 그대로 본다.
-        # 취소했을 때와 같이 프론트로 돌려보내고 원인은 auth_error 코드로만 알린다.
-        # 예상하지 못한 예외도 500 JSON 대신 같은 길로 보내고, 원인은 서버 로그에 남긴다
-        if not isinstance(e, AppException):
-            logger.exception("구글 로그인 콜백 처리 중 예상하지 못한 오류")
-        response = RedirectResponse(
-            _frontend_url("/", auth_error=_login_error_code(e)),
-            status_code=status.HTTP_302_FOUND,
-        )
-        _delete_browser_cookie(response, state)
-        return response
+        return _login_failure(e, state=state)
 
     response = RedirectResponse(_frontend_url(issued.return_to), status_code=status.HTTP_302_FOUND)
     _set_session_cookies(response, issued)

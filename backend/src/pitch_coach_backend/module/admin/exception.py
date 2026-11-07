@@ -1,4 +1,6 @@
-from pitch_coach_backend.core.exceptions import NotFoundException
+from fastapi import status
+
+from pitch_coach_backend.core.exceptions import AppException, NotFoundException
 
 
 class AdminConsoleDisabled(NotFoundException):
@@ -8,3 +10,11 @@ class AdminConsoleDisabled(NotFoundException):
     """
 
     message = "요청한 경로를 찾을 수 없습니다."
+
+
+class AdminChatQueryInvalid(AppException):
+    # 진단 기록은 실행 하나나 대화 하나로만 찾는다.
+    # 둘 다 없으면 전체를 읽게 되고 둘 다 있으면 모호하다
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "VALIDATION_ERROR"
+    message = "run_id 와 conversation_id 중 하나만 보내 주세요."

@@ -67,6 +67,15 @@ def test_same_as_baseline_is_normal() -> None:
     assert volume.issues == []
 
 
+def test_exactly_at_low_threshold_is_normal() -> None:
+    # 작음은 기준 '미만'이다. 기준과 정확히 같은 값은 NORMAL
+    low = Config().low_diff_db
+    volume, _ = run(speech(0, 5000, BASE + low), 5000)
+    assert volume.metrics.voice_diff_db == low
+    assert volume.state == "NORMAL"
+    assert volume.issues == []
+
+
 def test_quiet_is_low() -> None:
     volume, _ = run(speech(0, 5000, BASE - 10), 5000)
     assert volume.state == "LOW"
@@ -160,6 +169,14 @@ def test_low_persistence_counts_back_from_last_second() -> None:
     volume, _ = run(records, 16000)
     [issue] = volume.issues
     assert 0 < issue.persistence_sec <= 6
+
+
+def test_low_persistence_stops_at_a_missing_second() -> None:
+    # 작게 5초 → 기록 없는 1초 → 작게 3초. 빈 1초 너머는 이어 세지 않는다
+    records = speech(0, 5000, BASE - 12) + speech(6000, 9000, BASE - 12)
+    volume, _ = run(records, 9000)
+    [issue] = volume.issues
+    assert issue.persistence_sec == 3.0
 
 
 # --------------------------------------------------------------------------
@@ -321,6 +338,16 @@ def test_audio_dead_seconds_count_only_total() -> None:
 def test_tally_only_new_seconds() -> None:
     volume, _ = run(speech(0, 10000), 10000, since_ms=8000)
     assert [i.t_ms for i in volume.tally] == [8000, 9000]
+
+
+def test_since_in_the_middle_of_a_record_drops_it_and_counts_the_rest_as_no_record() -> None:
+    # 40000~41000 기록에 since_ms 40500: 기록 중간부터는 그 기록을 버리고 남은 시간을 기록 없는
+    # 시간으로 센다. 1초 기록의 voiced_ms · 에너지는 나눌 수 없어 남은 절반의 값을 추측하지 않는다
+    volume, pause = run([rec(40000)], 41000, since_ms=40500)
+    assert [(i.t_ms, i.values.total_ms) for i in volume.tally] == [(40500, 500)]
+    assert [(i.t_ms, i.values.total_ms) for i in pause.tally] == [(40500, 500)]
+    assert volume.tally[0].values.voiced_ms == volume.tally[0].values.audio_live_ms == 0
+    assert pause.tally[0].values.audio_live_ms == 0
 
 
 def test_recall_with_cursor_has_empty_tally() -> None:

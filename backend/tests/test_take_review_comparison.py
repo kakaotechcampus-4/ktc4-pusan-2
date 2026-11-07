@@ -33,7 +33,7 @@ def test_comparison_excludes_unfinished_takes_even_with_a_result(
     _result(db_session, finished)
     _result(db_session, unfinished)
 
-    previous = _build_previous_takes(TakeRepository(db_session), current.id, 3)
+    previous = _build_previous_takes(TakeRepository(db_session), current.pitch_id, 3)
 
     assert [take.take_result["number"] for take in previous] == [1]
 
@@ -59,13 +59,13 @@ def test_comparison_filters_before_limit_and_preserves_coverage(
     _result(db_session, _take(db_session, _pitch(db_session, user_id), 9))
 
     repo = TakeRepository(db_session)
-    previous = repo.get_previous_take_results(current.id, 10)
+    previous = repo.get_previous_take_results(current.pitch_id, 10)
 
     assert [result["number"] for result, _ in previous] == [4, 3, 2]
     assert previous[0][1] is None
     assert previous[1][1] == {"take_scores": {"content_coverage": 0.75}}
     assert [result["number"] for result, _ in repo.get_previous_take_results(
-        current.id, 10, limit=1
+        current.pitch_id, 10, limit=1
     )] == [4]
 
 
@@ -76,4 +76,4 @@ def test_comparison_is_empty_without_a_completed_result(
     _take(db_session, pitch, 1)
     current = _take(db_session, pitch, 2, status="ANALYZING")
 
-    assert _build_previous_takes(TakeRepository(db_session), current.id, 2) == []
+    assert _build_previous_takes(TakeRepository(db_session), current.pitch_id, 2) == []

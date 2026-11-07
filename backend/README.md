@@ -166,6 +166,12 @@ backend/
     │   ├── row_buffer.py         # 행을 모았다 한 번에 저장 · 실패하면 간격을 두고 다시 넣기 (1초 원자료 · 코치 이벤트)
     │   ├── tasks.py              # 백그라운드 태스크 보관 · 실패 로그 · 앱 종료 때 끊기
     │   ├── ai_slots.py           # 백그라운드 AI 호출 동시 개수 (합계 4, 그 안에서 대본 등록 2)
+    │   ├── ai_http.py            # AI 서버를 부르는 곳이 함께 쓰는 부품. 재시도 루프는 각 호출부에 둔다
+    │   ├── ai_response_limit.py  # AI 응답 본문 크기 상한 (httpx 이벤트 훅)
+    │   ├── limits.py             # 여러 모듈이 같이 쓰는 한도와 시간대
+    │   ├── rounding.py           # DB 요약에 쓰는 공통 반올림 규칙
+    │   ├── validation.py         # 요청 DTO 가 같이 쓰는 저장 가능 검사 (NUL · NaN · 깊이)
+    │   ├── s3.py                 # S3 클라이언트. 파일 다루기는 pitch/adapter/storage.py
     │   ├── security.py           # JWT 발급/검증
     │   ├── client_ip.py          # 요청한 쪽 IP (Caddy 가 넘긴 X-Forwarded-For 첫 값)
     │   ├── rate_limit.py         # IP 별 호출 횟수 제한 (프로세스 메모리)
@@ -190,6 +196,7 @@ backend/
     │   │   ├── controller.py · repository.py · entity.py · dto.py · dependencies.py · exception.py
     │   │   ├── service/          # 업무별로 나눈다. __init__.py 는 비워 두고 호출부는 하위 모듈을 import 한다
     │   │   │   ├── pitch.py              # 발표 생성 · 목록 · 자료 모음 · 준비 화면 · 수정 · 삭제 · 코칭 계획 행
+    │   │   │   ├── lookup.py             # 다른 도메인이 발표 쪽 값을 읽는 입구
     │   │   │   ├── file_cleanup.py       # 발표를 지운 뒤 S3 파일 삭제 기록 · 삭제 · 다시 지우기
     │   │   │   ├── presentation.py       # 발표자료(PDF) 업로드 · 조회
     │   │   │   ├── script.py             # 대본 검사 · 생성 · 파싱 상태 · 재파싱 · 결과 저장 · 장별 평가 기준 상태 · STT 용어
@@ -203,16 +210,46 @@ backend/
     │   │       ├── script_parser.py      # AI 대본 파서 HTTP. 응답 검증·변환·재시도
     │   │       ├── script_rubric.py      # AI 장별 평가 기준 HTTP
     │   │       └── standard_parser.py    # AI 평가 기준 분석 HTTP
+    │   ├── service_feedback/     # Take별 설문 · 마이페이지 의견. 기본 파일 구조 + enums.py
+    │   ├── chat/                 # 코치 대화 (대화 API · 턴 실행 · 목표 · 기억). 기준은 docs/ai/features/chat-agent.md 12절
+    │   │   ├── controller.py · repository.py · entity.py · dto.py · exception.py
+    │   │   ├── api_dto.py · api_repository.py  # 대화 API(화면 ↔ BE) 쪽. dto.py · repository.py 는 AI 턴 쪽
+    │   │   ├── ai_client.py · ai_response.py   # AI 턴 · 다시 평가 HTTP, 스트림 응답 검증
+    │   │   ├── turn_runner.py        # 턴 실행기 (백그라운드). AI 를 부르고 행동을 실행한 뒤 다시 부른다
+    │   │   ├── run_recovery.py       # 끝나지 않은 실행을 이어 가는 주기 작업
+    │   │   ├── goal_sweep.py         # 자동 목표 확인 주기 작업
+    │   │   ├── approval_sweep.py     # 30분이 지난 승인 대기를 끝내는 주기 작업
+    │   │   ├── cleanup_sweep.py      # 지워진 근거에서 나온 대화 사본을 지우는 주기 작업
+    │   │   └── service/
+    │   │       ├── accept.py             # 메시지 접수 · 하루 한도
+    │   │       ├── conversation.py       # 대화 만들기 · 목록 · 범위 바꾸기 · 메시지 목록
+    │   │       ├── run.py · run_view.py  # 실행 자리 잡기 · 시간 연장, 상태 조회 · 취소
+    │   │       ├── turn.py               # 턴 진행 저장 · 끝내기 · 복구 지점
+    │   │       ├── request.py            # AI 요청 조립
+    │   │       ├── reassess.py           # 다시 평가 준비 · 호출 · 저장
+    │   │       ├── action.py · result.py # 행동 시작 · 실행 · 승인 대기로 넘기기, 행동 결과 만들기
+    │   │       ├── authorization.py      # 사용자 원문에 행동 요청이 있는지 검사
+    │   │       ├── approval.py · waiting.py  # 확인 카드 승인 · 거절, 승인 대기를 AI 없이 끝내기
+    │   │       ├── fetch.py              # 도구가 읽는 피치 · Take (소유권 검사)
+    │   │       ├── goal.py · goal_undo.py · goal_check.py  # 목표 저장 · 되돌리기 · 자동 확인
+    │   │       ├── memory.py             # 코칭 프로필 · 기억 카드 · 대화 요약
+    │   │       ├── practice.py           # 연습 시작 카드
+    │   │       ├── stale.py              # 답의 근거가 지워졌는지 · 달라졌는지
+    │   │       └── cleanup.py            # 지워진 근거의 대화 사본 정리
     │   └── take/                 # 발표 1회 수행 기록
     │       ├── controller.py · repository.py · entity.py · dto.py · dependencies.py · exception.py
     │       ├── service/
     │       │   ├── take.py               # 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록 · 리포트
+    │       │   ├── lookup.py             # 다른 도메인이 Take 쪽 값을 읽는 입구
     │       │   ├── lifecycle.py          # mark_* · 창 닫힘 · 진행 중 Take 조회 · 떠남 · 시작하지 않은 Take 기준
     │       │   ├── record.py             # 전사 커서 · 확정 전사 · 1초 원자료 · 문장 끝 신호 저장
     │       │   ├── review.py             # 리뷰 요청 조립 · 호출 · 결과 저장 (한 트랜잭션)
     │       │   ├── coverage.py           # 대본 전달도 분석 (SCORING) · 재시도 · 병합
     │       │   ├── confirmation.py       # 대본 전달도 확인 답 받기 · rescore 반영 · 건너뛰기 (AWAITING_CONFIRMATION)
     │       │   └── analysis_runner.py    # Take 결과 뒤 채점 → 확인 대기 → 리뷰 → 코칭 계획 (백그라운드). 앱이 뜰 때 이어 간다
+    │       ├── adapter/
+    │       │   └── ai_client.py          # Take 분석의 AI 호출. DB 를 모른다 (pitch/adapter 와 같은 자리)
+    │       ├── states.py             # Take 의 상태 · 분석 단계 · AI 결과 종류 값
     │       ├── coach_service.py      # 코치 연동의 DB 일. take 모듈의 모양(dto)으로 넘기고 받는다
     │       ├── coach_repository.py   # 코치 이벤트 · 장 변경 · Take 결과 · 미션 행
     │       ├── ai_response.py        # 리뷰 · 대본 전달도 응답 검증
@@ -238,6 +275,7 @@ backend/
     │   │   ├── record.py         # TakeRecord · StreamHost · CoachDeps. 스트림과 위 파일들의 경계
     │   │   ├── client.py         # 붙어 있는 연결 · 이전 연결 쫓아내기 · FE 로 보내기
     │   │   ├── audio_queue.py    # Deepgram 으로 보낼 오디오 큐. 차면 오래된 것부터 버린다
+    │   │   ├── transcript_sender.py  # 전사를 FE 화면으로. interim 은 가장 새것만, 못 보낸 final 은 모았다 다시
     │   │   ├── auto_end.py       # 자동 종료 조건(말 없음·최대 시간)과 최대 시간 타이머. 네트워크를 모른다
     │   │   └── heard.py          # 끊김 없이 받은 오디오 범위 → 1초 원자료의 STT 상태
     │   ├── stt/                  # 외부 음성 인식. FE 연결 · Take 상태를 모른다
@@ -250,28 +288,19 @@ backend/
     │       ├── transcripts.py    # 전사 번호 · 저장 재시도 · 화면에 못 보낸 final
     │       └── metrics.py        # 1초 원자료 · 장 변경을 모았다 저장 (core/row_buffer.py)
     │
-    ├── coach/                    # AI 실시간 코치 연동. entity 는 갖지 않는다 (DB 는 take/coach_service)
-    │   ├── client.py             # /coach/evaluate·finalize·plan HTTP. 재시도·409
-    │   ├── replies.py            # AI 응답 모양 · 받은 그대로 두는 칸 · take_summaries 측정 값
-    │   ├── requests.py           # 요청 만들기 (시간 계획·미션·Take 상수·요청 모양). 순수 함수
-    │   ├── windows.py            # 창 · 지금 장 · replay 입력. 순수 함수
-    │   ├── coaching_plan.py      # 코칭 계획 행 · 바탕 값 · 고르기 · evaluate 에 실을 계획
-    │   ├── session.py            # 발표 중 코치 (Take 하나). evaluate · 이벤트 저장 · 확정 시각 · 마지막 창
-    │   ├── finalize.py           # Take 결과 (백그라운드). 409 면 replay, 앱이 뜰 때 · 오래 남으면 이어 가기
-    │   ├── planner.py            # 코칭 계획 요청 · 저장 (백그라운드). module/hooks.py 의 코치 쪽 구현
-    │   ├── retention.py          # 동의 없이 FAILED 로 끝난 Take 의 1초 원자료를 7일 뒤 지우는 주기 작업
-    │   ├── background.py         # 앱이 뜰 때 · 내릴 때 위 작업을 띄우고 멈춘다
-    │   ├── store.py              # 코치 저장소 (짧은 DB 세션 + threadpool). take/coach_service 값을 요청 모양으로
-    │   └── dependencies.py       # get_coach_client · get_coach_store. 프로세스에 하나
-    │
-    ├── agent/                    # LLM 어댑터. module 을 import 하지 않는다
-    │   ├── client.py             # 모델 호출·타임아웃·재시도. 동기 함수로 작성
-    │   ├── realtime_context_builder.py
-    │   └── review_context_builder.py
-    │
-    └── task/                     # Celery
-        ├── celery_app.py         # 브로커 설정, 태스크 등록
-        └── review_task.py        # feedback service 를 호출하는 얇은 껍데기
+    └── coach/                    # AI 실시간 코치 연동. entity 는 갖지 않는다 (DB 는 take/coach_service)
+        ├── client.py             # /coach/evaluate·finalize·plan HTTP. 재시도·409
+        ├── replies.py            # AI 응답 모양 · 받은 그대로 두는 칸 · take_summaries 측정 값
+        ├── requests.py           # 요청 만들기 (시간 계획·미션·Take 상수·요청 모양). 순수 함수
+        ├── windows.py            # 창 · 지금 장 · replay 입력. 순수 함수
+        ├── coaching_plan.py      # 코칭 계획 행 · 바탕 값 · 고르기 · evaluate 에 실을 계획
+        ├── session.py            # 발표 중 코치 (Take 하나). evaluate · 이벤트 저장 · 확정 시각 · 마지막 창
+        ├── finalize.py           # Take 결과 (백그라운드). 409 면 replay, 앱이 뜰 때 · 오래 남으면 이어 가기
+        ├── planner.py            # 코칭 계획 요청 · 저장 (백그라운드). module/hooks.py 의 코치 쪽 구현
+        ├── retention.py          # 동의 없이 FAILED 로 끝난 Take 의 1초 원자료를 7일 뒤 지우는 주기 작업
+        ├── background.py         # 앱이 뜰 때 · 내릴 때 위 작업을 띄우고 멈춘다
+        ├── store.py              # 코치 저장소 (짧은 DB 세션 + threadpool). take/coach_service 값을 요청 모양으로
+        └── dependencies.py       # get_coach_client · get_coach_store. 프로세스에 하나
 ```
 
 폴더는 담당자가 작업을 시작할 때 만든다. 빈 폴더를 미리 커밋하지 않는다.
@@ -323,7 +352,8 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 이 규칙이 순환 import 를 막는다. 어기고 싶어지면 구조를 다시 논의한다.
 
 - **도메인 안**: `controller → service → repository → entity`. 역방향 없음. controller 가 repository 를 직접 부르지 않는다.
-- **도메인 사이**: 상대 도메인의 **service 만** 부른다. 다른 도메인의 repository·entity 를 import 하지 않는다.
+- **도메인 사이**: 상대 도메인의 **service 만** 부른다. 다른 도메인의 repository 를 import 하지 않는다.
+  예외: join · FK 타입에 쓰는 entity import 와, 표를 읽어 모으는 `admin`.
 - **realtime, coach, task → module**: 도메인 service 를 호출한다. module 은 controller 까지 포함해 realtime·coach·task
   를 import 하지 않는다. HTTP 요청이 그쪽에 알릴 일(Take 지움 · 끝내기 PUT · 리뷰 뒤 코칭 계획 등)은
   `module/hooks.py` 를 거쳐 부르고, 실제 구현은 `main.py` 가 꽂는다 (realtime 쪽 구현은 `realtime/live_takes.py` 가
@@ -333,7 +363,7 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
   → stream/state → stream/runtime → stt/loop → stt/adapter`, `runtime → storage/transcripts · storage/metrics →
   storage/store → take service`.
   - stt · storage 는 connection · stream 을 import 하지 않는다. STT 이벤트는 받은 콜백으로 돌려준다.
-  - runtime 과 그 부품(client · audio_queue · heard · auto_end)은 registry · finish · state 를 import 하지 않는다.
+  - runtime 과 그 부품(client · audio_queue · transcript_sender · heard · auto_end)은 registry · finish · state 를 import 하지 않는다.
     Take 별 기록은 registry 가 만들어(`state.take_record`) 넘기고, 알릴 일은 `record.StreamHost` 로 넘긴다.
     부품은 `TakeStream` 도 모르고 값과 콜백만 받는다. abandon 도 registry 를 모르고 만료 콜백을 받는다.
   - 옮긴 이름을 옛 모듈에서 다시 내보내지 않는다. 테스트의 monkeypatch 가 옛 이름에만 걸린다.
@@ -486,6 +516,35 @@ FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 
 발표 중 코치(`/coach/evaluate`), 종료 뒤 Take 결과(`/coach/finalize`), 다음 Take 의 코칭 계획(`/coach/plan`)과
 원자료 보관 규칙은 [docs/be/realtime-coach.md](../docs/be/realtime-coach.md) 에 있다.
 
+## 코치 대화 (AI)
+
+오른쪽 아래 코치 대화창의 API 다. 동작 · 값의 기준은 [docs/ai/features/chat-agent.md](../docs/ai/features/chat-agent.md)
+12-3 이다. 메시지는 즉시 `202` 로 받고, 답은 실행 상태를 조회해 받는다(실행 중 1초 간격).
+AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스위치 `AGENT_ENABLED` 가 꺼져 있으면
+아래 API 는 `503 AGENT_DISABLED` 다(사용 가능 여부만 `enabled:false` 로 답한다). 재시작 복구와 자동 목표 확인
+주기 작업도 띄우지 않는다. 근거가 지워진 답을 가리는 정리 작업과 30분이 지난 승인 대기를 끝내는 작업은 꺼져 있어도 돈다.
+
+| 엔드포인트 | 내용 |
+|---|---|
+| `GET /api/chat/availability` | `{enabled}`. 버튼을 보일지 |
+| `POST /api/chat/conversations` | `{pitch_id?}` 로 새 대화. 201 |
+| `GET /api/chat/conversations?pitch_id=` | 내 대화 목록. 마지막 사용자 활동 최신순 50개. 마지막 답이 지금 기록과 달라졌으면 `stale: true` |
+| `PATCH /api/chat/conversations/{id}/scope` | `{pitch_id\|null}`. 실행 중이면 409 `AGENT_RUN_IN_PROGRESS` |
+| `POST /api/chat/messages` | `{conversation_id?, scope_pitch_id?, text, page, client_request_id, again_of_message_id?, choice?}`. 메시지 · 실행 · 하루 한도를 한 트랜잭션으로 커밋한 뒤 `202 {conversation_id, message_id, run_id, status}`. 같은 `client_request_id` 재전송은 처음 결과(동시에 보내 뒤 요청이 진행 중 · 한도에 막혀도 같다), 다른 내용이면 409 `AGENT_REQUEST_CONFLICT`. 실행 중인 대화는 409 `AGENT_RUN_IN_PROGRESS`. 승인 대기 중이면 앞 확인 요청을 취소하고 받는다(한 트랜잭션). 고른 안(`choice`)이 그 대화의 제안 카드에 없으면 404. `page.screen` 에 저장할 수 없는 값(NUL · NaN · 32단계보다 깊게 겹침)이 있으면 422. 하루 100턴(`AGENT_DAILY_LIMIT`) · 서비스 전체 상한(`AGENT_BUSY`)은 429 + `Retry-After`(다음 서울 00:00 까지, 올림). 커밋 전 DB 일시 오류는 503 `AGENT_NOT_ACCEPTED`(같은 키로 다시 보낸다). 다시 보낸 요청의 실행이 아직 `QUEUED` 면 턴 실행기를 다시 띄운다 |
+| `GET /api/chat/runs/{run_id}?after_seq=` | `{run_id, conversation_id, status, plan, trace, events, next_after_seq, has_more, cards, error, retry_after_s}`. `events` 는 커서 뒤의 진행 줄 · 답 문장 줄(`{event_seq, event, data, masked}`)이고, 2 MiB 를 넘으면 나눠 `has_more` 로 알린다. `cards` 는 승인 대기 중인 확인 카드다. AI 의 서명 상태와 오류 원문은 싣지 않는다. 실행이 읽은 피치 · Take 가 지워졌으면 진행과 카드를 비우고, 문장의 근거가 지워졌으면 그 줄만 가린다 |
+| `GET /api/chat/conversations/{id}/run?after_seq=` | 그 대화의 마지막 실행(새로고침 뒤 복원). 없으면 null |
+| `POST /api/chat/runs/{run_id}/actions/{action_id}/decision` | `{decision: APPROVE\|REJECT, args_hash}`. 인자는 받지 않고 저장한 인자로만 실행한다. 승인하면 기다린 시간만큼 마감을 밀고 턴 실행기가 이어 간다. 거절은 AI 를 부르지 않고 이미 낸 문장 뒤에 고정 문장을 덧붙여 `DONE` 으로 끝낸다. 해시가 다르면 409 `APPROVAL_HASH_MISMATCH`, 30분이 지났으면 409 `AGENT_EXPIRED`, 취소됐으면 409 `AGENT_CANCELLED`. 같은 요청은 처음 결과 |
+| `POST /api/chat/runs/{run_id}/cancel` | `QUEUED` · `RUNNING` · `WAITING_APPROVAL` 을 `CANCELLED` 로(승인 대기면 행동도 끝내고 고정 문장을 남긴다). 이미 끝났으면 그 상태를 그대로 준다. 자동 목표 확인 실행이면 그 확인도 끝난 것으로 닫아 다시 만들지 않는다 |
+| `POST /api/chat/runs/{run_id}/actions/{action_id}/undo` | 목표 저장 카드의 [되돌리기]. 지금 목표 판이 그 행동이 저장한 판일 때만 앞 판 내용을 새 판으로 되살리고 시스템 메시지 "목표를 되돌렸어요." 를 남긴다. 다른 목표로 바뀌었거나 기준 Take 가 지워졌으면 409 `AGENT_STATE_INVALID`. 같은 요청은 처음 결과. 실행이 끝나거나 정리된 뒤에도 쓸 수 있다 |
+| `GET /api/chat/conversations/{id}/messages?before_seq=&limit=` | 최신 메시지부터 `limit`(기본 30, 최대 50)개와 다음 커서. 근거가 된 피치 · Take 가 지워졌거나 남의 것인 답은 가려서 준다(`masked`, AI 에 보낼 기록을 조립할 때와 같은 기준). 메시지마다 지금 기록과 달라진 이유(`stale_reasons`)와 판단마다 그 판단을 대체한 새 판단 ID(`superseded_by`)를 싣는다. 대체한 판단은 늘 뒤 메시지에 있어 그 페이지의 첫 메시지부터만 읽는다 |
+
+없거나 남의 대화 · 실행 · 피치 · Take 는 모두 같은 `404 NOT_FOUND` 다.
+
+관리자 콘솔(`/admin/`)의 '코치 대화' 표는 끝난 실행의 날짜별 운영 기록이다(대화 본문 없음).
+`GET /admin/api/chat/days?days=`(기본 14, 최대 180)는 사용자 수 · 턴 수 · 상태별 수 · 평균 · 상위 5% 시간 · 토큰을,
+`GET /admin/api/chat/diagnostics?run_id=` 또는 `?conversation_id=`(둘 중 하나만)는 `/agent/turn` 호출별 진단 기록을 최신부터 `limit`(기본 50, 최대 200) · `offset` 쪽으로 준다.
+두 API 는 조회한 사실을 ID · 조건만 로그에 남긴다.
+
 ## 에러 응답 형식
 
 모든 에러는 `core/exceptions.py` 의 핸들러를 거쳐 같은 형태로 나간다. 프론트엔드는 `code` 로 분기한다.
@@ -504,6 +563,7 @@ FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 
 | 409 | `CONFLICT` | `ConflictException` |
 | 422 | `VALIDATION_ERROR` | FastAPI 검증 실패 (자동, `detail` 에 필드별 오류) |
 | 500 | `INTERNAL_SERVER_ERROR` | 처리되지 않은 예외 (자동, 원인은 서버 로그에만 남는다) |
+| 503 | `STORAGE_UNAVAILABLE` | `pitch/exception.py` `StorageError`. S3 를 쓰지 못함 (원인은 서버 로그에만 남는다) |
 
 도메인 예외는 `module/<name>/exception.py` 에서 위 클래스를 상속하고 `message` 만 바꾼다.
 `HTTPException` 을 직접 던지지 않는다. 라우터가 만드는 404·405 와 처리되지 않은 예외도

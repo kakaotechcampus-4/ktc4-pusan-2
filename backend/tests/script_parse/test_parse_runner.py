@@ -30,11 +30,6 @@ from tests.script_parse.conftest import (
 # ── runner: 저장이 실패해도 던지지 않는다 ─────────────────────────────
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def _broken_session() -> Session:
     raise RuntimeError("DB 연결 실패")
 
@@ -58,7 +53,7 @@ async def test_runner_swallows_db_failures_and_logs(
     DB 가 없는 테스트라 행 상태가 아니라 "던지지 않는다"와 로그만 본다.
     """
     runner = ScriptParseRunner(FakeParser(result), session_factory=_broken_session)
-    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS)
+    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS, pitch_id=uuid.uuid4())
 
     with caplog.at_level(logging.ERROR):
         await runner.run(ticket)  # 예외가 나오면 테스트 실패
@@ -103,7 +98,7 @@ class _SlotProbeParser(FakeParser):
 async def test_runner_holds_one_slot_only_while_calling_ai() -> None:
     parser = _SlotProbeParser()
     runner = ScriptParseRunner(parser, session_factory=_broken_session)
-    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS)
+    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS, pitch_id=uuid.uuid4())
 
     await runner.run(ticket)
 
@@ -127,7 +122,7 @@ async def test_runner_fails_when_no_slot_frees_up(monkeypatch: pytest.MonkeyPatc
         saved.append(code)
 
     monkeypatch.setattr(runner, "_save_failure", record)
-    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS)
+    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS, pitch_id=uuid.uuid4())
 
     await runner.run(ticket)
 

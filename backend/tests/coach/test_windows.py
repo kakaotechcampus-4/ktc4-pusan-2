@@ -21,7 +21,7 @@ from tests.coach.conftest import example
 
 def replay_words(raw: dict[str, Any]) -> list[FinalWord]:
     return [
-        FinalWord(w["word"], w["start_ms"], w["end_ms"], w["final_at_ms"]) for w in raw["words"]
+        FinalWord(w["word"], w["start_ms"], w["end_ms"]) for w in raw["words"]
     ]
 
 
@@ -31,7 +31,11 @@ def test_live_window_matches_the_example_evaluate_inputs():
     raw = example("finalize/request_replay.json")["replay"]
     t_ms = expected["t_ms"]
     # 요청을 만들 때까지 받은 확정 단어. 92초에 확정된 두 단어는 STT 를 닫을 때 들어온 것이다
-    received = [w for w in replay_words(raw) if w.final_at_ms < t_ms]
+    received = [
+        FinalWord(w["word"], w["start_ms"], w["end_ms"])
+        for w in raw["words"]
+        if w["final_at_ms"] < t_ms
+    ]
 
     inputs = window_inputs(
         t_ms,
@@ -69,10 +73,10 @@ def test_window_edges_and_duplicates():
         return {"t_ms": t_ms, "duration_ms": duration_ms, "tag": tag}
 
     words = [
-        FinalWord("앞", 30_000, 40_000, 40_000),  # end 가 60초 창 경계 — 빠진다
-        FinalWord("안", 40_500, 41_000, 41_000),
+        FinalWord("앞", 30_000, 40_000),  # end 가 60초 창 경계 — 빠진다
+        FinalWord("안", 40_500, 41_000),
         # t_ms 뒤에 끝났다 — 다음 요청에. 마지막 창이어도 빠진다(AI replay 의 마지막 창과 같게)
-        FinalWord("뒤", 99_500, 100_500, 100_500),
+        FinalWord("뒤", 99_500, 100_500),
     ]
 
     inputs = window_inputs(

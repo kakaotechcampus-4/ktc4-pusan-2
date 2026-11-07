@@ -5,11 +5,12 @@
 두고, 그 뒤에 이 작업이 지운다. 지우기 직전에 아직 FAILED 인지 같은 문장에서 다시 본다.
 """
 
-import asyncio
 import logging
 from datetime import UTC, datetime
+from functools import partial
 
 from pitch_coach_backend.coach.store import CoachStore
+from pitch_coach_backend.core.tasks import Stop, start_periodic
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,5 @@ async def purge_once(store: CoachStore) -> int:
     return deleted
 
 
-async def run_forever(store: CoachStore, interval_sec: float = PURGE_INTERVAL_SEC) -> None:
-    while True:
-        await purge_once(store)
-        await asyncio.sleep(interval_sec)
-
-
-def start(store: CoachStore) -> asyncio.Task[None]:
-    return asyncio.create_task(run_forever(store), name="coach-raw-retention")
+def start(store: CoachStore, interval_sec: float = PURGE_INTERVAL_SEC) -> Stop:
+    return start_periodic(partial(purge_once, store), interval_sec, name="coach-raw-retention")

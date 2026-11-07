@@ -28,11 +28,6 @@ META = {"schema_version": "1.0", "feature_version": "script_coverage-1.0", "mode
 SLIDES = tuple((number, f"{number}번 장 대본") for number in range(1, 31))
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 def _ticket() -> RubricTicket:
     return RubricTicket(
         script_version_id=uuid.uuid4(),

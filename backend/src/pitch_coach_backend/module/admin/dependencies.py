@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
+from pitch_coach_backend.core.client_ip import client_ip
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.admin.exception import AdminConsoleDisabled
 
@@ -55,7 +56,7 @@ def require_admin(
     if credentials is not None:
         logger.warning(
             "관리자 로그인 실패 ip=%s path=%s",
-            request.headers.get("x-forwarded-for"),
+            client_ip(request),
             request.headers.get("x-forwarded-uri", request.url.path),
         )
     # AppException 은 WWW-Authenticate 를 Bearer 로 채운다.

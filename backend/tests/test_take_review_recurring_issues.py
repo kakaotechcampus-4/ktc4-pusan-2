@@ -40,7 +40,7 @@ def test_recurring_issues_use_completion_order_with_number_tiebreak(
     _review(db_session, first)
     _review(db_session, second)
 
-    previous = _build_previous_recurring_issues(TakeRepository(db_session), current.id, 3)
+    previous = _build_previous_recurring_issues(TakeRepository(db_session), current.pitch_id, 3)
 
     assert previous == [{"number": expected}]
 
@@ -59,7 +59,7 @@ def test_recurring_issues_fall_back_to_latest_saved_review_in_the_same_pitch(
         db_session, _pitch(db_session, user_id), 2, completed_at=T0 + timedelta(hours=3),
     ))
 
-    previous = _build_previous_recurring_issues(TakeRepository(db_session), current.id, 3)
+    previous = _build_previous_recurring_issues(TakeRepository(db_session), current.pitch_id, 3)
 
     assert previous == [{"number": 1}]
 
@@ -71,4 +71,4 @@ def test_recurring_issues_are_empty_without_a_saved_review(
     _take(db_session, pitch, 1, completed_at=T0, review_status="FAILED")
     current = _take(db_session, pitch, 2, status="ANALYZING")
 
-    assert _build_previous_recurring_issues(TakeRepository(db_session), current.id, 2) == []
+    assert _build_previous_recurring_issues(TakeRepository(db_session), current.pitch_id, 2) == []

@@ -3,16 +3,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
+    ChatDailyUsage,
     ChatMessage,
     ChatRun,
     ChatRunEvent,
 )
-from pitch_coach_backend.module.chat.service.run import OWNER
+from pitch_coach_backend.module.chat.service.run import OWNER, SEOUL
 from pitch_coach_backend.module.chat.service.turn import recover_run
 
 STATE = {"v": 1, "kid": "k1", "payload": "p", "signature": "s"}
@@ -139,6 +141,22 @@ def test_run_past_deadline_times_out(db_session, session_factory, conversation):
 
     run = _reload(db_session, run)
     assert (run.status, run.error_code) == ("FAILED", "AGENT_TIMEOUT")
+
+
+def test_unsent_run_returns_its_reservation(db_session, session_factory, conversation):
+    now = datetime.now(UTC)
+    run = _run(db_session, conversation, now, deadline_at=now - timedelta(seconds=1))
+    day = run.accepted_at.astimezone(SEOUL).date()
+    db_session.add(ChatDailyUsage(user_id=None, day=day, reserved=1))
+    db_session.flush()
+
+    _recover(session_factory, run.id, now)
+
+    db_session.expire_all()
+    usage = db_session.scalar(
+        select(ChatDailyUsage).where(ChatDailyUsage.user_id.is_(None), ChatDailyUsage.day == day)
+    )
+    assert (usage.reserved, usage.sent) == (0, 0)
 
 
 def test_sending_call_is_not_sent_again(db_session, session_factory, conversation):

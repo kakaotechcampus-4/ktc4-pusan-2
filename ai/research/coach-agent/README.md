@@ -165,7 +165,7 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 
 - `.venv`는 git에 없습니다. 클론하거나 폴더를 옮긴 뒤에는 `uv sync`로 다시 만듭니다.
 - 1초 판단 · 재생 · Take 결과 실험은 LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 코칭 계획 실험과 live 테스트만 `ai/.env`의 `OPENAI_API_KEY` · `OPENAI_MODEL` · `OPENAI_BASE_URL`을 씁니다.
-- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …` 형태로 부릅니다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`.
+- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …` 형태로 부릅니다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`. macOS · Linux에서도 아래 명령을 그대로 씁니다.
 
 | 하는 일 | 명령 |
 |---|---|

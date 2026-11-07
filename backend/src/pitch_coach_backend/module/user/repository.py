@@ -27,7 +27,3 @@ def create(db: Session, *, email: str, name: str) -> User:
 def delete(db: Session, user: User) -> None:
     db.delete(user)
     db.flush()
-
-
-def exists(db: Session, user_id: uuid.UUID) -> bool:
-    return db.scalar(select(User.id).where(User.id == user_id)) is not None
