@@ -27,13 +27,14 @@ const take = (id: string, status: TakeStatus): HomeTake => ({
   status,
   end_reason: null,
 });
-const pitch = (id: string, title: string, takes: HomeTake[] = []): HomePitch => ({
+const pitch = (id: string, title: string, takes: HomeTake[] = [], canDelete = true): HomePitch => ({
   pitch_id: id,
   pitch_title: title,
   pitch_time: 300,
   thumbnail_url: null,
   presentation_date: null,
   takes,
+  can_delete: canDelete,
 });
 
 let list: PitchListResponse;
@@ -55,7 +56,7 @@ beforeEach(() => {
     pitches: [
       pitch('p1', '캡스톤 최종 발표', [take('t1', 'COMPLETED'), take('t2', 'COMPLETED')]),
       pitch('p2', '창업 경진대회 본선'),
-      pitch('p3', '분석 중인 발표', [take('t3', 'ANALYZING')]),
+      pitch('p3', '분석 중인 발표', [take('t3', 'ANALYZING')], false),
     ],
   };
   onDelete = async (id) => {

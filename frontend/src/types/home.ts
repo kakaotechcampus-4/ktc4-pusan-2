@@ -25,6 +25,11 @@ export interface HomePitch {
   takes: HomeTake[];
   /** UUID returned by #47 for opening the pitch editor. */
   pitch_id: string;
+  /**
+   * 지금 지울 수 있는가 (BE #1055). 연습 중이거나 분석이 실제로 도는 Take 가 있으면 false 이고, 그때 삭제는
+   * 409 `PITCH_BUSY` 입니다. 멈춘 분석은 막지 않습니다 — 막으면 그 피치를 영영 지울 수 없어서입니다
+   */
+  can_delete: boolean;
 }
 
 export interface PitchListResponse {
