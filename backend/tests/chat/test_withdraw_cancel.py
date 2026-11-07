@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core import ai_slots
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.chat import turn_runner
 from pitch_coach_backend.module.chat.entity import ChatDailyUsage, ChatRun
 from pitch_coach_backend.module.user.entity import User
@@ -60,7 +62,14 @@ def test_withdraw_closes_the_open_ai_call_and_gives_the_chat_slot_back(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(turn_runner, "CHAT_SLOT_LIMIT", 1)
+    # 남은 자리가 하나일 때 탈퇴가 그 자리를 돌려주는지 본다. 자리 설정은 2 이상이어야 대화가
+    # 켜지므로 두 자리 중 하나를 미리 쥔다
+    monkeypatch.setattr(settings, "chat_ai_slots_per_process", 2)
+
+    async def hold_one() -> None:
+        await ai_slots.chat().acquire()
+
+    client.portal.call(hold_one)
     run_id = _send(client, user_id)
     assert hanging_agent.opened.get(timeout=WAIT_SEC) == run_id
     assert _slot_taken(client)

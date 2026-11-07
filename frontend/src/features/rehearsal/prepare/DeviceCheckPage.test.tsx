@@ -9,6 +9,7 @@ import type { DeviceError } from '../media/useCameraStream';
 import { DeviceCheckPage } from './DeviceCheckPage';
 import { usePrepareStore } from './prepareStore';
 import { setSessionTicket } from '../lib/db';
+import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 
 const fixture = vi.hoisted(() => ({
   live: true,
@@ -160,6 +161,7 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
@@ -389,4 +391,14 @@ it('counts the silence warning only while reading the usual voice, from when rea
   await render();
   expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
   now.mockRestore();
+});
+
+it('tells the chat panel the current check state when a message is sent (chat step 6)', async () => {
+  fixture.micOk = false;
+  fixture.gazeStatus = 'RUNNING';
+  await render();
+  expect(takeScreenSnapshot('/pitch/:pitchId/device-check')).toMatchObject({
+    ok: true,
+    screen: { name: 'device_check', camera: 'connected', mic: 'checking', gaze_setup: 'RUNNING' },
+  });
 });

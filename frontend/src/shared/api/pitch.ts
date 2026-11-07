@@ -1,10 +1,9 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiRequest, postJson } from './client';
-import { fetchPitchList, pitchesKey, pitchListKey } from './home';
+import { pitchesKey, pitchListKey } from './home';
 import { prepareKey } from './prepare';
 import { takeSurveyKeys } from './takeSurvey';
 import { ApiFailure } from './tokenStore';
-import type { TakeStatus } from '@/types/api';
 import type { PitchListResponse } from '@/types/home';
 import type { PitchDetail, PitchRequest, PitchResources, PitchSavedResponse } from '@/types/pitch';
 
@@ -46,42 +45,33 @@ export function deletePitch(pitchId: string) {
   });
 }
 
-/**
- * 연습 중(RUNNING)이거나 분석 중(ANALYZING)인 Take 가 있으면 FE 가 삭제를 막습니다 (#807).
- * BE 는 막지 않고 진행 중인 STT · 코치를 끊은 채 지웁니다. READY 는 시작 전이라 막지 않습니다
- */
-export const hasActiveTake = (takes: readonly { status: TakeStatus }[]) =>
-  takes.some((take) => take.status === 'RUNNING' || take.status === 'ANALYZING');
-
-/** 누른 순간 다시 물어보니 연습이나 분석이 진행 중이었습니다 */
-export class PitchBusyError extends Error {}
+/** 연습이나 분석이 도는 중이라 BE 가 삭제를 거절했습니다 (409 `PITCH_BUSY`, BE #1055) */
+export const isPitchBusy = (error: unknown) =>
+  error instanceof ApiFailure && error.status === 409 && error.code === 'PITCH_BUSY';
 
 /**
- * 홈의 피치 삭제. 확인 창을 연 사이 다른 창에서 연습을 시작했을 수 있어, 지우기 직전에 목록을
- * 다시 받아 진행 중인 Take 를 봅니다. 묻지 못하면 지우지 않습니다 — 되돌릴 수 없는 쪽이라서입니다.
- * 목록에 없거나 서버가 404 면 이미 지워진 것으로 봅니다. 이때 그 피치의 Take 캐시도 지워야 해서,
- * 목록에서 못 찾으면 확인 창이 알던 Take id(`takeIds`)를 씁니다
+ * 홈의 피치 삭제. 지워도 되는지는 BE 가 정합니다 — 연습이나 분석이 도는 중이면 409 `PITCH_BUSY` 로
+ * 거절합니다(#1057). 그때는 캐시를 그대로 두고 홈 목록만 다시 받아 카드 메뉴(`can_delete`)를 맞춥니다.
+ * 서버가 404 면 이미 지워진 것으로 봅니다.
+ *
+ * 지운 뒤 캐시에서 뺄 Take 는 확인 창이 알던 것(`takeIds`)입니다. 창을 연 뒤 시작한 연습은 `RUNNING` 이라
+ * BE 가 409 로 막으므로, 그사이 생길 수 있는 건 다른 탭에서 만든 `READY` Take 뿐이고 이 탭에는 그 캐시가 없습니다
  */
 export function useDeletePitch() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async ({ pitchId, takeIds }: { pitchId: string; takeIds: readonly string[] }) => {
-      const list = await client.fetchQuery({
-        queryKey: pitchListKey,
-        queryFn: fetchPitchList,
-        staleTime: 0,
-      });
-      const pitch = list.pitches.find((item) => item.pitch_id === pitchId);
-      if (!pitch) return takeIds;
-      if (hasActiveTake(pitch.takes)) throw new PitchBusyError();
+    mutationFn: async ({ pitchId }: { pitchId: string; takeIds: readonly string[] }) => {
       try {
         await deletePitch(pitchId);
       } catch (error) {
         if (!(error instanceof ApiFailure && error.status === 404)) throw error;
       }
-      return pitch.takes.map((take) => take.take_id);
     },
-    onSuccess: (takeIds, { pitchId }) => forgetPitch(client, pitchId, takeIds),
+    onSuccess: (_, { pitchId, takeIds }) => forgetPitch(client, pitchId, takeIds),
+    onError: (error) => {
+      if (isPitchBusy(error))
+        client.invalidateQueries({ queryKey: pitchListKey }).catch(() => undefined);
+    },
   });
 }
 

@@ -27,13 +27,19 @@ const take = (id: string, status: TakeStatus): HomeTake => ({
   status,
   end_reason: null,
 });
-const pitch = (id: string, title: string, takes: HomeTake[] = []): HomePitch => ({
+const pitch = (
+  id: string,
+  title: string,
+  takes: HomeTake[] = [],
+  can_delete = true,
+): HomePitch => ({
   pitch_id: id,
   pitch_title: title,
   pitch_time: 300,
   thumbnail_url: null,
   presentation_date: null,
   takes,
+  can_delete,
 });
 
 let list: PitchListResponse;
@@ -55,10 +61,13 @@ beforeEach(() => {
     pitches: [
       pitch('p1', '캡스톤 최종 발표', [take('t1', 'COMPLETED'), take('t2', 'COMPLETED')]),
       pitch('p2', '창업 경진대회 본선'),
-      pitch('p3', '분석 중인 발표', [take('t3', 'ANALYZING')]),
+      pitch('p3', '분석 중인 발표', [take('t3', 'ANALYZING')], false),
     ],
   };
+  // BE 처럼 can_delete 가 false 면 409 PITCH_BUSY 로 거절합니다
   onDelete = async (id) => {
+    if (list.pitches.find((p) => p.pitch_id === id)?.can_delete === false)
+      throw new ApiFailure(409, 'PITCH_BUSY');
     list = { pitches: list.pitches.filter((p) => p.pitch_id !== id) };
     return { message: 'Pitch deleted successfully', pitch_id: id };
   };
@@ -114,6 +123,8 @@ const titles = () =>
     (a) => a.querySelector('.truncate')?.textContent,
   );
 const deletes = () => request.mock.calls.filter(([, o]) => o?.method === 'DELETE');
+const isList = ([path, o]: unknown[]) =>
+  path === '/api/pitches/' && (o as RequestInit | undefined)?.method !== 'DELETE';
 
 async function openDialog(title: string) {
   await click(more(title));
@@ -153,7 +164,7 @@ it('Enter · Space(누르기)로 열면 첫 항목에 초점이 가고, 다시 �
   expect(menuItem()).toBeNull();
 });
 
-it('연습이나 분석 중인 Take 가 있으면 삭제를 aria-disabled 로 막고 이유를 보인다', async () => {
+it('BE 가 지울 수 없다고(can_delete: false) 하면 삭제를 aria-disabled 로 막고 이유를 보인다', async () => {
   await render();
   await click(more('분석 중인 발표'));
   const item = menuItem()!;
@@ -163,6 +174,27 @@ it('연습이나 분석 중인 Take 가 있으면 삭제를 aria-disabled 로 �
   await click(item);
   expect(dialog()).toBeNull();
   expect(menuItem()).not.toBeNull();
+});
+
+it('분석 중(ANALYZING)이어도 BE 가 지울 수 있다고(can_delete: true, 보류된 분석) 하면 지운다', async () => {
+  list = { pitches: [pitch('p1', '보류된 발표', [take('t1', 'ANALYZING')], true)] };
+  await render();
+  await click(more('보류된 발표'));
+  expect(menuItem()!.getAttribute('aria-disabled')).not.toBe('true');
+  await click(menuItem()!);
+  await click(dialogButton('삭제'));
+  await flush();
+  expect(deletes()).toHaveLength(1);
+  expect(dialog()).toBeNull();
+  expect(titles()).not.toContain('보류된 발표');
+});
+
+it('can_delete 가 없으면(BE 가 아직 안 내림) 막지 않고 BE 에 맡긴다', async () => {
+  const { can_delete: _, ...old } = pitch('p1', '이전 응답', [take('t1', 'RUNNING')]);
+  list = { pitches: [old as HomePitch] };
+  await render();
+  await click(more('이전 응답'));
+  expect(menuItem()!.getAttribute('aria-disabled')).not.toBe('true');
 });
 
 it('확인 창은 제목 · 되돌릴 수 없음 · 함께 지워지는 것을 알리고, 취소에 처음 초점을 둔다. 취소하면 ··· 로 돌아온다', async () => {
@@ -199,6 +231,7 @@ it('지우면 목록에서 빼고 관련 캐시를 지운 뒤, 같은 자리의 
   client.setQueryData(['prepare', 'p2'], { keep: true });
 
   await openDialog('캡스톤 최종 발표');
+  const before = request.mock.calls.length;
   // 두 번 빠르게 눌러도 요청은 한 번입니다
   await act(async () => {
     dialogButton('삭제').click();
@@ -208,6 +241,8 @@ it('지우면 목록에서 빼고 관련 캐시를 지운 뒤, 같은 자리의 
 
   expect(deletes()).toHaveLength(1);
   expect(deletes()[0][0]).toBe('/api/pitches/delete/p1');
+  // 지우기 직전에 목록을 다시 받지 않고 DELETE 를 바로 보냅니다 (#1057)
+  expect(request.mock.calls[before]![1]).toMatchObject({ method: 'DELETE' });
   expect(dialog()).toBeNull();
   expect(titles()).toEqual(['창업 경진대회 본선', '분석 중인 발표']);
   expect(client.getQueryData<PitchListResponse>(pitchListKey)?.pitches).toHaveLength(2);
@@ -305,49 +340,50 @@ it('실패 문구에 원인별 공통 오류 문구를 붙인다 — 로그인�
   );
 });
 
-it('누르는 순간 다시 물어 연습이 시작됐으면 지우지 않고 알린다', async () => {
+it('창을 연 사이 연습이 시작돼 BE 가 409 PITCH_BUSY 로 거절하면 알리고, 캐시는 두고 목록을 다시 받아 메뉴를 막는다', async () => {
   await render();
+  client.setQueryData(prepareKey('p2'), { keep: true });
   await openDialog('창업 경진대회 본선');
-  list.pitches[1]!.takes = [take('t9', 'RUNNING')];
+  // 다른 창에서 연습을 시작했습니다
+  list.pitches[1] = pitch('p2', '창업 경진대회 본선', [take('t9', 'RUNNING')], false);
+  const before = request.mock.calls.length;
   await click(dialogButton('삭제'));
   await flush();
 
-  expect(deletes()).toHaveLength(0);
-  expect(dialog()!.querySelector('[role="alert"]')!.textContent).toContain(
-    '연습하거나 분석하는 중',
+  const after = request.mock.calls.slice(before);
+  expect(after[0]![1]).toMatchObject({ method: 'DELETE' });
+  expect(after.slice(1).some(isList)).toBe(true);
+  expect(dialog()!.querySelector('[role="alert"]')!.textContent).toBe(
+    '지금 이 피치로 연습하거나 분석하는 중이에요. 끝난 뒤 다시 삭제해 주세요.',
   );
   expect(titles()).toContain('창업 경진대회 본선');
+  expect(client.getQueryData(prepareKey('p2'))).toEqual({ keep: true });
+  expect(
+    client.getQueryData<PitchListResponse>(pitchListKey)?.pitches.find((p) => p.pitch_id === 'p2')
+      ?.can_delete,
+  ).toBe(false);
+
+  await click(dialogButton('취소'));
+  await click(more('창업 경진대회 본선'));
+  expect(menuItem()!.getAttribute('aria-disabled')).toBe('true');
 });
 
-it('다시 받은 목록에 피치가 이미 없어도(다른 창에서 지움) 확인 창이 알던 Take 의 캐시를 지운다', async () => {
-  await render();
-  await openDialog('캡스톤 최종 발표');
-  client.setQueryData(['takes', 't1', 'report'], { old: true });
-  client.setQueryData(takeSurveyKeys.state('t2'), { old: true });
-  client.setQueryData(['takes', 't3', 'report'], { keep: true });
-  list = { pitches: list.pitches.filter((p) => p.pitch_id !== 'p1') };
-
-  await click(dialogButton('삭제'));
-  await flush();
-
-  expect(deletes()).toHaveLength(0);
-  expect(dialog()).toBeNull();
-  expect(titles()).not.toContain('캡스톤 최종 발표');
-  expect(client.getQueryData(['takes', 't1', 'report'])).toBeUndefined();
-  expect(client.getQueryData(takeSurveyKeys.state('t2'))).toBeUndefined();
-  expect(client.getQueryData(['takes', 't3', 'report'])).toEqual({ keep: true });
-});
-
-it('서버가 이미 없다고(404) 하면 지운 것으로 본다', async () => {
+it('서버가 이미 없다고(404) 하면 지운 것으로 보고, 확인 창이 알던 Take 의 캐시를 지운다', async () => {
   // 다른 창에서 먼저 지웠습니다
   onDelete = async (id) => {
     list = { pitches: list.pitches.filter((p) => p.pitch_id !== id) };
     throw new ApiFailure(404, 'PITCH_NOT_FOUND');
   };
   await render();
-  await openDialog('창업 경진대회 본선');
+  await openDialog('캡스톤 최종 발표');
+  client.setQueryData(['takes', 't1', 'report'], { old: true });
+  client.setQueryData(takeSurveyKeys.state('t2'), { old: true });
+  client.setQueryData(['takes', 't3', 'report'], { keep: true });
   await click(dialogButton('삭제'));
   await flush();
   expect(dialog()).toBeNull();
-  expect(titles()).not.toContain('창업 경진대회 본선');
+  expect(titles()).not.toContain('캡스톤 최종 발표');
+  expect(client.getQueryData(['takes', 't1', 'report'])).toBeUndefined();
+  expect(client.getQueryData(takeSurveyKeys.state('t2'))).toBeUndefined();
+  expect(client.getQueryData(['takes', 't3', 'report'])).toEqual({ keep: true });
 });

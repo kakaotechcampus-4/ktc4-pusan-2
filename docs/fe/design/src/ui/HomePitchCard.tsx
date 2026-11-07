@@ -14,8 +14,8 @@ export interface HomePitch {
   thumbnail_url: string | null;
   /** 이 줄은 개수만 본다 */
   takes: readonly unknown[];
-  /** 연습(RUNNING) · 분석(ANALYZING) 중인 Take가 있어 삭제를 막는다. 제품은 takes[].status로 판단한다 */
-  busy?: boolean;
+  /** BE가 정한 삭제 가능 여부(#1057). false면 연습이나 분석이 도는 중이라 막는다. 없으면 막지 않는다 */
+  can_delete?: boolean;
 }
 
 const rowLink = 'whitespace-nowrap text-xs font-bold hover:text-coral-deep';
@@ -94,14 +94,6 @@ export function HomePitchCard({
           </span>
         )}
       </span>
-      {/* 비교는 Take가 둘 이상일 때만 뜻이 있어, 없을 때도 자리를 비워 줄을 맞춘다 */}
-      <span className={`w-20 text-right${showPrepare ? ' shrink-0' : ''}`}>
-        {pitch.pitch_id && takes >= 2 && (
-          <Link to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/comparison`} className={rowLink}>
-            Take 비교 →
-          </Link>
-        )}
-      </span>
       {showPrepare && pitch.pitch_id && (
         <ButtonLink
           to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
@@ -116,7 +108,9 @@ export function HomePitchCard({
       {pitch.pitch_id && onDelete && (
         <PitchMoreMenu
           pitchTitle={pitch.pitch_title}
-          blockedReason={pitch.busy ? '연습이나 분석이 끝난 뒤 지울 수 있어요.' : null}
+          blockedReason={
+            pitch.can_delete === false ? '연습이나 분석이 끝난 뒤 지울 수 있어요.' : null
+          }
           onDelete={onDelete}
           defaultOpen={menuOpen}
         />

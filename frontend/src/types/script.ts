@@ -33,7 +33,10 @@ export interface ScriptDetail {
   version: number;
   original_content: string | null;
   parse_status: ScriptParseStatus;
-  /** DONE 일 때만 값이 있습니다. false 는 구분자가 없어 대본 전체를 한 슬라이드로 둔 **정상** 결과 */
+  /**
+   * DONE 일 때만 값이 있습니다. false 는 나누지 못해 대본 전체를 한 슬라이드로 둔 **정상** 결과 —
+   * 구분자 없음 · 번호 0 · 겹침 · 거꾸로 · 첫 구분 앞에 제목이 아닌 글
+   */
   segmented: boolean | null;
   slides: ScriptSlide[];
   terms: string[];

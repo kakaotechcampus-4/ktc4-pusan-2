@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from functools import partial
 
 from sqlalchemy.orm import Session
@@ -13,7 +13,11 @@ from pitch_coach_backend.core.database import in_session as _in_session
 from pitch_coach_backend.core.tasks import Stop, TaskRegistry, run_periodic, start_task
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.repository import (
+    ANALYSIS_SWEEP_INTERVAL_SEC,
+    STALE_ANALYSIS,
+    TakeRepository,
+)
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
 
@@ -23,8 +27,6 @@ CONFIRMATION_POLL_SEC = 2.0
 RUBRIC_POLL_SEC = 5.0
 RESUME_BATCH_SIZE = 4
 RESUME_READ_TIMEOUT_SEC = 10.0
-SWEEP_INTERVAL_SEC = 5 * 60.0
-STALE_ANALYSIS = timedelta(minutes=10)
 STOP_TIMEOUT_SEC = 5.0
 
 type SessionFactory = Callable[[], Session]
@@ -186,7 +188,8 @@ async def _resume(
 
 
 async def sweep_forever(
-    session_factory: SessionFactory = SessionLocal, interval_sec: float = SWEEP_INTERVAL_SEC
+    session_factory: SessionFactory = SessionLocal,
+    interval_sec: float = ANALYSIS_SWEEP_INTERVAL_SEC,
 ) -> None:
     async def step() -> None:
         resume(session_factory, stale_before=datetime.now(UTC) - STALE_ANALYSIS)

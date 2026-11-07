@@ -1411,7 +1411,12 @@ def run_one(
 
 
 def _searched(runs: list[Run]) -> bool:
-    """이 차례에 자료 찾기가 한 번이라도 성공했는가(결과 0건 · 캐시 적중 포함, 자료 묶음 준비 실패는 아님, 6-10)."""
+    """이 차례에 자료 찾기를 했는가(6-10 · L1-21). 코어 `loop` 의 '찾은 것' 기준과 같다.
+
+    결과 0건 · 캐시 적중, 그리고 자료 묶음 준비 실패(`ERROR` 중 `CORPUS_UNAVAILABLE`)도 찾은 것으로 센다.
+    자료 묶음 없이도 일반 조언 문장은 허용되기 때문이다(빼면 'GENERAL 금지 위반'으로 잘못 잡힌다).
+    진행 줄 trace 에는 오류 코드가 없어 진단 기록 `TOOL` 단계의 `error_code` 로 본다.
+    """
     for run in runs:
         for ln in run.progress:
             tr = (ln.get("data") or {}).get("trace") or {}
@@ -1421,6 +1426,14 @@ def _searched(runs: list[Run]) -> bool:
                 and tr.get("outcome") in ("OK", "EMPTY", "CACHED")
             ):
                 return True
+        for c in run.calls:
+            for st in (c.diagnostics or {}).get("steps") or []:
+                if (
+                    st.get("kind") == "TOOL"
+                    and st.get("code") == "search_guides"
+                    and (st.get("detail") or {}).get("error_code") == "CORPUS_UNAVAILABLE"
+                ):
+                    return True
     return False
 
 

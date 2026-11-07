@@ -20,12 +20,17 @@ async def sweep_once(session_factory: Callable[[], Session] = SessionLocal) -> b
     try:
         if await in_session(session_factory, cleanup_service.cleanup_delayed, now):
             logger.error("대화 정리 작업이 2시간 넘게 끝나지 않았다")
-        cleaned = await in_session(session_factory, cleanup_service.run_cleanup, OWNER, now)
+        result = await in_session(session_factory, cleanup_service.run_cleanup, OWNER, now)
     except Exception:
         logger.exception("대화 정리 작업이 실패했다. 다음 주기에 다시 한다")
         return False
+    if result is None:
+        return True
+    cleaned, expired = result
     if cleaned:
         logger.info("지워진 근거에서 나온 대화 사본 %d개를 정리했다", cleaned)
+    if expired:
+        logger.info("보관 기간이 지난 대화 자료 %d개를 지웠다", expired)
     return True
 
 

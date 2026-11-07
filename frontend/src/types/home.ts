@@ -25,6 +25,11 @@ export interface HomePitch {
   takes: HomeTake[];
   /** UUID returned by #47 for opening the pitch editor. */
   pitch_id: string;
+  /**
+   * 지금 지울 수 있는지 (BE #1055). 연습이나 분석이 도는 중이면 false 이고 DELETE 는 409 `PITCH_BUSY` 입니다.
+   * 보류되거나 멈춘 분석만 남았으면 true 입니다. 기준은 `backend/README.md` 의 "발표 삭제"
+   */
+  can_delete: boolean;
 }
 
 export interface PitchListResponse {

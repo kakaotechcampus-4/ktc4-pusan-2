@@ -3,20 +3,13 @@ import { act, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ChatAgentHost } from './ChatAgentHost';
 import { CHAT_FAILED_TEXT, ChatErrorBoundary } from './ChatErrorBoundary';
 
+// 실제 채팅 호스트를 감싼 경우는 ChatAgentHost.test.tsx 에 있습니다
 const state = vi.hoisted(() => ({
   /** 대화창이 그릴 때마다 던집니다 — 같은 데이터 때문에 되풀이되는 오류 */
   alwaysThrow: false,
   renders: 0,
-  sessionThrows: false,
-}));
-vi.mock('@/shared/api/useSession', () => ({
-  useSession: () => {
-    if (state.sessionThrows) throw new Error('session boom');
-    return { isPending: false, isError: false, data: { id: 'u1' } };
-  },
 }));
 
 let host: HTMLDivElement;
@@ -29,12 +22,10 @@ const silence = (event: ErrorEvent) => event.preventDefault();
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  vi.stubEnv('VITE_CHAT_AGENT', 'true');
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   window.addEventListener('error', silence);
   state.alwaysThrow = false;
   state.renders = 0;
-  state.sessionThrows = false;
   pageClicks = 0;
   resets.length = 0;
   host = document.createElement('div');
@@ -48,7 +39,6 @@ afterEach(async () => {
   window.removeEventListener('error', silence);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
 });
 
 const countRender = () => {
@@ -216,17 +206,4 @@ it('채팅이 숨는 화면에서는 안내를 그리지 않는다', async () =>
   expect(host.querySelector('[data-chat-launcher]')).toBeNull();
   await act(async () => router.navigate('/takes/t1'));
   expect(alerts()).toHaveLength(1);
-});
-
-it('실제 채팅 호스트가 렌더 중에 던져도 리포트 버튼은 그대로 쓰고, 다시 시도하면 런처가 돌아온다', async () => {
-  state.sessionThrows = true;
-  await visit('/takes/t1', <ChatAgentHost />);
-  expect(alerts()[0]?.textContent).toBe(CHAT_FAILED_TEXT);
-  await click(button('리포트 버튼')!);
-  expect(pageClicks).toBe(1);
-
-  state.sessionThrows = false;
-  await click(button('다시 시도')!);
-  expect(byLabel('채팅 에이전트')).not.toBeNull();
-  expect(alerts()).toHaveLength(0);
 });

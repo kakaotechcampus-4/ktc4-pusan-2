@@ -7,6 +7,11 @@ from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.dto import (
+    HISTORY_MESSAGES,
+    HISTORY_TEXT_LIMIT,
+    OVERFLOW_MESSAGES,
+    PITCH_SUMMARIES,
+    PRIOR_ASSESSMENTS,
     AgentChoiceDTO,
     AgentContextDTO,
     AgentHistoryDTO,
@@ -20,6 +25,7 @@ from pitch_coach_backend.module.chat.dto import (
     AgentReviewEventDTO,
     AgentRunDTO,
     AgentSummaryItemDTO,
+    AgentTrigger,
     AgentTurnRequestDTO,
     BudgetUsedDTO,
 )
@@ -31,6 +37,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatSummary,
 )
 from pitch_coach_backend.module.chat.repository import ChatRepository
+from pitch_coach_backend.module.chat.service.owned import owned_pitch, owned_take
 from pitch_coach_backend.module.chat.service.run import ClaimedRun
 from pitch_coach_backend.module.chat.service.stale import (
     MASKED_TEXT,
@@ -45,11 +52,6 @@ from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.repository import TakeRepository
 
-HISTORY_MESSAGES = 20
-OVERFLOW_MESSAGES = 10
-PRIOR_ASSESSMENTS = 50
-HISTORY_TEXT_LIMIT = 4000
-PITCH_SUMMARIES = 20
 RECENT_TAKES = 10
 CONTEXT_LIMIT_BYTES = 524_288
 SNAPSHOT_RESULTS = {
@@ -97,7 +99,7 @@ def build_request(
             conversation_id=row.conversation_id,
             user_id=row.user_id,
             scope_pitch_id=scope_pitch_id,
-            trigger=run.first_trigger if first else "ACTION_RESULT",
+            trigger=run.first_trigger if first else AgentTrigger.ACTION_RESULT,
             state_revision=row.state_revision,
         ),
         user_message=source.get("user_message"),
@@ -151,7 +153,7 @@ def offered_sources(request: AgentTurnRequestDTO) -> dict[str, list[str]]:
 
 
 def run_scope(row: ChatRun, conversation: ChatConversation) -> uuid.UUID | None:
-    if row.first_trigger == "TAKE_REVIEWED":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED:
         return row.scope_pitch_id
     return conversation.scope_pitch_id
 
@@ -314,27 +316,18 @@ def current_sources(
     pitch_ids: set[str],
     take_ids: set[str],
 ) -> dict[str, Any]:
-    pitch_repository = PitchRepository(db)
     return {
         "pitches": {
-            pitch_id: _current_pitch(db, repo, pitch_repository, user_id, pitch_id)
-            for pitch_id in pitch_ids
+            pitch_id: _current_pitch(db, repo, user_id, pitch_id) for pitch_id in pitch_ids
         },
-        "takes": {
-            take_id: _current_take(repo, pitch_repository, user_id, take_id) for take_id in take_ids
-        },
+        "takes": {take_id: _current_take(db, repo, user_id, take_id) for take_id in take_ids},
     }
 
 
 def _current_pitch(
-    db: Session,
-    repo: ChatRepository,
-    pitch_repository: PitchRepository,
-    user_id: uuid.UUID,
-    pitch_id: Any,
+    db: Session, repo: ChatRepository, user_id: uuid.UUID, pitch_id: Any
 ) -> dict[str, Any] | None:
-    parsed = _as_uuid(pitch_id)
-    pitch = pitch_repository.get_owned(parsed, user_id) if parsed else None
+    pitch = owned_pitch(db, user_id, pitch_id)
     if pitch is None:
         return None
     standard_version = standard_service.latest_analysis_version(db, pitch.id)
@@ -345,11 +338,10 @@ def _current_pitch(
 
 
 def _current_take(
-    repo: ChatRepository, pitch_repository: PitchRepository, user_id: uuid.UUID, take_id: Any
+    db: Session, repo: ChatRepository, user_id: uuid.UUID, take_id: Any
 ) -> dict[str, Any] | None:
-    parsed = _as_uuid(take_id)
-    row = repo.get_take_with_review(parsed) if parsed else None
-    if row is None or pitch_repository.get_owned(row.Take.pitch_id, user_id) is None:
+    row = owned_take(db, user_id, take_id)
+    if row is None:
         return None
     results = repo.list_ai_results(row.Take.id, list(SNAPSHOT_RESULTS))
     take_result = next((saved for saved in results if saved.kind == "TAKE_RESULT"), None)
@@ -360,13 +352,6 @@ def _current_take(
             area: (rule or {}).get("criteria_version") for area, rule in criteria.items()
         },
     }
-
-
-def _as_uuid(value: Any) -> uuid.UUID | None:
-    try:
-        return uuid.UUID(str(value))
-    except ValueError:
-        return None
 
 
 def _shorten(message: ChatMessage) -> tuple[str, bool]:
@@ -424,15 +409,14 @@ def _read_sources(
     db: Session, repo: ChatRepository, row: ChatRun
 ) -> tuple[list[dict[str, Any]], list[uuid.UUID]]:
     sources = row.read_sources or {}
-    pitch_repository = PitchRepository(db)
     loaded: list[dict[str, Any]] = []
     removed: list[uuid.UUID] = []
     for pitch_id in map(uuid.UUID, sources.get("pitches", [])):
-        if pitch_repository.get_owned(pitch_id, row.user_id) is None:
+        if owned_pitch(db, row.user_id, pitch_id) is None:
             removed.append(pitch_id)
     for take_id in map(uuid.UUID, sources.get("takes", [])):
-        take = repo.get_take_with_review(take_id)
-        if take is None or pitch_repository.get_owned(take.Take.pitch_id, row.user_id) is None:
+        take = owned_take(db, row.user_id, take_id)
+        if take is None:
             removed.append(take_id)
         else:
             loaded.append(take_snapshot(repo, take))

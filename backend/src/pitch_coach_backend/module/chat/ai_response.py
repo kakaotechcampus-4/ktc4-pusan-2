@@ -6,7 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from pitch_coach_backend.core.ai_http import SCHEMA_MAJOR
 from pitch_coach_backend.core.validation import reject_unstorable_json
-from pitch_coach_backend.module.chat.dto import ActionType, AgentTrigger
+from pitch_coach_backend.module.chat.dto import (
+    ActionType,
+    AgentTrigger,
+    BudgetUsedDTO,
+    SignedStateDTO,
+)
 
 MAX_LINE_BYTES = 2 * 1024 * 1024
 MAX_DIAGNOSTICS_BYTES = 65_536
@@ -57,11 +62,10 @@ class _Message(_View):
     sources: list[dict[str, Any]]
 
 
-class _SignedState(_View):
-    v: Literal[1]
-    kid: str
-    payload: str
-    signature: str
+# 다음 호출에 그대로 되돌려 보내는 칸은 요청 모델을 물려받아 칸과 extra 규칙(forbid)을 같이 쓴다.
+# 응답이라 strict 만 더한다. 모르는 칸은 여기서 걸려 행동을 실행하기 전에 응답 전체를 거절한다
+class _SignedState(SignedStateDTO):
+    model_config = ConfigDict(strict=True)
 
 
 class _Preapproved(_View):
@@ -95,12 +99,8 @@ class _Action(_View):
         return self
 
 
-class _Budget(_View):
-    model_calls: int = Field(ge=0)
-    tool_calls: int = Field(ge=0)
-    elapsed_ms: int = Field(ge=0)
-    input_tokens: int = Field(ge=0)
-    output_tokens: int = Field(ge=0)
+class _Budget(BudgetUsedDTO):
+    model_config = ConfigDict(strict=True)
 
 
 class _GoalResult(_View):
@@ -137,6 +137,8 @@ class FinalView(_View):
     budget_used: _Budget
     assessments: list[dict[str, Any]] | None = None
     goal_result: _GoalResult | None = None
+    # 기억 요청. 항목 검사는 저장할 때 한다(memory.new_memory_cards)
+    profile_updates: Any = None
     meta: _Meta
 
     @model_validator(mode="after")
@@ -176,11 +178,11 @@ class FinalView(_View):
         return self
 
 
-class _Args(BaseModel):
+class ActionArgs(BaseModel):
     model_config = ConfigDict(strict=True, allow_inf_nan=False, extra="forbid")
 
 
-class FetchPitchArgs(_Args):
+class FetchPitchArgs(ActionArgs):
     pitch_id: str | None
     name: str | None
 
@@ -193,12 +195,12 @@ class FetchPitchArgs(_Args):
         return self
 
 
-class FetchTakeArgs(_Args):
+class FetchTakeArgs(ActionArgs):
     pitch_id: str
     take_id: str
 
 
-class ReassessArgs(_Args):
+class ReassessArgs(ActionArgs):
     take_id: str
     change: dict[str, Any]
 
@@ -209,16 +211,16 @@ class ReassessArgs(_Args):
         return self
 
 
-class StartPracticeArgs(_Args):
+class StartPracticeArgs(ActionArgs):
     pitch_id: str
 
 
-class SaveGoalArgs(_Args):
+class SaveGoalArgs(ActionArgs):
     expected_goal_version: int = Field(ge=0)
     goal: dict[str, Any]
 
 
-ACTION_ARGS: dict[str, type[_Args]] = {
+ACTION_ARGS: dict[str, type[ActionArgs]] = {
     "FETCH_PITCH": FetchPitchArgs,
     "FETCH_TAKE": FetchTakeArgs,
     "REASSESS": ReassessArgs,
@@ -305,10 +307,14 @@ def validate_final(data: dict[str, Any], trigger: AgentTrigger) -> FinalView:
         view = FinalView.model_validate(data)
         if view.meta.schema_version.split(".", 1)[0] != SCHEMA_MAJOR:
             raise ValueError("지원하지 않는 응답 버전")
-        if trigger == "USER_MESSAGE" and view.status != "NEEDS_ACTION" and view.assessments is None:
+        if (
+            trigger == AgentTrigger.USER_MESSAGE
+            and view.status != "NEEDS_ACTION"
+            and view.assessments is None
+        ):
             raise ValueError("사용자 말로 시작한 실행의 답에 판단이 없다")
         if (
-            trigger == "TAKE_REVIEWED"
+            trigger == AgentTrigger.TAKE_REVIEWED
             and view.status != "NEEDS_ACTION"
             and (view.goal_result is None or view.actions)
         ):

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
-import { scanSlideMarkers, type MarkerScan } from '@/shared/lib/slideMarkers';
+import { scanSlideMarkers } from '@/shared/lib/slideMarkers';
 import { useCreateStore } from '../createStore';
 import { CaretIcon, CheckIcon, DocIcon, LinkIcon } from '../icons';
 import {
@@ -13,6 +13,7 @@ import {
   type SlideVersion,
 } from '../lib/draft';
 import { computeGate } from '../lib/gate';
+import { mappingEditNotice, markerHint, unsegmentedNotice } from '../lib/markerHint';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -38,27 +39,6 @@ const PLACEHOLDER = [
   '[슬라이드 2]',
   '처음에 저희가 마주한 문제는 …',
 ].join('\n');
-
-/**
- * 입력 중 안내. 지금 대본대로 매핑하면 어떻게 나뉠지 미리 알려 줍니다.
- * 막지는 않습니다 — 기존 표기도 안내용으로 인식합니다 (`shared/lib/slideMarkers`).
- */
-function markerHint(scan: MarkerScan, pageCount: number, tooLong: boolean): string | null {
-  if (tooLong) {
-    return `대본은 ${MAX_SCRIPT_CHARS.toLocaleString()}자(공백 포함)까지 매핑할 수 있어요. 조금 줄여 주세요.`;
-  }
-  if (scan.numbers.length === 0) {
-    return '“[슬라이드 1]”처럼 슬라이드마다 구분해 주세요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.';
-  }
-  if (scan.leadingText) {
-    return '첫 구분 앞에는 제목 한 줄만 둘 수 있어요. 그보다 많으면 나뉘지 않으니 “[슬라이드 1]”을 앞으로 옮겨 주세요.';
-  }
-  const last = Math.max(...scan.numbers);
-  if (pageCount > 0 && last !== pageCount) {
-    return `구분은 ${last}번까지, 슬라이드는 ${pageCount}장이에요. 장수를 맞춰야 연습을 시작할 수 있어요.`;
-  }
-  return null;
-}
 
 function mapLabel(pending: boolean): string {
   return pending ? '나누는 중…' : '대본 매핑';
@@ -202,10 +182,15 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
   const failure = script.parse.status === 'failed' ? script.parse.message : null;
   const pageCount = linked?.pageCount ?? 0;
   const scan = scanSlideMarkers(script.text);
+  const emptyHintId = useId();
+  const formatHintId = useId();
   const tooLong = scriptLength(script.text) > MAX_SCRIPT_CHARS;
   const hint = chars > 0 ? markerHint(scan, pageCount, tooLong) : null;
   // 나뉠 장수 = 마지막 구분 번호 (건너뛴 번호는 빈 자리로 남습니다 — beAdapter)
-  const markerCount = scan.leadingText || scan.numbers.length === 0 ? 0 : Math.max(...scan.numbers);
+  const markerCount =
+    scan.leadingText || !scan.numbersValid || scan.numbers.length === 0
+      ? 0
+      : Math.max(...scan.numbers);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -241,6 +226,14 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         </div>
       </div>
 
+      {chars === 0 && (
+        <p id={emptyHintId} className="mb-3 text-sm text-ink/80">
+          사용하시는 AI로 만든 대본을 그대로 넣어 주세요. 슬라이드마다 새 줄을 “[1]” · “[슬라이드
+          1]” · “슬라이드 1:” · “Slide 1” · “## Slide 1 — 제목” 같은 구분으로 시작하면 장마다
+          연결돼요. AI에게 “슬라이드마다 [슬라이드 N] 줄로 시작해 줘”라고 덧붙이면 편해요.
+        </p>
+      )}
+
       {hint && !failure && (
         <p
           role="status"
@@ -267,6 +260,8 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
       <div className="h-80 flex min-h-0 min-w-0 overflow-hidden rounded-lg border border-line bg-white focus-within:border-ink">
         <textarea
           aria-label="대본"
+          // 빈 대본 안내와 하단 형식 안내를 입력칸 설명으로 읽어 줍니다 — 입력 중 안내(role=status)는 바뀔 때 따로 읽힙니다
+          aria-describedby={chars === 0 ? `${emptyHintId} ${formatHintId}` : formatHintId}
           value={script.text}
           onChange={(e) => editScript(script.version, e.target.value)}
           // 나누는 동안 고치면 결과가 이 글과 어긋납니다 — 끝날 때까지 잠깐 막습니다
@@ -280,9 +275,10 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         />
       </div>
 
-      <p className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
-        슬라이드마다 [N] · [슬라이드 N] · 슬라이드 N: 중 하나를 새 줄에 적어 주세요. N은 슬라이드
-        번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.
+      <p id={formatHintId} className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
+        슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” · “Slide N” 같은 구분을 새 줄 맨 앞에
+        적어 주세요. “## Slide N — 제목”처럼 # 제목 표시를 붙여도 돼요. 번호는 1부터 차례로 커져야
+        해요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.
       </p>
     </div>
   );
@@ -307,18 +303,18 @@ function SlideThumb({ slide, pageNumber }: { slide: SlideVersion | null; pageNum
 
 /** 나눈 결과가 슬라이드와 맞지 않을 때의 안내. 고칠 곳은 대본의 구분자입니다 */
 function MappingNotice({
+  text,
   segmented,
   blockCount,
   pageCount,
 }: {
+  text: string;
   segmented: boolean | null;
   blockCount: number;
   pageCount: number;
 }) {
   const message = (() => {
-    if (segmented === false) {
-      return '구분자가 없어 대본 전체를 한 슬라이드로 연결했어요. “[슬라이드 1]”처럼 나눠 적으면 장마다 연결돼요.';
-    }
+    if (segmented === false) return unsegmentedNotice(scanSlideMarkers(text));
     if (pageCount > 0 && blockCount !== pageCount) {
       return `대본은 ${blockCount}장, 슬라이드는 ${pageCount}장으로 나뉘었어요. 대본의 구분을 확인해 주세요.`;
     }
@@ -477,7 +473,12 @@ function MappingReview({
           매핑 확인/수정
         </button>
       </div>
-      <MappingNotice segmented={script.segmented} blockCount={blocks.length} pageCount={pages} />
+      <MappingNotice
+        text={script.text}
+        segmented={script.segmented}
+        blockCount={blocks.length}
+        pageCount={pages}
+      />
       {script.parse.status === 'failed' && (
         <p role="alert" className="mt-3 text-sm">
           {script.parse.message}
@@ -539,6 +540,9 @@ function MappingEditor({
   // ★ 장수가 맞아야 저장합니다. 맞지 않는 조합을 저장하면 "저장 완료"인데 "다음"이 막혀 헷갈립니다
   const countsMatch = pageCount > 0 && blocks.length === pageCount;
   const canSave = !script.saved && canSaveMapping(script, linked);
+  // 고친 장 대본은 다시 매핑할 때 원문으로 이어집니다 — 구분자로 읽히는 줄이 있으면 장이 달라지니 짚어 줍니다
+  const editNotice = script.remote ? null : mappingEditNotice(blocks);
+  const editNoticeId = useId();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -557,12 +561,22 @@ function MappingEditor({
           수정한 문장은 원문에도 반영됩니다. 수정 대본을 다시 매핑한 뒤 저장해 주세요.
         </p>
       )}
+      {editNotice && (
+        <p
+          id={editNoticeId}
+          role="status"
+          className="mb-3 rounded-lg border border-coral/40 bg-coral-wash px-4 py-3 text-sm"
+        >
+          {editNotice}
+        </p>
+      )}
       {script.parse.status === 'failed' && (
         <p role="alert" className="mb-3 text-sm text-ink">
           {script.parse.message}
         </p>
       )}
       <MappingNotice
+        text={script.text}
         segmented={script.segmented}
         blockCount={blocks.length}
         pageCount={pageCount}
@@ -592,6 +606,7 @@ function MappingEditor({
             <span className="font-bold">{active + 1}장 대본</span>
             <textarea
               aria-label={`슬라이드 ${active + 1} 대본`}
+              aria-describedby={editNotice ? editNoticeId : undefined}
               value={rows[active] ?? ''}
               readOnly={pending || active >= blocks.length}
               onChange={(e) => editMappingBlock(script.version, active, e.target.value)}

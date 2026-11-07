@@ -2,7 +2,6 @@ import { duration } from './homeFormat';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ButtonLink } from '@/shared/ui/Button';
-import { hasActiveTake } from '@/shared/api/pitch';
 import type { HomePitch } from '@/types/home';
 import { PitchMoreMenu } from './PitchMoreMenu';
 
@@ -77,14 +76,6 @@ export function HomePitchCard({
           </span>
         )}
       </span>
-      {/* 비교는 Take 가 둘 이상일 때만 뜻이 있어, 없을 때도 자리를 비워 줄을 맞춥니다 */}
-      <span className="w-20 shrink-0 text-right">
-        {pitch.pitch_id && takes >= 2 && (
-          <Link to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/comparison`} className={rowLink}>
-            Take 비교 →
-          </Link>
-        )}
-      </span>
       {pitch.pitch_id && (
         <ButtonLink
           to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
@@ -95,12 +86,13 @@ export function HomePitchCard({
           발표 준비
         </ButtonLink>
       )}
-      {/* 삭제는 되돌릴 수 없어 발표 준비 옆에 버튼으로 두지 않고 메뉴 안에 둡니다 (#807) */}
+      {/* 삭제는 되돌릴 수 없어 발표 준비 옆에 버튼으로 두지 않고 메뉴 안에 둡니다 (#807).
+          지울 수 있는지는 BE 가 정합니다(can_delete, #1057). 값이 없으면(BE 가 아직 안 내림) 막지 않고 BE 의 409 에 맡깁니다 */}
       {pitch.pitch_id && onDelete && (
         <PitchMoreMenu
           pitchTitle={pitch.pitch_title}
           blockedReason={
-            hasActiveTake(pitch.takes) ? '연습이나 분석이 끝난 뒤 지울 수 있어요.' : null
+            pitch.can_delete === false ? '연습이나 분석이 끝난 뒤 지울 수 있어요.' : null
           }
           onDelete={() => onDelete(pitch)}
         />

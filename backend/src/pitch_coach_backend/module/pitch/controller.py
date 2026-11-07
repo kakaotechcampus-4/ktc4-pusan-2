@@ -112,7 +112,7 @@ def delete_pitch(
     background_tasks: BackgroundTasks,
 ):
     take_ids = delete_pitch_service(db, pitch_id)
-    # 진행 중이던 Take 가 있으면 실시간 STT(Deepgram) · 코치도 끊는다
+    # 돌던 연습은 위에서 막았다. 닫히는 중이거나 시작하다 실패한 스트림이 남았으면 여기서 끊는다
     hooks.live_takes().discard(take_ids)
     # 발표자료 파일은 CASCADE 로 지워지지 않는다. 응답을 늦추지 않게 보낸 뒤 지운다
     background_tasks.add_task(delete_pitch_files, pitch_id)

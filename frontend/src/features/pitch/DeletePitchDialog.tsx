@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef } from 'react';
 import { toMessage } from '@/shared/api/errorMessage';
-import { PitchBusyError, useDeletePitch } from '@/shared/api/pitch';
+import { isPitchBusy, useDeletePitch } from '@/shared/api/pitch';
 import { Button } from '@/shared/ui/Button';
 import type { HomePitch } from '@/types/home';
 import { SURVEY_RETENTION_UNTIL } from './HomeSurveyNotice';
@@ -98,8 +98,9 @@ export function DeletePitchDialog({
         </p>
         {remove.isError && (
           <p role="alert" className="mt-3 text-sm leading-6 font-bold text-coral-deep">
-            {remove.error instanceof PitchBusyError
-              ? '지금 이 피치로 연습하거나 분석하는 중이에요. 끝난 뒤 다시 삭제해 주세요.'
+            {/* 409 PITCH_BUSY 는 실패라기보다 지금은 안 된다는 답이라 "삭제하지 못했어요" 를 붙이지 않습니다 */}
+            {isPitchBusy(remove.error)
+              ? toMessage(remove.error)
               : `피치를 삭제하지 못했어요. ${toMessage(remove.error)}`}
           </p>
         )}

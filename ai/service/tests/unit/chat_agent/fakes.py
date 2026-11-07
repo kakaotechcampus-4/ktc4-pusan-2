@@ -339,7 +339,10 @@ def run_turn(
     req: dict[str, Any], llm: Any, *, secret: bytes | None = SECRET, **dep_kw: Any
 ) -> tuple[int, list[dict[str, Any]], dict[str, Any] | None]:
     """(HTTP 상태, 줄 목록, final 또는 error 데이터). 스트림 전 오류면 줄 목록은 비고 상태는 오류 코드."""
-    sink: list[dict[str, Any]] = dep_kw.pop("log", None) or []
+    # 빈 목록도 그대로 쓴다(`or []` 로 바꾸면 시험이 넘긴 기록 목록이 버려진다)
+    sink: list[dict[str, Any]] | None = dep_kw.pop("log", None)
+    if sink is None:
+        sink = []
     resp = handle_turn(
         json.dumps(req, ensure_ascii=False).encode("utf-8"),
         deps(llm, log=sink, **dep_kw),

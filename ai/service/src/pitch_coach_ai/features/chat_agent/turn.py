@@ -28,6 +28,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import queue
 import re
@@ -77,6 +78,8 @@ class TurnResponse:
     #: 취소 신호(어느 스레드에서 불러도 된다). 부르면 새 모델 · 도구 호출을 하지 않고 곧 끝 줄을 낸다.
     #: 반복자를 닫는 것과 같지만, 다른 스레드가 반복자를 읽는 중에도 부를 수 있다(서비스 계층의 연결 끊김, L1-08)
     cancel: Callable[[], None] | None = None
+    #: 스트림의 실행 ID(줄의 `run_id`). 서비스 계층이 끝 줄을 대신 낼 때 쓴다
+    run_id: str | None = None
 
 
 def _err(status: int, code: str) -> TurnResponse:
@@ -194,6 +197,7 @@ def handle_turn(
     return TurnResponse(
         lines=_stream(lp, req, deps, payload=payload, secret=secret, cancelled=cancelled),
         cancel=cancelled.set,
+        run_id=req.run.run_id,
     )
 
 
@@ -264,37 +268,51 @@ def _stream(
         try:
             q.put(("end", _orchestrate(lp, req, deps, payload=payload, secret=secret)))
         except Exception as exc:  # noqa: BLE001  # 반복자 안에서 잡아 error 한 줄로 끝낸다(L1-08)
-            # 로그에는 예외 종류와 마지막 위치(파일:줄 · 함수)만 남긴다. 예외 메시지는 사용자 글을 담을 수 있어 남기지 않는다
-            tb = traceback.extract_tb(exc.__traceback__)
-            where = [f"{Path(f.filename).name}:{f.lineno} {f.name}" for f in tb[-3:]]
-            q.put(("crash", {"cause": type(exc).__name__, "where": where}))
+            q.put(("crash", _crash_info(exc)))
+
+    def render(kind: str, item: Any) -> tuple[str, bool]:
+        """큐 항목 하나를 줄로. 돌려주는 값: (줄, 끝 줄인가)."""
+        if kind == "progress":
+            event, data = item
+            try:
+                return writer.line(event, data), False
+            except _OutputTooLarge:
+                cancelled.set()
+                return writer.error_line("AGENT_OUTPUT_TOO_LARGE", None), True
+        if kind == "end":
+            final, err, diag_json = item
+            if err is not None:
+                return writer.error_line(err, diag_json), True
+            return _final_line(writer, final), True
+        deps.log({"event": "agent_crash", "run_id": req.run.run_id, **item})
+        return writer.error_line("INTERNAL_ERROR", None), True
 
     threading.Thread(target=work, name="chat-agent-turn", daemon=True).start()
     try:
         while True:
             kind, item = q.get()
-            if kind == "progress":
-                event, data = item
-                try:
-                    yield writer.line(event, data)
-                except _OutputTooLarge:
-                    cancelled.set()
-                    yield writer.error_line("AGENT_OUTPUT_TOO_LARGE", None)
-                    return
-            elif kind == "end":
-                final, err, diag_json = item
-                yield (
-                    writer.error_line(err, diag_json)
-                    if err is not None
-                    else _final_line(writer, final)
-                )
-                return
-            else:
-                deps.log({"event": "agent_crash", "run_id": req.run.run_id, **item})
+            try:
+                line, last = render(kind, item)
+            except Exception as exc:  # noqa: BLE001  # 줄 만들기 · 줄이기 · 로그에서 난 예외도 끝 줄 하나로(5-4 · L1-08)
+                cancelled.set()
+                with contextlib.suppress(Exception):
+                    deps.log({"event": "agent_crash", "run_id": req.run.run_id, **_crash_info(exc)})
                 yield writer.error_line("INTERNAL_ERROR", None)
+                return
+            yield line
+            if last:
                 return
     finally:
         cancelled.set()
+
+
+def _crash_info(exc: BaseException) -> dict[str, Any]:
+    """로그에는 예외 종류와 마지막 위치(파일:줄 · 함수)만 남긴다. 예외 메시지는 사용자 글을 담을 수 있어 남기지 않는다."""
+    tb = traceback.extract_tb(exc.__traceback__)
+    return {
+        "cause": type(exc).__name__,
+        "where": [f"{Path(f.filename).name}:{f.lineno} {f.name}" for f in tb[-3:]],
+    }
 
 
 def _final_line(writer: _Writer, final: dict[str, Any]) -> str:

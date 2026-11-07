@@ -181,7 +181,13 @@ def from_env(
             base_url=base_url,
             api_key=api_key,
             model=model,
-            role=role if role is not None else tool_role(),
+            # 호출 한 번 상한: 서비스(`api/chat_agent.py` AgentRuntime)와 같이 코어 답 몫(24초 / 2 = 12초)을 넘지 않는다
+            role=role
+            if role is not None
+            else tool_role(
+                max_call_seconds=DEFAULT_CONFIG.reserved_answer_seconds
+                / DEFAULT_CONFIG.reserved_answer_calls
+            ),
             log=log or (lambda _l: None),
         )
         if base_url and api_key and model
