@@ -5,14 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from pitch_coach_backend.core.validation import NulFreeStr
 
-
-class ChatInfoDTO(BaseModel):
-    chat_id: str
-    user_id: str
-    message: str
-    timestamp: str
-
-
 AgentTrigger = Literal["USER_MESSAGE", "ACTION_RESULT", "TAKE_REVIEWED"]
 ActionType = Literal["FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"]
 ActionStatus = Literal["SUCCEEDED", "FAILED", "AMBIGUOUS"]
