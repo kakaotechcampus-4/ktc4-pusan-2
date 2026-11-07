@@ -379,11 +379,15 @@ export type ChatScreen =
       step: 'slides' | 'script' | 'info' | 'criteria';
       version_label: string | null;
       version_id: string | null;
+      /**
+       * 마지막 저장값. 한 번도 저장하지 않았으면 null. 칸마다 FE 가 모르면 null 입니다 — 예: 고친 대본은 서버 사본의
+       * 글을 들고 있지 않아 `script_chars` 가 null (AI `ScreenSaved` 도 칸마다 null 을 받습니다)
+       */
       saved: {
-        title: string;
-        time_limit_sec: number;
-        criteria_text: string;
-        script_chars: number;
+        title: string | null;
+        time_limit_sec: number | null;
+        criteria_text: string | null;
+        script_chars: number | null;
       } | null;
       draft: {
         title: string | null;
