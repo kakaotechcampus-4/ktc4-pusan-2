@@ -60,11 +60,6 @@ describe('지금 화면 (12-4 F2)', () => {
       '',
       { route: '/pitch/:pitchId/device-check', pitchId: 'p1', takeId: null, needsTake: false },
     ],
-    [
-      '/pitch/p1/comparison',
-      '',
-      { route: '/pitch/:id/comparison', pitchId: 'p1', takeId: null, needsTake: false },
-    ],
     ['/takes', '', { route: '/takes', pitchId: null, takeId: null, needsTake: false }],
     ['/takes', '?pitch=p2', { route: '/takes', pitchId: 'p2', takeId: null, needsTake: false }],
     ['/takes/t1', '', { route: '/takes/:takeId', pitchId: null, takeId: 't1', needsTake: true }],

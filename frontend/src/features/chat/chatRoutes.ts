@@ -29,7 +29,7 @@ export function canShowChat(pathname: string): boolean {
 /**
  * 지금 화면 — 보내기의 `page` 와 처음 범위의 바탕입니다 (12-4 F2 "처음 범위" 표 · "메시지를 보낼 때마다 지금 화면 `page`").
  * - `route` 는 경로 패턴 그대로(`ChatPage.route`), 실제 ID 는 `pitchId` · `takeId` 로 따로 둡니다.
- * - `pitchId` 는 화면이 바로 아는 피치 — 피치 수정 · 장치 점검 · Take 비교는 경로의 ID, Take 기록은 `?pitch=`.
+ * - `pitchId` 는 화면이 바로 아는 피치 — 피치 수정 · 장치 점검은 경로의 ID, Take 기록은 `?pitch=`.
  *   리포트와 그 아래 화면(`/takes/:takeId/…`)은 Take 를 조회해야 알아서 여기서는 null 이고 `needsTake` 가 true 입니다.
  * 채팅을 띄우지 않는 화면이면 null
  */
