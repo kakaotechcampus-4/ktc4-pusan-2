@@ -16,7 +16,8 @@ import {
  * 규칙을 바꾸면 이 파일과 `docs/ai/features/script-parser.md` 5-2 를 함께 고칩니다.
  */
 interface Markers {
-  lines: { line: string; number: number | null; group: string; note?: string }[];
+  /** `rest` 는 구분자 뒤 같은 줄의 글(AI `match_delimiter` 의 두 번째 값). 구분자 줄에만 있습니다 */
+  lines: { line: string; number: number | null; rest?: string; group: string; note?: string }[];
   scripts: { name: string; script: string; status: 'success' | 'fail'; numbers: number[] }[];
 }
 const MARKERS: Markers = JSON.parse(
@@ -34,12 +35,18 @@ describe('슬라이드 구분자 — FE · AI 공통 입력 목록 (docs/ai/feat
     expect(MARKERS.scripts.length).toBeGreaterThan(0);
   });
 
-  it.each(MARKERS.lines.map((c) => [c.line, c.number, c.group] as const))(
+  it.each(MARKERS.lines.map((c) => [c.line, c.number, c.group, c.rest] as const))(
     '%j → %s (%s)',
-    (line, expected) => {
+    (line, expected, _group, rest) => {
       expect(markerNumber(line)).toBe(expected);
+      // 번호와 함께 구분자 뒤 글도 AI 와 같아야 합니다 — 목은 이 글을 그 장의 본문으로 씁니다
+      if (rest !== undefined) expect(matchMarker(line)?.rest).toBe(rest);
     },
   );
+
+  it('구분자 줄에는 모두 뒤 글(rest)이 적혀 있다', () => {
+    expect(MARKERS.lines.filter((c) => c.number !== null && c.rest === undefined)).toEqual([]);
+  });
 
   // status 는 구분자만으로 본 결과입니다 (AI `find_slides`). 머리글 판정은 LLM 이라 목록 밖입니다
   it.each(MARKERS.scripts)('대본 "$name" → $status', ({ script, status, numbers }) => {
@@ -47,28 +54,6 @@ describe('슬라이드 구분자 — FE · AI 공통 입력 목록 (docs/ai/feat
     expect(scan.numbers).toEqual(numbers);
     const ok = scan.numbers.length > 0 && scan.numbersValid;
     expect(ok ? 'success' : 'fail').toBe(status);
-  });
-});
-
-describe('슬라이드 구분자 — 구분자 뒤 같은 줄의 글 (AI match_delimiter 의 두 번째 값)', () => {
-  // AI 에서 직접 뽑은 값입니다 (`splitter.py` `match_delimiter`)
-  it.each([
-    ['[1] 안녕하세요', 1, '안녕하세요'],
-    ['  [슬라이드 2]   도입  ', 2, '도입'],
-    ['[3] (참고) 링크', 3, '(참고) 링크'],
-    ['슬라이드 2： 도입', 2, '도입'],
-    ['Slide 1 : 2', 1, '2'],
-    ['슬라이드 1', 1, ''],
-    ['## Slide 1 — 문제 정의', 1, '문제 정의'],
-    ['## Slide 1 - 2부 개요', 1, '2부 개요'],
-    ['## Slide 1-개요', 1, '개요'],
-    ['## Slide 1.x', 1, 'x'],
-    ['## Slide 1 .x', 1, '.x'],
-    ['### Slide 3 | 결론', 3, '결론'],
-    ['# 슬라이드 2 개요', 2, '개요'],
-    ['## Slide 1:2', 1, '2'],
-  ] as const)('%j → %i, %j', (line, number, rest) => {
-    expect(matchMarker(line)).toEqual({ number, rest });
   });
 });
 

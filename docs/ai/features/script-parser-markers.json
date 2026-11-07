@@ -1,77 +1,91 @@
 {
   "description": "대본 슬라이드 구분자 FE · AI 공통 입력 목록 (#819 · #1023). AI find_slides(ai/service/tests/unit/script_parser/test_splitter.py)와 FE slideMarkers(frontend/src/shared/lib/slideMarkers.test.ts)가 같은 결과를 내야 한다. 구분자 규칙을 바꾸면 이 파일과 docs/ai/features/script-parser.md 5-2를 함께 고친다.",
-  "lines_description": "줄 하나. number는 그 줄을 구분자로 볼 때의 장 번호, 구분자가 아니면 null. 0은 구분자 줄이지만 번호가 0이라 대본 전체가 fail이 되는 경우다.",
+  "lines_description": "줄 하나. number는 그 줄을 구분자로 볼 때의 장 번호, 구분자가 아니면 null. 0은 구분자 줄이지만 번호가 0이라 대본 전체가 fail이 되는 경우다. rest는 구분자 뒤 같은 줄의 글(match_delimiter의 두 번째 값, 앞뒤 공백 · 구분 기호를 걷은 그 장의 본문)이고, 구분자 줄(number가 null이 아님)에만 있다.",
   "scripts_description": "대본 전체. status는 구분자만으로 본 결과(success · fail), numbers는 찾은 구분자 번호를 나온 순서대로. 첫 구분자 앞 글(머리글) 판정은 LLM이 해서 이 목록 대상이 아니다(script-parser.md 6-1 4번).",
   "lines": [
     {
       "line": "[1]",
       "number": 1,
+      "rest": "",
       "group": "인식하는 세 형식"
     },
     {
       "line": "[1] 안녕하세요",
       "number": 1,
+      "rest": "안녕하세요",
       "group": "인식하는 세 형식"
     },
     {
       "line": "  [2]",
       "number": 2,
+      "rest": "",
       "group": "인식하는 세 형식"
     },
     {
       "line": "\t[3] 들여쓰기",
       "number": 3,
+      "rest": "들여쓰기",
       "group": "인식하는 세 형식"
     },
     {
       "line": "[슬라이드 1]",
       "number": 1,
+      "rest": "",
       "group": "인식하는 세 형식"
     },
     {
       "line": "[슬라이드   4] 공백 여럿",
       "number": 4,
+      "rest": "공백 여럿",
       "group": "인식하는 세 형식"
     },
     {
       "line": "슬라이드 1:",
       "number": 1,
+      "rest": "",
       "group": "인식하는 세 형식"
     },
     {
       "line": "슬라이드 2: 도입",
       "number": 2,
+      "rest": "도입",
       "group": "인식하는 세 형식"
     },
     {
       "line": "  슬라이드 12: 들여쓰기",
       "number": 12,
+      "rest": "들여쓰기",
       "group": "인식하는 세 형식"
     },
     {
       "line": "[9999]",
       "number": 9999,
+      "rest": "",
       "group": "인식하는 세 형식"
     },
     {
       "line": "슬라이드 0:",
       "number": 0,
+      "rest": "",
       "note": "줄은 구분자지만 번호 0 이라 대본 전체가 fail (아래 SCRIPT_CASES)",
       "group": "인식하는 세 형식"
     },
     {
       "line": "슬라이드 1",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "슬라이드1:",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "슬라이드 1 :",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
@@ -87,16 +101,19 @@
     {
       "line": "Slide 1",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "slide 1:",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "Slide 1: 도입",
       "number": 1,
+      "rest": "도입",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
@@ -122,11 +139,13 @@
     {
       "line": "[Slide 1]",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
       "line": "[슬라이드1]",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
@@ -137,6 +156,7 @@
     {
       "line": "# 슬라이드 1",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
     {
@@ -193,57 +213,68 @@
     {
       "line": "[１]",
       "number": 1,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "[슬라이드 ２]",
       "number": 2,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "슬라이드 ３:",
       "number": 3,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "슬라이드 ３: 도입",
       "number": 3,
+      "rest": "도입",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "  [４] 들여쓰기",
       "number": 4,
+      "rest": "들여쓰기",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "[０]",
       "number": 0,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "슬라이드 ０:",
       "number": 0,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "[１２]",
       "number": 12,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "[1２]",
       "number": 12,
+      "rest": "",
       "note": "전각과 반각이 섞인 번호",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "[슬라이드 ３４]",
       "number": 34,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
       "line": "[９９９９]",
       "number": 9999,
+      "rest": "",
       "group": "전각 숫자 — Python `\\d` 는 전각도 숫자라 AI 는 나눈다. FE 는 검사할 때만 ASCII 로 바꿔 같게 본다"
     },
     {
@@ -260,6 +291,7 @@
     {
       "line": "슬라이드 ３",
       "number": 3,
+      "rest": "",
       "note": "콜론 없음",
       "group": "script_parser-1.3에서 구분자로 넓힌 표기 — 예전에는 null"
     },
@@ -299,98 +331,116 @@
     {
       "line": "[slide 2] 도입",
       "number": 2,
+      "rest": "도입",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "[Slide2]",
       "number": 2,
+      "rest": "",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "SLIDE 3:",
       "number": 3,
+      "rest": "",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "Slide3:",
       "number": 3,
+      "rest": "",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "슬라이드 2： 도입",
       "number": 2,
+      "rest": "도입",
       "note": "전각 콜론",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "슬라이드1",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "Slide1",
       "number": 1,
+      "rest": "",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "  슬라이드 5  ",
       "number": 5,
+      "rest": "",
       "note": "앞뒤 공백",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "## Slide 1 — 문제 정의",
       "number": 1,
+      "rest": "문제 정의",
       "note": "제목 표시 뒤 구분 기호는 걷고 '문제 정의'가 본문",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "## Slide 2 - 셀프 어텐션",
       "number": 2,
+      "rest": "셀프 어텐션",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "### Slide 3 | 결론",
       "number": 3,
+      "rest": "결론",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "## Slide 4. 정리",
       "number": 4,
+      "rest": "정리",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "## Slide1—제목",
       "number": 1,
+      "rest": "제목",
       "note": "구분 기호를 붙여 씀",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "# 슬라이드 2 개요",
       "number": 2,
+      "rest": "개요",
       "note": "제목 표시가 있으면 공백 뒤 글도 본문",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "## 슬라이드 3:",
       "number": 3,
+      "rest": "",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "## [슬라이드 1]",
       "number": 1,
+      "rest": "",
       "note": "제목 표시 뒤 대괄호",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "###### Slide 6",
       "number": 6,
+      "rest": "",
       "note": "제목 표시 6개까지",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
       "line": "Slide 9999",
       "number": 9999,
+      "rest": "",
       "group": "script_parser-1.3에서 더한 형식의 경계"
     },
     {
@@ -487,6 +537,7 @@
     {
       "line": "[3] (참고) 링크",
       "number": 3,
+      "rest": "(참고) 링크",
       "note": "괄호 앞에 공백이 있으면 링크가 아니라 구분자",
       "group": "PR #1046 리뷰 경계 — 마크다운 링크 · 범위 · 소수"
     },
@@ -515,14 +566,58 @@
     {
       "line": "## Slide 1 - 2부 개요",
       "number": 1,
+      "rest": "2부 개요",
       "note": "구분 기호 뒤에 공백이 있으면 구분자, '2부 개요'가 본문",
       "group": "PR #1046 리뷰 경계 — 마크다운 링크 · 범위 · 소수"
     },
     {
       "line": "## Slide 1-개요",
       "number": 1,
+      "rest": "개요",
       "note": "구분 기호 바로 뒤가 숫자가 아니면 구분자",
       "group": "PR #1046 리뷰 경계 — 마크다운 링크 · 범위 · 소수"
+    },
+    {
+      "line": "  [슬라이드 2]   도입  ",
+      "number": 2,
+      "rest": "도입",
+      "group": "구분자 뒤 같은 줄의 글 (rest) — #1074 리뷰"
+    },
+    {
+      "line": "Slide 1 : 2",
+      "number": 1,
+      "rest": "2",
+      "group": "구분자 뒤 같은 줄의 글 (rest) — #1074 리뷰"
+    },
+    {
+      "line": "## Slide 1.x",
+      "number": 1,
+      "rest": "x",
+      "group": "구분자 뒤 같은 줄의 글 (rest) — #1074 리뷰"
+    },
+    {
+      "line": "## Slide 1 .x",
+      "number": 1,
+      "rest": ".x",
+      "group": "구분자 뒤 같은 줄의 글 (rest) — #1074 리뷰"
+    },
+    {
+      "line": "## Slide 1:2",
+      "number": 1,
+      "rest": "2",
+      "group": "구분자 뒤 같은 줄의 글 (rest) — #1074 리뷰"
+    },
+    {
+      "line": "[１] 안녕 ２０２４",
+      "number": 1,
+      "rest": "안녕 ２０２４",
+      "group": "구분자 뒤 같은 줄의 글 (rest) — #1074 리뷰"
+    },
+    {
+      "line": "## Slide ３ — ２부",
+      "number": 3,
+      "rest": "２부",
+      "group": "구분자 뒤 같은 줄의 글 (rest) — #1074 리뷰"
     }
   ],
   "scripts": [
