@@ -7,9 +7,9 @@
  * BE 가 아직 열지 않은 것(실행 이벤트 커서 · 승인 · 기억 · 최신 아님 사유 · '기억 없이')은 문서 계약대로 두고
  * `(BE 미구현)` 으로 표시했습니다. 목(`mocks/chat.ts`)은 그것까지 문서대로 흉내 냅니다.
  *
- * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 연구 모듈의
- * `ai/research/chat-agent/src/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `feat/ai-chat-agent-svc-guide-facts`
- * `8ed5a688` (#921, 머지 전). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
+ * AI 가 만드는 내용(문장 · 근거 · 판단 · 카드 · 할 일 · 도구 기록 · 화면 상태)은 AI 서비스의
+ * `ai/service/src/pitch_coach_ai/features/chat_agent/schemas.py` 에 맞췄습니다 — 기준: `develop-next`
+ * (#974 에서 연구 폴더로부터 옮김. #921 `8ed5a688` 뒤 바뀐 것은 `FinalData` 검증뿐이라 이 타입에는 영향이 없습니다). 문서 5-2 표보다 코드가 넓은 곳(`| null`)은 받는 쪽이라 코드를 따릅니다.
  *
  * BE 그대로 snake_case 입니다. 없음은 `?` 가 아니라 `| null` 입니다(frontend/AGENTS.md 6절).
  */
