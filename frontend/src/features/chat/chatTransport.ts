@@ -182,7 +182,6 @@ const isSignedOut = (error: unknown) => error instanceof ApiFailure && error.sta
 /** 대화 스위치가 꺼짐 — BE 는 실행 조회 · 취소 · 승인에도 이 503 을 줍니다(`Enabled` 의존성) */
 const isDisabled = (error: unknown) =>
   error instanceof ApiFailure && error.status === 503 && error.code === 'AGENT_DISABLED';
-/** 결과를 모름 — 끊김 · 시간 초과 · 꺼짐이 아닌 5xx. 서버가 처리했을 수 있습니다 */
 /**
  * 다시 해도 결과가 같은 거절 — 4xx 중 시간 초과(408) · 너무 많음(429)을 뺀 것. BE 실행 · 대화 조회가 직접 내는 4xx 는
  * 404(없거나 남의 것)뿐이고(`run_view.py` `ChatTargetNotFound`), 그 밖(403 · 400 · 422 등)은 프록시나 잘못된 요청이라
@@ -195,6 +194,7 @@ const isPermanent = (error: unknown) =>
   error.status !== 401 &&
   error.status !== 408 &&
   error.status !== 429;
+/** 결과를 모름 — 끊김 · 시간 초과 · 꺼짐이 아닌 5xx. 서버가 처리했을 수 있습니다 */
 const isUnknownResult = (error: unknown) =>
   !(error instanceof ApiFailure) || (error.status >= 500 && !isDisabled(error));
 
