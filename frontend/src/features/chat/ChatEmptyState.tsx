@@ -7,9 +7,16 @@ const SUGGESTIONS = [
 /** 빈 대화에서만 보이는 안내. 선택한 질문은 자동 전송하지 않고 입력창에 채웁니다. */
 export function ChatEmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
   return (
-    <div className="flex w-full flex-1 flex-col items-center justify-center py-8 text-center" data-chat-empty="">
+    <div
+      className="flex w-full flex-1 flex-col items-center justify-center py-8 text-center"
+      data-chat-empty=""
+    >
       <div className="mb-3 h-16 w-16 overflow-hidden rounded-2xl border border-line-strong bg-cream">
-        <img src="/semini.png" alt="" className="h-full w-full object-cover [image-rendering:pixelated]" />
+        <img
+          src="/semini.png"
+          alt=""
+          className="h-full w-full object-cover [image-rendering:pixelated]"
+        />
       </div>
       <p className="text-base font-bold">새미나이에게 물어보세요</p>
       <p className="mt-1 text-xs leading-5 text-stone">
@@ -23,7 +30,9 @@ export function ChatEmptyState({ onSuggest }: { onSuggest: (text: string) => voi
             onClick={() => onSuggest(question)}
             className="min-h-11 rounded-xl border border-line-strong bg-white px-3 py-2.5 text-left text-xs leading-5 text-ink transition-colors hover:border-coral hover:bg-coral-wash"
           >
-            <span aria-hidden="true" className="mr-2 font-bold text-coral-deep">↗</span>
+            <span aria-hidden="true" className="mr-2 font-bold text-coral-deep">
+              ↗
+            </span>
             {question}
           </button>
         ))}
