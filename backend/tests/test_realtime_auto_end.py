@@ -178,3 +178,9 @@ def test_messages_name_the_configured_time():
         silence_end_ms=90_000, silence_window_ms=90_000, silence_ratio=1, max_duration_ms=90_000
     )
     assert odd.message(AutoEndReason.SILENCE).startswith("90초 넘게")
+
+
+def test_max_duration_cannot_pass_the_ai_time_limit(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "take_max_duration_sec", 3601)
+    with pytest.raises(ValueError):
+        AutoEndPolicy.from_settings()

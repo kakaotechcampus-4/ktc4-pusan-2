@@ -1,6 +1,6 @@
 """Google OAuth 2.0 어댑터.
 
-DB 도 Redis 도 모른다. 인증 URL 을 만들고, code 를 토큰으로 바꾸고,
+DB 를 모른다. 인증 URL 을 만들고, code 를 토큰으로 바꾸고,
 ID Token 을 검증해서 신원(sub·email·name)을 돌려주는 일만 한다.
 테스트에서는 이 파일의 외부 HTTP 호출만 갈아끼우고 검증 로직은 그대로 실행한다.
 

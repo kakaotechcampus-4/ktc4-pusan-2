@@ -5,16 +5,10 @@ import uuid
 import pytest
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take
 
 Versions = tuple[uuid.UUID, uuid.UUID]
-
-
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
 @pytest.fixture

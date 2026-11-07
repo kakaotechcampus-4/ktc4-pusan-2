@@ -35,11 +35,21 @@ class AppException(Exception):
     status_code: int = status.HTTP_400_BAD_REQUEST
     code: str = "BAD_REQUEST"
     message: str = "잘못된 요청입니다."
+    # 응답에 함께 실을 헤더. 429 의 Retry-After 처럼 FE 가 기다릴 시간을 추측하지 않게 할 때 쓴다
+    headers: dict[str, str] | None = None
 
-    def __init__(self, message: str | None = None, *, detail: Any = None) -> None:
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        detail: Any = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         if message is not None:
             self.message = message
         self.detail = detail
+        if headers is not None:
+            self.headers = headers
         super().__init__(self.message)
 
 
@@ -108,7 +118,7 @@ def _error_response(
 
 async def app_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppException)
-    return _error_response(exc.status_code, exc.code, exc.message, exc.detail)
+    return _error_response(exc.status_code, exc.code, exc.message, exc.detail, headers=exc.headers)
 
 
 def _json_safe_values(value: Any) -> Any:

@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.adapter.script_parser import ParsedScript
 from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
@@ -56,9 +57,11 @@ def validate_script_text(content: str) -> str:
         raise InvalidScript("대본이 비어 있습니다.")
     if len(content) > MAX_SCRIPT_CHARS:
         raise InvalidScript(f"대본은 {MAX_SCRIPT_CHARS:,}자까지 올릴 수 있습니다.")
-    # JSON 은 "\u0000" 을 허용하지만 PostgreSQL TEXT 는 NUL 을 넣지 못해 커밋에서 500 이 난다
-    if "\x00" in content:
-        raise InvalidScript("대본에 쓸 수 없는 문자(NUL)가 있습니다.")
+    # JSON 은 NUL · 짝 없는 서로게이트를 허용하지만 PostgreSQL TEXT 에 넣지 못해 500 이 난다
+    try:
+        reject_nul(content)
+    except ValueError as exc:
+        raise InvalidScript("대본에 쓸 수 없는 문자가 있습니다.") from exc
     return content
 
 
@@ -101,13 +104,7 @@ def create_script_service(
         version=script.version,
         parse_status=ScriptParseStatus.PENDING,
     )
-    ticket = ParseTicket(
-        script_version_id=script.id,
-        requested_at=script.parse_requested_at,
-        script_text=content,
-        target_ms=target_ms,
-        pitch_id=pitch_id,
-    )
+    ticket = ParseTicket(script.id, script.parse_requested_at, content, target_ms, pitch_id)
     return created, ticket
 
 
@@ -203,9 +200,7 @@ def request_reparse(
 
     # 위 검사는 빠른 거절용이고, 실제 판정은 이 조건부 UPDATE 다.
     # 버튼을 두 번 눌러 요청 둘이 동시에 여기까지 와도 하나만 1행을 바꾼다
-    if not pitch_repository.restart_parse(
-        script.id, now, expired_before=now - PARSE_EXPIRE_AFTER
-    ):
+    if not pitch_repository.restart_parse(script.id, now, expired_before=now - PARSE_EXPIRE_AFTER):
         # 진 이유를 다시 읽어 답한다:
         # 다른 재시도가 먼저 PENDING 으로 바꿨거나, 그 사이 작업이 끝났다
         db.rollback()
@@ -217,17 +212,11 @@ def request_reparse(
 
     return (
         ParseRequestedDTO(script_version_id=script.id, parse_status=ScriptParseStatus.PENDING),
-        ParseTicket(
-            script_version_id=script.id,
-            requested_at=now,
-            script_text=script.content,
-            target_ms=target_ms,
-            pitch_id=pitch_id,
-        ),
+        ParseTicket(script.id, now, script.content, target_ms, pitch_id),
     )
 
 
-def resume_parses(db: Session, *, started_before: datetime | None = None) -> list[ParseTicket]:
+def resume_parses(db: Session, *, started_before: datetime) -> list[ParseTicket]:
     """BE 가 뜰 때 부른다. 만료 전 PENDING 으로 남은 파싱마다 표식을 새로 바꿔 이어받는다.
 
     표식을 지금으로 바꾸므로 만료(PARSE_EXPIRE_AFTER)도 지금부터 다시 센다. 옛 시각을 그대로 쓰면
@@ -240,11 +229,9 @@ def resume_parses(db: Session, *, started_before: datetime | None = None) -> lis
     now = datetime.now(UTC)
     expired_before = now - PARSE_EXPIRE_AFTER
     for script_version_id, read_at in pitch_repository.get_resumable_parses(
-        expired_before, started_before if started_before is not None else now
+        expired_before, started_before
     ):
-        if not pitch_repository.take_over_parse(
-            script_version_id, read_at, now, expired_before=expired_before
-        ):
+        if not pitch_repository.take_over_parse(script_version_id, read_at, now):
             # 그 사이 재시도 · 다른 작업이 바꿨다
             db.rollback()
             continue
@@ -252,11 +239,11 @@ def resume_parses(db: Session, *, started_before: datetime | None = None) -> lis
         assert script is not None and script.content is not None  # 방금 표식을 바꾼 행이다
         tickets.append(
             ParseTicket(
-                script_version_id=script.id,
-                requested_at=now,
-                script_text=script.content,
-                target_ms=_target_ms(pitch_repository, script.pitch_id),
-                pitch_id=script.pitch_id,
+                script.id,
+                now,
+                script.content,
+                _target_ms(pitch_repository, script.pitch_id),
+                script.pitch_id,
             )
         )
         db.commit()
@@ -427,7 +414,8 @@ def save_rubrics(
     db: Session,
     ticket: RubricTicket,
     rubrics: Mapping[int, dict[str, Any]],
-    rubric_meta: dict[str, Any]) -> bool:
+    rubric_meta: dict[str, Any],
+) -> bool:
     """응답 하나의 장별 기준을 한 트랜잭션으로 저장한다. 이 작업이 무효면 버리고 False.
 
     기준이 이미 있는 장은 건너뛴다 (첫 성공본을 덮지 않는다).

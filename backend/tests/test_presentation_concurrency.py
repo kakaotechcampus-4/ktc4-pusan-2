@@ -21,11 +21,6 @@ from pitch_coach_backend.module.pitch.dependencies import get_owned_pitch
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 @pytest.mark.anyio
 async def test_busy_uploads_leave_shared_threads_for_other_sync_requests(
     monkeypatch: pytest.MonkeyPatch, make_pdf: Callable[[int], bytes]

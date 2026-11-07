@@ -1,4 +1,4 @@
-"""AI 리뷰 응답 검사 (review_service.request_review_async).
+"""AI 리뷰 응답 검사 (take_ai_client.request_review_async).
 
 응답이 missions 칸 · 제약에 맞지 않으면 저장 전에 InvalidReviewResponse(502) 로 거른다.
 AI 서버는 httpx.MockTransport 로 대신한다.
@@ -13,9 +13,9 @@ from typing import Any
 import httpx
 import pytest
 
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
 from pitch_coach_backend.module.take.dto import ReviewRequestDTO
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
-from pitch_coach_backend.module.take.service import review as review_service
 
 TAKE_ID = uuid.uuid4()
 
@@ -70,7 +70,7 @@ def _review(**changes: Any) -> dict[str, Any]:
 
 def request_review():
     return asyncio.run(
-        review_service.request_review_async(TAKE_ID, ReviewRequestDTO(take_result={}))
+        take_ai_client.request_review_async(TAKE_ID, ReviewRequestDTO(take_result={}))
     )
 
 
@@ -81,7 +81,7 @@ def ai(monkeypatch: pytest.MonkeyPatch):
     def use(response: httpx.Response) -> None:
         transport = httpx.MockTransport(lambda request: response)
         monkeypatch.setattr(
-            review_service.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
+            httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
         )
 
     return use
