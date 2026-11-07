@@ -124,6 +124,7 @@ def wait_for_action(
     pitch_ids, take_ids = _answer_sources(data)
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
+    _lock_sent_sources(db, run)
     repo = ChatRepository(db)
     conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
@@ -212,6 +213,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
         take_ids.add(data["goal_result"]["take_id"])
     check_sources(db, run, pitch_ids, take_ids)
     lock_or_cancel(db, run, pitch_ids, take_ids)
+    _lock_sent_sources(db, run)
     repo = ChatRepository(db)
     conversation = lock_conversation_of(db, run)
     row = lock_current(db, run)
@@ -266,6 +268,7 @@ def finish(db: Session, run: ClaimedRun, turn_call: int, final: TurnFinal) -> bo
 
 def fail(db: Session, run: ClaimedRun, failure: TurnFailure) -> bool:
     repo = ChatRepository(db)
+    _lock_sent_sources(db, run)
     lock_conversation_of(db, run)
     row = lock_current(db, run)
     if row is None:
@@ -377,6 +380,17 @@ def _end_with_sent_claims(
     _save_turn_output(repo, row, turn_call, final, now)
     add_run_log(repo, row, now)
     db.commit()
+
+
+def _lock_sent_sources(db: Session, run: ClaimedRun) -> None:
+    """이미 보낸 문장의 근거 피치 · Take 를 대화보다 먼저 잠근다(잠그는 순서는 waiting.py).
+
+    보낸 문장으로 메시지를 남기면 `save_claim_message` 가 같은 근거를 다시 잠그며 지워졌는지 본다.
+    대화를 잡은 뒤 처음 잠그면 피치를 잡고 CASCADE 로 대화를 지우는 피치 삭제와 서로 기다린다.
+    """
+    events = ChatRepository(db).list_claim_events(run.run_id)
+    evidence = [item for event in events for item in event.data.get("evidence") or []]
+    lock_ids(db, *_answer_sources({"evidence": evidence}))
 
 
 def save_claim_message(db: Session, row: ChatRun, status: str) -> ChatMessage | None:
