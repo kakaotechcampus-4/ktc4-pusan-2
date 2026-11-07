@@ -211,7 +211,11 @@ export function HomePage() {
           <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
             <span className="shrink-0 tabular-nums text-coral-deep">TIP /</span>
             {/* 자동 전환 문구는 화면 낭독기가 계속 읽지 않도록 합니다. */}
-            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
+            <p
+              aria-live="off"
+              title={HOME_TIPS[tipIndex]}
+              className="min-w-0 flex-1 truncate"
+            >
               {HOME_TIPS[tipIndex]}
             </p>
             <button
@@ -234,7 +238,10 @@ export function HomePage() {
           <span className="hidden shrink-0 whitespace-nowrap tabular-nums tracking-widest 2xl:inline">
             PITCH COACH · ONE TAKE AT A TIME.
           </span>
-          <nav aria-label="서비스 정책" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
+          <nav
+            aria-label="서비스 정책"
+            className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1"
+          >
             <Link to="/terms?from=home" className="whitespace-nowrap hover:text-ink">
               이용약관
             </Link>
