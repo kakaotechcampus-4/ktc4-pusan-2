@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
@@ -325,15 +326,32 @@ function trend(r: ReviewResult['comparison'][number]) {
  */
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   const groups = comparisonGroups(rows);
-  // 두 Take 의 대본 보기 차이는 AI 가 모든 행에 같이 싣습니다 — 칸마다 되풀이하지 않고 한 번만 알립니다
   const mode = rows.find((r) => r.script_mode)?.script_mode;
+  const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  function closeDetail() {
+    setOpen(false);
+    openerRef.current?.focus();
+  }
+
+  const visible = rows.filter((r) => r.metric !== 'filler_per_min');
+  const byMetric = new Map<string, typeof visible>();
+  for (const row of visible) {
+    if (!byMetric.has(row.metric)) byMetric.set(row.metric, []);
+    byMetric.get(row.metric)!.push(row);
+  }
+
   return (
-    <Card
-      title="지난 Take와 비교"
-      action={
-        groups.length > 0 && <p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
-      }
-    >
+    <Card title="지난 Take와 비교">
       {groups.length === 0 ? (
         <p className="text-sm text-ink/80">
           {rows.length === 0 ? '비교할 지난 Take가 없어요.' : '지난 Take와 함께 잰 지표가 없어요.'}
@@ -346,11 +364,76 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
               {scriptModeLabel(mode.current)}). 비교는 참고만 해 주세요.
             </p>
           )}
+          <p className="text-sm text-ink/80">지표별로 지난 연습보다 달라진 슬라이드를 모았어요.</p>
           <div className="grid gap-4 lg:grid-cols-2">
-            {groups.map((g) => (
-              <ComparisonTable key={g.dimension ?? 'other'} group={g} />
-            ))}
+            {[...byMetric].map(([metric, metricRows]) => {
+              const slides = metricRows.filter((r) => r.slide_number !== null);
+              const improved = slides.filter((r) => trend(r) === TREND.true).map((r) => r.slide_number!);
+              const worsened = slides.filter((r) => trend(r) === TREND.false).map((r) => r.slide_number!);
+              const same = slides.filter((r) => trend(r) === TREND.same).length;
+              const unknown = slides.filter((r) => trend(r) === TREND.null).length;
+              const overall = metricRows.find((r) => r.slide_number === null);
+              return (
+                <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
+                  <h3 className="font-bold">{metricLabel(metric)}</h3>
+                  {slides.length > 0 ? (
+                    <>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                        <div className="bg-cream p-3">
+                          <p className="font-bold text-ink">나아진 슬라이드</p>
+                          <p className="mt-1">{improved.length ? [...new Set(improved)].sort((a,b)=>a-b).map((n) => `${n}번`).join(', ') : '없음'}</p>
+                        </div>
+                        <div className="bg-panel p-3">
+                          <p className="font-bold text-ink">나빠진 슬라이드</p>
+                          <p className="mt-1">{worsened.length ? [...new Set(worsened)].sort((a,b)=>a-b).map((n) => `${n}번`).join(', ') : '없음'}</p>
+                        </div>
+                      </div>
+                      {(same > 0 || unknown > 0) && (
+                        <p className="mt-2 text-xs text-ink/80">
+                          {same > 0 && `변화 없음 ${same}개`}
+                          {same > 0 && unknown > 0 && ' · '}
+                          {unknown > 0 && `방향 판단 불가 ${unknown}개`}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 데이터가 없어요.</p>
+                  )}
+                  {overall && (
+                    <p className="mt-2 text-xs text-ink/80">
+                      발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)} · {trend(overall).label}
+                    </p>
+                  )}
+                </section>
+              );
+            })}
           </div>
+          <button
+            ref={openerRef}
+            type="button"
+            onClick={() => setOpen(true)}
+            className="min-h-11 w-fit border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+          >
+            슬라이드별 상세 비교표 보기
+          </button>
+          <dialog
+            ref={dialogRef}
+            aria-labelledby="report-comparison-detail-title"
+            onClose={() => { setOpen(false); openerRef.current?.focus(); }}
+            onCancel={() => setOpen(false)}
+            className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="report-comparison-detail-title" className="text-lg font-bold">지난 Take 상세 비교</h2>
+                <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
+              </div>
+              <button type="button" onClick={closeDetail} className="min-h-11 shrink-0 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep" aria-label="상세 비교 닫기">닫기</button>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {groups.map((g) => <ComparisonTable key={g.dimension ?? 'other'} group={g} />)}
+            </div>
+          </dialog>
         </>
       )}
     </Card>
