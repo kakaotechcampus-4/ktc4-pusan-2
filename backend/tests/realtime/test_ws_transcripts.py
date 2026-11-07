@@ -28,7 +28,6 @@ from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer, TranscriptBuffer
 from pitch_coach_backend.realtime.stream import finish, registry, state, transcript_sender
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
-from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
@@ -245,7 +244,7 @@ async def test_final_that_fails_to_send_is_resent_on_reconnect():
 
 @pytest.mark.anyio
 async def test_final_that_times_out_is_resent_on_reconnect(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(transcript_sender, "FINAL_SEND_TIMEOUT_SEC", 0.05)
     store = FakeTranscriptStore()
     stream = _final_stream(store)
     stuck = StuckWebSocket()
@@ -322,7 +321,7 @@ async def test_final_that_failed_while_another_tab_caught_up_goes_to_that_tab(
 ):
     """옛 연결로 보내는 동안 다른 탭이 이어받아 놓친 final 을 이미 받았다. 실패한 final 을 다음
     재연결까지 들고 있으면 지금 탭의 화면에서 그 구간이 빈다."""
-    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(transcript_sender, "FINAL_SEND_TIMEOUT_SEC", 0.2)
     store = FakeTranscriptStore()
     stream = _final_stream(store)
     old_tab = StuckWebSocket()
