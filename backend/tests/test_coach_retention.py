@@ -7,10 +7,6 @@ from pitch_coach_backend.coach import retention
 from tests.coach_fakes import FakeStore
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
 @pytest.mark.anyio
 async def test_retention_purges_and_survives_errors(caplog: pytest.LogCaptureFixture):
     store = FakeStore()

@@ -1,4 +1,5 @@
 import { beforeEach, expect, it } from 'vitest';
+import { splitScript } from '@/mocks/scripts';
 import { useCreateStore } from './createStore';
 import { CHOOSE_LATEST, toPracticeCombo, type UploadedSlides } from './lib/draft';
 
@@ -14,7 +15,7 @@ beforeEach(() => {
   store().reset();
   store().setPitchId('pitch1');
   store().attachSlides(uploaded);
-  store().addScriptVersion('슬라이드 1\n처음\n\n슬라이드 2\n마지막');
+  store().addScriptVersion('[슬라이드 1]\n처음\n\n[슬라이드 2]\n마지막');
   store().patchScript(1, {
     remote: { id: 'sv1', version: 1 },
     blocks: ['처음', '마지막'],
@@ -26,7 +27,7 @@ beforeEach(() => {
 it('매핑 수정은 원문에 보존하고 서버 재매핑 전 연습을 막는다', () => {
   store().editMappingBlock(1, 0, '수정한 문장');
   expect(store().draft.scripts[0]).toMatchObject({
-    text: '슬라이드 1\n수정한 문장\n\n슬라이드 2\n마지막',
+    text: '[슬라이드 1]\n수정한 문장\n\n[슬라이드 2]\n마지막',
     remote: null,
     saved: false,
   });
@@ -34,6 +35,15 @@ it('매핑 수정은 원문에 보존하고 서버 재매핑 전 연습을 막�
   expect(toPracticeCombo(store().draft, store().chosen)).toBeNull();
   store().unmapScript(1);
   expect(store().draft.scripts[0]?.text).toContain('수정한 문장');
+});
+
+it('매핑을 고친 원문을 다시 매핑해도 같은 장수 · 같은 글로 나뉜다', () => {
+  store().editMappingBlock(1, 0, '수정한 문장');
+  const { text } = store().draft.scripts[0]!;
+  // 목은 AI 와 같은 구분자 규칙으로 나눕니다 — 콜론 없는 "슬라이드 1" 이면 1장으로 뭉칩니다
+  const { segmented, slides } = splitScript(text);
+  expect(segmented).toBe(true);
+  expect(slides.map((s) => s.content)).toEqual(['수정한 문장', '마지막']);
 });
 
 it('서버가 수정 대본을 반환하고 저장한 뒤 새 서버 id로 연습한다', () => {

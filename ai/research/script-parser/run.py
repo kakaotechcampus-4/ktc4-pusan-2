@@ -64,13 +64,15 @@ class RecordingLLM:
 
     def invoke(self, messages):
         start = time.perf_counter()
-        out = self.llm.invoke(messages)
-        elapsed_ms = round((time.perf_counter() - start) * 1000)
+        try:
+            out = self.llm.invoke(messages)
+        finally:
+            # 호출이 예외로 끝나도 걸린 시간은 남겨 호출 시간 · 서비스 시간 초과 집계에 넣는다
+            self.last = {"elapsed_ms": round((time.perf_counter() - start) * 1000)}
         if out.get("parsing_error") is not None:
             raise out["parsing_error"]
         usage = getattr(out["raw"], "usage_metadata", None) or {}
-        self.last = {
-            "elapsed_ms": elapsed_ms,
+        self.last |= {
             "input_tokens": usage.get("input_tokens"),
             "output_tokens": usage.get("output_tokens"),
             "reasoning_tokens": (usage.get("output_token_details") or {}).get("reasoning"),
@@ -84,6 +86,12 @@ def natural_key(path: Path) -> list:
     return [int(s) if s.isdigit() else s for s in re.split(r"(\d+)", path.name)]
 
 
+def _first_last_lines(script: str) -> tuple[str, str] | None:
+    """장 대본의 빈 줄이 아닌 첫 줄과 마지막 줄 (앞뒤 공백 제외). 글이 없으면 None."""
+    lines = [line.strip() for line in script.splitlines() if line.strip()]
+    return (lines[0], lines[-1]) if lines else None
+
+
 def score(text: str, label: dict, response: ParseResponse, picked: LLMOutput) -> dict:
     """대본 하나를 라벨과 비교합니다 (docs/ai/features/script-parser.md 14절)."""
     slides = response.slides
@@ -91,14 +99,20 @@ def score(text: str, label: dict, response: ParseResponse, picked: LLMOutput) ->
         response.status == label["status"]
         and [s.slide_number for s in slides] == [s["slide_number"] for s in label["slides"]]
         and all(
-            s.script.startswith(want["first"]) and s.script.endswith(want["last"])
+            _first_last_lines(s.script) == (want["first"].strip(), want["last"].strip())
             for s, want in zip(slides, label["slides"])
         )
     )
     scripts = {s.slide_number: s.script for s in slides}
     joined = "\n".join(scripts.values())
     keywords = [(s.slide_number, k) for s in picked.slides for k in s.keywords]
-    keywords_in = sum(1 for n, k in keywords if k in scripts.get(n, joined))
+    # 장이 나뉘었으면 그 장 대본에서만 찾는다. 없는 장 번호의 키워드는 대본에 없는 것으로 센다(14절).
+    # fail이면 장이 하나로 합쳐지므로 대본 전체에서 찾는다. 빈 키워드는 늘 "있음"이 되므로 세지 않는다
+    keywords_in = sum(
+        1
+        for n, k in keywords
+        if k and k in (scripts.get(n, "") if response.status == "success" else joined)
+    )
     terms_in = sum(1 for t in picked.terms if t in text)
     # 제목 줄이 정제 뒤에도 장 대본의 한 줄로 남았는지 (앞의 # 표시는 정제가 걷어 내므로 빼고 본다)
     lines = {line.strip() for s in slides for line in s.script.splitlines()}

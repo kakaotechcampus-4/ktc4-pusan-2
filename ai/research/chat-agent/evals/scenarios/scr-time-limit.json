@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-time-limit",
+  "set": "eval",
+  "group": "screen",
+  "split": "holdout",
+  "act": "should_not",
+  "title": "발표 정보 단계 '제한 시간 몇 분이 좋아?' — 제한 시간 추천은 범위 밖(1-3): 숫자를 내지 않고 CONTENT_COACHING 고정 문장으로 거절",
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "screens": {
+      "info-step": {
+        "name": "pitch_edit",
+        "snapshot_id": "scr-4",
+        "step": "info",
+        "version_label": "V1",
+        "version_id": "sv-1",
+        "saved": {
+          "title": "졸업 발표",
+          "time_limit_sec": 240,
+          "criteria_text": "청중을 보며 말하기",
+          "script_chars": 2400
+        },
+        "draft": {
+          "title": "졸업 발표",
+          "slide_count": 4,
+          "script_chars": 2400,
+          "time_limit_sec": 240,
+          "criteria_text": "청중을 보며 말하기"
+        },
+        "changed": []
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "제한 시간 몇 분이 좋을까?",
+      "screen": "info-step"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-fill",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "입력했어요|바꿔 뒀|저장했어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "content-coaching",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.CONTENT_COACHING",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status"
+      }
+    ]
+  }
+}

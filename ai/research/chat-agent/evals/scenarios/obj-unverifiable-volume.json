@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-unverifiable-volume",
+  "set": "objectivity",
+  "group": "unverifiable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "측정 안 된 영역(측정 비율이 낮아 음량 판단 불가 · 목소리 판단 불가)에 대한 주장 → UNVERIFIABLE",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "unmeasured": {
+                "VOLUME": "LOW_MEASURED_RATIO"
+              }
+            },
+            "review": {
+              "dimensions": {
+                "vocal_delivery": "NOT_EVALUABLE"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 목소리는 충분히 컸지?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "volume-unverifiable",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "dimension": "vocal_delivery",
+          "verdict": "UNVERIFIABLE",
+          "text@": "UNVERIFIABLE"
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-agreement",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "맞아요|맞습니다|맞네요|잘하셨|잘 보셨|훌륭|완벽",
+        "grader": "regex",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

@@ -17,6 +17,8 @@ from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module.admin import service
 from pitch_coach_backend.module.admin.dependencies import require_admin
 from pitch_coach_backend.module.admin.dto import (
+    AdminChatDay,
+    AdminChatDiagnostic,
     AdminPage,
     AdminPitchAI,
     AdminScriptSlide,
@@ -31,7 +33,6 @@ from pitch_coach_backend.module.admin.dto import (
     AdminUserRow,
     StatsResponse,
 )
-from pitch_coach_backend.module.service_feedback.dto import SuggestionSource
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -150,12 +151,34 @@ def take_survey_summary(db: Annotated[Session, Depends(get_db)]) -> list[AdminTa
 @router.get("/api/suggestions", response_model=AdminPage[AdminSuggestionRow])
 def suggestions(
     db: Annotated[Session, Depends(get_db)],
-    source: SuggestionSource | None = None,
     category: SuggestionCategory | None = None,
     user_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AdminPage[AdminSuggestionRow]:
     return service.list_suggestions(
-        db, source=source, category=category, limit=limit, offset=offset, user_id=user_id
+        db, category=category, limit=limit, offset=offset, user_id=user_id
+    )
+
+
+# 코치 대화 실행의 날짜별 운영 기록. 대화 본문은 없다
+@router.get("/api/chat/days")
+def chat_days(
+    db: Annotated[Session, Depends(get_db)],
+    days: Annotated[int, Query(ge=1, le=service.CHAT_DAYS_MAX)] = service.CHAT_DAYS,
+) -> list[AdminChatDay]:
+    return service.chat_days(db, days)
+
+
+# 답이 왜 그렇게 나왔는지 따라가는 진단 기록. run_id 와 conversation_id 중 하나로 찾는다
+@router.get("/api/chat/diagnostics", response_model=AdminPage[AdminChatDiagnostic])
+def chat_diagnostics(
+    db: Annotated[Session, Depends(get_db)],
+    run_id: uuid.UUID | None = None,
+    conversation_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminChatDiagnostic]:
+    return service.chat_diagnostics(
+        db, run_id=run_id, conversation_id=conversation_id, limit=limit, offset=offset
     )

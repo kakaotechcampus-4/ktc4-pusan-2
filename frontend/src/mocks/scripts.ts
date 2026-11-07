@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
-import { markerNumber, SLIDE_MARKER } from '@/shared/lib/slideMarkers';
+import { markerNumber, splitLines, stripMarker } from '@/shared/lib/slideMarkers';
 import type {
   ParseRequested,
   ScriptCreateRequest,
@@ -11,9 +11,9 @@ import type {
 /**
  * 대본 목. BE 처럼 올리면 바로 PENDING 으로 돌려주고, 잠시 뒤 폴링에서 DONE 이 됩니다.
  *
- * 나누는 규칙은 AI(script-parser v1)를 흉내 냅니다 — "슬라이드 1", "Slide 1", "1." 같은
- * **명시적 구분자**로만 나누고, 구분자가 없거나 앞부분에 구분 안 된 글이 있으면
- * 나누지 않고 전체를 한 슬라이드로 둡니다 (`segmented: false`, 정상 결과).
+ * 나누는 규칙은 AI(script-parser v1)를 흉내 냅니다 — "[슬라이드 1]", "[1]", "슬라이드 1:" 세
+ * **명시적 구분자**로만 나누고, 구분자가 없거나 앞부분에 구분 안 된 글이 있거나 번호가
+ * 0 · 겹침 · 거꾸로면 나누지 않고 전체를 한 슬라이드로 둡니다 (`segmented: false`, 정상 결과).
  */
 
 /** 이만큼 지나야 DONE. "나누는 중" 화면을 눈으로 확인할 수 있게 */
@@ -22,13 +22,22 @@ const PARSE_MS = 1500;
 export function splitScript(text: string): { segmented: boolean; slides: ScriptSlide[] } {
   // AI 처럼 원문에 적힌 번호를 그대로 씁니다 — "슬라이드 4" 는 4번입니다
   const sections: { number: number; lines: string[] }[] = [];
-  // 첫 구분자 앞의 글. AI 처럼 제목 한 줄은 지우고, 두 줄 이상이면 나누지 않습니다 (slideMarkers)
+  // 첫 구분자 앞의 글. AI 는 LLM 이 고른 제목 줄을 지우는데, 목은 FE 어림대로 한 줄은 제목으로 지우고
+  // 두 줄 이상이면 나누지 않습니다 (slideMarkers `leadingText`)
   const lead: string[] = [];
-  for (const line of text.split('\n')) {
+  // 나누지 못했을 때(fail) 쓸, 구분자만 뺀 대본 전체 — AI 도 그렇게 합니다
+  const stripped: string[] = [];
+  for (const line of splitLines(text)) {
     const n = markerNumber(line);
-    if (n !== null) sections.push({ number: n, lines: [line.replace(SLIDE_MARKER, '')] });
-    else if (sections.length > 0) sections.at(-1)!.lines.push(line);
-    else if (line.trim() !== '') lead.push(line);
+    if (n !== null) {
+      const rest = stripMarker(line);
+      sections.push({ number: n, lines: [rest] });
+      if (rest.trim() !== '') stripped.push(rest.trim());
+    } else {
+      stripped.push(line);
+      if (sections.length > 0) sections.at(-1)!.lines.push(line);
+      else if (line.trim() !== '') lead.push(line);
+    }
   }
 
   const whole = (content: string): ScriptSlide => ({
@@ -38,8 +47,15 @@ export function splitScript(text: string): { segmented: boolean; slides: ScriptS
     highlights: [],
   });
 
-  if (sections.length === 0 || lead.length > 1) {
-    return { segmented: false, slides: [whole(text)] };
+  // 번호가 0 · 겹침 · 거꾸로여도 AI 는 나누지 않습니다
+  const ordered = sections.every(
+    ({ number }, i) => number >= 1 && (i === 0 || number > sections[i - 1].number),
+  );
+  if (sections.length === 0 || lead.length > 1 || !ordered) {
+    return {
+      segmented: false,
+      slides: [whole(sections.length === 0 ? text : stripped.join('\n'))],
+    };
   }
   return {
     segmented: true,

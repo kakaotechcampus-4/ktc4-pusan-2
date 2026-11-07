@@ -8,14 +8,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+from pitch_coach_ai.features.review import core as review_core
 from pitch_coach_ai.features.review import review_take
+from pitch_coach_ai.features.review.llm_input import Candidates, llm_comparison
 from pitch_coach_ai.features.review.prompts.review import REVIEW_SYSTEM_PROMPT
 from pitch_coach_ai.features.review.schemas import MAX_DESCRIPTION_CHARS, ReviewDraft
+from pitch_coach_ai.features.review.text import TextCandidate
 
 from .conftest import sample_coverage
 
@@ -119,6 +123,57 @@ def test_llm_gets_script_mode_of_comparison(req):
     assert "script_mode" in REVIEW_SYSTEM_PROMPT
 
 
+def test_llm_comparison_is_take_values_and_candidate_slides(req):
+    # 후보가 가리키지 않는 장(5번)의 비교는 LLM 에 싣지 않고, 응답에는 그대로 낸다 (명세 6-2)
+    req["take_result"]["areas"]["GAZE"]["slides"].append(
+        {"slide_number": 5, "measured_ratio": 1.0, "metrics": {"script_ratio": 0.83}}
+    )
+    previous = json.loads(json.dumps(req["take_result"]))
+    previous["areas"]["GAZE"]["slides"][-1]["metrics"]["script_ratio"] = 0.91
+    req["previous_takes"] = [{"take_result": previous, "take_scores": None}]
+
+    def make(p: dict[str, Any]) -> dict[str, Any]:
+        draft = full_draft(p).model_dump()
+        draft["overall_summary"] = "5번 장 대본 응시가 83%로 줄었습니다."  # LLM 이 못 본 숫자
+        return draft
+
+    llm = FakeLLM(make)
+    base = review_take(req)
+    resp = review_take(req, llm, model="m")
+    sent = {(c["metric"], c["slide_number"]) for c in json.loads(llm.messages[-1][1])["comparison"]}
+    returned = {(c.metric, c.slide_number) for c in resp.comparison}
+    assert ("script_ratio", 5) in returned and ("script_ratio", 5) not in sent
+    assert ("script_ratio", 3) in sent  # 개선점 · 다음 미션이 가리키는 장
+    take_values = {k for k in returned if k[1] is None}
+    assert take_values  # 이 요청에는 Take 값 비교가 있다 (비어서 아래 단정이 그냥 통과하지 않게)
+    assert take_values <= sent  # Take 값 비교는 모두
+    assert resp.overall_summary == base.overall_summary
+
+
+def _text_candidate(slide_number: int | None) -> TextCandidate:
+    item = {"area": "GAZE", "slide_number": slide_number, "text": "기본", "evidence": {}}
+    return TextCandidate("audience_gaze", "STRENGTH", item)
+
+
+@pytest.mark.parametrize("kind", ["strength", "improvement", "next_mission"])
+def test_llm_comparison_takes_each_kind_of_candidate_slide(kind):
+    # 강점 · 개선점 · 다음 미션이 각자 혼자 가리키는 장(7번)도 싣고,
+    # 아무도 가리키지 않는 장(8번)은 뺀다
+    comparison = [
+        {"metric": m, "slide_number": s, "previous": 1, "current": 2, "improved": True}
+        | {"script_mode": None}
+        for m, s in [("cpm", None), ("script_ratio", 7), ("script_ratio", 8)]
+    ]
+    candidates = Candidates(
+        strengths={"s1": _text_candidate(7 if kind == "strength" else None)},
+        improvements={"i1": _text_candidate(7 if kind == "improvement" else None)},
+        next_missions={"n1": {"slide_number": 7 if kind == "next_mission" else None}},
+        n_fixed=0,
+    )
+    sent = llm_comparison(SimpleNamespace(comparison=comparison), candidates)
+    assert [(c["metric"], c["slide_number"]) for c in sent] == [("cpm", None), ("script_ratio", 7)]
+
+
 def test_dict_output_is_accepted(req):
     resp = review_take(req, FakeLLM(lambda p: full_draft(p).model_dump()), model="m")
     assert resp.fallback_reason is None
@@ -205,6 +260,90 @@ def test_number_check_replaces_only_bad_sentences(req):
     assert resp.next_missions[1].reason == base.next_missions[1].reason
 
 
+def test_very_long_decimal_replaces_only_that_item(req):
+    # 소수 자리가 아주 긴 숫자는 반올림이 넘쳐(OverflowError) 500 이 나던 경로다.
+    # 입력에 없는 숫자로 보고 그 항목만 기본 문장으로 바꾼다 (200)
+    def make(p: dict[str, Any]) -> dict[str, Any]:
+        draft = full_draft(p).model_dump()
+        draft["overall_summary"] = "점수는 0." + "1" * 400 + "점입니다."
+        return draft
+
+    base = review_take(req)
+    resp = review_take(req, FakeLLM(make), model="m")
+    assert resp.fallback_reason is None
+    assert resp.overall_summary == base.overall_summary
+
+
+def test_number_check_on_improvement_and_mission_description(req):
+    def make(p: dict[str, Any]) -> dict[str, Any]:
+        draft = full_draft(p).model_dump()
+        draft["improvements"][0]["text"] = "대본 응시가 77%였습니다."  # 없는 숫자
+        draft["next_missions"][1]["description"] = "대본 응시 13% 이하"  # 없는 숫자
+        return draft
+
+    base = review_take(req)
+    resp = review_take(req, FakeLLM(make), model="m")
+    assert resp.fallback_reason is None
+    assert resp.improvements[0].text == base.improvements[0].text
+    assert resp.next_missions[1].description == base.next_missions[1].description
+    assert resp.next_missions[1].reason == "LLM 이유"  # 같은 미션의 이유는 그대로
+
+
+def test_description_is_cut_before_number_check(req):
+    # 검사 뒤에 자르면 "…52%" 가 "…52" 로 잘려 입력에 없는 숫자가 나간다
+    def make(p: dict[str, Any]) -> dict[str, Any]:
+        draft = full_draft(p).model_dump()
+        draft["next_missions"][1]["description"] = "가" * (MAX_DESCRIPTION_CHARS - 2) + "52%"
+        return draft
+
+    base = review_take(req)
+    assert "52%" in base.next_missions[1].description  # 0.52 는 입력에 있다
+    resp = review_take(req, FakeLLM(make), model="m")
+    # LLM 은 성공했고(기본 결과가 아님) 자른 뒤 검사에 걸린 그 항목만 기본 문장이다
+    assert resp.fallback_reason is None
+    assert resp.next_missions[1].description == base.next_missions[1].description
+    assert resp.next_missions[1].reason == "LLM 이유"  # 같은 미션의 이유는 LLM 문장 그대로
+
+
+def test_fixed_missions_stay_first_whatever_llm_order(req):
+    # 사용자 기준 FAILED 2개(n1 · n2) + PRIORITY 후보 2개(n3 · n4)
+    req["user_criteria"]["targets"].append(
+        {"display": "청중 90% 이상", "metric": "audience_ratio", "operator": "GTE", "value": 0.9}
+    )
+    req["take_result"]["areas"]["FILLER"]["slides"] = [
+        {"slide_number": 2, "measured_ratio": 1.0, "metrics": {"filler_per_min": 3.0}}
+    ]
+
+    def make(p: dict[str, Any]) -> dict[str, Any]:
+        assert [c["fixed"] for c in p["next_mission_candidates"]] == [True, True, False, False]
+        return {
+            **full_draft(p).model_dump(),
+            "next_missions": [
+                {"candidate_id": c, "description": "LLM 설명", "reason": "LLM 이유"}
+                for c in ("n4", "n2", "n3", "n1")
+            ],
+        }
+
+    base = review_take(req)
+    assert len(base.next_missions) == 4
+    resp = review_take(req, FakeLLM(make), model="m")
+    # n1, n2 는 후보 순서로 맨 앞, 이어서 LLM 이 고른 순서 n4, n3
+    assert [m.target for m in resp.next_missions] == [
+        base.next_missions[i].target for i in (0, 1, 3, 2)
+    ]
+    assert [m.priority for m in resp.next_missions] == [1, 2, 3, 4]
+
+
+def test_rule_code_error_after_llm_is_not_hidden(req, monkeypatch):
+    # LLM 은 성공했는데 초안을 붙이는 코드가 실패하면 규칙 쪽 오류다 → 500 (명세 7절)
+    def broken(*args: Any, **kwargs: Any) -> Any:
+        raise KeyError("area")
+
+    monkeypatch.setattr(review_core, "apply_draft", broken)
+    with pytest.raises(KeyError):
+        review_take(req, FakeLLM(full_draft), model="m")
+
+
 class CodedError(Exception):
     """서비스 common/llm.py 처럼 code 를 단 예외"""
 
@@ -219,6 +358,7 @@ class CodedError(Exception):
         (None, "LLM_UNAVAILABLE"),
         (FakeLLM(CodedError("LLM_TIMEOUT")), "LLM_TIMEOUT"),
         (FakeLLM(CodedError("LLM_UNAVAILABLE")), "LLM_UNAVAILABLE"),
+        (FakeLLM(CodedError("LLM_INVALID_OUTPUT")), "LLM_INVALID_OUTPUT"),
         (FakeLLM(TimeoutError()), "LLM_TIMEOUT"),
         (FakeLLM(RuntimeError("boom")), "LLM_ERROR"),
         (FakeLLM(lambda p: {"overall_summary": 1}), "LLM_INVALID_OUTPUT"),

@@ -38,3 +38,25 @@ def test_cache_key_has_the_reasoning_effort(tmp_path):
     low = CachedLLM(None, "m", tmp_path / "c.json", reasoning_effort="low")
     assert plain.prefix.startswith("m\n" + REVIEW_SYSTEM_PROMPT)
     assert low.prefix != plain.prefix
+
+
+def _llm_record(reason):
+    record = {"dimension_checked": 0, "dimension_errors": {}, "false_strengths": []}
+    llm = {"fallback_reason": reason, "error": None, "latency_ms": None}
+    if reason is None:
+        llm.update(
+            sentences=1,
+            sentences_failed=0,
+            numbers=0,
+            numbers_not_in_input=[],
+            output_chars=10,
+        )
+    return {**record, "llm": llm}
+
+
+def test_schema_valid_rate_leaves_out_timeouts():
+    # 시간 초과는 출력이 없어 스키마를 볼 수 없다 → 분모에서 빼고 따로 센다 (명세 14절)
+    reasons = [None, None, "LLM_INVALID_OUTPUT", "LLM_TIMEOUT"]
+    out = evaluate.summarize([_llm_record(r) for r in reasons])["llm"]
+    assert out["schema_valid_rate"] == round(2 / 3, 4)
+    assert out["timeout_rate"] == 0.25

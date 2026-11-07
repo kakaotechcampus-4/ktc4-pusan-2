@@ -118,7 +118,7 @@ ai/research/speech-pace/
 
 | 필드 | 값 | 예 |
 |---|---|---|
-| `metrics` | `cpm`(최근 창), `cpm_short`(짧은 창, 개입 효과용), `speak_ms`(최근 창 안 단어 발화 시간 합). `cpm` · `cpm_short`는 각 창의 최소 발화 시간 · 단어 수를 채울 때만 값이 있다. 최근 창이 모자라 `measurable`이 false여도 짧은 창 조건을 채우면 `cpm_short`는 값이 있을 수 있다. STT가 `ok`가 아니거나 군더더기 판정이 실패하면 둘 다 null | `{"cpm": 319.4, "cpm_short": 324.0, "speak_ms": 12400}` |
+| `metrics` | `cpm`(최근 창), `cpm_short`(짧은 창, 개입 효과용), `speak_ms`(최근 창 안 단어 발화 시간 합). `cpm` · `cpm_short`는 각 창의 최소 발화 시간 · 단어 수를 채울 때만 값이 있다. 최근 창이 모자라 `measurable`이 false여도 짧은 창 조건을 채우면 `cpm_short`는 값이 있을 수 있다. STT가 `ok`가 아니거나 군더더기 판정이 실패하면 둘 다 null. 둘 다 소수 첫째 자리로 반올림한다 | `{"cpm": 319.4, "cpm_short": 324.0, "speak_ms": 12400}` |
 | `tally` | 새로 판정이 정해진 단어마다 `{t_ms: 그 단어의 start_ms, values: {chars, speak_ms, pause_count?, pause_ms?}}`, 새 1초마다 `{t_ms: 그 1초의 시작, values: {ok_ms, total_ms}}`. 값이 0인 키는 뺀다 | 아래 5-5 |
 | `state` | `SLOW` · `NORMAL` · `FAST`. 잴 수 없으면 `UNKNOWN` | `NORMAL` |
 | `measurable` | STT 상태가 `ok`이고, 군더더기 판정이 실패하지 않았고, 최근 창 안 발화 시간과 단어 수가 기준 이상 | `true` |
@@ -133,9 +133,9 @@ ai/research/speech-pace/
 
 | 지표 | 계산 |
 |---|---|
-| `cpm` | `chars ÷ speak_ms × 60000` |
+| `cpm` | `chars ÷ speak_ms × 60000`, 소수 첫째 자리로 반올림 |
 | `pause_count` | 합 |
-| `measured_ratio` | `ok_ms ÷ total_ms` (말 속도의 측정 비율) |
+| `measured_ratio` | `ok_ms ÷ total_ms` (말 속도의 측정 비율), 소수 넷째 자리로 반올림 |
 
 **`criteria()`** → `{"PACE_FAST": {metric: "cpm", direction: "HIGHER_IS_WORSE", threshold, bad, onset_lag_ms, offset_lag_ms}, "PACE_SLOW": {metric: "cpm", direction: "LOWER_IS_WORSE", ...}}`
 
@@ -145,6 +145,7 @@ ai/research/speech-pace/
 | `PACE_FAST` | 최근 창 `cpm`이 빠름 기준 초과 | `cpm` (높을수록) | true |
 | `PACE_SLOW` | 최근 창 `cpm`이 느림 기준 미만 | `cpm` (낮을수록) | true (코치가 말하지 않고 문제 구간에만 남긴다) |
 
+- 빠름 · 느림 기준과는 소수 첫째 자리로 반올림한 `cpm`(5-3)으로 비교한다.
 - 잴 수 없으면 `state`는 `UNKNOWN`, `issues`는 빈 목록이다. 말 속도에는 측정 불가 문제 이름이 없다(`architecture.md` 6-3).
 - `severity`는 공통 규칙(기준값에서 0.5, 아주 나쁨 값에서 1.0, 그 사이 직선, 1.0에서 자름)을 따른다. `evidence`에는 `cpm`과 창 길이를 싣는다.
 - 코치는 `PACE_FAST`에 `SLOW_DOWN` → `SLOW_DOWN`(문장 끝 쉬기) → 그만둠 사다리를 쓰고, 개입 효과는 `cpm_short`로 잰다(`coach-agent.md` 6-1).
@@ -193,9 +194,9 @@ ai/research/speech-pace/
 [{"evaluator": "pace", "area": "SPEED", "t_ms": 52000, "counted_until_ms": 52000, "words_counted_until_ms": 50200,
   "criteria_version": "pace-1.0+<config 해시>", "measurable": false, "state": "UNKNOWN",
   "metrics": {"cpm": null, "cpm_short": null, "speak_ms": null},
-  "tally": [{"t_ms": 51000, "values": {"ok_ms": 0, "total_ms": 1000}}], "issues": []}]
+  "tally": [{"t_ms": 51000, "values": {"total_ms": 1000}}], "issues": []}]
 ```
-새 단어를 세지 않고 단어 커서를 받은 값(50,200) 그대로 둔다. 그 1초는 `total_ms`에만 넣고 `ok_ms`에는 넣지 않는다(단어를 세지 못한 시간이라 측정 비율이 낮아지게. STT가 `ok`여도 같다).
+새 단어를 세지 않고 단어 커서를 받은 값(50,200) 그대로 둔다. 그 1초는 `total_ms`에만 넣고 `ok_ms`에는 넣지 않는다(0이라 키가 빠진다, 5-3. 단어를 세지 못한 시간이라 측정 비율이 낮아지게. STT가 `ok`여도 같다).
 
 **`summarize` 출력 (Take)**
 ```json
@@ -307,9 +308,9 @@ uv sync
 # 14. 지표 정의
 - **`cpm`** (판정 결과): 최근 창 안 군더더기가 아닌 단어의 공백 · 문장부호를 뺀 글자 수 ÷ 그 단어들의 발화 시간 × 60000. 발화 시간 · 단어 수가 기준 미만이면 null.
 - **`cpm_short`**: 같은 계산을 짧은 창으로.
-- **`cpm`** (Take · 장): `chars ÷ speak_ms × 60000`. `speak_ms`가 0이면 null.
+- **`cpm`** (Take · 장): `chars ÷ speak_ms × 60000`, 소수 첫째 자리로 반올림. `speak_ms`가 0이면 null.
 - **`pause_count`**: 연속한 두 확정 단어 사이 간격이 멈춤 기준 시간을 넘은 횟수의 합(앞 단어가 STT 회복 전이면 세지 않음).
-- **`measured_ratio`**: `ok_ms ÷ total_ms`. STT가 정상이던 시간의 비율이다.
+- **`measured_ratio`**: `ok_ms ÷ total_ms`. STT가 `ok`이고, 회복 시각(`stt_ok_since_ms`) 이후이며, 군더더기 판정이 실패하지 않은(`fillers`가 null이 아닌) 시간의 비율이다(5-3 `ok_ms`).
 - **CPM 오차**: 평가 발화마다 `|모듈 cpm − 사람이 잰 cpm|`의 평균(Take · 장 값).
 - **상태 일치율**: 평가 1초마다 모듈 `state`와 사람이 정한 상태가 같은 비율(`UNKNOWN` 제외, 그 비율은 따로 기록).
 - **멈춤 재현율**: 사람이 표시한 멈춤 중 모듈이 센 비율.
@@ -322,6 +323,7 @@ uv sync
 - STT가 지운 군더더기는 글자 수와 시간에서 둘 다 빠지므로, 군더더기가 많은 발화의 CPM은 실제 체감보다 조금 높게 나올 수 있다.
 - 숫자 · 영어 약어는 STT 표기에 따라 글자 수가 달라진다(예: "37%" ↔ "삼십칠 퍼센트").
 - 같은 `(start_ms, end_ms)`를 가진 서로 다른 단어는 군더더기 판정과 구분하지 못한다(실제 STT에서는 드물다).
+- 멈춤은 받은 단어 중 앞 단어와의 간격으로 센다. BE는 최근 60초 단어만 보내므로, 60초 넘게 말이 없다가 온 첫 단어는 앞 단어가 없어 멈춤으로 세지 않는다. 이런 긴 침묵은 오디오가 흐르는 동안이면 소리 크기의 `LONG_SILENCE`(`PAUSE` 영역)가 센다(`volume.md` 5-4).
 - 평가 데이터가 아직 없고, 기준값은 잠정값이다.
 
 # 16. 확정 값 한눈에

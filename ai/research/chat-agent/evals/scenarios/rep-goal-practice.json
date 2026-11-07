@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "id": "rep-goal-practice",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "목표 저장 → '연습하러 가자'면 [연습 준비로] 버튼 카드를 낸다(START_PRACTICE BUTTON, 화면은 누를 때만 옮김)",
+  "source": "rep-goal",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 기준으로 3장 청중 시선 비율을 높이는 걸 목표로 잡아 줘",
+      "page_take_id": "t-5"
+    },
+    {
+      "message": "좋아, 그럼 바로 연습하러 가자",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "save-executed",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "SAVE_GOAL",
+        "path": "types",
+        "turn": 0
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "practice-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "card_types"
+      },
+      {
+        "check_id": "goal-version-kept",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 1,
+        "path": "after.conversation.goal_version"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

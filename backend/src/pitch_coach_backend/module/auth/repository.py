@@ -62,15 +62,6 @@ def create_refresh_token(
     return token
 
 
-def get_refresh_token(db: Session, token_hash: str) -> RefreshToken | None:
-    """폐기·만료 여부와 무관하게 가져온다. 판단은 service 가 한다.
-
-    이미 폐기된 토큰이 들어온 것 자체가 유출 신호라서, 여기서 걸러내면
-    재사용 탐지를 할 수 없다.
-    """
-    return db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
-
-
 def get_refresh_token_for_update(db: Session, token_hash: str) -> RefreshToken | None:
     """같은 기기의 회전·로그아웃을 커밋까지 직렬화한 뒤 토큰 행을 잠근다.
 

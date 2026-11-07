@@ -3,10 +3,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.exc import IntegrityError
 
+from pitch_coach_backend.core.limits import INT4_MAX
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.service_feedback import service
 from pitch_coach_backend.module.service_feedback.entity import TakeSurvey
 from pitch_coach_backend.module.user.entity import User
 from tests.service_feedback.conftest import make_report
@@ -143,6 +145,7 @@ def test_other_users_or_missing_take_is_404(client, auth, db_session):
         {"comment": "\ud800"},
         {"question_version": 0},
         {"question_version": "1"},
+        {"question_version": INT4_MAX + 1},
         {"user_id": str(uuid.uuid4())},
     ],
 )
@@ -153,6 +156,13 @@ def test_invalid_answer_is_422(client, auth, report, change):
         content=json.dumps({**ANSWERS, **change}),
     )
     assert response.status_code == 422
+
+
+def test_largest_question_version_is_stored(client, auth, report):
+    body = {**ANSWERS, "question_version": INT4_MAX}
+    response = client.post(path(report.id), headers=auth, json=body)
+    assert response.status_code == 201
+    assert response.json()["question_version"] == INT4_MAX
 
 
 def test_missing_rating_is_422(client, auth, report):
@@ -204,6 +214,35 @@ def test_pending_lists_reports_after_consent_without_survey(client, auth, db_ses
         "completed_at": items[0]["completed_at"],
     }
     assert datetime.fromisoformat(items[0]["completed_at"]) == T0 + timedelta(hours=2)
+
+
+def test_pending_excludes_own_surveyed_takes_in_one_query(db_session, user_id):
+    consent(db_session, user_id)
+    done = make_report(db_session, user_id, completed_at=T0 + timedelta(hours=1))
+    left = make_report(db_session, user_id, completed_at=T0 + timedelta(hours=2))
+    other = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
+    db_session.add(other)
+    db_session.flush()
+    theirs = make_report(db_session, other.id, completed_at=T0 + timedelta(hours=1))
+    for owner, take in ((user_id, done), (other.id, theirs)):
+        db_session.add(
+            TakeSurvey(user_id=owner, take_id=take.id, accuracy_rating=3, usefulness_rating=3)
+        )
+    db_session.flush()
+    statements = []
+
+    def listener(conn, cursor, statement, *args):
+        statements.append(statement)
+
+    conn = db_session.connection()
+    event.listen(conn, "before_cursor_execute", listener)
+    try:
+        pending = service.pending_surveys(db_session, user_id, consented_at=T0)
+    finally:
+        event.remove(conn, "before_cursor_execute", listener)
+
+    assert [item.take_id for item in pending.items] == [left.id]
+    assert len(statements) == 1
 
 
 def test_survey_is_kept_after_take_deletion_and_withdrawal(

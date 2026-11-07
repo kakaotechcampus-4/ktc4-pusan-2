@@ -89,6 +89,19 @@ def test_display_criterion_over_50_chars_is_a_schema_violation():
         EvaluationCriteriaAnalysis.model_validate(_analysis("가" * 51))
 
 
+def test_only_the_first_10_display_criteria_are_kept_and_checked():
+    # 11번째 줄은 버리므로 50자를 넘어도 응답이 실패하지 않는다
+    lines = [f"기준 {i}" for i in range(10)] + ["가" * 51]
+    result = EvaluationCriteriaAnalysis.model_validate({**_analysis(""), "display_criteria": lines})
+    assert result.display_criteria == lines[:10]
+
+
+def test_a_long_line_within_the_first_10_is_still_a_violation():
+    lines = [f"기준 {i}" for i in range(9)] + ["가" * 51, "기준 10"]
+    with pytest.raises(ValidationError):
+        EvaluationCriteriaAnalysis.model_validate({**_analysis(""), "display_criteria": lines})
+
+
 def test_display_limit_is_not_sent_in_the_json_schema():
     # strict 모드가 받지 않는 키워드를 LLM 스키마에 싣지 않는다. 응답을 검증할 때만 본다
     schema = EvaluationCriteriaAnalysis.model_json_schema()
