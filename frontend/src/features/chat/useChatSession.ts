@@ -24,7 +24,7 @@ import {
   type TransportSignal,
   type UndoResult,
 } from './chatTransport';
-import { createTypingQueue, feedProgress, type TypingQueue } from './chatTyping';
+import { createTypingQueue, feedProgress, onReducedMotion, type TypingQueue } from './chatTyping';
 
 /**
  * 대화창 한 세션의 연결 (`docs/ai/features/chat-agent.md` 12-4 F1 · F2 · F3) — 로그인 사용자 하나 · 허용 화면 위에서만 삽니다.
@@ -158,6 +158,8 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   /** 큐가 들고 있는 실행 — 신호 처리 안에서 곧바로 견줍니다 */
   const liveRun = useRef<string | null>(null);
   useEffect(() => () => typing.reset(), [typing]);
+  // 효과 중에 '움직임 줄이기'를 켜면 남은 글을 다 보입니다 (#956 리뷰)
+  useEffect(() => onReducedMotion(() => typing.finish()), [typing]);
 
   // 저장소의 바뀜을 따라갑니다(외부 저장소 구독)
   // - 보내는 중 → 실행이 붙음: 그 말을 목록에 들어올 때까지 붙잡아 둡니다

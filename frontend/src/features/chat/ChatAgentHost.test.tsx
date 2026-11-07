@@ -258,6 +258,9 @@ const go = async (path: string) => {
 };
 const launcher = () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
 const panel = () => host.querySelector<HTMLElement>('[role="dialog"]');
+/** 답 말풍선의 답 글 — 문장(`[data-claim]`)만 이어 읽습니다([건너뛰기] 버튼 글자는 빼고) */
+const answerText = (bubble: Element | null) =>
+  [...(bubble?.querySelectorAll('[data-claim]') ?? [])].map((c) => c.textContent).join('');
 const input = () => host.querySelector('textarea')!;
 /** 버튼의 보이는 글 — 화면 읽기 프로그램에만 주는 잠긴 이유(sr-only)는 뺍니다 */
 const visibleText = (el: Element) => {
@@ -758,7 +761,7 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
         cards: [],
       }),
     );
-    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('첫 문장');
+    expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('첫 문장');
 
     server.messages = () =>
       Promise.resolve({
@@ -856,9 +859,9 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
     await watching('r1');
     await act(async () => transport().emit(progressOf('r1', ['첫 문장입니다'], { restart: true })));
     // 효과 — 아직 다 보이지 않았습니다
-    expect(live()!.textContent).not.toBe('첫 문장입니다');
+    expect(answerText(live())).not.toBe('첫 문장입니다');
     await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
-    expect(live()!.textContent).toBe('첫 문장입니다');
+    expect(answerText(live())).toBe('첫 문장입니다');
   });
 
   it('따라잡기(새로고침 · 다시 열기)는 효과 없이 곧바로 보인다', async () => {
@@ -866,7 +869,7 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
     await act(async () =>
       transport().emit(progressOf('r1', ['이미 만든 문장'], { restart: true, catchUp: true })),
     );
-    expect(live()!.textContent).toBe('이미 만든 문장');
+    expect(answerText(live())).toBe('이미 만든 문장');
   });
 
   it('다른 실행의 진행이 오면 앞 실행의 문장을 비우고 새로 그린다', async () => {
@@ -879,7 +882,7 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
       // 같은 순번(0)이라 남겨 두면 새 문장이 이미 본 순번으로 버려집니다
       transport().emit(progressOf('r2', ['새 실행'], { catchUp: true })),
     );
-    expect(live()!.textContent).toBe('새 실행');
+    expect(answerText(live())).toBe('새 실행');
     expect(live()!.getAttribute('data-live-run')).toBe('r2');
   });
 
@@ -935,7 +938,7 @@ describe('답 그리기 (12-4 F3 · F12)', () => {
       }),
     );
     // 목록을 읽는 동안에도 받은 답은 다 보입니다 — 비었다가 다시 나타나지 않게
-    expect(live()!.textContent).toBe('아주 긴 문장이 아직 다 보이지 않았어요');
+    expect(answerText(live())).toBe('아주 긴 문장이 아직 다 보이지 않았어요');
 
     answer.resolve({
       messages: [
@@ -1210,7 +1213,7 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     await act(async () => transport().emit(ended('r1', 'c1')));
     await settle();
     await settle();
-    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('받은 답 문장');
+    expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('받은 답 문장');
     expect(panel()!.textContent).not.toContain('물어보세요');
   });
 
@@ -1307,7 +1310,7 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
 
     // 돌아온 대화의 실행이 아직 진행 중이면 통신 계층이 처음부터 다시 보내 다시 그려집니다
     await act(async () => transport().emit(progressIn('r1', 'c1', '다시 받은 문장')));
-    expect(panel()!.querySelector('[data-live-run]')!.textContent).toBe('다시 받은 문장');
+    expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('다시 받은 문장');
   });
 });
 
