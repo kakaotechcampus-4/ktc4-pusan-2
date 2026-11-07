@@ -83,7 +83,8 @@ export function pitchScreen(
 
   const changed: ('title' | 'time_limit_sec' | 'criteria_text')[] = [];
   if (saved) {
-    if (saved.title !== null && draft.title !== saved.title) changed.push('title');
+    // 저장할 때 제목 앞뒤 공백을 지우므로(`useSavePitchInfo`) 지운 값끼리 견줍니다 — 공백만 다르면 저장해도 같은 값
+    if (saved.title !== null && draft.title?.trim() !== saved.title) changed.push('title');
     if (saved.time_limit_sec !== null && draft.time_limit_sec !== saved.time_limit_sec)
       changed.push('time_limit_sec');
     if (saved.criteria_text !== null && draft.criteria_text !== saved.criteria_text)
