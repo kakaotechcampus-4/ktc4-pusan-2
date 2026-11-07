@@ -453,6 +453,25 @@ OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시
 다가오는 발표는 가까운 날짜부터, 지난 발표는 최근에 지난 것부터, 같은 날짜면 최근에 만든 발표부터다.
 오늘은 한국 날짜다. FE 는 이 순서를 그대로 보여 준다.
 
+발표마다 지금 지울 수 있는지 `can_delete` 를 준다. 판단은 BE 한 곳에 두므로 FE 는 Take 상태로 다시 판단하지 않아도 된다.
+
+## 발표 삭제
+
+`DELETE /api/pitches/delete/{pitch_id}` 는 연습이나 분석이 도는 중이면 지우지 않고 409 `PITCH_BUSY` 로 답한다.
+`can_delete` 와 같은 기준이다.
+
+| Take | 삭제 |
+|---|---|
+| 발표 중(`RUNNING`) | 막는다 |
+| 분석 중(`ANALYZING`) | 막는다 |
+| 보류된 분석(`analysis_hold_reason` 있음) | 지운다 |
+| 멈춘 분석(단계 시각 없음 또는 15분 넘게 그대로, 확인 답 대기는 25분) | 지운다 |
+| 시작 전(`READY`) · 끝남(`COMPLETED` · `FAILED`) | 지운다 |
+
+멈춘 분석은 운영 화면의 "멈춘 분석"과 같은 기준이다. 사람이 복구할 때까지 끝나지 않으므로 막으면 그 발표를 지울 수 없다.
+
+판단과 삭제는 발표 행을 잠근 한 트랜잭션에서 한다. Take 를 시작하는 요청도 이 행을 잠그므로, 동시에 오면 한쪽만 이긴다.
+
 ## Take 목록
 
 `GET /api/takes/` 는 내 모든 발표의 Take 를 시작 시각 최신순으로 준다 (Take 기록 화면).
@@ -521,8 +540,11 @@ FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 
 오른쪽 아래 코치 대화창의 API 다. 동작 · 값의 기준은 [docs/ai/features/chat-agent.md](../docs/ai/features/chat-agent.md)
 12-3 이다. 메시지는 즉시 `202` 로 받고, 답은 실행 상태를 조회해 받는다(실행 중 1초 간격).
 AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스위치 `AGENT_ENABLED` 가 꺼져 있으면
-아래 API 는 `503 AGENT_DISABLED` 다(사용 가능 여부만 `enabled:false` 로 답한다). 재시작 복구와 자동 목표 확인
+아래 API 는 `503 AGENT_DISABLED` 다(사용 가능 여부만 `enabled:false` 로 답한다). 대화 자리 설정
+`CHAT_AI_SLOTS_PER_PROCESS` 가 2보다 작거나 `WEB_CONCURRENCY` × 그 값이 `CHAT_AI_SLOTS_TOTAL` 을 넘어도
+꺼진 것과 같다(`module/chat/availability.py`). 재시작 복구와 자동 목표 확인
 주기 작업도 띄우지 않는다. 근거가 지워진 답을 가리는 정리 작업과 30분이 지난 승인 대기를 끝내는 작업은 꺼져 있어도 돈다.
+서비스 전체 하루 턴 상한은 `CHAT_GLOBAL_DAILY_TURNS`(기본 1000)이고 넘으면 `429 AGENT_BUSY` 다.
 
 | 엔드포인트 | 내용 |
 |---|---|

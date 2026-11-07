@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-router';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { CheckIcon } from './icons';
 import { useSavePitchInfo } from './useSavePitchInfo';
@@ -25,8 +25,10 @@ import { InfoPane } from './steps/InfoPane';
 import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
 import { FinalReviewDialog } from './FinalReviewDialog';
-import type { Chosen, PitchDraft } from './lib/draft';
+import { shownVersion, type Chosen, type PitchDraft } from './lib/draft';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
+import { useChatScreen } from '@/shared/lib/chatScreen';
+import { pitchScreen } from './chatScreen';
 
 /**
  * 새로 시작한 작성인지 보고, 그렇다면 앞 피치를 비운 뒤에 화면을 그립니다.
@@ -194,6 +196,11 @@ function PitchCreateScreen() {
   const [focus, setFocus] = useState({ node, version, active: node });
   const active = focus.node === node && focus.version === version ? focus.active : node;
   const setActive = (active: PaneNode) => setFocus({ node, version, active });
+  // 대화창에 지금 화면 상태를 알립니다 — 보내는 순간에만 읽고, 화면 동작은 바꾸지 않습니다 (12-4 F2)
+  const editing = useMatch('/pitch/:id/edit') !== null;
+  useChatScreen(editing ? '/pitch/:id/edit' : '/pitch/new', () =>
+    pitchScreen(editing ? 'pitch_edit' : 'pitch_create', active, useCreateStore.getState()),
+  );
   const [review, setReview] = useState<{ draft: PitchDraft; chosen: Chosen } | null>(null);
   const pendingSlides = useCreateStore((s) => s.pendingSlideReviews);
   const pendingCriteria = useCreateStore((s) => s.pendingCriteriaReviews);
@@ -212,18 +219,9 @@ function PitchCreateScreen() {
   }, [unsaved, busy, criteriaUnsaved]);
 
   const selectedVersion = (kind: DraftNode) => (node === kind ? version : viewed[kind]);
-  const slide =
-    draft.slides.find((v) => v.version === selectedVersion('slides')) ??
-    draft.slides.at(-1) ??
-    null;
-  const script =
-    draft.scripts.find((v) => v.version === selectedVersion('script')) ??
-    draft.scripts.at(-1) ??
-    null;
-  const criteria =
-    draft.criteria.find((v) => v.version === selectedVersion('criteria')) ??
-    draft.criteria.at(-1) ??
-    null;
+  const slide = shownVersion(draft.slides, selectedVersion('slides'));
+  const script = shownVersion(draft.scripts, selectedVersion('script'));
+  const criteria = shownVersion(draft.criteria, selectedVersion('criteria'));
   const currentChoice = script
     ? { ...chosen, slides: script.slideVersion, script: script.version }
     : chosen;

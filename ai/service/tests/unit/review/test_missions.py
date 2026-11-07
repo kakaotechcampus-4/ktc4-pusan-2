@@ -41,6 +41,26 @@ def test_failed_coverage_slide_is_not_evaluable():
     assert judge_target(t, 2, TAKE, sc, CFG) == ("NOT_EVALUABLE", None)
 
 
+def test_scored_slide_in_failed_is_not_evaluable():
+    # 점수가 있는 장이라도 채점 실패 목록에 있으면 판정하지 않는다
+    sc = sample_coverage()
+    sc["failed"] = [{"slide_number": 3, "reason": "LLM_ERROR"}]
+    t = {"metric": "content_coverage", "operator": "GTE", "value": 0.9}
+    assert judge_target(t, 3, TAKE, sc, CFG) == ("NOT_EVALUABLE", None)
+
+
+def test_low_scored_ratio_makes_content_take_mission_and_criteria_not_evaluable(req):
+    coverage = sample_coverage()
+    coverage["take_scores"]["scored_ratio"] = 0.3  # min_scored_ratio 0.5 미만
+    req["script_coverage"] = coverage
+    content = {"metric": "content_coverage", "operator": "GTE", "value": 0.9}
+    req["missions"] = [{"mission_id": "m-c", "area": "CONTENT", "target": content}]
+    req["user_criteria"]["targets"] = [target("핵심 내용 90% 이상", **content)]
+    resp, _ = run(req)
+    assert [m.status for m in resp.mission_results] == ["NOT_EVALUABLE"]
+    assert [c.status for c in resp.criteria_results] == ["NOT_EVALUABLE"]
+
+
 def test_sample_mission_and_criteria(req):
     resp, _ = run(req)
     m = resp.mission_results[0]

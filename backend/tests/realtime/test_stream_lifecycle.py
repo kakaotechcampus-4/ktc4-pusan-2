@@ -49,7 +49,7 @@ def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
     client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
 ):
     """drain 이 실패해도 레지스트리에서만 사라지고 태스크가 계속 도는 일이 없어야 한다."""
-    monkeypatch.setattr(session, "STOP_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(stt_loop, "self_close_max_sec", lambda: 0.1)
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 5.0)
     adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
@@ -105,6 +105,58 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
     monkeypatch.setattr(registry, "attach", spy)
 
     await realtime.run()  # 예외가 새지 않는다
+
+    stream = attached[0]
+    assert not stream.has_client, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
+    stream.cancel()
+
+
+class ExplodingWebSocket(FakeWebSocket):
+    """열려 있는데도 send 가 RuntimeError 를 던진다. 닫힌 연결과 상관없는 오류다."""
+
+    async def send_text(self, text: str) -> None:
+        raise RuntimeError("boom")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("server_closed", [True, False])
+async def test_runtime_error_is_a_disconnect_only_after_the_server_closed(
+    db_session: Session,
+    user: User,
+    token: str,
+    monkeypatch: pytest.MonkeyPatch,
+    server_closed: bool,
+):
+    """서버가 먼저 닫은 연결에 보내면 Starlette 는 RuntimeError 를 던진다. 이것도 흔한 종료라
+    run() 밖으로 새면 안 된다. 열린 연결에서 난 RuntimeError 는 진짜 오류라 그대로 올린다.
+    어느 쪽이든 detach() 는 돈다."""
+    auth = {"type": "websocket.receive", "text": json.dumps({"type": "auth", "token": token})}
+    ws = FakeWebSocket(inbound=[auth]) if server_closed else ExplodingWebSocket(inbound=[auth])
+    realtime = session.RealtimeSession(
+        ws,
+        take_id=TAKE_ID,
+        db=db_session,
+        stt_adapter=FakeSttAdapter(),
+        transcript_store=FakeTranscriptStore(),
+    )
+    attached: list[TakeStream] = []
+    attach = registry.attach
+
+    async def spy(*args, **kwargs) -> TakeStream:
+        stream = await attach(*args, **kwargs)
+        attached.append(stream)
+        if server_closed:
+            # ready 를 보내기 전에 서버가 이 연결을 닫았다 (reaper · 이어받기와 경합)
+            await ws.close(code=1008)
+        return stream
+
+    monkeypatch.setattr(registry, "attach", spy)
+
+    if server_closed:
+        await realtime.run()  # 예외가 새지 않는다
+    else:
+        with pytest.raises(RuntimeError, match="boom"):
+            await realtime.run()
 
     stream = attached[0]
     assert not stream.has_client, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
@@ -395,7 +447,7 @@ async def test_abort_is_bounded_so_cancel_cannot_hang_on_deepgram(
 
 @pytest.mark.anyio
 async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.MonkeyPatch):
-    """CANCEL_TIMEOUT_SEC 안에 정리가 안 끝나면 (코드 리뷰 케이스 1) 닫힌 것으로 확정한다.
+    """취소 뒤 상한 안에 정리가 안 끝나면 (코드 리뷰 케이스 1) 닫힌 것으로 확정한다.
     FE 는 더 붙잡히지 않고, 뒤늦게 끝난 정리는 idempotent 한 _finish 로 흡수된다."""
     monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 1.0)
     adapter = FakeSttAdapter(Plan(abort_delay=0.3))

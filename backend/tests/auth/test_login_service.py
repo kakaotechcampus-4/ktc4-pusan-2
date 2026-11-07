@@ -188,11 +188,13 @@ def test_first_login_creates_user_and_oauth_account(
 ) -> None:
     issued = login(db_session)
 
-    assert issued.user.email == "new@example.com"
-    assert issued.user.name == "새사용자"
+    user = db_session.get(User, issued.user_id)
+    assert user is not None
+    assert user.email == "new@example.com"
+    assert user.name == "새사용자"
     account = db_session.scalar(select(OAuthAccount))
     assert account is not None
-    assert account.user_id == issued.user.id
+    assert account.user_id == issued.user_id
     assert account.provider == "google"
     assert account.provider_subject == "sub-1"
 
@@ -207,7 +209,9 @@ def test_long_google_name_is_cut_to_fit_the_column(
 
     issued = login(db_session)
 
-    assert issued.user.name == "가" * 100
+    user = db_session.get(User, issued.user_id)
+    assert user is not None
+    assert user.name == "가" * 100
 
 
 def test_second_login_reuses_the_same_user(
@@ -216,7 +220,7 @@ def test_second_login_reuses_the_same_user(
     first = login(db_session)
     second = login(db_session)
 
-    assert first.user.id == second.user.id
+    assert first.user_id == second.user_id
     assert db_session.scalars(select(User)).all() != []
     assert len(db_session.scalars(select(User)).all()) == 1
     assert len(db_session.scalars(select(OAuthAccount)).all()) == 1
@@ -233,7 +237,7 @@ def test_user_is_identified_by_subject_not_email(
     )
     second = login(db_session)
 
-    assert first.user.id == second.user.id
+    assert first.user_id == second.user_id
 
 
 def test_same_email_with_different_subject_is_refused(
@@ -273,7 +277,7 @@ def test_concurrent_first_login_creates_only_one_user(
 
     issued = login(db_session)
 
-    assert issued.user.id == winner.id
+    assert issued.user_id == winner.id
     assert len(db_session.scalars(select(User)).all()) == 1
 
 
@@ -286,7 +290,7 @@ def test_login_issues_access_and_refresh_tokens(
     issued = login(db_session)
 
     payload = security.decode_access_token(issued.access_token)
-    assert payload["sub"] == str(issued.user.id)
+    assert payload["sub"] == str(issued.user_id)
     assert issued.refresh_token
 
 

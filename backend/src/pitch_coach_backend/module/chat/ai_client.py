@@ -31,6 +31,11 @@ type OnProgress = Callable[[StreamLine], Awaitable[None]]
 
 @dataclass(frozen=True)
 class TurnFinal:
+    """검증을 통과한 끝 줄. 턴 실행기는 `view` 로 흐름을 고른다.
+
+    `data` 는 진단만 뺀 원문이다. 받은 모양 그대로 저장하는 곳(service/turn.py)에서 쓴다.
+    """
+
     view: FinalView
     data: dict[str, Any]
     diagnostics: dict[str, Any] | None
@@ -126,5 +131,5 @@ async def request_review_once(take_id: uuid.UUID, body: dict[str, Any]) -> dict[
 def _other_take(reply: Any, take_id: uuid.UUID) -> bool:
     try:
         return uuid.UUID(str(reply["take_id"])) != take_id
-    except (KeyError, TypeError, ValueError):
+    except KeyError, TypeError, ValueError:
         return False

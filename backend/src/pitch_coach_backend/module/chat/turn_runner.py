@@ -2,19 +2,20 @@ import asyncio
 import contextlib
 import logging
 import uuid
-import weakref
-from collections.abc import AsyncGenerator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal, in_session
 from pitch_coach_backend.core.tasks import TaskRegistry
-from pitch_coach_backend.module.chat.ai_client import TurnFailure, request_turn
-from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, StreamLine
+from pitch_coach_backend.module.chat.ai_client import TurnFailure, TurnFinal, request_turn
+from pitch_coach_backend.module.chat.ai_response import UPSTREAM_ERROR, ReassessArgs, StreamLine
 from pitch_coach_backend.module.chat.dto import (
+    NO_BUDGET_USED,
     ActionResultDTO,
     AgentResumeDTO,
     BudgetUsedDTO,
@@ -29,7 +30,6 @@ from pitch_coach_backend.module.chat.service.run import ClaimedRun, RunLost
 
 logger = logging.getLogger(__name__)
 
-CHAT_SLOT_LIMIT = 4
 MAX_TURN_CALLS = 6
 STOP_TIMEOUT_SEC = 5.0
 LEASE_RENEW_SEC = 10.0
@@ -39,39 +39,6 @@ type SessionFactory = Callable[[], Session]
 type ResumeWith = Callable[[Session, uuid.UUID], turn_service.ResumePoint | None]
 
 _running = TaskRegistry()
-_slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
-    weakref.WeakKeyDictionary()
-)
-_slot_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
-    weakref.WeakKeyDictionary()
-)
-
-
-def _chat_slot() -> asyncio.Semaphore:
-    loop = asyncio.get_running_loop()
-    if (slots := _slots.get(loop)) is None:
-        slots = asyncio.Semaphore(CHAT_SLOT_LIMIT)
-        _slots[loop] = slots
-    return slots
-
-
-@asynccontextmanager
-async def _double_slot() -> AsyncGenerator[None]:
-    loop = asyncio.get_running_loop()
-    slots = _chat_slot()
-    lock = _slot_locks.setdefault(loop, asyncio.Lock())
-    async with lock:
-        await slots.acquire()
-        try:
-            await slots.acquire()
-        except BaseException:
-            slots.release()
-            raise
-    try:
-        yield
-    finally:
-        slots.release()
-        slots.release()
 
 
 def start(
@@ -155,7 +122,7 @@ class _Turn:
         try:
             async with asyncio.timeout(max(0.0, remaining)):
                 if point is None:
-                    await self._turns(1, None, BudgetUsedDTO())
+                    await self._turns(1, None, NO_BUDGET_USED)
                 else:
                     await self._continue(point)
         except TimeoutError:
@@ -188,108 +155,121 @@ class _Turn:
         assert self._run is not None
         return self._run
 
-    # AI 클라이언트 요청을 보내고, 응답을 스트리밍으로 받으며, 필요시 action을 실행하는 턴을 반복
     async def _turns(
         self, first_call: int, resume: AgentResumeDTO | None, budget: BudgetUsedDTO
     ) -> None:
+        """AI 를 부르고, 행동을 기다리는 답이면 행동 결과를 실어 다시 부른다. 종결 답은 저장한다."""
         for turn_call in range(first_call, MAX_TURN_CALLS + 1):
-            try:
-                request = await in_session(
-                    self._session_factory,
-                    request_service.build_request,
-                    self._current,
-                    resume,
-                    budget,
-                )
-            except request_service.ContextTooLarge:
-                await self.give_up(TurnFailure("AGENT_CONTEXT_TOO_LARGE"))
-                return
-            request_id = uuid.uuid4().hex
-            async with _chat_slot():
-                await self._advance(
-                    turn_service.mark_sending,
-                    turn_call,
-                    request_id,
-                    request_service.offered_sources(request),
-                    request.memory.memory_version,
-                    request.history.overflow.prev_summary_version
-                    if request.history.overflow
-                    else None,
-                    [item.item_id for item in request.memory.profile or []],
-                )
-                outcome = await request_turn(
-                    request,
-                    request_id=request_id,
-                    turn_call=turn_call,
-                    first_trigger=self._current.first_trigger,
-                    on_progress=lambda line, call=turn_call: self._progress(call, line),
-                )
+            outcome = await self._call_agent(turn_call, resume, budget)
             if isinstance(outcome, TurnFailure):
                 await self.give_up(outcome)
                 return
             if outcome.view.status != "NEEDS_ACTION":
-                await in_session(
-                    self._session_factory, turn_service.finish, self._current, turn_call, outcome
-                )
+                await self._finish(turn_call, outcome)
                 return
             if turn_call == MAX_TURN_CALLS:
                 break
-            await self._advance(turn_service.wait_for_action, turn_call, outcome)
-            action = outcome.data["actions"][0]
-            if action["autonomy"] == "ASK" and action.get("preapproved") is None:
-                result = await in_session(
-                    self._session_factory,
-                    action_service.hold_for_approval,
-                    self._current,
-                    action,
-                    outcome.data.get("profile_updates"),
-                )
-                if result is None:
-                    return
-                action_ms = 0
-            else:
-                result, action_ms = await self._act(action)
-            resume = AgentResumeDTO(
-                state=SignedStateDTO.model_validate(outcome.data["state"]),
-                action_results=[result],
-            )
-            budget = BudgetUsedDTO.model_validate(outcome.data["budget_used"])
-            budget = budget.model_copy(update={"elapsed_ms": budget.elapsed_ms + action_ms})
+            follow_up = await self._take_action(turn_call, outcome)
+            if follow_up is None:
+                return
+            resume, budget = follow_up
+        # 응답 코드는 AI 오류와 같다. 호출 한도에 닿은 턴을 로그로 가른다
+        logger.warning(
+            "대화 턴이 호출 한도 %d번에 닿았다 run=%s", MAX_TURN_CALLS, self._current.run_id
+        )
         await self.give_up(TurnFailure(UPSTREAM_ERROR))
+
+    async def _call_agent(
+        self, turn_call: int, resume: AgentResumeDTO | None, budget: BudgetUsedDTO
+    ) -> TurnFinal | TurnFailure:
+        """요청을 만들고 대화 자리를 잡아 보낸다. 보내기 직전에 보낸다는 표시를 저장한다."""
+        try:
+            request = await in_session(
+                self._session_factory, request_service.build_request, self._current, resume, budget
+            )
+        except request_service.ContextTooLarge:
+            return TurnFailure("AGENT_CONTEXT_TOO_LARGE")
+        request_id = uuid.uuid4().hex
+        overflow = request.history.overflow
+        async with ai_slots.chat():
+            await self._advance(
+                turn_service.mark_sending,
+                turn_call,
+                request_id,
+                request_service.offered_sources(request),
+                request.memory.memory_version,
+                overflow.prev_summary_version if overflow else None,
+            )
+            return await request_turn(
+                request,
+                request_id=request_id,
+                turn_call=turn_call,
+                first_trigger=self._current.first_trigger,
+                on_progress=partial(self._progress, turn_call),
+            )
+
+    async def _finish(self, turn_call: int, outcome: TurnFinal) -> None:
+        await in_session(
+            self._session_factory, turn_service.finish, self._current, turn_call, outcome
+        )
+
+    async def _take_action(
+        self, turn_call: int, outcome: TurnFinal
+    ) -> tuple[AgentResumeDTO, BudgetUsedDTO] | None:
+        """기다리는 행동을 저장하고 실행해 다음 호출에 실을 값을 돌려준다. 승인을 기다리면 None."""
+        await self._advance(turn_service.wait_for_action, turn_call, outcome)
+        view = outcome.view
+        assert view.state is not None
+        pending = view.actions[0]
+        action = pending.model_dump(mode="json")
+        if pending.autonomy == "ASK" and pending.preapproved is None:
+            result = await in_session(
+                self._session_factory,
+                action_service.hold_for_approval,
+                self._current,
+                action,
+                view.profile_updates,
+            )
+            if result is None:
+                return None
+            action_ms = 0
+        else:
+            result, action_ms = await self._act(action)
+        return _follow_up(view.state, result, view.budget_used, action_ms)
 
     async def _continue(self, point: turn_service.ResumePoint) -> None:
         result, action_ms = await self._act(point.action)
-        budget = BudgetUsedDTO.model_validate(point.budget_used)
-        await self._turns(
-            point.turn_call + 1,
-            AgentResumeDTO(
-                state=SignedStateDTO.model_validate(point.state), action_results=[result]
-            ),
-            budget.model_copy(update={"elapsed_ms": budget.elapsed_ms + action_ms}),
+        resume, budget = _follow_up(
+            SignedStateDTO.model_validate(point.state),
+            result,
+            BudgetUsedDTO.model_validate(point.budget_used),
+            action_ms,
         )
+        await self._turns(point.turn_call + 1, resume, budget)
 
     async def _act(self, action: dict[str, Any]) -> tuple[ActionResultDTO, int]:
         loop = asyncio.get_running_loop()
         started = loop.time()
-        result = await in_session(
+        begun = await in_session(
             self._session_factory, action_service.begin_action, self._current, action
         )
-        if result is None:
-            if action["type"] == "REASSESS":
-                result = await self._reassess(action)
-            else:
-                result = await in_session(
-                    self._session_factory, action_service.run_action, self._current, action
-                )
+        if isinstance(begun, ActionResultDTO):
+            result = begun
+        elif isinstance(begun, ReassessArgs):
+            result = await self._reassess(action, begun)
+        else:
+            result = await in_session(
+                self._session_factory, action_service.run_action, self._current, action, begun
+            )
         return result, round((loop.time() - started) * 1000)
 
-    async def _reassess(self, action: dict[str, Any]) -> ActionResultDTO:
+    async def _reassess(self, action: dict[str, Any], args: ReassessArgs) -> ActionResultDTO:
         prepared = await in_session(
-            self._session_factory, reassess_service.prepare_reassess, self._current, action
+            self._session_factory, reassess_service.prepare_reassess, self._current, action, args
         )
         if isinstance(prepared, ActionResultDTO):
             return prepared
-        async with _double_slot():
+        async with ai_slots.chat_pair():
             replies = await reassess_service.call_reassess(prepared)
         return await in_session(
             self._session_factory,
@@ -312,3 +292,11 @@ class _Turn:
         if advanced is None:
             raise RunLost()
         self._run = advanced
+
+
+def _follow_up(
+    state: SignedStateDTO, result: ActionResultDTO, budget: BudgetUsedDTO, action_ms: int
+) -> tuple[AgentResumeDTO, BudgetUsedDTO]:
+    """다음 호출에 실을 이어 부르기 값과 사용량. 행동에 걸린 시간을 사용 시간에 더한다."""
+    resume = AgentResumeDTO(state=state, action_results=[result])
+    return resume, budget.model_copy(update={"elapsed_ms": budget.elapsed_ms + action_ms})

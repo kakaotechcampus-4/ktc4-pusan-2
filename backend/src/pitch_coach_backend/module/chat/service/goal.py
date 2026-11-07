@@ -1,14 +1,15 @@
+import math
 import uuid
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_response import SaveGoalArgs
-from pitch_coach_backend.module.chat.dto import ActionResultDTO
-from pitch_coach_backend.module.chat.entity import ChatGoal, ChatRun
+from pitch_coach_backend.module.chat.dto import ActionResultDTO, AgentTrigger
+from pitch_coach_backend.module.chat.entity import ChatAction, ChatGoal, ChatRun
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.authorization import authorization
-from pitch_coach_backend.module.chat.service.fetch import owned_take
+from pitch_coach_backend.module.chat.service.owned import owned_take_in
 from pitch_coach_backend.module.chat.service.request import (
     ProposalNotFound,
     completed_fully,
@@ -35,16 +36,16 @@ class GoalRejected(Exception):
 
 
 def save_goal(
-    db: Session, row: ChatRun, action: dict[str, Any], args: SaveGoalArgs
+    db: Session, row: ChatRun, saved: ChatAction, action: dict[str, Any], args: SaveGoalArgs
 ) -> ActionResultDTO:
     repo = ChatRepository(db)
-    if row.first_trigger == "TAKE_REVIEWED":
+    if row.first_trigger == AgentTrigger.TAKE_REVIEWED:
         return failed(action, "NOT_ALLOWED", UNCONFIRMED)
     preapproved = action.get("preapproved")
     if preapproved is not None:
         if not _preapproval_matches(repo, row, preapproved, args.goal):
             return failed(action, "PREAPPROVAL_MISMATCH", UNCONFIRMED)
-    elif not _goal_authorized(repo, row, action):
+    elif not _goal_authorized(row, saved, action):
         return failed(action, "APPROVAL_REQUIRED", UNCONFIRMED)
     if repo.count_succeeded_actions(row.id, "SAVE_GOAL") > 0:
         return failed(action, "NOT_ALLOWED", UNCONFIRMED)
@@ -55,7 +56,6 @@ def save_goal(
     conversation = repo.lock_conversation(row.conversation_id)
     if conversation.goal_version != args.expected_goal_version:
         return failed(action, "GOAL_VERSION_CONFLICT", "이미 다른 목표로 바뀌었어요.")
-    saved = repo.get_action(row.id, action["action_id"])
     version = conversation.goal_version + 1
     repo.add(
         ChatGoal(
@@ -74,8 +74,8 @@ def save_goal(
     return succeeded(action, {"goal": goal_view(repo.get_goal(conversation.id, version))})
 
 
-def _goal_authorized(repo: ChatRepository, row: ChatRun, action: dict[str, Any]) -> bool:
-    if repo.get_action(row.id, action["action_id"]).approved:
+def _goal_authorized(row: ChatRun, saved: ChatAction, action: dict[str, Any]) -> bool:
+    if saved.approved:
         return True
     original = row.input.get("user_message")
     return authorization(original, action.get("authorized_by"), "SAVE_GOAL") == "OK"
@@ -105,7 +105,7 @@ def _rebuild_goal(
     if goal.get("operator") != operator or (metric == "duration_ms" and slide_number is not None):
         raise GoalRejected(OPERATOR_MISMATCH)
     base = goal.get("base") or {}
-    take = owned_take(db, repo, user_id, str(goal.get("pitch_id")), str(base.get("take_id")))
+    take = owned_take_in(db, user_id, goal.get("pitch_id"), base.get("take_id"))
     if take is None:
         raise GoalRejected(BASE_MISMATCH)
     slides = repo.slide_numbers([take.Take.id]).get(take.Take.id, set())
@@ -197,9 +197,7 @@ def _check_rule(goal: dict[str, Any]) -> None:
 
 
 def _finite(value: Any) -> bool:
-    return (
-        isinstance(value, int | float)
-        and not isinstance(value, bool)
-        and value == value
-        and value not in (float("inf"), float("-inf"))
-    )
+    """bool 이 아닌 유한한 수인가. 정수는 float 로 바꾸면 넘칠 수 있어 그대로 통과시킨다."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    return isinstance(value, int) or math.isfinite(value)

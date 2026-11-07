@@ -54,6 +54,7 @@ INFO pitch_coach_ai.request request_id=4f1c… method=GET path=/health status=20
 | `POST /coach/finalize` | Take 종료 뒤 Take 결과. 다 세지 못했으면 409 `REPLAY_REQUIRED` → BE 가 Take 전체 원자료(`replay`)를 실어 다시 | 같음 | BE 백그라운드 |
 | `POST /coach/plan` | 다음 Take 의 코칭 계획 (LLM, AI 예산 25초). LLM 실패 · 설정 없음은 기본 계획 200 + `fallback_reason` | [`coach-agent.md`](../../docs/ai/features/coach-agent.md) 5절 | BE 백그라운드 |
 | `POST /takes/review` | Take 결과 · 대본 전달도 채점 · 이전 Take · 미션 · 사용자 기준 → 리뷰 (규칙 단계 + LLM 1번, AI 예산 25초). LLM 실패 · 설정 없음은 기본 문장 200 + `fallback_reason` | [`review-agent.md`](../../docs/ai/features/review-agent.md) 5절 | BE 백그라운드 |
+| `POST /agent/turn` | 대화 에이전트 한 턴: 사용자 말 · 행동 결과 · 새 리뷰 + 기본 자료 · 서명한 실행 상태 → `application/x-ndjson` 스트림(`plan` · `tool_done` · `claim` 줄과 끝 줄 `final` 또는 `error` 하나, 모델 여러 번, AI 예산 45초). 스트림 전 오류는 503 `AGENT_DISABLED`(꺼짐 · 서명 키 없음) · `LLM_UNAVAILABLE`, 429 `AGENT_BUSY`, 413 · 422 · 409 | [`chat-agent.md`](../../docs/ai/features/chat-agent.md) 5절 | BE 턴 실행기, 스트림을 끝 줄까지 읽음(50초) |
 | `POST /evaluation-criteria/parse` | 평가 기준 문장 → 표시 기준 · 요소별 값 · 숫자 목표 · 뺀 기준 (LLM 1번, AI 예산 25초). 기본 결과가 없어 LLM 실패 · 설정 없음은 에러 | [`evaluation-criteria.md`](../../docs/ai/features/evaluation-criteria.md) 5절 | BE 요청 안 동기 |
 
 `/coach/evaluate` · `/coach/finalize`는 서비스의 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)을 묶어 코치에 넘깁니다(`api/coach.py`의 `JUDGES`, `coach-agent.md` 11절).
@@ -68,6 +69,10 @@ INFO pitch_coach_ai.request request_id=4f1c… method=GET path=/health status=20
 | `LLM_TIMEOUT_SECONDS` | 선택 | `12` | LLM 호출 한 번 전체의 시간 제한(초). 0보다 커야 합니다 |
 | `LLM_MAX_RETRIES` | 선택 | `1` | LLM 재시도 횟수. 요청 마감 안에서만, 시간 초과 · 연결 실패 · 429 · 5xx일 때만 |
 | `WEB_CONCURRENCY` | 선택 | `1` | uvicorn 워커 수. uvicorn 이 시작할 때 **프로세스 환경변수**에서 직접 읽습니다. compose `env_file` · `docker run --env-file`은 환경변수로 넣어 먹지만, `ai/.env`에만 적고 `uv run`으로 띄우면 먹지 않습니다(로컬은 `--workers 4`) |
+| `AGENT_ENABLED` | 선택 | `false` | 대화 에이전트 끄기 스위치. false면 `/agent/turn`만 스트림 전 503 `AGENT_DISABLED`이고 대화용 모델 · 자료 묶음도 만들지 않습니다. 서버는 BE 쪽 스위치와 함께 켭니다(`chat-agent.md` 11-2) |
+| `AGENT_MAX_CONCURRENCY` | 선택 | `4` | 대화 `/agent/turn` 동시 상한(AI 프로세스별), 1 이상. 대화 전용 실행 풀 = 이 값 × 2 |
+| `AGENT_STATE_SECRET` | 대화 에이전트에 필요 | 없음 | 실행 상태 서명 키(비밀값), 32바이트 이상. 모든 워커 · 재시작에서 같은 값. 없거나 짧으면 켜져 있어도 대화 경로만 503 `AGENT_DISABLED`(앱 시작 · 다른 경로는 그대로) |
+| `AGENT_STATE_SECRET_PREVIOUS` | 선택 | 없음 | 바로 전 서명 키(비밀값), 검증만. 키를 바꿀 때 새 키는 위 칸에, 이전 키는 여기에 35분 이상 둡니다(`chat-agent.md` 11-3) |
 | `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS` | 선택 | 없음(`LLM_TIMEOUT_SECONDS`) | 대본 전달도 LLM 호출 한 번의 시간 제한(초). 서버에는 `20`(잰 값, 기능 문서 8절). 빠지면 12초로 돌아 장이 많은 대본에서 `LLM_TIMEOUT`이 늘어납니다. 어느 역할이 쓰는지는 `LLM_ROLES`의 `timeout_setting` |
 
 - 값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적습니다(`docker run --env-file`은 따옴표를 값에 그대로 넣습니다). 빈 값(`OPENAI_API_KEY=`)은 "없음"으로 봅니다.
@@ -104,6 +109,7 @@ def parse(req: ParseRequest) -> ParseResponse:
 - 시작할 때 한 번 불러올 서버 안 모델이 있으면 라우터 모듈에 `WARMUP = [불러오는 함수]`를 두고 `main.py`의 `_WARMUP`에 더하고, 라우터에 `dependencies=[Depends(require_ready)]`를 붙입니다(`common/readiness.py`, 준비 전 503 `NOT_READY`).
 - 경로 · 요청 · 응답 모델을 바꾸면 `uv run python tools/export_openapi.py`로 `contracts/openapi.json`을 다시 만듭니다(`tests/test_openapi.py`가 같은지 봅니다).
 - LLM은 스트리밍으로 부릅니다. 지금 게이트웨이는 스트리밍이 아닌 요청의 출력 상한을 2,000토큰 이하로만 받기 때문입니다(넘으면 400). 기능 코드는 이 차이를 모릅니다.
+- 도구 호출 · 시도마다 한도를 세는 기능(지금은 대화 에이전트뿐)은 `structured_llm` 대신 `common/llm.py`의 `tool_llm(role, pool_size=...)`을 프로세스에서 한 번 만들어 씁니다. 자기 실행 풀에서 돌고(공용 스레드 풀을 쓰지 않음), 코어의 LLM 모양(`features/chat_agent/llm_types.py`)으로 결과 · 예외를 돌려줍니다. 묶음이 없으면 None입니다(`docs/ai/features/chat-agent.md` 6-11).
 
 ## Docker 이미지로 실행 (배포와 같은 이미지)
 준비: Docker Desktop을 켜고 `docker version`에 `Server:` 블록이 나오는지 봅니다. 저장소 맨 위에서:
@@ -152,7 +158,7 @@ ai/service/
 ├── tools/export_openapi.py       contracts/openapi.json 을 만든다
 ├── src/pitch_coach_ai/
 │   ├── main.py · settings.py
-│   ├── api/health.py · script_parser.py · script_coverage.py · coach.py · evaluation_criteria.py · review.py
+│   ├── api/health.py · script_parser.py · script_coverage.py · coach.py · evaluation_criteria.py · review.py · chat_agent.py
 │   ├── common/errors.py · request_log.py · llm.py · meta.py · readiness.py
 │   └── features/
 │       ├── script_coverage/   대본 전달도 코어 (파일 지도는 연구 폴더 README 3-2)
@@ -163,10 +169,11 @@ ai/service/
 │       ├── script_parser/     대본 파싱 코어 · 프롬프트 (파일 지도는 연구 폴더 README '구조')
 │       ├── coach/             코치 코어 (파일 지도는 연구 폴더 README 3-1)
 │       ├── review/            리뷰 코어 · 프롬프트 (파일 지도는 연구 폴더 README 1절)
-│       └── evaluation_criteria/   평가 기준 분석 코어 (파일 지도는 연구 폴더 README '구조')
+│       ├── evaluation_criteria/   평가 기준 분석 코어 (파일 지도는 연구 폴더 README '구조')
+│       └── chat_agent/        대화 에이전트 코어 · 자료 묶음 · 예시 (파일 지도는 연구 폴더 README 2-1)
 └── tests/
     ├── conftest.py · test_health.py · test_errors.py · test_request_log.py · test_openapi.py
-    ├── unit/common/test_settings.py · test_llm.py · test_meta.py · test_readiness.py
+    ├── unit/common/test_settings.py · test_llm.py · test_tool_llm.py · test_meta.py · test_readiness.py
     ├── unit/script_coverage/   대본 전달도 단위 · 계약 · 경계 · 엔드포인트 테스트
     ├── unit/gaze/              시선 판정 모듈 단위 · 계약 · 경계 테스트
     ├── unit/filler/            군더더기 판정 모듈 규칙 · 커서 · 지표 · 계약 · 경계 테스트
@@ -176,7 +183,8 @@ ai/service/
     ├── unit/coach/             코치 코어 단위 · 계약 · 경계 테스트
     ├── unit/review/            리뷰 규칙 · 숫자 검사 · 계약 · 경계 · 엔드포인트 테스트
     ├── unit/evaluation_criteria/   평가 기준 분석 단위 · 계약 · 경계 · 엔드포인트 테스트
-    └── live/test_llm_live.py · test_coach_plan_live.py · test_script_parser_live.py · test_script_coverage_live.py · test_review_live.py
+    ├── unit/chat_agent/        대화 에이전트 단위 · 루프 · 계약 · 실패 행 · 엔드포인트 테스트
+    └── live/test_llm_live.py · test_coach_plan_live.py · test_script_parser_live.py · test_script_coverage_live.py · test_review_live.py · test_chat_agent_live.py
 ```
 
 | 파일 | 하는 일 | 입력 → 출력 | 부르는 곳 | 고칠 때 |
@@ -185,7 +193,7 @@ ai/service/
 | `uv.lock` | 설치할 정확한 판 목록 | — | `uv sync --locked` | 손으로 고치지 않는다. `uv add` · `uv lock`이 만든다 |
 | `Dockerfile` | 이미지 레시피: Python 3.12 + `uv.lock` 그대로의 운영 의존성 + `src`, `app` 사용자로 uvicorn 실행 | 이 폴더 → 이미지 | `docker build`, (배포) BE의 배포 워크플로 | 줄마다 이유는 파일 주석과 `docs/ai/ai-service.md` 11-1. 의존성 단계를 `COPY src`보다 앞에 둔다(캐시) |
 | `.dockerignore` | 엔진에 보내지 않을 파일(`.venv` · `.env` · 캐시 · `tests` · `contracts` · `tools`) | — | `docker build` | 주석은 자기 줄에만 (줄 끝 주석은 패턴이 된다). 하위 폴더까지 거르려면 `**/` |
-| `src/pitch_coach_ai/main.py` | 설정을 읽고 앱을 만들어 예외 처리 · 요청 로그 · 라우터를 붙인다 (`create_app()`, `app`). lifespan 에서 시작할 때 불러올 모델(`_WARMUP`)을 따로 불러오기 시작한다 | 설정 → FastAPI 앱 | uvicorn, 테스트 `client` | 새 라우터를 `create_app`에 `include_router`, 불러올 모델은 `_WARMUP`에 |
+| `src/pitch_coach_ai/main.py` | 설정을 읽고 앱을 만들어 예외 처리 · 요청 로그 · 대화 스트림 보내기 상한(`StreamSendGuard`, 가장 바깥) · 라우터를 붙인다 (`create_app()`, `app`). lifespan 에서 시작할 때 불러올 모델(`_WARMUP`)을 따로 불러오기 시작한다 | 설정 → FastAPI 앱 | uvicorn, 테스트 `client` | 새 라우터를 `create_app`에 `include_router`, 불러올 모델은 `_WARMUP`에 |
 | `src/pitch_coach_ai/settings.py` | 환경변수 읽기(`settings`), 모델 묶음 검사, 역할 → 묶음 · 출력 상한 · 기능별 호출 시간 제한(`LLM_ROLES`, `timeout_for`) | 환경변수 · `ai/.env` → `Settings` | `main.py` · `common/llm.py` | 새 변수는 기본값과 함께 더하고 `ai/.env.example` · 위 표도 |
 | `src/pitch_coach_ai/api/health.py` | `GET /health` · `GET /ready` | — → 200 `{"status": "ok"}` · 200 `{"status": "ready"}` 또는 503 `NOT_READY` | compose 헬스체크, 배포 확인 | LLM을 부르지 않게 둔다 |
 | `src/pitch_coach_ai/api/script_parser.py` | `POST /scripts/parse`. 요청마다 마감(25초)과 역할 `script_parser`(출력 상한 2,000 · 추론 `low`)의 LLM 객체를 만들어 코어에 넘기고(설정이 없으면 부를 때 `LLM_UNAVAILABLE` 을 내는 대역), 코어의 `EmptyScriptError` 를 422 `EMPTY_SCRIPT` 로, `meta.model` 을 응답한 모델로. 대본 길이 · 장 수 · `status` 만 로그 | 기능 문서 5-2 요청 → 5-3 응답 | BE | LLM 만들기는 `get_llm_factory` 의존성(테스트가 가짜로 바꾼다) |
@@ -193,9 +201,10 @@ ai/service/
 | `src/pitch_coach_ai/api/coach.py` | `POST /coach/evaluate` · `/coach/finalize`: 앱을 불러올 때 판정 모듈 넷 + 기준 음량 함수 둘을 `JUDGES` 로 한 번 묶어 `decide_safe` · `finalize` 에 넘기고, `ReplayRequired` 를 409 `REPLAY_REQUIRED` 로. `STATE_RESET` · `T_MS_JUMP` · `INTERNAL_ERROR` 응답과 finalize 만 한 줄 로그. `POST /coach/plan`: 요청마다 마감(25초)과 역할 `coach.plan` 의 LLM 객체를 만들어 코어에 넘기고(설정이 없으면 `llm=None`), `meta.model` 을 응답한 모델로. 장 · 미션 수와 기본 계획 이유만 로그 | 코칭 계획 요청 → `{coaching_plan, fallback_reason, …, meta}` | BE | LLM 만들기는 `get_llm_factory`, 판정 모듈 묶음은 `get_judges` 의존성(테스트가 바꾼다) |
 | `src/pitch_coach_ai/api/review.py` | `POST /takes/review`. 요청마다 마감(25초)과 역할 `review` 의 LLM 객체를 만들어 코어에 넘기고(설정이 없으면 `llm=None`), `meta.model` 을 응답한 모델로. 이전 Take · 미션 수와 `fallback_reason` · 걸린 시간만 로그 | 기능 문서 5-2 요청 → 5-3 응답 | BE | LLM 만들기는 `get_llm_factory` 의존성(테스트가 가짜로 바꾼다) |
 | `src/pitch_coach_ai/api/evaluation_criteria.py` | `POST /evaluation-criteria/parse`. 요청마다 마감(25초)과 역할 `evaluation_criteria` 의 LLM 객체를 만들어 코어에 넘기고, `meta.model` 을 응답한 모델로. 기본 결과가 없어 설정이 없으면 503 `LLM_UNAVAILABLE`. 글자 수 · 목표 수만 로그 | 기능 문서 5-2 요청 → 5-3 응답 | BE | LLM 만들기는 `get_llm_factory` 의존성(테스트가 가짜로 바꾼다) |
+| `src/pitch_coach_ai/api/chat_agent.py` | `POST /agent/turn`. 꺼짐 · 서명 키 없음(32바이트 미만 포함)이면 503(모델 · 자료를 만들지 않고 본문도 읽지 않음). 켜진 첫 요청에 프로세스 자원(`AgentRuntime`: 도구 호출 LLM · 검수된 자료 묶음 · 서명 키 · 실행 자리)을 만든다. 자리(동시 상한 · 대화 전용 실행 풀)를 원자적으로 얻고, 본문은 2 MiB 까지만 읽고, 코어 `handle_turn`을 전용 스레드 자리에서 부른다. 스트림은 턴마다 읽기 스레드가 코어 줄을 넘기고, 연결 끊김 · 2초 넘는 보내기 막힘이면 코어에 취소 신호를 보낸다. 진단 기록은 JSON 한 줄, 스트림 끝은 `agent_stream` 한 줄 | 기능 문서 5-3 요청 → NDJSON 스트림 또는 스트림 전 오류 | BE | 시험은 `app.state.chat_agent_runtime`에 가짜 LLM 자원을 넣는다. 자료 카드를 검수(`APPROVED`)하고 판을 코어 `version.CORPUS_VERSION_HASHES`에 등록하면 자료 묶음이 켜진다 |
 | `src/pitch_coach_ai/common/errors.py` | 예외 → `{"error": {"code", "message"}}` · 상태 코드. `AppError` 와 LLM 예외 넷, `NotReady`(503), OpenAPI 에 싣는 공통 에러 본문(`ErrorResponse` · `ERROR_RESPONSES`) | 예외 → 에러 응답 | `main.py`(등록), `common/llm.py`(던짐), 기능(상속) | 새 공통 코드는 `architecture.md` 4절을 먼저 바꾼다 |
 | `src/pitch_coach_ai/common/request_log.py` | `X-Request-ID`(받은 그대로 · 없으면 생성), 처리되지 않은 예외 → 500, 요청마다 한 줄 로그. 로그 형식 `SafeFormatter` 는 `log.exception` 의 예외를 종류 · 위치만 찍는다 | 요청 → 응답 + 로그 | `main.py` | 로그에 요청 본문 · 쿼리 · 키를 넣지 않는다 |
-| `src/pitch_coach_ai/common/llm.py` | `structured_llm` · `deadline_after`: 구조화 출력 LLM, 호출 시간 제한 · 재시도 · 요청 마감 · 실패 분류 · 응답 모델 기록 · 호출 로그 | 스키마 · 역할 · 마감 → `.invoke` 를 가진 객체 | 라우터(코어에 넘김) | 시간 · 재시도는 환경변수, 묶음 · 상한은 `LLM_ROLES` |
+| `src/pitch_coach_ai/common/llm.py` | `structured_llm` · `deadline_after`: 구조화 출력 LLM, 호출 시간 제한 · 재시도 · 요청 마감 · 실패 분류 · 응답 모델 기록 · 호출 로그. 아래쪽 '도구 호출 LLM' 절의 `tool_llm` · `ToolLlmClient` · `tool_role`: 대화 에이전트의 도구 호출 · 구조화 호출(시도마다 한도 예약, 대화 전용 실행 풀, 같은 키 무효) | 스키마 · 역할 · 마감 → `.invoke` 를 가진 객체 / 요청(`LlmRequest`) → `LlmResult` | 라우터(코어에 넘김) | 시간 · 재시도는 환경변수, 묶음 · 상한은 `LLM_ROLES`. 도구 호출 절은 코어 예외를 별칭(`chat_llm`)으로만 쓴다 |
 | `src/pitch_coach_ai/common/readiness.py` | 시작할 때 불러오는 모델의 준비 상태(`Readiness`), 준비 전 503 `NOT_READY` 의존성(`require_ready`), `warmup_done` · `warmup_failed` 로그 | 불러오는 함수 목록 → 준비됨 | `main.py` · 모델을 쓰는 라우터 · `/ready` | 불러오기가 실패하면 uvicorn 이 쓰는 앱(`main.app`)만 프로세스를 끝낸다. 워커 하나면 compose 재시작 정책이 컨테이너를, 여러 워커면 uvicorn 이 워커를 다시 띄운다(unhealthy 표시만으로는 재시작되지 않는다). `require_ready` · `/health` · `/ready` 는 `async def`(스레드 풀이 차도 기다리지 않음) |
 | `src/pitch_coach_ai/common/meta.py` | 응답 `meta`(`schema_version` · `feature_version` · `model`, 판정 응답은 `criteria_versions`) | 기능 `FEATURE_VERSION`(`<모듈>-<버전>`) · LLM → `Meta` | 라우터 | `criteria_version` 해시는 코치 연구 코드와 같은 방식으로 둔다 |
 | `src/pitch_coach_ai/features/script_coverage/` | 대본 전달도 코어(`docs/ai/features/script-coverage-evaluation.md`). 진입 함수 `core.py`의 `analyze_script` · `evaluate_take` · `rescore_evaluation`, 요청 · 응답 `schemas.py`, 기준값 `config.py`, `version.py`(`script_coverage-1.1`), `examples/`(세 API 예시와 그 LLM 캐시), 하위 `shared/` · `script_analysis/` · `stt_evaluation/`. 파일마다의 역할은 연구 폴더 README 3-2 | 대본 · STT · 평가 기준 + LLM 객체 → 평가 기준 · 채점 | `api/script_coverage.py` | 연구 폴더(`ai/research/script-coverage-evaluation`)가 이 코어를 editable로 import한다. 코어는 여기서만 고치고, 바꾼 뒤 연구 캐시 재생으로 결과를 비교한다(연구 README '옮긴 뒤 검증'). 프롬프트 · 스키마 문자열은 캐시 키라 줄을 나누지 않는다(E501 제외) |
@@ -205,13 +214,14 @@ ai/service/
 | `src/pitch_coach_ai/features/volume/` | 소리 크기 · 침묵 판정 모듈(`docs/ai/features/volume.md`). `core.py`의 `judge` · `speaking_levels` · `baseline` · `summarize` · `criteria`, `schemas.py`, 기준값 `config.py`, `version.py`(`volume-1.2`), `examples/`. 자기 엔드포인트는 없고 코치가 판정 모듈 묶음으로 쓴다(`api/coach.py`의 `JUDGES`). 파일마다의 역할은 연구 폴더(`ai/research/volume-analysis`) README '2. 폴더와 파일' | 음량 1초 기록 · 기준 음량 · 커서 → `[JudgmentResult]`(`VOLUME` · `PAUSE`) | `api/coach.py`(`JUDGES`) | 연구 폴더가 editable로 import한다. 기준값을 바꾸면 `criteria_version`이 바뀌어 예시 출력을 다시 만든다. `core.py`의 기본값 `Config()`는 B008 제외(frozen) |
 | `src/pitch_coach_ai/features/script_parser/` | 대본 파싱 코어(`docs/ai/features/script-parser.md`). `core.py`의 `parse_script(request, llm)` · `EmptyScriptError`, 구분자 `splitter.py`, 정제 · 글자 수 · 하이라이트 `cleaner.py`, 요청 · 응답 · LLM 출력 `schemas.py`, 프롬프트 `prompts/parse.py`, 기준값 `config.py`, `version.py`(`script_parser-1.2`), `examples/`. LLM 은 인자로 받고 예외를 잡지 않는다. 파일마다의 역할은 연구 폴더(`ai/research/script-parser`) README '구조' | 대본 원문 · 목표 시간 → 장별 대본 · 키워드 · 하이라이트 · 예상 시간 · 용어 | 연구 폴더 `run.py` | 연구 폴더가 editable로 import한다. 프롬프트 · 구분자 · 정제 규칙을 바꾸면 `feature_version`을 올리고 `examples/`를 확인한다 |
 | `src/pitch_coach_ai/features/coach/` | 코치 코어(`docs/ai/features/coach-agent.md`). 진입 함수 `plan_coaching` · `decide` · `decide_safe` · `finalize`, 시간 판정 `timing.py`, 판정 모듈 묶음 `judges.py`(`Judges`), `schemas.py` · `config.py` · `version.py`(`coach-1.3`) · `examples/` · `prompts/`. 엔드포인트는 `/coach/evaluate` · `/coach/finalize` · `/coach/plan`. 파일마다의 역할은 연구 폴더(`ai/research/coach-agent`) README 3-1 | 요청 · `coach_state` · 판정 모듈 묶음 → 응답 | `api/coach.py` | 연구 폴더가 editable로 import한다. 예시를 바꾸면 연구 폴더 `python -m coach_lab.examples`(실제 판정 모듈 넷으로 만든다. BE 테스트도 이 서비스 예시를 읽는다) |
-| `src/pitch_coach_ai/features/review/` | 리뷰 코어(`docs/ai/features/review-agent.md`). 진입 함수 `core.py`의 `review_take(request, llm, *, model)` · `apply_rules` · `check_numbers`, 규칙 단계 `evaluable.py` · `missions.py` · `burden.py` · `dimensions.py` · `comparison.py` · `next_missions.py` · `recurring.py` · `score.py`, LLM 입력 `llm_input.py`, 기본 문장 `text.py`, 요청 · 응답 · LLM 출력 `schemas.py`, 프롬프트 `prompts/review.py`, 기준값 `config.py`, `version.py`(`review-1.2`), `examples/`. LLM 예외는 코어가 잡아 기본 결과 + `fallback_reason`. 파일마다의 역할은 연구 폴더(`ai/research/review-agent`) README 1절 | 요청 + LLM 객체 → 리뷰 | `api/review.py` | 연구 폴더가 editable로 import한다(`review_lab`). `config.py`를 바꾸면 `criteria_version`이 바뀌어 예시 · 평가 결과를 다시 만든다(연구 README 2절) |
+| `src/pitch_coach_ai/features/review/` | 리뷰 코어(`docs/ai/features/review-agent.md`). 진입 함수 `core.py`의 `review_take(request, llm, *, model)` · `apply_rules` · `check_numbers`, 규칙 단계 `evaluable.py` · `missions.py` · `burden.py` · `dimensions.py` · `comparison.py` · `next_missions.py` · `recurring.py` · `score.py`, LLM 입력 `llm_input.py`, 기본 문장 `text.py`, 요청 · 응답 · LLM 출력 `schemas.py`, 프롬프트 `prompts/review.py`, 기준값 `config.py`, `version.py`(`review-1.3`), `examples/`. LLM 예외는 코어가 잡아 기본 결과 + `fallback_reason`. 파일마다의 역할은 연구 폴더(`ai/research/review-agent`) README 1절 | 요청 + LLM 객체 → 리뷰 | `api/review.py` | 연구 폴더가 editable로 import한다(`review_lab`). `config.py`를 바꾸면 `criteria_version`이 바뀌어 예시 · 평가 결과를 다시 만든다(연구 README 2절) |
 | `src/pitch_coach_ai/features/evaluation_criteria/` | 평가 기준 분석 코어(`docs/ai/features/evaluation-criteria.md`). 진입 함수 `core.py`의 `analyze_criteria` · `check_targets`, 요청 · LLM 출력 · 응답 `schemas.py`, 요소 → 지표 연결 · 상한 `config.py`, `version.py`(`evaluation_criteria-1.1`), `prompts/system.py`, `examples/`(요청 · 응답 3쌍). 파일마다의 역할은 연구 폴더(`ai/research/evaluation-criteria`) README '구조' | 기준 문장 + LLM 객체 → 응답 | `api/evaluation_criteria.py` | 연구 폴더가 editable로 import한다(`run.py`). 프롬프트 · 요소 → 지표 연결을 바꾸면 `FEATURE_VERSION`을 올리고 연구 폴더 `run.py --eval`로 다시 잰다. 프롬프트 원문은 줄을 나누지 않는다(E501 제외) |
+| `src/pitch_coach_ai/features/chat_agent/` | 대화 에이전트 코어(`docs/ai/features/chat-agent.md`). 진입 함수 `turn.py`의 `handle_turn`(스트림 전 검사 → 루프 → 줄), 루프 `loop.py`, 도구 `tools/`, 행동 `actions.py`, 답 검사 `checks.py`, 주장 판정 `claims.py`, 비교 · 목표 `goals.py`, 실행 상태 서명 `state.py`, 요청 · 응답 `schemas.py`, 기준값 `config.py`, `version.py`(`chat_agent-0.10.0`), 자료 묶음 `guides/`, `examples/`. 파일마다의 역할은 연구 폴더(`ai/research/chat-agent`) README 2-1 | 요청 본문 · `TurnDeps` → `TurnResponse` | `api/chat_agent.py` | 연구 폴더가 editable로 import한다. 예시는 연구 폴더 `python -m chat_agent_lab.examples`(만드는 코드는 `tests/unit/chat_agent/example_builder.py`) |
 | `tests/conftest.py` | 묶음 환경변수를 비운 뒤 앱 import(실제 키를 읽지 않음), `client` · `ready_client`(시작할 때 불러오는 모델까지 기다림) · `probe_client`(실패를 내는 테스트 경로) · `log_records` | — | 모든 앱 테스트 | — |
 | `tests/test_health.py` | `/health` 200(fixture 앱 · uvicorn 이 쓰는 `app` 둘 다), 등록된 경로에 `/api` 접두어 없음 | — | pytest | — |
 | `tests/test_errors.py` · `test_request_log.py` | 에러 본문 · 상태 코드, `X-Request-ID`, 요청 로그(본문 · 쿼리 · 입력값 없음) | — | pytest | — |
 | `tests/test_openapi.py` | 커밋된 `contracts/openapi.json` 이 코드와 같은지, 등록된 경로 목록, 에러 응답이 공통 본문으로 문서화됐는지 | — | pytest | 다르면 `tools/export_openapi.py` 로 다시 만든다 |
-| `tests/unit/common/` | 설정(기능별 시간 제한 포함) · LLM(가짜 LLM) · meta · 준비 상태 단위 테스트 | — | pytest | — |
+| `tests/unit/common/` | 설정(기능별 시간 제한 포함) · LLM(가짜 LLM) · 도구 호출 LLM(`test_tool_llm.py`, 가짜 스트림) · meta · 준비 상태 단위 테스트 | — | pytest | — |
 | `tests/unit/script_coverage/` | 대본 전달도 단위 · 계약(`test_examples.py`, 예시와 그 LLM 캐시) · 코어 경계(`test_core_boundary.py`, 코어 패키지 위치 기준) · 엔드포인트(`test_api.py`) · 마감이 중간에 지날 때(`test_deadline.py`) 테스트. 가짜 LLM `fakes.py` | — | pytest | 연구 lab 테스트가 `fakes.py` · `shared/slides.py`의 사본을 쓴다 |
 | `tests/unit/gaze/` | 시선 판정 모듈 단위(`judge` · `summarize`) · 계약(`test_examples.py`) · 코어 경계 테스트. '말한 1초' 기준값은 `features/volume/config.py`와 비교한다(`test_contract.py`) | — | pytest | — |
 | `tests/unit/filler/` | 군더더기 판정 모듈 규칙 · 보류 · 커서 · 지표 · 합계 · 계약(`test_examples.py`) · 코어 경계 테스트. 도우미 `helpers.py` | — | pytest | keyterm 파일 최신 검사는 연구 폴더 `tests/test_keyterms.py` |
@@ -221,6 +231,8 @@ ai/service/
 | `tests/unit/coach/` | 코치 코어 단위 · 계약 · 경계 · 복구 · 입력 한도 테스트, `/coach/evaluate` · `/coach/finalize` 엔드포인트(`test_evaluate_api.py`, 실제 판정 모듈로 예시 대조 · 409 · 422 · 로그), `/coach/plan` 엔드포인트(`test_plan_api.py`), 예시 요청에 모르는 필드가 없는지(`test_example_fields.py`), 위조 상태 · 한 시간 Take 복구(`test_extremes.py`, 규모는 `slow`), 실제 판정 모듈로 finalize 예시 대조(`test_finalize_examples.py`). 가짜 판정 모듈 `fakes.py`, fixture `conftest.py` | — | pytest | — |
 | `tests/unit/review/` | 리뷰 규칙 단계(`test_burden.py` · `test_dimensions.py` · `test_missions.py` · `test_comparison.py` · `test_next_missions.py`) · 숫자 검사(`test_numbers.py`) · `review_take`(`test_core.py`) · LLM 단계(`test_llm.py`, 가짜 LLM) · 예시 계약(`test_examples.py`) · 코어 경계(`test_core_boundary.py`, 코어 패키지 위치 기준), `/takes/review` 엔드포인트(`test_api.py`: 예시 응답 · 설정 없음 · LLM 오류 셋 · `meta.model` 대체 · 미션 개수 422 · 마감 · 역할 · 문장 없는 로그). fixture `conftest.py` | — | pytest | 연구 도구(`review_lab`)로 부르는 실제 LLM 테스트는 연구 폴더 `tests/live/` |
 | `tests/unit/evaluation_criteria/` | 평가 기준 분석 스키마 · 숫자 목표 검사 · 코어 · 계약(`test_examples.py`) · 요소 → 지표 연결(`test_config.py`) · 코어 경계 · 엔드포인트(`test_api.py`) 테스트. 가짜 LLM `fakes.py` | — | pytest | 평가 데이터 · `run.py`를 쓰는 테스트(`test_data.py` · `test_eval.py` · live)는 연구 폴더에 |
+| `tests/unit/chat_agent/` | 대화 에이전트 코어 단위 · 루프 · 계약(`test_contract_*.py`, 예시가 만들기 결과와 같은지 포함) · 실패 행(`test_failure_rows.py`) 테스트, `/agent/turn` 엔드포인트(`test_api.py`: 스위치 · 서명 키 · 모델 조합, 실행 자리와 반납, 본문 한도, NDJSON 줄, 연결 끊김 · 보내기 막힘, 자료 묶음). 가짜 모델 `fakes.py`, 가상 기록 `fixtures.py`, 예시 만들기 `example_builder.py`, 조사 흐름 표지 `conftest.py` | — | pytest | 연구 폴더(가짜 BE · 평가 · 예시 명령)가 이 도우미를 `chat_agent_lab/service_tests.py`로 읽는다 |
+| `tests/live/test_chat_agent_live.py` | 대화 에이전트를 서비스 경로(`/agent/turn`, 역할 · 실행 자리 · 스트림)로 실제 LLM 한 턴(약 4~6번 호출, 과금): 끝 줄이 하나이고 `final`, 진단 기록의 요청 ID | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 | `tests/live/test_llm_live.py` | 실제 LLM 1회 호출 (과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 | `tests/live/test_coach_plan_live.py` | 코칭 계획을 실제 LLM 으로 한 번(과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 | `tests/live/test_script_parser_live.py` | 대본 파싱을 서비스 경로(역할 · 마감)로 실제 LLM 2번(과금): 예시 대본의 장 · 정제 · 예상 시간이 예시와 같음(걸린 시간은 출력) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
@@ -230,7 +242,7 @@ ai/service/
 ## 테스트
 ```powershell
 uv run python -m pytest              # 기본: 가짜 LLM, 키 · 과금 없음. live · slow 표시 테스트는 빠진다
-uv run python -m pytest -m live      # 실제 LLM 약 9번 (ai/.env 의 기본 묶음, 과금)
+uv run python -m pytest -m live      # 실제 LLM 약 15번 (ai/.env 의 기본 묶음, 과금)
 uv run python -m pytest -m slow      # 한 시간 Take 복구 시간 · Take 결과 크기 (실제 판정 모듈, 약 25초)
 ```
 - 기본 실행에서 빼는 표시는 `pyproject.toml`의 `addopts = "-m 'not live and not slow'"`입니다.

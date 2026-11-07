@@ -10,7 +10,8 @@ from pitch_coach_backend.core.exceptions import (
 
 
 class ChatDisabled(AppException):
-    # 끄기 스위치(`agent_enabled`)가 꺼져 있다. FE 는 버튼을 숨긴다
+    # 끄기 스위치(`agent_enabled`)가 꺼져 있거나 대화 자리 설정이 어긋났다(availability.py).
+    # FE 는 버튼을 숨긴다
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "AGENT_DISABLED"
     message = "지금은 코치 대화를 쓸 수 없어요."
@@ -19,6 +20,13 @@ class ChatDisabled(AppException):
 class ChatTargetNotFound(NotFoundException):
     # 없는 대상과 남의 대상을 같은 404 로 돌려준다. 남의 대화가 있는지 알 수 없게 한다
     message = "기록을 찾을 수 없어요."
+
+
+class ChatCursorInvalid(AppException):
+    # 대화 목록 커서를 읽을 수 없다. FE 는 받은 값만 보내므로 주소를 손댄 경우에 생긴다
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "VALIDATION_ERROR"
+    message = "대화 목록을 이어서 읽을 수 없어요. 처음부터 다시 불러와 주세요."
 
 
 class ChatRequestConflict(ConflictException):
