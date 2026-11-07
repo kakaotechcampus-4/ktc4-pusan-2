@@ -8,6 +8,7 @@ import { useState, type MouseEvent } from 'react';
 import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
 import { TutorialScreen } from './screens/TutorialScreen';
+import { SeminiScreen } from './screens/SeminiScreen';
 import { PitchCreateScreen } from './screens/PitchCreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
 import { PrepareLayoutDraftScreen } from './screens/PrepareLayoutDraftScreen';
@@ -195,6 +196,8 @@ function CurrentScreen({
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'tutorial':
       return <TutorialScreen onNavigate={onNavigate} />;
+    case 'semini':
+      return <SeminiScreen />;
     case 'pitch-create-a':
       return <PitchCreateScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'pitch-create':
