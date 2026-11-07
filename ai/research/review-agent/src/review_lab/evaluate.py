@@ -15,7 +15,8 @@ LLM 응답은 outputs/llm_cache.json 에 캐시해, 같은 프롬프트 · 출�
 | 1순위 정답 일치 | 부담 1위 PRIORITY 차원(없으면 null)이 정답과 같은 비율 |
 | 미션 판정 정답 일치 | 정답이 있는 미션의 상태가 정답과 같은 비율 |
 | 거짓 강점 / Take | 정답이 PRIORITY · STABLE 인 차원을 STRENGTH 로 낸 수 ÷ Take 수 |
-| 스키마 유효율 | LLM 을 부른 Take 중 기본 결과로 돌아가지 않은(fallback_reason 없음) 비율 |
+| 스키마 유효율 | 시간 안에 답한 Take 중 fallback_reason 이 없는 비율 (LLM_TIMEOUT 은 뺀다) |
+| 시간 초과율 | LLM 을 부른 Take 중 LLM_TIMEOUT 비율 |
 | 입력에 없는 숫자 | 숫자 검사 전 LLM 문장의 숫자 중 LLM 입력에 없는 숫자 수 |
 | 반복 PRIORITY 비율 | 이어진 두 Take 에서 같은 차원이 둘 다 PRIORITY 인 비율 (이 묶음엔 없음) |
 
@@ -169,9 +170,14 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             if x["error"]:
                 errors[x["error"]] = errors.get(x["error"], 0) + 1
         missing = sum(len(x["numbers_not_in_input"]) for x in drafted)
+        # 스키마 유효율은 답을 받은 호출로만 센다. 시간 초과는 출력이 없어 스키마를 볼 수 없다
+        answered = [x for x in llm if x["fallback_reason"] != "LLM_TIMEOUT"]
         out["llm"] = {
             "calls": len(llm),
-            "schema_valid_rate": _ratio(sum(x["fallback_reason"] is None for x in llm), len(llm)),
+            "schema_valid_rate": _ratio(
+                sum(x["fallback_reason"] is None for x in answered), len(answered)
+            ),
+            "timeout_rate": _ratio(len(llm) - len(answered), len(llm)),
             "fallback_reasons": reasons,
             "errors": errors,
             "numbers": sum(x["numbers"] for x in drafted),
@@ -205,6 +211,7 @@ def print_summary(results: dict[str, Any]) -> None:
             x = res["llm"]
             print(
                 f"[{name}] LLM {x['calls']}번, 스키마 유효 {x['schema_valid_rate']}, "
+                f"시간 초과 {x['timeout_rate']}, "
                 f"입력에 없는 숫자 {x['numbers_not_in_input']}/{x['numbers']}, "
                 f"숫자 검사에 걸린 문장 {x['sentences_failed_number_check']}/{x['sentences']}, "
                 f"지연 중앙값 {x['latency_ms_median']} ms"
