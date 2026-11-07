@@ -5,6 +5,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.limits import KST
 from pitch_coach_backend.module.pitch.adapter.presentation_file import (
     MAX_PRESENTATION_BYTES,
     count_pdf_pages,
@@ -14,6 +15,7 @@ from pitch_coach_backend.module.pitch.adapter.presentation_file import (
 from pitch_coach_backend.module.pitch.adapter.storage import (
     delete,
     generate_presigned_url,
+    presentation_key,
     upload,
     upload_bytes,
 )
@@ -23,9 +25,9 @@ from pitch_coach_backend.module.pitch.exception import (
     InvalidPresentation,
     NonExistentPitch,
     NonExistentPresentationVersion,
+    StorageError,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.service.pitch import KST
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +49,9 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다.
     # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다.
     # 소유권을 확인한 뒤 쪽수를 세는 사이에 발표가 지워졌으면 S3 에 올리기 전에 404 로 끝낸다
-    presentation_key = upload(
+    uploaded_key = upload(
         presentation_file,
-        f"pitches/{pitch_id}/presentations/{presentation_id}.pdf",
+        presentation_key(pitch_id, presentation_id, "pdf"),
         content_type="application/pdf",
     )
 
@@ -57,10 +59,11 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     if thumbnail is not None:
         try:
             thumbnail_key = upload_bytes(
-                thumbnail, f"pitches/{pitch_id}/presentations/{presentation_id}.webp", "image/webp"
+                thumbnail, presentation_key(pitch_id, presentation_id, "webp"), "image/webp"
             )
-        except Exception as e:
-            logger.warning("발표자료 썸네일을 올리지 못했다 pitch=%s: %s", pitch_id, e)
+        except StorageError:
+            # 원인은 storage 가 남겼다. 썸네일이 없어도 발표자료는 쓸 수 있다
+            logger.warning("발표자료 썸네일을 올리지 못했다 pitch=%s", pitch_id)
 
     # 여기부터 실패하면 S3 에만 파일이 남는다. 버전을 남기지 못했으면 올린 파일을 지운다
     try:
@@ -69,33 +72,33 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         if not pitch_repository.lock_for_new_version(pitch_id):
             raise NonExistentPitch()
         version = pitch_repository.next_presentation_version(pitch_id)
-        file_url = generate_presigned_url(presentation_key)
+        file_url = generate_presigned_url(uploaded_key)
         presentation = PresentationVersion(
             id=presentation_id,
             pitch_id=pitch_id,
             version=version,
-            file_key=presentation_key,
+            file_key=uploaded_key,
             page_count=page_count,
             thumbnail_key=thumbnail_key,
         )
         pitch_repository.save_presentation(presentation)
     except Exception:
         db.rollback()
-        _discard_upload(db, presentation_id, presentation_key, thumbnail_key)
+        _discard_upload(db, presentation_id, uploaded_key, thumbnail_key)
         raise
     try:
         db.commit()
     except Exception:
         db.rollback()
         # 커밋 응답만 잃었을 수 있다 (커밋 뒤 연결이 끊김). 버전 행이 없을 때만 지운다
-        _discard_upload(db, presentation_id, presentation_key, thumbnail_key)
+        _discard_upload(db, presentation_id, uploaded_key, thumbnail_key)
         raise
 
     return UploadPresentationResultDTO(
         pitch_id=pitch_id,
         presentation_version_id=presentation.id,
         file_url=file_url,
-        page_count=page_count
+        page_count=page_count,
     )
 
 
@@ -103,7 +106,7 @@ def _discard_upload(
     db: Session, presentation_id: uuid.UUID, key: str, thumbnail_key: str | None
 ) -> None:
     """
-    presentation_id 로 버전 행이 없을 때만 이 요청이 올린 PDF · 썸네일을 지운다. 
+    presentation_id 로 버전 행이 없을 때만 이 요청이 올린 PDF · 썸네일을 지운다.
     커밋 응답만 잃었으면 행이 이미 있는 상태라 남긴다
     """
     try:
@@ -117,7 +120,7 @@ def _discard_upload(
         )
         return
     finally:
-        db.rollback() # 성공 시 트랜잭션 정리용, 실패 시 잠금 해제용
+        db.rollback()  # 성공 시 트랜잭션 정리용, 실패 시 잠금 해제용
 
     if not exists:
         for k in (key, thumbnail_key):

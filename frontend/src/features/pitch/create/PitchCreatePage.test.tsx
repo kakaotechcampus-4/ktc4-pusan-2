@@ -10,6 +10,7 @@ import { parseStandards } from '@/shared/api/standards';
 import { createPitch, updatePitch } from '@/shared/api/pitch';
 import { PitchCreatePage } from './PitchCreatePage';
 import { useCreateStore } from './createStore';
+import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 
 vi.mock('@/shared/api/standards', () => ({ parseStandards: vi.fn(), saveStandards: vi.fn() }));
 vi.mock('@/shared/api/useLogout', () => ({ useLogout: () => ({ mutate: vi.fn() }) }));
@@ -26,7 +27,7 @@ function Destination() {
   const location = useLocation();
   return <output data-testid="practice">{JSON.stringify(location.state)}</output>;
 }
-async function mount() {
+async function mount(pathname = '/pitch/new') {
   await act(async () =>
     root.render(
       <QueryClientProvider
@@ -36,9 +37,10 @@ async function mount() {
           })
         }
       >
-        <MemoryRouter initialEntries={[{ pathname: '/pitch/new', key: 'page-test' }]}>
+        <MemoryRouter initialEntries={[{ pathname, key: 'page-test' }]}>
           <Routes>
             <Route path="/pitch/new" element={<PitchCreatePage />} />
+            <Route path="/pitch/:id/edit" element={<PitchCreatePage />} />
             <Route path="/pitch/:pitchId/device-check" element={<Destination />} />
           </Routes>
         </MemoryRouter>
@@ -148,6 +150,7 @@ beforeEach(() => {
   vi.mocked(createPitch).mockResolvedValue({ pitch_id: 'pitch-new', message: 'ok' });
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await act(async () => root.unmount());
   host.remove();
   vi.clearAllMocks();
@@ -697,4 +700,43 @@ it('PDF 열기 실패는 확인하지 않고 재열기·재시도 후 확인하�
   expect(document.activeElement).toBe(button('슬라이드 확인'));
   await act(async () => button('슬라이드 확인').click());
   expect(button('확인 완료').disabled).toBe(true);
+});
+
+it('완료된 단계의 표시는 aria-label이 아니라 글자로 읽힌다', async () => {
+  ready();
+  await mount();
+  const doneSteps = [...host.querySelectorAll('nav li button')].filter(
+    (el) => el.querySelector('.sr-only')?.textContent === '완료',
+  );
+  expect(doneSteps.length).toBeGreaterThan(0);
+  expect(doneSteps[0]!.textContent).toContain('완료');
+  expect(host.querySelector('[aria-label="완료"]')).toBeNull();
+});
+
+it('대화창에 지금 화면 상태를 알린다 — 보내는 순간 피치 만들기 상태를 읽는다 (대화 6단계)', async () => {
+  ready();
+  await mount();
+  expect(takeScreenSnapshot('/pitch/new')).toMatchObject({
+    ok: true,
+    screen: {
+      name: 'pitch_create',
+      step: 'slides',
+      version_label: 'V1',
+      version_id: 'pv1',
+      draft: { title: '원래 제목', slide_count: 1 },
+    },
+  });
+});
+
+it('수정 화면은 pitch_edit · /pitch/:id/edit 로 알리고, 화면을 떠나면 등록을 푼다 (대화 6단계)', async () => {
+  ready();
+  await mount('/pitch/pitch-test/edit');
+  expect(takeScreenSnapshot('/pitch/:id/edit')).toMatchObject({
+    ok: true,
+    screen: { name: 'pitch_edit', draft: { title: '원래 제목' } },
+  });
+  // 다른 경로로 묻는 질문에는 싣지 않습니다
+  expect(takeScreenSnapshot('/pitch/new')).toEqual({ ok: true, screen: null });
+  await act(async () => root.render(<></>));
+  expect(takeScreenSnapshot('/pitch/:id/edit')).toEqual({ ok: true, screen: null });
 });

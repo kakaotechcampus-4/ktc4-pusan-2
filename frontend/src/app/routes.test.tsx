@@ -25,6 +25,9 @@ vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
   state.stageImports++;
   return { RehearsalPage: () => <p>리허설 {useParams().takeId}</p> };
 });
+vi.mock('@/features/rehearsal/prepare/DeviceCheckPage', () => ({
+  DeviceCheckPage: () => <p>시작 전 세팅 {useParams().pitchId}</p>,
+}));
 vi.mock('@/features/report/ConfirmPage', () => ({
   ConfirmPage: () => <p>대본 확인 {useParams().takeId}</p>,
 }));
@@ -110,6 +113,19 @@ it('preserves confirmation route, title and header ownership after lazy loading'
   expect(host.querySelector('header')).toBeNull();
 });
 
+it('puts the app header on the setup screen and keeps the name row only on the stage', async () => {
+  state.signedIn = true;
+  await visit('/pitch/p1/device-check');
+  await vi.waitFor(() => expect(host.textContent).toContain('시작 전 세팅 p1'));
+  expect(host.querySelector('header')?.textContent).toBe('메뉴');
+  expect(host.textContent).not.toContain('테스트 사용자');
+
+  await visit('/takes/stage-take/rehearsal');
+  await vi.waitFor(() => expect(host.textContent).toContain('리허설 stage-take'));
+  expect(host.querySelector('header')).toBeNull();
+  expect(host.textContent).toContain('테스트 사용자');
+});
+
 it('shows welcome to signed-out root visitors after launch and home to signed-in visitors', async () => {
   state.launchOpen = true;
   state.signedIn = false;
@@ -133,4 +149,34 @@ it('shows welcome to signed-out root visitors after launch and home to signed-in
   await visit('/');
   expect(router!.state.location.pathname).toBe('/');
   expect(host.textContent).toContain('내 피치');
+});
+
+it('sends touch-only devices from practice routes to the unsupported screen, even before login', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+  state.launchOpen = true;
+  state.signedIn = false;
+  for (const path of ['/pitch/p1/device-check', '/takes/t1/rehearsal', '/takes/t1/exam']) {
+    await visit(path);
+    expect(router!.state.location.pathname).toBe('/unsupported');
+  }
+});
+
+it('keeps home and report-side routes open on touch-only devices', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+  state.launchOpen = true;
+  state.signedIn = true;
+  await visit('/');
+  expect(router!.state.location.pathname).toBe('/');
+  await visit('/takes/t1/confirm');
+  expect(router!.state.location.pathname).toBe('/takes/t1/confirm');
+});
+
+it('lets devices with a mouse or trackpad into practice routes', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(pointer: fine)' || query === '(any-pointer: fine)',
+  }));
+  state.launchOpen = true;
+  state.signedIn = true;
+  await visit('/takes/t1/rehearsal');
+  expect(router!.state.location.pathname).toBe('/takes/t1/rehearsal');
 });

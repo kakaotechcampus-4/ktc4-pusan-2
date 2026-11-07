@@ -1,8 +1,9 @@
 """Take별 설문 · 사용자 의견 쿼리. commit은 service에서 처리한다."""
 
 import uuid
+from collections.abc import Callable
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -71,11 +72,14 @@ def survey_of(db: Session, take_id: uuid.UUID) -> TakeSurvey | None:
     return db.scalar(select(TakeSurvey).where(TakeSurvey.take_id == take_id))
 
 
-def surveyed_take_ids(db: Session, user_id: uuid.UUID) -> set[uuid.UUID]:
-    return set(
-        db.scalars(
-            select(TakeSurvey.take_id).where(
-                TakeSurvey.user_id == user_id, TakeSurvey.take_id.is_not(None)
-            )
+def surveyed_by(user_id: uuid.UUID) -> Callable[[ColumnElement[uuid.UUID]], ColumnElement[bool]]:
+    """Take ID 열을 받아 그 Take 에 사용자가 설문을 냈으면 참인 상관 EXISTS 를 만든다."""
+
+    def surveyed(take_id: ColumnElement[uuid.UUID]) -> ColumnElement[bool]:
+        return (
+            select(TakeSurvey.id)
+            .where(TakeSurvey.take_id == take_id, TakeSurvey.user_id == user_id)
+            .exists()
         )
-    )
+
+    return surveyed

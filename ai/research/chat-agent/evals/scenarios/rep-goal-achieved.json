@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "id": "rep-goal-achieved",
+  "set": "eval",
+  "group": "representative",
+  "split": "holdout",
+  "act": "should",
+  "title": "다음 Take 뒤 목표 확인: Take 6 3장 41% − 기준 28% = 13%p ≥ 5%p → 이룸",
+  "source": "rep-goal-check",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "add_takes": [
+          {
+            "take_id": "t-6",
+            "take_number": 6,
+            "completed_at": "2026-11-04T10:00:00+09:00",
+            "result": {
+              "audience": [0.6, 0.6, 0.41, 0.6],
+              "script_ratio": [0.15, 0.2, 0.3, 0.18]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STRENGTH",
+                "fluency": "STRENGTH"
+              },
+              "score": 79
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1",
+      "goal": {
+        "metric": "audience_ratio",
+        "slide_number": 3,
+        "base_take_id": "t-5",
+        "after_take": 5
+      }
+    }
+  },
+  "turns": [
+    {
+      "auto_goal_check": true
+    },
+    {
+      "message": "대화 목표는 어떻게 됐어?",
+      "page_take_id": "t-6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "goal-result",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "ACHIEVED",
+        "path": "goal_result.status",
+        "turn": 0
+      },
+      {
+        "check_id": "goal-observed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": 0.41,
+        "path": "goal_result.observed",
+        "turn": 0,
+        "derive": "t-6:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "goal-closed",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "ACHIEVED",
+        "path": "after.conversation.goal.status",
+        "turn": 0
+      },
+      {
+        "check_id": "observed-said",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "41%",
+        "grader": "number",
+        "derive": "t-6:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "achieved-said",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "이뤘|달성",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

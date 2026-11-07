@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "id": "refuse-no-guide",
+  "set": "eval",
+  "group": "refusal",
+  "split": "holdout",
+  "act": "should",
+  "title": "자료에 없는 일반 발표 질문(발표 때 옷 색) — 자료를 찾은 뒤 고정 안내 + 일반 조언(GENERAL)으로 답한다",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표할 때 무슨 색 옷을 입으면 좋아?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "searched",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "search_guides",
+        "path": "tools"
+      },
+      {
+        "check_id": "general-intro",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.GENERAL_INTRO",
+        "grader": "template"
+      },
+      {
+        "check_id": "general-kind",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GENERAL",
+        "path": "claim_kinds"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      }
+    ]
+  },
+  "notes": "6-10 개정: 자료가 없으면 거절 대신 고정 안내 + 일반 조언(금지 목록 통과). 일반 조언도 모두 걸릴 때만 REFUSED"
+}

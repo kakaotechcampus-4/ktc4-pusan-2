@@ -1,8 +1,6 @@
 # 평가 기준 분석 (evaluation_criteria) 설계
 
-> **이 문서는** 평가 기준 분석 기능의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
-> **기준 범위**: 평가 기준 분석 모듈(`POST /evaluation-criteria/parse`)의 목표 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 지표 이름 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
-> **관련 Issue**: #159
+> **기준 범위**: 평가 기준 분석 모듈(`POST /evaluation-criteria/parse`)의 기준 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 지표 이름 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **한 줄 요약**: 사용자가 자유롭게 적은 발표 평가 기준을 화면에 보일 짧은 기준 문장, 요소별 값, 숫자로 판정할 수 있는 목표(`targets`), 대본 사용 설정(`script_used`)으로 바꾼다. 리뷰가 `targets`로 사용자 기준을 판정하고, 코치가 `script_used`로 대본 응시 지적을 끈다.
 > **기준값**: 표시 문장 길이 상한 · 요소 → 지표 연결 · 개수 상한은 서비스 `features/evaluation_criteria/config.py`에만 둔다. 이 문서에는 BE · 리뷰와 맞춰야 하는 값(요소 · 지표 이름 · 연산자 · 50자 · 입력 한도 · 시간 예산)과 예시만 적는다.
 
@@ -21,7 +19,6 @@
 # 1. 왜 필요한가
 ## 1-1. 배경
 사용자(또는 발표 대회 · 수업)는 "추임새는 5번 이하로, 청중을 자주 보면서, 대본은 봐도 된다"처럼 평가 기준을 글로 준다. 리포트가 이 기준을 지켰는지 보여 주려면 기준을 판정 모듈의 지표 이름과 숫자 목표로 바꿔야 하고, 코치가 대본 응시를 지적할지도 이 글에서 정해진다.
-숫자 목표와 `meta`까지 내는 코어는 AI 서비스 `features/evaluation_criteria/`로 옮겨 `POST /evaluation-criteria/parse`로 열었다(11절). BE는 표시 문장만 `standards`에 저장하고(뺀 항목은 문자열로 합쳐 응답에만 쓰고, 요소 값은 버린다), 그래서 리뷰의 사용자 기준 판정과 코치의 대본 사용 설정이 입력을 받지 못한다.
 
 ## 1-2. 목표
 - 숫자로 적힌 기준을 지표 이름 · 연산자 · 값으로 정확히 옮긴다(예: "추임새 5번 이하" → `filler_count` `LTE` 5).
@@ -62,21 +59,14 @@ flowchart LR
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
 ```
-ai/research/evaluation-criteria/
-├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12, 서비스를 editable로 설치해 코어를 쓴다. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
-├─ (서비스 ai/service/src/pitch_coach_ai/features/evaluation_criteria/)   코어 (연구 폴더 src/evaluation_criteria/에서 폴더째 옮김, 테스트는 서비스 tests/unit/evaluation_criteria/)
+ai/service/src/pitch_coach_ai/features/evaluation_criteria/   코어 (테스트는 서비스 tests/unit/evaluation_criteria/)
 │   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델(지표 · 연산자 enum) = 계약
 │   ├─ core.py                              analyze_criteria(): LLM → 검사
 │   ├─ config.py · version.py               표시 문장 길이 상한 · 요소 → 지표 연결 · 개수 상한, 기능 버전
 │   ├─ prompts/                             요소 표 · 단위 규칙 · 예시가 든 프롬프트
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
-├─ run.py                                   실험 도구: ai/.env로 LLM을 만들어 data를 돌림 (build_llm은 여기로)
-├─ data/                                    기준 문장 예시 세트와 정답(values · targets · excluded)
-├─ tests/ · tests/live/                     평가 데이터 정답 · 채점 규칙(가짜 LLM) / 실제 LLM(live 표시)
-└─ reports/results/                         평가 결과 JSON
 ```
-파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
+연구 폴더 `ai/research/evaluation-criteria/`(실험 도구 `run.py` · 평가 데이터 · 테스트 · 결과)의 파일은 그 README '구조'에 있다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -89,7 +79,7 @@ ai/research/evaluation-criteria/
 |---|---|
 | LLM 출력 스키마는 고정 필드다(요소마다 필드, 자유 키 dict 없음). 지표 · 연산자는 enum이다 | 구조화 출력의 strict 모드가 자유 키 dict를 받지 않고, 없는 지표 이름이 나오지 않게 |
 | 숫자 목표는 코드가 다시 검사하고, 맞지 않으면 빼되 표시 기준은 남긴다 | 판정할 수 없는 목표가 리뷰에 들어가지 않게, 사용자는 기준을 그대로 본다 |
-| 코어는 상대 import와 pydantic만 쓰고 파일 · 환경변수 · 네트워크 · 시계를 쓰지 않는다 (`architecture.md` 8절) | 서비스로 옮겨도 코드를 고치지 않는다 |
+| 코어는 상대 import와 pydantic만 쓰고 파일 · 환경변수 · 네트워크 · 시계를 쓰지 않는다 (`architecture.md` 8절) | 서비스 · 연구 폴더 어디서 불러도 같다 |
 | 지표 이름은 `architecture.md` 6-3 그대로 쓴다 | 리뷰가 지표 이름으로 Take 결과에서 값을 찾는다 |
 
 # 5. 입력 · 출력 계약
@@ -156,10 +146,10 @@ ai/research/evaluation-criteria/
              "script_dependency": null, "script_similarity": null, "script_used": null},
   "targets": [{"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}],
   "excluded": ["발표는 5분 안에 끝내기"],
-  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}
 }
 ```
-- 긴 침묵 요소의 키는 `silence`다.
+
 **경계 — 긴 침묵 · 말 속도 · 대본 사용**
 ```json
 {"standard_text": "말이 3초 넘게 끊기는 일은 2번 이하로, 말 속도는 1분에 300자 이하로 해 주세요. 대본은 봐도 됩니다."}
@@ -170,7 +160,7 @@ ai/research/evaluation-criteria/
             "script_dependency": null, "script_similarity": null, "script_used": true},
  "targets": [{"display": "말 속도 1분에 300자 이하", "metric": "cpm", "operator": "LTE", "value": 300}],
  "excluded": [],
- "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": "<응답한 모델>"}}
+ "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}}
 ```
 - 사용자가 길이 조건("3초 넘게")을 붙인 횟수 기준은 판정 모듈의 기준(긴 침묵은 소리 크기 모듈의 값)과 다를 수 있어 목표로 만들지 않고 표시 기준 · `values`에만 남긴다. 목표로 만들면 3~5초 침묵을 세지 않은 채 "이뤘다"고 판정할 수 있다.
 
@@ -183,7 +173,7 @@ ai/research/evaluation-criteria/
    - `value` 범위: 비율 지표(`audience_ratio` · `reading_ratio` · `content_coverage`)는 0–1, 개수 지표는 0 이상, `cpm`은 0보다 큼. 범위 밖이면 뺀다.
    - `display`가 `display_criteria` 중 하나와 같아야 한다. 아니면 뺀다.
    - 같은 `display` · `metric` · `operator`의 목표가 둘 이상이면 앞의 것만 둔다. 다 거른 뒤 20개를 넘으면 앞에서부터 20개만 두고 뺀 수를 로그에 남긴다(리뷰 입력 한도 `targets` 20).
-   - 표시 기준이 50자를 넘으면 자르지 않고 출력 스키마 위반으로 본다(숫자 · 조건이 잘리거나 `targets[].display` 짝이 깨지지 않게). 공통 재시도 뒤에도 넘으면 502 `LLM_INVALID_OUTPUT`이다.
+   - 표시 기준이 50자를 넘으면 자르지 않고 출력 스키마 위반으로 본다(숫자 · 조건이 잘리거나 `targets[].display` 짝이 깨지지 않게). 공통 재시도 뒤에도 넘으면 502 `LLM_INVALID_OUTPUT`이다. 50자 검사는 쓰는 앞 10개(5-3)에만 한다. 11번째부터는 검사 전에 버리므로 길어도 응답이 실패하지 않는다.
 3. **응답**: `meta.model`에는 실제로 응답한 모델을 싣는다(서비스 라우터가 넣는다).
 
 # 7. 실패할 때
@@ -199,7 +189,7 @@ ai/research/evaluation-criteria/
 |---|---|---|---|---|
 | `/evaluation-criteria/parse` | 25초 (호출 한 번 기본 12초, 남은 예산 안에서만 1번 더) | 30초 (호출 전체) | 없음. FE가 다시 시도를 안내 | `architecture.md` 3절 '요청 안 동기 LLM' |
 
-- 잰 시간 (2026-10-25, 기본 묶음 `gpt-6-luna`, 목표 설계, 평가 데이터 15문장을 세 번): 호출 한 번은 2.4~8.0초(중앙 3.7~4.5초)였고, 한 번은 63초가 걸렸다(출력 211토큰으로 짧아 생성이 아니라 연결 · 대기로 보인다. 연구 도구는 시간 제한을 두지 않았다). 출력 268~633자, 출력 토큰 143~720(그중 추론 51~525). 출력 토큰의 대부분이 추론이라, 출력 한도는 이 값을 근거로 정한다(`architecture.md` 9절). 측정 결과는 연구 폴더 README.
+- 잰 시간 (기본 묶음 `gpt-6-luna`, 평가 데이터 15문장을 세 번, 연구 도구는 시간 제한 없음): 호출 한 번은 대부분 2.4~8.0초(중앙 3.7~4.5초)였고 한 번은 63초였다. 출력 268~633자, 출력 토큰 143~720(그중 추론 51~525). 출력 토큰의 대부분이 추론이라, 출력 한도는 이 값을 근거로 정한다(`architecture.md` 9절. 역할 `evaluation_criteria`의 상한은 11절에 있다). 측정 결과는 연구 폴더 README.
 - 모델: 기본 묶음(역할 `evaluation_criteria` → 기본 묶음, `architecture.md` 9절).
 
 # 9. 버전
@@ -209,27 +199,17 @@ ai/research/evaluation-criteria/
 | `schema_version` | `1.0` | 응답 `meta` (`architecture.md` 5절) | 필드 이름 변경 · 삭제 · 뜻 변경 |
 
 # 10. 실행 · 테스트
-준비 (`ai/research/evaluation-criteria`에서. Python 3.12, `.venv`는 git에 없어 처음 한 번 만든다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
-```bash
-cd ai/research/evaluation-criteria
-uv sync
-```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 코어 · 엔드포인트 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/evaluation_criteria` | 스키마 · 목표 검사 · 계약(`examples/`, 가짜 LLM) · 엔드포인트 통과 (107 passed, 2026-10-28) |
-| 연구 폴더 테스트 | `uv run python -m pytest` | 평가 데이터 정답 · 채점 규칙 통과 (61 passed, 2026-10-28) |
-| 실제 LLM 테스트 | `uv run python -m pytest -m live` | 예시 문장이 스키마를 통과 (과금) |
-| 문장 실행 | `uv run python run.py --all` | `results/` (과금) |
-| 평가 | `uv run python run.py --eval --out reports/results/evaluation_criteria_eval.json` | 요소 분류 정확도 · 숫자 목표 추출 정확도 (13절, 과금) |
+| 코어 · 엔드포인트 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/evaluation_criteria` | 스키마 · 목표 검사 · 계약(`examples/`, 가짜 LLM) · 엔드포인트 통과 |
+| 연구 폴더의 테스트 · 실제 LLM 테스트 · 문장 실행 · 평가 | `ai/research/evaluation-criteria/README.md` '실행' | 평가는 13절 지표 (실제 LLM은 과금) |
 
 - 테스트가 볼 것: 요소마다 · 단위 바꾸기(% · 분당 · 초당), 숫자 없는 기준은 목표 없음, `display` 짝이 틀린 목표 빼기, 값 범위, `script_used` 세 값, 50자 넘는 표시 기준은 스키마 위반(502 `LLM_INVALID_OUTPUT`), 측정할 수 없는 기준만 있을 때.
 
 # 11. 배포
-**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/evaluation_criteria/`에 있다(연구 폴더 `src/evaluation_criteria/`에서 폴더째 옮겼다). 라우터 `api/evaluation_criteria.py`가 `POST /evaluation-criteria/parse`를 연다. 라우터는 요청 마감 시각(25초)을 만들고 `structured_llm(LLM 출력 스키마, deadline)`을 넘긴다(역할 `evaluation_criteria`, 출력 상한 2,048 = 잰 최대 720 × 2를 1,024 단위로 올린 값의 최소). LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. 테스트는 `ai-service.md` 6-1 2번대로 서비스 `tests/unit/evaluation_criteria/`로 옮겼고, 평가 데이터 · `run.py`를 쓰는 테스트(`test_data.py` · `test_eval.py` · `live/`)는 연구 폴더에 남겼다. 의존성은 pydantic 하나다.
+**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/evaluation_criteria/`에 있다. 라우터 `api/evaluation_criteria.py`가 `POST /evaluation-criteria/parse`를 연다. 라우터는 요청 마감 시각(25초)을 만들고 `structured_llm(LLM 출력 스키마, deadline)`을 넘긴다(역할 `evaluation_criteria`, 출력 상한 2,048 = 잰 최대 720 × 2를 1,024 단위로 올린 값의 최소). LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. 테스트는 서비스 `tests/unit/evaluation_criteria/`, 평가 데이터 · `run.py`를 쓰는 테스트(`test_data.py` · `test_eval.py` · `live/`)는 연구 폴더에 있다. 의존성은 pydantic 하나다.
 
-**옮긴 뒤 확인** (2026-10-28): 옮기기 전후 LLM 출력 스키마 · 응답 스키마 · `SYSTEM_PROMPT`가 바이트까지 같다. 이미지(`docker build`)를 키와 함께 띄워 `examples/` 요청 셋을 실제 LLM(`gpt-6-luna`)으로 두 번 보냈다. 여섯 번 모두 200이고 LLM 호출은 요청마다 1번, 응답까지 2.8~7.3초, 출력 토큰 146~291이다. 응답은 `meta.model` 말고 예시 응답과 같았고, 한 번만 기본 예시의 표시 기준 한 줄이 `청중을 자주 보기`(예시는 `청중 자주 보기`)로 달랐다(LLM 출력은 실행마다 조금씩 다르다).
-
-**BE와 함께 바꿀 것**: `X-Request-ID`, 호출 전체 30초, 응답의 `targets` · `script_used` · `excluded` · `values` · `meta`를 `standard_analyses`에 저장, 고친 표시 기준을 다시 분석해 같은 버전으로 저장. 새 필드(`targets` · `meta` · `silence`)는 BE가 모르는 필드로 무시하므로 AI가 먼저 내도 깨지지 않는다.
+**BE 요구사항**: `X-Request-ID`, 호출 전체 30초(`backend/src/pitch_coach_backend/module/pitch/adapter/standard_parser.py`), 응답의 `targets` · `script_used` · `excluded` · `values` · `meta`를 `standard_analyses`에 저장, 고친 표시 기준을 다시 분석해 같은 버전으로 저장(`backend/src/pitch_coach_backend/module/pitch/service/standard.py`).
 
 **환경변수**: 서비스 공통의 LLM 묶음과 시간 제한을 쓴다.
 
@@ -242,7 +222,6 @@ uv sync
 | 리포트에 사용자 기준 판정이 비어 있음 | `targets`가 없음(숫자가 없는 기준), BE가 `standard_analyses`에 저장하지 않음 | 응답의 `targets`, BE가 `standard_analyses`에 저장하는지(12절) |
 | 대본을 봐도 된다고 했는데 대본 응시를 지적함 | `script_used`가 null로 나옴, BE가 `script_used`를 evaluate에 싣지 않음 | 응답의 `values.script_used`, 코치 요청의 `script_used` |
 | 표시 기준과 저장된 기준 문장이 다름 | 사용자가 고친 문장을 다시 분석하지 않고 저장함 | BE가 고친 글로 다시 분석해 같은 버전으로 저장하는지(12-2) |
-| 긴 침묵 기준이 말 사이 멈춤으로 판정됨 | 요소 → 지표 연결이 옛 것(`pause` → `pause_count`만) | `silence` 요소 · `long_silence_count` 연결이 들어갔는지(5-3) |
 
 # 12. FE · BE · DB 연결과 저장
 ```mermaid
@@ -259,26 +238,15 @@ sequenceDiagram
     E-->>BE: 분석 결과
     BE->>BE: standards · standard_analyses 같은 버전으로 저장
 ```
+그림의 테이블 · 칸 이름은 지금 저장 위치(BE 소유)다.
+
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+이 기능의 저장 요구는 AI가 정하고, 테이블 · 칸 · 형식 · 마이그레이션 · 구현 · 운영은 BE가 정한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래 저장 요구와 저장 위치는 저장 계약이며(지금 BE 구현과 맞는지 확인하지 못한 항목은 "BE 구현 확인 필요"로 따로 표시한다), 바꾸려면 BE와 합의한다.
 
-| 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
+| 데이터 | 언제 생기나 | 저장 위치(지금 구현 또는 확인 필요, BE 소유) | 저장 요구(남길 값 · 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 표시 기준 | 저장할 때의 분석 응답 | `standards` (`pitch_id` · `version` · `position` · `title` String(50)) | 표시 기준 한 줄에 한 행, `title`은 50자 이내 | BE가 쓴다 · FE 평가 기준 화면, 리뷰 `user_criteria.display_criteria` | `(pitch_id, version, position)` 유일 제약. 새 저장은 새 버전 | 발표와 함께. 사용자가 쓴 글이다 |
-| 분석 결과 | 같음 | `standard_analyses` (새 테이블) | 아래 설계. 잰 크기: 응답 전체 0.4~0.9 KB(`meta` 포함, `meta`를 빼면 0.3~0.8 KB. 2026-10-25, 평가 데이터 15문장) | BE가 쓴다 · 리뷰 `user_criteria.targets` · `script_used`, 코치 `script_used` | `(pitch_id, version)` 유일 제약 | 발표와 함께 |
-
-**`standard_analyses` 설계**
-
-| 칸 | 타입 · null | 뜻 |
-|---|---|---|
-| `pitch_id` | Uuid FK `pitches.id` CASCADE NOT NULL | 발표 |
-| `version` | Integer NOT NULL | `standards`와 같은 버전 |
-| `targets` | JSONB NOT NULL | 숫자 목표 목록(빈 목록 가능) |
-| `script_used` | Boolean NULL | 대본 사용 설정(응답의 `values.script_used`, 언급이 없으면 null). 코치 `script_used` · 리뷰 `user_criteria.script_used`가 이 칸을 읽는다 |
-| `excluded` | JSONB NOT NULL | 뺀 기준 목록(문자열 배열, 합치지 않는다) |
-| `values` | JSONB NULL | 요소별 값 |
-| `meta` | JSONB NOT NULL | 응답의 `meta` |
-| 제약 | UQ(`pitch_id`, `version`) | 버전마다 하나 |
+| 표시 기준 | 저장할 때의 분석 응답 | `standards` (`pitch_id` · `version` · `position` · `title`) | 표시 기준 한 줄에 한 행(50자 이내), 저장할 때마다 새 버전 | BE가 쓴다 · FE 평가 기준 화면, 리뷰 `user_criteria.display_criteria` | 발표 · 버전 · 순서마다 하나(`(pitch_id, version, position)` 유일 제약) | 발표와 함께. 사용자가 쓴 글이다 |
+| 분석 결과 | 같음 | `standard_analyses` (`pitch_id` · `version` · `targets` · `script_used` · `excluded` · `values` · `meta`) | 버전마다 `targets`(숫자 목표 목록, 빈 목록 가능, 늘 채움) · `script_used`(대본 사용 설정 = 응답의 `values.script_used`, 참 · 거짓 또는 언급이 없으면 null) · `excluded`(뺀 기준 문자열 배열 그대로, 합치지 않음, 늘 채움) · `values`(요소별 값, null 가능) · `meta`(응답의 `meta`, 늘 채움)를 `standards`와 같은 버전으로 남기고 발표에 잇는다(발표를 지우면 함께 지운다). 잰 크기: 응답 전체 0.4~0.9 KB(`meta`를 빼면 0.3~0.8 KB, 평가 데이터 15문장) | BE가 쓴다 · 리뷰 `user_criteria.targets` · `script_used`, 코치 `script_used` | 발표 · 버전마다 하나(`(pitch_id, version)` 유일 제약) | 발표와 함께 |
 
 ## 12-2. 저장 규칙
 - 표시 기준(`standards`)과 분석 결과(`standard_analyses`)는 같은 버전 번호로 한 트랜잭션에 저장한다. BE는 Take를 시작할 때 그 발표의 최신 버전 번호를 `takes.standard_version`에 고정하고(없으면 null = 기준 없음), 리뷰 `user_criteria` · 코치 `script_used`는 그 버전에서 만든다. Take 도중이나 뒤에 기준을 다시 등록해도 그 Take의 버전은 바꾸지 않는다(`architecture.md` 1-3 1번).
@@ -300,14 +268,11 @@ sequenceDiagram
 - **지어낸 목표 수**: 정답에 없는 목표 수 ÷ 문장 수.
 
 # 15. 열린 질문 · 알려진 한계
-**정한 것**
-- 새 요소 이름 `silence`, 숫자 목표 규칙(근사 · 범위 · 길이 조건 · 코드 검사 · 50자 넘으면 스키마 위반), 입력 한도 2,000자, `standard_analyses.values` 칸, 표시 기준 10개까지.
-
 **열린 질문**
-- 아직 정하지 않았다: BE 저장 쪽 세 가지 — FE가 고친 표시 기준을 저장하는 호출, `standards.title`(50자)에 맞춘 BE 입력 길이 검사, FE 화면이 표시 기준 개수를 자르지 않는다는 전제를 BE 저장 방식(고친 글을 다시 분석해 같은 버전으로 저장)과 맞추기.
+- 없음.
 
 **알려진 한계**
-- 사용자가 말한 기준값(예: "3초 넘는 침묵")은 판정에 쓰지 않는다. 긴 침묵 판정은 소리 크기 모듈의 기준(예: 5초)으로 센다. 그래서 길이 조건이 붙은 횟수 기준은 목표로 만들지 않고 표시만 한다. 목표로 만들면 표시 기준(3초)과 판정(5초)이 다르게 보인다.
+- 사용자가 말한 기준값(예: "3초 넘는 침묵")은 판정에 쓰지 않는다. 긴 침묵 판정은 소리 크기 모듈의 기준(`ai/service/src/pitch_coach_ai/features/volume/config.py`)으로 센다. 그래서 길이 조건이 붙은 횟수 기준은 목표로 만들지 않고 표시만 한다. 목표로 만들면 표시 기준과 판정 기준이 다르게 보인다.
 - `voice_diff_db`는 평소 목소리 대비라, "크게 말하기" 같은 기준은 대부분 숫자가 없어 표시만 된다.
 - 평가 데이터가 15문장뿐이고, 정답은 프롬프트를 쓴 쪽이 같은 규칙으로 붙였다. 다른 사람이 만든 문장으로 다시 재야 한다.
 
@@ -320,6 +285,6 @@ sequenceDiagram
 | 요소 → 지표 | `speed` `cpm` · `pause` `pause_count` · `silence` `long_silence_count` · `volume` `voice_diff_db` · `filler` `filler_count`/`filler_per_min` · `gaze` `audience_ratio` · `script_dependency` `reading_ratio` · `script_similarity` `content_coverage` · `script_used` 설정 | 5-3 |
 | 연산자 | `LTE` · `GTE` · `LT` · `GT` | 5-3 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 없음 | 8절 |
-| 버전 | `evaluation_criteria-1.0` · `schema_version` `1.0` | 9절 |
-| 저장 | `standards`(표시 기준) · `standard_analyses`(버전마다 `targets` · `script_used` · `excluded` · `values` · `meta`) | 12-1 |
+| 버전 | `evaluation_criteria-1.1` · `schema_version` `1.0` | 9절 |
+| 저장 | 저장 요구: 12-1 · 12-2(표시 기준과 분석 결과를 같은 버전으로, 발표 · 버전마다 하나). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `standards`(표시 기준) · `standard_analyses`(버전마다 `targets` · `script_used` · `excluded` · `values` · `meta`) | 12-1 |
 | 입력 한도 | `standard_text` 1~2,000자 (넘으면 422) | 5-2 |

@@ -17,8 +17,8 @@
 (rubric_requested_at)이 그대로일 때만 반영돼, 이어받은 뒤 늦게 끝난 옛 작업은 아무것도
 바꾸지 못한다.
 
-실패는 밖으로 던지지 않고 로그만 남긴다. DB 가 안 돼 중간에 멈춘 작업은 PENDING 으로 남고,
-BE 가 다시 뜰 때(resume_all) 남은 한도로 이어 간다.
+실패는 밖으로 던지지 않고 로그만 남긴다. DB 가 잠깐 안 되면 그 단계만 몇 번 다시 한다. 그래도 안 돼
+중간에 멈춘 작업은 PENDING 으로 남고, BE 가 다시 뜰 때(resume_all) 남은 한도로 이어 간다.
 """
 
 import logging
@@ -29,11 +29,11 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionLocal, in_session
 from pitch_coach_backend.core.logging import sqlstate
+from pitch_coach_backend.core.retry import retry_transient
 from pitch_coach_backend.module.pitch.adapter.script_rubric import (
     RETRYABLE_SLIDE_CODES,
     RubricCallError,
@@ -44,6 +44,8 @@ from pitch_coach_backend.module.pitch.dto import RubricTicket
 from pitch_coach_backend.module.pitch.service import script as script_service
 
 logger = logging.getLogger(__name__)
+# 각 단계가 표식을 조건으로 저장하므로 다시 해도 안전하다
+DB_RETRY_DELAYS_SEC = (2.0, 5.0, 15.0)
 # 작업마다 마지막 AI 요청을 추적한다. 동시에 여러 대본이 실행돼도 서로 섞이지 않는다.
 _request_id: ContextVar[str | None] = ContextVar("rubric_request_id", default=None)
 _LOG_FAILED_CODES = RETRYABLE_SLIDE_CODES | frozenset(
@@ -135,11 +137,7 @@ class ScriptRubricRunner:
         except RubricCallError as exc:
             if not exc.retryable or not await self._db(script_service.use_rubric_retry, ticket):
                 return
-            try:
-                reply = await self._call(ticket, None, request_id)
-            except RubricCallError:
-                return
-            await self._save(ticket, reply)
+            await self._call_and_save(ticket, None, request_id)
             return
 
         if not await self._save(ticket, reply):
@@ -153,12 +151,8 @@ class ScriptRubricRunner:
         )
         if not retry or not await self._db(script_service.use_rubric_retry, ticket):
             return
-        try:
-            again = await self._call(ticket, retry, uuid.uuid4().hex)
-        except RubricCallError:
-            # 최초 응답에서 저장한 기준은 그대로 둔다
-            return
-        await self._save(ticket, again)
+        # 실패해도 최초 응답에서 저장한 기준은 그대로 둔다
+        await self._call_and_save(ticket, retry, uuid.uuid4().hex)
 
     async def _resume(self, ticket: RubricTicket) -> None:
         """앞 작업이 어디까지 보냈는지 모르니 남은 한도(재시도)로 기준이 없는 장만 다시 부른다."""
@@ -167,8 +161,13 @@ class ScriptRubricRunner:
         if not await self._db(script_service.use_rubric_retry, ticket):
             return
         numbers = None if len(ticket.missing) == len(ticket.slides) else ticket.missing
+        await self._call_and_save(ticket, numbers, uuid.uuid4().hex)
+
+    async def _call_and_save(
+        self, ticket: RubricTicket, slide_numbers: Sequence[int] | None, request_id: str
+    ) -> None:
         try:
-            reply = await self._call(ticket, numbers, uuid.uuid4().hex)
+            reply = await self._call(ticket, slide_numbers, request_id)
         except RubricCallError:
             return
         await self._save(ticket, reply)
@@ -216,12 +215,9 @@ class ScriptRubricRunner:
         return await self._db(script_service.save_rubrics, ticket, reply.rubrics, reply.meta)
 
     async def _db(self, step: Callable[..., Any], *args: Any) -> Any:
-        """service 함수 하나를 짧은 세션으로 threadpool 에서 돌린다."""
-        return await run_in_threadpool(self._in_session, step, *args)
-
-    def _in_session(self, step: Callable[..., Any], *args: Any) -> Any:
-        db = self._session_factory()
-        try:
-            return step(db, *args)
-        finally:
-            db.close()
+        """service 함수를 짧은 세션으로 threadpool 에서 돌린다. DB 가 잠깐 안 되면 다시 한다."""
+        return await retry_transient(
+            lambda: in_session(self._session_factory, step, *args),
+            DB_RETRY_DELAYS_SEC,
+            what=f"평가 기준 {step.__name__}",
+        )

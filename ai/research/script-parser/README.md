@@ -33,7 +33,7 @@ ParseResponse {status, slides[], terms, meta}
 |---|---|
 | 서비스 `features/script_parser/schemas.py` | `ParseRequest` · `ParseResponse` (요청 · 응답 계약), `LLMOutput` (LLM Structured Output 스키마) |
 | 서비스 `features/script_parser/prompts/parse.py` | `SYSTEM_PROMPT` — 제목 줄 · keywords · terms 고르기 규칙 |
-| 서비스 `features/script_parser/splitter.py` | `find_slides()` — 줄 맨 앞 구분자(`[N]` · `[슬라이드 N]` · `슬라이드 N:`)로 머리글 · 장 후보를 나눔 (LLM 없음) |
+| 서비스 `features/script_parser/splitter.py` | `find_slides()` — 줄 맨 앞 구분자(설계 문서 5-2: `[N]` · `[슬라이드 N]` · `[Slide N]` · `슬라이드 N:` · `Slide N:` · 줄 전체 `슬라이드 N`/`Slide N`, 앞의 `#` 제목 표시 허용)로 머리글 · 장 후보를 나눔 (LLM 없음) |
 | 서비스 `features/script_parser/cleaner.py` | `clean_script()`, `count_chars()`, `find_highlights()` — LLM 없이 도는 순수 함수 |
 | 서비스 `features/script_parser/core.py` | `parse_script(request, llm)` — 파이프라인, `EmptyScriptError`(서비스에서 422 `EMPTY_SCRIPT`) |
 | 서비스 `features/script_parser/config.py` | 기준 말 속도 `BASE_CPM`(잠정 264), 키워드 상한(장마다 7 · fail 15), 용어 상한 50 |
@@ -41,11 +41,11 @@ ParseResponse {status, slides[], terms, meta}
 | 서비스 `features/script_parser/examples/` | 요청 · 응답 예시 `success` · `no_target` · `fail` (`request.json` · 가짜 LLM 출력 `llm_output.json` · `response.json`) |
 | `run.py` | `build_llm()` (`ai/.env`로 LLM 생성), `data/scripts/*.txt` 실행 → `results/<이름>.json`, `--eval`로 라벨과 비교 → `reports/results/` |
 | 서비스 `tests/unit/script_parser/test_cleaner.py` | 정제 · 글자 수 · 하이라이트 테스트 (LLM 호출 없음) |
-| 서비스 `tests/unit/script_parser/test_splitter.py` | 구분자 · 번호 검사 테스트 (LLM 호출 없음) |
+| 서비스 `tests/unit/script_parser/test_splitter.py` | 구분자 · 번호 검사 테스트 (LLM 호출 없음). FE · AI 공통 입력 목록 [`docs/ai/features/script-parser-markers.json`](../../../docs/ai/features/script-parser-markers.json)을 읽는다 |
 | 서비스 `tests/unit/script_parser/test_core.py` | `parse_script` 테스트 (가짜 LLM, 과금 없음) |
 | 서비스 `tests/unit/script_parser/test_core_boundary.py` | 코어가 상대 import와 표준 계산 모듈 · pydantic만 쓰고 파일 · 출력을 다루지 않음 |
 | 서비스 `tests/unit/script_parser/test_examples.py` | 계약 테스트: `examples/`의 요청을 돌린 응답이 `response.json`과 같은지, 예시가 계약(장 번호 · fail 1장 · 예상 시간 합 · 하이라이트 위치)을 지키는지 |
-| `data/scripts/` | 평가 대본 15개. `script1`–`5`는 원래 대본(`script1`만 구분자 형식, `2`–`5`는 형식이 다른 `fail` 경우), `script6`–`15`는 평가 경우마다 새로 쓴 대본으로, 분야를 나눴다: `[N]` 수학 · `[슬라이드 N]` 화학 · 머리글 제목만 법률 · 머리글 본문 기계공학 · 일부만 구분자 생명과학 · 마크다운 컴퓨터공학 · 번호 겹침 물리 · 구분자 없음 금융공학 · 2,000자대(2,052자) 전자공학 · 4,000자대(4,198자) 토목공학 |
+| `data/scripts/` | 평가 대본 16개. `script1`–`5`는 원래 대본(`script1` `슬라이드 N:` · `script2` `## Slide N —` · `script5` `[Slide N]`은 구분자 형식, `script3` 구분자 없음 · `script4` `1.` 번호 목록은 `fail`. `script2` · `5`는 `script_parser-1.2`까지 `fail`이었다), `script6`–`15`는 평가 경우마다 새로 쓴 대본으로, 분야를 나눴다: `[N]` 수학 · `[슬라이드 N]` 화학 · 머리글 제목만 법률 · 머리글 본문 기계공학 · 일부만 구분자 생명과학 · 마크다운 컴퓨터공학 · 번호 겹침 물리 · 구분자 없음 금융공학 · 2,000자대(2,052자) 전자공학 · 4,000자대(4,198자) 토목공학. `script16_whole_line`은 FE가 매핑에서 장 대본을 고친 뒤 다시 조립한 줄 전체 `슬라이드 N` 형식이다 |
 | `data/labels/` | 대본마다 정답 라벨: `status`, 장마다 첫 줄 · 마지막 줄, 남으면 안 되는 제목 줄, 장별 실제 시간(`actual_slide_ms`, 아직 없음) |
 | `tests/test_run.py` | 연구 폴더 준비 확인 (LLM 호출 없음): `run.py`가 서비스 코어를 import하는지, `data/scripts/`와 `data/labels/`의 이름이 짝을 이루는지. 이 폴더의 기본 실행(`pytest`)이 고르는 시험입니다 |
 | `tests/live/` | 실제 LLM 테스트 (`live` 표시, 과금). `run.build_llm`을 써서 연구 폴더에 남겼습니다 |
@@ -99,7 +99,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
      "highlights": [{"start": 7, "end": 9}], "expected_ms": 160000}
   ],
   "terms": ["..."],
-  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": null}
+  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.3", "model": null}
 }
 ```
 전체 계약 · 예시는 설계 문서 5절입니다. `meta.model`은 서비스 라우터가 채웁니다.
@@ -110,7 +110,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
 
 | 항목 | 내용 |
 |---|---|
-| 구분자 | 줄 맨 앞의 `[N]` · `[슬라이드 N]` · `슬라이드 N:`만 인정합니다. `script2`–`5`처럼 `## Slide N` · `1.` · `[Slide N]` 같은 다른 표시는 구분자가 아니라 `fail`입니다 |
+| 구분자 | 설계 문서 5-2의 형식만 인정합니다(`script_parser-1.3`부터 `[Slide N]` · `Slide N:` · 줄 전체 `슬라이드 N`/`Slide N` · 앞의 `#` 제목 표시도 인정). `script4`처럼 `1.` 번호 목록은 구분자가 아니라 `fail`입니다 |
 | `status="fail"` | 구분자가 없거나, 번호가 0 · 겹침 · 거꾸로이거나, 첫 구분자 앞에 제목 줄이 아닌 글이 있으면 fail입니다. 장은 1개(`slide_number=1`)이고 키워드는 대본 전체에서 15개까지입니다 |
 | `keywords` · 제목 줄 · `terms` | LLM이 고른 것 중 대본에 그대로 있는 것만 씁니다(중복 · 빈 값 버림) |
 | `highlights` | **정제된 script 기준** 코드 포인트 위치 `{start, end}`(end 미포함)이고, 첫 등장 위치만 잡습니다 |
@@ -120,6 +120,8 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
 ---
 
 ## 평가 결과
+
+`script_parser-1.2` · 대본 15개 기준 측정이다. `script_parser-1.3`(구분자 확장, `script2` · `5` 라벨 변경 · `script16` 추가) 뒤에는 다시 재지 않았다.
 
 2026-10-24, `openai/gpt-6-luna` · 추론 `low`, `uv run python run.py --eval --reasoning-effort low` (대본 15개, 대본마다 LLM 1번, 목표 시간 없음, 출력 상한은 정하지 않음 = 게이트웨이 기본 2,000토큰) → [`reports/results/script_parser_eval.json`](reports/results/script_parser_eval.json). 결과 JSON에는 대본마다 거른 뒤의 키워드(`result_keywords`)와 용어(`result_terms`)도 있다.
 
@@ -146,7 +148,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
 
 옛 대본 이름이고, 옛 `script6`–`20`은 지금 대본과 내용이 다르다.
 
-2026-10-24, `uv run python run.py --eval [--reasoning-effort low]` (옛 대본 20개, 대본마다 LLM 1번, 목표 시간 없음, 출력 상한은 정하지 않음 = 게이트웨이 기본 2,000토큰). 결과 JSON은 마지막에 돌린 `gpt-6-luna` · `low` 것이다 → [`reports/results/script_parser_eval.json`](reports/results/script_parser_eval.json)
+2026-10-24, `uv run python run.py --eval [--reasoning-effort low]` (옛 대본 20개, 대본마다 LLM 1번, 목표 시간 없음, 출력 상한은 정하지 않음 = 게이트웨이 기본 2,000토큰). 이 측정의 결과 JSON은 남아 있지 않다. 같은 경로(`reports/results/script_parser_eval.json`)는 위 '평가 결과'의 지금 대본 15개 결과로 덮어썼다.
 
 | 지표 | `gpt-6-luna` · 추론 `low` | `gpt-6-luna` · 추론 기본값 | `gpt-5.6-luna` · 추론 기본값 (참고) |
 |---|---|---|---|

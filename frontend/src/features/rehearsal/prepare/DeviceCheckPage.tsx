@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
@@ -19,13 +19,15 @@ import { ReplaceTakeDialog } from './ReplaceTakeDialog';
 import { activeTakeOrNone, endActiveTake } from './activeTake';
 import type { ActiveTake } from '@/types/take';
 import { MissionCard } from './MissionCard';
-import { practiceModeFor, usePrepareStore } from './prepareStore';
+import { DEFAULT_SCRIPT_MODE, practiceModeFor, usePrepareStore } from './prepareStore';
 import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
 import { useMicLevel } from '../media/useMicLevel';
 import type { ReadStage, ShortReason } from '../media/baseVoice';
 import { useVideoStream } from '../media/useVideoStream';
+import { useChatScreen } from '@/shared/lib/chatScreen';
+import { deviceScreen } from './chatScreen';
 
 /**
  * 평소 목소리로 읽을 문단. 발표를 여는 말투입니다. 처음부터 한 번에 보여 주고, 다 읽으면 사용자가
@@ -205,24 +207,56 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
+  // 무음 경고는 평소 목소리를 **읽는 동안만**, 읽기를 누른 때부터 셉니다. 읽기 전에는 말할 이유가 없어
+  // 페이지를 연 뒤로 세면 가만히 있는 사람에게 경고가 떴습니다. 읽기 상태는 useBaseVoice 뒤에서 이 ref 에
+  // 적습니다 — useMicLevel 이 voiceRecord 를 넘겨야 해서 먼저 불리기 때문입니다
+  const readingSinceRef = useRef<number | null>(null);
+  const silenceFrom = useCallback(() => readingSinceRef.current, []);
   const { meterRef, echoMeterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } =
-    useMicLevel(stream, { clock: pageClock });
+    useMicLevel(stream, { clock: pageClock, silenceFrom });
   // 평소 목소리 크기. 선택 단계라 시작을 막지 않습니다 — 안 재면 AI 가 Take 첫 발화로 잡습니다
   const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
+  const reading = baseVoice.status === 'READING';
+  useEffect(() => {
+    readingSinceRef.current = reading ? performance.now() : null;
+  }, [reading]);
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
-  const { scriptMode, setScriptMode, calibration, scriptModeTouched, setChosenDevices } =
-    usePrepareStore(
-      useShallow((s) => ({
-        scriptMode: s.scriptMode,
+  //
+  // 대본 표시는 **이 피치에서 고른 것일 때만** 씁니다. 다른 피치에서 고른 값은 `enterPitch` 가
+  // 비우는데, 비우기 전 첫 그림에서도 앞 피치의 선택(예: 실전 모드)이 보이지 않게 여기서도 거릅니다
+  const {
+    scriptMode,
+    setScriptMode,
+    calibration,
+    scriptModeTouched,
+    setChosenDevices,
+    enterPitch,
+  } = usePrepareStore(
+    useShallow((s) => {
+      const mine = s.scriptModePitchId === pitchId;
+      return {
+        scriptMode: mine ? s.scriptMode : DEFAULT_SCRIPT_MODE,
         setScriptMode: s.setScriptMode,
         calibration: s.calibration,
-        scriptModeTouched: s.scriptModeTouched,
+        scriptModeTouched: mine && s.scriptModeTouched,
         setChosenDevices: s.setDevices,
-      })),
-    );
+        enterPitch: s.enterPitch,
+      };
+    }),
+  );
   const cal = useGazeSetup({ stream, videoRef, live });
+  // 대화창에 지금 점검 상태를 알립니다 — 보내는 순간에만 읽고, 장치 원본 · 식별자는 싣지 않습니다 (12-4 F2)
+  useChatScreen('/pitch/:pitchId/device-check', () =>
+    deviceScreen({
+      live,
+      hasStream: stream !== null,
+      micOk,
+      gazeStatus: cal.status,
+      failReason: cal.failReason,
+    }),
+  );
   const createTake = useCreateTake();
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -271,6 +305,12 @@ export function DeviceCheckPage() {
       .userActivation;
     if (activation?.hasBeenActive) request().catch(() => undefined);
   }, [request]);
+
+  // 다른 피치에서 왔으면 대본 표시를 비웁니다. 아래 서버 기본값 이펙트보다 **먼저** 돌아야 합니다 —
+  // 늦으면 앞 피치의 "사용자가 고름" 표시를 보고 이 피치의 기본값을 건너뜁니다
+  useEffect(() => {
+    if (pitchId) enterPitch(pitchId);
+  }, [pitchId, enterPitch]);
 
   // 서버 기본값은 **사용자가 고르기 전에만** 넣습니다. 조건 없이 덮으면 응답이 늦게
   // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
@@ -405,6 +445,8 @@ export function DeviceCheckPage() {
         scriptMode,
         // 준비 정보의 번호는 예상값이라 그사이 다른 Take 가 생기면 어긋납니다. 실제로 매긴 번호를 씁니다
         takeNumber: take.takeNumber,
+        // 실패해 장치 점검으로 돌아갈 때 이 조합을 다시 넘깁니다 (`deviceCheckLink`)
+        practice: combo,
       };
       await setSessionTicket(clientSessionId, ticket);
 
@@ -488,7 +530,7 @@ export function DeviceCheckPage() {
       }
     >
       <div className="prepare-content grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] prepare-compact:gap-4">
-        <div className="prepare-camera-column flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px]">
+        <div className="prepare-camera-column flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px] prepare-low:max-w-[640px]">
           <div className="prepare-camera relative aspect-video w-full">
             <GazeSetupView
               frameRef={cal.frameRef}
@@ -504,7 +546,7 @@ export function DeviceCheckPage() {
           <AudioInputMeter meterRef={meterRef} />
         </div>
 
-        <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5">
+        <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5 prepare-low:gap-1">
           <CheckCard
             title="장비 준비"
             action={

@@ -1,6 +1,7 @@
 // 제품 웰컴(`frontend/src/features/onboarding/WelcomePage.tsx`) · 로그인(`features/auth/LoginPage.tsx`)의 설계서 샘플.
 // 문구는 제품과 같다. 움직이는 장면(ComfortScene) · 넘어가는 숫자(FlipNumber)는 자리만 두고, 로그인은 Google로 가지 않는다.
 import { useRef, type ReactNode } from 'react';
+import { publicUrl } from '@/lib/publicUrl';
 import { PitchCoachWordmark } from '@/ui/PitchCoachWordmark';
 import type { Navigate } from './shared';
 
@@ -333,7 +334,7 @@ export function LoginScreen({ stateId, onNavigate }: ScreenProps) {
           className="w-full max-w-md border-2 border-ink bg-panel px-4 py-10 text-center shadow-[4px_4px_0_var(--color-ink)] [overflow-wrap:anywhere] sm:px-12"
         >
           <img
-            src="/onboarding/chichi-bust.png"
+            src={publicUrl('onboarding/chichi-bust.png')}
             alt=""
             width={80}
             height={96}
@@ -355,10 +356,10 @@ export function LoginScreen({ stateId, onNavigate }: ScreenProps) {
             disabled={busy}
             onClick={() => onNavigate('home')}
             aria-label="Google 계정으로 로그인"
-            className="mx-auto mt-8 flex min-h-11 max-w-full cursor-pointer items-center rounded disabled:cursor-wait"
+            className="mx-auto mt-8 flex min-h-11 max-w-full items-center rounded disabled:cursor-wait"
           >
             <img
-              src="/auth/google-sign-in.png"
+              src={publicUrl('auth/google-sign-in.png')}
               alt="Google 계정으로 로그인"
               className="h-10 w-auto max-w-full"
             />

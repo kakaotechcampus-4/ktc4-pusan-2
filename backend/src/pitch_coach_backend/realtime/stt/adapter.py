@@ -4,9 +4,9 @@
 
 1. 연결 URL 을 만들고 API 키를 헤더로 붙인다. 브라우저 WebSocket 은 헤더를 못 붙이므로
    FE → BE → Deepgram 구조가 필요한 이유가 이것이다. 키가 여럿이면 거절된 키를 건너뛴다.
-2. PCM 을 흘리고 KeepAlive / Finalize / CloseStream 을 보낸다.
+2. PCM 을 흘리고 KeepAlive / CloseStream 을 보낸다.
 3. Deepgram JSON 을 우리 이벤트로 바꾼다. 초(float) 는 ms 정수로. 단 기준은 여전히
-   "이 Deepgram 연결에 보낸 첫 바이트 = 0" 이다. Take 기준으로 옮기는 건 service 의 몫.
+   "이 Deepgram 연결에 보낸 첫 바이트 = 0" 이다. Take 기준으로 옮기는 건 `stt/loop.py` 의 몫.
 
 전사 내용은 사용자 발화 원문이라 로그에 남기지 않는다. request_id 와 길이만 남긴다.
 """
@@ -113,7 +113,6 @@ class Transcript:
     end_ms: int
     is_final: bool
     speech_final: bool
-    from_finalize: bool
     transcript: str
     confidence: float
     words: tuple[Word, ...]
@@ -122,11 +121,6 @@ class Transcript:
 @dataclass(frozen=True)
 class UtteranceEnd:
     last_word_end_ms: int
-
-
-@dataclass(frozen=True)
-class SpeechStarted:
-    timestamp_ms: int
 
 
 @dataclass(frozen=True)
@@ -143,7 +137,7 @@ class SttError:
     message: str
 
 
-SttEvent = Transcript | UtteranceEnd | SpeechStarted | Metadata | SttError
+SttEvent = Transcript | UtteranceEnd | Metadata | SttError
 
 
 def _ms(seconds: Any) -> int:
@@ -169,7 +163,6 @@ def _parse_results(data: dict[str, Any]) -> Transcript:
         end_ms=start_ms + _ms(data.get("duration")),
         is_final=bool(data.get("is_final")),
         speech_final=bool(data.get("speech_final")),
-        from_finalize=bool(data.get("from_finalize")),
         transcript=str(best.get("transcript") or ""),
         confidence=float(best.get("confidence") or 0.0),
         words=words,
@@ -191,8 +184,6 @@ def parse_message(raw: str) -> SttEvent | None:
             return _parse_results(data)
         case "UtteranceEnd":
             return UtteranceEnd(last_word_end_ms=_ms(data.get("last_word_end")))
-        case "SpeechStarted":
-            return SpeechStarted(timestamp_ms=_ms(data.get("timestamp")))
         case "Metadata":
             return Metadata(
                 request_id=str(data.get("request_id") or ""),
@@ -254,10 +245,6 @@ class DeepgramSession:
     async def _send_control(self, message_type: str) -> None:
         await self._conn.send(json.dumps({"type": message_type}))
         self._last_send = time.monotonic()
-
-    async def finalize(self) -> None:
-        """버퍼된 오디오를 지금 final 로 뱉게 한다. 연결은 유지된다."""
-        await self._send_control("Finalize")
 
     async def close_stream(self) -> None:
         """남은 오디오 처리 -> 마지막 Results -> Metadata 순으로 받고 서버가 닫는다.

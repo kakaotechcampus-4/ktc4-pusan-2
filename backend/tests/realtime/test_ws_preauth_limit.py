@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from pitch_coach_backend.core.client_ip import client_ip
 from pitch_coach_backend.realtime.connection import handshake as handshake_module
+from pitch_coach_backend.realtime.stream import client as client_module
 from pitch_coach_backend.realtime.connection.handshake import (
     CLOSE_TRY_AGAIN_LATER,
     Handshake,
@@ -126,7 +127,7 @@ async def test_auth_timeout_releases_the_slot_even_if_rejection_cannot_be_sent(
 ):
     monkeypatch.setattr(handshake_module, "AUTH_TIMEOUT_SEC", 0.01)
     # 제한 시간 자체는 짧게 바꾸고, 거절 알림/닫기가 모두 막힌 상대를 재현한다.
-    monkeypatch.setattr(handshake_module, "REJECT_STEP_TIMEOUT_SEC", 0.01, raising=False)
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.01, raising=False)
     ws = SilentWebSocket("203.0.113.7")
     close_tried = asyncio.Event()
 

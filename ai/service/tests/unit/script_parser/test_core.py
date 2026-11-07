@@ -74,7 +74,7 @@ def test_doc_example():
             },
         ],
         "terms": ["MAU"],
-        "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": None},
+        "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.3", "model": None},
     }
 
 
@@ -209,6 +209,14 @@ def test_all_title_lines_is_empty():
     llm = FakeLLM(llm_out([(1, ["제목"], [])]))
     with pytest.raises(EmptyScriptError):
         parse_script(ParseRequest(script_text="[1] 제목"), llm)
+
+
+def test_only_punctuation_left_is_empty():
+    # 제목 줄을 빼고 문장부호만 남아도 글자 수 합이 0이라 422다(문서 5-4)
+    llm = FakeLLM(llm_out([(1, ["제목"], [])]))
+    with pytest.raises(EmptyScriptError, match="문장부호"):
+        parse_script(ParseRequest(script_text="[1] 제목\n...!?"), llm)
+    assert len(llm.calls) == 1
 
 
 def test_llm_error_propagates():

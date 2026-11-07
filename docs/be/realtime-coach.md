@@ -34,7 +34,7 @@ Take 종료  stop ─▶ 분석 단계 FINALIZING ─▶ /coach/finalize (409 �
 - **발표 중** (`coach/session.py`): Take 에 붙어 있어 연결 · 스트림이 바뀌어도 `coach_state` 가 이어진다. 한 Take 에서
   앞 응답을 받기 전에 온 `metrics` 는 창에만 넣고 그 1초는 부르지 않는다. `buffered` 인 `metrics` 도 부르지 않는다.
   응답의 이벤트는 받은 순서대로 `coach_events` 에 쌓고(같은 `event_id` 는 한 번), 저장에 실패하면 들고 있다가 다시 넣는다.
-  코치가 한 말도 `coach_events` 에만 둔다 (`live_feedbacks` 는 쓰지 않는다).
+  코치가 한 말도 `coach_events` 에만 둔다.
   중복은 DB 와 같은 `(take_id, t_ms)` 로 가리고 null 센서 · STT 상태까지 첫 메시지를 유지한다.
   앱을 다시 띄운 뒤에는 이미 저장된 메시지로 창과 중복 키를 복원한다. 실시간 장은 실제 전환 시각을
   그대로 쓰며, 처음 확보한 장을 0초로 보정하는 것은 replay 에만 적용한다.

@@ -50,6 +50,10 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # 소리 크기: 진입 함수의 기본값 config: Config = Config(). Config 는 frozen 이라 공유해도 바뀌지 않는다
 # (연구 폴더에서 옮긴 그대로)
 "src/pitch_coach_ai/features/volume/core.py" = ["B008"]
+# 대화 에이전트: 남는 긴 줄은 한국어 docstring · 주석 · 문구(한글은 폭 2칸)와 모델 · 화면에 그대로 가는 글이다.
+# 코드 줄은 ruff format 이 100 안으로 맞춘다 (연구 모듈에서 옮긴 그대로)
+"src/pitch_coach_ai/features/chat_agent/**" = ["E501"]
+"tests/unit/chat_agent/**" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -59,6 +63,8 @@ testpaths = ["tests"]
 markers = [
     "live: 실제 LLM API 를 호출한다 (과금)",
     "slow: 오래 걸리는 규모 측정 (기본 실행에서 빼고 `pytest -m slow` 로 돈다)",
+    "prefetch: 대화 에이전트 조사 흐름(코드가 먼저 읽기)을 켠 시험 — tests/unit/chat_agent/conftest.py",
+    "no_prefetch: prefetch 를 단 파일 안에서 조사 흐름을 끄는 시험(모델 호출 순서 대본) — tests/unit/chat_agent/conftest.py",
 ]
 addopts = "-m 'not live and not slow'"
 filterwarnings = [

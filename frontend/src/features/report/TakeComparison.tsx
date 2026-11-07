@@ -1,23 +1,14 @@
 import { useId, useState } from 'react';
-import { useParams } from 'react-router';
+import { Link } from 'react-router';
+import type { TakeHistoryRow } from '@/types/takeHistory';
 import { formatDuration } from '@/shared/lib/clock';
-import { isPitchMissing, useTakeHistory } from '@/shared/api/takeHistory';
-import { ButtonLink } from '@/shared/ui/Button';
-import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
-import { QueryState } from './QueryState';
 import { duration, pct } from './reportFormat';
-import {
-  SCRIPT_MODE_LABEL,
-  completedTakes,
-  gazeOffEngine,
-  latestGazeEngine,
-  takeDay,
-} from './takeHistoryFormat';
+import { SCRIPT_MODE_LABEL, gazeOffEngine, latestGazeEngine, takeDay } from './takeHistoryFormat';
 
 /**
- * P7 Take 비교 — 한 피치의 Take들을 나란히.
+ * P7 Take 비교 — 한 피치의 Take들을 나란히. 따로 된 화면 없이 Take 기록의 지표 비교 보기로만 씁니다 (#795).
  *
  * FE 원칙이 "점수가 아니라 Take 간 변화"라 총점 줄은 없습니다 (CLAUDE.md).
  * 시선 엔진이 다른 Take끼리는 시선 값을 이어 그리지 않습니다 — 같은 사람도 엔진이 다르면 숫자가 달라집니다.
@@ -40,32 +31,10 @@ const METRICS: {
 
 const GAZE: MetricKey[] = ['audience_ratio', 'script_ratio'];
 
-export function ComparisonPage() {
-  const { id = '' } = useParams();
-  const history = useTakeHistory(id);
+/** 완료된 같은 피치의 Take만 받습니다. 거르는 일은 TakesPage가 합니다 */
+export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
   const [metric, setMetric] = useState<MetricKey>('audience_ratio');
   const tabsId = useId();
-
-  if (!history.data)
-    return (
-      <InfoPage title="Take 비교" logo={false}>
-        {isPitchMissing(history.error) ? (
-          <Card>
-            <div role="alert" className="flex flex-col gap-3">
-              <p className="font-bold">피치를 찾을 수 없어요.</p>
-              <p className="text-sm text-stone">지워졌거나 열 수 없는 피치예요.</p>
-              <div>
-                <ButtonLink to="/">내 피치로</ButtonLink>
-              </div>
-            </div>
-          </Card>
-        ) : (
-          <QueryState query={history} />
-        )}
-      </InfoPage>
-    );
-
-  const rows = completedTakes(history.data.takes);
   const latestEngine = latestGazeEngine(rows);
   const m = METRICS.find((x) => x.key === metric)!;
   // 오래된 Take부터 그립니다
@@ -74,7 +43,7 @@ export function ComparisonPage() {
   const offEngine = rows.filter((r) => r.gaze_engine !== null && gazeOffEngine(r, latestEngine));
 
   return (
-    <InfoPage title="Take 비교" logo={false}>
+    <>
       {rows[0] && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
           <p className="min-w-0 font-bold [overflow-wrap:anywhere]">{rows[0].pitch_title}</p>
@@ -84,7 +53,19 @@ export function ComparisonPage() {
 
       {rows.length < 2 ? (
         <Card>
-          <Mascot who="pico">비교하려면 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?</Mascot>
+          <Mascot who="pico">
+            비교하려면 완료된 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?
+          </Mascot>
+          {rows.map((r) => (
+            <Link
+              key={r.take_id}
+              to={`/takes/${encodeURIComponent(r.take_id)}`}
+              aria-label={`Take ${r.take_number} 리포트 보기`}
+              className="inline-flex min-h-11 w-fit items-center border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+            >
+              Take {r.take_number} 리포트 보기 →
+            </Link>
+          ))}
         </Card>
       ) : (
         <>
@@ -211,7 +192,10 @@ export function ComparisonPage() {
                         {x.label}
                       </th>
                     ))}
-                    <th className="py-2 font-bold">미션</th>
+                    <th className="py-2 pr-4 font-bold">미션</th>
+                    <th scope="col" className="py-2 font-bold">
+                      리포트
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="tabular">
@@ -247,10 +231,19 @@ export function ComparisonPage() {
                             </td>
                           );
                         })}
-                        <td className="py-3">
+                        <td className="py-3 pr-4">
                           {r.missions_total === 0
                             ? '—'
                             : `${r.missions_achieved} / ${r.missions_total}`}
+                        </td>
+                        <td className="py-3">
+                          <Link
+                            to={`/takes/${encodeURIComponent(r.take_id)}`}
+                            aria-label={`Take ${r.take_number} 리포트 보기`}
+                            className="inline-flex min-h-11 items-center whitespace-nowrap font-bold text-ink underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+                          >
+                            리포트 보기 →
+                          </Link>
                         </td>
                       </tr>
                     );
@@ -267,6 +260,6 @@ export function ComparisonPage() {
           </Card>
         </>
       )}
-    </InfoPage>
+    </>
   );
 }

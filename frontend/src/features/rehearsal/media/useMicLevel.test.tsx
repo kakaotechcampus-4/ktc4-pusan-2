@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AudioInputMeter } from '../prepare/AudioInputMeter';
-import { useMicLevel } from './useMicLevel';
+import { silenceText, useMicLevel } from './useMicLevel';
 
 const fixture = vi.hoisted(() => ({
   db: -30,
@@ -194,4 +194,19 @@ it('keeps zero input and the existing error guidance when meter initialization f
   expect(host.querySelector('[role="alert"]')!.textContent).toContain(
     '마이크 음량을 측정하지 못했어요',
   );
+});
+
+it('counts the silence warning only from when counting started — not from page load', () => {
+  // 페이지를 연 뒤로 42초 조용했지만, 읽기를 누른 지 3초면 아직 경고하지 않습니다
+  expect(silenceText(42_000, 100_000, 97_000)).toBe('');
+  // 읽기를 누른 뒤로도 10초 조용하면 그 10초를 알립니다
+  expect(silenceText(42_000, 100_000, 90_000)).toBe('10초 동안 소리가 들어오지 않습니다');
+  // 읽는 중에 말했다면 그 뒤로만 셉니다
+  expect(silenceText(9_000, 100_000, 50_000)).toBe('9초 동안 소리가 들어오지 않습니다');
+});
+
+it('does not warn while not counting, and counts from the start when no start is given', () => {
+  expect(silenceText(42_000, 100_000, null)).toBe('');
+  expect(silenceText(42_000, 100_000, undefined)).toBe('42초 동안 소리가 들어오지 않습니다');
+  expect(silenceText(5_000, 100_000, undefined)).toBe('');
 });

@@ -6,7 +6,7 @@
     --color-stage-panel: #ffffff;
     --color-stage-deep: #f1f0eb;
     --color-ink-stage: #17191e;
-    --color-stone: #6b7280;
+    --color-stone: #626976;
     --stage-line: 2px solid var(--color-ink-stage);
     --rail-w: clamp(200px, 18vw, 320px);
     /* 코치 확대분은 슬라이드 행이 받는다. 대본 예약 행과 하단 좌표는 유지한다. */
@@ -227,6 +227,10 @@
     color: var(--color-gaze-screen);
   }
 
+  .stage-live .rail .legend .script-gaze::before {
+    color: var(--color-gaze-script);
+  }
+
   .stage-live .rail .legend .unknown::before {
     color: var(--color-gaze-unknown);
     border-top-style: solid;
@@ -245,6 +249,7 @@
 
   .stage-live[data-gaze='AUDIENCE'] .rail .legend .audience,
   .stage-live[data-gaze='SCREEN'] .rail .legend .screen,
+  .stage-live[data-gaze='SCRIPT'] .rail .legend .script-gaze,
   .stage-live[data-gaze='UNKNOWN'] .rail .legend .unknown {
     background: var(--color-ink-stage);
     color: var(--color-stage-panel);

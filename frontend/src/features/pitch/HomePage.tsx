@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HomeSurveyNotice } from './HomeSurveyNotice';
+import { DeletePitchDialog } from './DeletePitchDialog';
+import type { HomePitch } from '@/types/home';
 import { Link } from 'react-router';
 import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
@@ -13,16 +16,60 @@ export function HomePage() {
   const home = usePitchList();
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
+  const listRef = useRef<HTMLUListElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  /** 지울지 묻는 피치. `opener` 는 메뉴를 연 ··· 버튼입니다 (메뉴가 닫히며 초점을 돌려 둡니다) */
+  const [deleting, setDeleting] = useState<{
+    pitch: HomePitch;
+    index: number;
+    opener: HTMLElement | null;
+  } | null>(null);
+  const [deleted, setDeleted] = useState('');
+  /** 창을 내린 뒤 초점을 둘 곳. 창이 문서에서 빠진 다음(아래 effect)에 옮깁니다 */
+  const focusAfter = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (deleting) return;
+    focusAfter.current?.();
+    focusAfter.current = null;
+  }, [deleting]);
+
+  const cancelDelete = () => {
+    const opener = deleting?.opener;
+    focusAfter.current = () => opener?.focus();
+    setDeleting(null);
+  };
+  // 지운 줄의 ··· 는 사라졌습니다. 같은 자리에 온 다음 줄(마지막이었으면 윗줄), 줄이 없으면 제목으로 옮깁니다.
+  // 목록 알림(setQueryData)과 창 닫기는 따로 그려져 지운 줄이 아직 남아 있을 수 있어, 지운 id 의 줄은 걸러서 고릅니다
+  const finishDelete = () => {
+    if (!deleting) return;
+    const { index, pitch } = deleting;
+    focusAfter.current = () => {
+      const rows = [
+        ...(listRef.current?.querySelectorAll<HTMLElement>(':scope > li') ?? []),
+      ].filter((row) => row.dataset.pitchId !== pitch.pitch_id);
+      const row = rows[Math.min(index, rows.length - 1)];
+      (row?.querySelector<HTMLElement>('a, button') ?? headingRef.current)?.focus();
+    };
+    setDeleted(`‘${pitch.pitch_title}’ 피치를 삭제했어요.`);
+    setDeleting(null);
+  };
   return (
     // 넓고 높은 창(one-screen, index.css)은 한 화면에 고정합니다 — 남은 높이만 받고, 피치가 많으면 목록 안에서만 스크롤됩니다.
     // flex-1 의 basis 0% 는 부모(min-h-dvh) 높이가 정해지지 않아 내용 높이로 풀려 basis-0 을 따로 줍니다
     <div className="pitch-create flex flex-1 flex-col bg-greige text-ink one-screen:min-h-0 one-screen:basis-0">
       <HomeSurveyNotice />
-      <main className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 one-screen:flex one-screen:min-h-0 one-screen:flex-col lg:px-10 one-screen:pb-5">
+      <main
+        id={MAIN_ID}
+        tabIndex={-1}
+        className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 one-screen:flex one-screen:min-h-0 one-screen:flex-col lg:px-10 one-screen:pb-5"
+      >
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="mb-2 font-mono text-[10px] tracking-widest text-ink/80">MY PITCHES</p>
-            <h1 className="text-3xl font-bold">내 피치</h1>
+            <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold">
+              내 피치
+            </h1>
             <p className="mt-3 text-sm text-ink/80">
               {/* 목록 위 안내를 여기로 올려 목록을 길게 씁니다. 피치가 없으면 가리킬 줄이 없어 처음 문구를 둡니다 */}
               {data?.pitches.length
@@ -92,9 +139,23 @@ export function HomePage() {
                 className="mt-5 one-screen:flex one-screen:min-h-0 one-screen:flex-1 one-screen:flex-col"
               >
                 {data.pitches.length ? (
-                  <ul className="divide-y divide-line border-2 border-ink bg-white one-screen:min-h-0 one-screen:overflow-y-auto">
+                  <ul
+                    ref={listRef}
+                    className="divide-y divide-line border-2 border-ink bg-white one-screen:min-h-0 one-screen:overflow-y-auto"
+                  >
                     {data.pitches.map((pitch, index) => (
-                      <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
+                      <HomePitchCard
+                        key={pitch.pitch_id}
+                        pitch={pitch}
+                        index={index}
+                        onDelete={(target) =>
+                          setDeleting({
+                            pitch: target,
+                            index,
+                            opener: document.activeElement as HTMLElement | null,
+                          })
+                        }
+                      />
                     ))}
                   </ul>
                 ) : (
@@ -111,6 +172,10 @@ export function HomePage() {
                   </div>
                 )}
               </section>
+              {/* 지운 줄은 말없이 사라져서, 화면 낭독기에는 지웠다고 알립니다 */}
+              <p role="status" className="sr-only">
+                {deleted}
+              </p>
             </>
           )
         )}
@@ -145,6 +210,13 @@ export function HomePage() {
         </div>
       </footer>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
+      {deleting && (
+        <DeletePitchDialog
+          pitch={deleting.pitch}
+          onCancel={cancelDelete}
+          onDeleted={finishDelete}
+        />
+      )}
     </div>
   );
 }

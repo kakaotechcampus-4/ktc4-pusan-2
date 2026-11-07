@@ -21,6 +21,8 @@ APP_LOGGER = "pitch_coach_backend"
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 # 이미 단 핸들러를 알아보는 이름. 앱이 여러 번 떠도(테스트) 하나만 단다
 _HANDLER_NAME = "pitch_coach_backend"
+# 쿼리에 구글 인가 코드와 state 가 실려 오는 경로. API 접두사는 core 가 알 필요가 없어 끝만 본다
+_OAUTH_CALLBACK_PATH = "/auth/google/callback"
 
 
 class _ServerExceptionFilter(logging.Filter):
@@ -35,6 +37,19 @@ class _ServerExceptionFilter(logging.Filter):
             # 다른 핸들러가 먼저 포맷한 traceback도 재사용하지 않는다.
             record.exc_text = None
             record.stack_info = None
+        return True
+
+
+class _OAuthCallbackAccessFilter(logging.Filter):
+    """구글 콜백의 `code` · `state` 를 접근 로그에 남기지 않는다. 경로와 상태 코드는 남긴다."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn 접근 로그의 인자는 (클라이언트, 메서드, 경로?쿼리, HTTP 버전, 상태 코드)다
+        args = record.args
+        if isinstance(args, tuple) and len(args) == 5 and isinstance(args[2], str):
+            path = args[2].partition("?")[0]
+            if path.rstrip("/").endswith(_OAUTH_CALLBACK_PATH):
+                record.args = (*args[:2], path, *args[3:])
         return True
 
 
@@ -84,6 +99,9 @@ def configure_logging(level: str) -> None:
     server_logger = logging.getLogger("uvicorn.error")
     if not any(isinstance(item, _ServerExceptionFilter) for item in server_logger.filters):
         server_logger.addFilter(_ServerExceptionFilter())
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(item, _OAuthCallbackAccessFilter) for item in access_logger.filters):
+        access_logger.addFilter(_OAuthCallbackAccessFilter())
     if any(handler.get_name() == _HANDLER_NAME for handler in logger.handlers):
         return
     handler = logging.StreamHandler()

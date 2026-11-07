@@ -15,6 +15,8 @@ import { Button } from '@/shared/ui/Button';
  * 안내문을 고치면 `TEST_CONSENT_VERSION` 을 올립니다. BE 가 동의한 안내문 버전을 같이 남깁니다.
  */
 export const TEST_CONSENT_VERSION = 1;
+/** 설문 답을 두는 기한. 동의 안내와 피치 삭제 확인 창(`DeletePitchDialog`)이 같은 값을 씁니다. 임시 값이라 BE 삭제 일정과 함께 정합니다 */
+export const SURVEY_RETENTION_UNTIL = '2026년 12월 31일';
 const PENDING_SHOWN = 3;
 
 export function HomeSurveyNotice() {
@@ -167,7 +169,7 @@ function ConsentDialog({ onAgreed, onClose }: { onAgreed: () => void; onClose: (
             <div>
               <dt className="font-bold">언제까지 두나요</dt>
               <dd className="mt-1">
-                설문 답과 참여 기록은 2026년 12월 31일까지 보관한 뒤 지웁니다.
+                설문 답과 참여 기록은 {SURVEY_RETENTION_UNTIL}까지 보관한 뒤 지웁니다.
               </dd>
             </div>
           </dl>

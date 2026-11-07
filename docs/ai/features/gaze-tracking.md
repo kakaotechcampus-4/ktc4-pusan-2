@@ -1,10 +1,8 @@
 # 시선 (gaze) 설계
 
-> **이 문서는** 시선 기능의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
-> **기준 범위**: 시선 기능의 목표 설계다. 브라우저 엔진(카메라 → 1초 기록)과 서버 판정 모듈(1초 기록 → 1초 판정 결과 · Take 지표)을 함께 다룬다. 기능 사이 공통 계약(1초 원자료 모양 · 1초 판정 결과 형식 · 에러 · meta · 시간 예산 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
+> **기준 범위**: 시선 기능의 기준 설계다. 브라우저 엔진(카메라 → 1초 기록)과 서버 판정 모듈(1초 기록 → 1초 판정 결과 · Take 지표)을 함께 다루고, 기능 사이 공통 계약은 `architecture.md`를 따른다.
 > **한 줄 요약**: 브라우저가 카메라로 발표자가 청중 · 화면 · 대본 · 그 밖 중 어디를 보는지 1초마다 기록하고, 서버 판정 모듈이 그 기록으로 대본 응시 · 눈맞춤 부족 같은 시선 문제와 말하면서 대본을 읽는 습관(대본 의존)을 판정한다.
-> **기준값**: 판정 수치(창 길이 · 이어짐 기준 시간 · 비율 기준 · 측정 불가 기준 · 1초 기록을 만드는 프레임 수 · 득표율)는 서버는 서비스 `features/gaze/config.py`, 브라우저 엔진은 `configs/*.yaml`에서 만든 `defaults.generated.ts`에만 두고, 이 문서에는 지표와 나쁜 방향만 쓴다. 문서의 숫자는 BE · FE와 맞춰야 하는 통신 · 운영 값과 예시뿐이다.
-> **관련 Issue**: #153
+> **기준값**: 판정 수치(창 길이 · 이어짐 기준 시간 · 비율 기준 · 측정 불가 기준 · 1초 기록을 만드는 프레임 수 · 득표율)는 코드에만 두고(위치는 4-3), 이 문서에는 지표와 나쁜 방향만 쓴다. 문서의 숫자는 BE · FE와 맞춰야 하는 통신 · 운영 값과 예시뿐이다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -26,9 +24,7 @@
 
 # 1. 왜 필요한가
 ## 1-1. 배경
-발표 연습에서 가장 흔한 문제는 대본을 내려다보며 읽느라 청중을 보지 못하는 것이다. 사람 코치는 이것을 바로 알아채지만, 혼자 연습할 때는 스스로 알기 어렵다.
-웹캠 하나로 시선을 재려면 얼굴 영상을 다뤄야 한다. 얼굴 영상과 얼굴 측정값은 민감 정보라 서버로 보내거나 저장하면 안 된다. 그래서 판정의 앞부분(프레임 → 1초 기록)을 사용자 브라우저 안에서 돌리고, 서버에는 1초마다 상태 하나만 보낸다.
-같은 사람이라도 카메라 위치 · 자세 · 화면 크기가 매번 다르다. 그래서 고정된 각도 기준 대신 발표 전에 사용자마다 청중(카메라 렌즈) · 화면 중앙 · 대본을 보는 자세를 기준점으로 잡는다(보정).
+발표 연습에서 가장 흔한 문제는 대본을 내려다보며 읽느라 청중을 보지 못하는 것이다. 얼굴 영상과 얼굴 측정값은 민감 정보라, 판정의 앞부분(프레임 → 1초 기록)을 사용자 브라우저에서 돌리고 서버에는 1초 기록만 보낸다(4-3). 카메라 위치 · 자세 · 화면 크기가 매번 달라, 고정된 각도 대신 사용자마다 청중(카메라 렌즈) · 화면 중앙 · 대본을 보는 자세를 기준점으로 잡는다(보정).
 
 ## 1-2. 목표
 - 발표 중 1초마다 발표자가 청중(카메라) · 화면 · 대본 · 그 밖 중 어디를 보는지 판정한다.
@@ -46,12 +42,12 @@
 # 2. 용어
 | 용어 | 뜻 | 예 |
 |---|---|---|
-| 브라우저 엔진 | 사용자 브라우저의 Web Worker 안에서 프레임을 받아 1초 기록을 만드는 TS 코드. DOM 없이 돈다 | `GazeEngine` |
-| 서버 판정 모듈 | 1초 기록으로 1초 판정 결과 · Take 지표를 내는 Python 코어. AI 서비스의 `features/gaze/`에 있다 | `gaze.judge` |
+| 브라우저 엔진 | 브라우저 Web Worker에서 프레임 → 1초 기록을 만드는 TS 코드 | `GazeEngine` |
+| 서버 판정 모듈 | 1초 기록 → 1초 판정 결과 · Take 지표 (서비스 `features/gaze/`) | `gaze.judge` |
 | 보정 | 발표 전에 청중(카메라 렌즈) · 화면 중앙 · 대본 세 곳을 하나씩 보게 해 사용자마다 기준점 세 개를 잡는 것. 안내 순서는 카메라 화면(FE)이 정한다 | 지점마다 약 2초 |
-| 보정 모델 | 보정 결과(기준점의 고개 방향 + 얼굴 위치 · 크기 · 홍채 크기 · 거리). 얼굴 측정값이라 그 세션의 메모리에만 둔다 | `CalibrationModel` |
+| 보정 모델 | 보정 결과(기준점의 고개 방향 + 얼굴 위치 · 크기 · 홍채 크기 · 거리). 그 세션의 메모리에만 둔다(4-3) | `CalibrationModel` |
 | 보정 품질 | 보정이 얼마나 잘 됐는지 0–1. 실패면 0. BE가 발표 전 점검 결과로 저장한다 | `0.82` |
-| 1초 기록 | 1초 동안의 프레임 판정을 다수결로 모은 상태 하나와 그 근거. 발표 중에 기기를 떠나는 시선 값이다(발표 전에는 보정 결과 요약만 떠난다) | `{"t_ms": 40000, "state": "BOTTOM", ...}` |
+| 1초 기록 | 1초 동안의 프레임 판정을 다수결로 모은 상태 하나와 그 근거. 발표 중에 기기를 떠나는 시선 값이다(4-3) | `{"t_ms": 40000, "state": "BOTTOM", ...}` |
 | 엔진 상태 (`state`, 1초 기록) | `CAMERA` 청중 · `SCREEN` 화면 · `BOTTOM` 대본(화면 아래 대본 띠) · `OTHER` 그 밖 · `UNCERTAIN` 판정 보류 · `UNMEASURED` 잴 수 없음 | `BOTTOM` |
 | 판정 상태 (`state`, 1초 판정 결과) | 짧은 창에서 가장 많이 본 곳 `AUDIENCE` · `SCREEN` · `SCRIPT` · `AWAY`, 측정 불가면 `UNMEASURABLE`. 화면 상태 표시에 쓴다 | `SCRIPT` |
 | 방향 (`direction`) | `OTHER`일 때 발표자 기준 8방향 | `LEFT` |
@@ -80,13 +76,12 @@ flowchart LR
   C -- "장 · Take tally 합계" --> S["gaze.summarize · criteria"]
   S -- "시선 지표 · 판정 기준" --> TR["Take 결과"]
 ```
-1. **발표 전 점검 (브라우저 엔진)**: 엔진이 한 명인지 · 화면 가운데인지 · 인식할 수 있는 크기와 밝기인지 점검하고(준비 점검), 고개를 천천히 돌려 원을 채우게 해 어느 방향에서도 얼굴을 따라가는지 본다(고개 원, 막지 않음). 이어 청중(카메라 렌즈) · 화면 중앙 · 대본 세 곳을 하나씩 보게 해 기준점 세 개를 잡는다(보정, 안내 순서는 카메라 화면이 정한다). 보정은 발표할 그 브라우저 화면 배치에서 한다. 보정 모델은 그 세션의 메모리에만 두고, FE는 보정 품질(0–1)과 보정 결과 요약(엔진 버전 · 보정 상태)만 BE에 보낸다. 사용자마다 자세가 달라 고정 각도로는 판정할 수 없기 때문이다.
-2. **발표 중 (브라우저 엔진)**: 엔진이 프레임마다 고개 방향을 기준점과 비교해 상태를 정하고, 촬영 조건 감시가 신뢰도를 붙인다. 1초 동안의 프레임을 다수결로 모아 1초 기록 하나를 만든다. 얼굴이 잡힌 프레임이 기준 개수 미만이면 `UNMEASURED`, 이긴 상태의 득표율이 기준 미만이면 `UNCERTAIN`이다.
-3. **FE → BE**: FE는 엔진이 낸 1초 기록을 바꾸지 않고 1초마다 WS `metrics.gaze`에 싣는다(`architecture.md` 1-4 · 2절). 화면에 보이는 구역은 FE가 따로 묶어 보여 줘도 되지만 보내는 값은 엔진 값 그대로다.
-4. **BE**: 1초 기록을 진행 중 창(30초)에 쌓고 1초 원자료로 저장한 뒤, 같은 30초의 음량 기록과 함께 `/coach/evaluate`에 싣는다. 판정은 하지 않는다.
-5. **코치 → `gaze.judge`**: 코치가 요청마다 시선 모듈을 한 번 부른다. 모듈은 최근 창의 응시 비율 · 지금 이어지는 응시 · 대본 의존을 재고 다섯 문제를 판정해 1초 판정 결과 하나를 돌려준다. 새로 센 몫은 `tally`로 낸다.
-6. **코치**: `state`를 상태 표시에, 문제를 지적 후보에, 짧은 창 지표를 개입 효과에 쓰고, `tally`를 장 · Take 합계에 더한다.
-7. **Take 끝 (`gaze.summarize` · `criteria`)**: 코치가 장 · Take 합계로 시선 지표를 계산하고, 그 Take를 판정한 기준과 함께 Take 결과에 담는다. 리뷰는 이 값으로 청중 응시와 대본 의존을 판단한다.
+1. **발표 전 점검 (엔진)**: 준비 점검 → 고개 원 → 청중(카메라 렌즈) · 화면 중앙 · 대본 보정으로, 발표할 그 화면 배치에서 사용자마다 기준점 세 개를 잡는다. FE는 보정 품질(0–1) · 보정 결과 요약만 BE에 보낸다(5-6 · 12-1).
+2. **발표 중 (엔진)**: 프레임마다 고개 방향을 기준점과 비교하고, 1초 동안의 프레임을 다수결로 모아 1초 기록 하나를 만든다(6-1).
+3. **FE → BE**: 엔진의 1초 기록을 바꾸지 않고 1초마다 WS `metrics.gaze`에 싣는다(화면에 보이는 구역만 FE가 따로 묶어도 된다, `architecture.md` 1-4 · 2절).
+4. **BE**: 진행 중 창(30초)에 쌓고 원자료로 저장한 뒤, 같은 30초의 음량 기록과 함께 `/coach/evaluate`에 싣는다. 판정은 하지 않는다(12).
+5. **코치 → `gaze.judge`**: 최근 창의 응시 비율 · 이어지는 응시 · 대본 의존으로 다섯 문제를 판정해 1초 판정 결과 하나와 `tally`를 돌려준다(6-2 · 6-3). 코치는 `state`를 상태 표시에, 문제를 지적 후보에, 짧은 창 지표를 개입 효과에 쓴다.
+6. **Take 끝**: 코치가 장 · Take 합계로 `summarize` · `criteria`를 불러 Take 결과에 담고, 리뷰가 청중 응시와 대본 의존을 판단한다(6-4).
 
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
@@ -95,13 +90,15 @@ ai/research/gaze-tracking/
 ├─ README.md                               폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock                 Python 3.12, mediapipe 정확히 고정 (uv)
 ├─ configs/                                 엔진 · 평가의 기준값 원본 YAML (서버 판정 기준값은 서비스 features/gaze/config.py)
-├─ (서비스 ai/service/src/pitch_coach_ai/features/gaze/)   서버 판정 모듈 (연구 폴더 src/gaze/에서 폴더째 옮김, 테스트는 서비스 tests/unit/gaze/)
+├─ (서비스 ai/service/src/pitch_coach_ai/features/gaze/)   서버 판정 모듈 (테스트는 서비스 tests/unit/gaze/)
 │   ├─ schemas.py · core.py · config.py · version.py
 │   └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
 ├─ src/gaze_lab/                            Python 기준 구현(프레임 → 1초 기록) · 데이터셋 · 평가. 연구에 남는다
 ├─ tools/ · experiments/                    데모 · 자산 받기 · 생성기 · 비교 실험
 ├─ tests/lab/                               기준 구현과 생성 파일 (서버 판정 모듈 테스트는 서비스 tests/unit/gaze/)
-├─ reports/results/                         평가 결과 JSON (평가 데이터가 생기면)
+├─ reports/results/                         평가 결과 JSON (평가 데이터가 생기면 만든다)
+├─ artifacts/                               모델 파일 자리 (git 밖). manifest(*.json)만 커밋
+├─ run_demo.bat                             Windows Python 데모 (웹캠)
 └─ web/                                     브라우저 엔진 · Worker 원본, 연구 데모 · 브라우저 시험용 카메라 화면 · bench (Node 24)
 frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · Worker (AI 원본 복사) · 카메라 화면 (FE 담당, 11절)
 ```
@@ -125,9 +122,9 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 ## 4-3. 규칙과 이유
 | 규칙 | 이유 |
 |---|---|
-| 얼굴에서 나온 값(프레임 · 랜드마크 · 얼굴 측정값 · 보정 모델)은 기기 메모리에만 두고 저장 · 전송 · 로그하지 않는다. 엔진 코드가 저장 · 전송 API를 쓰면 테스트가 실패한다 | 민감 정보다. 기기를 떠나는 값을 1초 기록과 보정 결과 요약 두 가지로 묶어 두면 지켜야 할 곳이 적다 |
+| 얼굴에서 나온 값(프레임 · 랜드마크 · 얼굴 측정값 · 보정 모델)은 기기 메모리에만 두고 저장(서버 · 브라우저 저장소 모두) · 전송 · 로그하지 않는다. 기기를 떠나는 값은 발표 중의 1초 기록과 발표 전의 보정 결과 요약(보정 품질 · 엔진 버전 · 보정 상태)뿐이다. 엔진 코드가 저장 · 전송 API를 쓰면 테스트가 실패한다 | 민감 정보다. 기기를 떠나는 값을 1초 기록과 보정 결과 요약 두 가지로 묶어 두면 지켜야 할 곳이 적다 |
 | 발표를 막지 않는다. 이상한 1초 기록은 그 1초만 버리고, 조건이 나쁘면 "잴 수 없음"으로 남긴다 | 시선은 정보를 얻는 기능이지 발표를 통제하는 기능이 아니다 |
-| 서버 판정 모듈은 상대 import와 pydantic만 쓰고 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않는다. 시간은 입력의 `t_ms`뿐이다 (`architecture.md` 8절) | 같은 입력에 같은 결과가 나오고, 서비스로 폴더째 옮겨도 코드를 고치지 않는다 |
+| 서버 판정 모듈은 상대 import와 pydantic만 쓰고 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않는다. 시간은 입력의 `t_ms`뿐이다 (`architecture.md` 8절) | 같은 입력에 같은 결과가 나오고, 서비스 · 연구 폴더 어디서 불러도 같다 |
 | 판정 모듈은 다른 모듈 · 코치를 import하지 않는다. 발화 시간은 코치가 음량 기록에서 골라 `voiced`로 넘긴다 | 모듈끼리 묶이면 하나를 바꿀 때 다른 것이 깨진다 |
 | 서버 판정 기준값은 서비스 `features/gaze/config.py` 한 곳, 엔진 기준값은 `configs/*.yaml` → 생성 파일 `defaults.generated.ts` 한 곳이다. 생성 파일이 낡으면 테스트가 실패한다 | 기준이 두 벌이면 발표 중 판정과 리포트가 어긋난다 |
 | 엔진은 자기 폴더와 MediaPipe만 import하고 DOM 없이(Worker 전역만) 컴파일된다 | FE로 폴더째 옮겨도 엔진 안을 고치지 않는다 |
@@ -158,7 +155,7 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 | `direction` | enum · null | 아니오 | `OTHER`일 때 그 1초에서 가장 많이 나온 방향(발표자 기준 `RIGHT` · `UP_RIGHT` · `UP` · `UP_LEFT` · `LEFT` · `DOWN_LEFT` · `DOWN` · `DOWN_RIGHT`), 아니면 null | `LEFT` |
 | `confidence` | 0–1 | 아니오 | 얼굴이 잡힌 프레임 중 이긴 상태에 투표한 비율. `UNMEASURED`면 0. 없으면 0 | `0.83` |
 | `reliability` | 0–1 | 아니오 | 그 1초 프레임들의 촬영 조건 신뢰도 평균. 없으면 0 | `0.95` |
-| `issues` | list str | 아니오 | 그 1초 프레임에서 엔진의 채택 기준을 넘게 나온 촬영 조건 이슈 `TOO_FAR` · `TOO_CLOSE` · `OFF_CENTER` · `LOW_VALID_RATIO` · `NOISY_TRACKING` · `FACE_LOST` · `FACE_REPLACED` · `MOVED_TOO_FAR` · `HEAD_TURNED`. 모르는 값은 무시한다. null이면 빈 목록 | `["OFF_CENTER"]` |
+| `issues` | list str | 아니오 | 그 1초 프레임에서 엔진의 채택 기준을 넘게 나온 촬영 조건 이슈 값은 5-6 '촬영 조건 이슈' 표. 모르는 값은 무시한다. null이면 빈 목록 | `["OFF_CENTER"]` |
 | `frames` | int | 아니오 | 그 1초에 들어온 프레임 수. 없으면 0 | `8` |
 
 **`judge(inputs, t_ms, config)`의 `inputs`** (코치가 만든다)
@@ -230,8 +227,8 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
   "t_ms": 41000,
   "since_ms": 40000,
   "records": [
-    {"t_ms": 39000, "duration_ms": 1000, "state": "BOTTOM", "direction": null, "confidence": 0.9, "reliability": 0.96, "issues": [], "frames": 12},
-    {"t_ms": 40000, "duration_ms": 1000, "state": "BOTTOM", "direction": null, "confidence": 0.83, "reliability": 0.95, "issues": [], "frames": 12}
+    {"t_ms": 39000, "duration_ms": 1000, "state": "BOTTOM", "direction": null, "confidence": 0.9, "reliability": 0.96, "issues": [], "frames": 8},
+    {"t_ms": 40000, "duration_ms": 1000, "state": "BOTTOM", "direction": null, "confidence": 0.83, "reliability": 0.95, "issues": [], "frames": 8}
   ],
   "voiced": [{"t_ms": 39000, "voiced_ms": 760}, {"t_ms": 40000, "voiced_ms": 820}]
 }
@@ -294,7 +291,7 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 ```
 
 ## 5-6. 브라우저 엔진 API (FE ↔ 엔진)
-FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/contract.ts` · `worker/protocol.ts`이고, 문서와 다르면 코드가 맞다. 엔진은 DOM 없이 Web Worker 안에서 돈다. 엔진 안에서 쓰는 값(프레임 · 랜드마크 · 프레임 판정 · 보정 모델)은 기기를 떠나지 않고, 밖으로 나가는 것은 1초 기록(5-2)과 보정 결과 요약(12-1)뿐이다.
+FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/contract.ts` · `worker/protocol.ts`이고, 문서와 다르면 코드가 맞다. 엔진은 DOM 없이 Web Worker 안에서 돈다. 기기를 떠나는 값의 규칙은 4-3이다(밖으로 나가는 모양은 1초 기록 5-2, 보정 결과 요약 12-1).
 
 **시작** `createClassifier(opts): Promise<GazeEngine<ImageBitmap>>`
 
@@ -490,7 +487,7 @@ uv sync                                  # Python 3.12, mediapipe 1.0.1 고정
 uv run python tools/fetch_assets.py      # 모델 · 테스트 얼굴(합성, git 밖)을 받고 sha256 확인
 cd web && npm ci
 ```
-- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`.
+- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`. macOS · Linux에서도 같은 명령을 그대로 쓴다.
 - 서버 판정 모듈의 의존성은 pydantic 하나다. 그 테스트는 서비스 공통 `tests/conftest.py`가 앱을 불러오므로 `ai/service`에서 `uv sync`한 개발 환경으로 돈다. 기준 구현(`tests/lab`)은 mediapipe · numpy · opencv와 테스트 얼굴이 필요하고, 얼굴 사진이 필요한 테스트는 `fetch_assets.py`를 돌리지 않으면 이유를 보이고 건너뛴다.
 - 시선은 LLM을 쓰지 않아 `ai/.env`가 필요 없다.
 
@@ -500,21 +497,19 @@ cd web && npm ci
 | 전체 Python 테스트 (연구 폴더에서) | `uv run python -m pytest` | 기준 구현 · 생성 파일 최신 검사 통과 |
 | 린트 | `uv run ruff check src tests tools experiments` | 지적 없음 |
 | 엔진 · Worker 테스트 | `cd web && npm test` · `npm run typecheck` · `npm run lint` | 엔진(Python 기준 답과 일치) · FE 계약 · 경계 테스트 통과 |
-| 실제 브라우저 확인 | `cd web && npm run smoke` · `npm run smoke:prod`(격리 헤더 없이) | 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김 항목 통과 (Chrome) |
 | 프레임 지연 재기 | `cd web && npm run bench` | Worker 한 프레임 중앙값 · p95 (8절 예산과 비교) |
-| 기준값 · 기준 답 다시 만들기 | `cd web && npm run fixtures` | `configs/`나 `gaze_lab`을 바꾼 뒤 `defaults.generated.ts` · parity 기준 답을 다시 만든다. 낡으면 `tests/lab/test_web_engine_sources.py`가 실패한다 |
-| 데모 | `run_demo.bat`(Python, 웹캠) · `cd web && npm run dev` (브라우저 `http://localhost:5180`) | 준비 점검 → 보정 → 실시간 판정 화면 |
+| 실제 브라우저 확인(`npm run smoke` · `smoke:prod`) · 기준값 · 기준 답 다시 만들기(`npm run fixtures`) · 데모(`run_demo.bat`, macOS · Linux는 `uv run python tools/pipeline_demo.py` · `npm run dev`) | `ai/research/gaze-tracking/README.md` 5절 | 그 README의 기대 결과 |
 
 - 계약 테스트: `examples/`의 `judge` 입력(판정 창 전체) · 출력, `criteria()` 출력(다섯 문제), `summarize` 입력 · 출력을 공통 계약 테스트 틀로 검사한다. 예시는 `config.py`의 실제 기준값으로 만든다.
 - 판정 테스트가 볼 것: 문제 없는 1초, 측정 불가(`UNCERTAIN` · `UNMEASURED` · 기록 누락 · 같은 1초 두 번), 이어짐 끊김(`UNCERTAIN` · 빈 1초 · `OTHER` 방향 변화), Take 시작 직후 억제, 대본 의존 기준 시간 경계와 구간이 끝날 때 세기, 분모 0, 커서(요청이 빠져 1초가 여러 개, 같은 입력 두 번 = 같은 결과, 돌려준 커서로 다시 부르면 이미 센 몫이 나오지 않음). 테스트 이름은 동작을 문장으로 짓는다(예: `test_reading_run_counts_when_spoken_script_run_ends`).
 
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
-- **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 '말한 1초' 기준값을 서비스 `features/volume/config.py`와 바로 비교한다(`architecture.md` 6-2)). 자기 HTTP 엔드포인트는 없다. 코치 라우터(`api/coach.py`)가 앱을 불러올 때 만드는 `Judges` 묶음(`JUDGES`)에 `judge` · `summarize` · `criteria`를 넣어 `/coach/evaluate` · `/coach/finalize`에서 코치에 넘긴다(`coach-agent.md` 11절). 코치 연구 폴더의 재생 · 실험(`real_judges()`)도 이 모듈을 쓴다. 의존성은 pydantic 하나다.
+- **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`, 테스트는 `tests/unit/gaze/`에 있다. `test_contract.py`는 '말한 1초' 기준값을 서비스 `features/volume/config.py`와 바로 비교한다(`architecture.md` 6-2). 자기 HTTP 엔드포인트는 없다. 코치 라우터(`api/coach.py`)가 앱을 불러올 때 만드는 `Judges` 묶음(`JUDGES`)에 `judge` · `summarize` · `criteria`를 넣어 `/coach/evaluate` · `/coach/finalize`에서 코치에 넘긴다(`coach-agent.md` 11절). 코치 연구 폴더의 재생 · 실험(`real_judges()`)도 이 모듈을 쓴다. 의존성은 pydantic 하나다.
 - **브라우저 엔진 · Worker**: `web/src/engine/` · `web/src/worker/`가 원본이고 AI가 고친다. FE는 `frontend/src/vendor/gaze/`로 복사해 쓰고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. FE는 엔진의 `index.ts` · `contract.ts`와 Worker의 `protocol.ts`(메시지) · `gaze.worker.ts`(엔트리)만 쓴다(5-6 'Worker 메시지'). 엔진 · Worker 안은 FE에서 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다.
-- **카메라 화면**(`camera/`: 준비 점검 · 고개 원 · 보정 · 결과 카드의 흐름 · 그리기 · 안내 문구)은 FE 담당이다(#611). FE 사본이 원본이 되고 FE가 고친다. 화면은 엔진 공개 입구와 5-6의 '화면이 쓰는 엔진 코드'만으로 만든다. 연구 폴더의 `web/src/camera/`는 연구 데모와 브라우저 시험(`npm run smoke`)용으로만 남고, FE와 동기화하지 않는다(FE 화면을 데모로 보고 싶으면 그때 받아 온다). FE가 넘겨받기 전까지는 지금처럼 연구 폴더 판을 복사한다.
+- **카메라 화면**(`camera/`: 준비 점검 · 고개 원 · 보정 · 결과 카드의 흐름 · 그리기 · 안내 문구)은 FE 담당이다. FE 사본(`frontend/src/vendor/gaze/camera/`)이 원본이고 FE가 고친다(`frontend/src/vendor/gaze/README.md`). 화면은 엔진 공개 입구와 5-6의 '화면이 쓰는 엔진 코드'만으로 만든다. 연구 폴더의 `web/src/camera/`는 연구 데모와 브라우저 시험(`npm run smoke`)용이고, FE와 동기화하지 않는다(FE 화면을 데모로 보고 싶으면 그때 받아 온다).
 
-**옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 있고 아래 '옮긴 뒤 확인' 1을 통과해 옮겼다(2026-10-26). 2(코치 연구 폴더 재생)도 마쳤다(2026-10-26, 코치 연구 폴더 README 7절). 코치 앱 연결(`/coach/evaluate` · `/coach/finalize`)은 #685로 마쳤다. 3(FE) · 4(연구 도구와 FE 사본 대조)는 이어지는 작업이다.
+**배포 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓰고, `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트를 두며, 아래 서비스 배포 전 확인을 통과한다. 아래 '이어지는 회귀 확인'(FE 확인과 연구 도구 · FE 사본 대조)은 후속 작업이다.
 
 **환경변수**: 시선 판정 모듈은 환경변수를 읽지 않는다. 서비스 공통 환경변수는 `architecture.md` 10절이다.
 
@@ -524,17 +519,18 @@ cd web && npm ci
 |---|---|---|
 | 모델 · 런타임 파일 | `face_landmarker.task`와 MediaPipe wasm을 빌드 단계에서 해시를 확인한 뒤 `public/models/`에 넣는다. 경로나 파일 이름에 버전을 붙인다. CDN은 쓰지 않는다 | 다른 판의 모델이면 랜드마크가 달라져 판정이 바뀐다 |
 | `@mediapipe/tasks-vision` | `1.0.1` 정확히 고정 | 연구 Python(mediapipe 1.0.1)과 같은 판이어야 기준 답과 같다 |
-| 보정 모델 저장 | 보정 모델은 브라우저 저장소(IndexedDB · localStorage)에 두지 않는다. 예전에 IndexedDB(`zoneRefs`)에 저장한 것은 브라우저 DB 버전을 올리며 지운다 | 보정 모델에 얼굴 측정값이 들어 있다(4-3) |
+| 보정 모델 저장 | 보정 모델은 브라우저 저장소(IndexedDB · localStorage)에 두지 않는다 | 보정 모델에 얼굴 측정값이 들어 있다(4-3) |
 | 생성 파일 | `defaults.generated.ts`와 엔진 `__tests__/fixtures/`는 FE의 prettier · oxlint 대상에서 뺀다. 생성은 연구 폴더 `tools/`가 계속 한다 | 손으로 고치지 않는 파일이다 |
 | 압축 · 캐시 | Caddy에서 정적 파일 압축(`encode`)을 켠다(wasm 11.8 MB → 압축 3.4 MB). `/models/`에 긴 캐시 헤더 | 첫 로딩 약 16 MB를 줄인다 |
 | 격리 헤더 | COOP/COEP는 넣지 않는다 | 엔진은 교차 출처 격리 없이 돈다(`smoke:prod`). COEP는 Safari 미지원 · OAuth 팝업 등에 영향을 준다 |
 | CSP를 쓸 때 | `script-src 'wasm-unsafe-eval'`, `worker-src 'self'` | wasm · Worker 실행 |
 
-**옮긴 뒤 같은 결과인지 확인**
-1. 서비스: 옮긴 `tests/unit/gaze/`가 (경로를 고친 뒤) 통과하고, 코어 경계 테스트가 새 위치를 본다.
-2. 코치 연구 폴더: 연구용 판정 대역과 이 모듈에 같은 입력을 넣어 판정을 비교하고 달라진 점을 연구 폴더 README에 적는다. 그 뒤 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌린다(`coach-agent.md` 13절).
-3. FE: `tsc -b` · `oxlint --max-warnings=0` · `vitest`(엔진 테스트 포함)가 통과하고, FE 빌드로 `smoke:prod`와 같은 흐름(격리 없이 준비 점검 → 실시간 → 카메라 끊김)을 확인한다. Chrome 말고 지원할 브라우저에서도 본다.
-4. 연구 폴더: `tools/export_config.py` · `make_fixtures.py`가 만든 파일과 FE 사본의 기준 커밋이 같은지 본다.
+**서비스 배포 전 확인**
+- 서비스: `tests/unit/gaze/`가 통과하고, 코어 경계 테스트가 코어 위치를 본다.
+
+**이어지는 회귀 확인**
+- FE: `tsc -b` · `oxlint --max-warnings=0` · `vitest`(엔진 테스트 포함)가 통과하고, FE 빌드로 `smoke:prod`와 같은 흐름(격리 없이 준비 점검 → 실시간 → 카메라 끊김)을 확인한다. Chrome 말고 지원할 브라우저에서도 본다.
+- 연구 폴더: `tools/export_config.py` · `make_fixtures.py`가 만든 파일과 FE 사본의 기준 커밋이 같은지 본다.
 
 **증상별 원인**
 
@@ -576,20 +572,20 @@ sequenceDiagram
     C-->>BE: take_result (areas.GAZE · criteria.GAZE)
     BE->>BE: take_ai_results · take_summaries 시선 칸 (동의 없는 Take면 take_metric_seconds 지움)
 ```
-BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절, 코치 쪽 저장은 `coach-agent.md` 12절에 있다.
+BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절, 코치 쪽 저장은 `coach-agent.md` 12절에 있다. 그림의 테이블 · 칸 이름은 지금 저장 위치(BE 소유)다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래는 시선이 만들거나 시선에서 나온 것만이다.
+이 기능의 저장 요구는 AI가 정하고, 테이블 · 칸 · 형식 · 마이그레이션 · 구현 · 운영은 BE가 정한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래 저장 요구와 저장 위치는 저장 계약이며(지금 BE 구현과 맞는지 확인하지 못한 항목은 "BE 구현 확인 필요"로 따로 표시한다), 바꾸려면 BE와 합의한다. 아래는 시선이 만들거나 시선에서 나온 것만이다.
 
-| 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
+| 데이터 | 언제 생기나 | 저장 위치(지금 구현 또는 확인 필요, BE 소유) | 저장 요구(남길 값 · 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 시선 1초 기록 (원자료) | WS `metrics`마다 | `take_metric_seconds.gaze` (JSONB, nullable) | 엔진의 1초 기록 그대로(5-2), BE는 해석하지 않는다. 잰 크기: 한 행 약 0.14 KB(방향 · 이슈가 있으면 약 0.18 KB), 한 시간 Take(3,600행) 약 0.5–0.65 MB | BE가 몇 초씩 모아 쓴다 · BE가 `replay`(`gaze_records`)로 읽는다 | `(take_id, t_ms)` 유일 제약, 같은 1초가 또 오면 먼저 저장한 것을 둔다 | Take와 함께. 얼굴 영상 · 랜드마크가 아닌 파생값(시선 구역 · 신뢰도)이다. 동의 없는 Take의 예외는 `architecture.md` 1-1 '지우기 · 보관' |
-| 보정 결과 요약 | 발표 전 점검 때 | `calibrations.gaze_confidence` (Float, 0–1, 보정 실패면 0), `calibrations.result` (JSONB) | `result`: `{engine_version, status, separability, loo_accuracy, warnings}`(`separability`는 보정 표본에서 카메라 · 대본 시선 무리의 중심 사이 거리 ÷ 무리 안 흩어짐으로 클수록 잘 갈린다, `loo_accuracy`는 보정 표본을 하나씩 빼고 나머지로 맞힌 비율 0–1) (예: `{"engine_version": "gaze_v1.1.0+head_pose+reference_anchor_v1", "status": "OK", "separability": "<엔진 값>", "loo_accuracy": 0.93, "warnings": []}`). `gaze_confidence`는 보정이 `OK`면 `loo_accuracy`(없으면 0), 아니면 0이다. 재측정 권장 보정으로 발표해도(7절) `gaze_confidence`는 0이고 `result.loo_accuracy`는 엔진 값을 그대로 둔다. 크기 0.3 KB 안팎 | FE가 보내고 BE가 쓴다 · 리포트, Take끼리 비교할 때 엔진 버전 확인 | Take마다 하나 | Take와 함께. **보정 모델(얼굴 위치 · 크기 · 홍채 · 거리)은 저장하지 않는다** |
+| 시선 1초 기록 (원자료) | WS `metrics`마다 | `take_metric_seconds.gaze` | 엔진의 1초 기록 그대로(5-2), BE는 해석하지 않는다. 잴 수 없어 FE가 null을 보낸 1초는 null. 잰 크기: 한 행 약 0.14 KB(방향 · 이슈가 있으면 약 0.18 KB), 한 시간 Take(3,600행) 약 0.5–0.65 MB | BE가 몇 초씩 모아 쓴다 · BE가 `replay`(`gaze_records`)로 읽는다 | `(take_id, t_ms)` 유일 제약, 같은 1초가 또 오면 먼저 저장한 것을 둔다 | Take와 함께. 얼굴 영상 · 랜드마크가 아닌 파생값(시선 구역 · 신뢰도)이다. 동의 없는 Take의 예외는 `architecture.md` 1-1 '지우기 · 보관' |
+| 보정 결과 요약 | 발표 전 점검 때 | `calibrations.gaze_confidence`, `calibrations.result` | `gaze_confidence`는 0–1 숫자(보정 실패면 0). `result`: `{engine_version, status, separability, loo_accuracy, warnings}`(`separability`는 보정 표본에서 카메라 · 대본 시선 무리의 중심 사이 거리 ÷ 무리 안 흩어짐으로 클수록 잘 갈린다, `loo_accuracy`는 보정 표본을 하나씩 빼고 나머지로 맞힌 비율 0–1) (예: `{"engine_version": "gaze_v1.1.0+head_pose+reference_anchor_v1", "status": "OK", "separability": "<엔진 값>", "loo_accuracy": 0.93, "warnings": []}`). `gaze_confidence`는 보정이 `OK`면 `loo_accuracy`(없으면 0), 아니면 0이다. 재측정 권장 보정으로 발표해도(7절) `gaze_confidence`는 0이고 `result.loo_accuracy`는 엔진 값을 그대로 둔다. 크기 0.3 KB 안팎 | FE가 보내고 BE가 쓴다 · 리포트, Take끼리 비교할 때 엔진 버전 확인 | Take마다 하나 | Take와 함께. 보정 모델은 저장하지 않는다(4-3) |
 | 시선 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.GAZE` · `criteria.GAZE` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: Take · 장마다 지표 7개 약 0.16 KB(장 10개면 약 1.8 KB), `criteria` 다섯 문제 약 0.8 KB | 코치가 만들고 BE가 쓴다 · 리뷰 · 코칭 계획 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
-| 리포트 요약 시선 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.audience_gaze` · `slide_gaze` · `script_gaze` (Integer, nullable), `script_dependency_count` (Integer, nullable) | `audience_ratio` · `screen_ratio` · `script_ratio` × 100 반올림, `reading_runs` (`architecture.md` 1-1 대응 표). 세 비율의 합은 100이 아니다(그 밖 응시 `away_ratio`는 칸이 없다). 시선을 잴 수 없었으면(지표가 null) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
+| 리포트 요약 시선 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.audience_gaze` · `slide_gaze` · `script_gaze`, `script_dependency_count` | `audience_ratio` · `screen_ratio` · `script_ratio` × 100을 반올림한 정수, `reading_runs` 정수 (`architecture.md` 1-1 대응 표). 세 비율의 합은 100이 아니다(그 밖 응시 `away_ratio`는 칸이 없다). 시선을 잴 수 없었으면(지표가 null) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
 | 시선 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `GAZE`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `GAZE`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
 | 진행 중 창 | Take 동안 | Take를 맡은 BE 프로세스 메모리 | 최근 30초 시선 · 음량 1초 기록 | BE | 같은 1초는 먼저 온 것 | Take가 끝나면 지운다 |
-| 보정 모델 | 발표 전 점검 때 | **저장하지 않는다**. 같은 브라우저 탭의 메모리에만 두고, 새 Worker에는 `calibrate(model)`이나 `restore`(구조 복제)로 넘긴다. 보정한 화면 배치 · 엔진 버전 · 엔진 설정 해시와 같을 때만 이어받는다(설정 해시는 FE가 비교한다, 5-6) | — | 엔진 | — | 탭을 닫거나 새로고침하거나 화면 배치가 바뀌면 다시 보정한다 |
+| 보정 모델 | 발표 전 점검 때 | 저장하지 않는다(4-3). 같은 브라우저 탭의 메모리에만 두고, 새 Worker에는 `calibrate(model)`이나 `restore`(구조 복제)로 넘긴다. 보정한 화면 배치 · 엔진 버전 · 엔진 설정 해시와 같을 때만 이어받는다(설정 해시는 FE가 비교한다, 5-6) | — | 엔진 | — | 탭을 닫거나 새로고침하거나 화면 배치가 바뀌면 다시 보정한다 |
 
 ## 12-2. 저장 규칙
 - 1초 기록은 엔진 값을 그대로 저장한다. 화면용 구역으로 바꾸거나 구간으로 접지 않는다(FE · BE 모두). 판정 기준이 바뀌어도 원자료로 다시 판정할 수 있게 하기 위해서다.
@@ -597,8 +593,8 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 - 카메라가 끊기거나 권한이 없어도 그때까지 잰 1초 기록은 버리지 않는다. 잴 수 있었는지는 판정 모듈이 측정 비율로 정한다.
 - 엔진 버전은 Take마다 `calibrations.result.engine_version`에 남긴다. 엔진이 바뀌면 같은 시선도 다른 상태로 판정될 수 있어, Take끼리 비교할 때 확인한다.
 - 시선 결과는 코치 응답의 `meta`(`criteria_versions.gaze` 포함)와 함께 저장된다(`coach-agent.md` 12-2).
-- 얼굴에서 나온 값(프레임 · 랜드마크 · 보정 모델)은 어느 테이블에도 저장하지 않는다. 브라우저 저장소(IndexedDB · localStorage)에도 두지 않는다.
-- 테이블 · 칸이 바뀌면 배포 전에 BE가 마이그레이션한다(`take_metric_seconds` · `calibrations` · `take_summaries`의 nullable 칸 포함). 저장 모양이 바뀌면 계약 변경이다.
+- 얼굴에서 나온 값은 어느 테이블 · 브라우저 저장소에도 두지 않는다(4-3).
+- 저장 요구가 바뀌면 계약 변경이다. 테이블 · 칸은 BE가 정하고, 바뀌면 배포 전에 BE가 마이그레이션한다.
 
 # 13. 품질 검증
 평가 데이터에는 가상 발표와 실제 리허설을 함께 둔다(`architecture.md` 12절). 얼굴 영상을 녹화하는 정답 데이터는 동의 · 보관 기간 · 삭제 방법을 정한 뒤에만 모으고, 정하기 전에는 녹화 · 저장하지 않는다.
@@ -653,5 +649,5 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | Take 지표 | `audience_ratio` · `screen_ratio` · `script_ratio` · `away_ratio` · `reading_ratio` · `reading_runs` · `measured_ratio` (Take · 장별) | 5-3 |
 | 버전 | `feature_version` `gaze-1.3` · `criteria_version` `gaze-1.3+<config 해시 12자리>` · 엔진 버전 `gaze_v1.1.0+head_pose+reference_anchor_v1` | 9절 |
 | 시간 · 크기 | 판정 밀리초 단위(evaluate BE 약 300 ms 안), 엔진 첫 로딩 약 16 MB · 초기화 제한 60초 · 프레임 예산 125 ms(초당 8프레임), 1초 기록 약 0.14 KB | 8절 |
-| 저장 | 1초 원자료 `take_metric_seconds.gaze` (`take_id`, `t_ms`), 보정 결과 `calibrations.gaze_confidence` · `result`, Take 지표 `take_ai_results`(`TAKE_RESULT`), 리포트 `take_summaries` 시선 칸 — 괄호는 유일 제약. 보정 모델은 저장하지 않음 | 12-1 |
+| 저장 | 저장 요구: 12-1(1초 기록은 Take와 시각마다 하나, 보정 결과 요약 · Take 지표 · 리포트 시선 값). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): 1초 원자료 `take_metric_seconds.gaze` (`take_id`, `t_ms`), 보정 결과 `calibrations.gaze_confidence` · `result`, Take 지표 `take_ai_results`(`TAKE_RESULT`), 리포트 `take_summaries` 시선 칸 — 괄호는 유일 제약. 보정 모델은 저장하지 않음 | 12-1 |
 | 의존성 | 서버 판정 모듈 pydantic 하나 · Python 3.12, 엔진 `@mediapipe/tasks-vision` 1.0.1 | 4-3 · 11절 |

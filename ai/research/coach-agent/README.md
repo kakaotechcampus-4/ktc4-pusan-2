@@ -76,7 +76,7 @@ coach-agent/
 | 옮긴 뒤 확인 | 결과 |
 |---|---|
 | 옮긴 코어 · 예시 · 프롬프트 | 이름만 바뀜(100%) |
-| 테스트 수 | 옮기기 전 605 passed = 옮긴 뒤 서비스 465 + 이 폴더 140 (+ 사본 검사 1). 그 뒤의 테스트 수는 기능 문서 10절 |
+| 테스트 수 | 옮기기 전 605 passed = 옮긴 뒤 서비스 465 + 이 폴더 140 (+ 사본 검사 1) |
 | `python -m coach_lab.replay` | 16/16 통과, 출력은 처리 시간(p50 · p95)만 다름 |
 | `evaluate --sweep` · `recovery_eval` · `coach_lab.examples` | 다시 만든 `take_result.json` · `recovery.json` · 예시가 옮기기 전과 같음 |
 
@@ -165,11 +165,12 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 
 - `.venv`는 git에 없습니다. 클론하거나 폴더를 옮긴 뒤에는 `uv sync`로 다시 만듭니다.
 - 1초 판단 · 재생 · Take 결과 실험은 LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 코칭 계획 실험과 live 테스트만 `ai/.env`의 `OPENAI_API_KEY` · `OPENAI_MODEL` · `OPENAI_BASE_URL`을 씁니다.
-- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …` 형태로 부릅니다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`.
+- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …` 형태로 부릅니다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`. macOS · Linux에서도 아래 명령을 그대로 씁니다.
 
 | 하는 일 | 명령 |
 |---|---|
 | 테스트 | `uv run python -m pytest` (실험 도구 `tests/lab`. 코어 단위 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/coach`) |
+| 판정 대역 테스트 (말 속도 · 소리 크기 대역) | `uv run python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judge_volume.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py` (대역은 `src/coach_lab/judges/`. 서비스 판정 모듈과 코치의 연결 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/coach/test_judges.py`) |
 | 실제 LLM으로 계획 한 번 (과금) | `uv run python -m pytest -m live` |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` |
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`, 설정 덮어쓰기: `--config my.json`) |

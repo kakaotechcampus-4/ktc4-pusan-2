@@ -755,7 +755,7 @@ def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
 
 def _log_in_browser(client: TestClient, db_session: Session, user: User) -> dict[str, str]:
     """`user` 의 Refresh · CSRF 쿠키를 client 에 심고 로그아웃에 쓸 헤더를 돌려준다."""
-    issued = auth_service._issue_session(db_session, user=user, device_id=uuid.uuid7())
+    issued = auth_service._issue_session(db_session, user_id=user.id, device_id=uuid.uuid7())
     db_session.commit()
     client.cookies.set(REFRESH_COOKIE_NAME, issued.refresh_token, path=REFRESH_COOKIE_PATH)
     client.cookies.set(CSRF_COOKIE_NAME, "csrf")

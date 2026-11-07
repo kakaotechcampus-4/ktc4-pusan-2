@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-other-speaker",
+  "set": "objectivity",
+  "group": "other_speaker",
+  "split": "dev",
+  "act": "should_not",
+  "title": "다른 사람 평가 인용 '친구가 시선이 좋다고 했어'(우선 개선) — 화자를 남기고 내용만 CONTRADICTED",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "친구가 Take 5 시선이 좋다고 했어",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "other-contradicted",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "dimension": "audience_gaze",
+          "verdict": "CONTRADICTED",
+          "has_evidence": true,
+          "text@": "OTHER_SPEAKER",
+          "speaker": "OTHER",
+          "speaker_label~": "친구"
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-denying-friend",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "친구(분)?(이|가|의 말이) 틀렸|그런 말을 안 했",
+        "grader": "regex",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

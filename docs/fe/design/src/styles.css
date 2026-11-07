@@ -48,7 +48,7 @@
 
   /* ── 글자 ──────────────────────────────────────────────────── */
   --color-ink: #2A2723;             /* 본문 */
-  --color-stone: #8C8375;           /* 보조 · 캡션 */
+  --color-stone: #696055;           /* 보조 · 캡션 */
   --color-ink-stage: #F5F0E9;       /* 무대 위 본문 */
 
   /* ── 강조 ──────────────────────────────────────────────────── */
@@ -56,11 +56,12 @@
   --color-coral-deep: #C9421C;      /* hover · 눌림 */
   --color-coral-wash: #F3DED5;      /* 배경 강조 */
 
-  /* ── 시선 상태 3색 ─────────────────────────────────────────────
+  /* ── 시선 상태 4색 ─────────────────────────────────────────────
      리허설 화면 테두리에만 씁니다. 다른 곳에서 쓰지 않습니다.
      여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */
   --color-gaze-audience: #6B9E78;   /* 청중 · solid 2px */
-  --color-gaze-screen: #D9A441;     /* 대본 · 슬라이드 · solid 5px */
+  --color-gaze-screen: #D9A441;     /* 화면(슬라이드) · solid 5px */
+  --color-gaze-script: #7FA3C7;     /* 대본 · solid 5px */
   --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
 
   /* ── 분석 대기 로딩 화면 ───────────────────────────────────────
@@ -113,6 +114,14 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-coral);
   outline-offset: 2px;
+}
+
+/* Tailwind v4 는 button 커서를 화살표로 둡니다. 누를 수 있는 버튼만 손가락으로 맞춥니다 (제품 index.css 와 같음).
+   base 레이어라 `disabled:cursor-*` · `aria-disabled:cursor-*` 같은 유틸리티가 항상 이깁니다 (위 규칙처럼 레이어 밖에 두면 덮어버립니다) */
+@layer base {
+  button:not(:disabled, [aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -171,15 +180,15 @@ body {
   .loading-dot { animation: none; }
 }
 
-/* 피치 생성 화면의 밝은 지면. */
-.pitch-create {
+/* 피치 생성 화면의 밝은 지면. `.light-surface` 는 화면 밖 공용 층(채팅)이 같은 지면을 쓰는 이름입니다. */
+.pitch-create, .light-surface {
   --color-greige: #faf9f6;
   --color-cream: #f1f0eb;
   --color-panel: #ffffff;
   --color-line: #e3e3e3;
   --color-line-strong: #d0d1d4;
   --color-ink: #17191e;
-  --color-stone: #6b7280;
+  --color-stone: #626976;
   --color-coral-wash: #fff0e9;
 }
 

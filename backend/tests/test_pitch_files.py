@@ -1,10 +1,14 @@
 """발표를 지울 때 S3 파일 정리와, 회원 탈퇴가 지울 대상을 모으는 조회."""
 
 import uuid
+from collections.abc import Callable
 from datetime import date
+from io import BytesIO
 from unittest.mock import MagicMock
 
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError
+from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -12,6 +16,8 @@ from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.adapter import storage
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.exception import StorageError
+from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import file_cleanup
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.take.entity import Take
@@ -63,8 +69,8 @@ def test_ids_of_user_cover_every_pitch_and_only_theirs(
     take_ids = {_add_take(db_session, first), _add_take(db_session, second)}
     _add_take(db_session, _add_pitch(db_session, other.id))
 
-    assert set(pitch_service.get_pitch_ids_of_user(db_session, user_id)) == {first, second}
-    assert set(pitch_service.get_take_ids_of_user(db_session, user_id)) == take_ids
+    assert set(PitchRepository(db_session).get_ids_by_user(user_id)) == {first, second}
+    assert set(PitchRepository(db_session).get_take_ids_by_user(user_id)) == take_ids
 
 
 def test_delete_prefix_deletes_every_page(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -97,15 +103,55 @@ def test_delete_prefix_skips_an_empty_prefix(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_delete_prefix_raises_when_some_files_were_not_deleted(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     s3 = _fake_s3(monkeypatch, [{"Contents": [{"Key": "pitches/p/a.pdf"}]}])
     s3.delete_objects.return_value = {
         "Errors": [{"Key": "pitches/p/a.pdf", "Code": "AccessDenied"}]
     }
 
-    with pytest.raises(Exception, match="S3 파일 삭제 실패"):
+    with pytest.raises(StorageError):
         storage.delete_prefix("pitches/p/")
+
+    assert "pitches/p/a.pdf" in caplog.text
+
+
+_DENIED = ClientError(
+    {"Error": {"Code": "AccessDenied", "Message": "secret-bucket denied"}}, "AnyOperation"
+)
+
+
+@pytest.mark.parametrize(
+    ("method", "call"),
+    [
+        ("upload_fileobj", lambda: storage.upload(UploadFile(file=BytesIO(b"x")), "k", "t")),
+        ("put_object", lambda: storage.upload_bytes(b"x", "k", "t")),
+        ("generate_presigned_url", lambda: storage.generate_presigned_url("k")),
+        ("delete_object", lambda: storage.delete("k")),
+        ("delete_objects", lambda: storage.delete_prefix("pitches/p/")),
+    ],
+)
+@pytest.mark.parametrize(
+    "cause", [_DENIED, EndpointConnectionError(endpoint_url="https://secret-bucket")]
+)
+def test_s3_failure_keeps_its_cause_in_the_log_only(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    method: str,
+    call: Callable[[], object],
+    cause: Exception,
+) -> None:
+    """원인에는 버킷 · 경로가 들어 있다. 응답으로 나가는 문구에 싣지 않는다."""
+    s3 = _fake_s3(monkeypatch, [{"Contents": [{"Key": "pitches/p/a.pdf"}]}])
+    getattr(s3, method).side_effect = cause
+
+    with pytest.raises(StorageError) as raised:
+        call()
+
+    assert raised.value.__cause__ is cause
+    assert "secret-bucket" not in raised.value.message
+    assert raised.value.detail is None
+    assert "secret-bucket" in caplog.text
 
 
 def test_delete_pitch_files_logs_a_failure_instead_of_raising(
@@ -115,7 +161,7 @@ def test_delete_pitch_files_logs_a_failure_instead_of_raising(
     pitch_id = uuid.uuid4()
 
     def fail(prefix: str) -> None:
-        raise Exception("S3 파일 삭제 실패")
+        raise StorageError()
 
     monkeypatch.setattr(file_cleanup, "delete_prefix", fail)
     monkeypatch.setattr(file_cleanup, "_record", lambda *args, **kwargs: None)

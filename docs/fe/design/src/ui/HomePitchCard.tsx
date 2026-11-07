@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ButtonLink } from './Button';
+import { PitchMoreMenu } from './PitchMoreMenu';
 import { formatSeconds } from '@/lib/clock';
 
 /** 홈 한 줄에 필요한 값만. 제품 `types/home.ts`의 HomePitch에서 이 줄이 읽는 칸만 남겼다 */
@@ -13,6 +14,8 @@ export interface HomePitch {
   thumbnail_url: string | null;
   /** 이 줄은 개수만 본다 */
   takes: readonly unknown[];
+  /** BE가 정한 삭제 가능 여부(#1057). false면 연습이나 분석이 도는 중이라 막는다. 없으면 막지 않는다 */
+  can_delete?: boolean;
 }
 
 const rowLink = 'whitespace-nowrap text-xs font-bold hover:text-coral-deep';
@@ -22,10 +25,16 @@ export function HomePitchCard({
   pitch,
   index,
   showPrepare = false,
+  menuOpen = false,
+  onDelete,
 }: {
   pitch: HomePitch;
   index: number;
   showPrepare?: boolean;
+  /** 설계서 상태 미리보기용. 더보기 메뉴를 열린 채로 그린다 */
+  menuOpen?: boolean;
+  /** 더보기(···) 메뉴의 삭제. 없으면 메뉴를 두지 않는다 */
+  onDelete?: () => void;
 }) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const takes = pitch.takes.length;
@@ -85,14 +94,6 @@ export function HomePitchCard({
           </span>
         )}
       </span>
-      {/* 비교는 Take가 둘 이상일 때만 뜻이 있어, 없을 때도 자리를 비워 줄을 맞춘다 */}
-      <span className={`w-20 text-right${showPrepare ? ' shrink-0' : ''}`}>
-        {pitch.pitch_id && takes >= 2 && (
-          <Link to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/comparison`} className={rowLink}>
-            Take 비교 →
-          </Link>
-        )}
-      </span>
       {showPrepare && pitch.pitch_id && (
         <ButtonLink
           to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
@@ -102,6 +103,17 @@ export function HomePitchCard({
         >
           발표 준비
         </ButtonLink>
+      )}
+      {/* 삭제는 되돌릴 수 없어 발표 준비 옆에 버튼으로 두지 않고 메뉴 안에 둔다(#807) */}
+      {pitch.pitch_id && onDelete && (
+        <PitchMoreMenu
+          pitchTitle={pitch.pitch_title}
+          blockedReason={
+            pitch.can_delete === false ? '연습이나 분석이 끝난 뒤 지울 수 있어요.' : null
+          }
+          onDelete={onDelete}
+          defaultOpen={menuOpen}
+        />
       )}
     </li>
   );

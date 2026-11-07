@@ -5,6 +5,7 @@ import { MIC_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
+import { deviceCheckLink, type DeviceCheckLink } from '../prepare/deviceCheckLink';
 import { useAbandonTake, useEndTake } from '@/shared/api/take';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { Button, ButtonLink } from '@/shared/ui/Button';
@@ -637,12 +638,12 @@ export function RehearsalPage() {
     return () => window.removeEventListener('pagehide', save);
   }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide, slideLog]);
 
-  // 시선 판정이 아직 없는 dev 환경에서 테두리 3색을 눈으로 보려고 둡니다.
-  // 1·2·3 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
+  // 시선 판정이 아직 없는 dev 환경에서 테두리 4색을 눈으로 보려고 둡니다.
+  // 1·2·3·4 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const onKey = (e: KeyboardEvent) => {
-      const zone = { '1': 'AUDIENCE', '2': 'SCREEN', '3': 'UNKNOWN' }[e.key];
+      const zone = { '1': 'AUDIENCE', '2': 'SCREEN', '3': 'SCRIPT', '4': 'UNKNOWN' }[e.key];
       if (zone && stageRef.current) stageRef.current.dataset.gaze = zone;
     };
     window.addEventListener('keydown', onKey);
@@ -768,11 +769,11 @@ export function RehearsalPage() {
       <LeftWindowNotice
         left={left}
         replaced={resume?.replaced ?? false}
-        pitchId={ticket?.pitchId ?? null}
+        back={ticket ? deviceCheckLink(ticket) : null}
       />
     );
   if (notStarted || (gate.kind === 'FAILED' && gate.reason === 'ENDED')) {
-    return <NotStartedNotice pitchId={ticket?.pitchId ?? null} />;
+    return <NotStartedNotice back={ticket ? deviceCheckLink(ticket) : null} />;
   }
 
   // 시선이 기록되지 않을 때만 발밑에 한 줄 띄웁니다(`gazeNote`). 발표 중에 고칠 수 없는 문제도 남깁니다 —
@@ -807,7 +808,11 @@ export function RehearsalPage() {
             data-mode={mode}
           >
             {stageReady && gate.kind !== 'STARTED' && (
-              <StartGateNotice gate={gate} pitchId={ticket?.pitchId ?? null} onRetry={retryStart} />
+              <StartGateNotice
+                gate={gate}
+                back={ticket ? deviceCheckLink(ticket) : null}
+                onRetry={retryStart}
+              />
             )}
             <header className="stage-head">
               <span className="elapsed" ref={elapsedRef}>
@@ -914,6 +919,7 @@ export function RehearsalPage() {
                   <span>테두리 =</span>
                   <i className="audience">청중</i>
                   <i className="screen">화면</i>
+                  <i className="script-gaze">대본</i>
                   <i className="unknown">판정 불가</i>
                 </div>
               </div>
@@ -1015,11 +1021,12 @@ function leftWindowText(left: LeftWindow, replaced: boolean): { title: string; l
 function LeftWindowNotice({
   left,
   replaced,
-  pitchId,
+  back,
 }: {
   left: LeftWindow;
   replaced: boolean;
-  pitchId: string | null;
+  /** 장치 점검으로 돌아가는 링크. 시작한 조합을 함께 넘깁니다 */
+  back: DeviceCheckLink | null;
 }) {
   const closed = left === 'CLOSED';
   const { title, line } = leftWindowText(left, replaced);
@@ -1028,9 +1035,7 @@ function LeftWindowNotice({
       <Card>
         <Mascot who="chichi">{line}</Mascot>
         <div className="flex flex-wrap gap-3">
-          {closed && !replaced && pitchId && (
-            <ButtonLink to={`/pitch/${pitchId}/device-check`}>새 Take 준비</ButtonLink>
-          )}
+          {closed && !replaced && back && <ButtonLink {...back}>새 Take 준비</ButtonLink>}
           <ButtonLink to="/" variant="secondary">
             내 피치로
           </ButtonLink>
@@ -1044,13 +1049,13 @@ function LeftWindowNotice({
  * 시작하기 전에 끝난 Take 입니다. 서버 연결이 끝내 붙지 않아 시작하지 않은 Take 로 정리됐습니다
  * (만든 지 10분 · 같은 발표에서 새 Take 를 만듦). 이 Take 는 다시 열 수 없어 새로 준비합니다.
  */
-function NotStartedNotice({ pitchId }: { pitchId: string | null }) {
+function NotStartedNotice({ back }: { back: DeviceCheckLink | null }) {
   return (
     <InfoPage title="연습 시작 안 됨">
       <Card>
         <Mascot who="chichi">이 연습은 시작하기 전에 끝났어. 장치 점검부터 다시 해 보자!</Mascot>
         <div className="flex flex-wrap gap-3">
-          {pitchId && <ButtonLink to={`/pitch/${pitchId}/device-check`}>새 Take 준비</ButtonLink>}
+          {back && <ButtonLink {...back}>새 Take 준비</ButtonLink>}
           <ButtonLink to="/" variant="secondary">
             내 피치로
           </ButtonLink>
@@ -1066,11 +1071,11 @@ function NotStartedNotice({ pitchId }: { pitchId: string | null }) {
  */
 function StartGateNotice({
   gate,
-  pitchId,
+  back,
   onRetry,
 }: {
   gate: Exclude<StartGate, { kind: 'STARTED' }>;
-  pitchId: string | null;
+  back: DeviceCheckLink | null;
   onRetry: () => void;
 }) {
   const text = startGateText(gate);
@@ -1083,8 +1088,8 @@ function StartGateNotice({
         {stuck && (
           <div className="actions">
             <Button onClick={onRetry}>다시 시도</Button>
-            {pitchId && (
-              <ButtonLink variant="secondary" to={`/pitch/${pitchId}/device-check`}>
+            {back && (
+              <ButtonLink variant="secondary" {...back}>
                 장치 점검으로
               </ButtonLink>
             )}

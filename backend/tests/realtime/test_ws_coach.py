@@ -73,11 +73,6 @@ def _no_leftover_finalize(monkeypatch: pytest.MonkeyPatch):
         task.cancel()
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 def receive_type(ws, kind: str) -> dict:
     """그 type 의 메시지가 올 때까지 읽는다."""
     while True:
@@ -409,7 +404,7 @@ async def test_raw_rows_not_saved_by_the_end_are_dropped_not_retried():
     record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.metrics.add(_metrics_row(1_000))
 
-    await finish.flush_metrics(TAKE_ID)
+    await finish.flush_records(TAKE_ID)
     await asyncio.sleep(1.2)
 
     assert store.metrics == {}
@@ -601,7 +596,7 @@ async def test_ending_that_cannot_be_written_is_written_later():
 async def test_ending_written_late_still_starts_the_take_result(monkeypatch: pytest.MonkeyPatch):
     """DB 가 늦어 기다리기를 그만둬도 적는 일은 커밋된다. 그때 Take 결과를 띄운다 — 안 띄우면 아무도
     띄우지 않아 앱이 다시 뜰 때까지 Take 결과가 없다."""
-    monkeypatch.setattr(finish, "MARK_AUTO_END_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(finish, "MARK_ENDED_TIMEOUT_SEC", 0.05)
 
     class SlowStore(FakeTranscriptStore):
         async def mark_ended(self, take_id, end_reason=None, utterance_ends=None) -> bool:
@@ -766,7 +761,7 @@ async def test_shutdown_waits_for_a_whole_take_ending(monkeypatch: pytest.Monkey
     for module, name in (
         (runtime, "FINAL_METRICS_WAIT_SEC"),
         (finish, "FLUSH_METRICS_TIMEOUT_SEC"),
-        (finish, "MARK_AUTO_END_TIMEOUT_SEC"),
+        (finish, "MARK_ENDED_TIMEOUT_SEC"),
         (stt_loop, "ABORT_TIMEOUT_SEC"),
     ):
         monkeypatch.setattr(module, name, 0.1)

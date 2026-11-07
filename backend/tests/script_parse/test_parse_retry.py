@@ -189,7 +189,7 @@ def test_legacy_script_asks_for_reupload(
 def _ticket(db: Session, script_id: uuid.UUID) -> ParseTicket:
     script = db.get(ScriptVersion, script_id)
     assert script is not None
-    return ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS)
+    return ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS, pitch_id=uuid.uuid4())
 
 
 def test_old_job_cannot_overwrite_a_newer_attempt(

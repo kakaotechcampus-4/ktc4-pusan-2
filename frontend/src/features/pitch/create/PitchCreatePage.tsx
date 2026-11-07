@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-router';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { CheckIcon } from './icons';
 import { useSavePitchInfo } from './useSavePitchInfo';
@@ -25,7 +25,10 @@ import { InfoPane } from './steps/InfoPane';
 import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
 import { FinalReviewDialog } from './FinalReviewDialog';
-import type { Chosen, PitchDraft } from './lib/draft';
+import { shownVersion, type Chosen, type PitchDraft } from './lib/draft';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
+import { useChatScreen } from '@/shared/lib/chatScreen';
+import { pitchScreen } from './chatScreen';
 
 /**
  * 새로 시작한 작성인지 보고, 그렇다면 앞 피치를 비운 뒤에 화면을 그립니다.
@@ -137,7 +140,7 @@ function EditNotice({
 }) {
   return (
     <div className="pitch-create flex min-h-0 flex-1 flex-col bg-greige text-ink">
-      <div className="flex flex-1 items-center justify-center p-6">
+      <main id={MAIN_ID} tabIndex={-1} className="flex flex-1 items-center justify-center p-6">
         <div
           role={busy ? 'status' : 'alert'}
           className="flex w-full max-w-md flex-col items-center gap-3 rounded-lg border border-line bg-panel p-8 text-center"
@@ -151,7 +154,7 @@ function EditNotice({
             </Link>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
@@ -193,6 +196,11 @@ function PitchCreateScreen() {
   const [focus, setFocus] = useState({ node, version, active: node });
   const active = focus.node === node && focus.version === version ? focus.active : node;
   const setActive = (active: PaneNode) => setFocus({ node, version, active });
+  // 대화창에 지금 화면 상태를 알립니다 — 보내는 순간에만 읽고, 화면 동작은 바꾸지 않습니다 (12-4 F2)
+  const editing = useMatch('/pitch/:id/edit') !== null;
+  useChatScreen(editing ? '/pitch/:id/edit' : '/pitch/new', () =>
+    pitchScreen(editing ? 'pitch_edit' : 'pitch_create', active, useCreateStore.getState()),
+  );
   const [review, setReview] = useState<{ draft: PitchDraft; chosen: Chosen } | null>(null);
   const pendingSlides = useCreateStore((s) => s.pendingSlideReviews);
   const pendingCriteria = useCreateStore((s) => s.pendingCriteriaReviews);
@@ -211,18 +219,9 @@ function PitchCreateScreen() {
   }, [unsaved, busy, criteriaUnsaved]);
 
   const selectedVersion = (kind: DraftNode) => (node === kind ? version : viewed[kind]);
-  const slide =
-    draft.slides.find((v) => v.version === selectedVersion('slides')) ??
-    draft.slides.at(-1) ??
-    null;
-  const script =
-    draft.scripts.find((v) => v.version === selectedVersion('script')) ??
-    draft.scripts.at(-1) ??
-    null;
-  const criteria =
-    draft.criteria.find((v) => v.version === selectedVersion('criteria')) ??
-    draft.criteria.at(-1) ??
-    null;
+  const slide = shownVersion(draft.slides, selectedVersion('slides'));
+  const script = shownVersion(draft.scripts, selectedVersion('script'));
+  const criteria = shownVersion(draft.criteria, selectedVersion('criteria'));
   const currentChoice = script
     ? { ...chosen, slides: script.slideVersion, script: script.version }
     : chosen;
@@ -328,8 +327,9 @@ function PitchCreateScreen() {
                     </span>
                     <span>{section.label}</span>
                     {done[section.node] ? (
-                      <span className="ml-auto text-ink" aria-label="완료">
+                      <span className="ml-auto text-ink">
                         <CheckIcon />
+                        <span className="sr-only">완료</span>
                       </span>
                     ) : null}
                     {!done[section.node] && section.node === 'criteria' && <small>선택</small>}
@@ -343,7 +343,11 @@ function PitchCreateScreen() {
             <VersionRail />
           </details>
         </aside>
-        <main className="min-w-0 border-l border-line px-10 py-8 max-[1100px]:p-6 max-[760px]:border-l-0 max-[760px]:p-5 [&>section]:-mx-10 [&>section]:min-w-0 [&>section]:scroll-mt-6 [&>section]:bg-[color-mix(in_srgb,var(--color-panel)_55%,var(--color-cream))] [&>section[data-current]]:outline [&>section[data-current]]:outline-1 [&>section[data-current]]:-outline-offset-1 [&>section[data-current]]:outline-coral-deep [&>section]:px-10 [&>section]:py-8 [&>section:nth-of-type(even)]:bg-cream max-[1100px]:[&>section]:-mx-6 max-[1100px]:[&>section]:px-6 max-[760px]:[&>section]:-mx-5 max-[760px]:[&>section]:px-5">
+        <main
+          id={MAIN_ID}
+          tabIndex={-1}
+          className="min-w-0 border-l border-line px-10 py-8 max-[1100px]:p-6 max-[760px]:border-l-0 max-[760px]:p-5 [&>section]:-mx-10 [&>section]:min-w-0 [&>section]:scroll-mt-6 [&>section]:bg-[color-mix(in_srgb,var(--color-panel)_55%,var(--color-cream))] [&>section[data-current]]:outline [&>section[data-current]]:outline-1 [&>section[data-current]]:-outline-offset-1 [&>section[data-current]]:outline-coral-deep [&>section]:px-10 [&>section]:py-8 [&>section:nth-of-type(even)]:bg-cream max-[1100px]:[&>section]:-mx-6 max-[1100px]:[&>section]:px-6 max-[760px]:[&>section]:-mx-5 max-[760px]:[&>section]:px-5"
+        >
           <div className="flex items-center justify-between gap-8 pb-6 max-[1100px]:gap-4 max-[760px]:flex-wrap [&_h1]:text-[1.75rem] [&_h1]:font-bold [&_h1]:tracking-tight [&_p]:mt-2 [&_p]:text-sm [&_p]:text-stone">
             <div>
               <h1>발표 준비</h1>

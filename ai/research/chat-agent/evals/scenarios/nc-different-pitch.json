@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "id": "nc-different-pitch",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "holdout",
+  "act": "should_not",
+  "title": "다른 피치의 Take 끼리 비교 요청 — 섞어 좋아짐 · 나빠짐을 말하지 않는다",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      },
+      {
+        "pitch_id": "p-2",
+        "title": "회사 소개 발표",
+        "last_practiced_at": "2026-10-20T10:00:00+09:00",
+        "criteria": null,
+        "takes": [
+          {
+            "take_id": "p2-t1",
+            "take_number": 1,
+            "completed_at": "2026-10-19T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "p2-t2",
+            "take_number": 2,
+            "completed_at": "2026-10-20T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "졸업 발표 Take 5랑 회사 소개 발표 Take 2 시선 비교해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-conclusion",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "좋아졌어요|나빠졌어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "reason",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "비교할 수 없|비교하지 않|다른 발표|피치가 달라|발표가 달라|같은 발표",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -14,4 +14,6 @@ SCHEMA_VERSION = "1.0"
 #: review-1.1: LLM 단계 (문장 · 다음 미션 고르기, 1번). LLM 이 없으면 review-1.0 과 같은 결과
 #: review-1.2: 판단 가능한 차원이 모두 STABLE 이면 기본 요약을 '전반적으로 보통'으로,
 #: LLM 비교 입력에 script_mode 와 해석 규칙, 출력 area · slide_number 계약을 좁힘 (#589)
-FEATURE_VERSION = "review-1.2"
+#: review-1.3: LLM 비교 입력을 Take 값과 후보가 가리키는 장으로 줄임, 다음 미션 설명을
+#: 자른 뒤 숫자 검사, 초안을 붙이는 코드의 예외는 기본 결과가 아니라 500 (#589)
+FEATURE_VERSION = "review-1.3"

@@ -408,7 +408,7 @@ uv sync                      # Python 3.12, 라이브러리 + 개발 도구 설�
 - **mock 모드는 없습니다.** LLM 단계는 항상 실제 API를 부르고, 캐시에 없는 호출은 과금됩니다.
 - 모델 이름도 캐시 키에 들어갑니다. 캐시를 재사용하려면 캐시를 만든 때와 같은 `OPENAI_MODEL`이어야 합니다.
 
-**Windows 참고**: 이 PC에서는 `pytest.exe` · `jupyter-*.exe` 실행 파일이 앱 제어로 막혀 있어 `uv run python -m …` 형태로 부릅니다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`을 설정하세요.
+**Windows 참고**: 이 PC에서는 `pytest.exe` · `jupyter-*.exe` 실행 파일이 앱 제어로 막혀 있어 `uv run python -m …` 형태로 부릅니다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`을 설정하세요. macOS · Linux에서도 같은 `uv run …` 명령을 그대로 씁니다.
 
 ### 캐시 재사용 (API를 부르지 않고 시작하기)
 
@@ -426,6 +426,12 @@ cp ../../archive/workspaces/jewon-kim/script-coverage-evaluation/v1/local/output
 ```bash
 # PowerShell
 $env:OPENAI_BASE_URL = "http://127.0.0.1:9"; $env:OPENAI_API_KEY = "dummy"; $env:OPENAI_MODEL = "openai/gpt-5.6-luna"
+uv run python experiments/01_build_rubrics.py
+```
+
+```bash
+# macOS · Linux (zsh · bash). 끝나면 unset OPENAI_BASE_URL OPENAI_API_KEY OPENAI_MODEL
+export OPENAI_BASE_URL="http://127.0.0.1:9" OPENAI_API_KEY="dummy" OPENAI_MODEL="openai/gpt-5.6-luna"
 uv run python experiments/01_build_rubrics.py
 ```
 
@@ -669,7 +675,7 @@ v1을 "완료"라고 부르려면 실제 슬라이드별 Deepgram 결과와 녹�
 
 ## 9. 배포
 
-AI 서버로 옮기는 방법과 옮긴 뒤 확인은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절에 있습니다.
+AI 서비스의 배포 구성은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절에 있고, 옮긴 뒤 검증 결과는 이 문서의 [옮긴 뒤 검증](#옮긴-뒤-검증)에 있습니다.
 
 ---
 

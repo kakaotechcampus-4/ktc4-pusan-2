@@ -55,6 +55,7 @@ from pitch_coach_backend.coach.windows import (
     window_inputs,
 )
 from pitch_coach_backend.core.row_buffer import RowBuffer
+from pitch_coach_backend.core.tasks import being_cancelled
 from pitch_coach_backend.module.take.dto import StoredEvent
 from pitch_coach_backend.module.take.exception import NonExistentTake
 
@@ -78,12 +79,6 @@ NOTIFY_TIMEOUT_SEC = 1.0
 
 # WS `coach` 를 보내는 쪽 (stream/runtime). 붙어 있는 클라이언트에게만 보낸다
 type Notify = Callable[[int, EvaluateReply], Awaitable[None]]
-
-
-def being_cancelled() -> bool:
-    """지금 태스크가 취소되는 중인가. 기다리던 다른 태스크가 끊겨 난 CancelledError 와 가른다."""
-    current = asyncio.current_task()
-    return current is not None and current.cancelling() > 0
 
 
 async def _cancel_and_wait(task: asyncio.Task[None]) -> None:
@@ -147,8 +142,6 @@ class CoachSession:
         self._slide_changes: list[dict[str, int]] = []
 
         self._inflight: asyncio.Task[None] | None = None
-        # 마지막으로 보낸 요청의 t_ms. 그보다 이르거나 같은 metrics 로는 부르지 않는다
-        self._requested_ms: int | None = None
         self._stopped = False
         # Take 를 끝내며 원자료 버퍼를 닫았다 (`seal_inputs`). 이 뒤로 온 1초 · 장 변경은 안 받는다
         self._inputs_sealed = False
@@ -184,7 +177,7 @@ class CoachSession:
         self._constants = context.constants
         self._client = client
         self._store = store
-        self._speaks = context.constants.common()["mode"] == "COACHING"
+        self._speaks = context.constants.common["mode"] == "COACHING"
         self._event_buffer = RowBuffer(
             self.take_id,
             store.append_events,
@@ -263,8 +256,8 @@ class CoachSession:
 
         if buffered or self._stopped or not self.enabled:
             return
-        if t_ms != self.clock_ms or (self._requested_ms is not None and t_ms <= self._requested_ms):
-            # 이미 지난 시각이다 (같은 1초를 또 보냄 · 몰아 온 것보다 이른 실시간 metrics).
+        if t_ms != self.clock_ms:
+            # 이미 지난 시각이다 (몰아 온 것보다 이른 실시간 metrics). 같은 1초는 위에서 걸렀다.
             # 그 창에는 확정 시각이 요청보다 늦은 단어가 섞여 replay 와 달라진다
             return
         if self._inflight is not None and not self._inflight.done():
@@ -274,7 +267,6 @@ class CoachSession:
         request = evaluate_request(
             self._constants, t_ms, self._inputs_at(t_ms, stt_status), self.coach_state
         )
-        self._requested_ms = t_ms
         self._inflight = asyncio.create_task(
             self._evaluate(t_ms, request), name=f"coach-evaluate:{self.take_id}"
         )
@@ -285,7 +277,7 @@ class CoachSession:
         if self._released:
             return final_at_ms
         self._windows.words.extend(
-            FinalWord(word, start_ms, end_ms, final_at_ms) for word, start_ms, end_ms in words
+            FinalWord(word, start_ms, end_ms) for word, start_ms, end_ms in words
         )
         return final_at_ms
 

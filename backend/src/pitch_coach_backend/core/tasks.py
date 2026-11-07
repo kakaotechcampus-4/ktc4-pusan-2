@@ -1,11 +1,81 @@
-"""백그라운드 태스크를 들고 있다가 앱을 내릴 때 끊는다 (finalize · 코칭 계획 · Take 끝내기 정리)."""
+"""백그라운드 태스크 부품. 들고 있다가 앱을 내릴 때 끊고, 주기 작업을 띄운다."""
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import Coroutine, Hashable
+import weakref
+from collections.abc import Awaitable, Callable, Coroutine, Hashable
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+type Stop = Callable[[], Awaitable[None]]
+type SemaphoreByLoop = weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]
+
+
+def being_cancelled() -> bool:
+    """지금 태스크가 취소되는 중인가. 기다리던 다른 태스크가 끊겨 난 CancelledError 와 가른다."""
+    current = asyncio.current_task()
+    return current is not None and current.cancelling() > 0
+
+
+async def quiet(awaitable: Awaitable[object]) -> None:
+    """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다.
+
+    정리 경로라서 넓게 잡는다 — 여기서 예외가 새면 그다음 정리가 통째로 멈춘다.
+    """
+    with contextlib.suppress(Exception):
+        await awaitable
+
+
+def loop_semaphore(by_loop: SemaphoreByLoop, limit: int) -> asyncio.Semaphore:
+    """이벤트 루프마다 하나인 세마포어. asyncio.Semaphore 는 처음 기다린 루프에 묶여서, 하나를 여러
+    루프가 쓰면(시험의 TestClient 마다 루프가 다르다) 다른 루프에서 기다리는 순간 RuntimeError 다.
+    운영은 uvicorn 루프 하나라 프로세스 전체에 하나다."""
+    loop = asyncio.get_running_loop()
+    if (slots := by_loop.get(loop)) is None:
+        slots = asyncio.Semaphore(limit)
+        by_loop[loop] = slots
+    return slots
+
+
+async def run_periodic(
+    step: Callable[[], Awaitable[object]], interval_sec: float, *, delay_first: bool = False
+) -> None:
+    """step 을 주기마다 부른다. step 의 예외는 step 이 잡아 다음 주기로 넘긴다."""
+    if delay_first:
+        await asyncio.sleep(interval_sec)
+    while True:
+        await step()
+        await asyncio.sleep(interval_sec)
+
+
+def start_task(coro: Coroutine[Any, Any, None], *, name: str) -> Stop:
+    """태스크를 띄우고, 앱을 내릴 때 부를 함수를 돌려준다."""
+    task = asyncio.create_task(coro, name=name)
+
+    async def stop() -> None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            # 뒤따르는 종료 절차가 멈추지 않게 남기고 넘어간다
+            logger.exception("주기 작업이 실패해 멈춰 있었다 %s", name)
+
+    return stop
+
+
+def start_periodic(
+    step: Callable[[], Awaitable[object]],
+    interval_sec: float,
+    *,
+    name: str,
+    delay_first: bool = False,
+) -> Stop:
+    """주기 작업을 띄우고, 앱을 내릴 때 부를 함수를 돌려준다."""
+    return start_task(run_periodic(step, interval_sec, delay_first=delay_first), name=name)
 
 
 class TaskRegistry:
@@ -14,6 +84,7 @@ class TaskRegistry:
 
     def __init__(self) -> None:
         self._tasks: dict[Hashable, asyncio.Task[None]] = {}
+        self._cancel_requested: set[Hashable] = set()
 
     def __len__(self) -> int:
         return len(self._tasks)
@@ -39,10 +110,26 @@ class TaskRegistry:
     def _done(self, key: Hashable, task: asyncio.Task[None]) -> None:
         if self._tasks.get(key) is task:
             del self._tasks[key]
+            self._cancel_requested.discard(key)
         # 아무도 await 하지 않는 태스크라 예외를 여기서 꺼내 남긴다. 안 그러면 GC 될 때
         # "Task exception was never retrieved" 로만 찍히고 어느 작업인지 알 수 없다
         if not task.cancelled() and (error := task.exception()) is not None:
             logger.error("백그라운드 태스크 실패 %s", task.get_name(), exc_info=error)
+
+    def cancel(self, key: Hashable) -> bool:
+        """그 키의 태스크만 끊으라고 알린다. 끝나기를 기다리지 않는다. 돌고 있지 않으면 False 다.
+
+        `Task.cancel` 은 스레드에 안전하지 않아 태스크와 같은 이벤트 루프에서 불러야 한다."""
+        task = self._tasks.get(key)
+        if task is None or task.done():
+            return False
+        self._cancel_requested.add(key)
+        task.cancel()
+        return True
+
+    def cancel_requested(self, key: Hashable) -> bool:
+        """`cancel` 로 끊는 중인가. `stop_all` 로 끊긴 것과 가른다. 태스크가 끝나면 지운다."""
+        return key in self._cancel_requested
 
     async def stop_all(self, timeout: float) -> None:
         """앱 종료. 돌고 있는 것을 끊고 끝나기를 `timeout` 까지 기다린다."""

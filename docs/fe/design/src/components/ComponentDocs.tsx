@@ -14,6 +14,7 @@ import { SuggestionCategorySelect, type SuggestionCategory } from '@/ui/Suggesti
 import { TakeStatusBadge } from '@/ui/TakeStatusBadge';
 import { TAKE_STATUSES } from '@/lib/takeStatus';
 import { HomeHelpDialog } from '@/ui/dialogs/HomeHelpDialog';
+import { DeletePitchDialog } from '@/ui/dialogs/DeletePitchDialog';
 import { ReplaceTakeDialog } from '@/ui/dialogs/ReplaceTakeDialog';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
@@ -292,6 +293,22 @@ export function ComponentDoc({ id, stateId }: { id: string; stateId: string }) {
               pitchTitle={PITCH}
               takeNumber={2}
               busy={stateId === 'busy'}
+              onConfirm={close}
+              onCancel={close}
+            />
+          )}
+        />
+      );
+    case 'delete-pitch-dialog':
+      return (
+        <DialogDoc
+          title="피치 삭제 창"
+          render={(close) => (
+            <DeletePitchDialog
+              pitchTitle={PITCH}
+              takeCount={2}
+              busy={stateId === 'busy'}
+              error={stateId === 'error' ? 'failed' : null}
               onConfirm={close}
               onCancel={close}
             />

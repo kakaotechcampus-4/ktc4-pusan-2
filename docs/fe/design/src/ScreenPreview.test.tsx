@@ -117,7 +117,7 @@ it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대�
 
 it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 경로와 인자로 이동한다', async () => {
   await render('home');
-  expect(host.querySelectorAll('a[aria-label$=" 발표 준비"]')).toHaveLength(2);
+  expect(host.querySelectorAll('a[aria-label$=" 발표 준비"]')).toHaveLength(3);
   await act(async () => root.render(null));
   const onNavigate = vi.fn();
   await act(async () =>
@@ -128,13 +128,15 @@ it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 �
     ),
   );
   const rows = [...host.querySelectorAll('section[aria-label="발표 목록"] li')];
-  expect(rows).toHaveLength(2);
+  expect(rows).toHaveLength(3);
   for (const row of rows) {
     expect(row.querySelector('.w-28.shrink-0')?.textContent).toContain('Take 기록');
-    expect(row.querySelector('.w-20.shrink-0')).not.toBeNull();
-    expect(row.lastElementChild?.textContent?.trim()).toBe('발표 준비');
+    expect(row.querySelector('.w-20.shrink-0')).toBeNull();
+    // 맨 오른쪽은 더보기(···) 메뉴, 그 앞이 발표 준비다(#807)
+    expect(row.lastElementChild?.getAttribute('aria-haspopup')).toBe('menu');
+    const prepare = row.lastElementChild!.previousElementSibling as HTMLAnchorElement;
+    expect(prepare.textContent?.trim()).toBe('발표 준비');
     const title = row.querySelector('a')!;
-    const prepare = row.lastElementChild as HTMLAnchorElement;
     expect(prepare.getAttribute('href')).toBe(title.getAttribute('href'));
     expect(prepare.getAttribute('href')).toMatch(/\/edit$/);
     await act(async () => title.click());
@@ -393,9 +395,10 @@ it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴�
   await render('stage');
   expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
   await act(async () => root.render(null));
-  // 시작 전 세팅은 상단바 없이 자체 틀을 쓴다(#738 최종, #706에서 정함)
+  // 시작 전 세팅도 상단바를 얹고, 지금 메뉴는 표시하지 않는다(#694)
   await render('prepare-mission');
-  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeTruthy();
+  expect(current()).toBeNull();
 });
 
 it('끝내기 확인은 장이 바뀌면 풀리고, 마지막 장에서는 안내 글자가 없다', async () => {

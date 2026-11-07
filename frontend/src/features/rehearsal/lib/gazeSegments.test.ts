@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compressToSegments, summarize, validate, zoneOf } from './gazeSegments';
+import { borderOf, compressToSegments, summarize, validate, zoneOf } from './gazeSegments';
 import { GazeSlicer, makeConfig, sampleToDict } from '@/vendor/gaze/engine/contract';
 import type { GazeFrame, GazeSampleRecord } from '@/workers/gaze.contract';
 
@@ -22,6 +22,24 @@ describe('엔진 상태 → 3구역', () => {
     expect(zoneOf('OTHER')).toBe('UNCERTAIN');
     expect(zoneOf('UNCERTAIN')).toBe('UNCERTAIN');
     expect(zoneOf('UNMEASURED')).toBe('UNCERTAIN');
+  });
+});
+
+describe('엔진 상태 → 무대 테두리', () => {
+  it('화면과 대본을 나눈다 — 리포트의 대본 응시 비율과 같은 구분이다', () => {
+    expect(borderOf('CAMERA')).toBe('AUDIENCE');
+    expect(borderOf('SCREEN')).toBe('SCREEN');
+    expect(borderOf('BOTTOM')).toBe('SCRIPT');
+  });
+
+  it('판정 못 한 것은 모두 판정 불가다', () => {
+    expect(borderOf('OTHER')).toBe('UNKNOWN');
+    expect(borderOf('UNCERTAIN')).toBe('UNKNOWN');
+    expect(borderOf('UNMEASURED')).toBe('UNKNOWN');
+  });
+
+  it('서버로 가는 구간(zoneOf)은 그대로 화면 · 대본을 접는다', () => {
+    expect(zoneOf('SCREEN')).toBe(zoneOf('BOTTOM'));
   });
 });
 

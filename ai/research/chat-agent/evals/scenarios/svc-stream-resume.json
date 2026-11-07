@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-stream-resume",
+  "set": "agent_service",
+  "group": "stream",
+  "split": "dev",
+  "act": "should",
+  "title": "승인 대기로 멈췄다 이어 부른 실행 — 멈추기 전에 낸 기록 문장이 최종 답의 앞부분이고 문장 줄 번호가 이어진다",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 3장 청중 시선 비율이 몇 %였는지 알려 주고, 그걸 높이는 걸 목표로 잡아 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "stream-consistent",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": true,
+        "path": "stream_ok"
+      },
+      {
+        "check_id": "paused-then-done",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": [
+          "NEEDS_ACTION",
+          "DONE"
+        ],
+        "path": "statuses",
+        "note": "승인 대기에서 멈춘 호출과 이어 부른 호출"
+      },
+      {
+        "check_id": "record-before-pause",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3",
+        "path": "claims[0].text",
+        "note": "멈추기 전에 낸 기록 문장이 행동 결과 문장보다 앞, 최종 답의 첫 문장"
+      },
+      {
+        "check_id": "save-executed",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "SAVE_GOAL",
+        "path": "types"
+      },
+      {
+        "check_id": "save-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

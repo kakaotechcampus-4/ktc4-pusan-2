@@ -51,7 +51,7 @@ export function CheckCard({
         {rows.map((row) => (
           <li
             key={row.id}
-            className="prepare-check grid h-10 grid-cols-[80px_minmax(0,1fr)_50%] items-center gap-2 border-t border-line text-xs prepare-compact:h-[34px] max-[600px]:h-auto max-[600px]:min-h-[72px] max-[600px]:grid-cols-[72px_minmax(0,1fr)] max-[600px]:gap-y-1 max-[600px]:py-1.5"
+            className="prepare-check grid h-10 grid-cols-[80px_minmax(0,1fr)_50%] items-center gap-2 border-t border-line text-xs prepare-compact:h-[34px] prepare-low:h-[30px] max-[600px]:h-auto max-[600px]:min-h-[72px] max-[600px]:grid-cols-[72px_minmax(0,1fr)] max-[600px]:gap-y-1 max-[600px]:py-1.5"
             data-done={row.done}
           >
             <span className="prepare-check-name flex flex-col items-start text-[13px] leading-4 font-semibold max-[600px]:col-start-1 max-[600px]:row-span-2 max-[600px]:row-start-1 [&>small]:text-[10px] [&>small]:leading-3 [&>small]:font-normal">

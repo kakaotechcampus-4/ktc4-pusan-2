@@ -94,7 +94,7 @@ export type ScriptProgress =
       status: 'done';
       /** 슬라이드별 본문. slide_number 순서입니다 */
       blocks: string[];
-      /** false 는 구분자가 없어 대본 전체를 한 슬라이드로 둔 **정상** 결과 */
+      /** false 는 나누지 못해 대본 전체를 한 슬라이드로 둔 **정상** 결과 (`ScriptVersion.segmented`) */
       segmented: boolean | null;
     }
   | { status: 'failed'; errorCode: string | null };

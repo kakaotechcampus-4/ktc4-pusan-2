@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "id": "ra-measurement",
+  "set": "eval",
+  "group": "reassess",
+  "split": "holdout",
+  "act": "should_not",
+  "title": "측정값 이의('카메라가 낮았어')는 바꿀 입력이 없다 — 행동 없이 '측정 결과라 바뀌지 않아요'와 이유",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 5는 카메라가 낮아서 시선이 낮게 나온 거야. 다시 평가해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-reassess",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": "REASSESS",
+        "path": "attempted",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-review-calls",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "measurement-fixed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.MEASUREMENT_FIXED",
+        "grader": "template"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

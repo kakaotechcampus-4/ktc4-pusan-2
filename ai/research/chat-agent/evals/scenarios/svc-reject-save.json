@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-reject-save",
+  "set": "agent_service",
+  "group": "approval",
+  "split": "dev",
+  "act": "should",
+  "title": "목표 저장 요청 — 확인 카드에서 거절하면 저장하지 않고 '목표를 저장하지 않았어요.'를 덧붙인다",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 기준으로 3장 청중 시선 비율을 높이는 걸 목표로 잡아 줘",
+      "page_take_id": "t-5",
+      "approval": "REJECT"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "confirm-card",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "ASK_CONFIRM",
+        "path": "cards"
+      },
+      {
+        "check_id": "no-save",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": "SAVE_GOAL",
+        "path": "types"
+      },
+      {
+        "check_id": "no-goal",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "rejected-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.REJECTED_SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "ai-not-called-again",
+        "observe": "trace",
+        "compare": "absent",
+        "expect": "DONE",
+        "path": "statuses",
+        "note": "거절 · 만료는 BE 가 고정 문장을 덧붙여 끝내고 AI 를 다시 부르지 않는다: AI 끝 줄에 DONE 이 없다(6-2 · 5-8)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

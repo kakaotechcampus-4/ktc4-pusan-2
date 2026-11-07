@@ -33,7 +33,7 @@ it('keeps request errors as failures instead of showing an empty home', async ()
   await expect(fetchPitchList()).rejects.toMatchObject({ status: 500 });
 });
 
-it('카드는 Take 목록 대신 Take 기록 · 비교 · 발표 준비 링크를 둔다', () => {
+it('카드는 Take 기록 · 발표 준비 링크만 둔다', () => {
   const markup = renderToStaticMarkup(
     <MemoryRouter>
       <HomePitchCard pitch={homeFixture.pitches[0]} index={0} />
@@ -42,7 +42,7 @@ it('카드는 Take 목록 대신 Take 기록 · 비교 · 발표 준비 링크�
   expect(markup).toContain('캡스톤 최종 발표');
   expect(markup).toContain('/pitch/10000000-0000-4000-8000-000000000001/edit');
   expect(markup).toContain('href="/takes?pitch=10000000-0000-4000-8000-000000000001"');
-  expect(markup).toContain('/pitch/10000000-0000-4000-8000-000000000001/comparison');
+  expect(markup).not.toContain('/comparison');
   expect(markup).not.toContain('TAKE 01');
   expect(markup).not.toContain('연습 전');
 });
