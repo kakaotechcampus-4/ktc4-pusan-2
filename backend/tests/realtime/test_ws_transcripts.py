@@ -838,14 +838,37 @@ def test_deleting_the_take_cuts_its_live_stream(
     assert registry.active_count() == 0
 
 
-def test_deleting_the_pitch_cuts_the_live_streams_of_its_takes(
+def test_deleting_the_pitch_is_refused_while_its_take_is_running(
     client: TestClient, stt: FakeSttAdapter, token: str, take: Take
 ):
-    """발표를 지우면 Take 가 CASCADE 로 같이 지워진다. 그 Take 의 스트림도 같이 끊는다."""
+    """발표 중인 Take 가 있으면 지우지 않는다. 그 스트림도 그대로 돈다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+        response = client.delete(
+            f"/api/pitches/delete/{take.pitch_id}", headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "PITCH_BUSY"
+        assert registry.active_count() == 1
+        session = stt.session
+        assert session is not None
+        assert not session.aborted
+
+
+def test_deleting_the_pitch_cuts_a_stream_left_on_a_stalled_take(
+    client: TestClient, db_session: Session, stt: FakeSttAdapter, token: str, take: Take
+):
+    """지워도 되는 Take 에 스트림이 남아 있으면 Take 가 CASCADE 로 지워질 때 같이 끊는다."""
     pitch_id = take.pitch_id
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
+        take.status = "ANALYZING"
+        take.analysis_hold_reason = "COVERAGE_RESCORE_FAILED"
+        db_session.commit()
 
         response = client.delete(
             f"/api/pitches/delete/{pitch_id}", headers={"Authorization": f"Bearer {token}"}

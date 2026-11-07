@@ -726,6 +726,16 @@ class TakeRepository:
             stmt = stmt.where(Take.id > after)
         return list(self.db.scalars(stmt.order_by(Take.id).limit(limit)))
 
+    def progress_in_pitch(self, pitch_id: uuid.UUID) -> list[Row]:
+        """발표를 지워도 되는지 볼 값만 읽는다. 세션에 남은 객체가 아니라 지금 DB 값을 본다."""
+        stmt = select(
+            Take.status,
+            Take.analysis_hold_reason,
+            Take.analysis_stage,
+            Take.analysis_stage_at,
+        ).where(Take.pitch_id == pitch_id)
+        return list(self.db.execute(stmt).all())
+
     def running_takes_last_active(self) -> list[tuple[uuid.UUID, datetime]]:
         """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는 데 쓴다.
 

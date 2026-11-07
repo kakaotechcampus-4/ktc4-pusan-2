@@ -164,6 +164,21 @@ class PitchRepository:
             is not None
         )
 
+    def lock_for_delete(self, pitch_id: uuid.UUID) -> Pitch | None:
+        """지울 pitch 행을 잠가 돌려준다. 없으면 None (트랜잭션이 끝날 때까지 잠금).
+
+        Take 를 만들거나 시작하는 요청이 잡는 `lock_for_new_version` 과 충돌하므로, 지워도 되는지
+        판단한 뒤 지울 때까지 새 연습이 시작되지 못한다. 어차피 행을 지우므로 처음부터 FOR UPDATE
+        로 잡는다. FOR NO KEY UPDATE 를 쥐었다가 DELETE 에서 올리면, 자식 행을 넣으며 KEY SHARE 를
+        쥔 요청과 서로 기다릴 수 있다.
+        """
+        return self.db.scalar(
+            select(Pitch)
+            .where(Pitch.id == pitch_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
     def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(PresentationVersion.version)).where(
