@@ -3,14 +3,30 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any, Literal
 
-from sqlalchemy import Row, Select, and_, delete, exists, func, or_, select, tuple_, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import (
+    Row,
+    Select,
+    Text,
+    and_,
+    cast,
+    delete,
+    exists,
+    func,
+    literal_column,
+    or_,
+    select,
+    tuple_,
+    type_coerce,
+    update,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, insert
 from sqlalchemy.orm import Session, aliased
 
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
     ChatDailyUsage,
+    ChatDeletedSource,
     ChatGoal,
     ChatLease,
     ChatMemorySetting,
@@ -30,6 +46,16 @@ FINISHED_RUN_STATUSES = ("DONE", "PARTIAL", "REFUSED", "FAILED", "CANCELLED", "E
 
 # 사용자 하루 사용량 중 선점해 세는 칸
 DailyCounter = Literal["turns", "reassessments", "goal_checks"]
+
+
+def _has_any(column: Any, ids: Sequence[str]) -> Any:
+    """JSONB 배열 칸에 이 id 중 하나라도 있는지. 칸의 GIN 색인을 탄다."""
+    return column.has_any(cast(ids, ARRAY(Text)))
+
+
+def _read_sources(key: Literal["pitches", "takes"]) -> Any:
+    # 키를 바인드 값으로 보내면 표현식 색인과 맞지 않아 그대로 적는다
+    return type_coerce(ChatRun.read_sources.op("->")(literal_column(f"'{key}'")), JSONB)
 
 
 def charge_daily(
@@ -387,33 +413,50 @@ class ChatRepository:
         )
         return self.db.scalars(stmt).first()
 
-    def existing_pitch_ids(self, pitch_ids: set[uuid.UUID]) -> set[uuid.UUID]:
-        return set(self.db.scalars(select(Pitch.id).where(Pitch.id.in_(pitch_ids))))
+    def list_deleted_sources(self) -> list[Row]:
+        return list(
+            self.db.execute(select(ChatDeletedSource.source_id, ChatDeletedSource.deleted_at))
+        )
 
-    def existing_take_ids(self, take_ids: set[uuid.UUID]) -> set[uuid.UUID]:
-        return set(self.db.scalars(select(Take.id).where(Take.id.in_(take_ids))))
+    def delete_deleted_sources(self, source_ids: Sequence[uuid.UUID]) -> None:
+        self.db.execute(
+            delete(ChatDeletedSource).where(ChatDeletedSource.source_id.in_(source_ids))
+        )
 
-    def list_unmasked_answers(self, masked_text: str) -> list[ChatMessage]:
+    def list_unmasked_answers_using(
+        self, deleted: Sequence[str], masked_text: str
+    ) -> list[ChatMessage]:
         return list(
             self.db.scalars(
                 select(ChatMessage).where(
                     ChatMessage.role == "assistant",
                     ChatMessage.text != masked_text,
+                    or_(
+                        _has_any(ChatMessage.source_pitch_ids, deleted),
+                        _has_any(ChatMessage.source_take_ids, deleted),
+                    ),
                 )
             )
         )
 
-    def lock_unmasked_summaries(self) -> list[ChatSummary]:
+    def lock_unmasked_summaries_using(self, deleted: Sequence[str]) -> list[ChatSummary]:
         """항목이 남은 대화 요약. 턴이 바꾸고 있는 요약은 건너뛰고 다음 주기에 본다."""
         return list(
             self.db.scalars(
                 select(ChatSummary)
-                .where(func.jsonb_array_length(ChatSummary.items) > 0)
+                .where(
+                    func.jsonb_array_length(ChatSummary.items) > 0,
+                    or_(
+                        _has_any(ChatSummary.source_pitch_ids, deleted),
+                        _has_any(ChatSummary.source_take_ids, deleted),
+                    ),
+                )
                 .with_for_update(skip_locked=True)
             )
         )
 
-    def list_finished_runs_with_content(self) -> list[ChatRun]:
+    def list_finished_runs_using(self, deleted: Sequence[str]) -> list[ChatRun]:
+        """내용이 남은 끝난 실행 중 읽은 근거나 행동의 근거에 지워진 id 가 있는 것."""
         return list(
             self.db.scalars(
                 select(ChatRun).where(
@@ -424,6 +467,15 @@ class ChatRepository:
                         ChatRun.plan.is_not(None),
                         ChatRun.trace.is_not(None),
                         exists().where(ChatRunEvent.run_id == ChatRun.id),
+                    ),
+                    or_(
+                        _has_any(_read_sources("pitches"), deleted),
+                        _has_any(_read_sources("takes"), deleted),
+                        ChatRun.id.in_(
+                            select(ChatAction.run_id).where(
+                                _has_any(ChatAction.source_take_ids, deleted)
+                            )
+                        ),
                     ),
                 )
             )
@@ -463,11 +515,11 @@ class ChatRepository:
     def delete_run_events(self, run_id: uuid.UUID) -> None:
         self.db.execute(delete(ChatRunEvent).where(ChatRunEvent.run_id == run_id))
 
-    def list_goals_with_base(self) -> list[ChatGoal]:
+    def list_goals_based_on(self, take_ids: Sequence[uuid.UUID]) -> list[ChatGoal]:
         return list(
             self.db.scalars(
                 select(ChatGoal).where(
-                    ChatGoal.base_take_id.is_not(None), ChatGoal.goal.is_not(None)
+                    ChatGoal.base_take_id.in_(take_ids), ChatGoal.goal.is_not(None)
                 )
             )
         )
