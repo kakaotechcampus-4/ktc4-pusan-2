@@ -3,8 +3,11 @@
 - 무엇을: 코어 `features/chat_agent/examples/`의 요청(처음 · 이어 부르기 · 자동 목표 확인) · 스트림(행동 요청 · 답 완료 ·
   부분 답 · 거절 · 오류 줄) · 스트림 전 오류 · 행동 결과 예시를 만든다. 계약 시험(서비스 tests/unit/chat_agent/test_contract_examples.py)이
   읽어 5절 모양과 맞는지 보고, BE는 서비스 탑재 뒤 같은 파일로 계약 시험을 한다.
-- 실행: 연구 폴더에서 `.\\.venv\\Scripts\\python.exe -m chat_agent_lab.examples` (파일을 다시 쓴다). 만드는 코드는 여기 하나이고,
-  연구 모듈 명령은 이 파일을 불러 쓴다. 서비스 CI 는 예시 파일이 이 결과와 같은지 본다(test_contract_examples).
+- 실행(파일을 다시 쓴다): `ai/service`에서 `uv run python -m tests.unit.chat_agent.example_builder`. 또는 연구 폴더에서
+  `.venv/bin/python -m chat_agent_lab.examples`(이 파일을 불러 쓴다). 만드는 코드는 여기 하나이고, 서비스 CI 는 예시 파일이
+  이 결과와 같은지 본다(test_contract_examples).
+- 연구 모듈도 쓴다: 연구 `chat_agent_lab.service_tests`가 이 파일을 실행 코드(가짜 BE · 평가 · 예시 명령)에서 가져다 쓴다
+  (기능 문서 4-1 · 10-2). 이름 · 모양을 바꾸면 연구 모듈 시험(`ai/research/chat-agent`에서 pytest)도 돌린다.
 - 값: 가상 기록(fixtures.sample_pitch: '졸업 발표' Take 4 · 5의 3장 시선 31% · 28%)으로 만든다.
   `state`는 예시 전용 키(`EXAMPLE_STATE_KEY`, 비밀 아님)로 실제 서명한다. 대기 행동 · 누적량이 이어 부르기 예시와 맞아,
   같은 키로 서명 검사 · 행동 결과 짝 검사를 통과한다(test_contract_examples). 판단 키 · 지문은 형식만 맞춘 자리 값이다.
