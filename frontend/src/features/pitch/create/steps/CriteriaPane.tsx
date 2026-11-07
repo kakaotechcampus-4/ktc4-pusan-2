@@ -144,10 +144,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         <p className="text-sm font-bold">작성 가능한 평가 항목</p>
         <ul aria-label="측정 가능한 항목" className="mt-2 flex flex-wrap gap-2">
           {MEASURABLE_CRITERIA.map((item) => (
-            <li
-              key={item}
-              className="rounded-full border border-line-strong bg-white px-3 py-1 text-xs font-bold text-ink/80"
-            >
+            <li key={item} className="rounded-full border bg-white px-3 py-1 text-xs font-bold">
               {item}
             </li>
           ))}
