@@ -125,6 +125,9 @@ it('대화창이 던지면 런처 자리에 안내와 [다시 시도]를 한 번
   expect(alerts()[0].textContent).toBe(CHAT_FAILED_TEXT);
   expect(button('다시 시도')).not.toBeNull();
   // 장치 점검의 오른쪽 여백이 그대로 유지되도록 런처와 같은 표시를 둡니다
+  const failedLauncher = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
+  expect(failedLauncher.classList.contains('left-4')).toBe(true);
+  expect(failedLauncher.classList.contains('right-2')).toBe(false);
   expect(host.querySelector('[data-chat-launcher] [role="alert"]')).not.toBeNull();
 
   await click(button('리포트 버튼')!);
