@@ -234,6 +234,7 @@ function useKeepFocusInPanel(
     let inside = panel.contains(document.activeElement);
     /** 초점을 놓은 요소 — 브라우저마다 사라질 때 blur 를 주기도 하고 안 주기도 합니다 */
     let left: Element | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const onIn = () => {
       inside = true;
       left = null;
@@ -241,8 +242,18 @@ function useKeepFocusInPanel(
     const onOut = (event: FocusEvent) => {
       const to = event.relatedTarget as Node | null;
       if (to && panel.contains(to)) return;
-      if (to) inside = false;
-      else left = event.target as Element;
+      if (to) {
+        inside = false;
+        return;
+      }
+      const from = event.target as Element;
+      left = from;
+      // 다음 틱에도 놓은 요소가 붙어 있으면 패널 밖(초점 안 가는 곳)을 누른 것입니다.
+      // 요소가 사라져 놓친 초점이면 그 전에 MutationObserver 가 rescue 합니다
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (left === from && from.isConnected) inside = false;
+      }, 0);
     };
     const rescue = () => {
       const active = document.activeElement;
@@ -260,6 +271,7 @@ function useKeepFocusInPanel(
     panel.addEventListener('focusout', onOut);
     return () => {
       observer.disconnect();
+      clearTimeout(timer);
       panel.removeEventListener('focusin', onIn);
       panel.removeEventListener('focusout', onOut);
     };
