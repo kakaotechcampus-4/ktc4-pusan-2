@@ -1,6 +1,7 @@
 """대화 만들기 · 목록 · 범위 바꾸기 · 메시지 목록(chat-agent.md 12-3 대화 API)."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Row
@@ -106,6 +107,9 @@ def list_messages(
     conversation = repo.get_owned_conversation(conversation_id, user_id)
     if conversation is None:
         raise ChatTargetNotFound()
+    if before_seq is None:
+        ChatRepository(db).touch_conversation_opened(conversation_id, datetime.now(UTC))
+        db.commit()
     messages = ChatRepository(db).list_recent_messages(
         conversation_id, before_seq=before_seq, limit=limit + 1
     )

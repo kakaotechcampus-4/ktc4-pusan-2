@@ -517,7 +517,10 @@ class ChatRepository:
         self.db.execute(delete(ChatRunEvent).where(ChatRunEvent.run_id == run_id))
 
     def delete_inactive_conversations(self, cutoff: datetime, limit: int) -> int:
-        inactive = ChatConversation.last_user_activity_at < cutoff
+        last_active = func.greatest(
+            ChatConversation.last_user_activity_at, ChatConversation.last_opened_at
+        )
+        inactive = last_active < cutoff
         result = self.db.execute(
             delete(ChatConversation).where(
                 ChatConversation.id.in_(select(ChatConversation.id).where(inactive).limit(limit)),
@@ -553,6 +556,13 @@ class ChatRepository:
                 .where(ChatProfileItem.id.in_(item_ids))
                 .values(last_used_at=now)
             )
+
+    def touch_conversation_opened(self, conversation_id: uuid.UUID, now: datetime) -> None:
+        self.db.execute(
+            update(ChatConversation)
+            .where(ChatConversation.id == conversation_id)
+            .values(last_opened_at=now)
+        )
 
     def list_goals_based_on(self, take_ids: Sequence[uuid.UUID]) -> list[ChatGoal]:
         return list(
