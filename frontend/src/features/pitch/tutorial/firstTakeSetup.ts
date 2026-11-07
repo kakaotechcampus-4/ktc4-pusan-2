@@ -32,7 +32,9 @@ async function waitForScript(pitchId: string, scriptVersionId: string, progress:
     const detail = await getScript(pitchId, scriptVersionId);
     if (detail.parse_status === 'DONE') {
       if (!validMapping(detail)) {
-        throw new Error('샘플 대본이 5개 슬라이드에 맞게 나뉘지 않았어요. 내 피치에서 대본을 확인해 주세요.');
+        throw new Error(
+          '샘플 대본이 5개 슬라이드에 맞게 나뉘지 않았어요. 내 피치에서 대본을 확인해 주세요.',
+        );
       }
       return;
     }
@@ -91,7 +93,9 @@ export async function ensureFirstTakePitch(progress: Progress): Promise<string> 
 
   // 각 저장 단계가 중단되더라도 다음 방문에서 서버에 남은 버전을 이어 씁니다.
   const resources = await getPitchResources(pitchId);
-  const presentation = [...resources.presentation_versions].sort((a, b) => b.version - a.version)[0];
+  const presentation = [...resources.presentation_versions].sort(
+    (a, b) => b.version - a.version,
+  )[0];
   const script = [...resources.script_versions].sort((a, b) => b.version - a.version)[0];
 
   if (!presentation) {
@@ -104,7 +108,10 @@ export async function ensureFirstTakePitch(progress: Progress): Promise<string> 
     ) {
       throw new Error('업로드된 PDF 장수가 샘플 자료와 달라요. 내 피치에서 확인해 주세요.');
     }
-  } else if (presentation.page_count != null && presentation.page_count !== FIRST_TAKE_SLIDES.length) {
+  } else if (
+    presentation.page_count != null &&
+    presentation.page_count !== FIRST_TAKE_SLIDES.length
+  ) {
     throw new Error('기존 샘플 PDF가 5장이 아니에요. 내 피치에서 자료를 확인해 주세요.');
   }
 
