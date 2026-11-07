@@ -34,7 +34,7 @@ export function Stat({
   return (
     <div className="border-2 border-ink bg-panel px-5 py-5 shadow-[4px_4px_0_var(--color-line)]">
       <p className="text-sm font-bold text-stone">{label}</p>
-      <p className="tabular mt-4 font-mono text-3xl font-bold sm:text-4xl">{value}</p>
+      <p className="tabular mt-4 tabular-nums text-3xl font-bold sm:text-4xl">{value}</p>
       {children && <p className="tabular mt-3 text-xs text-stone">{children}</p>}
     </div>
   );

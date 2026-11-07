@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-right-value",
+  "set": "objectivity",
+  "group": "right_claim",
+  "split": "dev",
+  "act": "should_not",
+  "title": "맞는 값 주장 '3장 청중 시선 비율 28%였지?' → SUPPORTED, 판단 문장의 값 28%",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 3장 청중 시선 비율 28%였지?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "value-supported",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "dimension": "audience_gaze",
+          "verdict": "SUPPORTED",
+          "has_evidence": true,
+          "text@": "SUPPORTED",
+          "claim_op": "VALUE",
+          "slide_number": 3
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

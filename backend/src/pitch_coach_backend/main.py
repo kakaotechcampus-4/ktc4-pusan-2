@@ -20,6 +20,14 @@ from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
+from pitch_coach_backend.module.chat import turn_runner
+from pitch_coach_backend.module.chat.approval_sweep import start as start_approval_sweep
+from pitch_coach_backend.module.chat.availability import check_on_startup as check_chat_on_startup
+from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup_sweep
+from pitch_coach_backend.module.chat.controller import router as chat_router
+from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
+from pitch_coach_backend.module.chat.run_recovery import start as start_run_recovery
+from pitch_coach_backend.module.chat.switch_off_sweep import start as start_switch_off_sweep
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.pitch.dependencies import (
     resume_script_parses,
@@ -76,7 +84,12 @@ def shutdown_max_sec() -> float:
         # 코치 finalize 와 계획 요청을 차례로 끊는다
         + 2 * COACH_STOP_TIMEOUT_SEC
         + analysis_runner.STOP_TIMEOUT_SEC
+        + turn_runner.STOP_TIMEOUT_SEC
     )
+
+
+async def _nothing_to_stop() -> None:
+    """띄우지 않은 주기 작업의 멈춤 함수."""
 
 
 @asynccontextmanager
@@ -90,12 +103,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
     await arm_abandoned_takes(get_transcript_store())
     # 만들다 만 Take 결과를 이어 가고, 기한이 지난 1초 원자료를 지우는 주기 작업을 건다
-    stop_coach_background = await start_coach_background(
+    stop_coach_background = start_coach_background(
         get_coach_client(), get_coach_store(), on_take_result=analysis_runner.start
     )
     stop_analysis = start_analysis_runner()
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
+    # 재시작 복구 · 자동 목표 확인은 AI 를 부르므로 대화 기능이 꺼져 있으면 띄우지 않는다
+    # (chat-agent.md 11-2). 스위치가 켜져 있어도 대화 자리 설정이 어긋나면 꺼진 것과 같다(L2-13).
+    # 꺼져 있으면 끝나지 않은 실행을 한 번 CANCELLED 로 끝낸다. 승인을 기다리던 행동도 함께
+    # 취소한다. 실행이 많을 수 있어 앱이 뜨는 것을 막지 않게 따로 띄운다.
+    # 근거가 지워진 답을 가리는 정리 작업은 꺼져 있어도 돈다
+    chat_on = check_chat_on_startup()
+    stop_run_recovery = start_run_recovery() if chat_on else _nothing_to_stop
+    stop_goal_sweep = start_goal_sweep() if chat_on else _nothing_to_stop
+    stop_switch_off = _nothing_to_stop if chat_on else start_switch_off_sweep()
+    stop_cleanup_sweep = start_cleanup_sweep()
+    # 30분이 지난 승인 대기를 끝낸다. AI 를 부르지 않으므로 꺼져 있어도 돈다
+    stop_approval_sweep = start_approval_sweep()
     # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
     stop_file_cleanup = start_file_cleanup_sweep()
     # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
@@ -114,6 +139,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
     await stop_ready_sweep()
+    await stop_goal_sweep()
+    await stop_run_recovery()
+    await stop_switch_off()
+    await turn_runner.stop_all()
+    await stop_cleanup_sweep()
+    await stop_approval_sweep()
     await stop_file_cleanup()
     await stop_coach_background()
     await stop_analysis()
@@ -138,10 +169,12 @@ register_exception_handlers(app)
 # 그래서 프론트 주소를 명시한다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_base_url.rstrip("/")],
+    allow_origins=[settings.frontend_origin],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", CSRF_HEADER_NAME],
+    # 대화 한도 429 가 다시 보낼 시각을 이 헤더로 준다. 밝히지 않으면 다른 origin 의 FE 가 못 읽는다
+    expose_headers=["Retry-After"],
 )
 
 # 도메인 controller 는 모두 이 라우터에 붙인다. /api 는 이 파일 한 곳에만 적는다.
@@ -162,6 +195,7 @@ api.include_router(pitch_router)
 api.include_router(take_router)
 api.include_router(takes_router)
 api.include_router(realtime_router)
+api.include_router(chat_router)
 
 app.include_router(api)
 app.include_router(admin_router)

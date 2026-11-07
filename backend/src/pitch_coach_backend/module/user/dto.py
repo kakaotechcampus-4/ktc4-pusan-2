@@ -4,6 +4,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from pitch_coach_backend.core.limits import INT4_MAX
+
 
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -23,4 +25,4 @@ class UserSettingsUpdate(BaseModel):
 
     raw_data_consent: bool | None = None
     # 동의한 안내문 버전. 철회는 받지 않는다
-    test_consent_version: Annotated[int, Field(strict=True, ge=1)] | None = None
+    test_consent_version: Annotated[int, Field(strict=True, ge=1, le=INT4_MAX)] | None = None

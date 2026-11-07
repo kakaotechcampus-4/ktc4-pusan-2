@@ -8,6 +8,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.auth.dependencies import get_released_user_id
 from pitch_coach_backend.module.pitch.dependencies import get_owned_pitch
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
@@ -101,6 +102,21 @@ def test_owned_pitch_returns_connection_when_not_owned(
 
         with pytest.raises(NonExistentPitch):
             get_owned_pitch(user, db, uuid.uuid4())
+
+        assert engine.pool.checkedout() == before
+        assert not db.in_transaction()
+
+
+def test_released_user_id_returns_connection(
+    engine: Engine, committed_pitch: tuple[User, uuid.UUID]
+) -> None:
+    user, _ = committed_pitch
+    with Session(engine, autoflush=False, expire_on_commit=False) as db:
+        before = engine.pool.checkedout()
+        db.scalar(select(User.id).where(User.id == user.id))
+        assert engine.pool.checkedout() == before + 1
+
+        assert get_released_user_id(user, db) == user.id
 
         assert engine.pool.checkedout() == before
         assert not db.in_transaction()

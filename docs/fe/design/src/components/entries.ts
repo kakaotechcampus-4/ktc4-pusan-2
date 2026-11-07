@@ -165,7 +165,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     group: components,
     status: '제품에 있음',
     summary:
-      '홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 리포트 · 피치 생성이 같이 쓰는 머리. 사용방법 창을 연다.',
+      '홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 리포트 · 피치 생성 · 시작 전 세팅이 같이 쓰는 머리. 사용방법 창을 연다.',
     states: [
       view('home', '내 피치', '홈에 있을 때.'),
       view('takes', 'Take 기록', 'Take 기록에 있을 때.'),
@@ -174,8 +174,8 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     rules: [
       '지금 화면의 메뉴는 코랄 밑줄 · 굵게와 aria-current="page"로 표시한다.',
       '바탕은 기본 지면(bg-panel)으로 고정한다. 아래 화면이 밝은 지면이어도 바꾸지 않는다.',
-      '시작 전 세팅 · 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 두지 않는다. 피치 생성에는 #738부터 둔다. 시작 전 세팅은 단순화할 때(#706) 같이 정한다.',
-      '높이(약 85px)는 styles.css의 --spacing-app-header와 맞춘다. 피치 생성 화면이 그 값으로 남은 높이를 계산한다.',
+      '리허설 · 분석 대기 · 대본 확인은 집중 화면이라 두지 않는다. 피치 생성에는 #738, 시작 전 세팅에는 #694부터 둔다.',
+      '높이(약 85px)는 styles.css의 --spacing-app-header와 맞춘다. 피치 생성 화면이 그 값으로 남은 높이를 계산하고, 시작 전 세팅은 그만큼 빼고도 시작 버튼이 첫 화면에 들어오게 맞춘다.',
     ],
     tokens: ['panel', 'ink', 'coral', 'line-strong'],
     sources: ['frontend/src/shared/ui/AppHeader.tsx', 'frontend/src/app/routes.tsx'],
@@ -283,6 +283,57 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     busy={replacing.busy}
     onConfirm={confirmReplace}
     onCancel={cancelReplace}
+  />
+)}`,
+  },
+  {
+    kind: 'component',
+    id: 'delete-pitch-dialog',
+    title: '피치 삭제 창',
+    group: dialogs,
+    status: '시안',
+    summary:
+      '홈 더보기 메뉴의 삭제(#807). 영구 삭제라 되돌릴 수 없다는 것과 함께 지워지는 것을 알린다.',
+    states: [
+      view(
+        'open',
+        '열림',
+        '피치 제목 · 되돌릴 수 없음 · 함께 지워지는 것 · 남는 설문 답. 처음 초점은 취소.',
+      ),
+      view('busy', '처리 중', '취소 · 삭제를 aria-disabled로 막고 Esc도 막는다.'),
+      view(
+        'error',
+        '실패',
+        '창을 닫지 않고 실패를 알린다(role="alert"). 원인별 공통 오류 문구를 붙인다. 다시 누를 수 있다.',
+      ),
+    ],
+    rules: [
+      '확인 창(ReplaceTakeDialog)과 같은 틀이다. showModal()로 열고 useLayoutEffect 정리에서 close()한다.',
+      '제목 · 피치 이름 · 본문을 aria-labelledby · aria-describedby로 잇는다.',
+      '되돌릴 수 없는 쪽이 삭제라 처음 초점은 취소에 둔다(autoFocus).',
+      '처리 중 버튼은 disabled 대신 aria-disabled다. 누른 버튼이 초점을 쥔 채 막힌다(#845). 요청은 한 번만 보낸다.',
+      'BE가 409 `PITCH_BUSY`로 거절하면(창을 연 사이 연습 · 분석이 시작됨) 지우지 않고 그 이유만 알린다.',
+      '그 밖의 실패는 "피치를 삭제하지 못했어요." 뒤에 원인별 공통 오류 문구(toMessage)를 붙인다. 로그인이 끝난 것처럼 다시 시도해도 안 되는 실패를 같은 말로 덮지 않는다.',
+      '설문 답은 피치를 지워도 남는다(BE take_surveys.take_id SET NULL). "모두 함께 지워져요"가 그것까지 가리지 않게 Take가 있는 피치에는 "지워지지 않고 기한까지 따로 보관돼요"를 한 줄 더 적는다. 설문은 동의하지 않아도 리포트에서 남길 수 있고 홈 목록은 Take별 설문 여부를 모르므로, 동의 여부로 가리지 않고 "남기셨다면"으로 적는다.',
+      '닫힌 뒤 초점은 부모가 옮긴다. 취소면 연 ··· 버튼, 지웠으면 다음 줄의 제목이다.',
+    ],
+    knownIssues: [
+      '보관 기한 "2026년 12월 31일"은 동의 안내(테스트 참여 안내 창)와 같은 임시 값이다. BE 삭제 일정과 함께 팀이 정하면 두 곳을 같이 고친다(제품은 SURVEY_RETENTION_UNTIL 한 곳).',
+    ],
+    tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
+    sources: ['frontend/src/features/pitch/DeletePitchDialog.tsx'],
+    file: 'src/ui/dialogs/DeletePitchDialog.tsx',
+    props: [
+      ['pitchTitle · takeCount', 'string · number', '알릴 피치'],
+      ['busy', 'boolean', '처리 중'],
+      ['error', "'failed' | 'busy' | null", '실패 문구'],
+      ['onConfirm · onCancel', '() => void', '닫는 것은 부모가 정한다'],
+    ],
+    code: `{deleting && (
+  <DeletePitchDialog
+    pitch={deleting.pitch}
+    onCancel={cancelDelete}
+    onDeleted={finishDelete}
   />
 )}`,
   },

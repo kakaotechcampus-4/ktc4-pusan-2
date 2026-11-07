@@ -164,7 +164,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
             >
               <span
                 aria-hidden="true"
-                className="shrink-0 font-mono text-2xl font-bold text-coral-deep"
+                className="shrink-0 tabular-nums text-2xl font-bold text-coral-deep"
               >
                 0{index + 1}
               </span>

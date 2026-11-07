@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "id": "nc-incomplete",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "끝까지 하지 않은 Take(Take 4 시간 초과 종료) — 그 Take 로 좋아짐 · 나빠짐을 말하지 않는다",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-4": {
+            "end_reason": "TIME_LIMIT"
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4랑 Take 5 3장 시선 비교해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-take4-conclusion",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "Take 4[^\\n]{0,80}(좋아졌어요|나빠졌어요)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "reason-or-other-take",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "끝까지|비교할 수 없|비교하지 않|Take 3",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

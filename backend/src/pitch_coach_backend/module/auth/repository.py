@@ -62,15 +62,6 @@ def create_refresh_token(
     return token
 
 
-def get_refresh_token(db: Session, token_hash: str) -> RefreshToken | None:
-    """폐기·만료 여부와 무관하게 가져온다. 판단은 service 가 한다.
-
-    이미 폐기된 토큰이 들어온 것 자체가 유출 신호라서, 여기서 걸러내면
-    재사용 탐지를 할 수 없다.
-    """
-    return db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
-
-
 def get_refresh_token_for_update(db: Session, token_hash: str) -> RefreshToken | None:
     """같은 기기의 회전·로그아웃을 커밋까지 직렬화한 뒤 토큰 행을 잠근다.
 
@@ -111,11 +102,7 @@ def revoke(db: Session, token: RefreshToken) -> None:
 
 
 def revoke_if_active(db: Session, token_id: uuid.UUID) -> bool:
-    """아직 살아 있을 때만 폐기한다. 이 요청이 폐기했으면 True.
-
-    읽고 나서 쓰기 전 사이에 다른 요청이 같은 토큰을 먼저 폐기했을 수 있다. 조건을 WHERE 에
-    넣으면 DB 가 행 잠금으로 줄을 세우고, 늦은 쪽은 0행을 바꿔 진 것을 안다.
-    """
+    """아직 살아 있을 때만 폐기한다. 이 요청이 폐기했으면 True, 이미 폐기됐으면 False."""
     result = db.execute(
         update(RefreshToken)
         .where(RefreshToken.id == token_id, RefreshToken.revoked_at.is_(None))

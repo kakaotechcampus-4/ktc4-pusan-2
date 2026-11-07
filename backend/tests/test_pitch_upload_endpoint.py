@@ -9,9 +9,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.adapter import presentation_file
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
+from pitch_coach_backend.module.pitch.exception import StorageError
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
 
@@ -20,21 +20,6 @@ def s3_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(presentation_service, "upload", lambda file, key, content_type=None: key)
     monkeypatch.setattr(presentation_service, "upload_bytes", lambda data, key, content_type: key)
     monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
-
-
-@pytest.fixture
-def auth_headers(user_id: uuid.UUID) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
-
-
-@pytest.fixture
-def other_user_headers(db_session: Session) -> dict[str, str]:
-    from pitch_coach_backend.module.user.entity import User
-
-    user = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
-    db_session.add(user)
-    db_session.flush()
-    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
 
 @pytest.fixture
@@ -81,6 +66,51 @@ def _presentation_count(db: Session, pitch_id: uuid.UUID) -> int | None:
         .select_from(PresentationVersion)
         .where(PresentationVersion.pitch_id == pitch_id)
     )
+
+
+def _raise_storage_error(*args: object, **kwargs: object) -> None:
+    raise StorageError()
+
+
+def test_s3_upload_failure_is_503(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    pdf: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(presentation_service, "upload", _raise_storage_error)
+
+    response = _upload(client, pitch_id, pdf, auth_headers)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "code": "STORAGE_UNAVAILABLE",
+        "message": StorageError.message,
+        "detail": None,
+    }
+    assert _presentation_count(db_session, pitch_id) == 0
+
+
+def test_presign_failure_after_upload_is_503_and_discards_the_file(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    pdf: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deleted: list[str] = []
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", _raise_storage_error)
+    monkeypatch.setattr(presentation_service, "delete", deleted.append)
+
+    response = _upload(client, pitch_id, pdf, auth_headers)
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "STORAGE_UNAVAILABLE"
+    assert _presentation_count(db_session, pitch_id) == 0
+    assert {key.rsplit(".", 1)[1] for key in deleted} == {"pdf", "webp"}
 
 
 def test_upload_persists_presentation_version_one(

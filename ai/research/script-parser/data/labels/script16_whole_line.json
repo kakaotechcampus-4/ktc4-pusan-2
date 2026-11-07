@@ -1,0 +1,48 @@
+{
+  "note": "줄 전체가 `슬라이드 N`인 형식(FE가 매핑에서 장 대본을 고친 뒤 다시 조립한 원문) — success. 장마다 한 줄뿐인 짧은 대본",
+  "status": "success",
+  "slides": [
+    {
+      "slide_number": 1,
+      "first": "1장입니다",
+      "last": "1장입니다"
+    },
+    {
+      "slide_number": 2,
+      "first": "2번입니다",
+      "last": "2번입니다"
+    },
+    {
+      "slide_number": 3,
+      "first": "하하",
+      "last": "하하"
+    },
+    {
+      "slide_number": 4,
+      "first": "시험을 80점 맞아서 기분이 좋네요",
+      "last": "시험을 80점 맞아서 기분이 좋네요"
+    },
+    {
+      "slide_number": 5,
+      "first": "다음 시험은 200%의 노력을 더하여 100점을 맞겠습니다.",
+      "last": "다음 시험은 200%의 노력을 더하여 100점을 맞겠습니다."
+    },
+    {
+      "slide_number": 6,
+      "first": "무슨 말을 더 하지",
+      "last": "무슨 말을 더 하지"
+    },
+    {
+      "slide_number": 7,
+      "first": "일반물리2 수업은 3:00 PM 입니다.",
+      "last": "일반물리2 수업은 3:00 PM 입니다."
+    },
+    {
+      "slide_number": 8,
+      "first": "안녕히계세요...",
+      "last": "안녕히계세요..."
+    }
+  ],
+  "title_lines": [],
+  "actual_slide_ms": null
+}

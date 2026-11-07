@@ -9,6 +9,7 @@ import type { DeviceError } from '../media/useCameraStream';
 import { DeviceCheckPage } from './DeviceCheckPage';
 import { usePrepareStore } from './prepareStore';
 import { setSessionTicket } from '../lib/db';
+import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 
 const fixture = vi.hoisted(() => ({
   live: true,
@@ -160,6 +161,7 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
@@ -250,6 +252,13 @@ it('keeps device selection and calibration as separate actions and blocks starti
   expect(fixture.gazeStart).not.toHaveBeenCalled();
   await act(async () => findButton('시선 기준 잡기').click());
   expect(fixture.gazeStart).toHaveBeenCalledOnce();
+});
+
+it('lets the app header skip link move focus to the setup body', async () => {
+  await render();
+  const main = host.querySelector('main')!;
+  expect(main.id).toBe('main');
+  expect(main.tabIndex).toBe(-1);
 });
 
 it('retains all mission access and the start action during optional voice reading', async () => {
@@ -382,4 +391,14 @@ it('counts the silence warning only while reading the usual voice, from when rea
   await render();
   expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
   now.mockRestore();
+});
+
+it('tells the chat panel the current check state when a message is sent (chat step 6)', async () => {
+  fixture.micOk = false;
+  fixture.gazeStatus = 'RUNNING';
+  await render();
+  expect(takeScreenSnapshot('/pitch/:pitchId/device-check')).toMatchObject({
+    ok: true,
+    screen: { name: 'device_check', camera: 'connected', mic: 'checking', gaze_setup: 'RUNNING' },
+  });
 });

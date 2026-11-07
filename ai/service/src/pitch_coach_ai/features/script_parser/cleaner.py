@@ -25,6 +25,8 @@ def clean_script(text: str) -> str:
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     # 줄 안의 연속 공백/탭만 하나로 정리, 문단 구분은 최대 빈 줄 하나(\n\n)까지 유지
     text = re.sub(r"[ \t]+", " ", text)
+    # 줄 끝 공백을 지워 공백 · 탭만 있던 줄도 빈 줄로 센다
+    text = re.sub(r" +$", "", text, flags=re.MULTILINE)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -42,12 +44,13 @@ def find_highlights(script: str, keywords: list[str]) -> list[dict[str, int]]:
     위치는 코드 포인트 기준이고 end는 포함하지 않습니다.
     clean_script를 거친 script 기준이어야 합니다.
     script에 없는 keyword는 건너뜁니다.
+    키워드는 대본 내용이라 로그에 남기지 않습니다(기능 문서 11절).
     """
     highlights = []
     for keyword in keywords:
         start = script.find(keyword)
         if start == -1:
-            logger.warning("keyword %r not found in script", keyword)
+            logger.warning("keyword not found in script")
             continue
         highlights.append({"start": start, "end": start + len(keyword)})
     return highlights

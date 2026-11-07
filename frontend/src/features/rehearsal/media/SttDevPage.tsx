@@ -182,7 +182,7 @@ export function SttDevPage() {
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-semibold">takeId</span>
             <input
-              className="w-96 rounded-lg border border-line px-3 py-2 font-mono text-sm"
+              className="w-96 rounded-lg border border-line px-3 py-2 tabular-nums text-sm"
               value={takeId}
               onChange={(event) => setTakeId(event.target.value)}
               placeholder="dev/stt-send-pcm.py --create-take 로 발급"
@@ -243,7 +243,7 @@ export function SttDevPage() {
           <ol className="flex max-h-64 flex-col gap-1 overflow-auto text-sm">
             {finals.map((final) => (
               <li key={final.segment_id} className="flex gap-2">
-                <span className="shrink-0 font-mono text-xs text-stone">
+                <span className="shrink-0 tabular-nums text-xs text-stone">
                   {(final.start_ms / 1000).toFixed(1)}s
                 </span>
                 <span>{final.text}</span>

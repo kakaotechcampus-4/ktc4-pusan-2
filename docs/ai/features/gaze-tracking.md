@@ -487,7 +487,7 @@ uv sync                                  # Python 3.12, mediapipe 1.0.1 고정
 uv run python tools/fetch_assets.py      # 모델 · 테스트 얼굴(합성, git 밖)을 받고 sha256 확인
 cd web && npm ci
 ```
-- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`.
+- Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`. macOS · Linux에서도 같은 명령을 그대로 쓴다.
 - 서버 판정 모듈의 의존성은 pydantic 하나다. 그 테스트는 서비스 공통 `tests/conftest.py`가 앱을 불러오므로 `ai/service`에서 `uv sync`한 개발 환경으로 돈다. 기준 구현(`tests/lab`)은 mediapipe · numpy · opencv와 테스트 얼굴이 필요하고, 얼굴 사진이 필요한 테스트는 `fetch_assets.py`를 돌리지 않으면 이유를 보이고 건너뛴다.
 - 시선은 LLM을 쓰지 않아 `ai/.env`가 필요 없다.
 
@@ -498,7 +498,7 @@ cd web && npm ci
 | 린트 | `uv run ruff check src tests tools experiments` | 지적 없음 |
 | 엔진 · Worker 테스트 | `cd web && npm test` · `npm run typecheck` · `npm run lint` | 엔진(Python 기준 답과 일치) · FE 계약 · 경계 테스트 통과 |
 | 프레임 지연 재기 | `cd web && npm run bench` | Worker 한 프레임 중앙값 · p95 (8절 예산과 비교) |
-| 실제 브라우저 확인(`npm run smoke` · `smoke:prod`) · 기준값 · 기준 답 다시 만들기(`npm run fixtures`) · 데모(`run_demo.bat` · `npm run dev`) | `ai/research/gaze-tracking/README.md` 5절 | 그 README의 기대 결과 |
+| 실제 브라우저 확인(`npm run smoke` · `smoke:prod`) · 기준값 · 기준 답 다시 만들기(`npm run fixtures`) · 데모(`run_demo.bat`, macOS · Linux는 `uv run python tools/pipeline_demo.py` · `npm run dev`) | `ai/research/gaze-tracking/README.md` 5절 | 그 README의 기대 결과 |
 
 - 계약 테스트: `examples/`의 `judge` 입력(판정 창 전체) · 출력, `criteria()` 출력(다섯 문제), `summarize` 입력 · 출력을 공통 계약 테스트 틀로 검사한다. 예시는 `config.py`의 실제 기준값으로 만든다.
 - 판정 테스트가 볼 것: 문제 없는 1초, 측정 불가(`UNCERTAIN` · `UNMEASURED` · 기록 누락 · 같은 1초 두 번), 이어짐 끊김(`UNCERTAIN` · 빈 1초 · `OTHER` 방향 변화), Take 시작 직후 억제, 대본 의존 기준 시간 경계와 구간이 끝날 때 세기, 분모 0, 커서(요청이 빠져 1초가 여러 개, 같은 입력 두 번 = 같은 결과, 돌려준 커서로 다시 부르면 이미 센 몫이 나오지 않음). 테스트 이름은 동작을 문장으로 짓는다(예: `test_reading_run_counts_when_spoken_script_run_ends`).

@@ -62,6 +62,22 @@ def test_display_is_not_compared():
     assert score["missing_targets"] == score["fabricated_targets"] == []
 
 
+def test_same_wrong_target_twice_counts_twice():
+    # 다른 표시 기준에서 같은 오답 목표가 두 번 나오면 지어낸 목표 2개다(14절)
+    exp = expected({"filler": "x"}, [target()])
+    out = output({"filler": "x"}, [target(), target("cpm", display="a"), target("cpm", display="b")])
+    score = score_case(exp, out)
+    assert score["fabricated_targets"] == [("cpm", "LTE", 5.0)] * 2
+    metrics = summarize([case(exp, out)])
+    assert metrics["target_precision"] == round(1 / 3, 4)  # 나온 3개 중 1개
+    assert metrics["fabricated_targets_per_sentence"] == 2.0
+
+
+def test_expected_target_twice_needs_two_outputs():
+    score = score_case(expected(targets=[target(), target()]), output(targets=[target()]))
+    assert score["missing_targets"] == [("filler_count", "LTE", 5.0)]
+
+
 def test_failed_call_counts_as_all_wrong():
     score = score_case(expected(targets=[target()]), None)
     assert score["elements_correct"] == 0
@@ -148,3 +164,7 @@ def test_evaluate_keeps_going_when_a_call_fails():
     report = evaluate([EXAMPLE, EXAMPLE], MeasuredLLM(FakeRawLLM(fail=TimeoutError("late"))))
     assert report["metrics"]["failed"] == 2
     assert all(c["output"] is None and "TimeoutError" in c["error"] for c in report["cases"])
+    # 실패한 호출도 걸린 시간은 남는다
+    assert all(c["latency_s"] is not None for c in report["cases"])
+    assert report["measurements"]["latency_s"] is not None
+    assert report["meta"]["models"] == []

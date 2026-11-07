@@ -104,7 +104,7 @@ export function LoginPage() {
             height={96}
             className="mx-auto h-24 w-20 object-contain [image-rendering:pixelated]"
           />
-          <p className="mt-4 font-mono text-xs tracking-widest text-ink/80">
+          <p className="mt-4 tabular-nums text-xs tracking-widest text-ink/80">
             READY FOR YOUR FIRST TAKE?
           </p>
           <h1 id="login-title" className="mt-2 text-2xl font-extrabold tracking-tight">
@@ -122,7 +122,7 @@ export function LoginPage() {
             aria-label="Google 계정으로 로그인"
             aria-describedby="login-status"
             aria-busy={redirecting}
-            className="mx-auto mt-8 flex min-h-11 max-w-full cursor-pointer items-center rounded disabled:cursor-wait"
+            className="mx-auto mt-8 flex min-h-11 max-w-full items-center rounded disabled:cursor-wait"
           >
             <img
               src="/auth/google-sign-in.png"
@@ -163,7 +163,7 @@ export function LoginPage() {
       </main>
 
       <footer className="border-t border-line-strong px-6 py-6">
-        <p className="mx-auto max-w-page font-mono text-xs font-bold">
+        <p className="mx-auto max-w-page tabular-nums text-xs font-bold">
           PITCH COACH / ONE TAKE AT A TIME.
         </p>
       </footer>

@@ -24,7 +24,7 @@ class TakeStats(BaseModel):
 
 
 class PracticeTimeStats(BaseModel):
-    """연습 시간. 시작 · 끝 시각이 다 있는 Take 만 센다."""
+    """연습 시간. 잰 시간(`duration_sec`)이나 시작 · 끝 시각으로 잴 수 있는 Take 만 센다."""
 
     measured_takes: int
     total_sec: float
@@ -293,3 +293,35 @@ class AdminSuggestionRow(BaseModel):
 class AdminPage[T](BaseModel):
     items: list[T]
     next_offset: int | None
+
+
+class AdminChatDay(BaseModel):
+    """코치 대화 실행의 하루 운영 기록. 끝난 실행만 센다."""
+
+    day: date
+    users: int
+    runs: int
+    done: int
+    partial: int
+    refused: int
+    failed: int
+    cancelled: int
+    expired: int
+    avg_ms: int | None
+    p95_ms: int | None
+    # 사용량을 모르는 실행은 0 이 아니라 빼고 더한다. 몇 개였는지는 tokens_missing 에 있다
+    input_tokens: int | None
+    output_tokens: int | None
+    tokens_missing: int
+
+
+class AdminChatDiagnostic(BaseModel):
+    """`/agent/turn` 호출 하나의 진단 기록. 본문 · 측정값 없이 ID · 코드 · 수만 담는다."""
+
+    run_id: uuid.UUID
+    conversation_id: uuid.UUID
+    user_id: uuid.UUID
+    turn_call: int
+    request_id: str
+    received_at: datetime
+    diagnostics: Any

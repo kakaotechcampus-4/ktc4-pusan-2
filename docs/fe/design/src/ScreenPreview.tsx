@@ -41,17 +41,18 @@ export type { Navigate as PreviewNavigate } from './screens/shared';
 
 /**
  * 위에 공용 상단바가 얹히는 화면과 그때 표시되는 메뉴. 제품 `app/routes.tsx`의 appHeaderPaths와
- * 리포트(ReportPage가 직접 둔다)다. 피치 생성은 #738에서 더해졌다(시작 전 세팅은 #706에서 정한다)
+ * 리포트(ReportPage가 직접 둔다)다. 피치 생성은 #738, 시작 전 세팅은 #694에서 더해졌다
  */
 const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
   home: 'home',
   takes: 'takes',
   me: 'me',
   retry: null,
-  comparison: null,
+  comparison: 'takes',
   report: null,
   'pitch-create': null,
   'pitch-create-a': null,
+  'prepare-mission': null,
 };
 
 /** 제품 경로를 설계서 화면으로 바꾼다. 알 수 없는 경로는 제품으로 열지 않는다 */

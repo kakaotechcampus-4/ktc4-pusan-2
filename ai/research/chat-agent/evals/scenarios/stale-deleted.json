@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "id": "stale-deleted",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should_not",
+  "title": "옛 답의 근거 Take 4 가 지워짐 — 옛 숫자(31%)를 다시 말하지 않고 찾을 수 없다고 한다",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "drop_takes": ["t-4"]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 4 3장 시선 어땠어?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 4의 3장 청중 시선 비율은 31%예요.",
+          "source_ids": ["t-4"],
+          "basis": {
+            "pitches": [
+              {
+                "pitch_id": "p-1",
+                "takes": [
+                  {
+                    "take_id": "t-4",
+                    "take_number": 4
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "아까 말한 Take 4 3장 값 다시 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-deleted-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "31%",
+        "grader": "number"
+      },
+      {
+        "check_id": "not-found",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "찾을 수 없|가져오지 못|지워|삭제",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": ["DONE", "PARTIAL"],
+        "path": "status"
+      }
+    ]
+  }
+}

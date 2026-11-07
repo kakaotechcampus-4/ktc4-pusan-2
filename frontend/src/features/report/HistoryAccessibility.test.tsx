@@ -4,8 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { TakeHistoryRow } from '@/types/takeHistory';
-import { ComparisonPage } from './ComparisonPage';
+import { TakeComparison } from './TakeComparison';
 import { TakesPage } from './TakesPage';
+import { completedTakes } from './takeHistoryFormat';
 
 const query = vi.hoisted(() => ({ data: { takes: [] as TakeHistoryRow[] } }));
 vi.mock('@/shared/api/takeHistory', () => ({ useTakeHistory: () => query }));
@@ -41,14 +42,21 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
+// 비교는 피치 거르기와 떼어 엔진이 다른 Take를 같이 넣어 봅니다
 async function render(page: 'compare' | 'takes', search = '') {
   await act(async () =>
     root.render(
-      <MemoryRouter initialEntries={[`/pitch/p1/comparison${search}`]}>
+      <MemoryRouter initialEntries={[`/takes${search}`]}>
         <Routes>
           <Route
-            path="/pitch/:id/comparison"
-            element={page === 'compare' ? <ComparisonPage /> : <TakesPage />}
+            path="/takes"
+            element={
+              page === 'compare' ? (
+                <TakeComparison rows={completedTakes(query.data.takes)} />
+              ) : (
+                <TakesPage />
+              )
+            }
           />
         </Routes>
       </MemoryRouter>,

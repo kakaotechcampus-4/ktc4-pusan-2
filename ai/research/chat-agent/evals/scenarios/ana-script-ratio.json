@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "id": "ana-script-ratio",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "'Take 5 전체에서 대본을 본 비율' — (15+20+55+18)/4 = 27%",
+  "expect_refusal": false,
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 전체에서 대본을 본 비율이 몇 %야?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "followups": [
+    {
+      "message": "Take 5 대본 응시 비율 숫자만 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "27%",
+        "grader": "number",
+        "derive": "t-5:GAZE.script_ratio"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 5,
+          "metric": "script_ratio"
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "question-not-unverifiable",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "UNVERIFIABLE",
+        "grader": "template",
+        "note": "값을 묻는 질문을 '이 기록으로는 확인할 수 없어요' 판단으로 답하지 않는다(값이 기록에 있다)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

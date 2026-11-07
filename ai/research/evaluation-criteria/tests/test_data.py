@@ -1,6 +1,7 @@
 """평가 데이터 data/examples.json — 정답이 계약에 맞고 13절이 말하는 경우를 담는지 본다."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -60,7 +61,18 @@ def test_examples_cover_what_section_13_asks():
     assert any(not any(v is not None for v in e["expected"]["values"].values()) for e in EXAMPLES)
 
 
+# 프롬프트에서 따옴표로 든 예시 구절 (끝 마침표 제외, 6자 이상만: "5번 이하" 같은 흔한 말은 뺀다)
+PROMPT_PHRASES = sorted(
+    {
+        phrase
+        for quoted in re.findall(r'"([^"\n]+)"', SYSTEM_PROMPT)
+        if len(phrase := quoted.strip().rstrip(".")) >= 6
+    }
+)
+
+
 @pytest.mark.parametrize("example", EXAMPLES, ids=IDS)
 def test_examples_are_not_in_the_prompt(example):
-    # 프롬프트 예시와 같은 문장이면 평가 점수가 부풀려진다
+    # 프롬프트 예시와 같은 문장 · 구절이면 평가 점수가 부풀려진다
     assert example["text"] not in SYSTEM_PROMPT
+    assert [p for p in PROMPT_PHRASES if p in example["text"]] == []

@@ -121,7 +121,7 @@ export function WelcomePage() {
           className="relative mx-auto grid max-w-7xl items-center gap-12 px-6 pb-16 pt-12 lg:grid-cols-[1fr_1.1fr] lg:gap-8 lg:px-10 lg:pb-24 lg:pt-20"
         >
           <div>
-            <p className="mb-7 flex items-center gap-2 font-mono text-[10px] font-bold tracking-[.16em] sm:text-xs">
+            <p className="mb-7 flex items-center gap-2 tabular-nums text-[10px] font-bold tracking-[.16em] sm:text-xs">
               <span className="h-2 w-2 bg-coral" /> WELCOME TO THE PRESENTATION LAB
             </p>
             <h1
@@ -172,22 +172,22 @@ export function WelcomePage() {
             </p>
           </div>
           <div className="relative pt-4">
-            <div className="absolute -right-1 top-0 z-10 rotate-6 border-2 border-ink bg-cream px-3 py-2 font-mono text-[10px] font-bold shadow-[3px_3px_0_var(--color-ink)]">
+            <div className="absolute -right-1 top-0 z-10 rotate-6 border-2 border-ink bg-cream px-3 py-2 tabular-nums text-[10px] font-bold shadow-[3px_3px_0_var(--color-ink)]">
               PRACTICE MAKES BETTER!
             </div>
             <div className="border-2 border-ink bg-white shadow-[8px_8px_0_var(--color-line-strong)]">
-              <div className="flex items-center justify-between border-b-2 border-ink bg-ink px-5 py-3 font-mono text-[10px] text-panel">
+              <div className="flex items-center justify-between border-b-2 border-ink bg-ink px-5 py-3 tabular-nums text-[10px] text-panel">
                 <span>● LAB 01 / 치치의 첫 발표</span>
                 <span>— □ ×</span>
               </div>
               <div className="relative overflow-hidden">
                 <ComfortScene />
                 <div className="landing-float absolute left-5 top-6 max-w-[80%] border-2 border-ink bg-panel px-4 py-3 shadow-[3px_3px_0_var(--color-ink)] sm:left-8 sm:top-8">
-                  <p className="mb-1 font-mono text-[9px] text-ink">PROFESSOR / 오늘의 한마디</p>
+                  <p className="mb-1 tabular-nums text-[9px] text-ink">PROFESSOR / 오늘의 한마디</p>
                   <p className="text-sm font-bold">괜찮습니다. 처음부터 잘하는 새는 없어요.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 border-t border-line px-5 py-4 font-mono text-[10px]">
+              <div className="flex items-center gap-3 border-t border-line px-5 py-4 tabular-nums text-[10px]">
                 <span>CONFIDENCE</span>
                 <div className="flex flex-1 gap-1">
                   {Array.from({ length: 10 }, (_, i) => (
@@ -210,7 +210,7 @@ export function WelcomePage() {
           </div>
         </section>
         <div className="border-y border-ink bg-ink px-6 py-4 text-panel">
-          <div className="mx-auto flex max-w-6xl flex-wrap justify-between gap-3 font-mono text-[10px] tracking-wider sm:text-xs">
+          <div className="mx-auto flex max-w-6xl flex-wrap justify-between gap-3 tabular-nums text-[10px] tracking-wider sm:text-xs">
             <span>01. PREPARE YOUR PITCH</span>
             <span>✦</span>
             <span>02. FIND YOUR PACE</span>
@@ -225,7 +225,7 @@ export function WelcomePage() {
         >
           <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
             <div>
-              <p className="mb-3 font-mono text-xs font-bold text-ink">01 / A LITTLE HELP</p>
+              <p className="mb-3 tabular-nums text-xs font-bold text-ink">01 / A LITTLE HELP</p>
               <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
                 혼자 연습해도,
                 <br />
@@ -240,7 +240,7 @@ export function WelcomePage() {
           </div>
           <div className="grid border-2 border-ink lg:grid-cols-[.8fr_1.2fr]">
             <div className="bg-cream p-6 sm:p-9">
-              <p className="mb-5 font-mono text-xs">COACHING PREVIEW · 코칭 예시</p>
+              <p className="mb-5 tabular-nums text-xs">COACHING PREVIEW · 코칭 예시</p>
               <div role="group" aria-label="코칭 예시 선택" className="space-y-3">
                 {examples.map(([label], i) => (
                   <button
@@ -250,7 +250,7 @@ export function WelcomePage() {
                     className={`flex w-full items-center justify-between border px-5 py-4 text-left font-bold transition ${example === i ? 'border-ink bg-ink text-panel' : 'border-line-strong bg-panel hover:border-ink'}`}
                   >
                     <span>
-                      <span className="mr-4 font-mono text-xs">0{i + 1}</span>
+                      <span className="mr-4 tabular-nums text-xs">0{i + 1}</span>
                       {label}
                     </span>
                     <span>↗</span>
@@ -268,7 +268,7 @@ export function WelcomePage() {
               aria-live="polite"
               aria-atomic="true"
             >
-              <p className="mb-3 font-mono text-[10px] text-ink">피코 교수의 피드백</p>
+              <p className="mb-3 tabular-nums text-[10px] text-ink">피코 교수의 피드백</p>
               <p className="text-xl font-bold leading-9">“{examples[example][1]}”</p>
               <div
                 className="my-8 flex h-16 items-center justify-center gap-2 border-y border-line py-3"
@@ -295,7 +295,7 @@ export function WelcomePage() {
           className="scroll-mt-36 border-y border-line-strong bg-greige px-6 py-20 lg:py-24"
         >
           <div className="mx-auto max-w-6xl">
-            <p className="mb-3 text-center font-mono text-xs font-bold text-ink">
+            <p className="mb-3 text-center tabular-nums text-xs font-bold text-ink">
               02 / HOW TO PLAY
             </p>
             <h2 className="text-center text-3xl font-extrabold sm:text-4xl">
@@ -320,10 +320,12 @@ export function WelcomePage() {
                 ],
               ].map(([title, description, label], i) => (
                 <article key={title} className="border-t-2 border-ink pt-6">
-                  <span className="font-mono text-5xl font-black text-coral-deep">0{i + 1}.</span>
+                  <span className="tabular-nums text-5xl font-black text-coral-deep">
+                    0{i + 1}.
+                  </span>
                   <h3 className="mb-3 mt-6 text-xl font-bold">{title}</h3>
                   <p className="text-sm leading-7">{description}</p>
-                  <p className="mt-6 font-mono text-[10px] tracking-widest">{label} ↗</p>
+                  <p className="mt-6 tabular-nums text-[10px] tracking-widest">{label} ↗</p>
                 </article>
               ))}
             </div>
@@ -334,7 +336,7 @@ export function WelcomePage() {
           tabIndex={-1}
           className="mx-auto max-w-7xl scroll-mt-36 px-6 py-20 lg:px-10 lg:py-28"
         >
-          <p className="mb-3 font-mono text-xs font-bold text-ink">03 / THE PRESENTATION LAB</p>
+          <p className="mb-3 tabular-nums text-xs font-bold text-ink">03 / THE PRESENTATION LAB</p>
           <div className="grid gap-7 border-b border-line-strong pb-10 lg:grid-cols-[.9fr_1.1fr] lg:gap-16">
             <div>
               <h2 className="text-3xl font-extrabold leading-snug sm:text-4xl">
@@ -342,7 +344,7 @@ export function WelcomePage() {
                 <br />
                 멀리 닿을 수 있도록.
               </h2>
-              <p className="mt-5 font-mono text-xs tracking-widest">PITCH COACH · 발표 연구실</p>
+              <p className="mt-5 tabular-nums text-xs tracking-widest">PITCH COACH · 발표 연구실</p>
             </div>
             <div className="space-y-4 text-sm leading-8 sm:text-base">
               <p>
@@ -360,7 +362,7 @@ export function WelcomePage() {
           </div>
           <div className="mb-6 mt-10 flex items-center justify-between gap-4">
             <h3 className="text-xl font-bold">연구실 구성원</h3>
-            <span className="font-mono text-[10px] tracking-widest">LAB MEMBERS / 02</span>
+            <span className="tabular-nums text-[10px] tracking-widest">LAB MEMBERS / 02</span>
           </div>
           <div className="grid gap-6 md:grid-cols-2">
             {[true, false].map((professor) => (
@@ -383,12 +385,12 @@ export function WelcomePage() {
                       loading="lazy"
                       className="aspect-[3/4] w-full object-cover [image-rendering:pixelated]"
                     />
-                    <figcaption className="pt-2 text-center font-mono text-[9px] tracking-widest">
+                    <figcaption className="pt-2 text-center tabular-nums text-[9px] tracking-widest">
                       {professor ? 'FACULTY / 001' : 'RESEARCHER / 002'}
                     </figcaption>
                   </figure>
                   <div>
-                    <p className="font-mono text-[10px] tracking-widest">
+                    <p className="tabular-nums text-[10px] tracking-widest">
                       {professor ? 'DIRECTOR' : 'JUNIOR RESEARCHER'}
                     </p>
                     <h4 className="mb-2 mt-3 text-2xl font-extrabold lg:text-3xl">
@@ -423,7 +425,7 @@ export function WelcomePage() {
         >
           <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[.7fr_1.3fr]">
             <div>
-              <p className="mb-3 font-mono text-xs font-bold text-ink">04 / BEFORE YOU START</p>
+              <p className="mb-3 tabular-nums text-xs font-bold text-ink">04 / BEFORE YOU START</p>
               <h2 className="text-3xl font-extrabold">
                 잠깐, 궁금한 게<br />
                 있다면.
@@ -445,7 +447,7 @@ export function WelcomePage() {
           </div>
         </section>
         <section className="border-y-2 border-ink bg-coral-wash px-6 py-16 text-center">
-          <p className="font-mono text-xs tracking-widest">READY FOR YOUR FIRST TAKE?</p>
+          <p className="tabular-nums text-xs tracking-widest">READY FOR YOUR FIRST TAKE?</p>
           <h2 className="mb-7 mt-4 text-3xl font-extrabold sm:text-4xl">
             잘하려고 왔잖아.
             <br className="sm:hidden" /> 이제 같이 해보자!
@@ -475,7 +477,7 @@ export function WelcomePage() {
       </main>
       <footer className="border-t border-line-strong px-6 py-7">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
-          <span className="font-mono text-xs font-bold">PITCH COACH / ONE TAKE AT A TIME.</span>
+          <span className="tabular-nums text-xs font-bold">PITCH COACH / ONE TAKE AT A TIME.</span>
           <a
             href="#policies"
             onClick={(e) => jump(e, 'policies')}
@@ -483,7 +485,7 @@ export function WelcomePage() {
           >
             이용약관 및 개인정보 안내 ↑
           </a>
-          <span className="font-mono text-[10px]">© {year} PITCH COACH</span>
+          <span className="tabular-nums text-[10px]">© {year} PITCH COACH</span>
         </div>
       </footer>
     </div>
