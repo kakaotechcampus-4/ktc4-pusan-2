@@ -489,7 +489,7 @@ function ChatPanel({
         ref={scroller}
         aria-label="채팅 메시지"
         onScroll={onScroll}
-        className="flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto bg-white px-4 py-5"
+        className="relative flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto bg-white px-4 py-5"
       >
         <PanelBody
           failed={failed}
