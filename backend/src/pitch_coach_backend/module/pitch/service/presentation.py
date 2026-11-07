@@ -25,6 +25,7 @@ from pitch_coach_backend.module.pitch.exception import (
     InvalidPresentation,
     NonExistentPitch,
     NonExistentPresentationVersion,
+    StorageError,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 
@@ -60,8 +61,9 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
             thumbnail_key = upload_bytes(
                 thumbnail, presentation_key(pitch_id, presentation_id, "webp"), "image/webp"
             )
-        except Exception as e:
-            logger.warning("발표자료 썸네일을 올리지 못했다 pitch=%s: %s", pitch_id, e)
+        except StorageError:
+            # 원인은 storage 가 남겼다. 썸네일이 없어도 발표자료는 쓸 수 있다
+            logger.warning("발표자료 썸네일을 올리지 못했다 pitch=%s", pitch_id)
 
     # 여기부터 실패하면 S3 에만 파일이 남는다. 버전을 남기지 못했으면 올린 파일을 지운다
     try:

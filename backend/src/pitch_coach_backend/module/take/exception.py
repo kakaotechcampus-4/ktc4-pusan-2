@@ -49,8 +49,8 @@ class TakeAlreadyStarted(ConflictException):
 
 
 class TakeNotStarted(ConflictException):
-    # 실시간 연결이 한 번도 붙지 않은(`READY`) Take 를 끝내려 했다. FE 는 첫 `ready` 를 받은 뒤에
-    # 발표를 시작하므로 이 Take 에는 남은 기록이 없다
+    # 실시간 연결이 한 번도 붙지 않은 Take(`READY`, 그대로 `ABANDONED` 로 정리됨)를 끝내려 했다.
+    # FE 는 첫 `ready` 를 받은 뒤에 발표를 시작하므로 이 Take 에는 남은 기록이 없다
     code = "TAKE_NOT_STARTED"
     message = "시작하지 않은 연습입니다."
 

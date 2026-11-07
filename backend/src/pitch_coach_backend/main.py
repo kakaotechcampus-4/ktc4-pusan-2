@@ -21,7 +21,9 @@ from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.chat import turn_runner
+from pitch_coach_backend.module.chat.approval_sweep import start as start_approval_sweep
 from pitch_coach_backend.module.chat.cleanup_sweep import start as start_cleanup_sweep
+from pitch_coach_backend.module.chat.controller import router as chat_router
 from pitch_coach_backend.module.chat.goal_sweep import start as start_goal_sweep
 from pitch_coach_backend.module.chat.run_recovery import start as start_run_recovery
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
@@ -84,6 +86,10 @@ def shutdown_max_sec() -> float:
     )
 
 
+async def _nothing_to_stop() -> None:
+    """띄우지 않은 주기 작업의 멈춤 함수."""
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     started_before = datetime.now(UTC)
@@ -101,9 +107,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_analysis = start_analysis_runner()
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
-    stop_run_recovery = start_run_recovery()
-    stop_goal_sweep = start_goal_sweep()
+    # 재시작 복구 · 자동 목표 확인은 AI 를 부르므로 대화 스위치가 꺼져 있으면 띄우지 않는다
+    # (chat-agent.md 11-2). 끝나지 않은 실행은 스위치를 켠 뒤 복구가 마감을 보고 끝내거나 잇는다.
+    # 근거가 지워진 답을 가리는 정리 작업은 꺼져 있어도 돈다
+    stop_run_recovery = start_run_recovery() if settings.agent_enabled else _nothing_to_stop
+    stop_goal_sweep = start_goal_sweep() if settings.agent_enabled else _nothing_to_stop
     stop_cleanup_sweep = start_cleanup_sweep()
+    # 30분이 지난 승인 대기를 끝낸다. AI 를 부르지 않으므로 꺼져 있어도 돈다
+    stop_approval_sweep = start_approval_sweep()
     # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
     stop_file_cleanup = start_file_cleanup_sweep()
     # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
@@ -126,6 +137,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_run_recovery()
     await turn_runner.stop_all()
     await stop_cleanup_sweep()
+    await stop_approval_sweep()
     await stop_file_cleanup()
     await stop_coach_background()
     await stop_analysis()
@@ -154,6 +166,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", CSRF_HEADER_NAME],
+    # 대화 한도 429 가 다시 보낼 시각을 이 헤더로 준다. 밝히지 않으면 다른 origin 의 FE 가 못 읽는다
+    expose_headers=["Retry-After"],
 )
 
 # 도메인 controller 는 모두 이 라우터에 붙인다. /api 는 이 파일 한 곳에만 적는다.
@@ -174,6 +188,7 @@ api.include_router(pitch_router)
 api.include_router(take_router)
 api.include_router(takes_router)
 api.include_router(realtime_router)
+api.include_router(chat_router)
 
 app.include_router(api)
 app.include_router(admin_router)

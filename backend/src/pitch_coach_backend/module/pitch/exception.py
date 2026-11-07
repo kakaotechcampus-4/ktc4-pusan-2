@@ -31,6 +31,14 @@ class PresentationBusy(AppException):
     message = "발표자료를 올리는 사람이 많습니다. 잠시 후 다시 올려 주세요."
 
 
+class StorageError(AppException):
+    """S3 를 쓰지 못했다. 원인에는 버킷 · 경로가 들어 있어 로그에만 남긴다 (adapter/storage.py)."""
+
+    status_code = 503
+    code = "STORAGE_UNAVAILABLE"
+    message = "파일 저장소를 쓰지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+
 class NonExistentEvaluation(NotFoundException):
     code = "EVALUATION_NOT_FOUND"
     message = "존재하지 않는 평가 기준 버전입니다."

@@ -8,7 +8,7 @@
 |---|---|
 | 판단 방식 | 규칙. LLM · 네트워크를 쓰지 않는다 |
 | 부르는 쪽 | 코치(`/coach/evaluate` · `/coach/finalize` · `replay`). 자기 HTTP 엔드포인트는 없다 |
-| 기능 버전 | `volume-1.1` (서비스 `features/volume/version.py`), `criteria_version` = `volume-1.1+<config 해시 12자리>` |
+| 기능 버전 | `volume-1.2` (서비스 `features/volume/version.py`), `criteria_version` = `volume-1.2+<config 해시 12자리>` |
 | 상태 | 진입 함수 5개 + 테스트. 판정 모듈 · 예시 · 테스트는 AI 서비스로 옮겼습니다(`ai/service/src/pitch_coach_ai/features/volume/` · `ai/service/tests/unit/volume/`). **기준값은 옛 평가기 값이고 실제 녹음으로 검증하지 않았다** |
 | 설계 | 목적 · 입출력 계약 · 처리 · 배포 → [`docs/ai/features/volume.md`](../../../docs/ai/features/volume.md) |
 

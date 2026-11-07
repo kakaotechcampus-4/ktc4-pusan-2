@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     # AI 서버 (대본 파싱 등). 운영은 compose 내부 주소 http://ai:8000.
     # 필수로 두지 않는다 — 빠져도 BE 는 뜨고, 파싱만 AI_UNAVAILABLE 로 실패한다
     ai_base_url: str = "http://localhost:8001"
+    # 코치 대화(대화 에이전트) 끄기 스위치. AI 서비스에 /agent/turn 이 올라가기 전에는 꺼 둔다.
+    # 꺼져 있으면 대화 API 가 AGENT_DISABLED(503)를 돌려주고 FE 는 버튼을 숨긴다
+    agent_enabled: bool = False
 
     # AWS S3 Configuration
     # SSO로 로그인, 그래서 따로 액세스&시크릿 키를 발급받지 않아도 됨.

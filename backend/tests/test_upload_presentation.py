@@ -1,5 +1,4 @@
 import threading
-import time
 import uuid
 from collections.abc import Callable
 from datetime import date
@@ -20,6 +19,7 @@ from pitch_coach_backend.module.pitch.adapter.presentation_file import (
 )
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO, UploadPresentationDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
+from pitch_coach_backend.module.pitch.exception import StorageError
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
@@ -36,8 +36,10 @@ def upload_mock(monkeypatch) -> MagicMock:
     return mock
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def upload_bytes_mock(monkeypatch) -> MagicMock:
+    """진짜 PDF 를 쓰면 썸네일도 그려 올리므로 모든 시험에서 막는다. AWS 세션이 살아 있는
+    PC 에서 실제 버킷에 파일이 남고, 세션이 없는 CI 와 결과가 달라지는 것을 막는다."""
     mock = MagicMock(side_effect=lambda data, key, content_type: key)
     monkeypatch.setattr(presentation_service, "upload_bytes", mock)
     return mock
@@ -73,11 +75,11 @@ def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -
 
 
 def test_upload_presentation_service(
-        db_session: Session,
-        user_id: uuid.UUID,
-        upload_mock: MagicMock,
-        upload_bytes_mock: MagicMock,
-        make_pdf: Callable[[int], bytes],
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
+    make_pdf: Callable[[int], bytes],
 ):
     # Given
     pitch_id = _make_pitch(db_session, user_id)
@@ -107,29 +109,38 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
 ) -> None:
     """같은 pitch 에 발표자료 둘이 동시에 와도 둘 다 성공하고 버전·S3 키가 갈린다.
 
-    잠금이 없으면 둘 다 max(version)+1 = 1 을 받아 같은 S3 키(.../1.pdf)에 올리고(앞 파일이
-    덮어쓰임), 두 번째 INSERT 가 unique 위반(500)이 된다. 트랜잭션 두 개가 실제로 겹쳐야 해서
-    테스트 세션(savepoint) 대신 진짜 세션 둘을 쓰고, 만든 데이터는 끝에 지운다.
+    S3 업로드는 잠그기 전에 끝나므로 첫 요청을 잠금 안(조회 URL 만들기)에서 멈춘다. 잠금이 없으면
+    둘 다 max(version)+1 = 1 을 받아 두 번째 INSERT 가 unique 위반(500)이 된다. 트랜잭션 두 개가
+    실제로 겹쳐야 해서 테스트 세션(savepoint) 대신 진짜 세션 둘을 쓰고, 만든 데이터는 끝에 지운다.
     """
     from pitch_coach_backend.module.pitch.entity import Pitch
     from pitch_coach_backend.module.user.entity import User
 
-    first_request_uploading = threading.Event()
+    first_request_locked = threading.Event()
+    second_request_uploaded = threading.Event()
+    second_request_locked = threading.Event()
     uploaded_keys: list[str] = []
+    entered_together: list[bool] = []
 
-    def slow_upload(file: UploadFile, key: str, content_type: str | None = None) -> str:
-        # 첫 요청이 S3 에 올리는 중(잠금을 쥔 채)에 두 번째 요청이 들어오게 한다
+    def record_upload(file: UploadFile, key: str, content_type: str | None = None) -> str:
         uploaded_keys.append(key)
-        if not first_request_uploading.is_set():
-            first_request_uploading.set()
-            time.sleep(0.3)
+        if first_request_locked.is_set():
+            second_request_uploaded.set()
         return key
 
-    monkeypatch.setattr(presentation_service, "upload", slow_upload)
-    monkeypatch.setattr(
-        presentation_service, "upload_bytes", lambda data, key, content_type: key
-    )
-    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
+    def presign_in_lock(key: str) -> str:
+        if not first_request_locked.is_set():
+            # 첫 요청이 잠금을 쥔 채로 두 번째 요청이 잠금 앞까지 오기를 기다린다. 잠금이 있으면
+            # 두 번째 요청은 여기에 오지 못하고 대기 시간이 끝난다
+            first_request_locked.set()
+            assert second_request_uploaded.wait(5)
+            entered_together.append(second_request_locked.wait(0.3))
+        else:
+            second_request_locked.set()
+        return f"https://fake/{key}"
+
+    monkeypatch.setattr(presentation_service, "upload", record_upload)
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", presign_in_lock)
 
     with Session(engine) as setup:
         user = User(email=f"{uuid.uuid4()}@example.com", name="동시 업로드")
@@ -155,7 +166,7 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
     try:
         first = threading.Thread(target=upload, args=("a",))
         first.start()
-        assert first_request_uploading.wait(5)
+        assert first_request_locked.wait(5)
         second = threading.Thread(target=upload, args=("b",))
         second.start()
         first.join(10)
@@ -163,6 +174,7 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
 
         # 잠금이 없으면 한쪽이 IntegrityError(unique 위반) 다
         assert not any(isinstance(v, Exception) for v in results.values()), results
+        assert entered_together == [False]
         assert sorted(uploaded_keys) == sorted(
             f"pitches/{target}/presentations/{r.presentation_version_id}.pdf"
             for r in results.values()
@@ -192,6 +204,11 @@ def _upload_one(db: Session, pitch_id: uuid.UUID, make_pdf: Callable[[int], byte
     )
 
 
+def _uploaded_keys(upload_mock: MagicMock, upload_bytes_mock: MagicMock) -> list[str]:
+    """이 요청이 올린 PDF · 썸네일 키. 버전을 남기지 못하면 둘 다 지워야 한다."""
+    return [upload_mock.call_args.args[1], upload_bytes_mock.call_args.args[1]]
+
+
 def _versions(db: Session, pitch_id: uuid.UUID) -> list[int]:
     from pitch_coach_backend.module.pitch.repository import PitchRepository
 
@@ -202,6 +219,7 @@ def test_url_failure_leaves_neither_a_version_nor_the_file(
     db_session: Session,
     user_id: uuid.UUID,
     upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
     deleted: list[str],
     monkeypatch: pytest.MonkeyPatch,
     make_pdf: Callable[[int], bytes],
@@ -219,13 +237,59 @@ def test_url_failure_leaves_neither_a_version_nor_the_file(
         _upload_one(db_session, pitch_id, make_pdf)
 
     assert _versions(db_session, pitch_id) == []
-    assert deleted == [upload_mock.call_args.args[1]]
+    assert deleted == _uploaded_keys(upload_mock, upload_bytes_mock)
+
+
+def test_cleanup_failure_does_not_replace_the_storage_error(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    """올린 파일을 지우다 또 실패해도 사용자는 처음 실패를 받는다."""
+    pitch_id = _make_pitch(db_session, user_id)
+    url_failure = StorageError()
+
+    def broken_url(key: str) -> str:
+        raise url_failure
+
+    def broken_delete(key: str) -> None:
+        raise StorageError()
+
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", broken_url)
+    monkeypatch.setattr(presentation_service, "delete", broken_delete)
+
+    with pytest.raises(StorageError) as raised:
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert raised.value is url_failure
+    assert _versions(db_session, pitch_id) == []
+
+
+def test_thumbnail_failure_keeps_the_upload(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
+    make_pdf: Callable[[int], bytes],
+):
+    pitch_id = _make_pitch(db_session, user_id)
+    upload_bytes_mock.side_effect = StorageError()
+
+    result = _upload_one(db_session, pitch_id, make_pdf)
+
+    presentation = db_session.get(PresentationVersion, result.presentation_version_id)
+    assert presentation is not None
+    assert presentation.thumbnail_key is None
 
 
 def test_save_failure_deletes_the_uploaded_file(
     db_session: Session,
     user_id: uuid.UUID,
     upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
     deleted: list[str],
     monkeypatch: pytest.MonkeyPatch,
     make_pdf: Callable[[int], bytes],
@@ -242,13 +306,14 @@ def test_save_failure_deletes_the_uploaded_file(
     with pytest.raises(RuntimeError):
         _upload_one(db_session, pitch_id, make_pdf)
 
-    assert deleted == [upload_mock.call_args.args[1]]
+    assert deleted == _uploaded_keys(upload_mock, upload_bytes_mock)
 
 
 def test_failed_commit_deletes_the_file_only_when_the_version_is_missing(
     db_session: Session,
     user_id: uuid.UUID,
     upload_mock: MagicMock,
+    upload_bytes_mock: MagicMock,
     deleted: list[str],
     monkeypatch: pytest.MonkeyPatch,
     make_pdf: Callable[[int], bytes],
@@ -264,7 +329,7 @@ def test_failed_commit_deletes_the_file_only_when_the_version_is_missing(
         _upload_one(db_session, pitch_id, make_pdf)
 
     assert _versions(db_session, pitch_id) == []
-    assert deleted == [upload_mock.call_args.args[1]]
+    assert deleted == _uploaded_keys(upload_mock, upload_bytes_mock)
 
 
 def test_commit_whose_reply_was_lost_keeps_the_file(
@@ -315,6 +380,10 @@ def test_failed_upload_cleanup_does_not_delete_the_next_upload(
         files[key] = name
         return key
 
+    def upload_thumbnail(data, key, content_type):
+        files[key] = threading.current_thread().name
+        return key
+
     def presign(key):
         if threading.current_thread().name == "failed-upload":
             raise RuntimeError("presign failed")
@@ -327,6 +396,7 @@ def test_failed_upload_cleanup_does_not_delete_the_next_upload(
         files.pop(key, None)
 
     monkeypatch.setattr(presentation_service, "upload", upload)
+    monkeypatch.setattr(presentation_service, "upload_bytes", upload_thumbnail)
     monkeypatch.setattr(presentation_service, "generate_presigned_url", presign)
     monkeypatch.setattr(presentation_service, "delete", delete)
 
@@ -372,7 +442,10 @@ def test_failed_upload_cleanup_does_not_delete_the_next_upload(
         assert isinstance(results["failed-upload"], RuntimeError)
         assert not isinstance(results["next-upload"], Exception), results
         next_id = results["next-upload"].presentation_version_id
-        assert files == {f"pitches/{pitch_id}/presentations/{next_id}.pdf": "next-upload"}
+        assert files == {
+            f"pitches/{pitch_id}/presentations/{next_id}.pdf": "next-upload",
+            f"pitches/{pitch_id}/presentations/{next_id}.webp": "next-upload",
+        }
         with Session(engine) as check:
             assert _versions(check, pitch_id) == [1]
     finally:
