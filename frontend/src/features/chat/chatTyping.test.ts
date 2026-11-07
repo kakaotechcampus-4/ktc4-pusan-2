@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   TYPING_MAX_LAG_MS,
   TYPING_TICK_MS,
@@ -8,14 +8,22 @@ import {
   type TypingItem,
 } from './chatTyping';
 
-/** 시험이 돌리는 시계 */
+/**
+ * 시험이 돌리는 시계. `minDelay` 를 주면 그보다 짧은 타이머도 그만큼 늦게 부릅니다 — 숨은 탭에서 브라우저가
+ * 타이머를 1초 넘게 늦추는 것을 흉내 냅니다
+ */
 class Clock {
+  private minDelay: number;
+  constructor(minDelay = 0) {
+    this.minDelay = minDelay;
+  }
   t = 0;
+  now = () => this.t;
   private seq = 0;
   private timers = new Map<number, { at: number; fn: () => void }>();
   setTimeout = (fn: () => void, ms: number) => {
     const id = ++this.seq;
-    this.timers.set(id, { at: this.t + ms, fn });
+    this.timers.set(id, { at: this.t + Math.max(ms, this.minDelay), fn });
     return id;
   };
   clearTimeout = (handle: unknown) => {
@@ -37,8 +45,8 @@ class Clock {
 
 const item = (index: number, text: string): TypingItem => ({ index, text });
 
-function setup(reduced = false) {
-  const clock = new Clock();
+function setup(reduced = false, minDelay = 0) {
+  const clock = new Clock(minDelay);
   const done: number[] = [];
   const queue = createTypingQueue<TypingItem>({
     clock,
@@ -50,6 +58,23 @@ function setup(reduced = false) {
 }
 
 describe('글자 나누기', () => {
+  it('Intl.Segmenter 가 없으면 코드 포인트로 나눈다 — 완성형 한글은 그대로, 결합 문자 · 이모지 묶음은 조각난다', async () => {
+    vi.resetModules();
+    vi.stubGlobal('Intl', { ...Intl, Segmenter: undefined });
+    try {
+      const { graphemes: fallback } = await import('./chatTyping');
+      expect(fallback('한글abc123')).toEqual(['한', '글', 'a', 'b', 'c', '1', '2', '3']);
+      // 한계: 다 보이면 원문 그대로지만 효과 중에는 조각으로 보입니다(주석에 적어 둔 그대로)
+      expect(fallback('👍🏽')).toHaveLength(2);
+      expect(fallback('🇰🇷')).toHaveLength(2);
+      expect(fallback('한'.normalize('NFD'))).toHaveLength(3);
+      expect(fallback('👨‍👩‍👧').join('')).toBe('👨‍👩‍👧');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  });
+
   it('한글 · 옛 자모 · 이모지를 보이는 한 글자로 센다', () => {
     expect(graphemes('한글ᄒᆞᆫ👍🏽')).toEqual(['한', '글', 'ᄒᆞᆫ', '👍🏽']);
     expect(graphemes('')).toEqual([]);
@@ -85,6 +110,51 @@ describe('글자 효과 (12-4 F12 · L3-41)', () => {
     queue.push([item(0, '가'.repeat(1_000)), item(1, '나'.repeat(1_000))]);
     clock.advance(TYPING_MAX_LAG_MS + TYPING_TICK_MS * 2);
     expect(queue.lines().every((l) => l.done)).toBe(true);
+  });
+
+  it('틱이 1초씩 늦게 와도(숨은 탭) 받은 뒤 2초 안에 다 보인다 — 틱 횟수가 아니라 지난 시간으로 센다 (#956 리뷰)', () => {
+    const { clock, queue, done } = setup(false, 1_000);
+    queue.push([item(0, '가'.repeat(300)), item(1, '나'.repeat(300))]);
+    clock.advance(TYPING_MAX_LAG_MS);
+    expect(queue.lines().every((l) => l.done)).toBe(true);
+    expect(done).toEqual([0, 1]);
+  });
+
+  it('늦은 틱에도 60자/초는 지킨다 — 짧은 답이 1초 늦게 깨면 그동안의 글자를 한꺼번에 보인다', () => {
+    const { clock, queue } = setup(false, 1_000);
+    queue.push([item(0, '가'.repeat(100))]);
+    clock.advance(1_000);
+    expect(queue.lines()[0]!.shown.length).toBeGreaterThanOrEqual(60);
+  });
+
+  it('남은 글자가 120자를 넘으면 2초 상한이 앞서 60자/초보다 빨라진다', () => {
+    const { clock, queue } = setup();
+    queue.push([item(0, '가'.repeat(300))]);
+    clock.advance(1_000);
+    // 60자/초면 60자지만, 2초 안에 300자를 다 보이려고 그보다 많이 보입니다
+    expect(queue.lines()[0]!.shown.length).toBeGreaterThan(60);
+    clock.advance(1_000);
+    expect(queue.lines()[0]!.done).toBe(true);
+  });
+
+  it('알림(onLineDone) · 구독자가 던져도 큐는 멈추지 않는다 (#956 리뷰)', () => {
+    const clock = new Clock();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const queue = createTypingQueue<TypingItem>({
+      clock,
+      reducedMotion: () => false,
+      onLineDone: (line) => {
+        if (line.index === 0) throw new Error('화면 쪽 실수');
+      },
+    });
+    queue.subscribe(() => {
+      throw new Error('구독자 실수');
+    });
+    queue.push([item(0, '가나다'), item(1, '라마바사아')]);
+    clock.advance(TYPING_MAX_LAG_MS);
+    expect(queue.lines().map((l) => l.done)).toEqual([true, true]);
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
   });
 
   it('보인 글은 지우거나 되감지 않는다 — 같은 순번을 다시 넣어도 그대로', () => {

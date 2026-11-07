@@ -19,7 +19,8 @@ export function useWithdraw() {
   return useMutation({
     mutationFn: withdraw,
     // useLogout 과 같습니다 — 화면을 새로 열어야 /login 으로 튕기지 않습니다.
-    // 새로 열기 전에 알립니다 — 탈퇴한 계정의 대화 사본을 지우고 다른 탭도 비우게 합니다
+    // 새로 열기 전에 알립니다 — 탈퇴한 계정의 대화 사본을 지우고 다른 탭도 비우게 합니다.
+    // 지우는 쪽은 앱 진입점(`main.tsx`)에서 늘 묶여 있습니다
     onSuccess: () => {
       announceSignedOut();
       window.location.replace('/welcome');

@@ -4,7 +4,12 @@ import type { ChatClock, TransportSignal } from './chatTransport';
  * 글자 효과 (`chat-agent.md` 12-4 F12 · L3-41) — 받은 답 문장을 큐에 넣어 글자 단위로 보입니다.
  *
  * - 약 60자/초. 큐가 밀리면 빨라져서, 마지막으로 받은 뒤 약 2초 안에 남은 글자를 다 보입니다.
- * - 글자는 한글 결합 문자 · 이모지가 깨지지 않게 "보이는 한 글자"(grapheme) 단위로 셉니다.
+ *   **2초 상한이 앞섭니다** — 남은 글자가 120자(60자/초 × 2초)를 넘으면 60자/초보다 빨라집니다
+ *   (150자면 약 75자/초, 1,000자면 약 500자/초). 2초는 FE 가 정한 값입니다(문서 L3-41 은 "밀리면 빨라짐"만).
+ * - 시간은 틱 횟수가 아니라 **실제로 지난 시간**(`performance.now()`)으로 셉니다 — 숨은 탭에서 브라우저가 타이머를
+ *   1초 넘게 늦춰도, 다시 깨어난 틱이 지난 시간만큼 한꺼번에 보이고 2초가 지났으면 남은 글자를 다 보입니다(#956 리뷰).
+ * - 글자는 한글 결합 문자 · 이모지가 깨지지 않게 "보이는 한 글자"(grapheme) 단위로 셉니다(`Intl.Segmenter`).
+ *   없는 환경의 한계는 `graphemes` 에 적었습니다.
  * - `prefers-reduced-motion` 이면 문장째 보입니다. 새로고침 · 다시 열기 · 지난 메시지도 효과 없이 그립니다.
  * - 문장은 받은 순서대로 하나씩 보이고, 보인 글은 지우거나 되감지 않습니다(낸 문장은 최종 답의 앞부분).
  * - 근거 칩은 문장이 다 보인 뒤에 답니다 — 화면은 `done` 인 줄에만 칩을 그립니다.
@@ -20,15 +25,15 @@ export const TYPING_TICK_MS = 50;
 /** 큐가 밀려도 남은 글자는 이 시간 안에 다 보입니다 */
 export const TYPING_MAX_LAG_MS = 2_000;
 
-const BASE_PER_TICK = Math.round((TYPING_CHARS_PER_SEC * TYPING_TICK_MS) / 1000);
-const LAG_TICKS = Math.round(TYPING_MAX_LAG_MS / TYPING_TICK_MS);
-
 type Segmenter = { segment: (text: string) => Iterable<{ segment: string }> };
 type SegmenterCtor = new (locale: string, options: { granularity: 'grapheme' }) => Segmenter;
 
 /**
- * 보이는 한 글자씩 — "한" · 옛 자모 "ᄒᆞᆫ" · "👍🏽" 가 각각 한 글자입니다.
- * `Intl.Segmenter` 가 없는 환경에서는 코드 포인트로 나눕니다(완성형 한글은 그래도 깨지지 않습니다)
+ * 보이는 한 글자씩 — "한" · 옛 자모 "ᄒᆞᆫ" · "👍🏽" 가 각각 한 글자입니다(`Intl.Segmenter`).
+ *
+ * `Intl.Segmenter` 가 없는 환경(예: Firefox 125 전)에서는 코드 포인트로 나눕니다. 완성형 한글 · 영문 · 숫자는 그래도
+ * 깨지지 않지만, **결합 문자 · 이모지 묶음은 효과 중에 조각으로 보입니다** — 자모로 쓴(NFD) "한" 은 3조각,
+ * 👍🏽 · 🇰🇷 은 2조각, 👨‍👩‍👧 은 5조각. 다 보이면 원문 그대로라 끝난 글은 같습니다(#956 리뷰)
  */
 export function graphemes(text: string): string[] {
   if (segmenter === undefined) {
@@ -74,7 +79,8 @@ export interface TypingQueue<T extends TypingItem> {
 }
 
 export interface TypingOptions<T extends TypingItem> {
-  clock?: Pick<ChatClock, 'setTimeout' | 'clearTimeout'>;
+  /** `now` 는 지난 시간을 재는 데 씁니다 — 브라우저는 `performance.now()` */
+  clock?: Pick<ChatClock, 'setTimeout' | 'clearTimeout' | 'now'>;
   /** 움직임 줄이기 — 켜져 있으면 문장째 보입니다. 넣을 때마다 다시 읽습니다 */
   reducedMotion?: () => boolean;
   /**
@@ -85,9 +91,10 @@ export interface TypingOptions<T extends TypingItem> {
   onLineDone?: (line: TypedLine<T>) => void;
 }
 
-const browserClock: Pick<ChatClock, 'setTimeout' | 'clearTimeout'> = {
+const browserClock: Pick<ChatClock, 'setTimeout' | 'clearTimeout' | 'now'> = {
   setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeout: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>),
+  now: () => globalThis.performance.now(),
 };
 
 /** 운영체제의 '움직임 줄이기' — 물을 수 없는 환경(시험 · 서버)에서는 꺼진 것으로 봅니다 */
@@ -105,8 +112,10 @@ export function createTypingQueue<T extends TypingItem>(
   const seen = new Set<number>();
   const listeners = new Set<() => void>();
   let timer: unknown = null;
-  /** 남은 글자를 다 보여야 하는 때까지 남은 틱 — 새 문장을 받을 때마다 다시 2초 */
-  let ticksLeft = LAG_TICKS;
+  /** 남은 글자를 다 보여야 하는 때 — 새 문장을 받을 때마다 지금부터 다시 2초 */
+  let deadline = 0;
+  /** 마지막으로 글자를 보인 때 — 이번 틱까지 지난 시간을 잽니다 */
+  let lastTick = 0;
   let snapshot: readonly TypedLine<T>[] = [];
   let disposed = false;
 
@@ -124,8 +133,17 @@ export function createTypingQueue<T extends TypingItem>(
   const changed = (touched: Entry[], announce: Entry[]) => {
     for (const e of touched) e.line = lineOf(e);
     snapshot = entries.map((e) => e.line);
-    for (const e of announce) options.onLineDone?.(e.line);
-    for (const listener of listeners) listener();
+    // 화면 쪽 콜백 하나가 던져도 다른 알림 · 다음 틱은 이어집니다 — 답 표시가 얼지 않게(#956 리뷰)
+    for (const e of announce) safely(() => options.onLineDone?.(e.line));
+    for (const listener of listeners) safely(listener);
+  };
+
+  const safely = (fn: () => void) => {
+    try {
+      fn();
+    } catch (error) {
+      console.error('글자 효과 알림을 처리하지 못했어요', error);
+    }
   };
 
   const remaining = () => entries.reduce((sum, e) => sum + e.parts.length - e.count, 0);
@@ -139,9 +157,19 @@ export function createTypingQueue<T extends TypingItem>(
   const tick = () => {
     timer = null;
     if (disposed) return;
-    // 남은 글자를 남은 틱에 고르게 나눕니다 — 매번 남은 양에 비례해 정하면 줄수록 느려져 끝나지 않습니다
-    let budget = Math.max(BASE_PER_TICK, Math.ceil(remaining() / ticksLeft));
-    ticksLeft = Math.max(1, ticksLeft - 1);
+    const now = clock.now();
+    const elapsed = Math.max(now - lastTick, TYPING_TICK_MS);
+    lastTick = now;
+    const left = remaining();
+    // 지난 시간만큼 60자/초로, 그리고 마감까지 남은 시간에 남은 글자를 고르게 나눈 몫 중 큰 쪽 — 마감이 지났으면 전부.
+    // 틱이 늦게 와도(숨은 탭) 늦은 만큼 한꺼번에 보여 2초를 지킵니다
+    let budget =
+      now >= deadline
+        ? left
+        : Math.max(
+            Math.round((elapsed * TYPING_CHARS_PER_SEC) / 1000),
+            Math.ceil((left * elapsed) / (deadline - now + elapsed)),
+          );
     const touched: Entry[] = [];
     const finished: Entry[] = [];
     for (const e of entries) {
@@ -154,8 +182,9 @@ export function createTypingQueue<T extends TypingItem>(
       touched.push(e);
       if (e.count >= e.parts.length) finished.push(e);
     }
-    changed(touched, finished);
+    // 다음 틱을 먼저 겁니다 — 알림 쪽에서 무슨 일이 나도 남은 글자가 멈추지 않게
     schedule();
+    changed(touched, finished);
   };
 
   const schedule = () => {
@@ -177,7 +206,10 @@ export function createTypingQueue<T extends TypingItem>(
       const fresh = items.filter((item) => !seen.has(item.index));
       if (fresh.length === 0) return;
       const instant = !animate || reducedMotion();
-      ticksLeft = LAG_TICKS;
+      const now = clock.now();
+      deadline = now + TYPING_MAX_LAG_MS;
+      // 쉬고 있었으면 지금부터 잽니다 — 쉰 시간이 첫 틱에 한꺼번에 몰리지 않게
+      if (timer === null) lastTick = now;
       // 효과 없이 보일 때는 앞에서 보이던 문장부터 다 보여 순서를 지킵니다 — 그 문장들은 새 글이라 알립니다
       const flushed = instant ? showAll() : [];
       const added: Entry[] = [];
@@ -191,8 +223,8 @@ export function createTypingQueue<T extends TypingItem>(
       }
       // 움직임 줄이기로 바로 보인 새 문장은 알리고, 따라잡기(`animate: false`)는 알리지 않습니다
       const announce = [...flushed, ...(instant && animate ? added : [])];
-      changed([...flushed, ...added], announce);
       schedule();
+      changed([...flushed, ...added], announce);
     },
     finish() {
       if (disposed) return;

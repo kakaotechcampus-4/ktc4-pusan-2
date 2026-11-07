@@ -8,7 +8,8 @@ export function useLogout() {
     // 화면을 새로 엽니다. 라우터 이동 뒤에 세션을 비우면, 이동이 그려지기 전에 RequireSession 이
     // 빈 세션을 보고 /login?next= 로 보냅니다 (실서버 공용 헤더, #240 리뷰). 새로 열면 메모리의
     // 토큰과 쿼리 캐시도 함께 사라집니다.
-    // 새로 열기 전에 알립니다 — 대화 에이전트의 sessionStorage 사본은 새로 열어도 남고, 다른 탭도 비워야 합니다
+    // 새로 열기 전에 알립니다 — 대화 에이전트의 sessionStorage 사본은 새로 열어도 남고, 다른 탭도 비워야 합니다.
+    // 지우는 쪽은 앱 진입점(`main.tsx`)에서 늘 묶여 있어, 어느 화면에서 로그아웃해도 이 탭 사본을 지웁니다
     onSuccess: () => {
       announceSignedOut();
       window.location.replace('/welcome');

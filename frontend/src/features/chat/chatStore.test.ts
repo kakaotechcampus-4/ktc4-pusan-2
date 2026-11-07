@@ -135,16 +135,23 @@ describe('열기 · 범위', () => {
     expect(store().scope).toEqual(WHOLE_SCOPE);
   });
 
-  it('서버가 확정한 범위는 지금 실행의 응답일 때만, 사용자가 바꾸는 중이 아닐 때만 반영한다', () => {
+  it('서버가 확정한 범위는 같은 대화의 응답이면 실행이 바뀌어도 받고, 다른 대화 · 사용자가 바꾸는 중이면 받지 않는다 (#957 리뷰)', () => {
     openConversation('conv-1', WHOLE_SCOPE);
     sendAndAccept('run-1', 'conv-1');
     const poll = chatTicket();
     store().applyServerScope(poll, pitchB);
     expect(store().scope).toEqual(pitchB);
 
+    // 범위는 대화의 값 — 그사이 실행이 끝나도(다음 실행이 붙어도) 같은 대화의 응답이면 받습니다
     store().endRun('run-1');
     store().applyServerScope(poll, pitchA);
-    expect(store().scope).toEqual(pitchB);
+    expect(store().scope).toEqual(pitchA);
+
+    // 다른 대화로 옮긴 뒤 온 응답은 받지 않습니다
+    const before = chatTicket();
+    openConversation('conv-2', WHOLE_SCOPE);
+    store().applyServerScope(before, pitchB);
+    expect(store().scope).toEqual(WHOLE_SCOPE);
 
     const change = store().beginScopeChange(WHOLE_SCOPE)!;
     store().applyServerScope(chatTicket(), pitchA);
@@ -194,6 +201,11 @@ describe('열기 · 범위', () => {
 
 describe('보내기 · 접수', () => {
   beforeEach(() => store().openChat(pitchA));
+
+  it('보낼 본문은 앞뒤 공백을 지운 글이다 — BE 는 받은 그대로 세고 저장한다', () => {
+    store().beginSend({ ...draft, text: '  지난번보다 청중을 더 봤어?\n\n  ' });
+    expect(store().pending?.request.text).toBe('지난번보다 청중을 더 봤어?');
+  });
 
   it('보내기를 시작하면 접수 전에도 바로 잠근다 — 두 번 보내기 · 범위 칩을 막는다', () => {
     const ticket = store().beginSend(draft)!;
@@ -342,6 +354,21 @@ describe('대화 고르기 · 실행', () => {
     const poll = chatTicket();
     store().endRun('run-1');
     expect([isCurrent(poll), isCurrent(chatTicket())]).toEqual([false, true]);
+  });
+
+  it('표는 세대 · 시도 · 대화 · 실행을 모두 견준다 — 실행이 같아도 대화가 다르면 지금 것이 아니다', () => {
+    sendAndAccept('run-1', 'conv-1');
+    const poll = chatTicket();
+    // 시도 번호는 그대로 두고 대화만 다른 모습 — 실행 ID 만 보면 지금 것으로 잘못 봅니다
+    useChatStore.setState({ conversationId: 'conv-2' });
+    expect(isCurrent(poll)).toBe(false);
+    // 실행이 없던 때의 표에 실행이 붙어도 지금 것이 아니다
+    useChatStore.setState({ conversationId: 'conv-1', run: null });
+    const idle = chatTicket();
+    useChatStore.setState({
+      run: { runId: 'run-2', conversationId: 'conv-1', phase: 'QUEUED', afterSeq: 0 },
+    });
+    expect(isCurrent(idle)).toBe(false);
   });
 
   it('사용자가 바뀌면 세대가 올라 앞 세대의 응답을 버린다', () => {

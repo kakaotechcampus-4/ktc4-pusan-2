@@ -299,7 +299,7 @@ describe('승인 카드', () => {
     expect(await late.json()).toMatchObject({ code: 'AGENT_EXPIRED' });
   });
 
-  it('만료 · 승인 대기 중 [취소]는 BE 처럼 메시지 상태 PARTIAL · 카드 없음 · 행동별 문장', async () => {
+  it('만료 · 승인 대기 중 [취소]는 BE 처럼 메시지 상태 PARTIAL · 카드 없음 · 고정 문장', async () => {
     const expired = await accepted('목표로 잡아 줘');
     await settle(expired.run_id);
     controls.expire();
@@ -321,7 +321,7 @@ describe('승인 카드', () => {
     const afterCancel = (await messages(waiting.conversation_id)).items.at(-1)!;
     expect([afterCancel.status, afterCancel.claims.at(-1)!.text]).toEqual([
       'PARTIAL',
-      '목표를 저장하지 않았어요.',
+      '확인 요청을 취소했어요.',
     ]);
   });
 
@@ -1082,17 +1082,20 @@ describe('BE #933 모양', () => {
     expect((await send(message('비교해 줘', { client_request_id: 'req-1' }))).status).toBe(422);
   });
 });
-// ── 1~5단계 최종 점검 반영 — 목을 BE 55aa10d0 에 맞춤 ───────────────
+// ── 1~5단계 최종 점검 반영 — 목을 BE a6264abc 에 맞춤 ───────────────
 
 describe('목이 BE 와 같게', () => {
-  it('문장을 낸 뒤 실패하면(BE 지금 동작) FAILED 로 끝나고 메시지 목록에 그 문장이 없다', async () => {
-    controls.failAfterClaim('AGENT_TIMEOUT');
+  it('문장을 낸 뒤 실패하면 BE `turn.fail` 처럼 PARTIAL 로 끝나고 메시지 목록에 그 문장이 남는다', async () => {
+    controls.partial('AGENT_TIMEOUT');
     const { run_id, conversation_id } = await accepted('비교해 줘');
     const view = await settle(run_id);
-    expect([view.status, view.error]).toEqual(['FAILED', { code: 'AGENT_TIMEOUT' }]);
+    expect([view.status, view.error]).toEqual(['PARTIAL', { code: 'AGENT_TIMEOUT' }]);
     const events = (await poll(run_id)).events.filter((e) => e.event === 'claim');
     expect(events.length).toBeGreaterThan(0);
-    expect((await messages(conversation_id)).items.map((m) => m.role)).toEqual(['user']);
+    expect((await messages(conversation_id)).items.map((m) => [m.role, m.status])).toEqual([
+      ['user', null],
+      ['assistant', 'PARTIAL'],
+    ]);
   });
 
   it('사용자 메시지에도 그 말이 시작한 실행 ID 가 있다', async () => {

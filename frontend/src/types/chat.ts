@@ -2,7 +2,7 @@
  * 대화형 코치 에이전트 — 화면 ↔ BE 계약 (잠정).
  *
  * 원본: `docs/ai/features/chat-agent.md` 5-2 · 5-5 · 12-3 · 12-4 (개정판 PR #900, #899).
- * 화면 ↔ BE 모양(경로 · 목록 키 · 칸 이름)은 **BE #933 `feat/be-chat-api-834` 55aa10d0 (`module/chat/api_dto.py`)** 에
+ * 화면 ↔ BE 모양(경로 · 목록 키 · 칸 이름)은 **BE #933 `feat/be-chat-api-834` a6264abc (`module/chat/api_dto.py`)** 에
  * 맞췄습니다 — 실행 이벤트 커서 · 승인 · 거절 · 최신 아님 사유까지 들어온 판입니다. BE 도 머지 전입니다.
  * BE 가 아직 열지 않은 것(기억 · '기억 없이')은 문서 계약대로 두고 `(BE 미구현)` 으로 표시했습니다.
  * 목(`mocks/chat.ts`)은 그것까지 문서대로 흉내 냅니다.
@@ -406,6 +406,12 @@ export type ChatScreen =
 
 /** 대화창을 연 화면 (5-3 `page`). 메시지마다 함께 보냅니다 */
 export interface ChatPage {
+  /**
+   * 화면 **경로 패턴** — `app/routes.tsx` 의 경로 문자열 그대로(예: `/takes/:takeId`, `/pitch/:id/edit`).
+   * 실제 ID 는 `pitch_id` · `take_id` 로 따로 보내므로 경로에 섞지 않습니다 — UUID 가 든 실제 경로는 BE 한도
+   * (`ChatPageDTO.route` 1~64자)를 넘을 수 있고, 패턴이어야 #941 의 노출 목록(`chatRoutes.ts`)과 같은 이름으로 씁니다.
+   * 문서 5-3 은 `string` 이라고만 하고 예시가 `"report"`, AI 연구 모듈 예시는 `"/takes/t-5"` 라 정해 두었습니다
+   */
   route: string;
   pitch_id: string | null;
   take_id: string | null;
@@ -431,7 +437,11 @@ export type CreateConversationResponse = ConversationSummary;
 export interface SendMessageRequest {
   conversation_id: string | null;
   scope_pitch_id: string | null;
-  /** 앞뒤 공백을 지운 1~2,000자(코드 포인트) */
+  /**
+   * 앞뒤 공백을 지운 1~2,000자(코드 포인트). **FE 가 지워서 보냅니다**(저장소 `beginSend`) — BE 는 지우지 않고
+   * 받은 그대로 길이를 세고 저장합니다(`api_dto.py` `_text_in_range`: 공백뿐이면 422, 2,000자 넘으면 422).
+   * 그래서 화면은 지운 뒤의 글로 빈 값 · 2,000자를 막고(12-4 F3), 서버에도 지운 글이 갑니다
+   */
   text: string;
   page: ChatPage;
   client_request_id: string;

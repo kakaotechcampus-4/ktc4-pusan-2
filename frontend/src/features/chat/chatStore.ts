@@ -27,7 +27,7 @@ import type { SendMessageRequest } from '@/types/chat';
  *            대화가 있든 없든 `pendingSendTicket()` 과 `pending.request` 로 같은 키를 다시 보냅니다(L3-15 "같은 키 ·
  *            본문으로 재시도") — 접수됐던 요청이면 BE 가 같은 202 를, 못 받았던 요청이면 새로 접수합니다.
  *            접수되지 않음이 확정될 때만 failSend 합니다
- *   범위     새 대화는 chooseScope, 있는 대화는 beginScopeChange → PUT → finishScopeChange(표, 결과)
+ *   범위     새 대화는 chooseScope, 있는 대화는 beginScopeChange → PATCH → finishScopeChange(표, 결과)
  *
  * **잠그는 것** (12-4 F2 · F3) — 화면은 `canSend` · `canChangeScope` 로 읽습니다
  * - 보내기: 로그인 전 · 범위 확인 중 · 대화 만드는 중 · 보내는 중(미확정 포함) · 취소 확정 전 · 범위 변경 중 ·
@@ -606,7 +606,15 @@ export const useChatStore = create<ChatState>()((set, get) => {
     },
 
     applyServerScope: (ticket, scope) => {
-      if (get().scopeChange || !isCurrent(ticket)) return;
+      const s = get();
+      // 범위는 대화의 값이라 세대 · 시도 · 대화만 견줍니다 — 그사이 새 실행이 붙어도 받습니다(#957 리뷰)
+      if (
+        s.scopeChange ||
+        ticket.generation !== s.generation ||
+        ticket.attempt !== s.attempt ||
+        ticket.conversationId !== s.conversationId
+      )
+        return;
       set({ scope, scopeFixed: true });
       save();
     },
@@ -631,6 +639,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
         scopeFixedBefore: s.scopeFixed,
         request: {
           ...draft,
+          // 앞뒤 공백은 FE 가 지워 보냅니다 — BE 는 받은 그대로 세고 저장합니다(`types/chat.ts` `SendMessageRequest.text`)
+          text: draft.text.trim(),
           conversation_id: s.conversationId,
           scope_pitch_id: s.scope!.pitchId,
           client_request_id: sendId,
@@ -782,8 +792,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
 });
 
 /**
- * 로그아웃 신호(이 탭 · 다른 탭)에 저장소를 묶습니다. 대화창을 붙이는 공통 레이아웃이 한 번 부르고,
- * 돌려준 함수로 풉니다. 모듈을 읽기만 해도 듣기 시작하지 않게 따로 둡니다
+ * 로그아웃 신호(이 탭 · 다른 탭)에 저장소를 묶습니다. **앱 진입점(`main.tsx`)이 화면을 그리기 전에 한 번** 부릅니다 —
+ * 경로 · 로그인 조건 안(대화창 등)에서 부르면, 대화창이 없는 화면(리허설 헤더 · 새로 연 `/welcome`)에서 로그아웃할 때
+ * 이 탭의 사본이 남습니다(#952 리뷰). 돌려준 함수로 풉니다. 모듈을 읽기만 해도 듣기 시작하지 않게 따로 둡니다
  */
 export function bindChatToSession(): () => void {
   return onSignedOut(() => useChatStore.getState().signOut());
@@ -815,7 +826,10 @@ export function pendingSendTicket(): ChatTicket | null {
  */
 export function isCurrent(ticket: ChatTicket): boolean {
   const now = chatTicket();
-  if (ticket.generation !== now.generation || ticket.attempt !== now.attempt) return false;
-  if (ticket.runId !== null) return ticket.runId === now.runId;
-  return ticket.conversationId === now.conversationId;
+  return (
+    ticket.generation === now.generation &&
+    ticket.attempt === now.attempt &&
+    ticket.conversationId === now.conversationId &&
+    ticket.runId === now.runId
+  );
 }
