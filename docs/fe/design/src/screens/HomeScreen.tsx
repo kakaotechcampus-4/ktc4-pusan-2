@@ -187,7 +187,7 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
         )}
       </div>
       <footer className="border-t border-line-strong">
-        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 md:flex-nowrap lg:px-10">
+        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 xl:flex-nowrap lg:px-10">
           <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
             <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
             <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
