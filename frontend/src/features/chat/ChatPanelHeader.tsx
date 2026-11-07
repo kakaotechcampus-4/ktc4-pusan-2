@@ -69,7 +69,7 @@ export function ChatPanelHeader({
   titleId: string;
   userId: string;
   view: PanelView;
-  memoryButtonRef: RefObject<HTMLButtonElement | null>;
+  memoryButtonRef: RefObject<HTMLButtonElement>;
   onNew: () => void;
   onToggleView: (view: PanelView) => void;
   onClose: () => void;
