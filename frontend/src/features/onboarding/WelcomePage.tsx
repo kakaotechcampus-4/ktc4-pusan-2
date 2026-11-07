@@ -424,7 +424,7 @@ export function WelcomePage() {
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
               <div className="w-20 shrink-0 border border-ink bg-panel p-2 shadow-[3px_3px_0_var(--color-line-strong)]">
                 <img
-                  src="/icon-192.png"
+                  src="/semini.png"
                   alt=""
                   width={64}
                   height={64}
@@ -434,16 +434,12 @@ export function WelcomePage() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-3">
-                  <p className="tabular-nums text-[10px] tracking-widest">
-                    CHICHI'S FAVORITE APP
-                  </p>
+                  <p className="tabular-nums text-[10px] tracking-widest">CHICHI'S FAVORITE APP</p>
                   <span className="border border-ink bg-coral-wash px-2 py-1 text-[10px] font-bold">
                     AI 비서 앱
                   </span>
                 </div>
-                <h3 id="semini-title" className="mt-3 text-2xl font-extrabold">
-                  새미나이 (Semini)
-                </h3>
+                <h3 id="semini-title" className="mt-3 text-2xl font-extrabold">새미나이 (Semini)</h3>
                 <p className="mt-3 font-bold">치치가 요즘 푹 빠져 있는 AI 비서 앱.</p>
                 <p className="mt-3 text-sm leading-7">
                   발표를 준비하다 막히거나 궁금한 게 생기면 치치가 가장 먼저 찾는 앱이에요.
