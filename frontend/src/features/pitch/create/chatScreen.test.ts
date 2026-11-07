@@ -139,4 +139,25 @@ describe('피치 만들기 · 수정 화면 상태 (12-4 F2)', () => {
     // 저장값을 모르는 칸은 바뀌었다고 하지 않습니다
     expect(screen.changed).not.toContain('criteria_text');
   });
+
+  it('제목은 앞뒤 공백을 지운 값으로 저장값과 견준다 — 공백만 다르면 바뀌지 않았다', () => {
+    const edits = (title: string) => ({
+      infoEdits: {
+        title,
+        presentationDate: '',
+        timeLimitSec: 300,
+        lowerToleranceSec: 0,
+        upperToleranceSec: 0,
+      },
+    });
+    expect(pitchScreen('pitch_edit', 'info', source(edits('졸업 발표 '))).changed).toEqual([]);
+    expect(pitchScreen('pitch_edit', 'info', source(edits('졸업 발표2'))).changed).toEqual([
+      'title',
+    ]);
+  });
+
+  it('평가 기준 버전이 없으면 key 0 에 적어 둔 원문을 싣는다', () => {
+    const s = source({ criteriaSourceEdits: { 0: '첫 원문' } }, { criteria: [] });
+    expect(pitchScreen('pitch_create', 'criteria', s).draft.criteria_text).toBe('첫 원문');
+  });
 });

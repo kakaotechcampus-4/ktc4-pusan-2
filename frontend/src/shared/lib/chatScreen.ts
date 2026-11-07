@@ -13,7 +13,8 @@ import { onSignedOut } from './sessionSignal';
  * - `shared/` 에 둡니다 — 화면(피치 만들기 · 장치 점검)과 대화(`features/chat`)가 함께 쓰는데 feature 끼리는
  *   서로 가져다 쓰지 않습니다(FRONTEND_CONVENTION.md 5).
  * - 보내는 순간(`takeScreenSnapshot`)에만 읽고, 그때 `snapshot_id` 를 발급합니다 — SCREEN 근거가 이 값을 가리킵니다.
- * - 명시한 칸만 싣고 칸마다 모양 · null 을 검사합니다. 검사에 걸리거나 읽다가 실패하면 화면 상태 없이 보냅니다.
+ * - 명시한 칸만 싣고 칸마다 모양 · null 을 검사합니다. 검사에 걸리거나 읽다가 실패하면 그 메시지를 보내지 않게 알립니다
+ *   (12-4 L3-10 "상태를 만들 수 없으면 전송 차단"). 화면이 `null` 을 돌려주면 알릴 상태가 없다는 뜻이라 화면 상태 없이 보냅니다.
  * - 평가 기준 원문이 2,000자(코드 포인트)를 넘으면 잘라 보내지 않고, 그 메시지를 보내지 않게 알립니다.
  */
 
@@ -28,10 +29,14 @@ export type ScreenBody = ChatScreen extends infer S
 export const MAX_SCREEN_CRITERIA_CHARS = 2000;
 
 export type ScreenSnapshot =
-  /** 실을 화면 상태 — 등록된 화면이 없거나 · 다른 경로 · 로그아웃 뒤 · 검사에 걸리면 null(화면 상태 없이 보냄) */
+  /** 실을 화면 상태 — 등록된 화면이 없거나 · 다른 경로 · 로그아웃 뒤 · 화면이 null 을 주면 null(화면 상태 없이 보냄) */
   | { ok: true; screen: ChatScreen | null }
-  /** 보내지 않습니다 — 화면이 넘침을 알립니다 (12-4 "평가 기준 원문이 2,000자를 넘으면 … 그 메시지는 보내지 않는다") */
-  | { ok: false; reason: 'CRITERIA_TOO_LONG' };
+  /**
+   * 보내지 않습니다
+   * - `CRITERIA_TOO_LONG`: 평가 기준 원문이 넘칩니다 (12-4 "평가 기준 원문이 2,000자를 넘으면 … 그 메시지는 보내지 않는다")
+   * - `SCREEN_UNAVAILABLE`: 읽다가 실패했거나 계약 모양이 아닙니다 (12-4 L3-10 "상태를 만들 수 없으면 전송 차단")
+   */
+  | { ok: false; reason: 'CRITERIA_TOO_LONG' | 'SCREEN_UNAVAILABLE' };
 
 interface Registration {
   id: number;
@@ -46,6 +51,8 @@ let listening = false;
 const listen = () => {
   if (listening) return;
   listening = true;
+  // TODO(8단계): 로그아웃 신호 없이 사용자가 바뀌는 경우(chatStore `setUser`)도 등록을 비워야 합니다 —
+  // `shared/` 는 `features/chat` 을 가져다 쓰지 않으니 `clearChatScreen()` 을 내보내 `setUser` 쪽에서 부르게 합니다 (12-4 L3-09 세션 세대)
   onSignedOut(() => {
     current = null;
   });
@@ -85,15 +92,15 @@ export function takeScreenSnapshot(route: string): ScreenSnapshot {
   try {
     body = reg.read();
   } catch (error) {
-    // 상태를 만들 수 없으면 화면 상태는 싣지 않습니다 — 질문은 그대로 갑니다
+    // 상태를 만들 수 없으면 보내지 않습니다 — 화면을 모른 채 답하지 않게 (12-4 L3-10)
     console.error('화면 상태를 읽지 못했어요', error);
-    return { ok: true, screen: null };
+    return { ok: false, reason: 'SCREEN_UNAVAILABLE' };
   }
   if (body === null) return { ok: true, screen: null };
   if (!isScreenBody(body)) {
     // 화면 쪽 실수라 개발 중에 알아채게 남깁니다 — 내용은 사용자 입력이라 남기지 않고 어느 화면인지만
-    console.warn('화면 상태가 계약 모양이 아니라 싣지 않았어요', { route: reg.route });
-    return { ok: true, screen: null };
+    console.warn('화면 상태가 계약 모양이 아니라 보내지 않았어요', { route: reg.route });
+    return { ok: false, reason: 'SCREEN_UNAVAILABLE' };
   }
   if (
     body.name !== 'device_check' &&
