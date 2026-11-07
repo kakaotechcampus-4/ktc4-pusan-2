@@ -18,6 +18,6 @@ def _no_prefetch_unless_marked(
 ) -> None:
     node = request.node
     if node.get_closest_marker("prefetch") is None or node.get_closest_marker("no_prefetch"):
-        from chat_agent.loop import Loop
+        from pitch_coach_ai.features.chat_agent.loop import Loop
 
         monkeypatch.setattr(Loop, "_prefetch_calls", lambda self: [])

@@ -123,6 +123,6 @@ def pending_surveys(
         db,
         user_id,
         completed_after=consented_at,
-        exclude=repository.surveyed_take_ids(db, user_id),
+        exclude_when=repository.surveyed_by(user_id),
     )
     return PendingSurveys(items=[PendingSurvey.model_validate(row) for row in rows])

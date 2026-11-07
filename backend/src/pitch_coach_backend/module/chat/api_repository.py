@@ -4,14 +4,13 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, Select, delete, func, select
+from sqlalchemy import Row, Select, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
-    ChatDailyUsage,
     ChatGoal,
     ChatMemorySetting,
     ChatMessage,
@@ -19,7 +18,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatRun,
     ChatRunEvent,
 )
-from pitch_coach_backend.module.chat.repository import ACTIVE_RUN_STATUSES
+from pitch_coach_backend.module.chat.repository import ACTIVE_RUN_STATUSES, charge_daily
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take
 
@@ -53,8 +52,14 @@ class ChatApiRepository:
         return self.db.scalar(_locked(stmt) if lock else stmt)
 
     def list_conversations(
-        self, user_id: uuid.UUID, pitch_id: uuid.UUID | None, *, limit: int
+        self,
+        user_id: uuid.UUID,
+        pitch_id: uuid.UUID | None,
+        *,
+        limit: int,
+        after: tuple[datetime, uuid.UUID] | None,
     ) -> list[Row]:
+        """`after`(마지막 활동 시각, 대화 ID) 다음부터 최근 활동 순으로 읽는다."""
         stmt = (
             select(ChatConversation, Pitch.title.label("pitch_title"))
             .outerjoin(Pitch, Pitch.id == ChatConversation.scope_pitch_id)
@@ -64,6 +69,11 @@ class ChatApiRepository:
         )
         if pitch_id is not None:
             stmt = stmt.where(ChatConversation.scope_pitch_id == pitch_id)
+        if after is not None:
+            # 정렬과 같은 순서의 행 비교다. 같은 시각의 대화도 ID 로 갈려 빠짐 · 중복이 없다
+            stmt = stmt.where(
+                tuple_(ChatConversation.last_user_activity_at, ChatConversation.id) < after
+            )
         return list(self.db.execute(stmt).all())
 
     def get_owned_run(
@@ -121,6 +131,12 @@ class ChatApiRepository:
             )
             .limit(1)
             .execution_options(populate_existing=True)
+        )
+
+    def active_run_ids(self) -> list[uuid.UUID]:
+        """승인 대기까지 포함한 끝나지 않은 실행 전체. 대화 스위치를 끈 채 뜰 때 정리한다."""
+        return list(
+            self.db.scalars(select(ChatRun.id).where(ChatRun.status.in_(ACTIVE_RUN_STATUSES)))
         )
 
     def overdue_waiting_run_ids(self, started_before: datetime) -> list[uuid.UUID]:
@@ -216,17 +232,7 @@ class ChatApiRepository:
 
     def charge_turn(self, user_id: uuid.UUID, day: date, limit: int) -> bool:
         """사용자 하루 턴을 1 선점한다. 한도에 닿았으면 늘리지 않고 False."""
-        stmt = (
-            insert(ChatDailyUsage)
-            .values(id=uuid.uuid7(), user_id=user_id, day=day, turns=1)
-            .on_conflict_do_update(
-                index_elements=[ChatDailyUsage.user_id, ChatDailyUsage.day],
-                set_={"turns": ChatDailyUsage.turns + 1},
-                where=ChatDailyUsage.turns < limit,
-            )
-            .returning(ChatDailyUsage.id)
-        )
-        return self.db.scalar(stmt) is not None
+        return charge_daily(self.db, "turns", user_id, day, limit)
 
     def memory_enabled(self, user_id: uuid.UUID) -> bool | None:
         """기억 설정 값. 설정 행이 없으면 None 이다."""

@@ -1,6 +1,6 @@
 """에이전트 서비스 세트(13-2) 평가 도구 시험 — 기억 fixtures · 스트림 끊김 장애 · 새 지표(14-1) · GENERAL 금지 위반 채점기.
 
-실제 모델을 부르지 않는다(가짜 모델 tests/unit/fakes.py). 시나리오 검사 경로가 실제 관찰값에 닿는지를 정해 둔 모델 응답으로 본다.
+실제 모델을 부르지 않는다(가짜 모델: 서비스 tests/unit/chat_agent/fakes.py). 시나리오 검사 경로가 실제 관찰값에 닿는지를 정해 둔 모델 응답으로 본다.
 """
 
 from __future__ import annotations
@@ -12,11 +12,13 @@ import pytest
 from chat_agent_lab import evals as ev
 from chat_agent_lab import grading as gr
 from chat_agent_lab.app import load_corpus
-from tests.unit import fakes as F
-from tests.unit.test_turn import COMPARE, roles
+from chat_agent_lab.service_tests import fakes as F
+from chat_agent_lab.service_tests import turn_tests
 
 from .test_evals import BY_ID, _request, _save_goal_llm, _slide3_answer
 from .test_fake_be import reassess_llm, script_drafts
+
+COMPARE, roles = turn_tests.COMPARE, turn_tests.roles
 
 SLIDE3_REPORT = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
 
@@ -544,7 +546,7 @@ class _DownLlm:
     model_name = None
 
     def invoke(self, req: Any, before_attempt: Any) -> Any:
-        from chat_agent.llm_types import LlmCallFailed, Usage
+        from pitch_coach_ai.features.chat_agent.llm_types import LlmCallFailed, Usage
 
         before_attempt(1)
         raise LlmCallFailed(attempts=1, usage=[Usage()], cause="PermissionDeniedError:403")
@@ -596,15 +598,15 @@ def test_successful_call_resets_the_provider_failure_streak() -> None:
 def test_reasoning_per_purpose_parses_and_falls_back_to_the_role_default() -> None:
     import dataclasses as dc
 
-    from chat_agent_lab.llm import ROLE_CHAT_AGENT
+    from pitch_coach_ai.common.llm import tool_role
 
     efforts = ev.parse_reasoning(["answer=Medium", "FIX=high"])
     assert efforts == (("ANSWER", "medium"), ("FIX", "high"))
-    role = dc.replace(ROLE_CHAT_AGENT, purpose_efforts=efforts)
+    role = dc.replace(tool_role(), purpose_efforts=efforts)
     assert (role.effort("ANSWER"), role.effort("FIX"), role.effort("RESEARCH")) == (
         "medium",
         "high",
-        ROLE_CHAT_AGENT.reasoning_effort,
+        tool_role().reasoning_effort,
     )
     with pytest.raises(ValueError):
         ev.parse_reasoning(["TOOLS=high"])
@@ -722,7 +724,12 @@ def test_provider_streak_counts_calls_in_completion_order_across_runs() -> None:
     # 끝난 순서로 세므로 B 의 성공이 연속을 끊는다(실행이 끝나기를 기다렸다 세면 A 의 3번이 이어 보인다)
     import contextlib
 
-    from chat_agent.llm_types import LlmCallFailed, LlmRequest, LlmResult, Usage
+    from pitch_coach_ai.features.chat_agent.llm_types import (
+        LlmCallFailed,
+        LlmRequest,
+        LlmResult,
+        Usage,
+    )
 
     seen: list[Any] = []
 

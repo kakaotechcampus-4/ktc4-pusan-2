@@ -141,15 +141,22 @@ def cancel(db: Session, run: ClaimedRun) -> None:
     row = lock_current(db, run)
     if row is None:
         return
-    now = datetime.now(UTC)
-    release_unsent(ChatRepository(db), row)
+    mark_cancelled(ChatRepository(db), row, datetime.now(UTC))
+    db.commit()
+
+
+def mark_cancelled(repo: ChatRepository, row: ChatRun, now: datetime) -> None:
+    """잠근 실행을 CANCELLED 로 끝내고 운영 기록을 남긴다. 커밋은 부르는 쪽이 한다.
+
+    판 번호를 올려 그 뒤에 도착한 턴 실행기의 저장이 반영되지 않게 한다.
+    """
+    release_unsent(repo, row)
     row.status = "CANCELLED"
     row.state = None
     row.error_code = "AGENT_CANCELLED"
     row.finished_at = now
     row.row_revision += 1
-    add_run_log(ChatRepository(db), row, now)
-    db.commit()
+    add_run_log(repo, row, now)
 
 
 def release_unsent(repo: ChatRepository, row: ChatRun) -> None:
