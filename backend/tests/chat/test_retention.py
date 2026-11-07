@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
@@ -5,6 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.chat import cleanup_sweep
 from pitch_coach_backend.module.chat.entity import (
     ChatAction,
     ChatConversation,
@@ -213,3 +216,30 @@ def test_mark_sending_records_when_profile_items_were_sent(
     db_session.expire_all()
     assert db_session.get(ChatProfileItem, sent.id).last_used_at is not None
     assert db_session.get(ChatProfileItem, not_sent.id).last_used_at is None
+
+
+def test_sweep_deletes_expired_rows_and_logs_the_count(
+    db_session: Session, user_id: uuid.UUID, caplog: pytest.LogCaptureFixture
+) -> None:
+    now = datetime.now(UTC)
+    today = now.astimezone(run_service.SEOUL).date()
+    old = _conversation(db_session, user_id, now - timedelta(days=181))
+    log = _run_log(db_session, user_id, today - timedelta(days=181))
+    db_session.commit()
+    old_id, log_id = old.id, log.id
+
+    def factory() -> Session:
+        return Session(
+            bind=db_session.connection(),
+            join_transaction_mode="create_savepoint",
+            autoflush=False,
+            expire_on_commit=False,
+        )
+
+    caplog.set_level(logging.INFO, logger=cleanup_sweep.logger.name)
+    assert asyncio.run(cleanup_sweep.sweep_once(factory)) is True
+
+    db_session.expire_all()
+    assert db_session.get(ChatConversation, old_id) is None
+    assert db_session.get(ChatRunLog, log_id) is None
+    assert "보관 기간이 지난 대화 자료 2개를 지웠다" in [r.getMessage() for r in caplog.records]

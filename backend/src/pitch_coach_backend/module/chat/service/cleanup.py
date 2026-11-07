@@ -19,7 +19,7 @@ PROFILE_ITEM_RETENTION = timedelta(days=180)
 DELETE_BATCH = 500
 
 
-def run_cleanup(db: Session, owner: str, now: datetime) -> int | None:
+def run_cleanup(db: Session, owner: str, now: datetime) -> tuple[int, int] | None:
     repo = ChatRepository(db)
     lease = repo.take_cleanup(owner, now + CLEANUP_LEASE, now)
     if lease is None:
@@ -28,12 +28,12 @@ def run_cleanup(db: Session, owner: str, now: datetime) -> int | None:
     token = lease.fencing_token
     db.commit()
     cleaned = clean_deleted_sources(db)
-    delete_expired(db, now)
+    expired = delete_expired(db, now)
     lease = repo.get_cleanup_lease()
     if lease is not None and lease.fencing_token == token:
         lease.lease_until = now
         db.commit()
-    return cleaned
+    return cleaned, expired
 
 
 def delete_expired(db: Session, now: datetime) -> int:
