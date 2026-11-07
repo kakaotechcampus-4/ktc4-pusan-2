@@ -73,6 +73,7 @@ export function ProcessingScreen({
   else
     body = (
       <>
+        <p className="border-2 border-dusk-line px-4 py-2 font-mono text-xs font-bold tracking-widest text-dusk-accent">TAKE RECORDED · 발표 기록 접수</p>
         <StatusLine text={waiting ? '확인을 기다리는 중' : '분석 중'} />
         <ol className="flex w-full max-w-md gap-1.5" aria-label="분석 단계">
           {STEP_NAMES.map((name, i) => (
