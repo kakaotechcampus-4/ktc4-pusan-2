@@ -138,8 +138,12 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
     changes = take_update_dto.model_dump(exclude_none=True)
 
     # 실시간 연결이 한 번도 붙지 않은 Take 는 끝내지 않는다. FE 는 첫 `ready` 를 받은 뒤에
-    # 발표를 시작하므로 남은 기록이 없다. 만든 지 10분이 지나면 BE 가 ABANDONED 로 끝낸다
-    if existing_take.status == READY and "ended_at" in changes:
+    # 발표를 시작하므로 남은 기록이 없다. 같은 발표에서 새 Take 를 만들거나 만든 지 10분이 지나면
+    # BE 가 ABANDONED 로 끝내는데, 그 Take 에는 첫 연결이 적는 시작 시각(`mark_started`)이 없다
+    never_started = existing_take.status == READY or (
+        existing_take.end_reason == "ABANDONED" and existing_take.started_at is None
+    )
+    if never_started and "ended_at" in changes:
         raise TakeNotStarted()
 
     # 떠난 것으로 끝낸 Take 에 온 끝내기다. 재연결을 포기하고 STT 없이 발표를 이어 간 FE 라

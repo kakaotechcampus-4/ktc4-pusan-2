@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from chat_agent_lab.fake_be import FakeBe, StoredMessage
-from tests.unit import fakes as F
+from chat_agent_lab.service_tests import fakes as F
 
 from .test_fake_be import make_be
 from .test_fake_be_stream import TamperApp

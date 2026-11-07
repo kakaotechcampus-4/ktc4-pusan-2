@@ -4,15 +4,18 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
+from pitch_coach_backend.module.chat.dto import ProfileKey
 
 # 사용자 말 길이. 유니코드 문자(코드 포인트) 수로 센다. 넘으면 자르지 않고 422 다
 MESSAGE_MAX_CHARS = 2000
 MESSAGES_PAGE_MAX = 50
 # 대화 목록 커서 길이. BE 가 만드는 값은 92자로 일정하다. 넘으면 풀어 보지 않고 거절한다
 CONVERSATION_CURSOR_MAX_CHARS = 128
+# 한 응답은 직렬화 뒤 2 MiB 이하다(12-3). 끝맺는 칸 몫을 남긴다
+RESPONSE_MAX_BYTES = 2 * 1024 * 1024 - 4096
 
 RunStatus = Literal[
     "QUEUED",
@@ -86,6 +89,8 @@ class MessageAcceptedResponse(BaseModel):
 
 class CreateConversationRequest(_Request):
     pitch_id: uuid.UUID | None = None
+    # '기억 없이' 대화. 만들 때만 정하고 바꾸지 않는다(6-14)
+    memory_off: StrictBool = False
 
 
 class ChangeScopeRequest(_Request):
@@ -99,6 +104,7 @@ class ConversationResponse(BaseModel):
     scope_pitch_title: str | None
     last_user_activity_at: datetime
     created_at: datetime
+    memory_off: bool
 
 
 class ConversationListItem(ConversationResponse):
@@ -185,3 +191,18 @@ class GoalUndoneResponse(BaseModel):
 
 class AvailabilityResponse(BaseModel):
     enabled: bool
+
+
+class MemorySettingRequest(_Request):
+    enabled: StrictBool
+
+
+class MemoryItemResponse(BaseModel):
+    item_id: uuid.UUID
+    key: ProfileKey
+    value: str
+
+
+class MemorySettingResponse(BaseModel):
+    enabled: bool
+    items: list[MemoryItemResponse]

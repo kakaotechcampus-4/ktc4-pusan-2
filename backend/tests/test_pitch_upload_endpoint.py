@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.adapter import presentation_file
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
+from pitch_coach_backend.module.pitch.exception import StorageError
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
 
@@ -65,6 +66,51 @@ def _presentation_count(db: Session, pitch_id: uuid.UUID) -> int | None:
         .select_from(PresentationVersion)
         .where(PresentationVersion.pitch_id == pitch_id)
     )
+
+
+def _raise_storage_error(*args: object, **kwargs: object) -> None:
+    raise StorageError()
+
+
+def test_s3_upload_failure_is_503(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    pdf: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(presentation_service, "upload", _raise_storage_error)
+
+    response = _upload(client, pitch_id, pdf, auth_headers)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "code": "STORAGE_UNAVAILABLE",
+        "message": StorageError.message,
+        "detail": None,
+    }
+    assert _presentation_count(db_session, pitch_id) == 0
+
+
+def test_presign_failure_after_upload_is_503_and_discards_the_file(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    pdf: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deleted: list[str] = []
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", _raise_storage_error)
+    monkeypatch.setattr(presentation_service, "delete", deleted.append)
+
+    response = _upload(client, pitch_id, pdf, auth_headers)
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "STORAGE_UNAVAILABLE"
+    assert _presentation_count(db_session, pitch_id) == 0
+    assert {key.rsplit(".", 1)[1] for key in deleted} == {"pdf", "webp"}
 
 
 def test_upload_persists_presentation_version_one(

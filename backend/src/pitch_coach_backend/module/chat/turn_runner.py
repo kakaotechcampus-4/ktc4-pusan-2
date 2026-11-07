@@ -114,11 +114,21 @@ async def run(
     try:
         await turn.run(run_id, resume_with=resume_with)
     except asyncio.CancelledError:
-        logger.info("대화 턴을 멈춘다 (앱 종료) run=%s", run_id)
+        reason = "사용자 취소" if _running.cancel_requested(run_id) else "앱 종료"
+        logger.info("대화 턴을 멈춘다 (%s) run=%s", reason, run_id)
         raise
     except Exception:
         logger.exception("대화 턴 실패 run=%s", run_id)
         await turn.give_up(TurnFailure(UPSTREAM_ERROR))
+
+
+def cancel(run_id: uuid.UUID) -> bool:
+    """취소가 커밋된 실행의 턴을 끊어 열린 AI 연결과 대화 자리를 돌려준다. 돌고 있지 않으면 False.
+
+    실행 상태는 취소한 쪽이 이미 저장했다. 스레드풀에서 돌던 저장은 끝까지 가지만 판 번호가 달라
+    반영되지 않는다. 이벤트 루프에서 부른다.
+    """
+    return _running.cancel(run_id)
 
 
 async def stop_all(timeout: float = STOP_TIMEOUT_SEC) -> None:

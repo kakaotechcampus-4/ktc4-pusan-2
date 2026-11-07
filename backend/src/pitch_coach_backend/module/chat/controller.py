@@ -26,6 +26,8 @@ from pitch_coach_backend.module.chat.api_dto import (
     ConversationResponse,
     CreateConversationRequest,
     GoalUndoneResponse,
+    MemorySettingRequest,
+    MemorySettingResponse,
     MessageAcceptedResponse,
     MessageListResponse,
     RunStatusResponse,
@@ -41,6 +43,12 @@ from pitch_coach_backend.module.chat.service.conversation import (
     list_messages,
 )
 from pitch_coach_backend.module.chat.service.goal_undo import undo_goal
+from pitch_coach_backend.module.chat.service.memory_settings import (
+    delete_all_items,
+    delete_item,
+    read_memory,
+    set_enabled,
+)
 from pitch_coach_backend.module.chat.service.run_view import (
     cancel_run,
     latest_run_status,
@@ -69,6 +77,10 @@ async def _resume_turn(run_id: uuid.UUID) -> None:
     turn_runner.resume(run_id)
 
 
+async def _stop_turn(run_id: uuid.UUID) -> None:
+    turn_runner.cancel(run_id)
+
+
 # 버튼을 보일지. 스위치 값만 본다. 꺼져 있어도 503 이 아니라 enabled:false 로 답한다
 @router.get("/availability", response_model=AvailabilityResponse)
 def get_availability(current_user: CurrentUser) -> AvailabilityResponse:
@@ -84,7 +96,7 @@ def get_availability(current_user: CurrentUser) -> AvailabilityResponse:
 def post_conversation(
     body: CreateConversationRequest, current_user: CurrentUser, db: DbSession
 ) -> ConversationResponse:
-    return create_conversation(db, current_user.id, body.pitch_id)
+    return create_conversation(db, current_user.id, body.pitch_id, memory_off=body.memory_off)
 
 
 @router.get("/conversations", response_model=ConversationListResponse, dependencies=[Enabled])
@@ -176,8 +188,17 @@ def get_run(
 
 
 @router.post("/runs/{run_id}/cancel", response_model=RunStatusResponse, dependencies=[Enabled])
-def post_cancel(run_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> RunStatusResponse:
-    return cancel_run(db, current_user.id, run_id)
+def post_cancel(
+    run_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+) -> RunStatusResponse:
+    view = cancel_run(db, current_user.id, run_id)
+    # 취소가 커밋된 뒤 루프에서 끊는다. 다른 상태로 먼저 끝난 실행은 그 결과를 그대로 둔다
+    if view.status == "CANCELLED":
+        background_tasks.add_task(_stop_turn, run_id)
+    return view
 
 
 # 확인 카드의 [승인] · [거절]. 같은 요청은 처음 결과를 준다. 거절은 AI 를 부르지 않는다
@@ -215,3 +236,30 @@ def post_undo(
     db: DbSession,
 ) -> GoalUndoneResponse:
     return undo_goal(db, current_user.id, run_id, action_id, datetime.now(UTC))
+
+
+# 코칭 프로필 기억 설정 · 항목(12-3). 항목은 사용자 말의 저장으로만 늘고 화면이 직접 쓰지 않는다
+@router.get("/memory", response_model=MemorySettingResponse, dependencies=[Enabled])
+def get_memory(current_user: CurrentUser, db: DbSession) -> MemorySettingResponse:
+    return read_memory(db, current_user.id)
+
+
+@router.put("/memory", response_model=MemorySettingResponse, dependencies=[Enabled])
+def put_memory(
+    body: MemorySettingRequest, current_user: CurrentUser, db: DbSession
+) -> MemorySettingResponse:
+    return set_enabled(db, current_user.id, body.enabled)
+
+
+@router.delete("/memory/items", response_model=MemorySettingResponse, dependencies=[Enabled])
+def delete_memory_items(current_user: CurrentUser, db: DbSession) -> MemorySettingResponse:
+    return delete_all_items(db, current_user.id)
+
+
+@router.delete(
+    "/memory/items/{item_id}", response_model=MemorySettingResponse, dependencies=[Enabled]
+)
+def delete_memory_item(
+    item_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+) -> MemorySettingResponse:
+    return delete_item(db, current_user.id, item_id)
