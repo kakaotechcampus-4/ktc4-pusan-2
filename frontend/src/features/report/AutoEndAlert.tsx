@@ -25,9 +25,7 @@ export function AutoEndAlert({
       ].join(' ')}
     >
       {/* 밝은 지면에서는 coral 글자가 coral-wash 위에서 4.5:1 이 안 나와 먹색으로 둡니다 */}
-      <p className={`font-mono text-xs font-bold ${tone === 'dusk' ? 'text-dusk-accent' : ''}`}>
-        자동 종료
-      </p>
+      <p className={`text-xs font-bold ${tone === 'dusk' ? 'text-dusk-accent' : ''}`}>자동 종료</p>
       <p className="mt-1 font-bold">{message}</p>
       <p className="mt-0.5">{after}</p>
     </div>
