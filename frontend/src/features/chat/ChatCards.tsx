@@ -188,10 +188,14 @@ function GoalSavedCard({
   const { busy, run } = useBusy();
   const [result, setResult] = useState<UndoResult | null>(null);
   const done = result === 'undone';
-  const undo = async () => {
+  const undo = () => {
     if (!runId || done) return;
-    const r = await run(() => actions.undo(runId, card.action_id));
-    if (r && r !== 'locked' && r !== 'stale') setResult(r);
+    run(() => actions.undo(runId, card.action_id))
+      .then((r) => {
+        if (r && r !== 'locked' && r !== 'stale') setResult(r);
+      })
+      // 통신 계층은 실패를 결과로 돌려주므로 여기 오는 것은 예상 밖입니다 — 되돌리지 못했다고 알립니다
+      .catch(() => setResult('failed'));
   };
   return (
     <div className={CARD_CLASS}>
@@ -213,7 +217,7 @@ function GoalSavedCard({
         <button
           type="button"
           aria-disabled={busy || done}
-          onClick={() => void undo()}
+          onClick={undo}
           className={`${BUTTON_CLASS} mt-1`}
         >
           되돌리기
@@ -256,7 +260,10 @@ function GoalProposalCard({
                 type="button"
                 aria-disabled={locked}
                 onClick={() => {
-                  if (!locked) void run(() => actions.choose(card.proposal_id, option.label));
+                  if (!locked)
+                    run(() => actions.choose(card.proposal_id, option.label)).catch(
+                      () => undefined,
+                    );
                 }}
                 className={`${BUTTON_CLASS} mt-1`}
               >
@@ -384,7 +391,7 @@ function StartPracticeCard({ pitchId }: { pitchId: string }) {
           onClick={() => {
             // 카드 검사(`readCard`)가 UUID 인지 확인한 ID 로 고정 경로에만 옮깁니다 — 값은 미리 채우지 않습니다
             setMoved(true);
-            void navigate(`/pitch/${pitchId}/device-check`);
+            navigate(`/pitch/${pitchId}/device-check`);
           }}
           className={BUTTON_CLASS}
         >
@@ -422,9 +429,12 @@ function AskConfirmCard({
     after && (card.before === null || beforeGoal) ? { after, before: beforeGoal } : null;
   const decide = (decision: 'APPROVE' | 'REJECT') => {
     if (locked) return;
-    void run(() => actions.decide(card.action_id, decision, card.args_hash)).then((result) => {
-      if (result === 'decided') setDecided(true);
-    });
+    // 버튼 잠금은 `run` 이 풉니다 — 예상 밖 실패면 잠그지 않고 다시 누를 수 있게 둡니다
+    run(() => actions.decide(card.action_id, decision, card.args_hash))
+      .then((result) => {
+        if (result === 'decided') setDecided(true);
+      })
+      .catch(() => undefined);
   };
   const until = new Date(card.expires_at).toLocaleTimeString('ko-KR', {
     hour: 'numeric',

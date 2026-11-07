@@ -59,7 +59,7 @@ export function useChatAvailability(userId: string): {
     refetchOnWindowFocus: true,
   });
   const { refetch } = query;
-  const retry = useCallback(() => void refetch(), [refetch]);
+  const retry = useCallback(() => refetch().catch(() => undefined), [refetch]);
   const markDisabled = useCallback(
     () => queryClient.setQueryData(availabilityKey(userId), false),
     [queryClient, userId],

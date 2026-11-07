@@ -121,7 +121,7 @@ function SignedInOnly({ children }: { children: (userId: string) => ReactNode })
     // 저장소가 비워졌는데(다른 탭의 로그아웃 신호) 세션 값은 그 전에 확인한 것 — 세션을 다시 확인한 뒤에만 다시
     // 알립니다. 같은 계정으로 다시 로그인했으면 그때 다시 보이고, 로그아웃 상태면 숨은 채로 둡니다
     if (storeUser === null && appliedAt.current !== null && appliedAt.current === checkedAt) {
-      void queryClient.invalidateQueries({ queryKey: ['session'] });
+      queryClient.invalidateQueries({ queryKey: ['session'] }).catch(() => undefined);
       return;
     }
     appliedAt.current = checkedAt;
@@ -343,7 +343,7 @@ function ChatPanel({
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      void submit();
+      submit().catch(() => undefined);
     }
   };
 
@@ -370,7 +370,7 @@ function ChatPanel({
           <h2 id={`${id}-title`} className="text-base font-bold">
             채팅 에이전트
           </h2>
-          <ScopeChip onChange={(next) => void session.changeScope(next)} />
+          <ScopeChip onChange={(next) => session.changeScope(next).catch(() => undefined)} />
         </div>
         <button
           type="button"
@@ -409,7 +409,7 @@ function ChatPanel({
       </div>
 
       <form
-        onSubmit={(event) => void submit(event)}
+        onSubmit={(event) => submit(event).catch(() => undefined)}
         className="shrink-0 border-t border-line-strong p-3"
       >
         {session.scopeFailed && (
@@ -559,7 +559,9 @@ function MessageList({ session }: { session: ChatSession }) {
   const askAgainFor = (message: ChatMessage) => {
     if (message.role !== 'assistant' || !message.run_id) return undefined;
     const question = questionOf(message.run_id);
-    return question ? () => void session.send(question, null, message.message_id) : undefined;
+    return question
+      ? () => session.send(question, null, message.message_id).catch(() => undefined)
+      : undefined;
   };
   /** 그 실행을 시작한 내 말 — [다시 보내기]가 같은 질문을 새 메시지로 보냅니다 */
   const questionOf = (runId: string) =>
@@ -608,7 +610,11 @@ function MessageList({ session }: { session: ChatSession }) {
           <MessageItem
             message={message}
             actions={actions}
-            onContinue={i === lastAnswer ? () => void session.send(CONTINUE_TEXT) : undefined}
+            onContinue={
+              i === lastAnswer
+                ? () => session.send(CONTINUE_TEXT).catch(() => undefined)
+                : undefined
+            }
             onAskAgain={askAgainFor(message)}
           />
           {message.run_id && lastOfRun.get(message.run_id) === i && (
@@ -618,7 +624,7 @@ function MessageList({ session }: { session: ChatSession }) {
               question={i === shown.length - 1 ? questionOf(message.run_id) : null}
               canSend={sendable}
               lockedReason={actions.lockedReason ?? null}
-              onResend={(text) => void session.send(text)}
+              onResend={(text) => session.send(text).catch(() => undefined)}
             />
           )}
         </Fragment>
@@ -633,7 +639,7 @@ function MessageList({ session }: { session: ChatSession }) {
             question={questionOf(runId)}
             canSend={sendable}
             lockedReason={actions.lockedReason ?? null}
-            onResend={(text) => void session.send(text)}
+            onResend={(text) => session.send(text).catch(() => undefined)}
           />
         ))}
       {echo && <p className={SELF_CLASS}>{echo.text}</p>}

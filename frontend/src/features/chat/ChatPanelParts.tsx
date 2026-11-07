@@ -94,7 +94,11 @@ export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }
           {pitches.isError && (
             <div role="alert" className="px-2 py-1 text-xs text-coral-deep">
               <p>피치 목록을 불러오지 못했으니 다시 시도해 주세요.</p>
-              <button type="button" onClick={() => void pitches.refetch()} className={SMALL_BUTTON}>
+              <button
+                type="button"
+                onClick={() => pitches.refetch().catch(() => undefined)}
+                className={SMALL_BUTTON}
+              >
                 다시 시도
               </button>
             </div>
@@ -158,7 +162,11 @@ export function ConversationList({
       {list.isError && (
         <div role="alert" className="text-xs text-coral-deep">
           <p>대화 목록을 불러오지 못했으니 다시 시도해 주세요.</p>
-          <button type="button" onClick={() => void list.refetch()} className={SMALL_BUTTON}>
+          <button
+            type="button"
+            onClick={() => list.refetch().catch(() => undefined)}
+            className={SMALL_BUTTON}
+          >
             다시 시도
           </button>
         </div>

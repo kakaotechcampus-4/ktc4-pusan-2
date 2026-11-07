@@ -241,7 +241,9 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
         addEndNotice: (runId, notice) => setEndNotices((all) => ({ ...all, [runId]: notice })),
         startNew: () => useChatStore.getState().startNewConversation(screenScopeRef.current),
         rereadConversations: () =>
-          void queryClient.invalidateQueries({ queryKey: conversationsKey(userId) }),
+          queryClient
+            .invalidateQueries({ queryKey: conversationsKey(userId) })
+            .catch(() => undefined),
         live: {
           take: (signal) => {
             if (liveRun.current !== signal.runId) {
@@ -272,9 +274,12 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
         // 다시 읽기가 실패하면(`invalidateQueries` 는 실패해도 끝납니다) 받은 답을 지우지 않습니다 — 목록에 답이
         // 들어오면 화면이 진행 답을 숨기므로 남겨 둬도 두 번 보이지 않습니다
         reread: (id, then) =>
-          void queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) }).then(() => {
-            if (queryClient.getQueryState(messagesKey(userId, id))?.status !== 'error') then();
-          }),
+          queryClient
+            .invalidateQueries({ queryKey: messagesKey(userId, id) })
+            .then(() => {
+              if (queryClient.getQueryState(messagesKey(userId, id))?.status !== 'error') then();
+            })
+            .catch(() => undefined),
       }),
     );
     created.resume();
@@ -288,8 +293,10 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
   // 새 실행이 붙으면 사용자 말이 저장돼 있으니 목록을 다시 읽습니다
   useEffect(() => {
     if (!runId || !conversationId) return;
-    void queryClient.invalidateQueries({ queryKey: messagesKey(userId, conversationId) });
-    void queryClient.invalidateQueries({ queryKey: conversationsKey(userId) });
+    queryClient
+      .invalidateQueries({ queryKey: messagesKey(userId, conversationId) })
+      .catch(() => undefined);
+    queryClient.invalidateQueries({ queryKey: conversationsKey(userId) }).catch(() => undefined);
   }, [runId, conversationId, queryClient, userId]);
 
   // ── 메시지 목록 ───────────────────────────────────────
@@ -344,10 +351,10 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     const current = transport.current;
     if (!current) return;
     setNotice(null);
-    void current.retryUnconfirmed();
+    current.retryUnconfirmed().catch(() => undefined);
   }, []);
 
-  const cancel = useCallback(() => void transport.current?.cancel(), []);
+  const cancel = useCallback(() => transport.current?.cancel().catch(() => undefined), []);
 
   const checkNow = useCallback(() => {
     setRunNotice(null);
@@ -387,7 +394,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
       const result = await current.undo(runId, actionId);
       const id = useChatStore.getState().conversationId;
       if (result === 'undone' && id)
-        void queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) });
+        queryClient.invalidateQueries({ queryKey: messagesKey(userId, id) }).catch(() => undefined);
       return result;
     },
     [queryClient, userId],
@@ -404,12 +411,12 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
     retryAvailability,
     screenScope,
     scopeFailed: info.needsTake && take.isError && !take.data,
-    retryScope: () => void take.refetch(),
+    retryScope: () => take.refetch().catch(() => undefined),
     messages: shown,
     hasEarlier: messages.hasNextPage,
-    loadEarlier: () => void messages.fetchNextPage(),
+    loadEarlier: () => messages.fetchNextPage().catch(() => undefined),
     loadingEarlier: messages.isFetchingNextPage,
-    retryMessages: () => void messages.refetch(),
+    retryMessages: () => messages.refetch().catch(() => undefined),
     scopeBlocked,
     endNotices,
     runNotice,
