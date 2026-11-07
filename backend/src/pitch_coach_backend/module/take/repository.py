@@ -1,6 +1,6 @@
 import logging
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -79,9 +79,16 @@ class TakeRepository:
         )
 
     def list_reported(
-        self, user_id: uuid.UUID, *, completed_after: datetime, exclude: set[uuid.UUID]
+        self,
+        user_id: uuid.UUID,
+        *,
+        completed_after: datetime,
+        exclude_when: Callable[[ColumnElement[uuid.UUID]], ColumnElement[bool]],
     ) -> list[Row]:
-        """완료되고 측정 결과가 남은 사용자의 Take. 최근에 끝난 것부터."""
+        """완료되고 측정 결과가 남은 사용자의 Take. 최근에 끝난 것부터.
+
+        `exclude_when` 은 Take ID 열을 받아 뺄 Take 에서 참인 조건을 돌려준다.
+        """
         stmt = (
             select(
                 Take.id.label("take_id"),
@@ -98,11 +105,10 @@ class TakeRepository:
                 select(TakeAIResults.id)
                 .where(TakeAIResults.take_id == Take.id, TakeAIResults.kind == TAKE_RESULT)
                 .exists(),
+                ~exclude_when(Take.id),
             )
             .order_by(Take.completed_at.desc(), Take.id.desc())
         )
-        if exclude:
-            stmt = stmt.where(Take.id.not_in(exclude))
         return list(self.db.execute(stmt).all())
 
     def get_take(self, take_id: uuid.UUID) -> Take | None:

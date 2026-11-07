@@ -1,11 +1,11 @@
 """Take 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록 · 리포트."""
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Row
+from sqlalchemy import ColumnElement, Row
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
@@ -363,12 +363,17 @@ def has_report(db: Session, take: Take) -> bool:
 
 
 def list_reported_takes(
-    db: Session, user_id: uuid.UUID, *, completed_after: datetime, exclude: set[uuid.UUID]
+    db: Session,
+    user_id: uuid.UUID,
+    *,
+    completed_after: datetime,
+    exclude_when: Callable[[ColumnElement[uuid.UUID]], ColumnElement[bool]],
 ) -> list[Row]:
-    """`completed_after` 이후에 끝난, 리포트를 볼 수 있는 사용자의 Take. `exclude` 는 뺀다.
+    """`completed_after` 이후에 끝난, 리포트를 볼 수 있는 사용자의 Take.
 
+    `exclude_when` 이 Take ID 열로 만든 조건이 참인 Take 는 같은 쿼리에서 뺀다.
     행은 take_id · pitch_id · pitch_title · take_number · completed_at 이다.
     """
     return TakeRepository(db).list_reported(
-        user_id, completed_after=completed_after, exclude=exclude
+        user_id, completed_after=completed_after, exclude_when=exclude_when
     )
