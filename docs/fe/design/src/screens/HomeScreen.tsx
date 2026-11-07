@@ -1,5 +1,5 @@
 // 제품 홈 · 내 피치(`frontend/src/features/pitch/HomePage.tsx`)의 설계서 샘플.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/ui/Button';
 import { DeletePitchDialog } from '@/ui/dialogs/DeletePitchDialog';
@@ -7,6 +7,8 @@ import { HomeHelpDialog } from '@/ui/dialogs/HomeHelpDialog';
 import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
 import { HomePitchCard, type HomePitch } from '@/ui/HomePitchCard';
 import { PITCH, type Navigate } from './shared';
+
+const HOME_TIPS = ['연습 전, 슬라이드와 대본을 한 번 확인해 보세요.', '목표 발표 시간을 정하고 한 번 끝까지 연습해 보세요.', '연습을 마친 뒤 Take 기록에서 달라진 점을 확인해 보세요.'];
 
 const HOME_PITCHES: HomePitch[] = [
   { pitch_id: 'p1', pitch_title: PITCH, pitch_time: 300, thumbnail_url: null, takes: [1, 2] },
@@ -46,6 +48,13 @@ const homePrimary =
 
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [tipIndex, setTipIndex] = useState(0);
+  const [tipPaused, setTipPaused] = useState(false);
+  useEffect(() => {
+    if (tipPaused || stateId === 'empty') return;
+    const timer = window.setInterval(() => setTipIndex((index) => (index + 1) % HOME_TIPS.length), 8000);
+    return () => window.clearInterval(timer);
+  }, [tipPaused, stateId]);
   // 기본 상태에서 메뉴로 지우면 그 줄만 이 미리보기에서 뺀다. 서버 요청은 없다
   const [removed, setRemoved] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
@@ -156,34 +165,21 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             )}
           </section>
         )}
-        {/* 피치가 없으면 확인할 슬라이드 · 대본이 없어 TIP을 뺀다 */}
-        {stateId !== 'empty' && (
-          <aside className="mt-6 flex flex-wrap items-center justify-between gap-4 border-y border-line-strong py-3 text-sm lg:mt-5">
-            <p>
-              <span className="mr-3 font-mono text-coral-deep">TIP /</span>연습 전, 슬라이드와
-              대본을 한 번 확인해 보세요.
-            </p>
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="text-ink/80 hover:text-coral-deep"
-            >
-              사용방법 살펴보기
-            </button>
-          </aside>
-        )}
       </div>
-      <footer className="border-t border-line-strong">
-        <div className="mx-auto flex max-w-page flex-wrap justify-between gap-4 px-6 py-4 text-xs text-ink/80 lg:px-10">
+      <footer className="mt-auto border-t border-line-strong">
+        <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4 text-xs text-ink/80 lg:px-10">
           <span className="tabular-nums tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
-          <div className="flex gap-5">
-            <Link to="/terms?from=home" className="hover:text-ink">
-              이용약관
-            </Link>
-            <Link to="/privacy?from=home" className="hover:text-ink">
-              개인정보 처리방침
-            </Link>
-          </div>
+          {stateId !== 'empty' && (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" aria-label="연습 도움말">
+              <span role="status" aria-live="polite"><span className="font-mono text-coral-deep">TIP / </span>{HOME_TIPS[tipIndex]}</span>
+              <button type="button" className="underline hover:text-ink" onClick={() => setTipPaused((paused) => !paused)} aria-label={tipPaused ? 'TIP 자동 전환 재개' : 'TIP 자동 전환 일시정지'}>{tipPaused ? '재개' : '일시정지'}</button>
+              <button type="button" onClick={() => setHelpOpen(true)} className="underline hover:text-ink">사용방법 살펴보기</button>
+            </div>
+          )}
+          <nav className="flex gap-5" aria-label="정책 안내">
+            <Link to="/terms?from=home" className="hover:text-ink">이용약관</Link>
+            <Link to="/privacy?from=home" className="hover:text-ink">개인정보 처리방침</Link>
+          </nav>
         </div>
       </footer>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
