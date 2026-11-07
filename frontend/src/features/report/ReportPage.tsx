@@ -21,7 +21,16 @@ import {
   DIMENSION_STATUS_LABEL,
   JUDGE_STATUS_LABEL,
 } from '@/shared/lib/metricLabels';
-import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
+import {
+  OP,
+  type ComparisonGroup,
+  comparisonGroups,
+  endedAt,
+  fmt,
+  metricLabel,
+  pct,
+  where,
+} from './reportFormat';
 import { TakeSurvey } from './TakeSurvey';
 import { scriptModeLabel } from './takeHistoryFormat';
 
@@ -246,7 +255,7 @@ function GazeBreakdown({ m }: { m: TakeMeasures }) {
               <span className={`h-2.5 w-2.5 ${row.color}`} aria-hidden="true" />
               {row.label}
             </dt>
-            <dd className="tabular mt-1 font-mono text-3xl font-bold">{pct(row.value)}</dd>
+            <dd className="tabular mt-1 tabular-nums text-3xl font-bold">{pct(row.value)}</dd>
           </div>
         ))}
       </dl>
@@ -310,35 +319,95 @@ function trend(r: ReviewResult['comparison'][number]) {
     : TREND[String(r.improved)]!;
 }
 
+/**
+ * 차원마다 표 하나 — 지표 하나가 열 하나, 발표 전체 · 장이 행입니다 (#929).
+ * 전에는 (지표, 장) 하나가 칸 하나라 같은 지표가 장마다 칸으로 되풀이돼 읽는 법을 알기 어려웠습니다.
+ */
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
+  const groups = comparisonGroups(rows);
+  // 두 Take 의 대본 보기 차이는 AI 가 모든 행에 같이 싣습니다 — 칸마다 되풀이하지 않고 한 번만 알립니다
+  const mode = rows.find((r) => r.script_mode)?.script_mode;
   return (
-    <Card title="지난 Take와 비교">
-      {rows.length === 0 ? (
-        <p className="text-sm text-ink/80">비교할 지난 Take가 없어요.</p>
+    <Card
+      title="지난 Take와 비교"
+      action={
+        groups.length > 0 && <p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
+      }
+    >
+      {groups.length === 0 ? (
+        <p className="text-sm text-ink/80">
+          {rows.length === 0 ? '비교할 지난 Take가 없어요.' : '지난 Take와 함께 잰 지표가 없어요.'}
+        </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          {rows.map((r, i) => (
-            <li key={i} className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3">
-              <span className="text-xs text-ink/80">
-                <b className="text-sm text-ink">{metricLabel(r.metric)}</b>
-                {r.slide_number !== null && <> · {r.slide_number}번 장</>}
-              </span>
-              <span className="tabular flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
-                <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
-                <b className="text-lg">{fmt(r.metric, r.current)}</b>
-                <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
-              </span>
-              {r.script_mode && (
-                <p className="text-xs text-ink/80">
-                  대본 보기가 달랐어요 ({scriptModeLabel(r.script_mode.previous)} →{' '}
-                  {scriptModeLabel(r.script_mode.current)}). 비교는 참고만 해 주세요.
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          {mode && (
+            <p className="text-sm text-ink/80">
+              대본 보기가 달랐어요 ({scriptModeLabel(mode.previous)} →{' '}
+              {scriptModeLabel(mode.current)}). 비교는 참고만 해 주세요.
+            </p>
+          )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {groups.map((g) => (
+              <ComparisonTable key={g.dimension ?? 'other'} group={g} />
+            ))}
+          </div>
+        </>
       )}
     </Card>
+  );
+}
+
+function ComparisonTable({ group }: { group: ComparisonGroup }) {
+  const title = group.dimension === null ? '그 밖의 지표' : DIMENSION_LABEL[group.dimension];
+  return (
+    // 열이 셋 이상이면 한 줄을 다 씁니다
+    <section
+      aria-label={title}
+      className={`min-w-0 border-l-2 border-line pl-3 ${group.metrics.length > 2 ? 'lg:col-span-2' : ''}`}
+    >
+      <h3 className="text-sm font-bold">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="tabular mt-2 w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-line text-xs text-ink/80">
+              <th scope="col" className="w-20 py-1.5 pr-4 font-normal">
+                구간
+              </th>
+              {group.metrics.map((m) => (
+                <th key={m} scope="col" className="py-1.5 pr-4 font-bold text-ink">
+                  {metricLabel(m)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {group.slides.map((slide) => (
+              <tr key={slide ?? 'take'} className="border-b border-line last:border-b-0">
+                <th scope="row" className="whitespace-nowrap py-2 pr-4 text-xs font-normal">
+                  {slide === null ? '발표 전체' : `${slide}번 장`}
+                </th>
+                {group.metrics.map((m) => {
+                  const r = group.cell(m, slide);
+                  return (
+                    <td key={m} className="py-2 pr-4">
+                      {r ? (
+                        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                          <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
+                          <b className="text-base">{fmt(r.metric, r.current)}</b>
+                          <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
+                        </span>
+                      ) : (
+                        <span className="text-ink/80">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

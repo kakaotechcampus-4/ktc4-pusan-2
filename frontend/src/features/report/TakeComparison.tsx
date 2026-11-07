@@ -140,7 +140,7 @@ export function TakeComparison({ rows }: { rows: TakeHistoryRow[] }) {
                         aria-label={`Take ${r.take_number}: ${empty ? '측정하지 못했거나 시선 엔진이 달라 비교하지 않아요' : m.fmt(v)}`}
                         className="flex min-w-0 flex-1 flex-col items-center gap-2"
                       >
-                        <span className="tabular font-mono text-sm font-bold">
+                        <span className="tabular tabular-nums text-sm font-bold">
                           {empty ? '—' : m.fmt(v)}
                         </span>
                         {/* 막대 높이의 기준이 되는 칸. 숫자 줄을 뺀 나머지 높이입니다 */}

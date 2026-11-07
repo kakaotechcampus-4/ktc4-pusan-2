@@ -204,7 +204,7 @@ function Progress({ takeId, states }: { takeId: string; states: StepState[] }) {
         ))}
       </ol>
       {current >= 0 && (
-        <p aria-live="polite" className="font-mono text-xs text-dusk-accent">
+        <p aria-live="polite" className="tabular-nums text-xs text-dusk-accent">
           {current + 1}/3 · {STEP_NAMES[current]}
         </p>
       )}
@@ -217,7 +217,7 @@ function Progress({ takeId, states }: { takeId: string; states: StepState[] }) {
 
       {/* 몇 초마다 바뀌어 aria-live 를 걸지 않습니다 — 화면 읽기 프로그램이 계속 읽게 됩니다 */}
       <div className="w-full border-t-2 border-dashed border-dusk-line pt-4 text-left">
-        <p className="font-mono text-xs font-bold text-dusk-accent">TIP · 치치</p>
+        <p className="tabular-nums text-xs font-bold text-dusk-accent">TIP · 치치</p>
         <p className="mt-1 text-sm leading-relaxed">{TIPS[tip]}</p>
         <button
           type="button"
