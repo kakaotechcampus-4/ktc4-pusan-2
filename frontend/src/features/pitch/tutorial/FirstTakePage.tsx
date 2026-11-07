@@ -16,24 +16,28 @@ export function FirstTakePage() {
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const mountedRef = useRef(true);
+  const prepareControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      prepareControllerRef.current?.abort();
     };
   }, []);
 
   const begin = async () => {
     if (busyRef.current) return;
     busyRef.current = true;
+    const controller = new AbortController();
+    prepareControllerRef.current = controller;
     setPending(true);
     setError(null);
 
     try {
       const pitchId = await ensureFirstTakePitch((message) => {
         if (mountedRef.current) setStatus(message);
-      });
+      }, controller.signal);
       queryClient.invalidateQueries({ queryKey: pitchListKey }).catch(() => undefined);
       if (mountedRef.current) {
         navigate(`/pitch/${pitchId}/device-check`);
@@ -43,6 +47,7 @@ export function FirstTakePage() {
         setError(toMessage(caught));
       }
     } finally {
+      if (prepareControllerRef.current === controller) prepareControllerRef.current = null;
       busyRef.current = false;
       if (mountedRef.current) setPending(false);
     }
