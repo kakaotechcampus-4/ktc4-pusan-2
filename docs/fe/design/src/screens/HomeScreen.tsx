@@ -23,7 +23,7 @@ const HOME_PITCHES: HomePitch[] = [
     pitch_time: 300,
     thumbnail_url: null,
     takes: [1],
-    busy: true,
+    can_delete: false,
   },
 ];
 
