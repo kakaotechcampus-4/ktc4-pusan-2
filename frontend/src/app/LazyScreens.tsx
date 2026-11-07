@@ -18,6 +18,9 @@ export const DeviceCheckPage = lazy(() =>
     default: m.DeviceCheckPage,
   })),
 );
+export const FirstTakePage = lazy(() =>
+  import('@/features/pitch/tutorial/FirstTakePage').then((m) => ({ default: m.FirstTakePage })),
+);
 export const PitchCreatePage = lazy(() =>
   import('@/features/pitch/create/PitchCreatePage').then((m) => ({ default: m.PitchCreatePage })),
 );
