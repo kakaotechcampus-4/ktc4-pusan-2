@@ -305,11 +305,6 @@ def reserve_user_pitch_deletions(
     return pitch_ids, take_ids
 
 
-def lock_for_new_version(db: Session, pitch_id: uuid.UUID) -> None:
-    """발표 행을 잠근다 (`PitchRepository.lock_for_new_version`). Take 를 시작할 때도 잡는다."""
-    PitchRepository(db).lock_for_new_version(pitch_id)
-
-
 def find_pitch(db: Session, pitch_id: uuid.UUID) -> Pitch | None:
     return PitchRepository(db).get_by_id(pitch_id)
 

@@ -11,6 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.service import lookup as pitch_lookup
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.pitch.service import standard as standard_service
@@ -49,7 +50,7 @@ def start_take(db: Session, take_id: uuid.UUID) -> bool:
     pitch_id = repo.get_pitch_id_of_take(take_id)
     if pitch_id is None:
         return False
-    pitch_service.lock_for_new_version(db, pitch_id)
+    pitch_lookup.lock_for_new_version(db, pitch_id)
     take_number = repo.mark_started(take_id)
     if take_number is None:
         db.commit()
