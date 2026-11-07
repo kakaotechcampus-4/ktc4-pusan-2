@@ -805,14 +805,15 @@ def _search(ctx: RunCtx, a: SearchArgs) -> ToolResult:
     summ = f"자료 검색(질의 {len(a.query)}자)"
     corpus = ctx.corpus
     if corpus is None:
-        # 자료 묶음 검사에 실패하면 검색만 준비 실패다(기록 답은 계속, 6-10 · L1-21)
+        # 자료 묶음 검사에 실패하면 검색만 준비 실패다(기록 답은 계속, 6-10 · L1-21).
+        # 자료 근거(GUIDE) 답은 막고, 결과 0건과 같이 일반 조언 규칙을 따른다(루프가 찾은 것으로 센다)
         return _res(
             "search_guides",
             ok=False,
             data=None,
             error={
                 "code": "CORPUS_UNAVAILABLE",
-                "message": "자료 묶음을 쓸 수 없다. 자료 근거 답은 하지 않는다",
+                "message": "자료 묶음을 쓸 수 없다. 자료 근거 답은 하지 않고, 자료가 없을 때처럼 일반 조언 규칙을 따른다",
             },
             args_summary=summ,
             result_summary="자료 준비 실패",

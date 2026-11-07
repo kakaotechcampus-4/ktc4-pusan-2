@@ -10,7 +10,7 @@
 | 담당 | JWK0395 |
 | 설계 | 목적 · 계약 · 처리 · 실패 처리 · 시험 → [`docs/ai/features/chat-agent.md`](../../../docs/ai/features/chat-agent.md) |
 | 단계 | 연구 모듈에서 먼저 만들고 확인한 뒤 서비스에 탑재한다(기능 문서 4-1). **탑재 전에는 BE가 부르지 않는다** |
-| 버전 | `chat_agent-0.9.0`(`src/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-4`, 자료 묶음 `guides-6`, 실행 상태 `v` 1 |
+| 버전 | `chat_agent-0.10.0`(`src/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-4`, 자료 묶음 `guides-6`, 실행 상태 `v` 1 |
 
 ## 1. 코드 구조
 
@@ -382,7 +382,7 @@ uv sync                                             # .venv 를 만들고 서비
 | L1-18 | 단위 | `tests/unit/test_tools.py::test_l1_18_screen_of_other_pitch_is_marked_and_not_merged` · `tests/unit/test_tools.py::test_l1_18_goal_of_other_pitch_is_not_mixed` · `tests/unit/test_tools.py::test_l1_18_scope_change_gives_new_evidence_ids_for_same_take_number` |  |
 | L1-19 | 단위 | `tests/unit/test_contract_schemas.py::test_fm_L1_19_goal_min_delta_rules` · `tests/unit/test_goals.py::test_fm_L4_09_inverted_range_blocks_comparison` · `tests/unit/test_goals.py::test_fm_L4_06_invalid_values_stop_comparison` |  |
 | L1-20 | 계약 | `tests/unit/test_tools.py::test_l1_20_cache_hit_is_cached_without_new_evidence` · `tests/unit/test_tools.py::test_l1_20_cache_key_normalizes_argument_order` · `tests/unit/test_tools.py::test_l1_20_cache_key_changes_with_revision_scope_and_new_take` |  |
-| L1-21 | 단위 | `tests/unit/test_corpus.py::test_fm_L1_21_duplicate_source_id` · `tests/unit/test_corpus.py::test_fm_L1_21_broken_card_schema` · `tests/unit/test_tools.py::test_l1_21_search_without_corpus_fails_only_search` · `tests/unit/test_general.py::test_general_without_a_search_is_dropped_without_a_fix` · `tests/unit/test_general.py::test_general_without_a_search_is_refused_without_a_fix_call` · `tests/unit/test_general.py::test_failed_search_does_not_allow_general` |  |
+| L1-21 | 단위 | `tests/unit/test_corpus.py::test_fm_L1_21_duplicate_source_id` · `tests/unit/test_corpus.py::test_fm_L1_21_broken_card_schema` · `tests/unit/test_tools.py::test_l1_21_search_without_corpus_fails_only_search` · `tests/unit/test_general.py::test_general_without_a_search_is_dropped_without_a_fix` · `tests/unit/test_general.py::test_general_without_a_search_is_refused_without_a_fix_call` · `tests/unit/test_general.py::test_fm_L1_21_corpus_unavailable_still_allows_general` · `tests/unit/test_general.py::test_fm_L1_21_corpus_unavailable_still_blocks_guide_claims` · `tests/unit/test_general.py::test_fm_L1_21_corpus_unavailable_and_general_all_dropped_refuses` |  |
 | L1-22 | 평가셋 | 평가셋 | 안전 세트(13-2): role 위조 · 지시 주입 · 키 출력 요구 |
 | L1-23 | 단위 | `tests/unit/test_actions.py::test_l1_23_forged_or_wrong_action_args_are_tool_errors` · `tests/unit/test_actions.py::test_l1_23_code_makes_ids_autonomy_and_args` · `tests/unit/test_budget.py::test_l1_23_actions_five_total_one_save_one_reassess` |  |
 | L1-24 | 단위 · 평가셋 | `tests/unit/test_actions.py::test_l1_24_authorize` · `tests/unit/test_actions.py::test_l1_24_unauthorized_save_becomes_goal_proposal_without_reserving` · `tests/unit/test_actions.py::test_l1_24_past_or_broken_clause_is_not_a_request` | 모델 행동 쪽은 평가셋(안전 세트) |

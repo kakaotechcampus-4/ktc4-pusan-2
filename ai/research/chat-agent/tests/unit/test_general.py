@@ -212,8 +212,12 @@ def test_general_without_a_search_is_refused_without_a_fix_call() -> None:
     assert [c.purpose for c in llm.calls if c.purpose == "FIX"] == []
 
 
-def test_general_after_a_record_sentence_keeps_both_and_skips_the_no_source_note() -> None:
-    """기록 문장과 일반 조언을 한 답에 낸다: 안내는 일반 조언 바로 앞, 자료 근거 없음 안내(KNOWLEDGE_NO_SOURCE)는 붙이지 않는다."""
+@pytest.mark.parametrize("corpus_ok", [True, False], ids=["corpus", "corpus_unavailable"])
+def test_general_after_a_record_sentence_keeps_both_and_skips_the_no_source_note(
+    corpus_ok: bool,
+) -> None:
+    """기록 문장과 일반 조언을 한 답에 낸다: 안내는 일반 조언 바로 앞, 자료 근거 없음 안내(KNOWLEDGE_NO_SOURCE)는 붙이지 않는다.
+    자료 묶음을 쓸 수 없어도(L1-21) 같다."""
     from .test_turn import MSG, change_draft
 
     record = "Take 5의 3장 청중 시선 비율은 28%예요."
@@ -231,7 +235,7 @@ def test_general_after_a_record_sentence_keeps_both_and_skips_the_no_source_note
     status, lines, data = F.run_turn(
         F.with_loaded(F.request(user_message=MSG), "t-4"),
         llm,
-        corpus=load_corpus(),
+        corpus=load_corpus() if corpus_ok else None,
         corpus_version="guides-4",
     )
     assert status == 200 and data["status"] == "DONE"
@@ -250,12 +254,63 @@ def _general_rule_steps(data: dict) -> list[Any]:
     ]
 
 
-def test_failed_search_does_not_allow_general() -> None:
-    """자료 묶음 준비 실패로 자료 찾기가 실패하면 찾은 것이 아니다: 일반 조언은 고치기 없이 버리고 거절(L1-21)."""
-    _, data, llm = _run(F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"), corpus=None, fixes=[])
+def test_fm_L1_21_corpus_unavailable_still_allows_general() -> None:
+    """자료 묶음 준비 실패도 자료 찾기를 한 것으로 센다: 결과 0건처럼 고정 안내 + 일반 조언(DONE, L1-21 · 6-10)."""
+    lines, data, llm = _run(
+        F.answer([F.claim("GENERAL", G1), F.claim("GENERAL", G2)], route="NO_GUIDE"),
+        corpus=None,
+        fixes=[],
+    )
+    assert data["status"] == "DONE"
+    assert _texts(data) == [("SYSTEM", INTRO), ("GENERAL", G1), ("GENERAL", G2)]
+    assert _general_rule_steps(data) == []
+    assert [c for c in llm.calls if c.purpose == "FIX"] == []
+    assert_prefix_invariant(lines, data)
+
+
+def test_fm_L1_21_corpus_unavailable_still_blocks_guide_claims() -> None:
+    """자료 묶음 준비 실패에서 자료 근거 문장(GUIDE)은 이을 자료가 없어 나가지 않는다. 일반 조언만 남는다."""
+    _, data, _ = _run(
+        F.answer(
+            [
+                F.claim("GUIDE", '"핵심어만 적어 연습하세요"', source_ids=["g-1"]),
+                F.claim("GENERAL", G1),
+            ],
+            route="NO_GUIDE",
+        ),
+        corpus=None,
+        fixes=[F.fix({0: None})],
+    )
+    assert data["status"] == "DONE"
+    assert [k for k, _ in _texts(data)] == ["SYSTEM", "GENERAL"]
+    assert not data["message"].get("sources")
+
+
+def test_fm_L1_21_corpus_unavailable_and_general_all_dropped_refuses() -> None:
+    """자료 묶음 준비 실패에서 일반 조언도 검사에 모두 걸리면 그때만 거절(7-9 '자료에서 근거를 찾지 못해 답하지 않을게요.')."""
+    _, data, llm = _run(
+        F.answer([F.claim("GENERAL", "연구에 따르면 쉼이 중요해요.")], route="NO_GUIDE"),
+        corpus=None,
+        fixes=[F.fix({0: None})],
+    )
     assert data["status"] == "REFUSED"
     assert _texts(data) == [("SYSTEM", templates.SystemText.NO_GUIDE.value)]
-    assert [c for c in llm.calls if c.purpose == "FIX"] == []
+    # 자료를 찾지 않아서가 아니라 내용(금지 낱말) 때문에 걸렸다: 찾지 않은 일반 조언은 고치기 없이 버린다.
+    # 그 문장의 GENERAL_RULE 이 처음에는 고치기 요청, 고친 뒤에는 버림으로 남는다
+    assert [c.purpose for c in llm.calls].count("FIX") == 1
+    steps = [
+        (s.detail.claim_index, s.detail.round, s.detail.result) for s in _general_rule_steps(data)
+    ]
+    assert steps[0] == (1, 0, "FIX_REQUESTED")  # 0번은 고정 안내 문장, 1번이 일반 조언
+
+
+def test_general_needs_a_search_attempt_even_without_corpus() -> None:
+    """자료 묶음이 없어도 자료 찾기를 하지 않은 실행의 일반 조언은 걸린다(찾기를 '시도'한 것만 센다)."""
+    _, data, _ = _run(
+        F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"), search=False, corpus=None, fixes=[]
+    )
+    assert ("GENERAL", G1) not in _texts(data)
+    assert _general_rule_steps(data)
 
 
 def test_guide_and_general_all_dropped_refuses_even_on_answer_route() -> None:
@@ -303,10 +358,12 @@ def test_blank_general_element_is_not_counted_as_over_the_limit() -> None:
     assert _general_rule_steps(data) == []
 
 
-def test_search_and_general_count_carry_over_the_approval_pause() -> None:
+@pytest.mark.parametrize("corpus_ok", [True, False], ids=["corpus", "corpus_unavailable"])
+def test_search_and_general_count_carry_over_the_approval_pause(corpus_ok: bool) -> None:
     """승인 대기 전에 자료를 찾았으면 이어 부른 답에서도 찾은 것이다(서명 상태). 한 답의 일반 조언 수와 안내는 실행 전체에서
-    센다: 앞 응답에 2문장을 냈으면 이어 부른 답은 1문장만, 안내는 다시 붙이지 않는다."""
-    corpus = load_corpus()
+    센다: 앞 응답에 2문장을 냈으면 이어 부른 답은 1문장만, 안내는 다시 붙이지 않는다. 자료 묶음을 쓸 수 없어 찾기가
+    준비 실패였어도 같다(L1-21)."""
+    corpus = load_corpus() if corpus_ok else None
 
     def before_pause(r: Any) -> Any:
         eid = roles(r)["current"]
@@ -411,3 +468,6 @@ def test_invalid_tool_call_leaves_a_tool_step_with_its_error_code() -> None:
     assert [(s["code"], s["detail"]["outcome"], s["detail"]["error_code"]) for s in steps] == [
         ("search_guides", "ERROR", "TOOL_INVALID")
     ]
+    # 인자가 틀린 검색은 자료 찾기로 세지 않는다(자료 묶음 준비 실패만 센다, L1-21): 일반 조언은 버리고 거절
+    assert data["status"] == "REFUSED"
+    assert ("GENERAL", G1) not in _texts(data)
