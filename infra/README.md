@@ -76,3 +76,21 @@ develop/main branch에 push를 할 때 해당 과정이 진행됩니다.
 
 ## 주의사항
 * 배포 전 main branch와 develop branch에 사용할 환경변수들을 다시 확인해주세요. 공유해도 되는 환경변수는 두 경우 모두 같게 하되, 그렇지 않은 경우에는 분리를 필수적으로 진행하여야 합니다.
+
+```
+develop-main branch 사이 분리해야 할 환경변수 목록
+
+# Google OAuth
+GOOGLE_REDIRECT_URI
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+
+# AWS S3 Presigned URL용 S3 버킷 이름
+S3_BUCKET_NAME
+
+# STT API로 사용할 DEEPGRAM_API_KEY
+DEEPGRAM_API_KEY
+
+# 관리자 비밀번호
+ADMIN_PASSWORD
+```
