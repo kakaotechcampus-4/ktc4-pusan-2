@@ -277,8 +277,8 @@ const visibleText = (el: Element) => {
   return copy.textContent;
 };
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => visibleText(b) === label);
-const sendButton = () => button('입력')!;
+  [...host.querySelectorAll('button')].find((b) => visibleText(b) === label || b.getAttribute('aria-label') === label);
+const sendButton = () => panel()!.querySelector<HTMLButtonElement>('button[type="submit"]')!;
 const sentMessages = () =>
   [...panel()!.querySelectorAll('p.self-end')].map((message) => message.textContent);
 const scopeText = () => visibleText(panel()!.querySelector('[data-chat-scope]')!);
@@ -306,6 +306,29 @@ async function press(target: Element, init: KeyboardEventInit) {
   return event;
 }
 
+it('새미나이 브랜드와 추천 질문을 표시하고, 질문을 누르면 전송하지 않고 입력에만 채운다', async () => {
+  await visit('/');
+  await openPanel();
+  expect(panel()!.textContent).toContain('새미나이');
+  expect(panel()!.querySelector('img[src="/icon-192.png"]')).not.toBeNull();
+  const question = panel()!.querySelector<HTMLButtonElement>('[data-chat-empty] button')!;
+  expect(question).not.toBeNull();
+  await act(async () => question.click());
+  expect(input().value).toBe('최근 연습에서 개선할 점을 알려줘');
+  expect(sentMessages()).toEqual([]);
+});
+
+it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지한다', async () => {
+  await visit('/');
+  await openPanel();
+  await type('작성 중');
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('form')!.hidden).toBe(false);
+  expect(input().value).toBe('작성 중');
+});
+
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
   await visit('/');
   await openPanel();
@@ -313,7 +336,7 @@ it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아�
   expect(launcher()!.getAttribute('aria-expanded')).toBe('true');
   expect(document.activeElement).toBe(input());
 
-  const close = [...host.querySelectorAll('button')].find((b) => b.textContent === '닫기')!;
+  const close = button('닫기')!;
   await act(async () => close.click());
   expect(panel()).toBeNull();
   expect(document.activeElement).toBe(launcher());
@@ -2405,13 +2428,13 @@ describe('두 번째 점검 반영', () => {
     expect(chip.hasAttribute('aria-label')).toBe(false);
     expect(chip.textContent).toContain('답을 만드는 동안에는 범위를 바꿀 수 없어요');
     // [입력]은 글을 썼을 때만 이유를 붙입니다
-    expect(sendButton().querySelector('.sr-only')).toBeNull();
+    expect(sendButton().querySelectorAll('.sr-only')).toHaveLength(1);
     await type('질문');
     expect(sendButton().textContent).toBe('입력 (답을 만드는 중이에요)');
     await act(async () => useChatStore.getState().endRun('r9'));
     expect(button('이어서 확인')!.querySelector('.sr-only')).toBeNull();
     expect(chip.textContent).not.toContain('바꿀 수 없어요');
-    expect(sendButton().querySelector('.sr-only')).toBeNull();
+    expect(sendButton().querySelectorAll('.sr-only')).toHaveLength(1);
   });
 });
 
@@ -2503,7 +2526,7 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
     await act(async () => memorySwitch()!.click());
     expect(useChatStore.getState().memoryOff).toBe(true);
     expect(memorySwitch()!.checked).toBe(true);
-    expect(badge()!.textContent).toBe('기억 없이');
+    expect(badge()).toBeNull(); // 설정 가능한 동안에는 스위치 자체가 상태를 표시합니다.
 
     // 대화가 생긴 뒤에는 바꿀 수 없습니다 — 스위치를 거두고 표시는 남깁니다
     await act(async () => {
