@@ -3,7 +3,7 @@ import { useId, useLayoutEffect, useRef } from 'react';
 import { Button } from '../Button';
 
 /**
- * 실패 문구. 제품은 누르는 순간 목록을 다시 받아 연습 · 분석이 시작됐으면 `busy`, 요청이 실패하면 `failed`다.
+ * 실패 문구. 제품은 BE가 409 `PITCH_BUSY`로 거절하면(연습 · 분석이 도는 중) `busy`, 그 밖에 실패하면 `failed`다.
  * `failed`는 원인별 공통 오류 문구(`toMessage`)를 뒤에 붙인다. 샘플은 원인을 모를 때의 기본 문구를 보인다
  */
 export type DeletePitchError = 'failed' | 'busy' | null;
