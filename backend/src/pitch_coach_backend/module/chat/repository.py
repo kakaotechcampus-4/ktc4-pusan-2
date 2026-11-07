@@ -34,6 +34,7 @@ from pitch_coach_backend.module.chat.entity import (
     ChatProfileItem,
     ChatRun,
     ChatRunEvent,
+    ChatRunLog,
     ChatSummary,
 )
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
@@ -514,6 +515,44 @@ class ChatRepository:
 
     def delete_run_events(self, run_id: uuid.UUID) -> None:
         self.db.execute(delete(ChatRunEvent).where(ChatRunEvent.run_id == run_id))
+
+    def delete_inactive_conversations(self, cutoff: datetime, limit: int) -> int:
+        inactive = ChatConversation.last_user_activity_at < cutoff
+        result = self.db.execute(
+            delete(ChatConversation).where(
+                ChatConversation.id.in_(select(ChatConversation.id).where(inactive).limit(limit)),
+                inactive,
+            )
+        )
+        return result.rowcount
+
+    def delete_finished_runs(self, cutoff: datetime, limit: int) -> int:
+        finished = and_(ChatRun.status.in_(FINISHED_RUN_STATUSES), ChatRun.finished_at < cutoff)
+        run_ids = list(self.db.scalars(select(ChatRun.id).where(finished).limit(limit)))
+        if not run_ids:
+            return 0
+        self.db.execute(
+            update(ChatAction).where(ChatAction.run_id.in_(run_ids)).values(result=None)
+        )
+        result = self.db.execute(delete(ChatRun).where(ChatRun.id.in_(run_ids), finished))
+        return result.rowcount
+
+    def delete_run_logs_before(self, day: date) -> int:
+        result = self.db.execute(delete(ChatRunLog).where(ChatRunLog.day < day))
+        return result.rowcount
+
+    def delete_unused_profile_items(self, cutoff: datetime) -> int:
+        last_used = func.coalesce(ChatProfileItem.last_used_at, ChatProfileItem.created_at)
+        result = self.db.execute(delete(ChatProfileItem).where(last_used < cutoff))
+        return result.rowcount
+
+    def touch_profile_items(self, item_ids: list[uuid.UUID], now: datetime) -> None:
+        if item_ids:
+            self.db.execute(
+                update(ChatProfileItem)
+                .where(ChatProfileItem.id.in_(item_ids))
+                .values(last_used_at=now)
+            )
 
     def list_goals_based_on(self, take_ids: Sequence[uuid.UUID]) -> list[ChatGoal]:
         return list(

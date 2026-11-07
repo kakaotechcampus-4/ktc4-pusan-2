@@ -69,11 +69,13 @@ def mark_sending(
     sources: dict[str, list[str]],
     memory_version: int,
     summary_version: int | None,
+    profile_item_ids: list[uuid.UUID],
 ) -> ClaimedRun | None:
     row = lock_current(db, run)
     if row is None:
         return None
     repo = ChatRepository(db)
+    repo.touch_profile_items(profile_item_ids, datetime.now(UTC))
     if turn_call == 1:
         repo.release_service_turn(seoul_day(row.accepted_at))
     repo.add_service_turn(seoul_day())

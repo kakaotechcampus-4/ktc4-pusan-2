@@ -582,6 +582,7 @@ def test_cancel_blocks_the_turn_runner_saves_after_it(
         {"pitches": [], "takes": []},
         0,
         None,
+        [],
     )
     assert sending is not None
 
@@ -593,7 +594,7 @@ def test_cancel_blocks_the_turn_runner_saves_after_it(
         {"event": "plan", "run_id": str(run_id), "seq": 1, "data": {"plan": []}}
     )
     assert turn_service.save_progress(db_session, sending, 1, line) is False
-    assert turn_service.mark_sending(db_session, sending, 2, "r2", {}, 0, None) is None
+    assert turn_service.mark_sending(db_session, sending, 2, "r2", {}, 0, None, []) is None
     assert turn_service.fail(db_session, sending, TurnFailure("AGENT_UPSTREAM_ERROR")) is False
     db_session.expire_all()
     assert db_session.get(ChatRun, run_id).status == "CANCELLED"

@@ -1,21 +1,27 @@
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.goal_check import deactivate_goals_without_base
+from pitch_coach_backend.module.chat.service.run import seoul_day
 from pitch_coach_backend.module.chat.service.stale import MASKED_TEXT
 
 CLEANUP_LEASE = timedelta(hours=1)
 ALERT_AFTER = timedelta(hours=2)
+CONVERSATION_RETENTION = timedelta(days=180)
+RUN_RETENTION = timedelta(days=7)
+RUN_LOG_RETENTION = timedelta(days=180)
+PROFILE_ITEM_RETENTION = timedelta(days=180)
+DELETE_BATCH = 500
 # 지운 id 를 정리한 뒤에도 남겨 두는 기간. 삭제 때 진행 중이던 실행은 끝나고 나서야 고를 수 있고,
 # 턴이 쥔 요약은 다음 주기로 넘어간다. 가장 긴 승인 대기(30분)보다 넉넉하면 된다
 DELETED_SOURCE_KEEP = timedelta(days=7)
 
 
-def run_cleanup(db: Session, owner: str, now: datetime) -> int | None:
+def run_cleanup(db: Session, owner: str, now: datetime) -> tuple[int, int] | None:
     repo = ChatRepository(db)
     lease = repo.take_cleanup(owner, now + CLEANUP_LEASE, now)
     if lease is None:
@@ -24,11 +30,34 @@ def run_cleanup(db: Session, owner: str, now: datetime) -> int | None:
     token = lease.fencing_token
     db.commit()
     cleaned = clean_deleted_sources(db, now)
+    expired = delete_expired(db, now)
     lease = repo.get_cleanup_lease()
     if lease is not None and lease.fencing_token == token:
         lease.lease_until = now
         db.commit()
-    return cleaned
+    return cleaned, expired
+
+
+def delete_expired(db: Session, now: datetime) -> int:
+    repo = ChatRepository(db)
+    deleted = _in_batches(
+        db, lambda: repo.delete_inactive_conversations(now - CONVERSATION_RETENTION, DELETE_BATCH)
+    )
+    deleted += _in_batches(db, lambda: repo.delete_finished_runs(now - RUN_RETENTION, DELETE_BATCH))
+    deleted += repo.delete_run_logs_before(seoul_day(now - RUN_LOG_RETENTION))
+    deleted += repo.delete_unused_profile_items(now - PROFILE_ITEM_RETENTION)
+    db.commit()
+    return deleted
+
+
+def _in_batches(db: Session, delete_batch: Callable[[], int]) -> int:
+    total = 0
+    while True:
+        count = delete_batch()
+        db.commit()
+        total += count
+        if count < DELETE_BATCH:
+            return total
 
 
 def cleanup_delayed(db: Session, now: datetime) -> bool:
