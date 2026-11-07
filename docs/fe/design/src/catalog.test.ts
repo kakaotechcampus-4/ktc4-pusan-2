@@ -29,7 +29,15 @@ describe('화면 설계서 목록', () => {
     expect(create?.status).toBe('제품에 있음');
     expect(create?.route).toBe('/pitch/new');
     expect(create?.states.map((item) => item.id)).toEqual(
-      expect.arrayContaining(['default', 'empty', 'error', 'preview', 'upload-review', 'mapping', 'final-review']),
+      expect.arrayContaining([
+        'default',
+        'empty',
+        'error',
+        'preview',
+        'upload-review',
+        'mapping',
+        'final-review',
+      ]),
     );
     expect(create?.sources).toContain('frontend/src/features/pitch/create/VersionRail.tsx');
   });
