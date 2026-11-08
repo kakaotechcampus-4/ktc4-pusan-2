@@ -213,3 +213,24 @@ it('평가기준은 정리 후 확인·저장해야 하며 수정하면 재확�
   await click('최종 확인 →');
   expect(host.querySelector('dialog')?.textContent).toContain('사용하지 않음');
 });
+
+it('평가 항목은 예시 하나만 표시하고 Esc 뒤에도 포커스를 유지한다', async () => {
+  await render('empty');
+  const first = host.querySelector<HTMLButtonElement>('[aria-label="말 속도 작성 예시 보기"]')!;
+  const script = host.querySelector<HTMLButtonElement>(
+    '[aria-label="대본 의존도 작성 예시 보기"]',
+  )!;
+  await act(async () => first.focus());
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain('1분에 300자');
+  await act(async () => script.focus());
+  expect(host.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain(
+    '대본을 읽으며 말하는 비율',
+  );
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain('대본을 연결한 경우');
+  await act(async () =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  );
+  expect(host.querySelector('[role="tooltip"]')).toBeNull();
+  expect(document.activeElement).toBe(script);
+});

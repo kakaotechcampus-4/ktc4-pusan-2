@@ -454,3 +454,17 @@ it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검
   await click('장치 점검으로');
   expect(host.textContent).toContain('점검 항목');
 });
+
+it('사용방법의 샘플 진입점은 튜토리얼 미리보기로 이동한다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  await render('home');
+  await click('사용방법 살펴보기');
+  const link = [...host.querySelectorAll('a')].find((item) =>
+    item.textContent?.includes('샘플로 연습하기'),
+  )!;
+  expect(link.getAttribute('href')).toBe('/pitch/tutorial');
+  await act(async () => link.click());
+  expect(host.textContent).toContain('첫 번째 Take');
+});
