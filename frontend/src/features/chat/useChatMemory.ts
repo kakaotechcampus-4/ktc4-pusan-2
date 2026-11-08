@@ -49,12 +49,26 @@ function useSetMemory(userId: string) {
   );
 }
 
+/**
+ * 바꾸는 요청을 보내기 전에 나가 있는 목록 읽기를 멈춥니다 — 늦게 온 읽기 응답이 바꾼 뒤의 값을 덮어쓰지 않게.
+ * 멈춘 읽기는 이전 값으로 돌아가고(실패로 치지 않음), 바꾸는 동안 카드는 다시 읽지 않습니다(`useMemoryChanging`)
+ */
+function useStopMemoryRead(userId: string) {
+  const queryClient = useQueryClient();
+  return useCallback(
+    () => queryClient.cancelQueries({ queryKey: memoryKey(userId), exact: true }),
+    [queryClient, userId],
+  );
+}
+
 /** 코칭 프로필 기억 켜기 · 끄기 */
 export function useSaveMemoryEnabled(userId: string) {
   const setMemory = useSetMemory(userId);
+  const stopRead = useStopMemoryRead(userId);
   return useMutation({
     mutationKey: [...changeKey(userId), 'enabled'],
     mutationFn: (enabled: boolean) => saveMemoryEnabled(enabled),
+    onMutate: stopRead,
     onSuccess: setMemory,
   });
 }
@@ -62,9 +76,11 @@ export function useSaveMemoryEnabled(userId: string) {
 /** [전체 지우기] */
 export function useClearMemory(userId: string) {
   const setMemory = useSetMemory(userId);
+  const stopRead = useStopMemoryRead(userId);
   return useMutation({
     mutationKey: [...changeKey(userId), 'clear'],
     mutationFn: () => clearMemoryItems(),
+    onMutate: stopRead,
     onSuccess: setMemory,
   });
 }
@@ -85,8 +101,10 @@ const isGone = (error: unknown) => error instanceof ApiFailure && error.status =
  */
 export function useRemoveMemoryItem(userId: string, itemId: string, onRemoved?: () => void) {
   const queryClient = useQueryClient();
+  const stopRead = useStopMemoryRead(userId);
   const mutation = useMutation({
     mutationKey: removeKey(userId, itemId),
+    onMutate: stopRead,
     mutationFn: async (): Promise<MemorySettings | null> => {
       try {
         return await removeMemoryItem(itemId);

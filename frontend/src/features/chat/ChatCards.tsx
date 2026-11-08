@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
 import type { Card, ReassessSide } from '@/types/chat';
@@ -7,7 +8,7 @@ import { plain, reassessRows } from './chatCardRows';
 import { pickReason } from './chatLock';
 import { LockedReason } from './LockedReason';
 import { asGoal, goalText } from './chatGoal';
-import { memoryItemState, PROFILE_KEY_LABEL } from './chatMemory';
+import { memoryItemState, memoryKey, PROFILE_KEY_LABEL } from './chatMemory';
 import { useChatStore } from './chatStore';
 import { useMemoryChanging, useMemorySettings, useRemoveMemoryItem } from './useChatMemory';
 import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
@@ -185,20 +186,30 @@ function MemoryRemove({
   // 다른 항목을 지우는 중이어도 막습니다 — 응답이 엇갈려 지운 항목이 되살아나지 않게
   const changing = useMemoryChanging(userId);
   const state = memoryItemState(memory.data, itemId, value);
-  // 카드보다 먼저 읽어 둔 목록에 항목이 없으면 한 번만 다시 읽습니다 — 대화창을 열 때 읽은 목록(30초 동안 새것으로
-  // 침)에는 방금 기억한 항목이 없어서, 그대로 보면 새 카드가 [지우기] 없이 "지운 기억이에요." 로 보입니다.
-  // 카드가 그려진 뒤에 바뀐 목록(설정 화면에서 지움)은 그대로 믿고, 항목이 있으면 다시 읽지 않습니다
-  const [mountedAt] = useState(() => Date.now());
-  const outdated = state === 'removed' && memory.dataUpdatedAt < mountedAt;
+  // 카드보다 먼저 읽어 둔 목록이 카드와 다르면(없음 · 다른 값) 한 번 다시 읽습니다 — 대화창을 열 때 읽은 목록(30초
+  // 동안 새것으로 침)에는 방금 기억한 항목이 없거나 덮어쓰기 전 값이 있어서, 그대로 보면 새 카드가 [지우기] 없이
+  // "지운 기억이에요." · "다른 값으로 기억하고 있어요." 로 보입니다 (BE 는 같은 key 면 item_id 를 두고 값만 바꿈).
+  // 카드를 그린 뒤에 바뀐 목록(설정 화면에서 지움 · 다시 읽음)은 그대로 믿습니다. 시각이 아니라 바뀐 횟수로 보므로
+  // 그린 때와 같은 밀리초에 읽혀도 헷갈리지 않습니다
+  const queryClient = useQueryClient();
+  const dataCount = queryClient.getQueryState(memoryKey(userId))?.dataUpdateCount ?? 0;
+  const [seen] = useState(() => ({ data: dataCount, error: memory.errorUpdateCount }));
+  const unsure = (state === 'removed' || state === 'changed') && dataCount === seen.data;
   // 그린 뒤에 읽다 실패했으면 다시 읽지 않습니다 — 실패할 때마다 되풀이하지 않게
-  const recheckFailed = memory.errorUpdatedAt >= mountedAt;
-  const recheck = outdated && !recheckFailed;
+  const recheckFailed = memory.errorUpdateCount !== seen.error;
+  // 바꾸는 요청이 나가 있으면 기다립니다 — 그 응답이 목록을 새로 채웁니다(다시 읽은 값이 덮어쓰지 않게)
+  const recheck = unsure && !recheckFailed && !changing;
   const { refetch, isFetching } = memory;
+  // 카드 여럿이 함께 다시 읽어도 나가 있는 요청 하나를 같이 기다립니다(취소하고 새로 보내지 않음)
+  const recheckNow = useCallback(
+    () => refetch({ cancelRefetch: false }).catch(() => undefined),
+    [refetch],
+  );
   useEffect(() => {
-    if (recheck && !isFetching) refetch().catch(() => undefined);
-  }, [recheck, isFetching, refetch]);
-  // 다시 읽기 전 · 읽는 동안에는 없다고 단정하지 않고 비워 둡니다 — 읽고 나서도 없으면 그때 지운 항목입니다
-  if (state === 'removed' && (recheck || isFetching)) return null;
+    if (recheck && !isFetching) recheckNow();
+  }, [recheck, isFetching, recheckNow]);
+  // 다시 읽기 전 · 읽는 동안에는 단정하지 않고 비워 둡니다 — 읽고 나서도 다르면 그때 지움 · 바뀜으로 보입니다
+  if (unsure && !recheckFailed) return null;
   if (state === 'removed') return <p className="text-xs text-stone">{MEMORY_REMOVED_TEXT}</p>;
   if (state === 'changed') return <p className="text-xs text-stone">{MEMORY_CHANGED_TEXT}</p>;
   return (
