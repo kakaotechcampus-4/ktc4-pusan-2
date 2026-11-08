@@ -1858,6 +1858,8 @@ def freeze_info(
         manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         manifest = {}  # 자료 파일이 없거나 깨졌어도 보고서는 쓴다(자료 없음으로 돈 평가)
+    if not isinstance(manifest, dict):
+        manifest = {}
     return {
         "feature_version": FEATURE_VERSION,
         "prompt_version": prompts.PROMPT_VERSION,

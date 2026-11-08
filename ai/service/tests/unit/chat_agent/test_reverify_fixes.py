@@ -65,3 +65,36 @@ def test_embedding_pool_full_returns_timeout_without_waiting(monkeypatch: Any) -
     monkeypatch.setattr(emb, "_SLOTS", sem)
     with pytest.raises(openai.APITimeoutError):
         emb.with_deadline(lambda texts, timeout: [[1.0]], ["q"], 2.0)
+
+
+@pytest.mark.parametrize(
+    ("text", "want"), [("Take 4, 5번을 비교해 줘", {4, 5}), ("Take 4, 5.5%였어?", {4})]
+)
+def test_listed_take_numbers_edge_cases(text: str, want: set[int]) -> None:
+    assert named_take_numbers(text) == want
+
+
+@pytest.mark.parametrize(
+    "msg",
+    ["연습 계획을 어떻게 세울 수 있어?", "어떻게 도와줄 수 있어? 연습 일정도 알려줄 수 있어?"],
+)
+def test_capability_exemption_does_not_let_plan_requests_through(msg: str) -> None:
+    _, llm = _run(msg, "CAPABILITY")
+    assert len(llm.calls) >= 2
+
+
+@pytest.mark.parametrize("msg", ["오늘은 연습 안 하려고 해", "오늘은 연습 못 하겠어"])
+def test_more_practice_negations(msg: str) -> None:
+    fd, _ = _run(msg, "PRACTICE_INTENT")
+    assert not fd.actions
+
+
+def test_embedding_slot_returns_even_if_cancelled_before_start(monkeypatch: Any) -> None:
+    sem = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(emb, "_SLOTS", sem)
+    gate = threading.Event()
+    with pytest.raises(openai.APITimeoutError):
+        emb.with_deadline(lambda texts, timeout: (gate.wait(1.0), [[1.0]])[1], ["q"], 0.01)
+    gate.set()
+    assert sem.acquire(timeout=2.0)  # 끝난 뒤 자리가 돌아왔다
+    sem.release()

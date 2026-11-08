@@ -67,13 +67,13 @@ def with_deadline(
     if not _SLOTS.acquire(blocking=False):
         raise openai.APITimeoutError(request=httpx.Request("POST", base_url or "http://embed"))
 
-    def run() -> list[list[float]]:
-        try:
-            return call(texts, timeout)
-        finally:
-            _SLOTS.release()
-
-    future = _POOL.submit(run)
+    try:
+        future = _POOL.submit(call, texts, timeout)
+    except BaseException:
+        _SLOTS.release()
+        raise
+    # 끝나거나 시작 전에 취소돼도 자리를 돌려준다(완료 콜백은 취소된 Future 에도 불린다)
+    future.add_done_callback(lambda _f: _SLOTS.release())
     try:
         return future.result(timeout=max(timeout, 0.0))
     except concurrent.futures.TimeoutError:
