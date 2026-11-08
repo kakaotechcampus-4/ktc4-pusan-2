@@ -3,7 +3,7 @@
  * 앱 코드는 이 파일을 가져다 쓰지 않습니다.
  */
 import { retryAfterSec } from '@/shared/api/client';
-import { chatPaths } from '@/shared/api/chatPaths';
+import { chatPaths } from './api/chatPaths';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import type { RunView } from '@/types/chat';
 import type { ChatApi } from './chatApi';

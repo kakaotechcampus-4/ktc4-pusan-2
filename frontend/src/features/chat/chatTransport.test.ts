@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 vi.mock('@/mocks/auth', () => ({ currentMockUserId: () => 'u' }));
 import { createChatHandlers, type MockChatControls } from '@/mocks/chat';
 import { ResponseTooLargeError, retryAfterSec } from '@/shared/api/client';
-import { chatPaths } from '@/shared/api/chatPaths';
+import { chatPaths } from './api/chatPaths';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import type { RunView } from '@/types/chat';
 import type { ChatApi } from './chatApi';

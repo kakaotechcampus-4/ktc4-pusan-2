@@ -14,7 +14,7 @@ vi.mock('@/features/auth/useSession', () => ({
   }),
   useLogout: () => ({ isPending: false, isError: false }),
 }));
-vi.mock('@/shared/api/launch', () => ({
+vi.mock('@/features/onboarding/launch', () => ({
   useLaunchStatus: () => ({ isOpen: state.launchOpen }),
 }));
 vi.mock('@/features/onboarding/WelcomePage', () => ({ WelcomePage: () => <p>서비스 소개</p> }));

@@ -3,12 +3,12 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { expect, it, vi } from 'vitest';
-import { saveStandards } from '@/shared/api/standards';
+import { saveStandards } from '../api/standards';
 import type { StandardsSaved } from '@/types/standards';
 import { useCreateStore } from './createStore';
 import { CriteriaPane } from './steps/CriteriaPane';
 
-vi.mock('@/shared/api/standards', () => ({ saveStandards: vi.fn(), parseStandards: vi.fn() }));
+vi.mock('../api/standards', () => ({ saveStandards: vi.fn(), parseStandards: vi.fn() }));
 
 function CurrentCriteria() {
   const criteria = useCreateStore((s) => s.draft.criteria.at(-1) ?? null);

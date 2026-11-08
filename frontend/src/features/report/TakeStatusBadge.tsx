@@ -1,5 +1,5 @@
 import type { TakeStatusView } from '@/shared/lib/takeStatus';
-import { Badge } from './Badge';
+import { Badge } from '@/shared/ui/Badge';
 
 /**
  * 목록의 상태 칸은 문구 길이와 관계없이 같은 크기와 중심을 유지합니다.

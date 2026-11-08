@@ -1,8 +1,8 @@
 import { Link, useSearchParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
-import { useTakeHistory } from '@/shared/api/takeHistory';
+import { useTakeHistory } from './api/takeHistory';
 import { takeStatusView } from '@/shared/lib/takeStatus';
-import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
+import { TakeStatusBadge } from './TakeStatusBadge';
 import { ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiRequest, postJson } from './client';
+import { apiRequest, postJson } from '@/shared/api/client';
 import type { Confirmations, ConfirmationsRequest, ConfirmationsSent } from '@/types/confirmation';
 
 /** 대본 확인 — BE #528의 REST 응답을 그대로 받습니다 (`types/confirmation.ts`). */

@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
-import { matchMarker, splitLines } from '@/shared/lib/slideMarkers';
+import { matchMarker, splitLines } from '@/features/pitch/create/lib/slideMarkers';
 import type {
   ParseRequested,
   ScriptCreateRequest,
@@ -12,7 +12,7 @@ import type {
  * 대본 목. BE 처럼 올리면 바로 PENDING 으로 돌려주고, 잠시 뒤 폴링에서 DONE 이 됩니다.
  *
  * 나누는 규칙은 AI(`script_parser-1.3`)를 흉내 냅니다 — `[1]` · `[슬라이드 1]` · `슬라이드 1:` ·
- * `Slide 1` · `## Slide 1 — 제목` 같은 **명시적 구분자**로만 나누고(`shared/lib/slideMarkers`),
+ * `Slide 1` · `## Slide 1 — 제목` 같은 **명시적 구분자**로만 나누고(`features/pitch/create/lib/slideMarkers`),
  * 구분자가 없거나 앞부분에 구분 안 된 글이 있거나 번호가 0 · 겹침 · 거꾸로면 나누지 않고
  * 전체를 한 슬라이드로 둡니다 (`segmented: false`, 정상 결과).
  */

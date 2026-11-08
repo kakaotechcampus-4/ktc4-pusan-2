@@ -1,5 +1,5 @@
 import { apiRequest, readJsonWithin, ResponseTooLargeError } from '@/shared/api/client';
-import { chatPaths } from '@/shared/api/chatPaths';
+import { chatPaths } from './api/chatPaths';
 import type {
   ActionDecisionRequest,
   CreateConversationRequest,

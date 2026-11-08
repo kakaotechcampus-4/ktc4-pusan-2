@@ -12,7 +12,7 @@ vi.mock('./useSession', () => ({
   }),
 }));
 vi.mock('./SuggestionForm', () => ({ SuggestionForm: () => null }));
-vi.mock('@/shared/api/useWithdraw', () => ({
+vi.mock('./api/useWithdraw', () => ({
   useWithdraw: () => ({ isPending: false, isError: false, mutate: vi.fn() }),
 }));
 

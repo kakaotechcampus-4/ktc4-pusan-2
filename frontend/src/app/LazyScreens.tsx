@@ -2,13 +2,13 @@ import { lazy } from 'react';
 
 // 첫 진입 화면은 즉시 표시하고, PDF·시선 엔진은 해당 화면 진입 때만 가져옵니다.
 export const StageDemo = lazy(() =>
-  import('@/features/rehearsal/stage/StageDemo').then((m) => ({ default: m.StageDemo })),
+  import('@/dev/StageDemo').then((m) => ({ default: m.StageDemo })),
 );
 export const MediaDevPage = lazy(() =>
-  import('@/features/rehearsal/media/MediaDevPage').then((m) => ({ default: m.MediaDevPage })),
+  import('@/dev/MediaDevPage').then((m) => ({ default: m.MediaDevPage })),
 );
 export const SttDevPage = lazy(() =>
-  import('@/features/rehearsal/media/SttDevPage').then((m) => ({ default: m.SttDevPage })),
+  import('@/dev/SttDevPage').then((m) => ({ default: m.SttDevPage })),
 );
 export const PolicyPage = lazy(() =>
   import('@/features/onboarding/PolicyPage').then((m) => ({ default: m.PolicyPage })),

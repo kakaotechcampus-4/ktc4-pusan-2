@@ -60,8 +60,6 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 
 **MSW 목** (`src/mocks/handlers.ts`) — 홈·리포트·분석 상태·complete. **측정 제외 케이스(`t2`)를 일부러 넣어뒀습니다** — 이 화면을 나중에 만들면 W9에 몰립니다.
 
-**빈 자리** (`src/features/auth` · `pitch` · `report`) — `.gitkeep`만 있습니다. Track B가 여기 채웁니다.
-
 **시선 파이프라인** — 프레임이 워커까지 흐르고 1초 판정이 나옵니다
 - `workers/gaze.contract.ts` — **분류기 계약. 고정하고 바꾸지 않습니다.** AI 모델은 이것만 구현하면 됩니다
 - `workers/gaze.worker.ts` — 워커. 모델 자리에 지금은 가짜 부하(`?load=`)가 들어 있습니다
@@ -71,7 +69,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
   **AI팀 답이 오면 양쪽 두 함수만 채우면 됩니다**
 - `features/rehearsal/media/useCameraStream.ts` — 권한 3종 분기 + HMR 정리
 - `features/rehearsal/media/useGazeWorker.ts` — **프레임 펌프 + 백프레셔.** 여기가 성능의 전부입니다
-- `features/rehearsal/media/MediaDevPage.tsx` — `/dev/media` 프레임 예산 계기판
+- `dev/MediaDevPage.tsx` — `/dev/media` 프레임 예산 계기판
 
 **음성 · 음량** — 음성은 로컬에 남기지 않고 WebSocket으로만 보냅니다 (AGENTS.md 4번)
 - `features/rehearsal/media/pcmCapture.ts` — `AudioWorklet` → 16kHz Int16 100ms 프레임 → STT 소켓
@@ -84,7 +82,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 - `features/rehearsal/lib/gazeSegments.ts` — 구간 압축·합계·자체 검증 (테스트 포함)
 - `shared/lib/clock.ts` — `performance.now()` 기준 단조 시계. 백그라운드 탭에서도 정확합니다
 
-**무대 레이아웃** (`features/rehearsal/stage/`) — `/dev/stage`에서 확인합니다.
+**무대 레이아웃** (`features/rehearsal/stage/`) — `/dev/stage`(`dev/StageDemo.tsx`)에서 확인합니다.
 Script Mode 4단 높이 · 시선 테두리 4색 · **리렌더 없이 테두리가 바뀌는 것**을 눈으로 봅니다.
 이 프로젝트에서 Tailwind를 안 쓰는 유일한 곳입니다 (`stage.css`).
 

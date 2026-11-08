@@ -4,7 +4,7 @@ import { ApiFailure } from '@/shared/api/tokenStore';
 import { toMessage } from '@/shared/api/errorMessage';
 import { Card } from '@/shared/ui/Panel';
 import { Button } from '@/shared/ui/Button';
-import { SuggestionCategorySelect } from '@/shared/ui/SuggestionCategorySelect';
+import { SuggestionCategorySelect } from './SuggestionCategorySelect';
 import type { SuggestionCategory, SuggestionRequest } from '@/types/serviceReview';
 
 export function SuggestionForm() {

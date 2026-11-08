@@ -1,6 +1,6 @@
 import { ResponseTooLargeError } from '@/shared/api/client';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import { isTerminalRun } from '@/shared/lib/chatAgent';
+import { isTerminalRun } from './chatAgent';
 import type {
   ActionDecisionRequest,
   PlanStep,

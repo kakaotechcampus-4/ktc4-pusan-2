@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { retryTakeHistory } from './takeHistory';
-import { ApiFailure } from './tokenStore';
+import { ApiFailure } from '@/shared/api/tokenStore';
 
 describe('retryTakeHistory', () => {
   it('없거나 남의 피치(404)는 다시 묻지 않는다', () => {

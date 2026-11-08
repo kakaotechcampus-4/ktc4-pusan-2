@@ -23,7 +23,7 @@ interface Markers {
 const MARKERS: Markers = JSON.parse(
   readFileSync(
     fileURLToPath(
-      new URL('../../../../docs/ai/features/script-parser-markers.json', import.meta.url),
+      new URL('../../../../../../docs/ai/features/script-parser-markers.json', import.meta.url),
     ),
     'utf8',
   ),

@@ -2,7 +2,7 @@ import { setupServer } from 'msw/node';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./auth', () => ({ currentMockUserId: () => null }));
 import { createChatHandlers, type MockChatControls } from './chat';
-import { chatPaths } from '@/shared/api/chatPaths';
+import { chatPaths } from '@/features/chat/api/chatPaths';
 
 /**
  * 계약 시험 — 목이 **실제 BE** 와 같은 칸 · 값 · 상태 코드로 답하는지 봅니다(문서가 아니라 BE 코드 기준).

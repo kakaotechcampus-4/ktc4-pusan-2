@@ -9,7 +9,7 @@ import { TakesPage } from './TakesPage';
 import { completedTakes } from './takeHistoryFormat';
 
 const query = vi.hoisted(() => ({ data: { takes: [] as TakeHistoryRow[] } }));
-vi.mock('@/shared/api/takeHistory', () => ({ useTakeHistory: () => query }));
+vi.mock('./api/takeHistory', () => ({ useTakeHistory: () => query }));
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {

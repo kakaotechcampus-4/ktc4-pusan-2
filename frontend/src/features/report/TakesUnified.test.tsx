@@ -9,7 +9,7 @@ import { TakeComparisonRedirect } from './TakeComparisonRedirect';
 
 const history = vi.hoisted(() => ({ data: { takes: [] as TakeHistoryRow[] } }));
 const useHistory = vi.hoisted(() => vi.fn(() => history));
-vi.mock('@/shared/api/takeHistory', () => ({ useTakeHistory: useHistory }));
+vi.mock('./api/takeHistory', () => ({ useTakeHistory: useHistory }));
 
 function take(
   n: number,

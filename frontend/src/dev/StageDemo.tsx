@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ScriptMode } from '@/types/api';
-import type { GazeBorder } from '../lib/gazeSegments';
+import type { GazeBorder } from '@/features/rehearsal/lib/gazeSegments';
 import { ScriptPane } from '@/dev/stage/ScriptPane';
 import { CoachStrip } from '@/dev/stage/CoachStrip';
-import './stage.css';
+import '@/features/rehearsal/stage/stage.css';
 import '@/dev/stage/stage-preview.css';
 
 /** 테두리 상태 네 가지. 실제 무대는 엔진 상태를 `borderOf` 로 바꿔 같은 값을 씁니다 */

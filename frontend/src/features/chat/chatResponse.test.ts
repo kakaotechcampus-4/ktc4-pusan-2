@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 vi.mock('@/mocks/auth', () => ({ currentMockUserId: () => null }));
 import { createChatHandlers } from '@/mocks/chat';
 import { readJsonWithin, ResponseTooLargeError } from '@/shared/api/client';
-import { chatPaths } from '@/shared/api/chatPaths';
+import { chatPaths } from './api/chatPaths';
 import type {
   Card,
   ChatMessage,

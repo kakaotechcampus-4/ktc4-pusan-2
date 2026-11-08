@@ -83,7 +83,7 @@ const script = (id: string, version: number, n: number): ScriptDetail => ({
 vi.mock('@/shared/api/script', () => ({
   getScript: vi.fn(async (_pitchId: string, id: string) => script(id, id === 'sv1' ? 1 : 2, 3)),
 }));
-vi.mock('@/shared/api/standards', () => ({
+vi.mock('../api/standards', () => ({
   getEvaluation: vi.fn(async () => ({
     pitch_id: 'p1',
     evaluation_version: 1,
