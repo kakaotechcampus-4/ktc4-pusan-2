@@ -93,9 +93,10 @@ def _turn(
     answers: list[Any] | None = None,
     fixes: list[Any] | None = None,
     req: dict[str, Any] | None = None,
+    log: list[dict[str, Any]] | None = None,
 ) -> tuple[F.FakeLlm, dict[str, Any]]:
     llm = F.FakeLlm(script, answers=answers, fixes=fixes or [F.fix({})])
-    dep = F.deps(llm, corpus=corpus, corpus_version=corpus.version, cfg=cfg)
+    dep = F.deps(llm, corpus=corpus, corpus_version=corpus.version, cfg=cfg, log=log)
     dep = replace(dep, embed_query=embed)
     from pitch_coach_ai.features.chat_agent.turn import handle_turn
 
@@ -107,6 +108,11 @@ def _turn(
     assert resp.lines is not None
     data = json.loads(list(resp.lines)[-1])["data"]
     return llm, data
+
+
+def _embed_logs(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """서비스 로그의 `agent_embed` 줄(진단 기록 모양은 바꾸지 않는다)."""
+    return [x for x in log if x.get("event") == "agent_embed"]
 
 
 def _search_steps(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -128,10 +134,12 @@ def test_planned_queries_are_searched_first_with_one_batched_embedding(corpus: C
     vc = _vcorpus(corpus)
     emb = Embedder(64)
     q = ["청중 눈맞춤 나누어", "대본 핵심어 메모"]
+    log: list[dict[str, Any]] = []
     llm, data = _turn(
         vc,
         [F.plan(assessments=[_request_draft()], guide_queries=q), F.done()],
         embed=emb,
+        log=log,
         answers=[
             F.answer(
                 [F.claim("GENERAL", "중요한 문장 앞에서 잠깐 멈추면 좋아요.")], route="NO_GUIDE"
@@ -140,10 +148,13 @@ def test_planned_queries_are_searched_first_with_one_batched_embedding(corpus: C
     )
     steps = _search_steps(data)
     assert len(steps) == 2  # 모델은 검색 도구를 고르지 않았다(첫 조사 호출은 done)
-    assert [s["detail"]["embed"] for s in steps] == ["OK", "OK"]
-    assert [s["detail"]["search_mode"] for s in steps] == ["HYBRID", "HYBRID"]
+    assert all("embed" not in s["detail"] and "search_mode" not in s["detail"] for s in steps)
+    el = _embed_logs(log)
+    assert [x["outcome"] for x in el] == ["OK", "OK"]
+    assert [x["mode"] for x in el] == ["HYBRID", "HYBRID"]
     assert emb.calls == [(q, DEFAULT_CONFIG.embed_timeout_seconds)]  # 묶어서 한 번
-    assert steps[0]["detail"]["embed_ms"] is not None and steps[1]["detail"]["embed_ms"] is None
+    assert el[0]["ms"] is not None and el[1]["ms"] is None
+    assert not any(x in json.dumps(el, ensure_ascii=False) for x in q)  # 질문 글은 남기지 않는다
     assert [c.purpose for c in llm.calls][:2] == ["RESEARCH", "RESEARCH"]  # 계획, 조사(끝)
 
 
@@ -194,6 +205,7 @@ def test_planned_queries_are_deduped_truncated_and_share_the_prefetch_limit(
 
 def test_planned_queries_fall_back_to_keyword_when_embedding_fails(corpus: Corpus) -> None:
     emb = Embedder(64, fail=TimeoutError())
+    log: list[dict[str, Any]] = []
     _llm, data = _turn(
         _vcorpus(corpus),
         [
@@ -201,14 +213,15 @@ def test_planned_queries_fall_back_to_keyword_when_embedding_fails(corpus: Corpu
             F.done(),
         ],
         embed=emb,
+        log=log,
         answers=[
             F.answer(
                 [F.claim("GENERAL", "중요한 문장 앞에서 잠깐 멈추면 좋아요.")], route="NO_GUIDE"
             )
         ],
     )
-    steps = _search_steps(data)
-    assert [(s["detail"]["embed"], s["detail"]["search_mode"]) for s in steps] == [
+    assert len(_search_steps(data)) == 2
+    assert [(x["outcome"], x["mode"]) for x in _embed_logs(log)] == [
         ("TIMEOUT", "KEYWORD"),
         ("TIMEOUT", "KEYWORD"),
     ]
@@ -217,6 +230,7 @@ def test_planned_queries_fall_back_to_keyword_when_embedding_fails(corpus: Corpu
 
 def test_a_model_search_with_the_same_text_reuses_the_planned_vector(corpus: Corpus) -> None:
     emb = Embedder(64)
+    log: list[dict[str, Any]] = []
     _llm, data = _turn(
         _vcorpus(corpus),
         [
@@ -225,14 +239,14 @@ def test_a_model_search_with_the_same_text_reuses_the_planned_vector(corpus: Cor
             F.done(),
         ],
         embed=emb,
+        log=log,
         answers=[
             F.answer(
                 [F.claim("GENERAL", "중요한 문장 앞에서 잠깐 멈추면 좋아요.")], route="NO_GUIDE"
             )
         ],
     )
-    steps = _search_steps(data)
-    assert [(s["detail"]["embed"], s["detail"]["search_mode"]) for s in steps] == [
+    assert [(x["outcome"], x["mode"]) for x in _embed_logs(log)] == [
         ("OK", "HYBRID"),
         ("USED", "KEYWORD"),  # 다른 글은 실행당 한 번 규칙으로 키워드
     ]
@@ -348,7 +362,9 @@ def _guide_fix_turn(corpus: Corpus, cfg: Any) -> F.FakeLlm:
 
 
 def test_fix_gets_card_sentences_of_the_linked_card_only(corpus: Corpus) -> None:
-    llm = _guide_fix_turn(corpus, _cfg(fix_materials=True))  # 기본은 끔(8회차 기각), 켰을 때의 모양을 본다
+    llm = _guide_fix_turn(
+        corpus, _cfg(fix_materials=True)
+    )  # 기본은 끔(8회차 기각), 켰을 때의 모양을 본다
     item = _fix_items(llm)[0]
     card = corpus.get("g-01")
     assert card is not None

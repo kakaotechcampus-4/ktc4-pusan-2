@@ -313,14 +313,18 @@ def test_embed_off_without_embedder_or_card_vectors(corpus: Corpus, vcorpus: Cor
 # ── 진단 · 서명 상태 ──────────────────────────────────────────────────────
 
 
-def test_tool_detail_new_fields_are_optional_and_closed() -> None:
-    assert ToolDetail().model_dump()["embed"] is None  # 옛 기록도 통과
-    d = ToolDetail(embed="OK", embed_ms=12, search_mode="HYBRID")
-    assert (d.embed, d.embed_ms, d.search_mode) == ("OK", 12, "HYBRID")
+def test_tool_detail_keeps_the_closed_shape_without_embed_fields() -> None:
+    # BE 가 받는 TOOL detail 의 닫힌 모양은 바뀌지 않는다(임베딩 관측은 서비스 로그에만, 11-5)
+    assert set(ToolDetail().model_dump()) == {
+        "target_ids",
+        "revisions",
+        "outcome",
+        "result_bytes",
+        "query_chars",
+        "error_code",
+    }
     with pytest.raises(ValueError):
-        ToolDetail(embed="MAYBE")
-    with pytest.raises(ValueError):
-        ToolDetail(search_mode="VECTOR")
+        ToolDetail(embed="OK")
 
 
 def test_loop_state_embed_used_defaults_false_for_old_states() -> None:
@@ -371,11 +375,11 @@ def test_turn_records_embed_fields_in_the_tool_step_and_embeds_once(vcorpus: Cor
         for s in lines[-1]["data"]["diagnostics"]["steps"]
         if s["kind"] == "TOOL" and s["code"] == "search_guides"
     ]
-    assert [(s["detail"]["embed"], s["detail"]["search_mode"]) for s in steps] == [
-        ("OK", "HYBRID"),
-        ("USED", "KEYWORD"),
-    ]
-    assert steps[0]["detail"]["embed_ms"] is not None and steps[1]["detail"]["embed_ms"] is None
+    assert all("embed" not in s["detail"] and "search_mode" not in s["detail"] for s in steps)
+    el = [x for x in log if x.get("event") == "agent_embed"]
+    assert [(x["outcome"], x["mode"]) for x in el] == [("OK", "HYBRID"), ("USED", "KEYWORD")]
+    assert el[0]["ms"] is not None and el[1]["ms"] is None
+    assert KEYWORD_Q not in json.dumps(el, ensure_ascii=False)
     assert len(emb.calls) == 1
     assert KEYWORD_Q not in json.dumps(lines[-1]["data"]["diagnostics"], ensure_ascii=False)
 

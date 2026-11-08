@@ -34,6 +34,13 @@
         "path": "status"
       },
       {
+        "check_id": "fixed-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "내 연습 기록에서 고칠 점 찾기, Take끼리 비교하기, 다음 연습 목표 잡기, 발표법 (?:· 화면 사용법 )?안내를 도와드릴 수 있어요\\.",
+        "grader": "regex"
+      },
+      {
         "check_id": "no-refusal-wording",
         "observe": "answer",
         "compare": "absent",

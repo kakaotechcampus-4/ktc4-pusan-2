@@ -151,3 +151,21 @@ def test_small_talk_with_a_targeted_draft_goes_to_research() -> None:
         F.answer([]),
     )
     assert len(llm.calls) >= 2
+
+
+@pytest.mark.parametrize("msg", ["안녕하세요?", "안녕하세요 코치님?", "잘 지냈어요?"])
+def test_greeting_with_a_question_mark_is_still_small_talk(msg: str) -> None:
+    fd, llm = run(msg, F.plan(route="SMALL_TALK", steps=[], talk_kind="GREETING"))
+    assert len(llm.calls) == 1 and texts(fd)[0] == T.TALK_GREETING.value
+
+
+def test_question_mark_with_other_words_is_not_small_talk() -> None:
+    _, llm = run(
+        "안녕! 시선은?",
+        F.plan(route="SMALL_TALK", steps=[], talk_kind="GREETING"),
+        F.done(),
+        F.answer([]),
+        F.answer([]),
+        F.answer([]),
+    )
+    assert len(llm.calls) >= 2

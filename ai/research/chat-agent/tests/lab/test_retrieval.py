@@ -61,6 +61,14 @@ def test_metrics_count_only_cards_the_mode_serves(tmp_path: Path) -> None:
     assert rep["none_accuracy"]["value"] == 0.0  # 자료 없음 질문에 카드를 냄
     none_rep = rt.evaluate(items, None)
     assert none_rep["positives"] == 0 and none_rep["none_accuracy"]["value"] == 1.0
+    # 있음 · 없음 판정은 전체 문항 기준: 없음 문항만 맞힌 빈 결과는 만점이 아니다
+    assert rep["presence_accuracy"]["den"] == rep["n"]
+    all_empty = rt.evaluate(items, scn.build_corpus_for(None, "all"), lambda c, q, s: [])
+    assert all_empty["none_accuracy"]["value"] == 1.0
+    assert all_empty["presence_accuracy"]["value"] == round(
+        all_empty["negatives"] / all_empty["n"], 4
+    )
+    assert "자료 없는 문항만" in rt._md(all_empty, "t")
 
 
 def test_kind_and_expected_must_agree(tmp_path: Path) -> None:

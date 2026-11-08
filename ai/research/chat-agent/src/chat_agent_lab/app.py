@@ -242,8 +242,13 @@ def from_env(
                 corpus, model=emb.model, dims=DEFAULT_CONFIG.embed_dimensions
             )
             embed_query = make_embed_query(emb, DEFAULT_CONFIG.embed_dimensions)
-        except ValueError:
-            pass
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            # 벡터 파일 누락 · 읽기 실패 · 어긋남은 앱을 죽이지 않고 키워드 검색만 쓴다(경고만, 서비스와 같다)
+            embed_query = None
+            corpus = load_corpus()
+            (log or (lambda _l: None))(
+                {"event": "agent_embeddings_unavailable", "cause": type(e).__name__}
+            )
     raw = os.environ.get("AGENT_STATE_SECRET")
     secret = raw.encode("utf-8") if raw else secrets.token_bytes(32)
     prev = os.environ.get("AGENT_STATE_SECRET_PREVIOUS")

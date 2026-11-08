@@ -34,6 +34,13 @@
         "path": "status"
       },
       {
+        "check_id": "fixed-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.TALK_GREETING",
+        "grader": "template"
+      },
+      {
         "check_id": "no-refusal-wording",
         "observe": "answer",
         "compare": "absent",

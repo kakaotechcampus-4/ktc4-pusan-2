@@ -444,9 +444,11 @@ class Corpus:
             )
             by_id[ix.card.source_id] = ix
         ordered = sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))
+        kw_ids = {ix.card.source_id for _, ix in hits}
         return SearchOutcome(
             hits=[
-                self._hit(by_id[sid], score, q_grams, hybrid=True) for sid, score in ordered[:limit]
+                self._hit(by_id[sid], score, q_grams, hybrid=True, keyword=sid in kw_ids)
+                for sid, score in ordered[:limit]
             ],
             mode="HYBRID",
             keyword_candidates=len(hits),
@@ -494,17 +496,25 @@ class Corpus:
         return hits
 
     def _hit(
-        self, ix: _Indexed, score: float, q_grams: set[str], *, hybrid: bool = False
+        self,
+        ix: _Indexed,
+        score: float,
+        q_grams: set[str],
+        *,
+        hybrid: bool = False,
+        keyword: bool = True,
     ) -> GuideHit:
         text = ix.card.text
         scores = [
             sum(self._idf.get(g, 0.0) for g in q_grams & grams) for _, _, grams in ix.sentences
         ]
-        best = max(range(len(scores)), key=lambda i: (scores[i], -i))
+        best = (
+            0 if hybrid and not keyword else max(range(len(scores)), key=lambda i: (scores[i], -i))
+        )
         start, end = ix.sentences[best][0], ix.sentences[best][1]
         nxt = best + 1
-        if hybrid and not any(scores):
-            # 벡터로만 걸린 카드: 겹친 낱말이 없으니 첫 문장을 인용한다(다음 문장까지 300자 안이면 함께)
+        if hybrid and not keyword:
+            # 벡터로만 걸린 카드(키워드 후보가 아님): 약한 낱말 겹침과 무관하게 첫 문장을 인용한다(다음 문장까지 300자 안이면 함께)
             if nxt < len(scores) and ix.sentences[nxt][1] - start <= 300:
                 end = ix.sentences[nxt][1]
         elif nxt < len(scores) and scores[nxt] > 0 and ix.sentences[nxt][1] - start <= 300:

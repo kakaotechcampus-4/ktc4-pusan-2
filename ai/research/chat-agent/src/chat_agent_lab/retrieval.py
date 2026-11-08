@@ -181,9 +181,20 @@ def evaluate(
         )
     out["mrr"] = round(sum(1 / r["rank"] for r in pos if r["rank"]) / len(pos), 4) if pos else None
     out["none_accuracy"] = frac(sum(1 for r in neg if not r["got"]), len(neg))
+    # 있음 · 없음 판정 정확도: 전체 문항 중 '있다/없다' 판정이 맞은 비율(자료 있는 문항은 결과를 냄, 없는 문항은 비움)
+    out["presence_accuracy"] = frac(
+        sum(1 for r in rows if bool(r["got"]) == r["has_answer"]), len(rows)
+    )
     out["missed_all"] = frac(sum(1 for r in pos if not r["got"]), len(pos))
     out["rows"] = rows
     return out
+
+
+#: 보고서 표 이름(값의 키는 그대로 두고 분모를 이름에 드러낸다)
+_LABELS = {
+    "none_accuracy": "none_accuracy (자료 없는 문항만)",
+    "presence_accuracy": "presence_accuracy (전체 문항의 있음·없음 판정)",
+}
 
 
 def _md(rep: dict[str, Any], title: str) -> str:
@@ -202,9 +213,10 @@ def _md(rep: dict[str, Any], title: str) -> str:
         "recall@3_ok",
         "mrr",
         "none_accuracy",
+        "presence_accuracy",
         "missed_all",
     ):
-        lines.append(f"| {key} | {v(rep.get(key))} |")
+        lines.append(f"| {_LABELS.get(key, key)} | {v(rep.get(key))} |")
     lines += ["", "## 놓친 문항", ""]
     for r in rep["rows"]:
         if r["has_answer"] and not (r["rank"] and r["rank"] <= 3):
@@ -295,7 +307,15 @@ def _sweep_md(runs: list[tuple[str, dict[str, Any]]]) -> str:
         x = rep.get(k)
         return "—" if x is None else str(x["value"] if isinstance(x, dict) else x)
 
-    keys = ("recall@1", "recall@3", "recall@5", "mrr", "none_accuracy", "missed_all")
+    keys = (
+        "recall@1",
+        "recall@3",
+        "recall@5",
+        "mrr",
+        "none_accuracy",
+        "presence_accuracy",
+        "missed_all",
+    )
     lines = ["# 문턱 비교", "", "| 검색 | " + " | ".join(keys) + " |", "|---|" + "---|" * len(keys)]
     for label, rep in runs:
         lines.append(f"| {label} | " + " | ".join(v(rep, k) for k in keys) + " |")

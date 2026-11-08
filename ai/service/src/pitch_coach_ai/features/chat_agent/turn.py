@@ -818,6 +818,17 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     scope_claims = [
         Claim(kind="SYSTEM", text=templates.scope_text(r).value) for r in _scope_notes(draft)
     ]
+    # 답 품질 보강: 기록 문장 · 목표 상태 문장을 코드 템플릿으로 더한다(둘 다 설정으로 끈다). 모델 문장이 모두 빠져 본문이
+    # 비어 있어도 먼저 만든다 — 검증된 기록 문장이 있으면 빈 답 분기로 가지 않고 그 문장으로 상태를 정한다
+    extras: list[Claim] = []
+    if lp.cfg.record_answer_guard:
+        extras += _record_guard_claims(lp, [*comp.pre, *body], all_assessments)
+    if lp.cfg.goal_status_sentence:
+        gj = _goal_status_claim(lp, req)
+        # 닫힌 목표의 상태만 고정 문장으로 말한다. `goal_result` 는 싣지 않는다: 계약상 자동 목표 확인(TAKE_REVIEWED)의 값이고
+        # BE 가 그 값으로 목표 상태를 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 BE 와 주고받는 값의 호출 시점이 바뀐다
+        if gj is not None and all(c.text != gj.text for c in [*comp.pre, *body, *tail, *extras]):
+            extras.append(gj)
     if not body and not has_result:
         # 안전망(P-0008 5-1): 기록 · 자료 없이 답하려던 말(ANSWER_DIRECT)의 문장이 모두 빠져도 실패 상태 · 까닭은 그대로 두고,
         # 할 수 있는 일 안내만 덧붙인다(가벼운 말로 보지 않은 인사가 거절 문장 하나로 끝나지 않게)
@@ -828,7 +839,16 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             return finish(
                 status="PARTIAL",
                 reason="OTHER",
-                claims=[*comp.pre, *tail, *scope_claims],
+                claims=[*comp.pre, *extras, *tail, *scope_claims],
+                assessments=all_assessments,
+            )
+        if extras:
+            # 모델 문장은 모두 빠졌지만 코드가 검증된 기록으로 그린 문장이 있다: 그 문장이 확인된 내용이다
+            return finish(
+                status="PARTIAL",
+                reason="CHECK_ALL_DROPPED",
+                system=[templates.SystemText.VERIFIED_ONLY],
+                claims=[*extras, *tail, *scope_claims],
                 assessments=all_assessments,
             )
         if no_guide or advice_only:
@@ -856,16 +876,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             assessments=all_assessments,
         )
     final_claims = [*comp.pre, *body, *tail]
-    # 답 품질 보강: 기록 문장 · 목표 결과 문장을 코드 템플릿으로 더한다(둘 다 설정으로 끈다). 낸 문장은 순서를 바꾸지 않는다
-    extras: list[Claim] = []
-    if lp.cfg.record_answer_guard:
-        extras += _record_guard_claims(lp, [*comp.pre, *body])
-    if lp.cfg.goal_status_sentence:
-        gj = _goal_status_claim(lp, req)
-        # 문장만 낸다. `goal_result` 는 싣지 않는다: 계약상 자동 목표 확인(TAKE_REVIEWED)의 값이고 BE 가 그 값으로 목표 상태를
-        # 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 BE 와 주고받는 값의 호출 시점이 바뀐다(이번 범위 밖)
-        if gj is not None and all(c.text != gj[0].text for c in [*final_claims, *extras]):
-            extras.append(gj[0])
+    # 더한 문장(`extras`)은 위에서 만들었다. 낸 문장은 순서를 바꾸지 않는다
     if extras:
         final_claims = _splice_extras(lp, comp.pre, body, tail, extras)
     # 섞인 요청의 범위 밖 부분: 이유별 고정 문장을 답 문장 뒤에 덧붙인다(1-3 · 7-10)
@@ -913,20 +924,30 @@ def _splice_extras(
     return [*pre, *extras, *body, *tail]
 
 
-def _record_guard_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
+def _record_guard_claims(
+    lp: Loop, said: list[Claim], assessments: list[Assessment] | None = None
+) -> list[Claim]:
     """기록 질문을 '기록 말고 일반 조언으로'라고 해도 기록으로 답한다(6-1 · 13-2, `record_answer_guard`).
 
-    계획이 기록 대상(요청 · 측정 초안의 장 · 지표 · 차원 · Take)을 집었고 이번 실행이 그 대상의 검증된 기록 값을 읽었는데, 답에
-    기록 문장(`RECORD` · `ASSESSMENT`)이 하나도 없으면 그 근거 값으로 그린 코드 기록 문장(최대 3개)을 돌려준다. 읽은 값만 쓴다.
+    대상마다 따로 본다. 대상은 계획을 확정할 때의 초안(`plan_drafts`, 답 쓰기가 바꾼 초안이 아니다)의 요청 · 측정 초안이 집은
+    장 · 지표 · 차원 · Take 이고, 사용자 말이 Take 번호를 집었으면 그 번호의 대상만 받는다(말하지 않은 Take 값을 대신 채우지
+    않는다). 이번 실행이 읽은 그 대상의 검증된 기록 값이 있는데 답의 기록 문장(`RECORD`)이나 판단(`ASSESSMENT`)이 그 값을
+    근거로 삼지 않았으면 그 근거로 그린 코드 기록 문장(최대 3개)을 돌려준다. 읽은 값만 쓴다.
     """
-    if any(c.kind in ("RECORD", "ASSESSMENT") for c in said):
-        return []
     ctx = lp.ctx
     if ctx.pitch is None or lp.st.scope_switched or ctx.scope_switched:
         return []
     by_number = {sm.take_number: tid for tid, sm in ctx.summaries.items()}
+    msg_takes = chk.named_take_numbers(lp.original or "")
+    amap = {a.assessment_id: a for a in assessments or []}
+    answered: set[str] = set()
+    for c in said:
+        if c.kind == "RECORD":
+            answered.update(c.evidence_ids)
+        elif c.kind == "ASSESSMENT" and c.assessment_id in amap:
+            answered.update(amap[c.assessment_id].evidence_ids)
     ids: list[str] = []
-    for d in lp.st.drafts:
+    for d in lp.st.plan_drafts:
         if d.get("type") not in ("MEASURED", "REQUEST"):
             continue
         sub = d.get("subject") or {}
@@ -945,23 +966,27 @@ def _record_guard_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
             numbers = {ctx.summaries[tid].take_number} if tid in ctx.summaries else set()
         if not numbers or any(n not in by_number for n in numbers):
             continue
-        for eid, ev in ctx.registry.items.items():
-            if (
-                ev.origin == "RECORD"
-                and ev.take_number in numbers
-                and (not metrics or ev.metric in metrics)
-                and (slide is None or ev.slide_number == slide)
-                and eid not in ids
-            ):
-                ids.append(eid)
+        if msg_takes and not numbers <= msg_takes:
+            continue  # 사용자 말이 집은 Take 와 다른 대상이다(다른 Take 의 값으로 답하지 않는다)
+        target = [
+            eid
+            for eid, ev in ctx.registry.items.items()
+            if ev.origin == "RECORD"
+            and ev.take_number in numbers
+            and (not metrics or ev.metric in metrics)
+            and (slide is None or ev.slide_number == slide)
+        ]
+        if not target or answered.intersection(target):
+            continue  # 읽은 값이 없거나, 이 대상은 이미 기록 문장 · 판단이 답했다
+        ids.extend(e for e in target if e not in ids)
     return compose.template_partial(ctx, ids)
 
 
-def _goal_status_claim(lp: Loop, req: TurnRequest) -> tuple[Claim, dict[str, Any]] | None:
-    """사용자 말로 대화 목표의 결과를 물을 때(`get_goals`를 읽은 실행) 목표 결과 문장을 코드 템플릿으로 낸다(7-10, `goal_status_sentence`).
+def _goal_status_claim(lp: Loop, req: TurnRequest) -> Claim | None:
+    """사용자 말로 대화 목표의 결과를 물을 때(`get_goals`를 읽은 실행) 닫힌 목표의 상태를 고정 `SYSTEM` 문장으로 낸다(7-10, `goal_status_sentence`).
 
-    목표가 이미 닫혔고(ACHIEVED 등) 이 실행에 있는 완료 Take 중 기준 Take 뒤의 첫 Take 로 코드가 다시 판정한 결과가 목표 상태와
-    같을 때만 낸다(`_take_reviewed`와 같은 `judge_goal` · 문장 · `goal_result`). 닫은 Take 가 이 실행에 없으면 아무것도 내지 않는다.
+    목표를 닫은 Take 는 요청 자료로 알 수 없으므로 Take 를 고르지 않고 값도 말하지 않는다. 목표 상태(`ACHIEVED` · `NOT_ACHIEVED` ·
+    `BASELINE_MISMATCH`)만 말한다. 열린 목표 · 자동 목표 확인 턴 · 다른 피치의 목표는 내지 않는다.
     """
     ctx, goal = lp.ctx, lp.ctx.goal
     if req.review_event is not None or goal is None or goal.status == "OPEN":
@@ -970,33 +995,8 @@ def _goal_status_claim(lp: Loop, req: TurnRequest) -> tuple[Claim, dict[str, Any
         t.get("tool") == "get_goals" for t in lp.st.trace
     ):
         return None
-    after = sorted(
-        (
-            sn
-            for sn in ctx.snapshots.values()
-            if sn.summary.take_number > goal.base.take_number and sn.summary.completed_fully is True
-        ),
-        key=lambda sn: sn.summary.take_number,
-    )
-    for snap in after:
-        j = judge_goal(goal, snap, registry=ctx.registry, version_of=ctx.version_of, cfg=lp.cfg)
-        if not j.terminal or j.status != goal.status or not j.evidence_ids:
-            continue
-        text = compose.goal_sentence(ctx, goal, j, snap.summary.take_number)
-        claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
-        if chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg):
-            return None
-        gr = {
-            "goal_version": goal.version,
-            "take_id": snap.summary.take_id,
-            "review_revision": snap.revisions.REVIEW or 0,
-            "status": j.status,
-            "observed": j.observed,
-            "reason": j.reason_code or j.status,
-            "terminal": j.terminal,
-        }
-        return claim, gr
-    return None
+    text = templates.GOAL_CLOSED_TEXT.get(goal.status)
+    return Claim(kind="SYSTEM", text=text.value) if text is not None else None
 
 
 def _tail_claims(
@@ -1467,12 +1467,14 @@ def _finish(
     # NEEDS_ACTION 의 message 에는 확인 카드(`extra_cards`)만 싣는다. 모인 카드(st.cards)는 최종 답까지 상태에 남는다
     cards = _safe_cards(lp, st.cards if status != "NEEDS_ACTION" else extra_cards or [], amap)
     msg = None
+    ordered_claims: list[Claim] = []
     act_list = [action] if action is not None else list(actions or [])
     ask_wait = bool(act_list) and act_list[0].autonomy == "ASK"
     if claim_list or extra_cards or ask_wait or status != "NEEDS_ACTION":
         if not claim_list and status != "NEEDS_ACTION":
             claim_list = [Claim(kind="SYSTEM", text=templates.SystemText.PARTIAL_CHECKED.value)]
         text, ordered = chk.assemble_message(claim_list)
+        ordered_claims = ordered
         # 멈추기 전에 낸 문장의 자료 카드는 서명 상태의 사본을 그대로 쓰고, 새 자료만 지금 자료 묶음에서 그린다
         # 이 응답의 문장 줄이 이미 보낸 카드도 같은 사본을 쓴다(문장 줄과 끝 줄의 보이는 인용이 같게)
         carried = {g["source_id"]: g for g in [*st.emitted_sources, *lines.sent_cards.values()]}
@@ -1500,8 +1502,7 @@ def _finish(
     if terminal:
         if msg is not None:
             # 답 문장은 요약보다 먼저 다 낸다(6-1 8번: 사용자는 요약을 기다리지 않는다)
-            for d in msg["claims"][n_sent:]:
-                lines.send(Claim.model_validate(d), assessments_out, record=False)
+            _send_rest(lines, ordered, msg["claims"], n_sent, assessments_out, msg["sources"])
             tail_sent = True
         # 대화 요약(6-14): 답 쓰기 · 고치기 뒤 남은 몫에서. 이 호출도 사용량에 들어가므로 사용량을 다시 센다
         history_summary = _history_summary(lp)
@@ -1616,9 +1617,32 @@ def _finish(
     final["diagnostics"] = d.model_dump(mode="json")
     # 아직 줄로 내지 않은 문장(보류했다 통과한 문장 · 끝에 붙는 안내 · 모델 없이 만든 답)도 끝 줄 앞에 문장 줄로 낸다.
     # 그래서 문장 줄 번호는 실행 전체 답에서의 자리와 같고 빈 번호가 없다(5-4)
-    for d in [] if tail_sent else (final["message"] or {}).get("claims", [])[n_sent:]:
-        lines.send(Claim.model_validate(d), final["assessments"], record=False)
+    if not tail_sent and final["message"]:
+        _send_rest(
+            lines,
+            ordered_claims,
+            final["message"]["claims"],
+            n_sent,
+            final["assessments"],
+            final["message"]["sources"],
+        )
     return final, None, None
+
+
+def _send_rest(
+    lines: Any,
+    objs: list[Claim],
+    dumps: list[dict[str, Any]],
+    n_sent: int,
+    assessments: list[dict[str, Any]],
+    cards: list[dict[str, Any]],
+) -> None:
+    """끝 줄 message 의 아직 내지 않은 문장을 문장 줄로 낸다. 조립한 `Claim` 객체(내부 인용 문장 유지)를 그대로 쓰고, 자료 카드는
+    message 에 조립한 사본을 그대로 쓴다. 상태가 너무 커 message 를 다시 만든 경우처럼 객체가 맞지 않으면 모양에서 되살린다."""
+    by_dump = {json.dumps(o.model_dump(mode="json"), sort_keys=True): o for o in objs}
+    for d in dumps[n_sent:]:
+        claim = by_dump.get(json.dumps(d, sort_keys=True)) or Claim.model_validate(d)
+        lines.send(claim, assessments, record=False, cards=cards)
 
 
 __all__ = ["handle_turn", "TurnResponse", "PreStreamError"]

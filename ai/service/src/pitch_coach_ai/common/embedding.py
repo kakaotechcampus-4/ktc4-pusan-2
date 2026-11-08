@@ -7,7 +7,10 @@
   묶음, `settings.py`). 재시도하지 않는다(`max_retries=0`): 질문 임베딩은 실행당 한 번
   (계획한 검색어는 묶어서)이고 실패하면 키워드 검색으로
   이어가므로 다시 부르는 시간이 아깝다. 호출마다 시간 제한(초)을 받는다.
-  SDK 의 시간 제한은 연결 · 읽기 단계마다라, 작은 요청의 총 시간은 그 값에 가깝다.
+  SDK 의 시간 제한은 연결 · 읽기 단계마다라 전체 마감이 아니므로, 질문 임베딩은 별도 스레드에서
+  돌려 전체 호출에 마감(`future.result(timeout)`)을 강제한다. 넘기면 `openai.APITimeoutError` 를
+  올려(코어가 TIMEOUT 으로 기록하고 키워드 검색으로 이어간다) 기다리지 않는다
+  (남은 스레드는 SDK 시간 제한으로 끝난다).
 - 실패는 예외로 올린다(시간 초과는 `openai.APITimeoutError`). 로그 · 예외에 입력 글 · 키를
   넣지 않는다.
 - 고칠 때: 차원은 `ChatAgentConfig.embed_dimensions` 와 `guides/embeddings.json` 이 같아야 한다.
@@ -15,11 +18,16 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from collections.abc import Callable, Sequence
 
+import httpx
 import openai
 
 from pitch_coach_ai.settings import Settings
+
+#: 질문 임베딩 호출을 돌리는 스레드(전체 마감을 강제하려고 호출을 호출 스레드 밖에서 돌린다)
+_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="embed")
 
 
 def _client(base_url: str, api_key: str) -> openai.OpenAI:
@@ -45,6 +53,23 @@ def embed_batch(
     return [list(d.embedding) for d in data]
 
 
+def with_deadline(
+    call: Callable[[Sequence[str], float], list[list[float]]],
+    texts: Sequence[str],
+    timeout: float,
+    base_url: str = "",
+) -> list[list[float]]:
+    """`call` 의 전체 시간에 마감을 강제한다. 넘기면 `openai.APITimeoutError`(내용 없음)."""
+    future = _POOL.submit(call, texts, timeout)
+    try:
+        return future.result(timeout=max(timeout, 0.0))
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        raise openai.APITimeoutError(
+            request=httpx.Request("POST", base_url or "http://embed")
+        ) from None
+
+
 def embedder(
     *, base_url: str, api_key: str, model: str, dims: int
 ) -> Callable[[Sequence[str], float], list[list[float]]]:
@@ -54,7 +79,7 @@ def embedder(
     """
     client = _client(base_url, api_key)
 
-    def embed(texts: Sequence[str], timeout: float) -> list[list[float]]:
+    def call(texts: Sequence[str], timeout: float) -> list[list[float]]:
         resp = client.embeddings.create(
             model=model, input=list(texts), dimensions=dims, timeout=timeout
         )
@@ -62,6 +87,9 @@ def embedder(
         if len(data) != len(texts):
             raise ValueError("embedding count differs from input count")
         return [list(d.embedding) for d in data]
+
+    def embed(texts: Sequence[str], timeout: float) -> list[list[float]]:
+        return with_deadline(call, texts, timeout, base_url)
 
     return embed
 

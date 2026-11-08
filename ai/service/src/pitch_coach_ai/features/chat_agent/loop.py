@@ -87,6 +87,14 @@ PLAN_ROUTES = ("RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE")
 TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
 
 
+def _greeting_only(msg: str, cfg: Any) -> bool:
+    """인사 낱말(`small_talk_greeting_words`)을 빼고 나면 문장 부호 · 공백만 남는 말인가("안녕하세요?")."""
+    rest = msg
+    for w in sorted(cfg.small_talk_greeting_words, key=len, reverse=True):
+        rest = rest.replace(w, "")
+    return not any(ch.isalnum() for ch in rest)
+
+
 def _route_of(parsed: dict[str, Any]) -> str:
     route = parsed.get("route")
     return route if route in PLAN_ROUTES else "RESEARCH"
@@ -162,6 +170,8 @@ class LoopState:
     embed_used: bool = False
     #: 계획이 쓴 자료 검색어(조사 첫머리에 코드가 먼저 찾는다, 6-10). 이어 부른 뒤에도 같은 목록을 쓴다. 옛 상태에는 없어 빈 목록
     guide_queries: list[str] = field(default_factory=list)
+    #: 계획을 확정할 때의 판단 초안 사본. 답 쓰기가 `drafts`를 바꿔도 이 사본은 그대로다(기록 안전장치의 대상, 6-1). 옛 상태에는 없어 빈 목록
+    plan_drafts: list[dict[str, Any]] = field(default_factory=list)
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -262,6 +272,10 @@ class Loop:
                 for k, v in self.ctx.tool_cache.items()
                 if json.loads(k).get("tool") != "search_guides"
             }
+            # 검색 완료 표시도 함께 버린다: 남겨 두면 같은 검색어가 끝난 것으로 보여 지금 판을 찾지 않는다. 임베딩은 실행당
+            # 한 번이라 `embed_used`는 그대로 두고(지금 판은 키워드로 찾는다)
+            state.prefetched = [k for k in state.prefetched if not k.startswith('["search_guides"')]
+            state.guide_searched = False
         self.ctx.read_sources = set(state.read_sources)
         self.ctx.scope_switched = state.scope_switched
         #: 이어 부르는 사이 결과 판이 바뀐 Take 가 있었는가(옛 근거는 사본으로 낮췄다, 5-5 · L1-32)
@@ -595,6 +609,7 @@ class Loop:
         if route == "OUT_OF_SCOPE":
             self.scope_reason = parsed.get("scope_reason")
         self.st.drafts = [d.model_dump(mode="json") for d in drafts]
+        self.st.plan_drafts = [dict(d) for d in self.st.drafts]
         self.st.guide_queries = (
             self._clean_guide_queries(parsed.get("guide_queries"))
             if route == "RESEARCH" and self.cfg.plan_guide_queries
@@ -630,6 +645,16 @@ class Loop:
         msg = self.original or ""
         if len(msg) > self.cfg.small_talk_max_chars or any(ch.isdigit() for ch in msg):
             return None
+        # 요청 · 지시 · 질문이 섞인 말은 가벼운 말이 아니다("안녕, 예상 질문 만들어 줘"). 물음표는 CAPABILITY 에서만 받는다
+        if any(w in msg for w in self.cfg.small_talk_request_words):
+            return None
+        if (
+            kind != "CAPABILITY"
+            and ("?" in msg or "？" in msg)
+            and not _greeting_only(msg, self.cfg)
+        ):
+            # 물음표는 할 수 있는 일 질문과 "안녕하세요?"처럼 인사 낱말만 있는 말에서만 받는다
+            return None
         for d in drafts:
             sub = d.subject
             if (
@@ -641,7 +666,10 @@ class Loop:
                 or sub.take_numbers
             ):
                 return None
-        if kind == "PRACTICE_INTENT" and not any(w in msg for w in self.cfg.practice_intent_words):
+        if kind == "PRACTICE_INTENT" and (
+            not any(w in msg for w in self.cfg.practice_intent_words)
+            or any(w in msg for w in self.cfg.practice_negation_words)
+        ):
             return "GREETING"
         return str(kind)
 
@@ -925,9 +953,10 @@ class Loop:
         - 이미 낸 요청은 `prefetched`에 남겨 이어 부른 뒤에도 다시 내지 않는다. 결과는 모델이 고른 호출과 같은 길(캐시 ·
           한도 · 근거 · 도구 기록)로 처리한다.
         """
-        records = self._prefetch_record_calls()
+        # 공통 한도(`research_prefetch_max`)는 계획한 자료 검색어(`max_guide_queries`개까지)에 먼저 나누고, 남은 몫을 기록 읽기가 쓴다.
         # 자료 검색은 앞에 둔다: 기록을 가져오는 행동(fetch_take)은 한 번에 하나이고 그 뒤 요청은 실행하지 않는다
-        return [*self._guide_prefetch_calls(), *records]
+        guides = self._guide_prefetch_calls()
+        return [*guides, *self._prefetch_record_calls()]
 
     def _guide_prefetch_calls(self) -> list[ToolCall]:
         """계획이 쓴 자료 검색어(`guide_queries`)를 코드가 먼저 찾을 요청 목록(6-10). 기록 요청과 같은 한도(`research_prefetch_max`)로 센다.
@@ -956,12 +985,15 @@ class Loop:
         out: list[ToolCall] = []
         for q, key in todo:
             self.st.prefetched.append(key)
-            out.append(
-                ToolCall(
-                    id=f"pf-{len(self.st.prefetched)}", name="search_guides", args={"query": q}
-                )
-            )
+            out.append(ToolCall(id=self._pf_id(), name="search_guides", args={"query": q}))
         return out
+
+    def _pf_id(self) -> str:
+        """코드가 먼저 내는 요청의 호출 id. 자료 판이 바뀌어 검색 완료 표시를 버리면 번호가 되풀이되므로, 이미 처리한 id 와 겹치지 않게 한다."""
+        cid = f"pf-{len(self.st.prefetched)}"
+        while cid in self.st.processed_calls:
+            cid += "r"
+        return cid
 
     def _prefetch_record_calls(self) -> list[ToolCall]:
         """`_prefetch_calls` 의 기록 읽기 부분(위 설명)."""
@@ -1055,7 +1087,7 @@ class Loop:
                 return [
                     *out,
                     ToolCall(
-                        id=f"pf-{len(self.st.prefetched)}",
+                        id=self._pf_id(),
                         name="fetch_take",
                         args={"take_id": tid, "reason": "질문한 연습 기록 확인"},
                     ),
@@ -1066,7 +1098,7 @@ class Loop:
             if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
                 break
             self.st.prefetched.append(key)
-            out.append(ToolCall(id=f"pf-{len(self.st.prefetched)}", name=name, args=args))
+            out.append(ToolCall(id=self._pf_id(), name=name, args=args))
         return out
 
     def _judged_take(self) -> str | None:

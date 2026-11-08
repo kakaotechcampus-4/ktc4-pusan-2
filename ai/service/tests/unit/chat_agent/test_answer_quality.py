@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from pitch_coach_ai.features.chat_agent import templates
 from pitch_coach_ai.features.chat_agent.config import load_config
 from pitch_coach_ai.features.chat_agent.schemas import FinalData
 
@@ -153,12 +154,63 @@ def _goal_question(cfg: Any) -> dict[str, Any]:
 
 
 def test_goal_status_sentence_states_the_result_without_goal_result() -> None:
-    """목표 결과 문장은 내지만 `goal_result` 는 싣지 않는다 — 계약상 자동 목표 확인(TAKE_REVIEWED)의 값이고 BE 가 그 값으로
-    목표 상태를 바꾸므로 사용자 말 응답에 실으면 호출 시점이 바뀐다(5-5 · 12-3)."""
+    """닫힌 목표의 상태만 고정 SYSTEM 문장으로 말한다(Take · 값 없이). `goal_result` 는 싣지 않는다 — 계약상 자동 목표 확인
+    (TAKE_REVIEWED)의 값이고 BE 가 그 값으로 목표 상태를 바꾸므로 사용자 말 응답에 실으면 호출 시점이 바뀐다(5-5 · 12-3)."""
     data = _goal_question(load_config())
-    goal_line = next(t for k, t in _texts(data) if k == "RECORD")
-    assert "이뤘" in goal_line and "28%" in goal_line
+    goal_line = next(
+        t for k, t in _texts(data) if t == templates.SystemText.GOAL_CLOSED_ACHIEVED.value
+    )
+    assert "Take" not in goal_line and "%" not in goal_line
+    assert "RECORD" not in [k for k, _ in _texts(data)]
     assert data.get("goal_result") is None
+
+
+@pytest.mark.parametrize(
+    ("status", "text"),
+    [
+        ("NOT_ACHIEVED", templates.SystemText.GOAL_CLOSED_NOT_ACHIEVED),
+        ("BASELINE_MISMATCH", templates.SystemText.GOAL_CLOSED_MISMATCH),
+    ],
+)
+def test_goal_status_sentence_follows_the_terminal_status_only(status: str, text: Any) -> None:
+    req = _closed_goal_request()
+    req["context"]["conversation_goal"]["status"] = status
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[]),
+            F.tools(("get_goals", {}), NO_HIT, prefix="g"),
+            F.done(),
+            F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"),
+        ]
+    )
+    _, _, data = F.run_turn(
+        req, llm, corpus=F.load_corpus(), corpus_version="guides-4", cfg=load_config()
+    )
+    assert data is not None
+    assert text.value in [t for _, t in _texts(data)]
+
+
+def test_goal_status_sentence_is_added_even_when_the_model_body_is_empty() -> None:
+    """모델 문장이 모두 빠져도 목표 상태 문장은 낸다(빈 답 분기보다 먼저 만든다)."""
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[]),
+            F.tools(("get_goals", {}), NO_HIT, prefix="g"),
+            F.done(),
+            F.answer(
+                [F.claim("GENERAL", "청중과 눈을 맞춰서 말하세요 100% 확실해요.")], route="NO_GUIDE"
+            ),
+            F.answer(
+                [F.claim("GENERAL", "청중과 눈을 맞춰서 말하세요 100% 확실해요.")], route="NO_GUIDE"
+            ),
+        ]
+    )
+    _, _, data = F.run_turn(
+        _closed_goal_request(), llm, corpus=F.load_corpus(), corpus_version="guides-4"
+    )
+    assert data is not None
+    assert templates.SystemText.GOAL_CLOSED_ACHIEVED.value in [t for _, t in _texts(data)]
+    assert data["status"] == "PARTIAL"
 
 
 def test_goal_status_sentence_off_does_not_add_it() -> None:

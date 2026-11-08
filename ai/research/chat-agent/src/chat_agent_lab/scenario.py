@@ -687,12 +687,13 @@ def build_corpus_for(spec: CorpusSpec | None, mode: CorpusMode = "all") -> Corpu
     """
     if mode == "none":
         return None
-    manifest, files = _guide_files()
     extra = list(spec.extra_cards) if spec is not None else []
     if mode == "approved":
         try:
+            # 파일 읽기 · 해석 실패도 서비스처럼 자료 묶음 없이(None) 돈다(서비스 `load_corpus` 와 같다)
+            manifest, files = _guide_files()
             served = build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=False)
-        except CorpusInvalid:
+        except (CorpusInvalid, OSError, ValueError, KeyError, TypeError):
             return None
         if not extra:
             return served
@@ -701,6 +702,8 @@ def build_corpus_for(spec: CorpusSpec | None, mode: CorpusMode = "all") -> Corpu
             name: [c for c in cards if c["source_id"] in keep] for name, cards in files.items()
         }
         extra = [{**copy.deepcopy(c), "review": "APPROVED"} for c in extra]
+    else:
+        manifest, files = _guide_files()
     if extra:
         first = manifest["files"][0]
         files = {**files, first: [*files[first], *copy.deepcopy(extra)]}
@@ -748,6 +751,8 @@ def corpus_texts(
     approved · none 모드에서는 그 실행이 실제로 실은 카드(`corpus`)만 원문으로 인정한다 — 서비스에 없는 카드의 인용을
     맞는 인용으로 채점하지 않게(P-0008 5-4 '채점 원문까지 일관되게').
     """
+    if mode == "none" or (mode != "all" and corpus is None):
+        return {}  # 실은 자료가 없으면 파일을 읽지 않고 빈 사전(원문으로 인정할 카드가 없다)
     manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
     out: dict[str, str] = {}
     for name in manifest.get("files", []):

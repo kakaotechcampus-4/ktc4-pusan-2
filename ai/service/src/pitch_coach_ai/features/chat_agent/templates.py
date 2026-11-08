@@ -76,6 +76,9 @@ class SystemText(StrEnum):
     GOAL_BASE_DELETED = "목표의 기준 기록이 삭제되어 새 목표가 필요해요."
     GOAL_AFTER_SAVE = "목표 설정 뒤 시작한 연습부터 확인해요."
     GOAL_CONFIRM = "이 목표로 저장할까요?"
+    GOAL_CLOSED_ACHIEVED = "대화 목표는 이뤄서 닫혔어요."
+    GOAL_CLOSED_NOT_ACHIEVED = "대화 목표는 이루지 못한 채 닫혔어요."
+    GOAL_CLOSED_MISMATCH = "대본이나 평가 기준이 바뀌어 대화 목표를 닫았어요. 새 목표가 필요해요."
     PRACTICE_BUTTON = "연습 준비 화면으로 이동할 수 있어요."
     NO_NUMERIC_TARGET = "숫자로 판정할 기준이 없어 이 항목은 설명만 반영해요."
     REASSESS_BOTH_FAILED = "두 조건을 모두 확인하지 못해 비교 결과를 만들지 않았어요."
@@ -262,6 +265,13 @@ GOAL_WORD = {
     "NOT_ACHIEVED": "목표를 아직 이루지 못했어요",
     "UNKNOWN": "이번 Take로는 목표를 판정할 수 없어 다음 Take를 기다려요",
     "BASELINE_MISMATCH": "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
+}
+
+#: 닫힌 대화 목표의 상태 → 고정 문장(7-10). 닫은 Take 를 요청 자료로는 알 수 없어 Take · 값 없이 상태만 말한다
+GOAL_CLOSED_TEXT = {
+    "ACHIEVED": SystemText.GOAL_CLOSED_ACHIEVED,
+    "NOT_ACHIEVED": SystemText.GOAL_CLOSED_NOT_ACHIEVED,
+    "BASELINE_MISMATCH": SystemText.GOAL_CLOSED_MISMATCH,
 }
 
 

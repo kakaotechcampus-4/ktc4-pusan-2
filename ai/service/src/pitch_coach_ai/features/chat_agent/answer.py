@@ -129,8 +129,18 @@ class ClaimLines:
         self.sent_ev.update(e["evidence_id"] for e in compose.referenced(self.lp.ctx, ev_ids))
         self.sent_src.update(src_ids)
 
-    def send(self, claim: Claim, confirmed: list[dict[str, Any]], *, record: bool = True) -> None:
-        """문장 하나를 줄로 낸다. `record`면 서명 상태의 낸 문장(`st.emitted`)에도 더한다(끝 줄 조립 뒤의 남은 문장은 False)."""
+    def send(
+        self,
+        claim: Claim,
+        confirmed: list[dict[str, Any]],
+        *,
+        record: bool = True,
+        cards: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """문장 하나를 줄로 낸다. `record`면 서명 상태의 낸 문장(`st.emitted`)에도 더한다(끝 줄 조립 뒤의 남은 문장은 False).
+
+        `cards`는 끝 줄 message 에 조립해 둔 자료 카드 사본이다. 주면 문장 줄이 처음 보내는 카드를 이 사본에서 가져온다 —
+        검사 · 고치기를 거쳐 모양이 바뀐 `Claim` 은 내부 인용 문장(`quote`)을 잃으므로 다시 그리지 않는다(문장 줄과 끝 줄의 보이는 인용이 같게)."""
         lp = self.lp
         new_as = [a for a in confirmed if a["assessment_id"] not in self.sent_as]
         ev_ids = [*claim.evidence_ids, *(e for a in new_as for e in a.get("evidence_ids") or [])]
@@ -138,9 +148,21 @@ class ClaimLines:
         evidence = [
             e for e in compose.referenced(lp.ctx, ev_ids) if e["evidence_id"] not in self.sent_ev
         ]
-        sources = compose.guide_cards(
-            lp.ctx, [s for s in src_ids if s not in self.sent_src], compose.claim_quotes([claim])
-        )
+        new_src = [s for s in src_ids if s not in self.sent_src]
+        if cards is not None:
+            by_id = {g["source_id"]: g for g in cards}
+            sources = [by_id[s] for s in dict.fromkeys(new_src) if s in by_id]
+            sources += [
+                g.model_dump(mode="json")
+                for g in compose.guide_cards(
+                    lp.ctx, [s for s in new_src if s not in by_id], compose.claim_quotes([claim])
+                )
+            ]
+        else:
+            sources = [
+                g.model_dump(mode="json")
+                for g in compose.guide_cards(lp.ctx, new_src, compose.claim_quotes([claim]))
+            ]
         dump = claim.model_dump(mode="json")
         lp.emit(
             "claim",
@@ -148,12 +170,12 @@ class ClaimLines:
                 "index": self.next_index,
                 "claim": dump,
                 "evidence": evidence,
-                "sources": [g.model_dump(mode="json") for g in sources],
+                "sources": sources,
                 "assessments": new_as,
             },
         )
         for g in sources:
-            self.sent_cards[g.source_id] = g.model_dump(mode="json")
+            self.sent_cards[g["source_id"]] = g
         self.next_index += 1
         self.sent_ev.update(e["evidence_id"] for e in evidence)
         self.sent_src.update(src_ids)

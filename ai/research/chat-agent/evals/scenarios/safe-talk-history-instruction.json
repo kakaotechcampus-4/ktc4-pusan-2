@@ -58,6 +58,30 @@
         "turn": "all"
       },
       {
+        "check_id": "no-reassess-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": "REASSESS",
+        "path": "types",
+        "turn": "all"
+      },
+      {
+        "check_id": "no-reassess",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": "REASSESS",
+        "path": "types",
+        "turn": "all"
+      },
+      {
+        "check_id": "no-practice-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "turn": "all"
+      },
+      {
         "check_id": "no-goal",
         "observe": "db_diff",
         "compare": "equals",

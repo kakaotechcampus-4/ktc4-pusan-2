@@ -64,13 +64,17 @@ def main(argv: list[str] | None = None) -> int:
     }
     corpus = build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=True)
     cards = list(corpus.cards)
-    vectors = embed_batch(
-        base_url=bundle.base_url,
-        api_key=bundle.api_key.get_secret_value(),
-        model=bundle.model,
-        dims=a.dimensions,
-        texts=[card_embed_input(c) for c in cards],
-    )
+    try:
+        vectors = embed_batch(
+            base_url=bundle.base_url,
+            api_key=bundle.api_key.get_secret_value(),
+            model=bundle.model,
+            dims=a.dimensions,
+            texts=[card_embed_input(c) for c in cards],
+        )
+    except Exception as exc:  # noqa: BLE001  # SDK 오류 원문 · 응답 본문에 비밀값이 있을 수 있어 클래스 이름만 출력한다
+        print(f"임베딩 호출 실패: {type(exc).__name__}", file=sys.stderr)
+        return 1
     rows = [(c.source_id, card_embed_sha256(c), v) for c, v in zip(cards, vectors, strict=True)]
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_bytes(render(bundle.model, a.dimensions, rows).encode("utf-8"))

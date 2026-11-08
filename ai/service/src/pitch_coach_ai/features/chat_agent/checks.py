@@ -15,7 +15,7 @@
 - 규칙 요약(문장 종류별)
   1. RECORD: 근거 ≥1, 모두 이번 턴 근거(`registry.is_current`). 숫자 · Take · 장 · 지표 이름이 이은 근거(와 계산
      근거의 입력)의 값과 같아야 한다. 차이(`%p`)는 코드가 입력으로 다시 계산한 `COMPUTED` 차이 근거와만 맞는다.
-  2. GUIDE: `source_ids` ≥1, 인용 문장(초안의 `quote`)이 있어야 하고 이은 자료 원문에 글자 그대로 있어야 한다(없으면 고치지 않고
+  2. GUIDE: `source_ids` ≥1, 인용 문장(초안의 `quote`)이 있어야 하고 이은 자료 원문의 문장 하나와 글자 그대로 같아야 한다(없으면 고치지 않고
      버린다). 따옴표 안 인용은 자료 원문에 글자 그대로, 문장 속 숫자는 자료 원문에 있어야 한다.
   3. ACTION_RESULT: 이번 실행에서 성공한 행동이어야 하고 문장은 loop가 검증된 결과로 그린 문장과 글자까지 같아야 한다.
      비교 · 변화 · 목표 결론 낱말이 든 문장은 `code_sentences`(코드가 그린 문장)에 있어야 한다(P3).
@@ -47,6 +47,7 @@ from typing import Any
 
 from .claims import METRIC_LABEL
 from .config import DEFAULT_CONFIG, ChatAgentConfig
+from .corpus import sentence_spans
 from .evidence import EvidenceRegistry
 from .schemas import Assessment, Claim, Evidence
 from .templates import SystemText
@@ -122,6 +123,13 @@ _MIN_SEC = re.compile(rf"({_NUM})분\s?({_NUM})초(?!과)")
 #: Take 번호: "Take 5" · "Take5" · "5번째 Take" · "5번 Take". 값 추출보다 먼저 뽑아 "5번"으로 읽히지 않게 한다
 _TAKE_AFTER = re.compile(r"(?:Take|테이크)\s*(\d+)", re.IGNORECASE)
 _TAKE_BEFORE = re.compile(r"(\d+)\s*번째?\s*(?:Take|테이크)", re.IGNORECASE)
+
+
+def named_take_numbers(text: str) -> set[int]:
+    """사용자 말이 이름으로 집은 Take 번호("Take 5" · "5번째 Take")."""
+    return {int(n) for p in (_TAKE_AFTER, _TAKE_BEFORE) for n in p.findall(text or "")}
+
+
 #: 장 번호: "3장", "슬라이드 3"
 _SLIDE = re.compile(r"(\d+)\s?장|슬라이드\s*(\d+)")
 #: 순서를 가리키는 "N번째"는 값이 아니다
@@ -1179,7 +1187,9 @@ def _check_general(i: int, c: Claim, cfg: ChatAgentConfig, *, searched: bool) ->
             "일반 조언은 근거 · 자료 · 판단 · 행동에 이을 수 없음(근거가 있으면 RECORD · GUIDE 로 씀)",
             unfixable=True,
         )
-    if getattr(c, "about", None) == "APP_USAGE":
+    ui_hit = _found(cfg.general_app_ui_words, c.text)
+    if getattr(c, "about", None) == "APP_USAGE" or ui_hit:
+        # `about` 는 모델의 자기신고라 이것만 믿지 않는다: 화면 조작 낱말이 든 일반 조언도 사용법으로 본다
         # 화면 조작 방법 · 기능 사용법은 사용법 자료 · 화면 상태로만 답한다. 일반 조언으로 짐작하지 않는다(6-10)
         fail("화면 사용법은 일반 조언으로 짐작해 쓸 수 없음(사용법 자료로만 답함)", unfixable=True)
     if len(c.text) > cfg.max_general_chars:
@@ -1239,12 +1249,13 @@ def _check_guide(i: int, c: Claim, guide_texts: Mapping[str, str]) -> list[Check
                 unfixable=True,
             )
         )
-    elif not any(quote in t for t in texts):
+    elif not any(quote in {t[s:e].strip() for s, e in sentence_spans(t)} for t in texts):
+        # 부분 문자열은 받지 않는다: 인용은 이은 자료의 문장 하나 전체여야 한다(답 쓰기에 준 `guide_candidates` 와 같은 문장 나눔)
         f.append(
             CheckFailure(
                 i,
                 CheckId.QUOTE_MISMATCH,
-                "인용 문장(quote)이 이은 자료 원문에 글자 그대로 없음",
+                "인용 문장(quote)이 이은 자료 원문의 문장 하나와 글자 그대로 같지 않음(일부만 떼거나 두 문장을 잇지 않음)",
                 claim_kind=c.kind,
                 unfixable=True,
             )
