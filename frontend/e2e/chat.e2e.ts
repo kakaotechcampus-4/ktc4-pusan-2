@@ -140,3 +140,20 @@ test('6. 최신 아님 배지 → 다시 묻기', async ({ page }) => {
   await expect(panel.getByRole('button', { name: '취소' })).toHaveCount(0);
   await expect(panel.locator('[data-stale-reason]')).toHaveCount(1);
 });
+
+test('7. 다시 평가 → 원래 결과 · 참고 결과 나란히', async ({ page }) => {
+  await page.goto(`/takes/${TAKE3_ID}`);
+  const panel = await openChat(page);
+
+  await ask(panel, '이번 Take 다시 평가해 줘');
+
+  // 다시 평가도 승인 카드를 거칩니다 (F10)
+  await panel.getByRole('button', { name: '승인', exact: true }).click();
+
+  // 공식 리뷰는 그대로 두고, 원래 결과("바꾸기 전")와 참고 결과를 한 표에 나란히 보입니다
+  await expect(panel.getByText('참고 결과 — 공식 리뷰는 그대로예요')).toBeVisible();
+  const table = panel.getByRole('table');
+  await expect(table.getByRole('columnheader', { name: '바꾸기 전' })).toBeVisible();
+  await expect(table.getByRole('columnheader', { name: '참고 결과' })).toBeVisible();
+  await expect(table.getByRole('rowheader', { name: '점수' })).toBeVisible();
+});
