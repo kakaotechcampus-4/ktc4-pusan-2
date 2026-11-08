@@ -512,7 +512,7 @@ it('리포트는 발표 전체 지표를 구분하고 상세 비교 모달의 �
   await render('report');
   expect(host.textContent).toContain('발표 전체 기준 지표예요.');
 
-  const opener = button('슬라이드별 상세 비교표 보기')!;
+  const opener = button('상세 비교표 보기')!;
   await act(async () => opener.click());
   const dialog = host.querySelector('dialog')!;
   expect(dialog.open).toBe(true);
