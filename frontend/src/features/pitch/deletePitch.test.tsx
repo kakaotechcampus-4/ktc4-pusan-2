@@ -388,9 +388,7 @@ it('서버가 이미 없다고(404) 하면 지운 것으로 보고, 확인 창�
   expect(client.getQueryData(['takes', 't3', 'report'])).toEqual({ keep: true });
 });
 
-it.each([0, 1, 15])(
-  '홈 피치 %i개의 목록 구조와 푸터를 유지한다',
-  async (pitchCount) => {
+it.each([0, 1, 15])('홈 피치 %i개의 목록 구조와 푸터를 유지한다', async (pitchCount) => {
     list = {
       pitches: Array.from({ length: pitchCount }, (_, index) =>
         pitch(`p${index}`, `발표 ${index + 1}`),
@@ -409,5 +407,4 @@ it.each([0, 1, 15])(
     expect(pitchList === null).toBe(pitchCount === 0);
     expect(pitchList?.className ?? '').not.toContain('overflow-y-auto');
     expect(main.nextElementSibling?.tagName).toBe('FOOTER');
-  },
-);
+});
