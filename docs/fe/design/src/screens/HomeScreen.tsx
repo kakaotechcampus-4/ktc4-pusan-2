@@ -51,6 +51,10 @@ const HOME_TIPS = [
   '연습 후에는 Take 리포트에서 지난 연습과 달라진 점을 확인해 보세요.',
   '발표 중에는 슬라이드를 넘기며 연습할 수 있어요.',
   '사용방법 살펴보기에서 연습 순서를 확인할 수 있어요.',
+  '발표가 막혔다면, 잠깐 멈추고 다시 시작해 보세요.',
+  '좋은 발표는 한 번에 완성되지 않아요. Take를 쌓아 보세요.',
+  '청중을 바라보는 연습도 발표 실력의 일부예요.',
+  '지난 Take보다 한 가지만 나아져도 충분한 발전이에요.',
 ];
 
 const HOME_TIP_INTERVAL_MS = 8000;
@@ -59,18 +63,18 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [tipPaused, setTipPaused] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
   );
+  const [tipHovered, setTipHovered] = useState(false);
+  const [tipFocused, setTipFocused] = useState(false);
   useEffect(() => {
-    if (tipPaused) return;
+    if (tipPaused || tipHovered || tipFocused) return;
     const timer = window.setInterval(
       () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
       HOME_TIP_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
-  }, [tipPaused]);
+  }, [tipPaused, tipHovered, tipFocused]);
   // 기본 상태에서 메뉴로 지우면 그 줄만 이 미리보기에서 뺀다. 서버 요청은 없다
   const [removed, setRemoved] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
@@ -188,16 +192,23 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
         )}
       </div>
       <footer className="border-t border-line-strong">
-        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 xl:flex-nowrap lg:px-10">
-          <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
-            <span className="shrink-0 tabular-nums text-coral-deep">TIP /</span>
-            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
+        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 pr-20 text-xs text-ink/80 xl:flex-nowrap lg:pl-10 lg:pr-20 xl:pr-10">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
+            <p
+              tabIndex={0}
+              title={HOME_TIPS[tipIndex]}
+              onMouseEnter={() => setTipHovered(true)}
+              onMouseLeave={() => setTipHovered(false)}
+              onFocus={() => setTipFocused(true)}
+              onBlur={() => setTipFocused(false)}
+              className="min-w-0 flex-1 truncate focus:overflow-visible focus:whitespace-normal focus:break-words focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
               {HOME_TIPS[tipIndex]}
             </p>
             <button
               type="button"
               onClick={() => setTipPaused((current) => !current)}
-              aria-pressed={tipPaused}
               aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
               className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
@@ -211,20 +222,13 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
           >
             사용방법 살펴보기
           </button>
-          <span className="hidden shrink-0 whitespace-nowrap tabular-nums tracking-widest 2xl:inline">
+          <span className="hidden shrink-0 whitespace-nowrap font-mono tracking-widest 2xl:inline">
             PITCH COACH · ONE TAKE AT A TIME.
           </span>
-          <nav
-            aria-label="서비스 정책"
-            className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1"
-          >
-            <a href="/terms?from=home" className="whitespace-nowrap hover:text-ink">
-              이용약관
-            </a>
-            <a href="/privacy?from=home" className="whitespace-nowrap hover:text-ink">
-              개인정보 처리방침
-            </a>
-          </nav>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="whitespace-nowrap">이용약관</span>
+            <span className="whitespace-nowrap">개인정보 처리방침</span>
+          </div>
         </div>
       </footer>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
