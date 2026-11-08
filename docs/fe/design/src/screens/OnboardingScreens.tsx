@@ -11,6 +11,8 @@ const cta =
   'inline-flex items-center justify-center gap-6 border-2 border-ink bg-coral-deep px-6 py-3.5 font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-1 hover:bg-ink active:translate-x-1 active:translate-y-1 active:shadow-none';
 
 const SEMINI_IMAGE = publicUrl('semini.png');
+const PICO_ID_IMAGE = publicUrl('onboarding/pico-id.png');
+const CHICHI_ID_IMAGE = publicUrl('onboarding/chichi-id.png');
 
 const SECTIONS = [
   ['service', '서비스 소개'],
@@ -260,7 +262,7 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
               <div className="mb-6 flex flex-wrap items-center gap-5 sm:flex-nowrap">
                 <figure className="w-28 shrink-0 border border-ink bg-panel p-1.5 shadow-[3px_3px_0_var(--color-line-strong)] lg:w-32">
                   <img
-                    src={publicUrl(professor ? 'onboarding/pico-id.png' : 'onboarding/chichi-id.png')}
+                    src={professor ? PICO_ID_IMAGE : CHICHI_ID_IMAGE}
                     alt={
                       professor
                         ? '안경과 정장을 갖춘 공작새 피코 교수가 정면을 바라보는 픽셀 증명사진'
