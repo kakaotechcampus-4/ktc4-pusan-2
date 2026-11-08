@@ -564,7 +564,14 @@ function ChatPanel({
         <label htmlFor={`${id}-input`} className="sr-only">
           채팅 메시지
         </label>
-        <div className="flex items-end gap-2 rounded-xl border-2 border-line-strong bg-white p-1.5 transition-colors focus-within:border-coral">
+        <div
+          data-chat-composer=""
+          className={`flex items-end gap-2 rounded-xl border-2 bg-white p-1.5 transition-colors focus-within:ring-2 ${
+            tooLong
+              ? 'border-coral-deep focus-within:border-coral-deep focus-within:ring-coral-deep'
+              : 'border-line-strong focus-within:border-coral focus-within:ring-coral'
+          }`}
+        >
           {/* maxLength로 잘라 버리면 이모지 등의 UTF-16/코드 포인트 수가 달라집니다. 초과분은 유지하고 전송만 막습니다. */}
           <textarea
             ref={inputRef}

@@ -59,6 +59,7 @@ export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? menuId : undefined}
         aria-disabled={!changeable}
+        title={scopeLabel(scope, titleOf)}
         onClick={() => {
           if (changeable) setMenuOpen(!menuOpen);
         }}

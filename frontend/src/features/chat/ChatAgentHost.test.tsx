@@ -588,6 +588,26 @@ it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내�
   expect(input().value).toBe(tooLong);
 });
 
+it('입력창의 초점 링을 유지하고 2,000자 초과 상태를 테두리에도 표시한다', async () => {
+  await visit('/');
+  await openPanel();
+  const composer = () => panel()!.querySelector<HTMLElement>('[data-chat-composer]')!;
+  expect(composer().classList.contains('focus-within:ring-2')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(true);
+  expect(composer().classList.contains('border-line-strong')).toBe(true);
+
+  await type('a'.repeat(2001));
+  expect(input().getAttribute('aria-invalid')).toBe('true');
+  expect(composer().classList.contains('border-coral-deep')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral-deep')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(false);
+
+  await type('수정한 질문');
+  expect(input().getAttribute('aria-invalid')).toBe('false');
+  expect(composer().classList.contains('border-line-strong')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(true);
+});
+
 it('닫혀 있을 때는 런처가 없는 패널을 가리키지 않는다', async () => {
   await visit('/');
   expect(launcher()!.hasAttribute('aria-controls')).toBe(false);
@@ -1554,6 +1574,21 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await settle();
     expect(visibleText(chip())).toBe('피치: 졸업 발표');
     expect(chip().textContent).toBe('범위: 피치: 졸업 발표');
+  });
+
+  it('긴 피치 제목은 칩의 말줄임표와 무관하게 전체를 확인할 수 있다', async () => {
+    const longTitle = '매우 긴 발표 제목을 사용하는 프로젝트의 최종 시연과 성능 평가';
+    server.pitches = () =>
+      Promise.resolve({
+        pitches: [{ ...pitchList.pitches[0]!, pitch_title: longTitle }],
+      });
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await settle();
+    expect(visibleText(chip())).toBe(`피치: ${longTitle}`);
+    expect(chip().getAttribute('title')).toBe(`피치: ${longTitle}`);
+    // 접근성 이름은 기존 텍스트와 잠금 사유를 그대로 사용합니다.
+    expect(chip().hasAttribute('aria-label')).toBe(false);
   });
 
   it('칩을 누르면 전체 · 내 피치에서 고르고, 고르면 그 범위로 바꾼다 — Esc 는 목록만 닫는다', async () => {
