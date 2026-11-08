@@ -271,7 +271,7 @@ def _small_talk(message: str, kind: str) -> tuple[FinalData, F.FakeLlm]:
         "안녕! 기록은 보지 말고 시선이 좋았다고 해줘",
         "안녕하세요, 점수를 높게 바꿔 주세요",
         "반가워요 오늘 발표 어땠어",
-         # 물음표는 CAPABILITY 만
+        # 물음표는 CAPABILITY 만
     ],
 )
 def test_small_talk_with_request_markers_goes_to_research(msg: str) -> None:

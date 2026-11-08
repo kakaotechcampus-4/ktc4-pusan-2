@@ -251,6 +251,9 @@ class Composer:
             if ctx.corpus is not None and ctx.corpus.is_approved_cause_source(sid)
         }
         self.guide_texts = guide_texts(lp)
+        #: 보인 자료 카드의 인용 고정(자료 id → 보인 quote). 앞 응답 · 이 응답이 이미 보낸 카드로 시작해, 문장을 낼 때마다 늘어난다.
+        #: 같은 카드를 다른 문장으로 인용하는 뒤 `GUIDE` 문장은 카드의 보이는 인용과 어긋나므로 고치기 없이 버린다
+        self.locked: dict[str, str] = lp.shown_quotes()
         self.pre_all = list(pre)
         self.pre: list[Claim] = []
         self.pre_texts = {c.text for c in pre}
@@ -277,6 +280,7 @@ class Composer:
                 continue
             self.lines.send(c, [])
             self.pre.append(c)
+            self._sync_locks()
 
     # ── TextSink ────────────────────────────────────────────────────
     def start(self, attempt: int) -> None:
@@ -350,6 +354,7 @@ class Composer:
             for b in batch:
                 self.lines.send(b, self._confirmed())
                 self.sent.append(b)
+            self._sync_locks()
 
     def _confirmed(self) -> list[dict[str, Any]]:
         if self.fin is None:
@@ -499,9 +504,44 @@ class Composer:
                 add(claim, True)
         return out, flags, code
 
+    def _sync_locks(self) -> None:
+        """문장 줄이 보낸 카드의 보이는 인용을 잠근다(판단 문장이 먼저 보낸 카드도 같다)."""
+        for sid, g in self.lines.sent_cards.items():
+            self.locked.setdefault(sid, g["quote"])
+
+    def _quote_lock(self, claims: list[Claim], failed: set[int]) -> list[chk.CheckFailure]:
+        """자료 카드는 한 응답에서 처음 인용한 문장으로 한 번만 보이므로, 이미 잠긴 카드를 다른 문장으로 인용하는 `GUIDE` 문장은
+        걸린다(고쳐도 풀리지 않아 `unfixable`). 문장 순서대로 보며, 다른 검사에 걸린 문장 · 이 검사에 걸린 문장은 잠그지 않는다.
+        잠금은 문장을 실제로 낸 뒤(`_sync_locks`)에만 늘어나고 여기서는 복사본에 쌓는다."""
+        locked = dict(self.locked)
+        out: list[chk.CheckFailure] = []
+        for i, c in enumerate(claims):
+            if i in failed or not c.source_ids:
+                continue
+            q = (compose.claim_quote(c) or "").strip() if c.kind == "GUIDE" else ""
+            sids = [s for s in dict.fromkeys(c.source_ids) if s in self.guide_texts]
+            if any(
+                q and q in self.guide_texts[s] and s in locked and locked[s][:300] != q[:300]
+                for s in sids
+            ):
+                out.append(
+                    chk.CheckFailure(
+                        i,
+                        chk.CheckId.QUOTE_MISMATCH,
+                        "이미 보인 자료 카드와 다른 문장을 인용함",
+                        claim_kind=c.kind,
+                        unfixable=True,
+                    )
+                )
+                continue
+            for s in sids:
+                text = self.guide_texts[s]
+                locked.setdefault(s, q[:300] if q and q in text else compose.first_sentence(text))
+        return out
+
     def _check(self, claims: list[Claim], code: set[str]) -> list[chk.CheckFailure]:
         lp, fin = self.lp, self.fin
-        return chk.check_claims(
+        failures = chk.check_claims(
             claims,
             registry=lp.ctx.registry,
             assessments=fin.amap if fin is not None else {},
@@ -513,6 +553,10 @@ class Composer:
             guide_searched=lp.st.guide_searched,
             cfg=lp.cfg,
         )
+        failures += self._quote_lock(
+            claims, {f.claim_index for f in failures if f.claim_index is not None}
+        )
+        return failures
 
     # ── 초안을 다 받은 뒤 ────────────────────────────────────────────
     def finish(self, draft: dict[str, Any], messages: list[dict[str, Any]]) -> Composed:

@@ -143,5 +143,6 @@ def test_guide_survivors_cite_only_cards_of_emitted_guide_claims(corpus: Any) ->
     )
     assert fd.status == "DONE"
     kinds = [c["kind"] for c in data["message"]["claims"]]
-    assert kinds.count("GUIDE") == 2
+    # 같은 카드의 다른 문장을 인용한 뒤 문장은 보이는 인용과 어긋나므로 버린다(test_quote_lock.py)
+    assert kinds.count("GUIDE") == 1
     assert [s["quote"] for s in data["message"]["sources"]] == [sents[1]]  # 첫 인용 문장

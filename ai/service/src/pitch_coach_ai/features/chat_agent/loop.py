@@ -1521,6 +1521,12 @@ class Loop:
             if card.text[s:e].strip()
         ]
 
+    def shown_quotes(self) -> dict[str, str]:
+        """이 실행에서 이미 보인 자료 카드의 보이는 인용(자료 id → quote): 앞 응답이 낸 카드(서명 상태) + 이 응답의 문장 줄이 보낸 카드.
+        한 카드는 한 응답에서 한 번만 보내고 인용도 그때 정해지므로(answer.py `ClaimLines`), 뒤 문장은 이 문장만 인용할 수 있다."""
+        cards = [*self.st.emitted_sources, *(self.lines.sent_cards.values() if self.lines else [])]
+        return {g["source_id"]: g["quote"] for g in cards if g.get("source_id") and g.get("quote")}
+
     def _guide_candidates(self) -> list[dict[str, str]]:
         """답 쓰기에 줄 자료 문장 후보: 이 실행의 자료 검색이 돌려준 카드(찾은 순서, 중복 없음)의 문장을 원문 그대로.
 
@@ -1534,8 +1540,13 @@ class Loop:
             order.extend(s for s in v.get("source_ids") or [] if s not in order)
         out: list[dict[str, str]] = []
         cap = self.cfg.max_guide_candidates
+        shown = self.shown_quotes()
         for sid in order:
             sents = self._card_sentences(sid)
+            if sid in shown:
+                # 이미 보인 카드는 보인 인용 문장만 후보로 준다(한 카드는 한 문장만 인용, answer.py 인용 고정)
+                only = [x for x in sents if x["sentence"][:300] == shown[sid][:300]]
+                sents = only or sents
             if out and len(out) + len(sents) > cap:
                 break
             out.extend(sents)

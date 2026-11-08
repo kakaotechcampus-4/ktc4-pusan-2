@@ -95,9 +95,7 @@
     "expected": [
       "g-08"
     ],
-    "acceptable": [
-      "g-10"
-    ],
+    "acceptable": [],
     "screen": null,
     "kind": "method",
     "split": "test",
@@ -106,12 +104,10 @@
   {
     "id": "r-009",
     "query": "오프닝 청중 관심 끄는 방법",
-    "expected": [
-      "g-09"
-    ],
+    "expected": [],
     "acceptable": [],
     "screen": null,
-    "kind": "method",
+    "kind": "none",
     "split": "dev",
     "style": "keyword"
   },
@@ -121,9 +117,7 @@
     "expected": [
       "g-10"
     ],
-    "acceptable": [
-      "g-11"
-    ],
+    "acceptable": [],
     "screen": null,
     "kind": "method",
     "split": "test",
@@ -301,7 +295,8 @@
       "g-04"
     ],
     "acceptable": [
-      "g-15"
+      "g-15",
+      "g-11"
     ],
     "screen": null,
     "kind": "method",
