@@ -1,3 +1,5 @@
+import { joinScriptBlocks } from '../create/lib/draft';
+
 /** #931: 튜토리얼 발표의 단일 원본. 슬라이드와 대본의 순서를 반드시 같이 유지합니다. */
 export const FIRST_TAKE_TITLE = '[튜토리얼] 치치와 함께하는 First Take';
 export const FIRST_TAKE_TIME_SEC = 180;
@@ -62,6 +64,4 @@ export const FIRST_TAKE_SLIDES = [
   },
 ] as const;
 
-export const FIRST_TAKE_SCRIPT = FIRST_TAKE_SLIDES.map(
-  (slide, index) => `[슬라이드 ${index + 1}]\n${slide.script}`,
-).join('\n\n');
+export const FIRST_TAKE_SCRIPT = joinScriptBlocks(FIRST_TAKE_SLIDES.map((slide) => slide.script));
