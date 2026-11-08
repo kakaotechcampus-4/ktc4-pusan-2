@@ -214,19 +214,30 @@ test.describe('8. 취소 · 화면 이탈 뒤 복원 · AGENT_DISABLED · 시간
     await ask(panel, '지난번보다 뭐가 나아졌어?');
     await expect(panel.getByRole('button', { name: '취소', exact: true })).toBeVisible();
 
-    // 앱 안의 링크로 다른 화면에 갔다가 돌아옵니다 — 전체 새로고침은 목 서버(MSW)의 메모리 상태까지 지워서 쓰지 않습니다
-    await page
-      .getByRole('navigation', { name: '홈 메뉴' })
-      .getByRole('link', { name: 'Take 기록' })
-      .click();
-    await expect(page).toHaveURL(/\/takes$/);
-    await page.getByRole('navigation').getByRole('link', { name: '내 피치' }).click();
+    // 대화를 쓰지 않는 화면(개인정보 처리방침)으로 갔다가 돌아옵니다 — 대화창 · 연결이 내려갔다가 새로 만들어집니다.
+    // 앱 안에서 옮깁니다(pushState · 뒤로 가기). 전체 새로고침은 목 서버(MSW)의 메모리 상태까지 지워서 쓰지 않습니다
+    const sends: string[] = [];
+    page.on('request', (r) => {
+      if (isSend(r.url(), r.method())) sends.push(r.url());
+    });
+    await page.evaluate(
+      "history.pushState(null, '', '/privacy'); dispatchEvent(new PopStateEvent('popstate'))",
+    );
+    await expect(page.getByRole('heading', { level: 1, name: '개인정보 처리방침' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '채팅 에이전트' })).toHaveCount(0);
+
+    await page.goBack();
     await expect(page).toHaveURL(/\/$/);
     const again = page.getByRole('dialog', { name: '채팅 에이전트' });
     if (!(await again.isVisible())) await openChat(page);
 
-    await expect(again.getByText('지난번보다 뭐가 나아졌어?', { exact: true })).toBeVisible();
-    await expect(again.getByRole('list', { name: '근거' }).first()).toBeVisible();
+    // 다시 보내지 않고 같은 실행을 이어 받아, 끝난 답이 저장된 메시지로 보입니다
+    await expect(again.getByText('지난번보다 뭐가 나아졌어?', { exact: true })).toHaveCount(1);
+    await expect(
+      again.locator('[data-message]').getByRole('list', { name: '근거' }).first(),
+    ).toBeVisible();
+    expect(sends).toEqual([]);
   });
 
   test('꺼지면(AGENT_DISABLED) 문구 없이 버튼을 숨긴다', async ({ page }) => {
