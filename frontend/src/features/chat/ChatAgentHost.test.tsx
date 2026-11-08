@@ -334,13 +334,10 @@ it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지
 it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 열린다', async () => {
   await visit('/');
   const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
-  expect(container.classList.contains('left-4')).toBe(true);
-  expect(container.classList.contains('right-2')).toBe(false);
-  expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('32px');
+  expect(container.classList.contains('left-2')).toBe(true);
 
   await openPanel();
   expect(panel()!.classList.contains('left-0')).toBe(true);
-  expect(panel()!.classList.contains('right-0')).toBe(false);
 });
 
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {

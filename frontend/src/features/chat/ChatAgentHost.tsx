@@ -29,7 +29,12 @@ import {
   type EndNotice,
   type RunNotice,
 } from './chatNotices';
-import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
+import {
+  CHAT_LAUNCHER_CLASS,
+  chatLauncherBottom,
+  chatRouteOf,
+  type ChatRouteInfo,
+} from './chatRoutes';
 import { useChatStore } from './chatStore';
 import { useCanSend } from './useCanSend';
 import { sendLockReason } from './chatLock';
@@ -173,7 +178,7 @@ function ChatSessionView({
       // data-chat-launcher: 오류 경계 및 테스트가 공통 런처 위치를 식별하는 표시입니다
       data-chat-launcher=""
       style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
-      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] left-4 z-[70] text-ink"
+      className={CHAT_LAUNCHER_CLASS}
     >
       {open && (
         <ChatPanel
