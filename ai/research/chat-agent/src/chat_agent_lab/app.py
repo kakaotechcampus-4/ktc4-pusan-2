@@ -20,7 +20,7 @@ import secrets
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -70,7 +70,9 @@ def embedding_env(env_file: Path | None = ENV_FILE) -> EmbeddingEnv | None:
     return EmbeddingEnv(base, key, model) if base and key and model else None
 
 
-def make_embed_query(env: EmbeddingEnv, dims: int) -> Callable[[str, float], list[float]]:
+def make_embed_query(
+    env: EmbeddingEnv, dims: int
+) -> Callable[[Sequence[str], float], list[list[float]]]:
     """질문 임베딩 함수(서비스 `common/embedding.py` 와 같은 호출: 재시도 없음 · 호출마다 시간 제한)."""
     from pitch_coach_ai.common.embedding import embedder
 
@@ -99,7 +101,7 @@ class AgentApp:
     clock_ms: Callable[[], int] = field(default=lambda: int(time.time() * 1000))
     monotonic: Callable[[], float] = time.monotonic
     #: 질문 임베딩 함수(하이브리드 검색, 6-10). 없으면 키워드 검색만. 카드 벡터는 `corpus` 가 가진다
-    embed_query: Callable[[str, float], Any] | None = None
+    embed_query: Callable[[Sequence[str], float], Any] | None = None
 
     def __post_init__(self) -> None:
         self._slots = threading.BoundedSemaphore(self.max_concurrency)

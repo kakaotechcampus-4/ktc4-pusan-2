@@ -54,7 +54,7 @@ import json
 import logging
 import threading
 import time
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -121,7 +121,7 @@ def load_corpus(
 
 def attach_embeddings(
     corpus: Corpus | None, s: Settings, cfg: ChatAgentConfig = DEFAULT_CONFIG
-) -> tuple[Corpus | None, Callable[[str, float], Any] | None]:
+) -> tuple[Corpus | None, Callable[[Sequence[str], float], Any] | None]:
     """하이브리드 검색 준비: (카드 벡터를 붙인 자료 묶음, 질문 임베딩 함수).
 
     못 하면 (원래 묶음, None) = 키워드 검색만. 임베딩 묶음 설정(`OPENAI_EMBEDDING_*`)과 자료 묶음이
@@ -170,7 +170,7 @@ class AgentRuntime:
         *,
         llm: Any,
         corpus: Corpus | None,
-        embed_query: Callable[[str, float], Any] | None = None,
+        embed_query: Callable[[Sequence[str], float], Any] | None = None,
         secret: bytes | None,
         previous_secret: bytes | None,
         max_concurrency: int,

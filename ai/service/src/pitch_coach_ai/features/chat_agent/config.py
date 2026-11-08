@@ -856,6 +856,17 @@ class ChatAgentConfig(_Frozen):
     embed_min_seconds: float = 0.3
     #: 카드 · 질문 임베딩 차원(`dimensions` 인자). 자료 파일과 같아야 한다
     embed_dimensions: int = 1536
+    # ── 단계 사이 넘겨주기(자료 근거 답의 구체화, 각각 따로 켜고 꺼서 잰다) ─────────────────────
+    #: 계획 → 조사: 계획이 쓴 자료 검색어(`guide_queries`)를 조사 첫머리에 코드가 먼저 찾는다(질문 임베딩은 한 번에 묶어서)
+    plan_guide_queries: bool = True
+    #: 계획이 낼 수 있는 검색어 수(넘는 것은 자른다)
+    max_guide_queries: int = 3
+    #: 조사 → 답 쓰기: 이번 실행의 자료 검색이 돌려준 카드의 문장 후보(`guide_candidates`)를 답 쓰기 데이터 칸 끝에 준다
+    answer_guide_candidates: bool = True
+    #: 답 쓰기에 주는 문장 후보 수의 상한(문장 총합)
+    max_guide_candidates: int = 12
+    #: 검사 → 고치기: 걸린 문장에 이미 이은 근거의 화면 표기 값 · 이은 자료 카드의 문장 후보만 더해 준다(새 근거 · 자료 id 는 주지 않는다)
+    fix_materials: bool = True
 
     @model_validator(mode="after")
     def _goal_metrics_match_direction(self) -> ChatAgentConfig:

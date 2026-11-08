@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -73,11 +74,11 @@ def test_hybrid_searcher_passes_the_query_vector(tmp_path: Path) -> None:
 def test_runner_config_defaults_to_keyword_and_hybrid_world_gets_vectors() -> None:
     assert ev.RunnerConfig().search == "keyword"
     sc = next(s for s in scn.load_scenarios() if s.id == "guide-nervous")
-    calls: list[tuple[str, float]] = []
+    calls: list[tuple[list[str], float]] = []
 
-    def embed(text: str, timeout: float) -> list[float]:
-        calls.append((text, timeout))
-        return [1.0] + [0.0] * (DIMS - 1)
+    def embed(texts: Sequence[str], timeout: float) -> list[list[float]]:
+        calls.append((list(texts), timeout))
+        return [[1.0] + [0.0] * (DIMS - 1) for _ in texts]
 
     plain = ev._Ctx(sc, _noop_llm(), b"s" * 32, ev.RunnerConfig(repeat=1))
     assert not plain.be.app.corpus.has_vectors and plain.be.app.embed_query is None

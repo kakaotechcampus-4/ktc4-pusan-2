@@ -72,7 +72,7 @@ import sys
 import threading
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -485,7 +485,7 @@ class RunnerConfig:
     corpus_mode: str = "all"
     #: 자료 검색 방식(6-10): keyword(시험 · 재생 기본) · hybrid(키워드 + 임베딩, 질문 임베딩 함수 `embed_query` 와 카드 벡터가 필요)
     search: str = "keyword"
-    embed_query: Callable[[str, float], Any] | None = None
+    embed_query: Callable[[Sequence[str], float], Any] | None = None
     embedding_model: str | None = None
     embed_dims: int = DEFAULT_CONFIG.embed_dimensions
     #: 카드 벡터 파일(없으면 서비스가 읽는 `guides/embeddings.json`)

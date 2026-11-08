@@ -45,6 +45,7 @@ PLAN = """[단계: 계획]
 - talk_kind: route 가 SMALL_TALK 일 때만 GREETING(인사) · THANKS(감사) · CAPABILITY(무엇을 할 수 있는지 묻는 말) · PRACTICE_INTENT(지금 연습하려는 뜻) · FAREWELL(작별) 중 하나, 그 밖에는 null. SMALL_TALK 면 plan · assessments 는 빈 목록이다.
 - scope_reason: route 가 OUT_OF_SCOPE 일 때만 아래 이유 중 하나(필수), 그 밖에는 null.
 - plan: 할 일 목록 1~8단계(조사가 필요할 때만, 쉬운 질문은 빈 목록). 단계 이름은 60자 이하, 첫 단계 상태 DOING, 나머지 TODO.
+- guide_queries: 사용자가 발표법 · 사용법 조언을 묻거나(KNOWLEDGE 판단이 자료 근거를 필요로 할 때 포함) 그 조언의 근거 자료가 필요할 때만, 자료 카드가 쓸 법한 낱말로 짧고 구체적인 한국어 검색어를 0~3개(예: "긴장 호흡 첫 문장", "말 속도 쉼"). 사용자 말 문장을 그대로 옮기지 않는다. 기록만 묻는 말이거나 자료가 필요 없으면 빈 목록. 코드가 이 검색어로 조사 첫머리에 자료를 먼저 찾는다.
 - assessments: 사용자 말 속 주장 · 요청마다 판단 초안 하나. 측정 항목(시선 · 대본 · 속도 · 쉼 · 군더더기 · 목소리 · 시간 · 내용)을 말한 절마다 그 절을 덮는 판단이 있어야 한다.
   - quote: 사용자 말 원문의 부분 문자열을 글자 그대로(한 절만).
   - type: MEASURED(내 Take 의 측정 사실 · 평가 주장. '좋아졌지?' · '잘 봤지?'처럼 사용자가 내세운 사실 · 평가가 맞는지 묻는 질문도 MEASURED) · PREFERENCE(내 방식 · 기준 의견) · KNOWLEDGE(발표법 일반 주장) · REQUEST(요청과 정보 질문: '3장 어땠어?' · '몇 %였어?' · '뭐가 문제야?'처럼 내세운 사실 없이 묻는 말, 방법 · 조언 질문, 목표 저장 · 연습 이동 · 다시 평가 요청, '~하지 마' 같은 지시).
@@ -80,7 +81,7 @@ ANSWER = """[단계: 답 쓰기]
 - claims: 화면에 나갈 문장들(순서대로). 문장 하나에 사실 하나.
   - RECORD: 내 기록 이야기. evidence_ids 에 그 문장의 숫자 · Take · 장 · 지표가 나온 근거 id 를 모두 넣는다. 근거 없는 숫자를 쓰지 않는다. 지표 · 문제 종류는 도구 결과의 label(예: 청중 시선 · 대본 응시)로 쓰고 키(audience_ratio · GAZE_ON_SCRIPT)를 쓰지 않는다. compare_takes 가 비교할 수 없다고 하면 그 까닭 문장은 코드가 붙이므로 쓰지 않는다(필요하면 비교할 수 있는 다른 Take 를 말한다). 다른 피치끼리 비교해 달라고 하면 '발표가 달라 수치를 비교하지 않아요'처럼 까닭을 먼저 쓰고 피치마다 따로 쓴다.
   - 측정값 이의('카메라가 낮았어' · '시선 잘 봤어')로 다시 평가를 요청했으면 코드가 "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요"를 붙인다. 그 문장은 쓰지 말고 까닭(측정값은 다시 평가해도 같다)과 다음 Take 에서 확인할 방법만 쓴다.
-  - GUIDE: 발표법 · 사용법 조언. source_ids 에 자료 id, quote 에 그 자료 카드의 text(search_guides 결과)에서 문장 하나를 글자 그대로 복사해 넣는다(고쳐 쓰거나 줄이지 않는다. 카드 text 에 없는 quote 면 그 문장은 버려진다). 문장 text 는 자연스러운 한국어로 풀어 써도 되지만 quote 의 뜻에서 벗어나지 않는다. 문장 속 큰따옴표 안은 자료 원문 그대로 쓴다.
+  - GUIDE: 발표법 · 사용법 조언. source_ids 에 자료 id, quote 에 그 자료 카드의 text(search_guides 결과)에서 문장 하나를 글자 그대로 복사해 넣는다(고쳐 쓰거나 줄이지 않는다. 카드 text 에 없는 quote 면 그 문장은 버려진다). <research> 뒤에 guide_candidates 가 있으면, quote 는 이은 자료(source_ids)의 guide_candidates 문장(sentence) 중 하나여야 한다(그 문장을 글자 그대로 복사한다). 문장 text 는 자연스러운 한국어로 풀어 써도 되지만 quote 의 뜻에서 벗어나지 않는다. 문장 속 큰따옴표 안은 자료 원문 그대로 쓴다.
   - GUIDE 가 아닌 문장은 quote 를 null 로 둔다.
   - ASSESSMENT: 판단 하나의 설명(assessment_index 로 판단 순서). 판단마다 하나씩, claims 맨 앞에 판단 순서대로 쓴다(다른 종류 뒤에 쓴 설명은 버려진다). 판단의 첫 문장은 코드가 쓰므로, 여기에는 그 뒤에 붙일 관측 사실 · 연습 제안만 쓴다(없으면 빈 문자열). 판정과 반대되는 말 · '충분히 · 사실상 · 거의 · 괜찮' 같은 흐리는 말을 쓰지 않는다.
   - CONCLUSION: 비교 결론. text 는 비우고 comparison_evidence_id 에 compare_takes 결과의 evidence_by_role.outcome 을 넣는다.
@@ -98,6 +99,7 @@ ANSWER = ANSWER + "\n" + SCOPE
 
 FIX = """[단계: 고치기]
 아래 <fix> 의 문장들이 검사에 걸렸다. 걸린 까닭을 보고 그 문장만 고친다. 근거에 없는 숫자는 빼거나 근거 값으로 바꾸고, 인용은 자료 원문 그대로 쓴다.
+문장에 values(이미 이은 근거의 화면 표기 값)가 있으면 숫자는 그 표기 그대로 쓴다. GUIDE 문장에 card_sentences(이미 이은 자료 카드의 문장)가 있으면 인용은 그 문장을 글자 그대로 쓴다.
 새 근거 id · 새 행동 · 새 문장을 더하지 않는다. 자료 근거(GUIDE) 문장은 인용 문장(quote)의 뜻에서 벗어나게 고치지 않는다. 문장 글에 근거 · 자료 id 를 쓰지 않는다. 고칠 수 없으면 text 를 null 로 둔다. JSON 으로 낸다."""
 
 _ASSESSMENT_DRAFT = {
@@ -184,9 +186,17 @@ PLAN_SCHEMA = {
                     "additionalProperties": False,
                 },
             },
+            "guide_queries": {"type": "array", "items": {"type": "string"}},
             "assessments": {"type": "array", "items": _ASSESSMENT_DRAFT},
         },
-        "required": ["route", "talk_kind", "scope_reason", "plan", "assessments"],
+        "required": [
+            "route",
+            "talk_kind",
+            "scope_reason",
+            "plan",
+            "guide_queries",
+            "assessments",
+        ],
         "additionalProperties": False,
     },
 }

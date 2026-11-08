@@ -222,13 +222,13 @@ class Embedder:
     def __init__(self, vec: Sequence[float] | Exception, clock: Any = None, takes: float = 0.0):
         self.vec, self.calls, self.clock, self.takes = vec, [], clock, takes
 
-    def __call__(self, text: str, timeout: float) -> Sequence[float]:
-        self.calls.append((text, timeout))
+    def __call__(self, texts: Sequence[str], timeout: float) -> list[Sequence[float]]:
+        self.calls.append((list(texts), timeout))
         if self.clock is not None:
             self.clock.advance(self.takes)
         if isinstance(self.vec, Exception):
             raise self.vec
-        return self.vec
+        return [self.vec for _ in texts]
 
 
 def _ctx(vcorpus: Corpus, embed: Any, *, left: float | None = 30.0, clock: F.Clock | None = None):
@@ -251,7 +251,7 @@ def test_embeds_once_and_reuses_the_vector_only_for_the_same_query(vcorpus: Corp
     ctx = _ctx(vcorpus, emb, clock=clock)
     res, _ = run(ctx, "search_guides", {"query": KEYWORD_Q})
     assert _diag(res) == ("OK", 250, "HYBRID") and ctx.embed_used
-    assert emb.calls == [(KEYWORD_Q, DEFAULT_CONFIG.embed_timeout_seconds)]
+    assert emb.calls == [([KEYWORD_Q], DEFAULT_CONFIG.embed_timeout_seconds)]
     # 같은 질문(화면만 같고 캐시 열쇠는 다른 경우를 흉내: 캐시를 비운다) → 벡터를 다시 쓴다
     ctx.tool_cache.clear()
     res, _ = run(ctx, "search_guides", {"query": KEYWORD_Q})
@@ -474,7 +474,7 @@ def test_service_bad_dims_and_missing_file_are_keyword_only(
 
 
 def test_runtime_passes_the_embedder_into_turn_deps() -> None:
-    f = lambda text, timeout: [0.0]  # noqa: E731
+    f = lambda texts, timeout: [[0.0]]  # noqa: E731
     rt = api.AgentRuntime(
         llm=None,
         corpus=None,

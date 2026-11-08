@@ -39,6 +39,7 @@ from . import claims as clm
 from . import compose, memory, prompts, templates
 from .budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
 from .config import ChatAgentConfig
+from .corpus import sentence_spans
 from .diagnostics import DiagRecorder, code_enum, finish_code
 from .evidence import EvidenceRegistry
 from .goals import judge_goal
@@ -71,6 +72,7 @@ from .tools import (
     run_tool,
     validate_args,
 )
+from .tools.impl import embed_planned_queries
 from .version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
 
 DEFAULT_PLAN = [
@@ -156,6 +158,8 @@ class LoopState:
     not_comparable: list[dict[str, Any]] = field(default_factory=list)
     #: 이 실행에서 질문 임베딩을 이미 불렀는가(실행당 한 번, 6-10). 옛 상태에는 없어 False 로 읽는다
     embed_used: bool = False
+    #: 계획이 쓴 자료 검색어(조사 첫머리에 코드가 먼저 찾는다, 6-10). 이어 부른 뒤에도 같은 목록을 쓴다. 옛 상태에는 없어 빈 목록
+    guide_queries: list[str] = field(default_factory=list)
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -181,7 +185,7 @@ class TurnDeps:
     cfg: ChatAgentConfig
     log: Callable[[dict[str, Any]], None] = lambda _l: None
     #: 질문 임베딩 함수(글, 시간 제한 초 → 벡터, 실패하면 예외). 없으면 키워드 검색만 한다(6-10)
-    embed_query: Callable[[str, float], Sequence[float]] | None = None
+    embed_query: Callable[[Sequence[str], float], Sequence[Sequence[float]]] | None = None
 
 
 @dataclass
@@ -588,6 +592,11 @@ class Loop:
         if route == "OUT_OF_SCOPE":
             self.scope_reason = parsed.get("scope_reason")
         self.st.drafts = [d.model_dump(mode="json") for d in drafts]
+        self.st.guide_queries = (
+            self._clean_guide_queries(parsed.get("guide_queries"))
+            if route == "RESEARCH" and self.cfg.plan_guide_queries
+            else []
+        )
         if route == "RESEARCH":
             self._set_plan(
                 parsed.get("plan") if plan_ok and parsed.get("plan") else DEFAULT_PLAN, edit=False
@@ -595,6 +604,16 @@ class Loop:
         elif plan_ok and parsed.get("plan"):
             self._set_plan(parsed["plan"], edit=False)
         return route
+
+    def _clean_guide_queries(self, raw: Any) -> list[str]:
+        """계획이 쓴 자료 검색어를 거른다: 글자 아닌 것 · 빈 것 · 중복을 빼고, 도구 인자 한도(200자)로 자르고, 개수 상한으로 자른다."""
+        if not isinstance(raw, list):
+            return []
+        out: list[str] = []
+        for q in raw:
+            if isinstance(q, str) and q.strip() and q.strip()[:200] not in out:
+                out.append(q.strip()[:200])
+        return out[: self.cfg.max_guide_queries]
 
     def _small_talk_kind(self, kind: Any, drafts: list[clm.AssessmentDraft]) -> str | None:
         """계획이 고른 가벼운 말을 코드가 한 번 더 본다(P-0008 5-1 · 레드팀 '말 전체가 가벼운 말일 때만').
@@ -896,6 +915,46 @@ class Loop:
         - 이미 낸 요청은 `prefetched`에 남겨 이어 부른 뒤에도 다시 내지 않는다. 결과는 모델이 고른 호출과 같은 길(캐시 ·
           한도 · 근거 · 도구 기록)로 처리한다.
         """
+        records = self._prefetch_record_calls()
+        # 자료 검색은 앞에 둔다: 기록을 가져오는 행동(fetch_take)은 한 번에 하나이고 그 뒤 요청은 실행하지 않는다
+        return [*self._guide_prefetch_calls(), *records]
+
+    def _guide_prefetch_calls(self) -> list[ToolCall]:
+        """계획이 쓴 자료 검색어(`guide_queries`)를 코드가 먼저 찾을 요청 목록(6-10). 기록 요청과 같은 한도(`research_prefetch_max`)로 센다.
+
+        질문 임베딩은 이 검색어들을 한 번에 묶어 부른다(실행당 한 번). 이미 낸 검색어는 `prefetched`에 남겨 다시 내지 않는다.
+        자료 묶음이 없으면 내지 않는다(모델이 고른 검색과 같은 길로 처리한다).
+        """
+        if (
+            not self.cfg.plan_guide_queries
+            or not self.cfg.research_prefetch
+            or not self.st.guide_queries
+            or self.deps.corpus is None
+        ):
+            return []
+        todo: list[tuple[str, str]] = []
+        for q in self.st.guide_queries[: self.cfg.max_guide_queries]:
+            key = json.dumps(["search_guides", {"query": q}], sort_keys=True)
+            if key in self.st.prefetched or any(k == key for _, k in todo):
+                continue
+            if len(self.st.prefetched) + len(todo) >= self.cfg.research_prefetch_max:
+                break
+            todo.append((q, key))
+        if not todo:
+            return []
+        embed_planned_queries(self.ctx, [q for q, _ in todo])
+        out: list[ToolCall] = []
+        for q, key in todo:
+            self.st.prefetched.append(key)
+            out.append(
+                ToolCall(
+                    id=f"pf-{len(self.st.prefetched)}", name="search_guides", args={"query": q}
+                )
+            )
+        return out
+
+    def _prefetch_record_calls(self) -> list[ToolCall]:
+        """`_prefetch_calls` 의 기록 읽기 부분(위 설명)."""
         if not self.cfg.research_prefetch or self.ctx.pitch is None:
             return []
         if self.st.scope_switched or self.ctx.scope_switched:
@@ -1358,6 +1417,17 @@ class Loop:
                 + "\n</research>",
             },
         ]
+        cands = self._guide_candidates() if self.cfg.answer_guide_candidates else []
+        if cands:
+            # 문장 후보는 맨 끝에 둔다(긴 입력의 가운데에 묻히지 않게). 고치기는 이 메시지를 빼고 걸린 문장에 이은 카드의 후보만 준다
+            msgs.append(
+                {
+                    "role": "user",
+                    "content": GUIDE_CANDIDATES_TAG
+                    + json.dumps(cands, ensure_ascii=False, separators=(",", ":"))
+                    + "\n</guide_candidates>",
+                }
+            )
         res = self._call("ANSWER", msgs, schema=prompts.ANSWER_SCHEMA, sink=sink)
         if not isinstance(res, LlmResult) or res.parsed is None:
             refused = isinstance(res, LlmRefused)
@@ -1371,30 +1441,82 @@ class Loop:
     def _evidence_table(self) -> list[dict[str, Any]]:
         """이번 턴에 읽은 최신 기록 · 화면 근거를 한 줄씩(최대 40줄): id · Take · 장 · 무엇(지표 · 문제 이름) · 화면 표기 값."""
         reg = self.ctx.registry
-        rows: list[dict[str, Any]] = []
-        for eid, ev in reg.items.items():
-            if not reg.is_current(eid) or ev.origin == "COMPUTED":
+        rows = [self._evidence_row(eid) for eid in reg.items]
+        return [r for r in rows if r is not None][-40:]
+
+    def _evidence_row(self, eid: str) -> dict[str, Any] | None:
+        """근거 표의 한 줄(id · Take · 장 · 무엇 · 화면 표기 값). 지금 판이 아니거나 코드가 계산한 값이면 None."""
+        reg = self.ctx.registry
+        ev = reg.items.get(eid)
+        if ev is None or not reg.is_current(eid) or ev.origin == "COMPUTED":
+            return None
+        if ev.metric:
+            what = compose.metric_label(ev.metric)
+        elif ev.path.endswith(".issue_type") and isinstance(ev.value, str):
+            what = "문제 구간: " + clm.ISSUE_LABEL.get(ev.value, ev.value)
+        else:
+            what = ev.path.rsplit(".", 1)[-1]
+        shown = compose.value_display(self.ctx, ev)
+        return {
+            "id": eid,
+            "take": ev.take_number,
+            "slide": ev.slide_number,
+            "what": what,
+            # 화면 표기를 만들 수 없는 값(지표가 없는 화면 숫자 등)은 저장된 값 그대로 · 단위와 함께 보인다(값이 없다고 읽히지 않게)
+            "value": shown if shown is not None else ev.value,
+            **({"unit": ev.unit} if shown is None and ev.unit else {}),
+            **({"saved": ev.saved} if ev.origin == "SCREEN" else {}),
+        }
+
+    def _card_sentences(self, source_id: str) -> list[dict[str, str]]:
+        """자료 카드의 문장을 원문 그대로 한 줄씩(`{source_id, title, sentence}`). 카드가 없으면 빈 목록."""
+        card = getattr(self.deps.corpus, "get", lambda _s: None)(source_id)
+        if card is None:
+            return []
+        return [
+            {"source_id": source_id, "title": card.title, "sentence": card.text[s:e].strip()}
+            for s, e in sentence_spans(card.text)
+            if card.text[s:e].strip()
+        ]
+
+    def _guide_candidates(self) -> list[dict[str, str]]:
+        """답 쓰기에 줄 자료 문장 후보: 이 실행의 자료 검색이 돌려준 카드(찾은 순서, 중복 없음)의 문장을 원문 그대로.
+
+        카드는 통째로만 싣고 합이 `max_guide_candidates` 를 넘기 전에 멈춘다(첫 카드가 혼자 넘으면 앞에서부터 자른다).
+        검색 결과는 도구 캐시(이어 불러도 남는다)에서 읽는다.
+        """
+        order: list[str] = []
+        for k, v in self.ctx.tool_cache.items():
+            if json.loads(k).get("tool") != "search_guides" or not v.get("ok"):
                 continue
-            if ev.metric:
-                what = compose.metric_label(ev.metric)
-            elif ev.path.endswith(".issue_type") and isinstance(ev.value, str):
-                what = "문제 구간: " + clm.ISSUE_LABEL.get(ev.value, ev.value)
-            else:
-                what = ev.path.rsplit(".", 1)[-1]
-            shown = compose.value_display(self.ctx, ev)
-            rows.append(
-                {
-                    "id": eid,
-                    "take": ev.take_number,
-                    "slide": ev.slide_number,
-                    "what": what,
-                    # 화면 표기를 만들 수 없는 값(지표가 없는 화면 숫자 등)은 저장된 값 그대로 · 단위와 함께 보인다(값이 없다고 읽히지 않게)
-                    "value": shown if shown is not None else ev.value,
-                    **({"unit": ev.unit} if shown is None and ev.unit else {}),
-                    **({"saved": ev.saved} if ev.origin == "SCREEN" else {}),
-                }
-            )
-        return rows[-40:]
+            order.extend(s for s in v.get("source_ids") or [] if s not in order)
+        out: list[dict[str, str]] = []
+        cap = self.cfg.max_guide_candidates
+        for sid in order:
+            sents = self._card_sentences(sid)
+            if out and len(out) + len(sents) > cap:
+                break
+            out.extend(sents)
+            if len(out) >= cap:
+                break
+        return out[:cap]
+
+    def _fix_materials(self, claim: dict[str, Any]) -> dict[str, Any]:
+        """고치기에 걸린 문장 하나에 더해 줄 자료: 그 문장에 이미 이은 근거의 화면 표기 값, GUIDE 문장이면 이미 이은 카드의 문장 후보.
+        새 근거 · 자료 id 는 주지 않는다(문장에 이어 있지 않은 것은 담지 않는다)."""
+        extra: dict[str, Any] = {}
+        rows = [r for r in (self._evidence_row(e) for e in claim.get("evidence_ids") or []) if r]
+        if rows:
+            extra["values"] = rows
+        if claim.get("kind") == "GUIDE":
+            sents = [
+                {"source": x["source_id"], "sentence": x["sentence"]}
+                for sid in claim.get("source_ids") or []
+                for x in self._card_sentences(sid)
+            ]
+            if sents:
+                extra["card_sentences"] = sents[: self.cfg.max_guide_candidates]
+        return extra
 
     def _evidence_metrics(self, eid: str) -> set[str]:
         """근거가 말하는 지표: 지표 값은 그 지표, 문제 구간은 그 문제의 지표(`issue_metrics`), 차원 상태는 그 차원의 지표."""
@@ -1455,6 +1577,11 @@ class Loop:
                 "text": draft_claims[f.claim_index]["text"],
                 "check": f.check_id,
                 "reason": f.reason,
+                **(
+                    self._fix_materials(draft_claims[f.claim_index])
+                    if self.cfg.fix_materials
+                    else {}
+                ),
             }
             for f in failures
             if f.claim_index is not None and f.claim_index < len(draft_claims)
@@ -1463,7 +1590,12 @@ class Loop:
             return None
         fix_msgs = [
             self._system(prompts.FIX),
-            *msgs[1:],
+            # 답 쓰기의 문장 후보(전체 카드)는 고치기에 주지 않는다. 걸린 문장에 이은 카드의 후보만 문장 옆에 붙는다
+            *(
+                m
+                for m in msgs[1:]
+                if not str(m.get("content", "")).startswith(GUIDE_CANDIDATES_TAG)
+            ),
             {
                 "role": "user",
                 "content": "<fix>\n" + json.dumps(items, ensure_ascii=False) + "\n</fix>",
@@ -1507,6 +1639,10 @@ class Loop:
             return None
         items = res.parsed.get("items")
         return items if isinstance(items, list) else None
+
+
+#: 답 쓰기에 주는 자료 문장 후보 메시지의 머리 표시(고치기가 이 메시지를 빼는 데도 쓴다)
+GUIDE_CANDIDATES_TAG = "<guide_candidates>\n"
 
 
 def _script_points_removed(card: dict[str, Any] | None) -> bool:

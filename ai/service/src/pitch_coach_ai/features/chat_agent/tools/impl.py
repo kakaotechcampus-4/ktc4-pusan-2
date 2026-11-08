@@ -806,6 +806,72 @@ def _is_timeout(exc: BaseException) -> bool:
     return isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower()
 
 
+def _embed_timeout(ctx: RunCtx) -> float:
+    """임베딩 호출 한 번의 시간 제한: min(`embed_timeout_seconds`, 조사에 남은 시간)."""
+    timeout = ctx.cfg.embed_timeout_seconds
+    if ctx.research_left is not None:
+        timeout = min(timeout, ctx.research_left())
+    return timeout
+
+
+def _embed_texts(
+    ctx: RunCtx, corpus: Any, texts: list[str]
+) -> tuple[list[Sequence[float] | None], str, int | None]:
+    """글 여러 개를 임베딩 호출 한 번으로 보낸다. 돌려주는 값: (글마다 벡터 또는 None, 상태, 걸린 ms).
+
+    상태는 OK · TIMEOUT · ERROR · BUDGET(남은 시간이 모자라 부르지 않음, 쓴 것으로 세지 않는다). 벡터 하나가 카드 벡터와
+    맞지 않으면(차원 불일치) 그 글만 None 이고 상태는 ERROR 다.
+    """
+    if _embed_timeout(ctx) < ctx.cfg.embed_min_seconds:
+        return [None] * len(texts), "BUDGET", None
+    timeout = _embed_timeout(ctx)
+    ctx.embed_used = True
+    started = ctx.monotonic()
+    try:
+        vecs = list(ctx.embed_query(texts, timeout))  # type: ignore[misc]
+        if len(vecs) != len(texts):
+            raise ValueError("embedding count differs from input count")
+    except Exception as exc:  # noqa: BLE001  # 어떤 실패든 키워드 검색으로 이어간다(예외 메시지는 남기지 않는다)
+        ms = max(0, int(round((ctx.monotonic() - started) * 1000)))
+        return [None] * len(texts), "TIMEOUT" if _is_timeout(exc) else "ERROR", ms
+    ms = max(0, int(round((ctx.monotonic() - started) * 1000)))
+    out: list[Sequence[float] | None] = []
+    status = "OK"
+    for v in vecs:
+        try:
+            out.append(corpus.prepare_query_vector(v))
+        except Exception:  # noqa: BLE001
+            out.append(None)
+            status = "ERROR"
+    return out, status, ms
+
+
+def embed_planned_queries(ctx: RunCtx, queries: Sequence[str]) -> None:
+    """계획이 쓴 검색어를 질문 임베딩 한 번에 묶어 받아 실행 안에 남긴다(실행당 임베딩 한 번, 6-10).
+
+    이 실행에서 이미 임베딩을 불렀거나 임베딩을 쓰지 않는 설정이면 아무것도 하지 않는다(그 검색어는 키워드로 찾는다).
+    글마다 상태를 `embed_planned` 에 남겨 검색 진단에 쓴다.
+    """
+    corpus = ctx.corpus
+    texts = list(dict.fromkeys(q for q in queries if q not in ctx.embed_cache))
+    if (
+        not texts
+        or ctx.embed_query is None
+        or not getattr(corpus, "has_vectors", False)
+        or ctx.embed_used
+    ):
+        return
+    vecs, status, ms = _embed_texts(ctx, corpus, texts)
+    for i, (q, v) in enumerate(zip(texts, vecs, strict=True)):
+        # 묶음 호출의 시간은 첫 글의 검색 진단에만 싣는다(한 번 부른 시간을 글 수만큼 세지 않게)
+        at = ms if i == 0 else None
+        if v is not None:
+            ctx.embed_cache[q] = v
+            ctx.embed_planned[q] = {"embed": "OK", "embed_ms": at}
+        else:
+            ctx.embed_planned[q] = {"embed": status if status != "OK" else "ERROR", "embed_ms": at}
+
+
 def _query_vector(
     ctx: RunCtx, corpus: Any, query: str
 ) -> tuple[Sequence[float] | None, dict[str, Any]]:
@@ -813,31 +879,28 @@ def _query_vector(
 
     돌려주는 `diag` 의 `embed`: OK(받음 · 같은 글로 다시 찾아 이미 받은 것을 씀) · TIMEOUT · ERROR(호출 실패) ·
     BUDGET(남은 시간이 모자라 건너뜀) · USED(이 실행에서 이미 불렀고 다른 글이라 건너뜀) · OFF(임베딩을 쓰지 않는 설정).
-    `embed_ms` 는 호출한 때만. 시간 제한은 min(`embed_timeout_seconds`, 조사에 남은 시간)이고 호출은 다시 시도하지 않는다.
+    `embed_ms` 는 호출한 때만(계획이 묶어 받은 글은 그 묶음 호출의 시간을 처음 쓰는 검색에만). 시간 제한은
+    min(`embed_timeout_seconds`, 조사에 남은 시간)이고 호출은 다시 시도하지 않는다.
     """
     cfg = ctx.cfg
     if ctx.embed_query is None or not getattr(corpus, "has_vectors", False):
         return None, {"embed": "OFF", "embed_ms": None}
+    planned = ctx.embed_planned.get(query)
+    if planned is not None:
+        # 계획이 묶어 임베딩한 글: 그 결과(받음이면 벡터, 아니면 실패 상태)를 그대로 쓴다
+        ms, planned["embed_ms"] = planned.get("embed_ms"), None
+        return ctx.embed_cache.get(query), {"embed": planned["embed"], "embed_ms": ms}
     if ctx.embed_used:
-        if ctx.embed_cache is not None and ctx.embed_cache[0] == query:
-            return ctx.embed_cache[1], {"embed": "OK", "embed_ms": None}
+        if query in ctx.embed_cache:
+            return ctx.embed_cache[query], {"embed": "OK", "embed_ms": None}
         return None, {"embed": "USED", "embed_ms": None}
-    timeout = cfg.embed_timeout_seconds
-    if ctx.research_left is not None:
-        timeout = min(timeout, ctx.research_left())
-    if timeout < cfg.embed_min_seconds:
+    if _embed_timeout(ctx) < cfg.embed_min_seconds:
         return None, {"embed": "BUDGET", "embed_ms": None}
-    ctx.embed_used = True
-    started = ctx.monotonic()
-    try:
-        vec = ctx.embed_query(query, timeout)
-        vec = corpus.prepare_query_vector(vec)
-    except Exception as exc:  # noqa: BLE001  # 어떤 실패든 키워드 검색으로 이어간다(예외 메시지는 남기지 않는다)
-        ms = max(0, int(round((ctx.monotonic() - started) * 1000)))
-        return None, {"embed": "TIMEOUT" if _is_timeout(exc) else "ERROR", "embed_ms": ms}
-    ms = max(0, int(round((ctx.monotonic() - started) * 1000)))
-    ctx.embed_cache = (query, vec)
-    return vec, {"embed": "OK", "embed_ms": ms}
+    vecs, status, ms = _embed_texts(ctx, corpus, [query])
+    if vecs[0] is None:
+        return None, {"embed": status, "embed_ms": ms}
+    ctx.embed_cache[query] = vecs[0]
+    return vecs[0], {"embed": "OK", "embed_ms": ms}
 
 
 def _search(ctx: RunCtx, a: SearchArgs) -> ToolResult:

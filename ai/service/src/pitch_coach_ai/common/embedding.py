@@ -4,8 +4,9 @@
   `tools/build_guide_embeddings.py`(카드 벡터 한 번에 만들기). 기능 코어(`features/chat_agent/`)는
   이 파일을 가져오지 않는다. 서비스 계층이 만든 함수만 `TurnDeps.embed_query` 로 받는다.
 - 하는 일: `openai` SDK 로 `embeddings.create` 를 부른다(모델 · 주소 · 키는 `OPENAI_EMBEDDING_*`
-  묶음, `settings.py`). 재시도하지 않는다(`max_retries=0`): 질문 임베딩은 실행당 한 번이고 실패하면
-  키워드 검색으로 이어가므로 다시 부르는 시간이 아깝다. 호출마다 시간 제한(초)을 받는다.
+  묶음, `settings.py`). 재시도하지 않는다(`max_retries=0`): 질문 임베딩은 실행당 한 번
+  (계획한 검색어는 묶어서)이고 실패하면 키워드 검색으로
+  이어가므로 다시 부르는 시간이 아깝다. 호출마다 시간 제한(초)을 받는다.
   SDK 의 시간 제한은 연결 · 읽기 단계마다라, 작은 요청의 총 시간은 그 값에 가깝다.
 - 실패는 예외로 올린다(시간 초과는 `openai.APITimeoutError`). 로그 · 예외에 입력 글 · 키를
   넣지 않는다.
@@ -46,18 +47,28 @@ def embed_batch(
 
 def embedder(
     *, base_url: str, api_key: str, model: str, dims: int
-) -> Callable[[str, float], list[float]]:
-    """질문 임베딩 함수 `(글, 시간 제한 초) → 벡터`. 실패하면 예외(재시도 없음)."""
+) -> Callable[[Sequence[str], float], list[list[float]]]:
+    """질문 임베딩 함수 `(글 목록, 시간 제한 초) → 벡터 목록(입력 순서)`.
+
+    요청 한 번으로 묶어 보낸다. 실패하면 예외(재시도 없음).
+    """
     client = _client(base_url, api_key)
 
-    def embed(text: str, timeout: float) -> list[float]:
-        resp = client.embeddings.create(model=model, input=text, dimensions=dims, timeout=timeout)
-        return list(resp.data[0].embedding)
+    def embed(texts: Sequence[str], timeout: float) -> list[list[float]]:
+        resp = client.embeddings.create(
+            model=model, input=list(texts), dimensions=dims, timeout=timeout
+        )
+        data = sorted(resp.data, key=lambda d: d.index)
+        if len(data) != len(texts):
+            raise ValueError("embedding count differs from input count")
+        return [list(d.embedding) for d in data]
 
     return embed
 
 
-def make_embedder(settings: Settings, dims: int) -> Callable[[str, float], list[float]] | None:
+def make_embedder(
+    settings: Settings, dims: int
+) -> Callable[[Sequence[str], float], list[list[float]]] | None:
     """임베딩 묶음 설정이 있으면 질문 임베딩 함수, 없으면 None(키워드 검색만)."""
     bundle = settings.bundle("embedding")
     if bundle is None:

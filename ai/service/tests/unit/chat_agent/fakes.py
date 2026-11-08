@@ -106,6 +106,7 @@ def plan(
     assessments: list[dict[str, Any]] | None = None,
     scope_reason: str | None = None,
     talk_kind: str | None = None,
+    guide_queries: list[str] | None = None,
 ) -> LlmResult:
     steps = steps if steps is not None else ["기록 확인", "답 쓰기"]
     return structured(
@@ -117,6 +118,7 @@ def plan(
                 {"step": s, "status": "DOING" if i == 0 else "TODO", "note": None}
                 for i, s in enumerate(steps)
             ],
+            "guide_queries": guide_queries or [],
             "assessments": assessments or [],
         }
     )

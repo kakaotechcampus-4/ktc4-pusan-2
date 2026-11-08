@@ -591,7 +591,15 @@ class Composer:
         fixed_texts: dict[int, str | None] | None = None
         if fixable:
             # 고치기 호출의 문장 번호는 이 답의 본문 전체(이미 낸 문장 포함) 기준이다. 낸 문장은 고치라고 하지 않는다
-            texts = [{"text": c.text} for c in [*self.sent, *rest]]
+            texts = [
+                {
+                    "text": c.text,
+                    "kind": c.kind,
+                    "evidence_ids": list(c.evidence_ids),
+                    "source_ids": list(c.source_ids),
+                }
+                for c in [*self.sent, *rest]
+            ]
             shifted = [dataclasses.replace(f, claim_index=pos(f.claim_index)) for f in fixable]
             got = lp.fix_call(messages, texts, shifted, fix_for=check_seqs)
             if got is not None:
