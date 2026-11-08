@@ -974,6 +974,15 @@
   }
 }
 @container gzc (max-height: 560px) {
+  /* Compact the lens hint before the 72px target, whose box begins at y=48px. */
+  .gzc-lens {
+    top: 6px;
+    padding: 4px 8px;
+  }
+  .gzc-lens em {
+    margin-top: 0;
+    line-height: 1.2;
+  }
   .gzc-script {
     height: 110px;
   }
