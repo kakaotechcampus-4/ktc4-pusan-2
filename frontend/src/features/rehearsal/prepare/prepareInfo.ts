@@ -101,9 +101,17 @@ export function newerScriptNotice(info: PrepareInfo): string | null {
  *
  * 최신 조합으로 시작할 수 없거나(`prepareProblem`) 어느 한쪽이라도 조합보다 낮으면(서로 엇갈리면) 알리지 않습니다 —
  * 무엇이 "최신"인지 말할 수 없습니다.
+ *
+ * 서버 id 가 둘 다 같으면 번호와 관계없이 같은 조합입니다. 조합의 번호는 수정 화면 번호라, 같은 버전의 매핑을 고쳐
+ * 다시 올리면 서버 번호만 앞서갑니다(`ScriptVersion.remote`) — 번호만 견주면 같은 조합에도 안내가 뜹니다.
  */
 export function newerComboNotice(combo: PracticeCombo, info: PrepareInfo): string | null {
   if (!info.presentation || !info.script || prepareProblem(info) !== null) return null;
+  if (
+    combo.presentationVersionId === info.presentation.id &&
+    combo.scriptVersionId === info.script.id
+  )
+    return null;
   const slide = info.presentation.version;
   const script = info.script.version;
   if (slide < combo.slideVersion || script < combo.scriptVersion) return null;

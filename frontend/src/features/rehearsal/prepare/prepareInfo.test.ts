@@ -146,6 +146,16 @@ describe('넘겨받은 조합보다 새 조합이 있다는 안내', () => {
     expect(newerComboNotice(picked(2, 2), latest)).toBeNull();
   });
 
+  it('서버 id 가 같으면 화면 번호가 낮아도 같은 조합이라 알리지 않는다', () => {
+    // 수정 화면의 대본 V1 매핑을 고쳐 다시 올리면 서버에만 v2 가 생기고 화면 번호는 1 그대로입니다
+    const sameIds: PracticeCombo = {
+      ...picked(2, 1),
+      presentationVersionId: latest.presentation!.id,
+      scriptVersionId: latest.script!.id,
+    };
+    expect(newerComboNotice(sameIds, latest)).toBeNull();
+  });
+
   it('한쪽이라도 조합이 더 새 것이면(엇갈림) 무엇이 최신인지 말할 수 없어 알리지 않는다', () => {
     expect(newerComboNotice(picked(1, 3), latest)).toBeNull();
   });
