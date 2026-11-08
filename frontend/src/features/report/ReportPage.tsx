@@ -326,6 +326,9 @@ function slideList(numbers: number[]) {
   return unique.length ? unique.map((n) => `${n}번`).join(', ') : '없음';
 }
 
+/** 항상 발표 전체 기준으로만 산출되는 지표. 장별 값이 빠진 다른 지표와 구분합니다. */
+const OVERALL_ONLY_METRICS = new Set(['duration_ms', 'content_coverage', 'critical_fact_accuracy']);
+
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   const groups = comparisonGroups(rows);
   // AI가 대본 보기 차이를 모든 행에 싣더라도 안내는 한 번만 보여 줍니다.
@@ -361,7 +364,7 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
               {scriptModeLabel(mode.current)}). 비교는 참고만 해 주세요.
             </p>
           )}
-          <p className="text-sm text-ink/80">지표별로 지난 연습보다 달라진 슬라이드를 모았어요.</p>
+          <p className="text-sm text-ink/80">지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.</p>
           <div className="grid gap-4 lg:grid-cols-2">
             {groups
               .flatMap((g) => g.metrics)
@@ -377,17 +380,24 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                 const same = slides.filter((r) => trend(r) === TREND.same).length;
                 const unknown = slides.filter((r) => trend(r) === TREND.null).length;
                 const overall = metricRows.find((r) => r.slide_number === null);
+                const directionUnknown =
+                  slides.length > 0 && unknown === slides.length && same === 0;
                 return (
                   <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
                     <h3 className="font-bold">{metricLabel(metric)}</h3>
                     {slides.length > 0 ? (
-                      <>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                          <div className="bg-cream p-3">
+                      directionUnknown ? (
+                        <p className="mt-2 text-sm text-ink/80">
+                          개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
+                        </p>
+                      ) : (
+                        <>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                          <div className="border border-line-strong bg-panel p-3">
                             <p className="font-bold text-ink">나아진 슬라이드</p>
                             <p className="mt-1">{slideList(improved)}</p>
                           </div>
-                          <div className="bg-panel p-3">
+                          <div className="border border-line-strong bg-panel p-3">
                             <p className="font-bold text-ink">나빠진 슬라이드</p>
                             <p className="mt-1">{slideList(worsened)}</p>
                           </div>
@@ -399,10 +409,13 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                             {unknown > 0 && `방향 판단 불가 ${unknown}개`}
                           </p>
                         )}
-                      </>
+                        </>
+                      )
                     ) : (
                       <p className="mt-2 text-sm text-ink/80">
-                        {overall ? '발표 전체 기준 지표예요.' : '슬라이드별 비교 결과가 없어요.'}
+                        {overall && OVERALL_ONLY_METRICS.has(metric)
+                          ? '발표 전체 기준 지표예요.'
+                          : '슬라이드별 비교 결과가 없어요.'}
                       </p>
                     )}
                     {overall && (
@@ -421,7 +434,7 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
             onClick={() => setOpen(true)}
             className="min-h-11 w-fit border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
           >
-            슬라이드별 상세 비교표 보기
+            상세 비교표 보기
           </button>
           <dialog
             ref={dialogRef}

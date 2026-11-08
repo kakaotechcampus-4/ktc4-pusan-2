@@ -145,7 +145,7 @@ it('shows 같음, not 나빠짐, when the visible values are equal even if impro
 
 async function openComparisonDetail() {
   const button = [...host.querySelectorAll('button')].find((b) =>
-    b.textContent?.includes('슬라이드별 상세 비교표 보기'),
+    b.textContent?.includes('상세 비교표 보기'),
   )!;
   await act(async () => button.click());
 }
@@ -286,12 +286,40 @@ it('describes metrics reported only for the whole Take without suggesting missin
   expect(comparisonCard().textContent).not.toContain('슬라이드별 비교 데이터가 없어요.');
 });
 
+it('shows undetermined direction without falsely saying no slides improved or worsened', async () => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      { metric: 'pause_count', slide_number: 2, previous: 1, current: 3, improved: null, script_mode: null },
+    ],
+  };
+  await render();
+  const metric = [...comparisonCard().querySelectorAll('section')].find(
+    (section) => section.querySelector('h3')?.textContent === '멈춤',
+  )!;
+  expect(metric.textContent).toContain('개선·악화 방향을 판단할 수 없는 지표예요.');
+  expect(metric.textContent).not.toContain('나아진 슬라이드');
+  expect(metric.textContent).not.toContain('나빠진 슬라이드');
+});
+
+it('does not label a metric with missing slide details as whole-Take-only', async () => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      { metric: 'audience_ratio', slide_number: null, previous: 0.5, current: 0.7, improved: true, script_mode: null },
+    ],
+  };
+  await render();
+  expect(comparisonCard().textContent).toContain('슬라이드별 비교 결과가 없어요.');
+  expect(comparisonCard().textContent).not.toContain('발표 전체 기준 지표예요.');
+});
+
 it('restores focus after the detail dialog receives cancel and close events', async () => {
   await render();
   await openComparisonDetail();
   const dialog = host.querySelector('dialog')!;
   const trigger = [...host.querySelectorAll('button')].find((button) =>
-    button.textContent?.includes('슬라이드별 상세 비교표 보기'),
+    button.textContent?.includes('상세 비교표 보기'),
   )!;
   await act(async () => {
     const cancel = new Event('cancel', { cancelable: true });
@@ -306,7 +334,7 @@ it('restores focus to the detail trigger after closing the dialog', async () => 
   await render();
   await openComparisonDetail();
   const trigger = [...host.querySelectorAll('button')].find((button) =>
-    button.textContent?.includes('슬라이드별 상세 비교표 보기'),
+    button.textContent?.includes('상세 비교표 보기'),
   )!;
   const closeButton = host.querySelector<HTMLButtonElement>(
     'dialog button[aria-label="상세 비교 닫기"]',
