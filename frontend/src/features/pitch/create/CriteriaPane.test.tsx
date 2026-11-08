@@ -159,9 +159,7 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
     expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
       '대본을 읽으며 말하는 비율',
     );
-    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
-      '카메라가 필요해요',
-    );
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('카메라가 필요해요');
 
     await act(async () => {
       chips[7]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -280,24 +278,3 @@ it('지난 버전과 저장하지 않은 수정본을 실제 반영된 기준이
     await view.cleanup();
   }
 });
-
-/* FORMAT_PROBE_START */
-it('temporary Prettier output probe', async () => {
-  const prettier = await import('prettier');
-  const fs = await import('node:fs/promises');
-  const paths = [
-    'src/features/pitch/create/CriteriaPane.test.tsx',
-    'src/features/pitch/create/steps/CriteriaPane.tsx',
-  ];
-  for (const filepath of paths) {
-    const source = await fs.readFile(filepath, 'utf8');
-    const marker = '\n\n/* FORMAT_PROBE_START */';
-    const original = filepath.endsWith('CriteriaPane.test.tsx')
-      ? source.slice(0, source.indexOf(marker)) + '\n'
-      : source;
-    const config = (await prettier.resolveConfig(filepath)) ?? {};
-    const formatted = await prettier.format(original, { ...config, filepath });
-    console.log('FORMAT_PROBE|' + filepath + '|' + Buffer.from(formatted).toString('base64'));
-  }
-});
-/* FORMAT_PROBE_END */
