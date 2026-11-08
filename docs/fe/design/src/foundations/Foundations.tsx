@@ -3,13 +3,7 @@
  * CSS 변수(`var(--color-…)`)로 칠해 styles.css를 저장하면 바로 바뀐다. 쓰는 곳 · 규칙은 제품 코드를 보고 적었다.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import {
-  contrast,
-  lightOverrides,
-  themeGroups,
-  themeTokens,
-  type Token,
-} from './tokens';
+import { contrast, lightOverrides, themeGroups, themeTokens, type Token } from './tokens';
 
 function Page({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
   return (

@@ -13,13 +13,7 @@ const SEMINI_IMAGE = publicUrl('semini.png');
 const HEADER_ACTION =
   'grid h-11 w-10 shrink-0 place-items-center rounded-lg text-ink hover:bg-cream focus-visible:outline-2 focus-visible:outline-coral';
 
-export function SeminiScreen({
-  stateId,
-  onNavigate,
-}: {
-  stateId: string;
-  onNavigate: Navigate;
-}) {
+export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [draft, setDraft] = useState('');
   const isClosed = stateId === 'closed';
   const isHistory = stateId === 'history';
@@ -56,10 +50,43 @@ export function SeminiScreen({
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  <button type="button" className={HEADER_ACTION} aria-label="새 대화" onClick={() => { setDraft(''); onNavigate('semini', 'default'); }}>＋</button>
-                  <button type="button" className={HEADER_ACTION} aria-label="대화 목록" aria-pressed={isHistory} onClick={() => onNavigate('semini', 'history')}>◷</button>
-                  <button type="button" className={HEADER_ACTION} aria-label="기억 설정" aria-pressed={isMemory} onClick={() => onNavigate('semini', 'memory')}>⚙</button>
-                  <button type="button" className={HEADER_ACTION} aria-label="닫기" onClick={() => onNavigate('semini', 'closed')}>×</button>
+                  <button
+                    type="button"
+                    className={HEADER_ACTION}
+                    aria-label="새 대화"
+                    onClick={() => {
+                      setDraft('');
+                      onNavigate('semini', 'default');
+                    }}
+                  >
+                    ＋
+                  </button>
+                  <button
+                    type="button"
+                    className={HEADER_ACTION}
+                    aria-label="대화 목록"
+                    aria-pressed={isHistory}
+                    onClick={() => onNavigate('semini', 'history')}
+                  >
+                    ◷
+                  </button>
+                  <button
+                    type="button"
+                    className={HEADER_ACTION}
+                    aria-label="기억 설정"
+                    aria-pressed={isMemory}
+                    onClick={() => onNavigate('semini', 'memory')}
+                  >
+                    ⚙
+                  </button>
+                  <button
+                    type="button"
+                    className={HEADER_ACTION}
+                    aria-label="닫기"
+                    onClick={() => onNavigate('semini', 'closed')}
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
               <div className="mt-2 flex min-h-9 flex-wrap items-center justify-between gap-2 text-xs">
@@ -67,7 +94,12 @@ export function SeminiScreen({
                   대화 범위
                   <select
                     value={scope}
-                    onChange={(event) => onNavigate('semini', event.target.value === 'pitch' ? 'pitch-scope' : 'default')}
+                    onChange={(event) =>
+                      onNavigate(
+                        'semini',
+                        event.target.value === 'pitch' ? 'pitch-scope' : 'default',
+                      )
+                    }
                     aria-label="대화 범위"
                     className="rounded-lg border border-line-strong bg-white px-2 py-1"
                   >
@@ -80,7 +112,9 @@ export function SeminiScreen({
                     <input
                       type="checkbox"
                       checked={memoryOff}
-                      onChange={(event) => onNavigate('semini', event.target.checked ? 'memory-off' : 'default')}
+                      onChange={(event) =>
+                        onNavigate('semini', event.target.checked ? 'memory-off' : 'default')
+                      }
                     />
                     기억 없이 대화하기
                   </label>
@@ -91,10 +125,16 @@ export function SeminiScreen({
               {viewChat ? (
                 <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
                   <div className="mb-3 h-16 w-16 overflow-hidden rounded-2xl border border-line-strong bg-cream">
-                    <img src={SEMINI_IMAGE} alt="" className="h-full w-full object-cover [image-rendering:pixelated]" />
+                    <img
+                      src={SEMINI_IMAGE}
+                      alt=""
+                      className="h-full w-full object-cover [image-rendering:pixelated]"
+                    />
                   </div>
                   <p className="text-base font-bold">새미나이에게 물어보세요</p>
-                  <p className="mt-1 text-xs leading-5 text-stone">발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.</p>
+                  <p className="mt-1 text-xs leading-5 text-stone">
+                    발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.
+                  </p>
                   <div className="mt-5 flex w-full max-w-80 flex-col gap-2" aria-label="추천 질문">
                     {QUESTIONS.map((question) => (
                       <button
@@ -103,7 +143,9 @@ export function SeminiScreen({
                         onClick={() => setDraft(question)}
                         className="min-h-11 rounded-xl border border-line-strong bg-white px-3 py-2.5 text-left text-xs leading-5 text-ink transition-colors hover:border-coral hover:bg-coral-wash"
                       >
-                        <span aria-hidden="true" className="mr-2 font-bold text-coral-deep">↗</span>
+                        <span aria-hidden="true" className="mr-2 font-bold text-coral-deep">
+                          ↗
+                        </span>
                         {question}
                       </button>
                     ))}
@@ -112,8 +154,16 @@ export function SeminiScreen({
               ) : (
                 <div>
                   <h3 className="font-bold">{isHistory ? '대화 목록' : '기억 설정'}</h3>
-                  <p className="mt-3 text-sm">설계서에서는 실제 대화 기록과 기억 설정을 저장하지 않아요.</p>
-                  <button type="button" onClick={() => onNavigate('semini', 'default')} className="mt-4 underline">대화로 돌아가기</button>
+                  <p className="mt-3 text-sm">
+                    설계서에서는 실제 대화 기록과 기억 설정을 저장하지 않아요.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('semini', 'default')}
+                    className="mt-4 underline"
+                  >
+                    대화로 돌아가기
+                  </button>
                 </div>
               )}
             </div>
@@ -134,7 +184,9 @@ export function SeminiScreen({
                     disabled
                     title="설계서 미리보기에서는 실제 메시지를 전송하지 않습니다."
                     className="rounded-xl bg-coral-deep px-3 py-2 text-white opacity-50"
-                  >↑</button>
+                  >
+                    ↑
+                  </button>
                 </div>
               </div>
             )}
@@ -146,7 +198,11 @@ export function SeminiScreen({
           className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)]"
           aria-label={isClosed ? '새미나이 열기' : '새미나이 닫기'}
         >
-          <img src={SEMINI_IMAGE} alt="" className="h-full w-full object-cover [image-rendering:pixelated]" />
+          <img
+            src={SEMINI_IMAGE}
+            alt=""
+            className="h-full w-full object-cover [image-rendering:pixelated]"
+          />
         </button>
       </div>
     </div>

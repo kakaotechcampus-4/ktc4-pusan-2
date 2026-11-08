@@ -75,9 +75,13 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                 {index === 1 && (
                   <div className="mt-4 space-y-3">
                     <figure className="border border-line-strong bg-cream p-3">
-                      <figcaption className="mb-2 text-xs font-bold">시작 전 세팅 · 설명용 목업</figcaption>
+                      <figcaption className="mb-2 text-xs font-bold">
+                        시작 전 세팅 · 설명용 목업
+                      </figcaption>
                       <div className="grid gap-2 sm:grid-cols-[1.3fr_1fr]">
-                        <div className="flex aspect-video items-center justify-center border border-ink bg-stage text-xs text-white">① 카메라 · 시선 기준</div>
+                        <div className="flex aspect-video items-center justify-center border border-ink bg-stage text-xs text-white">
+                          ① 카메라 · 시선 기준
+                        </div>
                         <div className="space-y-2 text-xs">
                           <div className="border border-ink bg-white p-3">② 마이크 입력</div>
                           <div className="border border-ink bg-white p-3">③ 장치 점검</div>
@@ -85,14 +89,28 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                       </div>
                     </figure>
                     <figure className="border border-line-strong bg-cream p-3">
-                      <figcaption className="mb-2 text-xs font-bold">리허설 · 설명용 목업</figcaption>
+                      <figcaption className="mb-2 text-xs font-bold">
+                        리허설 · 설명용 목업
+                      </figcaption>
                       <div className="grid gap-2 sm:grid-cols-[1.5fr_1fr]">
-                        <div className="flex aspect-video items-center justify-center border border-ink bg-white text-xs">① 슬라이드 · ← → Space</div>
-                        <div className="space-y-2 text-xs"><div className="border border-ink bg-white p-2">② 카메라</div><div className="border border-ink bg-white p-2">③ 마이크</div><div className="border border-ink bg-coral-wash p-2">④ 피코 코치</div></div>
+                        <div className="flex aspect-video items-center justify-center border border-ink bg-white text-xs">
+                          ① 슬라이드 · ← → Space
+                        </div>
+                        <div className="space-y-2 text-xs">
+                          <div className="border border-ink bg-white p-2">② 카메라</div>
+                          <div className="border border-ink bg-white p-2">③ 마이크</div>
+                          <div className="border border-ink bg-coral-wash p-2">④ 피코 코치</div>
+                        </div>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><div className="border border-ink bg-white p-2">⑤ 대본</div><div className="border border-ink bg-white p-2">⑥ 키보드 이동 · ⑦ 종료</div></div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                        <div className="border border-ink bg-white p-2">⑤ 대본</div>
+                        <div className="border border-ink bg-white p-2">⑥ 키보드 이동 · ⑦ 종료</div>
+                      </div>
                     </figure>
-                    <p className="text-xs text-stone">실제 캡처가 아닌 안내용 시안입니다. 발표 중 대본 표시 모드와 종료 버튼의 위치를 확인해 주세요.</p>
+                    <p className="text-xs text-stone">
+                      실제 캡처가 아닌 안내용 시안입니다. 발표 중 대본 표시 모드와 종료 버튼의
+                      위치를 확인해 주세요.
+                    </p>
                   </div>
                 )}
               </div>

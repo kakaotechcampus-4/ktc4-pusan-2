@@ -9,13 +9,7 @@ const MISSION_CARDS = [
   ['MISSION 05', '첫 미션을 마무리할 시간', '끝까지 연습한 뒤 실제 분석 결과를 확인해 보세요.'],
 ] as const;
 
-export function TutorialScreen({
-  stateId,
-  onNavigate,
-}: {
-  stateId: string;
-  onNavigate: Navigate;
-}) {
+export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const pending = stateId === 'pending';
   const error = stateId === 'error';
 
@@ -82,7 +76,8 @@ export function TutorialScreen({
           </p>
         )}
         <p className="mt-6 text-xs text-stone">
-          설계서 전용 미리보기입니다. 실제 샘플 저장·폴링·PDF 생성 없이 장치 점검 화면으로 연결합니다.
+          설계서 전용 미리보기입니다. 실제 샘플 저장·폴링·PDF 생성 없이 장치 점검 화면으로
+          연결합니다.
         </p>
       </div>
     </div>

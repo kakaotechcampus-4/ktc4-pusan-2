@@ -252,7 +252,10 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
             ['피코 교수', '발표를 꼼꼼히 살피고 다음 연습을 안내하는 코치'],
             ['치치', '조금씩 성장하며 발표를 연습하는 연구실의 새'],
           ].map(([name, description]) => (
-            <article key={name} className="border-2 border-ink bg-cream p-6 shadow-[4px_4px_0_var(--color-ink)]">
+            <article
+              key={name}
+              className="border-2 border-ink bg-cream p-6 shadow-[4px_4px_0_var(--color-ink)]"
+            >
               <p className="font-mono text-xs tracking-widest">LAB MEMBER</p>
               <h3 className="mt-3 text-xl font-extrabold">{name}</h3>
               <p className="mt-2 text-sm leading-7">{description}</p>
@@ -282,12 +285,11 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
                 치치가 발표를 준비하다 막히면 가장 먼저 찾는 AI 비서 앱이에요.
               </p>
               <p className="mt-2 text-sm leading-7">
-                작은 질문부터 발표 연습에 관한 고민까지, 새미나이는 언제든 이야기를 나눌 준비가
-                되어 있답니다.
+                작은 질문부터 발표 연습에 관한 고민까지, 새미나이는 언제든 이야기를 나눌 준비가 되어
+                있답니다.
               </p>
               <p className="mt-5 border-t border-line-strong pt-4 text-sm font-bold">
-                “잠깐, 이건 새미나이한테 물어봐야겠다!”{' '}
-                <span className="font-normal">— 치치</span>
+                “잠깐, 이건 새미나이한테 물어봐야겠다!” <span className="font-normal">— 치치</span>
               </p>
             </div>
           </div>

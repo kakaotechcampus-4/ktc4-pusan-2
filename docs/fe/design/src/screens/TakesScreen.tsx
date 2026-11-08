@@ -224,7 +224,7 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                         </li>
                       ))}
                     </ol>
-                    </div>
+                  </div>
                 </div>
                 <p className="text-xs text-stone">
                   {selected.hint}점선은 측정하지 못했거나 시선 엔진이 달라 비교하지 않는 Take예요.

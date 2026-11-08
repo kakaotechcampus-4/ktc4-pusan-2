@@ -54,86 +54,133 @@ function ComparisonSummary() {
     <Card title="지난 Take와 비교">
       <p className="mb-4 text-sm text-ink/80">지표별로 지난 연습보다 달라진 슬라이드를 모았어요.</p>
       <div className="grid gap-4 lg:grid-cols-2">
-        {COMPARISON.flatMap((group) => group.columns.map((metric, index) => {
-          const slides = group.rows.filter((row) => row[0] !== '발표 전체' && row[index + 1]);
-          const improved = slides.filter((row) => row[index + 1]?.[3] === 'good').map((row) => row[0]);
-          const worsened = slides.filter((row) => row[index + 1]?.[3] === 'bad').map((row) => row[0]);
-          const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
-          const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 없음').length;
-          const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
-          return (
-            <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
-              <h3 className="font-bold">{metric}</h3>
-              {slides.length ? <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <div className="bg-cream p-3"><p className="font-bold">나아진 슬라이드</p><p className="mt-1">{improved.join(', ') || '없음'}</p></div>
-                <div className="bg-panel p-3"><p className="font-bold">나빠진 슬라이드</p><p className="mt-1">{worsened.join(', ') || '없음'}</p></div>
-              </div> : <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 데이터가 없어요.</p>}
-              {(same > 0 || unknown > 0) && <p className="mt-2 text-xs text-ink/80">{same > 0 ? `변화 없음 ${same}개` : ''}{unknown > 0 ? ` · 방향 판단 불가 ${unknown}개` : ''}</p>}
-              {overall && <p className="mt-2 text-xs text-ink/80">발표 전체: {overall[0]} → {overall[1]} · {overall[2]}</p>}
-            </section>
-          );
-        }))}
+        {COMPARISON.flatMap((group) =>
+          group.columns.map((metric, index) => {
+            const slides = group.rows.filter((row) => row[0] !== '발표 전체' && row[index + 1]);
+            const improved = slides
+              .filter((row) => row[index + 1]?.[3] === 'good')
+              .map((row) => row[0]);
+            const worsened = slides
+              .filter((row) => row[index + 1]?.[3] === 'bad')
+              .map((row) => row[0]);
+            const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
+            const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 없음').length;
+            const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
+            return (
+              <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
+                <h3 className="font-bold">{metric}</h3>
+                {slides.length ? (
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                    <div className="bg-cream p-3">
+                      <p className="font-bold">나아진 슬라이드</p>
+                      <p className="mt-1">{improved.join(', ') || '없음'}</p>
+                    </div>
+                    <div className="bg-panel p-3">
+                      <p className="font-bold">나빠진 슬라이드</p>
+                      <p className="mt-1">{worsened.join(', ') || '없음'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 데이터가 없어요.</p>
+                )}
+                {(same > 0 || unknown > 0) && (
+                  <p className="mt-2 text-xs text-ink/80">
+                    {same > 0 ? `변화 없음 ${same}개` : ''}
+                    {unknown > 0 ? ` · 방향 판단 불가 ${unknown}개` : ''}
+                  </p>
+                )}
+                {overall && (
+                  <p className="mt-2 text-xs text-ink/80">
+                    발표 전체: {overall[0]} → {overall[1]} · {overall[2]}
+                  </p>
+                )}
+              </section>
+            );
+          }),
+        )}
       </div>
-      <button ref={openerRef} type="button" onClick={() => setOpen(true)} className="mt-5 min-h-11 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep">슬라이드별 상세 비교표 보기</button>
-      <dialog ref={dialogRef} aria-labelledby="comparison-detail-title"
-        onClose={() => { setOpen(false); openerRef.current?.focus(); }}
+      <button
+        ref={openerRef}
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-5 min-h-11 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+      >
+        슬라이드별 상세 비교표 보기
+      </button>
+      <dialog
+        ref={dialogRef}
+        aria-labelledby="comparison-detail-title"
+        onClose={() => {
+          setOpen(false);
+          openerRef.current?.focus();
+        }}
         onCancel={() => setOpen(false)}
-        className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6">
+        className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
+      >
         <div className="mb-5 flex items-start justify-between gap-4">
-          <div><h2 id="comparison-detail-title" className="text-lg font-bold">지난 Take 상세 비교</h2><p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p></div>
-          <button type="button" onClick={() => setOpen(false)} aria-label="상세 비교 닫기" className="min-h-11 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep">닫기</button>
+          <div>
+            <h2 id="comparison-detail-title" className="text-lg font-bold">
+              지난 Take 상세 비교
+            </h2>
+            <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="상세 비교 닫기"
+            className="min-h-11 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
+          >
+            닫기
+          </button>
         </div>
-              {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
-              <div className="grid gap-4 lg:grid-cols-2">
-                {COMPARISON.map((g) => (
-                  <section
-                    key={g.title}
-                    aria-label={g.title}
-                    className={`min-w-0 border-l-2 border-line pl-3 ${g.columns.length > 2 ? 'lg:col-span-2' : ''}`}
-                  >
-                    <h3 className="text-sm font-bold">{g.title}</h3>
-                    <table className="tabular mt-2 w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-line text-xs text-ink/80">
-                          <th scope="col" className="w-20 py-1.5 pr-4 font-normal">
-                            구간
-                          </th>
-                          {g.columns.map((c) => (
-                            <th key={c} scope="col" className="py-1.5 pr-4 font-bold text-ink">
-                              {c}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {g.rows.map(([label, ...cells]) => (
-                          <tr key={label} className="border-b border-line last:border-b-0">
-                            <th
-                              scope="row"
-                              className="whitespace-nowrap py-2 pr-4 text-xs font-normal"
-                            >
-                              {label}
-                            </th>
-                            {cells.map((cell, i) => (
-                              <td key={i} className="py-2 pr-4">
-                                {cell ? (
-                                  <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                                    <span className="text-ink/80">{cell[0]}</span>→
-                                    <b className="text-base">{cell[1]}</b>
-                                    <Badge tone={cell[3]}>{cell[2]}</Badge>
-                                  </span>
-                                ) : (
-                                  <span className="text-ink/80">—</span>
-                                )}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </section>
-                ))}
-              </div>
+        {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {COMPARISON.map((g) => (
+            <section
+              key={g.title}
+              aria-label={g.title}
+              className={`min-w-0 border-l-2 border-line pl-3 ${g.columns.length > 2 ? 'lg:col-span-2' : ''}`}
+            >
+              <h3 className="text-sm font-bold">{g.title}</h3>
+              <table className="tabular mt-2 w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-line text-xs text-ink/80">
+                    <th scope="col" className="w-20 py-1.5 pr-4 font-normal">
+                      구간
+                    </th>
+                    {g.columns.map((c) => (
+                      <th key={c} scope="col" className="py-1.5 pr-4 font-bold text-ink">
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.rows.map(([label, ...cells]) => (
+                    <tr key={label} className="border-b border-line last:border-b-0">
+                      <th scope="row" className="whitespace-nowrap py-2 pr-4 text-xs font-normal">
+                        {label}
+                      </th>
+                      {cells.map((cell, i) => (
+                        <td key={i} className="py-2 pr-4">
+                          {cell ? (
+                            <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                              <span className="text-ink/80">{cell[0]}</span>→
+                              <b className="text-base">{cell[1]}</b>
+                              <Badge tone={cell[3]}>{cell[2]}</Badge>
+                            </span>
+                          ) : (
+                            <span className="text-ink/80">—</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))}
+        </div>
       </dialog>
     </Card>
   );

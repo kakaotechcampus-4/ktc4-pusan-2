@@ -25,21 +25,65 @@ export const PRODUCT_CHECKED: {
   commit: 'c8a3881193ef759e3b935898850cd815510df2a0',
   date: '2026-11-08',
   pending: [
-    { pr: 1101, head: '833b49c78a7db20eedb661f08965be9ece8809d5', what: '슬라이드 영역 중복 UI 제거' },
-    { pr: 1102, head: '84a5a3b176d9ef732bc1d67440e106009045a420', what: '평가기준 안내 칩 미리보기' },
-    { pr: 1103, head: '4f708019089ed032b8accf3a6e96c2327701af8a', what: '시선 보정 렌즈 안내 대비' },
+    {
+      pr: 1101,
+      head: '833b49c78a7db20eedb661f08965be9ece8809d5',
+      what: '슬라이드 영역 중복 UI 제거',
+    },
+    {
+      pr: 1102,
+      head: '84a5a3b176d9ef732bc1d67440e106009045a420',
+      what: '평가기준 안내 칩 미리보기',
+    },
+    {
+      pr: 1103,
+      head: '4f708019089ed032b8accf3a6e96c2327701af8a',
+      what: '시선 보정 렌즈 안내 대비',
+    },
     { pr: 1104, head: '88b7172893a41fb7d8445e327d8587d70457f027', what: '새미나이 런처 왼쪽 배치' },
-    { pr: 1105, head: '4652b127f8010e0b8cd5de75572c49b6556df242', what: 'First Take 튜토리얼 미리보기' },
+    {
+      pr: 1105,
+      head: '4652b127f8010e0b8cd5de75572c49b6556df242',
+      what: 'First Take 튜토리얼 미리보기',
+    },
     { pr: 1106, head: '6029bef57e2806031a8ea75c243b684097982e34', what: '스크롤바 너비 안정화' },
     { pr: 1110, head: '2e92875b4556d04f974c16cf300aea3a8e42b235', what: '새미나이 채팅 패널' },
     { pr: 944, head: 'a6416c35a27d67bed6760e72ffe1087c10016790', what: '사용방법 시각 안내' },
-    { pr: 1108, head: 'be55e5326de00ce8da28fce817ff819f60bda142', what: '홈 목록 페이지 스크롤 미리보기' },
-    { pr: 1112, head: '9e11d336cc1810f4cde5d14e70f32249cd07dbea', what: '홈 통합 푸터(좁은 화면 줄바꿈)와 TIP 자동 전환' },
-    { pr: 1113, head: '3cd16e7e5adfe564b0fc068a9075b15ff1c431ea', what: '온보딩 새미나이 소개 카드' },
-    { pr: 1117, head: '9d4e537e1fbfb089b33cabfdffb9eb5d61345c14', what: '홈 발표 준비 공용 secondary 버튼' },
-    { pr: 1118, head: 'b92ab847498ff0f1cad4ac6775c1cb4193de1ed1', what: '리허설 STAGE LIVE 및 Take 접수 피드백' },
-    { pr: 1119, head: '24db41f12dc02c26ea100b9ee4b0a76bb3acf8b8', what: 'Take 비교 차트 너비 및 막대 폭' },
-    { pr: 1120, head: 'e8adb895b6f34035acaf2b04b4c28d1e7473e7af', what: '리포트 지표별 개선·악화 요약과 상세 모달' },
+    {
+      pr: 1108,
+      head: 'be55e5326de00ce8da28fce817ff819f60bda142',
+      what: '홈 목록 페이지 스크롤 미리보기',
+    },
+    {
+      pr: 1112,
+      head: '9e11d336cc1810f4cde5d14e70f32249cd07dbea',
+      what: '홈 통합 푸터(좁은 화면 줄바꿈)와 TIP 자동 전환',
+    },
+    {
+      pr: 1113,
+      head: '3cd16e7e5adfe564b0fc068a9075b15ff1c431ea',
+      what: '온보딩 새미나이 소개 카드',
+    },
+    {
+      pr: 1117,
+      head: '9d4e537e1fbfb089b33cabfdffb9eb5d61345c14',
+      what: '홈 발표 준비 공용 secondary 버튼',
+    },
+    {
+      pr: 1118,
+      head: 'b92ab847498ff0f1cad4ac6775c1cb4193de1ed1',
+      what: '리허설 STAGE LIVE 및 Take 접수 피드백',
+    },
+    {
+      pr: 1119,
+      head: '24db41f12dc02c26ea100b9ee4b0a76bb3acf8b8',
+      what: 'Take 비교 차트 너비 및 막대 폭',
+    },
+    {
+      pr: 1120,
+      head: 'e8adb895b6f34035acaf2b04b4c28d1e7473e7af',
+      what: '리포트 지표별 개선·악화 요약과 상세 모달',
+    },
   ],
 };
 
@@ -110,7 +154,11 @@ const productScreens: GuideScreen[] = [
         '기존 검토 링크를 유지하는 상태로, 승인된 발표 준비 버튼을 기본 홈과 동일하게 보여 준다.',
       ),
       state('loading', '불러오는 중', '발표 노트를 가져오는 동안 안내한다.'),
-      state('empty', '첫 피치 전', '통계는 빼고 첫 피치 안내만 둔다. 푸터의 TIP과 사용방법 버튼은 유지한다.'),
+      state(
+        'empty',
+        '첫 피치 전',
+        '통계는 빼고 첫 피치 안내만 둔다. 푸터의 TIP과 사용방법 버튼은 유지한다.',
+      ),
       state('error', '오류', '목록을 가져오지 못했고 다시 불러오기를 안내한다.'),
       state(
         'consent',
@@ -202,7 +250,8 @@ const productScreens: GuideScreen[] = [
     group: screenGroup.review,
     route: '/',
     status: '시안',
-    summary: 'Draft #1104·#1110의 왼쪽 하단 런처, 분리된 패널, 대화 범위, 추천 질문과 composer를 재현한다.',
+    summary:
+      'Draft #1104·#1110의 왼쪽 하단 런처, 분리된 패널, 대화 범위, 추천 질문과 composer를 재현한다.',
     states: [
       base,
       state('history', '대화 목록', '입력창 없이 이전 대화 목록 자리를 표시한다.'),
@@ -224,7 +273,8 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/chat/ChatPanelHeader.tsx',
       'frontend/src/features/chat/ChatEmptyState.tsx',
     ],
-    productNote: 'Draft #1104·#1110 기준 UI 시안으로, 실제 채팅 API·오류 경계·라우트별 하단 오프셋은 재현하지 않는다.',
+    productNote:
+      'Draft #1104·#1110 기준 UI 시안으로, 실제 채팅 API·오류 경계·라우트별 하단 오프셋은 재현하지 않는다.',
     productLinks: [link('홈 · 채팅 레이어', '/')],
     next: [next('홈', 'home')],
   },
@@ -249,7 +299,8 @@ const productScreens: GuideScreen[] = [
     components: ['5장 미션 카드', '진행·오류 상태', '장치 점검 진입'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: ['frontend/src/features/pitch/tutorial/FirstTakePage.tsx'],
-    productNote: '실제 API를 호출하지 않고 시작 버튼으로 장치 점검 미리보기로 이동한다. 제품 Draft #1105의 FE MVP이며 BE 중복 생성 정책은 확정되지 않았다.',
+    productNote:
+      '실제 API를 호출하지 않고 시작 버튼으로 장치 점검 미리보기로 이동한다. 제품 Draft #1105의 FE MVP이며 BE 중복 생성 정책은 확정되지 않았다.',
     productLinks: [link('튜토리얼', '/pitch/tutorial')],
     next: [next('시작 전 세팅', 'prepare-mission'), next('홈', 'home')],
   },

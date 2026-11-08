@@ -93,7 +93,11 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                 </div>
               )}
               <header className="stage-head">
-                {!gate && <span className="stage-mission-label" aria-label="발표 연습 진행 중">STAGE LIVE</span>}
+                {!gate && (
+                  <span className="stage-mission-label" aria-label="발표 연습 진행 중">
+                    STAGE LIVE
+                  </span>
+                )}
                 <span className="elapsed">{gate ? '00:00' : '02:14'}</span>
                 <span className="limit">/ 05:00</span>
                 <div className="bar" data-over="false">
