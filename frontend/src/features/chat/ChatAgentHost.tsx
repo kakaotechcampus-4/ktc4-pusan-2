@@ -29,7 +29,12 @@ import {
   type EndNotice,
   type RunNotice,
 } from './chatNotices';
-import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
+import {
+  CHAT_LAUNCHER_CLASS,
+  chatLauncherBottom,
+  chatRouteOf,
+  type ChatRouteInfo,
+} from './chatRoutes';
 import { useChatStore } from './chatStore';
 import { useCanSend } from './useCanSend';
 import { sendLockReason } from './chatLock';
@@ -165,13 +170,13 @@ function ChatSessionView({
   };
 
   return (
-    // 런처는 오른쪽 아래의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 오른쪽에 붙은
-    // 컨트롤과 자리를 나눠 씁니다. 화면마다의 아래 여백과 그 이유는 chatLauncherBottom 에 있습니다
+    // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
+    // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: 장치 점검이 런처 자리만큼 오른쪽 여백을 넓히는 표시입니다 (index.css)
+      // data-chat-launcher: index.css의 장치 점검·피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
       data-chat-launcher=""
-      style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
-      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
+      style={{ '--chat-launcher-default-bottom': `${launcherBottom}px` } as CSSProperties}
+      className={CHAT_LAUNCHER_CLASS}
     >
       {open && (
         <ChatPanel
@@ -435,7 +440,7 @@ function ChatPanel({
   };
 
   return (
-    // 패널은 런처 위 오른쪽에 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
+    // 패널은 런처 위 왼쪽에 정렬해 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
     // 4.25rem = 런처 높이 2.75rem + 위아래 간격 0.75rem 둘.
     // 낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
     // 머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성")
@@ -453,7 +458,7 @@ function ChatPanel({
           onClose();
         }
       }}
-      className="absolute bottom-full right-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
+      className="absolute bottom-full left-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
     >
       {/* 좁은 창(휴대폰)에서는 버튼 묶음이 제목 아래 줄로 내려갑니다 — 글자가 쪼개지지 않게 */}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line-strong px-5 py-3">
