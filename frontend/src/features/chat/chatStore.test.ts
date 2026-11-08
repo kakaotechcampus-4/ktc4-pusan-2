@@ -430,10 +430,20 @@ describe('사용자 · 로그아웃 · 새로고침', () => {
       expect(screenOf()).toBeNull();
     });
 
-    it('처음 확인(없음 → 사용자)과 같은 사용자 재확인은 지금 화면의 등록을 그대로 둔다', () => {
+    it('처음 확인(없음 → 사용자)은 지금 화면의 등록을 그대로 둔다', () => {
+      // 공통 준비가 user-1 로 두므로, 페이지를 막 연 상태(사용자 없음)로 되돌린 뒤 시작합니다
+      store().signOut();
+      expect(store().userId).toBeNull();
+      // 화면은 열리자마자 등록하고, 세션 확인은 그 뒤에 끝납니다
       register();
       store().setUser('user-1');
+      expect(store().userId).toBe('user-1');
       expect(screenOf()).toMatchObject({ name: 'device_check' });
+    });
+
+    it('같은 사용자를 다시 확인해도 등록을 그대로 둔다', () => {
+      expect(store().userId).toBe('user-1');
+      register();
       store().setUser('user-1');
       expect(screenOf()).toMatchObject({ name: 'device_check' });
     });
