@@ -80,12 +80,14 @@ it('이번 매핑이 성공하면 확인 창을 열고 실패나 기존 자료 �
   expect(host.querySelector('dialog')).toBeNull();
   await act(async () => {
     state().unmapScript(1);
-    state().patchScript(1, { parse: { status: 'pending' } });
+    state().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } });
   });
   expect(host.querySelector('dialog')).toBeNull();
   await act(async () => state().patchScript(1, { parse: { status: 'failed', message: '실패' } }));
   expect(host.querySelector('dialog')).toBeNull();
-  await act(async () => state().patchScript(1, { parse: { status: 'pending' } }));
+  await act(async () =>
+    state().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } }),
+  );
   await act(async () =>
     state().patchScript(1, { parse: { status: 'idle' }, blocks: ['새 매핑 결과'] }),
   );
@@ -96,6 +98,30 @@ it('이번 매핑이 성공하면 확인 창을 열고 실패나 기존 자료 �
   await act(async () => button('닫기').click());
   await act(async () => state().select('info'));
   expect(host.querySelector('dialog')).toBeNull();
+});
+
+it('장수가 다른 슬라이드를 올려 대본이 옮겨져도, 매핑 확인 화면에서 예전 슬라이드로 되돌려 저장할 수 있다', async () => {
+  ready();
+  // 1장짜리 대본에 2장짜리 슬라이드를 올리면 대본이 새 슬라이드로 옮겨지고 저장 필요가 됩니다
+  state().attachSlides({
+    pageCount: 2,
+    presentationVersionId: 'pv2',
+    fileName: '실수.pdf',
+    fileUrl: '/test.pdf',
+  });
+  expect(state().draft.scripts[0]).toMatchObject({ slideVersion: 2, saved: false });
+  state().select('script', 1);
+  await mount();
+  expect(button('매핑 확인/수정')).toBeTruthy();
+  const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!;
+  expect(trigger.textContent).toContain('V2 · 2장');
+  await act(async () => trigger.click());
+  const options = host.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+  await act(async () => options[0]!.click());
+  expect(state().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: false });
+  // 매핑을 지우지 않았으니 장수가 맞는 V1 로 바로 저장할 수 있습니다
+  await act(async () => state().saveMapping(1));
+  expect(state().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: true });
 });
 
 it('연결할 슬라이드 메뉴에서 키보드 선택과 닫기를 지원한다', async () => {
@@ -657,7 +683,9 @@ it('재매핑 중 중복 저장·닫기를 막고 실패하면 창과 편집 내
   await mount();
   await act(async () => button('매핑 확인/수정').click());
   await act(async () => state().editMappingBlock(1, 0, '보존할 수정 대본'));
-  await act(async () => state().patchScript(1, { parse: { status: 'pending' } }));
+  await act(async () =>
+    state().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } }),
+  );
   expect(button('저장').disabled).toBe(true);
   expect(button('닫기').disabled).toBe(true);
   // 매핑을 시작한 버튼은 초점을 쥐고 있어 disabled 대신 aria-disabled 로 막습니다 (#845)

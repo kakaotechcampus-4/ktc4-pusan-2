@@ -18,6 +18,7 @@ import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
+import { ParseWaitHint } from './ParseWaitHint';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -243,6 +244,11 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         </p>
       )}
 
+      {script.parse.status === 'pending' && (
+        // 다른 대본으로 바뀌면 다시 마운트해 앞 대본의 기다린 시간이 남지 않게 합니다
+        <ParseWaitHint key={script.parse.startedAt} startedAt={script.parse.startedAt} />
+      )}
+
       {failure && (
         <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-ink">
           {failure}
@@ -453,6 +459,10 @@ function MappingReview({
         title="2. 대본 연결"
         subtitle="장별 대본을 확인하고, 수정한 매핑은 다시 저장해 주세요."
       />
+      {/* 장수가 다른 슬라이드를 올려 대본이 옮겨졌을 때, 매핑을 지우지 않고 예전 슬라이드로 되돌릴 수 있게 둡니다 */}
+      <div className="mb-3">
+        <SlideLink script={script} linked={linked} />
+      </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border border-line bg-panel p-5">
         <div>
           <p className="font-bold">
@@ -588,6 +598,10 @@ function MappingEditor({
         <p role="alert" className="mb-3 text-sm text-ink">
           {script.parse.message}
         </p>
+      )}
+      {script.parse.status === 'pending' && (
+        // 다른 대본으로 바뀌면 다시 마운트해 앞 대본의 기다린 시간이 남지 않게 합니다
+        <ParseWaitHint key={script.parse.startedAt} startedAt={script.parse.startedAt} />
       )}
       <MappingNotice
         text={script.text}
