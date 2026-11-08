@@ -310,7 +310,7 @@ async function press(target: Element, init: KeyboardEventInit) {
   return event;
 }
 
-it('새미나이 브랜드와 추천 질문을 표시하고, 질문을 누르면 전송하지 않고 입력에만 채운다', async () => {
+it('새미나이 브랜드와 빈 대화 안내를 유지하고, 추천 질문은 별도 PR로 분리한다', async () => {
   await visit('/');
   await openPanel();
   expect(panel()!.textContent).toContain('새미나이');
@@ -320,10 +320,10 @@ it('새미나이 브랜드와 추천 질문을 표시하고, 질문을 누르면
   expect(document.getElementById(labelId)!.textContent!.trim()).toBe('새미나이');
   expect(button('새미나이 닫기')?.getAttribute('title')).toBe('새미나이 닫기');
   expect(panel()!.querySelectorAll('img[src="/semini.png"]')).toHaveLength(2);
-  const question = panel()!.querySelector<HTMLButtonElement>('[data-chat-empty] button')!;
-  expect(question).not.toBeNull();
-  await act(async () => question.click());
-  expect(input().value).toBe('최근 연습에서 개선할 점을 알려줘');
+  expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
+    '발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.',
+  );
+  expect(panel()!.querySelector('[data-chat-empty] button')).toBeNull();
   expect(sentMessages()).toEqual([]);
 });
 
@@ -334,26 +334,6 @@ it('좁은 패널에서 제목과 아이콘 버튼을 줄바꿈할 수 있도록
   expect(firstRow.classList.contains('flex-wrap')).toBe(true);
   expect(firstRow.firstElementChild!.classList.contains('min-w-32')).toBe(true);
   expect(firstRow.lastElementChild!.classList.contains('ml-auto')).toBe(true);
-});
-
-it('입력 중에는 추천 질문을 숨겨 초안을 지키고, 비우면 다시 선택할 수 있다', async () => {
-  await visit('/');
-  await openPanel();
-  const suggestions = () =>
-    panel()!.querySelector<HTMLElement>('[role="group"][aria-label="추천 질문"]');
-  expect(suggestions()).not.toBeNull();
-
-  await type('작성 중인 질문');
-  expect(input().value).toBe('작성 중인 질문');
-  expect(suggestions()).toBeNull();
-  expect(panel()!.querySelector('[data-chat-empty]')).not.toBeNull();
-
-  await type('');
-  expect(suggestions()).not.toBeNull();
-  await act(async () => suggestions()!.querySelector('button')!.click());
-  expect(input().value).toBe('최근 연습에서 개선할 점을 알려줘');
-  expect(suggestions()).toBeNull();
-  expect(sentMessages()).toEqual([]);
 });
 
 it('첫 기억 안내와 빈 대화는 스크롤 맨 위에서 시작하고, 실제 전송에는 아래를 따라간다', async () => {
