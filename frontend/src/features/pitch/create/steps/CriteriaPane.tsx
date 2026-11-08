@@ -205,8 +205,9 @@ function Guide({ except }: { except: string | null }) {
           평가기준에 넣지 않은 내용
         </p>
         <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
-          현재 측정·평가하지 않는 내용이라 제외했어요. 바꿀 수 있는 내용이라면 위 작성 예시를
-          참고해 측정 가능한 행동으로 다시 적어 주세요.
+          현재 측정·평가하지 않는 내용이라 제외했어요.
+          <br />
+          바꿀 수 있는 내용이라면 위 작성 예시를 참고해 다시 적어 주세요.
         </p>
         <p className="mt-1 pl-6 text-sm font-bold leading-relaxed">“{except}”</p>
       </div>

@@ -140,6 +140,7 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
     });
     expect(view.host.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
     expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('1분에 300자 이하');
+    const visibleExampleText = () => view.host.querySelector('[role="tooltip"]')?.textContent;
     const previews = [...view.host.querySelectorAll('[data-criterion-preview]')];
     expect(previews).toHaveLength(8);
     expect(previews.every((preview) => preview.className.includes('row-start-1'))).toBe(true);
@@ -147,8 +148,8 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
     await act(async () => {
       chips[3]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     });
-    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('평소보다 3dB 이상');
-    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('절대 음량(dB)');
+    expect(visibleExampleText()).toContain('평소보다 3dB 이상');
+    expect(visibleExampleText()).toContain('절대 음량(dB)');
     expect(view.host.querySelectorAll('[data-criterion-preview]')).toHaveLength(8);
 
     await act(async () => {
@@ -165,9 +166,7 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
     await act(async () => {
       chips[7]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     });
-    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
-      '대본을 연결한 경우',
-    );
+    expect(visibleExampleText()).toContain('대본을 연결한 경우');
 
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
