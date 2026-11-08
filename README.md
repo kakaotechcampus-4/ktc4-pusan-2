@@ -12,7 +12,6 @@
 그래서, 반복 연습을 설계하고 실제 발표 행동을 측정하며 그 결과로 사용자의 발표 특성을 파악해 지도, 다음 연습에도 반영되도록 하는 피치코치 서비스를 기획하게 되었습니다.
 
 ## 전체 핵심 기능
-
 - 실제 발표 행동 측정
     - 목소리 음량, 편차
     - 군더더기, 발화 사이 침묵 길이와 빈도
@@ -21,6 +20,14 @@
     - 시선 분석
     - 발화 - 대본 간 유사도 분석
 - Take 데이터를 바탕으로 다음 Take의 미션 제시
+- 발표 맞춤 대화형 Agent
+    - 이전 발표에 대한 확인
+    - 특정 조건이 변화한 발표에 대한 재평가
+    - 연습 화면 이동
+
+## 시스템 아키텍처 구조도
+<img width="4632" height="2418" alt="pitch-coach-fe-be-ai-develop-next" src="https://github.com/user-attachments/assets/1994491c-676e-44a2-9fe0-dc3d5393eb43" />
+
 
 ## 폴더 구조
 
@@ -45,6 +52,88 @@ pitch-coach/
 └── infra/                # docker-compose, Caddy 설정
 
 ```
+
+## 실행 방법
+## 로컬 개발 환경 세팅
+
+### 0. 공통 준비
+
+| 도구 | 버전 | 비고 |
+|---|---|---|
+| [uv](https://docs.astral.sh/uv/) | BE: Python 3.14 / AI: Python 3.12 | 각 폴더의 `.python-version`에 적힌 버전을 uv가 받아 옵니다 |
+| Node | 24 (`nvm use 24`) | 버전이 다르면 `.npmrc`의 `engine-strict` 때문에 `npm ci`가 멈춥니다 |
+| Docker | — | 로컬 DB를 띄울 때 씁니다 |
+
+#### 환경변수 파일 만들기
+* frontend/.env
+* backend/.env
+* ai/.env 
+
+> [!TIP]
+> `backend/.env`에는 JWT 인증을 위한 `JWT_SECRET_KEY`가 있습니다.
+>  이는 `openssl rand -hex 32`로 만들면 됩니다.
+
+---
+
+### 실행 순서
+
+```
+1. DB  →  2. AI (8001)  →  3. BE (8000)  →  4. FE (3000)
+```
+
+### 1. DB (PostgreSQL)
+
+```bash
+cd infra
+docker compose up -d db
+```
+
+> [!WARNING]
+> `db` 서비스는 `backend/.env`의 `POSTGRES_*` 값을 읽습니다. **`backend/.env`를 먼저** 만들어 두세요.
+
+### 2. AI 서버 (포트 8001)
+
+```bash
+cd ai/service
+uv sync --locked
+uv run python -m uvicorn pitch_coach_ai.main:app --reload --port 8001
+```
+
+> [!NOTE]
+> `/health`는 LLM 키 없이도 뜹니다. 실제 LLM 기능을 부를 때만 `ai/.env`에 키를 채우면 됩니다.
+
+### 3. BE (포트 8000)
+
+```bash
+cd backend
+uv sync
+uv run alembic upgrade head   # DB가 떠 있어야 합니다
+uv run fastapi dev src/pitch_coach_backend/main.py
+```
+
+`AI_BASE_URL` 기본값이 `http://localhost:8001`이라 2번과 그대로 맞습니다.
+
+> [!NOTE]
+> 아래 값이 비어 있어도 서버는 뜨지만, 해당 기능은 동작하지 않습니다.
+>
+> | 비어 있는 값 | 동작하지 않는 기능 | 해결방책 |
+> |---|---|---|
+> | Deepgram 키 | 실시간 STT | API Key 발급 후 환경변수에 삽입 |
+> | S3 버킷 | 업로드 | S3 버킷 생성 후 이름과 리전을 환경변수에 삽입(Presigned URL) |
+> | 구글 OAuth | 로그인 | 리다이렉션 URL 지정, Google OAuth API Client ID와 Secret 발급 후 환경변수에 삽입|
+
+### 4. FE (포트 3000)
+
+```bash
+cd frontend
+npm ci
+npm run doctor   # 실패 0개면 세팅 완료
+npm run dev
+```
+
+> [!IMPORTANT]
+> FE는 기본으로 **MSW 목 서버**를 씁니다. 실제 BE에 붙이려면 `frontend/.env.local`에 `VITE_USE_MOCK=false`를 넣으세요.
+
 
 ## 직군별 README.md
 

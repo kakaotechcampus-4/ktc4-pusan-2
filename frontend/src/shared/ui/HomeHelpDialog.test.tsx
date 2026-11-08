@@ -84,6 +84,7 @@ it('개인정보 없는 SVG 목업에 대체 텍스트와 키보드로 여는 �
   ]);
   expect(images[0].getAttribute('alt')).toContain('이번 Take 미션');
   expect(images[0].getAttribute('alt')).toContain('왼쪽 아래 채팅 에이전트 버튼');
+  expect(host.textContent).toContain('발표 중에는 숨겨져요.');
   expect(images[1].getAttribute('alt')).toContain('8 시선 테두리');
   expect(images[1].getAttribute('alt')).toContain('6 코치 아래 키보드 이동 안내');
   for (const [index, image] of images.entries()) {

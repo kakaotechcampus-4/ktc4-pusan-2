@@ -7,6 +7,7 @@ export function ScreenFrame({
   badge,
   onBack,
   hint,
+  note,
   actions,
   children,
 }: {
@@ -15,6 +16,8 @@ export function ScreenFrame({
   badge: string;
   onBack: () => void;
   hint: ReactNode;
+  /** 안내 아래 늘 보이는 한 줄. 바뀌지 않는 말이라 알림 영역(`hint`) 밖에 둡니다 */
+  note?: ReactNode;
   actions: ReactNode;
   children: ReactNode;
 }) {
@@ -55,8 +58,11 @@ export function ScreenFrame({
           </span>
         </header>
         {children}
-        <footer className="prepare-footer mt-4 flex items-center gap-4 border-t border-line-strong pt-3 prepare-compact:mt-2 prepare-compact:pt-2 prepare-low:mt-1.5 prepare-low:pt-1.5 max-[600px]:flex-col max-[600px]:items-stretch [&>p]:min-w-0 [&>p]:flex-1 [&>p]:text-[13px] [&>p]:leading-5 [&>p]:wrap-anywhere">
-          <p role="status">{hint}</p>
+        <footer className="prepare-footer mt-4 flex items-center gap-4 border-t border-line-strong pt-3 prepare-compact:mt-2 prepare-compact:pt-2 prepare-low:mt-1.5 prepare-low:pt-1.5 max-[600px]:flex-col max-[600px]:items-stretch">
+          <div className="min-w-0 flex-1 [&>p]:text-[13px] [&>p]:leading-5 [&>p]:wrap-anywhere">
+            <p role="status">{hint}</p>
+            {note && <p className="text-stone">{note}</p>}
+          </div>
           <div className="prepare-start shrink-0 [&>button]:min-h-11 [&>button]:min-w-[180px] [&>button]:border [&>button]:shadow-none max-[600px]:[&>button]:w-full">
             {actions}
           </div>

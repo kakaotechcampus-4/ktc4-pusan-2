@@ -8,6 +8,7 @@ import { ApiFailure } from '@/shared/api/tokenStore';
 import { registerChatScreen, resetChatScreen, type ScreenBody } from '@/shared/lib/chatScreen';
 import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
+import { CHAT_FAILED_TEXT } from './ChatErrorBoundary';
 import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
 import { emptyBasis, readCard, type ShownClaim } from './chatResponse';
 import { chatTicket, useChatStore } from './chatStore';
@@ -305,6 +306,15 @@ async function press(target: Element, init: KeyboardEventInit) {
   return event;
 }
 
+it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 열린다', async () => {
+  await visit('/');
+  const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
+  expect(container.classList.contains('left-2')).toBe(true);
+
+  await openPanel();
+  expect(panel()!.classList.contains('left-0')).toBe(true);
+});
+
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
   await visit('/');
   await openPanel();
@@ -394,6 +404,64 @@ it('세션 재조회가 실패해도 로그인 정보가 있으면 열린 패널
   state.session = { isPending: false, isError: true, data: { id: 'u1' } };
   await go('/takes/t1');
   expect(panel()).not.toBeNull();
+});
+
+it('대화창이 렌더 중에 던져도 페이지는 그대로이고, [다시 시도]는 처음엔 닫기만 · 되풀이되면 새 대화로 (L3-36)', async () => {
+  const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  const silence = (event: ErrorEvent) => event.preventDefault();
+  window.addEventListener('error', silence);
+  const ok = state.session;
+  /** 세션 훅이 던지게 하고 화면을 옮겨 대화창을 다시 그립니다 */
+  const crash = (path: string) => {
+    state.session = {
+      ...ok,
+      get data(): { id: string } {
+        throw new Error('session boom');
+      },
+    };
+    return go(path);
+  };
+  const retry = async () => {
+    state.session = ok;
+    await act(async () => button('다시 시도')!.click());
+    await settle();
+  };
+  try {
+    await visit('/takes/t1');
+    await act(async () =>
+      useChatStore.getState().selectConversation('c-1', { pitchId: null, title: null }),
+    );
+    await settle();
+    await openPanel();
+    input().focus();
+    await crash('/takes/t2');
+
+    expect(alerts()).toEqual([CHAT_FAILED_TEXT]);
+    expect(launcher()).toBeNull();
+    expect(host.textContent).toContain('리포트');
+    // 입력칸이 사라졌으니 초점은 body 가 아니라 [다시 시도]로 갑니다
+    expect(document.activeElement).toBe(button('다시 시도'));
+
+    // 첫 실패: 대화창만 닫고 보던 대화는 그대로 둡니다
+    await retry();
+    expect(alerts()).not.toContain(CHAT_FAILED_TEXT);
+    expect(panel()).toBeNull();
+    expect(launcher()!.getAttribute('aria-expanded')).toBe('false');
+    expect(useChatStore.getState().conversationId).toBe('c-1');
+    expect(document.activeElement).toBe(launcher());
+
+    // 이 페이지에서 두 번째 실패: [새 대화]처럼 보던 대화에서 나옵니다
+    await openPanel();
+    await crash('/takes/t3');
+    expect(alerts()).toEqual([CHAT_FAILED_TEXT]);
+    await retry();
+    expect(panel()).toBeNull();
+    expect(useChatStore.getState().conversationId).toBeNull();
+    expect(document.activeElement).toBe(launcher());
+  } finally {
+    window.removeEventListener('error', silence);
+    quiet.mockRestore();
+  }
 });
 
 it('로그인 정보가 없으면 그리지 않는다', async () => {

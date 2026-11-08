@@ -217,8 +217,26 @@ body {
   border-radius: 0;
 }
 
-/* 장치 점검은 오른쪽 열이 화면 끝까지 차서, 채팅 런처(오른쪽 0.5rem · 44px)가 떠 있을 때만 오른쪽 여백을
-   런처 자리만큼 넓힙니다 — 시작 버튼 · 대본 표시 선택을 가리지 않습니다 (features/chat, #941 리뷰) */
+
+/* 장치 점검: 왼쪽 채팅 버튼이 바닥 안내(상태 · 보조 설명)를 가리지 않게 공간을 둡니다. */
 body:has([data-chat-launcher]) .prepare-screen {
-  padding-right: 4rem;
+  padding-left: 4.5rem;
+}
+
+/* 낮은 데스크톱 창에서 생성·수정 화면의 버전 관리 버튼은 왼쪽 런처와 떨어뜨립니다. */
+@media (min-width: 761px) and (max-height: 600px) {
+  body:has([data-chat-launcher]) .pitch-create-square aside .create-versions {
+    margin-left: 3.5rem;
+  }
+}
+
+/* 좁은 화면에서는 버튼을 고정 푸터의 왼쪽 빈 공간으로 내리고 조작부에 자리를 남깁니다. */
+@media (max-width: 760px) {
+  body:has(.pitch-create-square) [data-chat-launcher] {
+    --chat-launcher-bottom: 1rem !important;
+  }
+
+  body:has([data-chat-launcher]) .pitch-create-square > footer > div {
+    padding-left: 4rem;
+  }
 }

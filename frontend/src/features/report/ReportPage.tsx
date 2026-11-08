@@ -1,6 +1,7 @@
-import { Navigate, useParams } from 'react-router';
+import { Navigate, useLocation, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
+import { readAutoEnd } from '@/shared/lib/autoEnd';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
 import { ButtonLink } from '@/shared/ui/Button';
@@ -13,6 +14,7 @@ import type {
   TakeMeasures,
   TakeReport,
 } from '@/types/report';
+import { AutoEndAlert } from './AutoEndAlert';
 import { QueryState, ReportFrame } from './ReportFrame';
 import {
   DIMENSION_LABEL,
@@ -48,6 +50,8 @@ export function ReportPage() {
 
 function ReportView({ takeId }: { takeId: string }) {
   const report = useTakeReport(takeId);
+  // 서버가 자동으로 끝낸 Take 를 막 끝내고 왔으면 분석 대기 화면이 넘긴 이유를 한 번 더 알립니다 (#925)
+  const autoEnd = readAutoEnd(useLocation().state);
   const data = report.data;
   if (!takeId) return <Navigate replace to="/" />;
   // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
@@ -58,6 +62,7 @@ function ReportView({ takeId }: { takeId: string }) {
     <div className="flex min-h-dvh flex-col">
       <AppHeader />
       <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
+        {autoEnd && <AutoEndAlert notice={autoEnd} tone="page" />}
         <QueryState isPending={report.isPending} error={report.error} />
         {data && <ReportBody key={takeId} report={data} />}
       </ReportFrame>

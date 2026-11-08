@@ -323,6 +323,11 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
   // 대본 장 수 맞추기에만 씁니다 — 둘이 다른 PDF 에서 없는 쪽을 열다 오류가 나지 않게
   const total = doc.numPages;
 
+  // 마지막으로 포커스를 옮긴 수단이 마우스인지. 마우스로 누른 버튼은 포커스를 쥐고 있어도 링이 없다가,
+  // 그 상태로 ← → 를 누르면 브라우저가 `:focus-visible` 을 켜서 장은 돌아갔는데 눌렀던 버튼에 링이
+  // 남습니다 (#924). Tab 으로 닿은 버튼은 실제 키보드 초점이라 링을 그대로 둡니다
+  const pointerFocus = useRef(false);
+
   const goTo = (n: number) => setPage(Math.min(total, Math.max(1, n)));
 
   const fullscreen = () => {
@@ -336,11 +341,28 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
     <div
       ref={cardRef}
       tabIndex={-1}
-      onKeyDown={(e) => {
-        if (e.key === 'ArrowRight' || e.key === 'PageDown') goTo(page + 1);
-        if (e.key === 'ArrowLeft' || e.key === 'PageUp') goTo(page - 1);
+      onPointerDown={() => {
+        pointerFocus.current = true;
       }}
-      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-line bg-white outline-none"
+      // 포커스가 뷰어 밖으로 나가면 표시를 끕니다 — 밖에서 일어난 Tab 은 아래 onKeyDown 에 닿지 않아,
+      // 밖에 다녀와 Tab 으로 돌아온 버튼이 마우스로 쥔 버튼으로 취급돼 포커스를 빼앗기기 때문입니다
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) pointerFocus.current = false;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Tab') pointerFocus.current = false;
+        const next = e.key === 'ArrowRight' || e.key === 'PageDown';
+        const prev = e.key === 'ArrowLeft' || e.key === 'PageUp';
+        if (next) goTo(page + 1);
+        if (prev) goTo(page - 1);
+        // 포커스는 뷰어 안에 두되(#818) 링이 번지지 않게 마우스로 쥔 버튼에서 뷰어 상자로 옮깁니다
+        if ((next || prev) && pointerFocus.current && e.target !== e.currentTarget) {
+          e.currentTarget.focus({ preventScroll: true });
+        }
+      }}
+      // 포커스 링은 전역 `:focus-visible` 이 그립니다. 방향키로 포커스가 옮겨 온 뒤에는 링이 뜨고,
+      // 빈 곳을 마우스로 눌렀을 때는 브라우저가 링을 켜지 않습니다 — 그래서 `outline-none` 을 두지 않습니다
+      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-line bg-white"
     >
       <Toolbar
         fileName={slide.fileName ?? `슬라이드 V${slide.version}.pdf`}

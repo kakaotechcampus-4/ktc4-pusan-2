@@ -1,5 +1,4 @@
 import {
-  Component,
   Fragment,
   useCallback,
   useEffect,
@@ -16,6 +15,7 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
+import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
@@ -29,7 +29,12 @@ import {
   type EndNotice,
   type RunNotice,
 } from './chatNotices';
-import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
+import {
+  CHAT_LAUNCHER_CLASS,
+  chatLauncherBottom,
+  chatRouteOf,
+  type ChatRouteInfo,
+} from './chatRoutes';
 import { useChatStore } from './chatStore';
 import { useCanSend } from './useCanSend';
 import { sendLockReason } from './chatLock';
@@ -42,26 +47,25 @@ import { useChatSession, type ChatNotice, type ChatSession } from './useChatSess
 /**
  * 대화형 코치 에이전트의 버튼 · 팝업 (`docs/ai/features/chat-agent.md` 12-4 F1). 라우터 최상위 레이아웃에 있어
  * 화면을 옮겨도 대화가 이어지고, 대화 상태는 저장소(`chatStore`)에 둡니다.
- * 채팅에서 오류가 나면 채팅만 사라지고 화면은 그대로 남습니다.
+ * 채팅에서 오류가 나면 대화만 닫고 런처 자리에 안내와 [다시 시도]를 둡니다. 화면은 그대로 씁니다 (12-4 F8 · L3-36).
  */
 export function ChatAgentHost() {
   return (
-    <ChatErrorBoundary>
+    <ChatErrorBoundary onReset={resetChatAfterFailure}>
       <ChatLayer />
     </ChatErrorBoundary>
   );
 }
 
-class ChatErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
+/**
+ * [다시 시도] 직전에 저장소를 정리합니다 — 저장소는 React 밖이라 경계만 다시 그리면 같은 상태로 또 던질 수 있습니다.
+ * 처음에는 대화창만 닫아 보던 대화 · 보내던 요청 · 실행을 그대로 둡니다. 이 페이지에서 두 번째 실패부터는 [새 대화]와
+ * 같은 길로 보던 대화에서 나옵니다 — 서버의 대화는 목록에서 다시 열 수 있고, 늦은 응답은 버립니다
+ */
+function resetChatAfterFailure(failures: number) {
+  const chat = useChatStore.getState();
+  chat.closeChat();
+  if (failures >= 2) chat.startNewConversation(chat.scope);
 }
 
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
@@ -166,13 +170,13 @@ function ChatSessionView({
   };
 
   return (
-    // 런처는 오른쪽 아래의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 오른쪽에 붙은
-    // 컨트롤과 자리를 나눠 씁니다. 화면마다의 아래 여백과 그 이유는 chatLauncherBottom 에 있습니다
+    // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
+    // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: 장치 점검이 런처 자리만큼 오른쪽 여백을 넓히는 표시입니다 (index.css)
+      // data-chat-launcher: 오류 경계 및 테스트가 공통 런처 위치를 식별하는 표시입니다
       data-chat-launcher=""
       style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
-      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
+      className={CHAT_LAUNCHER_CLASS}
     >
       {open && (
         <ChatPanel
@@ -436,7 +440,7 @@ function ChatPanel({
   };
 
   return (
-    // 패널은 런처 위 오른쪽에 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
+    // 패널은 런처 위 왼쪽에 정렬해 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
     // 4.25rem = 런처 높이 2.75rem + 위아래 간격 0.75rem 둘.
     // 낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
     // 머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성")
@@ -454,7 +458,7 @@ function ChatPanel({
           onClose();
         }
       }}
-      className="absolute bottom-full right-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
+      className="absolute bottom-full left-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
     >
       {/* 좁은 창(휴대폰)에서는 버튼 묶음이 제목 아래 줄로 내려갑니다 — 글자가 쪼개지지 않게 */}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line-strong px-5 py-3">
