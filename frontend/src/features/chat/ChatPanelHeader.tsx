@@ -36,9 +36,8 @@ function ActionIconGraphic({ kind }: { kind: ActionIcon }) {
   if (kind === 'memory')
     return (
       <svg {...shared}>
-        <path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
-        <circle cx="12" cy="12" r="5" />
-        <circle cx="12" cy="12" r="1.5" />
+        <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" />
+        <path d="m19.4 15.3 1 1.7-2 2-1.7-1a8.2 8.2 0 0 1-1.7.7L14.5 21h-3l-.5-2.3a8.2 8.2 0 0 1-1.7-.7l-1.7 1-2-2 1-1.7a8.2 8.2 0 0 1-.7-1.7L3.5 13v-2l2.4-.5a8.2 8.2 0 0 1 .7-1.7l-1-1.7 2-2 1.7 1a8.2 8.2 0 0 1 1.7-.7L11.5 3h3l.5 2.4a8.2 8.2 0 0 1 1.7.7l1.7-1 2 2-1 1.7a8.2 8.2 0 0 1 .7 1.7l2.4.5v2l-2.4.5a8.2 8.2 0 0 1-.7 1.8Z" />
       </svg>
     );
   return (
@@ -49,7 +48,7 @@ function ActionIconGraphic({ kind }: { kind: ActionIcon }) {
 }
 
 const HEADER_ACTION =
-  'grid h-11 w-10 shrink-0 place-items-center rounded-lg text-ink transition-colors hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-coral aria-pressed:bg-cream';
+  'grid h-11 w-10 shrink-0 place-items-center rounded-lg text-ink transition-colors hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-coral aria-pressed:bg-ink aria-pressed:text-white';
 
 /**
  * 새미나이 패널의 공통 헤더.

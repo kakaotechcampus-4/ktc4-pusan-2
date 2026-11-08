@@ -281,6 +281,8 @@ const button = (label: string) =>
     (b) => visibleText(b) === label || b.getAttribute('aria-label') === label,
   );
 const sendButton = () => panel()!.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+const listNewButton = () =>
+  panel()!.querySelector<HTMLButtonElement>('[data-conversation-list] > button')!;
 const sentMessages = () =>
   [...panel()!.querySelectorAll('p.self-end')].map((message) => message.textContent);
 const scopeText = () => visibleText(panel()!.querySelector('[data-chat-scope]')!);
@@ -318,6 +320,22 @@ it('새미나이 브랜드와 추천 질문을 표시하고, 질문을 누르면
   await act(async () => question.click());
   expect(input().value).toBe('최근 연습에서 개선할 점을 알려줘');
   expect(sentMessages()).toEqual([]);
+});
+
+it('첫 기억 안내와 빈 대화는 스크롤 맨 위에서 시작하고, 실제 전송에는 아래를 따라간다', async () => {
+  await visit('/');
+  await openPanel();
+  const scroller = panel()!.querySelector<HTMLElement>('[aria-label="채팅 메시지"]')!;
+  expect(scroller.scrollTop).toBe(0);
+  expect(scroller.firstElementChild?.querySelector('[data-memory-intro]')).not.toBeNull();
+  Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 500 });
+  Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 100 });
+  // 빈 화면에 내용이 바뀌어도 기억 안내를 밀어 내리지 않습니다.
+  await act(async () => {
+    scroller.querySelector('[data-chat-empty] p')!.textContent = '새미나이에게 물어보세요.';
+  });
+  await settle();
+  expect(scroller.scrollTop).toBe(0);
 });
 
 it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지한다', async () => {
@@ -1693,7 +1711,7 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await inConversation('c1');
     await act(async () => button('대화 목록')!.click());
     await settle();
-    await act(async () => button('새 대화')!.click());
+    await act(async () => listNewButton().click());
     expect(useChatStore.getState().conversationId).toBeNull();
     expect(useChatStore.getState().scope).toEqual({ pitchId: P1, title: null });
   });
@@ -1704,8 +1722,8 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await inConversation('c1');
     await act(async () => button('대화 목록')!.click());
     await settle();
-    button('새 대화')!.focus();
-    await act(async () => button('새 대화')!.click());
+    listNewButton().focus();
+    await act(async () => listNewButton().click());
     await settle();
     expect(document.activeElement).toBe(input());
 
@@ -1734,8 +1752,8 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await openPanel();
     await act(async () => button('대화 목록')!.click());
     await settle();
-    button('새 대화')!.focus();
-    button('새 대화')!.blur();
+    listNewButton().focus();
+    listNewButton().blur();
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     await act(async () => button('대화 목록')!.click());
     await settle();

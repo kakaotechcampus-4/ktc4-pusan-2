@@ -77,7 +77,7 @@ export function MemoryOffSwitch({ userId }: { userId: string }) {
       <label
         htmlFor={id}
         aria-hidden="true"
-        className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-line-strong transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-coral-deep peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-coral peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+        className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-stone transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-coral-deep peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-coral peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
       />
       {settingOff && (
         <span id={`${id}-off`} className="text-stone">

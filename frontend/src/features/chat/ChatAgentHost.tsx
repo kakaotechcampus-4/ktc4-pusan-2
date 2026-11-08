@@ -342,14 +342,16 @@ const FOLLOW_SLACK_PX = 48;
  * 글자 효과는 이 컴포넌트를 거치지 않고 그려져서, 그려진 결과(DOM 변화)를 지켜봅니다.
  * 대화 목록을 보는 동안에는 따라가지 않고, 메시지로 돌아오면 맨 아래에서 시작합니다
  */
-function useFollowBottom(active: boolean) {
+function useFollowBottom(active: boolean, initialAtTop: boolean) {
   const scroller = useRef<HTMLDivElement>(null);
   /** 맨 아래를 보고 있음 — 이때만 새 글을 따라 내려갑니다. 위로 올려 읽는 중에는 끌어내리지 않습니다 */
   const stick = useRef(true);
   useEffect(() => {
     const el = scroller.current;
     if (!el || !active) return;
-    stick.current = true;
+    // 새 대화의 첫 안내는 위쪽에서 시작하고, 실제 메시지/전송이 생기면 아래로 따라갑니다.
+    stick.current = !initialAtTop;
+    if (initialAtTop) el.scrollTop = 0;
     const toBottom = () => {
       if (stick.current) el.scrollTop = el.scrollHeight;
     };
@@ -364,7 +366,7 @@ function useFollowBottom(active: boolean) {
       observer.disconnect();
       offStore();
     };
-  }, [active]);
+  }, [active, initialAtTop]);
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const el = event.currentTarget;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_SLACK_PX;
@@ -407,7 +409,14 @@ function ChatPanel({
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
   const [view, setView] = useState<PanelView>('messages');
   const toggleView = (next: PanelView) => setView(view === next ? 'messages' : next);
-  const { scroller, onScroll, follow } = useFollowBottom(view === 'messages');
+  const initialAtTop =
+    session.messages.length === 0 &&
+    !session.pending &&
+    !session.sentEcho &&
+    !session.progress &&
+    !session.messagesLoading &&
+    !session.syncing;
+  const { scroller, onScroll, follow } = useFollowBottom(view === 'messages', initialAtTop);
   const content = draft.trim();
   const tooLong = [...content].length > MAX_MESSAGE_LENGTH;
   const failed = session.availability === 'failed';

@@ -1,7 +1,7 @@
 const SUGGESTIONS = [
   '최근 연습에서 개선할 점을 알려줘',
   '이전 연습과 달라진 점을 비교해줘',
-  '다음 발표에서 무엇을 연습하면 좋을까?',
+  '지난 Take에서 군더더기가 많았던 부분을 알려줘',
 ] as const;
 
 /** 빈 대화에서만 보이는 안내. 선택한 질문은 자동 전송하지 않고 입력창에 채웁니다. */
@@ -22,7 +22,7 @@ export function ChatEmptyState({ onSuggest }: { onSuggest: (text: string) => voi
       <p className="mt-1 text-xs leading-5 text-stone">
         발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.
       </p>
-      <div className="mt-5 flex w-full max-w-80 flex-col gap-2" aria-label="추천 질문">
+      <div className="mt-5 flex w-full max-w-80 flex-col gap-2" role="group" aria-label="추천 질문">
         {SUGGESTIONS.map((question) => (
           <button
             key={question}
