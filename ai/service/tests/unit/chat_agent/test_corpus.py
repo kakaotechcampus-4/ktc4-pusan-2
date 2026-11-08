@@ -73,9 +73,9 @@ def _rebuilt(raw, mutate, *, rehash=True, allow_unreviewed=True, cfg=DEFAULT_CON
 
 def test_real_files_load_and_counts(corpus):
     kinds = [c.kind for c in corpus.cards]
-    assert kinds.count("method") == 20
+    assert kinds.count("method") == 22
     assert kinds.count("usage") == 25
-    assert corpus.version == "guides-6"
+    assert corpus.version == "guides-7"
     assert all(c.license == "team" for c in corpus.cards)
 
 
@@ -162,11 +162,47 @@ def test_fm_L4_29_forbidden_license(raw):
     assert e.value.reason_code == "LICENSE_FORBIDDEN"
 
 
-def test_fm_L4_29_unreviewed_rejected_for_service(raw):
+def test_fm_L4_29_service_serves_only_approved_cards(raw):
+    """카드 단위 검수(P-0008 5-2): 서비스는 검수를 마친 카드만 싣고, 검수 전 카드는 검색 · 인용 대상이 아니다."""
     manifest, files = raw
+    served = build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=False)
+    every = [c for cards in files.values() for c in cards]
+    want = {c["source_id"] for c in every if c["review"] == "APPROVED"}
+    assert {c.source_id for c in served.cards} == want
+    assert all(c.review == "APPROVED" for c in served.cards)
+    assert {c["source_id"] for c in every} - want  # 검수 전 카드가 남아 있다(사용법 카드 · g-19)
+    for c in served.cards:
+        assert served.search(c.title) is not None
+    pending = sorted({c["source_id"] for c in every} - want)
+    hits = {
+        h.card.source_id
+        for q in ("마이크가 안 잡혀요", "코칭 모드 실전 모드 차이")
+        for h in served.search(q)
+    }
+    assert not hits & set(pending)
+
+
+def test_fm_L4_29_no_approved_card_means_no_corpus(raw):
+    def unapprove(_m, files):
+        for cards in files.values():
+            for c in cards:
+                c["review"] = "PENDING"
+
     with pytest.raises(CorpusInvalid) as e:
-        build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=False)
+        _rebuilt(raw, unapprove, allow_unreviewed=False)
     assert e.value.reason_code == "UNREVIEWED"
+
+
+def test_fm_L4_29_whole_bundle_is_checked_before_picking_approved(raw):
+    """검수 전 카드의 형식 · 라이선스 오류도 묶음 전체를 준비 실패로 만든다(검사 뒤에 고른다)."""
+    cfg = load_config(allowed_licenses=("team",))
+
+    def bad_pending(_m, files):
+        files["usage.json"][0]["license"] = "CC BY-NC 4.0"
+
+    with pytest.raises(CorpusInvalid) as e:
+        _rebuilt(raw, bad_pending, cfg=cfg, allow_unreviewed=False)
+    assert e.value.reason_code == "LICENSE_FORBIDDEN"
 
 
 def test_fm_L4_29_approved_cards_pass_for_service(raw):
@@ -177,7 +213,7 @@ def test_fm_L4_29_approved_cards_pass_for_service(raw):
                 _add_reference(c)
 
     corpus = _rebuilt(raw, mut, allow_unreviewed=False)
-    assert len(corpus) == 45
+    assert len(corpus) == 47
 
 
 def test_fm_L4_29_license_follows_config(raw):
@@ -186,7 +222,7 @@ def test_fm_L4_29_license_follows_config(raw):
     def mut(_m, files):
         files["methods.json"][0]["license"] = "CC BY 4.0"
 
-    assert len(_rebuilt(raw, mut, cfg=cfg)) == 45
+    assert len(_rebuilt(raw, mut, cfg=cfg)) == 47
 
 
 def test_fm_L4_30_missing_file(raw):
@@ -452,8 +488,9 @@ def test_approved_method_card_without_reference_is_refused_for_service(raw):
     assert e.value.reason_code == "NO_REFERENCE"
 
 
-@pytest.mark.parametrize("q", ["질문에 결론부터 답하려면?", "결론을 먼저 말하는 게 좋아?"])
-def test_conclusion_first_questions_find_the_qa_card(corpus, q):
-    """'결론부터 말하기'(답변 순서)는 질의응답 카드 g-13 이 1위다. 동의어 사전이 '결론'을 '마무리'로 넓혀 g-10 이
-    앞서던 회귀를 막는다(#918 리뷰, 사전에서 '결론'은 #938 에서 뺐다)."""
-    assert corpus.search(q)[0].card.source_id == "g-13"
+def test_qa_card_keeps_only_delivery(corpus):
+    """답변 순서(결론 먼저) · 모르는 질문 처리는 무엇을 말할지(내용)라 g-13 은 guides-7 에서 질의응답 시간의 전달(되풀이 ·
+    청중 보기 · 목소리)만 남겼다(1-3, P-0008). 동의어 사전이 '결론'을 '마무리'로 넓히지 않는 것은 그대로다(#938)."""
+    card = corpus.get("g-13")
+    assert card is not None and "결론" not in card.text and "모르는" not in card.text
+    assert "결론" not in card.topics

@@ -7,14 +7,14 @@
     "attempt_errors": [],
     "attempt_usages": [
      {
-      "cached_input_tokens": 2046,
-      "input_tokens": 2487,
-      "output_tokens": 407
+      "cached_input_tokens": 2396,
+      "input_tokens": 2399,
+      "output_tokens": 345
      }
     ],
     "attempts": 1,
     "finish_reason": "stop",
-    "message": "{\"route\":\"RESEARCH\",\"scope_reason\":null,\"plan\":[{\"step\":\"말하기 속도 조절 관련 발표법 자료 찾기\",\"status\":\"DOING\",\"note\":null},{\"step\":\"최근 Take 기록에서 말하기 속도 관련 지표 확인\",\"status\":\"TODO\",\"note\":null}],\"assessments\":[{\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"UNVERIFIABLE\",\"reason\":\"긴장할 때 말이 빨라진다는 경험을 말하셨지만, 해당 조건에서 속도를 측정한 기록은 확인되지 않았습니다.\",\"source_ids\":[]},{\"quote\":\"어떻게 하면 좋아?\",\"type\":\"REQUEST\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":null,\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEUTRAL\",\"verdict\":\"SUPPORTED\",\"reason\":\"말하기 속도를 조절하는 발표법 자료를 찾아 답변해야 합니다.\",\"source_ids\":[]}]}",
+    "message": "{\"route\":\"RESEARCH\",\"scope_reason\":null,\"plan\":[{\"step\":\"발표 속도·긴장 관련 발표법 자료 찾기\",\"status\":\"DOING\",\"note\":null}],\"assessments\":[{\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"UNVERIFIABLE\",\"reason\":\"기록의 속도 지표와 발표법 자료를 확인해야 합니다.\",\"source_ids\":[]},{\"quote\":\"어떻게 하면 좋아?\",\"type\":\"REQUEST\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":null,\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEUTRAL\",\"verdict\":\"SUPPORTED\",\"reason\":\"발표 속도를 조절하는 방법을 발표법 자료에서 찾아 답합니다.\",\"source_ids\":[]}]}",
     "model": "gpt-6-luna",
     "parsed": {
      "assessments": [
@@ -22,7 +22,7 @@
        "claim_op": "ISSUE",
        "polarity": "NEGATIVE",
        "quote": "긴장하면 말이 빨라져.",
-       "reason": "긴장할 때 말이 빨라진다는 경험을 말하셨지만, 해당 조건에서 속도를 측정한 기록은 확인되지 않았습니다.",
+       "reason": "기록의 속도 지표와 발표법 자료를 확인해야 합니다.",
        "source_ids": [],
        "speaker": "USER",
        "speaker_label": null,
@@ -42,7 +42,7 @@
        "claim_op": null,
        "polarity": "NEUTRAL",
        "quote": "어떻게 하면 좋아?",
-       "reason": "말하기 속도를 조절하는 발표법 자료를 찾아 답변해야 합니다.",
+       "reason": "발표 속도를 조절하는 방법을 발표법 자료에서 찾아 답합니다.",
        "source_ids": [],
        "speaker": "USER",
        "speaker_label": null,
@@ -63,12 +63,7 @@
       {
        "note": null,
        "status": "DOING",
-       "step": "말하기 속도 조절 관련 발표법 자료 찾기"
-      },
-      {
-       "note": null,
-       "status": "TODO",
-       "step": "최근 Take 기록에서 말하기 속도 관련 지표 확인"
+       "step": "발표 속도·긴장 관련 발표법 자료 찾기"
       }
      ],
      "route": "RESEARCH",
@@ -76,9 +71,9 @@
     },
     "tool_calls": [],
     "usage": {
-     "cached_input_tokens": 2046,
-     "input_tokens": 2487,
-     "output_tokens": 407
+     "cached_input_tokens": 2396,
+     "input_tokens": 2399,
+     "output_tokens": 345
     }
    }
   },
@@ -89,9 +84,9 @@
     "attempt_errors": [],
     "attempt_usages": [
      {
-      "cached_input_tokens": 2639,
-      "input_tokens": 3615,
-      "output_tokens": 39
+      "cached_input_tokens": 3417,
+      "input_tokens": 3420,
+      "output_tokens": 38
      }
     ],
     "attempts": 1,
@@ -102,42 +97,42 @@
     "tool_calls": [
      {
       "args": {
-       "query": "긴장할 때 말이 빨라지는 발표 속도 조절, 호흡과 멈춤 방법"
+       "query": "긴장하면 말이 빨라질 때 발표 속도 조절 호흡 쉼표 연습"
       },
-      "id": "call_cRuypvYYGjIaMDHXIe3q8AQS",
+      "id": "call_oPnOWCCbOvT5wcrm1HByGTlv",
       "name": "search_guides",
-      "raw_args": "{\"query\":\"긴장할 때 말이 빨라지는 발표 속도 조절, 호흡과 멈춤 방법\"}"
+      "raw_args": "{\"query\":\"긴장하면 말이 빨라질 때 발표 속도 조절 호흡 쉼표 연습\"}"
      }
     ],
     "usage": {
-     "cached_input_tokens": 2639,
-     "input_tokens": 3615,
-     "output_tokens": 39
+     "cached_input_tokens": 3417,
+     "input_tokens": 3420,
+     "output_tokens": 38
     }
    }
   },
   {
    "events": [],
-   "fp": "86ddb9b376138728",
+   "fp": "57b7e9422282a029",
    "ok": {
     "attempt_errors": [],
     "attempt_usages": [
      {
       "cached_input_tokens": 3417,
-      "input_tokens": 3984,
-      "output_tokens": 114
+      "input_tokens": 4728,
+      "output_tokens": 133
      }
     ],
     "attempts": 1,
     "finish_reason": "stop",
-    "message": "긴장하면 숨이 얕아져 말이 빨라지기 쉽다는 안내가 있습니다. 발표 중 문장 사이에 숨 한 번 쉴 정도로 짧게 멈추고, 청중이 내용을 따라오는 속도인지 살펴보세요. 다만 기록만으로 빨라진 원인을 긴장이라고 단정할 수는 없습니다. 이번 기록에서는 말의 속도·리듬이 안정 상태로 평가됐고, 3장에서 대본을 응시한 구간이 확인됐습니다.",
+    "message": "문장 끝에서 속으로 하나를 세며 쉬고, 핵심어 앞에서도 잠깐 멈춰 보세요. 속도를 늦출 때 이런 짧은 쉼부터 시작하라는 발표법 자료가 있습니다. 【g-04】【g-18】\n\n다만 현재 기록에서는 말의 속도 조절이 안정 상태로 평가됐고, 긴장 여부는 확인할 수 없습니다. 대본 응시가 포착된 구간은 있지만, 그것만으로 말이 빨라진 원인을 판단할 수는 없습니다. 【e-53fea31020】【e-040bd27fde】",
     "model": "gpt-6-luna",
     "parsed": null,
     "tool_calls": [],
     "usage": {
      "cached_input_tokens": 3417,
-     "input_tokens": 3984,
-     "output_tokens": 114
+     "input_tokens": 4728,
+     "output_tokens": 133
     }
    }
   },
@@ -505,12 +500,17 @@
     [
      "feed",
      1,
-     "\":[]"
+     "\":["
     ],
     [
      "feed",
      1,
-     ",\""
+     "5"
+    ],
+    [
+     "feed",
+     1,
+     "],\""
     ],
     [
      "feed",
@@ -520,17 +520,22 @@
     [
      "feed",
      1,
-     "\":"
+     "\":\""
     ],
     [
      "feed",
      1,
-     "null"
+     "ALL"
     ],
     [
      "feed",
      1,
-     "},\""
+     "\"}"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
     ],
     [
      "feed",
@@ -660,32 +665,17 @@
     [
      "feed",
      1,
-     "긴"
+     "기"
     ],
     [
      "feed",
      1,
-     "장"
+     "록"
     ],
     [
      "feed",
      1,
-     "할"
-    ],
-    [
-     "feed",
-     1,
-     " 때"
-    ],
-    [
-     "feed",
-     1,
-     "의"
-    ],
-    [
-     "feed",
-     1,
-     " 말"
+     "에서는"
     ],
     [
      "feed",
@@ -696,81 +686,6 @@
      "feed",
      1,
      "도"
-    ],
-    [
-     "feed",
-     1,
-     "는"
-    ],
-    [
-     "feed",
-     1,
-     " 기록"
-    ],
-    [
-     "feed",
-     1,
-     "만"
-    ],
-    [
-     "feed",
-     1,
-     "으로"
-    ],
-    [
-     "feed",
-     1,
-     " 확인"
-    ],
-    [
-     "feed",
-     1,
-     "할"
-    ],
-    [
-     "feed",
-     1,
-     " 수"
-    ],
-    [
-     "feed",
-     1,
-     " 없습니다"
-    ],
-    [
-     "feed",
-     1,
-     "."
-    ],
-    [
-     "feed",
-     1,
-     " Take"
-    ],
-    [
-     "feed",
-     1,
-     " "
-    ],
-    [
-     "feed",
-     1,
-     "5"
-    ],
-    [
-     "feed",
-     1,
-     "의"
-    ],
-    [
-     "feed",
-     1,
-     " 말"
-    ],
-    [
-     "feed",
-     1,
-     "하기"
     ],
     [
      "feed",
@@ -785,12 +700,7 @@
     [
      "feed",
      1,
-     " 상태"
-    ],
-    [
-     "feed",
-     1,
-     "는"
+     "이"
     ],
     [
      "feed",
@@ -800,82 +710,22 @@
     [
      "feed",
      1,
-     "으로"
+     " 상태"
     ],
     [
      "feed",
      1,
-     " 기록"
+     "로"
     ],
     [
      "feed",
      1,
-     "되어"
+     " 확인"
     ],
     [
      "feed",
      1,
-     " 있지만"
-    ],
-    [
-     "feed",
-     1,
-     ","
-    ],
-    [
-     "feed",
-     1,
-     " 긴"
-    ],
-    [
-     "feed",
-     1,
-     "장"
-    ],
-    [
-     "feed",
-     1,
-     "한"
-    ],
-    [
-     "feed",
-     1,
-     " 상황"
-    ],
-    [
-     "feed",
-     1,
-     "의"
-    ],
-    [
-     "feed",
-     1,
-     " 속"
-    ],
-    [
-     "feed",
-     1,
-     "도를"
-    ],
-    [
-     "feed",
-     1,
-     " 뜻"
-    ],
-    [
-     "feed",
-     1,
-     "하지"
-    ],
-    [
-     "feed",
-     1,
-     "는"
-    ],
-    [
-     "feed",
-     1,
-     " 않습니다"
+     "됩니다"
     ],
     [
      "feed",
@@ -895,532 +745,12 @@
     [
      "feed",
      1,
-     "\":[]"
-    ],
-    [
-     "feed",
-     1,
-     "},{\""
-    ],
-    [
-     "feed",
-     1,
-     "quote"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "어"
-    ],
-    [
-     "feed",
-     1,
-     "떻게"
-    ],
-    [
-     "feed",
-     1,
-     " 하면"
-    ],
-    [
-     "feed",
-     1,
-     " 좋아"
-    ],
-    [
-     "feed",
-     1,
-     "?"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "type"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "REQUEST"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "speaker"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "USER"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "speaker"
-    ],
-    [
-     "feed",
-     1,
-     "_label"
-    ],
-    [
-     "feed",
-     1,
      "\":"
     ],
     [
      "feed",
      1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "claim"
-    ],
-    [
-     "feed",
-     1,
-     "_op"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "subject"
-    ],
-    [
-     "feed",
-     1,
-     "\":{\""
-    ],
-    [
-     "feed",
-     1,
-     "dimension"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "p"
-    ],
-    [
-     "feed",
-     1,
-     "acing"
-    ],
-    [
-     "feed",
-     1,
-     "_r"
-    ],
-    [
-     "feed",
-     1,
-     "hythm"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "metric"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "slide"
-    ],
-    [
-     "feed",
-     1,
-     "_number"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "take"
-    ],
-    [
-     "feed",
-     1,
-     "_numbers"
-    ],
-    [
-     "feed",
-     1,
-     "\":[]"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "relation"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     "},\""
-    ],
-    [
-     "feed",
-     1,
-     "value"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "value"
-    ],
-    [
-     "feed",
-     1,
-     "_unit"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "pol"
-    ],
-    [
-     "feed",
-     1,
-     "arity"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "NE"
-    ],
-    [
-     "feed",
-     1,
-     "UT"
-    ],
-    [
-     "feed",
-     1,
-     "RAL"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "ver"
-    ],
-    [
-     "feed",
-     1,
-     "dict"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "SUPPORTED"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "reason"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "말"
-    ],
-    [
-     "feed",
-     1,
-     " 속"
-    ],
-    [
-     "feed",
-     1,
-     "도"
-    ],
-    [
-     "feed",
-     1,
-     " 조"
-    ],
-    [
-     "feed",
-     1,
-     "절"
-    ],
-    [
-     "feed",
-     1,
-     "에"
-    ],
-    [
-     "feed",
-     1,
-     " 관한"
-    ],
-    [
-     "feed",
-     1,
-     " 발표"
-    ],
-    [
-     "feed",
-     1,
-     "법"
-    ],
-    [
-     "feed",
-     1,
-     " 자료"
-    ],
-    [
-     "feed",
-     1,
-     "가"
-    ],
-    [
-     "feed",
-     1,
-     " 있습니다"
-    ],
-    [
-     "feed",
-     1,
-     ".\",\""
-    ],
-    [
-     "feed",
-     1,
-     "source"
-    ],
-    [
-     "feed",
-     1,
-     "_ids"
-    ],
-    [
-     "feed",
-     1,
-     "\":[\""
-    ],
-    [
-     "feed",
-     1,
-     "g"
-    ],
-    [
-     "feed",
-     1,
-     "-"
-    ],
-    [
-     "feed",
-     1,
-     "03"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "g"
-    ],
-    [
-     "feed",
-     1,
-     "-"
-    ],
-    [
-     "feed",
-     1,
-     "04"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "g"
-    ],
-    [
-     "feed",
-     1,
-     "-"
-    ],
-    [
-     "feed",
-     1,
-     "07"
-    ],
-    [
-     "feed",
-     1,
-     "\"]"
-    ],
-    [
-     "feed",
-     1,
-     "}"
+     "[]}"
     ],
     [
      "feed",
@@ -1500,17 +830,22 @@
     [
      "feed",
      1,
-     "의"
+     " 기록"
     ],
     [
      "feed",
      1,
-     " 말"
+     "에서는"
     ],
     [
      "feed",
      1,
-     "하기"
+     " 속"
+    ],
+    [
+     "feed",
+     1,
+     "도"
     ],
     [
      "feed",
@@ -1525,12 +860,7 @@
     [
      "feed",
      1,
-     " 상태"
-    ],
-    [
-     "feed",
-     1,
-     "는"
+     "이"
     ],
     [
      "feed",
@@ -1540,12 +870,17 @@
     [
      "feed",
      1,
-     "으로"
+     " 상태"
     ],
     [
      "feed",
      1,
-     " 기록"
+     "로"
+    ],
+    [
+     "feed",
+     1,
+     " 표시"
     ],
     [
      "feed",
@@ -1555,7 +890,7 @@
     [
      "feed",
      1,
-     " 있지만"
+     " 있어"
     ],
     [
      "feed",
@@ -1575,37 +910,72 @@
     [
      "feed",
      1,
-     "한"
+     "할"
     ],
     [
      "feed",
      1,
-     " 상황"
+     " 때"
     ],
     [
      "feed",
      1,
-     "의"
+     " 빨"
     ],
     [
      "feed",
      1,
-     " 속"
+     "라"
     ],
     [
      "feed",
      1,
-     "도를"
+     "진"
     ],
     [
      "feed",
      1,
-     " 뜻"
+     "다는"
     ],
     [
      "feed",
      1,
-     "하지"
+     " 느낌"
+    ],
+    [
+     "feed",
+     1,
+     "을"
+    ],
+    [
+     "feed",
+     1,
+     " 기록"
+    ],
+    [
+     "feed",
+     1,
+     "만"
+    ],
+    [
+     "feed",
+     1,
+     "으로"
+    ],
+    [
+     "feed",
+     1,
+     " 확인"
+    ],
+    [
+     "feed",
+     1,
+     "할"
+    ],
+    [
+     "feed",
+     1,
+     " 수"
     ],
     [
      "feed",
@@ -1615,7 +985,7 @@
     [
      "feed",
      1,
-     " 않습니다"
+     " 없습니다"
     ],
     [
      "feed",
@@ -1800,7 +1170,37 @@
     [
      "feed",
      1,
-     "긴"
+     "속"
+    ],
+    [
+     "feed",
+     1,
+     "도를"
+    ],
+    [
+     "feed",
+     1,
+     " 늦"
+    ],
+    [
+     "feed",
+     1,
+     "추"
+    ],
+    [
+     "feed",
+     1,
+     "려"
+    ],
+    [
+     "feed",
+     1,
+     "면"
+    ],
+    [
+     "feed",
+     1,
+     " 문"
     ],
     [
      "feed",
@@ -1810,262 +1210,52 @@
     [
      "feed",
      1,
-     "하면"
+     " 사이"
     ],
     [
      "feed",
      1,
-     " 숨"
+     "와"
     ],
     [
      "feed",
      1,
-     "이"
+     " 핵"
     ],
     [
      "feed",
      1,
-     " 얕"
+     "심"
     ],
     [
      "feed",
      1,
-     "아"
+     "어"
     ],
     [
      "feed",
      1,
-     "지고"
+     " 앞"
     ],
     [
      "feed",
      1,
-     " 말"
+     "에서"
     ],
     [
      "feed",
      1,
-     "이"
+     " 잠"
     ],
     [
      "feed",
      1,
-     " 빨"
+     "깐"
     ],
     [
      "feed",
      1,
-     "라"
-    ],
-    [
-     "feed",
-     1,
-     "지"
-    ],
-    [
-     "feed",
-     1,
-     "기"
-    ],
-    [
-     "feed",
-     1,
-     " 쉽"
-    ],
-    [
-     "feed",
-     1,
-     "습니다"
-    ],
-    [
-     "feed",
-     1,
-     ".\",\""
-    ],
-    [
-     "feed",
-     1,
-     "e"
-    ],
-    [
-     "feed",
-     1,
-     "vidence"
-    ],
-    [
-     "feed",
-     1,
-     "_ids"
-    ],
-    [
-     "feed",
-     1,
-     "\":[]"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "source"
-    ],
-    [
-     "feed",
-     1,
-     "_ids"
-    ],
-    [
-     "feed",
-     1,
-     "\":[\""
-    ],
-    [
-     "feed",
-     1,
-     "g"
-    ],
-    [
-     "feed",
-     1,
-     "-"
-    ],
-    [
-     "feed",
-     1,
-     "07"
-    ],
-    [
-     "feed",
-     1,
-     "\"],"
-    ],
-    [
-     "feed",
-     1,
-     "\""
-    ],
-    [
-     "feed",
-     1,
-     "assessment"
-    ],
-    [
-     "feed",
-     1,
-     "_index"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     ",\""
-    ],
-    [
-     "feed",
-     1,
-     "comparison"
-    ],
-    [
-     "feed",
-     1,
-     "_e"
-    ],
-    [
-     "feed",
-     1,
-     "vidence"
-    ],
-    [
-     "feed",
-     1,
-     "_id"
-    ],
-    [
-     "feed",
-     1,
-     "\":"
-    ],
-    [
-     "feed",
-     1,
-     "null"
-    ],
-    [
-     "feed",
-     1,
-     "},{\""
-    ],
-    [
-     "feed",
-     1,
-     "kind"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "GUID"
-    ],
-    [
-     "feed",
-     1,
-     "E"
-    ],
-    [
-     "feed",
-     1,
-     "\",\""
-    ],
-    [
-     "feed",
-     1,
-     "text"
-    ],
-    [
-     "feed",
-     1,
-     "\":\""
-    ],
-    [
-     "feed",
-     1,
-     "모"
-    ],
-    [
-     "feed",
-     1,
-     "든"
-    ],
-    [
-     "feed",
-     1,
-     " 발표"
-    ],
-    [
-     "feed",
-     1,
-     "에"
-    ],
-    [
-     "feed",
-     1,
-     " 맞"
+     " 쉬"
     ],
     [
      "feed",
@@ -2075,107 +1265,32 @@
     [
      "feed",
      1,
-     " 말"
+     " 것"
     ],
     [
      "feed",
      1,
-     " 속"
+     "부터"
     ],
     [
      "feed",
      1,
-     "도의"
+     " 시작"
     ],
     [
      "feed",
      1,
-     " 정"
+     "해"
     ],
     [
      "feed",
      1,
-     "답"
+     " 보"
     ],
     [
      "feed",
      1,
-     " 숫"
-    ],
-    [
-     "feed",
-     1,
-     "자는"
-    ],
-    [
-     "feed",
-     1,
-     " 없"
-    ],
-    [
-     "feed",
-     1,
-     "고"
-    ],
-    [
-     "feed",
-     1,
-     ","
-    ],
-    [
-     "feed",
-     1,
-     " 청"
-    ],
-    [
-     "feed",
-     1,
-     "중"
-    ],
-    [
-     "feed",
-     1,
-     "이"
-    ],
-    [
-     "feed",
-     1,
-     " 내용을"
-    ],
-    [
-     "feed",
-     1,
-     " 따라"
-    ],
-    [
-     "feed",
-     1,
-     "올"
-    ],
-    [
-     "feed",
-     1,
-     " 수"
-    ],
-    [
-     "feed",
-     1,
-     " 있는"
-    ],
-    [
-     "feed",
-     1,
-     "지가"
-    ],
-    [
-     "feed",
-     1,
-     " 기준"
-    ],
-    [
-     "feed",
-     1,
-     "입니다"
+     "세요"
     ],
     [
      "feed",
@@ -2235,7 +1350,7 @@
     [
      "feed",
      1,
-     "03"
+     "18"
     ],
     [
      "feed",
@@ -2345,157 +1460,107 @@
     [
      "feed",
      1,
-     "다"
+     "쉼"
     ],
     [
      "feed",
      1,
-     "만"
+     "이"
     ],
     [
      "feed",
      1,
-     " 몇"
+     " 어"
     ],
     [
      "feed",
      1,
-     " 초"
+     "색"
     ],
     [
      "feed",
      1,
-     "씩"
+     "하면"
     ],
     [
      "feed",
      1,
-     " 이어"
+     " 문"
     ],
     [
      "feed",
      1,
-     "지는"
+     "장"
     ],
     [
      "feed",
      1,
-     " 긴"
+     " 끝"
     ],
     [
      "feed",
      1,
-     " 침"
+     "에서"
     ],
     [
      "feed",
      1,
-     "묵"
+     " 속"
     ],
     [
      "feed",
      1,
-     "은"
+     "으로"
     ],
     [
      "feed",
      1,
-     " 준비"
+     " 하나"
     ],
     [
      "feed",
      1,
-     "가"
+     "를"
     ],
     [
      "feed",
      1,
-     " 안"
+     " 센"
     ],
     [
      "feed",
      1,
-     " 된"
+     "다고"
     ],
     [
      "feed",
      1,
-     " 것"
+     " 생각"
     ],
     [
      "feed",
      1,
-     "처럼"
+     "하고"
+    ],
+    [
+     "feed",
+     1,
+     " 연"
+    ],
+    [
+     "feed",
+     1,
+     "습"
+    ],
+    [
+     "feed",
+     1,
+     "해"
     ],
     [
      "feed",
      1,
      " 보"
-    ],
-    [
-     "feed",
-     1,
-     "일"
-    ],
-    [
-     "feed",
-     1,
-     " 수"
-    ],
-    [
-     "feed",
-     1,
-     " 있으"
-    ],
-    [
-     "feed",
-     1,
-     "니"
-    ],
-    [
-     "feed",
-     1,
-     " 숨"
-    ],
-    [
-     "feed",
-     1,
-     " 한"
-    ],
-    [
-     "feed",
-     1,
-     " 번"
-    ],
-    [
-     "feed",
-     1,
-     " 쉴"
-    ],
-    [
-     "feed",
-     1,
-     " 정도"
-    ],
-    [
-     "feed",
-     1,
-     "로"
-    ],
-    [
-     "feed",
-     1,
-     " 짧"
-    ],
-    [
-     "feed",
-     1,
-     "게"
-    ],
-    [
-     "feed",
-     1,
-     " 두"
     ],
     [
      "feed",
@@ -2688,19 +1753,19 @@
      "[]}"
     ]
    ],
-   "fp": "8eedac1841b958ee",
+   "fp": "f3e68221e4f392fd",
    "ok": {
     "attempt_errors": [],
     "attempt_usages": [
      {
       "cached_input_tokens": 3074,
-      "input_tokens": 5172,
-      "output_tokens": 665
+      "input_tokens": 5897,
+      "output_tokens": 335
      }
     ],
     "attempts": 1,
     "finish_reason": "stop",
-    "message": "{\"route\":\"ANSWER\",\"scope_reason\":null,\"scope_notes\":[],\"assessments\":[{\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"UNVERIFIABLE\",\"reason\":\"긴장할 때의 말 속도는 기록만으로 확인할 수 없습니다. Take 5의 말하기 리듬 상태는 안정으로 기록되어 있지만, 긴장한 상황의 속도를 뜻하지는 않습니다.\",\"source_ids\":[]},{\"quote\":\"어떻게 하면 좋아?\",\"type\":\"REQUEST\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":null,\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEUTRAL\",\"verdict\":\"SUPPORTED\",\"reason\":\"말 속도 조절에 관한 발표법 자료가 있습니다.\",\"source_ids\":[\"g-03\",\"g-04\",\"g-07\"]}],\"claims\":[{\"kind\":\"ASSESSMENT\",\"text\":\"Take 5의 말하기 리듬 상태는 안정으로 기록되어 있지만, 긴장한 상황의 속도를 뜻하지는 않습니다.\",\"evidence_ids\":[\"e-53fea31020\"],\"source_ids\":[],\"assessment_index\":0,\"comparison_evidence_id\":null},{\"kind\":\"GUIDE\",\"text\":\"긴장하면 숨이 얕아지고 말이 빨라지기 쉽습니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-07\"],\"assessment_index\":null,\"comparison_evidence_id\":null},{\"kind\":\"GUIDE\",\"text\":\"모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-03\"],\"assessment_index\":null,\"comparison_evidence_id\":null},{\"kind\":\"GUIDE\",\"text\":\"다만 몇 초씩 이어지는 긴 침묵은 준비가 안 된 것처럼 보일 수 있으니 숨 한 번 쉴 정도로 짧게 두세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-04\"],\"assessment_index\":null,\"comparison_evidence_id\":null}],\"start_practice\":null,\"profile_updates\":[]}",
+    "message": "{\"route\":\"ANSWER\",\"scope_reason\":null,\"scope_notes\":[],\"assessments\":[{\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[5],\"relation\":\"ALL\"},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"UNVERIFIABLE\",\"reason\":\"기록에서는 속도 리듬이 안정 상태로 확인됩니다.\",\"source_ids\":[]}],\"claims\":[{\"kind\":\"ASSESSMENT\",\"text\":\"Take 5 기록에서는 속도 리듬이 안정 상태로 표시되어 있어, 긴장할 때 빨라진다는 느낌을 기록만으로 확인할 수는 없습니다.\",\"evidence_ids\":[\"e-53fea31020\"],\"source_ids\":[],\"assessment_index\":0,\"comparison_evidence_id\":null},{\"kind\":\"GUIDE\",\"text\":\"속도를 늦추려면 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-18\"],\"assessment_index\":null,\"comparison_evidence_id\":null},{\"kind\":\"GUIDE\",\"text\":\"쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-04\"],\"assessment_index\":null,\"comparison_evidence_id\":null}],\"start_practice\":null,\"profile_updates\":[]}",
     "model": "gpt-6-luna",
     "parsed": {
      "assessments": [
@@ -2708,45 +1773,23 @@
        "claim_op": "ISSUE",
        "polarity": "NEGATIVE",
        "quote": "긴장하면 말이 빨라져.",
-       "reason": "긴장할 때의 말 속도는 기록만으로 확인할 수 없습니다. Take 5의 말하기 리듬 상태는 안정으로 기록되어 있지만, 긴장한 상황의 속도를 뜻하지는 않습니다.",
+       "reason": "기록에서는 속도 리듬이 안정 상태로 확인됩니다.",
        "source_ids": [],
        "speaker": "USER",
        "speaker_label": null,
        "subject": {
         "dimension": "pacing_rhythm",
         "metric": null,
-        "relation": null,
+        "relation": "ALL",
         "slide_number": null,
-        "take_numbers": []
+        "take_numbers": [
+         5
+        ]
        },
        "type": "MEASURED",
        "value": null,
        "value_unit": null,
        "verdict": "UNVERIFIABLE"
-      },
-      {
-       "claim_op": null,
-       "polarity": "NEUTRAL",
-       "quote": "어떻게 하면 좋아?",
-       "reason": "말 속도 조절에 관한 발표법 자료가 있습니다.",
-       "source_ids": [
-        "g-03",
-        "g-04",
-        "g-07"
-       ],
-       "speaker": "USER",
-       "speaker_label": null,
-       "subject": {
-        "dimension": "pacing_rhythm",
-        "metric": null,
-        "relation": null,
-        "slide_number": null,
-        "take_numbers": []
-       },
-       "type": "REQUEST",
-       "value": null,
-       "value_unit": null,
-       "verdict": "SUPPORTED"
       }
      ],
      "claims": [
@@ -2758,7 +1801,7 @@
        ],
        "kind": "ASSESSMENT",
        "source_ids": [],
-       "text": "Take 5의 말하기 리듬 상태는 안정으로 기록되어 있지만, 긴장한 상황의 속도를 뜻하지는 않습니다."
+       "text": "Take 5 기록에서는 속도 리듬이 안정 상태로 표시되어 있어, 긴장할 때 빨라진다는 느낌을 기록만으로 확인할 수는 없습니다."
       },
       {
        "assessment_index": null,
@@ -2766,19 +1809,9 @@
        "evidence_ids": [],
        "kind": "GUIDE",
        "source_ids": [
-        "g-07"
+        "g-18"
        ],
-       "text": "긴장하면 숨이 얕아지고 말이 빨라지기 쉽습니다."
-      },
-      {
-       "assessment_index": null,
-       "comparison_evidence_id": null,
-       "evidence_ids": [],
-       "kind": "GUIDE",
-       "source_ids": [
-        "g-03"
-       ],
-       "text": "모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다."
+       "text": "속도를 늦추려면 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작해 보세요."
       },
       {
        "assessment_index": null,
@@ -2788,7 +1821,7 @@
        "source_ids": [
         "g-04"
        ],
-       "text": "다만 몇 초씩 이어지는 긴 침묵은 준비가 안 된 것처럼 보일 수 있으니 숨 한 번 쉴 정도로 짧게 두세요."
+       "text": "쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요."
       }
      ],
      "profile_updates": [],
@@ -2800,40 +1833,8 @@
     "tool_calls": [],
     "usage": {
      "cached_input_tokens": 3074,
-     "input_tokens": 5172,
-     "output_tokens": 665
-    }
-   }
-  },
-  {
-   "events": [],
-   "fp": "56a80e068a4fca91",
-   "ok": {
-    "attempt_errors": [],
-    "attempt_usages": [
-     {
-      "cached_input_tokens": 0,
-      "input_tokens": 3300,
-      "output_tokens": 57
-     }
-    ],
-    "attempts": 1,
-    "finish_reason": "stop",
-    "message": "{\"claims\":[{\"index\":3,\"text\":\"다만 몇 초씩 이어지는 긴 침묵은 준비가 안 된 것처럼 보일 수 있으니 숨 1번 쉴 정도로 짧게 두세요.\"}]}",
-    "model": "gpt-6-luna",
-    "parsed": {
-     "claims": [
-      {
-       "index": 3,
-       "text": "다만 몇 초씩 이어지는 긴 침묵은 준비가 안 된 것처럼 보일 수 있으니 숨 1번 쉴 정도로 짧게 두세요."
-      }
-     ]
-    },
-    "tool_calls": [],
-    "usage": {
-     "cached_input_tokens": 0,
-     "input_tokens": 3300,
-     "output_tokens": 57
+     "input_tokens": 5897,
+     "output_tokens": 335
     }
    }
   }
@@ -2842,22 +1843,21 @@
   "fps": [
    "524056ac8519914c",
    "ed4b40838482d139",
-   "86ddb9b376138728",
-   "8eedac1841b958ee",
-   "56a80e068a4fca91"
+   "57b7e9422282a029",
+   "f3e68221e4f392fd"
   ],
   "turns": [
    {
     "error": null,
     "lines": [
-     "{\"event\":\"plan\",\"run_id\":\"run-1\",\"seq\":1,\"data\":{\"plan\":[{\"step\":\"말하기 속도 조절 관련 발표법 자료 찾기\",\"status\":\"DOING\",\"note\":null},{\"step\":\"최근 Take 기록에서 말하기 속도 관련 지표 확인\",\"status\":\"TODO\",\"note\":null}]}}\n",
+     "{\"event\":\"plan\",\"run_id\":\"run-1\",\"seq\":1,\"data\":{\"plan\":[{\"step\":\"발표 속도·긴장 관련 발표법 자료 찾기\",\"status\":\"DOING\",\"note\":null}]}}\n",
      "{\"event\":\"tool_done\",\"run_id\":\"run-1\",\"seq\":2,\"data\":{\"trace\":{\"seq\":1,\"tool\":\"get_take_report\",\"args_summary\":\"Take 5 · dimensions\",\"result_summary\":\"7개 항목\",\"ms\":0,\"outcome\":\"OK\"}}}\n",
      "{\"event\":\"tool_done\",\"run_id\":\"run-1\",\"seq\":3,\"data\":{\"trace\":{\"seq\":2,\"tool\":\"get_take_report\",\"args_summary\":\"Take 5 · problem_segments\",\"result_summary\":\"1개 항목\",\"ms\":0,\"outcome\":\"OK\"}}}\n",
-     "{\"event\":\"tool_done\",\"run_id\":\"run-1\",\"seq\":4,\"data\":{\"trace\":{\"seq\":3,\"tool\":\"search_guides\",\"args_summary\":\"자료 검색(질의 33자)\",\"result_summary\":\"자료 5개\",\"ms\":0,\"outcome\":\"OK\"}}}\n",
-     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":5,\"data\":{\"index\":0,\"claim\":{\"kind\":\"ASSESSMENT\",\"assessment_id\":\"run-1:as1-1\",\"text\":\"말씀하신 '긴장하면 말이 빨라져.'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음. Take 5의 말하기 리듬 상태는 안정으로 기록되어 있지만, 긴장한 상황의 속도를 뜻하지는 않습니다.\",\"evidence_ids\":[\"e-d23b6e7e45\",\"e-53fea31020\"],\"source_ids\":[],\"action_id\":null},\"evidence\":[{\"evidence_id\":\"e-d23b6e7e45\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"TAKE_RESULT\",\"revision\":1,\"path\":\"take_result.problem_segments[dimension=pacing_rhythm]\",\"metric\":null,\"slide_number\":null,\"value\":\"NONE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null},{\"evidence_id\":\"e-53fea31020\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"REVIEW\",\"revision\":1,\"path\":\"review.dimensions.pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"value\":\"STABLE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null}],\"sources\":[{\"source_id\":\"g-03\",\"title\":\"말 속도를 청중에게 맞추기\",\"quote\":\"모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다. 처음 듣는 개념이나 중요한 숫자를 말할 때는 평소보다 천천히 말하세요. 익숙한 설명은 조금 빠르게 해도 되지만 한 속도로만 계속 말하면 단조롭게 들립니다. 분당 글자 수가 장마다 크게 흔들리지 않는지 보면 속도의 일정함을 확인할 수 있습니다. 자신의 평소 속도를 먼저 기록으로 확인해 두면 얼마나 늦추거나 당길지 정하기 쉽습니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙)\",\"license\":\"team\"},{\"source_id\":\"g-04\",\"title\":\"쉼을 활용하기\",\"quote\":\"문장과 문장 사이, 핵심 문장 바로 앞뒤에 잠깐 멈추면 청중이 내용을 받아들일 시간이 생깁니다. 쉼은 실수가 아니라 강조의 도구이고, 말하는 사람에게도 다음 문장을 정리할 여유를 줍니다. 다만 몇 초씩 이어지는 긴 침묵은 준비가 안 된 것처럼 보일 수 있으니 숨 한 번 쉴 정도로 짧게 두세요. 쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Nancy Duarte, Resonate (2010)\",\"license\":\"team\"},{\"source_id\":\"g-07\",\"title\":\"긴장 관리: 긴장하면 말이 빨라진다\",\"quote\":\"긴장하면 숨이 얕아지고 말이 빨라지기 쉽습니다. 시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요. 첫 한두 문장을 외워 두면 가장 긴장되는 시작 구간을 안정적으로 넘길 수 있습니다. 긴장이 느껴져도 청중은 생각보다 잘 알아차리지 못하니 감추려 애쓰기보다 속도를 낮추는 데 집중하세요. 연습을 여러 번 해 두면 긴장해도 몸이 순서를 기억해 크게 흐트러지지 않습니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙)\",\"license\":\"team\"}],\"assessments\":[{\"assessment_id\":\"run-1:as1-1\",\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[\"t-5\"],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"CONTRADICTED\",\"verdict_source\":\"CODE\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"reason\":\"Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음\",\"claim_key\":\"ck-896268cca4b17fe6\",\"claim_link_key\":\"lk-9756ca4827dea373\",\"evidence_basis\":{\"records\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"sources\":[],\"screens\":[],\"fingerprint\":\"602c5e343dfabbb1\"},\"supersedes\":[]},{\"assessment_id\":\"run-1:as1-2\",\"quote\":\"어떻게 하면 좋아?\",\"type\":\"REQUEST\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":null,\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEUTRAL\",\"verdict\":\"SUPPORTED\",\"verdict_source\":\"MODEL\",\"evidence_ids\":[],\"source_ids\":[\"g-03\",\"g-04\",\"g-07\"],\"reason\":\"말 속도 조절에 관한 발표법 자료가 있습니다.\",\"claim_key\":\"ck-7c96ce6c1476c166\",\"claim_link_key\":\"lk-bcc05b95234eddc8\",\"evidence_basis\":{\"records\":[],\"sources\":[{\"source_id\":\"g-03\",\"corpus_version\":\"guides-6\"},{\"source_id\":\"g-04\",\"corpus_version\":\"guides-6\"},{\"source_id\":\"g-07\",\"corpus_version\":\"guides-6\"}],\"screens\":[],\"fingerprint\":\"077f9ce27c3478be\"},\"supersedes\":[]}]}}\n",
-     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":6,\"data\":{\"index\":1,\"claim\":{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"긴장하면 숨이 얕아지고 말이 빨라지기 쉽습니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-07\"],\"action_id\":null},\"evidence\":[],\"sources\":[],\"assessments\":[]}}\n",
-     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":7,\"data\":{\"index\":2,\"claim\":{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-03\"],\"action_id\":null},\"evidence\":[],\"sources\":[],\"assessments\":[]}}\n",
-     "{\"event\":\"final\",\"run_id\":\"run-1\",\"seq\":8,\"data\":{\"status\":\"DONE\",\"message\":{\"text\":\"말씀하신 '긴장하면 말이 빨라져.'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음. Take 5의 말하기 리듬 상태는 안정으로 기록되어 있지만, 긴장한 상황의 속도를 뜻하지는 않습니다.\\n긴장하면 숨이 얕아지고 말이 빨라지기 쉽습니다.\\n모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다.\",\"claims\":[{\"kind\":\"ASSESSMENT\",\"assessment_id\":\"run-1:as1-1\",\"text\":\"말씀하신 '긴장하면 말이 빨라져.'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음. Take 5의 말하기 리듬 상태는 안정으로 기록되어 있지만, 긴장한 상황의 속도를 뜻하지는 않습니다.\",\"evidence_ids\":[\"e-d23b6e7e45\",\"e-53fea31020\"],\"source_ids\":[],\"action_id\":null},{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"긴장하면 숨이 얕아지고 말이 빨라지기 쉽습니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-07\"],\"action_id\":null},{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-03\"],\"action_id\":null}],\"cards\":[],\"sources\":[{\"source_id\":\"g-07\",\"title\":\"긴장 관리: 긴장하면 말이 빨라진다\",\"quote\":\"긴장하면 숨이 얕아지고 말이 빨라지기 쉽습니다. 시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요. 첫 한두 문장을 외워 두면 가장 긴장되는 시작 구간을 안정적으로 넘길 수 있습니다. 긴장이 느껴져도 청중은 생각보다 잘 알아차리지 못하니 감추려 애쓰기보다 속도를 낮추는 데 집중하세요. 연습을 여러 번 해 두면 긴장해도 몸이 순서를 기억해 크게 흐트러지지 않습니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙)\",\"license\":\"team\"},{\"source_id\":\"g-03\",\"title\":\"말 속도를 청중에게 맞추기\",\"quote\":\"모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다. 처음 듣는 개념이나 중요한 숫자를 말할 때는 평소보다 천천히 말하세요. 익숙한 설명은 조금 빠르게 해도 되지만 한 속도로만 계속 말하면 단조롭게 들립니다. 분당 글자 수가 장마다 크게 흔들리지 않는지 보면 속도의 일정함을 확인할 수 있습니다. 자신의 평소 속도를 먼저 기록으로 확인해 두면 얼마나 늦추거나 당길지 정하기 쉽습니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙)\",\"license\":\"team\"}]},\"actions\":[],\"state\":null,\"scope_pitch_id\":\"p-1\",\"plan\":[{\"step\":\"말하기 속도 조절 관련 발표법 자료 찾기\",\"status\":\"DONE\",\"note\":null},{\"step\":\"최근 Take 기록에서 말하기 속도 관련 지표 확인\",\"status\":\"DONE\",\"note\":null}],\"trace\":[{\"seq\":1,\"tool\":\"get_take_report\",\"args_summary\":\"get_take_report\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"},{\"seq\":2,\"tool\":\"get_take_report\",\"args_summary\":\"get_take_report\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"},{\"seq\":3,\"tool\":\"search_guides\",\"args_summary\":\"search_guides\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"}],\"basis\":{\"pitches\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"take_number\":5,\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"conversation_goal_version\":0,\"corpus_version\":\"guides-6\",\"sources\":[\"g-03\",\"g-07\"]},\"evidence\":[{\"evidence_id\":\"e-d23b6e7e45\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"TAKE_RESULT\",\"revision\":1,\"path\":\"take_result.problem_segments[dimension=pacing_rhythm]\",\"metric\":null,\"slide_number\":null,\"value\":\"NONE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null},{\"evidence_id\":\"e-53fea31020\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"REVIEW\",\"revision\":1,\"path\":\"review.dimensions.pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"value\":\"STABLE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null}],\"history_summary\":null,\"budget_used\":{\"model_calls\":5,\"tool_calls\":3,\"elapsed_ms\":0,\"input_tokens\":18558,\"output_tokens\":1282},\"usage\":{\"model_calls\":5,\"tool_calls\":3,\"elapsed_ms\":0,\"input_tokens\":18558,\"output_tokens\":1282,\"measured\":true,\"missing_reason\":null},\"assessments\":[{\"assessment_id\":\"run-1:as1-1\",\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[\"t-5\"],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"CONTRADICTED\",\"verdict_source\":\"CODE\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"reason\":\"Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음\",\"claim_key\":\"ck-896268cca4b17fe6\",\"claim_link_key\":\"lk-9756ca4827dea373\",\"evidence_basis\":{\"records\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"sources\":[],\"screens\":[],\"fingerprint\":\"602c5e343dfabbb1\"},\"supersedes\":[]},{\"assessment_id\":\"run-1:as1-2\",\"quote\":\"어떻게 하면 좋아?\",\"type\":\"REQUEST\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":null,\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEUTRAL\",\"verdict\":\"SUPPORTED\",\"verdict_source\":\"MODEL\",\"evidence_ids\":[],\"source_ids\":[\"g-03\",\"g-04\",\"g-07\"],\"reason\":\"말 속도 조절에 관한 발표법 자료가 있습니다.\",\"claim_key\":\"ck-7c96ce6c1476c166\",\"claim_link_key\":\"lk-bcc05b95234eddc8\",\"evidence_basis\":{\"records\":[],\"sources\":[{\"source_id\":\"g-03\",\"corpus_version\":\"guides-6\"},{\"source_id\":\"g-04\",\"corpus_version\":\"guides-6\"},{\"source_id\":\"g-07\",\"corpus_version\":\"guides-6\"}],\"screens\":[],\"fingerprint\":\"077f9ce27c3478be\"},\"supersedes\":[]}],\"goal_result\":null,\"meta\":{\"schema_version\":\"1.0\",\"feature_version\":\"chat_agent-0.10.0\",\"model\":\"gpt-6-luna\",\"prompt_version\":\"d9e2cfcc16a1\",\"corpus_version\":\"guides-6\",\"criteria_versions\":{\"chat_agent\":\"chat_agent-0.10.0+a25a390d36c5\"}},\"diagnostics\":{\"v\":1,\"request_id\":\"req-run-1-1\",\"run_id\":\"run-1\",\"turn_call\":1,\"versions\":{\"feature_version\":\"chat_agent-0.10.0\",\"prompt_version\":\"d9e2cfcc16a1\",\"tool_schema\":\"tools-4\",\"corpus_version\":\"guides-6\"},\"steps\":[{\"seq\":1,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":2487,\"cached_input_tokens\":2046,\"output_tokens\":407,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":2,\"kind\":\"TOOL\",\"code\":\"get_take_report\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"target_ids\":[\"t-5\"],\"revisions\":{\"t-5\":1},\"outcome\":\"OK\",\"result_bytes\":649,\"query_chars\":null,\"error_code\":null}},{\"seq\":3,\"kind\":\"TOOL\",\"code\":\"get_take_report\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"target_ids\":[\"t-5\"],\"revisions\":{\"t-5\":1},\"outcome\":\"OK\",\"result_bytes\":282,\"query_chars\":null,\"error_code\":null}},{\"seq\":4,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":3615,\"cached_input_tokens\":2639,\"output_tokens\":39,\"finish_reason\":\"TOOL_CALLS\",\"tool_call_count\":1,\"error_code\":null,\"fix_for\":null}},{\"seq\":5,\"kind\":\"TOOL\",\"code\":\"search_guides\",\"start_ms\":0,\"ms\":0,\"parent_seq\":4,\"detail\":{\"target_ids\":null,\"revisions\":null,\"outcome\":\"OK\",\"result_bytes\":1611,\"query_chars\":33,\"error_code\":null}},{\"seq\":6,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":3984,\"cached_input_tokens\":3417,\"output_tokens\":114,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":7,\"kind\":\"MODEL\",\"code\":\"ANSWER\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":5172,\"cached_input_tokens\":3074,\"output_tokens\":665,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":8,\"kind\":\"CHECK\",\"code\":\"NUMBER_FORMAT\",\"start_ms\":0,\"ms\":null,\"parent_seq\":7,\"detail\":{\"claim_index\":3,\"claim_kind\":\"GUIDE\",\"field\":null,\"round\":0,\"result\":\"FIX_REQUESTED\",\"checked\":null,\"failed\":null,\"dropped\":null,\"actions_dropped\":null}},{\"seq\":9,\"kind\":\"MODEL\",\"code\":\"FIX\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":3300,\"cached_input_tokens\":0,\"output_tokens\":57,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":[8]}},{\"seq\":10,\"kind\":\"CHECK\",\"code\":\"QUOTE_MISMATCH\",\"start_ms\":0,\"ms\":null,\"parent_seq\":9,\"detail\":{\"claim_index\":3,\"claim_kind\":\"GUIDE\",\"field\":null,\"round\":1,\"result\":\"DROPPED\",\"checked\":null,\"failed\":null,\"dropped\":null,\"actions_dropped\":null}},{\"seq\":11,\"kind\":\"CHECK\",\"code\":\"SUMMARY\",\"start_ms\":0,\"ms\":null,\"parent_seq\":null,\"detail\":{\"claim_index\":null,\"claim_kind\":null,\"field\":null,\"round\":1,\"result\":null,\"checked\":4,\"failed\":1,\"dropped\":1,\"actions_dropped\":0}}],\"end\":{\"status\":\"DONE\",\"reason\":\"ANSWERED\",\"omitted_steps\":0},\"truncated\":false}}}\n"
+     "{\"event\":\"tool_done\",\"run_id\":\"run-1\",\"seq\":4,\"data\":{\"trace\":{\"seq\":3,\"tool\":\"search_guides\",\"args_summary\":\"자료 검색(질의 31자)\",\"result_summary\":\"자료 5개\",\"ms\":0,\"outcome\":\"OK\"}}}\n",
+     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":5,\"data\":{\"index\":0,\"claim\":{\"kind\":\"ASSESSMENT\",\"assessment_id\":\"run-1:as1-1\",\"text\":\"말씀하신 '긴장하면 말이 빨라져.'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음. Take 5 기록에서는 속도 리듬이 안정 상태로 표시되어 있어, 긴장할 때 빨라진다는 느낌을 기록만으로 확인할 수는 없습니다.\",\"evidence_ids\":[\"e-d23b6e7e45\",\"e-53fea31020\"],\"source_ids\":[],\"action_id\":null},\"evidence\":[{\"evidence_id\":\"e-d23b6e7e45\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"TAKE_RESULT\",\"revision\":1,\"path\":\"take_result.problem_segments[dimension=pacing_rhythm]\",\"metric\":null,\"slide_number\":null,\"value\":\"NONE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null},{\"evidence_id\":\"e-53fea31020\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"REVIEW\",\"revision\":1,\"path\":\"review.dimensions.pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"value\":\"STABLE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null}],\"sources\":[],\"assessments\":[{\"assessment_id\":\"run-1:as1-1\",\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[\"t-5\"],\"relation\":\"ALL\"},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"CONTRADICTED\",\"verdict_source\":\"CODE\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"reason\":\"Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음\",\"claim_key\":\"ck-6e10846b3cee3f42\",\"claim_link_key\":\"lk-54bfffabc1079fd4\",\"evidence_basis\":{\"records\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"sources\":[],\"screens\":[],\"fingerprint\":\"602c5e343dfabbb1\"},\"supersedes\":[]}]}}\n",
+     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":6,\"data\":{\"index\":1,\"claim\":{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"속도를 늦추려면 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-18\"],\"action_id\":null},\"evidence\":[],\"sources\":[{\"source_id\":\"g-18\",\"title\":\"발표는 빠를수록 좋다는 오해\",\"quote\":\"빨리 말한다고 발표를 잘하는 것은 아닙니다. 청중은 들은 내용을 이해하는 데 시간이 필요하므로 너무 빠르면 내용이 전달되지 않습니다. 청중이 따라올 수 있는 속도에 쉼을 섞는 것이 좋습니다. 속도를 늦출 때는 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 부담이 적습니다. 시간이 모자랄 때는 말을 빠르게 하기보다 말할 내용을 줄이는 쪽이 더 안전합니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Lumen Learning, Public Speaking (Lumen Learning), 8.3: Articulation, Pitch, and Rate (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.03%3A_Articulation_Pitch_and_Rate; Lumen Learning, Public Speaking (Lumen Learning), 8.13: Rehearsing Your Speech (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.13%3A_Rehearsing_Your_Speech\",\"license\":\"team\"}],\"assessments\":[]}}\n",
+     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":7,\"data\":{\"index\":2,\"claim\":{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-04\"],\"action_id\":null},\"evidence\":[],\"sources\":[{\"source_id\":\"g-04\",\"title\":\"쉼을 활용하기\",\"quote\":\"문장과 문장 사이, 핵심 문장 바로 앞뒤에 잠깐 멈추면 청중이 내용을 받아들일 시간이 생깁니다. 쉼은 실수가 아니라 강조의 도구이고, 말하는 사람에게도 다음 문장을 정리할 여유를 줍니다. 다만 몇 초씩 이어지는 긴 침묵은 준비가 안 된 것처럼 보일 수 있으니 숨 한 번 쉴 정도로 짧게 두세요. 쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Nancy Duarte, Resonate (2010); Lumen Learning, Public Speaking (Lumen Learning), 8.4: Emphasis, Volume, and Pauses (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.04%3A_Emphasis_Volume_and_Pauses\",\"license\":\"team\"}],\"assessments\":[]}}\n",
+     "{\"event\":\"final\",\"run_id\":\"run-1\",\"seq\":8,\"data\":{\"status\":\"DONE\",\"message\":{\"text\":\"말씀하신 '긴장하면 말이 빨라져.'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음. Take 5 기록에서는 속도 리듬이 안정 상태로 표시되어 있어, 긴장할 때 빨라진다는 느낌을 기록만으로 확인할 수는 없습니다.\\n속도를 늦추려면 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작해 보세요.\\n쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요.\",\"claims\":[{\"kind\":\"ASSESSMENT\",\"assessment_id\":\"run-1:as1-1\",\"text\":\"말씀하신 '긴장하면 말이 빨라져.'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음. Take 5 기록에서는 속도 리듬이 안정 상태로 표시되어 있어, 긴장할 때 빨라진다는 느낌을 기록만으로 확인할 수는 없습니다.\",\"evidence_ids\":[\"e-d23b6e7e45\",\"e-53fea31020\"],\"source_ids\":[],\"action_id\":null},{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"속도를 늦추려면 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-18\"],\"action_id\":null},{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-04\"],\"action_id\":null}],\"cards\":[],\"sources\":[{\"source_id\":\"g-18\",\"title\":\"발표는 빠를수록 좋다는 오해\",\"quote\":\"빨리 말한다고 발표를 잘하는 것은 아닙니다. 청중은 들은 내용을 이해하는 데 시간이 필요하므로 너무 빠르면 내용이 전달되지 않습니다. 청중이 따라올 수 있는 속도에 쉼을 섞는 것이 좋습니다. 속도를 늦출 때는 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 부담이 적습니다. 시간이 모자랄 때는 말을 빠르게 하기보다 말할 내용을 줄이는 쪽이 더 안전합니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Lumen Learning, Public Speaking (Lumen Learning), 8.3: Articulation, Pitch, and Rate (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.03%3A_Articulation_Pitch_and_Rate; Lumen Learning, Public Speaking (Lumen Learning), 8.13: Rehearsing Your Speech (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.13%3A_Rehearsing_Your_Speech\",\"license\":\"team\"},{\"source_id\":\"g-04\",\"title\":\"쉼을 활용하기\",\"quote\":\"문장과 문장 사이, 핵심 문장 바로 앞뒤에 잠깐 멈추면 청중이 내용을 받아들일 시간이 생깁니다. 쉼은 실수가 아니라 강조의 도구이고, 말하는 사람에게도 다음 문장을 정리할 여유를 줍니다. 다만 몇 초씩 이어지는 긴 침묵은 준비가 안 된 것처럼 보일 수 있으니 숨 한 번 쉴 정도로 짧게 두세요. 쉼이 어색하면 문장 끝에서 속으로 하나를 센다고 생각하고 연습해 보세요.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Nancy Duarte, Resonate (2010); Lumen Learning, Public Speaking (Lumen Learning), 8.4: Emphasis, Volume, and Pauses (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.04%3A_Emphasis_Volume_and_Pauses\",\"license\":\"team\"}]},\"actions\":[],\"state\":null,\"scope_pitch_id\":\"p-1\",\"plan\":[{\"step\":\"발표 속도·긴장 관련 발표법 자료 찾기\",\"status\":\"DONE\",\"note\":null}],\"trace\":[{\"seq\":1,\"tool\":\"get_take_report\",\"args_summary\":\"get_take_report\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"},{\"seq\":2,\"tool\":\"get_take_report\",\"args_summary\":\"get_take_report\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"},{\"seq\":3,\"tool\":\"search_guides\",\"args_summary\":\"search_guides\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"}],\"basis\":{\"pitches\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"take_number\":5,\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"conversation_goal_version\":0,\"corpus_version\":\"guides-7\",\"sources\":[\"g-04\",\"g-18\"]},\"evidence\":[{\"evidence_id\":\"e-d23b6e7e45\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"TAKE_RESULT\",\"revision\":1,\"path\":\"take_result.problem_segments[dimension=pacing_rhythm]\",\"metric\":null,\"slide_number\":null,\"value\":\"NONE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null},{\"evidence_id\":\"e-53fea31020\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"REVIEW\",\"revision\":1,\"path\":\"review.dimensions.pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"value\":\"STABLE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null}],\"history_summary\":null,\"budget_used\":{\"model_calls\":4,\"tool_calls\":3,\"elapsed_ms\":0,\"input_tokens\":16444,\"output_tokens\":851},\"usage\":{\"model_calls\":4,\"tool_calls\":3,\"elapsed_ms\":0,\"input_tokens\":16444,\"output_tokens\":851,\"measured\":true,\"missing_reason\":null},\"assessments\":[{\"assessment_id\":\"run-1:as1-1\",\"quote\":\"긴장하면 말이 빨라져.\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[\"t-5\"],\"relation\":\"ALL\"},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"CONTRADICTED\",\"verdict_source\":\"CODE\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"reason\":\"Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음\",\"claim_key\":\"ck-6e10846b3cee3f42\",\"claim_link_key\":\"lk-54bfffabc1079fd4\",\"evidence_basis\":{\"records\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"sources\":[],\"screens\":[],\"fingerprint\":\"602c5e343dfabbb1\"},\"supersedes\":[]}],\"goal_result\":null,\"meta\":{\"schema_version\":\"1.0\",\"feature_version\":\"chat_agent-0.10.0\",\"model\":\"gpt-6-luna\",\"prompt_version\":\"d9e2cfcc16a1\",\"corpus_version\":\"guides-7\",\"criteria_versions\":{\"chat_agent\":\"chat_agent-0.10.0+a25a390d36c5\"}},\"diagnostics\":{\"v\":1,\"request_id\":\"req-run-1-1\",\"run_id\":\"run-1\",\"turn_call\":1,\"versions\":{\"feature_version\":\"chat_agent-0.10.0\",\"prompt_version\":\"d9e2cfcc16a1\",\"tool_schema\":\"tools-4\",\"corpus_version\":\"guides-7\"},\"steps\":[{\"seq\":1,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":2399,\"cached_input_tokens\":2396,\"output_tokens\":345,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":2,\"kind\":\"TOOL\",\"code\":\"get_take_report\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"target_ids\":[\"t-5\"],\"revisions\":{\"t-5\":1},\"outcome\":\"OK\",\"result_bytes\":649,\"query_chars\":null,\"error_code\":null}},{\"seq\":3,\"kind\":\"TOOL\",\"code\":\"get_take_report\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"target_ids\":[\"t-5\"],\"revisions\":{\"t-5\":1},\"outcome\":\"OK\",\"result_bytes\":282,\"query_chars\":null,\"error_code\":null}},{\"seq\":4,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":3420,\"cached_input_tokens\":3417,\"output_tokens\":38,\"finish_reason\":\"TOOL_CALLS\",\"tool_call_count\":1,\"error_code\":null,\"fix_for\":null}},{\"seq\":5,\"kind\":\"TOOL\",\"code\":\"search_guides\",\"start_ms\":0,\"ms\":0,\"parent_seq\":4,\"detail\":{\"target_ids\":null,\"revisions\":null,\"outcome\":\"OK\",\"result_bytes\":3593,\"query_chars\":31,\"error_code\":null}},{\"seq\":6,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":4728,\"cached_input_tokens\":3417,\"output_tokens\":133,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":7,\"kind\":\"MODEL\",\"code\":\"ANSWER\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":5897,\"cached_input_tokens\":3074,\"output_tokens\":335,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":8,\"kind\":\"CHECK\",\"code\":\"SUMMARY\",\"start_ms\":0,\"ms\":null,\"parent_seq\":null,\"detail\":{\"claim_index\":null,\"claim_kind\":null,\"field\":null,\"round\":0,\"result\":null,\"checked\":3,\"failed\":0,\"dropped\":0,\"actions_dropped\":0}}],\"end\":{\"status\":\"DONE\",\"reason\":\"ANSWERED\",\"omitted_steps\":0},\"truncated\":false}}}\n"
     ],
     "status": 200
    }

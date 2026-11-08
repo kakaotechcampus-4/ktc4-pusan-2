@@ -14,13 +14,17 @@
   3. 묶음 해시(`manifest_hash`)가 manifest 와 같은지(`HASH_MISMATCH`, L4-30: 본문이 바뀌었는데 판이 그대로인 경우를 막는다).
      판 고정표(`version.CORPUS_VERSION_HASHES`): 서비스(`allow_unreviewed=False`)는 등록한 판만(`UNKNOWN_VERSION`), 등록한 판에
      다른 본문이면 `VERSION_REUSED`.
-  4. 검수 상태: `allow_unreviewed=False` 면 `review == "APPROVED"` 인 카드만 허용(`UNREVIEWED`), 발표법 카드는 참고 문헌
-     (`source`의 '참고:')이 있어야 한다(`NO_REFERENCE`, 6-10 '카드마다 참고 문헌', #885 리뷰).
+  4. 검수 상태(카드 단위, P-0008 5-2): `allow_unreviewed=False` 면 1~3을 **모든 카드**에 한 뒤 `review == "APPROVED"` 인 카드만
+     묶음에 싣는다(검수 전 카드는 검색 · 인용 대상이 아님). 실을 카드가 0장이면 `UNREVIEWED`(자료 묶음 없음). 실을 발표법 카드는
+     참고 문헌(`source`의 '참고:')이 있어야 하고, 하나라도 없으면 묶음 전체가 준비 실패다(`NO_REFERENCE`, 6-10 '카드마다 참고 문헌',
+     #885 리뷰 — 검수 표시만 바꾸고 참고 문헌을 빠뜨린 카드가 섞이지 않게).
 - 검수 상태(`review`)가 있는 까닭: 기능 문서 L4-29 는 P0 에서 '팀 작성 · 검수 완료 카드만' 빌드에 허용한다고 정했다.
-  지금 카드는 초안이라 발표법 카드는 다른 AI 담당, 화면 사용법 카드는 FE 의 검수를 기다린다(`PENDING`).
-  연구 모듈의 평가 · 시험은 `allow_unreviewed=True` 로 초안을 시험하고, **서비스는 `False` 로 부른다**(`api/chat_agent.py`).
-  검수 전 카드가 있으면 서비스는 자료 묶음 없이 시작한다(검색은 준비 실패 → 일반 조언 규칙, 6-10 · L1-21). 카드를
-  `APPROVED` 로 바꾸면 해시를 다시 만들고 판을 올려 `version.CORPUS_VERSION_HASHES` 에 등록한다.
+  발표법 카드는 다른 AI 담당(PR 리뷰), 화면 사용법 카드는 FE 의 검수를 받는다. 검수를 마치지 않은 카드(`PENDING`)는
+  묶음에 남아 해시 · 형식 검사는 받지만 서비스 검색에는 나오지 않는다. g-19(원인 설명)는 CC BY 참고 문헌을 찾지 못해 `PENDING`
+  이라, 원인 단정 문장은 지금처럼 승인된 근거가 없어 지워진다(6-9).
+  연구 모듈의 평가 · 시험은 `allow_unreviewed=True` 로 초안까지 시험하고, **서비스는 `False` 로 부른다**(`api/chat_agent.py`).
+  실을 카드가 하나도 없으면 서비스는 자료 묶음 없이 시작한다(검색은 준비 실패 → 일반 조언 규칙, 6-10 · L1-21). 카드의 검수 표시를
+  바꾸면 본문이 같아도 해시가 바뀌므로 판을 올려 `version.CORPUS_VERSION_HASHES` 에 등록한다.
 - 검색(P0 키워드, 자료가 작아 충분. 의미 검색은 P1)
   - 한글 정규화: 소문자, 글자 · 숫자 아닌 것은 공백. 낱말과 그 낱말의 2글자 조각(shingle)을 같이 쓴다. 조사 · 어미가 달라도 걸린다("빨라져" ↔ "빨라").
   - 점수 = 질문 조각마다 (희귀도 가중) × (제목 2 + 주제어 2 + 본문 1), 주제어 구절이 질문에 통째로 들어 있으면 가산, 화면이 맞으면 ×1.5.
@@ -389,9 +393,10 @@ def build_corpus(
         # 같은 판에 다른 본문: 판을 올려야 한다(L4-30)
         raise CorpusInvalid("VERSION_REUSED", man.corpus_version)
     if not allow_unreviewed:
-        pending = [c.source_id for c in cards if c.review != "APPROVED"]
-        if pending:
-            raise CorpusInvalid("UNREVIEWED", ", ".join(pending))
+        # 카드 단위 검수(P-0008 5-2): 위 검사는 모든 카드에 했고, 검색 대상은 검수를 마친 카드만이다
+        cards = [c for c in cards if c.review == "APPROVED"]
+        if not cards:
+            raise CorpusInvalid("UNREVIEWED", "no approved card")
         # 6-10: 발표법 카드는 카드마다 참고 문헌이 있어야 한다(팀 작성 원칙만으로는 검수 완료로 쓰지 않는다)
         no_ref = [c.source_id for c in cards if c.kind == "method" and "참고:" not in c.source]
         if no_ref:

@@ -795,16 +795,44 @@ def test_core_iterator_exception_still_sends_one_error_end_line(
 # ── 자료 묶음 (6-10 · L1-21 · L4-29) ─────────────────────────────────────────────
 
 
-def test_service_reads_only_reviewed_cards_and_starts_without_them_now(
-    log_records: list[logging.LogRecord],
+def test_service_reads_only_reviewed_cards(log_records: list[logging.LogRecord]) -> None:
+    """서비스는 검수를 마친 카드만 싣는다(카드 단위 검수, P-0008 5-2). 지금은 발표법 카드만 검수를 마쳤고 사용법 카드는 FE 검수 전."""
+    served = api.load_corpus()
+    assert served is not None and served.version == "guides-7"
+    assert {c.kind for c in served.cards} == {"method"}
+    assert all(c.review == "APPROVED" for c in served.cards)
+    assert not [
+        r for r in log_records if r.getMessage().startswith("chat_agent_corpus_unavailable")
+    ]
+    every = api.load_corpus(allow_unreviewed=True)
+    assert every is not None and len(every.cards) > len(served.cards)
+
+
+def test_service_starts_without_corpus_when_no_card_is_reviewed(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[logging.LogRecord]
 ) -> None:
-    """지금 자료 카드는 검수 전이라 서비스는 자료 묶음 없이 시작한다(이유 코드만 로그, 앱은 뜬다)."""
+    """검수를 마친 카드가 하나도 없으면 자료 묶음 없이 시작한다(이유 코드만 로그, 앱은 뜬다)."""
+    from pitch_coach_ai.features.chat_agent import corpus as corpus_mod
+
+    real = corpus_mod.build_corpus
+
+    def none_approved(manifest: Any, files: Any, **kw: Any) -> Any:
+        files = {n: [{**c, "review": "PENDING"} for c in cards] for n, cards in files.items()}
+        raw = [c for n in manifest["files"] for c in files[n]]
+        manifest = {
+            **manifest,
+            "sha256": corpus_mod.manifest_hash(raw, manifest.get("synonyms") or None),
+        }
+        monkeypatch.setitem(
+            corpus_mod.CORPUS_VERSION_HASHES, manifest["corpus_version"], manifest["sha256"]
+        )
+        return real(manifest, files, **kw)
+
+    monkeypatch.setattr(api, "build_corpus", none_approved)
     assert api.load_corpus() is None
     msgs = [r.getMessage() for r in log_records]
     lines = [m for m in msgs if m.startswith("chat_agent_corpus_unavailable reason=")]
     assert lines == ["chat_agent_corpus_unavailable reason=UNREVIEWED"]  # 이유 코드만, 카드 id 없음
-    # 검수 여부만 빼면 묶음 자체(목록 · 해시 · 라이선스 · 형식)는 온전하다
-    assert api.load_corpus(allow_unreviewed=True) is not None
 
 
 def test_runtime_is_built_once_per_app_even_under_concurrent_first_requests(
@@ -842,6 +870,6 @@ def test_runtime_caps_one_model_call_at_the_core_answer_share(
     assert seen[0]["max_call_seconds"] == 12.0 and seen[0]["pool_size"] == 8
 
 
-def test_runtime_built_from_settings_has_no_corpus_until_cards_are_reviewed() -> None:
+def test_runtime_built_from_settings_serves_the_reviewed_cards() -> None:
     rt = api.AgentRuntime.from_settings(_settings(agent_enabled=True, agent_state_secret=SECRET))
-    assert rt.corpus is None and rt.corpus_version == "none"
+    assert rt.corpus is not None and rt.corpus_version == "guides-7"

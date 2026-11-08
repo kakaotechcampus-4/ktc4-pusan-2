@@ -29,7 +29,9 @@ SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 #: guides-4: u-08 의 기준 고쳐 쓰기 안내 문장 빼기, 동의어 사전에서 오탐 낱말(불안 · 급하게 · 포즈 · 결론 …) 빼고
 #: 목소리 · 억양 묶음 대표어를 카드 표현으로, q&a 더함. guides-5: 사용법 카드 u-03 을 대본 파서 규칙에 맞춤(번호 조건 ·
 #: 첫 구분 표시 앞에는 제목만, #885 리뷰). guides-6: u-07 셋째 문장에서 u-08 과 겹치는 '측정되지 않는 항목' 부분을 뺌
-#: (u-07 은 판정, u-08 은 빠지는 항목으로 역할을 나눔, #921 리뷰)
+#: (u-07 은 판정, u-08 은 빠지는 항목으로 역할을 나눔, #921 리뷰). guides-7: 카드 단위 검수 — 발표법 카드 21장 검수 완료(g-19 만
+#: CC BY 참고 문헌이 없어 검수 전), 발표법 카드에 CC BY 4.0 교재 참고 문헌, 교재와 어긋난 문장 다듬기(g-01 · g-07 · g-12 · g-14 ·
+#: g-15 · g-18), g-13 을 질의응답 시간의 전달만으로, 새 카드 g-21(카메라 앞) · g-22(실수 뒤 이어 가기), u-25 를 1-3 에 맞춤(P-0008)
 CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-1": "48aa04e52f8f16abacb6c87d37d5536daf39e4d3c4aac05bf1550cad9dd6ad89",
     "guides-2": "a2b1f11aaf653da307afce2ec0bfe8d5a141fe08d3faed1e803c955ffe619823",
@@ -37,6 +39,7 @@ CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-4": "ed5d3b2dd2a3aae8acd8ec5bc71518b64863d1ba7323db889140f20200af16d7",
     "guides-5": "a8c7f133a4549c27c1e22ea4530b91ff19834551e96e59fd9d8d2c822a6cc30a",
     "guides-6": "a74cb7cc6790fcf607edbc7d69d42593dc0a1fa89330e089c83d16208ecfb48d",
+    "guides-7": "421b5e210d49f540960b512675dc118fd90321d6cb631184d460512597a8e9fd",
 }
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),

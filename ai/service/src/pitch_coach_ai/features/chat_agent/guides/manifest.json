@@ -1,10 +1,10 @@
 {
-  "corpus_version": "guides-6",
+  "corpus_version": "guides-7",
   "files": [
     "methods.json",
     "usage.json"
   ],
-  "sha256": "a74cb7cc6790fcf607edbc7d69d42593dc0a1fa89330e089c83d16208ecfb48d",
+  "sha256": "421b5e210d49f540960b512675dc118fd90321d6cb631184d460512597a8e9fd",
   "synonyms": [
     [
       "시선",
