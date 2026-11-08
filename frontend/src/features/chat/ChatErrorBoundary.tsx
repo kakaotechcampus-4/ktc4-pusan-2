@@ -77,7 +77,8 @@ export class ChatErrorBoundary extends Component<Props, State> {
 /**
  * 런처 자리의 안내. 채팅이 숨는 화면(연습 무대 등)에서는 그리지 않습니다.
  * [닫기]는 안내를 런처 크기의 [다시 시도] 버튼으로 접습니다 — 안내도 왼쪽 아래에 표시합니다.
- * 정상 런처와 같은 `data-chat-launcher` 를 둡니다. index.css의 화면 여백 보정과 오류 경계의 초점 복귀가 이 표시를 사용합니다.
+ * 정상 런처와 같은 `data-chat-launcher` 를 둡니다.
+ * index.css의 화면 여백 보정과 오류 경계의 초점 복귀가 이 표시를 사용합니다.
  */
 function ChatFailed({
   retryRef,
