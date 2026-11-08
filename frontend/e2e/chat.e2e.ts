@@ -336,7 +336,7 @@ test.describe('10. 승인 카드(전 → 후) → [승인] · [거절] · 만료
   });
 });
 
-test('11. 답 문장이 글자 효과로 나옴 → 지난 답은 효과 없이 전체 · 일반 조언에만 라벨 · 기록 문장에 근거 칩', async ({
+test('11. 답 문장이 글자 효과로 나옴 → 일반 조언에만 라벨 · 기록 문장에 근거 칩', async ({
   page,
 }) => {
   await page.goto('/');
@@ -355,17 +355,47 @@ test('11. 답 문장이 글자 효과로 나옴 → 지난 답은 효과 없이 
   await expect(panel.getByText('일반 조언 · 기록과 자료로 확인한 것이 아니에요')).toHaveCount(1);
   const record = panel.locator('[data-claim]').first();
   await expect(record.getByRole('list', { name: '근거' })).toBeVisible();
+});
 
-  // 지난 답(복원)은 효과 없이 처음부터 전체가 보입니다 — 목의 지난 대화로 확인합니다.
-  // 전체 새로고침은 목 서버(MSW)의 메모리 상태까지 지워서 쓰지 않습니다
-  await panel.getByRole('button', { name: '대화 목록' }).click();
-  await panel
-    .getByRole('list', { name: '지난 대화' })
-    .getByRole('button', { name: /지난번보다 청중을 더 봤어\?/ })
-    .click();
-  await expect(panel.locator('[data-claim]').first()).toBeVisible();
-  // 기다리지 않고 바로 셉니다 — 기다리면 효과가 돌다 끝난 뒤에도 0 이 되어 통과해 버립니다
-  expect(await panel.locator('[data-claim] > span[aria-hidden="true"]').count()).toBe(0);
+test.describe('11. 지난 답은 글자 효과 없이 처음부터 전체', () => {
+  /** 글자 효과가 도는 동안만 생기는 표시 — 기다리지 않고 바로 셉니다(기다리면 효과가 끝난 뒤 0 이 되어 통과해 버림) */
+  const typingNow = (panel: Locator) =>
+    panel.locator('[data-claim] > span[aria-hidden="true"]').count();
+
+  /** 목에 늘 있는 지난 대화(`지난번보다 청중을 더 봤어?`)를 엽니다 */
+  async function openPast(panel: Locator): Promise<void> {
+    await panel.getByRole('button', { name: '대화 목록' }).click();
+    await panel
+      .getByRole('list', { name: '지난 대화' })
+      .getByRole('button', { name: /지난번보다 청중을 더 봤어\?/ })
+      .click();
+  }
+
+  test('지난 대화를 고르면 저장된 답이 효과 없이 보인다', async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+    await openPast(panel);
+    await expect(panel.locator('[data-message] [data-claim]').first()).toBeVisible();
+    expect(await typingNow(panel)).toBe(0);
+    await expect(panel.locator('[data-live-run]')).toHaveCount(0);
+  });
+
+  test('새로고침해도 보던 대화를 다시 열고 답은 효과 없이 보인다 (복원)', async ({ page }) => {
+    // 목 서버는 새로고침하면 처음 상태로 돌아가서, 새로 보낸 대화가 아니라 목에 늘 있는 지난 대화로 봅니다
+    await page.goto('/');
+    const panel = await openChat(page);
+    await openPast(panel);
+    await expect(panel.getByText('지난번보다 청중을 더 봤어?', { exact: true })).toBeVisible();
+
+    await page.reload();
+    const again = page.getByRole('dialog', { name: '채팅 에이전트' });
+    if (!(await again.isVisible())) await openChat(page);
+    // 대화 ID 는 sessionStorage 에 남아 있어 목록을 고르지 않아도 그 대화가 열립니다
+    await expect(again.getByText('지난번보다 청중을 더 봤어?', { exact: true })).toBeVisible();
+    await expect(again.locator('[data-message] [data-claim]').first()).toBeVisible();
+    expect(await typingNow(again)).toBe(0);
+    await expect(again.locator('[data-live-run]')).toHaveCount(0);
+  });
 });
 
 test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄기 · '기억 없이' 대화에서는 카드 없음", () => {
