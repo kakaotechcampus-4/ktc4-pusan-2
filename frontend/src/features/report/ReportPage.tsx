@@ -322,12 +322,8 @@ function trend(r: ReviewResult['comparison'][number]) {
 
 /** 지난 Take의 지표별 슬라이드 변화 요약과 차원별 상세 비교표 (#929). */
 function slideList(numbers: number[]) {
-  return (
-    [...new Set(numbers)]
-      .sort((a, b) => a - b)
-      .map((n) => `${n}번`)
-      .join(', ') || '없음'
-  );
+  const unique = [...new Set(numbers)].sort((a, b) => a - b);
+  return unique.length ? unique.map((n) => `${n}번`).join(', ') : '없음';
 }
 
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
@@ -387,15 +383,11 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                       <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                         <div className="bg-cream p-3">
                           <p className="font-bold text-ink">나아진 슬라이드</p>
-                          <p className="mt-1">
-                            {slideList(improved)}
-                          </p>
+                          <p className="mt-1">{slideList(improved)}</p>
                         </div>
                         <div className="bg-panel p-3">
                           <p className="font-bold text-ink">나빠진 슬라이드</p>
-                          <p className="mt-1">
-                            {slideList(worsened)}
-                          </p>
+                          <p className="mt-1">{slideList(worsened)}</p>
                         </div>
                       </div>
                       {(same > 0 || unknown > 0) && (
