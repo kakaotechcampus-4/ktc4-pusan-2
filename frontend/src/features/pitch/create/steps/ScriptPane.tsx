@@ -18,6 +18,7 @@ import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
+import { ParseWaitHint } from './ParseWaitHint';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -243,6 +244,11 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         </p>
       )}
 
+      {script.parse.status === 'pending' && (
+        // 다른 대본으로 바뀌면 다시 마운트해 앞 대본의 기다린 시간이 남지 않게 합니다
+        <ParseWaitHint key={script.parse.startedAt} startedAt={script.parse.startedAt} />
+      )}
+
       {failure && (
         <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-ink">
           {failure}
@@ -453,6 +459,10 @@ function MappingReview({
         title="2. 대본 연결"
         subtitle="장별 대본을 확인하고, 수정한 매핑은 다시 저장해 주세요."
       />
+      {/* 장수가 다른 슬라이드를 올려 대본이 옮겨졌을 때, 매핑을 지우지 않고 예전 슬라이드로 되돌릴 수 있게 둡니다 */}
+      <div className="mb-3">
+        <SlideLink script={script} linked={linked} />
+      </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border border-line bg-panel p-5">
         <div>
           <p className="font-bold">
@@ -544,6 +554,20 @@ function MappingEditor({
   const editNotice = script.remote ? null : mappingEditNotice(blocks);
   const editNoticeId = useId();
 
+  // "수정 대본 매핑"은 끝나면 사라집니다(서버 버전이 생기고 나누기가 끝남). 그 버튼이 쥐고 있던 초점이
+  // body 로 빠지지 않게 다음 할 일로 옮깁니다 — 저장할 수 있으면 저장, 아니면 왜 못 하는지 알리는 줄 (#845).
+  // 실패하면 버튼이 남아 초점도 그대로입니다
+  const saveButton = useRef<HTMLButtonElement>(null);
+  const saveStatus = useRef<HTMLDivElement>(null);
+  const wasPending = useRef(pending);
+  useEffect(() => {
+    const finished = wasPending.current && !pending;
+    wasPending.current = pending;
+    if (!finished || saveStatus.current?.closest('dialog')?.contains(document.activeElement))
+      return;
+    (canSave ? saveButton.current : saveStatus.current)?.focus();
+  }, [pending, canSave]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-3 flex flex-wrap gap-2">
@@ -574,6 +598,10 @@ function MappingEditor({
         <p role="alert" className="mb-3 text-sm text-ink">
           {script.parse.message}
         </p>
+      )}
+      {script.parse.status === 'pending' && (
+        // 다른 대본으로 바뀌면 다시 마운트해 앞 대본의 기다린 시간이 남지 않게 합니다
+        <ParseWaitHint key={script.parse.startedAt} startedAt={script.parse.startedAt} />
       )}
       <MappingNotice
         text={script.text}
@@ -616,12 +644,15 @@ function MappingEditor({
           </label>
         </div>
       </div>
+      {/* 끝에 닿은 버튼은 aria-disabled 로 둡니다 — disabled 면 누른 버튼의 초점이 창 밖으로 빠집니다 (#818) */}
       <div className="mt-3 flex items-center justify-end gap-4 text-sm tabular-nums">
         <button
           type="button"
-          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
-          disabled={active === 0}
-          onClick={() => setSelected(active - 1)}
+          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:opacity-55 aria-disabled:hover:bg-transparent"
+          aria-disabled={active === 0}
+          onClick={() => {
+            if (active > 0) setSelected(active - 1);
+          }}
         >
           이전 장
         </button>
@@ -630,9 +661,11 @@ function MappingEditor({
         </span>
         <button
           type="button"
-          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
-          disabled={active >= rows.length - 1}
-          onClick={() => setSelected(active + 1)}
+          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:opacity-55 aria-disabled:hover:bg-transparent"
+          aria-disabled={active >= rows.length - 1}
+          onClick={() => {
+            if (active < rows.length - 1) setSelected(active + 1);
+          }}
         >
           다음 장
         </button>
@@ -645,41 +678,45 @@ function MappingEditor({
       </p>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-4">
-        {script.saved ? (
-          <p className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white">
-              <CheckIcon className="h-4 w-4 stroke-current" />
-            </span>
-            <span>
-              <span className="block text-sm font-bold">
-                저장 완료 · 슬라이드 V{linked?.version} / 대본 V{script.version}
+        <div ref={saveStatus} tabIndex={-1}>
+          {script.saved ? (
+            <p className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white">
+                <CheckIcon className="h-4 w-4 stroke-current" />
               </span>
-              <span className="block text-xs text-ink/80">
-                {gate.ready ? '이 조합으로 연습을 진행해요.' : gate.message}
+              <span>
+                <span className="block text-sm font-bold">
+                  저장 완료 · 슬라이드 V{linked?.version} / 대본 V{script.version}
+                </span>
+                <span className="block text-xs text-ink/80">
+                  {gate.ready ? '이 조합으로 연습을 진행해요.' : gate.message}
+                </span>
               </span>
-            </span>
-          </p>
-        ) : (
-          <SaveHint countsMatch={countsMatch} blockCount={blocks.length} pageCount={pageCount} />
-        )}
+            </p>
+          ) : (
+            <SaveHint countsMatch={countsMatch} blockCount={blocks.length} pageCount={pageCount} />
+          )}
+        </div>
 
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex flex-wrap justify-end gap-3">
             {(!script.remote || script.parse.status !== 'idle') && (
+              // 매핑 중에도 aria-disabled 로 둡니다 — 누른 이 버튼이 초점을 쥐고 있습니다
               <button
                 type="button"
-                disabled={pending}
-                onClick={() =>
-                  script.parse.status === 'failed'
-                    ? retryScriptMapping(script.version)
-                    : startScriptMapping(script.version)
-                }
-                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink disabled:opacity-50"
+                aria-disabled={pending}
+                onClick={() => {
+                  if (pending) return;
+                  if (script.parse.status === 'failed') retryScriptMapping(script.version);
+                  else startScriptMapping(script.version);
+                }}
+                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink aria-disabled:opacity-50"
               >
                 {pending ? '매핑 중…' : '수정 대본 매핑'}
               </button>
             )}
             <button
+              ref={saveButton}
               type="button"
               disabled={!canSave}
               onClick={() => {

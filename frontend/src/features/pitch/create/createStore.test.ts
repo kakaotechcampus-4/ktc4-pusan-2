@@ -150,10 +150,11 @@ it('지난 대본 버전을 골라 두었으면 그 버전을 새 슬라이드�
   ]);
 });
 
-it('장수가 다른 슬라이드를 올리면 대본은 앞 슬라이드에 남는다', () => {
+it('장수가 다른 슬라이드를 올려도 대본을 새 슬라이드로 옮기고, 매핑을 다시 확인받는다 (멘토 리뷰 #923)', () => {
   store().attachSlides({ ...uploaded, pageCount: 3, presentationVersionId: 'pv2' });
-  expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: true });
-  expect(toPracticeCombo(store().draft, store().chosen)?.presentationVersionId).toBe('pv1');
+  expect(store().draft.scripts[0]).toMatchObject({ slideVersion: 2, saved: false });
+  // 앞 슬라이드(pv1)로 연습이 시작되지 않습니다 — 장수가 맞을 때까지 진행이 막힙니다
+  expect(toPracticeCombo(store().draft, store().chosen)).toBeNull();
 });
 
 it('빈 버전에 시작한 업로드는 화면을 옮겨도 그 버전에 들어간다', () => {
@@ -168,7 +169,7 @@ it('빈 버전에 시작한 업로드는 화면을 옮겨도 그 버전에 들�
 
 it('파싱 중에는 매핑을 바꾸거나 저장할 수 없다', () => {
   store().editMappingBlock(1, 0, '수정');
-  store().patchScript(1, { parse: { status: 'pending' } });
+  store().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } });
   store().editMappingBlock(1, 0, '다른 내용');
   store().saveMapping(1);
   expect(store().draft.scripts[0]?.blocks?.[0]).toBe('수정');
