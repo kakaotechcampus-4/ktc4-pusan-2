@@ -117,9 +117,7 @@ function CriteriaExamples() {
         >
           <p className="font-bold">{active.label} 작성 예시</p>
           <p className="mt-1 leading-relaxed">{active.example}</p>
-          {active.note && (
-            <p className="mt-1 text-xs leading-relaxed text-ink/80">{active.note}</p>
-          )}
+          {active.note && <p className="mt-1 text-xs leading-relaxed text-ink/80">{active.note}</p>}
         </div>
       )}
       <p className="mt-2 text-xs leading-relaxed text-ink/80">
@@ -180,8 +178,8 @@ function Guide({ except }: { except: string | null }) {
       <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
         측정 지표와 연결되는 숫자 목표는 리포트의 달성 여부 판정에 활용될 수 있어요.
         <br />
-        침묵 길이·절대 음량(dB)·'정도'처럼 지표로 바꿀 수 없는 조건은 판정하지 않을 수
-        있어요. 정리 과정에서 제외된 내용은 이곳에서 알려드려요.
+        침묵 길이·절대 음량(dB)·'정도'처럼 지표로 바꿀 수 없는 조건은 판정하지 않을 수 있어요. 정리
+        과정에서 제외된 내용은 이곳에서 알려드려요.
       </p>
     </div>
   );
