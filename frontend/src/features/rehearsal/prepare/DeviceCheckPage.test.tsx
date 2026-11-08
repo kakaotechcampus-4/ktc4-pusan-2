@@ -25,6 +25,9 @@ const fixture = vi.hoisted(() => ({
     isPending: false,
     isError: false,
   },
+  /** 최신 자료를 다시 받는 중인지 · [다시 확인]이 부르는 것 */
+  latestFetching: false,
+  refetchLatest: vi.fn(),
   request: vi.fn(),
   gazeStart: vi.fn(),
   voiceStart: vi.fn(),
@@ -97,7 +100,11 @@ vi.mock('./useBaseVoice', () => ({
 }));
 vi.mock('@/shared/api/prepare', () => ({
   usePrepare: () => ({ data: fixture.data, isError: false }),
-  useLatestSlide: () => fixture.latestSlide,
+  useLatestSlide: () => ({
+    ...fixture.latestSlide,
+    isFetching: fixture.latestFetching,
+    refetch: fixture.refetchLatest,
+  }),
   useCreateTake: () => ({ mutateAsync: fixture.create }),
   postCalibration: vi.fn(),
 }));
@@ -135,6 +142,8 @@ beforeEach(() => {
   fixture.deviceError = null;
   fixture.voiceStatus = 'IDLE';
   fixture.latestSlide = { data: null, isPending: false, isError: false };
+  fixture.latestFetching = false;
+  fixture.refetchLatest.mockReset().mockResolvedValue(undefined);
   fixture.request.mockReset().mockResolvedValue(undefined);
   fixture.create.mockReset().mockResolvedValue({ takeId: 't1', takeNumber: 4 });
   fixture.active.mockReset().mockResolvedValue(null);
@@ -338,15 +347,101 @@ it('[매핑 확인하기]를 누르면 피치 수정으로 가고 Take 를 만�
   expect(fixture.create).not.toHaveBeenCalled();
 });
 
-it('가장 최근 자료를 받는 동안에는 시작하지 않고, 못 받았으면 막지 않는다', async () => {
+it('가장 최근 자료를 받는 동안에는 시작하지 않는다', async () => {
   fixture.latestSlide = { data: undefined, isPending: true, isError: false };
   await render();
   expect(findButton('Take 4 시작하기').disabled).toBe(true);
+});
 
+const liveText = () =>
+  [...host.querySelectorAll('[role="status"]')].find((n) => n.classList.contains('sr-only'))!
+    .textContent;
+
+it('가장 최근 자료를 못 받았으면 다시 확인할지 이 자료로 연습할지 고르기 전에는 시작하지 않는다', async () => {
   fixture.latestSlide = { data: undefined, isPending: false, isError: true };
-  await render(undefined, 'p2');
-  expect(host.querySelector('[data-older-slide]')).toBeNull();
+  await render();
+  const notice = host.querySelector('[data-latest-unchecked]')!;
+  const text = '가장 최근 자료를 확인하지 못해 지금 자료(v9)가 최신인지 알 수 없어요';
+  expect(notice.textContent).toContain(text);
+  expect(liveText()).toBe(text);
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('다시 확인').click());
+  expect(fixture.refetchLatest).toHaveBeenCalledTimes(1);
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('이 자료로 연습').click());
+  expect(host.querySelector('[data-latest-unchecked]')).toBeNull();
+  expect(liveText()).toBe('지금 자료(v9)로 연습해요');
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        presentation_version_id: 'latest-pv',
+        script_version_id: 'latest-sv',
+      }),
+    }),
+  );
+});
+
+it('[다시 확인]이 끝나 안내가 사라지면 초점을 시작 버튼으로 옮긴다', async () => {
+  fixture.latestSlide = { data: undefined, isPending: false, isError: true };
+  await render();
+  const recheck = findButton('다시 확인');
+  recheck.focus();
+  await act(async () => recheck.click());
+  // 쿼리가 다시 받는 중으로 바뀐 것을 그립니다
+  fixture.latestFetching = true;
+  await render();
+  // 다시 받는 동안에는 버튼을 막지 않아 초점이 그대로이고, 시작도 막혀 있습니다
+  expect(recheck.textContent).toBe('확인하는 중…');
+  expect(document.activeElement).toBe(recheck);
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  fixture.latestFetching = false;
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  expect(host.querySelector('[data-latest-unchecked]')).toBeNull();
+  expect(document.activeElement).toBe(findButton('Take 4 시작하기'));
+});
+
+it('[최신으로] 뒤 가장 최근 자료가 대본과 장 수가 다르면 그 안내를 먼저 알리고 초점을 안내로 옮긴다', async () => {
+  // 자료 v1 · 대본 v1 로 고른 조합을 들고 왔고, 서버 최신 조합은 v2 · v2(3장), 가장 최근 PDF 는 v3(4쪽)
+  fixture.data = {
+    ...fixture.data,
+    presentation: { id: 'pv2', version: 2, page_count: 3 },
+    script: { id: 'sv2', version: 2, slide_count: 3 },
+  };
+  fixture.latestSlide = {
+    data: { id: 'pv3', version: 3, pageCount: 4 },
+    isPending: false,
+    isError: false,
+  };
+  await render({
+    title: '고른 발표',
+    presentationVersionId: 'pv1',
+    scriptVersionId: 'sv1',
+    slideVersion: 1,
+    scriptVersion: 1,
+    goalTimeSec: 300,
+  });
   expect(findButton('Take 4 시작하기').disabled).toBe(false);
+
+  const latestButton = findButton('최신으로');
+  latestButton.focus();
+  await act(async () => latestButton.click());
+  const notice = host.querySelector<HTMLElement>('[data-older-slide]')!;
+  expect(notice).not.toBeNull();
+  expect(liveText()).toBe(
+    '최신 조합(자료 v2 · 대본 v2)으로 바꿨어요. 가장 최근 자료(v3 · 4쪽)는 대본(3장)과 장 수가 달라 지난 자료(v2)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  // 막힌 시작 버튼이 아니라 고를 안내로 초점이 갑니다 — body 로 빠지지 않습니다
+  expect(document.activeElement).toBe(notice);
 });
 
 it('준비 정보가 가장 최근 자료를 골랐거나 조합을 넘겨받았으면 지난 자료 안내를 띄우지 않는다', async () => {

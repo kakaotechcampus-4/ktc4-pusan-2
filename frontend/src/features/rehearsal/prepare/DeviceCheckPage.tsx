@@ -297,6 +297,12 @@ export function DeviceCheckPage() {
   const [switchedTo, setSwitchedTo] = useState<string | null>(null);
   // [지난 자료로 연습]을 누른 자료 id. 준비 정보가 다른 자료를 고르면 다시 묻습니다
   const [olderSlideOkFor, setOlderSlideOkFor] = useState<string | null>(null);
+  // 가장 최근 자료를 확인하지 못한 채 [이 자료로 연습]을 누른 자료 id. 준비 정보가 다른 자료를 고르면 다시 묻습니다
+  const [uncheckedOkFor, setUncheckedOkFor] = useState<string | null>(null);
+  // [최신으로] · [다시 확인] 뒤 최신 자료 확인이 끝나면 초점을 둘 곳을 정합니다 (아래 이펙트)
+  const focusAfterCheck = useRef(false);
+  // 고르기가 필요한 안내 상자 — 확인 뒤 시작이 막혔으면 초점을 여기로 옮깁니다
+  const choiceBox = useRef<HTMLDivElement>(null);
   const focusStartAfterClose = useRef(false);
   useEffect(() => {
     if (replacing || starting || !focusStartAfterClose.current) return;
@@ -355,15 +361,30 @@ export function DeviceCheckPage() {
   const choice = takeChoice(combo, info);
   // 조합 없이 왔는데 준비 정보가 가장 최근 자료 대신 지난 자료를 골랐으면, 한 번 확인받기 전에는 시작하지 않습니다.
   // 최신 자료를 받는 동안에도 기다립니다 — 먼저 시작하면 확인 없이 지난 자료로 Take 가 생깁니다.
-  // 버전 목록을 못 받았으면 막지 않습니다 — 준비 정보만으로도 시작할 수 있었고, 그것까지 막으면 연습을 못 합니다
   const olderSlide = combo || !info ? null : olderSlideNotice(info, latestSlide.data ?? null);
   const olderSlideBlocked = olderSlide !== null && olderSlideOkFor !== info?.presentation?.id;
   const latestSlidePending = combo === null && latestSlide.isPending;
+  // 버전 목록을 못 받았으면 지난 자료인지 알 수 없습니다. 연습을 막아 버리지는 않고, 다시 확인할지 이 자료로
+  // 연습할지 한 번 고르게 합니다 — 그냥 열어 두면 확인 없이 지난 자료로 Take 가 생깁니다 (#1099 리뷰).
+  // 준비 정보로 시작할 수 없으면(`prepareProblem`) 그 이유가 먼저라 묻지 않습니다
+  const latestUnknown =
+    combo === null &&
+    info?.presentation != null &&
+    prepareProblem(info) === null &&
+    latestSlide.isError &&
+    latestSlide.data === undefined;
+  const latestRechecking = latestUnknown && latestSlide.isFetching;
+  const latestUnchecked = latestUnknown && uncheckedOkFor !== info?.presentation?.id;
+  const latestUncheckedNotice = latestUnchecked
+    ? `가장 최근 자료를 확인하지 못해 지금 자료(v${info?.presentation?.version})가 최신인지 알 수 없어요`
+    : null;
   const prepareBlocked = (() => {
     if (combo) return null;
     if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
     const problem = info ? prepareProblem(info) : null;
     if (problem) return problem;
+    if (latestRechecking) return '가장 최근 자료를 다시 확인하는 중이에요.';
+    if (latestUnchecked) return '가장 최근 자료를 다시 확인할지, 이 자료로 연습할지 골라 주세요.';
     return olderSlideBlocked ? '지난 자료로 연습할지, 매핑을 다시 확인할지 골라 주세요.' : null;
   })();
   const ready =
@@ -373,6 +394,7 @@ export function DeviceCheckPage() {
     choice !== null &&
     !olderSlideBlocked &&
     !latestSlidePending &&
+    !latestUnchecked &&
     !starting;
 
   /**
@@ -535,11 +557,24 @@ export function DeviceCheckPage() {
   const switchToLatest = () => {
     if (info?.presentation && info.script)
       setSwitchedTo(`자료 v${info.presentation.version} · 대본 v${info.script.version}`);
-    // 누른 버튼이 안내와 함께 사라지면 초점이 body 로 빠집니다 (#818) — 사라지기 전에 시작 버튼(막혀 있으면 본문)으로 옮깁니다
-    const start = startButton.current;
-    if (start && !start.disabled) start.focus();
-    else document.getElementById('main')?.focus();
+    // 누른 버튼이 안내와 함께 사라지면 초점이 body 로 빠집니다 (#818) — 사라지기 전에 본문으로 옮겨 두고,
+    // 최신 자료 확인이 끝난 뒤 시작 버튼이나 새로 생긴 안내로 옮깁니다. 지금 시작 버튼에 두면 확인하는 동안
+    // 버튼이 막혀 초점이 다시 빠집니다
+    document.getElementById('main')?.focus();
+    focusAfterCheck.current = true;
     navigate(location.pathname, { replace: true, state: null });
+  };
+  // [다시 확인] — 최신 자료를 다시 받습니다. 확인이 끝나 안내가 사라지면 초점을 옮깁니다
+  const recheckLatest = () => {
+    focusAfterCheck.current = true;
+    latestSlide.refetch().catch(() => undefined);
+  };
+  // [이 자료로 연습] — 최신인지 모르는 채로 이 자료로 시작하도록 풉니다
+  const keepUncheckedSlide = () => {
+    const id = info?.presentation?.id;
+    if (!id) return;
+    document.getElementById('main')?.focus();
+    setUncheckedOkFor(id);
   };
   // [지난 자료로 연습] — 이 자료로 시작하도록 풉니다. 버튼이 사라지기 전에 초점을 옮기는 것은 [최신으로]와 같은 이유입니다
   const keepOlderSlide = () => {
@@ -548,14 +583,33 @@ export function DeviceCheckPage() {
     document.getElementById('main')?.focus();
     setOlderSlideOkFor(id);
   };
-  // 늘 그려 둔 빈 자리에 문구만 바꿔 넣어야 화면 낭독기가 읽습니다 — 버튼은 이 자리 밖에 둡니다
+  // 고르기 전에는 시작할 수 없는 안내. 둘은 함께 뜨지 않습니다 — 버전 목록을 받았으면 최신인지 알기 때문입니다
+  const choiceNotice = latestUncheckedNotice ?? (olderSlideBlocked ? olderSlide : null);
+  // 늘 그려 둔 빈 자리에 문구만 바꿔 넣어야 화면 낭독기가 읽습니다 — 버튼은 이 자리 밖에 둡니다.
+  // 고르기가 필요한 안내가 먼저입니다. [최신으로] 뒤 새로 생긴 안내를 "바꿨어요"가 가리면 왜 막혔는지 모릅니다 (#1099 리뷰)
   const comboAnnouncement = (() => {
+    if (choiceNotice)
+      return switchedTo ? `최신 조합(${switchedTo})으로 바꿨어요. ${choiceNotice}` : choiceNotice;
     if (switchedTo) return `최신 조합(${switchedTo})으로 바꿨어요`;
     if (newerCombo) return newerCombo;
-    if (olderSlide && !olderSlideBlocked)
-      return `지난 자료(v${info?.presentation?.version})로 연습해요`;
-    return olderSlide ?? '';
+    if (olderSlide) return `지난 자료(v${info?.presentation?.version})로 연습해요`;
+    if (latestUnknown) return `지금 자료(v${info?.presentation?.version})로 연습해요`;
+    return '';
   })();
+  // [최신으로] · [다시 확인] 뒤 확인이 끝나면 초점을 옮깁니다 — 고를 것이 생겼으면 그 안내로, 아니면 시작 버튼으로.
+  // 이미 안내 안에 있으면(다시 확인이 또 실패) 그대로 둡니다
+  useEffect(() => {
+    if (!focusAfterCheck.current || combo || latestSlide.isPending || latestSlide.isFetching)
+      return;
+    focusAfterCheck.current = false;
+    const box = choiceBox.current;
+    if (box) {
+      if (!box.contains(document.activeElement)) box.focus();
+      return;
+    }
+    const start = startButton.current;
+    if (start && !start.disabled) start.focus();
+  }, [combo, latestSlide.isPending, latestSlide.isFetching, choiceNotice]);
   const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
@@ -625,8 +679,40 @@ export function DeviceCheckPage() {
               </button>
             </div>
           )}
+          {latestUncheckedNotice && (
+            <div
+              ref={choiceBox}
+              tabIndex={-1}
+              className="flex flex-wrap items-center justify-between gap-2 border border-coral bg-coral-wash px-3 py-2 text-sm text-ink"
+              data-latest-unchecked=""
+            >
+              <span>{latestUncheckedNotice}</span>
+              <span className="flex shrink-0 gap-1.5">
+                {/* 다시 받는 동안에도 막지 않습니다 — 막으면 누른 버튼의 초점이 body 로 빠집니다. 같은 요청은 한 번만 갑니다 */}
+                <button
+                  type="button"
+                  disabled={starting}
+                  aria-busy={latestRechecking}
+                  onClick={recheckLatest}
+                  className="inline-flex min-h-8 items-center border border-ink bg-ink px-2.5 text-xs font-semibold text-panel disabled:cursor-default disabled:border-dashed disabled:border-line-strong"
+                >
+                  {latestRechecking ? '확인하는 중…' : '다시 확인'}
+                </button>
+                <button
+                  type="button"
+                  disabled={starting}
+                  onClick={keepUncheckedSlide}
+                  className="inline-flex min-h-8 items-center border border-ink bg-panel px-2.5 text-xs font-semibold hover:bg-cream disabled:cursor-default disabled:border-dashed disabled:border-line-strong"
+                >
+                  이 자료로 연습
+                </button>
+              </span>
+            </div>
+          )}
           {olderSlideBlocked && (
             <div
+              ref={choiceBox}
+              tabIndex={-1}
               className="flex flex-wrap items-center justify-between gap-2 border border-coral bg-coral-wash px-3 py-2 text-sm text-ink"
               data-older-slide=""
             >
