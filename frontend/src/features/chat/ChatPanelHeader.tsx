@@ -125,8 +125,8 @@ export function ChatPanelHeader({
           </button>
           <button
             type="button"
-            aria-label="닫기"
-            title="닫기"
+            aria-label="새미나이 닫기"
+            title="새미나이 닫기"
             onClick={onClose}
             className={HEADER_ACTION}
           >

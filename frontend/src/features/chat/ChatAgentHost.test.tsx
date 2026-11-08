@@ -314,6 +314,11 @@ it('새미나이 브랜드와 추천 질문을 표시하고, 질문을 누르면
   await visit('/');
   await openPanel();
   expect(panel()!.textContent).toContain('새미나이');
+  expect(launcher()!.getAttribute('aria-label')).toBe('새미나이 열기');
+  expect(launcher()!.getAttribute('title')).toBe('새미나이 열기');
+  const labelId = panel()!.getAttribute('aria-labelledby')!;
+  expect(document.getElementById(labelId)!.textContent!.trim()).toBe('새미나이');
+  expect(button('새미나이 닫기')?.getAttribute('title')).toBe('새미나이 닫기');
   expect(panel()!.querySelectorAll('img[src="/semini.png"]')).toHaveLength(2);
   const question = panel()!.querySelector<HTMLButtonElement>('[data-chat-empty] button')!;
   expect(question).not.toBeNull();
@@ -367,6 +372,47 @@ it('첫 기억 안내와 빈 대화는 스크롤 맨 위에서 시작하고, 실
   expect(scroller.scrollTop).toBe(0);
 });
 
+it('대화 목록에서도 전송 확인 오류가 노출되고 같은 요청을 다시 확인할 수 있다', async () => {
+  await visit('/');
+  await openPanel();
+  await act(async () => button('대화 목록')!.click());
+  await settle();
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+
+  await act(async () =>
+    transport().emit({ type: 'unconfirmed', sendId: 's1', notAccepted: false }),
+  );
+  const notices = panel()!.querySelector('[data-chat-notices]')!;
+  expect(notices.textContent).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.');
+  expect(alerts()).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.다시 확인');
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('[data-chat-notices]')).toBe(notices);
+  expect(alerts()).toHaveLength(1);
+  await act(async () => button('대화 목록')!.click());
+  await act(async () => button('다시 확인')!.click());
+  expect(transport().retried).toBe(1);
+  expect(panel()!.querySelector('[data-chat-notices]')).toBeNull();
+});
+
+it('목록 화면에서도 범위 확인 실패 안내를 보고 재시도할 수 있다', async () => {
+  server.report = () => Promise.reject(new ApiFailure(404, 'NOT_FOUND'));
+  await visit('/takes/t1');
+  await openPanel();
+  await settle();
+  await act(async () => button('대화 목록')!.click());
+  await settle();
+
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+  expect(panel()!.querySelector('[data-chat-notices]')!.textContent).toContain(
+    '연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.',
+  );
+  server.report = (takeId) =>
+    Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
+  await act(async () => button('다시 시도')!.click());
+  await settle();
+  expect(panel()!.querySelector('[data-chat-notices]')).toBeNull();
+});
+
 it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지한다', async () => {
   await visit('/');
   await openPanel();
@@ -394,7 +440,7 @@ it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아�
   expect(launcher()!.getAttribute('aria-expanded')).toBe('true');
   expect(document.activeElement).toBe(input());
 
-  const close = button('닫기')!;
+  const close = button('새미나이 닫기')!;
   await act(async () => close.click());
   expect(panel()).toBeNull();
   expect(document.activeElement).toBe(launcher());
@@ -706,7 +752,7 @@ describe('사용 가능 여부 (12-4 F1 · L3-02)', () => {
     expect(transports).toHaveLength(0);
 
     await openPanel();
-    expect(alerts()).toContain('코치를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+    expect(alerts()).toContain('새미나이를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
     expect(sendButton().getAttribute('aria-disabled')).toBe('true');
 
     server.availability = () => Promise.resolve({ enabled: true });
@@ -2548,7 +2594,7 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
       "'기억 없이' 대화를 골라도 그 대화의 기록 · 요약은 보관되고",
     );
 
-    await act(async () => button('닫기')!.click());
+    await act(async () => button('새미나이 닫기')!.click());
     await openPanel();
     expect(intro()).toBeNull();
 

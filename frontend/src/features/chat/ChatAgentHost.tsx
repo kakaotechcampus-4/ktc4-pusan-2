@@ -204,8 +204,8 @@ function ChatSessionView({
           setFocusRequested(true);
           useChatStore.getState().openChat(session.screenScope);
         }}
-        aria-label="채팅 에이전트"
-        title="채팅 에이전트"
+        aria-label="새미나이 열기"
+        title="새미나이 열기"
         className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
       >
         {/* 앱 아이콘 그림(192px)의 몸통 중심 (82, 104)을 44px 로 줄여 원 안쪽(40px)의 가운데에 둡니다.
@@ -528,39 +528,51 @@ function ChatPanel({
         />
       </div>
 
-      {/* 기억 설정 화면에서는 입력칸을 숨깁니다 — 쓰던 글(draft)은 그대로 남습니다 */}
+      {/* 세션·범위 오류는 입력 폼 밖에 두어 목록 화면에서도 안내와 재시도가 가능합니다.
+          기억 설정 화면에서는 설정 조작에 집중할 수 있게 숨깁니다. */}
+      {(session.scopeFailed || session.notice) && view !== 'memory' && (
+        <div
+          data-chat-notices=""
+          className="shrink-0 border-t border-line-strong bg-panel px-3 pb-2 pt-3"
+        >
+          {session.scopeFailed && (
+            <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
+              <p>연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.</p>
+              <button
+                type="button"
+                onClick={session.retryScope}
+                className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
+          {session.notice && (
+            <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
+              <p>{noticeText(session.notice)}</p>
+              {session.notice.kind === 'unconfirmed' && (
+                <button
+                  type="button"
+                  onClick={session.retryUnconfirmed}
+                  className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
+                >
+                  {/* 접수하지 못했으면 같은 키로 다시 보내기, 결과를 모르면 같은 키로 다시 확인 — 하는 일은 같습니다 */}
+                  {session.notice.notAccepted ? '다시 보내기' : '다시 확인'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 목록과 기억 설정에서는 입력 폼만 숨깁니다 — 쓰던 글(draft)은 그대로 남습니다. */}
       <form
         hidden={view !== 'messages'}
         onSubmit={(event) => submit(event).catch(() => undefined)}
-        className="shrink-0 border-t border-line-strong bg-panel px-3 pb-3 pt-3"
+        className={`shrink-0 bg-panel px-3 pb-3 pt-3 ${
+          session.scopeFailed || session.notice ? '' : 'border-t border-line-strong'
+        }`}
       >
-        {session.scopeFailed && (
-          <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
-            <p>연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.</p>
-            <button
-              type="button"
-              onClick={session.retryScope}
-              className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
-            >
-              다시 시도
-            </button>
-          </div>
-        )}
-        {session.notice && (
-          <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
-            <p>{noticeText(session.notice)}</p>
-            {session.notice.kind === 'unconfirmed' && (
-              <button
-                type="button"
-                onClick={session.retryUnconfirmed}
-                className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
-              >
-                {/* 접수하지 못했으면 같은 키로 다시 보내기, 결과를 모르면 같은 키로 다시 확인 — 하는 일은 같습니다 */}
-                {session.notice.notAccepted ? '다시 보내기' : '다시 확인'}
-              </button>
-            )}
-          </div>
-        )}
         <label htmlFor={`${id}-input`} className="sr-only">
           채팅 메시지
         </label>
@@ -646,7 +658,7 @@ function PanelBody({
   if (failed)
     return (
       <div role="alert" className="self-start text-sm leading-6">
-        <p>코치를 불러오지 못했으니 다시 시도해 주세요.</p>
+        <p>새미나이를 불러오지 못했으니 다시 시도해 주세요.</p>
         <button
           type="button"
           onClick={session.retryAvailability}
