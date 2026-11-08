@@ -109,7 +109,8 @@ export function memoryItemState(
 
 /**
  * 첫 안내를 보였는지 — 사용자별로 이 브라우저(localStorage)에 둡니다. 다른 기기에서는 한 번 더 보일 수 있습니다.
- * 문서(12-3 "기억 설정")는 BE 가 사용자별로 저장한다고 하지만 BE 응답에 그 칸이 아직 없습니다 (BE 미구현)
+ * 문서(chat-agent.md 12-3 데이터 표)는 BE 저장으로 적었지만 FE 에 둡니다 — 안내는 못 보고 지나치지 않게 하는 것이 목적이라
+ * 기기마다 한 번 더 보이는 것은 괜찮고, 그만큼을 위해 BE 칸 · API 를 늘리지 않습니다
  */
 const introKey = (userId: string) => `pitchcoach.chatMemoryIntro.${userId}`;
 
