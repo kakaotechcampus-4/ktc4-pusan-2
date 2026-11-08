@@ -63,18 +63,18 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [tipPaused, setTipPaused] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
   );
+  const [tipHovered, setTipHovered] = useState(false);
+  const [tipFocused, setTipFocused] = useState(false);
   useEffect(() => {
-    if (tipPaused) return;
+    if (tipPaused || tipHovered || tipFocused) return;
     const timer = window.setInterval(
       () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
       HOME_TIP_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
-  }, [tipPaused]);
+  }, [tipPaused, tipHovered, tipFocused]);
   // 기본 상태에서 메뉴로 지우면 그 줄만 이 미리보기에서 뺀다. 서버 요청은 없다
   const [removed, setRemoved] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
@@ -188,15 +188,22 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
       </div>
       <footer className="border-t border-line-strong">
         <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 xl:flex-nowrap lg:px-10">
-          <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
-            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
+            <p
+              tabIndex={0}
+              title={HOME_TIPS[tipIndex]}
+              onMouseEnter={() => setTipHovered(true)}
+              onMouseLeave={() => setTipHovered(false)}
+              onFocus={() => setTipFocused(true)}
+              onBlur={() => setTipFocused(false)}
+              className="min-w-0 flex-1 truncate focus:overflow-visible focus:whitespace-normal focus:break-words focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
               {HOME_TIPS[tipIndex]}
             </p>
             <button
               type="button"
               onClick={() => setTipPaused((current) => !current)}
-              aria-pressed={tipPaused}
               aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
               className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
