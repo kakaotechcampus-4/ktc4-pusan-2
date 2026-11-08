@@ -1209,6 +1209,14 @@
   to { opacity: 1; }
 }
 
+/* 좁은 데스크톱 창에서는 타이머 · 진행 막대 · 종료 버튼이 우선입니다.
+   상태 배지는 장식이므로 공간이 부족하면 자리까지 없애 줄바꿈/겹침을 방지합니다. */
+@media (max-width: 760px) {
+  .stage-head .stage-mission-label {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stage-head .stage-mission-label { animation: none; }
 }
