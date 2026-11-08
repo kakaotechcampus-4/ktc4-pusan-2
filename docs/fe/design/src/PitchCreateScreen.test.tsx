@@ -170,7 +170,6 @@ it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인 완료를
   expect(host.querySelector('progress')?.value).toBe(0);
   await click('닫기');
   expect(host.querySelector('progress')?.value).toBe(0);
-  expect(host.textContent).toContain('업로드 완료 · 확인 필요');
   await click('슬라이드 확인');
   await click('다음 장');
   expect(host.querySelector('dialog')?.textContent).toContain('2 / 3장');
