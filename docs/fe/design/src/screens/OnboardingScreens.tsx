@@ -10,58 +10,7 @@ type ScreenProps = { stateId: string; onNavigate: Navigate };
 const cta =
   'inline-flex items-center justify-center gap-6 border-2 border-ink bg-coral-deep px-6 py-3.5 font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-1 hover:bg-ink active:translate-x-1 active:translate-y-1 active:shadow-none';
 
-const SEMINI_IMAGE = 'data:image/png;base64,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
-IAgEgSAQBIJAEAgCQSAIBIEgEASCQBAIAkEgCASBIBAEgkAQCAJBIAgEgSAQ
-BIJAEAgCAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBO
-hwDHthcdBBBAAAEEEEAAAQQQQAABBBBAEAgCQSAIBIEgEASCQBAIAkEgaM0Q
-4NjOooMAAggggAACCCCAAAIIIIAAAggggAACCCCAAAIIAkEgCASBIBAEgkAQ
-CAJBIAgEgSAQBIJAEAgCQSAIBIEgEEAAAQQQQAABBBBAAAEEEEAA4XQcwJy3
-wHMvOggggAACCCCAAAIIIIAAAggggAACCCCAAAIIIIAAAggggAACCCCAAAII
-IIAAAgggbAGCC1/PW/Sl1gMEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBA
-AAEEEEAAAQQQQAABBBBAAAEEELYK4Vgca78Y9pwxr2nuQQABBBBAAAEEEEAA
-AQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQADhliAshWgriwkC
-CCCAAAIIIIAAAggggAACCCCAAAIIIIAAAggggAACCCCAAAIIIIAAAggggAAC
-CCvuX00j7H7E4vqzAAAAAElFTkSuQmCC
-';
+const SEMINI_IMAGE = publicUrl('semini.png');
 
 const SECTIONS = [
   ['service', '서비스 소개'],
@@ -310,12 +259,37 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
             </article>
           ))}
         </div>
-        <article className="mt-6 flex flex-col gap-5 border-2 border-ink bg-panel p-6 shadow-[4px_4px_0_var(--color-ink)] sm:flex-row sm:items-center">
-          <img src={SEMINI_IMAGE} alt="새미나이 캐릭터" className="h-24 w-24 shrink-0 object-contain [image-rendering:pixelated]" />
-          <div>
-            <p className="font-mono text-xs font-bold tracking-widest">CHICHI'S FAVORITE APP · AI ASSISTANT</p>
-            <h3 className="mt-2 text-2xl font-extrabold">새미나이 <span className="text-base font-medium">(Semini)</span></h3>
-            <p className="mt-3 text-sm leading-7">치치가 발표를 준비할 때 자주 찾는 AI 비서 앱이에요. 궁금한 점을 물어보고 연습에 필요한 도움을 받아요.</p>
+        <article className="mt-6 border border-line-strong bg-greige p-6 lg:p-8">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+            <div className="w-20 shrink-0 border border-ink bg-panel p-2 shadow-[3px_3px_0_var(--color-line-strong)]">
+              <img
+                src={SEMINI_IMAGE}
+                alt=""
+                width={64}
+                height={64}
+                className="aspect-square w-full object-contain [image-rendering:pixelated]"
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="tabular-nums text-[10px] tracking-widest">CHICHI'S FAVORITE APP</p>
+                <span className="border border-ink bg-coral-wash px-2 py-1 text-[10px] font-bold">
+                  AI 비서 앱
+                </span>
+              </div>
+              <h3 className="mt-3 text-2xl font-extrabold">새미나이 (Semini)</h3>
+              <p className="mt-3 text-sm leading-7">
+                치치가 발표를 준비하다 막히면 가장 먼저 찾는 AI 비서 앱이에요.
+              </p>
+              <p className="mt-2 text-sm leading-7">
+                작은 질문부터 발표 연습에 관한 고민까지, 새미나이는 언제든 이야기를 나눌 준비가
+                되어 있답니다.
+              </p>
+              <p className="mt-5 border-t border-line-strong pt-4 text-sm font-bold">
+                “잠깐, 이건 새미나이한테 물어봐야겠다!”{' '}
+                <span className="font-normal">— 치치</span>
+              </p>
+            </div>
           </div>
         </article>
       </section>
