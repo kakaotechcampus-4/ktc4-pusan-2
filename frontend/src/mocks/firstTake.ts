@@ -66,11 +66,12 @@ export function resetTutorialMock() {
 
 export const firstTakeHandlers = [
   http.get('*/api/pitches/:pitchId', ({ params }) => {
-    if (tutorial?.id !== params.pitchId) return undefined;
+    const current = tutorial;
+    if (!current || current.id !== params.pitchId) return undefined;
     return HttpResponse.json({
-      pitch_id: tutorial.id,
-      title: tutorial.title,
-      time_limit_sec: tutorial.timeLimitSec,
+      pitch_id: current.id,
+      title: current.title,
+      time_limit_sec: current.timeLimitSec,
       lower_deviation: 30,
       upper_deviation: 60,
       presentation_date: null,
@@ -78,28 +79,30 @@ export const firstTakeHandlers = [
   }),
 
   http.get('*/api/pitches/:pitchId/resources', ({ params }) => {
-    if (tutorial?.id !== params.pitchId) return undefined;
+    const current = tutorial;
+    if (!current || current.id !== params.pitchId) return undefined;
     const body: PitchResources = {
-      pitch_id: tutorial.id,
-      presentation_versions: tutorial.presentations.map(({ id, version, pageCount }) => ({
+      pitch_id: current.id,
+      presentation_versions: current.presentations.map(({ id, version, pageCount }) => ({
         id,
         version,
         page_count: pageCount,
       })),
-      script_versions: tutorial.scripts.map(({ id, version }) => ({ id, version })),
+      script_versions: current.scripts.map(({ id, version }) => ({ id, version })),
       evaluation_versions: [],
     };
     return HttpResponse.json(body);
   }),
 
   http.get('*/api/pitches/:pitchId/prepare', ({ params }) => {
-    if (tutorial?.id !== params.pitchId) return undefined;
-    const presentation = tutorial.presentations.at(-1);
-    const script = tutorial.scripts.at(-1);
+    const current = tutorial;
+    if (!current || current.id !== params.pitchId) return undefined;
+    const presentation = current.presentations.at(-1);
+    const script = current.scripts.at(-1);
     const body: PrepareResponse = {
-      pitch_id: tutorial.id,
-      title: tutorial.title,
-      time_limit_sec: tutorial.timeLimitSec,
+      pitch_id: current.id,
+      title: current.title,
+      time_limit_sec: current.timeLimitSec,
       presentation: presentation
         ? { id: presentation.id, version: presentation.version, page_count: presentation.pageCount }
         : null,
@@ -115,8 +118,9 @@ export const firstTakeHandlers = [
   }),
 
   http.delete('*/api/pitches/delete/:pitchId', ({ params }) => {
-    if (tutorial?.id !== params.pitchId) return undefined;
-    const pitchId = tutorial.id;
+    const current = tutorial;
+    if (!current || current.id !== params.pitchId) return undefined;
+    const pitchId = current.id;
     tutorial = null;
     return HttpResponse.json({ message: 'Pitch deleted successfully', pitch_id: pitchId });
   }),
