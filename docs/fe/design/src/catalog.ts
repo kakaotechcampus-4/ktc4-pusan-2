@@ -46,7 +46,7 @@ export const PRODUCT_CHECKED: {
       head: '8383d83f5a6b43a44ed3b8dce06df3264c0d0aef',
       what: 'First Take 튜토리얼 미리보기',
     },
-    { pr: 1106, head: '6029bef57e2806031a8ea75c243b684097982e34', what: '스크롤바 너비 안정화' },
+    { pr: 1106, head: '961a033394b6e5f11205a6d36cbfc47a8b520d21', what: '문서 스크롤 유지 및 상단바 전용 스크롤바 여백' },
     { pr: 1110, head: '2e92875b4556d04f974c16cf300aea3a8e42b235', what: '새미나이 채팅 패널' },
     {
       pr: 944,
@@ -55,8 +55,8 @@ export const PRODUCT_CHECKED: {
     },
     {
       pr: 1108,
-      head: 'be55e5326de00ce8da28fce817ff819f60bda142',
-      what: '홈 목록 페이지 스크롤 미리보기',
+      head: '3a66616a9033ebe69d78f319f750f10d94fc67c3',
+      what: '홈 페이지 스크롤·위치 복원 및 Take 기록 필터 위치 유지',
     },
     {
       pr: 1112,
