@@ -6,6 +6,7 @@ import { toMessage } from '@/shared/api/errorMessage';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
 import { FIRST_TAKE_SLIDES, FIRST_TAKE_TITLE } from './firstTakeMaterials';
 import { ensureFirstTakePitch } from './firstTakeSetup';
+import { FirstTakeError } from './firstTakeError';
 
 /** #931: 진입 안내와 샘플 자동 준비. 실제 리허설·Take 생성 로직은 건드리지 않습니다. */
 export function FirstTakePage() {
@@ -15,16 +16,9 @@ export function FirstTakePage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
-  const mountedRef = useRef(true);
   const prepareControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      prepareControllerRef.current?.abort();
-    };
-  }, []);
+  useEffect(() => () => prepareControllerRef.current?.abort(), []);
 
   const begin = async () => {
     if (busyRef.current) return;
@@ -33,23 +27,25 @@ export function FirstTakePage() {
     prepareControllerRef.current = controller;
     setPending(true);
     setError(null);
+    setStatus('');
 
     try {
       const pitchId = await ensureFirstTakePitch((message) => {
-        if (mountedRef.current) setStatus(message);
+        if (!controller.signal.aborted) setStatus(message);
       }, controller.signal);
-      queryClient.invalidateQueries({ queryKey: pitchListKey }).catch(() => undefined);
-      if (mountedRef.current) {
+      if (!controller.signal.aborted) {
+        void queryClient.invalidateQueries({ queryKey: pitchListKey }).catch(() => undefined);
         navigate(`/pitch/${pitchId}/device-check`);
       }
     } catch (caught) {
-      if (mountedRef.current) {
-        setError(toMessage(caught));
+      if (!controller.signal.aborted) {
+        setStatus('');
+        setError(caught instanceof FirstTakeError ? caught.message : toMessage(caught));
       }
     } finally {
       if (prepareControllerRef.current === controller) prepareControllerRef.current = null;
       busyRef.current = false;
-      if (mountedRef.current) setPending(false);
+      if (!controller.signal.aborted) setPending(false);
     }
   };
 
@@ -96,7 +92,7 @@ export function FirstTakePage() {
           <button
             type="button"
             disabled={pending}
-            onClick={() => begin().catch((caught: unknown) => setError(toMessage(caught)))}
+            onClick={() => void begin()}
             className="border-2 border-ink bg-coral-deep px-6 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] hover:bg-ink disabled:cursor-wait disabled:opacity-60"
           >
             {pending ? '샘플 준비 중…' : '첫 미션 시작하기 →'}
@@ -105,11 +101,9 @@ export function FirstTakePage() {
             내 피치로 돌아가기
           </Link>
         </div>
-        {status && (
-          <p role="status" className="mt-5 text-sm text-stone">
-            {status}
-          </p>
-        )}
+        <p role="status" className={status ? 'mt-5 text-sm text-stone' : 'sr-only'}>
+          {status}
+        </p>
         {error && (
           <p role="alert" className="mt-3 text-sm font-bold text-coral-deep">
             {error}
