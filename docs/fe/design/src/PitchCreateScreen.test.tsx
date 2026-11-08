@@ -51,7 +51,7 @@ afterEach(async () => {
   navigate.mockReset();
 });
 
-it('PM 검토 시안으로 구분하고 기존 제품 샘플도 유지한다', () => {
+it('배치 검토 시안으로 구분하고 기존 제품 샘플도 유지한다', () => {
   expect(entries.find((entry) => entry.id === 'pitch-create-a')).toMatchObject({ status: '시안' });
   expect(entries.find((entry) => entry.id === 'pitch-create')).toMatchObject({
     status: '제품에 있음',

@@ -51,7 +51,7 @@ export const foundationEntries: GuideFoundation[] = [
     title: '글꼴',
     group,
     status: '제품에 있음',
-    summary: 'Pretendard · IBM Plex Mono와 제품에서 쓰는 글자 크기 · 굵기.',
+    summary: 'Pretendard와 제품에서 쓰는 글자 크기 · 굵기.',
     states: [
       { id: 'scale', label: '크기 · 굵기', description: '많이 쓰는 순서의 글자 크기와 쓰는 곳.' },
       { id: 'families', label: '글꼴', description: '본문 · 숫자 글꼴과 숫자 정렬 · 줄바꿈 규칙.' },

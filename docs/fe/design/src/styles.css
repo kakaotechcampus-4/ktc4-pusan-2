@@ -12,19 +12,6 @@ html { scrollbar-gutter: stable; }
   font-display: swap;
   src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
 }
-/* 기존 독립 시안에 사용하던 IBM Plex Mono 리소스는 URL 호환을 위해 남긴다. 제품의 기본 글꼴에는 사용하지 않는다. */
-@font-face {
-  font-family: "IBM Plex Mono";
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/IBMPlexMono-Regular-latin.woff2") format("woff2");
-}
-@font-face {
-  font-family: "IBM Plex Mono";
-  font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/IBMPlexMono-Bold-latin.woff2") format("woff2");
-}
 
 /* ═══════════════════════════════════════════════════════════════
    피치코치 디자인 토큰
@@ -101,7 +88,7 @@ html { scrollbar-gutter: stable; }
   /* ── 타이포 ────────────────────────────────────────────────── */
   --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
                "Apple SD Gothic Neo", sans-serif;
-  /* 실제 제품은 Pretendard와 tabular-nums로 숫자를 정렬하고 font-mono를 비활성화한다. */
+  /* 글꼴은 Pretendard 하나다. 숫자는 `tabular-nums`로 폭만 맞추고, Tailwind 기본 `font-mono`는 지운다(제품과 같다) */
   --font-mono: initial;
 }
 
@@ -209,4 +196,9 @@ body {
 /* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */
 .pitch-create-square :is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-r) {
   border-radius: 0;
+}
+
+/* 문서 뷰어의 코드·토큰 값: 제품 폰트 토큰과 별도로 고정폭을 보장한다. */
+.guide-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
