@@ -17,6 +17,6 @@ export const ASK_HELP_ABILITIES = [
 export const ASK_HELP_EXAMPLES = [
   '최근 Take에서 가장 고칠 점이 뭐야?',
   '지난 Take랑 비교해 줘',
-  '대화 목표는 어떻게 저장하고 다음 Take에서 확인해?',
+  '말이 빨라질 때는 어떻게 고치면 좋아?',
   '발표 시작은 어떻게 하면 좋아?',
 ] as const;
