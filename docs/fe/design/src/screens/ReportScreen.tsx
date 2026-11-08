@@ -80,8 +80,7 @@ function ComparisonSummary() {
             const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
             const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 없음').length;
             const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
-            const directionUnknown =
-              slides.length > 0 && unknown === slides.length && same === 0;
+            const directionUnknown = slides.length > 0 && unknown === slides.length && same === 0;
             return (
               <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
                 <h3 className="font-bold">{metric}</h3>
