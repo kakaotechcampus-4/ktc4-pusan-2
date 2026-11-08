@@ -157,3 +157,62 @@ test('7. 다시 평가 → 원래 결과 · 참고 결과 나란히', async ({ p
   await expect(table.getByRole('columnheader', { name: '참고 결과' })).toBeVisible();
   await expect(table.getByRole('rowheader', { name: '점수' })).toBeVisible();
 });
+
+/** 목의 개발용 조작(`src/mocks/chat.ts` 머리말 "콘솔") — 다음 보내기 · 실행을 실패시키거나 꺼짐으로 둡니다 */
+type MockChatCall = ['disable'] | ['runFail', string];
+const mockChat = (page: Page, ...call: MockChatCall) =>
+  page.evaluate(([name, arg]) => {
+    const m = (globalThis as unknown as { mockChat: Record<string, (a?: string) => void> })
+      .mockChat;
+    m[name]!(arg);
+  }, call);
+
+test.describe('8. 취소 · 화면 이탈 뒤 복원 · AGENT_DISABLED · 시간 초과 안내', () => {
+  test('취소하면 실행을 멈추고 알린다', async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+    await ask(panel, '지난번보다 뭐가 나아졌어?');
+
+    await panel.getByRole('button', { name: '취소', exact: true }).click();
+    await expect(panel.getByText('요청을 취소했어요.').first()).toBeVisible();
+  });
+
+  test('답을 만드는 중에 화면을 떠났다 돌아오면 그 대화를 이어 받는다', async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+    await ask(panel, '지난번보다 뭐가 나아졌어?');
+    await expect(panel.getByRole('button', { name: '취소', exact: true })).toBeVisible();
+
+    // 앱 안의 링크로 다른 화면에 갔다가 돌아옵니다 — 전체 새로고침은 목 서버(MSW)의 메모리 상태까지 지워서 쓰지 않습니다
+    await page
+      .getByRole('navigation', { name: '홈 메뉴' })
+      .getByRole('link', { name: 'Take 기록' })
+      .click();
+    await expect(page).toHaveURL(/\/takes$/);
+    await page.getByRole('navigation').getByRole('link', { name: '내 피치' }).click();
+    await expect(page).toHaveURL(/\/$/);
+    const again = page.getByRole('dialog', { name: '채팅 에이전트' });
+    if (!(await again.isVisible())) await openChat(page);
+
+    await expect(again.getByText('지난번보다 뭐가 나아졌어?', { exact: true })).toBeVisible();
+    await expect(again.getByRole('list', { name: '근거' }).first()).toBeVisible();
+  });
+
+  test('꺼지면(AGENT_DISABLED) 문구 없이 버튼을 숨긴다', async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+    await mockChat(page, 'disable');
+    await ask(panel, '지난번보다 뭐가 나아졌어?');
+
+    await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
+  });
+
+  test('시간 초과면 다시 보내라고 안내한다', async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+    await mockChat(page, 'runFail', 'AGENT_TIMEOUT');
+    await ask(panel, '지난번보다 뭐가 나아졌어?');
+
+    await expect(panel.getByText('답이 늦어지고 있으니 다시 보내 주세요.').first()).toBeVisible();
+  });
+});
