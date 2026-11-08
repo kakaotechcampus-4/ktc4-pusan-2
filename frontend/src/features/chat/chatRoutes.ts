@@ -1,5 +1,9 @@
 import { matchPath } from 'react-router';
 
+/** 정상 런처와 오류 안내가 공유하는 고정 위치. */
+export const CHAT_LAUNCHER_CLASS =
+  'light-surface fixed bottom-[var(--chat-launcher-bottom)] left-2 z-[70] text-ink';
+
 /**
  * Explicit allowlist for the floating chat. Live rehearsal is intentionally
  * excluded; adding a new route requires an explicit decision rather than
@@ -76,7 +80,6 @@ const launcherLifts: [pattern: string, bottom: number][] = [
   // 피치 만들기 · 수정: 아래 고정 바(79px)보다 위에 둡니다 (12-4 F1 "겹침")
   ['/pitch/new', 88],
   ['/pitch/:id/edit', 88],
-  // 장치 점검은 왼쪽 런처로 오른쪽 조작부와 분리되므로 기본 아래 여백 32px 를 사용합니다
 ];
 
 export function chatLauncherBottom(pathname: string): number {
