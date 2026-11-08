@@ -160,7 +160,7 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
         {stateId !== 'empty' && (
           <aside className="mt-6 flex flex-wrap items-center justify-between gap-4 border-y border-line-strong py-3 text-sm lg:mt-5">
             <p>
-              <span className="mr-3 font-mono text-coral-deep">TIP /</span>연습 전, 슬라이드와
+              <span className="mr-3 tabular-nums text-coral-deep">TIP /</span>연습 전, 슬라이드와
               대본을 한 번 확인해 보세요.
             </p>
             <button

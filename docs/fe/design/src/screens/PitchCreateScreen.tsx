@@ -360,14 +360,14 @@ export function PitchCreateScreen({
   onNavigate: Navigate;
   inline: boolean;
 }) {
-  const focusOutline = ['focus-outline', 'upload-review', 'final-review'].includes(stateId);
+  const focusOutline = true; // 현재 제품은 모든 상태에 동일한 섹션 강조 방식을 사용한다.
   const ready = ['ready', 'many', 'focus-outline', 'final-review'].includes(stateId);
   const [hasSlides, setHasSlides] = useState(!['empty', 'error'].includes(stateId));
   const [slidesConfirmed, setSlidesConfirmed] = useState(
     !['empty', 'error', 'upload-review'].includes(stateId),
   );
   const [uploadError, setUploadError] = useState(stateId === 'error');
-  const [active, setActive] = useState(focusOutline && stateId !== 'upload-review' ? 2 : 0);
+  const [active, setActive] = useState(['focus-outline', 'final-review'].includes(stateId) ? 2 : 0);
   const [linked, setLinked] = useState(1);
   const [mapped, setMapped] = useState(ready || stateId === 'mapping');
   const [saved, setSaved] = useState(ready);
