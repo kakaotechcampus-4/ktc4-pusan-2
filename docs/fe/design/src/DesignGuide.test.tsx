@@ -104,7 +104,7 @@ vi.mock('./catalog', () => {
       '검토 시안',
     ],
     screens,
-    entries: [foundation, component, ...screens],
+    entries: [foundation, component, screens[2], screens[0], screens[1]],
   };
 });
 
@@ -406,4 +406,13 @@ it('브라우저 확대는 주소에 남고, 페이지가 쓰는 크기를 함�
   expect(host.textContent).toContain('1366 × 768 · 125% → 페이지 1093 × 614');
   await choose(zoom, '100');
   expect(address()).not.toContain('zoom=');
+});
+
+it('전체 보기 카드 순서는 왼쪽 목록의 그룹 순서와 같다', async () => {
+  await render('/?screen=pitch-create');
+  await click('전체 화면');
+  const cards = [...host.querySelectorAll('[data-preview]')].map(
+    (el) => el.getAttribute('data-preview')?.split(':')[0],
+  );
+  expect(cards).toEqual(['pitch-create', 'prepare', 'new-idea']);
 });
