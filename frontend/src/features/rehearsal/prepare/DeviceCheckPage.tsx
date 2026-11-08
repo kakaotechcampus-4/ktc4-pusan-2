@@ -290,6 +290,8 @@ export function DeviceCheckPage() {
    * 비활성이 풀린 뒤에야 초점을 받으니 창이 내려가고 starting 이 false 가 된 다음에 줍니다
    */
   const startButton = useRef<HTMLButtonElement>(null);
+  // [최신으로]로 바꾼 조합 — 바꿨다는 것을 한 번 알립니다
+  const [switchedTo, setSwitchedTo] = useState<string | null>(null);
   const focusStartAfterClose = useRef(false);
   useEffect(() => {
     if (replacing || starting || !focusStartAfterClose.current) return;
@@ -510,7 +512,19 @@ export function DeviceCheckPage() {
   // 넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고 [최신으로]를 둡니다 (멘토 리뷰 #923)
   const newerCombo = combo && info ? newerComboNotice(combo, info) : null;
   // 조합을 지우면 준비 정보(서버 최신 조합)로 정합니다. 기록을 바꿔(replace) 새로고침 · 앞으로 가기에도 예전 조합이 돌아오지 않습니다
-  const switchToLatest = () => navigate(location.pathname, { replace: true, state: null });
+  const switchToLatest = () => {
+    if (info?.presentation && info.script)
+      setSwitchedTo(`자료 v${info.presentation.version} · 대본 v${info.script.version}`);
+    // 누른 버튼이 안내와 함께 사라지면 초점이 body 로 빠집니다 (#818) — 사라지기 전에 시작 버튼(막혀 있으면 본문)으로 옮깁니다
+    const start = startButton.current;
+    if (start && !start.disabled) start.focus();
+    else document.getElementById('main')?.focus();
+    navigate(location.pathname, { replace: true, state: null });
+  };
+  // 늘 그려 둔 빈 자리에 문구만 바꿔 넣어야 화면 낭독기가 읽습니다 — 버튼은 이 자리 밖에 둡니다
+  const comboAnnouncement = switchedTo
+    ? `최신 조합(${switchedTo})으로 바꿨어요`
+    : (newerCombo ?? '');
   const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
@@ -560,10 +574,12 @@ export function DeviceCheckPage() {
           <AudioInputMeter meterRef={meterRef} />
         </div>
 
-                <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5 prepare-low:gap-1">
+        <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5 prepare-low:gap-1">
+          <p role="status" className="sr-only">
+            {comboAnnouncement}
+          </p>
           {newerCombo && (
             <div
-              role="status"
               className="flex flex-wrap items-center justify-between gap-2 border border-coral bg-coral-wash px-3 py-2 text-sm text-ink"
               data-newer-combo=""
             >

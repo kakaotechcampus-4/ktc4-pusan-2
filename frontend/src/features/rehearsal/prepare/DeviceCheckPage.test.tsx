@@ -249,8 +249,19 @@ it('넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고, [
   const notice = host.querySelector('[data-newer-combo]')!;
   expect(notice.textContent).toContain('최신 조합이 있어요: 자료 v9 · 대본 v9');
 
-  await act(async () => findButton('최신으로').click());
+  // 안내는 늘 그려 둔 live 영역에 들어가고, 버튼은 그 밖에 있습니다
+  const live = [...host.querySelectorAll('[role="status"]')].find((n) =>
+    n.textContent?.includes('최신 조합이 있어요'),
+  )!;
+  expect(live.contains(findButton('최신으로'))).toBe(false);
+
+  const latestButton = findButton('최신으로');
+  latestButton.focus();
+  await act(async () => latestButton.click());
   expect(host.querySelector('[data-newer-combo]')).toBeNull();
+  // 누른 버튼이 사라져도 초점이 body 로 빠지지 않고 시작 버튼으로 가며, 바꿨다고 알립니다
+  expect(document.activeElement).toBe(findButton('Take 4 시작하기'));
+  expect(live.textContent).toBe('최신 조합(자료 v9 · 대본 v9)으로 바꿨어요');
   await act(async () => findButton('Take 4 시작하기').click());
   expect(fixture.create).toHaveBeenCalledWith(
     expect.objectContaining({
