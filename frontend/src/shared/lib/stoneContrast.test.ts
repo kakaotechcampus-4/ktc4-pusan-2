@@ -216,21 +216,12 @@ describe('gaze calibration lens contrast (WCAG AA, normal text)', () => {
     expect(arrow).toMatch(/border-bottom:\s*12px solid currentColor\s*;/);
   });
 
-  // The label is 12px, so it needs 4.5:1. The solid backdrop makes the
-  // contrast independent of the webcam frame behind the indicator.
-  it.each([
-    ['black', '#000000'],
-    ['gray', '#808080'],
-    ['white', '#ffffff'],
-  ])('coral stays at least 4.5:1 over %s video', (_name, video) => {
+  // The 12px label needs 4.5:1. The opaque backdrop keeps the contrast
+  // independent of the webcam frame behind the indicator.
+  it('keeps coral at least 4.5:1 on the opaque backdrop', () => {
     const coral = colorToken(camera, '.gzc', '--coral');
     const backdrop = colorToken(camera, '.gzc', '--backdrop');
-    const channels = backdrop
-      .slice(1)
-      .match(/.{2}/g)!
-      .map((channel) => Number.parseInt(channel, 16));
-    const solidBackdrop = overBackdrop([channels[0]!, channels[1]!, channels[2]!, 1], video);
 
-    expect(contrast(coral, solidBackdrop)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(coral, backdrop)).toBeGreaterThanOrEqual(4.5);
   });
 });
