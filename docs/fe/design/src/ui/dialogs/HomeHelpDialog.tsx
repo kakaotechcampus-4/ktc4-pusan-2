@@ -1,5 +1,6 @@
 // 제품 `frontend/src/shared/ui/HomeHelpDialog.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import { useEffect, useId, useRef } from 'react';
+import { publicUrl } from '@/lib/publicUrl';
 
 const steps = [
   [
@@ -44,7 +45,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
       onClose={() => {
         if (!dialogRef.current?.open) onDismiss();
       }}
-      className="pitch-create fixed inset-0 m-auto h-dvh max-h-dvh w-full max-w-none overflow-y-auto overscroll-contain border-0 bg-panel p-0 text-ink backdrop:bg-ink/20 sm:h-auto sm:max-h-[85dvh] sm:max-w-2xl sm:border-2 sm:border-ink"
+      className="pitch-create fixed inset-0 m-auto h-dvh max-h-dvh w-full max-w-none overflow-y-auto overscroll-contain border-0 bg-panel p-0 text-ink backdrop:bg-ink/20 sm:h-auto sm:max-h-[85dvh] sm:max-w-4xl sm:border-2 sm:border-ink"
     >
       <header className="sticky top-0 flex items-center justify-between gap-5 border-b border-line-strong bg-panel px-6 py-5">
         <h2 id={titleId} className="text-xl font-bold">
@@ -73,44 +74,39 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                 <h3 className="font-bold">{title}</h3>
                 <p className="mt-2 text-sm leading-7 text-stone">{description}</p>
                 {index === 1 && (
-                  <div className="mt-4 space-y-3">
-                    <figure className="border border-line-strong bg-cream p-3">
-                      <figcaption className="mb-2 text-xs font-bold">
-                        시작 전 세팅 · 설명용 목업
+                  <div className="mt-5 space-y-6">
+                    <figure className="min-w-0">
+                      <figcaption className="mb-3 text-sm font-bold">
+                        시작 전 장치 점검
                       </figcaption>
-                      <div className="grid gap-2 sm:grid-cols-[1.3fr_1fr]">
-                        <div className="flex aspect-video items-center justify-center border border-ink bg-stage text-xs text-white">
-                          ① 카메라 · 시선 기준
-                        </div>
-                        <div className="space-y-2 text-xs">
-                          <div className="border border-ink bg-white p-3">② 마이크 입력</div>
-                          <div className="border border-ink bg-white p-3">③ 장치 점검</div>
-                        </div>
-                      </div>
+                      <img
+                        src={publicUrl('help/device-check.svg')}
+                        alt="장치 점검 화면 목업. 왼쪽 카메라와 오디오 입력, 오른쪽 장비 준비·이번 Take 미션·발표 중 대본 표시, 하단의 Take 시작 버튼이 있습니다."
+                        width={1040}
+                        height={600}
+                        loading="lazy"
+                        className="block h-auto w-full border border-line-strong bg-white"
+                      />
+                      <p className="mt-2 text-xs text-stone">
+                        카메라·마이크와 시선 기준을 확인해 주세요. 평소 목소리 측정은 선택이에요.
+                      </p>
                     </figure>
-                    <figure className="border border-line-strong bg-cream p-3">
-                      <figcaption className="mb-2 text-xs font-bold">
-                        리허설 · 설명용 목업
+                    <figure className="min-w-0">
+                      <figcaption className="mb-3 text-sm font-bold">
+                        발표 연습 화면
                       </figcaption>
-                      <div className="grid gap-2 sm:grid-cols-[1.5fr_1fr]">
-                        <div className="flex aspect-video items-center justify-center border border-ink bg-white text-xs">
-                          ① 슬라이드 · ← → Space
-                        </div>
-                        <div className="space-y-2 text-xs">
-                          <div className="border border-ink bg-white p-2">② 카메라</div>
-                          <div className="border border-ink bg-white p-2">③ 마이크</div>
-                          <div className="border border-ink bg-coral-wash p-2">④ 피코 코치</div>
-                        </div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                        <div className="border border-ink bg-white p-2">⑤ 대본</div>
-                        <div className="border border-ink bg-white p-2">⑥ 키보드 이동 · ⑦ 종료</div>
-                      </div>
+                      <img
+                        src={publicUrl('help/rehearsal-stage.svg')}
+                        alt="발표 화면 목업. 1 슬라이드, 2 카메라, 3 음량, 4 피코 코치, 5 대본, 6 키 안내, 7 발표 끝내기, 8 시선 테두리 범례."
+                        width={1040}
+                        height={600}
+                        loading="lazy"
+                        className="block h-auto w-full border border-line-strong bg-white"
+                      />
+                      <p className="mt-2 text-xs text-stone">
+                        개인정보가 없는 설명용 목업입니다. 실제 UI는 리허설 모드와 장치 상태에 따라 달라져요.
+                      </p>
                     </figure>
-                    <p className="text-xs text-stone">
-                      실제 캡처가 아닌 안내용 시안입니다. 발표 중 대본 표시 모드와 종료 버튼의
-                      위치를 확인해 주세요.
-                    </p>
                   </div>
                 )}
               </div>
