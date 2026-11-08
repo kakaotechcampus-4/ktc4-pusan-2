@@ -31,6 +31,13 @@ const scopeChip = (panel: Locator) => panel.getByRole('button', { name: /^범위
 const claim = (panel: Locator, text: string) =>
   panel.locator('[data-claim]').filter({ hasText: text });
 
+/** 실행이 끝나 저장된 답 — 진행 중인 답(`data-live-run`)이 아니라 저장된 메시지(`data-message`) 안에서 찾습니다 */
+const savedAnswer = (panel: Locator, text: string) =>
+  panel
+    .locator('[data-message]')
+    // `has` 는 그 메시지 안에서 찾으므로 대화창(panel)이 아니라 페이지에서 시작한 locator 를 넘깁니다
+    .filter({ has: panel.page().locator('[data-claim]', { hasText: text }) });
+
 /** 메시지 보내기 요청 — 같은 실행을 이어 받았는지(새로 보내지 않았는지) 세는 데도 씁니다 */
 const isSend = (url: string, method: string) =>
   method === 'POST' && new URL(url).pathname === '/api/chat/messages';
@@ -343,13 +350,25 @@ test('11. 답 문장이 글자 효과로 나옴 → 지난 답은 효과 없이 
 
 test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄기 · '기억 없이' 대화에서는 카드 없음", () => {
   const REMEMBER = '앞으로 짧게 설명해 줘, 기억해';
+  /** 목의 기억 시나리오 마지막 문장 — 이 문장이 든 답이 저장되면 실행이 끝난 것입니다(카드는 끝날 때 붙음) */
+  const LAST = '핵심을 먼저 말하고 이유는 짧게 덧붙여 볼게요.';
+
+  /** 실행이 끝나 답이 저장될 때까지 기다린 뒤 기억 카드가 없는지 봅니다 */
+  async function expectNoMemoryCard(panel: Locator): Promise<void> {
+    const answer = savedAnswer(panel, LAST);
+    await expect(answer).toHaveCount(1);
+    await expect(panel.locator('[data-live-run]')).toHaveCount(0);
+    await expect(answer.locator('[data-memory-item]')).toHaveCount(0);
+    await expect(panel.locator('[data-memory-item]')).toHaveCount(0);
+  }
 
   test("'기억했어요' 카드 → [지우기]", async ({ page }) => {
     await page.goto('/');
     const panel = await openChat(page);
     await ask(panel, REMEMBER);
 
-    const card = panel.locator('[data-memory-item]');
+    // 같은 시나리오에서 카드가 실제로 붙는지 — 아래 '카드 없음' 두 시험이 헛돌지 않는지 견줍니다
+    const card = savedAnswer(panel, LAST).locator('[data-memory-item]');
     await expect(card).toContainText('기억했어요');
     await card.getByRole('button', { name: /^지우기/ }).click();
     await expect(card).toContainText('지운 기억이에요.');
@@ -367,9 +386,7 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
     await panel.getByRole('button', { name: '돌아가기' }).click();
 
     await ask(panel, REMEMBER);
-    await expect(panel.getByRole('button', { name: '취소', exact: true })).toHaveCount(0);
-    await expect(panel.locator('[data-claim]').first()).toBeVisible();
-    await expect(panel.locator('[data-memory-item]')).toHaveCount(0);
+    await expectNoMemoryCard(panel);
   });
 
   test("'기억 없이' 대화에서는 기억 카드가 오지 않는다", async ({ page }) => {
@@ -378,8 +395,6 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
 
     await panel.getByRole('switch', { name: '기억 없이 대화하기' }).click();
     await ask(panel, REMEMBER);
-    await expect(panel.getByRole('button', { name: '취소', exact: true })).toHaveCount(0);
-    await expect(panel.locator('[data-claim]').first()).toBeVisible();
-    await expect(panel.locator('[data-memory-item]')).toHaveCount(0);
+    await expectNoMemoryCard(panel);
   });
 });
