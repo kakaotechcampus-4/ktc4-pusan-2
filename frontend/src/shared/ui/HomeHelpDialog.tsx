@@ -34,12 +34,12 @@ function HelpIllustration({ src, alt, caption }: { src: string; alt: string; cap
   return (
     <figure className="min-w-0">
       <img
-          src={src}
-          alt={alt}
-          width={1040}
-          height={600}
-          loading="lazy"
-          className="block h-auto w-full border border-line-strong bg-white"
+        src={src}
+        alt={alt}
+        width={1040}
+        height={600}
+        loading="lazy"
+        className="block h-auto w-full border border-line-strong bg-white"
       />
       <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs leading-5 text-stone">
         <span>{caption} · 개인정보가 없는 설명용 목업</span>
