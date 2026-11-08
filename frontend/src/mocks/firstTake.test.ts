@@ -1,11 +1,7 @@
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import { FIRST_TAKE_SCRIPT, FIRST_TAKE_TITLE } from '@/features/pitch/tutorial/firstTakeMaterials';
-import {
-  firstTakeHandlers,
-  recordTutorialPresentation,
-  resetTutorialMock,
-} from './firstTake';
+import { firstTakeHandlers, recordTutorialPresentation, resetTutorialMock } from './firstTake';
 import { homeHandlers } from './home';
 import { pitchEditHandlers } from './pitchEdit';
 import { pitchHandlers } from './pitch';
