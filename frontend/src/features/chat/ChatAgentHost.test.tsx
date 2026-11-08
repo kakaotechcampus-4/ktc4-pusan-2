@@ -1918,6 +1918,21 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
     expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
   });
 
+  it('거절 답 아래 예시를 눌러 보내면 안내가 바로 사라지고, 초점은 입력칸으로 돌아온다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    const example = panel()!.querySelector<HTMLButtonElement>('[data-ask-help] button')!;
+    example.focus();
+    await act(async () => example.click());
+    await settle();
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 목록을 다시 읽기 전에도 거절 답(m2)이 마지막이지만, 보내는 중이라 안내를 그리지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+    expect(document.activeElement).toBe(input());
+  });
+
   it('거절이 아닌 답이 마지막이면 질문 예시를 붙이지 않는다', async () => {
     await inConversation([
       userMsg('m1', '날씨 알려 줘', 'r0'),

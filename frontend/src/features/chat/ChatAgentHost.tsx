@@ -700,6 +700,10 @@ function MessageList({ session }: { session: ChatSession }) {
   const liveInList =
     progress !== null && shown.some((m) => m.role === 'assistant' && m.run_id === progress.runId);
 
+  // 거절 안내는 그 거절이 지금도 마지막일 때만 — 보내는 중이거나, 목록에 아직 없는 새 실행이 진행 중이면 숨깁니다
+  // (다시 읽기 전 · 다시 읽기 실패에도 새 질문 위에 안내가 남지 않게)
+  const askSettled = !echo && !pending && (progress === null || liveInList);
+
   const restoring = syncing || session.messagesLoading;
   return (
     <>
@@ -764,8 +768,8 @@ function MessageList({ session }: { session: ChatSession }) {
               onResend={(text) => session.send(text).catch(() => undefined)}
             />
           )}
-          {/* 거절 답이 목록의 마지막일 때만 — 거절이 이어져도 안내가 쌓이지 않습니다 (12-4 F8 `REFUSED`) */}
-          {i === lastAnswer && message.status === 'REFUSED' && (
+          {/* 거절 답이 목록의 마지막이고 보내는 중이 아닐 때만 — 거절이 이어져도 안내가 쌓이지 않습니다 (12-4 F8 `REFUSED`) */}
+          {i === lastAnswer && message.status === 'REFUSED' && askSettled && (
             <AskHelp
               canSend={sendable}
               lockedReason={actions.lockedReason ?? null}
