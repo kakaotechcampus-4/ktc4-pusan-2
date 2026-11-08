@@ -5,6 +5,7 @@ import {
   missionSourceNote,
   newerComboNotice,
   newerScriptNotice,
+  olderSlideNotice,
   prepareProblem,
   takeChoice,
 } from './prepareInfo';
@@ -163,6 +164,34 @@ describe('넘겨받은 조합보다 새 조합이 있다는 안내', () => {
   it('최신 조합으로 시작할 수 없으면 알리지 않는다', () => {
     const broken = fromPrepare({ ...res, script: { id: 'sv2', version: 2, slide_count: 9 } });
     expect(newerComboNotice(picked(1, 1), broken)).toBeNull();
+  });
+});
+
+describe('준비 정보가 지난 자료를 골랐다는 안내', () => {
+  const picked = fromPrepare(res); // 자료 v2(12쪽) · 대본 12장
+
+  it('장 수가 다른 새 자료가 있으면 장 수와 함께 알린다', () => {
+    expect(olderSlideNotice(picked, { id: 'pv3', version: 3, pageCount: 14 })).toBe(
+      '가장 최근 자료(v3 · 14쪽)는 대본(12장)과 장 수가 달라 지난 자료(v2)로 연습하게 돼요',
+    );
+  });
+
+  it('새 자료의 쪽수를 모르면 장 수 없이 알린다', () => {
+    expect(olderSlideNotice(picked, { id: 'pv3', version: 3, pageCount: null })).toBe(
+      '가장 최근 자료(v3) 대신 지난 자료(v2)로 연습하게 돼요',
+    );
+  });
+
+  it.each([
+    ['가장 최근 자료를 골랐으면', { id: 'pv2', version: 2, pageCount: 12 }],
+    ['자료 목록이 없으면', null],
+  ])('%s 알리지 않는다', (_, latest) => {
+    expect(olderSlideNotice(picked, latest)).toBeNull();
+  });
+
+  it('준비 정보로 시작할 수 없으면 그 이유가 먼저라 알리지 않는다', () => {
+    const broken = fromPrepare({ ...res, script: { id: 'sv2', version: 2, slide_count: 9 } });
+    expect(olderSlideNotice(broken, { id: 'pv3', version: 3, pageCount: 14 })).toBeNull();
   });
 });
 

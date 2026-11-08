@@ -19,6 +19,12 @@ const fixture = vi.hoisted(() => ({
   deviceError: null as DeviceError | null,
   voiceStatus: 'IDLE',
   data: null as unknown as PrepareResponse,
+  /** 버전 목록에서 꺼낸 가장 최근 자료 (`useLatestSlide`) */
+  latestSlide: {
+    data: null as { id: string; version: number; pageCount: number | null } | null | undefined,
+    isPending: false,
+    isError: false,
+  },
   request: vi.fn(),
   gazeStart: vi.fn(),
   voiceStart: vi.fn(),
@@ -91,6 +97,7 @@ vi.mock('./useBaseVoice', () => ({
 }));
 vi.mock('@/shared/api/prepare', () => ({
   usePrepare: () => ({ data: fixture.data, isError: false }),
+  useLatestSlide: () => fixture.latestSlide,
   useCreateTake: () => ({ mutateAsync: fixture.create }),
   postCalibration: vi.fn(),
 }));
@@ -127,6 +134,7 @@ beforeEach(() => {
   fixture.gazeAdvice = null;
   fixture.deviceError = null;
   fixture.voiceStatus = 'IDLE';
+  fixture.latestSlide = { data: null, isPending: false, isError: false };
   fixture.request.mockReset().mockResolvedValue(undefined);
   fixture.create.mockReset().mockResolvedValue({ takeId: 't1', takeNumber: 4 });
   fixture.active.mockReset().mockResolvedValue(null);
@@ -180,6 +188,7 @@ async function render(combo?: PracticeCombo, pitchId = 'p1') {
           <Route path="/pitch/:pitchId/device-check" element={<DeviceCheckPage />} />
           <Route path="/takes/:takeId/rehearsal" element={<p>연습 시작</p>} />
           <Route path="/takes/:takeId/exam" element={<p>실전 시작</p>} />
+          <Route path="/pitch/:id/edit" element={<p>피치 수정</p>} />
         </Routes>
       </MemoryRouter>,
     ),
@@ -281,6 +290,87 @@ it('넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고, [
 it('조합 없이 들어오면 최신 조합 안내를 띄우지 않는다', async () => {
   await render();
   expect(host.querySelector('[data-newer-combo]')).toBeNull();
+});
+
+/** 멘토 리뷰 동선: 자료 v1(3쪽) · 대본(3장)에 v2(4쪽)를 올린 뒤 리포트 · 대화에서 조합 없이 들어온다 */
+function olderSlidePicked() {
+  fixture.data = {
+    ...fixture.data,
+    presentation: { id: 'pv1', version: 1, page_count: 3 },
+    script: { id: 'sv1', version: 1, slide_count: 3 },
+  };
+  fixture.latestSlide = {
+    data: { id: 'pv2', version: 2, pageCount: 4 },
+    isPending: false,
+    isError: false,
+  };
+}
+
+it('조합 없이 들어왔는데 준비 정보가 지난 자료를 골랐으면 확인받기 전에는 시작하지 않는다', async () => {
+  olderSlidePicked();
+  await render();
+  const notice = host.querySelector('[data-older-slide]')!;
+  expect(notice.textContent).toContain(
+    '가장 최근 자료(v2 · 4쪽)는 대본(3장)과 장 수가 달라 지난 자료(v1)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('지난 자료로 연습').click());
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+  expect(
+    [...host.querySelectorAll('[role="status"]')].some(
+      (n) => n.textContent === '지난 자료(v1)로 연습해요',
+    ),
+  ).toBe(true);
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({ presentation_version_id: 'pv1', script_version_id: 'sv1' }),
+    }),
+  );
+});
+
+it('[매핑 확인하기]를 누르면 피치 수정으로 가고 Take 를 만들지 않는다', async () => {
+  olderSlidePicked();
+  await render();
+  await act(async () => findButton('매핑 확인하기').click());
+  expect(host.textContent).toContain('피치 수정');
+  expect(fixture.create).not.toHaveBeenCalled();
+});
+
+it('가장 최근 자료를 받는 동안에는 시작하지 않고, 못 받았으면 막지 않는다', async () => {
+  fixture.latestSlide = { data: undefined, isPending: true, isError: false };
+  await render();
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  fixture.latestSlide = { data: undefined, isPending: false, isError: true };
+  await render(undefined, 'p2');
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+});
+
+it('준비 정보가 가장 최근 자료를 골랐거나 조합을 넘겨받았으면 지난 자료 안내를 띄우지 않는다', async () => {
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+
+  olderSlidePicked();
+  await render(
+    {
+      title: '고른 발표',
+      presentationVersionId: 'pv1',
+      scriptVersionId: 'sv1',
+      slideVersion: 1,
+      scriptVersion: 1,
+      goalTimeSec: 300,
+    },
+    'p2',
+  );
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
 });
 
 it('keeps device selection and calibration as separate actions and blocks starting before calibration', async () => {

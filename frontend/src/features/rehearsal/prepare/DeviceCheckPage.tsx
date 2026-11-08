@@ -4,7 +4,7 @@ import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { SILENCE_END_NOTICE } from '@/shared/lib/autoEnd';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
-import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
+import { postCalibration, useCreateTake, useLatestSlide, usePrepare } from '@/shared/api/prepare';
 import { setPrepareContext, setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { toCalibrationRequest } from '../lib/calibrationRequest';
@@ -25,6 +25,7 @@ import {
   fromPrepare,
   newerComboNotice,
   newerScriptNotice,
+  olderSlideNotice,
   prepareProblem,
   takeChoice,
 } from './prepareInfo';
@@ -212,6 +213,8 @@ export function DeviceCheckPage() {
   const navigate = useNavigate();
   const prepare = usePrepare(pitchId);
   const info = useMemo(() => (prepare.data ? fromPrepare(prepare.data) : null), [prepare.data]);
+  // 조합 없이 왔으면(리포트 · 대화 · 새로고침) 준비 정보가 지난 자료를 골랐는지 견줄 최신 자료 (멘토 리뷰 #923)
+  const latestSlide = useLatestSlide(pitchId, combo === null);
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
@@ -292,6 +295,8 @@ export function DeviceCheckPage() {
   const startButton = useRef<HTMLButtonElement>(null);
   // [최신으로]로 바꾼 조합 — 바꿨다는 것을 한 번 알립니다
   const [switchedTo, setSwitchedTo] = useState<string | null>(null);
+  // [지난 자료로 연습]을 누른 자료 id. 준비 정보가 다른 자료를 고르면 다시 묻습니다
+  const [olderSlideOkFor, setOlderSlideOkFor] = useState<string | null>(null);
   const focusStartAfterClose = useRef(false);
   useEffect(() => {
     if (replacing || starting || !focusStartAfterClose.current) return;
@@ -348,12 +353,27 @@ export function DeviceCheckPage() {
   //   버전 id 가 조합에 다 있습니다. 없을 때(홈 · 새로고침)만 준비 정보로 정하고, 거기서 시작할 수
   //   없는 이유(버전 없음 · 쪽수 다름 · 불러오기 실패)가 있으면 그걸 먼저 알립니다
   const choice = takeChoice(combo, info);
+  // 조합 없이 왔는데 준비 정보가 가장 최근 자료 대신 지난 자료를 골랐으면, 한 번 확인받기 전에는 시작하지 않습니다.
+  // 최신 자료를 받는 동안에도 기다립니다 — 먼저 시작하면 확인 없이 지난 자료로 Take 가 생깁니다.
+  // 버전 목록을 못 받았으면 막지 않습니다 — 준비 정보만으로도 시작할 수 있었고, 그것까지 막으면 연습을 못 합니다
+  const olderSlide = combo || !info ? null : olderSlideNotice(info, latestSlide.data ?? null);
+  const olderSlideBlocked = olderSlide !== null && olderSlideOkFor !== info?.presentation?.id;
+  const latestSlidePending = combo === null && latestSlide.isPending;
   const prepareBlocked = (() => {
     if (combo) return null;
     if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
-    return info ? prepareProblem(info) : null;
+    const problem = info ? prepareProblem(info) : null;
+    if (problem) return problem;
+    return olderSlideBlocked ? '지난 자료로 연습할지, 매핑을 다시 확인할지 골라 주세요.' : null;
   })();
-  const ready = live && micOk && cal.status === 'DONE' && choice !== null && !starting;
+  const ready =
+    live &&
+    micOk &&
+    cal.status === 'DONE' &&
+    choice !== null &&
+    !olderSlideBlocked &&
+    !latestSlidePending &&
+    !starting;
 
   /**
    * 시작 버튼. 사용자는 한 번에 연습 하나만 해서, 다른 창 · 기기에서 발표 중인 Take 가 있으면
@@ -521,10 +541,21 @@ export function DeviceCheckPage() {
     else document.getElementById('main')?.focus();
     navigate(location.pathname, { replace: true, state: null });
   };
+  // [지난 자료로 연습] — 이 자료로 시작하도록 풉니다. 버튼이 사라지기 전에 초점을 옮기는 것은 [최신으로]와 같은 이유입니다
+  const keepOlderSlide = () => {
+    const id = info?.presentation?.id;
+    if (!id) return;
+    document.getElementById('main')?.focus();
+    setOlderSlideOkFor(id);
+  };
   // 늘 그려 둔 빈 자리에 문구만 바꿔 넣어야 화면 낭독기가 읽습니다 — 버튼은 이 자리 밖에 둡니다
-  const comboAnnouncement = switchedTo
-    ? `최신 조합(${switchedTo})으로 바꿨어요`
-    : (newerCombo ?? '');
+  const comboAnnouncement = (() => {
+    if (switchedTo) return `최신 조합(${switchedTo})으로 바꿨어요`;
+    if (newerCombo) return newerCombo;
+    if (olderSlide && !olderSlideBlocked)
+      return `지난 자료(v${info?.presentation?.version})로 연습해요`;
+    return olderSlide ?? '';
+  })();
   const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
@@ -592,6 +623,32 @@ export function DeviceCheckPage() {
               >
                 최신으로
               </button>
+            </div>
+          )}
+          {olderSlideBlocked && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 border border-coral bg-coral-wash px-3 py-2 text-sm text-ink"
+              data-older-slide=""
+            >
+              <span>{olderSlide}</span>
+              <span className="flex shrink-0 gap-1.5">
+                <button
+                  type="button"
+                  disabled={starting}
+                  onClick={() => navigate(`/pitch/${pitchId}/edit`)}
+                  className="inline-flex min-h-8 items-center border border-ink bg-ink px-2.5 text-xs font-semibold text-panel disabled:cursor-default disabled:border-dashed disabled:border-line-strong"
+                >
+                  매핑 확인하기
+                </button>
+                <button
+                  type="button"
+                  disabled={starting}
+                  onClick={keepOlderSlide}
+                  className="inline-flex min-h-8 items-center border border-ink bg-panel px-2.5 text-xs font-semibold hover:bg-cream disabled:cursor-default disabled:border-dashed disabled:border-line-strong"
+                >
+                  지난 자료로 연습
+                </button>
+              </span>
             </div>
           )}
           <CheckCard

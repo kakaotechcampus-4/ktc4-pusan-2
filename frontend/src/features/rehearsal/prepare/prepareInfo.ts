@@ -1,4 +1,5 @@
 import type { PracticeCombo, PrepareResponse, ScriptMode } from '@/types/api';
+import type { LatestSlide } from '@/shared/api/prepare';
 import { normalizeScriptMode } from './prepareStore';
 
 /**
@@ -118,6 +119,27 @@ export function newerComboNotice(combo: PracticeCombo, info: PrepareInfo): strin
   if (slide === combo.slideVersion && script === combo.scriptVersion) return null;
   // 조사는 숫자 뒤에 붙이지 않습니다 — "v3예요"처럼 읽기 어렵지 않게
   return `최신 조합이 있어요: 자료 v${slide} · 대본 v${script}`;
+}
+
+/**
+ * 준비 정보가 가장 최근 자료 대신 **지난 자료**를 골랐을 때의 안내. 해당 없으면 null (멘토 리뷰 #923).
+ *
+ * 리포트의 [Take N 연습하기] · 대화의 [연습 준비로]는 피치 수정을 거치지 않고 조합 없이 들어옵니다. 그러면
+ * `/prepare` 가 대본과 장 수가 맞는 가장 최근 자료를 고르는데, 장 수가 다른 새 PDF 를 올린 뒤면 그게 지난 자료입니다.
+ * 막아 버리지는 않고(일부러 지난 자료로 연습할 수 있게) 화면이 한 번 확인받습니다.
+ *
+ * 준비 정보로 시작할 수 없으면(`prepareProblem`) 그 이유가 먼저라 알리지 않습니다.
+ */
+export function olderSlideNotice(info: PrepareInfo, latest: LatestSlide | null): string | null {
+  if (!latest || !info.presentation || !info.script || prepareProblem(info) !== null) return null;
+  if (latest.id === info.presentation.id || latest.version <= info.presentation.version)
+    return null;
+  const chosen = info.presentation.version;
+  const { slideCount } = info.script;
+  if (latest.pageCount !== null && slideCount !== null && latest.pageCount !== slideCount) {
+    return `가장 최근 자료(v${latest.version} · ${latest.pageCount}쪽)는 대본(${slideCount}장)과 장 수가 달라 지난 자료(v${chosen})로 연습하게 돼요`;
+  }
+  return `가장 최근 자료(v${latest.version}) 대신 지난 자료(v${chosen})로 연습하게 돼요`;
 }
 
 /**
