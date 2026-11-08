@@ -195,9 +195,9 @@ function CurrentScreen({
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'tutorial':
-      return <TutorialScreen onNavigate={onNavigate} />;
+      return <TutorialScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'semini':
-      return <SeminiScreen />;
+      return <SeminiScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create-a':
       return <PitchCreateScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'pitch-create':
