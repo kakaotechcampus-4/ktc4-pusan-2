@@ -824,11 +824,10 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     if lp.cfg.record_answer_guard:
         extras += _record_guard_claims(lp, [*comp.pre, *body], all_assessments)
     if lp.cfg.goal_status_sentence:
-        gj = _goal_status_claim(lp, req)
-        # 닫힌 목표의 상태만 고정 문장으로 말한다. `goal_result` 는 싣지 않는다: 계약상 자동 목표 확인(TAKE_REVIEWED)의 값이고
-        # BE 가 그 값으로 목표 상태를 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 BE 와 주고받는 값의 호출 시점이 바뀐다
-        if gj is not None and all(c.text != gj.text for c in [*comp.pre, *body, *tail, *extras]):
-            extras.append(gj)
+        # 닫힌 목표의 상태(와 보고 있는 Take 의 판정)를 코드 문장으로 말한다. `goal_result` 는 싣지 않는다: 계약상 자동 목표 확인
+        # (TAKE_REVIEWED)의 값이고 BE 가 그 값으로 목표 상태를 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 호출 시점이 바뀐다
+        have = {c.text for c in [*comp.pre, *body, *tail, *extras]}
+        extras += [c for c in _goal_status_claims(lp, req) if c.text not in have]
     if not body and not has_result:
         # 안전망(P-0008 5-1): 기록 · 자료 없이 답하려던 말(ANSWER_DIRECT)의 문장이 모두 빠져도 실패 상태 · 까닭은 그대로 두고,
         # 할 수 있는 일 안내만 덧붙인다(가벼운 말로 보지 않은 인사가 거절 문장 하나로 끝나지 않게)
@@ -995,74 +994,69 @@ def _parse_ts(value: str | None) -> datetime | None:
     return t if t.tzinfo is not None else t.replace(tzinfo=UTC)
 
 
-def _closing_take_claim(lp: Loop, goal: Any) -> Claim | None:
-    """닫힌 목표를 닫은 Take 를 코드가 찾아 그 Take 의 값으로 목표 결과 문장(`RECORD`)을 만든다. 못 찾으면 None.
+def _page_take_goal_claim(lp: Loop, req: TurnRequest, goal: Any) -> Claim | None:
+    """닫힌 목표를 물을 때 보고 있는 Take(`page.take_id`)의 지금 기록으로 목표를 판정한 `RECORD` 문장. 못 만들면 None.
 
-    자동 목표 확인(`_take_reviewed`)과 같은 규칙을 다시 돌린다: 목표를 저장한 뒤 완료한 Take(`take_number`가 기준 Take 보다 크고
-    `completed_at`이 목표 `created_at` 뒤)를 Take 번호 순으로 `judge_goal` 하고, 처음 끝낸 판정(`UNKNOWN` 아님)이 닫은 Take 다.
-    그 판정이 목표의 지금 상태와 같을 때만 문장을 낸다. 앞 번호 Take 의 스냅샷을 읽지 않았으면 순서를 확인할 수 없어 멈춘다.
+    목표를 닫은 Take 는 요청 자료로 알 수 없으므로(닫은 때의 판 · 앞 Take 목록 · 시작 시각이 없음) 고르지 않는다. 보고 있는 Take 가
+    목표 뒤 Take(기준 Take 보다 번호가 크고 `completed_at`이 목표 `created_at` 뒤)이고, 그 Take 의 지금 판정이 끝난 판정이며
+    목표 상태와 같을 때만 그 Take 의 값을 말한다. 이 Take 가 목표를 닫았다고는 말하지 않는다.
     """
     ctx = lp.ctx
-    created = _parse_ts(goal.created_at)
-    if created is None:
+    tid = req.page.take_id if req.page is not None else None
+    summ = ctx.summaries.get(tid) if tid else None
+    if summ is None or summ.take_number <= goal.base.take_number:
         return None
-    after = []
-    for s in ctx.summaries.values():
-        done = _parse_ts(s.completed_at)
-        if s.take_number > goal.base.take_number and done is not None and done > created:
-            after.append(s)
-    for summ in sorted(after, key=lambda s: s.take_number):
-        snap = ctx.snapshots.get(summ.take_id)
-        if snap is None:
-            return None
-        j = judge_goal(goal, snap, registry=ctx.registry, version_of=ctx.version_of, cfg=lp.cfg)
-        if not j.terminal:
-            continue
-        if j.status != goal.status or not j.evidence_ids:
-            return None
-        ctx.touch(summ.take_id, ctx.scope_pitch_id)
-        text = compose.goal_sentence(ctx, goal, j, summ.take_number)
-        claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
-        fails = chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg)
-        return None if fails else claim
-    return None
+    created, done = _parse_ts(goal.created_at), _parse_ts(summ.completed_at)
+    if created is None or done is None or done <= created:
+        return None
+    snap = ctx.snapshots.get(summ.take_id)
+    if snap is None:
+        return None
+    j = judge_goal(goal, snap, registry=ctx.registry, version_of=ctx.version_of, cfg=lp.cfg)
+    if not j.terminal or j.status != goal.status or not j.evidence_ids:
+        return None
+    ctx.touch(summ.take_id, ctx.scope_pitch_id)
+    text = compose.goal_sentence(ctx, goal, j, summ.take_number)
+    claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
+    fails = chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg)
+    return None if fails else claim
 
 
-def _goal_status_claim(lp: Loop, req: TurnRequest) -> Claim | None:
-    """사용자 말로 대화 목표의 결과를 물을 때(`get_goals`를 읽은 실행) 닫힌 목표의 결과 문장을 낸다(7-10, `goal_status_sentence`).
+def _goal_status_claims(lp: Loop, req: TurnRequest) -> list[Claim]:
+    """사용자 말로 대화 목표의 결과를 물을 때(`get_goals`를 읽은 실행) 닫힌 목표의 결과 문장들(7-10, `goal_status_sentence`).
 
-    목표를 닫은 Take 를 찾아 읽었으면 그 Take 의 값으로 만든 `RECORD` 문장을 낸다(`_closing_take_claim`). 찾지 못하면 목표 상태
-    (`ACHIEVED` · `NOT_ACHIEVED` · `BASELINE_MISMATCH`)만 말하는 고정 `SYSTEM` 문장이다. 열린 목표 · 자동 목표 확인 턴 · 다른 피치의
-    목표는 내지 않는다. 어느 쪽이든 `goal_result` 는 싣지 않는다(자동 목표 확인의 계약 값).
+    목표 상태(`ACHIEVED` · `NOT_ACHIEVED` · `BASELINE_MISMATCH`)를 고정 `SYSTEM` 문장으로 말하고, 보고 있는 Take 의 지금 기록이
+    같은 판정이면 그 값 문장(`RECORD`, `_page_take_goal_claim`)을 잇는다. 열린 목표 · 자동 목표 확인 턴 · 다른 피치의 목표는 내지
+    않는다. `goal_result` 는 싣지 않는다(자동 목표 확인의 계약 값).
     """
     ctx, goal = lp.ctx, lp.ctx.goal
     if req.review_event is not None or goal is None or goal.status == "OPEN":
-        return None
+        return []
     if goal.pitch_id != ctx.scope_pitch_id or not any(
         t.get("tool") == "get_goals" for t in lp.st.trace
     ):
-        return None
-    closing = _closing_take_claim(lp, goal)
-    if closing is not None:
-        return closing
+        return []
     text = templates.GOAL_CLOSED_TEXT.get(goal.status)
-    return Claim(kind="SYSTEM", text=text.value) if text is not None else None
+    out = [Claim(kind="SYSTEM", text=text.value)] if text is not None else []
+    page = _page_take_goal_claim(lp, req, goal)
+    return [*out, page] if page is not None and out else out
 
 
-def _cross_pitch_compare(lp: Loop) -> bool:
-    """비교를 청했는데 이번 실행이 읽은 기록 근거가 서로 다른 피치의 Take 에 걸치는가(1-3: 다른 피치끼리는 비교하지 않는다)."""
+def _cross_pitch_compare(lp: Loop, said: list[Claim]) -> bool:
+    """비교를 청했는데 답이 서로 다른 피치의 Take 기록을 함께 보이는가(1-3: 다른 피치끼리는 비교하지 않는다).
+
+    이번 실행이 읽은 기록 전체가 아니라 답 문장이 근거로 든 기록의 피치를 센다(다른 피치를 읽었어도 한 피치 안에서 답하면 붙이지 않는다).
+    """
     msg = lp.original or ""
-    asked = any(w in msg for w in lp.cfg.compare_request_words) or any(
-        (d.get("subject") or {}).get("relation") == "COMPARE" or d.get("claim_op") == "CHANGE"
-        for d in lp.st.plan_drafts
-    )
-    if not asked:
+    if not any(w in msg for w in lp.cfg.compare_request_words):
         return False
-    pitches = {
-        ev.pitch_id
-        for eid, ev in lp.ctx.registry.items.items()
-        if ev.origin == "RECORD" and ev.pitch_id and lp.ctx.registry.is_current(eid)
-    }
+    reg = lp.ctx.registry
+    pitches = set()
+    for c in said:
+        for eid in c.evidence_ids:
+            ev = reg.get(eid)
+            if ev is not None and ev.origin == "RECORD" and ev.pitch_id:
+                pitches.add(ev.pitch_id)
     return len(pitches) >= 2
 
 
@@ -1075,7 +1069,7 @@ def _tail_claims(
     - 이름으로 찾은 피치가 하나도 없고 범위를 정하지 않았으면 발표를 찾을 수 없다고 말한다(L2-21 0개).
     - 답 초안 `usage_unanswered`(화면 조작 방법을 물었는데 찾은 사용법 자료가 없음)면 사용법 자료 없음 문장(6-10).
     - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2).
-    - 비교를 청했고 이번 실행이 읽은 기록이 둘 이상의 피치에 걸치면 다른 발표의 Take 끼리는 비교하지 않는다는 문장(1-3).
+    - 비교를 청했고 답 문장의 기록 근거가 둘 이상의 피치에 걸치면 다른 발표의 Take 끼리는 비교하지 않는다는 문장(1-3).
     """
     seen = {c.text for c in said} | {d.get("text") for d in lp.st.emitted}
     out: list[Claim] = []
@@ -1092,7 +1086,7 @@ def _tail_claims(
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.USAGE_NO_GUIDE.value))
     if route == "CANNOT_DO":
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
-    if _cross_pitch_compare(lp):
+    if _cross_pitch_compare(lp, said):
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.CROSS_PITCH_NO_COMPARE.value))
     return [c for c in out if c.text not in seen]
 
