@@ -125,11 +125,15 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
   store.setPitchId('p1');
   const view = await mountCriteria(null);
   try {
-    const chips = [...view.host.querySelectorAll<HTMLButtonElement>('button[aria-label$="작성 예시 보기"]')];
+    const chips = [
+      ...view.host.querySelectorAll<HTMLButtonElement>('button[aria-label$="작성 예시 보기"]'),
+    ];
     expect(chips).toHaveLength(8);
     expect(view.host.textContent).toContain('침묵 길이·절대 음량(dB)');
     expect(view.host.textContent).not.toContain('대본 사용 허용');
-    expect(view.host.textContent).not.toContain('숫자 목표가 없는 항목은 달성 여부를 판정하지 않아요.');
+    expect(view.host.textContent).not.toContain(
+      '숫자 목표가 없는 항목은 달성 여부를 판정하지 않아요.',
+    );
 
     await act(async () => {
       chips[0]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -141,7 +145,9 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
       chips[6]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     });
     expect(view.host.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
-    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('대본을 읽으며 말하는 비율');
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
+      '대본을 읽으며 말하는 비율',
+    );
     expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('대본을 연결한 경우');
 
     await act(async () => {
@@ -158,7 +164,9 @@ it('Esc로 예시를 닫아도 칩의 키보드 포커스가 유지된다', asyn
   useCreateStore.getState().setPitchId('p1');
   const view = await mountCriteria(null);
   try {
-    const chip = view.host.querySelector<HTMLButtonElement>('button[aria-label="말 속도 작성 예시 보기"]')!;
+    const chip = view.host.querySelector<HTMLButtonElement>(
+      'button[aria-label="말 속도 작성 예시 보기"]',
+    )!;
     await act(async () => chip.focus());
     expect(document.activeElement).toBe(chip);
     expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('1분에 300자 이하');
