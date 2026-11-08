@@ -8,6 +8,7 @@ import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
+import { prefersReducedMotion } from '@/features/chat/chatTyping';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
@@ -26,16 +27,12 @@ const HOME_TIPS = [
 
 const HOME_TIP_INTERVAL_MS = 8000;
 
-function initiallyPauseTips() {
-  if (typeof window === 'undefined') return false;
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-  return reducedMotion?.matches ?? false;
-}
-
 export function HomePage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
-  const [tipPaused, setTipPaused] = useState(initiallyPauseTips);
+  const [tipPaused, setTipPaused] = useState(prefersReducedMotion);
+  const [tipHovered, setTipHovered] = useState(false);
+  const [tipFocused, setTipFocused] = useState(false);
   const home = usePitchList();
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
@@ -58,13 +55,13 @@ export function HomePage() {
   }, [deleting]);
 
   useEffect(() => {
-    if (tipPaused) return;
+    if (tipPaused || tipHovered || tipFocused) return;
     const timer = window.setInterval(
       () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
       HOME_TIP_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
-  }, [tipPaused]);
+  }, [tipPaused, tipHovered, tipFocused]);
 
   const cancelDelete = () => {
     const opener = deleting?.opener;
@@ -214,16 +211,22 @@ export function HomePage() {
       </main>
       <footer className="border-t border-line-strong">
         <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 xl:flex-nowrap lg:px-10">
-          <div className="flex w-full min-w-0 flex-1 items-center gap-2 md:w-auto">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className="shrink-0 tabular-nums text-coral-deep">TIP /</span>
-            {/* 자동 전환 문구는 화면 낭독기가 계속 읽지 않도록 합니다. */}
-            <p aria-live="off" title={HOME_TIPS[tipIndex]} className="min-w-0 flex-1 truncate">
+            <p
+              tabIndex={0}
+              title={HOME_TIPS[tipIndex]}
+              onMouseEnter={() => setTipHovered(true)}
+              onMouseLeave={() => setTipHovered(false)}
+              onFocus={() => setTipFocused(true)}
+              onBlur={() => setTipFocused(false)}
+              className="min-w-0 flex-1 truncate focus:overflow-visible focus:whitespace-normal focus:break-words focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
               {HOME_TIPS[tipIndex]}
             </p>
             <button
               type="button"
               onClick={() => setTipPaused((current) => !current)}
-              aria-pressed={tipPaused}
               aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
               className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
