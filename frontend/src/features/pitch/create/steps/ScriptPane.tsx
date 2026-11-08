@@ -244,7 +244,10 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         </p>
       )}
 
-      {script.parse.status === 'pending' && <ParseWaitHint startedAt={script.parse.startedAt} />}
+      {script.parse.status === 'pending' && (
+        // 다른 대본으로 바뀌면 다시 마운트해 앞 대본의 기다린 시간이 남지 않게 합니다
+        <ParseWaitHint key={script.parse.startedAt} startedAt={script.parse.startedAt} />
+      )}
 
       {failure && (
         <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-ink">
@@ -578,7 +581,10 @@ function MappingEditor({
           {script.parse.message}
         </p>
       )}
-      {script.parse.status === 'pending' && <ParseWaitHint startedAt={script.parse.startedAt} />}
+      {script.parse.status === 'pending' && (
+        // 다른 대본으로 바뀌면 다시 마운트해 앞 대본의 기다린 시간이 남지 않게 합니다
+        <ParseWaitHint key={script.parse.startedAt} startedAt={script.parse.startedAt} />
+      )}
       <MappingNotice
         text={script.text}
         segmented={script.segmented}
