@@ -468,9 +468,6 @@ function LiveSize() {
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, []);
-  const queries = [
-    ...TAILWIND_QUERIES,
-  ];
   const on = (query: string) =>
     typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
   return (
@@ -482,7 +479,7 @@ function LiveSize() {
         {size.width} × {size.height}
       </p>
       <ul className="flex flex-wrap gap-2">
-        {queries.map(([name, query]) => (
+        {TAILWIND_QUERIES.map(([name, query]) => (
           <li
             key={name}
             className={`px-2 py-0.5 font-mono text-xs font-bold ${on(query) ? 'bg-ink text-panel' : 'border border-dashed border-line-strong text-stone'}`}
