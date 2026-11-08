@@ -9,8 +9,6 @@
 | [audit.md](audit.md) | 설계서와 제품 코드의 차이 및 동기화 |
 | [prepare-layout-review.md](prepare-layout-review.md) | 시작 전 세팅 배치 시안의 검토 결정 |
 
-**실제 구현 화면 동기화(2026-11-08):** [제품 대조·시안 보존표](audit.md#2026-11-08-제품-동기화-점검-1111-후속)를 참고한다. `pitch-create`는 제품의 단일 페이지형 피치 생성·수정 샘플이며, `pitch-create-a`는 채택 당시 A안의 검토 링크로 남겼다. `terms`·`privacy` 공개 정책 초안 화면도 목록에 추가했다. `preview` 같은 구 상태 주소는 계속 열린다.
-
 화면 이름이나 그룹을 정리할 때는 [명명·분류 규칙](NAMING.md)을 따른다. **기존 화면 ID는 공유 링크의 일부**이므로 바꾸지 않는다. 검토 시안은 별도 그룹에 두되 기존 시안 ID와 상태 URL은 유지한다.
 
 피치코치 화면과 시안을 모아 보는 React 앱이다. **제품(`frontend/`)과 따로 돈다** — 제품 코드를 import하지 않고, 버튼 · 카드 같은 UI와 색 · 글꼴 · 간격 값을 이 폴더가 직접 가진다. 디자인은 제품보다 앞서거나 달라질 수 있어서, 화면별 차이는 설명 패널의 "제품과 다른 점"(`src/catalog.ts`의 `productNote`)에서 보고, 대조 방법은 [제품 대조](audit.md)와 아래 "제품이 바뀌었을 때" · "제품으로 옮기기"에 있다.
@@ -111,9 +109,9 @@ React 코드 종류에 따라 화면 안의 입력 상태는 처음으로 돌아
 | `src/PreviewFrame.tsx` · `src/FramePage.tsx` · `src/frame.ts` | 미리보기 iframe(크기 · 줄이기 · 이동 메시지), iframe이 여는 화면만 보기 주소, 둘이 함께 쓰는 값 |
 | `src/catalog.ts` · `src/model.ts` | 화면 목록과 그 모양(상태 · 규칙 · 제품과 다른 점 · 제품에서 열기 경로) |
 | `src/ScreenPreview.tsx` | 미리보기 진입점. 화면 ID로 그릴 화면을 고르고, 미리보기 안의 링크를 설계서 안에서만 이동시킨다 |
-| `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 피치 생성·수정은 `CreateConceptScreen.tsx`를 사용하며 이전 단계형 `CreateScreen.tsx`는 제거 후보로만 보존한다. 분석 대기 · 대본 확인은 `AnalysisScreen.tsx`, 안내 화면은 `InfoScreens.tsx`, 공개 정책은 `PolicyScreens.tsx`, 웰컴 · 로그인은 `OnboardingScreens.tsx`, 공통 틀은 `shared.tsx` |
+| `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 피치 생성·수정은 `CreateConceptScreen.tsx`, 분석 대기 · 대본 확인은 `AnalysisScreen.tsx`, 안내 화면은 `InfoScreens.tsx`, 공개 정책은 `PolicyScreens.tsx`, 웰컴 · 로그인은 `OnboardingScreens.tsx`, 공통 틀은 `shared.tsx` |
 | `src/*.test.tsx` | 뷰어의 주소 · 포커스, 미리보기 iframe의 크기 · 메시지, 미리보기 흐름 · 무대 클래스, 모든 화면 · 상태가 그려지는지 확인 |
-| `src/ui/` | 버튼 · 카드 · 배지(TakeStatusBadge) · 마스코트 · 워드마크 · 상단바(AppHeader) · 선택 상자 · 대본 표시 선택(ScriptModeChoice)과 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 피치 생성 머리/바닥(PaneHeading · PaneFooter) · 무대 CSS(stage.css), `dialogs/`의 확인 · 도움말 · 설문 · 참여 동의 창. 제품에서 복사해 시작했다 |
+| `src/ui/` | 버튼 · 카드 · 배지(TakeStatusBadge) · 마스코트 · 워드마크 · 상단바(AppHeader) · 선택 상자 · 대본 표시 선택(ScriptModeChoice)과 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 무대 CSS(stage.css), `dialogs/`의 확인 · 도움말 · 설문 · 참여 동의 창. 제품에서 복사해 시작했다 |
 | `src/components/` | 컴포넌트 · 대화 상자 문서. `ComponentDocs.tsx`가 견본을 그리고, `entries.ts`가 목록 칸(보기 · 규칙 · 속성 · 사용 예)이다 |
 | `src/foundations/` | 기초 문서. `tokens.ts`가 `styles.css`를 읽고(묶음 · 설명 · 밝은 지면 · 대비), `Foundations.tsx`가 그리며, `entries.ts`가 목록 칸(보기 · 규칙)이다 |
 | `src/styles.css` | 색 · 글꼴 · 간격 등 디자인 값의 원본. 제품 `index.css`에서 복사해 시작했다 |

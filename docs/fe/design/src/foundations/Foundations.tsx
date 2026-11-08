@@ -211,11 +211,13 @@ const TYPE_SCALE: [string, string, string][] = [
 /** 글꼴. 상태: scale 크기 · 굵기 · families 글꼴 */
 export function TypographyFoundation({ stateId }: { stateId: string }) {
   if (stateId === 'families') {
-    const fonts = themeTokens().filter((token) => token.name.startsWith('--font-'));
+    const fonts = themeTokens().filter(
+      (token) => token.name.startsWith('--font-') && token.value !== 'initial',
+    );
     return (
       <Page
         title="글꼴"
-        intro="본문은 Pretendard, 숫자 · 시간 · 영문 표시는 IBM Plex Mono(한글은 Pretendard로 넘어간다). 글꼴 파일은 설계서가 직접 가진다(public/fonts)."
+        intro="글꼴은 Pretendard 하나다. 숫자 · 시간은 고정폭 글꼴 대신 `tabular`로 숫자 폭만 맞춘다. 글꼴 파일은 설계서가 직접 가진다(public/fonts)."
       >
         {fonts.map((token) => (
           <Section key={token.name} title={token.name} description={token.value}>
@@ -232,12 +234,12 @@ export function TypographyFoundation({ stateId }: { stateId: string }) {
           description="타이머 · 지표 · 비교표처럼 숫자가 세로로 맞아야 하는 곳은 `tabular`(고정 폭 숫자)를 붙인다. 본문은 `word-break: keep-all`이라 한국어 낱말 중간에서 줄을 바꾸지 않는다."
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <p className="border border-line bg-panel p-4 font-mono text-2xl">
+            <p className="border border-line bg-panel p-4 text-2xl">
               11:11
               <br />
               08:08
             </p>
-            <p className="tabular border border-line bg-panel p-4 font-mono text-2xl">
+            <p className="tabular border border-line bg-panel p-4 text-2xl">
               11:11
               <br />
               08:08

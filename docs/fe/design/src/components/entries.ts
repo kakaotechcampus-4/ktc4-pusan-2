@@ -421,18 +421,22 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
   {
     kind: 'component',
     id: 'slide-preview',
-    title: '미리보기 창',
+    title: '슬라이드 확인 창',
     group: dialogs,
-    status: '시안',
-    summary: '슬라이드를 크게 보는 창. 피치 생성 화면의 "슬라이드 미리보기" 상태와 같다.',
-    states: [view('open', '열림', '피치 생성 화면에서 연 슬라이드 미리보기.')],
-    rules: ['보기만 하는 창이라 닫기 하나와 이전 · 다음만 둔다.', '닫으면 보던 단계로 돌아간다.'],
-    tokens: ['panel', 'ink'],
-    sources: [],
-    file: 'src/screens/CreateScreen.tsx',
+    status: '제품에 있음',
+    summary:
+      'PDF를 올린 뒤 자동으로 열려 내용과 순서를 확인하는 창. 피치 생성 화면의 "슬라이드 확인" 상태와 같다.',
+    states: [view('open', '열림', '업로드 직후 확인 필요 상태로 연 창.')],
+    rules: [
+      '머리에 제목과 닫기, 바닥에 확인 상태(확인 필요 · 확인 완료)와 확인 완료 버튼을 둔다.',
+      '닫기만 하면 확인 필요로 남는다. 확인 완료를 눌러야 필수 준비에 포함한다.',
+    ],
+    tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
+    sources: ['frontend/src/features/pitch/create/steps/SlidePane.tsx'],
+    file: 'src/screens/CreateConceptScreen.tsx',
     props: [],
-    code: `// 제품에는 없다. 설계서 샘플 안의 창만 그린다`,
+    code: `// 제품 SlidePane 안의 확인 창. 설계서는 피치 생성 샘플 안의 창을 그대로 보인다`,
     productNote:
-      '설계서는 피치 생성 샘플 안의 창을 그대로 보인다. 제품은 이 창을 쓰지 않고 뷰어 카드의 전체 화면 버튼을 쓴다(#802에서 썸네일로 여는 흐름이 빠졌다).',
+      '제품 창은 실제 PDF와 "슬라이드 V{n} · N장" 줄을 그린다. 샘플은 3장의 예시 자료를 그리고 서버에 묻지 않는다.',
   },
 ];

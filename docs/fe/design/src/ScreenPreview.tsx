@@ -158,13 +158,6 @@ export function ScreenPreview({
   );
 }
 
-/** 기존 화면·상태 링크는 유지하면서 최신 제품형 미리보기 상태에 연결한다. */
-function productCreateState(stateId: string): string {
-  if (stateId === 'preview') return 'upload-review';
-  if (stateId === 'default') return 'focus-outline';
-  return stateId;
-}
-
 function CurrentScreen({
   screenId,
   stateId,
@@ -192,13 +185,11 @@ function CurrentScreen({
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create-a':
-      return <CreateConceptScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'pitch-create':
-      // 이전 단계형 샘플 대신 실제 제품의 단일 페이지 구성을 쓴다.
-      // preview는 기존 공유 URL을 유지하면서 슬라이드 확인 창으로 대응한다.
+      // 옛 preview 상태 주소는 슬라이드 확인 창으로 연다
       return (
         <CreateConceptScreen
-          stateId={productCreateState(stateId)}
+          stateId={stateId === 'preview' ? 'upload-review' : stateId}
           onNavigate={onNavigate}
           inline={inline}
         />
@@ -240,7 +231,7 @@ function CurrentScreen({
     case 'me':
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'slide-preview':
-      // 피치 생성 샘플 안의 그 창을 그대로 보인다
+      // 피치 생성 샘플 안의 슬라이드 확인 창을 그대로 보인다
       return (
         <CreateConceptScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />
       );
