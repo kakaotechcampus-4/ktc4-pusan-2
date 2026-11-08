@@ -94,4 +94,3 @@ export function contrast(foreground: string, background: string) {
   const [a, b] = [luminance(foreground), luminance(background)].sort((x, y) => y - x);
   return (a! + 0.05) / (b! + 0.05);
 }
-
