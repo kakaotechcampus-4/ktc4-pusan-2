@@ -6,6 +6,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  */
 
 /** 목의 첫 피치(`src/mocks/home.ts`) */
+const PITCH_ID = '10000000-0000-4000-8000-000000000001';
 const PITCH_TITLE = '캡스톤 최종 발표';
 const TAKE3_ID = '20000000-0000-4000-8000-000000000003';
 
@@ -89,4 +90,26 @@ test('4. 목표 저장 카드 → [되돌리기]', async ({ page }) => {
   // 되돌린 뒤에는 다시 누를 수 없고 이유를 함께 읽습니다
   await expect(undo).toHaveAccessibleName(/되돌렸어요/);
   await expect(undo).toHaveAttribute('aria-disabled', 'true');
+});
+
+test('5. "바로 발표할래" → [연습 준비로] 버튼 → 누르면 장치 점검 · 리허설 화면에서 버튼 숨김', async ({
+  page,
+}) => {
+  await page.goto(`/takes/${TAKE3_ID}`);
+  const panel = await openChat(page);
+
+  await ask(panel, '바로 발표할래');
+
+  // 버튼 카드만 오고 저절로 옮기지 않습니다 (L3-31)
+  const start = panel.getByRole('button', { name: '연습 준비로' });
+  await expect(start).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/takes/${TAKE3_ID}$`));
+
+  await start.click();
+  await expect(page).toHaveURL(new RegExp(`/pitch/${PITCH_ID}/device-check$`));
+
+  // 리허설 화면에는 대화 버튼이 없습니다 (L3-01)
+  await page.goto(`/takes/${TAKE3_ID}/rehearsal`);
+  await expect(page).toHaveURL(/\/rehearsal$/);
+  await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
 });
