@@ -148,6 +148,7 @@ def claim(
     evidence_ids: list[str] | None = None,
     source_ids: list[str] | None = None,
     quote: str | None = None,
+    about: str | None = None,
     assessment_index: int | None = None,
     comparison_evidence_id: str | None = None,
 ) -> dict[str, Any]:
@@ -157,6 +158,7 @@ def claim(
         "evidence_ids": evidence_ids or [],
         "source_ids": source_ids or [],
         "quote": quote,
+        "about": about,
         "assessment_index": assessment_index,
         "comparison_evidence_id": comparison_evidence_id,
     }
@@ -171,6 +173,7 @@ def answer(
     scope_reason: str | None = None,
     scope_notes: list[str] | None = None,
     profile_updates: list[dict[str, Any]] | None = None,
+    usage_unanswered: bool = False,
 ) -> LlmResult:
     return structured(
         {
@@ -179,6 +182,7 @@ def answer(
             "scope_notes": scope_notes or [],
             "assessments": assessments or [],
             "claims": claims,
+            "usage_unanswered": usage_unanswered,
             "start_practice": start_practice,
             "profile_updates": profile_updates or [],
         }

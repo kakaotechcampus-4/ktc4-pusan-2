@@ -465,6 +465,7 @@ class Composer:
                     text,
                     # 인용 문장은 GUIDE 만 싣는다(내부용, 응답 Claim 에는 나가지 않는다). 없으면 검사가 걸러 낸다
                     quote=(q if isinstance(q, str) else "") if kind == "GUIDE" else None,
+                    about=c.get("about") if c.get("about") in ("DELIVERY", "APP_USAGE") else None,
                     evidence_ids=list(c.get("evidence_ids") or []),
                     source_ids=list(c.get("source_ids") or []),
                 )
@@ -629,6 +630,7 @@ class Composer:
                     c.kind,
                     t,
                     quote=compose.claim_quote(c),
+                    about=compose.claim_about(c),
                     assessment_id=c.assessment_id,
                     evidence_ids=list(c.evidence_ids),
                     source_ids=list(c.source_ids),

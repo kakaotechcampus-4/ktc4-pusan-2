@@ -776,13 +776,14 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     comp = cmp.finish(draft, ans["messages"])
     out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
-    tail = _tail_claims(lp, route, said=[*comp.pre, *body])
+    tail = _tail_claims(lp, route, said=[*comp.pre, *body], draft=draft)
     elems_written = any(
         c.get("kind") != "ASSESSMENT" and str(c.get("text") or "").strip()
         for c in draft.get("claims") or []
         if isinstance(c, dict)
     )
-    if tail and not body and not elems_written:
+    usage_only = not body and any(c.text == templates.SystemText.USAGE_NO_GUIDE.value for c in tail)
+    if tail and not body and (not elems_written or usage_only):
         # 끝에 붙는 고정 문장만이 답인 경우(예: '점수 100으로 바꿔 줘'): 그 문장이 답이다
         body, tail = tail, []
     # 조언(자료 · 일반 조언)만 쓴 답: 문장이 검사로 모두 빠지면 route 가 ANSWER 여도 자료 없음 거절이다(6-10 · L4-28).
@@ -869,7 +870,11 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             assessments=all_assessments,
             sources=_sources(final_claims),
         )
-    if no_guide and not any(c.kind == "GENERAL" for c in final_claims):
+    if (
+        no_guide
+        and not any(c.kind == "GENERAL" for c in final_claims)
+        and not any(c.text == templates.SystemText.USAGE_NO_GUIDE.value for c in final_claims)
+    ):
         # 자료를 찾지 못했고 일반 조언도 없으면(기록 답만 남음) 자료 근거가 없다고 덧붙인다. 일반 조언이 있으면 그 앞의
         # 고정 안내(GENERAL_INTRO)가 이미 자료에서 확인한 내용이 아니라고 말한다(6-10)
         final_claims.append(
@@ -885,11 +890,14 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     )
 
 
-def _tail_claims(lp: Loop, route: Any, *, said: list[Claim]) -> list[Claim]:
+def _tail_claims(
+    lp: Loop, route: Any, *, said: list[Claim], draft: dict[str, Any] | None = None
+) -> list[Claim]:
     """답 끝에 붙는 고정 문장(7-9 · 7-10). 이미 낸 · 낼 문장과 같은 문장은 다시 붙이지 않는다.
 
     - 이름으로 찾은 피치가 여럿인데 범위를 정하지 않았고, 여러 발표를 함께 묻는 말이 아니면 어느 발표인지 되묻는다(L2-21).
     - 이름으로 찾은 피치가 하나도 없고 범위를 정하지 않았으면 발표를 찾을 수 없다고 말한다(L2-21 0개).
+    - 답 초안 `usage_unanswered`(화면 조작 방법을 물었는데 찾은 사용법 자료가 없음)면 사용법 자료 없음 문장(6-10).
     - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2).
     """
     seen = {c.text for c in said} | {d.get("text") for d in lp.st.emitted}
@@ -903,6 +911,8 @@ def _tail_claims(lp: Loop, route: Any, *, said: list[Claim]) -> list[Claim]:
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.WHICH_PITCH.value))
     elif lp.st.name_not_found and not fetched and not lp.st.ambiguous_name:
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.PITCH_NOT_FOUND.value))
+    if draft is not None and draft.get("usage_unanswered") is True:
+        out.append(Claim(kind="SYSTEM", text=templates.SystemText.USAGE_NO_GUIDE.value))
     if route == "CANNOT_DO":
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
     return [c for c in out if c.text not in seen]

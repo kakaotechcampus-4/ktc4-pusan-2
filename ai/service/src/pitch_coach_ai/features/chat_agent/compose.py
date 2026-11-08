@@ -34,6 +34,8 @@ class DraftClaim(Claim):
     (6-9 · 6-10). `quote`는 응답 · 서명 상태(`model_dump`)에 나가지 않는다."""
 
     quote: str | None = Field(default=None, exclude=True)
+    #: 문장이 다루는 것(`DELIVERY` 발표 전달 조언 · `APP_USAGE` 피치코치 화면 · 기능 사용법 · None 기록 · 화면 사실). 내부 검사용
+    about: str | None = Field(default=None, exclude=True)
 
 
 @dataclass
@@ -80,20 +82,27 @@ def strip_ref_ids(text: str) -> str:
     return re.sub(r"\s{2,}", " ", t).strip()
 
 
-def _claim(kind: str, text: str, *, quote: str | None = None, **kw: Any) -> Claim | None:
+def _claim(
+    kind: str, text: str, *, quote: str | None = None, about: str | None = None, **kw: Any
+) -> Claim | None:
     t = (text or "").strip()
     if not t:
         return None
     if len(t) > _CLAIM_MAX:
         return None
-    if quote is not None:
-        return DraftClaim(kind=kind, text=t, quote=quote, **kw)  # type: ignore[arg-type]
+    if quote is not None or about is not None:
+        return DraftClaim(kind=kind, text=t, quote=quote, about=about, **kw)  # type: ignore[arg-type]
     return Claim(kind=kind, text=t, **kw)  # type: ignore[arg-type]
 
 
 def claim_quote(c: Claim) -> str | None:
     """문장이 곁에 실은 인용 문장(없으면 None). 초안에서 온 `GUIDE` 문장만 갖는다."""
     return getattr(c, "quote", None)
+
+
+def claim_about(c: Claim) -> str | None:
+    """문장이 곁에 실은 다루는 것(`APP_USAGE` 등, 없으면 None). 초안에서 온 문장만 갖는다."""
+    return getattr(c, "about", None)
 
 
 def claim_quotes(claims: list[Claim]) -> list[str]:

@@ -1066,6 +1066,19 @@ def _check_one(
         f.extend(_check_record_text(i, c.kind, c.text, c.evidence_ids, registry, cfg))
     elif c.kind == "GUIDE":
         f.extend(_check_guide(i, c, guide_texts))
+        if getattr(c, "about", None) == "APP_USAGE" and not all(
+            s.startswith("u-") for s in c.source_ids
+        ):
+            # 사용법 문장은 사용법 자료(u-)로만 받친다. 발표법 자료 카드에 이어도 글만 고쳐서는 풀리지 않는다
+            f.append(
+                CheckFailure(
+                    i,
+                    CheckId.GENERAL_RULE,
+                    "화면 사용법 문장은 사용법 자료(u-)로만 받칠 수 있음",
+                    claim_kind=c.kind,
+                    unfixable=True,
+                )
+            )
     elif c.kind == "GENERAL":
         code_made = False  # 일반 조언은 언제나 모델 문장이다(코드 문장과 글자가 같아도 검사를 건너뛰지 않는다)
         f.extend(_check_general(i, c, cfg, searched=guide_searched))
@@ -1166,6 +1179,9 @@ def _check_general(i: int, c: Claim, cfg: ChatAgentConfig, *, searched: bool) ->
             "일반 조언은 근거 · 자료 · 판단 · 행동에 이을 수 없음(근거가 있으면 RECORD · GUIDE 로 씀)",
             unfixable=True,
         )
+    if getattr(c, "about", None) == "APP_USAGE":
+        # 화면 조작 방법 · 기능 사용법은 사용법 자료 · 화면 상태로만 답한다. 일반 조언으로 짐작하지 않는다(6-10)
+        fail("화면 사용법은 일반 조언으로 짐작해 쓸 수 없음(사용법 자료로만 답함)", unfixable=True)
     if len(c.text) > cfg.max_general_chars:
         fail(f"일반 조언은 한 문장 {cfg.max_general_chars}자 이하")
     if _DIGIT.search(c.text):
