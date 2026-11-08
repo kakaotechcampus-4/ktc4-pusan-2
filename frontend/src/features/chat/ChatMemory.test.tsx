@@ -18,6 +18,7 @@ import { ChatMemorySettings } from './ChatMemorySettings';
 import { MEMORY_TEXT } from './chatMemory';
 import { emptyBasis, readCard } from './chatResponse';
 import { useChatStore } from './chatStore';
+import { useMemorySettings } from './useChatMemory';
 
 /**
  * 기억 설정 화면 · '기억했어요' 카드 [지우기] (12-4 F14 · F16, L3-43 · L3-45).
@@ -136,6 +137,35 @@ describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
     await settle();
     expect(button('지우기')).toBeDefined();
     expect(host.textContent).not.toContain(MEMORY_REMOVED_TEXT);
+  });
+
+  it('카드가 나타나기 전에 시작한 읽기가 저장 전 목록을 늦게 돌려줘도 지웠다고 하지 않고, 다시 읽어 [지우기]를 보인다', async () => {
+    // 대화창을 열 때 보낸 읽기 — 아직 기억하기 전이라, 늦게 오더라도 목록에 새 항목이 없습니다
+    const Opening = () => {
+      useMemorySettings('u1');
+      return null;
+    };
+    const opening = held<unknown>();
+    server.get = () => opening.promise;
+    await render(<Opening />);
+    // 그 읽기가 끝나기 전에 기억을 저장했다는 카드가 옵니다
+    await render(
+      <>
+        <Opening />
+        {cards(memoryCard(I1, '짧게'))}
+      </>,
+    );
+    const reads = () => server.calls.filter((c) => c === 'GET /api/chat/memory').length;
+    expect(reads()).toBe(1);
+
+    server.get = () => Promise.resolve(settings(true, tone()));
+    await act(async () => opening.resolve(settings(true)));
+    await settle();
+    expect(host.textContent).not.toContain(MEMORY_REMOVED_TEXT);
+    // 늦게 온 목록은 믿지 않고, 카드를 그린 뒤에 한 번 더 읽어 확인합니다
+    await settle();
+    expect(reads()).toBe(2);
+    expect(button('지우기')).toBeDefined();
   });
 
   it('같은 종류를 덮어써 기억해도(값만 바뀜) 새 카드는 다시 읽어 [지우기]를, 지난 카드는 바뀜 안내를 보인다', async () => {

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
 import type { Card, ReassessSide } from '@/types/chat';
@@ -8,9 +7,15 @@ import { plain, reassessRows } from './chatCardRows';
 import { pickReason } from './chatLock';
 import { LockedReason } from './LockedReason';
 import { asGoal, goalText } from './chatGoal';
-import { memoryItemState, memoryKey, PROFILE_KEY_LABEL } from './chatMemory';
+import { memoryItemState, PROFILE_KEY_LABEL } from './chatMemory';
 import { useChatStore } from './chatStore';
-import { useMemoryChanging, useMemorySettings, useRemoveMemoryItem } from './useChatMemory';
+import {
+  memoryFilledAfter,
+  memoryStampNow,
+  useMemoryChanging,
+  useMemorySettings,
+  useRemoveMemoryItem,
+} from './useChatMemory';
 import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
 import type { DecideResult, UndoResult } from './chatTransport';
 
@@ -190,12 +195,12 @@ function MemoryRemove({
   // 카드보다 먼저 읽어 둔 목록이 카드와 다르면(없음 · 다른 값) 한 번 다시 읽습니다 — 대화창을 열 때 읽은 목록(30초
   // 동안 새것으로 침)에는 방금 기억한 항목이 없거나 덮어쓰기 전 값이 있어서, 그대로 보면 새 카드가 [지우기] 없이
   // "지운 기억이에요." · "다른 값으로 기억하고 있어요." 로 보입니다 (BE 는 같은 key 면 item_id 를 두고 값만 바꿈).
-  // 카드를 그린 뒤에 바뀐 목록(설정 화면에서 지움 · 다시 읽음)은 그대로 믿습니다. 시각이 아니라 바뀐 횟수로 보므로
-  // 그린 때와 같은 밀리초에 읽혀도 헷갈리지 않습니다
-  const queryClient = useQueryClient();
-  const dataCount = queryClient.getQueryState(memoryKey(userId))?.dataUpdateCount ?? 0;
-  const [seen] = useState(() => ({ data: dataCount, error: memory.errorUpdateCount }));
-  const unsure = (state === 'removed' || state === 'changed') && dataCount === seen.data;
+  // 카드를 그린 뒤에 **시작한** 요청이 채운 목록(설정 화면에서 지움 · 다시 읽음)만 믿습니다. 그리기 전에 나가 있던
+  // 읽기는 기억 저장 전 목록을 늦게 돌려줄 수 있어, 그 응답으로 "지운 기억이에요." 를 보이지 않습니다(#1125 리뷰).
+  // 시각이 아니라 요청 번호로 보므로 그린 때와 같은 밀리초에 읽혀도 헷갈리지 않습니다
+  const [seen] = useState(() => ({ stamp: memoryStampNow(), error: memory.errorUpdateCount }));
+  const unsure =
+    (state === 'removed' || state === 'changed') && !memoryFilledAfter(userId, seen.stamp);
   // 그린 뒤에 읽다 실패했으면 저절로 되풀이하지 않고 [다시 확인]을 보입니다 — 지웠는지는 모르니 단정하지 않습니다
   const recheckFailed = memory.errorUpdateCount !== seen.error;
   // 바꾸는 요청이 나가 있으면 기다립니다 — 그 응답이 목록을 새로 채웁니다(다시 읽은 값이 덮어쓰지 않게)
