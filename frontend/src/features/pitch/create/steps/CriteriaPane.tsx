@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useIsMutating, useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { parseStandards, saveStandards } from '@/shared/api/standards';
@@ -67,6 +67,7 @@ const MEASURABLE_CRITERIA: { label: string; example: string; note?: string }[] =
 /** 칩은 입력 기능이 아니며, 하나의 예시만 칩 목록 아래에 표시합니다. */
 function CriteriaExamples() {
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  const tooltipId = useId();
   const active = MEASURABLE_CRITERIA.find((criterion) => criterion.label === activeLabel);
 
   // 포커스를 이동시키지 않고 닫습니다. 마우스로만 열었을 때도 Esc가 작동합니다.
@@ -93,6 +94,7 @@ function CriteriaExamples() {
             <button
               type="button"
               aria-label={`${criterion.label} 작성 예시 보기`}
+              aria-describedby={activeLabel === criterion.label ? tooltipId : undefined}
               onMouseEnter={() => setActiveLabel(criterion.label)}
               onFocus={() => setActiveLabel(criterion.label)}
               onBlur={() => setActiveLabel(null)}
@@ -109,6 +111,7 @@ function CriteriaExamples() {
       </ul>
       {active && (
         <div
+          id={tooltipId}
           role="tooltip"
           className="mt-2 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-sm"
         >
