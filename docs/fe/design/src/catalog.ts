@@ -48,7 +48,11 @@ export const PRODUCT_CHECKED: {
     },
     { pr: 1106, head: '6029bef57e2806031a8ea75c243b684097982e34', what: '스크롤바 너비 안정화' },
     { pr: 1110, head: '2e92875b4556d04f974c16cf300aea3a8e42b235', what: '새미나이 채팅 패널' },
-    { pr: 944, head: '1747994a037d6bd07ed08b8bc71e56facd2c9d53', what: '사용방법 시각 안내(왼쪽 런처 반영)' },
+    {
+      pr: 944,
+      head: '1747994a037d6bd07ed08b8bc71e56facd2c9d53',
+      what: '사용방법 시각 안내(왼쪽 런처 반영)',
+    },
     {
       pr: 1108,
       head: 'be55e5326de00ce8da28fce817ff819f60bda142',
