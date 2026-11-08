@@ -348,7 +348,7 @@ def _guide_fix_turn(corpus: Corpus, cfg: Any) -> F.FakeLlm:
 
 
 def test_fix_gets_card_sentences_of_the_linked_card_only(corpus: Corpus) -> None:
-    llm = _guide_fix_turn(corpus, DEFAULT_CONFIG)
+    llm = _guide_fix_turn(corpus, _cfg(fix_materials=True))  # 기본은 끔(8회차 기각), 켰을 때의 모양을 본다
     item = _fix_items(llm)[0]
     card = corpus.get("g-01")
     assert card is not None
