@@ -658,6 +658,7 @@ features/<모듈>/
 |---|---|---|---|
 | `OPENAI_BASE_URL` · `OPENAI_API_KEY` · `OPENAI_MODEL` | LLM 기능에 필요 | 없음 | 기본 묶음 (6 luna, 예: `openai/gpt-6-luna`). 주소 · 키(비밀값) · 모델 이름 |
 | `OPENAI_SOL_BASE_URL` · `OPENAI_SOL_API_KEY` · `OPENAI_SOL_MODEL` | 선택 | 없음 | sol 묶음 (6.1 sol, 예: `openai/gpt-6.1-sol`). 쓰지 않으면 세 줄을 주석으로 둔다 |
+| `OPENAI_EMBEDDING_BASE_URL` · `OPENAI_EMBEDDING_API_KEY` · `OPENAI_EMBEDDING_MODEL` | 선택 | 없음 | 임베딩 묶음 (예: `text-embedding-3-small`). 대화 에이전트의 자료 검색(키워드 + 의미 검색)에 쓴다. 셋이 다 있거나 다 없어야 하고, 없으면 키워드 검색만 한다. 기본 묶음 게이트웨이와 주소 · 키가 다를 수 있어 따로 둔다 |
 | `<서비스>_<계열>_MODEL` · `_BASE_URL` · `_API_KEY` | 선택 | 없음 | 모델을 더할 때의 이름 규칙. 변수 이름에는 계열만 쓰고 버전은 값에 둔다(판이 바뀌어도 값만 바꾼다). 묶음은 셋이 다 있거나 다 없어야 하고, 하나만 비면 서비스가 시작할 때 오류를 낸다. 다 비면 설정되지 않은 모델이다 |
 | `LLM_TIMEOUT_SECONDS` | 선택 | 12 | LLM 호출 한 번의 시간 제한 |
 | `<기능>_LLM_TIMEOUT_SECONDS` | 선택 | `LLM_TIMEOUT_SECONDS` | 그 기능만 시간 제한이 다를 때 (예: 출력이 긴 기능). 그 기능 PR에서 잰 시간과 함께 더한다 |

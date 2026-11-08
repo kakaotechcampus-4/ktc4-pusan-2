@@ -10,7 +10,7 @@
 | 담당 | JWK0395 |
 | 설계 | 목적 · 계약 · 처리 · 실패 처리 · 시험 → [`docs/ai/features/chat-agent.md`](../../../docs/ai/features/chat-agent.md) |
 | 단계 | 서비스에 탑재했다(기능 문서 4-1). 코어는 서비스 [`features/chat_agent/`](../../service/src/pitch_coach_ai/features/chat_agent/), 엔드포인트는 `POST /agent/turn`(`AGENT_ENABLED`를 켜기 전에는 503). 이 폴더에는 가짜 BE · 평가 · 실제 모델 시험이 남고 서비스 패키지를 가져다 쓴다 |
-| 버전 | `chat_agent-0.10.0`(서비스 `features/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-4`, 자료 묶음 `guides-6`, 실행 상태 `v` 1 |
+| 버전 | `chat_agent-0.11.0`(서비스 `features/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-4`, 자료 묶음 `guides-7`, 실행 상태 `v` 1 |
 
 ## 1. 코드 구조
 
@@ -59,17 +59,17 @@ chat-agent/
 | `tools/` | 읽기 도구 8개(5-7): 엄격한 인자, 결과에 근거 id(피치 목록의 우선 개선 차원 · 평가할 수 없는 차원 포함), 캐시, trace 요약(사용자 글 없음) | 맥락 · 인자 → `ToolResult` · `TraceItem` | 루프(조사) | 도구를 더하면 `TOOL_SCHEMA_VERSION`과 5-7 |
 | `actions.py` | 행동(5-8): 자율 등급 `AUTO` · `ASK` · `BUTTON`, `args_hash`, 행동 도구 인자, 허용 근거 검사(6-2, '확인 카드를 낼 근거가 있나'), 측정값 이의 말의 다시 평가 막기(6-6) · 말한 Take 를 못 가져왔을 때 다른 Take 로 바꾸지 않기(L2-22), 목표 제안 카드로 낮추기, 승인 확인 카드 그리기(`ask_confirm_card`, 다시 평가의 바꾸기 전 조건은 대상 Take 의 리뷰 조건이고 확인할 수 없으면 카드 · 행동 없음), 연습 이동 버튼 카드, 고른 제안의 선승인, 결과 짝(`executed_args_hash` — `ASK` 행동은 성공 · 실패 · 불명확 모두 필수) · 반영 | 모델 호출 → 행동 · 카드, BE 결과 → 반영 · 성공 문장 | 루프 · 턴 | 자율 등급 표는 5-8 · 6-2. 행동 모양을 바꾸면 `TOOL_SCHEMA_VERSION` |
 | `budget.py` | 한도(8-2 · 8-3): 모델 18번(조사는 16번째 시도까지) · 도구 12번 · 행동 · 토큰(입력 72k · 출력 8k, 둘 다 전송 전 예약 뒤 응답의 실측으로 정산) · 시간 예약, 응답마다 답 쓰기 · 고치기 몫 남기기, 한도 코드 → 끝난 이유 | 누적량 → 예약 또는 `LimitHit` | 행동 · 루프 | 숫자는 `config.py` |
-| `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 판 고정표 · 라이선스 · 검수 · 검수 완료로 쓸 때 발표법 카드의 참고 문헌)와 검색(6-10). 검색은 제목 · 주제어 · 본문 키워드에 동의어 사전(질문의 다른 말 → 카드가 쓰는 대표어, 한 방향)을 더한다 | manifest · 카드 → `Corpus`, 질의 → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스는 `allow_unreviewed=False`(검수 전 카드가 있으면 자료 묶음 없이 시작, `api/chat_agent.py`), 이 폴더의 평가 · 시험은 `True` |
-| `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법)와 `manifest.json`(판 · 해시 · 동의어 사전 `synonyms`: 묶음의 첫 말이 대표어) | — | `corpus.py` | 카드나 동의어 사전을 고치면 해시를 다시 만들고(`manifest_hash(cards, synonyms)`) `corpus_version`을 올린다 |
+| `corpus.py` | 발표법 · 사용법 자료 묶음 검사(목록 · 해시 · 판 고정표 · 라이선스 · 카드 단위 검수 · 검수 완료로 쓸 때 발표법 카드의 참고 문헌)와 검색(6-10). 키워드 검색은 제목 · 주제어 · 본문 키워드에 동의어 사전(질문의 다른 말 → 카드가 쓰는 대표어, 한 방향)을 더하고, 질문 임베딩과 카드 벡터(`embeddings.json`, 입력 해시 · 모델 · 차원 검사 `parse_card_vectors`)가 있으면 코사인 후보와 RRF(k=60)로 합치는 하이브리드 검색(후보 방식 `UNION` · `AGREE`, '자료 없음'은 합치기 전 두 후보로 판정)을 한다 | manifest · 카드 → `Corpus`, 질의(+ 질문 벡터) → 카드 목록 | 도구(`search_guides`) · 답 검사(인용 대조) | 서비스는 `allow_unreviewed=False`(검수를 마친 `APPROVED` 카드만 싣고, 0장이면 자료 묶음 없이 시작, `api/chat_agent.py`), 이 폴더의 평가 · 시험은 `--corpus`로 고른다(2-2 `evals.py`) |
+| `guides/` | 자료 카드(`methods.json` 발표법 · `usage.json` 사용법), `manifest.json`(판 · 해시 · 동의어 사전 `synonyms`: 묶음의 첫 말이 대표어), `embeddings.json`(카드별 입력 해시 · 벡터, 모델 `text-embedding-3-small` · 1536차원. 묶음 판에는 들지 않는다) | — | `corpus.py` | 카드나 동의어 사전을 고치면 해시를 다시 만들고(`manifest_hash(cards, synonyms)`) `corpus_version`을 올린다. 카드 제목 · 주제어 · 본문을 고치면 서비스 `tools/build_guide_embeddings.py`로 `embeddings.json`도 다시 만든다 |
 | `llm_types.py` | 코어가 받는 도구 호출 LLM 의 모양(6-11): 요청 · 결과 · 실패 종류 · `before_attempt` 예약 · 응답 조각을 받는 쪽(`TextSink`, 화면에 낸 것이 있으면 다시 보내지 않음) | — | 루프 · 서비스 `common/llm.py`(`tool_llm`) · 가짜 모델 | 예외 이름이 공통 예외(`common/errors.py`)와 겹치므로 서비스 공통 모듈은 별칭(`chat_llm`)으로만 쓴다 |
 | `diagnostics.py` | 진단 기록(11-5): 단계 · 끝, 닫힌 detail, 65,536바이트 줄이기 순서, `agent_step` · `agent_end` 로그 줄 | 단계 → `Diagnostics` | 루프 · 턴 | detail 필드는 `schemas.py` 닫힌 모델과 11-5 표 |
-| `prompts/` | 고정 지시문(계획 · 조사 · 답 쓰기 · 고치기)과 구조화 출력 모양(범위 밖 이유 `scope_reason` · 섞인 요청의 `scope_notes` 포함), `PROMPT_VERSION`(해시) | — | 루프 | 바꾸면 평가셋을 다시 돌리고 예시를 다시 만든다(판이 바뀜) |
-| `loop.py` | 루프 단계(6-1): 계획 → 조사(먼저 판단 초안이 집은 Take · 장 · 지표를 코드가 읽는 조사 흐름 `_prefetch_calls`, 그다음 모델이 고르는 도구 · 행동, 같은 요청 · 교대 반복은 요청마다 판정) → 답 쓰기 → 고치기, 이어 부를 때 지워진 원천 버리기(이미 낸 문장이 기댄 원천이면 재개를 멈춤, 대상이 지워져 실패한 가져오기는 실패로 이어 감) · 행동 결과 반영, 범위를 바꾼 뒤 새 피치를 읽기 전에는 다시 바꾸지 않음, 승인 대기로 멈추기 전에 낸 문장(`emitted`) 보관 | 요청 · 의존성 → 단계별 결과 | 턴 | 한도 숫자는 `config.py`, 순서 규칙은 `budget.py` |
+| `prompts/` | 고정 지시문(계획 · 조사 · 답 쓰기 · 고치기)과 구조화 출력 모양(범위 밖 이유 `scope_reason` · 섞인 요청의 `scope_notes` · 가벼운 말 `route` `SMALL_TALK`와 `talk_kind` · 자료 검색어 `guide_queries` · 답 초안의 인용 `quote`와 `about` · `usage_unanswered` 포함), 인용 후보 `guide_candidates`를 싣는 답 쓰기 데이터 칸, `PROMPT_VERSION`(해시) | — | 루프 | 바꾸면 평가셋을 다시 돌리고 예시를 다시 만든다(판이 바뀜) |
+| `loop.py` | 루프 단계(6-1): 계획 → 조사(먼저 판단 초안이 집은 Take · 장 · 지표를 코드가 읽는 조사 흐름 `_prefetch_calls`, 그다음 모델이 고르는 도구 · 행동, 같은 요청 · 교대 반복은 요청마다 판정) → 답 쓰기 → 고치기(계획의 자료 검색어를 조사 첫머리에 먼저 찾기, 답 쓰기에 인용 후보 싣기, 고치기 재료 `fix_materials`는 기본 꺼짐, 형식 고치기 뒤 route 다시 정하기), 이어 부를 때 지워진 원천 버리기(이미 낸 문장이 기댄 원천이면 재개를 멈춤, 대상이 지워져 실패한 가져오기는 실패로 이어 감) · 행동 결과 반영, 범위를 바꾼 뒤 새 피치를 읽기 전에는 다시 바꾸지 않음, 승인 대기로 멈추기 전에 낸 문장(`emitted`) 보관 | 요청 · 의존성 → 단계별 결과 | 턴 | 한도 숫자는 `config.py`, 순서 규칙은 `budget.py` |
 | `compose.py` | 코드가 그리는 문장: 비교 결론 · 비교할 수 없는 까닭 · 목표 판정 · 근거 템플릿 부분 답 · 자료 카드, 근거 사본(계산 근거의 입력 포함), 모델 문장 글의 근거 · 자료 id 지우기(`strip_ref_ids`, 6-9) | 근거 → 문장 · 카드 | 턴 · 답 쓰기 | 문구는 `templates.py` |
 | `stream_json.py` | 흘러오는 답 초안(JSON)에서 최상위 값(`route`) · 판단 목록 · 문장 원소가 닫히는 때를 잡는 추적기(5-4 · 6-1 5번) | 응답 조각 → 닫힌 사건 | 답 쓰기 | 답 초안 키 이름이 바뀌면 여기 상수 |
 | `answer.py` | 답 문장 만들기 · 검사 · 문장 줄(5-4 · 6-1 5번 · 6-9, 판단 설명은 설명이 이은 이번 턴 근거로도 검사): 앞 문장을 먼저 내고, 초안이 흘러오는 동안 최종 답 순서로 확정된 문장을 한 문장씩 검사해 통과한 것부터 `claim` 줄로 낸다. 걸린 문장과 그 뒤는 보류했다가 초안이 끝나면 한 번 고쳐 원래 순서로 낸다(낸 문장은 고치거나 지우지 않음). 일반 조언(`GENERAL`)은 초안 끝에 이어 온 앞의 3문장(실행 전체에서 셈)만 쓰고 그 앞에 고정 안내를 붙인다(안내는 첫 일반 조언과 함께 나가고 실행에 한 번, 일반 조언이 모두 빠지면 뺀다) | 답 초안 조각 · 다 받은 초안 → 문장 줄 · 통과한 문장 | 턴(답 쓰기 · 승인 대기 전 답) | 검사 규칙은 `checks.py`, 판단 확정은 `claims.py` |
 | `memory.py` | 기억(6-14): 처음 요청의 기억 번호 담기 · 실행 중 바뀜 표시, 코칭 프로필은 답 쓰기 · 고치기 호출의 데이터 칸에만, 저장 후보 검사(①~⑥: 이번 말의 인용 · 기억 요청 표현 · 철회 · 조건 · 남의 말 인용 · key · 숫자 · 지시형 낱말 · 요청 구간), 대화 요약 항목 거르기(숫자는 Take · 장 번호만, 판정 · 동의 낱말 · 금지 주장 · 개인정보 · 지시문 없음). 판단 · 비교 · 목표 함수는 기억을 받지 않는다(P14) | 요청 `memory` · 답 초안 후보 · 요약 응답 → 데이터 칸 · 통과한 후보 · 항목 | 루프 · 턴 | 낱말 목록 · 수는 `config.py`(`memory_*`) |
-| `turn.py` | `/agent/turn` 한 번(5-3 · 5-4): 스트림 전 검사 → 실행 → 진행 줄 · 문장 줄 · 끝 줄, 끝에 붙는 고정 문장(공식 결과를 바꿔 달라는 요청 `CANNOT_DO` · 이름이 같은 피치 되묻기), 행동이면 서명(`ASK` 행동은 앞서 답 문장을 쓰고 검사해 확인 카드와 함께 멈춤, 이어 부른 뒤 최종 답은 그 문장을 앞부분에 그대로 싣고 행동 결과 문장을 잇는다), 낸 문장은 어떤 끝에서도 최종 답의 앞부분이고 끝 줄 앞에 남은 문장을 문장 줄로 마저 낸다, 모델 없이 끝나는 길에서도 앞 문장 · 승인한 행동의 결과 문장 · 카드를 싣고, 상태가 한도를 넘어도 낸 문장과 그 자료 카드를 남긴다, 측정값 이의로 다시 평가를 바랐는데 하지 않은 답에 측정값 안내(6-6), 최종 출력 검사 | 요청 바이트 · 의존성 → 스트림 전 오류 또는 NDJSON 줄(+ 다른 스레드에서 부를 수 있는 취소 신호 `cancel`) | 서비스 `api/chat_agent.py`(연구는 대역 `chat_agent_lab/app.py`) | 크기 한도는 `config.py` |
+| `turn.py` | `/agent/turn` 한 번(5-3 · 5-4): 스트림 전 검사 → 실행 → 진행 줄 · 문장 줄 · 끝 줄, 끝에 붙는 고정 문장(공식 결과를 바꿔 달라는 요청 `CANNOT_DO` · 이름이 같은 피치 되묻기 · 이름으로 찾은 피치 없음 `PITCH_NOT_FOUND` · 사용법 자료 없음 `USAGE_NO_GUIDE`), 가벼운 말은 계획 뒤 코드 고정 `SYSTEM` 문장으로 끝내기(코드 확인: 60자 · 숫자 · 대상 · 연습 낱말), 기록 질문을 기록으로 답하는 보강(`record_answer_guard`) · 대화 목표 결과 문장(`goal_status_sentence`), 표시 자료는 인용한 문장, 행동이면 서명(`ASK` 행동은 앞서 답 문장을 쓰고 검사해 확인 카드와 함께 멈춤, 이어 부른 뒤 최종 답은 그 문장을 앞부분에 그대로 싣고 행동 결과 문장을 잇는다), 낸 문장은 어떤 끝에서도 최종 답의 앞부분이고 끝 줄 앞에 남은 문장을 문장 줄로 마저 낸다, 모델 없이 끝나는 길에서도 앞 문장 · 승인한 행동의 결과 문장 · 카드를 싣고, 상태가 한도를 넘어도 낸 문장과 그 자료 카드를 남긴다, 측정값 이의로 다시 평가를 바랐는데 하지 않은 답에 측정값 안내(6-6), 최종 출력 검사 | 요청 바이트 · 의존성 → 스트림 전 오류 또는 NDJSON 줄(+ 다른 스레드에서 부를 수 있는 취소 신호 `cancel`) | 서비스 `api/chat_agent.py`(연구는 대역 `chat_agent_lab/app.py`) | 크기 한도는 `config.py` |
 | `examples/` | 요청 · 스트림 · 오류 · 행동 결과 예시 JSON(5-10) | — | 계약 시험 · BE 계약 시험 | `python -m chat_agent_lab.examples` 로 다시 만든다(만드는 코드는 서비스 `tests/unit/chat_agent/example_builder.py`) |
 
 ### 2-2. 연구 전용 `src/chat_agent_lab/`
@@ -79,8 +79,9 @@ chat-agent/
 | `service_tests.py` | 서비스 시험 도우미를 읽는다: 가상 기록 `fixtures`(가상 피치 · Take · 코치 Take 결과 · 리뷰 · '끝까지 한 발표' 계산, 12-3) · 예시 만들기 `example_builder` · 가짜 모델 `fakes` · `snapshots` · `turn_tests`. 고유한 패키지 이름으로 읽어 import 경로를 바꾸지 않고, `fixtures` 말고는 처음 쓸 때 읽는다 | — | 가짜 BE · 평가 · 예시 명령 · 연구 시험 | 도우미의 원본은 서비스 `ai/service/tests/unit/chat_agent/`에만 둔다. 서비스 쪽 `fixtures.py` · `example_builder.py`를 바꾸면 이 폴더 시험도 돌린다 |
 | `examples.py` | 예시 JSON 다시 만들기 명령. 만드는 코드는 서비스 `tests/unit/chat_agent/example_builder.py`(`state`는 예시 전용 키로 실제 서명) | 가상 기록 → 서비스 코어 `examples/`의 JSON · NDJSON 파일 | 사람이 실행 | 5절 모양 · 프롬프트 · 설정을 바꾸면 다시 만든다(서비스 CI 가 예시가 만들기 결과와 같은지 본다) |
 | `replay.py` | 기록 · 재생: 실제 모델로 시나리오를 한 번 돌려 모델 호출마다 결과 · 응답 조각 순서를 기록하고, 고정 시계로 다시 돌려 턴마다 상태 · 오류 본문 · NDJSON 줄을 그대로 모은다. 연구 앱 대역(코어)과 서비스 `/agent/turn`(앱 전체) 두 길로 재생한다 | 시나리오 · 기록 → 턴 줄 · 요청 지문 | 고정 시험 `tests/lab/test_replay.py`(기록 · 기대 줄은 `tests/lab/data/replay/`), 코어를 옮기거나 크게 고칠 때 전 · 후 비교 | 줄이 바뀐 것이 의도한 변경이면 `replay update`, 프롬프트 · 도구 설명을 바꿔 모델 요청이 바뀌면 `replay record`(요금이 듦)로 다시 만든다 |
-| `evals.py` · `scenario.py` · `grading.py` · `judge.py` | 평가 실행기(시나리오마다 가짜 BE 로 돌리고 모델 호출 · 비용 · 장애 주입 · 고정 순서 기준선) · 시나리오 파일 읽기 · 검사(`schema.json`) · 채점기(제품 답 검사와 따로) · 근거성 판정(모델) | 시나리오 · 모델 → 결과 파일 · 보고 | 사람이 실행(`python -m chat_agent_lab.evals`) | 평가 결과 · 명령은 아래 '평가 결과' |
-| `app.py` | 서비스 계층 대역: `ai/.env` 읽기, 자료 묶음 읽기(검수 전 카드 포함), 동시 실행 자리(429 `AGENT_BUSY`), `handle_turn` 부르기, 서비스 도구 호출 LLM(`ToolLlmClient` · `tool_role`) 만들기, 한 턴 해 보기 명령 | 요청 dict → 줄 목록 | live 시험 · 평가 · 손으로 해 보기 | 서비스의 같은 자리는 `api/chat_agent.py`(HTTP · 스트림 · 실행 풀) |
+| `evals.py` · `scenario.py` · `grading.py` · `judge.py` | 평가 실행기(시나리오마다 가짜 BE 로 돌리고 모델 호출 · 비용 · 장애 주입 · 고정 순서 기준선, 자료 모드 `--corpus` · 검색 방식 `--search` 반영) · 시나리오 파일 읽기 · 검사(`schema.json`) · 채점기(제품 답 검사와 따로) · 근거성 판정(모델) | 시나리오 · 모델 → 결과 파일 · 보고 | 사람이 실행(`python -m chat_agent_lab.evals`) | 평가 결과 · 명령은 아래 '평가 결과' |
+| `retrieval.py` | 자료 검색 평가(6-10 · 13-2): 정답 카드가 있는 질문 70개(`evals/retrieval.json`, 검색 코드와 따로 작성, dev · test 반씩)로 recall@k · MRR · '자료 없음' 판정 정확도 · 놓침을 키워드 · 하이브리드로 같은 문항에 재고, 코사인 문턱을 dev로 고른다. 하이브리드는 질문 전체를 임베딩 한 번으로 부르고 결과를 `outputs/r8/`에 모아 다시 돌려도 요금이 들지 않는다 | 문항 · 자료 모드 · 검색 방식 → 지표 표 | 사람이 실행(`python -m chat_agent_lab.retrieval`) | 문항을 바꾸면 고르기를 다시 하므로 dev · test를 섞지 않는다. 시험은 `tests/lab/test_retrieval.py` |
+| `app.py` | 서비스 계층 대역: `ai/.env` 읽기, 자료 묶음 읽기(`--corpus` 모드, 기본 검수를 마친 카드만), 동시 실행 자리(429 `AGENT_BUSY`), `handle_turn` 부르기, 서비스 도구 호출 LLM(`ToolLlmClient` · `tool_role`) 만들기, 한 턴 해 보기 명령 | 요청 dict → 줄 목록 | live 시험 · 평가 · 손으로 해 보기 | 서비스의 같은 자리는 `api/chat_agent.py`(HTTP · 스트림 · 실행 풀) |
 | `fake_be.py` | 가짜 BE 실행기(12-3 흉내): 저장소(피치 · Take · 공식 리뷰 · 대화 · 목표 · 메시지 · 판단), 기본 자료 · 대화 기록 모으기, 스트림 · final 검사, 실행 이벤트(진행 줄 · 문장 줄을 `event_seq`로 저장, `events_after`로 `after_seq` 커서 조회, 문장 줄 번호 · 끝 줄 앞부분 대조, 끊김 · `error` 끝 줄 · 불일치면 받은 문장으로 `PARTIAL`), 행동 실행(소유권 · 한 번만 · 다시 평가는 실제 리뷰 코드로 A · B), 승인 흐름(`ASK` 행동은 `args` · `args_hash` 저장 뒤 `WAITING_APPROVAL`에서 멈추고 `approve` · `reject` · `cancel` · 30분 만료 · 대기 중 새 메시지로 이어짐, 거절 · 만료 · 취소는 AI를 부르지 않고 고정 문장을 덧붙여 저장, 선승인 `SAVE_GOAL`은 내용 해시를 다시 계산해 맞을 때만 실행, 연습 이동 버튼은 실행하지 않고 `click_practice`로만 기록), `ACTION_RESULT` 이어 부르기(누적량 + 행동 시간 · `loaded_takes` · `removed_sources` · 범위 확정과 `state_revision`), 답 저장, 기억(설정 켜기 · 끄기 · '기억 없이' 대화 · 항목 · 전체 지우기와 기억 번호, 요청 `memory` · 밀린 메시지 `overflow`, 프로필 저장은 다시 검사 · 번호 조건 · `MEMORY_SAVED` 카드, 요약은 판 번호가 같을 때만 갱신), 자동 목표 확인 | `AgentApp` · 메시지 → `Run`(호출 · 행동 · final 기록) | 통합 시험 · 평가 | 계약(5절) · BE 할 일(12-3)이 바뀌면 같이 고친다. 실제 BE가 아니다(DB · 동시성 · 재시작 복구 없음, 머리 설명의 '단순화') |
 
 ## 3. 실행
@@ -97,6 +98,7 @@ uv sync                                             # .venv 를 만들고 서비
 .\.venv\Scripts\python.exe -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
 .\.venv\Scripts\python.exe -m chat_agent_lab.examples   # 예시 JSON 다시 만들기
 .\.venv\Scripts\python.exe -m chat_agent_lab.replay update ana-compare-4-5   # 고정 시험의 기대 줄 다시 쓰기(모델 호출 없음)
+.\.venv\Scripts\python.exe -m chat_agent_lab.retrieval --corpus approved --split dev   # 자료 검색 평가(키워드, 요금 없음). 하이브리드는 --search hybrid
 ```
 
 macOS · Linux (터미널):
@@ -109,12 +111,19 @@ uv sync                                             # .venv 를 만들고 서비
 .venv/bin/python -m chat_agent_lab.app --message "Take 4보다 Take 5에서 3장 시선이 좋아졌어?" --loaded t-4
 .venv/bin/python -m chat_agent_lab.examples         # 예시 JSON 다시 만들기
 .venv/bin/python -m chat_agent_lab.replay update ana-compare-4-5   # 고정 시험의 기대 줄 다시 쓰기(모델 호출 없음)
+.venv/bin/python -m chat_agent_lab.retrieval --corpus approved --split dev   # 자료 검색 평가(키워드, 요금 없음). 하이브리드는 --search hybrid
 ```
 
 - Windows에서는 새 `.venv`에서 첫 `pytest` 수집이 앱 제어 정책 때문에 한 번 실패할 수 있습니다. 다시 돌리면 통과합니다.
 - 기본 실행은 LLM 키 · 서명 키 없이 통과합니다(가짜 모델은 서비스 `tests/unit/chat_agent/fakes.py`). 코어 단위 · 계약 · 엔드포인트 시험은 서비스에서 돕니다(`ai/service`에서 `uv run python -m pytest tests/unit/chat_agent`). 실제 모델 시험(`live`)과 평가는 요금이 들고 요청할 때만 돌립니다.
 - `chat_agent_lab.app`은 가상 기록('졸업 발표' Take 3 · 4 · 5)으로 한 턴을 돌려 진행 줄 · 끝 줄을 출력합니다. `--loaded`는 BE가 미리 읽어 둔 Take입니다.
   `AGENT_STATE_SECRET`이 없으면 프로세스마다 임의 서명 키를 씁니다(연구용).
+- 평가 실행기(`chat_agent_lab.evals`)의 자료 · 검색 · 문항 선택 옵션(평가 결과 표의 명령에 더해 쓴다):
+  - `--corpus approved|all|none`: 자료 묶음 모드. 기본 `approved`는 서비스와 같은 호출로 검수를 마친 카드만 싣고(못 만들면 자료 없음), `all`은 검수 전 초안 카드를 포함하는 참고 실험, `none`은 자료 없음. 월드 · 검색 · 채점 원문 · 보고서에 같은 모드를 쓴다.
+  - `--search keyword|hybrid`: 자료 검색 방식. 생략하면 임베딩 묶음(`OPENAI_EMBEDDING_*`)이 있을 때 하이브리드, 없으면 키워드. `--embeddings <파일>`은 카드 벡터 파일(기본 서비스의 `guides/embeddings.json`).
+  - `--ids-file <파일> --ids-key <키>`: id 목록 JSON(`{키: [id, …]}`)에서 문항을 고른다(조율 · 잠금 나눔은 `evals/splits-8.json`의 `calibration` · `locked`).
+  - `--dir <폴더>`: 저장소 밖 처음 보는 문항을 읽는다(묶음 개수 검사 없음).
+- 검색 평가 `chat_agent_lab.retrieval`: `--corpus`(기본 `all`) · `--split dev|test|both` · `--search keyword|hybrid` · `--embeddings <파일>` · `--cosine-min <값…>`(값마다 돌려 표로 모음) · `--out <폴더>`. 하이브리드는 `ai/.env`의 임베딩 묶음이 필요하다.
 
 ## 평가 결과 (13-6)
 
