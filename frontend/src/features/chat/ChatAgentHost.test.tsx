@@ -1933,6 +1933,32 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
     expect(document.activeElement).toBe(input());
   });
 
+  it('보낼 수 없는 동안 예시는 aria-disabled 로 막히고, 숨은 이유를 달고, 눌러도 보내지 않는다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    // 429 Retry-After 로 잠깁니다
+    await act(async () => {
+      const s = useChatStore.getState();
+      const ticket = s.beginSend({
+        text: '질문',
+        page: { route: '/', pitch_id: null, take_id: null, screen: null },
+        again_of_message_id: null,
+        choice: null,
+      })!;
+      useChatStore.getState().failSend(ticket, 60);
+    });
+    const examples = [...panel()!.querySelectorAll<HTMLButtonElement>('[data-ask-help] button')];
+    expect(examples).toHaveLength(ASK_HELP_EXAMPLES.length);
+    for (const example of examples) {
+      expect(example.getAttribute('aria-disabled')).toBe('true');
+      expect(example.querySelector('.sr-only')?.textContent).toBeTruthy();
+    }
+    await act(async () => examples[0]!.click());
+    expect(transport().sent).toEqual([]);
+  });
+
   it('거절이 아닌 답이 마지막이면 질문 예시를 붙이지 않는다', async () => {
     await inConversation([
       userMsg('m1', '날씨 알려 줘', 'r0'),
