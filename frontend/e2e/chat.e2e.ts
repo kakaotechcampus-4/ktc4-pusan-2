@@ -44,6 +44,9 @@ const isSend = (url: string, method: string) =>
 
 test('1. 홈에서 버튼 → 전체 범위로 질문 → 답과 근거 칩', async ({ page }) => {
   await page.goto('/');
+  // 설정한 화면 크기(1440×900)가 실제로 적용됐는지 — 기기 설정이 덮어쓰지 않았는지 봅니다
+  // 브라우저에서 도는 식은 문자열로 넘깁니다 — 시험 파일의 타입 설정에는 DOM 타입이 없습니다
+  expect(await page.evaluate('[innerWidth, innerHeight]')).toEqual([1440, 900]);
   const panel = await openChat(page);
   // 범위 칩 — 홈에서 열면 전체 범위입니다 (12-4 "처음 범위는 대화창을 연 화면으로")
   await expect(scopeChip(panel)).toHaveAccessibleName('범위: 전체');

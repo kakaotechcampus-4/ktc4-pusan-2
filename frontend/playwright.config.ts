@@ -21,7 +21,6 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: `http://localhost:${PORT}`,
-    viewport: { width: 1440, height: 900 },
     locale: 'ko-KR',
     trace: 'retain-on-failure',
     permissions: ['camera', 'microphone'],
@@ -30,7 +29,13 @@ export default defineConfig({
       args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
     },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      // 기기 설정(`Desktop Chrome`)의 viewport 1280×720 이 위 `use` 를 덮어써서, 화면 크기는 기기 설정 뒤에 둡니다
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
+  ],
   webServer: {
     command: `npm run dev -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
