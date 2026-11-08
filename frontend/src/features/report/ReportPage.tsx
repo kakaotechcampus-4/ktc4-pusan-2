@@ -59,7 +59,7 @@ function ReportView({ takeId }: { takeId: string }) {
     return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="app-scroll-shell flex min-h-dvh flex-col">
       <AppHeader />
       <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
         {autoEnd && <AutoEndAlert notice={autoEnd} tone="page" />}

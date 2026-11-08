@@ -125,13 +125,12 @@ body:has(.app-scroll-shell):has([data-gaze-overlay]) {
   overflow: hidden;
 }
 
-/* 모달 뒤의 상단바는 원래 15px 등의 예약 폭을 유지해야 합니다.
-   루트 여백이 사라진 동안 배경 셸에만 여백을 예약해 상단바 이동을 방지합니다.
-   overflow:hidden 은 모달이 열린 동안에만 적용되므로 평소 문서 스크롤에 영향이 없습니다.
-   시선 보정은 상단바를 완전히 덮으므로 이 보정이 필요하지 않습니다. */
+/* 모달 중 루트 여백을 해제해도 상단바의 내용 너비는 유지합니다.
+   셸에 overflow:hidden 을 걸면 sticky 기준이 셸로 변경되므로 금지합니다.
+   상단바에서 모달이 열리기 전에 측정한 스크롤바 폭만 패딩으로 보정합니다.
+   시선 보정은 상단바를 덮으므로 별도 보정이 필요하지 않습니다. */
 html:has(.app-scroll-shell):has(dialog:modal) .app-scroll-shell {
-  overflow: hidden;
-  scrollbar-gutter: stable;
+  padding-right: var(--app-scrollbar-width, 0px);
 }
 
 body {

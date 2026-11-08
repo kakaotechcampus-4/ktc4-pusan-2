@@ -122,7 +122,6 @@ it('keeps document scrolling on header routes without a nested app scroll contai
   expect(shell?.classList.contains('min-h-dvh')).toBe(true);
   expect(shell?.classList.contains('h-dvh')).toBe(false);
   expect(shell?.classList.contains('overflow-y-auto')).toBe(false);
-  expect(shell?.classList.contains('scrollbar-gutter:stable')).toBe(false);
 
   await visit('/takes/stage-take/rehearsal');
   await vi.waitFor(() => expect(host.textContent).toContain('리허설 stage-take'));
