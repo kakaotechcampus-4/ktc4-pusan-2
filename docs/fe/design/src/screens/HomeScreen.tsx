@@ -226,8 +226,8 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             PITCH COACH · ONE TAKE AT A TIME.
           </span>
           <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="whitespace-nowrap">이용약관</span>
-            <span className="whitespace-nowrap">개인정보 처리방침</span>
+            <Link to="/terms" className="whitespace-nowrap hover:text-coral-deep">이용약관</Link>
+            <Link to="/privacy" className="whitespace-nowrap hover:text-coral-deep">개인정보 처리방침</Link>
           </div>
         </div>
       </footer>
