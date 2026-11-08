@@ -262,7 +262,7 @@ def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int)
         return None
     where = f"{goal.slide_number}장 " if goal.slide_number else ""
     obs = clm.format_metric_value(goal.metric, j.observed, ctx.cfg)
-    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}로, {word}."
+    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
 
 
 def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
