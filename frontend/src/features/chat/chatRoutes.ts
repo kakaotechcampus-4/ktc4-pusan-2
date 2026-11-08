@@ -74,6 +74,7 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
  */
 const launcherLifts: [pattern: string, bottom: number][] = [
   ['/', 76],
+  ['/pitches', 76],
   // 피치 만들기 · 수정: 아래 고정 바(79px)보다 위에 둡니다 (12-4 F1 "겹침")
   ['/pitch/new', 88],
   ['/pitch/:id/edit', 88],

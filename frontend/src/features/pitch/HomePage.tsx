@@ -36,7 +36,6 @@ export function HomePage() {
   const [tipIndex, setTipIndex] = useState(0);
   const [tipPaused, setTipPaused] = useState(initiallyPauseTips);
   const [tipHovered, setTipHovered] = useState(false);
-  const [tipFocused, setTipFocused] = useState(false);
   const home = usePitchList();
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
@@ -59,13 +58,13 @@ export function HomePage() {
   }, [deleting]);
 
   useEffect(() => {
-    if (tipPaused || tipHovered || tipFocused) return;
+    if (tipPaused || tipHovered) return;
     const timer = window.setInterval(
       () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
       HOME_TIP_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
-  }, [tipPaused, tipHovered, tipFocused]);
+  }, [tipPaused, tipHovered]);
 
   const cancelDelete = () => {
     const opener = deleting?.opener;
@@ -215,16 +214,13 @@ export function HomePage() {
       </main>
       <footer className="border-t border-line-strong">
         <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 pr-20 text-xs text-ink/80 xl:flex-nowrap lg:pl-10 lg:pr-20 xl:pr-10">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex min-h-9 min-w-0 basis-full items-center gap-2 lg:min-w-0 lg:flex-1 lg:basis-auto">
             <span className="shrink-0 tabular-nums text-coral-deep">TIP /</span>
             <p
-              tabIndex={0}
               title={HOME_TIPS[tipIndex]}
               onMouseEnter={() => setTipHovered(true)}
               onMouseLeave={() => setTipHovered(false)}
-              onFocus={() => setTipFocused(true)}
-              onBlur={() => setTipFocused(false)}
-              className="min-w-0 flex-1 truncate focus:overflow-visible focus:whitespace-normal focus:break-words focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className="min-w-0 flex-1 truncate"
             >
               {HOME_TIPS[tipIndex]}
             </p>
