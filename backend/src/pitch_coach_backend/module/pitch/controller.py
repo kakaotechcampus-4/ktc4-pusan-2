@@ -9,6 +9,7 @@ from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, ScriptParseRunnerDep
 from pitch_coach_backend.module.pitch.dto import (
+    FirstTakeDTO,
     ParseRequestedDTO,
     PitchSaveRequestDTO,
     PrepareDTO,
@@ -44,6 +45,7 @@ from pitch_coach_backend.module.pitch.service.standard import (
     get_standard_detail,
     save_pitch_standards_service,
 )
+from pitch_coach_backend.module.pitch.service.tutorial import get_or_create_first_take
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
@@ -89,6 +91,13 @@ def add_pitch(
 ):
     result = add_pitch_service(db, current_user.id, pitch_dto)
     return {"message": "Pitch added successfully", "pitch_id": result}
+
+
+# First Take 튜토리얼 샘플 발표. 처음이면 준비된 자료와 미리 만든 AI 결과로 만들고, 있으면 그
+# 발표를 준다. 바로 장치 점검으로 넘어갈 수 있는 상태다
+@router.post("/tutorials/first-take", response_model=FirstTakeDTO)
+def first_take_tutorial(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+    return get_or_create_first_take(db, current_user.id)
 
 
 @router.patch("/update/{pitch_id}")
