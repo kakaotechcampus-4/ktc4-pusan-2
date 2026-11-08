@@ -90,10 +90,7 @@ async function waitForScript(
     }
 
     if (detail.parse_status === 'FAILED') {
-      if (retried)
-        throw new FirstTakeError(
-          '샘플 대본 분석에 실패했어요. 내 피치에서 대본을 확인해 주세요.',
-        );
+      if (retried) throw new FirstTakeError('샘플 대본 분석에 실패했어요. 내 피치에서 대본을 확인해 주세요.');
       progress('대본 분석을 다시 요청하고 있어요…');
       try {
         await reparseScript(pitchId, scriptVersionId);
@@ -112,9 +109,7 @@ async function waitForScript(
 
     await pauseUntilNextPoll(signal);
   }
-  throw new FirstTakeError(
-    '대본 분석이 오래 걸리고 있어요. 다시 시도하면 기존 작업을 이어서 확인합니다.',
-  );
+  throw new FirstTakeError('대본 분석이 오래 걸리고 있어요. 다시 시도하면 기존 작업을 이어서 확인합니다.');
 }
 
 /**
