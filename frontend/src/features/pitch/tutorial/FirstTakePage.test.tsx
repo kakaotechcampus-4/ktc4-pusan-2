@@ -71,6 +71,18 @@ it('안내용 오류 메시지를 그대로 보여 주고 실패한 진행 상�
   expect(host.querySelector('[role="status"]')?.textContent).toBe('');
 });
 
+it('기존 샘플이 잘못된 경우 해당 피치 수정 링크를 보여 준다', async () => {
+  vi.mocked(ensureFirstTakePitch).mockRejectedValue(
+    new FirstTakeError('기존 샘플 PDF가 5장이 아니에요.', 'pitch-existing'),
+  );
+  await render();
+  await start();
+  const link = [...host.querySelectorAll('a')].find((node) =>
+    node.textContent?.includes('샘플 피치에서 수정하기'),
+  );
+  expect(link?.getAttribute('href')).toBe('/pitch/pitch-existing/edit');
+});
+
 it('일반 Error의 내부 정보는 숨기고 정해진 문구를 보여 준다', async () => {
   vi.mocked(ensureFirstTakePitch).mockRejectedValue(new TypeError('Failed to fetch'));
   await render();
@@ -78,6 +90,7 @@ it('일반 Error의 내부 정보는 숨기고 정해진 문구를 보여 준다
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(
     '요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.',
   );
+  expect(host.textContent).not.toContain('샘플 피치에서 수정하기');
 });
 
 it('서버 ApiFailure는 기존 공통 오류 문구를 사용한다', async () => {

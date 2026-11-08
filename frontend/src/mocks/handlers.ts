@@ -9,6 +9,7 @@ import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
 import { pitchEditHandlers } from './pitchEdit';
+import { firstTakeHandlers } from './firstTake';
 import { scriptHandlers } from './scripts';
 import { takeHistoryHandlers } from './takeHistory';
 import type { ActiveTake, TakeCreated, TakeCreateRequest } from '@/types/take';
@@ -203,6 +204,7 @@ export const handlers = [
     HttpResponse.json(sampleScript),
   ),
   // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
+  ...firstTakeHandlers,
   ...pitchEditHandlers,
   ...homeHandlers,
   ...takeHistoryHandlers,

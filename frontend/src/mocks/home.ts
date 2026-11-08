@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import type { PitchListResponse } from '@/types/home';
+import { tutorialHomePitches } from './firstTake';
 
 /**
  * Updated #47 response including server-issued UUID fields.
@@ -156,7 +157,10 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 export const homeHandlers = [
   http.get('*/api/pitches/', () =>
     HttpResponse.json({
-      pitches: homeFixture.pitches.filter((pitch) => !deleted.has(pitch.pitch_id)),
+      pitches: [
+        ...homeFixture.pitches.filter((pitch) => !deleted.has(pitch.pitch_id)),
+        ...tutorialHomePitches(),
+      ],
     } satisfies PitchListResponse),
   ),
   // BE 처럼 {message, pitch_id}. 없는 피치는 404 PITCH_NOT_FOUND, can_delete 가 false 면 409 PITCH_BUSY 입니다

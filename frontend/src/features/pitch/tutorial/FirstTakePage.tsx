@@ -15,6 +15,7 @@ export function FirstTakePage() {
   const [status, setStatus] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repairPitchId, setRepairPitchId] = useState<string | null>(null);
   const busyRef = useRef(false);
   const prepareControllerRef = useRef<AbortController | null>(null);
 
@@ -27,6 +28,7 @@ export function FirstTakePage() {
     prepareControllerRef.current = controller;
     setPending(true);
     setError(null);
+    setRepairPitchId(null);
     setStatus('');
 
     try {
@@ -41,6 +43,7 @@ export function FirstTakePage() {
       if (!controller.signal.aborted) {
         setStatus('');
         setError(caught instanceof FirstTakeError ? caught.message : toMessage(caught));
+        setRepairPitchId(caught instanceof FirstTakeError ? (caught.pitchId ?? null) : null);
       }
     } finally {
       if (prepareControllerRef.current === controller) prepareControllerRef.current = null;
@@ -105,9 +108,19 @@ export function FirstTakePage() {
           {status}
         </p>
         {error && (
-          <p role="alert" className="mt-3 text-sm font-bold text-coral-deep">
-            {error}
-          </p>
+          <div className="mt-3 space-y-2">
+            <p role="alert" className="text-sm font-bold text-coral-deep">
+              {error}
+            </p>
+            {repairPitchId && (
+              <Link
+                to={'/pitch/' + encodeURIComponent(repairPitchId) + '/edit'}
+                className="inline-block text-sm font-bold underline underline-offset-2"
+              >
+                샘플 피치에서 수정하기
+              </Link>
+            )}
+          </div>
         )}
       </div>
     </main>

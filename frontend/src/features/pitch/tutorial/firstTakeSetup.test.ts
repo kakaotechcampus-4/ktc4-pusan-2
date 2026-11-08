@@ -134,7 +134,10 @@ describe('ensureFirstTakePitch', () => {
       segmented: false,
       slides: mapped.slides.slice(0, 1),
     });
-    await expect(ensureFirstTakePitch(vi.fn())).rejects.toThrow('5개 슬라이드');
+    await expect(ensureFirstTakePitch(vi.fn())).rejects.toMatchObject({
+      name: 'FirstTakeError',
+      pitchId: 'existing',
+    });
   });
 });
 
@@ -160,6 +163,20 @@ describe('실패 복구와 중복 샘플', () => {
       evaluation_versions: [],
     });
     vi.mocked(getScript).mockResolvedValue(mapped);
+  });
+
+  it('기존 샘플 PDF의 장수가 틀리면 기존 피치 수정 경로를 안내할 수 있다', async () => {
+    vi.mocked(getPitchResources).mockResolvedValue({
+      pitch_id: 'existing',
+      presentation_versions: [{ id: 'slide-1', version: 1, page_count: 4 }],
+      script_versions: [{ id: 'script-1', version: 1 }],
+      evaluation_versions: [],
+    });
+    await expect(ensureFirstTakePitch(vi.fn())).rejects.toMatchObject({
+      name: 'FirstTakeError',
+      pitchId: 'existing',
+    });
+    expect(createPitch).not.toHaveBeenCalled();
   });
 
   it('동일한 샘플이 둘이면 기존 것을 재사용하고 새로 만들지 않는다', async () => {

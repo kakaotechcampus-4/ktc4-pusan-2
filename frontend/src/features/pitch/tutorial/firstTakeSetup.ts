@@ -84,6 +84,7 @@ async function waitForScript(
       if (!validMapping(detail)) {
         throw new FirstTakeError(
           '샘플 대본이 5개 슬라이드에 맞게 나뉘지 않았어요. 내 피치에서 대본을 확인해 주세요.',
+          pitchId,
         );
       }
       return;
@@ -91,7 +92,10 @@ async function waitForScript(
 
     if (detail.parse_status === 'FAILED') {
       if (retried)
-        throw new FirstTakeError('샘플 대본 분석에 실패했어요. 내 피치에서 대본을 확인해 주세요.');
+        throw new FirstTakeError(
+          '샘플 대본 분석에 실패했어요. 내 피치에서 대본을 확인해 주세요.',
+          pitchId,
+        );
       progress('대본 분석을 다시 요청하고 있어요…');
       try {
         await reparseScript(pitchId, scriptVersionId);
@@ -174,13 +178,17 @@ export async function ensureFirstTakePitch(
     ) {
       throw new FirstTakeError(
         '업로드된 PDF 장수가 샘플 자료와 달라요. 내 피치에서 확인해 주세요.',
+        pitchId,
       );
     }
   } else if (
     presentation.page_count != null &&
     presentation.page_count !== FIRST_TAKE_SLIDES.length
   ) {
-    throw new FirstTakeError('기존 샘플 PDF가 5장이 아니에요. 내 피치에서 자료를 확인해 주세요.');
+    throw new FirstTakeError(
+      '기존 샘플 PDF가 5장이 아니에요. 내 피치에서 자료를 확인해 주세요.',
+      pitchId,
+    );
   }
 
   let scriptId = script?.id;
