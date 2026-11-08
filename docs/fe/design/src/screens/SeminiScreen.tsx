@@ -21,6 +21,11 @@ function initialView(stateId: string): PanelView {
 }
 
 export function SeminiScreen({ stateId }: { stateId: string; onNavigate: Navigate }) {
+  // 화면 선택기에서 프리셋을 바꾸면 새 패널을 마운트해 독립된 상태를 초기화한다.
+  return <SeminiPanel key={stateId} stateId={stateId} />;
+}
+
+function SeminiPanel({ stateId }: { stateId: string }) {
   const [draft, setDraft] = useState('');
   const [scopeOpen, setScopeOpen] = useState(false);
   const [view, setView] = useState<PanelView>(() => initialView(stateId));
@@ -33,14 +38,6 @@ export function SeminiScreen({ stateId }: { stateId: string; onNavigate: Navigat
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scopeMenuId = useId();
   const panelId = useId();
-
-  // 상태 선택기로 프리셋을 바꾸면 초기화한다. 패널 내부 조작은 서로 독립된 로컬 상태다.
-  useEffect(() => {
-    setView(initialView(stateId));
-    setScope(stateId === 'pitch-scope' ? 'pitch' : 'all');
-    setMemoryOff(stateId === 'memory-off');
-    setScopeOpen(false);
-  }, [stateId]);
 
   const isClosed = view === 'closed';
   const isHistory = view === 'history';
@@ -162,8 +159,8 @@ export function SeminiScreen({ stateId }: { stateId: string; onNavigate: Navigat
                       className="absolute left-0 top-full z-20 mt-1 max-h-60 w-64 overflow-y-auto rounded-lg border-2 border-ink bg-white p-1 shadow-[3px_3px_0_var(--color-ink)]"
                     >
                       {[
-                        { value: 'all', label: '전체', next: 'default' },
-                        { value: 'pitch', label: '피치: 서비스 소개', next: 'pitch-scope' },
+                        { value: 'all', label: '전체' },
+                        { value: 'pitch', label: '피치: 서비스 소개' },
                       ].map((option) => (
                         <button
                           key={option.value}
