@@ -4,6 +4,7 @@ import { uploadPresentation } from '@/shared/api/presentation';
 import { createScript, getScript, reparseScript } from '@/shared/api/script';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import type { ScriptDetail } from '@/types/script';
+import { FirstTakeError } from './firstTakeError';
 import { createFirstTakePdf } from './firstTakePdf';
 import {
   FIRST_TAKE_SCRIPT,
@@ -15,6 +16,17 @@ import {
 type Progress = (message: string) => void;
 const POLL_MS = 1000;
 const PARSE_TIMEOUT_MS = 100_000;
+
+/** 조회에서 복구 불가능한 4xx는 즉시 사용자에게 알립니다 (408/429 제외). */
+function isFinalFailure(error: unknown): boolean {
+  return (
+    error instanceof ApiFailure &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 408 &&
+    error.status !== 429
+  );
+}
 
 function ensureNotAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('샘플 준비가 중단되었어요.', 'AbortError');
@@ -57,11 +69,20 @@ async function waitForScript(
 
   while (Date.now() - start < PARSE_TIMEOUT_MS) {
     ensureNotAborted(signal);
-    const detail = await getScript(pitchId, scriptVersionId);
+    let detail: ScriptDetail;
+    try {
+      detail = await getScript(pitchId, scriptVersionId);
+    } catch (error) {
+      ensureNotAborted(signal);
+      if (isFinalFailure(error)) throw error;
+      // 일시적인 네트워크/서버 실패는 다른 대본 매핑 화면과 같이 재조회합니다.
+      await pauseUntilNextPoll(signal);
+      continue;
+    }
     ensureNotAborted(signal);
     if (detail.parse_status === 'DONE') {
       if (!validMapping(detail)) {
-        throw new Error(
+        throw new FirstTakeError(
           '샘플 대본이 5개 슬라이드에 맞게 나뉘지 않았어요. 내 피치에서 대본을 확인해 주세요.',
         );
       }
@@ -69,7 +90,8 @@ async function waitForScript(
     }
 
     if (detail.parse_status === 'FAILED') {
-      if (retried) throw new Error('샘플 대본 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요.');
+      if (retried)
+        throw new FirstTakeError('샘플 대본 분석에 실패했어요. 내 피치에서 대본을 확인해 주세요.');
       progress('대본 분석을 다시 요청하고 있어요…');
       try {
         await reparseScript(pitchId, scriptVersionId);
@@ -88,7 +110,7 @@ async function waitForScript(
 
     await pauseUntilNextPoll(signal);
   }
-  throw new Error('대본 분석이 오래 걸리고 있어요. 다시 시도하면 기존 작업을 이어서 확인합니다.');
+  throw new FirstTakeError('대본 분석이 오래 걸리고 있어요. 다시 시도하면 기존 작업을 이어서 확인합니다.');
 }
 
 /**
@@ -108,12 +130,15 @@ export async function ensureFirstTakePitch(
   ensureNotAborted(signal);
   const matches = list.pitches.filter((pitch) => pitch.pitch_title === FIRST_TAKE_TITLE);
 
-  if (matches.length > 1) {
-    throw new Error('샘플 발표가 여러 개 있어요. 내 피치에서 중복된 샘플을 정리해 주세요.');
-  }
-
+  // 복수 탭의 동시 생성으로 중복된 경우에도 첫 샘플을 이어서 사용합니다.
+  // 중복 자체의 방지는 서버의 멱등 API(#1109)가 필요합니다.
   let pitchId = matches[0]?.pitch_id;
+  let preparedPdf: File | undefined;
   if (!pitchId) {
+    // 브라우저에서 PDF를 만들 수 없으면 빈 피치가 생기지 않도록 먼저 검증합니다.
+    progress('튜토리얼 발표자료 5장을 준비하고 있어요…');
+    preparedPdf = await createFirstTakePdf();
+    ensureNotAborted(signal);
     progress('첫 미션을 등록하고 있어요…');
     const created = await createPitch({
       title: FIRST_TAKE_TITLE,
@@ -136,7 +161,7 @@ export async function ensureFirstTakePitch(
 
   if (!presentation) {
     progress('튜토리얼 발표자료 5장을 준비하고 있어요…');
-    const file = await createFirstTakePdf();
+    const file = preparedPdf ?? (await createFirstTakePdf());
     ensureNotAborted(signal);
     const uploaded = await uploadPresentation(pitchId, file);
     ensureNotAborted(signal);
@@ -144,13 +169,13 @@ export async function ensureFirstTakePitch(
       uploaded.presentation.page_count !== undefined &&
       uploaded.presentation.page_count !== FIRST_TAKE_SLIDES.length
     ) {
-      throw new Error('업로드된 PDF 장수가 샘플 자료와 달라요. 내 피치에서 확인해 주세요.');
+      throw new FirstTakeError('업로드된 PDF 장수가 샘플 자료와 달라요. 내 피치에서 확인해 주세요.');
     }
   } else if (
     presentation.page_count != null &&
     presentation.page_count !== FIRST_TAKE_SLIDES.length
   ) {
-    throw new Error('기존 샘플 PDF가 5장이 아니에요. 내 피치에서 자료를 확인해 주세요.');
+    throw new FirstTakeError('기존 샘플 PDF가 5장이 아니에요. 내 피치에서 자료를 확인해 주세요.');
   }
 
   let scriptId = script?.id;
