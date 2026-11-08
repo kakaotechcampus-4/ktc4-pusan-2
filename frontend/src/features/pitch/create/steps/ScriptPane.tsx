@@ -459,6 +459,10 @@ function MappingReview({
         title="2. 대본 연결"
         subtitle="장별 대본을 확인하고, 수정한 매핑은 다시 저장해 주세요."
       />
+      {/* 장수가 다른 슬라이드를 올려 대본이 옮겨졌을 때, 매핑을 지우지 않고 예전 슬라이드로 되돌릴 수 있게 둡니다 */}
+      <div className="mb-3">
+        <SlideLink script={script} linked={linked} />
+      </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border border-line bg-panel p-5">
         <div>
           <p className="font-bold">

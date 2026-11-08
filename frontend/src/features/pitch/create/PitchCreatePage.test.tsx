@@ -100,6 +100,30 @@ it('이번 매핑이 성공하면 확인 창을 열고 실패나 기존 자료 �
   expect(host.querySelector('dialog')).toBeNull();
 });
 
+it('장수가 다른 슬라이드를 올려 대본이 옮겨져도, 매핑 확인 화면에서 예전 슬라이드로 되돌려 저장할 수 있다', async () => {
+  ready();
+  // 1장짜리 대본에 2장짜리 슬라이드를 올리면 대본이 새 슬라이드로 옮겨지고 저장 필요가 됩니다
+  state().attachSlides({
+    pageCount: 2,
+    presentationVersionId: 'pv2',
+    fileName: '실수.pdf',
+    fileUrl: '/test.pdf',
+  });
+  expect(state().draft.scripts[0]).toMatchObject({ slideVersion: 2, saved: false });
+  state().select('script', 1);
+  await mount();
+  expect(button('매핑 확인/수정')).toBeTruthy();
+  const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!;
+  expect(trigger.textContent).toContain('V2 · 2장');
+  await act(async () => trigger.click());
+  const options = host.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+  await act(async () => options[0]!.click());
+  expect(state().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: false });
+  // 매핑을 지우지 않았으니 장수가 맞는 V1 로 바로 저장할 수 있습니다
+  await act(async () => state().saveMapping(1));
+  expect(state().draft.scripts[0]).toMatchObject({ slideVersion: 1, saved: true });
+});
+
 it('연결할 슬라이드 메뉴에서 키보드 선택과 닫기를 지원한다', async () => {
   ready();
   const draft = state().draft;
