@@ -64,7 +64,9 @@ function ComparisonSummary() {
   }, [open]);
   return (
     <Card title="지난 Take와 비교">
-      <p className="mb-4 text-sm text-ink/80">지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.</p>
+      <p className="mb-4 text-sm text-ink/80">
+        지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.
+      </p>
       <div className="grid gap-4 lg:grid-cols-2">
         {COMPARISON.flatMap((group) =>
           group.columns.map((metric, index) => {
@@ -78,7 +80,8 @@ function ComparisonSummary() {
             const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
             const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 없음').length;
             const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
-            const directionUnknown = slides.length > 0 && unknown === slides.length && same === 0;
+            const directionUnknown =
+              slides.length > 0 && unknown === slides.length && same === 0;
             return (
               <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
                 <h3 className="font-bold">{metric}</h3>
