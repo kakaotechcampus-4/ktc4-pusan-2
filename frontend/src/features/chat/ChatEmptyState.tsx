@@ -29,7 +29,11 @@ export function ChatEmptyState({
         발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.
       </p>
       {showSuggestions && (
-        <div className="mt-5 flex w-full max-w-80 flex-col gap-2" role="group" aria-label="추천 질문">
+        <div
+          className="mt-5 flex w-full max-w-80 flex-col gap-2"
+          role="group"
+          aria-label="추천 질문"
+        >
           {SUGGESTIONS.map((question) => (
             <button
               key={question}
