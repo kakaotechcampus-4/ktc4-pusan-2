@@ -21,33 +21,33 @@ const stageGuide = [
   ['카메라', '오른쪽 위의 4:3 화면에서 자기 모습을 확인해요.'],
   ['마이크', '카메라 아래의 음량 막대에서 입력 상태를 확인해요.'],
   ['피코 코치', '슬라이드 아래에 코칭 메시지가 나타나요. 실전 모드에서는 코칭이 꺼져요.'],
-  ['대본', '화면 맨 아래에 선택한 표시 모드로 대본이 나와요. 실전 모드에서는 숨겨져요.'],
+  ['대본', '키 안내 아래에 선택한 표시 모드로 대본이 나와요. 실전 모드에서는 숨겨져요.'],
   ['이동 방법', '←·→ 슬라이드 이동, Space 다음 장, 대본 표시 중에는 ↑·↓로 스크롤해요.'],
   [
     '발표 끝내기',
-    '상단 오른쪽의 종료 버튼을 사용해요. 마지막 장에서 눌러 종료를 한 번 더 확인해요.',
+    '상단 오른쪽의 종료 버튼은 마지막 장에서만 사용할 수 있어요. 한 번 더 확인하고 끝내며, 말이 오래 없으면 자동으로 끝날 수도 있어요.',
   ],
+  ['시선 테두리', '슬라이드와 카메라 영역을 감싼 테두리 색으로 청중·화면·대본·판정 불가를 구분해요.'],
 ] as const;
 
 function HelpIllustration({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
     <figure className="min-w-0">
-      <div className="overflow-hidden border border-line-strong bg-white">
-        <img
+      <img
           src={src}
           alt={alt}
           width={1040}
           height={600}
           loading="lazy"
-          className="block h-auto w-full"
-        />
-      </div>
+          className="block h-auto w-full border border-line-strong bg-white"
+      />
       <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs leading-5 text-stone">
         <span>{caption} · 개인정보가 없는 설명용 목업</span>
         <a
           href={src}
           target="_blank"
           rel="noopener noreferrer"
+          aria-label={`${caption} 이미지 크게 보기 (새 탭)`}
           className="font-semibold text-ink underline underline-offset-2 hover:text-coral-deep"
         >
           이미지 크게 보기 (새 탭)
@@ -66,7 +66,7 @@ function RehearsalGuide() {
         </h4>
         <HelpIllustration
           src="/help/device-check.svg"
-          alt="장치 점검 화면 목업. 왼쪽에 카메라와 오디오 입력 막대, 오른쪽에 카메라·마이크·시선 기준·평소 목소리 점검 항목과 대본 표시 선택이 배치되어 있습니다."
+          alt="장치 점검 화면 목업. 예시 피치 제목과 TAKE 배지, 왼쪽 카메라·오디오 입력, 오른쪽 장비 준비·이번 Take 미션·발표 중 대본 표시, 오른쪽 아래 채팅 에이전트 버튼과 Take 시작 버튼이 있습니다."
           caption="장치 점검 화면"
         />
         <p className="mt-2 text-sm leading-6 text-stone">
@@ -80,7 +80,7 @@ function RehearsalGuide() {
         </h4>
         <HelpIllustration
           src="/help/rehearsal-stage.svg"
-          alt="발표 연습 화면 목업. 1 현재 슬라이드와 다음 슬라이드, 2 오른쪽 카메라, 3 음량 막대, 4 가운데 아래 피코 코치, 5 맨 아래 대본, 6 코치 아래 키보드 이동 안내, 7 오른쪽 위 발표 끝내기 버튼."
+          alt="발표 연습 화면 목업. 1 현재 슬라이드와 다음 슬라이드, 2 오른쪽 카메라, 3 음량 막대, 4 가운데 아래 피코 코치, 5 맨 아래 대본, 6 코치 아래 키보드 이동 안내, 7 오른쪽 위 비활성 발표 끝내기 버튼, 8 시선 테두리와 범례."
           caption="실시간 코칭 모드 예시"
         />
         <ol
