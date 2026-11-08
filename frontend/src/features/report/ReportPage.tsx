@@ -364,7 +364,9 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
               {scriptModeLabel(mode.current)}). 비교는 참고만 해 주세요.
             </p>
           )}
-          <p className="text-sm text-ink/80">지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.</p>
+          <p className="text-sm text-ink/80">
+            지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.
+          </p>
           <div className="grid gap-4 lg:grid-cols-2">
             {groups
               .flatMap((g) => g.metrics)
@@ -385,14 +387,14 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                 return (
                   <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
                     <h3 className="font-bold">{metricLabel(metric)}</h3>
-                    {slides.length > 0 ? (
-                      directionUnknown ? (
-                        <p className="mt-2 text-sm text-ink/80">
-                          개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
-                        </p>
-                      ) : (
-                        <>
-                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                    {slides.length > 0 && directionUnknown && (
+                      <p className="mt-2 text-sm text-ink/80">
+                        개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
+                      </p>
+                    )}
+                    {slides.length > 0 && !directionUnknown && (
+                      <>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                           <div className="border border-line-strong bg-panel p-3">
                             <p className="font-bold text-ink">나아진 슬라이드</p>
                             <p className="mt-1">{slideList(improved)}</p>
@@ -409,9 +411,9 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                             {unknown > 0 && `방향 판단 불가 ${unknown}개`}
                           </p>
                         )}
-                        </>
-                      )
-                    ) : (
+                      </>
+                    )}
+                    {slides.length === 0 && (
                       <p className="mt-2 text-sm text-ink/80">
                         {overall && OVERALL_ONLY_METRICS.has(metric)
                           ? '발표 전체 기준 지표예요.'

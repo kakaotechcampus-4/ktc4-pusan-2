@@ -290,7 +290,14 @@ it('shows undetermined direction without falsely saying no slides improved or wo
   query.data!.review = {
     ...reviewFixture,
     comparison: [
-      { metric: 'pause_count', slide_number: 2, previous: 1, current: 3, improved: null, script_mode: null },
+      {
+        metric: 'pause_count',
+        slide_number: 2,
+        previous: 1,
+        current: 3,
+        improved: null,
+        script_mode: null,
+      },
     ],
   };
   await render();
@@ -306,7 +313,14 @@ it('does not label a metric with missing slide details as whole-Take-only', asyn
   query.data!.review = {
     ...reviewFixture,
     comparison: [
-      { metric: 'audience_ratio', slide_number: null, previous: 0.5, current: 0.7, improved: true, script_mode: null },
+      {
+        metric: 'audience_ratio',
+        slide_number: null,
+        previous: 0.5,
+        current: 0.7,
+        improved: true,
+        script_mode: null,
+      },
     ],
   };
   await render();
