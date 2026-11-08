@@ -106,10 +106,19 @@
 
 html, body, #root { height: 100%; }
 
-/* 스크롤 여백은 공통 헤더 셸 안에만 확보합니다. 전체 화면 무대와 모달 배경은 뷰포트 전체를 사용합니다. */
-.app-scroll-shell:has(> .pitch-create) { background: #faf9f6; }
-/* 모달이 열린 동안 셸 스크롤을 잠급니다. stable 여백은 유지되어 헤더가 흔들리지 않습니다. */
-.app-scroll-shell:has(dialog:modal) { overflow: hidden; }
+/* 공통 상단바 화면은 브라우저 문서(window)가 스크롤합니다.
+   라우트마다 스크롤바 유무가 달라도 상단바가 수평으로 움직이지 않도록 자리를 확보합니다.
+   리허설 무대 등 별도 전체 화면 셸에는 이 규칙을 적용하지 않습니다. */
+html:has(.app-scroll-shell) {
+  scrollbar-gutter: stable;
+}
+
+/* 모달의 뷰포트 전체 배경은 스크롤바 예약 영역까지 덮어야 합니다.
+   열린 동안 문서 스크롤과 예약 여백을 해제하고, 닫으면 원래 설정으로 돌아갑니다. */
+html:has(.app-scroll-shell):has(dialog:modal) {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
 
 body {
   margin: 0;
