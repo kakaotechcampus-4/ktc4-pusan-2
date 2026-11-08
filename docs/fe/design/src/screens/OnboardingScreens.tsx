@@ -247,18 +247,59 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
           <br />
           멀리 닿을 수 있도록.
         </h2>
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {[
-            ['피코 교수', '발표를 꼼꼼히 살피고 다음 연습을 안내하는 코치'],
-            ['치치', '조금씩 성장하며 발표를 연습하는 연구실의 새'],
-          ].map(([name, description]) => (
+        <div className="mb-6 mt-10 flex items-center justify-between gap-4">
+          <h3 className="text-xl font-bold">연구실 구성원</h3>
+          <span className="tabular-nums text-[10px] tracking-widest">LAB MEMBERS / 02</span>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          {[true, false].map((professor) => (
             <article
-              key={name}
-              className="border-2 border-ink bg-cream p-6 shadow-[4px_4px_0_var(--color-ink)]"
+              key={String(professor)}
+              className={`border border-line-strong p-6 lg:p-8 ${professor ? 'bg-cream' : 'bg-coral-wash'}`}
             >
-              <p className="font-mono text-xs tracking-widest">LAB MEMBER</p>
-              <h3 className="mt-3 text-xl font-extrabold">{name}</h3>
-              <p className="mt-2 text-sm leading-7">{description}</p>
+              <div className="mb-6 flex flex-wrap items-center gap-5 sm:flex-nowrap">
+                <figure className="w-28 shrink-0 border border-ink bg-panel p-1.5 shadow-[3px_3px_0_var(--color-line-strong)] lg:w-32">
+                  <img
+                    src={publicUrl(professor ? 'onboarding/pico-id.png' : 'onboarding/chichi-id.png')}
+                    alt={
+                      professor
+                        ? '안경과 정장을 갖춘 공작새 피코 교수가 정면을 바라보는 픽셀 증명사진'
+                        : '아이보리와 갈색 깃털에 흰색 롱슬리브를 입은 뱁새 치치의 정면 픽셀 증명사진'
+                    }
+                    width={600}
+                    height={800}
+                    loading="lazy"
+                    className="aspect-[3/4] w-full object-cover [image-rendering:pixelated]"
+                  />
+                  <figcaption className="pt-2 text-center tabular-nums text-[9px] tracking-widest">
+                    {professor ? 'FACULTY / 001' : 'RESEARCHER / 002'}
+                  </figcaption>
+                </figure>
+                <div>
+                  <p className="tabular-nums text-[10px] tracking-widest">
+                    {professor ? 'DIRECTOR' : 'JUNIOR RESEARCHER'}
+                  </p>
+                  <h4 className="mb-2 mt-3 text-2xl font-extrabold lg:text-3xl">
+                    {professor ? '피코 교수' : '치치'}
+                  </h4>
+                  <p className="text-xs leading-6">
+                    {professor ? '연구 책임자 · 공작새' : '신입 연구원 · 뱁새'}
+                  </p>
+                  <p className="mt-3 text-xs font-bold text-ink">
+                    {professor ? '연구 분야: 말하기와 시선' : '연구 과제: 떨려도 끝까지 말하기'}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm leading-7">
+                {professor
+                  ? '단정한 정장과 안경 너머로, 작은 변화도 따뜻하게 알아봐 주는 공작새. 말이 막히면 잠시 기다려 주고, 용기 내어 끝낸 발표에는 먼저 수고했다는 인사를 건네요. 잘한 점은 함께 기뻐하고, 어려웠던 점은 하나씩 짚어 주며 치치가 자기 속도로 자라도록 곁을 지켜요.'
+                  : '흰색 롱슬리브와 스트릿 패션을 좋아하는 뱁새. 평소엔 스웨그 넘치지만 발표 앞에선 살짝 버벅여요. 가끔 멍하고 자주 허둥대도, 연습만큼은 진심. 피코 교수의 피드백에 울고 웃으며 한 번 더 도전해요.'}
+              </p>
+              <p className="mt-6 border-t border-ink/20 pt-5 font-bold">
+                {professor
+                  ? '“조금 떨려도 괜찮아요. 우리 하나씩, 같이 해봐요.”'
+                  : '“오늘은 어제보다 덜 떨릴지도! skrr”'}
+              </p>
             </article>
           ))}
         </div>

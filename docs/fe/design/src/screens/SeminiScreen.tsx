@@ -1,5 +1,5 @@
 // Draft #1104·#1110의 새미나이 UI. API와 저장소는 사용하지 않는다.
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { publicUrl } from '@/lib/publicUrl';
 import type { Navigate } from './shared';
 
@@ -15,6 +15,9 @@ const HEADER_ACTION =
 
 export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [draft, setDraft] = useState('');
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const scopeRef = useRef<HTMLButtonElement>(null);
+  const scopeMenuId = useId();
   const isClosed = stateId === 'closed';
   const isHistory = stateId === 'history';
   const isMemory = stateId === 'memory';
@@ -90,23 +93,54 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                 </div>
               </div>
               <div className="mt-2 flex min-h-9 flex-wrap items-center justify-between gap-2 text-xs">
-                <label className="flex items-center gap-2">
-                  대화 범위
-                  <select
-                    value={scope}
-                    onChange={(event) =>
-                      onNavigate(
-                        'semini',
-                        event.target.value === 'pitch' ? 'pitch-scope' : 'default',
-                      )
-                    }
-                    aria-label="대화 범위"
-                    className="rounded-lg border border-line-strong bg-white px-2 py-1"
+                <div className="relative min-w-0">
+                  <button
+                    ref={scopeRef}
+                    type="button"
+                    data-chat-scope=""
+                    aria-expanded={scopeOpen}
+                    aria-controls={scopeOpen ? scopeMenuId : undefined}
+                    onClick={() => setScopeOpen((open) => !open)}
+                    className="min-h-8 max-w-56 truncate rounded-full border border-line-strong bg-white px-3 text-xs font-bold hover:bg-cream"
                   >
-                    <option value="all">전체</option>
-                    <option value="pitch">현재 피치</option>
-                  </select>
-                </label>
+                    <span className="sr-only">범위: </span>
+                    {scope === 'pitch' ? '피치: 서비스 소개' : '전체'}
+                  </button>
+                  {scopeOpen && (
+                    <div
+                      id={scopeMenuId}
+                      role="group"
+                      aria-label="범위 고르기"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.stopPropagation();
+                          setScopeOpen(false);
+                          scopeRef.current?.focus();
+                        }
+                      }}
+                      className="absolute left-0 top-full z-20 mt-1 max-h-60 w-64 overflow-y-auto rounded-lg border-2 border-ink bg-white p-1 shadow-[3px_3px_0_var(--color-ink)]"
+                    >
+                      {[
+                        { value: 'all', label: '전체', next: 'default' },
+                        { value: 'pitch', label: '피치: 서비스 소개', next: 'pitch-scope' },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-pressed={scope === option.value}
+                          onClick={() => {
+                            setScopeOpen(false);
+                            scopeRef.current?.focus();
+                            onNavigate('semini', option.next);
+                          }}
+                          className="block min-h-11 w-full rounded px-2 text-left text-sm hover:bg-cream aria-pressed:font-bold"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {viewChat && (
                   <label className="flex items-center gap-1">
                     <input
@@ -196,7 +230,9 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
           type="button"
           onClick={() => onNavigate('semini', isClosed ? 'default' : 'closed')}
           className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)]"
-          aria-label={isClosed ? '새미나이 열기' : '새미나이 닫기'}
+          aria-label="채팅 에이전트"
+          aria-expanded={!isClosed}
+          aria-haspopup="dialog"
         >
           <img
             src={SEMINI_IMAGE}
