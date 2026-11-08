@@ -113,15 +113,25 @@ html:has(.app-scroll-shell) {
   scrollbar-gutter: stable;
 }
 
-/* 모달의 배경이 오른쪽 예약 영역까지 덮이도록 여백만 해제합니다.
-   html 에 overflow: hidden 을 주고 body 도 잠그면 문서 높이가 뷰포트로 줄어
-   아래쪽에서 모달을 열 때 window.scrollY 가 0 으로 초기화될 수 있습니다.
-   대신 body 를 잠그면 문서 위치를 유지하면서 휠·키보드 스크롤을 막습니다. */
-html:has(.app-scroll-shell):has(dialog:modal) {
+/* 모달과 시선 보정은 전체 뷰포트를 덮어야 하므로 루트의 예약 여백을 해제합니다.
+   html 자체를 잠그면 하단에서 모달을 열 때 scrollY 가 초기화될 수 있어 body 를 잠급니다.
+   닫으면 window 문서 스크롤과 기존 여백이 자동 복원됩니다. */
+html:has(.app-scroll-shell):has(dialog:modal),
+html:has(.app-scroll-shell):has([data-gaze-overlay]) {
   scrollbar-gutter: auto;
 }
-body:has(.app-scroll-shell):has(dialog:modal) {
+body:has(.app-scroll-shell):has(dialog:modal),
+body:has(.app-scroll-shell):has([data-gaze-overlay]) {
   overflow: hidden;
+}
+
+/* 모달 뒤의 상단바는 원래 15px 등의 예약 폭을 유지해야 합니다.
+   루트 여백이 사라진 동안 배경 셸에만 여백을 예약해 상단바 이동을 방지합니다.
+   overflow:hidden 은 모달이 열린 동안에만 적용되므로 평소 문서 스크롤에 영향이 없습니다.
+   시선 보정은 상단바를 완전히 덮으므로 이 보정이 필요하지 않습니다. */
+html:has(.app-scroll-shell):has(dialog:modal) .app-scroll-shell {
+  overflow: hidden;
+  scrollbar-gutter: stable;
 }
 
 body {
