@@ -423,7 +423,7 @@ uv sync                                             # .venv 를 만들고 서비
 - **FE 예시 칩 4개**(#1093, 서비스 조건 3번씩): 최종 12/12 `DONE`. 고치기 전에는 "다음 연습 목표 잡아 줘"가 3번 모두 '연습 계획은 짜 드리지 않아요'로 거절됐습니다(범위 밖 이유 설명을 고침).
 - **남은 실패**(최종, 3번 모두 실패): 사용법 카드가 필요한 `guide-modes` · `scr-criteria-howto` · `scr-mic` · `scr-script-format`뿐입니다(FE 검수 전이라 서비스 조건에서 실패로 셈 — 사용법 질문에는 고정 안내로 답함). 1~2번 실패는 `ana-compare-4-5` · `glob-weakest` · `stale-then` 등 16개(대부분 `PARTIAL` 상태나 대상 · 값 문장 누락).
 - `rep-goal-achieved`의 사용자 말 응답에는 `goal_result`를 싣지 않습니다(계약상 자동 목표 확인 값). 닫은 Take는 요청 자료로 알 수 없어 고르지 않고, 보고 있는 Take의 지금 값이 목표 기준을 달성했는지만 말합니다(7-10).
-- 측정 기록 · 명령: 결과 폴더 `outputs/r8/`(git 무시), 사본 실행으로 측정 중 작업 트리 변경과 무관하게 잼.
+- 측정 기록 · 명령: 결과 폴더 `outputs/r8/`(git 무시), 사본 실행으로 측정 중 작업 트리 변경과 무관하게 잼. 최종 지표 요약은 [`reports/results/chat_agent_eval.json`](reports/results/chat_agent_eval.json)(14-2 목표 대비 · 묶음별 · 조율 / 잠금 / 처음 보는 문항 · 기준선 · 예시 칩)에 커밋했습니다.
 
 ## 실패 행 대응표 (10-3)
 
