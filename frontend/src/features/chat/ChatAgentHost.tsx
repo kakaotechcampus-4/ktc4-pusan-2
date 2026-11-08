@@ -409,13 +409,15 @@ function ChatPanel({
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
   const [view, setView] = useState<PanelView>('messages');
   const toggleView = (next: PanelView) => setView(view === next ? 'messages' : next);
+  const pending = useChatStore((s) => s.pending);
+  const syncing = useChatStore((s) => s.syncing);
   const initialAtTop =
     session.messages.length === 0 &&
-    !session.pending &&
+    !pending &&
     !session.sentEcho &&
     !session.progress &&
     !session.messagesLoading &&
-    !session.syncing;
+    !syncing;
   const { scroller, onScroll, follow } = useFollowBottom(view === 'messages', initialAtTop);
   const content = draft.trim();
   const tooLong = [...content].length > MAX_MESSAGE_LENGTH;

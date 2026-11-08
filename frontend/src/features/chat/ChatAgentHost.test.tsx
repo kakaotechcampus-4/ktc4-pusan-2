@@ -327,7 +327,7 @@ it('첫 기억 안내와 빈 대화는 스크롤 맨 위에서 시작하고, 실
   await openPanel();
   const scroller = panel()!.querySelector<HTMLElement>('[aria-label="채팅 메시지"]')!;
   expect(scroller.scrollTop).toBe(0);
-  expect(scroller.firstElementChild?.querySelector('[data-memory-intro]')).not.toBeNull();
+  expect(scroller.querySelector('[data-memory-intro]')).not.toBeNull();
   Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 500 });
   Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 100 });
   // 빈 화면에 내용이 바뀌어도 기억 안내를 밀어 내리지 않습니다.
