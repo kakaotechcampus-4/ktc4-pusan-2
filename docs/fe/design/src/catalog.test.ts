@@ -26,7 +26,7 @@ describe('화면 설계서 목록', () => {
 
   it('제품의 한 페이지형 피치 생성 상태와 공유 URL을 유지한다', () => {
     const create = screens.find((screen) => screen.id === 'pitch-create');
-    expect(create?.status).toBe('제품에 있음');
+    expect(create?.status).toBe('Draft 반영');
     expect(create?.route).toBe('/pitch/new');
     expect(create?.states.map((item) => item.id)).toEqual(
       expect.arrayContaining([

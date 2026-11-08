@@ -17,8 +17,8 @@ interface GuideEntryBase {
   id: string;
   title: string;
   group: string;
-  /** 시안: 제품에 아직 없는 새 디자인. 제품에 들어가면 '제품에 있음'으로 바꾼다(README "시안 관리") */
-  status: '제품에 있음' | '시안';
+  /** 제품에 있음: 현행 제품, 시안: 검토 디자인, Draft 반영: 미병합 제품 PR 화면을 사전 표시한다. */
+  status: '제품에 있음' | '시안' | 'Draft 반영';
   summary: string;
   states: GuideState[];
   rules: string[];

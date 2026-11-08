@@ -48,7 +48,7 @@ export const PRODUCT_CHECKED: {
     },
     { pr: 1106, head: '6029bef57e2806031a8ea75c243b684097982e34', what: '스크롤바 너비 안정화' },
     { pr: 1110, head: '2e92875b4556d04f974c16cf300aea3a8e42b235', what: '새미나이 채팅 패널' },
-    { pr: 944, head: 'a6416c35a27d67bed6760e72ffe1087c10016790', what: '사용방법 시각 안내' },
+    { pr: 944, head: '1747994a037d6bd07ed08b8bc71e56facd2c9d53', what: '사용방법 시각 안내(왼쪽 런처 반영)' },
     {
       pr: 1108,
       head: 'be55e5326de00ce8da28fce817ff819f60bda142',
@@ -143,7 +143,8 @@ const productScreens: GuideScreen[] = [
     title: '홈 · 내 피치',
     group: screenGroup.pitch,
     route: '/',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1108, #1112, #1117의 변경을 미리 보여 준다.
     summary:
       '피치 목록과 연습 통계를 보고 발표 준비 · 새 피치 만들기 · 피치 수정 · Take 기록으로 간다. 비교는 Take 기록 안에서 연다. 줄마다 더보기(···) 메뉴에서 피치를 지운다. 데이터는 예시다.',
     states: [
@@ -356,7 +357,8 @@ const productScreens: GuideScreen[] = [
     title: '피치 생성 · 수정',
     group: screenGroup.pitch,
     route: '/pitch/new',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1101, #1102의 변경을 미리 보여 준다.
     summary:
       '슬라이드 · 대본 연결 · 발표정보 · 평가기준(선택)을 한 페이지에서 준비한다. 왼쪽 준비 순서와 자료 버전 목록, 고정 하단 확인 버튼을 쓴다. 생성과 수정은 같은 구성을 공유한다.',
     states: [
@@ -589,7 +591,8 @@ const productScreens: GuideScreen[] = [
     title: '리허설 · 실전',
     group: screenGroup.rehearsal,
     route: '/takes/:takeId/rehearsal',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1118의 변경을 미리 보여 준다.
     summary:
       '리허설과 실전 모드의 슬라이드·대본·코치·연결 상태를 독립적으로 재현한 화면이다. 실제 카메라·마이크·음성 전송은 하지 않는다.',
     states: [
@@ -659,7 +662,8 @@ const productScreens: GuideScreen[] = [
     title: '분석 대기',
     group: screenGroup.results,
     route: '/takes/:takeId/processing',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1118의 변경을 미리 보여 준다.
     summary: '노을 화면에서 분석 세 단계의 진행을 보여 주고, 끝나면 리포트로 넘어간다.',
     states: [
       state('default', '분석 중', '세 단계 중 지금 단계와 치치의 팁을 보여 준다.'),
@@ -785,7 +789,8 @@ const productScreens: GuideScreen[] = [
     title: 'Take 리포트',
     group: screenGroup.results,
     route: '/takes/:takeId',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1120의 변경을 미리 보여 준다.
     summary: '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 다음 미션을 보여 준다.',
     states: [
       base,
@@ -830,7 +835,8 @@ const productScreens: GuideScreen[] = [
     title: 'Take 기록 · 지표 비교',
     group: screenGroup.results,
     route: '/takes',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1119의 변경을 미리 보여 준다.
     summary: '하나의 Take 기록 화면에서 전체 목록과 같은 피치의 지표 비교를 전환한다.',
     states: [
       base,
@@ -1094,7 +1100,8 @@ const onboardingScreens: GuideScreen[] = [
     title: '서비스 소개 · 시작하기',
     group: onboardingGroup,
     route: '/welcome',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1113의 변경을 미리 보여 준다.
     summary: '서비스를 소개하고 로그인으로 보낸다. 공개 전에는 카운트다운과 "오픈 예정"을 보인다.',
     states: [
       state('default', '공개 뒤', '"시작하기"가 로그인으로 간다.'),
