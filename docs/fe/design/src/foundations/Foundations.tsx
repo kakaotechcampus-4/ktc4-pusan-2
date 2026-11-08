@@ -5,7 +5,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   contrast,
-  customVariants,
   lightOverrides,
   themeGroups,
   themeTokens,
@@ -471,7 +470,6 @@ function LiveSize() {
   }, []);
   const queries = [
     ...TAILWIND_QUERIES,
-    ...customVariants().map(({ name, query }): [string, string] => [name, query]),
   ];
   const on = (query: string) =>
     typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
@@ -528,7 +526,7 @@ export function ResponsiveFoundation() {
   return (
     <Page
       title="반응형 기준"
-      intro="작은 화면부터 쓰고 넓어질 때 바꾼다(min-width). 기준은 Tailwind 기본값, 설계서가 더한 one-screen, 무대 전용 stage.css 기준이다. 미리보기는 iframe이라 이 문서도 그 크기에 반응한다."
+      intro="작은 화면부터 쓰고 넓어질 때 바꾼다(min-width). 기준은 Tailwind 기본값과 무대 전용 stage.css 기준이다. 미리보기는 iframe이라 이 문서도 그 크기에 반응한다."
     >
       <LiveSize />
       <Section
@@ -536,15 +534,6 @@ export function ResponsiveFoundation() {
         description="sm: · md: 같은 앞붙이가 이 폭부터 켜진다. 자주 쓰는 것은 sm · lg다."
       >
         <Rows rows={BREAKPOINTS} columns="sm:grid-cols-[4rem_10rem_minmax(0,1fr)]" />
-      </Section>
-      <Section
-        title="설계서가 더한 기준"
-        description="styles.css의 @custom-variant에서 읽는다. 홈을 한 화면에 고정할 만큼 넓고 높은 창에서만 켠다 — 배율 125~150% 노트북처럼 낮으면 고정하지 않고 스크롤한다."
-      >
-        <Rows
-          rows={customVariants().map(({ name, query }) => [`${name}:`, query])}
-          columns="sm:grid-cols-[8rem_minmax(0,1fr)]"
-        />
       </Section>
       <Section
         title="무대(stage.css) 기준"
