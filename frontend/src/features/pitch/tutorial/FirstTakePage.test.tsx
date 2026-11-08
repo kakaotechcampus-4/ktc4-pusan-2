@@ -109,14 +109,12 @@ it('준비 중 중복 클릭은 API 호출 하나로 제한한다', async () => 
 it('화면을 떠나면 준비 요청을 중단하고 이후 이동하지 않는다', async () => {
   let resolve!: (id: string) => void;
   let signal: AbortSignal | undefined;
-  vi.mocked(ensureFirstTakePitch).mockImplementation(
-    (_progress, controllerSignal) => {
-      signal = controllerSignal;
-      return new Promise<string>((done) => {
-        resolve = done;
-      });
-    },
-  );
+  vi.mocked(ensureFirstTakePitch).mockImplementation((_progress, controllerSignal) => {
+    signal = controllerSignal;
+    return new Promise<string>((done) => {
+      resolve = done;
+    });
+  });
   await render();
   await start();
   await act(async () => root.unmount());
