@@ -173,9 +173,9 @@ function ChatSessionView({
     // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
     // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: 오류 경계 및 테스트가 공통 런처 위치를 식별하는 표시입니다
+      // data-chat-launcher: index.css의 장치 점검·피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
       data-chat-launcher=""
-      style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
+      style={{ '--chat-launcher-default-bottom': `${launcherBottom}px` } as CSSProperties}
       className={CHAT_LAUNCHER_CLASS}
     >
       {open && (
