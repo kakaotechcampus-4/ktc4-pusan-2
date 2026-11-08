@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.main import app
@@ -33,6 +34,7 @@ from pitch_coach_backend.module.pitch.entity import (
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service import script_rubric_runner
 from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
 from pitch_coach_backend.module.pitch.service.script_rubric_runner import ScriptRubricRunner
 
@@ -41,11 +43,6 @@ pytestmark = pytest.mark.anyio
 BASE_URL = "http://ai:8000"
 META = {"schema_version": "1.0", "feature_version": "script_coverage-1.0", "model": "test-model"}
 SLIDES = ((1, "안녕하세요."), (2, "매출은 37% 늘었습니다."), (3, "감사합니다."))
-
-
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
 
 
 def _rubric(slide_number: int) -> dict[str, Any]:
@@ -509,8 +506,7 @@ def _pending_parse(db_session: Session, version_id: uuid.UUID) -> ParseTicket:
     script.parse_requested_at = now
     db_session.commit()
     return ParseTicket(
-        script_version_id=version_id, requested_at=now, script_text="원문", target_ms=None
-    )
+        script_version_id=version_id, requested_at=now, script_text="원문", target_ms=None, pitch_id=uuid.uuid4())
 
 
 def test_same_reparse_reuses_stored_slides(db_session: Session, version_id: uuid.UUID) -> None:
@@ -584,9 +580,52 @@ async def test_mismatched_reparse_does_not_make_rubrics(
             script_version_id=version_id,
             requested_at=script.parse_requested_at,
             script_text="원문",
-            target_ms=None,
-        )
+            target_ms=None,pitch_id=uuid.uuid4())
     )
 
     assert fake.calls == []
     assert _state(db_session, version_id)[0] is None
+
+
+def _failing_once(monkeypatch, error: Exception) -> list[int]:
+    """`save_rubrics` 첫 호출만 `error` 로 실패하게 한다. 호출 횟수를 돌려준다."""
+    real = script_service.save_rubrics
+    calls: list[int] = []
+
+    def save(*args: Any) -> bool:
+        calls.append(1)
+        if len(calls) == 1:
+            raise error
+        return real(*args)
+
+    monkeypatch.setattr(script_rubric_runner.script_service, "save_rubrics", save)
+    monkeypatch.setattr(script_rubric_runner, "DB_RETRY_DELAYS_SEC", (0.0,))
+    return calls
+
+
+async def test_transient_db_error_does_not_lose_the_reply(
+    db_session: Session, version_id: uuid.UUID, monkeypatch
+) -> None:
+    error = OperationalError("UPDATE script_slides", {}, RuntimeError("잠금 대기 시간 초과"))
+    calls = _failing_once(monkeypatch, error)
+    fake = FakeClient(_reply([1, 2, 3]))
+
+    await _runner(db_session, fake).start(version_id, _queued(db_session, version_id))
+
+    status, _, rubrics = _state(db_session, version_id)
+    assert status == ScriptRubricStatus.DONE
+    assert set(rubrics) == {1, 2, 3}
+    assert (len(calls), len(fake.calls)) == (2, 1)
+
+
+async def test_other_db_error_is_not_retried(
+    db_session: Session, version_id: uuid.UUID, monkeypatch
+) -> None:
+    calls = _failing_once(monkeypatch, ValueError("코드 오류"))
+
+    await _runner(db_session, FakeClient(_reply([1, 2, 3]))).start(
+        version_id, _queued(db_session, version_id)
+    )
+
+    assert _state(db_session, version_id)[0] == ScriptRubricStatus.PENDING
+    assert len(calls) == 1

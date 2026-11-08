@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
@@ -7,16 +8,22 @@ from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.controller import clear_session_cookies
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
+from pitch_coach_backend.module.chat import turn_runner
+from pitch_coach_backend.module.chat.service.withdraw import release_user_runs
 from pitch_coach_backend.module.pitch.service.pitch import (
     delete_pitch_files,
-    get_pitch_ids_of_user,
-    get_take_ids_of_user,
-    reserve_pitch_file_deletions,
+    reserve_user_pitch_deletions,
 )
 from pitch_coach_backend.module.user import service
 from pitch_coach_backend.module.user.dto import UserResponse, UserSettingsUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+async def _stop_turns(run_ids: list[uuid.UUID]) -> None:
+    # 대화 턴은 이벤트 루프의 태스크라 응답을 보낸 뒤(커밋이 끝난 뒤) 루프에서 끊는다
+    for run_id in run_ids:
+        turn_runner.cancel(run_id)
 
 
 @router.get("/me", response_model=UserResponse, summary="내 정보")
@@ -52,14 +59,14 @@ def withdraw(
     이미 발급된 Access 는 사용자가 없어 401 이 난다.
     Bearer 헤더로 인증하므로 CSRF 검사는 하지 않는다.
     """
-    # 지운 뒤에는 CASCADE 로 사라져 읽을 수 없다
-    pitch_ids = get_pitch_ids_of_user(db, current_user.id)
-    take_ids = get_take_ids_of_user(db, current_user.id)
-    # 파일을 지울 일을 회원을 지우는 커밋에 같이 남긴다 (발표 삭제와 같다)
-    reserve_pitch_file_deletions(db, pitch_ids)
+    run_ids = release_user_runs(db, current_user.id)
+    pitch_ids, take_ids = reserve_user_pitch_deletions(db, current_user.id)
     service.delete(db, current_user)
     # 발표 삭제와 같다. 진행 중이던 Take 의 실시간 STT 를 끊고, 발표자료 파일은 응답 뒤에 지운다
     hooks.live_takes().discard(take_ids)
+    # 돌던 대화 턴도 끊어 열린 AI 연결과 대화 자리를 돌려준다 (chat-agent.md 6-13)
+    if run_ids:
+        background_tasks.add_task(_stop_turns, run_ids)
     for pitch_id in pitch_ids:
         background_tasks.add_task(delete_pitch_files, pitch_id)
     clear_session_cookies(response)

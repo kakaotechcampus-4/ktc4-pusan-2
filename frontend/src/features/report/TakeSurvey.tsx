@@ -247,7 +247,7 @@ function Scale({
             />
             <span
               aria-hidden="true"
-              className={`flex min-h-11 items-center justify-center border-2 font-mono text-lg font-bold peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink ${value === n ? 'border-ink bg-coral-deep text-white' : 'border-line-strong bg-white text-ink'}`}
+              className={`flex min-h-11 items-center justify-center border-2 tabular-nums text-lg font-bold peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink ${value === n ? 'border-ink bg-coral-deep text-white' : 'border-line-strong bg-white text-ink'}`}
             >
               {n}
             </span>

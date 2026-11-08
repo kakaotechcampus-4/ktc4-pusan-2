@@ -29,7 +29,7 @@ def committed_login(
         yield issued
     finally:
         with Session(engine) as db:
-            db.delete(db.get(User, issued.user.id))
+            db.delete(db.get(User, issued.user_id))
             db.commit()
 
 
@@ -202,7 +202,7 @@ def test_rotating_one_device_does_not_block_another_device_of_the_same_user(
 ) -> None:
     with Session(engine, expire_on_commit=False) as db:
         other = login(db)
-    assert other.user.id == committed_login.user.id
+    assert other.user_id == committed_login.user_id
     assert other.device_id != committed_login.device_id
     minted = threading.Event()
     release = threading.Event()

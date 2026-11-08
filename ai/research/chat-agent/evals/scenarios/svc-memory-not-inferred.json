@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-memory-not-inferred",
+  "set": "agent_service",
+  "group": "memory",
+  "split": "dev",
+  "act": "should_not",
+  "title": "말투만 보고 짐작한 선호는 저장하지 않는다(기억 요청 없음)",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "ㅇㅇ 그냥 대충 짧게 3장 시선 어땠는지 말해 봐",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-profile-change",
+        "observe": "db_diff",
+        "compare": "absent",
+        "expect": "memory.profile",
+        "path": "changed"
+      },
+      {
+        "check_id": "no-candidates",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": [],
+        "path": "profile_updates"
+      },
+      {
+        "check_id": "record-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

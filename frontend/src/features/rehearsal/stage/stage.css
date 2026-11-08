@@ -89,14 +89,12 @@
 }
 
 .stage-head .elapsed {
-  font-family: var(--font-mono);
   font-size: 26px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .stage-head .limit {
-  font-family: var(--font-mono);
   font-size: 20px;
   color: var(--color-stone);
   font-variant-numeric: tabular-nums;
@@ -124,14 +122,12 @@
 }
 
 .stage-head .meta {
-  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--color-stone);
   font-variant-numeric: tabular-nums;
 }
 
 .stage-head .slide-no {
-  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -200,7 +196,7 @@
 
 /* 이미지가 아직 없을 때(목·변환 중) 자리표시. 깨진 이미지보다 낫다 */
 .slide .placeholder {
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: 0.08em;
   color: var(--color-stone);
@@ -283,7 +279,7 @@
   position: absolute;
   left: 10px;
   bottom: 8px;
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
   letter-spacing: 0.08em;
   color: var(--color-stone);
@@ -332,7 +328,7 @@
   place-items: center;
   background: var(--color-stage-deep);
   border: 1px solid color-mix(in srgb, var(--color-ink-stage) 35%, transparent);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--color-stone);
@@ -550,7 +546,7 @@
   bottom: 4px;
   display: flex;
   gap: 12px;
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--color-stone);
@@ -812,7 +808,7 @@
   --color-stage-panel: #ffffff;
   --color-stage-deep: #f1f0eb;
   --color-ink-stage: #17191e;
-  --color-stone: #6b7280;
+  --color-stone: #626976; /* 밝은 지면 3종 위에서 4.5:1 이상 (stoneContrast.test.ts) */
   --stage-line: 2px solid var(--color-ink-stage);
   --rail-w: clamp(200px, 18vw, 320px);
   /* 코치 확대분은 슬라이드 행이 받는다. 대본 예약 행과 하단 좌표는 유지한다. */

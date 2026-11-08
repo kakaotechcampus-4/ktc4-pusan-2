@@ -15,20 +15,20 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 
 from pitch_coach_backend.coach import finalize as coach_finalize
-from pitch_coach_backend.coach.session import FinalizeSnapshot, being_cancelled
+from pitch_coach_backend.coach.session import FinalizeSnapshot
 from pitch_coach_backend.core.retry import retry_transient
+from pitch_coach_backend.core.tasks import being_cancelled
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import state
 from pitch_coach_backend.realtime.stream.record import CoachDeps
-from pitch_coach_backend.realtime.stt import loop as stt_loop
 
 logger = logging.getLogger(__name__)
 
 
-# 자동 종료를 DB 에 적는 상한. DB 가 늦어도 연결 정리까지 붙잡히지 않게 한다
-MARK_AUTO_END_TIMEOUT_SEC = 5.0
+# Take 종료를 DB 에 적는 상한 (자동 종료 · stop 공통). DB 가 늦어도 연결 정리까지 붙잡히지 않게 한다
+MARK_ENDED_TIMEOUT_SEC = 5.0
 
 
 # Take 종료를 DB 에 적지 못했을 때 다시 적는 간격(초). 사용자가 끝낸 Take 라 DB 가 돌아오면 적고
@@ -40,7 +40,7 @@ MARK_RETRY_SEC = (2.0, 5.0, 15.0, 30.0, 60.0, 120.0)
 FLUSH_METRICS_TIMEOUT_SEC = 5.0
 
 
-async def flush_metrics(take_id: uuid.UUID) -> bool:
+async def flush_records(take_id: uuid.UUID) -> bool:
     """Take 를 끝내기(`ANALYZING`) 직전이나 앱을 내릴 때 부른다. 남은 1초 원자료 · 장 변경 ·
     확정 전사를 저장한다. 확정 전사를 다 저장했으면 True.
 
@@ -147,7 +147,7 @@ class Ending:
 
 async def seal_and_flush(take_id: uuid.UUID, end_reason: str | None) -> Ending:
     """끝난 것으로 적기 전에 마지막 창을 만들고(`seal_take`) 남은 원자료를 저장한다
-    (`flush_metrics`). 둘은 같이 돈다."""
+    (`flush_records`). 둘은 같이 돈다."""
     record = state.takes.get(take_id)
     if record is not None:
         # 원자료 버퍼와 코치가 같은 순간에 받기를 멈춘다. 저장되지 않은 1초가 마지막 창에 들거나
@@ -155,7 +155,7 @@ async def seal_and_flush(take_id: uuid.UUID, end_reason: str | None) -> Ending:
         record.metrics.seal()
         record.slides.seal()
         record.coach.seal_inputs()
-    snapshot, finals_saved = await asyncio.gather(seal_take(take_id), flush_metrics(take_id))
+    snapshot, finals_saved = await asyncio.gather(seal_take(take_id), flush_records(take_id))
     return Ending(end_reason, utterance_ends_of(take_id), snapshot, finals_saved)
 
 
@@ -204,7 +204,7 @@ async def finish_take(
     marking = asyncio.ensure_future(store.mark_ended(take_id, end_reason, ending.utterance_ends))
     try:
         # 상한을 넘겨도 적는 일은 멈추지 않는다 (DB 는 늦게라도 커밋한다)
-        marked = await asyncio.wait_for(asyncio.shield(marking), MARK_AUTO_END_TIMEOUT_SEC)
+        marked = await asyncio.wait_for(asyncio.shield(marking), MARK_ENDED_TIMEOUT_SEC)
     except Exception:
         logger.warning(
             "Take 종료 저장이 늦거나 실패했다. 뒤에서 마저 적는다 take=%s reason=%s",
@@ -316,9 +316,6 @@ async def end_without_stop(take_id: uuid.UUID) -> Ending | None:
             end_reason = None
         if stream is not None:
             stream.end()
-            if not await stream.wait_closed():
-                logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", take_id)
-                stream.cancel()
-                await stream.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
+            await stream.close_or_cancel(warn="Deepgram")
         # 마지막 창을 만들고, 연결 없이 정리된 스트림이 못 넣은 행을 넣는다
         return await seal_and_flush(take_id, end_reason)

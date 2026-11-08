@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
+import { SILENCE_END_NOTICE } from '@/shared/lib/autoEnd';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
@@ -32,6 +33,8 @@ import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
 import { useMicLevel } from '../media/useMicLevel';
 import type { ReadStage, ShortReason } from '../media/baseVoice';
 import { useVideoStream } from '../media/useVideoStream';
+import { useChatScreen } from '@/shared/lib/chatScreen';
+import { deviceScreen } from './chatScreen';
 
 /**
  * 평소 목소리로 읽을 문단. 발표를 여는 말투입니다. 처음부터 한 번에 보여 주고, 다 읽으면 사용자가
@@ -252,6 +255,16 @@ export function DeviceCheckPage() {
     }),
   );
   const cal = useGazeSetup({ stream, videoRef, live });
+  // 대화창에 지금 점검 상태를 알립니다 — 보내는 순간에만 읽고, 장치 원본 · 식별자는 싣지 않습니다 (12-4 F2)
+  useChatScreen('/pitch/:pitchId/device-check', () =>
+    deviceScreen({
+      live,
+      hasStream: stream !== null,
+      micOk,
+      gazeStatus: cal.status,
+      failReason: cal.failReason,
+    }),
+  );
   const createTake = useCreateTake();
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -507,6 +520,8 @@ export function DeviceCheckPage() {
       badge={`TAKE ${takeNumber || '—'}`}
       onBack={() => navigate(-1)}
       hint={hint}
+      // 발표 중 말이 오래 없으면 서버가 끝냅니다. 목표 시간보다 일찍 끝나 놀라지 않게 미리 알립니다 (#925)
+      note={SILENCE_END_NOTICE}
       actions={
         <>
           <Button
@@ -529,7 +544,7 @@ export function DeviceCheckPage() {
       }
     >
       <div className="prepare-content grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] prepare-compact:gap-4">
-        <div className="prepare-camera-column flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px]">
+        <div className="prepare-camera-column flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px] prepare-low:max-w-[640px]">
           <div className="prepare-camera relative aspect-video w-full">
             <GazeSetupView
               frameRef={cal.frameRef}
@@ -545,7 +560,7 @@ export function DeviceCheckPage() {
           <AudioInputMeter meterRef={meterRef} />
         </div>
 
-        <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5">
+                <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5 prepare-low:gap-1">
           {newerCombo && (
             <div
               role="status"

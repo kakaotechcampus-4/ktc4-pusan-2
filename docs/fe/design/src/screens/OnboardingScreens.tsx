@@ -356,7 +356,7 @@ export function LoginScreen({ stateId, onNavigate }: ScreenProps) {
             disabled={busy}
             onClick={() => onNavigate('home')}
             aria-label="Google 계정으로 로그인"
-            className="mx-auto mt-8 flex min-h-11 max-w-full cursor-pointer items-center rounded disabled:cursor-wait"
+            className="mx-auto mt-8 flex min-h-11 max-w-full items-center rounded disabled:cursor-wait"
           >
             <img
               src={publicUrl('auth/google-sign-in.png')}

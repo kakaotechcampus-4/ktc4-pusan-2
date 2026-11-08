@@ -4,8 +4,9 @@ import { useCreateStore } from './createStore';
 import { pendingVersion, toPracticeCombo } from './lib/draft';
 import { loadPitch } from './loadPitch';
 import { getPitch, getPitchResources } from '@/shared/api/pitch';
-import { openPdf } from '@/shared/lib/pdf';
 import { getScript } from '@/shared/api/script';
+import { splitScript } from '@/mocks/scripts';
+import { openPdf } from '@/shared/lib/pdf';
 
 /**
  * 수정 화면 불러오기. 네트워크와 PDF 는 BE 응답 모양 그대로 흉내 냅니다.
@@ -124,6 +125,22 @@ describe('수정 화면 — 서버의 피치를 초안으로 읽는다', () => {
     expect(draft.criteria).toMatchObject([
       { version: 1, saved: true, items: [{ text: '추임새 5번 이하' }] },
     ]);
+  });
+
+  it('원문이 없는 예전 대본은 장 대본을 구분자와 함께 이어 다시 매핑해도 장마다 나뉜다', async () => {
+    vi.mocked(getScript).mockImplementation(async (_pitchId: string, id: string) => ({
+      ...script(id, id === 'sv1' ? 1 : 2, 3),
+      original_content: null,
+    }));
+    const draft = await loadPitch('p1');
+    // 다른 시험이 쓰는 기본(대본 V2 는 4장)으로 되돌립니다
+    vi.mocked(getScript).mockImplementation(async (_pitchId: string, id: string) =>
+      id === 'sv1' ? script(id, 1, 3) : script(id, 2, 4),
+    );
+    const { text } = draft.scripts[0]!;
+    expect(text).toBe('[슬라이드 1]\nsv1-1\n\n[슬라이드 2]\nsv1-2\n\n[슬라이드 3]\nsv1-3');
+    expect(splitScript(text)).toMatchObject({ segmented: true });
+    expect(splitScript(text).slides.map((s) => s.content)).toEqual(['sv1-1', 'sv1-2', 'sv1-3']);
   });
 
   it('지난 대본은 장수가 같은 가장 최근 슬라이드에, 가장 최근 대본은 최신 슬라이드에 연결한다', async () => {

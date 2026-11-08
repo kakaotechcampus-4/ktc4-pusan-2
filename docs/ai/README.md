@@ -9,7 +9,6 @@
 | [architecture.md](architecture.md) | 전체 기능 구성 · 호출 흐름, 기능 사이 입출력 계약, 공통 데이터 모양(1초 원자료 · 1초 판정 결과 · 에러 · `meta`), 시간 예산, 저장 요구 · 저장 지도, 환경변수, 담당 |
 | [ai-service.md](ai-service.md) | AI 서비스(`ai/service/`) 하나. 폴더 구조, 기능 · 모델을 붙이는 순서, 공통 모듈(`common/llm.py` · `common/errors.py`), 이미지 · compose · 환경별 구성, CI · 배포, 운영과 문제 해결 |
 | [features/](features/) | 기능마다 하나. 목적, 구성, 입력 · 출력 계약(필드 · 예시 · 오류), 처리 흐름, 실패 처리, 배포, 저장 요구 · 저장 위치, 품질 검증 |
-| [proposals/](proposals/README.md) | 결정 전 제안. 기준 문서가 아니며, 결정되면 합의를 거쳐 위 문서에 반영한다 |
 | [`ai/research/<기능>/README.md`](../../ai/research/README.md) | 연구 코드의 폴더 · 파일, 실행법, 실험 결과 |
 
 ## 기능 지도
@@ -33,8 +32,9 @@
 | 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 서비스 탑재 (코치를 통해) | [speech-pace/](../../ai/research/speech-pace/README.md) · 서비스 [`features/pace/`](../../ai/service/src/pitch_coach_ai/features/pace/) |
 | 소리 크기 · 침묵 | [volume.md](features/volume.md) | jinn-ie | 서비스 탑재 (코치를 통해) | [volume-analysis/](../../ai/research/volume-analysis/README.md) · 서비스 [`features/volume/`](../../ai/service/src/pitch_coach_ai/features/volume/) |
 | 리뷰 에이전트 | [review-agent.md](features/review-agent.md) | jinn-ie | 서비스 탑재 | [review-agent/](../../ai/research/review-agent/README.md) · 서비스 [`features/review/`](../../ai/service/src/pitch_coach_ai/features/review/) |
+| 대화형 코치 에이전트 | [chat-agent.md](features/chat-agent.md) | JWK0395 | 서비스 탑재 | [chat-agent/](../../ai/research/chat-agent/README.md) · 서비스 [`features/chat_agent/`](../../ai/service/src/pitch_coach_ai/features/chat_agent/) |
 
-현재 서비스에는 `/health` · `/ready`와 대본 파싱(`/scripts/parse`) · 대본 전달도(`/scripts/rubric` · `/takes/analyze` · `/takes/rescore`) · 코치(`/coach/evaluate` · `/coach/finalize` · `/coach/plan`) · 평가 기준 분석(`/evaluation-criteria/parse`) · 리뷰(`/takes/review`)가 연결되어 있습니다(BE 호출 · 배포 여부는 별도). 시선 · 군더더기 · 말 속도 · 소리 크기 판정 모듈은 서비스(`ai/service/src/pitch_coach_ai/features/gaze/` · `filler/` · `pace/` · `volume/`)에 있고, 자기 엔드포인트 없이 코치 `evaluate` · `finalize`가 묶어 씁니다(`coach-agent.md` 11절). 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
+현재 서비스에는 `/health` · `/ready`와 대본 파싱(`/scripts/parse`) · 대본 전달도(`/scripts/rubric` · `/takes/analyze` · `/takes/rescore`) · 코치(`/coach/evaluate` · `/coach/finalize` · `/coach/plan`) · 평가 기준 분석(`/evaluation-criteria/parse`) · 리뷰(`/takes/review`) · 대화형 코치 에이전트(`/agent/turn`, `AGENT_ENABLED`를 켜기 전에는 503 `AGENT_DISABLED`)가 연결되어 있습니다(BE 호출 · 배포 여부는 별도). 시선 · 군더더기 · 말 속도 · 소리 크기 판정 모듈은 서비스(`ai/service/src/pitch_coach_ai/features/gaze/` · `filler/` · `pace/` · `volume/`)에 있고, 자기 엔드포인트 없이 코치 `evaluate` · `finalize`가 묶어 씁니다(`coach-agent.md` 11절). 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
 
 기능 코드가 바뀌면 담당이 활성 폴더 · 앱 연결을 확인하고 이 표를 갱신합니다. 나중에 merge되는 README 수정은 먼저 반영된 기능을 보존합니다.
 
@@ -79,6 +79,7 @@
 
 **배포 전 부분**: BE가 부르는 부분은 AI 서비스에 붙어 BE가 부르기 전, FE에서 도는 부분은 FE가 화면에 붙이기 전까지다. 변경이 양쪽에 걸치면 각각 본다. 배포 전 부분에서 FE · BE 또는 다른 AI 기능과 주고받는 값은 그 기능 담당이 고치고, 관련 Issue 댓글이나 PR에서 상대 담당을 @멘션해 알린다. 이미 붙은 부분은 표의 합의 절차를 따른다. 다음은 배포 전에도 예외가 아니다: `architecture.md`의 필드 · 값 · 저장 요구 · 의미 · 호출 시점 변경(회의 · 결정 댓글 · 승인 리뷰 · 관련 팀 합의), 서비스에서 BE · 인프라가 하는 일, `architecture.md` 12절의 필수 절차.
 
+- 결정 전 제안은 따로 문서를 두지 않고 Issue에 제안 내용과 영향 받는 쪽을 적어 확인받은 뒤 진행한다. Issue의 제안은 기준 문서가 아니며, 결정되면 이 규칙의 절차대로 기준 문서에 반영한다.
 - 합의가 필요한 변경은 Issue에 전 · 후와 영향 받는 쪽을 적고, 결정 댓글과 확정된 최종 계약 문장을 확인해 반영한다. PR 본문에 그 Issue를 링크한다.
 - 담당이 다른 문서 · 코드에서 고칠 곳을 찾으면 직접 고치지 않고 기능 이름 · 절 번호 · 전 → 후 · 영향을 Issue로 알린다(에이전트는 `ai/AGENTS.md`대로 초안을 사람에게 넘긴다). 그 담당이 위 절차로 반영한다.
 - 연구 폴더 README(파일 지도 · 실행법 · 실험 결과)는 그 기능 담당(기능 지도)이 고치고 일반 PR 리뷰를 받는다.

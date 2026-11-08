@@ -6,15 +6,13 @@ FE 는 첫 실시간 연결이 `ready` 를 받은 뒤에 발표를 시작하고,
 끝내지만(`abandon_ready_takes`), 다시 연습하지 않으면 그대로 남는다.
 """
 
-import asyncio
-import contextlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionLocal, in_session
+from pitch_coach_backend.core.tasks import Stop, start_periodic
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 
 logger = logging.getLogger(__name__)
@@ -24,15 +22,8 @@ SWEEP_INTERVAL_SEC = 60.0
 
 
 async def sweep_once(session_factory: Callable[[], Session] = SessionLocal) -> int:
-    def sweep() -> int:
-        db = session_factory()
-        try:
-            return lifecycle_service.abandon_stale_ready_takes(db)
-        finally:
-            db.close()
-
     try:
-        abandoned = await run_in_threadpool(sweep)
+        abandoned = await in_session(session_factory, lifecycle_service.abandon_stale_ready_takes)
     except Exception:
         logger.exception("시작하지 않은 Take 를 끝내지 못했다. 다음 주기에 다시 한다")
         return 0
@@ -41,19 +32,6 @@ async def sweep_once(session_factory: Callable[[], Session] = SessionLocal) -> i
     return abandoned
 
 
-async def run_forever(interval_sec: float = SWEEP_INTERVAL_SEC) -> None:
-    while True:
-        await sweep_once()
-        await asyncio.sleep(interval_sec)
-
-
-def start() -> Callable[[], Awaitable[None]]:
+def start() -> Stop:
     """작업을 띄우고, 앱을 내릴 때 부를 함수를 돌려준다."""
-    task = asyncio.create_task(run_forever(), name="take-ready-sweep")
-
-    async def stop() -> None:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-
-    return stop
+    return start_periodic(sweep_once, SWEEP_INTERVAL_SEC, name="take-ready-sweep")

@@ -24,7 +24,7 @@ const slides = [
 const scriptOf = (id: string, version: number, paragraphs: string[]): ScriptDetail => ({
   script_version_id: id,
   version,
-  original_content: paragraphs.map((p, i) => `슬라이드 ${i + 1}\n${p}`).join('\n\n'),
+  original_content: paragraphs.map((p, i) => `[슬라이드 ${i + 1}]\n${p}`).join('\n\n'),
   parse_status: 'DONE',
   segmented: true,
   slides: paragraphs.map((content, i) => ({

@@ -107,9 +107,9 @@ ai/service/
 │   ├── settings.py              # 환경변수 읽기 (pydantic-settings)
 │   ├── api/                     # 라우터만. 로직 없음
 │   │   ├── health.py            #   GET /health · /ready
-│   │   └── <이름>.py            #   기능 엔드포인트, 기능마다 하나 (coach.py 는 판정 모듈을 묶어 evaluate · finalize 에서 코치에 넘긴다)
+│   │   └── <이름>.py            #   기능 엔드포인트, 기능마다 하나 (coach.py 는 판정 모듈을 묶어 evaluate · finalize 에서 코치에 넘긴다. chat_agent.py 는 스트림 응답)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
-│   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
+│   │   ├── llm.py               #   LLM 객체는 여기서만 만든다 (구조화 출력 structured_llm, 대화 에이전트의 도구 호출 tool_llm)
 │   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
 │   │   ├── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
@@ -133,12 +133,13 @@ ai/service/
 | `GET /ready` | 시작할 때 불러올 모델까지 준비됐는지 | compose 헬스체크 |
 | `api/<이름>.py`의 `router` | 기능 경로. 요청 검사 → 기능 코어 호출 | BE |
 | `common/llm.py`의 `structured_llm(schema, model=…, deadline=…)` | 출력 스키마를 고정한 LLM 객체를 돌려준다 | 라우터 (기능 코어에 인자로 넘긴다) |
+| `common/llm.py`의 `tool_llm(role, pool_size=…)` | 도구 호출 · 구조화 호출을 하는 LLM 객체(`invoke(요청, before_attempt)`)를 돌려준다. 묶음이 없으면 None | 대화 에이전트 라우터(프로세스에서 한 번 만들어 코어에 넘긴다, 6-2) |
 | `settings.py`의 `settings` | 환경변수를 읽은 설정 객체 | `main.py` · `common/` · 라우터 |
 
 ## 4-3. 규칙과 이유
 | 위치 | 규칙 | 이유 |
 |---|---|---|
-| `api/` | 요청을 검사하고 코어를 불러 응답을 돌려주기만 한다. 코어가 동기(`.invoke`)이므로 라우터 함수는 `async def`가 아니라 `def`로 쓴다 | `async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다. `def`는 스레드 풀에서 돈다 |
+| `api/` | 요청을 검사하고 코어를 불러 응답을 돌려주기만 한다. 코어가 동기(`.invoke`)이므로 라우터 함수는 `async def`가 아니라 `def`로 쓴다. 스트림 응답인 `/agent/turn`만 `async def`이고, 코어는 대화 전용 스레드에서 부른다(공용 스레드 풀을 쓰지 않음, `chat-agent.md` 6-11) | `async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다. `def`는 스레드 풀에서 돈다 |
 | `features/<기능>/` | 파일 · DB · 네트워크 · 환경변수 · 시계를 직접 쓰지 않는다. LLM 객체와 모델은 인자로 받는다 | 서비스 · 연구 폴더 · 테스트에서 같은 코어를 그대로 부르고, 가짜 LLM으로 테스트할 수 있다 |
 | 여러 기능을 엮는 요청 | 기능 코어끼리 import하지 않는다. 1초 판정은 코치가 엮는데, 코치도 판정 모듈을 import하지 않고 라우터(`api/coach.py`)가 판정 모듈의 `judge` · `summarize` · `criteria`와 volume의 `speaking_levels` · `baseline`을 묶어 인자로 넘긴다. 그 밖에 여러 기능을 엮어야 하면 `pipelines/` 모듈에서 엮는다 | 기능 폴더는 FastAPI · 다른 기능을 모르는 순수 코드로 남는다 |
 | `common/` | LLM 연결 · 에러 처리처럼 모든 기능이 같이 쓰는 것만 둔다 | 기능마다 다른 것을 두면 공통이 아니다 |
@@ -168,6 +169,7 @@ ai/service/
 | `/health` 본문 | object | 프로세스가 살아 있음 | `{"status": "ok"}` |
 | `/ready` | 상태 코드 | 준비 전 503(`NOT_READY`), 준비 후 200 | `200` |
 | 기능 응답 본문 | object | 결과 필드 + `meta` (`architecture.md` 5절) | 각 기능 문서 5-3 |
+| `/agent/turn` 응답 | `application/x-ndjson` 스트림 | 줄마다 JSON 하나(`plan` · `tool_done` · `claim` 줄과 끝 줄 `final` 또는 `error` 하나). 공통 오류 처리는 스트림을 열기 전에만 적용하고, 연 뒤의 오류는 `error` 끝 줄이다 | `chat-agent.md` 5-4 · 5-10 |
 | 에러 본문 | object | `{"error": {"code", "message"}}` (`architecture.md` 4절) | `{"error": {"code": "LLM_TIMEOUT", "message": "..."}}` |
 | 응답 헤더 `X-Request-ID` | string | 받은 값(없었으면 만든 값) 그대로 | `3f2c…` |
 
@@ -177,6 +179,10 @@ ai/service/
 ## 5-5. 예시
 ```powershell
 curl.exe -i http://localhost:8001/health
+```
+macOS · Linux
+```bash
+curl -i http://localhost:8001/health
 ```
 기대 응답 (본문)
 ```json
@@ -234,6 +240,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 - 예비 모델은 아직 없다(넘어갈 조건은 15절 열린 질문). 붙일 때는 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
 - LLM 에러(시간 초과 · 연결 실패 · 잘못된 출력)는 기능 코드에서 잡지 않고 `common/errors.py`가 상태 코드 · 에러 코드로 바꾼다. 예외는 둘이다. LLM이 결과를 보태기만 하는 기능(코칭 계획 · 리뷰 문장)은 실패를 잡아 기본 결과를 200으로 돌려준다(`fallback_reason`). 장별로 LLM을 부르는 기능(평가 기준 만들기 · 대본 전달도 채점)은 장마다 실패를 잡아 `failed`에 담고, 한 장이라도 성공하면 200을 돌려준다.
 - `common/llm.py`는 LLM 실패 예외에 `code`(`LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`)를 달아 던진다. 기본 결과를 내는 기능의 코어는 LLM 라이브러리를 모르므로 이 `code`로 `fallback_reason`을 고르고, `common/errors.py`도 같은 `code`로 상태 코드를 고른다.
+- **도구 호출 · 시도마다 한도를 세는 기능**(지금은 대화 에이전트뿐)은 `structured_llm` 대신 `tool_llm(role, pool_size=...)`을 쓴다. 공급자 SDK를 직접 스트리밍으로 부르고, 시도마다 코어의 한도 예약(`before_attempt`)을 거치며, 결과 · 예외는 코어의 LLM 모양(`features/chat_agent/llm_types.py`)이다. 자기 실행 풀(`AGENT_MAX_CONCURRENCY` × 2, 시간 초과로 버렸지만 끝나지 않은 호출도 자리를 차지)에서 돌아 공용 스레드 풀을 쓰지 않는다. 역할 `chat_agent`(출력 상한 2,000 · 추론 low, 도구 모드는 게이트웨이 제약으로 추론 none)는 `LLM_ROLES`에 있다. 구조화 출력에서 같은 최상위 키가 두 번 오면 무효 출력이다(이 경로에만, 다른 기능 파싱에는 걸지 않음). 기본 묶음(6 luna)은 호출마다 입력 · 캐시 입력 · 출력 토큰을 준다(2026-11-06 실측) — 다른 묶음을 붙이면 사용량을 주는지 확인한다. 주지 않으면 출력 예약을 그대로 세어 조사가 일찍 토큰 한도에 닿는다(`chat-agent.md` 8-3).
 - LLM 설정(키 등)이 없어 `structured_llm`이 LLM 객체를 만들지 못하면 그 오류는 `LLM_UNAVAILABLE`이다. 기본 결과를 내는 기능(코칭 계획 · 리뷰)의 라우터는 이때 LLM 없이(`llm=None`) 코어를 불러 200 + `fallback_reason: LLM_UNAVAILABLE`을 돌려준다. 그 밖의 기능은 503이다.
 
 ## 6-3. 서버 안 모델 · 무거운 리소스를 쓰는 기능
@@ -278,7 +285,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
 | 모델 로딩 중 | 그 모델을 쓰는 기능 요청(지금은 대본 전달도 세 경로)을 받지 않는다. 모델을 쓰지 않는 `/coach/plan` · `/health`는 받는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
 | 처리되지 않은 예외 | 내부 예외 내용(stack trace)은 AI 로그에만 남긴다 | 500 `INTERNAL_ERROR` | 내부 정보를 응답에 내보내지 않는다 |
 | 시작 중 예외 (import 오류 · 모델 로딩 실패 · 메모리 부족) | 컨테이너가 재시작을 되풀이한다 | 헬스체크 실패 | 11절 '증상별 원인' |
-| 배포로 컨테이너가 바뀌는 중 | 처리 중인 요청은 종료 대기(30초) 안에서 끝낸다. 새 요청은 몇 초 동안 연결 실패 | BE 쪽 `AI_UNAVAILABLE` | 백그라운드 호출은 BE가 한 번 더 부르고, 실시간 코칭은 다음 1초 요청으로 이어진다. 빠진 시간이 창보다 길면 종료 때 `replay`로 Take 결과를 다시 만든다 |
+| 배포로 컨테이너가 바뀌는 중 | 처리 중인 요청이 끝나도록 종료 대기(60초)만큼 기다린다(그 안에 끝나지 않으면 끊길 수 있다, 8절 '종료 대기'). 새 요청은 몇 초 동안 연결 실패 | BE 쪽 `AI_UNAVAILABLE` | 백그라운드 호출은 BE가 한 번 더 부르고, 실시간 코칭은 다음 1초 요청으로 이어진다. 빠진 시간이 창보다 길면 종료 때 `replay`로 Take 결과를 다시 만든다 |
 
 # 8. 시간 예산과 호출 규칙
 API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스가 지킬 운영 값은 다음과 같다.
@@ -289,7 +296,8 @@ API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스�
 | 스레드 풀 | `def` 라우터가 기본 최대 40개 동시 | LLM 응답을 기다리는 요청 여러 개를 동시에 처리한다 |
 | 실시간 경로 보호 | `/coach/evaluate`(진행 중인 Take마다 1초에 한 번, BE 약 300 ms)가 긴 LLM 요청에 밀리지 않게, BE는 백그라운드 AI 호출의 동시 개수를 제한하고 AI는 `/coach/evaluate` 처리 시간을 로그로 남긴다 | 긴 LLM 요청이 스레드 풀을 채우면 실시간 요청이 스레드를 기다리다 시간 제한을 넘긴다 |
 | LLM 호출 한 번 | 기본 12초, 요청 마감 시각 안에서만 재시도 1회 | `architecture.md` 9절 |
-| 종료 대기 | 30초 (`stop_grace_period: 30s`) | Docker는 기본 10초만 기다린다. LLM 한 번짜리 요청은 예산이 약 25초라 기본값이면 배포할 때마다 처리 중인 요청이 끊긴다. 이보다 긴 요청(장별 LLM 120초, `replay`를 붙인 finalize 60초)은 배포 때 끊길 수 있고, BE는 응답을 받지 못했으므로 `architecture.md` 3절대로 다시 부른다(장별은 전체 1번) |
+| 대화 전용 실행 풀 | `AGENT_MAX_CONCURRENCY`(기본 4) × 2, `/agent/turn` 동시 상한은 `AGENT_MAX_CONCURRENCY` | 대화 LLM 호출이 공용 스레드 풀(40)을 쓰지 않게 따로 둔다. 풀이 차면(끝나지 않은 호출 포함) 새 `/agent/turn`은 429 `AGENT_BUSY`다(`chat-agent.md` 6-11 · 8-4). 부하 시험(대화 동시 0 · 4 · 8에서 기존 코치 · 리뷰 지연)은 배포 사양에서 요청할 때 한다(`chat-agent.md` 10-4) |
+| 종료 대기 | 60초 (`stop_grace_period: 60s`) | Docker는 기본 10초만 기다린다. LLM 한 번짜리 요청은 예산이 약 25초라 기본값이면 배포할 때마다 처리 중인 요청이 끊긴다. 대화 한 번(`/agent/turn`, AI 45초)도 종료 대기 안에 든다(11-4). 장별 LLM(120초)은 종료 대기보다 길어 배포 때 끊길 수 있고, BE는 응답을 받지 못했으므로 `architecture.md` 3절대로 전체를 1번 다시 부른다. `replay`를 붙인 finalize는 BE 시간 제한(60초)이 종료 대기와 같다. 종료 신호 전에 시작한 요청이라 시간 제한 안에 끝나면 종료 대기 안에도 끝나는 셈이지만, 남는 여유가 없다. 끊기면 BE는 `architecture.md` 3절대로 1번 다시 부른다 |
 | 헬스체크 | `/ready`, 간격 10초 · 시간 제한 3초 · 재시도 5번 · 시작 유예 10초 | 서버 안 모델(Kiwi)을 불러와 준비되기까지 약 6초라 10초 안에 든다(6-3). 모델이 늘어 준비 시간이 길어지면 시작 유예를 그에 맞춰 늘린다 |
 
 # 9. 버전
@@ -326,7 +334,7 @@ API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스�
 
 | 이미지에 들어간다 | 들어가지 않는다 |
 |---|---|
-| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, `tools/`(OpenAPI 내보내기), 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
+| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함, 대화 에이전트의 발표법 · 사용법 자료 묶음 `features/chat_agent/guides/`), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, `tools/`(OpenAPI 내보내기), 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
 
 ## 11-2. 환경별 구성
 | 환경 | 실행 방법 | 주소 | 환경변수 |
@@ -345,7 +353,7 @@ API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스�
 | `restart: unless-stopped` | 컨테이너가 죽거나 Docker가 다시 뜨면 자동으로 다시 띄운다(손으로 멈춘 것은 그대로 둔다) |
 | `env_file: ../ai/.env` | LLM 키. 서버에서는 배포 워크플로가 만든다 |
 | 헬스체크: `/ready`를 Python `urllib`로 부름, 간격 10초 · 시간 제한 3초 · 재시도 5 · `start_period: 10s` | `/health`는 프로세스만 살아 있으면 200이라 서버 안 모델을 불러오기 전에도 healthy로 보인다. `/ready`는 준비 전 503이라 준비가 끝나야 healthy가 된다. 준비까지 약 6초라 10초 안에 들고(6-3), 모델이 늘면 시작 유예를 늘린다. 슬림 이미지에는 curl이 없다 |
-| `stop_grace_period: 30s` | 배포로 재시작할 때 처리 중인 요청을 끝내고 내린다(8절) |
+| `stop_grace_period: 60s` | 배포로 재시작할 때 처리 중인 요청을 끝내고 내린다(8절) |
 | `mem_limit: 620m` | AI와 BE · DB가 같은 서버에 있어, 무거운 모델을 붙인 AI가 메모리를 다 쓰면 BE나 DB가 같이 죽을 수 있다. 값은 준비 뒤 잰 414 MiB × 1.5(6-3)이고, 서버 안 모델을 더 붙이면 다시 잰다. 워커를 늘리면 워커 수만큼 늘린다 |
 | `ports` 없음 | 서버 밖으로 열지 않는다. 같은 compose의 be만 서비스 이름 주소로 부른다(서버 BE 환경변수 `AI_BASE_URL=http://ai:8000`) |
 | `be`의 `depends_on`에 `ai`를 넣지 않음 | BE는 AI 없이도 뜨게 만들어져 있다. 넣으면 AI가 실패할 때 BE도 못 뜬다 |
@@ -356,6 +364,9 @@ API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스�
 
 ## 11-4. 환경변수
 변수 목록 · 작성 규칙 · 비밀값이 가는 길은 `architecture.md` 10절이다. 서비스에서는 `settings.py`만 환경변수를 읽고, 값이 없어도 서버가 뜨도록 기본값을 둔다. 새 변수를 더하는 순서도 `architecture.md` 10절을 따른다.
+
+- **대화 에이전트(`AGENT_*`)**: `AGENT_ENABLED` 기본값이 false라 서버 값을 넣기 전에는 `/agent/turn`만 503 `AGENT_DISABLED`이고 대화용 모델 · 자료 묶음도 만들지 않는다. 켤 때는 서버 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)에 `AGENT_ENABLED=true`와 `AGENT_STATE_SECRET`(32바이트 이상, 모든 워커 · 재시작에서 같은 값)을 넣고, BE 쪽 스위치와 함께 바꾼다(`chat-agent.md` 11-2 · 11-4). 서명 키를 바꿀 때는 새 키를 `AGENT_STATE_SECRET`에, 이전 키를 `AGENT_STATE_SECRET_PREVIOUS`에 35분 이상 둔다(`chat-agent.md` 11-3).
+- 켠 뒤에는 종료 대기(60초)가 대화 한 번의 AI 예산(45초)보다 길어, AI가 배포로 내려갈 때 진행 중인 `/agent/turn`이 예산 안에 끝나면 끝 줄까지 보낼 시간이 있다. 그래도 끝 줄 없이 끊기면 BE는 그 호출을 실패로 처리한다(`chat-agent.md` 12-3, 원인 찾기는 11-6).
 
 ## 11-5. CI와 배포
 - **CI** (`.github/workflows/ai-ci.yml`): `ai/service/**`나 이 워크플로 파일이 바뀐 PR과 `main` · `develop` · `release` · `develop-next` push에서 job `ai` 하나가 `uv sync --locked` → `ruff check` → `ruff format --check` → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build`를 돈다. 실제 LLM은 부르지 않으므로 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다. 브랜치 보호의 필수 체크로 둘지는 15 열린 질문이다.
@@ -405,6 +416,12 @@ docker compose $FILES restart ai                # AI만 다시 띄우기
 | `ps ai`가 `(unhealthy)`에 머묾 | `/ready`가 503에서 바뀌지 않음(모델 준비가 끝나지 않음) | `logs ai`에 `warmup_done`이 있는지, 위 `/ready` 명령 |
 | 배포가 `docker compose pull`에서 실패 | ai 이미지를 push하지 않음 | 배포 워크플로의 build · push 대상 |
 | CI의 `uv sync --locked` 실패 | `pyproject.toml`을 고치고 `uv.lock`을 안 올림 | `uv lock` 뒤 함께 커밋 |
+| 대화의 모든 턴이 503 `AGENT_DISABLED` | 서버 `ai/.env`에 `AGENT_ENABLED=true`가 없음, 서명 키 없음 · 32바이트 미만 | 서버 `ai/.env`(값은 출력하지 않고 이름만 확인), BE 쪽 스위치 |
+| 대화 이어 부르기가 409 `AGENT_STATE_INVALID` | 서명 키를 바꾸며 이전 키를 `AGENT_STATE_SECRET_PREVIOUS`에 두지 않음, 워커마다 키가 다름 | `chat-agent.md` 11-3, 서버의 서명 키 설정(이름만 확인). 스트림 전 오류라 AI 요청 로그의 `code=AGENT_STATE_INVALID`로 보이고 `agent_stream` · 진단 기록은 없다 |
+| 대화가 429 `AGENT_BUSY`를 자주 받음 | 동시 상한(`AGENT_MAX_CONCURRENCY`) · 대화 전용 실행 풀이 참(끝나지 않은 LLM 호출이 자리를 차지) | AI 로그의 `agent_stream` · `llm_call`(`outcome` · `duration_ms`) |
+| 배포 직후 대화가 끝 줄 없이 끊김(BE는 `PARTIAL` · `AGENT_UPSTREAM_ERROR`) | AI가 종료 신호 뒤 종료 대기(compose `stop_grace_period`, 60초) 안에 턴을 끝내지 못해 강제로 끝남, 또는 같은 배포로 BE가 다시 시작해 진행 중인 호출을 끝까지 받지 못함(재시작 복구는 보낸 호출을 다시 보내지 않는다, `chat-agent.md` 12-3) | 끊긴 시각이 배포 시각과 겹치는지. 그 요청 ID의 `agent_stream` 줄이 없으면 AI가 요약 줄을 남기기 전에 강제 종료됐을 수 있다. `end=client_gone`이면 AI가 끝까지 보내기 전에 응답이 끊긴 것이라 BE 쪽(재시작 · 시간 제한)과 대조한다. 종료 대기를 늘리는 것은 BE(인프라) 몫이다 |
+| AI 로그에 `agent_stream_write_timeout` | 받는 쪽(BE)이 줄을 2초 넘게 읽지 않음(느린 소비자, `chat-agent.md` L1-09). 턴을 멈추고 남은 줄을 보내지 않는다. 바로 뒤 uvicorn의 'ASGI callable returned without completing response.' 한 줄과 함께 연결이 닫히는 것은 의도한 동작이다. 이 uvicorn 줄은 ERROR 수준이지만, 바로 앞에 같은 요청 ID의 `agent_stream_write_timeout`(WARNING)이 있으면 무시한다(오류 로그 알림 규칙에서 빼기) | 같은 요청 ID의 `agent_stream ... end=write_timeout`, BE 쪽 스트림 읽기 지연 |
+| 대화 로그에 `chat_agent_corpus_unavailable reason=UNREVIEWED` | 발표법 · 사용법 자료 카드가 검수 전이라 자료 묶음 없이 시작함(발표법 질문은 일반 조언으로 답함) | 정상. 카드를 검수(`APPROVED`)하고 판을 등록하면 자료 묶음이 켜진다(`chat-agent.md` 6-10) |
 
 - **로그**: 표준 출력으로만 낸다(파일에 쓰지 않는다). Docker가 모으고 `docker compose logs ai`로 본다. 남기는 것 · 남기지 않는 것은 `architecture.md` 11절이다.
 
@@ -498,7 +515,7 @@ AI 서비스는 저장하지 않는다(DB · Redis · 파일 없음). 기능 결
 | 컨테이너 · 주소 | `ai`, 내부망 `http://ai:8000` (로컬 `http://localhost:8001`). 외부 공개 없음 | 11-2 · 11-3 |
 | Python · 패키지 · 실행 | 3.12, `pitch_coach_ai`, `uvicorn pitch_coach_ai.main:app`, uv `0.11` (이미지의 `ghcr.io/astral-sh/uv:0.11`) | 4절 · 11-1 |
 | 헬스체크 | `/ready` (간격 10초 · 시간 제한 3초 · 재시도 5 · 시작 유예 10초). `/health`는 배포 확인용 | 8절 · 11-3 |
-| 워커 · 종료 대기 | 워커 1 (`WEB_CONCURRENCY`로 조정), 종료 대기 30초 | 8절 |
+| 워커 · 종료 대기 | 워커 1 (`WEB_CONCURRENCY`로 조정), 종료 대기 60초 | 8절 |
 | 역할 → 모델 묶음 | `settings.py` 상수, 지금은 모두 기본 묶음 | 6-2 · `architecture.md` 9절 |
 | 메모리 상한 | `mem_limit: 620m` (준비 뒤 잰 값 414 MiB × 1.5, 워커 1). 서버 안 모델을 더 붙이면 다시 재서 1.5배 | 6-3 · 11-3 |
 | 모델 파일 | git 밖, manifest만 커밋. 공개 모델은 빌드할 때 이미지에 넣는다 | 6-3 |

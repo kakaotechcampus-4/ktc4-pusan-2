@@ -26,7 +26,7 @@ export function MissionCard({
 
   return (
     <section
-      className={`prepare-missions border border-line bg-panel px-3 py-2.5 prepare-compact:px-2.5 prepare-compact:py-1.5 ${compact ? 'prepare-missions-compact block' : 'flex h-[164px] flex-col prepare-compact:h-[156px]'}`}
+      className={`prepare-missions border border-line bg-panel px-3 py-2.5 prepare-compact:px-2.5 prepare-compact:py-1.5 ${compact ? 'prepare-missions-compact block' : 'flex h-[164px] flex-col prepare-compact:h-[156px] prepare-low:h-[148px]'}`}
       aria-label="이번 Take 미션"
     >
       <div className="prepare-section-heading flex min-h-6 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs leading-[18px] [&>h2]:text-[15px] [&>h2]:leading-[22px] [&>h2]:font-bold">
@@ -40,7 +40,7 @@ export function MissionCard({
         {compact && items.length > 0 && (
           <button
             type="button"
-            className="prepare-text-action min-h-6 shrink-0 cursor-pointer py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
+            className="prepare-text-action min-h-6 shrink-0 py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
             onClick={() => setSelectedId(items[0]!.id)}
           >
             전체 미션 보기
@@ -70,7 +70,7 @@ export function MissionCard({
                 />
               ))}
             </ol>
-            <div className="prepare-mission-footer mt-auto flex min-h-9 flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs leading-[18px] [&_nav]:flex [&_nav]:items-center [&_nav]:gap-1.5 [&_nav]:tabular-nums [&_button]:min-h-6! [&_button]:px-[7px]! [&_button]:py-px!">
+            <div className="prepare-mission-footer mt-auto flex min-h-9 prepare-low:min-h-7 flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs leading-[18px] [&_nav]:flex [&_nav]:items-center [&_nav]:gap-1.5 [&_nav]:tabular-nums [&_button]:min-h-6! [&_button]:px-[7px]! [&_button]:py-px!">
               <p>
                 {items.length > PAGE_SIZE
                   ? `전체 ${items.length}개가 이번 Take에 적용돼요.`
@@ -170,7 +170,7 @@ function MissionItem({
       {truncated && (
         <button
           type="button"
-          className="prepare-text-action min-h-6 shrink-0 cursor-pointer py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
+          className="prepare-text-action min-h-6 shrink-0 py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
           aria-label={`미션 ${number} 전체 보기`}
           onClick={onRead}
         >

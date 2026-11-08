@@ -1,7 +1,23 @@
-import { apiBase, ApiFailure, clearTokens, getAccessToken, refresh } from './tokenStore';
+import {
+  apiBase,
+  ApiFailure,
+  clearTokens,
+  getAccessToken,
+  refresh,
+  tokenSubject,
+} from './tokenStore';
 
-/** Only API paths are accepted, so a Bearer token cannot be sent to another origin. */
-export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+export { tokenSubject };
+
+/**
+ * Only API paths are accepted, so a Bearer token cannot be sent to another origin.
+ * `read` turns a successful body into the result — JSON by default (see `readJsonWithin`).
+ */
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  read: (response: Response) => Promise<T> = (response) => response.json() as Promise<T>,
+): Promise<T> {
   if (path.startsWith('/api/auth/')) throw new Error('Use the cookie authentication functions');
   if (!path.startsWith('/api/') || path.includes('\\') || path.includes('..'))
     throw new Error('Invalid API path');
@@ -22,6 +38,11 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     // A late 401 may arrive after another request already rotated the token.
     const current = getAccessToken();
     const token = current && current !== sentToken ? current : await refresh();
+    // 다른 탭에서 다른 계정으로 로그인해 쿠키가 바뀌었으면 그 토큰으로 다시 보내지 않습니다 —
+    // 앞 사용자가 쓴 글이 새 계정으로 접수되지 않게 (chat-agent.md L3-16 "갱신 전후 사용자 ID 가 다르면 재전송 중단").
+    // 새로 받은 토큰은 `refresh` 가 받아들이지 않습니다. 여기서는 다른 요청이 먼저 바꿔 둔 토큰을 봅니다
+    if (sentToken && tokenSubject(sentToken) !== tokenSubject(token))
+      throw new ApiFailure(401, 'SESSION_CHANGED');
     response = await send(token);
   }
 
@@ -34,10 +55,86 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
         ? body.code
         : 'REQUEST_FAILED';
 
-    throw new ApiFailure(response.status, code);
+    const message =
+      body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
+        ? body.message
+        : null;
+
+    throw new ApiFailure(
+      response.status,
+      code,
+      retryAfterSec(response.headers.get('Retry-After')),
+      message,
+    );
   }
 
-  return response.status === 204 ? (undefined as T) : response.json();
+  return response.status === 204 ? (undefined as T) : read(response);
+}
+
+/** 성공 응답이 정한 크기를 넘음 — 본문은 읽지 않고 버립니다 */
+export class ResponseTooLargeError extends Error {
+  readonly maxBytes: number;
+
+  constructor(maxBytes: number) {
+    super('응답이 너무 커요');
+    this.name = 'ResponseTooLargeError';
+    this.maxBytes = maxBytes;
+  }
+}
+
+/**
+ * 받은 크기(UTF-8 바이트)를 세며 JSON 으로 읽습니다 — 넘으면 `ResponseTooLargeError`. 대화 에이전트의 2 MiB 제한
+ * (`chat-agent.md` L3-22)에 씁니다.
+ *
+ * **받는 양까지 제한합니다.** `Content-Length` 가 이미 넘으면 본문을 받지 않고, 헤더가 없거나 압축 응답이어서
+ * (브라우저는 압축된 크기를 헤더에 그대로 두고 풀린 본문을 줍니다) 미리 알 수 없으면 받으면서 세다가 넘는 순간 끊습니다.
+ * 세는 것은 풀린 본문이라 처리할 크기와 같습니다(#955 리뷰 — 압축을 켜도 끝까지 받지 않게)
+ */
+export const readJsonWithin =
+  (maxBytes: number) =>
+  async <T>(response: Response): Promise<T> => {
+    const declared = Number(response.headers.get('Content-Length'));
+    if (declared > maxBytes) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new ResponseTooLargeError(maxBytes);
+    }
+    if (!response.body) return JSON.parse(await response.text()) as T;
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new ResponseTooLargeError(maxBytes);
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let at = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  };
+
+/**
+ * `Retry-After` 를 초로 — 초 숫자와 HTTP 날짜 둘 다 받습니다. 없거나 잘못됐으면 null 이고,
+ * 그때 얼마나 기다릴지는 부른 쪽이 정합니다(예: 대화 에이전트는 5초, `chat-agent.md` L3-18).
+ */
+export function retryAfterSec(value: string | null, now = Date.now()): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // 날짜는 HTTP 형식(IMF-fixdate)만 — 브라우저의 Date.parse 는 "5.5" · "-1" 같은 값도 날짜로 받아 0초가 됩니다
+  if (!/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(trimmed))
+    return null;
+  const at = Date.parse(trimmed);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, Math.ceil((at - now) / 1000));
 }
 
 /**

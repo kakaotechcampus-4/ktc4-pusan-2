@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "id": "ra-criteria",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "'내 기준은 청중 시선 비율 30% 이상' → targets 조건으로 다시 평가: 사용자 기준 판정만 바뀜(Take 5 52% ≥ 30% → 달성)",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "내 기준은 청중 시선 비율 30% 이상이야. 그 기준으로 Take 5 다시 평가해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "one-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "changed-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": ["criteria_results"],
+        "path": "cards[type=REASSESS_RESULT].changed_fields"
+      },
+      {
+        "check_id": "criteria-achieved",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "ACHIEVED",
+        "path": "cards[type=REASSESS_RESULT].after.criteria_results[0].status"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "Take 5 청중 시선 비율(Take 값) = (0.62+0.58+0.28+0.6)/4 = 0.52"
+}

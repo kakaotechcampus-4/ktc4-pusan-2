@@ -66,7 +66,7 @@ export function GazeSetupView({
           <button
             type="button"
             onClick={onCancel}
-            className="absolute right-4 bottom-4 rounded-full border border-stone/60 bg-stage/80
+            className="absolute right-4 bottom-4 rounded-full border border-ink-stage/40 bg-stage/80
                      px-3 py-1 text-xs text-ink-stage/80 hover:bg-stage"
           >
             그만하기 · Esc

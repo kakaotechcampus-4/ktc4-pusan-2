@@ -1,6 +1,8 @@
 import { beforeEach, expect, it } from 'vitest';
+import { splitScript } from '@/mocks/scripts';
 import { useCreateStore } from './createStore';
 import { CHOOSE_LATEST, toPracticeCombo, type UploadedSlides } from './lib/draft';
+import { mappingEditNotice } from './lib/markerHint';
 
 const uploaded: UploadedSlides = {
   pageCount: 2,
@@ -14,7 +16,7 @@ beforeEach(() => {
   store().reset();
   store().setPitchId('pitch1');
   store().attachSlides(uploaded);
-  store().addScriptVersion('슬라이드 1\n처음\n\n슬라이드 2\n마지막');
+  store().addScriptVersion('[슬라이드 1]\n처음\n\n[슬라이드 2]\n마지막');
   store().patchScript(1, {
     remote: { id: 'sv1', version: 1 },
     blocks: ['처음', '마지막'],
@@ -26,7 +28,7 @@ beforeEach(() => {
 it('매핑 수정은 원문에 보존하고 서버 재매핑 전 연습을 막는다', () => {
   store().editMappingBlock(1, 0, '수정한 문장');
   expect(store().draft.scripts[0]).toMatchObject({
-    text: '슬라이드 1\n수정한 문장\n\n슬라이드 2\n마지막',
+    text: '[슬라이드 1]\n수정한 문장\n\n[슬라이드 2]\n마지막',
     remote: null,
     saved: false,
   });
@@ -34,6 +36,43 @@ it('매핑 수정은 원문에 보존하고 서버 재매핑 전 연습을 막�
   expect(toPracticeCombo(store().draft, store().chosen)).toBeNull();
   store().unmapScript(1);
   expect(store().draft.scripts[0]?.text).toContain('수정한 문장');
+});
+
+it('매핑을 고친 원문을 다시 매핑해도 같은 장수 · 같은 글로 나뉜다', () => {
+  store().editMappingBlock(1, 0, '수정한 문장');
+  const { text } = store().draft.scripts[0]!;
+  // 목은 AI 와 같은 구분자 규칙으로 나눕니다 — 콜론 없는 "슬라이드 1" 이면 1장으로 뭉칩니다
+  const { segmented, slides } = splitScript(text);
+  expect(segmented).toBe(true);
+  expect(slides.map((s) => s.content)).toEqual(['수정한 문장', '마지막']);
+});
+
+// #826 리뷰: 장 대본에 구분자처럼 생긴 줄을 쓰면 다시 매핑할 때 장이 달라집니다 — 매핑 편집이 그 줄을 짚습니다
+it.each([
+  ['수정\n[1] 통계청 자료(2025)', '[1] 통계청 자료(2025)'],
+  ['슬라이드 2: 요약으로 넘어가면', '슬라이드 2: 요약으로 넘어가면'],
+  ['요약\n슬라이드 3', '슬라이드 3'], // script_parser-1.3 부터 구분자
+])(
+  '장 대본에 구분자로 읽히는 줄이 있으면 다시 매핑한 장이 달라지고, 편집 안내가 그 줄을 짚는다: %j',
+  (block, line) => {
+    store().editMappingBlock(1, 0, block);
+    const { text, blocks } = store().draft.scripts[0]!;
+    const { segmented, slides } = splitScript(text);
+    expect(segmented && slides.length === 2).toBe(false);
+    expect(mappingEditNotice(blocks!)).toContain(
+      `1장 대본의 “${line}” 줄은 슬라이드 구분으로 읽혀요`,
+    );
+  },
+);
+
+it('구분자가 아닌 줄은 짚지 않고, 다시 매핑해도 같은 장수로 나뉜다', () => {
+  store().editMappingBlock(1, 0, '출처는 [1] 통계청 자료\n슬라이드 3 보시면');
+  const { text, blocks } = store().draft.scripts[0]!;
+  expect(mappingEditNotice(blocks!)).toBeNull();
+  expect(splitScript(text).slides.map((s) => s.content)).toEqual([
+    '출처는 [1] 통계청 자료\n슬라이드 3 보시면',
+    '마지막',
+  ]);
 });
 
 it('서버가 수정 대본을 반환하고 저장한 뒤 새 서버 id로 연습한다', () => {

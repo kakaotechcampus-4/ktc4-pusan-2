@@ -41,6 +41,10 @@ def _build_app() -> FastAPI:
     def _custom() -> None:
         raise AppException("직접 메시지", detail={"field": "x"})
 
+    @app.get("/retry")
+    def _retry() -> None:
+        raise AppException(headers={"Retry-After": "5"})
+
     @app.post("/validate")
     def _validate(body: _Body) -> _Body:
         return body
@@ -89,6 +93,13 @@ def test_custom_message_and_detail(probe: TestClient) -> None:
     res = probe.get("/custom")
     assert res.status_code == 400
     assert res.json() == {"code": "BAD_REQUEST", "message": "직접 메시지", "detail": {"field": "x"}}
+
+
+def test_exception_headers_go_out_with_the_error(probe: TestClient) -> None:
+    res = probe.get("/retry")
+    assert res.status_code == 400
+    assert res.headers["retry-after"] == "5"
+    assert res.json()["code"] == "BAD_REQUEST"
 
 
 def test_validation_error_same_shape(probe: TestClient) -> None:

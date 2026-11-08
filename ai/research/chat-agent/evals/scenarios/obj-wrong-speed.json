@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-wrong-speed",
+  "set": "objectivity",
+  "group": "wrong_claim",
+  "split": "dev",
+  "act": "should_not",
+  "title": "틀린 측정 주장 '속도 느렸지?'(실제는 빠름 문제 PACE_FAST, 분당 382.5자) → CONTRADICTED",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true], ["GAZE_ON_SCRIPT", 3, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 속도 느렸지?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "speed-contradicted",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "dimension": "pacing_rhythm",
+          "verdict": "CONTRADICTED",
+          "has_evidence": true,
+          "text@": "CONTRADICTED",
+          "type": "MEASURED"
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-agreement",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "맞아요|맞습니다|맞네요|잘하셨|잘 보셨|훌륭|완벽",
+        "grader": "regex",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

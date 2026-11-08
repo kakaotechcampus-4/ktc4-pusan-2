@@ -19,6 +19,7 @@ from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+from starlette.websockets import WebSocketState
 from websockets.exceptions import ConnectionClosedError
 
 from pitch_coach_backend.coach.requests import SlideEvent
@@ -53,11 +54,6 @@ TAKE_ID = uuid.uuid7()
 WS_PATH = f"/api/ws/takes/{TAKE_ID}"
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 def frame(seq: int, offset_ms: int, duration_ms: int = 100, fill: int = 1) -> bytes:
     return struct.pack("<II", seq, offset_ms) + bytes([fill]) * (duration_ms * BYTES_PER_MS)
 
@@ -68,7 +64,6 @@ def transcript(start_ms: int, end_ms: int, text: str, *, is_final: bool) -> Tran
         end_ms=end_ms,
         is_final=is_final,
         speech_final=is_final,
-        from_finalize=False,
         transcript=text,
         confidence=0.9,
         words=(Word(text, text, start_ms, end_ms, 0.9),),
@@ -466,6 +461,8 @@ class FakeWebSocket:
         # 이 번째(1-base) send_text 호출부터 실패시킨다. None 이면 항상 성공
         self.fail_send_after = fail_send_after
         self._send_count = 0
+        # Starlette 처럼 서버가 close 를 보내면 DISCONNECTED 가 된다
+        self.application_state = WebSocketState.CONNECTED
 
     async def accept(self) -> None:
         return None
@@ -480,6 +477,9 @@ class FakeWebSocket:
         # 여기서 진짜로 양보하지 않으면 asyncio.gather 로 묶어도 두 호출이 교차 실행되지
         # 않아(둘 다 끝까지 한 번에 실행됨) 동시 호출 경합을 재현하는 테스트가 무의미해진다
         await asyncio.sleep(0)
+        if self.application_state == WebSocketState.DISCONNECTED:
+            # Starlette 는 서버가 이미 닫은 연결에 보내면 RuntimeError 를 던진다
+            raise RuntimeError('Cannot call "send" once a close message has been sent.')
         self._send_count += 1
         if self.fail_send_after is not None and self._send_count >= self.fail_send_after:
             # Starlette 는 끊긴 상대에게 보내면 WebSocketDisconnect(1006) 를 던진다
@@ -488,6 +488,7 @@ class FakeWebSocket:
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         self.closed = (code, reason)
+        self.application_state = WebSocketState.DISCONNECTED
 
 
 async def _wait_until_ok(stream: TakeStream, timeout: float = 2.0) -> None:
@@ -545,7 +546,6 @@ def empty_final(start_ms: int, end_ms: int) -> Transcript:
         end_ms=end_ms,
         is_final=True,
         speech_final=False,
-        from_finalize=False,
         transcript="",
         confidence=0.0,
         words=(),

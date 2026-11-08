@@ -11,6 +11,7 @@ import json
 import os
 import statistics
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -70,7 +71,12 @@ class MeasuredLLM:
 
     def invoke(self, messages: list[tuple[str, str]]) -> EvaluationCriteriaAnalysis:
         start = time.perf_counter()
-        result = self.llm.invoke(messages)
+        try:
+            result = self.llm.invoke(messages)
+        except Exception:
+            # 호출이 예외로 끝나도 걸린 시간은 남겨 측정(latency_s)에서 빠지지 않게 한다
+            self.calls.append({"latency_s": round(time.perf_counter() - start, 2)})
+            raise
         raw = result["raw"]
         usage = getattr(raw, "usage_metadata", None) or {}
         self.calls.append(
@@ -94,13 +100,16 @@ def _target_key(target: dict[str, Any]) -> tuple[str, str, float]:
 
 
 def score_case(expected: dict[str, Any], output: dict[str, Any] | None) -> dict[str, Any]:
-    """문장 하나를 정답과 비교합니다. output이 None이면(호출 실패) 모두 틀린 것으로 셉니다."""
-    expected_targets = {_target_key(t) for t in expected["targets"]}
+    """문장 하나를 정답과 비교합니다. output이 None이면(호출 실패) 모두 틀린 것으로 셉니다.
+
+    목표는 나온 개수대로 셉니다(14절). 같은 오답 목표가 두 번 나오면 지어낸 목표 2개입니다.
+    """
+    expected_targets = Counter(_target_key(t) for t in expected["targets"])
     if output is None:
         return {
             "elements_correct": 0,
             "element_errors": [f"{k}: 출력 없음" for k in ELEMENTS],
-            "missing_targets": sorted(expected_targets),
+            "missing_targets": sorted(expected_targets.elements()),
             "fabricated_targets": [],
         }
 
@@ -111,12 +120,12 @@ def score_case(expected: dict[str, Any], output: dict[str, Any] | None) -> dict[
         ok = got == want if k == "script_used" else (got is None) == (want is None)
         if not ok:
             errors.append(f"{k}: 정답={want!r} 출력={got!r}")
-    output_targets = {_target_key(t) for t in output["targets"]}
+    output_targets = Counter(_target_key(t) for t in output["targets"])
     return {
         "elements_correct": len(ELEMENTS) - len(errors),
         "element_errors": errors,
-        "missing_targets": sorted(expected_targets - output_targets),
-        "fabricated_targets": sorted(output_targets - expected_targets),
+        "missing_targets": sorted((expected_targets - output_targets).elements()),
+        "fabricated_targets": sorted((output_targets - expected_targets).elements()),
     }
 
 

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/ui/Button';
+import { DeletePitchDialog } from '@/ui/dialogs/DeletePitchDialog';
 import { HomeHelpDialog } from '@/ui/dialogs/HomeHelpDialog';
 import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
 import { HomePitchCard, type HomePitch } from '@/ui/HomePitchCard';
@@ -16,15 +17,45 @@ const HOME_PITCHES: HomePitch[] = [
     thumbnail_url: null,
     takes: [],
   },
+  {
+    pitch_id: 'p3',
+    pitch_title: '스터디 중간 공유',
+    pitch_time: 300,
+    thumbnail_url: null,
+    takes: [1],
+    can_delete: false,
+  },
 ];
+
+/** 피치 삭제 시안(#807)의 상태. 메뉴 두 상태와 확인 창 세 상태 */
+const DELETE_STATES = [
+  'delete-menu',
+  'delete-blocked',
+  'delete-confirm',
+  'delete-pending',
+  'delete-error',
+];
+const DIALOG_STATES: Record<string, { busy: boolean; error: 'failed' | null }> = {
+  'delete-confirm': { busy: false, error: null },
+  'delete-pending': { busy: true, error: null },
+  'delete-error': { busy: false, error: 'failed' },
+};
 
 const homePrimary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
 
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [helpOpen, setHelpOpen] = useState(false);
-  const pitches = stateId === 'empty' ? [] : HOME_PITCHES;
-  const showPrepare = ['default', 'consent', 'pending', 'prepare-entry-draft'].includes(stateId);
+  // 기본 상태에서 메뉴로 지우면 그 줄만 이 미리보기에서 뺀다. 서버 요청은 없다
+  const [removed, setRemoved] = useState<string[]>([]);
+  const [asking, setAsking] = useState<string | null>(null);
+  const pitches =
+    stateId === 'empty' ? [] : HOME_PITCHES.filter((pitch) => !removed.includes(pitch.pitch_id));
+  const showPrepare =
+    ['default', 'consent', 'pending', 'prepare-entry-draft'].includes(stateId) ||
+    DELETE_STATES.includes(stateId);
+  const dialogState = DIALOG_STATES[stateId];
+  const target = HOME_PITCHES.find((pitch) => pitch.pitch_id === (asking ?? 'p1'))!;
   // 설문 안내 두 상태(#776)와 발표 준비 버튼 시안도 목록은 평소와 같다
   const ready = ['default', 'empty', 'consent', 'pending'].includes(stateId) || showPrepare;
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
@@ -102,6 +133,11 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
                     pitch={pitch}
                     index={index}
                     showPrepare={showPrepare}
+                    menuOpen={
+                      (stateId === 'delete-menu' && pitch.pitch_id === 'p1') ||
+                      (stateId === 'delete-blocked' && pitch.pitch_id === 'p3')
+                    }
+                    onDelete={() => setAsking(pitch.pitch_id)}
                   />
                 ))}
               </ul>
@@ -138,6 +174,23 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
         )}
       </div>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
+      {(dialogState || asking) && (
+        <DeletePitchDialog
+          pitchTitle={target.pitch_title}
+          takeCount={target.takes.length}
+          busy={dialogState?.busy ?? false}
+          error={dialogState?.error ?? null}
+          onConfirm={() => {
+            setRemoved((ids) => [...ids, target.pitch_id]);
+            setAsking(null);
+            if (dialogState) onNavigate('home', 'default');
+          }}
+          onCancel={() => {
+            setAsking(null);
+            if (dialogState) onNavigate('home', 'default');
+          }}
+        />
+      )}
     </div>
   );
 }

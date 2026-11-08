@@ -252,7 +252,7 @@ function CreateFooter({
     );
   if (step === 1)
     return (
-      <PaneFooter hint="슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” 중 하나를 새 줄에 적어 주세요. N은 슬라이드 번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.">
+      <PaneFooter hint="슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” · “Slide N” 같은 구분을 새 줄 맨 앞에 적어 주세요. “## Slide N — 제목”처럼 # 제목 표시를 붙여도 돼요. 번호는 1부터 차례로 커져야 해요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.">
         {back}
         <button type="button" onClick={() => onStep(2)} className={primaryButton}>
           대본 매핑

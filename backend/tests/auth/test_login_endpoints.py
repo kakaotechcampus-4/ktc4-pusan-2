@@ -121,6 +121,9 @@ def test_hostile_state_in_the_callback_does_not_crash(client: TestClient) -> Non
         "/https://evil.com",
         "/http://evil.com",
         "//evil.com/path",
+        # 브라우저와 urljoin 은 탭·줄바꿈을 지우고 읽는다. 지우면 '//evil.com' 이 된다.
+        "/\t/evil.com",
+        "/\n/evil.com",
         None,
         "",
     ],
@@ -140,6 +143,47 @@ def test_return_to_keeps_internal_paths() -> None:
 
     assert _frontend_url("/pitches/1") == f"{settings.frontend_base_url}/pitches/1"
     assert _frontend_url("/") == f"{settings.frontend_base_url}/"
+
+
+_MAX = controller._RETURN_TO_MAX_LENGTH
+
+
+@pytest.mark.parametrize(
+    "rejected",
+    [
+        "/pitches\t/1",
+        "/pitches/1\n",
+        "/pitches/1\r\nSet-Cookie: x=1",
+        "/\t/evil.com",
+        "/\x00",
+        pytest.param("/" + "a" * _MAX, id="over-limit"),
+    ],
+)
+def test_safe_return_to_rejects_control_characters_and_long_values(rejected: str) -> None:
+    """제어 문자가 든 값과 상한을 넘는 값은 인증 요청에 저장하기 전에 루트로 돌린다."""
+    assert controller._safe_return_to(rejected) == "/"
+
+
+@pytest.mark.parametrize(
+    "kept",
+    [
+        "/login?next=%2Fpitches%2F1",
+        "/pitches/1?tab=practice#result",
+        "/발표/연습 1?메모=첫 장",
+        pytest.param("/" + "a" * (_MAX - 1), id="at-limit"),
+    ],
+)
+def test_safe_return_to_keeps_normal_paths(kept: str) -> None:
+    """한글은 isprintable() 이 참이라 그대로 지나간다. 상한과 같은 길이도 받는다."""
+    assert controller._safe_return_to(kept) == kept
+
+
+def test_start_does_not_store_a_long_return_to(client: TestClient, db_session: Session) -> None:
+    """상한을 넘는 값은 인증 요청 행에 남지 않는다."""
+    client.get(START, params={"return_to": "/" + "a" * _MAX}, follow_redirects=False)
+
+    stored = db_session.scalars(select(OAuthAuthorizationRequest.return_to)).all()
+    assert stored == ["/"]
 
 
 # --- callback -----------------------------------------------------------
@@ -309,6 +353,27 @@ def test_cancelled_consent_clears_the_temporary_cookie(client: TestClient) -> No
 
     client.get(CALLBACK, params={"error": "access_denied", "state": state}, follow_redirects=False)
 
+    assert client.cookies.get(browser_cookie_name(state)) is None
+
+
+def test_cancelled_consent_still_redirects_when_cleanup_fails(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """인증 요청을 지우다 DB 오류가 나도 500 JSON 대신 프론트로 보낸다. 남은 요청은 만료된다."""
+    state = start_login(client)
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise OperationalError("DELETE", {}, Exception("lock timeout"))
+
+    monkeypatch.setattr(service, "cancel_login", fail)
+
+    res = client.get(
+        CALLBACK, params={"error": "access_denied", "state": state}, follow_redirects=False
+    )
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=access_denied" in res.headers["location"]
     assert client.cookies.get(browser_cookie_name(state)) is None
 
 

@@ -1,0 +1,2 @@
+{"event": "plan", "run_id": "run-81", "seq": 1, "data": {"plan": [{"step": "최근 Take 비교", "status": "DOING", "note": null}, {"step": "3장 문제 구간 확인", "status": "TODO", "note": null}, {"step": "발표법 자료 찾기", "status": "TODO", "note": null}, {"step": "대화 목표 저장", "status": "TODO", "note": null}]}}
+{"event": "error", "run_id": "run-81", "seq": 2, "data": {"error": {"code": "AGENT_OUTPUT_TOO_LARGE", "message": "출력이 줄 · 누적 크기 한도를 넘었다"}}}
