@@ -464,7 +464,9 @@ async function remap() {
   await act(async () => state().editMappingBlock(1, 0, '고친 첫 장'));
   const remapButton = button('수정 대본 매핑');
   remapButton.focus();
-  await act(async () => state().patchScript(1, { parse: { status: 'pending' } }));
+  await act(async () =>
+    state().patchScript(1, { parse: { status: 'pending', startedAt: performance.now() } }),
+  );
   expect(document.activeElement).toBe(remapButton);
   return remapButton;
 }
