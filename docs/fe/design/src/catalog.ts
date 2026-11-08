@@ -48,8 +48,8 @@ export const PRODUCT_CHECKED: {
     },
     {
       pr: 1106,
-      head: '961a033394b6e5f11205a6d36cbfc47a8b520d21',
-      what: '문서 스크롤 유지 및 상단바 전용 스크롤바 여백',
+      head: '104ffc77aa6245f3b145e6f8fcee28612dfa2518',
+      what: '문서 스크롤·모달 닫기 위치 유지 및 상단바 전용 스크롤바 여백',
     },
     { pr: 1110, head: 'f9b930eb1436a9d7c28e51d321275ed44d401b9a', what: '새미나이 채팅 패널' },
     {
