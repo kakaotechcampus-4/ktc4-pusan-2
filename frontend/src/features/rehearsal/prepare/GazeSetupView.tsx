@@ -42,6 +42,8 @@ export function GazeSetupView({
     <div className="relative h-full w-full">
       <div
         ref={frameRef}
+        // 전체 화면 보정 시 루트 스크롤바 예약 여백을 해제해 오른쪽 띠를 없앱니다.
+        data-gaze-overlay={overlay ? '' : undefined}
         className={
           overlay
             ? 'fixed inset-0 z-50 bg-stage-deep'
