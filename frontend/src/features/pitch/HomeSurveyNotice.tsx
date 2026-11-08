@@ -40,8 +40,8 @@ export function HomeSurveyNotice() {
             tabIndex={-1}
             className="border-2 border-ink bg-coral-wash px-4 py-3 text-sm text-ink focus:outline-2 focus:outline-offset-2 focus:outline-ink"
           >
-            <span className="font-bold">사용자 테스트 참여에 동의했어요.</span> 설문은 각
-            리포트에서 남길 수 있어요.
+            <span className="block font-bold">사용자 테스트 참여에 동의했어요.</span>
+            <span className="block">설문은 각 리포트에서 남길 수 있어요.</span>
           </p>
         </div>
       )}
