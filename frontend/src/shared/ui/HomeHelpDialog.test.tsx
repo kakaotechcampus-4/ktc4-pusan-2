@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -119,8 +120,8 @@ it('리허설의 여덟 기능과 키보드 조작을 이미지와 별도 텍스
 });
 
 it('두 설명용 SVG가 올바른 문서이며 현재 화면의 필수 문구를 포함한다', () => {
-  const device = readFileSync(new URL('../../../public/help/device-check.svg', import.meta.url), 'utf8');
-  const stage = readFileSync(new URL('../../../public/help/rehearsal-stage.svg', import.meta.url), 'utf8');
+  const device = readFileSync(resolve('public/help/device-check.svg'), 'utf8');
+  const stage = readFileSync(resolve('public/help/rehearsal-stage.svg'), 'utf8');
 
   for (const content of [device, stage]) {
     const parsed = new DOMParser().parseFromString(content, 'image/svg+xml');
