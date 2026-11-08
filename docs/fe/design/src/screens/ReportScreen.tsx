@@ -40,6 +40,9 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
   },
 ];
 
+/** 발표 전체만 산출되는 지표를 슬라이드 데이터 누락과 구분합니다. */
+const OVERALL_ONLY_LABELS = new Set(['발표 시간', '핵심 내용 전달', '핵심 수치 정확도']);
+
 function ComparisonSummary() {
   const [open, setOpen] = useState(false);
   const detailTitleId = useId();
@@ -61,7 +64,7 @@ function ComparisonSummary() {
   }, [open]);
   return (
     <Card title="지난 Take와 비교">
-      <p className="mb-4 text-sm text-ink/80">지표별로 지난 연습보다 달라진 슬라이드를 모았어요.</p>
+      <p className="mb-4 text-sm text-ink/80">지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.</p>
       <div className="grid gap-4 lg:grid-cols-2">
         {COMPARISON.flatMap((group) =>
           group.columns.map((metric, index) => {
@@ -75,26 +78,35 @@ function ComparisonSummary() {
             const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
             const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 없음').length;
             const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
+            const directionUnknown = slides.length > 0 && unknown === slides.length && same === 0;
             return (
               <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
                 <h3 className="font-bold">{metric}</h3>
-                {slides.length ? (
+                {directionUnknown && (
+                  <p className="mt-2 text-sm text-ink/80">
+                    개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
+                  </p>
+                )}
+                {slides.length > 0 && !directionUnknown && (
                   <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                    <div className="bg-cream p-3">
+                    <div className="border border-line-strong bg-panel p-3">
                       <p className="font-bold">나아진 슬라이드</p>
                       <p className="mt-1">{improved.join(', ') || '없음'}</p>
                     </div>
-                    <div className="bg-panel p-3">
+                    <div className="border border-line-strong bg-panel p-3">
                       <p className="font-bold">나빠진 슬라이드</p>
                       <p className="mt-1">{worsened.join(', ') || '없음'}</p>
                     </div>
                   </div>
-                ) : (
+                )}
+                {slides.length === 0 && (
                   <p className="mt-2 text-sm text-ink/80">
-                    {overall ? '발표 전체 기준 지표예요.' : '슬라이드별 비교 데이터가 없어요.'}
+                    {overall && OVERALL_ONLY_LABELS.has(metric)
+                      ? '발표 전체 기준 지표예요.'
+                      : '슬라이드별 비교 결과가 없어요.'}
                   </p>
                 )}
-                {(same > 0 || unknown > 0) && (
+                {!directionUnknown && (same > 0 || unknown > 0) && (
                   <p className="mt-2 text-xs text-ink/80">
                     {same > 0 && `변화 없음 ${same}개`}
                     {same > 0 && unknown > 0 && ' · '}
@@ -117,7 +129,7 @@ function ComparisonSummary() {
         onClick={() => setOpen(true)}
         className="mt-5 min-h-11 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
       >
-        슬라이드별 상세 비교표 보기
+        상세 비교표 보기
       </button>
       <dialog
         ref={dialogRef}

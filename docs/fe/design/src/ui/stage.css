@@ -1211,6 +1211,13 @@
   to { opacity: 1; }
 }
 
+/* 좁은 화면에서는 타이머·진행 막대·종료 버튼을 우선합니다. */
+@media (max-width: 760px) {
+  .stage-head .stage-mission-label {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stage-head .stage-mission-label { animation: none; }
 }

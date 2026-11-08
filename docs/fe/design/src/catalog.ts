@@ -43,7 +43,7 @@ export const PRODUCT_CHECKED: {
     { pr: 1104, head: '88b7172893a41fb7d8445e327d8587d70457f027', what: '새미나이 런처 왼쪽 배치' },
     {
       pr: 1105,
-      head: '8383d83f5a6b43a44ed3b8dce06df3264c0d0aef',
+      head: 'c2028408e93ce1ce76699ce6fc57ae02e13e1a51',
       what: 'First Take 튜토리얼 미리보기',
     },
     {
@@ -54,7 +54,7 @@ export const PRODUCT_CHECKED: {
     { pr: 1110, head: 'f9b930eb1436a9d7c28e51d321275ed44d401b9a', what: '새미나이 채팅 패널' },
     {
       pr: 944,
-      head: 'f3ad9d0bd85982589a51829468a19f3900d3cf9b',
+      head: 'd68f47e848aae51237d9254f3cab0e8272051e62',
       what: '사용방법 시각 안내(왼쪽 런처 반영)',
     },
     {
@@ -79,7 +79,7 @@ export const PRODUCT_CHECKED: {
     },
     {
       pr: 1118,
-      head: 'b92ab847498ff0f1cad4ac6775c1cb4193de1ed1',
+      head: 'b247836e7ba520490f0d3d2239604f8d047ab317',
       what: '리허설 STAGE LIVE 및 Take 접수 피드백',
     },
     {
@@ -89,7 +89,7 @@ export const PRODUCT_CHECKED: {
     },
     {
       pr: 1120,
-      head: 'e8adb895b6f34035acaf2b04b4c28d1e7473e7af',
+      head: '9f8a3f130403fcf4d3a6791680f0f07b7562d4dd',
       what: '리포트 지표별 개선·악화 요약과 상세 모달',
     },
   ],
