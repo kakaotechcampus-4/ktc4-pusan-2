@@ -134,9 +134,10 @@ it('shows 같음, not 나빠짐, when the visible values are equal even if impro
   await render();
   await openComparisonDetail();
   const cell = (dimension: string, row: number) =>
-    host.querySelector('dialog')!.querySelector(
-      `section[aria-label="${dimension}"] tbody tr:nth-of-type(${row}) td`,
-    )!.textContent;
+    host
+      .querySelector('dialog')!
+      .querySelector(`section[aria-label="${dimension}"] tbody tr:nth-of-type(${row}) td`)!
+      .textContent;
   expect(cell('대본에서 벗어나기', 1)).toContain('같음');
   expect(cell('군더더기 없이', 1)).toContain('같음');
   expect(cell('군더더기 없이', 2)).toContain('나빠짐');
