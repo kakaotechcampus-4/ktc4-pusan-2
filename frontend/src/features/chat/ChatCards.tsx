@@ -209,7 +209,8 @@ function MemoryRemove({
   useEffect(() => {
     if (recheck && !isFetching) recheckNow();
   }, [recheck, isFetching, recheckNow]);
-  if (unsure && recheckFailed) return <MemoryRecheckFailed busy={isFetching} onRetry={recheckNow} />;
+  if (unsure && recheckFailed)
+    return <MemoryRecheckFailed busy={isFetching} onRetry={recheckNow} />;
   // 다시 읽기 전 · 읽는 동안에는 단정하지 않고 비워 둡니다 — 읽고 나서도 다르면 그때 지움 · 바뀜으로 보입니다
   if (unsure) return null;
   if (state === 'removed') return <p className="text-xs text-stone">{MEMORY_REMOVED_TEXT}</p>;
