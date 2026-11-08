@@ -143,19 +143,24 @@ test('6. 최신 아님 배지 → 다시 묻기', async ({ page }) => {
   await expect(past).toContainText('최신 아님');
   await past.click();
 
-  await expect(panel.locator('[data-stale-reason]').first()).toContainText('최신 아님');
-  const claims = panel.locator('[data-claim]');
-  await expect(claims.first()).toBeVisible();
-  const before = await claims.count();
+  const answers = panel.locator('[data-message]');
+  const old = answers.filter({ has: page.locator('[data-stale-reason]') });
+  await expect(old).toHaveCount(1);
+  await expect(old.locator('[data-stale-reason]')).toContainText('최신 아님');
+  const before = await answers.count();
   await panel.getByRole('button', { name: /^최신 기준으로 다시 묻기/ }).click();
 
   // 같은 질문을 새 메시지로 보내고, 새 답에는 최신 아님 표시가 없습니다 (F5)
   const asked = panel.getByText('지난번보다 청중을 더 봤어?', { exact: true });
   await expect(asked).toHaveCount(2);
-  await expect.poll(() => claims.count()).toBeGreaterThan(before);
-  // 새 답이 끝까지 온 뒤에도 최신 아님 표시는 지난 답의 하나뿐입니다
-  await expect(panel.getByRole('button', { name: '취소' })).toHaveCount(0);
-  await expect(panel.locator('[data-stale-reason]')).toHaveCount(1);
+  // 새 답이 끝나 저장될 때까지 기다린 뒤, 그 답 자체를 봅니다
+  await expect(answers).toHaveCount(before + 1);
+  const fresh = answers.last();
+  await expect(fresh.locator('[data-claim]').first()).toBeVisible();
+  await expect(fresh).not.toHaveAttribute('data-stale');
+  await expect(fresh.locator('[data-stale-reason]')).toHaveCount(0);
+  // 지난 답의 표시는 그대로입니다
+  await expect(old.locator('[data-stale-reason]')).toContainText('최신 아님');
 });
 
 test('7. 다시 평가 → 원래 결과 · 참고 결과 나란히', async ({ page }) => {
