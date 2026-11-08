@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-talk-capability",
+  "set": "agent_service",
+  "group": "small_talk",
+  "split": "dev",
+  "act": "should",
+  "title": "할 수 있는 일 '넌 뭘 도와줄 수 있어?' — 할 수 있는 일을 고정 문장으로 안내",
+  "expect_refusal": false,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "넌 뭘 도와줄 수 있어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-refusal-wording",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "확인하지 못해|근거를 찾지 못해|관계없는 질문|범위 밖이에요|답할 수 없어요|답을 완성하지 못했어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "system-only",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "GENERAL",
+          "GUIDE",
+          "RECORD",
+          "ASSESSMENT"
+        ],
+        "path": "claim_kinds"
+      },
+      {
+        "check_id": "one-model-call",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": 1,
+        "path": "model_calls"
+      },
+      {
+        "check_id": "no-action-executed",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      },
+      {
+        "check_id": "mentions-capability",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "기록",
+        "path": "all_text"
+      }
+    ]
+  }
+}

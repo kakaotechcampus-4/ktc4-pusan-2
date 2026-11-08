@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-talk-greeting",
+  "set": "agent_service",
+  "group": "small_talk",
+  "split": "dev",
+  "act": "should",
+  "title": "인사 '안녕하세요!' — 고정 문장으로 짧게 받고 대화를 잇는다(모델 1번, 거절 · 부분 답 문구 없음)",
+  "expect_refusal": false,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "안녕하세요!",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-refusal-wording",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "확인하지 못해|근거를 찾지 못해|관계없는 질문|범위 밖이에요|답할 수 없어요|답을 완성하지 못했어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "system-only",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "GENERAL",
+          "GUIDE",
+          "RECORD",
+          "ASSESSMENT"
+        ],
+        "path": "claim_kinds"
+      },
+      {
+        "check_id": "one-model-call",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": 1,
+        "path": "model_calls"
+      },
+      {
+        "check_id": "no-action-executed",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      },
+      {
+        "check_id": "no-capability-list",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "Take끼리 비교하기|다음 연습 목표 잡기",
+        "grader": "regex",
+        "note": "인사 답에는 할 수 있는 일 목록을 다시 늘어놓지 않는다(FE #1093 첫 화면 안내와 겹침)"
+      }
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-talk-practice",
+  "set": "agent_service",
+  "group": "small_talk",
+  "split": "dev",
+  "act": "should",
+  "title": "연습하려는 뜻 '오늘 발표 연습 좀 해 보려고요' — 고정 문장 + [연습 준비로] 버튼(자동 이동 없음)",
+  "expect_refusal": false,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "오늘 발표 연습 좀 해 보려고요",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-refusal-wording",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "확인하지 못해|근거를 찾지 못해|관계없는 질문|범위 밖이에요|답할 수 없어요|답을 완성하지 못했어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "system-only",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "GENERAL",
+          "GUIDE",
+          "RECORD",
+          "ASSESSMENT"
+        ],
+        "path": "claim_kinds"
+      },
+      {
+        "check_id": "one-model-call",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": 1,
+        "path": "model_calls"
+      },
+      {
+        "check_id": "no-action-executed",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "button-grade",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": "BUTTON",
+        "path": "items[type=START_PRACTICE].autonomy",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-screen-move",
+        "observe": "db_diff",
+        "compare": "absent",
+        "expect": "conversation.practice_moves",
+        "path": "changed",
+        "metric": "autonomy"
+      }
+    ]
+  }
+}

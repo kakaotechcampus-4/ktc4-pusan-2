@@ -11,10 +11,16 @@
     .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --ids rep-save-goal ana-slide3-gaze --repeat 1
     .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --set dev --fake                # 가짜 모델로 흐름만 확인(요금 없음)
     .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --write-schema                  # evals/scenarios/schema.json 다시 쓰기
+    .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --set all --corpus all            # 검수 전 초안까지 연 참고 실험
+    .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --ids-file evals/splits-8.json --ids-key calibration  # 조율 문항만
+    .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --dir <저장소 밖 폴더> --set all      # 처음 보는 문항(묶음 개수 검사 없음)
 
 - 고를 것: `--set dev|holdout|safety|objectivity|agent_service|eval|all`(eval = 50 전체), `--ids`(id 로 고름), `--limit N`(앞에서 N개),
   `--repeat`(기본 3, pass^3), `--workers`(동시에 돌릴 실행 수, 기본 1), `--bundle`(OPENAI · OPENAI_SOL),
   `--price-input/--price-cached/--price-output`(USD / 100만 토큰)과 `--price-date`(단가 확인일, 14-3).
+  `--corpus approved|all|none`(기본 approved = 서비스 조건: 서비스와 같은 호출로 검수를 마친 카드만 싣고, 못 만들면 자료 없음.
+  all = 검수 전 초안까지 연 참고 실험 — 7회차까지의 조건. 월드 · 검색 · 채점 원문 · 보고서에 같은 모드를 쓴다, P-0008 5-4),
+  `--ids-file` · `--ids-key`(id 목록 파일의 한 키, 예: 조율 · 잠금 나눔), `--dir`(다른 폴더의 시나리오 — 처음 보는 문항).
   보류(holdout)는 최종 측정 때만 돌리고 결과를 프롬프트 작성자에게 보이지 않는다(13-5).
 - 하는 일
   1. 시나리오를 모두 읽어 검사한다(scenario.py). 하나라도 틀리면 멈춘다(10-5).
@@ -475,6 +481,8 @@ class RunnerConfig:
     stop_after_provider_failures: int = 20
     #: 모델 호출 기록마다 부를 함수(run_suite 가 넣는다)
     on_call: Callable[[Any], None] | None = None
+    #: 자료 묶음 모드(scn.CORPUS_MODES). 시험 · 재생은 기본 all(시험 자료가 초안 카드를 쓴다), 명령은 기본 approved
+    corpus_mode: str = "all"
 
 
 #: 제공자 쪽 실패로 보는 오류 코드(사용량이 없을 때만). 시간 초과 · 무효 출력 · 거절 · 한도는 모델 · 코어 쪽이라 넣지 않는다
@@ -498,7 +506,7 @@ class _Ctx:
     def __init__(self, sc: scn.Scenario, inner: ToolLlm, secret: bytes, cfg: RunnerConfig) -> None:
         self.sc = sc
         self.cfg = cfg
-        self.world = scn.build_world(sc)
+        self.world = scn.build_world(sc, corpus_mode=cfg.corpus_mode)  # type: ignore[arg-type]
         self.clock = OffsetClock()
         self.llm = MeteredLlm(inner, self.clock, on_call=cfg.on_call)
         self.log: list[dict[str, Any]] = []
@@ -1791,11 +1799,19 @@ def summarize(
 # ── 판 · 해시 (13-5 동결) ─────────────────────────────────────────────────
 
 
-def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -> dict[str, Any]:
+def freeze_info(
+    scenarios: list[scn.Scenario],
+    model: str | None,
+    bundle: str,
+    *,
+    corpus_mode: str = "approved",
+    directory: Path | None = None,
+) -> dict[str, Any]:
+    base = directory or scn.SCENARIO_DIR
     files = {
-        s.id: scn.file_hash(scn.SCENARIO_DIR / f"{s.id}.json")
+        s.id: scn.file_hash(base / f"{s.id}.json")
         for s in scenarios
-        if (scn.SCENARIO_DIR / f"{s.id}.json").exists()
+        if (base / f"{s.id}.json").exists()
     }
     code = {
         name: hashlib.sha256((LAB / name).read_bytes()).hexdigest()
@@ -1807,6 +1823,10 @@ def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -
         "prompt_version": prompts.PROMPT_VERSION,
         "corpus_version": manifest.get("corpus_version"),
         "corpus_sha256": manifest.get("sha256"),
+        #: 자료 모드와 그 모드에서 서비스가 실은 판 · 카드 수(카드를 더하는 주입 시나리오는 시험용 판을 따로 만든다)
+        "corpus_mode": corpus_mode,
+        **_served_corpus(corpus_mode),
+        "scenario_dir": str(base) if directory is not None else None,
         "model": model,
         "bundle": bundle,
         "role": dataclasses.asdict(tool_role()),
@@ -1815,6 +1835,18 @@ def freeze_info(scenarios: list[scn.Scenario], model: str | None, bundle: str) -
         "scenarios_sha256": _h(sorted(files.items())),
         "schema_sha256": scn.file_hash(scn.SCHEMA_FILE) if scn.SCHEMA_FILE.exists() else None,
         "grader_sha256": code,
+    }
+
+
+def _served_corpus(mode: str) -> dict[str, Any]:
+    corpus = scn.build_corpus_for(None, mode)  # type: ignore[arg-type]
+    if corpus is None:
+        return {"corpus_served": "none", "corpus_cards": 0}
+    kinds = Counter(c.kind for c in corpus.cards)
+    return {
+        "corpus_served": corpus.version,
+        "corpus_cards": len(corpus.cards),
+        "corpus_kinds": dict(sorted(kinds.items())),
     }
 
 
@@ -1897,7 +1929,13 @@ def retry_plan(
         "followups": a.followups,
         "reasoning": dict(efforts) or {"default": tool_role().reasoning_effort},
     }
-    now = freeze_info(scenarios, None, a.bundle)
+    now = freeze_info(
+        scenarios,
+        None,
+        a.bundle,
+        corpus_mode=getattr(a, "corpus", "approved"),
+        directory=getattr(a, "dir", None),
+    )
     old_hashes = info.get("grader_sha256")
     if not isinstance(old_hashes, dict):
         raise ValueError("앞 결과에 채점 코드 해시(grader_sha256)가 없어 합칠 수 없다")
@@ -1918,7 +1956,14 @@ def retry_plan(
             "fake": a.fake,
             **{
                 k: now[k]
-                for k in ("feature_version", "prompt_version", "corpus_version", "scenarios_sha256")
+                for k in (
+                    "feature_version",
+                    "prompt_version",
+                    "corpus_version",
+                    "corpus_mode",
+                    "corpus_served",
+                    "scenarios_sha256",
+                )
             },
         }
     )
@@ -1973,6 +2018,8 @@ def _markdown(rep: dict[str, Any]) -> str:
         f" · 반복 {info['repeat']}번 · 후속 말 {'사용' if info['followups'] else '안 씀'}",
         f"- 판: `{info['feature_version']}` · prompt `{info['prompt_version']}` · corpus `{info['corpus_version']}`"
         f" · 모델 `{info['model']}`({info['bundle']})",
+        f"- 자료 모드: `{info.get('corpus_mode', 'all')}` — 실은 판 `{info.get('corpus_served', '?')}`"
+        f" · 카드 {info.get('corpus_cards', '?')}장 {info.get('corpus_kinds', '')}",
         f"- 시나리오 {len(info['scenario_ids'])}개 · 해시 `{info['scenarios_sha256']}` · 채점기 해시는 report.json",
         "- 기대 결과(사람 정답)는 아직 팀원 검수 전이다(13-5). 근거성 LLM 판정과 사람 20문장의 일치도는 미측정",
         "",
@@ -2129,14 +2176,45 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="앞 결과 폴더: 제공자 장애로 멈췄거나 장애가 섞인 실행만 다시 돌려 합친다(같은 설정이어야 한다)",
     )
+    ap.add_argument(
+        "--corpus",
+        default="approved",
+        choices=scn.CORPUS_MODES,
+        help="자료 묶음 모드: approved(서비스 조건, 기본) · all(검수 전 초안 포함 참고 실험) · none(자료 없음)",
+    )
+    ap.add_argument(
+        "--dir",
+        type=Path,
+        default=None,
+        help="다른 폴더의 시나리오(처음 보는 문항). 묶음 개수 검사는 하지 않는다",
+    )
+    ap.add_argument("--ids-file", type=Path, default=None, help="id 목록 JSON 파일({키: [id, …]})")
+    ap.add_argument(
+        "--ids-key", default=None, help="--ids-file 에서 쓸 키(예: calibration · locked)"
+    )
     ap.add_argument("--write-schema", action="store_true")
     a = ap.parse_args(argv)
     if a.write_schema:
         print(f"썼다: {write_schema()}")
         return 0
     sets, splits = SETS[a.set]
+    ids = a.ids
+    if a.ids_file is not None:
+        if not a.ids_key:
+            print("--ids-file 에는 --ids-key 가 필요하다", file=sys.stderr)
+            return 2
+        listed = json.loads(a.ids_file.read_text(encoding="utf-8")).get(a.ids_key)
+        if not isinstance(listed, list) or not listed:
+            print(f"--ids-file 에 '{a.ids_key}' 목록이 없다", file=sys.stderr)
+            return 2
+        ids = [*(ids or []), *listed]
     try:
-        scenarios = scn.load_scenarios(sets=sets, splits=splits, ids=a.ids)
+        if a.dir is not None:
+            scenarios = scn.load_scenarios(
+                a.dir, sets=sets, splits=splits, ids=ids, check_counts=False
+            )
+        else:
+            scenarios = scn.load_scenarios(sets=sets, splits=splits, ids=ids)
     except scn.ScenarioError as e:
         print("시나리오 검사 실패 — 실행을 멈춘다:", file=sys.stderr)
         for p in e.problems:
@@ -2159,6 +2237,7 @@ def main(argv: list[str] | None = None) -> int:
         followups=a.followups,
         workers=max(1, a.workers),
         prices=prices,
+        corpus_mode=a.corpus,
     )
     try:
         efforts = parse_reasoning(a.reasoning)
@@ -2216,7 +2295,7 @@ def main(argv: list[str] | None = None) -> int:
         judged, judge_info = judge_all(results, bundle=a.judge_bundle, prices=judge_prices)
     model = model or getattr(base, "model_name", None)
     info = {
-        **freeze_info(scenarios, model, a.bundle),
+        **freeze_info(scenarios, model, a.bundle, corpus_mode=a.corpus, directory=a.dir),
         "started_at": started.isoformat(timespec="seconds"),
         "finished_at": datetime.now().isoformat(timespec="seconds"),
         "set": a.set,

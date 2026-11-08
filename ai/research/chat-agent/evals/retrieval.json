@@ -1,0 +1,846 @@
+[
+  {
+    "id": "r-001",
+    "query": "사람들 앞에 서면 자꾸 바닥만 보게 돼요ㅠ 누구 쪽을 얼마나 봐야 자연스러워요?",
+    "expected": [
+      "g-01"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-002",
+    "query": "원고 없으면 불안해서 계속 읽게 되는데, 종이에서 좀 벗어나려면 어케 해요?",
+    "expected": [
+      "g-02"
+    ],
+    "acceptable": [
+      "u-17"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-003",
+    "query": "청중 이해에 맞는 발화 속도",
+    "expected": [
+      "g-03"
+    ],
+    "acceptable": [
+      "g-18"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "keyword"
+  },
+  {
+    "id": "r-004",
+    "query": "말하다 잠깐 조용해지면 망한 느낌이라 계속 이어 말해요. 중간에 안 말하는 시간이 있어도 괜찮나요?",
+    "expected": [
+      "g-04"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-005",
+    "query": "제가 한마디 할 때마다 '약간', '뭐랄까'를 붙이거든요ㅋㅋ 이런 버릇 어케 빼죠?",
+    "expected": [
+      "g-05"
+    ],
+    "acceptable": [
+      "g-04"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-006",
+    "query": "문장 끝 소리 흐려짐 개선",
+    "expected": [
+      "g-06"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-007",
+    "query": "앞에만 나가면 심장이 뛰고 숨차서 첫마디부터 와다다 해버려요. 시작할 때 진정하는 요령 있어요?",
+    "expected": [
+      "g-07"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-008",
+    "query": "초반 설명하다 보면 뒤에 할 얘기는 늘 쫓기듯 해요. 페이지마다 쓸 시간을 어떻게 나눠두면 돼요?",
+    "expected": [
+      "g-08"
+    ],
+    "acceptable": [
+      "g-10"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-009",
+    "query": "오프닝 청중 관심 끄는 방법",
+    "expected": [
+      "g-09"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "keyword"
+  },
+  {
+    "id": "r-010",
+    "query": "다 말하고 나면 그냥 '네 이상입니다' 하고 도망치듯 끝내요. 듣는 사람한테 여운 있게 끝내는 요령이 궁금해요.",
+    "expected": [
+      "g-10"
+    ],
+    "acceptable": [
+      "g-11"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-011",
+    "query": "듣는 분들이 얘기는 많았는데 그래서 뭘 말하려는 건지 모르겠대요. 중심이 흐려지지 않게 전달하려면요?",
+    "expected": [
+      "g-11"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-012",
+    "query": "발표 연습 녹화 개선점 하나",
+    "expected": [
+      "g-12"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-013",
+    "query": "끝나고 누가 물어봤는데 제가 전혀 모르는 거면 뭐라고 대응해야 해요? 아는 척은 못하겠고요.",
+    "expected": [
+      "g-13"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-014",
+    "query": "설명하다 PPT를 먼저 클릭할지 얘기 끝나고 클릭할지 매번 헷갈려요. 자연스럽게 연결하는 요령 있나요?",
+    "expected": [
+      "g-14"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-015",
+    "query": "로봇 같은 말투 높낮이 변화",
+    "expected": [
+      "g-15"
+    ],
+    "acceptable": [
+      "g-03"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "keyword"
+  },
+  {
+    "id": "r-016",
+    "query": "연습 끝나고 보면 꼭 말해야 할 수치 하나씩 빼고 말했더라고요. 이런 실수 줄이는 법 있어요?",
+    "expected": [
+      "g-16"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-017",
+    "query": "혼자 할 땐 한 번 버벅이면 첨부터 다시 해요. 실제 발표에 대비할 때도 이렇게 해도 될까요?",
+    "expected": [
+      "g-17"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-018",
+    "query": "빨리 말할수록 발표 잘하나",
+    "expected": [
+      "g-18"
+    ],
+    "acceptable": [
+      "g-03"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-019",
+    "query": "말하는 속도 수치가 높게 나왔으면 제가 떨었다는 증거라고 봐도 되나요?",
+    "expected": [
+      "g-19"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-020",
+    "query": "PPT에 써 있는 걸 낭독하게 돼서 사람들이 화면만 봐요. 말로 전달하는 습관은 어떻게 들여요?",
+    "expected": [
+      "g-20"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-021",
+    "query": "집에서 웹캠 켜고 할 땐 모니터 속 제 얼굴을 보면 돼요, 렌즈 구멍을 보면 돼요?",
+    "expected": [
+      "g-01"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-022",
+    "query": "통째로 외우려니 한 단어만 까먹어도 머리가 하얘져요. 문장 전부를 기억하지 않고도 이어 말할 수 있나요?",
+    "expected": [
+      "g-02"
+    ],
+    "acceptable": [
+      "g-16"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-023",
+    "query": "낯선 개념 숫자 설명 템포",
+    "expected": [
+      "g-03"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "keyword"
+  },
+  {
+    "id": "r-024",
+    "query": "중요한 말을 딱 하기 직전에 좀 뜸을 들여도 돼요? 너무 오래 끌면 이상할 거 같아서요.",
+    "expected": [
+      "g-04"
+    ],
+    "acceptable": [
+      "g-15"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-025",
+    "query": "녹음 들으니까 생각하는 동안 계속 '에...' 하네요. 다음 말 떠올릴 때 이 소리 대신 뭘 하면 좋죠?",
+    "expected": [
+      "g-05"
+    ],
+    "acceptable": [
+      "g-04"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-026",
+    "query": "뒷자리까지 들리는 발성 방법",
+    "expected": [
+      "g-06"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-027",
+    "query": "다들 내가 쫄은 걸 알아챌까봐 더 급하게 말하게 돼요. 티 안 내려고 애쓸수록 꼬이는데 어쩌죠?",
+    "expected": [
+      "g-07"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-028",
+    "query": "말하다가 벌써 시간이 이만큼 갔어? 하고 놀라요. 끝나기 전에 페이스가 밀린 걸 알아차릴 방법 있을까요?",
+    "expected": [
+      "g-08"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-029",
+    "query": "영상 다시 보면 고칠 게 너무 많아서 한꺼번에 다 신경 쓰게 돼요. 그러니까 오히려 더 엉망인데 어떻게 접근해요?",
+    "expected": [
+      "g-12"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-030",
+    "query": "질문 받은 뒤 답변 순서",
+    "expected": [
+      "g-13"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-031",
+    "query": "녹음한 거 들으니 완전 국어책 읽는 느낌이에요. 소리만 크게 하는 거 말고 귀에 들어오게 말하려면요?",
+    "expected": [
+      "g-15"
+    ],
+    "acceptable": [
+      "g-03"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-032",
+    "query": "이미 다음 페이지 얘기 중인데 아까 중요한 설명을 안 했다는 걸 깨달았어요. 무조건 앞으로 되돌아가야 하나요?",
+    "expected": [
+      "g-16"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-033",
+    "query": "시간 부족 말 가속 해결",
+    "expected": [
+      "g-18"
+    ],
+    "acceptable": [
+      "g-08"
+    ],
+    "screen": null,
+    "kind": "method",
+    "split": "dev",
+    "style": "keyword"
+  },
+  {
+    "id": "r-034",
+    "query": "급해진 게 원고에 매달려서인지 시간에 쫓겨서인지, 측정된 것만 보고 구별할 수 있어?",
+    "expected": [
+      "g-19"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "method",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-035",
+    "query": "발표 파일 올리려는데 pptx도 받아요? 용량은 어디까지 돼요?",
+    "expected": [
+      "u-01"
+    ],
+    "acceptable": [],
+    "screen": null,
+    "kind": "usage",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-036",
+    "query": "대사 붙여넣었더니 전부 첫 페이지 거로 들어가요ㅠ 글 사이에 뭘 써야 페이지별로 나눠져요?",
+    "expected": [
+      "u-03"
+    ],
+    "acceptable": [
+      "u-04"
+    ],
+    "screen": "pitch_create:script",
+    "kind": "usage",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-037",
+    "query": "여기서 나눈 대사는 8개고 자료는 9페이지래요. 저장이 안 눌리는데 어디로 돌아가서 맞춰요?",
+    "expected": [
+      "u-04"
+    ],
+    "acceptable": [
+      "u-03"
+    ],
+    "screen": "pitch_create:script",
+    "kind": "usage",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-038",
+    "query": "목표 시간 허용 오차 저장",
+    "expected": [
+      "u-05"
+    ],
+    "acceptable": [],
+    "screen": "pitch_create:info",
+    "kind": "usage",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-039",
+    "query": "기준 적는 칸까지 왔는데 이거 빈칸이면 연습 못 들어가요?",
+    "expected": [
+      "u-06"
+    ],
+    "acceptable": [
+      "u-09"
+    ],
+    "screen": "pitch_create:criteria",
+    "kind": "usage",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-040",
+    "query": "기준 목록에서 손으로 고친 게 있는데 다시 정리 누르면 그거 남아 있나요?",
+    "expected": [
+      "u-08"
+    ],
+    "acceptable": [],
+    "screen": "pitch_create:criteria",
+    "kind": "usage",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-041",
+    "query": "피치 수정 이전 자료 버전",
+    "expected": [
+      "u-10"
+    ],
+    "acceptable": [
+      "u-02"
+    ],
+    "screen": "pitch_edit",
+    "kind": "usage",
+    "split": "dev",
+    "style": "keyword"
+  },
+  {
+    "id": "r-042",
+    "query": "시작 전 화면인데 카메라랑 마이크만 켜면 돼요? 시작 버튼 누르려면 꼭 끝내야 하는 게 뭔가요?",
+    "expected": [
+      "u-11"
+    ],
+    "acceptable": [
+      "u-13"
+    ],
+    "screen": "device_check",
+    "kind": "usage",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-043",
+    "query": "말하고 있는데 막대가 꿈쩍도 안 해요. 헤드셋은 꽂혀 있는데 뭐부터 확인하죠?",
+    "expected": [
+      "u-12"
+    ],
+    "acceptable": [
+      "u-11"
+    ],
+    "screen": "device_check",
+    "kind": "usage",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-044",
+    "query": "시선 캘리브레이션 흐릿함 재시도",
+    "expected": [
+      "u-13"
+    ],
+    "acceptable": [],
+    "screen": "device_check",
+    "kind": "usage",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-045",
+    "query": "여기 문단 읽는 건 왜 하는 거예요? 안 읽고 넘어가도 되나요?",
+    "expected": [
+      "u-14"
+    ],
+    "acceptable": [
+      "u-11"
+    ],
+    "screen": "device_check",
+    "kind": "usage",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-046",
+    "query": "실전으로 들어왔더니 옆에서 알려주던 코치가 안 나와요. 원래 끝나고만 결과 보는 거예요?",
+    "expected": [
+      "u-16"
+    ],
+    "acceptable": [
+      "u-18"
+    ],
+    "screen": "rehearsal",
+    "kind": "usage",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-047",
+    "query": "원고 대신 키워드 표시 선택",
+    "expected": [
+      "u-17"
+    ],
+    "acceptable": [],
+    "screen": "rehearsal",
+    "kind": "usage",
+    "split": "dev",
+    "style": "keyword"
+  },
+  {
+    "id": "r-048",
+    "query": "방금 끝냈는데 숫자만 뜨고 피코가 해주는 말은 비어 있어요. 좀 기다리면 나와요?",
+    "expected": [
+      "u-19"
+    ],
+    "acceptable": [],
+    "screen": "report",
+    "kind": "usage",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-049",
+    "query": "결과에서 목소리 쪽이 '판단 불가'래요. 못했다는 뜻인가요?",
+    "expected": [
+      "u-20"
+    ],
+    "acceptable": [],
+    "screen": "report",
+    "kind": "usage",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-050",
+    "query": "지난 연습 목록 피치 필터",
+    "expected": [
+      "u-22"
+    ],
+    "acceptable": [],
+    "screen": "takes",
+    "kind": "usage",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-051",
+    "query": "여러 번 한 거 그래프로 보는 중인데 어떤 회차는 점선이에요. 그날 유독 못했다는 표시예요?",
+    "expected": [
+      "u-23"
+    ],
+    "acceptable": [],
+    "screen": "comparison",
+    "kind": "usage",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-052",
+    "query": "무슨 말을 했는지 고르라는데 저도 기억이 안 나요. 그냥 넘기면 내용 결과는 어떻게 돼요?",
+    "expected": [
+      "u-24"
+    ],
+    "acceptable": [],
+    "screen": "report",
+    "kind": "usage",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-053",
+    "query": "회사 발표할 때 넥타이까지 매는 게 좋을까요? 복장을 어느 정도로 갖춰야 할지 모르겠어요.",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-054",
+    "query": "레이저 쏠 때 점이 덜덜 움직여요. 포인터 잡는 요령이 따로 있나요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-055",
+    "query": "무대가 꽤 넓은데 말하면서 왔다갔다 해도 돼요? 어느 때 자리를 옮기는 게 자연스럽죠?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-056",
+    "query": "발표 손동작 범위 조절",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-057",
+    "query": "발표대 높이를 조절할 수 있대요. 제 몸 어디쯤 오게 맞추는 게 편할까요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-058",
+    "query": "핀마이크를 옷 어디에 달아야 천 스치는 소리가 덜 나요? 재킷 입고 발표해요.",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-059",
+    "query": "소규모 발표회인데 듣는 분들 의자를 일렬로 둘까요, ㄷ자로 둘까요? 배치할 때 볼 게 있나요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-060",
+    "query": "수어 통역사 발표 무대 배치",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-061",
+    "query": "파워포인트 발표자 도구는 제 노트북에만 보이고 빔에는 슬라이드만 나오게 하려면 어떻게 설정해요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-062",
+    "query": "발표 직전에 밥 먹으면 속이 불편해요. 무대 올라가기 전에 음식은 뭘 피하는 게 좋아요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "user"
+  },
+  {
+    "id": "r-063",
+    "query": "현장 발표하면서 청중 폰으로 투표받고 결과 띄우고 싶은데 어떤 방식으로 연결해요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-064",
+    "query": "발표 중 프로젝터 고장 대응",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-065",
+    "query": "냉장고에 두부랑 달걀만 있는데 저녁 뭐 해먹지?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-066",
+    "query": "자전거 체인 녹 제거",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-067",
+    "query": "고양이가 화분 흙을 자꾸 파헤치는데 어케 막아요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-068",
+    "query": "세탁기 배수 필터 청소",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "keyword"
+  },
+  {
+    "id": "r-069",
+    "query": "바질을 키우는데 잎이 노래져요. 물을 너무 많이 준 걸까요?",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "dev",
+    "style": "user"
+  },
+  {
+    "id": "r-070",
+    "query": "뜨개질 코 빠짐 복구",
+    "expected": [],
+    "acceptable": [],
+    "screen": null,
+    "kind": "none",
+    "split": "test",
+    "style": "keyword"
+  }
+]
