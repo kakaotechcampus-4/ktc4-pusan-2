@@ -21,7 +21,7 @@ const PENDING_SHOWN = 3;
 
 export function HomeSurveyNotice() {
   const { data: user } = useSession();
-  // 동의하면 연 버튼이 창과 함께 사라지므로, 완료 안내로 초점을 옮깁니다 (#845).
+  // 동의하면 연 버튼이 창과 함께 사라지므로, 눈에 보이는 완료 안내로 초점을 옮깁니다 (#845).
   // 목록 응답과 무관하게 안내가 즉시 생겨 body 로 초점이 빠지지 않으며, 이후 목록 갱신도 초점을 빼앗지 않습니다.
   const completionRef = useRef<HTMLParagraphElement>(null);
   const [agreed, setAgreed] = useState(false);
@@ -33,9 +33,17 @@ export function HomeSurveyNotice() {
   return (
     <>
       {consented && agreed && (
-        <p ref={completionRef} role="status" tabIndex={-1} className="sr-only">
-          사용자 테스트 참여에 동의했어요. 설문은 각 리포트에서 남길 수 있어요.
-        </p>
+        <div className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10">
+          <p
+            ref={completionRef}
+            role="status"
+            tabIndex={-1}
+            className="border-2 border-ink bg-coral-wash px-4 py-3 text-sm text-ink focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+          >
+            <span className="font-bold">사용자 테스트 참여에 동의했어요.</span> 설문은 각
+            리포트에서 남길 수 있어요.
+          </p>
+        </div>
       )}
       {consented ? <PendingSurveyList /> : <ConsentPrompt onAgreed={() => setAgreed(true)} />}
     </>
