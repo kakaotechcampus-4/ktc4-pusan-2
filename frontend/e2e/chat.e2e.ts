@@ -70,3 +70,23 @@ test('3. 에이전트가 다른 피치를 열면 범위 칩이 바뀜', async ({
   await expect(claim(panel, `${PITCH_TITLE}로 범위를 바꿨어요.`)).toBeVisible();
   await expect(scopeChip(panel)).toHaveAccessibleName(`범위: 피치: ${PITCH_TITLE}`);
 });
+
+test('4. 목표 저장 카드 → [되돌리기]', async ({ page }) => {
+  await page.goto(`/takes/${TAKE3_ID}`);
+  const panel = await openChat(page);
+
+  await ask(panel, '3장 시선을 목표로 잡아 줘');
+
+  // 목표 저장은 승인 카드를 거칩니다 (F10)
+  await panel.getByRole('button', { name: '승인', exact: true }).click();
+  await expect(claim(panel, '목표를 저장했어요.')).toBeVisible();
+
+  const goal = panel.getByRole('group', { name: '대화에서 정한 목표' });
+  await expect(goal).toBeVisible();
+  const undo = goal.getByRole('button', { name: /^되돌리기/ });
+  await undo.click();
+
+  // 되돌린 뒤에는 다시 누를 수 없고 이유를 함께 읽습니다
+  await expect(undo).toHaveAccessibleName(/되돌렸어요/);
+  await expect(undo).toHaveAttribute('aria-disabled', 'true');
+});
