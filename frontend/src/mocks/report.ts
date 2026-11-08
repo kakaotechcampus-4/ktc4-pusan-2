@@ -149,7 +149,8 @@ const comparisonFixture: ReviewResult['comparison'] = (
 
 const done: TakeReport = {
   take_id: 't3',
-  pitch_id: 'p1',
+  // 홈 목(`home.ts`)의 첫 피치와 같은 ID — BE 처럼 UUID 라야 대화 보내기(`page.pitch_id`)를 목이 받습니다
+  pitch_id: '10000000-0000-4000-8000-000000000001',
   pitch_title: '캡스톤 최종 발표',
   take_number: 3,
   script_mode: 'HIGHLIGHT',
