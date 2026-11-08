@@ -32,7 +32,8 @@ const server = vi.hoisted(() => ({
     Promise.resolve({ enabled: true }),
   messages: (_path?: string): Promise<unknown> =>
     Promise.resolve({ messages: [], next_before_seq: null }),
-  conversations: (): Promise<unknown> => Promise.resolve({ conversations: [] }),
+  conversations: (_path?: string): Promise<unknown> =>
+    Promise.resolve({ conversations: [], next_cursor: null }),
   memory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
   pitches: (): Promise<unknown> => Promise.resolve({ pitches: [] }),
   removeMemory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
@@ -46,7 +47,7 @@ vi.mock('@/shared/api/client', async (original) => ({
     server.seen.push({ path, signal: init.signal ?? null });
     if (path === '/api/chat/availability') return server.availability(init.signal ?? null);
     if (path.startsWith('/api/chat/conversations/')) return server.messages(path);
-    if (path === '/api/chat/conversations') return server.conversations();
+    if (path.split('?')[0] === '/api/chat/conversations') return server.conversations(path);
     if (path === '/api/chat/memory') return server.memory();
     if (path.startsWith('/api/chat/memory/items/')) return server.removeMemory();
     if (path === '/api/pitches/') return server.pitches();
@@ -1720,6 +1721,67 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await act(async () => button('다시 시도')!.click());
     await settle();
     expect(panel()!.textContent).toContain('지난 대화가 없어요.');
+  });
+
+  describe('지난 대화 더 보기 (BE #1000 커서)', () => {
+    const row = (id: string, title: string) => ({
+      conversation_id: id,
+      title,
+      scope_pitch_id: null,
+      scope_pitch_title: null,
+      last_user_activity_at: '2026-11-05T12:30:00Z',
+      created_at: '2026-11-05T12:00:00Z',
+      stale: false,
+    });
+    const titles = () =>
+      [...host.querySelectorAll('[aria-label="지난 대화"] li .truncate')].map((t) => t.textContent);
+
+    it('다음 쪽이 있으면 [지난 대화 더 보기]로 받은 커서를 보내 아래에 잇고, 끝이면 버튼을 거둔다', async () => {
+      server.conversations = (path) =>
+        Promise.resolve(
+          path?.includes('cursor=k2')
+            ? // 쪽 사이에 활동이 생겨 앞 쪽의 대화가 다시 와도 한 번만 보입니다
+              { conversations: [row('c2', '둘째'), row('c1', '첫째')], next_cursor: null }
+            : { conversations: [row('c1', '첫째')], next_cursor: 'k2' },
+        );
+      await visit('/');
+      await openPanel();
+      await act(async () => button('대화 목록')!.click());
+      await settle();
+      expect(titles()).toEqual(['첫째']);
+
+      await act(async () => button('지난 대화 더 보기')!.click());
+      await settle();
+      expect(server.seen.some((s) => s.path === '/api/chat/conversations?cursor=k2')).toBe(true);
+      expect(titles()).toEqual(['첫째', '둘째']);
+      expect(button('지난 대화 더 보기')).toBeFalsy();
+    });
+
+    it('더 보기가 실패하면 읽은 줄은 그대로 두고 그 자리에서 알리며, 다시 누르면 이어 읽는다', async () => {
+      let fail = true;
+      server.conversations = (path) => {
+        if (!path?.includes('cursor=')) {
+          return Promise.resolve({ conversations: [row('c1', '첫째')], next_cursor: 'k2' });
+        }
+        if (fail) return Promise.reject(new Error('끊김'));
+        return Promise.resolve({ conversations: [row('c2', '둘째')], next_cursor: null });
+      };
+      await visit('/');
+      await openPanel();
+      await act(async () => button('대화 목록')!.click());
+      await settle();
+      await act(async () => button('지난 대화 더 보기')!.click());
+      await settle();
+      expect(titles()).toEqual(['첫째']);
+      expect(alerts()).toContain('지난 대화를 더 불러오지 못했으니 다시 시도해 주세요.');
+      expect(alerts()).not.toContain('대화 목록을 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+
+      fail = false;
+      await act(async () => button('지난 대화 더 보기')!.click());
+      await settle();
+      expect(titles()).toEqual(['첫째', '둘째']);
+      expect(alerts()).not.toContain('지난 대화를 더 불러오지 못했으니 다시 시도해 주세요.');
+    });
   });
 
   it('[이전 대화 더 보기]는 앞 페이지를 읽어 위에 잇는다', async () => {
