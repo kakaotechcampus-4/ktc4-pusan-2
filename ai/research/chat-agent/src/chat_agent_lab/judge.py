@@ -147,7 +147,7 @@ def judge_all(
     if llm is None:
         from .app import from_env
 
-        llm = from_env(bundle=bundle).llm
+        llm = from_env(bundle=bundle, search="keyword").llm
     judged: dict[str, int] = {}
     samples: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []

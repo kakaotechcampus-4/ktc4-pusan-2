@@ -835,6 +835,28 @@ class ChatAgentConfig(_Frozen):
     #: P0 은 팀이 쓴 카드만(라이선스 위험 없음). 외부 자료(CC BY · CC BY-SA)는 P2
     allowed_licenses: tuple[str, ...] = ("team",)
 
+    # ── 6-10 하이브리드 검색(키워드 + 임베딩, 질문 임베딩을 넘겨 받은 때만) ───────────
+    #: 두 순위 목록을 합치는 RRF 상수 k: 점수 = Σ 1 / (k + 순위)
+    hybrid_rrf_k: int = 60
+    #: 벡터 후보는 코사인이 `hybrid_cosine_min` 이상인 카드 중 위에서 이만큼
+    hybrid_vector_top: int = 5
+    #: 벡터 후보 문턱. '자료 없음'은 합치기 전 두 후보 목록이 모두 비었는지로만 정한다(합친 점수에는 문턱을 두지 않는다).
+    #: 0.40 은 검색 평가 dev 에서 고른 값(recall@3 최고이면서 자료 없음 판정이 키워드보다 나쁘지 않음, 8회차)
+    hybrid_cosine_min: float = 0.40
+    #: 후보를 싣는 방식. UNION = 키워드 후보 ∪ 벡터 후보. AGREE = 두 신호가 함께 맞는 카드만(키워드가 `MIN_SCORE` 를 넘고
+    #: 코사인이 `hybrid_agree_cosine` 이상), 한쪽이 아주 강하면(`hybrid_keyword_strong` · `hybrid_cosine_strong`) 그것만으로도 싣는다.
+    #: 무관한 질문에도 2글자 조각이 겹치거나 코사인이 0.3~0.4 대로 나와 '자료 없음'을 놓치는 것을 줄이려는 안(8회차 M2b)
+    hybrid_gate: Literal["UNION", "AGREE"] = "UNION"
+    hybrid_agree_cosine: float = 0.30
+    hybrid_keyword_strong: float = 30.0
+    hybrid_cosine_strong: float = 0.60
+    #: 질문 임베딩 호출 한 번의 시간 제한(초). 실행당 한 번만 부르고 다시 시도하지 않는다
+    embed_timeout_seconds: float = 2.0
+    #: 조사에 남은 시간이 이보다 짧으면 임베딩을 건너뛰고 키워드만 쓴다
+    embed_min_seconds: float = 0.3
+    #: 카드 · 질문 임베딩 차원(`dimensions` 인자). 자료 파일과 같아야 한다
+    embed_dimensions: int = 1536
+
     @model_validator(mode="after")
     def _goal_metrics_match_direction(self) -> ChatAgentConfig:
         expected = {"HIGHER": "gt_base", "LOWER": "lt_base", "RANGE": "in_range"}

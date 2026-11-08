@@ -4,6 +4,14 @@
 
     .venv/bin/python -m chat_agent_lab.retrieval --corpus all --split dev
     .venv/bin/python -m chat_agent_lab.retrieval --corpus approved --split test --out <폴더>
+    .venv/bin/python -m chat_agent_lab.retrieval --search hybrid --corpus all --split dev
+    .venv/bin/python -m chat_agent_lab.retrieval --search hybrid --embeddings outputs/r8/embeddings-512.json \
+        --cosine-min 0.25 0.35 0.45
+
+- 하이브리드(`--search hybrid`): `ai/.env` 의 임베딩 묶음으로 모든 문항 질문을 **요청 한 번**으로 임베딩한다. 결과는
+  `outputs/r8/retrieval-query-embeddings.json` 에 (모델 · 차원 · 질문 해시) 열쇠로 모아 두어 다시 돌려도 요금이 들지 않는다.
+  카드 벡터는 `--embeddings`(기본: 서비스가 읽는 `guides/embeddings.json`, 차원은 파일에서 읽음). `--cosine-min` 은 벡터 후보
+  문턱을 덮어쓰고(여러 값을 주면 값마다 돌려 표로 모은다), dev 로 고른다.
 
 - 문항: `evals/retrieval.json`. 문항 하나 = `{id, query, expected[], acceptable[], screen, kind(method · usage · none), split(dev · test), style(user · keyword)}`.
   기대 카드는 검색 코드와 따로(검색 코드를 보지 않고) 카드 본문만 보고 정했다. `none`은 어느 카드도 답을 뒷받침하지 않는 질문이다.
@@ -20,6 +28,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections.abc import Callable, Sequence
@@ -27,12 +36,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, load_config
 from pitch_coach_ai.features.chat_agent.corpus import Corpus
 
 from . import scenario as scn
+from .app import embedding_env
 
 RETRIEVAL_FILE = Path(__file__).resolve().parents[2] / "evals" / "retrieval.json"
 KS = (1, 3, 5)
+#: 질문 임베딩 캐시(git 무시 폴더). 열쇠 = sha256(모델 | 차원 | 질문)
+QUERY_CACHE = (
+    Path(__file__).resolve().parents[2] / "outputs" / "r8" / "retrieval-query-embeddings.json"
+)
 
 #: 검색기: (묶음, 질의, 화면) → 순위대로 고른 source_id 목록(빈 목록 = 자료 없음)
 Searcher = Callable[[Corpus, str, "str | None"], list[str]]
@@ -76,6 +91,52 @@ def load_items(path: Path = RETRIEVAL_FILE) -> list[Item]:
 
 def keyword_searcher(corpus: Corpus, query: str, screen: str | None) -> list[str]:
     return [h.card.source_id for h in corpus.search(query, screen=screen)]
+
+
+def embed_queries(
+    queries: Sequence[str],
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    dims: int,
+    cache: Path = QUERY_CACHE,
+    embed_batch: Callable[..., list[list[float]]] | None = None,
+) -> dict[str, list[float]]:
+    """질문마다 임베딩(질문 → 벡터). 캐시에 없는 질문만 요청 한 번으로 묶어 부르고 캐시에 더한다."""
+    if embed_batch is None:
+        from pitch_coach_ai.common.embedding import embed_batch as _batch
+
+        embed_batch = _batch
+
+    def key(q: str) -> str:
+        return hashlib.sha256(f"{model}|{dims}|{q}".encode()).hexdigest()
+
+    store: dict[str, list[float]] = {}
+    if cache.exists():
+        store = json.loads(cache.read_text(encoding="utf-8"))
+    missing = sorted({q for q in queries if key(q) not in store})
+    if missing:
+        vecs = embed_batch(
+            base_url=base_url, api_key=api_key, model=model, dims=dims, texts=missing
+        )
+        for q, v in zip(missing, vecs, strict=True):
+            store[key(q)] = v
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(store, separators=(",", ":")), encoding="utf-8", newline="\n")
+    return {q: store[key(q)] for q in queries}
+
+
+def hybrid_searcher(vectors: dict[str, list[float]]) -> Searcher:
+    """하이브리드 검색기: 질문 벡터(`embed_queries`)를 묶음의 `search` 에 넘긴다. 묶음에 카드 벡터가 있어야 한다."""
+
+    def search(corpus: Corpus, query: str, screen: str | None) -> list[str]:
+        return [
+            h.card.source_id
+            for h in corpus.search(query, screen=screen, query_vector=vectors[query])
+        ]
+
+    return search
 
 
 def _rank(got: Sequence[str], want: set[str]) -> int | None:
@@ -157,26 +218,88 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="자료 검색 평가(recall@k · 자료 없음 판정)")
     ap.add_argument("--corpus", default="all", choices=scn.CORPUS_MODES)
     ap.add_argument("--split", default="dev", choices=("dev", "test", "both"))
+    ap.add_argument("--search", default="keyword", choices=("keyword", "hybrid"))
+    ap.add_argument(
+        "--embeddings",
+        type=Path,
+        default=None,
+        help="hybrid 의 카드 벡터 파일(기본: guides/embeddings.json)",
+    )
+    ap.add_argument(
+        "--cosine-min",
+        type=float,
+        nargs="+",
+        default=None,
+        help="hybrid 벡터 후보 문턱(기본: 설정값). 여러 값이면 값마다 돌려 표로 모은다",
+    )
     ap.add_argument("--out", type=Path, default=None)
     a = ap.parse_args(argv)
     items = [i for i in load_items() if a.split == "both" or i.split == a.split]
     corpus = scn.build_corpus_for(None, a.corpus)  # type: ignore[arg-type]
-    rep = evaluate(items, corpus)
-    rep["info"] = {
+    info: dict[str, Any] = {
         "corpus_mode": a.corpus,
         "corpus_version": corpus.version if corpus else "none",
         "split": a.split,
-        "searcher": "keyword",
+        "searcher": a.search,
     }
-    md = _md(rep, f"{a.corpus} · {a.split} · keyword")
+    runs: list[tuple[str, dict[str, Any]]] = []
+    if a.search == "keyword" or corpus is None:
+        runs.append(("keyword", evaluate(items, corpus)))
+    else:
+        emb = embedding_env()
+        if emb is None:
+            print("--search hybrid 에는 ai/.env 의 OPENAI_EMBEDDING_* 가 필요하다", file=sys.stderr)
+            return 2
+        file = a.embeddings or scn.EMBEDDINGS_FILE
+        dims = int(json.loads(file.read_text(encoding="utf-8"))["dimensions"])
+        try:
+            vec_corpus = scn.with_search_vectors(corpus, model=emb.model, dims=dims, path=file)
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            return 2
+        assert vec_corpus is not None
+        vectors = embed_queries(
+            [i.query for i in items],
+            base_url=emb.base_url,
+            api_key=emb.api_key,
+            model=emb.model,
+            dims=dims,
+        )
+        info.update(
+            {"embedding_model": emb.model, "embed_dims": dims, "embeddings_file": file.name}
+        )
+        for cm in a.cosine_min or [DEFAULT_CONFIG.hybrid_cosine_min]:
+            tuned = vec_corpus.with_cfg(load_config(hybrid_cosine_min=cm))
+            runs.append((f"hybrid cos>={cm}", evaluate(items, tuned, hybrid_searcher(vectors))))
+    md = ""
+    for label, rep in runs:
+        rep["info"] = {**info, "label": label}
+        md += _md(rep, f"{a.corpus} · {a.split} · {label}")
+    if len(runs) > 1:
+        md += _sweep_md(runs)
     if a.out:
         a.out.mkdir(parents=True, exist_ok=True)
         (a.out / "retrieval.json").write_text(
-            json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(
+                [r for _, r in runs] if len(runs) > 1 else runs[0][1], ensure_ascii=False, indent=2
+            ),
+            encoding="utf-8",
         )
         (a.out / "retrieval.md").write_text(md, encoding="utf-8")
     sys.stdout.write(md)
     return 0
+
+
+def _sweep_md(runs: list[tuple[str, dict[str, Any]]]) -> str:
+    def v(rep: dict[str, Any], k: str) -> str:
+        x = rep.get(k)
+        return "—" if x is None else str(x["value"] if isinstance(x, dict) else x)
+
+    keys = ("recall@1", "recall@3", "recall@5", "mrr", "none_accuracy", "missed_all")
+    lines = ["# 문턱 비교", "", "| 검색 | " + " | ".join(keys) + " |", "|---|" + "---|" * len(keys)]
+    for label, rep in runs:
+        lines.append(f"| {label} | " + " | ".join(v(rep, k) for k in keys) + " |")
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

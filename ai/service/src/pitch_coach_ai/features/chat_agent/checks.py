@@ -15,7 +15,8 @@
 - 규칙 요약(문장 종류별)
   1. RECORD: 근거 ≥1, 모두 이번 턴 근거(`registry.is_current`). 숫자 · Take · 장 · 지표 이름이 이은 근거(와 계산
      근거의 입력)의 값과 같아야 한다. 차이(`%p`)는 코드가 입력으로 다시 계산한 `COMPUTED` 차이 근거와만 맞는다.
-  2. GUIDE: `source_ids` ≥1, 따옴표 안 인용은 자료 원문에 글자 그대로, 문장 속 숫자는 자료 원문에 있어야 한다.
+  2. GUIDE: `source_ids` ≥1, 인용 문장(초안의 `quote`)이 있어야 하고 이은 자료 원문에 글자 그대로 있어야 한다(없으면 고치지 않고
+     버린다). 따옴표 안 인용은 자료 원문에 글자 그대로, 문장 속 숫자는 자료 원문에 있어야 한다.
   3. ACTION_RESULT: 이번 실행에서 성공한 행동이어야 하고 문장은 loop가 검증된 결과로 그린 문장과 글자까지 같아야 한다.
      비교 · 변화 · 목표 결론 낱말이 든 문장은 `code_sentences`(코드가 그린 문장)에 있어야 한다(P3).
   4. SYSTEM: `SystemText` 목록 안의 문장만.
@@ -1209,7 +1210,30 @@ def _check_guide(i: int, c: Claim, guide_texts: Mapping[str, str]) -> list[Check
             texts.append(t)
     if not texts:
         return f
-    # 인용은 따옴표 안 글. 따옴표가 없는 문장은 인용 검사 없이 숫자만 본다(자료 문장을 풀어 쓴 설명)
+    # 인용 문장(초안의 `quote`): 이은 자료 원문에 글자 그대로 있어야 한다. 없거나 원문에 없으면 글만 고쳐서는 풀리지 않는다
+    # (고치기는 text 만 고치고 인용 문장 · 자료를 더할 수 없다, 6-9 '고친 뒤') → 고치기 없이 바로 버린다
+    quote = (getattr(c, "quote", None) or "").strip()
+    if not quote:
+        f.append(
+            CheckFailure(
+                i,
+                CheckId.QUOTE_MISMATCH,
+                "자료 근거 문장은 이은 자료 원문의 문장을 인용 문장(quote)으로 글자 그대로 달아야 함",
+                claim_kind=c.kind,
+                unfixable=True,
+            )
+        )
+    elif not any(quote in t for t in texts):
+        f.append(
+            CheckFailure(
+                i,
+                CheckId.QUOTE_MISMATCH,
+                "인용 문장(quote)이 이은 자료 원문에 글자 그대로 없음",
+                claim_kind=c.kind,
+                unfixable=True,
+            )
+        )
+    # 문장 글 속 인용은 따옴표 안 글. 따옴표가 없는 문장은 이 검사 없이 숫자만 본다(풀어 쓴 설명은 위 인용 문장으로 받친다)
     for pat in _QUOTES:
         for m in pat.finditer(c.text):
             if not any(m.group(1) in t for t in texts):

@@ -68,6 +68,8 @@ class ToolResult:
     result_summary: str = ""
     cacheable: bool = True
     source_ids: list[str] = field(default_factory=list)
+    #: 진단 기록(TOOL 단계 detail)에 더할 값(`search_guides`: embed · embed_ms · search_mode). 캐시에 담지 않는다
+    diag: dict[str, Any] = field(default_factory=dict)
 
     def model_view(self) -> dict[str, Any]:
         """모델에 돌려줄 짧은 JSON."""

@@ -1352,11 +1352,14 @@ def _finish(
             claim_list = [Claim(kind="SYSTEM", text=templates.SystemText.PARTIAL_CHECKED.value)]
         text, ordered = chk.assemble_message(claim_list)
         # 멈추기 전에 낸 문장의 자료 카드는 서명 상태의 사본을 그대로 쓰고, 새 자료만 지금 자료 묶음에서 그린다
-        carried = {g["source_id"]: g for g in st.emitted_sources}
+        # 이 응답의 문장 줄이 이미 보낸 카드도 같은 사본을 쓴다(문장 줄과 끝 줄의 보이는 인용이 같게)
+        carried = {g["source_id"]: g for g in [*st.emitted_sources, *lines.sent_cards.values()]}
         src_ids = sources
+        # 보이는 인용은 남은 `GUIDE` 문장이 실제로 인용한 문장이다(카드 앞부분이 아니라)
+        quotes = compose.claim_quotes(claim_list)
         fresh = {
             g.source_id: g.model_dump(mode="json")
-            for g in compose.guide_cards(ctx, [i for i in src_ids if i not in carried])
+            for g in compose.guide_cards(ctx, [i for i in src_ids if i not in carried], quotes)
         }
         msg = {
             "text": text,

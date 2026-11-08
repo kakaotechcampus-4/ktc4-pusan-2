@@ -25,10 +25,16 @@
   연구 모듈의 평가 · 시험은 `allow_unreviewed=True` 로 초안까지 시험하고, **서비스는 `False` 로 부른다**(`api/chat_agent.py`).
   실을 카드가 하나도 없으면 서비스는 자료 묶음 없이 시작한다(검색은 준비 실패 → 일반 조언 규칙, 6-10 · L1-21). 카드의 검수 표시를
   바꾸면 본문이 같아도 해시가 바뀌므로 판을 올려 `version.CORPUS_VERSION_HASHES` 에 등록한다.
-- 검색(P0 키워드, 자료가 작아 충분. 의미 검색은 P1)
+- 검색(키워드가 기본, 질문 임베딩을 받으면 하이브리드)
   - 한글 정규화: 소문자, 글자 · 숫자 아닌 것은 공백. 낱말과 그 낱말의 2글자 조각(shingle)을 같이 쓴다. 조사 · 어미가 달라도 걸린다("빨라져" ↔ "빨라").
   - 점수 = 질문 조각마다 (희귀도 가중) × (제목 2 + 주제어 2 + 본문 1), 주제어 구절이 질문에 통째로 들어 있으면 가산, 화면이 맞으면 ×1.5.
   - 임계값(`MIN_SCORE`) 이하는 버린다. 정렬은 점수 내림차순, 같으면 `source_id` 오름차순이라 결정적이다.
+  - 하이브리드(`query_vector`가 있고 묶음에 카드 벡터가 있을 때만): 키워드 후보 K(위 점수가 `MIN_SCORE`를 넘은 카드)와 벡터 후보 V
+    (질문과 카드의 코사인이 `hybrid_cosine_min` 이상인 카드 중 위 `hybrid_vector_top`장)를 RRF(점수 = Σ 1/(k+순위), 순위는 1부터)로
+    합친다. **'자료 없음'은 합치기 전 두 후보 목록이 모두 빈 때만**이고, 합친 점수에는 문턱을 두지 않는다. 질문 벡터가 없거나 벡터가
+    없는 묶음이면 키워드 검색 그대로다(임베딩 호출이 실패해도 검색은 된다). 카드 벡터는 별도 파일(`guides/embeddings.json`)에서 와
+    카드별 입력 해시 · 모델 · 차원이 맞을 때만 받는다(`parse_card_vectors`). 이 파일은 묶음 판(`manifest`)에 들지 않는다.
+    벡터만으로 걸린 카드의 인용은 첫 문장(다음 문장까지 300자 안이면 함께)이다.
   - 인용(`quote`)은 질문과 가장 맞는 문장(이어진 다음 문장이 맞고 300자 안이면 함께)이며 항상 카드 본문의 **그대로 잘라 낸 부분 문자열**이다.
     답 검사가 인용이 원문에 있는지 대조하므로 문장을 고쳐 쓰지 않는다.
 - 고칠 때
@@ -40,11 +46,13 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -163,6 +171,16 @@ class GuideHit(BaseModel):
     score: float
 
 
+@dataclass(frozen=True)
+class SearchOutcome:
+    """검색 결과와 진단용 정보: 어떤 방식으로 찾았는지(`KEYWORD` · `HYBRID`)와 합치기 전 후보 수."""
+
+    hits: list[GuideHit]
+    mode: Literal["KEYWORD", "HYBRID"]
+    keyword_candidates: int
+    vector_candidates: int
+
+
 def manifest_hash(
     cards: Iterable[Mapping[str, Any]], synonyms: list[list[str]] | None = None
 ) -> str:
@@ -192,6 +210,68 @@ def _grams(s: str) -> set[str]:
         out.add(w)
         out.update(w[i : i + 2] for i in range(len(w) - 1))
     return out
+
+
+def card_embed_input(card: GuideCardData) -> str:
+    """카드 임베딩 입력: 제목 · 주제어 · 본문. 이 글이 바뀌면 카드 벡터를 다시 만들어야 한다."""
+    return f"{card.title}\n{' · '.join(card.topics)}\n{card.text}"
+
+
+def card_embed_sha256(card: GuideCardData) -> str:
+    """카드 임베딩 입력의 SHA-256 16진수(자료 파일의 `input_sha256`)."""
+    return hashlib.sha256(card_embed_input(card).encode("utf-8")).hexdigest()
+
+
+def _unit(vec: Sequence[float]) -> tuple[float, ...] | None:
+    """길이 1로 맞춘 벡터. 숫자가 아니거나 유한하지 않거나 길이가 0이면 None."""
+    if not isinstance(vec, Sequence) or isinstance(vec, str):
+        return None
+    if not all(isinstance(x, int | float) and not isinstance(x, bool) for x in vec):
+        return None
+    floats = tuple(float(x) for x in vec)
+    if not floats or not all(math.isfinite(x) for x in floats):
+        return None
+    norm = math.sqrt(math.sumprod(floats, floats))
+    if norm <= 0 or not math.isfinite(norm):
+        return None
+    return tuple(x / norm for x in floats)
+
+
+def parse_card_vectors(
+    data: Any, corpus: Corpus, *, model: str, dims: int
+) -> tuple[dict[str, tuple[float, ...]] | None, str | None]:
+    """임베딩 파일(dict)을 검사해 카드 벡터(길이 1로 맞춤)를 돌려준다. 어긋나면 (None, 까닭 코드).
+
+    까닭: `MODEL_MISMATCH`(모델 이름) · `DIM_MISMATCH`(차원) · `MISSING_CARD`(실은 카드의 벡터가 없음) ·
+    `HASH_MISMATCH`(카드 입력 해시가 다름: 카드가 바뀌었는데 벡터를 다시 만들지 않음) · `INVALID`(모양 · 길이 · 숫자 오류).
+    파일에는 실리지 않은 카드까지 들 수 있고(검수 전 카드), 이 묶음이 실은 카드만 본다.
+    """
+    if not isinstance(data, dict):
+        return None, "INVALID"
+    if data.get("model") != model:
+        return None, "MODEL_MISMATCH"
+    if data.get("dimensions") != dims or isinstance(data.get("dimensions"), bool):
+        return None, "DIM_MISMATCH"
+    entries = data.get("cards")
+    if not isinstance(entries, dict):
+        return None, "INVALID"
+    out: dict[str, tuple[float, ...]] = {}
+    for card in corpus.cards:
+        entry = entries.get(card.source_id)
+        if entry is None:
+            return None, "MISSING_CARD"
+        if not isinstance(entry, dict):
+            return None, "INVALID"
+        if entry.get("input_sha256") != card_embed_sha256(card):
+            return None, "HASH_MISMATCH"
+        vec = entry.get("vector")
+        if not isinstance(vec, list) or len(vec) != dims:
+            return None, "INVALID"
+        unit = _unit(vec)
+        if unit is None:
+            return None, "INVALID"
+        out[card.source_id] = unit
+    return out, None
 
 
 class _Indexed:
@@ -238,6 +318,8 @@ class Corpus:
             for g in ix.all:
                 df[g] = df.get(g, 0) + 1
         self._idf = {g: math.log(1.0 + n / d) for g, d in df.items()}
+        #: 카드 벡터(길이 1, source_id → 벡터). 없으면 키워드 검색만 한다. `with_vectors` 로만 붙인다
+        self._vectors: dict[str, tuple[float, ...]] | None = None
 
     @property
     def cards(self) -> tuple[GuideCardData, ...]:
@@ -245,6 +327,33 @@ class Corpus:
 
     def __len__(self) -> int:
         return len(self._cards)
+
+    @property
+    def has_vectors(self) -> bool:
+        return bool(self._vectors)
+
+    def with_vectors(self, vectors: Mapping[str, Sequence[float]]) -> Corpus:
+        """카드 벡터를 붙인 새 묶음(이 묶음은 바뀌지 않는다). 벡터는 `parse_card_vectors` 가 검사한 것을 받는다."""
+        clone = copy.copy(self)
+        clone._vectors = {k: tuple(v) for k, v in vectors.items()}
+        return clone
+
+    def with_cfg(self, cfg: ChatAgentConfig) -> Corpus:
+        """설정만 바꾼 새 묶음(하이브리드 문턱 비교 실험용). 카드 · 벡터는 그대로 공유한다."""
+        clone = copy.copy(self)
+        clone._cfg = cfg
+        return clone
+
+    def prepare_query_vector(self, vec: Sequence[float]) -> tuple[float, ...]:
+        """질문 벡터를 길이 1로 맞춘다. 차원이 카드 벡터와 다르거나 숫자가 이상하면 ValueError."""
+        unit = _unit(vec)
+        if unit is None:
+            raise ValueError("query vector is invalid")
+        if self._vectors:
+            dims = len(next(iter(self._vectors.values())))
+            if len(unit) != dims:
+                raise ValueError("query vector dimension differs from card vectors")
+        return unit
 
     def get(self, source_id: str) -> GuideCardData | None:
         return self._by_id.get(source_id)
@@ -268,8 +377,22 @@ class Corpus:
         *,
         limit: int | None = None,
         screen: str | None = None,
+        query_vector: Sequence[float] | None = None,
     ) -> list[GuideHit]:
-        """키워드 검색. 빈 질문 · 한도(`max_search_query_chars`) 초과는 ValueError."""
+        """검색. 빈 질문 · 한도(`max_search_query_chars`) 초과는 ValueError. 질문 벡터를 주면 하이브리드(`search_detailed`)."""
+        return self.search_detailed(
+            query, limit=limit, screen=screen, query_vector=query_vector
+        ).hits
+
+    def search_detailed(
+        self,
+        query: str,
+        *,
+        limit: int | None = None,
+        screen: str | None = None,
+        query_vector: Sequence[float] | None = None,
+    ) -> SearchOutcome:
+        """`search` + 진단용 정보(방식 · 합치기 전 후보 수). 질문 벡터는 `prepare_query_vector` 로 검사한다."""
         cfg = self._cfg
         if not query or not query.strip():
             raise ValueError("query is empty")
@@ -277,6 +400,60 @@ class Corpus:
             raise ValueError(f"query is longer than {cfg.max_search_query_chars} chars")
         cap = cfg.max_search_results
         limit = cap if limit is None else max(0, min(limit, cap))
+        q_grams = self._query_grams(query)
+        hits = self._keyword_scores(query, q_grams, screen)
+        if query_vector is None or not self._vectors:
+            return SearchOutcome(
+                hits=[self._hit(ix, score, q_grams) for score, ix in hits[:limit]],
+                mode="KEYWORD",
+                keyword_candidates=len(hits),
+                vector_candidates=0,
+            )
+        qv = self.prepare_query_vector(query_vector)
+        sims = [(math.sumprod(qv, self._vectors[ix.card.source_id]), ix) for ix in self._indexed]
+        if cfg.hybrid_gate == "AGREE":
+            # 두 신호가 함께 맞는 카드만(한쪽이 아주 강하면 그것만으로도) 싣는다. 키워드 후보도 같은 문으로 거른다
+            cos_of = {ix.card.source_id: c for c, ix in sims}
+            kw_of = {ix.card.source_id: s for s, ix in hits}
+
+            def passes(sid: str) -> bool:
+                kw, cos = kw_of.get(sid), cos_of[sid]
+                return (
+                    (kw is not None and kw > cfg.hybrid_keyword_strong)
+                    or cos >= cfg.hybrid_cosine_strong
+                    or (kw is not None and cos >= cfg.hybrid_agree_cosine)
+                )
+
+            hits = [(s, ix) for s, ix in hits if passes(ix.card.source_id)]
+            sims = [(c, ix) for c, ix in sims if passes(ix.card.source_id)]
+        else:
+            sims = [(c, ix) for c, ix in sims if c >= cfg.hybrid_cosine_min]
+        sims.sort(key=lambda h: (-h[0], h[1].card.source_id))
+        sims = sims[: cfg.hybrid_vector_top]
+        # RRF: 두 순위 목록에서 카드마다 1/(k+순위)를 더한다. 합친 점수에는 문턱을 두지 않는다
+        fused: dict[str, float] = {}
+        by_id: dict[str, _Indexed] = {}
+        for rank, (_, ix) in enumerate(hits, start=1):
+            fused[ix.card.source_id] = fused.get(ix.card.source_id, 0.0) + 1.0 / (
+                cfg.hybrid_rrf_k + rank
+            )
+            by_id[ix.card.source_id] = ix
+        for rank, (_, ix) in enumerate(sims, start=1):
+            fused[ix.card.source_id] = fused.get(ix.card.source_id, 0.0) + 1.0 / (
+                cfg.hybrid_rrf_k + rank
+            )
+            by_id[ix.card.source_id] = ix
+        ordered = sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))
+        return SearchOutcome(
+            hits=[
+                self._hit(by_id[sid], score, q_grams, hybrid=True) for sid, score in ordered[:limit]
+            ],
+            mode="HYBRID",
+            keyword_candidates=len(hits),
+            vector_candidates=len(sims),
+        )
+
+    def _query_grams(self, query: str) -> set[str]:
         q_grams = _grams(query)
         q_norm = " ".join(_words(query))
         # 검수한 동의어 사전으로 질의를 넓힌다(6-10): 질문에 묶음의 다른 말(카드가 쓰지 않는 말)이 있으면 대표어로도
@@ -286,6 +463,13 @@ class Corpus:
         for variants, rep in self._synonyms:
             if any(v in q_norm for v in variants):
                 q_grams |= rep
+        return q_grams
+
+    def _keyword_scores(
+        self, query: str, q_grams: set[str], screen: str | None
+    ) -> list[tuple[float, _Indexed]]:
+        """키워드 점수가 `MIN_SCORE` 를 넘은 카드를 점수 내림차순(같으면 `source_id` 오름차순)으로."""
+        q_norm = " ".join(_words(query))
         hits: list[tuple[float, _Indexed]] = []
         for ix in self._indexed:
             score = 0.0
@@ -307,9 +491,11 @@ class Corpus:
             if score > MIN_SCORE:
                 hits.append((score, ix))
         hits.sort(key=lambda h: (-h[0], h[1].card.source_id))
-        return [self._hit(ix, score, q_grams) for score, ix in hits[:limit]]
+        return hits
 
-    def _hit(self, ix: _Indexed, score: float, q_grams: set[str]) -> GuideHit:
+    def _hit(
+        self, ix: _Indexed, score: float, q_grams: set[str], *, hybrid: bool = False
+    ) -> GuideHit:
         text = ix.card.text
         scores = [
             sum(self._idf.get(g, 0.0) for g in q_grams & grams) for _, _, grams in ix.sentences
@@ -317,7 +503,11 @@ class Corpus:
         best = max(range(len(scores)), key=lambda i: (scores[i], -i))
         start, end = ix.sentences[best][0], ix.sentences[best][1]
         nxt = best + 1
-        if nxt < len(scores) and scores[nxt] > 0 and ix.sentences[nxt][1] - start <= 300:
+        if hybrid and not any(scores):
+            # 벡터로만 걸린 카드: 겹친 낱말이 없으니 첫 문장을 인용한다(다음 문장까지 300자 안이면 함께)
+            if nxt < len(scores) and ix.sentences[nxt][1] - start <= 300:
+                end = ix.sentences[nxt][1]
+        elif nxt < len(scores) and scores[nxt] > 0 and ix.sentences[nxt][1] - start <= 300:
             end = ix.sentences[nxt][1]
         card = GuideCard(
             source_id=ix.card.source_id,
@@ -326,7 +516,7 @@ class Corpus:
             source=ix.card.source,
             license=ix.card.license,
         )
-        return GuideHit(card=card, score=round(score, 4))
+        return GuideHit(card=card, score=round(score, 6 if hybrid else 4))
 
 
 def _screen_match(card_screen: str, screen: str) -> bool:

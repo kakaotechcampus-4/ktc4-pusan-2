@@ -407,7 +407,11 @@ def _guide_llm() -> F.FakeLlm:
             F.tools(("search_guides", {"query": "긴장"})),
             F.done(),
         ],
-        answers=[F.answer([F.claim("GUIDE", f'자료에 따르면 "{quote}"', source_ids=["g-07"])])],
+        answers=[
+            F.answer(
+                [F.claim("GUIDE", f'자료에 따르면 "{quote}"', source_ids=["g-07"], quote=quote)]
+            )
+        ],
         fixes=[F.fix({})],
     )
 

@@ -114,6 +114,8 @@ class ClaimLines:
         self.next_index = self.base
         self.sent_ev: set[str] = set()
         self.sent_src: set[str] = set()
+        #: 이 응답의 문장 줄이 보낸 자료 카드(자료 id → 사본). 끝 줄의 `sources`가 같은 사본을 쓴다
+        self.sent_cards: dict[str, dict[str, Any]] = {}
         self.sent_as: set[str] = set()
         #: 이 응답에서 줄로 보낸 판단. 끝 줄에도 싣는다(어느 끝에서도 빠지지 않게, turn.py `_finish`)
         self.sent_assessments: list[dict[str, Any]] = []
@@ -136,7 +138,9 @@ class ClaimLines:
         evidence = [
             e for e in compose.referenced(lp.ctx, ev_ids) if e["evidence_id"] not in self.sent_ev
         ]
-        sources = compose.guide_cards(lp.ctx, [s for s in src_ids if s not in self.sent_src])
+        sources = compose.guide_cards(
+            lp.ctx, [s for s in src_ids if s not in self.sent_src], compose.claim_quotes([claim])
+        )
         dump = claim.model_dump(mode="json")
         lp.emit(
             "claim",
@@ -148,6 +152,8 @@ class ClaimLines:
                 "assessments": new_as,
             },
         )
+        for g in sources:
+            self.sent_cards[g.source_id] = g.model_dump(mode="json")
         self.next_index += 1
         self.sent_ev.update(e["evidence_id"] for e in evidence)
         self.sent_src.update(src_ids)
@@ -453,9 +459,12 @@ class Composer:
                     # (6-10). 버린 수는 finish 가 진단에 남긴다
                     self.general_skipped += 1
                     continue
+                q = c.get("quote")
                 claim = compose._claim(
                     kind,
                     text,
+                    # 인용 문장은 GUIDE 만 싣는다(내부용, 응답 Claim 에는 나가지 않는다). 없으면 검사가 걸러 낸다
+                    quote=(q if isinstance(q, str) else "") if kind == "GUIDE" else None,
                     evidence_ids=list(c.get("evidence_ids") or []),
                     source_ids=list(c.get("source_ids") or []),
                 )
@@ -611,6 +620,7 @@ class Composer:
                 nc = compose._claim(
                     c.kind,
                     t,
+                    quote=compose.claim_quote(c),
                     assessment_id=c.assessment_id,
                     evidence_ids=list(c.evidence_ids),
                     source_ids=list(c.source_ids),

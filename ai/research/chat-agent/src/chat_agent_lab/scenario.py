@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -42,6 +43,7 @@ from pitch_coach_ai.features.chat_agent.corpus import (
     CorpusInvalid,
     build_corpus,
     manifest_hash,
+    parse_card_vectors,
 )
 from pitch_coach_ai.features.chat_agent.goals import build_goal_draft
 from pitch_coach_ai.features.chat_agent.schemas import Screen, TakeSnapshot
@@ -705,6 +707,37 @@ def build_corpus_for(spec: CorpusSpec | None, mode: CorpusMode = "all") -> Corpu
         assert spec is not None
         manifest = _with_cards(manifest, files, spec.corpus_version)
     return build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=True)
+
+
+#: 카드 임베딩 파일(서비스가 읽는 것과 같은 파일). 비교 실험은 다른 파일(예: 512차원)을 넘긴다
+EMBEDDINGS_FILE = GUIDES / "embeddings.json"
+
+
+@functools.lru_cache(maxsize=4)
+def _embeddings_data(file: Path) -> Any:
+    return json.loads(file.read_text(encoding="utf-8"))
+
+
+def with_search_vectors(
+    corpus: Corpus | None,
+    *,
+    model: str,
+    dims: int,
+    path: Path | None = None,
+) -> Corpus | None:
+    """하이브리드 검색용 카드 벡터를 붙인 묶음. 파일이 묶음과 맞지 않으면 까닭을 적은 ValueError.
+
+    서비스(`api/chat_agent.py` `attach_embeddings`)와 같이 `parse_card_vectors` 로 모델 · 차원 · 카드별 입력 해시를 본다.
+    묶음이 없으면(None) 그대로 None 이다.
+    """
+    if corpus is None:
+        return None
+    file = path or EMBEDDINGS_FILE
+    data = _embeddings_data(file)
+    vectors, reason = parse_card_vectors(data, corpus, model=model, dims=dims)
+    if vectors is None:
+        raise ValueError(f"카드 임베딩 파일을 쓸 수 없다({file.name}): {reason}")
+    return corpus.with_vectors(vectors)
 
 
 def corpus_texts(

@@ -27,7 +27,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -154,6 +154,8 @@ class LoopState:
     ambiguous_name: bool = False
     #: 이 실행에서 `compare_takes`가 비교할 수 없다고 한 것(앞 · 뒤 Take 번호 · 지표 · 장 · 까닭). 답에 까닭 문장을 코드가 붙인다(7-10)
     not_comparable: list[dict[str, Any]] = field(default_factory=list)
+    #: 이 실행에서 질문 임베딩을 이미 불렀는가(실행당 한 번, 6-10). 옛 상태에는 없어 False 로 읽는다
+    embed_used: bool = False
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -178,6 +180,8 @@ class TurnDeps:
     monotonic: Callable[[], float]
     cfg: ChatAgentConfig
     log: Callable[[dict[str, Any]], None] = lambda _l: None
+    #: 질문 임베딩 함수(글, 시간 제한 초 → 벡터, 실패하면 예외). 없으면 키워드 검색만 한다(6-10)
+    embed_query: Callable[[str, float], Sequence[float]] | None = None
 
 
 @dataclass
@@ -238,6 +242,13 @@ class Loop:
             trusted_takes=set(state.read_sources),
         )
         self.ctx.tool_cache = dict(state.tool_cache)
+        self.ctx.embed_query = deps.embed_query
+        self.ctx.embed_used = state.embed_used
+        self.ctx.monotonic = deps.monotonic
+        # 임베딩 시간 제한은 조사에 남은 시간(답 몫을 뺀 것) 안으로 줄인다
+        self.ctx.research_left = lambda: max(
+            0.0, self.budget.left() - self.cfg.reserved_answer_seconds
+        )
         if not corpus_ok:
             # 실행 중 자료 판이 바뀌면 검색 캐시만 버리고 지금 판으로 다시 찾는다(5-6 · 6-10)
             self.ctx.tool_cache = {
@@ -1058,6 +1069,7 @@ class Loop:
             return
         # 질의 글자 수만 남기고 질의 글은 남기지 않는다(`search_guides` 만, 11-5)
         query_chars = len(args.query) if tr.name == "search_guides" and args is not None else None
+        self.st.embed_used = self.ctx.embed_used  # 질문 임베딩은 실행당 한 번(서명 상태로 이어진다)
         self.diag.step(
             "TOOL",
             tr.name,
@@ -1068,6 +1080,7 @@ class Loop:
                 "result_bytes": result_bytes(tr),
                 "query_chars": query_chars,
                 "error_code": code_enum(tr.error["code"]) if tr.error else None,
+                **tr.diag,
             },
             ms=trace.ms,
             parent_seq=model_seq,

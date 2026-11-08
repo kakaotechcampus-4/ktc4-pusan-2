@@ -812,6 +812,10 @@ class ToolDetail(_Out):
     result_bytes: NonNegInt | None = None
     query_chars: NonNegInt | None = None
     error_code: CodeEnum | None = None
+    # `search_guides` 만(하이브리드 검색, 6-10): 질문 임베딩 결과 · 걸린 시간(ms, 호출한 때만) · 찾은 방식. 없으면 null
+    embed: Literal["OK", "TIMEOUT", "ERROR", "BUDGET", "USED", "OFF"] | None = None
+    embed_ms: NonNegInt | None = None
+    search_mode: Literal["KEYWORD", "HYBRID"] | None = None
 
 
 class CheckDetail(_Out):

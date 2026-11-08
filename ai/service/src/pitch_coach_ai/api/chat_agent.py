@@ -31,6 +31,10 @@
      WARNING 이 있다. `ai-service.md` 11-6). 미들웨어 없이 이 응답을 부르면 응답이 직접 잰다.
   6. 끝 줄 방어: 코어가 끝 줄 없이 예외로 멈추면(코어가 잡지 못한 곳) 읽기 스레드가 `error`
      `INTERNAL_ERROR` 끝 줄 하나를 대신 낸다(연결이 살아 있을 때, 5-4 '끝 줄은 정확히 하나').
+- 하이브리드 검색: 임베딩 묶음 설정(`OPENAI_EMBEDDING_*`)이 있으면 `guides/embeddings.json` 의
+  카드 벡터를 검사해 붙이고(`attach_embeddings`) 질문 임베딩 함수를 코어에 넘긴다. 설정이 없거나
+  파일이 어긋나면 키워드 검색만 하고, 어긋남은 `chat_agent_embeddings_unavailable reason=<코드>`
+  한 줄만 남긴다(기능 문서 6-10 · 11-1).
 - 자료 묶음: 서비스는 검수를 마친 카드만 읽는다(`allow_unreviewed=False`). 검수 전 카드 ·
   판 미등록 · 파일 오류면 자료 묶음 없이 시작하고 이유 코드만 로그에 남긴다. 그때 발표법 질문은
   일반 조언으로 답한다(기능 문서 6-10 · L1-21).
@@ -60,13 +64,19 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import Receive, Scope, Send
 
+from pitch_coach_ai.common.embedding import make_embedder
 from pitch_coach_ai.common.errors import ERROR_RESPONSES, ErrorResponse, error_response, log_safe
 from pitch_coach_ai.common.llm import tool_llm
 from pitch_coach_ai.common.request_log import current_request_id
 from pitch_coach_ai.features import chat_agent as core_pkg
 from pitch_coach_ai.features.chat_agent import templates
 from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG, ChatAgentConfig
-from pitch_coach_ai.features.chat_agent.corpus import Corpus, CorpusInvalid, build_corpus
+from pitch_coach_ai.features.chat_agent.corpus import (
+    Corpus,
+    CorpusInvalid,
+    build_corpus,
+    parse_card_vectors,
+)
 from pitch_coach_ai.features.chat_agent.loop import TurnDeps
 from pitch_coach_ai.features.chat_agent.turn import TurnResponse, handle_turn
 from pitch_coach_ai.settings import Settings
@@ -109,6 +119,34 @@ def load_corpus(
     return None
 
 
+def attach_embeddings(
+    corpus: Corpus | None, s: Settings, cfg: ChatAgentConfig = DEFAULT_CONFIG
+) -> tuple[Corpus | None, Callable[[str, float], Any] | None]:
+    """하이브리드 검색 준비: (카드 벡터를 붙인 자료 묶음, 질문 임베딩 함수).
+
+    못 하면 (원래 묶음, None) = 키워드 검색만. 임베딩 묶음 설정(`OPENAI_EMBEDDING_*`)과 자료 묶음이
+    있을 때만 `guides/embeddings.json` 을 읽어, 모델 · 차원 · 카드별 입력 해시가 서비스가 실은
+    카드와 맞는지 본다(`parse_card_vectors`). 어긋나면 이유 코드만 로그에 남기고 키워드로 간다.
+    앱 시작을 막지 않는다.
+    """
+    embed = make_embedder(s, cfg.embed_dimensions)
+    bundle = s.bundle("embedding")
+    if corpus is None or embed is None or bundle is None:
+        logger.info("chat_agent_embeddings_off configured=%s", embed is not None)
+        return corpus, None
+    try:
+        data = json.loads((GUIDES / "embeddings.json").read_text(encoding="utf-8"))
+        vectors, reason = parse_card_vectors(
+            data, corpus, model=bundle.model, dims=cfg.embed_dimensions
+        )
+    except Exception as exc:  # noqa: BLE001  # 파일 · JSON 오류도 '벡터 없음'으로 본다
+        vectors, reason = None, "INVALID" if isinstance(exc, ValueError) else type(exc).__name__
+    if vectors is None:
+        logger.warning("chat_agent_embeddings_unavailable reason=%s", log_safe(reason or "INVALID"))
+        return corpus, None
+    return corpus.with_vectors(vectors), embed
+
+
 # ── 실행 자원 (프로세스마다 하나) ─────────────────────────────────────────────
 
 
@@ -132,6 +170,7 @@ class AgentRuntime:
         *,
         llm: Any,
         corpus: Corpus | None,
+        embed_query: Callable[[str, float], Any] | None = None,
         secret: bytes | None,
         previous_secret: bytes | None,
         max_concurrency: int,
@@ -142,6 +181,8 @@ class AgentRuntime:
     ) -> None:
         self.llm = llm
         self.corpus = corpus
+        #: 질문 임베딩 함수(카드 벡터가 있을 때만 넘긴다). 없으면 키워드 검색만
+        self.embed_query = embed_query
         self.secret = secret
         self.previous_secret = previous_secret
         self.max_concurrency = max_concurrency
@@ -161,9 +202,11 @@ class AgentRuntime:
         # 모델 호출 한 번은 코어가 답 쓰기 · 고치기 몫으로 잡은 호출 한 번(24초 / 2 = 12초)을 넘지
         # 않는다(8-3). `LLM_TIMEOUT_SECONDS` 가 더 작으면 그것을 따른다
         per_call = cfg.reserved_answer_seconds / cfg.reserved_answer_calls
+        corpus, embed_query = attach_embeddings(load_corpus(cfg), s, cfg)
         return cls(
             llm=tool_llm("chat_agent", pool_size=pool, app_settings=s, max_call_seconds=per_call),
-            corpus=load_corpus(),
+            corpus=corpus,
+            embed_query=embed_query,
             secret=_secret(s.agent_state_secret),
             previous_secret=_secret(s.agent_state_secret_previous),
             max_concurrency=s.agent_max_concurrency,
@@ -183,6 +226,7 @@ class AgentRuntime:
             monotonic=self.monotonic,
             cfg=self.cfg,
             log=self.log,
+            embed_query=self.embed_query,
         )
 
     def try_acquire(self) -> bool:
@@ -653,4 +697,11 @@ async def turn(request: Request) -> Response:
             rt.release()
 
 
-__all__ = ["AgentRuntime", "StreamSendGuard", "load_corpus", "router", "runtime_for"]
+__all__ = [
+    "AgentRuntime",
+    "StreamSendGuard",
+    "attach_embeddings",
+    "load_corpus",
+    "router",
+    "runtime_for",
+]
