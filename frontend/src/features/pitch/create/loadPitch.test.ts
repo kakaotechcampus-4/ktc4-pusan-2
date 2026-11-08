@@ -12,7 +12,7 @@ import { openPdf } from '@/shared/lib/pdf';
  * 수정 화면 불러오기. 네트워크와 PDF 는 BE 응답 모양 그대로 흉내 냅니다.
  *
  *   슬라이드  V1 3장 · V2 4장
- *   대본      V1 3장 · V2 3장 (V2 도 슬라이드 V1 에 맞음 — 최신끼리 짝이 아닌 경우)
+ *   대본      V1 3장 · V2 4장 (기본 — 버전마다 같은 번호의 슬라이드와 장수가 맞음. 엇갈리는 경우는 시험마다 바꿉니다)
  *   평가기준  V1
  */
 vi.mock('@/shared/api/home', () => ({
@@ -145,7 +145,11 @@ describe('수정 화면 — 서버의 피치를 초안으로 읽는다', () => {
 
   it('지난 대본은 장수가 같은 가장 최근 슬라이드에, 가장 최근 대본은 최신 슬라이드에 연결한다', async () => {
     const draft = await loadPitch('p1');
-    expect(draft.scripts.map((s) => s.slideVersion)).toEqual([1, 2]);
+    // 장수가 맞아 둘 다 저장된 채입니다 — 장수가 다르면 가장 최근 대본은 저장 안 함이 됩니다(아래 시험)
+    expect(draft.scripts.map((s) => [s.slideVersion, s.saved])).toEqual([
+      [1, true],
+      [2, true],
+    ]);
   });
 
   it('가장 최근 대본은 장수가 달라도 최신 슬라이드에 붙고, 매핑을 다시 확인받는다 (멘토 리뷰 #923)', async () => {
