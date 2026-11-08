@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
+import { registerChatScreen, resetChatScreen, takeScreenSnapshot } from '@/shared/lib/chatScreen';
 import { announceSignedOut } from '@/shared/lib/sessionSignal';
 import {
   WHOLE_SCOPE,
@@ -395,6 +396,46 @@ describe('사용자 · 로그아웃 · 새로고침', () => {
       run: null,
       cancelling: null,
       scope: null,
+    });
+  });
+
+  describe('화면 상태 등록 — 로그아웃 신호 없이 사용자가 바뀔 때 (L3-09 세션 세대)', () => {
+    const ROUTE = '/pitch/:pitchId/device-check';
+    const register = () =>
+      registerChatScreen(ROUTE, () => ({
+        name: 'device_check',
+        camera: 'connected',
+        mic: 'detected',
+        gaze_setup: 'IDLE',
+        gaze_reason: null,
+      }));
+    const screenOf = () => {
+      const snap = takeScreenSnapshot(ROUTE);
+      return snap.ok ? snap.screen : snap.reason;
+    };
+
+    beforeEach(() => resetChatScreen());
+
+    it('다른 사용자로 바뀌면 앞 사람 때 등록한 화면 상태를 싣지 않는다', () => {
+      store().setUser('user-1');
+      register();
+      store().setUser('user-2');
+      expect(screenOf()).toBeNull();
+    });
+
+    it('로그아웃이 확인돼 사용자가 없어져도 비운다', () => {
+      store().setUser('user-1');
+      register();
+      store().setUser(null);
+      expect(screenOf()).toBeNull();
+    });
+
+    it('처음 확인(없음 → 사용자)과 같은 사용자 재확인은 지금 화면의 등록을 그대로 둔다', () => {
+      register();
+      store().setUser('user-1');
+      expect(screenOf()).toMatchObject({ name: 'device_check' });
+      store().setUser('user-1');
+      expect(screenOf()).toMatchObject({ name: 'device_check' });
     });
   });
 
