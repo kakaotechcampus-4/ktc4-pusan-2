@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { HomeHelpDialog } from './HomeHelpDialog';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
@@ -30,6 +30,26 @@ export function AppHeader() {
   const [helpOpen, setHelpOpen] = useState(false);
   const logout = useLogout();
   const { pathname } = useLocation();
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    // 모달이 루트 scrollbar-gutter 를 해제하기 전에 확보해 둔 폭입니다.
+    // 오버레이 스크롤바 환경에서는 0px 이므로 불필요한 보정이 없습니다.
+    const measure = () => {
+      if (document.querySelector('dialog[open], [data-gaze-overlay]')) return;
+      const width = root.clientWidth > 0 ? Math.max(0, window.innerWidth - root.clientWidth) : 0;
+      root.style.setProperty('--app-scrollbar-width', `${width}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    document.addEventListener('close', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      document.removeEventListener('close', measure, true);
+      root.style.removeProperty('--app-scrollbar-width');
+    };
+  }, []);
+
   return (
     <>
       <SkipLink />

@@ -9,10 +9,6 @@
   src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
 }
 
-/* 홈을 한 화면에 고정할 만큼 넓고 높은 창. 낮으면(배율 125~150% 노트북) 목록이 몇 줄만 남아
-   고정하지 않고 페이지를 스크롤합니다 (PR #669 리뷰) */
-@custom-variant one-screen (@media (min-width: 64rem) and (min-height: 40rem));
-
 /* ═══════════════════════════════════════════════════════════════
    피치코치 디자인 토큰
 
@@ -105,6 +101,33 @@
 }
 
 html, body, #root { height: 100%; }
+
+/* 공통 상단바 화면은 브라우저 문서(window)가 스크롤합니다.
+   라우트마다 스크롤바 유무가 달라도 상단바가 수평으로 움직이지 않도록 자리를 확보합니다.
+   리허설 무대 등 별도 전체 화면 셸에는 이 규칙을 적용하지 않습니다. */
+html:has(.app-scroll-shell) {
+  scrollbar-gutter: stable;
+}
+
+/* 모달과 시선 보정은 전체 뷰포트를 덮어야 하므로 루트의 예약 여백을 해제합니다.
+   html 자체를 잠그면 하단에서 모달을 열 때 scrollY 가 초기화될 수 있어 body 를 잠급니다.
+   닫으면 window 문서 스크롤과 기존 여백이 자동 복원됩니다. */
+html:has(.app-scroll-shell):has(dialog:modal),
+html:has(.app-scroll-shell):has([data-gaze-overlay]) {
+  scrollbar-gutter: auto;
+}
+body:has(.app-scroll-shell):has(dialog:modal),
+body:has(.app-scroll-shell):has([data-gaze-overlay]) {
+  overflow: hidden;
+}
+
+/* 모달 중 루트 여백을 해제해도 상단바의 내용 너비는 유지합니다.
+   셸에 overflow:hidden 을 걸면 sticky 기준이 셸로 변경되므로 금지합니다.
+   상단바에서 모달이 열리기 전에 측정한 스크롤바 폭만 패딩으로 보정합니다.
+   시선 보정은 상단바를 덮으므로 별도 보정이 필요하지 않습니다. */
+html:has(.app-scroll-shell):has(dialog:modal) .app-scroll-shell {
+  padding-right: var(--app-scrollbar-width, 0px);
+}
 
 body {
   margin: 0;
@@ -218,6 +241,12 @@ body {
 }
 
 
+/* TS는 경로별 기본 하단 여백을 전달하고, CSS는 좁은 화면의 최종 여백을 결정합니다.
+   정상 런처와 오류 안내가 같은 규칙을 사용하며 패널 높이도 최종 여백을 참조합니다. */
+[data-chat-launcher] {
+  --chat-launcher-bottom: var(--chat-launcher-default-bottom);
+}
+
 /* 장치 점검: 왼쪽 채팅 버튼이 바닥 안내(상태 · 보조 설명)를 가리지 않게 공간을 둡니다. */
 body:has([data-chat-launcher]) .prepare-screen {
   padding-left: 4.5rem;
@@ -233,7 +262,7 @@ body:has([data-chat-launcher]) .prepare-screen {
 /* 좁은 화면에서는 버튼을 고정 푸터의 왼쪽 빈 공간으로 내리고 조작부에 자리를 남깁니다. */
 @media (max-width: 760px) {
   body:has(.pitch-create-square) [data-chat-launcher] {
-    --chat-launcher-bottom: 1rem !important;
+    --chat-launcher-bottom: 1rem;
   }
 
   body:has([data-chat-launcher]) .pitch-create-square > footer > div {

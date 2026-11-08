@@ -5,6 +5,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.service import lookup as pitch_lookup
 from pitch_coach_backend.module.pitch.service import standard as standard_service
 from pitch_coach_backend.module.take.ai_response import validate_review_reply
 from pitch_coach_backend.module.take.dto import (
@@ -21,6 +22,7 @@ from pitch_coach_backend.module.take.exception import (
 )
 from pitch_coach_backend.module.take.repository import TakeRepository, parse_mission_ids
 from pitch_coach_backend.module.take.states import COVERAGE_KIND, DONE, FAILED, REVIEW, TAKE_RESULT
+from pitch_coach_backend.module.user import service as user_service
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +146,20 @@ def save_review(
     take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
     take_repository.set_analysis_stage(take_id, DONE)
     take_repository.complete_take(take_id, DONE)
+    _count_tutorial_report(db, take_repository, take_id)
     db.commit()
     return True
+
+
+def _count_tutorial_report(
+    db: Session, take_repository: TakeRepository, take_id: uuid.UUID
+) -> None:
+    """튜토리얼 샘플 발표의 리포트면 계정에 받았다고 적는다. 리뷰 결과와 한 커밋이어야 Take 생성의
+    검사(`take._check_tutorial_take`)가 그 사이를 놓치지 않는다. 리뷰가 실패하면 세지 않는다."""
+    pitch_id = take_repository.get_pitch_id_of_take(take_id)
+    pitch = pitch_lookup.pitch_by_id(db, pitch_id) if pitch_id is not None else None
+    if pitch is not None and pitch.is_demo:
+        user_service.mark_tutorial_report(db, pitch.user_id)
 
 
 def fail_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> bool:

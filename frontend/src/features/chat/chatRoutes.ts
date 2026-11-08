@@ -75,6 +75,7 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
 /**
  * 왼쪽 아래 런처의 아래 여백(px). 기본 32px 는 홈의 "사용방법 살펴보기"와 바닥글 사이 빈칸입니다.
  * 하단 고정 바가 있는 화면에서만 올립니다 (1366×650 · 1920×950 · 125% 확대 기준, #941).
+ * 최종 모바일 위치(760px 이하의 생성·수정 화면)는 index.css에서 덮어씁니다.
  */
 const launcherLifts: [pattern: string, bottom: number][] = [
   // 피치 만들기 · 수정: 아래 고정 바(79px)보다 위에 둡니다 (12-4 F1 "겹침")

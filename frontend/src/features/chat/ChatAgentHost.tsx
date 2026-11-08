@@ -173,9 +173,9 @@ function ChatSessionView({
     // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
     // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: 오류 경계 및 테스트가 공통 런처 위치를 식별하는 표시입니다
+      // data-chat-launcher: index.css의 장치 점검·피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
       data-chat-launcher=""
-      style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
+      style={{ '--chat-launcher-default-bottom': `${launcherBottom}px` } as CSSProperties}
       className={CHAT_LAUNCHER_CLASS}
     >
       {open && (
@@ -502,12 +502,15 @@ function ChatPanel({
 
       {/* AI 답이 글자 효과로 채워지는 요소에는 aria-live 를 두지 않습니다(글자마다 읽힐 수 있음). 완성된 문장만
           따로 둔 role="status" 영역(ChatAnswer 의 data-chat-announce)에 넣습니다(#956). 목록 전체에도 두지 않습니다 — 사용자가 보낸 말까지 다시 읽힙니다.
-          min-h-16: 패널이 낮아져도 한두 줄은 보이고, 그보다 낮으면 패널이 스크롤됩니다 */}
+          min-h-16: 패널이 낮아져도 한두 줄은 보이고, 그보다 낮으면 패널이 스크롤됩니다.
+          relative: 안의 sr-only(position:absolute) 글자가 이 스크롤 영역을 기준으로 자리 잡게 합니다. 없으면 기준이
+          패널(section)이 되어, 대화가 길 때 그 글자가 메시지 영역 밖으로 빠져 패널 전체가 늘어나고 스크롤됩니다
+          (머리줄이 밀려 올라가고 입력칸 아래가 비어 보임) */}
       <div
         ref={scroller}
         aria-label="채팅 메시지"
         onScroll={onScroll}
-        className="flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
+        className="relative flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
       >
         <PanelBody
           failed={failed}

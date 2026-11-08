@@ -113,6 +113,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
             presentation_date=pitch.presentation_date,
             takes=take_summaries,
             can_delete=not any(take_lookup.blocks_pitch_deletion(row.Take, now) for row in takes),
+            is_demo=pitch.is_demo,
         )
 
         results.append(pitch_dto)
@@ -139,6 +140,7 @@ def get_pitch_info(db: Session, pitch_id: uuid.UUID) -> PitchInfoResponseDTO:
         presentation_date=pitch.presentation_date,
         upper_deviation=pitch.upper_deviation,
         lower_deviation=pitch.lower_deviation,
+        is_demo=pitch.is_demo,
     )
 
 

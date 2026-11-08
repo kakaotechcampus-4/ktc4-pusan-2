@@ -164,7 +164,10 @@ export type SlideUpload =
  * `failed` 의 `message` 는 화면에 그대로 띄울 문구입니다.
  */
 export type ScriptParse =
-  { status: 'idle' } | { status: 'pending' } | { status: 'failed'; message: string };
+  | { status: 'idle' }
+  /** `startedAt` 은 나누기를 시작한 `performance.now()` — 다른 화면에 다녀와도 기다린 시간을 이어서 셉니다 */
+  | { status: 'pending'; startedAt: number }
+  | { status: 'failed'; message: string };
 
 export interface ScriptVersion {
   version: number;

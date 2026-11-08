@@ -59,9 +59,10 @@ function ButtonDoc({ stateId }: { stateId: string }) {
             다시 불러오기
           </Button>
         </Row>
-        <Row label="진행 중 문구">
-          <Button disabled>끝내는 중…</Button>
-          <Button variant="secondary" disabled>
+        {/* 누른 버튼이 처리 중이 되면 aria-disabled 입니다. disabled 면 초점이 body 로 빠집니다(#818 · #845) */}
+        <Row label="aria-disabled · 처리 중">
+          <Button aria-disabled>끝내는 중…</Button>
+          <Button variant="secondary" aria-disabled>
             삭제하는 중…
           </Button>
         </Row>

@@ -205,3 +205,23 @@ describe('stone text contrast (WCAG AA, normal text)', () => {
     );
   });
 });
+
+describe('gaze calibration lens contrast (WCAG AA, normal text)', () => {
+  it('keeps the original coral arrow and label on an opaque backdrop', () => {
+    const lens = camera.match(/\.gzc-lens\s*\{([^}]*)\}/)?.[1];
+    const arrow = camera.match(/\.gzc-lens span\s*\{([^}]*)\}/)?.[1];
+
+    expect(lens).toMatch(/color:\s*var\(--coral\)\s*;/);
+    expect(lens).toMatch(/background:\s*var\(--backdrop\)\s*;/);
+    expect(arrow).toMatch(/border-bottom:\s*12px solid currentColor\s*;/);
+  });
+
+  // The 12px label needs 4.5:1. The opaque backdrop keeps the contrast
+  // independent of the webcam frame behind the indicator.
+  it('keeps coral at least 4.5:1 on the opaque backdrop', () => {
+    const coral = colorToken(camera, '.gzc', '--coral');
+    const backdrop = colorToken(camera, '.gzc', '--backdrop');
+
+    expect(contrast(coral, backdrop)).toBeGreaterThanOrEqual(4.5);
+  });
+});

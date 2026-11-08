@@ -242,19 +242,24 @@ function MissionReader({
       <p>{note}</p>
       <footer>
         <p>모든 미션이 이번 Take에 적용돼요.</p>
+        {/* 끝에 닿은 버튼은 aria-disabled 로 둡니다 — disabled 면 누른 버튼의 초점이 창 밖으로 빠집니다 (#818) */}
         <button
           type="button"
-          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream disabled:pointer-events-none disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
-          disabled={index === 0}
-          onClick={() => onSelect(index - 1)}
+          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream aria-disabled:pointer-events-none aria-disabled:cursor-default aria-disabled:border-dashed aria-disabled:border-line-strong aria-disabled:bg-cream aria-disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
+          aria-disabled={index === 0}
+          onClick={() => {
+            if (index > 0) onSelect(index - 1);
+          }}
         >
           이전 미션
         </button>
         <button
           type="button"
-          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream disabled:pointer-events-none disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
-          disabled={index === items.length - 1}
-          onClick={() => onSelect(index + 1)}
+          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream aria-disabled:pointer-events-none aria-disabled:cursor-default aria-disabled:border-dashed aria-disabled:border-line-strong aria-disabled:bg-cream aria-disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
+          aria-disabled={index === items.length - 1}
+          onClick={() => {
+            if (index < items.length - 1) onSelect(index + 1);
+          }}
         >
           다음 미션
         </button>
