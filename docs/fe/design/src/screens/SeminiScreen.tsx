@@ -1,5 +1,5 @@
 // Draft #1104·#1110의 새미나이 UI. API와 저장소는 사용하지 않는다.
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { publicUrl } from '@/lib/publicUrl';
 import type { Navigate } from './shared';
 
@@ -13,17 +13,50 @@ const SEMINI_IMAGE = publicUrl('semini.png');
 const HEADER_ACTION =
   'grid h-11 w-10 shrink-0 place-items-center rounded-lg text-ink hover:bg-cream focus-visible:outline-2 focus-visible:outline-coral';
 
-export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
+type PanelView = 'messages' | 'history' | 'memory' | 'closed';
+
+function initialView(stateId: string): PanelView {
+  if (stateId === 'closed' || stateId === 'history' || stateId === 'memory') return stateId;
+  return 'messages';
+}
+
+export function SeminiScreen({ stateId }: { stateId: string; onNavigate: Navigate }) {
   const [draft, setDraft] = useState('');
   const [scopeOpen, setScopeOpen] = useState(false);
+  const [view, setView] = useState<PanelView>(() => initialView(stateId));
+  const [scope, setScope] = useState<'all' | 'pitch'>(() =>
+    stateId === 'pitch-scope' ? 'pitch' : 'all',
+  );
+  const [memoryOff, setMemoryOff] = useState(stateId === 'memory-off');
   const scopeRef = useRef<HTMLButtonElement>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const scopeMenuId = useId();
-  const isClosed = stateId === 'closed';
-  const isHistory = stateId === 'history';
-  const isMemory = stateId === 'memory';
+  const panelId = useId();
+
+  // 상태 선택기로 프리셋을 바꾸면 초기화한다. 패널 내부 조작은 서로 독립된 로컬 상태다.
+  useEffect(() => {
+    setView(initialView(stateId));
+    setScope(stateId === 'pitch-scope' ? 'pitch' : 'all');
+    setMemoryOff(stateId === 'memory-off');
+    setScopeOpen(false);
+  }, [stateId]);
+
+  const isClosed = view === 'closed';
+  const isHistory = view === 'history';
+  const isMemory = view === 'memory';
   const viewChat = !isHistory && !isMemory;
-  const scope = stateId === 'pitch-scope' ? 'pitch' : 'all';
-  const memoryOff = stateId === 'memory-off';
+  const wasClosed = useRef(isClosed);
+  useEffect(() => {
+    if (wasClosed.current && !isClosed) inputRef.current?.focus();
+    wasClosed.current = isClosed;
+  }, [isClosed]);
+
+  const closePanel = () => {
+    setView('closed');
+    setScopeOpen(false);
+    launcherRef.current?.focus();
+  };
 
   return (
     <div className="relative min-h-[42rem] bg-greige p-8 text-ink">
@@ -32,6 +65,7 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
       <div className="absolute bottom-8 left-4 z-10">
         {!isClosed && (
           <section
+            id={panelId}
             role="dialog"
             aria-modal="false"
             aria-label="새미나이 채팅 패널"
@@ -59,7 +93,8 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                     aria-label="새 대화"
                     onClick={() => {
                       setDraft('');
-                      onNavigate('semini', 'default');
+                      setScopeOpen(false);
+                      setView('messages');
                     }}
                   >
                     ＋
@@ -69,7 +104,10 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                     className={HEADER_ACTION}
                     aria-label="대화 목록"
                     aria-pressed={isHistory}
-                    onClick={() => onNavigate('semini', 'history')}
+                    onClick={() => {
+                      setView('history');
+                      setScopeOpen(false);
+                    }}
                   >
                     ◷
                   </button>
@@ -78,7 +116,10 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                     className={HEADER_ACTION}
                     aria-label="기억 설정"
                     aria-pressed={isMemory}
-                    onClick={() => onNavigate('semini', 'memory')}
+                    onClick={() => {
+                      setView('memory');
+                      setScopeOpen(false);
+                    }}
                   >
                     ⚙
                   </button>
@@ -86,7 +127,7 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                     type="button"
                     className={HEADER_ACTION}
                     aria-label="닫기"
-                    onClick={() => onNavigate('semini', 'closed')}
+                    onClick={closePanel}
                   >
                     ×
                   </button>
@@ -130,8 +171,8 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                           aria-pressed={scope === option.value}
                           onClick={() => {
                             setScopeOpen(false);
+                            setScope(option.value === 'pitch' ? 'pitch' : 'all');
                             scopeRef.current?.focus();
-                            onNavigate('semini', option.next);
                           }}
                           className="block min-h-11 w-full rounded px-2 text-left text-sm hover:bg-cream aria-pressed:font-bold"
                         >
@@ -146,9 +187,7 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                     <input
                       type="checkbox"
                       checked={memoryOff}
-                      onChange={(event) =>
-                        onNavigate('semini', event.target.checked ? 'memory-off' : 'default')
-                      }
+                      onChange={(event) => setMemoryOff(event.target.checked)}
                     />
                     기억 없이 대화하기
                   </label>
@@ -193,7 +232,7 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
                   </p>
                   <button
                     type="button"
-                    onClick={() => onNavigate('semini', 'default')}
+                    onClick={() => setView('messages')}
                     className="mt-4 underline"
                   >
                     대화로 돌아가기
@@ -205,6 +244,7 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
               <div className="shrink-0 border-t border-line-strong bg-panel p-3">
                 <div className="flex items-end gap-2 rounded-xl border-2 border-line-strong bg-white p-2">
                   <textarea
+                    ref={inputRef}
                     aria-label="새미나이에게 메시지 보내기"
                     rows={2}
                     value={draft}
@@ -227,12 +267,17 @@ export function SeminiScreen({ stateId, onNavigate }: { stateId: string; onNavig
           </section>
         )}
         <button
+          ref={launcherRef}
           type="button"
-          onClick={() => onNavigate('semini', isClosed ? 'default' : 'closed')}
+          onClick={() => {
+            if (isClosed) setView('messages');
+            else closePanel();
+          }}
           className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)]"
           aria-label="채팅 에이전트"
           aria-expanded={!isClosed}
           aria-haspopup="dialog"
+          aria-controls={isClosed ? undefined : panelId}
         >
           <img
             src={SEMINI_IMAGE}

@@ -1,5 +1,5 @@
 // 제품 Take 리포트(`frontend/src/features/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/ui/Button';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { Card, Stat } from '@/ui/Panel';
@@ -42,13 +42,22 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
 
 function ComparisonSummary() {
   const [open, setOpen] = useState(false);
+  const detailTitleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (!open) {
+      if (dialog.open) dialog.close();
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (!dialog.open) dialog.showModal();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [open]);
   return (
     <Card title="지난 Take와 비교">
@@ -81,12 +90,15 @@ function ComparisonSummary() {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 데이터가 없어요.</p>
+                  <p className="mt-2 text-sm text-ink/80">
+                    {overall ? '발표 전체 기준 지표예요.' : '슬라이드별 비교 데이터가 없어요.'}
+                  </p>
                 )}
                 {(same > 0 || unknown > 0) && (
                   <p className="mt-2 text-xs text-ink/80">
-                    {same > 0 ? `변화 없음 ${same}개` : ''}
-                    {unknown > 0 ? ` · 방향 판단 불가 ${unknown}개` : ''}
+                    {same > 0 && `변화 없음 ${same}개`}
+                    {same > 0 && unknown > 0 && ' · '}
+                    {unknown > 0 && `방향 판단 불가 ${unknown}개`}
                   </p>
                 )}
                 {overall && (
@@ -109,7 +121,7 @@ function ComparisonSummary() {
       </button>
       <dialog
         ref={dialogRef}
-        aria-labelledby="comparison-detail-title"
+        aria-labelledby={detailTitleId}
         onClose={() => {
           setOpen(false);
           openerRef.current?.focus();
@@ -119,14 +131,14 @@ function ComparisonSummary() {
       >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h2 id="comparison-detail-title" className="text-lg font-bold">
+            <h2 id={detailTitleId} className="text-lg font-bold">
               지난 Take 상세 비교
             </h2>
             <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
           </div>
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={() => dialogRef.current?.close()}
             aria-label="상세 비교 닫기"
             className="min-h-11 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
           >

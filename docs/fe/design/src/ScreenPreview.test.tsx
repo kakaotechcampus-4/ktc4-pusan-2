@@ -468,3 +468,68 @@ it('사용방법의 샘플 진입점은 튜토리얼 미리보기로 이동한�
   await act(async () => link.click());
   expect(host.textContent).toContain('첫 번째 Take');
 });
+
+it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립적으로 유지된다', async () => {
+  await render('semini');
+  const scope = host.querySelector<HTMLButtonElement>('[data-chat-scope]')!;
+  await act(async () => scope.click());
+  await click('피치: 서비스 소개');
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+
+  const memoryOff = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  await act(async () => memoryOff.click());
+  expect(memoryOff.checked).toBe(true);
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+
+  const history = host.querySelector<HTMLButtonElement>('button[aria-label="대화 목록"]')!;
+  await act(async () => history.click());
+  expect(host.textContent).toContain('대화 목록');
+  await click('대화로 돌아가기');
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+  expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
+
+  const launcher = host.querySelector<HTMLButtonElement>('button[aria-label="채팅 에이전트"]')!;
+  expect(launcher.getAttribute('aria-controls')).toBeTruthy();
+  const close = host.querySelector<HTMLButtonElement>('button[aria-label="닫기"]')!;
+  await act(async () => close.click());
+  expect(document.activeElement).toBe(launcher);
+  expect(launcher.getAttribute('aria-expanded')).toBe('false');
+  await act(async () => launcher.click());
+  expect(document.activeElement).toBe(host.querySelector('textarea'));
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+  expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
+});
+
+it('리포트는 발표 전체 지표를 구분하고 상세 비교 모달의 스크롤을 잠근다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
+  };
+  const previousOverflow = document.body.style.overflow;
+  await render('report');
+  expect(host.textContent).toContain('발표 전체 기준 지표예요.');
+
+  const opener = button('슬라이드별 상세 비교표 보기')!;
+  await act(async () => opener.click());
+  const dialog = host.querySelector('dialog')!;
+  expect(dialog.open).toBe(true);
+  expect(document.body.style.overflow).toBe('hidden');
+  const close = host.querySelector<HTMLButtonElement>('button[aria-label="상세 비교 닫기"]')!;
+  await act(async () => close.click());
+  expect(dialog.open).toBe(false);
+  expect(document.body.style.overflow).toBe(previousOverflow);
+  expect(document.activeElement).toBe(opener);
+});
+
+it('스크롤 gutter를 쓰는 설계서 도움말은 본문 오른쪽 여백을 추가하지 않는다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  const previousPadding = document.body.style.paddingRight;
+  await render('home');
+  await click('사용방법 살펴보기');
+  expect(document.body.style.paddingRight).toBe(previousPadding);
+});

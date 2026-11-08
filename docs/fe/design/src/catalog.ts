@@ -265,6 +265,7 @@ const productScreens: GuideScreen[] = [
     rules: [
       '런처는 왼쪽 하단에 고정하며 채팅 패널은 너비 26rem·높이 36rem의 둥근 흰 배경과 3px 테두리, 오프셋 그림자로 구분한다.',
       '추천 질문은 입력창에만 채우고 자동으로 전송하지 않는다.',
+      '대화 범위와 기억 없이 대화하기는 독립적으로 동작하고, 목록·기억 설정·패널 닫기를 오가더라도 선택을 보존한다.',
       '대화 목록과 기억 설정에서는 입력 폼을 숨기고 작성 중인 초안을 보존한다.',
       '실제 API·메시지 기록·기억 설정은 호출하지 않는다.',
     ],
@@ -276,7 +277,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/chat/ChatEmptyState.tsx',
     ],
     productNote:
-      'Draft #1104·#1110 기준 UI 시안으로, 실제 채팅 API·오류 경계·라우트별 하단 오프셋은 재현하지 않는다.',
+      'Draft #1104·#1110 기준 UI 시안으로, 실제 채팅 API·오류 경계·라우트별 하단 오프셋은 재현하지 않는다. 화면 상태 선택은 프리셋이며 패널 내부 조작은 로컬 상태로만 시연한다.',
     productLinks: [link('홈 · 채팅 레이어', '/')],
     next: [next('홈', 'home')],
   },
@@ -432,7 +433,8 @@ const productScreens: GuideScreen[] = [
     title: '시작 전 세팅',
     group: screenGroup.rehearsal,
     route: '/pitch/:pitchId/device-check',
-    status: '제품에 있음',
+    status: 'Draft 반영',
+    // 미병합 제품 PR #1103의 시선 보정 안내를 미리 보여 준다.
     summary:
       '카메라 · 마이크 · 시선 기준을 점검하고 대본 표시를 고른 뒤, 이 화면의 시작 버튼에서 Take를 만들어 리허설을 연다.',
     states: [

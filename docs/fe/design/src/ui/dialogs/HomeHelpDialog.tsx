@@ -27,15 +27,11 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
     const dialog = dialogRef.current;
     const { style } = document.body;
     const previousOverflow = style.overflow;
-    const previousPadding = style.paddingRight;
-    // 스크롤바가 사라진 만큼 본문을 밀어 가운데 정렬된 상단바가 옆으로 움직이지 않게 한다
-    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    // 설계서 html에는 scrollbar-gutter: stable이 있어 추가 paddingRight 보정이 필요 없다.
     dialog?.showModal();
     style.overflow = 'hidden';
-    if (scrollbar > 0) style.paddingRight = `${scrollbar}px`;
     return () => {
       style.overflow = previousOverflow;
-      style.paddingRight = previousPadding;
     };
   }, []);
 
