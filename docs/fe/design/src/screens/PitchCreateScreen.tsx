@@ -783,6 +783,18 @@ export function PitchCreateScreen({
                 <label className="mb-3 block font-bold" htmlFor={`${id}-criteria`}>
                   평가기준 작성
                 </label>
+                <div className="mb-3 rounded-lg border border-line bg-panel px-3 py-3">
+                  <p className="text-sm font-bold">작성 가능한 평가 항목</p>
+                  <ul aria-label="측정 가능한 항목" className="mt-2 flex flex-wrap gap-2">
+                    {CRITERIA_HINTS.map((criterion) => (
+                      <CriterionHintChip key={criterion.label} criterion={criterion} />
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs leading-relaxed text-ink/80">
+                    칩에 마우스를 올리거나 눌러 예시를 확인해 보세요. 발표 시간은 발표정보에서
+                    설정해 주세요.
+                  </p>
+                </div>
                 <textarea
                   id={`${id}-criteria`}
                   className="min-h-40 w-full border border-line-strong bg-white p-4"
@@ -796,18 +808,6 @@ export function PitchCreateScreen({
                     '예: 군더더기 말은 5회 이하로 줄이고 싶어요.\n예: 청중을 70% 이상 바라보고 싶어요.'
                   }
                 />
-                <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-3">
-                  <p className="text-sm font-bold">작성 가능한 평가 항목</p>
-                  <ul aria-label="측정 가능한 항목" className="mt-2 flex flex-wrap gap-2">
-                    {CRITERIA_HINTS.map((criterion) => (
-                      <CriterionHintChip key={criterion.label} criterion={criterion} />
-                    ))}
-                  </ul>
-                  <p className="mt-2 text-xs leading-relaxed text-ink/80">
-                    칩에 마우스를 올리거나 눌러 예시를 확인해 보세요. 발표 시간은 발표정보에서
-                    설정해 주세요.
-                  </p>
-                </div>
                 <button
                   type="button"
                   className="create-primary mt-3"
@@ -821,7 +821,10 @@ export function PitchCreateScreen({
                 </button>
               </div>
               <div>
-                <h3 className="mb-3 font-bold">이번 발표에 반영된 기준</h3>
+                <h3 className="mb-3 font-bold">정리된 평가기준</h3>
+                {criteria.length > 0 && (
+                  <p className="mb-3 text-xs text-ink/80">숫자 목표가 있어도 측정 지표와 연결되지 않으면 달성 여부를 판정하지 않을 수 있어요.</p>
+                )}
                 {criteria.length ? (
                   <ol className="list-decimal space-y-3 pl-5">
                     {criteria.map((text) => (
