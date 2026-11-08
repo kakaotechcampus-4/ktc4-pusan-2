@@ -602,7 +602,21 @@ class ChatAgentConfig(_Frozen):
         "해 보",
     )
     #: 연습하지 않겠다는 뜻이 보이면 연습 버튼을 내지 않는다(인사로 받는다)
-    practice_negation_words: tuple[str, ...] = ("안 할", "안할", "안 해", "않", "말고", "그만")
+    practice_negation_words: tuple[str, ...] = (
+        "안 할",
+        "안할",
+        "안 해",
+        "안해",
+        "못 해",
+        "못해",
+        "못 할",
+        "못할",
+        "않",
+        "말고",
+        "그만",
+    )
+    #: 할 수 있는 일 질문("어떻게 도와줄 수 있어?")에서는 요청 낱말로 세지 않는 낱말(말에 '수 있'이 있을 때만)
+    capability_question_words: tuple[str, ...] = ("어떻게", "알려", "뭐야")
     #: 물음표가 있어도 인사로 받는 말(이 낱말을 빼면 문장 부호만 남을 때, 예: "안녕하세요?")
     small_talk_greeting_words: tuple[str, ...] = (
         "안녕하세요",

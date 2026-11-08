@@ -1854,7 +1854,10 @@ def freeze_info(
         name: hashlib.sha256((LAB / name).read_bytes()).hexdigest()
         for name in ("grading.py", "scenario.py", "evals.py", "judge.py")
     }
-    manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        manifest = {}  # 자료 파일이 없거나 깨졌어도 보고서는 쓴다(자료 없음으로 돈 평가)
     return {
         "feature_version": FEATURE_VERSION,
         "prompt_version": prompts.PROMPT_VERSION,

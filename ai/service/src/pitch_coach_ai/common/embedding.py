@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import threading
 from collections.abc import Callable, Sequence
 
 import httpx
@@ -28,6 +29,9 @@ from pitch_coach_ai.settings import Settings
 
 #: 질문 임베딩 호출을 돌리는 스레드(전체 마감을 강제하려고 호출을 호출 스레드 밖에서 돌린다)
 _POOL = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="embed")
+#: 풀 자리. 마감을 넘긴 호출은 스레드에서 끝까지 돌 수 있으므로(SDK 시간 제한으로 끝난다)
+#: 자리가 다 차면 기다리지 않고 바로 시간 초과로 돌려 키워드 검색으로 넘어간다
+_SLOTS = threading.BoundedSemaphore(8)
 
 
 def _client(base_url: str, api_key: str) -> openai.OpenAI:
@@ -60,7 +64,16 @@ def with_deadline(
     base_url: str = "",
 ) -> list[list[float]]:
     """`call` 의 전체 시간에 마감을 강제한다. 넘기면 `openai.APITimeoutError`(내용 없음)."""
-    future = _POOL.submit(call, texts, timeout)
+    if not _SLOTS.acquire(blocking=False):
+        raise openai.APITimeoutError(request=httpx.Request("POST", base_url or "http://embed"))
+
+    def run() -> list[list[float]]:
+        try:
+            return call(texts, timeout)
+        finally:
+            _SLOTS.release()
+
+    future = _POOL.submit(run)
     try:
         return future.result(timeout=max(timeout, 0.0))
     except concurrent.futures.TimeoutError:

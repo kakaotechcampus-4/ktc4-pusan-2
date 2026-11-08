@@ -125,9 +125,19 @@ _TAKE_AFTER = re.compile(r"(?:Take|테이크)\s*(\d+)", re.IGNORECASE)
 _TAKE_BEFORE = re.compile(r"(\d+)\s*번째?\s*(?:Take|테이크)", re.IGNORECASE)
 
 
+#: "Take 4, 5" · "Take 4와 5" · "Take 4 · 5"처럼 Take 뒤에 나열한 번호(장 · 횟수 · 비율 숫자는 빼고)
+_TAKE_LIST = re.compile(
+    r"(?:Take|테이크)\s*\d+((?:\s*(?:,|·|와|과|랑|하고|및)\s*\d+(?!\s?(?:장|번|회|%|퍼센트|초|분|점|\d)))+)",
+    re.IGNORECASE,
+)
+
+
 def named_take_numbers(text: str) -> set[int]:
-    """사용자 말이 이름으로 집은 Take 번호("Take 5" · "5번째 Take")."""
-    return {int(n) for p in (_TAKE_AFTER, _TAKE_BEFORE) for n in p.findall(text or "")}
+    """사용자 말이 이름으로 집은 Take 번호("Take 5" · "5번째 Take" · 나열한 "Take 4, 5")."""
+    out = {int(n) for p in (_TAKE_AFTER, _TAKE_BEFORE) for n in p.findall(text or "")}
+    for tail in _TAKE_LIST.findall(text or ""):
+        out |= {int(n) for n in re.findall(r"\d+", tail)}
+    return out
 
 
 #: 장 번호: "3장", "슬라이드 3"

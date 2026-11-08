@@ -968,17 +968,19 @@ def _record_guard_claims(
             continue
         if msg_takes and not numbers <= msg_takes:
             continue  # 사용자 말이 집은 Take 와 다른 대상이다(다른 Take 의 값으로 답하지 않는다)
-        target = [
-            eid
-            for eid, ev in ctx.registry.items.items()
-            if ev.origin == "RECORD"
-            and ev.take_number in numbers
-            and (not metrics or ev.metric in metrics)
-            and (slide is None or ev.slide_number == slide)
-        ]
-        if not target or answered.intersection(target):
-            continue  # 읽은 값이 없거나, 이 대상은 이미 기록 문장 · 판단이 답했다
-        ids.extend(e for e in target if e not in ids)
+        # Take 마다 따로 본다: 여러 Take 를 집은 초안에서 한 Take 만 답했으면 남은 Take 만 보강한다
+        for number in sorted(numbers):
+            target = [
+                eid
+                for eid, ev in ctx.registry.items.items()
+                if ev.origin == "RECORD"
+                and ev.take_number == number
+                and (not metrics or ev.metric in metrics)
+                and (slide is None or ev.slide_number == slide)
+            ]
+            if not target or answered.intersection(target):
+                continue  # 읽은 값이 없거나, 이 Take 의 대상은 이미 기록 문장 · 판단이 답했다
+            ids.extend(e for e in target if e not in ids)
     return compose.template_partial(ctx, ids)
 
 

@@ -646,7 +646,11 @@ class Loop:
         if len(msg) > self.cfg.small_talk_max_chars or any(ch.isdigit() for ch in msg):
             return None
         # 요청 · 지시 · 질문이 섞인 말은 가벼운 말이 아니다("안녕, 예상 질문 만들어 줘"). 물음표는 CAPABILITY 에서만 받는다
-        if any(w in msg for w in self.cfg.small_talk_request_words):
+        words = self.cfg.small_talk_request_words
+        if kind == "CAPABILITY" and "수 있" in msg:
+            # "어떻게 도와줄 수 있어?" · "뭘 알려줄 수 있어?"처럼 할 수 있는 일을 묻는 말의 낱말은 요청으로 세지 않는다
+            words = tuple(w for w in words if w not in self.cfg.capability_question_words)
+        if any(w in msg for w in words):
             return None
         if (
             kind != "CAPABILITY"
