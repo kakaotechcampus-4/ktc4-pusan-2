@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="600" viewBox="0 0 1040 600" role="img" aria-labelledby="device-title device-desc">
+<title id="device-title">시작 전 장치 점검 화면 설명용 목업</title>
+<desc id="device-desc">제품의 시작 전 세팅을 단순화한 예시입니다. 피치 제목과 TAKE 배지, 카메라와 음량, 장비 준비 네 항목, 이번 Take 미션, 발표 중 대본 표시 선택, 시작 버튼과 채팅 런처가 있습니다. 실제 사용자 정보는 없습니다.</desc>
+<g font-family="Pretendard, Noto Sans KR, Malgun Gothic, sans-serif">
+<rect x="0" y="0" width="1040" height="600" rx="0" fill="#f5f0e9" stroke="none" stroke-width="1"/>
+<rect x="12" y="12" width="1016" height="576" rx="0" fill="#f5f0e9" stroke="#2a2723" stroke-width="2"/>
+<text x="35" y="53" font-size="30" fill="#2a2723" font-weight="800" text-anchor="start">시작 전 세팅</text>
+<text x="272" y="49" font-size="16" fill="#6b625b" font-weight="600" text-anchor="start">예시 피치 · 발표 연습</text>
+<rect x="898" y="25" width="108" height="35" rx="0" fill="#fff" stroke="#2a2723" stroke-width="1"/>
+<text x="952" y="48" font-size="16" fill="#2a2723" font-weight="800" text-anchor="middle">TAKE 3</text>
+<rect x="35" y="83" width="458" height="263" rx="0" fill="#e6dfd5" stroke="#2a2723" stroke-width="2"/>
+<rect x="47" y="95" width="434" height="239" rx="0" fill="#d5d5d1" stroke="#c6bcac" stroke-width="1"/>
+<rect x="198" y="148" width="133" height="102" rx="12" fill="#f5f0e9" stroke="none" stroke-width="0"/>
+<circle cx="264" cy="180" r="24" fill="#c6bcac" stroke="none" stroke-width="0"/>
+<path d="M215 246 Q264 193 315 246" fill="#c6bcac"/>
+<text x="264" y="287" font-size="19" fill="#2a2723" font-weight="700" text-anchor="middle">카메라 영상 표시 자리</text>
+<text x="264" y="313" font-size="15" fill="#6b625b" font-weight="500" text-anchor="middle">예시 화면 · 촬영 영상 없음</text>
+<rect x="35" y="356" width="458" height="63" rx="0" fill="#ffffff" stroke="#c6bcac" stroke-width="2"/>
+<text x="55" y="379" font-size="15" fill="#2a2723" font-weight="700" text-anchor="start">오디오 입력</text>
+<rect x="55" y="391" width="402" height="14" rx="0" fill="#e8e1d7" stroke="none" stroke-width="1"/>
+<line x1="59" y1="398" x2="307" y2="398" stroke="#78c57f" stroke-width="14" stroke-dasharray="8 4"/>
+<line x1="307" y1="398" x2="365" y2="398" stroke="#e4bf45" stroke-width="14" stroke-dasharray="8 4"/>
+<rect x="515" y="83" width="490" height="239" rx="0" fill="#fff" stroke="#2a2723" stroke-width="2"/>
+<text x="535" y="114" font-size="22" fill="#2a2723" font-weight="800" text-anchor="start">장비 준비</text>
+<text x="650" y="113" font-size="14" fill="#6b625b" font-weight="500" text-anchor="start">필수 3개</text>
+<rect x="794" y="94" width="193" height="33" rx="0" fill="#c9421c" stroke="none" stroke-width="1"/>
+<text x="890" y="115" font-size="14" fill="#fff" font-weight="700" text-anchor="middle">카메라·마이크 켜기</text>
+<line x1="535" y1="132" x2="985" y2="132" stroke="#c6bcac" stroke-width="1"/>
+<text x="548" y="160" font-size="16" fill="#2a2723" font-weight="700" text-anchor="start">카메라</text>
+<circle cx="665" cy="154" r="7" fill="#6b9e78" stroke="none" stroke-width="0"/>
+<text x="682" y="159" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">연결됨</text>
+<rect x="839" y="141" width="146" height="28" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
+<text x="912" y="160" font-size="13" fill="#2a2723" font-weight="600" text-anchor="middle">기본 카메라</text>
+<line x1="535" y1="171" x2="985" y2="171" stroke="#c6bcac" stroke-width="1"/>
+<text x="548" y="201" font-size="16" fill="#2a2723" font-weight="700" text-anchor="start">마이크</text>
+<circle cx="665" cy="195" r="7" fill="#6b9e78" stroke="none" stroke-width="0"/>
+<text x="682" y="200" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">입력 확인</text>
+<rect x="839" y="182" width="146" height="28" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
+<text x="912" y="201" font-size="13" fill="#2a2723" font-weight="600" text-anchor="middle">기본 마이크</text>
+<line x1="535" y1="212" x2="985" y2="212" stroke="#c6bcac" stroke-width="1"/>
+<text x="548" y="242" font-size="16" fill="#2a2723" font-weight="700" text-anchor="start">시선 기준</text>
+<circle cx="665" cy="236" r="7" fill="#6b9e78" stroke="none" stroke-width="0"/>
+<text x="682" y="241" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">3/3 완료</text>
+<rect x="839" y="223" width="146" height="28" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
+<text x="912" y="242" font-size="13" fill="#2a2723" font-weight="600" text-anchor="middle">다시 잡기</text>
+<line x1="535" y1="253" x2="985" y2="253" stroke="#c6bcac" stroke-width="1"/>
+<text x="548" y="283" font-size="16" fill="#2a2723" font-weight="700" text-anchor="start">평소 목소리</text>
+<circle cx="665" cy="277" r="7" fill="#c6bcac" stroke="none" stroke-width="0"/>
+<text x="682" y="282" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">확인 전 (선택)</text>
+<rect x="839" y="264" width="146" height="28" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
+<text x="912" y="283" font-size="13" fill="#2a2723" font-weight="600" text-anchor="middle">목소리 재기</text>
+<rect x="515" y="330" width="490" height="77" rx="0" fill="#fff" stroke="#2a2723" stroke-width="2"/>
+<text x="535" y="358" font-size="18" fill="#2a2723" font-weight="800" text-anchor="start">이번 Take 미션</text>
+<text x="698" y="357" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">1개 · 예시</text>
+<rect x="535" y="368" width="450" height="27" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
+<text x="549" y="387" font-size="14" fill="#2a2723" font-weight="600" text-anchor="start">1   발표 속도를 일정하게 유지하기</text>
+<rect x="515" y="415" width="490" height="102" rx="0" fill="#fff" stroke="#2a2723" stroke-width="2"/>
+<text x="535" y="439" font-size="18" fill="#2a2723" font-weight="800" text-anchor="start">발표 중 대본 표시</text>
+<text x="986" y="438" font-size="13" fill="#6b625b" font-weight="500" text-anchor="end">시작 후 변경 불가</text>
+<rect x="535" y="451" width="187" height="33" rx="0" fill="#2a2723" stroke="#2a2723" stroke-width="1"/>
+<text x="628" y="473" font-size="13" fill="#fff" font-weight="700" text-anchor="middle">전체 대본 + 하이라이트</text>
+<rect x="729" y="451" width="112" height="33" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
+<text x="785" y="473" font-size="12" fill="#2a2723" font-weight="600" text-anchor="middle">핵심 키워드만</text>
+<rect x="848" y="451" width="137" height="33" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
+<text x="916" y="473" font-size="12" fill="#2a2723" font-weight="600" text-anchor="middle">실전 모드 · 대본 없이</text>
+<text x="535" y="505" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">실전 모드에서는 대본과 실시간 코치가 꺼져요</text>
+<line x1="35" y1="527" x2="1005" y2="527" stroke="#c6bcac" stroke-width="1"/>
+<text x="42" y="549" font-size="14" fill="#2a2723" font-weight="600" text-anchor="start">필수 장비와 시선 기준을 확인해 주세요</text>
+<text x="42" y="570" font-size="12" fill="#6b625b" font-weight="500" text-anchor="start">말이 없는 상태가 2분 넘게 이어지면 자동으로 끝날 수 있어요</text>
+<rect x="779" y="537" width="182" height="39" rx="0" fill="#e8532a" stroke="#2a2723" stroke-width="2"/>
+<text x="870" y="563" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">Take 3 시작하기</text>
+<g aria-label="오른쪽 아래 채팅 에이전트 런처를 나타낸 단순화한 기호">
+<circle cx="990" cy="555" r="20" fill="#c9421c" stroke="#2a2723" stroke-width="2"/>
+<path d="M979 561 Q979 544 989 543 Q1001 544 1001 556 Q994 566 981 561" fill="#fff7ed"/>
+<circle cx="990" cy="553" r="2" fill="#2a2723" stroke="none" stroke-width="0"/>
+<path d="M997 555 L1005 557 L998 561" fill="#e4bf45"/>
+</g>
+</g>
+</svg>
