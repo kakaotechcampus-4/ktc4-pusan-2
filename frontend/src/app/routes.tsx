@@ -19,7 +19,7 @@ import {
   MyPage,
   TakesPage,
 } from './LazyScreens';
-import { createBrowserRouter, Outlet } from 'react-router';
+import { createBrowserRouter, Outlet, ScrollRestoration } from 'react-router';
 import { TakeComparisonRedirect } from '@/features/report/TakeComparisonRedirect';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
@@ -170,6 +170,7 @@ export const router = createBrowserRouter([
     element: (
       <>
         <Outlet />
+        <ScrollRestoration />
         <ChatAgentHost />
       </>
     ),
