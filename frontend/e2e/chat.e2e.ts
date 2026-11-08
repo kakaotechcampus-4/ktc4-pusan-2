@@ -166,9 +166,32 @@ test('6. 최신 아님 배지 → 다시 묻기', async ({ page }) => {
   await expect(old.locator('[data-stale-reason]')).toContainText('최신 아님');
 });
 
+interface OfficialReport {
+  take_number: number;
+  review: { score: number | null } | null;
+}
+const scoreOf = (report: OfficialReport) => ({
+  takeNumber: report.take_number,
+  score: report.review?.score ?? null,
+});
+const isReport = (url: string, takeId: string) =>
+  new URL(url).pathname === `/api/takes/${takeId}/report`;
+/** 공식 리포트를 다시 읽습니다 — 목(MSW)은 페이지 안의 요청만 받으므로 페이지에서 부릅니다 */
+const officialReport = (page: Page, takeId: string) =>
+  page.evaluate(async (id) => {
+    const res = await fetch(`/api/takes/${id}/report`);
+    return (await res.json()) as OfficialReport;
+  }, takeId);
+
 test('7. 다시 평가 → 원래 결과 · 참고 결과 나란히', async ({ page }) => {
   // 점수가 있는 Take 2 에서 묻습니다 — 목은 요청의 `page.take_id` 로 다시 평가할 Take 를 고릅니다
+  const opened = page.waitForResponse((r) => isReport(r.url(), TAKE2_ID));
   await page.goto(`/takes/${TAKE2_ID}`);
+  // 다시 평가의 "바꾸기 전"(72)이 화면이 받은 공식 리포트와 같은 Take · 같은 점수인지 먼저 봅니다
+  expect(scoreOf((await (await opened).json()) as OfficialReport)).toEqual({
+    takeNumber: 2,
+    score: 72,
+  });
   const panel = await openChat(page);
 
   const sent = page.waitForRequest((r) => isSend(r.url(), r.method()));
@@ -195,6 +218,8 @@ test('7. 다시 평가 → 원래 결과 · 참고 결과 나란히', async ({ p
   await expect(score.getByRole('cell')).toHaveText(['72', '78']);
   // 공식 결과와 다르다는 표시(`official_differs`)는 없습니다
   await expect(panel.getByText('지금 기록 기준이에요')).toHaveCount(0);
+  // 참고 결과를 만든 뒤에도 공식 리포트의 점수는 그대로입니다
+  expect(scoreOf(await officialReport(page, TAKE2_ID))).toEqual({ takeNumber: 2, score: 72 });
 });
 
 /** 목의 개발용 조작(`src/mocks/chat.ts` 머리말 "콘솔") — 다음 보내기 · 실행을 실패시키거나 꺼짐으로 둡니다 */
