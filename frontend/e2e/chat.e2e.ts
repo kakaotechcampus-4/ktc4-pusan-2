@@ -8,6 +8,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 /** 목의 첫 피치(`src/mocks/home.ts`) */
 const PITCH_ID = '10000000-0000-4000-8000-000000000001';
 const PITCH_TITLE = '캡스톤 최종 발표';
+/** 점수가 있는 Take(2, 72점) · 점수가 없는 Take(3) — `src/mocks/home.ts` */
+const TAKE2_ID = '20000000-0000-4000-8000-000000000002';
 const TAKE3_ID = '20000000-0000-4000-8000-000000000003';
 
 /** 런처를 눌러 대화창을 엽니다 */
@@ -28,6 +30,10 @@ const scopeChip = (panel: Locator) => panel.getByRole('button', { name: /^범위
 /** 답 문장 — 같은 글이 스크린 리더 알림(status)에도 있어서 문장 칸(`data-claim`) 안에서 찾습니다 */
 const claim = (panel: Locator, text: string) =>
   panel.locator('[data-claim]').filter({ hasText: text });
+
+/** 메시지 보내기 요청 — 같은 실행을 이어 받았는지(새로 보내지 않았는지) 세는 데도 씁니다 */
+const isSend = (url: string, method: string) =>
+  method === 'POST' && new URL(url).pathname === '/api/chat/messages';
 
 test('1. 홈에서 버튼 → 전체 범위로 질문 → 답과 근거 칩', async ({ page }) => {
   await page.goto('/');
@@ -142,20 +148,34 @@ test('6. 최신 아님 배지 → 다시 묻기', async ({ page }) => {
 });
 
 test('7. 다시 평가 → 원래 결과 · 참고 결과 나란히', async ({ page }) => {
-  await page.goto(`/takes/${TAKE3_ID}`);
+  // 점수가 있는 Take 2 에서 묻습니다 — 목은 요청의 `page.take_id` 로 다시 평가할 Take 를 고릅니다
+  await page.goto(`/takes/${TAKE2_ID}`);
   const panel = await openChat(page);
 
+  const sent = page.waitForRequest((r) => isSend(r.url(), r.method()));
   await ask(panel, '이번 Take 다시 평가해 줘');
+  const body = (await sent).postDataJSON() as { page: { take_id: string | null } };
+  expect(body.page.take_id).toBe(TAKE2_ID);
 
-  // 다시 평가도 승인 카드를 거칩니다 (F10)
-  await panel.getByRole('button', { name: '승인', exact: true }).click();
+  // 다시 평가도 승인 카드를 거칩니다 (F10) — 카드는 보던 Take 를 다시 평가한다고 알립니다
+  const confirm = panel
+    .locator('[data-action]')
+    .filter({ hasText: '대본을 보고 한 발표로 다시 평가할까요?' });
+  await expect(confirm).toContainText('Take 2를 대본 사용 기준으로 다시 평가해');
+  await confirm.getByRole('button', { name: '승인', exact: true }).click();
 
   // 공식 리뷰는 그대로 두고, 원래 결과("바꾸기 전")와 참고 결과를 한 표에 나란히 보입니다
   await expect(panel.getByText('참고 결과 — 공식 리뷰는 그대로예요')).toBeVisible();
   const table = panel.getByRole('table');
   await expect(table.getByRole('columnheader', { name: '바꾸기 전' })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: '참고 결과' })).toBeVisible();
-  await expect(table.getByRole('rowheader', { name: '점수' })).toBeVisible();
+  // Take 2 의 원래 점수(72) → 참고 결과(78)
+  const score = table
+    .getByRole('row')
+    .filter({ has: page.getByRole('rowheader', { name: /^점수/ }) });
+  await expect(score.getByRole('cell')).toHaveText(['72', '78']);
+  // 공식 결과와 다르다는 표시(`official_differs`)는 없습니다
+  await expect(panel.getByText('지금 기록 기준이에요')).toHaveCount(0);
 });
 
 /** 목의 개발용 조작(`src/mocks/chat.ts` 머리말 "콘솔") — 다음 보내기 · 실행을 실패시키거나 꺼짐으로 둡니다 */
@@ -228,9 +248,7 @@ test('9. 피치 수정 평가기준 단계에서 사용법 질문 → 화면 상
   await criteria.fill(typed);
 
   const panel = await openChat(page);
-  const sent = page.waitForRequest(
-    (r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/chat/messages',
-  );
+  const sent = page.waitForRequest((r) => isSend(r.url(), r.method()));
   await ask(panel, '평가기준은 어떻게 쓰면 돼?');
 
   // 보낸 요청에 지금 화면 상태(평가기준 단계 · 저장 전 입력)가 실립니다 (12-4 Screen)

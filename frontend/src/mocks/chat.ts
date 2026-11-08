@@ -872,6 +872,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             memoryOn: state.memory.enabled && !conversation.memory_off,
             chosen,
             screen: body.page.screen,
+            takeId: body.page.take_id ?? null,
             assessmentId: newAssessmentId(),
             priorAssessmentId:
               conversation.messages.flatMap((msg) => msg.assessments ?? []).at(-1)?.assessment_id ??
