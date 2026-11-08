@@ -823,7 +823,10 @@ export function PitchCreateScreen({
               <div>
                 <h3 className="mb-3 font-bold">정리된 평가기준</h3>
                 {criteria.length > 0 && (
-                  <p className="mb-3 text-xs text-ink/80">숫자 목표가 있어도 측정 지표와 연결되지 않으면 달성 여부를 판정하지 않을 수 있어요.</p>
+                  <p className="mb-3 text-xs text-ink/80">
+                    숫자 목표가 있어도 측정 지표와 연결되지 않으면 달성 여부를 판정하지 않을 수
+                    있어요.
+                  </p>
                 )}
                 {criteria.length ? (
                   <ol className="list-decimal space-y-3 pl-5">

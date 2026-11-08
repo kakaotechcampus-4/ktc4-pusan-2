@@ -76,9 +76,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                 {index === 1 && (
                   <div className="mt-5 space-y-6">
                     <figure className="min-w-0">
-                      <figcaption className="mb-3 text-sm font-bold">
-                        시작 전 장치 점검
-                      </figcaption>
+                      <figcaption className="mb-3 text-sm font-bold">시작 전 장치 점검</figcaption>
                       <img
                         src={publicUrl('help/device-check.svg')}
                         alt="장치 점검 화면 목업. 왼쪽 카메라와 오디오 입력, 오른쪽 장비 준비·이번 Take 미션·발표 중 대본 표시, 하단의 Take 시작 버튼이 있습니다."
@@ -92,9 +90,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                       </p>
                     </figure>
                     <figure className="min-w-0">
-                      <figcaption className="mb-3 text-sm font-bold">
-                        발표 연습 화면
-                      </figcaption>
+                      <figcaption className="mb-3 text-sm font-bold">발표 연습 화면</figcaption>
                       <img
                         src={publicUrl('help/rehearsal-stage.svg')}
                         alt="발표 화면 목업. 1 슬라이드, 2 카메라, 3 음량, 4 피코 코치, 5 대본, 6 키 안내, 7 발표 끝내기, 8 시선 테두리 범례."
@@ -104,7 +100,8 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                         className="block h-auto w-full border border-line-strong bg-white"
                       />
                       <p className="mt-2 text-xs text-stone">
-                        개인정보가 없는 설명용 목업입니다. 실제 UI는 리허설 모드와 장치 상태에 따라 달라져요.
+                        개인정보가 없는 설명용 목업입니다. 실제 UI는 리허설 모드와 장치 상태에 따라
+                        달라져요.
                       </p>
                     </figure>
                   </div>
