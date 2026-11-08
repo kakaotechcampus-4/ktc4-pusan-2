@@ -165,7 +165,9 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
     await act(async () => {
       chips[7]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     });
-    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('대본을 연결한 경우');
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
+      '대본을 연결한 경우',
+    );
 
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -176,7 +178,7 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
   }
 });
 
-it('키보드 포커스 설명은 다른 칩의 마우스 호버에도 유지되고, 클릭으로 예시를 닫을 수 있다', async () => {
+it('키보드 포커스와 클릭 닫기가 함께 동작한다', async () => {
   useCreateStore.getState().reset();
   useCreateStore.getState().setPitchId('p1');
   const view = await mountCriteria(null);

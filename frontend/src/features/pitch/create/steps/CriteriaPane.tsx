@@ -68,7 +68,10 @@ const MEASURABLE_CRITERIA: { label: string; example: string; note?: string }[] =
   },
 ];
 
-/** 칩은 입력 기능이 아닙니다. 숨긴 예시도 같은 그리드 칸의 높이를 차지해 전환 시 입력칸이 이동하지 않습니다. */
+/**
+ * 칩은 입력 기능이 아닙니다.
+ * 숨긴 예시도 같은 그리드 칸의 높이를 차지해 전환 시 입력칸이 이동하지 않습니다.
+ */
 function CriteriaExamples() {
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const tooltipId = useId();
@@ -145,9 +148,8 @@ function CriteriaExamples() {
               id={visible ? tooltipId : undefined}
               role={visible ? 'tooltip' : undefined}
               aria-hidden={!visible}
-              className={`col-start-1 row-start-1 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-sm ${
-                visible ? '' : 'invisible'
-              }`}
+              className="col-start-1 row-start-1 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-sm"
+              style={{ visibility: visible ? 'visible' : 'hidden' }}
             >
               <p className="font-bold">{criterion.label} 작성 예시</p>
               <p className="mt-1 leading-relaxed">{criterion.example}</p>
