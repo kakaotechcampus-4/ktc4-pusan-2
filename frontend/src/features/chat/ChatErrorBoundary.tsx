@@ -96,11 +96,12 @@ function ChatFailed({
   }, [folded, retryRef]);
 
   if (!canShowChat(pathname)) return null;
+  const defaultBottom = chatLauncherBottom(pathname);
 
   return (
     <div
       data-chat-launcher=""
-      style={{ '--chat-launcher-default-bottom': `${chatLauncherBottom(pathname)}px` } as CSSProperties}
+      style={{ '--chat-launcher-default-bottom': `${defaultBottom}px` } as CSSProperties}
       className={CHAT_LAUNCHER_CLASS}
     >
       {folded ? (
