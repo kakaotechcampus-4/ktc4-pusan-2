@@ -90,7 +90,7 @@ export function ChatPanelHeader({
             <h2 id={titleId} className="truncate text-base font-bold leading-5">
               새미나이
             </h2>
-            <p className="truncate text-[11px] text-stone">Semini · AI 발표 코치</p>
+            <p className="truncate text-[11px] text-stone">Semini · AI 비서 앱</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
