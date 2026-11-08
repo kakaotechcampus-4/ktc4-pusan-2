@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { HomeHelpDialog } from './HomeHelpDialog';
 
@@ -55,7 +56,11 @@ afterEach(async () => {
 
 async function renderHelp() {
   await act(async () => {
-    root.render(<HomeHelpDialog onDismiss={onDismiss} />);
+    root.render(
+      <MemoryRouter>
+        <HomeHelpDialog onDismiss={onDismiss} />
+      </MemoryRouter>,
+    );
   });
 }
 
