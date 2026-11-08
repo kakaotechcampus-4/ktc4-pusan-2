@@ -159,7 +159,7 @@ test('7. 다시 평가 → 원래 결과 · 참고 결과 나란히', async ({ p
 });
 
 /** 목의 개발용 조작(`src/mocks/chat.ts` 머리말 "콘솔") — 다음 보내기 · 실행을 실패시키거나 꺼짐으로 둡니다 */
-type MockChatCall = ['disable'] | ['runFail', string];
+type MockChatCall = ['disable'] | ['expire'] | ['runFail', string];
 const mockChat = (page: Page, ...call: MockChatCall) =>
   page.evaluate(([name, arg]) => {
     const m = (globalThis as unknown as { mockChat: Record<string, (a?: string) => void> })
@@ -246,4 +246,47 @@ test('9. 피치 수정 평가기준 단계에서 사용법 질문 → 화면 상
   // 답은 입력 위치 · 저장 방법을 안내하고, 입력란은 건드리지 않습니다
   await expect(claim(panel, '저장하면 다음 연습부터 적용돼요.')).toBeVisible();
   await expect(criteria).toHaveValue(typed);
+});
+
+test.describe('10. 승인 카드(전 → 후) → [승인] · [거절] · 만료 · 대기 중 새 메시지', () => {
+  /** 목표 저장 요청 → 승인 카드가 뜰 때까지 */
+  async function askToSave(page: Page): Promise<{ panel: Locator; card: Locator }> {
+    await page.goto(`/takes/${TAKE3_ID}`);
+    const panel = await openChat(page);
+    await ask(panel, '3장 시선을 목표로 잡아 줘');
+    const card = panel.locator('[data-action]').filter({ has: page.locator('[data-goal-change]') });
+    await expect(card).toBeVisible();
+    // 전 → 후 — 지금 목표와 새 목표를 나란히 보입니다
+    await expect(card.getByText('지금 목표')).toBeVisible();
+    await expect(card.getByText('새 목표')).toBeVisible();
+    return { panel, card };
+  }
+
+  test('[승인] → 목표 저장됨', async ({ page }) => {
+    const { panel, card } = await askToSave(page);
+    await card.getByRole('button', { name: '승인', exact: true }).click();
+    await expect(claim(panel, '목표를 저장했어요.')).toBeVisible();
+    await expect(panel.getByRole('group', { name: '대화에서 정한 목표' })).toBeVisible();
+  });
+
+  test('[거절] → "목표를 저장하지 않았어요."', async ({ page }) => {
+    const { panel, card } = await askToSave(page);
+    await card.getByRole('button', { name: '거절', exact: true }).click();
+    await expect(claim(panel, '목표를 저장하지 않았어요.')).toBeVisible();
+    await expect(panel.getByRole('group', { name: '대화에서 정한 목표' })).toHaveCount(0);
+  });
+
+  test('만료되면 만료 문장', async ({ page }) => {
+    const { panel } = await askToSave(page);
+    await mockChat(page, 'expire');
+    await expect(
+      claim(panel, '확인 시간이 지나 실행하지 않았어요. 필요하면 다시 말해 주세요.'),
+    ).toBeVisible();
+  });
+
+  test('승인 대기 중 새 메시지를 보내면 앞 확인 요청은 취소 문장', async ({ page }) => {
+    const { panel } = await askToSave(page);
+    await ask(panel, '지난번보다 뭐가 나아졌어?');
+    await expect(claim(panel, '새 메시지를 받아 앞의 확인 요청은 취소했어요.')).toBeVisible();
+  });
 });
