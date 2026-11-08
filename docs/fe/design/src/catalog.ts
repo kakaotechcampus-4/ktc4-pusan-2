@@ -951,7 +951,7 @@ const onboardingScreens: GuideScreen[] = [
   },
 ];
 
-/** 목록 순서 그대로 왼쪽 목록에 보인다: 기초 → 컴포넌트 · 대화 상자 → 화면 */
+/** 항목 배열 순서. 왼쪽 목록과 전체 보기는 GUIDE_GROUP_ORDER로 그룹을 정렬한다. */
 export const entries: GuideEntry[] = [
   ...foundationEntries,
   ...componentEntries,

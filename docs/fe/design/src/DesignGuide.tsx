@@ -760,6 +760,9 @@ export function DesignGuide() {
             <div className="grid min-w-0 grid-cols-1 gap-5 p-4 sm:p-5 2xl:grid-cols-2">
               {entries
                 .filter((entry) => entry.kind === allKind)
+                .sort(
+                  (a, b) => GUIDE_GROUP_ORDER.indexOf(a.group) - GUIDE_GROUP_ORDER.indexOf(b.group),
+                )
                 .map((screen) => {
                   const stateId = cardState(screen);
                   return (
