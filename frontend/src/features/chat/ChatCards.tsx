@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
 import type { Card, ReassessSide } from '@/types/chat';
@@ -9,7 +9,13 @@ import { LockedReason } from './LockedReason';
 import { asGoal, goalText } from './chatGoal';
 import { memoryItemState, PROFILE_KEY_LABEL } from './chatMemory';
 import { useChatStore } from './chatStore';
-import { useMemoryChanging, useMemorySettings, useRemoveMemoryItem } from './useChatMemory';
+import {
+  memoryFilledAfter,
+  memoryStampNow,
+  useMemoryChanging,
+  useMemorySettings,
+  useRemoveMemoryItem,
+} from './useChatMemory';
 import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
 import type { DecideResult, UndoResult } from './chatTransport';
 
@@ -151,6 +157,7 @@ function CardView({
 /** FE 가 정한 문구 — 문서에 없습니다 */
 export const MEMORY_REMOVED_TEXT = '지운 기억이에요.';
 export const MEMORY_CHANGED_TEXT = '지금은 다른 값으로 기억하고 있어요.';
+export const MEMORY_RECHECK_FAILED_TEXT = '지금 기억하고 있는지 확인하지 못했어요.';
 export const MEMORY_REMOVE_FAILED_TEXT = '기억을 지우지 못했으니 다시 시도해 주세요.';
 
 /**
@@ -185,6 +192,32 @@ function MemoryRemove({
   // 다른 항목을 지우는 중이어도 막습니다 — 응답이 엇갈려 지운 항목이 되살아나지 않게
   const changing = useMemoryChanging(userId);
   const state = memoryItemState(memory.data, itemId, value);
+  // 카드보다 먼저 읽어 둔 목록이 카드와 다르면(없음 · 다른 값) 한 번 다시 읽습니다 — 대화창을 열 때 읽은 목록(30초
+  // 동안 새것으로 침)에는 방금 기억한 항목이 없거나 덮어쓰기 전 값이 있어서, 그대로 보면 새 카드가 [지우기] 없이
+  // "지운 기억이에요." · "다른 값으로 기억하고 있어요." 로 보입니다 (BE 는 같은 key 면 item_id 를 두고 값만 바꿈).
+  // 카드를 그린 뒤에 **시작한** 요청이 채운 목록(설정 화면에서 지움 · 다시 읽음)만 믿습니다. 그리기 전에 나가 있던
+  // 읽기는 기억 저장 전 목록을 늦게 돌려줄 수 있어, 그 응답으로 "지운 기억이에요." 를 보이지 않습니다(#1125 리뷰).
+  // 시각이 아니라 요청 번호로 보므로 그린 때와 같은 밀리초에 읽혀도 헷갈리지 않습니다
+  const [seen] = useState(() => ({ stamp: memoryStampNow(), error: memory.errorUpdateCount }));
+  const unsure =
+    (state === 'removed' || state === 'changed') && !memoryFilledAfter(userId, seen.stamp);
+  // 그린 뒤에 읽다 실패했으면 저절로 되풀이하지 않고 [다시 확인]을 보입니다 — 지웠는지는 모르니 단정하지 않습니다
+  const recheckFailed = memory.errorUpdateCount !== seen.error;
+  // 바꾸는 요청이 나가 있으면 기다립니다 — 그 응답이 목록을 새로 채웁니다(다시 읽은 값이 덮어쓰지 않게)
+  const recheck = unsure && !recheckFailed && !changing;
+  const { refetch, isFetching } = memory;
+  // 카드 여럿이 함께 다시 읽어도 나가 있는 요청 하나를 같이 기다립니다(취소하고 새로 보내지 않음)
+  const recheckNow = useCallback(
+    () => refetch({ cancelRefetch: false }).catch(() => undefined),
+    [refetch],
+  );
+  useEffect(() => {
+    if (recheck && !isFetching) recheckNow();
+  }, [recheck, isFetching, recheckNow]);
+  if (unsure && recheckFailed)
+    return <MemoryRecheckFailed busy={isFetching} onRetry={recheckNow} />;
+  // 다시 읽기 전 · 읽는 동안에는 단정하지 않고 비워 둡니다 — 읽고 나서도 다르면 그때 지움 · 바뀜으로 보입니다
+  if (unsure) return null;
   if (state === 'removed') return <p className="text-xs text-stone">{MEMORY_REMOVED_TEXT}</p>;
   if (state === 'changed') return <p className="text-xs text-stone">{MEMORY_CHANGED_TEXT}</p>;
   return (
@@ -205,6 +238,27 @@ function MemoryRemove({
           {MEMORY_REMOVE_FAILED_TEXT}
         </p>
       )}
+    </div>
+  );
+}
+
+/** 카드 값을 다시 확인하지 못함 — 지웠는지 · 바뀌었는지 모르니 [지우기] 대신 다시 확인을 둡니다 */
+function MemoryRecheckFailed({ busy, onRetry }: { busy: boolean; onRetry: () => void }) {
+  return (
+    <div className="mt-1">
+      <p role="alert" className="text-xs text-coral-deep">
+        {MEMORY_RECHECK_FAILED_TEXT}
+      </p>
+      <button
+        type="button"
+        aria-disabled={busy}
+        onClick={() => {
+          if (!busy) onRetry();
+        }}
+        className={`mt-1 ${BUTTON_CLASS}`}
+      >
+        {busy ? '확인하는 중' : '다시 확인'}
+      </button>
     </div>
   );
 }
