@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
 import type { Card, ReassessSide } from '@/types/chat';
@@ -185,6 +185,20 @@ function MemoryRemove({
   // 다른 항목을 지우는 중이어도 막습니다 — 응답이 엇갈려 지운 항목이 되살아나지 않게
   const changing = useMemoryChanging(userId);
   const state = memoryItemState(memory.data, itemId, value);
+  // 카드보다 먼저 읽어 둔 목록에 항목이 없으면 한 번만 다시 읽습니다 — 대화창을 열 때 읽은 목록(30초 동안 새것으로
+  // 침)에는 방금 기억한 항목이 없어서, 그대로 보면 새 카드가 [지우기] 없이 "지운 기억이에요." 로 보입니다.
+  // 카드가 그려진 뒤에 바뀐 목록(설정 화면에서 지움)은 그대로 믿고, 항목이 있으면 다시 읽지 않습니다
+  const [mountedAt] = useState(() => Date.now());
+  const outdated = state === 'removed' && memory.dataUpdatedAt < mountedAt;
+  // 그린 뒤에 읽다 실패했으면 다시 읽지 않습니다 — 실패할 때마다 되풀이하지 않게
+  const recheckFailed = memory.errorUpdatedAt >= mountedAt;
+  const recheck = outdated && !recheckFailed;
+  const { refetch, isFetching } = memory;
+  useEffect(() => {
+    if (recheck && !isFetching) refetch().catch(() => undefined);
+  }, [recheck, isFetching, refetch]);
+  // 다시 읽기 전 · 읽는 동안에는 없다고 단정하지 않고 비워 둡니다 — 읽고 나서도 없으면 그때 지운 항목입니다
+  if (state === 'removed' && (recheck || isFetching)) return null;
   if (state === 'removed') return <p className="text-xs text-stone">{MEMORY_REMOVED_TEXT}</p>;
   if (state === 'changed') return <p className="text-xs text-stone">{MEMORY_CHANGED_TEXT}</p>;
   return (

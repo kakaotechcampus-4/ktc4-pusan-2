@@ -127,6 +127,16 @@ const cards = (...shown: ReturnType<typeof memoryCard>[]) => (
 );
 
 describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
+  it('대화창을 열 때 읽어 둔 설정에 새 항목이 없어도, 카드가 다시 읽어 [지우기]를 보인다', async () => {
+    // 대화창을 열 때 읽은 설정 — 아직 기억하기 전이라 항목이 없고, 30초 동안은 새것으로 칩니다
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true));
+    server.get = () => Promise.resolve(settings(true, tone()));
+    await render(cards(memoryCard(I1, '짧게')));
+    await settle();
+    expect(button('지우기')).toBeDefined();
+    expect(host.textContent).not.toContain(MEMORY_REMOVED_TEXT);
+  });
+
   it('[지우기]는 그 item_id 로 지우고, 지운 카드는 버튼만 끄고 그대로 남는다 — 설정 캐시도 같은 응답으로 바뀐다', async () => {
     server.get = () => Promise.resolve(settings(true, tone(), focus));
     server.remove = () => Promise.resolve(settings(true, focus));
