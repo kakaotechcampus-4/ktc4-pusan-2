@@ -140,6 +140,16 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
     });
     expect(view.host.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
     expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('1분에 300자 이하');
+    const previews = [...view.host.querySelectorAll('[data-criterion-preview]')];
+    expect(previews).toHaveLength(8);
+    expect(previews.every((preview) => preview.className.includes('row-start-1'))).toBe(true);
+
+    await act(async () => {
+      chips[3]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('평소보다 3dB 이상');
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('절대 음량(dB)');
+    expect(view.host.querySelectorAll('[data-criterion-preview]')).toHaveLength(8);
 
     await act(async () => {
       chips[6]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -149,13 +159,57 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
       '대본을 읽으며 말하는 비율',
     );
     expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
-      '대본을 연결한 경우',
+      '카메라가 필요해요',
     );
+
+    await act(async () => {
+      chips[7]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('대본을 연결한 경우');
 
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(view.host.querySelector('[role="tooltip"]')).toBeNull();
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it('키보드 포커스 설명은 다른 칩의 마우스 호버에도 유지되고, 클릭으로 예시를 닫을 수 있다', async () => {
+  useCreateStore.getState().reset();
+  useCreateStore.getState().setPitchId('p1');
+  const view = await mountCriteria(null);
+  try {
+    const chips = [
+      ...view.host.querySelectorAll<HTMLButtonElement>('button[aria-label$="작성 예시 보기"]'),
+    ];
+    const focusChip = chips[1]!;
+    await act(async () => focusChip.focus());
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('말 사이 멈춤');
+    const descriptionId = focusChip.getAttribute('aria-describedby');
+    expect(descriptionId).toBeTruthy();
+    expect(view.host.querySelector('[role="tooltip"]')?.id).toBe(descriptionId);
+
+    await act(async () => {
+      chips[2]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('말 사이 멈춤');
+    expect(focusChip.getAttribute('aria-describedby')).toBe(descriptionId);
+    expect(chips[2]!.getAttribute('aria-describedby')).toBeNull();
+
+    await act(async () => focusChip.blur());
+    await act(async () => {
+      chips[2]!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      chips[2]!.click();
+    });
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('긴 침묵');
+    await act(async () => {
+      chips[2]!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      chips[2]!.click();
+    });
+    expect(view.host.querySelector('[role="tooltip"]')).toBeNull();
+    expect(view.host.querySelectorAll('[data-criterion-preview]')).toHaveLength(8);
   } finally {
     await view.cleanup();
   }
@@ -208,6 +262,9 @@ it('지난 버전과 저장하지 않은 수정본을 실제 반영된 기준이
     expect(view.host.querySelector('h3')?.textContent).not.toBe('이번 발표에 반영된 기준');
     expect(view.host.textContent).toContain('정리된 평가기준');
     expect(view.host.textContent).toContain('군더더기 말 5회 이하');
+    expect(view.host.textContent).toContain('평가기준에 넣지 않은 내용');
+    expect(view.host.textContent).toContain('발표 주제는 창의적으로');
+    expect(view.host.textContent).toContain('바꿀 수 있는 내용이라면');
     expect(view.host.textContent).toContain('측정 지표와 연결되지 않으면');
 
     const current = useCreateStore.getState().draft.criteria[1]!;

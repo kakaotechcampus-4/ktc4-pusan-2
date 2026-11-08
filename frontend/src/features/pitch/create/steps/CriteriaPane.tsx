@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useIsMutating, useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { parseStandards, saveStandards } from '@/shared/api/standards';
@@ -47,15 +47,19 @@ const MEASURABLE_CRITERIA: { label: string; example: string; note?: string }[] =
   { label: '긴 침묵', example: '긴 침묵은 2회 이하로 줄이기' },
   {
     label: '소리 크기',
-    example: '평소보다 목소리를 크게 내기',
-    note: '소리 크기는 평소 목소리 대비 변화로 측정해요. 숫자 목표로 판정하지 않을 수 있어요.',
+    example: '평소보다 3dB 이상 크게 말하기',
+    note: '평소 목소리 대비 변화량(dB)으로 판정해요. 절대 음량(dB) 목표는 판정하지 않아요.',
   },
   { label: '군더더기 말', example: '군더더기 말은 5회 이하로 하기' },
-  { label: '시선', example: '청중을 70% 이상 바라보기' },
+  {
+    label: '시선',
+    example: '청중을 70% 이상 바라보기',
+    note: '카메라가 없거나 시선을 측정할 수 없으면 판정할 수 없어요.',
+  },
   {
     label: '대본 의존도',
     example: '대본을 읽으며 말하는 비율 20% 이하로 하기',
-    note: '대본을 연결한 경우에 확인할 수 있어요.',
+    note: '말하는 동안 대본을 보는 비율을 시선으로 측정해요. 카메라가 필요해요.',
   },
   {
     label: '대본 유사도',
@@ -64,11 +68,12 @@ const MEASURABLE_CRITERIA: { label: string; example: string; note?: string }[] =
   },
 ];
 
-/** 칩은 입력 기능이 아니며, 하나의 예시만 칩 목록 아래에 표시합니다. */
+/** 칩은 입력 기능이 아닙니다. 숨긴 예시도 같은 그리드 칸의 높이를 차지해 전환 시 입력칸이 이동하지 않습니다. */
 function CriteriaExamples() {
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const tooltipId = useId();
-  const active = MEASURABLE_CRITERIA.find((criterion) => criterion.label === activeLabel);
+  const pointerInteractionRef = useRef(false);
+  const keyboardFocusRef = useRef(false);
 
   // 포커스를 이동시키지 않고 닫습니다. 마우스로만 열었을 때도 Esc가 작동합니다.
   useEffect(() => {
@@ -83,8 +88,8 @@ function CriteriaExamples() {
   return (
     <div
       className="rounded-lg border border-line bg-panel px-3 py-3"
-      onMouseLeave={(event) => {
-        if (!event.currentTarget.contains(document.activeElement)) setActiveLabel(null);
+      onMouseLeave={() => {
+        if (!keyboardFocusRef.current) setActiveLabel(null);
       }}
     >
       <p className="text-sm font-bold">작성 가능한 평가 항목</p>
@@ -95,10 +100,31 @@ function CriteriaExamples() {
               type="button"
               aria-label={`${criterion.label} 작성 예시 보기`}
               aria-describedby={activeLabel === criterion.label ? tooltipId : undefined}
-              onMouseEnter={() => setActiveLabel(criterion.label)}
-              onFocus={() => setActiveLabel(criterion.label)}
-              onBlur={() => setActiveLabel(null)}
-              onClick={() => setActiveLabel(criterion.label)}
+              onPointerDown={() => {
+                pointerInteractionRef.current = true;
+                keyboardFocusRef.current = false;
+              }}
+              onMouseDown={() => {
+                pointerInteractionRef.current = true;
+                keyboardFocusRef.current = false;
+              }}
+              onMouseEnter={() => {
+                // 키보드 포커스를 받은 칩의 설명이 다른 칩 호버에 의해 바뀌지 않도록 합니다.
+                if (!keyboardFocusRef.current) setActiveLabel(criterion.label);
+              }}
+              onFocus={() => {
+                if (pointerInteractionRef.current) return;
+                keyboardFocusRef.current = true;
+                setActiveLabel(criterion.label);
+              }}
+              onBlur={() => {
+                keyboardFocusRef.current = false;
+                setActiveLabel((current) => (current === criterion.label ? null : current));
+              }}
+              onClick={() => {
+                setActiveLabel((current) => (current === criterion.label ? null : criterion.label));
+                pointerInteractionRef.current = false;
+              }}
               className="cursor-help rounded-full border border-line-strong bg-white px-3 py-1 text-xs font-bold hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
               {criterion.label}
@@ -109,17 +135,34 @@ function CriteriaExamples() {
           </li>
         ))}
       </ul>
-      {active && (
-        <div
-          id={tooltipId}
-          role="tooltip"
-          className="mt-2 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-sm"
-        >
-          <p className="font-bold">{active.label} 작성 예시</p>
-          <p className="mt-1 leading-relaxed">{active.example}</p>
-          {active.note && <p className="mt-1 text-xs leading-relaxed text-ink/80">{active.note}</p>}
-        </div>
-      )}
+      <div className="mt-2 grid">
+        {MEASURABLE_CRITERIA.map((criterion) => {
+          const visible = activeLabel === criterion.label;
+          return (
+            <div
+              key={criterion.label}
+              data-criterion-preview
+              id={visible ? tooltipId : undefined}
+              role={visible ? 'tooltip' : undefined}
+              aria-hidden={!visible}
+              className={`col-start-1 row-start-1 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-sm ${
+                visible ? '' : 'invisible'
+              }`}
+            >
+              <p className="font-bold">{criterion.label} 작성 예시</p>
+              <p className="mt-1 leading-relaxed">{criterion.example}</p>
+              {criterion.note && (
+                <p className="mt-1 text-xs leading-relaxed text-ink/80">{criterion.note}</p>
+              )}
+            </div>
+          );
+        })}
+        {activeLabel === null && (
+          <p className="col-start-1 row-start-1 self-start rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink/80">
+            항목을 선택하면 작성 예시를 볼 수 있어요.
+          </p>
+        )}
+      </div>
       <p className="mt-2 text-xs leading-relaxed text-ink/80">
         칩에 마우스를 올리거나 눌러 예시를 확인해 보세요. 발표 시간은 발표정보에서 설정해 주세요.
       </p>
@@ -160,10 +203,8 @@ function Guide({ except }: { except: string | null }) {
           평가기준에 넣지 않은 내용
         </p>
         <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
-          현재 지원하지 않는 항목이라 제외했어요. 말 속도·시선처럼 측정 가능한 행동으로 바꿔 적어
-          주세요.
-          <br />
-          발표 시간은 발표정보에서 설정해 주세요.
+          현재 측정·평가하지 않는 내용이라 제외했어요. 바꿀 수 있는 내용이라면 위 작성 예시를
+          참고해 측정 가능한 행동으로 다시 적어 주세요.
         </p>
         <p className="mt-1 pl-6 text-sm font-bold leading-relaxed">“{except}”</p>
       </div>
