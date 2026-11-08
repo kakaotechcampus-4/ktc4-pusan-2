@@ -69,10 +69,11 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
 }
 
 /**
- * 런처의 아래 여백(px). 기본 32px 는 홈의 "사용방법 살펴보기"와 바닥글 사이 빈칸입니다.
- * 아래 고정 바나 오른쪽 끝까지 찬 컨트롤이 있는 화면만 올립니다 (1366×650 · 1920×950 · 125% 확대에서 잼, #941 리뷰)
+ * 런처의 아래 여백(px). 기본 32px, 홈은 통합 푸터의 정책 링크를 가리지 않도록 위로 올립니다 (#1112).
+ * 다른 화면의 고정 바 · 오른쪽 끝 컨트롤은 기존 검증 기준을 따릅니다 (#941 리뷰).
  */
 const launcherLifts: [pattern: string, bottom: number][] = [
+  ['/', 76],
   // 피치 만들기 · 수정: 아래 고정 바(79px)보다 위에 둡니다 (12-4 F1 "겹침")
   ['/pitch/new', 88],
   ['/pitch/:id/edit', 88],
