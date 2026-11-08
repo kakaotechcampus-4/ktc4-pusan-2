@@ -182,7 +182,6 @@ it('lets devices with a mouse or trackpad into practice routes', async () => {
   expect(router!.state.location.pathname).toBe('/takes/t1/rehearsal');
 });
 
-
 it('restores the previous window scroll on back navigation and skips reset for query changes', async () => {
   // JSDOM does not lay out the page; record the positions supplied to the browser scroll API.
   const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
