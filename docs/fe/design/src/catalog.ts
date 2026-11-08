@@ -46,11 +46,15 @@ export const PRODUCT_CHECKED: {
       head: '8383d83f5a6b43a44ed3b8dce06df3264c0d0aef',
       what: 'First Take 튜토리얼 미리보기',
     },
-    { pr: 1106, head: '961a033394b6e5f11205a6d36cbfc47a8b520d21', what: '문서 스크롤 유지 및 상단바 전용 스크롤바 여백' },
+    {
+      pr: 1106,
+      head: '961a033394b6e5f11205a6d36cbfc47a8b520d21',
+      what: '문서 스크롤 유지 및 상단바 전용 스크롤바 여백',
+    },
     { pr: 1110, head: 'f9b930eb1436a9d7c28e51d321275ed44d401b9a', what: '새미나이 채팅 패널' },
     {
       pr: 944,
-      head: '9a380211919449f616ab039bf88ec42de9648ff9',
+      head: '31c43f4c8558a1c28aa00947119d253e58a67f87',
       what: '사용방법 시각 안내(왼쪽 런처 반영)',
     },
     {
