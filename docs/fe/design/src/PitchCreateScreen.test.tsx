@@ -54,7 +54,7 @@ afterEach(async () => {
 it('배치 검토 시안으로 구분하고 기존 제품 샘플도 유지한다', () => {
   expect(entries.find((entry) => entry.id === 'pitch-create-a')).toMatchObject({ status: '시안' });
   expect(entries.find((entry) => entry.id === 'pitch-create')).toMatchObject({
-    status: '제품에 있음',
+    status: 'Draft 반영',
   });
 });
 it('네 섹션·편차 0/0·접힌 폴더로 시작하고 날짜와 파일 교체는 없다', async () => {
