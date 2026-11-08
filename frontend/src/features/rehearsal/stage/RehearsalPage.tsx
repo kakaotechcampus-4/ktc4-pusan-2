@@ -826,11 +826,11 @@ export function RehearsalPage() {
               />
             )}
             <header className="stage-head">
-              {running && (
-                <span className="stage-mission-label" aria-label="발표 연습 진행 중">
-                  STAGE LIVE
-                </span>
-              )}
+              {/* 자리를 늘 잡아 둡니다 — 끼었다 빠지면 끝낼 때 타이머 · 진행 막대가 옆으로 밀립니다.
+                  발표 중이라는 건 h1 이 이미 알려 주어 화면 읽기 프로그램에는 감춥니다 */}
+              <span className="stage-mission-label" data-live={running} aria-hidden="true">
+                STAGE LIVE
+              </span>
               <span className="elapsed" ref={elapsedRef}>
                 00:00
               </span>

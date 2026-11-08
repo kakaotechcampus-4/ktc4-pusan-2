@@ -5,7 +5,11 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ProcessingPage } from './ProcessingPage';
 
-const report = vi.hoisted(() => ({ analysis_stage: 'SCORING' }));
+const report = vi.hoisted(() => ({
+  analysis_stage: 'SCORING',
+  status: 'ANALYZING',
+  analysis_hold_reason: null as string | null,
+}));
 const settled = vi.hoisted(() => ({ value: false }));
 vi.mock('@/shared/api/report', () => ({
   useTakeReport: () => ({ data: report, isPending: false, error: null }),
@@ -16,6 +20,8 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.useFakeTimers();
   report.analysis_stage = 'SCORING';
+  report.status = 'ANALYZING';
+  report.analysis_hold_reason = null;
   settled.value = false;
   vi.spyOn(Math, 'random').mockReturnValue(0);
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -101,6 +107,21 @@ it('announces a silence auto end with the server message and why it differs from
   expect(alert?.textContent).toContain('발표 목표 시간과는 상관없이');
   // 분석은 그대로 진행 중으로 보입니다
   expect(host.querySelector('[role="status"]')?.textContent).toContain('분석 중');
+});
+
+// 기록 접수 표시는 분석이 이어지는 동안만 — 실패 · 보류 안내 위에 띄우면 끝난 분석처럼 읽힙니다
+it('shows the recorded take cue only while the analysis is still going', async () => {
+  await renderAt(null);
+  expect(host.textContent).toContain('TAKE RECORDED');
+
+  report.status = 'FAILED';
+  await renderAt(null);
+  expect(host.textContent).not.toContain('TAKE RECORDED');
+
+  report.status = 'ANALYZING';
+  report.analysis_hold_reason = 'REVIEW_FAILED';
+  await renderAt(null);
+  expect(host.textContent).not.toContain('TAKE RECORDED');
 });
 
 it('shows the time limit reason through the same notice', async () => {

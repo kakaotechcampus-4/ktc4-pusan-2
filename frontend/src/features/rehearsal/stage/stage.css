@@ -1195,6 +1195,12 @@
   font-weight: 800;
   letter-spacing: 0.06em;
   white-space: nowrap;
+}
+/* 시작 전 · 끝내는 중에는 자리만 남긴다. 보일 때만 1회 페이드가 붙는다 */
+.stage-head .stage-mission-label[data-live='false'] {
+  visibility: hidden;
+}
+.stage-head .stage-mission-label[data-live='true'] {
   animation: stage-mission-enter 180ms steps(2, end) both;
 }
 
