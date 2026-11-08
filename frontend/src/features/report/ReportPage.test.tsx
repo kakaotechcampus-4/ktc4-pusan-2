@@ -58,7 +58,6 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).showModal;
   delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).close;
-  vi.restoreAllMocks();
 });
 async function render() {
   await act(async () =>
@@ -82,9 +81,10 @@ it('shows the previous Take comparison immediately after the summary and before 
   const comparison = summary.nextElementSibling!;
   expect(comparison.querySelector('h2')?.textContent).toBe('지난 Take와 비교');
   expect(comparison.nextElementSibling?.getAttribute('aria-label')).toBe('측정값');
-  expect([...main.querySelectorAll('h2')].filter((heading) => !heading.closest('dialog'))).toHaveLength(
-    8,
+  const pageHeadings = [...main.querySelectorAll('h2')].filter(
+    (heading) => !heading.closest('dialog'),
   );
+  expect(pageHeadings).toHaveLength(8);
 });
 
 it('shows the script modes in Korean when the two Takes used different ones', async () => {
@@ -230,16 +230,62 @@ it('shows per-metric improved and worsened slides before opening details', async
     ],
   };
   await render();
-  expect(comparisonCard().textContent).toContain('나아진 슬라이드');
-  expect(comparisonCard().textContent).toContain('나빠진 슬라이드');
-  expect(comparisonCard().textContent).toContain('2번');
-  expect(comparisonCard().textContent).toContain('3번');
+  const metric = [...comparisonCard().querySelectorAll('section')].find(
+    (section) => section.querySelector('h3')?.textContent === '청중 응시',
+  )!;
+  const slideLists = metric.querySelectorAll('p.mt-1');
+  expect(metric.textContent).toContain('나아진 슬라이드');
+  expect(metric.textContent).toContain('나빠진 슬라이드');
+  expect(slideLists[0]?.textContent).toBe('2번');
+  expect(slideLists[1]?.textContent).toBe('3번');
   await openComparisonDetail();
   expect(host.querySelector('dialog[open]')).not.toBeNull();
   expect(host.querySelector('dialog table')).not.toBeNull();
 });
 
-it('restores focus after cancelling the detail dialog with Escape', async () => {
+it('keeps summary metrics ordered and hidden consistently with the detail table', async () => {
+  const row = { previous: 0.7, current: 0.62, improved: true, script_mode: null };
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      { ...row, metric: 'filler_count', slide_number: null },
+      { ...row, metric: 'filler_per_min', slide_number: null },
+      { ...row, metric: 'script_ratio', slide_number: null },
+      { ...row, metric: 'audience_ratio', slide_number: null },
+    ],
+  };
+  await render();
+  const headings = [...comparisonCard().querySelectorAll('section > h3')]
+    .filter((heading) => !heading.closest('dialog'))
+    .map((heading) => heading.textContent);
+  expect(headings).toEqual(['청중 응시', '대본 응시', '군더더기']);
+  await openComparisonDetail();
+  const columns = [...host.querySelectorAll('dialog thead th:not(:first-child)')].map(
+    (heading) => heading.textContent,
+  );
+  expect(columns).toEqual(headings);
+});
+
+it('describes metrics reported only for the whole Take without suggesting missing data', async () => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      {
+        metric: 'duration_ms',
+        slide_number: null,
+        previous: 150000,
+        current: 140000,
+        improved: true,
+        script_mode: null,
+      },
+    ],
+  };
+  await render();
+  expect(comparisonCard().textContent).toContain('발표 전체 기준 지표예요.');
+  expect(comparisonCard().textContent).not.toContain('슬라이드별 비교 데이터가 없어요.');
+});
+
+it('restores focus after the detail dialog receives cancel and close events', async () => {
   await render();
   await openComparisonDetail();
   const dialog = host.querySelector('dialog')!;
@@ -264,7 +310,9 @@ it('restores focus to the detail trigger after closing the dialog', async () => 
   const closeButton = host.querySelector<HTMLButtonElement>(
     'dialog button[aria-label="상세 비교 닫기"]',
   )!;
+  expect(document.body.style.overflow).toBe('hidden');
   await act(async () => closeButton.click());
   expect(host.querySelector('dialog[open]')).toBeNull();
   expect(document.activeElement).toBe(trigger);
+  expect(document.body.style.overflow).toBe('');
 });
