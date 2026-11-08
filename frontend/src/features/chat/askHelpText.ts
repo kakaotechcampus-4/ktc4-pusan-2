@@ -10,13 +10,13 @@ export const ASK_HELP_TITLE = '이런 걸 도와드릴 수 있어요';
 export const ASK_HELP_ABILITIES = [
   '내 연습 기록에서 고칠 점 찾기',
   'Take끼리 비교하기',
-  '대화 목표 정하고 다음 Take에서 확인하기',
+  '다음 연습 목표 잡기',
   '발표법 · 화면 사용법 안내',
 ] as const;
 
 export const ASK_HELP_EXAMPLES = [
   '최근 Take에서 가장 고칠 점이 뭐야?',
   '지난 Take랑 비교해 줘',
-  '말이 빨라질 때는 어떻게 고치면 좋아?',
+  '다음 연습 목표 잡아 줘',
   '발표 시작은 어떻게 하면 좋아?',
 ] as const;
