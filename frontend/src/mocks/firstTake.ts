@@ -47,28 +47,24 @@ export function recordTutorialScript(pitchId: string, id: string, version: numbe
   tutorial.scripts.push({ id, version });
 }
 
+/** 실제 목 피치 생성 핸들러가 성공한 결과만 등록합니다. 일반 피치 생성은 그대로 둡니다. */
+export function recordTutorialPitch(body: PitchRequest, pitchId: string) {
+  if (body.title !== FIRST_TAKE_TITLE) return;
+  tutorial = {
+    id: pitchId,
+    title: body.title,
+    timeLimitSec: body.time_limit_sec,
+    presentations: [],
+    scripts: [],
+  };
+}
+
 /** 테스트마다 동적 튜토리얼 자료만 초기화합니다. 일반 피치 목은 건드리지 않습니다. */
 export function resetTutorialMock() {
   tutorial = null;
 }
 
 export const firstTakeHandlers = [
-  // 일반 피치 생성은 기존 pitchHandlers로 넘깁니다.
-  http.post('*/api/pitches/add', async ({ request }) => {
-    const body = (await request.json()) as PitchRequest;
-    if (body.title !== FIRST_TAKE_TITLE) return undefined;
-    if (!tutorial) {
-      tutorial = {
-        id: crypto.randomUUID(),
-        title: body.title,
-        timeLimitSec: body.time_limit_sec,
-        presentations: [],
-        scripts: [],
-      };
-    }
-    return HttpResponse.json({ message: 'Pitch added successfully', pitch_id: tutorial.id });
-  }),
-
   http.get('*/api/pitches/:pitchId', ({ params }) => {
     if (tutorial?.id !== params.pitchId) return undefined;
     return HttpResponse.json({

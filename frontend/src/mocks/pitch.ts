@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import type { PitchRequest, PitchSavedResponse } from '@/types/pitch';
+import { recordTutorialPitch } from './firstTake';
 
 /** BE `PitchSaveRequestDTO` · `PitchUpdateDTO` 의 제목 검사 (1~50자) */
 const invalidTitle = (title: string) => title.trim().length === 0 || title.length > 50;
@@ -16,6 +17,7 @@ export const pitchHandlers = [
       message: 'Pitch added successfully',
       pitch_id: crypto.randomUUID(),
     };
+    recordTutorialPitch(body, res.pitch_id);
     return HttpResponse.json(res);
   }),
 
