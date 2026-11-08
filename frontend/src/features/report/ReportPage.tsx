@@ -363,55 +363,57 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
           )}
           <p className="text-sm text-ink/80">지표별로 지난 연습보다 달라진 슬라이드를 모았어요.</p>
           <div className="grid gap-4 lg:grid-cols-2">
-            {groups.flatMap((g) => g.metrics).map((metric) => {
-              const metricRows = rows.filter((r) => r.metric === metric);
-              const slides = metricRows.filter((r) => r.slide_number !== null);
-              const improved = slides
-                .filter((r) => trend(r) === TREND.true)
-                .map((r) => r.slide_number!);
-              const worsened = slides
-                .filter((r) => trend(r) === TREND.false)
-                .map((r) => r.slide_number!);
-              const same = slides.filter((r) => trend(r) === TREND.same).length;
-              const unknown = slides.filter((r) => trend(r) === TREND.null).length;
-              const overall = metricRows.find((r) => r.slide_number === null);
-              return (
-                <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
-                  <h3 className="font-bold">{metricLabel(metric)}</h3>
-                  {slides.length > 0 ? (
-                    <>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                        <div className="bg-cream p-3">
-                          <p className="font-bold text-ink">나아진 슬라이드</p>
-                          <p className="mt-1">{slideList(improved)}</p>
+            {groups
+              .flatMap((g) => g.metrics)
+              .map((metric) => {
+                const metricRows = rows.filter((r) => r.metric === metric);
+                const slides = metricRows.filter((r) => r.slide_number !== null);
+                const improved = slides
+                  .filter((r) => trend(r) === TREND.true)
+                  .map((r) => r.slide_number!);
+                const worsened = slides
+                  .filter((r) => trend(r) === TREND.false)
+                  .map((r) => r.slide_number!);
+                const same = slides.filter((r) => trend(r) === TREND.same).length;
+                const unknown = slides.filter((r) => trend(r) === TREND.null).length;
+                const overall = metricRows.find((r) => r.slide_number === null);
+                return (
+                  <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
+                    <h3 className="font-bold">{metricLabel(metric)}</h3>
+                    {slides.length > 0 ? (
+                      <>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                          <div className="bg-cream p-3">
+                            <p className="font-bold text-ink">나아진 슬라이드</p>
+                            <p className="mt-1">{slideList(improved)}</p>
+                          </div>
+                          <div className="bg-panel p-3">
+                            <p className="font-bold text-ink">나빠진 슬라이드</p>
+                            <p className="mt-1">{slideList(worsened)}</p>
+                          </div>
                         </div>
-                        <div className="bg-panel p-3">
-                          <p className="font-bold text-ink">나빠진 슬라이드</p>
-                          <p className="mt-1">{slideList(worsened)}</p>
-                        </div>
-                      </div>
-                      {(same > 0 || unknown > 0) && (
-                        <p className="mt-2 text-xs text-ink/80">
-                          {same > 0 && `변화 없음 ${same}개`}
-                          {same > 0 && unknown > 0 && ' · '}
-                          {unknown > 0 && `방향 판단 불가 ${unknown}개`}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="mt-2 text-sm text-ink/80">
-                      {overall ? '발표 전체 기준 지표예요.' : '슬라이드별 비교 결과가 없어요.'}
-                    </p>
-                  )}
-                  {overall && (
-                    <p className="mt-2 text-xs text-ink/80">
-                      발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)} ·{' '}
-                      {trend(overall).label}
-                    </p>
-                  )}
-                </section>
-              );
-            })}
+                        {(same > 0 || unknown > 0) && (
+                          <p className="mt-2 text-xs text-ink/80">
+                            {same > 0 && `변화 없음 ${same}개`}
+                            {same > 0 && unknown > 0 && ' · '}
+                            {unknown > 0 && `방향 판단 불가 ${unknown}개`}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm text-ink/80">
+                        {overall ? '발표 전체 기준 지표예요.' : '슬라이드별 비교 결과가 없어요.'}
+                      </p>
+                    )}
+                    {overall && (
+                      <p className="mt-2 text-xs text-ink/80">
+                        발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)}{' '}
+                        · {trend(overall).label}
+                      </p>
+                    )}
+                  </section>
+                );
+              })}
           </div>
           <button
             ref={openerRef}
