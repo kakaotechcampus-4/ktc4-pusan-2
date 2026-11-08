@@ -33,7 +33,7 @@ export function AskHelp({
               onClick={() => {
                 if (canSend) onAsk(example);
               }}
-              className="inline-flex min-h-11 items-center rounded-full border border-line-strong bg-cream px-3 font-bold text-ink hover:bg-greige aria-disabled:cursor-not-allowed aria-disabled:text-stone"
+              className="inline-flex min-h-11 items-center rounded-full border border-line-strong bg-cream px-3 font-bold text-ink hover:bg-greige aria-disabled:cursor-not-allowed aria-disabled:hover:bg-cream aria-disabled:text-stone"
             >
               {example}
               <LockedReason reason={canSend ? null : lockedReason} />
