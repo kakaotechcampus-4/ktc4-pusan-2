@@ -25,6 +25,7 @@ import {
   fromPrepare,
   newerComboNotice,
   newerScriptNotice,
+  chosenSlide,
   olderSlideNotice,
   prepareProblem,
   takeChoice,
@@ -213,8 +214,9 @@ export function DeviceCheckPage() {
   const navigate = useNavigate();
   const prepare = usePrepare(pitchId);
   const info = useMemo(() => (prepare.data ? fromPrepare(prepare.data) : null), [prepare.data]);
-  // 조합 없이 왔으면(리포트 · 대화 · 새로고침) 준비 정보가 지난 자료를 골랐는지 견줄 최신 자료 (멘토 리뷰 #923)
-  const latestSlide = useLatestSlide(pitchId, combo === null);
+  // 이번에 쓸 자료가 지난 자료인지 견줄 최신 자료 (멘토 리뷰 #923). 조합을 넘겨받았어도 읽습니다 — 넘겨받은 뒤
+  // 다른 탭에서 새 PDF 를 올렸을 수 있습니다 (#1099 리뷰)
+  const latestSlide = useLatestSlide(pitchId, true);
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
@@ -361,28 +363,28 @@ export function DeviceCheckPage() {
   const choice = takeChoice(combo, info);
   // 조합 없이 왔는데 준비 정보가 가장 최근 자료 대신 지난 자료를 골랐으면, 한 번 확인받기 전에는 시작하지 않습니다.
   // 최신 자료를 받는 동안에도 기다립니다 — 먼저 시작하면 확인 없이 지난 자료로 Take 가 생깁니다.
-  const olderSlide = combo || !info ? null : olderSlideNotice(info, latestSlide.data ?? null);
-  const olderSlideBlocked = olderSlide !== null && olderSlideOkFor !== info?.presentation?.id;
-  const latestSlidePending = combo === null && latestSlide.isPending;
+  const chosen = chosenSlide(info, combo);
+  const olderSlide = olderSlideNotice(info, latestSlide.data ?? null, combo);
+  const olderSlideBlocked = olderSlide !== null && olderSlideOkFor !== chosen?.id;
+  const latestSlidePending = latestSlide.isPending;
+  // 처음 받은 뒤 다시 받는 중(창으로 돌아옴 등)에도 시작하지 않습니다 — 받기 전 결과로는 지난 자료인지 모릅니다(#1099 리뷰).
+  // 버튼은 `aria-disabled` 로만 막습니다. `disabled` 로 막으면 창으로 돌아올 때마다 쥐고 있던 초점이 body 로 빠집니다(#818)
+  const latestRefreshing = latestSlide.isFetching && !latestSlide.isPending;
   // 버전 목록을 못 받았으면 지난 자료인지 알 수 없습니다. 연습을 막아 버리지는 않고, 다시 확인할지 이 자료로
   // 연습할지 한 번 고르게 합니다 — 그냥 열어 두면 확인 없이 지난 자료로 Take 가 생깁니다 (#1099 리뷰).
   // 준비 정보로 시작할 수 없으면(`prepareProblem`) 그 이유가 먼저라 묻지 않습니다
-  const latestUnknown =
-    combo === null &&
-    info?.presentation != null &&
-    prepareProblem(info) === null &&
-    latestSlide.isError &&
-    latestSlide.data === undefined;
+  const latestUnknown = chosen !== null && latestSlide.isError && latestSlide.data === undefined;
   const latestRechecking = latestUnknown && latestSlide.isFetching;
-  const latestUnchecked = latestUnknown && uncheckedOkFor !== info?.presentation?.id;
+  const latestUnchecked = latestUnknown && uncheckedOkFor !== chosen?.id;
   const latestUncheckedNotice = latestUnchecked
-    ? `가장 최근 자료를 확인하지 못해 지금 자료(v${info?.presentation?.version})가 최신인지 알 수 없어요`
+    ? `가장 최근 자료를 확인하지 못해 지금 자료(v${chosen?.version})가 최신인지 알 수 없어요`
     : null;
   const prepareBlocked = (() => {
-    if (combo) return null;
-    if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
-    const problem = info ? prepareProblem(info) : null;
-    if (problem) return problem;
+    if (!combo) {
+      if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
+      const problem = info ? prepareProblem(info) : null;
+      if (problem) return problem;
+    }
     if (latestRechecking) return '가장 최근 자료를 다시 확인하는 중이에요.';
     if (latestUnchecked) return '가장 최근 자료를 다시 확인할지, 이 자료로 연습할지 골라 주세요.';
     return olderSlideBlocked ? '지난 자료로 연습할지, 매핑을 다시 확인할지 골라 주세요.' : null;
@@ -571,14 +573,14 @@ export function DeviceCheckPage() {
   };
   // [이 자료로 연습] — 최신인지 모르는 채로 이 자료로 시작하도록 풉니다
   const keepUncheckedSlide = () => {
-    const id = info?.presentation?.id;
+    const id = chosen?.id;
     if (!id) return;
     document.getElementById('main')?.focus();
     setUncheckedOkFor(id);
   };
   // [지난 자료로 연습] — 이 자료로 시작하도록 풉니다. 버튼이 사라지기 전에 초점을 옮기는 것은 [최신으로]와 같은 이유입니다
   const keepOlderSlide = () => {
-    const id = info?.presentation?.id;
+    const id = chosen?.id;
     if (!id) return;
     document.getElementById('main')?.focus();
     setOlderSlideOkFor(id);
@@ -592,15 +594,14 @@ export function DeviceCheckPage() {
       return switchedTo ? `최신 조합(${switchedTo})으로 바꿨어요. ${choiceNotice}` : choiceNotice;
     if (switchedTo) return `최신 조합(${switchedTo})으로 바꿨어요`;
     if (newerCombo) return newerCombo;
-    if (olderSlide) return `지난 자료(v${info?.presentation?.version})로 연습해요`;
-    if (latestUnknown) return `지금 자료(v${info?.presentation?.version})로 연습해요`;
+    if (olderSlide) return `지난 자료(v${chosen?.version})로 연습해요`;
+    if (latestUnknown) return `지금 자료(v${chosen?.version})로 연습해요`;
     return '';
   })();
   // [최신으로] · [다시 확인] 뒤 확인이 끝나면 초점을 옮깁니다 — 고를 것이 생겼으면 그 안내로, 아니면 시작 버튼으로.
   // 이미 안내 안에 있으면(다시 확인이 또 실패) 그대로 둡니다
   useEffect(() => {
-    if (!focusAfterCheck.current || combo || latestSlide.isPending || latestSlide.isFetching)
-      return;
+    if (!focusAfterCheck.current || latestSlide.isPending || latestSlide.isFetching) return;
     focusAfterCheck.current = false;
     const box = choiceBox.current;
     if (box) {
@@ -608,7 +609,11 @@ export function DeviceCheckPage() {
       return;
     }
     const start = startButton.current;
+    // 안내는 사라졌는데 다른 이유(장비 · 시선 보정)로 아직 시작할 수 없으면 본문으로 둡니다 — 사라진 버튼에 있던
+    // 초점이 body 로 빠지지 않게 (#1099 리뷰)
     if (start && !start.disabled) start.focus();
+    else document.getElementById('main')?.focus();
+    // [최신으로]는 조합만 바꾸고 최신 자료를 다시 받지 않을 수 있어, 조합이 바뀐 때도 봅니다
   }, [combo, latestSlide.isPending, latestSlide.isFetching, choiceNotice]);
   const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
@@ -627,7 +632,10 @@ export function DeviceCheckPage() {
             ref={startButton}
             aria-busy={starting}
             disabled={!ready}
-            onClick={() => start().catch(() => undefined)}
+            aria-disabled={ready && latestRefreshing ? true : undefined}
+            onClick={() => {
+              if (!latestRefreshing) start().catch(() => undefined);
+            }}
           >
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </Button>

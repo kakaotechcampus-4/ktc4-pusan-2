@@ -129,17 +129,47 @@ export function newerComboNotice(combo: PracticeCombo, info: PrepareInfo): strin
  * 막아 버리지는 않고(일부러 지난 자료로 연습할 수 있게) 화면이 한 번 확인받습니다.
  *
  * 준비 정보로 시작할 수 없으면(`prepareProblem`) 그 이유가 먼저라 알리지 않습니다.
+ *
+ * 피치 생성에서 조합(`combo`)을 넘겨받았으면 그 조합의 자료와 견줍니다 — 넘겨받은 뒤 다른 탭에서 새 PDF 를 올렸을 수
+ * 있습니다(#1099 리뷰). 그때는 준비 정보를 기다리지 않으므로 `info` 가 없어도 됩니다.
  */
-export function olderSlideNotice(info: PrepareInfo, latest: LatestSlide | null): string | null {
-  if (!latest || !info.presentation || !info.script || prepareProblem(info) !== null) return null;
-  if (latest.id === info.presentation.id || latest.version <= info.presentation.version)
-    return null;
-  const chosen = info.presentation.version;
-  const { slideCount } = info.script;
+export function olderSlideNotice(
+  info: PrepareInfo | null,
+  latest: LatestSlide | null,
+  combo: PracticeCombo | null = null,
+): string | null {
+  const chosen = chosenSlide(info, combo);
+  if (!latest || !chosen) return null;
+  if (latest.id === chosen.id || latest.version <= chosen.version) return null;
+  const { slideCount } = chosen;
   if (latest.pageCount !== null && slideCount !== null && latest.pageCount !== slideCount) {
-    return `가장 최근 자료(v${latest.version} · ${latest.pageCount}쪽)는 대본(${slideCount}장)과 장 수가 달라 지난 자료(v${chosen})로 연습하게 돼요`;
+    return `가장 최근 자료(v${latest.version} · ${latest.pageCount}쪽)는 대본(${slideCount}장)과 장 수가 달라 지난 자료(v${chosen.version})로 연습하게 돼요`;
   }
-  return `가장 최근 자료(v${latest.version}) 대신 지난 자료(v${chosen})로 연습하게 돼요`;
+  return `가장 최근 자료(v${latest.version}) 대신 지난 자료(v${chosen.version})로 연습하게 돼요`;
+}
+
+/**
+ * 이번 연습에 쓸 자료 — 넘겨받은 조합이 있으면 그것, 없으면 준비 정보가 고른 것. 정할 수 없으면 null.
+ * 장 수는 그 조합의 대본을 준비 정보로 알 때만 채웁니다
+ */
+export function chosenSlide(
+  info: PrepareInfo | null,
+  combo: PracticeCombo | null,
+): { id: string; version: number; slideCount: number | null } | null {
+  if (combo) {
+    const script = info?.script?.id === combo.scriptVersionId ? info.script : null;
+    return {
+      id: combo.presentationVersionId,
+      version: combo.slideVersion,
+      slideCount: script?.slideCount ?? null,
+    };
+  }
+  if (!info?.presentation || !info.script || prepareProblem(info) !== null) return null;
+  return {
+    id: info.presentation.id,
+    version: info.presentation.version,
+    slideCount: info.script.slideCount,
+  };
 }
 
 /**

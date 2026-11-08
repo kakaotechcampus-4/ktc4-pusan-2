@@ -429,7 +429,11 @@ it('[최신으로] 뒤 가장 최근 자료가 대본과 장 수가 다르면 �
     scriptVersion: 1,
     goalTimeSec: 300,
   });
-  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+  // 넘겨받은 조합(v1)도 가장 최근 자료보다 지난 것이라 먼저 고르게 합니다 (#1099 리뷰)
+  expect(host.querySelector('[data-older-slide]')!.textContent).toContain(
+    '가장 최근 자료(v3) 대신 지난 자료(v1)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
 
   const latestButton = findButton('최신으로');
   latestButton.focus();
@@ -444,7 +448,7 @@ it('[최신으로] 뒤 가장 최근 자료가 대본과 장 수가 다르면 �
   expect(document.activeElement).toBe(notice);
 });
 
-it('준비 정보가 가장 최근 자료를 골랐거나 조합을 넘겨받았으면 지난 자료 안내를 띄우지 않는다', async () => {
+it('준비 정보나 넘겨받은 조합이 가장 최근 자료면 지난 자료 안내를 띄우지 않는다', async () => {
   fixture.latestSlide = {
     data: { id: 'latest-pv', version: 9, pageCount: 12 },
     isPending: false,
@@ -454,6 +458,11 @@ it('준비 정보가 가장 최근 자료를 골랐거나 조합을 넘겨받았
   expect(host.querySelector('[data-older-slide]')).toBeNull();
 
   olderSlidePicked();
+  fixture.latestSlide = {
+    data: { id: 'pv1', version: 1, pageCount: 3 },
+    isPending: false,
+    isError: false,
+  };
   await render(
     {
       title: '고른 발표',
@@ -466,6 +475,86 @@ it('준비 정보가 가장 최근 자료를 골랐거나 조합을 넘겨받았
     'p2',
   );
   expect(host.querySelector('[data-older-slide]')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+});
+
+it('조합을 넘겨받은 뒤 다른 탭에서 새 PDF 를 올렸으면, 지난 조합으로 연습할지 고르기 전에는 시작하지 않는다', async () => {
+  // V1(3장) 조합으로 들어왔고, 그 사이 V2(4장)가 올라왔습니다. 준비 정보도 장 수가 맞는 V1 을 골라 [최신으로]는 없습니다
+  fixture.data = {
+    ...fixture.data,
+    presentation: { id: 'pv1', version: 1, page_count: 3 },
+    script: { id: 'sv1', version: 1, slide_count: 3 },
+  };
+  fixture.latestSlide = {
+    data: { id: 'pv2', version: 2, pageCount: 4 },
+    isPending: false,
+    isError: false,
+  };
+  await render({
+    title: '고른 발표',
+    presentationVersionId: 'pv1',
+    scriptVersionId: 'sv1',
+    slideVersion: 1,
+    scriptVersion: 1,
+    goalTimeSec: 300,
+  });
+  expect(host.querySelector('[data-newer-combo]')).toBeNull();
+  expect(host.querySelector('[data-older-slide]')!.textContent).toContain(
+    '가장 최근 자료(v2 · 4쪽)는 대본(3장)과 장 수가 달라 지난 자료(v1)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('지난 자료로 연습').click());
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({ presentation_version_id: 'pv1', script_version_id: 'sv1' }),
+    }),
+  );
+});
+
+it('가장 최근 자료를 다시 받는 동안에는 받기 전 결과로 시작하지 않는다 — 버튼 초점은 그대로 둔다', async () => {
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  const start = findButton('Take 4 시작하기');
+  start.focus();
+  // 창으로 돌아와 다시 받는 중입니다
+  fixture.latestFetching = true;
+  await render();
+  expect(start.disabled).toBe(false);
+  expect(start.getAttribute('aria-disabled')).toBe('true');
+  expect(document.activeElement).toBe(start);
+  await act(async () => start.click());
+  expect(fixture.create).not.toHaveBeenCalled();
+
+  fixture.latestFetching = false;
+  await render();
+  expect(start.getAttribute('aria-disabled')).toBeNull();
+  await act(async () => start.click());
+  expect(fixture.create).toHaveBeenCalledTimes(1);
+});
+
+it('[다시 확인] 뒤 안내는 사라졌는데 다른 이유로 아직 시작할 수 없으면 초점을 본문으로 옮긴다', async () => {
+  fixture.gazeStatus = 'IDLE';
+  fixture.latestSlide = { data: undefined, isPending: false, isError: true };
+  await render();
+  const recheck = findButton('다시 확인');
+  recheck.focus();
+  await act(async () => recheck.click());
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  expect(host.querySelector('[data-latest-unchecked]')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  expect(document.activeElement?.id).toBe('main');
 });
 
 it('keeps device selection and calibration as separate actions and blocks starting before calibration', async () => {
