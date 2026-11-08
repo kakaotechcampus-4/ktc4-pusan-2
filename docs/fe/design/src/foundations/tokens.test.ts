@@ -33,4 +33,3 @@ it('대비는 WCAG 식대로 1~21이다', () => {
   expect(contrast('#FFFFFF', '#FFFFFF')).toBeCloseTo(1, 5);
   expect(contrast('#767676', '#FFFFFF')).toBeCloseTo(4.54, 2);
 });
-
