@@ -239,3 +239,25 @@ it('남은 설문이 없어도 동의한 뒤 초점이 body 로 빠지지 않는
   expect(host.querySelector('section')).toBeNull();
   expect(document.activeElement).toBe(completion());
 });
+
+it('동의 완료 안내는 눈에 보이고 초점 표시를 제공한다 (#874 승인 리뷰)', async () => {
+  session.user = base;
+  const held = holdRequests({ items: [] });
+  await render();
+  await act(async () => button('안내 보고 참여하기')!.click());
+  await act(async () => button('동의하고 참여하기')!.click());
+  await act(async () => held.save());
+  await flush();
+
+  const status = completion();
+  expect(status?.textContent).toContain('사용자 테스트 참여에 동의했어요');
+  expect(status?.classList.contains('sr-only')).toBe(false);
+  expect(status?.classList.contains('bg-coral-wash')).toBe(true);
+  expect(status?.classList.contains('focus:outline-2')).toBe(true);
+  expect(status?.classList.contains('focus:outline-offset-2')).toBe(true);
+  expect(document.activeElement).toBe(status);
+
+  await act(async () => held.list());
+  await flush();
+  expect(document.activeElement).toBe(status);
+});
