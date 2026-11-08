@@ -120,10 +120,14 @@ test('5. "바로 발표할래" → [연습 준비로] 버튼 → 누르면 장�
 
   await start.click();
   await expect(page).toHaveURL(new RegExp(`/pitch/${PITCH_ID}/device-check$`));
+  await expect(page.getByRole('heading', { level: 1, name: '시작 전 세팅' })).toBeVisible();
+  // 장치 점검 화면은 대화를 쓸 수 있는 화면이라 버튼이 있습니다 — 아래 '버튼 없음' 검사가 헛돌지 않는지 견줍니다
+  await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toBeVisible();
 
-  // 리허설 화면에는 대화 버튼이 없습니다 (L3-01)
+  // 리허설 화면에는 대화 버튼이 없습니다 (L3-01) — 화면이 그려진 뒤에 셉니다(그리기 전에도 0 이라 통과해 버림).
+  // 장치 점검을 거치지 않고 바로 열면 리허설 화면이 '연습 중단' 안내를 그립니다 — 같은 리허설 경로의 화면입니다
   await page.goto(`/takes/${TAKE3_ID}/rehearsal`);
-  await expect(page).toHaveURL(/\/rehearsal$/);
+  await expect(page.getByRole('heading', { level: 1, name: '연습 중단' })).toBeVisible();
   await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
 });
 
