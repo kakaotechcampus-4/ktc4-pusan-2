@@ -76,8 +76,8 @@ export function ChatPanelHeader({
 }) {
   return (
     <header className="shrink-0 border-b border-line-strong bg-panel px-4 pb-3 pt-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-32 flex-1 items-center gap-2.5">
           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-line-strong bg-cream">
             <img
               src="/semini.png"
@@ -92,7 +92,7 @@ export function ChatPanelHeader({
             <p className="truncate text-[11px] text-stone">Semini · AI 비서 앱</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
           <button
             type="button"
             aria-label="새 대화"

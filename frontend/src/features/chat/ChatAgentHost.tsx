@@ -513,7 +513,10 @@ function ChatPanel({
           userId={userId}
           session={session}
           backToMessages={() => setView('messages')}
+          showSuggestions={draft.length === 0}
           onSuggest={(text) => {
+            // 작성 중인 초안이 있다면 추천 질문으로 덮어쓰지 않습니다.
+            if (draft.length > 0) return;
             setDraft(text);
             inputRef.current?.focus();
           }}
@@ -619,6 +622,7 @@ function PanelBody({
   userId,
   session,
   backToMessages,
+  showSuggestions,
   onSuggest,
   leaveMemory,
 }: {
@@ -627,6 +631,7 @@ function PanelBody({
   userId: string;
   session: ChatSession;
   backToMessages: () => void;
+  showSuggestions: boolean;
   onSuggest: (text: string) => void;
   /** 기억 설정 [돌아가기] — [기억 설정] 버튼으로 초점을 돌립니다 */
   leaveMemory: () => void;
@@ -662,7 +667,7 @@ function PanelBody({
   return (
     <>
       <MemoryIntro userId={userId} />
-      <MessageList session={session} onSuggest={onSuggest} />
+      <MessageList session={session} onSuggest={onSuggest} showSuggestions={showSuggestions} />
     </>
   );
 }
@@ -671,9 +676,11 @@ function PanelBody({
 function MessageList({
   session,
   onSuggest,
+  showSuggestions,
 }: {
   session: ChatSession;
   onSuggest: (text: string) => void;
+  showSuggestions: boolean;
 }) {
   const pending = useChatStore((s) => s.pending?.request.text ?? null);
   const canSendNow = useCanSend();
@@ -755,7 +762,7 @@ function MessageList({
         </div>
       )}
       {shown.length === 0 && !pending && !echo && !restoring && !session.messagesFailed && (
-        <ChatEmptyState onSuggest={onSuggest} />
+        <ChatEmptyState onSuggest={onSuggest} showSuggestions={showSuggestions} />
       )}
       {shown.map((message, i) => (
         <Fragment key={message.message_id}>
