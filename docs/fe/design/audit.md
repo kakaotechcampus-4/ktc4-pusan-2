@@ -69,7 +69,9 @@
 
 ## 2026-11-08 내부 명칭·구조 정리 (#1114 후속)
 
-동기화 기록 위의 `CreateConceptScreen`과 `CreateScreen.tsx`는 당시 이름이다. 후속 정리 이후 현재 제품형 샘플은 `src/screens/PitchCreateScreen.tsx`이고 `pitch-create`와 기존 `pitch-create-a` ID에 모두 연결된다. 사용되지 않는 단계형 `CreateScreen.tsx`와 그 전용 `PaneHeading.tsx` · `PaneFooter.tsx`는 제거했다. `slide-preview` 호환 진입점은 제품형 샘플로 계속 연결된다.
+위 기록의 이름은 당시 기준이다. 화면 ID·URL은 그대로다.
 
-`AnalysisScreen.tsx`는 실제 두 화면(`ProcessingScreen`, `ConfirmScreen`)을 내보내므로 `AnalysisScreens.tsx`로, `PrepareLayoutDraft.tsx`는 `PrepareLayoutDraftScreen.tsx`로 이름을 명확히 했다. 검토 시안 전용 UI와 CSS는 `src/ui/prepare-draft/`로, 시안 fixture는 `src/samples/prepareDraft.ts`로 이동했다. `ComparisonScreen.tsx`는 옛 주소 호환을 위해 유지하며, 실제 `frontend/` 소스와 공개 경로 및 화면 ID는 변경하지 않는다.
+- 이름 변경: `CreateConceptScreen` → `PitchCreateScreen`, `AnalysisScreen` → `AnalysisScreens`, `PrepareLayoutDraft` → `PrepareLayoutDraftScreen`
+- 이동: 검토 시안 전용 UI·CSS → `src/ui/prepare-draft/`, 시안 fixture → `src/samples/prepareDraft.ts`
+- 제거: 쓰이지 않던 `CreateScreen.tsx`와 그 전용 `PaneHeading.tsx` · `PaneFooter.tsx`
 
