@@ -10,6 +10,7 @@ import {
   CardList,
   MEMORY_CHANGED_TEXT,
   MEMORY_REMOVE_FAILED_TEXT,
+  MEMORY_RECHECK_FAILED_TEXT,
   MEMORY_REMOVED_TEXT,
   type CardActions,
 } from './ChatCards';
@@ -147,6 +148,25 @@ describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
     expect(newCard!.querySelector('button')!.textContent).toBe('지우기');
     expect(oldCard!.querySelector('button')).toBeNull();
     expect(oldCard!.textContent).toContain(MEMORY_CHANGED_TEXT);
+  });
+
+  it('다시 읽지 못하면 지웠다고 단정하지 않고 확인 실패와 [다시 확인]을 보인다 — 눌러 읽히면 [지우기]가 돌아온다', async () => {
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true));
+    server.get = () => Promise.reject(new Error('끊김'));
+    await render(cards(memoryCard(I1, '짧게')));
+    expect(host.textContent).not.toContain(MEMORY_REMOVED_TEXT);
+    expect(alerts()).toEqual([MEMORY_RECHECK_FAILED_TEXT]);
+    expect(button('지우기')).toBeUndefined();
+    const reads = () => server.calls.filter((c) => c === 'GET /api/chat/memory').length;
+    // 실패했다고 저절로 되풀이하지 않습니다
+    expect(reads()).toBe(1);
+
+    server.get = () => Promise.resolve(settings(true, tone()));
+    await click(button('다시 확인')!);
+    await settle();
+    expect(reads()).toBe(2);
+    expect(alerts()).toEqual([]);
+    expect(button('지우기')).toBeDefined();
   });
 
   it('지운 지난 카드 여럿이 함께 다시 읽어도 요청은 하나다 — 서로 취소하고 다시 보내지 않는다', async () => {

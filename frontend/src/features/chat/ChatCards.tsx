@@ -152,6 +152,7 @@ function CardView({
 /** FE 가 정한 문구 — 문서에 없습니다 */
 export const MEMORY_REMOVED_TEXT = '지운 기억이에요.';
 export const MEMORY_CHANGED_TEXT = '지금은 다른 값으로 기억하고 있어요.';
+export const MEMORY_RECHECK_FAILED_TEXT = '지금 기억하고 있는지 확인하지 못했어요.';
 export const MEMORY_REMOVE_FAILED_TEXT = '기억을 지우지 못했으니 다시 시도해 주세요.';
 
 /**
@@ -195,7 +196,7 @@ function MemoryRemove({
   const dataCount = queryClient.getQueryState(memoryKey(userId))?.dataUpdateCount ?? 0;
   const [seen] = useState(() => ({ data: dataCount, error: memory.errorUpdateCount }));
   const unsure = (state === 'removed' || state === 'changed') && dataCount === seen.data;
-  // 그린 뒤에 읽다 실패했으면 다시 읽지 않습니다 — 실패할 때마다 되풀이하지 않게
+  // 그린 뒤에 읽다 실패했으면 저절로 되풀이하지 않고 [다시 확인]을 보입니다 — 지웠는지는 모르니 단정하지 않습니다
   const recheckFailed = memory.errorUpdateCount !== seen.error;
   // 바꾸는 요청이 나가 있으면 기다립니다 — 그 응답이 목록을 새로 채웁니다(다시 읽은 값이 덮어쓰지 않게)
   const recheck = unsure && !recheckFailed && !changing;
@@ -208,8 +209,9 @@ function MemoryRemove({
   useEffect(() => {
     if (recheck && !isFetching) recheckNow();
   }, [recheck, isFetching, recheckNow]);
+  if (unsure && recheckFailed) return <MemoryRecheckFailed busy={isFetching} onRetry={recheckNow} />;
   // 다시 읽기 전 · 읽는 동안에는 단정하지 않고 비워 둡니다 — 읽고 나서도 다르면 그때 지움 · 바뀜으로 보입니다
-  if (unsure && !recheckFailed) return null;
+  if (unsure) return null;
   if (state === 'removed') return <p className="text-xs text-stone">{MEMORY_REMOVED_TEXT}</p>;
   if (state === 'changed') return <p className="text-xs text-stone">{MEMORY_CHANGED_TEXT}</p>;
   return (
@@ -230,6 +232,27 @@ function MemoryRemove({
           {MEMORY_REMOVE_FAILED_TEXT}
         </p>
       )}
+    </div>
+  );
+}
+
+/** 카드 값을 다시 확인하지 못함 — 지웠는지 · 바뀌었는지 모르니 [지우기] 대신 다시 확인을 둡니다 */
+function MemoryRecheckFailed({ busy, onRetry }: { busy: boolean; onRetry: () => void }) {
+  return (
+    <div className="mt-1">
+      <p role="alert" className="text-xs text-coral-deep">
+        {MEMORY_RECHECK_FAILED_TEXT}
+      </p>
+      <button
+        type="button"
+        aria-disabled={busy}
+        onClick={() => {
+          if (!busy) onRetry();
+        }}
+        className={`mt-1 ${BUTTON_CLASS}`}
+      >
+        {busy ? '확인하는 중' : '다시 확인'}
+      </button>
     </div>
   );
 }
