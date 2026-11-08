@@ -69,7 +69,7 @@ function RehearsalGuide() {
         </h4>
         <HelpIllustration
           src="/help/device-check.svg"
-          alt="장치 점검 화면 목업. 예시 피치 제목과 TAKE 배지, 왼쪽 카메라·오디오 입력, 오른쪽 장비 준비·이번 Take 미션·발표 중 대본 표시, 오른쪽 아래 채팅 에이전트 버튼과 Take 시작 버튼이 있습니다."
+          alt="장치 점검 화면 목업. 예시 피치 제목과 TAKE 배지, 왼쪽 카메라·오디오 입력, 오른쪽 장비 준비·이번 Take 미션·발표 중 대본 표시, 왼쪽 아래 채팅 에이전트 버튼과 오른쪽 Take 시작 버튼이 있습니다."
           caption="장치 점검 화면"
         />
         <p className="mt-2 text-sm leading-6 text-stone">

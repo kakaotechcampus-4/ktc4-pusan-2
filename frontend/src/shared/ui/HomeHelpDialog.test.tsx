@@ -83,6 +83,7 @@ it('개인정보 없는 SVG 목업에 대체 텍스트와 키보드로 여는 �
     '/help/rehearsal-stage.svg',
   ]);
   expect(images[0].getAttribute('alt')).toContain('이번 Take 미션');
+  expect(images[0].getAttribute('alt')).toContain('왼쪽 아래 채팅 에이전트 버튼');
   expect(images[1].getAttribute('alt')).toContain('8 시선 테두리');
   expect(images[1].getAttribute('alt')).toContain('6 코치 아래 키보드 이동 안내');
   for (const [index, image] of images.entries()) {
@@ -128,6 +129,11 @@ it('두 설명용 SVG가 올바른 문서이며 현재 화면의 필수 문구�
     expect(parsed.querySelector('parsererror')).toBeNull();
     expect(parsed.documentElement.tagName).toBe('svg');
   }
+
+  const launcher = new DOMParser()
+    .parseFromString(device, 'image/svg+xml')
+    .querySelector('[aria-label="왼쪽 아래 채팅 에이전트 런처를 나타낸 단순화한 기호"]');
+  expect(launcher?.querySelector('g')?.getAttribute('transform')).toBe('translate(-960 0)');
 
   for (const phrase of [
     'TAKE 3',
