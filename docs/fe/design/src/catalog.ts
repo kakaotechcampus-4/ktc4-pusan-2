@@ -54,7 +54,7 @@ export const PRODUCT_CHECKED: {
     { pr: 1110, head: 'f9b930eb1436a9d7c28e51d321275ed44d401b9a', what: '새미나이 채팅 패널' },
     {
       pr: 944,
-      head: '31c43f4c8558a1c28aa00947119d253e58a67f87',
+      head: 'f3ad9d0bd85982589a51829468a19f3900d3cf9b',
       what: '사용방법 시각 안내(왼쪽 런처 반영)',
     },
     {
