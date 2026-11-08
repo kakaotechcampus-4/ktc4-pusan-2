@@ -113,6 +113,22 @@ it('preserves confirmation route, title and header ownership after lazy loading'
   expect(host.querySelector('header')).toBeNull();
 });
 
+it('keeps document scrolling on header routes without a nested app scroll container', async () => {
+  state.launchOpen = true;
+  state.signedIn = true;
+  await visit('/');
+  const shell = host.querySelector<HTMLElement>('.app-scroll-shell');
+  expect(shell).not.toBeNull();
+  expect(shell?.classList.contains('min-h-dvh')).toBe(true);
+  expect(shell?.classList.contains('h-dvh')).toBe(false);
+  expect(shell?.classList.contains('overflow-y-auto')).toBe(false);
+  expect(shell?.classList.contains('scrollbar-gutter:stable')).toBe(false);
+
+  await visit('/takes/stage-take/rehearsal');
+  await vi.waitFor(() => expect(host.textContent).toContain('리허설 stage-take'));
+  expect(host.querySelector('.app-scroll-shell')).toBeNull();
+});
+
 it('puts the app header on the setup screen and keeps the name row only on the stage', async () => {
   state.signedIn = true;
   await visit('/pitch/p1/device-check');
