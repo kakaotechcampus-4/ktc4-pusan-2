@@ -1,4 +1,5 @@
 import { FIRST_TAKE_SLIDES } from './firstTakeMaterials';
+import { FirstTakeError } from './firstTakeError';
 
 /**
  * #931: 텍스트로 버전 관리하는 샘플을 브라우저에서 PDF로 생성합니다.
@@ -18,7 +19,7 @@ function drawSlide(index: number): Uint8Array {
   canvas.height = HEIGHT;
 
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('이 브라우저에서는 샘플 발표자료를 만들 수 없어요.');
+  if (!ctx) throw new FirstTakeError('이 브라우저에서는 샘플 발표자료를 만들 수 없어요.');
 
   ctx.fillStyle = '#F5F0E9';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -60,7 +61,7 @@ function drawSlide(index: number): Uint8Array {
   ctx.fillText(`${index + 1} / ${FIRST_TAKE_SLIDES.length}`, 1108, 626);
 
   const encoded = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-  if (!encoded) throw new Error('샘플 발표자료를 이미지로 변환하지 못했어요.');
+  if (!encoded) throw new FirstTakeError('샘플 발표자료를 이미지로 변환하지 못했어요.');
   return Uint8Array.from(atob(encoded), (value) => value.charCodeAt(0));
 }
 
