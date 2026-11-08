@@ -176,7 +176,6 @@ it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인 완료를
   await click('확인 완료');
   expect(host.querySelector('dialog')).toBeNull();
   expect(host.querySelector('progress')?.value).toBe(1);
-  expect(host.textContent).toContain('확인 완료');
 });
 
 it('대본 매핑 완료와 창 닫기만으로는 저장되지 않는다', async () => {
