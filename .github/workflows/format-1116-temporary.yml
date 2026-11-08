@@ -1,0 +1,37 @@
+# Temporary branch-scoped formatter for PR #1116; remove after completion.
+name: Format design guide PR 1116
+on:
+  push:
+    branches:
+      - docs/fe-design-guide-draft-sync
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/fe-design-guide-draft-sync
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: docs/fe/design/.nvmrc
+          cache: npm
+          cache-dependency-path: docs/fe/design/package-lock.json
+      - run: npm ci
+        working-directory: docs/fe/design
+      - run: npm run format
+        working-directory: docs/fe/design
+      - name: Commit formatting only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/fe/design
+          if ! git diff --cached --quiet; then
+            git commit -m "style(docs): format follow-up preview changes (#1116)"
+            git push origin HEAD:refs/heads/docs/fe-design-guide-draft-sync
+          fi
