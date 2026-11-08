@@ -113,3 +113,30 @@ test('5. "바로 발표할래" → [연습 준비로] 버튼 → 누르면 장�
   await expect(page).toHaveURL(/\/rehearsal$/);
   await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
 });
+
+test('6. 최신 아님 배지 → 다시 묻기', async ({ page }) => {
+  await page.goto(`/takes/${TAKE3_ID}`);
+  const panel = await openChat(page);
+
+  // 목의 지난 대화 — 그 뒤에 끝난 Take 가 있어 최신이 아닙니다(NEW_TAKE)
+  await panel.getByRole('button', { name: '대화 목록' }).click();
+  const past = panel.getByRole('list', { name: '지난 대화' }).getByRole('button', {
+    name: /지난번보다 청중을 더 봤어\?/,
+  });
+  await expect(past).toContainText('최신 아님');
+  await past.click();
+
+  await expect(panel.locator('[data-stale-reason]').first()).toContainText('최신 아님');
+  const claims = panel.locator('[data-claim]');
+  await expect(claims.first()).toBeVisible();
+  const before = await claims.count();
+  await panel.getByRole('button', { name: /^최신 기준으로 다시 묻기/ }).click();
+
+  // 같은 질문을 새 메시지로 보내고, 새 답에는 최신 아님 표시가 없습니다 (F5)
+  const asked = panel.getByText('지난번보다 청중을 더 봤어?', { exact: true });
+  await expect(asked).toHaveCount(2);
+  await expect.poll(() => claims.count()).toBeGreaterThan(before);
+  // 새 답이 끝까지 온 뒤에도 최신 아님 표시는 지난 답의 하나뿐입니다
+  await expect(panel.getByRole('button', { name: '취소' })).toHaveCount(0);
+  await expect(panel.locator('[data-stale-reason]')).toHaveCount(1);
+});
