@@ -6,7 +6,7 @@ import type { Navigate } from './shared';
 const QUESTIONS = [
   '최근 연습에서 개선할 점을 알려줘',
   '이전 연습과 달라진 점을 비교해줘',
-  '다음 발표에서 무엇을 연습하면 좋을까?',
+  '지난 Take에서 군더더기가 많았던 부분을 알려줘',
 ] as const;
 
 const SEMINI_IMAGE = publicUrl('semini.png');

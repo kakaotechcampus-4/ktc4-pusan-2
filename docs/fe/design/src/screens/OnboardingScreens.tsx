@@ -328,8 +328,7 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
                 치치가 발표를 준비하다 막히면 가장 먼저 찾는 AI 비서 앱이에요.
               </p>
               <p className="mt-2 text-sm leading-7">
-                작은 질문부터 발표 연습에 관한 고민까지, 새미나이는 언제든 이야기를 나눌 준비가 되어
-                있답니다.
+                지난 Take 기록을 함께 살펴보고 다음 연습의 대화 목표를 정하도록 도와줘요.
               </p>
               <p className="mt-5 border-t border-line-strong pt-4 text-sm font-bold">
                 “잠깐, 이건 새미나이한테 물어봐야겠다!” <span className="font-normal">— 치치</span>

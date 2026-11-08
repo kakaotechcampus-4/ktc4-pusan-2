@@ -47,10 +47,10 @@ export const PRODUCT_CHECKED: {
       what: 'First Take 튜토리얼 미리보기',
     },
     { pr: 1106, head: '961a033394b6e5f11205a6d36cbfc47a8b520d21', what: '문서 스크롤 유지 및 상단바 전용 스크롤바 여백' },
-    { pr: 1110, head: '2e92875b4556d04f974c16cf300aea3a8e42b235', what: '새미나이 채팅 패널' },
+    { pr: 1110, head: 'f9b930eb1436a9d7c28e51d321275ed44d401b9a', what: '새미나이 채팅 패널' },
     {
       pr: 944,
-      head: '1747994a037d6bd07ed08b8bc71e56facd2c9d53',
+      head: '9a380211919449f616ab039bf88ec42de9648ff9',
       what: '사용방법 시각 안내(왼쪽 런처 반영)',
     },
     {
@@ -60,12 +60,12 @@ export const PRODUCT_CHECKED: {
     },
     {
       pr: 1112,
-      head: '9e11d336cc1810f4cde5d14e70f32249cd07dbea',
+      head: 'da062ba8da95b5d77bbb518c83610bf0c55ec533',
       what: '홈 통합 푸터(좁은 화면 줄바꿈)와 TIP 자동 전환',
     },
     {
       pr: 1113,
-      head: '3cd16e7e5adfe564b0fc068a9075b15ff1c431ea',
+      head: '24fc6c7ae013ace8fcdc4b05f185b665ed7d1b5f',
       what: '온보딩 새미나이 소개 카드',
     },
     {
