@@ -341,6 +341,10 @@ def _two_takes_llm() -> F.FakeLlm:
     )
 
 
+def _talk_llm(kind: str) -> F.FakeLlm:
+    return F.FakeLlm([F.plan(route="SMALL_TALK", steps=[], talk_kind=kind)])
+
+
 def _scope_llm(reason: str) -> F.FakeLlm:
     return F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"], scope_reason=reason)])
 
@@ -446,6 +450,14 @@ MORE = {
     "svc-general-guide-found": _guide_llm,
     "svc-general-number-lure": lambda: _general_llm("svc-general-number-lure"),
     "svc-memory-same-verdict": _verdict_llm,
+    # 가벼운 말(P-0008 5-1): 계획 한 번 + 코드 고정 문장
+    "svc-talk-greeting": lambda: _talk_llm("GREETING"),
+    "svc-talk-thanks": lambda: _talk_llm("THANKS"),
+    "svc-talk-capability": lambda: _talk_llm("CAPABILITY"),
+    "svc-talk-practice": lambda: _talk_llm("PRACTICE_INTENT"),
+    "svc-talk-farewell": lambda: _talk_llm("FAREWELL"),
+    "svc-talk-mixed-record": lambda: _record_llm(_msg("svc-talk-mixed-record")),
+    "svc-talk-greeting-oos": lambda: _scope_llm("OTHER"),
 }
 
 
@@ -460,8 +472,7 @@ def test_more_agent_service_scenarios_pass_with_a_scripted_model(sid: str) -> No
 
 
 def test_every_agent_service_scenario_has_a_scripted_run() -> None:
-    # 가벼운 말 묶음(P-0008 M1)의 대본 실행은 가벼운 말 길을 구현하는 커밋에서 더한다 — 그 전 코드는 이 문항을 통과하지 못한다
-    svc = {s.id for s in BY_ID.values() if s.set == "agent_service" and s.group != "small_talk"}
+    svc = {s.id for s in BY_ID.values() if s.set == "agent_service"}
     covered = (
         set(SCRIPTED)
         | set(MORE)

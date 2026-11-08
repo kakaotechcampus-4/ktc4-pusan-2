@@ -79,6 +79,17 @@ DEFAULT_PLAN = [
 ]
 
 
+#: 계획 route 값(6-1). 모르는 값은 RESEARCH 로 본다
+PLAN_ROUTES = ("RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE")
+#: 가벼운 말 종류(P-0008 5-1)
+TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
+
+
+def _route_of(parsed: dict[str, Any]) -> str:
+    route = parsed.get("route")
+    return route if route in PLAN_ROUTES else "RESEARCH"
+
+
 @dataclass
 class LoopState:
     """서명 상태(`payload.loop`)로 이어지는 루프 데이터."""
@@ -205,6 +216,9 @@ class Loop:
         self.original = original_message
         #: 계획 단계에서 모델이 고른 범위 밖 이유(route 가 OUT_OF_SCOPE 일 때만, 1-3). 한 호출 안에서만 쓰고 저장하지 않는다
         self.scope_reason: str | None = None
+        #: 이 응답의 계획 route(계획을 돌리지 않은 이어 부르기는 None)와 가벼운 말 종류(route 가 SMALL_TALK 일 때만, P-0008 5-1)
+        self.route: str | None = None
+        self.talk_kind: str | None = None
         self.counters = counters
         self.budget = Budget.start(self.cfg, counters, deps.monotonic)
         self.diag = diag
@@ -508,21 +522,29 @@ class Loop:
 
     # ── 1. 계획 ─────────────────────────────────────────────────────
     def plan_phase(self) -> str:
-        """계획 · 판단 초안. 돌려주는 값: route(RESEARCH · ANSWER_DIRECT · OUT_OF_SCOPE). OUT_OF_SCOPE 면 `scope_reason`도 남는다."""
+        """계획 · 판단 초안. 돌려주는 값: route(RESEARCH · ANSWER_DIRECT · SMALL_TALK · OUT_OF_SCOPE). OUT_OF_SCOPE 면
+        `scope_reason`, SMALL_TALK 면 `talk_kind`도 남는다."""
+        self.route = self._plan_route()
+        return self.route
+
+    def _plan_route(self) -> str:
         msgs = [self._system(prompts.PLAN), prompts.data_message(self.data_block())]
         res = self._call("RESEARCH", msgs, schema=prompts.PLAN_SCHEMA)
         if not isinstance(res, LlmResult) or res.parsed is None:
             self._set_plan(DEFAULT_PLAN, edit=False)
             return "RESEARCH"
         parsed = res.parsed
-        route = (
-            parsed.get("route")
-            if parsed.get("route") in ("RESEARCH", "ANSWER_DIRECT", "OUT_OF_SCOPE")
-            else "RESEARCH"
-        )
-        if route == "OUT_OF_SCOPE":
-            self.scope_reason = parsed.get("scope_reason")
+        route = _route_of(parsed)
         drafts = self._parse_drafts(parsed.get("assessments") or [])
+        if route == "SMALL_TALK":
+            kind = self._small_talk_kind(parsed.get("talk_kind"), drafts)
+            if kind is not None:
+                # 가벼운 말: 모델은 이 한 번뿐이고 답은 코드 고정 문장이다(P-0008 5-1). 판단 · 할 일 목록은 두지 않는다
+                self.talk_kind = kind
+                self.st.drafts = []
+                return "SMALL_TALK"
+            # 코드가 가벼운 말로 보지 않은 말(길다 · 숫자 · 내용 있는 판단)은 기록 · 자료를 조사하는 기존 처리로
+            route = "RESEARCH"
         valid, problems = clm.split_check(self.original or "", drafts, self.cfg)
         plan_ok = self._plan_valid(parsed.get("plan") or [], allow_empty=route != "RESEARCH")
         if (problems or not plan_ok) and route != "OUT_OF_SCOPE":
@@ -543,11 +565,17 @@ class Loop:
             res2 = self._call("RESEARCH", fix_msgs, schema=prompts.PLAN_SCHEMA)
             if isinstance(res2, LlmResult) and res2.parsed is not None:
                 parsed = res2.parsed
+                # 고친 계획의 route 로 다시 정한다(처음 route 를 그대로 쓰면 고친 계획과 어긋난다). 고치기에서 가벼운 말 ·
+                # 범위 밖으로 바꾼 것은 받지 않는다 — 형식이 틀렸던 말을 고정 문장 · 거절로 끝내지 않게
+                route2 = _route_of(parsed)
+                route = route2 if route2 in ("RESEARCH", "ANSWER_DIRECT") else route
                 drafts = self._parse_drafts(parsed.get("assessments") or [])
                 valid, problems = clm.split_check(self.original or "", drafts, self.cfg)
                 plan_ok = self._plan_valid(
                     parsed.get("plan") or [], allow_empty=route != "RESEARCH"
                 )
+        if route == "OUT_OF_SCOPE":
+            self.scope_reason = parsed.get("scope_reason")
         self.st.drafts = [d.model_dump(mode="json") for d in drafts]
         if route == "RESEARCH":
             self._set_plan(
@@ -556,6 +584,33 @@ class Loop:
         elif plan_ok and parsed.get("plan"):
             self._set_plan(parsed["plan"], edit=False)
         return route
+
+    def _small_talk_kind(self, kind: Any, drafts: list[clm.AssessmentDraft]) -> str | None:
+        """계획이 고른 가벼운 말을 코드가 한 번 더 본다(P-0008 5-1 · 레드팀 '말 전체가 가벼운 말일 때만').
+
+        받지 않는 것: 모르는 종류, 말이 길거나(`small_talk_max_chars`) 숫자가 있음, 대상(차원 · 지표 · 장 · Take)을 집었거나
+        요청이 아닌 판단 초안(주장 · 의견)이 있음. 연습하려는 뜻은 사용자 말에 연습 낱말이 있을 때만 — 없으면 인사로 받는다
+        (화면 상태 · 기록 속 지시가 이동 버튼을 만들지 못하게).
+        """
+        if kind not in TALK_KINDS:
+            return None
+        msg = self.original or ""
+        if len(msg) > self.cfg.small_talk_max_chars or any(ch.isdigit() for ch in msg):
+            return None
+        for d in drafts:
+            sub = d.subject
+            if (
+                d.type != "REQUEST"
+                or sub.dimension
+                or sub.metric
+                or sub.slide_number
+                or sub.take_ids
+                or sub.take_numbers
+            ):
+                return None
+        if kind == "PRACTICE_INTENT" and not any(w in msg for w in self.cfg.practice_intent_words):
+            return "GREETING"
+        return str(kind)
 
     def _parse_drafts(self, raw: list[Any]) -> list[clm.AssessmentDraft]:
         out = []

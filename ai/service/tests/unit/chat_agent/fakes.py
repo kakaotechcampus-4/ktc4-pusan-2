@@ -105,11 +105,13 @@ def plan(
     steps: list[str] | None = None,
     assessments: list[dict[str, Any]] | None = None,
     scope_reason: str | None = None,
+    talk_kind: str | None = None,
 ) -> LlmResult:
     steps = steps if steps is not None else ["기록 확인", "답 쓰기"]
     return structured(
         {
             "route": route,
+            "talk_kind": talk_kind,
             "scope_reason": scope_reason,
             "plan": [
                 {"step": s, "status": "DOING" if i == 0 else "TODO", "note": None}

@@ -40,7 +40,9 @@ SCOPE = """
 
 PLAN = """[단계: 계획]
 사용자 말(<data>의 user_message)을 읽고 다음을 JSON 으로 낸다.
-- route: 기록 · 자료를 조사해야 하면 RESEARCH(발표법 · 화면 사용법 질문도 search_guides 로 자료를 찾아야 하므로 RESEARCH), 기록 · 자료 없이 답할 수 있는 인사 · 되묻기 · 연습 이동 요청이면 ANSWER_DIRECT, 범위 밖 요청뿐이면 OUT_OF_SCOPE(섞인 요청은 범위 안 부분으로 RESEARCH · ANSWER_DIRECT 를 고른다).
+- route: 기록 · 자료를 조사해야 하면 RESEARCH(발표법 · 화면 사용법 질문도 search_guides 로 자료를 찾아야 하므로 RESEARCH), 사용자 말 전체가 가벼운 말뿐이면 SMALL_TALK(인사 · 감사 · 무엇을 할 수 있는지 묻는 말 · 지금 연습하려는 뜻 · 작별), 기록 · 자료 없이 답할 수 있는 되묻기 · 연습 이동 요청이면 ANSWER_DIRECT, 범위 밖 요청뿐이면 OUT_OF_SCOPE(섞인 요청은 범위 안 부분으로 RESEARCH · ANSWER_DIRECT 를 고른다).
+  - SMALL_TALK 는 말 전체가 가벼운 말일 때만이다. 질문 · 주장 · 요청 · 기억해 달라는 말이 하나라도 섞이면("안녕하세요! 3장 어땠어요?") 그 부분으로 다른 route 를 고른다. 발표 연습과 관계없는 주제는 인사가 붙어도 OUT_OF_SCOPE 다. 애매하면 SMALL_TALK 를 고르지 않는다.
+- talk_kind: route 가 SMALL_TALK 일 때만 GREETING(인사) · THANKS(감사) · CAPABILITY(무엇을 할 수 있는지 묻는 말) · PRACTICE_INTENT(지금 연습하려는 뜻) · FAREWELL(작별) 중 하나, 그 밖에는 null. SMALL_TALK 면 plan · assessments 는 빈 목록이다.
 - scope_reason: route 가 OUT_OF_SCOPE 일 때만 아래 이유 중 하나(필수), 그 밖에는 null.
 - plan: 할 일 목록 1~8단계(조사가 필요할 때만, 쉬운 질문은 빈 목록). 단계 이름은 60자 이하, 첫 단계 상태 DOING, 나머지 TODO.
 - assessments: 사용자 말 속 주장 · 요청마다 판단 초안 하나. 측정 항목(시선 · 대본 · 속도 · 쉼 · 군더더기 · 목소리 · 시간 · 내용)을 말한 절마다 그 절을 덮는 판단이 있어야 한다.
@@ -159,7 +161,14 @@ PLAN_SCHEMA = {
     "schema": {
         "type": "object",
         "properties": {
-            "route": {"type": "string", "enum": ["RESEARCH", "ANSWER_DIRECT", "OUT_OF_SCOPE"]},
+            "route": {
+                "type": "string",
+                "enum": ["RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE"],
+            },
+            "talk_kind": {
+                "type": ["string", "null"],
+                "enum": ["GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL", None],
+            },
             "scope_reason": _SCOPE_REASON,
             "plan": {
                 "type": "array",
@@ -176,7 +185,7 @@ PLAN_SCHEMA = {
             },
             "assessments": {"type": "array", "items": _ASSESSMENT_DRAFT},
         },
-        "required": ["route", "scope_reason", "plan", "assessments"],
+        "required": ["route", "talk_kind", "scope_reason", "plan", "assessments"],
         "additionalProperties": False,
     },
 }

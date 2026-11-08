@@ -156,12 +156,10 @@
   {
     "id": "r-013",
     "query": "끝나고 누가 물어봤는데 제가 전혀 모르는 거면 뭐라고 대응해야 해요? 아는 척은 못하겠고요.",
-    "expected": [
-      "g-13"
-    ],
+    "expected": [],
     "acceptable": [],
     "screen": null,
-    "kind": "method",
+    "kind": "none",
     "split": "dev",
     "style": "user"
   },
@@ -209,7 +207,9 @@
     "expected": [
       "g-17"
     ],
-    "acceptable": [],
+    "acceptable": [
+      "g-22"
+    ],
     "screen": null,
     "kind": "method",
     "split": "dev",
@@ -257,9 +257,11 @@
     "id": "r-021",
     "query": "집에서 웹캠 켜고 할 땐 모니터 속 제 얼굴을 보면 돼요, 렌즈 구멍을 보면 돼요?",
     "expected": [
+      "g-21"
+    ],
+    "acceptable": [
       "g-01"
     ],
-    "acceptable": [],
     "screen": null,
     "kind": "method",
     "split": "dev",
@@ -272,7 +274,8 @@
       "g-02"
     ],
     "acceptable": [
-      "g-16"
+      "g-16",
+      "g-22"
     ],
     "screen": null,
     "kind": "method",
@@ -370,12 +373,10 @@
   {
     "id": "r-030",
     "query": "질문 받은 뒤 답변 순서",
-    "expected": [
-      "g-13"
-    ],
+    "expected": [],
     "acceptable": [],
     "screen": null,
-    "kind": "method",
+    "kind": "none",
     "split": "test",
     "style": "keyword"
   },

@@ -55,6 +55,7 @@ from .diagnostics import DiagRecorder, code_enum, reduce_to_fit, safe_request_id
 from .evidence import canonical_json
 from .goals import judge_goal
 from .loop import Loop, LoopState, TurnDeps, meta
+from .runctx import RunCtx
 from .schemas import Action, Assessment, Claim, Diagnostics, FinalData, TurnRequest
 from .version import FEATURE_VERSION, TOOL_SCHEMA_VERSION
 
@@ -424,6 +425,8 @@ def _orchestrate(
                 reason="OUT_OF_SCOPE",
                 system=[templates.scope_text(lp.scope_reason)],
             )
+        if route == "SMALL_TALK":
+            return _small_talk(lp, req, finish)
         if route == "ANSWER_DIRECT":
             lp.st.research_done = True
 
@@ -642,6 +645,84 @@ def _slots_short_end(lp: Loop, finish: Callable[..., _Result]) -> _Result:
     return _end_without_model(lp, finish, "MODEL_CALLS", notes=_action_notes(lp))
 
 
+def _practice_button(lp: Loop, authorized_by: str | None) -> Action | None:
+    """[연습 준비로] 버튼(6-2 START_PRACTICE): 카드는 상태에 남기고 행동을 돌려준다(없으면 None)."""
+    lp.st.action_seq += 1
+    action, card, why = act.start_practice_action(
+        ctx=lp.ctx, authorized_by=authorized_by, seq=lp.st.action_seq, budget=lp.budget
+    )
+    # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
+    # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
+    lp.diag.step(
+        "ACTION",
+        "START_PRACTICE",
+        {
+            "action_id": action.action_id if action is not None else None,
+            "autonomy": act.AUTONOMY.get("START_PRACTICE"),
+            "authorization": "NOT_REQUIRED",
+            "result": "PROPOSED" if action is not None else ("DOWNGRADED" if card else "DROPPED"),
+            "reason_code": code_enum(why),
+        },
+        parent_seq=lp._last_model_seq,
+    )
+    if card:
+        lp.st.cards.append(card)
+    return action
+
+
+def _capability_text(ctx: RunCtx) -> templates.SystemText:
+    """할 수 있는 일 안내. 사용법 카드가 실린 묶음일 때만 화면 사용법 안내를 말한다(검수 전이면 답할 근거가 없다)."""
+    corpus = ctx.corpus
+    usage = corpus is not None and any(c.kind == "usage" for c in corpus.cards)
+    return (
+        templates.SystemText.TALK_CAPABILITY_USAGE
+        if usage
+        else templates.SystemText.TALK_CAPABILITY
+    )
+
+
+def _next_step(ctx: RunCtx) -> templates.SystemText:
+    """가벼운 말 뒤에 붙일 다음 걸음 — 기본 자료로 코드가 고른다(P-0008 5-1)."""
+    if ctx.scope_pitch_id is None:
+        return (
+            templates.SystemText.NEXT_PICK_PITCH
+            if ctx.pitches
+            else templates.SystemText.NEXT_FIRST_PITCH
+        )
+    has_take = bool(ctx.summaries or ctx.snapshots) or any(
+        p.pitch_id == ctx.scope_pitch_id and p.take_count > 0 for p in ctx.pitches
+    )
+    return templates.SystemText.NEXT_REVIEW if has_take else templates.SystemText.NEXT_FIRST_TAKE
+
+
+def _small_talk(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
+    """가벼운 말(계획 route SMALL_TALK, P-0008 5-1): 모델은 계획 한 번뿐이고 답은 코드 고정 문장(`SYSTEM`)이다.
+
+    인사 · 감사는 다음 걸음 하나를 붙이고, 할 수 있는 일은 FE 첫 화면 안내와 같은 낱말로, 연습하려는 뜻은 [연습 준비로]
+    버튼(범위 피치가 없으면 고르라는 안내), 작별은 한 문장이다. 숫자 · 기록 값 · 판정 낱말이 없어 답 검사 대상이 아니다.
+    """
+    ctx = lp.ctx
+    t = templates.SystemText
+    kind = lp.talk_kind
+    actions: list[Action] = []
+    if kind == "PRACTICE_INTENT":
+        action = _practice_button(lp, lp.original or None) if ctx.scope_pitch_id else None
+        if action is not None:
+            actions.append(action)
+            system = [t.TALK_PRACTICE, t.PRACTICE_BUTTON]
+        else:
+            system = [t.TALK_PRACTICE, t.WHICH_PITCH if ctx.pitches else t.NEXT_FIRST_PITCH]
+    elif kind == "CAPABILITY":
+        system = [_capability_text(ctx)]
+    elif kind == "THANKS":
+        system = [t.TALK_THANKS]
+    elif kind == "FAREWELL":
+        system = [t.TALK_FAREWELL]
+    else:
+        system = [t.TALK_GREETING, _next_step(ctx)]
+    return finish(status="DONE", system=system, actions=actions or None)
+
+
 def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
     ctx = lp.ctx
     stop_reason = lp.st.stop_reason
@@ -718,33 +799,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     actions: list[Action] = []
     sp = draft.get("start_practice")
     if isinstance(sp, dict):
-        lp.st.action_seq += 1
-        action, card, why = act.start_practice_action(
-            ctx=ctx,
-            authorized_by=sp.get("authorized_by")
-            if isinstance(sp.get("authorized_by"), str)
-            else None,
-            seq=lp.st.action_seq,
-            budget=lp.budget,
+        action = _practice_button(
+            lp, sp.get("authorized_by") if isinstance(sp.get("authorized_by"), str) else None
         )
-        # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
-        # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
-        lp.diag.step(
-            "ACTION",
-            "START_PRACTICE",
-            {
-                "action_id": action.action_id if action is not None else None,
-                "autonomy": act.AUTONOMY.get("START_PRACTICE"),
-                "authorization": "NOT_REQUIRED",
-                "result": "PROPOSED"
-                if action is not None
-                else ("DOWNGRADED" if card else "DROPPED"),
-                "reason_code": code_enum(why),
-            },
-            parent_seq=lp._last_model_seq,
-        )
-        if card:
-            lp.st.cards.append(card)
         if action is not None:
             actions.append(action)
     # 코칭 프로필 저장 후보: 검사 · 자격(처음 사용자 말 · 켜짐 · 번호 그대로)은 `_finish`가 종결 응답에서만 본다(6-14)
@@ -761,6 +818,10 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         Claim(kind="SYSTEM", text=templates.scope_text(r).value) for r in _scope_notes(draft)
     ]
     if not body and not has_result:
+        # 안전망(P-0008 5-1): 기록 · 자료 없이 답하려던 말(ANSWER_DIRECT)의 문장이 모두 빠져도 실패 상태 · 까닭은 그대로 두고,
+        # 할 수 있는 일 안내만 덧붙인다(가벼운 말로 보지 않은 인사가 거절 문장 하나로 끝나지 않게)
+        if lp.route == "ANSWER_DIRECT":
+            scope_claims = [*scope_claims, Claim(kind="SYSTEM", text=_capability_text(ctx).value)]
         if notes:
             # 행동 결과 안내만 있는 답(예: 다른 탭에서 목표가 바뀌어 저장하지 못함): 안내를 그대로 낸다
             return finish(
