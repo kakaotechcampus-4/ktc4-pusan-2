@@ -248,6 +248,23 @@ def goal_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> st
     return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
 
 
+def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> str | None:
+    """닫힌 목표를 물을 때 보고 있는 Take 의 지금 값과 목표 기준의 관계(코드 템플릿). 값을 숫자로 못 쓰면 None.
+
+    자동 목표 확인 문장(`goal_sentence`)과 달리 '목표를 이뤘어요'라고 하지 않는다: 이 Take 가 목표를 닫았는지는 알 수 없다.
+    """
+    word = templates.GOAL_VALUE_WORD.get(j.status)
+    if (
+        word is None
+        or not isinstance(j.observed, (int, float))
+        or goal.metric not in ctx.cfg.metric_units
+    ):
+        return None
+    where = f"{goal.slide_number}장 " if goal.slide_number else ""
+    obs = clm.format_metric_value(goal.metric, j.observed, ctx.cfg)
+    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}로, {word}."
+
+
 def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
     """남은 문장이 없을 때 검증된 근거 값으로 그린 문장(최대 3개)."""
     out: list[Claim] = []

@@ -828,6 +828,11 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         # (TAKE_REVIEWED)의 값이고 BE 가 그 값으로 목표 상태를 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 호출 시점이 바뀐다
         have = {c.text for c in [*comp.pre, *body, *tail, *extras]}
         extras += [c for c in _goal_status_claims(lp, req) if c.text not in have]
+    # 다른 발표 비교 안내(1-3): 코드 보강 문장까지 모은 최종 답 문장의 기록 피치로 본다
+    cross = templates.SystemText.CROSS_PITCH_NO_COMPARE.value
+    shown = {c.text for c in tail} | {d.get("text") for d in lp.st.emitted}
+    if cross not in shown and _cross_pitch_compare(lp, [*comp.pre, *body, *extras]):
+        tail = [*tail, Claim(kind="SYSTEM", text=cross)]
     if not body and not has_result:
         # 안전망(P-0008 5-1): 기록 · 자료 없이 답하려던 말(ANSWER_DIRECT)의 문장이 모두 빠져도 실패 상태 · 까닭은 그대로 두고,
         # 할 수 있는 일 안내만 덧붙인다(가벼운 말로 보지 않은 인사가 거절 문장 하나로 끝나지 않게)
@@ -999,7 +1004,8 @@ def _page_take_goal_claim(lp: Loop, req: TurnRequest, goal: Any) -> Claim | None
 
     목표를 닫은 Take 는 요청 자료로 알 수 없으므로(닫은 때의 판 · 앞 Take 목록 · 시작 시각이 없음) 고르지 않는다. 보고 있는 Take 가
     목표 뒤 Take(기준 Take 보다 번호가 크고 `completed_at`이 목표 `created_at` 뒤)이고, 그 Take 의 지금 판정이 끝난 판정이며
-    목표 상태와 같을 때만 그 Take 의 값을 말한다. 이 Take 가 목표를 닫았다고는 말하지 않는다.
+    목표 상태와 같을 때만 그 Take 의 값이 목표 기준을 달성했는지(못 미치는지)를 말한다. 이 Take 가 목표를 이뤘다 · 닫았다고는
+    말하지 않는다(저장 전에 시작한 Take 일 수 있고, 닫은 때의 판정과 지금 판정이 다를 수 있다).
     """
     ctx = lp.ctx
     tid = req.page.take_id if req.page is not None else None
@@ -1015,8 +1021,10 @@ def _page_take_goal_claim(lp: Loop, req: TurnRequest, goal: Any) -> Claim | None
     j = judge_goal(goal, snap, registry=ctx.registry, version_of=ctx.version_of, cfg=lp.cfg)
     if not j.terminal or j.status != goal.status or not j.evidence_ids:
         return None
+    text = compose.goal_value_sentence(ctx, goal, j, summ.take_number)
+    if text is None:
+        return None
     ctx.touch(summ.take_id, ctx.scope_pitch_id)
-    text = compose.goal_sentence(ctx, goal, j, summ.take_number)
     claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
     fails = chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg)
     return None if fails else claim
@@ -1045,10 +1053,15 @@ def _goal_status_claims(lp: Loop, req: TurnRequest) -> list[Claim]:
 def _cross_pitch_compare(lp: Loop, said: list[Claim]) -> bool:
     """비교를 청했는데 답이 서로 다른 피치의 Take 기록을 함께 보이는가(1-3: 다른 피치끼리는 비교하지 않는다).
 
-    이번 실행이 읽은 기록 전체가 아니라 답 문장이 근거로 든 기록의 피치를 센다(다른 피치를 읽었어도 한 피치 안에서 답하면 붙이지 않는다).
+    비교 요청은 비교 낱말 또는 계획 초안의 비교 주장(`COMPARE` · `CHANGE`)으로 본다. 이번 실행이 읽은 기록 전체가 아니라 최종 답
+    문장(코드 보강 문장 포함)이 근거로 든 기록의 피치를 센다(다른 피치를 읽었어도 한 피치 안에서 답하면 붙이지 않는다).
     """
     msg = lp.original or ""
-    if not any(w in msg for w in lp.cfg.compare_request_words):
+    asked = any(w in msg for w in lp.cfg.compare_request_words) or any(
+        (d.get("subject") or {}).get("relation") == "COMPARE" or d.get("claim_op") == "CHANGE"
+        for d in lp.st.plan_drafts
+    )
+    if not asked:
         return False
     reg = lp.ctx.registry
     pitches = set()
@@ -1069,7 +1082,6 @@ def _tail_claims(
     - 이름으로 찾은 피치가 하나도 없고 범위를 정하지 않았으면 발표를 찾을 수 없다고 말한다(L2-21 0개).
     - 답 초안 `usage_unanswered`(화면 조작 방법을 물었는데 찾은 사용법 자료가 없음)면 사용법 자료 없음 문장(6-10).
     - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2).
-    - 비교를 청했고 답 문장의 기록 근거가 둘 이상의 피치에 걸치면 다른 발표의 Take 끼리는 비교하지 않는다는 문장(1-3).
     """
     seen = {c.text for c in said} | {d.get("text") for d in lp.st.emitted}
     out: list[Claim] = []
@@ -1086,8 +1098,6 @@ def _tail_claims(
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.USAGE_NO_GUIDE.value))
     if route == "CANNOT_DO":
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
-    if _cross_pitch_compare(lp, said):
-        out.append(Claim(kind="SYSTEM", text=templates.SystemText.CROSS_PITCH_NO_COMPARE.value))
     return [c for c in out if c.text not in seen]
 
 

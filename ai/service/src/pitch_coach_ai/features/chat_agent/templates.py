@@ -262,6 +262,12 @@ OUTCOME_WORD = {
     "BOTH_IN_RANGE": "두 번 모두 목표 범위 안이에요",
     "SAME_DISTANCE": "목표 범위와의 거리가 같아요",
 }
+#: 닫힌 목표를 물을 때 보고 있는 Take 의 지금 값이 목표 기준과 어떤지(7-10). 그 Take 가 목표를 이뤘다고는 하지 않는다
+GOAL_VALUE_WORD = {
+    "ACHIEVED": "목표 기준을 달성한 값이에요",
+    "NOT_ACHIEVED": "목표 기준에 못 미치는 값이에요",
+}
+
 GOAL_WORD = {
     "ACHIEVED": "목표를 이뤘어요",
     "NOT_ACHIEVED": "목표를 아직 이루지 못했어요",

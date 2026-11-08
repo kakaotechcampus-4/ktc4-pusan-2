@@ -253,7 +253,7 @@ def _ask_goal(req: dict[str, Any]) -> dict[str, Any]:
 
 
 def _goal_records(data: dict[str, Any]) -> list[str]:
-    return [t for k, t in _texts(data) if k == "RECORD" and "목표를" in t]
+    return [t for k, t in _texts(data) if k == "RECORD" and "목표 기준" in t]
 
 
 def test_goal_status_sentence_adds_the_page_take_judgement_with_its_value() -> None:
@@ -263,7 +263,8 @@ def test_goal_status_sentence_adds_the_page_take_judgement_with_its_value() -> N
     rec = _goal_records(data)
     assert templates.SystemText.GOAL_CLOSED_ACHIEVED.value in texts
     assert len(rec) == 1
-    assert "Take 5" in rec[0] and "%" in rec[0] and "목표를 이뤘어요" in rec[0]
+    assert "Take 5" in rec[0] and "%" in rec[0] and "목표 기준을 달성한 값이에요" in rec[0]
+    assert "목표를 이뤘" not in rec[0]  # 이 Take 가 목표를 이뤘다 · 닫았다고는 말하지 않는다
     assert texts.index(templates.SystemText.GOAL_CLOSED_ACHIEVED.value) < texts.index(rec[0])
 
 
@@ -278,7 +279,7 @@ def test_goal_status_sentence_not_achieved_wording() -> None:
     """못 이룬 목표: 보고 있는 Take 도 못 미치면 못 이룬 말투의 값 문장(기준 값이 높아 기준을 못 넘는다)."""
     data = _ask_goal(_closing_request("t-5", status="NOT_ACHIEVED", base_value=0.90))
     rec = _goal_records(data)
-    assert len(rec) == 1 and "Take 5" in rec[0] and "이루지 못했어요" in rec[0]
+    assert len(rec) == 1 and "Take 5" in rec[0] and "목표 기준에 못 미치는 값이에요" in rec[0]
 
 
 @pytest.mark.parametrize(
@@ -299,8 +300,10 @@ def test_goal_status_sentence_states_only_the_status_otherwise(
 # ── 다른 발표의 Take 끼리는 비교하지 않는다는 끝 문장(1-3) ─────────────────────────
 
 
-def _two_pitch_loop(message: str, pitches: tuple[str, ...]) -> tuple[Any, list[Any]]:
-    """기록 근거를 가진 실행과, 그 근거를 하나씩 든 답 문장들. 끝 문장 규칙이 보는 것만 가진다."""
+def _two_pitch_loop(
+    message: str, pitches: tuple[str, ...], drafts: list[dict[str, Any]] | None = None
+) -> tuple[Any, list[Any]]:
+    """기록 근거를 가진 실행과, 그 근거를 하나씩 든 답 문장들. 비교 안내 규칙이 보는 것만 가진다."""
     from types import SimpleNamespace
 
     from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
@@ -330,17 +333,15 @@ def _two_pitch_loop(message: str, pitches: tuple[str, ...]) -> tuple[Any, list[A
         original=message,
         cfg=load_config(),
         ctx=SimpleNamespace(registry=reg),
-        st=SimpleNamespace(
-            plan_drafts=[], emitted=[], executed=[], ambiguous_name=False, name_not_found=False
-        ),
+        st=SimpleNamespace(plan_drafts=drafts or []),
     )
     return lp, said
 
 
-def _cross_tail(lp: Any, said: list[Any]) -> list[str]:
+def _cross(lp: Any, said: list[Any]) -> bool:
     from pitch_coach_ai.features.chat_agent import turn
 
-    return [c.text for c in turn._tail_claims(lp, "RESEARCH", said=said)]
+    return turn._cross_pitch_compare(lp, said)
 
 
 @pytest.mark.parametrize(
@@ -352,17 +353,25 @@ def _cross_tail(lp: Any, said: list[Any]) -> list[str]:
 )
 def test_cross_pitch_comparison_gets_the_no_compare_sentence(message: str) -> None:
     lp, said = _two_pitch_loop(message, ("p-1", "p-2"))
-    assert _cross_tail(lp, said) == [templates.SystemText.CROSS_PITCH_NO_COMPARE.value]
+    assert _cross(lp, said)
+
+
+def test_cross_pitch_comparison_is_found_from_the_plan_draft_without_a_comparison_word() -> None:
+    drafts = [{"type": "MEASURED", "claim_op": "CHANGE", "subject": {"relation": "COMPARE"}}]
+    lp, said = _two_pitch_loop("두 발표 중 뭐가 낫지?", ("p-1", "p-2"), drafts)
+    assert _cross(lp, said)
 
 
 def test_no_compare_sentence_needs_both_a_comparison_and_two_pitches_in_the_answer() -> None:
     same, said = _two_pitch_loop("Take 4랑 Take 5 시선 비교해 줘", ("p-1",))
-    assert _cross_tail(same, said) == []
-    plain, said = _two_pitch_loop("졸업 발표랑 회사 소개 발표 시선 알려 줘", ("p-1", "p-2"))
-    assert _cross_tail(plain, said) == []
+    assert not _cross(same, said)
+    plain, said = _two_pitch_loop(
+        "졸업 발표랑 회사 소개 발표 기록을 살펴보다 궁금해졌어. 각각 시선 알려 줘", ("p-1", "p-2")
+    )
+    assert not _cross(plain, said)
 
 
 def test_no_compare_sentence_counts_only_the_pitches_the_answer_cites() -> None:
     """다른 피치 기록을 읽었어도 답 문장이 한 피치의 기록만 들면 붙이지 않는다."""
     lp, said = _two_pitch_loop("졸업 발표 Take 1이랑 2 비교해 줘", ("p-1", "p-2"))
-    assert _cross_tail(lp, said[:1]) == []
+    assert not _cross(lp, said[:1])

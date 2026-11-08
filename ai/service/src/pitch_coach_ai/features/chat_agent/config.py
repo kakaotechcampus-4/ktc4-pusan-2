@@ -704,7 +704,6 @@ class ChatAgentConfig(_Frozen):
     compare_request_words: tuple[str, ...] = (
         "비교",
         "차이",
-        "보다",
         "어느 쪽",
         "어느 게",
         "더 잘",
