@@ -723,6 +723,33 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     expect(sent!.page.screen!.snapshot_id).toMatch(/^ss-[0-9a-f]{16}$/);
   });
 
+  it('처음 확인(없음 → 사용자) 뒤에 보내면 먼저 등록한 화면 상태를 싣는다', async () => {
+    expect(useChatStore.getState().userId).toBeNull();
+    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
+    await visit('/pitch/p1/device-check');
+    expect(useChatStore.getState().userId).toBe('u1');
+    await openPanel();
+    await type('장치 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'device_check' });
+  });
+
+  it('로그아웃 신호 없이 다른 사용자로 바뀐 뒤 보내면 앞 사람 때 등록한 화면 상태를 싣지 않는다', async () => {
+    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
+    await visit('/pitch/p1/device-check');
+    expect(useChatStore.getState().userId).toBe('u1');
+
+    // 같은 경로 패턴에 머문 채 사용자만 바뀝니다 — 경로가 달라서 빠지는 것이 아님을 보려고 패턴을 유지합니다
+    state.session = { isPending: false, isError: false, data: { id: 'u2' } };
+    await go('/pitch/p2/device-check');
+    expect(useChatStore.getState().userId).toBe('u2');
+    await openPanel();
+    await type('장치 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    const [sent] = transport().sent;
+    expect(sent!.page).toMatchObject({ route: '/pitch/:pitchId/device-check', screen: null });
+  });
+
   it('평가 기준 원문이 2,000자를 넘으면 보내지 않고 알린다 (L3-11)', async () => {
     registerChatScreen('/pitch/new', () => ({
       name: 'pitch_create',
