@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { appRoutes, router as browserRouter } from './routes';
+import { appRouterShell, appRoutes, router as browserRouter } from './routes';
 
 const state = vi.hoisted(() => ({ signedIn: false, stageImports: 0, launchOpen: true }));
 vi.mock('@/features/auth/useSession', () => ({
@@ -20,6 +20,7 @@ vi.mock('@/shared/api/launch', () => ({
 vi.mock('@/features/onboarding/WelcomePage', () => ({ WelcomePage: () => <p>서비스 소개</p> }));
 vi.mock('@/features/auth/LoginPage', () => ({ LoginPage: () => <p>로그인</p> }));
 vi.mock('@/shared/ui/AppHeader', () => ({ AppHeader: () => <header>메뉴</header> }));
+vi.mock('@/features/chat/ChatAgentHost', () => ({ ChatAgentHost: () => null }));
 vi.mock('@/features/pitch/HomePage', () => ({ HomePage: () => <p>내 피치</p> }));
 vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
   state.stageImports++;
@@ -194,4 +195,47 @@ it('lets devices with a mouse or trackpad into practice routes', async () => {
   state.signedIn = true;
   await visit('/takes/t1/rehearsal');
   expect(router!.state.location.pathname).toBe('/takes/t1/rehearsal');
+});
+
+it('restores the previous window scroll on back navigation and skips reset for query changes', async () => {
+  // JSDOM does not lay out the page; record the positions supplied to the browser scroll API.
+  const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+  vi.stubGlobal('scrollY', 0);
+  sessionStorage.removeItem('react-router-scroll-positions');
+  await act(async () => root.render(null));
+  router?.dispose();
+  router = createMemoryRouter(
+    [
+      {
+        // Keep the actual app root so removing ScrollRestoration breaks this regression test.
+        element: appRouterShell,
+        children: [
+          { path: '/', element: <p>홈</p> },
+          { path: '/takes', element: <p>Take 기록</p> },
+        ],
+      },
+    ],
+    { initialEntries: ['/'] },
+  );
+  await act(async () => root.render(<RouterProvider router={router!} />));
+
+  scrollTo.mockClear();
+  vi.stubGlobal('scrollY', 280);
+  await act(async () => {
+    await router!.navigate('/takes');
+  });
+  expect(scrollTo).toHaveBeenCalledWith(0, 0);
+
+  scrollTo.mockClear();
+  vi.stubGlobal('scrollY', 120);
+  await act(async () => {
+    await router!.navigate(-1);
+  });
+  expect(scrollTo).toHaveBeenCalledWith(0, 280);
+
+  scrollTo.mockClear();
+  await act(async () => {
+    await router!.navigate('/?view=compare', { preventScrollReset: true });
+  });
+  expect(scrollTo).not.toHaveBeenCalled();
 });
