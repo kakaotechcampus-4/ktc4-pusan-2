@@ -207,7 +207,13 @@ export type Step =
       approved: Step[];
       rejected: string;
     }
-  | { t: 'end'; status: RunStatus; cards: (actionId: string) => Card[] };
+  | {
+      t: 'end';
+      status: RunStatus;
+      cards: (actionId: string) => Card[];
+      /** 에이전트가 이 피치를 열었음(`FETCH_PITCH`) — 끝날 때 BE 처럼 대화 범위를 이 피치로 바꿉니다 */
+      scopePitchId?: string;
+    };
 
 const STEPS = ['최근 Take 비교', '3장 문제 구간 확인', '발표법 자료 찾기'];
 
@@ -496,6 +502,16 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
             ? [{ type: 'MEMORY_SAVED', item_id: '', key: 'TONE', value: '짧게 설명' }]
             : [],
       },
+    ];
+  // 에이전트가 피치를 열어 범위를 바꿈 (12-4 L3-08) — 답에 바꾼 범위를 알리고, 칩은 실행이 끝나 대화를 다시 읽은 뒤 바뀝니다
+  if (text.includes('열어'))
+    return [
+      { t: 'plan', plan: plan(['DOING'], ['피치 열기', '최근 Take 비교']) },
+      { t: 'tool', trace: trace(1, 'fetch_pitch', pitch.pitch_title, '피치 범위로 바꿈') },
+      { t: 'plan', plan: plan(['DONE', 'DONE'], ['피치 열기', '최근 Take 비교']) },
+      { t: 'claim', data: say('SYSTEM', `${pitch.pitch_title}로 범위를 바꿨어요.`) },
+      { t: 'claim', data: first! },
+      { t: 'end', status: 'DONE', cards: () => [], scopePitchId: PITCH_ID },
     ];
   if (text.includes('봤지')) return assessmentSteps(text, ctx);
   if (text.includes('깨진 답')) return brokenSteps();

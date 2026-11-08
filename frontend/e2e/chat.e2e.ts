@@ -24,6 +24,10 @@ async function ask(panel: Locator, text: string): Promise<void> {
 
 const scopeChip = (panel: Locator) => panel.getByRole('button', { name: /^범위:/ });
 
+/** 답 문장 — 같은 글이 스크린 리더 알림(status)에도 있어서 문장 칸(`data-claim`) 안에서 찾습니다 */
+const claim = (panel: Locator, text: string) =>
+  panel.locator('[data-claim]').filter({ hasText: text });
+
 test('1. 홈에서 버튼 → 전체 범위로 질문 → 답과 근거 칩', async ({ page }) => {
   await page.goto('/');
   const panel = await openChat(page);
@@ -53,4 +57,16 @@ test('2. 리포트에서 열면 범위가 그 피치 → 할 일 목록 · 도�
   // 확인한 것 — 답 아래 접혀 있다가 펼치면 도구 기록이 보입니다 (F7)
   await panel.getByText('확인한 것', { exact: true }).click();
   await expect(panel.getByText(/3장 시선 둘 다 낮음/)).toBeVisible();
+});
+
+test('3. 에이전트가 다른 피치를 열면 범위 칩이 바뀜', async ({ page }) => {
+  await page.goto('/');
+  const panel = await openChat(page);
+  await expect(scopeChip(panel)).toHaveAccessibleName('범위: 전체');
+
+  await ask(panel, '캡스톤 발표 열어서 지난번이랑 비교해 줘');
+
+  // 답에 바꾼 범위를 알리고, 칩은 실행이 끝나 BE 가 범위를 확정한 뒤 바뀝니다 (L3-08)
+  await expect(claim(panel, `${PITCH_TITLE}로 범위를 바꿨어요.`)).toBeVisible();
+  await expect(scopeChip(panel)).toHaveAccessibleName(`범위: 피치: ${PITCH_TITLE}`);
 });
