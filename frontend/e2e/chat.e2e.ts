@@ -216,3 +216,34 @@ test.describe('8. 취소 · 화면 이탈 뒤 복원 · AGENT_DISABLED · 시간
     await expect(panel.getByText('답이 늦어지고 있으니 다시 보내 주세요.').first()).toBeVisible();
   });
 });
+
+test('9. 피치 수정 평가기준 단계에서 사용법 질문 → 화면 상태가 요청에 실림 → 입력은 그대로', async ({
+  page,
+}) => {
+  // 문서는 '피치 만들기'지만, 새 피치는 슬라이드 · 대본을 올려야 평가기준에 닿습니다 — 같은 화면(`PitchCreatePage`)의
+  // 수정 경로로 시험합니다. 화면 상태 이름만 `pitch_edit` 으로 다릅니다
+  await page.goto(`/pitch/${PITCH_ID}/edit`);
+  const criteria = page.getByRole('textbox', { name: '평가기준 작성' });
+  const typed = '시장 규모와 출처를 말한다';
+  await criteria.fill(typed);
+
+  const panel = await openChat(page);
+  const sent = page.waitForRequest(
+    (r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/chat/messages',
+  );
+  await ask(panel, '평가기준은 어떻게 쓰면 돼?');
+
+  // 보낸 요청에 지금 화면 상태(평가기준 단계 · 저장 전 입력)가 실립니다 (12-4 Screen)
+  const body = (await sent).postDataJSON() as {
+    page: { screen: { name: string; step: string; draft: { criteria_text: string } } | null };
+  };
+  expect(body.page.screen).toMatchObject({
+    name: 'pitch_edit',
+    step: 'criteria',
+    draft: { criteria_text: typed },
+  });
+
+  // 답은 입력 위치 · 저장 방법을 안내하고, 입력란은 건드리지 않습니다
+  await expect(claim(panel, '저장하면 다음 연습부터 적용돼요.')).toBeVisible();
+  await expect(criteria).toHaveValue(typed);
+});
