@@ -198,3 +198,8 @@ body {
 .pitch-create-square :is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-r) {
   border-radius: 0;
 }
+
+/* 문서 뷰어의 코드·토큰 값: 제품 폰트 토큰과 별도로 고정폭을 보장한다. */
+.guide-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

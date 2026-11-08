@@ -55,8 +55,8 @@ function Swatch({ token }: { token: Token }) {
         aria-hidden="true"
       />
       <span className="flex flex-col gap-0.5 p-3 text-xs">
-        <code className="font-mono font-bold [overflow-wrap:anywhere]">{token.name}</code>
-        <span className="tabular font-mono text-stone">{token.value}</span>
+        <code className="guide-code font-bold [overflow-wrap:anywhere]">{token.name}</code>
+        <span className="tabular guide-code text-stone">{token.value}</span>
         {token.note && <span>{token.note}</span>}
         <span className="text-stone">
           bg-{utility(token.name)} · text-{utility(token.name)}
@@ -114,11 +114,11 @@ function ContrastTable({ light }: { light: boolean }) {
                     가나 Aa 12
                   </span>
                 </td>
-                <td className="py-2 pr-3 font-mono text-xs">
+                <td className="py-2 pr-3 guide-code text-xs">
                   {foreground.replace('--color-', '')} / {background.replace('--color-', '')}
                 </td>
                 <td className="py-2 pr-3">{where}</td>
-                <td className="tabular py-2 pr-3 font-mono">{ratio.toFixed(2)}</td>
+                <td className="tabular py-2 pr-3 guide-code">{ratio.toFixed(2)}</td>
                 <td className={`py-2 font-bold ${ratio < 4.5 ? 'text-coral-deep' : ''}`}>
                   {verdict}
                 </td>
@@ -149,8 +149,8 @@ export function ColorsFoundation({ stateId }: { stateId: string }) {
                 <span style={{ background: value }} />
               </span>
               <span className="flex flex-col gap-0.5 p-3">
-                <code className="font-mono font-bold">{name}</code>
-                <span className="tabular font-mono text-stone">
+                <code className="guide-code font-bold">{name}</code>
+                <span className="tabular guide-code text-stone">
                   기본 {base.get(name)} → 밝은 지면 {value}
                 </span>
               </span>
@@ -260,7 +260,7 @@ export function TypographyFoundation({ stateId }: { stateId: string }) {
             key={name}
             className="grid gap-2 border-b border-line py-4 sm:grid-cols-[9rem_minmax(0,1fr)]"
           >
-            <p className="font-mono text-xs">
+            <p className="guide-code text-xs">
               <span className="font-bold">{name}</span>
               <span className="block text-stone">{size}</span>
             </p>
@@ -320,8 +320,8 @@ export function SpacingFoundation() {
                   key={token.name}
                   className="grid gap-1 border border-line bg-panel p-3 text-sm sm:grid-cols-[16rem_8rem_minmax(0,1fr)]"
                 >
-                  <code className="font-mono font-bold">{token.name}</code>
-                  <span className="tabular font-mono">{token.value}</span>
+                  <code className="guide-code font-bold">{token.name}</code>
+                  <span className="tabular guide-code">{token.value}</span>
                   <span className="text-stone">{token.note}</span>
                 </li>
               ))}
@@ -335,8 +335,8 @@ export function SpacingFoundation() {
               key={name}
               className="grid items-center gap-3 text-sm sm:grid-cols-[6rem_4rem_10rem_minmax(0,1fr)]"
             >
-              <code className="font-mono font-bold">{name}</code>
-              <span className="tabular font-mono">{size}</span>
+              <code className="guide-code font-bold">{name}</code>
+              <span className="tabular guide-code">{size}</span>
               <span className="flex h-6 items-center bg-panel">
                 <span className="h-6 bg-coral" style={{ width: size }} />
               </span>
@@ -386,7 +386,7 @@ export function SurfacesFoundation() {
           {BORDERS.map(([name, where]) => (
             <li key={name} className="flex flex-col gap-2">
               <span className={`h-20 bg-panel ${name}`} aria-hidden="true" />
-              <code className="font-mono text-xs font-bold">{name}</code>
+              <code className="guide-code text-xs font-bold">{name}</code>
               <span className="text-xs text-stone">{where}</span>
             </li>
           ))}
@@ -397,7 +397,7 @@ export function SurfacesFoundation() {
           {SHADOWS.map(([name, where]) => (
             <li key={name} className="flex flex-col gap-2">
               <span className={`h-20 border-2 border-ink bg-panel ${name}`} aria-hidden="true" />
-              <code className="font-mono text-xs font-bold [overflow-wrap:anywhere]">{name}</code>
+              <code className="guide-code text-xs font-bold [overflow-wrap:anywhere]">{name}</code>
               <span className="text-xs text-stone">{where}</span>
             </li>
           ))}
@@ -482,14 +482,14 @@ function LiveSize() {
       role="status"
       className="flex flex-wrap items-center gap-3 border-2 border-ink bg-panel p-4"
     >
-      <p className="tabular font-mono text-lg font-bold">
+      <p className="tabular guide-code text-lg font-bold">
         {size.width} × {size.height}
       </p>
       <ul className="flex flex-wrap gap-2">
         {queries.map(([name, query]) => (
           <li
             key={name}
-            className={`px-2 py-0.5 font-mono text-xs font-bold ${on(query) ? 'bg-ink text-panel' : 'border border-dashed border-line-strong text-stone'}`}
+            className={`px-2 py-0.5 guide-code text-xs font-bold ${on(query) ? 'bg-ink text-panel' : 'border border-dashed border-line-strong text-stone'}`}
           >
             {on(query) ? '✓' : '○'} {name}
           </li>

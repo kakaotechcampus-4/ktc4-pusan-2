@@ -203,11 +203,8 @@
   scroll-margin-top: 1.5rem;
   padding: 2rem var(--create-section-inset);
   margin-inline: calc(-1 * var(--create-section-inset));
-  border-bottom: 1px solid var(--color-line-strong);
-  background: var(--color-panel);
-}
-.create-content > section:nth-of-type(even) {
-  background: var(--color-cream);
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--color-panel) 55%, var(--color-cream));
 }
 .create-content > section:last-child {
   border-bottom: 0;
@@ -560,14 +557,7 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* 후속 검토 시안: 구분선 없이 가까운 두 지면을 잇고, 작업 중인 한 영역만 표시합니다. */
-.create-focus .create-content > section {
-  border-bottom: 0;
-  background: color-mix(in srgb, var(--color-panel) 55%, var(--color-cream));
-}
-.create-focus .create-content > section:nth-of-type(even) {
-  background: var(--color-cream);
-}
+/* 현재 제품: 모든 화면 상태에서 작업 중인 한 영역만 강조한다. */
 .create-focus .create-content > section[data-current] {
   outline: 1px solid var(--color-coral-deep);
   outline-offset: -1px;

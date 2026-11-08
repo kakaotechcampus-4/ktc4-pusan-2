@@ -77,7 +77,7 @@ http://localhost:3100/#/?screen=prepare-mission&state=mic-error&view=single&devi
 새 디자인과 제품 샘플을 **같은 자리**(`catalog.ts` + `src/screens/`)에서 관리한다. 시안을 따로 모아 두는 폴더는 두지 않는다 — 검사 · 빌드에서 빼야 하고, 제품이 바뀌어도 아무도 고치지 않아 금방 낡는다.
 
 1. **새 디자인**: `catalog.ts`에 `status: '시안'`으로 화면을 더하고(`route`는 제품에 넣을 경로), `src/screens/`에 그린다. 기존 화면을 바꾸는 시안이면 그 화면에 상태를 더하고 상태 설명에 "시안"을 적는다.
-2. **제품에 들어가면**: `status`를 `제품에 있음`으로 바꾸고 `sources` · `productNote` · `productLinks`를 채운다. 샘플은 제품 코드에 맞춘다.
+2. **제품에 들어가면**: `status`를 `제품에 있음`으로 바꾸고 `sources` · `productNote` · `productLinks`를 채운다. 샘플은 제품 코드에 맞춘다. 다만 이미 채택된 옛 검토안의 공유 링크를 보존할 때는 `시안`으로 남기되, 제품에 채택됐으며 현재 제품 샘플과 같은 화면이라는 사실을 `summary`에 명시한다(`#pitch-create-a` 참고).
 3. **채택하지 않으면**: 지운다. 기록은 git 이력에 남는다.
 
 예전 시안 14개(`frontend/src/dev/design/`에서 옮겨 온 것)는 모두 제품에 구현되거나 다른 방식으로 바뀌어 지웠다. 필요하면 git 이력에서 본다.
