@@ -322,3 +322,46 @@ test('11. 답 문장이 글자 효과로 나옴 → 지난 답은 효과 없이 
   // 기다리지 않고 바로 셉니다 — 기다리면 효과가 돌다 끝난 뒤에도 0 이 되어 통과해 버립니다
   expect(await panel.locator('[data-claim] > span[aria-hidden="true"]').count()).toBe(0);
 });
+
+test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄기 · '기억 없이' 대화에서는 카드 없음", () => {
+  const REMEMBER = '앞으로 짧게 설명해 줘, 기억해';
+
+  test("'기억했어요' 카드 → [지우기]", async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+    await ask(panel, REMEMBER);
+
+    const card = panel.locator('[data-memory-item]');
+    await expect(card).toContainText('기억했어요');
+    await card.getByRole('button', { name: /^지우기/ }).click();
+    await expect(card).toContainText('지운 기억이에요.');
+  });
+
+  test('설정에서 끄면 기억 카드가 오지 않는다', async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+
+    await panel.getByRole('button', { name: '기억 설정' }).click();
+    const toggle = panel.getByRole('switch', { name: '코칭 프로필 기억' });
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', 'false');
+    await panel.getByRole('button', { name: '돌아가기' }).click();
+
+    await ask(panel, REMEMBER);
+    await expect(panel.getByRole('button', { name: '취소', exact: true })).toHaveCount(0);
+    await expect(panel.locator('[data-claim]').first()).toBeVisible();
+    await expect(panel.locator('[data-memory-item]')).toHaveCount(0);
+  });
+
+  test("'기억 없이' 대화에서는 기억 카드가 오지 않는다", async ({ page }) => {
+    await page.goto('/');
+    const panel = await openChat(page);
+
+    await panel.getByRole('switch', { name: '기억 없이 대화하기' }).click();
+    await ask(panel, REMEMBER);
+    await expect(panel.getByRole('button', { name: '취소', exact: true })).toHaveCount(0);
+    await expect(panel.locator('[data-claim]').first()).toBeVisible();
+    await expect(panel.locator('[data-memory-item]')).toHaveCount(0);
+  });
+});
