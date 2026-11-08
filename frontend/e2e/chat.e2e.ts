@@ -290,3 +290,35 @@ test.describe('10. 승인 카드(전 → 후) → [승인] · [거절] · 만료
     await expect(claim(panel, '새 메시지를 받아 앞의 확인 요청은 취소했어요.')).toBeVisible();
   });
 });
+
+test('11. 답 문장이 글자 효과로 나옴 → 지난 답은 효과 없이 전체 · 일반 조언에만 라벨 · 기록 문장에 근거 칩', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const panel = await openChat(page);
+  await ask(panel, '지난번보다 뭐가 나아졌어?');
+
+  // 채워지는 중인 문장은 화면 읽기 프로그램에서 숨깁니다 — 글자 효과가 도는 동안만 생기는 표시입니다 (F12)
+  const live = panel.locator('[data-live-run]');
+  await expect(live.locator('[data-claim] > span[aria-hidden="true"]').first()).toBeAttached();
+
+  // 다 나오면: 일반 조언 문장에만 라벨, 기록 문장에는 근거 칩 (F13)
+  await expect(live.locator('[data-chat-skip]')).toHaveAttribute('aria-disabled', 'true');
+  const general = claim(panel, '말하기 전에 숨을 고르고 청중 쪽을 먼저 보면 시작이 안정돼요.');
+  await expect(general).toContainText('일반 조언 · 기록과 자료로 확인한 것이 아니에요');
+  await expect(general.getByRole('list', { name: '근거' })).toHaveCount(0);
+  await expect(panel.getByText('일반 조언 · 기록과 자료로 확인한 것이 아니에요')).toHaveCount(1);
+  const record = panel.locator('[data-claim]').first();
+  await expect(record.getByRole('list', { name: '근거' })).toBeVisible();
+
+  // 지난 답(복원)은 효과 없이 처음부터 전체가 보입니다 — 목의 지난 대화로 확인합니다.
+  // 전체 새로고침은 목 서버(MSW)의 메모리 상태까지 지워서 쓰지 않습니다
+  await panel.getByRole('button', { name: '대화 목록' }).click();
+  await panel
+    .getByRole('list', { name: '지난 대화' })
+    .getByRole('button', { name: /지난번보다 청중을 더 봤어\?/ })
+    .click();
+  await expect(panel.locator('[data-claim]').first()).toBeVisible();
+  // 기다리지 않고 바로 셉니다 — 기다리면 효과가 돌다 끝난 뒤에도 0 이 되어 통과해 버립니다
+  expect(await panel.locator('[data-claim] > span[aria-hidden="true"]').count()).toBe(0);
+});
