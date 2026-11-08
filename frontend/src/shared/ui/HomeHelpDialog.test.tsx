@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -115,6 +116,41 @@ it('리허설의 여덟 기능과 키보드 조작을 이미지와 별도 텍스
   expect(host.textContent).toContain('Space 다음 장');
   expect(host.textContent).toContain('↑·↓');
   expect(host.textContent).toContain('자동으로 끝날 수도 있어요');
+});
+
+it('두 설명용 SVG가 올바른 문서이며 현재 화면의 필수 문구를 포함한다', () => {
+  const device = readFileSync(new URL('../../../public/help/device-check.svg', import.meta.url), 'utf8');
+  const stage = readFileSync(new URL('../../../public/help/rehearsal-stage.svg', import.meta.url), 'utf8');
+
+  for (const content of [device, stage]) {
+    const parsed = new DOMParser().parseFromString(content, 'image/svg+xml');
+    expect(parsed.querySelector('parsererror')).toBeNull();
+    expect(parsed.documentElement.tagName).toBe('svg');
+  }
+
+  for (const phrase of [
+    'TAKE 3',
+    '이번 Take 미션',
+    '발표 중 대본 표시',
+    '시작 후 변경 불가',
+    '전체 대본 + 하이라이트',
+    '핵심 키워드만',
+    '실전 모드 · 대본 없이',
+    'Take 3 시작하기',
+    '2분 넘게',
+  ]) {
+    expect(device).toContain(phrase);
+  }
+  for (const phrase of [
+    '마지막 장에서 끝낼 수 있어요',
+    '테두리 =',
+    '청중',
+    '화면',
+    '대본',
+    '판정 불가',
+  ]) {
+    expect(stage).toContain(phrase);
+  }
 });
 
 it('닫기 버튼이 모달을 닫고 언마운트 시 본문 스크롤을 복원한다', async () => {
