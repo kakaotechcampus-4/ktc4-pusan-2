@@ -160,7 +160,8 @@ export async function ensureFirstTakePitch(
 
   if (!presentation) {
     progress('튜토리얼 발표자료 5장을 준비하고 있어요…');
-    const file = preparedPdf ?? (await createFirstTakePdf());
+    let file = preparedPdf;
+    if (!file) file = await createFirstTakePdf();
     ensureNotAborted(signal);
     const uploaded = await uploadPresentation(pitchId, file);
     ensureNotAborted(signal);
