@@ -9,7 +9,10 @@ const productPath = fileURLToPath(new URL('../../../../frontend/src/index.css', 
 /** 선택자 범위(예: :root, .pitch-create)별 `--이름: 값` 목록 */
 function variables(css) {
   const result = new Map();
-  const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  // 블록 앞의 단일 행 at-rule은 CSS 선택자가 아니므로 비교 키에서 제외한다.
+  const text = css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*@(?:import|custom-variant)\b[^\n]*;[ \t]*$/gm, '');
   for (const block of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const scope = block[1].trim().replace(/\s+/g, ' ');
     for (const match of block[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
