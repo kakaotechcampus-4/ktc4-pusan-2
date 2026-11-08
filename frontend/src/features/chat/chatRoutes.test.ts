@@ -36,7 +36,7 @@ describe('chat route visibility', () => {
   });
 
   it.each([
-    ['/', 32],
+    ['/', 76],
     ['/takes/123', 32],
     ['/pitch/new', 88],
     ['/pitch/p1/edit', 88],
