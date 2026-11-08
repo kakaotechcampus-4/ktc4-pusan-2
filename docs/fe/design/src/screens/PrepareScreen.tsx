@@ -57,7 +57,7 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
                 {check.camera ? (
                   <>
                     <span>카메라 미리보기 · 얼굴 인식됨</span>
-                    {stateId === 'calibration' && (
+                    {stateId === 'calibration-camera' && (
                       <div
                         className="absolute right-4 top-4 rounded-xl px-[10px] py-[5px] text-xs font-bold shadow-md"
                         style={{ backgroundColor: '#161412', color: '#E8532A' }}
