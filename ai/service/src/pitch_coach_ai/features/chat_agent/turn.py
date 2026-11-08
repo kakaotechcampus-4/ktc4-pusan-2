@@ -856,6 +856,18 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             assessments=all_assessments,
         )
     final_claims = [*comp.pre, *body, *tail]
+    # 답 품질 보강: 기록 문장 · 목표 결과 문장을 코드 템플릿으로 더한다(둘 다 설정으로 끈다). 낸 문장은 순서를 바꾸지 않는다
+    extras: list[Claim] = []
+    if lp.cfg.record_answer_guard:
+        extras += _record_guard_claims(lp, [*comp.pre, *body])
+    if lp.cfg.goal_status_sentence:
+        gj = _goal_status_claim(lp, req)
+        # 문장만 낸다. `goal_result` 는 싣지 않는다: 계약상 자동 목표 확인(TAKE_REVIEWED)의 값이고 BE 가 그 값으로 목표 상태를
+        # 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 BE 와 주고받는 값의 호출 시점이 바뀐다(이번 범위 밖)
+        if gj is not None and all(c.text != gj[0].text for c in [*final_claims, *extras]):
+            extras.append(gj[0])
+    if extras:
+        final_claims = _splice_extras(lp, comp.pre, body, tail, extras)
     # 섞인 요청의 범위 밖 부분: 이유별 고정 문장을 답 문장 뒤에 덧붙인다(1-3 · 7-10)
     for reason in _scope_notes(draft):
         note = templates.scope_text(reason).value
@@ -888,6 +900,103 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         actions=actions,
         sources=_sources(final_claims),
     )
+
+
+def _splice_extras(
+    lp: Loop, pre: list[Claim], body: list[Claim], tail: list[Claim], extras: list[Claim]
+) -> list[Claim]:
+    """코드가 더한 문장(`extras`)을 끼운다. 모델 문장이 아직 하나도 나가지 않았으면 모델 문장 앞에, 하나라도 이미 문장 줄로
+    나갔으면 그 뒤(끝 고정 문장 앞)에 둔다 — 낸 문장은 최종 답의 앞부분 그대로여야 한다(5-4 · 5-5)."""
+    out_texts = {d.get("text") for d in lp.st.emitted}
+    if any(c.text in out_texts for c in body):
+        return [*pre, *body, *extras, *tail]
+    return [*pre, *extras, *body, *tail]
+
+
+def _record_guard_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
+    """기록 질문을 '기록 말고 일반 조언으로'라고 해도 기록으로 답한다(6-1 · 13-2, `record_answer_guard`).
+
+    계획이 기록 대상(요청 · 측정 초안의 장 · 지표 · 차원 · Take)을 집었고 이번 실행이 그 대상의 검증된 기록 값을 읽었는데, 답에
+    기록 문장(`RECORD` · `ASSESSMENT`)이 하나도 없으면 그 근거 값으로 그린 코드 기록 문장(최대 3개)을 돌려준다. 읽은 값만 쓴다.
+    """
+    if any(c.kind in ("RECORD", "ASSESSMENT") for c in said):
+        return []
+    ctx = lp.ctx
+    if ctx.pitch is None or lp.st.scope_switched or ctx.scope_switched:
+        return []
+    by_number = {sm.take_number: tid for tid, sm in ctx.summaries.items()}
+    ids: list[str] = []
+    for d in lp.st.drafts:
+        if d.get("type") not in ("MEASURED", "REQUEST"):
+            continue
+        sub = d.get("subject") or {}
+        metric, dim = sub.get("metric"), sub.get("dimension")
+        slide = sub.get("slide_number") if isinstance(sub.get("slide_number"), int) else None
+        metrics = {metric} if metric in lp.cfg.metric_units else set()
+        if not metrics and dim in lp.cfg.dimensions:
+            metrics = set(lp.cfg.dimensions[dim].metrics)
+        if not metrics and slide is None:
+            continue
+        named = list(sub.get("take_numbers") or [])
+        if named:
+            numbers = set(named)
+        else:
+            tid = lp._judged_take()
+            numbers = {ctx.summaries[tid].take_number} if tid in ctx.summaries else set()
+        if not numbers or any(n not in by_number for n in numbers):
+            continue
+        for eid, ev in ctx.registry.items.items():
+            if (
+                ev.origin == "RECORD"
+                and ev.take_number in numbers
+                and (not metrics or ev.metric in metrics)
+                and (slide is None or ev.slide_number == slide)
+                and eid not in ids
+            ):
+                ids.append(eid)
+    return compose.template_partial(ctx, ids)
+
+
+def _goal_status_claim(lp: Loop, req: TurnRequest) -> tuple[Claim, dict[str, Any]] | None:
+    """사용자 말로 대화 목표의 결과를 물을 때(`get_goals`를 읽은 실행) 목표 결과 문장을 코드 템플릿으로 낸다(7-10, `goal_status_sentence`).
+
+    목표가 이미 닫혔고(ACHIEVED 등) 이 실행에 있는 완료 Take 중 기준 Take 뒤의 첫 Take 로 코드가 다시 판정한 결과가 목표 상태와
+    같을 때만 낸다(`_take_reviewed`와 같은 `judge_goal` · 문장 · `goal_result`). 닫은 Take 가 이 실행에 없으면 아무것도 내지 않는다.
+    """
+    ctx, goal = lp.ctx, lp.ctx.goal
+    if req.review_event is not None or goal is None or goal.status == "OPEN":
+        return None
+    if goal.pitch_id != ctx.scope_pitch_id or not any(
+        t.get("tool") == "get_goals" for t in lp.st.trace
+    ):
+        return None
+    after = sorted(
+        (
+            sn
+            for sn in ctx.snapshots.values()
+            if sn.summary.take_number > goal.base.take_number and sn.summary.completed_fully is True
+        ),
+        key=lambda sn: sn.summary.take_number,
+    )
+    for snap in after:
+        j = judge_goal(goal, snap, registry=ctx.registry, version_of=ctx.version_of, cfg=lp.cfg)
+        if not j.terminal or j.status != goal.status or not j.evidence_ids:
+            continue
+        text = compose.goal_sentence(ctx, goal, j, snap.summary.take_number)
+        claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
+        if chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg):
+            return None
+        gr = {
+            "goal_version": goal.version,
+            "take_id": snap.summary.take_id,
+            "review_revision": snap.revisions.REVIEW or 0,
+            "status": j.status,
+            "observed": j.observed,
+            "reason": j.reason_code or j.status,
+            "terminal": j.terminal,
+        }
+        return claim, gr
+    return None
 
 
 def _tail_claims(

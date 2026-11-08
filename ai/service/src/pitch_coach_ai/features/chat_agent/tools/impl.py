@@ -399,6 +399,10 @@ _SLIDE_METRICS = (
 )
 
 
+#: Take 전체 값에 더해 싣는 횟수 지표(분당 값이 아니라 '몇 번'을 묻는 질문용)
+_COUNT_METRICS = ("filler_count", "pause_count")
+
+
 def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
     summ = f"Take 리포트 · {a.section}"
     snap = _snapshot_for(ctx, a.take_id)
@@ -550,9 +554,11 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         else:
             metrics = _SLIDE_METRICS
             if a.slide_number is None:
+                # 횟수 지표(몇 번 · 몇 회 질문)는 설정이 켜졌을 때만 Take 전체 값에 싣는다(`count_metric_hint`)
+                counts = _COUNT_METRICS if ctx.cfg.count_metric_hint else ()
                 take_vals = [
                     _num(ctx, snap, read_metric(snap, m, None, ctx.cfg))
-                    for m in (*metrics[:-1], "duration_ms")
+                    for m in (*metrics[:-1], "duration_ms", *counts)
                 ]
                 items.append({"scope": "take", "values": take_vals})
                 n_slides = len(((tr.get("areas") or {}).get("TIME") or {}).get("slides") or [])

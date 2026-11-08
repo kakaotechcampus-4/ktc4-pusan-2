@@ -58,6 +58,12 @@ PLAN = """[단계: 계획]
 
 PLAN = PLAN + "\n" + SCOPE
 
+#: 횟수 질문 지침(설정 `count_metric_hint` 가 켜졌을 때 계획 지침 끝에 붙는다)
+PLAN_COUNT_HINT = (
+    "- 지표 키: '몇 번 · 몇 회 · 횟수'를 묻는 말은 횟수 지표(filler_count · pause_count)를, "
+    "'분당 · 빈도'를 묻는 말은 filler_per_min 을 metric 으로 쓴다."
+)
+
 RESEARCH = """[단계: 조사]
 할 일 목록대로 도구로 필요한 근거를 읽는다. 다음 도구는 결과를 보고 고른다. 같은 도구 · 같은 인자를 되풀이하지 않는다.
 답에 필요한 근거를 읽는다. 같은 것을 되풀이해 읽지 않는다.
@@ -359,6 +365,7 @@ def _version() -> str:
         {
             "s": SYSTEM,
             "p": PLAN,
+            "pc": PLAN_COUNT_HINT,
             "r": RESEARCH,
             "a": ANSWER,
             "f": FIX,

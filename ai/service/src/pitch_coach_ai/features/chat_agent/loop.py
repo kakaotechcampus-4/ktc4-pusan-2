@@ -545,7 +545,8 @@ class Loop:
         return self.route
 
     def _plan_route(self) -> str:
-        msgs = [self._system(prompts.PLAN), prompts.data_message(self.data_block())]
+        plan = prompts.PLAN + ("\n" + prompts.PLAN_COUNT_HINT if self.cfg.count_metric_hint else "")
+        msgs = [self._system(plan), prompts.data_message(self.data_block())]
         res = self._call("RESEARCH", msgs, schema=prompts.PLAN_SCHEMA)
         if not isinstance(res, LlmResult) or res.parsed is None:
             self._set_plan(DEFAULT_PLAN, edit=False)

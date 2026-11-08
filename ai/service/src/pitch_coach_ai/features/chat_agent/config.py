@@ -867,6 +867,15 @@ class ChatAgentConfig(_Frozen):
     max_guide_candidates: int = 12
     #: 검사 → 고치기: 걸린 문장에 이미 이은 근거의 화면 표기 값 · 이은 자료 카드의 문장 후보만 더해 준다(새 근거 · 자료 id 는 주지 않는다)
     fix_materials: bool = True
+    # ── 답 품질 보강(각각 따로 켜고 꺼서 잰다) ──────────────────────────────────────
+    #: 기록 질문을 '기록 말고 일반 조언으로'라고 해도 기록으로 답한다(6-1 · 13-2): 계획이 기록 대상(요청 · 측정 초안)을 집었고
+    #: 이번 실행이 그 대상의 검증된 기록을 읽었는데 답에 기록 문장이 하나도 없으면, 그 근거로 그린 코드 기록 문장을 더한다
+    record_answer_guard: bool = True
+    #: '몇 번 · 몇 회 · 횟수' 질문은 횟수 지표(`filler_count` · `pause_count`)로: 계획 지침에 알리고, 조사 흐름이 읽는
+    #: Take 전체 지표값(`slides`)에 횟수 지표도 싣는다
+    count_metric_hint: bool = True
+    #: 사용자 말로 대화 목표의 결과를 물으면(`get_goals`), 목표를 닫은 Take 로 코드가 판정해 목표 결과 문장을 코드 템플릿으로 낸다(7-10)
+    goal_status_sentence: bool = True
 
     @model_validator(mode="after")
     def _goal_metrics_match_direction(self) -> ChatAgentConfig:
