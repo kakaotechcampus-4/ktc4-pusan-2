@@ -74,7 +74,9 @@ function RehearsalGuide() {
         />
         <p className="mt-2 text-sm leading-6 text-stone">
           카메라·마이크와 시선 기준을 확인해 주세요. 평소 목소리 측정은 선택 항목이에요.
-          왼쪽 아래 채팅 버튼은 연습 기록을 볼 때 이용해요. 발표 중에는 숨겨져요.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-stone">
+          왼쪽 아래 채팅 버튼으로 연습 기록을 볼 수 있어요. 발표 중에는 숨겨져요.
         </p>
       </section>
 
