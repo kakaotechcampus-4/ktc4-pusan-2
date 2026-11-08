@@ -1222,11 +1222,15 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     progressDropped: false,
     cards: [],
   });
-  const ended = (runId: string, conversationId: string): TransportSignal => ({
+  const ended = (
+    runId: string,
+    conversationId: string,
+    status: 'DONE' | 'REFUSED' = 'DONE',
+  ): TransportSignal => ({
     type: 'ended',
     runId,
     conversationId,
-    status: 'DONE',
+    status,
     errorCode: null,
     endedWhileWaiting: false,
   });
@@ -1285,6 +1289,36 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     await settle();
     expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('받은 답 문장');
     expect(panel()!.textContent).not.toContain('물어보세요');
+    // 거절로 끝난 답이 아니면 질문 예시를 붙이지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('거절로 끝난 뒤 목록 다시 읽기가 실패해도 받은 거절 답 아래에 질문 예시를 한 번 붙인다', async () => {
+    await watching('c1', 'r1');
+    await act(async () =>
+      transport().emit(progressIn('r1', 'c1', '이 요청은 도와드릴 수 없어요.')),
+    );
+    // 끝나기 전에는 진행 답 아래에 붙이지 않습니다
+    expect(panel()!.querySelector('[data-live-run] ~ [data-ask-help]')).toBeNull();
+    server.messages = () => Promise.reject(new Error('끊김'));
+    // 실제 통신 계층처럼 실행을 끝낸(endRun) 뒤 끝남 신호를 보냅니다 — 보내기 잠금이 풀립니다
+    await act(async () => {
+      useChatStore.getState().endRun('r1');
+      transport().emit(ended('r1', 'c1', 'REFUSED'));
+    });
+    await settle();
+    await settle();
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
+    expect(helps).toHaveLength(1);
+    const liveRun = panel()!.querySelector('[data-live-run]')!;
+    expect(
+      liveRun.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await act(async () => helps[0]!.querySelector('button')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 보내는 중에는 안내를 거둡니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
   });
 
   it('꺼지면 패널을 닫고, 다시 켜져도 저절로 열려 초점을 가져가지 않는다', async () => {
