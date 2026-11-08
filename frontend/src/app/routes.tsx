@@ -98,6 +98,7 @@ const publicPaths = [
 // 카메라 · 마이크로 연습하는 화면. 휴대폰 · 태블릿에서는 /unsupported 로 보냅니다 (#710).
 // 분석 대기 · 대본 확인 · 재시도 같은 리포트 쪽은 모바일에서도 열립니다.
 const practicePaths = [
+  '/pitch/tutorial',
   '/pitch/:pitchId/device-check',
   '/takes/:takeId/rehearsal',
   '/takes/:takeId/exam',

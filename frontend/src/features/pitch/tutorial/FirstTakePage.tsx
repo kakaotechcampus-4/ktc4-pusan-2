@@ -91,9 +91,9 @@ export function FirstTakePage() {
         <div className="mt-7 flex flex-wrap items-center gap-4">
           <button
             type="button"
-            disabled={pending}
+            aria-disabled={pending}
             onClick={() => void begin()}
-            className="border-2 border-ink bg-coral-deep px-6 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] hover:bg-ink disabled:cursor-wait disabled:opacity-60"
+            className="border-2 border-ink bg-coral-deep px-6 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] hover:bg-ink aria-disabled:cursor-wait aria-disabled:opacity-60"
           >
             {pending ? '샘플 준비 중…' : '첫 미션 시작하기 →'}
           </button>

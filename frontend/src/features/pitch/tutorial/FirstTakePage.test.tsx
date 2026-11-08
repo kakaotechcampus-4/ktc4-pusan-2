@@ -99,7 +99,9 @@ it('준비 중 중복 클릭은 API 호출 하나로 제한한다', async () => 
   );
   await render();
   await start();
-  expect(host.querySelector('button')?.getAttribute('disabled')).not.toBeNull();
+  expect(host.querySelector('button')?.getAttribute('aria-disabled')).toBe('true');
+  // 대기 중에도 초점이 남아, 진행 상태 및 실패 시 재시도 버튼을 찾을 수 있습니다.
+  expect(host.querySelector('button')?.hasAttribute('disabled')).toBe(false);
   await start();
   expect(ensureFirstTakePitch).toHaveBeenCalledOnce();
   await act(async () => resolve('pitch-1'));
