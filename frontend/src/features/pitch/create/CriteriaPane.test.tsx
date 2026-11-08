@@ -148,7 +148,9 @@ it('8개 항목은 한 번에 한 예시만 보여 주고, 판정 한계를 정�
     expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
       '대본을 읽으며 말하는 비율',
     );
-    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain('대본을 연결한 경우');
+    expect(view.host.querySelector('[role="tooltip"]')?.textContent).toContain(
+      '대본을 연결한 경우',
+    );
 
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
