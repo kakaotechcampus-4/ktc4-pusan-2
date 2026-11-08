@@ -72,7 +72,7 @@ export function PitchMoreMenu({
     };
     const drop = () => close(false);
     document.addEventListener('pointerdown', outside);
-    // 페이지 스크롤 중에도 메뉴 위치가 어긋나지 않도록 capture 로 듣습니다
+    // 스크롤하면 자리가 어긋나 닫습니다. 안쪽 스크롤 상자도 잡도록 capture 로 듣습니다.
     window.addEventListener('scroll', drop, true);
     window.addEventListener('resize', drop);
     return () => {
