@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useId, useRef, useState } from 'react';
 import { fetchPitchList, pitchListKey } from '@/shared/api/home';
 import type { ConversationListItem } from '@/types/chat';
 import {
   conversationsKey,
-  fetchConversationList,
+  fetchConversationPage,
+  joinConversationPages,
   lastActivityText,
   scopeLabel,
 } from './chatConversations';
@@ -151,17 +152,23 @@ export function ConversationList({
   onNew: () => void;
 }) {
   const current = useChatStore((s) => s.conversationId);
-  const list = useQuery({
+  // 최근 한 쪽(BE 50개)부터, [지난 대화 더 보기]로 다음 쪽을 이어 읽습니다(`next_cursor`, BE #1000)
+  const list = useInfiniteQuery({
     queryKey: conversationsKey(userId),
-    queryFn: ({ signal }) => fetchConversationList(signal),
+    queryFn: ({ pageParam, signal }) => fetchConversationPage(pageParam, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
+    select: (data) => joinConversationPages(data.pages),
   });
+  // 첫 쪽을 못 읽은 것만 목록 전체의 실패입니다 — 더 보기 실패는 읽은 줄을 그대로 두고 그 자리에서 알립니다
+  const firstFailed = list.isError && !list.isFetchNextPageError;
   return (
     <div className="flex flex-col gap-2" data-conversation-list="">
       <button type="button" onClick={onNew} className={`${SMALL_BUTTON} self-start`}>
         새 대화
       </button>
       {list.isPending && <p className="text-xs text-stone">대화 목록을 불러오고 있어요.</p>}
-      {list.isError && (
+      {firstFailed && (
         <div role="alert" className="text-xs text-coral-deep">
           <p>대화 목록을 불러오지 못했으니 다시 시도해 주세요.</p>
           <button
@@ -197,6 +204,24 @@ export function ConversationList({
             </li>
           ))}
         </ul>
+      )}
+      {list.isFetchNextPageError && (
+        <p role="alert" className="text-xs text-coral-deep">
+          {/* FE 가 정한 문구 — 문서에 없습니다 */}
+          지난 대화를 더 불러오지 못했으니 다시 시도해 주세요.
+        </p>
+      )}
+      {list.hasNextPage && (
+        <button
+          type="button"
+          aria-disabled={list.isFetchingNextPage}
+          onClick={() => {
+            if (!list.isFetchingNextPage) list.fetchNextPage().catch(() => undefined);
+          }}
+          className={`${SMALL_BUTTON} self-center`}
+        >
+          {list.isFetchingNextPage ? '불러오는 중…' : '지난 대화 더 보기'}
+        </button>
       )}
     </div>
   );

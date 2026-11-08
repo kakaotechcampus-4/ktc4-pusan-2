@@ -56,8 +56,11 @@ export interface ChatApi {
    * 그사이 다른 목표가 저장됐거나 기준 기록이 지워졌으면 409 `AGENT_STATE_INVALID`
    */
   undo: (runId: string, actionId: string, signal?: AbortSignal) => Promise<UndoResponse>;
-  /** 대화 목록 — 범위 바꾸기의 결과를 모를 때 서버의 범위를 다시 읽습니다 */
-  listConversations: (signal?: AbortSignal) => Promise<unknown>;
+  /**
+   * 대화 목록 — 최근 활동 순으로 한 쪽(BE 50개)씩. `cursor` 는 앞 쪽의 `next_cursor` 이고, 빼면 첫 쪽입니다(BE #1000).
+   * 범위 바꾸기의 결과를 모를 때도 첫 쪽으로 서버의 범위를 다시 읽습니다 — 지금 대화는 방금 활동해 첫 쪽에 있습니다
+   */
+  listConversations: (signal?: AbortSignal, cursor?: string | null) => Promise<unknown>;
   /**
    * 기억 설정 · 항목 (BE #1002, 12-3). 네 요청 모두 바뀐 뒤의 설정 전체(`MemorySettings` 모양)를 돌려주고,
    * 응답은 `unknown` — `chatMemory.ts` 의 `readMemorySettings` 가 모양을 검사하며 읽습니다.
@@ -108,7 +111,14 @@ export const chatApi: ChatApi = {
   // BE 되돌리기는 본문을 받지 않습니다
   undo: (runId, actionId, signal) =>
     apiRequest<UndoResponse>(chatPaths.undo(runId, actionId), { method: 'POST', signal }),
-  listConversations: (signal) => apiRequest<unknown>(chatPaths.conversations, { signal }, within),
+  listConversations: (signal, cursor) =>
+    apiRequest<unknown>(
+      cursor
+        ? `${chatPaths.conversations}?${new URLSearchParams({ cursor })}`
+        : chatPaths.conversations,
+      { signal },
+      within,
+    ),
   getMemory: (signal) => apiRequest<unknown>(chatPaths.memory, { signal }),
   setMemoryEnabled: (enabled, signal) =>
     apiRequest<unknown>(chatPaths.memory, {

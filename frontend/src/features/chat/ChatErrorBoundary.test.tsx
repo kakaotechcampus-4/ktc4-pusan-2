@@ -127,6 +127,8 @@ it('대화창이 던지면 런처 자리에 안내와 [다시 시도]를 한 번
   // 오류 안내도 정상 런처와 같은 왼쪽 아래 위치에 남습니다
   const failedLauncher = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
   expect(failedLauncher.classList.contains('left-2')).toBe(true);
+  expect(failedLauncher.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('32px');
+  expect(failedLauncher.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
   expect(host.querySelector('[data-chat-launcher] [role="alert"]')).not.toBeNull();
 
   await click(button('리포트 버튼')!);
