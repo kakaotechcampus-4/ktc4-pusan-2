@@ -154,6 +154,8 @@ class LoopState:
     prefetched: list[str] = field(default_factory=list)
     #: 이름으로 찾은(`list_pitches` query) 피치가 둘 이상이었다. 범위를 정하지 않고 답하면 어느 발표인지 되묻는다(L2-21)
     ambiguous_name: bool = False
+    #: 이름으로 찾은(`list_pitches` query) 피치가 하나도 없었다. 범위를 정하지 않고 답하면 찾을 수 없다고 말한다(L2-21 0개, 8회차 M4)
+    name_not_found: bool = False
     #: 이 실행에서 `compare_takes`가 비교할 수 없다고 한 것(앞 · 뒤 Take 번호 · 지표 · 장 · 까닭). 답에 까닭 문장을 코드가 붙인다(7-10)
     not_comparable: list[dict[str, Any]] = field(default_factory=list)
     #: 이 실행에서 질문 임베딩을 이미 불렀는가(실행당 한 번, 6-10). 옛 상태에는 없어 False 로 읽는다
@@ -856,6 +858,13 @@ class Loop:
                         and len((tr.data or {}).get("items") or []) >= 2
                     ):
                         self.st.ambiguous_name = True
+                    if (
+                        call.name == "list_pitches"
+                        and tr.ok
+                        and getattr(args, "query", None)
+                        and not (tr.data or {}).get("items")
+                    ):
+                        self.st.name_not_found = True
                     if call.name == "search_guides" and (
                         tr.ok or (tr.error or {}).get("code") == "CORPUS_UNAVAILABLE"
                     ):

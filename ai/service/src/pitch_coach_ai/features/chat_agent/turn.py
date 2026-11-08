@@ -889,6 +889,7 @@ def _tail_claims(lp: Loop, route: Any, *, said: list[Claim]) -> list[Claim]:
     """답 끝에 붙는 고정 문장(7-9 · 7-10). 이미 낸 · 낼 문장과 같은 문장은 다시 붙이지 않는다.
 
     - 이름으로 찾은 피치가 여럿인데 범위를 정하지 않았고, 여러 발표를 함께 묻는 말이 아니면 어느 발표인지 되묻는다(L2-21).
+    - 이름으로 찾은 피치가 하나도 없고 범위를 정하지 않았으면 발표를 찾을 수 없다고 말한다(L2-21 0개).
     - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2).
     """
     seen = {c.text for c in said} | {d.get("text") for d in lp.st.emitted}
@@ -900,6 +901,8 @@ def _tail_claims(lp: Loop, route: Any, *, said: list[Claim]) -> list[Claim]:
     plural = any(w in msg for w in lp.cfg.plural_request_words)
     if lp.st.ambiguous_name and not fetched and not plural:
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.WHICH_PITCH.value))
+    elif lp.st.name_not_found and not fetched and not lp.st.ambiguous_name:
+        out.append(Claim(kind="SYSTEM", text=templates.SystemText.PITCH_NOT_FOUND.value))
     if route == "CANNOT_DO":
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
     return [c for c in out if c.text not in seen]
