@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
@@ -309,7 +309,7 @@ function Points({
 const TREND: Record<string, { label: string; tone: Tone }> = {
   true: { label: '나아짐', tone: 'good' },
   false: { label: '나빠짐', tone: 'bad' },
-  null: { label: '방향 없음', tone: 'muted' },
+  null: { label: '방향 판단 불가', tone: 'muted' },
   same: { label: '같음', tone: 'muted' },
 };
 
@@ -320,34 +320,36 @@ function trend(r: ReviewResult['comparison'][number]) {
     : TREND[String(r.improved)]!;
 }
 
-/**
- * 차원마다 표 하나 — 지표 하나가 열 하나, 발표 전체 · 장이 행입니다 (#929).
- * 전에는 (지표, 장) 하나가 칸 하나라 같은 지표가 장마다 칸으로 되풀이돼 읽는 법을 알기 어려웠습니다.
- */
+/** 지난 Take의 지표별 슬라이드 변화 요약과 차원별 상세 비교표 (#929). */
+function slideList(numbers: number[]) {
+  return (
+    [...new Set(numbers)]
+      .sort((a, b) => a - b)
+      .map((n) => `${n}번`)
+      .join(', ') || '없음'
+  );
+}
+
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   const groups = comparisonGroups(rows);
+  // AI가 대본 보기 차이를 모든 행에 싣더라도 안내는 한 번만 보여 줍니다.
   const mode = rows.find((r) => r.script_mode)?.script_mode;
   const [open, setOpen] = useState(false);
+  const detailTitleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    if (!open) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog.showModal();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [open]);
-
-  function closeDetail() {
-    setOpen(false);
-  }
-
-  const visible = rows.filter((r) => r.metric !== 'filler_per_min');
-  const byMetric = new Map<string, typeof visible>();
-  for (const row of visible) {
-    if (!byMetric.has(row.metric)) byMetric.set(row.metric, []);
-    byMetric.get(row.metric)!.push(row);
-  }
 
   return (
     <Card title="지난 Take와 비교">
@@ -365,7 +367,8 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
           )}
           <p className="text-sm text-ink/80">지표별로 지난 연습보다 달라진 슬라이드를 모았어요.</p>
           <div className="grid gap-4 lg:grid-cols-2">
-            {[...byMetric].map(([metric, metricRows]) => {
+            {groups.flatMap((g) => g.metrics).map((metric) => {
+              const metricRows = rows.filter((r) => r.metric === metric);
               const slides = metricRows.filter((r) => r.slide_number !== null);
               const improved = slides
                 .filter((r) => trend(r) === TREND.true)
@@ -385,23 +388,13 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                         <div className="bg-cream p-3">
                           <p className="font-bold text-ink">나아진 슬라이드</p>
                           <p className="mt-1">
-                            {improved.length
-                              ? [...new Set(improved)]
-                                  .sort((a, b) => a - b)
-                                  .map((n) => `${n}번`)
-                                  .join(', ')
-                              : '없음'}
+                            {slideList(improved)}
                           </p>
                         </div>
                         <div className="bg-panel p-3">
                           <p className="font-bold text-ink">나빠진 슬라이드</p>
                           <p className="mt-1">
-                            {worsened.length
-                              ? [...new Set(worsened)]
-                                  .sort((a, b) => a - b)
-                                  .map((n) => `${n}번`)
-                                  .join(', ')
-                              : '없음'}
+                            {slideList(worsened)}
                           </p>
                         </div>
                       </div>
@@ -414,7 +407,9 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                       )}
                     </>
                   ) : (
-                    <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 데이터가 없어요.</p>
+                    <p className="mt-2 text-sm text-ink/80">
+                      {overall ? '발표 전체 기준 지표예요.' : '슬라이드별 비교 결과가 없어요.'}
+                    </p>
                   )}
                   {overall && (
                     <p className="mt-2 text-xs text-ink/80">
@@ -436,24 +431,23 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
           </button>
           <dialog
             ref={dialogRef}
-            aria-labelledby="report-comparison-detail-title"
+            aria-labelledby={detailTitleId}
             onClose={() => {
               setOpen(false);
               openerRef.current?.focus();
             }}
-            onCancel={() => setOpen(false)}
             className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
           >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <h2 id="report-comparison-detail-title" className="text-lg font-bold">
+                <h2 id={detailTitleId} className="text-lg font-bold">
                   지난 Take 상세 비교
                 </h2>
                 <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
               </div>
               <button
                 type="button"
-                onClick={closeDetail}
+                onClick={() => dialogRef.current?.close()}
                 className="min-h-11 shrink-0 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
                 aria-label="상세 비교 닫기"
               >
