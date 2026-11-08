@@ -8,7 +8,6 @@ import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
-import { prefersReducedMotion } from '@/features/chat/chatTyping';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
@@ -27,10 +26,15 @@ const HOME_TIPS = [
 
 const HOME_TIP_INTERVAL_MS = 8000;
 
+// 홈은 채팅 기능을 가져올 수 없으므로 움직임 감소 설정만 여기서 읽습니다.
+const initiallyPauseTips = () =>
+  typeof globalThis.matchMedia === 'function' &&
+  globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export function HomePage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
-  const [tipPaused, setTipPaused] = useState(prefersReducedMotion);
+  const [tipPaused, setTipPaused] = useState(initiallyPauseTips);
   const [tipHovered, setTipHovered] = useState(false);
   const [tipFocused, setTipFocused] = useState(false);
   const home = usePitchList();
