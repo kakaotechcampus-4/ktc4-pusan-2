@@ -700,6 +700,8 @@ class ChatAgentConfig(_Frozen):
         "다 알려",
         "모든",
     )
+    #: 비교를 청하는 말. 이 말이 있고 이번 실행이 읽은 기록이 서로 다른 피치에 걸치면 비교하지 않는다는 고정 문장을 붙인다(1-3 · 7-10)
+    compare_request_words: tuple[str, ...] = ("비교", "차이", "보다 나아", "보다 좋아")
     max_tools_per_response: int = 8
     max_turn_calls: int = 6
     max_actions: int = 5

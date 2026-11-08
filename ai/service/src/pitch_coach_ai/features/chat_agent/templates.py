@@ -117,6 +117,8 @@ class SystemText(StrEnum):
     NEXT_FIRST_TAKE = "Take를 한 번 연습하면 그 기록을 같이 볼 수 있어요."
     NEXT_PICK_PITCH = "어느 발표를 볼지 말씀해 주시면 그 기록을 같이 볼게요."
     NEXT_FIRST_PITCH = "피치를 만들어 연습하면 그 기록을 같이 볼 수 있어요."
+    #: 다른 피치의 Take 를 함께 비교해 달라고 했을 때(1-3). 값은 각각 말해도 좋아짐 · 나빠짐 · 차이를 말하지 않는다
+    CROSS_PITCH_NO_COMPARE = "다른 발표의 Take끼리는 비교하지 않아요. 발표마다 따로 볼 수 있어요."
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
     SCRIPT_NOT_ALLOWED = "공식 평가에는 대본 사용 허용이 없어요."
     SCRIPT_POINTS_REMOVED = "평가 항목이 빠져 오른 점수예요. 실력이 바뀐 건 아니에요."

@@ -217,3 +217,140 @@ def test_goal_status_sentence_off_does_not_add_it() -> None:
     data = _goal_question(load_config(goal_status_sentence=False))
     assert "RECORD" not in [k for k, _ in _texts(data)]
     assert data.get("goal_result") is None
+
+
+# ── 목표를 닫은 Take 를 찾아 값으로 말하는 목표 결과 문장 ───────────────────────────
+
+
+def _closing_request(
+    *loaded: str, status: str = "ACHIEVED", base_value: float = 0.10
+) -> dict[str, Any]:
+    """기준 Take 3 · 목표 저장 11-01 10:30. 그 뒤 완료한 Take 는 4(11-02) · 5(11-03)다."""
+    req = _closed_goal_request()
+    goal = req["context"]["conversation_goal"]
+    goal["base"].update({"take_id": "t-3", "take_number": 3, "value": base_value})
+    goal["created_at"] = "2026-11-01T10:30:00+09:00"
+    goal["status"] = status
+    return F.with_loaded(req, *loaded)
+
+
+def _ask_goal(req: dict[str, Any]) -> dict[str, Any]:
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[]),
+            F.tools(("get_goals", {}), NO_HIT, prefix="g"),
+            F.done(),
+            F.answer([F.claim("GENERAL", G1)], route="NO_GUIDE"),
+        ]
+    )
+    _, _, data = F.run_turn(
+        req, llm, corpus=F.load_corpus(), corpus_version="guides-4", cfg=load_config()
+    )
+    assert data is not None
+    assert data.get("goal_result") is None  # 사용자 말 응답에는 목표 결과 계약 값을 싣지 않는다
+    return data
+
+
+def _status_only(data: dict[str, Any]) -> bool:
+    texts = [t for _, t in _texts(data)]
+    return any(
+        x.value in texts
+        for x in (
+            templates.SystemText.GOAL_CLOSED_ACHIEVED,
+            templates.SystemText.GOAL_CLOSED_NOT_ACHIEVED,
+            templates.SystemText.GOAL_CLOSED_MISMATCH,
+        )
+    )
+
+
+def test_goal_status_sentence_names_the_closing_take_with_its_value() -> None:
+    """Take 4 가 목표를 닫았다(처음 끝난 판정): 그 Take 의 값으로 만든 RECORD 문장을 내고 상태만 말하는 문장은 내지 않는다."""
+    data = _ask_goal(_closing_request("t-4", "t-5"))
+    rec = [t for k, t in _texts(data) if k == "RECORD" and "목표를" in t]
+    assert len(rec) == 1
+    assert "Take 4" in rec[0] and "%" in rec[0] and "목표를 이뤘어요" in rec[0]
+    assert not _status_only(data)
+
+
+def test_goal_status_sentence_not_achieved_wording() -> None:
+    """못 이룬 목표는 못 이룬 말투의 템플릿 문장이다(기준 값이 높아 Take 4 가 기준을 못 넘는다)."""
+    data = _ask_goal(_closing_request("t-4", "t-5", status="NOT_ACHIEVED", base_value=0.90))
+    rec = [t for k, t in _texts(data) if k == "RECORD" and "목표를" in t]
+    assert len(rec) == 1 and "Take 4" in rec[0] and "이루지 못했어요" in rec[0]
+
+
+def test_goal_status_sentence_falls_back_when_an_earlier_take_snapshot_is_missing() -> None:
+    """저장 뒤 완료한 Take 4 의 스냅샷이 없으면 Take 5 로 건너뛰지 않고 상태 문장만 낸다(순서를 확인할 수 없다)."""
+    data = _ask_goal(_closing_request("t-5"))
+    assert _status_only(data)
+    assert "RECORD" not in [k for k, t in _texts(data) if "목표를" in t]
+
+
+def test_goal_status_sentence_falls_back_when_the_judgement_differs_from_the_goal_status() -> None:
+    """찾은 닫은 Take 의 판정(ACHIEVED)이 목표 상태(NOT_ACHIEVED)와 다르면 값을 말하지 않고 상태 문장만 낸다."""
+    data = _ask_goal(_closing_request("t-4", "t-5", status="NOT_ACHIEVED"))
+    assert templates.SystemText.GOAL_CLOSED_NOT_ACHIEVED.value in [t for _, t in _texts(data)]
+    assert not [t for k, t in _texts(data) if k == "RECORD" and "목표를" in t]
+
+
+# ── 다른 발표의 Take 끼리는 비교하지 않는다는 끝 문장(1-3) ─────────────────────────
+
+
+def _two_pitch_loop(message: str, pitches: tuple[str, ...], drafts: list[dict[str, Any]]) -> Any:
+    """두 피치(또는 한 피치)의 기록 근거를 읽은 실행의 최소 모양. 끝 문장 규칙이 보는 것만 가진다."""
+    from types import SimpleNamespace
+
+    from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
+
+    reg = EvidenceRegistry(run_id="run-x")
+    for i, pid in enumerate(pitches, start=1):
+        reg.record(
+            pitch_id=pid,
+            take_id=f"{pid}-t{i}",
+            take_number=i,
+            kind="TAKE_RESULT",
+            revision=1,
+            path="gaze.audience_ratio",
+            value=0.3,
+            metric="audience_ratio",
+        )
+    return SimpleNamespace(
+        original=message,
+        cfg=load_config(),
+        ctx=SimpleNamespace(registry=reg),
+        st=SimpleNamespace(
+            plan_drafts=drafts,
+            emitted=[],
+            executed=[],
+            ambiguous_name=False,
+            name_not_found=False,
+        ),
+    )
+
+
+def _cross_tail(lp: Any) -> list[str]:
+    from pitch_coach_ai.features.chat_agent import turn
+
+    return [c.text for c in turn._tail_claims(lp, "RESEARCH", said=[])]
+
+
+def test_cross_pitch_comparison_gets_the_no_compare_sentence() -> None:
+    lp = _two_pitch_loop(
+        "졸업 발표 Take 5랑 회사 소개 발표 Take 2 시선 비교해 줘", ("p-1", "p-2"), []
+    )
+    assert _cross_tail(lp) == [templates.SystemText.CROSS_PITCH_NO_COMPARE.value]
+
+
+def test_cross_pitch_comparison_is_found_from_the_plan_draft_without_a_comparison_word() -> None:
+    drafts = [{"type": "MEASURED", "claim_op": "CHANGE", "subject": {"relation": "COMPARE"}}]
+    lp = _two_pitch_loop(
+        "졸업 발표 Take 5랑 회사 소개 발표 Take 2 시선 어때", ("p-1", "p-2"), drafts
+    )
+    assert templates.SystemText.CROSS_PITCH_NO_COMPARE.value in _cross_tail(lp)
+
+
+def test_no_compare_sentence_needs_both_a_comparison_and_two_pitches() -> None:
+    same = _two_pitch_loop("Take 5랑 Take 2 시선 비교해 줘", ("p-1",), [])
+    assert _cross_tail(same) == []
+    plain = _two_pitch_loop("졸업 발표랑 회사 소개 발표 시선 알려 줘", ("p-1", "p-2"), [])
+    assert _cross_tail(plain) == []
