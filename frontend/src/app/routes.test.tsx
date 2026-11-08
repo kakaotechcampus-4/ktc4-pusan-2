@@ -155,7 +155,12 @@ it('sends touch-only devices from practice routes to the unsupported screen, eve
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
   state.launchOpen = true;
   state.signedIn = false;
-  for (const path of ['/pitch/tutorial', '/pitch/p1/device-check', '/takes/t1/rehearsal', '/takes/t1/exam']) {
+  for (const path of [
+    '/pitch/tutorial',
+    '/pitch/p1/device-check',
+    '/takes/t1/rehearsal',
+    '/takes/t1/exam',
+  ]) {
     await visit(path);
     expect(router!.state.location.pathname).toBe('/unsupported');
   }
