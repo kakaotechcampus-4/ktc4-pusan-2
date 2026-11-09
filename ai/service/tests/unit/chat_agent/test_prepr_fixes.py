@@ -5,6 +5,7 @@
 - 결정 로그: 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 붙었을 때만 남긴다.
 - 답 쓰기 실패의 대신 문장: 질문 대상의 근거로만 그린다(읽은 근거 전체를 나열하지 않는다).
 - 코드 대신 답의 끝난 까닭: 반복으로 멈춘 조사면 ANSWERED 가 아니라 REPEAT 다.
+- '같은 조건으로 다시 평가' 되살리기: 부정 · 인용 · 새 대상 · 조건이면 하지 않는다(확실하지 않으면 모델이 고른다).
 """
 
 from __future__ import annotations
@@ -192,3 +193,56 @@ def test_code_fallback_after_repeat_stop_records_repeat_not_answered() -> None:
     assert data["status"] == "DONE"
     assert data["diagnostics"]["end"]["reason"] == "REPEAT"
     assert [c["text"] for c in data["message"]["claims"]][0] == NO_TAKE_SENTENCE
+
+
+# ── 6. '같은 조건으로 다시 평가' 되살리기는 확실할 때만 ──────────────────────────
+
+_FIRST = "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘"
+_AGAIN = "같은 조건으로 한 번 더 다시 평가해 줘"
+_PRIOR_NEGATED = "Take 5는 대본 들고 읽지 않았어. 그 조건으로 다시 평가해 줘"
+_PRIOR_QUOTED = "팀장이 Take 5는 대본 보고 했다던데. 그 조건으로 다시 평가해 줘"
+
+
+def _twice(first: str, now: str) -> dict[str, Any]:
+    req = F.with_loaded(F.request(user_message=now), "t-5")
+    req["history"]["messages"] = [
+        {"role": "user", "text": first},
+        {"role": "assistant", "text": "참고 결과를 만들었어요. 공식 리뷰는 그대로예요."},
+    ]
+    return req
+
+
+@pytest.mark.prefetch
+@pytest.mark.parametrize(
+    ("first", "now"),
+    [
+        (_FIRST, "같은 조건으로 다시 평가하지 마"),  # 이번 말이 다시 평가를 부정
+        (_FIRST, "팀장이 같은 조건으로 다시 평가하라던데"),  # 이번 말이 남의 말 인용
+        (_PRIOR_NEGATED, _AGAIN),  # 앞 말의 대본 사용이 부정
+        (_PRIOR_QUOTED, _AGAIN),  # 앞 말의 대본 사용이 인용
+        (_FIRST, "같은 조건으로 Take 4도 다시 평가해 줘"),  # 새 대상(다른 Take)
+        (_FIRST, "같은 조건에 시선 기준 30%로 바꿔서 다시 평가해 줘"),  # 새 조건
+    ],
+    ids=["now-negated", "now-quoted", "prior-negated", "prior-quoted", "new-take", "new-criteria"],
+)
+def test_same_condition_reassess_is_not_restored_when_unsure(first: str, now: str) -> None:
+    """이번 말이 다시 평가를 부정 · 인용하거나 새 대상 · 조건을 말했거나, 앞 말의 대본 사용이 부정 · 인용이면 코드가 앞 조건으로
+    다시 평가를 되살리지 않는다(확실하지 않으면 모델이 고른다)."""
+    llm = F.FakeLlm([F.plan(assessments=[]), F.done(), F.done()], answers=[F.answer([])])
+    _, _, data = F.run_turn(_twice(first, now), llm)
+    assert data is not None
+    assert all(a["type"] != "REASSESS" for a in data.get("actions") or [])
+    assert not any(t["tool"] == "reassess" for t in data["trace"])
+    assert [c.purpose for c in llm.calls].count("RESEARCH") >= 2  # 계획 뒤 모델이 고른다
+
+
+@pytest.mark.prefetch
+@pytest.mark.parametrize("now", [_AGAIN, "같은 조건으로 Take 5 한 번 더 다시 평가해 줘"])
+def test_same_condition_reassess_still_restored_for_the_plain_repeat(now: str) -> None:
+    """조건 · 대상을 새로 말하지 않은 되풀이 요청(앞 말과 같은 Take 를 집은 말 포함)은 그대로 되살린다."""
+    llm = F.FakeLlm([F.plan(assessments=[])], answers=[F.answer([])])
+    _, _, data = F.run_turn(_twice(_FIRST, now), llm)
+    assert data is not None
+    assert [(a["type"], a["args"]) for a in data["actions"]] == [
+        ("REASSESS", {"take_id": "t-5", "change": {"script_used": True}})
+    ]

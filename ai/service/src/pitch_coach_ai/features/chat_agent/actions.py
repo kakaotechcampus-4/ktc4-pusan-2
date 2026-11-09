@@ -243,6 +243,17 @@ def _quoted_speech(clause: str, cfg: ChatAgentConfig) -> bool:
     return False
 
 
+def sentences(text: str) -> list[str]:
+    """글을 절(문장)로 나눈다. 허용 근거 검사와 같은 경계(. ? ! 줄바꿈)다."""
+    return [s for s in _SENT_SPLIT.split(text) if s.strip()]
+
+
+def negated_or_quoted(clause: str, cfg: ChatAgentConfig) -> bool:
+    """절에 부정 · 취소 표현(`negation_words`)이나 남의 말 인용 표시(`quotation_markers`)가 있는가. 허용 근거 검사와 같은
+    낱말이다. loop.py 의 '같은 조건 다시 평가' 되살리기가 이번 말 · 앞 말의 절을 볼 때 쓴다."""
+    return any(w in clause for w in cfg.negation_words) or _quoted_speech(clause, cfg)
+
+
 def _has_condition(clause: str, cfg: ChatAgentConfig) -> bool:
     for word in re.findall(r"[가-힣]+", clause):
         if word in _NOUN_MYEON:

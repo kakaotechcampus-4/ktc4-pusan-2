@@ -34,6 +34,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -95,6 +96,10 @@ PLAN_ROUTES = ("RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE")
 RESUME_RESERVE_STOP = "RESUME_RESERVE"
 #: 가벼운 말 종류(P-0008 5-1)
 TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
+#: '같은 조건으로 다시 평가' 말에서 새 대상 · 조건으로 보는 표기: 숫자(Take · 장 번호 · 기준 값)와 Take 지칭(6-6 되살리기)
+_NEW_TARGET_RE = re.compile(r"\d|take|테이크", re.IGNORECASE)
+#: 번호로 집은 Take("Take 5"). 앞 말의 Take 와 같은지는 따로 본다
+_TAKE_MENTION_RE = re.compile(r"(?:take|테이크)\s*\d+", re.IGNORECASE)
 
 
 def _greeting_only(msg: str, cfg: Any) -> bool:
@@ -1269,7 +1274,9 @@ class Loop:
 
         모델은 대화 기록에서 조건을 놓치고 빈 조건으로 부르거나('같은 조건이라 바뀔 것이 없다') 부르지 않았다(r9 ra-script-twice).
         조건은 대화 기록(`history.messages`)에서 다시 평가 낱말이 있는 가장 최근 사용자 말이 대본 사용을 말했을 때만 이어 쓴다. 이번 말이
-        조건을 새로 말했거나 · 기준 조건이거나 · 그 Take 를 정할 수 없으면 내지 않는다(모델이 고른다). 확인 카드 · 한도 · 허용 검사는
+        조건을 새로 말했거나 · 기준 조건이거나 · 그 Take 를 정할 수 없으면 내지 않는다(모델이 고른다). 확실하지 않으면 되살리지 않는다:
+        이번 말의 다시 평가 절이 부정 · 인용("다시 평가하지 마")이거나, 같은 조건 말 밖에서 새 조건 · 대상(숫자 · Take 지칭 · 조건
+        낱말)을 말했거나, 앞 말의 대본 사용 절이 부정 · 인용("대본 들고 읽지 않았어")이면 내지 않는다. 확인 카드 · 한도 · 허용 검사는
         모델이 고른 다시 평가와 같은 길이다. 한 실행에 한 번.
         """
         cfg = self.cfg
@@ -1281,6 +1288,7 @@ class Loop:
             or not any(w in msg for w in cfg.reassess_request_words)
             or not any(w in msg for w in cfg.same_condition_words)
             or clm.states_script_use(msg)
+            or self._same_condition_unsure(msg)
         ):
             return []
         key = json.dumps(["reassess", "same_condition"])
@@ -1294,7 +1302,11 @@ class Loop:
             ),
             None,
         )
-        if prior is None or not clm.states_script_use(prior):
+        if prior is None:
+            return []
+        # 앞 말의 대본 사용은 그 절이 부정 · 인용이 아닐 때만 조건이다("대본 들고 읽지 않았어" · "대본 보고 했다던데")
+        script_said = [s for s in act.sentences(prior) if clm.states_script_use(s)]
+        if not script_said or any(act.negated_or_quoted(s, cfg) for s in script_said):
             return []
         by_number = {sm.take_number: tid for tid, sm in self.ctx.summaries.items()}
         named = chk.named_take_numbers(prior)
@@ -1302,6 +1314,10 @@ class Loop:
             return []
         tid = by_number[next(iter(named))] if named else self._judged_take()
         if tid is None:
+            return []
+        # 이번 말이 Take 를 집었으면 앞 말의 그 Take 와 같을 때만 되살린다(다른 Take 는 새 대상이다)
+        now = chk.named_take_numbers(msg)
+        if now and now != {n for n, t in by_number.items() if t == tid}:
             return []
         self.st.prefetched.append(key)
         return [
@@ -1315,6 +1331,24 @@ class Loop:
                 },
             )
         ]
+
+    def _same_condition_unsure(self, msg: str) -> bool:
+        """이번 말로 앞 조건을 되살려도 되는지 확실하지 않은가: 다시 평가 낱말이 든 절이 부정 · 인용이거나("같은 조건으로 다시
+        평가하지 마"), 같은 조건 말(`same_condition_words`) 밖에서 새 대상 · 조건 — 숫자(Take · 장 번호 · 기준 값) · Take 지칭 ·
+        조건 낱말 — 을 말했다. 그러면 코드가 되살리지 않고 모델이 고른다. "Take 5"처럼 번호로 집은 Take 는 여기서 빼고 앞 말의 Take
+        와 같은지를 따로 본다(`_same_condition_reassess_calls`)."""
+        cfg = self.cfg
+        if any(
+            act.negated_or_quoted(s, cfg)
+            for s in act.sentences(msg)
+            if any(w in s for w in cfg.reassess_request_words)
+        ):
+            return True
+        rest = msg
+        for w in sorted(cfg.same_condition_words, key=len, reverse=True):
+            rest = rest.replace(w, " ")
+        rest = _TAKE_MENTION_RE.sub(" ", rest)
+        return bool(_NEW_TARGET_RE.search(rest)) or clm.states_condition(rest)
 
     def _goal_prefetch_calls(self) -> list[ToolCall]:
         """대화 목표를 묻는 말(`goal_question`)이면 조사 첫머리에 `get_goals`를 먼저 읽는다(6-1 2번, 같은 한도 · 같은 길).

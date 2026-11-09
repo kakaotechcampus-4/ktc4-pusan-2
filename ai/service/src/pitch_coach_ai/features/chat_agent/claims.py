@@ -837,6 +837,11 @@ _CONDITION_WORD_RE = re.compile(
 )
 
 
+def states_condition(text: str) -> bool:
+    """글이 다시 평가가 바꿀 수 있는 조건 낱말(대본 · 원고 · 스크립트 · 프롬프터 · 조건 · 기준 · 숫자로 정한 목표)을 말하는가."""
+    return bool(_CONDITION_WORD_RE.search(text))
+
+
 def measurement_dispute(text: str, cfg: ChatAgentConfig) -> bool:
     """측정 항목(시선 · 말 속도 …)을 말했지만 다시 평가가 바꿀 수 있는 조건(대본 · 원고 · 스크립트 · 프롬프터 · 조건 · 기준 · 목표)은 한 낱말도 말하지 않았는가.
 
