@@ -67,7 +67,8 @@ async function renderHelp() {
 it('기존 사용방법 3단계를 유지하고 장치·연습·채팅 화면을 안내한다', async () => {
   await renderHelp();
 
-  const steps = [...host.querySelectorAll('dialog h3')];
+  // 단계 밖의 튜토리얼 안내 제목(h3)은 단계 수에 포함하지 않습니다 (#1105).
+  const steps = [...host.querySelectorAll('dialog > div > ol > li > div > h3')];
   expect(steps).toHaveLength(3);
   expect(steps.map((step) => step.textContent)).toEqual([
     '1단계 자료 준비',
