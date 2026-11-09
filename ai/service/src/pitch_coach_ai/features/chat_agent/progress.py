@@ -165,6 +165,8 @@ def _meta(
         "tool_seqs": [],
         "ran": None,
         "take": None,
+        #: 이 단계에 붙은 도구 호출 열쇠(`call_key`). 같은 호출의 캐시 적중은 새 단계로 붙이지 않는다
+        "keys": [],
     }
 
 
@@ -358,6 +360,9 @@ def _report_run(
             return run(r["PRIORITY"].format(dimension=DIM_LABEL.get(first, first)))
     if section == "slides" and tr.read_state == "UNMEASURED":
         return run(r["UNMEASURED"])
+    if section == "slides" and args.slide_number:
+        # 무엇을 봤는지 보인다: `3장 확인`(장 번호는 그 단계 근거로 표시 검사를 받는다)
+        return run(r["SLIDE_CHECKED"].format(slide=args.slide_number))
     return run(r["CHECKED"])
 
 
@@ -386,11 +391,23 @@ def pick(meta: list[dict[str, Any]], tool: str) -> int | None:
 
 
 def attach(
-    meta: list[dict[str, Any]], run: StepRun, tool_seq: int | None, *, max_steps: int
+    meta: list[dict[str, Any]],
+    run: StepRun,
+    tool_seq: int | None,
+    *,
+    max_steps: int,
+    key: str | None = None,
+    cached: bool = False,
 ) -> int | None:
     """실행을 단계에 붙이고 그 단계 번호(0부터)를 돌려준다. 붙일 단계가 없으면 실행 뒤에 새 단계를 남은 단계 앞에 끼운다
-    (목적 = 도구 종류 이름). 이미 `max_steps`단계면 붙이지 않고 None(trace 에만 남는다)."""
+    (목적 = 도구 종류 이름). 이미 `max_steps`단계면 붙이지 않고 None(trace 에만 남는다).
+    캐시 적중이라도 힌트가 맞는 미완 단계가 있으면 그 단계를 채운다(계획한 일을 이미 읽은 기록으로 끝냄). 붙일 단계가 없어 새 단계를
+    덧붙여야 할 때, 같은 호출(`key`)을 이미 보인 단계가 있는 캐시 적중이면 덧붙이지 않고 그 단계 번호만 돌려준다(되풀이 읽기는 새 일이 아니다)."""
     i = pick(meta, run.tool)
+    if i is None and cached and key is not None:
+        seen = next((j for j, m in enumerate(meta) if key in m.get("keys", [])), None)
+        if seen is not None:
+            return seen
     if i is None:
         if len(meta) >= max_steps:
             return None
@@ -410,6 +427,8 @@ def attach(
     )
     if tool_seq is not None:
         m["tool_seqs"] = [*m["tool_seqs"], tool_seq]
+    if key is not None:
+        m["keys"] = [*m.get("keys", []), key]
     return i
 
 

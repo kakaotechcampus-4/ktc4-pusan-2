@@ -770,14 +770,19 @@ class Loop:
             name, args, tr, self.ctx, areas=progress.asked_areas(self.st.plan_drafts, self.cfg)
         )
         step = None
+        key = progress.call_key(name, args)
         if self.cfg.plan_progress and self.st.plan_meta:
             step = progress.attach(
-                self.st.plan_meta, run, trace.seq, max_steps=self.cfg.plan_steps_max
+                self.st.plan_meta,
+                run,
+                trace.seq,
+                max_steps=self.cfg.plan_steps_max,
+                key=key,
+                cached=tr.outcome == "CACHED",
             )
-            self._emit_plan_display()
+            self._emit_plan_display()  # 바뀐 때만 plan 줄을 낸다
         if not self.tracking:
             return
-        key = progress.call_key(name, args)
         if chosen and name in progress.RECORD_TOOLS:
             self._respond("ALT_TOOL", key=key, step=step, tool_seq=trace.seq)
         if run.signal is not None and tr.outcome != "CACHED":

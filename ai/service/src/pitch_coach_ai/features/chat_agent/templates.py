@@ -363,6 +363,7 @@ PLAN_RESULT = {
     "NO_GUIDES": "자료 없음",
     "FETCHED": "가져옴",
     "CHECKED": "확인",
+    "SLIDE_CHECKED": "{slide}장 확인",
 }
 #: get_take_report 의 실행 글(읽은 절과 상관없이). 출처(코치 결과 · 리뷰)는 결과 글과 trace 요약이 보인다
 PLAN_REPORT_EXEC = "Take {n} 기록"

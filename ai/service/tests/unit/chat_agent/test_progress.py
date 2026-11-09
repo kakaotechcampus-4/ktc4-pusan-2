@@ -279,3 +279,38 @@ def test_decision_line_has_fixed_keys() -> None:
     )
     assert tuple(line) == progress.DECISION_KEYS
     assert copy.deepcopy(line)["event"] == "agent_decision"
+
+
+def test_cached_repeat_of_a_shown_call_adds_no_step() -> None:
+    """같은 호출을 다시 읽은 캐시 적중은 새 단계를 붙이지 않고 그 호출을 보인 단계를 가리킨다(되풀이 읽기는 새 일이 아니다)."""
+    ctx = make_ctx()
+    meta = _meta(("비교", "compare_takes"), ("답 쓰기", "answer"))
+    key = progress.call_key("compare_takes", COMPARE)
+    i = progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8, key=key)
+    again = progress.attach(
+        meta, _read(ctx, "compare_takes", COMPARE), 2, max_steps=8, key=key, cached=True
+    )
+    assert again == i and len(meta) == 2 and meta[i]["tool_seqs"] == [1]
+    # 힌트가 맞는 미완 단계가 있으면 캐시 적중이어도 그 단계를 채운다(모델이 고친 계획의 단계)
+    meta2 = _meta(("비교", "compare_takes"), ("다시 비교", "compare_takes"), ("답 쓰기", "answer"))
+    progress.attach(meta2, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8, key=key)
+    j = progress.attach(
+        meta2, _read(ctx, "compare_takes", COMPARE), 2, max_steps=8, key=key, cached=True
+    )
+    assert j == 1 and meta2[1]["done"] and len(meta2) == 3
+    # 처음 보는 호출의 캐시 적중은 보통 실행처럼 붙는다
+    other = progress.attach(
+        meta, _read(ctx, "list_takes", {}), 3, max_steps=8, key="other", cached=True
+    )
+    assert other is not None and len(meta) == 3
+
+
+def test_slide_read_result_names_the_slide() -> None:
+    """장을 읽은 단계는 결과에 무엇을 봤는지 보인다(`3장 확인`)."""
+    ctx = make_ctx()
+    r = _read(
+        ctx,
+        "get_take_report",
+        {"take_id": "t-5", "section": "slides", "slide_number": 3},
+    )
+    assert r.result == "3장 확인"
