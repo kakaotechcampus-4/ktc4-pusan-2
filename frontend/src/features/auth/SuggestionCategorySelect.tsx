@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { suggestionCategories } from '@/shared/lib/suggestionCategory';
+import { suggestionCategories } from './suggestionCategory';
 import type { SuggestionCategory } from '@/types/serviceReview';
 
 export function SuggestionCategorySelect({

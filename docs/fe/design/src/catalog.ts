@@ -705,7 +705,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/report/history/TakesPage.tsx',
       'frontend/src/features/report/history/TakeComparison.tsx',
       'frontend/src/features/report/history/TakeComparisonRedirect.tsx',
-      'frontend/src/shared/lib/takeStatus.ts',
+      'frontend/src/features/report/history/takeStatus.ts',
     ],
     productNote:
       '지표 비교의 두 Take 값은 예시다. 제품은 여러 Take를 가로 스크롤 차트와 표로 보여 준다. 샘플 지표 버튼은 제품과 같은 이름·방향을 사용하며, 표의 각 리포트 보기에서 해당 Take 리포트로 이동한다.',

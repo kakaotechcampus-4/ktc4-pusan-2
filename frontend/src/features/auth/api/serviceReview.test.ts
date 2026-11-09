@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { submitSuggestion } from './serviceReview';
-import * as tokens from './tokenStore';
+import * as tokens from '@/shared/api/tokenStore';
 beforeEach(() => {
   vi.spyOn(tokens, 'getAccessToken').mockReturnValue('test-access');
   vi.stubGlobal(

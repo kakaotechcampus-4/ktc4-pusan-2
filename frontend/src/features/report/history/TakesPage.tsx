@@ -1,7 +1,7 @@
 import { Link, useSearchParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { useTakeHistory } from '../api/takeHistory';
-import { takeStatusView } from '@/shared/lib/takeStatus';
+import { takeStatusView } from './takeStatus';
 import { TakeStatusBadge } from './TakeStatusBadge';
 import { ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';

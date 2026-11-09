@@ -1,4 +1,4 @@
-// 제품 `frontend/src/features/auth/SuggestionCategorySelect.tsx` · `shared/lib/suggestionCategory.ts`에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/auth/SuggestionCategorySelect.tsx` · `features/auth/suggestionCategory.ts`에서 복사해 시작했다. 설계서가 관리한다.
 import { useId } from 'react';
 
 const suggestionCategories = {

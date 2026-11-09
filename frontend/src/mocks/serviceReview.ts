@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { currentMockUserId } from './auth';
-import { suggestionCategories } from '@/shared/lib/suggestionCategory';
+import { suggestionCategories } from '@/features/auth/suggestionCategory';
 import type { SuggestionCategory, SuggestionReceipt } from '@/types/serviceReview';
 
 const validCategory = (v: unknown): v is SuggestionCategory =>

@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { apiRequest } from '@/shared/api/client';
 import type { SuggestionRequest, SuggestionReceipt } from '@/types/serviceReview';
 
 // 1차 배포의 홈 별점 팝업 API(`/api/service-feedback*`)는 BE #777 에서 없어졌습니다.

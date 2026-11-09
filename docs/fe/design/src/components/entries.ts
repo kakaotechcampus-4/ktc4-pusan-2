@@ -76,7 +76,7 @@ export const componentEntries: GuideComponent[] = [
     sources: [
       'frontend/src/shared/ui/Badge.tsx',
       'frontend/src/features/report/history/TakeStatusBadge.tsx',
-      'frontend/src/shared/lib/takeStatus.ts',
+      'frontend/src/features/report/history/takeStatus.ts',
     ],
     file: 'src/ui/Badge.tsx · src/ui/TakeStatusBadge.tsx · src/lib/takeStatus.ts',
     props: [

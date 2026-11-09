@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { apiRequest } from './client';
+import { apiRequest } from '@/shared/api/client';
 import type {
   ActiveTake,
   ActiveTakeResponse,

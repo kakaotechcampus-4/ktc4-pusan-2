@@ -1,4 +1,4 @@
-import type { TakeStatusView } from '@/shared/lib/takeStatus';
+import type { TakeStatusView } from './takeStatus';
 import { Badge } from '@/shared/ui/Badge';
 
 /**

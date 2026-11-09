@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { submitSuggestion } from '@/shared/api/serviceReview';
+import { submitSuggestion } from './api/serviceReview';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { toMessage } from '@/shared/api/errorMessage';
 import { Card } from '@/shared/ui/Panel';
