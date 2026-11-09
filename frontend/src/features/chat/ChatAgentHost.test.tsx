@@ -409,7 +409,7 @@ it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 �
   await visit('/');
   const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
   expect(container.classList.contains('left-2')).toBe(true);
-  expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('32px');
+  expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('76px');
   expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
 
   await openPanel();
