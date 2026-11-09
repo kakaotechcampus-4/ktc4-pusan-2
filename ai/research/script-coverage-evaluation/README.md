@@ -132,9 +132,9 @@ script-coverage-evaluation/
 │
 ├── src/coverage_lab/              ── 실험 도구 (한 폴더) ──
 │
-├── experiments/                   01 ~ 10 실행 스크립트 (번호 = 실행 순서)
+├── experiments/                   01 ~ 12 실행 스크립트 (번호 = 실행 순서)
 ├── reports/                       보고용 노트북 2개 + results/*.json (지표)
-├── data/virtual/                  가상 대본 2 · 연습 STT 18 · 정답 라벨 18
+├── data/virtual/                  가상 대본 2 · 연습 STT 18 · 정답 라벨 18 · 대본 밖 말 합성 문장 · 대본 밖 후보 라벨
 ├── outputs/                       rubrics.sqlite (LLM 캐시 + 결과 DB, git 제외)
 └── tests/                         lab (실험 도구) · live (실제 API). 코어 단위 테스트는 서비스 tests/unit/script_coverage/
 ```
@@ -158,7 +158,8 @@ features/script_coverage/
 | 파일 | 역할 | 주요 이름 |
 |---|---|---|
 | `core.py` | 진입 함수 3개. 일부 장만 실패하면 `failed`에 담아 200, 대상 장이 모두 실패하면 `CoverageError`(상태 · 코드 · 고정 문구) | `analyze_script`, `evaluate_take`, `rescore_evaluation`, `take_scores`, `ScriptLLMs`, `TakeLLMs` |
-| `schemas.py` | 요청 · 응답 모양 (`slide_numbers`, `failed`, `scored_ratio`, `confirmations` 등). LLM 출력 스키마와는 별개 | `RubricRequest`, `AnalyzeRequest`, `RescoreRequest`, `EvaluationResponse` |
+| `schemas.py` | 요청 · 응답 모양 (`slide_numbers`, `failed`, `scored_ratio`, `confirmations`, 결과 상세 `detail` 등). LLM 출력 스키마와는 별개 | `RubricRequest`, `AnalyzeRequest`, `RescoreRequest`, `EvaluationResponse`, `TakeDetail` |
+| `take_detail.py` | 채점된 장의 장 상세를 모아 Take 상세(응답 맨 위 `detail`)와 장별 요약을 만든다. analyze · rescore 같은 함수 | `take_detail` |
 | `config.py` | 점수표 · 중요도 같은 기준값과 그 해시(`CRITERIA_VERSION`), 동시 LLM 호출 수 `RUBRIC_MAX_WORKERS`(평가 기준 만들기 12) · `MAX_WORKERS`(채점 4, 둘 다 해시에 안 들어감) | `CRITERIA_VERSION`, `RUBRIC_MAX_WORKERS`, `MAX_WORKERS`, `SCORE_WEIGHT` |
 | `version.py` | 기능 버전 · 응답 스키마 버전 · 평가 기준 형식 버전 | `FEATURE_VERSION`, `SCHEMA_VERSION`, `RUBRIC_SCHEMA_VERSION` |
 | `examples/` | 세 API의 요청 · 응답 예시와 이를 만드는 데 읽은 LLM 캐시. 만들기: `python -m coverage_lab.examples` (과금 없음, 연구 캐시 재생). 설명은 `examples/README.md` | |
@@ -209,13 +210,16 @@ features/script_coverage/
 | ⑦ | `verify.py` | 충돌이 있는 슬라이드만 다시 판정 | 필요할 때 1회 |
 | ⑧ | `merge.py` | 문장 → Key Point 판정으로 모으기 | |
 | ⑨ | `scoring.py` | 점수 3개 계산 | |
+| ④ 다음 | `speech_mix.py` | 대본과 짝지어지지 않은 STT 문장에서 대본 밖 구간을 찾고 진행 말 · 다른 장 · 대본 밖으로 나눔, 말의 구성(형태소 몫) | |
+| ⑦ 다음 | `offscript.py` | (설정을 켰을 때만) 대본 밖 구간을 관련 곁말 · 무관한 말로 나눔. 실패해도 장 채점은 그대로 | 대본 밖 구간이 있는 장 1회 |
+| ⑩ | `detail.py` · `fallback.py` | 결과 상세: 문장 표현 방식, 장 상세(상쇄 없는 전달률 · 다르게 말한 몫 · 개수 · 놓친 중요 내용 · 수치 · 대본 재현), STT 완전성, 실패 장의 간이 값 | |
 
 | 함께 쓰는 파일 | 내용 |
 |---|---|
 | `confirm.py` | 사용자 답(대본대로 / 들린 대로)으로 판정 · 점수 다시 계산. LLM 없음. 이미 반영한 답(`applied_answers`)에 새 답을 더해 가므로, 답을 나눠 줘도 한 번에 준 것과 같은 결과 |
 | `schemas.py` | STT 입력(`Take`), LLM 답, 채점 결과(`SlideEvaluation`, `SimilarItem`)의 모양 |
-| `prompts/semantic.py` · `verifier.py` | LLM 지시문 |
-| `config.py` | 판정 기준 숫자(임계값), 점수표 |
+| `prompts/semantic.py` · `verifier.py` · `offscript.py` | LLM 지시문 |
+| `config.py` | 판정 기준 숫자(임계값), 점수표, 결과 상세 · 말의 구성 기준값(실험 `11` · `12`로 정함) |
 
 `judge.py`는 STT가 빈 장(발표에서 넘어간 장)을 LLM을 부르지 않고 전달 단위를 모두 "없음"으로 채점합니다.
 
@@ -257,6 +261,8 @@ features/script_coverage/
 | `08_output_tokens.py` | 가상대본 두 개의 모든 장으로 평가 기준을 만들고 모든 가상 Take를 채점하며 역할별(1차 분석 · 최종 결론 · 전달 단위 · 의미 평가 · 교차 검증) 출력 토큰 수 · 끝난 이유를 잰다. 서비스처럼 스트리밍, 캐시 없음, `ai/` 폴더에서 실행해 `ai/.env`를 읽는다 | 약 290회 (평가 기준 장 × 3 + 채점 장 × 약 1.25, 실측 284번) | `reports/results/<name>.json` (`--name`) |
 | `09_verifier_completeness.py` | 연구 캐시를 복사본으로 읽어 가상 Take 18개를 다시 채점하며, 교차 검증 출력 검사(대상 문장 · 전달 단위를 다 덮지 못하면 장 실패)를 켠 때와 끈 때의 실패 장 수를 비교한다. 캐시를 만든 모델 이름을 `--model`로 준다 | 0회 (캐시 재생, 부르면 실패하는 대역) | `reports/results/<name>.json` (`--name`) |
 | `10_mixed_load.py` | 서비스 앱을 이 프로세스 안에 uvicorn 으로 띄우고, 서비스의 LLM 객체에 지연만 흉내 내는 가짜 LLM 을 넣어 평가 기준 · 채점 요청을 겹쳐 보내며 `/takes/rescore` 응답 시간과 실패 장을 잰다(BE 제한 안 · 넘긴 경우) | 0회 (가짜 LLM) | `reports/results/mixed_load.json` |
+| `11_sentence_fallback.py` | 전달 단위 단계가 실패했을 때 쓰는 '문장 하나 = 단위 하나' 평가 기준(`rubric_quality: sentence_fallback`)으로 가상 Take 18개를 다시 채점해, 정상 기준과 문장 · 핵심 내용 정확도 · 심각한 오판을 비교한다(전체 · 시나리오별 · 복합 문장). 판정 기준(하락 ≤ 1%p, 심각한 오판 증가 ≤ 0.5%p)으로 복구 장 상세의 `provisional` 여부를 정한다 | 장 수만큼 의미 평가 + 교차 검증 (실측 170 + 40회) | `reports/results/sentence_fallback.json` |
+| `12_coverage_detail.py` | 결과 상세의 경계값과 말의 구성 정확도. 가상대본1 = 개발(경계값을 고름), 가상대본2 = 시험(한 번만 잼). 표현 방식 경계 · 간이 전달률 3단계 경계, 말의 구성 범주 precision(자연 데이터 라벨 `data/virtual/offscript_labels.json` · 합성 주입 `data/virtual/offscript_injections.json`), 곁말 재현율(라벨 `additions`), 대본 밖 후보 규칙 비교 | 0회 | `reports/results/coverage_detail.json`, `outputs/offscript_candidates.jsonl`(라벨 재료) |
 
 - `01`이 먼저입니다. `02`~`04`는 `01`의 평가 기준을, `05` · `06`은 `04`의 채점을 읽습니다. `07`은 DB를 쓰지 않아 따로 돌릴 수 있습니다.
 - 비싼 반복 측정(`03`, `06`)은 `RUBRIC_CONSISTENCY_SAMPLES=1` · `STT_CONSISTENCY_SAMPLES=1`로 끌 수 있고, 끄면 결과 JSON을 덮어쓰지 않습니다.
@@ -565,9 +571,23 @@ BE가 배포 환경에서 맡을 저장을 research 에서는 이 표들이 대�
 > 실제 Deepgram 출력과 실제 발표자로는 측정하지 않았습니다. LLM 판정의 실제 정확도는 아직 검증되지 않았습니다.
 > 규칙 부분(수 파서, 수치 검증, 비슷한 말 위치)은 결정적이고 가상 데이터 전체에서 정답과 일치했습니다.
 
+### v1.2 · 기본 묶음 `openai/gpt-6-luna` (기능 버전 `script_coverage-1.2`, 결과 상세 · 문장 단위 복구)
+
+결과 상세(선택 필드)를 더한 코드로 `01` → `04` → `05`를 연구 캐시 재생으로 다시 돌린 값입니다(macOS arm64). 지금 `reports/results/stt_accuracy.json`은 이 값입니다. 캐시에 없던 것은 v1에서 전달 단위 단계 실패로 빠졌던 가상대본1 4번 장 하나라, 그 장의 전달 단위 1번과 Take 9개 채점만 새로 불렀습니다.
+
+| 지표 (문장 765개 · Key Point 747개 · 사실 693개) | 규칙만 | LLM 1차 | 최종 | 사용자 확인 뒤 |
+|---|---|---|---|---|
+| 문장 판정 정확도 | 0.850 | 0.970 | 0.988 | 0.992 |
+| 문장 심각한 오판 | 2.0% | 2.2% | 0.4% | |
+| Key Point 판정 정확도 | 0.849 | 0.968 | 0.988 | 0.992 |
+
+- 비회귀: 바꾸기 전 코드의 채점(그 장을 뺀 171장)과 문장 판정 720개 · Key Point 702개 · 사실 상태 621개 · 기존 점수가 하나도 다르지 않습니다.
+- 문장 단위 복구(`11`): 복구 기준 문장 정확도 −0.14%p · 심각한 오판 +0.14%p → 복구한 장 상세를 정상으로 둡니다(`sentence_fallback.json`).
+- 결과 상세 경계값 · 말의 구성(`12`): 표현 방식 시험 일치율 0.960, 간이 단계 시험 일치율 0.889(심각한 어긋남 0), 대본 밖 후보(짝 없는 문장만)는 자연 데이터에서 모두 실제 대본 밖 말, 곁말 재현율 0.70~0.71, 합성 주입 precision 진행 말 1.0 · 다른 장 0.93~0.94(`coverage_detail.json`). 기능 문서 13절에 해석이 있습니다.
+
 ### v1 · 기본 묶음 `openai/gpt-6-luna` (기능 버전 `script_coverage-1.0`)
 
-기본 묶음 모델로 `01` → `04` → `05`를 다시 돌린 값입니다(LLM 약 290회). 지금 `reports/results/stt_accuracy.json`은 이 값입니다. 반복 측정(`03` · `06`)은 이 모델로 다시 재지 않아서, `rubric_consistency.json` · `stt_stability.json`은 아래 예전 모델 값입니다. 그때(코어 테스트가 이 폴더에 있던 때) 테스트는 399개(`-m "not live"`, 연구 캐시가 있을 때)가 통과했습니다. 지금 테스트 수는 5절 '테스트'에 있습니다.
+기본 묶음 모델로 `01` → `04` → `05`를 다시 돌린 값입니다(LLM 약 290회). v1.2 전까지 `reports/results/stt_accuracy.json`은 이 값이었습니다. 반복 측정(`03` · `06`)은 이 모델로 다시 재지 않아서, `rubric_consistency.json` · `stt_stability.json`은 아래 예전 모델 값입니다. 그때(코어 테스트가 이 폴더에 있던 때) 테스트는 399개(`-m "not live"`, 연구 캐시가 있을 때)가 통과했습니다. 지금 테스트 수는 5절 '테스트'에 있습니다.
 
 | 지표 (문장 765개 · Key Point 774개 · 사실 729개) | 규칙만 | LLM 1차 | 최종 | 사용자 확인 뒤 |
 |---|---|---|---|---|

@@ -1,0 +1,204 @@
+{
+  "feature_version": "script_coverage-1.2",
+  "criteria_version": "script_coverage-1.2+99c0075dec6f",
+  "model": "openai/gpt-6-luna",
+  "counts": {
+    "slides": 171,
+    "sentences": 720,
+    "compound_sentences": 450,
+    "key_points": 702
+  },
+  "excluded_slides": [
+    {
+      "script": "가상대본1",
+      "slide": 4,
+      "reason": "로컬 DB 에 평가 기준이 없음 (전달 단위 실패 장)"
+    }
+  ],
+  "sentence_overall": {
+    "normal": {
+      "n": 720,
+      "accuracy": 0.9875,
+      "severe": 0.0042
+    },
+    "fallback": {
+      "n": 720,
+      "accuracy": 0.9861,
+      "severe": 0.0056
+    },
+    "accuracy_diff": -0.0014,
+    "severe_diff": 0.0014
+  },
+  "sentence_compound": {
+    "normal": {
+      "n": 450,
+      "accuracy": 0.9867,
+      "severe": 0.0022
+    },
+    "fallback": {
+      "n": 450,
+      "accuracy": 0.9889,
+      "severe": 0.0022
+    },
+    "accuracy_diff": 0.0022,
+    "severe_diff": 0.0
+  },
+  "sentence_by_scenario": {
+    "누락": {
+      "normal": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 0.9875,
+        "severe": 0.0125
+      },
+      "accuracy_diff": -0.0125,
+      "severe_diff": 0.0125
+    },
+    "더듬기": {
+      "normal": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "accuracy_diff": 0.0,
+      "severe_diff": 0.0
+    },
+    "발음": {
+      "normal": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "accuracy_diff": 0.0,
+      "severe_diff": 0.0
+    },
+    "실수": {
+      "normal": {
+        "n": 80,
+        "accuracy": 0.9875,
+        "severe": 0.0125
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 0.9875,
+        "severe": 0.0125
+      },
+      "accuracy_diff": 0.0,
+      "severe_diff": 0.0
+    },
+    "요약": {
+      "normal": {
+        "n": 80,
+        "accuracy": 0.9375,
+        "severe": 0.0
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 0.925,
+        "severe": 0.0
+      },
+      "accuracy_diff": -0.0125,
+      "severe_diff": 0.0
+    },
+    "의역": {
+      "normal": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "accuracy_diff": 0.0,
+      "severe_diff": 0.0
+    },
+    "인식오류": {
+      "normal": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "accuracy_diff": 0.0,
+      "severe_diff": 0.0
+    },
+    "충실": {
+      "normal": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 1.0,
+        "severe": 0.0
+      },
+      "accuracy_diff": 0.0,
+      "severe_diff": 0.0
+    },
+    "혼합": {
+      "normal": {
+        "n": 80,
+        "accuracy": 0.9625,
+        "severe": 0.025
+      },
+      "fallback": {
+        "n": 80,
+        "accuracy": 0.975,
+        "severe": 0.025
+      },
+      "accuracy_diff": 0.0125,
+      "severe_diff": 0.0
+    }
+  },
+  "key_point": {
+    "normal": {
+      "n": 702,
+      "accuracy": 0.9872,
+      "severe": 0.004
+    },
+    "fallback": {
+      "n": 702,
+      "accuracy": 0.9858,
+      "severe": 0.004
+    },
+    "accuracy_diff": -0.0014,
+    "severe_diff": 0.0
+  },
+  "verdict": {
+    "result": "pass",
+    "accuracy_drop": 0.0014,
+    "severe_rise": 0.0014,
+    "criteria": {
+      "max_accuracy_drop": 0.01,
+      "max_severe_rise": 0.005
+    },
+    "recommended_SENTENCE_FALLBACK_PROVISIONAL": false
+  },
+  "llm": {
+    "semantic_calls": 170,
+    "verifier_calls": 40,
+    "cache_hits": 1,
+    "failed_slides": []
+  }
+}
