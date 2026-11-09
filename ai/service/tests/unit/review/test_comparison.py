@@ -38,8 +38,11 @@ def test_one_direction_metrics(req):
     assert c[("script_ratio", None)].improved is True
     slide = c[("script_ratio", 3)]
     assert (slide.previous, slide.current, slide.improved) == (0.70, 0.62, True)
-    assert c[("reading_runs", None)].improved is None  # 값이 같으면 나아지지도 나빠지지도 않음 (#787)
+    assert c[("reading_runs", None)].improved is None  # LOWER 지표가 같은 값 (#787)
     assert c[("pause_count", None)].improved is None  # 방향을 정하지 않은 지표
+
+    gaze["take"]["audience_ratio"] = 0.58  # 이번과 같음: HIGHER 지표도 같은 값이면 None (#787)
+    assert by_key(run(req)[0])[("audience_ratio", None)].improved is None
 
 
 def test_order_follows_dimension_table(req):
@@ -147,6 +150,18 @@ def test_range_same_distance_is_none(req):
     # 범위 안 → 밖은 그대로 나빠짐
     time["duration_ms"] = 312_000
     assert by_key(run(req)[0])[("duration_ms", None)].improved is False
+
+
+def test_range_same_distance_ignores_float_error(req):
+    """수학적으로 거리가 같으면 부동소수 오차가 있어도 None 이다 (#787)"""
+    prev = previous_take(req)
+    # 기준 100~200 에서 99.7 → 200.3: 거리 0.29999999999999716 · 0.30000000000001137
+    prev["take_result"]["areas"]["SPEED"]["take"]["cpm"] = 99.7
+    req["take_result"]["areas"]["SPEED"]["take"]["cpm"] = 200.3
+    prev["take_result"]["criteria"]["SPEED"] = _speed_criteria(100, 200)
+    req["take_result"]["criteria"]["SPEED"] = _speed_criteria(100, 200)
+    req["previous_takes"] = [prev]
+    assert by_key(run(req)[0])[("cpm", None)].improved is None
 
 
 def test_slide_duration_uses_each_slide_target(req):

@@ -21,7 +21,8 @@ REVIEW_SYSTEM_PROMPT = """너는 발표 연습 리뷰를 쓰는 코치다.
 - criteria_results: 발표자가 직접 정한 기준의 판정 (display 는 발표자의 표현)
 - comparison: 바로 앞 Take 와 같은 지표 비교. Take 전체 값(slide_number null)과
   위 후보가 가리키는 장만 있다. improved 가 true 면 좋아진 방향, false 면 나빠진 방향,
-  null 이면 같거나(둘 다 기준 범위 안 포함) 방향을 정할 수 없다.
+  null 이면 나아지지도 나빠지지도 않았거나(한 방향 지표는 같은 값, 범위 지표는
+  기준까지 거리가 같음 · 둘 다 범위 안) 방향을 정할 수 없다.
   script_mode 가 null 이 아니면 두 Take 의 대본 보기(발표 화면에 대본을 보여 준 방식
   HIGHLIGHT · KEYWORD · OFF)가 달랐다는 뜻이고, {previous, current} 가
   앞 Take · 이번 Take 의 방식이다

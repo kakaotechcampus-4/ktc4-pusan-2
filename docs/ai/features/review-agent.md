@@ -198,7 +198,7 @@ flowchart LR
                      "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.52}, "priority": 2, "reason": "3번 장 이번 Take 0.62, 이전 Take 0.70"}],
   "recurring_issues": [{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}],
   "fallback_reason": null,
-  "meta": {"schema_version": "1.0", "feature_version": "review-1.3", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.3+<config 해시>"}, "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.1", "feature_version": "review-1.4", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.4+<config 해시>"}, "model": "<응답한 모델>"}
 }
 ```
 **경계 — LLM 실패** (200, 문장은 기본 문장, 다음 미션은 후보 상위, 숫자 · 상태 · 점수는 같다)
@@ -207,7 +207,7 @@ flowchart LR
  "strengths": [{"area": "CONTENT", "slide_number": null, "text": "핵심 내용을 빠짐없이 전달했습니다", "evidence": {"content_coverage": 0.92}}],
  "...": "...",
  "fallback_reason": "LLM_TIMEOUT",
- "meta": {"schema_version": "1.0", "feature_version": "review-1.3", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.3+<config 해시>"}, "model": null}}
+ "meta": {"schema_version": "1.1", "feature_version": "review-1.4", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.4+<config 해시>"}, "model": null}}
 ```
 
 # 6. 처리 — 안에서 어떻게 도는가
@@ -267,7 +267,7 @@ flowchart LR
 |---|---|---|---|
 | `feature_version` | `review-<버전>` (첫 판 `review-1.0`) | 서비스 `features/review/version.py` | 규칙 · 프롬프트 · 출력의 뜻이 바뀔 때 |
 | `criteria_versions.review` | `review-<버전>+<config 해시 12자리>` | 응답 `meta` | 부담 기준 · 허용치 · 점수 같은 `config.py` 값을 바꾸면 해시가 바뀐다 |
-| `schema_version` | `1.0` | 응답 `meta` | 필드 이름 변경 · 삭제 · 뜻 변경 |
+| `schema_version` | `1.1` | 응답 `meta` | 필드 이름 변경 · 삭제 · 뜻 변경 |
 
 # 10. 실행 · 테스트
 준비 (Python 3.12, `ai/research/review-agent`에서. `.venv`는 git에 없어 처음 한 번 만든다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
@@ -394,6 +394,6 @@ sequenceDiagram
 | 실패 | LLM 실패는 200 기본 결과 + `fallback_reason`(`LLM_*`만). 입력 오류(422)는 다시 부르지 않고, 연결 실패 · 시간 초과 · 408 · 429 · 5xx는 BE가 1번 다시(공식 리뷰만. 대화의 다시 평가는 다시 부르지 않는다, 8). 끝내 실패하면 Take `COMPLETED`(리뷰 없음) + `/coach/plan`은 `previous_review` null | 7절 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번(대화의 다시 평가는 재시도 0회, 8) | 8절 |
 | 대화의 다시 평가 | 같은 `/takes/review`를 A(기존 요청) · B(`user_criteria.script_used` 또는 `targets`만 바꿈)로 동시에 부른다. 이 흐름 · 저장 규칙은 공식 리뷰에만 적용한다. 대화의 다시 평가 응답은 대화 저장소에만 두고 `take_ai_results` · `missions` · `take_summaries` · Take 상태를 바꾸지 않으며 코칭 계획도 부르지 않는다. | 3 · 5-1 · 5-2 · 7 · 8 · 12-2 |
-| 버전 | `review-1.3` · `criteria_versions.review` `review-1.3+<config 해시>` · `schema_version` `1.0` | 9절 |
+| 버전 | `review-1.4` · `criteria_versions.review` `review-1.4+<config 해시>` · `schema_version` `1.1` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
 | 저장 | 저장 요구: 12-1 · 12-2(리뷰 결과, 미션 결과 갱신 · 다음 미션 추가, 같은 리뷰는 한 벌, 발표의 `ACTIVE` 미션을 찾을 수 있음, Take에 실은 미션 목록 고정). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `reason` · `observed`, UQ(`source_take_id`, `priority`), `source_take_id` 인덱스), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |
