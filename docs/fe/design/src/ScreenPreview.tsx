@@ -8,7 +8,6 @@ import { useState, type MouseEvent } from 'react';
 import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
 import { CreateConceptScreen } from './screens/CreateConceptScreen';
-import { CreateScreen } from './screens/CreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
 import { PrepareLayoutDraft } from './screens/PrepareLayoutDraft';
 import { StageScreen } from './screens/StageScreen';
@@ -25,6 +24,7 @@ import {
   UnsupportedScreen,
 } from './screens/InfoScreens';
 import { LoginScreen, WelcomeScreen } from './screens/OnboardingScreens';
+import { PolicyScreen } from './screens/PolicyScreens';
 import {
   ColorsFoundation,
   ResponsiveFoundation,
@@ -57,9 +57,9 @@ const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
 
 /** 제품 경로를 설계서 화면으로 바꾼다. 알 수 없는 경로는 제품으로 열지 않는다 */
 function targetFor(path: string): string | null {
-  if (path === '/') return 'home';
+  if (path === '/' || path === '/pitches') return 'home';
   if (path === '/pitch/new' || /^\/pitch\/[^/]+\/edit$/.test(path)) return 'pitch-create';
-  if (/^\/pitch\/[^/]+\/device-check$/.test(path)) return 'prepare-mission';
+  if (/^\/pitch\/[^/]+\/(device-check|prepare)$/.test(path)) return 'prepare-mission';
   if (/^\/pitch\/[^/]+\/comparison$/.test(path)) return 'comparison';
   if (/^\/takes\/[^/]+\/(rehearsal|exam)$/.test(path)) return 'stage';
   if (/^\/takes\/[^/]+\/processing$/.test(path)) return 'processing-loading';
@@ -68,6 +68,8 @@ function targetFor(path: string): string | null {
   if (/^\/takes\/[^/]+$/.test(path)) return 'report';
   if (path === '/takes') return 'takes';
   if (path === '/about') return 'about';
+  if (path === '/terms') return 'terms';
+  if (path === '/privacy') return 'privacy';
   if (path === '/unsupported') return 'unsupported';
   if (path === '/me') return 'me';
   if (path === '/welcome') return 'welcome';
@@ -183,9 +185,15 @@ function CurrentScreen({
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create-a':
-      return <CreateConceptScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'pitch-create':
-      return <CreateScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
+      // 옛 preview 상태 주소는 슬라이드 확인 창으로 연다
+      return (
+        <CreateConceptScreen
+          stateId={stateId === 'preview' ? 'upload-review' : stateId}
+          onNavigate={onNavigate}
+          inline={inline}
+        />
+      );
     case 'prepare-mission':
       return <PrepareScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'prepare-layout-review':
@@ -214,13 +222,19 @@ function CurrentScreen({
       return <WelcomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'login':
       return <LoginScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'terms':
+      return <PolicyScreen kind="terms" />;
+    case 'privacy':
+      return <PolicyScreen kind="privacy" />;
     case 'stage-blocked':
       return <StageBlockedScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'me':
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'slide-preview':
-      // 피치 생성 샘플 안의 그 창을 그대로 보인다
-      return <CreateScreen stateId="preview" onNavigate={onNavigate} inline={inline} />;
+      // 피치 생성 샘플 안의 슬라이드 확인 창을 그대로 보인다
+      return (
+        <CreateConceptScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />
+      );
     default:
       if (componentEntries.some((entry) => entry.id === screenId))
         return <ComponentDoc id={screenId} stateId={stateId} />;
