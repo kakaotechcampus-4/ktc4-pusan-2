@@ -396,14 +396,15 @@ def _on_abandon(
 
 async def _end_abandoned(
     take_id: uuid.UUID, store: TranscriptStore, closed_at: datetime, end_reason: LeftReason
-) -> None:
+) -> bool:
+    """떠난 Take 를 끝낸다. 적었으면 True."""
     # attach() 와 같은 락이다. 지금 다시 붙는 연결이 있으면 그쪽이 먼저 스트림을 열고, 끝내는 동안
     # 붙으려는 연결은 기다렸다가 TakeEnded 를 받는다
     async with state.attach_lock(take_id):
         stream = state.streams.get(take_id)
         if take_id in state.ended or (stream is not None and not stream.is_finished):
             # 그 사이 끝났거나 (사용자 stop · 자동 종료 · Take PUT) 누가 다시 붙었다
-            return
+            return False
         record = state.takes.get(take_id)
         utterance_ends = finish.utterance_ends_of(take_id)
         try:
@@ -414,11 +415,11 @@ async def _end_abandoned(
         except Exception:
             # 못 적으면 다음에 앱이 뜰 때 DB 를 보고 다시 건다
             logger.exception("떠난 Take 를 끝내지 못했다 take=%s", take_id)
-            return
+            return False
         if not marked:
             # 그 사이 Take 가 지워졌거나 이미 끝나 있었다
             logger.info("떠난 Take 를 적지 않았다 (Take 가 없거나 이미 끝남) take=%s", take_id)
-            return
+            return False
         state.ended[take_id] = end_reason
         if record is not None:
             # 떠난 Take 는 결과를 만들지 않는다. 끝내기 PUT 으로 되살아나면 replay 로 만든다 — 그때
@@ -431,6 +432,21 @@ async def _end_abandoned(
             end_reason,
             closed_at.isoformat(),
         )
+        return True
+
+
+async def end_stuck(take_id: uuid.UUID, store: TranscriptStore, last_active_at: datetime) -> bool:
+    """관리자 콘솔이 연결 없이 진행 중으로 남은 Take 를 떠난 것(`ABANDONED`)으로 끝낸다.
+
+    떠난 Take 타이머가 만료됐을 때와 같은 일을 한다. 첫 연결이 저장 번호를 읽지 못했거나 떠난
+    Take 를 적다 DB 오류가 나 타이머 없이 남은 Take 의 보조 수단이다. 끝난 시각은 마지막 활동
+    시각이다. 적었으면 True 이고 남은 타이머도 끈다. 스트림이 아직 돌거나(연결이 붙어 있거나 막
+    끊김) 그 사이 끝났거나 DB 에 적지 못했으면 False 이고 타이머는 그대로 둔다.
+    """
+    ended = await _end_abandoned(take_id, store, last_active_at, "ABANDONED")
+    if ended:
+        abandon.cancel(take_id)
+    return ended
 
 
 async def arm_abandoned_takes(store: TranscriptStore) -> None:
