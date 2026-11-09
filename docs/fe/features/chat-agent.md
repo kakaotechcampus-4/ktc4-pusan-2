@@ -52,6 +52,7 @@
 | 무엇 | 위치 | 이유 |
 |---|---|---|
 | 열림 · 대화 ID · 진행 중 실행 · 보내는 중인 말 · 받은 메시지 | Zustand `chatStore.ts` | 화면을 옮겨도 대화가 이어져야 해서 라우트 밖에 둡니다 |
+| 대화 ID · 범위 · 실행 ID · 보내는 중인 요청 | sessionStorage (사용자별 키, `chatStore.ts`) | 새로고침해도 이어 가기(복원) 위해서입니다. 탭을 닫으면 사라집니다 |
 | 사용 가능 여부 | TanStack Query (`chatAvailability.ts`) | 서버 값. 복귀 · 새 세션 때 다시 묻습니다 |
 | 화면 상태(입력 중인 값) | `shared/lib/chatScreen.ts` 에 화면이 등록 | 피치 · 장치 점검 화면이 기능 경계를 넘지 않고 값을 내놓게 합니다(FE 구조 문서 4-1) |
 | 기억 첫 안내를 봤는지 | localStorage (사용자별) | BE 응답에 칸이 없어서 브라우저에 둡니다(10절) |
@@ -84,7 +85,7 @@
 | 경로 | 쓰는 곳 |
 |---|---|
 | `GET /availability` | 버튼을 띄울지. `{enabled: false}` 또는 `AGENT_DISABLED`면 숨깁니다 |
-| `POST /messages` | 질문 보내기(새 대화 포함). 응답으로 실행 ID를 받습니다 |
+| `POST /conversations` · `POST /messages` | 대화 만들기 · 질문 보내기. 보내면 실행 ID를 받습니다 |
 | `GET /conversations` · `PATCH /conversations/{id}/scope` | 대화 목록(커서로 이어 읽기) · 범위 바꾸기 |
 | `GET /conversations/{id}/messages` · `GET /conversations/{id}/run` | 메시지 목록 · 그 대화의 진행 중 실행(복원) |
 | `GET /runs/{id}` · `POST /runs/{id}/cancel` | 실행 상태 조회 · 취소 |
@@ -98,16 +99,19 @@
 
 ```
 [보내기]  POST /messages ──▶ 실행 ID
-              │  접수를 15초 안에 확인하지 못하면 "다시 확인"(같은 키로 다시 보냄)
+              │  접수를 15초 안에 확인하지 못하면 "다시 보내기" · "다시 확인" 버튼 — 자동으로 다시 보내지 않고,
+              │  사용자가 누르면 같은 멱등 키로 보냅니다(두 번 접수되지 않음)
               ▼
-[조회]    GET /runs/{id}  — RUNNING 이면 1초, 그 밖은 2초마다
-              │  답 문장(claim)이 오면 글자 효과 큐에 넣어 그립니다
+[조회]    GET /runs/{id}?after_seq=…  — RUNNING 이면 1초, 그 밖은 2초마다
+              │  응답의 events(진행 줄 · 답 문장)를 커서(next_after_seq) 뒤로만 받아 이어 붙입니다
+              │  답 문장(claim)은 글자 효과 큐에 넣어 그립니다
               │  WAITING_APPROVAL 이면 확인 카드 → [승인] · [거절]
               ▼
 [종결]    메시지 목록을 다시 읽어 저장된 답으로 바꿉니다
               │  상태별 안내를 붙입니다(7절)
               ▼
-[복원]    새로고침 · 화면 이동 뒤에는 대화 ID로 진행 중 실행을 다시 찾고, 있으면 조회를 이어 갑니다
+[복원]    새로고침하면 sessionStorage 의 대화 ID로 진행 중 실행(GET /conversations/{id}/run)을 다시 찾고,
+          있으면 조회를 이어 갑니다. 화면 이동은 스토어가 그대로라 끊기지 않습니다
 ```
 
 - 보내는 동안 · 실행 중에는 입력칸과 답 아래 버튼을 잠그고, 잠긴 이유를 화면 낭독기가 읽습니다.
