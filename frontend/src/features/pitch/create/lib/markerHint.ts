@@ -1,9 +1,4 @@
-import {
-  markerNumber,
-  splitLines,
-  type MarkerScan,
-  type NearMarker,
-} from './slideMarkers';
+import { markerNumber, splitLines, type MarkerScan, type NearMarker } from './slideMarkers';
 import { MAX_SCRIPT_CHARS } from './draft';
 
 /**
