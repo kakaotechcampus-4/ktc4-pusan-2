@@ -6,7 +6,7 @@
 - 답 쓰기 실패의 대신 문장: 질문 대상의 근거로만 그린다(읽은 근거 전체를 나열하지 않는다).
 - 대신 문장의 '없음' 근거: 질문이 물은 종류 · Take · 장에 맞는 것만 그린다(다른 Take 의 리뷰 없음을 그리지 않는다).
 - 코드 대신 답의 끝난 까닭: 반복으로 멈춘 조사면 ANSWERED 가 아니라 REPEAT 다.
-- '같은 조건으로 다시 평가' 되살리기: 부정 · 인용 · 새 대상 · 조건이면 하지 않는다(확실하지 않으면 모델이 고른다).
+- '같은 조건으로 다시 평가' 되살리기: 부정 · 인용 · 새 대상 · 조건이거나 요청형이 아니면(할 수 있는지 묻는 말) 하지 않는다(확실하지 않으면 모델이 고른다).
 - 허용 근거: 행동 동사 자체에 붙은 조건("목표 저장하면 알려줘")은 저장 요청이 아니다.
 - 변화 주장: 부정한 주장("좋아지지 않았어")은 말한 방향의 여집합으로 판정한다.
 """
@@ -391,6 +391,47 @@ def test_same_condition_reassess_is_not_restored_when_unsure(first: str, now: st
 @pytest.mark.parametrize("now", [_AGAIN, "같은 조건으로 Take 5 한 번 더 다시 평가해 줘"])
 def test_same_condition_reassess_still_restored_for_the_plain_repeat(now: str) -> None:
     """조건 · 대상을 새로 말하지 않은 되풀이 요청(앞 말과 같은 Take 를 집은 말 포함)은 그대로 되살린다."""
+    llm = F.FakeLlm([F.plan(assessments=[])], answers=[F.answer([])])
+    _, _, data = F.run_turn(_twice(_FIRST, now), llm)
+    assert data is not None
+    assert [(a["type"], a["args"]) for a in data["actions"]] == [
+        ("REASSESS", {"take_id": "t-5", "change": {"script_used": True}})
+    ]
+
+
+@pytest.mark.prefetch
+@pytest.mark.parametrize(
+    "now",
+    [
+        "같은 조건으로 다시 평가할 수 있어?",
+        "같은 조건으로 다시 평가돼?",
+        "같은 조건으로 다시 평가해 줄 수 있나요?",
+        "같은 조건으로 다시 평가해 줘도 돼?",
+        "같은 조건으로 다시 평가하나요?",
+    ],
+)
+def test_same_condition_capability_question_is_left_to_the_model(now: str) -> None:
+    """할 수 있는지 묻는 말은 요청형(해 줘 · 해 주세요 · 하자 · 부탁)으로 끝나지 않으므로 코드가 앞 조건으로 다시 평가를
+    되살리지 않고 모델이 고른다(되살리기는 명시한 요청일 때만)."""
+    llm = F.FakeLlm([F.plan(assessments=[]), F.done(), F.done()], answers=[F.answer([])])
+    _, _, data = F.run_turn(_twice(_FIRST, now), llm)
+    assert data is not None
+    assert all(a["type"] != "REASSESS" for a in data.get("actions") or [])
+    assert not any(t["tool"] == "reassess" for t in data["trace"])
+    assert [c.purpose for c in llm.calls].count("RESEARCH") >= 2  # 계획 뒤 모델이 고른다
+
+
+@pytest.mark.prefetch
+@pytest.mark.parametrize(
+    "now",
+    [
+        "같은 조건으로 다시 평가해주세요",
+        "같은 조건으로 다시 평가하자",
+        "같은 조건으로 재평가 부탁해",
+        "같은 조건으로 다시 평가해 줄래?",
+    ],
+)
+def test_same_condition_explicit_request_forms_are_restored(now: str) -> None:
     llm = F.FakeLlm([F.plan(assessments=[])], answers=[F.answer([])])
     _, _, data = F.run_turn(_twice(_FIRST, now), llm)
     assert data is not None

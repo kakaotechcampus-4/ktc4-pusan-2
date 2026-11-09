@@ -101,6 +101,19 @@ TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
 _NEW_TARGET_RE = re.compile(r"\d|take|테이크", re.IGNORECASE)
 #: 번호로 집은 Take("Take 5"). 앞 말의 Take 와 같은지는 따로 본다
 _TAKE_MENTION_RE = re.compile(r"(?:take|테이크)\s*\d+", re.IGNORECASE)
+#: '같은 조건으로 다시 평가' 되살리기에 필요한 요청형(명령 · 권유 · 부탁). 다시 평가 낱말 뒤 절 끝 낱말에 있어야 한다.
+#: 할 수 있는지 묻는 말("다시 평가할 수 있어?" · "다시 평가돼?" · "다시 평가해 줄 수 있나요?")은 요청형이 아니라 모델이 고른다
+_REASSESS_REQUEST_FORMS = ("줘", "주세요", "주십시오", "줄래", "하자", "합시다", "부탁")
+
+
+def _reassess_requested(sentence: str, words: tuple[str, ...]) -> bool:
+    """다시 평가 낱말(`words`)이 든 절이 그 낱말 뒤에서 요청형으로 끝나는가("같은 조건으로 다시 평가해 줘" · "재평가 부탁해").
+    요청형은 명령 · 권유라 절 끝 낱말에 있어야 한다: "다시 평가해 줘도 돼?"처럼 요청형 뒤에 묻는 말이 오면 요청이 아니다."""
+    at = [i + len(w) for w in words if (i := sentence.find(w)) >= 0]
+    if not at:
+        return False
+    tail = re.findall(r"[가-힣]+", sentence[min(at) :])[-1:]
+    return bool(tail) and any(f in tail[0] for f in _REASSESS_REQUEST_FORMS)
 
 
 def _greeting_only(msg: str, cfg: Any) -> bool:
@@ -1335,15 +1348,15 @@ class Loop:
 
     def _same_condition_unsure(self, msg: str) -> bool:
         """이번 말로 앞 조건을 되살려도 되는지 확실하지 않은가: 다시 평가 낱말이 든 절이 부정 · 인용이거나("같은 조건으로 다시
-        평가하지 마"), 같은 조건 말(`same_condition_words`) 밖에서 새 대상 · 조건 — 숫자(Take · 장 번호 · 기준 값) · Take 지칭 ·
-        조건 낱말 — 을 말했다. 그러면 코드가 되살리지 않고 모델이 고른다. "Take 5"처럼 번호로 집은 Take 는 여기서 빼고 앞 말의 Take
-        와 같은지를 따로 본다(`_same_condition_reassess_calls`)."""
+        평가하지 마"), 요청형(`_REASSESS_REQUEST_FORMS`: 해 줘 · 해 주세요 · 하자 · 부탁)으로 끝나지 않거나(할 수 있는지 묻는 말
+        "다시 평가할 수 있어?" · "다시 평가돼?"), 같은 조건 말(`same_condition_words`) 밖에서 새 대상 · 조건 — 숫자(Take · 장 번호 ·
+        기준 값) · Take 지칭 · 조건 낱말 — 을 말했다. 그러면 코드가 되살리지 않고 모델이 고른다. "Take 5"처럼 번호로 집은 Take 는
+        여기서 빼고 앞 말의 Take 와 같은지를 따로 본다(`_same_condition_reassess_calls`)."""
         cfg = self.cfg
-        if any(
-            act.negated_or_quoted(s, cfg)
-            for s in act.sentences(msg)
-            if any(w in s for w in cfg.reassess_request_words)
-        ):
+        asks = [s for s in act.sentences(msg) if any(w in s for w in cfg.reassess_request_words)]
+        if any(act.negated_or_quoted(s, cfg) for s in asks):
+            return True
+        if not any(_reassess_requested(s, cfg.reassess_request_words) for s in asks):
             return True
         rest = msg
         for w in sorted(cfg.same_condition_words, key=len, reverse=True):
