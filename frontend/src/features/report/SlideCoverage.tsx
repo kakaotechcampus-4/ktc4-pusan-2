@@ -19,6 +19,7 @@ import {
   mixMerged,
   reasonText,
   sentenceStatusLabel,
+  slideNotes,
   splitMarks,
 } from './contentFormat';
 
@@ -68,10 +69,20 @@ function LoadError({ error, retry }: { error: unknown; retry: () => unknown }) {
 
 function SlideBody({ detail }: { detail: SlideCoverageDetail }) {
   if (detail.state !== 'SCORED') return <FailedSlide detail={detail} />;
+  // 음성 인식이 끊겼거나 문장 단위로 평가한 장은 결과가 잠정입니다 — 이유를 맨 위에 둡니다 (#1157 리뷰)
+  const notes = slideNotes(
+    detail.detail?.reason_codes ?? [],
+    detail.detail?.rubric_quality ?? null,
+  );
   return (
     <div className="flex flex-col gap-5">
-      {detail.detail?.rubric_quality === 'sentence_fallback' && (
-        <Note>{reasonText('SENTENCE_FALLBACK')}</Note>
+      {notes.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <Badge tone="muted">잠정</Badge>
+          {notes.map((note) => (
+            <Note key={note}>{note}</Note>
+          ))}
+        </div>
       )}
       <Sentences sentences={detail.sentences} />
       <SpokenSentences detail={detail} />

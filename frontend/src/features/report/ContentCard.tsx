@@ -28,6 +28,7 @@ import {
   reasonTexts,
   scopeLine,
   signed,
+  slideNotes,
   zeroText,
 } from './contentFormat';
 
@@ -404,10 +405,17 @@ export function SlideRowBody({ slide }: { slide: SlideSummary }) {
 
 function ScoredRow({ slide }: { slide: SlideSummary }) {
   const delivery = slide.delivery?.value ?? null;
+  const deliveryReason = delivery === null ? metricReason(slide.delivery) : null;
+  // 채점은 됐지만 음성 인식이 끊겼거나 문장 단위로 평가한 장의 한계 (#1157 리뷰). 위에 보인 이유는 다시 쓰지 않습니다
+  const notes = slideNotes(
+    slide.reason_codes,
+    slide.rubric_quality,
+    deliveryReason === null ? [] : [deliveryReason],
+  );
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      {delivery === null ? (
-        <span className="text-ink/80">{metricReason(slide.delivery)}</span>
+      {deliveryReason !== null ? (
+        <span className="text-ink/80">{deliveryReason}</span>
       ) : (
         <span>
           전달 <span className="tabular-nums font-bold">{percentText(delivery)}</span>
@@ -424,7 +432,10 @@ function ScoredRow({ slide }: { slide: SlideSummary }) {
           놓친 중요 내용 <span className="tabular-nums font-bold">{slide.critical_gap_count}</span>
         </span>
       )}
-      {slide.rubric_quality === 'sentence_fallback' && <Badge tone="muted">참고용</Badge>}
+      {notes.length > 0 && <Badge tone="muted">잠정</Badge>}
+      {notes.length > 0 && (
+        <span className="basis-full text-xs text-ink/80">{notes.join(' · ')}</span>
+      )}
     </span>
   );
 }

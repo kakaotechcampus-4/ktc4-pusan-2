@@ -308,12 +308,17 @@ const zeroSummary: CoverageSummary = {
       'STT_UNVERIFIED',
     ]),
     zeroSlide(2, 'all_missing', { covered: 0, partial: 0, missing: 1, contradicted: 0 }),
-    zeroSlide(3, 'missing_or_contradicted', {
-      covered: 0,
-      partial: 0,
-      missing: 0.5,
-      contradicted: 0.5,
-    }),
+    // 채점은 됐지만 음성 인식이 끊겨 잠정인 장 (#1157 리뷰)
+    {
+      ...zeroSlide(
+        3,
+        'missing_or_contradicted',
+        { covered: 0, partial: 0, missing: 0.5, contradicted: 0.5 },
+        ['STT_INCOMPLETE'],
+      ),
+      stt_integrity: 'incomplete',
+      delivery: metric(0, 'provisional', ['STT_INCOMPLETE'], 2, 0),
+    },
     {
       ...zeroSlide(4, null, null, ['NO_KEY_POINTS']),
       delivery: metric(null, 'not_applicable', ['NO_KEY_POINTS'], 0, 0),
@@ -613,7 +618,21 @@ const slideFailedFixture = (slide_number: number, code: string) => ({
 function slideOf(summary: CoverageSummary, slideNumber: number) {
   const slide = summary.slides.find((s) => s.slide_number === slideNumber);
   if (!slide) return null;
-  if (slide.state === 'scored') return { ...slideScoredFixture, slide_number: slideNumber };
+  if (slide.state === 'scored') {
+    // 장 요약의 이유 · 평가 방식을 상세에도 맞춥니다 — 잠정인 장은 상세도 잠정입니다
+    const detail = slideScoredFixture.detail!;
+    return {
+      ...slideScoredFixture,
+      slide_number: slideNumber,
+      detail: {
+        ...detail,
+        state: slide.reason_codes.length > 0 ? ('provisional' as const) : detail.state,
+        reason_codes: slide.reason_codes,
+        stt_integrity: slide.stt_integrity,
+        rubric_quality: slide.rubric_quality ?? detail.rubric_quality,
+      },
+    };
+  }
   if (slide.state === 'estimated') {
     const fallback = slideEstimatedFixture.failure!.fallback!;
     return {

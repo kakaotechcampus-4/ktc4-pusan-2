@@ -116,6 +116,24 @@ describe('장별 펼침 — BE(#1156) 빈 값', () => {
 });
 
 describe('장별 펼침', () => {
+  it('음성 인식이 끊겨 잠정인 장은 펼친 맨 위에 잠정 배지와 이유를 보입니다 (#1157 리뷰)', async () => {
+    await render('t-content-zero');
+    await open(3);
+    await until(() => host.textContent?.includes('대본 문장') ?? false);
+    const panel =
+      document.getElementById(rowButton(3).getAttribute('aria-controls')!)?.textContent ?? '';
+    expect(panel.startsWith('잠정음성 인식이 끊긴 구간이 있어요. 녹음된 부분만 봤어요')).toBe(true);
+  });
+
+  it('잠정 이유가 없는 장에는 잠정 표시가 없습니다', async () => {
+    await render('t3');
+    await open(3);
+    await until(() => host.textContent?.includes('대본 문장') ?? false);
+    const panel =
+      document.getElementById(rowButton(3).getAttribute('aria-controls')!)?.textContent ?? '';
+    expect(panel).not.toContain('잠정');
+  });
+
   it('채점된 장 — 대본 문장 · 말한 문장의 대본 밖 구간 · 핵심 내용 · 수치', async () => {
     await render('t3');
     await open(3);

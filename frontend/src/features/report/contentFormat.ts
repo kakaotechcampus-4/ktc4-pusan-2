@@ -363,3 +363,26 @@ export function splitMarks(sentence: string, spans: readonly OffscriptSpan[]): M
   if (at < chars.length) pieces.push({ text: chars.slice(at).join(''), span: null });
   return pieces;
 }
+
+/** 장 안내에서 뺄 코드 — 범위(`SLIDES_EXCLUDED`)는 Take 쪽에, 세부 구분 안내는 말의 구성 쪽에 이미 있습니다 */
+const SLIDE_NOTE_SKIP: readonly string[] = [
+  'SLIDES_EXCLUDED',
+  'NOT_VALIDATED',
+  'OFFSCRIPT_DISABLED',
+];
+
+/**
+ * 채점된 장 하나의 평가 한계 안내 (#1157 리뷰). `STT_INCOMPLETE` · `STT_UNVERIFIED` · `SENTENCE_FALLBACK` 처럼
+ * 장을 잠정으로 만드는 이유를 장 문구로 모읍니다. 같은 문구는 한 번만, `shown` 에 이미 보인 문구는 뺍니다
+ */
+export function slideNotes(
+  codes: readonly string[],
+  rubricQuality: string | null,
+  shown: readonly string[] = [],
+): string[] {
+  const all =
+    rubricQuality === 'sentence_fallback' && !codes.includes('SENTENCE_FALLBACK')
+      ? [...codes, 'SENTENCE_FALLBACK']
+      : codes;
+  return reasonTexts(all, SLIDE_NOTE_SKIP).filter((text) => !shown.includes(text));
+}

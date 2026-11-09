@@ -169,6 +169,19 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(text).toContain('6장음성 인식이 끊겨 이 장을 평가하지 못했어요');
   });
 
+  it('채점된 장의 잠정 이유를 줄마다 보이고, 이미 보인 이유는 되풀이하지 않습니다 (#1157 리뷰)', () => {
+    const text = openedText(status('t-content-zero'));
+    // 음성 인식이 끊긴 장 · 온전한지 모르는 장 · 문장 단위로 평가한 장
+    expect(text).toMatch(/3장.*잠정음성 인식이 끊긴 구간이 있어요\. 녹음된 부분만 봤어요/);
+    expect(text).toMatch(/1장.*잠정음성 인식이 온전했는지 확인할 수 없어요/);
+    expect(text).toMatch(/5장.*잠정이 장은 문장 단위로 평가했어요\(참고용\)/);
+    // 핵심 내용 없는 장은 전달률 자리에 이미 이유가 있어 한 번만
+    expect(text.split('이 장에는 확인할 핵심 내용이 없어요')).toHaveLength(2);
+    // 잠정 이유가 없는 장에는 배지가 없습니다
+    const row2 = text.split('▾2장')[1]!.split('▾')[0]!;
+    expect(row2).not.toContain('잠정');
+  });
+
   it('채점된 장 없이 간이 장만 있으면 숫자 대신 간이 단계', () => {
     const text = textOf(status('t-content-estimated'));
     expect(text).toContain('핵심 내용 전달률간이: 대부분 말함 1장간이');
