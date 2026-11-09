@@ -298,7 +298,7 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                     rows={2}
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
-                    placeholder="새미나이에게 메시지 보내기..."
+                    placeholder="새미나이에게 메시지 보내기…"
                     className="max-h-28 min-h-10 flex-1 resize-none p-2 text-sm"
                   />
                   <button
