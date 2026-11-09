@@ -278,6 +278,10 @@ it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한�
   );
   expect(link).toBeDefined();
   expect(link?.getAttribute('href')).toContain('/privacy?from=home');
+  const homeTerms = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '이용약관',
+  );
+  expect(homeTerms?.getAttribute('href')).toContain('/terms?from=home');
   await act(async () => link!.click());
   expect(host.textContent).toContain('검토용 초안 · 시행 전');
   expect(host.textContent).toContain('카메라 영상과 음성의 차이');
@@ -285,7 +289,8 @@ it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한�
     (item) => item.textContent?.trim() === '이용약관',
   );
   expect(terms).toBeDefined();
-  expect(terms?.getAttribute('href')).toContain('/terms?from=home');
+  // 정책 화면 안의 상호 링크는 홈 진입 파라미터 없이 이동한다.
+  expect(terms?.getAttribute('href')).toContain('/terms');
   await act(async () => terms!.click());
   expect(host.textContent).toContain('서비스의 목적');
 });
