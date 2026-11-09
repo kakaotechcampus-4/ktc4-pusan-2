@@ -172,3 +172,79 @@ def test_prefetch_reads_stop_at_the_tool_limit() -> None:
     assert seen == [(True, "t-5", 3), (True, "t-5", 1), (False, "LIMIT", None)]
     assert "62%" in fd.message.text  # type: ignore[union-attr]
     assert [c.purpose for c in llm.calls].count("RESEARCH") == 1  # 계획 뒤 모델 조사 호출 없음
+
+
+def _then_request(basis_takes: list[tuple[str, int]]) -> dict[str, Any]:
+    """옛 대화(앞 답이 Take 4 를 근거로 함)를 연 뒤 '그때 3장 어땠지?'(6-8 '그때(Take n) 기준')."""
+    req = F.request(user_message="그때 3장 어땠지?")
+    req["history"]["messages"] = [
+        {"role": "user", "text": "Take 4 3장 시선 어땠어?"},
+        {
+            "role": "assistant",
+            "text": "Take 4의 3장 청중 시선 비율은 31%예요.",
+            "basis": {
+                "pitches": [
+                    {
+                        "pitch_id": "p-1",
+                        "takes": [{"take_id": t, "take_number": n} for t, n in basis_takes],
+                    }
+                ]
+            },
+        },
+    ]
+    return req
+
+
+def _then_draft() -> dict[str, Any]:
+    return F.draft(
+        "그때 3장 어땠지",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        metric="audience_ratio",
+        slide_number=3,
+        polarity="NEUTRAL",
+    )
+
+
+def test_then_word_fills_the_take_from_the_last_answer_basis() -> None:
+    """'그때'처럼 앞 답을 가리키는 말: 초안에 Take 가 없으면 가장 최근 assistant 메시지 근거 표시의 Take 하나(Take 4)로 채워
+    기본 자료에 없는 그 Take 를 먼저 가져오고, 이어 부르면 그 Take 의 3장을 읽는다(지금 보던 Take 5 를 읽지 않는다)."""
+    req = _then_request([("t-4", 4)])
+    llm = F.FakeLlm([F.plan(assessments=[_then_draft()])])
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "NEEDS_ACTION"
+    assert [(a.type, a.args["take_id"]) for a in fd.actions] == [("FETCH_TAKE", "t-4")]
+
+    res = [
+        {
+            "action_id": fd.actions[0].action_id,
+            "type": "FETCH_TAKE",
+            "status": "SUCCEEDED",
+            "data": {"take": fetched_take("t-4")},
+            "error": None,
+        }
+    ]
+    llm2 = F.FakeLlm([F.done(), value_answer])
+    _, _, data2 = F.run_turn(resume_request(req, data, res), llm2)
+    fd2 = FinalData.model_validate(data2)
+    assert fd2.status == "DONE"
+    assert (
+        "get_take_report",
+        {"take_id": "t-4", "section": "slides", "slide_number": 3},
+    ) in tool_calls_in(llm2.calls[0])
+    assert "31%" in fd2.message.text  # type: ignore[union-attr]
+
+
+def test_then_word_with_two_takes_in_the_basis_does_not_guess() -> None:
+    """앞 답의 근거 표시가 Take 둘을 가리키면 어느 쪽인지 정하지 않는다: 초안을 채우지 않아 판정 대상 Take(지금 보던 Take 5)를 읽는다."""
+    req = F.with_loaded(_then_request([("t-4", 4), ("t-3", 3)]), "t-5")
+    llm = F.FakeLlm([F.plan(assessments=[_then_draft()]), F.done(), F.answer([])])
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert all(a.type != "FETCH_TAKE" for a in fd.actions)
+    assert (
+        "get_take_report",
+        {"take_id": "t-5", "section": "slides", "slide_number": 3},
+    ) in tool_calls_in(llm.calls[1])

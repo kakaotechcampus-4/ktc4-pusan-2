@@ -624,6 +624,7 @@ class Loop:
                 )
         if route == "OUT_OF_SCOPE":
             self.scope_reason = parsed.get("scope_reason")
+        drafts = self.fill_history_take(drafts)
         self.st.drafts = [d.model_dump(mode="json") for d in drafts]
         self.st.plan_drafts = [dict(d) for d in self.st.drafts]
         self.st.guide_queries = (
@@ -700,6 +701,59 @@ class Loop:
                 out.append(clm.AssessmentDraft.model_validate(r))
             except ValidationError:
                 continue
+        return out
+
+    def _history_take(self) -> str | None:
+        """'그때 · 아까'(설정 `history_deictic_words`)가 가리키는 Take(6-8 '그때(Take n) 기준').
+
+        가장 최근 assistant 메시지의 근거 표시(`basis`)가 지금 범위 피치의 Take 를 **하나만** 가리킬 때 그 Take id. 지시어가 없거나,
+        근거 표시가 없거나, Take 가 둘 이상 · 다른 피치 · 이 피치에 없으면 None(추측해 고르지 않는다).
+        """
+        msg = self.original or ""
+        if not any(w in msg for w in self.cfg.history_deictic_words):
+            return None
+        last = next((m for m in reversed(self.req.history.messages) if m.role == "assistant"), None)
+        if last is None or not isinstance(last.basis, dict):
+            return None
+        found: set[tuple[Any, str]] = set()
+        for p in last.basis.get("pitches") or []:
+            if not isinstance(p, dict):
+                continue
+            for t in p.get("takes") or []:
+                if isinstance(t, dict) and isinstance(t.get("take_id"), str):
+                    found.add((p.get("pitch_id"), t["take_id"]))
+        if len(found) != 1:
+            return None
+        pid, tid = next(iter(found))
+        if pid != self.ctx.scope_pitch_id or tid not in self.ctx.summaries:
+            return None
+        return tid
+
+    def fill_history_take(self, drafts: list[clm.AssessmentDraft]) -> list[clm.AssessmentDraft]:
+        """지시어로 앞 답의 Take 를 가리킨 말(6-8): Take 를 집지 않은 요청 · 측정 초안의 대상을 앞 답의 Take(`_history_take`)로 채운다.
+
+        그러면 조사 흐름(6-1 2번)이 그 Take 를 먼저 읽고, 기본 자료에 없으면 가져온다(`FETCH_TAKE`). 비교(`CHANGE` · `COMPARE`)
+        초안은 채우지 않는다("그때보다"는 그 Take 와 지금 Take 의 비교라 한 Take 로 채우면 뜻이 바뀐다). 범위를 바꾼 실행에서도
+        하지 않는다. 계획 단계와 판단 확정(답 단계 초안) 모두에 쓴다.
+        """
+        if self.st.scope_switched or self.ctx.scope_switched:
+            return drafts
+        tid = self._history_take()
+        if tid is None:
+            return drafts
+        n = self.ctx.summaries[tid].take_number
+        out: list[clm.AssessmentDraft] = []
+        for d in drafts:
+            sub = d.subject
+            if (
+                d.type in ("MEASURED", "REQUEST")
+                and not sub.take_numbers
+                and not sub.take_ids
+                and d.claim_op != "CHANGE"
+                and sub.relation != "COMPARE"
+            ):
+                d = d.model_copy(update={"subject": sub.model_copy(update={"take_numbers": [n]})})
+            out.append(d)
         return out
 
     def _plan_valid(self, plan: list[Any], *, allow_empty: bool) -> bool:

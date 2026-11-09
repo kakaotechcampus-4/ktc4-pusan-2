@@ -550,8 +550,10 @@ def _finalize(
     lp: Loop, req: TurnRequest, extra_prior: list[Assessment] | None = None
 ) -> clm.FinalizeResult | None:
     # 초안이 없어도 사용자 말이 있으면 확정한다: 측정 절을 덮는 판단이 없으면 '확인하지 못했어요' 문장을 만든다(L6-16)
+    # 답 단계가 바꾼 초안도 '그때 · 아까'의 Take 를 다시 채운다(6-8): 비우면 지금 보던 Take 로 판정된다
     drafts = [
-        _question_as_request(d, lp.original or "", lp.cfg) for d in lp._parse_drafts(lp.st.drafts)
+        _question_as_request(d, lp.original or "", lp.cfg)
+        for d in lp.fill_history_take(lp._parse_drafts(lp.st.drafts))
     ]
     if not lp.original:
         return None
