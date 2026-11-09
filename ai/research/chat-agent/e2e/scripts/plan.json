@@ -1,15 +1,72 @@
 {
   "user_message": "3장 시선 비율이 어땠어?",
   "expect": {
-    "plan_steps": ["기록 확인", "답 쓰기"],
-    "claim": "28%"
+    "plan_steps": [
+      "시선 기록 확인: Take 1 기록 → 3장 확인",
+      "기록 보기: Take 1 기록 → 문제 구간 있음",
+      "답 쓰기"
+    ],
+    "claim": "28%",
+    "plan_statuses": [
+      "DONE",
+      "DONE",
+      "DONE"
+    ]
   },
   "script": [
-    {"plan": {"steps": ["기록 확인", "답 쓰기"], "assessments": [{"draft": {"quote": "3장 시선 비율이 어땠어", "claim_op": "VALUE", "dimension": "audience_gaze", "metric": "audience_ratio", "slide_number": 3, "polarity": "NEUTRAL"}}]}},
-    {"tools": [["get_take_report", {"take_id": "$take_id", "section": "slides", "slide_number": 3}]]},
-    {"done": true}
+    {
+      "plan": {
+        "steps": [
+          {
+            "step": "3장 시선 기록 확인",
+            "status": "DOING",
+            "tool": "get_take_report"
+          },
+          {
+            "step": "답 쓰기",
+            "status": "TODO",
+            "tool": "answer"
+          }
+        ],
+        "assessments": [
+          {
+            "draft": {
+              "quote": "3장 시선 비율이 어땠어",
+              "claim_op": "VALUE",
+              "dimension": "audience_gaze",
+              "metric": "audience_ratio",
+              "slide_number": 3,
+              "polarity": "NEUTRAL"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tools": [
+        [
+          "get_take_report",
+          {
+            "take_id": "$take_id",
+            "section": "slides",
+            "slide_number": 3
+          }
+        ]
+      ]
+    },
+    {
+      "done": true
+    }
   ],
   "answers": [
-    {"claims": [{"kind": "RECORD", "text": "Take 1의 3장 청중 시선 비율은 28%예요.", "evidence_metric": "audience_ratio"}]}
+    {
+      "claims": [
+        {
+          "kind": "RECORD",
+          "text": "Take 1의 3장 청중 시선 비율은 28%예요.",
+          "evidence_metric": "audience_ratio"
+        }
+      ]
+    }
   ]
 }

@@ -30,8 +30,9 @@ for (const [no, name, title] of [
     const steps: string[] = s.expect.plan_steps;
     await expect(plan.locator('[data-plan-status]')).toHaveCount(steps.length);
     for (const [i, text] of steps.entries()) await expect(plan.locator('[data-plan-status]').nth(i)).toContainText(text);
-    // 끝난 답의 할 일은 모두 끝(DONE)이다
-    await expect(plan.locator('[data-plan-status="DONE"]')).toHaveCount(steps.length);
+    // 단계 상태 = 실제 실행: 실행한 단계는 끝(DONE), 실행하지 않은 단계는 건너뜀(SKIPPED) — 끝난 답이라 남은 일(TODO · DOING)은 없다
+    const statuses: string[] = s.expect.plan_statuses;
+    for (const [i, st] of statuses.entries()) await expect(plan.locator('[data-plan-status]').nth(i)).toHaveAttribute('data-plan-status', st);
 
     // ── BE API ──
     await expect.poll(async () => (await api.run(runId)).status).toBe('DONE');
@@ -42,6 +43,7 @@ for (const [no, name, title] of [
     expect(answer.claims.some((c: any) => String(c.text).includes(s.expect.claim))).toBe(true);
     // 계획 문구 확인 (BE 가 저장해 돌려주는 계획)
     expect(answer.plan.map((p: any) => p.step)).toEqual(steps);
+    expect(answer.plan.map((p: any) => p.status)).toEqual(statuses);
 
     // ── DB ──
     expect(sql(`select status from chat_runs where id='${runId}'`)).toBe('DONE');
@@ -49,5 +51,6 @@ for (const [no, name, title] of [
     expect(count(`select count(*) from chat_messages where conversation_id='${conversationId}' and role<>'user'`)).toBe(1);
     // 계획 문구 확인 (DB 에 남은 계획)
     expect(sql(`select string_agg(p->>'step', '|' order by ord) from chat_messages m, jsonb_array_elements(m.plan) with ordinality as e(p, ord) where m.run_id='${runId}'`)).toBe(steps.join('|'));
+    expect(sql(`select string_agg(p->>'status', '|' order by ord) from chat_messages m, jsonb_array_elements(m.plan) with ordinality as e(p, ord) where m.run_id='${runId}'`)).toBe(statuses.join('|'));
   });
 }
