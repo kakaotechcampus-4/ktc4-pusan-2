@@ -14,6 +14,7 @@
     .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --set all --corpus all            # 검수 전 초안까지 연 참고 실험
     .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --ids-file evals/splits-8.json --ids-key calibration  # 조율 문항만
     .\\.venv\\Scripts\\python.exe -m chat_agent_lab.evals --dir <저장소 밖 폴더> --set all      # 처음 보는 문항(묶음 개수 검사 없음)
+    .\\.venv\\Scripts\\python.exe -m chat_agent_lab.perf outputs/evals/<시각> [...]        # 실행 폴더의 단계별 시간 · 비용 표(perf.py)
 
 - 고를 것: `--set dev|holdout|safety|objectivity|agent_service|eval|all`(eval = 50 전체), `--ids`(id 로 고름), `--limit N`(앞에서 N개),
   `--repeat`(기본 3, pass^3), `--workers`(동시에 돌릴 실행 수, 기본 1), `--bundle`(OPENAI · OPENAI_SOL),
@@ -45,6 +46,7 @@
      `propose:<행동>:<자율>` · `final:<상태>` · `approve|preapprove|reject|expire|cancel:<행동>` · `exec:<행동>:OK|FAIL`)과 plan 기록 ·
      모델의 계획 고치기 수 · 결정 로그(제품이 `deps.log`로 남기는 `agent_decision` 줄, 없으면 빈 목록)다. 실행 기록(runs.jsonl)에는
      마지막 차례의 사건만 `trajectory`로 남겨 실패 원인을 가른다.
+     차례마다 `diag`(호출별 진단 시간표 `[kind, code, start_ms, ms]` + `end.reason`)도 남긴다. `perf.py`가 단계별 시간을 낸다(옛 기록엔 없다).
   5. 시나리오의 기억 fixtures(설정 켜짐 · 코칭 프로필 · '기억 없이' 대화)를 가짜 BE 에 그대로 넣고, 저장소 사진에 기억(설정 · 번호 ·
      프로필)을 넣어 `db_diff`로 저장 여부를 본다. 장애 `stream_cut`은 그 차례에서 문장 줄을 정한 수만큼 처음 받은 AI 호출을
      끝 줄 없이 끊는다(문장이 그보다 적은 호출은 그대로, 가짜 BE 는 받은 문장으로 PARTIAL, L2-45). 실제로 끊었는지는 차례 기록 `cut_applied`에 남긴다(#920 리뷰).
@@ -1567,6 +1569,8 @@ def run_one(
                 #: 최종 응답 진단 기록의 끝난 이유(11-5). 끝 줄이 없으면 None
                 "end_status": end.get("status"),
                 "end_reason": end.get("reason"),
+                #: 호출별 진단 시간표(11-5, `perf.py`가 읽는다). 코드 · 시각 · 수만 담는다
+                "diag": [_diag_timeline(c) for run in rec.runs for c in run.calls],
                 "error": rec.error,
                 "model_calls": sum(1 for c in calls if not c.synthetic),
                 "tool_calls": (last_final.get("usage") or {}).get("tool_calls"),
@@ -1634,6 +1638,19 @@ def _searched(runs: list[Run]) -> bool:
                 ):
                     return True
     return False
+
+
+def _diag_timeline(call: Any) -> dict[str, Any]:
+    """AI 호출 하나의 진단 단계를 `[kind, code, start_ms, ms]` 목록으로 줄인다(성능 분해용, 14-1 '비용 · 시간').
+    `TOOL` 단계만 캐시 적중률을 위해 `detail.outcome`(코드 enum)을 다섯째로 붙인다. 문장 · 인자 · 수치는 담지 않는다."""
+    diag = call.diagnostics or {}
+    steps = []
+    for st in diag.get("steps") or []:
+        row: list[Any] = [st.get("kind"), st.get("code"), st.get("start_ms"), st.get("ms")]
+        if st.get("kind") == "TOOL":
+            row.append((st.get("detail") or {}).get("outcome"))
+        steps.append(row)
+    return {"steps": steps, "end": (diag.get("end") or {}).get("reason")}
 
 
 def _token_sums(calls: list[CallRecord]) -> dict[str, Any]:

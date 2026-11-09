@@ -137,6 +137,8 @@ uv sync                                             # .venv 를 만들고 서비
 .\.venv\Scripts\python.exe -m chat_agent_lab.evals --set all --judge --followups --workers 4 --out outputs/evals/<이름>-main
 # 고정 순서 기준선(평가셋 50 × 3번, 13-3) — 약 10분
 .\.venv\Scripts\python.exe -m chat_agent_lab.evals --set eval --baseline --followups --workers 4 --out outputs/evals/<이름>-baseline
+# 실행 폴더의 단계별 시간 · 호출 수 · 토큰 · 캐시 적중률 표(모델 호출 없음)
+.\.venv\Scripts\python.exe -m chat_agent_lab.perf outputs/evals/<이름>-main [--out perf.md]
 ```
 
 ```bash
