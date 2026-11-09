@@ -9,10 +9,10 @@
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
 |---|---|---|---|
 | 대본 등록 · 수정 뒤 (`POST /scripts/rubric`, 백그라운드) | 장별 대본(모든 장), 다시 만들 장 번호(선택) | 장별 평가 기준 `rubrics`, 실패한 장 `failed` | BE가 장마다 저장했다가 채점 때 그대로 보낸다 |
-| Take 종료 뒤 (`POST /takes/analyze`, 백그라운드) | 장별 STT 텍스트, 장별 평가 기준, 다시 채점할 장 번호(선택) | 장별 채점 `evaluations`, Take 점수 `take_scores`, 확인할 항목 `confirmations`, `failed` | FE 확인 화면, 리뷰, 리포트 |
+| Take 종료 뒤 (`POST /takes/analyze`, 백그라운드) | 장별 STT 텍스트, 장별 평가 기준, 다시 채점할 장 번호(선택), 장별 STT 끊김 · 장 길이 · 대본 글(선택) | 장별 채점 `evaluations`, Take 점수 `take_scores`, 확인할 항목 `confirmations`, `failed`(실패 장 간이 값 포함), 결과 상세 `detail`(선택) | FE 확인 화면, 리뷰, 리포트 |
 | 사용자 확인 뒤 (`POST /takes/rescore`, LLM 없음) | 저장한 채점 전체, 평가 기준, 확인 답, 실패 장(선택) | 확인을 반영한 채점 (`/takes/analyze` 응답과 같은 모양) | 리뷰, 리포트 |
 
-- **하는 것**: 대본 장마다 문장 역할 · 핵심 주장 · 핵심 내용과 중요도 · 핵심 수치 · 전달 단위를 정한다. 발표 STT를 전달 단위마다 판정하고 코드가 문장 · 핵심 내용 판정으로 모은다. 핵심 수치는 값으로 비교한다(`42%`와 "사십이 퍼센트"를 같게 본다). STT가 발음이 비슷한 다른 말로 적은 곳은 판단을 보류하고 사용자에게 묻는다. 점수(내용 전달 · 수치 정확도 · 대본 충실도)를 코드가 계산한다.
+- **하는 것**: 대본 장마다 문장 역할 · 핵심 주장 · 핵심 내용과 중요도 · 핵심 수치 · 전달 단위를 정한다. 발표 STT를 전달 단위마다 판정하고 코드가 문장 · 핵심 내용 판정으로 모은다. 핵심 수치는 값으로 비교한다(`42%`와 "사십이 퍼센트"를 같게 본다). STT가 발음이 비슷한 다른 말로 적은 곳은 판단을 보류하고 사용자에게 묻는다. 점수(내용 전달 · 수치 정확도 · 대본 충실도)를 코드가 계산한다. 그 위에 리포트용 결과 상세(상쇄 없는 전달률 · 다르게 말한 몫 · 놓친 중요 내용 · 표현 방식 · 말의 구성 · 계산하지 못한 이유, 5-7)를 선택 필드로 낸다.
 - **하지 않는 것**:
   - 발표 중 내용 누락 지적. 내용 전달은 Take 뒤 이 채점만 맡는다(`architecture.md` 0-3). 그래서 1초 판정 모듈이 아니다.
   - 음성 인식과 장 경계 추정. Deepgram 결과를 BE가 장 변경 기록(`take_slide_events`)으로 나눈 장별 텍스트를 받는다(5-2).
@@ -58,6 +58,10 @@ STT가 숫자 · 이름을 비슷한 소리의 다른 말로 적으면(예: "노
 | 채점된 장의 비율 (`scored_ratio`) | 대상 장 중 채점에 성공한 장의 비율 | 10장 중 9장 → `0.9` |
 | `content_hash` | 정규화한 장 대본의 해시. 대본이 바뀌었는지 볼 때 쓴다 | `<대본 해시>` |
 | `rubric_id` | 평가 기준을 가리키는 해시(장 대본 · LLM 설정 · 형식 버전). 채점이 어느 기준으로 됐는지 남는다 | `<평가 기준 해시>` |
+| 핵심 내용 전달률 (`detail.delivery`) | 핵심 내용 중 전달한 몫(중요도 가중). 다르게 말한 것이 다른 내용을 상쇄하지 않는다. 리포트의 대표 숫자 | `0.5` |
+| 말의 구성 (`speech_mix`) | 발표에서 한 말을 대본 내용 · 다른 장 내용 · 진행 말 · 대본 밖 말로 나눈 형태소 몫. 점수를 깎지 않는다 | 대본 내용 75% · 진행 말 10% · 대본 밖 15% |
+| STT 완전성 (`stt_integrity`) | 그 장 구간에 음성 인식이 끊기지 않았는지. BE가 1초 기록으로 계산한 끊김 시간으로 정한다 | `complete` |
+| 간이 값 (`fallback`) | 채점이 실패한 장에 규칙만으로 낸 거친 값(대부분 말함 · 절반쯤 · 거의 못 말함) | `about_half` |
 
 # 3. 전체 흐름
 ```mermaid
@@ -154,8 +158,22 @@ ai/research/script-coverage-evaluation/     연구 (실험 도구 coverage_lab �
 | `slides` | list | 예 | 그 대본 버전의 장마다 `{slide_number, stt}`. `stt`는 확정 전사를 장 변경 기록(`take_slide_events`, `coach-agent.md` 12-1) 전체로 나눈 그 장의 텍스트다. 이벤트 전체를 `started_ms` 순서로 늘어놓으면 장 구간은 `[이 이벤트의 started_ms, 다음 이벤트의 started_ms)`이고 마지막 구간은 Take 끝까지다. 단어 하나는 `started_ms`가 그 단어의 `start_ms` 이하인 이벤트 중 가장 늦은 것의 장에 한 번만 넣는다(코치가 단어 몫을 말한 때의 장에 넣는 것과 같다, `architecture.md` 7절). 다시 온 장은 방문마다의 텍스트를 시각 순서로 이어 붙인다. 발표에서 넘어간 장은 `""`. 대본에 없는 장 번호의 발화는 싣지 않는다 | `[{"slide_number": 3, "stt": "지난 분기 매출은 ..."}]` |
 | `rubrics` | list | 예 | 대본 등록 때 받은 장별 평가 기준 그대로. 평가 기준이 없는 장(만들기가 실패한 장)은 빠질 수 있다 | `["<장별 평가 기준>"]` |
 | `slide_numbers` | list int · null | 아니오 | 채점할 장. null이면 `slides`의 장 전부 | `[5]` |
+| `slides[].duration_ms` | int ≥ 0 · null | 아니오 | 그 장 구간 길이의 합. 다시 온 장은 방문마다 더하고, 마지막 구간은 Take 결과의 `duration_ms`까지다. 한 번도 보이지 않은 장은 0 | `41000` |
+| `slides[].stt_gap_ms` | int ≥ 0 · null | 아니오 | 그 장 구간 중 1초 기록의 STT 상태가 `ok`가 아니던 시간 | `3000` |
+| `slides[].stt_unobserved_ms` | int ≥ 0 · null | 아니오 | 그 장 구간 중 1초 기록이 없던 시간 | `0` |
+| `slides[].script` | str · null | 아니오 | 그 Take의 대본 버전의 장 대본 글(`script_slides.full_content`). 평가 기준이 없는 장의 간이 값(5-7)에만 쓴다 | `"지난 분기 매출은 ..."` |
 
-- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0). 단, LLM 설정이 없으면 대상 유무와 관계없이 7절대로 503 `LLM_UNAVAILABLE`이다.
+- **STT 완전성** (`stt_integrity`): 장마다 위 세 시간 값으로 정한다. 셋 중 하나라도 없거나 null이면 `unknown`, 장 길이가 0이면 `complete`, 기록 없는 시간의 비율이 기준을 넘으면 `unknown`, STT가 `ok`가 아니던 시간이 기준 이상이면 `incomplete`, 그 밖은 `complete`다(기준값은 `config.py`). 값은 BE가 1초 기록으로 계산해 싣는다(12-1).
+
+  | `stt_integrity` | STT가 빈 장 (평가할 핵심 내용이 있을 때) | STT가 있는 장 |
+  |---|---|---|
+  | `complete` | 새 전달률 0, `zero_kind: slide_skipped` | 정상 |
+  | `incomplete` | 채점하지 않고 `failed`(`STT_INCOMPLETE`) | 정상 채점 + 장 상세 `provisional`(`STT_INCOMPLETE`) |
+  | `unknown` | 지금처럼 0, `slide_skipped` + `provisional`(`STT_UNVERIFIED`) | 정상 |
+
+  핵심 내용이 없는 장은 STT와 상관없이 새 전달률이 null(`not_applicable`, `NO_KEY_POINTS`)이다. 단 `incomplete` + 빈 STT면 `failed`(`STT_INCOMPLETE`)다.
+
+- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 본다. 대상 장 중 `script`가 있는 장이 하나라도 있으면 그 장들의 간이 값(5-7)을 붙여 200(`evaluations` 빈 목록, 7절)이고, 없으면 422 `RUBRIC_MISSING`이다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0). 단, LLM 설정이 없으면 대상 유무와 관계없이 7절대로 503 `LLM_UNAVAILABLE`이다.
 
 **`POST /takes/rescore`**
 
@@ -175,10 +193,10 @@ ai/research/script-coverage-evaluation/     연구 (실험 도구 coverage_lab �
 | 필드 | 뜻 |
 |---|---|
 | `rubrics[]` | 장별 평가 기준. `meta{rubric_id, script_name, slide_number, content_hash, rubric_schema_version, llm_model, ...설정 해시}` · `normalized_script` · `sentences[{index, text, ...}]` · `sentence_roles[]` · `core_claim` · `key_points[{id, content, importance, sentence_indices, key_terms, fact_ids, ...}]` · `critical_facts[{id, type, value, normalized, sentence_indices, ...}]` · `keywords[{term, score, tf}]` · `content_units[{id, sentence_index, text, quote, fact_ids, ...}]` · 검증 경고. 고른 장만 들어간다 |
-| `failed[]` | 실패한 장 `[{slide_number, error{code, message}}]` (`architecture.md` 4절) |
+| `failed[]` | 실패한 장 `[{slide_number, error{code, message}, fallback}]` (`architecture.md` 4절). 평가 기준 만들기에는 간이 값이 없어 `fallback`은 늘 null이다 |
 | `meta` | `{schema_version, feature_version: "script_coverage-<버전>", model}` (`architecture.md` 5절) |
 
-**`/takes/analyze` · `/takes/rescore` 응답**: `{take_id, evaluations, take_scores, confirmations, failed, meta}`
+**`/takes/analyze` · `/takes/rescore` 응답**: `{take_id, evaluations, take_scores, confirmations, failed, detail, meta}`
 
 | 필드 | 뜻 |
 |---|---|
@@ -186,13 +204,15 @@ ai/research/script-coverage-evaluation/     연구 (실험 도구 coverage_lab �
 | 장별 `scores` | `content_coverage`(핵심 내용의 중요도 가중 전달률) · `critical_fact_accuracy`(핵심 수치 정확도, 수치가 없거나 모두 보류면 null) · `script_fidelity`(대본 표현 일치) · `similar_words` · `similar_numbers`(판단을 보류한 단어 · 수치 개수) · `_weights{key_points, facts, script_tokens}`(Take 값을 다시 계산할 때 쓰는 가중치) |
 | `take_scores` | 채점된 장들의 점수로 낸 Take 값 `content_coverage` · `critical_fact_accuracy` · `script_fidelity`(가중 평균), `similar_words` · `similar_numbers`(합), `scored_ratio` |
 | `confirmations[]` | 아직 답을 받지 않은 확인 항목 전체 `[{slide_number, item_id, script_text, stt_text}]`. 받은 채점 전체로 다시 계산한다 |
-| `failed[]` | 실패한 장 `[{slide_number, error{code, message}}]` |
+| `failed[]` | 실패한 장 `[{slide_number, error{code, message}, fallback}]`. `fallback`은 실패 장의 간이 값(선택 필드, 5-7)이고 낼 수 없으면 null이다 |
+| `detail` | Take 상세(선택 필드, 5-7). `evaluations[]`에는 장 상세 `detail` · 대본 밖 구간 `offscript` · `stt_integrity`, 문장 판정에는 `expression_mode`가 함께 붙는다(모두 선택 필드) |
 | `meta` | `{schema_version, feature_version, criteria_versions: {"script_coverage": "script_coverage-<버전>+<config 해시>"}, model}`. `/takes/rescore`의 `model`은 null |
 
 **채점을 쓰는 쪽** (리뷰 · 평가 기준 분석이 쓰는 법은 `review-agent.md` · `evaluation-criteria.md`가 기준이다. 여기에는 대본 전달도가 보장하는 것만 적는다)
 - 핵심 내용 · 수치 판정 상태의 뜻은 5-4다(`sound_alike` · `unverified`는 판단 보류이지 틀림이 아니다).
 - `scored_ratio`는 대상 장 중 채점에 성공한 장의 비율이다(6-4). 일부 장만 채점된 점수를 전체 점수로 오해하지 않게 늘 함께 낸다.
-- Take 값(`content_coverage` · `critical_fact_accuracy` · `script_fidelity`)은 `take_scores`에 있다.
+- Take 값(`content_coverage` · `critical_fact_accuracy` · `script_fidelity`)은 `take_scores`에 있다. 결과 상세(5-7)를 더해도 이 값들의 계산 · 판정은 그대로다(예외: STT가 끊겨 빈 장은 `failed`(`STT_INCOMPLETE`)로 빠져 Take 값 · `scored_ratio`의 채점된 장에서 빠진다). `take_scores`에는 숫자와 null만 둔다.
+- 리포트의 대표 숫자는 결과 상세의 핵심 내용 전달률(`detail.delivery`, 상쇄 없음)이고, 리뷰가 근거로 쓰는 `content_coverage`(다르게 말한 것을 −0.5로 상쇄)와 값이 다를 수 있다.
 
 **번호와 id**: 문장 번호 · 근거 번호(`evidence`, 정규화한 STT 문장 `stt_sentences`의 번호)는 0부터다. 핵심 내용은 `KP1`, 핵심 수치는 `CF1`, 전달 단위는 `S<문장 번호>-U<순번>`, 비슷한 말은 `R1` 꼴이고 장마다 1부터 다시 센다. 문장 역할은 `sentence_roles`에 문장 순서대로 있다. 글자 위치(`span`)는 `[시작, 끝)` 코드 포인트이고 정규화 텍스트 기준이며, 원본 STT 기준은 `stt_raw_span` 하나다.
 
@@ -227,7 +247,7 @@ ai/research/script-coverage-evaluation/     연구 (실험 도구 coverage_lab �
     }
   ],
   "failed": [],
-  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.1", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.2", "model": "<응답한 모델>"}
 }
 ```
 
@@ -258,8 +278,8 @@ ai/research/script-coverage-evaluation/     연구 (실험 도구 coverage_lab �
   "take_scores": {"content_coverage": 1.0, "critical_fact_accuracy": null, "script_fidelity": 0.83, "similar_words": 0, "similar_numbers": 1, "scored_ratio": 1.0},
   "confirmations": [{"slide_number": 3, "item_id": "R1", "script_text": "37%", "stt_text": "<비슷한 소리의 다른 수>"}],
   "failed": [],
-  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.1",
-           "criteria_versions": {"script_coverage": "script_coverage-1.1+<config 해시>"}, "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.2",
+           "criteria_versions": {"script_coverage": "script_coverage-1.2+<config 해시>"}, "model": "<응답한 모델>"}
 }
 ```
 
@@ -312,6 +332,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | `llm_model` | 분석에 쓴 LLM 모델 |
 | `llm_config_hash` | 1차 분석 단계의 설정 해시 (늘 있다) |
 | `final_config_hash` · `unit_config_hash` | 최종 결론 · 전달 단위 단계의 설정 해시 (기본값 있음). 그 단계를 거치기 전이면 빈 값 |
+| `rubric_quality` | `full` · `sentence_fallback` (기본값 `full`). `sentence_fallback`은 전달 단위 단계(LLM)가 실패해 문장 하나를 단위 하나로 본 평가 기준이다(6-1). `warnings`에 `unit_fallback:<에러 코드>`가 함께 남고, `unit_config_hash`가 빈 값이라 `rubric_id`도 정상 기준과 다르다 |
 
 핵심 내용 `key_points[]`
 
@@ -374,6 +395,9 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | `stt_sentences[]` | str | 정규화한 STT 문장. 근거 번호 `[T0] [T1] …`의 원문 |
 | `stt_text` | str (코드 기본값 빈 문자열) | 정규화한 STT 전체. `/takes/rescore`가 다시 계산할 때 쓴다(없으면 422 `STT_TEXT_MISSING`, 7절) |
 | `applied_answers` | `{item_id: as_script · as_stt}` | 반영한 확인 답. 처음 채점에는 비어 있다(6-3) |
+| `stt_integrity` | `complete` · `incomplete` · `unknown` (기본값 null) | 요청의 STT 끊김 값으로 정한 STT 완전성(5-2). 이 필드가 생기기 전의 채점에는 없다 |
+| `detail` | object (기본값 null) | 장 상세(5-7) |
+| `offscript` | object (기본값 null) | 대본 밖 구간 목록(5-7). 장별 상세 화면의 강조용 |
 
 문장 판정 `sentences[]`
 
@@ -386,6 +410,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | `evidence[]` · `reason` | int · str | 근거 STT 문장 번호(범위 밖 번호는 버림) · 판정 이유(사용자에게 보여 줄 수 있음) |
 | `lexical_coverage` · `evidence_coverage` | float | 이 문장의 내용 형태소가 STT 짝 구간에 나온 비율 · LLM 근거 STT 문장에 나온 비율 |
 | `fact_statuses` | `{fact_id: 수치 상태}` | 이 문장에 있는 수치별 규칙 확인 결과. `/takes/rescore` 뒤에는 확인 답을 반영한 현재 상태다(사실 목록 `critical_facts` · 핵심 내용과 같은 값, 6-3) |
+| `expression_mode` | `verbatim_like` · `paraphrased` · `undetermined` · null (기본값 null) | `said` 문장만: 대본 표현에 가까움 · 바꿔 말함 · 구분 어려움. `lexical_coverage`를 `config.py`의 두 경계로 나눈다. 정보일 뿐 감점이 아니다. 나머지 문장은 null |
 | `similar_ids[]` · `conflicts[]` · `verified` | str · str · bool (기본값 있음) | 이 문장 자리의 비슷한 말 중 아직 답하지 않은 것(`R` 번호, 답한 것은 `/takes/rescore`가 뺀다. `similar_items`에는 남는다) · 규칙과 LLM 판정이 어긋난 이유(조건 이름과 뜻은 `stt_evaluation/merge.py`의 `CONFLICT_TEXT`. 예: `fact_missing`은 LLM은 말함인데 규칙이 그 수치를 STT에서 못 찾음) · 교차 검증으로 다시 판정했는지 |
 
 문장 판정은 단위 판정을 모아 코드가 정한다: 모두 `said`면 `said`, 모두 `missing`이면 `missing`, 하나라도 `contradicted`면 `contradicted`, 나머지는 `partial`.
@@ -418,6 +443,79 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | `fact_id` · `key_point_ids[]` | str 또는 null (기본값 null) · str | 관련 핵심 수치 · 이 자리가 걸린 핵심 내용 |
 | `signals[]` · `rule_guess` | str · `asr_error` · `speaker_error` · `paraphrase` | 규칙 신호(발음 거리 · 읽기 비교 등) · 규칙 신호만으로 본 원인(참고) |
 
+## 5-7. 결과 상세 (선택 필드)
+기존 점수(`scores` · `take_scores`)와 판정은 그대로 두고, 그 위에 리포트가 쓰는 지표를 선택 필드로 더한다. 원본은 `stt_evaluation/schemas.py`(장 상세 · 대본 밖 구간 · 간이 값)와 최상위 `schemas.py`(Take 상세)이고, 전체 모양은 `examples/analyze/response.json`에 있다.
+
+**0과 null**
+- 0은 평가할 핵심 내용이 있는데 하나도 전달하지 못한 것(빠뜨림 · 다르게 말함)만이다.
+- 실패 · 해당 없음 · 확인 대기는 값이 null이고 `state` · `reason_codes`가 까닭을 말한다.
+- 바꿔 말한 것은 감점 없는 전달이다. 대본 표현에 가까운지는 정보(`expression`)로만 낸다.
+- 어떤 새 지표도 기존 점수를 바꾸거나 더 깎지 않는다.
+
+**지표 한 칸** (`Metric`): `{value, state, reason_codes, evaluated, excluded}`
+
+| 칸 | 값 |
+|---|---|
+| `value` | 0~1 · null |
+| `state` | `ok` · `provisional`(일부 제외 · 불완전 · 복구 기준) · `not_applicable`(해당 없음) · `pending`(확인 대기) · `failed` · `skipped_by_deadline` · `estimated`(간이 값) |
+| `reason_codes` | 아래 '이유 코드' |
+| `evaluated` · `excluded` | 그 지표의 단위 개수: 전달 · 다르게 말함은 핵심 내용, 수치는 핵심 수치, 대본 재현은 형태소 |
+
+**장 상세** (`evaluations[].detail`)
+
+| 필드 | 뜻 |
+|---|---|
+| `state` · `reason_codes` | 장의 상태. STT가 있는데 `stt_integrity`가 `incomplete`면 `provisional`(`STT_INCOMPLETE`), 문장 단위 복구 기준이면 `provisional`(`SENTENCE_FALLBACK`, `config.py`로 끌 수 있음), 빈 STT에 `unknown`이면 `provisional`(`STT_UNVERIFIED`) |
+| `stt_integrity` · `rubric_quality` | 5-2 · 5-6 |
+| `delivery` | **핵심 내용 전달률**(리포트 대표 지표): 핵심 내용 판정 점수 `covered` 1 · `partial` 0.5 · `missing` 0 · `contradicted` 0의 중요도 가중 평균. 다르게 말한 것이 다른 내용을 상쇄하지 않는다. 핵심 내용이 없으면 null(`not_applicable`, `NO_KEY_POINTS`) |
+| `zero_kind` | 전달률이 0일 때만: `slide_skipped`(STT가 빈 장) · `all_missing`(모두 빠뜨림) · `missing_or_contradicted`(모두 빠뜨림 또는 다르게 말함이고 하나 이상 다르게 말함) |
+| `contradiction` | 같은 가중치로 낸 `contradicted`의 몫 |
+| `status_shares` | 네 판정의 가중 몫(합 1). 핵심 내용이 없으면 null |
+| `key_points` | 중요도(`critical` · `high` · `normal`)별 네 판정 개수 |
+| `critical_gaps[]` | `critical` · `high` 중 `missing` · `contradicted`인 핵심 내용 `{key_point_id, content, importance, status, said_in_slides}`. `said_in_slides`는 그 내용을 다른 장에서 말한 장 번호(점수로 인정하지 않음) |
+| `legacy` | `content_coverage_raw`(기존 `content_coverage`를 0으로 자르기 전 값) · `zero_kind`(`cancelled_to_zero` 상쇄로 0 · `clamped_negative` 음수를 0으로 자름) |
+| `facts` | 수치 상태별 개수(`pending` = 확인 대기 `sound_alike`) · `accuracy`(기존 수치 정확도: 수치 없음 → null `NO_FACTS`, 모두 대기 → null `pending` `ALL_FACTS_PENDING`, 일부 대기 → `provisional` `FACTS_PENDING`) · `accuracy_range{best, worst}`(대기 수치를 모두 맞음 · 모두 틀림으로 가정한 값, 대기가 없으면 null) |
+| `expression` | `said` 문장의 `verbatim_like` · `paraphrased` · `undetermined` 개수 |
+| `fidelity` | 기존 `script_fidelity`의 두 성분 `recall`(대본을 얼마나 그대로) · `precision`(말한 것 중 대본 말의 비율) |
+| `speech_mix` | 말의 구성(아래) |
+
+**말의 구성** (`speech_mix`): 분모는 정규화한 STT(`stt_sentences`)의 내용 형태소다. 간투사와 바로 반복한 말은 빠지고, 반복은 `repetitions.count`로 따로 센다.
+- `categories`: 범주별 형태소 수. 범주는 `script` 대본 내용 · `other_slide` 다른 장 내용 · `procedural` 진행 말(인사 · 전환 · 청중 안내) · `off_script` 대본 밖 말(세부 구분 없음) · `related_aside` 관련 곁말 · `unrelated` 무관한 말 · `undetermined` 판단 보류.
+- 범주는 규칙이 정한다. 대본 문장과 짝지어지지 않았고 이 장 대본 어휘(인사 · 전환 문장 포함)로 설명되지 않는 STT 문장을 대본 밖 후보로 잡고(짝 있는 문장 안의 꼬리는 대부분 바꿔 말한 대본 내용이라 기본으로 보지 않는다, 13절), 진행 말 사전 → 다른 장 대본 어휘 → 대본 밖 순서로 붙인다. 관련 곁말 · 무관한 말은 LLM 분류(6-2)를 켰을 때만 나온다.
+- `display`: 화면에 그릴 목록 `[{category, tokens, share}]`이다. 정확도 검증을 통과하지 않은 범주(`config.py`의 `SPEECH_MIX_VALIDATED` 밖)는 `off_script`로 합치고 `NOT_VALIDATED`를 단다.
+- 말이 없으면 `state: not_applicable`(`NO_SPEECH`)이다. 어떤 점수도 깎지 않는다.
+
+**대본 밖 구간** (`evaluations[].offscript`): `{state, reason_codes, spans[{id, stt_sentence_index, start, end, category, display_category, source, other_slide_number, tokens}]}`
+- `start` · `end`는 `stt_sentences[stt_sentence_index]` 안의 `[시작, 끝)` 코드 포인트다.
+- 화면은 `display_category`를 쓴다.
+- `source`는 `rule` · `llm`이다.
+
+**실패 장 간이 값** (`failed[].fallback`): 확정 값과 합치지 않고 따로 보인다.
+
+| 필드 | 뜻 |
+|---|---|
+| `method` | `lexical`(평가 기준이 있는 장의 규칙 값) · `lexical_no_rubric`(평가 기준이 없어 대본 글 `script`로만 낸 값, 중요도 없음) |
+| `lexical_coverage` | 간이 전달률: 채점 대상 문장마다 대본 내용 형태소가 STT 짝 구간에 나온 비율을 두 경계로 1 · 0.5 · 0으로 바꿔 평균한 값 |
+| `delivery_band` | 그 3단계 `mostly`(대부분 말함) · `about_half`(절반쯤) · `little`(거의 못 말함). 화면은 숫자 대신 이 단계를 보인다 |
+| `facts` · `fact_accuracy` · `script_recall` | 규칙으로 확인한 수치 개수 · 수치 정확도 · 대본 재현율(`state: estimated`). 계산할 수 없으면 null |
+| `speech_mix` · `stt_integrity` · `reason_codes` | 말의 구성(평가 기준이 있을 때) · STT 완전성 · `[실패 코드]` |
+
+- `STT_INCOMPLETE`로 빠진 장, 대본 글도 평가 기준도 없는 장의 `fallback`은 null이다(예전 결과에는 키가 없다).
+
+**Take 상세** (응답 맨 위 `detail`): `{delivery, zero_kind, contradiction, status_shares, key_points, critical_gaps, legacy, facts, expression, fidelity, speech_mix, scope, slides}`
+- 채점된 장의 값만 같은 가중치로 모은다(전달 · 다르게 말함은 핵심 내용 가중치, 대본 재현은 형태소 수, 말의 구성은 형태소 수). 간이 값(`estimated`) 장은 넣지 않는다.
+- 채점된 장이 하나 이상이고 빠진 장도 있으면 `provisional` + `SLIDES_EXCLUDED`다. 모으는 장 중 그 지표가 `provisional`인 장의 이유(`STT_INCOMPLETE` · `SENTENCE_FALLBACK` 등)도 합쳐 `provisional`이다.
+- 채점된 장이 없으면 모든 지표가 null · `failed` + `SLIDES_EXCLUDED`이고, 개수는 0, 목록은 `[]`이다.
+- `critical_gaps`: 장의 것에 `slide_number`를 붙여 중요도 · 장 순으로 최대 10개.
+- `scope`: `{target_slides, scored_slides, estimated_slides, provisional_slides, excluded[{slide_number, reason_code}]}`.
+- `slides[]`: 대상 장마다 `{slide_number, state(scored · estimated · failed), reason_codes, stt_integrity, rubric_quality, delivery, zero_kind, contradiction, status_shares, critical_gap_count, delivery_band, speech_mix{state, reason_codes, display}}`.
+- `/takes/rescore`는 받은 `evaluations` · `failed`로 Take 상세를 다시 만들고, 확인 답을 반영해 장 상세의 대본 쪽 지표를 다시 계산한다. 말의 구성은 처음 채점의 관찰값을 그대로 둔다(6-3).
+
+**이유 코드**
+- 장 · 지표: `NO_KEY_POINTS` · `NO_FACTS` · `FACTS_PENDING` · `ALL_FACTS_PENDING` · `NO_SPEECH` · `STT_INCOMPLETE` · `STT_UNVERIFIED` · `SENTENCE_FALLBACK` · `SLIDES_EXCLUDED` · `NOT_VALIDATED` · `OFFSCRIPT_DISABLED` · `OFFSCRIPT_DEADLINE` · `OFFSCRIPT_FAILED`
+- 실패 장: 7절의 에러 코드
+- 받는 쪽은 모르는 코드를 일반 문구로 보인다.
+
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. 평가 기준 만들기 (`/scripts/rubric`)
 장마다 아래를 차례로 하고, 장끼리는 서로 기다리지 않는다. 한 장의 LLM 단계가 끝나면 그 장의 다음 단계를 바로 넣고, 동시에 도는 LLM 호출은 `config.py`의 `RUBRIC_MAX_WORKERS`개까지다. 빈자리에는 이미 시작한 장의 다음 단계(전달 단위 → 최종 결론)를 새 장의 1차 분석보다 먼저 넣는다(마감 안에 끝나는 장을 늘리려고). 캐시 읽기 · 쓰기와 코드 단계는 부르는 스레드에서 하므로, 실행 순서가 달라도 장마다의 결과 · LLM 메시지는 같다. 한 단계라도 실패한 장은 평가 기준을 만들지 않고 `failed`에 담는다.
@@ -432,6 +530,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | ⑥ | 전달 단위: 문장을 내용 조각으로 나누고 코드가 검증(`skip` 문장은 나누지 않는다) | 1번 |
 
 - 대본이 빈 장은 LLM을 부르지 않고 빈 평가 기준을 만든다. 모든 문장이 `skip`이면 ⑥을 부르지 않는다. 그래서 장마다 LLM은 최대 3번이다.
+- ⑥(전달 단위)만 실패한 장은 문장 하나를 단위 하나로 본 평가 기준으로 복구해 성공으로 낸다(`meta.rubric_quality: sentence_fallback`, `warnings`에 `unit_fallback:<에러 코드>`, `config.py`의 `UNIT_FALLBACK_ENABLED`). ③ · ⑤가 실패한 장은 지금처럼 `failed`다. 복구한 기준은 그 대본 버전의 모든 Take에 고정되므로(첫 성공본 보존, `architecture.md` 1-7), 채점 상세가 그 장을 `provisional`(`SENTENCE_FALLBACK`)로 표시한다(13절의 복구 실험으로 정함).
 - 키워드 점수와 이름 판정은 발표 전체를 함께 본다. 그래서 `slide_numbers`로 일부 장만 만들 때도 요청에는 모든 장을 싣고, 고르지 않은 장은 맥락으로만 쓴다.
 - `rubric_id`는 그 장의 대본 해시 · LLM 설정 해시 · 형식 버전으로 만든다. 같은 장 글이면 다른 대본 버전에서도 같은 값이 나온다.
 
@@ -449,6 +548,11 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | ⑦ | 충돌이 있는 장만 교차 검증. 검증자가 다시 판정한 단위는 그 판정을 따른다. ⑥에서 규칙이 `vague`로 올린 단위를 검증자가 `missing`이라 하면, 이름(사람 · 기관 등)을 찾은 단위는 `vague`로 두고 수치만 찾은 단위는 `missing`이다. 이름은 다른 문장에서 나와도 같은 대상이지만, 수치 확인은 STT 전체에서 같은 값을 찾아 다른 이야기의 같은 숫자로도 보정이 걸리기 때문이다 | 1번 (필요할 때) |
 | ⑧ | 문장 → 핵심 내용 판정으로 모으기 | |
 | ⑨ | 장 점수 계산 | |
+| ⑩ | 결과 상세(5-7): 문장 표현 방식, 장 상세(전달률 · 다르게 말한 몫 · 개수 · 놓친 중요 내용 · 수치 · 대본 재현 · 말의 구성), 실패 장 간이 값, Take 상세 | |
+
+- ④ 다음에 규칙으로 대본 밖 구간과 말의 구성을 만든다(이 장 대본 어휘 · 진행 말 사전 · 다른 장 대본 어휘). `OFFSCRIPT_LLM_ENABLED`를 켰을 때만, ⑦ 뒤에 대본 밖 구간이 있는 장만 LLM으로 관련 곁말 · 무관한 말을 나눈다(동시 2개, 핵심 채점 호출 뒤). 이 분류가 실패하거나 마감에 걸리면 그 장은 규칙 값을 그대로 두고 `OFFSCRIPT_FAILED` · `OFFSCRIPT_DEADLINE`만 붙인다(장 채점은 실패로 하지 않는다).
+- 채점 전에 요청의 STT 끊김 값으로 장마다 STT 완전성을 정하고(5-2), `incomplete`이면서 정규화 STT가 빈 장은 채점하지 않고 `failed`(`STT_INCOMPLETE`)로 담는다. 평가 기준이 없는 장은 요청의 `script`로 간이 값(`lexical_no_rubric`)을 만든다.
+- 의미 평가 · 교차 검증이 실패한 장은 ①~④의 규칙 결과로 간이 값(`lexical`)을 만들어 `failed[].fallback`에 싣는다. 대상 장이 모두 실패해도 간이 값이 하나라도 있으면 200이다(7절).
 
 - 교차 검증이 실패한 장은 그 장 전체를 `failed`로 돌려준다(1차 판정만으로 내지 않는다). 검증 출력이 검증 대상 문장(충돌한 문장)이나 그 문장의 전달 단위를 빠뜨리거나 같은 것을 두 번 내면 잘못된 출력이다(`LLM_INVALID_OUTPUT`). 대상이 아닌 문장 · 단위의 판정은 쓰지 않는다.
 - STT가 빈 장(발표에서 넘어감)은 LLM을 부르지 않고 모든 전달 단위를 `missing`으로 판정한다.
@@ -459,6 +563,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 2. `as_script`: 그 비슷한 말의 수치 판정을 `matched`로 바꾼다(문장 판정은 그대로). `as_stt`: 수치 판정을 `mismatched`로, 그 자리가 든 전달 단위를 `contradicted`로 바꾸고 문장 · 핵심 내용을 코드로 다시 모은다. 그리고 반영한 답 전체(`applied_answers`)로 문장의 `fact_statuses`를 사실 목록과 같은 현재 상태로 맞추고, 문장의 `similar_ids`에서 답한 항목을 뺀다(`similar_items` · 1차 판정 `first_status` · 교차 검증 기록은 그대로 둔다). LLM은 부르지 않는다.
 3. 답하지 않은 항목은 보류로 남는다. 보류 목록 · 핵심 내용 · 점수는 합친 답 전체로 다시 계산한다. 대본 충실도는 보류한 자리와 `as_script` 자리를 계속 빼고, `as_stt` 자리는 넣어 다시 계산한다(발표자가 실제로 다르게 말했으므로).
 4. 받은 채점 전체(답이 없는 장 포함)로 Take 값(`take_scores` · `confirmations`)을 다시 계산한다(6-4). 그래서 실패한 장을 다시 채점해 합친 뒤 답 없이 불러 Take 값만 다시 받을 수 있다.
+   - 결과 상세도 다시 만든다. 장 상세의 대본 쪽 지표(전달 · 다르게 말함 · 수치 · 표현)는 바뀐 판정으로 다시 계산한다. 말의 구성 · 대본 밖 구간은 처음 채점의 관찰값을 그대로 둔다(이 필드가 없는 예전 채점은 `stt_text`로 규칙 값을 만든다). Take 상세는 받은 `evaluations` · `failed`(간이 값 포함)로 다시 만든다. 답 없이 다시 계산하면 결과 상세도 같다.
 5. 채점의 `rubric_id`가 받은 평가 기준과 다르거나, 채점에 `stt_text` 필드가 없거나(예전 모양), 장의 평가 기준이 없으면 요청 전체를 422로 거절한다(7절). 발표에서 넘어가 `stt_text`가 빈 문자열인 장은 정상 채점이라 거절하지 않는다. 같은 답 · 같은 입력이면 늘 같은 결과가 나온다.
 
 ## 6-4. 점수와 Take 값
@@ -495,6 +600,8 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 6-2 ⑦ | `verifier_message` → `verify` → `apply_verification` (`verify.py`) | 교차 검증 반영 |
 | 6-2 ⑧ | `aggregate_key_points` (`merge.py`) | 핵심 내용 판정 |
 | 6-2 ⑨ | `slide_scores` (`scoring.py`) | 장 점수 |
+| 6-2 대본 밖 구간 · 말의 구성 | `build_offscript` → (켰을 때) `offscript_message` → `classify_offscript` → `apply_offscript_judgments` (`offscript.py`) → `build_speech_mix` (`speech_mix.py`) | 대본 밖 구간 · 말의 구성 |
+| 6-2 ⑩ | `annotate_expression` · `slide_detail` · `stt_integrity` (`detail.py`), `lexical_fallback` · `no_rubric_fallback` (`fallback.py`), `said_in_other_slides` (`speech_mix.py`), `take_detail` (최상위 `take_detail.py`) | 결과 상세 |
 
 **LLM 호출**: 코어는 LLM을 `llm.invoke([("system", 프롬프트), ("user", 메시지)])` 한 가지로만 부르고, LLM 객체는 출력 스키마가 고정된 것(구조화 출력)이어야 한다(4-2).
 
@@ -504,6 +611,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 최종 결론 | `final_llm` | `script_analysis/prompts/final.py` | `FinalReview(sentence_roles, core_claim, key_points[FinalKeyPoint(content, sentence_ids)], name_verdicts[NameVerdict(candidate_id, keep, reason)], changes)` |
 | 전달 단위 | `unit_llm` | `script_analysis/prompts/units.py` | `SlideUnits(sentences[SentenceUnitsDraft(sentence_id, units[UnitDraft(text, quote)])])` |
 | 의미 평가 | `eval_llm` | `stt_evaluation/prompts/semantic.py` | `SemanticEvaluation(sentences[SentenceJudgment(sentence_id, evidence, reason, units[UnitJudgment(unit_id, status)], confidence)], name_checks[NameCheck(name_id, said, evidence)])` |
+| 대본 밖 분류 (기본 꺼짐) | `TakeLLMs.offscript` | `stt_evaluation/prompts/offscript.py` | `OffscriptJudgment(items[OffscriptItem(span_id, category, reason)])` — 범주는 `related_aside` · `unrelated` · `procedural` · `undetermined` |
 | 교차 검증 | `verifier_llm` | `stt_evaluation/prompts/verifier.py` | `VerifierResult(judgments[VerifiedSentence(sentence_id, reason, units[UnitJudgment])])` |
 
 - 프롬프트 · 출력 스키마(클래스 이름 · docstring · 필드 순서 · 설명) · 모델 이름은 그 단계의 설정 해시에 들어간다(9절). 바꾸면 그 단계의 연구 캐시를 다시 쓸 수 없다. `rubric_id`에는 평가 기준을 만드는 단계(의미 분석 · 최종 · 전달 단위)의 설정만 들어가므로, 채점 단계(의미 평가 · 교차 검증)를 바꾸면 그 단계의 캐시만 바뀌고 `rubric_id`는 그대로다.
@@ -514,8 +622,11 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 |---|---|---|---|
 | 요청 형식이 스키마와 다름 | 거절 | 422 `VALIDATION_ERROR` | 다시 불러도 같다 |
 | 한 장의 LLM 호출이 실패 · 시간 초과 · 잘못된 출력 (평가 기준 · 채점 · 교차 검증. 교차 검증이 대상 문장 · 전달 단위를 빠뜨리거나 겹친 것도 잘못된 출력, 6-2) | 그 장만 실패로 담고 나머지 장은 계속한다 | 200, `failed[{slide_number, error{code: LLM_TIMEOUT · LLM_ERROR · LLM_INVALID_OUTPUT · LLM_UNAVAILABLE}}]` | 한 장 때문에 나머지 채점을 잃지 않게. BE는 실패한 장만 다시 부른다 |
-| 채점할 장의 평가 기준이 없음 (평가 기준 만들기가 실패한 장) | 그 장은 채점하지 않고 나머지 장은 계속한다. 그 장도 `scored_ratio`의 대상 장이다 | 200, `failed`에 `RUBRIC_MISSING` | 전체를 멈추지 않고, 일부만 채점된 것을 비율로 알린다 |
-| 모든 장이 실패 (대상 장이 하나 이상일 때. 대상이 없으면 빈 결과 200, 5-2) | 결과를 내지 않는다 | `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 모든 장이 입력 오류(평가 기준 없음)일 때만 422 `RUBRIC_MISSING` | LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
+| 평가 기준 만들기에서 전달 단위 단계(LLM)만 실패 | 그 장은 문장 하나를 단위 하나로 본 평가 기준으로 복구해 성공으로 낸다(`rubric_quality: sentence_fallback`, `warnings`에 `unit_fallback:<코드>`). `config.py`로 끄면 실패로 담는다 | 200, `rubrics`에 그 장 | 전달 단위 한 단계 때문에 그 대본 버전의 모든 Take에서 그 장을 채점하지 못하던 것을 막는다. 1차 분석 · 최종 결론 실패는 지금처럼 실패다 |
+| 채점할 장의 평가 기준이 없음 (평가 기준 만들기가 실패한 장) | 그 장은 채점하지 않고 나머지 장은 계속한다. 그 장도 `scored_ratio`의 대상 장이다. 요청에 그 장의 `script`가 있으면 간이 값(`lexical_no_rubric`)을 붙인다 | 200, `failed`에 `RUBRIC_MISSING` | 전체를 멈추지 않고, 일부만 채점된 것을 비율로 알린다 |
+| 의미 평가 · 교차 검증이 실패한 장 | 그 장은 실패로 담고, 이미 계산한 규칙 값으로 간이 값(`lexical`)을 붙인다 | 200, `failed[].fallback` | 1차 판정을 확정 값으로 쓰지 않으면서도 빈칸 대신 간이 값을 보인다(5-7) |
+| STT가 끊긴(`stt_integrity: incomplete`) 빈 장 | 채점하지 않는다. 간이 값 없음 | 200, `failed`에 `STT_INCOMPLETE` | 음성 인식이 유실된 장을 발표자의 누락(0)으로 판정하지 않는다. 다시 불러도 같다 |
+| 모든 장이 실패 (대상 장이 하나 이상일 때. 대상이 없으면 빈 결과 200, 5-2) | 실패 장의 간이 값이 하나라도 있으면 그 결과를 낸다. 없으면 결과를 내지 않는다 | 간이 값이 있으면 200(`evaluations` 빈 목록, `take_scores`의 세 비율 null · 개수 0 · `scored_ratio` 0, `confirmations` 빈 목록, `failed[].fallback`, `detail`). 없으면 `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 없으면 모두 평가 기준 없음일 때 422 `RUBRIC_MISSING`, 그 밖에는 장 번호가 가장 작은 장의 입력 오류(422 `STT_INCOMPLETE`) | 간이 값이 있는 200은 BE가 지금 흐름대로 저장하고 LLM 오류 장만 한 번 다시 부른다(1-7). LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
 | LLM 설정 없음 (`/scripts/rubric` · `/takes/analyze`) | 모든 장이 실패 | 503 `LLM_UNAVAILABLE` | `architecture.md` 9 · 10절 |
 | `/takes/rescore`: 채점의 `rubric_id`가 받은 평가 기준과 다름 | 거절 | 422 `RUBRIC_MISMATCH` | 평가 기준이 바뀌었으면 다시 채점해야 한다 |
 | `/takes/rescore`: 채점에 `stt_text` 필드가 없음 (예전 모양) | 거절. 빈 문자열(발표에서 넘어간 장)은 정상이다 | 422 `STT_TEXT_MISSING` | 다시 계산에 필요한 STT가 없다 |
@@ -544,6 +655,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
   | `script_coverage.unit` | 전달 단위 | 2,180 (`timing_capped_concurrent`) | 5,120 |
   | `script_coverage.eval` | 채점(의미 평가) | 1,053 (`output_tokens`) | 3,072 |
   | `script_coverage.verifier` | 교차 검증 | 890 (`output_tokens`) | 2,048 |
+  | `script_coverage.offscript` | 대본 밖 구간 분류 (기본 꺼짐, `OFFSCRIPT_LLM_ENABLED`) | 재지 않음 | 2,048 (임시값 — 켜기 전에 재고 고친다) |
 
   잰 최대는 아래 세 결과 파일(`reports/results/`)에서 끝까지 받은 호출 중 가장 긴 출력이다. 모든 호출의 `finish_reason`은 `stop`이었다(잘린 호출 0). 시간 초과로 버린 호출은 출력 토큰을 받지 못해 세지 않았다.
   - `output_tokens.json`: `experiments/08_output_tokens.py`. 가상대본 두 개 20장 · 가상 Take 18개, 서비스처럼 스트리밍, 추론 강도는 보내지 않음, 캐시 없음, 상한 없이 호출 284번.
@@ -563,9 +675,9 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `script_coverage-1.1` | 최상위 `version.py` → 응답 `meta` | 출력의 의미가 바뀔 때(판정 규칙 · 프롬프트 · 점수 계산) |
+| `feature_version` | `script_coverage-1.2` | 최상위 `version.py` → 응답 `meta` | 출력의 의미가 바뀔 때(판정 규칙 · 프롬프트 · 점수 계산) |
 | `criteria_version` | `script_coverage-<버전>+<config 해시 12자리>` | 최상위 `config.py`의 해시(하위 config · 판정 임계값 · 판정 상태별 점수 · 중요도 가중치) → `/takes/analyze` · `/takes/rescore` 응답 `meta.criteria_versions.script_coverage` | 채점 기준값을 바꾸면 해시가 바뀐다 |
-| `rubric_schema_version` | `1.2` | `version.py` → 평가 기준 `meta.rubric_schema_version` | 평가 기준의 모양이 바뀔 때 |
+| `rubric_schema_version` | `1.3` (`meta.rubric_quality`를 더함) | `version.py` → 평가 기준 `meta.rubric_schema_version` | 평가 기준의 모양이 바뀔 때 |
 | `rubric_id` | 해시 | 평가 기준 `meta.rubric_id` → 채점 `rubric_id` | 장 대본 · LLM 설정(프롬프트 · 출력 스키마 · 모델) · 형식 버전이 바뀌면 달라진다 |
 | 단계별 설정 해시 | 12자리 | 평가 기준 `meta`의 `llm_config_hash` · `final_config_hash` · `unit_config_hash` | 그 단계의 프롬프트 · 스키마 · 모델이 바뀔 때 (연구 캐시 키) |
 | `schema_version` | `1.0` | 응답 `meta` (`architecture.md` 5절) | 요청 · 응답 필드 이름 변경 · 삭제 · 뜻 변경 |
@@ -589,6 +701,8 @@ uv sync
 | 실험 도구 테스트 (연구 폴더에서, 실제 LLM 제외) | `uv run python -m pytest` | 통과, live 2개 제외 |
 | 실제 LLM으로 장 하나 끝까지 (과금) | `uv run python -m pytest -m live` | 평가 기준 3번 + 채점 1~2번 호출, 유효한 결과 |
 | 평가 기준 만들기 → 채점 → 정확도 | `uv run python experiments/01_build_rubrics.py` → `04_evaluate_takes.py` → `05_accuracy.py` | `reports/results/stt_accuracy.json` (02 · 03 · 06은 선택 · 반복 측정, 과금) |
+| 문장 단위 복구 기준의 정확도 (과금) | `uv run python experiments/11_sentence_fallback.py` (04 다음) | `reports/results/sentence_fallback.json` |
+| 결과 상세 경계값 · 말의 구성 정확도 (과금 없음) | `uv run python experiments/12_coverage_detail.py` (04 다음) | `reports/results/coverage_detail.json` |
 | API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | 서비스 `features/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어진다. 계약 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/script_coverage/test_examples.py` |
 | 장 수별 소요 시간 (과금) | 단일 요청 `uv run python experiments/07_timing.py --grid 30:8 30:12 --call-timeout 20 --retry --analyze --name timing_20s`, 동시 요청 `... --grid 20:12 --call-timeout 20 --retry --concurrent 4 --name timing_20s_concurrent`, 상한을 건 동시 요청 `... --grid 30:12 --call-timeout 20 --retry --concurrent 2 --cap <역할=상한 ...> --name timing_capped_concurrent2` | `reports/results/<name>.json` (장 수 · 동시 개수별 걸린 시간 · 최초 · 재시도 뒤 만든 장 · 호출 수) |
 
@@ -633,7 +747,7 @@ sequenceDiagram
     BE->>A: POST /scripts/rubric (대본 버전의 모든 장, 재시도면 slide_numbers)
     A-->>BE: rubrics · failed · meta
     Note over FE,A: Take 종료 뒤 (최초 저장 · 장별 재시도 · 병합 후보 · 리뷰 보류는 architecture.md 1-7)
-    BE->>A: POST /takes/analyze (장별 stt + rubrics, 재시도면 slide_numbers)
+    BE->>A: POST /takes/analyze (장별 stt · STT 끊김 · 장 길이 · 대본 글 + rubrics, 재시도면 slide_numbers)
     A-->>BE: evaluations · take_scores · confirmations · failed · meta
     opt 재채점에서 새로 성공한 장을 합칠 때 (답 없이)
         BE->>A: POST /takes/rescore (병합 evaluations + 남은 failed + 처음 채점에 쓴 rubrics)
@@ -649,7 +763,8 @@ sequenceDiagram
         end
     end
     Note over FE,A: 건너뛰기 · 화면 이탈 · 10분 경과면 확인 rescore 없이 진행
-    BE->>BE: 리뷰 호출 (/takes/review, script_coverage = 저장된 채점, 확정본이 없으면 null)
+    BE->>BE: 리뷰 호출 (/takes/review, script_coverage = 저장된 채점, 확정본이 없거나 채점된 장이 없으면 null)
+    FE->>BE: 리포트 (대본 전달도 요약 = 확정본의 detail), 장을 펼치면 그 장의 상세
 ```
 BE 안의 분기(재시도 기록 · 조건부 저장 · 보류)와 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6 · 1-7에 있고, 저장 요구는 아래 12-1 · 12-2다. 확인 답을 받는 FE → BE REST 모양은 BE · FE 계약이다.
 
@@ -665,13 +780,17 @@ BE 안의 분기(재시도 기록 · 조건부 저장 · 보류)와 리뷰 호�
 | 대본 전달도 병합 후보 (BE 내부용) | 일부 장 재채점 성공 뒤, rescore 전 | `take_ai_results` (`take_id` · `kind`=`SCRIPT_COVERAGE_PENDING` · `payload`) | `{script_version_id, base_revision, evaluations, failed, retry_meta}`. base_revision은 후보를 만들 때 읽은 확정본(`SCRIPT_COVERAGE` 행)의 `revision`(정수), evaluations는 새 성공 장을 합친 채점, failed는 남은 실패 전체, retry_meta는 재채점 응답 meta. 크기는 evaluations에 비례하며 아직 실측하지 않았다 | BE가 쓴다 · 복구 rescore 입력. FE·리뷰·결과 조회에 확정 채점으로 제공하지 않는다. `kind`는 최대 23자 값(`SCRIPT_COVERAGE_PENDING`)을 담아야 한다 | Take 버전과 확정본 `revision` = `base_revision`을 확인한 뒤 저장한다. 후보 저장은 확정본을 바꾸지 않는다. rescore 성공 때 확정본 교체와 후보 삭제를 원자적으로 한다(12-2) | 기존 Take 결과와 같은 보관·삭제. 원문을 로그에 남기지 않는다 |
 | Take의 채점 재시도 기록 · 리뷰 보류 사유 | 채점 작업을 시작할 때 · 재시도를 보내기 전 · 병합 rescore가 끝내 실패했을 때 | `takes.coverage_retry_used` · `coverage_rescore_retry_used`, `takes.analysis_hold_reason`, `takes.coverage_requested_at` | 두 재시도 기록은 처음엔 false다. `coverage_retry_used`: `/takes/analyze`의 재시도 1회(부분 · 전체 공유)를 썼는가. `coverage_rescore_retry_used`: 병합 rescore의 재시도 1회를 썼는가. 둘 다 보내기 전에 true로 바꾼다. `analysis_hold_reason`: null = 보류 아님, `COVERAGE_RESCORE_FAILED` = 병합 rescore가 허용된 재시도 뒤에도 실패해 리뷰를 보류함. `coverage_requested_at`: 지금 채점 작업을 맡은 작업의 표식(시작 시각). null = 맡은 작업 없음. Take마다 채점 작업 하나만 돌게 하고, 작업이 끝나면(단계 전환 · 보류) 비운다(`architecture.md` 1-7) | BE가 쓰고 읽는다 · BE가 재시작할 때 남은 한도와 이어 갈 Take를 고른다(`architecture.md` 1-3 · 1-7) | Take마다 하나. 사람이 정한 복구도 재시도 칸을 false로 되돌리지 않는다. 복구가 성공하면 `analysis_hold_reason`만 null로 되돌린다 | Take와 함께 |
 | 확인 답 | FE 확인 화면에서 답할 때 | 따로 두지 않는다. `/takes/rescore` 결과의 장별 `applied_answers`로 위 `payload` 안에 남는다 | `{item_id: as_script · as_stt}`. 답을 받은 뒤 `/takes/rescore`가 실패하면 BE는 답을 다시 보낼 수 있게 요청 처리 동안 들고 있는다 | FE가 보내고 BE가 `/takes/rescore`에 싣는다 | 같은 `(slide_number, item_id)` 답이 두 번 오면 한 번만 반영한다(이미 반영한 답은 코어도 유지). 리뷰를 부른 뒤에는 받지 않는다 | Take와 함께 |
+| STT 끊김 구간 | Take 결과를 저장하는 트랜잭션에서, 동의 없는 Take의 1초 기록을 지우기 전(모든 Take) | `takes.stt_gap_ranges` (BE 구현 확인 필요) | `{version, duration_ms, not_ok[[시작, 끝]...], unobserved[[시작, 끝]...]}`. 1초 기록 한 행은 `[t_ms − 1000, t_ms)`를 덮는다(`t_ms`는 그 1초가 끝난 시각). `not_ok`는 `stt_status`가 `ok`가 아닌 행의 구간, `unobserved`는 `[0, duration_ms)` 중 기록이 없는 구간. 1초 기록이 하나도 없으면 null | BE가 쓴다 · BE가 `/takes/analyze`를 부를 때 장 구간과 겹치는 길이로 장별 `stt_gap_ms` · `stt_unobserved_ms` · `duration_ms`를 만든다(5-2) | Take마다 하나, Take 결과를 저장할 때 한 번 | Take와 함께. 원자료가 아니라 파생값이다 |
+| 대본 전달도 최종 실패 이유 | 확정본이 없는 상태에서 analyze 시도가 실패할 때마다, 확정본을 저장하면 null로 | `takes.coverage_failure_code` (BE 구현 확인 필요) | `AI_TIMEOUT` · `AI_UNAVAILABLE` · `AI_ERROR` · `AI_REJECTED` · `AI_INVALID_RESPONSE`(BE가 상태 코드 · 호출 오류로 나눈다, AI 에러 본문은 읽지 않는다). null은 실패 아님 | BE가 쓴다 · 리포트가 확정본이 없을 때 이유로 보인다 | 채점 작업 표식이 같을 때만 쓴다(`architecture.md` 1-7) | Take와 함께 |
 | 리포트 요약 내용 전달 칸 | 채점을 저장할 때 | `take_summaries.speak_accuracy` | `take_scores.content_coverage` × 100 (`architecture.md` 1-1 대응 표). 모든 장이 실패했거나 `content_coverage`가 null이면 null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행, 확인 반영으로 덮는다 | Take와 함께 |
 
 ## 12-2. 저장 규칙
 - 평가 기준 · 채점은 AI가 낸 모양 그대로 저장해 그대로 돌려보낸다. BE는 내용을 해석하지 않고, 필요한 값만 읽는다. 결과는 `meta`와 함께 저장한다.
   - 리포트 · 확인 목록: 채점의 `take_scores.content_coverage` · `confirmations`.
   - 확인 화면: `confirmations`의 항목마다 같은 장 채점 `similar_items[]`에서 `item_id`가 같은 항목의 `kind` · `script_sentence_index` · `stt_sentence_index`, 그 번호로 고르는 채점 `stt_sentences[]`와 평가 기준 `sentences[].text`. 찾지 못하면 BE는 그 값을 null로 둔다.
-  - BE가 읽는 위 필드는 BE와 주고받는 값이다. 이름 · 뜻을 바꿀 때는 BE와 합의한다.
+  - 리포트 대본 전달도 요약: 확정본의 맨 위 `detail`(해석하지 않고 그대로)과 그 행의 `revision` · `meta.criteria_versions.script_coverage`, 바로 앞 Take 확정본의 `detail.delivery` · `contradiction` · `scope`.
+  - 리포트 장별 상세(한 장): 그 장 채점의 `detail` · `offscript` · `stt_sentences`, `sentences[]`의 `sentence_index` · `text` · `role` · `status` · `expression_mode` · `reason` · `evidence` · `units[]`(`unit_id` · `text` · `status`), `key_points[]`의 `key_point_id` · `content` · `importance` · `status` · `reason` · `evidence`, `critical_facts[]`의 `fact_id` · `type` · `value` · `stt_value` · `status`. 실패 장이면 그 `failed[]` 항목(`error` · `fallback`). 없는 필드는 null · `[]`로 채운다.
+  - BE가 읽는 위 필드는 BE와 주고받는 값이다. 이름 · 뜻을 바꿀 때는 BE와 합의한다. 리포트 API(요약 `content_status` · 장별 상세 GET)의 모양은 BE · FE 계약이다.
 - 평가 기준 생성 · 재파싱 비교 · 최초 채점 · 장별 재시도 · 병합 후보 · 리뷰 보류 · 수동 복구의 순서와 조건은 `architecture.md` 1-7이 기준이다. 아래는 그 조건을 지키기 위한 저장 요구다.
 - 확인 답은 리뷰를 부르기 전까지만 받는다. 리뷰는 미해결 병합 후보가 없을 때 최신 확정 SCRIPT_COVERAGE를 읽는다. 성공한 병합 rescore와 확인 답 반영 결과도 포함한다.
 - 한 채점 응답의 `take_ai_results` · `take_summaries.speak_accuracy`는 한 트랜잭션으로 저장한다.
@@ -693,8 +812,16 @@ BE 안의 분기(재시도 기록 · 조건부 저장 · 보류)와 리뷰 호�
 | 사용자 확인 (정답 라벨로 답을 대신) | 확인 뒤 판정 정확도 · 심각한 오판 · 보류한 사실 수 | 확인이 점수에 바르게 반영되는 것 | `05_accuracy.py`의 확인 단계 |
 | 장 수를 바꾼 대본 | 장 수별 소요 시간 · 실패 장 수 | AI 예산(120초) 안에 끝나는 것 | `07_timing.py` → `timing_20s.json` · `timing_20s_concurrent.json` |
 
-- **지금 결과** (v1, 가상 데이터, 기본 묶음 `openai/gpt-6-luna`, 연구 폴더 README 8절):
-  - 문장 판정 정확도 0.984(규칙만 0.850 · LLM 1차 0.963), 핵심 내용 0.983, 심각한 오판 0.5%, 핵심 사실 정확도 0.996, 사용자 확인 뒤 문장 0.988. 가장 낮은 것은 요약형 발표(문장 0.918)다.
+- **지금 결과** (기능 버전 1.2, 가상 데이터, 기본 묶음 `openai/gpt-6-luna`, macOS arm64에서 연구 캐시 재생으로 다시 잼 — `stt_accuracy.json`):
+  - 문장 판정 정확도 0.988(규칙만 0.850 · LLM 1차 0.970), 핵심 내용 0.988, 심각한 오판 0.4%, 핵심 사실 정확도 1.0(판단 보류 17개 제외), 사용자 확인 뒤 문장 0.992. 가장 낮은 것은 요약형 발표(문장 0.941)다. 결과 상세를 더하기 전 코드로 낸 채점과 비교해 문장 판정 720개 · 핵심 내용 판정 702개 · 수치 상태 621개 · 기존 점수가 하나도 바뀌지 않았다. 1.1 결과(0.984)와의 차이는 전달 단위 단계 실패로 빠졌다가 다시 만든 한 장(가상대본1 4번, Take 9개) 몫과 측정 환경 차이다.
+  - 문장 단위 복구 기준(6-1): 복구 기준으로 채점하면 문장 정확도 0.9875 → 0.9861(−0.14%p), 심각한 오판 0.42% → 0.56%(+0.14%p), 한 문장에 내용이 여럿인 문장은 +0.22%p(`sentence_fallback.json`, 문장 720개). 미리 정한 기준(하락 ≤ 1%p, 심각한 오판 증가 ≤ 0.5%p) 안이라 복구한 장의 상세를 정상(`ok`)으로 둔다.
+  - 결과 상세의 경계값(`coverage_detail.json`, 가상대본1로 고르고 가상대본2로 한 번 확인):
+    - 표현 방식(0.9 · 0.8): 시험 일치율 0.960(구분 어려움 제외), 구분 어려움 13.5%
+    - 간이 단계(문장 경계 0.35 · 0.45, 단계 경계 0.3 · 0.7): 시험 단계 일치율 0.889, 심각한 어긋남 0. LLM 최종 판정으로 같은 단계를 낸 일치율은 0.970이라, 간이 값은 거친 값이다.
+  - 말의 구성:
+    - 자연 데이터: 대본 밖 후보에 독립 라벨 두 벌(일치 96.4%, `offscript_labels.json`)을 달았다. 짝 없는 문장만 후보로 잡는 지금 규칙은 후보가 모두 실제 대본 밖 말이었다(개발 5/5 · 시험 7/7). 라벨의 실제 곁말 재현율은 개발 0.71 · 시험 0.70이다.
+    - 짝 있는 문장 안 꼬리까지 잡으면 후보 중 실제 대본 밖 말이 시험 0.05~0.78뿐이라 기본으로 끈다(`rule_variants`).
+    - 합성 주입(`offscript_injections.json`, 범주마다 개발 81 · 시험 99개): precision 진행 말 1.0 · 다른 장 0.93~0.94. 진행 말 재현율은 31~39%로 낮고, 놓친 진행 말은 '대본 밖 말'로 들어간다. 관련 곁말 · 무관한 말 구분(LLM)은 실제 발표로 재기 전까지 꺼 둔다.
   - 교차 검증 출력 검사(6-2 ⑦, 대상 문장 · 전달 단위를 다 덮지 못하면 그 장 실패)의 영향: 6 luna로 부른 교차 검증 44번(`output_tokens.json`)과 연구 캐시의 이전 기본 모델 검증 출력 45장(`experiments/09_verifier_completeness.py` → `verifier_completeness.json`, LLM 호출 없이 캐시 재생)에서 검사에 걸린 장은 없었다. 실제 대본에서도 비율을 다시 본다.
   - 정확도 차이 ±0.004(2~3문장)는 이전 기본 모델의 반복 채점에서 본, 채점마다 달라지는 폭이라 잡음으로 본다(6 luna의 반복 변동 폭은 아래처럼 아직 재지 않았다).
 - 가상 STT와 정답 라벨을 같은 사람이 만들어 실제보다 쉬울 수 있고, 규칙 임계값 일부는 같은 데이터로 정했다. 실제 Deepgram 출력 · 실제 발표자로는 재지 않았다.
@@ -708,6 +835,11 @@ BE 안의 분기(재시도 기록 · 조건부 저장 · 보류)와 리뷰 호�
 - **같은 입력 재실행 판정 일치율**: 같은 STT를 여러 번 채점했을 때 문장(핵심 내용) 판정이 모든 회차에서 같은 비율.
 - **`content_coverage` · `critical_fact_accuracy` · `script_fidelity`**: 6-4의 계산. 장의 `critical_fact_accuracy`는 계산할 수치가 없으면 null이고, 장의 `content_coverage`는 핵심 내용이 없으면 0(가중치 0)이다. Take 값은 그 지표의 가중치 합이 0이면 null이다. null은 계산할 수 없다는 뜻이다.
 - **`scored_ratio`**: 채점된 장 수 ÷ 대상 장 수(6-4).
+- **핵심 내용 전달률 (`detail.delivery`)**: 핵심 내용 판정 점수(`covered` 1 · `partial` 0.5 · `missing` · `contradicted` 0)의 중요도 가중 평균. `content_coverage`와 달리 다르게 말한 것이 다른 내용을 상쇄하지 않는다. 핵심 내용이 없으면 null.
+- **다르게 말한 몫 (`detail.contradiction`)**: 같은 가중치로 낸 `contradicted` 핵심 내용의 몫.
+- **표현 방식 일치율**: 라벨이 `verbatim` · `paraphrased`이고 최종 판정이 `said`인 문장 중, `expression_mode`(구분 어려움 제외)가 라벨과 같은 비율. 구분 어려움 비율도 함께 낸다.
+- **간이 단계 일치율**: 장마다 정답 전달률(문장 라벨 점수 평균)과 간이 전달률(`fallback.lexical_coverage`)을 같은 경계로 3단계로 나눴을 때 같은 비율. 심각한 어긋남은 정답 '대부분' ↔ 간이 '거의 못'.
+- **말의 구성 범주 precision · 재현율**: 그 범주로 예측한 구간 중 정답 범주가 같은 비율 · 정답 구간 중 그 범주로 찾은 비율. 정답은 합성 주입 문장(위치 · 범주를 아는 것)과 라벨의 실제 곁말(`additions`).
 - **장 수별 소요 시간**: `/scripts/rubric` · `/takes/analyze` 요청 하나를 받아 응답할 때까지의 시간을 장 수 · 동시 개수별로 잰 값.
 
 # 15. 열린 질문 · 알려진 한계
@@ -724,6 +856,9 @@ BE 안의 분기(재시도 기록 · 조건부 저장 · 보류)와 리뷰 호�
 - 영문 이름의 인식 오류는 비슷한 말로 잡지 않고 LLM 이름 확인에 맡긴다.
 - STT 정리용 간투사 목록은 지워도 안전한 소리만이다. "그 · 저"처럼 뜻이 있을 수 있는 말은 지우지 않는다(군더더기 판정과는 다른 목록이다).
 - 무대 지시문(괄호 안 동작 설명 등)이 없는 대본을 전제한다. 대본 파싱이 장을 나누지 못하면(구분자 없음) 대본 전체가 한 장으로 와서, 그 장의 호출이 길어진다.
+- 말의 구성은 규칙(대본 어휘 · 진행 말 사전 · 다른 장 대본 어휘)으로 나누고 가상 데이터와 합성 주입으로만 쟀다. 관련 곁말과 무관한 말의 구분(LLM 분류)은 실제 발표 데이터로 재기 전까지 꺼 두고 '대본 밖 말'로 합쳐 보인다. 대본 어휘를 많이 쓴 곁말은 대본 내용으로 세어진다.
+- STT 완전성은 BE의 1초 기록(STT 상태)으로만 판단한다. 기록이 없던 Take(이 값이 생기기 전 · 기록이 하나도 없음)는 '모름'이고, 그때 빈 장은 지금처럼 0이며 `STT_UNVERIFIED`로 표시한다.
+- 간이 값(`fallback`)은 문장 단어 겹침으로만 낸 거친 값이라 숫자 대신 3단계로 보인다. 평가 기준 없이 대본 글로만 낸 값(`lexical_no_rubric`)은 중요도를 모른다.
 - 평가 기준의 키워드(`keywords`)는 채점에 쓰이지 않는다. 대본 파싱의 장별 키워드(`script_slides.keywords`)와 이름만 같고 다른 값이다.
 
 # 16. 확정 값 한눈에
@@ -733,14 +868,16 @@ BE 안의 분기(재시도 기록 · 조건부 저장 · 보류)와 리뷰 호�
 | 대본 식별자 | 요청 `script_version_id` → 코어 `script_name` → 평가 기준 `meta.script_name` | 5-2 |
 | 일부 장 처리 | `slide_numbers` (null이면 전부). 평가 기준 만들기는 늘 모든 장을 싣는다 | 5-2 |
 | 장별 실패 | `failed[{slide_number, error{code, message}}]`, 한 장이라도 성공하면 200 | 7절 |
-| 기능 에러 코드 | `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING` | 7절 |
+| 기능 에러 코드 | `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING` · `STT_INCOMPLETE` | 7절 |
+| 결과 상세 (선택 필드) | 장 상세 `evaluations[].detail` · 대본 밖 구간 `evaluations[].offscript` · `evaluations[].stt_integrity` · 문장 `expression_mode` · 실패 장 간이 값 `failed[].fallback` · Take 상세 `detail`. 지표 한 칸 `{value, state, reason_codes, evaluated, excluded}`, 0은 빠뜨림 · 다르게 말함만 | 5-7 |
+| STT 끊김 입력 (선택) | `slides[]`의 `duration_ms` · `stt_gap_ms` · `stt_unobserved_ms` · `script` | 5-2 |
 | Take 값 | `take_scores{content_coverage, critical_fact_accuracy, script_fidelity, similar_words, similar_numbers, scored_ratio}`, `confirmations[{slide_number, item_id, script_text, stt_text}]` — 받은 채점 전체로 다시 계산 | 6-4 |
 | id 규칙 | 문장 · 근거 0부터, `KP1` · `CF1` · `S<문장>-U<순번>` · `R1`(장마다) | 5-3 |
 | LLM 호출 | 평가 기준 장마다 최대 3번, 채점 장마다 1번 + 어긋난 장 1번, 다시 계산 0번 | 8절 |
 | 시간 예산 | rubric · analyze AI 120초 / BE 130초 (최초 200이면 LLM 오류 장만, 408 · 429 · 5xx · 무응답이면 전체를 합쳐 1번), rescore BE 10초 (1번), LLM 호출 한 번 20초 (`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`) | 8절 |
 | BE 동시 개수 | 백그라운드 AI 호출 BE 전체 합계 4(권장), 그 안에서 `/scripts/rubric` 동시 2개, 넘으면 BE에서 대기 | 8절 · `architecture.md` 3절 |
 | LLM 출력 토큰 상한 | `script_coverage.semantic` 4,096 · `final` 4,096 · `unit` 5,120 · `eval` 3,072 · `verifier` 2,048 (잰 최대 × 2, 1,024 단위, 최소 2,048. 서비스 `settings.py`의 `LLM_ROLES`에 설정되어 있다) | 8절 |
-| 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.1` · `criteria_version` `script_coverage-1.1+<config 해시>` · `rubric_schema_version` `1.2` | 9절 |
+| 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.2` · `criteria_version` `script_coverage-1.2+<config 해시>` · `rubric_schema_version` `1.3` | 9절 |
 | 저장 | 저장 요구: 12-1 · 12-2(무엇을 남기고 · 유일 제약 · 조건부 교체 · 보관). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): 평가 기준 `script_slides.rubric` · `rubric_meta`, 상태 · 작업 기록 `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used`, 채점 `take_ai_results` (`take_id`, `kind`=`SCRIPT_COVERAGE`, 바꿀 때마다 `revision` + 1), 병합 후보 `SCRIPT_COVERAGE_PENDING`(`base_revision`), Take 재시도 기록 · 보류 사유 · 작업 표식 `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at`, 리포트 `take_summaries.speak_accuracy` — 유일 제약은 `take_ai_results`의 (`take_id`, `kind`)이고, `revision`은 `payload`를 바꿀 때마다 1 올리며 후보의 `base_revision`은 읽은 확정본의 `revision`이다. 확인 답은 채점 안 `applied_answers` | 12-1 · 12-2 |
 | 장 구간 | 장 변경 기록 `take_slide_events` 전체, 단어는 `start_ms`가 든 구간의 장 | 5-2 |
 | 의존성 | pydantic · `kiwipiepy>=0.23,<0.24` · `scikit-learn>=1.8,<1.9`, Python 3.12, 서버 안 모델(형태소 분석기) → `/ready` | 4-3 · 11절 |
