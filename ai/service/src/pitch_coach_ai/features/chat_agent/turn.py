@@ -742,7 +742,10 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     if stop_reason == "LLM_REFUSED":
         # 공급자가 조사 단계에서 거절하면 답을 쓰지 않고 거절로 끝낸다(L1-12)
         return finish(status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER])
-    stopped = _RESEARCH_STOP.get(stop_reason or "")
+    # 반복으로 멈춘 조사(같은 요청 되풀이 · 교대 반복)는 한도 · 장애가 아니다: 모델이 이미 읽은 것을 다시 청한 것이라 답이 요청을
+    # 해소했는지로 끝 상태를 정한다(끝 상태는 요청 해소로, L1-16). 안내 문장은 남은 부분이 있을 때만 답 끝에 붙인다
+    soft_stop = stop_reason in _SOFT_STOPS
+    stopped = None if soft_stop else _RESEARCH_STOP.get(stop_reason or "")
     notes = _action_notes(lp)
     pre = _pre_claims(lp, notes=True, stopped=stopped)
     ans, cmp = _start_answer(lp, req, route="ANSWER", pre=pre)
@@ -935,8 +938,25 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         note = templates.scope_text(reason).value
         if all(c.text != note for c in final_claims):
             final_claims.append(Claim(kind="SYSTEM", text=note))
+    if soft_stop and (
+        progress.end_status(
+            lp.st.plan_meta,
+            cut=False,
+            answered=_answer_sentences(lp, [*final_claims, *map(Claim.model_validate, lp.st.emitted)]),
+        )
+        == "PARTIAL"
+    ):
+        # 반복으로 멈췄고 풀리지 않은 부분이 남았다: 확인한 데까지 말하고 안내를 끝에 붙인다(L1-16)
+        final_claims.append(Claim(kind="SYSTEM", text=templates.SystemText.NO_MORE_SOURCES.value))
+        return finish(
+            status="PARTIAL",
+            reason="REPEAT",
+            claims=final_claims,
+            assessments=all_assessments,
+            sources=_sources(final_claims),
+        )
     if stopped is not None:
-        # 조사가 끝까지 가지 못했으면 확인한 데까지만 말한다(8-2 · L1-11 · L1-12 · L1-16). 안내는 앞 문장으로 이미 냈다.
+        # 조사가 끝까지 가지 못했으면 확인한 데까지만 말한다(8-2 · L1-11 · L1-12). 안내는 앞 문장으로 이미 냈다.
         # 모델 장애 · 무효 도구로 끊긴 때의 일반 안내는 답에 근거 문장이 하나도 없을 때만 끝에 붙인다(TARGET 6, `_pre_claims`)
         if stopped[1] == templates.SystemText.PARTIAL_CHECKED:
             final_claims += [
@@ -965,7 +985,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     final_claims += nxt
     return finish(
         status="DONE",
-        reason="ANSWERED",
+        reason="REPEAT" if soft_stop else "ANSWERED",  # 반복으로 조사를 멈췄어도 요청이 해소된 답(진단에는 멈춘 까닭을 남긴다)
         claims=final_claims,
         assessments=all_assessments,
         actions=[*actions, *more],
@@ -1475,6 +1495,9 @@ def _missing_take_notes(lp: Loop) -> list[str]:
 
 
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)
+#: 반복으로 멈춘 조사(같은 요청 되풀이 · 교대 반복, L1-16): 한도 · 장애가 아니라 끝 상태를 요청 해소로 정한다. 무효 도구 반복
+#: (모델 장애) · 실패한 행동 반복은 그대로 끊긴 것으로 본다
+_SOFT_STOPS = frozenset({"NO_PROGRESS", "ALTERNATING"})
 _RESEARCH_STOP = {
     "TIME": ("TIME", templates.SystemText.LIMIT_PARTIAL),
     "MODEL_CALLS": ("MODEL_CALLS", templates.SystemText.LIMIT_PARTIAL),

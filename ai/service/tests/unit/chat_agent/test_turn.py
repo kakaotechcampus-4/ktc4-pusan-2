@@ -678,9 +678,11 @@ def test_repeated_same_tool_without_progress_stops_research() -> None:
     )
     _, _, data = F.run_turn(req, llm)
     fd = final_ok(data)
-    # 같은 호출을 새 근거 없이 되풀이하면 조사를 멈추고 확인한 데까지만 말한다(L1-16)
-    assert fd.status == "PARTIAL"
-    assert fd.message.claims[0].text == templates.SystemText.NO_MORE_SOURCES.value  # type: ignore[union-attr]
+    # 같은 호출을 새 근거 없이 되풀이하면 조사를 멈추고 답한다(L1-16). 이미 읽은 것을 다시 청한 것이라 답이 요청을 해소했으면
+    # DONE 이고 안내 문장은 붙이지 않는다(끝 상태는 요청 해소로)
+    assert fd.status == "DONE"
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    assert templates.SystemText.NO_MORE_SOURCES.value not in texts
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH", "RESEARCH", "ANSWER"]
 
 

@@ -710,3 +710,32 @@ def test_number_in_purpose_is_dropped_not_whole_plan() -> None:
     )
     _, lines2, _ = F.run_turn(req, llm2)
     assert [p["step"] for p in plan_lines(lines2)[0]] == ["비교", "답 쓰기"]
+
+
+def test_repeat_stop_with_an_unresolved_step_ends_partial_with_the_notice_last() -> None:
+    """반복으로 멈춘 조사(L1-16)는 끝 상태를 요청 해소로 정한다: 실패한 단계가 풀리지 않고 남았으면 PARTIAL 이고 "추가로 확인할 자료를
+    찾지 못해 …" 안내는 답 끝에 붙는다(멈출 때는 해소 여부를 몰라 앞에 내지 않는다). 반복은 예산 신호(BUDGET_LOW)가 아니다."""
+    bad = ("get_take_report", {"take_id": "t-9", "section": "problem_segments"})
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    llm = F.FakeLlm(
+        [
+            compare_plan(
+                ("반복 확인", "compare_takes"),
+                ("문제 구간 보기", "get_take_report"),
+                ("답 쓰기", "answer"),
+            ),
+            F.tools(COMPARE, prefix="a"),
+            F.tools(bad, prefix="b"),
+            F.tools(bad, prefix="c"),
+        ],
+        answers=[compare_answer()],
+    )
+    log: list[dict[str, Any]] = []
+    _, lines, data = F.run_turn(req, llm, log=log)
+    fd = check_stream(lines, data)
+    assert fd.status == "PARTIAL" and fd.diagnostics.end.reason == "REPEAT"  # type: ignore[union-attr]
+    texts = [c["text"] for c in data["message"]["claims"]]
+    assert texts[-1] == "추가로 확인할 자료를 찾지 못해 확인한 내용만 알려드릴게요."
+    assert texts.count(texts[-1]) == 1
+    assert data["plan"][1]["status"] == "TODO"
+    assert all(d[0] != "BUDGET_LOW" for d in decisions(log))

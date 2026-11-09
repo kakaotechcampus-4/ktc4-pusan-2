@@ -53,12 +53,12 @@ STEP_CHARS = 60
 RECORD_TOOLS = frozenset(
     {"list_pitches", "list_takes", "get_take_report", "compare_takes", "get_goals"}
 )
-#: 조사가 이 까닭으로 멈추면 `BUDGET_LOW` · `STOP_PARTIAL`(한도 · 반복). 앞 다섯은 지금 단계에 `시간 부족`을 단다
+#: 조사가 이 까닭으로 멈추면 `BUDGET_LOW` · `STOP_PARTIAL`(한도 · 무효 도구 반복 · 실패한 행동 반복). 앞 다섯은 지금 단계에
+#: `시간 부족`을 단다. 같은 요청 되풀이 · 교대 반복(`NO_PROGRESS` · `ALTERNATING`)은 넣지 않는다: 이미 읽은 것을 다시 청한 것이라
+#: 끝 상태를 요청 해소로 정한다(turn.py `_SOFT_STOPS`)
 LIMIT_STOPS = ("TIME", "MODEL_CALLS", "TOOL_CALLS", "TOKENS", "LIMIT")
 BUDGET_STOPS = (
     *LIMIT_STOPS,
-    "NO_PROGRESS",
-    "ALTERNATING",
     "INVALID_TOOLS",
     "REPEATED_FAILED_ACTION",
 )
