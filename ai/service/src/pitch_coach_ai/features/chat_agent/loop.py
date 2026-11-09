@@ -594,9 +594,12 @@ class Loop:
             return "RESEARCH"
         parsed = res.parsed
         route = _route_of(parsed)
-        drafts = self._parse_drafts(parsed.get("assessments") or [])
+        drafts = self._plan_drafts(parsed.get("assessments") or [])
         if route == "SMALL_TALK":
-            kind = self._small_talk_kind(parsed.get("talk_kind"), drafts)
+            # 가벼운 말 확인은 모델이 낸 초안 그대로 본다(대상을 비운 초안으로 가벼운 말이 되지 않게)
+            kind = self._small_talk_kind(
+                parsed.get("talk_kind"), self._parse_drafts(parsed.get("assessments") or [])
+            )
             if kind is not None:
                 # 가벼운 말: 모델은 이 한 번뿐이고 답은 코드 고정 문장이다(P-0008 5-1). 판단 · 할 일 목록은 두지 않는다
                 self.talk_kind = kind
@@ -628,7 +631,7 @@ class Loop:
                 # 범위 밖으로 바꾼 것은 받지 않는다 — 형식이 틀렸던 말을 고정 문장 · 거절로 끝내지 않게
                 route2 = _route_of(parsed)
                 route = route2 if route2 in ("RESEARCH", "ANSWER_DIRECT") else route
-                drafts = self._parse_drafts(parsed.get("assessments") or [])
+                drafts = self._plan_drafts(parsed.get("assessments") or [])
                 valid, problems = clm.split_check(self.original or "", drafts, self.cfg)
                 plan_ok = self._plan_valid(
                     parsed.get("plan") or [], allow_empty=route != "RESEARCH"
@@ -720,6 +723,11 @@ class Loop:
             except ValidationError:
                 continue
         return out
+
+    def _plan_drafts(self, raw: list[Any]) -> list[clm.AssessmentDraft]:
+        """계획의 판단 초안: 대상 없는 경향 진술 + 조언 요청은 요청으로 바꿔 둔다(6-3, 조사 흐름이 기록을 읽지 않게)."""
+        msg = self.original or ""
+        return [clm.tendency_advice_as_request(d, msg, self.cfg) for d in self._parse_drafts(raw)]
 
     def _history_take(self) -> str | None:
         """'그때 · 아까'(설정 `history_deictic_words`)가 가리키는 Take(6-8 '그때(Take n) 기준').

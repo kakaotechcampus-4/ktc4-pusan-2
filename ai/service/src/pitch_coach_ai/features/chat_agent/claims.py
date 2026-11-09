@@ -415,7 +415,9 @@ def _split_check_indexed(
     valid: list[AssessmentDraft] = []
     valid_idx: list[int] = []
     problems: list[Problem] = []
-    drafts = [_script_statement_as_claim(d) for d in drafts]
+    drafts = [
+        tendency_advice_as_request(_script_statement_as_claim(d), user_message, cfg) for d in drafts
+    ]
     for i, d in enumerate(drafts):
         if not d.quote.strip():
             problems.append(Problem("EMPTY_QUOTE", d.quote, i))
@@ -679,6 +681,51 @@ def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
         update={"dimension": "script_independence", "metric": SCRIPT_USE_METRIC}
     )
     return draft.model_copy(update={"type": "MEASURED", "claim_op": "VALUE", "subject": subject})
+
+
+#: 조건 꼴('긴장하면 ' · '빠르면,'): 한글 낱말 끝의 '면' 뒤에 띄어쓰기 · 쉼표 · 끝
+_CONDITIONAL_RE = re.compile(r"[가-힣]면(?:\s|,|$)")
+
+
+def tendency_advice_as_request(
+    draft: AssessmentDraft, user_message: str, cfg: ChatAgentConfig
+) -> AssessmentDraft:
+    """대상 없는 자기 경향 진술 + 조언 요청을 측정 주장으로 판정하지 않는다(6-3 '먼저 검사' 2, r9 guide-nervous).
+
+    "긴장하면 말이 빨라져. 어떻게 하면 좋아?"는 내 Take 의 사실이 아니라 평소 경향을 말하고 방법을 묻는 말이다. 측정 주장(`MEASURED`)으로
+    두면 지금 Take 기록으로 '기록과 달라요' · '확인할 수 없어요'를 판정해 조언 질문에 답하지 못한다. 바꾸는 것은 사용자 말에 조언 요청
+    낱말(`advice_request_words`)이 있고, 초안이 Take · 장을 집지 않았고, `quote`가 조건 꼴('~하면') 또는 경향 낱말(`tendency_words`)이며
+    Take · 장 · 기록 지시어(`record_ref_words`)가 없는 측정 초안뿐이다. 요청(`REQUEST`)으로 바꾸고 대상(차원 · 지표)을 비운다 —
+    기록을 읽지 않고 자료 조언으로 답한다. 대상이 있으면 지금처럼 판정한다.
+    """
+    sub = draft.subject
+    q = draft.quote
+    if (
+        draft.type != "MEASURED"
+        or draft.speaker != "USER"
+        or sub.take_ids
+        or sub.take_numbers
+        or sub.slide_number is not None
+        or not any(w in user_message for w in cfg.advice_request_words)
+        or _TAKE_REF.search(q)
+        or _SLIDE_REF.search(q)
+        or any(w in q for w in cfg.record_ref_words)
+    ):
+        return draft
+    if not (_CONDITIONAL_RE.search(q) or any(w in q for w in cfg.tendency_words)):
+        return draft
+    subject = sub.model_copy(update={"dimension": None, "metric": None, "relation": None})
+    return draft.model_copy(
+        update={
+            "type": "REQUEST",
+            "claim_op": None,
+            "polarity": "NEUTRAL",
+            "value": None,
+            "value_unit": None,
+            "verdict": "SUPPORTED",
+            "subject": subject,
+        }
+    )
 
 
 def states_script_use(text: str) -> bool:

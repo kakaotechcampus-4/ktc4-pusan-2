@@ -16,6 +16,7 @@ from pitch_coach_ai.features.chat_agent.claims import (
     change_direction,
     claim_link_key,
     code_verdict,
+    tendency_advice_as_request,
     finalize,
     goal_conflict,
     normalize_quote,
@@ -1844,3 +1845,46 @@ def test_claim_key_ignores_relation_for_a_single_take() -> None:
     assert claim_key(subject=two.model_copy(update={"relation": "ALL"}), **base) != claim_key(
         subject=two.model_copy(update={"relation": "SOME"}), **base
     )
+
+
+# ── 대상 없는 자기 경향 + 조언 요청(6-3 먼저 검사 2, r9 guide-nervous) ─────────────────────────
+
+
+NERVOUS = "긴장하면 말이 빨라져. 어떻게 하면 좋아?"
+
+
+def _nervous_draft(quote: str = "긴장하면 말이 빨라져", **kw) -> AssessmentDraft:
+    return mk(quote, op="ISSUE", dim="pacing_rhythm", metric="cpm", polarity="NEGATIVE", **kw)
+
+
+def test_tendency_with_advice_request_is_not_a_measured_claim() -> None:
+    d = tendency_advice_as_request(_nervous_draft(), NERVOUS, CFG)
+    assert (d.type, d.claim_op, d.subject.dimension, d.subject.metric) == ("REQUEST", None, None, None)
+    # 확정에서도 같다: 측정 판정(기록과 다름 · 확인 불가)을 하지 않는다
+    out = fin([_nervous_draft()], NERVOUS, t5(), focus="take-5").outcomes
+    assert [(o.assessment.type, o.assessment.claim_op) for o in out] == [("REQUEST", None)]
+    assert not out[0].sentence  # 요청의 SUPPORTED 판단은 첫 문장 템플릿을 그리지 않는다
+
+
+@pytest.mark.parametrize(
+    ("message", "draft"),
+    [
+        # 대상(Take · 장 · 기록 지시어)이 있으면 지금처럼 측정 주장으로 판정한다
+        ("Take 5에서 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?", _nervous_draft("Take 5에서 긴장하면 말이 빨라졌어")),
+        ("이번에 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?", _nervous_draft("이번에 긴장하면 말이 빨라졌어")),
+        ("3장에서 긴장하면 빨라져. 방법 있어?", _nervous_draft("3장에서 긴장하면 빨라져")),
+        ("긴장하면 말이 빨라져. 어떻게 하면 좋아?", _nervous_draft(numbers=(5,))),
+        # 조언 요청이 없으면 그대로
+        ("긴장하면 말이 빨라져", _nervous_draft()),
+        # 경향 진술이 아니면 그대로(조건 꼴 · 경향 낱말 없음)
+        ("말이 빨랐어. 어떻게 하면 좋아?", _nervous_draft("말이 빨랐어")),
+    ],
+)
+def test_tendency_rule_keeps_claims_with_a_target(message: str, draft: AssessmentDraft) -> None:
+    assert tendency_advice_as_request(draft, message, CFG) == draft
+
+
+def test_tendency_word_form_is_also_a_tendency() -> None:
+    msg = "나는 보통 말이 빨라. 줄이는 방법 알려줘"
+    d = tendency_advice_as_request(_nervous_draft("나는 보통 말이 빨라"), msg, CFG)
+    assert d.type == "REQUEST"
