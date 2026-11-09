@@ -21,6 +21,7 @@
 | 문서 | 담는 것 | 담당 |
 |---|---|---|
 | [FE 구조](architecture.md) | 화면 흐름(라우트), 상태를 어디에 두나(Query · Zustand · IndexedDB · 라우터 state), 폴더와 의존 방향, BE · AI와 주고받는 것, 시선 파이프라인 개요 | FE |
+| [분석 대기 · 리포트 · Take 기록 (FE)](features/report.md) | 분석 대기 · 대본 확인 · 리포트 · Take 비교 · 설문, 리포트 조회를 멈추는 조건, 리뷰가 없을 때의 화면 | FE |
 | [장치 점검 · 리허설 (FE)](features/rehearsal.md) | Take 만들기 · 카메라 · 마이크 · 시선 기준점, 발표 중 WS(PCM · `metrics` · `slide` · `stop`), 시선 호출 흐름, 끝내기 · 재시도 · 새로고침 이어 가기 | FE |
 | [피치 만들기 · 수정 (FE)](features/pitch-create.md) | 발표 정보 · 슬라이드 · 대본 매핑 · 평가 기준 · 버전, 대본 ↔ 슬라이드 연결 규칙, 연습 조합, BE 경로 · 한도 | FE |
 | [대화형 에이전트 (FE)](features/chat-agent.md) | 대화창 화면 흐름 · 상태 · 파일 구성 · BE 경로 · 조회 간격과 재시도 · 안내 문구 · 남은 한계 (기준은 AI chat-agent.md) | FE |
