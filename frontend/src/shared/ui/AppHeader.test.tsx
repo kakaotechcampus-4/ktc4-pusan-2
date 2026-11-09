@@ -21,6 +21,8 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
+  Reflect.deleteProperty(document.documentElement, 'clientWidth');
+  document.documentElement.style.removeProperty('--app-scrollbar-width');
   vi.unstubAllGlobals();
 });
 
@@ -82,4 +84,28 @@ it('본문이 아직 없어도 기본 앵커 이동을 막아 주소에 #main �
   });
   expect(click.defaultPrevented).toBe(true);
   expect(window.location.hash).toBe('');
+});
+
+it('keeps scrollbar compensation through a dialog and refreshes it after closing', async () => {
+  const root = document.documentElement;
+  Object.defineProperty(root, 'clientWidth', {
+    configurable: true,
+    value: window.innerWidth - 15,
+  });
+  await show(<p>화면</p>);
+  expect(root.style.getPropertyValue('--app-scrollbar-width')).toBe('15px');
+
+  const dialog = document.createElement('dialog');
+  dialog.setAttribute('open', '');
+  document.body.append(dialog);
+  Object.defineProperty(root, 'clientWidth', {
+    configurable: true,
+    value: window.innerWidth,
+  });
+  await act(async () => window.dispatchEvent(new Event('resize')));
+  expect(root.style.getPropertyValue('--app-scrollbar-width')).toBe('15px');
+
+  dialog.remove();
+  await act(async () => document.dispatchEvent(new Event('close')));
+  expect(root.style.getPropertyValue('--app-scrollbar-width')).toBe('0px');
 });

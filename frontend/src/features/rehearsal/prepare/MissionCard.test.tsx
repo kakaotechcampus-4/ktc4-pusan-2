@@ -111,6 +111,32 @@ it('reads the full 500-character description, moves between missions, and restor
   expect(document.activeElement).toBe(trigger);
 });
 
+it('keeps focus on the reader buttons when the first or last mission is reached (#845)', async () => {
+  await act(async () => root.render(<MissionCard info={info(2)} exam={false} />));
+  await act(async () => button('미션 1 전체 보기').click());
+  const dialog = host.querySelector('dialog')!;
+  const action = (text: string) =>
+    [...dialog.querySelectorAll('button')].find((node) => node.textContent === text)!;
+  // A disabled button drops focus to <body>, outside the modal dialog (#818)
+  const next = action('다음 미션');
+  next.focus();
+  await act(async () => next.click());
+  expect(dialog.textContent).toContain('2 / 2');
+  expect(next.disabled).toBe(false);
+  expect(next.getAttribute('aria-disabled')).toBe('true');
+  expect(document.activeElement).toBe(next);
+  await act(async () => next.click());
+  expect(dialog.textContent).toContain('2 / 2');
+
+  const previous = action('이전 미션');
+  previous.focus();
+  await act(async () => previous.click());
+  expect(dialog.textContent).toContain('1 / 2');
+  expect(previous.disabled).toBe(false);
+  expect(previous.getAttribute('aria-disabled')).toBe('true');
+  expect(document.activeElement).toBe(previous);
+});
+
 it('shows the complete short mission without a button and adds reading access only when it no longer fits', async () => {
   const short = info(1);
   short.missions!.items[0]!.description = '문장 끝에서 청중을 바라보기';

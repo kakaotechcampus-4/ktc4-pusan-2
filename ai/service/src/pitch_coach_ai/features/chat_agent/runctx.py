@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -50,6 +52,17 @@ class RunCtx:
     #: 이 실행에서 범위 피치를 다른 피치로 바꿨는가(서명 상태 `scope_switched`로 이어진다). 바꾼 뒤에는 사용자가 말한 Take
     #: 번호가 어느 피치의 것인지 지금 범위만으로 알 수 없다("졸업 발표 Take 5랑 회사 소개 Take 2", #940 리뷰)
     scope_switched: bool = False
+    #: 질문 임베딩 함수(글, 시간 제한 초 → 벡터, 실패하면 예외). 서비스 계층이 넘긴다(`TurnDeps.embed_query`). 없으면 키워드 검색만
+    embed_query: Callable[[Sequence[str], float], Sequence[Sequence[float]]] | None = None
+    #: 조사에 남은 시간(초). 임베딩 시간 제한을 이 안으로 줄인다. 없으면 줄이지 않는다
+    research_left: Callable[[], float] | None = None
+    monotonic: Callable[[], float] = time.monotonic
+    #: 이 실행에서 질문 임베딩을 이미 불렀는가(실행당 한 번, 서명 상태 `LoopState.embed_used`로 이어진다). 실패해도 센다
+    embed_used: bool = False
+    #: 이번 호출 안에서 얻은 질문 임베딩(글 → 벡터). 같은 글로 다시 찾으면 다시 부르지 않고 쓴다(이어 부르면 사라진다)
+    embed_cache: dict[str, Sequence[float]] = field(default_factory=dict)
+    #: 계획이 쓴 검색어를 묶어 임베딩한 결과(글 → {embed: 상태, embed_ms}). 검색 진단에 그 글의 상태를 쓴다(이어 부르면 사라진다)
+    embed_planned: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def build(

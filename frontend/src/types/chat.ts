@@ -369,6 +369,8 @@ export interface ConversationListItem extends ConversationSummary {
 
 export interface ConversationList {
   conversations: ConversationListItem[];
+  /** 다음 쪽을 읽을 커서(BE #1000). 해석하지 않고 그대로 `?cursor=` 로 보냅니다. null 이면 끝까지 다 읽었습니다 */
+  next_cursor: string | null;
 }
 
 // ── 요청 ──────────────────────────────────────────────────────

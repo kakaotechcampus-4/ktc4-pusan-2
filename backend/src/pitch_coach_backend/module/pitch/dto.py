@@ -38,6 +38,8 @@ class PitchInfoResponseDTO(BaseModel):
     upper_deviation: int
     lower_deviation: int
     presentation_date: date | None = None
+    # First Take 튜토리얼 샘플 발표인가
+    is_demo: bool
 
 
 class PitchListItemDTO(BaseModel):
@@ -50,10 +52,21 @@ class PitchListItemDTO(BaseModel):
     takes: list[TakeSummaryDTO]
     # 지금 지울 수 있는가. 연습이나 분석이 도는 중이면 false 이고 삭제는 409 `PITCH_BUSY` 다
     can_delete: bool
+    # First Take 튜토리얼 샘플 발표인가
+    is_demo: bool
 
 
 class PitchListResponseDTO(BaseModel):
     pitches: list[PitchListItemDTO]
+
+
+class FirstTakeDTO(BaseModel):
+    """`POST /pitches/tutorials/first-take` 응답. 처음이면 만들고, 있으면 그 발표를 준다."""
+
+    pitch_id: uuid.UUID
+    # 이 계정이 튜토리얼 리포트를 이미 받았는가. true 면 샘플 발표에서 새 Take 를 만들 수 없다
+    # (409 `TUTORIAL_REPORT_USED`)
+    report_received: bool
 
 
 class UploadPresentationDTO(BaseModel):

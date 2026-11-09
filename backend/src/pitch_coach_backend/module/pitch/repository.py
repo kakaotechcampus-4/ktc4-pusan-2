@@ -83,6 +83,30 @@ class PitchRepository:
         self.db.flush()
         return pitch
 
+    def get_demo_pitch_id(self, user_id: uuid.UUID) -> uuid.UUID | None:
+        return self.db.scalar(select(Pitch.id).where(Pitch.user_id == user_id, Pitch.is_demo))
+
+    def insert_demo_pitch(self, pitch: Pitch) -> uuid.UUID | None:
+        """튜토리얼 샘플 발표 행을 넣는다. 그 사용자의 샘플 발표가 이미 있으면 넣지 않고 None.
+
+        다른 요청이 넣고 아직 커밋하지 않았으면 그 트랜잭션이 끝날 때까지 기다린다
+        (uq_pitches_user_demo). 그쪽이 커밋하면 None, 되돌리면 이쪽이 넣는다.
+        """
+        return self.db.scalar(
+            insert(Pitch)
+            .values(
+                user_id=pitch.user_id,
+                title=pitch.title,
+                time_limit_sec=pitch.time_limit_sec,
+                presentation_date=pitch.presentation_date,
+                upper_deviation=pitch.upper_deviation,
+                lower_deviation=pitch.lower_deviation,
+                is_demo=True,
+            )
+            .on_conflict_do_nothing(index_elements=[Pitch.user_id], index_where=Pitch.is_demo)
+            .returning(Pitch.id)
+        )
+
     def get_take_ids(self, pitch_id: uuid.UUID) -> list[uuid.UUID]:
         return list(self.db.scalars(select(Take.id).where(Take.pitch_id == pitch_id)))
 

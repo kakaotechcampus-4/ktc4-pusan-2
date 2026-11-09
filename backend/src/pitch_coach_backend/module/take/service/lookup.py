@@ -42,6 +42,10 @@ def _analysis_stalled(take: TakeProgress, now: datetime) -> bool:
     return take.analysis_stage_at < now - limit
 
 
+def _analysis_running(take: TakeProgress, now: datetime) -> bool:
+    return take.status == ANALYZING and not _analysis_stalled(take, now)
+
+
 def blocks_pitch_deletion(take: TakeProgress, now: datetime) -> bool:
     """실제로 도는 Take 면 True. 발표를 지우면 CASCADE 로 같이 지워져 연습이나 분석이 끊긴다.
 
@@ -49,7 +53,14 @@ def blocks_pitch_deletion(take: TakeProgress, now: datetime) -> bool:
     """
     if take.status == RUNNING:
         return True
-    return take.status == ANALYZING and not _analysis_stalled(take, now)
+    return _analysis_running(take, now)
+
+
+def pitch_has_running_analysis(db: Session, pitch_id: uuid.UUID, now: datetime) -> bool:
+    """분석이 도는 Take 가 있는가. 멈춘 분석은 세지 않는다 (`blocks_pitch_deletion` 과 같다)."""
+    return any(
+        _analysis_running(take, now) for take in TakeRepository(db).progress_in_pitch(pitch_id)
+    )
 
 
 def pitch_has_take_blocking_deletion(db: Session, pitch_id: uuid.UUID, now: datetime) -> bool:

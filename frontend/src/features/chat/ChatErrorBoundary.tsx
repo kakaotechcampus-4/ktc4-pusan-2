@@ -8,10 +8,10 @@ import {
   type RefObject,
 } from 'react';
 import { useLocation } from 'react-router';
-import { canShowChat, chatLauncherBottom } from './chatRoutes';
+import { CHAT_LAUNCHER_CLASS, canShowChat, chatLauncherBottom } from './chatRoutes';
 
 /** 대화창이 렌더 중에 던졌을 때 보이는 문구 (`docs/ai/features/chat-agent.md` L3-36 · 7-9) */
-export const CHAT_FAILED_TEXT = '대화창에 문제가 생겼으니 다시 열어 주세요.';
+export const CHAT_FAILED_TEXT = '새미나이 대화창에 문제가 생겼으니 다시 열어 주세요.';
 
 interface Props {
   children: ReactNode;
@@ -76,8 +76,9 @@ export class ChatErrorBoundary extends Component<Props, State> {
 
 /**
  * 런처 자리의 안내. 채팅이 숨는 화면(연습 무대 등)에서는 그리지 않습니다.
- * [닫기]는 안내를 런처 크기의 [다시 시도] 버튼으로 접습니다 — 안내 상자가 오른쪽 아래의 페이지 조작을 가리지 않게 합니다.
- * 장치 점검이 오른쪽 여백을 런처 자리만큼 넓히도록 런처와 같은 `data-chat-launcher` 를 둡니다 (index.css)
+ * [닫기]는 안내를 런처 크기의 [다시 시도] 버튼으로 접습니다 — 안내도 왼쪽 아래에 표시합니다.
+ * 정상 런처와 같은 `data-chat-launcher` 를 둡니다.
+ * index.css의 화면 여백 보정과 오류 경계의 초점 복귀가 이 표시를 사용합니다.
  */
 function ChatFailed({
   retryRef,
@@ -95,19 +96,20 @@ function ChatFailed({
   }, [folded, retryRef]);
 
   if (!canShowChat(pathname)) return null;
+  const defaultBottom = chatLauncherBottom(pathname);
 
   return (
     <div
       data-chat-launcher=""
-      style={{ '--chat-launcher-bottom': `${chatLauncherBottom(pathname)}px` } as CSSProperties}
-      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
+      style={{ '--chat-launcher-default-bottom': `${defaultBottom}px` } as CSSProperties}
+      className={CHAT_LAUNCHER_CLASS}
     >
       {folded ? (
         <button
           ref={retryRef}
           type="button"
           onClick={onRetry}
-          aria-label="대화창 다시 시도"
+          aria-label="새미나이 다시 시도"
           title={CHAT_FAILED_TEXT}
           className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
         >
@@ -119,7 +121,7 @@ function ChatFailed({
         </button>
       ) : (
         <section
-          aria-label="대화창 오류"
+          aria-label="새미나이 오류"
           className="w-[min(18rem,calc(100vw-2rem))] rounded-2xl border-2 border-ink bg-panel p-4 shadow-[3px_3px_0_var(--color-ink)]"
         >
           {/* 안내는 실패마다 한 번 읽힙니다. 버튼에는 이 문장을 잇지 않아 초점이 옮겨 가도 두 번 읽히지 않습니다 */}

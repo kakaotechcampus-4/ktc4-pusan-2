@@ -10,6 +10,7 @@ import {
   CardList,
   MEMORY_CHANGED_TEXT,
   MEMORY_REMOVE_FAILED_TEXT,
+  MEMORY_RECHECK_FAILED_TEXT,
   MEMORY_REMOVED_TEXT,
   type CardActions,
 } from './ChatCards';
@@ -17,6 +18,7 @@ import { ChatMemorySettings } from './ChatMemorySettings';
 import { MEMORY_TEXT } from './chatMemory';
 import { emptyBasis, readCard } from './chatResponse';
 import { useChatStore } from './chatStore';
+import { useMemorySettings } from './useChatMemory';
 
 /**
  * 기억 설정 화면 · '기억했어요' 카드 [지우기] (12-4 F14 · F16, L3-43 · L3-45).
@@ -127,6 +129,124 @@ const cards = (...shown: ReturnType<typeof memoryCard>[]) => (
 );
 
 describe("'기억했어요' 카드 [지우기] (F16 · L3-45)", () => {
+  it('대화창을 열 때 읽어 둔 설정에 새 항목이 없어도, 카드가 다시 읽어 [지우기]를 보인다', async () => {
+    // 대화창을 열 때 읽은 설정 — 아직 기억하기 전이라 항목이 없고, 30초 동안은 새것으로 칩니다
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true));
+    server.get = () => Promise.resolve(settings(true, tone()));
+    await render(cards(memoryCard(I1, '짧게')));
+    await settle();
+    expect(button('지우기')).toBeDefined();
+    expect(host.textContent).not.toContain(MEMORY_REMOVED_TEXT);
+  });
+
+  it('카드가 나타나기 전에 시작한 읽기가 저장 전 목록을 늦게 돌려줘도 지웠다고 하지 않고, 다시 읽어 [지우기]를 보인다', async () => {
+    // 대화창을 열 때 보낸 읽기 — 아직 기억하기 전이라, 늦게 오더라도 목록에 새 항목이 없습니다
+    const Opening = () => {
+      useMemorySettings('u1');
+      return null;
+    };
+    const opening = held<unknown>();
+    server.get = () => opening.promise;
+    await render(<Opening />);
+    // 그 읽기가 끝나기 전에 기억을 저장했다는 카드가 옵니다
+    await render(
+      <>
+        <Opening />
+        {cards(memoryCard(I1, '짧게'))}
+      </>,
+    );
+    const reads = () => server.calls.filter((c) => c === 'GET /api/chat/memory').length;
+    expect(reads()).toBe(1);
+
+    server.get = () => Promise.resolve(settings(true, tone()));
+    await act(async () => opening.resolve(settings(true)));
+    await settle();
+    expect(host.textContent).not.toContain(MEMORY_REMOVED_TEXT);
+    // 늦게 온 목록은 믿지 않고, 카드를 그린 뒤에 한 번 더 읽어 확인합니다
+    await settle();
+    expect(reads()).toBe(2);
+    expect(button('지우기')).toBeDefined();
+  });
+
+  it('같은 종류를 덮어써 기억해도(값만 바뀜) 새 카드는 다시 읽어 [지우기]를, 지난 카드는 바뀜 안내를 보인다', async () => {
+    // 대화창을 열 때 읽은 설정은 덮어쓰기 전 값 — BE 는 같은 key 면 item_id 를 두고 값만 바꿉니다
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true, tone('짧게')));
+    await render(cards(memoryCard(I1, '짧게')));
+    server.get = () => Promise.resolve(settings(true, tone('자세히')));
+    await render(cards(memoryCard(I1, '짧게'), memoryCard(I1, '자세히')));
+    const [oldCard, newCard] = [...host.querySelectorAll(`[data-memory-item="${I1}"]`)];
+    expect(newCard!.querySelector('button')!.textContent).toBe('지우기');
+    expect(oldCard!.querySelector('button')).toBeNull();
+    expect(oldCard!.textContent).toContain(MEMORY_CHANGED_TEXT);
+  });
+
+  it('다시 읽지 못하면 지웠다고 단정하지 않고 확인 실패와 [다시 확인]을 보인다 — 눌러 읽히면 [지우기]가 돌아온다', async () => {
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true));
+    server.get = () => Promise.reject(new Error('끊김'));
+    await render(cards(memoryCard(I1, '짧게')));
+    expect(host.textContent).not.toContain(MEMORY_REMOVED_TEXT);
+    expect(alerts()).toEqual([MEMORY_RECHECK_FAILED_TEXT]);
+    expect(button('지우기')).toBeUndefined();
+    const reads = () => server.calls.filter((c) => c === 'GET /api/chat/memory').length;
+    // 실패했다고 저절로 되풀이하지 않습니다
+    expect(reads()).toBe(1);
+
+    server.get = () => Promise.resolve(settings(true, tone()));
+    await click(button('다시 확인')!);
+    await settle();
+    expect(reads()).toBe(2);
+    expect(alerts()).toEqual([]);
+    expect(button('지우기')).toBeDefined();
+  });
+
+  it('지운 지난 카드 여럿이 함께 다시 읽어도 요청은 하나다 — 서로 취소하고 다시 보내지 않는다', async () => {
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true));
+    const pending = held<unknown>();
+    server.get = () => pending.promise;
+    const other = readCard(
+      { type: 'MEMORY_SAVED', item_id: I2, key: 'FOCUS_AREA', value: '시선' },
+      emptyBasis(),
+    );
+    await render(cards(memoryCard(I1, '짧게'), memoryCard(I1, '짧게'), other));
+    expect(server.calls.filter((c) => c === 'GET /api/chat/memory')).toHaveLength(1);
+    await act(async () => pending.resolve(settings(true)));
+    await settle();
+    expect(server.calls.filter((c) => c === 'GET /api/chat/memory')).toHaveLength(1);
+    expect(host.textContent!.split(MEMORY_REMOVED_TEXT)).toHaveLength(4);
+  });
+
+  it('다시 읽는 중에 지우면 늦게 온 읽기 응답이 지운 결과를 덮어쓰지 않는다', async () => {
+    // I1 은 목록에 있어 [지우기]가 보이고, I2 는 목록에 없어 다시 읽는 중입니다
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true, tone()));
+    const reading = held<unknown>();
+    server.get = () => reading.promise;
+    server.remove = () => Promise.resolve(settings(true, focus));
+    const other = readCard(
+      { type: 'MEMORY_SAVED', item_id: I2, key: 'FOCUS_AREA', value: '시선' },
+      emptyBasis(),
+    );
+    await render(cards(memoryCard(I1, '짧게'), other));
+    await click(button('지우기')!);
+    await settle();
+    // 지우기 전에 보낸 읽기 — 아직 I1 이 남아 있던 때의 목록입니다
+    await act(async () => reading.resolve(settings(true, tone(), focus)));
+    await settle();
+    expect(queryClient.getQueryData(['chat', 'memory', 'u1'])).toEqual(settings(true, focus));
+    const [first, second] = [...host.querySelectorAll('[data-memory-item]')];
+    expect(first!.textContent).toContain(MEMORY_REMOVED_TEXT);
+    expect(second!.querySelector('button')!.textContent).toBe('지우기');
+  });
+
+  it('카드를 그린 때와 같은 밀리초에 다시 읽혀도 그 결과를 믿는다 — 되풀이해 읽지 않는다', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    queryClient.setQueryData(['chat', 'memory', 'u1'], settings(true));
+    server.get = () => Promise.resolve(settings(true));
+    await render(cards(memoryCard(I1, '짧게')));
+    expect(server.calls.filter((c) => c === 'GET /api/chat/memory')).toHaveLength(1);
+    expect(host.textContent).toContain(MEMORY_REMOVED_TEXT);
+    vi.mocked(Date.now).mockRestore();
+  });
+
   it('[지우기]는 그 item_id 로 지우고, 지운 카드는 버튼만 끄고 그대로 남는다 — 설정 캐시도 같은 응답으로 바뀐다', async () => {
     server.get = () => Promise.resolve(settings(true, tone(), focus));
     server.remove = () => Promise.resolve(settings(true, focus));
