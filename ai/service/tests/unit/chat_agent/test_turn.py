@@ -1183,6 +1183,56 @@ def test_value_question_is_not_judged_unverifiable() -> None:
     assert all(a.type == "REQUEST" for a in fd.assessments)
 
 
+def test_take_written_as_nth_take_is_normalized_and_not_dropped() -> None:
+    """모델이 'Take 5' 대신 '5번 Take'라고 써도 숫자 검사가 '5번'을 근거 없는 횟수로 읽어 문장을 빼지 않는다: 검사 전에
+    'Take 5'로 바꾼다(r9 rep-repeat-issue: '4번과 5번 Take에서는 …'이 빠져 반복 문제 답이 사라짐)."""
+    msg = "Take 5 3장 시선 몇 %였어?"
+    d = F.draft(
+        "Take 5 3장 시선 몇 %였어",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        metric="audience_ratio",
+        slide_number=3,
+        take_numbers=[5],
+        polarity="NEUTRAL",
+    )
+    report = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
+
+    def ans(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio")
+        return F.answer(
+            [F.claim("RECORD", "5번 Take의 3장 청중 시선 비율은 28%예요.", evidence_ids=[eid])]
+        )
+
+    llm = F.FakeLlm(
+        [F.plan(assessments=[d]), F.tools(report), F.done()], answers=[ans], fixes=[F.fix({})]
+    )
+    fd = final_ok(F.run_turn(F.request(user_message=msg), llm)[2])
+    assert [c.text for c in fd.message.claims if c.kind == "RECORD"] == [  # type: ignore[union-attr]
+        "Take 5의 3장 청중 시선 비율은 28%예요."
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "out"),
+    [
+        ("4번과 5번 Take에서는 3장에서", "Take 4와 Take 5에서는 3장에서"),
+        ("3번, 4번 Take 모두", "Take 3, Take 4 모두"),
+        (
+            "‘회사 소개 발표’의 2번 Take 점수는 70점입니다.",
+            "‘회사 소개 발표’의 Take 2의 점수는 70점입니다.",
+        ),
+        ("3번째 Take는", "3번째 Take는"),
+        ("Take 4는 2번 멈췄어요", "Take 4는 2번 멈췄어요"),
+    ],
+)
+def test_normalize_take_refs(text: str, out: str) -> None:
+    from pitch_coach_ai.features.chat_agent.compose import normalize_take_refs
+
+    assert normalize_take_refs(text) == out
+
+
 def test_script_points_removed_notice_condition() -> None:
     """대본 허용으로 다시 평가해 점수가 오르면 7-10 "평가 항목이 빠져 오른 점수예요…"를 붙인다."""
     from pitch_coach_ai.features.chat_agent.loop import _script_points_removed

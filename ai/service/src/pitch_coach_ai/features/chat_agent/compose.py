@@ -83,6 +83,54 @@ def strip_ref_ids(text: str) -> str:
     return re.sub(r"\s{2,}", " ", t).strip()
 
 
+#: 모델이 쓴 'N번 Take' 표기(화면 · 근거 · 코드 문장의 Take 표기는 'Take N'). 'N번과 M번 Take'처럼 이어 쓴 꼴도 본다
+_TAKE_LIST_RE = re.compile(
+    r"((?:(?<![\d.])\d+번\s*(?:과|와|,|·|및)\s*)+)(\d+)번\s*Take(?![A-Za-z])"
+)
+_TAKE_ITEM_RE = re.compile(r"(\d+)번\s*(과|와|,|·|및)\s*")
+_TAKE_ONE_RE = re.compile(r"(?<![\d.])(\d+)번\s*Take(?![A-Za-z])")
+
+
+def _wa(num: str) -> str:
+    """'Take N' 뒤 접속 조사: 숫자 읽기의 끝소리에 받침이 없으면(이 · 사 · 오 · 구) '와', 있으면 '과'."""
+    return "와" if num[-1] in "2459" else "과"
+
+
+def normalize_take_refs(text: str) -> str:
+    """모델 문장의 'N번 Take'를 'Take N'으로 바꾼다(6-9 숫자 검사 · 화면 표기).
+
+    "4번과 5번 Take에서는"의 '4번'은 Take 번호인데 숫자 검사는 횟수(4번)로 읽어 근거 없는 숫자로 문장을 뺐다(r9 rep-repeat-issue:
+    반복 문제 답이 빠짐 · glob-ambiguous-name 숫자 불일치). 순서('3번째')는 바꾸지 않는다.
+
+    예: "4번과 5번 Take에서는" → "Take 4와 Take 5에서는", "‘졸업 발표’의 2번 Take 점수는" → "‘졸업 발표’의 Take 2의 점수는"
+    """
+
+    def _list(m: re.Match[str]) -> str:
+        parts = []
+        for n, sep in _TAKE_ITEM_RE.findall(m.group(1)):
+            if sep in ("과", "와"):
+                parts.append(f"Take {n}{_wa(n)} ")
+            elif sep == ",":
+                parts.append(f"Take {n}, ")
+            else:
+                parts.append(f"Take {n} {sep} ")
+        return "".join(parts) + f"Take {m.group(2)}"
+
+    out = _TAKE_LIST_RE.sub(_list, text)
+    # 뒤에 '점수'가 오면 'Take N의 점수'로 잇는다('Take 2 점수'는 'Take 2'의 2 를 점수 값처럼 읽게 한다)
+    return _TAKE_ONE_RE.sub(
+        lambda m: (
+            f"Take {m.group(1)}" + ("의" if m.string[m.end() :].lstrip().startswith("점수") else "")
+        ),
+        out,
+    )
+
+
+def tidy_model_text(text: str) -> str:
+    """모델이 쓴 문장 글을 검사 전에 다듬는다: 근거 · 자료 id 표기를 지우고(`strip_ref_ids`) 'N번 Take'를 'Take N'으로."""
+    return normalize_take_refs(strip_ref_ids(text))
+
+
 def _claim(
     kind: str, text: str, *, quote: str | None = None, about: str | None = None, **kw: Any
 ) -> Claim | None:
