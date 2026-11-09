@@ -360,7 +360,6 @@ export function CreateConceptScreen({
   onNavigate: Navigate;
   inline: boolean;
 }) {
-  const focusOutline = true; // 현재 제품은 모든 상태에 동일한 섹션 강조 방식을 사용한다.
   const ready = ['ready', 'many', 'focus-outline', 'final-review'].includes(stateId);
   const [hasSlides, setHasSlides] = useState(!['empty', 'error'].includes(stateId));
   const [slidesConfirmed, setSlidesConfirmed] = useState(
@@ -425,7 +424,7 @@ export function CreateConceptScreen({
   const versions = Array.from({ length: stateId === 'many' ? 30 : 3 }, (_, i) => i + 1);
   return (
     <div
-      className={`pitch-create create-page create-concept${focusOutline ? ' create-focus' : ''}`}
+      className="pitch-create create-page create-concept create-focus"
     >
       <div className="create-layout">
         <aside className="create-sidebar">
@@ -502,12 +501,12 @@ export function CreateConceptScreen({
           <section
             id={`${id}-0`}
             aria-label="슬라이드"
-            data-current={focusOutline && active === 0 ? true : undefined}
+            data-current={active === 0 ? true : undefined}
             onFocusCapture={() => {
-              if (focusOutline) setActive(0);
+              setActive(0);
             }}
             onPointerDown={() => {
-              if (focusOutline) setActive(0);
+              setActive(0);
             }}
           >
             <Heading subtitle="발표에 사용할 PDF를 올려 주세요.">1. 슬라이드</Heading>
@@ -563,12 +562,12 @@ export function CreateConceptScreen({
           <section
             id={`${id}-1`}
             aria-label="대본 연결"
-            data-current={focusOutline && active === 1 ? true : undefined}
+            data-current={active === 1 ? true : undefined}
             onFocusCapture={() => {
-              if (focusOutline) setActive(1);
+              setActive(1);
             }}
             onPointerDown={() => {
-              if (focusOutline) setActive(1);
+              setActive(1);
             }}
           >
             <Heading subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요.">2. 대본 연결</Heading>
@@ -624,12 +623,12 @@ export function CreateConceptScreen({
           <section
             id={`${id}-2`}
             aria-label="발표정보"
-            data-current={focusOutline && active === 2 ? true : undefined}
+            data-current={active === 2 ? true : undefined}
             onFocusCapture={() => {
-              if (focusOutline) setActive(2);
+              setActive(2);
             }}
             onPointerDown={() => {
-              if (focusOutline) setActive(2);
+              setActive(2);
             }}
           >
             <Heading subtitle="발표 제목과 목표 시간을 확인해 주세요.">3. 발표정보</Heading>
@@ -718,12 +717,12 @@ export function CreateConceptScreen({
           <section
             id={`${id}-3`}
             aria-label="평가기준 (선택)"
-            data-current={focusOutline && active === 3 ? true : undefined}
+            data-current={active === 3 ? true : undefined}
             onFocusCapture={() => {
-              if (focusOutline) setActive(3);
+              setActive(3);
             }}
             onPointerDown={() => {
-              if (focusOutline) setActive(3);
+              setActive(3);
             }}
           >
             <Heading subtitle="연습할 때 무엇을 볼지 정해요. 건너뛰어도 연습할 수 있어요.">
