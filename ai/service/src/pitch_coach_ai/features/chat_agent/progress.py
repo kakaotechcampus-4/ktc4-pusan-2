@@ -17,7 +17,8 @@
   답 쓰기 단계(`tool == "answer"`)는 답 문장이 하나 이상이면 DONE.
 - 끝 상태(`end_status`, TARGET 6): 조사가 한도 · 장애로 끊기지 않았고 풀리지 않은 단계(`unresolved_steps`: 시간 부족 · 복구되지 않은
   확인 실패)가 없고 질문 대상마다 답 문장(확인한 답 · 확인한 '없음' · 비교할 수 없는 까닭)이 있으면 DONE, 아니면 PARTIAL.
-- 상황 신호(`StepRun.signal`): 비교 불가 `NOT_COMPARABLE` · 기본 자료에 없음 `NOT_LOADED` · 리뷰 없음 `REVIEW_MISSING` · 읽은 범위에
+- 상황 신호(`StepRun.signal`): 비교 불가 `NOT_COMPARABLE` · 기본 자료에 없음 `NOT_LOADED`(범위 피치가 있을 때만. 전체 범위에서
+  막힌 읽기는 가져올 기록이 아니라 단계에 사실만 보인다) · 리뷰 없음 `REVIEW_MISSING` · 읽은 범위에
   기록 없음 `NO_RECORD`(facts `TAKES` · `GOAL` · `PROBLEM_SEGMENTS`) · 도구 실패 `TOOL_ERROR`. 기록 없음 · 리뷰 없음은 도구가 '없음'
   근거(tools/impl.py)를 낸 결과와 같은 때다(범위 피치의 Take 0개 · 대화 목표 없음 · 물은 영역이 측정됐고 문제 구간 0곳). 결정 로그 줄(`decision_line`,
   `event: agent_decision`)은 서비스 로그에만 남기고 진단 기록(BE 로 감)에는 넣지 않는다. 값은 enum · 정수 · null 뿐이다(글 · 수치 · 인자 값 없음).
@@ -278,6 +279,11 @@ def read_run(
         return StepRun(name, exec_, plain, result, done, ev, take, signal, list(facts))
 
     if tr.read_state == "NOT_LOADED":
+        if ctx.scope_pitch_id is None:
+            # 전체 범위(범위 피치 없음)에서 Take 를 읽으려다 막힌 것은 가져올 기록이 아니다: 대응을 기다리는 신호(가져오기 대응)를
+            # 내지 않는다. 신호를 내면 모델이 fetch_pitch 로 범위를 바꿨다(r9 평가 glob-ambiguous-name · glob-weakest,
+            # 조사 지침 '전체 범위 질문은 list_pitches 요약으로 답하고 범위를 바꾸지 않는다'와 어긋남)
+            return run(r["NOT_LOADED"])
         return run(r["NOT_LOADED"], signal="NOT_LOADED")
     if not tr.ok:
         code = code_enum((tr.error or {}).get("code"))

@@ -221,6 +221,29 @@ def test_not_comparable_shows_fact_then_alt_tool_appends_step_after_run() -> Non
     assert "signals" not in research[0].messages[1]["content"]
 
 
+def test_signals_hint_only_on_research_calls_with_open_signals() -> None:
+    """신호 지침은 데이터 블록에 `signals`가 실린 조사 호출에만 붙는다(신호가 없는 질문에 신호 대응 지침을 주지 않는다).
+    신호 없는 호출의 지시문은 SYSTEM + RESEARCH 그대로다."""
+    req = other_script_take3(F.with_loaded(F.request(user_message=MSG), "t-3", "t-4"))
+    compare35 = ("compare_takes", {**COMPARE[1], "previous_take_id": "t-3"})
+    llm = F.FakeLlm(
+        [
+            compare_plan(("반복 확인", "compare_takes"), ("답 쓰기", "answer")),
+            F.tools(compare35, prefix="a"),
+            F.tools(COMPARE, prefix="b"),
+            F.done(),
+            compare_answer(),
+        ]
+    )
+    F.run_turn(req, llm)
+    research = [c for c in llm.calls if c.purpose == "RESEARCH" and c.tools]
+    assert research[0].messages[0]["content"] == prompts.SYSTEM + "\n\n" + prompts.RESEARCH
+    assert prompts.RESEARCH_SIGNALS_HINT in research[1].messages[0]["content"]  # 비교 불가 신호가 열림
+    # 다른 Take 비교로 대응해 신호가 닫힌 뒤의 호출에는 다시 없다
+    assert prompts.RESEARCH_SIGNALS_HINT not in research[2].messages[0]["content"]
+    assert '"signals"' not in research[2].messages[1]["content"]
+
+
 def test_unanswered_signal_is_closed_with_none() -> None:
     req = other_script_take3(F.with_loaded(F.request(user_message=MSG), "t-3", "t-4"))
     compare35 = ("compare_takes", {**COMPARE[1], "previous_take_id": "t-3"})
@@ -325,12 +348,68 @@ def test_plan_edit_after_runs_keeps_executed_steps_in_front_and_appends_new_ones
     assert edited[:2] == RAN
     assert [s["step"] for s in edited[2:]] == ["문제 구간 보기", "자료 찾기", "답 정리"]
     assert [s["status"] for s in edited] == ["DONE", "DONE", "DOING", "TODO", "TODO"]
-    # 모델에게 돌려준 update_plan 결과도 합친 목록이다
-    assert seen["edit_result"]["ok"] is True and seen["edit_result"]["data"]["plan"] == edited
+    # 모델에게 돌려준 update_plan 결과는 모델이 보낸 목록 그대로다(합친 목록은 화면에만, r9 회귀 — 아래 시험)
+    assert seen["edit_result"]["ok"] is True
+    assert seen["edit_result"]["data"]["plan"] == [
+        {"step": "문제 구간 보기", "status": "DOING", "note": None},
+        {"step": "자료 찾기", "status": "TODO", "note": None},
+        {"step": "답 정리", "status": "TODO", "note": None},
+    ]
     # 끝: 실행한 단계는 DONE 그대로, 실행하지 않은 새 단계만 SKIPPED(답 쓰기 단계는 답이 있어 DONE)
     assert data["plan"][:2] == RAN
     assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "SKIPPED", "SKIPPED", "DONE"]
     assert not [s for s in fd.diagnostics.steps if s.kind == "LIMIT"]  # type: ignore[union-attr]
+
+
+def test_plan_edit_with_unknown_tool_hint_is_applied_not_bad_args() -> None:
+    """r9 회귀: 모델이 목록 밖 도구 힌트(fetch_pitch)를 단 update_plan 이 BAD_ARGS 로 버려져 같은 호출을 되풀이했다.
+    힌트만 없는 것으로 보고 계획 고치기는 받는다(실행한 단계는 앞에 남고 새 단계가 붙는다)."""
+    edit = _edit(("다른 발표로 바꾸기", "fetch_pitch"), ("답 정리", "answer"))
+    lines, data, seen = _ran_two_then_edit(edit)
+    check_stream(lines, data)
+    assert seen["edit_result"]["ok"] is True
+    edited = next(p for p in plan_lines(lines) if any(s["step"] == "답 정리" for s in p))
+    assert edited[:2] == RAN
+    assert [s["step"] for s in edited[2:]] == ["다른 발표로 바꾸기", "답 정리"]
+    assert [t["outcome"] for t in data["trace"] if t["tool"] == "update_plan"] == ["OK"]
+
+
+def test_plan_edit_result_to_model_is_the_model_list_not_the_merged_screen() -> None:
+    """r9 회귀(glob-by-name · ra-script-twice): update_plan 결과로 화면의 합친 목록(지운 숫자 · 덧붙은 실행 단계 · 코드 상태)을
+    돌려주면 모델은 고치기가 안 먹혔다고 보고 같은 고치기를 되풀이해 반복 멈춤(PARTIAL/REPEAT) · 계획 수정 한도 · 시간을 썼다.
+    모델에게는 보낸 목록 그대로 돌려주고, 화면 plan 줄은 실행한 단계를 앞에 남긴 합친 목록 · 실행에 맞춘 상태 그대로다."""
+    steps = [
+        {"step": "3장 조건 확인", "status": "DONE", "note": None, "tool": None},
+        {"step": "답 정리", "status": "DOING", "note": None, "tool": "answer"},
+    ]
+    lines, data, seen = _ran_two_then_edit(F.tools(("update_plan", {"steps": steps}), prefix="u"))
+    check_stream(lines, data)
+    assert seen["edit_result"]["data"]["plan"] == [
+        {"step": "3장 조건 확인", "status": "DONE", "note": None},
+        {"step": "답 정리", "status": "DOING", "note": None},
+    ]
+    # 화면: 실행한 2단계 + 새 단계(목적의 근거 없는 숫자는 지움), 조건 확인은 실행하지 않아 DOING · 끝에는 건너뜀
+    shown = next(p for p in plan_lines(lines) if any(s["step"] == "답 정리" for s in p))
+    assert shown[:2] == RAN
+    assert [(s["step"], s["status"]) for s in shown[2:]] == [
+        ("조건 확인", "DOING"),
+        ("답 정리", "TODO"),
+    ]
+    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "SKIPPED", "DONE"]
+
+
+def test_research_prompts_do_not_push_update_plan() -> None:
+    """r9 회귀: 조사 지침의 '단계마다 tool 에 적는다' · 신호 지침의 '계획을 바꾸면 update_plan 으로 고친다' · update_plan 설명의
+    힌트 지시 때문에 모델이 조사 첫머리 · 신호마다 update_plan 부터 불러(평가 마지막 턴 19 → 139번) 다시 평가를 건너뛰거나
+    반복 · 한도로 PARTIAL 이 됐다. 도구 힌트를 채우라는 말은 계획 지침에만 둔다(`tool`은 update_plan 인자 스키마의 선택 칸)."""
+    from pitch_coach_ai.features.chat_agent.tools import DESCRIPTIONS
+
+    assert "tool 에 적는다" in prompts.PLAN
+    assert "tool" not in prompts.RESEARCH.split("update_plan", 1)[1]
+    assert "update_plan" not in prompts.RESEARCH_SIGNALS_HINT
+    # update_plan 설명: 힌트를 채우라는 지시 없이, 고칠 때만 · 상태는 코드가 단다
+    desc = DESCRIPTIONS["update_plan"]
+    assert "적는다" not in desc and "바뀔 때" in desc and "코드가" in desc
 
 
 def test_plan_edit_merge_cuts_new_steps_to_eight() -> None:
@@ -341,7 +420,7 @@ def test_plan_edit_merge_cuts_new_steps_to_eight() -> None:
     assert len(steps) == 8 and data["plan"][:2] == RAN
     # 남긴 실행 단계는 자르지 않고 뒤의 새 단계(7번째)를 자른다
     assert steps[2:] == [n for n, _ in new[:6]]
-    assert len(seen["edit_result"]["data"]["plan"]) == 8
+    assert len(seen["edit_result"]["data"]["plan"]) == 7  # 모델에게는 보낸 목록 그대로
 
 
 def test_plan_edit_with_plan_progress_off_keeps_the_model_list() -> None:

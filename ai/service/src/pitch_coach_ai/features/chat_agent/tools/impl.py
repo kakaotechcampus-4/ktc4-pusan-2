@@ -48,6 +48,13 @@ class PlanStepArg(_Args):
     #: 이 단계에서 쓸 도구(힌트, 선택). 코드가 실행한 도구를 단계에 잇는 데만 쓰고 응답 `PlanStep`에는 싣지 않는다(progress.py)
     tool: Literal[PLAN_STEP_TOOLS] | None = None  # type: ignore[valid-type]
 
+    @field_validator("tool", mode="before")
+    @classmethod
+    def _known_tool(cls, v: Any) -> Any:
+        # 힌트일 뿐이다: 모르는 이름(fetch_pitch · reassess 등)은 없는 것으로 본다. 틀린 인자로 막으면 계획 고치기 전체가
+        # BAD_ARGS 로 버려지고 모델이 같은 호출을 되풀이한다(계획 출력의 `progress.PlanStepDraft`와 같은 규칙)
+        return v if v in PLAN_STEP_TOOLS else None
+
 
 class UpdatePlanArgs(_Args):
     steps: list[PlanStepArg] = Field(min_length=1, max_length=8)

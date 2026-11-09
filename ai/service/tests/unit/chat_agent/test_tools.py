@@ -252,6 +252,19 @@ def test_l1_09_update_plan_rejects_bad_plans(steps: list[dict[str, Any]]) -> Non
     assert validate_args("update_plan", {"steps": steps}) == "BAD_ARGS"
 
 
+@pytest.mark.parametrize("hint", ["fetch_pitch", "reassess", "모르는 도구", 3])
+def test_update_plan_unknown_tool_hint_is_dropped_not_bad_args(hint: Any) -> None:
+    """도구 힌트(`tool`)는 힌트일 뿐이다: 목록 밖 이름은 없는 것(None)으로 받는다. 틀린 인자로 막으면 계획 고치기 전체가
+    BAD_ARGS 로 버려지고 모델이 같은 호출을 되풀이했다(r9 평가: fetch_pitch 힌트로 update_plan 오류 17번)."""
+    steps = [
+        {"step": "피치 찾기", "status": "DOING", "tool": "list_pitches"},
+        {"step": "피치 바꾸기", "status": "TODO", "tool": hint},
+    ]
+    args = validate_args("update_plan", {"steps": steps})
+    assert not isinstance(args, str)
+    assert [s.tool for s in args.steps] == ["list_pitches", None]  # type: ignore[attr-defined]
+
+
 def test_l1_09_update_plan_is_not_cached_and_trace_hides_step_text() -> None:
     ctx = make_ctx()
     args = {"steps": [{"step": f"대본 속 {SECRET} 확인", "status": "DOING", "note": SECRET}]}

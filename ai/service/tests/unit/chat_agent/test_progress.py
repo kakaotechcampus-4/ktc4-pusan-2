@@ -185,6 +185,15 @@ def test_read_run_not_loaded_and_empty_takes() -> None:
     assert (empty.result, empty.signal, empty.facts) == ("Take 없음", "NO_RECORD", ["TAKES"])
 
 
+def test_not_loaded_without_scope_pitch_shows_fact_but_opens_no_signal() -> None:
+    """r9 회귀(glob-ambiguous-name · glob-weakest): 전체 범위에서 list_takes 가 막힌 것(범위 피치 없음)에 NOT_LOADED 신호(가져오기
+    대응)를 내면 모델이 fetch_pitch 로 범위를 바꿨다. 단계에는 사실(`기본 자료에 없음`)만 보이고 신호는 내지 않는다."""
+    nl = _read(make_ctx(scope=None), "list_takes", {})
+    assert (nl.result, nl.done, nl.signal) == ("기본 자료에 없음", True, None)
+    scoped = _read(make_ctx(base_request()), "compare_takes", COMPARE)
+    assert scoped.signal == "NOT_LOADED"  # 범위 피치가 있으면 그대로(가져올 Take 가 있다)
+
+
 def test_unmeasured_segments_are_not_no_segments() -> None:
     req = load(base_request(), "t-3")
     tr = req["context"]["loaded_takes"][0]["results"]["take_result"]

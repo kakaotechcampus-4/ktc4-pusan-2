@@ -880,13 +880,13 @@ class Loop:
         self.st.signals_open = []
 
     def _research_messages(self) -> list[dict[str, Any]]:
-        """조사 호출의 메시지: 지시문(신호 지침은 `research_signals`일 때) · 데이터 블록(대응을 기다리는 신호 포함) · 지난 도구 메시지."""
+        """조사 호출의 메시지: 지시문 · 데이터 블록 · 지난 도구 메시지. `research_signals`가 켜졌고 대응을 기다리는 신호가 있을 때만
+        데이터 블록에 `signals`를, 지시문 끝에 신호 지침을 싣는다(신호가 없는 질문에 신호 대응 지침을 주지 않는다)."""
         prompt = prompts.RESEARCH
         block = self.data_block()
-        if self.cfg.research_signals:
+        if self.cfg.research_signals and self.st.signals_open:
             prompt += "\n" + prompts.RESEARCH_SIGNALS_HINT
-            if self.st.signals_open:
-                block["signals"] = progress.signals_view(self.st.signals_open)
+            block["signals"] = progress.signals_view(self.st.signals_open)
         return [self._system(prompt), prompts.data_message(block), *self.st.messages]
 
     # ── 2. 조사 ─────────────────────────────────────────────────────
@@ -1034,9 +1034,9 @@ class Loop:
                             False,
                             {"code": "LIMIT", "message": "할 일 목록 고치기 한도"},
                         )
-                    elif self.cfg.plan_progress and self.st.plan_meta:
-                        # 모델에게는 합친 목록(실행한 단계 + 새 단계, 상태 · 결과 글 포함)을 돌려준다: 지금 상태를 알고 이어 가게
-                        tr.data = {"plan": [dict(p) for p in self.st.plan]}
+                    # 성공한 고치기의 결과는 모델이 보낸 목록 그대로다(`_update_plan`). 화면(plan 줄)에는 실행한 단계를 앞에 남긴
+                    # 합친 목록이 나가지만, 그 목록(지운 숫자 · 덧붙은 실행 단계 · 코드 상태)을 모델에게 돌려주면 모델은 고치기가 안
+                    # 먹혔다고 보고 같은 update_plan 을 되풀이해 반복 멈춤(PARTIAL) · 계획 수정 한도 · 시간을 썼다(r9 평가)
                 else:
                     tr, trace = run_tool(
                         self.ctx,
