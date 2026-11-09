@@ -6,7 +6,9 @@
 >
 > **기준값**: 라우트는 `src/app/routes.tsx`, API 경로는 `src/shared/api/*.ts`, 의존성 버전은 `frontend/package.json`이 기준입니다. 이 문서의 표는 이해를 돕는 요약이라, 코드와 다르면 코드가 맞고 이 문서를 고칩니다.
 
-다른 문서에서 "`architecture.md` 3절"처럼 절 번호로 가리킵니다. 절 번호는 바꾸지 않습니다.
+다른 문서에서 "[architecture.md](architecture.md) 3절"처럼 링크와 절 번호로 가리킵니다. 절 번호는 바꾸지 않습니다. `docs/ai/architecture.md`(AI 문서)와 이름이 같으니, 그쪽을 가리킬 때는 `docs/ai/`를 붙여 씁니다.
+
+글 속의 `#123`은 GitHub 이슈 · PR 번호이고, "AI 12-4 F9"처럼 쓴 것은 [AI 기능 문서](../ai/features/chat-agent.md)의 절 · 할 일 번호입니다.
 
 | 절 | 내용 |
 |---|---|
@@ -33,7 +35,7 @@
 
 ## 1. 기술 스택
 
-Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Query 5 · Zustand 5 · MSW 2(개발 목) · Vitest 4 · oxlint · Prettier 3. 경로 별칭은 `@/` = `frontend/src/`입니다. 정확한 버전은 `frontend/package.json`이 기준입니다.
+Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Query 5 · Zustand 5 · MSW 2(개발 목) · Vitest 4 · Playwright(E2E, `e2e/*.e2e.ts`) · oxlint · Prettier 3. 경로 별칭은 `@/` = `frontend/src/`입니다. 정확한 버전은 `frontend/package.json`이 기준입니다.
 
 - `SharedArrayBuffer`를 쓰려면 페이지가 격리(cross-origin isolated)되어야 해서 COOP/COEP 헤더를 겁니다(`vite.config.ts`, dev · preview 둘 다). 헤더 오타는 오류를 내지 않으므로, 개발 서버에서 `crossOriginIsolated`가 `true`인지 확인합니다.
 - 디자인 토큰은 `src/index.css`의 `@theme`에만 둡니다. 밝은 지면(홈 · 리포트)과 어두운 지면(리허설)이 나뉩니다.
@@ -53,10 +55,9 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
               │
               ▼
         /takes/:takeId/rehearsal | /exam   리허설 (실시간 코칭 / 실전)
-              │  끝내기
+              │  끝내기          └──끝내기 실패──▶ /takes/:takeId/retry  종료 재시도
               ▼
         /takes/:takeId/processing          분석 대기 ──▶ /takes/:takeId/confirm  대본 확인
-              │                                    └──▶ /takes/:takeId/retry    업로드 실패 · 재시도
               ▼
         /takes/:takeId                     Take 리포트 ──▶ 다음 Take: 장치 점검으로
 ```
@@ -83,7 +84,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 | 피치 수정 | 라우터 state로 넘겨받은 연습 조합 |
 | 리포트의 [Take N 연습하기] · 분석 실패 화면의 [다시 연습하기] · 대화형 에이전트의 [연습 준비로] · 주소 직접 입력 | 서버 `GET /pitches/{id}/prepare`가 고른 짝 |
 
-- 서버가 가장 최근 자료 대신 지난 자료를 고를 수 있습니다(장 수가 다른 새 PDF를 올린 뒤 등). 그러면 장치 점검이 알리고, 사용자가 확인하기 전에는 시작하지 않습니다(#1099). 자세한 것은 [features/rehearsal.md](features/rehearsal.md) 2-3.
+- 서버가 가장 최근 자료 대신 지난 자료를 고를 수 있습니다(장 수가 다른 새 PDF를 올린 뒤 등). 그러면 장치 점검이 알리고, 사용자가 확인하기 전에는 시작하지 않습니다(#1099 지난 자료로 시작하기 전 확인). 자세한 것은 [features/rehearsal.md](features/rehearsal.md) 2-3.
 
 **대화형 에이전트** — 라우트가 아니라 최상위 레이아웃에 떠 있는 팝업이고, 정해진 화면에서만 보입니다(`features/chat/chatRoutes.ts`).
 
@@ -95,11 +96,12 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 |---|---|---|
 | 서버에서 온 것 | TanStack Query (`shared/api/*.ts`) | 홈 · 피치 · 리포트 · 장치 점검 준비 정보 |
 | 화면이 가진 작업 중 상태 | Zustand | 스토어 4개(아래 목록) |
-| 프레임 단위 고빈도 값 | `useRef` | 시선 원시 좌표 · 마이크 RMS. 상태로 두면 프레임마다 다시 그립니다 |
+| 프레임 단위 고빈도 값 | `useRef` | 프레임 펌프 상태 · 마이크 RMS. 상태로 두면 프레임마다 다시 그립니다 |
 | 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 세션 · 1초 시선 기록 · 슬라이드 전환. **사본**입니다(아래) |
 | 화면 사이에 넘기는 값 | 라우터 state | 피치 수정 → 장치 점검의 연습 조합(`practice`) |
-| 이 탭에만 남기는 값 | sessionStorage | 리허설 시계(`rehearsal/stage/resume.ts`) · 대화 복원 값(`chat/chatStore.ts`) · 로그아웃 신호(`shared/lib/sessionSignal.ts`) |
+| 이 탭에만 남기는 값 | sessionStorage | 리허설 이어 가기 사본(`rehearsal/stage/resume.ts`) · 대화 복원 값(`chat/chatStore.ts`) |
 | 이 브라우저에만 남기는 작은 값 | localStorage | 대화 기억 첫 안내를 봤는지 등 |
+| 탭끼리 주고받는 신호 | BroadcastChannel | 로그아웃 신호(`shared/lib/sessionSignal.ts`). 다른 탭의 메모리 · sessionStorage 사본도 비우게 합니다 |
 
 **Zustand 스토어 4개**
 
@@ -113,7 +115,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 **알아 둘 점**
 
 - **IndexedDB는 사본입니다.** 서버로 가는 원본은 발표 중 WS `metrics`이고, IndexedDB는 새로고침 이어 가기 · 종료 재시도를 위해 이 브라우저에 남기는 것입니다.
-- **시선 기준점**(Calibration)은 탭 메모리에만 둡니다. 서버에도 브라우저 저장소에도 두지 않습니다.
+- **시선 기준점**(Calibration) 자체는 탭 메모리에만 둡니다(`zoneRefMemory.ts`). 브라우저 저장소에는 두지 않고, 서버에는 품질 요약만 보냅니다(`POST /api/pitches/{id}/takes/{takeId}/calibration`).
 - **라우터 state는 새로고침 · 앞으로 가기에도 남습니다.** 그래서 장치 점검은 넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고 [최신으로]를 둡니다.
 
 ## 4. 폴더와 의존 방향
@@ -125,7 +127,8 @@ src/
   shared/       api/ 쿼리 훅 · lib/ 순수 함수 · ui/ 공용 컴포넌트
   workers/      시선 워커. DOM · React 없음
   vendor/gaze/  AI 시선 엔진 복사본(engine · worker, 고치지 않음) + FE 원본 카메라 화면(camera)
-  mocks/        MSW 목
+  dev/          개발 검증 화면(/dev/*) 일부. 제품 화면 아님
+  mocks/        MSW 목. 개발 서버에서만 켜짐
   types/        API 타입. 런타임 코드 없음
 ```
 
@@ -140,10 +143,12 @@ src/
 ### 4-1. 의존 방향 — 화살표를 거스르지 않습니다
 
 ```
-app/ ──▶ features/* ──▶ workers/ ──┐
+app/ ──▶ features/* ──▶ workers/ ──┬──▶ vendor/gaze/engine
                 │                  ├──▶ types/       (런타임 코드 없음. 잎사귀)
                 └──▶ shared/*  ────┘
 ```
+
+`mocks/`는 개발 서버에서만 불러옵니다(`main.tsx`의 `import.meta.env.DEV`). `dev/`는 개발 검증 화면용이라, 지금은 `/dev/stage` 데모(`features/rehearsal/stage/StageDemo.tsx`)만 이 폴더를 씁니다.
 
 | 규칙 | 어기면 |
 |---|---|
@@ -157,11 +162,13 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 
 ## 5. 다른 파트와 주고받는 것
 
+> 아래 FE 코드 경로는 지금 `develop-next` 기준입니다. 파일 위치 정리 PR #1151이 합쳐지면 `shared/api/`의 일부(`take.ts` · `takeHistory.ts` · `standards.ts` · `serviceReview.ts` · `chatPaths.ts`)가 각 기능 폴더의 `api/`로 옮겨지니, 그때 이 표를 함께 고칩니다.
+
 | 무엇 | 방식 | FE 코드 | 기준 문서 |
 |---|---|---|---|
 | 피치 · 슬라이드 · 대본 · 평가 기준 | REST | `shared/api/pitch.ts` · `presentation.ts` · `script.ts` · `standards.ts` | [docs/be/script-parse.md](../be/script-parse.md) |
 | 대본 나누기 결과 | REST 폴링(1초) | `features/pitch/create/scriptParse.ts` | [docs/be/script-parse.md](../be/script-parse.md) |
-| 장치 점검 준비 정보 · Take 생성 | REST | `shared/api/prepare.ts` | [docs/fe/pitch-take-contract-570.md](pitch-take-contract-570.md) |
+| 장치 점검 준비 정보 · Take 생성 | REST | `shared/api/prepare.ts` | [docs/ai/architecture.md](../ai/architecture.md) 1-2 · BE `module/pitch/dto.py`(`PrepareDTO`) · `module/take/dto.py`(`TakeInitRequestDTO`) |
 | 리허설 실시간 연결(음성 · 1초 기록 · 전사 · 코치 · 끝내기) | WebSocket `/api/ws/takes/{id}` | `features/rehearsal/lib/sttSocket.ts` 외 — [rehearsal.md](features/rehearsal.md) 5절 | [docs/be/realtime-stt.md](../be/realtime-stt.md) · [docs/be/take-lifecycle.md](../be/take-lifecycle.md) · [docs/ai/architecture.md](../ai/architecture.md) 1-3 · 1-4 · 6-2 |
 | Take 종료 시각 · 중단 | REST `PUT /api/pitches/{id}/takes/{takeId}` · `POST .../abandon` | `features/rehearsal/stage/sendEnding.ts` · `shared/api/take.ts` | [docs/be/take-lifecycle.md](../be/take-lifecycle.md) |
 | Take 결과 · 리포트 | REST | `shared/api/report.ts` · `takeHistory.ts` | [docs/be/realtime-coach.md](../be/realtime-coach.md) · [docs/be/review.md](../be/review.md) |
@@ -180,7 +187,7 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 
 - 엔진: `vendor/gaze/engine` · `worker`(AI 복사본, 여기서 고치지 않음). 판이 바뀌면 AI 쪽에서 고치고 다시 복사합니다 — [vendor/gaze/README.md](../../frontend/src/vendor/gaze/README.md)
 - 화면 쪽 진입점: `features/rehearsal/media/useGazeWorker.ts`(프레임 펌프 · 백프레셔), 장치 점검의 기준점 `prepare/useGazeSetup.ts`, 리허설 중 `stage/useLiveGaze.ts`
-- 기록: 1초 기록 → WS `metrics`로 서버에(`stage/useMetricsSender.ts`), 같은 기록을 IndexedDB(`lib/db.ts`)에 사본으로. 끝낼 때 기록을 한꺼번에 올리는 단계는 없습니다(BE #134). `lib/gazePayload.ts`는 `/dev/media` 확인용입니다
+- 기록: 1초 기록 → WS `metrics`로 서버에(`stage/useMetricsSender.ts`), 같은 기록을 IndexedDB(`lib/db.ts`)에 사본으로. 끝낼 때 기록을 한꺼번에 올리는 단계는 없습니다(BE #134에서 끝낼 때 몰아 보내던 단계를 없앰). `lib/gazePayload.ts`는 `/dev/media` 확인용입니다
 - 화면은 1초 판정 결과만 압니다. 엔진이 바뀌어도 화면 코드는 바뀌지 않게 둡니다.
 
 지금 파일 기준의 호출 흐름 그림은 [features/rehearsal.md](features/rehearsal.md) 6-1에 있습니다.
@@ -190,11 +197,11 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 - 로컬: `npm run dev`(목 서버, http://localhost:3000). 실서버에 붙이는 법과 명령어는 [frontend/README.md](../../frontend/README.md)에 있습니다.
 - 빌드 이미지: `frontend/Dockerfile` — 빌드 단계에서 시선 모델 자산을 받아 넣고, Caddy로 정적 파일을 냅니다. 빌드 때 정해지는 값은 `ARG`로 받습니다(예: `VITE_LAUNCH_GATE_ENABLED`).
 - 배포: dev는 Actions → Deploy develop을 `develop-next`로 실행합니다. 환경 값은 배포 워크플로가 씁니다(BE 담당).
-- CI: `frontend-ci.yml`이 typecheck · lint · test · format:check · build를 돌립니다. PR에서는 화면 설계서와의 차이(`design-drift`)를 알려 줍니다. 바뀐 것이 있어도 실패하지 않고, 비교할 커밋을 찾지 못할 때만 실패합니다.
+- CI: `frontend-ci.yml`이 typecheck · lint · test · format:check · build를 돌리고, dev · preview 서버에 COOP/COEP 헤더가 붙는지 확인합니다. E2E(`npm run test:e2e`)는 CI에서 돌지 않으니 대화 화면 · 목을 고쳤으면 직접 돌립니다. PR에서는 화면 설계서와의 차이(`design-drift`)를 알려 줍니다. 바뀐 것이 있어도 실패하지 않고, 비교할 커밋을 찾지 못할 때만 실패합니다.
 
 ## 8. 열린 질문
 
 - **기능 문서가 아직 없는 화면** — 홈 대시보드(`/`), 피치 목록(`/pitches`), 마이페이지(`/me`: 탈퇴 · 서비스 의견), 들어오기(`/welcome` · `/login` · 온보딩), 안내(`/about` · `/privacy` · `/terms`), 미지원 브라우저(`/unsupported`). 지금은 이 문서 2절의 라우트 표에만 있습니다.
 - **공통 처리 문서가 없음** — 공용 컴포넌트(`shared/ui/`, [README](../../frontend/src/shared/ui/README.md)), MSW 목 작성 규칙, 오류 · 토큰 갱신(5절 `작성 필요`).
 
-> **작성 필요** — 아직 정하지 않은 항목(`frontend/AGENTS.md`의 I-03 · I-17 · I-18 · I-19).
+- **아직 정하지 않은 값** — [frontend/AGENTS.md](../../frontend/AGENTS.md) "아직 안 정해진 것" 표에 있습니다(I-03 시선 모델 · I-17 UNCERTAIN 임계값 · I-18 대본 유사도 · I-19 축소 판정).

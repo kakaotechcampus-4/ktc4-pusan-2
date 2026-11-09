@@ -36,7 +36,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 | `npm run preview` | 빌드 결과를 띄워 봅니다. dev와 같은 COOP/COEP가 걸려 있습니다 |
 | `npm run doctor` | 세팅 점검 — Node·TS·의존성·`.env.local`·줄바꿈·COOP/COEP·확장 |
 
-**PR 통과 조건은 이 넷입니다.** 레포 루트의 `.github/workflows/frontend-ci.yml`이 같은 걸 돌립니다.
+**PR 전에 돌릴 것은 이 넷입니다.** 레포 루트의 `.github/workflows/frontend-ci.yml`이 이 넷과 build, COOP/COEP 헤더 확인을 돌립니다([architecture.md](../docs/fe/architecture.md) 7절).
 
 | | |
 | --- | --- |
@@ -44,6 +44,8 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 | `npm run lint` | oxlint (`--max-warnings=0` — 경고도 실패입니다) |
 | `npm run test` | 순수 로직 테스트 |
 | `npm run format:check` | Prettier 확인. 고칠 때는 `npm run format` |
+
+`npm run test:e2e`(Playwright, 목 서버를 3100 포트에 띄워 대화 화면을 끝까지 돌림)는 CI에서 돌지 않습니다. 대화 화면 · `src/mocks/` · 대화 통신 계층을 고쳤으면 직접 돌립니다.
 
 실서버로 붙일 때 (W8): `.env.local`에 `VITE_USE_MOCK=false`
 
@@ -57,14 +59,6 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 
 CI 는 레포 루트의 `.github/workflows/frontend-ci.yml` 에 있습니다 — GitHub 는 루트의
 `.github/` 만 읽어서, `frontend/` 안에 두면 **에러 없이 그냥 안 돕니다.**
-
-> **이 브랜치의 기준점.** `chore/fe-dev-environment` 위에 쌓았습니다. 그 브랜치가
-> 백엔드·인프라가 들어오기 전 시점(`a493804`)에서 떠서, `backend/` · `infra/` ·
-> `frontend/Dockerfile` 이 이 트리에 없습니다. `develop` 에 머지되면 함께 놓입니다.
->
-> **PR 순서가 있습니다** — `chore/fe-dev-environment` 가 먼저 머지돼야 이 브랜치의
-> base 를 `develop` 으로 바꿀 수 있습니다. 그전에는 base 를 앞 브랜치로 두세요.
-> 도커로 확인해야 하면 `develop` 을 머지해 오세요.
 
 ### 아직 남아 있는 것 셋
 
@@ -81,7 +75,7 @@ engines >=24   +   COPY .npmrc   +   node:20-alpine   →   npm ci 실패
 ```
 
 `engines` 는 이미 `>=24` 이고 `.npmrc` 의 `engine-strict=true` 는 이걸 강제합니다.
-**이 PR 은 `Dockerfile` 을 건드리지 않습니다** (이 브랜치에 없습니다). `develop` 의 것은
+지금 `frontend/Dockerfile` 은
 `.npmrc` 를 COPY 하지 않아 검사가 안 돌아서 조용히 빌드됩니다. `COPY .npmrc` 를 넣는
 순간 `node:20-alpine` 에서 `npm ci` 가 실패하니, **둘을 같은 PR 에서 함께 고치세요.**
 
@@ -89,7 +83,7 @@ engines >=24   +   COPY .npmrc   +   node:20-alpine   →   npm ci 실패
 `engines` 검사가 아예 돌지 않기 때문입니다. 즉 **배포 이미지가 개발 환경과
 다른 Node 메이저에서 돌고 있습니다.**
 
-`.dockerignore` 는 `develop` 의 `frontend/` 에 있습니다 (이 PR 은 건드리지 않습니다).
+`.dockerignore` 는 `frontend/` 에 있습니다.
 **빌드 컨텍스트를 `frontend/` 로 주세요** —
 레포 루트를 컨텍스트로 주면(`docker build -f frontend/Dockerfile .`)
 루트의 `.dockerignore` 가 쓰이고 이 파일은 무시됩니다. 그러면 `.env.local` 이
@@ -108,7 +102,9 @@ engines >=24   +   COPY .npmrc   +   node:20-alpine   →   npm ci 실패
 ### 브랜치
 
 **팀 컨벤션을 따릅니다** — 루트 `README.md` 의 `타입/영역-작업명`. FE 는 영역이 `fe` 입니다.
-`develop` 에서 따고 `develop` 으로 PR 을 보냅니다. `main` 은 멘토 리뷰용입니다.
+`feat/*` · `fix/*` 는 `develop-next` 에서 따고 `develop-next` 로 PR 을 보냅니다.
+`develop` 은 멘토 리뷰용이라 리뷰 반영(`refactor/*` → `develop`)만 보냅니다.
+`develop-next/...` 처럼 기본 브랜치 이름 아래로 브랜치를 만들 수는 없습니다(Git 이 거부).
 
 ```
 feat/fe-gaze-pipeline     Track A · 시선 · 음성    src/features/rehearsal/ · workers/
@@ -122,9 +118,9 @@ refactor/fe-*             멘토 리뷰 반영
 
 ## 읽어야 할 것
 
-`AGENTS.md`에 **바꾸면 안 되는 결정 8가지**가 정리돼 있습니다.
-카메라 온디바이스 · 시선 2분할(3값) · 1초 판정 주기 · **서버는 덤이고 브라우저가 원본(음성 제외)** ·
-시간 필드 관계식 · `null` 규칙 · 스타일 경계 · Take 생성 시점.
+`AGENTS.md`에 **바꾸면 안 되는 결정 9가지**가 정리돼 있습니다.
+카메라 온디바이스 · 시선 2분할(3값) · 1초 판정 주기 · 끊겨도 발표는 계속 ·
+시간 필드 관계식 · `null` 규칙 · 스타일 경계 · Take 생성 시점 · `void` 금지.
 이걸 모르고 짜면 나중에 다시 만듭니다.
 
 ## 알아둘 것

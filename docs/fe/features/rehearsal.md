@@ -34,12 +34,16 @@
 | 장치 점검 | `/pitch/:pitchId/device-check` |
 | 리허설 | `/takes/:takeId/rehearsal`(코칭) · `/takes/:takeId/exam`(실전) |
 
+- `/pitch/:pitchId/prepare`는 장치 점검으로 넘기는 옛 주소입니다(`prepare/PrepareRedirect.tsx`).
+- 장치 점검 · 리허설 · 실전은 휴대폰 · 태블릿에서 열지 않고 `/unsupported`로 보냅니다(`app/routes.tsx`의 `practicePaths`를 `DesktopGate`가 감쌈, #710). 분석 대기 · 재시도는 휴대폰에서도 열립니다.
+
 지켜야 할 결정(시선 3값 · 1초 주기 · 시간 필드 규칙 · 끊겨도 발표는 계속 등)은 [frontend/AGENTS.md](../../../frontend/AGENTS.md) 1~9번이 기준입니다.
 
 ## 1. 왜 필요한가 · 용어
 
 | 용어 | 뜻 |
 |---|---|
+| 장치 점검 | 발표 전에 카메라 · 마이크 · 시선 기준점을 확인하는 화면. frontend/AGENTS.md의 "시작 전 세팅"과 같은 화면입니다 |
 | Take | 연습 한 번. 아래 "Take를 만들 때 보내는 값" 참고 |
 | 연습 조합 | 피치 수정에서 넘겨받은 버전 묶음(`PracticeCombo`). 없으면 서버 `GET /prepare`가 고른 짝을 씁니다 |
 | 대본 표시 방식 | 발표 중 대본을 어떻게 띄울지. 끄면(`OFF`) 실전 모드, 그 밖은 코칭 모드입니다. 시작하면 못 바꿉니다 |
@@ -61,12 +65,12 @@
    │  · 서버가 지난 자료를 골랐으면 확인받은 뒤에 시작 (2-3)
    │  · 다른 창 · 기기에서 발표 중인 Take 가 있으면 끝낼지 묻기
    │
-   │  [Take N 시작하기] → POST /takes → POST /takes/{id}/calibration (보정 요약)
+   │  [Take N 시작하기] (실전이면 [Take N 실전 모드로 시작]) → POST /takes → POST /takes/{id}/calibration (보정 요약)
    ▼
 /takes/:takeId/rehearsal | /exam   리허설
-   │  마이크가 열리고 첫 ready 를 받으면 시계 시작
+   │  마이크가 열리고 첫 ready 를 받으면 시계 시작 (15초 넘게 못 받으면 [다시 시도])
    │  슬라이드 넘기기 · 대본 · 시선 테두리 · 코치 한마디
-   │  [끝내기] → 한 번 더 확인
+   │  [끝내기] → 한 번 더 확인   또는   서버가 auto_end 로 끝냄(말 없음 2분 · 1시간)
    ▼
 WS stop + PUT /takes/{id} (종료 시각)
    ├─ 성공 → /takes/:takeId/processing   분석 대기
@@ -83,15 +87,15 @@ WS stop + PUT /takes/{id} (종료 시각)
 | 새로고침 | **이어 갑니다.** 발표 중이던 시각부터 다시 잽니다. 서버에서 이미 시작했으니 `ready`를 기다리지 않습니다 |
 | 창을 닫음 | **이어 가지 않습니다** |
 | 리허설 주소를 다른 창에서 다시 엶 | 무대를 열지 않고, abandon으로 실패(`CLOSED`) 처리한 뒤 안내 화면을 띄웁니다 |
-| 다른 창이 아직 발표 중 | 아무것도 바꾸지 않습니다(하트비트 10초 안 · 서버 409 `TAKE_IN_PROGRESS`) |
+| 다른 창이 아직 발표 중 | 아무것도 바꾸지 않습니다(서버 409 `TAKE_IN_PROGRESS`) |
 
 이어 가기에는 세 가지를 씁니다(`stage/resume.ts`).
 
 1. **라우터 state의 `clientSessionId`** — 장치 점검이 넘긴 값입니다. 같은 탭인지 이것으로 압니다.
-2. **sessionStorage의 발표 시계** — `pagehide` 때 IndexedDB 쓰기는 끝나기 전에 탭이 사라질 수 있어서 sessionStorage에 둡니다.
+2. **sessionStorage의 발표 시계 · 못 보낸 1초 기록** — `pagehide` 때 IndexedDB 쓰기는 끝나기 전에 탭이 사라질 수 있어서 sessionStorage에 둡니다.
 3. **IndexedDB의 기록 사본**
 
-전체 조건은 [docs/be/take-lifecycle.md](../../be/take-lifecycle.md)에 있습니다.
+규칙과 숫자(하트비트 간격 등)는 [frontend/AGENTS.md](../../../frontend/AGENTS.md) 4번과 [docs/be/take-lifecycle.md](../../be/take-lifecycle.md)가 기준입니다. 이 문서는 숫자를 8절 한 곳에만 옮깁니다.
 
 ### 2-2. 사용자당 연습은 하나
 
@@ -118,21 +122,25 @@ WS stop + PUT /takes/{id} (종료 시각)
 |---|---|---|
 | 장치 점검의 선택(대본 표시 방식 등) | Zustand `prepare/prepareStore.ts` | |
 | 무대 단계 · 슬라이드 · 코치 문구 | Zustand `stage/rehearsalStore.ts` | 단계는 `RUNNING` → `ENDING` → `ENDED` 한 방향으로만 갑니다 |
-| 시선 원시 좌표 · 마이크 RMS · 시계 숫자 | `useRef` · DOM 직접 갱신 | 프레임마다 React를 다시 그리지 않습니다. 시선 테두리는 `dataset.gaze`로 바꿉니다 |
+| 프레임 펌프 상태 · 마이크 RMS · 시계 숫자 | `useRef` · DOM 직접 갱신 | 프레임마다 React를 다시 그리지 않습니다. 시선 테두리는 `dataset.gaze`로 바꿉니다 |
 | 세션 · 1초 시선 기록 · 슬라이드 전환 · 시선 성능 | IndexedDB `lib/db.ts` | 키는 `clientSessionId`. 이어 가기 · 재시도용 사본입니다 |
 | 발표 시계(이어 가기용) | sessionStorage `stage/resume.ts` | 2-1 참고 |
-| 시선 기준점 | 탭 메모리 `lib/zoneRefMemory.ts` | 서버에도 브라우저 저장소에도 두지 않습니다. 배치가 같은지는 `layoutSignature`로 봅니다 |
+| 시선 기준점 | 탭 메모리 `lib/zoneRefMemory.ts` | 브라우저 저장소에는 두지 않고, 서버에는 품질 요약만 보냅니다. 배치가 같은지는 `lib/layoutSignature.ts`로 봅니다 |
 | 준비 정보 · Take 생성 | TanStack Query `shared/api/prepare.ts` | |
 
 ## 4. 폴더 · 주요 파일
 
-모두 `frontend/src/features/rehearsal/` 아래입니다. 시선 워커는 `src/workers/`, 시선 엔진은 `src/vendor/gaze/`에 있습니다.
+모두 `frontend/src/features/rehearsal/` 아래입니다. 시선 워커는 `src/workers/`, 시선 엔진은 `src/vendor/gaze/`에 있습니다. 표는 처음 읽을 때 볼 파일만 골랐습니다.
+
+> 파일 위치 정리 PR #1151이 합쳐지면 `shared/api/take.ts`가 `features/rehearsal/api/take.ts`로 옮겨지고, 개발 검증 화면(`MediaDevPage.tsx` 등)이 `src/dev/`로 갑니다. 그때 이 절을 함께 고칩니다.
 
 **장치 점검**
 
 | 파일 | 하는 일 |
 |---|---|
 | `prepare/DeviceCheckPage.tsx` | 점검 셋 · 시작 · 연습 조합 결정 |
+| `prepare/CheckCard.tsx` · `ScreenFrame.tsx` · `ScriptModeChoice.tsx` · `MissionCard.tsx` | 점검 카드 · 화면 틀 · 대본 표시 방식 고르기 · 이번 Take 목표 |
+| `prepare/PrepareRedirect.tsx` | 옛 주소 `/pitch/:id/prepare` → 장치 점검 |
 | `prepare/useGazeSetup.ts` · `GazeSetupView.tsx` | 시선 기준점. 상자 안은 AI 카메라 화면 모듈(`vendor/gaze/camera`)이 그립니다 |
 | `prepare/useBaseVoice.ts` · `media/baseVoice.ts` | 평소 목소리 재기 |
 | `prepare/prepareInfo.ts` | 준비 정보 변환 · 시작할 수 없는 이유 · 연습 조합 고르기 · 지난 자료 안내 |
@@ -142,8 +150,10 @@ WS stop + PUT /takes/{id} (종료 시각)
 
 | 파일 | 하는 일 |
 |---|---|
-| `stage/RehearsalPage.tsx` | 무대 · 이어 가기 · 끝내기 |
-| `stage/openDevices.ts` · `startGate.ts` · `useStageClock.ts` | 장치 여는 순서 · 시계를 돌려도 되나 · 머리줄 시계 |
+| `stage/RehearsalPage.tsx` | 무대 · 이어 가기 · 끝내기 · 자동 종료 |
+| `stage/openDevices.ts` · `startGate.ts` · `useStageClock.ts` | 장치 여는 순서 · 시계를 돌려도 되나(첫 연결 15초) · 머리줄 시계 |
+| `stage/StageLiveBadge.tsx` | 발표가 돌고 있을 때만 켜지는 "STAGE LIVE" 표시(`startGate.ts` `isRehearsalRunning`) |
+| `stage/ScriptPane.tsx` · `useRehearsalMaterials.ts` · `lib/scriptMarks.ts` | 발표 중 대본 · 슬라이드 · 대본 자료 읽기 · 대본 표시 |
 | `stage/useSlideDeck.ts` · `useSlideSender.ts` · `lib/slideTimeline.ts` | 슬라이드 넘기기 · WS `slide` · 그 시각의 슬라이드 |
 | `stage/useLiveGaze.ts` · `useMetricsSender.ts` · `lib/metricsClock.ts` | 시선 1초 기록 받기 · WS `metrics` 보내기 · 어느 1초로 보낼지 |
 | `stage/useSttStream.ts` · `lib/sttSocket.ts` · `lib/sttProtocol.ts` | 실시간 연결(React를 모르는 상태기계) |
@@ -167,9 +177,9 @@ WS stop + PUT /takes/{id} (종료 시각)
 
 | 무엇 | 방식 · 경로 | 기준 문서 |
 |---|---|---|
-| 준비 정보 | `GET /api/pitches/{id}/prepare` | [pitch-take-contract-570.md](../pitch-take-contract-570.md) |
-| Take 생성 · 보정 요약 | `POST /api/pitches/{id}/takes/` · `POST .../takes/{takeId}/calibration` | 같음 |
-| 발표 중인 Take 묻기 · 끝내기 | `GET /api/takes/active` · `POST .../abandon?replace=true` | BE #718 · #719 |
+| 준비 정보 | `GET /api/pitches/{id}/prepare` | [AI architecture.md](../../ai/architecture.md) 1-2 · BE `module/pitch/dto.py` `PrepareDTO` |
+| Take 생성 · 보정 요약 | `POST /api/pitches/{id}/takes/` · `POST .../takes/{takeId}/calibration` | [AI architecture.md](../../ai/architecture.md) 1-2 · BE `module/take/dto.py` `TakeInitRequestDTO` |
+| 발표 중인 Take 묻기 · 끝내기 | `GET /api/takes/active` · `POST .../abandon?replace=true` | [take-lifecycle.md](../../be/take-lifecycle.md) (BE #718 · #719에서 추가) |
 | 실시간 연결 | WebSocket `/api/ws/takes/{id}` | [realtime-stt.md](../../be/realtime-stt.md) · [take-lifecycle.md](../../be/take-lifecycle.md) · [AI architecture.md](../../ai/architecture.md) 1-3 · 1-4 |
 | 1초 기록 모양 | WS `metrics` (시선 · 음량 · 슬라이드 번호) | [AI architecture.md](../../ai/architecture.md) 6-2 · [gaze-tracking.md](../../ai/features/gaze-tracking.md) · [volume.md](../../ai/features/volume.md) 5-2 |
 | 종료 시각 · 중단 | `PUT /api/pitches/{id}/takes/{takeId}` · `POST .../abandon` | [take-lifecycle.md](../../be/take-lifecycle.md) |
@@ -179,9 +189,10 @@ WS stop + PUT /takes/{id} (종료 시각)
 
 | 방향 | 메시지 |
 |---|---|
-| FE → 서버 | PCM 음성 · `metrics` · `slide` · `stop` |
-| 서버 → FE | `ready` · 전사 · 코치 |
+| FE → 서버 | `auth`(연결 직후 토큰) · PCM 음성 · `metrics` · `slide` · `stop` |
+| 서버 → FE | `ready` · `transcript`(전사) · `stt_status`(전사 상태) · `coach` · `auto_end`(서버가 끝냄) · `error` |
 
+- 메시지 모양은 [AI architecture.md](../../ai/architecture.md) 1-4가 기준이고, FE는 `lib/sttSocket.ts`에서 받습니다.
 - 코치는 AI 코치 에이전트가 판단하고, FE는 띄우기만 합니다.
 - 예전 계약의 `POST /takes/{id}/complete`(기록을 한꺼번에 올림)는 BE가 만들지 않기로 했습니다(#134). `lib/gazePayload.ts`는 `/dev/media` 확인용으로만 남아 있습니다.
 
@@ -231,8 +242,9 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 | 장치 점검 | 카메라 · 마이크 · 시선 기준점 |
 | 리허설 | **마이크와 서버 연결**(첫 `ready`). 카메라는 조건이 아닙니다 |
 
-- 리허설 화면에서 카메라를 못 열면 마이크만으로 시작하고 시선만 뺍니다(#445, `stage/openDevices.ts`).
-- 서버 연결이 필요한 이유: 첫 연결이 서버에서 Take를 시작합니다(`READY` → `RUNNING`). 그 전에 시작하면 기록이 남지 않습니다(`stage/startGate.ts`, #381).
+- 리허설 화면에서 카메라를 못 열면 마이크만으로 시작하고 시선만 뺍니다(#445 카메라만 못 열어도 시작이 멈추던 버그, `stage/openDevices.ts`).
+- 서버 연결이 필요한 이유: 첫 연결이 서버에서 Take를 시작합니다(`READY` → `RUNNING`). 그 전에 시작하면 기록이 남지 않습니다(`stage/startGate.ts`, #381 마이크 · 실시간 연결 없이 시작하지 않게 함).
+- 첫 `ready`를 15초 넘게 못 받으면 [다시 시도]를 보입니다(`startGate.ts` `CONNECT_SLOW_MS`). 누르면 소켓을 새로 만들고 처음부터 다시 셉니다. 끝내 붙지 않은 Take는 "이 연습은 시작하기 전에 끝났어" 화면으로 갑니다.
 - 시작하지 않은 Take는 서버가 만든 지 10분 뒤 끝냅니다. 그 Take의 끝내기는 409 `TAKE_NOT_STARTED`로 거절됩니다.
 
 **연결이 끊기면** — 발표는 멈추지 않습니다. 다만 잃는 것이 있습니다.
@@ -241,7 +253,7 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 |---|---|
 | 계속 됨 | 시선 테두리(워커 판정) · 시계 · 슬라이드 · 기록 쌓기 |
 | 멈춤 | 코치 한마디 · 상태 표시(지우지 않고 흐리게 둠) · 말하기 분석 |
-| 다시 붙으면 보냄 | 1초 기록(`metrics`)과 장 넘김(`slide`). 5분 치까지 쌓아 둡니다 |
+| 다시 붙으면 보냄 | 1초 기록(`metrics`, 300개 = 5분 치까지)과 장 넘김(`slide`, 상한 없음) |
 | 잃음 | 끊긴 구간의 음성(버퍼는 2초 치). 그 구간의 말 속도 · 군더더기 분석이 빠집니다 |
 
 - 다시 붙기: 지수 백오프 3회 → 그 뒤로는 횟수 제한 없이 4~6초(jitter)마다.
@@ -254,6 +266,12 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 2. WS `stop`을 보냅니다.
 3. 종료 시각을 `PUT`합니다(`stage/sendEnding.ts`).
 4. 성공하면 세션 행에 보냈다고 적고 분석 대기로, 실패하면 재시도 화면으로 갑니다.
+
+**서버가 끝낼 때(자동 종료)** — 말이 없는 상태가 2분 넘게 이어지거나(정확한 조건은 `shared/lib/autoEnd.ts` 주석) 연습이 1시간에 닿으면 서버가 `auto_end`를 보냅니다.
+
+- FE는 [끝내기]와 같은 순서(마지막 조각 → `stop` → `PUT`)를 밟습니다. 서버는 마지막 `metrics`를 2초만 기다립니다.
+- 끝난 이유(`SILENCE` · `TIME_LIMIT`)와 서버 문구를 라우터 state `autoEnd`에 실어 분석 대기로 넘기고, 분석 대기가 안내합니다([report.md](report.md) 3절).
+- 장치 점검이 미리 알립니다: "말이 없는 상태가 2분 넘게 이어지면 연습이 자동으로 끝날 수 있어요. 발표 목표 시간과는 상관없어요."(`SILENCE_END_NOTICE`)
 
 ## 7. 로딩 · 빈 · 오류 · 부분 실패
 
@@ -268,6 +286,7 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 | 최신 자료 목록을 못 받음 | 안내 ⑥ → 다시 확인할지, 이 자료로 연습할지 고름 | 고를 때까지 막음(받는 중 · 다시 받는 중에도) |
 | 카메라 · 마이크 권한 · 장치 오류 | 사유별 문구(`media/useCameraStream.ts` `DEVICE_ERROR_MESSAGE`) | 막음 |
 | 마이크는 열렸는데 입력이 0 | 무음 경고(이어폰 분리 · 다른 앱 점유 · 시스템 음소거). 평소 목소리를 읽는 동안만 셉니다 | — |
+| 화면 아래 알림 줄 | 자동 종료 미리 안내(`SILENCE_END_NOTICE`, 6-3) | — |
 | 시선 기준점 실패 | 사유마다 다른 재시도 안내(`useGazeSetup.ts`) | 막음 |
 
 **리허설 · 끝내기**
@@ -275,6 +294,8 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 | 상황 | 화면 |
 |---|---|
 | 카메라를 못 엶 | 시선 없이 시작(6-3) |
+| 첫 연결이 15초 넘게 안 됨 | [다시 시도] (6-3) |
+| 서버가 자동으로 끝냄 | 끝내기와 같은 순서로 분석 대기에 가서 이유를 안내(6-3) |
 | 발표 중 시선이 기록되지 않음 | 발밑 안내 한 줄(`lib/gazeNote.ts`). 심하면 Take 전체에서 시선을 뺍니다(`lib/gazeExclusion.ts`) |
 | 기록 쓰기 실패 | 쓰기 실패 장부(`lib/writeFailures.ts`)에 남깁니다 |
 | 종료를 못 보냄 | 재시도 화면 |
@@ -294,10 +315,12 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 |---|---|---|
 | 판정 · 기록 주기 | 1초 | 최소 구간 1,000ms. 테두리는 초당 한 번만 바꿉니다 |
 | 음성 프레임 | 16kHz Int16, 100ms | `media/pcmCapture.ts` |
-| 분석 프레임 속도 | AI `analysis_fps`와 같은 값 | `media/frameClock.ts` |
+| 분석 프레임 속도 | 초당 8장 (AI `analysis_fps`와 같은 값) | `media/frameClock.ts` `ANALYSIS_FPS` |
+| 첫 연결 대기 | 15초 | `stage/startGate.ts` `CONNECT_SLOW_MS` |
+| 자동 종료 | 말 없음 2분 · 최대 1시간 | 서버가 정함. FE 안내는 `shared/lib/autoEnd.ts` |
 | 시계 | `performance.now()` 기준 | 가려진 탭에서도 정확합니다(`shared/lib/clock.ts`) |
 | 다시 붙기 | 백오프 3회 → 4~6초 간격, 5분 30초에 멈춤 | 6-3 |
-| 끊긴 동안 쌓는 양 | 기록 5분 치 · 음성 2초 치 | 6-3 |
+| 끊긴 동안 쌓는 양 | 1초 기록 300개(5분 치) · 음성 2초 치 · 장 넘김은 상한 없음 | 6-3 |
 
 **값 규칙**
 
