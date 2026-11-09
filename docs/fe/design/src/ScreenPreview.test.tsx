@@ -501,7 +501,7 @@ it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립
   await click('피치: 서비스 소개');
   expect(scope.textContent).toContain('피치: 서비스 소개');
 
-  const memoryOff = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  const memoryOff = host.querySelector<HTMLInputElement>('input[role="switch"]')!;
   await act(async () => memoryOff.click());
   expect(memoryOff.checked).toBe(true);
   expect(scope.textContent).toContain('피치: 서비스 소개');
@@ -509,20 +509,31 @@ it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립
   const history = host.querySelector<HTMLButtonElement>('button[aria-label="대화 목록"]')!;
   await act(async () => history.click());
   expect(host.textContent).toContain('대화 목록');
+  expect(history.getAttribute('aria-pressed')).toBe('true');
+  await act(async () => history.click());
+  expect(history.getAttribute('aria-pressed')).toBe('false');
+  await act(async () => history.click());
   await click('대화로 돌아가기');
   expect(scope.textContent).toContain('피치: 서비스 소개');
-  expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
+  expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(true);
 
-  const launcher = host.querySelector<HTMLButtonElement>('button[aria-label="채팅 에이전트"]')!;
+  const launcher = host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!;
   expect(launcher.getAttribute('aria-controls')).toBeTruthy();
-  const close = host.querySelector<HTMLButtonElement>('button[aria-label="닫기"]')!;
+  const close = host.querySelector<HTMLButtonElement>('button[aria-label="새미나이 닫기"]:not([aria-haspopup="dialog"])')!;
   await act(async () => close.click());
   expect(document.activeElement).toBe(launcher);
   expect(launcher.getAttribute('aria-expanded')).toBe('false');
+  expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
   await act(async () => launcher.click());
   expect(document.activeElement).toBe(host.querySelector('textarea'));
   expect(scope.textContent).toContain('피치: 서비스 소개');
-  expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
+  expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(true);
+  const composer = host.querySelector('textarea')!;
+  await act(async () => {
+    composer.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  expect(launcher.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(launcher);
 });
 
 it('리포트는 발표 전체 지표를 구분하고 상세 비교 모달의 스크롤을 잠근다', async () => {
