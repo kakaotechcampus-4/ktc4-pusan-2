@@ -1182,3 +1182,41 @@
     white-space: nowrap;
   }
 }
+
+/* 발표가 실제로 시작된 뒤에만 보이는 작은 스테이지 상태 표시.
+   무대 그리드와 계측 영역을 건드리지 않고, 반복 애니메이션을 사용하지 않는다. */
+.stage-head .stage-mission-label {
+  flex: none;
+  padding: 4px 7px;
+  border: 2px solid var(--color-coral);
+  color: var(--color-ink-stage);
+  background: color-mix(in srgb, var(--color-coral) 12%, transparent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+/* 시작 전 · 끝내는 중에는 자리만 남긴다. 보일 때만 1회 페이드가 붙는다 */
+.stage-head .stage-mission-label[data-live='false'] {
+  visibility: hidden;
+}
+.stage-head .stage-mission-label[data-live='true'] {
+  animation: stage-mission-enter 180ms steps(2, end) both;
+}
+
+@keyframes stage-mission-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 좁은 데스크톱 창에서는 타이머 · 진행 막대 · 종료 버튼이 우선입니다.
+   상태 배지는 장식이므로 공간이 부족하면 자리까지 없애 줄바꿈/겹침을 방지합니다. */
+@media (max-width: 760px) {
+  .stage-head .stage-mission-label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-head .stage-mission-label { animation: none; }
+}
