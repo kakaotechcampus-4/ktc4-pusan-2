@@ -24,7 +24,8 @@ const METRIC: Record<
   filler_per_min: { label: '분당 군더더기', unit: 'perMin' },
   duration_ms: { label: '발표 시간', unit: 'ms' },
   slide_duration_ms: { label: '장 시간', unit: 'ms' },
-  content_coverage: { label: '핵심 내용 전달', unit: 'ratio' },
+  // 새 '핵심 내용 전달률'(내용 전달 카드, #1154)과 계산이 달라 이름을 나눕니다 — 기존 점수는 다르게 말한 것을 -0.5 로 상쇄합니다
+  content_coverage: { label: '핵심 내용 점수(기존 방식)', unit: 'ratio' },
   critical_fact_accuracy: { label: '핵심 수치 정확도', unit: 'ratio' },
 };
 
