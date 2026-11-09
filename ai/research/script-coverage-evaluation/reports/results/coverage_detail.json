@@ -339,13 +339,12 @@
     }
   },
   "labels": {
-    "note": "대본 밖 말 후보 구간(짝 있는 문장 안 꼬리 2개 이상 + 짝 없는 문장, 문장 안 꼬리를 켠 규칙으로 뽑은 것)의 정답 라벨. 라벨러 둘(자동 라벨러, 사람 검수 전)이 서로 보지 않고 단 라벨이고, 둘이 같은 것만 label 에 둔다(다르면 null). 범주: script(그 장 대본 내용을 그대로 · 바꿔 말함) · other_slide · procedural · aside(관련 곁말) · unrelated · unclear. 실험 12_coverage_detail.py 가 (take_id, slide_number, stt_sentence, span_text)로 후보와 맞춰 precision 을 잰다.",
+    "note": "대본 밖 말 후보 구간(짝 있는 문장 안 꼬리 2개 이상 + 짝 없는 문장, 문장 안 꼬리를 켠 규칙으로 뽑은 것)의 정답 라벨. 라벨러 둘(자동 라벨러, 사람 검수 전)이 서로 보지 않고 단 라벨(labels)이 같으면 그 값을 label 에 둔다. 둘이 다른 8개는 장 대본을 보고 다시 판정해 label 에 두고 adjudicated: true 로 표시했다(셋째 라벨러의 독립 판정과 8개 모두 같음). 범주: script(그 장 대본 내용을 그대로 · 바꿔 말함, 수치만 틀리게 말한 것 포함) · other_slide · procedural · aside(관련 곁말) · unrelated · unclear. 실험 12_coverage_detail.py 가 (take_id, slide_number, stt_sentence, span_text)로 후보와 맞춰 precision 을 잰다.",
     "agreement": 0.964,
     "n_items": 221,
-    "n_label_null": 8,
+    "n_label_null": 0,
     "label_counts": {
-      "script": 198,
-      "null": 8,
+      "script": 206,
       "aside": 13,
       "procedural": 2
     }
@@ -354,7 +353,7 @@
     "n_candidates": 13,
     "recall_definitions": {
       "additions_caught_ratio": "라벨 additions(실제로 끼어든 곁말 문장) 중 어떤 후보 구간에 잡힌 비율 (형태소 겹침 0.5 이상 또는 글 포함). offscript_natural.addition_recall 에 있다",
-      "labeled_outside_caught_ratio": "라벨 파일에서 일치한 항목 중 정답이 대본 밖 말(aside · unrelated · procedural · other_slide)인 것에서, 지금 규칙이 후보로 잡은 비율. offscript_natural_precision 에 있다"
+      "labeled_outside_caught_ratio": "라벨 파일의 정답(두 라벨러가 같은 것 + 어긋나 다시 판정한 것)이 대본 밖 말(aside · unrelated · procedural · other_slide)인 것에서, 지금 규칙이 후보로 잡은 비율. offscript_natural_precision 에 있다"
     },
     "candidates_by_category": {
       "dev": {
@@ -472,19 +471,20 @@
   "offscript_natural_precision": {
     "dev": {
       "n_candidates": 6,
-      "n_usable": 5,
-      "n_label_null": 1,
+      "n_usable": 6,
+      "n_label_null": 0,
       "n_not_in_label_file": 0,
-      "outside_precision": 1.0,
+      "outside_precision": 0.8333,
       "labeled_outside_caught_ratio": 0.7143,
-      "n_label_mismatch_excluded": 1,
+      "n_label_mismatch_excluded": 0,
       "n_labeled_outside": 7,
       "by_predicted": {
         "off_script": {
-          "n": 5,
+          "n": 6,
           "right": 5,
-          "precision": 1.0,
+          "precision": 0.8333,
           "labels": {
+            "script": 1,
             "aside": 5
           }
         },
@@ -540,19 +540,20 @@
     "in_sentence=False,min_tokens=2": {
       "dev": {
         "n_candidates": 6,
-        "n_usable": 5,
-        "n_label_null": 1,
+        "n_usable": 6,
+        "n_label_null": 0,
         "n_not_in_label_file": 0,
-        "outside_precision": 1.0,
+        "outside_precision": 0.8333,
         "labeled_outside_caught_ratio": 0.7143,
-        "n_label_mismatch_excluded": 1,
+        "n_label_mismatch_excluded": 0,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
-            "n": 5,
+            "n": 6,
             "right": 5,
-            "precision": 1.0,
+            "precision": 0.8333,
             "labels": {
+              "script": 1,
               "aside": 5
             }
           },
@@ -607,20 +608,20 @@
     "in_sentence=True,min_tokens=2": {
       "dev": {
         "n_candidates": 88,
-        "n_usable": 67,
-        "n_label_null": 4,
+        "n_usable": 71,
+        "n_label_null": 0,
         "n_not_in_label_file": 17,
-        "outside_precision": 0.1045,
+        "outside_precision": 0.0986,
         "labeled_outside_caught_ratio": 1.0,
-        "n_label_mismatch_excluded": 21,
+        "n_label_mismatch_excluded": 17,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
-            "n": 61,
+            "n": 65,
             "right": 7,
-            "precision": 0.1148,
+            "precision": 0.1077,
             "labels": {
-              "script": 54,
+              "script": 58,
               "aside": 7
             }
           },
@@ -644,20 +645,20 @@
       },
       "test": {
         "n_candidates": 150,
-        "n_usable": 146,
-        "n_label_null": 4,
+        "n_usable": 150,
+        "n_label_null": 0,
         "n_not_in_label_file": 0,
-        "outside_precision": 0.0548,
+        "outside_precision": 0.0533,
         "labeled_outside_caught_ratio": 1.0,
-        "n_label_mismatch_excluded": 4,
+        "n_label_mismatch_excluded": 0,
         "n_labeled_outside": 8,
         "by_predicted": {
           "off_script": {
-            "n": 140,
+            "n": 144,
             "right": 6,
-            "precision": 0.0429,
+            "precision": 0.0417,
             "labels": {
-              "script": 132,
+              "script": 136,
               "aside": 6,
               "procedural": 2
             }
@@ -682,20 +683,20 @@
     "in_sentence=True,min_tokens=4": {
       "dev": {
         "n_candidates": 16,
-        "n_usable": 12,
-        "n_label_null": 1,
+        "n_usable": 13,
+        "n_label_null": 0,
         "n_not_in_label_file": 3,
-        "outside_precision": 0.4167,
+        "outside_precision": 0.3846,
         "labeled_outside_caught_ratio": 0.7143,
-        "n_label_mismatch_excluded": 4,
+        "n_label_mismatch_excluded": 3,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
-            "n": 11,
+            "n": 12,
             "right": 5,
-            "precision": 0.4545,
+            "precision": 0.4167,
             "labels": {
-              "script": 6,
+              "script": 7,
               "aside": 5
             }
           },
@@ -755,21 +756,21 @@
     "in_sentence=True,min_tokens=6": {
       "dev": {
         "n_candidates": 7,
-        "n_usable": 6,
-        "n_label_null": 1,
+        "n_usable": 7,
+        "n_label_null": 0,
         "n_not_in_label_file": 0,
-        "outside_precision": 0.8333,
+        "outside_precision": 0.7143,
         "labeled_outside_caught_ratio": 0.7143,
-        "n_label_mismatch_excluded": 1,
+        "n_label_mismatch_excluded": 0,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
-            "n": 6,
+            "n": 7,
             "right": 5,
-            "precision": 0.8333,
+            "precision": 0.7143,
             "labels": {
-              "aside": 5,
-              "script": 1
+              "script": 2,
+              "aside": 5
             }
           },
           "procedural": {

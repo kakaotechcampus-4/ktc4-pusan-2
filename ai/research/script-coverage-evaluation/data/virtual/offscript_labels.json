@@ -1,6 +1,6 @@
 {
  "version": 1,
- "note": "대본 밖 말 후보 구간(짝 있는 문장 안 꼬리 2개 이상 + 짝 없는 문장, 문장 안 꼬리를 켠 규칙으로 뽑은 것)의 정답 라벨. 라벨러 둘(자동 라벨러, 사람 검수 전)이 서로 보지 않고 단 라벨이고, 둘이 같은 것만 label 에 둔다(다르면 null). 범주: script(그 장 대본 내용을 그대로 · 바꿔 말함) · other_slide · procedural · aside(관련 곁말) · unrelated · unclear. 실험 12_coverage_detail.py 가 (take_id, slide_number, stt_sentence, span_text)로 후보와 맞춰 precision 을 잰다.",
+ "note": "대본 밖 말 후보 구간(짝 있는 문장 안 꼬리 2개 이상 + 짝 없는 문장, 문장 안 꼬리를 켠 규칙으로 뽑은 것)의 정답 라벨. 라벨러 둘(자동 라벨러, 사람 검수 전)이 서로 보지 않고 단 라벨(labels)이 같으면 그 값을 label 에 둔다. 둘이 다른 8개는 장 대본을 보고 다시 판정해 label 에 두고 adjudicated: true 로 표시했다(셋째 라벨러의 독립 판정과 8개 모두 같음). 범주: script(그 장 대본 내용을 그대로 · 바꿔 말함, 수치만 틀리게 말한 것 포함) · other_slide · procedural · aside(관련 곁말) · unrelated · unclear. 실험 12_coverage_detail.py 가 (take_id, slide_number, stt_sentence, span_text)로 후보와 맞춰 precision 을 잰다.",
  "agreement": 0.964,
  "items": [
   {
@@ -285,11 +285,12 @@
    "stt_sentence": "자 마지막으로 앞으로 어떻게 할지 말씀드리겠습니다",
    "span_text": "마지막으로 앞으로 어떻게 할지 말씀드리",
    "aligned": false,
-   "label": null,
+   "label": "script",
    "labels": [
     "procedural",
     "script"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본1_take2",
@@ -633,11 +634,12 @@
    "stt_sentence": "알림을 받은 분들 중에 76%는 십 분 안에 실제로 자리를 잡으셨고요 노쇼 비율도 18%에서 구 퍼센트로 떨어졌습니다",
    "span_text": "구 퍼센트로 떨어졌",
    "aligned": true,
-   "label": null,
+   "label": "script",
    "labels": [
     "script",
     "aside"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본1_take5",
@@ -657,11 +659,12 @@
    "stt_sentence": "공공도서관은 한 달에 사십오만 원 대학 도서관은 열람실 크기에 따라 연간 600만 원에서 천이백만 원을 받습니다",
    "span_text": "한 달에 사십오만 원",
    "aligned": true,
-   "label": null,
+   "label": "script",
    "labels": [
     "script",
     "aside"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본1_take5",
@@ -693,11 +696,12 @@
    "stt_sentence": "저희가 대학생 412명에게 물어보니까 빈자리를 찾느라고 하루 평균 23분을 쓴다고 답했습니다.",
    "span_text": "412명에게 물어보",
    "aligned": true,
-   "label": null,
+   "label": "script",
    "labels": [
     "script",
     "aside"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본1_take6",
@@ -1065,11 +1069,12 @@
    "stt_sentence": "자 먼저 팀원별로 누가 뭘 맡았는지 말씀드리면 한도윤 팀원이 판매량 예측 모델을 만들고 그 모델 성능이 잘 나오는지 검증까지 했고요",
    "span_text": "말씀드리",
    "aligned": true,
-   "label": null,
+   "label": "script",
    "labels": [
     "procedural",
     "script"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본2_take2",
@@ -1557,11 +1562,12 @@
    "stt_sentence": "지금 이 장면은 사장님이 에이전트한테 내일 비 오냐고 물어보고 크루아상을 좀 덜 굽기로 하는 장면이에요",
    "span_text": "지금 이 장면",
    "aligned": true,
-   "label": null,
+   "label": "script",
    "labels": [
     "procedural",
     "script"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본2_take2",
@@ -1593,11 +1599,12 @@
    "stt_sentence": "끝으로 저희가 이번 프로젝트 하면서 배운 걸 말씀드리면 처음엔 모델 성능 올리는 데만 신경 썼는데 막상 해 보니까 빵집마다 제각각인 판매 기록 정리하는 게 시간이 훨씬 많이 들었어요",
    "span_text": "말씀드리",
    "aligned": true,
-   "label": null,
+   "label": "script",
    "labels": [
     "procedural",
     "script"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본2_take2",
@@ -2337,11 +2344,12 @@
    "stt_sentence": "저희가 만나 본 빵집 사장님들은 하루 생산량의 십오에서 삼십 퍼센트를 버린다고 하셨어요",
    "span_text": "삼십 퍼센트를 버린다고 하",
    "aligned": true,
-   "label": null,
+   "label": "script",
    "labels": [
     "script",
     "aside"
-   ]
+   ],
+   "adjudicated": true
   },
   {
    "take_id": "가상대본2_take6",

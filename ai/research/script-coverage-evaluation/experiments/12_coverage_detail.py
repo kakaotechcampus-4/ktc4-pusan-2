@@ -529,7 +529,7 @@ RECALL_DEFINITIONS = {
         "(형태소 겹침 0.5 이상 또는 글 포함). offscript_natural.addition_recall 에 있다"
     ),
     "labeled_outside_caught_ratio": (
-        "라벨 파일에서 일치한 항목 중 정답이 대본 밖 말(aside · unrelated · procedural · other_slide)인 것에서, "
+        "라벨 파일의 정답(두 라벨러가 같은 것 + 어긋나 다시 판정한 것)이 대본 밖 말(aside · unrelated · procedural · other_slide)인 것에서, "
         "지금 규칙이 후보로 잡은 비율. offscript_natural_precision 에 있다"
     ),
 }
