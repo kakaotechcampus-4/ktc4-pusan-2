@@ -4,7 +4,7 @@ module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'
 알릴 일은 여기 세 자리를 거쳐 부른다.
 
   - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT),
-    로그아웃
+    로그아웃, 관리자 콘솔이 멈춘 연습을 끝냄
   - `coaching()`: 리뷰 뒤 · 제한 시간을 바꾼 뒤 · 대본을 파싱한 뒤 다음 Take 의 코칭 계획
   - `finalize_recovery()`: 관리자 콘솔이 Take 의 finalize 복구 요청을 내려받거나, finalize 가
     실패한 Take 의 Take 결과를 다시 만들 때
@@ -15,6 +15,7 @@ module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'
 
 import uuid
 from collections.abc import Callable, Iterable
+from datetime import datetime
 from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
@@ -52,6 +53,12 @@ class LiveTakes(Protocol):
     def sign_out(self, user_id: uuid.UUID) -> None:
         """로그아웃한 사용자의 발표 연결을 `UNAUTHORIZED` 로 닫는다. Take 는 끝내지 않는다.
         Refresh 를 폐기한 커밋 뒤에 부른다."""
+        ...
+
+    def end_stuck(self, take_id: uuid.UUID, last_active_at: datetime) -> bool:
+        """연결 없이 진행 중으로 남은 Take 를 떠난 것(`ABANDONED`)으로 끝낸다. 떠난 Take 타이머가
+        끝낼 때와 같고 끝난 시각은 `last_active_at` 이다. 적었으면 True. 스트림이 아직 돌거나
+        그 사이 끝났으면 False. 관리자 콘솔이 부른다."""
         ...
 
 
@@ -93,6 +100,9 @@ class _NoLiveTakes:
 
     def sign_out(self, user_id: uuid.UUID) -> None:
         return None
+
+    def end_stuck(self, take_id: uuid.UUID, last_active_at: datetime) -> bool:
+        return False
 
 
 class _NoCoaching:

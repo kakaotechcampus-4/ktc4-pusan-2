@@ -344,6 +344,53 @@ async def test_abandon_write_failure_leaves_the_take_open(caplog: pytest.LogCapt
     assert take_id not in state.ended
 
 
+# ── 관리자 콘솔이 멈춘 연습을 끝낸다 ─────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_stuck_take_is_ended_as_abandoned_from_its_last_activity():
+    """타이머 없이 진행 중으로 남은 Take 를 떠난 Take 타이머처럼 끝낸다. 걸린 타이머도 끈다."""
+    store = FakeTranscriptStore()
+    take_id = uuid.uuid7()
+    last_active = datetime.now(UTC) - timedelta(minutes=20)
+    registry.arm_abandon(take_id, store, closed_at=last_active, delay_sec=60)
+
+    assert await registry.end_stuck(take_id, store, last_active) is True
+
+    assert store.abandoned == [(take_id, last_active)]
+    assert state.ended[take_id] == "ABANDONED"
+    assert take_id not in abandon._abandon_timers
+
+
+@pytest.mark.anyio
+async def test_stuck_take_with_a_running_stream_is_left_alone():
+    """스트림이 아직 돌면(연결이 붙어 있음) 끝내지 않는다."""
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+    state.streams[stream.take_id] = stream
+    stream.start()
+    await stream.attach(FakeWebSocket())
+    await _wait_until_ok(stream)
+
+    assert await registry.end_stuck(stream.take_id, store, datetime.now(UTC)) is False
+
+    assert store.abandoned == []
+    assert stream.take_id not in state.ended
+    await stream.close_or_cancel(warn="test")
+
+
+@pytest.mark.anyio
+async def test_stuck_take_that_cannot_be_written_keeps_its_timer():
+    store = FakeTranscriptStore(fail_mark=True)
+    take_id = uuid.uuid7()
+    registry.arm_abandon(take_id, store, closed_at=datetime.now(UTC), delay_sec=60)
+
+    assert await registry.end_stuck(take_id, store, datetime.now(UTC)) is False
+
+    assert take_id not in state.ended
+    assert take_id in abandon._abandon_timers
+
+
 @pytest.mark.anyio
 async def test_startup_rearms_timers_from_the_last_activity():
     """앱이 다시 뜨면 메모리의 타이머가 없다. 진행 중으로 남은 Take 를 DB 에서 읽어 마지막 활동에서
