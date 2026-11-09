@@ -826,7 +826,16 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     lp.profile_candidates = draft.get("profile_updates")
 
     # 5. 상태 정하기 (앞 문장은 이미 냈고, `_finish`가 낸 문장을 최종 답의 앞부분에 그대로 싣는다)
-    has_result = any(c.kind == "ACTION_RESULT" for c in comp.pre)
+    # 요청을 푼 행동 결과만 답이다(끝 상태는 요청 해소로, 6-9 '고친 뒤'): 기록 가져오기(FETCH_TAKE · FETCH_PITCH)는 질문에 답하려고 한 수단이라
+    # 그 결과 문장만으로는 질문이 풀리지 않는다 — 모델 문장이 모두 빠졌으면 아래 빈 답 분기에서 대상 근거 문장을 먼저 그린다
+    fetched = {
+        e.get("action_id")
+        for e in lp.st.executed
+        if e.get("type") in ("FETCH_TAKE", "FETCH_PITCH")
+    }
+    has_result = any(
+        c.kind == "ACTION_RESULT" and c.action_id not in fetched for c in comp.pre
+    )
     if not body and not has_result and actions and not out and not no_guide:
         # "바로 발표할래"처럼 연습 이동만 요청해 허용된 답: 문장이 없어도 이동이 답이다(6-2 START_PRACTICE).
         # 모델이 쓴 문장이 검사로 모두 빠졌거나 자료를 찾지 못한 답은 그대로 PARTIAL · 거절이다

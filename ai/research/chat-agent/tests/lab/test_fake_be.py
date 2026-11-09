@@ -293,7 +293,8 @@ def test_fm_L2_21_fetch_pitch_scope_is_confirmed_by_the_next_final() -> None:
         (a["type"], b.conversations[r.conversation_id].scope_pitch_id)
     )
     run = be.send_message(conv.conversation_id, "회사 소개 발표에서 Take 1 기록 알려 줘")
-    assert run.status == "DONE"
+    # 모델 답이 비어 가져오기 결과 문장뿐이면 질문(Take 1 기록)이 풀리지 않은 부분 답이다(끝 상태는 요청 해소로, 기능 문서 6-9 '고친 뒤')
+    assert run.status == "PARTIAL"
     # FETCH_PITCH 를 실행할 때는 아직 p-1, 다음 final(NEEDS_ACTION)에서 p-2 로 확정된 뒤 FETCH_TAKE 를 실행한다
     assert scope_at_action == [("FETCH_PITCH", "p-1"), ("FETCH_TAKE", "p-2")]
     assert [c.request["run"]["state_revision"] for c in run.calls] == [0, 0, 1]

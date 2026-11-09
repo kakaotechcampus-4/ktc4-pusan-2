@@ -552,7 +552,10 @@ def test_none_evidence_is_invalid_after_its_pitch_is_removed_between_calls() -> 
     )
     _, _, d2 = F.run_turn(req2, llm2)
     fd = final_ok(d2)
-    assert fd.status == "DONE"  # 가져오기 결과 문장이 답이다
+    # 가져오기 결과 문장만으로는 질문(Take 3 기록 · 다른 발표 Take 수)이 풀리지 않는다(끝 상태는 요청 해소로, 6-9 '고친 뒤'): 대상 근거 문장도
+    # 그릴 수 없으면 부분 답이다. 가져오기 결과 문장은 그대로 앞에 남는다
+    assert fd.status == "PARTIAL"
+    assert texts(d2)[0] == "Take 3 기록을 가져왔어요."
     assert gone not in texts(d2)
     assert seen["p2"] not in {e["evidence_id"] for e in d2["evidence"]}
     fix = next(c for c in llm2.calls if c.purpose == "FIX")

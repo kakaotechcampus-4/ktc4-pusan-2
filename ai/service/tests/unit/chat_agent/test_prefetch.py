@@ -248,3 +248,37 @@ def test_then_word_with_two_takes_in_the_basis_does_not_guess() -> None:
         "get_take_report",
         {"take_id": "t-5", "section": "slides", "slide_number": 3},
     ) in tool_calls_in(llm.calls[1])
+
+
+@pytest.mark.parametrize("guard", [True, False])
+def test_fetch_result_alone_is_not_an_answer_but_the_target_record_is(guard: bool) -> None:
+    """가져오기 결과 문장만 남은 답(모델 문장이 모두 빠짐)은 그것만으로 DONE 이 아니다(끝 상태는 요청 해소로, 6-9 '고친 뒤'). 질문 대상(Take 4
+    3장 청중 시선)의 읽은 기록으로 그린 코드 문장이 있으면 그 문장이 답이고(DONE), 그릴 대상 문장이 없으면 부분 답(PARTIAL)이다."""
+    cfg = load_config(record_answer_guard=guard)
+    req = F.request(user_message=MSG)
+    _, _, d1 = F.run_turn(req, F.FakeLlm([F.plan(assessments=[slide_draft([4])])]), cfg=cfg)
+    action = d1["actions"][0]
+    res = [
+        {
+            "action_id": action["action_id"],
+            "type": "FETCH_TAKE",
+            "status": "SUCCEEDED",
+            "data": {"take": fetched_take("t-4")},
+            "error": None,
+        }
+    ]
+    bad = "Take 4의 3장 청중 시선 비율은 99%예요."  # 근거 없는 숫자: 검사로 빠진다
+    llm2 = F.FakeLlm(
+        [F.done()],
+        answers=[F.answer([F.claim("RECORD", bad, evidence_ids=[])])],
+        fixes=[F.fix({0: None})],
+    )
+    _, _, d2 = F.run_turn(resume_request(req, d1, res), llm2, cfg=cfg)
+    fd = FinalData.model_validate(d2)
+    said = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    assert said[0] == "Take 4 기록을 가져왔어요." and bad not in said
+    if guard:
+        assert any("31%" in t for t in said[1:])  # 대상 근거로 그린 기록 문장(기록 답 보장)
+        assert fd.status == "DONE"
+    else:
+        assert fd.status == "PARTIAL"  # 가져오기 결과 문장뿐: 질문이 풀리지 않았다
