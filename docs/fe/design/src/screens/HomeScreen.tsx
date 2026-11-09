@@ -66,15 +66,14 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
     () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
   );
   const [tipHovered, setTipHovered] = useState(false);
-  const [tipFocused, setTipFocused] = useState(false);
   useEffect(() => {
-    if (tipPaused || tipHovered || tipFocused) return;
+    if (tipPaused || tipHovered) return;
     const timer = window.setInterval(
       () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
       HOME_TIP_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
-  }, [tipPaused, tipHovered, tipFocused]);
+  }, [tipPaused, tipHovered]);
   // 기본 상태에서 메뉴로 지우면 그 줄만 이 미리보기에서 뺀다. 서버 요청은 없다
   const [removed, setRemoved] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
@@ -188,16 +187,13 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
       </div>
       <footer className="border-t border-line-strong">
         <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 pl-20 text-xs text-ink/80 xl:flex-nowrap xl:pl-10 xl:pr-10">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex min-h-9 min-w-0 basis-full items-center gap-2 lg:min-w-0 lg:flex-1 lg:basis-auto">
             <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
             <p
-              tabIndex={0}
               title={HOME_TIPS[tipIndex]}
               onMouseEnter={() => setTipHovered(true)}
               onMouseLeave={() => setTipHovered(false)}
-              onFocus={() => setTipFocused(true)}
-              onBlur={() => setTipFocused(false)}
-              className="min-w-0 flex-1 truncate focus:overflow-visible focus:whitespace-normal focus:break-words focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className="min-w-0 flex-1 truncate"
             >
               {HOME_TIPS[tipIndex]}
             </p>

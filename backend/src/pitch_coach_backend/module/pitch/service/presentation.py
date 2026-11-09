@@ -84,14 +84,14 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         pitch_repository.save_presentation(presentation)
     except Exception:
         db.rollback()
-        _discard_upload(db, presentation_id, uploaded_key, thumbnail_key)
+        discard_upload(db, presentation_id, uploaded_key, thumbnail_key)
         raise
     try:
         db.commit()
     except Exception:
         db.rollback()
         # 커밋 응답만 잃었을 수 있다 (커밋 뒤 연결이 끊김). 버전 행이 없을 때만 지운다
-        _discard_upload(db, presentation_id, uploaded_key, thumbnail_key)
+        discard_upload(db, presentation_id, uploaded_key, thumbnail_key)
         raise
 
     return UploadPresentationResultDTO(
@@ -102,7 +102,7 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     )
 
 
-def _discard_upload(
+def discard_upload(
     db: Session, presentation_id: uuid.UUID, key: str, thumbnail_key: str | None
 ) -> None:
     """

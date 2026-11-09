@@ -105,7 +105,7 @@ describe('카드 항목 상태 (L3-45)', () => {
   });
 });
 
-describe('첫 안내를 보였는지 (L3-43, BE 미구현 — 이 브라우저에 둠)', () => {
+describe('첫 안내를 보였는지 (L3-43, 이 브라우저에 둠)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   const fakeStorage = () => {

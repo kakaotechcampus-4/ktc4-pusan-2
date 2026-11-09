@@ -57,6 +57,16 @@ def update_settings(
     return user
 
 
+def has_tutorial_report(db: Session, user_id: uuid.UUID) -> bool:
+    """First Take 튜토리얼 리포트를 이미 받았는가. 계정당 한 번만 받는다."""
+    return repository.has_tutorial_report(db, user_id)
+
+
+def mark_tutorial_report(db: Session, user_id: uuid.UUID) -> None:
+    """튜토리얼 리포트를 받았다고 적는다. 커밋하지 않는다 — 리뷰 결과 저장과 한 트랜잭션이다."""
+    repository.mark_tutorial_report(db, user_id)
+
+
 def delete(db: Session, user: User) -> None:
     """회원을 지운다. 되살릴 수 없다.
 

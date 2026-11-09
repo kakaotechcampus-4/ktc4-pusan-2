@@ -84,6 +84,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -386,4 +387,90 @@ it('서버가 이미 없다고(404) 하면 지운 것으로 보고, 확인 창�
   expect(client.getQueryData(['takes', 't1', 'report'])).toBeUndefined();
   expect(client.getQueryData(takeSurveyKeys.state('t2'))).toBeUndefined();
   expect(client.getQueryData(['takes', 't3', 'report'])).toEqual({ keep: true });
+});
+
+it.each([0, 1, 15])('홈 피치 %i개의 목록 구조와 푸터를 유지한다', async (pitchCount) => {
+  list = {
+    pitches: Array.from({ length: pitchCount }, (_, index) =>
+      pitch(`p${index}`, `발표 ${index + 1}`),
+    ),
+  };
+  await render();
+
+  const shell = host.querySelector<HTMLElement>('.pitch-create')!;
+  const main = shell.querySelector<HTMLElement>('main')!;
+  const section = main.querySelector<HTMLElement>('section[aria-label="발표 목록"]')!;
+  const pitchList = section.querySelector<HTMLUListElement>('ul');
+
+  expect(shell.classList.contains('flex-1')).toBe(true);
+  expect(main.classList.contains('flex-1')).toBe(true);
+  expect(section.querySelectorAll('li[data-pitch-id]')).toHaveLength(pitchCount);
+  expect(pitchList === null).toBe(pitchCount === 0);
+  expect(pitchList?.className ?? '').not.toContain('overflow-y-auto');
+  expect(main.nextElementSibling?.tagName).toBe('FOOTER');
+  expect(shell.className).not.toContain('one-screen');
+  expect(host.querySelector('footer p[title]')).not.toBeNull();
+  expect(host.querySelector('footer p[title]')?.hasAttribute('tabindex')).toBe(false);
+});
+
+it('TIP은 8초마다 순환하고 일시정지·재개 버튼으로 타이머를 제어한다', async () => {
+  const setIntervalSpy = vi.spyOn(window, 'setInterval');
+  const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+  await render();
+
+  const timers = () => setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000);
+  expect(timers()).toHaveLength(1);
+  const tip = host.querySelector<HTMLElement>('footer p[title]')!;
+  expect(tip.textContent).toBe('연습 전, 슬라이드와 대본을 한 번 확인해 보세요.');
+
+  const next = timers()[0][0];
+  expect(typeof next).toBe('function');
+  await act(async () => (next as () => void)());
+  expect(tip.textContent).toBe('시작 전 세팅에서 대본 표시 방식을 선택할 수 있어요.');
+
+  await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 일시정지"]')!);
+  expect(clearIntervalSpy).toHaveBeenCalled();
+  expect(host.querySelector('button[aria-label="팁 자동 전환 재개"]')).not.toBeNull();
+
+  await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 재개"]')!);
+  expect(timers()).toHaveLength(2);
+});
+
+it('TIP 문구를 가리키는 동안 자동 전환을 멈췄다가 다시 시작한다', async () => {
+  const setIntervalSpy = vi.spyOn(window, 'setInterval');
+  const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+  await render();
+
+  const tip = host.querySelector<HTMLElement>('footer p[title]')!;
+  await act(async () => {
+    tip.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  });
+  expect(clearIntervalSpy).toHaveBeenCalled();
+  expect(setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000)).toHaveLength(1);
+
+  await act(async () => {
+    tip.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+  });
+  expect(setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000)).toHaveLength(2);
+});
+
+it('움직임 감소 설정이면 TIP 자동 순환을 초기 중단하고 수동 재개를 허용한다', async () => {
+  vi.stubGlobal('matchMedia', vi.fn(() => ({
+    matches: true,
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })));
+  const setIntervalSpy = vi.spyOn(window, 'setInterval');
+  await render();
+
+  expect(host.querySelector('button[aria-label="팁 자동 전환 재개"]')).not.toBeNull();
+  expect(setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000)).toHaveLength(0);
+
+  await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 재개"]')!);
+  expect(setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000)).toHaveLength(1);
 });
