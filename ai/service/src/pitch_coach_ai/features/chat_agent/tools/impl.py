@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -399,6 +399,10 @@ _SLIDE_METRICS = (
 )
 
 
+#: Take 전체 값에 더해 싣는 횟수 지표(분당 값이 아니라 '몇 번'을 묻는 질문용)
+_COUNT_METRICS = ("filler_count", "pause_count")
+
+
 def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
     summ = f"Take 리포트 · {a.section}"
     snap = _snapshot_for(ctx, a.take_id)
@@ -550,9 +554,11 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         else:
             metrics = _SLIDE_METRICS
             if a.slide_number is None:
+                # 횟수 지표(몇 번 · 몇 회 질문)는 설정이 켜졌을 때만 Take 전체 값에 싣는다(`count_metric_hint`)
+                counts = _COUNT_METRICS if ctx.cfg.count_metric_hint else ()
                 take_vals = [
                     _num(ctx, snap, read_metric(snap, m, None, ctx.cfg))
-                    for m in (*metrics[:-1], "duration_ms")
+                    for m in (*metrics[:-1], "duration_ms", *counts)
                 ]
                 items.append({"scope": "take", "values": take_vals})
                 n_slides = len(((tr.get("areas") or {}).get("TIME") or {}).get("slides") or [])
@@ -801,6 +807,108 @@ def _get_goals(ctx: RunCtx, _a: NoArgs) -> ToolResult:
 # ── search_guides ─────────────────────────────────────────────────────────
 
 
+def _is_timeout(exc: BaseException) -> bool:
+    """시간 초과 계열 예외인가(공급자 라이브러리를 가져오지 않고 이름으로 본다)."""
+    return isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower()
+
+
+def _embed_timeout(ctx: RunCtx) -> float:
+    """임베딩 호출 한 번의 시간 제한: min(`embed_timeout_seconds`, 조사에 남은 시간)."""
+    timeout = ctx.cfg.embed_timeout_seconds
+    if ctx.research_left is not None:
+        timeout = min(timeout, ctx.research_left())
+    return timeout
+
+
+def _embed_texts(
+    ctx: RunCtx, corpus: Any, texts: list[str]
+) -> tuple[list[Sequence[float] | None], str, int | None]:
+    """글 여러 개를 임베딩 호출 한 번으로 보낸다. 돌려주는 값: (글마다 벡터 또는 None, 상태, 걸린 ms).
+
+    상태는 OK · TIMEOUT · ERROR · BUDGET(남은 시간이 모자라 부르지 않음, 쓴 것으로 세지 않는다). 벡터 하나가 카드 벡터와
+    맞지 않으면(차원 불일치) 그 글만 None 이고 상태는 ERROR 다.
+    """
+    if _embed_timeout(ctx) < ctx.cfg.embed_min_seconds:
+        return [None] * len(texts), "BUDGET", None
+    timeout = _embed_timeout(ctx)
+    ctx.embed_used = True
+    started = ctx.monotonic()
+    try:
+        vecs = list(ctx.embed_query(texts, timeout))  # type: ignore[misc]
+        if len(vecs) != len(texts):
+            raise ValueError("embedding count differs from input count")
+    except Exception as exc:  # noqa: BLE001  # 어떤 실패든 키워드 검색으로 이어간다(예외 메시지는 남기지 않는다)
+        ms = max(0, int(round((ctx.monotonic() - started) * 1000)))
+        return [None] * len(texts), "TIMEOUT" if _is_timeout(exc) else "ERROR", ms
+    ms = max(0, int(round((ctx.monotonic() - started) * 1000)))
+    out: list[Sequence[float] | None] = []
+    status = "OK"
+    for v in vecs:
+        try:
+            out.append(corpus.prepare_query_vector(v))
+        except Exception:  # noqa: BLE001
+            out.append(None)
+            status = "ERROR"
+    return out, status, ms
+
+
+def embed_planned_queries(ctx: RunCtx, queries: Sequence[str]) -> None:
+    """계획이 쓴 검색어를 질문 임베딩 한 번에 묶어 받아 실행 안에 남긴다(실행당 임베딩 한 번, 6-10).
+
+    이 실행에서 이미 임베딩을 불렀거나 임베딩을 쓰지 않는 설정이면 아무것도 하지 않는다(그 검색어는 키워드로 찾는다).
+    글마다 상태를 `embed_planned` 에 남겨 검색 진단에 쓴다.
+    """
+    corpus = ctx.corpus
+    texts = list(dict.fromkeys(q for q in queries if q not in ctx.embed_cache))
+    if (
+        not texts
+        or ctx.embed_query is None
+        or not getattr(corpus, "has_vectors", False)
+        or ctx.embed_used
+    ):
+        return
+    vecs, status, ms = _embed_texts(ctx, corpus, texts)
+    for i, (q, v) in enumerate(zip(texts, vecs, strict=True)):
+        # 묶음 호출의 시간은 첫 글의 검색 진단에만 싣는다(한 번 부른 시간을 글 수만큼 세지 않게)
+        at = ms if i == 0 else None
+        if v is not None:
+            ctx.embed_cache[q] = v
+            ctx.embed_planned[q] = {"embed": "OK", "embed_ms": at}
+        else:
+            ctx.embed_planned[q] = {"embed": status if status != "OK" else "ERROR", "embed_ms": at}
+
+
+def _query_vector(
+    ctx: RunCtx, corpus: Any, query: str
+) -> tuple[Sequence[float] | None, dict[str, Any]]:
+    """하이브리드 검색용 질문 임베딩. 실행당 한 번만 부르고 실패하면 키워드만 쓴다(6-10).
+
+    돌려주는 `diag` 의 `embed`: OK(받음 · 같은 글로 다시 찾아 이미 받은 것을 씀) · TIMEOUT · ERROR(호출 실패) ·
+    BUDGET(남은 시간이 모자라 건너뜀) · USED(이 실행에서 이미 불렀고 다른 글이라 건너뜀) · OFF(임베딩을 쓰지 않는 설정).
+    `embed_ms` 는 호출한 때만(계획이 묶어 받은 글은 그 묶음 호출의 시간을 처음 쓰는 검색에만). 시간 제한은
+    min(`embed_timeout_seconds`, 조사에 남은 시간)이고 호출은 다시 시도하지 않는다.
+    """
+    cfg = ctx.cfg
+    if ctx.embed_query is None or not getattr(corpus, "has_vectors", False):
+        return None, {"embed": "OFF", "embed_ms": None}
+    planned = ctx.embed_planned.get(query)
+    if planned is not None:
+        # 계획이 묶어 임베딩한 글: 그 결과(받음이면 벡터, 아니면 실패 상태)를 그대로 쓴다
+        ms, planned["embed_ms"] = planned.get("embed_ms"), None
+        return ctx.embed_cache.get(query), {"embed": planned["embed"], "embed_ms": ms}
+    if ctx.embed_used:
+        if query in ctx.embed_cache:
+            return ctx.embed_cache[query], {"embed": "OK", "embed_ms": None}
+        return None, {"embed": "USED", "embed_ms": None}
+    if _embed_timeout(ctx) < cfg.embed_min_seconds:
+        return None, {"embed": "BUDGET", "embed_ms": None}
+    vecs, status, ms = _embed_texts(ctx, corpus, [query])
+    if vecs[0] is None:
+        return None, {"embed": status, "embed_ms": ms}
+    ctx.embed_cache[query] = vecs[0]
+    return vecs[0], {"embed": "OK", "embed_ms": ms}
+
+
 def _search(ctx: RunCtx, a: SearchArgs) -> ToolResult:
     summ = f"자료 검색(질의 {len(a.query)}자)"
     corpus = ctx.corpus
@@ -823,7 +931,19 @@ def _search(ctx: RunCtx, a: SearchArgs) -> ToolResult:
     screen_key = None
     if screen is not None:
         screen_key = screen.name + (f":{screen.step}" if getattr(screen, "step", None) else "")
-    hits = corpus.search(a.query, screen=screen_key)
+    qv, diag = _query_vector(ctx, corpus, a.query)
+    try:
+        # 질문 벡터가 없으면 인자 없이 부른다(키워드 검색, 벡터를 모르는 묶음 대역과도 맞는다)
+        hits = (
+            corpus.search(a.query, screen=screen_key)
+            if qv is None
+            else corpus.search(a.query, screen=screen_key, query_vector=qv)
+        )
+        diag["search_mode"] = "KEYWORD" if qv is None else "HYBRID"
+    except ValueError:
+        # 질문 벡터가 카드 벡터와 맞지 않는 경우(차원 불일치 등): 키워드만으로 다시 찾는다
+        diag["embed"], diag["search_mode"] = "ERROR", "KEYWORD"
+        hits = corpus.search(a.query, screen=screen_key)
     items = []
     sources = []
     for h in hits:
@@ -840,6 +960,7 @@ def _search(ctx: RunCtx, a: SearchArgs) -> ToolResult:
         args_summary=summ,
         result_summary=f"자료 {len(items)}개",
         source_ids=sources,
+        diag=diag,
     )
 
 

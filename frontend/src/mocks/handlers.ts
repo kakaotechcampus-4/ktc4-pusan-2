@@ -33,11 +33,12 @@ import type { PrepareResponse } from '@/types/api';
 //   새고, 화면에는 네트워크 오류만 뜹니다. mocks/auth.ts 가 같은 이유로 그렇게 씁니다.
 
 /**
- * 장치 점검 준비 정보 — BE #296 `PrepareDTO` 모양 그대로(쪽수 · 장 수는 #298). 홈의 p1과 같은 Pitch입니다 —
+ * 장치 점검 준비 정보 — BE #296 `PrepareDTO` 모양 그대로(쪽수 · 장 수는 #298). 홈의 첫 피치와 같은 Pitch입니다 —
  * 화면마다 제목·버전·Take 번호가 어긋나면 시연에서 바로 티가 납니다.
+ * ID 도 홈 목(`home.ts`)과 같은 UUID 입니다 — BE 처럼 UUID 라야 대화 보내기(`page.pitch_id`)를 목이 받습니다.
  */
 const prepare: PrepareResponse = {
-  pitch_id: 'p1',
+  pitch_id: '10000000-0000-4000-8000-000000000001',
   title: '캡스톤 최종 발표',
   time_limit_sec: 600,
   presentation: { id: 'pv2', version: 2, page_count: 12 },

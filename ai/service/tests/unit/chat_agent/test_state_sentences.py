@@ -239,3 +239,17 @@ def test_not_evaluable_dimension_gets_evidence() -> None:
     assert row["state"] == "NOT_EVALUABLE"
     ev = ctx.registry.get(row["evidence_id"])
     assert ev.value == "NOT_EVALUABLE" and ev.path == "review.dimensions.content_delivery"
+
+
+def test_name_lookup_with_no_match_says_the_pitch_is_not_found() -> None:
+    """이름으로 찾은 피치가 하나도 없으면(L2-21 0개) 다른 피치 값으로 답하지 않고 찾을 수 없다고 말한다(8회차 M4)."""
+    req = F.request(user_message="신입 교육 발표 3장 어땠어?")
+    llm = F.FakeLlm(
+        [F.plan(), F.tools(("list_pitches", {"query": "신입 교육"})), F.done(), F.answer([])]
+    )
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "DONE"
+    assert [c.text for c in fd.message.claims] == [  # type: ignore[union-attr]
+        templates.SystemText.PITCH_NOT_FOUND.value
+    ]

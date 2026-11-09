@@ -24,7 +24,13 @@ export const PRODUCT_CHECKED: {
 } = {
   commit: 'c8a3881193ef759e3b935898850cd815510df2a0',
   date: '2026-11-08',
-  pending: [],
+  pending: [
+    {
+      pr: 874,
+      head: '27ec41171474205e3cf393185add83873a164371',
+      what: '병합된 최종 #874 접근성 변경(처리 중 · 끝 장 버튼 aria-disabled, 키보드 가드, 설문·동의·수정 대본 매핑 뒤 초점 이동)을 제품과 재대조할 것',
+    },
+  ],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({

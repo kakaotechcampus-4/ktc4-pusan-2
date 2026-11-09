@@ -40,8 +40,10 @@ export function GazeSetupView({
 }) {
   return (
     <div className="relative h-full w-full">
+      {/* 전체 화면 보정 시 루트 여백을 해제해 오른쪽 밝은 띠를 없앱니다. */}
       <div
         ref={frameRef}
+        data-gaze-overlay={overlay ? '' : undefined}
         className={
           overlay
             ? 'fixed inset-0 z-50 bg-stage-deep'
