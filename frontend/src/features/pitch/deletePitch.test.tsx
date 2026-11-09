@@ -455,16 +455,19 @@ it('TIP 문구를 가리키는 동안 자동 전환을 멈췄다가 다시 시�
 });
 
 it('움직임 감소 설정이면 TIP 자동 순환을 초기 중단하고 수동 재개를 허용한다', async () => {
-  vi.stubGlobal('matchMedia', vi.fn(() => ({
-    matches: true,
-    media: '(prefers-reduced-motion: reduce)',
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })));
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches: true,
+      media: '(prefers-reduced-motion: reduce)',
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
   const setIntervalSpy = vi.spyOn(window, 'setInterval');
   await render();
 
