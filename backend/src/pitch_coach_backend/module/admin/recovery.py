@@ -1,6 +1,7 @@
 """관리자 콘솔의 복구 동작. 집계(service.py)와 달리 Take 를 바꾸고 AI 를 다시 부른다.
 
   - 리뷰를 보류한 Take 의 병합 rescore 를 한 번 더 한다 (architecture.md 1-3 '리뷰 보류' · 1-7)
+  - finalize 가 실패한 Take 의 Take 결과를 원자료로 다시 만든다 (coach-agent.md 7절 수동 복구)
 
 조건은 요청 안에서 확인하고, AI 를 부르는 일은 백그라운드로 띄운다. 결과는 콘솔의 Take 목록에서
 본다. 언제 눌렀는지 남게 로그를 쓴다.
@@ -8,11 +9,14 @@
 
 import logging
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.exception import RecoveryRunning, TakeNotRecoverable
+from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
@@ -33,3 +37,27 @@ async def rescore_held_coverage(db: Session, take_id: uuid.UUID) -> None:
     if state == "BUSY" or analysis_runner.recover_held(take_id) is None:
         raise RecoveryRunning()
     logger.info("관리자가 보류한 Take 의 병합 재채점을 다시 시작했다 take=%s", take_id)
+
+
+# 되돌리지 못한 이유 (`coach_service.reopen_failed_finalize`)
+_NOT_REOPENED = {
+    "NOT_FAILED": "Take 결과를 만들지 못한 연습이 아닙니다.",
+    "EXPIRED": "원자료 사용에 동의하지 않은 연습이라 끝난 지 7일이 지나 다시 만들 수 없습니다.",
+    "NO_RAW_DATA": "1초 원자료가 없어 다시 만들 수 없습니다.",
+}
+
+
+async def retry_finalize(db: Session, take_id: uuid.UUID) -> None:
+    """finalize 가 실패한 Take 를 Take 결과를 기다리는 중으로 되돌리고 finalize 를 다시 띄운다.
+
+    성공하면 채점 · 리뷰로 이어 가고, 다시 실패하면 `FAILED` 로 돌아가 다시 누를 수 있다.
+    """
+    result = await run_in_threadpool(
+        coach_service.reopen_failed_finalize, db, take_id, datetime.now(UTC)
+    )
+    if result is None:
+        raise NonExistentTake()
+    if result != "REOPENED":
+        raise TakeNotRecoverable(_NOT_REOPENED[result])
+    hooks.finalize_recovery().restart(take_id)
+    logger.info("관리자가 finalize 가 실패한 Take 의 결과를 다시 만들기 시작했다 take=%s", take_id)

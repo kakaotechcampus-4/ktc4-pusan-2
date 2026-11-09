@@ -630,6 +630,12 @@ document.getElementById('export-take').addEventListener('click', () => {
 // 목록에서 연 때의 상태로 버튼을 고른다. 누르기 전에 한 번 더 묻고, 결과는 새로고침해 본다
 const RECOVERIES = [
   {
+    id: 'retry-finalize',
+    shows: (take) => take.status === 'FAILED' && take.analysis_stage === 'FINALIZING',
+    path: (takeId) => `api/takes/${takeId}/finalize/retry`,
+    confirm: 'Take 결과를 1초 원자료로 다시 만듭니다. 성공하면 채점 · 리뷰까지 이어 갑니다.',
+  },
+  {
     id: 'rescore-held',
     shows: (take) => take.analysis_hold_reason === 'COVERAGE_RESCORE_FAILED',
     path: (takeId) => `api/takes/${takeId}/coverage/rescore`,

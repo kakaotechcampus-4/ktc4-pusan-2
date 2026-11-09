@@ -6,7 +6,8 @@ module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'
   - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT),
     로그아웃
   - `coaching()`: 리뷰 뒤 · 제한 시간을 바꾼 뒤 · 대본을 파싱한 뒤 다음 Take 의 코칭 계획
-  - `finalize_recovery()`: 관리자 콘솔이 Take 의 finalize 복구 요청을 내려받을 때
+  - `finalize_recovery()`: 관리자 콘솔이 Take 의 finalize 복구 요청을 내려받거나, finalize 가
+    실패한 Take 의 Take 결과를 다시 만들 때
 
 실제 구현은 main.py 가 앱을 만들 때 꽂는다 (`install`). 꽂기 전에는 바깥이 없는 것처럼 군다 — 아무
 것도 하지 않고, 끝내기는 DB 에 적기만 한다.
@@ -69,6 +70,10 @@ class FinalizeRecovery(Protocol):
         """finalize 를 원자료(replay)로 다시 부를 요청. 1초 원자료가 없으면 None."""
         ...
 
+    def restart(self, take_id: uuid.UUID) -> None:
+        """Take 결과를 기다리는 중으로 되돌린 Take 의 finalize 를 띄운다. 이벤트 루프에서 부른다."""
+        ...
+
 
 class _NoLiveTakes:
     def discard(self, take_ids: Iterable[uuid.UUID]) -> None:
@@ -97,6 +102,9 @@ class _NoCoaching:
 
 class _NoFinalizeRecovery:
     def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+        return None
+
+    def restart(self, take_id: uuid.UUID) -> None:
         return None
 
 

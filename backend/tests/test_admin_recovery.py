@@ -1,14 +1,16 @@
 """관리자 콘솔의 복구 동작 (/admin/api/takes/{take_id}/...) — 로그인 · CSRF 헤더 · 조건 확인."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.dependencies import ACTION_HEADER
-from pitch_coach_backend.module.take.entity import TakeAIResults
+from pitch_coach_backend.module.take.entity import Take, TakeAIResults, TakeMetricSecond
 from pitch_coach_backend.module.take.service import analysis_runner
 from tests.test_admin import ADMIN, _pitch, _take, _user, admin_account  # noqa: F401
 
@@ -188,3 +190,116 @@ def test_rescore_of_unknown_take_is_not_found(
 
     assert response.status_code == 404
     assert recoveries == []
+
+
+# ── finalize 다시 만들기 ─────────────────────────────────────────
+
+
+class RestartSpy:
+    def __init__(self) -> None:
+        self.restarted: list[uuid.UUID] = []
+
+    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict | None:
+        return None
+
+    def restart(self, take_id: uuid.UUID) -> None:
+        self.restarted.append(take_id)
+
+
+@pytest.fixture
+def finalize_recovery(monkeypatch: pytest.MonkeyPatch) -> RestartSpy:
+    spy = RestartSpy()
+    monkeypatch.setattr(hooks, "_finalize_recovery", spy)
+    return spy
+
+
+def _finalize_failed(db: Session, *, raw: bool = True, ended_days_ago: float = 1, **fields) -> Take:
+    take = _take(
+        db,
+        _pitch(db, _user(db, "앨리스")),
+        1,
+        status=fields.pop("status", "FAILED"),
+        analysis_stage=fields.pop("analysis_stage", "FINALIZING"),
+        ended_at=datetime.now(UTC) - timedelta(days=ended_days_ago),
+        **fields,
+    )
+    if raw:
+        db.add(TakeMetricSecond(take_id=take.id, t_ms=1_000, stt_status="ok"))
+        db.flush()
+    return take
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_failed_finalize_is_reopened_and_restarted(
+    client: TestClient, db_session: Session, finalize_recovery: RestartSpy
+) -> None:
+    take = _finalize_failed(db_session)
+
+    response = client.post(f"/admin/api/takes/{take.id}/finalize/retry", auth=ADMIN, headers=ACTION)
+
+    assert response.status_code == 202
+    assert finalize_recovery.restarted == [take.id]
+    db_session.refresh(take)
+    assert (take.status, take.analysis_stage) == ("ANALYZING", "FINALIZING")
+
+
+@pytest.mark.usefixtures("admin_account")
+@pytest.mark.parametrize(
+    "fields, message",
+    [
+        (
+            {"status": "COMPLETED", "analysis_stage": "DONE"},
+            "Take 결과를 만들지 못한 연습이 아닙니다.",
+        ),
+        (
+            {"analysis_stage": None, "end_reason": "ABANDONED"},
+            "Take 결과를 만들지 못한 연습이 아닙니다.",
+        ),
+        (
+            {"ended_days_ago": 8},
+            "원자료 사용에 동의하지 않은 연습이라 끝난 지 7일이 지나 다시 만들 수 없습니다.",
+        ),
+        ({"raw": False}, "1초 원자료가 없어 다시 만들 수 없습니다."),
+    ],
+    ids=["completed", "abandoned", "expired", "no-raw-data"],
+)
+def test_finalize_retry_says_why_it_cannot_reopen(
+    client: TestClient,
+    db_session: Session,
+    finalize_recovery: RestartSpy,
+    fields: dict,
+    message: str,
+) -> None:
+    take = _finalize_failed(db_session, **fields)
+
+    response = client.post(f"/admin/api/takes/{take.id}/finalize/retry", auth=ADMIN, headers=ACTION)
+
+    assert response.status_code == 409
+    assert response.json() == {"code": "TAKE_NOT_RECOVERABLE", "message": message, "detail": None}
+    assert finalize_recovery.restarted == []
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_finalize_retry_needs_the_console_header(
+    client: TestClient, db_session: Session, finalize_recovery: RestartSpy
+) -> None:
+    take = _finalize_failed(db_session)
+
+    response = client.post(f"/admin/api/takes/{take.id}/finalize/retry", auth=ADMIN)
+
+    assert response.status_code == 403
+    assert finalize_recovery.restarted == []
+    db_session.refresh(take)
+    assert take.status == "FAILED"
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_finalize_retry_of_unknown_take_is_not_found(
+    client: TestClient, finalize_recovery: RestartSpy
+) -> None:
+    response = client.post(
+        f"/admin/api/takes/{uuid.uuid4()}/finalize/retry", auth=ADMIN, headers=ACTION
+    )
+
+    assert response.status_code == 404
+    assert finalize_recovery.restarted == []

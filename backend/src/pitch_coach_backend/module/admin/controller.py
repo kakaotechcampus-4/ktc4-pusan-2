@@ -143,6 +143,16 @@ async def rescore_held_coverage(
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
+@router.post(
+    "/api/takes/{take_id}/finalize/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin_action)],
+)
+async def retry_finalize(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Response:
+    await recovery.retry_finalize(db, take_id)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
 @router.get("/api/pitches/{pitch_id}/ai")
 def pitch_ai(pitch_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> AdminPitchAI:
     return service.get_pitch_ai(db, pitch_id)

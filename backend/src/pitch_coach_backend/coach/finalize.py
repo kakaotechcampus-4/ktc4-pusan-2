@@ -37,6 +37,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach.client import CoachClient
+from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.coach.replies import FinalizeReply, ReplayRequired
 from pitch_coach_backend.coach.requests import FinalizeSource, finalize_request
 from pitch_coach_backend.coach.session import FinalizeSnapshot
@@ -94,6 +95,11 @@ class CoachFinalizeRecovery:
 
     def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
         return recovery_request(db, take_id)
+
+    def restart(self, take_id: uuid.UUID) -> None:
+        # 코치 상태가 없으니 처음부터 replay 를 붙여 부른다 (`_first_request`). 띄우기 전에 앱이
+        # 내려가도 Take 는 FINALIZING 으로 남아 주기 작업 · 다시 뜰 때 이어 간다
+        spawn(take_id, None, client=get_coach_client(), store=get_coach_store())
 
 
 def spawn(

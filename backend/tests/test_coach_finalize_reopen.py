@@ -136,3 +136,16 @@ async def test_reopened_take_gets_its_result_from_the_raw_data(db_session: Sessi
     # 저장소가 부를 때마다 세션을 닫아 Take 를 다시 읽는다
     saved = db_session.get(Take, take.id)
     assert (saved.status, saved.analysis_stage) == ("ANALYZING", "SCORING")
+
+
+def test_restart_spawns_finalize_without_a_snapshot(monkeypatch):
+    """관리자 콘솔의 hook 은 코치 상태 없이 finalize 를 띄운다 — 처음부터 replay 를 붙인다."""
+    spawned: list[tuple] = []
+    monkeypatch.setattr(
+        finalize, "spawn", lambda take_id, snapshot, **deps: spawned.append((take_id, snapshot))
+    )
+    take_id = uuid.uuid4()
+
+    finalize.CoachFinalizeRecovery().restart(take_id)
+
+    assert spawned == [(take_id, None)]
