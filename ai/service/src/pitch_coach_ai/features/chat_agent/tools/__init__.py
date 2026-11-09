@@ -39,7 +39,7 @@ P0_TOOLS = (
 
 #: 모델에 주는 도구 설명. 짧게 둔다(도구가 많고 설명이 길면 모델이 잘못 고르기 쉽다, 4-3)
 DESCRIPTIONS = {
-    "update_plan": "할 일 목록(1~8단계)을 만들거나 고친다. 단계 상태는 TODO · DOING · DONE · SKIPPED.",
+    "update_plan": "할 일 목록(1~8단계)을 만들거나 고친다. 단계 상태는 TODO · DOING · DONE · SKIPPED. 단계마다 그 단계에서 쓸 도구를 tool 에 적는다(모르면 null). step 글에는 목적만 쓴다.",
     "get_screen": "대화창을 연 화면의 상태(입력 중인 값과 저장된 값)를 읽는다. 피치 만들기 · 수정 · 장치 점검 화면에서만 값이 있다.",
     "list_pitches": "내 피치 목록에서 이름(query)으로 찾는다. query 가 null 이면 전체 목록 요약.",
     "list_takes": "지금 범위 피치의 최근 Take 요약을 조건으로 거른다(대본 버전 · 끝까지 한 발표 · 모드).",

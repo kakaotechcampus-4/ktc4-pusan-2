@@ -23,6 +23,9 @@
 - 줄 쓰기(5-4): 이벤트마다 `allow_nan=False`로 완전히 직렬화하고 LF 를 붙인다. 한 줄 2 MiB, 누적 16 MiB(끝 줄 몫 4 KiB 예약).
   `final`이 너무 크면 trace 상세 → 진단 기록 순으로 줄이고, 그래도 크면 `AGENT_OUTPUT_TOO_LARGE` error 줄로 끝낸다. 끝 줄은 정확히 하나다.
 - 연결이 끊기면(반복자를 닫으면) 새 모델 · 도구 호출을 하지 않는다(L1-08).
+- 할 일 목록의 끝 처리(`_final_plan`, progress.py): DONE · REFUSED 면 실행하지 않은 단계 SKIPPED, PARTIAL 이면 TODO, NEEDS_ACTION 은
+  그대로이고 답 쓰기 단계는 답 문장이 있으면 DONE 이다. 상태가 바뀌면 끝 줄 전에 plan 줄을 한 번 더 내 실시간 화면과 최종 목록이 같다.
+  설정 `plan_progress`를 끄면 이전 동작(DONE 이면 단계를 모두 DONE)이다.
 - 고칠 때: 화면 문구는 templates.py, 한도 숫자는 config.py, 검사 규칙은 checks.py, 루프 단계는 loop.py.
 """
 
@@ -45,7 +48,7 @@ from pydantic import ValidationError
 from . import actions as act
 from . import checks as chk
 from . import claims as clm
-from . import compose, memory, prompts, state, templates
+from . import compose, memory, progress, prompts, state, templates
 from .answer import ClaimLines, Composer, is_general_intro, with_prefix
 from .answer import assessment_head as _assessment_head  # noqa: F401  # 시험이 이 이름으로 부른다
 from .answer import guide_texts as _guide_texts
@@ -57,6 +60,7 @@ from .goals import judge_goal
 from .loop import Loop, LoopState, TurnDeps, meta
 from .runctx import RunCtx
 from .schemas import Action, Assessment, Claim, Diagnostics, FinalData, TurnRequest
+from .tools.impl import source_tag_of
 from .version import FEATURE_VERSION, TOOL_SCHEMA_VERSION
 
 _Result = tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]
@@ -1410,14 +1414,16 @@ def _safe_cards(
 
 
 def _safe_trace(lp: Loop, trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """trace 요약에 외부 문자열(피치 제목 등)이 들어가므로 같은 검사를 하고, 걸리면 도구 이름 · 결과만 남긴다."""
+    """trace 요약에 외부 문자열(피치 제목 등)이 들어가므로 같은 검사를 하고, 걸리면 도구 이름 · 결과만 남긴다.
+    `get_take_report` 요약 앞의 읽은 출처(`코치가 찾은 것` · `리뷰 분석`)는 숫자가 없어 그대로 남긴다."""
     ctx, cfg = lp.ctx, lp.cfg
     out = []
     for t in trace:
         if chk.check_display_strings(
             trace=[t], registry=ctx.registry, display_evidence=None, cfg=cfg, assessments={}
         ):
-            t = {**t, "args_summary": t["tool"], "result_summary": t["outcome"]}
+            tag = source_tag_of(t["result_summary"]) if t["tool"] == "get_take_report" else ""
+            t = {**t, "args_summary": t["tool"], "result_summary": tag + t["outcome"]}
         out.append(t)
     return out
 
@@ -1532,12 +1538,9 @@ def _finish(
     if req.run.trigger == "TAKE_REVIEWED":
         assessments_out = []
     amap = {a["assessment_id"]: Assessment.model_validate(a) for a in assessments_out}
-    plan = st.plan
-    if status == "DONE":
-        plan = [
-            {**p, "status": "DONE" if p["status"] in ("DOING", "TODO") else p["status"]}
-            for p in plan
-        ]
+    if terminal:
+        lp.close_signals()  # 조사를 다시 하지 않고 끝난 실행(호출 수 · 시간 한도 등)에 남은 신호도 대응 없음으로 닫는다
+    plan = _final_plan(lp, status, claim_list)
     # NEEDS_ACTION 의 message 에는 확인 카드(`extra_cards`)만 싣는다. 모인 카드(st.cards)는 최종 답까지 상태에 남는다
     cards = _safe_cards(lp, st.cards if status != "NEEDS_ACTION" else extra_cards or [], amap)
     msg = None
@@ -1667,6 +1670,7 @@ def _finish(
                     "cards": _safe_cards(lp, st.cards, amap) if results_now else [],
                     "sources": [g for sid, g in pool.items() if sid in keep_src],
                 },
+                plan=_final_plan(lp, "PARTIAL", kept_claims),
             )
             reason = "LIMIT"
     if profile_updates:
@@ -1701,6 +1705,31 @@ def _finish(
             final["message"]["sources"],
         )
     return final, None, None
+
+
+def _final_plan(lp: Loop, status: str | None, claims: list[Claim]) -> list[dict[str, Any]]:
+    """끝 줄의 할 일 목록(progress.finish_plan). 끝 처리로 상태가 바뀌면 plan 줄을 한 번 더 낸다(실시간 화면 = 최종).
+
+    답 쓰기 단계의 '답 문장': DONE 이면 낸 문장 하나 이상, PARTIAL 이면 고정 안내(`SYSTEM`)가 아닌 문장 하나 이상, REFUSED 는 없음.
+    `plan_progress`를 끄거나 단계 메타가 없으면 이전 동작(DONE 이면 단계를 모두 DONE)이다."""
+    st = lp.st
+    if not (lp.cfg.plan_progress and st.plan_meta):
+        if status == "DONE":
+            return [
+                {**p, "status": "DONE" if p["status"] in ("DOING", "TODO") else p["status"]}
+                for p in st.plan
+            ]
+        return st.plan
+    answered = (status == "DONE" and bool(claims)) or (
+        status == "PARTIAL" and any(c.kind != "SYSTEM" for c in claims)
+    )
+    plan = progress.finish_plan(
+        st.plan_meta, lp.ctx.registry, lp.cfg, status or "", answered=answered
+    )
+    if plan != st.plan:
+        st.plan = plan
+        lp.emit("plan", {"plan": plan})
+    return plan
 
 
 def _send_rest(

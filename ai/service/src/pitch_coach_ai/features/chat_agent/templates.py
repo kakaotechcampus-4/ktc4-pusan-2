@@ -283,6 +283,74 @@ GOAL_CLOSED_TEXT = {
 }
 
 
+# ── 할 일 단계 표시 (6-1 7번, progress.py) ───────────────────────────────────
+# 단계 글 = `목적: 실행 → 결과`. 실행 · 결과 글은 아래 표로만 만든다(모델 글을 넣지 않는다). 숫자 · Take · 장 번호는
+# 그 단계가 읽은 근거로만 붙고, 근거로 받칠 수 없으면 숫자 없는 실행 이름(`PLAN_TOOL_NAME`)으로 그린다
+
+#: 도구 종류 이름: 계획에 없던 도구를 실행해 덧붙는 단계의 목적이자, 숫자를 뺀 실행 이름
+PLAN_TOOL_NAME = {
+    "compare_takes": "비교",
+    "get_take_report": "기록 보기",
+    "list_takes": "Take 목록",
+    "list_pitches": "피치 목록",
+    "get_goals": "대화 목표",
+    "get_screen": "화면 보기",
+    "search_guides": "자료 찾기",
+    "fetch_take": "기록 가져오기",
+}
+#: 대상 번호가 없는 도구의 실행 글(compare_takes · get_take_report · fetch_take 는 Take 번호를 넣어 progress.py 가 만든다)
+PLAN_EXEC = {
+    "list_takes": "Take 목록",
+    "list_pitches": "피치 목록",
+    "get_screen": "화면",
+    "get_goals": "대화 목표",
+    "search_guides": "자료 찾기",
+}
+#: 비교할 수 없는 까닭(compare_takes `reason`) → 단계 결과의 까닭 낱말. 목록 밖 까닭은 `조건 다름`
+PLAN_NOT_COMPARABLE = {
+    "DIFFERENT_SCRIPT_VERSION": "대본 버전 다름",
+    "DIFFERENT_CRITERIA_VERSION": "평가 기준 버전 다름",
+    "RULE_VERSION_CHANGED": "판정 기준 버전 다름",
+    "NOT_COMPLETED_FULLY": "끝까지 안 한 Take",
+    "MISSING_VERSION": "버전 정보 없음",
+    "NO_VALUE": "측정 안 됨",
+}
+PLAN_NOT_COMPARABLE_OTHER = "조건 다름"
+#: 비교 결론(compare_takes `outcome`) → 단계 결과 낱말. 목록 밖은 `판단 불가`
+PLAN_OUTCOME = {
+    "IMPROVED": "좋아짐",
+    "WORSENED": "나빠짐",
+    "SAME": "같음",
+    "BOTH_IN_RANGE": "같음",
+    "SAME_DISTANCE": "같음",
+}
+PLAN_OUTCOME_OTHER = "판단 불가"
+#: 단계 결과 글(사실 · 상태)
+PLAN_RESULT = {
+    "NOT_COMPARABLE": "비교 불가({reason})",
+    "NOT_LOADED": "기본 자료에 없음",
+    "REVIEW_MISSING": "리뷰 분석 전",
+    "ERROR": "확인 실패",
+    "SHORT": "시간 부족",
+    "NO_TAKES": "Take 없음",
+    "NO_GOAL": "목표 없음",
+    "NO_SEGMENTS": "문제 구간 없음",
+    "SEGMENTS": "문제 구간 있음",
+    "UNMEASURED": "측정 안 됨",
+    "PRIORITY": "리뷰 우선 개선 {dimension}",
+    "GOAL": "있음",
+    "GUIDES": "자료 있음",
+    "NO_GUIDES": "자료 없음",
+    "FETCHED": "가져옴",
+    "CHECKED": "확인",
+}
+#: get_take_report 의 실행 글(읽은 절과 상관없이). 출처(코치 결과 · 리뷰)는 결과 글과 trace 요약이 보인다
+PLAN_REPORT_EXEC = "Take {n} 기록"
+#: 모델이 쓴 단계 목적에서 숫자 · Take · 장 번호를 지우고 빈 글이 되면 쓰는 목적(도구 힌트가 없거나 도구 종류 이름이 없을 때)
+PLAN_PURPOSE_FALLBACK = {"answer": "답 쓰기"}
+PLAN_PURPOSE_DEFAULT = "기록 확인"
+
+
 # ── 조사 ─────────────────────────────────────────────────────────────────
 #: 숫자를 읽을 때의 끝소리 받침(0 영 · 1 일 · 3 삼 · 6 육 · 7 칠 · 8 팔). ㄹ 은 8
 _DIGIT_FINAL = {"0": 21, "1": 8, "2": 0, "3": 16, "4": 0, "5": 0, "6": 1, "7": 8, "8": 8, "9": 0}

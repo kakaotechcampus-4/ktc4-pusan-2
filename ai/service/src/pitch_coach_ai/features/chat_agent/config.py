@@ -957,6 +957,16 @@ class ChatAgentConfig(_Frozen):
     count_metric_hint: bool = True
     #: 사용자 말로 대화 목표의 결과를 물으면(`get_goals`), 목표를 닫은 Take 로 코드가 판정해 목표 결과 문장을 코드 템플릿으로 낸다(7-10)
     goal_status_sentence: bool = True
+    # ── 판단 지점 보이기(progress.py, 각각 따로 켜고 꺼서 잰다) ────────────────────────────
+    #: 할 일 단계 = 실제 실행: 계획 단계의 도구 힌트(`tool`)로 실행한 도구를 단계에 잇고, 도구가 끝날 때마다 코드가 그 단계의
+    #: `목적: 실행 → 결과`와 상태를 다시 그려 plan 줄로 낸다(계획 수정 한도에 세지 않는다). 끝 처리는 DONE · REFUSED 면 실행하지 않은
+    #: 단계 SKIPPED, PARTIAL 이면 TODO. 끄면 모델 계획 그대로 내고 DONE 이면 끝에 단계를 모두 DONE 으로 바꾼다(이전 동작)
+    plan_progress: bool = True
+    #: 결정 로그: 코드가 도구 결과에서 찾은 상황 신호와 그 뒤 결정을 서비스 로그(`event: agent_decision`)에 한 줄씩 남긴다.
+    #: 진단 기록(BE 로 감)에는 넣지 않는다
+    decision_log: bool = True
+    #: 조사 호출의 데이터 블록에 대응을 기다리는 신호(`signals`: 신호 · 사실 · 고를 수 있는 대응)를 싣고 지시문에 한 줄을 더한다
+    research_signals: bool = True
 
     @model_validator(mode="after")
     def _goal_metrics_match_direction(self) -> ChatAgentConfig:

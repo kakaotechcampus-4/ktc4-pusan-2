@@ -107,7 +107,12 @@ def plan(
     scope_reason: str | None = None,
     talk_kind: str | None = None,
     guide_queries: list[str] | None = None,
+    step_tools: list[str | None] | None = None,
 ) -> LlmResult:
+    """계획 호출의 응답. `step_tools`는 단계마다 도구 힌트(`tool`)다. 기본 단계(기록 확인 · 답 쓰기)면 기본 계획과 같은
+    힌트(None · answer), 단계를 준 시험은 주지 않으면 모두 None 이다."""
+    if step_tools is None:
+        step_tools = [None, "answer"] if steps is None else [None] * len(steps)
     steps = steps if steps is not None else ["기록 확인", "답 쓰기"]
     return structured(
         {
@@ -115,7 +120,12 @@ def plan(
             "talk_kind": talk_kind,
             "scope_reason": scope_reason,
             "plan": [
-                {"step": s, "status": "DOING" if i == 0 else "TODO", "note": None}
+                {
+                    "step": s,
+                    "status": "DOING" if i == 0 else "TODO",
+                    "note": None,
+                    "tool": step_tools[i] if i < len(step_tools) else None,
+                }
                 for i, s in enumerate(steps)
             ],
             "guide_queries": guide_queries or [],

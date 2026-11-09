@@ -18,6 +18,13 @@
      결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9)를 하고 통과한 문장부터 문장 줄로 낸다. 걸린 문장은 까닭을 알려 한 번
      고치게 하고(`fix_call`) 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
+- 할 일 단계 = 실제 실행(progress.py, 설정 `plan_progress`): 계획 단계마다 도구 힌트(`tool`)를 받아 단계 메타(`plan_meta`)를 두고,
+  도구 하나가 끝날 때마다(캐시 적중 포함) 그 실행을 단계에 이어 `목적: 실행 → 결과`와 상태를 다시 그려 plan 줄로 낸다(`_emit_plan_display`).
+  이 표시 갱신은 계획 수정 한도(PLAN_EDITS)를 쓰지 않는다 — 한도는 모델의 `update_plan`만 센다. 끝 처리는 turn.py `_finish`.
+- 상황 신호 · 결정 로그(설정 `decision_log` · `research_signals`): 도구 결과에서 코드가 찾은 신호(비교 불가 · 기본 자료에 없음 · 리뷰 없음 ·
+  기록 없음 · 도구 실패)를 단계에 보이고(`FACT_SHOWN:CODE`) 대응을 기다리는 신호(`signals_open`)로 둔다. 그 신호를 본 모델의 다음 선택이
+  `update_plan`이면 `PLAN_EDIT`, 다른 기록 도구 · 다른 대상이면 `ALT_TOOL`, 행동이면 `ACTION`, 조사가 끝날 때까지 없으면 `NONE`이다.
+  조사가 한도 · 반복으로 멈추면 `BUDGET_LOW` · `STOP_PARTIAL:CODE`. 결정 로그는 서비스 로그(`agent_decision`)에만 남는다(11-5).
 - 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤(이미 낸 문장이 기댄 원천이면 재개를 멈춘다 — `drop_removed`),
   행동 결과를 검사해 반영하고 2부터 잇는다.
 - 자동 목표 확인(TAKE_REVIEWED): 모델 없이 코드가 목표를 판정하고 결과 문장 · 카드를 만든다(meta.model null).
@@ -36,7 +43,7 @@ from pydantic import ValidationError
 from . import actions as act
 from . import checks as chk
 from . import claims as clm
-from . import compose, memory, prompts, templates
+from . import compose, memory, progress, prompts, templates
 from .budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
 from .config import ChatAgentConfig
 from .corpus import sentence_spans
@@ -59,7 +66,6 @@ from .schemas import (
     Assessment,
     Claim,
     GuideCard,
-    PlanStep,
     TraceItem,
     TurnRequest,
 )
@@ -75,9 +81,10 @@ from .tools import (
 from .tools.impl import embed_planned_queries
 from .version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
 
+#: 기본 계획(계획이 무효일 때). `tool`은 단계의 도구 힌트(progress.py)이고 응답 `PlanStep`에는 싣지 않는다
 DEFAULT_PLAN = [
-    {"step": "기록 확인", "status": "DOING", "note": None},
-    {"step": "답 쓰기", "status": "TODO", "note": None},
+    {"step": "기록 확인", "status": "DOING", "note": None, "tool": None},
+    {"step": "답 쓰기", "status": "TODO", "note": None, "tool": "answer"},
 ]
 
 
@@ -172,6 +179,12 @@ class LoopState:
     guide_queries: list[str] = field(default_factory=list)
     #: 계획을 확정할 때의 판단 초안 사본. 답 쓰기가 `drafts`를 바꿔도 이 사본은 그대로다(기록 안전장치의 대상, 6-1). 옛 상태에는 없어 빈 목록
     plan_drafts: list[dict[str, Any]] = field(default_factory=list)
+    #: 할 일 단계 메타(progress.py, `plan`과 같은 순서): 목적 · 도구 힌트 · 실행 · 결과 · 근거 · 도구 기록 순번. 옛 상태에는 없어 빈 목록
+    plan_meta: list[dict[str, Any]] = field(default_factory=list)
+    #: 결정 로그 줄의 실행 안 순번(마지막으로 쓴 번호)
+    decision_seq: int = 0
+    #: 대응을 기다리는 상황 신호(progress.open_signal). 조사가 끝날 때 남은 것은 대응 없음(NONE)으로 닫는다
+    signals_open: list[dict[str, Any]] = field(default_factory=list)
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -294,6 +307,8 @@ class Loop:
         self._last_model_seq: int | None = None
         #: 문장 줄(`claim`)을 내는 쪽(turn.py 가 넣는다, answer.py `ClaimLines`)
         self.lines: Any = None
+        #: 상황 신호를 따라가는가(결정 로그 · 조사 데이터 블록 신호 중 하나라도 켜짐)
+        self.tracking = self.cfg.decision_log or self.cfg.research_signals
         memory.sync_version(state, req.memory)
 
     # ── 모델 호출 공통 ───────────────────────────────────────────────
@@ -693,18 +708,23 @@ class Loop:
             return False
         try:
             for s in plan:
-                PlanStep.model_validate(s)
+                progress.PlanStepDraft.model_validate(s)  # PlanStep + 도구 힌트
         except ValidationError:
             return False
         return True
 
     def _set_plan(self, plan: list[dict[str, Any]], *, edit: bool) -> bool:
+        """모델의 계획(처음 · `update_plan`)을 정해 plan 줄을 낸다. 고치기(`edit`)만 계획 수정 한도(PLAN_EDITS)를 예약한다.
+        `plan_progress`가 켜졌으면 단계 메타를 새로 만들고(이미 실행한 단계와 글이 같으면 이어 받음) 상태 · 글은 메타로 그린다."""
         if edit and self.st.plan_set:
             hit = self.budget.reserve_plan_edit()
             if hit is not None:
                 self._limit(hit)
                 return False
-        steps = [PlanStep.model_validate(s).model_dump() for s in plan]
+        steps, hints = progress.split_steps(plan)
+        if self.cfg.plan_progress:
+            # 목적에 쓴 숫자 · Take · 장 번호는 그 표기만 지운다(계획 전체를 기본 계획으로 바꾸지 않는다). 숫자는 실행 뒤 결과 쪽에 붙는다
+            steps = progress.clean_purposes(steps, hints, self.ctx.registry, self.cfg)
         # 할 일 목록도 화면에 보이는 문자열이다: 근거 없는 숫자 · 금지 주장 · 개인정보가 있으면 쓰지 않는다(6-9 · L1-37)
         if chk.check_display_strings(
             plan=steps,
@@ -715,11 +735,149 @@ class Loop:
         ):
             if self.st.plan_set:
                 return False
-            steps = [PlanStep.model_validate(s).model_dump() for s in DEFAULT_PLAN]
+            steps, hints = progress.split_steps(DEFAULT_PLAN)
+        if self.cfg.plan_progress:
+            self.st.plan_meta = progress.new_meta(
+                steps,
+                hints,
+                old=self.st.plan_meta if self.st.plan_set else None,
+                shown=self.st.plan,
+            )
+            steps = progress.render(self.st.plan_meta, self.ctx.registry, self.cfg)
         self.st.plan = steps
         self.st.plan_set = True
         self.emit("plan", {"plan": self.st.plan})
         return True
+
+    def _emit_plan_display(self) -> None:
+        """표시 갱신(코드): 단계 메타로 상태 · 글을 다시 그려 바뀌었으면 plan 줄을 낸다. 계획 수정 한도(PLAN_EDITS)를 쓰지 않는다."""
+        plan = progress.render(self.st.plan_meta, self.ctx.registry, self.cfg)
+        if plan != self.st.plan:
+            self.st.plan = plan
+            self.emit("plan", {"plan": plan})
+
+    def _after_tool(
+        self, name: str, args: Any, tr: ToolResult, trace: TraceItem, *, chosen: bool
+    ) -> None:
+        """도구 하나가 끝난 뒤(캐시 적중 포함): 실행을 할 일 단계에 이어 다시 그리고, 상황 신호 · 결정을 남긴다(progress.py).
+
+        `chosen`: 모델이 고른 호출인가(코드가 먼저 읽은 요청은 신호에 대한 대응이 아니다). 같은 결과를 다시 읽은 캐시 적중은
+        새 신호를 내지 않는다(이미 보인 사실)."""
+        run = progress.read_run(name, args, tr, self.ctx)
+        step = None
+        if self.cfg.plan_progress and self.st.plan_meta:
+            step = progress.attach(
+                self.st.plan_meta, run, trace.seq, max_steps=self.cfg.plan_steps_max
+            )
+            self._emit_plan_display()
+        if not self.tracking:
+            return
+        key = progress.call_key(name, args)
+        if chosen and name in progress.RECORD_TOOLS:
+            self._respond("ALT_TOOL", key=key, step=step, tool_seq=trace.seq)
+        if run.signal is not None and tr.outcome != "CACHED":
+            self._decide(run.signal, run.facts, "FACT_SHOWN", "CODE", step=step, tool_seq=trace.seq)
+            self.st.signals_open.append(progress.open_signal(run, key, step, trace.seq))
+
+    def _decide(
+        self,
+        signal: str,
+        facts: list[str],
+        effect: str,
+        decider: str,
+        *,
+        step: int | None = None,
+        tool_seq: int | None = None,
+    ) -> None:
+        """결정 로그 한 줄(`event: agent_decision`)을 서비스 로그에 남긴다(설정 `decision_log`). 진단 기록에는 넣지 않는다."""
+        if not self.cfg.decision_log:
+            return
+        self.st.decision_seq += 1
+        self.deps.log(
+            progress.decision_line(
+                request_id=self.diag.request_id,
+                run_id=self.diag.run_id,
+                turn_call=self.diag.turn_call,
+                seq=self.st.decision_seq,
+                signal=signal,
+                facts=facts,
+                decider=decider,
+                effect=effect,
+                step=step,
+                tool_seq=tool_seq,
+            )
+        )
+
+    def _respond(
+        self,
+        effect: str,
+        *,
+        key: str | None = None,
+        step: int | None = None,
+        tool_seq: int | None = None,
+    ) -> list[str]:
+        """모델이 본 신호를 이 선택(`PLAN_EDIT` · `ALT_TOOL` · `ACTION`, 결정 주체 LLM)으로 닫는다. 같은 도구 · 같은 대상을 다시
+        부른 것(`key`가 같음)은 그 신호의 대응이 아니다. 돌려주는 값: 닫은 신호 이름들."""
+        kept: list[dict[str, Any]] = []
+        closed: list[str] = []
+        for s in self.st.signals_open:
+            if not s["seen"] or (key is not None and s["key"] == key):
+                kept.append(s)
+                continue
+            self._decide(s["signal"], s["facts"], effect, "LLM", step=step, tool_seq=tool_seq)
+            closed.append(s["signal"])
+        self.st.signals_open = kept
+        return closed
+
+    def _action_decision(self, out: dict[str, Any], *, chosen: bool) -> None:
+        """행동 도구 하나의 결정: 모델이 고른 행동은 모델이 본 신호의 대응(`ACTION:LLM`)이다. 가져오기(FETCH_TAKE)는
+        `NOT_LOADED · ACTION`(코드가 먼저 읽기로 냈으면 CODE), 허용 근거를 통과한 다시 평가는 `USER_DISPUTE · ACTION:LLM`."""
+        action = out.get("action")
+        atype = getattr(action, "type", None)
+        if not chosen:
+            if atype == "FETCH_TAKE":
+                self._decide("NOT_LOADED", [], "ACTION", "CODE")
+            return
+        if not out.get("valid"):
+            return
+        closed = self._respond("ACTION")
+        if atype == "FETCH_TAKE" and "NOT_LOADED" not in closed:
+            self._decide("NOT_LOADED", [], "ACTION", "LLM")
+        elif atype == "REASSESS":
+            self._decide("USER_DISPUTE", [], "ACTION", "LLM")
+
+    def _research_end(self) -> None:
+        """조사가 끝날 때: 대응이 없던 신호마다 `NONE:LLM`을 남기고, 한도 · 반복으로 멈췄으면 `BUDGET_LOW · STOP_PARTIAL:CODE`를
+        남긴다. 한도 · 시간으로 멈췄으면 지금 하던 단계에 `시간 부족`을 단다."""
+        reason = self.st.stop_reason
+        step = None
+        if self.cfg.plan_progress and self.st.plan_meta:
+            if reason in progress.LIMIT_STOPS:
+                step = progress.mark_short(self.st.plan_meta)
+                self._emit_plan_display()
+            else:
+                step = progress.current_step(self.st.plan_meta)
+        if not self.tracking:
+            return
+        self.close_signals()
+        if reason in progress.BUDGET_STOPS:
+            self._decide("BUDGET_LOW", [reason], "STOP_PARTIAL", "CODE", step=step)
+
+    def close_signals(self) -> None:
+        """대응이 없던 신호마다 `NONE:LLM` 한 줄을 남기고 비운다(조사가 끝날 때, 조사 없이 끝나는 응답은 turn.py 가 끝에서)."""
+        for s in self.st.signals_open:
+            self._decide(s["signal"], s["facts"], "NONE", "LLM")
+        self.st.signals_open = []
+
+    def _research_messages(self) -> list[dict[str, Any]]:
+        """조사 호출의 메시지: 지시문(신호 지침은 `research_signals`일 때) · 데이터 블록(대응을 기다리는 신호 포함) · 지난 도구 메시지."""
+        prompt = prompts.RESEARCH
+        block = self.data_block()
+        if self.cfg.research_signals:
+            prompt += "\n" + prompts.RESEARCH_SIGNALS_HINT
+            if self.st.signals_open:
+                block["signals"] = progress.signals_view(self.st.signals_open)
+        return [self._system(prompt), prompts.data_message(block), *self.st.messages]
 
     # ── 2. 조사 ─────────────────────────────────────────────────────
     def research_phase(self) -> dict[str, Any] | None:
@@ -734,12 +892,10 @@ class Loop:
                 # 조사 흐름: 판단 초안이 집은 기록을 모델이 고르기 전에 코드가 먼저 읽는다(모델 호출 없음)
                 calls, said, model_seq = pre, "", None
             else:
-                msgs = [
-                    self._system(prompts.RESEARCH),
-                    prompts.data_message(self.data_block()),
-                    *self.st.messages,
-                ]
+                msgs = self._research_messages()
                 res = self._call("RESEARCH", msgs, tools=tools)
+                for s in self.st.signals_open:
+                    s["seen"] = True  # 이 조사 호출이 본 신호다. 이 응답의 선택부터 대응으로 센다
                 if isinstance(res, LimitHit):
                     self.st.research_done, self.st.stop_reason = True, limit_end_reason(res.code)
                     break
@@ -804,6 +960,8 @@ class Loop:
                     continue
                 if call.name in act.ACTION_TOOL_ARGS:
                     out = self._handle_action(call, model_seq)
+                    if self.tracking:
+                        self._action_decision(out, chosen=not pre)
                     any_valid = any_valid or out.get("valid", False)
                     results.append(self._tool_msg(call.id, out["message"]))
                     if out.get("action") is not None:
@@ -914,6 +1072,10 @@ class Loop:
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq, args)
+                if call.name != "update_plan":
+                    self._after_tool(call.name, args, tr, trace, chosen=not pre)
+                elif tr.ok and self.tracking and not pre:
+                    self._respond("PLAN_EDIT", tool_seq=trace.seq)
                 self.st.message_deps[call.id] = list(tr.target_ids) + (
                     [self.ctx.scope_pitch_id] if self.ctx.scope_pitch_id else []
                 )
@@ -944,6 +1106,7 @@ class Loop:
                 and not self.st.research_done
             ):
                 self.st.research_done, self.st.stop_reason = True, "NO_PROGRESS"
+        self._research_end()
         return None
 
     def _prefetch_calls(self) -> list[ToolCall]:
@@ -1388,6 +1551,13 @@ class Loop:
             self.st.scope_switched = self.st.scope_switched or self.ctx.scope_switched
         elif applied.ok and pending["type"] == "FETCH_TAKE":
             self.st.scope_switch_unread = False
+        if pending["type"] == "FETCH_TAKE" and self.cfg.plan_progress and self.st.plan_meta:
+            # 가져오기도 할 일 단계의 실행이다(`Take {n} 가져오기` → 가져옴 · 확인 실패)
+            run = progress.fetch_run(
+                (pending.get("args") or {}).get("take_id"), applied.ok, self.ctx
+            )
+            progress.attach(self.st.plan_meta, run, None, max_steps=self.cfg.plan_steps_max)
+            self._emit_plan_display()
         self.st.executed.append(rec)
         if applied.card is not None:
             self.st.cards.append(applied.card)

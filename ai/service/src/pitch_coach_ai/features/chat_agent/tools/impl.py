@@ -6,6 +6,8 @@
   `NOT_FOUND`(지워짐 · 없음) · `EMPTY`(실제로 빈 결과)로 나눈다. null 을 0 으로 바꾸지 않는다(L1-17).
 - 범위 대조: 모든 도구가 대상 피치를 지금 범위와 대조한다. 범위 밖 Take 는 `NOT_FOUND` 로 돌려준다(L1-18).
 - 도구 기록 문구(`args_summary` · `result_summary`)는 도구명 · 대상 번호 · 상태로 만든다. 사용자 원문 · 대본 · 검색 질의는 넣지 않는다.
+  `get_take_report` 결과 요약 앞에는 읽은 출처를 붙인다: 코치 Take 결과(장별 지표 · 문제 구간)면 `코치가 찾은 것 · `,
+  리뷰(차원 판정 · 강점 · 개선 · 미션 결과)면 `리뷰 분석 · `(`report_source`).
 - 고칠 때: 인자 모델은 `extra="forbid"`(모르는 인자 거부, L1-15). 결과 모양을 바꾸면 TOOL_SCHEMA_VERSION 을 올린다.
 """
 
@@ -18,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value
 from ..goals import compare_takes, record_read_value
+from ..prompts import PLAN_STEP_TOOLS
 from ..schemas import PlanStep, TakeSnapshot
 from ..values import read_dimension_state, read_metric
 
@@ -35,6 +38,8 @@ class PlanStepArg(_Args):
     step: str = Field(min_length=1, max_length=60)
     status: Literal["TODO", "DOING", "DONE", "SKIPPED"]
     note: str | None = Field(default=None, max_length=200)
+    #: 이 단계에서 쓸 도구(힌트, 선택). 코드가 실행한 도구를 단계에 잇는 데만 쓰고 응답 `PlanStep`에는 싣지 않는다(progress.py)
+    tool: Literal[PLAN_STEP_TOOLS] | None = None  # type: ignore[valid-type]
 
 
 class UpdatePlanArgs(_Args):
@@ -643,8 +648,37 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         target_ids=[snap.summary.take_id],
         revisions={snap.summary.take_id: source_revision},
         args_summary=summ,
-        result_summary=f"{len(items)}개 항목" if items else (state or "OK"),
+        # 무엇을 읽었는지 출처를 앞에 붙인다(코치 Take 결과 · 리뷰, trace 요약 200자 안)
+        result_summary=(
+            _SOURCE_TAG[report_source((a.section,))]
+            + (f"{len(items)}개 항목" if items else (state or "OK"))
+        )[:200],
     )
+
+
+#: get_take_report 의 절 → 읽은 출처. 코치 Take 결과(장별 지표 · 문제 구간)와 리뷰(차원 판정 · 강점 · 개선 · 미션 결과)
+COACH_SECTIONS = frozenset({"slides", "problem_segments", "metrics"})
+REVIEW_SECTIONS = frozenset({"dimensions", "strengths", "improvements", "mission_results"})
+_SOURCE_TAG = {
+    "COACH": "코치가 찾은 것 · ",
+    "REVIEW": "리뷰 분석 · ",
+    "BOTH": "코치가 찾은 것 · 리뷰 분석 · ",
+}
+
+
+def source_tag_of(summary: str) -> str:
+    """결과 요약 앞의 출처 표지(없으면 빈 글). 표시 검사로 요약을 줄일 때도 출처는 남긴다(turn.py `_safe_trace`)."""
+    return next(
+        (t for t in sorted(_SOURCE_TAG.values(), key=len, reverse=True) if summary.startswith(t)),
+        "",
+    )
+
+
+def report_source(sections: Sequence[str]) -> str:
+    """읽은 절들의 출처: `COACH`(코치 Take 결과) · `REVIEW`(리뷰) · `BOTH`(둘 다). trace 요약 · 할 일 단계 실행 글이 같이 쓴다."""
+    coach = any(s in COACH_SECTIONS for s in sections)
+    review = any(s in REVIEW_SECTIONS for s in sections)
+    return "BOTH" if coach and review else ("REVIEW" if review else "COACH")
 
 
 # ── compare_takes ─────────────────────────────────────────────────────────

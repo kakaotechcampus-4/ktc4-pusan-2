@@ -1,0 +1,263 @@
+"""할 일 단계 = 실제 실행 단위 시험 — 단계 초안 · 단계 고르기 · 표시 글 · 끝 처리 · 상황 신호 · trace 출처 (progress.py, 기능 문서 6-1 7번).
+
+도구는 예시 요청(범위 p-1 · 보던 Take t-5)과 가상 기록(fixtures.py)으로 실제로 돌린다(test_tools.py 의 도우미).
+"""
+
+from __future__ import annotations
+
+import copy
+from typing import Any
+
+import pytest
+
+from pitch_coach_ai.features.chat_agent import progress
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
+from pitch_coach_ai.features.chat_agent.schemas import PlanStep
+
+from .test_tools import base_request, load, make_ctx, run
+
+COMPARE = {
+    "previous_take_id": "t-4",
+    "current_take_id": "t-5",
+    "metric": "audience_ratio",
+    "slide_number": 3,
+}
+
+
+def _meta(*steps: tuple[str, str | None]) -> list[dict[str, Any]]:
+    plan = [
+        {"step": s, "status": "DOING" if i == 0 else "TODO", "note": None, "tool": t}
+        for i, (s, t) in enumerate(steps)
+    ]
+    rows, hints = progress.split_steps(plan)
+    return progress.new_meta(rows, hints)
+
+
+def _read(ctx: Any, name: str, args: dict[str, Any]) -> progress.StepRun:
+    from pitch_coach_ai.features.chat_agent.tools import validate_args
+
+    a = validate_args(name, args)
+    assert not isinstance(a, str)
+    tr, _ = run(ctx, name, args)
+    return progress.read_run(name, a, tr, ctx)
+
+
+# ── 단계 초안(PlanStepDraft) ────────────────────────────────────────────────
+
+
+def test_draft_tool_hint_is_stripped_from_the_response_step() -> None:
+    rows, hints = progress.split_steps(
+        [
+            {"step": "반복 확인", "status": "DOING", "note": None, "tool": "compare_takes"},
+            {"step": "답 쓰기", "status": "TODO", "note": None, "tool": "모르는 도구"},
+            {"step": "끝", "status": "TODO", "note": None},
+        ]
+    )
+    assert hints == ["compare_takes", None, None]  # 모르는 힌트는 없는 것으로
+    for r in rows:
+        assert set(r) == {"step", "status", "note"}
+        PlanStep.model_validate(r)
+
+
+# ── 단계 고르기 ──────────────────────────────────────────────────────────────
+
+
+def test_pick_prefers_matching_hint_then_hintless_current_step() -> None:
+    meta = _meta(("기록 확인", None), ("비교", "compare_takes"), ("답 쓰기", "answer"))
+    assert progress.pick(meta, "compare_takes") == 1
+    assert progress.pick(meta, "list_takes") == 0  # 힌트 없는 지금 단계
+    meta[0]["done"] = True
+    assert progress.pick(meta, "list_takes") is None  # 지금 단계(비교)는 힌트가 있다
+
+
+def test_attach_inserts_new_step_before_pending_steps_up_to_eight() -> None:
+    ctx = make_ctx()
+    meta = _meta(("반복 확인", "compare_takes"), ("답 쓰기", "answer"))
+    i = progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    assert i == 0 and meta[0]["done"]
+    j = progress.attach(meta, _read(ctx, "list_takes", {}), 2, max_steps=8)
+    # 계획에 없던 도구는 실행 뒤에 '도구 종류 이름' 단계로 남은 단계(답 쓰기) 앞에 붙는다
+    assert j == 1 and [m["purpose"] for m in meta] == ["반복 확인", "Take 목록", "답 쓰기"]
+    full = _meta(*[(f"단계 {n}", "answer") for n in range(8)])
+    assert progress.attach(full, _read(ctx, "list_takes", {}), 3, max_steps=8) is None
+    assert len(full) == 8  # 8단계면 붙이지 않는다(trace 에만 남는다)
+
+
+# ── 표시 글 ──────────────────────────────────────────────────────────────────
+
+
+def test_display_text_is_purpose_exec_result_within_sixty_chars() -> None:
+    ctx = make_ctx()
+    meta = _meta(("반복 확인", "compare_takes"))
+    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    plan = progress.render(meta, ctx.registry, CFG)
+    assert plan[0] == {
+        "step": "반복 확인: Take 4·5 비교 → 3장 청중 시선 나빠짐",
+        "status": "DONE",
+        "note": None,
+    }
+    long = "아주 긴 목적" * 10
+    text = progress.compose(long, "Take 4·5 비교", "3장 청중 시선 나빠짐")
+    assert len(text) <= 60 and text.endswith("…: Take 4·5 비교 → 3장 청중 시선 나빠짐")
+    assert progress.compose("짧음", "x" * 70, "y") == ("x" * 70 + " → y")[:60]
+
+
+def test_display_text_drops_numbers_without_step_evidence() -> None:
+    """숫자 · Take · 장 번호는 그 단계 근거로만: 근거가 없으면 숫자 없는 실행 이름으로 그린다."""
+    req = load(base_request(), "t-4")
+    for snap in req["context"]["loaded_takes"]:
+        snap["results"]["review"] = None
+    ctx = make_ctx(req)
+    meta = _meta(("반복 확인", "compare_takes"), ("리뷰 보기", "get_take_report"))
+    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    run4 = _read(ctx, "get_take_report", {"take_id": "t-4", "section": "dimensions"})
+    assert run4.exec == "Take 4 기록" and run4.evidence_ids == []
+    progress.attach(meta, run4, 2, max_steps=8)
+    plan = progress.render(meta, ctx.registry, CFG)
+    assert plan[0]["step"].startswith("반복 확인: Take 4·5 비교")
+    # 'Take 4'는 다른 단계(비교)의 근거로만 받쳐진다 → 이 단계 글에는 넣지 않는다
+    assert plan[1]["step"] == "리뷰 보기: 기록 보기 → 리뷰 분석 전"
+
+
+# ── 결과 글 · 상황 신호 ──────────────────────────────────────────────────────
+
+
+def test_read_run_results_and_signals() -> None:
+    req = load(base_request(), "t-4", "t-3")
+    for t in req["context"]["pitch"]["takes"]:
+        if t["take_id"] == "t-3":
+            t["script_version_id"] = "sv-0"
+    for snap in req["context"]["loaded_takes"]:
+        if snap["summary"]["take_id"] == "t-3":
+            snap["summary"]["script_version_id"] = "sv-0"
+            snap["results"]["take_result"]["problem_segments"] = []
+    ctx = make_ctx(req)
+    nc = _read(ctx, "compare_takes", {**COMPARE, "previous_take_id": "t-3"})
+    assert (nc.result, nc.done, nc.signal, nc.facts) == (
+        "비교 불가(대본 버전 다름)",
+        True,
+        "NOT_COMPARABLE",
+        ["DIFFERENT_SCRIPT_VERSION"],
+    )
+    seg = _read(ctx, "get_take_report", {"take_id": "t-3", "section": "problem_segments"})
+    assert (seg.result, seg.signal, seg.facts) == (
+        "문제 구간 없음",
+        "NO_RECORD",
+        ["PROBLEM_SEGMENTS"],
+    )
+    have = _read(ctx, "get_take_report", {"take_id": "t-5", "section": "problem_segments"})
+    assert (have.exec, have.result, have.signal) == ("Take 5 기록", "문제 구간 있음", None)
+    dims = _read(ctx, "get_take_report", {"take_id": "t-5", "section": "dimensions"})
+    assert (dims.exec, dims.result) == ("Take 5 기록", "리뷰 우선 개선 청중 시선")
+    goals = _read(ctx, "get_goals", {})
+    assert (goals.result, goals.signal, goals.facts) == ("목표 없음", "NO_RECORD", ["GOAL"])
+    missing = _read(ctx, "get_take_report", {"take_id": "t-9", "section": "slides"})
+    assert (missing.result, missing.done, missing.signal) == ("확인 실패", False, "TOOL_ERROR")
+
+
+def test_read_run_not_loaded_and_empty_takes() -> None:
+    ctx = make_ctx(base_request())  # Take 4 결과가 기본 자료에 없음
+    nl = _read(ctx, "compare_takes", COMPARE)
+    assert (nl.result, nl.done, nl.signal) == ("기본 자료에 없음", True, "NOT_LOADED")
+    req = base_request()
+    req["context"]["pitch"]["takes"] = []
+    req["context"]["pitch"]["focus_take"] = None
+    req["page"]["take_id"] = None
+    empty = _read(make_ctx(req), "list_takes", {})
+    assert (empty.result, empty.signal, empty.facts) == ("Take 없음", "NO_RECORD", ["TAKES"])
+
+
+def test_unmeasured_segments_are_not_no_segments() -> None:
+    req = load(base_request(), "t-3")
+    tr = req["context"]["loaded_takes"][0]["results"]["take_result"]
+    tr["problem_segments"] = []
+    for area in tr["areas"].values():
+        area["take"], area["unmeasured_reason"] = None, "NO_SIGNAL"
+    run3 = _read(
+        make_ctx(req), "get_take_report", {"take_id": "t-3", "section": "problem_segments"}
+    )
+    assert (run3.result, run3.signal) == ("측정 안 됨", None)
+
+
+# ── 끝 처리 ──────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("status", "answered", "expected"),
+    [
+        ("DONE", True, ["DONE", "SKIPPED", "DONE"]),
+        ("REFUSED", False, ["DONE", "SKIPPED", "SKIPPED"]),
+        ("PARTIAL", True, ["DONE", "TODO", "DONE"]),
+        ("PARTIAL", False, ["DONE", "TODO", "TODO"]),
+        ("NEEDS_ACTION", True, ["DONE", "DOING", "TODO"]),
+    ],
+)
+def test_finish_plan_by_end_status(status: str, answered: bool, expected: list[str]) -> None:
+    ctx = make_ctx()
+    meta = _meta(
+        ("반복 확인", "compare_takes"), ("자료 찾기", "search_guides"), ("답 쓰기", "answer")
+    )
+    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    plan = progress.finish_plan(meta, ctx.registry, CFG, status, answered=answered)
+    assert [p["status"] for p in plan] == expected
+
+
+def test_mark_short_puts_time_short_on_current_step() -> None:
+    meta = _meta(("반복 확인", "compare_takes"), ("답 쓰기", "answer"))
+    assert progress.mark_short(meta) == 0
+    plan = progress.render(meta, make_ctx().registry, CFG)
+    assert plan[0]["step"] == "반복 확인: 시간 부족" and plan[0]["status"] == "DOING"
+
+
+def test_new_meta_keeps_executed_step_when_model_edits_plan() -> None:
+    ctx = make_ctx()
+    meta = _meta(("반복 확인", "compare_takes"), ("답 쓰기", "answer"))
+    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    shown = progress.render(meta, ctx.registry, CFG)
+    edit = [
+        {"step": "반복 확인", "status": "DONE", "note": None, "tool": "compare_takes"},
+        {"step": "문제 구간 보기", "status": "DOING", "note": None, "tool": "get_take_report"},
+        {"step": "답 쓰기", "status": "TODO", "note": None, "tool": "answer"},
+    ]
+    rows, hints = progress.split_steps(edit)
+    new = progress.new_meta(rows, hints, old=meta, shown=shown)
+    plan = progress.render(new, ctx.registry, CFG)
+    assert plan[0] == shown[0]  # 실행한 단계는 그 실행 메타를 이어 받는다
+    assert [p["status"] for p in plan] == ["DONE", "DOING", "TODO"]
+
+
+# ── trace 출처 (D3) ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("section", "tag"),
+    [
+        ("slides", "코치가 찾은 것 · "),
+        ("problem_segments", "코치가 찾은 것 · "),
+        ("dimensions", "리뷰 분석 · "),
+        ("improvements", "리뷰 분석 · "),
+        ("mission_results", "리뷰 분석 · "),
+    ],
+)
+def test_take_report_trace_names_its_source(section: str, tag: str) -> None:
+    res, trace = run(make_ctx(), "get_take_report", {"take_id": "t-5", "section": section})
+    assert res.result_summary.startswith(tag) and trace.result_summary.startswith(tag)
+    assert len(trace.result_summary) <= 200
+    assert trace.args_summary.startswith("Take 5 · ")  # 인자 요약은 그대로
+
+
+def test_decision_line_has_fixed_keys() -> None:
+    line = progress.decision_line(
+        request_id="r",
+        run_id="run",
+        turn_call=1,
+        seq=1,
+        signal="NOT_COMPARABLE",
+        facts=["DIFFERENT_SCRIPT_VERSION"],
+        decider="CODE",
+        effect="FACT_SHOWN",
+        step=0,
+        tool_seq=1,
+    )
+    assert tuple(line) == progress.DECISION_KEYS
+    assert copy.deepcopy(line)["event"] == "agent_decision"

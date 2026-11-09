@@ -92,10 +92,18 @@ def test_done_path_streams_progress_then_one_final() -> None:
     fd = final_ok(data)
     assert fd.status == "DONE"
     assert fd.message is not None
-    # 진행 줄 → 답 문장마다 문장 줄 → 끝 줄 하나(5-4)
+    # 진행 줄 → 답 문장마다 문장 줄 → 끝 줄 하나(5-4). 도구가 끝나면 단계 표시 갱신(plan), 끝 처리로 단계 상태가
+    # 바뀌면 끝 줄 전에 plan 한 줄 더(progress.py)
     n = len(fd.message.claims)
-    assert [ln["event"] for ln in lines] == ["plan", "tool_done", *["claim"] * n, "final"]
-    assert [ln["seq"] for ln in lines] == list(range(1, n + 4))
+    assert [ln["event"] for ln in lines] == [
+        "plan",
+        "tool_done",
+        "plan",
+        *["claim"] * n,
+        "plan",
+        "final",
+    ]
+    assert [ln["seq"] for ln in lines] == list(range(1, n + 6))
     assert all(ln["run_id"] == "run-81" for ln in lines)
     assert fd.message.text == "\n".join(c.text for c in fd.message.claims)
     # 판단은 코드 판정(28% < 31% → 나빠짐)이고 첫 문장은 템플릿이다
@@ -310,15 +318,22 @@ def test_check_diagnostics_use_original_sentence_numbers_after_fix_drops_earlier
     ]  # 고친 뒤에도 실패한 문장, 원래 번호
 
 
-def test_plan_with_unbacked_number_falls_back_to_default_plan() -> None:
+@pytest.mark.parametrize("progress", [True, False])
+def test_plan_with_unbacked_number_drops_the_number(progress: bool) -> None:
+    """근거 없는 숫자 · Take 번호는 단계 글에 나가지 않는다. `plan_progress`가 켜졌으면 그 표기만 지우고(목적은 남김),
+    끄면 이전 동작대로 기본 계획."""
     bad_plan = F.plan(steps=["Take 5 시선 28% 확인", "답 쓰기"], assessments=[change_draft()])
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
     _, lines, data = F.run_turn(
-        req, F.FakeLlm([bad_plan, F.tools(COMPARE), F.done(), compare_answer()])
+        req,
+        F.FakeLlm([bad_plan, F.tools(COMPARE), F.done(), compare_answer()]),
+        cfg=load_config(plan_progress=progress),
     )
     plan_line = lines[0]
     assert plan_line["event"] == "plan"
     assert all("28%" not in s["step"] for s in plan_line["data"]["plan"])
+    first = [s["step"] for s in plan_line["data"]["plan"]]
+    assert first == (["시선 확인", "답 쓰기"] if progress else ["기록 확인", "답 쓰기"])
 
 
 def test_uncovered_clause_gets_one_format_fix_then_template() -> None:

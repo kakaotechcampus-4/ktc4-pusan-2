@@ -3,6 +3,7 @@
 - 시스템 메시지는 서버 고정문(이 파일)만 쓴다. 사용자 말 · 화면 상태 · 대본 · 자료 · 대화 기록 · 리뷰 문장 · 도구 결과 같은
   외부 문자열은 모두 데이터 블록(`<data>` · `<research>`)에 넣고, 그 안의 지시는 따르지 않게 한다(6-10 주입 막기).
 - 단계: PLAN(판단 초안 · 할 일 목록, 구조화) → RESEARCH(도구 · 행동 도구 호출) → ANSWER(답 초안, 구조화) → FIX(걸린 문장만 고치기, 구조화).
+- 할 일 단계는 도구 힌트(`tool`, `PLAN_STEP_TOOLS`)를 함께 받는다. progress.py 가 실행한 도구를 그 단계에 잇고, 응답 `PlanStep`에는 싣지 않는다.
 - `PROMPT_VERSION` 은 이 파일의 지시문 · 출력 모양을 합친 해시 12자리다(9절). 바꾸면 자동으로 바뀐다.
 - 고칠 때: 프롬프트를 바꾸면 결과의 뜻이 바뀔 수 있으므로 평가셋을 다시 돌리고 README 결과 표에 판을 남긴다(13-6).
 """
@@ -45,6 +46,7 @@ PLAN = """[단계: 계획]
 - talk_kind: route 가 SMALL_TALK 일 때만 GREETING(인사) · THANKS(감사) · CAPABILITY(무엇을 할 수 있는지 묻는 말) · PRACTICE_INTENT(지금 연습하려는 뜻) · FAREWELL(작별) 중 하나, 그 밖에는 null. SMALL_TALK 면 plan · assessments 는 빈 목록이다.
 - scope_reason: route 가 OUT_OF_SCOPE 일 때만 아래 이유 중 하나(필수), 그 밖에는 null.
 - plan: 할 일 목록 1~8단계(조사가 필요할 때만, 쉬운 질문은 빈 목록). 단계 이름은 60자 이하, 첫 단계 상태 DOING, 나머지 TODO.
+  - 단계마다 그 단계에서 쓸 도구를 tool 에 적는다(도구 이름 · fetch_take, 답 쓰기 단계는 answer, 모르면 null). step 글에는 목적만 쓴다(Take · 장 번호 · 숫자 · 결과를 쓰지 않는다. 실행 → 결과는 코드가 실행한 뒤 덧붙인다).
 - guide_queries: 사용자가 발표법 · 사용법 조언을 묻거나(KNOWLEDGE 판단이 자료 근거를 필요로 할 때 포함) 그 조언의 근거 자료가 필요할 때만, 자료 카드가 쓸 법한 낱말로 짧고 구체적인 한국어 검색어를 0~3개(예: "긴장 호흡 첫 문장", "말 속도 쉼"). 사용자 말 문장을 그대로 옮기지 않는다. 기록만 묻는 말이거나 자료가 필요 없으면 빈 목록. 코드가 이 검색어로 조사 첫머리에 자료를 먼저 찾는다.
 - assessments: 사용자 말 속 주장 · 요청마다 판단 초안 하나. 측정 항목(시선 · 대본 · 속도 · 쉼 · 군더더기 · 목소리 · 시간 · 내용)을 말한 절마다 그 절을 덮는 판단이 있어야 한다.
   - quote: 사용자 말 원문의 부분 문자열을 글자 그대로(한 절만).
@@ -59,6 +61,20 @@ PLAN = """[단계: 계획]
 PLAN = PLAN + "\n" + SCOPE
 
 #: 횟수 질문 지침(설정 `count_metric_hint` 가 켜졌을 때 계획 지침 끝에 붙는다)
+#: 할 일 단계의 도구 힌트(계획 출력 · update_plan 인자의 `tool`): 도구 8개 · 기록 가져오기 · 답 쓰기. 응답 `PlanStep`에는 싣지 않는다
+PLAN_STEP_TOOLS = (
+    "update_plan",
+    "get_screen",
+    "list_pitches",
+    "list_takes",
+    "get_take_report",
+    "compare_takes",
+    "get_goals",
+    "search_guides",
+    "fetch_take",
+    "answer",
+)
+
 PLAN_COUNT_HINT = (
     "- 지표 키: '몇 번 · 몇 회 · 횟수'를 묻는 말은 횟수 지표(filler_count · pause_count)를, "
     "'분당 · 빈도'를 묻는 말은 filler_per_min 을 metric 으로 쓴다."
@@ -74,9 +90,15 @@ RESEARCH = """[단계: 조사]
 - 다시 평가(reassess)는 사용자가 이번 말에서 다시 평가를 요청했을 때만, 대본 사용 · 내 기준처럼 입력을 바꾸는 조건으로 쓴다. '대본 보고 했어' 같은 의견만으로는 부르지 않고, 측정값 이의에는 쓰지 않는다. 사용자가 말한 Take 를 찾지 못하면 다른 Take 로 바꿔 부르지 않는다.
 - 지금 범위 피치와 다른 피치를 함께 물으면 지금 범위 피치의 기록을 먼저 읽고, 다른 피치는 fetch_pitch 로 한 번만 바꿔 그 피치 기록을 읽는다(범위를 바꾼 뒤 아무것도 읽지 않고 다시 바꾸지 않는다). 피치가 다르면 수치를 비교하지 않고 피치마다 따로 답한다.
 - 전체 범위에서 여러 피치에 걸친 질문은 list_pitches 요약으로 답하고 범위를 바꾸지 않는다. 이름으로 찾은 피치가 여럿이면 fetch_pitch 를 부르지 말고 어느 발표인지 묻는다.
-- 할 일 목록은 계획 단계에서 이미 정했다. 할 일 자체가 바뀔 때만 update_plan 으로 고친다(상태만 바꾸려고 부르지 않는다).
+- 할 일 목록은 계획 단계에서 이미 정했다. 할 일 자체가 바뀔 때만 update_plan 으로 고친다(상태만 바꾸려고 부르지 않는다. 실행한 단계의 상태 · 결과는 코드가 단다). 단계마다 그 단계에서 쓸 도구를 tool 에 적는다(모르면 null). step 글에는 목적만 쓴다.
 - 발표법 · 사용법 질문이면 search_guides 로 자료를 먼저 찾는다. 자료가 없을 때의 일반 조언도 자료를 찾은 뒤에만 쓸 수 있다.
 - 충분히 읽었으면 도구를 부르지 말고 '조사 끝'이라고만 쓴다."""
+
+#: 대응을 기다리는 신호 지침(설정 `research_signals`가 켜졌을 때 조사 지침 끝에 붙는다)
+RESEARCH_SIGNALS_HINT = (
+    "- <data> 의 signals 는 앞 도구 결과에서 코드가 찾은 상황(비교 불가 · 기본 자료에 없음 · 리뷰 없음 · 기록 없음 · 도구 실패)과 "
+    "고를 수 있는 대응(options)이다. signals 가 있으면 그중 하나로 대응하고, 계획을 바꾸면 update_plan 으로 고친다."
+)
 
 ANSWER = """[단계: 답 쓰기]
 <data> 와 <research>(이번 턴 도구 결과)만으로 답 초안을 JSON 으로 낸다.
@@ -191,8 +213,9 @@ PLAN_SCHEMA = {
                         "step": {"type": "string"},
                         "status": {"type": "string", "enum": ["TODO", "DOING", "DONE", "SKIPPED"]},
                         "note": {"type": ["string", "null"]},
+                        "tool": {"type": ["string", "null"], "enum": [*PLAN_STEP_TOOLS, None]},
                     },
-                    "required": ["step", "status", "note"],
+                    "required": ["step", "status", "note", "tool"],
                     "additionalProperties": False,
                 },
             },
@@ -369,6 +392,7 @@ def _version() -> str:
             "p": PLAN,
             "pc": PLAN_COUNT_HINT,
             "r": RESEARCH,
+            "rs": RESEARCH_SIGNALS_HINT,
             "a": ANSWER,
             "f": FIX,
             "h": HISTORY_SUMMARY,

@@ -612,10 +612,10 @@ def test_take_report_mission_results() -> None:
     )
     assert res.data["active_missions"][0]["mission_id"] == "m-7"
     assert all("active_missions" not in it for it in res.data["items"])
-    assert res.result_summary == "1개 항목"
+    assert res.result_summary == "리뷰 분석 · 1개 항목"  # 읽은 출처(리뷰)를 앞에 붙인다
     empty, _ = run(make_ctx(), "get_take_report", {"take_id": "t-5", "section": "mission_results"})
     assert empty.ok and empty.read_state == "EMPTY"
-    assert empty.data["items"] == [] and empty.result_summary == "EMPTY"
+    assert empty.data["items"] == [] and empty.result_summary == "리뷰 분석 · EMPTY"
 
 
 def test_take_report_revisions_follow_source_per_section() -> None:
