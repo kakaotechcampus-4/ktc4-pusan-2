@@ -624,14 +624,17 @@ function slideOf(summary: CoverageSummary, slideNumber: number) {
   const slide = summary.slides.find((s) => s.slide_number === slideNumber);
   if (!slide) return null;
   if (slide.state === 'scored') {
-    // 장 요약의 이유 · 평가 방식을 상세에도 맞춥니다 — 잠정인 장은 상세도 잠정입니다
+    // 장 요약의 이유 · 평가 방식을 상세에도 맞춥니다. 상세 상태는 이유가 있는지가 아니라 장 요약의 지표 상태를 따릅니다 —
+    // 이유가 있어도 복구 기준을 채우면 ok 입니다 (#1152, #1157 리뷰)
     const detail = slideScoredFixture.detail!;
+    const provisional =
+      slide.delivery?.state === 'provisional' || slide.contradiction?.state === 'provisional';
     return {
       ...slideScoredFixture,
       slide_number: slideNumber,
       detail: {
         ...detail,
-        state: slide.reason_codes.length > 0 ? ('provisional' as const) : detail.state,
+        state: provisional ? ('provisional' as const) : detail.state,
         reason_codes: slide.reason_codes,
         stt_integrity: slide.stt_integrity,
         rubric_quality: slide.rubric_quality ?? detail.rubric_quality,

@@ -33,6 +33,28 @@ function openedText(status: ContentStatus | null) {
   }
 }
 
+/** "장별 보기"를 연 뒤 장 줄마다의 글자 — 장 번호 → 그 줄 버튼의 글자 */
+function openedRows(status: ContentStatus | null) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    act(() => root.render(<ContentCard takeId="t3" status={status} />));
+    const toggle = [...host.querySelectorAll('button')].find((b) =>
+      b.textContent?.startsWith('장별 보기'),
+    )!;
+    act(() => toggle.click());
+    const rows = new Map<number, string>();
+    for (const b of host.querySelectorAll('button[aria-expanded]')) {
+      const n = /^(\d+)장/.exec(b.textContent ?? '')?.[1];
+      if (n) rows.set(Number(n), b.textContent ?? '');
+    }
+    return rows;
+  } finally {
+    act(() => root.unmount());
+  }
+}
+
 const status = (id: string) => contentStatusOf(id, null);
 
 const withSummary = (over: Partial<CoverageSummary>): ContentStatus => ({
@@ -209,15 +231,18 @@ describe('내용 전달 카드 — 측정됨', () => {
 
   it('채점된 장의 잠정 이유를 줄마다 보이고, 이미 보인 이유는 되풀이하지 않습니다 (#1157 리뷰)', () => {
     const text = openedText(status('t-content-zero'));
-    // 음성 인식이 끊긴 장 · 온전한지 모르는 장 · 문장 단위로 평가한 장
-    expect(text).toMatch(/3장.*잠정음성 인식이 끊긴 구간이 있어요\. 녹음된 부분만 봤어요/);
-    expect(text).toMatch(/1장.*잠정음성 인식이 온전했는지 확인할 수 없어요/);
-    expect(text).toMatch(/5장.*잠정이 장은 문장 단위로 평가했어요\(참고용\)/);
+    const rows = openedRows(status('t-content-zero'));
+    // 음성 인식이 끊겨 provisional 인 장은 배지와 이유
+    expect(rows.get(3)).toMatch(/잠정음성 인식이 끊긴 구간이 있어요\. 녹음된 부분만 봤어요/);
+    // 이유가 있어도 상태가 ok 인 장은 배지 없이 안내만 둡니다 — 온전한지 모름 · 문장 단위 복구 (#1152, #1157 리뷰 P2)
+    expect(rows.get(1)).toContain('음성 인식이 온전했는지 확인할 수 없어요');
+    expect(rows.get(1)).not.toContain('잠정');
+    expect(rows.get(5)).toContain('이 장은 문장 단위로 평가했어요(참고용)');
+    expect(rows.get(5)).not.toContain('잠정');
     // 핵심 내용 없는 장은 전달률 자리에 이미 이유가 있어 한 번만
     expect(text.split('이 장에는 확인할 핵심 내용이 없어요')).toHaveLength(2);
-    // 잠정 이유가 없는 장에는 배지가 없습니다
-    const row2 = text.split('▾2장')[1]!.split('▾')[0]!;
-    expect(row2).not.toContain('잠정');
+    // 이유가 없는 장에는 배지가 없습니다
+    expect(rows.get(2)).not.toContain('잠정');
   });
 
   it('채점된 장 없이 간이 장만 있으면 숫자 대신 간이 단계', () => {

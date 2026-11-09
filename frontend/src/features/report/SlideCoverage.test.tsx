@@ -11,7 +11,7 @@ vi.hoisted(() => {
   import.meta.env.VITE_API_BASE = 'http://localhost';
 });
 
-import { resetRevisedTake } from '@/mocks/contentCoverage';
+import { contentMeasured, resetRevisedTake, slideScoredFixture } from '@/mocks/contentCoverage';
 import { reportHandlers } from '@/mocks/report';
 import { useTakeReport } from '@/shared/api/report';
 import { ContentCard } from './ContentCard';
@@ -126,6 +126,48 @@ describe('장별 펼침', () => {
       document.getElementById(rowButton(3).getAttribute('aria-controls')!)?.textContent ?? '';
     expect(panel.startsWith('잠정음성 인식이 끊긴 구간이 있어요. 녹음된 부분만 봤어요')).toBe(true);
   });
+
+  it.each([
+    [
+      'ok + 문장 단위 복구',
+      'ok',
+      [] as string[],
+      'sentence_fallback',
+      '이 장은 문장 단위로 평가했어요(참고용)',
+      false,
+    ],
+    [
+      'ok + 음성 인식 확인 불가',
+      'ok',
+      ['STT_UNVERIFIED'],
+      'full',
+      '음성 인식이 온전했는지 확인할 수 없어요',
+      false,
+    ],
+    ['provisional + 이유 문구 없음', 'provisional', [] as string[], 'full', null, true],
+  ] as const)(
+    '%s: 잠정 배지는 상세 상태로만 정하고, 안내 문구는 상태와 상관없이 둡니다 (#1157 리뷰 P2)',
+    async (_, state, reason_codes, rubric_quality, note, badge) => {
+      server.use(
+        http.get('*/api/takes/:takeId/script-coverage/slides/:slide', ({ params }) =>
+          HttpResponse.json({
+            ...slideScoredFixture,
+            take_id: String(params.takeId),
+            revision: contentMeasured.revision,
+            slide_number: Number(params.slide),
+            detail: { ...slideScoredFixture.detail!, state, reason_codes, rubric_quality },
+          }),
+        ),
+      );
+      await render('t3');
+      await open(3);
+      await until(() => host.textContent?.includes('대본 문장') ?? false);
+      const panel =
+        document.getElementById(rowButton(3).getAttribute('aria-controls')!)?.textContent ?? '';
+      if (note) expect(panel).toContain(note);
+      expect(panel.startsWith('잠정')).toBe(badge);
+    },
+  );
 
   it('잠정 이유가 없는 장에는 잠정 표시가 없습니다', async () => {
     await render('t3');

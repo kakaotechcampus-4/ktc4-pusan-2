@@ -438,6 +438,9 @@ function ScoredRow({ slide }: { slide: SlideSummary }) {
     slide.rubric_quality,
     deliveryReason === null ? [] : [deliveryReason],
   );
+  // 잠정 배지는 이유 문구가 아니라 지표 상태로 정합니다 — 이유가 있어도 복구 기준을 채우면 ok 입니다 (#1152, #1157 리뷰)
+  const provisional =
+    slide.delivery?.state === 'provisional' || slide.contradiction?.state === 'provisional';
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
       {deliveryReason !== null ? (
@@ -458,7 +461,7 @@ function ScoredRow({ slide }: { slide: SlideSummary }) {
           놓친 중요 내용 <span className="tabular-nums font-bold">{slide.critical_gap_count}</span>
         </span>
       )}
-      {notes.length > 0 && <Badge tone="muted">잠정</Badge>}
+      {provisional && <Badge tone="muted">잠정</Badge>}
       {notes.length > 0 && (
         <span className="basis-full text-xs text-ink/80">{notes.join(' · ')}</span>
       )}

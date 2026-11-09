@@ -98,16 +98,18 @@ function RevisionChanged({ takeId }: { takeId: string }) {
 
 function SlideBody({ detail }: { detail: SlideCoverageDetail }) {
   if (detail.state !== 'SCORED') return <FailedSlide detail={detail} />;
-  // 음성 인식이 끊겼거나 문장 단위로 평가한 장은 결과가 잠정입니다 — 이유를 맨 위에 둡니다 (#1157 리뷰)
+  // 음성 인식 · 평가 방식의 한계는 맨 위에 둡니다 (#1157 리뷰). 잠정 배지는 문구가 있는지가 아니라 장 상세의 상태로 정합니다 —
+  // 문장 단위로 복구했어도 기준을 채우면 ok 이고, 이유 문구 없이 provisional 인 장도 있습니다 (#1152)
   const notes = slideNotes(
     detail.detail?.reason_codes ?? [],
     detail.detail?.rubric_quality ?? null,
   );
+  const provisional = detail.detail?.state === 'provisional';
   return (
     <div className="flex flex-col gap-5">
-      {notes.length > 0 && (
+      {(notes.length > 0 || provisional) && (
         <div className="flex flex-col gap-1">
-          <Badge tone="muted">잠정</Badge>
+          {provisional && <Badge tone="muted">잠정</Badge>}
           {notes.map((note) => (
             <Note key={note}>{note}</Note>
           ))}
