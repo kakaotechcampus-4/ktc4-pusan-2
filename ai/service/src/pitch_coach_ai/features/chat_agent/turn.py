@@ -57,6 +57,7 @@ from . import compose, memory, progress, prompts, state, templates
 from .answer import ClaimLines, Composer, is_general_intro, with_prefix
 from .answer import assessment_head as _assessment_head  # noqa: F401  # 시험이 이 이름으로 부른다
 from .answer import guide_texts as _guide_texts
+from .answer import guide_titles as _guide_titles
 from .budget import LIMIT_END_REASONS, Counters
 from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, reduce_to_fit, safe_request_id
@@ -579,6 +580,7 @@ def _finalize(
         cfg=lp.cfg,
         id_prefix=f"{req.run.run_id}:as{lp.counters.turn_count}-",
         guide_texts=_guide_texts(lp),
+        guide_titles=_guide_titles(lp),
         **kwargs,
     )
 

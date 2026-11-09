@@ -86,6 +86,19 @@ def guide_texts(lp: Any) -> dict[str, str]:
     return out
 
 
+def guide_titles(lp: Any) -> dict[str, str]:
+    """이번 실행에서 읽은 자료의 카드 제목(판단 첫 문장의 근거 표기, 7-9 — 내부 id 대신 보인다)."""
+    corpus = lp.ctx.corpus
+    out: dict[str, str] = {}
+    if corpus is None:
+        return out
+    for sid in lp.ctx.registry.sources:
+        card = corpus.get(sid)
+        if card is not None and card.title:
+            out[sid] = card.title
+    return out
+
+
 def _key(c: Claim) -> str:
     return json.dumps(c.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
 

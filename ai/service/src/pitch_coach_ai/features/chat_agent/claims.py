@@ -1138,11 +1138,22 @@ def _knowledge_ok(
     return True, None
 
 
+def knowledge_phrase(source_ids: Sequence[str], titles: Mapping[str, str]) -> str:
+    """발표법 주장(KNOWLEDGE) 판단 첫 문장의 근거 표기: 카드 제목(7-9 · 7-10). 내부 자료 id(g-18)는 사용자에게 보이지 않는다.
+
+    예: ["g-18"], {"g-18": "발표는 빠를수록 좋다는 오해"} → "발표법 자료 '발표는 빠를수록 좋다는 오해'".
+        제목을 모르는 카드는 이름 없이 "발표법 자료"(id 를 쓰지 않는다)
+    """
+    names = [f"'{titles[s]}'" for s in dict.fromkeys(source_ids) if titles.get(s)]
+    return "발표법 자료 " + " · ".join(names) if names else "발표법 자료"
+
+
 def _model_verdict(
     d: AssessmentDraft,
     registry: EvidenceRegistry,
     cfg: ChatAgentConfig,
     guide_texts: Mapping[str, str] | None = None,
+    guide_titles: Mapping[str, str] | None = None,
 ) -> CodeVerdict:
     """발표법 주장(KNOWLEDGE) · 행동 요청(REQUEST): 모델 판정을 유지하되 근거가 모자라면 낮춘다(6-3)."""
     valid_ev = [e for e in d.evidence_ids if registry.is_current(e)]
@@ -1155,7 +1166,7 @@ def _model_verdict(
         if verdict in ("SUPPORTED", "CONTRADICTED") and not ok:
             verdict, reason = "UNVERIFIABLE", why
         if ok:
-            phrase = "발표법 자료(" + ", ".join(d.source_ids) + ")"
+            phrase = knowledge_phrase(d.source_ids, guide_titles or {})
     else:  # REQUEST
         evidence_ids = valid_ev
         phrase = ", ".join(_phrase_from_evidence(registry, e, cfg) for e in valid_ev[:2])
@@ -1263,6 +1274,7 @@ def code_verdict(
     cfg: ChatAgentConfig,
     script_used: bool | None | _Unset = UNSET,
     guide_texts: Mapping[str, str] | None = None,
+    guide_titles: Mapping[str, str] | None = None,
 ) -> CodeVerdict:
     """판단 초안의 판정을 코드가 정한다(6-3 판정 표). `MEASURED`는 모델 판정을 버린다.
 
@@ -1275,6 +1287,7 @@ def code_verdict(
             `False` · `None`이면 "공식 평가에는 대본 사용 허용이 없어요"를 붙인다.
         guide_texts: 이번 실행에서 읽은 발표법 자료 원문 {source_id: 글}. `KNOWLEDGE`의 `SUPPORTED` · `CONTRADICTED`는
             인용한 모든 자료의 원문이 여기 있고 주장의 주제와 관련 있을 때만 유지한다(없으면 `UNVERIFIABLE`).
+        guide_titles: 자료 카드 제목 {source_id: 제목}. `KNOWLEDGE` 판단 첫 문장의 근거 표기에 쓴다(id 대신).
 
     Returns:
         `CodeVerdict`. 대상을 풀지 못하면(차원 · 지표가 기록 이름이 아님 · `claim_op`가 넷 밖) `UNVERIFIABLE`.
@@ -1289,7 +1302,7 @@ def code_verdict(
     if draft.type == "PREFERENCE":
         return _preference_verdict(draft, ctx, focus_take_id)
     if draft.type != "MEASURED":
-        return _model_verdict(draft, registry, cfg, guide_texts)
+        return _model_verdict(draft, registry, cfg, guide_texts, guide_titles)
 
     script = _is_script_claim(draft)
     dim, metric, err = (None, None, None) if script else _resolve_subject(draft, cfg)
@@ -1648,6 +1661,7 @@ def finalize(
     id_prefix: str,
     script_used: bool | None | _Unset = UNSET,
     guide_texts: Mapping[str, str] | None = None,
+    guide_titles: Mapping[str, str] | None = None,
 ) -> FinalizeResult:
     """판단 초안을 코드가 확정한다: 판정 · 키 · 근거 지문 · 압력 · 대체 · 첫 문장.
 
@@ -1655,7 +1669,8 @@ def finalize(
         drafts: 모델의 초안(고치기를 마친 뒤의 것).
         user_message: 사용자 말 원문.
         prior: 앞 판단(`history.prior_assessments`, 오래된 것 → 최근 순서라고 본다).
-        takes, focus_take_id, pitch_id, registry, version_of, cfg, script_used, guide_texts: `code_verdict`와 같다.
+        takes, focus_take_id, pitch_id, registry, version_of, cfg, script_used, guide_texts, guide_titles:
+            `code_verdict`와 같다.
         corpus_version: 자료 판(근거 지문의 `sources`에 적는다).
         id_prefix: 판단 id 앞부분. id는 `f"{id_prefix}{i}"`(i는 1부터, 유효한 초안 순서).
 
@@ -1686,6 +1701,7 @@ def finalize(
             cv = code_verdict(
                 d, takes=takes, focus_take_id=focus_take_id, pitch_id=pitch_id, registry=registry,
                 version_of=version_of, cfg=cfg, script_used=script_used, guide_texts=guide_texts,
+                guide_titles=guide_titles,
             )  # fmt: skip
         measured = d.type == "MEASURED"
         take_ids = cv.target_take_ids if measured else list(d.subject.take_ids)
