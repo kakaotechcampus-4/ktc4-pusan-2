@@ -1337,9 +1337,12 @@ def _claim_core(
         issues = claimed_issues(quote, subject.dimension, cfg) if claim_op == "ISSUE" else []
         # 문제 주장의 부정("빠르지 않았어")은 극성이 아니라 말로 가리므로 키에도 따로 넣는다
         negated = issue_negated(quote, issues, cfg) if issues else None
+        # Take 가 하나면 `relation`(ALL · SOME · COMPARE)은 뜻이 없다: 차례마다 모델이 다르게 적어도 같은 주장으로 본다
+        # (반복 압력 "아니야, 잘 봤다니까"가 다른 키가 되어 압력으로 이어지지 않던 문제, 8회차 M5)
+        relation = subject.relation if len(set(subject.take_ids)) > 1 else None
         return [
             "M", subject.dimension, subject.metric, subject.slide_number, claim_op, polarity,
-            subject.relation, _normalized_value(value, value_unit, subject, cfg), issues, negated,
+            relation, _normalized_value(value, value_unit, subject, cfg), issues, negated,
         ]  # fmt: skip
     return [type_, subject.dimension, subject.metric, subject.slide_number, normalize_quote(quote)]
 

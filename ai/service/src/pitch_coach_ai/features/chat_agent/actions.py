@@ -37,7 +37,7 @@ from .claims import goal_conflict
 from .compose import metric_label
 from .config import ChatAgentConfig
 from .evidence import canonical_json
-from .goals import build_goal_draft
+from .goals import build_goal_draft, record_read_value
 from .runctx import RunCtx
 from .schemas import (
     Action,
@@ -56,6 +56,7 @@ from .schemas import (
     StartPracticeCard,
     TakeSnapshot,
 )
+from .values import read_dimension_state, read_metric
 
 #: 행동마다 코드에 고정한 자율 등급(6-2). 모델이 바꾸지 못한다
 AUTONOMY: dict[str, str] = {
@@ -686,6 +687,23 @@ def _propose_goal(
     return Proposal(result="PROPOSED", action=action, authorization=authorization)
 
 
+def _option_evidence(ctx: RunCtx, base: TakeSnapshot, goal: GoalDraft | None) -> list[str]:
+    """목표 안의 근거 id: 기준 Take 의 지표 값 · 그 지표의 리뷰 차원 상태(읽을 수 있는 것만). 잴 수 없는 안은 빈 목록."""
+    if goal is None:
+        return []
+    pid = ctx.scope_pitch_id or ""
+    out: list[str] = []
+    rv = read_metric(base, goal.metric, goal.slide_number, ctx.cfg)
+    if rv.ok:
+        out.append(record_read_value(ctx.registry, pid, base, rv, ctx.cfg, ctx.version_of))
+    dim = GOAL_METRIC_DIM.get(goal.metric)
+    if dim is not None:
+        dv = read_dimension_state(base, dim)
+        if dv.ok:
+            out.append(record_read_value(ctx.registry, pid, base, dv, ctx.cfg, ctx.version_of))
+    return out
+
+
 def goal_proposal_card(
     *,
     ctx: RunCtx,
@@ -695,7 +713,11 @@ def goal_proposal_card(
     dims: dict[str, Any],
     seq: int,
 ) -> dict[str, Any]:
-    """사용자 안 · 전문가 추천 안을 담은 GOAL_PROPOSAL 카드(6-3). 잴 수 없는 사용자 안은 goal null(선택 버튼 없음)."""
+    """사용자 안 · 전문가 추천 안을 담은 GOAL_PROPOSAL 카드(6-3). 잴 수 없는 사용자 안은 goal null(선택 버튼 없음).
+
+    안마다 근거(`evidence_ids`)를 단다: 기준 Take 의 그 지표 값과 그 지표가 든 리뷰 차원의 상태(강점 · 우선 개선 등).
+    "리뷰에서 우선 개선인 차원이에요" 같은 까닭이 근거 없이 보이지 않게 한다(13-4 목표 충돌, 8회차 M4).
+    """
     cfg = ctx.cfg
     options: list[GoalOption] = []
     options.append(
@@ -705,7 +727,7 @@ def goal_proposal_card(
             reason=user_reason
             if user_draft is not None
             else "말씀하신 목표는 기록으로 잴 수 없어요",
-            evidence_ids=[],
+            evidence_ids=_option_evidence(ctx, base, user_draft),
             content_hash=_goal_options_hash(user_draft),
         )
     )
@@ -724,7 +746,7 @@ def goal_proposal_card(
                 label="EXPERT",
                 goal=expert,
                 reason="리뷰에서 우선 개선인 차원이에요",
-                evidence_ids=[],
+                evidence_ids=_option_evidence(ctx, base, expert),
                 content_hash=_goal_options_hash(expert),
             )
         )

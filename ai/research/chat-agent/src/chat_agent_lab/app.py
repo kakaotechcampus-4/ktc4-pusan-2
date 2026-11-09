@@ -20,7 +20,7 @@ import secrets
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -49,6 +49,36 @@ def load_corpus(cfg: ChatAgentConfig = DEFAULT_CONFIG, *, allow_unreviewed: bool
     return build_corpus(manifest, files, cfg=cfg, allow_unreviewed=allow_unreviewed)
 
 
+@dataclass(frozen=True)
+class EmbeddingEnv:
+    """`ai/.env` 의 임베딩 묶음(`OPENAI_EMBEDDING_*`). 셋이 모두 있을 때만 만든다. 키 값은 출력하지 않는다."""
+
+    base_url: str
+    api_key: str = field(repr=False)
+    model: str
+
+
+def embedding_env(env_file: Path | None = ENV_FILE) -> EmbeddingEnv | None:
+    """임베딩 묶음을 읽는다. 하나라도 비어 있으면 None(키워드 검색만, 서비스의 '셋 다 있거나 없어야 한다'는 연구에선 없음으로 본다)."""
+    from dotenv import load_dotenv
+
+    if env_file is not None and env_file.exists():
+        load_dotenv(env_file)
+    base = os.environ.get("OPENAI_EMBEDDING_BASE_URL")
+    key = os.environ.get("OPENAI_EMBEDDING_API_KEY")
+    model = os.environ.get("OPENAI_EMBEDDING_MODEL")
+    return EmbeddingEnv(base, key, model) if base and key and model else None
+
+
+def make_embed_query(
+    env: EmbeddingEnv, dims: int
+) -> Callable[[Sequence[str], float], list[list[float]]]:
+    """질문 임베딩 함수(서비스 `common/embedding.py` 와 같은 호출: 재시도 없음 · 호출마다 시간 제한)."""
+    from pitch_coach_ai.common.embedding import embedder
+
+    return embedder(base_url=env.base_url, api_key=env.api_key, model=env.model, dims=dims)
+
+
 @dataclass
 class TurnOutcome:
     """한 호출의 결과: 스트림 전 오류면 `status`와 `error`, 아니면 200과 줄 반복자."""
@@ -70,6 +100,8 @@ class AgentApp:
     log: Callable[[dict[str, Any]], None] = lambda _l: None
     clock_ms: Callable[[], int] = field(default=lambda: int(time.time() * 1000))
     monotonic: Callable[[], float] = time.monotonic
+    #: 질문 임베딩 함수(하이브리드 검색, 6-10). 없으면 키워드 검색만. 카드 벡터는 `corpus` 가 가진다
+    embed_query: Callable[[Sequence[str], float], Any] | None = None
 
     def __post_init__(self) -> None:
         self._slots = threading.BoundedSemaphore(self.max_concurrency)
@@ -87,6 +119,7 @@ class AgentApp:
             monotonic=self.monotonic,
             cfg=self.cfg,
             log=self.log,
+            embed_query=self.embed_query,
         )
 
     def turn(self, body: bytes, *, request_id: str | None = None) -> TurnOutcome:
@@ -166,8 +199,11 @@ def from_env(
     bundle: str = "OPENAI",
     log: Callable[[dict[str, Any]], None] | None = None,
     role: Any = None,
+    search: str = "hybrid",
 ) -> AgentApp:
-    """`ai/.env`에서 모델 묶음(`OPENAI_*`, 비교 시험은 `OPENAI_SOL_*`)과 서명 키를 읽어 앱을 만든다. 키 값은 출력하지 않는다."""
+    """`ai/.env`에서 모델 묶음(`OPENAI_*`, 비교 시험은 `OPENAI_SOL_*`)과 서명 키를 읽어 앱을 만든다. 키 값은 출력하지 않는다.
+
+    임베딩 묶음(`OPENAI_EMBEDDING_*`)이 모두 있고 카드 벡터 파일이 맞으면 하이브리드 검색을 켠다(`search="keyword"`면 끈다)."""
     from dotenv import load_dotenv
     from pitch_coach_ai.common.llm import ToolLlmClient, tool_role
 
@@ -193,6 +229,26 @@ def from_env(
         if base_url and api_key and model
         else None
     )
+    # `search="hybrid"`(기본)이고 .env 파일을 읽었으며 임베딩 묶음이 있으면 서비스처럼 하이브리드 검색을 켠다
+    emb = embedding_env(None) if env_file is not None else None  # 위에서 .env 를 이미 읽었다
+    corpus = load_corpus()
+    embed_query = None
+    if emb is not None and search == "hybrid":
+        from .scenario import with_search_vectors
+
+        try:
+            # 서비스와 같이 파일 · 모델 · 차원이 맞을 때만 쓴다(어긋나면 키워드 검색만)
+            corpus = with_search_vectors(
+                corpus, model=emb.model, dims=DEFAULT_CONFIG.embed_dimensions
+            )
+            embed_query = make_embed_query(emb, DEFAULT_CONFIG.embed_dimensions)
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            # 벡터 파일 누락 · 읽기 실패 · 어긋남은 앱을 죽이지 않고 키워드 검색만 쓴다(경고만, 서비스와 같다)
+            embed_query = None
+            corpus = load_corpus()
+            (log or (lambda _l: None))(
+                {"event": "agent_embeddings_unavailable", "cause": type(e).__name__}
+            )
     raw = os.environ.get("AGENT_STATE_SECRET")
     secret = raw.encode("utf-8") if raw else secrets.token_bytes(32)
     prev = os.environ.get("AGENT_STATE_SECRET_PREVIOUS")
@@ -200,7 +256,8 @@ def from_env(
         llm=llm,
         secret=secret,
         previous_secret=prev.encode("utf-8") if prev else None,
-        corpus=load_corpus(),
+        corpus=corpus,
+        embed_query=embed_query,
         enabled=os.environ.get("AGENT_ENABLED", "true").lower() != "false",
         max_concurrency=int(os.environ.get("AGENT_MAX_CONCURRENCY", "4")),
         log=log or (lambda _l: None),

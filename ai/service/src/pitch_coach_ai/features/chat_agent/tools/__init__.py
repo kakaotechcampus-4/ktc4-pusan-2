@@ -68,6 +68,8 @@ class ToolResult:
     result_summary: str = ""
     cacheable: bool = True
     source_ids: list[str] = field(default_factory=list)
+    #: 서비스 로그에 더할 관측값(`search_guides`: embed · embed_ms · search_mode, `agent_embed` 로그로만 나가고 진단 기록 모양은 안 바꾼다). 캐시에 담지 않는다
+    diag: dict[str, Any] = field(default_factory=dict)
 
     def model_view(self) -> dict[str, Any]:
         """모델에 돌려줄 짧은 JSON."""

@@ -320,6 +320,9 @@ def test_fm_L6_06_first_sentence_is_script_fact_and_unknown_never_matches_or_dif
         ([], NEG, "CONTRADICTED"),
         ([("GAZE_LOW_EYE_CONTACT", 3, False)], POS, "UNVERIFIABLE"),  # 믿을 수 없는 구간만
         ([("GAZE_LOW_EYE_CONTACT", 3, False)], NEG, "UNVERIFIABLE"),
+        # 다른 차원(script_independence)의 문제(대본 응시)는 청중 시선 주장의 근거가 아니다 — 리뷰 차원 매핑 그대로(8회차)
+        ([("GAZE_ON_SCRIPT", 3, True)], POS, "PARTLY"),
+        ([("GAZE_ON_SCRIPT", 3, True), ("GAZE_LOW_EYE_CONTACT", 3, True)], POS, "CONTRADICTED"),
     ],
 )
 def test_fm_L6_18_slide_scope_table(issues, polarity, expected):
@@ -1104,10 +1107,11 @@ def test_fm_L6_09_claim_key_same_claim_same_key_and_unit_normalized():
             )
         },
         {
+            # relation 은 Take 가 둘 이상일 때만 키에 든다(Take 하나면 뜻이 없다, 8회차 M5)
             "subject": Subject(
                 dimension="audience_gaze",
                 metric="audience_ratio",
-                take_ids=["take-5"],
+                take_ids=["take-5", "take-4"],
                 relation="ALL",
             )
         },
@@ -1772,3 +1776,19 @@ def test_goal_only_counts_as_a_condition_when_a_number_is_set() -> None:
     cfg = load_config()
     assert clm.measurement_dispute("시선 목표치보다 낮게 나왔어. 다시 봐 줘", cfg)
     assert not clm.measurement_dispute("시선 목표를 30%로 다시 평가해 줘", cfg)
+
+
+def test_claim_key_ignores_relation_for_a_single_take() -> None:
+    """Take 하나에 대한 주장은 모델이 relation 을 ALL · null 로 다르게 적어도 같은 키다(반복 압력이 이어지게, 8회차 M5)."""
+    base = dict(
+        type="MEASURED", claim_op="OVERALL", polarity="POSITIVE", value=None, value_unit=None,
+        quote="Take 5 시선 잘 봤어", cfg=CFG,
+    )  # fmt: skip
+    one = Subject(dimension="audience_gaze", take_ids=["take-5"])
+    assert claim_key(subject=one, **base) == claim_key(
+        subject=one.model_copy(update={"relation": "ALL"}), **base
+    )
+    two = Subject(dimension="audience_gaze", take_ids=["take-4", "take-5"])
+    assert claim_key(subject=two.model_copy(update={"relation": "ALL"}), **base) != claim_key(
+        subject=two.model_copy(update={"relation": "SOME"}), **base
+    )
