@@ -89,19 +89,8 @@ function ButtonDoc({ stateId }: { stateId: string }) {
   );
 }
 
-/** 창 머리글처럼 제목 옆에 둔다. 좁은 머리글은 기본과 나란히 두어 가로 여백을 비교한다 */
-function CloseButtonDoc({ stateId }: { stateId: string }) {
-  if (stateId === 'compact')
-    return (
-      <Specimen title="닫기 버튼 · 좁은 머리글" light>
-        <Row label="compact">
-          <CloseButton compact aria-label="채팅 에이전트 닫기" />
-        </Row>
-        <Row label="기본">
-          <CloseButton />
-        </Row>
-      </Specimen>
-    );
+/** 창 머리글처럼 제목 옆에 둔다 */
+function CloseButtonDoc() {
   return (
     <Specimen title="닫기 버튼" light>
       <Row label="창 머리글">
@@ -300,7 +289,7 @@ export function ComponentDoc({ id, stateId }: { id: string; stateId: string }) {
     case 'button':
       return <ButtonDoc stateId={stateId} />;
     case 'close-button':
-      return <CloseButtonDoc stateId={stateId} />;
+      return <CloseButtonDoc />;
     case 'badge':
       return <BadgeDoc stateId={stateId} />;
     case 'card':
