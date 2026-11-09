@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { Api, count, login, openChat, script, seed, send, sql, trackBearer, useScenario } from './helpers';
+import { Api, count, login, openChat, openPanel, script, seed, send, sql, trackBearer, useScenario } from './helpers';
 
 /**
  * 시나리오 3 — 승인 대기 → 새로고침 → 승인 → 끝: 목표 저장(SAVE_GOAL, ASK) 확인 카드가 새로고침 뒤에도 남고,
@@ -30,8 +30,7 @@ test('승인 대기 → 새로고침 → 승인 → 목표 저장(한 번만)', 
 
   // 새로고침 — 카드가 그대로 남는다(상태가 화면이 아니라 BE 에 있다)
   await page.reload();
-  await page.getByRole('button', { name: '채팅 에이전트', exact: true }).click();
-  panel = page.getByRole('dialog', { name: '채팅 에이전트' });
+  panel = await openPanel(page);
   card = panel.locator('[data-card="ASK_CONFIRM"]');
   await expect(card).toBeVisible();
   expect((await api.run(runId)).status).toBe('WAITING_APPROVAL');

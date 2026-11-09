@@ -68,13 +68,23 @@ export async function login(context: BrowserContext, t: Seeded): Promise<void> {
   ]);
 }
 
+/** 대화창의 접근성 이름 — FE 화면 이름(새미나이, 기능 문서 12-4)이 바뀌면 여기만 고친다 */
+const LAUNCHER = '새미나이 열기';
+const PANEL = '새미나이';
+const INPUT = '새미나이에게 메시지 보내기...';
+
+/** 지금 화면의 런처를 눌러 채팅 패널을 연다(새로고침 뒤 다시 열 때도) */
+export async function openPanel(page: Page): Promise<Locator> {
+  await page.getByRole('button', { name: LAUNCHER, exact: true }).click();
+  const panel = page.getByRole('dialog', { name: PANEL, exact: true });
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
 /** 리포트 화면에서 채팅 패널을 연다 */
 export async function openChat(page: Page, takeId: string): Promise<Locator> {
   await page.goto(`/takes/${takeId}`);
-  await page.getByRole('button', { name: '채팅 에이전트', exact: true }).click();
-  const panel = page.getByRole('dialog', { name: '채팅 에이전트' });
-  await expect(panel).toBeVisible();
-  return panel;
+  return openPanel(page);
 }
 
 /** 말을 보내고 BE 가 돌려준 ids 를 받는다 */
@@ -82,7 +92,7 @@ export async function send(page: Page, panel: Locator, text: string) {
   const accepted = page.waitForResponse(
     (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/chat/messages',
   );
-  await panel.getByPlaceholder('메시지를 입력하세요').fill(text);
+  await panel.getByPlaceholder(INPUT).fill(text);
   await panel.getByRole('button', { name: '입력', exact: true }).click();
   const body = await (await accepted).json();
   return { runId: body.run_id as string, conversationId: body.conversation_id as string, messageId: body.message_id as string };
