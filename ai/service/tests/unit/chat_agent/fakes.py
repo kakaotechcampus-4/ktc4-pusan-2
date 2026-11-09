@@ -5,7 +5,9 @@
 - `plan()` · `tools()` · `answer()` · `fix()`: 구조화 · 도구 응답 만들기. `tool_results(req)`: 요청 속 도구 결과 JSON 목록.
 - `request(**바꿀 것)`: 예시 `request_user_message.json`에서 시작한 요청 dict.
 - `load_corpus()`: 코어 패키지의 자료 묶음(검수 전 카드 포함, 연구 단계와 같음).
-- `run_turn(req, llm, ...)`: `handle_turn`을 불러 (상태 코드 · 줄 목록 · final 데이터)를 돌려준다.
+- `run_turn(req, llm, ...)`: `handle_turn`을 불러 (상태 코드 · 줄 목록 · final 데이터)를 돌려준다. 받은 줄은 `check_contract`로
+  계약(줄 종류 5종 · 행동 종류 5종, 새 종류 없음)을 본다 — 턴 시험이 모두 이 함수를 거치므로 모든 턴 시험의 스트림이 이 검사를 받는다
+  (묶음 시험: test_turn_contract.py).
 """
 
 from __future__ import annotations
@@ -37,6 +39,22 @@ NOW_MS = 1_793_000_000_000
 Item = LlmResult | LlmError | Callable[[LlmRequest], "LlmResult | LlmError"]
 #: 가짜 응답의 기본 사용량(공급자 실측값 흉내)
 DEFAULT_USAGE = Usage(100, 20)
+#: 스트림 줄 종류(5-4)와 행동 종류(5-8)의 닫힌 집합. 여기에 없는 종류가 나오면 계약 변경이다(목표 동작: 새 줄 · 행동 종류 없음)
+STREAM_EVENTS = frozenset({"plan", "tool_done", "claim", "final", "error"})
+ACTION_TYPES = frozenset({"FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"})
+
+
+def check_contract(lines: list[dict[str, Any]]) -> None:
+    """한 응답의 줄 종류 ⊆ `STREAM_EVENTS`, 끝 줄(final)의 행동 종류 ⊆ `ACTION_TYPES`. 어기면 AssertionError."""
+    bad = [ln.get("event") for ln in lines if ln.get("event") not in STREAM_EVENTS]
+    if bad:
+        raise AssertionError(f"계약에 없는 줄 종류: {bad}")
+    last = lines[-1] if lines else {}
+    if last.get("event") == "final":
+        types = [a.get("type") for a in (last.get("data") or {}).get("actions") or []]
+        wrong = [t for t in types if t not in ACTION_TYPES]
+        if wrong:
+            raise AssertionError(f"계약에 없는 행동 종류: {wrong}")
 
 
 class FakeLlm:
@@ -372,6 +390,7 @@ def run_turn(
         return resp.error.status, [], resp.error.body()
     assert resp.lines is not None
     lines = [json.loads(x) for x in resp.lines]
+    check_contract(lines)
     last = lines[-1]
     for entry in sink:
         if entry.get("event") in ("agent_crash", "agent_final_invalid"):

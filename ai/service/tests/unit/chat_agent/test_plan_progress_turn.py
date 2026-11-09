@@ -19,8 +19,8 @@ from pitch_coach_ai.features.chat_agent.schemas import FinalData
 from . import fakes as F
 from .test_turn import COMPARE, MSG, change_draft, fetched_take, resume_request
 
-STREAM_EVENTS = {"plan", "tool_done", "claim", "final", "error"}
-ACTION_TYPES = {"FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"}
+STREAM_EVENTS = F.STREAM_EVENTS
+ACTION_TYPES = F.ACTION_TYPES
 _ENUM = re.compile(r"^[A-Z_]+$")
 
 

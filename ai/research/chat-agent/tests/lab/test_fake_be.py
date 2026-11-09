@@ -1073,6 +1073,13 @@ def _mutate(kind: str, lines: list[str]) -> list[str]:
         data = objs[-1]["data"]
         data.update(status="DONE", actions=[], state=None)
         data["message"] = {"text": "", "claims": [], "cards": [], "sources": []}
+    elif kind == "unknown_event":
+        # 계약에 없는 줄 종류를 끝 줄 앞에 끼운다(seq 는 1부터 다시 이어 다른 검사에 걸리지 않게)
+        objs.insert(-1, {**objs[0], "event": "thought", "data": {"text": "생각 중"}})
+        for i, o in enumerate(objs, 1):
+            o["seq"] = i
+    elif kind == "unknown_action_type":
+        objs[-1]["data"]["actions"][0]["type"] = "DELETE_TAKE"
     out = [json.dumps(o, ensure_ascii=False) + "\n" for o in objs]
     if kind == "broken_json":
         out[-1] = out[-1][: len(out[-1]) // 2] + "\n"
@@ -1098,6 +1105,27 @@ def test_fm_L2_16_bad_stream_or_final_runs_no_action(kind: str) -> None:
     run = be.send_message(None, MSG, page_take_id="t-5")
     assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
     assert run.actions == [] and be.conversations[run.conversation_id].messages[-1].role == "user"
+
+
+@pytest.mark.parametrize(
+    ("kind", "code"),
+    [("unknown_event", "STREAM_INVALID"), ("unknown_action_type", "FINAL_INVALID")],
+)
+def test_contract_new_line_kind_or_action_type_is_upstream_error_and_runs_no_action(
+    kind: str, code: str
+) -> None:
+    """새 줄 종류(5-4의 다섯 밖) · 새 행동 종류(5-8의 다섯 밖)는 계약 위반이다: BE 스트림 · 최종 응답 검사(12-3)가 거절해 행동을
+    한 번도 실행하지 않고 실행을 AGENT_UPSTREAM_ERROR 로 끝낸다(사용자 메시지만 남음). AI 쪽 묶음 시험은 서비스
+    test_turn_contract.py."""
+    lines = _mutate(kind, needs_action_lines())
+    be = FakeBe(ReplayApp(lines))  # type: ignore[arg-type]
+    ran: list[Any] = []
+    be.before_action = lambda *a: ran.append(a)
+    run = be.send_message(None, MSG, page_take_id="t-5")
+    assert (run.status, run.error_code) == ("FAILED", "AGENT_UPSTREAM_ERROR")
+    assert run.calls[0].error_code == code and run.calls[0].final is None
+    assert run.actions == [] and ran == []
+    assert be.conversations[run.conversation_id].messages[-1].role == "user"
 
 
 def test_bad_diagnostics_are_dropped_but_body_is_processed() -> None:
