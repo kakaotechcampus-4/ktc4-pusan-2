@@ -347,5 +347,8 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 
 ## 10. 열린 질문 · 알려진 한계
 
-- **BE `GET /prepare`의 짝 규칙** — 아직 "장 수가 같은 가장 최근 발표자료"라, FE 피치 수정의 규칙(가장 최근 대본은 최신 슬라이드)과 다릅니다. 지금은 장치 점검이 지난 자료를 알리고 확인받아 메웁니다(2-3). BE 규칙을 맞출지는 BE와 정할 안건입니다([pitch-create.md](pitch-create.md) 10절).
+- **BE `GET /prepare`의 짝 규칙** — 연습 조합 없이 장치 점검에 들어오면(리포트의 [Take N 연습하기] · 분석 실패 화면의 [다시 연습하기] · 대화의 [연습 준비로] · 주소 직접 입력) BE가 짝을 고릅니다. 이 문서의 기준 항목이고, [pitch-create.md](pitch-create.md) · [report.md](report.md) 10절은 여기를 가리킵니다.
+  - BE 규칙은 아직 "장 수가 같은 가장 최근 발표자료"라, FE 피치 수정의 규칙(가장 최근 대본은 최신 슬라이드, [pitch-create.md](pitch-create.md) 6-3)과 다릅니다. 그래서 새 PDF를 올린 뒤에는 지난 자료가 골라질 수 있습니다.
+  - 지금은 장치 점검이 지난 자료를 알리고 확인받은 뒤에만 시작해서, 말없이 지난 자료로 연습되지는 않습니다(2-3).
+  - BE 규칙을 FE와 맞출지는 BE와 정할 안건입니다.
 - **미정 항목**(I-03 · I-17 · I-18 · I-19) — [frontend/AGENTS.md](../../../frontend/AGENTS.md) "아직 안 정해진 것"을 봅니다.
