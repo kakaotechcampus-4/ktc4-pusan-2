@@ -180,7 +180,8 @@ def test_tool_error_without_recovery_closes_with_none_and_the_answer_decides_the
     )
     assert fd.status == "DONE"
     assert data["plan"][1]["step"].endswith("확인 실패")
-    assert [p["status"] for p in data["plan"]] == ["DONE", "SKIPPED", "DONE"]
+    # 실행했지만 실패한 단계는 '의도적으로 건너뜀'이 아니다: 글에 실패를 보인 채 DONE
+    assert [p["status"] for p in data["plan"]] == ["DONE", "DONE", "DONE"]
 
 
 # ── 호출 부족(BUDGET_LOW) → 코드가 부분 결과로 끝냄 ──────────────────────────────
@@ -354,6 +355,9 @@ def test_model_plan_edits_mid_run_show_at_once_and_the_fourth_is_a_limit_error()
     # 넷째 고치기: 모델에는 한도 오류, 화면 목록에는 들어가지 않음
     assert seen["fourth"]["ok"] is False and seen["fourth"]["error"]["code"] == "LIMIT"
     assert not any(s["step"] == "넷째 고치기" for p in plans for s in p)
+    # 도구 기록도 실제와 같다: 거절된 넷째 고치기는 OK 가 아니라 ERROR · '고치기 한도'
+    last_edit = lines[edit_traces[-1]]["data"]["trace"]
+    assert (last_edit["outcome"], last_edit["result_summary"]) == ("ERROR", "고치기 한도")
     limits = [s for s in fd.diagnostics.steps if s.kind == "LIMIT"]  # type: ignore[union-attr]
     assert [(s.code, s.detail.used) for s in limits] == [("PLAN_EDITS", 3)]  # type: ignore[union-attr]
     # 표시 갱신은 고치기보다 많이 나갔다(도구 두 번 + 끝 처리) — 한도와 상관없음

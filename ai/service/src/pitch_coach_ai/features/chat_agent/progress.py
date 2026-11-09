@@ -550,7 +550,8 @@ def finish_plan(
     answered: bool,
 ) -> list[dict[str, Any]]:
     """끝 처리: DONE · REFUSED 면 실행하지 않은 단계 SKIPPED, PARTIAL 이면 TODO(DOING 포함), NEEDS_ACTION 은 그대로.
-    답 쓰기 단계(`tool == "answer"`)는 `answered`(답 문장이 하나 이상)면 DONE."""
+    답 쓰기 단계(`tool == "answer"`)는 `answered`(답 문장이 하나 이상)면 DONE. 실행했지만 실패한 단계(`확인 실패`)는 DONE · REFUSED
+    답에서 DONE 이다 — 실행한 단계이고 글이 실패를 보이므로 '의도적으로 건너뜀'(SKIPPED)이 아니다. PARTIAL 이면 남은 일(TODO)."""
     plan = render(meta, registry, cfg)
     if status not in ("DONE", "REFUSED", "PARTIAL"):
         return plan
@@ -558,7 +559,9 @@ def finish_plan(
     out = []
     for m, p in zip(meta, plan, strict=True):
         if p["status"] in ("DOING", "TODO"):
-            p = {**p, "status": "DONE" if m["tool"] == "answer" and answered else left}
+            ran_failed = bool(m.get("ran")) and bool(m.get("failed")) and status != "PARTIAL"
+            done = (m["tool"] == "answer" and answered) or ran_failed
+            p = {**p, "status": "DONE" if done else left}
         out.append(p)
     return out
 

@@ -442,7 +442,9 @@ def test_recovered_tool_failure_is_done_but_unrecovered_is_partial() -> None:
     done = turn(F.tools(bad, prefix="a"), F.tools(("list_pitches", {}), prefix="b"))
     assert done["status"] == "DONE"
     assert texts(done)[:1] == [NO_TAKE_SENTENCE]
-    assert [p["status"] for p in done["plan"]] == ["DONE", "SKIPPED", "DONE"]
+    # 실행했지만 실패한 단계는 글에 실패를 보인 채 DONE(SKIPPED 는 실행하지 않은 단계만)
+    assert [p["status"] for p in done["plan"]] == ["DONE", "DONE", "DONE"]
+    assert done["plan"][1]["step"].endswith("확인 실패")
     assert done["plan"][1]["step"].endswith("확인 실패")
     # 확인한 뒤 실패하고 복구하지 않았다: 남은 부분이 있어 PARTIAL, 실패 단계는 TODO
     left = turn(F.tools(("list_pitches", {}), prefix="b"), F.tools(bad, prefix="a"))

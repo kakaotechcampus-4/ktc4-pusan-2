@@ -1114,6 +1114,10 @@ class Loop:
                             False,
                             {"code": "LIMIT", "message": "할 일 목록 고치기 한도"},
                         )
+                        # 도구 기록도 실제와 같게: 거절된 고치기는 OK · '할 일 목록 갱신'이 아니다
+                        trace = trace.model_copy(
+                            update={"outcome": "ERROR", "result_summary": "고치기 한도"}
+                        )
                     # 성공한 고치기의 결과는 모델이 보낸 목록 그대로다(`_update_plan`). 화면(plan 줄)에는 실행한 단계를 앞에 남긴
                     # 합친 목록이 나가지만, 그 목록(지운 숫자 · 덧붙은 실행 단계 · 코드 상태)을 모델에게 돌려주면 모델은 고치기가 안
                     # 먹혔다고 보고 같은 update_plan 을 되풀이해 반복 멈춤(PARTIAL) · 계획 수정 한도 · 시간을 썼다(r9 평가)
@@ -1222,7 +1226,7 @@ class Loop:
         return self._same_condition_reassess_calls()
 
     def _same_condition_reassess_calls(self) -> list[ToolCall]:
-        """"같은 조건으로 한 번 더 다시 평가해 줘"(6-6): 앞 턴에서 다시 평가를 청한 사용자 말의 조건(대본 사용)으로 `reassess` 를 낸다.
+        """ "같은 조건으로 한 번 더 다시 평가해 줘"(6-6): 앞 턴에서 다시 평가를 청한 사용자 말의 조건(대본 사용)으로 `reassess` 를 낸다.
 
         모델은 대화 기록에서 조건을 놓치고 빈 조건으로 부르거나('같은 조건이라 바뀔 것이 없다') 부르지 않았다(r9 ra-script-twice).
         조건은 대화 기록(`history.messages`)에서 다시 평가 낱말이 있는 가장 최근 사용자 말이 대본 사용을 말했을 때만 이어 쓴다. 이번 말이

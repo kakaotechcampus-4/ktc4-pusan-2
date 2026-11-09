@@ -12,16 +12,16 @@ from pitch_coach_ai.features.chat_agent.claims import (
     UNSET,
     AssessmentDraft,
     DraftSubject,
-    claim_key,
     change_direction,
+    claim_key,
     claim_link_key,
     code_verdict,
-    tendency_advice_as_request,
     finalize,
     goal_conflict,
     normalize_quote,
     round_display,
     split_check,
+    tendency_advice_as_request,
     to_base_unit,
 )
 from pitch_coach_ai.features.chat_agent.claims import _aggregate as aggregate
