@@ -218,6 +218,37 @@ def test_compound_request_joined_by_go_is_authorized_for_both_actions() -> None:
     assert authorize("SAVE_GOAL", "목표로 잡고", "목표로 잡고 연습했어", CFG) == "NO_REQUEST_FORM"
 
 
+def test_condition_after_the_request_verb_belongs_to_the_next_request() -> None:
+    """조건(~면)은 요청 동사 앞에서만 본다(final60 rep-pitchinvest-filler-goal): '저장되면 바로 연습'은 이동 요청의 순서다."""
+    msg = (
+        "요즘 연습에서 제일 시급한 거 하나 골라서 대화 목표로 저장해 주고, "
+        "저장되면 바로 연습하러 갈 수 있게 해 주세요."
+    )
+    assert authorize("SAVE_GOAL", "대화 목표로 저장해 주고", msg, CFG) is None
+    # 동사 앞의 조건은 그대로 막는다
+    assert (
+        authorize("SAVE_GOAL", "목표로 저장해 줘", "괜찮으면 목표로 저장해 줘", CFG) == "CONDITION"
+    )
+    assert (
+        authorize(
+            "SAVE_GOAL", "목표로 저장해 주고", "3장이면 목표로 저장해 주고 연습하러 가자", CFG
+        )
+        == "CONDITION"
+    )
+
+
+def test_volitional_rae_yo_is_not_quoted_speech() -> None:
+    """'~ㄹ래요'(바람 · 의향)는 남의 말 인용 '~래요'가 아니다(final60 svc-ngo-save-expire: "저장해 둘래요")."""
+    msg = "후원 설명회 연습 목표로, 다음 Take에서 청중을 바라보는 비율을 지금보다 높이는 걸 저장해 둘래요."
+    assert authorize("SAVE_GOAL", "저장해 둘래요", msg, CFG) is None
+    assert authorize("SAVE_GOAL", "목표로 잡을래요", "3장 시선을 목표로 잡을래요", CFG) is None
+    # 받침 없는 음절 뒤 '래요'는 남의 말이다
+    assert (
+        authorize("SAVE_GOAL", "목표로 저장하", "코치님이 목표로 저장하래요", CFG)
+        == "QUOTED_SPEECH"
+    )
+
+
 def test_discourse_geureomyeon_is_not_condition() -> None:
     assert authorize("SAVE_GOAL", "목표로 잡아 줘", "그러면 3장 시선을 목표로 잡아 줘", CFG) is None
     assert (

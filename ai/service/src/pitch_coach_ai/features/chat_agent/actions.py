@@ -226,6 +226,23 @@ def _clause_of(message: str, quote: str) -> str | None:
     return message[s:e]
 
 
+def _rieul_final(ch: str) -> bool:
+    """한글 음절의 받침이 ㄹ인가("둘" · "할" · "을")."""
+    return "가" <= ch <= "힣" and (ord(ch) - 0xAC00) % 28 == 8
+
+
+def _quoted_speech(clause: str, cfg: ChatAgentConfig) -> bool:
+    """절에 남의 말 인용 표시가 있는가. '래요'는 바로 앞 음절의 받침이 ㄹ이면 인용이 아니라 바람 · 의향의 '~ㄹ래요'다
+    ("저장해 둘래요" · "목표로 할래요"는 요청, "저장하래요"는 남의 말, final60 svc-ngo-save-expire)."""
+    for m in cfg.quotation_markers:
+        start = clause.find(m)
+        while start != -1:
+            if not (m.startswith("래") and start > 0 and _rieul_final(clause[start - 1])):
+                return True
+            start = clause.find(m, start + 1)
+    return False
+
+
 def _has_condition(clause: str, cfg: ChatAgentConfig) -> bool:
     for word in re.findall(r"[가-힣]+", clause):
         if word in _NOUN_MYEON:
@@ -255,12 +272,15 @@ def authorize(
     clause = _clause_of(original, q) or q
     if any(w in clause for w in cfg.negation_words):
         return "NEGATION"
-    if any(m in clause for m in cfg.quotation_markers):
+    if _quoted_speech(clause, cfg):
         return "QUOTED_SPEECH"
-    if _has_condition(clause, cfg):
-        return "CONDITION"
     q_at = clause.find(q)
     spots = [q_at + i for w in cfg.action_words.get(action_type, ()) if (i := q.find(w)) >= 0]
+    # 조건(~면)은 요청 동사 앞에서만 본다: 조건절은 그것이 거는 동사 앞에 온다. 동사 뒤의 '~면'은 다음 요청에 걸린다
+    # ("목표로 저장해 주고, 저장되면 바로 연습하러 갈 수 있게 해 주세요"의 '저장되면'은 연습 이동의 순서, final60
+    # rep-pitchinvest-filler-goal). 행동 낱말이 없으면 절 전체를 본다
+    if _has_condition(clause[: min(spots)] if spots else clause, cfg):
+        return "CONDITION"
     if not spots:
         return "NO_ACTION_WORD"
     pos = min(spots)
