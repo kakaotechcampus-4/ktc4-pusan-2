@@ -487,7 +487,10 @@ it('OS의 움직임 감소 설정 변경을 홈을 연 상태에서도 반영한
       if (event === 'change') listeners.delete(listener);
     }),
   };
-  vi.stubGlobal('matchMedia', vi.fn(() => preference));
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => preference),
+  );
   const setIntervalSpy = vi.spyOn(window, 'setInterval');
   const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
   await render();

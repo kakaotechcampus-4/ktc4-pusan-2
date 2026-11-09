@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:lan": "vite --mode lan --host",
     "format": "prettier --write .",
-    "format:check": "prettier src/features/pitch/deletePitch.test.tsx | diff -u src/features/pitch/deletePitch.test.tsx -; prettier --check .",
+    "format:check": "prettier --check .",
     "doctor": "node scripts/doctor.mjs",
     "models": "node scripts/models.mjs"
   },
