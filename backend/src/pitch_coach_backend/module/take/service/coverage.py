@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any, Literal
 
 from sqlalchemy.orm import Session
@@ -20,12 +21,13 @@ from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.adapter.ai_client import request_analyze, request_rescore
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, coverage_to_store
 from pitch_coach_backend.module.take.entity import Take
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.repository import COVERAGE_STALE_AFTER, TakeRepository
 from pitch_coach_backend.module.take.states import (
     ANALYZING,
     AWAITING_CONFIRMATION,
     COVERAGE_CANDIDATE_KIND,
     COVERAGE_KIND,
+    COVERAGE_RESCORE_FAILED,
     REVIEWING,
     SCORING,
     CoverageOutcome,
@@ -91,21 +93,26 @@ def speak_accuracy(payload: Mapping[str, Any]) -> int | None:
     return round_half_up(value, scale=100)
 
 
-def _coverage_open(take: Take | None) -> bool:
+def _coverage_open(take: Take | None, *, held: bool = False) -> bool:
+    """채점 중인 Take 인가. `held` 면 리뷰를 보류한 Take 만, 아니면 보류하지 않은 Take 만 본다."""
     return (
         take is not None
         and take.status == ANALYZING
         and take.analysis_stage == SCORING
-        and take.analysis_hold_reason is None
+        and take.analysis_hold_reason == (COVERAGE_RESCORE_FAILED if held else None)
     )
 
 
 def _lock_open_take(
-    take_repository: TakeRepository, take_id: uuid.UUID, requested_at: datetime
+    take_repository: TakeRepository,
+    take_id: uuid.UUID,
+    requested_at: datetime,
+    *,
+    held: bool = False,
 ) -> Take | None:
     # 이 작업이 아직 표식을 쥐고 있을 때만 쓴다. 이어받힌 작업의 늦은 응답은 여기서 걸러진다
     take = take_repository.lock_coverage(take_id, requested_at)
-    return take if _coverage_open(take) else None
+    return take if _coverage_open(take, held=held) else None
 
 
 @dataclass(frozen=True)
@@ -165,19 +172,28 @@ def _save_candidate(
 
 
 def _apply_merged(
-    db: Session, take_id: uuid.UUID, requested_at: datetime, base_revision: int, reply: dict
+    db: Session,
+    take_id: uuid.UUID,
+    requested_at: datetime,
+    base_revision: int,
+    reply: dict,
+    *,
+    held: bool = False,
 ) -> bool:
+    """병합 rescore 결과로 확정본을 바꾸고 후보를 지운다. `held` 는 보류한 Take 를 사람이 정해
+    복구할 때다 — 같은 트랜잭션에서 보류도 푼다 (architecture.md 1-7)."""
     payload, meta = coverage_to_store(reply, take_id)
     take_repository = TakeRepository(db)
-    if _lock_open_take(
-        take_repository, take_id, requested_at
-    ) is None or not take_repository.replace_ai_result(
+    take = _lock_open_take(take_repository, take_id, requested_at, held=held)
+    if take is None or not take_repository.replace_ai_result(
         take_id, COVERAGE_KIND, base_revision, payload, meta
     ):
         db.rollback()
         return False
     take_repository.upsert_summary_speak_accuracy(take_id, speak_accuracy(payload))
     take_repository.delete_ai_result(take_id, COVERAGE_CANDIDATE_KIND)
+    if held:
+        take.analysis_hold_reason = None
     db.commit()
     return True
 
@@ -187,7 +203,7 @@ def _hold_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) -> N
     if take is None:
         db.rollback()
         return
-    take.analysis_hold_reason = "COVERAGE_RESCORE_FAILED"
+    take.analysis_hold_reason = COVERAGE_RESCORE_FAILED
     db.commit()
 
 
@@ -214,6 +230,17 @@ def _conclude_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) 
     return "NO_COVERAGE" if confirmed is None else "READY_FOR_REVIEW"
 
 
+def _merge_body(take_id: uuid.UUID, job: CoverageJob, candidate: dict) -> dict:
+    """병합 후보를 확정하는 답 없는 rescore 요청. 남은 실패 장과 처음 채점에 쓴 rubric 을 싣는다."""
+    return {
+        "take_id": str(take_id),
+        "evaluations": candidate["evaluations"],
+        "rubrics": job.body["rubrics"],
+        "answers": [],
+        "failed": candidate["failed"],
+    }
+
+
 async def _merge_candidate(
     session_factory: Callable[[], Session],
     take_id: uuid.UUID,
@@ -221,14 +248,7 @@ async def _merge_candidate(
     candidate: dict,
 ) -> None:
     requested_at = job.requested_at
-    rubrics = job.body["rubrics"]
-    body = {
-        "take_id": str(take_id),
-        "evaluations": candidate["evaluations"],
-        "rubrics": rubrics,
-        "answers": [],
-        "failed": candidate["failed"],
-    }
+    body = _merge_body(take_id, job, candidate)
     request_id = uuid.uuid4().hex
     try:
         reply = await request_rescore(body, request_id)
@@ -349,6 +369,15 @@ def _claim_coverage(
     if requested_at is None:
         db.rollback()
         return None
+    job = _read_job(db, take_repository, take_id, requested_at)
+    db.commit()
+    return job
+
+
+def _read_job(
+    db: Session, take_repository: TakeRepository, take_id: uuid.UUID, requested_at: datetime
+) -> CoverageJob:
+    """표식을 잡은 채점 작업의 재료를 읽는다. 커밋은 부르는 쪽이 한다."""
     # 재시도 기록 · 확정본은 표식을 잡은 뒤에 다시 읽는다. 잡기 전에 읽으면 앞 작업이 그 사이에 쓴
     # 한도를 못 보고 재시도를 한 번 더 보낼 수 있다
     take = take_repository.lock_coverage(take_id, requested_at)
@@ -356,7 +385,7 @@ def _claim_coverage(
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     candidate = take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND)
     slides = script_service.script_slides(db, take.script_version_id)
-    job = CoverageJob(
+    return CoverageJob(
         requested_at=requested_at,
         body={
             "take_id": str(take_id),
@@ -374,8 +403,6 @@ def _claim_coverage(
         confirmed=(confirmed.payload, confirmed.revision) if confirmed else None,
         candidate=candidate.payload if candidate else None,
     )
-    db.commit()
-    return job
 
 
 async def analyze_script_coverage(
@@ -405,4 +432,78 @@ async def analyze_script_coverage(
         await _retry_failed_slides(
             session_factory, take_id, job, *job.confirmed, retry_used=job.retry_used
         )
+    return await _in_session(session_factory, _conclude_coverage, take_id, job.requested_at)
+
+
+# 관리자가 보류를 풀 수 있는가 (`held_recovery`)
+#   READY    : 리뷰를 보류했고 병합 후보가 남아 있으며 맡은 작업이 없다
+#   NOT_HELD : 리뷰를 보류한 Take 가 아니거나 다시 부를 후보가 없다
+#   BUSY     : 다른 작업이 표식을 쥐고 있다 (앞서 누른 복구가 돌고 있음)
+type HeldRecovery = Literal["READY", "NOT_HELD", "BUSY"]
+
+
+def held_recovery(db: Session, take_id: uuid.UUID) -> HeldRecovery | None:
+    """보류를 풀 병합 rescore 를 다시 시작할 수 있는지 본다. Take 가 없으면 None. 쓰지 않는다."""
+    take_repository = TakeRepository(db)
+    take = take_repository.get_take(take_id)
+    if take is None:
+        return None
+    if (
+        not _coverage_open(take, held=True)
+        or take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND) is None
+    ):
+        return "NOT_HELD"
+    # 표식을 잡을 때(`claim_coverage`)와 같은 DB 시계 · 기한으로 본다
+    marked = take.coverage_requested_at
+    if marked is not None and marked >= take_repository.clock() - COVERAGE_STALE_AFTER:
+        return "BUSY"
+    return "READY"
+
+
+def _claim_held(db: Session, take_id: uuid.UUID) -> CoverageJob | None:
+    """보류한 Take 의 표식을 잡고 병합 후보 · rubric 을 읽는다. 못 잡았거나 후보가 없으면 None."""
+    take_repository = TakeRepository(db)
+    requested_at = take_repository.claim_coverage(take_id, held=True)
+    if requested_at is None:
+        db.rollback()
+        return None
+    job = _read_job(db, take_repository, take_id, requested_at)
+    if job.candidate is None:
+        # 보류는 후보를 보존할 때만 건다. 후보가 없으면 다시 부를 재료가 없다
+        db.rollback()
+        return None
+    db.commit()
+    return job
+
+
+async def recover_held_coverage(
+    take_id: uuid.UUID, session_factory: Callable[[], Session] = SessionLocal
+) -> CoverageOutcome:
+    """리뷰를 보류한 Take 의 병합 rescore 를 한 번 더 부른다. 관리자가 정한 복구다
+    (architecture.md 1-3 '리뷰 보류' · 1-7).
+
+    보존한 후보와 처음 채점에 쓴 rubric 으로 LLM 없는 rescore 를 부른다. 재시도 기록 칸
+    (`coverage_rescore_retry_used`)은 되돌리지 않고, 이 경로에서 누를 때마다 한 번만 부른다.
+    성공하면 확정본 교체 · 후보 삭제 · 보류 해제를 한 트랜잭션으로 하고 다음 분석 단계를 정한다.
+    실패하면 보류를 그대로 두고 `HELD` 다. 표식을 못 잡았으면 `SKIPPED` 다.
+    """
+    job = await _in_session(session_factory, _claim_held, take_id)
+    if job is None:
+        return "SKIPPED"
+    candidate = job.candidate
+    assert candidate is not None
+    try:
+        reply = await request_rescore(_merge_body(take_id, job, candidate), uuid.uuid4().hex)
+    except CoverageCallError as e:
+        logger.warning("take=%s held coverage rescore failed: %s", take_id, e)
+    else:
+        if not await _in_session(
+            session_factory,
+            partial(_apply_merged, held=True),
+            take_id,
+            job.requested_at,
+            candidate["base_revision"],
+            reply,
+        ):
+            logger.info("take=%s stale held coverage rescore result discarded", take_id)
     return await _in_session(session_factory, _conclude_coverage, take_id, job.requested_at)

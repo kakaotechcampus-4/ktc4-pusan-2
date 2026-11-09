@@ -26,6 +26,7 @@ from pitch_coach_backend.module.take.states import (
     COMPLETED,
     COVERAGE_CANDIDATE_KIND,
     COVERAGE_KIND,
+    COVERAGE_RESCORE_FAILED,
     DONE,
     FAILED,
     FINALIZING,
@@ -393,17 +394,27 @@ class TakeRepository:
             .execution_options(populate_existing=True)
         )
 
-    def claim_coverage(self, take_id: uuid.UUID, *, takeover: bool = False) -> datetime | None:
+    def claim_coverage(
+        self, take_id: uuid.UUID, *, takeover: bool = False, held: bool = False
+    ) -> datetime | None:
         """채점 작업 표식(`coverage_requested_at`)을 잡는다. 잡았으면 그 표식을 돌려준다.
 
         Take 하나에는 채점 작업이 하나만 돈다 (`docs/ai/architecture.md` 1-7 Take별 직렬화).
         표식이 비었거나 `COVERAGE_STALE_AFTER` 넘게 묵었으면(그 작업이 끊김) 잡는다. `takeover` 는
         BE 가 다시 떴을 때 앞 프로세스의 작업을 기한과 관계없이 이어받는다. 이어받히면 앞 작업의
         저장 · 단계 전환은 표식이 달라 반영되지 않는다.
+
+        리뷰를 보류한 Take 는 잡지 않는다. `held` 면 거꾸로 보류한 Take 만 잡는다 — 관리자가 정한
+        복구(`coverage.recover_held_coverage`)만 쓴다.
         """
         free = or_(
             Take.coverage_requested_at.is_(None),
             Take.coverage_requested_at < func.now() - COVERAGE_STALE_AFTER,
+        )
+        hold = (
+            Take.analysis_hold_reason == COVERAGE_RESCORE_FAILED
+            if held
+            else Take.analysis_hold_reason.is_(None)
         )
         return self.db.scalar(
             update(Take)
@@ -411,7 +422,7 @@ class TakeRepository:
                 Take.id == take_id,
                 Take.status == ANALYZING,
                 Take.analysis_stage == SCORING,
-                Take.analysis_hold_reason.is_(None),
+                hold,
                 *(() if takeover else (free,)),
             )
             # now() 는 트랜잭션 시작 시각이라 한 트랜잭션에서 두 번 잡으면 표식이 같아진다
