@@ -199,6 +199,9 @@ class LoopState:
     decision_seq: int = 0
     #: 대응을 기다리는 상황 신호(progress.open_signal). 조사가 끝날 때 남은 것은 대응 없음(NONE)으로 닫는다
     signals_open: list[dict[str, Any]] = field(default_factory=list)
+    #: 이 실행에서 목표 제안 카드로 낮춘 까닭(`GOAL_CONFLICT` · `UNMEASURABLE`, 카드 id 와 함께). 답에 그 까닭의 고정 문장을
+    #: 코드가 붙인다(L6-08 · L6-23). 옛 상태에는 없어 빈 목록
+    goal_proposals: list[dict[str, Any]] = field(default_factory=list)
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -1626,6 +1629,10 @@ class Loop:
             }
         if p.card is not None:
             self.st.cards.append(p.card)
+            if p.reason_code in ("GOAL_CONFLICT", "UNMEASURABLE"):
+                self.st.goal_proposals.append(
+                    {"proposal_id": p.card.get("proposal_id"), "reason": p.reason_code}
+                )
         return {"message": p.tool_message, "valid": True, "progressed": p.card is not None}
 
     def _switched_without_reading(self) -> bool:

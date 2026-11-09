@@ -271,6 +271,49 @@ def test_ask_after_unauthorized_request_becomes_goal_proposal_not_a_card() -> No
     assert "GOAL_PROPOSAL" in kinds and "ASK_CONFIRM" not in kinds
 
 
+@pytest.mark.parametrize(
+    ("metric", "note"),
+    [
+        ("filler_per_min", templates.SystemText.GOAL_CONFLICT),  # 이미 강점인 차원(L6-08)
+        ("script_ratio", templates.SystemText.GOAL_UNMEASURABLE),  # 잴 수 없는 목표(L6-23)
+    ],
+)
+def test_goal_proposal_for_conflict_or_unmeasurable_goal_says_why(
+    metric: str, note: templates.SystemText
+) -> None:
+    """기록과 어긋나거나 잴 수 없는 목표 요청은 목표 제안 카드와 함께 그 까닭의 고정 문장을 답에 싣는다(final60
+    rep-demo-goal-proposal: 카드는 나왔는데 "말씀하신 목표와 기록으로 본 추천 목표가 달라요…"가 없었다)."""
+    save = ("save_goal", {**SAVE[1], "metric": metric, "slide_number": None})
+    llm = F.FakeLlm(
+        [F.plan(assessments=drafts()[:1]), F.tools(COMPARE), F.tools(save, prefix="sg"), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=GOAL_MSG), "t-4"), llm)
+    fd = final_ok(data)
+    assert fd.status == "DONE" and fd.actions == []
+    assert fd.message is not None
+    assert "GOAL_PROPOSAL" in [c.type for c in fd.message.cards]
+    assert note.value in [c.text for c in fd.message.claims if c.kind == "SYSTEM"]
+
+
+def test_goal_proposal_for_unclear_request_has_no_conflict_sentence() -> None:
+    """허용 근거가 모호해 낮춘 제안 카드에는 목표 충돌 문장을 붙이지 않는다(까닭이 기록과의 어긋남이 아니다)."""
+    msg = "3장에서 왜 자꾸 시선이 떨어져? 목표 얘기 좀 해 보자"
+    save = ("save_goal", {**SAVE[1], "authorized_by": "목표 얘기 좀 해 보자"})
+    llm = F.FakeLlm(
+        [F.plan(assessments=drafts()[:1]), F.tools(COMPARE), F.tools(save, prefix="sg"), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=msg), "t-4"), llm)
+    fd = final_ok(data)
+    assert fd.message is not None
+    texts = fd.message.text
+    assert templates.SystemText.GOAL_CONFLICT.value not in texts
+    assert templates.SystemText.GOAL_UNMEASURABLE.value not in texts
+
+
 def test_take_reviewed_turn_never_asks() -> None:
     req = F.request(
         run__trigger="TAKE_REVIEWED",

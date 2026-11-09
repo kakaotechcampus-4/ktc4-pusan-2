@@ -1374,6 +1374,7 @@ def _pre_claims(
         if lp.record_changed:
             system.append(templates.SystemText.RECORD_CHANGED_DURING.value)
         system += _action_notes(lp)
+        system += _goal_proposal_notes(lp)
         system += _measurement_notes(lp)
         system += _missing_take_notes(lp)
         out += [Claim(kind="SYSTEM", text=t) for t in dict.fromkeys(system) if t not in said]
@@ -1478,6 +1479,28 @@ def _action_notes(lp: Loop) -> list[str]:
         removed = status == "SUCCEEDED" and t == "REASSESS" and e.get("script_points_removed")
         if removed and st.SCRIPT_POINTS_REMOVED.value not in out:
             out.append(st.SCRIPT_POINTS_REMOVED.value)
+    return out
+
+
+#: 목표 제안 카드로 낮춘 까닭 → 고정 문장(L6-08 · L6-23, 7-10)
+_GOAL_PROPOSAL_NOTE = {
+    "GOAL_CONFLICT": templates.SystemText.GOAL_CONFLICT,
+    "UNMEASURABLE": templates.SystemText.GOAL_UNMEASURABLE,
+}
+
+
+def _goal_proposal_notes(lp: Loop) -> list[str]:
+    """목표 요청을 저장 확인 카드 대신 목표 제안 카드(`GOAL_PROPOSAL`)로 낮춘 까닭의 고정 문장(L6-08 · L6-23).
+
+    사용자 목표가 기록과 어긋나면(우선 개선 차원이 따로 있음 · 이미 강점) "말씀하신 목표와 기록으로 본 추천 목표가 달라요. 하나를
+    골라 주세요.", 잴 수 없는 목표면 잴 수 없다는 문장을 붙인다. 카드가 답에 남아 있을 때만(지워진 원천으로 버린 카드는 빼고),
+    허용 근거가 모호해 낮춘 카드에는 붙이지 않는다(까닭이 기록과의 어긋남이 아니다)."""
+    shown = {c.get("proposal_id") for c in lp.st.cards if c.get("type") == "GOAL_PROPOSAL"}
+    out: list[str] = []
+    for g in lp.st.goal_proposals:
+        note = _GOAL_PROPOSAL_NOTE.get(g.get("reason") or "")
+        if note is not None and g.get("proposal_id") in shown and note.value not in out:
+            out.append(note.value)
     return out
 
 
