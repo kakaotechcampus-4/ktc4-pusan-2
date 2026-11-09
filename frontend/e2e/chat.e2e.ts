@@ -21,7 +21,7 @@ async function openChat(page: Page): Promise<Locator> {
 }
 
 async function ask(panel: Locator, text: string): Promise<void> {
-  await panel.getByPlaceholder('새미나이에게 메시지 보내기...').fill(text);
+  await panel.getByPlaceholder('새미나이에게 메시지 보내기…').fill(text);
   await panel.getByRole('button', { name: '입력', exact: true }).click();
 }
 
@@ -474,7 +474,50 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
     // 스위치 input 은 sr-only 라 꾸민 라벨이 덮고 있습니다 — 사람처럼 보이는 글자 라벨을 눌러 켜고, 켜졌는지 봅니다
     await panel.getByText('기억 없이 대화하기', { exact: true }).click();
     await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).toBeChecked();
+    // 선택 직후에는 스위치가 상태를 알리고, 아직 만들어지지 않은 대화에는 배지를 붙이지 않습니다 (L3-44).
+    const badge = panel.locator('[data-memory-off]');
+    await expect(badge).toHaveCount(0);
     await ask(panel, REMEMBER);
+    // 실제 대화가 만들어지면 배지가 붙고, 실행이 끝나도 카드 없이 남습니다.
+    await expect(badge).toHaveText('기억 없이');
     await expectNoMemoryCard(panel);
+
+    // 다음 새 대화는 기억 설정을 초기화하므로 앞 대화의 배지가 남아서는 안 됩니다.
+    await panel.getByRole('button', { name: '새 대화', exact: true }).first().click();
+    await expect(badge).toHaveCount(0);
+    await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).not.toBeChecked();
   });
+});
+
+test.describe('13. 좁은 화면의 채팅창 · 키보드 초점 회귀 (#1149)', () => {
+  for (const width of [320, 375, 430]) {
+    test(`${width}px — 제목·입력창 가시성, Esc와 런처 초점 복귀`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/');
+      const panel = await openChat(page);
+      const title = panel.getByRole('heading', { name: '새미나이', exact: true });
+      const input = panel.getByRole('textbox', { name: '채팅 메시지' });
+
+      await expect(title).toBeVisible();
+      await expect(input).toBeVisible();
+      await expect(input).toBeFocused();
+
+      // 320px에서도 패널·제목이 잘리거나 화면 오른쪽으로 넘치지 않아야 합니다.
+      const fits = await page.evaluate(`(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const heading = dialog?.querySelector('h2');
+        return Boolean(
+          dialog &&
+          heading &&
+          dialog.getBoundingClientRect().right <= window.innerWidth &&
+          heading.scrollWidth <= heading.clientWidth
+        );
+      })()`);
+      expect(fits).toBe(true);
+
+      await page.keyboard.press('Escape');
+      await expect(panel).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
+    });
+  }
 });
