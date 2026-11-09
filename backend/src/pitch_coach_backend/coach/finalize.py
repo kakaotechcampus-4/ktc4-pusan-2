@@ -34,11 +34,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mappin
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from pitch_coach_backend.coach.client import CoachClient
+from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.coach.replies import FinalizeReply, ReplayRequired
 from pitch_coach_backend.coach.requests import FinalizeSource, finalize_request
 from pitch_coach_backend.coach.session import FinalizeSnapshot
-from pitch_coach_backend.coach.store import CoachStore
+from pitch_coach_backend.coach.store import CoachStore, recovery_request
 from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.core.retry import retry_transient
@@ -84,6 +87,39 @@ _on_take_result: Callable[[uuid.UUID], object] | None = None
 def on_take_result(callback: Callable[[uuid.UUID], object] | None) -> None:
     global _on_take_result
     _on_take_result = callback
+
+
+class CoachFinalizeRecovery:
+    """관리자 콘솔의 finalize 수동 복구 (`module.hooks.FinalizeRecovery` 구현).
+    main.py 가 꽂는다."""
+
+    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+        return recovery_request(db, take_id)
+
+    def restart(self, take_id: uuid.UUID) -> None:
+        # 코치 상태가 없으니 처음부터 replay 를 붙여 부른다 (`_first_request`). 띄우기 전에 앱이
+        # 내려가도 Take 는 FINALIZING 으로 남아 주기 작업 · 다시 뜰 때 이어 간다
+        restart(take_id, client=get_coach_client(), store=get_coach_store())
+
+
+def restart(take_id: uuid.UUID, *, client: CoachClient, store: CoachStore) -> None:
+    """관리자가 Take 결과를 기다리는 중으로 되돌린 Take 의 finalize 를 띄운다.
+
+    같은 Take 의 finalize 가 아직 돌고 있으면 그 작업이 끝난 뒤 띄운다. 그 작업은 Take 를 FAILED
+    로 적고 끝나 가는 앞 작업이다. 되돌리기 전에 일을 마쳤으므로 `spawn` 처럼 건너뛰면 되돌린 Take
+    를 아무도 맡지 않는다. 앱을 내려 끊겼으면 띄우지 않는다 — 다시 뜰 때 이어 간다.
+    """
+    running = _running.get(take_id)
+    if running is None:
+        spawn(take_id, None, client=client, store=store)
+        return
+    logger.info("앞 finalize 가 끝나면 다시 띄운다 take=%s", take_id)
+
+    def after(done: asyncio.Task[None]) -> None:
+        if not done.cancelled():
+            spawn(take_id, None, client=client, store=store)
+
+    running.add_done_callback(after)
 
 
 def spawn(

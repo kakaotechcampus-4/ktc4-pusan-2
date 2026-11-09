@@ -43,7 +43,7 @@ function Specimen({
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-3 border-b border-line pb-5 sm:grid-cols-[10rem_minmax(0,1fr)]">
-      <p className="font-mono text-xs font-bold text-stone">{label}</p>
+      <p className="guide-code text-xs font-bold text-stone">{label}</p>
       <div className="flex min-w-0 flex-wrap items-center gap-3">{children}</div>
     </div>
   );

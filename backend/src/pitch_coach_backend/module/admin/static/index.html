@@ -65,6 +65,13 @@
       <p id="live-status" class="summary"></p>
       <button id="live-close" type="button">닫기</button>
       <p id="live-error" class="error" hidden></p>
+      <p id="recovery" hidden>
+        <button id="end-stuck" type="button" hidden>떠난 것으로 끝내기</button>
+        <button id="retry-finalize" type="button" hidden>Take 결과 다시 만들기</button>
+        <button id="rescore-held" type="button" hidden>병합 재채점 다시 하기</button>
+        <span id="recovery-done" class="muted"></span>
+      </p>
+      <p id="recovery-error" class="error" hidden></p>
       <h3>대본 ↔ 확정 전사</h3>
       <p id="live-script-error" class="error" hidden></p>
       <div class="scroll live"><table id="live-script"></table></div>

@@ -14,14 +14,14 @@ const TAKE3_ID = '20000000-0000-4000-8000-000000000003';
 
 /** 런처를 눌러 대화창을 엽니다 */
 async function openChat(page: Page): Promise<Locator> {
-  await page.getByRole('button', { name: '채팅 에이전트', exact: true }).click();
-  const panel = page.getByRole('dialog', { name: '채팅 에이전트' });
+  await page.getByRole('button', { name: '새미나이 열기', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: '새미나이' });
   await expect(panel).toBeVisible();
   return panel;
 }
 
 async function ask(panel: Locator, text: string): Promise<void> {
-  await panel.getByPlaceholder('메시지를 입력하세요').fill(text);
+  await panel.getByPlaceholder('새미나이에게 메시지 보내기...').fill(text);
   await panel.getByRole('button', { name: '입력', exact: true }).click();
 }
 
@@ -125,13 +125,13 @@ test('5. "바로 발표할래" → [연습 준비로] 버튼 → 누르면 장�
   await expect(page).toHaveURL(new RegExp(`/pitch/${PITCH_ID}/device-check$`));
   await expect(page.getByRole('heading', { level: 1, name: '시작 전 세팅' })).toBeVisible();
   // 장치 점검 화면은 대화를 쓸 수 있는 화면이라 버튼이 있습니다 — 아래 '버튼 없음' 검사가 헛돌지 않는지 견줍니다
-  await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeVisible();
 
   // 리허설 화면에는 대화 버튼이 없습니다 (L3-01) — 화면이 그려진 뒤에 셉니다(그리기 전에도 0 이라 통과해 버림).
   // 장치 점검을 거치지 않고 바로 열면 리허설 화면이 '연습 중단' 안내를 그립니다 — 같은 리허설 경로의 화면입니다
   await page.goto(`/takes/${TAKE3_ID}/rehearsal`);
   await expect(page.getByRole('heading', { level: 1, name: '연습 중단' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toHaveCount(0);
 });
 
 test('6. 최신 아님 배지 → 다시 묻기', async ({ page }) => {
@@ -257,12 +257,12 @@ test.describe('8. 취소 · 화면 이탈 뒤 복원 · AGENT_DISABLED · 시간
       "history.pushState(null, '', '/privacy'); dispatchEvent(new PopStateEvent('popstate'))",
     );
     await expect(page.getByRole('heading', { level: 1, name: '개인정보 처리방침' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('dialog', { name: '채팅 에이전트' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '새미나이' })).toHaveCount(0);
 
     await page.goBack();
     await expect(page).toHaveURL(/\/$/);
-    const again = page.getByRole('dialog', { name: '채팅 에이전트' });
+    const again = page.getByRole('dialog', { name: '새미나이' });
     if (!(await again.isVisible())) await openChat(page);
 
     // 다시 보내지 않고 같은 실행을 이어 받아, 끝난 답이 저장된 메시지로 보입니다
@@ -279,7 +279,7 @@ test.describe('8. 취소 · 화면 이탈 뒤 복원 · AGENT_DISABLED · 시간
     await mockChat(page, 'disable');
     await ask(panel, '지난번보다 뭐가 나아졌어?');
 
-    await expect(page.getByRole('button', { name: '채팅 에이전트', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toHaveCount(0);
   });
 
   test('시간 초과면 다시 보내라고 안내한다', async ({ page }) => {
@@ -416,7 +416,7 @@ test.describe('11. 지난 답은 글자 효과 없이 처음부터 전체', () =
     await expect(panel.getByText('지난번보다 청중을 더 봤어?', { exact: true })).toBeVisible();
 
     await page.reload();
-    const again = page.getByRole('dialog', { name: '채팅 에이전트' });
+    const again = page.getByRole('dialog', { name: '새미나이' });
     if (!(await again.isVisible())) await openChat(page);
     // 대화 ID 는 sessionStorage 에 남아 있어 목록을 고르지 않아도 그 대화가 열립니다
     await expect(again.getByText('지난번보다 청중을 더 봤어?', { exact: true })).toBeVisible();
@@ -471,7 +471,9 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
     await page.goto('/');
     const panel = await openChat(page);
 
-    await panel.getByRole('switch', { name: '기억 없이 대화하기' }).click();
+    // 스위치 input 은 sr-only 라 꾸민 라벨이 덮고 있습니다 — 사람처럼 보이는 글자 라벨을 눌러 켜고, 켜졌는지 봅니다
+    await panel.getByText('기억 없이 대화하기', { exact: true }).click();
+    await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).toBeChecked();
     await ask(panel, REMEMBER);
     await expectNoMemoryCard(panel);
   });

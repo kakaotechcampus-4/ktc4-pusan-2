@@ -193,7 +193,7 @@ it('[닫기]는 안내를 런처 크기의 [다시 시도]로 접고 초점을 �
 
   await click(button('닫기')!);
   expect(alerts()).toHaveLength(0);
-  const folded = byLabel('대화창 다시 시도')!;
+  const folded = byLabel('새미나이 다시 시도')!;
   expect(folded.title).toBe(CHAT_FAILED_TEXT);
   expect(document.activeElement).toBe(folded);
 

@@ -1,4 +1,5 @@
 import type { DeviceError } from '../media/useCameraStream';
+import type { StagePhase } from './rehearsalStore';
 
 /**
  * 무대 시계를 돌려도 되나. **React 를 모릅니다** — 값만 받아 값을 돌려줍니다.
@@ -33,6 +34,15 @@ export type StartFailure = 'ENDED' | 'BUSY' | 'GAVE_UP';
 
 /** `ready` 를 이만큼 기다려도 안 오면 다시 시도 · 장치 점검으로 돌아가기를 보여 줍니다 */
 export const CONNECT_SLOW_MS = 15_000;
+
+/** 리허설 계측과 화면 표시가 공유하는 실제 진행 상태. 종료 중에는 표시하지 않습니다. */
+export function isRehearsalRunning(
+  stageReady: boolean,
+  phase: StagePhase,
+  started: boolean,
+): boolean {
+  return stageReady && phase === 'RUNNING' && started;
+}
 
 export function startGate(state: {
   /** 이미 시작했다. 한 번 true 면 다른 값은 보지 않습니다 */
