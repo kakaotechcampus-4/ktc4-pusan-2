@@ -58,14 +58,14 @@ FALLBACK_SENTENCE_HI = 0.45
 FALLBACK_BAND_MOSTLY = 0.7
 FALLBACK_BAND_LITTLE = 0.3
 # 전달 단위 실패를 문장 단위로 복구한 평가 기준의 장 상세를 provisional 로 둘지. 복구 실험 11
-# (`reports/results/sentence_fallback.json`, 문장 720개)에서 정확도 −0.14%p · 심각한 오판 +0.14%p 로
+# (`reports/results/sentence_fallback.json`, 문장 765개)에서 정확도 −0.13%p · 심각한 오판 +0.13%p 로
 # 미리 정한 기준(≤ 1%p · ≤ 0.5%p) 안이라 정상(ok)으로 둔다
 SENTENCE_FALLBACK_PROVISIONAL = False
 
 # ── 말의 구성 (speech_mix) ─────────────────────────────────
 # 짝 있는 문장 안에서 대본 어휘에 없는 형태소가 이어진 구간(꼬리)도 후보로 볼지. 실험 12 의 자연 데이터 라벨
-# (후보 221개, 두 라벨러 일치 96.4%)에서 이 구간은 대부분 바꿔 말한 대본 내용이었다 — 짝 없는 문장만 보면
-# precision 1.0(개발 · 시험), 꼬리를 더하면 시험 0.06~0.88. 그래서 끈다(대본 문장에 붙여 말한 곁말은 놓친다)
+# (후보 221개, 사람 검수 전 라벨 두 벌의 일치 96.4%)에서 이 구간은 대부분 바꿔 말한 대본 내용이었다 — 짝 없는
+# 문장만 보면 precision 1.0(개발 · 시험), 꼬리를 더하면 시험 0.05~0.78. 그래서 끈다(대본 문장에 붙여 말한 곁말은 놓친다)
 OFFSCRIPT_IN_SENTENCE = False
 OFFSCRIPT_MIN_TOKENS = 2  # 꼬리를 켤 때 후보 구간의 최소 내용 형태소 수
 UNALIGNED_SCRIPT_OVERLAP = 0.5  # 짝 없는 STT 문장이라도 이 장 대본 어휘가 이만큼이면 대본 내용
