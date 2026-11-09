@@ -10,7 +10,7 @@ export type Navigate = (screenId: string, stateId?: string) => void;
 export const PITCH = '캡스톤 중간발표';
 
 /**
- * 글 위주 화면의 틀. 제품 `shared/ui/InfoPage` · `report/ReportFrame`과 같은 모양이다.
+ * 글 위주 화면의 틀. 제품 `shared/ui/InfoPage` · `report/report/ReportFrame`과 같은 모양이다.
  * `onHome`을 주면 InfoPage(logo=true)처럼 홈으로 가는 로고 줄을 둔다(로그인 없이 여는 화면).
  * 제품은 본문이 `<main>`이지만, 설계서 안에서는 뷰어가 `<main>`을 가지므로 `<div>`로 둔다.
  */
@@ -48,7 +48,7 @@ export function Frame({
   );
 }
 
-/** 제품 `report/QueryState`의 불러오는 중 · 실패 한 칸 */
+/** 제품 `report/history/QueryState`의 불러오는 중 · 실패 한 칸 */
 export function QueryNotice({
   stateId,
   pending = '연습 기록을 가져오는 중이에요…',

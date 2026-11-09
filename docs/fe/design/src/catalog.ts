@@ -538,8 +538,8 @@ const productScreens: GuideScreen[] = [
     components: ['DuskScreen', 'StatusLine', 'ButtonLink'],
     tokens: ['dusk', 'dusk-line', 'dusk-ink', 'dusk-accent'],
     sources: [
-      'frontend/src/features/report/ProcessingPage.tsx',
-      'frontend/src/features/report/DuskScreen.tsx',
+      'frontend/src/features/report/analysis/ProcessingPage.tsx',
+      'frontend/src/features/report/analysis/DuskScreen.tsx',
       'frontend/src/features/report/AutoEndAlert.tsx',
       'frontend/src/shared/lib/autoEnd.ts',
     ],
@@ -581,8 +581,8 @@ const productScreens: GuideScreen[] = [
     components: ['DuskScreen', 'StatusLine', 'Button'],
     tokens: ['dusk', 'dusk-ink', 'dusk-accent'],
     sources: [
-      'frontend/src/features/report/ConfirmPage.tsx',
-      'frontend/src/features/report/DuskScreen.tsx',
+      'frontend/src/features/report/analysis/ConfirmPage.tsx',
+      'frontend/src/features/report/analysis/DuskScreen.tsx',
     ],
     productNote:
       '남은 시간은 줄지 않는 예시 값이다. 확인 항목은 하나만 그린다. 제품의 "답을 반영하는 중" · "확인을 받을 수 없어요" 상태는 그리지 않는다.',
@@ -660,9 +660,9 @@ const productScreens: GuideScreen[] = [
     components: ['Card', 'Stat', 'Badge', 'ButtonLink', '설문 창'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: [
-      'frontend/src/features/report/ReportPage.tsx',
-      'frontend/src/features/report/ReportFrame.tsx',
-      'frontend/src/features/report/TakeSurvey.tsx',
+      'frontend/src/features/report/report/ReportPage.tsx',
+      'frontend/src/features/report/report/ReportFrame.tsx',
+      'frontend/src/features/report/report/TakeSurvey.tsx',
     ],
     productNote:
       '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다. 설문은 서버에 보내지 않고, 보내기를 누르면 "설문 보냄" 상태로 간다.',
@@ -702,9 +702,9 @@ const productScreens: GuideScreen[] = [
     components: ['InfoPage 틀', 'Card', 'TakeStatusBadge', 'Mascot', '지표 탭', '지표 흐름 · 표'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: [
-      'frontend/src/features/report/TakesPage.tsx',
-      'frontend/src/features/report/TakeComparison.tsx',
-      'frontend/src/features/report/TakeComparisonRedirect.tsx',
+      'frontend/src/features/report/history/TakesPage.tsx',
+      'frontend/src/features/report/history/TakeComparison.tsx',
+      'frontend/src/features/report/history/TakeComparisonRedirect.tsx',
       'frontend/src/shared/lib/takeStatus.ts',
     ],
     productNote:
@@ -731,7 +731,7 @@ const productScreens: GuideScreen[] = [
     ],
     components: ['Take 기록 · 지표 비교'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
-    sources: ['frontend/src/features/report/TakeComparisonRedirect.tsx'],
+    sources: ['frontend/src/features/report/history/TakeComparisonRedirect.tsx'],
     productNote: '호환 주소의 화면은 통합 Take 기록 화면과 같은 샘플을 사용한다.',
     productLinks: [link('이전 비교 주소(리다이렉트)', COMPARISON)],
     next: [next('통합 Take 기록', 'takes', 'compare'), next('내 피치로', 'home')],
@@ -917,7 +917,7 @@ const onboardingScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/onboarding/WelcomePage.tsx',
       'frontend/src/features/onboarding/LaunchCountdown.tsx',
-      'frontend/src/shared/api/launch.ts',
+      'frontend/src/features/onboarding/launch.ts',
     ],
     productNote:
       '움직이는 장면(ComfortScene) · 코칭 예시 · 연구실 소개 글 · 구성원 카드는 자리만 둔다. 카운트다운 숫자는 넘어가지 않는 예시 값이다. 머리 메뉴의 "보고 있는 구역" 표시와 바닥글은 그리지 않는다.',

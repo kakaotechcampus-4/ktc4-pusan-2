@@ -1,4 +1,4 @@
-// 제품 `frontend/src/features/report/DuskScreen.tsx`에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/report/analysis/DuskScreen.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { formatDuration } from '@/lib/clock';

@@ -4,8 +4,8 @@ import type { TakeHistoryRow } from '@/types/takeHistory';
 import { formatDuration } from '@/shared/lib/clock';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
-import { duration, pct } from './reportFormat';
-import { SCRIPT_MODE_LABEL, gazeOffEngine, latestGazeEngine, takeDay } from './takeHistoryFormat';
+import { duration, pct } from '../reportFormat';
+import { SCRIPT_MODE_LABEL, gazeOffEngine, latestGazeEngine, takeDay } from '../takeHistoryFormat';
 
 /**
  * P7 Take 비교 — 한 피치의 Take들을 나란히. 따로 된 화면 없이 Take 기록의 지표 비교 보기로만 씁니다 (#795).

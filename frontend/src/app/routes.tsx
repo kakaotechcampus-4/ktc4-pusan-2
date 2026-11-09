@@ -20,7 +20,7 @@ import {
   TakesPage,
 } from './LazyScreens';
 import { createBrowserRouter, Outlet, ScrollRestoration } from 'react-router';
-import { TakeComparisonRedirect } from '@/features/report/TakeComparisonRedirect';
+import { TakeComparisonRedirect } from '@/features/report/history/TakeComparisonRedirect';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
 import { DesktopGate } from './DesktopGate';

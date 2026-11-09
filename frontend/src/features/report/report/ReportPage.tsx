@@ -15,7 +15,7 @@ import type {
   TakeMeasures,
   TakeReport,
 } from '@/types/report';
-import { AutoEndAlert } from './AutoEndAlert';
+import { AutoEndAlert } from '../AutoEndAlert';
 import { QueryState, ReportFrame } from './ReportFrame';
 import {
   DIMENSION_LABEL,
@@ -31,9 +31,9 @@ import {
   metricLabel,
   pct,
   where,
-} from './reportFormat';
+} from '../reportFormat';
 import { TakeSurvey } from './TakeSurvey';
-import { scriptModeLabel } from './takeHistoryFormat';
+import { scriptModeLabel } from '../takeHistoryFormat';
 
 /**
  * Take 리포트 (P6).

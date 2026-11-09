@@ -4,9 +4,9 @@ import { isSettled, useTakeReport } from '@/shared/api/report';
 import { toMessage } from '@/shared/api/errorMessage';
 import { autoEndState, readAutoEnd } from '@/shared/lib/autoEnd';
 import { ButtonLink } from '@/shared/ui/Button';
-import { AutoEndAlert } from './AutoEndAlert';
+import { AutoEndAlert } from '../AutoEndAlert';
 import { DuskScreen, StatusLine } from './DuskScreen';
-import { stepStates, type StepState } from './reportFormat';
+import { stepStates, type StepState } from '../reportFormat';
 
 /**
  * 분석 대기 (P6-0) — 발표를 끝낸 뒤 리포트가 나오기 전. 게임 로딩 화면처럼 화면 전체가 노을 그림입니다.

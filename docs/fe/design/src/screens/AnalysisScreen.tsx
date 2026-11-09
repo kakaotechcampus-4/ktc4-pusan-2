@@ -1,4 +1,4 @@
-// 제품 분석 대기 · 대본 확인(`frontend/src/features/report/ProcessingPage.tsx`, `ConfirmPage.tsx`)의 설계서 샘플. 둘 다 노을 화면을 쓴다.
+// 제품 분석 대기 · 대본 확인(`frontend/src/features/report/analysis/ProcessingPage.tsx`, `ConfirmPage.tsx`)의 설계서 샘플. 둘 다 노을 화면을 쓴다.
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/ui/Button';
 import { DuskScreen, StatusLine, type DuskReport } from '@/ui/DuskScreen';

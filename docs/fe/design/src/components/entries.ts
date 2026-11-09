@@ -75,7 +75,7 @@ export const componentEntries: GuideComponent[] = [
     tokens: ['coral-deep', 'coral-wash', 'ink', 'cream', 'line-strong'],
     sources: [
       'frontend/src/shared/ui/Badge.tsx',
-      'frontend/src/shared/ui/TakeStatusBadge.tsx',
+      'frontend/src/features/report/history/TakeStatusBadge.tsx',
       'frontend/src/shared/lib/takeStatus.ts',
     ],
     file: 'src/ui/Badge.tsx · src/ui/TakeStatusBadge.tsx · src/lib/takeStatus.ts',
@@ -85,7 +85,7 @@ export const componentEntries: GuideComponent[] = [
       ['status (TakeStatusBadge)', '{ label, tone }', 'takeStatusView의 결과'],
     ],
     code: `import { Badge } from '@/shared/ui/Badge';
-import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
+import { TakeStatusBadge } from '@/features/report/history/TakeStatusBadge';
 
 <Badge tone="strong">이번 미션</Badge>
 <TakeStatusBadge status={takeStatusView(take.id, take.status, take.end_reason)} />`,
@@ -212,7 +212,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     ],
     tokens: ['ink', 'cream', 'line-strong', 'coral-wash'],
     sources: [
-      'frontend/src/shared/ui/SuggestionCategorySelect.tsx',
+      'frontend/src/features/auth/SuggestionCategorySelect.tsx',
       'frontend/src/features/auth/SuggestionForm.tsx',
       'frontend/src/features/rehearsal/prepare/ScriptModeChoice.tsx',
     ],
@@ -247,7 +247,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '빈 자리는 점선 테두리로 두고, 왜 비었는지 쓴다.',
     ],
     tokens: ['ink', 'panel', 'coral-deep', 'line-strong'],
-    sources: ['frontend/src/features/report/QueryState.tsx'],
+    sources: ['frontend/src/features/report/history/QueryState.tsx'],
     file: 'src/screens/shared.tsx (QueryNotice)',
     props: [
       ['stateId', "'loading' | 'error'", '설계서 샘플용'],
@@ -383,7 +383,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '문구를 바꾸면 QUESTION_VERSION 을 올린다. BE 가 버전별로 응답을 나눠 평균 낸다.',
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong', 'line'],
-    sources: ['frontend/src/features/report/TakeSurvey.tsx'],
+    sources: ['frontend/src/features/report/report/TakeSurvey.tsx'],
     file: 'src/ui/dialogs/TakeSurveyDialog.tsx',
     props: [
       ['takeId', 'string', '설문을 보낼 Take (제품)'],

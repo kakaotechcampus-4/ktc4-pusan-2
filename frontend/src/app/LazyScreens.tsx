@@ -31,10 +31,10 @@ export const RetryPage = lazy(() =>
   import('@/features/rehearsal/retry/RetryPage').then((m) => ({ default: m.RetryPage })),
 );
 export const ProcessingPage = lazy(() =>
-  import('@/features/report/ProcessingPage').then((m) => ({ default: m.ProcessingPage })),
+  import('@/features/report/analysis/ProcessingPage').then((m) => ({ default: m.ProcessingPage })),
 );
 export const ReportPage = lazy(() =>
-  import('@/features/report/ReportPage').then((m) => ({ default: m.ReportPage })),
+  import('@/features/report/report/ReportPage').then((m) => ({ default: m.ReportPage })),
 );
 export const AboutPage = lazy(() =>
   import('@/features/info/AboutPage').then((m) => ({ default: m.AboutPage })),
@@ -49,9 +49,9 @@ export const MyPage = lazy(() =>
   import('@/features/auth/MyPage').then((m) => ({ default: m.MyPage })),
 );
 export const TakesPage = lazy(() =>
-  import('@/features/report/TakesPage').then((m) => ({ default: m.TakesPage })),
+  import('@/features/report/history/TakesPage').then((m) => ({ default: m.TakesPage })),
 );
 
 export const ConfirmPage = lazy(() =>
-  import('@/features/report/ConfirmPage').then((m) => ({ default: m.ConfirmPage })),
+  import('@/features/report/analysis/ConfirmPage').then((m) => ({ default: m.ConfirmPage })),
 );

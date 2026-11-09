@@ -6,10 +6,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { TakeHistoryRow } from '@/types/takeHistory';
 import { TakeComparison } from './TakeComparison';
 import { TakesPage } from './TakesPage';
-import { completedTakes } from './takeHistoryFormat';
+import { completedTakes } from '../takeHistoryFormat';
 
 const query = vi.hoisted(() => ({ data: { takes: [] as TakeHistoryRow[] } }));
-vi.mock('./api/takeHistory', () => ({ useTakeHistory: () => query }));
+vi.mock('../api/takeHistory', () => ({ useTakeHistory: () => query }));
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {

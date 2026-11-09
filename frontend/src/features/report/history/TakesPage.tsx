@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
-import { useTakeHistory } from './api/takeHistory';
+import { useTakeHistory } from '../api/takeHistory';
 import { takeStatusView } from '@/shared/lib/takeStatus';
 import { TakeStatusBadge } from './TakeStatusBadge';
 import { ButtonLink } from '@/shared/ui/Button';
@@ -9,8 +9,8 @@ import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import { QueryState } from './QueryState';
 import { TakeComparison } from './TakeComparison';
-import { duration, pct } from './reportFormat';
-import { completedTakes, SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
+import { duration, pct } from '../reportFormat';
+import { completedTakes, SCRIPT_MODE_LABEL, takeDay } from '../takeHistoryFormat';
 
 /** P16: 목록과 비교는 한 페이지, 피치/화면 선택은 URL에 남깁니다 (#795). */
 const ALL = '';

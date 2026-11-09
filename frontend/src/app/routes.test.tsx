@@ -29,7 +29,7 @@ vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
 vi.mock('@/features/rehearsal/prepare/DeviceCheckPage', () => ({
   DeviceCheckPage: () => <p>시작 전 세팅 {useParams().pitchId}</p>,
 }));
-vi.mock('@/features/report/ConfirmPage', () => ({
+vi.mock('@/features/report/analysis/ConfirmPage', () => ({
   ConfirmPage: () => <p>대본 확인 {useParams().takeId}</p>,
 }));
 vi.mock('@/features/info/AboutPage', () => {
