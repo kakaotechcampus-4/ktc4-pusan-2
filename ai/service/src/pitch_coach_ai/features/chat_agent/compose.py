@@ -266,6 +266,40 @@ def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int)
     return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
 
 
+def goal_open_sentence(ctx: Any, goal: Any) -> tuple[str, str] | None:
+    """열린 대화 목표의 내용 문장(7-10 `GOAL_OPEN`)과 그 근거 id. get_goals 가 이번 실행에 발급한 목표 기준 값 근거가 없거나
+    값을 표시할 수 없으면 None."""
+    eid = next(
+        (
+            e
+            for e, ev in ctx.registry.items.items()
+            if ev.kind == "GOAL"
+            and ev.path == "conversation_goal.base.value"
+            and ev.take_id == goal.base.take_id
+            and ev.revision == goal.version
+            and ctx.registry.is_current(e)
+        ),
+        None,
+    )
+    tpl = templates.GOAL_OPEN.get(goal.operator)
+    if eid is None or tpl is None or goal.metric not in ctx.cfg.metric_units:
+        return None
+    if goal.operator != "in_range" and not isinstance(goal.base.value, (int, float)):
+        return None
+    value = (
+        ""
+        if goal.operator == "in_range"
+        else clm.format_metric_value(goal.metric, goal.base.value, ctx.cfg)
+    )
+    text = tpl.format(
+        take_number=goal.base.take_number,
+        where=f"{goal.slide_number}장 " if goal.slide_number else "",
+        label=metric_label(goal.metric),
+        value=value,
+    )
+    return text, eid
+
+
 def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
     """남은 문장이 없을 때 검증된 근거 값으로 그린 문장(최대 3개)."""
     out: list[Claim] = []

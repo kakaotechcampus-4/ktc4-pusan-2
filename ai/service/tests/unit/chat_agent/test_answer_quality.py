@@ -248,6 +248,51 @@ def test_goal_prefetch_needs_a_goal_question(message: str) -> None:
     assert ("get_goals", {}) not in tool_calls_in(llm.calls[1])
 
 
+def _goal_lines(data: dict[str, Any]) -> list[tuple[str, str]]:
+    return [(k, t) for k, t in _texts(data) if t.startswith("대화 목표는 Take")]
+
+
+def test_open_goal_question_states_the_goal_with_its_base_value() -> None:
+    """열린 목표를 물으면 목표 내용을 코드 RECORD 문장으로 낸다(7-10 GOAL_OPEN): 기준 Take · 장 · 지표 · 기준 값과 방향."""
+    llm = F.FakeLlm([F.plan(route="ANSWER_DIRECT", assessments=[]), F.done(), F.answer([])])
+    _, _, data = F.run_turn(_open_goal_request("지금 대화 목표가 뭐야?"), llm)
+    assert data is not None and data["status"] == "DONE"
+    lines = _goal_lines(data)
+    assert len(lines) == 1 and lines[0][0] == "RECORD"
+    assert lines[0][1] == templates.GOAL_OPEN["gt_base"].format(
+        take_number=4, where="3장 ", label="청중 시선", value="10%"
+    )
+    claim = next(c for c in data["message"]["claims"] if c["text"] == lines[0][1])
+    ev = {e["evidence_id"]: e for e in data["evidence"]}
+    assert ev[claim["evidence_ids"][0]]["path"] == "conversation_goal.base.value"
+
+
+def test_open_goal_sentence_is_not_repeated_when_the_answer_cites_the_goal() -> None:
+    """모델 기록 문장이 이미 목표 기준 값 근거를 이었으면 같은 근거의 코드 문장을 다시 내지 않는다."""
+
+    def said(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("value") == 0.10)
+        return F.answer(
+            [F.claim("RECORD", "지금 대화 목표는 Take 4 3장 청중 시선 비율 10%보다 높이는 거예요.", evidence_ids=[eid])]
+        )
+
+    llm = F.FakeLlm([F.plan(route="ANSWER_DIRECT", assessments=[]), F.done(), said])
+    _, _, data = F.run_turn(_open_goal_request("지금 대화 목표가 뭐야?"), llm)
+    assert data is not None and data["status"] == "DONE"
+    assert _goal_lines(data) == []
+    assert any("10%" in t for _, t in _texts(data))
+
+
+def test_open_goal_sentence_needs_a_goal_question() -> None:
+    """목표를 묻지 않은 실행이 get_goals 를 읽었어도 열린 목표 문장은 내지 않는다."""
+    llm = F.FakeLlm(
+        [F.plan(assessments=[]), F.tools(("get_goals", {}), prefix="g"), F.done(), F.answer([])]
+    )
+    _, _, data = F.run_turn(_open_goal_request("Take 5 3장 시선 어땠어?"), llm)
+    assert data is not None
+    assert _goal_lines(data) == []
+
+
 # ── 닫힌 목표: 상태 문장 + 보고 있는 Take 의 지금 판정 문장 ───────────────────────────
 
 

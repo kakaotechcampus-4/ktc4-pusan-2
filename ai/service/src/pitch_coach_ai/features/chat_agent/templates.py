@@ -170,6 +170,13 @@ GOAL_SUMMARY = {
     "lt_base": "Take {take_number}의 {where}{label}({value})보다 낮추는 목표예요.",
     "in_range": "Take {take_number} 기준 {where}{label}의 목표 범위({value}) 안에 드는 목표예요.",
 }
+#: 열린 대화 목표를 물을 때 목표 내용(7-10). get_goals 가 발급한 목표 기준 값 근거(기준 Take · 장 · 지표 · 값)로 그리는 `RECORD` 문장.
+#: 범위 목표는 범위 끝값이 근거가 아니므로 값을 쓰지 않는다
+GOAL_OPEN = {
+    "gt_base": "대화 목표는 Take {take_number}의 {where}{label} {value}보다 높이기예요.",
+    "lt_base": "대화 목표는 Take {take_number}의 {where}{label} {value}보다 낮추기예요.",
+    "in_range": "대화 목표는 Take {take_number} 기준 {where}{label}의 목표 범위 안에 들기예요.",
+}
 SAVE_GOAL_NOTE_REPLACE = "저장하면 지금 대화 목표가 이 목표로 바뀌어요."
 SAVE_GOAL_NOTE_UNDO = "저장한 뒤에도 되돌릴 수 있어요."
 REASSESS_SUMMARY = "Take {take_number} 기록을 {change}으로 다시 평가해 참고 결과를 만들어요."

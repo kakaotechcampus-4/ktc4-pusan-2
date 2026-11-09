@@ -62,7 +62,7 @@ from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, reduce_to_fit, safe_request_id
 from .evidence import canonical_json
 from .goals import judge_goal
-from .loop import Loop, LoopState, TurnDeps, meta
+from .loop import Loop, LoopState, TurnDeps, goal_question, meta
 from .runctx import RunCtx
 from .schemas import Action, Assessment, Claim, Diagnostics, FinalData, TurnRequest
 from .tools.impl import source_tag_of
@@ -844,7 +844,11 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         # 닫힌 목표의 상태(와 보고 있는 Take 의 판정)를 코드 문장으로 말한다. `goal_result` 는 싣지 않는다: 계약상 자동 목표 확인
         # (TAKE_REVIEWED)의 값이고 BE 가 그 값으로 목표 상태를 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 호출 시점이 바뀐다
         have = {c.text for c in [*comp.pre, *body, *tail, *extras]}
-        extras += [c for c in _goal_status_claims(lp, req) if c.text not in have]
+        extras += [
+            c
+            for c in _goal_status_claims(lp, req, said=[*comp.pre, *body, *extras])
+            if c.text not in have
+        ]
     # 다른 발표 비교 안내(1-3): 코드 보강 문장까지 모은 최종 답 문장의 기록 피치로 본다
     cross = templates.SystemText.CROSS_PITCH_NO_COMPARE.value
     shown = {c.text for c in tail} | {d.get("text") for d in lp.st.emitted}
@@ -1179,24 +1183,46 @@ def _page_take_goal_claim(lp: Loop, req: TurnRequest, goal: Any) -> Claim | None
     return None if fails else claim
 
 
-def _goal_status_claims(lp: Loop, req: TurnRequest) -> list[Claim]:
+def _goal_status_claims(lp: Loop, req: TurnRequest, said: list[Claim] | None = None) -> list[Claim]:
     """사용자 말로 대화 목표의 결과를 물을 때(`get_goals`를 읽은 실행) 닫힌 목표의 결과 문장들(7-10, `goal_status_sentence`).
 
     목표 상태(`ACHIEVED` · `NOT_ACHIEVED` · `BASELINE_MISMATCH`)를 고정 `SYSTEM` 문장으로 말하고, 보고 있는 Take 의 지금 기록이
-    같은 판정이면 그 값 문장(`RECORD`, `_page_take_goal_claim`)을 잇는다. 열린 목표 · 자동 목표 확인 턴 · 다른 피치의 목표는 내지
-    않는다. `goal_result` 는 싣지 않는다(자동 목표 확인의 계약 값).
+    같은 판정이면 그 값 문장(`RECORD`, `_page_take_goal_claim`)을 잇는다. 열린 목표는 목표를 묻는 말(`goal_question`)일 때만
+    목표 내용 문장(`_open_goal_claim`)을 낸다. 자동 목표 확인 턴 · 다른 피치의 목표는 내지 않는다. `goal_result` 는 싣지 않는다
+    (자동 목표 확인의 계약 값).
     """
     ctx, goal = lp.ctx, lp.ctx.goal
-    if req.review_event is not None or goal is None or goal.status == "OPEN":
+    if req.review_event is not None or goal is None:
         return []
     if goal.pitch_id != ctx.scope_pitch_id or not any(
         t.get("tool") == "get_goals" for t in lp.st.trace
     ):
         return []
+    if goal.status == "OPEN":
+        return _open_goal_claim(lp, goal, said or [])
     text = templates.GOAL_CLOSED_TEXT.get(goal.status)
     out = [Claim(kind="SYSTEM", text=text.value)] if text is not None else []
     page = _page_take_goal_claim(lp, req, goal)
     return [*out, page] if page is not None and out else out
+
+
+def _open_goal_claim(lp: Loop, goal: Any, said: list[Claim]) -> list[Claim]:
+    """열린 대화 목표를 물으면(`goal_question`) 목표 내용을 `RECORD` 문장으로(7-10 `GOAL_OPEN`, get_goals 의 목표 기준 값 근거).
+
+    답(낸 문장 포함)의 기록 문장이 이미 그 근거를 이었으면 내지 않는다(같은 근거 · 같은 값은 한 번). 검사(6-9)에 걸리면 내지 않는다.
+    """
+    if not goal_question(lp.original, lp.cfg):
+        return []
+    drawn = compose.goal_open_sentence(lp.ctx, goal)
+    if drawn is None:
+        return []
+    text, eid = drawn
+    cited = [*said, *map(Claim.model_validate, lp.st.emitted)]
+    if any(c.kind == "RECORD" and eid in c.evidence_ids for c in cited):
+        return []
+    claim = Claim(kind="RECORD", text=text, evidence_ids=[eid])
+    fails = chk.check_claims([claim], registry=lp.ctx.registry, code_sentences={text}, cfg=lp.cfg)
+    return [] if fails else [claim]
 
 
 def _cross_pitch_compare(lp: Loop, said: list[Claim]) -> bool:
