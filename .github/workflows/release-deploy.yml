@@ -174,3 +174,26 @@ jobs:
         if: always()
         run: ssh -O exit "$SSH_HOST" 2>/dev/null || true
 
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_PR_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
+
+      - name: Create PR to develop-next
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(gh pr list --base develop-next --head main --state open --json number --jq '.[].number')" ]; then
+            echo "main → develop-next PR already open"
+            exit 0
+          fi
+          if [ "$(git rev-list --count origin/develop-next..origin/main)" -eq 0 ]; then
+            echo "develop-next already contains main"
+            exit 0
+          fi
+          gh pr create --base develop-next --head main \
+            --title "Merge main into develop-next" \
+            --body "main 의 변경을 develop-next 에 반영합니다. (배포 커밋 $GITHUB_SHA)"
