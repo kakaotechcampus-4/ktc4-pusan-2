@@ -239,4 +239,4 @@
   - BE 규칙을 FE와 맞출지는 BE와 정할 안건입니다.
 - **대본 ↔ 슬라이드 연결을 서버가 저장하지 않음** — 그래서 FE가 규칙으로 추정합니다(6-3). 서버가 저장하면 이 추정을 지울 수 있습니다.
 
-> **작성 필요** — 화면 그림(네 구역 · 준비 순서 · 자료 버전 관리 · 아래 고정 버튼). `docs/fe/design/`의 `pitch-create` 시안을 링크합니다.
+- **화면 그림** — 화면 설계서의 `pitch-create` 화면에 있습니다. `docs/fe/design/`에서 `npm run dev`를 띄운 뒤 `http://localhost:3100/#/?screen=pitch-create`를 엽니다(설계서 사용법은 [docs/fe/design/README.md](../design/README.md)). 설명 패널의 "제품과 다른 점"에 시안과 제품이 다른 곳이 적혀 있습니다.

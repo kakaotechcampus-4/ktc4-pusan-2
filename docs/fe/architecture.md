@@ -88,7 +88,18 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 
 **대화형 에이전트** — 라우트가 아니라 최상위 레이아웃에 떠 있는 팝업이고, 정해진 화면에서만 보입니다(`features/chat/chatRoutes.ts`).
 
-> **작성 필요** — 화면마다 로그인 필요 여부 · 출시 제한(`VITE_LAUNCH_GATE_ENABLED`)에 걸리는 화면 목록. 출시 제한 자체는 [launch-countdown.md](launch-countdown.md)에 있습니다.
+**로그인 · 출시 제한 · 기기 확인** — 화면마다 `routes.tsx`가 아래 세 겹을 바깥부터 차례로 씌웁니다.
+
+| 겹 | 걸리는 화면 | 걸리면 |
+|---|---|---|
+| 1. 기기 확인(`DesktopGate`) | `practicePaths`: 장치 점검 · 리허설 · 실전 | 휴대폰 · 태블릿이면 `/unsupported`. 로그인보다 먼저 막아, 못 하는 연습 주소로 로그인부터 시키지 않습니다 |
+| 2. 출시 제한(`LaunchGate`) | `/login`과 로그인이 필요한 모든 화면 | `VITE_LAUNCH_GATE_ENABLED=true`이고 공개 시각(`shared/api/launch.ts` `LAUNCH_AT`) 전이면 `/welcome` |
+| 3. 로그인(`RequireSession`) | 아래 "공개 화면"을 뺀 모든 화면 | 확인하는 동안 "로그인 상태를 확인하고 있습니다.", 서버에 못 붙으면 [다시 시도]. 로그인이 안 돼 있으면 `/`는 `/welcome`, 그 밖은 `/login?next=<원래 주소>` |
+
+- **공개 화면**(`publicPaths`, 로그인 없이 열림): `/welcome` · `/login` · `/about` · `/privacy` · `/terms` · `/unsupported` · `/dev/*` · 없는 주소(404). 이 중 출시 제한은 `/login`에만 걸립니다.
+- **상단바**(`appHeaderPaths`): `/` · `/pitches` · `/takes` · `/me` · `/pitch/new` · `/pitch/:id/edit` · 장치 점검 · 재시도에만 홈과 같은 상단바를 얹습니다. 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다.
+- 로그인 화면이 Google에서 오류(`?auth_error=`)를 받아 오면 `/login`으로 돌려 보여 줍니다.
+- 출시 제한 자체(카운트다운 · 공개 시각)는 [launch-countdown.md](launch-countdown.md)에 있습니다.
 
 ## 3. 상태를 어디에 두나
 
@@ -179,7 +190,31 @@ app/ ──▶ features/* ──▶ workers/ ──┬──▶ vendor/gaze/engi
 - FE와 BE의 경로 · 필드가 다르면 FE를 BE에 맞추는 것이 기본입니다.
 - 개발 중에는 MSW 목(`src/mocks/`)이 같은 경로에 응답합니다. 실서버에 붙일 때는 `.env.local`에 `VITE_USE_MOCK=false`를 둡니다.
 
-> **작성 필요** — 오류 응답 모양과 FE 공통 처리(`shared/api/client.ts` · `errorMessage.ts`), 토큰 갱신 흐름.
+### 5-1. API 호출 · 오류 · 토큰
+
+**호출** — 모든 REST 호출은 `shared/api/client.ts`의 `apiRequest`를 거칩니다.
+
+- 경로는 `/api/`로 시작해야 합니다. 다른 주소로 토큰이 새지 않게 하려는 것입니다. 로그인 쿠키를 쓰는 `/api/auth/*`(갱신 · 로그아웃)만 `tokenStore.ts`의 `cookieRequest`로 따로 부릅니다.
+- 액세스 토큰은 **메모리에만** 두고(`tokenStore.ts`) `Authorization: Bearer`로 보냅니다. 브라우저 저장소에 두지 않습니다.
+
+**오류** — BE는 모든 오류를 `{code, message, detail}`로 보내고, FE는 **`code`로 갈라집니다**(`backend/README.md`의 오류 응답 형식).
+
+- `apiRequest`는 실패를 `ApiFailure(status, code, retryAfterSec, message)`로 던집니다. 본문에 `code`가 없으면 `REQUEST_FAILED`입니다.
+- 화면 문구는 `shared/api/errorMessage.ts`의 `toMessage`가 `code`로 고릅니다. 표에 없는 코드는 "요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요."입니다. 화면마다 문구를 따로 지으면 같은 상황에서 다른 말이 나오기 때문입니다.
+- 서버 `message`는 화면에 그대로 보이지 않습니다. 같은 코드 안에서 사유를 가려야 할 때만 정해진 문구와 견줍니다.
+- `Retry-After` 헤더가 있으면 초로 바꿔 `retryAfterSec`에 담습니다. 얼마나 기다릴지는 부른 쪽이 정합니다.
+
+**토큰 갱신**
+
+```
+처음 열 때    useSession: 메모리에 토큰이 없으면 갱신 → GET /api/users/me
+요청이 401   → 갱신(POST /api/auth/refresh, 쿠키 + X-CSRF-Token) → 새 토큰으로 한 번 다시 보냄
+갱신도 실패  → 메모리 토큰을 비움 → 세션이 없어짐 → 로그인 화면(2절 "로그인")
+```
+
+- 동시에 여러 요청이 401을 받아도 갱신은 한 번만 합니다(진행 중인 갱신을 함께 기다림). 쿠키는 탭끼리 나눠 쓰므로, 탭 사이에서도 `navigator.locks`로 갱신을 한 줄로 세웁니다.
+- 다른 탭에서 다른 계정으로 로그인해 사용자가 바뀌었으면 다시 보내지 않고 `SESSION_CHANGED`로 멈춥니다. 앞 사용자가 쓴 글이 새 계정으로 접수되지 않게 하려는 것입니다.
+- 로그아웃은 다른 탭에도 알립니다(3절 BroadcastChannel).
 
 ## 6. 시선 파이프라인
 
@@ -202,6 +237,6 @@ app/ ──▶ features/* ──▶ workers/ ──┬──▶ vendor/gaze/engi
 ## 8. 열린 질문
 
 - **기능 문서가 아직 없는 화면** — 홈 대시보드(`/`), 피치 목록(`/pitches`), 마이페이지(`/me`: 탈퇴 · 서비스 의견), 들어오기(`/welcome` · `/login` · 온보딩), 안내(`/about` · `/privacy` · `/terms`), 미지원 브라우저(`/unsupported`). 지금은 이 문서 2절의 라우트 표에만 있습니다.
-- **공통 처리 문서가 없음** — 공용 컴포넌트(`shared/ui/`, [README](../../frontend/src/shared/ui/README.md)), MSW 목 작성 규칙, 오류 · 토큰 갱신(5절 `작성 필요`).
+- **공통 처리 문서가 없음** — 공용 컴포넌트(`shared/ui/`, [README](../../frontend/src/shared/ui/README.md)), MSW 목 작성 규칙. 오류 · 토큰 갱신은 5-1절에 있습니다.
 
 - **아직 정하지 않은 값** — [frontend/AGENTS.md](../../frontend/AGENTS.md) "아직 안 정해진 것" 표에 있습니다(I-03 시선 모델 · I-17 UNCERTAIN 임계값 · I-18 대본 유사도 · I-19 축소 판정).
