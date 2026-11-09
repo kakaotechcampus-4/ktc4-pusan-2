@@ -171,6 +171,41 @@ def test_asked_area_unmeasured_is_said_even_if_the_model_skips_it() -> None:
     assert "측정 안 됨" in data["plan"][0]["step"]
     unmeasured = "이 항목은 측정되지 않았어요."
     assert [c.text for c in fd.message.claims].count(unmeasured) == 1
+    # 측정 안 됨이 그 질문의 확인한 답이다: '답 일부를 확인하지 못해'로 PARTIAL 이 되지 않는다(path-norec-unmeasured)
+    assert fd.status == "DONE"
+
+
+def test_unmeasured_fact_is_the_answer_when_model_sentences_are_dropped() -> None:
+    """모델 문장이 검사로 모두 빠져도 앞에 낸 측정 안 됨 사실이 답이다(DONE, 같은 문장을 다시 붙이지 않음)."""
+    msg = "Take 5에서 목소리 크기가 장마다 일정했는지 수치로 보여 줄래요?"
+    req = F.request(user_message=msg)
+    vol = req["context"]["pitch"]["focus_take"]["results"]["take_result"]["areas"]["VOLUME"]
+    vol["take"], vol["unmeasured_reason"] = None, "NO_CALIBRATION"
+    for sl in vol.get("slides") or []:
+        sl["metrics"] = {k: None for k in sl.get("metrics") or {}}
+    ask = F.draft(
+        "Take 5에서 목소리 크기가 장마다 일정했는지 수치로 보여 줄래요",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="vocal_delivery",
+        polarity="NEUTRAL",
+    )
+    bad = F.claim("RECORD", "Take 5의 목소리 크기는 -12dB로 일정했어요.", evidence_ids=["e-없음"])
+    llm = F.FakeLlm(
+        [
+            F.plan(steps=["장별 값 보기"], step_tools=["get_take_report"], assessments=[ask]),
+            F.tools(("get_take_report", {"take_id": "t-5", "section": "slides"})),
+            F.done(),
+        ],
+        answers=[F.answer([bad])],
+        fixes=[F.fix({0: None})],
+    )
+    _, lines, data = F.run_turn(req, llm)
+    fd = check_stream(lines, data)
+    assert fd.message is not None and fd.status == "DONE"
+    texts = [c.text for c in fd.message.claims]
+    assert texts.count("이 항목은 측정되지 않았어요.") == 1
+    assert "-12dB" not in fd.message.text
 
 
 # ── 2. 표시 갱신은 계획 수정 한도를 쓰지 않는다 ─────────────────────────────

@@ -901,7 +901,12 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             code_claims += _target_fallback(
                 lp, [e for c in out for e in c.evidence_ids], have=code_claims
             )
-        if code_claims:
+        # 앞 문장으로 이미 낸 측정 안 됨 사실(`_unmeasured_notes`)도 질문 대상에 답한 확인한 사실이다: 대신 문장은 같은 문장을
+        # 다시 내지 않으므로 그 앞 문장을 답으로 센다(path-norec-unmeasured 가 '답 일부를 확인하지 못해'로 PARTIAL 이 되지 않게)
+        pre_fact = any(
+            c.kind == "SYSTEM" and c.text == templates.SystemText.UNMEASURED.value for c in comp.pre
+        )
+        if code_claims or pre_fact:
             # 이 문장들로 요청이 모두 해소되면(조사가 끊기지 않았고 풀리지 않은 단계가 없음) DONE, 아니면 확인된 근거만 PARTIAL.
             # 검사로 빠진 자료 · 일반 조언 문장은 코드가 다시 그릴 수 없다: 그 부분이 남으므로 PARTIAL 이다
             advice_dropped = any(
