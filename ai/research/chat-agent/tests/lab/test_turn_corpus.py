@@ -61,6 +61,7 @@ def test_guide_sentence_with_verbatim_quote_passes_and_shows_source(corpus: Any)
                     "GUIDE",
                     f'자료에서는 "{it["quote"][:25]}"라고 안내해요.',
                     source_ids=[it["source_id"]],
+                    quote=it["quote"],
                 )
             ]
         )

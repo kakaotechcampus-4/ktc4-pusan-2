@@ -1,4 +1,4 @@
-import type { ConversationListItem } from '@/types/chat';
+import type { ConversationList, ConversationListItem } from '@/types/chat';
 import { chatApi } from './chatApi';
 import type { ScreenScope } from './chatStore';
 
@@ -52,8 +52,27 @@ export function readConversationList(v: unknown): ConversationListItem[] {
   return items.map(readItem).filter((c): c is ConversationListItem => c !== null);
 }
 
-export async function fetchConversationList(signal?: AbortSignal) {
-  return readConversationList(await chatApi.listConversations(signal));
+/**
+ * 목록 한 쪽을 읽습니다. 다음 커서가 없거나 깨졌으면(빈 글자 · 글자가 아님) 끝으로 봅니다 —
+ * 깨진 커서로 다시 부르면 BE 가 422 를 줘서, 더 보기를 눌러도 실패만 되풀이됩니다
+ */
+export function readConversationPage(v: unknown): ConversationList {
+  const cursor = (v as { next_cursor?: unknown } | null)?.next_cursor;
+  return { conversations: readConversationList(v), next_cursor: isText(cursor) ? cursor : null };
+}
+
+export async function fetchConversationPage(cursor: string | null, signal?: AbortSignal) {
+  return readConversationPage(await chatApi.listConversations(signal, cursor));
+}
+
+/**
+ * 쪽들을 한 목록으로 — 쪽을 읽는 사이 활동이 생겨 같은 대화가 두 쪽에 오면 먼저(최근) 온 것만 둡니다
+ */
+export function joinConversationPages(pages: readonly ConversationList[]): ConversationListItem[] {
+  const seen = new Set<string>();
+  return pages
+    .flatMap((page) => page.conversations)
+    .filter((c) => !seen.has(c.conversation_id) && seen.add(c.conversation_id));
 }
 
 /** 목록의 마지막 시각 — "11. 6. 오후 9:30" */

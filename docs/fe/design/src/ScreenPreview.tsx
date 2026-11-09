@@ -186,7 +186,7 @@ function CurrentScreen({
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create-a':
     case 'pitch-create':
-      // 옛 preview 상태 주소를 유지하며 두 화면 모두 현행 피치 생성 샘플을 사용한다.
+      // 옛 preview 상태 주소는 슬라이드 확인 창으로 연다
       return (
         <PitchCreateScreen
           stateId={stateId === 'preview' ? 'upload-review' : stateId}
@@ -232,7 +232,9 @@ function CurrentScreen({
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'slide-preview':
       // 피치 생성 샘플 안의 슬라이드 확인 창을 그대로 보인다
-      return <PitchCreateScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />;
+      return (
+        <PitchCreateScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />
+      );
     default:
       if (componentEntries.some((entry) => entry.id === screenId))
         return <ComponentDoc id={screenId} stateId={stateId} />;

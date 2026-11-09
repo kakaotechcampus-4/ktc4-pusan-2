@@ -174,3 +174,39 @@ it('보내는 중이 아닐 때 강제로 닫히면 닫힌 것으로 맞춰 버�
   await act(async () => button('이번 분석 설문 남기기')!.click());
   expect(host.querySelector('dialog')?.open).toBe(true);
 });
+
+it('보내는 동안 누른 버튼이 초점을 쥐고, 보낸 뒤에는 초점이 알림으로 간다 (#845)', async () => {
+  await render();
+  await act(async () => button('이번 분석 설문 남기기')!.click());
+  await choose('accuracy', 4);
+  await choose('usefulness', 4);
+  let done!: (survey: unknown) => void;
+  api.post.mockReturnValueOnce(new Promise((resolve) => (done = resolve)));
+  const send = button('설문 보내기')!;
+  send.focus();
+  await act(async () => send.click());
+
+  // disabled 면 브라우저가 초점을 body 로 옮깁니다. aria-disabled 로 막아 초점을 남깁니다
+  expect(send.textContent).toBe('보내는 중…');
+  expect(send.disabled).toBe(false);
+  expect(send.getAttribute('aria-disabled')).toBe('true');
+  expect(button('나중에')!.getAttribute('aria-disabled')).toBe('true');
+  await act(async () => button('나중에')!.click());
+  expect(host.querySelector('dialog')?.open).toBe(true);
+  expect(document.activeElement).toBe(send);
+
+  // 연 버튼은 보낸 뒤 알림 줄로 바뀝니다. 초점이 body 로 빠지지 않고 알림으로 갑니다
+  await act(async () =>
+    done({
+      take_id: 't1',
+      accuracy_rating: 4,
+      usefulness_rating: 4,
+      comment: null,
+      question_version: 1,
+      created_at: '2026-10-30T00:00:00Z',
+    }),
+  );
+  await flush();
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector('[role="status"]'));
+});

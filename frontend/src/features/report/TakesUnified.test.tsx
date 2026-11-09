@@ -127,6 +127,21 @@ it('목록 · 비교 선택과 피치 필터는 주소와 브라우저 뒤로 �
   expect(view('지표 비교').getAttribute('aria-current')).toBe('page');
 });
 
+it('같은 Take 기록 페이지의 탭과 피치 필터를 바꿀 때 스크롤 초기화를 막는다', async () => {
+  history.data.takes = [take(3, 'p2'), take(2), take(1)];
+  await render('/takes?pitch=p1');
+  await act(async () => view('지표 비교').click());
+  expect(router.state.preventScrollReset).toBe(true);
+
+  const select = host.querySelector('select')!;
+  await act(async () => {
+    select.value = 'p2';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(router.state.preventScrollReset).toBe(true);
+  expect(router.state.location.search).toContain('pitch=p2');
+});
+
 it('옛 비교 링크는 쿼리와 해시를 보존하며 해당 피치의 비교 탭으로 replace 이동한다', async () => {
   await render('/pitch/p2/comparison?origin=report#metric');
   expect(router.state.location.pathname).toBe('/takes');

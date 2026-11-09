@@ -206,8 +206,10 @@
   border-bottom: 0;
   background: color-mix(in srgb, var(--color-panel) 55%, var(--color-cream));
 }
+.create-content > section:nth-of-type(even) {
+  background: var(--color-cream);
+}
 .create-content > section:last-child {
-  border-bottom: 0;
   margin-bottom: 0;
 }
 .create-content :is(input, textarea) {

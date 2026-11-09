@@ -47,7 +47,7 @@ npm run dev
 - **새 탭에서 화면만 보기**는 지금 화면 · 상태를 뷰어 없이 브라우저 창 크기로 연다(`#/frame?screen=&state=`). 그 탭에서도 화면 안 버튼으로 이동한다.
 - 오른쪽 **설명 패널**은 상태의 뜻, 제품 동작 규칙, 제품과 다른 점, "제품에서 열기", 사용하는 컴포넌트, 디자인 값, 제품 코드 위치를 보여 준다. "제품에서 열기"는 제품 개발 서버(http://localhost:3000)의 같은 화면을 제품 목 데이터로 새 탭에 연다. 로그인이 필요하면 그 탭의 브라우저 콘솔에 `mockSession.on()`을 입력한다.
 
-목록에 없는 제품 화면(개인정보 처리방침 `/privacy` · 이용약관 `/terms`)은 제품 개발 서버에서 바로 연다.
+개인정보 처리방침(`/privacy`)과 이용약관(`/terms`)은 설계서의 `privacy` · `terms` 화면에서 확인할 수 있다.
 
 선택은 주소의 `screen`, `state`, `view`, `device`(미리보기 크기, "칸에 맞춤"이면 없음), `w` · `h`(직접 입력), `rotate=1`(돌림), `zoom`(브라우저 확대 %, 100이면 없음)에 저장된다. 예를 들어 다음 주소는 시작 전 세팅의 마이크 오류 상태를 1366 × 768 노트북 크기로 연다.
 
@@ -109,14 +109,14 @@ React 코드 종류에 따라 화면 안의 입력 상태는 처음으로 돌아
 | `src/PreviewFrame.tsx` · `src/FramePage.tsx` · `src/frame.ts` | 미리보기 iframe(크기 · 줄이기 · 이동 메시지), iframe이 여는 화면만 보기 주소, 둘이 함께 쓰는 값 |
 | `src/catalog.ts` · `src/model.ts` | 화면 목록과 그 모양(상태 · 규칙 · 제품과 다른 점 · 제품에서 열기 경로) |
 | `src/ScreenPreview.tsx` | 미리보기 진입점. 화면 ID로 그릴 화면을 고르고, 미리보기 안의 링크를 설계서 안에서만 이동시킨다 |
-| `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 피치 생성·수정은 `PitchCreateScreen.tsx`로 재현하고, 더 이상 쓰지 않는 이전 단계형 샘플은 제거했다. 분석 대기 · 대본 확인은 `AnalysisScreens.tsx`, 안내 화면은 `InfoScreens.tsx`, 공개 정책은 `PolicyScreens.tsx`, 웰컴 · 로그인은 `OnboardingScreens.tsx`, 공통 틀은 `shared.tsx` |
+| `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 피치 생성·수정은 `PitchCreateScreen.tsx`, 분석 대기 · 대본 확인은 `AnalysisScreens.tsx`, 안내 화면은 `InfoScreens.tsx`, 공개 정책은 `PolicyScreens.tsx`, 웰컴 · 로그인은 `OnboardingScreens.tsx`, 공통 틀은 `shared.tsx` |
 | `src/*.test.tsx` | 뷰어의 주소 · 포커스, 미리보기 iframe의 크기 · 메시지, 미리보기 흐름 · 무대 클래스, 모든 화면 · 상태가 그려지는지 확인 |
 | `src/ui/` | 버튼 · 카드 · 배지(TakeStatusBadge) · 마스코트 · 워드마크 · 상단바(AppHeader) · 선택 상자 · 대본 표시 선택(ScriptModeChoice)과 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 무대 CSS(stage.css), `dialogs/`의 확인 · 도움말 · 설문 · 참여 동의 창. 제품에서 복사해 시작했다 |
-| `src/ui/prepare-draft/` | 시작 전 세팅 검토 시안 전용 카드·프레임·오디오 미터·대본 선택과 스타일 (`prepare-draft.css`); 실제 제품 공통 UI와 분리 |
+| `src/ui/prepare-draft/` | 시작 전 세팅 검토 시안 전용 카드·프레임·오디오 미터·대본 선택과 스타일(`prepare-draft.css`); 제품 공통 UI와 분리 |
 | `src/components/` | 컴포넌트 · 대화 상자 문서. `ComponentDocs.tsx`가 견본을 그리고, `entries.ts`가 목록 칸(보기 · 규칙 · 속성 · 사용 예)이다 |
 | `src/foundations/` | 기초 문서. `tokens.ts`가 `styles.css`를 읽고(묶음 · 설명 · 밝은 지면 · 대비), `Foundations.tsx`가 그리며, `entries.ts`가 목록 칸(보기 · 규칙)이다 |
 | `src/styles.css` | 색 · 글꼴 · 간격 등 디자인 값의 원본. 제품 `index.css`에서 복사해 시작했다 |
-| `src/lib/` · `src/samples/` | 시간 표기 · Take 상태 문구와 예시 데이터 (`samples/prepareDraft.ts`: 시작 전 세팅 검토 시안의 고정 데이터) |
+| `src/lib/` · `src/samples/` | 시간 표기 · Take 상태 문구와 검토 시안 예시 데이터(`prepareDraft.ts`) |
 | `public/` | 글꼴 · 마스코트 · 노을 그림 · Google 로그인 버튼 그림 |
 | `scripts/compare-tokens.mjs` · `scripts/product-drift.mjs` | `npm run tokens` · `npm run drift`의 스크립트 |
 | `audit.md` | 제품과의 차이를 어디서 보고 어떻게 맞추는지 |

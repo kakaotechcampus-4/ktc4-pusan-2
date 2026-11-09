@@ -105,16 +105,20 @@ def plan(
     steps: list[str] | None = None,
     assessments: list[dict[str, Any]] | None = None,
     scope_reason: str | None = None,
+    talk_kind: str | None = None,
+    guide_queries: list[str] | None = None,
 ) -> LlmResult:
     steps = steps if steps is not None else ["기록 확인", "답 쓰기"]
     return structured(
         {
             "route": route,
+            "talk_kind": talk_kind,
             "scope_reason": scope_reason,
             "plan": [
                 {"step": s, "status": "DOING" if i == 0 else "TODO", "note": None}
                 for i, s in enumerate(steps)
             ],
+            "guide_queries": guide_queries or [],
             "assessments": assessments or [],
         }
     )
@@ -143,6 +147,8 @@ def claim(
     *,
     evidence_ids: list[str] | None = None,
     source_ids: list[str] | None = None,
+    quote: str | None = None,
+    about: str | None = None,
     assessment_index: int | None = None,
     comparison_evidence_id: str | None = None,
 ) -> dict[str, Any]:
@@ -151,6 +157,8 @@ def claim(
         "text": text,
         "evidence_ids": evidence_ids or [],
         "source_ids": source_ids or [],
+        "quote": quote,
+        "about": about,
         "assessment_index": assessment_index,
         "comparison_evidence_id": comparison_evidence_id,
     }
@@ -165,6 +173,7 @@ def answer(
     scope_reason: str | None = None,
     scope_notes: list[str] | None = None,
     profile_updates: list[dict[str, Any]] | None = None,
+    usage_unanswered: bool = False,
 ) -> LlmResult:
     return structured(
         {
@@ -173,6 +182,7 @@ def answer(
             "scope_notes": scope_notes or [],
             "assessments": assessments or [],
             "claims": claims,
+            "usage_unanswered": usage_unanswered,
             "start_practice": start_practice,
             "profile_updates": profile_updates or [],
         }

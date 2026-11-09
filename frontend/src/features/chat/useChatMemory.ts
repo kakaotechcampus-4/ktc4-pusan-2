@@ -11,6 +11,24 @@ import {
 } from './chatMemory';
 
 /**
+ * 목록을 채운 요청이 언제 시작됐는지 — 번호가 클수록 나중에 시작한 요청입니다. 읽기는 보낼 때 번호를 받고 응답이 캐시를
+ * 채우면 그 번호를 남기고, 바꾸는 요청은 받은 값으로 캐시를 바꿀 때 새 번호를 남깁니다. '기억했어요' 카드는 자기가
+ * 그려지기 전에 시작한 읽기의 응답(기억 저장 전 목록일 수 있음)을 최신으로 믿지 않는 데 씁니다(`memoryFilledAfter`)
+ */
+let memoryStamp = 0;
+const filledStamp = new Map<string, number>();
+
+const fillStamp = (userId: string, stamp: number) =>
+  filledStamp.set(userId, Math.max(filledStamp.get(userId) ?? 0, stamp));
+
+/** 지금까지 시작된 요청의 마지막 번호 — 카드가 그려질 때 기록해 둡니다 */
+export const memoryStampNow = () => memoryStamp;
+
+/** `since` 보다 나중에 시작한 요청이 목록을 채웠는지 */
+export const memoryFilledAfter = (userId: string, since: number) =>
+  (filledStamp.get(userId) ?? 0) > since;
+
+/**
  * 기억 설정 화면 · '기억했어요' 카드 · '기억 없이' 스위치가 함께 읽는 서버 값 (12-4 F14 · F15 · F16).
  *
  * - 다른 탭 · 기기에서 바뀐 값은 창으로 돌아올 때 다시 읽어 맞춥니다(L3-43 "다른 탭에서 바뀜").
@@ -22,7 +40,13 @@ import {
 export function useMemorySettings(userId: string, { fresh = false }: { fresh?: boolean } = {}) {
   return useQuery({
     queryKey: memoryKey(userId),
-    queryFn: ({ signal }) => fetchMemory(signal),
+    queryFn: async ({ signal }) => {
+      const stamp = ++memoryStamp;
+      const data = await fetchMemory(signal);
+      // 멈춘 읽기의 응답은 캐시를 채우지 않으니 번호도 남기지 않습니다
+      if (!signal.aborted) fillStamp(userId, stamp);
+      return data;
+    },
     staleTime: 30_000,
     refetchOnMount: fresh ? 'always' : true,
     refetchOnWindowFocus: true,
@@ -44,7 +68,22 @@ export const useMemoryChanging = (userId: string) =>
 function useSetMemory(userId: string) {
   const queryClient = useQueryClient();
   return useCallback(
-    (data: MemorySettings) => queryClient.setQueryData(memoryKey(userId), data),
+    (data: MemorySettings) => {
+      fillStamp(userId, ++memoryStamp);
+      queryClient.setQueryData(memoryKey(userId), data);
+    },
+    [queryClient, userId],
+  );
+}
+
+/**
+ * 바꾸는 요청을 보내기 전에 나가 있는 목록 읽기를 멈춥니다 — 늦게 온 읽기 응답이 바꾼 뒤의 값을 덮어쓰지 않게.
+ * 멈춘 읽기는 이전 값으로 돌아가고(실패로 치지 않음), 바꾸는 동안 카드는 다시 읽지 않습니다(`useMemoryChanging`)
+ */
+function useStopMemoryRead(userId: string) {
+  const queryClient = useQueryClient();
+  return useCallback(
+    () => queryClient.cancelQueries({ queryKey: memoryKey(userId), exact: true }),
     [queryClient, userId],
   );
 }
@@ -52,9 +91,11 @@ function useSetMemory(userId: string) {
 /** 코칭 프로필 기억 켜기 · 끄기 */
 export function useSaveMemoryEnabled(userId: string) {
   const setMemory = useSetMemory(userId);
+  const stopRead = useStopMemoryRead(userId);
   return useMutation({
     mutationKey: [...changeKey(userId), 'enabled'],
     mutationFn: (enabled: boolean) => saveMemoryEnabled(enabled),
+    onMutate: stopRead,
     onSuccess: setMemory,
   });
 }
@@ -62,9 +103,11 @@ export function useSaveMemoryEnabled(userId: string) {
 /** [전체 지우기] */
 export function useClearMemory(userId: string) {
   const setMemory = useSetMemory(userId);
+  const stopRead = useStopMemoryRead(userId);
   return useMutation({
     mutationKey: [...changeKey(userId), 'clear'],
     mutationFn: () => clearMemoryItems(),
+    onMutate: stopRead,
     onSuccess: setMemory,
   });
 }
@@ -85,8 +128,10 @@ const isGone = (error: unknown) => error instanceof ApiFailure && error.status =
  */
 export function useRemoveMemoryItem(userId: string, itemId: string, onRemoved?: () => void) {
   const queryClient = useQueryClient();
+  const stopRead = useStopMemoryRead(userId);
   const mutation = useMutation({
     mutationKey: removeKey(userId, itemId),
+    onMutate: stopRead,
     mutationFn: async (): Promise<MemorySettings | null> => {
       try {
         return await removeMemoryItem(itemId);
@@ -98,6 +143,7 @@ export function useRemoveMemoryItem(userId: string, itemId: string, onRemoved?: 
     // 지운 줄은 목록에서 빠져 사라지므로, 알림은 줄이 아니라 이 요청에 붙입니다
     onSuccess: (data) => {
       onRemoved?.();
+      fillStamp(userId, ++memoryStamp);
       if (data) {
         queryClient.setQueryData(memoryKey(userId), data);
         return;

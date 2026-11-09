@@ -228,17 +228,21 @@ function MissionReader({
         <p>모든 미션이 이번 Take에 적용돼요.</p>
         <button
           type="button"
-          className="prepare-draft-action"
-          disabled={index === 0}
-          onClick={() => onSelect(index - 1)}
+          className="prepare-draft-action aria-disabled:opacity-55"
+          aria-disabled={index === 0}
+          onClick={() => {
+            if (index > 0) onSelect(index - 1);
+          }}
         >
           이전 미션
         </button>
         <button
           type="button"
-          className="prepare-draft-action"
-          disabled={index === items.length - 1}
-          onClick={() => onSelect(index + 1)}
+          className="prepare-draft-action aria-disabled:opacity-55"
+          aria-disabled={index === items.length - 1}
+          onClick={() => {
+            if (index < items.length - 1) onSelect(index + 1);
+          }}
         >
           다음 미션
         </button>

@@ -110,6 +110,7 @@ ai/service/
 │   │   └── <이름>.py            #   기능 엔드포인트, 기능마다 하나 (coach.py 는 판정 모듈을 묶어 evaluate · finalize 에서 코치에 넘긴다. chat_agent.py 는 스트림 응답)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다 (구조화 출력 structured_llm, 대화 에이전트의 도구 호출 tool_llm)
+│   │   ├── embedding.py         #   임베딩 호출 (OPENAI_EMBEDDING_* 묶음, 재시도 없음 · 전체 마감, 지금은 대화 에이전트 자료 검색)
 │   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
 │   │   ├── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
@@ -134,6 +135,7 @@ ai/service/
 | `api/<이름>.py`의 `router` | 기능 경로. 요청 검사 → 기능 코어 호출 | BE |
 | `common/llm.py`의 `structured_llm(schema, model=…, deadline=…)` | 출력 스키마를 고정한 LLM 객체를 돌려준다 | 라우터 (기능 코어에 인자로 넘긴다) |
 | `common/llm.py`의 `tool_llm(role, pool_size=…)` | 도구 호출 · 구조화 호출을 하는 LLM 객체(`invoke(요청, before_attempt)`)를 돌려준다. 묶음이 없으면 None | 대화 에이전트 라우터(프로세스에서 한 번 만들어 코어에 넘긴다, 6-2) |
+| `common/embedding.py`의 `make_embedder(settings, dims)` · `embed_batch` | `make_embedder`는 질문 임베딩 함수(`(글 목록, 시간 제한 초)` → 벡터 목록)를 돌려준다(`OPENAI_EMBEDDING_*` 묶음, 재시도 없음, 전체 마감을 강제). 묶음이 없으면 None — 부르는 기능은 임베딩 없이 동작해야 한다. `embed_batch`는 미리 계산할 벡터를 한 번에 만든다 | 대화 에이전트 라우터(질문 임베딩 함수를 코어에 넘긴다) · `tools/build_guide_embeddings.py`(`embed_batch`) |
 | `settings.py`의 `settings` | 환경변수를 읽은 설정 객체 | `main.py` · `common/` · 라우터 |
 
 ## 4-3. 규칙과 이유

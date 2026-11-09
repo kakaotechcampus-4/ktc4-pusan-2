@@ -23,6 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,6 +40,10 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """발표 하나. 연습(Take)은 모두 이 아래에 달린다."""
 
     __tablename__ = "pitches"
+    __table_args__ = (
+        # 튜토리얼 샘플 발표는 사용자마다 하나다. 동시에 만들어도 하나만 들어간다
+        Index("uq_pitches_user_demo", "user_id", unique=True, postgresql_where=text("is_demo")),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
@@ -49,6 +54,11 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     presentation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     upper_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lower_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # First Take 튜토리얼 샘플 발표인가. 준비된 자료와 미리 만든 AI 결과로 만든다
+    # (service/tutorial.py)
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):

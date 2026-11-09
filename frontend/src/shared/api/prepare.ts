@@ -1,6 +1,14 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, postJson } from './client';
 import type { PrepareResponse } from '@/types/api';
+import type { PitchResources } from '@/types/pitch';
+
+/** 가장 최근에 올린 발표자료. 쪽수는 옛 자료면 모릅니다(null) */
+export interface LatestSlide {
+  id: string;
+  version: number;
+  pageCount: number | null;
+}
 import type { CalibrationRequest, TakeCreateRequest, TakeCreated } from '@/types/take';
 
 export const prepareKey = (pitchId: string) => ['prepare', pitchId] as const;
@@ -20,6 +28,32 @@ export function usePrepare(pitchId: string) {
     queryKey: prepareKey(pitchId),
     queryFn: () => apiRequest<PrepareResponse>(`/api/pitches/${pitchId}/prepare`),
     enabled: pitchId !== '',
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * 가장 최근에 올린 발표자료 — 준비 정보(`/prepare`)가 대본과 장 수가 맞는 **지난** 자료를 골랐는지 견줄 때 씁니다.
+ * `/prepare` 에는 최신 자료가 없어서 버전 목록(`GET /pitches/{id}/resources`)에서 꺼냅니다. 없으면 null.
+ *
+ * `getPitchResources`(`./pitch`)를 쓰지 않는 것은 그 파일이 이 파일의 `prepareKey` 를 가져다 쓰기 때문입니다 — 서로 부르지 않게.
+ * 준비 정보와 같은 이유로 들어올 때마다 새로 받습니다.
+ */
+export function useLatestSlide(pitchId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['prepare', pitchId, 'latest-slide'] as const,
+    queryFn: async (): Promise<LatestSlide | null> => {
+      const res = await apiRequest<PitchResources>(`/api/pitches/${pitchId}/resources`);
+      const newest = res.presentation_versions.reduce<
+        PitchResources['presentation_versions'][number] | null
+      >((best, v) => (best === null || v.version > best.version ? v : best), null);
+      return (
+        newest && { id: newest.id, version: newest.version, pageCount: newest.page_count ?? null }
+      );
+    },
+    enabled: enabled && pitchId !== '',
     gcTime: 0,
     staleTime: 0,
     refetchOnWindowFocus: true,
