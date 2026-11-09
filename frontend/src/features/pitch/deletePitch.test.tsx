@@ -488,7 +488,8 @@ it('TIP 목록은 채팅 에이전트 안내를 포함하고 마지막 다음에
   await act(async () => {
     for (let i = 0; i < 10; i += 1) tick();
   });
-  expect(tip.textContent).toBe('왼쪽 아래 채팅 에이전트에게 지난 Take 기록이나 발표 방법을 물어보세요.');
+  const chatTip = '왼쪽 아래 채팅 에이전트에게 지난 Take 기록이나 발표 방법을 물어보세요.';
+  expect(tip.textContent).toBe(chatTip);
 
   await act(async () => tick());
   expect(tip.textContent).toBe('연습 전, 슬라이드와 대본을 한 번 확인해 보세요.');
