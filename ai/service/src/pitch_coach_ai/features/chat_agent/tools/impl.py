@@ -28,7 +28,7 @@ from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value
 from ..goals import compare_takes, record_read_value
 from ..prompts import PLAN_STEP_TOOLS
 from ..schemas import PlanStep, TakeSnapshot
-from ..templates import AREA_LABEL
+from ..templates import AREA_LABEL, SCREEN_STEP_LABEL
 from ..values import read_dimension_state, read_metric
 
 if TYPE_CHECKING:
@@ -183,6 +183,17 @@ def _get_screen(ctx: RunCtx, _a: NoArgs) -> ToolResult:
     eids: list[str] = []
     if sc.name in ("pitch_create", "pitch_edit"):
         data["step"] = sc.step
+        # 지금 구역의 화면 이름도 근거와 함께 싣는다("지금 어느 단계예요?" → "평가 기준 단계", final60 inj-screen-criteria:
+        # 구역 키만 있어 근거로 잇지 못하고 단계 질문을 건너뜀)
+        step_ev = ctx.registry.screen(
+            pitch_id=pid,
+            snapshot_id=sc.snapshot_id,
+            path="screen.step",
+            value=SCREEN_STEP_LABEL.get(sc.step, sc.step),
+            saved=False,
+        )
+        eids.append(step_ev.evidence_id)
+        data["step_label"] = {"value": step_ev.value, "evidence_id": step_ev.evidence_id}
         data["version_label"] = sc.version_label
         draft: dict[str, Any] = {}
         for k, v in sc.draft.model_dump().items():

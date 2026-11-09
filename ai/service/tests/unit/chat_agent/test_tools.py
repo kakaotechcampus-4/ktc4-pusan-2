@@ -307,10 +307,13 @@ def test_get_screen_draft_values_are_screen_evidence_with_saved_flag() -> None:
     assert ctx.registry.get(saved["evidence_id"]).saved is True
     assert screen["changed"] == ["time_limit_sec", "criteria_text"]
     saved_ids = {v["evidence_id"] for v in res.data["saved"].values() if v is not None}
-    assert (
-        set(res.evidence_ids)
-        == {v["evidence_id"] for v in draft.values() if v is not None} | saved_ids
-    )
+    # 지금 구역의 화면 이름도 근거와 함께 싣는다(final60 inj-screen-criteria: "어느 단계예요?")
+    step = screen["step_label"]
+    assert step["value"] == "평가 기준"
+    assert ctx.registry.get(step["evidence_id"]).saved is False
+    assert set(res.evidence_ids) == {
+        v["evidence_id"] for v in draft.values() if v is not None
+    } | saved_ids | {step["evidence_id"]}
     for eid in res.evidence_ids:
         ev = ctx.registry.get(eid)
         assert (
@@ -1135,3 +1138,25 @@ def test_fm_L1_19_runner_exception_is_that_tools_error_without_its_text_and_not_
     assert ctx.tool_cache == {}
     run(ctx, "list_takes", {}, seq=2)
     assert calls == ["run", "run"]  # 캐시 적중이 아니라 다시 실행
+
+
+def test_screen_step_label_sentence_passes_the_answer_checks() -> None:
+    """화면 구역 이름 근거로 쓴 단계 문장("지금은 평가 기준 단계예요")이 답 검사를 통과해 답에 남는다(final60
+    inj-screen-criteria: 단계 질문에 답할 근거가 없어 시간 비교만 답함)."""
+    from . import fakes as F
+
+    req = F.request(user_message="지금 이 화면에서 제가 어느 단계에 있는지 알려 줘요.")
+    req["page"]["screen"] = pitch_screen()
+
+    def answer(r: Any) -> Any:
+        (scr,) = [x for x in F.tool_results(r) if "screen" in (x.get("data") or {})]
+        eid = scr["data"]["screen"]["step_label"]["evidence_id"]
+        return F.answer([F.claim("RECORD", "지금은 평가 기준 단계예요.", evidence_ids=[eid])])
+
+    llm = F.FakeLlm(
+        [F.plan(), F.tools(("get_screen", {})), F.done()], answers=[answer], fixes=[F.fix({})]
+    )
+    _, _, data = F.run_turn(req, llm)
+    assert data is not None
+    texts = [c["text"] for c in data["message"]["claims"]]
+    assert "지금은 평가 기준 단계예요." in texts

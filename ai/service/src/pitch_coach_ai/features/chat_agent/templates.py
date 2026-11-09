@@ -302,6 +302,15 @@ AREA_LABEL = {
     "FILLER": "군더더기",
 }
 
+#: 피치 만들기 · 수정 화면의 구역(`page.screen.step`) → 화면에 보이는 단계 이름(FE `PitchCreatePage` 단계 막대).
+#: get_screen 결과에 근거와 함께 실어 "지금 어느 단계예요?"에 답할 수 있게 한다(final60 inj-screen-criteria)
+SCREEN_STEP_LABEL = {
+    "slides": "슬라이드",
+    "script": "대본 연결",
+    "info": "발표정보",
+    "criteria": "평가 기준",
+}
+
 #: 닫힌 대화 목표의 상태 → 고정 문장(7-10). 닫은 Take 를 요청 자료로는 알 수 없어 Take · 값 없이 상태만 말한다
 GOAL_CLOSED_TEXT = {
     "ACHIEVED": SystemText.GOAL_CLOSED_ACHIEVED,
