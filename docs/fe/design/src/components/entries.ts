@@ -442,7 +442,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
     sources: ['frontend/src/features/pitch/create/steps/SlidePane.tsx'],
-    file: 'src/screens/CreateConceptScreen.tsx',
+    file: 'src/screens/PitchCreateScreen.tsx',
     props: [],
     code: `// 제품 SlidePane 안의 확인 창. 설계서는 피치 생성 샘플 안의 창을 그대로 보인다`,
     productNote:

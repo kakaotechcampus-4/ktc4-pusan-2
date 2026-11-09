@@ -7,11 +7,11 @@
 import { useState, type MouseEvent } from 'react';
 import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
-import { CreateConceptScreen } from './screens/CreateConceptScreen';
+import { PitchCreateScreen } from './screens/PitchCreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
-import { PrepareLayoutDraft } from './screens/PrepareLayoutDraft';
+import { PrepareLayoutDraftScreen } from './screens/PrepareLayoutDraftScreen';
 import { StageScreen } from './screens/StageScreen';
-import { ProcessingScreen, ConfirmScreen } from './screens/AnalysisScreen';
+import { ProcessingScreen, ConfirmScreen } from './screens/AnalysisScreens';
 import { RetryScreen } from './screens/RetryScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { TakesScreen } from './screens/TakesScreen';
@@ -188,7 +188,7 @@ function CurrentScreen({
     case 'pitch-create':
       // 옛 preview 상태 주소는 슬라이드 확인 창으로 연다
       return (
-        <CreateConceptScreen
+        <PitchCreateScreen
           stateId={stateId === 'preview' ? 'upload-review' : stateId}
           onNavigate={onNavigate}
           inline={inline}
@@ -197,7 +197,7 @@ function CurrentScreen({
     case 'prepare-mission':
       return <PrepareScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'prepare-layout-review':
-      return <PrepareLayoutDraft stateId={stateId} onNavigate={onNavigate} />;
+      return <PrepareLayoutDraftScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'stage':
       return <StageScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'processing-loading':
@@ -232,9 +232,7 @@ function CurrentScreen({
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'slide-preview':
       // 피치 생성 샘플 안의 슬라이드 확인 창을 그대로 보인다
-      return (
-        <CreateConceptScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />
-      );
+      return <PitchCreateScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />;
     default:
       if (componentEntries.some((entry) => entry.id === screenId))
         return <ComponentDoc id={screenId} stateId={stateId} />;

@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { entries } from './catalog';
 import { ScreenPreview } from './ScreenPreview';
-import { prepareDraftFixture } from './screens/prepareDraftFixtures';
+import { prepareDraftFixture } from './samples/prepareDraft';
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

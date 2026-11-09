@@ -46,3 +46,12 @@
 | `/about`, `/me`, `/unsupported`, `*` | `about`, `me`, `unsupported`, `not-found` |
 
 `/dev/stage` · `/dev/media` · `/dev/stt`는 내부 검증 도구라서, 채팅 에이전트(`ChatAgentHost`)는 페이지가 아닌 앱 전역 레이어라서 화면을 따로 두지 않는다.
+
+
+## 2026-11-09 · 내부 명칭 및 검토 시안 구조 정리 (#1115)
+
+기존 화면 ID·공유 주소와 제품 대조 기록(#874, 토큰 검사, 후속 drift 14개 항목)은 유지한다.
+
+- 화면 샘플 파일·컴포넌트 이름: `CreateConceptScreen` → `PitchCreateScreen`, `AnalysisScreen` → `AnalysisScreens`, `PrepareLayoutDraft` → `PrepareLayoutDraftScreen`.
+- 시작 전 세팅 시안의 UI와 CSS는 `src/ui/prepare-draft/`로, 예시 데이터는 `src/samples/prepareDraft.ts`로 이동했다.
+- 사용하지 않는 이전 단계형 `CreateScreen.tsx`와 `PaneHeading.tsx` · `PaneFooter.tsx`는 선행 #1114에서 이미 제거했다.
