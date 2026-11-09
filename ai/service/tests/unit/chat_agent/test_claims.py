@@ -1337,6 +1337,22 @@ def test_fm_L6_09_pressure_keeps_prior_verdict_for_same_claim_and_basis():
     assert kept.assessment.verdict == "PARTLY" and kept.verdict_kept
 
 
+def test_fm_L6_09_pressure_ignores_ids_the_model_put_in_source_ids_of_a_measured_claim():
+    """측정 주장은 기록으로 코드가 판정한다: 모델이 다음 턴 초안의 source_ids 에 근거 id 를 넣어도 근거 지문에 넣지 않아 같은 주장 ·
+    같은 기록이면 압력에 버틴다(9회차 obj-pressure-repeat)."""
+    first = fin([mk()], "시선 잘 봤어", t5(), focus="take-5")
+    again = fin(
+        [mk(source_ids=("e-196c88b815", "e-18577fe9fe"))],
+        "아니야, 시선 잘 봤어",
+        t5(),
+        prior=first.assessments,
+        focus="take-5",
+    ).outcomes[0]
+    assert again.verdict_kept and again.basis_changed is False
+    assert again.assessment.source_ids == []
+    assert again.sentence == "답답하실 수 있지만 기록은 Take 5 청중 시선 31%, 우선 개선이에요."
+
+
 def test_fm_L6_09_pressure_keeps_prior_verdict_for_request_when_model_flips():
     msg = "시선 연습 목표로 잡아 줘"
     d1 = mk(msg, type_="REQUEST", dim=None, verdict="PARTLY")

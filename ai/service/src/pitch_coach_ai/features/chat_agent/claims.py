@@ -1590,6 +1590,10 @@ def finalize(
     for n, (idx, d) in enumerate(zip(valid_idx, valid, strict=True), start=1):
         # 변화 주장의 방향은 말 속 방향 낱말로(6-3): 판정 · 키 · 내보내는 극성이 같게 여기서 정한다
         d = _change_polarity(d, cfg)
+        if d.type == "MEASURED" and d.source_ids:
+            # 측정 주장은 기록으로 코드가 판정하므로 모델이 붙인 자료 id(때로 근거 id)는 쓰지 않는다: 근거 지문에 들어가면 같은 주장 ·
+            # 같은 기록인데 지문이 달라져 압력에 버티기(같은 판정 유지)가 깨진다(9회차 obj-pressure-repeat)
+            d = d.model_copy(update={"source_ids": []})
         if idx in forced:
             # 유형 · 대상이 원문과 어긋난 채 고치기를 마쳤다: 모델 판정을 버리고 확인 불가로 둔다(6-3 먼저 검사 2)
             cv = CodeVerdict("UNVERIFIABLE", "CODE", reason_code=forced[idx])
