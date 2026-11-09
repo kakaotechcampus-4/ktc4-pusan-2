@@ -4,6 +4,7 @@
 - Take 목록: 거른 조건에 맞는 Take 만 없으면 'Take 없음'(기록 없음 신호)이 아니다.
 - 결정 로그: 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 붙었을 때만 남긴다.
 - 답 쓰기 실패의 대신 문장: 질문 대상의 근거로만 그린다(읽은 근거 전체를 나열하지 않는다).
+- 대신 문장의 '없음' 근거: 질문이 물은 종류 · Take · 장에 맞는 것만 그린다(다른 Take 의 리뷰 없음을 그리지 않는다).
 - 코드 대신 답의 끝난 까닭: 반복으로 멈춘 조사면 ANSWERED 가 아니라 REPEAT 다.
 - '같은 조건으로 다시 평가' 되살리기: 부정 · 인용 · 새 대상 · 조건이면 하지 않는다(확실하지 않으면 모델이 고른다).
 - 허용 근거: 행동 동사 자체에 붙은 조건("목표 저장하면 알려줘")은 저장 요청이 아니다.
@@ -12,6 +13,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import pytest
@@ -203,6 +205,119 @@ def test_answer_failure_with_targets_but_no_matching_evidence_does_not_list_othe
     assert lines[-1]["event"] == "error"
     assert not any(x.get("event") == "claim" for x in lines)
     assert data is not None and data["error"]["code"] == "INTERNAL_ERROR"
+
+
+# ── 4-2. 대신 문장의 '없음' 근거는 질문이 물은 종류 · Take · 장에 맞아야 한다 ─────────
+
+_TAKE4_NO_REVIEW = "Take 4에는 아직 리뷰 결과가 없어요."
+_TAKE5_NO_REVIEW = "Take 5에는 아직 리뷰 결과가 없어요."
+
+
+def _take4_review_missing(message: str) -> dict[str, Any]:
+    """Take 4 를 기본 자료에 싣되 리뷰가 없다(조사가 Take 4 를 읽으면 '리뷰 없음' 근거가 생긴다)."""
+    req = F.with_loaded(F.request(user_message=message), "t-4")
+    req["context"]["loaded_takes"][0]["results"]["review"] = None
+    req["context"]["loaded_takes"][0]["revisions"]["REVIEW"] = None
+    return req
+
+
+def _dropped_turn(req: dict[str, Any], assessments: list[dict[str, Any]], *reads: Any) -> Any:
+    """조사가 `reads`를 읽고, 모델 문장(근거 없음)이 검사로 모두 빠져 코드가 대신 문장을 그리는 턴."""
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=assessments),
+            *(F.tools(r, prefix=f"r{i}") for i, r in enumerate(reads)),
+            F.done(),
+        ],
+        answers=[F.answer([F.claim("RECORD", "리뷰를 확인했어요.")])],
+        fixes=[F.fix({0: None})],
+    )
+    _, lines, data = F.run_turn(req, llm)
+    assert data is not None and lines[-1]["event"] == "final"
+    return data
+
+
+@pytest.mark.parametrize(
+    "assessments",
+    [
+        [],  # 판단 초안 없이 사용자 말이 Take 5 를 이름으로 집음
+        [F.draft("Take 5 리뷰 결과", type_="REQUEST", claim_op=None, take_numbers=[5])],
+    ],
+    ids=["named-in-message", "draft-take"],
+)
+def test_none_fallback_skips_review_missing_of_another_take(
+    assessments: list[dict[str, Any]],
+) -> None:
+    """Take 5 를 물었는데 조사가 Take 4 의 리뷰 없음을 읽었으면 'Take 4 리뷰 없음' 문장을 대신 문장으로 그리지 않는다."""
+    req = _take4_review_missing("Take 5 리뷰 결과 알려 줘")
+    data = _dropped_turn(
+        req, assessments, ("get_take_report", {"take_id": "t-4", "section": "dimensions"})
+    )
+    said = [c["text"] for c in data["message"]["claims"]]
+    assert _TAKE4_NO_REVIEW not in said
+    assert data["status"] == "PARTIAL"  # 질문 대상에 답한 문장이 없다
+
+
+def test_none_fallback_still_draws_review_missing_of_the_asked_take() -> None:
+    """같은 질문에 Take 4 를 물었으면(Take · 차원 단위 질문) 그 Take 의 리뷰 없음이 답이다."""
+    req = _take4_review_missing("Take 4 리뷰 결과 알려 줘")
+    asked = [F.draft("Take 4 리뷰 결과", type_="REQUEST", claim_op=None, take_numbers=[4])]
+    data = _dropped_turn(
+        req, asked, ("get_take_report", {"take_id": "t-4", "section": "dimensions"})
+    )
+    assert [c["text"] for c in data["message"]["claims"]][:1] == [_TAKE4_NO_REVIEW]
+    assert data["status"] == "DONE"
+
+
+@pytest.mark.parametrize(("asked", "drawn"), [(5, False), (4, True)])
+def test_answer_failure_none_fallback_matches_the_asked_take(asked: int, drawn: bool) -> None:
+    """답 쓰기가 실패한 대신 문장도 같은 거름이다: 대상을 집은 질문에는 그 Take 의 '없음' 근거만 그리고, 맞는 것이 없으면
+    다른 Take 의 리뷰 없음으로 채우지 않는다(오류 줄)."""
+    req = _take4_review_missing(f"Take {asked} 리뷰 결과 알려 줘")
+    draft = F.draft(f"Take {asked} 리뷰 결과", type_="REQUEST", claim_op=None, take_numbers=[asked])
+    read = ("get_take_report", {"take_id": "t-4", "section": "dimensions"})
+    llm = F.FakeLlm([F.plan(assessments=[draft]), F.tools(read), F.done()], answers=[LlmTimeout()])
+    _, lines, data = F.run_turn(req, llm)
+    assert data is not None
+    if drawn:
+        assert data["status"] == "PARTIAL"
+        assert [c["text"] for c in data["message"]["claims"]] == [_TAKE4_NO_REVIEW]
+    else:
+        assert lines[-1]["event"] == "error"
+        assert not any(x.get("event") == "claim" for x in lines)
+
+
+def test_none_fallback_skips_review_missing_for_a_metric_question() -> None:
+    """지표 값을 물은 질문(Take 4 3장 청중 시선)에는 같은 Take 의 리뷰 없음도 답이 아니다(종류가 다르다)."""
+    req = _take4_review_missing("Take 4 3장 청중 시선 몇 %였어?")
+    data = _dropped_turn(
+        req, [slide_draft([4])], ("get_take_report", {"take_id": "t-4", "section": "dimensions"})
+    )
+    assert _TAKE4_NO_REVIEW not in [c["text"] for c in data["message"]["claims"]]
+
+
+def test_none_fallback_segments_only_for_the_asked_slide() -> None:
+    """3장 시선을 물었는데 조사가 2장의 문제 구간을 읽었으면 '2장 … 문제 구간이 없어요'를 그리지 않는다. 물은 3장이면 그린다."""
+    req = with_take_result(load(base_request(), "t-4"), issues=[])
+    req["user_message"] = "Take 5 3장 시선 문제 있었어?"
+    draft = F.draft(
+        "Take 5 3장 시선 문제",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        slide_number=3,
+        take_numbers=[5],
+        polarity="NEUTRAL",
+    )
+
+    def said(slide: int) -> list[str]:
+        read = ("get_take_report", {"take_id": "t-5", "section": SEG, "slide_number": slide})
+        return [
+            c["text"] for c in _dropped_turn(copy.deepcopy(req), [draft], read)["message"]["claims"]
+        ]
+
+    assert not any("2장" in t and "문제 구간이 없어요" in t for t in said(2))
+    assert "Take 5 3장의 시선에서 찾은 문제 구간이 없어요." in said(3)
 
 
 # ── 5. 반복으로 멈춘 조사의 코드 대신 답도 끝난 까닭을 남긴다 ──────────────────────

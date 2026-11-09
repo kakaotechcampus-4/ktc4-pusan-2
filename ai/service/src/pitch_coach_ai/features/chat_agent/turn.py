@@ -1121,26 +1121,78 @@ def _cut_notice(lp: Loop, claims: list[Claim]) -> list[templates.SystemText]:
     return [] if _answer_sentences(lp, claims) else [templates.SystemText.PARTIAL_CHECKED]
 
 
-def _none_target(ctx: RunCtx, eid: str) -> bool:
-    """'없음' 근거가 질문 대상인가: 피치의 Take 0개는 범위 피치의 것(범위가 없으면 읽은 피치가 하나일 때만), 리뷰 없음 · 대화 목표
-    없음 · 문제 구간 0곳은 계획 단계가 읽은 것. 거른 조건의 Take 0개 · 이름 검색 0개는 문장으로 그리지 않는다."""
+@dataclass(frozen=True)
+class _Asked:
+    """질문이 물은 범위 — '없음' 근거를 대신 문장으로 고르는 기준(`_asked`). None 은 거를 기준이 없다(무엇이든 맞음)."""
+
+    #: 물은 Take 번호(판단 초안의 대상 · 판정 대상 Take와 사용자 말이 이름으로 집은 Take)
+    takes: frozenset[int] | None
+    #: 물은 장(대상을 집은 초안이 모두 장을 집었을 때만)
+    slides: frozenset[int] | None
+    #: 물은 '없음' 종류(`compose.none_kind`). 대상을 집은 초안이 없으면 None
+    kinds: frozenset[str] | None
+
+
+def _asked(lp: Loop) -> _Asked:
+    """질문(판단 초안 · 사용자 말)이 물은 범위. 종류는 대상을 집은 초안이 있을 때만 정한다: Take 목록(범위 피치의 Take 0개는
+    어느 기록 질문에도 답이다) · 문제 구간(물은 영역은 `compose.none_partial`이 고른다)은 늘, 리뷰는 지표를 집지 않은 초안
+    (Take · 차원 단위 질문 — 리뷰의 차원 상태가 답)이 있을 때, 대화 목표는 목표를 묻는 말(`goal_question`)일 때."""
+    targets = lp.question_targets()
+    takes = {n for _, t, _, _ in targets for n in t} | chk.named_take_numbers(lp.original or "")
+    slides = {s for _, _, s, _ in targets if s is not None}
+    kinds: set[str] | None = None
+    if targets:
+        kinds = {"TAKES", "SEGMENTS"}
+        if any(not (d.get("subject") or {}).get("metric") for d, _, _, _ in targets):
+            kinds.add("REVIEW")
+        if goal_question(lp.original, lp.cfg):
+            kinds.add("GOAL")
+    return _Asked(
+        takes=frozenset(takes) or None,
+        slides=frozenset(slides)
+        if targets and all(s is not None for _, _, s, _ in targets)
+        else None,
+        kinds=frozenset(kinds) if kinds is not None else None,
+    )
+
+
+def _none_target(ctx: RunCtx, eid: str, asked: _Asked) -> bool:
+    """'없음' 근거가 질문 대상인가: 물은 종류(`asked.kinds`)이고, 피치의 Take 0개는 범위 피치의 것(범위가 없으면 읽은 피치가
+    하나일 때만), 리뷰 없음 · 문제 구간 0곳은 물은 Take(`asked.takes`)의 것, 장 단위 문제 구간 0곳은 물은 장의 것(Take 전체의
+    0곳은 그 장도 덮는다). 거른 조건의 Take 0개 · 이름 검색 0개는 문장으로 그리지 않는다. 조사가 읽었어도 질문과 맞지 않으면
+    (예: Take 5 를 물었는데 Take 4 의 리뷰 없음) 그리지 않는다."""
     ev = ctx.registry.get(eid)
     kind = compose.none_kind(ev)
     if ev is None or kind is None:
+        return False
+    if asked.kinds is not None and kind not in asked.kinds:
         return False
     if kind == "TAKES":
         if ctx.scope_pitch_id is not None:
             return ev.pitch_id == ctx.scope_pitch_id
         read = {e.pitch_id for e in ctx.registry.items.values() if e.path.endswith(".take_count")}
         return len(read) == 1
-    return kind in ("REVIEW", "GOAL", "SEGMENTS")
+    if kind not in ("REVIEW", "GOAL", "SEGMENTS"):
+        return False
+    if (
+        kind in ("REVIEW", "SEGMENTS")
+        and asked.takes is not None
+        and ev.take_number not in asked.takes
+    ):
+        return False
+    return not (
+        kind == "SEGMENTS"
+        and asked.slides is not None
+        and ev.slide_number is not None
+        and ev.slide_number not in asked.slides
+    )
 
 
 def _target_fallback(lp: Loop, used_ids: list[str], *, have: list[Claim]) -> list[Claim]:
     """모델 문장이 모두 빠졌거나 답이 비었을 때 질문 대상의 근거로 코드가 그린 문장(6-9 '고친 뒤', TARGET 6, 최대 3개).
 
-    - '없음': 계획 단계가 읽은 '없음' 근거와 빠진 모델 문장이 이은 '없음' 근거 중 질문 대상인 것(`_none_target`). 문제 구간 0곳은
-      물은 영역(판단 초안의 지표 · 차원)으로 고른다(compose.none_partial)
+    - '없음': 계획 단계가 읽은 '없음' 근거와 빠진 모델 문장이 이은 '없음' 근거 중 질문이 물은 종류 · Take · 장에 맞는 것
+      (`_none_target`). 문제 구간 0곳은 물은 영역(판단 초안의 지표 · 차원)으로 고른다(compose.none_partial)
     - 측정 안 됨: 물은 영역이 측정되지 않은 Take 를 읽었으면 고정 문장 "이 항목은 측정되지 않았어요."('없음'과 다른 사실)
     - 값: 빠진 모델 문장이 이은 근거의 값(`template_partial`). 아무 근거나 나열하지 않는다
     이미 있는 문장(`have` · 낸 문장)과 같은 문장은 빼고, 코드 문장도 답 검사를 거쳐 걸리면 버린다(제목에 숫자가 든 피치 등)."""
@@ -1151,7 +1203,8 @@ def _target_fallback(lp: Loop, used_ids: list[str], *, have: list[Claim]) -> lis
         if st.plan_meta
         else list(ctx.registry.items)
     )
-    none_ids = [e for e in dict.fromkeys([*used_ids, *step_ids]) if _none_target(ctx, e)]
+    asked = _asked(lp)
+    none_ids = [e for e in dict.fromkeys([*used_ids, *step_ids]) if _none_target(ctx, e, asked)]
     cands = compose.none_partial(ctx, none_ids, areas=areas)
     if areas is not None and any(
         m.get("ran") == "get_take_report" and m.get("result") == templates.PLAN_RESULT["UNMEASURED"]
