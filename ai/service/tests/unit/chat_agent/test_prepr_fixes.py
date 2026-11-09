@@ -8,6 +8,7 @@
 - 코드 대신 답의 끝난 까닭: 반복으로 멈춘 조사면 ANSWERED 가 아니라 REPEAT 다.
 - '같은 조건으로 다시 평가' 되살리기: 부정 · 인용 · 새 대상 · 조건이거나 요청형이 아니면(할 수 있는지 묻는 말) 하지 않는다(확실하지 않으면 모델이 고른다).
 - 허용 근거: 행동 동사 자체에 붙은 조건("목표 저장하면 알려줘")은 저장 요청이 아니다.
+- 허용 근거: 바람("저장하면 좋겠…") 뒤 다른 동사의 요청형("…알려줘")은 저장을 허용하지 않는다.
 - 변화 주장: 부정한 주장("좋아지지 않았어")은 말한 방향의 여집합으로 판정한다.
 """
 
@@ -488,6 +489,24 @@ def test_condition_on_the_save_verb_does_not_become_a_save_action(
     saved = [(a["type"], a["autonomy"]) for a in data.get("actions") or []]
     assert saved == ([("SAVE_GOAL", "ASK")] if asks else [])
     assert (data["status"] == "NEEDS_ACTION") is asks
+
+
+@pytest.mark.parametrize(
+    ("message", "want"),
+    [
+        # 바람 뒤 다른 동사의 요청형은 저장 요청이 아니다
+        ("시선 30%를 목표로 저장하면 좋겠고 결과도 알려줘", "NO_REQUEST_FORM"),
+        ("시선 30%를 목표로 저장하면 좋겠어 그리고 결과 알려 줘", "NO_REQUEST_FORM"),
+        ("시선 30%를 목표로 저장하면 고맙겠고 결과 정리 부탁해", "NO_REQUEST_FORM"),
+        # 바람 뒤 요청형이 저장 동사 자체에 붙으면 요청이다
+        ("시선 30%를 목표로 저장하면 좋겠어 저장해 줘", None),
+        ("시선 30%를 목표로 저장하면 좋겠어 저장해주세요", None),
+    ],
+)
+def test_request_form_after_a_wish_must_be_on_the_save_verb(message: str, want: str | None) -> None:
+    """'저장하면 좋겠…'(바람)은 조건 예외로 요청형 검사로 넘어가지만, 뒤의 요청형이 다른 동사("알려줘" · "가자")에 붙었으면
+    저장을 허용하지 않는다(확인 카드 대신 제안 카드로 낮춤)."""
+    assert act.authorize("SAVE_GOAL", "목표로 저장하면", message, CFG) == want
 
 
 # ── 8. 부정한 변화 주장은 말한 방향의 여집합 ──────────────────────────────────────

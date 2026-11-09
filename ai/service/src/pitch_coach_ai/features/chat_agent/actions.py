@@ -300,9 +300,8 @@ def authorize(
     words = re.findall(r"[가-힣]+", clause[pos:])
     # 요청 동사 자체가 조건 꼴이면("목표 저장하면 알려줘"의 '저장하면') 그 동사는 요청이 아니라 뒤 요청의 조건이다.
     # 바로 뒤가 바람 낱말이면("저장하면 좋겠어") 조건이 아니라 바람이다(요청형 검사로 넘긴다)
-    if _has_condition(verb, cfg) and not any(
-        w.startswith(cfg.wish_after_condition) for w in words[1:2]
-    ):
+    wish = _has_condition(verb, cfg)
+    if wish and not any(w.startswith(cfg.wish_after_condition) for w in words[1:2]):
         return "CONDITION"
     # 동사 뒤에서 절을 끊는 말(~는데 · ~지만 · ~니까 …)이나 보조 용언(~고 있 · ~어 놓)이 오면 그 동사는 요청이 아니다
     # ("목표를 정해 놓았는데 … 알려줘", "목표로 잡고 있었는데 결과를 알려줘")
@@ -317,6 +316,27 @@ def authorize(
     tail = " ".join(words[-2:])
     if not words or not any(f in tail for f in forms):
         return "NO_REQUEST_FORM"
+    # 바람("저장하면 좋겠…") 뒤의 요청형은 행동 동사 자체에 붙어야 한다: "저장하면 좋겠고 결과도 알려줘"의 '알려줘'는 다른 동사의
+    # 요청이라 저장을 허용하지 않는다("저장하면 좋겠어, 저장해 줘"는 허용)
+    if wish:
+        req_verb = _request_verb(words, forms)
+        if req_verb is None or not any(
+            w in req_verb for w in cfg.action_words.get(action_type, ())
+        ):
+            return "NO_REQUEST_FORM"
+    return None
+
+
+#: 앞 동사에 붙는 요청 보조 낱말("저장해 줘"의 '줘' · "잡아 주세요"의 '주세요')
+_REQUEST_AUX = ("줘", "주세요", "주십시오", "줄래", "주라")
+
+
+def _request_verb(words: list[str], forms: tuple[str, ...]) -> str | None:
+    """절 끝 두 낱말 중 요청형이 붙은 동사(뒤에서부터 첫 것). 요청형이 보조 낱말("줘" · "주세요")이면 그 앞 낱말이 동사다."""
+    for i in range(len(words) - 1, max(len(words) - 2, 0) - 1, -1):
+        w = words[i]
+        if any(f in w for f in forms):
+            return words[i - 1] if w.startswith(_REQUEST_AUX) and i > 0 else w
     return None
 
 
