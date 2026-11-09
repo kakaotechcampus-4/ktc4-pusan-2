@@ -132,8 +132,11 @@ describe('내용 전달 카드 — 측정됨', () => {
   it('장별 목록은 접어 두고 장 수만 보입니다 — 열면 장마다 한 줄', () => {
     const closed = textOf(contentMeasured);
     expect(closed).toContain('장별 보기 (2장)');
-    expect(closed).not.toContain('절반쯤 말함(간이)');
-    expect(openedText(contentMeasured)).toContain('4장절반쯤 말함(간이)간이');
+    expect(closed).not.toContain('절반쯤 말함');
+    expect(openedText(contentMeasured)).toContain('4장절반쯤 말함간이');
+    // 간이 값 표시는 배지 하나로만 — 글자 '(간이)'를 겹쳐 붙이지 않습니다 (#1157 리뷰)
+    expect(openedText(contentMeasured)).not.toContain('(간이)');
+    expect(openedText(status('t-content-estimated'))).not.toContain('간이:');
   });
 
   it('0 과 null 을 섞지 않습니다 — 0 은 0%와 설명, null 은 —와 이유', () => {
@@ -197,7 +200,7 @@ describe('내용 전달 카드 — 측정됨', () => {
 
   it('채점된 장 없이 간이 장만 있으면 숫자 대신 간이 단계', () => {
     const text = textOf(status('t-content-estimated'));
-    expect(text).toContain('핵심 내용 전달률간이: 대부분 말함 1장간이');
+    expect(text).toContain('핵심 내용 전달률대부분 말함 1장간이');
     expect(text).not.toContain('지난 Take보다');
   });
 

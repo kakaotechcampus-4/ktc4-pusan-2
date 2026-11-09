@@ -152,10 +152,10 @@ const BAND_LABEL: Record<DeliveryBand, string> = {
   little: '거의 못 말함',
 };
 
-/** "대부분 말함(간이)". 모르는 단계 · null 은 null */
+/** "대부분 말함". 간이 값이라는 표시는 화면이 '간이' 배지 하나로만 붙입니다(#1157 리뷰). 모르는 단계 · null 은 null */
 export function bandText(band: string | null): string | null {
   if (band === null || !Object.hasOwn(BAND_LABEL, band)) return null;
-  return `${BAND_LABEL[band as DeliveryBand]}(간이)`;
+  return BAND_LABEL[band as DeliveryBand];
 }
 
 const ZERO_KIND_TEXT: Record<ZeroKind, string> = {
@@ -193,7 +193,7 @@ export function scopeLine(scope: Scope): string {
   return parts.join(' · ');
 }
 
-/** 채점된 장 없이 간이 장만 있을 때 대표 숫자 자리 — "간이: 대부분 말함 2장 · 절반쯤 말함 1장" */
+/** 채점된 장 없이 간이 장만 있을 때 대표 숫자 자리 — "대부분 말함 2장 · 절반쯤 말함 1장" ('간이' 배지는 화면이 붙임) */
 export function estimatedOnlyLine(slides: readonly SlideSummary[]): string | null {
   const counts = new Map<DeliveryBand, number>();
   for (const slide of slides) {
@@ -206,7 +206,7 @@ export function estimatedOnlyLine(slides: readonly SlideSummary[]): string | nul
   const parts = order.flatMap((b) =>
     counts.has(b) ? [`${BAND_LABEL[b]} ${counts.get(b)}장`] : [],
   );
-  return `간이: ${parts.join(' · ')}`;
+  return parts.join(' · ');
 }
 
 export function isEstimatedOnly(summary: CoverageSummary): boolean {

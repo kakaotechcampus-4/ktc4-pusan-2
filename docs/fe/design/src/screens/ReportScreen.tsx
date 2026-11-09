@@ -240,7 +240,7 @@ function ContentSample({ stateId }: { stateId: string }) {
       <Card title="내용 전달">
         <p className="text-sm font-bold text-stone">핵심 내용 전달률</p>
         <p className="flex flex-wrap items-center gap-2 font-bold">
-          간이: 대부분 말함 1장 <Badge tone="muted">간이</Badge>
+          대부분 말함 1장 <Badge tone="muted">간이</Badge>
         </p>
         <p className="flex flex-wrap items-center gap-2 text-xs text-ink/80">
           <Badge tone="muted">일부 장 제외</Badge>1장 중 0장 평가 · 1장 간이
@@ -328,7 +328,7 @@ function SlideRows({ open: initial }: { open: boolean }) {
           </li>
           <li className="flex min-h-11 items-center gap-3 border-b border-line py-2">
             <b className="w-10 shrink-0">4장</b>
-            절반쯤 말함(간이) <Badge tone="muted">간이</Badge>
+            절반쯤 말함 <Badge tone="muted">간이</Badge>
           </li>
         </ul>
       )}

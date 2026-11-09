@@ -88,7 +88,7 @@ describe('숫자', () => {
   });
 
   it('간이 단계와 범주 이름 — 모르는 값은 일반 이름', () => {
-    expect(bandText('about_half')).toBe('절반쯤 말함(간이)');
+    expect(bandText('about_half')).toBe('절반쯤 말함');
     expect(bandText(null)).toBeNull();
     expect(bandText('new_band')).toBeNull();
     expect(mixLabel('procedural')).toBe('진행 말');
@@ -117,7 +117,7 @@ describe('상태 · 범위', () => {
   it('범위와 간이 장만 있을 때의 문구', () => {
     expect(scopeLine(contentMeasured.summary!.scope)).toBe('2장 중 1장 평가 · 1장 간이');
     const estimated = contentStatusOf('t-content-estimated', null)!.summary!;
-    expect(estimatedOnlyLine(estimated.slides)).toBe('간이: 대부분 말함 1장');
+    expect(estimatedOnlyLine(estimated.slides)).toBe('대부분 말함 1장');
   });
 });
 

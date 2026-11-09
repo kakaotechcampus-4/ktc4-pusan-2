@@ -163,7 +163,7 @@ describe('장별 펼침', () => {
     await until(() => host.textContent?.includes('수치 맞음') ?? false);
     const panel = host.textContent ?? '';
     expect(panel).toContain('채점이 시간 안에 끝나지 않았어요');
-    expect(panel).toContain('간이절반쯤 말함(간이)');
+    expect(panel).toContain('간이절반쯤 말함');
     expect(panel).toContain('수치 맞음 1 · 어림 0 · 다른 값 0 · 빠뜨림 1 · 확인 대기 0');
   });
 
