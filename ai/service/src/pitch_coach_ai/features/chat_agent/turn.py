@@ -1209,16 +1209,17 @@ def _goal_status_claims(lp: Loop, req: TurnRequest, said: list[Claim] | None = N
 def _open_goal_claim(lp: Loop, goal: Any, said: list[Claim]) -> list[Claim]:
     """열린 대화 목표를 물으면(`goal_question`) 목표 내용을 `RECORD` 문장으로(7-10 `GOAL_OPEN`, get_goals 의 목표 기준 값 근거).
 
-    답(낸 문장 포함)의 기록 문장이 이미 그 근거를 이었으면 내지 않는다(같은 근거 · 같은 값은 한 번). 검사(6-9)에 걸리면 내지 않는다.
+    답(낸 문장 포함)의 기록 문장이 이미 그 근거를 잇고 기준 값까지 말했으면 내지 않는다(같은 근거 · 같은 값은 한 번). 근거만 잇고
+    값을 빠뜨린 문장이면 낸다. 검사(6-9)에 걸리면 내지 않는다.
     """
     if not goal_question(lp.original, lp.cfg):
         return []
     drawn = compose.goal_open_sentence(lp.ctx, goal)
     if drawn is None:
         return []
-    text, eid = drawn
+    text, eid, value = drawn
     cited = [*said, *map(Claim.model_validate, lp.st.emitted)]
-    if any(c.kind == "RECORD" and eid in c.evidence_ids for c in cited):
+    if any(c.kind == "RECORD" and eid in c.evidence_ids and value in c.text for c in cited):
         return []
     claim = Claim(kind="RECORD", text=text, evidence_ids=[eid])
     fails = chk.check_claims([claim], registry=lp.ctx.registry, code_sentences={text}, cfg=lp.cfg)

@@ -266,9 +266,9 @@ def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int)
     return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
 
 
-def goal_open_sentence(ctx: Any, goal: Any) -> tuple[str, str] | None:
-    """열린 대화 목표의 내용 문장(7-10 `GOAL_OPEN`)과 그 근거 id. get_goals 가 이번 실행에 발급한 목표 기준 값 근거가 없거나
-    값을 표시할 수 없으면 None."""
+def goal_open_sentence(ctx: Any, goal: Any) -> tuple[str, str, str] | None:
+    """열린 대화 목표의 내용 문장(7-10 `GOAL_OPEN`)과 그 근거 id · 기준 값 표기(범위 목표는 ""). get_goals 가 이번 실행에 발급한
+    목표 기준 값 근거가 없거나 값을 표시할 수 없으면 None."""
     eid = next(
         (
             e
@@ -297,7 +297,7 @@ def goal_open_sentence(ctx: Any, goal: Any) -> tuple[str, str] | None:
         label=metric_label(goal.metric),
         value=value,
     )
-    return text, eid
+    return text, eid, value
 
 
 def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:

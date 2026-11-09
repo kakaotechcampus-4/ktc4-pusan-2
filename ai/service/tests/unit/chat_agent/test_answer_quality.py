@@ -283,6 +283,22 @@ def test_open_goal_sentence_is_not_repeated_when_the_answer_cites_the_goal() -> 
     assert any("10%" in t for _, t in _texts(data))
 
 
+def test_open_goal_sentence_is_added_when_the_model_cites_the_goal_without_its_value() -> None:
+    """모델 기록 문장이 목표 근거를 이었지만 기준 값을 빠뜨렸으면 같은 근거라도 값이 다르므로 코드 문장을 낸다(r9 rep-goal-readback)."""
+
+    def said(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("value") == 0.10)
+        return F.answer(
+            [F.claim("RECORD", "지금 대화 목표는 Take 4의 3장 청중 시선을 높이는 거예요.", evidence_ids=[eid])]
+        )
+
+    llm = F.FakeLlm([F.plan(route="ANSWER_DIRECT", assessments=[]), F.done(), said])
+    _, _, data = F.run_turn(_open_goal_request("지금 대화 목표가 뭐야?"), llm)
+    assert data is not None and data["status"] == "DONE"
+    assert [k for k, _ in _goal_lines(data)] == ["RECORD"]
+    assert any("10%" in t for _, t in _goal_lines(data))
+
+
 def test_open_goal_sentence_needs_a_goal_question() -> None:
     """목표를 묻지 않은 실행이 get_goals 를 읽었어도 열린 목표 문장은 내지 않는다."""
     llm = F.FakeLlm(
