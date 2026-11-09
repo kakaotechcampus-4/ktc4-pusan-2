@@ -369,6 +369,8 @@ PLAN_RESULT = {
     "ERROR": "확인 실패",
     "SHORT": "시간 부족",
     "NO_TAKES": "Take 없음",
+    # 거른 조건에 맞는 Take 만 없다(범위 피치에는 Take 가 있음): 'Take 없음'과 나눈다
+    "NO_TAKES_FILTERED": "조건에 맞는 Take 없음",
     "NO_GOAL": "목표 없음",
     "NO_SEGMENTS": "문제 구간 없음",
     "SEGMENTS": "문제 구간 있음",

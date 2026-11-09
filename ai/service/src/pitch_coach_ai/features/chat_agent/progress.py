@@ -20,7 +20,8 @@
 - 상황 신호(`StepRun.signal`): 비교 불가 `NOT_COMPARABLE` · 기본 자료에 없음 `NOT_LOADED`(범위 피치가 있을 때만. 전체 범위에서
   막힌 읽기는 가져올 기록이 아니라 단계에 사실만 보인다) · 리뷰 없음 `REVIEW_MISSING` · 읽은 범위에
   기록 없음 `NO_RECORD`(facts `TAKES` · `GOAL` · `PROBLEM_SEGMENTS`) · 도구 실패 `TOOL_ERROR`. 기록 없음 · 리뷰 없음은 도구가 '없음'
-  근거(tools/impl.py)를 낸 결과와 같은 때다(범위 피치의 Take 0개 · 대화 목표 없음 · 물은 영역이 측정됐고 문제 구간 0곳). 결정 로그 줄(`decision_line`,
+  근거(tools/impl.py)를 낸 결과와 같은 때다(범위 피치의 Take 0개 · 대화 목표 없음 · 물은 영역이 측정됐고 문제 구간 0곳). 범위 피치에
+  Take 가 있는데 거른 조건에 맞는 Take 만 없으면 `조건에 맞는 Take 없음`이고 신호가 없다. 결정 로그 줄(`decision_line`,
   `event: agent_decision`)은 서비스 로그에만 남기고 진단 기록(BE 로 감)에는 넣지 않는다. 값은 enum · 정수 · null 뿐이다(글 · 수치 · 인자 값 없음).
 - 고칠 때: 화면 낱말은 templates.py `PLAN_*` 표, 스위치는 config.py(`plan_progress` · `decision_log` · `research_signals`).
 """
@@ -253,6 +254,13 @@ def _take_count(v: Any) -> int | None:
     return v if isinstance(v, int) and not isinstance(v, bool) else None
 
 
+def _scope_has_takes(ctx: RunCtx) -> bool:
+    """범위 피치에 Take 가 하나라도 있는가: 기본 자료의 Take 목록 · 읽어 둔 Take, 또는 피치 목록의 Take 수."""
+    if ctx.summaries or ctx.snapshots:
+        return True
+    return any(p.pitch_id == ctx.scope_pitch_id and p.take_count > 0 for p in ctx.pitches)
+
+
 def read_run(
     name: str, args: Any, tr: ToolResult, ctx: RunCtx, *, areas: frozenset[str] | None = None
 ) -> StepRun:
@@ -305,6 +313,10 @@ def read_run(
         return _report_run(args, data, tr, ctx, run, areas)
     if name == "list_takes":
         if not data.get("items"):
+            if (data.get("count") or {}).get("filtered") and _scope_has_takes(ctx):
+                # 거른 조건(대본 버전 · 끝까지 · 방식)에 맞는 Take 만 없다: 범위 피치에는 Take 가 있으므로 'Take 없음'
+                # (기록 없음 신호)이 아니다. 조건에 맞는 0개는 문장으로 그리지도 않는다(compose `TAKES_FILTERED`)
+                return run(r["NO_TAKES_FILTERED"])
             return run(r["NO_TAKES"], signal="NO_RECORD", facts=["TAKES"])
         return run(r["CHECKED"])
     if name == "list_pitches":

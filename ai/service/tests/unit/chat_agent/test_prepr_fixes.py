@@ -1,6 +1,7 @@
 """PR 전 검증 지적 시험 — 고친 곳마다 가짜 모델(fakes.py)로 다시 생기지 않는지 본다(기능 문서 6-3 · 6-8 · 6-9 · 7-10 · 11-5).
 
 - 문제 구간 0곳 근거: 장마다 근거 id 가 따로이고, 그 장의 값이 측정된 영역만 '없음'이다.
+- Take 목록: 거른 조건에 맞는 Take 만 없으면 'Take 없음'(기록 없음 신호)이 아니다.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from typing import Any
 
 from pitch_coach_ai.features.chat_agent import compose
 
-from .test_none_evidence import _read, with_take_result
+from .test_none_evidence import _read, no_take_request, with_take_result
 from .test_tools import base_request, load, make_ctx, run
 
 SEG = "problem_segments"
@@ -66,3 +67,21 @@ def test_slide_none_evidence_only_when_that_slide_is_measured() -> None:
     assert "GAZE" in {r["area"] for r in r3.data["no_segment_areas"]}
     rt, _ = run(ctx, "get_take_report", {"take_id": "t-5", "section": SEG})
     assert "GAZE" in {r["area"] for r in rt.data["no_segment_areas"]}
+
+
+# ── 2. 거른 조건의 Take 0개는 'Take 없음'이 아니다 ──────────────────────────────
+
+
+def test_filtered_empty_take_list_is_not_take_none() -> None:
+    """범위 피치에 Take 가 있는데 거른 조건에 맞는 Take 만 없으면 `조건에 맞는 Take 없음`이고 기록 없음 신호(NO_RECORD)가 없다.
+    범위 피치에 Take 가 정말 0개일 때만 `Take 없음` · NO_RECORD(TAKES)다(조건을 걸어 읽어도 같다)."""
+    ctx = make_ctx()
+    args = {"mode": "PRACTICE", "completed_fully": False}
+    step = _read(ctx, "list_takes", args)
+    assert (step.result, step.signal, step.facts) == ("조건에 맞는 Take 없음", None, [])
+    assert step.done
+    # 범위 피치의 Take 가 0개: 조건이 있어도 없어도 'Take 없음'
+    for a in ({}, args):
+        ctx0 = make_ctx(no_take_request())
+        s0 = _read(ctx0, "list_takes", a)
+        assert (s0.result, s0.signal, s0.facts) == ("Take 없음", "NO_RECORD", ["TAKES"])
