@@ -628,12 +628,22 @@ document.getElementById('export-take').addEventListener('click', () => {
 // ---------- 복구 ----------
 
 // 목록에서 연 때의 상태로 버튼을 고른다. 누르기 전에 한 번 더 묻고, 결과는 새로고침해 본다
+const STARTED = '시작했습니다. 잠시 뒤 새로고침해 상태를 확인하세요.';
 const RECOVERIES = [
+  {
+    // 멈춘 연습인지(마지막 활동 뒤 이탈 대기 + 10분)는 BE 가 다시 본다
+    id: 'end-stuck',
+    shows: (take) => take.status === 'RUNNING',
+    path: (takeId) => `api/takes/${takeId}/abandon`,
+    confirm: '진행 중으로 멈춘 연습을 이탈로 끝냅니다. 분석하지 않아 리포트가 생기지 않습니다.',
+    done: '끝냈습니다. 새로고침하면 실패한 연습에 보입니다.',
+  },
   {
     id: 'retry-finalize',
     shows: (take) => take.status === 'FAILED' && take.analysis_stage === 'FINALIZING',
     path: (takeId) => `api/takes/${takeId}/finalize/retry`,
     confirm: 'Take 결과를 1초 원자료로 다시 만듭니다. 성공하면 채점 · 리뷰까지 이어 갑니다.',
+    done: STARTED,
   },
   {
     id: 'rescore-held',
@@ -641,6 +651,7 @@ const RECOVERIES = [
     path: (takeId) => `api/takes/${takeId}/coverage/rescore`,
     confirm:
       '보존한 병합 후보로 재채점을 한 번 부릅니다. 성공하면 보류를 풀고 확인 · 리뷰로 이어 갑니다.',
+    done: STARTED,
   },
 ];
 
@@ -668,7 +679,7 @@ async function recover(action) {
   try {
     await postAction(action.path(takeId));
     if (takeId !== live.takeId) return;
-    done.textContent = '시작했습니다. 잠시 뒤 새로고침해 상태를 확인하세요.';
+    done.textContent = action.done;
   } catch (failure) {
     if (takeId !== live.takeId) return;
     error.textContent = `시작하지 못했습니다 — ${failure.message}`;

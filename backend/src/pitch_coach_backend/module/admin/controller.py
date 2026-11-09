@@ -130,7 +130,8 @@ def take_export(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> 
     return service.export_take(db, take_id)
 
 
-# 복구 동작. 조건을 확인하고 백그라운드 작업을 띄운 뒤 202 로 답한다. 결과는 Take 목록에서 본다
+# 복구 동작. AI 를 다시 부르는 것은 조건을 확인하고 백그라운드 작업을 띄운 뒤 202 로 답한다.
+# 결과는 Take 목록에서 본다. 멈춘 연습 끝내기는 바로 끝나 204 다
 @router.post(
     "/api/takes/{take_id}/coverage/rescore",
     status_code=status.HTTP_202_ACCEPTED,
@@ -151,6 +152,17 @@ async def rescore_held_coverage(
 async def retry_finalize(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Response:
     await recovery.retry_finalize(db, take_id)
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+# 실시간 hook 이 요청 스레드에서 이벤트 루프로 넘기므로 동기 엔드포인트다
+@router.post(
+    "/api/takes/{take_id}/abandon",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin_action)],
+)
+def end_stuck_take(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Response:
+    recovery.end_stuck_take(db, take_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/api/pitches/{pitch_id}/ai")

@@ -12,7 +12,15 @@ from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.dependencies import ACTION_HEADER
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults, TakeMetricSecond
 from pitch_coach_backend.module.take.service import analysis_runner
-from tests.test_admin import ADMIN, _pitch, _take, _user, admin_account  # noqa: F401
+from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
+from tests.test_admin import (  # noqa: F401
+    ADMIN,
+    _final_segment,
+    _pitch,
+    _take,
+    _user,
+    admin_account,
+)
 
 ACTION = {ACTION_HEADER: "1"}
 
@@ -303,3 +311,126 @@ def test_finalize_retry_of_unknown_take_is_not_found(
 
     assert response.status_code == 404
     assert finalize_recovery.restarted == []
+
+
+# ── 멈춘 연습 끝내기 ────────────────────────────────────────────
+
+
+class EndStuckSpy:
+    """실시간 hook. 스트림 · 타이머 정리는 `tests/realtime/test_ws_abandon.py` 가 본다."""
+
+    def __init__(self, ends: bool = True) -> None:
+        self.ends = ends
+        self.asked: list[tuple[uuid.UUID, datetime]] = []
+
+    def end_stuck(self, take_id: uuid.UUID, last_active_at: datetime) -> bool:
+        self.asked.append((take_id, last_active_at))
+        return self.ends
+
+
+@pytest.fixture
+def live_takes(monkeypatch: pytest.MonkeyPatch) -> EndStuckSpy:
+    spy = EndStuckSpy()
+    monkeypatch.setattr(hooks, "_live_takes", spy)
+    return spy
+
+
+def _long_ago() -> datetime:
+    """'멈춘 연습' 표에 들어가는 마지막 활동 시각 (이탈 대기 + 10분보다 앞)."""
+    return datetime.now(UTC) - timedelta(seconds=ABANDON_AFTER_SEC) - timedelta(minutes=11)
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_stuck_take_is_ended_from_its_last_activity(
+    client: TestClient, db_session: Session, live_takes: EndStuckSpy
+) -> None:
+    created = _long_ago() - timedelta(minutes=5)
+    take = _take(
+        db_session,
+        _pitch(db_session, _user(db_session, "앨리스")),
+        1,
+        status="RUNNING",
+        created_at=created,
+    )
+    # 마지막 활동은 마지막 확정 전사를 저장한 시각이다
+    last_final = _long_ago()
+    _final_segment(db_session, take, last_final)
+
+    response = client.post(f"/admin/api/takes/{take.id}/abandon", auth=ADMIN, headers=ACTION)
+
+    assert response.status_code == 204
+    assert live_takes.asked == [(take.id, last_final)]
+
+
+@pytest.mark.usefixtures("admin_account")
+@pytest.mark.parametrize(
+    "status, created_at",
+    [
+        ("RUNNING", lambda: datetime.now(UTC)),
+        ("ANALYZING", _long_ago),
+        ("READY", _long_ago),
+    ],
+    ids=["recently-active", "analyzing", "ready"],
+)
+def test_take_that_is_not_stuck_is_not_ended(
+    client: TestClient, db_session: Session, live_takes: EndStuckSpy, status: str, created_at
+) -> None:
+    take = _take(
+        db_session,
+        _pitch(db_session, _user(db_session, "앨리스")),
+        1,
+        status=status,
+        created_at=created_at(),
+    )
+
+    response = client.post(f"/admin/api/takes/{take.id}/abandon", auth=ADMIN, headers=ACTION)
+
+    assert response.status_code == 409
+    assert response.json()["message"] == "멈춘 연습이 아닙니다."
+    assert live_takes.asked == []
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_stuck_take_that_the_stream_side_refuses_conflicts(
+    client: TestClient, db_session: Session, live_takes: EndStuckSpy
+) -> None:
+    """연결이 다시 붙었거나 그 사이 끝났으면 실시간 쪽이 끝내지 않는다."""
+    live_takes.ends = False
+    take = _take(
+        db_session,
+        _pitch(db_session, _user(db_session, "앨리스")),
+        1,
+        status="RUNNING",
+        created_at=_long_ago(),
+    )
+
+    response = client.post(f"/admin/api/takes/{take.id}/abandon", auth=ADMIN, headers=ACTION)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_NOT_RECOVERABLE"
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_ending_a_stuck_take_needs_the_console_header(
+    client: TestClient, db_session: Session, live_takes: EndStuckSpy
+) -> None:
+    take = _take(
+        db_session,
+        _pitch(db_session, _user(db_session, "앨리스")),
+        1,
+        status="RUNNING",
+        created_at=_long_ago(),
+    )
+
+    response = client.post(f"/admin/api/takes/{take.id}/abandon", auth=ADMIN)
+
+    assert response.status_code == 403
+    assert live_takes.asked == []
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_ending_an_unknown_take_is_not_found(client: TestClient, live_takes: EndStuckSpy) -> None:
+    response = client.post(f"/admin/api/takes/{uuid.uuid4()}/abandon", auth=ADMIN, headers=ACTION)
+
+    assert response.status_code == 404
+    assert live_takes.asked == []
