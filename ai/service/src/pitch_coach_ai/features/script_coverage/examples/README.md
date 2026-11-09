@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `rubric/` | `POST /scripts/rubric` | 가상대본1의 모든 9장 + `slide_numbers` [6, 7] | 6번 장 평가 기준(`rubric_quality: full`) + 7번 장 평가 기준(`sentence_fallback`: 전달 단위 호출만 시간 초과라 문장 단위 평가 기준으로 복구, `failed` 없음) |
 | `analyze/` | `POST /takes/analyze` | 가상대본1_take9의 모든 9장 STT(9번 장은 빈 문자열) · 장 길이·STT 끊김 값(`duration_ms` · `stt_gap_ms` · `stt_unobserved_ms`) · 장 대본 글(`script`) + 2 · 4번 장 평가 기준 + `slide_numbers` [2, 4, 6, 9] | 2번 장 채점 1개 (비슷한 말 R1 · R2 → `confirmations`, `evaluations[].detail` · `offscript` · `stt_integrity`, 문장 `expression_mode`) + `failed` 3개 (4번 `LLM_TIMEOUT` · `fallback.method: lexical`, 6번 `RUBRIC_MISSING` · `lexical_no_rubric`, 9번 `STT_INCOMPLETE` · `fallback: null`) + Take 상세 `detail` (`scope` · 장별 요약) |
-| `rescore/` | `POST /takes/rescore` | analyze 응답의 채점 · `failed` + 2번 장 평가 기준 + 답 하나 (2번 장 R1 `as_script`) | R1이 `applied_answers`에 들고 `confirmations`에는 R2만 남음, `failed`의 간이 값 `fallback`이 그대로 실리고 `detail`이 다시 만들어짐, `model`은 null |
+| `rescore/` | `POST /takes/rescore` | analyze 응답의 채점 · `failed` + analyze 요청과 같은 평가 기준(2 · 4번 장) + 답 하나 (2번 장 R1 `as_script`) | R1이 `applied_answers`에 들고 `confirmations`에는 R2만 남음, `failed`의 간이 값 `fallback`이 그대로 실리고 `detail`이 다시 만들어짐, `model`은 null |
 
 `rescore/`는 LLM이 없어 `llm_cache.json`이 없고(파일이 둘), 나머지는 파일이 셋이다.
 
