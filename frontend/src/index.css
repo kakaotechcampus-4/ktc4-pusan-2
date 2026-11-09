@@ -147,6 +147,12 @@ body {
   outline-offset: 2px;
 }
 
+/* 채팅 입력칸은 composer 바깥 테두리와 링으로 초점을 표시합니다.
+   textarea 자체의 전역 outline은 제거해 두 겹으로 보이지 않도록 합니다. */
+[data-chat-composer] textarea:focus-visible {
+  outline: none;
+}
+
 /* Tailwind v4 는 button 커서를 화살표로 둡니다. 누를 수 있는 버튼만 손가락으로 맞춥니다.
    base 레이어라 `disabled:cursor-*` · `aria-disabled:cursor-*` 같은 유틸리티가 항상 이깁니다 (위 규칙처럼 레이어 밖에 두면 덮어버립니다) */
 @layer base {
