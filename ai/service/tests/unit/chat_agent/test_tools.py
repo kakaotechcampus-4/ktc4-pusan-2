@@ -1065,3 +1065,39 @@ def test_cache_key_changes_with_omitted_paths_and_pitch_total() -> None:
     k3 = cache_key(make_ctx(req), "list_pitches", lp)  # type: ignore[arg-type]
     req["context"]["pitches_total"] += 1
     assert cache_key(make_ctx(req), "list_pitches", lp) != k3  # type: ignore[arg-type]
+
+
+# ── L1-19 도구 구현의 예외 ───────────────────────────────────────────────────
+
+
+def test_fm_L1_19_runner_exception_is_that_tools_error_without_its_text_and_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """도구 구현이 예외로 끝나면 그 호출 하나의 오류 결과(`TOOL_FAILED`, `outcome:"ERROR"`)다. 예외 글은 모델에 돌려주는 결과 ·
+    도구 기록 · 로그용 `crash` 어디에도 없고, 오류라 캐시하지 않아 다시 부르면 다시 실행한다. 실행이 이어지는 턴 시험은
+    test_failure_rows.py `test_fm_L1_19_tool_exception_becomes_that_tools_error_and_the_run_goes_on`."""
+    from pitch_coach_ai.features.chat_agent.tools import TOOL_FAILED, impl
+
+    calls: list[str] = []
+
+    def boom(_ctx: Any, _a: Any) -> ToolResult:
+        calls.append("run")
+        raise RuntimeError(f"{SECRET} 0.28")
+
+    monkeypatch.setitem(impl.RUNNERS, "list_takes", boom)
+    ctx = make_ctx()
+    tr, trace = run(ctx, "list_takes", {})
+    assert (tr.ok, tr.outcome, tr.data) == (False, "ERROR", None)
+    assert tr.error is not None and tr.error["code"] == TOOL_FAILED
+    assert (trace.outcome, trace.args_summary, trace.result_summary) == (
+        "ERROR",
+        "Take 목록",
+        "확인 실패",
+    )
+    assert tr.crash is not None and tr.crash["cause"] == "RuntimeError"
+    assert tr.crash["where"][-1].endswith(" boom")
+    blob = json.dumps([tr.model_view(), trace.model_dump(), tr.crash], ensure_ascii=False)
+    assert SECRET not in blob and "0.28" not in blob
+    assert ctx.tool_cache == {}
+    run(ctx, "list_takes", {}, seq=2)
+    assert calls == ["run", "run"]  # 캐시 적중이 아니라 다시 실행

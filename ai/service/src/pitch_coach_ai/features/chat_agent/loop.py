@@ -1517,6 +1517,19 @@ class Loop:
             ms=trace.ms,
             parent_seq=model_seq,
         )
+        if tr.crash is not None:
+            # 도구 구현의 예외(L1-19): 실행은 그 도구의 오류 결과로 잇고, 로그에는 예외 종류 · 위치만(예외 글 없음)
+            self.deps.log(
+                {
+                    "event": "agent_tool_crash",
+                    "request_id": self.diag.request_id,
+                    "run_id": self.diag.run_id,
+                    "turn_call": self.diag.turn_call,
+                    "seq": trace.seq,
+                    "tool": tr.name,
+                    **tr.crash,
+                }
+            )
 
     def _handle_action(self, call: Any, model_seq: int | None) -> dict[str, Any]:
         """행동 도구 하나를 처리한다. 같은 실패 행동 · 인자가 연속 2회면 더 실행하지 않는다(5-8 · L2-31)."""
