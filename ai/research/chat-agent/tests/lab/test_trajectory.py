@@ -50,7 +50,7 @@ def _simple_run() -> Run:
         _tool(4, 1, "update_plan"),
         _plan(5, 1, "a", "c"),  # 코드 표시 갱신
         _tool(6, 1, "compare_takes", "EMPTY"),
-        _ev(7, 1, "claim", {"kind": "RECORD", "text": "비밀"}),
+        _ev(7, 1, "claim", {"index": 0, "claim": {"kind": "RECORD", "text": "비밀"}}),
     ]
     final = {
         "status": "DONE",
@@ -92,7 +92,7 @@ def test_decision_placement() -> None:
         _plan(1, 1, "a"),
         _tool(2, 1, "x"),
         _tool(3, 1, "y"),
-        _ev(4, 1, "claim", {"kind": "GUIDE"}),
+        _ev(4, 1, "claim", {"index": 0, "claim": {"kind": "GUIDE"}}),
     ]
     run = _run([_call(1, {"status": "DONE", "actions": []})], events)
     out = ev.trajectory_obs([run], decs)["events"]

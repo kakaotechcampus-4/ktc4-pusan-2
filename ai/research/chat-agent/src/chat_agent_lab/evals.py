@@ -1133,7 +1133,8 @@ def _call_events(
                 seq_pos[tr["seq"]] = len(out)
             last_progress = len(out)
         elif e["event"] == "claim":
-            out.append(f"claim:{data.get('kind')}")
+            # 문장 줄의 data 는 `{index, claim: Claim, …}`(5-4): 종류는 claim.kind
+            out.append(f"claim:{(data.get('claim') or {}).get('kind')}")
     # 결정 로그: tool_seq 가 있으면 그 tool 사건 바로 뒤, 없으면 진행 사건(plan · tool) 끝. 뒤에서부터 끼워 앞 위치가 밀리지 않게 한다
     at: list[tuple[int, int, str]] = []
     for n, d in enumerate(decisions):
