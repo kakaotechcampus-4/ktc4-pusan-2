@@ -199,6 +199,29 @@ describe('수치 정확도 한 줄', () => {
       text: '정확도 50%',
     });
   });
+
+  it('어림이 있으면 맞음 개수를 정확도로 거꾸로 세지 않고 받은 개수 그대로, 어림은 따로 보입니다', () => {
+    // 맞음 1 · 어림 1(0.5 로 셈) → 정확도 0.75. 0.75 × 2 = 1.5 를 반올림하면 "2개 맞음"이 되던 경우
+    const line = factsLine(
+      facts({
+        matched: 1,
+        approximate: 1,
+        pending: 1,
+        accuracy: { ...metric(0.75), evaluated: 2 },
+      }),
+    );
+    expect(line).toEqual({
+      kind: 'measured',
+      text: '확인한 2개 중 1개 맞음 · 1개 어림 · 1개 확인 대기',
+    });
+  });
+
+  it('다른 값 · 빠뜨림도 확인한 개수에 들어갑니다', () => {
+    const line = factsLine(
+      facts({ matched: 1, mismatched: 1, missing: 1, pending: 2, accuracy: metric(0.333) }),
+    );
+    expect(line).toEqual({ kind: 'measured', text: '확인한 3개 중 1개 맞음 · 2개 확인 대기' });
+  });
 });
 
 describe('장별 펼침', () => {

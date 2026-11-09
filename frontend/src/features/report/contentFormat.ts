@@ -271,12 +271,12 @@ export function factsLine(facts: FactSummary): FactsLine {
     return { kind: 'measured', text: metricReason(accuracy, 'take') };
   }
   if (facts.pending > 0) {
-    const checked = accuracy.evaluated;
-    const right = Math.round(accuracy.value * checked);
-    return {
-      kind: 'measured',
-      text: `확인한 ${checked}개 중 ${right}개 맞음 · ${facts.pending}개 확인 대기`,
-    };
+    // 개수는 받은 칸을 그대로 씁니다 — 정확도는 어림을 0.5 로 세어 정확도 × 개수가 맞음 개수와 다릅니다 (#1157 리뷰)
+    const checked = factTotal(facts) - facts.pending;
+    const parts = [`확인한 ${checked}개 중 ${facts.matched}개 맞음`];
+    if (facts.approximate > 0) parts.push(`${facts.approximate}개 어림`);
+    parts.push(`${facts.pending}개 확인 대기`);
+    return { kind: 'measured', text: parts.join(' · ') };
   }
   return { kind: 'measured', text: `정확도 ${percentText(accuracy.value)}` };
 }
