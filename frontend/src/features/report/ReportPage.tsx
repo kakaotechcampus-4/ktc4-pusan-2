@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
@@ -308,7 +309,7 @@ function Points({
 const TREND: Record<string, { label: string; tone: Tone }> = {
   true: { label: '나아짐', tone: 'good' },
   false: { label: '나빠짐', tone: 'bad' },
-  null: { label: '방향 없음', tone: 'muted' },
+  null: { label: '방향 판단 불가', tone: 'muted' },
   same: { label: '같음', tone: 'muted' },
 };
 
@@ -319,21 +320,38 @@ function trend(r: ReviewResult['comparison'][number]) {
     : TREND[String(r.improved)]!;
 }
 
-/**
- * 차원마다 표 하나 — 지표 하나가 열 하나, 발표 전체 · 장이 행입니다 (#929).
- * 전에는 (지표, 장) 하나가 칸 하나라 같은 지표가 장마다 칸으로 되풀이돼 읽는 법을 알기 어려웠습니다.
- */
+/** 지난 Take의 지표별 슬라이드 변화 요약과 차원별 상세 비교표 (#929). */
+function slideList(numbers: number[]) {
+  const unique = [...new Set(numbers)].sort((a, b) => a - b);
+  return unique.length ? unique.map((n) => `${n}번`).join(', ') : '없음';
+}
+
+/** 항상 발표 전체 기준으로만 산출되는 지표. 장별 값이 빠진 다른 지표와 구분합니다. */
+const OVERALL_ONLY_METRICS = new Set(['duration_ms', 'content_coverage', 'critical_fact_accuracy']);
+
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   const groups = comparisonGroups(rows);
-  // 두 Take 의 대본 보기 차이는 AI 가 모든 행에 같이 싣습니다 — 칸마다 되풀이하지 않고 한 번만 알립니다
+  // AI가 대본 보기 차이를 모든 행에 싣더라도 안내는 한 번만 보여 줍니다.
   const mode = rows.find((r) => r.script_mode)?.script_mode;
+  const [open, setOpen] = useState(false);
+  const detailTitleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog.showModal();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   return (
-    <Card
-      title="지난 Take와 비교"
-      action={
-        groups.length > 0 && <p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
-      }
-    >
+    <Card title="지난 Take와 비교">
       {groups.length === 0 ? (
         <p className="text-sm text-ink/80">
           {rows.length === 0 ? '비교할 지난 Take가 없어요.' : '지난 Take와 함께 잰 지표가 없어요.'}
@@ -346,11 +364,111 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
               {scriptModeLabel(mode.current)}). 비교는 참고만 해 주세요.
             </p>
           )}
+          <p className="text-sm text-ink/80">
+            지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.
+          </p>
           <div className="grid gap-4 lg:grid-cols-2">
-            {groups.map((g) => (
-              <ComparisonTable key={g.dimension ?? 'other'} group={g} />
-            ))}
+            {groups
+              .flatMap((g) => g.metrics)
+              .map((metric) => {
+                const metricRows = rows.filter((r) => r.metric === metric);
+                const slides = metricRows.filter((r) => r.slide_number !== null);
+                const improved = slides
+                  .filter((r) => trend(r) === TREND.true)
+                  .map((r) => r.slide_number!);
+                const worsened = slides
+                  .filter((r) => trend(r) === TREND.false)
+                  .map((r) => r.slide_number!);
+                const same = slides.filter((r) => trend(r) === TREND.same).length;
+                const unknown = slides.filter((r) => trend(r) === TREND.null).length;
+                const overall = metricRows.find((r) => r.slide_number === null);
+                const directionUnknown =
+                  slides.length > 0 && unknown === slides.length && same === 0;
+                return (
+                  <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
+                    <h3 className="font-bold">{metricLabel(metric)}</h3>
+                    {slides.length > 0 && directionUnknown && (
+                      <p className="mt-2 text-sm text-ink/80">
+                        개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
+                      </p>
+                    )}
+                    {slides.length > 0 && !directionUnknown && (
+                      <>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                          <div className="border border-line-strong bg-panel p-3">
+                            <p className="font-bold text-ink">나아진 슬라이드</p>
+                            <p className="mt-1">{slideList(improved)}</p>
+                          </div>
+                          <div className="border border-line-strong bg-panel p-3">
+                            <p className="font-bold text-ink">나빠진 슬라이드</p>
+                            <p className="mt-1">{slideList(worsened)}</p>
+                          </div>
+                        </div>
+                        {(same > 0 || unknown > 0) && (
+                          <p className="mt-2 text-xs text-ink/80">
+                            {same > 0 && `변화 없음 ${same}개`}
+                            {same > 0 && unknown > 0 && ' · '}
+                            {unknown > 0 && `방향 판단 불가 ${unknown}개`}
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {slides.length === 0 && (
+                      <p className="mt-2 text-sm text-ink/80">
+                        {overall && OVERALL_ONLY_METRICS.has(metric)
+                          ? '발표 전체 기준 지표예요.'
+                          : '슬라이드별 비교 결과가 없어요.'}
+                      </p>
+                    )}
+                    {overall && (
+                      <p className="mt-2 text-xs text-ink/80">
+                        발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)}{' '}
+                        · {trend(overall).label}
+                      </p>
+                    )}
+                  </section>
+                );
+              })}
           </div>
+          <button
+            ref={openerRef}
+            type="button"
+            onClick={() => setOpen(true)}
+            className="min-h-11 w-fit border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+          >
+            상세 비교표 보기
+          </button>
+          <dialog
+            ref={dialogRef}
+            aria-labelledby={detailTitleId}
+            onClose={() => {
+              setOpen(false);
+              openerRef.current?.focus();
+            }}
+            className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id={detailTitleId} className="text-lg font-bold">
+                  지난 Take 상세 비교
+                </h2>
+                <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => dialogRef.current?.close()}
+                className="min-h-11 shrink-0 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
+                aria-label="상세 비교 닫기"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {groups.map((g) => (
+                <ComparisonTable key={g.dimension ?? 'other'} group={g} />
+              ))}
+            </div>
+          </dialog>
         </>
       )}
     </Card>
