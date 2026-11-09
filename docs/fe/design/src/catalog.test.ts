@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GUIDE_GROUP_ORDER, entries, screens } from './catalog';
+import { GUIDE_GROUP_ORDER, PRODUCT_CHECKED, entries, screens } from './catalog';
 
 describe('화면 설계서 목록', () => {
   it('화면 ID가 중복되지 않고 기존 공유 주소를 유지한다', () => {
@@ -53,6 +53,26 @@ describe('화면 설계서 목록', () => {
     expect(privacy?.productLinks?.some((link) => link.path === '/privacy')).toBe(true);
     expect(terms?.group).toBe('안내 · 계정');
     expect(privacy?.group).toBe('안내 · 계정');
+  });
+
+  it('미병합 PR과 Draft 반영 화면의 대응이 갱신되어 있다', () => {
+    const pending = PRODUCT_CHECKED.pending.map((item) => item.pr).sort((a, b) => a - b);
+    expect(pending).toEqual([944, 1105, 1117, 1118]);
+    const draftIds = screens
+      .filter((screen) => screen.status === 'Draft 반영')
+      .map((screen) => screen.id)
+      .sort();
+    expect(draftIds).toEqual(['home', 'processing-loading', 'stage', 'tutorial']);
+    expect(screens.find((screen) => screen.id === 'semini')?.status).toBe('제품에 있음');
+    for (const [id, pr] of [
+      ['home', 1117],
+      ['tutorial', 1105],
+      ['stage', 1118],
+      ['processing-loading', 1118],
+    ] as const) {
+      expect(screens.find((screen) => screen.id === id)?.status).toBe('Draft 반영');
+      expect(pending).toContain(pr);
+    }
   });
 
   it('검토 시안은 제품 샘플과 다른 그룹에 둔다', () => {
