@@ -3,18 +3,23 @@
 - 문제 구간 0곳 근거: 장마다 근거 id 가 따로이고, 그 장의 값이 측정된 영역만 '없음'이다.
 - Take 목록: 거른 조건에 맞는 Take 만 없으면 'Take 없음'(기록 없음 신호)이 아니다.
 - 결정 로그: 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 붙었을 때만 남긴다.
+- 답 쓰기 실패의 대신 문장: 질문 대상의 근거로만 그린다(읽은 근거 전체를 나열하지 않는다).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from pitch_coach_ai.features.chat_agent import compose
 from pitch_coach_ai.features.chat_agent.config import load_config
+from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
 
 from . import fakes as F
 from .test_none_evidence import _read, no_take_request, with_take_result
 from .test_plan_progress_turn import decisions
+from .test_prefetch import slide_draft
 from .test_signal_routes import research_blocks
 from .test_tools import base_request, load, make_ctx, run
 
@@ -126,3 +131,31 @@ def test_fact_shown_only_when_the_fact_is_on_a_displayed_step() -> None:
         ("REVIEW_MISSING", "FACT_SHOWN", "CODE", 1),
         ("REVIEW_MISSING", "ALT_TOOL", "LLM", 2),
     ]
+
+
+# ── 4. 답 쓰기 모델이 실패하면 질문 대상의 근거로만 대신 문장 ─────────────────────
+
+
+@pytest.mark.prefetch
+def test_answer_failure_fallback_uses_only_question_target_evidence() -> None:
+    """답 쓰기 호출이 실패해 코드가 확인한 값으로 부분 답을 그릴 때, 이번 실행이 읽은 근거를 모두 나열하지 않고 질문 대상(판단
+    초안의 Take 4 · 3장 · 청중 시선)에 맞는 근거만 쓴다. 같은 장의 다른 지표 · 모델이 더 읽은 다른 Take 값은 넣지 않는다."""
+    req = F.with_loaded(F.request(user_message="Take 4 3장 청중 시선 몇 %였어?"), "t-4")
+    other = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 1})
+    llm = F.FakeLlm(
+        [F.plan(assessments=[slide_draft([4])]), F.tools(other), F.done()],
+        answers=[LlmTimeout()],
+    )
+    _, _, data = F.run_turn(req, llm)
+    assert data is not None and data["status"] == "PARTIAL"
+    ev = {e["evidence_id"]: e for e in data["evidence"]}
+    claims = data["message"]["claims"]
+    assert [c["text"] for c in claims if c["kind"] == "RECORD"] == [
+        "Take 4의 3장 청중 시선은 31%예요."
+    ]
+    cited = {
+        (ev[e]["take_number"], ev[e]["slide_number"], ev[e]["metric"])
+        for c in claims
+        for e in c["evidence_ids"]
+    }
+    assert cited == {(4, 3, "audience_ratio")}

@@ -24,7 +24,8 @@
   `final`이 너무 크면 trace 상세 → 진단 기록 순으로 줄이고, 그래도 크면 `AGENT_OUTPUT_TOO_LARGE` error 줄로 끝낸다. 끝 줄은 정확히 하나다.
 - 연결이 끊기면(반복자를 닫으면) 새 모델 · 도구 호출을 하지 않는다(L1-08).
 - 근거 기반 답(TARGET 6): 읽은 범위의 '없음'(Take 0개 · 리뷰 없음 · 대화 목표 없음 · 문제 구간 0곳)도 확인한 사실이다. 모델 문장이 모두
-  빠졌거나 답이 비면 질문 대상의 근거로 코드가 문장을 그리고(`_target_fallback`), 그 문장들로 요청이 해소되면(조사가 끊기지 않았고 풀리지
+  빠졌거나 답이 비면 질문 대상의 근거로 코드가 문장을 그리고(`_target_fallback`. 답 쓰기 호출이 실패했을 때도 같은 거름으로
+  질문 대상에 맞는 근거만 쓴다, `Loop.question_evidence_ids`), 그 문장들로 요청이 해소되면(조사가 끊기지 않았고 풀리지
   않은 단계가 없음, progress.end_status) DONE 이다. 일반 안내 "답 일부를 확인하지 못해 …"(PARTIAL_CHECKED)는 실제로 끊겼고(한도 · 장애)
   근거 문장이 하나도 없을 때(`_cut_notice`)와 근거로 그릴 문장도 없을 때만 낸다. 범위 피치에 Take 가 없다고 답하면 다음 걸음 문장과
   [연습 준비로] 버튼(`_no_take_next`), 목표 저장이 성공하면 그 성공 문장 바로 뒤에 결과 발견 안내(`_with_discovery`)를 둔다.
@@ -767,9 +768,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             if stop_reason in LIMIT_END_REASONS
             else lp.limit_end or ("TIME" if lp.budget.left() <= 0 else None)
         )
-        partial = compose.template_partial(ctx, list(ctx.registry.items))
-        # 질문 대상의 '없음' 근거 문장도 확인한 내용이다(조사가 읽은 범위의 Take 0개 · 리뷰 없음 등)
-        partial += _target_fallback(lp, [], have=[*said, *partial])
+        # 질문 대상의 근거로만 코드 문장을 그린다(`_target_fallback`과 같은 거름): 판단 초안이 집은 Take · 장 · 지표 · 차원에 맞는
+        # 값과, 질문 대상의 '없음' 근거(조사가 읽은 범위의 Take 0개 · 리뷰 없음 등). 이번 실행이 읽은 근거를 모두 나열하지 않는다
+        partial = _target_fallback(lp, lp.question_evidence_ids(), have=said)
         if partial or lp.st.emitted:
             # 이미 낸 문장이 하나라도 있으면 오류로 버리지 않는다(5-4 · 5-5). 조사 중단 안내를 냈으면 안내를 겹치지 않는다.
             # 일반 안내('답 일부를 확인하지 못해 …')는 끊긴 답에 근거 문장이 하나도 없을 때만(TARGET 6)

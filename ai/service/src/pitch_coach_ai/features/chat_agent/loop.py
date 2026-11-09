@@ -2018,6 +2018,14 @@ class Loop:
             out.append({"quote": d.get("quote"), "evidence_ids": ids[:8]})
         return out
 
+    def question_evidence_ids(self) -> list[str]:
+        """질문 대상(판단 초안이 집은 Take · 장 · 지표 · 차원)에 맞는 이번 턴 근거 id(질문별 근거 목록을 합친 것, 처음 본 순서).
+        답 쓰기가 실패했을 때 코드가 대신 그릴 값 문장의 후보다(turn.py — 읽은 근거를 모두 나열하지 않는다)."""
+        table = self._evidence_table()
+        return list(
+            dict.fromkeys(e for q in self._question_checklist(table) for e in q["evidence_ids"])
+        )
+
     def fix_call(
         self,
         msgs: list[dict[str, Any]],
