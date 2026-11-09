@@ -22,8 +22,8 @@ export const PRODUCT_CHECKED: {
   date: string;
   pending: { pr: number; head: string; what: string }[];
 } = {
-  commit: '43b95161106639e48db50b904683fddc5c9e38d4',
-  date: '2026-10-30',
+  commit: '0bf5dbb1e1421b825ee88b706e49fd436fd045e7',
+  date: '2026-11-09',
   pending: [],
 };
 
@@ -42,6 +42,7 @@ const link = (label: string, path: string, note?: string): ProductLink => ({ lab
 
 // 제품 목 데이터(`frontend/src/mocks/`)의 id. 피치 p1 · Take t3이 기본이다
 const PITCH_EDIT = '/pitch/10000000-0000-4000-8000-000000000001/edit';
+// /pitches, /pitch/:id/prepare, /pitch/:id/comparison은 호환 라우트다.
 const COMPARISON = '/pitch/10000000-0000-4000-8000-000000000001/comparison';
 const REHEARSAL = link('리허설 · 실시간 코칭', '/takes/t3/rehearsal');
 const PROCESSING = link(
@@ -55,14 +56,32 @@ const RETRY = link(
   '이 브라우저에 기록이 없으면 안내만 뜬다. 콘솔에 mockTakeEnd.fail() 뒤 발표를 끝내면 열린다',
 );
 
-const group = '제품 화면 · 설계서 샘플';
+/** 화면 그룹은 표시용이다. 기존 화면 ID와 공유 링크는 바꾸지 않는다. */
+export const GUIDE_GROUP_ORDER: readonly string[] = [
+  '기초',
+  '컴포넌트',
+  '대화 상자',
+  '서비스 시작',
+  '피치 관리 · 생성',
+  '연습 준비 · 진행',
+  '분석 · 기록 · 리포트',
+  '안내 · 계정',
+  '검토 시안',
+];
+
+const screenGroup = {
+  pitch: '피치 관리 · 생성',
+  rehearsal: '연습 준비 · 진행',
+  results: '분석 · 기록 · 리포트',
+  review: '검토 시안',
+} as const;
 
 const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'home',
     title: '홈 · 내 피치',
-    group,
+    group: screenGroup.pitch,
     route: '/',
     status: '제품에 있음',
     summary:
@@ -75,7 +94,11 @@ const productScreens: GuideScreen[] = [
         '기존 검토 링크를 유지하는 상태로, 승인된 발표 준비 버튼을 기본 홈과 동일하게 보여 준다.',
       ),
       state('loading', '불러오는 중', '발표 노트를 가져오는 동안 안내한다.'),
-      state('empty', '첫 피치 전', '통계 · TIP을 빼고 첫 피치 안내만 둔다.'),
+      state(
+        'empty',
+        '첫 피치 전',
+        '통계는 빼고 첫 피치 안내만 둔다. 푸터의 TIP과 사용방법 버튼은 유지한다.',
+      ),
       state('error', '오류', '목록을 가져오지 못했고 다시 불러오기를 안내한다.'),
       state(
         'consent',
@@ -120,22 +143,24 @@ const productScreens: GuideScreen[] = [
       '피치 제목은 피치 수정, "Take 기록"은 그 피치로 거른 Take 기록을 연다.',
       '누적 발표 시간은 길이를 아는 Take만 더하고, 하나도 모르면 —로 둔다.',
       '설문은 홈에서 받지 않는다(#776). 동의 전이면 참여 안내, 동의 뒤면 남은 설문 링크만 두고 설문은 리포트에서 한다. 자동으로 띄우는 창은 없다.',
+      '참여에 동의하면 카드가 사라지고 완료 안내로 초점이 옮겨 간다.',
       '남은 설문은 동의한 뒤 끝난 Take 만 오고, 최대 3개를 보이고 나머지는 "외 N개"로 둔다. 없으면 아무것도 두지 않는다.',
       '피치 삭제(#807)는 발표 준비 오른쪽 더보기(···) 메뉴 안에 둔다. 되돌릴 수 없는 동작이라 발표 준비와 같은 버튼 줄에 두지 않는다. ···는 36px 정사각형이라 열 정렬을 바꾸지 않는다.',
       '···는 메뉴 버튼이다(aria-haspopup="menu" · aria-expanded). Enter · Space · ↓로 열면 첫 항목, ↑면 마지막 항목에 초점이 가고 ↑ ↓ Home End로 옮긴다. Esc는 닫고 ···로 초점을 돌려준다. Tab · 바깥 누르기 · 스크롤은 그냥 닫는다.',
-      '메뉴는 화면 좌표로 띄운다. 목록 상자가 스크롤 상자라 그 안에 두면 마지막 줄에서 잘린다. 아래 자리가 모자라면 위로 연다.',
+      '메뉴는 화면 좌표로 띄운다. 페이지 스크롤 중에도 마지막 줄에서 잘리지 않도록 아래 자리가 모자라면 위로 연다.',
       '연습이나 분석이 도는 중이면 삭제를 aria-disabled로 막고 "연습이나 분석이 끝난 뒤 지울 수 있어요."를 항목 아래에 적는다(aria-describedby). 홈 목록의 BE `can_delete`로 판단하고(#1057), BE도 DELETE를 409 `PITCH_BUSY`로 막는다. 분석이 보류되거나 멈춘 Take만 남은 피치는 BE가 허용해 지울 수 있다. 값이 없으면 막지 않고 BE의 409에 맡긴다.',
       '확인 창에서 삭제를 누르면 DELETE를 바로 보낸다. 창을 연 사이 연습이 시작돼 409 `PITCH_BUSY`를 받으면 지우지 않고 창 안에 알리며("피치를 삭제하지 못했어요."를 붙이지 않는다), 홈 목록을 다시 받아 메뉴를 막는다.',
       '확인 창은 제목 · 되돌릴 수 없음 · 함께 지워지는 것(Take 기록 N개와 리포트, 발표 자료 · 대본 · 평가 기준)을 적는다. 버튼은 취소 · 삭제, 처음 초점은 취소다.',
       '지우는 동안 두 버튼을 aria-disabled로 막고 Esc도 막는다. 두 번 눌러도 요청은 한 번이다. 실패하면 창과 줄을 그대로 두고 알린다(role="alert").',
       '취소하면 ···로 초점을 돌려준다. 지우면 그 줄을 빼고, 같은 자리에 온 다음 줄(마지막 줄이었으면 윗줄)의 제목, 줄이 없으면 "내 피치" 제목으로 초점을 옮기고 화면 낭독기에 지웠다고 알린다.',
+      '홈 푸터는 TIP · 사용방법 살펴보기 · 브랜드 슬로건 · 이용약관 · 개인정보 처리방침을 배치한다. 좁은 화면에서는 TIP 문장 전체를 버튼 아래에 줄바꿈해 표시하고, 넓은 화면에서는 한 행에 배치한다. 영문 슬로건은 2xl 이상에서만 표시한다. 실제 채팅 런처가 있을 때만 좁은 화면의 푸터 왼쪽 여백을 확보한다. TIP에는 채팅 에이전트에서 지난 Take 기록이나 발표 방법을 물어보는 안내를 포함한다. TIP은 8초 간격으로 바뀌며 일시정지·재개할 수 있고, 자동 전환 문구에는 aria-live를 걸지 않는다. 움직임 감소 설정은 처음뿐 아니라 실행 중 변경도 반영한다.',
     ],
     components: [
       'HomePitchCard',
       '더보기 메뉴(PitchMoreMenu)',
       '피치 삭제 창',
       '통계 3칸',
-      'TIP 줄',
+      '푸터(TIP 자동 전환 · 사용방법 · 이용약관 · 개인정보 처리방침)',
       '참여 안내 카드 · 참여 동의 창',
       '남은 설문 줄',
     ],
@@ -147,10 +172,11 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/PitchMoreMenu.tsx',
       'frontend/src/features/pitch/DeletePitchDialog.tsx',
       'frontend/src/features/pitch/homeFormat.ts',
+      'frontend/src/shared/ui/HomeHelpDialog.tsx',
       'frontend/src/shared/api/pitch.ts',
     ],
     productNote:
-      '바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다. 참여 동의 창은 대화 상자의 "참여 동의 창"에서도 본다. 동의 · 남은 설문은 서버에 묻지 않는 예시다. 기존 "발표 준비 버튼 · 시안" 상태는 검토 링크를 유지하며, 기본 상태에도 같은 버튼을 표시한다. 삭제(#807)는 서버에 묻지 않는다 — 기본 상태에서 지우면 이 미리보기에서만 줄이 빠지고, 누르는 순간 다시 묻는 것과 지운 뒤 초점 이동은 그리지 않는다. 제품 목에서는 콘솔에 mockPitchDelete.fail()을 입력하면 삭제가 실패한다.',
+      '통합 푸터에는 11개의 예시 TIP(8초 간격 순환·일시정지), 사용방법 링크와 정책 링크를 표시한다. TIP은 피치가 없어도 표시한다. 정책 링크는 설계서의 terms·privacy 화면으로 이동한다(?from=home의 돌아가기 분기는 별도 재현하지 않는다). 통계값은 고정 예시이고 피치 목록은 내부 스크롤 대신 페이지 스크롤을 쓴다. 참여 동의 창은 대화 상자의 "참여 동의 창"에서도 본다. 동의 · 남은 설문은 서버에 묻지 않는 예시다. 기존 "발표 준비 버튼 · 시안" 상태는 검토 링크를 유지하며, 기본 상태에도 같은 버튼을 표시한다. 삭제(#807)는 서버에 묻지 않는다 — 기본 상태에서 지우면 이 미리보기에서만 줄이 빠지고, 누르는 순간 다시 묻는 것과 지운 뒤 초점 이동은 그리지 않는다. 제품 목에서는 콘솔에 mockPitchDelete.fail()을 입력하면 삭제가 실패한다.',
     productLinks: [link('홈 · 내 피치', '/')],
     next: [
       next('새 피치 만들기', 'pitch-create', 'empty'),
@@ -161,12 +187,12 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'pitch-create-a',
-    title: '발표 준비 A안 · PM 검토',
-    group,
+    title: '피치 생성 · A안 검토 시안',
+    group: screenGroup.review,
     route: '/pitch/new',
     status: '시안',
     summary:
-      '발표 자료부터 연습 설정까지 한 페이지에서 준비하는 A안이다. PM이 승인해 제품에 적용됐고(#802), 이 샘플이 그 구조를 그린다.',
+      '제품에 채택된 한 페이지형 피치 생성 A안(#802)의 검토 기록이다. 지금은 "피치 생성 · 수정"(pitch-create)과 같은 샘플을 그리고, 공유 링크 호환을 위해 ID와 상태 주소만 남긴다.',
     states: [
       state('default', '시안 · 슬라이드 준비', '예시 슬라이드를 올린 뒤 대본을 연결한다.'),
       state('empty', '시안 · 빈 화면', '모든 섹션은 보이고 슬라이드부터 시작한다.'),
@@ -191,76 +217,97 @@ const productScreens: GuideScreen[] = [
       state(
         'focus-outline',
         '시안 · 현재 단계 강조',
-        '부드러운 두 배경을 구분선 없이 연결하고, 선택하거나 입력 중인 한 영역만 테두리로 표시한다.',
+        '현재 피치 생성 제품 샘플과 같은 섹션 배경·강조 테두리를 표시한다(옛 공유 주소 호환용).',
       ),
       state('many', '시안 · 버전 30개', '긴 버전 목록의 스크롤과 읽기 전용 열람을 확인한다.'),
     ],
     rules: [
-      '제품 구조를 그린 샘플이다. 파일 업로드·저장·매핑은 메모리의 예시 데이터이며 API·카메라·마이크를 사용하지 않는다.',
-      '슬라이드, 대본 연결, 발표정보, 평가기준(선택)을 한 페이지에 둔다. 날짜 항목은 없고 시간 편차는 0초/0초로 시작한다.',
-      '섹션 배경은 발표 생성용 밝은 지면의 panel과 cream을 번갈아 쓴다. 슬라이드·발표정보는 panel, 대본 연결·평가기준은 cream이다. 경계는 1px line-strong이고 입력칸은 흰색을 유지한다.',
-      '현재 단계 강조 시안은 기존 panel·cream을 섞어 색 차이를 줄이고 일반 구분선을 없앤다. 준비 순서 선택·본문 클릭·키보드 입력에 맞춰 한 섹션의 1px coral-deep 테두리만 이동한다. 기존 교차 배경 A안도 상태 선택에서 비교한다.',
-      '준비 순서는 본문으로 이동한다. 자료 버전 관리와 내부 폴더는 처음에 모두 접혀 있고, 펼쳐도 사이드바 위치는 유지한다.',
-      '버전 창은 PDF 예시·장별 대본·평가기준을 읽기 전용으로 보여 준다. 현재 본문과 연결 조합은 바뀌지 않는다. 버전 트리에 발표정보·발표 자료 제목·새 버전 버튼은 없다.',
-      '연결할 슬라이드 메뉴는 파일명 없이 버전과 장수만 표시한다. 예시 매핑이 완료되면 큰 확인·수정 창을 자동으로 연다. 이미 매핑한 대본은 연결 메뉴를 숨긴다.',
-      '매핑 창은 목록·선택 장의 슬라이드·편집 대본을 함께 보여 주며, 편집값은 닫고 다시 열어도 유지한다. 수정하면 다시 매핑하고 저장해야 한다.',
-      'PDF 업로드 후 확인 창을 자동으로 연다. 닫기만 하면 확인 필요로 남고, 확인 완료를 눌러야 필수 준비 완료에 포함한다. 버전 보기 창에는 저장 동작이 없다.',
-      '평가기준은 선택 항목이다. 입력하면 정리 결과를 확인하고 저장해야 하고, 다시 수정하면 재확인이 필요하다. 비워 두면 사용하지 않는다.',
-      '고정 하단 버튼은 필수 세 항목과 사용한 평가기준을 확인·저장한 뒤 최종 확인 창을 연다. 내용을 최종 확인해야 시작 전 점검으로 간다. 이 시안은 Take를 생성하지 않는다.',
+      '규칙 · 제품과 다른 점은 "피치 생성 · 수정"(pitch-create)에 적는다. 두 곳에 적지 않는다.',
     ],
-    components: ['시안 전용 폴더 트리 · 연결 메뉴 · 매핑 창'],
-    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
-    sources: [
-      'frontend/src/features/pitch/create/PitchCreatePage.tsx',
-      'frontend/src/features/pitch/create/FinalReviewDialog.tsx',
-      'frontend/src/features/pitch/create/VersionPreviewDialog.tsx',
-      'frontend/src/features/pitch/create/steps/SlidePane.tsx',
-      'frontend/src/features/pitch/create/steps/ScriptPane.tsx',
-      'frontend/src/features/pitch/create/steps/InfoPane.tsx',
-      'frontend/src/features/pitch/create/steps/CriteriaPane.tsx',
-    ],
-    productNote:
-      '제품은 이 시안의 한 페이지 구조를 이미 쓴다(#802 · 현재 단계 강조와 최종 확인 창까지 반영). 아직 시안으로 표시하는 것은 상태를 "제품에 있음"으로 올릴지와 단계형이던 "피치 생성 · 수정" 샘플을 어떻게 정리할지를 FE가 정하지 않았기 때문이다. 제품과 다른 점: 목표 발표 시간은 제품이 1~60분(편차 ±10초 버튼, 1초 단위)이고 샘플은 30분까지(30초 단위)다. 제품에는 슬라이드 제목줄의 N장 · 확인 상태 배지와 새 버전 버튼, 대본의 구분 수 · 글자 수 · 예상 시간 안내와 장수 불일치 안내, 업로드 실패 사유별 문구가 있지만 샘플은 그리지 않는다. 제품의 읽기용 버전 창은 실제 PDF를 그린다. PDF 확인 상태는 FE 메모리에만 둔다. 이번 화면에서 새로 업로드한 미확인 버전만 확인 필요로 보고, 서버에서 불러온 기존 버전은 확인 완료로 본다. 확인 전 새로고침해도 수정 화면에서 다시 불러오면 확인 완료가 되는 한계가 있다. PDF는 업로드 때 이미 서버에 저장되므로 확인 완료 버튼은 추가 저장 API를 부르지 않는다. 슬라이드는 PDF를 읽지 않고 3장의 예시 자료를 그린다. 입력한 원문은 화면에 보관하고, 매핑과 평가기준 정리 결과는 고정 fixture로 표현한다. API 응답·장비·서버 저장·실제 파일 선택은 검증 대상이 아니다.',
-    next: [next('현재 제품 샘플과 비교', 'pitch-create'), next('시작 전 점검', 'prepare-mission')],
+    components: [],
+    tokens: [],
+    sources: [],
+    next: [next('현재 제품 샘플', 'pitch-create')],
   },
   {
     kind: 'screen',
     id: 'pitch-create',
     title: '피치 생성 · 수정',
-    group,
+    group: screenGroup.pitch,
     route: '/pitch/new',
     status: '제품에 있음',
-    summary: '슬라이드 · 대본 · 발표정보 · 평가기준을 차례로 준비하고 시작 전 세팅으로 간다.',
+    summary:
+      '슬라이드 · 대본 연결 · 발표정보 · 평가기준(선택)을 한 페이지에서 준비한다. 왼쪽 준비 순서와 자료 버전 목록, 고정 하단 확인 버튼을 쓴다. 생성과 수정은 같은 구성을 공유한다.',
     states: [
-      state('default', '슬라이드 올린 뒤', '올린 슬라이드를 확인하는 첫 단계다.'),
-      state('empty', '슬라이드 전', 'PDF를 올리기 전이라 다음 단계가 막힌다.'),
-      state('error', '업로드 오류', '자료를 다시 올릴 수 있도록 안내한다.'),
-      state('preview', '슬라이드 미리보기', '슬라이드를 크게 보는 창을 연다.'),
+      state('default', '슬라이드 준비', '예시 슬라이드를 올린 뒤 대본을 연결한다.'),
+      state('empty', '새 피치 · 자료 없음', '슬라이드 업로드 전에도 네 영역이 모두 보인다.'),
+      state('error', '슬라이드 업로드 실패', 'PDF 업로드 오류를 표시하고 재선택할 수 있다.'),
+      state(
+        'preview',
+        '슬라이드 확인 · 옛 주소',
+        '옛 preview 상태 주소. 슬라이드 확인(upload-review)과 같은 창을 연다.',
+      ),
+      state(
+        'upload-review',
+        '슬라이드 확인',
+        '업로드 후 자동으로 열린 창에서 PDF를 보고 확인 완료를 누른다.',
+      ),
+      state(
+        'mapping',
+        '대본 매핑 확인',
+        '장별 예시 슬라이드와 대본을 큰 창에서 확인하고 수정한다.',
+      ),
+      state('mapping-error', '대본 매핑 실패', '대본은 보존하고 다시 매핑할 수 있다.'),
+      state(
+        'final-review',
+        '최종 확인',
+        '확인한 자료·대본·발표정보·평가기준을 모아 보고 시작 전 세팅으로 이동한다.',
+      ),
+      state('ready', '준비 완료', '필수 세 항목을 저장한 뒤 시작 전 세팅으로 이동한다.'),
+      state('focus-outline', '현재 단계 강조', '선택하거나 입력 중인 한 영역만 테두리로 표시한다.'),
+      state('many', '버전 30개', '긴 버전 목록의 스크롤과 읽기 전용 열람을 확인한다.'),
     ],
     rules: [
-      '슬라이드 → 대본 → 발표정보 확인 → 평가기준(선택) 순서로 준비한다.',
-      '"연습 시작 →"은 Take를 만들지 않고 시작 전 세팅으로 간다. 저장한 평가기준이 없으면 "건너뛰기"로 시작한다.',
-      '발표정보를 저장하지 않았으면 연습 시작 대신 발표정보 단계로 돌아가 저장을 요청한다.',
-      'PDF만, 40MB까지 올린다. 파일 이름으로 발표 제목을 채운다.',
+      '슬라이드, 대본 연결, 발표정보, 평가기준(선택)을 한 페이지에 세로로 두고 준비 순서 버튼으로 해당 영역에 이동한다. 단계마다 화면을 갈아끼우지 않는다. 날짜 항목은 없고 시간 편차는 0초/0초로 시작한다.',
+      '슬라이드·발표정보 섹션은 panel 55%와 cream을 섞은 배경, 대본 연결·평가기준 섹션은 cream 배경을 쓴다. 섹션 사이 구분선은 없고 입력칸은 흰색을 유지한다.',
+      '기본·빈 화면·오류·확인 등 모든 상태에서 준비 순서 선택·본문 클릭·키보드 입력에 따라 작업 중인 한 섹션의 1px coral-deep 테두리를 이동한다. focus-outline 상태는 기존 공유 주소 호환용이다.',
+      '자료 버전 관리와 내부 폴더는 처음에 모두 접혀 있고, 펼쳐도 사이드바 위치는 유지한다.',
+      '버전 창은 PDF 예시·장별 대본·평가기준을 읽기 전용으로 보여 준다. 현재 본문과 연결 조합은 바뀌지 않는다. 버전 트리에 발표정보·발표 자료 제목·새 버전 버튼은 없다.',
+      '연결할 슬라이드 메뉴는 파일명 없이 버전과 장수만 표시한다. 매핑이 끝나면 큰 확인·수정 창을 자동으로 연다. 이미 매핑한 대본은 연결 메뉴를 숨긴다.',
+      '수정 대본 매핑 중에는 버튼에 초점을 유지한다. 완료 후 그 버튼이 사라졌다면 저장 버튼이나 저장할 수 없는 이유로 초점을 옮긴다. 첫 장과 마지막 장에서도 이동 버튼에 초점을 유지한다.',
+      '매핑 창은 목록·선택 장의 슬라이드·편집 대본을 함께 보여 주며, 편집값은 닫고 다시 열어도 유지한다. 수정하면 다시 매핑하고 저장해야 한다.',
+      'PDF 업로드 후 확인 창을 자동으로 연다. 닫기만 하면 확인 필요로 남고, 확인 완료를 눌러야 필수 준비 완료에 포함한다. 버전 보기 창에는 저장 동작이 없다.',
+      '평가기준은 선택 항목이다. 입력하면 정리 결과를 확인하고 저장해야 하고, 다시 수정하면 재확인이 필요하다. 비워 두면 사용하지 않는다.',
+      '고정 하단 버튼은 필수 세 항목과 사용한 평가기준을 확인·저장한 뒤 최종 확인 창을 연다. 최종 확인 뒤 /pitch/:pitchId/device-check로 간다. 이 화면은 Take를 만들지 않는다 — Take는 장치 점검의 시작 버튼에서 만든다.',
     ],
-    components: ['PaneHeading', 'PaneFooter', 'primaryButton · secondaryButton'],
-    tokens: ['greige', 'cream', 'panel', 'ink', 'coral-deep'],
+    components: [
+      'VersionRail · 준비 순서',
+      'SlidePane · ScriptPane · InfoPane · CriteriaPane',
+      '버전 보기 · 슬라이드 확인 · 매핑 확인 · 최종 확인 창',
+      '고정 하단 준비 버튼',
+    ],
+    tokens: ['greige', 'cream', 'panel', 'ink', 'coral-deep', 'line-strong'],
     sources: [
       'frontend/src/features/pitch/create/PitchCreatePage.tsx',
-      'frontend/src/features/pitch/create/lib/draft.ts',
+      'frontend/src/features/pitch/create/VersionRail.tsx',
       'frontend/src/features/pitch/create/steps/SlidePane.tsx',
+      'frontend/src/features/pitch/create/steps/ScriptPane.tsx',
+      'frontend/src/features/pitch/create/steps/InfoPane.tsx',
       'frontend/src/features/pitch/create/steps/CriteriaPane.tsx',
+      'frontend/src/features/pitch/create/FinalReviewDialog.tsx',
+      'frontend/src/features/pitch/create/VersionPreviewDialog.tsx',
+      'frontend/src/features/pitch/create/lib/draft.ts',
     ],
     productNote:
-      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 발표 정보 줄(InfoBar · 저장 전이면 "저장 전" 표시) · 단계 표시줄(StepBar)을 둔다. 위에는 공용 상단바가 얹히고 경로 줄은 없다(#738). 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 시안에만 있다(제품은 뷰어 카드의 전체 화면 버튼을 쓴다). 단계별 제목 · 버튼 · 안내 문구와 슬라이드를 올리기 전 아래 줄이 없는 것은 제품과 같다.',
+      '제품과 같은 한 페이지 구조(#802 · 현재 단계 강조와 최종 확인 창까지)를 그린다. 제품과 다른 점: 목표 발표 시간은 제품이 1~60분(편차 ±10초 버튼, 1초 단위)이고 샘플은 30분까지(30초 단위)다. 제품에는 슬라이드 제목줄의 N장 · 확인 상태 배지와 새 버전 버튼, 대본의 구분 수 · 글자 수 · 예상 시간 안내와 장수 불일치 안내, 업로드 실패 사유별 문구가 있지만 샘플은 그리지 않는다. 제품의 읽기용 버전 창은 실제 PDF를 그린다. PDF 확인 상태는 FE 메모리에만 둔다. 이번 화면에서 새로 업로드한 미확인 버전만 확인 필요로 보고, 서버에서 불러온 기존 버전은 확인 완료로 본다. 확인 전 새로고침해도 수정 화면에서 다시 불러오면 확인 완료가 되는 한계가 있다. PDF는 업로드 때 이미 서버에 저장되므로 확인 완료 버튼은 추가 저장 API를 부르지 않는다. 슬라이드는 PDF를 읽지 않고 3장의 예시 자료를 그린다. 입력한 원문은 화면에 보관하고, 매핑과 평가기준 정리 결과는 고정 fixture로 표현한다. 피치 수정의 자료 불러오기 실패 · 없는 피치 상태는 그리지 않는다.',
     productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
-    next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
+    next: [next('최종 확인 → 시작 전 세팅', 'prepare-mission'), next('내 피치로', 'home')],
   },
   {
     kind: 'screen',
     id: 'prepare-mission',
     title: '시작 전 세팅',
-    group,
+    group: screenGroup.rehearsal,
     route: '/pitch/:pitchId/device-check',
     status: '제품에 있음',
     summary:
@@ -284,7 +331,9 @@ const productScreens: GuideScreen[] = [
       'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
       '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
       '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중(다른 곳의 연습을 끝낼지 묻는 동안은 그 안내) → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
+      '안내 줄 아래에는 "말이 없는 상태가 2분 넘게 이어지면 연습이 자동으로 끝날 수 있어요. 발표 목표 시간과는 상관없어요."를 늘 둔다(#925). 서버는 최근 2분 무발화와 최근 5분 중 80% 이상 무발화를 모두 볼 때 끝내므로 "끝날 수 있어요"로 쓴다. 바뀌지 않는 말이라 안내 줄의 알림 영역(role="status") 밖이다. 2분은 서버가 미리 알려 주지 않아 제품 `shared/lib/autoEnd.ts`에 두고 BE `take_silence_end_sec`과 맞춘다.',
       '평소 목소리 읽기는 선택이라 시작을 막지 않는다.',
+      '미션 전문 창에서 첫 미션과 마지막 미션에 도달하면 해당 탐색 버튼의 동작을 막고 초점은 유지한다.',
       '다른 창 · 기기에서 발표 중인 Take가 있으면 시작을 누를 때 그 연습을 끝내고 시작할지 묻는다. 끝내지 못하면 시작하지 않는다. 그 창을 닫으면(취소 · Esc · 끝내기 실패) 초점을 시작 버튼으로 돌린다 — 창이 열린 동안 시작 버튼이 막혀 있어 브라우저가 돌려주지 못하기 때문이다. 시작을 누른 뒤에는 대본 표시 · 장치 선택을 잠근다.',
       '"실전 모드 · 대본 없이"를 고르면 버튼이 "실전 모드로 시작"으로 바뀌고 실전 무대로 간다.',
     ],
@@ -303,6 +352,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/prepare/CheckCard.tsx',
       'frontend/src/features/rehearsal/prepare/ScriptModeChoice.tsx',
       'frontend/src/features/rehearsal/prepare/ReplaceTakeDialog.tsx',
+      'frontend/src/features/rehearsal/prepare/MissionCard.tsx',
       'frontend/src/features/rehearsal/prepare/activeTake.ts',
       'frontend/src/features/rehearsal/prepare/prepareStore.ts',
     ],
@@ -318,8 +368,8 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'prepare-layout-review',
-    title: '시작 전 세팅 · PM 검토 시안',
-    group: 'PM 검토 · 독립 시안',
+    title: '시작 전 세팅 · 배치 검토 시안',
+    group: screenGroup.review,
     route: '/pitch/:pitchId/device-check',
     status: '시안',
     summary:
@@ -411,12 +461,12 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'stage',
-    title: '리허설 무대',
-    group,
+    title: '리허설 · 실전',
+    group: screenGroup.rehearsal,
     route: '/takes/:takeId/rehearsal',
     status: '제품에 있음',
     summary:
-      '승인 배치를 반영한 검토 화면. 슬라이드와 대본을 보며 연습한다. 카메라 · 마이크를 열거나 음성을 보내지 않는다.',
+      '리허설과 실전 모드의 슬라이드·대본·코치·연결 상태를 독립적으로 재현한 화면이다. 실제 카메라·마이크·음성 전송은 하지 않는다.',
     states: [
       state(
         'default',
@@ -474,7 +524,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/stage/useEndConfirm.ts',
     ],
     productNote:
-      '제품에도 흰 지면·카메라 4:3 크롭·56px 피코 코치·범례 칩·상단 종료·하단 대본 배치를 반영했다. 제품의 보정 키는 stage:bottom-script-v2로 이전 배치의 기준을 제외한다. 배치 이동만으로 시선 오분류 해결을 보장하지 않는다. 실기기에서 새 배치로 재보정한 뒤 대본 위·가운데·아래를 읽어 판정을 검증해야 한다. 카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "무대를 열지 않는 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다(장을 넘기면 풀리는 것은 제품과 같다). 무대 배치는 설계서 자체 src/ui/stage.css를 쓴다. /dev/stage도 제품 UI와 분리된 디자인 시안으로 유지한다.',
+      '제품에도 흰 지면·카메라 4:3 크롭·56px 피코 코치·범례 칩·상단 종료·하단 대본 배치를 반영했다. 제품의 보정 키는 stage:bottom-script-v2로 이전 배치의 기준을 제외한다. 배치 이동만으로 시선 오분류 해결을 보장하지 않는다. 실기기에서 새 배치로 재보정한 뒤 대본 위·가운데·아래를 읽어 판정을 검증해야 한다. 카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "리허설 · 접근 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다(장을 넘기면 풀리는 것은 제품과 같다). 무대 배치는 설계서 자체 src/ui/stage.css를 쓴다. /dev/stage도 제품 UI와 분리된 디자인 시안으로 유지한다.',
     productLinks: [REHEARSAL, link('리허설 · 실전 모드', '/takes/t3/exam')],
     next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
   },
@@ -482,7 +532,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'processing-loading',
     title: '분석 대기',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId/processing',
     status: '제품에 있음',
     summary: '노을 화면에서 분석 세 단계의 진행을 보여 주고, 끝나면 리포트로 넘어간다.',
@@ -496,10 +546,16 @@ const productScreens: GuideScreen[] = [
       ),
       state('failed', '분석 실패', '다시 연습하기와 홈으로를 안내한다.'),
       state('held', '리뷰 보류', '분석이 멈춰 나중에 홈에서 확인하도록 안내한다.'),
+      state(
+        'auto-end',
+        '자동 종료 뒤',
+        '서버가 말 없음으로 Take를 끝내고 넘어와, 분석 진행 위에 그 이유를 알린다.',
+      ),
       state('error', '오류', '연습 기록을 불러오지 못했다.'),
     ],
     rules: [
       '분석이 끝나면 리포트로 자동 이동한다(주소를 바꿔 끼움).',
+      '서버가 Take를 자동으로 끝냈으면(말 없음 · 최대 1시간) 무대가 이유와 서버 문구를 라우터 state로 넘기고, 이 화면 맨 위에 role="alert" 안내("자동 종료" 이름표 + 서버 문구 + 덧붙임)를 띄운다(#925). 리포트로 넘어갈 때도 같이 넘겨 리포트 위에 한 번 더 보인다. 끝내기 버튼으로 끝냈으면 띄우지 않는다.',
       '확인 대기면 "비슷하게 들린 말 확인하기"로 대본 확인을 연다. 답이 없으면 10분 안에 그대로 진행된다.',
       '분석 실패는 다시 연습하기(시작 전 세팅) · 홈으로, 리뷰 보류는 홈으로만 안내한다.',
       '화면을 떠나도 분석은 계속되고 홈에서 다시 볼 수 있다.',
@@ -509,9 +565,11 @@ const productScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/report/ProcessingPage.tsx',
       'frontend/src/features/report/DuskScreen.tsx',
+      'frontend/src/features/report/AutoEndAlert.tsx',
+      'frontend/src/shared/lib/autoEnd.ts',
     ],
     productNote:
-      '팁은 바뀌지 않고 첫 문장에 머물며, 제품의 "팁 자동 전환 일시정지" 버튼은 뺐다. 분석 완료 뒤 자동 이동은 아래 "이어지는 화면"의 "분석 완료 → 리포트"로 대신한다.',
+      '팁은 바뀌지 않고 첫 문장에 머물며, 제품의 "팁 자동 전환 일시정지" 버튼은 뺐다. 분석 완료 뒤 자동 이동은 아래 "이어지는 화면"의 "분석 완료 → 리포트"로 대신한다. 자동 종료 안내는 말 없음 문구만 그리고(최대 시간도 같은 상자에 서버 문구만 다르다), 리포트 위에 한 번 더 뜨는 안내는 그리지 않는다. 제품 목 서버로는 라우터 state를 넣을 수 없어 "제품에서 열기"로 이 상태를 볼 수 없다.',
     productLinks: [
       PROCESSING,
       link('분석 실패', '/takes/t-failed/processing'),
@@ -528,7 +586,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'confirm',
     title: '대본 확인',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId/confirm',
     status: '제품에 있음',
     summary: '발표 뒤 인식이 헷갈린 말을 "대본대로 / 들린 대로"로 확인하고 분석 대기로 돌아간다.',
@@ -568,7 +626,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'retry',
     title: '업로드 실패 · 재시도',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId/retry',
     status: '제품에 있음',
     summary: '종료 기록을 서버로 보내지 못했을 때 이 브라우저에 남은 기록을 다시 보낸다.',
@@ -600,7 +658,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'report',
     title: 'Take 리포트',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId',
     status: '제품에 있음',
     summary: '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 다음 미션을 보여 준다.',
@@ -622,7 +680,7 @@ const productScreens: GuideScreen[] = [
       '측정하지 않은 값은 —로 두어 측정된 0과 구별한다.',
       '"Take N 연습하기"는 시작 전 세팅으로 이동만 한다. 여기서 Take를 만들지 않는다.',
       '분석 실패 · 리뷰 보류 Take는 분석 대기 화면으로 보낸다.',
-      '아래 줄에 "이번 분석 설문 남기기"를 둔다(#776). 분석이 끝난 리포트에만 두고, 설문 상태를 못 받으면 버튼을 두지 않아 리포트를 막지 않는다. 리포트마다 한 번 보낸다.',
+      '아래 줄에 "이번 분석 설문 남기기"를 둔다(#776). 분석이 끝난 리포트에만 두고, 설문 상태를 못 받으면 버튼을 두지 않아 리포트를 막지 않는다. 리포트마다 한 번 보낸다. 보내면 완료 안내로 초점이 옮겨 간다.',
     ],
     components: ['Card', 'Stat', 'Badge', 'ButtonLink', '설문 창'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
@@ -645,7 +703,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'takes',
     title: 'Take 기록 · 지표 비교',
-    group,
+    group: screenGroup.results,
     route: '/takes',
     status: '제품에 있음',
     summary: '하나의 Take 기록 화면에서 전체 목록과 같은 피치의 지표 비교를 전환한다.',
@@ -686,8 +744,8 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'comparison',
-    title: '이전 Take 비교 주소',
-    group,
+    title: 'Take 비교 · 이전 주소',
+    group: screenGroup.results,
     route: '/pitch/:id/comparison',
     status: '제품에 있음',
     summary: '옛 주소에서 /takes?pitch=:id&view=compare로 이동하는 호환 경로다.',
@@ -705,14 +763,66 @@ const productScreens: GuideScreen[] = [
   },
 ];
 
-const infoGroup = '안내 · 계정 화면';
+const infoGroup = '안내 · 계정';
 
-/** 글 위주 화면. 제품 `shared/ui/InfoPage` 틀을 쓴다 */
+/** 안내 화면과 공개 정책 문서. 정책 문서는 제품 PolicyPage를 독립 샘플로 옮긴다. */
 const infoScreens: GuideScreen[] = [
   {
     kind: 'screen',
+    id: 'terms',
+    title: '이용약관 · 검토용 초안',
+    group: infoGroup,
+    route: '/terms',
+    status: '제품에 있음',
+    summary:
+      '제품에 공개 경로가 있는 시행 전 이용약관 초안. 서비스 목적과 자료 권리, 장치 권한, 삭제 및 미확정 운영 정책을 안내한다.',
+    states: [base],
+    rules: [
+      '실제 제품도 시행 중인 약관이 아니라 검토용 초안으로 표시한다. 운영 주체·시행일·문의처는 아직 확정되지 않았다.',
+      '홈에서 열면 홈으로 돌아가고, 다른 곳에서 열면 서비스 소개의 이용안내 구역으로 돌아간다. 이용약관과 개인정보 처리방침 사이를 전환할 수 있다.',
+    ],
+    components: ['정책 문서 머리 · 검토용 초안 안내', '7개 정책 조항 · 문서 전환 링크'],
+    tokens: ['panel', 'ink', 'coral-wash', 'line'],
+    sources: ['frontend/src/features/onboarding/PolicyPage.tsx'],
+    productNote:
+      '7개 조항의 텍스트를 제품 코드에서 가져온 독립 샘플이다. 현재 경로의 from=home에 따른 돌아가기 차이는 미리보기에서 고정된 이동으로 표현한다. 외부 작성지침 링크는 포함하지 않는다.',
+    productLinks: [link('이용약관', '/terms'), link('홈에서 연 이용약관', '/terms?from=home')],
+    next: [
+      next('개인정보 처리방침', 'privacy'),
+      next('서비스 소개', 'welcome'),
+      next('내 피치로', 'home'),
+    ],
+  },
+  {
+    kind: 'screen',
+    id: 'privacy',
+    title: '개인정보 처리방침 · 검토용 초안',
+    group: infoGroup,
+    route: '/privacy',
+    status: '제품에 있음',
+    summary:
+      '서버에 전송하지 않는 카메라 영상과 서버로 전송하는 음성을 구분하고, 데이터 처리·보관 및 삭제를 설명하는 시행 전 초안.',
+    states: [base],
+    rules: [
+      '시행 전 검토용 초안임을 반드시 표시한다. 미확정 외부 처리 사업자·국외 이전·보관기간을 확정된 정책으로 표현하지 않는다.',
+      '홈에서 열면 홈으로 돌아가고, 다른 곳에서 열면 서비스 소개의 이용안내 구역으로 돌아간다. 두 정책 문서 사이를 전환할 수 있다.',
+    ],
+    components: ['정책 문서 머리 · 검토용 초안 안내', '7개 정책 조항 · 문서 전환 링크'],
+    tokens: ['panel', 'ink', 'coral-wash', 'line'],
+    sources: ['frontend/src/features/onboarding/PolicyPage.tsx'],
+    productNote:
+      '제품의 공개 정책 7개 조항을 독립적으로 재현한다. 서버·계정과 무관하며 from=home 쿼리에 따른 돌아가기 구분과 외부 작성지침 링크는 재현하지 않는다.',
+    productLinks: [
+      link('개인정보 처리방침', '/privacy'),
+      link('홈에서 연 처리방침', '/privacy?from=home'),
+    ],
+    next: [next('이용약관', 'terms'), next('서비스 소개', 'welcome'), next('내 피치로', 'home')],
+  },
+
+  {
+    kind: 'screen',
     id: 'stage-blocked',
-    title: '무대를 열지 않는 안내',
+    title: '리허설 · 접근 안내',
     group: infoGroup,
     route: '/takes/:takeId/rehearsal',
     status: '제품에 있음',
@@ -769,7 +879,7 @@ const infoScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'unsupported',
-    title: '미지원 브라우저',
+    title: '미지원 환경 안내',
     group: infoGroup,
     route: '/unsupported',
     status: '제품에 있음',
@@ -849,14 +959,14 @@ const infoScreens: GuideScreen[] = [
   },
 ];
 
-const onboardingGroup = '처음 화면 · 로그인';
+const onboardingGroup = '서비스 시작';
 
 /** 로그인 전에 보는 화면. 웰컴과 로그인은 같은 머리 · 테두리 · 그림자를 쓴다 */
 const onboardingScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'welcome',
-    title: '웰컴 · 서비스 소개',
+    title: '서비스 소개 · 시작하기',
     group: onboardingGroup,
     route: '/welcome',
     status: '제품에 있음',
@@ -924,7 +1034,7 @@ const onboardingScreens: GuideScreen[] = [
   },
 ];
 
-/** 목록 순서 그대로 왼쪽 목록에 보인다: 기초 → 컴포넌트 · 대화 상자 → 화면 */
+/** 항목 배열 순서. 왼쪽 목록과 전체 보기는 GUIDE_GROUP_ORDER로 그룹을 정렬한다. */
 export const entries: GuideEntry[] = [
   ...foundationEntries,
   ...componentEntries,

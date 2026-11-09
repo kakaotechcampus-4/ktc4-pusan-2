@@ -57,8 +57,8 @@ export function TakesPage() {
     const next = new URLSearchParams(params);
     if (selected) next.set('pitch', selected);
     else next.delete('pitch');
-    // push로 기록하여 뒤로 가기 시 이전 필터를 복원합니다.
-    setParams(next);
+    // push로 이전 필터를 기록하되, 같은 페이지의 필터 변경으로 스크롤을 초기화하지 않습니다.
+    setParams(next, { preventScrollReset: true });
   }
 
   const viewLink =
@@ -75,6 +75,7 @@ export function TakesPage() {
         >
           <Link
             to={viewPath('list')}
+            preventScrollReset
             aria-current={!comparing ? 'page' : undefined}
             className={!comparing ? activeViewLink : inactiveViewLink}
           >
@@ -82,6 +83,7 @@ export function TakesPage() {
           </Link>
           <Link
             to={viewPath('compare')}
+            preventScrollReset
             aria-current={comparing ? 'page' : undefined}
             className={comparing ? activeViewLink : inactiveViewLink}
           >
@@ -146,7 +148,7 @@ export function TakesPage() {
                     <p className="[overflow-wrap:anywhere] text-xs text-stone">
                       {takeDay(t.started_at)} · {t.pitch_title}
                     </p>
-                    <p className="mt-0.5 font-mono font-bold">TAKE {t.take_number}</p>
+                    <p className="mt-0.5 tabular-nums font-bold">TAKE {t.take_number}</p>
                   </div>
                   <TakeStatusBadge status={status} />
                   <dl className="tabular col-span-2 grid grid-cols-2 items-center gap-x-4 gap-y-2 text-sm sm:grid-cols-3 lg:col-span-1 lg:grid-cols-[minmax(0,1fr)_8rem_5rem]">

@@ -87,6 +87,16 @@ export function scriptLength(text: string): number {
   return [...text].length;
 }
 
+/**
+ * 장 대본을 원문 하나로 잇습니다 — 장마다 `[슬라이드 N]` 줄로 시작합니다. 매핑 편집(`editMappingBlock`)과
+ * 원문이 없는 예전 대본(`loadPitch`)이 씁니다. 다시 매핑하면 이 글이 서버로 가므로 AI 가 구분자로 보는
+ * 형식이어야 장마다 다시 나뉩니다. 장 대본 안에 구분자로 읽히는 줄이 있으면 1..N 으로 나뉘지 않습니다
+ * (`markerHint.ts` `markerLinesInBlocks`).
+ */
+export function joinScriptBlocks(blocks: string[]): string {
+  return blocks.map((block, i) => `[슬라이드 ${i + 1}]\n${block}`).join('\n\n');
+}
+
 /** 업로드 제한. 목업의 "최대 40MB" */
 export const MAX_SLIDE_BYTES = 40 * 1024 * 1024;
 
@@ -154,7 +164,10 @@ export type SlideUpload =
  * `failed` 의 `message` 는 화면에 그대로 띄울 문구입니다.
  */
 export type ScriptParse =
-  { status: 'idle' } | { status: 'pending' } | { status: 'failed'; message: string };
+  | { status: 'idle' }
+  /** `startedAt` 은 나누기를 시작한 `performance.now()` — 다른 화면에 다녀와도 기다린 시간을 이어서 셉니다 */
+  | { status: 'pending'; startedAt: number }
+  | { status: 'failed'; message: string };
 
 export interface ScriptVersion {
   version: number;

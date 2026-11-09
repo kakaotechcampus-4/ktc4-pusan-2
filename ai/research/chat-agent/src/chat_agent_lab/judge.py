@@ -63,7 +63,11 @@ class Verdict:
 
 def sentence_key(s: Mapping[str, Any]) -> str:
     """판정 단위(문장 · 인용한 자료)의 키. 같은 문장 · 같은 자료는 한 번만 판정한다."""
-    raw = json.dumps([s["text"], sorted(s["source_ids"])], ensure_ascii=False)
+    # 판정 입력은 화면에 표시된 인용이라, 같은 문장 · 같은 자료라도 인용이 다르면 따로 판정한다
+    raw = json.dumps(
+        [s["text"], sorted(s["source_ids"]), sorted((s.get("cards") or {}).items())],
+        ensure_ascii=False,
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -74,9 +78,13 @@ def judge_sentence(
     *,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> Verdict:
-    """문장 하나를 인용한 자료 원문과 대조한다. 자료가 없으면 부르지 않고 0(인용 누락)."""
+    """문장 하나를 응답에 표시한 인용(`message.sources[].quote`)과 대조한다.
+
+    `cards` 는 인용한 자료 id → 화면에 표시한 인용 글. 인용한 자료가 없거나, 하나라도 표시한 인용이 비어 있으면
+    부르지 않고 0(인용 누락)이다.
+    """
     bodies = {k: v for k, v in cards.items() if v}
-    if not bodies:
+    if not bodies or len(bodies) != len(cards):
         return Verdict(0, "인용 누락", "NO_SOURCE", called=False)
     user = (
         "<sentence>\n"
@@ -147,7 +155,7 @@ def judge_all(
     if llm is None:
         from .app import from_env
 
-        llm = from_env(bundle=bundle).llm
+        llm = from_env(bundle=bundle, search="keyword").llm
     judged: dict[str, int] = {}
     samples: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []

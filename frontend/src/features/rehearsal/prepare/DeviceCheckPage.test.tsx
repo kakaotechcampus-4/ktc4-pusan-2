@@ -19,6 +19,15 @@ const fixture = vi.hoisted(() => ({
   deviceError: null as DeviceError | null,
   voiceStatus: 'IDLE',
   data: null as unknown as PrepareResponse,
+  /** 버전 목록에서 꺼낸 가장 최근 자료 (`useLatestSlide`) */
+  latestSlide: {
+    data: null as { id: string; version: number; pageCount: number | null } | null | undefined,
+    isPending: false,
+    isError: false,
+  },
+  /** 최신 자료를 다시 받는 중인지 · [다시 확인]이 부르는 것 */
+  latestFetching: false,
+  refetchLatest: vi.fn(),
   request: vi.fn(),
   gazeStart: vi.fn(),
   voiceStart: vi.fn(),
@@ -91,6 +100,11 @@ vi.mock('./useBaseVoice', () => ({
 }));
 vi.mock('@/shared/api/prepare', () => ({
   usePrepare: () => ({ data: fixture.data, isError: false }),
+  useLatestSlide: () => ({
+    ...fixture.latestSlide,
+    isFetching: fixture.latestFetching,
+    refetch: fixture.refetchLatest,
+  }),
   useCreateTake: () => ({ mutateAsync: fixture.create }),
   postCalibration: vi.fn(),
 }));
@@ -127,6 +141,9 @@ beforeEach(() => {
   fixture.gazeAdvice = null;
   fixture.deviceError = null;
   fixture.voiceStatus = 'IDLE';
+  fixture.latestSlide = { data: null, isPending: false, isError: false };
+  fixture.latestFetching = false;
+  fixture.refetchLatest.mockReset().mockResolvedValue(undefined);
   fixture.request.mockReset().mockResolvedValue(undefined);
   fixture.create.mockReset().mockResolvedValue({ takeId: 't1', takeNumber: 4 });
   fixture.active.mockReset().mockResolvedValue(null);
@@ -180,6 +197,7 @@ async function render(combo?: PracticeCombo, pitchId = 'p1') {
           <Route path="/pitch/:pitchId/device-check" element={<DeviceCheckPage />} />
           <Route path="/takes/:takeId/rehearsal" element={<p>연습 시작</p>} />
           <Route path="/takes/:takeId/exam" element={<p>실전 시작</p>} />
+          <Route path="/pitch/:id/edit" element={<p>피치 수정</p>} />
         </Routes>
       </MemoryRouter>,
     ),
@@ -234,6 +252,309 @@ it('starts with the chosen server version IDs while the optional voice task is s
     }),
   );
   expect(host.textContent).toContain('연습 시작');
+});
+
+it('넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고, [최신으로]를 누르면 최신 조합으로 Take 를 만든다', async () => {
+  const old: PracticeCombo = {
+    title: '고른 발표',
+    presentationVersionId: 'old-pv',
+    scriptVersionId: 'old-sv',
+    slideVersion: 2,
+    scriptVersion: 3,
+    goalTimeSec: 180,
+  };
+  await render(old);
+  const notice = host.querySelector('[data-newer-combo]')!;
+  expect(notice.textContent).toContain('최신 조합이 있어요: 자료 v9 · 대본 v9');
+
+  // 안내는 늘 그려 둔 live 영역에 들어가고, 버튼은 그 밖에 있습니다
+  const live = [...host.querySelectorAll('[role="status"]')].find((n) =>
+    n.textContent?.includes('최신 조합이 있어요'),
+  )!;
+  expect(live.contains(findButton('최신으로'))).toBe(false);
+
+  const latestButton = findButton('최신으로');
+  latestButton.focus();
+  await act(async () => latestButton.click());
+  expect(host.querySelector('[data-newer-combo]')).toBeNull();
+  // 누른 버튼이 사라져도 초점이 body 로 빠지지 않고 시작 버튼으로 가며, 바꿨다고 알립니다
+  expect(document.activeElement).toBe(findButton('Take 4 시작하기'));
+  expect(live.textContent).toBe('최신 조합(자료 v9 · 대본 v9)으로 바꿨어요');
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        presentation_version_id: 'latest-pv',
+        script_version_id: 'latest-sv',
+      }),
+    }),
+  );
+  // 예전 조합을 티켓에 남기지 않습니다 — 실패해 돌아와도 최신 조합으로 엽니다 (deviceCheckLink)
+  expect(setSessionTicket).toHaveBeenCalledWith(
+    'client-session',
+    expect.objectContaining({ practice: null }),
+  );
+});
+
+it('조합 없이 들어오면 최신 조합 안내를 띄우지 않는다', async () => {
+  await render();
+  expect(host.querySelector('[data-newer-combo]')).toBeNull();
+});
+
+/** 멘토 리뷰 동선: 자료 v1(3쪽) · 대본(3장)에 v2(4쪽)를 올린 뒤 리포트 · 대화에서 조합 없이 들어온다 */
+function olderSlidePicked() {
+  fixture.data = {
+    ...fixture.data,
+    presentation: { id: 'pv1', version: 1, page_count: 3 },
+    script: { id: 'sv1', version: 1, slide_count: 3 },
+  };
+  fixture.latestSlide = {
+    data: { id: 'pv2', version: 2, pageCount: 4 },
+    isPending: false,
+    isError: false,
+  };
+}
+
+it('조합 없이 들어왔는데 준비 정보가 지난 자료를 골랐으면 확인받기 전에는 시작하지 않는다', async () => {
+  olderSlidePicked();
+  await render();
+  const notice = host.querySelector('[data-older-slide]')!;
+  expect(notice.textContent).toContain(
+    '가장 최근 자료(v2 · 4쪽)는 대본(3장)과 장 수가 달라 지난 자료(v1)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('지난 자료로 연습').click());
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+  expect(
+    [...host.querySelectorAll('[role="status"]')].some(
+      (n) => n.textContent === '지난 자료(v1)로 연습해요',
+    ),
+  ).toBe(true);
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({ presentation_version_id: 'pv1', script_version_id: 'sv1' }),
+    }),
+  );
+});
+
+it('[매핑 확인하기]를 누르면 피치 수정으로 가고 Take 를 만들지 않는다', async () => {
+  olderSlidePicked();
+  await render();
+  await act(async () => findButton('매핑 확인하기').click());
+  expect(host.textContent).toContain('피치 수정');
+  expect(fixture.create).not.toHaveBeenCalled();
+});
+
+it('가장 최근 자료를 받는 동안에는 시작하지 않는다', async () => {
+  fixture.latestSlide = { data: undefined, isPending: true, isError: false };
+  await render();
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+});
+
+const liveText = () =>
+  [...host.querySelectorAll('[role="status"]')].find((n) => n.classList.contains('sr-only'))!
+    .textContent;
+
+it('가장 최근 자료를 못 받았으면 다시 확인할지 이 자료로 연습할지 고르기 전에는 시작하지 않는다', async () => {
+  fixture.latestSlide = { data: undefined, isPending: false, isError: true };
+  await render();
+  const notice = host.querySelector('[data-latest-unchecked]')!;
+  const text = '가장 최근 자료를 확인하지 못해 지금 자료(v9)가 최신인지 알 수 없어요';
+  expect(notice.textContent).toContain(text);
+  expect(liveText()).toBe(text);
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('다시 확인').click());
+  expect(fixture.refetchLatest).toHaveBeenCalledTimes(1);
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('이 자료로 연습').click());
+  expect(host.querySelector('[data-latest-unchecked]')).toBeNull();
+  expect(liveText()).toBe('지금 자료(v9)로 연습해요');
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        presentation_version_id: 'latest-pv',
+        script_version_id: 'latest-sv',
+      }),
+    }),
+  );
+});
+
+it('[다시 확인]이 끝나 안내가 사라지면 초점을 시작 버튼으로 옮긴다', async () => {
+  fixture.latestSlide = { data: undefined, isPending: false, isError: true };
+  await render();
+  const recheck = findButton('다시 확인');
+  recheck.focus();
+  await act(async () => recheck.click());
+  // 쿼리가 다시 받는 중으로 바뀐 것을 그립니다
+  fixture.latestFetching = true;
+  await render();
+  // 다시 받는 동안에는 버튼을 막지 않아 초점이 그대로이고, 시작도 막혀 있습니다
+  expect(recheck.textContent).toBe('확인하는 중…');
+  expect(document.activeElement).toBe(recheck);
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  fixture.latestFetching = false;
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  expect(host.querySelector('[data-latest-unchecked]')).toBeNull();
+  expect(document.activeElement).toBe(findButton('Take 4 시작하기'));
+});
+
+it('[최신으로] 뒤 가장 최근 자료가 대본과 장 수가 다르면 그 안내를 먼저 알리고 초점을 안내로 옮긴다', async () => {
+  // 자료 v1 · 대본 v1 로 고른 조합을 들고 왔고, 서버 최신 조합은 v2 · v2(3장), 가장 최근 PDF 는 v3(4쪽)
+  fixture.data = {
+    ...fixture.data,
+    presentation: { id: 'pv2', version: 2, page_count: 3 },
+    script: { id: 'sv2', version: 2, slide_count: 3 },
+  };
+  fixture.latestSlide = {
+    data: { id: 'pv3', version: 3, pageCount: 4 },
+    isPending: false,
+    isError: false,
+  };
+  await render({
+    title: '고른 발표',
+    presentationVersionId: 'pv1',
+    scriptVersionId: 'sv1',
+    slideVersion: 1,
+    scriptVersion: 1,
+    goalTimeSec: 300,
+  });
+  // 넘겨받은 조합(v1)도 가장 최근 자료보다 지난 것이라 먼저 고르게 합니다 (#1099 리뷰)
+  expect(host.querySelector('[data-older-slide]')!.textContent).toContain(
+    '가장 최근 자료(v3) 대신 지난 자료(v1)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  const latestButton = findButton('최신으로');
+  latestButton.focus();
+  await act(async () => latestButton.click());
+  const notice = host.querySelector<HTMLElement>('[data-older-slide]')!;
+  expect(notice).not.toBeNull();
+  expect(liveText()).toBe(
+    '최신 조합(자료 v2 · 대본 v2)으로 바꿨어요. 가장 최근 자료(v3 · 4쪽)는 대본(3장)과 장 수가 달라 지난 자료(v2)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  // 막힌 시작 버튼이 아니라 고를 안내로 초점이 갑니다 — body 로 빠지지 않습니다
+  expect(document.activeElement).toBe(notice);
+});
+
+it('준비 정보나 넘겨받은 조합이 가장 최근 자료면 지난 자료 안내를 띄우지 않는다', async () => {
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+
+  olderSlidePicked();
+  fixture.latestSlide = {
+    data: { id: 'pv1', version: 1, pageCount: 3 },
+    isPending: false,
+    isError: false,
+  };
+  await render(
+    {
+      title: '고른 발표',
+      presentationVersionId: 'pv1',
+      scriptVersionId: 'sv1',
+      slideVersion: 1,
+      scriptVersion: 1,
+      goalTimeSec: 300,
+    },
+    'p2',
+  );
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+});
+
+it('조합을 넘겨받은 뒤 다른 탭에서 새 PDF 를 올렸으면, 지난 조합으로 연습할지 고르기 전에는 시작하지 않는다', async () => {
+  // V1(3장) 조합으로 들어왔고, 그 사이 V2(4장)가 올라왔습니다. 준비 정보도 장 수가 맞는 V1 을 골라 [최신으로]는 없습니다
+  fixture.data = {
+    ...fixture.data,
+    presentation: { id: 'pv1', version: 1, page_count: 3 },
+    script: { id: 'sv1', version: 1, slide_count: 3 },
+  };
+  fixture.latestSlide = {
+    data: { id: 'pv2', version: 2, pageCount: 4 },
+    isPending: false,
+    isError: false,
+  };
+  await render({
+    title: '고른 발표',
+    presentationVersionId: 'pv1',
+    scriptVersionId: 'sv1',
+    slideVersion: 1,
+    scriptVersion: 1,
+    goalTimeSec: 300,
+  });
+  expect(host.querySelector('[data-newer-combo]')).toBeNull();
+  expect(host.querySelector('[data-older-slide]')!.textContent).toContain(
+    '가장 최근 자료(v2 · 4쪽)는 대본(3장)과 장 수가 달라 지난 자료(v1)로 연습하게 돼요',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+
+  await act(async () => findButton('지난 자료로 연습').click());
+  expect(host.querySelector('[data-older-slide]')).toBeNull();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({ presentation_version_id: 'pv1', script_version_id: 'sv1' }),
+    }),
+  );
+});
+
+it('가장 최근 자료를 다시 받는 동안에는 받기 전 결과로 시작하지 않는다 — 버튼 초점은 그대로 둔다', async () => {
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  const start = findButton('Take 4 시작하기');
+  start.focus();
+  // 창으로 돌아와 다시 받는 중입니다
+  fixture.latestFetching = true;
+  await render();
+  expect(start.disabled).toBe(false);
+  expect(start.getAttribute('aria-disabled')).toBe('true');
+  expect(document.activeElement).toBe(start);
+  await act(async () => start.click());
+  expect(fixture.create).not.toHaveBeenCalled();
+
+  fixture.latestFetching = false;
+  await render();
+  expect(start.getAttribute('aria-disabled')).toBeNull();
+  await act(async () => start.click());
+  expect(fixture.create).toHaveBeenCalledTimes(1);
+});
+
+it('[다시 확인] 뒤 안내는 사라졌는데 다른 이유로 아직 시작할 수 없으면 초점을 본문으로 옮긴다', async () => {
+  fixture.gazeStatus = 'IDLE';
+  fixture.latestSlide = { data: undefined, isPending: false, isError: true };
+  await render();
+  const recheck = findButton('다시 확인');
+  recheck.focus();
+  await act(async () => recheck.click());
+  fixture.latestSlide = {
+    data: { id: 'latest-pv', version: 9, pageCount: 12 },
+    isPending: false,
+    isError: false,
+  };
+  await render();
+  expect(host.querySelector('[data-latest-unchecked]')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  expect(document.activeElement?.id).toBe('main');
 });
 
 it('keeps device selection and calibration as separate actions and blocks starting before calibration', async () => {
@@ -391,6 +712,17 @@ it('counts the silence warning only while reading the usual voice, from when rea
   await render();
   expect(fixture.micOptions?.silenceFrom?.()).toBeNull();
   now.mockRestore();
+});
+
+// #925 말 없이 오래 있으면 서버가 끝냅니다. 목표 시간보다 일찍 끝나 놀라지 않게 시작 전에 알립니다
+it('tells before starting that a long silence ends the take, apart from the goal time', async () => {
+  await render();
+  const footer = host.querySelector('.prepare-footer')!;
+  expect(footer.textContent).toContain(
+    '말이 없는 상태가 2분 넘게 이어지면 연습이 자동으로 끝날 수 있어요.',
+  );
+  // 바뀌지 않는 말이라 안내 알림 영역 밖에 둡니다 — 안내가 바뀔 때마다 다시 읽히지 않게
+  expect(footer.querySelector('[role="status"]')!.textContent).not.toContain('2분 넘게');
 });
 
 it('tells the chat panel the current check state when a message is sent (chat step 6)', async () => {

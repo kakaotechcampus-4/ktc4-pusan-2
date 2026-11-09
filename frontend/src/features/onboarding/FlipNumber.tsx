@@ -12,7 +12,7 @@ export function FlipNumber({ value }: { value: number }) {
   const digits = 'absolute inset-x-0 flex h-16 items-center justify-center sm:h-20';
 
   return (
-    <span className="relative block h-16 rounded-md border border-ink bg-ink font-mono text-3xl font-bold tabular-nums text-panel shadow-[0_3px_0_var(--color-line-strong)] [perspective:500px] sm:h-20 sm:text-4xl">
+    <span className="relative block h-16 rounded-md border border-ink bg-ink text-3xl font-bold tabular-nums text-panel shadow-[0_3px_0_var(--color-line-strong)] [perspective:500px] sm:h-20 sm:text-4xl">
       <span className="sr-only">{current}</span>
       <span aria-hidden="true">
         <span className={`${half} top-0 rounded-t-md`}>

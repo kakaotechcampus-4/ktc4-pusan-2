@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { toMessage } from '@/shared/api/errorMessage';
@@ -26,12 +26,18 @@ export function TakeSurvey({ takeId, completed }: { takeId: string; completed: b
   const state = useTakeSurvey(takeId, completed);
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const submitted = state.data?.submitted ?? false;
+  // 보내면 연 버튼이 창과 함께 사라집니다. 초점은 그 자리에 오는 알림으로 옮깁니다 (#845)
+  useEffect(() => {
+    if (notice && submitted) statusRef.current?.focus();
+  }, [notice, submitted]);
 
   // 제출 여부를 모르면(불러오는 중 · 실패) 버튼을 두지 않습니다. 설문은 리포트를 막지 않습니다
   if (!completed || !state.data) return null;
-  if (state.data.submitted)
+  if (submitted)
     return (
-      <p role="status" className="text-sm text-ink/80">
+      <p ref={statusRef} tabIndex={-1} role="status" className="text-sm text-ink/80">
         {notice || '이 리포트의 설문을 보냈어요. 감사합니다.'}
       </p>
     );
@@ -191,13 +197,21 @@ function TakeSurveyDialog({
             </p>
           )}
         </div>
-        {/* 작은 창 · 확대 화면에서도 보내기 버튼은 입력 영역의 스크롤 밖에 둡니다 */}
+        {/* 작은 창 · 확대 화면에서도 보내기 버튼은 입력 영역의 스크롤 밖에 둡니다.
+            보내는 중에는 aria-disabled 로 막습니다 — disabled 면 누른 버튼의 초점이 창 밖으로 빠집니다 */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line px-4 py-3 sm:px-6">
-          <Button variant="quiet" disabled={pending} onClick={onClose}>
+          <Button
+            variant="quiet"
+            aria-disabled={pending}
+            onClick={() => {
+              if (!pending) onClose();
+            }}
+          >
             나중에
           </Button>
           <Button
-            disabled={!ready || pending}
+            disabled={!ready}
+            aria-disabled={pending}
             onClick={() => {
               submit().catch(() => setError('다시 시도해 주세요.'));
             }}
@@ -247,7 +261,7 @@ function Scale({
             />
             <span
               aria-hidden="true"
-              className={`flex min-h-11 items-center justify-center border-2 font-mono text-lg font-bold peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink ${value === n ? 'border-ink bg-coral-deep text-white' : 'border-line-strong bg-white text-ink'}`}
+              className={`flex min-h-11 items-center justify-center border-2 tabular-nums text-lg font-bold peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink ${value === n ? 'border-ink bg-coral-deep text-white' : 'border-line-strong bg-white text-ink'}`}
             >
               {n}
             </span>

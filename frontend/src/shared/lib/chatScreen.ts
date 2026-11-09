@@ -7,8 +7,9 @@ import { onSignedOut } from './sessionSignal';
  * 저장 전 입력이 화면 안에만 있는 화면이, 지금 상태를 대화창에 알리는 곳입니다.
  *
  * - 화면은 `useChatScreen(경로, 읽기)` 한 줄만 더합니다. 화면 동작 · 저장 흐름은 바꾸지 않습니다.
- * - 등록에는 경로 · 등록 번호를 붙이고, 화면이 사라지면 풉니다. 로그아웃 신호(이 탭 · 다른 탭)가 오면 등록을 비웁니다 —
- *   앞 사람 때 등록한 화면 상태를 새 사람의 질문에 싣지 않게(문서의 "세션 세대"를 이것으로 지킵니다).
+ * - 등록에는 경로 · 등록 번호를 붙이고, 화면이 사라지면 풉니다. 로그아웃 신호(이 탭 · 다른 탭)가 오거나, 신호 없이
+ *   로그인 사용자가 바뀌면(대화 저장소 `setUser` 가 `clearChatScreen` 을 부릅니다) 등록을 비웁니다 —
+ *   앞 사람 때 등록한 화면 상태를 새 사람의 질문에 싣지 않게(12-4 L3-09 "세션 세대"를 이것으로 지킵니다).
  * - `shared/` 에 둡니다 — 화면(피치 만들기 · 장치 점검)과 대화(`features/chat`)가 함께 쓰는데 feature 끼리는
  *   서로 가져다 쓰지 않습니다(FRONTEND_CONVENTION.md 5).
  * - 보내는 순간(`takeScreenSnapshot`)에만 읽고, 그때 `snapshot_id` 를 발급합니다 — SCREEN 근거가 이 값을 가리킵니다.
@@ -50,12 +51,16 @@ let listening = false;
 const listen = () => {
   if (listening) return;
   listening = true;
-  // TODO(8단계): 로그아웃 신호 없이 사용자가 바뀌는 경우(chatStore `setUser`)도 등록을 비워야 합니다 —
-  // `shared/` 는 `features/chat` 을 가져다 쓰지 않으니 `clearChatScreen()` 을 내보내 `setUser` 쪽에서 부르게 합니다 (12-4 L3-09 세션 세대)
-  onSignedOut(() => {
-    current = null;
-  });
+  onSignedOut(clearChatScreen);
 };
+
+/**
+ * 등록을 비웁니다 — 로그아웃 신호와, 신호 없이 사용자가 바뀔 때(대화 저장소 `setUser`) 부릅니다.
+ * `shared/` 는 `features/chat` 을 가져다 쓰지 않아서, 사용자가 바뀐 것을 아는 저장소 쪽에서 부르게 했습니다 (12-4 L3-09)
+ */
+export function clearChatScreen(): void {
+  current = null;
+}
 
 /** 화면을 등록합니다 — 돌려준 함수로 풉니다. 나중에 등록한 화면이 앞 화면을 대신합니다 */
 export function registerChatScreen(route: string, read: () => ScreenBody | null): () => void {
@@ -110,7 +115,7 @@ export function takeScreenSnapshot(route: string): ScreenSnapshot {
 
 /** 시험용 — 등록을 비웁니다 */
 export function resetChatScreen(): void {
-  current = null;
+  clearChatScreen();
 }
 
 function newSnapshotId(): string {

@@ -1,10 +1,44 @@
 // 제품 Take 리포트(`frontend/src/features/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/ui/Button';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { Card, Stat } from '@/ui/Panel';
-import { Badge } from '@/ui/Badge';
+import { Badge, type Tone } from '@/ui/Badge';
 import { Frame, PITCH, type Navigate } from './shared';
+
+type Cell = readonly [string, string, string, Tone] | null;
+
+/** 지난 Take와 비교 샘플 — 제품은 AI `comparison` 을 차원별로 묶습니다. 분당 군더더기는 보이지 않습니다 (#929) */
+const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][] }[] = [
+  {
+    title: '대본에서 벗어나기',
+    columns: ['대본 응시', '대본 읽기 횟수'],
+    rows: [
+      ['발표 전체', ['27%', '22%', '나아짐', 'good'], ['4회', '2회', '나아짐', 'good']],
+      ['3번 장', ['70%', '62%', '나아짐', 'good'], null],
+    ],
+  },
+  {
+    title: '속도 · 리듬',
+    columns: ['멈춤', '긴 침묵', '발표 시간', '장 시간'],
+    rows: [
+      [
+        '발표 전체',
+        ['14회', '9회', '방향 없음', 'muted'],
+        ['3회', '1회', '나아짐', 'good'],
+        ['05:12', '04:38', '나아짐', 'good'],
+        null,
+      ],
+      ['1번 장', null, null, null, ['01:10', '00:58', '나아짐', 'good']],
+      ['2번 장', null, null, null, ['00:52', '00:55', '나빠짐', 'bad']],
+    ],
+  },
+  {
+    title: '군더더기 없이',
+    columns: ['군더더기'],
+    rows: [['발표 전체', ['10회', '7회', '나아짐', 'good']]],
+  },
+];
 
 export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const noGaze = stateId === 'no-gaze';
@@ -45,29 +79,61 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
             </div>
           </section>
           {!noReview && (
-            <Card title="지난 Take와 비교">
-              <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-                {(
-                  [
-                    ['멈춤', '14회', '9회', '방향 없음', 'muted'],
-                    ['긴 침묵', '3회', '1회', '나아짐', 'good'],
-                    ['발표 시간', '05:12', '04:38', '방향 없음', 'muted'],
-                    ['분당 군더더기', '0회/분', '0회/분', '같음', 'muted'],
-                    ['군더더기', '10회', '7회', '나아짐', 'good'],
-                  ] as const
-                ).map(([label, prev, cur, badge, tone]) => (
-                  <li
-                    key={label}
-                    className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3"
+            <Card
+              title="지난 Take와 비교"
+              action={<p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>}
+            >
+              {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
+              <div className="grid gap-4 lg:grid-cols-2">
+                {COMPARISON.map((g) => (
+                  <section
+                    key={g.title}
+                    aria-label={g.title}
+                    className={`min-w-0 border-l-2 border-line pl-3 ${g.columns.length > 2 ? 'lg:col-span-2' : ''}`}
                   >
-                    <b className="text-sm">{label}</b>
-                    <span className="tabular flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
-                      <span className="text-ink/80">{prev}</span>→<b className="text-lg">{cur}</b>
-                      <Badge tone={tone}>{badge}</Badge>
-                    </span>
-                  </li>
+                    <h3 className="text-sm font-bold">{g.title}</h3>
+                    <table className="tabular mt-2 w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-line text-xs text-ink/80">
+                          <th scope="col" className="w-20 py-1.5 pr-4 font-normal">
+                            구간
+                          </th>
+                          {g.columns.map((c) => (
+                            <th key={c} scope="col" className="py-1.5 pr-4 font-bold text-ink">
+                              {c}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.rows.map(([label, ...cells]) => (
+                          <tr key={label} className="border-b border-line last:border-b-0">
+                            <th
+                              scope="row"
+                              className="whitespace-nowrap py-2 pr-4 text-xs font-normal"
+                            >
+                              {label}
+                            </th>
+                            {cells.map((cell, i) => (
+                              <td key={i} className="py-2 pr-4">
+                                {cell ? (
+                                  <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                                    <span className="text-ink/80">{cell[0]}</span>→
+                                    <b className="text-base">{cell[1]}</b>
+                                    <Badge tone={cell[3]}>{cell[2]}</Badge>
+                                  </span>
+                                ) : (
+                                  <span className="text-ink/80">—</span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </section>
                 ))}
-              </ul>
+              </div>
             </Card>
           )}
           <section aria-label="측정값" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -105,7 +171,7 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
             </section>
           )}
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line-strong pt-5">
-            <SurveyLine sent={surveySent} onSent={() => onNavigate('report', 'survey-sent')} />
+            <SurveyLine sent={surveySent} />
             <Button className="ml-auto" onClick={() => onNavigate('home')}>
               내 피치로
             </Button>
@@ -120,11 +186,16 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
  * 리포트 아래 설문 줄 (제품 `TakeSurvey.tsx`, #776). 분석이 끝난 리포트에만 두고, 버튼으로만 연다.
  * 보낸 리포트에는 버튼 대신 보냈다는 줄만 둔다
  */
-function SurveyLine({ sent, onSent }: { sent: boolean; onSent: () => void }) {
+function SurveyLine({ sent }: { sent: boolean }) {
   const [open, setOpen] = useState(false);
-  if (sent)
+  const [submitted, setSubmitted] = useState(false);
+  const status = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (submitted) status.current?.focus();
+  }, [submitted]);
+  if (sent || submitted)
     return (
-      <p role="status" className="text-sm text-ink/80">
+      <p ref={status} tabIndex={-1} role="status" className="text-sm text-ink/80">
         설문을 보냈어요. 다음 분석을 고치는 데 쓸게요.
       </p>
     );
@@ -133,7 +204,9 @@ function SurveyLine({ sent, onSent }: { sent: boolean; onSent: () => void }) {
       <Button variant="secondary" onClick={() => setOpen(true)}>
         이번 분석 설문 남기기
       </Button>
-      {open && <TakeSurveyDialog onClose={() => setOpen(false)} onSent={onSent} />}
+      {open && (
+        <TakeSurveyDialog onClose={() => setOpen(false)} onSent={() => setSubmitted(true)} />
+      )}
     </>
   );
 }

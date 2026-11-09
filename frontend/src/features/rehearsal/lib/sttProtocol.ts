@@ -169,7 +169,8 @@ export type AutoEndReason = 'SILENCE' | 'TIME_LIMIT';
  * 서버가 Take 를 자동으로 끝냈습니다. 이 뒤로 서버는 오디오를 받지 않고,
  * `stt_status` closed 를 보낸 뒤 1000 으로 닫습니다.
  *
- * 무대는 **끝내기 버튼과 같은 종료 흐름**을 타고 `message` 를 보여 줍니다.
+ * 무대는 **끝내기 버튼과 같은 종료 흐름**을 타고, `reason` · `message` 를 라우터 state 로 넘겨
+ * 분석 대기 화면이 알립니다 (#925, `shared/lib/autoEnd.ts`).
  * 끊겨 있다가 다시 붙을 때도 옵니다 — 그때는 이 메시지 뒤에 `TAKE_ENDED` 가 따라옵니다.
  */
 export interface AutoEndMessage {

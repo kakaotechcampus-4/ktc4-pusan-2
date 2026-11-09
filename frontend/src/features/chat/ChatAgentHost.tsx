@@ -1,5 +1,4 @@
 import {
-  Component,
   Fragment,
   useCallback,
   useEffect,
@@ -16,6 +15,7 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
+import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
@@ -30,39 +30,45 @@ import {
   type EndNotice,
   type RunNotice,
 } from './chatNotices';
-import { chatLauncherBottom, chatRouteOf, type ChatRouteInfo } from './chatRoutes';
+import {
+  CHAT_LAUNCHER_CLASS,
+  chatLauncherBottom,
+  chatRouteOf,
+  type ChatRouteInfo,
+} from './chatRoutes';
 import { useChatStore } from './chatStore';
 import { useCanSend } from './useCanSend';
 import { sendLockReason } from './chatLock';
 import { LockedReason } from './LockedReason';
 import { ChatMemorySettings } from './ChatMemorySettings';
-import { MemoryIntro, MemoryOffBadge, MemoryOffSwitch } from './ChatMemoryParts';
-import { ConversationList, ScopeChip } from './ChatPanelParts';
+import { MemoryIntro } from './ChatMemoryParts';
+import { ConversationList } from './ChatPanelParts';
+import { ChatPanelHeader, type PanelView } from './ChatPanelHeader';
+import { ChatEmptyState } from './ChatEmptyState';
 import { useChatSession, type ChatNotice, type ChatSession } from './useChatSession';
 
 /**
  * 대화형 코치 에이전트의 버튼 · 팝업 (`docs/ai/features/chat-agent.md` 12-4 F1). 라우터 최상위 레이아웃에 있어
  * 화면을 옮겨도 대화가 이어지고, 대화 상태는 저장소(`chatStore`)에 둡니다.
- * 채팅에서 오류가 나면 채팅만 사라지고 화면은 그대로 남습니다.
+ * 채팅에서 오류가 나면 대화만 닫고 런처 자리에 안내와 [다시 시도]를 둡니다. 화면은 그대로 씁니다 (12-4 F8 · L3-36).
  */
 export function ChatAgentHost() {
   return (
-    <ChatErrorBoundary>
+    <ChatErrorBoundary onReset={resetChatAfterFailure}>
       <ChatLayer />
     </ChatErrorBoundary>
   );
 }
 
-class ChatErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
+/**
+ * [다시 시도] 직전에 저장소를 정리합니다 — 저장소는 React 밖이라 경계만 다시 그리면 같은 상태로 또 던질 수 있습니다.
+ * 처음에는 대화창만 닫아 보던 대화 · 보내던 요청 · 실행을 그대로 둡니다. 이 페이지에서 두 번째 실패부터는 [새 대화]와
+ * 같은 길로 보던 대화에서 나옵니다 — 서버의 대화는 목록에서 다시 열 수 있고, 늦은 응답은 버립니다
+ */
+function resetChatAfterFailure(failures: number) {
+  const chat = useChatStore.getState();
+  chat.closeChat();
+  if (failures >= 2) chat.startNewConversation(chat.scope);
 }
 
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
@@ -167,13 +173,13 @@ function ChatSessionView({
   };
 
   return (
-    // 런처는 오른쪽 아래의 44px 마스코트 아이콘입니다. 허용 화면은 본문 오른쪽 여백이 40px 뿐이라 오른쪽에 붙은
-    // 컨트롤과 자리를 나눠 씁니다. 화면마다의 아래 여백과 그 이유는 chatLauncherBottom 에 있습니다
+    // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
+    // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: 장치 점검이 런처 자리만큼 오른쪽 여백을 넓히는 표시입니다 (index.css)
+      // data-chat-launcher: index.css의 장치 점검·피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
       data-chat-launcher=""
-      style={{ '--chat-launcher-bottom': `${launcherBottom}px` } as CSSProperties}
-      className="light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink"
+      style={{ '--chat-launcher-default-bottom': `${launcherBottom}px` } as CSSProperties}
+      className={CHAT_LAUNCHER_CLASS}
     >
       {open && (
         <ChatPanel
@@ -199,8 +205,8 @@ function ChatSessionView({
           setFocusRequested(true);
           useChatStore.getState().openChat(session.screenScope);
         }}
-        aria-label="채팅 에이전트"
-        title="채팅 에이전트"
+        aria-label="새미나이 열기"
+        title="새미나이 열기"
         className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
       >
         {/* 앱 아이콘 그림(192px)의 몸통 중심 (82, 104)을 44px 로 줄여 원 안쪽(40px)의 가운데에 둡니다.
@@ -337,14 +343,16 @@ const FOLLOW_SLACK_PX = 48;
  * 글자 효과는 이 컴포넌트를 거치지 않고 그려져서, 그려진 결과(DOM 변화)를 지켜봅니다.
  * 대화 목록을 보는 동안에는 따라가지 않고, 메시지로 돌아오면 맨 아래에서 시작합니다
  */
-function useFollowBottom(active: boolean) {
+function useFollowBottom(active: boolean, initialAtTop: boolean) {
   const scroller = useRef<HTMLDivElement>(null);
   /** 맨 아래를 보고 있음 — 이때만 새 글을 따라 내려갑니다. 위로 올려 읽는 중에는 끌어내리지 않습니다 */
   const stick = useRef(true);
   useEffect(() => {
     const el = scroller.current;
     if (!el || !active) return;
-    stick.current = true;
+    // 새 대화의 첫 안내는 위쪽에서 시작하고, 실제 메시지/전송이 생기면 아래로 따라갑니다.
+    stick.current = !initialAtTop;
+    if (initialAtTop) el.scrollTop = 0;
     const toBottom = () => {
       if (stick.current) el.scrollTop = el.scrollHeight;
     };
@@ -359,7 +367,7 @@ function useFollowBottom(active: boolean) {
       observer.disconnect();
       offStore();
     };
-  }, [active]);
+  }, [active, initialAtTop]);
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const el = event.currentTarget;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_SLACK_PX;
@@ -369,6 +377,11 @@ function useFollowBottom(active: boolean) {
     stick.current = true;
   }, []);
   return { scroller, onScroll, follow };
+}
+
+function resizeChatInput(input: HTMLTextAreaElement) {
+  input.style.height = 'auto';
+  input.style.height = `${Math.max(40, Math.min(input.scrollHeight, 112))}px`;
 }
 
 function ChatPanel({
@@ -397,12 +410,26 @@ function ChatPanel({
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
   const [view, setView] = useState<PanelView>('messages');
   const toggleView = (next: PanelView) => setView(view === next ? 'messages' : next);
-  const { scroller, onScroll, follow } = useFollowBottom(view === 'messages');
+  const pending = useChatStore((s) => s.pending);
+  const syncing = useChatStore((s) => s.syncing);
+  const initialAtTop =
+    session.messages.length === 0 &&
+    !pending &&
+    !session.sentEcho &&
+    !session.progress &&
+    !session.messagesLoading &&
+    !syncing;
+  const { scroller, onScroll, follow } = useFollowBottom(view === 'messages', initialAtTop);
   const content = draft.trim();
   const tooLong = [...content].length > MAX_MESSAGE_LENGTH;
   const failed = session.availability === 'failed';
   const blocked = failed || !sendable || session.scopeBlocked;
   const lockReason = useChatStore((s) => sendLockReason(s, session.scopeBlocked));
+
+  // 입력 내용·대화 화면 전환 시 원래 높이를 다시 계산합니다. 세 줄 이후에는 입력창 안에서 스크롤됩니다.
+  useLayoutEffect(() => {
+    if (inputRef.current) resizeChatInput(inputRef.current);
+  }, [draft, view]);
 
   // 사용자가 런처로 연 순간에만 입력칸으로 초점을 옮깁니다
   useEffect(() => {
@@ -437,7 +464,7 @@ function ChatPanel({
   };
 
   return (
-    // 패널은 런처 위 오른쪽에 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
+    // 패널은 런처 위 왼쪽에 정렬해 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
     // 4.25rem = 런처 높이 2.75rem + 위아래 간격 0.75rem 둘.
     // 낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
     // 머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성")
@@ -455,56 +482,34 @@ function ChatPanel({
           onClose();
         }
       }}
-      className="absolute bottom-full right-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-2 border-ink bg-panel shadow-[5px_5px_0_var(--color-ink)]"
+      className="absolute bottom-full left-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-[3px] border-ink bg-white shadow-[6px_6px_0_var(--color-ink),0_18px_36px_rgba(42,39,35,0.2)]"
     >
-      {/* 좁은 창(휴대폰)에서는 버튼 묶음이 제목 아래 줄로 내려갑니다 — 글자가 쪼개지지 않게 */}
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line-strong px-5 py-3">
-        <div>
-          <h2 id={`${id}-title`} className="whitespace-nowrap text-base font-bold">
-            채팅 에이전트
-          </h2>
-          <div className="flex items-center gap-2">
-            <ScopeChip onChange={(next) => session.changeScope(next).catch(() => undefined)} />
-            <MemoryOffBadge />
-          </div>
-        </div>
-        <div className="ml-auto flex gap-2">
-          <button
-            type="button"
-            aria-pressed={view === 'list'}
-            onClick={() => toggleView('list')}
-            className="min-h-11 whitespace-nowrap border border-line-strong px-2 text-sm font-bold hover:bg-cream"
-          >
-            대화 목록
-          </button>
-          <button
-            ref={memoryButtonRef}
-            type="button"
-            aria-pressed={view === 'memory'}
-            onClick={() => toggleView('memory')}
-            className="min-h-11 whitespace-nowrap border border-line-strong px-2 text-sm font-bold hover:bg-cream"
-          >
-            기억 설정
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="채팅 에이전트 닫기"
-            className="min-h-11 min-w-11 whitespace-nowrap border border-line-strong px-2 text-sm font-bold hover:bg-cream"
-          >
-            닫기
-          </button>
-        </div>
-      </header>
+      <ChatPanelHeader
+        titleId={`${id}-title`}
+        userId={userId}
+        view={view}
+        memoryButtonRef={memoryButtonRef}
+        onNew={() => {
+          session.startNew();
+          setView('messages');
+          inputRef.current?.focus();
+        }}
+        onToggleView={toggleView}
+        onClose={onClose}
+        onScopeChange={(next) => session.changeScope(next).catch(() => undefined)}
+      />
 
       {/* AI 답이 글자 효과로 채워지는 요소에는 aria-live 를 두지 않습니다(글자마다 읽힐 수 있음). 완성된 문장만
           따로 둔 role="status" 영역(ChatAnswer 의 data-chat-announce)에 넣습니다(#956). 목록 전체에도 두지 않습니다 — 사용자가 보낸 말까지 다시 읽힙니다.
-          min-h-16: 패널이 낮아져도 한두 줄은 보이고, 그보다 낮으면 패널이 스크롤됩니다 */}
+          min-h-16: 패널이 낮아져도 한두 줄은 보이고, 그보다 낮으면 패널이 스크롤됩니다.
+          relative: 안의 sr-only(position:absolute) 글자가 이 스크롤 영역을 기준으로 자리 잡게 합니다. 없으면 기준이
+          패널(section)이 되어, 대화가 길 때 그 글자가 메시지 영역 밖으로 빠져 패널 전체가 늘어나고 스크롤됩니다
+          (머리줄이 밀려 올라가고 입력칸 아래가 비어 보임) */}
       <div
         ref={scroller}
         aria-label="채팅 메시지"
         onScroll={onScroll}
-        className="flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
+        className="relative flex min-h-16 flex-1 flex-col gap-4 overflow-y-auto bg-white px-4 py-5"
       >
         <PanelBody
           failed={failed}
@@ -520,82 +525,111 @@ function ChatPanel({
         />
       </div>
 
-      {/* 기억 설정 화면에서는 입력칸을 숨깁니다 — 쓰던 글(draft)은 그대로 남습니다 */}
-      <form
-        hidden={view === 'memory'}
-        onSubmit={(event) => submit(event).catch(() => undefined)}
-        className="shrink-0 border-t border-line-strong p-3"
-      >
-        {view === 'messages' && <MemoryOffSwitch userId={userId} />}
-        {session.scopeFailed && (
-          <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
-            <p>연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.</p>
-            <button
-              type="button"
-              onClick={session.retryScope}
-              className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
-            >
-              다시 시도
-            </button>
-          </div>
-        )}
-        {session.notice && (
-          <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
-            <p>{noticeText(session.notice)}</p>
-            {session.notice.kind === 'unconfirmed' && (
+      {/* 세션·범위 오류는 입력 폼 밖에 두어 목록 화면에서도 안내와 재시도가 가능합니다.
+          기억 설정 화면에서는 설정 조작에 집중할 수 있게 숨깁니다. */}
+      {(session.scopeFailed || session.notice) && view !== 'memory' && (
+        <div
+          data-chat-notices=""
+          className="shrink-0 border-t border-line-strong bg-panel px-3 pb-2 pt-3"
+        >
+          {session.scopeFailed && (
+            <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
+              <p>연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.</p>
               <button
                 type="button"
-                onClick={session.retryUnconfirmed}
+                onClick={session.retryScope}
                 className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
               >
-                {/* 접수하지 못했으면 같은 키로 다시 보내기, 결과를 모르면 같은 키로 다시 확인 — 하는 일은 같습니다 */}
-                {session.notice.notAccepted ? '다시 보내기' : '다시 확인'}
+                다시 시도
               </button>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+          {session.notice && (
+            <div role="alert" className="mb-2 text-xs leading-5 text-coral-deep">
+              <p>{noticeText(session.notice)}</p>
+              {session.notice.kind === 'unconfirmed' && (
+                <button
+                  type="button"
+                  onClick={session.retryUnconfirmed}
+                  className="mt-1 min-h-11 border border-line-strong px-3 font-bold hover:bg-cream"
+                >
+                  {/* 접수하지 못했으면 같은 키로 다시 보내기, 결과를 모르면 같은 키로 다시 확인 — 하는 일은 같습니다 */}
+                  {session.notice.notAccepted ? '다시 보내기' : '다시 확인'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 목록과 기억 설정에서는 입력 폼만 숨깁니다 — 쓰던 글(draft)은 그대로 남습니다. */}
+      <form
+        hidden={view !== 'messages'}
+        onSubmit={(event) => submit(event).catch(() => undefined)}
+        className={`shrink-0 bg-panel px-3 pb-3 pt-3 ${
+          session.scopeFailed || session.notice ? '' : 'border-t border-line-strong'
+        }`}
+      >
         <label htmlFor={`${id}-input`} className="sr-only">
           채팅 메시지
         </label>
-        {/* maxLength 는 UTF-16 으로 세고(이모지 하나가 2자) 넘친 글을 말없이 잘라서 쓰지 않습니다.
-            넘으면 입력을 그대로 두고 보내기만 막습니다 (12-4 F3) */}
-        <textarea
-          ref={inputRef}
-          id={`${id}-input`}
-          value={draft}
-          rows={2}
-          placeholder="메시지를 입력하세요"
-          aria-invalid={tooLong}
-          aria-describedby={tooLong ? `${id}-limit` : undefined}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={onComposerKeyDown}
-          className="w-full resize-none rounded-lg border-2 border-line-strong bg-white p-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-coral aria-invalid:border-coral-deep"
-        />
+        <div
+          data-chat-composer=""
+          className={`flex items-end gap-2 rounded-xl border-2 bg-white p-1.5 transition-colors focus-within:ring-2 ${
+            tooLong
+              ? 'border-coral-deep focus-within:border-coral-deep focus-within:ring-coral-deep'
+              : 'border-line-strong focus-within:border-coral focus-within:ring-coral'
+          }`}
+        >
+          {/* maxLength로 잘라 버리면 이모지 등의 UTF-16/코드 포인트 수가 달라집니다. 초과분은 유지하고 전송만 막습니다. */}
+          <textarea
+            ref={inputRef}
+            id={`${id}-input`}
+            value={draft}
+            rows={1}
+            placeholder="새미나이에게 메시지 보내기..."
+            aria-invalid={tooLong}
+            aria-describedby={tooLong ? `${id}-limit` : undefined}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              resizeChatInput(event.currentTarget);
+            }}
+            onKeyDown={onComposerKeyDown}
+            className="min-h-10 max-h-28 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-sm leading-6 outline-none placeholder:text-stone focus-visible:outline-none aria-invalid:text-coral-deep"
+          />
+          {/* 비활성화에도 초점이 유지돼 Esc로 패널을 닫을 수 있도록 aria-disabled를 사용합니다. */}
+          <button
+            type="submit"
+            aria-disabled={!content || tooLong || blocked}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-coral-deep text-white hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral aria-disabled:cursor-not-allowed aria-disabled:bg-cream aria-disabled:text-stone aria-disabled:hover:bg-cream"
+          >
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+            <span className="sr-only">입력</span>
+            <LockedReason reason={content && !tooLong && blocked && !failed ? lockReason : null} />
+          </button>
+        </div>
         {tooLong && (
           <p id={`${id}-limit`} role="alert" className="mt-1 text-xs font-bold text-coral-deep">
             {MAX_MESSAGE_LENGTH.toLocaleString('ko-KR')}자까지 보낼 수 있어요.
           </p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-xs text-stone">Enter 전송 · Shift+Enter 줄바꿈</span>
-          {/* `disabled` 로 두면 누른 직후 초점이 body 로 빠져 Esc 로 닫히지 않습니다 (#818).
-              그래서 `aria-disabled` 로 두고, 빈 입력 · 너무 긴 입력 · 잠금은 submit 이 무시합니다 */}
-          <button
-            type="submit"
-            aria-disabled={!content || tooLong || blocked}
-            className="min-h-11 shrink-0 rounded-lg border-2 border-ink bg-coral-deep px-5 text-sm font-bold text-white hover:bg-ink aria-disabled:cursor-not-allowed aria-disabled:border-line-strong aria-disabled:bg-cream aria-disabled:text-stone aria-disabled:hover:bg-cream"
-          >
-            입력
-            {/* 글을 썼는데 잠겨 있으면 이유를 함께 읽습니다 — 빈 입력 · 너무 긴 입력은 입력칸이 이미 알립니다 */}
-            <LockedReason reason={content && !tooLong && blocked && !failed ? lockReason : null} />
-          </button>
-        </div>
+        <p className="mt-2 px-1 text-[11px] text-stone">Enter 전송 · Shift+Enter 줄바꿈</p>
       </form>
     </section>
   );
 }
-
-type PanelView = 'messages' | 'list' | 'memory';
 
 /** 패널 몸통 — 코치를 못 불러옴 · 대화 목록 · 기억 설정 · 메시지 중 하나 */
 function PanelBody({
@@ -617,7 +651,7 @@ function PanelBody({
   if (failed)
     return (
       <div role="alert" className="self-start text-sm leading-6">
-        <p>코치를 불러오지 못했으니 다시 시도해 주세요.</p>
+        <p>새미나이를 불러오지 못했으니 다시 시도해 주세요.</p>
         <button
           type="button"
           onClick={session.retryAvailability}
@@ -738,7 +772,7 @@ function MessageList({ session }: { session: ChatSession }) {
       )}
       {shown.length === 0 && !pending && !echo && !restoring && !session.messagesFailed && (
         <>
-          <p className={AGENT_BUBBLE}>발표 기록과 연습에 대해 물어보세요.</p>
+          <ChatEmptyState />
           {/* 처음 열었을 때도 무엇을 물을 수 있는지 보입니다 — 거절 답 아래와 같은 안내 */}
           <AskHelp
             canSend={sendable}

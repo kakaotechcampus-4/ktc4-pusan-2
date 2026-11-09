@@ -204,7 +204,8 @@ class Comparison(_Out):
     slide_number: int | None = None
     previous: Number
     current: Number
-    #: 좋아진 방향인지. 방향을 정할 수 없으면(기준 없음) null
+    #: 좋아진 방향인지. 방향을 정할 수 없거나(기준 없음) 나아지지도 나빠지지도 않았으면
+    #: (한 방향 지표는 같은 값, 범위 지표는 기준까지 거리가 같음 · 둘 다 범위 안) null
     improved: bool | None
     #: 두 Take 의 대본 보기가 다를 때만 {previous, current}, 같으면 null
     script_mode: ScriptMode | None = None

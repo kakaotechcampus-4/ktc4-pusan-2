@@ -50,6 +50,7 @@ import { isTerminalRun } from '@/shared/lib/chatAgent';
  *   "다시 평가" · "대본 보고" → 승인 카드(REASSESS) → [승인] 참고 결과 카드
  *   "발표할래" · "연습 준비" → [연습 준비로] 버튼 카드
  *   "기억"            → '기억했어요' 카드 (기억이 켜져 있고 '기억 없이' 대화가 아닐 때)
+ *   "열어"            → 에이전트가 피치를 엶(`FETCH_PITCH`): 범위를 바꿨다는 문장 · 끝나면 대화 범위가 그 피치
  *   "봤지"            → 주장 판정: 판단 문장(기록과 다름). 같은 대화에서 다시 물으면 앞 판단을 대체
  *   (피치 만들기 · 수정 화면에서) → 화면 값 근거(`origin:"SCREEN"`) 문장과 사용법 자료
  *   그 밖              → Take 비교 답: 내 기록 · 자료 · 일반 조언 문장 셋
@@ -67,6 +68,9 @@ import { isTerminalRun } from '@/shared/lib/chatAgent';
  *   `mockChat.unreachable()`           사용 가능 여부 조회가 네트워크 오류
  *   `mockChat.ok()`                    모두 되돌리기
  */
+
+/** 대화 목록 한 쪽의 크기 — BE #1000 과 같습니다 */
+const CONVERSATION_PAGE = 50;
 
 const error = (code: string, status: number, headers?: Record<string, string>) =>
   HttpResponse.json({ code, message: code, detail: null }, { status, headers });
@@ -564,6 +568,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       case 'end': {
         const actionId = run.actionId ?? newActionId();
         const conversation = state.conversations.get(run.conversation_id)!;
+        if (step.scopePitchId) {
+          conversation.scope_pitch_id = step.scopePitchId;
+          conversation.scope_pitch_title = pitch.pitch_title;
+        }
         let cards = step.cards(actionId);
         cards = cards.map((card) => {
           if (card.type === 'GOAL_SAVED') {
@@ -688,12 +696,23 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
     http.get(
       `*${chatPaths.conversations}`,
       withUser((state, { request }) => {
-        const pitchId = new URL(request.url).searchParams.get('pitch_id');
-        const conversations = [...state.conversations.values()]
+        const params = new URL(request.url).searchParams;
+        const pitchId = params.get('pitch_id');
+        // BE #1000 처럼 50개씩 쪽으로 나누고 `next_cursor` 로 이어 읽습니다. 커서 글자는 목만의 모양이고,
+        // 깨진 커서는 BE 처럼 422 입니다
+        const cursor = params.get('cursor');
+        const from = cursor === null ? 0 : Number(/^o(\d+)$/.exec(cursor)?.[1] ?? NaN);
+        if (!Number.isInteger(from)) return error('VALIDATION_ERROR', 422);
+        const all = [...state.conversations.values()]
           .filter((c) => !pitchId || c.scope_pitch_id === pitchId)
           .map((c) => ({ ...summary(c), stale: isStale(c) }))
           .sort((a, b) => b.last_user_activity_at.localeCompare(a.last_user_activity_at));
-        return HttpResponse.json({ conversations });
+        const conversations = all.slice(from, from + CONVERSATION_PAGE);
+        const next = from + CONVERSATION_PAGE;
+        return HttpResponse.json({
+          conversations,
+          next_cursor: next < all.length ? `o${next}` : null,
+        });
       }),
     ),
 
@@ -853,6 +872,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             memoryOn: state.memory.enabled && !conversation.memory_off,
             chosen,
             screen: body.page.screen,
+            takeId: body.page.take_id ?? null,
             assessmentId: newAssessmentId(),
             priorAssessmentId:
               conversation.messages.flatMap((msg) => msg.assessments ?? []).at(-1)?.assessment_id ??

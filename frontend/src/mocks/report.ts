@@ -116,9 +116,41 @@ export const reviewFixture: ReviewResult = {
 };
 
 /** 홈 · 준비 목의 p1 과 같은 피치입니다 — 화면마다 제목이 어긋나지 않게 */
+/**
+ * 정상 Take 의 지난 Take 비교 — AI 가 내는 순서(차원 표의 지표 순 → 발표 전체 → 장)로 여러 차원을 채웁니다.
+ * 리포트 비교 카드의 차원별 표를 볼 수 있게 하려는 것입니다 (#929). 숫자는 위 측정값 · 근거와 맞춥니다.
+ */
+const comparisonFixture: ReviewResult['comparison'] = (
+  [
+    ['audience_ratio', null, 0.69, 0.74, true],
+    ['script_ratio', null, 0.27, 0.22, true],
+    ['script_ratio', 3, 0.7, 0.62, true],
+    ['reading_runs', null, 4, 2, true],
+    ['cpm', null, 371, 352, true],
+    ['pause_count', null, 14, 9, null],
+    ['long_silence_count', null, 3, 1, true],
+    ['duration_ms', null, 312_000, 278_000, true],
+    ['slide_duration_ms', 1, 70_000, 58_000, true],
+    ['slide_duration_ms', 2, 52_000, 55_000, false],
+    ['slide_duration_ms', 3, 81_000, 74_000, true],
+    ['voice_diff_db', null, -2, -1, true],
+    ['filler_per_min', null, 3.1, 2.4, true],
+    ['filler_count', null, 10, 7, true],
+    ['content_coverage', null, 0.86, 0.92, true],
+  ] as const
+).map(([metric, slide_number, previous, current, improved]) => ({
+  metric,
+  slide_number,
+  previous,
+  current,
+  improved,
+  script_mode: null,
+}));
+
 const done: TakeReport = {
   take_id: 't3',
-  pitch_id: 'p1',
+  // 홈 목(`home.ts`)의 첫 피치와 같은 ID — BE 처럼 UUID 라야 대화 보내기(`page.pitch_id`)를 목이 받습니다
+  pitch_id: '10000000-0000-4000-8000-000000000001',
   pitch_title: '캡스톤 최종 발표',
   take_number: 3,
   script_mode: 'HIGHLIGHT',
@@ -128,7 +160,7 @@ const done: TakeReport = {
   review_status: 'DONE',
   analysis_hold_reason: null,
   measures: measuresFixture,
-  review: reviewFixture,
+  review: { ...reviewFixture, comparison: comparisonFixture },
 };
 
 /** 5-5 경계 — LLM 실패. 숫자 · 상태 · 점수는 같고 문장만 기본 문장입니다 */
@@ -213,7 +245,20 @@ const modeChanged: TakeReport = {
   },
 };
 
+/**
+ * 홈 목(`home.ts`) 첫 피치의 Take 2(72점) — 대화 목(`chatScenarios.ts`)의 다시 평가가 이 Take 를 72 → 78 로 봅니다.
+ * 목록에 없으면 분석 진행 흉내(`progressing`)를 거쳐 Take 4 · 74점이 되어, 공식 리포트와 다시 평가가 어긋납니다
+ */
+const HOME_TAKE2_ID = '20000000-0000-4000-8000-000000000002';
+const homeTake2: TakeReport = {
+  ...done,
+  take_id: HOME_TAKE2_ID,
+  take_number: 2,
+  review: { ...done.review!, take_id: HOME_TAKE2_ID, score: 72 },
+};
+
 const FIXED: Record<string, TakeReport> = {
+  [HOME_TAKE2_ID]: homeTake2,
   t2: gazeExcluded,
   t3: done,
   't-fallback': fallback,

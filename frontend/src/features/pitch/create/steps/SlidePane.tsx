@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } fr
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useCreateStore } from '../createStore';
 import {
+  AlertIcon,
   CheckIcon,
   ChevronIcon,
   DocIcon,
@@ -323,6 +324,11 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
   // 대본 장 수 맞추기에만 씁니다 — 둘이 다른 PDF 에서 없는 쪽을 열다 오류가 나지 않게
   const total = doc.numPages;
 
+  // 마지막으로 포커스를 옮긴 수단이 마우스인지. 마우스로 누른 버튼은 포커스를 쥐고 있어도 링이 없다가,
+  // 그 상태로 ← → 를 누르면 브라우저가 `:focus-visible` 을 켜서 장은 돌아갔는데 눌렀던 버튼에 링이
+  // 남습니다 (#924). Tab 으로 닿은 버튼은 실제 키보드 초점이라 링을 그대로 둡니다
+  const pointerFocus = useRef(false);
+
   const goTo = (n: number) => setPage(Math.min(total, Math.max(1, n)));
 
   const fullscreen = () => {
@@ -336,11 +342,28 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
     <div
       ref={cardRef}
       tabIndex={-1}
-      onKeyDown={(e) => {
-        if (e.key === 'ArrowRight' || e.key === 'PageDown') goTo(page + 1);
-        if (e.key === 'ArrowLeft' || e.key === 'PageUp') goTo(page - 1);
+      onPointerDown={() => {
+        pointerFocus.current = true;
       }}
-      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-line bg-white outline-none"
+      // 포커스가 뷰어 밖으로 나가면 표시를 끕니다 — 밖에서 일어난 Tab 은 아래 onKeyDown 에 닿지 않아,
+      // 밖에 다녀와 Tab 으로 돌아온 버튼이 마우스로 쥔 버튼으로 취급돼 포커스를 빼앗기기 때문입니다
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) pointerFocus.current = false;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Tab') pointerFocus.current = false;
+        const next = e.key === 'ArrowRight' || e.key === 'PageDown';
+        const prev = e.key === 'ArrowLeft' || e.key === 'PageUp';
+        if (next) goTo(page + 1);
+        if (prev) goTo(page - 1);
+        // 포커스는 뷰어 안에 두되(#818) 링이 번지지 않게 마우스로 쥔 버튼에서 뷰어 상자로 옮깁니다
+        if ((next || prev) && pointerFocus.current && e.target !== e.currentTarget) {
+          e.currentTarget.focus({ preventScroll: true });
+        }
+      }}
+      // 포커스 링은 전역 `:focus-visible` 이 그립니다. 방향키로 포커스가 옮겨 온 뒤에는 링이 뜨고,
+      // 빈 곳을 마우스로 눌렀을 때는 브라우저가 링을 켜지 않습니다 — 그래서 `outline-none` 을 두지 않습니다
+      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-line bg-white"
     >
       <Toolbar
         fileName={slide.fileName ?? `슬라이드 V${slide.version}.pdf`}
@@ -505,8 +528,15 @@ function Viewer({ slide }: { slide: SlideVersion }) {
                 {total}장
               </span>
             )}
-            <span className="flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-2.5 py-1 text-sm font-bold">
-              <CheckIcon /> {needsReview ? '확인 필요' : '확인 완료'}
+            <span
+              role="status"
+              className={[
+                'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-bold',
+                needsReview ? 'border-coral bg-coral-wash' : 'border-line-strong bg-panel',
+              ].join(' ')}
+            >
+              {needsReview ? <AlertIcon className="h-4 w-4 fill-coral-deep" /> : <CheckIcon />}
+              {needsReview ? '확인 필요' : '확인 완료'}
             </span>
           </>
         }
@@ -536,14 +566,12 @@ function Viewer({ slide }: { slide: SlideVersion }) {
           </span>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p role="status" className="text-sm">
-          {needsReview ? '업로드 완료 · 확인 필요' : '확인 완료'}
-        </p>
+      <div className="mt-4 flex justify-end">
         <button
           ref={trigger}
           type="button"
           aria-haspopup="dialog"
+          aria-label={`슬라이드 확인 · ${needsReview ? '확인 필요' : '확인 완료'}`}
           onClick={() => setReview(slide.version)}
           className="min-h-11 border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
         >
@@ -559,10 +587,6 @@ function Viewer({ slide }: { slide: SlideVersion }) {
           {body}
         </SlideReviewDialog>
       )}
-      <details className="[&>summary]:min-h-11 [&>summary]:cursor-pointer [&>summary]:py-3 [&>summary]:text-sm [&>summary]:underline [&>summary]:underline-offset-4">
-        <summary>슬라이드 미리보기</summary>
-        <div className="flex h-[min(34rem,75dvh)] min-h-80">{!reviewOpen && body}</div>
-      </details>
     </div>
   );
 }

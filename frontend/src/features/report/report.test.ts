@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { fetchTakeReport, isSettled } from '@/shared/api/report';
 import { clearTokens } from '@/shared/api/tokenStore';
 import type { Operator, TakeReport } from '@/types/report';
-import { OP, duration, fmt, pct, stepStates } from './reportFormat';
+import { OP, comparisonGroups, duration, fmt, pct, stepStates } from './reportFormat';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -76,4 +76,27 @@ it('asks the report endpoint with the take id and keeps errors as failures', asy
 
   fetch.mockResolvedValue(Response.json({ code: 'TAKE_NOT_FOUND' }, { status: 404 }));
   await expect(fetchTakeReport('t4')).rejects.toMatchObject({ status: 404 });
+});
+
+it('groups the comparison by review dimension, one column per metric and one row per slide (#929)', () => {
+  const row = { previous: 1, current: 2, improved: true, script_mode: null };
+  const groups = comparisonGroups([
+    { ...row, metric: 'filler_count', slide_number: null },
+    { ...row, metric: 'slide_duration_ms', slide_number: 2 },
+    { ...row, metric: 'filler_per_min', slide_number: null },
+    { ...row, metric: 'script_ratio', slide_number: 3 },
+    { ...row, metric: 'cpm', slide_number: null },
+    { ...row, metric: 'script_ratio', slide_number: null },
+    { ...row, metric: 'new_metric', slide_number: null },
+    { ...row, metric: 'slide_duration_ms', slide_number: 1 },
+  ]);
+  // 차원 표(review-agent.md 5-3) 순서. 분당 군더더기는 숨기고, 표에 없는 지표는 맨 뒤에 모읍니다
+  expect(groups.map((g) => [g.dimension, g.metrics, g.slides])).toEqual([
+    ['script_independence', ['script_ratio'], [null, 3]],
+    ['pacing_rhythm', ['cpm', 'slide_duration_ms'], [null, 1, 2]],
+    ['fluency', ['filler_count'], [null]],
+    [null, ['new_metric'], [null]],
+  ]);
+  expect(groups[1]!.cell('slide_duration_ms', 2)?.slide_number).toBe(2);
+  expect(groups[1]!.cell('cpm', 1)).toBeUndefined();
 });

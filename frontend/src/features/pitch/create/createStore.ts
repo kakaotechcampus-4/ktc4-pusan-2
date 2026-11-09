@@ -19,6 +19,7 @@ import {
   infoChanged,
   infoOf,
   isEditableCriteria,
+  joinScriptBlocks,
   latestUploadedSlides,
 } from './lib/draft';
 
@@ -122,7 +123,7 @@ interface CreateState {
   setSlideUpload: (next: SlideUpload) => void;
   /**
    * 올리고 열기까지 끝났습니다. 비어 있는 버전이 있으면 거기 채우고, 없으면 새로 만듭니다.
-   * 장수가 맞으면 가장 최근 대본을 새 슬라이드로 옮기고 매핑을 다시 확인받습니다 (`relinkScripts`).
+   * 고른 대본(없으면 가장 최근 대본)을 장수와 관계없이 새 슬라이드로 옮기고 매핑을 다시 확인받습니다 (`relinkScripts`).
    *
    * 한 동작으로 묶은 이유 — 나눠 부르면 "버전을 만들었는데 장수는 다음 렌더에
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
@@ -226,9 +227,10 @@ const mapScripts = (
 });
 
 /**
- * 새로 올린 슬라이드에 지금 고른 대본을 옮겨 붙입니다. 다시 들어올 때(`loadPitch.ts`)와 같은 규칙입니다 —
- * 장수가 같은 가장 최근 슬라이드, 아직 나누지 않은 대본은 최신 슬라이드.
- * 옮기지 않으면 새 슬라이드를 올려도 예전 슬라이드로 연습하고, 새로고침하면 그제야 바뀝니다.
+ * 새로 올린 슬라이드에 지금 고른 대본을 옮겨 붙입니다. **장수가 달라도 옮깁니다** — 옮기지 않으면 대본이
+ * 예전 슬라이드에 붙은 채 남아 모든 단계가 완료로 보이고 예전 슬라이드로 연습이 시작됩니다(멘토 리뷰 #923).
+ * 장수가 다르면 진행 조건이 "장수 다름"으로 막고(`gate.ts` 의 `mappingStale`) 대본의 구분을 고치게 합니다.
+ * 다시 들어올 때(`loadPitch.ts`)도 가장 최근 대본은 최신 슬라이드에 붙여 같은 결과가 됩니다.
  * 슬라이드가 바뀌었으니 매핑은 다시 확인받습니다(`saved: false`). 아직 나누지 않은 대본(`blocks` 없음)은
  * 저장 상태를 그대로 둡니다 — 확인할 매핑이 없어 저장할 수 없고, `saved: false` 로 두면 "+ 새 버전"까지
  * 막힙니다(`pendingVersion`). 다시 들어올 때도 이 대본은 최신 슬라이드에 저장된 채로 붙습니다.
@@ -244,7 +246,6 @@ const relinkScripts = (
 ): ScriptVersion[] => {
   const target = scripts.find((v) => v.version === selected) ?? scripts.at(-1);
   if (!target || target.slideVersion === slide.version) return scripts;
-  if (target.blocks !== null && target.blocks.length !== slide.pageCount) return scripts;
   return scripts.map((v) =>
     v.version === target.version
       ? { ...v, slideVersion: slide.version, saved: v.blocks === null ? v.saved : false }
@@ -420,7 +421,7 @@ export const useCreateStore = create<CreateState>((set) => ({
           ...DETACHED,
           blocks,
           // 다시 매핑하면 이 글이 서버로 갑니다 — AI 가 구분자로 보는 형식이어야 장마다 다시 나뉩니다 (slideMarkers)
-          text: blocks.map((block, i) => `[슬라이드 ${i + 1}]\n${block}`).join('\n\n'),
+          text: joinScriptBlocks(blocks),
         };
       }),
     })),
