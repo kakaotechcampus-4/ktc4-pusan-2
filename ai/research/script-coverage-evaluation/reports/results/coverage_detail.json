@@ -1,6 +1,6 @@
 {
   "feature_version": "script_coverage-1.2",
-  "criteria_version": "script_coverage-1.2+78a81b22f29e",
+  "criteria_version": "script_coverage-1.2+6d9376541711",
   "model": "none (LLM 호출 없음)",
   "split": {
     "dev": "가상대본1",
@@ -352,6 +352,10 @@
   },
   "offscript_natural": {
     "n_candidates": 13,
+    "recall_definitions": {
+      "additions_caught_ratio": "라벨 additions(실제로 끼어든 곁말 문장) 중 어떤 후보 구간에 잡힌 비율 (형태소 겹침 0.5 이상 또는 글 포함). offscript_natural.addition_recall 에 있다",
+      "labeled_outside_caught_ratio": "라벨 파일에서 일치한 항목 중 정답이 대본 밖 말(aside · unrelated · procedural · other_slide)인 것에서, 지금 규칙이 후보로 잡은 비율. offscript_natural_precision 에 있다"
+    },
     "candidates_by_category": {
       "dev": {
         "off_script": 6
@@ -364,7 +368,7 @@
       "dev": {
         "n": 8,
         "caught": 5,
-        "recall": 0.625,
+        "additions_caught_ratio": 0.625,
         "by_category": {
           "off_script": 5
         },
@@ -389,7 +393,7 @@
       "test": {
         "n": 10,
         "caught": 7,
-        "recall": 0.7,
+        "additions_caught_ratio": 0.7,
         "by_category": {
           "off_script": 7
         },
@@ -472,7 +476,8 @@
       "n_label_null": 1,
       "n_not_in_label_file": 0,
       "outside_precision": 1.0,
-      "outside_recall_of_labeled": 0.7143,
+      "labeled_outside_caught_ratio": 0.7143,
+      "n_label_mismatch_excluded": 1,
       "n_labeled_outside": 7,
       "by_predicted": {
         "off_script": {
@@ -503,7 +508,8 @@
       "n_label_null": 0,
       "n_not_in_label_file": 0,
       "outside_precision": 1.0,
-      "outside_recall_of_labeled": 0.875,
+      "labeled_outside_caught_ratio": 0.875,
+      "n_label_mismatch_excluded": 0,
       "n_labeled_outside": 8,
       "by_predicted": {
         "off_script": {
@@ -538,7 +544,8 @@
         "n_label_null": 1,
         "n_not_in_label_file": 0,
         "outside_precision": 1.0,
-        "outside_recall_of_labeled": 0.7143,
+        "labeled_outside_caught_ratio": 0.7143,
+        "n_label_mismatch_excluded": 1,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
@@ -569,7 +576,8 @@
         "n_label_null": 0,
         "n_not_in_label_file": 0,
         "outside_precision": 1.0,
-        "outside_recall_of_labeled": 0.875,
+        "labeled_outside_caught_ratio": 0.875,
+        "n_label_mismatch_excluded": 0,
         "n_labeled_outside": 8,
         "by_predicted": {
           "off_script": {
@@ -603,7 +611,8 @@
         "n_label_null": 4,
         "n_not_in_label_file": 17,
         "outside_precision": 0.1045,
-        "outside_recall_of_labeled": 1.0,
+        "labeled_outside_caught_ratio": 1.0,
+        "n_label_mismatch_excluded": 21,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
@@ -639,7 +648,8 @@
         "n_label_null": 4,
         "n_not_in_label_file": 0,
         "outside_precision": 0.0548,
-        "outside_recall_of_labeled": 1.0,
+        "labeled_outside_caught_ratio": 1.0,
+        "n_label_mismatch_excluded": 4,
         "n_labeled_outside": 8,
         "by_predicted": {
           "off_script": {
@@ -676,7 +686,8 @@
         "n_label_null": 1,
         "n_not_in_label_file": 3,
         "outside_precision": 0.4167,
-        "outside_recall_of_labeled": 0.7143,
+        "labeled_outside_caught_ratio": 0.7143,
+        "n_label_mismatch_excluded": 4,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
@@ -710,7 +721,8 @@
         "n_label_null": 0,
         "n_not_in_label_file": 0,
         "outside_precision": 0.2188,
-        "outside_recall_of_labeled": 0.875,
+        "labeled_outside_caught_ratio": 0.875,
+        "n_label_mismatch_excluded": 0,
         "n_labeled_outside": 8,
         "by_predicted": {
           "off_script": {
@@ -747,7 +759,8 @@
         "n_label_null": 1,
         "n_not_in_label_file": 0,
         "outside_precision": 0.8333,
-        "outside_recall_of_labeled": 0.7143,
+        "labeled_outside_caught_ratio": 0.7143,
+        "n_label_mismatch_excluded": 1,
         "n_labeled_outside": 7,
         "by_predicted": {
           "off_script": {
@@ -779,7 +792,8 @@
         "n_label_null": 0,
         "n_not_in_label_file": 0,
         "outside_precision": 0.7778,
-        "outside_recall_of_labeled": 0.875,
+        "labeled_outside_caught_ratio": 0.875,
+        "n_label_mismatch_excluded": 0,
         "n_labeled_outside": 8,
         "by_predicted": {
           "off_script": {
@@ -811,21 +825,29 @@
   "offscript_injection": {
     "rounds": 4,
     "note": "장마다 범주 4개를 한 번씩, 한 번에 문장 하나만 끼움 (같은 장의 주입은 서로 독립인 별도 실행)",
+    "definitions": {
+      "new_false_positive": "주입 구간과 겹치지 않고, (STT 문장 글, 구간 글)로 대응시킨 주입 전 후보에 없던 후보. 사라진 후보와 상쇄하지 않는다",
+      "precision": "범주별: 그 범주로 검출된 주입 중 정답 범주 / (그 수 + 그 범주의 새 오탐)",
+      "span_metrics": "정답 = 주입 문장 형태소, 예측 = 주입과 겹친 후보 + 새 후보의 형태소; 범주 일치 필요"
+    },
     "runs": {
       "total": 720,
+      "already_in_stt_skipped": 0,
+      "already_in_stt_by_category": {},
       "not_found": 0,
       "no_tokens": 0
     },
     "dev": {
       "n": 324,
+      "already_in_stt_skipped": 0,
       "recall": {
         "procedural": {
           "n": 81,
           "detected": 0.8148,
-          "category_right": 0.3086,
+          "category_right": 0.2593,
           "predicted_as": {
-            "off_script": 38,
-            "procedural": 25,
+            "off_script": 42,
+            "procedural": 21,
             "other_slide": 3
           }
         },
@@ -856,46 +878,98 @@
       },
       "precision": {
         "procedural": {
-          "n_predicted": 25,
+          "n_predicted": 21,
+          "n_new_false": 0,
           "precision": 1.0,
+          "precision_without_new_false": 1.0,
           "truth_counts": {
-            "procedural": 25
+            "procedural": 21
           }
         },
         "other_slide": {
           "n_predicted": 62,
+          "n_new_false": 0,
           "precision": 0.9516,
+          "precision_without_new_false": 0.9516,
           "truth_counts": {
             "other_slide": 59,
             "procedural": 3
           }
         },
         "off_script": {
-          "n_predicted": 177,
-          "precision": 0.7853,
+          "n_predicted": 181,
+          "n_new_false": 0,
+          "precision": 0.768,
+          "precision_without_new_false": 0.768,
           "truth_counts": {
             "unrelated": 77,
             "related_aside": 62,
-            "procedural": 38
+            "procedural": 42
           }
         }
       },
-      "false_positive_spans": {
-        "total_extra": -1,
-        "runs_with_extra": 0,
-        "mean_per_run": -0.0031
+      "new_false_positives": {
+        "total": 0,
+        "by_category": {},
+        "runs_with_new": 0,
+        "mean_per_run": 0.0,
+        "removed_total": 1,
+        "runs_with_removed": 1
+      },
+      "span_metrics": {
+        "procedural": {
+          "precision": 1.0,
+          "recall": 0.2741,
+          "f1": 0.4303,
+          "tp_tokens": 54,
+          "pred_tokens": 54,
+          "truth_tokens": 197
+        },
+        "other_slide": {
+          "precision": 0.9853,
+          "recall": 0.7201,
+          "f1": 0.8321,
+          "tp_tokens": 602,
+          "pred_tokens": 611,
+          "truth_tokens": 836
+        },
+        "off_script": {
+          "precision": 0.8832,
+          "recall": 0.8191,
+          "f1": 0.8499,
+          "tp_tokens": 756,
+          "pred_tokens": 856,
+          "truth_tokens": 923
+        },
+        "overall": {
+          "precision": 0.9283,
+          "recall": 0.7219,
+          "f1": 0.8122,
+          "tp_tokens": 1412,
+          "pred_tokens": 1521,
+          "truth_tokens": 1956
+        },
+        "overall_any_category": {
+          "precision": 0.9954,
+          "recall": 0.774,
+          "f1": 0.8709,
+          "tp_tokens": 1514,
+          "pred_tokens": 1521,
+          "truth_tokens": 1956
+        }
       }
     },
     "test": {
       "n": 396,
+      "already_in_stt_skipped": 0,
       "recall": {
         "procedural": {
           "n": 99,
           "detected": 0.8283,
-          "category_right": 0.3939,
+          "category_right": 0.4141,
           "predicted_as": {
-            "procedural": 39,
-            "off_script": 37,
+            "procedural": 41,
+            "off_script": 35,
             "other_slide": 6
           }
         },
@@ -926,34 +1000,87 @@
       },
       "precision": {
         "procedural": {
-          "n_predicted": 39,
+          "n_predicted": 41,
+          "n_new_false": 0,
           "precision": 1.0,
+          "precision_without_new_false": 1.0,
           "truth_counts": {
-            "procedural": 39
+            "procedural": 41
           }
         },
         "other_slide": {
           "n_predicted": 86,
+          "n_new_false": 0,
           "precision": 0.9302,
+          "precision_without_new_false": 0.9302,
           "truth_counts": {
             "other_slide": 80,
             "procedural": 6
           }
         },
         "off_script": {
-          "n_predicted": 180,
-          "precision": 0.7944,
+          "n_predicted": 178,
+          "n_new_false": 1,
+          "precision": 0.7989,
+          "precision_without_new_false": 0.8034,
           "truth_counts": {
             "unrelated": 86,
             "related_aside": 57,
-            "procedural": 37
+            "procedural": 35
           }
         }
       },
-      "false_positive_spans": {
-        "total_extra": 0,
-        "runs_with_extra": 1,
-        "mean_per_run": 0.0
+      "new_false_positives": {
+        "total": 1,
+        "by_category": {
+          "off_script": 1
+        },
+        "runs_with_new": 1,
+        "mean_per_run": 0.0025,
+        "removed_total": 1,
+        "runs_with_removed": 1
+      },
+      "span_metrics": {
+        "procedural": {
+          "precision": 1.0,
+          "recall": 0.3992,
+          "f1": 0.5707,
+          "tp_tokens": 105,
+          "pred_tokens": 105,
+          "truth_tokens": 263
+        },
+        "other_slide": {
+          "precision": 0.9788,
+          "recall": 0.795,
+          "f1": 0.8774,
+          "tp_tokens": 830,
+          "pred_tokens": 848,
+          "truth_tokens": 1044
+        },
+        "off_script": {
+          "precision": 0.8695,
+          "recall": 0.7048,
+          "f1": 0.7785,
+          "tp_tokens": 733,
+          "pred_tokens": 843,
+          "truth_tokens": 1040
+        },
+        "overall": {
+          "precision": 0.9287,
+          "recall": 0.7107,
+          "f1": 0.8052,
+          "tp_tokens": 1668,
+          "pred_tokens": 1796,
+          "truth_tokens": 2347
+        },
+        "overall_any_category": {
+          "precision": 0.9928,
+          "recall": 0.7597,
+          "f1": 0.8607,
+          "tp_tokens": 1783,
+          "pred_tokens": 1796,
+          "truth_tokens": 2347
+        }
       }
     }
   }

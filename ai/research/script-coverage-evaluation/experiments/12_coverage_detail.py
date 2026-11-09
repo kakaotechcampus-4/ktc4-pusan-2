@@ -14,7 +14,12 @@
 - C2. 규칙 비교: 모듈 상수(`OFFSCRIPT_IN_SENTENCE` 꺼짐 · 켜짐, `OFFSCRIPT_MIN_TOKENS` 2 · 4 · 6)를 실험 안에서만 바꿔
   같은 precision 을 내고 결과의 `rule_variants` 에 남긴다 (지금 규칙이 꼬리를 끄는 근거)
 - D. 말의 구성, 합성 주입: `data/virtual/offscript_injections.json` 의 문장을 STT 문장 경계에 하나씩 끼워 서비스와 같은 순서로
-  처리하고 범주별 재현율 · precision · 오탐(끼운 문장 때문에 대본 내용이 후보로 잡힌 수)을 지금 규칙으로 잰다
+  처리하고 지금 규칙으로 잰다. 끼우기 전 STT 에 같은 문장 글이 이미 있으면 그 주입은 건너뛰고 수만 남긴다
+  (`already_in_stt`). 주입 전 후보와 주입 후 후보를 (STT 문장 글 · 구간 글)로 대응시켜, 주입 구간과 겹치지 않으면서
+  주입 전에 없던 후보를 '새 오탐'으로 각각 센다(사라진 후보는 따로, 둘을 상쇄하지 않는다). 새 오탐은 정답 범주가
+  '대본 내용'이므로 범주별 precision 의 분모에 넣는다. 문장 검출(재현율 · 범주 맞음 · precision)과 별개로 주입 구간(정답)과
+  예측 구간의 형태소 겹침으로 범주별 · 전체 구간 precision · recall · F1 을 개발 · 시험으로 낸다(예측 구간 = 주입과 겹친 후보 +
+  새 후보; 주입 전부터 있던 후보는 자연 데이터 쪽 지표이므로 뺀다)
 
 - LLM 호출: 없음. 채점 결과는 04_evaluate_takes.py 가 DB 에 남긴 것을 읽는다
 - 쓰는 곳: outputs/rubrics.sqlite (읽기 전용으로만 연다), outputs/offscript_candidates.jsonl (C 의 후보), data/virtual/offscript_labels.json (읽기),
@@ -509,7 +514,7 @@ for side, g in additions.groupby("side"):
     recall_by_side[side] = {
         "n": len(g),
         "caught": int(g["caught"].sum()),
-        "recall": round(float(g["caught"].mean()), 4),
+        "additions_caught_ratio": round(float(g["caught"].mean()), 4),
         "by_category": g[g["caught"]]["category"].value_counts().to_dict(),
         "missed": g[~g["caught"]][["take_id", "slide", "text"]].to_dict(orient="records"),
     }
@@ -518,8 +523,19 @@ candidate_df = pd.DataFrame(
     [{"side": side_of[tk], "category": sp.category, "tokens": sp.tokens} for tk, _, sp in natural]
 )
 mix_cols = ["script", "procedural", "other_slide", "off_script"]
+RECALL_DEFINITIONS = {
+    "additions_caught_ratio": (
+        "라벨 additions(실제로 끼어든 곁말 문장) 중 어떤 후보 구간에 잡힌 비율 "
+        "(형태소 겹침 0.5 이상 또는 글 포함). offscript_natural.addition_recall 에 있다"
+    ),
+    "labeled_outside_caught_ratio": (
+        "라벨 파일에서 일치한 항목 중 정답이 대본 밖 말(aside · unrelated · procedural · other_slide)인 것에서, "
+        "지금 규칙이 후보로 잡은 비율. offscript_natural_precision 에 있다"
+    ),
+}
 natural_result = {
     "n_candidates": n_candidates,
+    "recall_definitions": RECALL_DEFINITIONS,
     "candidates_by_category": {
         side: g["category"].value_counts().to_dict() for side, g in candidate_df.groupby("side")
     },
@@ -567,6 +583,27 @@ label_of = {
     (x["take_id"], x["slide_number"], x["stt_sentence"], x["span_text"]): x["label"]
     for x in label_file["items"]
 }
+# 짝 없는 문장 후보는 문장 하나에 구간 하나다. 구간이 '내용 형태소 범위'에서 '문장 전체'로 바뀌어 구간 글이
+# 라벨 파일과 다를 수 있으므로, 그 후보는 (take, 장, 문장 글)로도 라벨 항목을 찾는다
+label_key_by_sentence = {
+    (x["take_id"], x["slide_number"], x["stt_sentence"]): (
+        x["take_id"],
+        x["slide_number"],
+        x["stt_sentence"],
+        x["span_text"],
+    )
+    for x in label_file["items"]
+    if not x["aligned"]
+}
+
+
+def label_key(key: tuple) -> tuple | None:
+    """후보 키 → 라벨 파일 항목 키 (없으면 None)."""
+    if key in label_of:
+        return key
+    return label_key_by_sentence.get(key[:3])
+
+
 n_null = sum(1 for v in label_of.values() if v is None)
 OUTSIDE_RIGHT = {  # 예측 범주 -> 그 범주로 맞는 정답
     "off_script": {"aside", "unrelated"},
@@ -594,12 +631,14 @@ def collect(in_sentence: bool, min_tokens: int) -> list[dict]:
                         stt_norm.sentences[sp.stt_sentence_index].text,
                         span_text(stt_norm, sp),
                     )
+                    lk = label_key(key)
                     found.append(
                         {
                             "side": side_of[t.take_id],
                             "key": key,
+                            "label_key": lk,
                             "pred": sp.category,
-                            "label": label_of.get(key, "no_entry"),
+                            "label": label_of[lk] if lk is not None else "no_entry",
                         }
                     )
         return found
@@ -614,17 +653,20 @@ def precision_report(found: list[dict]) -> dict:
         g = [f for f in found if f["side"] == side]
         usable = [f for f in g if f["label"] not in (None, "no_entry", "unclear")]
         outside = [f for f in usable if f["label"] != "script"]
-        caught = {f["key"] for f in g}
+        caught = {f["label_key"] for f in g if f["label_key"] is not None}
         row = {
             "n_candidates": len(g),
             "n_usable": len(usable),
             "n_label_null": sum(f["label"] is None for f in g),
             "n_not_in_label_file": sum(f["label"] == "no_entry" for f in g),
             "outside_precision": round(len(outside) / len(usable), 4) if usable else None,
-            "outside_recall_of_labeled": round(
+            "labeled_outside_caught_ratio": round(
                 len({k for k in labeled_outside if k in caught and side_of[k[0]] == side})
                 / max(sum(1 for k in labeled_outside if side_of[k[0]] == side), 1),
                 4,
+            ),
+            "n_label_mismatch_excluded": sum(
+                f["label"] in (None, "no_entry", "unclear") for f in g
             ),
             "n_labeled_outside": sum(1 for k in labeled_outside if side_of[k[0]] == side),
             "by_predicted": {},
@@ -670,7 +712,7 @@ for name, r in rule_variants.items():
     print(
         name,
         {
-            s: (v["n_usable"], v["outside_precision"], v["outside_recall_of_labeled"])
+            s: (v["n_usable"], v["outside_precision"], v["labeled_outside_caught_ratio"])
             for s, v in r.items()
         },
     )
@@ -715,12 +757,22 @@ def truth_of(category: str) -> str:
     return "off_script" if category in ("related_aside", "unrelated") else category
 
 
+def span_key(stt_norm, sp) -> tuple[str, str]:
+    """주입 전 · 후 후보를 대응시키는 키: (STT 문장 글, 구간 글)."""
+    return stt_norm.sentences[sp.stt_sentence_index].text, span_text(stt_norm, sp)
+
+
+def token_ids(stt_pt, lo: int, hi: int) -> set[int]:
+    return {i for i, t_ in enumerate(stt_pt) if t_.start >= lo and t_.end <= hi}
+
+
 runs = []
 for ti, t in enumerate(takes):
     for e in evaluations[t.take_id]:
         rubric = rubrics[(t.script_name, e.slide_number)]
         others = {n: r for n, r in OTHER[t.script_name].items() if n != e.slide_number}
         base_norm, _, _, base_off = process(rubric, others, e.stt_text)
+        base_keys = Counter(span_key(base_norm, sp) for sp in base_off.spans)
         sents = [s.text for s in base_norm.sentences]
         for rnd in range(INJECTION_ROUNDS):
             category = CATEGORIES[(e.slide_number + rnd + ti) % len(CATEGORIES)]
@@ -729,6 +781,18 @@ for ti, t in enumerate(takes):
             if text is None:
                 continue
             at = rng.randint(0, len(sents))
+            if find_range(base_norm.text, text) is not None:
+                # 원래 STT 에 같은 문장이 이미 있으면 처음 나온 위치를 정답으로 쓰게 되므로 건너뛴다
+                runs.append(
+                    {
+                        "side": side_of[t.take_id],
+                        "truth_fine": category,
+                        "already_in_stt": True,
+                        "found": False,
+                        "inject_tokens": 0,
+                    }
+                )
+                continue
             new_text = " ".join([*sents[:at], text, *sents[at:]])
             stt_norm, stt_pt, _, off = process(rubric, others, new_text)
             rng_ = find_range(stt_norm.text, text)
@@ -739,34 +803,48 @@ for ti, t in enumerate(takes):
                 "truth_fine": category,
                 "truth": truth_of(category),
                 "text": text,
+                "already_in_stt": False,
                 "found": rng_ is not None,
                 "detected": False,
                 "pred": None,
                 "pred_other_slide": None,
                 "inject_tokens": 0,
                 "covered_ratio": None,
-                "extra_spans": None,
+                "new_false": [],  # 주입과 겹치지 않고 주입 전에 없던 후보의 범주
+                "removed": 0,  # 주입 전에 있었으나 주입 후에 없는 후보 수
+                "tok_truth": 0,
+                "tok_pred": Counter(),  # 예측 범주별 형태소 수 (주입과 겹친 후보 + 새 후보)
+                "tok_hit": Counter(),  # 그중 주입 형태소와 겹친 수 (예측 범주별)
             }
             runs.append(run)
             if rng_ is None:
                 continue
-            inj = [t_ for t_ in stt_pt if t_.start >= rng_[0] and t_.end <= rng_[1]]
-            run["inject_tokens"] = len(inj)
-            if not inj:
+            inj_ids = token_ids(stt_pt, *rng_)
+            run["inject_tokens"] = len(inj_ids)
+            if not inj_ids:
                 continue
+            run["tok_truth"] = len(inj_ids)
+            new_keys = Counter()
             cover = Counter()
-            injected_spans = 0
             for sp in off.spans:
                 s0, e0 = span_range(stt_norm, sp)
-                n_cov = sum(1 for t_ in inj if t_.start >= s0 and t_.end <= e0)
+                sp_ids = token_ids(stt_pt, s0, e0)
+                n_cov = len(sp_ids & inj_ids)
+                key = span_key(stt_norm, sp)
+                new_keys[key] += 1
                 if n_cov:
-                    injected_spans += 1
                     cover[sp.id] += n_cov
-            run["extra_spans"] = len(off.spans) - len(base_off.spans) - injected_spans
+                elif base_keys[key] >= new_keys[key]:
+                    continue  # 주입 전부터 있던 후보
+                else:
+                    run["new_false"].append(sp.category)
+                run["tok_pred"][sp.category] += len(sp_ids)
+                run["tok_hit"][sp.category] += n_cov
+            run["removed"] = sum(max(c - new_keys[k], 0) for k, c in base_keys.items())
             if cover:
                 top_id, top_n = max(sorted(cover.items()), key=lambda kv: kv[1])
-                run["covered_ratio"] = round(top_n / len(inj), 3)
-                if top_n / len(inj) >= 0.5:
+                run["covered_ratio"] = round(top_n / len(inj_ids), 3)
+                if top_n / len(inj_ids) >= 0.5:
                     span = next(s for s in off.spans if s.id == top_id)
                     run["detected"] = True
                     run["pred"] = span.category
@@ -774,10 +852,14 @@ for ti, t in enumerate(takes):
             else:
                 run["covered_ratio"] = 0.0
 runs_df = pd.DataFrame(runs)
+skipped = runs_df[runs_df["already_in_stt"]]
+runs_df = runs_df[~runs_df["already_in_stt"]]
 usable = runs_df[runs_df["inject_tokens"] > 0]
 print(
     "끼운 횟수",
     len(runs_df),
+    "/ 원래 STT 에 이미 있어 건너뜀",
+    len(skipped),
     "/ 끼운 글을 못 찾음",
     int((~runs_df["found"]).sum()),
     "/ 형태소 0",
@@ -785,8 +867,44 @@ print(
 )
 
 
-def injection_summary(g: pd.DataFrame) -> dict:
-    """범주별 재현율 · precision · 오탐. g 는 형태소가 있는 주입만 든다."""
+def prf(tp: int, n_pred: int, n_truth: int) -> dict:
+    p = tp / n_pred if n_pred else None
+    r = tp / n_truth if n_truth else None
+    f1 = 2 * p * r / (p + r) if p and r else (0.0 if p is not None and r is not None else None)
+    return {
+        "precision": round(p, 4) if p is not None else None,
+        "recall": round(r, 4) if r is not None else None,
+        "f1": round(f1, 4) if f1 is not None else None,
+        "tp_tokens": tp,
+        "pred_tokens": n_pred,
+        "truth_tokens": n_truth,
+    }
+
+
+def span_metrics(g: pd.DataFrame) -> dict:
+    """구간 단위(형태소 겹침) precision · recall · F1.
+
+    정답 = 주입한 문장의 형태소(범주 = truth), 예측 = 주입과 겹친 후보 + 새 후보의 형태소(범주 = 후보 범주).
+    범주별은 정답 범주와 예측 범주가 같은 형태소만 맞는 것으로 센다. overall 은 범주까지 맞아야 하고,
+    overall_any_category 는 범주를 보지 않고 대본 밖 후보에 든 형태소만 본다.
+    """
+    out = {}
+    for pred in ("procedural", "other_slide", "off_script"):
+        truth_n = int(g.loc[g["truth"] == pred, "tok_truth"].sum())
+        pred_n = sum(c[pred] for c in g["tok_pred"])
+        hit = sum(c[pred] for c, tr in zip(g["tok_hit"], g["truth"], strict=True) if tr == pred)
+        out[pred] = prf(hit, pred_n, truth_n)
+    all_pred = sum(sum(c.values()) for c in g["tok_pred"])
+    all_hit_any = sum(sum(c.values()) for c in g["tok_hit"])
+    all_hit_right = sum(c[tr] for c, tr in zip(g["tok_hit"], g["truth"], strict=True))
+    all_truth = int(g["tok_truth"].sum())
+    out["overall"] = prf(all_hit_right, all_pred, all_truth)
+    out["overall_any_category"] = prf(all_hit_any, all_pred, all_truth)
+    return out
+
+
+def injection_summary(g: pd.DataFrame, all_runs: pd.DataFrame) -> dict:
+    """범주별 재현율 · precision · 새 오탐 · 구간 지표. g 는 형태소가 있는 주입만 든다."""
     recall = {}
     for fine in CATEGORIES:
         h = g[g["truth_fine"] == fine]
@@ -799,40 +917,56 @@ def injection_summary(g: pd.DataFrame) -> dict:
             "category_right": round(float((h["detected"] & (h["pred"] == want)).mean()), 4),
             "predicted_as": h[h["detected"]]["pred"].value_counts().to_dict(),
         }
+    new_false = Counter(c for lst in g["new_false"] for c in lst)
     precision = {}
     for pred in ("procedural", "other_slide", "off_script"):
         p = g[g["detected"] & (g["pred"] == pred)]
+        right = int((p["truth"] == pred).sum())
+        denom = len(p) + new_false[pred]  # 새 후보는 정답이 '대본 내용'이므로 틀린 예측
         precision[pred] = {
             "n_predicted": len(p),
-            "precision": round(float((p["truth"] == pred).mean()), 4) if len(p) else None,
+            "n_new_false": new_false[pred],
+            "precision": round(right / denom, 4) if denom else None,
+            "precision_without_new_false": round(right / len(p), 4) if len(p) else None,
             "truth_counts": p["truth_fine"].value_counts().to_dict(),
         }
     return {
         "n": len(g),
+        "already_in_stt_skipped": int((all_runs["already_in_stt"]).sum()),
         "recall": recall,
         "precision": precision,
-        "other_slide_points_to_source": None,
-        "false_positive_spans": {
-            "total_extra": int(g["extra_spans"].sum()),
-            "runs_with_extra": int((g["extra_spans"] > 0).sum()),
-            "mean_per_run": round(float(g["extra_spans"].mean()), 4),
+        "new_false_positives": {
+            "total": int(sum(new_false.values())),
+            "by_category": dict(new_false),
+            "runs_with_new": int((g["new_false"].map(len) > 0).sum()),
+            "mean_per_run": round(float(g["new_false"].map(len).mean()), 4),
+            "removed_total": int(g["removed"].sum()),
+            "runs_with_removed": int((g["removed"] > 0).sum()),
         },
+        "span_metrics": span_metrics(g),
     }
 
 
 injection_result = {
     "rounds": INJECTION_ROUNDS,
     "note": "장마다 범주 4개를 한 번씩, 한 번에 문장 하나만 끼움 (같은 장의 주입은 서로 독립인 별도 실행)",
+    "definitions": {
+        "new_false_positive": "주입 구간과 겹치지 않고, (STT 문장 글, 구간 글)로 대응시킨 주입 전 후보에 없던 후보. 사라진 후보와 상쇄하지 않는다",
+        "precision": "범주별: 그 범주로 검출된 주입 중 정답 범주 / (그 수 + 그 범주의 새 오탐)",
+        "span_metrics": "정답 = 주입 문장 형태소, 예측 = 주입과 겹친 후보 + 새 후보의 형태소; 범주 일치 필요",
+    },
     "runs": {
         "total": len(runs_df),
+        "already_in_stt_skipped": len(skipped),
+        "already_in_stt_by_category": skipped["truth_fine"].value_counts().to_dict(),
         "not_found": int((~runs_df["found"]).sum()),
         "no_tokens": int((runs_df["found"] & (runs_df["inject_tokens"] == 0)).sum()),
     },
-    **{side: injection_summary(usable[usable["side"] == side]) for side in ("dev", "test")},
+    **{
+        side: injection_summary(usable[usable["side"] == side], skipped[skipped["side"] == side])
+        for side in ("dev", "test")
+    },
 }
-# other_slide 로 예측한 것 중 끼운 문장의 출처 장을 가리키는지는 문장 출처를 따로 기록하지 않아 보지 않는다
-for side in ("dev", "test"):
-    injection_result[side].pop("other_slide_points_to_source")
 print(json.dumps(injection_result, ensure_ascii=False, indent=1))
 
 # %% 결과 저장

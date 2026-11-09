@@ -14,6 +14,7 @@
 - 쓰는 곳: outputs/rubrics.sqlite 의 evaluation_rubrics · slide_evaluations (읽기만), 캐시 표 (읽기 + 새 답 쓰기),
   reports/results/sentence_fallback.json (결과)
 - 먼저 01_build_rubrics.py 로 평가 기준을, 04_evaluate_takes.py 로 정상 기준 채점을 DB 에 만들어 둔다
+  (평가 기준이 없는 장은 결과의 `excluded_slides` 에 적고 뺀다; 최신 DB 는 모든 장이 있어 빈 목록이어야 한다)
 """
 
 # %% 준비
