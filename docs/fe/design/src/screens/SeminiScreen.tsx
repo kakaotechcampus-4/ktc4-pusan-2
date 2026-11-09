@@ -1,4 +1,4 @@
-// Draft #1104·#1110의 새미나이 UI. API와 저장소는 사용하지 않는다.
+// #1104·#1110이 반영된 새미나이 패널의 독립 UI 샘플. 실제 API와 저장소는 사용하지 않는다.
 import { useEffect, useId, useRef, useState } from 'react';
 import { publicUrl } from '@/lib/publicUrl';
 import type { Navigate } from './shared';
