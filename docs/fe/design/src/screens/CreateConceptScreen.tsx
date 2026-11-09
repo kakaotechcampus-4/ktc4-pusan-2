@@ -179,6 +179,16 @@ function PreviewDialog({
   const titleId = useId();
   const [page, setPage] = useState(0);
   const isMapping = preview.kind === '매핑';
+  const saveButton = useRef<HTMLButtonElement>(null);
+  const saveStatus = useRef<HTMLParagraphElement>(null);
+  const wasMapping = useRef(mapping);
+  const canSave = !saved && !edited && !mapping && blocks.every((text) => text.trim());
+  useEffect(() => {
+    const finished = wasMapping.current && !mapping;
+    wasMapping.current = mapping;
+    if (!isMapping || !finished || ref.current?.contains(document.activeElement)) return;
+    (canSave ? saveButton.current : saveStatus.current)?.focus();
+  }, [isMapping, mapping, canSave]);
   const isSlideReview = preview.kind === '슬라이드 확인';
   const isFinalReview = preview.kind === '최종 확인';
   useEffect(() => {
@@ -274,18 +284,22 @@ function PreviewDialog({
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
-              className="create-secondary"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
+              className="create-secondary aria-disabled:opacity-55"
+              aria-disabled={page === 0}
+              onClick={() => {
+                if (page > 0) setPage(page - 1);
+              }}
             >
               이전 장
             </button>
             <span>{page + 1} / 3장</span>
             <button
               type="button"
-              className="create-secondary"
-              disabled={page === 2}
-              onClick={() => setPage(page + 1)}
+              className="create-secondary aria-disabled:opacity-55"
+              aria-disabled={page === TITLES.length - 1}
+              onClick={() => {
+                if (page < TITLES.length - 1) setPage(page + 1);
+              }}
             >
               다음 장
             </button>
@@ -300,24 +314,27 @@ function PreviewDialog({
           )}
           {isMapping && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-              <p role="status">
+              <p ref={saveStatus} role="status" tabIndex={-1}>
                 {saved ? '저장 완료' : '저장 필요'} · 슬라이드 V{preview.version} / 대본 V1
               </p>
               <div className="flex gap-3">
                 {edited && (
                   <button
                     type="button"
-                    className="create-secondary"
-                    disabled={mapping}
-                    onClick={onMap}
+                    className="create-secondary aria-disabled:opacity-55"
+                    aria-disabled={mapping}
+                    onClick={() => {
+                      if (!mapping) onMap();
+                    }}
                   >
                     {mapping ? '매핑 중…' : '수정 대본 매핑'}
                   </button>
                 )}
                 <button
+                  ref={saveButton}
                   type="button"
                   className="create-primary"
-                  disabled={saved || edited || mapping || blocks.some((text) => !text.trim())}
+                  disabled={!canSave}
                   onClick={onSave}
                 >
                   저장

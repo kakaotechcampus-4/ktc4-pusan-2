@@ -403,7 +403,9 @@ it('설문(#776): 홈은 참여 안내 · 남은 설문만 두고, 설문은 리
 
   await render('home', 'consent');
   await click('안내 보고 참여하기');
-  expect(button('동의하고 참여하기')).toBeDefined();
+  await click('동의하고 참여하기');
+  expect(document.activeElement?.textContent).toContain('사용자 테스트 참여에 동의했어요.');
+  expect(document.activeElement?.getAttribute('role')).toBe('status');
   await act(async () => root.render(null));
 
   await render('home', 'pending');
@@ -413,6 +415,13 @@ it('설문(#776): 홈은 참여 안내 · 남은 설문만 두고, 설문은 리
   await render('report');
   await click('이번 분석 설문 남기기');
   expect(button('설문 보내기')?.disabled).toBe(true);
+  await act(async () => {
+    host.querySelector<HTMLInputElement>('input[name="accuracy"][value="4"]')!.click();
+    host.querySelector<HTMLInputElement>('input[name="usefulness"][value="5"]')!.click();
+  });
+  await click('설문 보내기');
+  expect(document.activeElement?.textContent).toContain('설문을 보냈어요');
+  expect(document.activeElement?.getAttribute('role')).toBe('status');
   await act(async () => root.render(null));
 
   await render('report', 'survey-sent');

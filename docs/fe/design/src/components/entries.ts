@@ -34,7 +34,7 @@ export const componentEntries: GuideComponent[] = [
       '화면을 옮기면 ButtonLink(라우터 링크), 그 자리에서 무언가 하면 Button이다.',
       'Button은 기본으로 type="button"이다. 폼을 제출할 때만 type="submit"을 준다.',
       '처리 중에는 막고 문구를 "…하는 중…"으로 바꾼다. 같은 요청을 두 번 보내지 않는다.',
-      '누른 버튼이 그 자리에서 막히면(처리 중 · 끝 장) disabled 대신 aria-disabled를 준다. aria-disabled는 마우스만 막으므로 Button이 Enter · Space의 click도 onClick에 넘기지 않고 제출도 막는다(#874 리뷰). disabled는 쥐고 있던 초점을 body로 떨어뜨려 창 밖으로 빠진다(#818 · #845). 모양은 둘이 같다.',
+      '누른 버튼이 그 자리에서 막히면(처리 중 · 끝 장) disabled 대신 aria-disabled를 준다. aria-disabled는 비활성 상태를 알린다. CSS로 포인터 입력을 막고 Button이 Enter · Space의 click을 onClick에 넘기지 않으며 기본 제출도 막는다(#874 리뷰). disabled는 쥐고 있던 초점을 body로 떨어뜨려 창 밖으로 빠진다(#818 · #845). 모양은 둘이 같다.',
       'sm(36px)은 표 · 카드 안처럼 좁은 곳에서만 쓴다. 기본은 md(44px).',
     ],
     tokens: ['coral-deep', 'ink', 'panel', 'cream'],
@@ -394,7 +394,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     code: `// 제품: 리포트 아래 줄. 분석이 끝난 리포트에만 버튼을 둔다
 <TakeSurvey takeId={report.take_id} completed={report.status === 'COMPLETED'} />`,
     productNote:
-      '서버에 보내지 않는다. 보내기를 누르면 바로 닫히고 오류 · 중복 처리는 그리지 않는다. 문항 문구는 아직 임시다(팀 확정 전).',
+      '리포트 샘플에서는 보내면 완료 안내로 초점이 옮겨 간다. 단독 창 예제는 닫히는 동작만 보여 준다. 서버 전송 · 오류 · 중복 처리는 재현하지 않는다. 문항 문구는 아직 임시다(팀 확정 전).',
   },
   {
     kind: 'component',
@@ -424,7 +424,8 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     knownIssues: [
       '보관 기한 "2026년 12월 31일"은 임시 값이다. BE 삭제 일정과 함께 팀이 정한다(BE take-survey.md 5절).',
     ],
-    productNote: '서버에 보내지 않는다. 동의를 누르면 바로 닫힌다.',
+    productNote:
+      '홈 샘플에서는 동의하면 완료 안내로 초점이 옮겨 간다. 단독 창 예제는 닫히는 동작만 보여 준다. 서버 전송은 재현하지 않는다.',
   },
   {
     kind: 'component',

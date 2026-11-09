@@ -31,7 +31,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
  *
  * 누른 버튼이 그 자리에서 막히면(저장 중 등) `disabled` 대신 `aria-disabled` 를 줍니다.
  * `disabled` 는 쥐고 있던 초점을 body 로 떨어뜨립니다 (#818 · #845). 모양은 둘이 같습니다.
- * `aria-disabled` 는 마우스만 막아(pointer-events-none) Enter · Space 는 그대로 click 을 냅니다 —
+ * CSS로 포인터 입력을 막아도 Enter · Space 는 click 을 냅니다 —
  * 그래서 여기서 onClick 을 부르지 않고 제출도 막습니다. 쓰는 곳마다 가드를 적지 않아도 됩니다 (#874 리뷰)
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(

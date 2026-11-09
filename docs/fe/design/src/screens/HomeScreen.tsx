@@ -1,5 +1,5 @@
 // 제품 홈 · 내 피치(`frontend/src/features/pitch/HomePage.tsx`)의 설계서 샘플.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/ui/Button';
 import { DeletePitchDialog } from '@/ui/dialogs/DeletePitchDialog';
@@ -61,6 +61,11 @@ const HOME_TIPS = [
 const HOME_TIP_INTERVAL_MS = 8000;
 
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
+  const [agreed, setAgreed] = useState(false);
+  const consentStatus = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (agreed) consentStatus.current?.focus();
+  }, [agreed]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [tipPaused, setTipPaused] = useState(
@@ -98,7 +103,22 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
   return (
     <div className="pitch-create flex min-h-[40rem] flex-col bg-greige text-ink">
-      {stateId === 'consent' && <ConsentPrompt onAgree={() => onNavigate('home', 'default')} />}
+      {stateId === 'consent' &&
+        (agreed ? (
+          <div className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10">
+            <p
+              ref={consentStatus}
+              role="status"
+              tabIndex={-1}
+              className="border-2 border-ink bg-coral-wash px-4 py-3 text-sm"
+            >
+              <span className="block font-bold">사용자 테스트 참여에 동의했어요.</span>
+              <span className="block">설문은 각 리포트에서 남길 수 있어요.</span>
+            </p>
+          </div>
+        ) : (
+          <ConsentPrompt onAgree={() => setAgreed(true)} />
+        ))}
       {stateId === 'pending' && <PendingSurveys onNavigate={onNavigate} />}
       <div className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 lg:px-10">
         <div className="flex flex-wrap items-end justify-between gap-5">
