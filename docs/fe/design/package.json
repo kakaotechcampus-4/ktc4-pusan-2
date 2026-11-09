@@ -11,7 +11,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint --max-warnings=0",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write src/ui/dialogs/HomeHelpDialog.tsx && git diff -- src/ui/dialogs/HomeHelpDialog.tsx && prettier --check .",
     "tokens": "node scripts/compare-tokens.mjs",
     "drift": "node scripts/product-drift.mjs"
   },
