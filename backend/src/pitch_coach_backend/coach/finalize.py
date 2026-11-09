@@ -99,7 +99,27 @@ class CoachFinalizeRecovery:
     def restart(self, take_id: uuid.UUID) -> None:
         # 코치 상태가 없으니 처음부터 replay 를 붙여 부른다 (`_first_request`). 띄우기 전에 앱이
         # 내려가도 Take 는 FINALIZING 으로 남아 주기 작업 · 다시 뜰 때 이어 간다
-        spawn(take_id, None, client=get_coach_client(), store=get_coach_store())
+        restart(take_id, client=get_coach_client(), store=get_coach_store())
+
+
+def restart(take_id: uuid.UUID, *, client: CoachClient, store: CoachStore) -> None:
+    """관리자가 Take 결과를 기다리는 중으로 되돌린 Take 의 finalize 를 띄운다.
+
+    같은 Take 의 finalize 가 아직 돌고 있으면 그 작업이 끝난 뒤 띄운다. 그 작업은 Take 를 FAILED
+    로 적고 끝나 가는 앞 작업이다. 되돌리기 전에 일을 마쳤으므로 `spawn` 처럼 건너뛰면 되돌린 Take
+    를 아무도 맡지 않는다. 앱을 내려 끊겼으면 띄우지 않는다 — 다시 뜰 때 이어 간다.
+    """
+    running = _running.get(take_id)
+    if running is None:
+        spawn(take_id, None, client=client, store=store)
+        return
+    logger.info("앞 finalize 가 끝나면 다시 띄운다 take=%s", take_id)
+
+    def after(done: asyncio.Task[None]) -> None:
+        if not done.cancelled():
+            spawn(take_id, None, client=client, store=store)
+
+    running.add_done_callback(after)
 
 
 def spawn(

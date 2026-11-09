@@ -3,6 +3,7 @@
 Take 결과를 기다리는 중으로 되돌리면 기존 finalize 가 원자료(replay)로 이어 간다.
 """
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -12,9 +13,10 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach import finalize
 from pitch_coach_backend.coach.store import DbCoachStore
+from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond
-from tests.coach_fakes import FakeClient
+from tests.coach_fakes import TAKE_ID, FakeClient, FakeStore, source, take_result
 from tests.coach_storage_seed import (  # noqa: F401
     finalizing,
     make_take,
@@ -149,3 +151,58 @@ def test_restart_spawns_finalize_without_a_snapshot(monkeypatch):
     finalize.CoachFinalizeRecovery().restart(take_id)
 
     assert spawned == [(take_id, None)]
+
+
+@pytest.mark.anyio
+async def test_restart_follows_the_finalize_that_is_still_ending(monkeypatch):
+    """앞 finalize 가 Take 를 FAILED 로 적고 아직 끝나는 중이면 건너뛰지 않고 끝난 뒤 띄운다."""
+    monkeypatch.setattr(finalize, "_running", TaskRegistry())
+    marked, release = asyncio.Event(), asyncio.Event()
+
+    class EndingSlowly(FakeStore):
+        async def fail_take_result(self, take_id) -> bool:
+            await super().fail_take_result(take_id)
+            marked.set()
+            await release.wait()
+            return True
+
+    client, store = FakeClient(), EndingSlowly(source=source())
+    # 앞 작업은 Take 결과를 못 만들고, 되돌린 뒤의 작업은 만든다
+    client.finalize_replies = [None, take_result(replayed=True)]
+    ending = finalize.spawn(TAKE_ID, None, client=client, store=store)
+    await asyncio.wait_for(marked.wait(), 1)
+
+    finalize.restart(TAKE_ID, client=client, store=store)
+    assert len(client.finalized) == 1
+
+    release.set()
+    await ending
+    await asyncio.gather(*finalize._running.tasks())
+
+    assert len(client.finalized) == 2
+    assert client.finalized[1]["replay"] is not None
+    assert len(store.saved) == 1
+
+
+@pytest.mark.anyio
+async def test_restart_does_not_follow_a_finalize_stopped_by_shutdown(monkeypatch):
+    """앱을 내려 앞 작업이 끊겼으면 띄우지 않는다. Take 는 FINALIZING 으로 남아 다시 뜰 때
+    이어 간다."""
+    monkeypatch.setattr(finalize, "_running", TaskRegistry())
+    entered = asyncio.Event()
+
+    class Hanging(FakeClient):
+        async def finalize(self, request):
+            self.finalized.append(request)
+            entered.set()
+            await asyncio.Event().wait()
+
+    client, store = Hanging(), FakeStore(source=source())
+    finalize.spawn(TAKE_ID, None, client=client, store=store)
+    await asyncio.wait_for(entered.wait(), 1)
+    finalize.restart(TAKE_ID, client=client, store=store)
+
+    await finalize._running.stop_all(1)
+
+    assert len(client.finalized) == 1
+    assert len(finalize._running) == 0

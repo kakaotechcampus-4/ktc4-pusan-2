@@ -78,7 +78,9 @@ class FinalizeRecovery(Protocol):
         ...
 
     def restart(self, take_id: uuid.UUID) -> None:
-        """Take 결과를 기다리는 중으로 되돌린 Take 의 finalize 를 띄운다. 이벤트 루프에서 부른다."""
+        """Take 결과를 기다리는 중으로 되돌린 Take 의 finalize 를 띄운다. 이벤트 루프에서 부른다.
+        같은 Take 의 앞 finalize 가 아직 끝나는 중이면 그 뒤에 띄운다. 띄우지 못하면 예외를 올린다
+        — Take 는 Take 결과를 기다리는 중으로 남아 finalize 주기 작업이 이어 간다."""
         ...
 
 
