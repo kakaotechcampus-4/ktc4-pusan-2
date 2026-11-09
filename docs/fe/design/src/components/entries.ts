@@ -327,7 +327,7 @@ import { TakeStatusBadge } from '@/features/report/history/TakeStatusBadge';
       '보관 기한 "2026년 12월 31일"은 동의 안내(테스트 참여 안내 창)와 같은 임시 값이다. BE 삭제 일정과 함께 팀이 정하면 두 곳을 같이 고친다(제품은 SURVEY_RETENTION_UNTIL 한 곳).',
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
-    sources: ['frontend/src/features/pitch/DeletePitchDialog.tsx'],
+    sources: ['frontend/src/features/pitch/home/DeletePitchDialog.tsx'],
     file: 'src/ui/dialogs/DeletePitchDialog.tsx',
     props: [
       ['pitchTitle · takeCount', 'string · number', '알릴 피치'],
@@ -413,7 +413,7 @@ import { TakeStatusBadge } from '@/features/report/history/TakeStatusBadge';
       '저장하는 중에는 Esc · 나중에를 막는다(버튼은 aria-disabled). 동의하면 연 버튼이 카드와 함께 사라지므로 완료 안내(role="status", tabIndex=-1)를 바로 만들고 그 안내로 초점을 한 번 옮긴다. 남은 설문 목록을 기다리지 않고, 늦게 와도 초점을 빼앗지 않으며 목록이 비어도 body로 빠지지 않는다(#845).',
     ],
     tokens: ['panel', 'ink', 'line'],
-    sources: ['frontend/src/features/pitch/HomeSurveyNotice.tsx'],
+    sources: ['frontend/src/features/pitch/home/HomeSurveyNotice.tsx'],
     file: 'src/ui/dialogs/TestConsentDialog.tsx',
     props: [
       ['onClose', '() => void', '나중에 · Esc · 동의 저장 뒤'],

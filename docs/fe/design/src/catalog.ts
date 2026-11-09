@@ -165,12 +165,12 @@ const productScreens: GuideScreen[] = [
     ],
     tokens: ['greige', 'panel', 'ink', 'coral-deep', 'line-strong', 'coral-wash'],
     sources: [
-      'frontend/src/features/pitch/HomePage.tsx',
-      'frontend/src/features/pitch/HomeSurveyNotice.tsx',
-      'frontend/src/features/pitch/HomePitchCard.tsx',
-      'frontend/src/features/pitch/PitchMoreMenu.tsx',
-      'frontend/src/features/pitch/DeletePitchDialog.tsx',
-      'frontend/src/features/pitch/homeFormat.ts',
+      'frontend/src/features/pitch/home/HomePage.tsx',
+      'frontend/src/features/pitch/home/HomeSurveyNotice.tsx',
+      'frontend/src/features/pitch/home/HomePitchCard.tsx',
+      'frontend/src/features/pitch/home/PitchMoreMenu.tsx',
+      'frontend/src/features/pitch/home/DeletePitchDialog.tsx',
+      'frontend/src/features/pitch/home/homeFormat.ts',
       'frontend/src/shared/api/pitch.ts',
     ],
     productNote:

@@ -29,7 +29,7 @@ import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
-import { HomePage } from '@/features/pitch/HomePage';
+import { HomePage } from '@/features/pitch/home/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 import { ChatAgentHost } from '@/features/chat/ChatAgentHost';
 

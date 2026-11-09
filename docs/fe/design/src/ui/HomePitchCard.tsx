@@ -1,4 +1,4 @@
-// 제품 `frontend/src/features/pitch/HomePitchCard.tsx`에서 복사해 시작했다. 설계서가 관리한다.
+// 제품 `frontend/src/features/pitch/home/HomePitchCard.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ButtonLink } from './Button';

@@ -21,7 +21,7 @@ vi.mock('@/features/onboarding/WelcomePage', () => ({ WelcomePage: () => <p>서�
 vi.mock('@/features/auth/LoginPage', () => ({ LoginPage: () => <p>로그인</p> }));
 vi.mock('@/shared/ui/AppHeader', () => ({ AppHeader: () => <header>메뉴</header> }));
 vi.mock('@/features/chat/ChatAgentHost', () => ({ ChatAgentHost: () => null }));
-vi.mock('@/features/pitch/HomePage', () => ({ HomePage: () => <p>내 피치</p> }));
+vi.mock('@/features/pitch/home/HomePage', () => ({ HomePage: () => <p>내 피치</p> }));
 vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
   state.stageImports++;
   return { RehearsalPage: () => <p>리허설 {useParams().takeId}</p> };
