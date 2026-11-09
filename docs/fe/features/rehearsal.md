@@ -328,8 +328,6 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 - 측정하지 못한 값은 `0`이 아니라 `null`입니다.
 - 발표 중 서버로 가는 WS `metrics`의 모양은 [AI architecture.md](../../ai/architecture.md) 6-2를 따릅니다.
 
-> **작성 필요** — `useGazeWorker`의 프레임 예산 · 백프레셔 수치(`/dev/media` 계기판 기준).
-
 ## 9. 테스트
 
 | 무엇 | 위치 |
@@ -347,11 +345,7 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 | `/dev/stt` | 실서버 연결(`VITE_USE_MOCK=false`, 3000 포트) |
 | `/dev/stage` | 무대 레이아웃 · 테두리가 리렌더 없이 바뀌는지 |
 
-> **작성 필요** — 실제 카메라 · 마이크가 필요한 확인 절차(다른 기기는 `npm run dev:lan`).
-
 ## 10. 열린 질문 · 알려진 한계
 
 - **BE `GET /prepare`의 짝 규칙** — 아직 "장 수가 같은 가장 최근 발표자료"라, FE 피치 수정의 규칙(가장 최근 대본은 최신 슬라이드)과 다릅니다. 지금은 장치 점검이 지난 자료를 알리고 확인받아 메웁니다(2-3). BE 규칙을 맞출지는 BE와 정할 안건입니다([pitch-create.md](pitch-create.md) 10절).
 - **미정 항목**(I-03 · I-17 · I-18 · I-19) — [frontend/AGENTS.md](../../../frontend/AGENTS.md) "아직 안 정해진 것"을 봅니다.
-
-> **작성 필요** — 발표 중 마이크 · 카메라가 끊겼을 때의 화면. 장치가 끊긴 것은 알아채지만(`media/useCameraStream.ts`의 트랙 `ended`), 사용자에게 보이는 안내와 다시 연결 흐름을 정리해야 합니다.
