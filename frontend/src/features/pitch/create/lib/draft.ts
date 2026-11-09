@@ -30,7 +30,7 @@ export const STEPS: { node: PaneNode; label: string; optional?: boolean }[] = [
 /** 발표 제목 최대 글자 수. BE 의 `title: StringConstraints(min_length=1, max_length=50)` 과 같습니다 */
 export const MAX_TITLE_CHARS = 50;
 
-/** 발표시간 범위(분). 입력 칸이 아니라 −/+ 로만 바꿉니다 */
+/** 발표시간 입력 범위(분). */
 export const MIN_TIME_LIMIT_MIN = 1;
 export const MAX_TIME_LIMIT_MIN = 60;
 
@@ -131,18 +131,23 @@ export type UploadedSlides = Required<
   pageCount: number;
 };
 
+/** 업로드가 실패한 이유. 문구와 "다시 시도"를 낼지는 `SlidePane` 이 정합니다 */
+export type SlideUploadFailure = 'upload' | 'invalid' | 'complex' | 'busy' | 'open';
+
 /**
  * 슬라이드 업로드 진행 상태. 버전과 따로 둡니다 — 올리는 도중에는 아직 버전에 채울 것이 없고,
  * 실패하면 버전을 만들지 않은 채로 "다시 시도"할 파일만 들고 있어야 합니다.
  *
  * `upload` 는 서버에 못 올린 것, `invalid` 는 서버가 PDF 를 열지 못해 거절한 것(BE #298 — 깨짐 · 암호),
  * `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다. `open` 은 BE 가 쪽수를 주지 않을 때만 납니다.
+ * `complex` 는 쪽이나 구성 요소가 너무 많아 거절한 것(다시 올려도 같음), `busy` 는 서버가 바빠
+ * 받지 못한 것(503 — 잠시 뒤 같은 파일로 다시 올리면 됨)입니다.
  * 피치를 만들다 실패한 것도 `upload` 입니다 — 같은 파일로 다시 시도하면 피치부터 다시 만듭니다.
  */
 export type SlideUpload =
   | { status: 'idle' }
   | { status: 'uploading'; file: File }
-  | { status: 'failed'; file: File; reason: 'upload' | 'invalid' | 'open' };
+  | { status: 'failed'; file: File; reason: SlideUploadFailure };
 
 /**
  * 대본을 서버에 올려 슬라이드로 나누는 진행 상태. 흐름은 `scriptParse.ts` 가 몹니다.
@@ -223,12 +228,11 @@ export interface PitchDraft {
   /**
    * 목표보다 짧게 발표해도 되는 시간(초).
    *
-   * **null 은 모른다는 뜻입니다.** 수정 화면은 피치를 목록 API(`GET /pitches`)에서 읽는데, 거기에
-   * 허용오차가 없습니다 (BE 에 단건 조회를 요청해 둠). 모르는 값을 0 으로 채우면 저장할 때
-   * 서버의 원래 값을 0 으로 덮어쓰므로, 사용자가 정할 때까지 저장을 막습니다 (`infoReady`).
+   * 수정 화면은 단건 조회(`fromPitchDetail`)의 숫자 편차로 초기화해 저장된 값을 유지합니다.
+   * 편집 중 비운 입력은 null 로 두고, blur 또는 저장 시(`normalizeInfo`) 0 으로 확정합니다.
    */
   lowerToleranceSec: number | null;
-  /** 목표보다 길게 발표해도 되는 시간(초). null 은 모름 — `lowerToleranceSec` 와 같습니다 */
+  /** 목표보다 길게 발표해도 되는 시간(초). 초기화·빈칸 처리는 `lowerToleranceSec` 와 같습니다 */
   upperToleranceSec: number | null;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
@@ -255,9 +259,26 @@ export const infoChanged = (a: InfoForm, b: InfoForm): boolean =>
 /** 저장할 수 있는 발표정보 — 허용오차까지 아는 것 */
 export type KnownInfo = InfoForm & { lowerToleranceSec: number; upperToleranceSec: number };
 
-/** 허용오차를 아나. 모르면 저장하지 않습니다 — 서버의 원래 값을 덮어쓰게 됩니다 */
+/** 편집 중 비운 편차만 저장 경계에서 0으로 확정합니다. */
+export const normalizeInfo = (form: InfoForm): KnownInfo => ({
+  ...form,
+  lowerToleranceSec: form.lowerToleranceSec ?? 0,
+  upperToleranceSec: form.upperToleranceSec ?? 0,
+});
+
+/** 시간 입력이 유효한가. 모르는 허용오차를 0으로 저장하지 않습니다 */
 export const infoReady = (form: InfoForm): form is KnownInfo =>
-  form.lowerToleranceSec !== null && form.upperToleranceSec !== null;
+  form.lowerToleranceSec !== null &&
+  form.upperToleranceSec !== null &&
+  Number.isInteger(form.timeLimitSec) &&
+  form.timeLimitSec >= MIN_TIME_LIMIT_MIN * 60 &&
+  form.timeLimitSec <= MAX_TIME_LIMIT_MIN * 60 &&
+  Number.isInteger(form.lowerToleranceSec) &&
+  form.lowerToleranceSec >= 0 &&
+  form.lowerToleranceSec <= Math.min(MAX_TOLERANCE_SEC, form.timeLimitSec) &&
+  Number.isInteger(form.upperToleranceSec) &&
+  form.upperToleranceSec >= 0 &&
+  form.upperToleranceSec <= MAX_TOLERANCE_SEC;
 
 /** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 export const latestSlides = (d: PitchDraft): SlideVersion | null => d.slides.at(-1) ?? null;

@@ -113,7 +113,7 @@ def test_upload_presentation_persists_version_one(
 
     result = presentation_service.upload_presentation_service(db_session, pitch_id, dto)
 
-    expected_key = f"pitches/{pitch_id}/presentations/1.pdf"
+    expected_key = f"pitches/{pitch_id}/presentations/{result.presentation_version_id}.pdf"
     upload_mock.assert_called_once_with(
         dto.presentation_file, expected_key, content_type="application/pdf"
     )

@@ -7,6 +7,8 @@
 "어디까지 맞았는지" 를 알려주는 힌트가 된다.
 """
 
+from fastapi import status
+
 from pitch_coach_backend.core.exceptions import (
     AppException,
     ConflictException,
@@ -58,3 +60,11 @@ class ServiceNotOpen(ForbiddenException):
 
     code = "SERVICE_NOT_OPEN"
     message = "아직 서비스가 공개되지 않았습니다."
+
+
+class TooManyLoginStarts(AppException):
+    """같은 IP 에서 로그인 시작이 너무 잦다. 인증 요청을 DB 에 쓰기 전에 거절한다."""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "TOO_MANY_REQUESTS"
+    message = "로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."

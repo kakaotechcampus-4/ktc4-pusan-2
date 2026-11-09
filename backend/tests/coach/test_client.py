@@ -7,7 +7,12 @@ from typing import Any
 import httpx
 import pytest
 
-from pitch_coach_backend.coach.client import EVALUATE_PATH, FINALIZE_PATH, PLAN_PATH
+from pitch_coach_backend.coach.client import (
+    EVALUATE_PATH,
+    FINALIZE_PATH,
+    PLAN_PATH,
+    EvaluateMiss,
+)
 from pitch_coach_backend.coach.replies import (
     EvaluateReply,
     FinalizeReply,
@@ -118,7 +123,7 @@ async def test_evaluate_is_never_retried(response: httpx.Response):
         seen.append(1)
         return response
 
-    assert await ai(handler).evaluate(EVALUATE) is None
+    assert await ai(handler).evaluate(EVALUATE) is EvaluateMiss.FAILED
     assert seen == [1]
 
 
@@ -128,7 +133,7 @@ async def test_slow_evaluate_is_dropped():
         await asyncio.sleep(1)
         return httpx.Response(200, json=example("evaluate/response.json"))
 
-    assert await ai(handler, evaluate_timeout_sec=0.05).evaluate(EVALUATE) is None
+    assert await ai(handler, evaluate_timeout_sec=0.05).evaluate(EVALUATE) is EvaluateMiss.TIMEOUT
 
 
 @pytest.mark.anyio
@@ -192,7 +197,10 @@ async def test_evaluate_reply_that_breaks_the_contract_is_dropped(breaking):
     body = example("evaluate/response.json")
     breaking(body)
 
-    assert await ai(lambda request: httpx.Response(200, json=body)).evaluate(EVALUATE) is None
+    assert (
+        await ai(lambda request: httpx.Response(200, json=body)).evaluate(EVALUATE)
+        is EvaluateMiss.FAILED
+    )
 
 
 @pytest.mark.anyio
@@ -212,7 +220,7 @@ async def test_evaluate_reply_that_cannot_be_stored_is_dropped(unstorable):
     def reply(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=raw, headers={"content-type": "application/json"})
 
-    assert await ai(reply).evaluate(EVALUATE) is None
+    assert await ai(reply).evaluate(EVALUATE) is EvaluateMiss.FAILED
 
 
 @pytest.mark.anyio

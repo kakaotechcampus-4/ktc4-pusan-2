@@ -111,3 +111,27 @@ describe('titleFromFile', () => {
     expect(titleFromFile('.pdf')).toBe('새 발표');
   });
 });
+
+it('직접 입력한 시간이 비었거나 범위를 벗어나면 저장하지 않는다', () => {
+  const form = {
+    title: '발표',
+    presentationDate: '',
+    timeLimitSec: 300,
+    lowerToleranceSec: 0,
+    upperToleranceSec: 0,
+  };
+  for (const patch of [
+    { timeLimitSec: 0 },
+    { timeLimitSec: 3601 },
+    { timeLimitSec: NaN },
+    { lowerToleranceSec: null },
+    { lowerToleranceSec: -1 },
+    { lowerToleranceSec: 301 },
+    { upperToleranceSec: 301 },
+    { upperToleranceSec: 0.5 },
+  ])
+    expect(infoReady({ ...form, ...patch })).toBe(false);
+  expect(
+    infoReady({ ...form, timeLimitSec: 90, lowerToleranceSec: 90, upperToleranceSec: 300 }),
+  ).toBe(true);
+});

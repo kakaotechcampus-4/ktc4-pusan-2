@@ -116,6 +116,7 @@ describe('에러 코드', () => {
   it('연결을 닫는 코드와 유지하는 코드를 가른다', () => {
     expect(isFatalError('TAKE_ENDED')).toBe(true);
     expect(isFatalError('TAKE_TAKEN_OVER')).toBe(true);
+    expect(isFatalError('TOO_MANY_STREAMS')).toBe(true);
     expect(isFatalError('BAD_AUDIO_FRAME')).toBe(false);
     expect(isFatalError('BAD_MESSAGE')).toBe(false);
   });

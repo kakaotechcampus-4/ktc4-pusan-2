@@ -24,7 +24,6 @@ export function GazeSetupView({
   status,
   unavailableMessage,
   overlay,
-  onEnable,
   onCancel,
 }: {
   /** 전체 화면으로 올리는 틀. 상자와 [그만하기]를 함께 감쌉니다 */
@@ -37,8 +36,6 @@ export function GazeSetupView({
   /** UNAVAILABLE 일 때의 이유와 할 일 (`useGazeSetup`) */
   unavailableMessage: string | null;
   overlay: boolean;
-  /** 아직 스트림이 없을 때 켜는 버튼. 브라우저 권한은 사용자 조작 안에서만 열립니다 */
-  onEnable: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -48,7 +45,7 @@ export function GazeSetupView({
         className={
           overlay
             ? 'fixed inset-0 z-50 bg-stage-deep'
-            : 'absolute inset-0 overflow-hidden border-2 border-ink bg-stage-deep shadow-[4px_4px_0_var(--color-line)]'
+            : 'absolute inset-0 overflow-hidden border border-line-strong bg-stage-deep'
         }
       >
         {/*
@@ -63,7 +60,7 @@ export function GazeSetupView({
           className="pointer-events-none absolute size-px opacity-0"
         />
 
-        <div ref={boxRef} className="absolute inset-0" />
+        <div ref={boxRef} className="absolute inset-0" aria-hidden={!live} />
 
         {overlay && (
           <button
@@ -93,15 +90,8 @@ export function GazeSetupView({
         )}
 
         {!live && (
-          <div className="absolute inset-0 grid place-items-center bg-stage/70 px-4 text-center">
-            <button
-              type="button"
-              onClick={onEnable}
-              className="min-h-11 rounded-full bg-coral-deep px-4 py-2 text-xs font-semibold text-white
-                       hover:bg-ink"
-            >
-              카메라·마이크 켜기
-            </button>
+          <div className="absolute inset-0 grid place-items-center bg-stage-deep px-4 text-center">
+            <p className="text-sm text-ink-stage">장비를 켜면 카메라 미리보기가 보여요.</p>
           </div>
         )}
       </div>

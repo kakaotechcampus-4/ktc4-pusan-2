@@ -106,6 +106,15 @@ def fresh_ai_slots(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ai_slots, "_rubric", weakref.WeakKeyDictionary())
 
 
+@pytest.fixture(autouse=True)
+def fresh_login_start_limiter() -> None:
+    """로그인 시작 횟수(`auth/controller.py`)를 테스트마다 비운다. TestClient 는 IP 가 늘 같아서
+    비우지 않으면 앞 테스트들이 부른 횟수가 쌓여 뒤 테스트의 로그인 시작이 거절된다."""
+    from pitch_coach_backend.module.auth.controller import login_start_limiter
+
+    login_start_limiter.reset()
+
+
 @pytest.fixture
 def user_id(db_session: Session) -> uuid.UUID:
     from pitch_coach_backend.module.user.entity import User

@@ -13,8 +13,6 @@ import {
   ProcessingPage,
   ReportPage,
   ConfirmPage,
-  DesignIndex,
-  DesignDraftRoute,
   AboutPage,
   UnsupportedPage,
   NotFoundPage,
@@ -25,6 +23,7 @@ import {
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
+import { DesktopGate } from './DesktopGate';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
@@ -76,9 +75,6 @@ const routes = [
   { path: '/dev/media',   title: '미디어 성능 검증 | 피치코치', element: <MediaDevPage /> },
   // 실시간 STT WebSocket 검증. takeId 를 손으로 넣어 WS 경로만 실서버에 붙인다.
   { path: '/dev/stt',     title: '실시간 STT 검증 | 피치코치', element: <SttDevPage /> },
-  // 디자인 시안. 실제 화면이 아니라 검토용이다 (docs/fe/design)
-  { path: '/dev/design',       title: '디자인 시안 | 피치코치', element: <DesignIndex /> },
-  { path: '/dev/design/:name', title: '디자인 시안 | 피치코치', element: <DesignDraftRoute /> },
   { path: '*',            title: '찾을 수 없음 | 피치코치', element: <NotFoundPage /> },
 ] satisfies { path: string; title: string; element: ReactElement }[];
 
@@ -92,13 +88,19 @@ const publicPaths = [
   '/dev/stage',
   '/dev/media',
   '/dev/stt',
-  '/dev/design',
-  '/dev/design/:name',
   '*',
 ];
 
+// 카메라 · 마이크로 연습하는 화면. 휴대폰 · 태블릿에서는 /unsupported 로 보냅니다 (#710).
+// 분석 대기 · 대본 확인 · 재시도 같은 리포트 쪽은 모바일에서도 열립니다.
+const practicePaths = [
+  '/pitch/:pitchId/device-check',
+  '/takes/:takeId/rehearsal',
+  '/takes/:takeId/exam',
+];
+
 // 홈과 같은 상단바(AppHeader)를 얹는 화면. 메뉴를 옮기거나 기록을 열어도 상단바가 바뀌지 않게 합니다.
-// 편집 화면(/pitch/new · edit)은 자체 헤더를, 장치 점검 · 리허설 · 분석 대기는 집중 화면이라 각자의 틀을 씁니다
+// 장치 점검 · 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다 (장치 점검은 #706 에서 단순화하며 같이 정리)
 const appHeaderPaths = [
   '/',
   '/pitches',
@@ -106,9 +108,11 @@ const appHeaderPaths = [
   '/me',
   '/takes/:takeId/retry',
   '/pitch/:id/comparison',
+  '/pitch/new',
+  '/pitch/:id/edit',
 ];
 
-export const appRoutes = routes.map((route) => {
+const screenRoutes = routes.map((route) => {
   const screen = (
     <Suspense
       fallback={
@@ -159,4 +163,10 @@ export const appRoutes = routes.map((route) => {
         children: [{ index: true, element: screen }],
       };
 });
+// 로그인 · 공개 예정 확인보다 바깥에서 막는다 — 못 하는 연습 주소로 로그인부터 시키지 않으려는 것입니다.
+export const appRoutes = screenRoutes.map((route) =>
+  practicePaths.includes(route.path)
+    ? { ...route, element: <DesktopGate>{route.element}</DesktopGate> }
+    : route,
+);
 export const router = createBrowserRouter(appRoutes);

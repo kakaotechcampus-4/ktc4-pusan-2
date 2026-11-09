@@ -15,6 +15,25 @@ const SILENT_WARN_MS = 8_000;
 //   근거 없는 숫자를 보여 주면 사용자가 그 숫자를 믿습니다.
 //   크기가 적당한지(작아요 · 적당해요 · 커요)는 AI 음량 판정을 받아서 보여 줄 자리입니다.
 
+/**
+ * 무음 경고 문구. 없으면 빈 문자열입니다.
+ *
+ * `from` 은 세기 시작한 시각(`performance.now`)입니다. 장치 점검은 평소 목소리를 **읽는 동안만** 셉니다 —
+ * 읽기 전에는 말할 이유가 없어서, 페이지를 연 뒤로 세면 가만히 있는 사람에게 "42초 동안 소리가
+ * 들어오지 않습니다"가 떴습니다.
+ *   undefined  처음부터 셉니다 (세는 때를 정하지 않은 화면)
+ *   null       세지 않습니다 (읽는 중이 아님)
+ */
+export function silenceText(
+  silentMs: number,
+  now: number,
+  from: number | null | undefined,
+): string {
+  if (from === null) return '';
+  const ms = from === undefined ? silentMs : Math.min(silentMs, now - from);
+  return ms > SILENT_WARN_MS ? `${Math.floor(ms / 1000)}초 동안 소리가 들어오지 않습니다` : '';
+}
+
 /** 화면과 코치 규칙이 쓰는 범위로 자릅니다 */
 function clampDb(db: number): number {
   return Math.max(DB_FLOOR, Math.min(0, db));
@@ -23,14 +42,18 @@ function clampDb(db: number): number {
 /**
  * 계량기를 칠합니다. **상태로 올리지 않습니다** — 초당 수십 번 바뀝니다.
  *
- * 두 모양을 한 함수가 처리합니다. 어느 쪽인지는 엘리먼트가 `data-meter`로 말합니다.
+ * 모양은 엘리먼트의 `data-meter`로 구분합니다.
+ *   input — 카메라 아래 믹서형 입력 미터(CSS 변수와 접근성 값)
  *   clip  — 칸 나뉜 막대(장치 점검). 칸 수를 유지해야 해서 폭 대신 잘라냅니다
  *   width — 한 줄 막대(리허설 준비)
  */
 function paint(el: HTMLElement | null, percent: number): void {
   if (!el) return;
   const v = Math.max(0, Math.min(100, percent));
-  if (el.dataset.meter === 'clip') {
+  if (el.dataset.meter === 'input') {
+    el.style.setProperty('--prepare-input-level', `${v.toFixed(1)}%`);
+    el.setAttribute('aria-valuenow', v.toFixed(0));
+  } else if (el.dataset.meter === 'clip') {
     el.style.clipPath = `inset(0 ${(100 - v).toFixed(1)}% 0 0)`;
   } else {
     el.style.width = `${v.toFixed(1)}%`;
@@ -53,7 +76,17 @@ function paint(el: HTMLElement | null, percent: number): void {
  * 그 구간의 음량 1초 기록을 만듭니다 (`voiceRecord.ts`). 시선 1초 기록과 같은 시계라야 같은 1초를
  * 가리킵니다. 장치 점검처럼 `clock` 이 없으면 쌓지 않습니다.
  */
-export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () => Ms } = {}) {
+export function useMicLevel(
+  stream: MediaStream | null,
+  {
+    clock,
+    silenceFrom,
+  }: {
+    clock?: () => Ms;
+    /** 무음 경고를 세기 시작한 시각. null 이면 경고하지 않습니다 (`silenceText`) */
+    silenceFrom?: () => number | null;
+  } = {},
+) {
   const meterRef = useRef<HTMLDivElement>(null);
   /**
    * 같은 음량을 한 군데 더 그릴 자리. 장치 점검의 "평소 목소리 읽기"가 읽을 문장 바로 아래에 둡니다 —
@@ -96,11 +129,15 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
   const [voice] = useState(createVoiceRecorder);
   // 루프가 매번 읽습니다. 이펙트 의존성에 넣으면 시계가 바뀔 때마다 계량기를 다시 엽니다
   const clockRef = useRef(clock);
+  const silenceFromRef = useRef(silenceFrom);
   useEffect(() => {
     clockRef.current = clock;
-  }, [clock]);
+    silenceFromRef.current = silenceFrom;
+  }, [clock, silenceFrom]);
 
   useEffect(() => {
+    paint(meterRef.current, 0);
+    paint(echoMeterRef.current, 0);
     if (!stream) return;
     voice.reset();
 
@@ -144,7 +181,7 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
         statsRef.current.silentMs = meter.silentMs();
         statsRef.current.speechLeqDb = speech.leqDb;
         statsRef.current.speechMs = speech.ms;
-        const percent = ((db - DB_FLOOR) / -DB_FLOOR) * 100;
+        const percent = meter.state === 'running' ? ((db - DB_FLOOR) / -DB_FLOOR) * 100 : 0;
         paint(meterRef.current, percent);
         paint(echoMeterRef.current, percent);
 
@@ -174,9 +211,12 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
         }
 
         if (silentRef.current) {
-          const ms = meter.silentMs();
-          silentRef.current.textContent =
-            ms > SILENT_WARN_MS ? `${Math.floor(ms / 1000)}초 동안 소리가 들어오지 않습니다` : '';
+          const text = silenceText(
+            meter.silentMs(),
+            performance.now(),
+            silenceFromRef.current ? silenceFromRef.current() : undefined,
+          );
+          if (silentRef.current.textContent !== text) silentRef.current.textContent = text;
         }
       };
       raf = requestAnimationFrame(loop);

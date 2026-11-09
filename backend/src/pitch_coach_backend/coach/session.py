@@ -32,11 +32,12 @@ import bisect
 import contextlib
 import logging
 import uuid
+from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from pitch_coach_backend.coach.client import CoachClient
+from pitch_coach_backend.coach.client import CoachClient, EvaluateMiss
 from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import (
     MetricSecond,
@@ -163,6 +164,9 @@ class CoachSession:
         self._event_buffer: RowBuffer[StoredEvent] | None = None
         # 앞 판단이 안 끝나 건너뛴 1초. AI 가 느려지면 는다
         self.skipped = 0
+        self.evaluate_calls = 0
+        self.evaluate_misses: Counter[EvaluateMiss] = Counter()
+        self.dropped_at_seal = 0
 
     @property
     def enabled(self) -> bool:
@@ -340,13 +344,18 @@ class CoachSession:
 
     async def _evaluate(self, t_ms: int, request: dict[str, Any]) -> None:
         assert self._client is not None and self._constants is not None
+        self.evaluate_calls += 1
         try:
             reply = await self._client.evaluate(request)
         except Exception:
             # 클라이언트는 실패를 None 으로 돌려준다. 여기 오면 버그다 — 발표는 멈추지 않는다
+            self.evaluate_misses[EvaluateMiss.FAILED] += 1
             logger.exception("코치 판단 중 예상 못 한 오류 take=%s t_ms=%d", self.take_id, t_ms)
             return
-        if reply is None or self._released:
+        if isinstance(reply, EvaluateMiss):
+            self.evaluate_misses[reply] += 1
+            return
+        if self._released:
             # 그 사이 Take 가 끝나 기억을 놓았다 (지움 · 떠남 · Take 결과를 띄움)
             return
         self.coach_state = reply.coach_state
@@ -408,6 +417,7 @@ class CoachSession:
             try:
                 await asyncio.wait_for(asyncio.shield(inflight), SEAL_WAIT_SEC)
             except TimeoutError:
+                self.dropped_at_seal += 1
                 await _cancel_and_wait(inflight)
             except asyncio.CancelledError:
                 # 판단이 다른 곳에서 끊겼다 (앱 종료). 이 작업이 취소된 게 아니면 재료를 마저 만든다
@@ -431,6 +441,8 @@ class CoachSession:
 
     def release(self) -> None:
         """Take 가 끝났다. 창 · 기억을 놓는다 (`coach_state` 는 한 Take 에 15KB 안팎)."""
+        if self.enabled and not self._released:
+            self._log_evaluate_summary()
         self._stopped = True
         self._released = True
         self._speaks = False
@@ -455,6 +467,21 @@ class CoachSession:
         self._slides = {}
         self._slide_changes = []
         self.events = []
+
+    def _log_evaluate_summary(self) -> None:
+        misses = self.evaluate_misses
+        logger.info(
+            "코치 evaluate 요약 take=%s calls=%d timeouts=%d skipped=%d failed=%d "
+            "paused=%d out_of_range=%d dropped_at_seal=%d",
+            self.take_id,
+            self.evaluate_calls,
+            misses[EvaluateMiss.TIMEOUT],
+            self.skipped,
+            misses[EvaluateMiss.FAILED],
+            misses[EvaluateMiss.PAUSED],
+            misses[EvaluateMiss.OUT_OF_RANGE],
+            self.dropped_at_seal,
+        )
 
     async def shutdown(self, timeout: float) -> None:
         """앱을 내린다. 진행 중인 판단을 끊고, 저장 못 한 이벤트를 한 번 더 넣어 본다."""

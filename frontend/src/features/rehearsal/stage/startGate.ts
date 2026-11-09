@@ -21,12 +21,15 @@ export type StartGate =
   | { kind: 'NO_MIC'; error: DeviceError | null }
   /** 서버 연결이 `ready` 를 주기를 기다리는 중. `slow` 면 오래 걸려 다시 시도를 띄웁니다 */
   | { kind: 'CONNECTING'; slow: boolean }
-  /**
-   * `ready` 전에 소켓이 포기했다. `ENDED` 는 서버가 이미 끝낸 Take(시작하지 않은 채 정리됨),
-   * `GAVE_UP` 은 그 밖의 이유(인증 등)
-   */
-  | { kind: 'FAILED'; reason: 'ENDED' | 'GAVE_UP' }
+  /** `ready` 전에 소켓이 포기했다 (`StartFailure`) */
+  | { kind: 'FAILED'; reason: StartFailure }
   | { kind: 'STARTED' };
+
+/**
+ * `ready` 전에 소켓이 포기한 이유. `ENDED` 는 서버가 이미 끝낸 Take(시작하지 않은 채 정리됨),
+ * `BUSY` 는 다른 창 · 기기에서 다른 Take 로 발표 중(`TOO_MANY_STREAMS`), `GAVE_UP` 은 그 밖의 이유(인증 등)
+ */
+export type StartFailure = 'ENDED' | 'BUSY' | 'GAVE_UP';
 
 /** `ready` 를 이만큼 기다려도 안 오면 다시 시도 · 장치 점검으로 돌아가기를 보여 줍니다 */
 export const CONNECT_SLOW_MS = 15_000;
@@ -41,7 +44,7 @@ export function startGate(state: {
   micError: DeviceError | null;
   /** 이 페이지의 소켓이 `ready` 를 받았다 */
   connected: boolean;
-  startFailure: 'ENDED' | 'GAVE_UP' | null;
+  startFailure: StartFailure | null;
   /** `ready` 를 `CONNECT_SLOW_MS` 넘게 기다렸다 */
   slow: boolean;
 }): StartGate {

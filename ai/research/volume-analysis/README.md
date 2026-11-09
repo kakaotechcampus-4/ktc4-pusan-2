@@ -119,4 +119,4 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 | 끊긴 1초(`audio_live: false`)의 `tally` | 발화 · 에너지도 더함 | `total_ms`만 (말한 1초 · 기준 음량 표본과 같은 기준) |
 
 기준값(작음 −6 dB · 아주 작음 −15 dB · 평활 창 5초 · 말한 1초 3개 · 표본 15개 · 긴 침묵 5초 · 아주 긴 침묵 15초 · 판정 지연 폭)은 대역과 같습니다.
-`voiced_min_ms`(300)는 대역 `volume-0.2`에 없던 값이라, 시선 대역(`coach_lab/judges/gaze.py`의 `speaking_min_voiced_ms`)과 같게 두었습니다.
+`voiced_min_ms`(300)는 대역 `volume-0.2`에 없던 값이라, 서비스 시선 판정 모듈의 같은 기준(`features/gaze/config.py`의 `speaking_min_voiced_ms`)과 같게 두었습니다. 두 값이 같은지는 서비스 시선 계약 테스트(`tests/unit/gaze/test_contract.py`)가 봅니다.

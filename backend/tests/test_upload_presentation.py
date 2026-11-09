@@ -86,14 +86,16 @@ def test_upload_presentation_service(
 
     result = presentation_service.upload_presentation_service(db_session, pitch_id, dto)
 
-    expected_file_key = f"pitches/{pitch_id}/presentations/1.pdf"
+    expected_file_key = f"pitches/{pitch_id}/presentations/{result.presentation_version_id}.pdf"
     upload_mock.assert_called_once_with(
         dto.presentation_file, expected_file_key, content_type="application/pdf"
     )
     assert result.pitch_id == pitch_id
     assert result.file_url == f"https://fake/{expected_file_key}"
 
-    expected_thumbnail_key = f"pitches/{pitch_id}/presentations/1.webp"
+    expected_thumbnail_key = (
+        f"pitches/{pitch_id}/presentations/{result.presentation_version_id}.webp"
+    )
     upload_bytes_mock.assert_called_once_with(ANY, expected_thumbnail_key, "image/webp")
     presentation = db_session.get(PresentationVersion, result.presentation_version_id)
     assert presentation is not None
@@ -161,10 +163,12 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
 
         # 잠금이 없으면 한쪽이 IntegrityError(unique 위반) 다
         assert not any(isinstance(v, Exception) for v in results.values()), results
-        assert sorted(uploaded_keys) == [
-            f"pitches/{target}/presentations/1.pdf",
-            f"pitches/{target}/presentations/2.pdf",
-        ]
+        assert sorted(uploaded_keys) == sorted(
+            f"pitches/{target}/presentations/{r.presentation_version_id}.pdf"
+            for r in results.values()
+        )
+        with Session(engine) as check:
+            assert sorted(_versions(check, target)) == [1, 2]
     finally:
         with Session(engine) as cleanup:
             cleanup.delete(cleanup.get(User, user_id))  # pitch·버전은 CASCADE
@@ -215,7 +219,7 @@ def test_url_failure_leaves_neither_a_version_nor_the_file(
         _upload_one(db_session, pitch_id, make_pdf)
 
     assert _versions(db_session, pitch_id) == []
-    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+    assert deleted == [upload_mock.call_args.args[1]]
 
 
 def test_save_failure_deletes_the_uploaded_file(
@@ -238,7 +242,7 @@ def test_save_failure_deletes_the_uploaded_file(
     with pytest.raises(RuntimeError):
         _upload_one(db_session, pitch_id, make_pdf)
 
-    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+    assert deleted == [upload_mock.call_args.args[1]]
 
 
 def test_failed_commit_deletes_the_file_only_when_the_version_is_missing(
@@ -260,7 +264,7 @@ def test_failed_commit_deletes_the_file_only_when_the_version_is_missing(
         _upload_one(db_session, pitch_id, make_pdf)
 
     assert _versions(db_session, pitch_id) == []
-    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+    assert deleted == [upload_mock.call_args.args[1]]
 
 
 def test_commit_whose_reply_was_lost_keeps_the_file(
@@ -303,15 +307,12 @@ def test_failed_upload_cleanup_does_not_delete_the_next_upload(
 
     cleanup_started = threading.Event()
     release_cleanup = threading.Event()
-    next_uploaded = threading.Event()
     files: dict[str, str] = {}
     results: dict[str, Any] = {}
 
     def upload(file, key, content_type=None):
         name = threading.current_thread().name
         files[key] = name
-        if name == "next-upload":
-            next_uploaded.set()
         return key
 
     def presign(key):
@@ -361,12 +362,8 @@ def test_failed_upload_cleanup_does_not_delete_the_next_upload(
         first.start()
         assert cleanup_started.wait(5)
         second.start()
-        if next_upload_first:
-            second.join(5)
-            assert not second.is_alive()
-        else:
-            # 파일을 지우는 동안은 새 업로드도 같은 잠금에서 기다려야 한다
-            blocked = not next_uploaded.wait(0.2)
+        second.join(5)
+        assert not second.is_alive()
         release_cleanup.set()
         first.join(5)
         second.join(5)
@@ -374,9 +371,8 @@ def test_failed_upload_cleanup_does_not_delete_the_next_upload(
         assert not first.is_alive() and not second.is_alive()
         assert isinstance(results["failed-upload"], RuntimeError)
         assert not isinstance(results["next-upload"], Exception), results
-        if not next_upload_first:
-            assert blocked
-        assert files == {f"pitches/{pitch_id}/presentations/1.pdf": "next-upload"}
+        next_id = results["next-upload"].presentation_version_id
+        assert files == {f"pitches/{pitch_id}/presentations/{next_id}.pdf": "next-upload"}
         with Session(engine) as check:
             assert _versions(check, pitch_id) == [1]
     finally:

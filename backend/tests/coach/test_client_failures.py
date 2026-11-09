@@ -9,7 +9,12 @@ import httpx
 import pytest
 
 from pitch_coach_backend.coach import client as coach_client
-from pitch_coach_backend.coach.client import EVALUATE_PATH, FINALIZE_PATH, HttpCoachClient
+from pitch_coach_backend.coach.client import (
+    EVALUATE_PATH,
+    FINALIZE_PATH,
+    EvaluateMiss,
+    HttpCoachClient,
+)
 from pitch_coach_backend.coach.replies import MAX_T_MS, PlanReply
 from pitch_coach_backend.core import ai_slots
 from tests.coach.conftest import EVALUATE, FINALIZE, PLAN, PLAN_RESPONSE, Clock, ai, error, example
@@ -31,13 +36,13 @@ async def test_evaluate_rests_while_the_ai_is_down(down):
 
     client = ai(handler, clock=clock, evaluate_pause_sec=10)
 
-    assert await client.evaluate(EVALUATE) is None
+    assert await client.evaluate(EVALUATE) is EvaluateMiss.FAILED
     clock.now += 9.9
     # 쉬는 동안은 부르지 않는다 (다른 Take 도 같은 클라이언트를 쓴다)
-    assert await client.evaluate({**EVALUATE, "take_id": "take-2"}) is None
+    assert await client.evaluate({**EVALUATE, "take_id": "take-2"}) is EvaluateMiss.PAUSED
     assert seen == [1]
     clock.now += 0.2
-    assert await client.evaluate(EVALUATE) is None
+    assert await client.evaluate(EVALUATE) is EvaluateMiss.FAILED
     assert seen == [1, 1]
 
 
@@ -69,8 +74,8 @@ async def test_a_dropped_connection_is_retried_but_does_not_pause_evaluate():
 
     client = ai(handler, clock=clock)
 
-    assert await client.evaluate(EVALUATE) is None
-    assert await client.evaluate(EVALUATE) is None
+    assert await client.evaluate(EVALUATE) is EvaluateMiss.FAILED
+    assert await client.evaluate(EVALUATE) is EvaluateMiss.FAILED
     assert await client.finalize(FINALIZE) is None
     assert seen == [EVALUATE_PATH, EVALUATE_PATH, FINALIZE_PATH, FINALIZE_PATH]
 
@@ -82,7 +87,7 @@ async def test_a_wrong_ai_address_is_not_retried_and_does_not_raise(base_url: st
 
     assert await client.finalize(FINALIZE) is None
     assert await client.plan(PLAN) is None
-    assert await client.evaluate(EVALUATE) is None
+    assert await client.evaluate(EVALUATE) is EvaluateMiss.FAILED
 
 
 @pytest.mark.anyio
@@ -104,7 +109,7 @@ async def test_a_request_that_is_not_json_is_a_failure_not_an_exception(
 
     client = ai(handler)
 
-    assert await client.evaluate(request_body) is None
+    assert await client.evaluate(request_body) is EvaluateMiss.FAILED
     assert await client.finalize(request_body) is None
     assert seen == []
 
@@ -119,9 +124,9 @@ async def test_out_of_range_t_ms_is_not_sent():
 
     client = ai(handler)
 
-    assert await client.evaluate({**EVALUATE, "t_ms": MAX_T_MS + 1}) is None
+    assert await client.evaluate({**EVALUATE, "t_ms": MAX_T_MS + 1}) is EvaluateMiss.OUT_OF_RANGE
     assert await client.finalize({**FINALIZE, "t_ms": -1}) is None
-    assert await client.evaluate({**EVALUATE, "t_ms": MAX_T_MS}) is not None
+    assert not isinstance(await client.evaluate({**EVALUATE, "t_ms": MAX_T_MS}), EvaluateMiss)
     assert seen == [1]
 
 
