@@ -119,6 +119,27 @@ describe('상태 · 범위', () => {
     const estimated = contentStatusOf('t-content-estimated', null)!.summary!;
     expect(estimatedOnlyLine(estimated.slides)).toBe('대부분 말함 1장');
   });
+
+  it.each([
+    [
+      { target: 10, scored: 7, estimated: 1, provisional: 2 },
+      '10장 중 7장 평가 · 1장 간이 · 2장 미평가',
+    ],
+    // 잠정 장은 채점된 장에 들어 있어 미평가로 세지 않습니다
+    [{ target: 6, scored: 5, estimated: 0, provisional: 1 }, '6장 중 5장 평가 · 1장 미평가'],
+    [{ target: 3, scored: 3, estimated: 0, provisional: 1 }, '3장 중 3장 평가'],
+    [{ target: 0, scored: 0, estimated: 0, provisional: 0 }, '0장 중 0장 평가'],
+  ])('채점도 간이도 아닌 장은 미평가로 셉니다 (#1157 리뷰): %o', (s, line) => {
+    expect(
+      scopeLine({
+        target_slides: s.target,
+        scored_slides: s.scored,
+        estimated_slides: s.estimated,
+        provisional_slides: s.provisional,
+        excluded: [],
+      }),
+    ).toBe(line);
+  });
 });
 
 describe('지난 Take 대비', () => {

@@ -186,10 +186,15 @@ export function contentHeadline(status: ContentStatus | null): string | null {
   }
 }
 
-/** "2장 중 1장 평가 · 1장 간이" */
+/**
+ * "10장 중 7장 평가 · 1장 간이 · 2장 미평가". 잠정 장은 채점된 장에 들어 있어(#1152 '정상 채점 + 상세 상태 provisional')
+ * 채점도 간이도 아닌 장만 미평가로 셉니다 (#1157 리뷰)
+ */
 export function scopeLine(scope: Scope): string {
   const parts = [`${scope.target_slides}장 중 ${scope.scored_slides}장 평가`];
   if (scope.estimated_slides > 0) parts.push(`${scope.estimated_slides}장 간이`);
+  const unscored = Math.max(0, scope.target_slides - scope.scored_slides - scope.estimated_slides);
+  if (unscored > 0) parts.push(`${unscored}장 미평가`);
   return parts.join(' · ');
 }
 
