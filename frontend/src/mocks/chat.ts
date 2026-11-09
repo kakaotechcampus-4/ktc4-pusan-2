@@ -33,7 +33,7 @@ import type {
   SendMessageRequest,
   TraceItem,
 } from '@/types/chat';
-import { isTerminalRun } from '@/features/chat/chatAgent';
+import { isTerminalRun } from '@/features/chat/rules/chatAgent';
 
 /**
  * 대화형 코치 에이전트 목 (`docs/ai/features/chat-agent.md` 12-3 · 12-4, 개정판 #900).

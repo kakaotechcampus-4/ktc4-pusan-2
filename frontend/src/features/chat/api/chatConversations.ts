@@ -1,6 +1,6 @@
 import type { ConversationList, ConversationListItem } from '@/types/chat';
 import { chatApi } from './chatApi';
-import type { ScreenScope } from './chatStore';
+import type { ScreenScope } from '../store/chatStore';
 
 /** 칩 글자 — "범위 확인 중" · "전체" · "피치: 발표 이름". 이름을 모르면 `titleOf` 로 찾고, 그래도 없으면 "피치" */
 export function scopeLabel(scope: ScreenScope, titleOf?: (pitchId: string) => string | null) {

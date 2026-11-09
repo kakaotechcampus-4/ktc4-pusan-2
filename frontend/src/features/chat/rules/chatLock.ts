@@ -1,4 +1,4 @@
-import { canChangeScope, type useChatStore } from './chatStore';
+import { canChangeScope, type useChatStore } from '../store/chatStore';
 
 type ChatState = ReturnType<typeof useChatStore.getState>;
 

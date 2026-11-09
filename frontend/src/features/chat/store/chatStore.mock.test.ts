@@ -3,7 +3,7 @@ import { setupServer } from 'msw/node';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/mocks/auth', () => ({ currentMockUserId: () => 'u' }));
 import { createChatHandlers } from '@/mocks/chat';
-import { chatPaths } from './api/chatPaths';
+import { chatPaths } from '../api/chatPaths';
 import type { MessagePage, RunView, SendMessageAccepted } from '@/types/chat';
 import { canSend, chatTicket, isCurrent, pendingSendTicket, useChatStore } from './chatStore';
 

@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '@/types/chat';
 import { LiveAnswer, StoredAnswer, SUPERSEDED_TEXT, type LiveProgress } from './ChatAnswer';
 import type { CardActions } from './ChatCards';
-import { GENERAL_LABEL, type ShownClaim } from './chatResponse';
-import { ManualClock } from './chatTransport.testkit';
-import { createTypingQueue, TYPING_MAX_LAG_MS, type TypingQueue } from './chatTyping';
+import { GENERAL_LABEL, type ShownClaim } from '../rules/chatResponse';
+import { ManualClock } from '../api/chatTransport.testkit';
+import { createTypingQueue, TYPING_MAX_LAG_MS, type TypingQueue } from '../rules/chatTyping';
 
 const TAKE = '11111111-1111-4111-8111-111111111111';
 

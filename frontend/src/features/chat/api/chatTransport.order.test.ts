@@ -6,7 +6,7 @@ import { createChatHandlers } from '@/mocks/chat';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import type { RunView } from '@/types/chat';
 import type { ChatApi } from './chatApi';
-import { canChangeScope, canSend, useChatStore } from './chatStore';
+import { canChangeScope, canSend, useChatStore } from '../store/chatStore';
 import { createChatTransport, type ChatTransport, type TransportSignal } from './chatTransport';
 import {
   ManualClock,

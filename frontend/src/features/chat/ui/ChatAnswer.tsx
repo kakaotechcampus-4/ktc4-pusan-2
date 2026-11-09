@@ -6,8 +6,8 @@ import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
 import { CardList, type CardActions } from './ChatCards';
 import { ChipList } from './ChatChips';
 import { LockedReason } from './LockedReason';
-import { partialHeader } from './chatNotices';
-import { basisBadge, basisPitches, staleTexts } from './chatBasis';
+import { partialHeader } from '../rules/chatNotices';
+import { basisBadge, basisPitches, staleTexts } from '../rules/chatBasis';
 import {
   errorText,
   GENERAL_LABEL,
@@ -19,8 +19,8 @@ import {
   type ContractError,
   type ShownCard,
   type ShownClaim,
-} from './chatResponse';
-import type { TypedLine, TypingQueue } from './chatTyping';
+} from '../rules/chatResponse';
+import type { TypedLine, TypingQueue } from '../rules/chatTyping';
 
 /**
  * 답 그리기 (`docs/ai/features/chat-agent.md` 12-4 F3 · F4 · F7 · F12 · F13).

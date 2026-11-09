@@ -3,21 +3,21 @@ import { useNavigate } from 'react-router';
 import { dimensionLabel, dimensionStatusLabel, judgeStatusLabel } from '@/shared/lib/metricLabels';
 import type { Card, ReassessSide } from '@/types/chat';
 import { ChipList } from './ChatChips';
-import { plain, reassessRows } from './chatCardRows';
-import { pickReason } from './chatLock';
+import { plain, reassessRows } from '../rules/chatCardRows';
+import { pickReason } from '../rules/chatLock';
 import { LockedReason } from './LockedReason';
-import { asGoal, goalText } from './chatGoal';
-import { memoryItemState, PROFILE_KEY_LABEL } from './chatMemory';
-import { useChatStore } from './chatStore';
+import { asGoal, goalText } from '../rules/chatGoal';
+import { memoryItemState, PROFILE_KEY_LABEL } from '../api/chatMemory';
+import { useChatStore } from '../store/chatStore';
 import {
   memoryFilledAfter,
   memoryStampNow,
   useMemoryChanging,
   useMemorySettings,
   useRemoveMemoryItem,
-} from './useChatMemory';
-import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from './chatResponse';
-import type { DecideResult, UndoResult } from './chatTransport';
+} from '../store/useChatMemory';
+import { UNSUPPORTED_CARD_TEXT, type Chip, type ShownCard } from '../rules/chatResponse';
+import type { DecideResult, UndoResult } from '../api/chatTransport';
 
 /**
  * 카드 (`docs/ai/features/chat-agent.md` 12-4 F6 · F10 · F16) — 답 아래에 그립니다.

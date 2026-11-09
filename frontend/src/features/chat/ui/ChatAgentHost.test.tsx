@@ -9,10 +9,10 @@ import { registerChatScreen, resetChatScreen, type ScreenBody } from '@/shared/l
 import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
 import { CHAT_FAILED_TEXT } from './ChatErrorBoundary';
-import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
-import { emptyBasis, readCard, type ShownClaim } from './chatResponse';
-import { chatTicket, useChatStore } from './chatStore';
-import type { TransportSignal } from './chatTransport';
+import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from '../api/chatAvailability';
+import { emptyBasis, readCard, type ShownClaim } from '../rules/chatResponse';
+import { chatTicket, useChatStore } from '../store/chatStore';
+import type { TransportSignal } from '../api/chatTransport';
 
 const state = vi.hoisted(() => ({
   calls: 0,
@@ -82,8 +82,8 @@ const undoMode = vi.hoisted(() => ({ value: 'undone' as 'undone' | 'conflict' })
 const sendMode = vi.hoisted(() => ({
   value: 'accepted' as 'accepted' | 'failed' | 'conflict',
 }));
-vi.mock('./chatTransport', async () => {
-  const { useChatStore: store } = await import('./chatStore');
+vi.mock('../api/chatTransport', async () => {
+  const { useChatStore: store } = await import('../store/chatStore');
   return {
     createChatTransport: () => {
       const listeners = new Set<(signal: TransportSignal) => void>();

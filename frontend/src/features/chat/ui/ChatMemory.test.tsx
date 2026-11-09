@@ -15,10 +15,10 @@ import {
   type CardActions,
 } from './ChatCards';
 import { ChatMemorySettings } from './ChatMemorySettings';
-import { MEMORY_TEXT } from './chatMemory';
-import { emptyBasis, readCard } from './chatResponse';
-import { useChatStore } from './chatStore';
-import { useMemorySettings } from './useChatMemory';
+import { MEMORY_TEXT } from '../api/chatMemory';
+import { emptyBasis, readCard } from '../rules/chatResponse';
+import { useChatStore } from '../store/chatStore';
+import { useMemorySettings } from '../store/useChatMemory';
 
 /**
  * 기억 설정 화면 · '기억했어요' 카드 [지우기] (12-4 F14 · F16, L3-43 · L3-45).

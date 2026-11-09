@@ -4,13 +4,13 @@ import { fetchPitchList, pitchListKey } from '@/shared/api/home';
 import { fetchTakeReport } from '@/shared/api/report';
 import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 import type { ChatMessage, ChatPage, ConversationListItem } from '@/types/chat';
-import { useChatAvailability, type ChatAvailability } from './chatAvailability';
-import { fetchMessages } from './chatApi';
-import { conversationsKey } from './chatConversations';
-import { runEndNotice, type EndNotice, type RunNotice } from './chatNotices';
-import type { LiveProgress } from './ChatAnswer';
-import type { ShownClaim } from './chatResponse';
-import type { ChatRouteInfo } from './chatRoutes';
+import { useChatAvailability, type ChatAvailability } from '../api/chatAvailability';
+import { fetchMessages } from '../api/chatApi';
+import { conversationsKey } from '../api/chatConversations';
+import { runEndNotice, type EndNotice, type RunNotice } from '../rules/chatNotices';
+import type { LiveProgress } from '../ui/ChatAnswer';
+import type { ShownClaim } from '../rules/chatResponse';
+import type { ChatRouteInfo } from '../rules/chatRoutes';
 import {
   WHOLE_SCOPE,
   useChatStore,
@@ -24,8 +24,13 @@ import {
   type DecideResult,
   type TransportSignal,
   type UndoResult,
-} from './chatTransport';
-import { createTypingQueue, feedProgress, onReducedMotion, type TypingQueue } from './chatTyping';
+} from '../api/chatTransport';
+import {
+  createTypingQueue,
+  feedProgress,
+  onReducedMotion,
+  type TypingQueue,
+} from '../rules/chatTyping';
 
 /**
  * 대화창 한 세션의 연결 (`docs/ai/features/chat-agent.md` 12-4 F1 · F2 · F3) — 로그인 사용자 하나 · 허용 화면 위에서만 삽니다.

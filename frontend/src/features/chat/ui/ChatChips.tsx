@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { Link } from 'react-router';
-import { chipLabel, type Chip } from './chatResponse';
+import { chipLabel, type Chip } from '../rules/chatResponse';
 
 /**
  * 근거 칩 (12-4 F4) — 내 기록은 형식이 맞는 Take ID 일 때만 리포트로 이동하고, 화면 값은 링크 없이,

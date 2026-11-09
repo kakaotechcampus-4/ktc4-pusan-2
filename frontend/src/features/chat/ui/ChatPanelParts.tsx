@@ -8,10 +8,10 @@ import {
   joinConversationPages,
   lastActivityText,
   scopeLabel,
-} from './chatConversations';
-import { scopeLockReason } from './chatLock';
+} from '../api/chatConversations';
+import { scopeLockReason } from '../rules/chatLock';
 import { LockedReason } from './LockedReason';
-import { canChangeScope, useChatStore, type ChatScope } from './chatStore';
+import { canChangeScope, useChatStore, type ChatScope } from '../store/chatStore';
 
 /**
  * 대화창 머리의 범위 칩과 대화 목록 (`docs/ai/features/chat-agent.md` 12-4 F2).

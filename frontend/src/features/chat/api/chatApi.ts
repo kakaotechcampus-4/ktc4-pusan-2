@@ -1,5 +1,5 @@
 import { apiRequest, readJsonWithin, ResponseTooLargeError } from '@/shared/api/client';
-import { chatPaths } from './api/chatPaths';
+import { chatPaths } from './chatPaths';
 import type {
   ActionDecisionRequest,
   CreateConversationRequest,
@@ -10,7 +10,7 @@ import type {
   SendMessageRequest,
   UndoResponse,
 } from '@/types/chat';
-import { MAX_RESPONSE_BYTES } from './chatResponse';
+import { MAX_RESPONSE_BYTES } from '../rules/chatResponse';
 
 /** 실행 조회 · 메시지 목록은 2 MiB 까지만 읽습니다 — 넘으면 `ResponseTooLargeError` (L3-22) */
 const within = readJsonWithin(MAX_RESPONSE_BYTES);

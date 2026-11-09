@@ -8,7 +8,7 @@ import {
   memoryKey,
   removeMemoryItem,
   saveMemoryEnabled,
-} from './chatMemory';
+} from '../api/chatMemory';
 
 /**
  * 목록을 채운 요청이 언제 시작됐는지 — 번호가 클수록 나중에 시작한 요청입니다. 읽기는 보낼 때 번호를 받고 응답이 캐시를

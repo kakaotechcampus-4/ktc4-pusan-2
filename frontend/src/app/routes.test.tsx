@@ -20,7 +20,7 @@ vi.mock('@/features/onboarding/launch', () => ({
 vi.mock('@/features/onboarding/WelcomePage', () => ({ WelcomePage: () => <p>서비스 소개</p> }));
 vi.mock('@/features/auth/LoginPage', () => ({ LoginPage: () => <p>로그인</p> }));
 vi.mock('@/shared/ui/AppHeader', () => ({ AppHeader: () => <header>메뉴</header> }));
-vi.mock('@/features/chat/ChatAgentHost', () => ({ ChatAgentHost: () => null }));
+vi.mock('@/features/chat/ui/ChatAgentHost', () => ({ ChatAgentHost: () => null }));
 vi.mock('@/features/pitch/home/HomePage', () => ({ HomePage: () => <p>내 피치</p> }));
 vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
   state.stageImports++;

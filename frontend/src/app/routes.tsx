@@ -31,7 +31,7 @@ import { AppHeader } from '@/shared/ui/AppHeader';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
 import { HomePage } from '@/features/pitch/home/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
-import { ChatAgentHost } from '@/features/chat/ChatAgentHost';
+import { ChatAgentHost } from '@/features/chat/ui/ChatAgentHost';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.

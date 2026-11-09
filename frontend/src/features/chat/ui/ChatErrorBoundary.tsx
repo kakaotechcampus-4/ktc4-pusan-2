@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import { useLocation } from 'react-router';
-import { CHAT_LAUNCHER_CLASS, canShowChat, chatLauncherBottom } from './chatRoutes';
+import { CHAT_LAUNCHER_CLASS, canShowChat, chatLauncherBottom } from '../rules/chatRoutes';
 
 /** 대화창이 렌더 중에 던졌을 때 보이는 문구 (`docs/ai/features/chat-agent.md` L3-36 · 7-9) */
 export const CHAT_FAILED_TEXT = '대화창에 문제가 생겼으니 다시 열어 주세요.';

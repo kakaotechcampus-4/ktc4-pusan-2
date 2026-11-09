@@ -16,9 +16,9 @@ import {
   UNDO_FAILED_TEXT,
   type CardActions,
 } from './ChatCards';
-import { reassessRows } from './chatCardRows';
-import { emptyBasis, readCard, UNSUPPORTED_CARD_TEXT } from './chatResponse';
-import type { DecideResult, UndoResult } from './chatTransport';
+import { reassessRows } from '../rules/chatCardRows';
+import { emptyBasis, readCard, UNSUPPORTED_CARD_TEXT } from '../rules/chatResponse';
+import type { DecideResult, UndoResult } from '../api/chatTransport';
 
 const PITCH = '22222222-2222-4222-8222-222222222222';
 const TAKE = '33333333-3333-4333-8333-333333333333';

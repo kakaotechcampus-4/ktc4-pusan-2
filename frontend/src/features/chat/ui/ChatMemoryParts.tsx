@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
-import { markMemoryIntroSeen, MEMORY_INTRO_TEXT, memoryIntroSeen } from './chatMemory';
-import { useChatStore } from './chatStore';
-import { useMemorySettings } from './useChatMemory';
+import { markMemoryIntroSeen, MEMORY_INTRO_TEXT, memoryIntroSeen } from '../api/chatMemory';
+import { useChatStore } from '../store/chatStore';
+import { useMemorySettings } from '../store/useChatMemory';
 
 /**
  * 코칭 프로필 기억 첫 안내 (L3-43 "첫 안내 한 번") — 처음 대화창을 열었을 때 한 번만 보입니다.

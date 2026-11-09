@@ -1,4 +1,4 @@
-import type { ChatClock, TransportSignal } from './chatTransport';
+import type { ChatClock, TransportSignal } from '../api/chatTransport';
 
 /**
  * 글자 효과 (`chat-agent.md` 12-4 F12 · L3-41) — 받은 답 문장을 큐에 넣어 글자 단위로 보입니다.

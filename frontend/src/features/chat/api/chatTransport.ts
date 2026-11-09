@@ -1,6 +1,6 @@
 import { ResponseTooLargeError } from '@/shared/api/client';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import { isTerminalRun } from './chatAgent';
+import { isTerminalRun } from '../rules/chatAgent';
 import type {
   ActionDecisionRequest,
   PlanStep,
@@ -18,7 +18,7 @@ import {
   type RunReader,
   type ShownCard,
   type ShownClaim,
-} from './chatResponse';
+} from '../rules/chatResponse';
 import {
   chatTicket,
   needsCreate,
@@ -28,7 +28,7 @@ import {
   type ChatTicket,
   type RunPhase,
   type SendDraft,
-} from './chatStore';
+} from '../store/chatStore';
 
 /**
  * 대화 에이전트 통신 계층 (`docs/ai/features/chat-agent.md` 12-4 F3 · 7-5 L3-13 ~ L3-21 · L3-34 · L3-46).

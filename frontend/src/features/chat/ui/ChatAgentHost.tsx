@@ -28,21 +28,21 @@ import {
   sendFailedText,
   type EndNotice,
   type RunNotice,
-} from './chatNotices';
+} from '../rules/chatNotices';
 import {
   CHAT_LAUNCHER_CLASS,
   chatLauncherBottom,
   chatRouteOf,
   type ChatRouteInfo,
-} from './chatRoutes';
-import { useChatStore } from './chatStore';
-import { useCanSend } from './useCanSend';
-import { sendLockReason } from './chatLock';
+} from '../rules/chatRoutes';
+import { useChatStore } from '../store/chatStore';
+import { useCanSend } from '../store/useCanSend';
+import { sendLockReason } from '../rules/chatLock';
 import { LockedReason } from './LockedReason';
 import { ChatMemorySettings } from './ChatMemorySettings';
 import { MemoryIntro, MemoryOffBadge, MemoryOffSwitch } from './ChatMemoryParts';
 import { ConversationList, ScopeChip } from './ChatPanelParts';
-import { useChatSession, type ChatNotice, type ChatSession } from './useChatSession';
+import { useChatSession, type ChatNotice, type ChatSession } from '../store/useChatSession';
 
 /**
  * 대화형 코치 에이전트의 버튼 · 팝업 (`docs/ai/features/chat-agent.md` 12-4 F1). 라우터 최상위 레이아웃에 있어

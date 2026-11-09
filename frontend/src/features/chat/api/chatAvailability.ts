@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { apiRequest } from '@/shared/api/client';
-import { chatPaths } from './api/chatPaths';
+import { chatPaths } from './chatPaths';
 import { ApiFailure } from '@/shared/api/tokenStore';
 
 /**

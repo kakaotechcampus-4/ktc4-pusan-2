@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { router } from '@/app/routes';
-import { bindChatToSession } from '@/features/chat/chatStore';
+import { bindChatToSession } from '@/features/chat/store/chatStore';
 import './index.css';
 
 // 대화 에이전트를 로그아웃 신호에 묶습니다 — 화면을 그리기 전에, 경로 · 로그인 조건과 상관없이 한 번.

@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ProfileItem } from '@/types/chat';
-import { MEMORY_INTRO_TEXT, MEMORY_TEXT, PROFILE_KEY_LABEL } from './chatMemory';
+import { MEMORY_INTRO_TEXT, MEMORY_TEXT, PROFILE_KEY_LABEL } from '../api/chatMemory';
 import {
   useClearMemory,
   useMemoryChanging,
   useMemorySettings,
   useRemoveMemoryItem,
   useSaveMemoryEnabled,
-} from './useChatMemory';
+} from '../store/useChatMemory';
 
 /**
  * 기억 설정 화면 (`docs/ai/features/chat-agent.md` 12-4 F14 · L3-43) — 대화창 안에서 메시지 자리를 바꿔 그립니다

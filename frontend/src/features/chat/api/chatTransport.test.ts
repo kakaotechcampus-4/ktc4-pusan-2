@@ -4,12 +4,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 vi.mock('@/mocks/auth', () => ({ currentMockUserId: () => 'u' }));
 import { createChatHandlers, type MockChatControls } from '@/mocks/chat';
 import { ResponseTooLargeError, retryAfterSec } from '@/shared/api/client';
-import { chatPaths } from './api/chatPaths';
+import { chatPaths } from './chatPaths';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import type { RunView } from '@/types/chat';
 import type { ChatApi } from './chatApi';
-import { MAX_RESPONSE_BYTES } from './chatResponse';
-import { canSend, useChatStore } from './chatStore';
+import { MAX_RESPONSE_BYTES } from '../rules/chatResponse';
+import { canSend, useChatStore } from '../store/chatStore';
 import {
   MAX_REREADS,
   MAX_TOO_LARGE,
