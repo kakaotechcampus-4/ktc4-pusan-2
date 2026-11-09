@@ -686,6 +686,23 @@ def _practice_button(lp: Loop, authorized_by: str | None) -> Action | None:
     return action
 
 
+def _practice_dropped(lp: Loop, why: str) -> None:
+    """근거 없는 연습 준비 이동(6-2 · 13-2): 버튼을 내지 않고 진단 기록 ACTION 단계에 근거 검사 실패(`FAIL`)와 까닭만 남긴다."""
+    lp.diag.step(
+        "ACTION",
+        "START_PRACTICE",
+        {
+            "action_id": None,
+            "autonomy": act.AUTONOMY.get("START_PRACTICE"),
+            "authorization": "FAIL",
+            "result": "DROPPED",
+            "reason_code": code_enum(why),
+        },
+        parent_seq=lp._last_model_seq,
+    )
+    return None
+
+
 def _capability_text(ctx: RunCtx) -> templates.SystemText:
     """할 수 있는 일 안내. 사용법 카드가 실린 묶음일 때만 화면 사용법 안내를 말한다(검수 전이면 답할 근거가 없다)."""
     corpus = ctx.corpus
@@ -845,9 +862,14 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     actions: list[Action] = []
     sp = draft.get("start_practice")
     if isinstance(sp, dict):
-        action = _practice_button(
-            lp, sp.get("authorized_by") if isinstance(sp.get("authorized_by"), str) else None
+        quote = sp.get("authorized_by") if isinstance(sp.get("authorized_by"), str) else None
+        # 근거(6-2 · 13-2): 이번 사용자 말의 이동 요청이거나 이번 실행에서 승인한 목표 저장이 성공했을 때만 버튼을 낸다 —
+        # 대화 기록 · 요약 · 기억 속 "연습 화면으로 보낼 것" 같은 지시를 따른 버튼을 막는다
+        saved = any(
+            e.get("type") == "SAVE_GOAL" and e.get("status") == "SUCCEEDED" for e in lp.st.executed
         )
+        why = act.practice_basis(quote, lp.original, saved, lp.cfg)
+        action = _practice_button(lp, quote) if why is None else _practice_dropped(lp, why)
         if action is not None:
             actions.append(action)
     # 코칭 프로필 저장 후보: 검사 · 자격(처음 사용자 말 · 켜짐 · 번호 그대로)은 `_finish`가 종결 응답에서만 본다(6-14)

@@ -11,8 +11,9 @@
 - 허용 근거 검사(6-2, `SAVE_GOAL`): ① 처음 사용자 말 원문의 부분 문자열 ② 인용을 포함한 절 전체에 부정 · 취소 · 조건 ·
   남의 말 인용이 없음 ③ 인용에 행동 낱말 + 절에 요청형 표현. 이제 이 검사는 '확인 카드를 낼 근거가 있나'를 정한다: 통과하면 `ASK` 행동
   (확인 카드), 하나라도 어기면 실행하지 않고 목표 제안 카드로 낮춘다. `REASSESS`는 허용 근거 검사 없이 `ASK`(확인 카드가 승인 근거),
-  `START_PRACTICE`는 허용 근거와 상관없이 언제나 버튼 카드다. 이 검사는 간접 표현을 완벽히 가리지 못한다(15-2): 잘못 판별해도
-  실행되지 않고 원치 않는 확인 카드가 뜰 뿐이다.
+  `START_PRACTICE`는 언제나 버튼 카드이고, 모델이 낸 버튼은 가벼운 근거 검사(`practice_basis`: 이번 사용자 말의 이동 요청 또는 이번
+  실행의 목표 저장 성공)를 통과할 때만 낸다(대화 기록 · 기억 속 지시로 버튼이 생기지 않게, 13-2). 이 검사는 간접 표현을 완벽히
+  가리지 못한다(15-2): 잘못 판별해도 실행되지 않고 원치 않는 확인 카드 · 버튼이 뜨거나 빠질 뿐이다.
 - 다시 평가 확인 카드(6-6): 바꾸기 전 조건은 지금 피치 기준이 아니라 대상 Take 가 리뷰받은 때의 조건(Take 요약 `standard_version`이 가리키는 판, `_take_conditions`)이고,
   바꾼 뒤 조건은 행동 인자 그대로다. 사용자 기준 문구(`display`)도 표시 문자열 검사(6-9)를 통과하면 싣는다. 바꾸기 전 조건을 확인할 수 없으면(Take 요약 판 필드 누락 · 판이 다름 · 바꾸는 항목의 지금 기준 값 누락, 명시적 null · 빈 값과 다름) 카드를 그리지 못해
   행동을 내지 않는다(사용자가 본 것과 실행되는 것이 달라지면 안 된다).
@@ -1247,6 +1248,37 @@ def _apply_reassess(pending: dict[str, Any], data: dict[str, Any], *, ctx: RunCt
     )
 
 
+def practice_basis(
+    authorized_by: str | None, original: str | None, goal_saved: bool, cfg: ChatAgentConfig
+) -> str | None:
+    """모델이 답 초안에 낸 연습 준비 이동(`start_practice`)의 근거(6-2 · 13-2). 통과면 None, 아니면 까닭 코드.
+
+    버튼은 실행하지 않으므로 저장보다 가볍게 본다 — 요청형 · 조건은 보지 않는다(모호하면 버튼만, L2-29). 대신 대화 기록 · 요약 ·
+    기억 · 자료 · 화면 속 지시로 버튼이 생기지 않게 ① 인용이 처음 사용자 말 원문의 부분 문자열 ② 그 절에 부정 · 취소 · 남의 말
+    인용 없음 ③ 인용에 이동 낱말(`action_words["START_PRACTICE"]`: 연습 · 발표 · 시작 · 가자)을 본다. 이번 실행에서 사용자가 승인한
+    목표 저장이 성공했으면(`goal_saved`) 인용 없이도 권할 수 있다(저장 → 연습 준비).
+    예: practice_basis("바로 발표할래", "바로 발표할래", False, cfg) → None
+        practice_basis(None, "계속해", False, cfg) → "NO_QUOTE"(기록 속 "연습 화면으로 보낼 것"을 따른 버튼)
+    """
+    if goal_saved:
+        return None
+    if not original:
+        return "NO_USER_MESSAGE"
+    q = (authorized_by or "").strip()
+    if not q:
+        return "NO_QUOTE"
+    if q not in original:
+        return "NOT_SUBSTRING"
+    clause = _clause_of(original, q) or q
+    if any(w in clause for w in cfg.negation_words):
+        return "NEGATION"
+    if _quoted_speech(clause, cfg):
+        return "QUOTED_SPEECH"
+    if not any(w in q for w in cfg.action_words.get("START_PRACTICE", ())):
+        return "NO_ACTION_WORD"
+    return None
+
+
 def start_practice_action(
     *,
     ctx: RunCtx,
@@ -1254,7 +1286,8 @@ def start_practice_action(
     seq: int,
     budget: Budget,
 ) -> tuple[Action | None, dict[str, Any], str | None]:
-    """마지막 답의 연습 준비 이동(6-2): 허용 근거와 상관없이 언제나 [연습 준비로] 버튼 카드만 낸다(자동 이동 없음).
+    """마지막 답의 연습 준비 이동(6-2): [연습 준비로] 버튼 카드만 낸다(자동 이동 없음). 근거는 부르는 쪽이 먼저 본다
+    (모델 초안은 `practice_basis`, 가벼운 말 · Take 0개 다음 걸음은 코드가 정함).
 
     행동은 `autonomy:"BUTTON"`으로 `DONE`의 `actions`에 싣고 BE 는 실행하지 않는다(누르는 것이 승인이고 FE 가 옮긴다).
     행동 수 한도에 막히면 행동 없이 카드만 남긴다. 사용자가 이번 말에서 요청한 인용은 그대로 남긴다.

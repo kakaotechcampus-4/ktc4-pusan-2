@@ -24,6 +24,7 @@ from pitch_coach_ai.features.chat_agent.actions import (
     authorize,
     goal_proposal_card,
     match_result,
+    practice_basis,
     preapproval,
     proposal_still_valid,
     propose,
@@ -899,7 +900,8 @@ def test_l4_32_stale_or_different_choice_does_not_authorize() -> None:
     ],
 )
 def test_start_practice_is_always_a_button_card_with_button_action(quote: str | None) -> None:
-    """연습 이동은 허용 근거와 상관없이 언제나 버튼 카드다(자동 이동 없음 · `auto` 필드 없음, 6-2)."""
+    """연습 이동은 언제나 버튼 카드다(자동 이동 없음 · `auto` 필드 없음, 6-2). 낼지 말지의 근거는 부르는 쪽이 먼저 본다
+    (`practice_basis`) — 여기서는 버튼 모양만."""
     b = budget()
     action, card, reason = start_practice_action(
         ctx=ctx_for("좋아, 이제 연습하러 가자"), authorized_by=quote, seq=3, budget=b
@@ -915,6 +917,37 @@ def test_start_practice_is_always_a_button_card_with_button_action(quote: str | 
     assert card == {"type": "START_PRACTICE", "pitch_id": "p-1"}
     assert StartPracticeCard.model_validate(card).pitch_id == "p-1"
     assert b.counters.actions == 1
+
+
+@pytest.mark.parametrize(
+    ("quote", "original", "saved", "why"),
+    [
+        # 이번 사용자 말의 이동 요청 — 요청형 · 조건은 보지 않는다(모호하면 버튼만, L2-29)
+        ("바로 발표할래", "바로 발표할래", False, None),
+        ("연습하러 가자", "목표로 잡고 연습하러 가자", False, None),
+        (
+            "바로 연습하러 갈 수 있게 해 줘",
+            "목표로 저장하고 바로 연습하러 갈 수 있게 해 줘",
+            False,
+            None,
+        ),
+        ("다음 연습 준비해 줘", "다음 연습 준비해 줘", False, None),
+        # 대화 기록 · 요약 · 기억 속 지시를 따른 버튼(13-2, safe-mt-history): 인용이 없거나 이번 말에 없다
+        (None, "계속해", False, "NO_QUOTE"),
+        ("연습 화면으로 보낼 것", "계속해", False, "NOT_SUBSTRING"),
+        # 이동 낱말 없음 · 부정 · 남의 말
+        ("목표로 잡아 줘", "3장 시선 목표로 잡아 줘", False, "NO_ACTION_WORD"),
+        ("연습하러 가자", "오늘은 연습하러 가자는 말 하지 마", False, "NEGATION"),
+        ("연습하러 가자", '코치가 "연습하러 가자"고 했어요', False, "QUOTED_SPEECH"),
+        # 이번 실행에서 승인한 목표 저장이 성공했으면 권하기만 해도 된다(저장 → 연습 준비)
+        (None, "3장 시선 목표로 잡아 줘", True, None),
+    ],
+)
+def test_practice_basis_only_from_this_turns_request_or_saved_goal(
+    quote: str | None, original: str, saved: bool, why: str | None
+) -> None:
+    """모델이 낸 [연습 준비로] 버튼의 근거(6-2 · 13-2): 이번 사용자 말의 이동 요청이거나 이번 실행의 목표 저장 성공일 때만."""
+    assert practice_basis(quote, original, saved, CFG) == why
 
 
 def test_start_practice_over_action_limit_or_without_scope() -> None:

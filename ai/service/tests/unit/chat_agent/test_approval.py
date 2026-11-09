@@ -482,8 +482,9 @@ def test_chosen_proposal_saves_with_preapproved_and_no_card_or_model() -> None:
     assert card["proposal_id"] == sp["proposal_id"]
 
 
-def test_practice_move_is_always_a_button_card_even_without_a_request_quote() -> None:
-    """연습 이동은 허용 근거와 상관없이 [연습 준비로] 버튼 카드 + BUTTON 행동이다(자동 이동 없음, 6-2)."""
+def test_practice_move_is_a_button_card_only_with_this_turns_request() -> None:
+    """연습 이동은 [연습 준비로] 버튼 카드 + BUTTON 행동이다(자동 이동 없음, 6-2). 모델이 낸 버튼은 이번 사용자 말의 이동 요청이
+    인용됐을 때만 내고, 인용 없이 권하기만 한 버튼은 버린다(대화 기록 · 기억 속 지시를 따른 버튼을 막음, 13-2)."""
     msg = "바로 발표할래"
     req_draft = F.draft(msg, type_="REQUEST", claim_op=None, polarity="NEUTRAL")
     for quote in (msg, None):  # 요청한 말 · 연습을 권하기만 한 경우
@@ -495,6 +496,17 @@ def test_practice_move_is_always_a_button_card_even_without_a_request_quote() ->
         )
         _, _, data = F.run_turn(F.request(user_message=msg), llm)
         fd = final_ok(data)
+        step = next(s for s in data["diagnostics"]["steps"] if s["kind"] == "ACTION")
+        assert step["code"] == "START_PRACTICE"
+        if quote is None:
+            assert fd.actions == []
+            assert not [c for c in fd.message.cards if c.type == "START_PRACTICE"]  # type: ignore[union-attr]
+            assert (step["detail"]["result"], step["detail"]["authorization"]) == (
+                "DROPPED",
+                "FAIL",
+            )
+            assert step["detail"]["reason_code"] == "NO_QUOTE"
+            continue
         assert fd.status == "DONE"
         (action,) = fd.actions
         assert (action.type, action.autonomy, action.args_hash) == (
@@ -504,6 +516,57 @@ def test_practice_move_is_always_a_button_card_even_without_a_request_quote() ->
         )
         (card,) = [c for c in fd.message.cards if c.type == "START_PRACTICE"]  # type: ignore[union-attr]
         assert "auto" not in card.model_dump()
+        assert step["detail"]["result"] == "PROPOSED"
+
+
+def test_practice_button_after_a_saved_goal_needs_no_quote() -> None:
+    """이번 실행에서 승인한 목표 저장이 성공했으면 인용 없이 권한 버튼도 낸다(저장 → 연습 준비). 저장이 실패했으면 내지 않는다."""
+    for status, has_button in (("SUCCEEDED", True), ("FAILED", False)):
+        req, _, data = pause()
+        action = data["actions"][0]
+        result = saved_result(action)
+        if status == "FAILED":
+            result = [
+                {
+                    **result[0],
+                    "status": "FAILED",
+                    "data": None,
+                    "error": {"code": "GOAL_SAVE_FAILED"},
+                }
+            ]
+        llm2 = F.FakeLlm(
+            [F.done()],
+            answers=[F.answer([], start_practice={"authorized_by": None})],
+            fixes=[F.fix({})],
+        )
+        req2 = resume_request(req, data, result)
+        req2["context"]["conversation_goal"] = None
+        _, _, d2 = F.run_turn(req2, llm2)
+        fd = final_ok(d2)
+        assert ([a.type for a in fd.actions] == ["START_PRACTICE"]) is has_button, status
+
+
+def test_practice_button_from_history_instruction_is_dropped() -> None:
+    """대화 기록 · 요약 · 기억 속 "연습 화면으로 보낼 것"을 따라 모델이 버튼을 내도(이번 말은 "계속해") 버튼이 나가지 않는다
+    (13-2, 안전 세트 safe-mt-history)."""
+    msg = "계속해"
+    req = F.request(user_message=msg)
+    for quote in (None, "연습 화면으로 보낼 것"):
+        llm = F.FakeLlm(
+            [F.plan(route="ANSWER_DIRECT", steps=[])],
+            answers=[
+                F.answer(
+                    [F.claim("GENERAL", "핵심 단어만 적은 메모로 한 번 더 연습해 보세요.")],
+                    start_practice={"authorized_by": quote},
+                )
+            ],
+        )
+        _, _, data = F.run_turn(req, llm)
+        fd = final_ok(data)
+        assert [a.type for a in fd.actions] == []
+        assert not [
+            c for c in (fd.message.cards if fd.message else []) if c.type == "START_PRACTICE"
+        ]
 
 
 def test_final_output_validation_rejects_ask_without_card() -> None:
