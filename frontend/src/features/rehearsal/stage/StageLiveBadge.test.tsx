@@ -11,12 +11,10 @@ it('실제 리허설 준비·시작·종료 조건과 같은 값으로 LIVE 표�
   const host = document.createElement('div');
   const root = createRoot(host);
 
-  const render = (stageReady: boolean, phase: StagePhase, started: boolean) =>
-    act(() =>
-      root.render(
-        <StageLiveBadge running={isRehearsalRunning(stageReady, phase, started)} />,
-      ),
-    );
+  const render = (stageReady: boolean, phase: StagePhase, started: boolean) => {
+    const running = isRehearsalRunning(stageReady, phase, started);
+    act(() => root.render(<StageLiveBadge running={running} />));
+  };
   const badge = () => host.querySelector('.stage-mission-label');
 
   try {
