@@ -1,0 +1,1684 @@
+{
+  "title": "[튜토리얼] 치치와 함께하는 First Take",
+  "time_limit_sec": 180,
+  "lower_deviation": 30,
+  "upper_deviation": 60,
+  "page_count": 5,
+  "script": {
+    "content": "[슬라이드 1]\n안녕하세요. 지금부터 피치코치의 첫 번째 발표 연습을 시작하겠습니다. 오늘 목표는 완벽하게 말하는 것이 아니라, 연습 화면을 직접 경험하는 것입니다. 지금 보이는 것은 준비된 샘플 발표자료입니다. 다음에는 제 자료로도 연습할 수 있습니다. 오른쪽 방향키를 눌러 다음 장으로 가 보겠습니다.\n\n[슬라이드 2]\n방금 슬라이드를 넘기니 화면과 대본이 함께 바뀌었습니다. 피치코치에서는 오른쪽 방향키나 스페이스 키로 다음 장, 왼쪽 방향키로 이전 장으로 이동합니다. 대본을 표시한 경우 지금 장에 연결된 대본이 나타납니다. 대본이 길다면 위아래 방향키로 스크롤할 수도 있습니다. 저는 이 대본을 참고해 발표를 이어 가겠습니다.\n\n[슬라이드 3]\n화면 위쪽에는 지금까지 말한 시간과 목표 시간이 보입니다. 마이크를 통해 들어온 목소리는 말하기 분석에 활용됩니다. 카메라가 정상적으로 작동한다면 시선 상태도 분석할 수 있습니다. 지금은 속도를 일부러 조절하지 않고 평소처럼 말하겠습니다. 피치코치는 이 과정에서 제 발표 습관을 돌아볼 수 있도록 도와줍니다.\n\n[슬라이드 4]\n연습 중에는 발표 상황에 따라 코칭 메시지가 나타날 수 있습니다. 메시지가 나오지 않는다고 발표가 잘못된 것은 아닙니다. 중요한 것은 코칭을 기다리느라 멈추지 않고, 준비한 이야기를 끝까지 전달하는 것입니다. 일부 분석은 장치 환경에 따라 제한될 수도 있습니다. 저는 안내를 참고하면서도 제 흐름대로 이어 가겠습니다.\n\n[슬라이드 5]\n이제 마지막 슬라이드입니다. 저는 슬라이드를 넘기고, 대본을 참고해 말하고, 발표 시간과 코칭 안내를 살펴봤습니다. 발표를 마치려면 상단의 발표 끝내기를 누르고, 종료 의사를 한 번 더 확인합니다. 분석이 완료되면 리포트에서 제 첫 연습 결과를 확인할 수 있습니다. 여기까지 첫 번째 Take였습니다. 감사합니다.",
+    "segmented": true,
+    "terms": [
+      "피치코치",
+      "Take"
+    ],
+    "parse_meta": {
+      "model": "gpt-6-luna",
+      "target_ms": 180000,
+      "schema_version": "1.0",
+      "feature_version": "script_parser-1.3"
+    }
+  },
+  "slides": [
+    {
+      "slide_number": 1,
+      "full_content": "안녕하세요. 지금부터 피치코치의 첫 번째 발표 연습을 시작하겠습니다. 오늘 목표는 완벽하게 말하는 것이 아니라, 연습 화면을 직접 경험하는 것입니다. 지금 보이는 것은 준비된 샘플 발표자료입니다. 다음에는 제 자료로도 연습할 수 있습니다. 오른쪽 방향키를 눌러 다음 장으로 가 보겠습니다.",
+      "highlights": [
+        [
+          12,
+          16
+        ],
+        [
+          23,
+          28
+        ],
+        [
+          42,
+          44
+        ],
+        [
+          63,
+          68
+        ],
+        [
+          98,
+          105
+        ],
+        [
+          138,
+          141
+        ]
+      ],
+      "keywords": [
+        "피치코치",
+        "발표 연습",
+        "목표",
+        "연습 화면",
+        "샘플 발표자료",
+        "방향키"
+      ],
+      "script_chars": 117,
+      "expected_ms": 33535,
+      "rubric": {
+        "meta": {
+          "llm_model": "openai/gpt-6-luna",
+          "rubric_id": "8898d6fbaad395ed",
+          "script_name": "first-take-sample",
+          "content_hash": "9ce8439ff066ba230065a7dc53c2411f5fa180da36484a797a31d859b5f3fdcf",
+          "slide_number": 1,
+          "llm_config_hash": "fe145db16778",
+          "unit_config_hash": "9fbab8f4bf05",
+          "final_config_hash": "ea6918cfbdbd",
+          "rubric_schema_version": "1.2"
+        },
+        "keywords": [
+          {
+            "tf": 2,
+            "term": "자료",
+            "score": 0.5224
+          },
+          {
+            "tf": 2,
+            "term": "연습",
+            "score": 0.3498
+          },
+          {
+            "tf": 1,
+            "term": "샘플",
+            "score": 0.3085
+          },
+          {
+            "tf": 1,
+            "term": "연습 화면",
+            "score": 0.3085
+          },
+          {
+            "tf": 1,
+            "term": "오른쪽",
+            "score": 0.2489
+          },
+          {
+            "tf": 1,
+            "term": "목표",
+            "score": 0.2489
+          },
+          {
+            "tf": 1,
+            "term": "지금",
+            "score": 0.2489
+          },
+          {
+            "tf": 1,
+            "term": "오른쪽 방향키",
+            "score": 0.2489
+          }
+        ],
+        "warnings": [],
+        "sentences": [
+          {
+            "end": 6,
+            "text": "안녕하세요.",
+            "index": 0,
+            "start": 0
+          },
+          {
+            "end": 38,
+            "text": "지금부터 피치코치의 첫 번째 발표 연습을 시작하겠습니다.",
+            "index": 1,
+            "start": 7
+          },
+          {
+            "end": 83,
+            "text": "오늘 목표는 완벽하게 말하는 것이 아니라, 연습 화면을 직접 경험하는 것입니다.",
+            "index": 2,
+            "start": 39
+          },
+          {
+            "end": 109,
+            "text": "지금 보이는 것은 준비된 샘플 발표자료입니다.",
+            "index": 3,
+            "start": 84
+          },
+          {
+            "end": 133,
+            "text": "다음에는 제 자료로도 연습할 수 있습니다.",
+            "index": 4,
+            "start": 110
+          },
+          {
+            "end": 161,
+            "text": "오른쪽 방향키를 눌러 다음 장으로 가 보겠습니다.",
+            "index": 5,
+            "start": 134
+          }
+        ],
+        "core_claim": "오늘 목표는 완벽하게 말하는 것이 아니라, 연습 화면을 직접 경험하는 것이다.",
+        "key_points": [
+          {
+            "id": "KP1",
+            "content": "오늘 목표는 완벽하게 말하는 것이 아니라, 연습 화면을 직접 경험하는 것이다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "critical",
+            "source_span": [
+              39,
+              83
+            ],
+            "source_quote": "오늘 목표는 완벽하게 말하는 것이 아니라, 연습 화면을 직접 경험하는 것입니다.",
+            "sentence_indices": [
+              2
+            ]
+          },
+          {
+            "id": "KP2",
+            "content": "지금 보이는 것은 준비된 샘플 발표자료이다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              84,
+              109
+            ],
+            "source_quote": "지금 보이는 것은 준비된 샘플 발표자료입니다.",
+            "sentence_indices": [
+              3
+            ]
+          },
+          {
+            "id": "KP3",
+            "content": "다음에는 제 자료로도 연습할 수 있다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              110,
+              133
+            ],
+            "source_quote": "다음에는 제 자료로도 연습할 수 있습니다.",
+            "sentence_indices": [
+              4
+            ]
+          },
+          {
+            "id": "KP4",
+            "content": "오른쪽 방향키를 눌러 다음 장으로 간다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              134,
+              161
+            ],
+            "source_quote": "오른쪽 방향키를 눌러 다음 장으로 가 보겠습니다.",
+            "sentence_indices": [
+              5
+            ]
+          }
+        ],
+        "content_units": [
+          {
+            "id": "S2-U1",
+            "span": [
+              46,
+              61
+            ],
+            "text": "완벽하게 말하는 것이 목표가 아님",
+            "quote": "완벽하게 말하는 것이 아니라",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S2-U2",
+            "span": [
+              63,
+              82
+            ],
+            "text": "연습 화면을 직접 경험하는 것이 오늘 목표임",
+            "quote": "연습 화면을 직접 경험하는 것입니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S3-U1",
+            "span": [
+              94,
+              108
+            ],
+            "text": "지금 보이는 것은 준비된 샘플 발표자료임",
+            "quote": "준비된 샘플 발표자료입니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 3
+          },
+          {
+            "id": "S4-U1",
+            "span": [
+              115,
+              132
+            ],
+            "text": "다음에는 자신의 자료로도 연습할 수 있음",
+            "quote": "제 자료로도 연습할 수 있습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 4
+          },
+          {
+            "id": "S5-U1",
+            "span": [
+              134,
+              160
+            ],
+            "text": "오른쪽 방향키를 눌러 다음 장으로 감",
+            "quote": "오른쪽 방향키를 눌러 다음 장으로 가 보겠습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 5
+          }
+        ],
+        "critical_facts": [],
+        "draft_warnings": [
+          "unlinked_facts:CF1"
+        ],
+        "name_decisions": [
+          {
+            "keep": false,
+            "value": "방향키",
+            "reason": "‘방향키’는 다른 말로 바꾸어도 되는 일반 명사이다.",
+            "source": "rule"
+          }
+        ],
+        "review_changes": [
+          "S5를 skip에서 detail로 바꾸고 별도 Key Point를 추가했습니다. 다음 장으로 이동하는 구체적인 안내가 코드 검증 경고에서 지적한 누락 사실이기 때문입니다."
+        ],
+        "sentence_roles": [
+          "skip",
+          "skip",
+          "claim",
+          "detail",
+          "detail",
+          "detail"
+        ],
+        "normalized_script": "안녕하세요. 지금부터 피치코치의 첫 번째 발표 연습을 시작하겠습니다. 오늘 목표는 완벽하게 말하는 것이 아니라, 연습 화면을 직접 경험하는 것입니다. 지금 보이는 것은 준비된 샘플 발표자료입니다. 다음에는 제 자료로도 연습할 수 있습니다. 오른쪽 방향키를 눌러 다음 장으로 가 보겠습니다."
+      },
+      "rubric_meta": {
+        "model": "gpt-6-luna",
+        "schema_version": "1.0",
+        "feature_version": "script_coverage-1.1"
+      }
+    },
+    {
+      "slide_number": 2,
+      "full_content": "방금 슬라이드를 넘기니 화면과 대본이 함께 바뀌었습니다. 피치코치에서는 오른쪽 방향키나 스페이스 키로 다음 장, 왼쪽 방향키로 이전 장으로 이동합니다. 대본을 표시한 경우 지금 장에 연결된 대본이 나타납니다. 대본이 길다면 위아래 방향키로 스크롤할 수도 있습니다. 저는 이 대본을 참고해 발표를 이어 가겠습니다.",
+      "highlights": [
+        [
+          3,
+          7
+        ],
+        [
+          17,
+          19
+        ],
+        [
+          32,
+          36
+        ],
+        [
+          40,
+          47
+        ],
+        [
+          49,
+          55
+        ],
+        [
+          125,
+          132
+        ]
+      ],
+      "keywords": [
+        "슬라이드",
+        "대본",
+        "피치코치",
+        "오른쪽 방향키",
+        "스페이스 키",
+        "위아래 방향키"
+      ],
+      "script_chars": 128,
+      "expected_ms": 36688,
+      "rubric": {
+        "meta": {
+          "llm_model": "openai/gpt-6-luna",
+          "rubric_id": "3f943918958d981e",
+          "script_name": "first-take-sample",
+          "content_hash": "4fd76175dd84c70aca0f3d4324bff9352efd315075dbf1003527ebb7cdaec8dd",
+          "slide_number": 2,
+          "llm_config_hash": "fe145db16778",
+          "unit_config_hash": "9fbab8f4bf05",
+          "final_config_hash": "ea6918cfbdbd",
+          "rubric_schema_version": "1.2"
+        },
+        "keywords": [
+          {
+            "tf": 5,
+            "term": "대본",
+            "score": 0.5206
+          },
+          {
+            "tf": 3,
+            "term": "방향키",
+            "score": 0.4187
+          },
+          {
+            "tf": 1,
+            "term": "아래 방향키",
+            "score": 0.2473
+          },
+          {
+            "tf": 1,
+            "term": "왼쪽",
+            "score": 0.2473
+          },
+          {
+            "tf": 1,
+            "term": "이전",
+            "score": 0.2473
+          },
+          {
+            "tf": 1,
+            "term": "아래",
+            "score": 0.2473
+          },
+          {
+            "tf": 1,
+            "term": "스페이스",
+            "score": 0.2473
+          },
+          {
+            "tf": 1,
+            "term": "왼쪽 방향키",
+            "score": 0.2473
+          }
+        ],
+        "warnings": [],
+        "sentences": [
+          {
+            "end": 31,
+            "text": "방금 슬라이드를 넘기니 화면과 대본이 함께 바뀌었습니다.",
+            "index": 0,
+            "start": 0
+          },
+          {
+            "end": 84,
+            "text": "피치코치에서는 오른쪽 방향키나 스페이스 키로 다음 장, 왼쪽 방향키로 이전 장으로 이동합니다.",
+            "index": 1,
+            "start": 32
+          },
+          {
+            "end": 116,
+            "text": "대본을 표시한 경우 지금 장에 연결된 대본이 나타납니다.",
+            "index": 2,
+            "start": 85
+          },
+          {
+            "end": 147,
+            "text": "대본이 길다면 위아래 방향키로 스크롤할 수도 있습니다.",
+            "index": 3,
+            "start": 117
+          },
+          {
+            "end": 174,
+            "text": "저는 이 대본을 참고해 발표를 이어 가겠습니다.",
+            "index": 4,
+            "start": 148
+          }
+        ],
+        "core_claim": "피치코치에서는 키보드로 슬라이드 간 이동을 할 수 있다.",
+        "key_points": [
+          {
+            "id": "KP1",
+            "content": "슬라이드를 넘기면 화면과 대본이 함께 바뀐다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              0,
+              31
+            ],
+            "source_quote": "방금 슬라이드를 넘기니 화면과 대본이 함께 바뀌었습니다.",
+            "sentence_indices": [
+              0
+            ]
+          },
+          {
+            "id": "KP2",
+            "content": "피치코치에서는 오른쪽 방향키나 스페이스 키로 다음 장, 왼쪽 방향키로 이전 장으로 이동한다.",
+            "fact_ids": [
+              "CF1"
+            ],
+            "key_terms": [
+              "피치코치"
+            ],
+            "importance": "critical",
+            "source_span": [
+              32,
+              84
+            ],
+            "source_quote": "피치코치에서는 오른쪽 방향키나 스페이스 키로 다음 장, 왼쪽 방향키로 이전 장으로 이동합니다.",
+            "sentence_indices": [
+              1
+            ]
+          },
+          {
+            "id": "KP3",
+            "content": "대본을 표시한 경우 지금 장에 연결된 대본이 나타난다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "high",
+            "source_span": [
+              85,
+              116
+            ],
+            "source_quote": "대본을 표시한 경우 지금 장에 연결된 대본이 나타납니다.",
+            "sentence_indices": [
+              2
+            ]
+          },
+          {
+            "id": "KP4",
+            "content": "대본이 길다면 위아래 방향키로 스크롤할 수 있다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              117,
+              147
+            ],
+            "source_quote": "대본이 길다면 위아래 방향키로 스크롤할 수도 있습니다.",
+            "sentence_indices": [
+              3
+            ]
+          }
+        ],
+        "content_units": [
+          {
+            "id": "S0-U1",
+            "span": [
+              13,
+              15
+            ],
+            "text": "화면이 바뀜",
+            "quote": "화면",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 0
+          },
+          {
+            "id": "S0-U2",
+            "span": [
+              17,
+              30
+            ],
+            "text": "대본이 바뀜",
+            "quote": "대본이 함께 바뀌었습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 0
+          },
+          {
+            "id": "S1-U1",
+            "span": [
+              32,
+              47
+            ],
+            "text": "피치코치에서 오른쪽 방향키로 다음 장으로 이동함",
+            "quote": "피치코치에서는 오른쪽 방향키",
+            "source": "llm",
+            "fact_ids": [
+              "CF1"
+            ],
+            "sentence_index": 1
+          },
+          {
+            "id": "S1-U2",
+            "span": [
+              49,
+              61
+            ],
+            "text": "스페이스 키로 다음 장으로 이동함",
+            "quote": "스페이스 키로 다음 장",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S1-U3",
+            "span": [
+              63,
+              75
+            ],
+            "text": "왼쪽 방향키로 이전 장으로 이동함",
+            "quote": "왼쪽 방향키로 이전 장",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S2-U1",
+            "span": [
+              96,
+              115
+            ],
+            "text": "대본을 표시하면 지금 장에 연결된 대본이 나타남",
+            "quote": "지금 장에 연결된 대본이 나타납니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S3-U1",
+            "span": [
+              117,
+              146
+            ],
+            "text": "대본이 길면 위아래 방향키로 스크롤할 수 있음",
+            "quote": "대본이 길다면 위아래 방향키로 스크롤할 수도 있습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 3
+          }
+        ],
+        "critical_facts": [
+          {
+            "id": "CF1",
+            "type": "term",
+            "unit": null,
+            "spans": [
+              [
+                32,
+                36
+              ]
+            ],
+            "value": "피치코치",
+            "source": "llm",
+            "qualifier": null,
+            "importance": "critical",
+            "normalized": "피치코치",
+            "key_point_ids": [
+              "KP2"
+            ],
+            "numeric_value": null,
+            "sentence_indices": [
+              1
+            ]
+          }
+        ],
+        "draft_warnings": [],
+        "name_decisions": [
+          {
+            "keep": true,
+            "value": "피치코치",
+            "reason": "서비스 이름이므로 그대로 말해야 전달된 것으로 볼 수 있다.",
+            "source": "llm"
+          },
+          {
+            "keep": false,
+            "value": "방향키",
+            "reason": "키보드 조작을 가리키는 일반 명사이므로 다른 말로 바꿔도 된다.",
+            "source": "rule"
+          }
+        ],
+        "review_changes": [],
+        "sentence_roles": [
+          "detail",
+          "claim",
+          "evidence",
+          "detail",
+          "skip"
+        ],
+        "normalized_script": "방금 슬라이드를 넘기니 화면과 대본이 함께 바뀌었습니다. 피치코치에서는 오른쪽 방향키나 스페이스 키로 다음 장, 왼쪽 방향키로 이전 장으로 이동합니다. 대본을 표시한 경우 지금 장에 연결된 대본이 나타납니다. 대본이 길다면 위아래 방향키로 스크롤할 수도 있습니다. 저는 이 대본을 참고해 발표를 이어 가겠습니다."
+      },
+      "rubric_meta": {
+        "model": "gpt-6-luna",
+        "schema_version": "1.0",
+        "feature_version": "script_coverage-1.1"
+      }
+    },
+    {
+      "slide_number": 3,
+      "full_content": "화면 위쪽에는 지금까지 말한 시간과 목표 시간이 보입니다. 마이크를 통해 들어온 목소리는 말하기 분석에 활용됩니다. 카메라가 정상적으로 작동한다면 시선 상태도 분석할 수 있습니다. 지금은 속도를 일부러 조절하지 않고 평소처럼 말하겠습니다. 피치코치는 이 과정에서 제 발표 습관을 돌아볼 수 있도록 도와줍니다.",
+      "highlights": [
+        [
+          13,
+          18
+        ],
+        [
+          20,
+          25
+        ],
+        [
+          33,
+          36
+        ],
+        [
+          45,
+          48
+        ],
+        [
+          50,
+          56
+        ],
+        [
+          65,
+          68
+        ],
+        [
+          82,
+          87
+        ]
+      ],
+      "keywords": [
+        "말한 시간",
+        "목표 시간",
+        "마이크",
+        "목소리",
+        "말하기 분석",
+        "카메라",
+        "시선 상태"
+      ],
+      "script_chars": 128,
+      "expected_ms": 36688,
+      "rubric": {
+        "meta": {
+          "llm_model": "openai/gpt-6-luna",
+          "rubric_id": "a6492fa7b12ec6d6",
+          "script_name": "first-take-sample",
+          "content_hash": "506b7c12d9765be36bcb1da4f2b0ff600daa8f857359dbf69a184d261e7063c6",
+          "slide_number": 3,
+          "llm_config_hash": "fe145db16778",
+          "unit_config_hash": "9fbab8f4bf05",
+          "final_config_hash": "ea6918cfbdbd",
+          "rubric_schema_version": "1.2"
+        },
+        "keywords": [
+          {
+            "tf": 2,
+            "term": "지금",
+            "score": 0.2772
+          },
+          {
+            "tf": 2,
+            "term": "시간",
+            "score": 0.2772
+          },
+          {
+            "tf": 1,
+            "term": "말하기 분석",
+            "score": 0.2029
+          },
+          {
+            "tf": 1,
+            "term": "습관",
+            "score": 0.2029
+          },
+          {
+            "tf": 1,
+            "term": "속도",
+            "score": 0.2029
+          },
+          {
+            "tf": 1,
+            "term": "상태",
+            "score": 0.2029
+          },
+          {
+            "tf": 1,
+            "term": "위쪽",
+            "score": 0.2029
+          },
+          {
+            "tf": 1,
+            "term": "목표 시간",
+            "score": 0.2029
+          }
+        ],
+        "warnings": [],
+        "sentences": [
+          {
+            "end": 32,
+            "text": "화면 위쪽에는 지금까지 말한 시간과 목표 시간이 보입니다.",
+            "index": 0,
+            "start": 0
+          },
+          {
+            "end": 64,
+            "text": "마이크를 통해 들어온 목소리는 말하기 분석에 활용됩니다.",
+            "index": 1,
+            "start": 33
+          },
+          {
+            "end": 100,
+            "text": "카메라가 정상적으로 작동한다면 시선 상태도 분석할 수 있습니다.",
+            "index": 2,
+            "start": 65
+          },
+          {
+            "end": 133,
+            "text": "지금은 속도를 일부러 조절하지 않고 평소처럼 말하겠습니다.",
+            "index": 3,
+            "start": 101
+          },
+          {
+            "end": 172,
+            "text": "피치코치는 이 과정에서 제 발표 습관을 돌아볼 수 있도록 도와줍니다.",
+            "index": 4,
+            "start": 134
+          }
+        ],
+        "core_claim": "피치코치는 발표자가 자신의 발표 습관을 돌아볼 수 있도록 도와준다.",
+        "key_points": [
+          {
+            "id": "KP1",
+            "content": "화면 위쪽에는 지금까지 말한 시간과 목표 시간이 보인다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              0,
+              32
+            ],
+            "source_quote": "화면 위쪽에는 지금까지 말한 시간과 목표 시간이 보입니다.",
+            "sentence_indices": [
+              0
+            ]
+          },
+          {
+            "id": "KP2",
+            "content": "마이크를 통해 들어온 목소리는 말하기 분석에 활용된다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "high",
+            "source_span": [
+              33,
+              64
+            ],
+            "source_quote": "마이크를 통해 들어온 목소리는 말하기 분석에 활용됩니다.",
+            "sentence_indices": [
+              1
+            ]
+          },
+          {
+            "id": "KP3",
+            "content": "카메라가 정상적으로 작동한다면 시선 상태도 분석할 수 있다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "high",
+            "source_span": [
+              65,
+              100
+            ],
+            "source_quote": "카메라가 정상적으로 작동한다면 시선 상태도 분석할 수 있습니다.",
+            "sentence_indices": [
+              2
+            ]
+          },
+          {
+            "id": "KP4",
+            "content": "지금은 속도를 일부러 조절하지 않고 평소처럼 말한다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              101,
+              133
+            ],
+            "source_quote": "지금은 속도를 일부러 조절하지 않고 평소처럼 말하겠습니다.",
+            "sentence_indices": [
+              3
+            ]
+          },
+          {
+            "id": "KP5",
+            "content": "피치코치는 이 과정에서 발표자가 자신의 발표 습관을 돌아볼 수 있도록 도와준다.",
+            "fact_ids": [
+              "CF1"
+            ],
+            "key_terms": [
+              "피치코치"
+            ],
+            "importance": "critical",
+            "source_span": [
+              134,
+              172
+            ],
+            "source_quote": "피치코치는 이 과정에서 제 발표 습관을 돌아볼 수 있도록 도와줍니다.",
+            "sentence_indices": [
+              4
+            ]
+          }
+        ],
+        "content_units": [
+          {
+            "id": "S0-U1",
+            "span": [
+              8,
+              18
+            ],
+            "text": "화면 위쪽에 지금까지 말한 시간이 보임",
+            "quote": "지금까지 말한 시간",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 0
+          },
+          {
+            "id": "S0-U2",
+            "span": [
+              20,
+              25
+            ],
+            "text": "화면 위쪽에 목표 시간이 보임",
+            "quote": "목표 시간",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 0
+          },
+          {
+            "id": "S1-U1",
+            "span": [
+              45,
+              63
+            ],
+            "text": "마이크를 통해 들어온 목소리가 말하기 분석에 활용됨",
+            "quote": "목소리는 말하기 분석에 활용됩니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S2-U1",
+            "span": [
+              65,
+              99
+            ],
+            "text": "카메라가 정상적으로 작동하면 시선 상태도 분석할 수 있음",
+            "quote": "카메라가 정상적으로 작동한다면 시선 상태도 분석할 수 있습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S3-U1",
+            "span": [
+              105,
+              132
+            ],
+            "text": "속도를 일부러 조절하지 않고 평소처럼 말함",
+            "quote": "속도를 일부러 조절하지 않고 평소처럼 말하겠습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 3
+          },
+          {
+            "id": "S4-U1",
+            "span": [
+              134,
+              171
+            ],
+            "text": "피치코치가 제 발표 습관을 돌아볼 수 있도록 도와줌",
+            "quote": "피치코치는 이 과정에서 제 발표 습관을 돌아볼 수 있도록 도와줍니다",
+            "source": "llm",
+            "fact_ids": [
+              "CF1"
+            ],
+            "sentence_index": 4
+          }
+        ],
+        "critical_facts": [
+          {
+            "id": "CF1",
+            "type": "proper_noun",
+            "unit": null,
+            "spans": [
+              [
+                134,
+                138
+              ]
+            ],
+            "value": "피치코치",
+            "source": "rule",
+            "qualifier": null,
+            "importance": "critical",
+            "normalized": "피치코치",
+            "key_point_ids": [
+              "KP5"
+            ],
+            "numeric_value": null,
+            "sentence_indices": [
+              4
+            ]
+          }
+        ],
+        "draft_warnings": [],
+        "name_decisions": [
+          {
+            "keep": true,
+            "value": "피치코치",
+            "reason": "발표 코칭 서비스의 고유한 이름이다.",
+            "source": "rule"
+          }
+        ],
+        "review_changes": [],
+        "sentence_roles": [
+          "detail",
+          "evidence",
+          "evidence",
+          "detail",
+          "claim"
+        ],
+        "normalized_script": "화면 위쪽에는 지금까지 말한 시간과 목표 시간이 보입니다. 마이크를 통해 들어온 목소리는 말하기 분석에 활용됩니다. 카메라가 정상적으로 작동한다면 시선 상태도 분석할 수 있습니다. 지금은 속도를 일부러 조절하지 않고 평소처럼 말하겠습니다. 피치코치는 이 과정에서 제 발표 습관을 돌아볼 수 있도록 도와줍니다."
+      },
+      "rubric_meta": {
+        "model": "gpt-6-luna",
+        "schema_version": "1.0",
+        "feature_version": "script_coverage-1.1"
+      }
+    },
+    {
+      "slide_number": 4,
+      "full_content": "연습 중에는 발표 상황에 따라 코칭 메시지가 나타날 수 있습니다. 메시지가 나오지 않는다고 발표가 잘못된 것은 아닙니다. 중요한 것은 코칭을 기다리느라 멈추지 않고, 준비한 이야기를 끝까지 전달하는 것입니다. 일부 분석은 장치 환경에 따라 제한될 수도 있습니다. 저는 안내를 참고하면서도 제 흐름대로 이어 가겠습니다.",
+      "highlights": [
+        [
+          7,
+          9
+        ],
+        [
+          17,
+          23
+        ],
+        [
+          93,
+          100
+        ],
+        [
+          120,
+          122
+        ],
+        [
+          124,
+          129
+        ],
+        [
+          163,
+          165
+        ]
+      ],
+      "keywords": [
+        "발표",
+        "코칭 메시지",
+        "준비한 이야기",
+        "분석",
+        "장치 환경",
+        "흐름"
+      ],
+      "script_chars": 129,
+      "expected_ms": 36974,
+      "rubric": {
+        "meta": {
+          "llm_model": "openai/gpt-6-luna",
+          "rubric_id": "697751328a8269b4",
+          "script_name": "first-take-sample",
+          "content_hash": "dbb836225b1b60f079b27fd8359164dd30b5c343f06e93dd9785334316a1c8cd",
+          "slide_number": 4,
+          "llm_config_hash": "fe145db16778",
+          "unit_config_hash": "9fbab8f4bf05",
+          "final_config_hash": "ea6918cfbdbd",
+          "rubric_schema_version": "1.2"
+        },
+        "keywords": [
+          {
+            "tf": 2,
+            "term": "메시지",
+            "score": 0.4331
+          },
+          {
+            "tf": 2,
+            "term": "코칭",
+            "score": 0.3495
+          },
+          {
+            "tf": 1,
+            "term": "흐름",
+            "score": 0.2558
+          },
+          {
+            "tf": 1,
+            "term": "환경",
+            "score": 0.2558
+          },
+          {
+            "tf": 1,
+            "term": "상황",
+            "score": 0.2558
+          },
+          {
+            "tf": 1,
+            "term": "이야기",
+            "score": 0.2558
+          },
+          {
+            "tf": 1,
+            "term": "일부",
+            "score": 0.2558
+          },
+          {
+            "tf": 1,
+            "term": "일부 분석",
+            "score": 0.2558
+          }
+        ],
+        "warnings": [],
+        "sentences": [
+          {
+            "end": 36,
+            "text": "연습 중에는 발표 상황에 따라 코칭 메시지가 나타날 수 있습니다.",
+            "index": 0,
+            "start": 0
+          },
+          {
+            "end": 67,
+            "text": "메시지가 나오지 않는다고 발표가 잘못된 것은 아닙니다.",
+            "index": 1,
+            "start": 37
+          },
+          {
+            "end": 116,
+            "text": "중요한 것은 코칭을 기다리느라 멈추지 않고, 준비한 이야기를 끝까지 전달하는 것입니다.",
+            "index": 2,
+            "start": 68
+          },
+          {
+            "end": 146,
+            "text": "일부 분석은 장치 환경에 따라 제한될 수도 있습니다.",
+            "index": 3,
+            "start": 117
+          },
+          {
+            "end": 177,
+            "text": "저는 안내를 참고하면서도 제 흐름대로 이어 가겠습니다.",
+            "index": 4,
+            "start": 147
+          }
+        ],
+        "core_claim": "중요한 것은 코칭을 기다리느라 멈추지 않고, 준비한 이야기를 끝까지 전달하는 것이다.",
+        "key_points": [
+          {
+            "id": "KP1",
+            "content": "연습 중에는 발표 상황에 따라 코칭 메시지가 나타날 수 있다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              0,
+              36
+            ],
+            "source_quote": "연습 중에는 발표 상황에 따라 코칭 메시지가 나타날 수 있습니다.",
+            "sentence_indices": [
+              0
+            ]
+          },
+          {
+            "id": "KP2",
+            "content": "메시지가 나오지 않는다고 발표가 잘못된 것은 아니다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "high",
+            "source_span": [
+              37,
+              67
+            ],
+            "source_quote": "메시지가 나오지 않는다고 발표가 잘못된 것은 아닙니다.",
+            "sentence_indices": [
+              1
+            ]
+          },
+          {
+            "id": "KP3",
+            "content": "코칭을 기다리느라 멈추지 않고 준비한 이야기를 끝까지 전달하는 것이 중요하다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "critical",
+            "source_span": [
+              68,
+              116
+            ],
+            "source_quote": "중요한 것은 코칭을 기다리느라 멈추지 않고, 준비한 이야기를 끝까지 전달하는 것입니다.",
+            "sentence_indices": [
+              2
+            ]
+          },
+          {
+            "id": "KP4",
+            "content": "일부 분석은 장치 환경에 따라 제한될 수도 있다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              117,
+              146
+            ],
+            "source_quote": "일부 분석은 장치 환경에 따라 제한될 수도 있습니다.",
+            "sentence_indices": [
+              3
+            ]
+          },
+          {
+            "id": "KP5",
+            "content": "발표자는 안내를 참고하면서도 자신의 흐름대로 이어 간다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              147,
+              177
+            ],
+            "source_quote": "저는 안내를 참고하면서도 제 흐름대로 이어 가겠습니다.",
+            "sentence_indices": [
+              4
+            ]
+          }
+        ],
+        "content_units": [
+          {
+            "id": "S0-U1",
+            "span": [
+              7,
+              35
+            ],
+            "text": "발표 상황에 따라 코칭 메시지가 나타날 수 있음",
+            "quote": "발표 상황에 따라 코칭 메시지가 나타날 수 있습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 0
+          },
+          {
+            "id": "S1-U1",
+            "span": [
+              37,
+              66
+            ],
+            "text": "메시지가 나오지 않아도 발표가 잘못된 것은 아님",
+            "quote": "메시지가 나오지 않는다고 발표가 잘못된 것은 아닙니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S2-U1",
+            "span": [
+              75,
+              91
+            ],
+            "text": "코칭을 기다리느라 멈추지 않음",
+            "quote": "코칭을 기다리느라 멈추지 않고",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S2-U2",
+            "span": [
+              93,
+              115
+            ],
+            "text": "준비한 이야기를 끝까지 전달함",
+            "quote": "준비한 이야기를 끝까지 전달하는 것입니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S3-U1",
+            "span": [
+              117,
+              145
+            ],
+            "text": "일부 분석은 장치 환경에 따라 제한될 수 있음",
+            "quote": "일부 분석은 장치 환경에 따라 제한될 수도 있습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 3
+          },
+          {
+            "id": "S4-U1",
+            "span": [
+              150,
+              160
+            ],
+            "text": "안내를 참고함",
+            "quote": "안내를 참고하면서도",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 4
+          },
+          {
+            "id": "S4-U2",
+            "span": [
+              161,
+              176
+            ],
+            "text": "제 흐름대로 이어 감",
+            "quote": "제 흐름대로 이어 가겠습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 4
+          }
+        ],
+        "critical_facts": [],
+        "draft_warnings": [],
+        "name_decisions": [
+          {
+            "keep": false,
+            "value": "코칭",
+            "reason": "‘코칭’은 다른 말로 바꿔도 의미가 전달되는 일반 명사이다.",
+            "source": "rule"
+          }
+        ],
+        "review_changes": [],
+        "sentence_roles": [
+          "detail",
+          "evidence",
+          "claim",
+          "detail",
+          "detail"
+        ],
+        "normalized_script": "연습 중에는 발표 상황에 따라 코칭 메시지가 나타날 수 있습니다. 메시지가 나오지 않는다고 발표가 잘못된 것은 아닙니다. 중요한 것은 코칭을 기다리느라 멈추지 않고, 준비한 이야기를 끝까지 전달하는 것입니다. 일부 분석은 장치 환경에 따라 제한될 수도 있습니다. 저는 안내를 참고하면서도 제 흐름대로 이어 가겠습니다."
+      },
+      "rubric_meta": {
+        "model": "gpt-6-luna",
+        "schema_version": "1.0",
+        "feature_version": "script_coverage-1.1"
+      }
+    },
+    {
+      "slide_number": 5,
+      "full_content": "이제 마지막 슬라이드입니다. 저는 슬라이드를 넘기고, 대본을 참고해 말하고, 발표 시간과 코칭 안내를 살펴봤습니다. 발표를 마치려면 상단의 발표 끝내기를 누르고, 종료 의사를 한 번 더 확인합니다. 분석이 완료되면 리포트에서 제 첫 연습 결과를 확인할 수 있습니다. 여기까지 첫 번째 Take였습니다. 감사합니다.",
+      "highlights": [
+        [
+          3,
+          11
+        ],
+        [
+          30,
+          32
+        ],
+        [
+          43,
+          48
+        ],
+        [
+          50,
+          55
+        ],
+        [
+          78,
+          84
+        ],
+        [
+          120,
+          123
+        ],
+        [
+          130,
+          135
+        ]
+      ],
+      "keywords": [
+        "마지막 슬라이드",
+        "대본",
+        "발표 시간",
+        "코칭 안내",
+        "발표 끝내기",
+        "리포트",
+        "연습 결과"
+      ],
+      "script_chars": 126,
+      "expected_ms": 36115,
+      "rubric": {
+        "meta": {
+          "llm_model": "openai/gpt-6-luna",
+          "rubric_id": "87489b779e7ad4ed",
+          "script_name": "first-take-sample",
+          "content_hash": "5b343a5708661ae19761c1d86d67446948ef645a8a9c09ac4e5368de6559ac4b",
+          "slide_number": 5,
+          "llm_config_hash": "fe145db16778",
+          "unit_config_hash": "9fbab8f4bf05",
+          "final_config_hash": "ea6918cfbdbd",
+          "rubric_schema_version": "1.2"
+        },
+        "keywords": [
+          {
+            "tf": 2,
+            "term": "슬라이드",
+            "score": 0.3485
+          },
+          {
+            "tf": 1,
+            "term": "연습 결과",
+            "score": 0.2551
+          },
+          {
+            "tf": 1,
+            "term": "종료 의사",
+            "score": 0.2551
+          },
+          {
+            "tf": 1,
+            "term": "결과",
+            "score": 0.2551
+          },
+          {
+            "tf": 1,
+            "term": "끝내기",
+            "score": 0.2551
+          },
+          {
+            "tf": 1,
+            "term": "리포트",
+            "score": 0.2551
+          },
+          {
+            "tf": 1,
+            "term": "상단",
+            "score": 0.2551
+          },
+          {
+            "tf": 1,
+            "term": "의사",
+            "score": 0.2551
+          }
+        ],
+        "warnings": [],
+        "sentences": [
+          {
+            "end": 15,
+            "text": "이제 마지막 슬라이드입니다.",
+            "index": 0,
+            "start": 0
+          },
+          {
+            "end": 64,
+            "text": "저는 슬라이드를 넘기고, 대본을 참고해 말하고, 발표 시간과 코칭 안내를 살펴봤습니다.",
+            "index": 1,
+            "start": 16
+          },
+          {
+            "end": 110,
+            "text": "발표를 마치려면 상단의 발표 끝내기를 누르고, 종료 의사를 한 번 더 확인합니다.",
+            "index": 2,
+            "start": 65
+          },
+          {
+            "end": 148,
+            "text": "분석이 완료되면 리포트에서 제 첫 연습 결과를 확인할 수 있습니다.",
+            "index": 3,
+            "start": 111
+          },
+          {
+            "end": 168,
+            "text": "여기까지 첫 번째 Take였습니다.",
+            "index": 4,
+            "start": 149
+          },
+          {
+            "end": 175,
+            "text": "감사합니다.",
+            "index": 5,
+            "start": 169
+          }
+        ],
+        "core_claim": "분석이 완료되면 리포트에서 첫 연습 결과를 확인할 수 있다.",
+        "key_points": [
+          {
+            "id": "KP1",
+            "content": "첫 연습에서 슬라이드를 넘기고, 대본을 참고해 말하며, 발표 시간과 코칭 안내를 살펴본다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "normal",
+            "source_span": [
+              16,
+              64
+            ],
+            "source_quote": "저는 슬라이드를 넘기고, 대본을 참고해 말하고, 발표 시간과 코칭 안내를 살펴봤습니다.",
+            "sentence_indices": [
+              1
+            ]
+          },
+          {
+            "id": "KP2",
+            "content": "발표를 마치려면 상단의 발표 끝내기를 누르고 종료 의사를 한 번 더 확인해야 한다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "high",
+            "source_span": [
+              65,
+              110
+            ],
+            "source_quote": "발표를 마치려면 상단의 발표 끝내기를 누르고, 종료 의사를 한 번 더 확인합니다.",
+            "sentence_indices": [
+              2
+            ]
+          },
+          {
+            "id": "KP3",
+            "content": "분석이 완료되면 리포트에서 첫 연습 결과를 확인할 수 있다.",
+            "fact_ids": [],
+            "key_terms": [],
+            "importance": "critical",
+            "source_span": [
+              111,
+              148
+            ],
+            "source_quote": "분석이 완료되면 리포트에서 제 첫 연습 결과를 확인할 수 있습니다.",
+            "sentence_indices": [
+              3
+            ]
+          },
+          {
+            "id": "KP4",
+            "content": "여기까지 첫 번째 Take이다.",
+            "fact_ids": [
+              "CF1"
+            ],
+            "key_terms": [
+              "Take"
+            ],
+            "importance": "normal",
+            "source_span": [
+              149,
+              168
+            ],
+            "source_quote": "여기까지 첫 번째 Take였습니다.",
+            "sentence_indices": [
+              4
+            ]
+          }
+        ],
+        "content_units": [
+          {
+            "id": "S1-U1",
+            "span": [
+              19,
+              28
+            ],
+            "text": "슬라이드를 넘김",
+            "quote": "슬라이드를 넘기고",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S1-U2",
+            "span": [
+              30,
+              41
+            ],
+            "text": "대본을 참고해 말함",
+            "quote": "대본을 참고해 말하고",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S1-U3",
+            "span": [
+              43,
+              48
+            ],
+            "text": "발표 시간을 살펴봄",
+            "quote": "발표 시간",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S1-U4",
+            "span": [
+              50,
+              55
+            ],
+            "text": "코칭 안내를 살펴봄",
+            "quote": "코칭 안내",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 1
+          },
+          {
+            "id": "S2-U1",
+            "span": [
+              74,
+              89
+            ],
+            "text": "상단의 발표 끝내기를 누름",
+            "quote": "상단의 발표 끝내기를 누르고",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S2-U2",
+            "span": [
+              91,
+              109
+            ],
+            "text": "종료 의사를 한 번 더 확인함",
+            "quote": "종료 의사를 한 번 더 확인합니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 2
+          },
+          {
+            "id": "S3-U1",
+            "span": [
+              111,
+              147
+            ],
+            "text": "분석이 완료되면 리포트에서 첫 연습 결과를 확인할 수 있음",
+            "quote": "분석이 완료되면 리포트에서 제 첫 연습 결과를 확인할 수 있습니다",
+            "source": "llm",
+            "fact_ids": [],
+            "sentence_index": 3
+          },
+          {
+            "id": "S4-U1",
+            "span": [
+              154,
+              163
+            ],
+            "text": "첫 번째 Take였음",
+            "quote": "첫 번째 Take",
+            "source": "llm",
+            "fact_ids": [
+              "CF1"
+            ],
+            "sentence_index": 4
+          }
+        ],
+        "critical_facts": [
+          {
+            "id": "CF1",
+            "type": "proper_noun",
+            "unit": null,
+            "spans": [
+              [
+                159,
+                163
+              ]
+            ],
+            "value": "Take",
+            "source": "rule",
+            "qualifier": null,
+            "importance": "normal",
+            "normalized": "take",
+            "key_point_ids": [
+              "KP4"
+            ],
+            "numeric_value": null,
+            "sentence_indices": [
+              4
+            ]
+          }
+        ],
+        "draft_warnings": [],
+        "name_decisions": [
+          {
+            "keep": false,
+            "value": "코칭",
+            "reason": "‘코칭’은 다른 표현으로 바꿔도 전달되는 일반 명사이다.",
+            "source": "rule"
+          },
+          {
+            "keep": true,
+            "value": "Take",
+            "reason": "‘Take’는 첫 번째 연습 회차를 가리키는 용어로 대본에서 사용됐다.",
+            "source": "rule"
+          }
+        ],
+        "review_changes": [],
+        "sentence_roles": [
+          "skip",
+          "detail",
+          "evidence",
+          "claim",
+          "detail",
+          "skip"
+        ],
+        "normalized_script": "이제 마지막 슬라이드입니다. 저는 슬라이드를 넘기고, 대본을 참고해 말하고, 발표 시간과 코칭 안내를 살펴봤습니다. 발표를 마치려면 상단의 발표 끝내기를 누르고, 종료 의사를 한 번 더 확인합니다. 분석이 완료되면 리포트에서 제 첫 연습 결과를 확인할 수 있습니다. 여기까지 첫 번째 Take였습니다. 감사합니다."
+      },
+      "rubric_meta": {
+        "model": "gpt-6-luna",
+        "schema_version": "1.0",
+        "feature_version": "script_coverage-1.1"
+      }
+    }
+  ],
+  "coaching_plan": {
+    "target_ms": 180000,
+    "min_ms": 150000,
+    "max_ms": 240000,
+    "payload": {
+      "dropped": [],
+      "planner_hash": "56827d3cf73d",
+      "coaching_plan": {
+        "focus": [],
+        "relax": [],
+        "max_interventions": null
+      },
+      "fallback_reason": null
+    },
+    "meta": {
+      "model": "gpt-6-luna",
+      "schema_version": "1.0",
+      "feature_version": "coach-1.3"
+    }
+  }
+}

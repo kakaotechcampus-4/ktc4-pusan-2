@@ -328,8 +328,9 @@ it('컴포넌트 · 대화 상자 견본: 종류가 다 보이고, 창은 상태
   await act(async () => root.render(null));
 
   await render('confirm-dialog', 'busy');
-  expect(button('끝내는 중…')?.disabled).toBe(true);
-  expect(button('취소')?.disabled).toBe(true);
+  // 누른 버튼이 초점을 쥐도록 disabled 대신 aria-disabled 로 막는다 (#845)
+  expect(button('끝내는 중…')?.getAttribute('aria-disabled')).toBe('true');
+  expect(button('취소')?.getAttribute('aria-disabled')).toBe('true');
   await act(async () => root.render(null));
 
   await render('survey-dialog', 'open');

@@ -106,6 +106,7 @@ def test_get_reads_legacy_pitch_over_current_limits(
         upper_deviation=600,
         lower_deviation=600,
         presentation_date=None,
+        is_demo=False,
     ).model_dump(mode="json")
 
 
