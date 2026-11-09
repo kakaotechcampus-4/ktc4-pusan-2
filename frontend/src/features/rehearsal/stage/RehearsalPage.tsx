@@ -68,7 +68,14 @@ import { useEndConfirm } from './useEndConfirm';
 import { StageLiveBadge } from './StageLiveBadge';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
-import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
+import {
+  CONNECT_SLOW_MS,
+  hasCamera,
+  hasLiveAudio,
+  isRehearsalRunning,
+  startGate,
+  type StartGate,
+} from './startGate';
 import { openStageDevices } from './openDevices';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
@@ -237,7 +244,7 @@ export function RehearsalPage() {
    * 아래 `useSttStream` 이 `ready` 를 알려 주므로 한 렌더 늦게 바뀝니다
    */
   const [started, setStarted] = useState(false);
-  const running = stageReady && phase === 'RUNNING' && started;
+  const running = isRehearsalRunning(stageReady, phase, started);
   /** 첫 연결이 안 될 때 '다시 시도'가 올립니다. 소켓을 새로 만듭니다 */
   const [connectAttempt, setConnectAttempt] = useState(0);
   /** `ready` 를 `CONNECT_SLOW_MS` 넘게 기다렸다 */

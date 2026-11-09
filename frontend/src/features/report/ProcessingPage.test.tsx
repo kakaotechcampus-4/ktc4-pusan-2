@@ -109,17 +109,19 @@ it('announces a silence auto end with the server message and why it differs from
   expect(host.querySelector('[role="status"]')?.textContent).toContain('분석 중');
 });
 
-// 기록 접수 표시는 분석이 이어지는 동안만 — 실패 · 보류 안내 위에 띄우면 끝난 분석처럼 읽힙니다
-it('shows the recorded take cue only while the analysis is still going', async () => {
+// 서버가 분석 중이라고 응답한 Take에만 '기록 접수'를 표시합니다.
+it('shows the recorded cue only for an analyzing take, never before or after', async () => {
   await renderAt(null);
   expect(host.textContent).toContain('TAKE RECORDED');
 
-  report.status = 'FAILED';
-  await renderAt(null);
-  expect(host.textContent).not.toContain('TAKE RECORDED');
+  for (const status of ['READY', 'RUNNING', 'COMPLETED', 'FAILED']) {
+    report.status = status;
+    await renderAt(null);
+    expect(host.textContent).not.toContain('TAKE RECORDED');
+  }
 
   report.status = 'ANALYZING';
-  report.analysis_hold_reason = 'REVIEW_FAILED';
+  report.analysis_hold_reason = 'COVERAGE_RESCORE_FAILED';
   await renderAt(null);
   expect(host.textContent).not.toContain('TAKE RECORDED');
 });

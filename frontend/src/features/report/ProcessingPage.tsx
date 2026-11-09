@@ -103,6 +103,7 @@ export function ProcessingPage() {
         error={report.error}
         failed={failed}
         held={held}
+        isAnalyzing={data?.status === 'ANALYZING'}
         pitchId={data?.pitch_id}
         states={stepStates(data?.analysis_stage ?? null)}
       />
@@ -116,6 +117,7 @@ function DialogContent({
   error,
   failed,
   held,
+  isAnalyzing,
   pitchId,
   states,
 }: {
@@ -124,6 +126,7 @@ function DialogContent({
   error: Error | null;
   failed: boolean;
   held: boolean;
+  isAnalyzing: boolean;
   pitchId: string | undefined;
   states: StepState[];
 }) {
@@ -174,9 +177,11 @@ function DialogContent({
 
   return (
     <>
-      <p className="border-2 border-dusk-line px-3 py-2 text-center text-xs font-bold tracking-wider text-dusk-accent">
-        TAKE RECORDED · 발표 기록 접수
-      </p>
+      {isAnalyzing && (
+        <p className="border-2 border-dusk-line px-3 py-2 text-center text-xs font-bold tracking-wider text-dusk-accent">
+          TAKE RECORDED · 발표 기록 접수
+        </p>
+      )}
       <Progress takeId={takeId} states={states} />
     </>
   );
