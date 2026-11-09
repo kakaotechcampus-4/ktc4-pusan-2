@@ -519,7 +519,9 @@ it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립
 
   const launcher = host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!;
   expect(launcher.getAttribute('aria-controls')).toBeTruthy();
-  const close = host.querySelector<HTMLButtonElement>('button[aria-label="새미나이 닫기"]:not([aria-haspopup="dialog"])')!;
+  const close = host.querySelector<HTMLButtonElement>(
+    'button[aria-label="새미나이 닫기"]:not([aria-haspopup="dialog"])',
+  )!;
   await act(async () => close.click());
   expect(document.activeElement).toBe(launcher);
   expect(launcher.getAttribute('aria-expanded')).toBe('false');
