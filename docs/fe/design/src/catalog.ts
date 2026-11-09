@@ -210,7 +210,7 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'semini',
-    title: '새미나이 · 채팅 패널'
+    title: '새미나이 · 채팅 패널',
     group: '서비스 시작',
     route: '/',
     status: '제품에 있음',
