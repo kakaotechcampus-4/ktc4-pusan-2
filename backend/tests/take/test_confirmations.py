@@ -288,7 +288,7 @@ def test_unknown_answer_value_is_rejected(client, take, auth_headers, started):
 def test_rescore_failure_keeps_waiting_so_the_answer_can_be_sent_again(
     client, db_session, take, auth_headers, started, monkeypatch
 ):
-    failure = CoverageCallError("status=503", retryable=True)
+    failure = CoverageCallError("status=503", retryable=True, failure_code="AI_UNAVAILABLE")
     rescore = _rescore(monkeypatch, failure, failure)
 
     response = _send(client, take, auth_headers, [ANSWER])
@@ -308,7 +308,10 @@ def test_rescore_failure_keeps_waiting_so_the_answer_can_be_sent_again(
 def test_invalid_rescore_reply_is_not_retried(
     client, db_session, take, auth_headers, started, monkeypatch
 ):
-    rescore = _rescore(monkeypatch, CoverageCallError("invalid coverage response", False))
+    rescore = _rescore(
+        monkeypatch,
+        CoverageCallError("invalid coverage response", False, failure_code="AI_INVALID_RESPONSE"),
+    )
 
     assert _send(client, take, auth_headers, [ANSWER]).status_code == 502
     assert rescore.await_count == 1

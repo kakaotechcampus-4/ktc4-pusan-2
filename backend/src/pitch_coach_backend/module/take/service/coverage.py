@@ -20,7 +20,11 @@ from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take import stt_gaps
 from pitch_coach_backend.module.take.adapter.ai_client import request_analyze, request_rescore
-from pitch_coach_backend.module.take.ai_response import CoverageCallError, coverage_to_store
+from pitch_coach_backend.module.take.ai_response import (
+    CoverageCallError,
+    CoverageFailureCode,
+    coverage_to_store,
+)
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import COVERAGE_STALE_AFTER, TakeRepository
 from pitch_coach_backend.module.take.states import (
@@ -158,16 +162,40 @@ def _mark_retry_used(db: Session, take_id: uuid.UUID, requested_at: datetime, co
     return True
 
 
+def _record_analyze_failure(
+    db: Session,
+    take_id: uuid.UUID,
+    requested_at: datetime,
+    failure_code: CoverageFailureCode,
+    retry: bool,
+) -> bool:
+    """확정본 없이 실패한 analyze 의 이유를 남긴다 (`takes.coverage_failure_code`). 시도마다 덮어써
+    BE 가 다시 떠도 마지막 이유가 남는다. 확정본을 저장하면 비운다 (`_save_confirmed`).
+
+    `retry` 면 전체 재시도 한도도 같은 트랜잭션에서 쓴다. 재시도를 보내도 되면 True 다.
+    """
+    take = _lock_open_take(TakeRepository(db), take_id, requested_at)
+    if take is None:
+        db.rollback()
+        return False
+    take.coverage_failure_code = failure_code
+    retry = retry and not take.coverage_retry_used
+    if retry:
+        take.coverage_retry_used = True
+    db.commit()
+    return retry
+
+
 def _save_confirmed(
     db: Session, take_id: uuid.UUID, requested_at: datetime, reply: dict
 ) -> dict | None:
     payload, meta = coverage_to_store(reply, take_id)
     take_repository = TakeRepository(db)
-    if _lock_open_take(
-        take_repository, take_id, requested_at
-    ) is None or not take_repository.insert_ai_result(take_id, COVERAGE_KIND, payload, meta):
+    take = _lock_open_take(take_repository, take_id, requested_at)
+    if take is None or not take_repository.insert_ai_result(take_id, COVERAGE_KIND, payload, meta):
         db.rollback()
         return None
+    take.coverage_failure_code = None
     take_repository.upsert_summary_speak_accuracy(take_id, speak_accuracy(payload))
     db.commit()
     return payload
@@ -341,15 +369,33 @@ async def _first_analyze(
     try:
         reply = await request_analyze(body, request_id)
     except CoverageCallError as e:
-        logger.warning("take=%s coverage analyze failed: %s", take_id, e)
-        if not e.retryable or not await _in_session(
-            session_factory, _mark_retry_used, take_id, requested_at, "coverage_retry_used"
+        logger.warning("take=%s coverage analyze failed: %s %s", take_id, e.failure_code, e)
+        if not await _in_session(
+            session_factory,
+            _record_analyze_failure,
+            take_id,
+            requested_at,
+            e.failure_code,
+            e.retryable,
         ):
             return
         try:
             reply = await request_analyze(body, request_id)
         except CoverageCallError as retry_error:
-            logger.warning("take=%s coverage analyze retry failed: %s", take_id, retry_error)
+            logger.warning(
+                "take=%s coverage analyze retry failed: %s %s",
+                take_id,
+                retry_error.failure_code,
+                retry_error,
+            )
+            await _in_session(
+                session_factory,
+                _record_analyze_failure,
+                take_id,
+                requested_at,
+                retry_error.failure_code,
+                False,
+            )
             return
         await _in_session(session_factory, _save_confirmed, take_id, requested_at, reply)
         return

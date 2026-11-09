@@ -143,7 +143,7 @@ def test_invalid_coverage_response_is_not_retryable(monkeypatch, endpoint, case)
         request = getattr(coverage_service, "request_" + endpoint)
         asyncio.run(request({"take_id": str(take_id)}, "id"))
 
-    assert error.value.retryable is False
+    assert (error.value.retryable, error.value.failure_code) == (False, "AI_INVALID_RESPONSE")
 
 
 @pytest.mark.parametrize("unmeasurable", [False, True])
@@ -168,14 +168,26 @@ def test_valid_coverage_preserves_unknown_fields_and_request_id(monkeypatch, unm
 
 
 @pytest.mark.parametrize(
-    "status,retryable",
-    [(408, True), (429, True), (503, True), (422, False), (404, False), (302, False)],
+    "status,retryable,failure_code",
+    [
+        (408, True, "AI_ERROR"),
+        (429, True, "AI_ERROR"),
+        (500, True, "AI_ERROR"),
+        (502, True, "AI_ERROR"),
+        (503, True, "AI_UNAVAILABLE"),
+        (504, True, "AI_TIMEOUT"),
+        (422, False, "AI_REJECTED"),
+        (404, False, "AI_ERROR"),
+        (302, False, "AI_ERROR"),
+    ],
 )
-def test_coverage_http_failure_classification(monkeypatch, status, retryable) -> None:
-    ai(monkeypatch, lambda request: httpx.Response(status))
+def test_coverage_http_failure_classification(monkeypatch, status, retryable, failure_code) -> None:
+    # 에러 본문은 읽지 않는다. 계약 코드가 있어도 상태 코드로만 나눈다
+    body = {"error": {"code": "LLM_TIMEOUT", "message": "x"}}
+    ai(monkeypatch, lambda request: httpx.Response(status, json=body))
     with pytest.raises(coverage_service.CoverageCallError) as error:
         asyncio.run(coverage_service.request_analyze({"take_id": str(uuid.uuid4())}, "id"))
-    assert error.value.retryable is retryable
+    assert (error.value.retryable, error.value.failure_code) == (retryable, failure_code)
 
 
 @pytest.mark.parametrize("case", INVALID)
@@ -285,15 +297,26 @@ def test_malformed_analyze_advances_to_no_coverage_without_a_partial_save(
     assert TakeRepository(db_session).get_ai_result(take.id, "SCRIPT_COVERAGE") is None
 
 
-@pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ReadTimeout])
-def test_coverage_network_failure_is_retryable(monkeypatch, error_type) -> None:
+@pytest.mark.parametrize(
+    "error_type,failure_code",
+    [
+        (httpx.ConnectError, "AI_UNAVAILABLE"),
+        (httpx.RemoteProtocolError, "AI_UNAVAILABLE"),
+        (httpx.ReadTimeout, "AI_TIMEOUT"),
+        (httpx.WriteTimeout, "AI_TIMEOUT"),
+        # 연결을 맺지 못한 시간 초과는 연결 실패다
+        (httpx.ConnectTimeout, "AI_UNAVAILABLE"),
+        (httpx.PoolTimeout, "AI_UNAVAILABLE"),
+    ],
+)
+def test_coverage_network_failure_is_retryable(monkeypatch, error_type, failure_code) -> None:
     def handler(request):
         raise error_type("fake network failure", request=request)
 
     ai(monkeypatch, handler)
     with pytest.raises(coverage_service.CoverageCallError) as error:
         asyncio.run(coverage_service.request_analyze({"take_id": str(uuid.uuid4())}, "id"))
-    assert error.value.retryable is True
+    assert (error.value.retryable, error.value.failure_code) == (True, failure_code)
 
 
 def test_coverage_attempt_has_an_overall_deadline(monkeypatch) -> None:
@@ -304,7 +327,7 @@ def test_coverage_attempt_has_an_overall_deadline(monkeypatch) -> None:
     ai(monkeypatch, handler)
     with pytest.raises(coverage_service.CoverageCallError) as error:
         asyncio.run(take_ai_client.post_coverage("/takes/analyze", {}, "id", 0.01))
-    assert error.value.retryable is True
+    assert (error.value.retryable, error.value.failure_code) == (True, "AI_TIMEOUT")
 
 
 @pytest.mark.parametrize("merge", [False, True], ids=["whole-analyze", "candidate-rescore"])
@@ -437,8 +460,9 @@ def test_coverage_storage_rounds_summary_and_preserves_raw_scores(
         assert coverage_service._apply_merged(db_session, take.id, requested_at, 0, reply)
         assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is None
     else:
-        assert coverage_service._save_confirmed(
-            db_session, take.id, requested_at, reply) is not None
+        assert (
+            coverage_service._save_confirmed(db_session, take.id, requested_at, reply) is not None
+        )
 
     db_session.expire_all()
     summary = db_session.query(TakeSummary).filter_by(take_id=take.id).one()
