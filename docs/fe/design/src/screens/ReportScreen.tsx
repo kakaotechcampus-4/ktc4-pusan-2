@@ -271,45 +271,67 @@ function ContentSample({ stateId }: { stateId: string }) {
       <p className="text-sm">
         <b>놓친 중요 내용</b> 3장 · 신규 고객 비중 60% · <b>다르게 말함</b>
       </p>
-      <p className="text-sm">
-        <b>핵심 수치</b> 확인한 2개 중 2개 맞음 · 1개 확인 대기
-      </p>
-      <p className="text-sm">
-        <b>말의 구성</b> 대본 내용 75% · 진행 말 10% · 대본 밖 말 15%
-        <span className="block text-xs text-ink/80">대본 밖 말은 세부 구분 없이 합쳐 보여요</span>
-      </p>
+      {/* 제품처럼 넓은 화면에서는 수치 · 표현 · 말의 구성을 한 줄에 */}
+      <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <p>
+          <b className="block">핵심 수치</b> 확인한 2개 중 2개 맞음 · 1개 확인 대기
+        </p>
+        <p>
+          <b className="block">표현</b> 대본대로 1 · 바꿔 말함 1 · 구분 어려움 0
+        </p>
+        <p>
+          <b className="block">말의 구성</b> 대본 내용 75% · 진행 말 10% · 대본 밖 말 15%
+          <span className="block text-xs text-ink/80">대본 밖 말은 세부 구분 없이 합쳐 보여요</span>
+        </p>
+      </div>
       <SlideRows open={stateId === 'content-open'} />
     </Card>
   );
 }
 
-/** 장별 목록. 줄을 누르면 그 장을 펼칩니다 — 제품은 펼칠 때 장별 상세를 부릅니다 */
+/**
+ * 장별 목록. "장별 보기 (N장)"로 접어 두고, 열면 장마다 한 줄 — 장이 많아도 카드가 길어지지 않게 합니다.
+ * 줄을 누르면 그 장을 펼칩니다. 제품은 펼칠 때 장별 상세를 부릅니다
+ */
 function SlideRows({ open: initial }: { open: boolean }) {
+  const [listOpen, setListOpen] = useState(initial);
   const [open, setOpen] = useState(initial);
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-bold">장별</h3>
-      <ul className="border-t border-line text-sm">
-        <li className="border-b border-line">
-          <button
-            type="button"
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-            className="flex min-h-11 w-full items-start gap-3 py-2 text-left"
-          >
-            <b className="w-10 shrink-0">3장</b>
-            <span className="flex-1">
-              전달 <b>50%</b> · 다르게 말함 <b>33%</b> · 놓친 중요 내용 <b>1</b>
-            </span>
-            <span aria-hidden="true">{open ? '▴' : '▾'}</span>
-          </button>
-          {open && <SlideDetail />}
-        </li>
-        <li className="flex min-h-11 items-center gap-3 border-b border-line py-2">
-          <b className="w-10 shrink-0">4장</b>
-          절반쯤 말함(간이) <Badge tone="muted">간이</Badge>
-        </li>
-      </ul>
+      <button
+        type="button"
+        aria-expanded={listOpen}
+        onClick={() => setListOpen((v) => !v)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 border-2 border-ink bg-cream px-3 text-left text-sm font-bold"
+      >
+        <span>
+          장별 보기 <span className="font-normal text-stone">(2장)</span>
+        </span>
+        <span aria-hidden="true">{listOpen ? '▴' : '▾'}</span>
+      </button>
+      {listOpen && (
+        <ul className="border-t border-line text-sm">
+          <li className="border-b border-line">
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="flex min-h-11 w-full items-start gap-3 py-2 text-left"
+            >
+              <b className="w-10 shrink-0">3장</b>
+              <span className="flex-1">
+                전달 <b>50%</b> · 다르게 말함 <b>33%</b> · 놓친 중요 내용 <b>1</b>
+              </span>
+              <span aria-hidden="true">{open ? '▴' : '▾'}</span>
+            </button>
+            {open && <SlideDetail />}
+          </li>
+          <li className="flex min-h-11 items-center gap-3 border-b border-line py-2">
+            <b className="w-10 shrink-0">4장</b>
+            절반쯤 말함(간이) <Badge tone="muted">간이</Badge>
+          </li>
+        </ul>
+      )}
     </section>
   );
 }

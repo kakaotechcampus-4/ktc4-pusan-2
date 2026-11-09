@@ -14,6 +14,23 @@ function textOf(status: ContentStatus | null) {
   return host.textContent ?? '';
 }
 
+/** "장별 보기"를 눌러 목록을 연 뒤의 글자 */
+function openedText(status: ContentStatus | null) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    act(() => root.render(<ContentCard takeId="t3" status={status} />));
+    const toggle = [...host.querySelectorAll('button')].find((b) =>
+      b.textContent?.startsWith('장별 보기'),
+    )!;
+    act(() => toggle.click());
+    return host.textContent ?? '';
+  } finally {
+    act(() => root.unmount());
+  }
+}
+
 const status = (id: string) => contentStatusOf(id, null);
 
 const withSummary = (over: Partial<CoverageSummary>): ContentStatus => ({
@@ -70,14 +87,20 @@ describe('내용 전달 카드 — 측정됨', () => {
       expect(text).toContain(label);
   });
 
-  it('놓친 중요 내용 · 수치 · 표현 · 말의 구성 · 장별 목록', () => {
+  it('놓친 중요 내용 · 수치 · 표현 · 말의 구성', () => {
     const text = textOf(contentMeasured);
     expect(text).toContain('3장 · 신규 고객 비중 60% · 다르게 말함');
     expect(text).toContain('확인한 2개 중 2개 맞음 · 1개 확인 대기');
     expect(text).toContain('바꿔 말해도 감점하지 않아요');
     expect(text).toContain('진행 말10%');
     expect(text).toContain('대본 밖 말은 세부 구분 없이 합쳐 보여요');
-    expect(text).toContain('4장절반쯤 말함(간이)간이');
+  });
+
+  it('장별 목록은 접어 두고 장 수만 보입니다 — 열면 장마다 한 줄', () => {
+    const closed = textOf(contentMeasured);
+    expect(closed).toContain('장별 보기 (2장)');
+    expect(closed).not.toContain('절반쯤 말함(간이)');
+    expect(openedText(contentMeasured)).toContain('4장절반쯤 말함(간이)간이');
   });
 
   it('0 과 null 을 섞지 않습니다 — 0 은 0%와 설명, null 은 —와 이유', () => {
@@ -106,7 +129,7 @@ describe('내용 전달 카드 — 측정됨', () => {
   });
 
   it('장별 목록 — 0 의 장, 핵심 내용 없는 장, 참고용 장, 실패 장', () => {
-    const text = textOf(status('t-content-zero'));
+    const text = openedText(status('t-content-zero'));
     expect(text).toContain('4장이 장에는 확인할 핵심 내용이 없어요');
     expect(text).toContain('참고용');
     expect(text).toContain('6장음성 인식이 끊겨 이 장을 평가하지 못했어요');
@@ -140,7 +163,7 @@ describe('내용 전달 카드 — 측정됨', () => {
     ['zero', status('t-content-zero')],
     ['estimated', status('t-content-estimated')],
   ])('%s: 화면에 undefined · null 글자가 없습니다', (_, given) => {
-    const text = textOf(given);
+    const text = openedText(given);
     expect(text).not.toMatch(/undefined|null|NaN/);
   });
 });

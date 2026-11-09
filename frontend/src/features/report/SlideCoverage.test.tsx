@@ -40,7 +40,12 @@ async function render(takeId: string) {
       </QueryClientProvider>,
     );
   });
-  await until(() => host.textContent?.includes('내용 전달') ?? false);
+  await until(() => host.textContent?.includes('장별 보기') ?? false);
+  // 장별 목록은 접혀 있어 먼저 엽니다
+  const list = [...host.querySelectorAll('button')].find((b) =>
+    b.textContent?.startsWith('장별 보기'),
+  )!;
+  await act(async () => list.click());
 }
 
 /** 요청이 돌아와 화면이 바뀔 때까지 기다립니다 */
@@ -115,7 +120,8 @@ describe('장별 펼침', () => {
     await render('t-content-zero');
     await open(6);
     await until(() => !(host.textContent?.includes('불러오고 있어요') ?? true));
-    const panel = host.querySelector('[id]')?.textContent ?? '';
+    const panel =
+      document.getElementById(rowButton(6).getAttribute('aria-controls')!)?.textContent ?? '';
     expect(panel).toBe('음성 인식이 끊겨 이 장을 평가하지 못했어요');
   });
 

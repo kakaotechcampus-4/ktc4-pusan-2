@@ -73,11 +73,12 @@ function MeasuredCard({
       <Headline status={status} summary={summary} />
       {summary.status_shares && <SharesBar shares={summary.status_shares} />}
       <CriticalGaps gaps={summary.critical_gaps} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* 세 덩어리를 넓은 화면에서는 한 줄에 — 장 수와 상관없이 카드 높이를 비슷하게 둡니다 */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Facts facts={summary.facts} />
         <ExpressionLine expression={summary.expression} />
+        <SpeechMixBlock mix={summary.speech_mix} title="말의 구성" />
       </div>
-      <SpeechMixBlock mix={summary.speech_mix} title="말의 구성" />
       <SlideList takeId={takeId} revision={status.revision} slides={summary.slides} />
     </Card>
   );
@@ -292,15 +293,31 @@ function SlideList({
   revision: number | null;
   slides: SlideSummary[];
 }) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
   if (slides.length === 0) return null;
+  // 장이 많으면 카드가 길어져 리포트 아래 카드까지 밀립니다 — 목록은 접어 두고 열면 보입니다
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-bold">장별</h3>
-      <ul className="flex flex-col border-t border-line">
-        {slides.map((slide) => (
-          <SlideRow key={slide.slide_number} takeId={takeId} revision={revision} slide={slide} />
-        ))}
-      </ul>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        onClick={() => setOpen((v) => !v)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 border-2 border-ink bg-cream px-3 text-left text-sm font-bold hover:bg-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+      >
+        <span>
+          장별 보기 <span className="tabular-nums font-normal text-stone">({slides.length}장)</span>
+        </span>
+        <span aria-hidden="true">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <ul id={listId} className="flex flex-col border-t border-line">
+          {slides.map((slide) => (
+            <SlideRow key={slide.slide_number} takeId={takeId} revision={revision} slide={slide} />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
