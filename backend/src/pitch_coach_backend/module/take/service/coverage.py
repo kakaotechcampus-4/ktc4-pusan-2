@@ -486,10 +486,25 @@ async def recover_held_coverage(
     (`coverage_rescore_retry_used`)은 되돌리지 않고, 이 경로에서 누를 때마다 한 번만 부른다.
     성공하면 확정본 교체 · 후보 삭제 · 보류 해제를 한 트랜잭션으로 하고 다음 분석 단계를 정한다.
     실패하면 보류를 그대로 두고 `HELD` 다. 표식을 못 잡았으면 `SKIPPED` 다.
+
+    예상하지 못한 오류(DB 등)로 멈추면 표식을 놓고 그 오류를 올린다. 쥔 채 두면 기한
+    (`COVERAGE_STALE_AFTER`)이 지날 때까지 다시 누를 수 없고, 보류한 Take 는 분석 주기 작업도
+    이어 가지 않는다. 확정본을 바꾸기 전에 멈췄으면 보류 · 후보는 그대로라 다시 누르면 된다.
+    바꾼 뒤에 멈췄으면 보류가 풀려 있어 분석 주기 작업이 다음 단계로 이어 간다.
     """
     job = await _in_session(session_factory, _claim_held, take_id)
     if job is None:
         return "SKIPPED"
+    try:
+        return await _rescore_held(session_factory, take_id, job)
+    except Exception:
+        await _release_after_error(session_factory, take_id, job.requested_at)
+        raise
+
+
+async def _rescore_held(
+    session_factory: Callable[[], Session], take_id: uuid.UUID, job: CoverageJob
+) -> CoverageOutcome:
     candidate = job.candidate
     assert candidate is not None
     try:
@@ -507,3 +522,18 @@ async def recover_held_coverage(
         ):
             logger.info("take=%s stale held coverage rescore result discarded", take_id)
     return await _in_session(session_factory, _conclude_coverage, take_id, job.requested_at)
+
+
+async def _release_after_error(
+    session_factory: Callable[[], Session], take_id: uuid.UUID, requested_at: datetime
+) -> None:
+    try:
+        await _in_session(session_factory, _release_coverage, take_id, requested_at)
+    except Exception:
+        # 놓지 못해도 기한이 지나면 다시 잡을 수 있다. 원래 오류를 올린다
+        logger.exception("take=%s held coverage mark not released", take_id)
+
+
+def _release_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) -> None:
+    TakeRepository(db).release_coverage(take_id, requested_at)
+    db.commit()

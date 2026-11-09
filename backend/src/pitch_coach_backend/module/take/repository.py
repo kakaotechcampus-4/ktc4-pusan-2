@@ -448,6 +448,14 @@ class TakeRepository:
             .execution_options(populate_existing=True)
         )
 
+    def release_coverage(self, take_id: uuid.UUID, requested_at: datetime) -> None:
+        """표식이 아직 `requested_at` 인 채점 작업의 표식을 놓는다."""
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.coverage_requested_at == requested_at)
+            .values(coverage_requested_at=None)
+        )
+
     def clock(self) -> datetime:
         """DB 시계의 지금 시각. 단계를 바꾼 시각(`analysis_stage_at`)과 같은 시계로 잰다."""
         return self.db.scalar(select(func.clock_timestamp()))

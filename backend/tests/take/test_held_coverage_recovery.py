@@ -8,10 +8,11 @@ import asyncio
 import copy
 import uuid
 from datetime import timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import delete, func, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.tasks import TaskRegistry
@@ -45,7 +46,12 @@ def current_session(monkeypatch, db_session: Session):
     monkeypatch.setattr(analysis_runner, "_running", TaskRegistry())
 
     async def run(factory, fn, *args):
-        return fn(db_session, *args)
+        # 실제 `with_session` 은 세션을 닫아 커밋하지 않은 것을 되돌린다
+        try:
+            return fn(db_session, *args)
+        except Exception:
+            db_session.rollback()
+            raise
 
     monkeypatch.setattr(analysis_runner, "_in_session", run)
     monkeypatch.setattr(coverage_service, "_in_session", run)
@@ -158,6 +164,46 @@ def test_failed_recovery_rescore_keeps_the_hold(db_session, user_id, monkeypatch
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE").revision == 0
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is not None
     assert db_session.query(TakeSummary).filter_by(take_id=take.id).one().speak_accuracy == 81
+
+
+@pytest.mark.parametrize("fails_at", ["rescore", "save"])
+def test_unexpected_error_releases_the_mark_so_the_recovery_can_be_pressed_again(
+    db_session, user_id, monkeypatch, fails_at
+):
+    """예상하지 못한 오류(DB 등)로 멈추면 표식을 놓는다. 보류 · 후보는 그대로라 표식 기한을
+    기다리지 않고 다시 누를 수 있다."""
+    take = _held(db_session, user_id)
+    replace_ai_result = TakeRepository.replace_ai_result
+    if fails_at == "rescore":
+        error = RuntimeError("예상하지 못한 응답")
+        monkeypatch.setattr(coverage_service, "request_rescore", AsyncMock(side_effect=error))
+    else:
+        error = OperationalError("UPDATE take_ai_results", {}, ConnectionError("db down"))
+        monkeypatch.setattr(
+            coverage_service, "request_rescore", AsyncMock(return_value=_merged(take))
+        )
+        monkeypatch.setattr(TakeRepository, "replace_ai_result", Mock(side_effect=error))
+
+    with pytest.raises(type(error)):
+        asyncio.run(coverage_service.recover_held_coverage(take.id))
+
+    db_session.refresh(take)
+    assert (take.analysis_hold_reason, take.coverage_requested_at) == (
+        "COVERAGE_RESCORE_FAILED",
+        None,
+    )
+    repo = TakeRepository(db_session)
+    assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE").revision == 0
+    assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is not None
+    assert coverage_service.held_recovery(db_session, take.id) == "READY"
+
+    # 다시 누르면 보류를 푼다
+    monkeypatch.setattr(TakeRepository, "replace_ai_result", replace_ai_result)
+    monkeypatch.setattr(coverage_service, "request_rescore", AsyncMock(return_value=_merged(take)))
+
+    assert asyncio.run(coverage_service.recover_held_coverage(take.id)) == "READY_FOR_REVIEW"
+    db_session.refresh(take)
+    assert (take.analysis_hold_reason, take.coverage_requested_at) == (None, None)
 
 
 def test_recovery_leaves_a_take_that_is_not_held_alone(db_session, user_id, monkeypatch):
