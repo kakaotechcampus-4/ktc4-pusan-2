@@ -1504,9 +1504,12 @@ def _goal_proposal_notes(lp: Loop) -> list[str]:
     return out
 
 
-#: 다시 평가를 바라는 말(6-6)
+#: 다시 평가를 바라는 말(6-6). "평가 다시 돌려 주세요" · "리뷰를 다시 돌려 주세요"처럼 대상이 앞에 오거나 '돌려'로 말한
+#: 요청도 잡는다(final60 re-security-camera-dispute · re-podcast-mic-dispute). "다시 봐도 낮아" 같은 서술은 잡지 않는다
 _REASSESS_ASK = re.compile(
     r"다시\s*(평가|채점|매겨|판정)|다시\s*봐\s*(줘|주세요|줄래)|재평가|재채점"
+    r"|다시\s*돌려\s*(줘|주세요|줄래)"
+    r"|(평가|채점|리뷰|판정)[을를은는도]?\s*다시\s*(해|매겨|받|돌려)"
 )
 
 

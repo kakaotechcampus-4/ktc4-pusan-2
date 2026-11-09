@@ -995,6 +995,38 @@ def test_measurement_notice_also_for_asking_to_look_again() -> None:
     assert templates.SystemText.MEASUREMENT_FIXED.value in final_ok(data).message.text  # type: ignore[union-attr]
 
 
+@pytest.mark.parametrize(
+    ("msg", "dim"),
+    [
+        (
+            "노트북 카메라가 화면 아래쪽에 달려 있어서, 청중을 봐도 시선이 낮게 잡혔을 거예요. "
+            "시선 평가 다시 돌려 주세요.",
+            "audience_gaze",
+        ),
+        (
+            "녹음할 때 마이크가 자꾸 끊겨서 말이 빨랐다고 잘못 잡힌 것 같아요. "
+            "속도 평가는 리뷰를 다시 돌려 주세요.",
+            "pacing_rhythm",
+        ),
+    ],
+)
+def test_measurement_notice_for_asking_to_run_the_review_again(msg: str, dim: str) -> None:
+    """'평가 다시 돌려 주세요' · '리뷰를 다시 돌려 주세요'도 다시 평가 요청이다: 측정값 이의면 안내를 붙인다(final60
+    re-security-camera-dispute · re-podcast-mic-dispute 에서 안내가 빠짐)."""
+    claim, ask = msg.rstrip(".").split(". ")
+    d = [
+        F.draft(claim, claim_op="OVERALL", dimension=dim, polarity="NEGATIVE"),
+        F.draft(ask, type_="REQUEST", claim_op=None, polarity="NEUTRAL"),
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.done(), F.done(), F.done()],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    assert templates.SystemText.MEASUREMENT_FIXED.value in final_ok(data).message.text  # type: ignore[union-attr]
+
+
 def test_saying_it_stays_low_even_looking_again_is_not_a_reassess_request() -> None:
     """'다시 봐도 시선이 낮아'는 서술이다(다시 평가 요청이 아니면 측정값 안내를 붙이지 않는다)."""
     msg = "Take 5 다시 봐도 시선이 낮아"
