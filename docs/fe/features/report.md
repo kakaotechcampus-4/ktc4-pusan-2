@@ -58,6 +58,7 @@ FINALIZING → SCORING → (AWAITING_CONFIRMATION) → REVIEWING → DONE
 
 - 확인 단계(`AWAITING_CONFIRMATION`)는 채점 결과에 확인할 말이 있을 때만 거칩니다.
 - 화면은 세 단계로 접어 보입니다: "발표 기록 정리" · "말한 내용 채점" · "코치 총평"
+- Take 상태가 `ANALYZING`인 동안에만 단계 표시 위에 "TAKE RECORDED · 발표 기록 접수" 띠를 둡니다(`ProcessingPage.tsx`, #1118).
 
 ## 2. 화면 흐름
 

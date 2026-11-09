@@ -45,7 +45,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 | `npm run test` | 순수 로직 테스트 |
 | `npm run format:check` | Prettier 확인. 고칠 때는 `npm run format` |
 
-`npm run test:e2e`(Playwright, 목 서버를 3100 포트에 띄워 대화 화면을 끝까지 돌림)는 CI에서 돌지 않습니다. 대화 화면 · `src/mocks/` · 대화 통신 계층을 고쳤으면 직접 돌립니다.
+`npm run test:e2e`(Playwright, 목 서버를 3100 포트에 띄워 대화 화면을 끝까지 돌림)는 CI의 `frontend-e2e` job이 PR마다 돌립니다. 아직 필수 검사가 아니라 실패해도 머지가 막히지 않으니 PR 검사 결과를 직접 확인합니다. 대화 화면 · `src/mocks/` · 대화 통신 계층을 고쳤으면 올리기 전에 로컬에서도 돌려 봅니다.
 
 실서버로 붙일 때 (W8): `.env.local`에 `VITE_USE_MOCK=false`
 

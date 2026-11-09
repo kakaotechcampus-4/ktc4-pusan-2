@@ -232,7 +232,7 @@ app/ ──▶ features/* ──▶ workers/ ──┬──▶ vendor/gaze/engi
 - 로컬: `npm run dev`(목 서버, http://localhost:3000). 실서버에 붙이는 법과 명령어는 [frontend/README.md](../../frontend/README.md)에 있습니다.
 - 빌드 이미지: `frontend/Dockerfile` — 빌드 단계에서 시선 모델 자산을 받아 넣고, Caddy로 정적 파일을 냅니다. 빌드 때 정해지는 값은 `ARG`로 받습니다(예: `VITE_LAUNCH_GATE_ENABLED`).
 - 배포: dev는 Actions → Deploy develop을 `develop-next`로 실행합니다. 환경 값은 배포 워크플로가 씁니다(BE 담당).
-- CI: `frontend-ci.yml`이 typecheck · lint · test · format:check · build를 돌리고, dev · preview 서버에 COOP/COEP 헤더가 붙는지 확인합니다. E2E(`npm run test:e2e`)는 CI에서 돌지 않으니 대화 화면 · 목을 고쳤으면 직접 돌립니다. PR에서는 화면 설계서와의 차이(`design-drift`)를 알려 줍니다. 바뀐 것이 있어도 실패하지 않고, 비교할 커밋을 찾지 못할 때만 실패합니다.
+- CI: `frontend-ci.yml`이 typecheck · lint · test · format:check · build를 돌리고, dev · preview 서버에 COOP/COEP 헤더가 붙는지 확인합니다. E2E(`npm run test:e2e`)는 따로 나눈 `frontend-e2e` job이 PR마다 돌립니다. 아직 필수 검사는 아니라 실패해도 머지가 막히지 않으니 결과를 직접 확인합니다. PR에서는 화면 설계서와의 차이(`design-drift`)를 알려 줍니다. 바뀐 것이 있어도 실패하지 않고, 비교할 커밋을 찾지 못할 때만 실패합니다.
 
 ## 8. 열린 질문
 
