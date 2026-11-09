@@ -147,6 +147,12 @@ body {
   outline-offset: 2px;
 }
 
+/* 채팅 입력칸은 composer 바깥 테두리와 링으로 초점을 표시합니다.
+   textarea 자체의 전역 outline은 제거해 두 겹으로 보이지 않도록 합니다. */
+[data-chat-composer] textarea:focus-visible {
+  outline: none;
+}
+
 /* Tailwind v4 는 button 커서를 화살표로 둡니다. 누를 수 있는 버튼만 손가락으로 맞춥니다.
    base 레이어라 `disabled:cursor-*` · `aria-disabled:cursor-*` 같은 유틸리티가 항상 이깁니다 (위 규칙처럼 레이어 밖에 두면 덮어버립니다) */
 @layer base {
@@ -245,6 +251,13 @@ body {
    정상 런처와 오류 안내가 같은 규칙을 사용하며 패널 높이도 최종 여백을 참조합니다. */
 [data-chat-launcher] {
   --chat-launcher-bottom: var(--chat-launcher-default-bottom);
+}
+
+/* 홈의 TIP은 실제 런처가 보이는 좁은 화면에서만 왼쪽 공간을 확보합니다. */
+@media (max-width: 1279px) {
+  body:has([data-chat-launcher]) .home-footer-content {
+    padding-left: 5rem;
+  }
 }
 
 /* 장치 점검: 왼쪽 채팅 버튼이 바닥 안내(상태 · 보조 설명)를 가리지 않게 공간을 둡니다. */

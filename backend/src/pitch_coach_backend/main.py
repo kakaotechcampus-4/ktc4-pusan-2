@@ -10,8 +10,8 @@ from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매�
 from pitch_coach_backend.coach.background import STOP_TIMEOUT_SEC as COACH_STOP_TIMEOUT_SEC
 from pitch_coach_backend.coach.background import start as start_coach_background
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
+from pitch_coach_backend.coach.finalize import CoachFinalizeRecovery
 from pitch_coach_backend.coach.planner import PlannerCoaching
-from pitch_coach_backend.coach.store import StoreFinalizeExport
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
@@ -67,7 +67,7 @@ API_PREFIX = "/api"
 hooks.install(
     live_takes=RealtimeLiveTakes(),
     coaching=PlannerCoaching(),
-    finalize_export=StoreFinalizeExport(),
+    finalize_recovery=CoachFinalizeRecovery(),
 )
 
 

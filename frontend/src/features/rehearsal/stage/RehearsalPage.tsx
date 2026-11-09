@@ -65,9 +65,17 @@ import {
 import { canEnd } from './canEnd';
 import { sendEnding, type Ending } from './sendEnding';
 import { useEndConfirm } from './useEndConfirm';
+import { StageLiveBadge } from './StageLiveBadge';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
-import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
+import {
+  CONNECT_SLOW_MS,
+  hasCamera,
+  hasLiveAudio,
+  isRehearsalRunning,
+  startGate,
+  type StartGate,
+} from './startGate';
 import { openStageDevices } from './openDevices';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
@@ -236,7 +244,7 @@ export function RehearsalPage() {
    * 아래 `useSttStream` 이 `ready` 를 알려 주므로 한 렌더 늦게 바뀝니다
    */
   const [started, setStarted] = useState(false);
-  const running = stageReady && phase === 'RUNNING' && started;
+  const running = isRehearsalRunning(stageReady, phase, started);
   /** 첫 연결이 안 될 때 '다시 시도'가 올립니다. 소켓을 새로 만듭니다 */
   const [connectAttempt, setConnectAttempt] = useState(0);
   /** `ready` 를 `CONNECT_SLOW_MS` 넘게 기다렸다 */
@@ -826,6 +834,9 @@ export function RehearsalPage() {
               />
             )}
             <header className="stage-head">
+              {/* 자리를 늘 잡아 둡니다 — 끼었다 빠지면 끝낼 때 타이머 · 진행 막대가 옆으로 밀립니다.
+                  발표 중이라는 건 h1 이 이미 알려 주어 화면 읽기 프로그램에는 감춥니다 */}
+              <StageLiveBadge running={running} />
               <span className="elapsed" ref={elapsedRef}>
                 00:00
               </span>

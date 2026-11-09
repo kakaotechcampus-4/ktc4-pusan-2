@@ -154,8 +154,8 @@ function Props({ rows }: { rows: [string, string, string][] }) {
       <dl className="flex flex-col gap-2 text-sm">
         {rows.map(([name, values, description]) => (
           <div key={name}>
-            <dt className="font-mono text-xs font-bold">{name}</dt>
-            <dd className="break-words font-mono text-xs text-ink/80">{values}</dd>
+            <dt className="guide-code text-xs font-bold">{name}</dt>
+            <dd className="break-words guide-code text-xs text-ink/80">{values}</dd>
             <dd className="text-xs">{description}</dd>
           </div>
         ))}
@@ -190,7 +190,7 @@ function CodeSample({ code }: { code: string }) {
       </div>
       <pre
         ref={block}
-        className="overflow-x-auto bg-ink p-3 font-mono text-xs leading-relaxed text-panel"
+        className="overflow-x-auto bg-ink p-3 guide-code text-xs leading-relaxed text-panel"
       >
         <code>{code}</code>
       </pre>
@@ -351,7 +351,7 @@ function Details({
           <h3 className="text-sm font-bold">
             {screen.status === '시안' ? '제품에 넣을 경로' : '제품 경로'}
           </h3>
-          <p className="mt-2 break-all font-mono text-xs">{screen.route}</p>
+          <p className="mt-2 break-all guide-code text-xs">{screen.route}</p>
         </section>
       )}
     </aside>
@@ -678,7 +678,7 @@ export function DesignGuide() {
                   <span className="flex flex-wrap items-center gap-3 text-sm font-bold">
                     {selected.status}
                     {size && (
-                      <span className="tabular font-mono text-xs font-normal">
+                      <span className="tabular guide-code text-xs font-normal">
                         {size.width} × {size.height}
                         {zoom !== 1 &&
                           ` · ${Math.round(zoom * 100)}% → 페이지 ${layout!.width} × ${layout!.height}`}

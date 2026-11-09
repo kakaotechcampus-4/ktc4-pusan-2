@@ -1,6 +1,6 @@
 // PM 검토용 독립 시안. 닫힌 #789의 표시 코드를 가져왔으며 제품 모듈·API·장비와 연결하지 않는다.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { DraftPrepareInfo } from '../screens/prepareDraftFixtures';
+import type { DraftPrepareInfo } from '../../samples/prepareDraft';
 
 const PAGE_SIZE = 3;
 
@@ -228,17 +228,21 @@ function MissionReader({
         <p>모든 미션이 이번 Take에 적용돼요.</p>
         <button
           type="button"
-          className="prepare-draft-action"
-          disabled={index === 0}
-          onClick={() => onSelect(index - 1)}
+          className="prepare-draft-action aria-disabled:opacity-55"
+          aria-disabled={index === 0}
+          onClick={() => {
+            if (index > 0) onSelect(index - 1);
+          }}
         >
           이전 미션
         </button>
         <button
           type="button"
-          className="prepare-draft-action"
-          disabled={index === items.length - 1}
-          onClick={() => onSelect(index + 1)}
+          className="prepare-draft-action aria-disabled:opacity-55"
+          aria-disabled={index === items.length - 1}
+          onClick={() => {
+            if (index < items.length - 1) onSelect(index + 1);
+          }}
         >
           다음 미션
         </button>

@@ -47,7 +47,7 @@ npm run dev
 - **새 탭에서 화면만 보기**는 지금 화면 · 상태를 뷰어 없이 브라우저 창 크기로 연다(`#/frame?screen=&state=`). 그 탭에서도 화면 안 버튼으로 이동한다.
 - 오른쪽 **설명 패널**은 상태의 뜻, 제품 동작 규칙, 제품과 다른 점, "제품에서 열기", 사용하는 컴포넌트, 디자인 값, 제품 코드 위치를 보여 준다. "제품에서 열기"는 제품 개발 서버(http://localhost:3000)의 같은 화면을 제품 목 데이터로 새 탭에 연다. 로그인이 필요하면 그 탭의 브라우저 콘솔에 `mockSession.on()`을 입력한다.
 
-목록에 없는 제품 화면(개인정보 처리방침 `/privacy` · 이용약관 `/terms`)은 제품 개발 서버에서 바로 연다.
+개인정보 처리방침(`/privacy`)과 이용약관(`/terms`)은 설계서의 `privacy` · `terms` 화면에서 확인할 수 있다.
 
 선택은 주소의 `screen`, `state`, `view`, `device`(미리보기 크기, "칸에 맞춤"이면 없음), `w` · `h`(직접 입력), `rotate=1`(돌림), `zoom`(브라우저 확대 %, 100이면 없음)에 저장된다. 예를 들어 다음 주소는 시작 전 세팅의 마이크 오류 상태를 1366 × 768 노트북 크기로 연다.
 
@@ -65,7 +65,7 @@ http://localhost:3100/#/?screen=prepare-mission&state=mic-error&view=single&devi
 
 ## 시작 전 세팅 · 배치 검토 시안
 
-닫힌 구현 PR #789를 대체하는 **문서·독립 시안 전용** 검토다. 제품 구현은 PM 승인 후 별도 작업으로 진행한다. 기존 제품 샘플은 그대로 두고, `prepare-layout-review`를 `status: '시안'`으로 추가했다. 상태 선택으로 장비 연결 전·완료·오류, 목소리 읽기, 미션 0/1/2/3/4/20개·500자, 긴 장치 이름, 실전 모드를 살펴본다. 장치·API는 사용하지 않는다.
+닫힌 구현 PR #789를 대체하는 **문서·독립 시안 전용** 검토다. 현재 제품에 반영한 것으로 오인하지 않는다. 채택 여부는 별도 PM·FE 논의로 결정한다. 기존 제품 샘플은 그대로 두고, `prepare-layout-review`를 `status: '시안'`으로 추가했다. 상태 선택으로 장비 연결 전·완료·오류, 목소리 읽기, 미션 0/1/2/3/4/20개·500자, 긴 장치 이름, 실전 모드를 살펴본다. 장치·API는 사용하지 않는다.
 
 - [디자인 결정과 검토 항목](prepare-layout-review.md)
 - 뷰어: `http://localhost:3100/#/?screen=prepare-layout-review&state=default&view=single&device=team-laptop`
@@ -77,7 +77,7 @@ http://localhost:3100/#/?screen=prepare-mission&state=mic-error&view=single&devi
 새 디자인과 제품 샘플을 **같은 자리**(`catalog.ts` + `src/screens/`)에서 관리한다. 시안을 따로 모아 두는 폴더는 두지 않는다 — 검사 · 빌드에서 빼야 하고, 제품이 바뀌어도 아무도 고치지 않아 금방 낡는다.
 
 1. **새 디자인**: `catalog.ts`에 `status: '시안'`으로 화면을 더하고(`route`는 제품에 넣을 경로), `src/screens/`에 그린다. 기존 화면을 바꾸는 시안이면 그 화면에 상태를 더하고 상태 설명에 "시안"을 적는다.
-2. **제품에 들어가면**: `status`를 `제품에 있음`으로 바꾸고 `sources` · `productNote` · `productLinks`를 채운다. 샘플은 제품 코드에 맞춘다.
+2. **제품에 들어가면**: `status`를 `제품에 있음`으로 바꾸고 `sources` · `productNote` · `productLinks`를 채운다. 샘플은 제품 코드에 맞춘다. 다만 이미 채택된 옛 검토안의 공유 링크를 보존할 때는 `시안`으로 남기되, 제품에 채택됐으며 현재 제품 샘플과 같은 화면이라는 사실을 `summary`에 명시한다(`#pitch-create-a` 참고).
 3. **채택하지 않으면**: 지운다. 기록은 git 이력에 남는다.
 
 예전 시안 14개(`frontend/src/dev/design/`에서 옮겨 온 것)는 모두 제품에 구현되거나 다른 방식으로 바뀌어 지웠다. 필요하면 git 이력에서 본다.
@@ -109,13 +109,14 @@ React 코드 종류에 따라 화면 안의 입력 상태는 처음으로 돌아
 | `src/PreviewFrame.tsx` · `src/FramePage.tsx` · `src/frame.ts` | 미리보기 iframe(크기 · 줄이기 · 이동 메시지), iframe이 여는 화면만 보기 주소, 둘이 함께 쓰는 값 |
 | `src/catalog.ts` · `src/model.ts` | 화면 목록과 그 모양(상태 · 규칙 · 제품과 다른 점 · 제품에서 열기 경로) |
 | `src/ScreenPreview.tsx` | 미리보기 진입점. 화면 ID로 그릴 화면을 고르고, 미리보기 안의 링크를 설계서 안에서만 이동시킨다 |
-| `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 분석 대기 · 대본 확인은 `AnalysisScreen.tsx`, 소개 · 미지원 · 404 · 마이페이지 · 리허설 접근 안내는 `InfoScreens.tsx`, 웰컴 · 로그인은 `OnboardingScreens.tsx`, 공통 틀 · 이동 타입은 `shared.tsx` |
+| `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 피치 생성·수정은 `PitchCreateScreen.tsx`, 분석 대기 · 대본 확인은 `AnalysisScreens.tsx`, 안내 화면은 `InfoScreens.tsx`, 공개 정책은 `PolicyScreens.tsx`, 웰컴 · 로그인은 `OnboardingScreens.tsx`, 공통 틀은 `shared.tsx` |
 | `src/*.test.tsx` | 뷰어의 주소 · 포커스, 미리보기 iframe의 크기 · 메시지, 미리보기 흐름 · 무대 클래스, 모든 화면 · 상태가 그려지는지 확인 |
-| `src/ui/` | 버튼 · 카드 · 배지(TakeStatusBadge) · 마스코트 · 워드마크 · 상단바(AppHeader) · 선택 상자 · 대본 표시 선택(ScriptModeChoice)과 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 피치 생성 머리/바닥(PaneHeading · PaneFooter) · 무대 CSS(stage.css), `dialogs/`의 확인 · 도움말 · 설문 · 참여 동의 창. 제품에서 복사해 시작했다 |
+| `src/ui/` | 버튼 · 카드 · 배지(TakeStatusBadge) · 마스코트 · 워드마크 · 상단바(AppHeader) · 선택 상자 · 대본 표시 선택(ScriptModeChoice)과 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 무대 CSS(stage.css), `dialogs/`의 확인 · 도움말 · 설문 · 참여 동의 창. 제품에서 복사해 시작했다 |
+| `src/ui/prepare-draft/` | 시작 전 세팅 검토 시안 전용 카드·프레임·오디오 미터·대본 선택과 스타일(`prepare-draft.css`); 제품 공통 UI와 분리 |
 | `src/components/` | 컴포넌트 · 대화 상자 문서. `ComponentDocs.tsx`가 견본을 그리고, `entries.ts`가 목록 칸(보기 · 규칙 · 속성 · 사용 예)이다 |
 | `src/foundations/` | 기초 문서. `tokens.ts`가 `styles.css`를 읽고(묶음 · 설명 · 밝은 지면 · 대비), `Foundations.tsx`가 그리며, `entries.ts`가 목록 칸(보기 · 규칙)이다 |
 | `src/styles.css` | 색 · 글꼴 · 간격 등 디자인 값의 원본. 제품 `index.css`에서 복사해 시작했다 |
-| `src/lib/` · `src/samples/` | 시간 표기 · Take 상태 문구와 예시 데이터 |
+| `src/lib/` · `src/samples/` | 시간 표기 · Take 상태 문구와 검토 시안 예시 데이터(`prepareDraft.ts`) |
 | `public/` | 글꼴 · 마스코트 · 노을 그림 · Google 로그인 버튼 그림 |
 | `scripts/compare-tokens.mjs` · `scripts/product-drift.mjs` | `npm run tokens` · `npm run drift`의 스크립트 |
 | `audit.md` | 제품과의 차이를 어디서 보고 어떻게 맞추는지 |

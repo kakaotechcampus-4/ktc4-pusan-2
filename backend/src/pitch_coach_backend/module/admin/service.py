@@ -115,10 +115,13 @@ def list_takes(db: Session, *, status: str | None, limit: int) -> list[AdminTake
     return [AdminTakeRow(**row) for row in repository.list_takes(db, status=status, limit=limit)]
 
 
+def stuck_before(now: datetime) -> datetime:
+    """진행 중인 Take 의 마지막 활동이 이보다 앞이면 멈춘 연습으로 본다."""
+    return now - timedelta(seconds=ABANDON_AFTER_SEC) - STUCK_MARGIN
+
+
 def list_stuck_takes(db: Session, now: datetime | None = None) -> list[AdminTakeRow]:
-    now = now or datetime.now(UTC)
-    active_before = now - timedelta(seconds=ABANDON_AFTER_SEC) - STUCK_MARGIN
-    rows = repository.list_stuck_takes(db, active_before, STUCK_LIMIT)
+    rows = repository.list_stuck_takes(db, stuck_before(now or datetime.now(UTC)), STUCK_LIMIT)
     return [AdminTakeRow(**row) for row in rows]
 
 
@@ -194,7 +197,7 @@ def export_take(db: Session, take_id: uuid.UUID) -> AdminTakeExport:
         take_id=take_id,
         raw_data_consent=settings["raw_data_consent"],
         metric_second_count=repository.count_metric_seconds(db, take_id),
-        request=hooks.finalize_export().recovery_request(db, take_id),
+        request=hooks.finalize_recovery().recovery_request(db, take_id),
         results={
             row["kind"]: AdminExportResult(
                 payload=row["payload"], meta=row["meta"], revision=row["revision"]

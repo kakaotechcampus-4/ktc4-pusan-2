@@ -1512,3 +1512,30 @@ def test_take_numbers_are_not_unresolved_after_switching_the_scope_pitch() -> No
     ctx.set_pitch(other)
     assert ctx.scope_switched
     assert unresolved_take_numbers(msg, ctx) == set()
+
+
+def test_goal_proposal_options_carry_evidence() -> None:
+    """목표 제안의 안마다 근거(기준 Take 의 지표 값 · 그 지표의 리뷰 차원 상태)를 단다 — '우선 개선인 차원' 같은 까닭이
+    근거 없이 보이지 않게(13-4 목표 충돌, 8회차 M4)."""
+    req = load(base_request(), "t-4")
+    ctx = make_ctx(copy.deepcopy(req))
+    base = focus_snapshot(req)
+    draft = build_goal_draft(base, "audience_ratio", 3, pitch_id="p-1", cfg=CFG)
+    assert not isinstance(draft, str)
+    card = goal_proposal_card(
+        ctx=ctx,
+        base=base,
+        user_draft=draft,
+        user_reason="말씀하신 목표",
+        dims=base.results.review["dimensions"],
+        seq=1,
+    )
+    for opt in card["options"]:
+        assert opt["evidence_ids"], opt["label"]
+        for eid in opt["evidence_ids"]:
+            ev = ctx.registry.get(eid)
+            assert ev is not None and ev.take_id == base.summary.take_id
+    unmeasurable = goal_proposal_card(
+        ctx=ctx, base=base, user_draft=None, user_reason="x", dims={}, seq=2
+    )
+    assert unmeasurable["options"][0]["evidence_ids"] == []
