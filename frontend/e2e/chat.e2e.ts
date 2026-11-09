@@ -471,7 +471,9 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
     await page.goto('/');
     const panel = await openChat(page);
 
-    await panel.getByRole('switch', { name: '기억 없이 대화하기' }).click();
+    // 스위치 input 은 sr-only 라 꾸민 라벨이 덮고 있습니다 — 사람처럼 보이는 글자 라벨을 눌러 켜고, 켜졌는지 봅니다
+    await panel.getByText('기억 없이 대화하기', { exact: true }).click();
+    await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).toBeChecked();
     await ask(panel, REMEMBER);
     await expectNoMemoryCard(panel);
   });
