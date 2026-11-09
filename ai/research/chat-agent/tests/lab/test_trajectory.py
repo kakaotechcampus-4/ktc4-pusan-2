@@ -274,6 +274,97 @@ def test_similarity_fails_on_unreadable_file_or_empty_side(
     assert "기존 쪽에 시나리오가 없다" in capsys.readouterr().out
 
 
+_SECRET = "Take 3 의 청중 시선 비율이 왜 낮았는지 알려 주세요"
+
+
+def _raw(folder: Path, name: str, d: dict[str, Any]) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}.json").write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+
+def test_similarity_invalid_id_is_masked_and_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """id 가 `^[a-z0-9][a-z0-9-]*$` 꼴이 아니면(글 · 대문자 · 없음) 비교하지 않고 2. id 값은 내지 않고 `<invalid-id-N>`으로 가린다."""
+    old, new = tmp_path / "old", tmp_path / "new"
+    _write(old, "o1", "발표 마지막에 질문이 나오면 어떻게 답하면 좋을까요")
+    _raw(new, "a", {"id": _SECRET, "turns": [{"message": "다른 질문 하나"}]})
+    _raw(new, "b", {"id": "Upper-Case", "turns": [{"message": "또 다른 질문"}]})
+    _raw(new, "c", {"turns": [{"message": "id 없는 문항"}]})
+    _raw(new, "d", {"id": "ok-1\n", "turns": [{"message": "줄바꿈 붙은 id"}]})
+    assert sim.main(["--new", str(new), "--against", str(old)]) == 2
+    out = capsys.readouterr().out
+    for n in (1, 2, 3, 4):
+        assert f"id 형식이 아님: <invalid-id-{n}>" in out
+    assert "청중" not in out and "Upper-Case" not in out and "비교하지 않음" in out
+
+
+def test_similarity_duplicate_ids_within_and_among_folders_fail(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old, old2, new = tmp_path / "old", tmp_path / "old2", tmp_path / "new"
+    _write(old, "o1", "발표 마지막에 질문이 나오면 어떻게 답하면 좋을까요")
+    _write(new, "n1", _SECRET)
+    # 한 폴더 안: 파일 이름이 달라도 id 가 같다
+    _raw(new, "n1-copy", {"id": "n1", "turns": [{"message": "다른 글"}]})
+    assert sim.main(["--new", str(new), "--against", str(old)]) == 2
+    out = capsys.readouterr().out
+    assert out.count("id 가 겹친다: n1") == 1 and "청중" not in out
+    (new / "n1-copy.json").unlink()
+    # 새 쪽과 기존 쪽 사이
+    _write(old2, "n1", "완전히 다른 기존 문항의 글")
+    assert sim.main(["--new", str(new), "--against", str(old), "--against", str(old2)]) == 2
+    assert "id 가 겹친다: n1" in capsys.readouterr().out
+    # 기존 폴더 둘 사이
+    (old2 / "n1.json").unlink()
+    _raw(old2, "o1", {"id": "o1", "turns": [{"message": "기존 폴더끼리 겹친 id"}]})
+    assert sim.main(["--new", str(new), "--against", str(old), "--against", str(old2)]) == 2
+    assert "id 가 겹친다: o1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "turns",
+    [
+        [{"text": _SECRET}],  # message 칸이 아님 → 비교할 글이 비어 PASS 가 되던 모양
+        [{"message": ["목록"]}],
+        [{"message": "   "}],
+        [{}],
+        ["글 차례"],
+        [],
+        {"message": _SECRET},
+        [{"message": "글", "auto_goal_check": True}],  # 둘 다
+    ],
+    ids=["wrong-key", "list", "blank", "empty-turn", "str-turn", "no-turns", "not-list", "both"],
+)
+def test_similarity_malformed_turns_fail_without_printing_text(
+    turns: Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old, new = tmp_path / "old", tmp_path / "new"
+    _write(old, "o1", "발표 마지막에 질문이 나오면 어떻게 답하면 좋을까요")
+    _write(new, "n-ok", "다른 질문 하나")
+    _raw(new, "n-bad", {"id": "n-bad", "turns": turns})
+    assert sim.main(["--new", str(new), "--against", str(old)]) == 2
+    out = capsys.readouterr().out
+    assert "차례 형식이 틀림(turns[].message · auto_goal_check): n-bad" in out
+    assert "청중" not in out and "n-ok" not in out
+    # 기존 쪽에 있어도 같다
+    assert sim.main(["--new", str(old), "--against", str(new)]) == 2
+
+
+def test_similarity_auto_goal_check_only_scenario_is_valid_but_counted(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """자동 목표 확인 차례만 있는 문항은 형식대로다(오류 아님). 비교할 글이 없어 점수 0 이므로 끝에 그 수를 따로 적는다."""
+    old, new = tmp_path / "old", tmp_path / "new"
+    _write(old, "o1", "발표 마지막에 질문이 나오면 어떻게 답하면 좋을까요")
+    _raw(new, "n-auto", {"id": "n-auto", "turns": [{"auto_goal_check": True}]})
+    _write(new, "n1", "다른 질문 하나")
+    assert sim.main(["--new", str(new), "--against", str(old)]) == 0
+    out = capsys.readouterr().out
+    assert "PASS 2 · FLAG 0" in out
+    assert "글이 없어 점수 0 인 문항(자동 목표 확인 차례만): 1" in out
+
+
 def test_trajectory_default_paths_and_regex() -> None:
     """경로 관찰값의 기본 경로: 값 비교는 events, regex 는 plan_text(단계 글을 이은 것)."""
     from chat_agent_lab import grading as gr
