@@ -209,8 +209,12 @@ export function estimatedOnlyLine(slides: readonly SlideSummary[]): string | nul
   return parts.join(' · ');
 }
 
-export function isEstimatedOnly(summary: CoverageSummary): boolean {
-  return summary.scope.scored_slides === 0 && summary.scope.estimated_slides > 0;
+/**
+ * 채점된 장이 하나도 없는지. 그러면 AI 가 Take 전체 개수(수치 · 표현 · 말의 구성)를 0 으로 채워 보내므로 화면은 그 0 을 보이지
+ * 않습니다. 간이 장만 있는 때뿐 아니라 대상 장이 없거나(`slide_numbers: []`) 모두 실패한 때도 같습니다 (#1157 리뷰)
+ */
+export function hasNoScoredSlides(summary: CoverageSummary): boolean {
+  return summary.scope.scored_slides === 0;
 }
 
 /** `criteria_version` 의 `+` 앞(기능 버전) */

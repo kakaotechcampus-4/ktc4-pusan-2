@@ -22,7 +22,7 @@ import {
   coverageStatusLabel,
   estimatedOnlyLine,
   factsLine,
-  isEstimatedOnly,
+  hasNoScoredSlides,
   metricReason,
   percentText,
   previousDelta,
@@ -79,11 +79,11 @@ function MeasuredCard({
       <Headline status={status} summary={summary} />
       {summary.status_shares && <SharesBar shares={summary.status_shares} />}
       <CriticalGaps gaps={summary.critical_gaps} />
-      {isEstimatedOnly(summary) ? (
+      {hasNoScoredSlides(summary) ? (
         // 채점된 장이 없으면 AI 가 개수를 0 으로 채워 보냅니다 — "0개였다"로 읽히지 않게 집계 못 함을 알립니다 (#1157 리뷰)
         <p className="text-sm text-ink/80">
-          채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요. 장별 간이 결과를 확인해
-          주세요.
+          채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요.
+          {summary.scope.estimated_slides > 0 && ' 장별 간이 결과를 확인해 주세요.'}
         </p>
       ) : (
         // 세 덩어리를 넓은 화면에서는 한 줄에 — 장 수와 상관없이 카드 높이를 비슷하게 둡니다
@@ -153,9 +153,9 @@ function Headline({ status, summary }: { status: ContentStatus; summary: Coverag
   );
 }
 
-/** 채점된 장이 없고 간이 장만 있으면 숫자 대신 간이 단계를 모아 보입니다 */
+/** 채점된 장이 없고 간이 장이 있으면 숫자 대신 간이 단계를 모아 보입니다. 간이 장도 없으면 대표 값의 이유를 보입니다 */
 function DeliveryValue({ summary }: { summary: CoverageSummary }) {
-  const estimated = isEstimatedOnly(summary) ? estimatedOnlyLine(summary.slides) : null;
+  const estimated = hasNoScoredSlides(summary) ? estimatedOnlyLine(summary.slides) : null;
   if (estimated)
     return (
       <span className="flex flex-wrap items-center gap-2">

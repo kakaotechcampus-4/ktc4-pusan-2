@@ -260,6 +260,27 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(openedText(status('t-content-estimated'))).toContain('1장대부분 말함');
   });
 
+  it('채점 0장 · 간이 0장(대상 장 없음 · 모두 실패)이어도 0 개수 대신 집계하지 못했다고 알립니다 (#1157 리뷰)', () => {
+    const text = textOf(
+      withSummary({
+        delivery: metric(null, ['SLIDES_EXCLUDED']),
+        scope: {
+          target_slides: 0,
+          scored_slides: 0,
+          estimated_slides: 0,
+          provisional_slides: 0,
+          excluded: [],
+        },
+        slides: [],
+      }),
+    );
+    expect(text).toContain('채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요');
+    // 간이 장이 없으니 간이 결과를 보라고 하지 않습니다
+    expect(text).not.toContain('장별 간이 결과를 확인해 주세요');
+    expect(text).not.toContain('확인할 수치 0개');
+    expect(text).not.toContain('대본대로');
+  });
+
   it('모르는 이유 코드 · 범주 · 상태가 와도 일반 문구로 받습니다', () => {
     const text = textOf(
       withSummary({
