@@ -104,19 +104,37 @@ def test_display_text_is_purpose_exec_result_within_sixty_chars() -> None:
 
 def test_display_text_drops_numbers_without_step_evidence() -> None:
     """숫자 · Take · 장 번호는 그 단계 근거로만: 근거가 없으면 숫자 없는 실행 이름으로 그린다."""
+    req = load(base_request(), "t-4")  # Take 3 은 기본 자료에 없다(요약만)
+    ctx = make_ctx(req)
+    meta = _meta(("반복 확인", "compare_takes"), ("이전 기록 보기", "get_take_report"))
+    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    run3 = _read(ctx, "get_take_report", {"take_id": "t-3", "section": "dimensions"})
+    assert run3.exec == "Take 3 기록" and run3.evidence_ids == []
+    progress.attach(meta, run3, 2, max_steps=8)
+    plan = progress.render(meta, ctx.registry, CFG)
+    assert plan[0]["step"].startswith("반복 확인: Take 4·5 비교")
+    # 'Take 3'을 받칠 근거가 이 단계에 없다 → 숫자 없는 실행 이름
+    assert plan[1]["step"] == "이전 기록 보기: 기록 보기 → 기본 자료에 없음"
+
+
+def test_review_missing_step_is_backed_by_its_own_none_evidence() -> None:
+    """리뷰 없음은 그 Take 의 리뷰 상태 근거(`review.status` NONE)를 낸다: 단계 글의 'Take 4'는 그 단계 자기 근거로 받쳐진다."""
     req = load(base_request(), "t-4")
     for snap in req["context"]["loaded_takes"]:
         snap["results"]["review"] = None
     ctx = make_ctx(req)
-    meta = _meta(("반복 확인", "compare_takes"), ("리뷰 보기", "get_take_report"))
-    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    meta = _meta(
+        ("리뷰 보기", "get_take_report"),
+    )
     run4 = _read(ctx, "get_take_report", {"take_id": "t-4", "section": "dimensions"})
-    assert run4.exec == "Take 4 기록" and run4.evidence_ids == []
-    progress.attach(meta, run4, 2, max_steps=8)
-    plan = progress.render(meta, ctx.registry, CFG)
-    assert plan[0]["step"].startswith("반복 확인: Take 4·5 비교")
-    # 'Take 4'는 다른 단계(비교)의 근거로만 받쳐진다 → 이 단계 글에는 넣지 않는다
-    assert plan[1]["step"] == "리뷰 보기: 기록 보기 → 리뷰 분석 전"
+    assert run4.signal == "REVIEW_MISSING" and len(run4.evidence_ids) == 1
+    ev = ctx.registry.get(run4.evidence_ids[0])
+    assert (ev.path, ev.value, ev.take_number) == ("review.status", "NONE", 4)
+    progress.attach(meta, run4, 1, max_steps=8)
+    assert (
+        progress.render(meta, ctx.registry, CFG)[0]["step"]
+        == "리뷰 보기: Take 4 기록 → 리뷰 분석 전"
+    )
 
 
 # ── 결과 글 · 상황 신호 ──────────────────────────────────────────────────────

@@ -174,10 +174,10 @@ def test_display_updates_do_not_use_plan_edits() -> None:
     assert [s.code for s in limits] == ["PLAN_EDITS"]
     assert limits[0].detail.used == 3  # type: ignore[union-attr]
     plans = plan_lines(lines)
-    firsts = [p[0]["step"] for p in plans]
-    # 고친 3번은 목록에 들어가고 4번째는 들어가지 않는다
-    assert all(any(f.startswith(names[n]) for f in firsts) for n in range(3))
-    assert not any(f.startswith(names[3]) for f in firsts)
+    shown = [s["step"] for p in plans for s in p]
+    # 고친 3번은 목록에 들어가고 4번째는 들어가지 않는다(고친 목록은 실행한 단계 뒤에 붙는다)
+    assert all(any(f.startswith(names[n]) for f in shown) for n in range(3))
+    assert not any(f.startswith(names[3]) for f in shown)
     assert len(plans) >= 1 + 3 + 3  # 처음 계획 + 고친 3번 + 도구마다 표시 갱신
 
 
@@ -268,6 +268,97 @@ def test_plan_edit_after_signal_is_logged_with_update_plan_seq() -> None:
     assert data["plan"][0]["step"] == "반복 확인: 비교 → 비교 불가(대본 버전 다름)"
     assert data["plan"][1]["step"] == "앞 Take 와 비교: Take 4·5 비교 → 3장 청중 시선 나빠짐"
     assert [p["status"] for p in data["plan"]] == ["DONE", "DONE", "DONE"]
+
+
+# ── 3-1. 실행 뒤 모델이 목록을 다른 글로 고침 → 실행한 단계는 남기고 새 단계를 뒤에 ─────────
+
+
+def _edit(*names_tools: tuple[str, str | None], prefix: str = "u") -> Any:
+    steps = [
+        {"step": n, "status": "DOING" if i == 0 else "TODO", "note": None, "tool": t}
+        for i, (n, t) in enumerate(names_tools)
+    ]
+    return F.tools(("update_plan", {"steps": steps}), prefix=prefix)
+
+
+def _ran_two_then_edit(edit: Any, cfg: Any = None) -> tuple[Any, Any, Any]:
+    """비교 · Take 목록 두 단계를 실행한 뒤 모델이 update_plan 으로 목록을 다른 글로 바꾼다. 그 뒤 조사 호출이 받은 도구 결과를 남긴다."""
+    req = F.with_loaded(F.request(user_message=MSG), "t-4")
+    seen: dict[str, Any] = {}
+
+    def done_after(r: Any) -> Any:
+        seen["edit_result"] = F.tool_results(r)[-1]  # update_plan 도구 결과(모델에게 돌려준 것)
+        return F.done()
+
+    llm = F.FakeLlm(
+        [
+            compare_plan(
+                ("반복 확인", "compare_takes"), ("목록 보기", "list_takes"), ("답 쓰기", "answer")
+            ),
+            F.tools(COMPARE, prefix="a"),
+            F.tools(("list_takes", {}), prefix="b"),
+            edit,
+            done_after,
+            compare_answer(),
+        ]
+    )
+    _, lines, data = F.run_turn(req, llm, **({"cfg": cfg} if cfg is not None else {}))
+    return lines, data, seen
+
+
+RAN = [
+    {"step": "반복 확인: Take 4·5 비교 → 3장 청중 시선 나빠짐", "status": "DONE", "note": None},
+    {"step": "목록 보기: Take 목록 → 확인", "status": "DONE", "note": None},
+]
+
+
+def test_plan_edit_after_runs_keeps_executed_steps_in_front_and_appends_new_ones() -> None:
+    edit = _edit(
+        ("문제 구간 보기", "get_take_report"), ("자료 찾기", "search_guides"), ("답 정리", "answer")
+    )
+    lines, data, seen = _ran_two_then_edit(edit)
+    fd = check_stream(lines, data)
+    assert fd.status == "DONE"
+    plans = plan_lines(lines)
+    # 고친 직후 화면: 실행한 2단계(결과 글 그대로) + 새 3단계
+    edited = next(p for p in plans if any(s["step"] == "문제 구간 보기" for s in p))
+    assert edited[:2] == RAN
+    assert [s["step"] for s in edited[2:]] == ["문제 구간 보기", "자료 찾기", "답 정리"]
+    assert [s["status"] for s in edited] == ["DONE", "DONE", "DOING", "TODO", "TODO"]
+    # 모델에게 돌려준 update_plan 결과도 합친 목록이다
+    assert seen["edit_result"]["ok"] is True and seen["edit_result"]["data"]["plan"] == edited
+    # 끝: 실행한 단계는 DONE 그대로, 실행하지 않은 새 단계만 SKIPPED(답 쓰기 단계는 답이 있어 DONE)
+    assert data["plan"][:2] == RAN
+    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "SKIPPED", "SKIPPED", "DONE"]
+    assert not [s for s in fd.diagnostics.steps if s.kind == "LIMIT"]  # type: ignore[union-attr]
+
+
+def test_plan_edit_merge_cuts_new_steps_to_eight() -> None:
+    new = [(f"새 단계 {'가나다라마바사'[i]}", None) for i in range(7)]
+    lines, data, seen = _ran_two_then_edit(_edit(*new))
+    check_stream(lines, data)
+    steps = [s["step"] for s in data["plan"]]
+    assert len(steps) == 8 and data["plan"][:2] == RAN
+    # 남긴 실행 단계는 자르지 않고 뒤의 새 단계(7번째)를 자른다
+    assert steps[2:] == [n for n, _ in new[:6]]
+    assert len(seen["edit_result"]["data"]["plan"]) == 8
+
+
+def test_plan_edit_with_plan_progress_off_keeps_the_model_list() -> None:
+    edit = _edit(
+        ("문제 구간 보기", "get_take_report"), ("자료 찾기", "search_guides"), ("답 정리", "answer")
+    )
+    lines, data, seen = _ran_two_then_edit(edit, cfg=load_config(plan_progress=False))
+    check_stream(
+        lines, data, live_is_final=False
+    )  # 이전 동작: 끝에 단계를 모두 DONE 으로(줄을 다시 내지 않음)
+    assert [s["step"] for s in data["plan"]] == ["문제 구간 보기", "자료 찾기", "답 정리"]
+    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "DONE"]  # 이전 동작
+    assert [s["step"] for s in seen["edit_result"]["data"]["plan"]] == [
+        "문제 구간 보기",
+        "자료 찾기",
+        "답 정리",
+    ]
 
 
 # ── 4. 조사 시간 초과 → PARTIAL ──────────────────────────────────────────────
@@ -387,8 +478,9 @@ def test_step_text_takes_numbers_only_from_its_own_evidence() -> None:
     _, lines, data = F.run_turn(req, llm, log=log)
     check_stream(lines, data)
     assert data["plan"][0]["step"].startswith("반복 확인: Take 4·5 비교")
-    # 'Take 4'는 비교 단계의 근거로만 받쳐진다 → 리뷰 단계 글에는 숫자 없는 실행 이름
-    assert data["plan"][1]["step"] == "리뷰 보기: 기록 보기 → 리뷰 분석 전"
+    # 리뷰 단계의 'Take 4'는 그 단계가 낸 리뷰 상태 근거(review.status NONE, '없음'도 근거)로 받쳐진다.
+    # 근거 없는 번호를 빼는 규칙은 test_progress.test_display_text_drops_numbers_without_step_evidence
+    assert data["plan"][1]["step"] == "리뷰 보기: Take 4 기록 → 리뷰 분석 전"
     assert ("REVIEW_MISSING", "FACT_SHOWN", "CODE", 2) in decisions(log)
     # 결정 로그 줄 모양: 키 고정, 값은 enum · 정수 · null 뿐(사용자 글 · 숫자 값 없음)
     lines_ = [d for d in log if d.get("event") == "agent_decision"]

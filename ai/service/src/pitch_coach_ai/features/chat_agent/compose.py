@@ -7,7 +7,8 @@
      까닭(`not_comparable_sentence`) 문장은 코드 템플릿이다.
      모델이 쓴 RECORD · GUIDE 문장은 그대로 두고 검사한다.
   3. 답 검사(`checks.check_claims` · `check_display_strings`). 걸리면 걸린 모델 문장만 한 번 고치게 하고 다시 검사, 그래도 걸리면 지운다.
-  4. 남은 문장이 없으면 검증된 근거 값을 템플릿으로 그린 PARTIAL, 근거도 없으면 고정 SYSTEM 안내(6-9 '고친 뒤').
+  4. 남은 문장이 없으면 질문 대상의 검증된 근거로 그린 템플릿 문장(값 `template_partial` · 읽은 범위의 '없음' `none_partial`)으로
+     답하고, 근거도 없으면 고정 SYSTEM 안내(6-9 '고친 뒤'). 상태(DONE · PARTIAL)는 turn.py 가 정한다.
 - `message.text` 는 남은 문장을 LF 로 이은 값과 정확히 같다(5-5). 모델 글을 그대로 내지 않는다.
 - 고칠 때: 사용자에게 보이는 문구는 templates.py, 검사 규칙은 checks.py.
 """
@@ -291,6 +292,169 @@ def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
         if len(out) >= 3:
             break
     return out
+
+
+# ── '없음' 근거 (6-8 · 6-9 '고친 뒤', 7-10) ───────────────────────────────────
+
+#: '없음' 근거의 경로(tools/impl.py 가 낸다) → 종류. 값이 0 · NONE 일 때만 '없음'이다(피치의 Take 수 3 은 '없음'이 아니다)
+_NONE_PATHS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^pitches\[pitch_id=[^\],]+\]\.take_count$"), "TAKES"),
+    (re.compile(r"^takes\[pitch_id=[^\],]*\]\.count$"), "TAKES"),
+    (re.compile(r"^takes\[pitch_id=[^\],]*,[^\]]*\]\.count$"), "TAKES_FILTERED"),
+    (re.compile(r"^pitches\[query\]\.count$"), "PITCH_QUERY"),
+    (re.compile(r"^review\.status$"), "REVIEW"),
+    (re.compile(r"^goal\.status$"), "GOAL"),
+    (re.compile(r"^problem_segments\[area=([A-Z_]+)\]\.count$"), "SEGMENTS"),
+)
+#: 근거 표(`evidence_table`)의 '무엇' 이름(지표가 없는 Take 수 · 상태 근거)
+_NONE_WHAT = {
+    "TAKES": "Take 수",
+    "TAKES_FILTERED": "조건에 맞는 Take 수",
+    "PITCH_QUERY": "이름으로 찾은 피치 수",
+    "REVIEW": "리뷰 상태",
+    "GOAL": "대화 목표 상태",
+}
+
+
+def _none_match(ev: Any) -> tuple[str, re.Match[str]] | None:
+    if ev is None or ev.origin != "RECORD":
+        return None
+    for pat, kind in _NONE_PATHS:
+        m = pat.match(ev.path)
+        if m is not None:
+            return kind, m
+    return None
+
+
+def none_kind(ev: Any) -> str | None:
+    """근거가 읽은 범위의 '없음 · 0'이면 그 종류(`TAKES` · `TAKES_FILTERED` · `PITCH_QUERY` · `REVIEW` · `GOAL` ·
+    `SEGMENTS`), 아니면 None."""
+    hit = _none_match(ev)
+    if hit is None:
+        return None
+    kind = hit[0]
+    if kind in ("REVIEW", "GOAL"):
+        return kind if ev.value == "NONE" else None
+    return kind if ev.value == 0 and not isinstance(ev.value, bool) else None
+
+
+def segment_area(ev: Any) -> str | None:
+    """문제 구간 0곳 근거의 영역(`problem_segments[area=GAZE].count` → GAZE)."""
+    hit = _none_match(ev)
+    return hit[1].group(1) if hit is not None and hit[0] == "SEGMENTS" else None
+
+
+def evidence_what(ev: Any) -> str | None:
+    """지표가 없는 Take 수 · 상태 근거의 이름(근거 표 '무엇'). 그 밖은 None."""
+    hit = _none_match(ev)
+    if hit is None:
+        return None
+    if hit[0] == "SEGMENTS":
+        area = hit[1].group(1)
+        return f"문제 구간 수({templates.AREA_LABEL.get(area, area)})"
+    return _NONE_WHAT.get(hit[0])
+
+
+def pitch_title(ctx: Any, pitch_id: str | None) -> str | None:
+    """피치 제목(범위 피치는 기본 자료의 피치 정보, 아니면 피치 목록에서)."""
+    if pitch_id is None:
+        return None
+    if ctx.pitch is not None and pitch_id == ctx.scope_pitch_id:
+        return ctx.pitch.info.title
+    return next((p.title for p in ctx.pitches if p.pitch_id == pitch_id), None)
+
+
+def segments_sentence(take_number: int, slide: int | None, label: str | None) -> str:
+    """'Take 5 2장의 시선에서 찾은 문제 구간이 없어요.' 영역 이름이 없으면 읽은 Take · 장 전체(모든 영역이 측정됐을 때만 쓴다).
+    장 번호와 영역 이름 사이에 '의'를 둔다('2장 시간 배분'이 지표 이름 '장 시간'으로 읽히지 않게)."""
+    where = " ".join(
+        x for x in (f"{slide}장" + ("의" if label else "") if slide else "", label or "") if x
+    )
+    if not where:
+        return templates.NONE_SEGMENTS.replace(" {area}", "").format(n=take_number)
+    return templates.NONE_SEGMENTS.format(n=take_number, area=where)
+
+
+def none_sentence(ctx: Any, ev: Any) -> str | None:
+    """'없음' 근거 하나의 문장(코드 템플릿, 7-10). 읽은 범위를 함께 말한다. 거른 조건의 Take 0개 · 이름 검색 0개는 그리지 않는다
+    (조건 · 이름 범위를 문장으로 옮기지 않고 넓히지도 않는다. 이름 검색 0개는 고정 문장 `PITCH_NOT_FOUND` 길)."""
+    kind = none_kind(ev)
+    if kind == "TAKES":
+        title = pitch_title(ctx, ev.pitch_id)
+        return templates.NONE_TAKES.format(title=title) if title else None
+    if kind == "REVIEW" and ev.take_number is not None:
+        return templates.NONE_REVIEW.format(n=ev.take_number)
+    if kind == "GOAL":
+        return templates.NONE_GOAL
+    if kind == "SEGMENTS" and ev.take_number is not None:
+        area = segment_area(ev) or ""
+        return segments_sentence(ev.take_number, ev.slide_number, templates.AREA_LABEL.get(area))
+    return None
+
+
+def none_partial(ctx: Any, ids: list[str], *, areas: frozenset[str] | None = None) -> list[Claim]:
+    """'없음' 근거로 그린 RECORD 문장(같은 문장은 근거를 합쳐 한 번, 최대 3개, 근거 순서대로).
+
+    문제 구간 0곳은 물은 영역(`areas`, 판단 초안의 지표 · 차원)이 있으면 그 영역만 영역 이름과 함께 그린다. 물은 영역을 모르면 읽은
+    Take · 장의 모든 영역이 측정됐고 모두 0곳일 때만 영역 이름 없이 한 문장으로 그린다(측정 안 된 영역을 '없음'으로 넓히지 않는다)."""
+    reg = ctx.registry
+    #: 처음 본 근거 순서대로: 문장 하나(글 → 근거들) 또는 문제 구간 묶음(Take · 장)
+    order: list[tuple[str, Any]] = []
+    texts: dict[str, list[str]] = {}
+    seg_groups: dict[tuple[str | None, int | None], list[Any]] = {}
+    for eid in dict.fromkeys(ids):
+        ev = reg.get(eid)
+        if ev is None or not reg.is_current(eid):
+            continue
+        kind = none_kind(ev)
+        if kind == "SEGMENTS":
+            key = (ev.take_id, ev.slide_number)
+            if key not in seg_groups:
+                order.append(("seg", key))
+            seg_groups.setdefault(key, []).append(ev)
+            continue
+        text = none_sentence(ctx, ev) if kind is not None else None
+        if text is None:
+            continue
+        if text not in texts:
+            order.append(("text", text))
+        texts.setdefault(text, []).append(eid)
+    pairs: list[tuple[str, list[str]]] = []
+    for what, key in order:
+        if what == "text":
+            pairs.append((key, texts[key]))
+        else:
+            pairs.extend(_segment_pairs(ctx, key, seg_groups[key], areas))
+    out: list[Claim] = []
+    for text, eids in pairs:
+        c = _claim("RECORD", text, evidence_ids=list(dict.fromkeys(eids)))
+        if c is not None and all(c.text != o.text for o in out):
+            out.append(c)
+    return out[:3]
+
+
+def _segment_pairs(
+    ctx: Any, key: tuple[str | None, int | None], evs: list[Any], areas: frozenset[str] | None
+) -> list[tuple[str, list[str]]]:
+    take_id, slide = key
+    n = evs[0].take_number
+    if n is None:
+        return []
+    if areas is not None:
+        return [
+            (
+                segments_sentence(n, slide, templates.AREA_LABEL.get(segment_area(ev) or "")),
+                [ev.evidence_id],
+            )
+            for ev in evs
+            if segment_area(ev) in areas
+        ]
+    snap = ctx.snapshots.get(take_id) if take_id else None
+    tr = (snap.results.take_result or {}) if snap is not None else {}
+    all_areas = {a for a in (tr.get("areas") or {}) if isinstance(a, str)}
+    if all_areas and {segment_area(ev) for ev in evs} == all_areas:
+        return [(segments_sentence(n, slide, None), [ev.evidence_id for ev in evs])]
+    return []
 
 
 def first_sentence(text: str) -> str:

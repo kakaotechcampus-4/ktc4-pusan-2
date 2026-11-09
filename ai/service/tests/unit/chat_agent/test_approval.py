@@ -382,7 +382,11 @@ def test_second_ask_in_one_run_stacks_on_the_front_and_the_first_result() -> Non
     assert fd.message is not None
     claims = [c.model_dump(mode="json") for c in fd.message.claims]
     assert claims[: len(said)] == said
-    assert [c["kind"] for c in claims[len(said) :]] == ["ACTION_RESULT"]
+    # 첫 행동(목표 저장) 성공 문장 바로 뒤에 결과 발견 안내가 한 번(D4b, 7-10)
+    assert [(c["kind"], c["text"]) for c in claims[len(said) :]][1:] == [
+        ("SYSTEM", templates.SystemText.RESULT_DISCOVERY.value)
+    ]
+    assert [c["kind"] for c in claims[len(said) :]] == ["ACTION_RESULT", "SYSTEM"]
     assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
     assert fd.message.cards[0].action_id == action.action_id  # type: ignore[union-attr]
     # 보인 문장(첫 행동 결과 문장 포함)은 서명 상태에 담겨 다음 이어 부르기에서 다시 만들지 않는다

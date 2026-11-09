@@ -206,7 +206,9 @@ def test_model_failure_after_a_sentence_went_out_keeps_it_and_ends_partial() -> 
     claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
     sent = [c["claim"] for c in claim_lines(lines)]
     assert claims[:2] == sent[:2]
-    assert claims[2]["text"] == templates.SystemText.PARTIAL_CHECKED.value
+    # 근거 문장(판단 · 결론)을 이미 냈다: 일반 안내 "답 일부를 확인하지 못해 …"는 붙이지 않는다(TARGET 6 — 끊겼고 근거 문장이 하나도
+    # 없을 때만). 끊긴 것은 PARTIAL 상태가 보인다
+    assert templates.SystemText.PARTIAL_CHECKED.value not in [c["text"] for c in claims]
     assert_prefix_invariant(lines, data)
     # 줄로 보낸 판단은 끝 줄에도 있다
     assert {a.assessment_id for a in fd.assessments} == {
@@ -223,7 +225,8 @@ def test_refusal_after_a_sentence_went_out_ends_partial_not_refused() -> None:
     _, lines, data = F.run_turn(request(), F.FakeLlm(script(cut), stream_chunk=None))
     fd = FinalData.model_validate(data)
     assert fd.status == "PARTIAL"
-    assert fd.message.claims[-1].text == templates.SystemText.PARTIAL_CHECKED.value  # type: ignore[union-attr]
+    # 낸 문장에 근거 문장이 있으면 일반 안내를 붙이지 않는다(TARGET 6)
+    assert templates.SystemText.PARTIAL_CHECKED.value not in [c.text for c in fd.message.claims]  # type: ignore[union-attr]
     assert_prefix_invariant(lines, data)
 
 

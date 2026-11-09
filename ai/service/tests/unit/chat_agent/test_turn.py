@@ -868,7 +868,24 @@ def test_fm_L1_11_research_llm_failure_ends_partial() -> None:
     )
     fd = final_ok(F.run_turn(req, llm)[2])
     assert fd.status == "PARTIAL"
-    assert fd.message.claims[0].text == templates.SystemText.PARTIAL_CHECKED.value  # type: ignore[union-attr]
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    # 끊겼지만 판단 문장(근거에 이음)으로 답했다: 일반 안내는 붙이지 않는다(TARGET 6). 끊긴 것은 PARTIAL · 남은 단계 TODO 가 보인다
+    assert templates.SystemText.PARTIAL_CHECKED.value not in texts
+    assert fd.message.claims[0].kind == "ASSESSMENT"  # type: ignore[union-attr]
+
+
+def test_fm_L1_11_research_llm_failure_without_any_evidence_sentence_says_partial_checked() -> None:
+    """조사가 모델 장애로 끊겼고 답에 근거 문장이 하나도 없으면 일반 안내를 끝에 한 번 붙인다(TARGET 6)."""
+    req = F.request(user_message="발표 기록 좀 봐 줘")
+    llm = F.FakeLlm(
+        [F.plan(assessments=[]), LlmTimeout()],
+        answers=[F.answer([F.claim("RECORD", "근거 없는 문장이에요.")])],
+        fixes=[F.fix({0: None})],
+    )
+    fd = final_ok(F.run_turn(req, llm)[2])
+    assert fd.status == "PARTIAL"
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    assert texts.count(templates.SystemText.PARTIAL_CHECKED.value) == 1
 
 
 def test_fm_L1_38_failed_explanation_keeps_code_judgement_sentence() -> None:

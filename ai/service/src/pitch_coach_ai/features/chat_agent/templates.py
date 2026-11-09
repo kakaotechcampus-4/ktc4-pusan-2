@@ -117,6 +117,8 @@ class SystemText(StrEnum):
     NEXT_FIRST_TAKE = "Take를 한 번 연습하면 그 기록을 같이 볼 수 있어요."
     NEXT_PICK_PITCH = "어느 발표를 볼지 말씀해 주시면 그 기록을 같이 볼게요."
     NEXT_FIRST_PITCH = "피치를 만들어 연습하면 그 기록을 같이 볼 수 있어요."
+    #: 결과 발견 안내(D4b): 이 실행에서 `SAVE_GOAL`이 성공한 답에만, 그 `ACTION_RESULT` 문장 바로 뒤에 한 번(설정 `result_discovery`)
+    RESULT_DISCOVERY = "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요."
     #: 다른 피치의 Take 를 함께 비교해 달라고 했을 때(1-3). 값은 각각 말해도 좋아짐 · 나빠짐 · 차이를 말하지 않는다
     CROSS_PITCH_NO_COMPARE = "다른 발표의 Take끼리는 비교하지 않아요. 발표마다 따로 볼 수 있어요."
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
@@ -273,6 +275,24 @@ GOAL_WORD = {
     "NOT_ACHIEVED": "목표를 아직 이루지 못했어요",
     "UNKNOWN": "이번 Take로는 목표를 판정할 수 없어 다음 Take를 기다려요",
     "BASELINE_MISMATCH": "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
+}
+
+#: '없음' 근거 문장(코드 템플릿, 7-10 · 6-9 '고친 뒤'). 모델 문장이 모두 빠졌거나 답이 비었을 때 질문 대상의 '없음' 근거로
+#: 그린다(compose.none_sentence). 읽은 범위(피치 · Take · 장 · 영역)를 함께 말하고 그 밖으로 넓히지 않는다. '없음'을 평가로
+#: 바꾸지 않는다(문제 구간 0곳 ≠ 문제없음). 문제 구간 문장은 측정된 영역일 때만
+NONE_TAKES = "'{title}'에는 아직 연습한 Take가 없어요."
+NONE_REVIEW = "Take {n}에는 아직 리뷰 결과가 없어요."
+NONE_GOAL = "대화 목표는 아직 없어요."
+NONE_SEGMENTS = "Take {n} {area}에서 찾은 문제 구간이 없어요."
+#: 코치 결과 영역 → 문장 · 도구 결과의 이름. 답 검사의 지표 이름(`claims.METRIC_LABEL` · `cfg.metric_names`)과 겹치지 않게
+#: 짧게 둔다(겹치면 지표 근거가 없는 '없음' 문장이 대상 불일치로 걸린다)
+AREA_LABEL = {
+    "GAZE": "시선",
+    "SPEED": "속도",
+    "PAUSE": "침묵",
+    "TIME": "시간 배분",
+    "VOLUME": "목소리",
+    "FILLER": "군더더기",
 }
 
 #: 닫힌 대화 목표의 상태 → 고정 문장(7-10). 닫은 Take 를 요청 자료로는 알 수 없어 Take · 값 없이 상태만 말한다

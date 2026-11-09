@@ -79,6 +79,7 @@ from .tools import (
     validate_args,
 )
 from .tools.impl import embed_planned_queries
+from .values import METRIC_AREA
 from .version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
 
 #: 기본 계획(계획이 무효일 때). `tool`은 단계의 도구 힌트(progress.py)이고 응답 `PlanStep`에는 싣지 않는다
@@ -715,7 +716,8 @@ class Loop:
 
     def _set_plan(self, plan: list[dict[str, Any]], *, edit: bool) -> bool:
         """모델의 계획(처음 · `update_plan`)을 정해 plan 줄을 낸다. 고치기(`edit`)만 계획 수정 한도(PLAN_EDITS)를 예약한다.
-        `plan_progress`가 켜졌으면 단계 메타를 새로 만들고(이미 실행한 단계와 글이 같으면 이어 받음) 상태 · 글은 메타로 그린다."""
+        `plan_progress`가 켜졌으면 단계 메타를 새로 만들고 상태 · 글은 메타로 그린다. 고치기는 합친다: 이미 실행한 단계는 메타 ·
+        표시 그대로 앞에 남기고 모델의 새 목록 중 실행하지 않은 단계를 뒤에 잇는다(8단계까지, progress.new_meta). 합치기도 고치기 1회다."""
         if edit and self.st.plan_set:
             hit = self.budget.reserve_plan_edit()
             if hit is not None:
@@ -742,6 +744,7 @@ class Loop:
                 hints,
                 old=self.st.plan_meta if self.st.plan_set else None,
                 shown=self.st.plan,
+                max_steps=self.cfg.plan_steps_max,
             )
             steps = progress.render(self.st.plan_meta, self.ctx.registry, self.cfg)
         self.st.plan = steps
@@ -763,7 +766,9 @@ class Loop:
 
         `chosen`: 모델이 고른 호출인가(코드가 먼저 읽은 요청은 신호에 대한 대응이 아니다). 같은 결과를 다시 읽은 캐시 적중은
         새 신호를 내지 않는다(이미 보인 사실)."""
-        run = progress.read_run(name, args, tr, self.ctx)
+        run = progress.read_run(
+            name, args, tr, self.ctx, areas=progress.asked_areas(self.st.plan_drafts, self.cfg)
+        )
         step = None
         if self.cfg.plan_progress and self.st.plan_meta:
             step = progress.attach(
@@ -1024,6 +1029,9 @@ class Loop:
                             False,
                             {"code": "LIMIT", "message": "할 일 목록 고치기 한도"},
                         )
+                    elif self.cfg.plan_progress and self.st.plan_meta:
+                        # 모델에게는 합친 목록(실행한 단계 + 새 단계, 상태 · 결과 글 포함)을 돌려준다: 지금 상태를 알고 이어 가게
+                        tr.data = {"plan": [dict(p) for p in self.st.plan]}
                 else:
                     tr, trace = run_tool(
                         self.ctx,
@@ -1671,7 +1679,8 @@ class Loop:
         elif ev.path.endswith(".issue_type") and isinstance(ev.value, str):
             what = "문제 구간: " + clm.ISSUE_LABEL.get(ev.value, ev.value)
         else:
-            what = ev.path.rsplit(".", 1)[-1]
+            # Take 수 · 리뷰 상태 · 대화 목표 · 영역별 문제 구간 수('없음'도 근거다, 6-8)는 읽을 수 있는 이름으로
+            what = compose.evidence_what(ev) or ev.path.rsplit(".", 1)[-1]
         shown = compose.value_display(self.ctx, ev)
         return {
             "id": eid,
@@ -1754,6 +1763,9 @@ class Loop:
             return {ev.metric}
         if ev.path.endswith(".issue_type") and isinstance(ev.value, str):
             return set(self.cfg.issue_metrics.get(ev.value, ()))
+        if (area := compose.segment_area(ev)) is not None:
+            # 영역의 문제 구간 0곳은 그 영역 지표들의 질문에 답한다('2장 시선 문제 구간' → 시선 영역 0곳)
+            return {m for m, a in METRIC_AREA.items() if a == area}
         dim = ev.path.rsplit(".dimensions.", 1)[-1] if ".dimensions." in ev.path else None
         return set(self.cfg.dimensions[dim].metrics) if dim in self.cfg.dimensions else set()
 

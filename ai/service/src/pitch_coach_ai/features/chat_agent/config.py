@@ -967,6 +967,9 @@ class ChatAgentConfig(_Frozen):
     decision_log: bool = True
     #: 조사 호출의 데이터 블록에 대응을 기다리는 신호(`signals`: 신호 · 사실 · 고를 수 있는 대응)를 싣고 지시문에 한 줄을 더한다
     research_signals: bool = True
+    #: 결과 발견 안내(D4b): 이 실행에서 목표 저장(`SAVE_GOAL`)이 성공했으면 그 성공 문장 바로 뒤에 "연습 뒤 대화를 다시 열면 목표 확인
+    #: 결과를 볼 수 있어요."를 한 번 붙인다(7-10). 연습 준비 버튼만 낸 답 · 저장 실패 · 거절에는 붙지 않는다
+    result_discovery: bool = True
 
     @model_validator(mode="after")
     def _goal_metrics_match_direction(self) -> ChatAgentConfig:

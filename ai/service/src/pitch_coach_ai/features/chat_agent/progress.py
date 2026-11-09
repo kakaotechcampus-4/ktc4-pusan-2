@@ -15,8 +15,11 @@
   첫 미완 단계 DOING, 나머지 TODO, 모델이 건너뛴 단계 SKIPPED. 도구 실패(ERROR)는 미완 + `확인 실패`.
   끝 처리(`finish_plan`): DONE · REFUSED 면 미완 단계 SKIPPED, PARTIAL 이면 TODO(DOING 포함), NEEDS_ACTION 은 그대로.
   답 쓰기 단계(`tool == "answer"`)는 답 문장이 하나 이상이면 DONE.
+- 끝 상태(`end_status`, TARGET 6): 조사가 한도 · 장애로 끊기지 않았고 풀리지 않은 단계(`unresolved_steps`: 시간 부족 · 복구되지 않은
+  확인 실패)가 없고 질문 대상마다 답 문장(확인한 답 · 확인한 '없음' · 비교할 수 없는 까닭)이 있으면 DONE, 아니면 PARTIAL.
 - 상황 신호(`StepRun.signal`): 비교 불가 `NOT_COMPARABLE` · 기본 자료에 없음 `NOT_LOADED` · 리뷰 없음 `REVIEW_MISSING` · 읽은 범위에
-  기록 없음 `NO_RECORD`(facts `TAKES` · `GOAL` · `PROBLEM_SEGMENTS`) · 도구 실패 `TOOL_ERROR`. 결정 로그 줄(`decision_line`,
+  기록 없음 `NO_RECORD`(facts `TAKES` · `GOAL` · `PROBLEM_SEGMENTS`) · 도구 실패 `TOOL_ERROR`. 기록 없음 · 리뷰 없음은 도구가 '없음'
+  근거(tools/impl.py)를 낸 결과와 같은 때다(범위 피치의 Take 0개 · 대화 목표 없음 · 물은 영역이 측정됐고 문제 구간 0곳). 결정 로그 줄(`decision_line`,
   `event: agent_decision`)은 서비스 로그에만 남기고 진단 기록(BE 로 감)에는 넣지 않는다. 값은 enum · 정수 · null 뿐이다(글 · 수치 · 인자 값 없음).
 - 고칠 때: 화면 낱말은 templates.py `PLAN_*` 표, 스위치는 config.py(`plan_progress` · `decision_log` · `research_signals`).
 """
@@ -41,6 +44,7 @@ from .runctx import RunCtx
 from .schemas import PlanStep
 from .tools import ToolResult
 from .tools.impl import REVIEW_SECTIONS
+from .values import METRIC_AREA
 
 #: `PlanStep.step` 글자 수 한도(5-2)
 STEP_CHARS = 60
@@ -174,37 +178,29 @@ def new_meta(
     *,
     old: list[dict[str, Any]] | None = None,
     shown: list[dict[str, Any]] | None = None,
+    max_steps: int = 8,
 ) -> list[dict[str, Any]]:
-    """새 계획의 단계 메타. 모델이 고친 목록(`old`가 있음)이면, 이미 실행한 단계와 글이 같은 단계(목적 또는 화면에 보인 글)는
-    그 실행 메타를 이어 받는다. 모델이 SKIPPED 로 둔 단계는 건너뜀으로 둔다(실행한 단계는 그대로 DONE)."""
+    """새 계획의 단계 메타. 모델이 SKIPPED 로 둔 새 단계는 건너뜀으로 둔다.
+
+    모델이 고친 목록(`old`가 있음)이면 합친다: 이미 실행한 단계(결과가 붙은 단계 — 완료 · 사실 결과 · 확인 실패)는 그 메타 ·
+    표시 그대로 앞에 남기고(순서 그대로), 그 뒤에 모델의 새 목록 중 아직 실행하지 않은 단계를 잇는다. 남긴 단계와 글이 같은 새
+    단계(목적 또는 화면에 보인 글)는 뺀다. 합쳐 `max_steps`를 넘으면 뒤의 새 단계를 자른다(남긴 실행 단계는 자르지 않는다).
+    실행하지 않은 옛 단계는 새 목록으로 바뀐다. 끝 처리에서 남긴 단계는 실행 결과 그대로(DONE), 새 미실행 단계만 SKIPPED · TODO 다."""
     old, shown = old or [], shown or []
-    used: set[int] = set()
     out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for k, m in enumerate(old):
+        if _ran(m):
+            out.append(dict(m))
+            seen.add(m["purpose"])
+            if k < len(shown):
+                seen.add(shown[k]["step"])
     for s, tool in zip(steps, tools, strict=True):
-        skipped = s["status"] == "SKIPPED"
-        j = next(
-            (
-                k
-                for k, m in enumerate(old)
-                if k not in used
-                and _ran(m)
-                and s["step"] in (m["purpose"], shown[k]["step"] if k < len(shown) else None)
-            ),
-            None,
-        )
-        if j is None:
-            out.append(_meta(s["step"], tool, s.get("note"), skipped=skipped))
+        if s["step"] in seen:
             continue
-        used.add(j)
-        prev = old[j]
-        out.append(
-            {
-                **prev,
-                "tool": tool or prev["tool"],
-                "note": s.get("note"),
-                "skipped": skipped and not prev["done"],
-            }
-        )
+        if len(out) >= max_steps:
+            break
+        out.append(_meta(s["step"], tool, s.get("note"), skipped=s["status"] == "SKIPPED"))
     return out
 
 
@@ -233,22 +229,34 @@ def _take_number(ctx: RunCtx, take_id: str | None) -> int | None:
     return snap.summary.take_number if snap is not None else None
 
 
-def _segments_measured(ctx: RunCtx, take_id: str) -> bool:
-    """문제 구간 0곳이 '없음'인가: 코치 결과에 문제 구간 목록이 있고, 측정된 영역(값이 있고 미측정 사유가 없음)이 하나라도 있다.
-    아니면 '측정 안 됨'이다(null 을 0 으로 읽지 않는다)."""
-    snap = ctx.snapshots.get(take_id)
-    tr = snap.results.take_result if snap is not None else None
-    if not isinstance(tr, dict) or not isinstance(tr.get("problem_segments"), list):
-        return False
-    areas = tr.get("areas") or {}
-    return any(
-        isinstance(a, dict) and a.get("unmeasured_reason") is None and a.get("take") is not None
-        for a in areas.values()
-    )
+def asked_areas(drafts: list[dict[str, Any]], cfg: ChatAgentConfig) -> frozenset[str] | None:
+    """판단 초안(측정 · 요청)이 집은 지표 · 차원의 코치 결과 영역(GAZE · SPEED …). 집은 것이 없으면 None(물은 영역을 모름)."""
+    out: set[str] = set()
+    for d in drafts:
+        if d.get("type") not in ("MEASURED", "REQUEST"):
+            continue
+        sub = d.get("subject") or {}
+        metric, dim = sub.get("metric"), sub.get("dimension")
+        metrics = {metric} if isinstance(metric, str) else set()
+        if not metrics and dim in cfg.dimensions:
+            metrics = set(cfg.dimensions[dim].metrics)
+        out |= {METRIC_AREA[m] for m in metrics if m in METRIC_AREA}
+    return frozenset(out) or None
 
 
-def read_run(name: str, args: Any, tr: ToolResult, ctx: RunCtx) -> StepRun:
-    """도구 결과 하나를 단계 실행 · 결과 글과 상황 신호로 읽는다(코드 템플릿, 숫자는 인자 · 결과의 번호만)."""
+def _take_count(v: Any) -> int | None:
+    """`list_pitches` 결과의 Take 수(근거를 단 모양 `{value, evidence_id}` · 옛 결과의 정수)."""
+    v = v.get("value") if isinstance(v, dict) else v
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def read_run(
+    name: str, args: Any, tr: ToolResult, ctx: RunCtx, *, areas: frozenset[str] | None = None
+) -> StepRun:
+    """도구 결과 하나를 단계 실행 · 결과 글과 상황 신호로 읽는다(코드 템플릿, 숫자는 인자 · 결과의 번호만).
+
+    '없음' 근거(tools/impl.py)를 낸 결과는 같은 곳에서 `NO_RECORD`(facts `TAKES` · `GOAL` · `PROBLEM_SEGMENTS`) ·
+    `REVIEW_MISSING` 신호를 낸다. `areas`: 물은 영역(`asked_areas`). 문제 구간 결과를 그 영역으로 읽는다(모르면 읽은 영역 전체)."""
     r = tpl.PLAN_RESULT
     plain = tpl.PLAN_TOOL_NAME.get(name, name)
     take: int | None = None
@@ -286,24 +294,47 @@ def read_run(name: str, args: Any, tr: ToolResult, ctx: RunCtx) -> StepRun:
         outcome = tpl.PLAN_OUTCOME.get(data.get("outcome") or "", tpl.PLAN_OUTCOME_OTHER)
         return run(f"{where}{what} {outcome}")
     if name == "get_take_report":
-        return _report_run(args, data, tr, ctx, run)
+        return _report_run(args, data, tr, ctx, run, areas)
     if name == "list_takes":
         if not data.get("items"):
             return run(r["NO_TAKES"], signal="NO_RECORD", facts=["TAKES"])
         return run(r["CHECKED"])
+    if name == "list_pitches":
+        # 범위 피치(범위가 없으면 읽은 피치가 하나일 때 그 피치)의 Take 수가 0 이면 '읽은 범위에 Take 없음'
+        rows = [x for x in data.get("items") or [] if isinstance(x, dict)]
+        scope = ctx.scope_pitch_id
+        target = (
+            [x for x in rows if x.get("pitch_id") == scope]
+            if scope
+            else (rows if len(rows) == 1 else [])
+        )
+        if target and all(_take_count(x.get("take_count")) == 0 for x in target):
+            return run(r["NO_TAKES"], signal="NO_RECORD", facts=["TAKES"])
+        return run(r["CHECKED"])
     if name == "get_goals":
-        goal = (data.get("conversation_goal") or {}).get("goal") or {}
+        conv = data.get("conversation_goal") or {}
+        goal = conv.get("goal") or {}
         if goal.get("metric"):
             return run(r["GOAL"])
-        return run(r["NO_GOAL"], signal="NO_RECORD", facts=["GOAL"])
+        if conv.get("goal") is None:
+            # 대화 목표가 없다('없음' 근거 `goal.status` NONE 과 같은 때). 다른 피치의 목표만 있으면 '없음'이 아니다
+            return run(r["NO_GOAL"], signal="NO_RECORD", facts=["GOAL"])
+        return run(r["CHECKED"])
     if name == "search_guides":
         return run(r["GUIDES"] if data.get("items") else r["NO_GUIDES"])
     return run(r["CHECKED"])
 
 
-def _report_run(args: Any, data: dict[str, Any], tr: ToolResult, ctx: RunCtx, run: Any) -> StepRun:
-    """get_take_report 결과: 리뷰 절인데 리뷰가 없으면 `리뷰 분석 전`, 문제 구간은 있음 · 없음(측정됐을 때만) · 측정 안 됨,
-    차원 판정은 첫 우선 개선 차원, 그 밖은 `확인`."""
+def _report_run(
+    args: Any,
+    data: dict[str, Any],
+    tr: ToolResult,
+    ctx: RunCtx,
+    run: Any,
+    areas: frozenset[str] | None = None,
+) -> StepRun:
+    """get_take_report 결과: 리뷰 절인데 리뷰가 없으면 `리뷰 분석 전`, 문제 구간은 물은 영역(모르면 읽은 영역 전체)으로 있음 ·
+    측정 안 됨(그 영역 하나라도 측정 안 됨) · 없음(모두 측정됐고 0곳, '없음' 근거와 같은 때), 차원 판정은 첫 우선 개선 차원, 그 밖은 `확인`."""
     r = tpl.PLAN_RESULT
     section = args.section
     snap = ctx.snapshots.get(args.take_id)
@@ -311,11 +342,16 @@ def _report_run(args: Any, data: dict[str, Any], tr: ToolResult, ctx: RunCtx, ru
         return run(r["REVIEW_MISSING"], signal="REVIEW_MISSING")
     items = data.get("items") or []
     if section == "problem_segments":
-        if items:
+        if any(areas is None or it.get("area") in areas for it in items):
             return run(r["SEGMENTS"])
-        if _segments_measured(ctx, args.take_id):
+        none_areas = {x.get("area") for x in data.get("no_segment_areas") or []}
+        unmeasured = {x.get("area") for x in data.get("unmeasured_areas") or []}
+        want = set(areas) if areas is not None else none_areas | unmeasured
+        if want & unmeasured:
+            return run(r["UNMEASURED"])
+        if want and want <= none_areas:
             return run(r["NO_SEGMENTS"], signal="NO_RECORD", facts=["PROBLEM_SEGMENTS"])
-        return run(r["UNMEASURED"])
+        return run(r["CHECKED"])
     if section == "dimensions":
         first = next((it["dimension"] for it in items if it.get("state") == "PRIORITY"), None)
         if first is not None:
@@ -453,6 +489,33 @@ def render(
     return out
 
 
+def unresolved_steps(meta: list[dict[str, Any]]) -> list[int]:
+    """끝까지 풀리지 않은 단계(0부터): 시간 · 한도로 멈춘 단계(`시간 부족`)와, 도구가 실패했고(`확인 실패`) 그 뒤 다른 실행이
+    성공하지 않은 단계. 실패 뒤 다른 도구 · 대상으로 확인했으면(복구된 실패) 풀린 것으로 본다. 실행하지 않은 단계는 넣지 않는다
+    (답이 DONE 이면 건너뜀)."""
+    done_seqs = [max(m["tool_seqs"]) for m in meta if m["done"] and m["tool_seqs"]]
+    out: list[int] = []
+    for i, m in enumerate(meta):
+        if m["done"] or m["skipped"]:
+            continue
+        if m["result"] == tpl.PLAN_RESULT["SHORT"]:
+            out.append(i)
+        elif m["failed"]:
+            last = max(m["tool_seqs"], default=None)
+            if last is None or not any(s > last for s in done_seqs):
+                out.append(i)
+    return out
+
+
+def end_status(meta: list[dict[str, Any]], *, cut: bool, answered: bool) -> str:
+    """끝 상태(TARGET 6 · 5-5 status): 요청한 부분이 모두 해소됐으면 `DONE`, 아니면 `PARTIAL`.
+
+    해소 = 조사가 한도 · 장애로 끊기지 않았고(`cut` 아님), 풀리지 않은 단계(`unresolved_steps`)가 없고, 질문 대상마다 확인한
+    답 · 확인한 '없음' · 비교할 수 없는 까닭 문장이 있다(`answered`, turn.py 가 답 문장으로 본다). 복구된 도구 실패 이력만으로는
+    PARTIAL 이 되지 않는다. 끝 처리(`finish_plan`)도 이 상태를 쓴다(DONE 이면 실행하지 않은 단계 SKIPPED, PARTIAL 이면 TODO)."""
+    return "DONE" if answered and not cut and not unresolved_steps(meta) else "PARTIAL"
+
+
 def finish_plan(
     meta: list[dict[str, Any]],
     registry: EvidenceRegistry,
@@ -545,12 +608,14 @@ __all__ = [
     "PlanStepDraft",
     "RECORD_TOOLS",
     "StepRun",
+    "asked_areas",
     "attach",
     "call_key",
     "compose",
     "current_step",
     "decision_line",
     "display_text",
+    "end_status",
     "fetch_run",
     "finish_plan",
     "mark_short",
@@ -561,4 +626,5 @@ __all__ = [
     "render",
     "signals_view",
     "split_steps",
+    "unresolved_steps",
 ]

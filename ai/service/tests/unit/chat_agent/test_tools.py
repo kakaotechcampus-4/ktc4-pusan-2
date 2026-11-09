@@ -369,7 +369,16 @@ def test_list_pitches_items_and_score_evidence() -> None:
     assert res.ok and res.read_state is None
     assert (res.data["total"], res.data["shown"]) == (1, 1)
     row = res.data["items"][0]
-    assert (row["pitch_id"], row["title"], row["take_count"]) == ("p-1", "졸업 발표", 3)
+    assert (row["pitch_id"], row["title"], row["take_count"]["value"]) == ("p-1", "졸업 발표", 3)
+    # 피치마다 Take 수도 근거다(0 이면 '그 피치에 아직 Take 없음'의 근거, 6-8)
+    tc = ctx.registry.get(row["take_count"]["evidence_id"])
+    assert (tc.origin, tc.pitch_id, tc.path, tc.value, tc.unit) == (
+        "RECORD",
+        "p-1",
+        "pitches[pitch_id=p-1].take_count",
+        3,
+        "count",
+    )
     dims = row["last_review"]["priority_dimensions"]
     assert [d["dimension"] for d in dims] == ["audience_gaze", "script_independence"]
     for d in dims:
@@ -379,7 +388,11 @@ def test_list_pitches_items_and_score_evidence() -> None:
     score = row["last_review"]["score"]
     ev = ctx.registry.get(score["evidence_id"])
     assert score["value"] == 68 and ev.value == 68 and ev.origin == "RECORD" and ev.take_id == "t-5"
-    assert res.evidence_ids == [*(d["evidence_id"] for d in dims), score["evidence_id"]]
+    assert res.evidence_ids == [
+        row["take_count"]["evidence_id"],
+        *(d["evidence_id"] for d in dims),
+        score["evidence_id"],
+    ]
     assert trace.result_summary == "피치 1개(전체 1개)"
 
 
