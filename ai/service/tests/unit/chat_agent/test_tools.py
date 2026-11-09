@@ -621,6 +621,30 @@ def test_take_report_empty_improvements_points_to_problem_segments() -> None:
     assert "problem_segments" in res.data["note"] and "dimensions" in res.data["note"]
 
 
+def test_take_report_no_problem_segments_points_to_review_dimensions() -> None:
+    """코치가 찾은 문제 구간이 0곳이어도 리뷰가 있으면 차원 판정(우선 개선)을 읽을 절을 알려 준다(final60 ana-policy-recurring ·
+    rep-conference-two-turn-goal: '매번 지적된 것'을 문제 구간으로만 찾고 '확인되지 않는다'고 답함). 리뷰가 없으면 알리지 않는다."""
+    req = load(base_request(), "t-4")
+    req["context"]["pitch"]["focus_take"]["results"]["take_result"]["problem_segments"] = []
+    res, _ = run(
+        make_ctx(req), "get_take_report", {"take_id": "t-5", "section": "problem_segments"}
+    )
+    assert res.data["items"] == [] and "dimensions" in res.data["note"]
+    with_items, _ = run(
+        make_ctx(load(base_request(), "t-4")),
+        "get_take_report",
+        {"take_id": "t-5", "section": "problem_segments"},
+    )
+    assert with_items.data["items"] and "note" not in with_items.data
+    req2 = load(base_request(), "t-4")
+    req2["context"]["pitch"]["focus_take"]["results"]["take_result"]["problem_segments"] = []
+    req2["context"]["pitch"]["focus_take"]["results"]["review"] = None
+    no_review, _ = run(
+        make_ctx(req2), "get_take_report", {"take_id": "t-5", "section": "problem_segments"}
+    )
+    assert "note" not in no_review.data
+
+
 def test_take_report_mission_results() -> None:
     req = load(base_request(), "t-4")
     req["context"]["pitch"]["focus_take"]["results"]["review"]["mission_results"] = [

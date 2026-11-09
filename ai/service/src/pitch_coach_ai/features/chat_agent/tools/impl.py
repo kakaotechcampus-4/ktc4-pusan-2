@@ -663,6 +663,13 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 )
             state = None if items else "EMPTY"
             extra.update(_segment_facts(ctx, snap, a, items, eids))
+            if not items and review is not None:
+                # 코치가 찾은 문제 구간이 0곳이어도 리뷰의 차원 판정(우선 개선 등)은 따로 있다(final60 ana-policy-recurring ·
+                # rep-conference-two-turn-goal: '매번 지적된 것 · 공통으로 걸리는 부분'을 이 절로만 찾고 '확인되지 않는다'고 답함)
+                note = (
+                    "이 범위에서 코치가 찾은 문제 구간이 없다. 리뷰가 지적한 것(차원 상태: 우선 개선 · 강점)은 따로 있다: "
+                    "dimensions 로 읽는다."
+                )
     elif a.section == "slides":
         if tr is None:
             state = "NOT_LOADED"
