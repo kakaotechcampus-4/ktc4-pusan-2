@@ -87,18 +87,28 @@ def _improved(
     take_result: dict[str, Any],
     cfg: ReviewConfig,
 ) -> bool | None:
-    """좋아진 방향인지. 같으면 False. 방향 · 기준을 정할 수 없으면 None"""
+    """좋아진 방향인지. 방향 · 기준을 정할 수 없거나 나아지지도 나빠지지도 않았으면 None.
+
+    한 방향 지표는 값이 같으면, 범위 지표는 기준까지의 거리가 같으면
+    (둘 다 범위 안이라 거리가 0 인 경우 포함) None 이다 (나빠졌다고 하지 않게).
+    거리는 부동소수 오차로 같은 거리가 다르게 나오지 않게 math.isclose 로 비교한다
+    (예: 기준 100~200 에서 99.7 → 200.3)
+    """
     direction = cfg.comparison.direction.get(metric)
-    if direction == "HIGHER":
-        return current > previous
-    if direction == "LOWER":
-        return current < previous
+    if direction in ("HIGHER", "LOWER"):
+        if current == previous:
+            return None
+        return current > previous if direction == "HIGHER" else current < previous
     if direction == "RANGE":
         previous_bounds = _bounds(metric, slide_number, previous_result)
         current_bounds = _bounds(metric, slide_number, take_result)
         if previous_bounds is None or current_bounds is None:
             return None
-        return _distance(current, current_bounds) < _distance(previous, previous_bounds)
+        current_distance = _distance(current, current_bounds)
+        previous_distance = _distance(previous, previous_bounds)
+        if math.isclose(current_distance, previous_distance, abs_tol=1e-9):
+            return None
+        return current_distance < previous_distance
     return None
 
 
