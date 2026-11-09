@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { AppHeader } from '@/ui/AppHeader';
 import { Badge, type Tone } from '@/ui/Badge';
 import { Button, ButtonLink } from '@/ui/Button';
+import { CloseButton } from '@/ui/CloseButton';
 import { Mascot } from '@/ui/Mascot';
 import { Card, Stat } from '@/ui/Panel';
 import { PitchCoachWordmark } from '@/ui/PitchCoachWordmark';
@@ -83,6 +84,34 @@ function ButtonDoc({ stateId }: { stateId: string }) {
         <ButtonLink to="/" variant="secondary">
           내 피치로
         </ButtonLink>
+      </Row>
+    </Specimen>
+  );
+}
+
+/** 창 머리글처럼 제목 옆에 둔다. 좁은 머리글은 기본과 나란히 두어 가로 여백을 비교한다 */
+function CloseButtonDoc({ stateId }: { stateId: string }) {
+  if (stateId === 'compact')
+    return (
+      <Specimen title="닫기 버튼 · 좁은 머리글" light>
+        <Row label="compact">
+          <CloseButton compact aria-label="채팅 에이전트 닫기" />
+        </Row>
+        <Row label="기본">
+          <CloseButton />
+        </Row>
+      </Specimen>
+    );
+  return (
+    <Specimen title="닫기 버튼" light>
+      <Row label="창 머리글">
+        <div className="flex w-full max-w-xl items-center justify-between gap-4 border border-line-strong bg-panel p-5">
+          <h2 className="text-xl font-bold">슬라이드 확인</h2>
+          <CloseButton />
+        </div>
+      </Row>
+      <Row label="disabled">
+        <CloseButton disabled />
       </Row>
     </Specimen>
   );
@@ -270,6 +299,8 @@ export function ComponentDoc({ id, stateId }: { id: string; stateId: string }) {
   switch (id) {
     case 'button':
       return <ButtonDoc stateId={stateId} />;
+    case 'close-button':
+      return <CloseButtonDoc stateId={stateId} />;
     case 'badge':
       return <BadgeDoc stateId={stateId} />;
     case 'card':
