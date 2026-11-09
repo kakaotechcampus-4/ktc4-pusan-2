@@ -429,7 +429,10 @@ it('TIP은 8초마다 순환하고 일시정지·재개 버튼으로 타이머�
   expect(tip.textContent).toBe('시작 전 세팅에서 대본 표시 방식을 선택할 수 있어요.');
 
   await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 일시정지"]')!);
-  expect(clearIntervalSpy).toHaveBeenCalled();
+  const firstTimerIndex = setIntervalSpy.mock.calls.findIndex(([, delay]) => delay === 8000);
+  const firstTimer = setIntervalSpy.mock.results[firstTimerIndex]?.value;
+  expect(clearIntervalSpy).toHaveBeenCalledWith(firstTimer);
+  expect(timers()).toHaveLength(1);
   expect(host.querySelector('button[aria-label="팁 자동 전환 재개"]')).not.toBeNull();
 
   await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 재개"]')!);
@@ -452,6 +455,59 @@ it('TIP 문구를 가리키는 동안 자동 전환을 멈췄다가 다시 시�
     tip.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
   });
   expect(setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000)).toHaveLength(2);
+});
+
+it('TIP을 수동 일시정지하면 hover를 해제해도 자동 전환이 재시작되지 않는다', async () => {
+  const setIntervalSpy = vi.spyOn(window, 'setInterval');
+  await render();
+
+  const timers = () => setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000);
+  const tip = host.querySelector<HTMLElement>('footer p[title]')!;
+  const initialTip = tip.textContent;
+  await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 일시정지"]')!);
+
+  await act(async () => {
+    tip.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    tip.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+  });
+  expect(timers()).toHaveLength(1);
+  expect(tip.textContent).toBe(initialTip);
+});
+
+it('OS의 움직임 감소 설정 변경을 홈을 연 상태에서도 반영한다', async () => {
+  const listeners = new Set<() => void>();
+  const preference = {
+    matches: false,
+    addEventListener: vi.fn((event: string, listener: () => void) => {
+      if (event === 'change') listeners.add(listener);
+    }),
+    removeEventListener: vi.fn((event: string, listener: () => void) => {
+      if (event === 'change') listeners.delete(listener);
+    }),
+  };
+  vi.stubGlobal('matchMedia', vi.fn(() => preference));
+  const setIntervalSpy = vi.spyOn(window, 'setInterval');
+  const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+  await render();
+  const timers = () => setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000);
+  expect(timers()).toHaveLength(1);
+
+  await act(async () => {
+    preference.matches = true;
+    listeners.forEach((listener) => listener());
+  });
+  expect(clearIntervalSpy).toHaveBeenCalledWith(
+    setIntervalSpy.mock.results[setIntervalSpy.mock.calls.findIndex(([, delay]) => delay === 8000)]
+      ?.value,
+  );
+  expect(timers()).toHaveLength(1);
+  expect(host.querySelector('button[aria-label="팁 자동 전환 재개"]')).not.toBeNull();
+
+  await act(async () => {
+    preference.matches = false;
+    listeners.forEach((listener) => listener());
+  });
+  expect(timers()).toHaveLength(2);
 });
 
 it('움직임 감소 설정이면 TIP 자동 순환을 초기 중단하고 수동 재개를 허용한다', async () => {

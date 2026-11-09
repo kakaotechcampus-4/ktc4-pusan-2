@@ -247,6 +247,13 @@ body {
   --chat-launcher-bottom: var(--chat-launcher-default-bottom);
 }
 
+/* 홈의 TIP은 실제 런처가 보이는 좁은 화면에서만 왼쪽 공간을 확보합니다. */
+@media (max-width: 1279px) {
+  body:has([data-chat-launcher]) .home-footer-content {
+    padding-left: 5rem;
+  }
+}
+
 /* 장치 점검: 왼쪽 채팅 버튼이 바닥 안내(상태 · 보조 설명)를 가리지 않게 공간을 둡니다. */
 body:has([data-chat-launcher]) .prepare-screen {
   padding-left: 4.5rem;

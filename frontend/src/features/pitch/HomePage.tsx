@@ -59,6 +59,14 @@ export function HomePage() {
   }, [deleting]);
 
   useEffect(() => {
+    if (typeof globalThis.matchMedia !== 'function') return;
+    const preference = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setTipPaused(preference.matches);
+    preference.addEventListener('change', update);
+    return () => preference.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
     if (tipPaused || tipHovered) return;
     const timer = window.setInterval(
       () => setTipIndex((current) => (current + 1) % HOME_TIPS.length),
@@ -207,14 +215,14 @@ export function HomePage() {
         )}
       </main>
       <footer className="border-t border-line-strong">
-        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 pl-20 text-xs text-ink/80 xl:flex-nowrap xl:pl-10 xl:pr-10">
-          <div className="flex min-h-9 min-w-0 basis-full items-center gap-2 lg:min-w-0 lg:flex-1 lg:basis-auto">
+        <div className="home-footer-content mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 xl:flex-nowrap xl:px-10">
+          <div className="flex min-h-9 min-w-0 basis-full flex-wrap items-center gap-x-2 lg:min-w-0 lg:flex-1 lg:basis-auto lg:flex-nowrap">
             <span className="shrink-0 tabular-nums text-coral-deep">TIP /</span>
             <p
               title={HOME_TIPS[tipIndex]}
               onMouseEnter={() => setTipHovered(true)}
               onMouseLeave={() => setTipHovered(false)}
-              className="min-w-0 flex-1 truncate"
+              className="order-3 min-h-20 w-full min-w-0 whitespace-normal leading-5 sm:min-h-10 lg:order-none lg:min-h-0 lg:w-auto lg:flex-1 lg:truncate"
             >
               {HOME_TIPS[tipIndex]}
             </p>
