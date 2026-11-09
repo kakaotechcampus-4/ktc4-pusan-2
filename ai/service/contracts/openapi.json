@@ -6199,6 +6199,59 @@
         "title": "SuppressedEvent",
         "type": "object"
       },
+      "TakeCriticalGap": {
+        "description": "Take 상세의 놓친 중요 내용: 장 상세의 `CriticalGap` 에 장 번호가 꼭 붙는다.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "importance": {
+            "enum": [
+              "critical",
+              "high",
+              "normal"
+            ],
+            "title": "Importance",
+            "type": "string"
+          },
+          "key_point_id": {
+            "title": "Key Point Id",
+            "type": "string"
+          },
+          "said_in_slides": {
+            "description": "그 내용을 다른 장에서 말한 장 번호 (점수로 인정하지 않는다)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Said In Slides",
+            "type": "array"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "covered",
+              "partial",
+              "missing",
+              "contradicted"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slide_number",
+          "key_point_id",
+          "content",
+          "importance",
+          "status"
+        ],
+        "title": "TakeCriticalGap",
+        "type": "object"
+      },
       "TakeDetail": {
         "description": "Take 상세 (응답 맨 위 `detail`). `/takes/rescore` 는 받은 evaluations · failed 로 다시 만든다.",
         "properties": {
@@ -6207,7 +6260,7 @@
           },
           "critical_gaps": {
             "items": {
-              "$ref": "#/components/schemas/CriticalGap"
+              "$ref": "#/components/schemas/TakeCriticalGap"
             },
             "title": "Critical Gaps",
             "type": "array"

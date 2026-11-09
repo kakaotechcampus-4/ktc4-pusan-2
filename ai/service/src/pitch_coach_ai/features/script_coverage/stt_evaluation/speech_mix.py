@@ -85,6 +85,7 @@ def build_offscript(
     - 짝(정렬 구간)이 없는 STT 문장은 대본 어휘 비율이 `UNALIGNED_SCRIPT_OVERLAP` 이상이면 대본 내용,
       아니면 문장 전체가 후보다. 짝 있는 문장 안의 꼬리(대본 어휘에 없는 형태소가 `OFFSCRIPT_MIN_TOKENS` 개
       이상 이어진 구간)는 `OFFSCRIPT_IN_SENTENCE` 를 켰을 때만 후보다(기본 꺼짐 — 대부분 바꿔 말한 대본 내용).
+    - 구간은 짝 없는 문장이면 문장 전체 `[0, 문장 글 길이)`, 꼬리면 그 형태소 구간이다(`tokens` 는 어느 쪽이든 내용 형태소 수).
     - 후보의 범주: 진행 말 → 다른 장 내용(가장 비슷한 장, 같으면 작은 번호) → 대본 밖.
     """
     if not stt_ptokens:
@@ -96,12 +97,12 @@ def build_offscript(
     for t in stt_ptokens:
         by_sentence.setdefault(t.sentence, []).append(t)
 
-    candidates: list[tuple[int, list[Token]]] = []
+    candidates: list[tuple[int, list[Token], bool]] = []  # (문장 번호, 형태소, 문장 전체인지)
     for j in sorted(by_sentence):
         tokens = by_sentence[j]
         if j not in aligned:
             if _overlap(tokens, vocab) < UNALIGNED_SCRIPT_OVERLAP:
-                candidates.append((j, tokens))
+                candidates.append((j, tokens, True))
             continue
         if (
             not OFFSCRIPT_IN_SENTENCE
@@ -113,13 +114,16 @@ def build_offscript(
                 run.append(t)
                 continue
             if len(run) >= OFFSCRIPT_MIN_TOKENS:
-                candidates.append((j, run))
+                candidates.append((j, run, False))
             run = []
 
     spans = []
-    for j, tokens in candidates:
+    for j, tokens, whole in candidates:
         sentence = stt_norm.sentences[j]
-        start, end = tokens[0].start - sentence.start, tokens[-1].end - sentence.start
+        if whole:  # 짝 없는 문장은 끝 어미가 잘리지 않게 문장 전체를 구간으로 둔다
+            start, end = 0, len(sentence.text)
+        else:
+            start, end = tokens[0].start - sentence.start, tokens[-1].end - sentence.start
         # 진행 말 정규식은 어미까지 봐야 하므로(감사 + 합니다) 구간 시작부터 문장 끝까지의 글에서 찾는다
         category, number = "off_script", None
         if _is_procedural(sentence.text[start:], len(tokens)):
@@ -206,20 +210,25 @@ def said_in_other_slides(
 
     `evaluations_offscript` = {장 번호: (그 장의 대본 밖 구간 목록, 정규화 STT 문장 목록)}.
     `other_slide` 구간 글의 형태소가 가리킨 장 핵심 내용의 근거 문장 형태소를 `OTHER_SLIDE_OVERLAP`
-    이상 덮으면 그 장의 그 내용을 이 장에서 말한 것으로 센다. 장 번호는 정렬하고 중복을 없앤다.
+    이상 덮으면 그 장의 그 내용을 이 장에서 말한 것으로 센다. 근거 문장에 수치(`NUM` 형태소)가 있으면 그 수치가
+    구간에도 모두 있어야 한다. 장 번호는 정렬하고 중복을 없앤다.
     """
-    kp_tokens: dict[int, dict[str, set[str]]] = {}
+    kp_tokens: dict[int, dict[str, tuple[set[str], set[str]]]] = {}
 
-    def keypoints(number: int) -> dict[str, set[str]]:
+    def keypoints(number: int) -> dict[str, tuple[set[str], set[str]]]:
+        """{핵심 내용 id: (근거 문장 형태소 key, 그중 수치 key)}."""
         if number not in kp_tokens:
             rubric = rubrics[number]
-            by_sentence: dict[int, set[str]] = {}
+            by_sentence: dict[int, list[Token]] = {}
             for t in positioned_tokens(normalize_script(rubric.normalized_script)):
-                by_sentence.setdefault(t.sentence, set()).add(t.key)
-            kp_tokens[number] = {
-                kp.id: set().union(*(by_sentence.get(i, set()) for i in kp.sentence_indices))
-                for kp in rubric.key_points
-            }
+                by_sentence.setdefault(t.sentence, []).append(t)
+            kp_tokens[number] = {}
+            for kp in rubric.key_points:
+                toks = [t for i in kp.sentence_indices for t in by_sentence.get(i, [])]
+                kp_tokens[number][kp.id] = (
+                    {t.key for t in toks},
+                    {t.key for t in toks if t.tag == "NUM"},
+                )
         return kp_tokens[number]
 
     found: dict[tuple[int, str], set[int]] = {}
@@ -233,7 +242,7 @@ def said_in_other_slides(
                 continue
             text = sentences[span.stt_sentence_index][span.start : span.end]
             said = {t.key for t in positioned_tokens(normalize_script(text))}
-            for kp_id, keys in keypoints(target).items():
-                if keys and len(keys & said) / len(keys) >= OTHER_SLIDE_OVERLAP:
+            for kp_id, (keys, numbers) in keypoints(target).items():
+                if keys and len(keys & said) / len(keys) >= OTHER_SLIDE_OVERLAP and numbers <= said:
                     found.setdefault((target, kp_id), set()).add(number)
     return {k: sorted(v) for k, v in sorted(found.items())}

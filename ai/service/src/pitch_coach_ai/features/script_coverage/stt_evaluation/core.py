@@ -12,7 +12,7 @@ from .align import align_sentences, fidelity_excluding, positioned_tokens
 from .config import OFFSCRIPT_LLM_ENABLED
 from .detail import annotate_expression, slide_detail
 from .fact_check import annotate_mismatches, check_critical_facts
-from .fallback import lexical_fallback
+from .fallback import evidence_skip_alignments, lexical_fallback
 from .judge import (
     empty_stt_evaluation,
     eval_config_hash,
@@ -307,6 +307,13 @@ def evaluate_take(
             stt_integrity=integrity.get(n, "unknown"),
             speech_mix=slides[n]["speech_mix"],
             reason_code=code,
+            evidence_alignments=evidence_skip_alignments(
+                slides[n]["rubric"],
+                slides[n]["script_norm"],
+                slides[n]["script_ptokens"],
+                slides[n]["stt_norm"],
+                slides[n]["stt_ptokens"],
+            ),
         )
         for n, code in sorted(failed.items())
         if n in slides  # 평가 기준이 없는 장(RUBRIC_MISSING)은 최상위에서 만든다

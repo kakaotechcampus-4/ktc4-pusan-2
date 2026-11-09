@@ -236,7 +236,7 @@ def build_take_examples(conn: sqlite3.Connection) -> dict[str, dict[str, object]
     rescore_request = RescoreRequest(
         take_id=TAKE_ID,
         evaluations=response.evaluations,
-        rubrics=[r for r in request["rubrics"] if r["meta"]["slide_number"] == SIMILAR_SLIDE],
+        rubrics=request["rubrics"],  # BE 도 처음 채점에 쓴 평가 기준을 그대로 보낸다
         answers=[RESCORE_ANSWER],
         failed=response.failed,
     ).model_dump(mode="json")

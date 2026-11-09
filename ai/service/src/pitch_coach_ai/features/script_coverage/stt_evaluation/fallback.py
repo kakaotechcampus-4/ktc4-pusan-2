@@ -6,10 +6,12 @@
 둘 다 LLM 을 부르지 않는다. 숫자 대신 3단계(`delivery_band`)를 화면에 보인다.
 """
 
+from collections.abc import Sequence
+
 from ..shared.facts import extract_critical_facts
 from ..shared.rubric import EvaluationRubric, RubricMeta
-from ..shared.text import normalize_script
-from .align import NUMERIC_TYPES, align_sentences, fidelity_excluding, positioned_tokens
+from ..shared.text import NormalizedScript, normalize_script
+from .align import NUMERIC_TYPES, Token, align_sentences, fidelity_excluding, positioned_tokens
 from .config import (
     FALLBACK_BAND_LITTLE,
     FALLBACK_BAND_MOSTLY,
@@ -48,6 +50,33 @@ def _band(value: float | None) -> str | None:
     return "about_half"
 
 
+def evidence_skip_alignments(
+    rubric: EvaluationRubric,
+    script_norm: NormalizedScript,
+    script_ptokens: list[Token],
+    stt_norm: NormalizedScript,
+    stt_ptokens: list[Token],
+) -> list[Alignment]:
+    """핵심 내용의 근거 문장(`key_points[].sentence_indices`)인데 역할이 skip 인 문장의 정렬 (그런 문장이 없으면 빈 목록).
+
+    기본 정렬은 skip 문장을 건너뛰므로, 그 문장만 `detail` 로 보고 따로 맞춘다. 판정(`judge`)이 이 문장을 평가하는 것과 같은 규칙이다.
+    """
+    evidence = {i for kp in rubric.key_points for i in kp.sentence_indices}
+    roles = [
+        "detail" if role == "skip" and i in evidence else "skip"
+        for i, role in enumerate(rubric.sentence_roles)
+    ]
+    if "detail" not in roles:
+        return []
+    return align_sentences(
+        script_norm,
+        [(t.key, t.sentence) for t in script_ptokens],
+        stt_norm,
+        [(t.key, t.sentence) for t in stt_ptokens],
+        roles,
+    )
+
+
 def lexical_fallback(
     rubric: EvaluationRubric,
     alignments: list[Alignment],
@@ -57,14 +86,17 @@ def lexical_fallback(
     stt_integrity: str,
     speech_mix: SpeechMix | None,
     reason_code: str,
+    evidence_alignments: Sequence[Alignment] = (),
 ) -> Fallback:
     """평가 기준이 있는 실패 장의 간이 값.
 
-    skip 이 아닌 문장의 정렬 `coverage` 로 `lexical_coverage` · `delivery_band` 를 내고, 수치 개수 · 수치 정확도
+    skip 이 아닌 문장과 핵심 내용의 근거인 skip 문장(`evidence_alignments`, `evidence_skip_alignments` 로 만든다)의 정렬 `coverage` 로 `lexical_coverage` · `delivery_band` 를 내고, 수치 개수 · 수치 정확도
     (점수와 같은 계산, `estimated`) · 대본 재현(`fidelity` 의 recall, 대본 형태소가 0 이면 None)을 더한다.
     """
     roles = rubric.sentence_roles
-    coverage = _lexical_coverage([a for a in alignments if roles[a.sentence_index] != "skip"])
+    coverage = _lexical_coverage(
+        [a for a in alignments if roles[a.sentence_index] != "skip"] + list(evidence_alignments)
+    )
     return _build(
         "lexical",
         coverage,

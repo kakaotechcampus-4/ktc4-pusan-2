@@ -16,6 +16,7 @@ from .schemas import (
     SlideFailure,
     SlideSummary,
     SpeechMixBrief,
+    TakeCriticalGap,
     TakeDetail,
     TakeLegacy,
 )
@@ -27,12 +28,12 @@ from .stt_evaluation.detail import (
     fact_parts,
     key_point_counts,
     key_point_stats,
+    rate,
     status_shares,
     zero_kind,
 )
 from .stt_evaluation.schemas import (
     MIX_CATEGORIES,
-    CriticalGap,
     Expression,
     FactSummary,
     Fidelity,
@@ -61,12 +62,23 @@ def _empty_metric(nothing_targeted: bool, excluded: int = 0) -> Metric:
     return Metric(value=None, state="failed", reason_codes=[EXCLUDED], excluded=excluded)
 
 
-def _pooled(metrics: list[Metric], *, excluded_slides: bool, nothing_targeted: bool) -> Metric:
-    """장 지표를 `evaluated` 가중으로 모은다. 값이 있는 장이 없으면 그 장들의 이유를 합친 `not_applicable`."""
+def _pooled(
+    metrics: list[Metric],
+    *,
+    excluded_slides: bool,
+    nothing_targeted: bool,
+    units_missing: bool = False,
+) -> Metric:
+    """장 지표를 `evaluated` 가중으로 모은다. 값이 있는 장이 없으면 그 장들의 이유를 합친 `not_applicable`.
+
+    값이 있는 장이 없는데 빠진 장에 그 지표의 단위가 있을 수 있으면(`units_missing`) `failed` + `SLIDES_EXCLUDED`.
+    """
     if not metrics:
         return _empty_metric(nothing_targeted)
     valued = [m for m in metrics if m.value is not None and m.evaluated]
     if not valued:
+        if excluded_slides and units_missing:
+            return Metric(value=None, state="failed", reason_codes=[EXCLUDED])
         return Metric(
             value=None,
             state="not_applicable",
@@ -83,14 +95,14 @@ def _pooled(metrics: list[Metric], *, excluded_slides: bool, nothing_targeted: b
     )
 
 
-def _gaps(evaluations: list[SlideEvaluation]) -> list[CriticalGap]:
+def _gaps(evaluations: list[SlideEvaluation]) -> list[TakeCriticalGap]:
     """장의 놓친 중요 내용에 장 번호를 붙여 중요도(critical 먼저) · 장 번호 · 장 안 순서로 정렬하고 자른다."""
     gaps = [
         (
             -IMPORTANCE_RANK[g.importance],
             e.slide_number,
             i,
-            g.model_copy(update={"slide_number": e.slide_number}),
+            TakeCriticalGap(**g.model_dump(exclude={"slide_number"}), slide_number=e.slide_number),
         )
         for e in evaluations
         for i, g in enumerate(e.detail.critical_gaps)
@@ -100,7 +112,12 @@ def _gaps(evaluations: list[SlideEvaluation]) -> list[CriticalGap]:
 
 
 def _facts(
-    evaluations: list[SlideEvaluation], *, excluded_slides: bool, nothing_targeted: bool
+    evaluations: list[SlideEvaluation],
+    *,
+    excluded_slides: bool,
+    nothing_targeted: bool,
+    excluded_facts: int = 0,
+    facts_missing: bool = False,
 ) -> FactSummary:
     checks = [c for e in evaluations for c in e.critical_facts]
     parts = fact_parts(checks)
@@ -108,12 +125,18 @@ def _facts(
     if not evaluations:
         accuracy = _empty_metric(nothing_targeted)
     elif not checks:
-        accuracy = Metric(value=None, state="not_applicable", reason_codes=["NO_FACTS"])
+        if excluded_slides and facts_missing:
+            accuracy = Metric(
+                value=None, state="failed", reason_codes=[EXCLUDED], excluded=excluded_facts
+            )
+        else:
+            accuracy = Metric(value=None, state="not_applicable", reason_codes=["NO_FACTS"])
     elif not parts["counted"]:
         accuracy = Metric(
             value=None,
             state="pending",
-            reason_codes=["ALL_FACTS_PENDING"],
+            reason_codes=["ALL_FACTS_PENDING"]
+            + ([EXCLUDED] if excluded_slides and facts_missing else []),
             excluded=parts["pending"],
         )
     else:
@@ -200,6 +223,15 @@ def _scored_summary(e: SlideEvaluation) -> SlideSummary:
     )
 
 
+def _failed_integrity(f: SlideFailure, integrity: dict[int, str]) -> str:
+    """실패 장의 STT 완전성: 받은 값, 없으면 간이 값의 것, 그것도 없으면 실패 코드(`STT_INCOMPLETE` → incomplete)로 정한다."""
+    if f.slide_number in integrity:
+        return integrity[f.slide_number]
+    if f.fallback:
+        return f.fallback.stt_integrity
+    return "incomplete" if f.error.code == "STT_INCOMPLETE" else "unknown"
+
+
 def _failed_summary(
     f: SlideFailure, rubric: EvaluationRubric | None, integrity: dict[int, str]
 ) -> SlideSummary:
@@ -208,9 +240,7 @@ def _failed_summary(
         slide_number=f.slide_number,
         state="estimated" if fallback else "failed",
         reason_codes=_union([[f.error.code], fallback.reason_codes if fallback else []]),
-        stt_integrity=fallback.stt_integrity
-        if fallback
-        else integrity.get(f.slide_number, "unknown"),
+        stt_integrity=_failed_integrity(f, integrity),
         rubric_quality=rubric.meta.rubric_quality if rubric else None,
         delivery=None,
         zero_kind=None,
@@ -249,6 +279,10 @@ def take_detail(
     stats = key_point_stats(results)
     excluded_kp = sum(len(rubrics[n].key_points) for n in missing if n in rubrics)
     unknown_excluded = any(n not in rubrics for n in missing)
+    known_missing = [rubrics[n] for n in missing if n in rubrics]
+    excluded_facts = sum(len(r.critical_facts) for r in known_missing)
+    facts_missing = unknown_excluded or excluded_facts > 0
+    script_missing = unknown_excluded or any(r.normalized_script.strip() for r in known_missing)
 
     if not evs:
         delivery = _empty_metric(nothing, excluded_kp)
@@ -270,14 +304,14 @@ def take_detail(
         flagged = reasons + ([EXCLUDED] if excluded_slides else [])
         state = "provisional" if flagged else "ok"
         delivery = Metric(
-            value=round(stats["delivery"] / total, 3),
+            value=rate(stats["delivery"], total),
             state=state,
             reason_codes=flagged,
             evaluated=len(results),
             excluded=excluded_kp,
         )
         contradiction = Metric(
-            value=round(stats["by_status"]["contradicted"] / total, 3),
+            value=rate(stats["by_status"]["contradicted"], total),
             state=state,
             reason_codes=list(flagged),
             evaluated=len(results),
@@ -299,11 +333,13 @@ def take_detail(
             [e.detail.fidelity.recall for e in evs],
             excluded_slides=excluded_slides,
             nothing_targeted=nothing,
+            units_missing=script_missing,
         ),
         precision=_pooled(
             [e.detail.fidelity.precision for e in evs],
             excluded_slides=excluded_slides,
             nothing_targeted=nothing,
+            units_missing=script_missing,
         ),
     )
     summaries = [_scored_summary(e) for e in evs] + [
@@ -328,7 +364,13 @@ def take_detail(
         key_points=counts,
         critical_gaps=_gaps(evs),
         legacy=TakeLegacy(content_coverage_raw=raw),
-        facts=_facts(evs, excluded_slides=excluded_slides, nothing_targeted=nothing),
+        facts=_facts(
+            evs,
+            excluded_slides=excluded_slides,
+            nothing_targeted=nothing,
+            excluded_facts=excluded_facts,
+            facts_missing=facts_missing,
+        ),
         expression=expression,
         fidelity=fidelity,
         speech_mix=_speech_mix(evs, excluded_slides=excluded_slides, nothing_targeted=nothing),

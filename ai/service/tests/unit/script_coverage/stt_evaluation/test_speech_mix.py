@@ -57,7 +57,7 @@ def test_unaligned_greeting_not_in_script_is_procedural():
         "rule",
         "procedural",
     )
-    assert (span.stt_sentence_index, text_of(norm, span)) == (0, "감사")
+    assert (span.stt_sentence_index, text_of(norm, span)) == (0, "감사합니다.")  # 문장 전체
 
 
 def test_greeting_that_is_in_the_script_is_script_content():

@@ -235,6 +235,12 @@ class TakeLegacy(BaseModel):
     )
 
 
+class TakeCriticalGap(CriticalGap):
+    """Take 상세의 놓친 중요 내용: 장 상세의 `CriticalGap` 에 장 번호가 꼭 붙는다."""
+
+    slide_number: int
+
+
 class TakeDetail(BaseModel):
     """Take 상세 (응답 맨 위 `detail`). `/takes/rescore` 는 받은 evaluations · failed 로 다시 만든다."""
 
@@ -244,7 +250,7 @@ class TakeDetail(BaseModel):
     contradiction: Metric
     status_shares: dict[str, float] | None
     key_points: dict[str, dict[str, int]]
-    critical_gaps: list[CriticalGap] = Field(default_factory=list)
+    critical_gaps: list[TakeCriticalGap] = Field(default_factory=list)
     legacy: TakeLegacy
     facts: FactSummary
     expression: Expression

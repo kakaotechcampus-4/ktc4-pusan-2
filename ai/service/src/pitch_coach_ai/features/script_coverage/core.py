@@ -256,8 +256,9 @@ def evaluate_take(
 
     대상 장은 `slide_numbers`(없으면 `slides` 전부)다. 평가 기준이 없는 장은 채점하지 않고 `failed`
     (`RUBRIC_MISSING`)에 담되 `scored_ratio` 의 대상 장에는 들어가며, 나머지 장은 계속한다.
-    대상 장이 없으면 (`slide_numbers=[]`) `rubrics` 와 상관없이 빈 결과 200 이다. 대상이 있는데 `rubrics` 가
-    비었고 대본 글(`script`)도 없으면 422 `RUBRIC_MISSING` 이다.
+    대상 장이 없으면 (`slide_numbers=[]`) `rubrics` 와 상관없이 빈 결과 200 이다. `rubrics` 가 비어도 장마다
+    STT 완전성을 먼저 정하고(끊겨 빈 장은 `STT_INCOMPLETE`) 나머지를 `RUBRIC_MISSING` 으로 둔다. 대상 장이 모두
+    실패하고 간이 값도 없으면 `_all_failed` 가 오류를 고른다 (모두 `RUBRIC_MISSING` 이면 422 `RUBRIC_MISSING`).
     STT 완전성(`stt_integrity`)이 `incomplete` 인데 STT 가 빈 장은 채점하지 않고 `failed` (`STT_INCOMPLETE`, 간이 값 없음)이다.
     평가 기준이 없는 장은 `script` 가 있으면 간이 값(`lexical_no_rubric`)을 붙인다. 대상 장이 모두 실패해도 간이 값이
     하나라도 있으면 `evaluations` 가 빈 200 이고, 없으면 `_all_failed` 의 오류다. `llms` 가 None 이면
@@ -272,8 +273,6 @@ def evaluate_take(
     info = {s.slide_number: s for s in request.slides}
     targets = sorted(set(request.slide_numbers) if request.slide_numbers is not None else set(stt))
     scripts = {n: (info[n].script or "") for n in targets}
-    if not request.rubrics and targets and not any(scripts[n].strip() for n in targets):
-        raise _input_error("RUBRIC_MISSING", ALL_RUBRIC_MISSING_MESSAGE)
     integrity = {
         n: slide_integrity(info[n].duration_ms, info[n].stt_gap_ms, info[n].stt_unobserved_ms)
         for n in targets

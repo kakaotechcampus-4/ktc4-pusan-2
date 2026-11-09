@@ -13,7 +13,7 @@
 from ..config import SCORE_WEIGHT
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script
-from .align import positioned_tokens
+from .align import positioned_tokens, without_spans
 from .config import (
     CRITICAL_GAP_IMPORTANCE,
     DELIVERY_SCORE,
@@ -106,6 +106,13 @@ def key_point_stats(results: list[KeyPointResult]) -> dict:
         "legacy": legacy,
         "by_status": by_status,
     }
+
+
+def rate(numerator: float, total: float) -> float:
+    """비율을 반올림 3자리로 낸다. 원값이 0 보다 큰데 0.0 으로 반올림되면 0 의 뜻을 지키려고 0.001 로 둔다."""
+    value = numerator / total
+    rounded = round(value, 3) + 0.0
+    return 0.001 if value > 0 and rounded == 0 else rounded
 
 
 def status_shares(by_status: dict[str, int | float]) -> dict[str, float] | None:
@@ -213,12 +220,21 @@ def _fact_summary(e: SlideEvaluation) -> FactSummary:
 # ── 장 상세 ─────────────────────────────────────────────────
 
 
+def _precision_tokens(e: SlideEvaluation) -> int:
+    """precision 의 분모: 비슷한 말 자리(처음 채점은 모두, 확인 뒤는 `as_stt` 가 아닌 것)의 형태소를 뺀 STT 형태소 수."""
+    if not e.stt_text:
+        return 0
+    keep_out = [it for it in e.similar_items if e.applied_answers.get(it.item_id) != "as_stt"]
+    ptokens = positioned_tokens(normalize_script(e.stt_text))
+    return len(without_spans(ptokens, [it.stt_span for it in keep_out]))
+
+
 def _fidelity(e: SlideEvaluation) -> Fidelity:
     script_tokens = e.fidelity.get("script_tokens", 0)
     if not script_tokens:
         empty = Metric(value=None, state="not_applicable")
         return Fidelity(recall=empty, precision=empty.model_copy())
-    stt_tokens = len(positioned_tokens(normalize_script(e.stt_text))) if e.stt_text else 0
+    stt_tokens = _precision_tokens(e) if e.stt_text else 0
     recall = Metric(value=e.fidelity["recall"], state="ok", evaluated=script_tokens)
     if stt_tokens:
         precision = Metric(value=e.fidelity["precision"], state="ok", evaluated=stt_tokens)
@@ -259,21 +275,22 @@ def slide_detail(
     if results:
         total = stats["weight"]
         delivery = Metric(
-            value=round(stats["delivery"] / total, 3),
+            value=rate(stats["delivery"], total),
             state=state,
             reason_codes=list(reasons),
             evaluated=len(results),
         )
         contradiction = Metric(
-            value=round(stats["by_status"]["contradicted"] / total, 3),
+            value=rate(stats["by_status"]["contradicted"], total),
             state=state,
             reason_codes=list(reasons),
             evaluated=len(results),
         )
-        raw = round(stats["legacy"] / total, 3) + 0.0
-        if raw < 0:
+        raw_value = stats["legacy"] / total  # 반올림 전 값으로 판정한다
+        raw = round(raw_value, 3) + 0.0
+        if raw_value < 0:
             legacy_zero = "clamped_negative"
-        elif raw == 0 and delivery.value > 0:
+        elif raw_value == 0 and stats["delivery"] > 0:
             legacy_zero = "cancelled_to_zero"
         else:
             legacy_zero = None

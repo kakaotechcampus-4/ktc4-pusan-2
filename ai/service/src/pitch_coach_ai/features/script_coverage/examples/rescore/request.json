@@ -576,7 +576,7 @@
             "value": 0.962,
             "state": "ok",
             "reason_codes": [],
-            "evaluated": 54,
+            "evaluated": 52,
             "excluded": 0
           }
         },
@@ -956,6 +956,589 @@
             240
           ],
           "fact_ids": [],
+          "source": "llm"
+        }
+      ]
+    },
+    {
+      "meta": {
+        "rubric_id": "ab1fc90afb7b1e6d",
+        "script_name": "sv-3",
+        "slide_number": 4,
+        "content_hash": "1c0adc56471baec13e2201d734e7ad16f116b00b32e7e1249ab39911c92b6dec",
+        "rubric_schema_version": "1.3",
+        "llm_model": "openai/gpt-6-luna",
+        "llm_config_hash": "fe145db16778",
+        "final_config_hash": "ea6918cfbdbd",
+        "unit_config_hash": "9fbab8f4bf05",
+        "rubric_quality": "full"
+      },
+      "normalized_script": "예측 모델은 제휴 도서관 3곳의 2년 치 출입 기록, 약 1,240만 건으로 학습했습니다. 요일, 시간대, 시험 기간 여부, 날씨를 함께 넣었고, 여러 모델을 비교한 끝에 XGBoost를 선택했습니다. 딥러닝 모델과 정확도는 비슷했지만 학습과 추론이 훨씬 빨랐기 때문입니다. 시간대별로 데이터를 나누는 시계열 교차검증으로 평가했고, 30분 뒤 빈자리 수의 평균 오차는 좌석 2.4개였습니다. 좌석 수 대비 이용자 수가 3:1을 넘는 시험 기간에도 오차는 크게 늘지 않았습니다.",
+      "sentences": [
+        {
+          "index": 0,
+          "text": "예측 모델은 제휴 도서관 3곳의 2년 치 출입 기록, 약 1,240만 건으로 학습했습니다.",
+          "start": 0,
+          "end": 50
+        },
+        {
+          "index": 1,
+          "text": "요일, 시간대, 시험 기간 여부, 날씨를 함께 넣었고, 여러 모델을 비교한 끝에 XGBoost를 선택했습니다.",
+          "start": 51,
+          "end": 112
+        },
+        {
+          "index": 2,
+          "text": "딥러닝 모델과 정확도는 비슷했지만 학습과 추론이 훨씬 빨랐기 때문입니다.",
+          "start": 113,
+          "end": 153
+        },
+        {
+          "index": 3,
+          "text": "시간대별로 데이터를 나누는 시계열 교차검증으로 평가했고, 30분 뒤 빈자리 수의 평균 오차는 좌석 2.4개였습니다.",
+          "start": 154,
+          "end": 218
+        },
+        {
+          "index": 4,
+          "text": "좌석 수 대비 이용자 수가 3:1을 넘는 시험 기간에도 오차는 크게 늘지 않았습니다.",
+          "start": 219,
+          "end": 266
+        }
+      ],
+      "sentence_roles": [
+        "evidence",
+        "evidence",
+        "evidence",
+        "claim",
+        "evidence"
+      ],
+      "core_claim": "30분 뒤 빈자리 수 예측의 평균 오차는 좌석 2.4개이다.",
+      "key_points": [
+        {
+          "id": "KP1",
+          "content": "예측 모델은 제휴 도서관 3곳의 2년 치 출입 기록, 약 1,240만 건으로 학습한다.",
+          "importance": "high",
+          "sentence_indices": [
+            0
+          ],
+          "source_quote": "예측 모델은 제휴 도서관 3곳의 2년 치 출입 기록, 약 1,240만 건으로 학습했습니다.",
+          "source_span": [
+            0,
+            50
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF1",
+            "CF2",
+            "CF3"
+          ]
+        },
+        {
+          "id": "KP2",
+          "content": "모델에는 요일, 시간대, 시험 기간 여부, 날씨를 함께 넣는다.",
+          "importance": "high",
+          "sentence_indices": [
+            1
+          ],
+          "source_quote": "요일, 시간대, 시험 기간 여부, 날씨를 함께 넣었고, 여러 모델을 비교한 끝에 XGBoost를 선택했습니다.",
+          "source_span": [
+            51,
+            112
+          ],
+          "key_terms": [],
+          "fact_ids": []
+        },
+        {
+          "id": "KP3",
+          "content": "XGBoost는 딥러닝 모델과 정확도는 비슷하지만 학습과 추론이 훨씬 빠른 모델이다.",
+          "importance": "high",
+          "sentence_indices": [
+            1,
+            2
+          ],
+          "source_quote": "요일, 시간대, 시험 기간 여부, 날씨를 함께 넣었고, 여러 모델을 비교한 끝에 XGBoost를 선택했습니다. 딥러닝 모델과 정확도는 비슷했지만 학습과 추론이 훨씬 빨랐기 때문입니다.",
+          "source_span": [
+            51,
+            153
+          ],
+          "key_terms": [
+            "XGBoost"
+          ],
+          "fact_ids": [
+            "CF4"
+          ]
+        },
+        {
+          "id": "KP4",
+          "content": "시간대별 데이터를 나누는 시계열 교차검증으로 평가한 결과, 30분 뒤 빈자리 수의 평균 오차는 좌석 2.4개이다.",
+          "importance": "critical",
+          "sentence_indices": [
+            3
+          ],
+          "source_quote": "시간대별로 데이터를 나누는 시계열 교차검증으로 평가했고, 30분 뒤 빈자리 수의 평균 오차는 좌석 2.4개였습니다.",
+          "source_span": [
+            154,
+            218
+          ],
+          "key_terms": [
+            "시계열 교차검증"
+          ],
+          "fact_ids": [
+            "CF5",
+            "CF6",
+            "CF7"
+          ]
+        },
+        {
+          "id": "KP5",
+          "content": "좌석 수 대비 이용자 수가 3:1을 넘는 시험 기간에도 오차는 크게 늘지 않는다.",
+          "importance": "high",
+          "sentence_indices": [
+            4
+          ],
+          "source_quote": "좌석 수 대비 이용자 수가 3:1을 넘는 시험 기간에도 오차는 크게 늘지 않았습니다.",
+          "source_span": [
+            219,
+            266
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF8"
+          ]
+        }
+      ],
+      "critical_facts": [
+        {
+          "id": "CF1",
+          "type": "quantity",
+          "value": "3곳",
+          "normalized": "3곳",
+          "numeric_value": 3.0,
+          "unit": "곳",
+          "qualifier": null,
+          "spans": [
+            [
+              14,
+              16
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF2",
+          "type": "duration",
+          "value": "2년",
+          "normalized": "2년",
+          "numeric_value": 2.0,
+          "unit": "년",
+          "qualifier": null,
+          "spans": [
+            [
+              18,
+              20
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF3",
+          "type": "quantity",
+          "value": "약 1,240만 건",
+          "normalized": "12,400,000건",
+          "numeric_value": 12400000.0,
+          "unit": "건",
+          "qualifier": "약",
+          "spans": [
+            [
+              30,
+              40
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF4",
+          "type": "proper_noun",
+          "value": "XGBoost",
+          "normalized": "xgboost",
+          "numeric_value": null,
+          "unit": null,
+          "qualifier": null,
+          "spans": [
+            [
+              96,
+              103
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP3"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF5",
+          "type": "term",
+          "value": "시계열 교차검증",
+          "normalized": "시계열 교차검증",
+          "numeric_value": null,
+          "unit": null,
+          "qualifier": null,
+          "spans": [
+            [
+              169,
+              177
+            ]
+          ],
+          "sentence_indices": [
+            3
+          ],
+          "source": "llm",
+          "key_point_ids": [
+            "KP4"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF6",
+          "type": "duration",
+          "value": "30분",
+          "normalized": "30분",
+          "numeric_value": 30.0,
+          "unit": "분",
+          "qualifier": null,
+          "spans": [
+            [
+              186,
+              189
+            ]
+          ],
+          "sentence_indices": [
+            3
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP4"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF7",
+          "type": "quantity",
+          "value": "2.4개",
+          "normalized": "2.4개",
+          "numeric_value": 2.4,
+          "unit": "개",
+          "qualifier": null,
+          "spans": [
+            [
+              209,
+              213
+            ]
+          ],
+          "sentence_indices": [
+            3
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP4"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF8",
+          "type": "ratio",
+          "value": "3:1",
+          "normalized": "3:1",
+          "numeric_value": null,
+          "unit": null,
+          "qualifier": null,
+          "spans": [
+            [
+              234,
+              237
+            ]
+          ],
+          "sentence_indices": [
+            4
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP5"
+          ],
+          "importance": "high"
+        }
+      ],
+      "keywords": [
+        {
+          "term": "모델",
+          "score": 0.3259,
+          "tf": 3
+        },
+        {
+          "term": "오차",
+          "score": 0.2629,
+          "tf": 2
+        },
+        {
+          "term": "시험 기간",
+          "score": 0.2221,
+          "tf": 2
+        },
+        {
+          "term": "시험",
+          "score": 0.2221,
+          "tf": 2
+        },
+        {
+          "term": "기간",
+          "score": 0.2221,
+          "tf": 2
+        },
+        {
+          "term": "추론",
+          "score": 0.1553,
+          "tf": 1
+        },
+        {
+          "term": "평균 오차",
+          "score": 0.1553,
+          "tf": 1
+        },
+        {
+          "term": "교차",
+          "score": 0.1553,
+          "tf": 1
+        }
+      ],
+      "warnings": [],
+      "draft_warnings": [
+        "too_many_critical:2"
+      ],
+      "review_changes": [
+        "S3에서 평가 방법과 오차 수치가 함께 제시되므로 두 critical Key Point를 하나로 합쳐 중복된 핵심 항목을 줄였다."
+      ],
+      "name_decisions": [
+        {
+          "value": "XGBoost",
+          "source": "rule",
+          "keep": true,
+          "reason": "예측 모델의 구체적인 이름이다."
+        },
+        {
+          "value": "시계열 교차검증",
+          "source": "llm",
+          "keep": true,
+          "reason": "평가 방법을 가리키는 전문 용어이다."
+        }
+      ],
+      "content_units": [
+        {
+          "id": "S0-U1",
+          "sentence_index": 0,
+          "text": "제휴 도서관 3곳의 기록으로 학습함",
+          "quote": "제휴 도서관 3곳",
+          "span": [
+            7,
+            16
+          ],
+          "fact_ids": [
+            "CF1"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S0-U2",
+          "sentence_index": 0,
+          "text": "2년 치 출입 기록을 사용함",
+          "quote": "2년 치 출입 기록",
+          "span": [
+            18,
+            28
+          ],
+          "fact_ids": [
+            "CF2"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S0-U3",
+          "sentence_index": 0,
+          "text": "약 1,240만 건으로 학습함",
+          "quote": "약 1,240만 건으로 학습",
+          "span": [
+            30,
+            45
+          ],
+          "fact_ids": [
+            "CF3"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S1-U1",
+          "sentence_index": 1,
+          "text": "요일을 입력함",
+          "quote": "요일",
+          "span": [
+            51,
+            53
+          ],
+          "fact_ids": [],
+          "source": "llm"
+        },
+        {
+          "id": "S1-U2",
+          "sentence_index": 1,
+          "text": "시간대를 입력함",
+          "quote": "시간대",
+          "span": [
+            55,
+            58
+          ],
+          "fact_ids": [],
+          "source": "llm"
+        },
+        {
+          "id": "S1-U3",
+          "sentence_index": 1,
+          "text": "시험 기간 여부를 입력함",
+          "quote": "시험 기간 여부",
+          "span": [
+            60,
+            68
+          ],
+          "fact_ids": [],
+          "source": "llm"
+        },
+        {
+          "id": "S1-U4",
+          "sentence_index": 1,
+          "text": "날씨를 입력함",
+          "quote": "날씨",
+          "span": [
+            70,
+            72
+          ],
+          "fact_ids": [],
+          "source": "llm"
+        },
+        {
+          "id": "S1-U5",
+          "sentence_index": 1,
+          "text": "여러 모델을 비교한 끝에 XGBoost를 선택함",
+          "quote": "여러 모델을 비교한 끝에 XGBoost를 선택했습니다",
+          "span": [
+            82,
+            111
+          ],
+          "fact_ids": [
+            "CF4"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S2-U1",
+          "sentence_index": 2,
+          "text": "딥러닝 모델과 정확도가 비슷했음",
+          "quote": "딥러닝 모델과 정확도는 비슷했지만",
+          "span": [
+            113,
+            131
+          ],
+          "fact_ids": [],
+          "source": "llm"
+        },
+        {
+          "id": "S2-U2",
+          "sentence_index": 2,
+          "text": "학습이 훨씬 빨랐음",
+          "quote": "학습",
+          "span": [
+            132,
+            134
+          ],
+          "fact_ids": [],
+          "source": "llm"
+        },
+        {
+          "id": "S2-U3",
+          "sentence_index": 2,
+          "text": "추론이 훨씬 빨랐음",
+          "quote": "추론",
+          "span": [
+            136,
+            138
+          ],
+          "fact_ids": [],
+          "source": "llm"
+        },
+        {
+          "id": "S3-U1",
+          "sentence_index": 3,
+          "text": "시간대별로 데이터를 나누는 시계열 교차검증으로 평가함",
+          "quote": "시간대별로 데이터를 나누는 시계열 교차검증",
+          "span": [
+            154,
+            177
+          ],
+          "fact_ids": [
+            "CF5"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S3-U2",
+          "sentence_index": 3,
+          "text": "30분 뒤 빈자리 수의 평균 오차가 좌석 2.4개였음",
+          "quote": "30분 뒤 빈자리 수의 평균 오차는 좌석 2.4개",
+          "span": [
+            186,
+            213
+          ],
+          "fact_ids": [
+            "CF6",
+            "CF7"
+          ],
+          "source": "llm"
+        },
+        {
+          "id": "S4-U1",
+          "sentence_index": 4,
+          "text": "좌석 수 대비 이용자 수가 3:1을 넘는 시험 기간에도 오차가 크게 늘지 않았음",
+          "quote": "좌석 수 대비 이용자 수가 3:1을 넘는 시험 기간에도 오차는 크게 늘지 않았습니다",
+          "span": [
+            219,
+            265
+          ],
+          "fact_ids": [
+            "CF8"
+          ],
           "source": "llm"
         }
       ]
