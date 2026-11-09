@@ -179,6 +179,17 @@ def test_answer_failure_fallback_uses_only_question_target_evidence() -> None:
     assert cited == {(4, 3, "audience_ratio")}
 
 
+def test_answer_failure_without_question_targets_still_ends_partial_with_checked_values() -> None:
+    """질문이 대상을 집지 않았으면(판단 초안 없음) 거를 기준이 없으므로, 답 쓰기가 실패해도 오류로 끝내지 않고 이번 실행이 확인한
+    값으로 부분 답을 그린다(13-2 '앞서 확인한 것이 있으면 PARTIAL + 확인한 것만')."""
+    req = F.request(user_message="요즘 연습 어때?")
+    read = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
+    llm = F.FakeLlm([F.plan(), F.tools(read), F.done()], answers=[LlmTimeout()])
+    _, _, data = F.run_turn(req, llm)
+    assert data is not None and data["status"] == "PARTIAL"
+    assert any(c["kind"] == "RECORD" for c in data["message"]["claims"])
+
+
 # ── 5. 반복으로 멈춘 조사의 코드 대신 답도 끝난 까닭을 남긴다 ──────────────────────
 
 

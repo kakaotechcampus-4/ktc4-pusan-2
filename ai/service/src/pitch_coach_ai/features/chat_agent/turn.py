@@ -770,7 +770,13 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         )
         # 질문 대상의 근거로만 코드 문장을 그린다(`_target_fallback`과 같은 거름): 판단 초안이 집은 Take · 장 · 지표 · 차원에 맞는
         # 값과, 질문 대상의 '없음' 근거(조사가 읽은 범위의 Take 0개 · 리뷰 없음 등). 이번 실행이 읽은 근거를 모두 나열하지 않는다
-        partial = _target_fallback(lp, lp.question_evidence_ids(), have=said)
+        targets = lp.question_evidence_ids()
+        if targets:
+            partial = _target_fallback(lp, targets, have=said)
+        else:
+            # 질문이 대상을 집지 않았으면(대상 없는 질문) 거를 기준이 없다: 이번 실행이 확인한 근거로 그린다(13-2 '확인한 것만 PARTIAL')
+            partial = compose.template_partial(ctx, list(ctx.registry.items))
+            partial += _target_fallback(lp, [], have=[*said, *partial])
         if partial or lp.st.emitted:
             # 이미 낸 문장이 하나라도 있으면 오류로 버리지 않는다(5-4 · 5-5). 조사 중단 안내를 냈으면 안내를 겹치지 않는다.
             # 일반 안내('답 일부를 확인하지 못해 …')는 끊긴 답에 근거 문장이 하나도 없을 때만(TARGET 6)
