@@ -17,7 +17,11 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin import repository, service
-from pitch_coach_backend.module.admin.exception import RecoveryRunning, TakeNotRecoverable
+from pitch_coach_backend.module.admin.exception import (
+    FinalizeNotStarted,
+    RecoveryRunning,
+    TakeNotRecoverable,
+)
 from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service import analysis_runner
@@ -52,7 +56,8 @@ _NOT_REOPENED = {
 async def retry_finalize(db: Session, take_id: uuid.UUID) -> None:
     """finalize 가 실패한 Take 를 Take 결과를 기다리는 중으로 되돌리고 finalize 를 다시 띄운다.
 
-    성공하면 채점 · 리뷰로 이어 가고, 다시 실패하면 `FAILED` 로 돌아가 다시 누를 수 있다.
+    성공하면 채점 · 리뷰로 이어 가고, 다시 실패하면 `FAILED` 로 돌아가 다시 누를 수 있다. 되돌린 뒤
+    finalize 를 띄우지 못하면 503 이다 — Take 는 기다리는 중으로 남아 주기 작업이 이어 간다.
     """
     result = await run_in_threadpool(
         coach_service.reopen_failed_finalize, db, take_id, datetime.now(UTC)
@@ -61,7 +66,13 @@ async def retry_finalize(db: Session, take_id: uuid.UUID) -> None:
         raise NonExistentTake()
     if result != "REOPENED":
         raise TakeNotRecoverable(_NOT_REOPENED[result])
-    hooks.finalize_recovery().restart(take_id)
+    try:
+        hooks.finalize_recovery().restart(take_id)
+    except Exception as error:
+        # 되돌리기는 커밋했다. Take 결과를 기다리는 중으로 남아 finalize 주기 작업이 이어 가니
+        # FAILED 로 되돌리지 않고 그렇게 알린다
+        logger.exception("되돌린 Take 의 finalize 를 띄우지 못했다 take=%s", take_id)
+        raise FinalizeNotStarted() from error
     logger.info("관리자가 finalize 가 실패한 Take 의 결과를 다시 만들기 시작했다 take=%s", take_id)
 
 

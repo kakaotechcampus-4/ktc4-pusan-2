@@ -8,8 +8,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.coach.finalize import STALE_FINALIZING
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.dependencies import ACTION_HEADER
+from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults, TakeMetricSecond
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
@@ -249,6 +251,36 @@ def test_failed_finalize_is_reopened_and_restarted(
     assert finalize_recovery.restarted == [take.id]
     db_session.refresh(take)
     assert (take.status, take.analysis_stage) == ("ANALYZING", "FINALIZING")
+
+
+class FailingRestart(RestartSpy):
+    def restart(self, take_id: uuid.UUID) -> None:
+        raise RuntimeError("finalize 를 띄우지 못했다")
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_finalize_that_cannot_be_started_is_left_to_the_sweep(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """되돌린 뒤 finalize 를 띄우지 못하면 503 으로 따로 알린다. Take 는 Take 결과를 기다리는 중으로
+    남아 finalize 주기 작업이 이어받는다."""
+    monkeypatch.setattr(hooks, "_finalize_recovery", FailingRestart())
+    take = _finalize_failed(db_session)
+
+    response = client.post(f"/admin/api/takes/{take.id}/finalize/retry", auth=ADMIN, headers=ACTION)
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "FINALIZE_NOT_STARTED"
+    db_session.refresh(take)
+    assert (take.status, take.analysis_stage) == ("ANALYZING", "FINALIZING")
+
+    def swept(at: datetime) -> list[uuid.UUID]:
+        # finalize 주기 작업(`finalize.sweep_forever`)이 `at` 에 돌 때 다시 띄우는 Take
+        return coach_service.finalizing_takes(db_session, at - STALE_FINALIZING)
+
+    reopened_at = take.analysis_stage_at
+    assert take.id not in swept(reopened_at + STALE_FINALIZING - timedelta(seconds=1))
+    assert take.id in swept(reopened_at + STALE_FINALIZING + timedelta(seconds=1))
 
 
 @pytest.mark.usefixtures("admin_account")

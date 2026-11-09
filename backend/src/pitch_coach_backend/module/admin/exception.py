@@ -41,3 +41,14 @@ class RecoveryRunning(ConflictException):
     # 앞서 누른 복구가 아직 돈다
     code = "RECOVERY_RUNNING"
     message = "이 연습의 복구가 이미 진행 중입니다."
+
+
+class FinalizeNotStarted(AppException):
+    # Take 를 되돌렸지만 finalize 를 띄우지 못했다. 주기 작업이 이어 간다 (recovery.retry_finalize).
+    # 10~15분은 coach/finalize.py 의 STALE_FINALIZING(10분)과 SWEEP_INTERVAL_SEC(5분)이다
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "FINALIZE_NOT_STARTED"
+    message = (
+        "Take 결과를 기다리는 중으로 되돌렸지만 다시 만들기를 바로 시작하지 못했습니다. "
+        "주기 작업이 10~15분 뒤 이어 갑니다."
+    )
