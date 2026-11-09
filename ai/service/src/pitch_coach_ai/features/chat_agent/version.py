@@ -13,7 +13,9 @@
 - prompt_version(프롬프트 해시) · corpus_version(자료 묶음 판)은 각각 prompts/ · corpus.py 가 계산한다.
 """
 
-FEATURE_VERSION = "chat_agent-0.11.0"
+#: 0.12.0: 할 일 단계 = 실제 실행(목적: 실행 → 결과 · 상태) · 상황 신호 · 결정 로그 · 근거 기반 답('없음' 근거 · 끝 상태는 요청 해소) ·
+#: 결과 발견 안내 · 지시어 · 목표 질문 · 변화 방향 · 같은 조건 다시 평가 등 원인별 고침(#1150)
+FEATURE_VERSION = "chat_agent-0.12.0"
 SCHEMA_VERSION = "1.0"
 TOOL_SCHEMA_VERSION = "tools-5"
 STATE_V = 1
