@@ -1,6 +1,10 @@
 # 분석 대기 · 리포트 · Take 기록 (FE)
 
-발표를 끝낸 뒤 결과가 나올 때까지 기다리는 화면, Take 하나의 리포트, 한 피치의 Take들을 나란히 보는 기록 화면입니다.
+> **기준 범위**: 분석 대기 · 대본 확인 · Take 리포트 · Take 기록 화면의 FE 기준 문서입니다. 분석 단계와 결과 모양은 [docs/be/review.md](../../be/review.md) · [realtime-coach.md](../../be/realtime-coach.md), 리뷰 내용은 [review-agent.md](../../ai/features/review-agent.md), 설문은 [take-survey.md](../../be/take-survey.md)가 기준입니다. 이 문서에는 FE가 그 결과를 언제 · 어떻게 보이는지만 적습니다.
+>
+> **한 줄 요약**: 끝낸 Take의 리포트를 끝날 때까지 2초마다 다시 묻고, 점수 대신 지난 Take와의 변화와 측정 근거를 보이며, 리뷰가 없어도 측정값은 먼저 보입니다.
+>
+> **기준값**: 다시 조회 간격과 멈추는 조건은 `shared/api/report.ts`(`POLL_MS` · `isSettled`), 분석 단계 이름은 `features/report/ProcessingPage.tsx`가 기준입니다.
 
 | 절 | 내용 |
 |---|---|

@@ -1,6 +1,10 @@
 # 장치 점검 · 리허설 (FE)
 
-Take(연습 한 번)를 만들고, 발표하는 동안 음성 · 시선 · 슬라이드 기록을 서버로 보내고, 끝내는 화면입니다. 카메라 · 마이크 · 시선 엔진 · 실시간 연결이 모두 여기에 모입니다.
+> **기준 범위**: 장치 점검과 리허설 화면의 FE 기준 문서입니다. 지켜야 할 결정은 [frontend/AGENTS.md](../../../frontend/AGENTS.md) 1~9번, WebSocket 메시지 · Take 상태 · 재연결 · 종료의 서버 규칙은 [realtime-stt.md](../../be/realtime-stt.md) · [take-lifecycle.md](../../be/take-lifecycle.md), 1초 기록의 모양은 [AI architecture.md](../../ai/architecture.md) 6-2, 시선 엔진은 [gaze-tracking.md](../../ai/features/gaze-tracking.md)가 기준입니다. 이 문서에는 FE가 그 규칙을 화면에 붙인 방식만 적습니다.
+>
+> **한 줄 요약**: 장치 점검에서 Take를 만들고, 발표 중에는 WebSocket 하나로 음성과 1초 기록을 보내며, 끊겨도 발표는 이어 가고 끝내기는 WS `stop`과 종료 시각 `PUT`뿐입니다.
+>
+> **기준값**: 재연결 · 포기 시간은 `lib/sttSocket.ts`, 시작 조건은 `stage/startGate.ts`, 음성 형식은 `media/pcmCapture.ts`, 분석 프레임 속도는 `media/frameClock.ts`의 값이 기준입니다. 6-3 · 8절의 숫자는 그 값을 옮긴 것입니다.
 
 | 절 | 내용 |
 |---|---|
