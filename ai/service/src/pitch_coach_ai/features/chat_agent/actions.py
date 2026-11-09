@@ -507,6 +507,17 @@ def propose(
                     "사용자가 말한 Take 가 아니다. 그 Take 를 찾지 못했으면 다시 평가하지 않는다",
                 ),
             )
+        if not any(w in (original_message or "") for w in ctx.cfg.reassess_request_hints):
+            # 다시 평가는 사용자가 이번 말에서 청했을 때만 한다. '대본 보고 했어' 같은 의견만으로는 내지 않는다(6-6, r9
+            # obj-unverifiable-script: 의견에 확인 카드를 냄). 의견은 판단(화면 대본 사실 · 확인 불가)으로 답한다
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="REASSESS_NOT_REQUESTED",
+                tool_message=_err(
+                    "REASSESS_NOT_REQUESTED",
+                    "사용자가 이번 말에서 다시 평가를 요청하지 않았다. 의견만으로는 다시 평가하지 않고 기록으로 확인한 것만 답한다",
+                ),
+            )
         if clm.measurement_dispute(original_message or "", ctx.cfg):
             # 다시 평가는 입력을 바꾸는 조건(대본 사용 · 내 기준)을 사용자가 말했을 때만 한다. 측정값 이의('카메라가 낮았어')는
             # 다시 평가로 바뀌지 않는다(6-6, 4회차 ra-measurement)

@@ -700,6 +700,18 @@ class ChatAgentConfig(_Frozen):
     #: 낸다(확인 카드 그대로). 기준(targets) 조건은 대화 기록 글로 되살릴 수 없어 하지 않는다
     same_condition_reassess: bool = True
     reassess_request_words: tuple[str, ...] = ("다시 평가", "재평가", "다시 채점")
+    #: 다시 평가(6-6)는 이번 사용자 말이 다시 평가를 청할 때만 낸다. 이 낱말이 하나도 없는 말("Take 5는 대본 보고 했어"처럼
+    #: 의견만)에서 모델이 `reassess`를 부르면 도구 오류 `REASSESS_NOT_REQUESTED`로 돌려준다. 요청을 놓치지 않게 넓게 잡는다
+    #: ("다시 봐 줘" · "점수 다시 내 줘" · "그걸로 평가해 줘" · "반영해 줘")
+    reassess_request_hints: tuple[str, ...] = (
+        "평가",
+        "채점",
+        "다시",
+        "반영",
+        "매겨",
+        "매기",
+        "계산",
+    )
     same_condition_words: tuple[str, ...] = (
         "같은 조건",
         "그 조건",

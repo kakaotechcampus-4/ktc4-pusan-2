@@ -826,6 +826,60 @@ def test_reassess_on_a_measurement_dispute_is_a_tool_error_and_gets_the_notice()
     assert templates.SystemText.MEASUREMENT_FIXED.value in fd.message.text  # type: ignore[union-attr]
 
 
+def test_reassess_without_a_request_in_the_message_is_a_tool_error() -> None:
+    """'Take 5는 대본 보고 했어'처럼 의견만 말한 턴에 모델이 다시 평가를 부르면 도구 오류로 돌려주고 확인 카드를 내지
+    않는다(6-6, r9 obj-unverifiable-script). 판단(화면 대본 사실 문장)은 그대로 나간다."""
+    msg = "Take 5는 대본 보고 했어"
+    d = [
+        F.draft(
+            msg,
+            claim_op="VALUE",
+            dimension="script_independence",
+            metric="script_mode",
+            take_numbers=[5],
+            polarity="POSITIVE",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra"), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert fd.status != "NEEDS_ACTION" and fd.actions == []
+    assert "REASSESS_NOT_REQUESTED" in json.dumps(llm.calls[2].messages, ensure_ascii=False)
+    assert "기록에는 화면 대본이" in fd.message.text  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘",
+        "Take 5는 대본 보고 한 거야. 그걸로 평가해 줘",
+        "대본 보고 한 거 반영해 줘",
+    ],
+)
+def test_reassess_request_hints_pass_for_requests(msg: str) -> None:
+    """다시 평가를 청하는 말(다시 평가 · 평가해 줘 · 반영해 줘)은 확인 카드까지 간다(요청 낱말을 넓게 잡는다)."""
+    d = [
+        F.draft(
+            msg,
+            type_="REQUEST",
+            claim_op=None,
+            dimension="script_independence",
+            polarity="NEUTRAL",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    assert [a.type for a in final_ok(data).actions] == ["REASSESS"]
+
+
 def test_script_statement_typed_as_request_still_gets_the_screen_script_fact() -> None:
     """'대본 보고 한 발표였어'를 모델이 요청(REQUEST)으로 분류해도 코드가 대본 주장으로 바로잡아 화면 대본 사실 문장을
     붙인다(L6-06, 4회차 ra-script). 조건을 말한 다시 평가라 측정값 안내는 붙이지 않는다."""
