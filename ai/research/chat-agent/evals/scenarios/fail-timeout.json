@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "id": "fail-timeout",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "모델이 오래 걸려 한도 끝(두 번째 모델 호출 뒤 110초 흐름) — 앞서 받은 답이 있으면 PARTIAL + 확인한 것만, 없으면 AGENT_TIMEOUT",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4와 Take 5의 3장 시선을 비교하고 다음 연습 방법도 알려 줘",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 110
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "outcome",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": ["PARTIAL", "FAILED:AGENT_TIMEOUT"],
+        "path": "outcome"
+      },
+      {
+        "check_id": "no-done-conclusion",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "좋아졌어요|나빠졌어요",
+        "grader": "regex"
+      }
+    ]
+  }
+}

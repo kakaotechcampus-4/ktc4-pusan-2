@@ -5,14 +5,14 @@
 """
 
 import asyncio
-import contextlib
-from collections.abc import Awaitable
 
 import anyio
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from starlette.websockets import WebSocketState
 
-from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
+from pitch_coach_backend.core.tasks import quiet
+from pitch_coach_backend.realtime.dto import CLOSE_POLICY_VIOLATION, ErrorMessage, WsErrorCode
 
 # 끊는 연결에 오류를 알리고 닫는 단계마다 기다리는 상한. 상대가 받지 않으면 전송이 끝나지 않는다 —
 # 다른 탭이 이어받을 때 그 탭의 ready 가, 로그아웃할 때 응답이 이 연결 하나에 붙잡힌다
@@ -81,9 +81,24 @@ class ClientSlot:
             return False
         try:
             await ws.send_text(message.model_dump_json())
-        except Exception:  # noqa: BLE001 - 어떤 전송 실패든 "재시도 대상" 으로 취급한다
+        except Exception:  # 어떤 전송 실패든 "재시도 대상" 으로 취급한다
             return False
         return True
+
+
+async def send_model(ws: WebSocket, message: BaseModel) -> None:
+    """보낸다. 서버가 이미 닫은 연결이면 끊긴 상대에게 보낼 때처럼 `WebSocketDisconnect` 를 던진다.
+
+    Starlette 는 끊긴 상대에게 보내면 `WebSocketDisconnect` 를, close 를 보낸 뒤에 보내면
+    `RuntimeError` 를 던진다. 둘 다 흔한 종료라 받는 쪽이 하나로 다루게 맞춘다. 연결이 열려 있는데
+    난 `RuntimeError` 는 그대로 올린다
+    """
+    try:
+        await ws.send_text(message.model_dump_json())
+    except RuntimeError:
+        if ws.application_state != WebSocketState.DISCONNECTED:
+            raise
+        raise WebSocketDisconnect(code=1006) from None
 
 
 async def close_with(ws: WebSocket, error: ErrorMessage) -> None:
@@ -94,13 +109,4 @@ async def close_with(ws: WebSocket, error: ErrorMessage) -> None:
     with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
         await quiet(ws.send_text(error.model_dump_json()))
     with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
-        await quiet(ws.close(code=1008, reason=error.code))
-
-
-async def quiet(awaitable: Awaitable[object]) -> None:
-    """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다.
-
-    정리 경로라서 넓게 잡는다 — 여기서 예외가 새면 그다음 정리가 통째로 멈춘다.
-    """
-    with contextlib.suppress(Exception):
-        await awaitable
+        await quiet(ws.close(code=CLOSE_POLICY_VIOLATION, reason=error.code))

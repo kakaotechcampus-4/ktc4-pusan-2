@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.core.limits import MAX_T_MS
 from pitch_coach_backend.realtime.dto import AutoEndReason
 
 # 서버 시계가 최대 시간보다 늦게 끝내는 여유. 서버 시계는 스트림이 열려 있던 시간이라 무대 시계보다
@@ -57,6 +58,9 @@ class AutoEndPolicy:
 
     @classmethod
     def from_settings(cls) -> AutoEndPolicy:
+        # 넘으면 앱은 떠도 긴 Take 의 코치 평가만 AI 가 거절한다. 늘리려면 AI 와 먼저 맞춘다
+        if settings.take_max_duration_sec * 1000 + SERVER_CLOCK_SLACK_MS > MAX_T_MS:
+            raise ValueError("TAKE_MAX_DURATION_SEC 은 AI 의 Take 시각 상한을 넘을 수 없습니다.")
         return cls(
             silence_end_ms=settings.take_silence_end_sec * 1000,
             silence_window_ms=settings.take_silence_window_sec * 1000,

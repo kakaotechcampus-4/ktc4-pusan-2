@@ -203,9 +203,9 @@ def test_fallback_and_meta(req):
     resp = review_take(req)
     assert resp.fallback_reason == "LLM_UNAVAILABLE"
     assert resp.comparison == []
-    assert resp.meta.schema_version == "1.0"
-    assert resp.meta.feature_version == "review-1.2"
-    assert resp.meta.criteria_versions["review"].startswith("review-1.2+")
+    assert resp.meta.schema_version == "1.1"
+    assert resp.meta.feature_version == "review-1.4"
+    assert resp.meta.criteria_versions["review"].startswith("review-1.4+")
     assert resp.meta.model is None
 
 
@@ -255,7 +255,7 @@ def test_criteria_versions_carry_take_result_criteria(req):
     assert versions.keys() == {"gaze", "volume", "review"}
     assert versions["gaze"] == "gaze-1.1+000000000000"
     assert versions["volume"] == "volume-1.0+aaaaaaaaaaaa"
-    assert versions["review"].startswith("review-1.2+")
+    assert versions["review"].startswith("review-1.4+")
 
 
 def test_comparison_shape():

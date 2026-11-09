@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "id": "stale-now",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should",
+  "title": "옛 대화를 연 뒤 '지금은?' — 지금 값(Take 5 3장 28%)을 다시 읽어 답한다",
+  "source": "stale-slide3",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 4 3장 시선 어땠어?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 4의 3장 청중 시선 비율은 31%예요.",
+          "source_ids": ["t-4"],
+          "basis": {
+            "pitches": [
+              {
+                "pitch_id": "p-1",
+                "takes": [
+                  {
+                    "take_id": "t-4",
+                    "take_number": 4
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "지금은?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "now-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 5,
+          "slide": 3
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "now-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,6 +1,8 @@
-import { Navigate, useParams } from 'react-router';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Navigate, useLocation, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
+import { readAutoEnd } from '@/shared/lib/autoEnd';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
 import { ButtonLink } from '@/shared/ui/Button';
@@ -13,8 +15,23 @@ import type {
   TakeMeasures,
   TakeReport,
 } from '@/types/report';
+import { AutoEndAlert } from './AutoEndAlert';
 import { QueryState, ReportFrame } from './ReportFrame';
-import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
+import {
+  DIMENSION_LABEL,
+  DIMENSION_STATUS_LABEL,
+  JUDGE_STATUS_LABEL,
+} from '@/shared/lib/metricLabels';
+import {
+  OP,
+  type ComparisonGroup,
+  comparisonGroups,
+  endedAt,
+  fmt,
+  metricLabel,
+  pct,
+  where,
+} from './reportFormat';
 import { TakeSurvey } from './TakeSurvey';
 import { scriptModeLabel } from './takeHistoryFormat';
 
@@ -34,6 +51,8 @@ export function ReportPage() {
 
 function ReportView({ takeId }: { takeId: string }) {
   const report = useTakeReport(takeId);
+  // 서버가 자동으로 끝낸 Take 를 막 끝내고 왔으면 분석 대기 화면이 넘긴 이유를 한 번 더 알립니다 (#925)
+  const autoEnd = readAutoEnd(useLocation().state);
   const data = report.data;
   if (!takeId) return <Navigate replace to="/" />;
   // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
@@ -41,9 +60,10 @@ function ReportView({ takeId }: { takeId: string }) {
     return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="app-scroll-shell flex min-h-dvh flex-col">
       <AppHeader />
       <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
+        {autoEnd && <AutoEndAlert notice={autoEnd} tone="page" />}
         <QueryState isPending={report.isPending} error={report.error} />
         {data && <ReportBody key={takeId} report={data} />}
       </ReportFrame>
@@ -236,7 +256,7 @@ function GazeBreakdown({ m }: { m: TakeMeasures }) {
               <span className={`h-2.5 w-2.5 ${row.color}`} aria-hidden="true" />
               {row.label}
             </dt>
-            <dd className="tabular mt-1 font-mono text-3xl font-bold">{pct(row.value)}</dd>
+            <dd className="tabular mt-1 tabular-nums text-3xl font-bold">{pct(row.value)}</dd>
           </div>
         ))}
       </dl>
@@ -289,7 +309,7 @@ function Points({
 const TREND: Record<string, { label: string; tone: Tone }> = {
   true: { label: '나아짐', tone: 'good' },
   false: { label: '나빠짐', tone: 'bad' },
-  null: { label: '방향 없음', tone: 'muted' },
+  null: { label: '방향 판단 불가', tone: 'muted' },
   same: { label: '같음', tone: 'muted' },
 };
 
@@ -300,55 +320,223 @@ function trend(r: ReviewResult['comparison'][number]) {
     : TREND[String(r.improved)]!;
 }
 
+/** 지난 Take의 지표별 슬라이드 변화 요약과 차원별 상세 비교표 (#929). */
+function slideList(numbers: number[]) {
+  const unique = [...new Set(numbers)].sort((a, b) => a - b);
+  return unique.length ? unique.map((n) => `${n}번`).join(', ') : '없음';
+}
+
+/** 항상 발표 전체 기준으로만 산출되는 지표. 장별 값이 빠진 다른 지표와 구분합니다. */
+const OVERALL_ONLY_METRICS = new Set(['duration_ms', 'content_coverage', 'critical_fact_accuracy']);
+
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
+  const groups = comparisonGroups(rows);
+  // AI가 대본 보기 차이를 모든 행에 싣더라도 안내는 한 번만 보여 줍니다.
+  const mode = rows.find((r) => r.script_mode)?.script_mode;
+  const [open, setOpen] = useState(false);
+  const detailTitleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog.showModal();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   return (
     <Card title="지난 Take와 비교">
-      {rows.length === 0 ? (
-        <p className="text-sm text-ink/80">비교할 지난 Take가 없어요.</p>
+      {groups.length === 0 ? (
+        <p className="text-sm text-ink/80">
+          {rows.length === 0 ? '비교할 지난 Take가 없어요.' : '지난 Take와 함께 잰 지표가 없어요.'}
+        </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          {rows.map((r, i) => (
-            <li key={i} className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3">
-              <span className="text-xs text-ink/80">
-                <b className="text-sm text-ink">{metricLabel(r.metric)}</b>
-                {r.slide_number !== null && <> · {r.slide_number}번 장</>}
-              </span>
-              <span className="tabular flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
-                <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
-                <b className="text-lg">{fmt(r.metric, r.current)}</b>
-                <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
-              </span>
-              {r.script_mode && (
-                <p className="text-xs text-ink/80">
-                  대본 보기가 달랐어요 ({scriptModeLabel(r.script_mode.previous)} →{' '}
-                  {scriptModeLabel(r.script_mode.current)}). 비교는 참고만 해 주세요.
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          {mode && (
+            <p className="text-sm text-ink/80">
+              대본 보기가 달랐어요 ({scriptModeLabel(mode.previous)} →{' '}
+              {scriptModeLabel(mode.current)}). 비교는 참고만 해 주세요.
+            </p>
+          )}
+          <p className="text-sm text-ink/80">
+            지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.
+          </p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {groups
+              .flatMap((g) => g.metrics)
+              .map((metric) => {
+                const metricRows = rows.filter((r) => r.metric === metric);
+                const slides = metricRows.filter((r) => r.slide_number !== null);
+                const improved = slides
+                  .filter((r) => trend(r) === TREND.true)
+                  .map((r) => r.slide_number!);
+                const worsened = slides
+                  .filter((r) => trend(r) === TREND.false)
+                  .map((r) => r.slide_number!);
+                const same = slides.filter((r) => trend(r) === TREND.same).length;
+                const unknown = slides.filter((r) => trend(r) === TREND.null).length;
+                const overall = metricRows.find((r) => r.slide_number === null);
+                const directionUnknown =
+                  slides.length > 0 && unknown === slides.length && same === 0;
+                return (
+                  <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
+                    <h3 className="font-bold">{metricLabel(metric)}</h3>
+                    {slides.length > 0 && directionUnknown && (
+                      <p className="mt-2 text-sm text-ink/80">
+                        개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
+                      </p>
+                    )}
+                    {slides.length > 0 && !directionUnknown && (
+                      <>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                          <div className="border border-line-strong bg-panel p-3">
+                            <p className="font-bold text-ink">나아진 슬라이드</p>
+                            <p className="mt-1">{slideList(improved)}</p>
+                          </div>
+                          <div className="border border-line-strong bg-panel p-3">
+                            <p className="font-bold text-ink">나빠진 슬라이드</p>
+                            <p className="mt-1">{slideList(worsened)}</p>
+                          </div>
+                        </div>
+                        {(same > 0 || unknown > 0) && (
+                          <p className="mt-2 text-xs text-ink/80">
+                            {same > 0 && `변화 없음 ${same}개`}
+                            {same > 0 && unknown > 0 && ' · '}
+                            {unknown > 0 && `방향 판단 불가 ${unknown}개`}
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {slides.length === 0 && (
+                      <p className="mt-2 text-sm text-ink/80">
+                        {overall && OVERALL_ONLY_METRICS.has(metric)
+                          ? '발표 전체 기준 지표예요.'
+                          : '슬라이드별 비교 결과가 없어요.'}
+                      </p>
+                    )}
+                    {overall && (
+                      <p className="mt-2 text-xs text-ink/80">
+                        발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)}{' '}
+                        · {trend(overall).label}
+                      </p>
+                    )}
+                  </section>
+                );
+              })}
+          </div>
+          <button
+            ref={openerRef}
+            type="button"
+            onClick={() => setOpen(true)}
+            className="min-h-11 w-fit border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+          >
+            상세 비교표 보기
+          </button>
+          <dialog
+            ref={dialogRef}
+            aria-labelledby={detailTitleId}
+            onClose={() => {
+              setOpen(false);
+              openerRef.current?.focus();
+            }}
+            className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id={detailTitleId} className="text-lg font-bold">
+                  지난 Take 상세 비교
+                </h2>
+                <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => dialogRef.current?.close()}
+                className="min-h-11 shrink-0 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
+                aria-label="상세 비교 닫기"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {groups.map((g) => (
+                <ComparisonTable key={g.dimension ?? 'other'} group={g} />
+              ))}
+            </div>
+          </dialog>
+        </>
       )}
     </Card>
   );
 }
 
+function ComparisonTable({ group }: { group: ComparisonGroup }) {
+  const title = group.dimension === null ? '그 밖의 지표' : DIMENSION_LABEL[group.dimension];
+  return (
+    // 열이 셋 이상이면 한 줄을 다 씁니다
+    <section
+      aria-label={title}
+      className={`min-w-0 border-l-2 border-line pl-3 ${group.metrics.length > 2 ? 'lg:col-span-2' : ''}`}
+    >
+      <h3 className="text-sm font-bold">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="tabular mt-2 w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-line text-xs text-ink/80">
+              <th scope="col" className="w-20 py-1.5 pr-4 font-normal">
+                구간
+              </th>
+              {group.metrics.map((m) => (
+                <th key={m} scope="col" className="py-1.5 pr-4 font-bold text-ink">
+                  {metricLabel(m)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {group.slides.map((slide) => (
+              <tr key={slide ?? 'take'} className="border-b border-line last:border-b-0">
+                <th scope="row" className="whitespace-nowrap py-2 pr-4 text-xs font-normal">
+                  {slide === null ? '발표 전체' : `${slide}번 장`}
+                </th>
+                {group.metrics.map((m) => {
+                  const r = group.cell(m, slide);
+                  return (
+                    <td key={m} className="py-2 pr-4">
+                      {r ? (
+                        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                          <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
+                          <b className="text-base">{fmt(r.metric, r.current)}</b>
+                          <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
+                        </span>
+                      ) : (
+                        <span className="text-ink/80">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /* ── 영역별 상태 ────────────────────────────────────────────────── */
 
-const DIMENSION_LABEL: Record<Dimension, string> = {
-  audience_gaze: '청중 응시',
-  script_independence: '대본에서 벗어나기',
-  pacing_rhythm: '속도 · 리듬',
-  vocal_delivery: '목소리',
-  fluency: '군더더기 없이',
-  content_delivery: '내용 전달',
-};
-
 const DIMENSION_STATUS: Record<DimensionStatus, { label: string; tone: Tone }> = {
-  PRIORITY: { label: '먼저 고칠 것', tone: 'bad' },
-  IMPROVED: { label: '나아짐', tone: 'good' },
-  STRENGTH: { label: '강점', tone: 'strong' },
-  STABLE: { label: '유지', tone: 'plain' },
-  NOT_EVALUABLE: { label: '판단 불가', tone: 'muted' },
+  PRIORITY: { label: DIMENSION_STATUS_LABEL.PRIORITY, tone: 'bad' },
+  IMPROVED: { label: DIMENSION_STATUS_LABEL.IMPROVED, tone: 'good' },
+  STRENGTH: { label: DIMENSION_STATUS_LABEL.STRENGTH, tone: 'strong' },
+  STABLE: { label: DIMENSION_STATUS_LABEL.STABLE, tone: 'plain' },
+  NOT_EVALUABLE: { label: DIMENSION_STATUS_LABEL.NOT_EVALUABLE, tone: 'muted' },
 };
 
 function Dimensions({ value }: { value: ReviewResult['dimensions'] }) {
@@ -375,10 +563,10 @@ function Dimensions({ value }: { value: ReviewResult['dimensions'] }) {
 /* ── 미션 결과 · 평가기준 ───────────────────────────────────────── */
 
 const JUDGE: Record<JudgeStatus, { label: string; tone: Tone }> = {
-  ACHIEVED: { label: '달성', tone: 'strong' },
-  PARTIAL: { label: '거의 달성', tone: 'good' },
-  FAILED: { label: '미달성', tone: 'bad' },
-  NOT_EVALUABLE: { label: '판단 불가', tone: 'muted' },
+  ACHIEVED: { label: JUDGE_STATUS_LABEL.ACHIEVED, tone: 'strong' },
+  PARTIAL: { label: JUDGE_STATUS_LABEL.PARTIAL, tone: 'good' },
+  FAILED: { label: JUDGE_STATUS_LABEL.FAILED, tone: 'bad' },
+  NOT_EVALUABLE: { label: JUDGE_STATUS_LABEL.NOT_EVALUABLE, tone: 'muted' },
 };
 
 /** 미션 결과 · 사용자 평가기준 — 판정 모양이 같아 한 목록으로 그립니다 */

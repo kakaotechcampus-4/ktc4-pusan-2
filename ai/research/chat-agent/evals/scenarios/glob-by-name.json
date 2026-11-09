@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0",
+  "id": "glob-by-name",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "전체 범위에서 '졸업 발표 3장 어땠어?' — 이름으로 피치를 찾아 범위를 바꾸고 답한다",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      },
+      {
+        "pitch_id": "p-2",
+        "title": "회사 소개 발표",
+        "last_practiced_at": "2026-10-20T10:00:00+09:00",
+        "criteria": null,
+        "takes": [
+          {
+            "take_id": "p2-t1",
+            "take_number": 1,
+            "completed_at": "2026-10-19T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "p2-t2",
+            "take_number": 2,
+            "completed_at": "2026-10-20T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "졸업 발표 3장 어땠어?"
+    }
+  ],
+  "followups": [
+    {
+      "message": "졸업 발표 피치로 범위를 바꿔서 Take 5 3장 기록을 알려 줘"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-pitch",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "FETCH_PITCH",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "scope-changed",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "p-1",
+        "path": "after.conversation.scope"
+      },
+      {
+        "check_id": "scope-notice",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "ACTION_SUCCESS.FETCH_PITCH",
+          "fields": {
+            "title": "졸업 발표"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "mentions-slide3",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "slide": 3
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

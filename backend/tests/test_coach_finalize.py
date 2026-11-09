@@ -25,11 +25,6 @@ from tests.coach_fakes import (
 )
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 @pytest.fixture(autouse=True)
 def isolated_pending_finalizes(monkeypatch):
     monkeypatch.setattr(finalize, "_pending", {})
@@ -39,7 +34,7 @@ def isolated_pending_finalizes(monkeypatch):
 
 
 async def resume_and_wait(**kwargs):
-    await finalize.resume(**kwargs)
+    finalize.resume(**kwargs)
     await asyncio.gather(*finalize._recovery.tasks())
 
 
@@ -167,11 +162,11 @@ async def test_a_take_is_finalized_once_at_a_time_and_restart_resumes_waiting_ta
             return take_result()
 
     client, store = Blocking(), FakeStore(source=source(), finalizing=[TAKE_ID])
-    await finalize.resume(client=client, store=store)
+    finalize.resume(client=client, store=store)
     await asyncio.wait_for(entered.wait(), 1)
     try:
         finalize.spawn(TAKE_ID, None, client=client, store=store)
-        await finalize.resume(client=client, store=store)
+        finalize.resume(client=client, store=store)
         assert len(finalize._recovery) == 1
         assert len(client.finalized) == 1
     finally:
@@ -388,7 +383,7 @@ async def test_app_starts_even_if_the_waiting_takes_cannot_be_read(
             await asyncio.Event().wait()
 
     # 원자료 복구와 DB 조회가 늦어도 호출자는 바로 돌아온다.
-    await asyncio.wait_for(finalize.resume(client=FakeClient(), store=Hanging()), 0.1)
+    finalize.resume(client=FakeClient(), store=Hanging())
     await asyncio.wait_for(asyncio.gather(*finalize._recovery.tasks()), 1.0)
 
 
@@ -447,18 +442,17 @@ async def test_events_only_in_the_snapshot_are_kept_when_the_app_stops():
             await asyncio.Event().wait()
 
     client, store = Slow(), FakeStore()
-    running = asyncio.create_task(
-        finalize.run(TAKE_ID, snapshot(events=[EVENT]), client=client, store=store)
-    )
+    finalize.spawn(TAKE_ID, snapshot(events=[EVENT]), client=client, store=store)
     for _ in range(50):
         if client.finalized:
             break
         await asyncio.sleep(0.01)
-    running.cancel()
 
-    with pytest.raises(asyncio.CancelledError):
-        await running
+    await finalize.stop_all(1.0)
+
+    # 끊긴 경로와 대기 중인 경로가 따로 저장하지 않는다
     assert [e["event_id"] for e, _ in store.events] == ["iv-1"]
+    finalize._pending.clear()
 
 
 @pytest.mark.anyio
@@ -489,10 +483,10 @@ async def test_recovery_reads_the_next_batch_only_after_results_are_saved():
             return take_result()
 
     store, client = Backlog(finalizing=take_ids.copy()), Blocking()
-    await finalize.resume(client=client, store=store)
+    finalize.resume(client=client, store=store)
     try:
         await asyncio.wait_for(full.wait(), 1)
-        await finalize.resume(client=client, store=store)
+        finalize.resume(client=client, store=store)
         assert reads == take_ids[:4]
         assert listed == [(None, 4)]
         assert len(finalize._running) == 4
@@ -562,7 +556,7 @@ async def test_shutdown_stops_recovery_and_unread_takes_resume_next_time():
             return take_result()
 
     store = Backlog(finalizing=take_ids.copy())
-    await finalize.resume(client=Slow(), store=store)
+    finalize.resume(client=Slow(), store=store)
     await asyncio.wait_for(full.wait(), 1)
     await finalize.stop_all(timeout=1)
     assert len(reads) == 4 and completed == []

@@ -26,7 +26,7 @@ export function MissionCard({
 
   return (
     <section
-      className={`prepare-missions border border-line bg-panel px-3 py-2.5 prepare-compact:px-2.5 prepare-compact:py-1.5 ${compact ? 'prepare-missions-compact block' : 'flex h-[164px] flex-col prepare-compact:h-[156px]'}`}
+      className={`prepare-missions border border-line bg-panel px-3 py-2.5 prepare-compact:px-2.5 prepare-compact:py-1.5 ${compact ? 'prepare-missions-compact block' : 'flex h-[164px] flex-col prepare-compact:h-[156px] prepare-low:h-[148px]'}`}
       aria-label="이번 Take 미션"
     >
       <div className="prepare-section-heading flex min-h-6 flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs leading-[18px] [&>h2]:text-[15px] [&>h2]:leading-[22px] [&>h2]:font-bold">
@@ -40,7 +40,7 @@ export function MissionCard({
         {compact && items.length > 0 && (
           <button
             type="button"
-            className="prepare-text-action min-h-6 shrink-0 cursor-pointer py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
+            className="prepare-text-action min-h-6 shrink-0 py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
             onClick={() => setSelectedId(items[0]!.id)}
           >
             전체 미션 보기
@@ -70,7 +70,7 @@ export function MissionCard({
                 />
               ))}
             </ol>
-            <div className="prepare-mission-footer mt-auto flex min-h-9 flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs leading-[18px] [&_nav]:flex [&_nav]:items-center [&_nav]:gap-1.5 [&_nav]:tabular-nums [&_button]:min-h-6! [&_button]:px-[7px]! [&_button]:py-px!">
+            <div className="prepare-mission-footer mt-auto flex min-h-9 prepare-low:min-h-7 flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs leading-[18px] [&_nav]:flex [&_nav]:items-center [&_nav]:gap-1.5 [&_nav]:tabular-nums [&_button]:min-h-6! [&_button]:px-[7px]! [&_button]:py-px!">
               <p>
                 {items.length > PAGE_SIZE
                   ? `전체 ${items.length}개가 이번 Take에 적용돼요.`
@@ -170,7 +170,7 @@ function MissionItem({
       {truncated && (
         <button
           type="button"
-          className="prepare-text-action min-h-6 shrink-0 cursor-pointer py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
+          className="prepare-text-action min-h-6 shrink-0 py-0.5 text-xs text-ink underline underline-offset-3 hover:decoration-2"
           aria-label={`미션 ${number} 전체 보기`}
           onClick={onRead}
         >
@@ -242,19 +242,24 @@ function MissionReader({
       <p>{note}</p>
       <footer>
         <p>모든 미션이 이번 Take에 적용돼요.</p>
+        {/* 끝에 닿은 버튼은 aria-disabled 로 둡니다 — disabled 면 누른 버튼의 초점이 창 밖으로 빠집니다 (#818) */}
         <button
           type="button"
-          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream disabled:pointer-events-none disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
-          disabled={index === 0}
-          onClick={() => onSelect(index - 1)}
+          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream aria-disabled:pointer-events-none aria-disabled:cursor-default aria-disabled:border-dashed aria-disabled:border-line-strong aria-disabled:bg-cream aria-disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
+          aria-disabled={index === 0}
+          onClick={() => {
+            if (index > 0) onSelect(index - 1);
+          }}
         >
           이전 미션
         </button>
         <button
           type="button"
-          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream disabled:pointer-events-none disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
-          disabled={index === items.length - 1}
-          onClick={() => onSelect(index + 1)}
+          className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream aria-disabled:pointer-events-none aria-disabled:cursor-default aria-disabled:border-dashed aria-disabled:border-line-strong aria-disabled:bg-cream aria-disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5"
+          aria-disabled={index === items.length - 1}
+          onClick={() => {
+            if (index < items.length - 1) onSelect(index + 1);
+          }}
         >
           다음 미션
         </button>

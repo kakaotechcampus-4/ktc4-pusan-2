@@ -91,19 +91,16 @@ afterEach(async () => {
   }
 });
 
-it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대기로 이동한다', async () => {
-  await render();
-  await click('다음 · 대본 →');
-  expect(host.textContent).toContain('대본 입력');
-  await click('대본 매핑');
-  expect(host.textContent).toContain('목표 발표시간');
-  await click('다음 →');
-  // 저장한 평가기준이 없으면 "연습 시작"은 막히고 "건너뛰기"로 시작한다
-  expect(button('연습 시작 →')?.disabled).toBe(true);
-  await click('건너뛰기');
+it('단일 페이지 피치 생성의 최종 확인부터 세팅·무대 종료·분석 대기로 이동한다', async () => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  await render('pitch-create', 'ready');
+  await click('최종 확인 →');
+  expect(host.querySelector('dialog')?.textContent).toContain('발표 준비 최종 확인');
+  await click('확인하고 시작 전 점검 →');
   await click('Take 3 시작하기');
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('HIGHLIGHT');
-  // 마지막 장이 아니면 끝낼 수 없다(#697)
   expect(button('발표 끝내기')?.disabled).toBe(true);
   expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
   expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
@@ -117,7 +114,7 @@ it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대�
 
 it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 경로와 인자로 이동한다', async () => {
   await render('home');
-  expect(host.querySelectorAll('a[aria-label$=" 발표 준비"]')).toHaveLength(2);
+  expect(host.querySelectorAll('a[aria-label$=" 발표 준비"]')).toHaveLength(3);
   await act(async () => root.render(null));
   const onNavigate = vi.fn();
   await act(async () =>
@@ -128,13 +125,15 @@ it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 �
     ),
   );
   const rows = [...host.querySelectorAll('section[aria-label="발표 목록"] li')];
-  expect(rows).toHaveLength(2);
+  expect(rows).toHaveLength(3);
   for (const row of rows) {
     expect(row.querySelector('.w-28.shrink-0')?.textContent).toContain('Take 기록');
-    expect(row.querySelector('.w-20.shrink-0')).not.toBeNull();
-    expect(row.lastElementChild?.textContent?.trim()).toBe('발표 준비');
+    expect(row.querySelector('.w-20.shrink-0')).toBeNull();
+    // 맨 오른쪽은 더보기(···) 메뉴, 그 앞이 발표 준비다(#807)
+    expect(row.lastElementChild?.getAttribute('aria-haspopup')).toBe('menu');
+    const prepare = row.lastElementChild!.previousElementSibling as HTMLAnchorElement;
+    expect(prepare.textContent?.trim()).toBe('발표 준비');
     const title = row.querySelector('a')!;
-    const prepare = row.lastElementChild as HTMLAnchorElement;
     expect(prepare.getAttribute('href')).toBe(title.getAttribute('href'));
     expect(prepare.getAttribute('href')).toMatch(/\/edit$/);
     await act(async () => title.click());
@@ -164,12 +163,18 @@ it('카메라 · 마이크 · 시선 기준이 모두 돼야 시작할 수 있�
   expect(host.textContent).toContain('마이크에 대고 한 마디 해보세요');
 });
 
-it('슬라이드가 없을 때는 다음 단계 버튼이 없고 샘플 파일 선택 뒤 진행할 수 있다', async () => {
+it('제품과 같이 단일 페이지에서 네 영역을 보여주고 PDF 선택 후 확인 창을 연다', async () => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
   await render('pitch-create', 'empty');
-  expect(button('다음 · 대본 →')).toBeUndefined();
+  expect(host.querySelector('nav[aria-label="준비 순서"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="슬라이드"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="대본 연결"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="발표정보"]')).toBeTruthy();
+  expect(host.querySelector('section[aria-label="평가기준 (선택)"]')).toBeTruthy();
   await click('PDF 파일 선택');
-  await click('다음 · 대본 →');
-  expect(host.textContent).toContain('대본 입력');
+  expect(host.querySelector('dialog')?.textContent).toContain('슬라이드 확인');
 });
 
 it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 확인에서도 유지한다', async () => {
@@ -193,16 +198,20 @@ it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 
   expect(host.textContent).toContain('분석 중');
 });
 
-it('개별 보기에서는 슬라이드 미리보기를 페이지를 막는 창으로 열고, 닫으면 생성 화면으로 돌아간다', async () => {
+it('개별 보기에서 최신 슬라이드 확인 창을 모달로 열고 닫는다', async () => {
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
     this.open = true;
   };
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
+  };
   await render();
-  await click('슬라이드 크게 보기');
+  await click('슬라이드 확인');
   expect(host.querySelector('dialog')?.open).toBe(true);
   await click('닫기');
   expect(host.querySelector('dialog')).toBeNull();
-  expect(host.textContent).toContain('슬라이드 크게 보기');
+  expect(host.textContent).toContain('슬라이드 확인');
 });
 
 it('전체 보기(inline)에서는 창을 페이지를 막지 않게 그 자리에 연다', async () => {
@@ -252,6 +261,38 @@ it('제품 링크 · 옛 시안 주소를 설계서 안에서 처리하고 가�
   await act(async () => anchor.click());
   expect(navigate).toHaveBeenCalledTimes(2);
   expect(host.textContent).toContain('연결하지 않은 화면');
+});
+
+it('피치가 없는 홈에서도 통합 푸터의 TIP·사용방법·정책 링크를 표시한다', async () => {
+  await render('home', 'empty');
+  expect(host.textContent).toContain('TIP /');
+  expect(host.textContent).toContain('사용방법 살펴보기');
+  expect(host.textContent).toContain('이용약관');
+  expect(host.textContent).toContain('개인정보 처리방침');
+});
+
+it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한다', async () => {
+  await render('home');
+  const link = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '개인정보 처리방침',
+  );
+  expect(link).toBeDefined();
+  expect(link?.getAttribute('href')).toContain('/privacy?from=home');
+  const homeTerms = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '이용약관',
+  );
+  expect(homeTerms?.getAttribute('href')).toContain('/terms?from=home');
+  await act(async () => link!.click());
+  expect(host.textContent).toContain('검토용 초안 · 시행 전');
+  expect(host.textContent).toContain('카메라 영상과 음성의 차이');
+  const terms = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '이용약관',
+  );
+  expect(terms).toBeDefined();
+  // 정책 화면 안의 상호 링크는 홈 진입 파라미터 없이 이동한다.
+  expect(terms?.getAttribute('href')).toContain('/terms');
+  await act(async () => terms!.click());
+  expect(host.textContent).toContain('서비스의 목적');
 });
 
 it('제품 문구대로 그린다: 재시도의 서버 종료, 리포트의 지표 이름', async () => {
@@ -326,8 +367,9 @@ it('컴포넌트 · 대화 상자 견본: 종류가 다 보이고, 창은 상태
   await act(async () => root.render(null));
 
   await render('confirm-dialog', 'busy');
-  expect(button('끝내는 중…')?.disabled).toBe(true);
-  expect(button('취소')?.disabled).toBe(true);
+  // 누른 버튼이 초점을 쥐도록 disabled 대신 aria-disabled 로 막는다 (#845)
+  expect(button('끝내는 중…')?.getAttribute('aria-disabled')).toBe('true');
+  expect(button('취소')?.getAttribute('aria-disabled')).toBe('true');
   await act(async () => root.render(null));
 
   await render('survey-dialog', 'open');
@@ -361,7 +403,9 @@ it('설문(#776): 홈은 참여 안내 · 남은 설문만 두고, 설문은 리
 
   await render('home', 'consent');
   await click('안내 보고 참여하기');
-  expect(button('동의하고 참여하기')).toBeDefined();
+  await click('동의하고 참여하기');
+  expect(document.activeElement?.textContent).toContain('사용자 테스트 참여에 동의했어요.');
+  expect(document.activeElement?.getAttribute('role')).toBe('status');
   await act(async () => root.render(null));
 
   await render('home', 'pending');
@@ -371,6 +415,13 @@ it('설문(#776): 홈은 참여 안내 · 남은 설문만 두고, 설문은 리
   await render('report');
   await click('이번 분석 설문 남기기');
   expect(button('설문 보내기')?.disabled).toBe(true);
+  await act(async () => {
+    host.querySelector<HTMLInputElement>('input[name="accuracy"][value="4"]')!.click();
+    host.querySelector<HTMLInputElement>('input[name="usefulness"][value="5"]')!.click();
+  });
+  await click('설문 보내기');
+  expect(document.activeElement?.textContent).toContain('설문을 보냈어요');
+  expect(document.activeElement?.getAttribute('role')).toBe('status');
   await act(async () => root.render(null));
 
   await render('report', 'survey-sent');
@@ -392,9 +443,10 @@ it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴�
   await render('stage');
   expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
   await act(async () => root.render(null));
-  // 시작 전 세팅은 상단바 없이 자체 틀을 쓴다(#738 최종, #706에서 정함)
+  // 시작 전 세팅도 상단바를 얹고, 지금 메뉴는 표시하지 않는다(#694)
   await render('prepare-mission');
-  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeTruthy();
+  expect(current()).toBeNull();
 });
 
 it('끝내기 확인은 장이 바뀌면 풀리고, 마지막 장에서는 안내 글자가 없다', async () => {

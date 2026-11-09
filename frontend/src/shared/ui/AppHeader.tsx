@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { HomeHelpDialog } from './HomeHelpDialog';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { useLogout } from '@/shared/api/useLogout';
+import { SkipLink } from '@/shared/ui/SkipLink';
 
 function MenuLink({ to, label, current }: { to: string; label: string; current: boolean }) {
   return (
@@ -29,41 +30,68 @@ export function AppHeader() {
   const [helpOpen, setHelpOpen] = useState(false);
   const logout = useLogout();
   const { pathname } = useLocation();
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    // 모달이 루트 scrollbar-gutter 를 해제하기 전에 확보해 둔 폭입니다.
+    // 오버레이 스크롤바 환경에서는 0px 이므로 불필요한 보정이 없습니다.
+    const measure = () => {
+      if (document.querySelector('dialog[open], [data-gaze-overlay]')) return;
+      const width = root.clientWidth > 0 ? Math.max(0, window.innerWidth - root.clientWidth) : 0;
+      root.style.setProperty('--app-scrollbar-width', `${width}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    document.addEventListener('close', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      document.removeEventListener('close', measure, true);
+      root.style.removeProperty('--app-scrollbar-width');
+    };
+  }, []);
+
   return (
-    <header className="border-b border-line-strong bg-panel text-ink">
-      <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
-        <Link to="/" aria-label="PITCH COACH 홈">
-          <PitchCoachWordmark />
-        </Link>
-        <nav
-          aria-label="홈 메뉴"
-          className="flex flex-wrap items-center gap-5 text-xs sm:gap-8 sm:text-sm"
-        >
-          <MenuLink to="/" label="내 피치" current={pathname === '/' || pathname === '/pitches'} />
-          <MenuLink to="/takes" label="Take 기록" current={pathname === '/takes'} />
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="min-h-11 hover:text-ink"
+    <>
+      <SkipLink />
+      <header className="border-b border-line-strong bg-panel text-ink">
+        <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
+          <Link to="/" aria-label="PITCH COACH 홈">
+            <PitchCoachWordmark />
+          </Link>
+          <nav
+            aria-label="홈 메뉴"
+            className="flex flex-wrap items-center gap-5 text-xs sm:gap-8 sm:text-sm"
           >
-            사용방법
-          </button>
-          <MenuLink to="/me" label="마이페이지" current={pathname === '/me'} />
-          <button
-            disabled={logout.isPending}
-            onClick={() => logout.mutate()}
-            className="min-h-11 text-ink/80 hover:text-ink"
-          >
-            {logout.isPending ? '로그아웃 중…' : '로그아웃'}
-          </button>
-        </nav>
-      </div>
-      {logout.isError && (
-        <p role="alert" className="px-6 pb-3 text-center text-sm text-coral-deep">
-          로그아웃하지 못했어요. 다시 시도해 주세요.
-        </p>
-      )}
-      {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
-    </header>
+            <MenuLink
+              to="/"
+              label="내 피치"
+              current={pathname === '/' || pathname === '/pitches'}
+            />
+            <MenuLink to="/takes" label="Take 기록" current={pathname === '/takes'} />
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="min-h-11 hover:text-ink"
+            >
+              사용방법
+            </button>
+            <MenuLink to="/me" label="마이페이지" current={pathname === '/me'} />
+            <button
+              disabled={logout.isPending}
+              onClick={() => logout.mutate()}
+              className="min-h-11 text-ink/80 hover:text-ink disabled:cursor-not-allowed"
+            >
+              {logout.isPending ? '로그아웃 중…' : '로그아웃'}
+            </button>
+          </nav>
+        </div>
+        {logout.isError && (
+          <p role="alert" className="px-6 pb-3 text-center text-sm text-coral-deep">
+            로그아웃하지 못했어요. 다시 시도해 주세요.
+          </p>
+        )}
+        {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
+      </header>
+    </>
   );
 }

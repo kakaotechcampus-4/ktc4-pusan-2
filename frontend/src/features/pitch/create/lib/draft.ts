@@ -87,6 +87,16 @@ export function scriptLength(text: string): number {
   return [...text].length;
 }
 
+/**
+ * 장 대본을 원문 하나로 잇습니다 — 장마다 `[슬라이드 N]` 줄로 시작합니다. 매핑 편집(`editMappingBlock`)과
+ * 원문이 없는 예전 대본(`loadPitch`)이 씁니다. 다시 매핑하면 이 글이 서버로 가므로 AI 가 구분자로 보는
+ * 형식이어야 장마다 다시 나뉩니다. 장 대본 안에 구분자로 읽히는 줄이 있으면 1..N 으로 나뉘지 않습니다
+ * (`markerHint.ts` `markerLinesInBlocks`).
+ */
+export function joinScriptBlocks(blocks: string[]): string {
+  return blocks.map((block, i) => `[슬라이드 ${i + 1}]\n${block}`).join('\n\n');
+}
+
 /** 업로드 제한. 목업의 "최대 40MB" */
 export const MAX_SLIDE_BYTES = 40 * 1024 * 1024;
 
@@ -154,7 +164,10 @@ export type SlideUpload =
  * `failed` 의 `message` 는 화면에 그대로 띄울 문구입니다.
  */
 export type ScriptParse =
-  { status: 'idle' } | { status: 'pending' } | { status: 'failed'; message: string };
+  | { status: 'idle' }
+  /** `startedAt` 은 나누기를 시작한 `performance.now()` — 다른 화면에 다녀와도 기다린 시간을 이어서 셉니다 */
+  | { status: 'pending'; startedAt: number }
+  | { status: 'failed'; message: string };
 
 export interface ScriptVersion {
   version: number;
@@ -168,7 +181,10 @@ export interface ScriptVersion {
    */
   remote: { id: string; version: number } | null;
   parse: ScriptParse;
-  /** 서버가 구분자로 나눴나. false 는 구분자가 없어 대본 전체를 한 슬라이드로 둔 정상 결과 */
+  /**
+   * 서버가 구분자로 나눴나. false 는 나누지 못해 대본 전체를 한 슬라이드로 둔 정상 결과 —
+   * 구분자 없음 · 번호 0 · 겹침 · 거꾸로 · 첫 구분 앞에 제목이 아닌 글 (`markerHint` `unsegmentedNotice`)
+   */
   segmented: boolean | null;
   /**
    * 이 대본을 나눌 슬라이드 버전 — 목업의 "연결할 슬라이드 V1 · 12장".
@@ -279,6 +295,17 @@ export const infoReady = (form: InfoForm): form is KnownInfo =>
   Number.isInteger(form.upperToleranceSec) &&
   form.upperToleranceSec >= 0 &&
   form.upperToleranceSec <= MAX_TOLERANCE_SEC;
+
+/**
+ * 화면에 보이는 버전 — 고른 버전이 있으면 그것, 없거나(null) 목록에 없으면 최신, 목록이 비었으면 null.
+ * 피치 만들기 화면과 대화창의 화면 상태(`chatScreen.ts`)가 함께 씁니다 — 둘이 다른 버전을 보지 않게
+ */
+export function shownVersion<T extends { version: number }>(
+  list: readonly T[],
+  version: number | null,
+): T | null {
+  return list.find((v) => v.version === version) ?? list.at(-1) ?? null;
+}
 
 /** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 export const latestSlides = (d: PitchDraft): SlideVersion | null => d.slides.at(-1) ?? null;

@@ -29,8 +29,8 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
   else if (!check.camera) gazeAction = '카메라 먼저';
 
   return (
-    // 제품 `prepare/ScreenFrame.tsx`의 껍데기
-    <div className="pitch-create min-h-[40rem] bg-greige px-4 py-5 text-ink">
+    // 제품 `prepare/ScreenFrame.tsx`의 껍데기. 위에 공용 상단바가 얹혀 남은 높이를 채운다(#694)
+    <div className="pitch-create flex-1 bg-greige px-4 py-5 text-ink">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
         <h1 className="sr-only">시작 전 세팅</h1>
         <div className="border-2 border-ink bg-panel shadow-[4px_4px_0_var(--color-line)]">
@@ -129,7 +129,14 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
           </div>
 
           <footer className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-4 sm:px-6">
-            <p className="text-sm text-stone">{check.hint}</p>
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="text-stone">{check.hint}</p>
+              {/* 바뀌지 않는 안내라 위 안내 줄(제품은 role="status")과 따로 둔다 (#925) */}
+              <p className="text-stone">
+                말이 없는 상태가 2분 넘게 이어지면 연습이 자동으로 끝날 수 있어요. 발표 목표
+                시간과는 상관없어요.
+              </p>
+            </div>
             <div className="ml-auto flex flex-wrap gap-3">
               <Button
                 disabled={!check.ready}

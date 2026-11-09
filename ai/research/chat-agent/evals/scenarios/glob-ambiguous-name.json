@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "id": "glob-ambiguous-name",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "이름이 두 피치('회사 소개 발표' · '회사 소개 발표 영어')에 걸리면 범위를 바꾸지 않고 어떤 발표인지 묻는다",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      },
+      {
+        "pitch_id": "p-2",
+        "title": "회사 소개 발표",
+        "last_practiced_at": "2026-10-20T10:00:00+09:00",
+        "criteria": null,
+        "takes": [
+          {
+            "take_id": "p2-t1",
+            "take_number": 1,
+            "completed_at": "2026-10-19T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "p2-t2",
+            "take_number": 2,
+            "completed_at": "2026-10-20T10:00:00+09:00",
+            "result": {
+              "cpm": [380, 390, 385, 375],
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 70
+            }
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-3",
+        "title": "회사 소개 발표 영어",
+        "last_practiced_at": "2026-10-10T10:00:00+09:00",
+        "criteria": null,
+        "takes": [
+          {
+            "take_id": "p3-t1",
+            "take_number": 1,
+            "completed_at": "2026-10-09T10:00:00+09:00",
+            "result": {
+              "audience": 0.5
+            },
+            "review": {
+              "score": 74
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "회사 소개 점수 어땠어?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "scope-kept-all",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.scope",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "asks-which",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "어떤 발표|어느 발표|선택해|골라",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

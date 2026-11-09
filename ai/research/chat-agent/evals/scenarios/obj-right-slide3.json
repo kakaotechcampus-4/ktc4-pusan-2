@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "id": "obj-right-slide3",
+  "set": "objectivity",
+  "group": "right_claim",
+  "split": "dev",
+  "act": "should_not",
+  "title": "맞는 측정 주장 '3장 시선이 약했어'(3장에 청중 시선 문제 · 우선 개선) → SUPPORTED, 분명히 동의",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "issues": [["GAZE_ON_SCRIPT", 3, true], ["GAZE_LOW_EYE_CONTACT", 3, true]]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 3장 시선이 약했어",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "slide3-supported",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "dimension": "audience_gaze",
+          "verdict": "SUPPORTED",
+          "has_evidence": true,
+          "text@": "SUPPORTED",
+          "type": "MEASURED",
+          "slide_number": 3
+        },
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "not-contradicted",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록과 달라요",
+        "grader": "regex",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "objectivity"
+      }
+    ]
+  }
+}

@@ -143,7 +143,6 @@ def create_stream(
     store: TranscriptStore,
     segment_no: int = 1,
     stt_session_no: int = 0,
-    grace_sec: float | None = None,
     auto_end: AutoEndPolicy | None = None,
     coach: CoachDeps | None = None,
 ) -> TakeStream:
@@ -162,7 +161,6 @@ def create_stream(
         host=_HOST,
         segment_no=segment_no,
         stt_session_no=stt_session_no,
-        grace_sec=grace_sec,
         auto_end=policy,
         coach=coach,
     )
@@ -199,14 +197,11 @@ async def attach(
 
         if stream is not None and stream.is_stopping:
             # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
-            # 끝나기를 기다렸다가 새로 만든다. 정상 종료(stop)와 같은 시간을 기다린다 —
-            # 더 일찍 끊으면 Deepgram 이 아직 보내지 않은 마지막 문장이 사라진다
-            if not await stream.wait_closed():
-                # 그래도 안 끝나면 강제로 끊고, 끊긴 스트림이 실제로 끝나기를 기다린다.
-                # forget() 만 하면 옛 스트림은 Deepgram 연결을 붙든 채 계속 돈다. 끝나기 전에
-                # 아래에서 번호를 읽으면 옛 스트림이 저장 중인 seq 를 새 스트림이 또 쓴다
-                stream.cancel()
-                await stream.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
+            # 끝나기를 기다렸다가 새로 만든다. 일찍 끊으면 Deepgram 이 아직 보내지 않은 마지막
+            # 문장이 사라진다. 그래도 안 끝나면 강제로 끊고, 끊긴 스트림이 실제로 끝나기를 기다린다.
+            # forget() 만 하면 옛 스트림은 Deepgram 연결을 붙든 채 계속 돈다. 끝나기 전에
+            # 아래에서 번호를 읽으면 옛 스트림이 저장 중인 seq 를 새 스트림이 또 쓴다
+            await stream.close_or_cancel()
             forget(stream)
             stream = None
 
@@ -250,12 +245,12 @@ async def attach(
                 )
                 state.streams[take_id] = stream
                 for ms in restored:
-                    stream._record.coach.on_utterance_end(ms)
+                    stream.coach.on_utterance_end(ms)
                 stream.start()
         elif stream.owner_id != owner_id:
             raise StreamOwnerMismatch
         if coach is not None and coach_context is not None:
-            stream._record.coach.enable(coach_context, client=coach.client, store=coach.store)
+            stream.coach.enable(coach_context, client=coach.client, store=coach.store)
 
     await stream.attach(ws)
     return stream
@@ -301,12 +296,10 @@ async def _make_room(owner_id: uuid.UUID) -> None:
             stream.release_idle()
         else:
             stream.request_stop()
-        if not await stream.wait_closed():
-            stream.cancel()
-            # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
-            # 곧 닫히므로 다시 붙을 수 있게 알린다
-            if not await stream.wait_closed(stt_loop.ABORT_TIMEOUT_SEC):
-                raise StreamClosing
+        # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
+        # 곧 닫히므로 다시 붙을 수 있게 알린다
+        if not await stream.close_or_cancel(confirm=False):
+            raise StreamClosing
 
 
 def has_room(owner_id: uuid.UUID, take_id: uuid.UUID) -> bool:
@@ -403,29 +396,30 @@ def _on_abandon(
 
 async def _end_abandoned(
     take_id: uuid.UUID, store: TranscriptStore, closed_at: datetime, end_reason: LeftReason
-) -> None:
+) -> bool:
+    """떠난 Take 를 끝낸다. 적었으면 True."""
     # attach() 와 같은 락이다. 지금 다시 붙는 연결이 있으면 그쪽이 먼저 스트림을 열고, 끝내는 동안
     # 붙으려는 연결은 기다렸다가 TakeEnded 를 받는다
     async with state.attach_lock(take_id):
         stream = state.streams.get(take_id)
         if take_id in state.ended or (stream is not None and not stream.is_finished):
             # 그 사이 끝났거나 (사용자 stop · 자동 종료 · Take PUT) 누가 다시 붙었다
-            return
+            return False
         record = state.takes.get(take_id)
         utterance_ends = finish.utterance_ends_of(take_id)
         try:
             marked = await asyncio.wait_for(
                 store.mark_abandoned(take_id, closed_at, end_reason, utterance_ends),
-                finish.MARK_AUTO_END_TIMEOUT_SEC,
+                finish.MARK_ENDED_TIMEOUT_SEC,
             )
         except Exception:
             # 못 적으면 다음에 앱이 뜰 때 DB 를 보고 다시 건다
             logger.exception("떠난 Take 를 끝내지 못했다 take=%s", take_id)
-            return
+            return False
         if not marked:
             # 그 사이 Take 가 지워졌거나 이미 끝나 있었다
             logger.info("떠난 Take 를 적지 않았다 (Take 가 없거나 이미 끝남) take=%s", take_id)
-            return
+            return False
         state.ended[take_id] = end_reason
         if record is not None:
             # 떠난 Take 는 결과를 만들지 않는다. 끝내기 PUT 으로 되살아나면 replay 로 만든다 — 그때
@@ -438,6 +432,21 @@ async def _end_abandoned(
             end_reason,
             closed_at.isoformat(),
         )
+        return True
+
+
+async def end_stuck(take_id: uuid.UUID, store: TranscriptStore, last_active_at: datetime) -> bool:
+    """관리자 콘솔이 연결 없이 진행 중으로 남은 Take 를 떠난 것(`ABANDONED`)으로 끝낸다.
+
+    떠난 Take 타이머가 만료됐을 때와 같은 일을 한다. 첫 연결이 저장 번호를 읽지 못했거나 떠난
+    Take 를 적다 DB 오류가 나 타이머 없이 남은 Take 의 보조 수단이다. 끝난 시각은 마지막 활동
+    시각이다. 적었으면 True 이고 남은 타이머도 끈다. 스트림이 아직 돌거나(연결이 붙어 있거나 막
+    끊김) 그 사이 끝났거나 DB 에 적지 못했으면 False 이고 타이머는 그대로 둔다.
+    """
+    ended = await _end_abandoned(take_id, store, last_active_at, "ABANDONED")
+    if ended:
+        abandon.cancel(take_id)
+    return ended
 
 
 async def arm_abandoned_takes(store: TranscriptStore) -> None:
@@ -534,7 +543,7 @@ def _finishing_sec() -> float:
     return (
         runtime.FINAL_METRICS_WAIT_SEC
         + max(finish.FLUSH_METRICS_TIMEOUT_SEC, 2 * SEAL_WAIT_SEC)
-        + finish.MARK_AUTO_END_TIMEOUT_SEC
+        + finish.MARK_ENDED_TIMEOUT_SEC
         + stt_loop.ABORT_TIMEOUT_SEC
     )
 
@@ -548,9 +557,7 @@ def stop_all_max_sec() -> float:
 
 
 async def _close_for_shutdown(stream: TakeStream) -> None:
-    if not await stream.wait_closed(timeout=SHUTDOWN_CLOSE_WAIT_SEC):
-        stream.cancel()
-        await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
+    await stream.close_or_cancel(drain_sec=SHUTDOWN_CLOSE_WAIT_SEC, confirm=False)
 
 
 async def stop_all() -> None:
@@ -586,7 +593,7 @@ async def stop_all() -> None:
     # 진행 중인 코치 판단을 끊고 저장 못 한 코치 이벤트도 넣는다. 다시 뜨면 메모리에 없다. 서로
     # 다른 기록이라 같이 저장한다
     await asyncio.gather(
-        *(finish.flush_metrics(take_id) for take_id in unsaved),
+        *(finish.flush_records(take_id) for take_id in unsaved),
         *(_save_utterance_ends(take_id, record) for take_id, record in live),
         *(
             record.coach.shutdown(finish.FLUSH_METRICS_TIMEOUT_SEC)

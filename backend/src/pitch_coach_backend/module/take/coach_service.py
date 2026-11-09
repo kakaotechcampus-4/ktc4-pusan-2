@@ -1,25 +1,21 @@
-"""코치 연동의 도메인 작업. 기능별 PR에서 단계적으로 연결한다."""
+"""코치 연동의 도메인 작업."""
 
 import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.service import lookup as pitch_lookup
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.pitch.service import standard as standard_service
-from pitch_coach_backend.module.take.coach_repository import (
-    REVIEW,
-    TAKE_RESULT,
-    CoachRepository,
-    is_waiting_for_result,
-)
+from pitch_coach_backend.module.take.coach_repository import CoachRepository, is_waiting_for_result
 from pitch_coach_backend.module.take.dto import (
     FinalizeRows,
     MetricSecond,
@@ -33,8 +29,18 @@ from pitch_coach_backend.module.take.dto import (
 )
 from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
-from pitch_coach_backend.module.take.repository import json_ints
+from pitch_coach_backend.module.take.repository import json_ints, parse_mission_ids
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    FAILED,
+    FINALIZING,
+    REVIEW,
+    SCORING,
+    TAKE_RESULT,
+)
 from pitch_coach_backend.module.user import service as user_service
+
+logger = logging.getLogger(__name__)
 
 
 def start_take(db: Session, take_id: uuid.UUID) -> bool:
@@ -48,10 +54,10 @@ def start_take(db: Session, take_id: uuid.UUID) -> bool:
     순서가 거꾸로면 둘이 서로를 기다린다.
     """
     repo = CoachRepository(db)
-    pitch_id = repo.pitch_id_of(take_id)
+    pitch_id = repo.get_pitch_id_of_take(take_id)
     if pitch_id is None:
         return False
-    pitch_service.lock_for_new_version(db, pitch_id)
+    pitch_lookup.lock_for_new_version(db, pitch_id)
     take_number = repo.mark_started(take_id)
     if take_number is None:
         db.commit()
@@ -125,13 +131,15 @@ def _take_coach_values(db: Session, repo: CoachRepository, take: Take) -> TakeCo
         script_version_id=take.script_version_id,
         slides=_slide_timings(script_service.script_slides(db, take.script_version_id)),
         parsed_target_ms=_parsed_target_ms(script.parse_meta if script else None),
-        missions=tuple(_mission_input(m) for m in repo.missions(_mission_ids(take.mission_ids))),
+        missions=tuple(
+            _mission_input(m) for m in repo.get_missions_by_ids(parse_mission_ids(take.mission_ids))
+        ),
         recurring_issues=_recurring_issues(repo, reviewed),
         source_take_id=repo.latest_completed_take(take.pitch_id, before=take.take_number),
         script_used=standard_service.script_used(db, take.pitch_id, take.standard_version),
         base_level_db=repo.base_level_db(take.id),
         slide_events=tuple(
-            SlideEvent(e.slide_number, e.started_ms) for e in repo.slide_events(take.id)
+            SlideEvent(number, started_ms) for number, started_ms in repo.get_slide_events(take.id)
         ),
     )
 
@@ -151,16 +159,6 @@ def _parsed_target_ms(parse_meta: Any) -> int | None:
     return value
 
 
-def _mission_ids(values: Any) -> list[uuid.UUID]:
-    ids: list[uuid.UUID] = []
-    for value in values or []:
-        try:
-            ids.append(uuid.UUID(str(value)))
-        except ValueError:
-            logger.warning("takes.mission_ids 에 UUID 가 아닌 값이 있다 value=%r", value)
-    return ids
-
-
 def _mission_input(mission: Mission) -> MissionInput:
     return MissionInput(
         mission_id=str(mission.id),
@@ -178,7 +176,7 @@ def _recurring_issues(
     """그 Take 의 리뷰가 꼽은 반복 문제. BE 는 항목을 고치지 않고 그대로 싣는다 (1-5)."""
     if reviewed is None:
         return ()
-    review = repo.ai_result(reviewed, REVIEW)
+    review = repo.get_ai_result(reviewed, REVIEW)
     payload = review.payload if review is not None else None
     issues = payload.get("recurring_issues") if isinstance(payload, dict) else None
     if not isinstance(issues, list):
@@ -230,9 +228,6 @@ def chosen_plan_payload(
     return dict(plan.payload) if plan is not None else None
 
 
-logger = logging.getLogger(__name__)
-
-
 def finalize_rows(
     db: Session, take_id: uuid.UUID, *, waiting_only: bool = True
 ) -> FinalizeRows | None:
@@ -256,7 +251,6 @@ def finalize_rows(
         ),
         utterance_ends=tuple(json_ints(take.utterance_ends)),
         events=tuple(dict(e.payload) for e in repo.coach_events(take_id)),
-        raw_data_consent=take.raw_data_consent,
     )
 
 
@@ -290,7 +284,7 @@ def save_take_result(
     repo.save_ai_result(take_id, TAKE_RESULT, take_result, meta)
     repo.save_summary_measures(take_id, measures)
     take.duration_sec = duration_sec
-    take.analysis_stage = "SCORING"
+    take.analysis_stage = SCORING
     take.analysis_stage_at = func.now()
     if not take.raw_data_consent:
         # Take 결과가 생기면 replay 에 쓸 일이 없다
@@ -342,6 +336,49 @@ def purge_expired_raw(db: Session, now: datetime) -> int:
         after = take_ids[-1]
 
 
+# 관리자가 finalize 를 다시 하려 할 때의 결과 (`reopen_failed_finalize`)
+#   REOPENED    : Take 결과를 기다리는 중으로 되돌렸다
+#   NOT_FAILED  : finalize 가 실패한 Take(`FAILED` · 단계 `FINALIZING`)가 아니다
+#   EXPIRED     : 동의 없는 Take 의 1초 원자료 보관 기한(7일)이 지났다
+#   NO_RAW_DATA : 1초 원자료가 없다 (발표 중 하나도 오지 않았거나 이미 지웠다)
+type FinalizeReopen = Literal["REOPENED", "NOT_FAILED", "EXPIRED", "NO_RAW_DATA"]
+
+
+def reopen_failed_finalize(db: Session, take_id: uuid.UUID, now: datetime) -> FinalizeReopen | None:
+    """Take 결과를 끝내 만들지 못한 Take 를 Take 결과를 기다리는 중(`ANALYZING` · `FINALIZING`)으로
+    되돌리고 커밋한다. 관리자가 정한 수동 복구다 (coach-agent.md 7절). Take 가 없으면 None.
+
+    finalize 를 원자료(replay)로 다시 부르므로 1초 원자료가 남아 있어야 한다. 동의 없는 Take 는
+    끝난 시각(없으면 만든 시각)부터 7일 안이어야 한다 — 정리 작업(`purge_expired_raw`)과 같은
+    기준이다. Take 행을 잠근 뒤 원자료를 본다. 정리 작업이 먼저 잠갔으면 지운 뒤에 보게 되고,
+    되돌린 뒤에는 `FAILED` 가 아니라 정리 작업이 건드리지 않는다.
+
+    떠난 Take(`FAILED`, 분석 단계 없음)는 사용자가 그만둔 연습이라 되돌리지 않는다.
+    """
+    repo = CoachRepository(db)
+    take = repo.lock_take(take_id)
+    if take is None:
+        db.rollback()
+        return None
+    result: FinalizeReopen
+    if take.status != FAILED or take.analysis_stage != FINALIZING:
+        result = "NOT_FAILED"
+    elif not take.raw_data_consent and (
+        (take.ended_at or take.created_at) < now - FAILED_RAW_RETENTION
+    ):
+        result = "EXPIRED"
+    elif not repo.has_metric_seconds(take_id):
+        result = "NO_RAW_DATA"
+    else:
+        take.status = ANALYZING
+        # 주기 작업이 막 되돌린 Take 를 오래 기다린 것으로 보고 한 번 더 띄우지 않게 한다
+        take.analysis_stage_at = func.now()
+        db.commit()
+        return "REOPENED"
+    db.rollback()
+    return result
+
+
 def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
     """다음 Take 의 코칭 계획 요청 재료 (coach-agent.md 5-2 plan). 부르지 않을 때는 None.
 
@@ -361,8 +398,8 @@ def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
     slides = script_service.script_slides(db, script.id)
     source = repo.latest_completed_take(pitch_id, before=None)
     reviewed = repo.latest_reviewed_take(pitch_id, before=None)
-    previous_result = repo.ai_result(source, TAKE_RESULT) if source else None
-    previous_review = repo.ai_result(source, REVIEW) if source else None
+    previous_result = repo.get_ai_result(source, TAKE_RESULT) if source else None
+    previous_review = repo.get_ai_result(source, REVIEW) if source else None
     return PlanValues(
         pitch_id=pitch_id,
         time_limit_sec=pitch.time_limit_sec,

@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user.entity import User
@@ -29,5 +29,14 @@ def delete(db: Session, user: User) -> None:
     db.flush()
 
 
-def exists(db: Session, user_id: uuid.UUID) -> bool:
-    return db.scalar(select(User.id).where(User.id == user_id)) is not None
+def has_tutorial_report(db: Session, user_id: uuid.UUID) -> bool:
+    return db.scalar(select(User.tutorial_report_at).where(User.id == user_id)) is not None
+
+
+def mark_tutorial_report(db: Session, user_id: uuid.UUID) -> None:
+    # 처음 받은 시각을 남긴다
+    db.execute(
+        update(User)
+        .where(User.id == user_id, User.tutorial_report_at.is_(None))
+        .values(tutorial_report_at=func.now())
+    )

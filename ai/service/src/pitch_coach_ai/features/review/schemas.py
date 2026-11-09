@@ -86,7 +86,8 @@ class TakeResult(_In):
     script_mode: str | None = None
     #: 시간 계획 {target_ms, min_ms, max_ms}. 이전 Take 비교에서 duration_ms 의 기준
     plan: dict[str, Any] | None = None
-    areas: dict[str, AreaResult]
+    #: key 는 일곱 영역 중 하나. 모르는 영역이 오면 출력 검증이 아니라 입력에서 422 로 막는다
+    areas: dict[Area, AreaResult]
     problem_segments: list[ProblemSegment] = Field(default_factory=list)
     gave_up: list[GaveUp] = Field(default_factory=list)
     #: 영역 → {criteria_version, issues}. 리뷰는 criteria_version 만 meta 에 옮겨 싣는다
@@ -203,7 +204,8 @@ class Comparison(_Out):
     slide_number: int | None = None
     previous: Number
     current: Number
-    #: 좋아진 방향인지. 방향을 정할 수 없으면(기준 없음) null
+    #: 좋아진 방향인지. 방향을 정할 수 없거나(기준 없음) 나아지지도 나빠지지도 않았으면
+    #: (한 방향 지표는 같은 값, 범위 지표는 기준까지 거리가 같음 · 둘 다 범위 안) null
     improved: bool | None
     #: 두 Take 의 대본 보기가 다를 때만 {previous, current}, 같으면 null
     script_mode: ScriptMode | None = None

@@ -1,20 +1,23 @@
 import asyncio
-import contextlib
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from functools import partial
-from typing import Any
 
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.core.tasks import TaskRegistry
+from pitch_coach_backend.core.database import in_session as _in_session
+from pitch_coach_backend.core.tasks import Stop, TaskRegistry, run_periodic, start_task
 from pitch_coach_backend.module import hooks
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.adapter import ai_client as take_ai_client
+from pitch_coach_backend.module.take.repository import (
+    ANALYSIS_SWEEP_INTERVAL_SEC,
+    STALE_ANALYSIS,
+    TakeRepository,
+)
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
 
@@ -24,8 +27,6 @@ CONFIRMATION_POLL_SEC = 2.0
 RUBRIC_POLL_SEC = 5.0
 RESUME_BATCH_SIZE = 4
 RESUME_READ_TIMEOUT_SEC = 10.0
-SWEEP_INTERVAL_SEC = 5 * 60.0
-STALE_ANALYSIS = timedelta(minutes=10)
 STOP_TIMEOUT_SEC = 5.0
 
 type SessionFactory = Callable[[], Session]
@@ -49,32 +50,37 @@ def start(
     )
 
 
+def recover_held(
+    take_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
+) -> asyncio.Task[None] | None:
+    """리뷰를 보류한 Take 의 병합 rescore 를 한 번 더 하고, 보류가 풀리면 확인 · 리뷰로 이어 간다.
+    관리자 콘솔이 부른다. 이 Take 의 분석이 이미 돌고 있으면 띄우지 않고 None."""
+    if _running.running(take_id):
+        return None
+    return _running.spawn(
+        _guarded(take_id, _recover_held(take_id, session_factory)),
+        name=f"take-coverage-recovery:{take_id}",
+        key=take_id,
+    )
+
+
 async def run(
     take_id: uuid.UUID,
     session_factory: SessionFactory = SessionLocal,
     *,
     restarted: bool = False,
 ) -> None:
+    await _guarded(take_id, _run(take_id, session_factory, restarted))
+
+
+async def _guarded(take_id: uuid.UUID, work: Awaitable[None]) -> None:
     try:
-        await _run(take_id, session_factory, restarted)
+        await work
     except asyncio.CancelledError:
         logger.info("Take 분석을 멈춘다 (앱 종료) take=%s", take_id)
         raise
     except Exception:
         logger.exception("Take 분석 실패 take=%s", take_id)
-
-
-async def _in_session[T](
-    session_factory: SessionFactory, fn: Callable[..., T], *args: Any
-) -> T:
-    def call() -> T:
-        db = session_factory()
-        try:
-            return fn(db, *args)
-        finally:
-            db.close()
-
-    return await run_in_threadpool(call)
 
 
 async def _score(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> str:
@@ -93,6 +99,24 @@ async def _score(take_id: uuid.UUID, session_factory: SessionFactory, restarted:
 
 async def _run(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> None:
     outcome = await _score(take_id, session_factory, restarted)
+    await _after_scoring(take_id, session_factory, outcome, restarted)
+
+
+async def _recover_held(take_id: uuid.UUID, session_factory: SessionFactory) -> None:
+    async with ai_slots.background():
+        outcome = await coverage_service.recover_held_coverage(take_id, session_factory)
+    if outcome == "SKIPPED":
+        # 그 사이 다른 작업이 표식을 잡았거나 보류가 풀렸다. 그 작업이 이어 간다
+        logger.info("보류를 풀 채점 표식을 잡지 못했다 take=%s", take_id)
+        return
+    if outcome != "HELD":
+        logger.info("병합 재채점을 다시 해 리뷰 보류를 풀었다 take=%s", take_id)
+    await _after_scoring(take_id, session_factory, outcome, restarted=False)
+
+
+async def _after_scoring(
+    take_id: uuid.UUID, session_factory: SessionFactory, outcome: str, restarted: bool
+) -> None:
     if outcome == "HELD":
         logger.warning("대본 전달도 병합이 실패해 리뷰를 보류한다 take=%s", take_id)
         return
@@ -130,7 +154,7 @@ async def _review(
             review_request = await _in_session(
                 session_factory, review_service.build_review_request, take_id
             )
-            reply = await review_service.request_review_async(take_id, review_request)
+            reply = await take_ai_client.request_review_async(take_id, review_request)
             saved = await _in_session(
                 session_factory,
                 partial(review_service.save_review, request_id=request_id),
@@ -200,11 +224,13 @@ async def _resume(
 
 
 async def sweep_forever(
-    session_factory: SessionFactory = SessionLocal, interval_sec: float = SWEEP_INTERVAL_SEC
+    session_factory: SessionFactory = SessionLocal,
+    interval_sec: float = ANALYSIS_SWEEP_INTERVAL_SEC,
 ) -> None:
-    while True:
-        await asyncio.sleep(interval_sec)
+    async def step() -> None:
         resume(session_factory, stale_before=datetime.now(UTC) - STALE_ANALYSIS)
+
+    await run_periodic(step, interval_sec, delay_first=True)
 
 
 async def stop_all(timeout: float = STOP_TIMEOUT_SEC) -> None:
@@ -213,14 +239,12 @@ async def stop_all(timeout: float = STOP_TIMEOUT_SEC) -> None:
     await _running.stop_all(max(0.0, deadline - asyncio.get_running_loop().time()))
 
 
-def start_background() -> Callable[[], Awaitable[None]]:
+def start_background() -> Stop:
     resume(restarted=True)
-    sweep = asyncio.create_task(sweep_forever(), name="take-analysis-sweep")
+    stop_sweep = start_task(sweep_forever(), name="take-analysis-sweep")
 
     async def stop() -> None:
-        sweep.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await sweep
+        await stop_sweep()
         await stop_all()
 
     return stop

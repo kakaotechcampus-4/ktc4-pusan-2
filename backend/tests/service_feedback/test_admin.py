@@ -80,7 +80,7 @@ def test_admin_lists_suggestions_by_page_and_user(client, console, db_session):
 
 @pytest.mark.parametrize(
     "query",
-    ["limit=0", "limit=201", "offset=-1", "source=RATING_POPUP", "user_id=not-a-uuid"],
+    ["limit=0", "limit=201", "offset=-1", "user_id=not-a-uuid"],
 )
 def test_admin_validates_suggestion_query(client, console, query):
     assert client.get(f"/admin/api/suggestions?{query}", auth=ADMIN).status_code == 422

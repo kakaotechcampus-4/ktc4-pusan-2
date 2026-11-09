@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "rep-goal-unknown-then-not",
+  "set": "eval",
+  "group": "representative",
+  "split": "holdout",
+  "act": "should",
+  "title": "목표 확인 순서: Take 6 은 시간 초과로 끝나 알 수 없음(다음 Take 기다림), Take 7 3장 30% − 28% = 2%p < 5%p → 못 이룸",
+  "source": "rep-goal-check",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "add_takes": [
+          {
+            "take_id": "t-6",
+            "take_number": 6,
+            "end_reason": "TIME_LIMIT",
+            "completed_at": "2026-11-04T10:00:00+09:00",
+            "result": {
+              "audience": [0.6, 0.6, 0.5, 0.6]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STABLE"
+              },
+              "score": 72
+            }
+          },
+          {
+            "take_id": "t-7",
+            "take_number": 7,
+            "completed_at": "2026-11-05T10:00:00+09:00",
+            "result": {
+              "audience": [0.6, 0.6, 0.3, 0.6],
+              "issues": [["GAZE_ON_SCRIPT", 3, true]]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1",
+      "goal": {
+        "metric": "audience_ratio",
+        "slide_number": 3,
+        "base_take_id": "t-5",
+        "after_take": 5
+      }
+    }
+  },
+  "turns": [
+    {
+      "auto_goal_check": true
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "goal-results",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": ["UNKNOWN", "NOT_ACHIEVED"],
+        "path": "goal_results"
+      },
+      {
+        "check_id": "goal-result",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "NOT_ACHIEVED",
+        "path": "goal_result.status"
+      },
+      {
+        "check_id": "goal-observed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": 0.3,
+        "path": "goal_result.observed",
+        "derive": "t-7:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "goal-closed",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "NOT_ACHIEVED",
+        "path": "after.conversation.goal.status"
+      }
+    ]
+  }
+}

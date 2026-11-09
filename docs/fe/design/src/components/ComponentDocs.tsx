@@ -14,6 +14,7 @@ import { SuggestionCategorySelect, type SuggestionCategory } from '@/ui/Suggesti
 import { TakeStatusBadge } from '@/ui/TakeStatusBadge';
 import { TAKE_STATUSES } from '@/lib/takeStatus';
 import { HomeHelpDialog } from '@/ui/dialogs/HomeHelpDialog';
+import { DeletePitchDialog } from '@/ui/dialogs/DeletePitchDialog';
 import { ReplaceTakeDialog } from '@/ui/dialogs/ReplaceTakeDialog';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
@@ -42,7 +43,7 @@ function Specimen({
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-3 border-b border-line pb-5 sm:grid-cols-[10rem_minmax(0,1fr)]">
-      <p className="font-mono text-xs font-bold text-stone">{label}</p>
+      <p className="guide-code text-xs font-bold text-stone">{label}</p>
       <div className="flex min-w-0 flex-wrap items-center gap-3">{children}</div>
     </div>
   );
@@ -58,9 +59,10 @@ function ButtonDoc({ stateId }: { stateId: string }) {
             다시 불러오기
           </Button>
         </Row>
-        <Row label="진행 중 문구">
-          <Button disabled>끝내는 중…</Button>
-          <Button variant="secondary" disabled>
+        {/* 누른 버튼이 처리 중이 되면 aria-disabled 입니다. disabled 면 초점이 body 로 빠집니다(#818 · #845) */}
+        <Row label="aria-disabled · 처리 중">
+          <Button aria-disabled>끝내는 중…</Button>
+          <Button variant="secondary" aria-disabled>
             삭제하는 중…
           </Button>
         </Row>
@@ -291,6 +293,22 @@ export function ComponentDoc({ id, stateId }: { id: string; stateId: string }) {
               pitchTitle={PITCH}
               takeNumber={2}
               busy={stateId === 'busy'}
+              onConfirm={close}
+              onCancel={close}
+            />
+          )}
+        />
+      );
+    case 'delete-pitch-dialog':
+      return (
+        <DialogDoc
+          title="피치 삭제 창"
+          render={(close) => (
+            <DeletePitchDialog
+              pitchTitle={PITCH}
+              takeCount={2}
+              busy={stateId === 'busy'}
+              error={stateId === 'error' ? 'failed' : null}
               onConfirm={close}
               onCancel={close}
             />

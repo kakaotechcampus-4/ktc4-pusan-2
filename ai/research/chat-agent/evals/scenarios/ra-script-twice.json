@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "id": "ra-script-twice",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "같은 조건을 다른 턴에 다시 요청 — 다시 부르고 두 번 모두 규칙 칸(점수 · 차원 · 사용자 기준 판정) 전체가 같다",
+  "source": "ra-script",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘",
+      "page_take_id": "t-5"
+    },
+    {
+      "message": "같은 조건으로 한 번 더 다시 평가해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "first-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS",
+        "turn": 0
+      },
+      {
+        "check_id": "first-before-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 88,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "PRIORITY",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].before",
+        "note": "규칙 칸 전체(점수 · 차원 · 사용자 기준 판정)를 규칙 리뷰 코드로 계산했다(test_scenarios 가 다시 계산)",
+        "turn": 0
+      },
+      {
+        "check_id": "first-after-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 100,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "NOT_EVALUABLE",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].after",
+        "note": "규칙 칸 전체(점수 · 차원 · 사용자 기준 판정)를 규칙 리뷰 코드로 계산했다(test_scenarios 가 다시 계산)",
+        "turn": 0
+      },
+      {
+        "check_id": "first-changed-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": ["score", "dimensions.script_independence"],
+        "path": "cards[type=REASSESS_RESULT].changed_fields",
+        "turn": 0
+      },
+      {
+        "check_id": "second-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "second-before-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 88,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "PRIORITY",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].before",
+        "note": "규칙 칸 전체(점수 · 차원 · 사용자 기준 판정)를 규칙 리뷰 코드로 계산했다(test_scenarios 가 다시 계산)"
+      },
+      {
+        "check_id": "second-after-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 100,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "NOT_EVALUABLE",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].after",
+        "note": "규칙 칸 전체(점수 · 차원 · 사용자 기준 판정)를 규칙 리뷰 코드로 계산했다(test_scenarios 가 다시 계산)"
+      },
+      {
+        "check_id": "second-changed-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": ["score", "dimensions.script_independence"],
+        "path": "cards[type=REASSESS_RESULT].changed_fields"
+      },
+      {
+        "check_id": "two-reference-results",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 2,
+        "path": "after.conversation.reassess_results"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  },
+  "notes": "두 턴의 규칙 칸을 같은 기대값(fixtures 로 계산)에 대므로 두 결과 전체가 같은지도 함께 본다"
+}

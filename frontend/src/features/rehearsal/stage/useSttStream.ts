@@ -3,6 +3,7 @@ import {
   STT_ABANDONED_MESSAGE,
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
+  type AutoEndReason,
   type CoachMessage,
   type MetricsMessage,
   type SlideMessage,
@@ -71,8 +72,11 @@ export function useSttStream({
   attempt?: number;
   /** 캡처를 시작한 시점의 Take 경과 시간 — offset_ms 의 기준점입니다 */
   elapsedMs: () => Ms;
-  /** 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대가 종료 흐름을 탑니다 */
-  onAutoEnd?: () => void;
+  /**
+   * 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대가 종료 흐름을 타고,
+   * 이유와 서버 문구를 분석 대기 화면으로 넘겨 알립니다 (#925)
+   */
+  onAutoEnd?: (reason: AutoEndReason, message: string) => void;
   /**
    * 새로고침 전 페이지가 못 보낸 `metrics` 를 꺼냅니다 (`takeMetrics`). 소켓을 만들 때 한 번 부르고,
    * 붙자마자 그것부터 보냅니다
@@ -201,11 +205,11 @@ export function useSttStream({
       onCoach: (message) => {
         if (!cancelled) onCoachRef.current?.(message);
       },
-      onAutoEnd: (_reason, message) => {
+      onAutoEnd: (reason, message) => {
         if (cancelled) return;
         // 서버가 보낸 문구가 이유를 말합니다 ("2분 넘게 말이 없어 …")
         setErrorNote(message);
-        onAutoEndRef.current?.();
+        onAutoEndRef.current?.(reason, message);
       },
       onGiveUp: (reason) => {
         // 보낼 곳이 없어졌습니다. 마이크 캡처를 계속 돌리면 남은 발표 내내

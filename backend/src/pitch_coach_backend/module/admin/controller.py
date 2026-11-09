@@ -1,7 +1,8 @@
 """관리자 콘솔 (/admin).
 
 화면은 static/ 의 HTML · JS · CSS 세 파일이고, 데이터는 /admin/api/* 에서 받는다. 전부 같은
-로그인(require_admin) 뒤에 있다. 앱 API 가 아니라서 /api 밖에 두고, /api/docs 에도 싣지 않는다.
+로그인(require_admin) 뒤에 있다. 상태를 바꾸는 복구 요청(POST)은 콘솔이 붙이는 헤더도 요구한다
+(require_admin_action). 앱 API 가 아니라서 /api 밖에 두고, /api/docs 에도 싣지 않는다.
 /admin 은 Caddy 가 /admin/ 으로 보낸다 — 여기서 보내면 uvicorn 이 https 를 몰라 http 주소가 된다.
 """
 
@@ -14,9 +15,11 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
-from pitch_coach_backend.module.admin import service
-from pitch_coach_backend.module.admin.dependencies import require_admin
+from pitch_coach_backend.module.admin import recovery, service
+from pitch_coach_backend.module.admin.dependencies import require_admin, require_admin_action
 from pitch_coach_backend.module.admin.dto import (
+    AdminChatDay,
+    AdminChatDiagnostic,
     AdminPage,
     AdminPitchAI,
     AdminScriptSlide,
@@ -31,7 +34,6 @@ from pitch_coach_backend.module.admin.dto import (
     AdminUserRow,
     StatsResponse,
 )
-from pitch_coach_backend.module.service_feedback.dto import SuggestionSource
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -128,6 +130,41 @@ def take_export(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> 
     return service.export_take(db, take_id)
 
 
+# 복구 동작. AI 를 다시 부르는 것은 조건을 확인하고 백그라운드 작업을 띄운 뒤 202 로 답한다.
+# 결과는 Take 목록에서 본다. 멈춘 연습 끝내기는 바로 끝나 204 다
+@router.post(
+    "/api/takes/{take_id}/coverage/rescore",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin_action)],
+)
+async def rescore_held_coverage(
+    take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]
+) -> Response:
+    await recovery.rescore_held_coverage(db, take_id)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.post(
+    "/api/takes/{take_id}/finalize/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin_action)],
+)
+async def retry_finalize(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Response:
+    await recovery.retry_finalize(db, take_id)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+# 실시간 hook 이 요청 스레드에서 이벤트 루프로 넘기므로 동기 엔드포인트다
+@router.post(
+    "/api/takes/{take_id}/abandon",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin_action)],
+)
+def end_stuck_take(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Response:
+    recovery.end_stuck_take(db, take_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/api/pitches/{pitch_id}/ai")
 def pitch_ai(pitch_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> AdminPitchAI:
     return service.get_pitch_ai(db, pitch_id)
@@ -150,12 +187,34 @@ def take_survey_summary(db: Annotated[Session, Depends(get_db)]) -> list[AdminTa
 @router.get("/api/suggestions", response_model=AdminPage[AdminSuggestionRow])
 def suggestions(
     db: Annotated[Session, Depends(get_db)],
-    source: SuggestionSource | None = None,
     category: SuggestionCategory | None = None,
     user_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AdminPage[AdminSuggestionRow]:
     return service.list_suggestions(
-        db, source=source, category=category, limit=limit, offset=offset, user_id=user_id
+        db, category=category, limit=limit, offset=offset, user_id=user_id
+    )
+
+
+# 코치 대화 실행의 날짜별 운영 기록. 대화 본문은 없다
+@router.get("/api/chat/days")
+def chat_days(
+    db: Annotated[Session, Depends(get_db)],
+    days: Annotated[int, Query(ge=1, le=service.CHAT_DAYS_MAX)] = service.CHAT_DAYS,
+) -> list[AdminChatDay]:
+    return service.chat_days(db, days)
+
+
+# 답이 왜 그렇게 나왔는지 따라가는 진단 기록. run_id 와 conversation_id 중 하나로 찾는다
+@router.get("/api/chat/diagnostics", response_model=AdminPage[AdminChatDiagnostic])
+def chat_diagnostics(
+    db: Annotated[Session, Depends(get_db)],
+    run_id: uuid.UUID | None = None,
+    conversation_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminChatDiagnostic]:
+    return service.chat_diagnostics(
+        db, run_id=run_id, conversation_id=conversation_id, limit=limit, offset=offset
     )

@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "id": "guide-nervous",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should",
+  "title": "'긴장하면 말이 빨라져' — 발표법 카드 g-07 인용, 인용이 원문 그대로",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "긴장하면 말이 빨라져. 어떻게 하면 좋아?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "followups": [
+    {
+      "message": "긴장 관리 자료에서 찾아서 알려 줘"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "g-07",
+        "path": "source_ids",
+        "metric": "advice"
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

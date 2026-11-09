@@ -1,0 +1,2252 @@
+{
+ "calls": [
+  {
+   "events": [],
+   "fp": "557d437e18d91ba1",
+   "ok": {
+    "attempt_errors": [],
+    "attempt_usages": [
+     {
+      "cached_input_tokens": 2906,
+      "input_tokens": 2909,
+      "output_tokens": 335
+     }
+    ],
+    "attempts": 1,
+    "finish_reason": "stop",
+    "message": "{\"route\":\"RESEARCH\",\"talk_kind\":null,\"scope_reason\":null,\"plan\":[{\"step\":\"말 속도 조절 관련 발표법 자료 찾기\",\"status\":\"DOING\",\"note\":null},{\"step\":\"Take 기록에서 말 속도 관련 정보를 확인하기\",\"status\":\"TODO\",\"note\":null},{\"step\":\"자료와 기록을 근거로 짧게 답하기\",\"status\":\"TODO\",\"note\":null}],\"guide_queries\":[\"긴장 말 속도 조절 쉼\"],\"assessments\":[{\"quote\":\"긴장하면 말이 빨라져\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"UNVERIFIABLE\",\"reason\":\"Take 기록에서 긴장할 때 말이 빨라졌는지는 확인할 수 없습니다.\",\"source_ids\":[]}]}",
+    "model": "gpt-6-luna",
+    "parsed": {
+     "assessments": [
+      {
+       "claim_op": "ISSUE",
+       "polarity": "NEGATIVE",
+       "quote": "긴장하면 말이 빨라져",
+       "reason": "Take 기록에서 긴장할 때 말이 빨라졌는지는 확인할 수 없습니다.",
+       "source_ids": [],
+       "speaker": "USER",
+       "speaker_label": null,
+       "subject": {
+        "dimension": "pacing_rhythm",
+        "metric": null,
+        "relation": null,
+        "slide_number": null,
+        "take_numbers": []
+       },
+       "type": "MEASURED",
+       "value": null,
+       "value_unit": null,
+       "verdict": "UNVERIFIABLE"
+      }
+     ],
+     "guide_queries": [
+      "긴장 말 속도 조절 쉼"
+     ],
+     "plan": [
+      {
+       "note": null,
+       "status": "DOING",
+       "step": "말 속도 조절 관련 발표법 자료 찾기"
+      },
+      {
+       "note": null,
+       "status": "TODO",
+       "step": "Take 기록에서 말 속도 관련 정보를 확인하기"
+      },
+      {
+       "note": null,
+       "status": "TODO",
+       "step": "자료와 기록을 근거로 짧게 답하기"
+      }
+     ],
+     "route": "RESEARCH",
+     "scope_reason": null,
+     "talk_kind": null
+    },
+    "tool_calls": [],
+    "usage": {
+     "cached_input_tokens": 2906,
+     "input_tokens": 2909,
+     "output_tokens": 335
+    }
+   }
+  },
+  {
+   "events": [],
+   "fp": "8045ff20eb57471d",
+   "ok": {
+    "attempt_errors": [],
+    "attempt_usages": [
+     {
+      "cached_input_tokens": 2639,
+      "input_tokens": 4862,
+      "output_tokens": 108
+     }
+    ],
+    "attempts": 1,
+    "finish_reason": "stop",
+    "message": "긴장할 때 속도가 빨라지면, 감추려 애쓰기보다 속도를 낮추는 데 집중해 보세요. 문장 사이와 핵심어 앞에서 잠깐 쉬면 청중이 내용을 따라올 시간을 줄 수 있습니다. 이번 기록에서는 말하기 리듬이 안정 상태로 평가됐지만, 긴장한 상황의 말 속도 자체가 빨랐는지는 확인되지 않았습니다. 다음 연습에서 긴장할 때도 같은지 살펴보세요.",
+    "model": "gpt-6-luna",
+    "parsed": null,
+    "tool_calls": [],
+    "usage": {
+     "cached_input_tokens": 2639,
+     "input_tokens": 4862,
+     "output_tokens": 108
+    }
+   }
+  },
+  {
+   "events": [
+    [
+     "start",
+     1
+    ],
+    [
+     "feed",
+     1,
+     "{\""
+    ],
+    [
+     "feed",
+     1,
+     "route"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "ANSWER"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "scope"
+    ],
+    [
+     "feed",
+     1,
+     "_reason"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "scope"
+    ],
+    [
+     "feed",
+     1,
+     "_notes"
+    ],
+    [
+     "feed",
+     1,
+     "\":[]"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "ass"
+    ],
+    [
+     "feed",
+     1,
+     "ess"
+    ],
+    [
+     "feed",
+     1,
+     "ments"
+    ],
+    [
+     "feed",
+     1,
+     "\":["
+    ],
+    [
+     "feed",
+     1,
+     "{\""
+    ],
+    [
+     "feed",
+     1,
+     "quote"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "긴"
+    ],
+    [
+     "feed",
+     1,
+     "장"
+    ],
+    [
+     "feed",
+     1,
+     "하면"
+    ],
+    [
+     "feed",
+     1,
+     " 말"
+    ],
+    [
+     "feed",
+     1,
+     "이"
+    ],
+    [
+     "feed",
+     1,
+     " 빨"
+    ],
+    [
+     "feed",
+     1,
+     "라"
+    ],
+    [
+     "feed",
+     1,
+     "져"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "type"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "ME"
+    ],
+    [
+     "feed",
+     1,
+     "ASURE"
+    ],
+    [
+     "feed",
+     1,
+     "D"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "speaker"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "USER"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "speaker"
+    ],
+    [
+     "feed",
+     1,
+     "_label"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "claim"
+    ],
+    [
+     "feed",
+     1,
+     "_op"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "ISS"
+    ],
+    [
+     "feed",
+     1,
+     "UE"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "subject"
+    ],
+    [
+     "feed",
+     1,
+     "\":{\""
+    ],
+    [
+     "feed",
+     1,
+     "dimension"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "p"
+    ],
+    [
+     "feed",
+     1,
+     "acing"
+    ],
+    [
+     "feed",
+     1,
+     "_r"
+    ],
+    [
+     "feed",
+     1,
+     "hythm"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "metric"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "slide"
+    ],
+    [
+     "feed",
+     1,
+     "_number"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "take"
+    ],
+    [
+     "feed",
+     1,
+     "_numbers"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "[],"
+    ],
+    [
+     "feed",
+     1,
+     " \""
+    ],
+    [
+     "feed",
+     1,
+     "relation"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     "},\""
+    ],
+    [
+     "feed",
+     1,
+     "value"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "value"
+    ],
+    [
+     "feed",
+     1,
+     "_unit"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "pol"
+    ],
+    [
+     "feed",
+     1,
+     "arity"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "NEG"
+    ],
+    [
+     "feed",
+     1,
+     "ATIVE"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "ver"
+    ],
+    [
+     "feed",
+     1,
+     "dict"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "UN"
+    ],
+    [
+     "feed",
+     1,
+     "VER"
+    ],
+    [
+     "feed",
+     1,
+     "IFI"
+    ],
+    [
+     "feed",
+     1,
+     "ABLE"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "reason"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "Take"
+    ],
+    [
+     "feed",
+     1,
+     " 기록"
+    ],
+    [
+     "feed",
+     1,
+     "만"
+    ],
+    [
+     "feed",
+     1,
+     "으로"
+    ],
+    [
+     "feed",
+     1,
+     " 긴"
+    ],
+    [
+     "feed",
+     1,
+     "장"
+    ],
+    [
+     "feed",
+     1,
+     "할"
+    ],
+    [
+     "feed",
+     1,
+     " 때"
+    ],
+    [
+     "feed",
+     1,
+     " 말"
+    ],
+    [
+     "feed",
+     1,
+     "이"
+    ],
+    [
+     "feed",
+     1,
+     " 빨"
+    ],
+    [
+     "feed",
+     1,
+     "라"
+    ],
+    [
+     "feed",
+     1,
+     "졌"
+    ],
+    [
+     "feed",
+     1,
+     "는"
+    ],
+    [
+     "feed",
+     1,
+     "지는"
+    ],
+    [
+     "feed",
+     1,
+     " 확인"
+    ],
+    [
+     "feed",
+     1,
+     "할"
+    ],
+    [
+     "feed",
+     1,
+     " 수"
+    ],
+    [
+     "feed",
+     1,
+     " 없습니다"
+    ],
+    [
+     "feed",
+     1,
+     ".\",\""
+    ],
+    [
+     "feed",
+     1,
+     "source"
+    ],
+    [
+     "feed",
+     1,
+     "_ids"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "[]}"
+    ],
+    [
+     "feed",
+     1,
+     "],\""
+    ],
+    [
+     "feed",
+     1,
+     "claims"
+    ],
+    [
+     "feed",
+     1,
+     "\":["
+    ],
+    [
+     "feed",
+     1,
+     "{\""
+    ],
+    [
+     "feed",
+     1,
+     "kind"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "ASSE"
+    ],
+    [
+     "feed",
+     1,
+     "SS"
+    ],
+    [
+     "feed",
+     1,
+     "MENT"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "text"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "Take"
+    ],
+    [
+     "feed",
+     1,
+     " 기록"
+    ],
+    [
+     "feed",
+     1,
+     "만"
+    ],
+    [
+     "feed",
+     1,
+     "으로"
+    ],
+    [
+     "feed",
+     1,
+     " 긴"
+    ],
+    [
+     "feed",
+     1,
+     "장"
+    ],
+    [
+     "feed",
+     1,
+     "할"
+    ],
+    [
+     "feed",
+     1,
+     " 때"
+    ],
+    [
+     "feed",
+     1,
+     " 말"
+    ],
+    [
+     "feed",
+     1,
+     "이"
+    ],
+    [
+     "feed",
+     1,
+     " 빨"
+    ],
+    [
+     "feed",
+     1,
+     "라"
+    ],
+    [
+     "feed",
+     1,
+     "졌"
+    ],
+    [
+     "feed",
+     1,
+     "는"
+    ],
+    [
+     "feed",
+     1,
+     "지는"
+    ],
+    [
+     "feed",
+     1,
+     " 확인"
+    ],
+    [
+     "feed",
+     1,
+     "할"
+    ],
+    [
+     "feed",
+     1,
+     " 수"
+    ],
+    [
+     "feed",
+     1,
+     " 없습니다"
+    ],
+    [
+     "feed",
+     1,
+     ".\",\""
+    ],
+    [
+     "feed",
+     1,
+     "e"
+    ],
+    [
+     "feed",
+     1,
+     "vidence"
+    ],
+    [
+     "feed",
+     1,
+     "_ids"
+    ],
+    [
+     "feed",
+     1,
+     "\":[]"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "source"
+    ],
+    [
+     "feed",
+     1,
+     "_ids"
+    ],
+    [
+     "feed",
+     1,
+     "\":[]"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "quote"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "about"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "assessment"
+    ],
+    [
+     "feed",
+     1,
+     "_index"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "0"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "comparison"
+    ],
+    [
+     "feed",
+     1,
+     "_e"
+    ],
+    [
+     "feed",
+     1,
+     "vidence"
+    ],
+    [
+     "feed",
+     1,
+     "_id"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     "},{\""
+    ],
+    [
+     "feed",
+     1,
+     "kind"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "GUID"
+    ],
+    [
+     "feed",
+     1,
+     "E"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "text"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "시"
+    ],
+    [
+     "feed",
+     1,
+     "작"
+    ],
+    [
+     "feed",
+     1,
+     " 전에"
+    ],
+    [
+     "feed",
+     1,
+     " 숨"
+    ],
+    [
+     "feed",
+     1,
+     "을"
+    ],
+    [
+     "feed",
+     1,
+     " 천"
+    ],
+    [
+     "feed",
+     1,
+     "천"
+    ],
+    [
+     "feed",
+     1,
+     "히"
+    ],
+    [
+     "feed",
+     1,
+     " 길"
+    ],
+    [
+     "feed",
+     1,
+     "게"
+    ],
+    [
+     "feed",
+     1,
+     " 내"
+    ],
+    [
+     "feed",
+     1,
+     "쉬"
+    ],
+    [
+     "feed",
+     1,
+     "고"
+    ],
+    [
+     "feed",
+     1,
+     ","
+    ],
+    [
+     "feed",
+     1,
+     " 첫"
+    ],
+    [
+     "feed",
+     1,
+     " 문"
+    ],
+    [
+     "feed",
+     1,
+     "장은"
+    ],
+    [
+     "feed",
+     1,
+     " 평"
+    ],
+    [
+     "feed",
+     1,
+     "소"
+    ],
+    [
+     "feed",
+     1,
+     "보다"
+    ],
+    [
+     "feed",
+     1,
+     " 한"
+    ],
+    [
+     "feed",
+     1,
+     " 박"
+    ],
+    [
+     "feed",
+     1,
+     "자"
+    ],
+    [
+     "feed",
+     1,
+     " 늦"
+    ],
+    [
+     "feed",
+     1,
+     "게"
+    ],
+    [
+     "feed",
+     1,
+     " 시작"
+    ],
+    [
+     "feed",
+     1,
+     "해"
+    ],
+    [
+     "feed",
+     1,
+     " 보"
+    ],
+    [
+     "feed",
+     1,
+     "세요"
+    ],
+    [
+     "feed",
+     1,
+     ".\",\""
+    ],
+    [
+     "feed",
+     1,
+     "e"
+    ],
+    [
+     "feed",
+     1,
+     "vidence"
+    ],
+    [
+     "feed",
+     1,
+     "_ids"
+    ],
+    [
+     "feed",
+     1,
+     "\":[]"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "source"
+    ],
+    [
+     "feed",
+     1,
+     "_ids"
+    ],
+    [
+     "feed",
+     1,
+     "\":[\""
+    ],
+    [
+     "feed",
+     1,
+     "g"
+    ],
+    [
+     "feed",
+     1,
+     "-"
+    ],
+    [
+     "feed",
+     1,
+     "07"
+    ],
+    [
+     "feed",
+     1,
+     "\"],"
+    ],
+    [
+     "feed",
+     1,
+     "\""
+    ],
+    [
+     "feed",
+     1,
+     "quote"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "시"
+    ],
+    [
+     "feed",
+     1,
+     "작"
+    ],
+    [
+     "feed",
+     1,
+     " 전에"
+    ],
+    [
+     "feed",
+     1,
+     " 숨"
+    ],
+    [
+     "feed",
+     1,
+     "을"
+    ],
+    [
+     "feed",
+     1,
+     " 천"
+    ],
+    [
+     "feed",
+     1,
+     "천"
+    ],
+    [
+     "feed",
+     1,
+     "히"
+    ],
+    [
+     "feed",
+     1,
+     " 길"
+    ],
+    [
+     "feed",
+     1,
+     "게"
+    ],
+    [
+     "feed",
+     1,
+     " 내"
+    ],
+    [
+     "feed",
+     1,
+     "쉬"
+    ],
+    [
+     "feed",
+     1,
+     "고"
+    ],
+    [
+     "feed",
+     1,
+     ","
+    ],
+    [
+     "feed",
+     1,
+     " 첫"
+    ],
+    [
+     "feed",
+     1,
+     " 문"
+    ],
+    [
+     "feed",
+     1,
+     "장은"
+    ],
+    [
+     "feed",
+     1,
+     " 평"
+    ],
+    [
+     "feed",
+     1,
+     "소"
+    ],
+    [
+     "feed",
+     1,
+     "보다"
+    ],
+    [
+     "feed",
+     1,
+     " 한"
+    ],
+    [
+     "feed",
+     1,
+     " 박"
+    ],
+    [
+     "feed",
+     1,
+     "자"
+    ],
+    [
+     "feed",
+     1,
+     " 늦"
+    ],
+    [
+     "feed",
+     1,
+     "게"
+    ],
+    [
+     "feed",
+     1,
+     " 시작"
+    ],
+    [
+     "feed",
+     1,
+     "해"
+    ],
+    [
+     "feed",
+     1,
+     " 보"
+    ],
+    [
+     "feed",
+     1,
+     "세요"
+    ],
+    [
+     "feed",
+     1,
+     ".\",\""
+    ],
+    [
+     "feed",
+     1,
+     "about"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "DEL"
+    ],
+    [
+     "feed",
+     1,
+     "IVERY"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "assessment"
+    ],
+    [
+     "feed",
+     1,
+     "_index"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "comparison"
+    ],
+    [
+     "feed",
+     1,
+     "_e"
+    ],
+    [
+     "feed",
+     1,
+     "vidence"
+    ],
+    [
+     "feed",
+     1,
+     "_id"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     "},{\""
+    ],
+    [
+     "feed",
+     1,
+     "kind"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "GUID"
+    ],
+    [
+     "feed",
+     1,
+     "E"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "text"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "문"
+    ],
+    [
+     "feed",
+     1,
+     "장"
+    ],
+    [
+     "feed",
+     1,
+     " 사이"
+    ],
+    [
+     "feed",
+     1,
+     "와"
+    ],
+    [
+     "feed",
+     1,
+     " 핵"
+    ],
+    [
+     "feed",
+     1,
+     "심"
+    ],
+    [
+     "feed",
+     1,
+     "어"
+    ],
+    [
+     "feed",
+     1,
+     " 앞"
+    ],
+    [
+     "feed",
+     1,
+     "에서"
+    ],
+    [
+     "feed",
+     1,
+     " 잠"
+    ],
+    [
+     "feed",
+     1,
+     "깐"
+    ],
+    [
+     "feed",
+     1,
+     " 쉬"
+    ],
+    [
+     "feed",
+     1,
+     "는"
+    ],
+    [
+     "feed",
+     1,
+     " 것"
+    ],
+    [
+     "feed",
+     1,
+     "부터"
+    ],
+    [
+     "feed",
+     1,
+     " 시작"
+    ],
+    [
+     "feed",
+     1,
+     "하면"
+    ],
+    [
+     "feed",
+     1,
+     " 말"
+    ],
+    [
+     "feed",
+     1,
+     " 속"
+    ],
+    [
+     "feed",
+     1,
+     "도를"
+    ],
+    [
+     "feed",
+     1,
+     " 늦"
+    ],
+    [
+     "feed",
+     1,
+     "추"
+    ],
+    [
+     "feed",
+     1,
+     "는"
+    ],
+    [
+     "feed",
+     1,
+     " 데"
+    ],
+    [
+     "feed",
+     1,
+     " 부담"
+    ],
+    [
+     "feed",
+     1,
+     "이"
+    ],
+    [
+     "feed",
+     1,
+     " 적"
+    ],
+    [
+     "feed",
+     1,
+     "습니다"
+    ],
+    [
+     "feed",
+     1,
+     ".\",\""
+    ],
+    [
+     "feed",
+     1,
+     "e"
+    ],
+    [
+     "feed",
+     1,
+     "vidence"
+    ],
+    [
+     "feed",
+     1,
+     "_ids"
+    ],
+    [
+     "feed",
+     1,
+     "\":[]"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "source"
+    ],
+    [
+     "feed",
+     1,
+     "_ids"
+    ],
+    [
+     "feed",
+     1,
+     "\":[\""
+    ],
+    [
+     "feed",
+     1,
+     "g"
+    ],
+    [
+     "feed",
+     1,
+     "-"
+    ],
+    [
+     "feed",
+     1,
+     "18"
+    ],
+    [
+     "feed",
+     1,
+     "\"],"
+    ],
+    [
+     "feed",
+     1,
+     "\""
+    ],
+    [
+     "feed",
+     1,
+     "quote"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "속"
+    ],
+    [
+     "feed",
+     1,
+     "도를"
+    ],
+    [
+     "feed",
+     1,
+     " 늦"
+    ],
+    [
+     "feed",
+     1,
+     "출"
+    ],
+    [
+     "feed",
+     1,
+     " 때"
+    ],
+    [
+     "feed",
+     1,
+     "는"
+    ],
+    [
+     "feed",
+     1,
+     " 문"
+    ],
+    [
+     "feed",
+     1,
+     "장"
+    ],
+    [
+     "feed",
+     1,
+     " 사이"
+    ],
+    [
+     "feed",
+     1,
+     "와"
+    ],
+    [
+     "feed",
+     1,
+     " 핵"
+    ],
+    [
+     "feed",
+     1,
+     "심"
+    ],
+    [
+     "feed",
+     1,
+     "어"
+    ],
+    [
+     "feed",
+     1,
+     " 앞"
+    ],
+    [
+     "feed",
+     1,
+     "에서"
+    ],
+    [
+     "feed",
+     1,
+     " 잠"
+    ],
+    [
+     "feed",
+     1,
+     "깐"
+    ],
+    [
+     "feed",
+     1,
+     " 쉬"
+    ],
+    [
+     "feed",
+     1,
+     "는"
+    ],
+    [
+     "feed",
+     1,
+     " 것"
+    ],
+    [
+     "feed",
+     1,
+     "부터"
+    ],
+    [
+     "feed",
+     1,
+     " 시작"
+    ],
+    [
+     "feed",
+     1,
+     "하면"
+    ],
+    [
+     "feed",
+     1,
+     " 부담"
+    ],
+    [
+     "feed",
+     1,
+     "이"
+    ],
+    [
+     "feed",
+     1,
+     " 적"
+    ],
+    [
+     "feed",
+     1,
+     "습니다"
+    ],
+    [
+     "feed",
+     1,
+     ".\",\""
+    ],
+    [
+     "feed",
+     1,
+     "about"
+    ],
+    [
+     "feed",
+     1,
+     "\":\""
+    ],
+    [
+     "feed",
+     1,
+     "DEL"
+    ],
+    [
+     "feed",
+     1,
+     "IVERY"
+    ],
+    [
+     "feed",
+     1,
+     "\",\""
+    ],
+    [
+     "feed",
+     1,
+     "assessment"
+    ],
+    [
+     "feed",
+     1,
+     "_index"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "comparison"
+    ],
+    [
+     "feed",
+     1,
+     "_e"
+    ],
+    [
+     "feed",
+     1,
+     "vidence"
+    ],
+    [
+     "feed",
+     1,
+     "_id"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     "}"
+    ],
+    [
+     "feed",
+     1,
+     "],\""
+    ],
+    [
+     "feed",
+     1,
+     "usage"
+    ],
+    [
+     "feed",
+     1,
+     "_un"
+    ],
+    [
+     "feed",
+     1,
+     "answered"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "false"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "start"
+    ],
+    [
+     "feed",
+     1,
+     "_pr"
+    ],
+    [
+     "feed",
+     1,
+     "actice"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "null"
+    ],
+    [
+     "feed",
+     1,
+     ",\""
+    ],
+    [
+     "feed",
+     1,
+     "profile"
+    ],
+    [
+     "feed",
+     1,
+     "_updates"
+    ],
+    [
+     "feed",
+     1,
+     "\":"
+    ],
+    [
+     "feed",
+     1,
+     "[]}"
+    ]
+   ],
+   "fp": "5893136cbc34d263",
+   "ok": {
+    "attempt_errors": [],
+    "attempt_usages": [
+     {
+      "cached_input_tokens": 0,
+      "input_tokens": 7668,
+      "output_tokens": 414
+     }
+    ],
+    "attempts": 1,
+    "finish_reason": "stop",
+    "message": "{\"route\":\"ANSWER\",\"scope_reason\":null,\"scope_notes\":[],\"assessments\":[{\"quote\":\"긴장하면 말이 빨라져\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_numbers\":[], \"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"UNVERIFIABLE\",\"reason\":\"Take 기록만으로 긴장할 때 말이 빨라졌는지는 확인할 수 없습니다.\",\"source_ids\":[]}],\"claims\":[{\"kind\":\"ASSESSMENT\",\"text\":\"Take 기록만으로 긴장할 때 말이 빨라졌는지는 확인할 수 없습니다.\",\"evidence_ids\":[],\"source_ids\":[],\"quote\":null,\"about\":null,\"assessment_index\":0,\"comparison_evidence_id\":null},{\"kind\":\"GUIDE\",\"text\":\"시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-07\"],\"quote\":\"시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.\",\"about\":\"DELIVERY\",\"assessment_index\":null,\"comparison_evidence_id\":null},{\"kind\":\"GUIDE\",\"text\":\"문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 말 속도를 늦추는 데 부담이 적습니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-18\"],\"quote\":\"속도를 늦출 때는 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 부담이 적습니다.\",\"about\":\"DELIVERY\",\"assessment_index\":null,\"comparison_evidence_id\":null}],\"usage_unanswered\":false,\"start_practice\":null,\"profile_updates\":[]}",
+    "model": "gpt-6-luna",
+    "parsed": {
+     "assessments": [
+      {
+       "claim_op": "ISSUE",
+       "polarity": "NEGATIVE",
+       "quote": "긴장하면 말이 빨라져",
+       "reason": "Take 기록만으로 긴장할 때 말이 빨라졌는지는 확인할 수 없습니다.",
+       "source_ids": [],
+       "speaker": "USER",
+       "speaker_label": null,
+       "subject": {
+        "dimension": "pacing_rhythm",
+        "metric": null,
+        "relation": null,
+        "slide_number": null,
+        "take_numbers": []
+       },
+       "type": "MEASURED",
+       "value": null,
+       "value_unit": null,
+       "verdict": "UNVERIFIABLE"
+      }
+     ],
+     "claims": [
+      {
+       "about": null,
+       "assessment_index": 0,
+       "comparison_evidence_id": null,
+       "evidence_ids": [],
+       "kind": "ASSESSMENT",
+       "quote": null,
+       "source_ids": [],
+       "text": "Take 기록만으로 긴장할 때 말이 빨라졌는지는 확인할 수 없습니다."
+      },
+      {
+       "about": "DELIVERY",
+       "assessment_index": null,
+       "comparison_evidence_id": null,
+       "evidence_ids": [],
+       "kind": "GUIDE",
+       "quote": "시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.",
+       "source_ids": [
+        "g-07"
+       ],
+       "text": "시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요."
+      },
+      {
+       "about": "DELIVERY",
+       "assessment_index": null,
+       "comparison_evidence_id": null,
+       "evidence_ids": [],
+       "kind": "GUIDE",
+       "quote": "속도를 늦출 때는 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 부담이 적습니다.",
+       "source_ids": [
+        "g-18"
+       ],
+       "text": "문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 말 속도를 늦추는 데 부담이 적습니다."
+      }
+     ],
+     "profile_updates": [],
+     "route": "ANSWER",
+     "scope_notes": [],
+     "scope_reason": null,
+     "start_practice": null,
+     "usage_unanswered": false
+    },
+    "tool_calls": [],
+    "usage": {
+     "cached_input_tokens": 0,
+     "input_tokens": 7668,
+     "output_tokens": 414
+    }
+   }
+  },
+  {
+   "events": [],
+   "fp": "03b1237344448e50",
+   "ok": {
+    "attempt_errors": [],
+    "attempt_usages": [
+     {
+      "cached_input_tokens": 0,
+      "input_tokens": 3925,
+      "output_tokens": 229
+     }
+    ],
+    "attempts": 1,
+    "finish_reason": "stop",
+    "message": "{\"claims\":[{\"index\":0,\"text\":\"Take 5의 말하기 속도 관련 상태는 STABLE로 기록되어 있지만, 긴장할 때 말이 빨라졌는지는 기록만으로 확인할 수 없습니다.\"}]}",
+    "model": "gpt-6-luna",
+    "parsed": {
+     "claims": [
+      {
+       "index": 0,
+       "text": "Take 5의 말하기 속도 관련 상태는 STABLE로 기록되어 있지만, 긴장할 때 말이 빨라졌는지는 기록만으로 확인할 수 없습니다."
+      }
+     ]
+    },
+    "tool_calls": [],
+    "usage": {
+     "cached_input_tokens": 0,
+     "input_tokens": 3925,
+     "output_tokens": 229
+    }
+   }
+  }
+ ],
+ "expected": {
+  "fps": [
+   "557d437e18d91ba1",
+   "8045ff20eb57471d",
+   "5893136cbc34d263",
+   "03b1237344448e50"
+  ],
+  "turns": [
+   {
+    "error": null,
+    "lines": [
+     "{\"event\":\"plan\",\"run_id\":\"run-1\",\"seq\":1,\"data\":{\"plan\":[{\"step\":\"말 속도 조절 관련 발표법 자료 찾기\",\"status\":\"DOING\",\"note\":null},{\"step\":\"Take 기록에서 말 속도 관련 정보를 확인하기\",\"status\":\"TODO\",\"note\":null},{\"step\":\"자료와 기록을 근거로 짧게 답하기\",\"status\":\"TODO\",\"note\":null}]}}\n",
+     "{\"event\":\"tool_done\",\"run_id\":\"run-1\",\"seq\":2,\"data\":{\"trace\":{\"seq\":1,\"tool\":\"search_guides\",\"args_summary\":\"자료 검색(질의 12자)\",\"result_summary\":\"자료 5개\",\"ms\":0,\"outcome\":\"OK\"}}}\n",
+     "{\"event\":\"tool_done\",\"run_id\":\"run-1\",\"seq\":3,\"data\":{\"trace\":{\"seq\":2,\"tool\":\"get_take_report\",\"args_summary\":\"Take 5 · dimensions\",\"result_summary\":\"7개 항목\",\"ms\":0,\"outcome\":\"OK\"}}}\n",
+     "{\"event\":\"tool_done\",\"run_id\":\"run-1\",\"seq\":4,\"data\":{\"trace\":{\"seq\":3,\"tool\":\"get_take_report\",\"args_summary\":\"Take 5 · problem_segments\",\"result_summary\":\"1개 항목\",\"ms\":0,\"outcome\":\"OK\"}}}\n",
+     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":5,\"data\":{\"index\":0,\"claim\":{\"kind\":\"ASSESSMENT\",\"assessment_id\":\"run-1:as1-1\",\"text\":\"말씀하신 '긴장하면 말이 빨라져'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음.\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"action_id\":null},\"evidence\":[{\"evidence_id\":\"e-d23b6e7e45\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"TAKE_RESULT\",\"revision\":1,\"path\":\"take_result.problem_segments[dimension=pacing_rhythm]\",\"metric\":null,\"slide_number\":null,\"value\":\"NONE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null}],\"sources\":[],\"assessments\":[{\"assessment_id\":\"run-1:as1-1\",\"quote\":\"긴장하면 말이 빨라져\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[\"t-5\"],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"CONTRADICTED\",\"verdict_source\":\"CODE\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"reason\":\"Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음\",\"claim_key\":\"ck-896268cca4b17fe6\",\"claim_link_key\":\"lk-9756ca4827dea373\",\"evidence_basis\":{\"records\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"sources\":[],\"screens\":[],\"fingerprint\":\"602c5e343dfabbb1\"},\"supersedes\":[]}]}}\n",
+     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":6,\"data\":{\"index\":1,\"claim\":{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-07\"],\"action_id\":null},\"evidence\":[],\"sources\":[{\"source_id\":\"g-07\",\"title\":\"긴장 관리: 긴장하면 말이 빨라진다\",\"quote\":\"시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Lynn Meade, Public Speaking (Whatcom Community College, 2021), Overcome Communication Apprehension by Hacking Your Brain (CC BY 4.0), https://textbooks.whatcom.edu/cmst220/chapter/overcome-communication-apprehension-by-hacking-your-brain/; Lynn Meade, Public Speaking (Whatcom Community College, 2021), Overcome Communication Apprehension by Hacking Your Body (CC BY 4.0), https://textbooks.whatcom.edu/cmst220/chapter/do-these-things-to-help-with-nervousness/\",\"license\":\"team\"}],\"assessments\":[]}}\n",
+     "{\"event\":\"claim\",\"run_id\":\"run-1\",\"seq\":7,\"data\":{\"index\":2,\"claim\":{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 말 속도를 늦추는 데 부담이 적습니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-18\"],\"action_id\":null},\"evidence\":[],\"sources\":[{\"source_id\":\"g-18\",\"title\":\"발표는 빠를수록 좋다는 오해\",\"quote\":\"속도를 늦출 때는 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 부담이 적습니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Lumen Learning, Public Speaking (Lumen Learning), 8.3: Articulation, Pitch, and Rate (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.03%3A_Articulation_Pitch_and_Rate; Lumen Learning, Public Speaking (Lumen Learning), 8.13: Rehearsing Your Speech (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.13%3A_Rehearsing_Your_Speech\",\"license\":\"team\"}],\"assessments\":[]}}\n",
+     "{\"event\":\"final\",\"run_id\":\"run-1\",\"seq\":8,\"data\":{\"status\":\"DONE\",\"message\":{\"text\":\"말씀하신 '긴장하면 말이 빨라져'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음.\\n시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.\\n문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 말 속도를 늦추는 데 부담이 적습니다.\",\"claims\":[{\"kind\":\"ASSESSMENT\",\"assessment_id\":\"run-1:as1-1\",\"text\":\"말씀하신 '긴장하면 말이 빨라져'는 기록과 달라요: Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음.\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"action_id\":null},{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.\",\"evidence_ids\":[],\"source_ids\":[\"g-07\"],\"action_id\":null},{\"kind\":\"GUIDE\",\"assessment_id\":null,\"text\":\"문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 말 속도를 늦추는 데 부담이 적습니다.\",\"evidence_ids\":[],\"source_ids\":[\"g-18\"],\"action_id\":null}],\"cards\":[],\"sources\":[{\"source_id\":\"g-07\",\"title\":\"긴장 관리: 긴장하면 말이 빨라진다\",\"quote\":\"시작 전에 숨을 천천히 길게 내쉬고, 첫 문장은 평소보다 한 박자 늦게 시작해 보세요.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Lynn Meade, Public Speaking (Whatcom Community College, 2021), Overcome Communication Apprehension by Hacking Your Brain (CC BY 4.0), https://textbooks.whatcom.edu/cmst220/chapter/overcome-communication-apprehension-by-hacking-your-brain/; Lynn Meade, Public Speaking (Whatcom Community College, 2021), Overcome Communication Apprehension by Hacking Your Body (CC BY 4.0), https://textbooks.whatcom.edu/cmst220/chapter/do-these-things-to-help-with-nervousness/\",\"license\":\"team\"},{\"source_id\":\"g-18\",\"title\":\"발표는 빠를수록 좋다는 오해\",\"quote\":\"속도를 늦출 때는 문장 사이와 핵심어 앞에서 잠깐 쉬는 것부터 시작하면 부담이 적습니다.\",\"source\":\"팀 작성(일반 발표 지도 원칙). 참고: Lumen Learning, Public Speaking (Lumen Learning), 8.3: Articulation, Pitch, and Rate (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.03%3A_Articulation_Pitch_and_Rate; Lumen Learning, Public Speaking (Lumen Learning), 8.13: Rehearsing Your Speech (CC BY 4.0), https://socialsci.libretexts.org/Bookshelves/Communication/Public_Speaking/Public_Speaking_(Lumen_Learning)/08%3A_Delivering_Your_Speech/8.13%3A_Rehearsing_Your_Speech\",\"license\":\"team\"}]},\"actions\":[],\"state\":null,\"scope_pitch_id\":\"p-1\",\"plan\":[{\"step\":\"말 속도 조절 관련 발표법 자료 찾기\",\"status\":\"DONE\",\"note\":null},{\"step\":\"Take 기록에서 말 속도 관련 정보를 확인하기\",\"status\":\"DONE\",\"note\":null},{\"step\":\"자료와 기록을 근거로 짧게 답하기\",\"status\":\"DONE\",\"note\":null}],\"trace\":[{\"seq\":1,\"tool\":\"search_guides\",\"args_summary\":\"search_guides\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"},{\"seq\":2,\"tool\":\"get_take_report\",\"args_summary\":\"get_take_report\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"},{\"seq\":3,\"tool\":\"get_take_report\",\"args_summary\":\"get_take_report\",\"result_summary\":\"OK\",\"ms\":0,\"outcome\":\"OK\"}],\"basis\":{\"pitches\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"take_number\":5,\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"conversation_goal_version\":0,\"corpus_version\":\"guides-8\",\"sources\":[\"g-07\",\"g-18\"]},\"evidence\":[{\"evidence_id\":\"e-d23b6e7e45\",\"origin\":\"RECORD\",\"pitch_id\":\"p-1\",\"take_id\":\"t-5\",\"take_number\":5,\"kind\":\"TAKE_RESULT\",\"revision\":1,\"path\":\"take_result.problem_segments[dimension=pacing_rhythm]\",\"metric\":null,\"slide_number\":null,\"value\":\"NONE\",\"unit\":null,\"rule_version\":null,\"saved\":null,\"screen_snapshot_id\":null,\"inputs\":null,\"calc\":null}],\"history_summary\":null,\"budget_used\":{\"model_calls\":4,\"tool_calls\":3,\"elapsed_ms\":0,\"input_tokens\":19364,\"output_tokens\":1086},\"usage\":{\"model_calls\":4,\"tool_calls\":3,\"elapsed_ms\":0,\"input_tokens\":19364,\"output_tokens\":1086,\"measured\":true,\"missing_reason\":null},\"assessments\":[{\"assessment_id\":\"run-1:as1-1\",\"quote\":\"긴장하면 말이 빨라져\",\"type\":\"MEASURED\",\"speaker\":\"USER\",\"speaker_label\":null,\"claim_op\":\"ISSUE\",\"subject\":{\"dimension\":\"pacing_rhythm\",\"metric\":null,\"slide_number\":null,\"take_ids\":[\"t-5\"],\"relation\":null},\"value\":null,\"value_unit\":null,\"polarity\":\"NEGATIVE\",\"verdict\":\"CONTRADICTED\",\"verdict_source\":\"CODE\",\"evidence_ids\":[\"e-d23b6e7e45\"],\"source_ids\":[],\"reason\":\"Take 5 말 속도·시간 배분 문제로 잡힌 구간 없음\",\"claim_key\":\"ck-896268cca4b17fe6\",\"claim_link_key\":\"lk-9756ca4827dea373\",\"evidence_basis\":{\"records\":[{\"pitch_id\":\"p-1\",\"script_version_id\":\"sv-1\",\"presentation_version_id\":\"pv-1\",\"standard_version\":1,\"takes\":[{\"take_id\":\"t-5\",\"results\":{\"TAKE_RESULT\":1,\"REVIEW\":1},\"rule_versions\":{\"GAZE\":\"gaze-1.3+1c10b82348a2\",\"SPEED\":\"pace-1.0+b24c6ce0efd4\",\"VOLUME\":\"volume-1.1+19f685ae6d67\",\"PAUSE\":\"volume-1.1+19f685ae6d67\",\"FILLER\":\"filler-1.0+3e62c0c87d2a\",\"TIME\":\"timing-1.1+305f8e44237d\"}}]}],\"sources\":[],\"screens\":[],\"fingerprint\":\"602c5e343dfabbb1\"},\"supersedes\":[]}],\"goal_result\":null,\"meta\":{\"schema_version\":\"1.0\",\"feature_version\":\"chat_agent-0.11.0\",\"model\":\"gpt-6-luna\",\"prompt_version\":\"ccdf3b7e6955\",\"corpus_version\":\"guides-8\",\"criteria_versions\":{\"chat_agent\":\"chat_agent-0.11.0+c6c6d632a5b0\"}},\"diagnostics\":{\"v\":1,\"request_id\":\"req-run-1-1\",\"run_id\":\"run-1\",\"turn_call\":1,\"versions\":{\"feature_version\":\"chat_agent-0.11.0\",\"prompt_version\":\"ccdf3b7e6955\",\"tool_schema\":\"tools-4\",\"corpus_version\":\"guides-8\"},\"steps\":[{\"seq\":1,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":2909,\"cached_input_tokens\":2906,\"output_tokens\":335,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":2,\"kind\":\"TOOL\",\"code\":\"search_guides\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"target_ids\":null,\"revisions\":null,\"outcome\":\"OK\",\"result_bytes\":3312,\"query_chars\":12,\"error_code\":null}},{\"seq\":3,\"kind\":\"TOOL\",\"code\":\"get_take_report\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"target_ids\":[\"t-5\"],\"revisions\":{\"t-5\":1},\"outcome\":\"OK\",\"result_bytes\":649,\"query_chars\":null,\"error_code\":null}},{\"seq\":4,\"kind\":\"TOOL\",\"code\":\"get_take_report\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"target_ids\":[\"t-5\"],\"revisions\":{\"t-5\":1},\"outcome\":\"OK\",\"result_bytes\":282,\"query_chars\":null,\"error_code\":null}},{\"seq\":5,\"kind\":\"MODEL\",\"code\":\"RESEARCH\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":4862,\"cached_input_tokens\":2639,\"output_tokens\":108,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":6,\"kind\":\"MODEL\",\"code\":\"ANSWER\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":7668,\"cached_input_tokens\":0,\"output_tokens\":414,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":null}},{\"seq\":7,\"kind\":\"CHECK\",\"code\":\"VERDICT_CONFLICT\",\"start_ms\":0,\"ms\":null,\"parent_seq\":6,\"detail\":{\"claim_index\":0,\"claim_kind\":\"ASSESSMENT\",\"field\":null,\"round\":0,\"result\":\"FIX_REQUESTED\",\"checked\":null,\"failed\":null,\"dropped\":null,\"actions_dropped\":null}},{\"seq\":8,\"kind\":\"MODEL\",\"code\":\"FIX\",\"start_ms\":0,\"ms\":0,\"parent_seq\":null,\"detail\":{\"model\":\"gpt-6-luna\",\"success\":true,\"input_tokens\":3925,\"cached_input_tokens\":0,\"output_tokens\":229,\"finish_reason\":\"STOP\",\"tool_call_count\":0,\"error_code\":null,\"fix_for\":[7]}},{\"seq\":9,\"kind\":\"CHECK\",\"code\":\"VERDICT_CONFLICT\",\"start_ms\":0,\"ms\":null,\"parent_seq\":8,\"detail\":{\"claim_index\":0,\"claim_kind\":\"ASSESSMENT\",\"field\":null,\"round\":1,\"result\":\"DROPPED\",\"checked\":null,\"failed\":null,\"dropped\":null,\"actions_dropped\":null}},{\"seq\":10,\"kind\":\"CHECK\",\"code\":\"SUMMARY\",\"start_ms\":0,\"ms\":null,\"parent_seq\":null,\"detail\":{\"claim_index\":null,\"claim_kind\":null,\"field\":null,\"round\":1,\"result\":null,\"checked\":3,\"failed\":1,\"dropped\":0,\"actions_dropped\":0}}],\"end\":{\"status\":\"DONE\",\"reason\":\"ANSWERED\",\"omitted_steps\":0},\"truncated\":false}}}\n"
+    ],
+    "status": 200
+   }
+  ]
+ },
+ "scenario": "guide-nervous"
+}

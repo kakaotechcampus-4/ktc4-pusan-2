@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "id": "scr-script-format",
+  "set": "eval",
+  "group": "screen",
+  "split": "dev",
+  "act": "should",
+  "title": "대본 단계 '어떤 형식으로 넣어?' — 장 구분 표시([1] · [슬라이드 1] · 슬라이드 1:) 사용법 자료",
+  "expect_refusal": false,
+  "baseline_type": "screen",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    },
+    "screens": {
+      "script-step": {
+        "name": "pitch_create",
+        "snapshot_id": "scr-3",
+        "step": "script",
+        "version_label": null,
+        "version_id": null,
+        "saved": null,
+        "draft": {
+          "title": "신제품 발표",
+          "slide_count": 8,
+          "script_chars": 0,
+          "time_limit_sec": null,
+          "criteria_text": null
+        },
+        "changed": []
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "대본은 어떤 형식으로 넣어?",
+      "screen": "script-step"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "usage-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "u-03",
+        "path": "source_ids",
+        "metric": "screen"
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "format",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "\\[1\\]|슬라이드 1",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 """User 비즈니스 로직.
 
-다른 도메인(auth)은 이 service 만 호출한다. repository·entity 를 직접 import 하지 않는다.
+다른 도메인(auth)은 이 service 를 호출한다.
 """
 
 import uuid
@@ -57,6 +57,16 @@ def update_settings(
     return user
 
 
+def has_tutorial_report(db: Session, user_id: uuid.UUID) -> bool:
+    """First Take 튜토리얼 리포트를 이미 받았는가. 계정당 한 번만 받는다."""
+    return repository.has_tutorial_report(db, user_id)
+
+
+def mark_tutorial_report(db: Session, user_id: uuid.UUID) -> None:
+    """튜토리얼 리포트를 받았다고 적는다. 커밋하지 않는다 — 리뷰 결과 저장과 한 트랜잭션이다."""
+    repository.mark_tutorial_report(db, user_id)
+
+
 def delete(db: Session, user: User) -> None:
     """회원을 지운다. 되살릴 수 없다.
 
@@ -66,8 +76,3 @@ def delete(db: Session, user: User) -> None:
     """
     repository.delete(db, user)
     db.commit()
-
-
-def exists(db: Session, user_id: uuid.UUID) -> bool:
-    """인증 뒤 탈퇴한 경우도 확인하도록 캐시 없이 DB를 읽는다."""
-    return repository.exists(db, user_id)

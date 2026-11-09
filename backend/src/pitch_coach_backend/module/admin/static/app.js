@@ -73,6 +73,22 @@ async function getJSON(path) {
   return response.json();
 }
 
+// 상태를 바꾸는 요청. 콘솔에서 보냈다는 헤더를 붙인다 — 없으면 BE 가 403 으로 막는다 (CSRF 방어)
+async function postAction(path) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'X-Admin-Action': '1' },
+  });
+  if (response.ok) return;
+  let reason = String(response.status);
+  try {
+    reason = `${response.status} ${(await response.json()).message}`;
+  } catch {
+    // 본문이 JSON 이 아니면 상태 코드만 보인다
+  }
+  throw new Error(reason);
+}
+
 // ---------- 요약 카드 ----------
 
 function renderCards(stats) {
@@ -149,10 +165,12 @@ function renderCounts(id, counts) {
   ], rows);
 }
 
+const PAGE_SIZE = 50;
+const shortText = (id) => `${id.slice(0, 8)}…${id.slice(-4)}`;
 const statusBadge = (status) => el('span', { className: `badge ${status}`, textContent: label(status) });
 
 function takeIdCell(take) {
-  const short = `${take.id.slice(0, 8)}…${take.id.slice(-4)}`;
+  const short = shortText(take.id);
   const button = el('button', { type: 'button', className: 'copy', title: take.id, textContent: short });
   button.addEventListener('click', async () => {
     try {
@@ -169,7 +187,7 @@ function takeIdCell(take) {
 }
 
 const subText = (text) => el('small', { className: 'muted block', textContent: text });
-const shortId = (id) => el('span', { title: id, textContent: `${id.slice(0, 8)}…${id.slice(-4)}` });
+const shortId = (id) => el('span', { title: id, textContent: shortText(id) });
 
 function stageCell(take) {
   if (take.analysis_stage == null) return '—';
@@ -223,6 +241,25 @@ const TAKE_SURVEY_COLUMNS = [
   ['문항 버전', (row) => row.question_version, true],
 ];
 
+const seconds = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}초`);
+const tokens = (n) => (n == null ? '—' : n.toLocaleString());
+// 코치 대화 실행의 하루 운영 기록. 오류는 실패(FAILED)만 센다. 취소 · 만료는 따로 본다
+const CHAT_DAY_COLUMNS = [
+  ['날짜', (row) => row.day],
+  ['사용자', (row) => row.users, true],
+  ['턴', (row) => row.runs, true],
+  ['완료', (row) => row.done, true],
+  ['일부', (row) => row.partial, true],
+  ['거절', (row) => row.refused, true],
+  ['실패', (row) => row.failed, true],
+  ['취소 · 만료', (row) => row.cancelled + row.expired, true],
+  ['평균 시간', (row) => seconds(row.avg_ms), true],
+  ['상위 5% 시간', (row) => seconds(row.p95_ms), true],
+  ['입력 토큰', (row) => tokens(row.input_tokens), true],
+  ['출력 토큰', (row) => tokens(row.output_tokens), true],
+  ['토큰 모름', (row) => row.tokens_missing, true],
+];
+
 // 문항 버전마다 한 줄. 문구가 바뀐 앞뒤 응답을 섞어 평균 내지 않는다
 function renderTakeSurveySummary(rows) {
   const node = document.getElementById('take-survey-summary');
@@ -264,7 +301,7 @@ async function loadFeedbackPage(id, offset) {
   const error = document.getElementById(`${id}-error`);
   previous.disabled = next.disabled = true;
   error.hidden = true;
-  const query = new URLSearchParams({ limit: '50', offset: String(offset) });
+  const query = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
   if (id === 'suggestions') {
     const category = document.getElementById('suggestions-category').value;
     if (category) query.set('category', category);
@@ -306,17 +343,28 @@ function showFeedbackError(error) {
   node.textContent = error.message;
   node.hidden = false;
 }
-for (const id of ['suggestions-category']) {
-  document.getElementById(id).addEventListener('change', () => {
-    loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
-  });
-}
+document.getElementById('suggestions-category').addEventListener('change', () => {
+  loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
+});
 
 // ---------- 연습 기록 ----------
 
 const LIVE_POLL_MS = 3000;
 const LIVE_STATUSES = ['READY', 'RUNNING'];
-const live = { takeId: null, timer: null, request: 0, segments: [], seconds: [], slideEvents: [], script: [] };
+const live = { request: 0 };
+// 지금 보는 Take 를 바꾼다. 요청 번호는 늦은 응답을 버리는 데 쓰니 그대로 둔다.
+// take 는 목록에서 연 때의 행이다 (복구 버튼을 고르는 데 쓴다)
+const resetLive = (take) =>
+  Object.assign(live, {
+    take,
+    takeId: take?.id ?? null,
+    timer: null,
+    segments: [],
+    seconds: [],
+    slideEvents: [],
+    script: [],
+  });
+resetLive(null);
 const scriptLoad = { request: 0 };
 
 function clock(ms) {
@@ -351,13 +399,14 @@ function liveButton(take) {
 function openLive(take) {
   clearTimeout(live.timer);
   live.request += 1;
-  Object.assign(live, { takeId: take.id, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
+  resetLive(take);
   document.getElementById('live-title').textContent =
     `${take.user_name} · ${take.pitch_title} · ${take.take_number}회차`;
   document.getElementById('live-error').hidden = true;
   const panel = document.getElementById('live');
   panel.hidden = false;
   renderLive(take.status);
+  renderRecovery(take);
   loadScript();
   pollLive();
   loadResults();
@@ -369,7 +418,7 @@ function closeLive() {
   live.request += 1;
   results.request += 1;
   scriptLoad.request += 1;
-  Object.assign(live, { takeId: null, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
+  resetLive(null);
   document.getElementById('live').hidden = true;
 }
 
@@ -576,6 +625,73 @@ document.getElementById('export-take').addEventListener('click', () => {
   if (live.takeId) downloadExport();
 });
 
+// ---------- 복구 ----------
+
+// 목록에서 연 때의 상태로 버튼을 고른다. 누르기 전에 한 번 더 묻고, 결과는 새로고침해 본다
+const STARTED = '시작했습니다. 잠시 뒤 새로고침해 상태를 확인하세요.';
+const RECOVERIES = [
+  {
+    // 멈춘 연습인지(마지막 활동 뒤 이탈 대기 + 10분)는 BE 가 다시 본다
+    id: 'end-stuck',
+    shows: (take) => take.status === 'RUNNING',
+    path: (takeId) => `api/takes/${takeId}/abandon`,
+    confirm: '진행 중으로 멈춘 연습을 이탈로 끝냅니다. 분석하지 않아 리포트가 생기지 않습니다.',
+    done: '끝냈습니다. 새로고침하면 실패한 연습에 보입니다.',
+  },
+  {
+    id: 'retry-finalize',
+    shows: (take) => take.status === 'FAILED' && take.analysis_stage === 'FINALIZING',
+    path: (takeId) => `api/takes/${takeId}/finalize/retry`,
+    confirm: 'Take 결과를 1초 원자료로 다시 만듭니다. 성공하면 채점 · 리뷰까지 이어 갑니다.',
+    done: STARTED,
+  },
+  {
+    id: 'rescore-held',
+    shows: (take) => take.analysis_hold_reason === 'COVERAGE_RESCORE_FAILED',
+    path: (takeId) => `api/takes/${takeId}/coverage/rescore`,
+    confirm:
+      '보존한 병합 후보로 재채점을 한 번 부릅니다. 성공하면 보류를 풀고 확인 · 리뷰로 이어 갑니다.',
+    done: STARTED,
+  },
+];
+
+function renderRecovery(take) {
+  document.getElementById('recovery-done').textContent = '';
+  document.getElementById('recovery-error').hidden = true;
+  let shown = false;
+  for (const action of RECOVERIES) {
+    const button = document.getElementById(action.id);
+    button.hidden = !(take && action.shows(take));
+    button.disabled = false;
+    shown ||= !button.hidden;
+  }
+  document.getElementById('recovery').hidden = !shown;
+}
+
+async function recover(action) {
+  const takeId = live.takeId;
+  if (!takeId || !window.confirm(action.confirm)) return;
+  const button = document.getElementById(action.id);
+  const done = document.getElementById('recovery-done');
+  const error = document.getElementById('recovery-error');
+  button.disabled = true;
+  error.hidden = true;
+  try {
+    await postAction(action.path(takeId));
+    if (takeId !== live.takeId) return;
+    done.textContent = action.done;
+  } catch (failure) {
+    if (takeId !== live.takeId) return;
+    error.textContent = `시작하지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+    button.disabled = false;
+  }
+}
+
+for (const action of RECOVERIES) {
+  document.getElementById(action.id).addEventListener('click', () => recover(action));
+}
+
 function ratios(measured) {
   const entries = Object.entries(measured);
   if (!entries.length) return '—';
@@ -738,10 +854,11 @@ const SECTIONS = [
   }],
   ['api/takes/stuck', (rows) => renderTable('stuck-takes', TAKE_COLUMNS, rows)],
   ['api/takes/stalled-analysis', (rows) => renderTable('stalled-analyses', TAKE_COLUMNS, rows)],
-  ['api/takes?status=FAILED&limit=50', (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
-  ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
+  [`api/takes?status=FAILED&limit=${PAGE_SIZE}`, (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
+  [`api/takes?limit=${PAGE_SIZE}`, (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
   ['api/take-surveys/summary', renderTakeSurveySummary],
+  ['api/chat/days', (rows) => renderTable('chat-days', CHAT_DAY_COLUMNS, rows, '아직 끝난 대화 실행이 없습니다')],
 ];
 
 async function load() {
@@ -749,10 +866,10 @@ async function load() {
   error.hidden = true;
   const requests = SECTIONS.map(([path]) => getJSON(path));
   const feedbackRequests = Object.keys(feedbackPages).map((id) => loadFeedbackPage(id, 0));
-  const results = await Promise.allSettled(requests);
+  const settled = await Promise.allSettled(requests);
   await Promise.all(feedbackRequests);
   const failures = [];
-  results.forEach((result, i) => {
+  settled.forEach((result, i) => {
     if (result.status !== 'fulfilled') {
       failures.push(result.reason.message);
       return;

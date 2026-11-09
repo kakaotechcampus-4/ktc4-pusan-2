@@ -181,7 +181,6 @@ def load_finalize_source(
         segments=rows.segments,
         utterance_ends=rows.utterance_ends,
         events=rows.events,
-        raw_data_consent=rows.raw_data_consent,
     )
 
 
@@ -198,11 +197,6 @@ def recovery_request(db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
         source.events,
         replay=replay,
     )
-
-
-class StoreFinalizeExport:
-    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
-        return recovery_request(db, take_id)
 
 
 def save_take_result(

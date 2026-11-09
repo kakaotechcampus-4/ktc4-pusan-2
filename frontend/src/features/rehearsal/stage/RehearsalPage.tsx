@@ -31,6 +31,7 @@ import {
 } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
+import { autoEndState, type AutoEndNotice, type AutoEndReason } from '@/shared/lib/autoEnd';
 import { formatDuration } from '@/shared/lib/clock';
 import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
@@ -64,9 +65,17 @@ import {
 import { canEnd } from './canEnd';
 import { sendEnding, type Ending } from './sendEnding';
 import { useEndConfirm } from './useEndConfirm';
+import { StageLiveBadge } from './StageLiveBadge';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
-import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
+import {
+  CONNECT_SLOW_MS,
+  hasCamera,
+  hasLiveAudio,
+  isRehearsalRunning,
+  startGate,
+  type StartGate,
+} from './startGate';
 import { openStageDevices } from './openDevices';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
@@ -235,7 +244,7 @@ export function RehearsalPage() {
    * 아래 `useSttStream` 이 `ready` 를 알려 주므로 한 렌더 늦게 바뀝니다
    */
   const [started, setStarted] = useState(false);
-  const running = stageReady && phase === 'RUNNING' && started;
+  const running = isRehearsalRunning(stageReady, phase, started);
   /** 첫 연결이 안 될 때 '다시 시도'가 올립니다. 소켓을 새로 만듭니다 */
   const [connectAttempt, setConnectAttempt] = useState(0);
   /** `ready` 를 `CONNECT_SLOW_MS` 넘게 기다렸다 */
@@ -267,9 +276,14 @@ export function RehearsalPage() {
   /**
    * 서버가 Take 를 자동으로 끝냈을 때(말 없음 · 최대 시간) 끝내기 버튼과 같은 흐름을 탑니다.
    * `finish` 는 아래에서 매 렌더 새로 만들어지는 함수라 ref 로 최신 것을 부릅니다.
+   *
+   * 이유는 분석 대기 화면이 알립니다 (#925). 무대에서는 서버 문구가 상태 칸에 잠깐 뜨고 바로 넘어가서
+   * 사용자가 "목표 시간보다 일찍 끝났다"고만 느낍니다. 라우터 state 로 넘겨 그 화면이 `role="alert"` 로 띄웁니다
    */
   const finishRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const onAutoEnd = useCallback(() => {
+  const autoEndRef = useRef<AutoEndNotice | null>(null);
+  const onAutoEnd = useCallback((reason: AutoEndReason, message: string) => {
+    autoEndRef.current = autoEndState(reason, message).autoEnd;
     finishRef.current().catch((e: unknown) => {
       console.error('[rehearsal] 자동 종료 처리 실패', e);
       setEndError(toMessage(e));
@@ -714,7 +728,12 @@ export function RehearsalPage() {
     try {
       await sendEnding(takeId, id, ending, endTake.mutateAsync);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
-      navigate(`/takes/${takeId}/processing`, { replace: true });
+      // 서버가 자동으로 끝냈으면 그 이유를 같이 넘깁니다 — 분석 대기 화면이 알립니다
+      const notice = autoEndRef.current;
+      navigate(`/takes/${takeId}/processing`, {
+        replace: true,
+        state: notice ? autoEndState(notice.reason, notice.message) : undefined,
+      });
     } catch (e) {
       // 서버가 이미 끝낸 Take 입니다 — 창을 닫아 끝났는데(닫은 탭을 늦게 복원) 끝내기를 눌렀습니다.
       // 다시 보내도 같아서 재시도 화면이 아니라 실패 화면으로 갑니다
@@ -815,6 +834,9 @@ export function RehearsalPage() {
               />
             )}
             <header className="stage-head">
+              {/* 자리를 늘 잡아 둡니다 — 끼었다 빠지면 끝낼 때 타이머 · 진행 막대가 옆으로 밀립니다.
+                  발표 중이라는 건 h1 이 이미 알려 주어 화면 읽기 프로그램에는 감춥니다 */}
+              <StageLiveBadge running={running} />
               <span className="elapsed" ref={elapsedRef}>
                 00:00
               </span>

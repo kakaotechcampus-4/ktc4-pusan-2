@@ -40,8 +40,10 @@ export function GazeSetupView({
 }) {
   return (
     <div className="relative h-full w-full">
+      {/* 전체 화면 보정 시 루트 여백을 해제해 오른쪽 밝은 띠를 없앱니다. */}
       <div
         ref={frameRef}
+        data-gaze-overlay={overlay ? '' : undefined}
         className={
           overlay
             ? 'fixed inset-0 z-50 bg-stage-deep'
@@ -66,7 +68,7 @@ export function GazeSetupView({
           <button
             type="button"
             onClick={onCancel}
-            className="absolute right-4 bottom-4 rounded-full border border-stone/60 bg-stage/80
+            className="absolute right-4 bottom-4 rounded-full border border-ink-stage/40 bg-stage/80
                      px-3 py-1 text-xs text-ink-stage/80 hover:bg-stage"
           >
             그만하기 · Esc

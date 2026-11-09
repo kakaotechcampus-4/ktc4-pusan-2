@@ -18,9 +18,9 @@ import {
   NotFoundPage,
   MyPage,
   TakesPage,
-  ComparisonPage,
 } from './LazyScreens';
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, Outlet, ScrollRestoration } from 'react-router';
+import { TakeComparisonRedirect } from '@/features/report/TakeComparisonRedirect';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
 import { DesktopGate } from './DesktopGate';
@@ -28,8 +28,10 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { AppHeader } from '@/shared/ui/AppHeader';
+import { MAIN_ID } from '@/shared/ui/SkipLink';
 import { HomePage } from '@/features/pitch/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
+import { ChatAgentHost } from '@/features/chat/ChatAgentHost';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -64,7 +66,7 @@ const routes = [
   { path: '/takes/:takeId/confirm',    title: '대본 확인 | 피치코치', element: <ConfirmPage /> },
   { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <RetryPage /> },
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <ReportPage /> },
-  { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <ComparisonPage /> },
+  { path: '/pitch/:id/comparison',     title: 'Take 기록 | 피치코치', element: <TakeComparisonRedirect /> },
   { path: '/me',          title: '마이페이지 | 피치코치', element: <MyPage /> },
   { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <PolicyPage kind="privacy" /> },
   { path: '/terms',       title: '이용약관 | 피치코치', element: <PolicyPage kind="terms" /> },
@@ -100,25 +102,28 @@ const practicePaths = [
 ];
 
 // 홈과 같은 상단바(AppHeader)를 얹는 화면. 메뉴를 옮기거나 기록을 열어도 상단바가 바뀌지 않게 합니다.
-// 장치 점검 · 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다 (장치 점검은 #706 에서 단순화하며 같이 정리)
+// 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다
 const appHeaderPaths = [
   '/',
   '/pitches',
   '/takes',
   '/me',
   '/takes/:takeId/retry',
-  '/pitch/:id/comparison',
   '/pitch/new',
   '/pitch/:id/edit',
+  '/pitch/:pitchId/device-check',
 ];
 
 const screenRoutes = routes.map((route) => {
   const screen = (
     <Suspense
       fallback={
-        <p role="status" className="bg-panel p-8 text-ink">
-          화면을 불러오고 있어요.
-        </p>
+        // 상단바가 먼저 그려져도 건너뛰기 링크가 갈 곳이 있도록 본문 자리를 지킵니다
+        <main id={MAIN_ID} tabIndex={-1} className="flex-1 bg-panel text-ink">
+          <p role="status" className="p-8">
+            화면을 불러오고 있어요.
+          </p>
+        </main>
       }
     >
       {route.element}
@@ -140,21 +145,10 @@ const screenRoutes = routes.map((route) => {
         element: (
           <PageTitle title={route.title}>
             <LaunchGate>
-              {/* 분석 대기 · 대본 확인은 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
+              {/* 이름 · 로그아웃 줄은 리허설 무대에만 얹습니다. 분석 대기 · 대본 확인은 화면 전체가 그림이고,
+                  리포트는 화면 안에서 공용 헤더를 표시합니다 */}
               <RequireSession
-                showHeader={
-                  ![
-                    '/',
-                    '/pitches',
-                    '/pitch/new',
-                    '/pitch/:id/edit',
-                    '/takes/:takeId/processing',
-                    // 리포트는 화면 안에서 공용 헤더를 표시합니다.
-                    '/takes/:takeId',
-                    '/takes/:takeId/confirm',
-                  ].includes(route.path)
-                }
-                bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
+                stageBar={['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
                 header={appHeaderPaths.includes(route.path) ? <AppHeader /> : undefined}
               />
             </LaunchGate>
@@ -169,4 +163,20 @@ export const appRoutes = screenRoutes.map((route) =>
     ? { ...route, element: <DesktopGate>{route.element}</DesktopGate> }
     : route,
 );
-export const router = createBrowserRouter(appRoutes);
+// 모든 화면 위에 늘 붙어 있는 층입니다. 화면을 옮겨도 채팅 상태가 남고, 로그인 · 기기 확인은 화면마다 그대로입니다.
+// 오류 화면(RouteLoadError)은 화면마다 있고 채팅은 자기 오류 경계를 가져서, 이 층에는 errorElement 를 두지 않습니다
+// 제품 라우터와 회귀 테스트가 같은 루트 층을 사용하도록 분리합니다.
+export const appRouterShell = (
+  <>
+    <Outlet />
+    <ScrollRestoration />
+    <ChatAgentHost />
+  </>
+);
+
+export const router = createBrowserRouter([
+  {
+    element: appRouterShell,
+    children: appRoutes,
+  },
+]);

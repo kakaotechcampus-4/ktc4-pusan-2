@@ -5261,6 +5261,17 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/AreaResult-Input"
             },
+            "propertyNames": {
+              "enum": [
+                "GAZE",
+                "SPEED",
+                "VOLUME",
+                "PAUSE",
+                "FILLER",
+                "CONTENT",
+                "TIME"
+              ]
+            },
             "title": "Areas",
             "type": "object"
           },
@@ -5878,6 +5889,95 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/agent/turn": {
+      "post": {
+        "description": "요청 · 스트림 줄 · 끝 줄의 모양은 `docs/ai/features/chat-agent.md` 5절과 코어 예시(`features/chat_agent/examples/`)가 기준이다. 정상 응답은 `application/x-ndjson` 스트림(줄마다 JSON 하나, 끝 줄 `final` 또는 `error` 하나)이고, 스트림을 열기 전 오류는 `{\"error\": {\"code\", \"message\"}}` 다.",
+        "operationId": "turn_agent_turn_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "description": "TurnRequest — docs/ai/features/chat-agent.md 5-3, 예시 request_*.json",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {}
+            },
+            "description": "진행 · 문장 줄과 끝 줄(NDJSON)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "실행 상태가 맞지 않음(AGENT_STATE_INVALID)"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "본문 · 기본 자료가 큼(AGENT_CONTEXT_TOO_LARGE)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "대화 실행 자리 없음(AGENT_BUSY)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "꺼짐 · 서명 키 없음(AGENT_DISABLED) · 모델 없음(LLM_UNAVAILABLE)"
+          }
+        },
+        "summary": "대화 에이전트 한 턴 (NDJSON 스트림)",
+        "tags": [
+          "chat_agent"
+        ]
+      }
+    },
     "/coach/evaluate": {
       "post": {
         "operationId": "evaluate_coach_evaluate_post",

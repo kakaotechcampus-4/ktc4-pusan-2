@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import ScriptSlide
+from pitch_coach_backend.module.take import controller as take_controller
 from pitch_coach_backend.module.take.ai_response import CoverageCallError
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT, TakeRepository
@@ -352,3 +353,20 @@ def test_late_rescore_after_review_started_changes_nothing(
     assert (result.revision, len(result.payload["confirmations"])) == (0, 1)
     assert _state(db_session, take)[0] == "REVIEWING"
     assert started == []
+
+
+def test_send_holds_no_transaction_while_waiting_for_ai(
+    client, db_session, take, auth_headers, monkeypatch
+):
+    in_transaction: list[bool] = []
+
+    async def send(take_id, user_id, answers):
+        in_transaction.append(db_session.in_transaction())
+        return "REVIEWING"
+
+    monkeypatch.setattr(take_controller, "send_confirmations_service", send)
+
+    response = _send(client, take, auth_headers, [ANSWER])
+
+    assert response.status_code == 200
+    assert in_transaction == [False]

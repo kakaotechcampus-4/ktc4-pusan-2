@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "id": "fail-fix-number",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "답 검사에 걸린 숫자를 한 번 고쳐 통과(첫 답의 '28%'를 '35%'로 바꿔 넣음) — 고친 답은 다시 검사해 통과",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 3장 청중 시선 비율이 몇 %였어?",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "corrupt_answer",
+          "from_text": "28%",
+          "to_text": "35%"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "check-caught",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "CHECK:NUMBER_MISMATCH",
+        "path": "diag"
+      },
+      {
+        "check_id": "fix-called",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "MODEL:FIX",
+        "path": "diag"
+      },
+      {
+        "check_id": "fixed-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "28%",
+        "grader": "number",
+        "derive": "t-5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "no-wrong-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "35%",
+        "grader": "number"
+      },
+      {
+        "check_id": "question-not-unverifiable",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "UNVERIFIABLE",
+        "grader": "template",
+        "note": "값을 묻는 질문을 '이 기록으로는 확인할 수 없어요' 판단으로 답하지 않는다(값이 기록에 있다)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

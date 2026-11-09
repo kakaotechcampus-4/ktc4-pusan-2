@@ -1,14 +1,14 @@
 """Take 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록 · 리포트."""
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Row
+from sqlalchemy import ColumnElement, Row
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
+from pitch_coach_backend.module.pitch.entity import Pitch, ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
     NonExistentPitch,
     NonExistentPresentationVersion,
@@ -16,7 +16,7 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptNotParsed,
     SlideCountMismatch,
 )
-from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import lookup as pitch_lookup
 from pitch_coach_backend.module.take.dto import (
     ActiveTakeDTO,
     ActiveTakeResponseDTO,
@@ -37,9 +37,21 @@ from pitch_coach_backend.module.take.exception import (
     TakeNotStarted,
     TakeSessionMismatch,
     TakeTimeOutOfRange,
+    TutorialAnalysisRunning,
+    TutorialReportUsed,
 )
 from pitch_coach_backend.module.take.measures import take_count, take_metric
-from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
+from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service.lookup import pitch_has_running_analysis
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    COMPLETED,
+    IN_PROGRESS_STATUSES,
+    READY,
+    REVIEW,
+    TAKE_RESULT,
+)
+from pitch_coach_backend.module.user import service as user_service
 
 # 시작 · 끝 시각으로 받는 범위의 여유. Take 를 만든 때보다 이만큼 앞부터 지금보다 이만큼 뒤까지
 # 받는다. FE 시계로 잰 값이라 서버 시계와 어긋날 수 있다. 앞뒤로 같은 여유를 둔다 — 끝내기 PUT 이
@@ -50,35 +62,30 @@ TAKE_TIME_TOLERANCE = timedelta(days=1)
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
 def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequestDTO):
     take_repository = TakeRepository(db)
-    pitch_repository = PitchRepository(db)
-
     # 버전 ID 가 이 pitch 의 것인지 확인한다. 없으면 다른 pitch 의 버전도 저장되고,
     # 아예 없는 ID 는 FK 위반(500)이 된다
-    presentation = pitch_repository.get_presentation_detail(
-        pitch_id, take_dto.presentation_version_id
+    presentation = pitch_lookup.presentation_in_pitch(
+        db, pitch_id, take_dto.presentation_version_id
     )
     if presentation is None:
         raise NonExistentPresentationVersion()
-    script = pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id)
+    script = pitch_lookup.script_in_pitch(db, pitch_id, take_dto.script_version_id)
     if script is None:
         raise NonExistentScript()
     # 슬라이드가 없으면 리허설이 대본을 띄울 수 없고 코치 · 분석도 장별로 나눌 수 없다
     if script.parse_status != ScriptParseStatus.DONE:
         raise ScriptNotParsed()
     # 장마다 슬라이드 한 쪽을 띄운다. 쪽수를 아직 모르는 옛 발표자료는 검사하지 않는다
-    if (
-        presentation.page_count is not None
-        and presentation.page_count != pitch_repository.count_slides(script.id)
+    if presentation.page_count is not None and presentation.page_count != pitch_lookup.count_slides(
+        db, script.id
     ):
         raise SlideCountMismatch()
 
     # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금).
     # 같은 세션으로 동시에 온 재시도도 여기서 줄을 서서 뒤의 요청이 앞의 Take 를 찾는다
-    pitch_repository.lock_for_new_version(pitch_id)
+    pitch_lookup.lock_for_new_version(db, pitch_id)
     if take_dto.client_session_id is not None:
-        existing_take = take_repository.get_by_client_session(
-            pitch_id, take_dto.client_session_id
-        )
+        existing_take = take_repository.get_by_client_session(pitch_id, take_dto.client_session_id)
         if existing_take is not None:
             if (
                 existing_take.mode,
@@ -98,9 +105,11 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
                 raise TakeAlreadyEnded()
             return existing_take
 
-    pitch = pitch_repository.get_by_id(pitch_id)
+    pitch = pitch_lookup.pitch_by_id(db, pitch_id)
     if pitch is None:
         raise NonExistentPitch()
+    if pitch.is_demo:
+        _check_tutorial_take(db, pitch)
 
     take_repository.abandon_ready_takes(pitch_id)
 
@@ -124,6 +133,20 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     return saved_take
 
 
+def _check_tutorial_take(db: Session, pitch: Pitch) -> None:
+    """튜토리얼 리포트는 계정당 한 번이다. 받았거나 받는 중이면 샘플 발표에서 새 Take 를 막는다.
+
+    리포트(리뷰)가 만들어진 횟수로 센다. 끊긴 연습은 분석하지 않아 리포트가 없으니 다시 할 수 있다.
+    받았다는 기록은 리뷰 결과 · Take 완료와 한 커밋이다(`review.save_review`). 그래서 분석 중인지를
+    먼저 본다 — 기록을 먼저 보면 두 조회 사이에 그 커밋이 끼어 둘 다 지나갈 수 있다.
+    발표 행을 잠근 뒤에 보므로 같은 발표의 Take 생성끼리는 차례로 판단한다.
+    """
+    if pitch_has_running_analysis(db, pitch.id, datetime.now(UTC)):
+        raise TutorialAnalysisRunning()
+    if user_service.has_tutorial_report(db, pitch.user_id):
+        raise TutorialReportUsed()
+
+
 def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUpdateRequestDTO):
     take_repository = TakeRepository(db)
     existing_take = take_repository.get_take(take_id)
@@ -135,8 +158,12 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
     changes = take_update_dto.model_dump(exclude_none=True)
 
     # 실시간 연결이 한 번도 붙지 않은 Take 는 끝내지 않는다. FE 는 첫 `ready` 를 받은 뒤에
-    # 발표를 시작하므로 남은 기록이 없다. 만든 지 10분이 지나면 BE 가 ABANDONED 로 끝낸다
-    if existing_take.status == "READY" and "ended_at" in changes:
+    # 발표를 시작하므로 남은 기록이 없다. 같은 발표에서 새 Take 를 만들거나 만든 지 10분이 지나면
+    # BE 가 ABANDONED 로 끝내는데, 그 Take 에는 첫 연결이 적는 시작 시각(`mark_started`)이 없다
+    never_started = existing_take.status == READY or (
+        existing_take.end_reason == "ABANDONED" and existing_take.started_at is None
+    )
+    if never_started and "ended_at" in changes:
         raise TakeNotStarted()
 
     # 떠난 것으로 끝낸 Take 에 온 끝내기다. 재연결을 포기하고 STT 없이 발표를 이어 간 FE 라
@@ -148,7 +175,7 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
     if (
         not abandoned_end
         and existing_take.status not in IN_PROGRESS_STATUSES
-        and (existing_take.status != "ANALYZING" or "event_logs" in changes)
+        and (existing_take.status != ANALYZING or "event_logs" in changes)
     ):
         raise TakeAlreadyEnded()
 
@@ -198,7 +225,7 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
         raise NonExistentTake()
     # 점검은 발표 전에 한다. 시작한 Take 의 기준값(평소 목소리 크기 등)을 바꾸면
     # 이미 잰 발표를 다른 기준으로 분석하게 된다
-    if existing_take.status != "READY":
+    if existing_take.status != READY:
         raise TakeAlreadyStarted()
 
     ## calibration result 로직
@@ -211,18 +238,13 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
         face_detected=calibration_dto.face_detected,
         mic_detected=calibration_dto.mic_detected,
         base_volume=calibration_dto.base_volume,
-        gaze_confidence=calibration_dto.gaze_confidence
+        gaze_confidence=calibration_dto.gaze_confidence,
     )
 
     saved_calibration = take_repository.save_calibration(calibration_data)
     db.commit()
 
     return saved_calibration.id
-
-
-def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
-    # 미션 생성 로직
-    pass
 
 
 def _percent_to_ratio(value: int | None) -> float | None:
@@ -235,21 +257,23 @@ def _achieved_mission_count(mission_ids: Any, results: Any) -> int:
     if not isinstance(mission_ids, list) or not isinstance(results, list):
         return 0
     fixed_ids = {mission_id for mission_id in mission_ids if isinstance(mission_id, str)}
-    return len({
-        result["mission_id"]
-        for result in results
-        if isinstance(result, dict)
-        and result.get("status") == "ACHIEVED"
-        and isinstance(result.get("mission_id"), str)
-        and result["mission_id"] in fixed_ids
-    })
+    return len(
+        {
+            result["mission_id"]
+            for result in results
+            if isinstance(result, dict)
+            and result.get("status") == "ACHIEVED"
+            and isinstance(result.get("mission_id"), str)
+            and result["mission_id"] in fixed_ids
+        }
+    )
 
 
 def list_takes_service(
     db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
 ) -> TakeHistoryResponseDTO:
     """Take 기록 · Take 비교 화면의 Take 목록. 남의 발표나 없는 발표를 주면 404 다."""
-    if pitch_id is not None and PitchRepository(db).get_owned(pitch_id, user_id) is None:
+    if pitch_id is not None and pitch_lookup.owned_pitch(db, pitch_id, user_id) is None:
         raise NonExistentPitch()
     rows = TakeRepository(db).list_started_takes(user_id, pitch_id)
     return TakeHistoryResponseDTO(
@@ -318,15 +342,13 @@ def _take_measures(take: Take, take_result: Mapping[str, Any] | None) -> TakeMea
     )
 
 
-def get_take_report_service(
-    db: Session, take_id: uuid.UUID, user_id: uuid.UUID
-) -> TakeReportDTO:
+def get_take_report_service(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> TakeReportDTO:
     take_repository = TakeRepository(db)
     owned = take_repository.get_owned_with_pitch_title(take_id, user_id)
     if owned is None:
         raise NonExistentTake()
     take, pitch_title = owned
-    payloads = take_repository.get_ai_payloads(take_id, ("TAKE_RESULT", "REVIEW"))
+    payloads = take_repository.get_ai_payloads(take_id, (TAKE_RESULT, REVIEW))
     return TakeReportDTO(
         take_id=take.id,
         pitch_id=take.pitch_id,
@@ -338,8 +360,8 @@ def get_take_report_service(
         analysis_stage=take.analysis_stage,
         review_status=take.review_status,
         analysis_hold_reason=take.analysis_hold_reason,
-        measures=_take_measures(take, payloads.get("TAKE_RESULT")),
-        review=payloads.get("REVIEW"),
+        measures=_take_measures(take, payloads.get(TAKE_RESULT)),
+        review=payloads.get(REVIEW),
     )
 
 
@@ -357,16 +379,21 @@ def has_report(db: Session, take: Take) -> bool:
 
     AI 리뷰가 실패하거나 건너뛰어도 측정 결과가 있으면 리포트가 있다.
     """
-    return take.status == "COMPLETED" and TakeRepository(db).has_take_result(take.id)
+    return take.status == COMPLETED and TakeRepository(db).has_take_result(take.id)
 
 
 def list_reported_takes(
-    db: Session, user_id: uuid.UUID, *, completed_after: datetime, exclude: set[uuid.UUID]
+    db: Session,
+    user_id: uuid.UUID,
+    *,
+    completed_after: datetime,
+    exclude_when: Callable[[ColumnElement[uuid.UUID]], ColumnElement[bool]],
 ) -> list[Row]:
-    """`completed_after` 이후에 끝난, 리포트를 볼 수 있는 사용자의 Take. `exclude` 는 뺀다.
+    """`completed_after` 이후에 끝난, 리포트를 볼 수 있는 사용자의 Take.
 
+    `exclude_when` 이 Take ID 열로 만든 조건이 참인 Take 는 같은 쿼리에서 뺀다.
     행은 take_id · pitch_id · pitch_title · take_number · completed_at 이다.
     """
     return TakeRepository(db).list_reported(
-        user_id, completed_after=completed_after, exclude=exclude
+        user_id, completed_after=completed_after, exclude_when=exclude_when
     )

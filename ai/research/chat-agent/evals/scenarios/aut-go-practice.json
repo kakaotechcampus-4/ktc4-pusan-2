@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "id": "aut-go-practice",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should",
+  "title": "'바로 발표할래' — 화면을 옮기지 않고 [연습 준비로] 버튼 카드만(START_PRACTICE BUTTON)",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "바로 발표할래",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "button-grade",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": "BUTTON",
+        "path": "items[type=START_PRACTICE].autonomy",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "button-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "card_types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-screen-move",
+        "observe": "db_diff",
+        "compare": "absent",
+        "expect": "conversation.practice_moves",
+        "path": "changed",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

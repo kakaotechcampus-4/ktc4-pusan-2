@@ -23,6 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,6 +40,10 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """발표 하나. 연습(Take)은 모두 이 아래에 달린다."""
 
     __tablename__ = "pitches"
+    __table_args__ = (
+        # 튜토리얼 샘플 발표는 사용자마다 하나다. 동시에 만들어도 하나만 들어간다
+        Index("uq_pitches_user_demo", "user_id", unique=True, postgresql_where=text("is_demo")),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
@@ -49,9 +54,15 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     presentation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     upper_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lower_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # First Take 튜토리얼 샘플 발표인가. 준비된 자료와 미리 만든 AI 결과로 만든다
+    # (service/tutorial.py)
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
 
 class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """발표 표준. 발표를 평가할 때 기준이 되는 표준 발표를 저장한다."""
+    """평가 기준 한 줄. 버전마다 순서대로 여러 행이다."""
 
     __tablename__ = "standards"
     __table_args__ = (
@@ -60,7 +71,7 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
     )
 
-    # 자식 쪽에 외래키를 건다. 
+    # 자식 쪽에 외래키를 건다.
     pitch_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
@@ -68,8 +79,8 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
 
-class StandardAnalyses(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
+class StandardAnalyses(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "standard_analyses"
     __table_args__ = (
         UniqueConstraint("pitch_id", "version", name="uq_standard_analyses_pitch_version"),
@@ -84,6 +95,7 @@ class StandardAnalyses(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     excluded: Mapped[Any] = mapped_column(JSONB, nullable=False)
     values: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
     meta: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
 
 class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """업로드된 발표자료 파일의 한 버전. 한 번 올리면 수정하지 않는다."""
@@ -152,7 +164,7 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    # 대본 원문 (업로드된 그대로, BOM 만 뗀 것). 파싱 기능 전에 올라온 행은 비어 있다 —
+    # 대본 원문 (업로드된 그대로). 파싱 기능 전에 올라온 행은 비어 있다 —
     # 그때는 S3 pitches/{pitch_id}/scripts/{version}.<확장자> 에 파일로만 올렸다
     content: Mapped[str | None] = mapped_column(Text)
     parse_status: Mapped[str] = mapped_column(

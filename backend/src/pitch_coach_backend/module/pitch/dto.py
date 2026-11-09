@@ -1,15 +1,13 @@
-
-import json
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal, Protocol
+from typing import Annotated, Protocol
 
 from fastapi import File, UploadFile
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
-from pitch_coach_backend.core.validation import reject_nul, reject_unstorable_json
+from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.take.dto import ScriptMode, TakeSummaryDTO
 
@@ -32,6 +30,7 @@ class PitchSaveRequestDTO(BaseModel):
     lower_deviation: int = Field(default=0, ge=0, le=MAX_DEVIATION_SEC)
     presentation_date: date | None = None
 
+
 class PitchInfoResponseDTO(BaseModel):
     pitch_id: uuid.UUID
     title: str
@@ -39,6 +38,9 @@ class PitchInfoResponseDTO(BaseModel):
     upper_deviation: int
     lower_deviation: int
     presentation_date: date | None = None
+    # First Take 튜토리얼 샘플 발표인가
+    is_demo: bool
+
 
 class PitchListItemDTO(BaseModel):
     pitch_id: uuid.UUID
@@ -48,12 +50,28 @@ class PitchListItemDTO(BaseModel):
     # 발표일은 생성 때 비워 둘 수 있다 (PitchSaveRequestDTO.presentation_date)
     presentation_date: date | None = None
     takes: list[TakeSummaryDTO]
+    # 지금 지울 수 있는가. 연습이나 분석이 도는 중이면 false 이고 삭제는 409 `PITCH_BUSY` 다
+    can_delete: bool
+    # First Take 튜토리얼 샘플 발표인가
+    is_demo: bool
+
 
 class PitchListResponseDTO(BaseModel):
     pitches: list[PitchListItemDTO]
-      
+
+
+class FirstTakeDTO(BaseModel):
+    """`POST /pitches/tutorials/first-take` 응답. 처음이면 만들고, 있으면 그 발표를 준다."""
+
+    pitch_id: uuid.UUID
+    # 이 계정이 튜토리얼 리포트를 이미 받았는가. true 면 샘플 발표에서 새 Take 를 만들 수 없다
+    # (409 `TUTORIAL_REPORT_USED`)
+    report_received: bool
+
+
 class UploadPresentationDTO(BaseModel):
     presentation_file: UploadFile = File(...)
+
 
 class UploadPresentationResultDTO(BaseModel):
     pitch_id: uuid.UUID
@@ -65,7 +83,7 @@ class UploadPresentationResultDTO(BaseModel):
 class ScriptCreateDTO(BaseModel):
     """대본 한 버전. FE 는 textarea 내용을 그대로 보낸다 (JSON 이라 인코딩 걱정이 없다).
 
-    길이·빈 값·NUL 검사는 service.validate_script_text 가 한다 — 여기서 pydantic 으로 막으면
+    길이·빈 값·문자 검사는 service.validate_script_text 가 한다 — 여기서 pydantic 으로 막으면
     422 VALIDATION_ERROR 로 나가 다른 대본 오류(400 INVALID_SCRIPT)와 코드가 갈린다.
     """
 
@@ -112,7 +130,7 @@ class ParseTicket:
     # 발표 제한 시간(ms). AI 가 장별 예상 시간을 이 합에 맞춰 나눈다. parse_meta 에도 남긴다
     target_ms: int | None
     # 파싱이 끝나면 이 발표의 다음 Take 코칭 계획을 요청한다 (`ScriptParseRunner.on_parsed`)
-    pitch_id: uuid.UUID | None = None
+    pitch_id: uuid.UUID
 
 
 class ParseSaved(StrEnum):
@@ -178,23 +196,28 @@ class ParseRequestedDTO(BaseModel):
     script_version_id: uuid.UUID
     parse_status: ScriptParseStatus
 
+
 class VersionDTO(BaseModel):
     id: uuid.UUID
     version: int
+
 
 class PresentationVersionDTO(VersionDTO):
     # 쪽수를 아직 채우지 않은 옛 발표자료는 None
     page_count: int | None
 
+
 class ParsedScriptDTO(VersionDTO):
     # 슬라이드로 나눈 장 수. 발표자료 쪽수와 같아야 짝이다
     slide_count: int
+
 
 class VersionSummaryDTO(BaseModel):
     pitch_id: uuid.UUID
     presentation_versions: list[PresentationVersionDTO]
     script_versions: list[VersionDTO]
     evaluation_versions: list[VersionDTO]
+
 
 class NewerScriptDTO(BaseModel):
     """연습에 쓸 대본보다 새로 올렸지만 아직 쓸 수 없는 대본. FE 가 왜 옛 대본인지 알린다."""
@@ -205,10 +228,12 @@ class NewerScriptDTO(BaseModel):
     parse_status: ScriptParseStatus
     error_code: ScriptParseErrorCode | None
 
+
 class PrepareMissionTargetDTO(BaseModel):
     metric: str
     operator: str
     value: float
+
 
 class PrepareMissionDTO(BaseModel):
     mission_id: uuid.UUID
@@ -222,6 +247,7 @@ class PrepareMissionDTO(BaseModel):
     # 리뷰한 Take 기준으로 쓴 문장이다
     reason: str | None
 
+
 class PrepareMissionsDTO(BaseModel):
     """이번 Take 에 실릴 미션. Take 를 시작할 때 다시 고르므로 그사이 리뷰가 끝나면 바뀔 수 있다."""
 
@@ -229,6 +255,7 @@ class PrepareMissionsDTO(BaseModel):
     source_take_number: int
     # 리뷰가 미션을 읽는 순서. 리뷰가 다음 미션을 내지 않았으면 빈 목록
     items: list[PrepareMissionDTO]
+
 
 class PrepareDTO(BaseModel):
     """장치 점검 화면이 Take 를 만들 때 쓰는 값. 피치 생성을 거치지 않고 들어와도 버전을 안다."""
@@ -250,9 +277,11 @@ class PrepareDTO(BaseModel):
     # Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 가 없으면 None
     missions: PrepareMissionsDTO | None
 
+
 class Versioned(Protocol):
     id: uuid.UUID
     version: int
+
 
 class PresentationDetailDTO(BaseModel):
     pitch_id: uuid.UUID
@@ -262,6 +291,8 @@ class PresentationDetailDTO(BaseModel):
     page_count: int | None
     description: str | None = None
     created_at: date
+
+
 class StandardTextDTO(BaseModel):
     standard_text: Annotated[
         str,
@@ -270,55 +301,9 @@ class StandardTextDTO(BaseModel):
     ]
 
 
-class StandardTargetDTO(BaseModel):
-    display: str
-    metric: str
-    operator: Literal["LTE", "GTE", "LT", "GT"]
-    value: float = Field(strict=True, allow_inf_nan=False)
-
-
-class StandardAIResponseDTO(BaseModel):
-    # AI의 표시 문장은 자르거나 다듬지 않는다. 조건과 targets의 display 짝이 달라질 수 있다.
-    display_criteria: list[
-        Annotated[
-            str,
-            StringConstraints(min_length=1, max_length=50, pattern=r"\S"),
-            AfterValidator(reject_nul),
-        ]
-    ] = Field(max_length=10)
-    excluded: list[Annotated[str, AfterValidator(reject_nul)]] | None = None
-    values: dict[str, Any]
-    targets: list[dict[str, Any]] = Field(max_length=20)
-    meta: dict[str, Any]
-
-    @model_validator(mode="after")
-    def _analysis_is_storable(self) -> StandardAIResponseDTO:
-        for key, value in self.values.items():
-            if key == "script_used":
-                if value is not None and type(value) is not bool:
-                    raise ValueError("script_used는 bool 또는 null이어야 합니다.")
-            elif value is not None and not isinstance(value, str):
-                raise ValueError("요소 값은 문자열 또는 null이어야 합니다.")
-        for target in self.targets:
-            checked = StandardTargetDTO.model_validate(target)
-            if checked.display not in self.display_criteria:
-                raise ValueError("목표에 해당하는 표시 기준이 없습니다.")
-        version = self.meta.get("schema_version")
-        if not isinstance(version, str) or version.split(".", 1)[0] != "1":
-            raise ValueError("지원하지 않는 평가 기준 응답 버전입니다.")
-        if not isinstance(self.meta.get("feature_version"), str):
-            raise ValueError("기능 버전이 없습니다.")
-        if self.meta.get("model") is not None and not isinstance(
-            self.meta["model"], str
-        ):
-            raise ValueError("모델 정보가 올바르지 않습니다.")
-        payload = self.model_dump(mode="python")
-        reject_unstorable_json(payload)
-        json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
-        return self
-
 class StandardDTO(BaseModel):
     standard: str
+
 
 class StandardInputDTO(BaseModel):
     standard: Annotated[
@@ -329,14 +314,13 @@ class StandardInputDTO(BaseModel):
         AfterValidator(reject_nul),
     ]
 
-class StandardParseResponseDTO(BaseModel):
-    standards: list[str]
-    except_standard: str | None = None
+
 class StandardsSaveRequestDTO(BaseModel):
     # 사용자가 고친 표시 기준. 화면에 보인 순서 그대로 한 줄씩 온다. 한 줄이 `standards.title`
     # (String(50)) 한 행이 되고 10개까지다 (evaluation-criteria.md 15절). 줄을 합쳐 다시 분석하므로
     # 한 줄 안에 줄바꿈은 받지 않는다
     standards: list[StandardInputDTO] = Field(min_length=1, max_length=10)
+
 
 class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID

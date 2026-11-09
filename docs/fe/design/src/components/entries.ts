@@ -23,13 +23,18 @@ export const componentEntries: GuideComponent[] = [
     summary: '동작은 Button, 화면 이동은 ButtonLink. 세 종류 × 두 크기.',
     states: [
       view('variants', '종류 · 크기', 'primary · secondary · quiet와 md · sm, 그리고 ButtonLink.'),
-      view('disabled', '막힘 · 진행 중', '누를 수 없을 때와 처리 중 문구.'),
+      view(
+        'disabled',
+        '막힘 · 진행 중',
+        '처음부터 누를 수 없으면 disabled, 누른 버튼이 처리 중이 되면 aria-disabled(문구도 바꾼다).',
+      ),
     ],
     rules: [
       '한 덩어리에 primary는 하나만 둔다. 나머지는 secondary, 덜 중요한 것은 quiet.',
       '화면을 옮기면 ButtonLink(라우터 링크), 그 자리에서 무언가 하면 Button이다.',
       'Button은 기본으로 type="button"이다. 폼을 제출할 때만 type="submit"을 준다.',
       '처리 중에는 막고 문구를 "…하는 중…"으로 바꾼다. 같은 요청을 두 번 보내지 않는다.',
+      '누른 버튼이 그 자리에서 막히면(처리 중 · 끝 장) disabled 대신 aria-disabled를 준다. aria-disabled는 비활성 상태를 알린다. CSS로 포인터 입력을 막고 Button이 Enter · Space의 click을 onClick에 넘기지 않으며 기본 제출도 막는다(#874 리뷰). disabled는 쥐고 있던 초점을 body로 떨어뜨려 창 밖으로 빠진다(#818 · #845). 모양은 둘이 같다.',
       'sm(36px)은 표 · 카드 안처럼 좁은 곳에서만 쓴다. 기본은 md(44px).',
     ],
     tokens: ['coral-deep', 'ink', 'panel', 'cream'],
@@ -39,6 +44,7 @@ export const componentEntries: GuideComponent[] = [
       ['variant', "'primary' | 'secondary' | 'quiet'", '기본 primary'],
       ['size', "'sm' | 'md'", '기본 md'],
       ['disabled', 'boolean', '회색 바탕 · 그림자 없음'],
+      ['aria-disabled', 'boolean', 'disabled와 같은 모양. 초점은 버튼에 남는다(누른 뒤 막힐 때)'],
       ['ref (Button)', 'Ref<HTMLButtonElement>', '창을 닫은 뒤 초점을 되돌릴 때'],
       ['to (ButtonLink)', 'string', '라우터 경로'],
     ],
@@ -165,7 +171,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     group: components,
     status: '제품에 있음',
     summary:
-      '홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 리포트 · 피치 생성이 같이 쓰는 머리. 사용방법 창을 연다.',
+      '홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 리포트 · 피치 생성 · 시작 전 세팅이 같이 쓰는 머리. 사용방법 창을 연다.',
     states: [
       view('home', '내 피치', '홈에 있을 때.'),
       view('takes', 'Take 기록', 'Take 기록에 있을 때.'),
@@ -174,8 +180,8 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     rules: [
       '지금 화면의 메뉴는 코랄 밑줄 · 굵게와 aria-current="page"로 표시한다.',
       '바탕은 기본 지면(bg-panel)으로 고정한다. 아래 화면이 밝은 지면이어도 바꾸지 않는다.',
-      '시작 전 세팅 · 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 두지 않는다. 피치 생성에는 #738부터 둔다. 시작 전 세팅은 단순화할 때(#706) 같이 정한다.',
-      '높이(약 85px)는 styles.css의 --spacing-app-header와 맞춘다. 피치 생성 화면이 그 값으로 남은 높이를 계산한다.',
+      '리허설 · 분석 대기 · 대본 확인은 집중 화면이라 두지 않는다. 피치 생성에는 #738, 시작 전 세팅에는 #694부터 둔다.',
+      '높이(약 85px)는 styles.css의 --spacing-app-header와 맞춘다. 피치 생성 화면이 그 값으로 남은 높이를 계산하고, 시작 전 세팅은 그만큼 빼고도 시작 버튼이 첫 화면에 들어오게 맞춘다.',
     ],
     tokens: ['panel', 'ink', 'coral', 'line-strong'],
     sources: ['frontend/src/shared/ui/AppHeader.tsx', 'frontend/src/app/routes.tsx'],
@@ -264,7 +270,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     rules: [
       '브라우저 기본 <dialog>를 showModal()로 연다. 뒤 화면은 막히고 Esc로 닫힌다.',
       '되돌리기 어려운 쪽이 확인 버튼이면 처음 초점은 취소에 둔다(autoFocus).',
-      '처리 중에는 버튼과 Esc를 막고, 끝나면 결과를 알린 뒤 닫는다.',
+      '처리 중에는 버튼과 Esc를 막고, 끝나면 결과를 알린 뒤 닫는다. 버튼은 aria-disabled로 막아 누른 버튼이 초점을 쥐게 한다(#845).',
       '제목 · 본문을 aria-labelledby · aria-describedby로 잇는다.',
       '지금 제품의 다른 확인(브라우저 기록 지우기 · 계정 삭제)은 브라우저 confirm()이다. 새로 만들면 이 창을 쓴다.',
       '닫을 때 close()는 useLayoutEffect 정리에서 부른다. <dialog>가 문서에서 빠지기 전에 닫아야 브라우저가 초점을 연 버튼으로 돌려준다(useEffect 정리는 DOM을 뗀 뒤라 초점이 페이지 처음으로 간다, #771).',
@@ -283,6 +289,57 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     busy={replacing.busy}
     onConfirm={confirmReplace}
     onCancel={cancelReplace}
+  />
+)}`,
+  },
+  {
+    kind: 'component',
+    id: 'delete-pitch-dialog',
+    title: '피치 삭제 창',
+    group: dialogs,
+    status: '시안',
+    summary:
+      '홈 더보기 메뉴의 삭제(#807). 영구 삭제라 되돌릴 수 없다는 것과 함께 지워지는 것을 알린다.',
+    states: [
+      view(
+        'open',
+        '열림',
+        '피치 제목 · 되돌릴 수 없음 · 함께 지워지는 것 · 남는 설문 답. 처음 초점은 취소.',
+      ),
+      view('busy', '처리 중', '취소 · 삭제를 aria-disabled로 막고 Esc도 막는다.'),
+      view(
+        'error',
+        '실패',
+        '창을 닫지 않고 실패를 알린다(role="alert"). 원인별 공통 오류 문구를 붙인다. 다시 누를 수 있다.',
+      ),
+    ],
+    rules: [
+      '확인 창(ReplaceTakeDialog)과 같은 틀이다. showModal()로 열고 useLayoutEffect 정리에서 close()한다.',
+      '제목 · 피치 이름 · 본문을 aria-labelledby · aria-describedby로 잇는다.',
+      '되돌릴 수 없는 쪽이 삭제라 처음 초점은 취소에 둔다(autoFocus).',
+      '처리 중 버튼은 disabled 대신 aria-disabled다. 누른 버튼이 초점을 쥔 채 막힌다(#845). 요청은 한 번만 보낸다.',
+      'BE가 409 `PITCH_BUSY`로 거절하면(창을 연 사이 연습 · 분석이 시작됨) 지우지 않고 그 이유만 알린다.',
+      '그 밖의 실패는 "피치를 삭제하지 못했어요." 뒤에 원인별 공통 오류 문구(toMessage)를 붙인다. 로그인이 끝난 것처럼 다시 시도해도 안 되는 실패를 같은 말로 덮지 않는다.',
+      '설문 답은 피치를 지워도 남는다(BE take_surveys.take_id SET NULL). "모두 함께 지워져요"가 그것까지 가리지 않게 Take가 있는 피치에는 "지워지지 않고 기한까지 따로 보관돼요"를 한 줄 더 적는다. 설문은 동의하지 않아도 리포트에서 남길 수 있고 홈 목록은 Take별 설문 여부를 모르므로, 동의 여부로 가리지 않고 "남기셨다면"으로 적는다.',
+      '닫힌 뒤 초점은 부모가 옮긴다. 취소면 연 ··· 버튼, 지웠으면 다음 줄의 제목이다.',
+    ],
+    knownIssues: [
+      '보관 기한 "2026년 12월 31일"은 동의 안내(테스트 참여 안내 창)와 같은 임시 값이다. BE 삭제 일정과 함께 팀이 정하면 두 곳을 같이 고친다(제품은 SURVEY_RETENTION_UNTIL 한 곳).',
+    ],
+    tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
+    sources: ['frontend/src/features/pitch/DeletePitchDialog.tsx'],
+    file: 'src/ui/dialogs/DeletePitchDialog.tsx',
+    props: [
+      ['pitchTitle · takeCount', 'string · number', '알릴 피치'],
+      ['busy', 'boolean', '처리 중'],
+      ['error', "'failed' | 'busy' | null", '실패 문구'],
+      ['onConfirm · onCancel', '() => void', '닫는 것은 부모가 정한다'],
+    ],
+    code: `{deleting && (
+  <DeletePitchDialog
+    pitch={deleting.pitch}
+    onCancel={cancelDelete}
+    onDeleted={finishDelete}
   />
 )}`,
   },
@@ -321,7 +378,8 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '리포트 아래 버튼으로만 연다. 홈에서 자동으로 띄우지 않는다 — 미룬 설문이 쌓이면 어느 Take 이야기인지 구별하기 어렵다.',
       '두 점수를 다 골라야 보낸다. 아쉬운 점은 선택이고 2,000자까지다.',
       '보내지 못하면 입력을 남기고 같은 답으로 다시 보낸다(같은 답이면 BE 가 200). 다른 곳에서 먼저 냈으면 보냈다고 맞춘다.',
-      '보내는 중에는 Esc · 나중에를 막는다. 브라우저가 Esc 를 연달아 받아 강제로 닫으면 다시 띄운다.',
+      '보내는 중에는 Esc · 나중에를 막는다(버튼은 aria-disabled). 브라우저가 Esc 를 연달아 받아 강제로 닫으면 다시 띄운다.',
+      '보내면 연 버튼이 "보냈어요" 알림 줄로 바뀐다. 초점은 그 알림으로 옮긴다 — 그대로 두면 body로 빠진다(#845).',
       '문구를 바꾸면 QUESTION_VERSION 을 올린다. BE 가 버전별로 응답을 나눠 평균 낸다.',
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong', 'line'],
@@ -336,7 +394,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     code: `// 제품: 리포트 아래 줄. 분석이 끝난 리포트에만 버튼을 둔다
 <TakeSurvey takeId={report.take_id} completed={report.status === 'COMPLETED'} />`,
     productNote:
-      '서버에 보내지 않는다. 보내기를 누르면 바로 닫히고 오류 · 중복 처리는 그리지 않는다. 문항 문구는 아직 임시다(팀 확정 전).',
+      '리포트 샘플에서는 보내면 완료 안내로 초점이 옮겨 간다. 단독 창 예제는 닫히는 동작만 보여 준다. 서버 전송 · 오류 · 중복 처리는 재현하지 않는다. 문항 문구는 아직 임시다(팀 확정 전).',
   },
   {
     kind: 'component',
@@ -352,6 +410,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '동의하면 안내문 버전(TEST_CONSENT_VERSION)을 보낸다. 안내문을 바꾸면 버전을 올린다.',
       '동의로 달라지는 것(설문)과 동의와 상관없이 저장되는 것(발표자료 · 대본 · 음성을 글로 옮긴 결과 · 시선 구간 · 분석 결과)을 나눠 적는다. 음성 · 영상 원본은 저장하지 않는다고 적는다.',
       '마이페이지의 "연습 기록 사용 동의"(1초 원자료 보관)와 다른 동의다.',
+      '저장하는 중에는 Esc · 나중에를 막는다(버튼은 aria-disabled). 동의하면 연 버튼이 카드와 함께 사라지므로 완료 안내(role="status", tabIndex=-1)를 바로 만들고 그 안내로 초점을 한 번 옮긴다. 남은 설문 목록을 기다리지 않고, 늦게 와도 초점을 빼앗지 않으며 목록이 비어도 body로 빠지지 않는다(#845).',
     ],
     tokens: ['panel', 'ink', 'line'],
     sources: ['frontend/src/features/pitch/HomeSurveyNotice.tsx'],
@@ -365,23 +424,28 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     knownIssues: [
       '보관 기한 "2026년 12월 31일"은 임시 값이다. BE 삭제 일정과 함께 팀이 정한다(BE take-survey.md 5절).',
     ],
-    productNote: '서버에 보내지 않는다. 동의를 누르면 바로 닫힌다.',
+    productNote:
+      '홈 샘플에서는 동의하면 완료 안내로 초점이 옮겨 간다. 단독 창 예제는 닫히는 동작만 보여 준다. 서버 전송은 재현하지 않는다.',
   },
   {
     kind: 'component',
     id: 'slide-preview',
-    title: '미리보기 창',
+    title: '슬라이드 확인 창',
     group: dialogs,
-    status: '시안',
-    summary: '슬라이드를 크게 보는 창. 피치 생성 화면의 "슬라이드 미리보기" 상태와 같다.',
-    states: [view('open', '열림', '피치 생성 화면에서 연 슬라이드 미리보기.')],
-    rules: ['보기만 하는 창이라 닫기 하나와 이전 · 다음만 둔다.', '닫으면 보던 단계로 돌아간다.'],
-    tokens: ['panel', 'ink'],
-    sources: [],
-    file: 'src/screens/CreateScreen.tsx',
+    status: '제품에 있음',
+    summary:
+      'PDF를 올린 뒤 자동으로 열려 내용과 순서를 확인하는 창. 피치 생성 화면의 "슬라이드 확인" 상태와 같다.',
+    states: [view('open', '열림', '업로드 직후 확인 필요 상태로 연 창.')],
+    rules: [
+      '머리에 제목과 닫기, 바닥에 확인 상태(확인 필요 · 확인 완료)와 확인 완료 버튼을 둔다.',
+      '닫기만 하면 확인 필요로 남는다. 확인 완료를 눌러야 필수 준비에 포함한다.',
+    ],
+    tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
+    sources: ['frontend/src/features/pitch/create/steps/SlidePane.tsx'],
+    file: 'src/screens/PitchCreateScreen.tsx',
     props: [],
-    code: `// 제품에는 없다. 설계서 샘플 안의 창만 그린다`,
+    code: `// 제품 SlidePane 안의 확인 창. 설계서는 피치 생성 샘플 안의 창을 그대로 보인다`,
     productNote:
-      '설계서는 피치 생성 샘플 안의 창을 그대로 보인다. 제품은 이 창을 쓰지 않고 뷰어 카드의 전체 화면 버튼을 쓴다(#802에서 썸네일로 여는 흐름이 빠졌다).',
+      '제품 창은 실제 PDF와 "슬라이드 V{n} · N장" 줄을 그린다. 샘플은 3장의 예시 자료를 그리고 서버에 묻지 않는다.',
   },
 ];

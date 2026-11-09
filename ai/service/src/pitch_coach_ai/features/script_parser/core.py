@@ -91,7 +91,7 @@ def parse_script(request: ParseRequest, llm: Any) -> ParseResponse:
 
     total = sum(s["script_chars"] for s in slides)
     if total == 0:
-        raise EmptyScriptError("제목 줄을 빼면 대본에 글이 없습니다.")
+        raise EmptyScriptError("제목 줄과 문장부호를 빼면 대본에 글이 없습니다.")
     expected = _expected_ms([s["script_chars"] for s in slides], request.target_ms)
     for s, ms in zip(slides, expected, strict=True):
         s["expected_ms"] = ms

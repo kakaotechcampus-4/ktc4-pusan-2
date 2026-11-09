@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "id": "guide-opening",
+  "set": "eval",
+  "group": "guide",
+  "split": "holdout",
+  "act": "should",
+  "title": "'발표 도입부는 어떻게 시작하면 좋아?' — 발표법 카드 g-09 인용",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표 도입부는 어떻게 시작하면 좋아?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "g-09",
+        "path": "source_ids",
+        "metric": "advice"
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}
