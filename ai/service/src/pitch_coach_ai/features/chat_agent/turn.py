@@ -62,7 +62,7 @@ from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, reduce_to_fit, safe_request_id
 from .evidence import canonical_json
 from .goals import judge_goal
-from .loop import Loop, LoopState, TurnDeps, goal_question, meta
+from .loop import RESUME_RESERVE_STOP, Loop, LoopState, TurnDeps, goal_question, meta
 from .runctx import RunCtx
 from .schemas import Action, Assessment, Claim, Diagnostics, FinalData, TurnRequest
 from .tools.impl import source_tag_of
@@ -960,11 +960,12 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         )
         == "PARTIAL"
     ):
-        # 반복으로 멈췄고 풀리지 않은 부분이 남았다: 확인한 데까지 말하고 안내를 끝에 붙인다(L1-16)
-        final_claims.append(Claim(kind="SYSTEM", text=templates.SystemText.NO_MORE_SOURCES.value))
+        # 반복으로 멈췄거나 재개 조사를 건너뛰었고 풀리지 않은 부분이 남았다: 확인한 데까지 말하고 안내를 끝에 붙인다(L1-16)
+        soft_reason, soft_notice = _SOFT_STOPS[stop_reason or ""]
+        final_claims.append(Claim(kind="SYSTEM", text=soft_notice.value))
         return finish(
             status="PARTIAL",
-            reason="REPEAT",
+            reason=soft_reason,
             claims=final_claims,
             assessments=all_assessments,
             sources=_sources(final_claims),
@@ -999,9 +1000,8 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     final_claims += nxt
     return finish(
         status="DONE",
-        reason="REPEAT"
-        if soft_stop
-        else "ANSWERED",  # 반복으로 조사를 멈췄어도 요청이 해소된 답(진단에는 멈춘 까닭을 남긴다)
+        # 반복으로 조사를 멈췄거나 재개 조사를 건너뛰었어도 요청이 해소된 답(진단에는 멈춘 까닭을 남긴다)
+        reason=_SOFT_STOPS[stop_reason or ""][0] if soft_stop else "ANSWERED",
         claims=final_claims,
         assessments=all_assessments,
         actions=[*actions, *more],
@@ -1517,7 +1517,13 @@ def _missing_take_notes(lp: Loop) -> list[str]:
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)
 #: 반복으로 멈춘 조사(같은 요청 되풀이 · 교대 반복, L1-16): 한도 · 장애가 아니라 끝 상태를 요청 해소로 정한다. 무효 도구 반복
 #: (모델 장애) · 실패한 행동 반복은 그대로 끊긴 것으로 본다
-_SOFT_STOPS = frozenset({"NO_PROGRESS", "ALTERNATING"})
+#: 이어 부른 실행의 첫 조사가 출력 예약에 막혀 건너뛴 것도 같다(받은 행동 결과로 답하고 요청 해소로 정함, 진단 끝 이유 TOKENS)
+#: 조사 종료 사유 → (진단 끝 이유, 풀리지 않은 부분이 남았을 때 끝에 붙이는 안내)
+_SOFT_STOPS: dict[str, tuple[str, templates.SystemText]] = {
+    "NO_PROGRESS": ("REPEAT", templates.SystemText.NO_MORE_SOURCES),
+    "ALTERNATING": ("REPEAT", templates.SystemText.NO_MORE_SOURCES),
+    RESUME_RESERVE_STOP: ("TOKENS", templates.SystemText.LIMIT_PARTIAL),
+}
 _RESEARCH_STOP = {
     "TIME": ("TIME", templates.SystemText.LIMIT_PARTIAL),
     "MODEL_CALLS": ("MODEL_CALLS", templates.SystemText.LIMIT_PARTIAL),

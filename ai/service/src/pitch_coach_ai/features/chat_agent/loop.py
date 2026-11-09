@@ -91,6 +91,8 @@ DEFAULT_PLAN = [
 
 #: 계획 route 값(6-1). 모르는 값은 RESEARCH 로 본다
 PLAN_ROUTES = ("RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE")
+#: 조사 종료 사유: 이어 부른 실행의 첫 조사가 출력 예약에 막혀 조사를 건너뜀(끝 상태는 요청 해소로, 진단 끝 이유는 TOKENS)
+RESUME_RESERVE_STOP = "RESUME_RESERVE"
 #: 가벼운 말 종류(P-0008 5-1)
 TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
 
@@ -264,6 +266,8 @@ class Loop:
         #: 이 응답의 계획 route(계획을 돌리지 않은 이어 부르기는 None)와 가벼운 말 종류(route 가 SMALL_TALK 일 때만, P-0008 5-1)
         self.route: str | None = None
         self.talk_kind: str | None = None
+        #: 이 호출에서 조사 모델을 한 번이라도 불렀는가(재개 첫 조사가 출력 예약에 막혔는지 가리는 데 쓴다)
+        self.research_called = False
         self.counters = counters
         self.budget = Budget.start(self.cfg, counters, deps.monotonic)
         self.diag = diag
@@ -966,6 +970,9 @@ class Loop:
         self.close_signals()
         if reason in progress.BUDGET_STOPS:
             self._decide("BUDGET_LOW", [reason], "STOP_PARTIAL", "CODE", step=step)
+        elif reason == RESUME_RESERVE_STOP:
+            # 출력 예약이 모자라 재개 조사를 코드가 건너뛰었다(끝 상태는 turn.py 가 요청 해소로 정한다)
+            self._decide("BUDGET_LOW", ["TOKENS"], "STEP_SKIPPED", "CODE", step=step)
 
     def close_signals(self) -> None:
         """대응이 없던 신호마다 `NONE:LLM` 한 줄을 남기고 비운다(조사가 끝날 때, 조사 없이 끝나는 응답은 turn.py 가 끝에서)."""
@@ -1002,7 +1009,17 @@ class Loop:
                     s["seen"] = True  # 이 조사 호출이 본 신호다. 이 응답의 선택부터 대응으로 센다
                 if isinstance(res, LimitHit):
                     self.st.research_done, self.st.stop_reason = True, limit_end_reason(res.code)
+                    if (
+                        res.code == "OUTPUT_RESERVE"
+                        and self.req.run.trigger == "ACTION_RESULT"
+                        and not self.research_called
+                    ):
+                        # 재개 첫 조사가 출력 예약(조사 + 답 쓰기 · 고치기 몫)에 막혔다: 조사를 건너뛰고 받은 행동 결과로 답을
+                        # 쓴다. 끝 상태는 요청 해소로 정한다(TARGET 6, r9 ra-record-changed · path-ud-script-dispute: 승인
+                        # 전에 쓴 출력 2.1k + 예약 6k > 8k 로 다시 평가 결과를 낸 답이 PARTIAL). 한도 값은 그대로다
+                        self.st.stop_reason = RESUME_RESERVE_STOP
                     break
+                self.research_called = True
                 if isinstance(res, LlmError):
                     self.st.research_done = True
                     self.st.stop_reason = (

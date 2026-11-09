@@ -497,6 +497,45 @@ def test_action_stops_with_signed_state_then_resume_finishes() -> None:
     assert fd2.budget_used.model_calls == data["budget_used"]["model_calls"] + 3
 
 
+def test_resume_first_research_blocked_by_output_reserve_answers_with_the_action_result() -> None:
+    """이어 부른 실행의 첫 조사가 출력 예약(조사 + 답 쓰기 · 고치기 몫)에 막히면 조사를 건너뛰고 받은 행동 결과로 답한다.
+    한도 안내를 앞에 내지 않고, 요청이 해소됐으면 DONE(진단 끝 이유는 TOKENS), 결정 로그는 BUDGET_LOW · STEP_SKIPPED
+    (r9 ra-record-changed · path-ud-script-dispute: 승인 전에 쓴 출력 2.1k + 예약 6k > 8k 로 PARTIAL)."""
+    req = F.request(user_message=MSG)
+    _, _, data = F.run_turn(req, F.FakeLlm(fetch_take_script()))
+    action = data["actions"][0]
+    res = [
+        {
+            "action_id": action["action_id"],
+            "type": "FETCH_TAKE",
+            "status": "SUCCEEDED",
+            "data": {"take": fetched_take("t-4")},
+            "error": None,
+        }
+    ]
+    req2 = resume_request(req, data, res)
+    req2["budget_used"]["output_tokens"] = 2_100  # 8_000 - 2_100 < 2_000 × 3
+    llm2 = F.FakeLlm(
+        [],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    logs: list[dict[str, Any]] = []
+    _, _, data2 = F.run_turn(req2, llm2, log=logs)
+    fd2 = final_ok(data2)
+    assert [c.purpose for c in llm2.calls] == ["ANSWER"]  # 조사 모델을 부르지 않았다
+    assert fd2.status == "DONE"
+    assert fd2.diagnostics.end.reason == "TOKENS"  # type: ignore[union-attr]
+    text = fd2.message.text  # type: ignore[union-attr]
+    assert "Take 4 기록을 가져왔어요." in text
+    assert templates.SystemText.LIMIT_PARTIAL.value not in text
+    decisions = [
+        (d["signal"], d["effect"], d["decider"]) for d in logs if d.get("event") == "agent_decision"
+    ]
+    assert ("BUDGET_LOW", "STEP_SKIPPED", "CODE") in decisions
+    assert ("BUDGET_LOW", "STOP_PARTIAL", "CODE") not in decisions
+
+
 @pytest.mark.parametrize("mutate", ["signature", "run_id", "user_id", "revision"])
 def test_resume_with_tampered_state_or_ids_409(mutate: str) -> None:
     """L1-27: 서명 · 식별자 · 판 번호가 다르면 스트림 전 409, 모델 0회."""
