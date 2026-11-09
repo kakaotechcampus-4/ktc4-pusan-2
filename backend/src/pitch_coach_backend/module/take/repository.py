@@ -261,6 +261,42 @@ class TakeRepository:
 
         return [(take_result, script_coverage) for take_result, script_coverage in rows]
 
+    def coverage_summary(self, take_id: uuid.UUID) -> Row | None:
+        """확정본(`SCRIPT_COVERAGE`)의 revision · meta · `payload.detail`. 장별 채점은 읽지 않는다
+        (채점 payload 는 수 MB 일 수 있다). 확정본이 없으면 None."""
+        return self.db.execute(
+            select(
+                TakeAIResults.revision,
+                TakeAIResults.meta,
+                TakeAIResults.payload["detail"].label("detail"),
+            ).where(TakeAIResults.take_id == take_id, TakeAIResults.kind == COVERAGE_KIND)
+        ).first()
+
+    def previous_coverage_summary(self, pitch_id: uuid.UUID, take_number: int) -> Row | None:
+        """바로 앞 Take 와 그 확정본의 meta · `payload.detail`. 리뷰의 이전 Take
+        (`get_previous_take_results`)와 같은 규칙이다 — 같은 발표, `COMPLETED`, Take 결과가 있고
+        번호가 더 작은 것 중 가장 큰 것. 그 Take 에 확정본이 없으면 meta · detail 이 None 이다."""
+        coverage = aliased(TakeAIResults)
+        return self.db.execute(
+            select(
+                Take.id.label("take_id"),
+                Take.take_number,
+                coverage.meta,
+                coverage.payload["detail"].label("detail"),
+            )
+            .outerjoin(coverage, (coverage.take_id == Take.id) & (coverage.kind == COVERAGE_KIND))
+            .where(
+                Take.pitch_id == pitch_id,
+                Take.take_number < take_number,
+                Take.status == COMPLETED,
+                select(TakeAIResults.id)
+                .where(TakeAIResults.take_id == Take.id, TakeAIResults.kind == TAKE_RESULT)
+                .exists(),
+            )
+            .order_by(Take.take_number.desc())
+            .limit(1)
+        ).first()
+
     def get_previous_review_payload(
         self, pitch_id: uuid.UUID, standard_take_num: int
     ) -> dict | None:

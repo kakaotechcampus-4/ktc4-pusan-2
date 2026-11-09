@@ -91,6 +91,32 @@ class TakeMeasuresDTO(BaseModel):
     filler_count: int | None
 
 
+class ContentPreviousDTO(BaseModel):
+    """바로 앞 Take 의 대본 전달도. 세 칸은 그 Take 확정본의 `payload.detail` 에 있는 그대로다."""
+
+    take_id: uuid.UUID
+    take_number: int
+    criteria_version: str | None
+    delivery: Any
+    contradiction: Any
+    scope: Any
+
+
+class ContentStatusDTO(BaseModel):
+    """리포트의 대본 전달도 상태 (`service/coverage_report.content_status`).
+
+    `MEASURED` 가 아니면 `summary` · `revision` · `criteria_version` · `previous` 는 null 이다.
+    `summary` 는 확정본 `payload.detail`(AI 응답 맨 위 Take 상세)을 해석하지 않고 그대로 싣는다.
+    """
+
+    state: Literal["MEASURED", "ANALYZING", "FAILED", "NOT_MEASURED"]
+    reason_code: str | None = None
+    revision: int | None = None
+    criteria_version: str | None = None
+    summary: dict[str, Any] | None = None
+    previous: ContentPreviousDTO | None = None
+
+
 class TakeReportDTO(BaseModel):
     take_id: uuid.UUID
     pitch_id: uuid.UUID
@@ -104,6 +130,7 @@ class TakeReportDTO(BaseModel):
     analysis_hold_reason: str | None
     measures: TakeMeasuresDTO | None
     review: dict[str, Any] | None
+    content_status: ContentStatusDTO
 
 
 # 대본 전달도 확인 (FE types/confirmation.ts). 항목 · 답의 필드는 AI 계약
