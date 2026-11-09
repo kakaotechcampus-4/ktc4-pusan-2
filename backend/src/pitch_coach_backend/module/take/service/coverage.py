@@ -18,6 +18,7 @@ from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.database import in_session as _in_session
 from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.take import stt_gaps
 from pitch_coach_backend.module.take.adapter.ai_client import request_analyze, request_rescore
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, coverage_to_store
 from pitch_coach_backend.module.take.entity import Take
@@ -57,6 +58,25 @@ def slide_stt(
         if current in spoken and text:
             spoken[current].append(text)
     return [{"slide_number": number, "stt": " ".join(texts)} for number, texts in spoken.items()]
+
+
+def analyze_slides(
+    scripts: Mapping[int, str],
+    slide_events: Iterable[tuple[int, int]],
+    words: Iterable[tuple[str, int]],
+    stt_gap_ranges: Any,
+) -> list[dict]:
+    """`/takes/analyze` 의 `slides[]`. 장마다 전사 · 장 길이 · STT 끊김 · 기록 없음 시간 · 대본 글.
+
+    `scripts` 는 Take 에 고정된 대본 버전의 장 번호 → 대본 글이다. 대본 글은 모든 장에 싣는다 — AI
+    는 평가 기준이 없는 장의 간이 값에만 쓴다. 끊김 구간을 모르면 시간 셋은 null 이다.
+    """
+    events = list(slide_events)
+    timing = stt_gaps.slide_stt_gaps(scripts, events, stt_gap_ranges)
+    return [
+        {**slide, **timing[slide["slide_number"]], "script": scripts[slide["slide_number"]]}
+        for slide in slide_stt(scripts, events, words)
+    ]
 
 
 def retry_targets(failed: Iterable[Mapping[str, Any]]) -> list[int]:
@@ -389,10 +409,11 @@ def _read_job(
         requested_at=requested_at,
         body={
             "take_id": str(take_id),
-            "slides": slide_stt(
-                [slide.slide_number for slide in slides],
+            "slides": analyze_slides(
+                {slide.slide_number: slide.full_content for slide in slides},
                 take_repository.get_slide_events(take_id),
                 take_repository.get_transcript_words(take_id),
+                take.stt_gap_ranges,
             ),
             "rubrics": [slide.rubric for slide in slides if slide.rubric is not None],
             "slide_numbers": None,
