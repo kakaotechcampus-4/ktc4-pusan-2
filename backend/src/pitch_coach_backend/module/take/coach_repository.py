@@ -138,6 +138,15 @@ class CoachRepository(TakeRepository):
             )
         )
 
+    def metric_second_stt(self, take_id: uuid.UUID) -> list[tuple[int, str]]:
+        """1초 기록의 (끝난 시각, STT 상태). 시선 · 음량 JSON 은 읽지 않는다."""
+        rows = self.db.execute(
+            select(TakeMetricSecond.t_ms, TakeMetricSecond.stt_status).where(
+                TakeMetricSecond.take_id == take_id
+            )
+        ).all()
+        return [(t_ms, stt_status) for t_ms, stt_status in rows]
+
     def coach_events(self, take_id: uuid.UUID) -> list[CoachEvent]:
         return list(
             self.db.scalars(
