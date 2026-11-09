@@ -200,18 +200,22 @@ export interface PreviousDelta {
 }
 
 /**
- * 지난 Take 대비. 기능 버전이 같고 양쪽 전달률이 모두 숫자일 때만 냅니다 (#1154 3절 9번)
+ * 지난 Take 대비. 기능 버전이 같고 양쪽 전달률이 모두 숫자일 때만 냅니다 (#1154 3절 9번).
+ * BE 는 지난 Take 값을 그대로 넘겨 칸이 null 일 수 있습니다 — 그러면 비교하지 않습니다
  */
 export function previousDelta(status: ContentStatus): PreviousDelta | null {
   const prev = status.previous;
   const now = status.summary?.delivery.value ?? null;
-  if (!prev || now === null || prev.delivery.value === null) return null;
+  const before = prev?.delivery?.value ?? null;
+  if (!prev || now === null || before === null) return null;
   const mine = featureVersion(status.criteria_version);
   if (mine === null || mine !== featureVersion(prev.criteria_version)) return null;
+  // 범위를 모르면 "일부 장 제외" 안내를 붙이지 않습니다
+  const prevExcluded = prev.scope?.excluded.length ?? 0;
   return {
     takeNumber: prev.take_number,
-    delta: Math.round((now - prev.delivery.value) * 100),
-    partial: prev.scope.excluded.length > 0 || (status.summary?.scope.excluded.length ?? 0) > 0,
+    delta: Math.round((now - before) * 100),
+    partial: prevExcluded > 0 || (status.summary?.scope.excluded.length ?? 0) > 0,
   };
 }
 

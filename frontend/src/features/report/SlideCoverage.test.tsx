@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -84,6 +85,34 @@ afterEach(() => {
   host.remove();
   server.resetHandlers();
   vi.unstubAllGlobals();
+});
+
+describe('장별 펼침 — BE(#1156) 빈 값', () => {
+  it('실패 장의 error 가 null 이어도 일반 문구로 보입니다', async () => {
+    server.use(
+      http.get('*/api/takes/:takeId/script-coverage/slides/:slide', ({ params }) =>
+        HttpResponse.json({
+          take_id: String(params.takeId),
+          revision: 0,
+          slide_number: Number(params.slide),
+          state: 'FAILED',
+          detail: null,
+          offscript: null,
+          failure: { error: null, fallback: null },
+          sentences: [],
+          key_points: [],
+          critical_facts: [],
+          stt_sentences: [],
+        }),
+      ),
+    );
+    await render('t3');
+    await open(4);
+    await until(() => !(host.textContent?.includes('불러오고 있어요') ?? true));
+    const panel =
+      document.getElementById(rowButton(4).getAttribute('aria-controls')!)?.textContent ?? '';
+    expect(panel).toBe('이 값을 계산하지 못했어요');
+  });
 });
 
 describe('장별 펼침', () => {

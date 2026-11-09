@@ -128,6 +128,25 @@ describe('지난 Take 대비', () => {
     expect(previousDelta({ ...contentMeasured, previous: null })).toBeNull();
     expect(previousDelta(contentStatusOf('t-content-estimated', null)!)).toBeNull();
   });
+
+  it('BE(#1156)가 지난 Take 칸을 비워 보내도 깨지지 않습니다', () => {
+    const prev = contentMeasured.previous!;
+    // 기능 버전이 없거나 전달률 칸이 없으면 비교하지 않습니다
+    expect(
+      previousDelta({ ...contentMeasured, previous: { ...prev, criteria_version: null } }),
+    ).toBeNull();
+    expect(previousDelta({ ...contentMeasured, previous: { ...prev, delivery: null } })).toBeNull();
+    // 범위만 없으면 비교는 하고, 지난 Take 쪽 제외 안내만 뺍니다
+    const noScope = previousDelta({
+      ...contentMeasured,
+      summary: {
+        ...contentMeasured.summary!,
+        scope: { ...contentMeasured.summary!.scope, excluded: [] },
+      },
+      previous: { ...prev, scope: null },
+    });
+    expect(noScope).toEqual({ takeNumber: 2, delta: 8, partial: false });
+  });
 });
 
 describe('수치 정확도 한 줄', () => {

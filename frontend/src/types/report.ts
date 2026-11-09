@@ -316,14 +316,18 @@ export interface CoverageSummary {
 
 export type ContentState = 'ANALYZING' | 'MEASURED' | 'NOT_MEASURED' | 'FAILED';
 
-/** 지난 Take 비교용 — 그 Take 상세의 전달 · 다르게 말함 · 범위 */
+/**
+ * 지난 Take 비교용 — 그 Take 상세의 전달 · 다르게 말함 · 범위.
+ * BE(#1156 `ContentPreviousDTO`)는 그 Take 확정본의 값을 해석하지 않고 그대로 싣고,
+ * `criteria_version` 이 없으면 null 입니다. 칸이 빠진 결과도 null 로 올 수 있어 화면은 비교를 숨깁니다
+ */
 export interface PreviousCoverage {
   take_id: string;
   take_number: number;
-  criteria_version: string;
-  delivery: Metric;
-  contradiction: Metric;
-  scope: Scope;
+  criteria_version: string | null;
+  delivery: Metric | null;
+  contradiction: Metric | null;
+  scope: Scope | null;
 }
 
 /**
@@ -404,8 +408,11 @@ export interface SlideCoverageDetail {
     reason_codes: string[];
     spans: OffscriptSpan[];
   } | null;
-  /** `ESTIMATED` · `FAILED` 일 때 그 장의 실패. `fallback` 이 없는 예전 결과는 null 로 맞춥니다 */
-  failure: { error: { code: string; message: string }; fallback: Fallback | null } | null;
+  /**
+   * `ESTIMATED` · `FAILED` 일 때 그 장의 실패. `fallback` 이 없는 예전 결과는 null 로 맞춥니다.
+   * BE(#1156)는 저장한 `failed[]` 항목을 그대로 실어 `error` 도 빠지면 null 입니다
+   */
+  failure: { error: { code: string; message: string } | null; fallback: Fallback | null } | null;
   sentences: CoverageSentence[];
   key_points: CoverageKeyPoint[];
   critical_facts: CoverageFact[];

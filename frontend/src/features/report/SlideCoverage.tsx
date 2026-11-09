@@ -243,7 +243,7 @@ function FailedSlide({ detail }: { detail: SlideCoverageDetail }) {
   const fallback = failure?.fallback ?? null;
   return (
     <div className="flex flex-col gap-2">
-      <Note>{reasonText(failure?.error.code ?? null, true)}</Note>
+      <Note>{reasonText(failure?.error?.code ?? null, true)}</Note>
       {fallback && <FallbackValues fallback={fallback} />}
     </div>
   );
