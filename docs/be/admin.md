@@ -8,7 +8,7 @@
 | 경로 | 담당 | 내용 |
 |---|---|---|
 | `/admin/` | BE (`module/admin/static/`) | 콘솔 화면. `index.html` · `app.js` · `style.css` 세 파일입니다 |
-| `/admin/api/*` | BE (`module/admin/controller.py`) | 콘솔이 부르는 API. 조회는 DB를 바꾸지 않습니다. Take 복구 두 가지(아래 '복구')만 Take를 바꾸고 AI를 다시 부릅니다 |
+| `/admin/api/*` | BE (`module/admin/controller.py`) | 콘솔이 부르는 API. 조회는 DB를 바꾸지 않습니다. 아래 '복구' 의 세 가지만 Take를 바꿉니다 |
 | `/admin/logs/` | Dozzle (`infra/docker-compose.yml`) | 서버 로그 뷰어. 보기만 가능하고 컨테이너 시작 · 중지 · 셸 접속은 꺼져 있습니다 |
 
 * 앱 API가 아니라서 `/api` 밖에 두고, `/api/docs` 에도 싣지 않습니다.
@@ -61,6 +61,7 @@
 
 | 버튼 | 보이는 때 | 하는 일 | 데이터 |
 |---|---|---|---|
+| 떠난 것으로 끝내기 | `RUNNING` | '멈춘 연습' 표와 같은 기준(마지막 활동 뒤 이탈 대기 + 10분)으로 멈춘 Take만 `FAILED` · `ABANDONED` 로 끝냅니다. 떠난 Take 타이머가 끝낼 때와 같고 끝난 시각은 마지막 활동 시각입니다. 첫 연결이 저장 번호를 읽지 못했거나 떠난 Take를 적다 DB 오류가 나 타이머 없이 남은 Take의 보조 수단입니다. 연결이 다시 붙어 있으면 끝내지 않습니다 | `POST /admin/api/takes/{take_id}/abandon` |
 | Take 결과 다시 만들기 | `FAILED` 이고 분석 단계가 `FINALIZING` (finalize가 끝내 실패한 Take) | Take를 `ANALYZING` 으로 되돌리고 finalize를 1초 원자료(`replay`)로 다시 부릅니다. 성공하면 채점 · 리뷰까지 이어 가고, 다시 실패하면 `FAILED` 로 돌아갑니다. 1초 원자료가 있어야 하고, 원자료 사용에 동의하지 않은 Take는 끝난 지 7일 안이어야 합니다(`coach-agent.md` 7절 수동 복구). 떠난 Take(분석 단계 없음)는 대상이 아닙니다 | `POST /admin/api/takes/{take_id}/finalize/retry` |
 | 병합 재채점 다시 하기 | 리뷰 보류가 `COVERAGE_RESCORE_FAILED` | 보존한 병합 후보와 처음 채점에 쓴 평가 기준으로 `/takes/rescore` 를 한 번 부릅니다. 성공하면 확정 채점을 바꾸고 보류를 풀어 확인 · 리뷰로 이어 가고, 실패하면 보류가 그대로 남아 다시 누를 수 있습니다. 재시도 기록 칸은 되돌리지 않습니다(`architecture.md` 1-3 '리뷰 보류' · 1-7) | `POST /admin/api/takes/{take_id}/coverage/rescore` |
 
@@ -123,7 +124,8 @@
 
 | 메서드 | 경로 | 응답 |
 |---|---|---|
+| POST | `/admin/api/takes/{take_id}/abandon` | 204. 멈춘 연습이 아니면 409 `TAKE_NOT_RECOVERABLE`("멈춘 연습이 아닙니다."), 연결이 다시 붙었거나 그 사이 끝났거나 DB 에 적지 못했으면 같은 코드에 다른 `message` 입니다 |
 | POST | `/admin/api/takes/{take_id}/finalize/retry` | 202, 본문 없음. Take를 되돌린 뒤 finalize를 백그라운드로 띄웁니다. 대상이 아니면 409 `TAKE_NOT_RECOVERABLE` 이고, `message` 가 이유(대상 아님 · 7일 지남 · 1초 원자료 없음)를 알려 줍니다 |
 | POST | `/admin/api/takes/{take_id}/coverage/rescore` | 202, 본문 없음. 병합 재채점을 백그라운드로 띄웁니다. 보류한 Take가 아니거나 병합 후보가 없으면 409 `TAKE_NOT_RECOVERABLE`, 앞서 누른 복구가 아직 돌면 409 `RECOVERY_RUNNING` 입니다 |
 
-* 두 요청 모두 `X-Admin-Action: 1` 헤더가 필요합니다(위 '로그인'). 없으면 403 `ADMIN_ACTION_FORBIDDEN` 입니다.
+* 모든 복구 요청에 `X-Admin-Action: 1` 헤더가 필요합니다(위 '로그인'). 없으면 403 `ADMIN_ACTION_FORBIDDEN` 입니다.
