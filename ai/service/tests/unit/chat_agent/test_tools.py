@@ -611,6 +611,16 @@ def test_take_report_improvements_text_is_data_and_numbers_have_evidence() -> No
     assert [it["kind"] for it in only3.data["items"]] == ["improvement"]
 
 
+def test_take_report_empty_improvements_points_to_problem_segments() -> None:
+    """리뷰의 강점 · 개선점이 비면 '문제 없음'으로 읽지 않게 장별 문제 구간 · 차원 상태를 읽을 절을 알려 준다(r9 rep-repeat-issue)."""
+    req = load(base_request(), "t-4")
+    review = req["context"]["pitch"]["focus_take"]["results"]["review"]
+    review["improvements"], review["strengths"] = [], []
+    res, _ = run(make_ctx(req), "get_take_report", {"take_id": "t-5", "section": "improvements"})
+    assert res.read_state == "EMPTY" and res.data["items"] == []
+    assert "problem_segments" in res.data["note"] and "dimensions" in res.data["note"]
+
+
 def test_take_report_mission_results() -> None:
     req = load(base_request(), "t-4")
     req["context"]["pitch"]["focus_take"]["results"]["review"]["mission_results"] = [

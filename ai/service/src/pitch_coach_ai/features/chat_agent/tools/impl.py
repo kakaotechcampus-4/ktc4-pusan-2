@@ -622,6 +622,13 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                             )
                     items.append(row)
             state = None if items else "EMPTY"
+            if not items:
+                # 리뷰의 강점 · 개선점 목록이 비어도 문제가 없다는 뜻이 아니다: 장별 문제 구간 · 차원 상태는 다른 절에 있다
+                # (r9 rep-repeat-issue: '반복되는 문제'를 이 절로만 찾고 비었다고 답을 비움)
+                note = (
+                    "리뷰의 강점 · 개선점 목록이 비었다. 문제가 없다는 뜻이 아니다: 장별 문제(어디서 · 무슨 문제)는 "
+                    "problem_segments, 차원 상태는 dimensions 로 읽는다."
+                )
     elif a.section == "problem_segments":
         if tr is None:
             state = "NOT_LOADED"
