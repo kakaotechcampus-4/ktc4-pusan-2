@@ -82,6 +82,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 | 프레임 단위 고빈도 값 | `useRef` | 시선 원시 좌표 · 마이크 RMS. 상태로 두면 프레임마다 다시 그립니다 |
 | 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 세션 · 1초 시선 기록 · 슬라이드 전환. 서버로 가는 원본은 발표 중 WS `metrics`이고, 이것은 새로고침 이어 가기 · 종료 재시도를 위한 이 브라우저의 사본입니다 |
 | 화면 사이에 넘기는 값 | 라우터 state | 피치 수정 → 장치 점검의 연습 조합(`practice`) |
+| 이 탭에만 남기는 값 | sessionStorage | 리허설 시계(새로고침 이어 가기, `rehearsal/stage/resume.ts`), 대화 상태 일부(`chat/chatStore.ts`), 로그아웃 신호(`shared/lib/sessionSignal.ts`) |
 | 이 브라우저에만 남기는 작은 값 | localStorage | 대화 기억 첫 안내를 봤는지 등 |
 
 - 시선 기준점(Calibration)은 탭 메모리에만 둡니다. 서버로 보내지 않습니다.

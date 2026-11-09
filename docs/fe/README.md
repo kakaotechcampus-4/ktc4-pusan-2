@@ -38,6 +38,10 @@
 |---|---|
 | [frontend/src/features/auth/README.md](../../frontend/src/features/auth/README.md) | 로그인 인증 연동 |
 | [frontend/src/vendor/gaze/README.md](../../frontend/src/vendor/gaze/README.md) | AI 시선 엔진 · Worker 복사본(여기서 고치지 않음)과 FE 원본 카메라 화면 |
+| [frontend/src/features/pitch/HOME_API.md](../../frontend/src/features/pitch/HOME_API.md) | 홈 화면이 쓰는 API |
+| [frontend/src/shared/ui/README.md](../../frontend/src/shared/ui/README.md) | 공용 컴포넌트 |
+| [frontend/public/models/README.md](../../frontend/public/models/README.md) | 시선 엔진 모델 자산(커밋하지 않고 빌드 때 받음) |
+| [frontend/public/worklets/README.md](../../frontend/public/worklets/README.md) | AudioWorklet 파일(번들러를 거치지 않는 평범한 JS) |
 
 ## FE가 함께 읽는 다른 파트 문서
 
