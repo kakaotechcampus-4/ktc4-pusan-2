@@ -468,6 +468,8 @@ it('TIP을 수동 일시정지하면 hover를 해제해도 자동 전환이 재�
 
   await act(async () => {
     tip.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  });
+  await act(async () => {
     tip.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
   });
   expect(timers()).toHaveLength(1);
@@ -496,10 +498,9 @@ it('OS의 움직임 감소 설정 변경을 홈을 연 상태에서도 반영한
     preference.matches = true;
     listeners.forEach((listener) => listener());
   });
-  expect(clearIntervalSpy).toHaveBeenCalledWith(
-    setIntervalSpy.mock.results[setIntervalSpy.mock.calls.findIndex(([, delay]) => delay === 8000)]
-      ?.value,
-  );
+  const firstTimerIndex = setIntervalSpy.mock.calls.findIndex(([, delay]) => delay === 8000);
+  const firstTimer = setIntervalSpy.mock.results[firstTimerIndex]?.value;
+  expect(clearIntervalSpy).toHaveBeenCalledWith(firstTimer);
   expect(timers()).toHaveLength(1);
   expect(host.querySelector('button[aria-label="팁 자동 전환 재개"]')).not.toBeNull();
 
