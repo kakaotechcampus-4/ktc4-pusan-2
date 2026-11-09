@@ -73,12 +73,25 @@ describe('내용 전달 카드 — 상태', () => {
 describe('내용 전달 카드 — 측정됨', () => {
   it('#1152 예시: 대표 숫자 · 다르게 말함 · 일부 장 제외 · 지난 Take 대비', () => {
     const text = textOf(contentMeasured);
-    expect(text).toContain('핵심 내용 전달률50%');
-    expect(text).toContain('다르게 말함33%');
+    // 예시의 Take 값은 일부 장이 빠진 잠정 값이라 '잠정' 배지가 붙습니다
+    expect(text).toContain('핵심 내용 전달률50%잠정');
+    expect(text).toContain('다르게 말함33%잠정');
     expect(text).toContain('일부 장 제외');
     expect(text).toContain('2장 중 1장 평가 · 1장 간이');
     expect(text).toContain('지난 Take보다 +8%p');
     expect(text).toContain('일부 장이 평가에서 제외됐어요');
+  });
+
+  it('확정 값에는 잠정 배지가 없습니다 (#1157 리뷰)', () => {
+    const ok = (m: Metric): Metric => ({ ...m, state: 'ok', reason_codes: [] });
+    const text = textOf(
+      withSummary({
+        delivery: ok(contentMeasured.summary!.delivery),
+        contradiction: ok(contentMeasured.summary!.contradiction),
+      }),
+    );
+    expect(text).toContain('핵심 내용 전달률50%다르게 말함');
+    expect(text).not.toContain('잠정');
   });
 
   it('4칸 막대는 글자 범례와 %를 함께 둡니다', () => {

@@ -119,6 +119,7 @@ function Headline({ status, summary }: { status: ContentStatus; summary: Coverag
             <MetricValue
               value={summary.contradiction.value}
               reason={metricReason(summary.contradiction, 'take')}
+              provisional={summary.contradiction.state === 'provisional'}
             />
           </dd>
         </div>
@@ -158,12 +159,27 @@ function DeliveryValue({ summary }: { summary: CoverageSummary }) {
       </span>
     );
   return (
-    <MetricValue value={summary.delivery.value} reason={metricReason(summary.delivery, 'take')} />
+    <MetricValue
+      value={summary.delivery.value}
+      reason={metricReason(summary.delivery, 'take')}
+      provisional={summary.delivery.state === 'provisional'}
+    />
   );
 }
 
-/** 숫자 또는 "—" + 이유. 0 과 null 을 섞지 않습니다 */
-function MetricValue({ value, reason }: { value: number | null; reason: string }) {
+/**
+ * 숫자 또는 "—" + 이유. 0 과 null 을 섞지 않습니다.
+ * 잠정 값(일부 장 제외 · 음성 인식 끊김 · 문장 단위 평가)은 확정 값과 구별되게 '잠정' 배지를 붙입니다 (#1157 리뷰)
+ */
+function MetricValue({
+  value,
+  reason,
+  provisional = false,
+}: {
+  value: number | null;
+  reason: string;
+  provisional?: boolean;
+}) {
   if (value === null)
     return (
       <span className="flex flex-col gap-1">
@@ -171,7 +187,12 @@ function MetricValue({ value, reason }: { value: number | null; reason: string }
         <span className="text-xs text-ink/80">{reason}</span>
       </span>
     );
-  return <span className="tabular-nums text-3xl font-bold sm:text-4xl">{percentText(value)}</span>;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <span className="tabular-nums text-3xl font-bold sm:text-4xl">{percentText(value)}</span>
+      {provisional && <Badge tone="muted">잠정</Badge>}
+    </span>
+  );
 }
 
 /* ── 4칸 막대 ──────────────────────────────────────────────────── */
