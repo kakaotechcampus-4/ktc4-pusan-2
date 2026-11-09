@@ -10,8 +10,39 @@ const QUESTIONS = [
 ] as const;
 
 const SEMINI_IMAGE = publicUrl('semini.png');
+type ActionIcon = 'new' | 'history' | 'memory' | 'close';
+
+function ActionIconGraphic({ kind }: { kind: ActionIcon }) {
+  const paths: Record<ActionIcon, string[]> = {
+    new: ['M12 5v14M5 12h14'],
+    history: ['M3 11a9 9 0 1 1 2.4 6.1M3 4v7h7', 'M12 7v5l3 2'],
+    memory: [
+      'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z',
+      'm19.4 15.3 1 1.7-2 2-1.7-1a8.2 8.2 0 0 1-1.7.7L14.5 21h-3l-.5-2.3a8.2 8.2 0 0 1-1.7-.7l-1.7 1-2-2 1-1.7a8.2 8.2 0 0 1-.7-1.7L3.5 13v-2l2.4-.5a8.2 8.2 0 0 1 .7-1.7l-1-1.7 2-2 1.7 1a8.2 8.2 0 0 1 1.7-.7L11.5 3h3l.5 2.4a8.2 8.2 0 0 1 1.7.7l1.7-1 2 2-1 1.7a8.2 8.2 0 0 1 .7 1.7l2.4.5v2l-2.4.5a8.2 8.2 0 0 1-.7 1.8Z',
+    ],
+    close: ['M18 6 6 18M6 6l12 12'],
+  };
+  return (
+    <svg
+      width="19"
+      height="19"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[kind].map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
+}
+
 const HEADER_ACTION =
-  'grid h-11 w-10 shrink-0 place-items-center rounded-lg text-ink hover:bg-cream focus-visible:outline-2 focus-visible:outline-coral';
+  'grid h-11 w-10 shrink-0 place-items-center rounded-lg text-ink transition-colors hover:bg-cream focus-visible:outline-2 focus-visible:outline-coral aria-pressed:bg-ink aria-pressed:text-white';
 
 type PanelView = 'messages' | 'history' | 'memory' | 'closed';
 
@@ -37,6 +68,7 @@ function SeminiPanel({ stateId }: { stateId: string }) {
   const launcherRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scopeMenuId = useId();
+  const memorySwitchId = useId();
   const panelId = useId();
 
   const isClosed = view === 'closed';
@@ -66,6 +98,12 @@ function SeminiPanel({ stateId }: { stateId: string }) {
             role="dialog"
             aria-modal="false"
             aria-label="새미나이 채팅 패널"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.stopPropagation();
+                closePanel();
+              }
+            }}
             className="absolute bottom-full left-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-9rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border-[3px] border-ink bg-white shadow-[6px_6px_0_var(--color-ink),0_18px_36px_rgba(42,39,35,0.2)]"
           >
             <header className="shrink-0 border-b border-line-strong bg-panel px-4 pb-3 pt-3">
@@ -94,7 +132,7 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                       setView('messages');
                     }}
                   >
-                    ＋
+                    <ActionIconGraphic kind="new" />
                   </button>
                   <button
                     type="button"
@@ -102,11 +140,11 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                     aria-label="대화 목록"
                     aria-pressed={isHistory}
                     onClick={() => {
-                      setView('history');
+                      setView(isHistory ? 'messages' : 'history');
                       setScopeOpen(false);
                     }}
                   >
-                    ◷
+                    <ActionIconGraphic kind="history" />
                   </button>
                   <button
                     type="button"
@@ -114,19 +152,19 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                     aria-label="기억 설정"
                     aria-pressed={isMemory}
                     onClick={() => {
-                      setView('memory');
+                      setView(isMemory ? 'messages' : 'memory');
                       setScopeOpen(false);
                     }}
                   >
-                    ⚙
+                    <ActionIconGraphic kind="memory" />
                   </button>
                   <button
                     type="button"
                     className={HEADER_ACTION}
-                    aria-label="닫기"
+                    aria-label="새미나이 닫기"
                     onClick={closePanel}
                   >
-                    ×
+                    <ActionIconGraphic kind="close" />
                   </button>
                 </div>
               </div>
@@ -180,14 +218,24 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                   )}
                 </div>
                 {viewChat && (
-                  <label className="flex items-center gap-1">
+                  <div className="flex min-h-8 items-center gap-2 text-xs">
+                    <label htmlFor={memorySwitchId} className="cursor-pointer font-medium text-stone">
+                      기억 없이 대화하기
+                    </label>
                     <input
+                      id={memorySwitchId}
                       type="checkbox"
+                      role="switch"
+                      className="peer sr-only"
                       checked={memoryOff}
                       onChange={(event) => setMemoryOff(event.target.checked)}
                     />
-                    기억 없이 대화하기
-                  </label>
+                    <label
+                      htmlFor={memorySwitchId}
+                      aria-hidden="true"
+                      className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-stone transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-coral-deep peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-coral"
+                    />
+                  </div>
                 )}
               </div>
             </header>
@@ -271,7 +319,7 @@ function SeminiPanel({ stateId }: { stateId: string }) {
             else closePanel();
           }}
           className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)]"
-          aria-label="채팅 에이전트"
+          aria-label={isClosed ? '새미나이 열기' : '새미나이 닫기'}
           aria-expanded={!isClosed}
           aria-haspopup="dialog"
           aria-controls={isClosed ? undefined : panelId}
