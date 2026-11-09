@@ -73,12 +73,20 @@ function MeasuredCard({
       <Headline status={status} summary={summary} />
       {summary.status_shares && <SharesBar shares={summary.status_shares} />}
       <CriticalGaps gaps={summary.critical_gaps} />
-      {/* 세 덩어리를 넓은 화면에서는 한 줄에 — 장 수와 상관없이 카드 높이를 비슷하게 둡니다 */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Facts facts={summary.facts} />
-        <ExpressionLine expression={summary.expression} />
-        <SpeechMixBlock mix={summary.speech_mix} title="말의 구성" scope="take" />
-      </div>
+      {isEstimatedOnly(summary) ? (
+        // 채점된 장이 없으면 AI 가 개수를 0 으로 채워 보냅니다 — "0개였다"로 읽히지 않게 집계 못 함을 알립니다 (#1157 리뷰)
+        <p className="text-sm text-ink/80">
+          채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요. 장별 간이 결과를 확인해
+          주세요.
+        </p>
+      ) : (
+        // 세 덩어리를 넓은 화면에서는 한 줄에 — 장 수와 상관없이 카드 높이를 비슷하게 둡니다
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Facts facts={summary.facts} />
+          <ExpressionLine expression={summary.expression} />
+          <SpeechMixBlock mix={summary.speech_mix} title="말의 구성" scope="take" />
+        </div>
+      )}
       <SlideList takeId={takeId} revision={status.revision} slides={summary.slides} />
     </Card>
   );

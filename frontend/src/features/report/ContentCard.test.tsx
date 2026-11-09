@@ -175,6 +175,15 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(text).not.toContain('지난 Take보다');
   });
 
+  it('채점된 장이 없으면 Take 전체의 0 개수를 보이지 않고 집계하지 못했다고 알립니다 (#1157 리뷰)', () => {
+    const text = textOf(status('t-content-estimated'));
+    expect(text).toContain('채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요');
+    expect(text).not.toContain('확인할 수치 0개');
+    expect(text).not.toContain('대본대로');
+    // 장별 간이 결과는 그대로 둡니다
+    expect(openedText(status('t-content-estimated'))).toContain('1장대부분 말함');
+  });
+
   it('모르는 이유 코드 · 범주 · 상태가 와도 일반 문구로 받습니다', () => {
     const text = textOf(
       withSummary({
