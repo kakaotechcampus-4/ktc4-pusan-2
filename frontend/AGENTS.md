@@ -293,13 +293,13 @@ src/
     lib/        순수 함수 (시계, 구간 압축) — 여기 있는 건 테스트가 쉽습니다
     api/        두 기능 이상이 쓰는 쿼리 훅 · 공용 클라이언트
   features/     한 기능만 쓰는 것은 그 기능 안에 (서버 호출은 각 기능의 api/)
-    auth/       로그인·토큰·내 정보
-    chat/       대화형 에이전트
+    auth/       로그인·토큰·내 정보·서비스 의견
+    chat/       대화형 에이전트 — api/ · store/ · rules/(응답 검사·문구 규칙) · ui/
     info/       소개·지원하지 않는 환경·404
     onboarding/ 첫 화면·출시 카운트다운
-    pitch/      홈·Pitch 생성·수정
-    rehearsal/  ★ 리허설. 난이도 최상 (Track A)
-    report/     리포트·비교·Take 기록·분석 대기
+    pitch/      api/ · create/(Pitch 생성·수정) · home/(홈·피치 목록)
+    rehearsal/  ★ 리허설. 난이도 최상 (Track A) — api/ · lib/ · media/ · prepare/ · retry/ · stage/
+    report/     api/ · analysis/(분석 대기·대본 확인) · report/(리포트) · history/(Take 기록·비교)
   dev/          /dev/* 개발용 화면. features 를 가져다 써도 됩니다 (app 과 같은 린트 예외)
   workers/      시선 워커. 메인 스레드에서 격리
   vendor/gaze/  AI 시선 엔진 v1.1 — engine·worker 는 복사본(고치지 않음), camera 는 FE 원본 (그 폴더 README)

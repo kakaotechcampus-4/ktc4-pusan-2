@@ -121,7 +121,16 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 테스트 용이성은 배치 기준이 아닙니다 — `features/rehearsal/lib/` 에 둬도 똑같이 쉽습니다.
 
 그래서 시선 전용 규칙(`gazeSegments` · `gazePayload` · `db`)은 `features/rehearsal/lib/` 에 있습니다.
-`shared/lib/clock.ts` 만 남았습니다 — `formatDuration` 을 리포트 화면도 쓰기 때문입니다.
+반대로 `shared/lib/clock.ts` 는 `formatDuration` 을 리허설과 리포트 화면이 함께 쓰기 때문에 `shared/` 에 있습니다.
+
+셀 때는 이렇게 봅니다.
+
+- `app/` · `dev/` · `mocks/` 가 쓰는 것은 세지 않습니다. 라우팅 · 개발 화면 · 목이 쓴다고 `shared/` 로 올리지 않습니다.
+- `shared/` 의 다른 파일이 쓰면 `shared/` 에 둡니다. 기능 폴더로 내리면 `shared/` → `features/` 로 거꾸로 가져오게 됩니다.
+  예) `HomeHelpDialog` 는 홈 화면과 공용 상단바 `AppHeader` 가 함께 써서 `shared/ui/` 에 있습니다.
+- 한 기능을 하위 폴더로 나눴으면, 하위 폴더 두 곳 이상이 쓰는 파일은 그 기능 바로 아래에 둡니다.
+  예) `features/report/reportFormat.ts` 는 `analysis/` · `report/` · `history/` 가 함께 씁니다.
+- 시험 파일은 대상 파일과 같은 폴더에 둡니다.
 
 ## 시선 파이프라인 호출 흐름
 
