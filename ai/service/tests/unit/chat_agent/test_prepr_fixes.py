@@ -190,6 +190,21 @@ def test_answer_failure_without_question_targets_still_ends_partial_with_checked
     assert any(c["kind"] == "RECORD" for c in data["message"]["claims"])
 
 
+def test_answer_failure_with_targets_but_no_matching_evidence_does_not_list_others() -> None:
+    """질문이 대상(Take 4 · 3장 · 청중 시선)을 집었는데 조사가 다른 Take 의 값만 읽었으면, 답 쓰기가 실패해도 이번 실행이 읽은
+    근거 전체(Take 5 1장 값)로 넓혀 그리지 않는다. 맞는 '없음' 근거도 없으므로 그린 문장 없이 기존 길(오류 줄)로 끝난다(13-2)."""
+    req = F.request(user_message="Take 4 3장 청중 시선 몇 %였어?")
+    other = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 1})
+    llm = F.FakeLlm(
+        [F.plan(assessments=[slide_draft([4])]), F.tools(other), F.done()],
+        answers=[LlmTimeout()],
+    )
+    _, lines, data = F.run_turn(req, llm)
+    assert lines[-1]["event"] == "error"
+    assert not any(x.get("event") == "claim" for x in lines)
+    assert data is not None and data["error"]["code"] == "INTERNAL_ERROR"
+
+
 # ── 5. 반복으로 멈춘 조사의 코드 대신 답도 끝난 까닭을 남긴다 ──────────────────────
 
 

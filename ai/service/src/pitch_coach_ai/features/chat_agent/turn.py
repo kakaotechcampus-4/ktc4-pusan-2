@@ -769,10 +769,10 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             else lp.limit_end or ("TIME" if lp.budget.left() <= 0 else None)
         )
         # 질문 대상의 근거로만 코드 문장을 그린다(`_target_fallback`과 같은 거름): 판단 초안이 집은 Take · 장 · 지표 · 차원에 맞는
-        # 값과, 질문 대상의 '없음' 근거(조사가 읽은 범위의 Take 0개 · 리뷰 없음 등). 이번 실행이 읽은 근거를 모두 나열하지 않는다
-        targets = lp.question_evidence_ids()
-        if targets:
-            partial = _target_fallback(lp, targets, have=said)
+        # 값과, 질문 대상의 '없음' 근거(조사가 읽은 범위의 Take 0개 · 리뷰 없음 등). 이번 실행이 읽은 근거를 모두 나열하지 않는다.
+        # 대상이 있는데 맞는 근거가 없으면 다른 대상의 값으로 넓히지 않는다: 맞는 '없음' 근거만, 그것도 없으면 아래 안내 · 오류(13-2)
+        if lp.question_targets():
+            partial = _target_fallback(lp, lp.question_evidence_ids(), have=said)
         else:
             # 질문이 대상을 집지 않았으면(대상 없는 질문) 거를 기준이 없다: 이번 실행이 확인한 근거로 그린다(13-2 '확인한 것만 PARTIAL')
             partial = compose.template_partial(ctx, list(ctx.registry.items))

@@ -2020,9 +2020,12 @@ class Loop:
         dim = ev.path.rsplit(".dimensions.", 1)[-1] if ".dimensions." in ev.path else None
         return set(self.cfg.dimensions[dim].metrics) if dim in self.cfg.dimensions else set()
 
-    def _question_checklist(self, table: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """판단 초안(기록 질문 · 주장)마다 그 대상(Take · 장 · 지표 · 차원)에 맞는 근거 id. 답이 질문을 빠뜨리지 않게 한다."""
-        out: list[dict[str, Any]] = []
+    def question_targets(self) -> list[tuple[dict[str, Any], set[int], int | None, set[str]]]:
+        """판단 초안(기록 질문 · 주장 `MEASURED` · `REQUEST`) 중 대상을 집은 것마다 `(초안, Take 번호, 장, 지표)`.
+
+        Take · 장 · 지표 · 차원 중 하나라도 집어야 대상이 있는 초안이다(차원은 그 차원의 지표로). Take 를 말하지 않았으면
+        판정 대상 Take(6-3)로 채운다(기본 자료에 없으면 빈 채로 — 어느 Take 든 맞음). 빈 목록이면 질문이 대상을 집지 않은 것이다."""
+        out: list[tuple[dict[str, Any], set[int], int | None, set[str]]] = []
         num_of = {tid: s.take_number for tid, s in self.ctx.summaries.items()}
         for d in self.st.drafts:
             if d.get("type") not in ("MEASURED", "REQUEST"):
@@ -2043,6 +2046,13 @@ class Loop:
                 target = self._judged_take()
                 if target in num_of:
                     takes = {num_of[target]}
+            out.append((d, takes, slide, metrics))
+        return out
+
+    def _question_checklist(self, table: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """판단 초안(기록 질문 · 주장)마다 그 대상(Take · 장 · 지표 · 차원)에 맞는 근거 id. 답이 질문을 빠뜨리지 않게 한다."""
+        out: list[dict[str, Any]] = []
+        for d, takes, slide, metrics in self.question_targets():
             ids = [
                 r["id"]
                 for r in table
@@ -2055,7 +2065,8 @@ class Loop:
 
     def question_evidence_ids(self) -> list[str]:
         """질문 대상(판단 초안이 집은 Take · 장 · 지표 · 차원)에 맞는 이번 턴 근거 id(질문별 근거 목록을 합친 것, 처음 본 순서).
-        답 쓰기가 실패했을 때 코드가 대신 그릴 값 문장의 후보다(turn.py — 읽은 근거를 모두 나열하지 않는다)."""
+        답 쓰기가 실패했을 때 코드가 대신 그릴 값 문장의 후보다(turn.py — 읽은 근거를 모두 나열하지 않는다). 대상이 있는데 맞는
+        근거가 없어도 빈 목록이다: 대상이 있는지는 `question_targets`로 따로 본다."""
         table = self._evidence_table()
         return list(
             dict.fromkeys(e for q in self._question_checklist(table) for e in q["evidence_ids"])
