@@ -76,6 +76,9 @@ class SystemText(StrEnum):
     GOAL_BASE_DELETED = "목표의 기준 기록이 삭제되어 새 목표가 필요해요."
     GOAL_AFTER_SAVE = "목표 설정 뒤 시작한 연습부터 확인해요."
     GOAL_CONFIRM = "이 목표로 저장할까요?"
+    GOAL_CLOSED_ACHIEVED = "대화 목표는 이뤄서 닫혔어요."
+    GOAL_CLOSED_NOT_ACHIEVED = "대화 목표는 이루지 못한 채 닫혔어요."
+    GOAL_CLOSED_MISMATCH = "대본이나 평가 기준이 바뀌어 대화 목표를 닫았어요. 새 목표가 필요해요."
     PRACTICE_BUTTON = "연습 준비 화면으로 이동할 수 있어요."
     NO_NUMERIC_TARGET = "숫자로 판정할 기준이 없어 이 항목은 설명만 반영해요."
     REASSESS_BOTH_FAILED = "두 조건을 모두 확인하지 못해 비교 결과를 만들지 않았어요."
@@ -95,9 +98,27 @@ class SystemText(StrEnum):
         "말씀하신 목표는 기록으로 잴 수 없어 저장할 수 없어요. 잴 수 있는 목표를 추천드릴게요."
     )
     GOAL_CONFLICT = "말씀하신 목표와 기록으로 본 추천 목표가 달라요. 하나를 골라 주세요."
+    #: 화면 조작 방법을 물었는데 찾은 사용법 자료가 없을 때(답 초안 usage_unanswered, 6-10 · 7-10)
+    USAGE_NO_GUIDE = "이 화면 사용법은 아직 확인된 안내 자료가 없어 답해 드리기 어려워요."
     KNOWLEDGE_NO_SOURCE = "발표법 자료에서 그 말을 뒷받침하는 근거를 찾지 못했어요."
     #: 일반 조언(`GENERAL`) 문장 묶음 바로 앞에 코드가 붙이는 안내(6-10). 일반 조언이 하나도 남지 않으면 뺀다
     GENERAL_INTRO = "자료에서 확인한 내용은 아니고 일반적인 조언이에요."
+    #: 가벼운 말(계획 route SMALL_TALK, P-0008 5-1)의 고정 문장. 모델이 쓰지 않는다. 숫자 · 기록 값 · 판정 낱말이 없다.
+    #: 할 수 있는 일 목록은 묻는 말(CAPABILITY)에만 쓴다 — 인사에 다시 늘어놓으면 대화창 첫 화면 안내(FE)와 겹친다
+    TALK_GREETING = "안녕하세요! 발표 연습을 같이 볼게요."
+    TALK_THANKS = "도움이 됐다니 다행이에요. 더 궁금한 점이 있으면 물어봐 주세요."
+    TALK_FAREWELL = "수고하셨어요. 다음 연습 뒤에도 기록을 같이 볼게요."
+    TALK_PRACTICE = "네, 연습해 봐요."
+    #: 할 수 있는 일(FE 첫 화면 안내와 같은 낱말). 사용법 카드가 실리지 않은 동안은 화면 사용법을 말하지 않는다
+    TALK_CAPABILITY = "내 연습 기록에서 고칠 점 찾기, Take끼리 비교하기, 다음 연습 목표 잡기, 발표법 안내를 도와드릴 수 있어요."
+    TALK_CAPABILITY_USAGE = "내 연습 기록에서 고칠 점 찾기, Take끼리 비교하기, 다음 연습 목표 잡기, 발표법 · 화면 사용법 안내를 도와드릴 수 있어요."
+    #: 가벼운 말 뒤에 붙는 다음 걸음 — 기본 자료(범위 피치 · Take 유무)로 코드가 고른다
+    NEXT_REVIEW = "최근 Take에서 고칠 점부터 같이 볼까요?"
+    NEXT_FIRST_TAKE = "Take를 한 번 연습하면 그 기록을 같이 볼 수 있어요."
+    NEXT_PICK_PITCH = "어느 발표를 볼지 말씀해 주시면 그 기록을 같이 볼게요."
+    NEXT_FIRST_PITCH = "피치를 만들어 연습하면 그 기록을 같이 볼 수 있어요."
+    #: 다른 피치의 Take 를 함께 비교해 달라고 했을 때(1-3). 값은 각각 말해도 좋아짐 · 나빠짐 · 차이를 말하지 않는다
+    CROSS_PITCH_NO_COMPARE = "다른 발표의 Take끼리는 비교하지 않아요. 발표마다 따로 볼 수 있어요."
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
     SCRIPT_NOT_ALLOWED = "공식 평가에는 대본 사용 허용이 없어요."
     SCRIPT_POINTS_REMOVED = "평가 항목이 빠져 오른 점수예요. 실력이 바뀐 건 아니에요."
@@ -241,11 +262,24 @@ OUTCOME_WORD = {
     "BOTH_IN_RANGE": "두 번 모두 목표 범위 안이에요",
     "SAME_DISTANCE": "목표 범위와의 거리가 같아요",
 }
+#: 닫힌 목표를 물을 때 보고 있는 Take 의 지금 값이 목표 기준과 어떤지(7-10). 그 Take 가 목표를 이뤘다고는 하지 않는다
+GOAL_VALUE_WORD = {
+    "ACHIEVED": "목표 기준을 달성한 값이에요",
+    "NOT_ACHIEVED": "목표 기준에 못 미치는 값이에요",
+}
+
 GOAL_WORD = {
     "ACHIEVED": "목표를 이뤘어요",
     "NOT_ACHIEVED": "목표를 아직 이루지 못했어요",
     "UNKNOWN": "이번 Take로는 목표를 판정할 수 없어 다음 Take를 기다려요",
     "BASELINE_MISMATCH": "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
+}
+
+#: 닫힌 대화 목표의 상태 → 고정 문장(7-10). 닫은 Take 를 요청 자료로는 알 수 없어 Take · 값 없이 상태만 말한다
+GOAL_CLOSED_TEXT = {
+    "ACHIEVED": SystemText.GOAL_CLOSED_ACHIEVED,
+    "NOT_ACHIEVED": SystemText.GOAL_CLOSED_NOT_ACHIEVED,
+    "BASELINE_MISMATCH": SystemText.GOAL_CLOSED_MISMATCH,
 }
 
 

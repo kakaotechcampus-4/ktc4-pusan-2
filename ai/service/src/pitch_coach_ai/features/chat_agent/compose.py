@@ -18,12 +18,24 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import Field
+
 from . import claims as clm
 from . import templates
+from .corpus import sentence_spans
 from .goals import GoalJudgement
 from .schemas import Assessment, Claim, GuideCard
 
 _CLAIM_MAX = 300
+
+
+class DraftClaim(Claim):
+    """모델 초안에서 온 문장. 응답의 `Claim` 모양은 그대로 두고 `GUIDE` 문장의 인용 문장(`quote`)만 안에서 곁에 싣는다
+    (6-9 · 6-10). `quote`는 응답 · 서명 상태(`model_dump`)에 나가지 않는다."""
+
+    quote: str | None = Field(default=None, exclude=True)
+    #: 문장이 다루는 것(`DELIVERY` 발표 전달 조언 · `APP_USAGE` 피치코치 화면 · 기능 사용법 · None 기록 · 화면 사실). 내부 검사용
+    about: str | None = Field(default=None, exclude=True)
 
 
 @dataclass
@@ -70,13 +82,32 @@ def strip_ref_ids(text: str) -> str:
     return re.sub(r"\s{2,}", " ", t).strip()
 
 
-def _claim(kind: str, text: str, **kw: Any) -> Claim | None:
+def _claim(
+    kind: str, text: str, *, quote: str | None = None, about: str | None = None, **kw: Any
+) -> Claim | None:
     t = (text or "").strip()
     if not t:
         return None
     if len(t) > _CLAIM_MAX:
         return None
+    if quote is not None or about is not None:
+        return DraftClaim(kind=kind, text=t, quote=quote, about=about, **kw)  # type: ignore[arg-type]
     return Claim(kind=kind, text=t, **kw)  # type: ignore[arg-type]
+
+
+def claim_quote(c: Claim) -> str | None:
+    """문장이 곁에 실은 인용 문장(없으면 None). 초안에서 온 `GUIDE` 문장만 갖는다."""
+    return getattr(c, "quote", None)
+
+
+def claim_about(c: Claim) -> str | None:
+    """문장이 곁에 실은 다루는 것(`APP_USAGE` 등, 없으면 None). 초안에서 온 문장만 갖는다."""
+    return getattr(c, "about", None)
+
+
+def claim_quotes(claims: list[Claim]) -> list[str]:
+    """`GUIDE` 문장들의 인용 문장(문장 순서대로, 6-10 '답하는 법'). 자료 카드의 보이는 인용을 고를 때 쓴다."""
+    return [q for c in claims if c.kind == "GUIDE" and (q := claim_quote(c))]
 
 
 def _num_display(ctx: Any, ev: Any) -> str | None:
@@ -217,6 +248,23 @@ def goal_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> st
     return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
 
 
+def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> str | None:
+    """닫힌 목표를 물을 때 보고 있는 Take 의 지금 값과 목표 기준의 관계(코드 템플릿). 값을 숫자로 못 쓰면 None.
+
+    자동 목표 확인 문장(`goal_sentence`)과 달리 '목표를 이뤘어요'라고 하지 않는다: 이 Take 가 목표를 닫았는지는 알 수 없다.
+    """
+    word = templates.GOAL_VALUE_WORD.get(j.status)
+    if (
+        word is None
+        or not isinstance(j.observed, (int, float))
+        or goal.metric not in ctx.cfg.metric_units
+    ):
+        return None
+    where = f"{goal.slide_number}장 " if goal.slide_number else ""
+    obs = clm.format_metric_value(goal.metric, j.observed, ctx.cfg)
+    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
+
+
 def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
     """남은 문장이 없을 때 검증된 근거 값으로 그린 문장(최대 3개)."""
     out: list[Claim] = []
@@ -245,20 +293,36 @@ def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
     return out
 
 
-def guide_cards(ctx: Any, source_ids: list[str]) -> list[GuideCard]:
+def first_sentence(text: str) -> str:
+    """카드 본문의 첫 문장(300자 안: 카드 문장은 한 문장씩 300자 안으로 쓴다)."""
+    spans = sentence_spans(text)
+    if not spans:
+        return text[:300]
+    start, end = spans[0]
+    return text[start:end][:300]
+
+
+def guide_cards(
+    ctx: Any, source_ids: list[str], quotes: list[str] | None = None
+) -> list[GuideCard]:
+    """자료 카드. 보이는 인용(`quote`)은 `quotes`(`GUIDE` 문장의 인용 문장, 순서대로) 중 그 카드 본문에 있는 첫 문장이고,
+    없으면(코드 템플릿이 자료를 이은 때) 카드의 첫 문장이다. 카드 앞 300자를 그냥 자르지 않는다(인용한 문장과 화면이
+    달라지지 않게)."""
     corpus = ctx.corpus
     out: list[GuideCard] = []
     if corpus is None:
         return out
+    quotes = quotes or []
     for sid in dict.fromkeys(source_ids):
         card = corpus.get(sid)
         if card is None:
             continue
+        q = next((x for x in quotes if x in card.text), None) or first_sentence(card.text)
         out.append(
             GuideCard(
                 source_id=sid,
                 title=card.title,
-                quote=card.text[:300],
+                quote=q[:300],
                 source=card.source,
                 license=card.license,
             )
