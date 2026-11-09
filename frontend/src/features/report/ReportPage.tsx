@@ -17,6 +17,7 @@ import type {
 } from '@/types/report';
 import { AutoEndAlert } from './AutoEndAlert';
 import { ContentCard } from './ContentCard';
+import { ContentErrorBoundary } from './ContentErrorBoundary';
 import { QueryState, ReportFrame } from './ReportFrame';
 import {
   DIMENSION_LABEL,
@@ -87,7 +88,12 @@ function ReportBody({ report }: { report: TakeReport }) {
           <p className="text-sm text-ink/80">발표 기록을 정리하고 있어요.</p>
         </Card>
       )}
-      <ContentCard takeId={report.take_id} status={report.content_status} />
+      {/* 내용 전달이 그리다 던져도 리포트의 다른 칸은 남깁니다. 결과 판이 바뀌면 경계를 새로 만들어 다시 그려 봅니다 (#1157 리뷰 P1) */}
+      <ContentErrorBoundary
+        key={`${report.content_status?.state ?? 'none'}:${report.content_status?.revision ?? '-'}`}
+      >
+        <ContentCard takeId={report.take_id} status={report.content_status} />
+      </ContentErrorBoundary>
 
       {/* 측정값이 아직 없으면 평가기준 카드 하나가 줄을 다 씁니다 */}
       <div className="grid gap-4 lg:auto-cols-fr lg:grid-flow-col">

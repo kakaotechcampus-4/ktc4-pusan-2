@@ -6,7 +6,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ReportPage } from './ReportPage';
 import { measuresFixture, reviewFixture } from '@/mocks/report';
-import type { TakeReport } from '@/types/report';
+import type { ContentStatus, TakeReport } from '@/types/report';
+import { contentMeasured } from '@/mocks/contentCoverage';
+import { CONTENT_BROKEN_TEXT } from './ContentErrorBoundary';
 
 const query = vi.hoisted(() => ({
   data: undefined as TakeReport | undefined,
@@ -362,4 +364,32 @@ it('restores focus to the detail trigger after closing the dialog', async () => 
   expect(host.querySelector('dialog[open]')).toBeNull();
   expect(document.activeElement).toBe(trigger);
   expect(document.body.style.overflow).toBe('');
+});
+
+it('내용 전달 요약이 비어 와도 리포트의 다른 칸은 그대로 보입니다 (#1157 리뷰 P1)', async () => {
+  query.data!.content_status = {
+    ...contentMeasured,
+    summary: {} as unknown as NonNullable<ContentStatus['summary']>,
+  };
+  await render();
+  const text = host.querySelector('main')!.textContent;
+  expect(text).toContain(CONTENT_BROKEN_TEXT);
+  expect(host.querySelector('[aria-label="측정값"]')).not.toBeNull();
+  expect(text).toContain('잘한 점');
+});
+
+it('내용 전달 카드가 그리다 던져도 그 카드만 안내로 바꿉니다 (#1157 리뷰 P1)', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  // 모양 검사를 지나는 요약이지만 그리는 중에 던지게 만듭니다
+  const summary = { ...contentMeasured.summary! };
+  Object.defineProperty(summary, 'critical_gaps', {
+    get() {
+      throw new Error('boom');
+    },
+  });
+  query.data!.content_status = { ...contentMeasured, summary };
+  await render();
+  const text = host.querySelector('main')!.textContent;
+  expect(text).toContain(CONTENT_BROKEN_TEXT);
+  expect(host.querySelector('[aria-label="측정값"]')).not.toBeNull();
 });

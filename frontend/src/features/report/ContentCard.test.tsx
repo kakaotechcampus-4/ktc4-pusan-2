@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { contentMeasured, contentStatusOf } from '@/mocks/contentCoverage';
 import type { ContentStatus, CoverageSummary, Metric } from '@/types/report';
 import { ContentCard } from './ContentCard';
+import { CONTENT_BROKEN_TEXT } from './ContentErrorBoundary';
+import { readCoverageSummary } from './contentGuard';
 
 /** 화면에 남은 글자만 — 속성(`style` 등)은 빼고 봅니다 */
 function textOf(status: ContentStatus | null) {
@@ -67,6 +69,26 @@ describe('내용 전달 카드 — 상태', () => {
 
   it('BE 배포 전처럼 키 자체가 없어도 깨지지 않습니다', () => {
     expect(textOf(undefined as unknown as null)).toContain('아직 제공하지 않아요');
+  });
+
+  it.each([
+    ['빈 요약', {}],
+    ['대표 지표의 이유 목록이 없음', { ...contentMeasured.summary!, delivery: { value: 0.5 } }],
+    ['장 목록이 배열이 아님', { ...contentMeasured.summary!, slides: {} }],
+    ['장 하나의 상태를 모름', { ...contentMeasured.summary!, slides: [{ slide_number: 1 }] }],
+  ])(
+    'MEASURED 인데 요약 칸이 비어 있으면(%s) 던지지 않고 카드만 안내로 낮춥니다 (#1157 리뷰 P1)',
+    (_, summary) => {
+      const broken = { ...contentMeasured, summary } as unknown as ContentStatus;
+      const text = textOf(broken);
+      expect(text).toContain('내용 전달');
+      expect(text).toContain(CONTENT_BROKEN_TEXT);
+    },
+  );
+
+  it('모양이 맞는 요약은 그대로 그립니다', () => {
+    expect(readCoverageSummary(contentMeasured.summary)).toBe(contentMeasured.summary);
+    expect(textOf(contentMeasured)).not.toContain(CONTENT_BROKEN_TEXT);
   });
 });
 

@@ -11,6 +11,8 @@ import type {
   StatusShares,
   TakeCriticalGap,
 } from '@/types/report';
+import { ContentBroken } from './ContentErrorBoundary';
+import { readCoverageSummary } from './contentGuard';
 import { SlideCoverage } from './SlideCoverage';
 import { SpeechMixBlock } from './SpeechMixBlock';
 import {
@@ -57,7 +59,10 @@ export function ContentCard({
         )}
       </Card>
     );
-  return <MeasuredCard takeId={takeId} status={status} summary={status.summary} />;
+  // 요약이 객체여도 칸이 비었으면 그리지 않습니다 — 카드만 낮추고 리포트의 다른 칸은 그대로 둡니다 (#1157 리뷰 P1)
+  const summary = readCoverageSummary(status.summary);
+  if (!summary) return <ContentBroken />;
+  return <MeasuredCard takeId={takeId} status={status} summary={summary} />;
 }
 
 function MeasuredCard({
