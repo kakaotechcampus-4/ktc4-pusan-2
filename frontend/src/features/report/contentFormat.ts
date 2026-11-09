@@ -4,8 +4,10 @@ import type {
   CoverageSummary,
   DeliveryBand,
   FactSummary,
+  Importance,
   Metric,
   MixCategory,
+  OffscriptSpan,
   Scope,
   SentenceStatus,
   SlideSummary,
@@ -257,4 +259,75 @@ export function mixHidden(state: string): boolean {
 /** 검증 전 범주를 합쳐 보였다는 안내가 필요한가 */
 export function mixMerged(codes: readonly string[]): boolean {
   return codes.includes('NOT_VALIDATED') || codes.includes('OFFSCRIPT_DISABLED');
+}
+
+/* ── 장별 펼침 (#1154 4절) ─────────────────────────────────────── */
+
+const IMPORTANCE_LABEL: Record<Importance, string> = {
+  critical: '핵심',
+  high: '중요',
+  normal: '보통',
+};
+
+export function importanceLabel(importance: string): string {
+  return Object.hasOwn(IMPORTANCE_LABEL, importance)
+    ? IMPORTANCE_LABEL[importance as Importance]
+    : '보통';
+}
+
+/** 대본 문장 배지. 채점하지 않는 문장(`skip`)이나 상태가 없으면 "채점 안 함" */
+export function sentenceStatusLabel(role: string, status: string | null): string {
+  if (role === 'skip' || status === null) return '채점 안 함';
+  return Object.hasOwn(SENTENCE_STATUS_LABEL, status)
+    ? SENTENCE_STATUS_LABEL[status as SentenceStatus]
+    : '판정 보류';
+}
+
+const EXPRESSION_LABEL: Record<string, string> = {
+  verbatim_like: '대본대로',
+  paraphrased: '바꿔 말함',
+  undetermined: '구분 어려움',
+};
+
+export function expressionLabel(mode: string | null): string | null {
+  if (mode === null || !Object.hasOwn(EXPRESSION_LABEL, mode)) return null;
+  return EXPRESSION_LABEL[mode]!;
+}
+
+const FACT_STATUS_LABEL: Record<string, string> = {
+  matched: '맞음',
+  approximate: '어림',
+  mismatched: '다른 값',
+  missing: '빠뜨림',
+  pending: '확인 대기',
+};
+
+export function factStatusLabel(status: string): string {
+  return Object.hasOwn(FACT_STATUS_LABEL, status) ? FACT_STATUS_LABEL[status]! : '판정 보류';
+}
+
+export interface MarkPiece {
+  text: string;
+  /** 대본 밖 구간이면 그 구간 */
+  span: OffscriptSpan | null;
+}
+
+/**
+ * 말한 문장 하나를 대본 밖 구간으로 나눕니다. 위치는 코드 포인트(`[start, end)`)라
+ * UTF-16 인 `slice` 대신 `Array.from` 으로 자릅니다 — 이모지 하나가 UTF-16 으로는 둘이라서입니다.
+ * 겹치거나 문장 밖을 가리키는 구간은 버립니다
+ */
+export function splitMarks(sentence: string, spans: readonly OffscriptSpan[]): MarkPiece[] {
+  const chars = Array.from(sentence);
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const pieces: MarkPiece[] = [];
+  let at = 0;
+  for (const span of sorted) {
+    if (span.start < at || span.end <= span.start || span.end > chars.length) continue;
+    if (span.start > at) pieces.push({ text: chars.slice(at, span.start).join(''), span: null });
+    pieces.push({ text: chars.slice(span.start, span.end).join(''), span });
+    at = span.end;
+  }
+  if (at < chars.length) pieces.push({ text: chars.slice(at).join(''), span: null });
+  return pieces;
 }

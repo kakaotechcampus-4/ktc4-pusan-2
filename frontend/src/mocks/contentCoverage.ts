@@ -479,7 +479,7 @@ export const slideScoredFixture: Omit<SlideCoverageDetail, 'take_id' | 'revision
         id: 'O2',
         stt_sentence_index: 2,
         start: 2,
-        end: 9,
+        end: 12,
         category: 'related_aside',
         display_category: 'off_script',
         source: 'llm',

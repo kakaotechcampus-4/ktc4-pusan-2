@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { contentMeasured, contentStatusOf } from '@/mocks/contentCoverage';
-import type { ContentStatus, FactSummary, Metric } from '@/types/report';
+import type { ContentStatus, FactSummary, Metric, OffscriptSpan } from '@/types/report';
 import {
   UNKNOWN_REASON,
   bandText,
@@ -15,6 +15,8 @@ import {
   reasonText,
   reasonTexts,
   scopeLine,
+  sentenceStatusLabel,
+  splitMarks,
   zeroText,
 } from './contentFormat';
 
@@ -163,5 +165,48 @@ describe('수치 정확도 한 줄', () => {
       kind: 'measured',
       text: '정확도 50%',
     });
+  });
+});
+
+describe('장별 펼침', () => {
+  const span = (start: number, end: number, id = 'O'): OffscriptSpan => ({
+    id,
+    stt_sentence_index: 0,
+    start,
+    end,
+    category: 'procedural',
+    display_category: 'procedural',
+    source: 'rule',
+    other_slide_number: null,
+    tokens: 1,
+  });
+
+  it('대본 밖 구간을 코드 포인트로 자릅니다 — 한글', () => {
+    const pieces = splitMarks('안녕하세요 지난 분기', [span(0, 5)]);
+    expect(pieces).toEqual([
+      { text: '안녕하세요', span: span(0, 5) },
+      { text: ' 지난 분기', span: null },
+    ]);
+  });
+
+  it('이모지는 코드 포인트 하나입니다 (UTF-16 으로는 둘)', () => {
+    const pieces = splitMarks('🙂 사실 저도 놀랐어요', [span(2, 9)]);
+    expect(pieces.map((p) => p.text)).toEqual(['🙂 ', '사실 저도 놀', '랐어요']);
+    expect(pieces[1]!.span?.start).toBe(2);
+  });
+
+  it('겹치거나 문장 밖을 가리키는 구간은 버립니다', () => {
+    const pieces = splitMarks('하나둘셋넷', [span(0, 2, 'a'), span(1, 3, 'b'), span(4, 9, 'c')]);
+    expect(pieces.map((p) => [p.text, p.span?.id ?? null])).toEqual([
+      ['하나', 'a'],
+      ['둘셋넷', null],
+    ]);
+  });
+
+  it('문장 배지 — 채점하지 않는 문장 · 모르는 상태', () => {
+    expect(sentenceStatusLabel('claim', 'said')).toBe('전달');
+    expect(sentenceStatusLabel('skip', null)).toBe('채점 안 함');
+    expect(sentenceStatusLabel('claim', null)).toBe('채점 안 함');
+    expect(sentenceStatusLabel('claim', 'brand_new')).toBe('판정 보류');
   });
 });

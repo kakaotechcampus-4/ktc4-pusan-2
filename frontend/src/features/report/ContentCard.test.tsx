@@ -10,7 +10,7 @@ import { ContentCard } from './ContentCard';
 /** 화면에 남은 글자만 — 속성(`style` 등)은 빼고 봅니다 */
 function textOf(status: ContentStatus | null) {
   const host = document.createElement('div');
-  host.innerHTML = renderToStaticMarkup(<ContentCard status={status} />);
+  host.innerHTML = renderToStaticMarkup(<ContentCard takeId="t3" status={status} />);
   return host.textContent ?? '';
 }
 
@@ -151,7 +151,9 @@ describe('놓친 중요 내용 — 더 보기', () => {
     const host = document.createElement('div');
     const root = createRoot(host);
     try {
-      act(() => root.render(<ContentCard status={status('t-content-zero')} />));
+      act(() =>
+        root.render(<ContentCard takeId="t-content-zero" status={status('t-content-zero')} />),
+      );
       const items = () => host.querySelectorAll('li').length;
       const before = items();
       const button = [...host.querySelectorAll('button')].find((b) =>

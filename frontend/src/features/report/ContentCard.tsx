@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Badge } from '@/shared/ui/Badge';
 import { Card } from '@/shared/ui/Panel';
 import type {
@@ -7,13 +7,12 @@ import type {
   CoverageSummary,
   Expression,
   FactSummary,
-  MixCategory,
   SlideSummary,
-  SpeechMix,
-  SpeechMixBrief,
   StatusShares,
   TakeCriticalGap,
 } from '@/types/report';
+import { SlideCoverage } from './SlideCoverage';
+import { SpeechMixBlock } from './SpeechMixBlock';
 import {
   COVERAGE_STATUS_LABEL,
   bandText,
@@ -23,9 +22,6 @@ import {
   factsLine,
   isEstimatedOnly,
   metricReason,
-  mixHidden,
-  mixLabel,
-  mixMerged,
   percentText,
   previousDelta,
   reasonText,
@@ -41,7 +37,13 @@ import {
  * 비율은 null 을 0% 로 바꾸지 않습니다. 값이 없으면 "—" 와 이유를 보이고, 간이 · 추정 값은 배지로 구분합니다.
  * 막대는 색만으로 나누지 않게 `aria-hidden` 막대 + 글자 범례(`<dl>`)로 그립니다 (`GazeBreakdown` 과 같은 방식).
  */
-export function ContentCard({ status: given }: { status: ContentStatus | null }) {
+export function ContentCard({
+  takeId,
+  status: given,
+}: {
+  takeId: string;
+  status: ContentStatus | null;
+}) {
   // 요청 함수가 null 로 맞추지만, 키가 없는 캐시 · 목이 와도 깨지지 않게 한 번 더 맞춥니다
   const status = given ?? null;
   const headline = contentHeadline(status);
@@ -54,10 +56,18 @@ export function ContentCard({ status: given }: { status: ContentStatus | null })
         )}
       </Card>
     );
-  return <MeasuredCard status={status} summary={status.summary} />;
+  return <MeasuredCard takeId={takeId} status={status} summary={status.summary} />;
 }
 
-function MeasuredCard({ status, summary }: { status: ContentStatus; summary: CoverageSummary }) {
+function MeasuredCard({
+  takeId,
+  status,
+  summary,
+}: {
+  takeId: string;
+  status: ContentStatus;
+  summary: CoverageSummary;
+}) {
   return (
     <Card title="내용 전달">
       <Headline status={status} summary={summary} />
@@ -68,7 +78,7 @@ function MeasuredCard({ status, summary }: { status: ContentStatus; summary: Cov
         <ExpressionLine expression={summary.expression} />
       </div>
       <SpeechMixBlock mix={summary.speech_mix} title="말의 구성" />
-      <SlideList slides={summary.slides} />
+      <SlideList takeId={takeId} revision={status.revision} slides={summary.slides} />
     </Card>
   );
 }
@@ -271,91 +281,74 @@ function ExpressionLine({ expression }: { expression: Expression }) {
   );
 }
 
-/* ── 말의 구성 ─────────────────────────────────────────────────── */
-
-const MIX_COLOR: Record<MixCategory, string> = {
-  script: 'bg-ink',
-  other_slide: 'bg-stone',
-  procedural: 'bg-greige',
-  off_script: 'bg-coral-deep',
-  related_aside: 'bg-coral',
-  unrelated: 'bg-line-strong',
-  undetermined: 'bg-cream',
-};
-
-function mixColor(category: string): string {
-  return Object.hasOwn(MIX_COLOR, category) ? MIX_COLOR[category as MixCategory] : 'bg-line';
-}
-
-/** 장 요약의 말의 구성(`SpeechMixBrief`)도 같은 모양으로 그립니다 */
-export function SpeechMixBlock({
-  mix,
-  title,
-}: {
-  mix: SpeechMix | SpeechMixBrief | null;
-  title: string;
-}) {
-  if (!mix) return null;
-  if (mixHidden(mix.state))
-    return (
-      <section className="flex flex-col gap-2">
-        <h3 className="text-sm font-bold">{title}</h3>
-        <p className="text-sm text-ink/80">{reasonText(mix.reason_codes[0] ?? null)}</p>
-      </section>
-    );
-  if (mix.display.length === 0) return null;
-  return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-bold">{title}</h3>
-      <div className="flex h-3 border border-ink bg-cream" aria-hidden="true">
-        {mix.display.map((item) => (
-          <div
-            key={item.category}
-            className={mixColor(item.category)}
-            style={{ width: `${item.share * 100}%` }}
-          />
-        ))}
-      </div>
-      <dl className="flex flex-wrap gap-x-4 gap-y-1">
-        {mix.display.map((item) => (
-          <div key={item.category} className="flex items-center gap-1.5 text-sm">
-            <dt className="flex items-center gap-1.5 text-ink/80">
-              <span
-                className={`h-2.5 w-2.5 border border-ink/40 ${mixColor(item.category)}`}
-                aria-hidden="true"
-              />
-              {mixLabel(item.category)}
-            </dt>
-            <dd className="tabular-nums font-bold">{percentText(item.share)}</dd>
-          </div>
-        ))}
-      </dl>
-      {mixMerged(mix.reason_codes) && (
-        <p className="text-xs text-ink/80">{reasonText('NOT_VALIDATED')}</p>
-      )}
-    </section>
-  );
-}
-
 /* ── 장별 목록 ─────────────────────────────────────────────────── */
 
-function SlideList({ slides }: { slides: SlideSummary[] }) {
+function SlideList({
+  takeId,
+  revision,
+  slides,
+}: {
+  takeId: string;
+  revision: number | null;
+  slides: SlideSummary[];
+}) {
   if (slides.length === 0) return null;
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-sm font-bold">장별</h3>
       <ul className="flex flex-col border-t border-line">
         {slides.map((slide) => (
-          <li
-            key={slide.slide_number}
-            className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line py-2 text-sm"
-          >
-            <span className="tabular-nums w-10 shrink-0 font-bold">{slide.slide_number}장</span>
-            <SlideRowBody slide={slide} />
-          </li>
+          <SlideRow key={slide.slide_number} takeId={takeId} revision={revision} slide={slide} />
         ))}
       </ul>
     </section>
+  );
+}
+
+/** 줄을 누르면 그 장의 상세를 펼칩니다. 판(`revision`)을 모르면 부를 수 없어 펼치지 않습니다 */
+function SlideRow({
+  takeId,
+  revision,
+  slide,
+}: {
+  takeId: string;
+  revision: number | null;
+  slide: SlideSummary;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const head = (
+    <>
+      <span className="tabular-nums w-10 shrink-0 font-bold">{slide.slide_number}장</span>
+      <span className="min-w-0 flex-1">
+        <SlideRowBody slide={slide} />
+      </span>
+    </>
+  );
+  if (revision === null)
+    return (
+      <li className="flex min-h-11 items-start gap-3 border-b border-line py-2 text-sm">{head}</li>
+    );
+  return (
+    <li className="border-b border-line text-sm">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((v) => !v)}
+        className="flex min-h-11 w-full items-start gap-3 py-2 text-left hover:bg-cream focus-visible:outline-2 focus-visible:outline-ink"
+      >
+        {head}
+        <span aria-hidden="true" className="shrink-0 text-stone">
+          {open ? '▴' : '▾'}
+        </span>
+      </button>
+      {open && (
+        <div id={panelId} className="border-t border-line bg-cream/40 px-1 py-3">
+          <SlideCoverage takeId={takeId} slideNumber={slide.slide_number} revision={revision} />
+        </div>
+      )}
+    </li>
   );
 }
 
