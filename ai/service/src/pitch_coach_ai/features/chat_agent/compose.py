@@ -126,9 +126,47 @@ def normalize_take_refs(text: str) -> str:
     )
 
 
+#: 모델 문장에 그대로 나온 차원 상태 원값(리뷰의 내부 enum). 영문 낱말 경계로만 찾는다(한글이 붙어도 찾는다: "PRIORITY로")
+_STATE_ENUM_RE = re.compile(
+    r"(?<![A-Za-z_])(" + "|".join(sorted(clm.STATE_WORD, key=len, reverse=True)) + r")(?![A-Za-z_])"
+    r"(으로|로|은|는|을|를|과|와)?"
+)
+#: 받침 있는 말 뒤 · 없는 말 뒤 조사 짝(ㄹ 받침 뒤 '로'는 그대로)
+_JOSA_PAIRS = {"으로": ("으로", "로"), "로": ("으로", "로"), "은": ("은", "는"), "는": ("은", "는"),
+               "을": ("을", "를"), "를": ("을", "를"), "과": ("과", "와"), "와": ("과", "와")}  # fmt: skip
+
+
+def _josa(word: str, particle: str) -> str:
+    """`word` 끝소리에 맞춘 조사(받침 있음 → 앞, 없음 → 뒤. ㄹ 받침 뒤 '로')."""
+    last = ord(word[-1]) - 0xAC00
+    if not 0 <= last < 11172:
+        return particle
+    final = last % 28
+    with_batchim, without = _JOSA_PAIRS[particle]
+    if particle in ("으로", "로"):
+        return "로" if final in (0, 8) else "으로"
+    return with_batchim if final else without
+
+
+def normalize_state_words(text: str) -> str:
+    """모델 문장에 나온 차원 상태 원값(PRIORITY · STRENGTH · IMPROVED · STABLE · NOT_EVALUABLE)을 화면 이름(우선 개선 · 강점 ·
+    나아짐 · 유지 · 평가 불가, claims `STATE_WORD`)으로 바꾼다. 바로 뒤 조사는 바꾼 말의 끝소리에 맞춘다.
+
+    예: "시선 상태는 PRIORITY이고, 유창성은 STRENGTH입니다." → "시선 상태는 우선 개선이고, 유창성은 강점입니다."
+        "PRIORITY로 기록" → "우선 개선으로 기록"(r9 safe-tamper-review: 내부 enum 이 답에 그대로 나감)
+    """
+
+    def _sub(m: re.Match[str]) -> str:
+        word = clm.STATE_WORD[m.group(1)]
+        return word + (_josa(word, m.group(2)) if m.group(2) else "")
+
+    return _STATE_ENUM_RE.sub(_sub, text)
+
+
 def tidy_model_text(text: str) -> str:
-    """모델이 쓴 문장 글을 검사 전에 다듬는다: 근거 · 자료 id 표기를 지우고(`strip_ref_ids`) 'N번 Take'를 'Take N'으로."""
-    return normalize_take_refs(strip_ref_ids(text))
+    """모델이 쓴 문장 글을 검사 전에 다듬는다: 근거 · 자료 id 표기를 지우고(`strip_ref_ids`) 'N번 Take'를 'Take N'으로,
+    차원 상태 원값을 화면 이름으로 바꾼다."""
+    return normalize_state_words(normalize_take_refs(strip_ref_ids(text)))
 
 
 def _claim(

@@ -1253,6 +1253,63 @@ def test_take_written_as_nth_take_is_normalized_and_not_dropped() -> None:
     ]
 
 
+def test_dimension_state_enum_in_a_model_sentence_is_shown_by_its_name() -> None:
+    """모델이 차원 상태 원값(PRIORITY)을 문장에 쓰면 검사 전에 화면 이름(우선 개선)으로 바꿔 낸다(r9 safe-tamper-review:
+    "Take 5의 시선 상태는 PRIORITY이고 …"가 그대로 나감)."""
+    msg = "Take 5 시선 상태 알려 줘"
+    d = F.draft(
+        "Take 5 시선 상태 알려 줘",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        take_numbers=[5],
+        polarity="NEUTRAL",
+    )
+    report = ("get_take_report", {"take_id": "t-5", "section": "dimensions"})
+
+    def ans(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("dimension") == "audience_gaze")
+        return F.answer(
+            [
+                F.claim(
+                    "RECORD",
+                    "Take 5에서 청중 시선은 PRIORITY로 기록되어 있습니다.",
+                    evidence_ids=[eid],
+                )
+            ]
+        )
+
+    llm = F.FakeLlm(
+        [F.plan(assessments=[d]), F.tools(report), F.done()], answers=[ans], fixes=[F.fix({})]
+    )
+    fd = final_ok(F.run_turn(F.request(user_message=msg), llm)[2])
+    assert [c.text for c in fd.message.claims if c.kind == "RECORD"] == [  # type: ignore[union-attr]
+        "Take 5에서 청중 시선은 우선 개선으로 기록되어 있습니다."
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "out"),
+    [
+        (
+            "시선 상태는 PRIORITY이고, 유창성은 STRENGTH입니다.",
+            "시선 상태는 우선 개선이고, 유창성은 강점입니다.",
+        ),
+        (
+            "내용 전달도는 NOT_EVALUABLE로, 속도는 STABLE로",
+            "내용 전달도는 평가 불가로, 속도는 유지로",
+        ),
+        ("STRENGTH는 유창성", "강점은 유창성"),
+        ("IMPROVED와 STABLE", "나아짐과 유지"),
+        ("PRIORITY_X · STRENGTHS", "PRIORITY_X · STRENGTHS"),
+    ],
+)
+def test_normalize_state_words(text: str, out: str) -> None:
+    from pitch_coach_ai.features.chat_agent.compose import normalize_state_words
+
+    assert normalize_state_words(text) == out
+
+
 @pytest.mark.parametrize(
     ("text", "out"),
     [
