@@ -1023,8 +1023,13 @@ def _change_one(
     )  # fmt: skip
     if not comp.comparable:
         return _unv(comp.reason or "NOT_COMPARABLE"), comp
-    claimed = "IMPROVED" if d.polarity == "POSITIVE" else "WORSENED"
-    verdict: Verdict = "SUPPORTED" if comp.outcome == claimed else "CONTRADICTED"
+    stated = negated_change(d.quote, metric, ctx.cfg)
+    if stated is not None:
+        # 부정한 변화 주장("좋아지지 않았어")은 말한 방향의 여집합: 같음 · 반대면 맞고, 말한 방향이면 틀리다(6-3 `CHANGE` 행)
+        verdict: Verdict = "CONTRADICTED" if comp.outcome == stated else "SUPPORTED"
+    else:
+        claimed = "IMPROVED" if d.polarity == "POSITIVE" else "WORSENED"
+        verdict = "SUPPORTED" if comp.outcome == claimed else "CONTRADICTED"
     label = METRIC_LABEL.get(metric, metric)
     pv = format_metric_value(metric, comp.previous, ctx.cfg)  # type: ignore[arg-type]
     cv = format_metric_value(metric, comp.current, ctx.cfg)  # type: ignore[arg-type]
@@ -1489,11 +1494,30 @@ def change_direction(quote: str, metric: str | None, cfg: ChatAgentConfig) -> st
 
     좋아짐 · 나빠짐 낱말(`change_better_words` · `change_worse_words`)은 그대로, 오르내림 낱말(`change_up_words` ·
     `change_down_words`)은 지표 방향 표(`HIGHER` · `LOWER`)로 바꾼다. 묻는 꼴("좋아졌어?")도 같은 방향의 주장이다. 부정
-    표현("좋아지지 않았어")은 문제 주장과 같은 자리 규칙(`_negated_at`)으로 반대 방향이다. 낱말이 없거나 두 방향이 섞이면 None
-    (모델 극성을 쓴다).
+    표현("좋아지지 않았어")은 문제 주장과 같은 자리 규칙(`_negated_at`)으로 반대 방향이다(극성용). 판정은 반대 방향 주장이 아니라
+    말한 방향의 여집합으로 한다(`negated_change`). 낱말이 없거나 두 방향이 섞이면 None (모델 극성을 쓴다).
 
     예: change_direction("Take 4보다 Take 5에서 3장 시선이 좋아졌어?", "audience_ratio", cfg) → "IMPROVED"
     """
+    flip = {"IMPROVED": "WORSENED", "WORSENED": "IMPROVED"}
+    found = {flip[o] if neg else o for o, neg in _change_hits(quote, metric, cfg)}
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def negated_change(quote: str, metric: str | None, cfg: ChatAgentConfig) -> str | None:
+    """부정한 변화 주장("좋아지지 않았어" · "안 늘었어")이면 말한(부정하기 전) 방향 `IMPROVED` · `WORSENED`, 아니면 None.
+
+    방향 낱말이 모두 부정됐고 한 방향일 때만이다. 부정한 주장은 그 방향의 여집합이다: 비교 결과가 같음 · 반대면 맞고, 말한
+    방향이면 틀리다(6-3 `CHANGE` 행). 부정과 긍정이 섞이면("좋아지지 않고 나빠졌어") 긍정한 방향의 주장으로 본다(None)."""
+    hits = _change_hits(quote, metric, cfg)
+    if not hits or not all(neg for _, neg in hits):
+        return None
+    stated = {o for o, _ in hits}
+    return next(iter(stated)) if len(stated) == 1 else None
+
+
+def _change_hits(quote: str, metric: str | None, cfg: ChatAgentConfig) -> list[tuple[str, bool]]:
+    """`quote`의 방향 낱말마다 (말한 방향, 부정됐는가). 오르내림 낱말은 지표 방향 표로 좋아짐 · 나빠짐으로 바꾼다."""
     groups: list[tuple[str, tuple[str, ...]]] = [
         ("IMPROVED", cfg.change_better_words),
         ("WORSENED", cfg.change_worse_words),
@@ -1503,15 +1527,14 @@ def change_direction(quote: str, metric: str | None, cfg: ChatAgentConfig) -> st
         groups += [("IMPROVED", cfg.change_up_words), ("WORSENED", cfg.change_down_words)]
     elif direction == "LOWER":
         groups += [("WORSENED", cfg.change_up_words), ("IMPROVED", cfg.change_down_words)]
-    found: set[str] = set()
-    flip = {"IMPROVED": "WORSENED", "WORSENED": "IMPROVED"}
+    out: list[tuple[str, bool]] = []
     for outcome, words in groups:
         for w in words:
             at = quote.find(w)
             while at != -1:
-                found.add(flip[outcome] if _negated_at(quote, at, w) else outcome)
+                out.append((outcome, _negated_at(quote, at, w)))
                 at = quote.find(w, at + 1)
-    return next(iter(found)) if len(found) == 1 else None
+    return out
 
 
 def _change_polarity(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft:
@@ -1547,6 +1570,12 @@ def _claim_core(
         issues = claimed_issues(quote, subject.dimension, cfg) if claim_op == "ISSUE" else []
         # 문제 주장의 부정("빠르지 않았어")은 극성이 아니라 말로 가리므로 키에도 따로 넣는다
         negated = issue_negated(quote, issues, cfg) if issues else None
+        if claim_op == "CHANGE":
+            # 부정한 변화 주장("좋아지지 않았어")은 반대 방향 주장("나빠졌어")과 판정이 다르다(같음이면 맞음 · 틀림):
+            # 같은 키로 앞 판정을 압력으로 잇지 않게 따로 둔다. 부정이 아니면 키는 그대로(None)다
+            metric = subject.metric or PRIMARY_METRIC.get(subject.dimension or "")
+            if negated_change(quote, metric, cfg) is not None:
+                negated = True
         # Take 가 하나면 `relation`(ALL · SOME · COMPARE)은 뜻이 없다: 차례마다 모델이 다르게 적어도 같은 주장으로 본다
         # (반복 압력 "아니야, 잘 봤다니까"가 다른 키가 되어 압력으로 이어지지 않던 문제, 8회차 M5)
         relation = subject.relation if len(set(subject.take_ids)) > 1 else None

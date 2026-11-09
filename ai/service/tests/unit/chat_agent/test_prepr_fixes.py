@@ -7,6 +7,7 @@
 - 코드 대신 답의 끝난 까닭: 반복으로 멈춘 조사면 ANSWERED 가 아니라 REPEAT 다.
 - '같은 조건으로 다시 평가' 되살리기: 부정 · 인용 · 새 대상 · 조건이면 하지 않는다(확실하지 않으면 모델이 고른다).
 - 허용 근거: 행동 동사 자체에 붙은 조건("목표 저장하면 알려줘")은 저장 요청이 아니다.
+- 변화 주장: 부정한 주장("좋아지지 않았어")은 말한 방향의 여집합으로 판정한다.
 """
 
 from __future__ import annotations
@@ -16,13 +17,17 @@ from typing import Any
 import pytest
 
 from pitch_coach_ai.features.chat_agent import actions as act
+from pitch_coach_ai.features.chat_agent import claims as clm
 from pitch_coach_ai.features.chat_agent import compose
 from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
 from pitch_coach_ai.features.chat_agent.config import load_config
 from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
+from pitch_coach_ai.features.chat_agent.schemas import Subject
 
 from . import fakes as F
 from .test_approval import SAVE, drafts, first_request
+from .test_claims import change_draft, make_take, t5
+from .test_claims import run as judge
 from .test_none_evidence import (
     NO_TAKE_PLAN,
     NO_TAKE_SENTENCE,
@@ -301,3 +306,61 @@ def test_condition_on_the_save_verb_does_not_become_a_save_action(
     saved = [(a["type"], a["autonomy"]) for a in data.get("actions") or []]
     assert saved == ([("SAVE_GOAL", "ASK")] if asks else [])
     assert (data["status"] == "NEEDS_ACTION") is asks
+
+
+# ── 8. 부정한 변화 주장은 말한 방향의 여집합 ──────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("quote", "prev", "cur", "expected"),
+    [
+        ("지난번보다 3장 시선이 좋아지지 않았어", 0.28, 0.28, "SUPPORTED"),  # 같음
+        ("지난번보다 3장 시선이 좋아지지 않았어", 0.33, 0.28, "SUPPORTED"),  # 반대(나빠짐)
+        ("지난번보다 3장 시선이 좋아지지 않았어", 0.28, 0.33, "CONTRADICTED"),  # 말한 방향
+        ("지난번보다 시선 비율이 안 늘었어", 0.28, 0.28, "SUPPORTED"),
+        ("지난번보다 시선 비율이 안 늘었어", 0.28, 0.33, "CONTRADICTED"),
+        ("지난번보다 시선이 나빠지지는 않았어", 0.28, 0.28, "SUPPORTED"),
+        ("지난번보다 시선이 나빠지지는 않았어", 0.33, 0.28, "CONTRADICTED"),
+        # 부정과 긍정이 섞이면 긍정한 방향(나빠짐)의 주장: 같음이면 틀림
+        ("지난번보다 시선이 좋아지지 않고 나빠졌어", 0.28, 0.28, "CONTRADICTED"),
+        ("지난번보다 시선이 좋아지지 않고 나빠졌어", 0.33, 0.28, "SUPPORTED"),
+    ],
+)
+def test_negated_change_claim_is_the_complement_of_the_stated_direction(
+    quote: str, prev: float, cur: float, expected: str
+) -> None:
+    for polarity in ("POSITIVE", "NEGATIVE"):  # 모델 극성과 상관없이 말 속 낱말로 판정한다
+        cv = judge(
+            change_draft(polarity, quote=quote),
+            make_take(4, audience_ratio=prev),
+            t5(audience_ratio=cur),
+            focus="take-5",
+        )
+        assert cv.verdict == expected, (quote, polarity)
+
+
+def test_negated_change_claim_key_differs_from_the_opposite_claim() -> None:
+    """'좋아지지 않았어'와 '나빠졌어'는 판정이 다르므로(같음이면 맞음 · 틀림) 같은 주장 키가 아니다. 부정이 아닌 변화 주장 키는 그대로다."""
+    sub = Subject(
+        dimension="audience_gaze",
+        metric="audience_ratio",
+        take_ids=["take-4", "take-5"],
+        relation="COMPARE",
+    )
+
+    def key(quote: str) -> str:
+        return clm.claim_key(
+            type="MEASURED",
+            subject=sub,
+            claim_op="CHANGE",
+            polarity="NEGATIVE",
+            value=None,
+            value_unit=None,
+            quote=quote,
+            cfg=CFG,
+        )
+
+    assert key("지난번보다 시선이 좋아지지 않았어") != key("지난번보다 시선이 나빠졌어")
+    assert key("지난번보다 시선이 나빠졌어") == key("지난번보다 시선이 떨어졌잖아")
+    assert clm.negated_change("시선이 좋아지지 않았어", "audience_ratio", CFG) == "IMPROVED"
+    assert clm.negated_change("시선이 나빠졌어", "audience_ratio", CFG) is None
