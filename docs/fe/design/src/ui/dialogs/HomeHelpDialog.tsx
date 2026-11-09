@@ -65,10 +65,7 @@ function ChatGuide() {
           개인정보가 없는 설명용 목업입니다. 실제 답변 범위는 서비스 상태에 따라 달라질 수 있어요.
         </figcaption>
       </figure>
-      <ol
-        className="mt-4 grid gap-3 sm:grid-cols-2"
-        aria-label="새미나이 채팅의 번호별 사용방법"
-      >
+      <ol className="mt-4 grid gap-3 sm:grid-cols-2" aria-label="새미나이 채팅의 번호별 사용방법">
         {chatGuide.map(([title, description], index) => (
           <li key={title} className="flex min-w-0 items-start gap-3">
             <span
