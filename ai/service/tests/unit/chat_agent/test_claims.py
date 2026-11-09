@@ -13,6 +13,7 @@ from pitch_coach_ai.features.chat_agent.claims import (
     AssessmentDraft,
     DraftSubject,
     claim_key,
+    change_direction,
     claim_link_key,
     code_verdict,
     finalize,
@@ -436,8 +437,9 @@ def test_fm_L6_19_value_slide_and_unmeasured():
 
 
 def change_draft(
-    polarity=POS, takes=("take-4", "take-5"), relation="COMPARE", quote="지난번보다 늘었어", **kw
+    polarity=POS, takes=("take-4", "take-5"), relation="COMPARE", quote="지난번보다 달라졌어", **kw
 ):
+    # 방향 낱말이 없는 말: 모델 극성으로 판정한다(방향 낱말이 있으면 낱말이 정한다, 아래 change_direction 시험)
     return mk(
         quote,
         op="CHANGE",
@@ -469,6 +471,55 @@ def test_fm_L6_19_change_claim_uses_compare_takes(prev, cur, polarity, expected)
     )
     assert cv.verdict == expected
     assert cv.checked_take_ids == ["take-4", "take-5"]
+
+
+@pytest.mark.parametrize(
+    ("quote", "metric", "expected"),
+    [
+        ("Take 4보다 Take 5에서 3장 시선이 좋아졌어?", "audience_ratio", "IMPROVED"),  # 묻는 꼴도 같은 방향
+        ("지난번보다 나빠졌지", "audience_ratio", "WORSENED"),
+        ("3장 시선이 좋아지지 않았어", "audience_ratio", "WORSENED"),  # 부정 표현
+        ("시선 비율이 늘었어", "audience_ratio", "IMPROVED"),  # 높을수록 좋은 지표
+        ("군더더기가 늘었어", "filler_per_min", "WORSENED"),  # 낮을수록 좋은 지표
+        ("군더더기가 줄었어?", "filler_per_min", "IMPROVED"),
+        ("말 속도가 올랐어", "cpm", None),  # 범위 지표는 오르내림으로 정하지 않는다
+        ("좋아졌어, 아니면 나빠졌어?", "audience_ratio", None),  # 두 방향이 섞임
+        ("지난번이랑 어때?", "audience_ratio", None),
+    ],
+)
+def test_change_direction_comes_from_direction_words(quote, metric, expected):
+    assert change_direction(quote, metric, CFG) == expected
+
+
+@pytest.mark.parametrize(
+    ("polarity", "expected"), [("NEUTRAL", "CONTRADICTED"), (NEG, "CONTRADICTED")]
+)
+def test_fm_L6_19_question_change_claim_is_judged_by_its_words(polarity, expected):
+    """'Take 4보다 Take 5에서 3장 시선이 좋아졌어?'(ana-compare-4-5): 모델 극성이 NEUTRAL · NEGATIVE 여도 말이 '좋아졌'이면
+    좋아짐 주장이다. 31% → 28% 로 나빠졌으므로 기록과 다름."""
+    d = mk(
+        "Take 4보다 Take 5에서 3장 시선이 좋아졌어?",
+        op="CHANGE",
+        dim="audience_gaze",
+        polarity=polarity,
+        takes=("take-4", "take-5"),
+        relation="COMPARE",
+    )
+    cv = run(d, make_take(4, audience_ratio=0.31), t5(audience_ratio=0.28), focus="take-5")
+    assert cv.verdict == expected
+
+
+def test_question_change_claim_polarity_is_set_from_words_in_finalize():
+    """확정한 판단의 극성도 말 속 방향 낱말로 정한다: 같은 주장을 '좋아졌어?' · '좋아졌잖아'로 되풀이해도 같은 주장 키다."""
+    msg = "Take 4보다 Take 5에서 3장 시선이 좋아졌어?"
+    d = mk(msg, op="CHANGE", dim="audience_gaze", polarity="NEUTRAL", takes=("take-4", "take-5"), relation="COMPARE")
+    snaps = (make_take(4, audience_ratio=0.31), t5(audience_ratio=0.28))
+    a = fin([d], msg, *snaps, focus="take-5").outcomes[0].assessment
+    assert (a.polarity, a.verdict) == ("POSITIVE", "CONTRADICTED")
+    msg2 = "Take 4보다 Take 5에서 3장 시선이 좋아졌잖아"
+    d2 = mk(msg2, op="CHANGE", dim="audience_gaze", polarity=POS, takes=("take-4", "take-5"), relation="COMPARE")
+    b = fin([d2], msg2, *snaps, focus="take-5").outcomes[0].assessment
+    assert b.polarity == "POSITIVE"
 
 
 def test_fm_L6_19_change_phrase_and_evidence_come_from_comparison():
@@ -1596,8 +1647,9 @@ def test_fm_L6_09_non_measured_claim_key_includes_actual_take_ids():
         (2.0, 1.5, POS, "SUPPORTED"),  # 군더더기는 낮을수록 좋다: 줄었다 = 좋아졌다
         (1.5, 2.0, POS, "CONTRADICTED"),
         (1.5, 1.5, POS, "CONTRADICTED"),
-        (1.5, 2.0, NEG, "SUPPORTED"),
-        (2.0, 1.5, NEG, "CONTRADICTED"),
+        # 방향은 말 속 낱말이 정한다(6-3 CHANGE): '줄었어'는 모델 극성이 NEGATIVE 여도 좋아짐 주장이다
+        (1.5, 2.0, NEG, "CONTRADICTED"),
+        (2.0, 1.5, NEG, "SUPPORTED"),
     ],
 )
 def test_fm_L6_19_change_claim_lower_direction_metric(prev, cur, polarity, expected):

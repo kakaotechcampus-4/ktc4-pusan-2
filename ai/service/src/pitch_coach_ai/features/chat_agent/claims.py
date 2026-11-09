@@ -1153,7 +1153,7 @@ def code_verdict(
         ``verdict="CONTRADICTED"``, ``evidence_phrase="Take 5 청중 시선 31%, 우선 개선"``.
     """
     ctx = _Ctx(pitch_id, registry, version_of, cfg, takes, script_used)
-    draft = _metric_key(draft, cfg)
+    draft = _change_polarity(_metric_key(draft, cfg), cfg)
     if draft.type == "PREFERENCE":
         return _preference_verdict(draft, ctx, focus_take_id)
     if draft.type != "MEASURED":
@@ -1310,14 +1310,65 @@ def issue_negated(quote: str, issues: Sequence[str], cfg: ChatAgentConfig) -> bo
     for w in words:
         at = quote.find(w)
         while at != -1:
-            if _NEG_BEFORE.search(quote[:at]):
-                return True
-            rest = quote[at + len(w) :]
-            cut = _NEG_CLAUSE_BREAK.search(rest)
-            if _NEG_AFTER.search(rest[: cut.start()] if cut else rest):
+            if _negated_at(quote, at, w):
                 return True
             at = quote.find(w, at + 1)
     return False
+
+
+def _negated_at(quote: str, at: int, word: str) -> bool:
+    """`quote[at:]`의 낱말 `word`가 부정됐는가: 바로 앞의 '안', 또는 뒤 같은 절 안의 부정 표현(않 · 못 · 아니)."""
+    if _NEG_BEFORE.search(quote[:at]):
+        return True
+    rest = quote[at + len(word) :]
+    cut = _NEG_CLAUSE_BREAK.search(rest)
+    return bool(_NEG_AFTER.search(rest[: cut.start()] if cut else rest))
+
+
+def change_direction(quote: str, metric: str | None, cfg: ChatAgentConfig) -> str | None:
+    """변화 주장(`CHANGE`)의 방향을 `quote`의 방향 낱말로 정한다(6-3 `CHANGE` 행): `IMPROVED` · `WORSENED` · None.
+
+    좋아짐 · 나빠짐 낱말(`change_better_words` · `change_worse_words`)은 그대로, 오르내림 낱말(`change_up_words` ·
+    `change_down_words`)은 지표 방향 표(`HIGHER` · `LOWER`)로 바꾼다. 묻는 꼴("좋아졌어?")도 같은 방향의 주장이다. 부정
+    표현("좋아지지 않았어")은 문제 주장과 같은 자리 규칙(`_negated_at`)으로 반대 방향이다. 낱말이 없거나 두 방향이 섞이면 None
+    (모델 극성을 쓴다).
+
+    예: change_direction("Take 4보다 Take 5에서 3장 시선이 좋아졌어?", "audience_ratio", cfg) → "IMPROVED"
+    """
+    groups: list[tuple[str, tuple[str, ...]]] = [
+        ("IMPROVED", cfg.change_better_words),
+        ("WORSENED", cfg.change_worse_words),
+    ]
+    direction = cfg.direction.get(metric) if metric else None
+    if direction == "HIGHER":
+        groups += [("IMPROVED", cfg.change_up_words), ("WORSENED", cfg.change_down_words)]
+    elif direction == "LOWER":
+        groups += [("WORSENED", cfg.change_up_words), ("IMPROVED", cfg.change_down_words)]
+    found: set[str] = set()
+    flip = {"IMPROVED": "WORSENED", "WORSENED": "IMPROVED"}
+    for outcome, words in groups:
+        for w in words:
+            at = quote.find(w)
+            while at != -1:
+                found.add(flip[outcome] if _negated_at(quote, at, w) else outcome)
+                at = quote.find(w, at + 1)
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def _change_polarity(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft:
+    """측정 변화 주장(`CHANGE`)의 극성을 말 속 방향 낱말로 코드가 정한다(`change_direction`). 낱말로 정하지 못하면 그대로."""
+    if draft.type != "MEASURED" or draft.claim_op != "CHANGE":
+        return draft
+    d = _metric_key(draft, cfg)
+    dim = d.subject.dimension or (
+        cfg.dimension_of_metric(d.subject.metric) if d.subject.metric else None
+    )
+    metric = d.subject.metric or (PRIMARY_METRIC.get(dim) if dim else None)
+    outcome = change_direction(draft.quote, metric, cfg)
+    if outcome is None:
+        return draft
+    polarity: Polarity = "POSITIVE" if outcome == "IMPROVED" else "NEGATIVE"
+    return draft if draft.polarity == polarity else draft.model_copy(update={"polarity": polarity})
 
 
 def _claim_core(
@@ -1490,6 +1541,8 @@ def finalize(
     }
     outcomes: list[AssessmentOutcome] = []
     for n, (idx, d) in enumerate(zip(valid_idx, valid, strict=True), start=1):
+        # 변화 주장의 방향은 말 속 방향 낱말로(6-3): 판정 · 키 · 내보내는 극성이 같게 여기서 정한다
+        d = _change_polarity(d, cfg)
         if idx in forced:
             # 유형 · 대상이 원문과 어긋난 채 고치기를 마쳤다: 모델 판정을 버리고 확인 불가로 둔다(6-3 먼저 검사 2)
             cv = CodeVerdict("UNVERIFIABLE", "CODE", reason_code=forced[idx])
