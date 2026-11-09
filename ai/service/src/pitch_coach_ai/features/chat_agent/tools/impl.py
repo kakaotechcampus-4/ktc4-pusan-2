@@ -6,7 +6,7 @@
   `NOT_FOUND`(지워짐 · 없음) · `EMPTY`(실제로 빈 결과)로 나눈다. null 을 0 으로 바꾸지 않는다(L1-17).
 - '없음'도 근거다(6-8): 실제로 읽은 범위의 0 · 없음 — 피치별 Take 수(`list_pitches`, `pitches[pitch_id=…].take_count`),
   범위 피치의 Take 0개(`list_takes`, 거른 조건은 경로에), 리뷰 절의 리뷰 없음(`review.status` NONE), 측정된 영역의 문제 구간
-  0곳(`problem_segments[area=…].count`), 대화 목표 없음(`goal.status` NONE) — 을 같은 `Evidence` 모양(RECORD)으로 낸다.
+  0곳(`problem_segments[area=…].count`, 장을 읽었으면 `[area=…,slide_number=…]`), 대화 목표 없음(`goal.status` NONE) — 을 같은 `Evidence` 모양(RECORD)으로 낸다.
   이름 검색이 비면 '이 이름으로 찾은 0개'(`pitches[query].count`)다. 측정 안 됨 · 생략 · 기본 자료에 없음은 '없음' 근거를 만들지 않는다.
   '없음' 근거를 낸 결과는 범위 피치도 `target_ids`에 넣어 피치가 지워지면 함께 버린다(5-6).
 - 범위 대조: 모든 도구가 대상 피치를 지금 범위와 대조한다. 범위 밖 Take 는 `NOT_FOUND` 로 돌려준다(L1-18).
@@ -29,7 +29,7 @@ from ..goals import compare_takes, record_read_value
 from ..prompts import PLAN_STEP_TOOLS
 from ..schemas import PlanStep, TakeSnapshot
 from ..templates import AREA_LABEL, SCREEN_STEP_LABEL
-from ..values import read_dimension_state, read_metric
+from ..values import is_number, read_dimension_state, read_metric
 
 if TYPE_CHECKING:
     from ..runctx import RunCtx
@@ -795,32 +795,62 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
 _AREA_NAME = re.compile(r"^[A-Z_]{1,32}$")
 
 
+def _slide_measured(av: dict[str, Any], slide_number: int) -> bool:
+    """영역 값(`areas.<영역>`)에서 그 장이 측정됐는가: 장 항목이 있고, 측정 비율이 0 이하가 아니고, 지표 값이 하나라도 수다
+    (장 값 읽기 `read_metric`의 측정 안 됨 조건과 같다). 장 항목이 없거나 값이 모두 null 이면 측정 안 됨이다."""
+    slides = av.get("slides")
+    slide = next(
+        (
+            s
+            for s in (slides if isinstance(slides, list) else [])
+            if isinstance(s, dict) and s.get("slide_number") == slide_number
+        ),
+        None,
+    )
+    if slide is None:
+        return False
+    ratio = slide.get("measured_ratio")
+    if is_number(ratio) and ratio <= 0:
+        return False
+    metrics = slide.get("metrics")
+    return isinstance(metrics, dict) and any(is_number(v) for v in metrics.values())
+
+
 def _segment_facts(
     ctx: RunCtx, snap: TakeSnapshot, a: TakeReportArgs, items: list[dict[str, Any]], eids: list[str]
 ) -> dict[str, Any]:
     """문제 구간을 읽은 범위(Take · 장)에서 영역마다: 값이 측정됐고 구간이 0곳이면 '문제 구간 없음' 근거(count 0)를 내고,
     측정 안 된 영역(값 null · 미측정 사유)은 이름만 알린다. 측정 안 됨은 '없음'이 아니다(null 을 0 으로 읽지 않는다, L1-17).
-    구간이 하나라도 있는 영역(믿을 수 없는 구간 포함)은 '없음' 근거를 만들지 않는다."""
+    구간이 하나라도 있는 영역(믿을 수 없는 구간 포함)은 '없음' 근거를 만들지 않는다.
+
+    장을 읽었으면(`slide_number`) 그 장의 값이 측정된 영역만 '없음'이다(Take 값만 측정되고 그 장은 측정 안 된 영역을 넓히지
+    않는다). 장의 '없음' 근거는 경로에 장 번호를 넣는다: 한 실행에서 두 장을 읽어도 근거 id 가 겹치지 않는다(L1-18)."""
     tr = snap.results.take_result or {}
     with_segments = {it.get("area") for it in items}
     none_rows: list[dict[str, Any]] = []
     unmeasured: list[dict[str, Any]] = []
+    slide = a.slide_number
     for area, av in (tr.get("areas") or {}).items():
         if not isinstance(av, dict) or not isinstance(area, str) or not _AREA_NAME.match(area):
             continue
         label = AREA_LABEL.get(area, area)
-        if av.get("unmeasured_reason") is not None or av.get("take") is None:
+        if (
+            av.get("unmeasured_reason") is not None
+            or av.get("take") is None
+            or (slide is not None and not _slide_measured(av, slide))
+        ):
             unmeasured.append({"area": area, "label": label})
             continue
         if area in with_segments:
             continue
+        where = f"area={area}" + (f",slide_number={slide}" if slide is not None else "")
         ev = ctx.registry.record(
             pitch_id=ctx.scope_pitch_id or "",
             take_id=snap.summary.take_id,
             take_number=snap.summary.take_number,
             kind="TAKE_RESULT",
             revision=snap.revisions.TAKE_RESULT,
-            path=f"problem_segments[area={area}].count",
+            path=f"problem_segments[{where}].count",
             value=0,
             slide_number=a.slide_number,
             unit="count",

@@ -169,7 +169,7 @@ def test_problem_segments_zero_only_for_measured_areas() -> None:
     assert set(rows) == {"GAZE", "SPEED", "VOLUME", "PAUSE", "FILLER", "TIME"}
     gaze = ctx.registry.get(rows["GAZE"]["count"]["evidence_id"])
     assert (gaze.path, gaze.value, gaze.slide_number, gaze.take_number) == (
-        "problem_segments[area=GAZE].count",
+        "problem_segments[area=GAZE,slide_number=2].count",
         0,
         2,
         5,

@@ -424,7 +424,7 @@ _NONE_PATHS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^pitches\[query\]\.count$"), "PITCH_QUERY"),
     (re.compile(r"^review\.status$"), "REVIEW"),
     (re.compile(r"^goal\.status$"), "GOAL"),
-    (re.compile(r"^problem_segments\[area=([A-Z_]+)\]\.count$"), "SEGMENTS"),
+    (re.compile(r"^problem_segments\[area=([A-Z_]+)(?:,slide_number=\d+)?\]\.count$"), "SEGMENTS"),
 )
 #: 근거 표(`evidence_table`)의 '무엇' 이름(지표가 없는 Take 수 · 상태 근거)
 _NONE_WHAT = {
@@ -459,7 +459,7 @@ def none_kind(ev: Any) -> str | None:
 
 
 def segment_area(ev: Any) -> str | None:
-    """문제 구간 0곳 근거의 영역(`problem_segments[area=GAZE].count` → GAZE)."""
+    """문제 구간 0곳 근거의 영역(`problem_segments[area=GAZE].count` · `[area=GAZE,slide_number=2]` → GAZE)."""
     hit = _none_match(ev)
     return hit[1].group(1) if hit is not None and hit[0] == "SEGMENTS" else None
 
