@@ -80,7 +80,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 | 서버에서 온 것 | TanStack Query (`shared/api/*.ts`) | 홈 · 피치 · 리포트 · 장치 점검 준비 정보 |
 | 화면이 가진 작업 중 상태 | Zustand | 피치 작성 초안(`features/pitch/create/createStore.ts`), 장치 점검(`features/rehearsal/prepare/prepareStore.ts`), 리허설 무대(`features/rehearsal/stage/rehearsalStore.ts`), 대화(`features/chat/chatStore.ts`) |
 | 프레임 단위 고빈도 값 | `useRef` | 시선 원시 좌표 · 마이크 RMS. 상태로 두면 프레임마다 다시 그립니다 |
-| 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 1초 시선 판정 · 슬라이드 전환 · 세션 티켓. 새로고침해도 이어 가고, 업로드 실패 때 다시 보냅니다 |
+| 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 세션 · 1초 시선 기록 · 슬라이드 전환. 서버로 가는 원본은 발표 중 WS `metrics`이고, 이것은 새로고침 이어 가기 · 종료 재시도를 위한 이 브라우저의 사본입니다 |
 | 화면 사이에 넘기는 값 | 라우터 state | 피치 수정 → 장치 점검의 연습 조합(`practice`) |
 | 이 브라우저에만 남기는 작은 값 | localStorage | 대화 기억 첫 안내를 봤는지 등 |
 
@@ -133,8 +133,8 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 | 피치 · 슬라이드 · 대본 · 평가 기준 | REST | `shared/api/pitch.ts` · `presentation.ts` · `script.ts` · `standards.ts` | [docs/be/script-parse.md](../be/script-parse.md) |
 | 대본 나누기 결과 | REST 폴링(1초) | `features/pitch/create/scriptParse.ts` | [docs/be/script-parse.md](../be/script-parse.md) |
 | 장치 점검 준비 정보 · Take 생성 | REST | `shared/api/prepare.ts` | [docs/fe/pitch-take-contract-570.md](pitch-take-contract-570.md) |
-| 리허설 음성(PCM) · 실시간 전사 · 코치 | WebSocket `/api/ws/takes/{id}` | `features/rehearsal/lib/sttSocket.ts` · `stage/useSttStream.ts` · `stage/useLiveCoach.ts` | [docs/be/realtime-stt.md](../be/realtime-stt.md) · [docs/be/take-lifecycle.md](../be/take-lifecycle.md) · [docs/ai/architecture.md](../ai/architecture.md) 1-4 |
-| 1초 시선 기록 · Take 끝내기 | REST | `features/rehearsal/lib/gazePayload.ts` · `shared/api/take.ts` | [docs/ai/architecture.md](../ai/architecture.md) 6-2 · [docs/ai/features/gaze-tracking.md](../ai/features/gaze-tracking.md) |
+| 리허설 음성(PCM) · 1초 기록(`metrics`: 시선 · 음량 · 슬라이드) · 실시간 전사 · 코치 · 끝내기(`stop`) | WebSocket `/api/ws/takes/{id}` | `features/rehearsal/lib/sttSocket.ts` · `stage/useSttStream.ts` · `stage/useMetricsSender.ts` · `stage/useLiveCoach.ts` | [docs/be/realtime-stt.md](../be/realtime-stt.md) · [docs/be/take-lifecycle.md](../be/take-lifecycle.md) · [docs/ai/architecture.md](../ai/architecture.md) 1-3 · 1-4 · 6-2 |
+| Take 종료 시각 · 중단 | REST `PUT /api/pitches/{id}/takes/{takeId}` · `POST .../abandon` | `features/rehearsal/stage/sendEnding.ts` · `shared/api/take.ts` | [docs/be/take-lifecycle.md](../be/take-lifecycle.md) |
 | Take 결과 · 리포트 | REST | `shared/api/report.ts` · `takeHistory.ts` | [docs/be/realtime-coach.md](../be/realtime-coach.md) · [docs/be/review.md](../be/review.md) |
 | 대화형 에이전트 | REST 폴링 | `features/chat/chatTransport.ts` · `shared/api/chatPaths.ts` | [docs/ai/features/chat-agent.md](../ai/features/chat-agent.md) 12절 |
 | 설문 · 서비스 의견 | REST | `shared/api/takeSurvey.ts` · `serviceReview.ts` | [docs/be/take-survey.md](../be/take-survey.md) · [docs/be/service-feedback-plan-540.md](../be/service-feedback-plan-540.md) |
@@ -151,10 +151,10 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 
 - 엔진: `vendor/gaze/engine` · `worker`(AI 복사본, 여기서 고치지 않음). 판이 바뀌면 AI 쪽에서 고치고 다시 복사합니다 — [vendor/gaze/README.md](../../frontend/src/vendor/gaze/README.md)
 - 화면 쪽 진입점: `features/rehearsal/media/useGazeWorker.ts`(프레임 펌프 · 백프레셔), 장치 점검의 기준점 `prepare/useGazeSetup.ts`, 리허설 중 `stage/useLiveGaze.ts`
-- 기록: 1초 판정 → IndexedDB(`lib/db.ts`) → 끝낼 때 구간으로 압축(`lib/gazeSegments.ts`) → `GazePayload` 조립(`lib/gazePayload.ts`)
+- 기록: 1초 기록 → WS `metrics`로 서버에(`stage/useMetricsSender.ts`), 같은 기록을 IndexedDB(`lib/db.ts`)에 사본으로. 끝낼 때 기록을 한꺼번에 올리는 단계는 없습니다(BE #134). `lib/gazePayload.ts`는 `/dev/media` 확인용입니다
 - 화면은 1초 판정 결과만 압니다. 엔진이 바뀌어도 화면 코드는 바뀌지 않게 둡니다.
 
-> **작성 필요** — 지금 파일 기준의 호출 흐름 그림. `frontend/README.md`에 있던 그림은 옛 분류기(`workers/temporalVoter.ts`, 지금 없음) 기준이라 옮기지 않았습니다.
+지금 파일 기준의 호출 흐름 그림은 [features/rehearsal.md](features/rehearsal.md) 6-1에 있습니다.
 
 ## 7. 실행 환경과 배포
 
