@@ -24,13 +24,13 @@ describe('화면 설계서 목록', () => {
     }
   });
 
-  it('Draft가 반영된 시작 전 세팅을 제품 확정 상태로 표시하지 않는다', () => {
-    expect(screens.find((screen) => screen.id === 'prepare-mission')?.status).toBe('Draft 반영');
+  it('병합된 시작 전 세팅을 제품에 있음으로 표시한다', () => {
+    expect(screens.find((screen) => screen.id === 'prepare-mission')?.status).toBe('제품에 있음');
   });
 
   it('제품의 한 페이지형 피치 생성 상태와 공유 URL을 유지한다', () => {
     const create = screens.find((screen) => screen.id === 'pitch-create');
-    expect(create?.status).toBe('Draft 반영');
+    expect(create?.status).toBe('제품에 있음');
     expect(create?.route).toBe('/pitch/new');
     expect(create?.states.map((item) => item.id)).toEqual(
       expect.arrayContaining([

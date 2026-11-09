@@ -1,5 +1,5 @@
 // 제품 홈 · 내 피치(`frontend/src/features/pitch/HomePage.tsx`)의 설계서 샘플.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/ui/Button';
 import { DeletePitchDialog } from '@/ui/dialogs/DeletePitchDialog';
@@ -61,12 +61,25 @@ const HOME_TIPS = [
 const HOME_TIP_INTERVAL_MS = 8000;
 
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
+  const [agreed, setAgreed] = useState(false);
+  const consentStatus = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (agreed) consentStatus.current?.focus();
+  }, [agreed]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [tipPaused, setTipPaused] = useState(
     () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
   );
   const [tipHovered, setTipHovered] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setTipPaused(preference.matches);
+    preference.addEventListener('change', update);
+    return () => preference.removeEventListener('change', update);
+  }, []);
+
   useEffect(() => {
     if (tipPaused || tipHovered) return;
     const timer = window.setInterval(
@@ -90,7 +103,22 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
   return (
     <div className="pitch-create flex min-h-[40rem] flex-col bg-greige text-ink">
-      {stateId === 'consent' && <ConsentPrompt onAgree={() => onNavigate('home', 'default')} />}
+      {stateId === 'consent' &&
+        (agreed ? (
+          <div className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10">
+            <p
+              ref={consentStatus}
+              role="status"
+              tabIndex={-1}
+              className="border-2 border-ink bg-coral-wash px-4 py-3 text-sm"
+            >
+              <span className="block font-bold">사용자 테스트 참여에 동의했어요.</span>
+              <span className="block">설문은 각 리포트에서 남길 수 있어요.</span>
+            </p>
+          </div>
+        ) : (
+          <ConsentPrompt onAgree={() => setAgreed(true)} />
+        ))}
       {stateId === 'pending' && <PendingSurveys onNavigate={onNavigate} />}
       <div className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 lg:px-10">
         <div className="flex flex-wrap items-end justify-between gap-5">
@@ -104,13 +132,12 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
+            <Link
+              to="/pitch/tutorial"
               className="border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream"
-              onClick={() => onNavigate('tutorial')}
             >
-              첫 미션 체험하기
-            </button>
+              첫 미션 체험하기 →
+            </Link>
             <Link to="/pitch/new" className={homePrimary}>
               <span aria-hidden="true">＋</span> 새 피치 만들기
             </Link>
@@ -196,14 +223,14 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
         )}
       </div>
       <footer className="border-t border-line-strong">
-        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 pl-20 text-xs text-ink/80 xl:flex-nowrap xl:pl-10 xl:pr-10">
-          <div className="flex min-h-9 min-w-0 basis-full items-center gap-2 lg:min-w-0 lg:flex-1 lg:basis-auto">
-            <span className="shrink-0 text-coral-deep">TIP /</span>
+        <div className="home-footer-content mx-auto flex w-full max-w-page flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 text-xs text-ink/80 xl:flex-nowrap xl:px-10">
+          <div className="flex min-h-9 min-w-0 basis-full flex-wrap items-center gap-x-2 lg:min-w-0 lg:flex-1 lg:basis-auto lg:flex-nowrap">
+            <span className="shrink-0 font-mono text-coral-deep">TIP /</span>
             <p
               title={HOME_TIPS[tipIndex]}
               onMouseEnter={() => setTipHovered(true)}
               onMouseLeave={() => setTipHovered(false)}
-              className="min-w-0 flex-1 truncate"
+              className="order-3 min-h-20 w-full min-w-0 whitespace-normal leading-5 sm:min-h-10 lg:order-none lg:min-h-0 lg:w-auto lg:flex-1 lg:truncate"
             >
               {HOME_TIPS[tipIndex]}
             </p>
@@ -227,10 +254,10 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             PITCH COACH · ONE TAKE AT A TIME.
           </span>
           <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
-            <Link to="/terms" className="whitespace-nowrap hover:text-coral-deep">
+            <Link to="/terms?from=home" className="whitespace-nowrap hover:text-ink">
               이용약관
             </Link>
-            <Link to="/privacy" className="whitespace-nowrap hover:text-coral-deep">
+            <Link to="/privacy?from=home" className="whitespace-nowrap hover:text-ink">
               개인정보 처리방침
             </Link>
           </div>

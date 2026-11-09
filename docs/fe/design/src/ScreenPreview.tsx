@@ -193,7 +193,7 @@ function CurrentScreen({
       return <SeminiScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create-a':
     case 'pitch-create':
-      // 옛 preview 상태 주소를 유지하며 두 화면 모두 현행 피치 생성 샘플을 사용한다.
+      // 옛 preview 상태 주소는 슬라이드 확인 창으로 연다
       return (
         <PitchCreateScreen
           stateId={stateId === 'preview' ? 'upload-review' : stateId}

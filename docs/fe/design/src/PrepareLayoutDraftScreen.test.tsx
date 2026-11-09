@@ -76,7 +76,7 @@ it('is explicitly a PM draft and keeps the product sample available separately',
   expect(entries.find((entry) => entry.id === 'prepare-layout-review')?.summary).toContain(
     'PM 승인 전',
   );
-  expect(entries.find((entry) => entry.id === 'prepare-mission')?.status).toBe('Draft 반영');
+  expect(entries.find((entry) => entry.id === 'prepare-mission')?.status).toBe('제품에 있음');
 });
 
 it('uses independent device examples and allows mode selection before devices are ready', async () => {

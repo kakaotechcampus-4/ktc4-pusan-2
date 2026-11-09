@@ -3,7 +3,9 @@ import type { PracticeCombo, PrepareResponse } from '@/types/api';
 import {
   fromPrepare,
   missionSourceNote,
+  newerComboNotice,
   newerScriptNotice,
+  olderSlideNotice,
   prepareProblem,
   takeChoice,
 } from './prepareInfo';
@@ -122,6 +124,74 @@ describe('이번 연습의 조합', () => {
 
   it('둘 다 없으면 Take 를 만들 수 없다', () => {
     expect(takeChoice(null, null)).toBeNull();
+  });
+});
+
+describe('넘겨받은 조합보다 새 조합이 있다는 안내', () => {
+  const picked = (slideVersion: number, scriptVersion: number): PracticeCombo => ({
+    ...combo,
+    slideVersion,
+    scriptVersion,
+  });
+  const latest = fromPrepare(res); // 자료 v2 · 대본 v2
+
+  it.each([
+    ['대본만 새 것', picked(2, 1)],
+    ['자료만 새 것', picked(1, 2)],
+    ['둘 다 새 것', picked(1, 1)],
+  ])('%s이면 최신 조합을 알린다', (_, older) => {
+    expect(newerComboNotice(older, latest)).toBe('최신 조합이 있어요: 자료 v2 · 대본 v2');
+  });
+
+  it('같은 조합이면 알리지 않는다', () => {
+    expect(newerComboNotice(picked(2, 2), latest)).toBeNull();
+  });
+
+  it('서버 id 가 같으면 화면 번호가 낮아도 같은 조합이라 알리지 않는다', () => {
+    // 수정 화면의 대본 V1 매핑을 고쳐 다시 올리면 서버에만 v2 가 생기고 화면 번호는 1 그대로입니다
+    const sameIds: PracticeCombo = {
+      ...picked(2, 1),
+      presentationVersionId: latest.presentation!.id,
+      scriptVersionId: latest.script!.id,
+    };
+    expect(newerComboNotice(sameIds, latest)).toBeNull();
+  });
+
+  it('한쪽이라도 조합이 더 새 것이면(엇갈림) 무엇이 최신인지 말할 수 없어 알리지 않는다', () => {
+    expect(newerComboNotice(picked(1, 3), latest)).toBeNull();
+  });
+
+  it('최신 조합으로 시작할 수 없으면 알리지 않는다', () => {
+    const broken = fromPrepare({ ...res, script: { id: 'sv2', version: 2, slide_count: 9 } });
+    expect(newerComboNotice(picked(1, 1), broken)).toBeNull();
+  });
+});
+
+describe('준비 정보가 지난 자료를 골랐다는 안내', () => {
+  const picked = fromPrepare(res); // 자료 v2(12쪽) · 대본 12장
+
+  it('장 수가 다른 새 자료가 있으면 장 수와 함께 알린다', () => {
+    expect(olderSlideNotice(picked, { id: 'pv3', version: 3, pageCount: 14 })).toBe(
+      '가장 최근 자료(v3 · 14쪽)는 대본(12장)과 장 수가 달라 지난 자료(v2)로 연습하게 돼요',
+    );
+  });
+
+  it('새 자료의 쪽수를 모르면 장 수 없이 알린다', () => {
+    expect(olderSlideNotice(picked, { id: 'pv3', version: 3, pageCount: null })).toBe(
+      '가장 최근 자료(v3) 대신 지난 자료(v2)로 연습하게 돼요',
+    );
+  });
+
+  it.each([
+    ['가장 최근 자료를 골랐으면', { id: 'pv2', version: 2, pageCount: 12 }],
+    ['자료 목록이 없으면', null],
+  ])('%s 알리지 않는다', (_, latest) => {
+    expect(olderSlideNotice(picked, latest)).toBeNull();
+  });
+
+  it('준비 정보로 시작할 수 없으면 그 이유가 먼저라 알리지 않는다', () => {
+    const broken = fromPrepare({ ...res, script: { id: 'sv2', version: 2, slide_count: 9 } });
+    expect(olderSlideNotice(broken, { id: 'pv3', version: 3, pageCount: 14 })).toBeNull();
   });
 });
 

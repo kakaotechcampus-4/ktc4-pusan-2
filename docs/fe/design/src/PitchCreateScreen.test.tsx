@@ -54,7 +54,7 @@ afterEach(async () => {
 it('배치 검토 시안으로 구분하고 기존 제품 샘플도 유지한다', () => {
   expect(entries.find((entry) => entry.id === 'pitch-create-a')).toMatchObject({ status: '시안' });
   expect(entries.find((entry) => entry.id === 'pitch-create')).toMatchObject({
-    status: 'Draft 반영',
+    status: '제품에 있음',
   });
 });
 it('네 섹션·편차 0/0·접힌 폴더로 시작하고 날짜와 파일 교체는 없다', async () => {
@@ -132,8 +132,21 @@ it('매핑 편집값은 닫고 다시 열어도 남고 재매핑·저장 후에�
   await click('매핑 확인/수정');
   await click('다음 장');
   expect(host.querySelector<HTMLTextAreaElement>('dialog textarea')?.value).toBe('수정한 둘째 장');
+  const remap = button('수정 대본 매핑');
+  remap.focus();
   await click('수정 대본 매핑');
+  expect(remap.getAttribute('aria-disabled')).toBe('true');
+  expect(document.activeElement).toBe(remap);
   await finishMapping();
+  expect(document.activeElement).toBe(button('저장'));
+
+  const next = button('다음 장');
+  next.focus();
+  await click('다음 장');
+  expect(document.activeElement).toBe(next);
+  expect(next.getAttribute('aria-disabled')).toBe('true');
+  await click('다음 장');
+  expect(host.querySelector('dialog textarea')?.getAttribute('aria-label')).toBe('슬라이드 3 대본');
   await click('저장');
   await click('닫기');
   expect(button('최종 확인 →').disabled).toBe(false);

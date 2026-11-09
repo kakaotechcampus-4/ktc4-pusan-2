@@ -263,12 +263,25 @@ it('제품 링크 · 옛 시안 주소를 설계서 안에서 처리하고 가�
   expect(host.textContent).toContain('연결하지 않은 화면');
 });
 
+it('피치가 없는 홈에서도 통합 푸터의 TIP·사용방법·정책 링크를 표시한다', async () => {
+  await render('home', 'empty');
+  expect(host.textContent).toContain('TIP /');
+  expect(host.textContent).toContain('사용방법 살펴보기');
+  expect(host.textContent).toContain('이용약관');
+  expect(host.textContent).toContain('개인정보 처리방침');
+});
+
 it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한다', async () => {
   await render('home');
   const link = [...host.querySelectorAll('a')].find(
     (item) => item.textContent?.trim() === '개인정보 처리방침',
   );
   expect(link).toBeDefined();
+  expect(link?.getAttribute('href')).toContain('/privacy?from=home');
+  const homeTerms = [...host.querySelectorAll('a')].find(
+    (item) => item.textContent?.trim() === '이용약관',
+  );
+  expect(homeTerms?.getAttribute('href')).toContain('/terms?from=home');
   await act(async () => link!.click());
   expect(host.textContent).toContain('검토용 초안 · 시행 전');
   expect(host.textContent).toContain('카메라 영상과 음성의 차이');
@@ -276,6 +289,8 @@ it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한�
     (item) => item.textContent?.trim() === '이용약관',
   );
   expect(terms).toBeDefined();
+  // 정책 화면 안의 상호 링크는 홈 진입 파라미터 없이 이동한다.
+  expect(terms?.getAttribute('href')).toContain('/terms');
   await act(async () => terms!.click());
   expect(host.textContent).toContain('서비스의 목적');
 });
@@ -352,8 +367,9 @@ it('컴포넌트 · 대화 상자 견본: 종류가 다 보이고, 창은 상태
   await act(async () => root.render(null));
 
   await render('confirm-dialog', 'busy');
-  expect(button('끝내는 중…')?.disabled).toBe(true);
-  expect(button('취소')?.disabled).toBe(true);
+  // 누른 버튼이 초점을 쥐도록 disabled 대신 aria-disabled 로 막는다 (#845)
+  expect(button('끝내는 중…')?.getAttribute('aria-disabled')).toBe('true');
+  expect(button('취소')?.getAttribute('aria-disabled')).toBe('true');
   await act(async () => root.render(null));
 
   await render('survey-dialog', 'open');
@@ -387,7 +403,9 @@ it('설문(#776): 홈은 참여 안내 · 남은 설문만 두고, 설문은 리
 
   await render('home', 'consent');
   await click('안내 보고 참여하기');
-  expect(button('동의하고 참여하기')).toBeDefined();
+  await click('동의하고 참여하기');
+  expect(document.activeElement?.textContent).toContain('사용자 테스트 참여에 동의했어요.');
+  expect(document.activeElement?.getAttribute('role')).toBe('status');
   await act(async () => root.render(null));
 
   await render('home', 'pending');
@@ -397,6 +415,13 @@ it('설문(#776): 홈은 참여 안내 · 남은 설문만 두고, 설문은 리
   await render('report');
   await click('이번 분석 설문 남기기');
   expect(button('설문 보내기')?.disabled).toBe(true);
+  await act(async () => {
+    host.querySelector<HTMLInputElement>('input[name="accuracy"][value="4"]')!.click();
+    host.querySelector<HTMLInputElement>('input[name="usefulness"][value="5"]')!.click();
+  });
+  await click('설문 보내기');
+  expect(document.activeElement?.textContent).toContain('설문을 보냈어요');
+  expect(document.activeElement?.getAttribute('role')).toBe('status');
   await act(async () => root.render(null));
 
   await render('report', 'survey-sent');
