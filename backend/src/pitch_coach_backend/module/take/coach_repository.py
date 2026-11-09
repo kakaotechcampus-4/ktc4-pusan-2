@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, delete, func, or_, select, update
+from sqlalchemy import ColumnElement, and_, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from pitch_coach_backend.module.take.entity import (
@@ -207,6 +207,18 @@ class CoachRepository(TakeRepository):
         if after is not None:
             query = query.where(Take.id > after)
         return list(self.db.scalars(query.order_by(Take.id).limit(limit)))
+
+    def lock_take(self, take_id: uuid.UUID) -> Take | None:
+        """Take 행을 잠그고 지금 DB 값으로 돌려준다. 없으면 None."""
+        return self.db.scalar(
+            select(Take)
+            .where(Take.id == take_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
+    def has_metric_seconds(self, take_id: uuid.UUID) -> bool:
+        return bool(self.db.scalar(select(exists().where(TakeMetricSecond.take_id == take_id))))
 
     def lock_finalizing(self, take_id: uuid.UUID) -> Take | None:
         """Take 행을 잠그고 `ANALYZING` · `FINALIZING` 이면 돌려준다."""

@@ -93,8 +93,12 @@ class TaskRegistry:
         return list(self._tasks.values())
 
     def running(self, key: Hashable) -> bool:
+        return self.get(key) is not None
+
+    def get(self, key: Hashable) -> asyncio.Task[None] | None:
+        """그 키로 돌고 있는 태스크. 없거나 끝났으면 None."""
         task = self._tasks.get(key)
-        return task is not None and not task.done()
+        return task if task is not None and not task.done() else None
 
     def spawn(
         self, coro: Coroutine[Any, Any, None], *, name: str, key: Hashable | None = None

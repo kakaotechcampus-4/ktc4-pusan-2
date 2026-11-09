@@ -709,7 +709,7 @@ def test_take_export_wraps_the_recovery_request_with_results(
             asked.append(take_id)
             return {"t_ms": 1_000, "replay": {"words": []}}
 
-    monkeypatch.setattr(hooks, "_finalize_export", FakeExport())
+    monkeypatch.setattr(hooks, "_finalize_recovery", FakeExport())
 
     body = client.get(f"/admin/api/takes/{take.id}/export", auth=ADMIN).json()
 
