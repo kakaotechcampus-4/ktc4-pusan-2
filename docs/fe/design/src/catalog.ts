@@ -217,7 +217,7 @@ const productScreens: GuideScreen[] = [
     ],
     rules: [
       '런처는 왼쪽 하단에 고정하며 채팅 패널은 너비 26rem·높이 36rem의 둥근 흰 배경과 3px 테두리, 오프셋 그림자로 구분한다.',
-      '추천 질문은 입력창에만 채우고 자동으로 전송하지 않는다.',
+      '제품에서 질문 예시를 누르면 해당 질문을 바로 전송한다. 설계서의 정적 미리보기는 API를 호출하지 않고 입력창에만 채운다.',
       '대화 범위와 기억 없이 대화하기는 독립적으로 동작하고, 목록·기억 설정·패널 닫기를 오가더라도 선택을 보존한다.',
       '대화 목록과 기억 설정에서는 입력 폼을 숨기고 작성 중인 초안을 보존한다.',
       '실제 API·메시지 기록·기억 설정은 호출하지 않는다.',
@@ -228,9 +228,10 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/chat/ChatAgentHost.tsx',
       'frontend/src/features/chat/ChatPanelHeader.tsx',
       'frontend/src/features/chat/ChatEmptyState.tsx',
+      'frontend/src/features/chat/ChatAskHelp.tsx',
     ],
     productNote:
-      '채팅 패널의 독립 UI 샘플로, 실제 채팅 API·오류 경계·라우트별 런처 오프셋은 재현하지 않는다. 화면 상태 선택은 프리셋이고 패널 내부 조작은 로컬 상태로만 시연한다.',
+      '채팅 패널의 독립 UI 샘플로, 실제 채팅 API·오류 경계·라우트별 런처 오프셋은 재현하지 않는다. 제품의 질문 예시는 클릭 즉시 전송되지만 설계서에서는 입력창에만 채운다. 화면 상태 선택은 프리셋이고 패널 내부 조작은 로컬 상태로만 시연한다.',
     productLinks: [link('홈 · 채팅 레이어', '/')],
     next: [next('홈', 'home')],
   },
