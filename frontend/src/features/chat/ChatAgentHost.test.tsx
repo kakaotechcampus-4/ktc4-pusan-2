@@ -10,6 +10,7 @@ import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
 import { CHAT_FAILED_TEXT } from './ChatErrorBoundary';
 import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
+import { ASK_HELP_ABILITIES, ASK_HELP_EXAMPLES, ASK_HELP_TITLE } from './askHelpText';
 import { emptyBasis, readCard, type ShownClaim } from './chatResponse';
 import { chatTicket, useChatStore } from './chatStore';
 import type { TransportSignal } from './chatTransport';
@@ -1437,11 +1438,15 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     progressDropped: false,
     cards: [],
   });
-  const ended = (runId: string, conversationId: string): TransportSignal => ({
+  const ended = (
+    runId: string,
+    conversationId: string,
+    status: 'DONE' | 'REFUSED' = 'DONE',
+  ): TransportSignal => ({
     type: 'ended',
     runId,
     conversationId,
-    status: 'DONE',
+    status,
     errorCode: null,
     endedWhileWaiting: false,
   });
@@ -1500,6 +1505,36 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     await settle();
     expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('받은 답 문장');
     expect(panel()!.textContent).not.toContain('물어보세요');
+    // 거절로 끝난 답이 아니면 질문 예시를 붙이지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('거절로 끝난 뒤 목록 다시 읽기가 실패해도 받은 거절 답 아래에 질문 예시를 한 번 붙인다', async () => {
+    await watching('c1', 'r1');
+    await act(async () =>
+      transport().emit(progressIn('r1', 'c1', '이 요청은 도와드릴 수 없어요.')),
+    );
+    // 끝나기 전에는 진행 답 아래에 붙이지 않습니다
+    expect(panel()!.querySelector('[data-live-run] ~ [data-ask-help]')).toBeNull();
+    server.messages = () => Promise.reject(new Error('끊김'));
+    // 실제 통신 계층처럼 실행을 끝낸(endRun) 뒤 끝남 신호를 보냅니다 — 보내기 잠금이 풀립니다
+    await act(async () => {
+      useChatStore.getState().endRun('r1');
+      transport().emit(ended('r1', 'c1', 'REFUSED'));
+    });
+    await settle();
+    await settle();
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
+    expect(helps).toHaveLength(1);
+    const liveRun = panel()!.querySelector('[data-live-run]')!;
+    expect(
+      liveRun.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await act(async () => helps[0]!.querySelector('button')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 보내는 중에는 안내를 거둡니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
   });
 
   it('꺼지면 패널을 닫고, 다시 켜져도 저절로 열려 초점을 가져가지 않는다', async () => {
@@ -2185,6 +2220,93 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
     expect(panel()!.querySelector('[data-message="m4"]')!.contains(more[0]!)).toBe(true);
     await act(async () => more[0]!.click());
     expect(transport().sent.map((r) => r.text)).toEqual(['이어서 확인해 줘']);
+  });
+
+  it('거절 답이 마지막이면 그 아래에만 할 수 있는 일 · 질문 예시를 붙이고, 예시를 누르면 그 질문을 보낸다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+      userMsg('m3', '주식 추천해 줘', 'r1'),
+      answer('m4', 'r1', 'REFUSED', [
+        '이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요.',
+      ]),
+    ]);
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
+    expect(helps).toHaveLength(1);
+    // 마지막 거절 답(m4) 뒤에 붙고, 앞의 거절 답(m2) 뒤에는 없습니다
+    const m4 = panel()!.querySelector('[data-message="m4"]')!;
+    expect(m4.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(helps[0]!.textContent).toContain(ASK_HELP_TITLE);
+    for (const ability of ASK_HELP_ABILITIES) expect(helps[0]!.textContent).toContain(ability);
+    const examples = [...helps[0]!.querySelectorAll('button')].map(visibleText);
+    expect(examples).toEqual([...ASK_HELP_EXAMPLES]);
+
+    await act(async () => helps[0]!.querySelector('button')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+  });
+
+  it('거절 답 아래 예시를 눌러 보내면 안내가 바로 사라지고, 초점은 입력칸으로 돌아온다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    const example = panel()!.querySelector<HTMLButtonElement>('[data-ask-help] button')!;
+    example.focus();
+    await act(async () => example.click());
+    await settle();
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 목록을 다시 읽기 전에도 거절 답(m2)이 마지막이지만, 보내는 중이라 안내를 그리지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+    expect(document.activeElement).toBe(input());
+  });
+
+  it('보낼 수 없는 동안 예시는 aria-disabled 로 막히고, 숨은 이유를 달고, 눌러도 보내지 않는다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    // 429 Retry-After 로 잠깁니다
+    await act(async () => {
+      const s = useChatStore.getState();
+      const ticket = s.beginSend({
+        text: '질문',
+        page: { route: '/', pitch_id: null, take_id: null, screen: null },
+        again_of_message_id: null,
+        choice: null,
+      })!;
+      useChatStore.getState().failSend(ticket, 60);
+    });
+    const examples = [...panel()!.querySelectorAll<HTMLButtonElement>('[data-ask-help] button')];
+    expect(examples).toHaveLength(ASK_HELP_EXAMPLES.length);
+    for (const example of examples) {
+      expect(example.getAttribute('aria-disabled')).toBe('true');
+      expect(example.querySelector('.sr-only')?.textContent).toBeTruthy();
+    }
+    await act(async () => examples[0]!.click());
+    expect(transport().sent).toEqual([]);
+  });
+
+  it('거절이 아닌 답이 마지막이면 질문 예시를 붙이지 않는다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+      userMsg('m3', '비교해 줘', 'r1'),
+      answer('m4', 'r1', 'DONE', ['비교했어요.']),
+    ]);
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('빈 대화에서는 첫 인사 아래에 같은 안내를 보이고, 예시를 누르면 그 질문을 보낸다', async () => {
+    await inConversation([]);
+    expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
+      '새미나이에게 물어보세요',
+    );
+    const help = panel()!.querySelector('[data-ask-help]')!;
+    expect(help.textContent).toContain(ASK_HELP_TITLE);
+    expect([...help.querySelectorAll('button')].map(visibleText)).toEqual([...ASK_HELP_EXAMPLES]);
+
+    await act(async () => help.querySelectorAll('button')[1]!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[1]]);
   });
 
   it.each([

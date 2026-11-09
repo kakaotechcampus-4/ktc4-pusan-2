@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSyncExternalStore, type ReactNode } from 'react';
 import { getPitchResources } from '@/shared/api/pitch';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import type { ChatMessage, PlanStep, TraceItem, Verdict } from '@/types/chat';
+import type { ChatMessage, PlanStep, RunStatus, TraceItem, Verdict } from '@/types/chat';
 import { CardList, type CardActions } from './ChatCards';
 import { ChipList } from './ChatChips';
 import { LockedReason } from './LockedReason';
@@ -239,6 +239,8 @@ export interface LiveProgress {
   progressDropped: boolean;
   /** 승인 대기 중 카드 — 문장이 다 보인 뒤에 답니다 */
   cards: ShownCard[];
+  /** 끝난 상태 — 끝남 신호를 받기 전에는 null. 목록을 다시 읽지 못해도 거절 안내를 붙이는 데 씁니다 */
+  ended: RunStatus | null;
 }
 
 const SKIP_BUTTON =
