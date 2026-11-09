@@ -133,6 +133,10 @@ it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 �
     expect(row.lastElementChild?.getAttribute('aria-haspopup')).toBe('menu');
     const prepare = row.lastElementChild!.previousElementSibling as HTMLAnchorElement;
     expect(prepare.textContent?.trim()).toBe('발표 준비');
+    // #801에서 승인된 강조 위계는 #1117(미병합 종료) 이후에도 유지한다.
+    expect(prepare.className).toContain('bg-coral-deep');
+    expect(prepare.className).toContain('text-white');
+    expect(prepare.className).toContain('shadow-none!');
     const title = row.querySelector('a')!;
     expect(prepare.getAttribute('href')).toBe(title.getAttribute('href'));
     expect(prepare.getAttribute('href')).toMatch(/\/edit$/);
@@ -516,7 +520,9 @@ it('사용방법은 최신 #944의 새미나이 시각 안내와 여섯 조작�
   await click('사용방법 살펴보기');
   expect(host.textContent).toContain('새미나이 채팅 사용방법');
   expect(host.querySelector('img[src*="chat-agent.svg"]')).not.toBeNull();
-  expect(host.querySelectorAll('ol[aria-label="새미나이 채팅의 번호별 사용방법"] > li')).toHaveLength(6);
+  expect(
+    host.querySelectorAll('ol[aria-label="새미나이 채팅의 번호별 사용방법"] > li'),
+  ).toHaveLength(6);
 });
 
 it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립적으로 유지된다', async () => {
