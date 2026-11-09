@@ -273,7 +273,13 @@ def test_open_goal_sentence_is_not_repeated_when_the_answer_cites_the_goal() -> 
     def said(r: Any) -> Any:
         eid = F.find_evidence(r, lambda o: o.get("value") == 0.10)
         return F.answer(
-            [F.claim("RECORD", "지금 대화 목표는 Take 4 3장 청중 시선 비율 10%보다 높이는 거예요.", evidence_ids=[eid])]
+            [
+                F.claim(
+                    "RECORD",
+                    "지금 대화 목표는 Take 4 3장 청중 시선 비율 10%보다 높이는 거예요.",
+                    evidence_ids=[eid],
+                )
+            ]
         )
 
     llm = F.FakeLlm([F.plan(route="ANSWER_DIRECT", assessments=[]), F.done(), said])
@@ -289,7 +295,13 @@ def test_open_goal_sentence_is_added_when_the_model_cites_the_goal_without_its_v
     def said(r: Any) -> Any:
         eid = F.find_evidence(r, lambda o: o.get("value") == 0.10)
         return F.answer(
-            [F.claim("RECORD", "지금 대화 목표는 Take 4의 3장 청중 시선을 높이는 거예요.", evidence_ids=[eid])]
+            [
+                F.claim(
+                    "RECORD",
+                    "지금 대화 목표는 Take 4의 3장 청중 시선을 높이는 거예요.",
+                    evidence_ids=[eid],
+                )
+            ]
         )
 
     llm = F.FakeLlm([F.plan(route="ANSWER_DIRECT", assessments=[]), F.done(), said])

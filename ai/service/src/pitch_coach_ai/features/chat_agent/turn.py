@@ -832,13 +832,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     # 요청을 푼 행동 결과만 답이다(끝 상태는 요청 해소로, 6-9 '고친 뒤'): 기록 가져오기(FETCH_TAKE · FETCH_PITCH)는 질문에 답하려고 한 수단이라
     # 그 결과 문장만으로는 질문이 풀리지 않는다 — 모델 문장이 모두 빠졌으면 아래 빈 답 분기에서 대상 근거 문장을 먼저 그린다
     fetched = {
-        e.get("action_id")
-        for e in lp.st.executed
-        if e.get("type") in ("FETCH_TAKE", "FETCH_PITCH")
+        e.get("action_id") for e in lp.st.executed if e.get("type") in ("FETCH_TAKE", "FETCH_PITCH")
     }
-    has_result = any(
-        c.kind == "ACTION_RESULT" and c.action_id not in fetched for c in comp.pre
-    )
+    has_result = any(c.kind == "ACTION_RESULT" and c.action_id not in fetched for c in comp.pre)
     if not body and not has_result and actions and not out and not no_guide:
         # "바로 발표할래"처럼 연습 이동만 요청해 허용된 답: 문장이 없어도 이동이 답이다(6-2 START_PRACTICE).
         # 모델이 쓴 문장이 검사로 모두 빠졌거나 자료를 찾지 못한 답은 그대로 PARTIAL · 거절이다
@@ -942,7 +938,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         progress.end_status(
             lp.st.plan_meta,
             cut=False,
-            answered=_answer_sentences(lp, [*final_claims, *map(Claim.model_validate, lp.st.emitted)]),
+            answered=_answer_sentences(
+                lp, [*final_claims, *map(Claim.model_validate, lp.st.emitted)]
+            ),
         )
         == "PARTIAL"
     ):
@@ -985,7 +983,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     final_claims += nxt
     return finish(
         status="DONE",
-        reason="REPEAT" if soft_stop else "ANSWERED",  # 반복으로 조사를 멈췄어도 요청이 해소된 답(진단에는 멈춘 까닭을 남긴다)
+        reason="REPEAT"
+        if soft_stop
+        else "ANSWERED",  # 반복으로 조사를 멈췄어도 요청이 해소된 답(진단에는 멈춘 까닭을 남긴다)
         claims=final_claims,
         assessments=all_assessments,
         actions=[*actions, *more],

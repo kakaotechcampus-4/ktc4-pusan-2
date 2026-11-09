@@ -477,7 +477,11 @@ def test_fm_L6_19_change_claim_uses_compare_takes(prev, cur, polarity, expected)
 @pytest.mark.parametrize(
     ("quote", "metric", "expected"),
     [
-        ("Take 4보다 Take 5에서 3장 시선이 좋아졌어?", "audience_ratio", "IMPROVED"),  # 묻는 꼴도 같은 방향
+        (
+            "Take 4보다 Take 5에서 3장 시선이 좋아졌어?",
+            "audience_ratio",
+            "IMPROVED",
+        ),  # 묻는 꼴도 같은 방향
         ("지난번보다 나빠졌지", "audience_ratio", "WORSENED"),
         ("3장 시선이 좋아지지 않았어", "audience_ratio", "WORSENED"),  # 부정 표현
         ("시선 비율이 늘었어", "audience_ratio", "IMPROVED"),  # 높을수록 좋은 지표
@@ -513,12 +517,26 @@ def test_fm_L6_19_question_change_claim_is_judged_by_its_words(polarity, expecte
 def test_question_change_claim_polarity_is_set_from_words_in_finalize():
     """확정한 판단의 극성도 말 속 방향 낱말로 정한다: 같은 주장을 '좋아졌어?' · '좋아졌잖아'로 되풀이해도 같은 주장 키다."""
     msg = "Take 4보다 Take 5에서 3장 시선이 좋아졌어?"
-    d = mk(msg, op="CHANGE", dim="audience_gaze", polarity="NEUTRAL", takes=("take-4", "take-5"), relation="COMPARE")
+    d = mk(
+        msg,
+        op="CHANGE",
+        dim="audience_gaze",
+        polarity="NEUTRAL",
+        takes=("take-4", "take-5"),
+        relation="COMPARE",
+    )
     snaps = (make_take(4, audience_ratio=0.31), t5(audience_ratio=0.28))
     a = fin([d], msg, *snaps, focus="take-5").outcomes[0].assessment
     assert (a.polarity, a.verdict) == ("POSITIVE", "CONTRADICTED")
     msg2 = "Take 4보다 Take 5에서 3장 시선이 좋아졌잖아"
-    d2 = mk(msg2, op="CHANGE", dim="audience_gaze", polarity=POS, takes=("take-4", "take-5"), relation="COMPARE")
+    d2 = mk(
+        msg2,
+        op="CHANGE",
+        dim="audience_gaze",
+        polarity=POS,
+        takes=("take-4", "take-5"),
+        relation="COMPARE",
+    )
     b = fin([d2], msg2, *snaps, focus="take-5").outcomes[0].assessment
     assert b.polarity == "POSITIVE"
 
@@ -1875,7 +1893,12 @@ def _nervous_draft(quote: str = "긴장하면 말이 빨라져", **kw) -> Assess
 
 def test_tendency_with_advice_request_is_not_a_measured_claim() -> None:
     d = tendency_advice_as_request(_nervous_draft(), NERVOUS, CFG)
-    assert (d.type, d.claim_op, d.subject.dimension, d.subject.metric) == ("REQUEST", None, None, None)
+    assert (d.type, d.claim_op, d.subject.dimension, d.subject.metric) == (
+        "REQUEST",
+        None,
+        None,
+        None,
+    )
     # 확정에서도 같다: 측정 판정(기록과 다름 · 확인 불가)을 하지 않는다
     out = fin([_nervous_draft()], NERVOUS, t5(), focus="take-5").outcomes
     assert [(o.assessment.type, o.assessment.claim_op) for o in out] == [("REQUEST", None)]
@@ -1886,8 +1909,14 @@ def test_tendency_with_advice_request_is_not_a_measured_claim() -> None:
     ("message", "draft"),
     [
         # 대상(Take · 장 · 기록 지시어)이 있으면 지금처럼 측정 주장으로 판정한다
-        ("Take 5에서 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?", _nervous_draft("Take 5에서 긴장하면 말이 빨라졌어")),
-        ("이번에 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?", _nervous_draft("이번에 긴장하면 말이 빨라졌어")),
+        (
+            "Take 5에서 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?",
+            _nervous_draft("Take 5에서 긴장하면 말이 빨라졌어"),
+        ),
+        (
+            "이번에 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?",
+            _nervous_draft("이번에 긴장하면 말이 빨라졌어"),
+        ),
         ("3장에서 긴장하면 빨라져. 방법 있어?", _nervous_draft("3장에서 긴장하면 빨라져")),
         ("긴장하면 말이 빨라져. 어떻게 하면 좋아?", _nervous_draft(numbers=(5,))),
         # 조언 요청이 없으면 그대로

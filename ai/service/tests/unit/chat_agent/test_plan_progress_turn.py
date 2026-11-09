@@ -238,7 +238,9 @@ def test_signals_hint_only_on_research_calls_with_open_signals() -> None:
     F.run_turn(req, llm)
     research = [c for c in llm.calls if c.purpose == "RESEARCH" and c.tools]
     assert research[0].messages[0]["content"] == prompts.SYSTEM + "\n\n" + prompts.RESEARCH
-    assert prompts.RESEARCH_SIGNALS_HINT in research[1].messages[0]["content"]  # 비교 불가 신호가 열림
+    assert (
+        prompts.RESEARCH_SIGNALS_HINT in research[1].messages[0]["content"]
+    )  # 비교 불가 신호가 열림
     # 다른 Take 비교로 대응해 신호가 닫힌 뒤의 호출에는 다시 없다
     assert prompts.RESEARCH_SIGNALS_HINT not in research[2].messages[0]["content"]
     assert '"signals"' not in research[2].messages[1]["content"]
