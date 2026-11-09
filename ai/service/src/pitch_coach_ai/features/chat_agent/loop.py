@@ -736,7 +736,12 @@ class Loop:
     def _plan_drafts(self, raw: list[Any]) -> list[clm.AssessmentDraft]:
         """계획의 판단 초안: 대상 없는 경향 진술 + 조언 요청은 요청으로 바꿔 둔다(6-3, 조사 흐름이 기록을 읽지 않게)."""
         msg = self.original or ""
-        return [clm.tendency_advice_as_request(d, msg, self.cfg) for d in self._parse_drafts(raw)]
+        return [
+            clm.tendency_advice_as_request(
+                clm.knowledge_question_as_request(d, self.cfg), msg, self.cfg
+            )
+            for d in self._parse_drafts(raw)
+        ]
 
     def _history_take(self) -> str | None:
         """'그때 · 아까'(설정 `history_deictic_words`)가 가리키는 Take(6-8 '그때(Take n) 기준').

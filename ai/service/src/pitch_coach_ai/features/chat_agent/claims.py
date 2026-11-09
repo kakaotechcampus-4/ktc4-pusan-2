@@ -416,7 +416,10 @@ def _split_check_indexed(
     valid_idx: list[int] = []
     problems: list[Problem] = []
     drafts = [
-        tendency_advice_as_request(_script_statement_as_claim(d), user_message, cfg) for d in drafts
+        tendency_advice_as_request(
+            knowledge_question_as_request(_script_statement_as_claim(d), cfg), user_message, cfg
+        )
+        for d in drafts
     ]
     for i, d in enumerate(drafts):
         if not d.quote.strip():
@@ -717,6 +720,29 @@ def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
     )
     return draft.model_copy(
         update={"type": "MEASURED", "claim_op": "VALUE", "subject": subject, "quote": quote}
+    )
+
+
+def knowledge_question_as_request(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft:
+    """발표법 방법 · 조언 질문을 발표법 주장(`KNOWLEDGE`)으로 분류했으면 요청(`REQUEST`)으로 바로잡는다(6-3 유형 표: 방법 · 조언
+    질문은 REQUEST).
+
+    "발표 시작할 때 긴장 줄이는 방법 있어?"를 주장으로 두면 코드가 "말씀하신 '…'는 발표법 자료와 맞아요"를 먼저 내며 그 자료
+    카드의 보이는 인용을 잠가, 같은 카드의 다른 문장을 인용한 자료 조언(GUIDE)이 모두 빠졌다(r9 svc-general-guide-found). quote 에
+    조언 요청 낱말(`advice_request_words`: 방법 · 어떻게 하면 · 팁 …)이 있을 때만 바꾼다 — "발표는 빠를수록 좋다며?" 같은 통념
+    확인은 주장 그대로다.
+    """
+    if draft.type != "KNOWLEDGE" or not any(w in draft.quote for w in cfg.advice_request_words):
+        return draft
+    return draft.model_copy(
+        update={
+            "type": "REQUEST",
+            "claim_op": None,
+            "polarity": "NEUTRAL",
+            "value": None,
+            "value_unit": None,
+            "verdict": "SUPPORTED",
+        }
     )
 
 
