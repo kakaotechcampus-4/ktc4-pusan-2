@@ -134,7 +134,7 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
           <div className="flex flex-wrap items-center gap-3">
             <Link
               to="/pitch/tutorial"
-              className="border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream"
+              className="inline-flex items-center justify-center border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream"
             >
               첫 미션 체험하기 →
             </Link>
