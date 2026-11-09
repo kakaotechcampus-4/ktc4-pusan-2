@@ -533,7 +533,7 @@ def propose(
             change: dict[str, Any] = {"script_used": a.change.script_used}
         else:
             targets = _sourced_targets(
-                [t.model_dump() for t in a.change.targets or []],
+                [_ratio_value(t.model_dump(), ctx.cfg) for t in a.change.targets or []],
                 original=original_message,
                 ctx=ctx,
                 take_id=a.take_id,
@@ -571,6 +571,23 @@ def propose(
 
 def _err(code: str, message: str) -> dict[str, Any]:
     return {"ok": False, "error": {"code": code, "message": message}}
+
+
+def _ratio_value(target: dict[str, Any], cfg: ChatAgentConfig) -> dict[str, Any]:
+    """비율 지표(`metric_units`가 ratio: 청중 시선 · 대본 응시 …)의 기준값은 0~1 비율이다. 모델이 퍼센트(30)로 적으면 비율(0.3)로
+    바꾼다: 1보다 큰 비율은 없으므로 뜻이 갈리지 않는다(r9 ra-criteria: "청중 시선 30% 이상"을 value 30 으로 불러 52% 가 FAILED).
+
+    예: {"metric": "audience_ratio", "operator": "GTE", "value": 30} → value 0.3 · 0.3 은 그대로 · cpm 300 은 그대로
+    """
+    v = target.get("value")
+    if (
+        cfg.metric_units.get(str(target.get("metric"))) == "ratio"
+        and isinstance(v, (int, float))
+        and not isinstance(v, bool)
+        and 1 < v <= 100
+    ):
+        return {**target, "value": round(v / 100, 6)}
+    return target
 
 
 def _sourced_targets(

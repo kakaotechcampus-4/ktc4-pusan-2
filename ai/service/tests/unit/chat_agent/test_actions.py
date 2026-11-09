@@ -1498,6 +1498,26 @@ def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
     assert p.action is None and p.reason_code == "DISPLAY_UNSOURCED"
 
 
+@pytest.mark.parametrize(
+    ("metric", "value", "sent"),
+    [("audience_ratio", 30, 0.3), ("audience_ratio", 0.3, 0.3), ("cpm", 300, 300)],
+)
+def test_reassess_ratio_target_in_percent_is_sent_as_a_ratio(
+    metric: str, value: float, sent: float
+) -> None:
+    """비율 지표의 기준값을 퍼센트(30)로 적어도 비율(0.3)로 보낸다(r9 ra-criteria: value 30 이라 52% 가 FAILED). 다른 단위는
+    그대로다."""
+    target = [{"display": None, "metric": metric, "operator": "GTE", "value": value}]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": target}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.action is not None, p.reason_code
+    assert p.action.args["change"]["targets"][0]["value"] == sent
+
+
 def test_take_numbers_are_not_unresolved_after_switching_the_scope_pitch() -> None:
     """범위 피치를 다른 피치로 바꾼 실행은 말한 Take 번호를 한 피치에 묶을 수 없어 '없는 번호'로 보지 않는다
     ("졸업 발표 Take 5랑 회사 소개 Take 2 비교해 줘"에서 회사 소개로 바꾼 뒤 Take 5, #940 리뷰)."""
