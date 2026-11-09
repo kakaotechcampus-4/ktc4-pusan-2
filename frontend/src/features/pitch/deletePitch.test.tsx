@@ -477,3 +477,19 @@ it('움직임 감소 설정이면 TIP 자동 순환을 초기 중단하고 수�
   await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 재개"]')!);
   expect(setIntervalSpy.mock.calls.filter(([, delay]) => delay === 8000)).toHaveLength(1);
 });
+
+it('TIP 목록은 채팅 에이전트 안내를 포함하고 마지막 다음에는 첫 TIP으로 돌아간다', async () => {
+  const setIntervalSpy = vi.spyOn(window, 'setInterval');
+  await render();
+  const tick = setIntervalSpy.mock.calls.find(([, delay]) => delay === 8000)?.[0] as () => void;
+  expect(tick).toBeTypeOf('function');
+  const tip = host.querySelector<HTMLElement>('footer p[title]')!;
+
+  await act(async () => {
+    for (let i = 0; i < 10; i += 1) tick();
+  });
+  expect(tip.textContent).toBe('왼쪽 아래 채팅 에이전트에게 지난 Take 기록이나 발표 방법을 물어보세요.');
+
+  await act(async () => tick());
+  expect(tip.textContent).toBe('연습 전, 슬라이드와 대본을 한 번 확인해 보세요.');
+});
