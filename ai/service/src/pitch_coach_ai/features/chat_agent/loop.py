@@ -103,6 +103,17 @@ def _greeting_only(msg: str, cfg: Any) -> bool:
     return not any(ch.isalnum() for ch in rest)
 
 
+def goal_question(msg: str | None, cfg: Any) -> bool:
+    """대화 목표를 묻는 말인가("지금 대화 목표가 뭐야?" · "대화 목표는 어떻게 됐어?"): 목표 낱말(`goal_question_words`)과 묻는
+    꼴(`goal_question_ask_words`)이 있고 목표를 정하는 말(`goal_set_words`)이 없다."""
+    m = msg or ""
+    return (
+        any(w in m for w in cfg.goal_question_words)
+        and any(w in m for w in cfg.goal_question_ask_words)
+        and not any(w in m for w in cfg.goal_set_words)
+    )
+
+
 def _route_of(parsed: dict[str, Any]) -> str:
     route = parsed.get("route")
     return route if route in PLAN_ROUTES else "RESEARCH"
@@ -622,6 +633,13 @@ class Loop:
                 plan_ok = self._plan_valid(
                     parsed.get("plan") or [], allow_empty=route != "RESEARCH"
                 )
+        if (
+            route == "ANSWER_DIRECT"
+            and self.cfg.research_prefetch
+            and goal_question(self.original, self.cfg)
+        ):
+            # 대화 목표를 묻는 말은 읽은 대화 목표로 답한다: 기록 없이 답하기를 골라도 조사로 돌려 get_goals 를 먼저 읽는다(6-1 2번)
+            route = "RESEARCH"
         if route == "OUT_OF_SCOPE":
             self.scope_reason = parsed.get("scope_reason")
         drafts = self.fill_history_take(drafts)
@@ -1190,7 +1208,23 @@ class Loop:
         # 공통 한도(`research_prefetch_max`)는 계획한 자료 검색어(`max_guide_queries`개까지)에 먼저 나누고, 남은 몫을 기록 읽기가 쓴다.
         # 자료 검색은 앞에 둔다: 기록을 가져오는 행동(fetch_take)은 한 번에 하나이고 그 뒤 요청은 실행하지 않는다
         guides = self._guide_prefetch_calls()
-        return [*guides, *self._prefetch_record_calls()]
+        return [*guides, *self._goal_prefetch_calls(), *self._prefetch_record_calls()]
+
+    def _goal_prefetch_calls(self) -> list[ToolCall]:
+        """대화 목표를 묻는 말(`goal_question`)이면 조사 첫머리에 `get_goals`를 먼저 읽는다(6-1 2번, 같은 한도 · 같은 길).
+
+        모델이 목표를 읽지 않고 답하면 목표 상태 · 기준 값이 빠진다(r9 rep-goal-achieved · rep-goal-readback). 이미 읽었거나
+        낸 요청이면 다시 내지 않는다. 자동 목표 확인 턴(사용자 말 없음)에는 내지 않는다.
+        """
+        if not self.cfg.research_prefetch or not goal_question(self.original, self.cfg):
+            return []
+        key = json.dumps(["get_goals", {}], sort_keys=True)
+        if key in self.st.prefetched or any(t.get("tool") == "get_goals" for t in self.st.trace):
+            return []
+        if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
+            return []
+        self.st.prefetched.append(key)
+        return [ToolCall(id=self._pf_id(), name="get_goals", args={})]
 
     def _guide_prefetch_calls(self) -> list[ToolCall]:
         """계획이 쓴 자료 검색어(`guide_queries`)를 코드가 먼저 찾을 요청 목록(6-10). 기록 요청과 같은 한도(`research_prefetch_max`)로 센다.
