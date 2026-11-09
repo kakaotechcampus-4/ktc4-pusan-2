@@ -26,10 +26,10 @@
 | 리뷰 없음 → 코치 결과로 | `기록 보기: Take 5 기록 → 리뷰 분석 전` → `기록 보기: Take 5 기록 → 문제 구간 있음` | REVIEW_MISSING FACT_SHOWN CODE → ALT_TOOL LLM | [path-rm-score-ask](run-logs/path-rm-score-ask.md) |
 | 기본 자료에 없음 → 가져와 읽기 | `… 기록 가져오기 → 가져옴` · `기록 보기: Take 3 기록 → 확인` | NOT_LOADED ACTION CODE | [path-nl-fetch-read](run-logs/path-nl-fetch-read.md) |
 | 사용자 이의 → 다시 평가(승인 → 재개) | `기록 보기: Take 4 기록 → 리뷰 우선 개선 대본 의존도` | USER_DISPUTE ACTION LLM | [path-ud-script-dispute](run-logs/path-ud-script-dispute.md) |
-| 시간 부족 → 부분 결과 | (단계 · 끝 상태) | BUDGET_LOW STOP_PARTIAL CODE | [path-fail-budget-partial](run-logs/path-fail-budget-partial.md) |
+| 시간 부족 → 부분 결과 | 실행한 단계는 모두 `DONE`, 끝 상태 `PARTIAL`(이 발췌는 채점 실패 — 남은 일이 `TODO`로 남지 않음) | 이 발췌에는 없음. 최종 경로 측정 3번 중 2번은 BUDGET_LOW STOP_PARTIAL CODE | [path-fail-budget-partial](run-logs/path-fail-budget-partial.md) |
 | 목표 저장(승인) → 연습 준비 | `해당 Take의 장별 시선 기록 확인: Take 5 기록 → 3장 확인` | — | [rep-save-goal](run-logs/rep-save-goal.md) |
 
-로그에 보이는 표시 한계: 계획 때 만든 단계가 실행 뒤 덧붙은 단계에 일을 넘기고 `건너뜀`으로 남는 경우가 있고(path-rm-score-ask), 계획이 낸 자료 검색어마다 단계가 하나씩 생겨 같은 글이 되풀이될 수 있다(path-fail-budget-partial). 발췌는 합성 자료로 한 번씩 돈 실행이고, 채점 결과(통과 · 실패)는 각 파일 머리에 있다.
+로그에 보이는 표시 한계: 계획 때 만든 단계가 실행 뒤 덧붙은 단계에 일을 넘기고 `건너뜀`으로 남는 경우가 있고(path-rm-score-ask), 계획이 낸 자료 검색어마다 단계가 하나씩 생겨 같은 글이 되풀이될 수 있다(path-fail-budget-partial). 또 조사가 스스로 끝난 뒤 답 쓰기에서 시간이 모자라면 끝 상태는 `PARTIAL`(진단 기록의 끝난 이유 `TIME`)이지만 결정 로그 `BUDGET_LOW`와 남은 일 `TODO`가 남지 않는다(같은 발췌 — 조사 중에 시간이 다 된 측정 2번에는 남았다). 발췌는 합성 자료로 한 번씩 돈 실행이고, 채점 결과(통과 · 실패)는 각 파일 머리에 있다.
 
 ## 5. 증거
 | 기준표 | 증거 | 결과 | 위치 |

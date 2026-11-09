@@ -34,7 +34,7 @@ python3 ai/research/chat-agent/e2e/stack.py run -- npm --prefix ai/research/chat
 `stack.py up`은 띄운 채 유지(로그 `.stack/*.log`). 그동안 `E2E_STATE=$PWD/ai/research/chat-agent/e2e/.stack/state.json npm --prefix ai/research/chat-agent/e2e test -- <파일 이름 일부>`로 한 파일만 돌릴 수 있다. `ai_server.py`나 `scripts/*.json`의 구조를 바꾸면 스택을 다시 띄운다(대본 내용은 시나리오를 다시 고를 때마다 다시 읽힌다).
 
 ## 대본 고치기 (계획 스키마가 바뀔 때)
-- 계획 단계 글자 · 단계별 칸(예: 앞으로 생길 단계별 `tool`)은 `scripts/*.json`의 `plan.steps`(문자열 또는 `{"step", "status", "note", ...}` 객체 — 늘어난 칸은 그대로 실린다)와 `update_plan` 인자에 쓴다. 기대 글자는 같은 파일 `expect.plan_steps`.
+- 계획 단계 글자 · 단계별 칸(예: 단계마다 쓸 도구 힌트 `tool`, `tools-5`)은 `scripts/*.json`의 `plan.steps`(문자열 또는 `{"step", "status", "note", ...}` 객체 — 늘어난 칸은 그대로 실린다)와 `update_plan` 인자에 쓴다. 기대 글자는 같은 파일 `expect.plan_steps`.
 - 계획 문구를 확인하는 코드는 `tests/turn.e2e.ts`의 `// 계획 문구 확인` 주석 세 곳(화면 · API · DB)뿐이다. 문구 말고 `tool` 같은 새 칸을 확인하려면 거기에 줄을 더한다.
 - 계획 단계 글자에 숫자(예: `3장`)를 쓰면 AI가 근거 없는 숫자로 보고 `update_plan`을 거절한다(그래서 갱신 대본은 "해당 장"이라 쓴다).
 - 측정 항목 낱말이 든 질문은 계획에 판단 초안(`assessments`)이 있어야 한다(없으면 계획을 다시 요구해 대본 순서가 어긋난다). `{"draft": {...}}`는 `F.draft(**)` 인자다.
