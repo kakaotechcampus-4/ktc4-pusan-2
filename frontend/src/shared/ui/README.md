@@ -7,6 +7,7 @@
 | --- | --- | --- |
 | Button | 실행하는 동작 (기본 `type="button"`) | variant: primary / secondary / quiet, size: sm / md |
 | ButtonLink | 라우터 화면 이동 | to, variant, size |
+| CloseButton | 창 · 패널의 [닫기]. 닫는 동작은 onClick 으로 받음 | compact: 옆 버튼이 좁은 머리글(채팅 패널) |
 | Card | 제목과 내용을 묶는 패널 | title, action |
 | Stat | 표시용 숫자 지표 | label, value |
 | Badge | 짧은 상태 표시 | tone: bad / good / strong / plain / muted |
