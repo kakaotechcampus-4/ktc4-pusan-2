@@ -33,6 +33,16 @@ const stageGuide = [
   ],
 ] as const;
 
+/** 채팅 패널의 실제 명칭·동작을 간략화한 정적 시각 안내. */
+const chatGuide = [
+  ['채팅 열기', '홈·연습 기록 등 지원되는 화면의 왼쪽 아래에서 새미나이 열기를 누르세요. 실제 발표 연습 중에는 버튼이 보이지 않아요.'],
+  ['대화 관리', '상단에서 새 대화를 시작하거나 대화 목록·기억 설정을 열고, 닫기 버튼으로 패널을 닫을 수 있어요.'],
+  ['대화 범위', '범위 칩을 눌러 전체 또는 특정 피치를 선택하면 관련 기록을 중심으로 질문할 수 있어요.'],
+  ['기억 없이 대화', '새 대화의 첫 메시지를 보내기 전에 기억 없이 대화하기를 선택할 수 있어요.'],
+  ['질문 예시', '할 수 있는 일과 질문 예시를 확인하고, 예시 버튼을 눌러 바로 질문할 수 있어요.'],
+  ['메시지 입력', '아래 입력칸에서 직접 질문을 작성해 보낼 수 있어요. 실제 답변 범위는 준비된 자료와 서비스 상태에 따라 달라져요.'],
+] as const;
+
 function HelpIllustration({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
     <figure className="min-w-0">
@@ -116,6 +126,43 @@ function RehearsalGuide() {
   );
 }
 
+function ChatGuide() {
+  return (
+    <section aria-labelledby="help-chat-title" className="mt-5">
+      <h4 id="help-chat-title" className="mb-3 text-sm font-bold">
+        새미나이 채팅 사용방법
+      </h4>
+      <HelpIllustration
+        src="/help/chat-agent.svg"
+        alt="새미나이 채팅 설명용 목업. 1 왼쪽 아래 채팅 버튼, 2 상단 새 대화·대화 목록·기억 설정·닫기, 3 전체·피치 대화 범위, 4 기억 없이 대화 스위치, 5 할 수 있는 일과 질문 예시, 6 메시지 입력칸을 번호로 나타냅니다."
+        caption="새미나이 채팅 화면"
+      />
+      <ol
+        className="mt-4 grid gap-3 sm:grid-cols-2"
+        aria-label="새미나이 채팅의 번호별 사용방법"
+      >
+        {chatGuide.map(([title, description], index) => (
+          <li key={title} className="flex min-w-0 items-start gap-3">
+            <span
+              aria-hidden="true"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-coral-deep text-sm font-bold text-white"
+            >
+              {index + 1}
+            </span>
+            <div className="min-w-0">
+              <h5 className="text-sm font-bold">
+                <span className="sr-only">{index + 1}번 </span>
+                {title}
+              </h5>
+              <p className="mt-1 text-sm leading-6 text-stone">{description}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -176,6 +223,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                 </h3>
                 <p className="mt-2 text-sm leading-7 text-stone">{description}</p>
                 {index === 1 && <RehearsalGuide />}
+                {index === 2 && <ChatGuide />}
               </div>
             </li>
           ))}

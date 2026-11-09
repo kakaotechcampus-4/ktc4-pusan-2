@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="600" viewBox="0 0 1040 600" role="img" aria-labelledby="chat-title chat-desc">
+<title id="chat-title">새미나이 채팅 화면 설명용 목업</title>
+<desc id="chat-desc">지원되는 화면의 왼쪽 아래에 나타나는 채팅 버튼과 새미나이 패널의 새 대화, 대화 목록, 기억 설정, 대화 범위, 기억 없이 대화하기, 질문 예시, 메시지 입력을 번호 1부터 6까지 설명합니다. 실제 사용자 기록은 없습니다.</desc>
+<g font-family="Pretendard, Noto Sans KR, Malgun Gothic, sans-serif">
+<rect width="1040" height="600" fill="#f5f0e9"/>
+<rect x="12" y="12" width="1016" height="576" fill="none" stroke="#2a2723" stroke-width="2"/>
+<text x="34" y="48" font-size="27" font-weight="800" fill="#2a2723">새미나이 채팅 사용방법</text>
+<text x="1001" y="47" font-size="14" text-anchor="end" fill="#6b625b">실제 화면을 단순화한 예시</text>
+<rect x="27" y="68" width="497" height="496" fill="#e8e1d7" stroke="#c6bcac" stroke-width="2"/>
+<rect x="78" y="87" width="414" height="429" rx="13" fill="#2a2723" opacity="0.16"/>
+<rect x="68" y="78" width="414" height="429" rx="13" fill="#fff" stroke="#2a2723" stroke-width="3"/>
+<rect x="70" y="80" width="410" height="76" rx="11" fill="#f5f0e9"/>
+<rect x="86" y="93" width="48" height="48" rx="10" fill="#ffe2bf" stroke="#c6bcac"/>
+<circle cx="110" cy="112" r="12" fill="#e8532a"/>
+<circle cx="106" cy="111" r="2" fill="#2a2723"/>
+<path d="M120 113 L128 117 L119 120Z" fill="#e4bf45"/>
+<text x="148" y="113" font-size="21" font-weight="800" fill="#2a2723">새미나이</text>
+<text x="148" y="134" font-size="12" fill="#6b625b">Semini · AI 비서 앱</text>
+<!-- Four actual header actions, simplified as icons -->
+<g fill="none" stroke="#2a2723" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M336 107v18M327 116h18"/>
+<circle cx="377" cy="117" r="9"/><path d="M377 111v7l5 3"/>
+<circle cx="417" cy="117" r="9"/><circle cx="417" cy="117" r="3"/><path d="M417 104v4M417 126v4M404 117h4M426 117h4"/>
+<path d="M449 109l16 16M465 109l-16 16"/>
+</g>
+<line x1="70" y1="158" x2="480" y2="158" stroke="#c6bcac"/>
+<rect x="87" y="166" width="141" height="30" rx="15" fill="#fff" stroke="#c6bcac"/>
+<text x="101" y="187" font-size="15" fill="#2a2723" font-weight="700">범위: 전체 ▾</text>
+<text x="284" y="185" font-size="14" fill="#6b625b">기억 없이 대화하기</text>
+<rect x="437" y="169" width="35" height="20" rx="10" fill="#6b625b"/>
+<circle cx="447" cy="179" r="8" fill="#fff"/>
+<line x1="70" y1="202" x2="480" y2="202" stroke="#c6bcac"/>
+<circle cx="275" cy="229" r="20" fill="#ffe2bf" stroke="#c6bcac"/>
+<text x="275" y="236" font-size="23" font-weight="800" text-anchor="middle" fill="#c9421c">S</text>
+<text x="275" y="265" font-size="19" text-anchor="middle" font-weight="800" fill="#2a2723">새미나이에게 물어보세요</text>
+<text x="275" y="285" font-size="13" text-anchor="middle" fill="#6b625b">발표 기록을 분석하고 다음 연습을 준비해요</text>
+<text x="91" y="315" font-size="16" font-weight="800" fill="#2a2723">이런 걸 도와드릴 수 있어요</text>
+<g font-size="14" fill="#6b625b">
+<text x="96" y="339">• 내 연습 기록에서 고칠 점 찾기</text>
+<text x="96" y="361">• Take끼리 비교하기</text>
+<text x="96" y="383">• 다음 연습 목표 잡기</text>
+<text x="96" y="405">• 발표법 · 화면 사용법 안내</text>
+</g>
+<rect x="89" y="415" width="300" height="28" rx="14" fill="#f5f0e9" stroke="#c6bcac"/>
+<text x="104" y="434" font-size="14" fill="#2a2723" font-weight="700">최근 Take에서 가장 고칠 점이 뭐야?</text>
+<rect x="89" y="449" width="236" height="28" rx="14" fill="#f5f0e9" stroke="#c6bcac"/>
+<text x="104" y="468" font-size="14" fill="#2a2723" font-weight="700">다음 연습 목표 잡아 줘</text>
+<rect x="86" y="480" width="377" height="23" rx="7" fill="#fff" stroke="#2a2723"/>
+<text x="99" y="497" font-size="12" fill="#6b625b">새미나이에게 메시지 보내기...</text>
+<circle cx="449" cy="491" r="9" fill="#c9421c"/>
+<path d="M445 491h8m-4-4 4 4-4 4" fill="none" stroke="#fff" stroke-width="1.5"/>
+<circle cx="103" cy="539" r="23" fill="#c9421c" stroke="#2a2723" stroke-width="2"/>
+<path d="M91 548 Q89 526 102 526 Q117 527 116 540 Q108 551 94 546" fill="#fff7ed"/>
+<circle cx="103" cy="537" r="2.5" fill="#2a2723"/>
+<path d="M114 538 L123 541 L114 545" fill="#e4bf45"/>
+<g aria-hidden="true"><circle cx="143" cy="540" r="14" fill="#c9421c" stroke="#fff" stroke-width="2"/><text x="143" y="545" font-size="15" fill="#fff" font-weight="800" text-anchor="middle">1</text></g><g aria-hidden="true"><circle cx="471" cy="105" r="14" fill="#c9421c" stroke="#fff" stroke-width="2"/><text x="471" y="110" font-size="15" fill="#fff" font-weight="800" text-anchor="middle">2</text></g><g aria-hidden="true"><circle cx="241" cy="178" r="14" fill="#c9421c" stroke="#fff" stroke-width="2"/><text x="241" y="183" font-size="15" fill="#fff" font-weight="800" text-anchor="middle">3</text></g><g aria-hidden="true"><circle cx="472" cy="181" r="14" fill="#c9421c" stroke="#fff" stroke-width="2"/><text x="472" y="186" font-size="15" fill="#fff" font-weight="800" text-anchor="middle">4</text></g><g aria-hidden="true"><circle cx="463" cy="417" r="14" fill="#c9421c" stroke="#fff" stroke-width="2"/><text x="463" y="422" font-size="15" fill="#fff" font-weight="800" text-anchor="middle">5</text></g><g aria-hidden="true"><circle cx="474" cy="487" r="14" fill="#c9421c" stroke="#fff" stroke-width="2"/><text x="474" y="492" font-size="15" fill="#fff" font-weight="800" text-anchor="middle">6</text></g>
+<rect x="550" y="75" width="456" height="474" fill="#fff" stroke="#c6bcac" stroke-width="2"/>
+<g><circle cx="574" cy="116" r="18" fill="#c9421c"/><text x="574" y="122" text-anchor="middle" font-size="17" font-weight="800" fill="#fff">1</text><text x="607" y="115" font-size="19" font-weight="800" fill="#2a2723">채팅 열기</text><text x="607" y="142" font-size="15" fill="#6b625b">왼쪽 아래 버튼 · 발표 중에는 숨김</text></g>
+<g><circle cx="574" cy="189" r="18" fill="#c9421c"/><text x="574" y="195" text-anchor="middle" font-size="17" font-weight="800" fill="#fff">2</text><text x="607" y="188" font-size="19" font-weight="800" fill="#2a2723">대화 관리</text><text x="607" y="215" font-size="15" fill="#6b625b">새 대화 · 대화 목록 · 기억 설정 · 닫기</text></g>
+<g><circle cx="574" cy="262" r="18" fill="#c9421c"/><text x="574" y="268" text-anchor="middle" font-size="17" font-weight="800" fill="#fff">3</text><text x="607" y="261" font-size="19" font-weight="800" fill="#2a2723">대화 범위</text><text x="607" y="288" font-size="15" fill="#6b625b">전체 또는 특정 피치를 선택해 질문</text></g>
+<g><circle cx="574" cy="335" r="18" fill="#c9421c"/><text x="574" y="341" text-anchor="middle" font-size="17" font-weight="800" fill="#fff">4</text><text x="607" y="334" font-size="19" font-weight="800" fill="#2a2723">기억 없이 대화하기</text><text x="607" y="361" font-size="15" fill="#6b625b">새 대화 첫 메시지를 보내기 전 선택</text></g>
+<g><circle cx="574" cy="408" r="18" fill="#c9421c"/><text x="574" y="414" text-anchor="middle" font-size="17" font-weight="800" fill="#fff">5</text><text x="607" y="407" font-size="19" font-weight="800" fill="#2a2723">질문 예시</text><text x="607" y="434" font-size="15" fill="#6b625b">누르면 해당 질문을 바로 전송</text></g>
+<g><circle cx="574" cy="481" r="18" fill="#c9421c"/><text x="574" y="487" text-anchor="middle" font-size="17" font-weight="800" fill="#fff">6</text><text x="607" y="480" font-size="19" font-weight="800" fill="#2a2723">메시지 입력</text><text x="607" y="507" font-size="15" fill="#6b625b">직접 질문을 작성해 전송</text></g>
+<text x="34" y="584" font-size="14" fill="#6b625b">설명용 목업 · 실제 기록/개인정보 없음 · 실제 답변 범위는 서비스 상태에 따라 달라질 수 있음</text>
+</g>
+</svg>
