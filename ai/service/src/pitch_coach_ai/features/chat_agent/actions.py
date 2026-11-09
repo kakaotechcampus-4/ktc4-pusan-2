@@ -298,6 +298,12 @@ def authorize(
     forms = cfg.request_forms.get(action_type, ())
     verb = _word_at(clause, pos)
     words = re.findall(r"[가-힣]+", clause[pos:])
+    # 요청 동사 자체가 조건 꼴이면("목표 저장하면 알려줘"의 '저장하면') 그 동사는 요청이 아니라 뒤 요청의 조건이다.
+    # 바로 뒤가 바람 낱말이면("저장하면 좋겠어") 조건이 아니라 바람이다(요청형 검사로 넘긴다)
+    if _has_condition(verb, cfg) and not any(
+        w.startswith(cfg.wish_after_condition) for w in words[1:2]
+    ):
+        return "CONDITION"
     # 동사 뒤에서 절을 끊는 말(~는데 · ~지만 · ~니까 …)이나 보조 용언(~고 있 · ~어 놓)이 오면 그 동사는 요청이 아니다
     # ("목표를 정해 놓았는데 … 알려줘", "목표로 잡고 있었는데 결과를 알려줘")
     if any(w.endswith(_CLAUSE_BREAKS) for w in words) or any(

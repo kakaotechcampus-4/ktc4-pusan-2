@@ -6,6 +6,7 @@
 - 답 쓰기 실패의 대신 문장: 질문 대상의 근거로만 그린다(읽은 근거 전체를 나열하지 않는다).
 - 코드 대신 답의 끝난 까닭: 반복으로 멈춘 조사면 ANSWERED 가 아니라 REPEAT 다.
 - '같은 조건으로 다시 평가' 되살리기: 부정 · 인용 · 새 대상 · 조건이면 하지 않는다(확실하지 않으면 모델이 고른다).
+- 허용 근거: 행동 동사 자체에 붙은 조건("목표 저장하면 알려줘")은 저장 요청이 아니다.
 """
 
 from __future__ import annotations
@@ -14,11 +15,14 @@ from typing import Any
 
 import pytest
 
+from pitch_coach_ai.features.chat_agent import actions as act
 from pitch_coach_ai.features.chat_agent import compose
+from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
 from pitch_coach_ai.features.chat_agent.config import load_config
 from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
 
 from . import fakes as F
+from .test_approval import SAVE, drafts, first_request
 from .test_none_evidence import (
     NO_TAKE_PLAN,
     NO_TAKE_SENTENCE,
@@ -30,6 +34,7 @@ from .test_plan_progress_turn import decisions
 from .test_prefetch import slide_draft
 from .test_signal_routes import research_blocks
 from .test_tools import base_request, load, make_ctx, run
+from .test_turn import COMPARE
 
 SEG = "problem_segments"
 GAZE = frozenset({"GAZE"})
@@ -246,3 +251,53 @@ def test_same_condition_reassess_still_restored_for_the_plain_repeat(now: str) -
     assert [(a["type"], a["args"]) for a in data["actions"]] == [
         ("REASSESS", {"take_id": "t-5", "change": {"script_used": True}})
     ]
+
+
+# ── 7. 행동 동사 자체에 붙은 조건은 저장 요청이 아니다 ─────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("quote", "message", "want"),
+    [
+        ("목표 저장", "목표 저장하면 알려줘", "CONDITION"),
+        ("목표 저장하면 알려줘", "목표 저장하면 알려줘", "CONDITION"),
+        ("목표로 잡으면", "시선 30%를 목표로 잡으면 연습 시작해 줘", "CONDITION"),
+        # 그대로인 것: 요청 · 동사 뒤의 '~면'(다음 요청의 순서) · 바람('~면 좋겠어'는 요청형 검사로)
+        ("목표로 저장해 줘", "목표로 저장해 줘", None),
+        (
+            "목표로 저장해 주고",
+            "목표로 저장해 주고, 저장되면 바로 연습하러 갈 수 있게 해 주세요",
+            None,
+        ),
+        ("목표로 저장하면 좋겠어", "시선 30%를 목표로 저장하면 좋겠어", "NO_REQUEST_FORM"),
+    ],
+)
+def test_condition_on_the_action_verb_is_not_a_save_request(
+    quote: str, message: str, want: str | None
+) -> None:
+    assert act.authorize("SAVE_GOAL", quote, message, CFG) == want
+
+
+@pytest.mark.parametrize(
+    ("tail", "quote", "asks"),
+    [
+        ("그걸 목표로 저장하면 알려줘", "목표로 저장하면 알려줘", False),
+        ("그걸 목표로 저장해 줘", "목표로 저장해 줘", True),
+    ],
+)
+def test_condition_on_the_save_verb_does_not_become_a_save_action(
+    tail: str, quote: str, asks: bool
+) -> None:
+    """모델이 "…목표로 저장하면 알려줘"에서 저장을 고르고 그 말을 허용 근거로 넣어도 저장 행동(승인 대기)을 내지 않는다.
+    같은 자리의 요청("저장해 줘")은 그대로 확인 카드와 함께 저장 행동을 낸다."""
+    msg = "Take 4보다 Take 5 3장 시선이 좋아졌어? " + tail
+    save = (SAVE[0], {**SAVE[1], "authorized_by": quote})
+    llm = F.FakeLlm(
+        [F.plan(assessments=drafts()), F.tools(COMPARE), F.tools(save, prefix="sg"), F.done()],
+        answers=[F.answer([]), F.answer([])],
+    )
+    _, _, data = F.run_turn(first_request(msg), llm)
+    assert data is not None
+    saved = [(a["type"], a["autonomy"]) for a in data.get("actions") or []]
+    assert saved == ([("SAVE_GOAL", "ASK")] if asks else [])
+    assert (data["status"] == "NEEDS_ACTION") is asks
