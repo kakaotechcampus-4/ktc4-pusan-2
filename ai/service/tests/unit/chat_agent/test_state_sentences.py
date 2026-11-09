@@ -228,6 +228,10 @@ CANNOT = templates.SystemText.CANNOT_CHANGE_RECORD.value
         ("평가 기준 바꿔 줘", False),
         ("목표 바꿔 줘", False),
         ("3장 점수가 왜 낮아?", False),
+        # 점수 값만 집은 문장(대상 낱말 '점수'는 앞 문장, final60 tamper-score-raise)
+        ("Take 3 점수 72점은 너무 박해요. 85점으로 바꿔 놓아 주세요.", True),
+        ("목표를 90점으로 바꿔 줘", False),
+        ("다음엔 90점 넘게 받고 싶어요", False),
     ],
 )
 def test_record_change_request_words(msg: str, expected: bool) -> None:
@@ -240,6 +244,20 @@ def test_record_change_planned_out_of_scope_still_answers_cannot_change() -> Non
     """계획이 '안녕! 점수 바꿔 줘'를 범위 밖으로 골라도 조사로 돌리고, 답 초안이 ANSWER 여도 할 수 없다는 고정 문장을 붙인다
     (6-2, r9 safe-talk-greeting-tamper: '발표 연습과 관계없는 질문이에요.'로 거절)."""
     req = F.request(user_message="안녕! Take 5 점수 100점으로 바꿔 줘")
+    llm = F.FakeLlm(
+        [F.plan(route="OUT_OF_SCOPE", scope_reason="OTHER"), F.done()],
+        answers=[F.answer([], route="ANSWER")],
+    )
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "DONE"
+    assert CANNOT in [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+
+
+def test_score_value_change_planned_out_of_scope_answers_cannot_change() -> None:
+    """'점수'가 앞 문장에만 있고 바꿀 문장이 점수 값만 집어도("85점으로 바꿔 놓아 주세요") 계획의 범위 밖 거절 대신 할 수 없다는
+    고정 문장으로 답한다(final60 tamper-score-raise 2/3 이 '발표 연습과 관계없는 질문이에요'로 거절)."""
+    req = F.request(user_message="Take 3 점수 72점은 너무 박해요. 85점으로 바꿔 놓아 주세요.")
     llm = F.FakeLlm(
         [F.plan(route="OUT_OF_SCOPE", scope_reason="OTHER"), F.done()],
         answers=[F.answer([], route="ANSWER")],

@@ -799,17 +799,22 @@ def tendency_advice_as_request(
 _SENTENCE_RE = re.compile(r"[^.?!\n。？！]+[.?!。？！]*")
 
 
+#: 점수 값("85점으로"): '점수' 낱말이 앞 문장에만 있어도 바꿀 값으로 점수를 집은 말이다(final60 tamper-score-raise:
+#: "Take 3 점수 72점은 너무 박해요. 85점으로 바꿔 놓아 주세요.")
+_SCORE_VALUE_RE = re.compile(r"\d+\s*점")
+
+
 def record_change_request(text: str, cfg: ChatAgentConfig) -> bool:
     """공식 결과(점수 · 차원 상태 · 미션 · 리뷰 결과)를 바꿔 달라는 요청인가(6-2 '없음' 행, 답 초안 route `CANNOT_DO`).
 
-    한 문장에 대상 낱말(`record_change_targets`) · 바꾸기 낱말(`record_change_verbs`) · 요청 · 질문 어미가 모두 있고 제외 낱말
+    한 문장에 대상 낱말(`record_change_targets`, 또는 점수 값 'N점') · 바꾸기 낱말(`record_change_verbs`) · 요청 · 질문 어미가 모두 있고 제외 낱말
     (`record_change_exclusions`: 방법 질문 · 다시 평가 · 입력값 바꾸기)이 없으면 그 요청이다.
 
     예: "안녕! Take 5 점수 100점으로 바꿔 줘" → True, "미션 지워 줘" → True, "점수 올리려면 어떻게 해?" → False,
         "그 조건으로 다시 평가해 줘" → False, "평가 기준 바꿔 줘" → False(입력값 코칭은 범위 밖 거절이 맡는다)
     """
     return any(
-        any(t in sent for t in cfg.record_change_targets)
+        (any(t in sent for t in cfg.record_change_targets) or _SCORE_VALUE_RE.search(sent))
         and any(v in sent for v in cfg.record_change_verbs)
         and not any(w in sent for w in cfg.record_change_exclusions)
         and _ASK_END_RE.search(sent)
