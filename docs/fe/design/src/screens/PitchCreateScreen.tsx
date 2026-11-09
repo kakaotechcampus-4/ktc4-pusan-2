@@ -620,6 +620,37 @@ export function PitchCreateScreen({
                     <span>V1 · 3장 · PDF</span>
                   </div>
                 </div>
+                <div className="mt-3">
+                  <span
+                    role="status"
+                    data-slide-review-state={slidesConfirmed ? 'confirmed' : 'pending'}
+                    className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-bold ${
+                      slidesConfirmed
+                        ? 'border-line-strong bg-panel'
+                        : 'border-coral bg-coral-wash text-coral-deep'
+                    }`}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      aria-hidden="true"
+                    >
+                      {slidesConfirmed ? (
+                        <path d="M3 8l3 3 7-7" />
+                      ) : (
+                        <>
+                          <path d="M8 2L15 14H1z" />
+                          <path d="M8 6v4m0 2v.5" />
+                        </>
+                      )}
+                    </svg>
+                    {slidesConfirmed ? '확인 완료' : '확인 필요'}
+                  </span>
+                </div>
                 <div className="mt-4 flex justify-end">
                   <button
                     type="button"
