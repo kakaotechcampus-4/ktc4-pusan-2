@@ -494,6 +494,20 @@ it('사용방법의 샘플 진입점은 튜토리얼 미리보기로 이동한�
   expect(host.textContent).toContain('첫 번째 Take');
 });
 
+it('TAKE RECORDED는 분석 중에만 보이고 확인 대기·실패·보류에는 보이지 않는다', async () => {
+  for (const state of ['default', 'auto-end']) {
+    await render('processing-loading', state);
+    expect(host.textContent, state).toContain('TAKE RECORDED · 발표 기록 접수');
+    await act(async () => root.render(null));
+  }
+  for (const state of ['confirm', 'loading', 'failed', 'held', 'error']) {
+    await render('processing-loading', state);
+    expect(host.textContent, state).not.toContain('TAKE RECORDED · 발표 기록 접수');
+    if (state === 'confirm') expect(host.textContent).toContain('확인을 기다리는 중');
+    await act(async () => root.render(null));
+  }
+});
+
 it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립적으로 유지된다', async () => {
   await render('semini');
   const scope = host.querySelector<HTMLButtonElement>('[data-chat-scope]')!;
@@ -519,6 +533,8 @@ it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립
 
   const launcher = host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!;
   expect(launcher.getAttribute('aria-controls')).toBeTruthy();
+  expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
+  expect(launcher.querySelector('img')?.getAttribute('src')).toContain('icon-192.png');
   const close = host.querySelector<HTMLButtonElement>(
     'button[aria-label="새미나이 닫기"]:not([aria-haspopup="dialog"])',
   )!;
@@ -527,6 +543,7 @@ it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립
   expect(launcher.getAttribute('aria-expanded')).toBe('false');
   expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
   await act(async () => launcher.click());
+  expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
   expect(document.activeElement).toBe(host.querySelector('textarea'));
   expect(scope.textContent).toContain('피치: 서비스 소개');
   expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(true);

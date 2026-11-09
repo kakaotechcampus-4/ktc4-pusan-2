@@ -50,6 +50,8 @@ export interface GuideComponent extends GuideEntryBase {
 
 export interface GuideScreen extends GuideEntryBase {
   kind: 'screen';
+  /** Draft 반영 화면에 실제로 선반영한 미병합 FE PR 번호. pending과 대응시킨다. */
+  draftPrs?: number[];
   /** 제품 경로. 시안이면 제품에 넣을 경로 */
   route: string;
   components: string[];

@@ -1187,7 +1187,7 @@
 .stage-live .stage-head .end:hover:not(:disabled) { background: var(--color-coral-deep); }
 
 
-/* Draft #1118: 시작 게이트에서는 자리를 보존하고 RUNNING일 때 한 번 나타난다. */
+/* 제품 #1118: 시작 게이트에서는 자리를 보존하고 RUNNING일 때 한 번 나타난다. */
 .stage-head .stage-mission-label {
   flex: none;
   padding: 4px 7px;

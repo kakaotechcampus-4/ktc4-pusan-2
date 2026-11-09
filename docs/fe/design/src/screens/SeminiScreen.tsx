@@ -10,6 +10,7 @@ const QUESTIONS = [
 ] as const;
 
 const SEMINI_IMAGE = publicUrl('semini.png');
+const SEMINI_LAUNCHER_IMAGE = publicUrl('icon-192.png');
 type ActionIcon = 'new' | 'history' | 'memory' | 'close';
 
 function ActionIconGraphic({ kind }: { kind: ActionIcon }) {
@@ -322,15 +323,15 @@ function SeminiPanel({ stateId }: { stateId: string }) {
             else closePanel();
           }}
           className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)]"
-          aria-label={isClosed ? '새미나이 열기' : '새미나이 닫기'}
+          aria-label="새미나이 열기"
           aria-expanded={!isClosed}
           aria-haspopup="dialog"
           aria-controls={isClosed ? undefined : panelId}
         >
           <img
-            src={SEMINI_IMAGE}
+            src={SEMINI_LAUNCHER_IMAGE}
             alt=""
-            className="h-full w-full object-cover [image-rendering:pixelated]"
+            className="absolute left-[1.2px] top-[-3.8px] h-11 w-11 max-w-none"
           />
         </button>
       </div>

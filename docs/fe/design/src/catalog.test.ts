@@ -55,23 +55,26 @@ describe('화면 설계서 목록', () => {
     expect(privacy?.group).toBe('안내 · 계정');
   });
 
-  it('미병합 PR과 Draft 반영 화면의 대응이 갱신되어 있다', () => {
+  it('Draft 근거 PR과 pending 목록이 양방향으로 정확히 대응한다', () => {
     const pending = PRODUCT_CHECKED.pending.map((item) => item.pr).sort((a, b) => a - b);
-    expect(pending).toEqual([944, 1105, 1117, 1118]);
-    const draftIds = screens
-      .filter((screen) => screen.status === 'Draft 반영')
-      .map((screen) => screen.id)
-      .sort();
-    expect(draftIds).toEqual(['home', 'processing-loading', 'stage', 'tutorial']);
-    expect(screens.find((screen) => screen.id === 'semini')?.status).toBe('제품에 있음');
-    for (const [id, pr] of [
-      ['home', 1117],
-      ['tutorial', 1105],
-      ['stage', 1118],
-      ['processing-loading', 1118],
-    ] as const) {
-      expect(screens.find((screen) => screen.id === id)?.status).toBe('Draft 반영');
-      expect(pending).toContain(pr);
+    expect(new Set(pending).size).toBe(pending.length);
+
+    const draftScreens = screens.filter((screen) => screen.status === 'Draft 반영');
+    for (const screen of draftScreens) {
+      expect(screen.draftPrs?.length, `${screen.id}: Draft 근거 PR 누락`).toBeGreaterThan(0);
+    }
+    for (const screen of screens.filter((screen) => screen.status !== 'Draft 반영')) {
+      expect(screen.draftPrs, `${screen.id}: 제품/시안에 Draft 근거 PR이 남음`).toBeUndefined();
+    }
+
+    const referencedPrs = [
+      ...new Set(draftScreens.flatMap((screen) => screen.draftPrs ?? [])),
+    ].sort((a, b) => a - b);
+    expect(referencedPrs).toEqual(pending);
+    expect(screens.find((screen) => screen.id === 'home')?.draftPrs).toEqual([944, 1105, 1117]);
+    expect(screens.find((screen) => screen.id === 'tutorial')?.draftPrs).toEqual([1105]);
+    for (const id of ['stage', 'processing-loading', 'semini']) {
+      expect(screens.find((screen) => screen.id === id)?.status).toBe('제품에 있음');
     }
   });
 

@@ -27,6 +27,8 @@ export function ProcessingScreen({
   onNavigate: Navigate;
 }) {
   const waiting = stateId === 'confirm';
+  // 이 샘플에서 기본·자동 종료 뒤는 ANALYZING, 확인 대기는 AWAITING_CONFIRMATION이다.
+  const isAnalyzing = stateId === 'default' || stateId === 'auto-end';
   // 분석 중은 두 번째 단계, 확인 대기는 두 번째 단계에서 멈춘 것으로 그린다
   const current = 1;
   let body: ReactNode;
@@ -73,9 +75,11 @@ export function ProcessingScreen({
   else
     body = (
       <>
-        <p className="border-2 border-dusk-line px-3 py-2 text-center text-xs font-bold tracking-wider text-dusk-accent">
-          TAKE RECORDED · 발표 기록 접수
-        </p>
+        {isAnalyzing && (
+          <p className="border-2 border-dusk-line px-3 py-2 text-center text-xs font-bold tracking-wider text-dusk-accent">
+            TAKE RECORDED · 발표 기록 접수
+          </p>
+        )}
         <StatusLine text={waiting ? '확인을 기다리는 중' : '분석 중'} />
         <ol className="flex w-full max-w-md gap-1.5" aria-label="분석 단계">
           {STEP_NAMES.map((name, i) => (

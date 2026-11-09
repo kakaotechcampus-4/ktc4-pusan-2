@@ -40,11 +40,6 @@ export const PRODUCT_CHECKED: {
       head: '9d4e537e1fbfb089b33cabfdffb9eb5d61345c14',
       what: '홈 발표 준비 버튼의 secondary 스타일 검토안',
     },
-    {
-      pr: 1118,
-      head: 'b247836e7ba520490f0d3d2239604f8d047ab317',
-      what: '리허설 STAGE LIVE 및 분석 대기 TAKE RECORDED 안내',
-    },
   ],
 };
 
@@ -105,7 +100,8 @@ const productScreens: GuideScreen[] = [
     group: screenGroup.pitch,
     route: '/',
     status: 'Draft 반영',
-    // 미병합 제품 PR #1108, #1112, #1117의 변경을 미리 보여 준다.
+    // #944 사용방법 안내, #1105 첫 미션 진입, #1117 발표 준비 버튼을 선반영한다.
+    draftPrs: [944, 1105, 1117],
     summary:
       '피치 목록과 연습 통계를 보고 발표 준비 · 새 피치 만들기 · 피치 수정 · Take 기록으로 간다. 비교는 Take 기록 안에서 연다. 줄마다 더보기(···) 메뉴에서 피치를 지운다. 데이터는 예시다.',
     states: [
@@ -250,7 +246,8 @@ const productScreens: GuideScreen[] = [
     group: '서비스 시작',
     route: '/pitch/tutorial',
     status: 'Draft 반영',
-    // 미병합 #1117의 발표 준비 secondary 버튼을 미리보기에서만 선반영했다.
+    // 미병합 #1105의 첫 미션 샘플 준비·장치 점검 흐름을 선반영한다.
+    draftPrs: [1105],
     summary: 'Draft #1105의 샘플 발표 자동 준비 과정과 시작 전 장치 점검 진입을 단계별로 체험한다.',
     states: [
       base,
@@ -551,8 +548,8 @@ const productScreens: GuideScreen[] = [
     title: '리허설 · 실전',
     group: screenGroup.rehearsal,
     route: '/takes/:takeId/rehearsal',
-    status: 'Draft 반영',
-    // 미병합 제품 PR #1118의 변경을 미리 보여 준다.
+    status: '제품에 있음',
+    // 병합된 #1118의 RUNNING 조건·배치·반응형 규칙을 따른다.
     summary:
       '리허설과 실전 모드의 슬라이드·대본·코치·연결 상태를 독립적으로 재현한 화면이다. 실제 카메라·마이크·음성 전송은 하지 않는다.',
     states: [
@@ -622,8 +619,8 @@ const productScreens: GuideScreen[] = [
     title: '분석 대기',
     group: screenGroup.results,
     route: '/takes/:takeId/processing',
-    status: 'Draft 반영',
-    // 미병합 제품 PR #1118의 변경을 미리 보여 준다.
+    status: '제품에 있음',
+    // 병합된 #1118의 TAKE RECORDED 표시 조건을 따른다.
     summary: '노을 화면에서 분석 세 단계의 진행을 보여 주고, 끝나면 리포트로 넘어간다.',
     states: [
       state('default', '분석 중', '세 단계 중 지금 단계와 치치의 팁을 보여 준다.'),
@@ -643,6 +640,7 @@ const productScreens: GuideScreen[] = [
       state('error', '오류', '연습 기록을 불러오지 못했다.'),
     ],
     rules: [
+      'TAKE RECORDED · 발표 기록 접수는 서버 Take 상태가 ANALYZING일 때만 표시한다(#1118). 확인 대기(AWAITING_CONFIRMATION)·불러오는 중·실패·보류 상태에서는 표시하지 않는다. 설계서의 기본/자동 종료 뒤 예시는 ANALYZING, 대본 확인 대기 예시는 AWAITING_CONFIRMATION을 나타낸다.',
       '분석이 끝나면 리포트로 자동 이동한다(주소를 바꿔 끼움).',
       '서버가 Take를 자동으로 끝냈으면(말 없음 · 최대 1시간) 무대가 이유와 서버 문구를 라우터 state로 넘기고, 이 화면 맨 위에 role="alert" 안내("자동 종료" 이름표 + 서버 문구 + 덧붙임)를 띄운다(#925). 리포트로 넘어갈 때도 같이 넘겨 리포트 위에 한 번 더 보인다. 끝내기 버튼으로 끝냈으면 띄우지 않는다.',
       '확인 대기면 "비슷하게 들린 말 확인하기"로 대본 확인을 연다. 답이 없으면 10분 안에 그대로 진행된다.',
