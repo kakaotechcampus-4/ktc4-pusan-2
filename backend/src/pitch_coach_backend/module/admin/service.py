@@ -194,7 +194,7 @@ def export_take(db: Session, take_id: uuid.UUID) -> AdminTakeExport:
         take_id=take_id,
         raw_data_consent=settings["raw_data_consent"],
         metric_second_count=repository.count_metric_seconds(db, take_id),
-        request=hooks.finalize_export().recovery_request(db, take_id),
+        request=hooks.finalize_recovery().recovery_request(db, take_id),
         results={
             row["kind"]: AdminExportResult(
                 payload=row["payload"], meta=row["meta"], revision=row["revision"]

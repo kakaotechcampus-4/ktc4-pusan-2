@@ -34,11 +34,13 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mappin
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.replies import FinalizeReply, ReplayRequired
 from pitch_coach_backend.coach.requests import FinalizeSource, finalize_request
 from pitch_coach_backend.coach.session import FinalizeSnapshot
-from pitch_coach_backend.coach.store import CoachStore
+from pitch_coach_backend.coach.store import CoachStore, recovery_request
 from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.core.retry import retry_transient
@@ -84,6 +86,14 @@ _on_take_result: Callable[[uuid.UUID], object] | None = None
 def on_take_result(callback: Callable[[uuid.UUID], object] | None) -> None:
     global _on_take_result
     _on_take_result = callback
+
+
+class CoachFinalizeRecovery:
+    """관리자 콘솔의 finalize 수동 복구 (`module.hooks.FinalizeRecovery` 구현).
+    main.py 가 꽂는다."""
+
+    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+        return recovery_request(db, take_id)
 
 
 def spawn(
