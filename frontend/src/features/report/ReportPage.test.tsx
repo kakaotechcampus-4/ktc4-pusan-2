@@ -47,6 +47,7 @@ beforeEach(() => {
     analysis_hold_reason: null,
     measures: measuresFixture,
     review: reviewFixture,
+    content_status: null,
   };
   host = document.createElement('div');
   document.body.append(host);
