@@ -282,3 +282,42 @@ def test_fetch_result_alone_is_not_an_answer_but_the_target_record_is(guard: boo
         assert fd.status == "DONE"
     else:
         assert fd.status == "PARTIAL"  # 가져오기 결과 문장뿐: 질문이 풀리지 않았다
+
+
+def _twice_request(first: str) -> dict[str, Any]:
+    """앞 턴에서 다시 평가를 청했고(대화 기록), 이번 말은 '같은 조건으로 한 번 더 다시 평가해 줘'(6-6)."""
+    req = F.with_loaded(F.request(user_message="같은 조건으로 한 번 더 다시 평가해 줘"), "t-5")
+    req["history"]["messages"] = [
+        {"role": "user", "text": first},
+        {"role": "assistant", "text": "참고 결과를 만들었어요. 공식 리뷰는 그대로예요."},
+    ]
+    return req
+
+
+def test_same_condition_reassess_reuses_the_condition_from_history() -> None:
+    """모델이 조건을 놓쳐도 코드가 대화 기록의 앞 조건(대본 사용)으로 다시 평가를 낸다. 확인 카드는 그대로다(승인 전 실행 없음)."""
+    req = _twice_request("Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘")
+    llm = F.FakeLlm([F.plan(assessments=[])], answers=[F.answer([])])
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "NEEDS_ACTION"
+    assert [(a.type, a.args) for a in fd.actions] == [
+        ("REASSESS", {"take_id": "t-5", "change": {"script_used": True}})
+    ]
+    assert any(c.type == "ASK_CONFIRM" for c in fd.message.cards)  # type: ignore[union-attr]
+    assert [c.purpose for c in llm.calls].count("RESEARCH") == 1  # 계획 뒤 모델 조사 호출 없이
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        "내 기준으로 시선 30%면 통과로 다시 평가해 줘",  # 기준 조건은 기록 글로 되살리지 않는다
+        "Take 5 3장 시선 어땠어?",  # 앞 턴에 다시 평가 요청이 없다
+    ],
+)
+def test_same_condition_reassess_needs_a_script_condition_in_history(first: str) -> None:
+    req = _twice_request(first)
+    llm = F.FakeLlm([F.plan(assessments=[]), F.done()], answers=[F.answer([])])
+    _, _, data = F.run_turn(req, llm)
+    assert all(a["type"] != "REASSESS" for a in data.get("actions") or [])
+    assert [c.purpose for c in llm.calls].count("RESEARCH") == 2  # 모델이 고른다

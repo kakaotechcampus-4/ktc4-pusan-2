@@ -1216,7 +1216,62 @@ class Loop:
         # 공통 한도(`research_prefetch_max`)는 계획한 자료 검색어(`max_guide_queries`개까지)에 먼저 나누고, 남은 몫을 기록 읽기가 쓴다.
         # 자료 검색은 앞에 둔다: 기록을 가져오는 행동(fetch_take)은 한 번에 하나이고 그 뒤 요청은 실행하지 않는다
         guides = self._guide_prefetch_calls()
-        return [*guides, *self._goal_prefetch_calls(), *self._prefetch_record_calls()]
+        reads = [*guides, *self._goal_prefetch_calls(), *self._prefetch_record_calls()]
+        if reads:
+            return reads  # 읽기를 먼저 마친다(가져오기 · 다시 평가는 행동이라 그 뒤 요청은 실행하지 않는다)
+        return self._same_condition_reassess_calls()
+
+    def _same_condition_reassess_calls(self) -> list[ToolCall]:
+        """"같은 조건으로 한 번 더 다시 평가해 줘"(6-6): 앞 턴에서 다시 평가를 청한 사용자 말의 조건(대본 사용)으로 `reassess` 를 낸다.
+
+        모델은 대화 기록에서 조건을 놓치고 빈 조건으로 부르거나('같은 조건이라 바뀔 것이 없다') 부르지 않았다(r9 ra-script-twice).
+        조건은 대화 기록(`history.messages`)에서 다시 평가 낱말이 있는 가장 최근 사용자 말이 대본 사용을 말했을 때만 이어 쓴다. 이번 말이
+        조건을 새로 말했거나 · 기준 조건이거나 · 그 Take 를 정할 수 없으면 내지 않는다(모델이 고른다). 확인 카드 · 한도 · 허용 검사는
+        모델이 고른 다시 평가와 같은 길이다. 한 실행에 한 번.
+        """
+        cfg = self.cfg
+        msg = self.original or ""
+        if (
+            not cfg.same_condition_reassess
+            or not cfg.research_prefetch
+            or self.ctx.pitch is None
+            or not any(w in msg for w in cfg.reassess_request_words)
+            or not any(w in msg for w in cfg.same_condition_words)
+            or clm.states_script_use(msg)
+        ):
+            return []
+        key = json.dumps(["reassess", "same_condition"])
+        if key in self.st.prefetched or len(self.st.prefetched) >= cfg.research_prefetch_max:
+            return []
+        prior = next(
+            (
+                m.text
+                for m in reversed(self.req.history.messages)
+                if m.role == "user" and any(w in m.text for w in cfg.reassess_request_words)
+            ),
+            None,
+        )
+        if prior is None or not clm.states_script_use(prior):
+            return []
+        by_number = {sm.take_number: tid for tid, sm in self.ctx.summaries.items()}
+        named = chk.named_take_numbers(prior)
+        if len(named) > 1 or any(n not in by_number for n in named):
+            return []
+        tid = by_number[next(iter(named))] if named else self._judged_take()
+        if tid is None:
+            return []
+        self.st.prefetched.append(key)
+        return [
+            ToolCall(
+                id=self._pf_id(),
+                name="reassess",
+                args={
+                    "take_id": tid,
+                    "change": {"script_used": True},
+                    "reason": "앞 턴과 같은 조건(대본 사용)으로 다시 평가 요청",
+                },
+            )
+        ]
 
     def _goal_prefetch_calls(self) -> list[ToolCall]:
         """대화 목표를 묻는 말(`goal_question`)이면 조사 첫머리에 `get_goals`를 먼저 읽는다(6-1 2번, 같은 한도 · 같은 길).
