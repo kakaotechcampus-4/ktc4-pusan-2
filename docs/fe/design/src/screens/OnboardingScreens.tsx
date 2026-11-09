@@ -323,12 +323,12 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
                   AI 비서 앱
                 </span>
               </div>
-              <h3 className="mt-3 text-2xl font-extrabold">새미나이 (Semini)</h3>
+              <h4 className="mt-3 text-2xl font-extrabold">새미나이 (Semini)</h4>
               <p className="mt-3 text-sm leading-7">
                 치치가 발표를 준비하다 막히면 가장 먼저 찾는 AI 비서 앱이에요.
               </p>
               <p className="mt-2 text-sm leading-7">
-                지난 Take 기록을 함께 살펴보고 다음 연습의 대화 목표를 정하도록 도와줘요.
+                지난 Take 기록을 함께 살펴보고 다음 연습 목표를 정하도록 도와줘요.
               </p>
               <p className="mt-5 border-t border-line-strong pt-4 text-sm font-bold">
                 “잠깐, 이건 새미나이한테 물어봐야겠다!” <span className="font-normal">— 치치</span>
