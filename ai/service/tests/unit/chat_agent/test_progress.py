@@ -206,6 +206,26 @@ def test_unmeasured_segments_are_not_no_segments() -> None:
     assert (run3.result, run3.signal) == ("측정 안 됨", None)
 
 
+def test_slides_read_shows_unmeasured_when_the_asked_area_is_unmeasured() -> None:
+    """장별 값(slides)을 읽을 때 다른 지표가 측정됐어도 물은 영역(목소리 크기)이 측정 안 됨이면 단계에 `측정 안 됨`을 보인다
+    (final60 ana-webinar-voice-unmeasured). 물은 영역을 모르거나 측정됐으면 `확인`."""
+    from pitch_coach_ai.features.chat_agent.tools import validate_args
+
+    req = load(base_request(), "t-3")
+    vol = req["context"]["loaded_takes"][0]["results"]["take_result"]["areas"]["VOLUME"]
+    vol["take"], vol["unmeasured_reason"] = None, "NO_CALIBRATION"
+    ctx = make_ctx(req)
+    args = {"take_id": "t-3", "section": "slides"}
+    a = validate_args("get_take_report", args)
+    assert not isinstance(a, str)
+    tr, _ = run(ctx, "get_take_report", args)
+    asked = progress.read_run("get_take_report", a, tr, ctx, areas=frozenset({"VOLUME"}))
+    assert asked.result == "측정 안 됨"
+    other = progress.read_run("get_take_report", a, tr, ctx, areas=frozenset({"GAZE"}))
+    unknown = progress.read_run("get_take_report", a, tr, ctx)
+    assert other.result != "측정 안 됨" and unknown.result != "측정 안 됨"
+
+
 # ── 끝 처리 ──────────────────────────────────────────────────────────────────
 
 

@@ -140,6 +140,39 @@ def test_steps_follow_actual_runs_and_unrun_steps_are_skipped() -> None:
     assert decisions(log) == []  # 상황 신호가 없으면 결정 로그도 없다
 
 
+def test_asked_area_unmeasured_is_said_even_if_the_model_skips_it() -> None:
+    """물은 영역(목소리 크기)이 측정 안 됨으로 읽혔으면 모델 문장이 그 사실을 빠뜨려도 "이 항목은 측정되지 않았어요."가 답에
+    남는다(TARGET 6, final60 ana-webinar-voice-unmeasured: 장별 값을 읽고도 측정 안 됨을 말하지 않음)."""
+    msg = "Take 5에서 목소리 크기가 장마다 일정했는지 수치로 보여 줄래요?"
+    req = F.request(user_message=msg)
+    vol = req["context"]["pitch"]["focus_take"]["results"]["take_result"]["areas"]["VOLUME"]
+    vol["take"], vol["unmeasured_reason"] = None, "NO_CALIBRATION"
+    for sl in vol.get("slides") or []:
+        sl["metrics"] = {k: None for k in sl.get("metrics") or {}}
+    ask = F.draft(
+        "Take 5에서 목소리 크기가 장마다 일정했는지 수치로 보여 줄래요",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="vocal_delivery",
+        polarity="NEUTRAL",
+    )
+    llm = F.FakeLlm(
+        [
+            F.plan(steps=["장별 값 보기"], step_tools=["get_take_report"], assessments=[ask]),
+            F.tools(("get_take_report", {"take_id": "t-5", "section": "slides"})),
+            F.done(),
+        ],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    _, lines, data = F.run_turn(req, llm)
+    fd = check_stream(lines, data)
+    assert fd.message is not None
+    assert "측정 안 됨" in data["plan"][0]["step"]
+    unmeasured = "이 항목은 측정되지 않았어요."
+    assert [c.text for c in fd.message.claims].count(unmeasured) == 1
+
+
 # ── 2. 표시 갱신은 계획 수정 한도를 쓰지 않는다 ─────────────────────────────
 
 

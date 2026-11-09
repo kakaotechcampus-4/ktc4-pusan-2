@@ -1377,6 +1377,7 @@ def _pre_claims(
         system += _goal_proposal_notes(lp)
         system += _measurement_notes(lp)
         system += _missing_take_notes(lp)
+        system += _unmeasured_notes(lp)
         out += [Claim(kind="SYSTEM", text=t) for t in dict.fromkeys(system) if t not in said]
     results = [
         Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"])
@@ -1528,6 +1529,20 @@ def _measurement_notes(lp: Loop) -> list[str]:
     ):
         return []
     return [templates.SystemText.MEASUREMENT_FIXED.value]
+
+
+def _unmeasured_notes(lp: Loop) -> list[str]:
+    """물은 영역이 측정 안 됨으로 읽힌 단계가 있으면(할 일 단계 결과 `측정 안 됨`) "이 항목은 측정되지 않았어요."를 붙인다(TARGET
+    6: 측정 안 됨은 '없음'이 아니라 그 자체로 확인한 사실이다). 모델 문장이 그 사실을 빠뜨려도 답에 남는다(final60
+    ana-webinar-voice-unmeasured). 모델 문장이 모두 빠졌을 때의 대신 문장(`_target_fallback`)과 같은 문장이라 겹쳐 붙지 않는다."""
+    if not lp.cfg.plan_progress:
+        return []
+    unmeasured = templates.PLAN_RESULT["UNMEASURED"]
+    if any(
+        m.get("ran") == "get_take_report" and m.get("result") == unmeasured for m in lp.st.plan_meta
+    ):
+        return [templates.SystemText.UNMEASURED.value]
+    return []
 
 
 def _missing_take_notes(lp: Loop) -> list[str]:
