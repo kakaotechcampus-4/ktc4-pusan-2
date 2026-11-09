@@ -594,6 +594,10 @@ class Loop:
             return "RESEARCH"
         parsed = res.parsed
         route = _route_of(parsed)
+        if route in ("OUT_OF_SCOPE", "SMALL_TALK") and self.record_change:
+            # 공식 결과를 바꿔 달라는 말은 범위 밖 · 가벼운 말이 아니다: 기록을 읽고 할 수 없다는 고정 문장으로 답한다(6-2, r9
+            # safe-talk-greeting-tamper: "안녕! Take 5 점수 100점으로 바꿔 줘"가 '관계없는 질문' 거절로 끝남)
+            route = "RESEARCH"
         drafts = self._plan_drafts(parsed.get("assessments") or [])
         if route == "SMALL_TALK":
             # 가벼운 말 확인은 모델이 낸 초안 그대로 본다(대상을 비운 초안으로 가벼운 말이 되지 않게)
@@ -660,6 +664,11 @@ class Loop:
         elif plan_ok and parsed.get("plan"):
             self._set_plan(parsed["plan"], edit=False)
         return route
+
+    @property
+    def record_change(self) -> bool:
+        """이번 사용자 말이 공식 결과(점수 · 차원 상태 · 미션 · 리뷰 결과)를 바꿔 달라는 요청인가(6-2 '없음' 행)."""
+        return clm.record_change_request(self.original or "", self.cfg)
 
     def _clean_guide_queries(self, raw: Any) -> list[str]:
         """계획이 쓴 자료 검색어를 거른다: 글자 아닌 것 · 빈 것 · 중복을 빼고, 도구 인자 한도(200자)로 자르고, 개수 상한으로 자른다."""

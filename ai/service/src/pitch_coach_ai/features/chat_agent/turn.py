@@ -784,6 +784,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         )
     draft = ans["draft"]
     route = draft.get("route")
+    if route in ("ANSWER", "OUT_OF_SCOPE") and lp.record_change:
+        # 공식 결과를 바꿔 달라는 말: 거절 · 일반 답 대신 할 수 없다는 고정 문장을 붙인다(6-2, 답 초안 route CANNOT_DO)
+        route = "CANNOT_DO"
     if route == "OUT_OF_SCOPE":
         return finish(
             status="REFUSED",
@@ -803,7 +806,20 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     usage_only = not body and any(c.text == templates.SystemText.USAGE_NO_GUIDE.value for c in tail)
     # 이름으로 찾은 결과(0개 · 여럿)는 확인한 사실의 고정 문장이다: 모델 문장이 모두 빠져도 그 문장이 답이다(TARGET 6, L2-21)
     name_fact = not body and any(c.text in _NAME_FACTS for c in tail)
-    if tail and not body and (not elems_written or usage_only or name_fact):
+    # 공식 결과를 바꿔 달라는 말(코드가 알아본 요청)은 할 수 없다는 고정 문장이 그 요청의 답이다: 묻지 않은 자료 조언이 검사로
+    # 빠져도 그렇다(6-2, "미션 지워 줘"에 사용법 자료를 찾아 쓴 문장이 빠져 PARTIAL). 기록 답 · 조언 요청이 섞였으면 그대로 본다
+    cannot_only = (
+        not body
+        and lp.record_change
+        and any(c.text == templates.SystemText.CANNOT_CHANGE_RECORD.value for c in tail)
+        and all(
+            c.get("kind") in ("GUIDE", "GENERAL")
+            for c in draft.get("claims") or []
+            if isinstance(c, dict)
+        )
+        and not any(w in (lp.original or "") for w in lp.cfg.advice_request_words)
+    )
+    if tail and not body and (not elems_written or usage_only or name_fact or cannot_only):
         # 끝에 붙는 고정 문장만이 답인 경우(예: '점수 100으로 바꿔 줘'): 그 문장이 답이다
         body, tail = tail, []
     # 조언(자료 · 일반 조언)만 쓴 답: 문장이 검사로 모두 빠지면 route 가 ANSWER 여도 자료 없음 거절이다(6-10 · L4-28).
@@ -1286,7 +1302,8 @@ def _tail_claims(
     - 이름으로 찾은 피치가 여럿인데 범위를 정하지 않았고, 여러 발표를 함께 묻는 말이 아니면 어느 발표인지 되묻는다(L2-21).
     - 이름으로 찾은 피치가 하나도 없고 범위를 정하지 않았으면 발표를 찾을 수 없다고 말한다(L2-21 0개).
     - 답 초안 `usage_unanswered`(화면 조작 방법을 물었는데 찾은 사용법 자료가 없음)면 사용법 자료 없음 문장(6-10).
-    - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2).
+    - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2). 코드가
+      그 요청으로 알아본 말(`Loop.record_change`)은 늘, 다시 평가를 실행한 답에는 코드가 알아본 요청일 때만.
     """
     seen = {c.text for c in said} | {d.get("text") for d in lp.st.emitted}
     out: list[Claim] = []
@@ -1299,9 +1316,12 @@ def _tail_claims(
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.WHICH_PITCH.value))
     elif lp.st.name_not_found and not fetched and not lp.st.ambiguous_name:
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.PITCH_NOT_FOUND.value))
-    if draft is not None and draft.get("usage_unanswered") is True:
+    if draft is not None and draft.get("usage_unanswered") is True and not lp.record_change:
+        # 공식 결과를 바꿔 달라는 말("미션 지워 줘")을 화면 사용법 질문으로 읽어도 사용법 자료 없음 문장을 내지 않는다
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.USAGE_NO_GUIDE.value))
-    if route == "CANNOT_DO":
+    reassessed = any(e.get("type") == "REASSESS" for e in lp.st.executed)
+    if route == "CANNOT_DO" and (lp.record_change or not reassessed):
+        # 다시 평가를 실행한 답(참고 결과)에는 붙이지 않는다: 조건으로 다시 평가해 달라는 말은 바꿀 수 없는 요청이 아니다(6-6)
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
     return [c for c in out if c.text not in seen]
 
