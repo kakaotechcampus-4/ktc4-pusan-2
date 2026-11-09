@@ -8,7 +8,7 @@
 | 경로 | 담당 | 내용 |
 |---|---|---|
 | `/admin/` | BE (`module/admin/static/`) | 콘솔 화면. `index.html` · `app.js` · `style.css` 세 파일입니다 |
-| `/admin/api/*` | BE (`module/admin/controller.py`) | 콘솔이 부르는 조회 API. 모두 읽기 전용이며 DB를 바꾸지 않습니다 |
+| `/admin/api/*` | BE (`module/admin/controller.py`) | 콘솔이 부르는 API. 조회는 DB를 바꾸지 않습니다. Take 복구 두 가지(아래 '복구')만 Take를 바꾸고 AI를 다시 부릅니다 |
 | `/admin/logs/` | Dozzle (`infra/docker-compose.yml`) | 서버 로그 뷰어. 보기만 가능하고 컨테이너 시작 · 중지 · 셸 접속은 꺼져 있습니다 |
 
 * 앱 API가 아니라서 `/api` 밖에 두고, `/api/docs` 에도 싣지 않습니다.
@@ -19,6 +19,7 @@
 * 두 값 중 하나라도 비어 있으면 콘솔이 꺼진 것으로 보고 모든 `/admin` 요청에 404를 돌려줍니다.
 * 계정이 틀리면 401과 `WWW-Authenticate: Basic` 을 돌려주고, 브라우저가 로그인 창을 다시 띄웁니다. 로그인 실패는 접속 IP와 경로만 로그에 남기고, 입력한 아이디는 남기지 않습니다.
 * Dozzle에는 로그인이 없습니다. Caddy가 `/admin/logs/` 를 넘기기 전에 `GET /admin/api/auth` 로 같은 계정인지 BE에 묻습니다(forward_auth).
+* 상태를 바꾸는 요청(POST)은 `X-Admin-Action: 1` 헤더도 있어야 합니다. 없으면 403(`ADMIN_ACTION_FORBIDDEN`)입니다. 브라우저는 기억한 Basic 계정을 다른 사이트가 보낸 요청에도 붙이므로, 콘솔 스크립트만 붙이는 헤더로 콘솔에서 누른 요청인지 확인합니다(CSRF 방어). 다른 출처의 스크립트가 이 헤더를 붙이면 CORS 사전 확인에서 막힙니다.
 
 ## 대시보드 정보
 * 첫 화면은 아래 조회를 동시에 부르고, 하나가 실패해도 나머지는 그립니다. 실패한 조회는 화면 위에 모아 보여 줍니다.
@@ -53,6 +54,15 @@
 | 요약 | 리포트에 쓰는 `take_summaries` 값 | `GET /admin/api/takes/{take_id}/results` |
 | 판정 입력 | Take 설정 · 발표 전 점검 · 장 변경 · 문장 끝 · 전사 단어별 시각 | `GET /admin/api/takes/{take_id}/inputs` |
 | 판정 묶음 내려받기 | finalize 복구 요청과 AI 결과를 JSON 파일 하나로 받습니다 | `GET /admin/api/takes/{take_id}/export` |
+
+### 복구
+* 연습 기록 맨 위에 그 Take에 맞는 버튼만 보입니다. 목록에서 연 때의 상태로 고르므로, 누른 뒤 결과는 **새로고침** 해서 봅니다.
+* 누르기 전에 확인 창을 띄웁니다. 시작하지 못하면 이유를 버튼 아래에 보여 줍니다.
+
+| 버튼 | 보이는 때 | 하는 일 | 데이터 |
+|---|---|---|---|
+| Take 결과 다시 만들기 | `FAILED` 이고 분석 단계가 `FINALIZING` (finalize가 끝내 실패한 Take) | Take를 `ANALYZING` 으로 되돌리고 finalize를 1초 원자료(`replay`)로 다시 부릅니다. 성공하면 채점 · 리뷰까지 이어 가고, 다시 실패하면 `FAILED` 로 돌아갑니다. 1초 원자료가 있어야 하고, 원자료 사용에 동의하지 않은 Take는 끝난 지 7일 안이어야 합니다(`coach-agent.md` 7절 수동 복구). 떠난 Take(분석 단계 없음)는 대상이 아닙니다 | `POST /admin/api/takes/{take_id}/finalize/retry` |
+| 병합 재채점 다시 하기 | 리뷰 보류가 `COVERAGE_RESCORE_FAILED` | 보존한 병합 후보와 처음 채점에 쓴 평가 기준으로 `/takes/rescore` 를 한 번 부릅니다. 성공하면 확정 채점을 바꾸고 보류를 풀어 확인 · 리뷰로 이어 가고, 실패하면 보류가 그대로 남아 다시 누를 수 있습니다. 재시도 기록 칸은 되돌리지 않습니다(`architecture.md` 1-3 '리뷰 보류' · 1-7) | `POST /admin/api/takes/{take_id}/coverage/rescore` |
 
 ### 발표 AI 상태
 * Take 표에서 발표 제목을 누르면 열립니다.
@@ -108,3 +118,12 @@
 | GET | `/admin/api/takes/{take_id}/inputs` | — | `{script_mode, standard_version, mission_ids, raw_data_consent, utterance_ends, slide_events: [{started_ms, slide_number}], segments: [{seq, start_ms, end_ms, final_at_ms, words}], calibration}` |
 | GET | `/admin/api/takes/{take_id}/export` | — | `{take_id, raw_data_consent, metric_second_count, request, results: {<kind>: {payload, meta, revision}}}` |
 | GET | `/admin/api/pitches/{pitch_id}/ai` | — | `{scripts: [{version, parse_status, parse_error, rubric_status, slide_count, rubric_slide_count, missing_rubric_slides, ...}], standards: [{version, criteria_count, values, meta, analyzed_at, ...}], coaching_plans: [{requested_at, source_take_id, target_ms, fallback_reason, model, payload, meta, ...}]}` |
+
+### 복구
+
+| 메서드 | 경로 | 응답 |
+|---|---|---|
+| POST | `/admin/api/takes/{take_id}/finalize/retry` | 202, 본문 없음. Take를 되돌린 뒤 finalize를 백그라운드로 띄웁니다. 대상이 아니면 409 `TAKE_NOT_RECOVERABLE` 이고, `message` 가 이유(대상 아님 · 7일 지남 · 1초 원자료 없음)를 알려 줍니다 |
+| POST | `/admin/api/takes/{take_id}/coverage/rescore` | 202, 본문 없음. 병합 재채점을 백그라운드로 띄웁니다. 보류한 Take가 아니거나 병합 후보가 없으면 409 `TAKE_NOT_RECOVERABLE`, 앞서 누른 복구가 아직 돌면 409 `RECOVERY_RUNNING` 입니다 |
+
+* 두 요청 모두 `X-Admin-Action: 1` 헤더가 필요합니다(위 '로그인'). 없으면 403 `ADMIN_ACTION_FORBIDDEN` 입니다.
