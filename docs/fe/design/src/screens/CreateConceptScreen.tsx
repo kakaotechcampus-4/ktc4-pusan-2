@@ -423,9 +423,7 @@ export function CreateConceptScreen({
   else if (criteriaText.trim() && !criteriaSaved) next = 3;
   const versions = Array.from({ length: stateId === 'many' ? 30 : 3 }, (_, i) => i + 1);
   return (
-    <div
-      className="pitch-create create-page create-concept create-focus"
-    >
+    <div className="pitch-create create-page create-concept create-focus">
       <div className="create-layout">
         <aside className="create-sidebar">
           <nav aria-label="준비 순서">
