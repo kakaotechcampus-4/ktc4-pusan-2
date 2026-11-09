@@ -173,7 +173,7 @@ ai/research/script-coverage-evaluation/     연구 (실험 도구 coverage_lab �
 
   핵심 내용이 없는 장은 STT와 상관없이 새 전달률이 null(`not_applicable`, `NO_KEY_POINTS`)이다. 단 `incomplete` + 빈 STT면 `failed`(`STT_INCOMPLETE`)다.
 
-- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 본다. 대상 장 중 `script`가 있는 장이 하나라도 있으면 그 장들의 간이 값(5-7)을 붙여 200(`evaluations` 빈 목록, 7절)이고, 없으면 422 `RUBRIC_MISSING`이다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0). 단, LLM 설정이 없으면 대상 유무와 관계없이 7절대로 503 `LLM_UNAVAILABLE`이다.
+- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 본다. 이때 STT가 끊겨 빈 장(`incomplete` + 빈 STT)은 `STT_INCOMPLETE`가 먼저이고 간이 값이 없다. 나머지 장 중 `script`가 있는 장이 하나라도 있으면 그 장들의 간이 값(5-7)을 붙여 200(`evaluations` 빈 목록, 7절)이고, 간이 값이 하나도 없으면 7절의 에러(모두 평가 기준 없음이면 422 `RUBRIC_MISSING`)다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0). 단, LLM 설정이 없으면 대상 유무와 관계없이 7절대로 503 `LLM_UNAVAILABLE`이다.
 
 **`POST /takes/rescore`**
 
@@ -447,7 +447,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 기존 점수(`scores` · `take_scores`)와 판정은 그대로 두고, 그 위에 리포트가 쓰는 지표를 선택 필드로 더한다. 원본은 `stt_evaluation/schemas.py`(장 상세 · 대본 밖 구간 · 간이 값)와 최상위 `schemas.py`(Take 상세)이고, 전체 모양은 `examples/analyze/response.json`에 있다.
 
 **0과 null**
-- 0은 평가할 핵심 내용이 있는데 하나도 전달하지 못한 것(빠뜨림 · 다르게 말함)만이다.
+- 핵심 내용 전달률(`delivery.value`)의 0은 평가할 핵심 내용이 있는데 하나도 전달하지 못한 것(빠뜨림 · 다르게 말함)만이다. 다른 지표의 0은 그 지표의 뜻 그대로다(예: 다르게 말한 몫 0 = 다르게 말한 것이 없음).
 - 실패 · 해당 없음 · 확인 대기는 값이 null이고 `state` · `reason_codes`가 까닭을 말한다.
 - 바꿔 말한 것은 감점 없는 전달이다. 대본 표현에 가까운지는 정보(`expression`)로만 낸다.
 - 어떤 새 지표도 기존 점수를 바꾸거나 더 깎지 않는다.
@@ -465,7 +465,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 
 | 필드 | 뜻 |
 |---|---|
-| `state` · `reason_codes` | 장의 상태. STT가 있는데 `stt_integrity`가 `incomplete`면 `provisional`(`STT_INCOMPLETE`), 문장 단위 복구 기준이면 `provisional`(`SENTENCE_FALLBACK`, `config.py`로 끌 수 있음), 빈 STT에 `unknown`이면 `provisional`(`STT_UNVERIFIED`) |
+| `state` · `reason_codes` | 장의 상태. STT가 있는데 `stt_integrity`가 `incomplete`면 `provisional`(`STT_INCOMPLETE`), 문장 단위 복구 기준은 기본으로 정상이고 `config.py`의 `SENTENCE_FALLBACK_PROVISIONAL`을 켜면 `provisional`(`SENTENCE_FALLBACK`), 빈 STT에 `unknown`이면 `provisional`(`STT_UNVERIFIED`) |
 | `stt_integrity` · `rubric_quality` | 5-2 · 5-6 |
 | `delivery` | **핵심 내용 전달률**(리포트 대표 지표): 핵심 내용 판정 점수 `covered` 1 · `partial` 0.5 · `missing` 0 · `contradicted` 0의 중요도 가중 평균. 다르게 말한 것이 다른 내용을 상쇄하지 않는다. 핵심 내용이 없으면 null(`not_applicable`, `NO_KEY_POINTS`) |
 | `zero_kind` | 전달률이 0일 때만: `slide_skipped`(STT가 빈 장) · `all_missing`(모두 빠뜨림) · `missing_or_contradicted`(모두 빠뜨림 또는 다르게 말함이고 하나 이상 다르게 말함) |
@@ -505,7 +505,8 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 **Take 상세** (응답 맨 위 `detail`): `{delivery, zero_kind, contradiction, status_shares, key_points, critical_gaps, legacy, facts, expression, fidelity, speech_mix, scope, slides}`
 - 채점된 장의 값만 같은 가중치로 모은다(전달 · 다르게 말함은 핵심 내용 가중치, 대본 재현은 형태소 수, 말의 구성은 형태소 수). 간이 값(`estimated`) 장은 넣지 않는다.
 - 채점된 장이 하나 이상이고 빠진 장도 있으면 `provisional` + `SLIDES_EXCLUDED`다. 모으는 장 중 그 지표가 `provisional`인 장의 이유(`STT_INCOMPLETE` · `SENTENCE_FALLBACK` 등)도 합쳐 `provisional`이다.
-- 채점된 장이 없으면 모든 지표가 null · `failed` + `SLIDES_EXCLUDED`이고, 개수는 0, 목록은 `[]`이다.
+- 채점된 장이 없으면 모든 집계 지표가 null · `failed` + `SLIDES_EXCLUDED`이고, 집계 개수는 0, `critical_gaps`는 `[]`이다. `scope.excluded`와 `slides`에는 실패 장이 그대로 들어간다.
+- 전달 · 다르게 말함의 `excluded`는 빠진 장 중 요청에 평가 기준이 있는 장의 핵심 내용 수다(그래서 BE는 rescore에 처음 채점에 쓴 평가 기준을 모두 싣는다).
 - `critical_gaps`: 장의 것에 `slide_number`를 붙여 중요도 · 장 순으로 최대 10개.
 - `scope`: `{target_slides, scored_slides, estimated_slides, provisional_slides, excluded[{slide_number, reason_code}]}`.
 - `slides[]`: 대상 장마다 `{slide_number, state(scored · estimated · failed), reason_codes, stt_integrity, rubric_quality, delivery, zero_kind, contradiction, status_shares, critical_gap_count, delivery_band, speech_mix{state, reason_codes, display}}`.
@@ -530,7 +531,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | ⑥ | 전달 단위: 문장을 내용 조각으로 나누고 코드가 검증(`skip` 문장은 나누지 않는다) | 1번 |
 
 - 대본이 빈 장은 LLM을 부르지 않고 빈 평가 기준을 만든다. 모든 문장이 `skip`이면 ⑥을 부르지 않는다. 그래서 장마다 LLM은 최대 3번이다.
-- ⑥(전달 단위)만 실패한 장은 문장 하나를 단위 하나로 본 평가 기준으로 복구해 성공으로 낸다(`meta.rubric_quality: sentence_fallback`, `warnings`에 `unit_fallback:<에러 코드>`, `config.py`의 `UNIT_FALLBACK_ENABLED`). ③ · ⑤가 실패한 장은 지금처럼 `failed`다. 복구한 기준은 그 대본 버전의 모든 Take에 고정되므로(첫 성공본 보존, `architecture.md` 1-7), 채점 상세가 그 장을 `provisional`(`SENTENCE_FALLBACK`)로 표시한다(13절의 복구 실험으로 정함).
+- ⑥(전달 단위)만 실패한 장은 문장 하나를 단위 하나로 본 평가 기준으로 복구해 성공으로 낸다(`meta.rubric_quality: sentence_fallback`, `warnings`에 `unit_fallback:<에러 코드>`, `config.py`의 `UNIT_FALLBACK_ENABLED`). ③ · ⑤가 실패한 장은 지금처럼 `failed`다. 복구한 기준은 그 대본 버전의 모든 Take에 고정되므로(첫 성공본 보존, `architecture.md` 1-7), 복구 실험(13절)에서 정확도 차이가 기준 안이라 그 장의 채점 상세는 정상(`ok`)으로 두고, `rubric_quality`로만 구분한다(`SENTENCE_FALLBACK_PROVISIONAL`을 켜면 `provisional`(`SENTENCE_FALLBACK`)).
 - 키워드 점수와 이름 판정은 발표 전체를 함께 본다. 그래서 `slide_numbers`로 일부 장만 만들 때도 요청에는 모든 장을 싣고, 고르지 않은 장은 맥락으로만 쓴다.
 - `rubric_id`는 그 장의 대본 해시 · LLM 설정 해시 · 형식 버전으로 만든다. 같은 장 글이면 다른 대본 버전에서도 같은 값이 나온다.
 
@@ -814,14 +815,15 @@ BE 안의 분기(재시도 기록 · 조건부 저장 · 보류)와 리뷰 호�
 
 - **지금 결과** (기능 버전 1.2, 가상 데이터, 기본 묶음 `openai/gpt-6-luna`, macOS arm64에서 연구 캐시 재생으로 다시 잼 — `stt_accuracy.json`):
   - 문장 판정 정확도 0.988(규칙만 0.850 · LLM 1차 0.970), 핵심 내용 0.988, 심각한 오판 0.4%, 핵심 사실 정확도 1.0(판단 보류 17개 제외), 사용자 확인 뒤 문장 0.992. 가장 낮은 것은 요약형 발표(문장 0.941)다. 결과 상세를 더하기 전 코드로 낸 채점과 비교해 문장 판정 720개 · 핵심 내용 판정 702개 · 수치 상태 621개 · 기존 점수가 하나도 바뀌지 않았다. 1.1 결과(0.984)와의 차이는 전달 단위 단계 실패로 빠졌다가 다시 만든 한 장(가상대본1 4번, Take 9개) 몫과 측정 환경 차이다.
-  - 문장 단위 복구 기준(6-1): 복구 기준으로 채점하면 문장 정확도 0.9875 → 0.9861(−0.14%p), 심각한 오판 0.42% → 0.56%(+0.14%p), 한 문장에 내용이 여럿인 문장은 +0.22%p(`sentence_fallback.json`, 문장 720개). 미리 정한 기준(하락 ≤ 1%p, 심각한 오판 증가 ≤ 0.5%p) 안이라 복구한 장의 상세를 정상(`ok`)으로 둔다.
+  - 문장 단위 복구 기준(6-1): 복구 기준으로 채점하면 문장 정확도 0.988 → 0.987(−0.13%p), 심각한 오판 0.39% → 0.52%(+0.13%p), 한 문장에 내용이 여럿인 문장(486개)은 +0.20%p(`sentence_fallback.json`, 문장 765개). 미리 정한 기준(하락 ≤ 1%p, 심각한 오판 증가 ≤ 0.5%p) 안이라 복구한 장의 상세를 정상(`ok`)으로 둔다.
   - 결과 상세의 경계값(`coverage_detail.json`, 가상대본1로 고르고 가상대본2로 한 번 확인):
     - 표현 방식(0.9 · 0.8): 시험 일치율 0.960(구분 어려움 제외), 구분 어려움 13.5%
     - 간이 단계(문장 경계 0.35 · 0.45, 단계 경계 0.3 · 0.7): 시험 단계 일치율 0.889, 심각한 어긋남 0. LLM 최종 판정으로 같은 단계를 낸 일치율은 0.970이라, 간이 값은 거친 값이다.
   - 말의 구성:
-    - 자연 데이터: 대본 밖 후보에 독립 라벨 두 벌(일치 96.4%, `offscript_labels.json`)을 달았다. 짝 없는 문장만 후보로 잡는 지금 규칙은 후보가 모두 실제 대본 밖 말이었다(개발 5/5 · 시험 7/7). 라벨의 실제 곁말 재현율은 개발 0.71 · 시험 0.70이다.
+    - 자연 데이터: 대본 밖 후보에 독립 라벨 두 벌(일치 96.4%, `offscript_labels.json`)을 달았다. 짝 없는 문장만 후보로 잡는 지금 규칙에서 일치 라벨이 있는 후보는 모두 실제 대본 밖 말이었다(개발 5/5 · 시험 7/7, 개발 후보 1개는 라벨 불일치로 뺌). 그중 시험 2개는 정답이 진행 말인데 '대본 밖 말'로 나왔다. 라벨의 실제 곁말(`additions`) 중 후보로 잡힌 비율은 개발 0.625(5/8) · 시험 0.70(7/10)이다.
     - 짝 있는 문장 안 꼬리까지 잡으면 후보 중 실제 대본 밖 말이 시험 0.05~0.78뿐이라 기본으로 끈다(`rule_variants`).
-    - 합성 주입(`offscript_injections.json`, 범주마다 개발 81 · 시험 99개): precision 진행 말 1.0 · 다른 장 0.93~0.94. 진행 말 재현율은 31~39%로 낮고, 놓친 진행 말은 '대본 밖 말'로 들어간다. 관련 곁말 · 무관한 말 구분(LLM)은 실제 발표로 재기 전까지 꺼 둔다.
+    - 합성 주입(`offscript_injections.json`, 범주마다 개발 81 · 시험 99개, 주입으로 새로 생긴 오탐 개발 0 · 시험 1): precision 진행 말 1.0 · 다른 장 개발 0.952 · 시험 0.930. 구간 F1(범주 무시) 개발 0.87 · 시험 0.86. 진행 말을 진행 말로 맞힌 비율은 낮고, 나머지는 '대본 밖 말' · '다른 장'으로 나뉘거나 잡히지 않았다. 관련 곁말 · 무관한 말 구분(LLM)은 실제 발표로 재기 전까지 꺼 둔다.
+    - 진행 말 사전(`config.py`의 `PROCEDURAL_PATTERNS`)은 코드 검토에서 나온 사례(본문을 진행 말로 잡음 · 흔한 진행 말을 놓침)로 조정했다. 합성 주입 문장은 사전을 고치는 데 쓰지 않았다.
   - 교차 검증 출력 검사(6-2 ⑦, 대상 문장 · 전달 단위를 다 덮지 못하면 그 장 실패)의 영향: 6 luna로 부른 교차 검증 44번(`output_tokens.json`)과 연구 캐시의 이전 기본 모델 검증 출력 45장(`experiments/09_verifier_completeness.py` → `verifier_completeness.json`, LLM 호출 없이 캐시 재생)에서 검사에 걸린 장은 없었다. 실제 대본에서도 비율을 다시 본다.
   - 정확도 차이 ±0.004(2~3문장)는 이전 기본 모델의 반복 채점에서 본, 채점마다 달라지는 폭이라 잡음으로 본다(6 luna의 반복 변동 폭은 아래처럼 아직 재지 않았다).
 - 가상 STT와 정답 라벨을 같은 사람이 만들어 실제보다 쉬울 수 있고, 규칙 임계값 일부는 같은 데이터로 정했다. 실제 Deepgram 출력 · 실제 발표자로는 재지 않았다.
