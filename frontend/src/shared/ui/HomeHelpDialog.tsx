@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import { CloseButton } from './CloseButton';
 
 const steps = [
   [
@@ -43,14 +44,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
         <h2 id={titleId} className="text-xl font-bold">
           사용방법
         </h2>
-        <button
-          type="button"
-          autoFocus
-          onClick={() => dialogRef.current?.close()}
-          className="border border-ink px-4 py-2 text-sm font-bold hover:bg-cream"
-        >
-          닫기
-        </button>
+        <CloseButton autoFocus onClick={() => dialogRef.current?.close()} />
       </header>
       <div className="px-6 py-8 sm:px-8">
         <p className="text-sm leading-7 text-stone">

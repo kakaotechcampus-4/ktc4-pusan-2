@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { useSession } from '@/shared/api/useSession';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
 import type { CardActions } from './ChatCards';
@@ -489,14 +490,7 @@ function ChatPanel({
           >
             기억 설정
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="채팅 에이전트 닫기"
-            className="min-h-11 min-w-11 whitespace-nowrap border border-line-strong px-2 text-sm font-bold hover:bg-cream"
-          >
-            닫기
-          </button>
+          <CloseButton compact onClick={onClose} aria-label="채팅 에이전트 닫기" />
         </div>
       </header>
 

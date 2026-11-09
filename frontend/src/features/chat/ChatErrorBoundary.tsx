@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import { useLocation } from 'react-router';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import { CHAT_LAUNCHER_CLASS, canShowChat, chatLauncherBottom } from './chatRoutes';
 
 /** 대화창이 렌더 중에 던졌을 때 보이는 문구 (`docs/ai/features/chat-agent.md` L3-36 · 7-9) */
@@ -129,13 +130,7 @@ function ChatFailed({
             {CHAT_FAILED_TEXT}
           </p>
           <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setFolded(true)}
-              className="min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
-            >
-              닫기
-            </button>
+            <CloseButton onClick={() => setFolded(true)} />
             <button
               ref={retryRef}
               type="button"
