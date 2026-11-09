@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "id": "path-norec-goal-none",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "대화 목표를 저장한 적이 없음 — 목표를 읽고 '목표 없음'을 사실로 말한다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "지금 대화 목표가 뭐야?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-goals",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_goals:*",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "목표 없음",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "says-none",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "목표[^\\n]{0,20}(없|아직)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-generic-partial",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}
