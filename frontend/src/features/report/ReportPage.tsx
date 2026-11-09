@@ -16,6 +16,7 @@ import type {
   TakeReport,
 } from '@/types/report';
 import { AutoEndAlert } from './AutoEndAlert';
+import { ContentCard } from './ContentCard';
 import { QueryState, ReportFrame } from './ReportFrame';
 import {
   DIMENSION_LABEL,
@@ -86,6 +87,7 @@ function ReportBody({ report }: { report: TakeReport }) {
           <p className="text-sm text-ink/80">발표 기록을 정리하고 있어요.</p>
         </Card>
       )}
+      <ContentCard status={report.content_status} />
 
       {/* 측정값이 아직 없으면 평가기준 카드 하나가 줄을 다 씁니다 */}
       <div className="grid gap-4 lg:auto-cols-fr lg:grid-flow-col">

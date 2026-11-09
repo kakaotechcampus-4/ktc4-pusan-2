@@ -81,11 +81,14 @@ it('shows the previous Take comparison immediately after the summary and before 
   const summary = main.querySelector('[role="status"]')!.closest('section')!;
   const comparison = summary.nextElementSibling!;
   expect(comparison.querySelector('h2')?.textContent).toBe('지난 Take와 비교');
-  expect(comparison.nextElementSibling?.getAttribute('aria-label')).toBe('측정값');
+  const measures = comparison.nextElementSibling!;
+  expect(measures.getAttribute('aria-label')).toBe('측정값');
+  // 내용 전달 카드(#1154)는 측정값 다음입니다
+  expect(measures.nextElementSibling?.querySelector('h2')?.textContent).toBe('내용 전달');
   const pageHeadings = [...main.querySelectorAll('h2')].filter(
     (heading) => !heading.closest('dialog'),
   );
-  expect(pageHeadings).toHaveLength(8);
+  expect(pageHeadings).toHaveLength(9);
 });
 
 it('shows the script modes in Korean when the two Takes used different ones', async () => {
