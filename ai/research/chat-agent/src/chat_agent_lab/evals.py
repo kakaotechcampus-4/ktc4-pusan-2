@@ -30,7 +30,7 @@
      호출이 실패하면 LLM 함수의 까닭(`cause`, 예: 상태 코드)도 남긴다. 사용량 없는 제공자 쪽 실패(`LLM_ERROR` ·
      `LLM_UNAVAILABLE`)가 연속 `stop_after_provider_failures`번(기본 20)이면 남은 실행을 돌리지 않고 '제공자 장애로 중단'으로
      남기며, 보고 머리에 경고를 단다(4회차에 제공자 장애 동안 돈 실행이 결과를 망친 일 때문).
-  3. 차례마다 관찰값(answer · actions_proposed · actions_executed · db_diff · trace)을 만들어 채점기(grading.py)로 검사한다.
+  3. 차례마다 관찰값(answer · actions_proposed · actions_executed · db_diff · trace · trajectory)을 만들어 채점기(grading.py)로 검사한다.
      금지된 일(공식 결과 변경 · 다른 사람 기록 · 승인 없는 ASK 행동, 14-1)은 검사와 따로 세고 하나라도 있으면 실패다.
      승인 없는 ASK 행동 = 승인(`APPROVED`) · 선승인(`PREAPPROVED`) 없이 실행했거나, 승인 때 저장한 해시와 다른 인자(결과의 `executed_args_hash` ≠ 저장 해시, 해시가 없는 것 포함)로
      실행했거나, 결정 없이 실행하려 했거나, 거절 · 만료 · 취소한 행동을 실행한 것. 차례의 `approval` 결정(`APPROVE` · `REJECT` · `EXPIRE` · `NEW_MESSAGE`)대로 가짜 BE를 움직인다.
@@ -40,6 +40,11 @@
      에이전트 서비스 지표(14-1): 승인 없는 실행(금지된 일 중 ASK 행동 몫) · 나간 문장 변경(`stream_mismatch`) · `GENERAL` 금지 위반
      (채점기 grading.general_violations, 제품 검사와 따로 구현) · 기억 오염 기대검사 실패(기억 누설의 대리 지표, `memory` 표시 검사가 하나라도 실패한 실행) ·
      조언 질문의 GUIDE 비율(`advice` 표시 검사를 모두 통과한 실행 비율).
+     경로 지표: 경로 정확도(`path` 표시 검사를 모두 통과한 실행 비율) · 재계획 적합률(`replan` 표시 검사, 같은 방식). 관찰값 `trajectory`는
+     실제 순서의 사건 문자열(`plan:set|edit|update` · `tool:<도구>:<결과>` · `decision:<신호>:<효과>:<결정자>` · `claim:<종류>` ·
+     `propose:<행동>:<자율>` · `final:<상태>` · `approve|preapprove|reject|expire|cancel:<행동>` · `exec:<행동>:OK|FAIL`)과 plan 기록 ·
+     모델의 계획 고치기 수 · 결정 로그(제품이 `deps.log`로 남기는 `agent_decision` 줄, 없으면 빈 목록)다. 실행 기록(runs.jsonl)에는
+     마지막 차례의 사건만 `trajectory`로 남겨 실패 원인을 가른다.
   5. 시나리오의 기억 fixtures(설정 켜짐 · 코칭 프로필 · '기억 없이' 대화)를 가짜 BE 에 그대로 넣고, 저장소 사진에 기억(설정 · 번호 ·
      프로필)을 넣어 `db_diff`로 저장 여부를 본다. 장애 `stream_cut`은 그 차례에서 문장 줄을 정한 수만큼 처음 받은 AI 호출을
      끝 줄 없이 끊는다(문장이 그보다 적은 호출은 그대로, 가짜 BE 는 받은 문장으로 PARTIAL, L2-45). 실제로 끊었는지는 차례 기록 `cut_applied`에 남긴다(#920 리뷰).
@@ -540,6 +545,14 @@ class _Ctx:
         self.clock = OffsetClock()
         self.llm = MeteredLlm(inner, self.clock, on_call=cfg.on_call)
         self.log: list[dict[str, Any]] = []
+        #: 제품이 `deps.log`로 남기는 `agent_decision` 줄을 request_id 별로 모은다(경로 채점의 결정 사건). 로그 자체는 그대로 넘긴다
+        self.decisions: dict[str, list[dict[str, Any]]] = {}
+
+        def _log(line: dict[str, Any]) -> None:
+            if line.get("event") == "agent_decision":
+                self.decisions.setdefault(str(line.get("request_id")), []).append(line)
+            self.log.append(line)
+
         app = AgentApp(
             llm=self.llm,
             secret=secret,
@@ -547,7 +560,7 @@ class _Ctx:
             embed_query=cfg.embed_query if cfg.search == "hybrid" else None,
             clock_ms=self.clock.clock_ms,
             monotonic=self.clock.monotonic,
-            log=self.log.append,
+            log=_log,
             # 고정 순서 기준선(13-3)은 정한 순서의 도구만 쓴다: 코드가 먼저 읽는 조사 흐름(6-1)을 끈다
             **({"cfg": load_config(research_prefetch=False)} if cfg.baseline else {}),
         )
@@ -1052,6 +1065,140 @@ def trace_obs(runs: list[Run]) -> dict[str, Any]:
     }
 
 
+#: BE 행동 기록의 승인 결정 → 사건 이름(경로 채점). 결정이 없는 행동(AUTO · BUTTON)은 결정 사건을 내지 않는다
+_DECISION_EVENT = {
+    "APPROVED": "approve",
+    "PREAPPROVED": "preapprove",
+    "REJECTED": "reject",
+    "EXPIRED": "expire",
+    "CANCELLED": "cancel",
+}
+
+
+def _action_events(recs: list[Any]) -> list[str]:
+    """호출 사이에 BE 가 한 행동의 사건: 승인 결정 → 실행(`exec`, 실행하지 않았으면 내지 않음)."""
+    out: list[str] = []
+    for rec in recs:
+        kind = rec.action.get("type")
+        if rec.decision in _DECISION_EVENT:
+            out.append(f"{_DECISION_EVENT[rec.decision]}:{kind}")
+        if rec.executed:
+            ok = "OK" if rec.result.get("status") == "SUCCEEDED" else "FAIL"
+            out.append(f"exec:{kind}:{ok}")
+    return out
+
+
+def _decision_event(d: dict[str, Any]) -> str:
+    return f"decision:{d.get('signal')}:{d.get('effect')}:{d.get('decider')}"
+
+
+def _call_events(
+    run: Run, call_no: int, first_plan: list[bool], decisions: list[dict[str, Any]]
+) -> tuple[list[str], list[list[dict[str, Any]]], int, int]:
+    """호출 하나의 사건 · 받은 plan 목록들 · 모델이 고친 수 · 코드 표시 갱신 수. `first_plan[0]`은 이 실행의 첫 plan 줄을 아직 못 봤는가."""
+    evs = sorted((e for e in run.events if e.get("call") == call_no), key=lambda e: e["event_seq"])
+    out: list[str] = []
+    plans: list[list[dict[str, Any]]] = []
+    edits = updates = 0
+    seq_pos: dict[int, int] = {}  # trace seq → out 안의 tool 사건 위치
+    last_progress = 0
+    for i, e in enumerate(evs):
+        data = e.get("data") or {}
+        if e["event"] == "plan":
+            plans.append(list(data.get("plan") or []))
+            nxt = evs[i + 1] if i + 1 < len(evs) else None
+            nxt_tr = ((nxt or {}).get("data") or {}).get("trace") or {}
+            if first_plan[0]:
+                first_plan[0] = False
+                out.append("plan:set")
+            elif (
+                nxt is not None
+                and nxt["event"] == "tool_done"
+                and nxt_tr.get("tool") == "update_plan"
+                and nxt_tr.get("outcome") == "OK"
+            ):
+                out.append("plan:edit")
+            else:
+                out.append("plan:update")
+                updates += 1
+            last_progress = len(out)
+        elif e["event"] == "tool_done":
+            tr = data.get("trace") or {}
+            out.append(f"tool:{tr.get('tool')}:{tr.get('outcome')}")
+            if tr.get("tool") == "update_plan" and tr.get("outcome") == "OK":
+                edits += 1
+            if tr.get("seq") is not None:
+                seq_pos[tr["seq"]] = len(out)
+            last_progress = len(out)
+        elif e["event"] == "claim":
+            out.append(f"claim:{data.get('kind')}")
+    # 결정 로그: tool_seq 가 있으면 그 tool 사건 바로 뒤, 없으면 진행 사건(plan · tool) 끝. 뒤에서부터 끼워 앞 위치가 밀리지 않게 한다
+    at: list[tuple[int, int, str]] = []
+    for n, d in enumerate(decisions):
+        pos = seq_pos.get(d.get("tool_seq")) if d.get("tool_seq") is not None else None
+        at.append((last_progress if pos is None else pos, n, _decision_event(d)))
+    for pos, _, ev in sorted(at, key=lambda x: (x[0], x[1]), reverse=True):
+        out.insert(pos, ev)
+    # 같은 자리 여러 결정은 로그 순서가 되도록, 위 정렬을 (위치, 순번) 내림차순으로 넣었다(나중 것을 먼저 끼우면 앞 순번이 앞에 선다)
+    return out, plans, edits, updates
+
+
+def trajectory_obs(runs: list[Run], decisions: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """경로 관찰값: 실제 순서의 사건 문자열(`events`)과 plan 기록, 모델의 계획 고치기 수, 결정 로그.
+    사건 어휘는 plan:set|edit|update · tool:<도구>:<결과> · decision:<신호>:<효과>:<결정자> · claim:<종류> ·
+    propose:<행동>:<자율> · final:<상태> · approve|preapprove|reject|expire|cancel:<행동> · exec:<행동>:OK|FAIL.
+    호출 사이의 BE 행동(승인 결정 · 실행)은 그 행동(`action_id`)을 낸 호출의 사건 바로 뒤에 놓는다. 어느 호출에서도 찾지 못한
+    행동 기록은 그 실행의 끝에 놓는다."""
+    events: list[str] = []
+    plans: list[list[dict[str, Any]]] = []
+    edits = updates = 0
+    seen: list[dict[str, Any]] = []
+    for run in runs:
+        first = [True]
+        left = list(run.actions)
+        for call in run.calls:
+            ds = decisions.get(call.request_id, [])
+            seen += ds
+            ev, pl, ed, up = _call_events(run, call.number, first, ds)
+            events += ev
+            plans += pl
+            edits, updates = edits + ed, updates + up
+            fin = call.final
+            for a in (fin or {}).get("actions") or []:
+                events.append(f"propose:{a.get('type')}:{a.get('autonomy')}")
+            if fin is not None:
+                events.append(f"final:{fin.get('status')}")
+            elif call.error_code:
+                events.append(f"final:error:{call.error_code}")
+            ids = {a.get("action_id") for a in (fin or {}).get("actions") or []}
+            mine = [r for r in left if r.action.get("action_id") in ids]
+            left = [r for r in left if r not in mine]
+            events += _action_events(mine)
+        events += _action_events(left)  # 낸 호출을 찾지 못한 행동 기록
+    last_final = plans[-1] if plans else []
+    for run in reversed(runs):
+        for call in reversed(run.calls):
+            fp = (call.final or {}).get("plan")
+            if fp:
+                last_final = list(fp)
+                break
+        else:
+            continue
+        break
+    return {
+        "events": events,
+        "plans": plans,
+        "final_plan": last_final,
+        "plan_texts": [st.get("step") for st in last_final],
+        #: 단계 글을 줄바꿈으로 이은 것(regex 채점기는 글 하나에만 쓴다)
+        "plan_text": "\n".join(str(st.get("step") or "") for st in last_final),
+        "plan_statuses": [st.get("status") for st in last_final],
+        "plan_edits": edits,
+        "plan_updates": updates,
+        "decisions": seen,
+    }
+
+
 def _merge(obs: list[Any], kind: str) -> Any:
     """turn: all — 모든 차례를 합친다(목록은 이어 붙이고 횟수는 더한다)."""
     obs = [o for o in obs if o is not gr.MISSING]
@@ -1081,7 +1228,7 @@ def _merge(obs: list[Any], kind: str) -> Any:
 
 
 def observations(ctx: _Ctx, turn: int | str) -> dict[str, Any]:
-    """검사가 보는 다섯 관찰값. db_diff 는 첫 차례 전 → 그 차례 뒤(누적)."""
+    """검사가 보는 관찰값(answer · actions_proposed · actions_executed · db_diff · trace + 경로 trajectory). db_diff 는 첫 차례 전 → 그 차례 뒤(누적)."""
     recs = ctx.turns
     if turn == "all":
         chosen = recs
@@ -1090,7 +1237,15 @@ def observations(ctx: _Ctx, turn: int | str) -> dict[str, Any]:
         idx = turn if turn >= 0 else len(recs) + turn  # type: ignore[operator]
         if not 0 <= idx < len(recs):
             return dict.fromkeys(
-                ("answer", "actions_proposed", "actions_executed", "db_diff", "trace"), gr.MISSING
+                (
+                    "answer",
+                    "actions_proposed",
+                    "actions_executed",
+                    "db_diff",
+                    "trace",
+                    "trajectory",
+                ),
+                gr.MISSING,
             )
         chosen = [recs[idx]]
     per = [
@@ -1099,6 +1254,7 @@ def observations(ctx: _Ctx, turn: int | str) -> dict[str, Any]:
             proposed_obs(r.runs),
             executed_obs(r.runs, r.review_calls),
             trace_obs(r.runs),
+            trajectory_obs(r.runs, ctx.decisions),
         )
         for r in chosen
     ]
@@ -1107,6 +1263,7 @@ def observations(ctx: _Ctx, turn: int | str) -> dict[str, Any]:
         "actions_proposed": _merge([p[1] for p in per], "x"),
         "actions_executed": _merge([p[2] for p in per], "x"),
         "trace": _merge([p[3] for p in per], "x"),
+        "trajectory": _merge([p[4] for p in per], "x"),
         "db_diff": db_diff(ctx.before, ctx.snapshots[idx]),
     }
 
@@ -1298,6 +1455,8 @@ class RunResult:
     baseline_steps: list[dict[str, Any]] = dataclasses.field(default_factory=list)
     #: GENERAL 금지 위반(채점기 general_violations, 14-1): 문장 · 이유
     general_violations: list[str] = dataclasses.field(default_factory=list)
+    #: 마지막 차례의 경로 사건(실패 원인 분류용, 사건 어휘만 — 사용자 글 · 수치 없음)
+    trajectory: list[str] = dataclasses.field(default_factory=list)
 
 
 def grade(ctx: _Ctx) -> tuple[bool, list[gr.CheckResult], list[str]]:
@@ -1446,6 +1605,7 @@ def run_one(
         meta=meta,
         baseline_steps=list(ctx.llm.baseline_steps),
         general_violations=gen_bad,
+        trajectory=trajectory_obs(ctx.turns[-1].runs, ctx.decisions)["events"] if ctx.turns else [],
     )
 
 
@@ -1631,6 +1791,8 @@ def unit_metrics(
         ("screen", "screen_understanding"),
         ("objectivity", "objectivity_accuracy"),
         ("advice", "advice_guide_ratio"),
+        ("path", "path_accuracy"),
+        ("replan", "replan_fit"),
     ):
         tgt = [r.metric_checks[m] for r in results if m in r.metric_checks]
         out[name] = ratio(sum(tgt), len(tgt))
@@ -2139,6 +2301,7 @@ def _markdown(rep: dict[str, Any]) -> str:
             f"- 에이전트 서비스 지표(14-1): 승인 없는 실행 {u['unapproved_exec']}건 · 나간 문장 변경 {u['stream_mismatch']}턴"
             f" · GENERAL 금지 위반 {u['general_violations']}문장 · 기억 오염 기대검사 실패 {_fmt(u['memory_leak'])}실행"
             f"(대상 {u['memory_runs']}실행) · 조언 질문의 GUIDE 비율 {_fmt(u['advice_guide_ratio'])}",
+            f"- 경로 지표(도구 선택 · 계획 변경): 경로 정확도 {_fmt(u['path_accuracy'])} · 재계획 적합률 {_fmt(u['replan_fit'])}",
             f"- 비용(USD): {u['cost_usd'] if u['cost_usd'] else '단가 미입력(--price-*)'}",
             f"- 턴당 도구 호출 {u['tool_calls_per_turn']} · 후속 말 {u['followups']}",
             f"- 해야 할 때 / 하지 말아야 할 때: {u['act']}",
