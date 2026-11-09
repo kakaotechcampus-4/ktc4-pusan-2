@@ -24,7 +24,8 @@
 - 상황 신호 · 결정 로그(설정 `decision_log` · `research_signals`): 도구 결과에서 코드가 찾은 신호(비교 불가 · 기본 자료에 없음 · 리뷰 없음 ·
   기록 없음 · 도구 실패)를 단계에 보이고(`FACT_SHOWN:CODE`, 단계에 실제로 붙었을 때만) 대응을 기다리는 신호(`signals_open`)로 둔다. 그 신호를 본 모델의 다음 선택이
   `update_plan`이면 `PLAN_EDIT`, 다른 기록 도구 · 다른 대상이면 `ALT_TOOL`, 행동이면 `ACTION`, 조사가 끝날 때까지 없으면 `NONE`이다.
-  조사가 한도 · 반복으로 멈추면 `BUDGET_LOW` · `STOP_PARTIAL:CODE`. 결정 로그는 서비스 로그(`agent_decision`)에만 남는다(11-5).
+  조사가 한도 · 무효 도구 반복 · 실패 행동 반복으로 멈추면 `BUDGET_LOW:STOP_PARTIAL:CODE`이고, 같은 요청 · 교대 반복으로 멈추면
+  요청 해소로 끝 상태를 정한다(한도 · 장애가 아니다). 결정 로그는 서비스 로그(`agent_decision`)에만 남는다(11-5).
 - 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤(이미 낸 문장이 기댄 원천이면 재개를 멈춘다 — `drop_removed`),
   행동 결과를 검사해 반영하고 2부터 잇는다.
 - 자동 목표 확인(TAKE_REVIEWED): 모델 없이 코드가 목표를 판정하고 결과 문장 · 카드를 만든다(meta.model null).
