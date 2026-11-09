@@ -4,6 +4,7 @@
 - Take 목록: 거른 조건에 맞는 Take 만 없으면 'Take 없음'(기록 없음 신호)이 아니다.
 - 결정 로그: 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 붙었을 때만 남긴다.
 - 답 쓰기 실패의 대신 문장: 질문 대상의 근거로만 그린다(읽은 근거 전체를 나열하지 않는다).
+- 코드 대신 답의 끝난 까닭: 반복으로 멈춘 조사면 ANSWERED 가 아니라 REPEAT 다.
 """
 
 from __future__ import annotations
@@ -17,7 +18,13 @@ from pitch_coach_ai.features.chat_agent.config import load_config
 from pitch_coach_ai.features.chat_agent.llm_types import LlmTimeout
 
 from . import fakes as F
-from .test_none_evidence import _read, no_take_request, with_take_result
+from .test_none_evidence import (
+    NO_TAKE_PLAN,
+    NO_TAKE_SENTENCE,
+    _read,
+    no_take_request,
+    with_take_result,
+)
 from .test_plan_progress_turn import decisions
 from .test_prefetch import slide_draft
 from .test_signal_routes import research_blocks
@@ -159,3 +166,29 @@ def test_answer_failure_fallback_uses_only_question_target_evidence() -> None:
         for e in c["evidence_ids"]
     }
     assert cited == {(4, 3, "audience_ratio")}
+
+
+# ── 5. 반복으로 멈춘 조사의 코드 대신 답도 끝난 까닭을 남긴다 ──────────────────────
+
+
+def test_code_fallback_after_repeat_stop_records_repeat_not_answered() -> None:
+    """같은 요청 되풀이로 조사가 멈췄고(NO_PROGRESS) 모델 문장이 검사로 모두 빠져 코드가 '없음' 근거 문장을 그렸다. 요청은
+    해소돼 DONE 이지만 진단의 끝난 까닭은 ANSWERED 가 아니라 REPEAT 다(모델 문장이 남은 답과 같은 규칙, 11-5 · L1-16)."""
+    llm = F.FakeLlm(
+        [
+            NO_TAKE_PLAN,
+            F.tools(("list_pitches", {}), prefix="a"),
+            F.tools(("list_pitches", {}), prefix="b"),
+        ],
+        answers=[F.answer([F.claim("RECORD", "최근 발표는 없어요.")])],
+        fixes=[F.fix({0: None})],
+    )
+    _, _, data = F.run_turn(no_take_request(), llm)
+    assert data is not None
+    assert [(t["tool"], t["outcome"]) for t in data["trace"]] == [
+        ("list_pitches", "OK"),
+        ("list_pitches", "CACHED"),
+    ]
+    assert data["status"] == "DONE"
+    assert data["diagnostics"]["end"]["reason"] == "REPEAT"
+    assert [c["text"] for c in data["message"]["claims"]][0] == NO_TAKE_SENTENCE

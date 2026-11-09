@@ -921,7 +921,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 nxt, more = _no_take_next(lp, [*comp.pre, *code_claims], actions)
                 return finish(
                     status="DONE",
-                    reason="ANSWERED",
+                    # 반복으로 조사를 멈췄거나 재개 조사를 건너뛰었어도 요청이 해소된 답이다: 진단에는 멈춘 까닭(REPEAT · TOKENS)을
+                    # 남긴다(모델 문장이 남은 답의 끝과 같은 규칙, 11-5 · L1-16)
+                    reason=_SOFT_STOPS[stop_reason or ""][0] if soft_stop else "ANSWERED",
                     claims=[*code_claims, *tail, *scope_claims, *nxt],
                     assessments=all_assessments,
                     actions=[*actions, *more],
