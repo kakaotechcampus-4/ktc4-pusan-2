@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { COVERAGE_REVISION_CHANGED, useSlideCoverage } from '@/shared/api/report';
+import { COVERAGE_REVISION_CHANGED, useSlideCoverage, useTakeReport } from '@/shared/api/report';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { Badge } from '@/shared/ui/Badge';
 import type {
@@ -38,7 +38,8 @@ export function SlideCoverage({
 }) {
   const query = useSlideCoverage(takeId, slideNumber, revision, true);
   if (query.isPending) return <Note>이 장의 결과를 불러오고 있어요.</Note>;
-  if (query.isError) return <LoadError error={query.error} retry={() => query.refetch()} />;
+  if (query.isError)
+    return <LoadError takeId={takeId} error={query.error} retry={() => query.refetch()} />;
   return <SlideBody detail={query.data} />;
 }
 
@@ -46,14 +47,10 @@ function Note({ children }: { children: ReactNode }) {
   return <p className="text-sm text-ink/80">{children}</p>;
 }
 
-function LoadError({ error, retry }: { error: unknown; retry: () => unknown }) {
-  if (error instanceof ApiFailure && error.code === COVERAGE_REVISION_CHANGED)
-    return <Note>확인 답이 반영돼 결과가 바뀌었어요. 새 결과를 불러오고 있어요.</Note>;
-  if (error instanceof ApiFailure && error.status === 404)
-    return <Note>이 장은 자세한 결과가 없어요.</Note>;
+function Retry({ message, retry }: { message: string; retry: () => unknown }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Note>이 장의 결과를 불러오지 못했어요.</Note>
+      <Note>{message}</Note>
       <button
         type="button"
         onClick={() => {
@@ -65,6 +62,38 @@ function LoadError({ error, retry }: { error: unknown; retry: () => unknown }) {
       </button>
     </div>
   );
+}
+
+function LoadError({
+  takeId,
+  error,
+  retry,
+}: {
+  takeId: string;
+  error: unknown;
+  retry: () => unknown;
+}) {
+  if (error instanceof ApiFailure && error.code === COVERAGE_REVISION_CHANGED)
+    return <RevisionChanged takeId={takeId} />;
+  if (error instanceof ApiFailure && error.status === 404)
+    return <Note>이 장은 자세한 결과가 없어요.</Note>;
+  return <Retry message="이 장의 결과를 불러오지 못했어요." retry={retry} />;
+}
+
+/**
+ * 409 — 요청 훅이 리포트를 무효화했습니다. 리포트가 새 판으로 오면 이 장은 새 키로 다시 불립니다.
+ * 리포트를 다시 읽는 것마저 실패하면 기다려도 바뀌지 않으니, 리포트를 다시 부르는 버튼을 둡니다 (#1157 리뷰)
+ */
+function RevisionChanged({ takeId }: { takeId: string }) {
+  const report = useTakeReport(takeId);
+  if (report.isError)
+    return (
+      <Retry
+        message="결과가 바뀌었는데 새 결과를 불러오지 못했어요."
+        retry={() => report.refetch()}
+      />
+    );
+  return <Note>확인 답이 반영돼 결과가 바뀌었어요. 새 결과를 불러오고 있어요.</Note>;
 }
 
 function SlideBody({ detail }: { detail: SlideCoverageDetail }) {

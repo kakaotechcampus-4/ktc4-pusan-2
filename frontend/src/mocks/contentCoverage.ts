@@ -391,6 +391,11 @@ export const contentTakeFailed = unmeasured('NOT_MEASURED', 'TAKE_FAILED');
 export const REVISED_TAKE_ID = 't-content-revised';
 const revisionOf = new Map<string, number>([[REVISED_TAKE_ID, 0]]);
 
+/** 시험마다 판을 처음(0)으로 되돌립니다 — 409 를 다시 보려고 */
+export function resetRevisedTake() {
+  revisionOf.set(REVISED_TAKE_ID, 0);
+}
+
 /** Take id 로 고르는 `content_status`. 목록에 없으면 `fallbackStatus` */
 export function contentStatusOf(
   takeId: string,

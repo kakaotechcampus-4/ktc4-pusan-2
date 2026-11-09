@@ -11,6 +11,7 @@ vi.hoisted(() => {
   import.meta.env.VITE_API_BASE = 'http://localhost';
 });
 
+import { resetRevisedTake } from '@/mocks/contentCoverage';
 import { reportHandlers } from '@/mocks/report';
 import { useTakeReport } from '@/shared/api/report';
 import { ContentCard } from './ContentCard';
@@ -84,6 +85,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   server.resetHandlers();
+  resetRevisedTake();
   vi.unstubAllGlobals();
 });
 
@@ -179,6 +181,27 @@ describe('장별 펼침', () => {
     await open(3);
     await until(() => host.textContent?.includes('대본 문장') ?? false);
     expect(rowButton(3).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('409 뒤 리포트 다시 읽기마저 실패하면 알리고, 다시 불러오면 새 판으로 받습니다 (#1157 리뷰)', async () => {
+    await render('t-content-revised');
+    // 리포트를 처음 읽은 뒤로는 실패합니다
+    server.use(
+      http.get('*/api/takes/:takeId/report', () =>
+        HttpResponse.json({ code: 'INTERNAL', message: 'down' }, { status: 500 }),
+      ),
+    );
+    await open(3);
+    await until(() => host.textContent?.includes('새 결과를 불러오지 못했어요') ?? false);
+    const retry = [...host.querySelectorAll('button')].find(
+      (b) => b.textContent === '다시 불러오기',
+    )!;
+
+    // 서버가 돌아오면 리포트를 다시 부르고, 새 판(1)으로 그 장을 받습니다
+    server.resetHandlers();
+    await act(async () => retry.click());
+    await until(() => host.textContent?.includes('대본 문장') ?? false);
+    expect(host.textContent).not.toContain('불러오지 못했어요');
   });
 
   it('다시 누르면 닫힙니다', async () => {
