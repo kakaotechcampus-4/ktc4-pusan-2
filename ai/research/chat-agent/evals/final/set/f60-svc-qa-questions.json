@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-svc-qa-questions",
+  "set": "agent_service",
+  "group": "out_of_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "예상 질문 · 모범 답변 만들기 — REFUSED + QA_PRACTICE 고정 문장",
+  "expect_refusal": true,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-qa",
+        "title": "창업 경진대회 본선",
+        "takes": [
+          {
+            "take_id": "qa-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-qa"
+    }
+  },
+  "turns": [
+    {
+      "message": "본선 심사위원이 던질 만한 날카로운 질문 다섯 개랑 모범 답변까지 같이 만들어 주세요.",
+      "page_take_id": "qa-t1"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status"
+      },
+      {
+        "check_id": "qa-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.QA_PRACTICE",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  }
+}

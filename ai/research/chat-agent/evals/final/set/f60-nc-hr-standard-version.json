@@ -1,0 +1,128 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-nc-hr-standard-version",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should",
+  "title": "평가 기준 버전이 다른 Take 2 · 4 말 속도 비교 — 비교 불가(평가 기준 버전 다름)를 보이고 Take 2 기준 결론을 내지 않음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-hr",
+        "title": "채용 설명회 회사 소개",
+        "takes": [
+          {
+            "take_id": "hr-t2",
+            "take_number": 2,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "cpm": 330
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "standard_version": 1
+          },
+          {
+            "take_id": "hr-t3",
+            "take_number": 3,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "result": {
+              "cpm": 318
+            },
+            "review": {
+              "dimensions": {},
+              "score": 74
+            },
+            "standard_version": 2
+          },
+          {
+            "take_id": "hr-t4",
+            "take_number": 4,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": 296
+            },
+            "review": {
+              "dimensions": {},
+              "score": 75
+            },
+            "standard_version": 2
+          }
+        ],
+        "standard_version": 2
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-hr"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2랑 지금 Take 4 사이에 말 속도가 얼마나 달라졌는지 비교해 주세요.",
+      "page_take_id": "hr-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "not-comparable-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:OK",
+          "decision:NOT_COMPARABLE:FACT_SHOWN:CODE"
+        ],
+        "metric": "replan",
+        "note": "README: FACT_SHOWN:CODE 는 신호를 낸 도구 사건 바로 뒤"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가.*평가 기준 버전 다름",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "TARGET 1: 비교 불가 + 까닭 낱말이 실행한 단계 글에 보인다"
+      },
+      {
+        "check_id": "reason-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "평가 기준 버전이 달라",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-outcome-take2",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "Take 2[^.\\n]*(빨라졌|느려졌|좋아졌|나빠졌|줄었|늘었|증가했|감소했)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "compare-before-answer",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:compare_takes:OK",
+          "final:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "대안 Take 3 ↔ 4(같은 기준 버전 2)로 바꿔도 맞다."
+}
