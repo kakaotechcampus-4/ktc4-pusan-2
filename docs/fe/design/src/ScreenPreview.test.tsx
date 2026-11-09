@@ -508,6 +508,17 @@ it('TAKE RECORDED는 분석 중에만 보이고 확인 대기·실패·보류에
   }
 });
 
+it('사용방법은 최신 #944의 새미나이 시각 안내와 여섯 조작을 제공한다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  await render('home');
+  await click('사용방법 살펴보기');
+  expect(host.textContent).toContain('새미나이 채팅 사용방법');
+  expect(host.querySelector('img[src*="chat-agent.svg"]')).not.toBeNull();
+  expect(host.querySelectorAll('ol[aria-label="새미나이 채팅의 번호별 사용방법"] > li')).toHaveLength(6);
+});
+
 it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립적으로 유지된다', async () => {
   await render('semini');
   const scope = host.querySelector<HTMLButtonElement>('[data-chat-scope]')!;
