@@ -21,6 +21,7 @@
 | 문서 | 담는 것 | 담당 |
 |---|---|---|
 | [FE 구조](architecture.md) | 화면 흐름(라우트), 상태를 어디에 두나(Query · Zustand · IndexedDB · 라우터 state), 폴더와 의존 방향, BE · AI와 주고받는 것, 시선 파이프라인 개요 | FE |
+| [피치 만들기 · 수정 (FE)](features/pitch-create.md) | 발표 정보 · 슬라이드 · 대본 매핑 · 평가 기준 · 버전, 대본 ↔ 슬라이드 연결 규칙, 연습 조합, BE 경로 · 한도 | FE |
 | [대화형 에이전트 (FE)](features/chat-agent.md) | 대화창 화면 흐름 · 상태 · 파일 구성 · BE 경로 · 조회 간격과 재시도 · 안내 문구 · 남은 한계 (기준은 AI chat-agent.md) | FE |
 | [출시 카운트다운](launch-countdown.md) | #541 기기 시간 기준 자동 오픈·BE 역할·빌드 설정 | FE |
 | [Pitch / Take 데이터 계약 (#570)](pitch-take-contract-570.md) | FE 불일치 처리와 BE 선행 조건 · 검증 결과 | FE |
