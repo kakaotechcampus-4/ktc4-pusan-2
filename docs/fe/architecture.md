@@ -60,18 +60,18 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 | 묶음 | 라우트 |
 |---|---|
 | 들어오기 | `/welcome` · `/login` · `/unsupported`(미지원 브라우저) |
-| 홈 · 목록 | `/` · `/pitches` · `/takes` · `/pitch/:id/comparison` · `/me` |
+| 홈 · 목록 | `/` · `/pitches` · `/takes`(Take 기록 · 비교) · `/pitch/:id/comparison`(옛 주소, `/takes?…`로 넘김) · `/me` |
 | 피치 | `/pitch/new` · `/pitch/:id/edit` |
 | 연습 | `/pitch/:pitchId/device-check` · `/pitch/:pitchId/prepare`(옛 주소, 장치 점검으로 넘김) · `/takes/:takeId/rehearsal` · `/takes/:takeId/exam` |
 | 결과 | `/takes/:takeId/processing` · `/takes/:takeId/confirm` · `/takes/:takeId/retry` · `/takes/:takeId` |
 | 안내 | `/about` · `/privacy` · `/terms` |
 | 개발 검증용 | `/dev/stage` · `/dev/media` · `/dev/stt` (제품 화면 아님) |
 
-- **Take는 장치 점검의 시작 버튼에서만 생깁니다.** 홈 · 리포트의 "Take N 연습하기"는 장치 점검으로 이동만 합니다.
-- 장치 점검은 연습할 버전을 두 곳에서 압니다. 피치 수정에서 왔으면 라우터 state의 연습 조합, 그 밖(리포트 · 주소 직접 입력)이면 서버 `GET /pitches/{id}/prepare`가 고른 짝입니다.
+- **Take는 장치 점검의 시작 버튼에서만 생깁니다.** 다른 화면의 연습 버튼(리포트의 [Take N 연습하기] 등)은 장치 점검으로 이동만 합니다. 홈에는 장치 점검으로 바로 가는 버튼이 없고, [발표 준비]는 피치 수정으로 갑니다.
+- 장치 점검은 연습할 버전을 두 곳에서 압니다. 피치 수정에서 왔으면 라우터 state의 연습 조합, 그 밖(리포트의 [Take N 연습하기] · 분석 실패 화면의 [다시 연습하기] · 대화형 에이전트의 [연습 준비로] · 주소 직접 입력)이면 서버 `GET /pitches/{id}/prepare`가 고른 짝입니다. 서버가 가장 최근 자료 대신 지난 자료를 골랐으면(장 수가 다른 새 PDF를 올린 뒤 등) 장치 점검이 "가장 최근 자료(v2 · 11쪽)는 대본(10장)과 장 수가 달라 지난 자료(v1)로 연습하게 돼요"를 띄우고, 사용자가 확인하기 전에는 시작하지 않습니다(`prepareInfo.ts` `olderSlideNotice`, #1099). 자세한 것은 [features/rehearsal.md](features/rehearsal.md) 2절.
 - 대화형 에이전트는 라우트가 아니라 최상위 레이아웃에 떠 있는 팝업이고, 정해진 화면에서만 보입니다(`features/chat/chatRoutes.ts`).
 
-> **작성 필요** — 화면마다 로그인 필요 여부 · 출시 제한(`VITE_LAUNCH_GATE_ENABLED`)에 걸리는 화면 목록.
+> **작성 필요** — 화면마다 로그인 필요 여부 · 출시 제한(`VITE_LAUNCH_GATE_ENABLED`)에 걸리는 화면 목록. 출시 제한 자체는 [launch-countdown.md](launch-countdown.md)에 있습니다.
 
 ## 3. 상태를 어디에 두나
 
@@ -161,8 +161,11 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 - 로컬: `npm run dev`(목 서버, http://localhost:3000). 실서버에 붙이는 법과 명령어는 [frontend/README.md](../../frontend/README.md)에 있습니다.
 - 빌드 이미지: `frontend/Dockerfile` — 빌드 단계에서 시선 모델 자산을 받아 넣고, Caddy로 정적 파일을 냅니다. 빌드 때 정해지는 값은 `ARG`로 받습니다(예: `VITE_LAUNCH_GATE_ENABLED`).
 - 배포: dev는 Actions → Deploy develop을 `develop-next`로 실행합니다. 환경 값은 배포 워크플로가 씁니다(BE 담당).
-- CI: `frontend-ci.yml`이 typecheck · lint · test · format:check · build를 돌립니다. PR에서는 화면 설계서와의 차이(`design-drift`)를 알려 줍니다(실패하지 않음).
+- CI: `frontend-ci.yml`이 typecheck · lint · test · format:check · build를 돌립니다. PR에서는 화면 설계서와의 차이(`design-drift`)를 알려 줍니다. 바뀐 것이 있어도 실패하지 않고, 비교할 커밋을 찾지 못할 때만 실패합니다.
 
 ## 8. 열린 질문
 
-> **작성 필요** — 아직 정하지 않은 항목(`frontend/AGENTS.md`의 I-03 · I-17 · I-18 · I-19)과 각 기능 문서로 옮길 내용.
+- **기능 문서가 아직 없는 화면** — 홈 대시보드(`/`), 피치 목록(`/pitches`), 마이페이지(`/me`: 탈퇴 · 서비스 의견), 들어오기(`/welcome` · `/login` · 온보딩), 안내(`/about` · `/privacy` · `/terms`), 미지원 브라우저(`/unsupported`). 지금은 이 문서 2절의 라우트 표에만 있습니다.
+- **공통 처리 문서가 없음** — 공용 컴포넌트(`shared/ui/`, [README](../../frontend/src/shared/ui/README.md)), MSW 목 작성 규칙, 오류 · 토큰 갱신(5절 `작성 필요`).
+
+> **작성 필요** — 아직 정하지 않은 항목(`frontend/AGENTS.md`의 I-03 · I-17 · I-18 · I-19).

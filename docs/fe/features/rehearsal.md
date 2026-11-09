@@ -44,6 +44,7 @@ Take(연습 한 번)를 만들고, 발표하는 동안 음성 · 시선 · 슬�
 ```
 /pitch/:pitchId/device-check   장치 점검
    │  장비 준비(카메라 · 마이크) → 시선 기준점 → (평소 목소리, 선택) → 대본 표시 방식
+   │  조합 없이 왔는데 서버가 가장 최근 자료 대신 지난 자료를 골랐으면, 확인받은 뒤에 시작 (#1099)
    │  다른 창 · 기기에서 발표 중인 Take 가 있으면 끝낼지 묻습니다
    │  [Take N 시작하기] → POST /takes → 시선 보정 요약 POST /takes/{id}/calibration
    ▼
@@ -59,6 +60,7 @@ Take(연습 한 번)를 만들고, 발표하는 동안 음성 · 시선 · 슬�
 
 - 새로고침하면 IndexedDB의 세션 행으로 이어 갑니다(`stage/resume.ts`). 발표 중이던 시각부터 다시 잽니다.
 - 재시도 화면 · 실패한 리허설에서 장치 점검으로 돌아갈 때는 처음 고른 연습 조합을 다시 넘깁니다(`prepare/deviceCheckLink.ts`).
+- **지난 자료 확인** — 리포트의 [Take N 연습하기] · 분석 실패 화면의 [다시 연습하기] · 대화의 [연습 준비로]는 피치 수정을 거치지 않고 조합 없이 들어옵니다. 이때 `GET /prepare`는 대본과 장 수가 맞는 가장 최근 자료를 고르므로, 장 수가 다른 새 PDF를 올린 뒤면 지난 자료가 골라집니다. 장치 점검은 최신 자료를 따로 받아(`shared/api/prepare.ts` `useLatestSlide`) 견주고, 지난 자료면 안내를 띄운 뒤 사용자가 고를 때까지 시작하지 않습니다. 막아 버리지는 않습니다 — 일부러 지난 자료로 연습할 수 있게 둡니다. 조합을 넘겨받았어도 그 뒤 다른 탭에서 새 PDF를 올렸을 수 있어 같은 비교를 합니다.
 
 ## 3. 상태를 어디에 두나
 
@@ -157,6 +159,8 @@ stage/useLiveGaze.ts            1초 기록 받기
 | 준비 정보로 시작할 수 없음 | 발표자료 없음 · 대본 없음(또는 나누는 중) · 장 수 다름 → 사유 문구, 시작 막음 |
 | 새 대본을 아직 못 씀 | "새 대본(vN)은 아직 나누는 중이라 지난 대본(vM)으로 연습해요" |
 | 넘겨받은 조합보다 새 조합이 있음 | "최신 조합이 있어요: 자료 vN · 대본 vM" + [최신으로] |
+| 서버가 지난 자료를 고름 | "가장 최근 자료(vN · M쪽)는 대본(K장)과 장 수가 달라 지난 자료(vJ)로 연습하게 돼요"(장 수가 다를 때) 또는 "가장 최근 자료(vN) 대신 지난 자료(vJ)로 연습하게 돼요" → "지난 자료로 연습할지, 매핑을 다시 확인할지 골라 주세요." 고르기 전에는 시작 막음 |
+| 최신 자료 목록을 못 받음 | "가장 최근 자료를 확인하지 못해 지금 자료(vN)가 최신인지 알 수 없어요" → 다시 확인할지, 이 자료로 연습할지 고르게 함. 받는 중 · 다시 받는 중에도 시작 막음 |
 | 카메라 · 마이크 권한 · 장치 오류 | 사유별 문구(`media/useCameraStream.ts` `DEVICE_ERROR_MESSAGE`) |
 | 마이크는 열렸는데 입력이 0 | 무음 경고(이어폰 분리 · 다른 앱 점유 · 시스템 음소거). 평소 목소리를 읽는 동안만 셉니다 |
 | 시선 기준점 실패 | 사유마다 다른 재시도 안내(`useGazeSetup.ts`) |
@@ -173,7 +177,7 @@ stage/useLiveGaze.ts            1초 기록 받기
 | 분석 프레임 속도 | AI `analysis_fps`와 같은 값 | `media/frameClock.ts` |
 | 시계 | `performance.now()` 기준 | 가려진 탭에서도 정확합니다(`shared/lib/clock.ts`) |
 
-- 시간 필드: `measuredMs + uncertainMs === trackedMs`, `cameraMs + bottomMs === measuredMs`. 시선 퍼센트의 분모는 `measuredMs`입니다.
+- 시선 구간 합계의 시간 필드(`lib/gazeSegments.ts`가 만들고 검증): `measuredMs + uncertainMs === trackedMs`, `cameraMs + bottomMs === measuredMs`. 시선 퍼센트의 분모는 `measuredMs`입니다. 발표 중 서버로 가는 WS `metrics`의 모양은 [docs/ai/architecture.md](../../ai/architecture.md) 6-2를 따릅니다.
 - 측정 제외는 `0`이 아니라 `null`입니다.
 
 > **작성 필요** — `useGazeWorker`의 프레임 예산 · 백프레셔 수치(`/dev/media` 계기판 기준), 재연결 대기 시간.
@@ -192,6 +196,6 @@ stage/useLiveGaze.ts            1초 기록 받기
 
 ## 10. 열린 질문 · 알려진 한계
 
-- **조합 없이 들어온 장치 점검의 짝** — BE `GET /prepare`가 아직 "장 수가 같은 가장 최근 발표자료"를 골라, 새 슬라이드를 올린 뒤에도 예전 짝으로 시작될 수 있습니다([pitch-create.md](pitch-create.md) 10절).
+- **BE `GET /prepare`의 짝 규칙** — 아직 "장 수가 같은 가장 최근 발표자료"라 FE 피치 수정의 규칙(가장 최근 대본은 최신 슬라이드)과 다릅니다. 지금은 장치 점검이 지난 자료를 알리고 확인받아 메웁니다(2절). BE 규칙을 맞출지는 BE와 정할 안건입니다([pitch-create.md](pitch-create.md) 10절).
 > **작성 필요** — 발표 중 마이크 · 카메라가 끊겼을 때의 화면. 장치가 끊긴 것은 알아채지만(`media/useCameraStream.ts`의 트랙 `ended`), 사용자에게 보이는 안내 · 다시 연결 흐름을 정리해야 합니다.
 - 미정 항목(I-03 · I-17 · I-18 · I-19)은 [frontend/AGENTS.md](../../../frontend/AGENTS.md)와 DECISIONS.md를 봅니다.

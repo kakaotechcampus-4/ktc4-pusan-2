@@ -31,7 +31,7 @@
 
 | 용어 | 뜻 |
 |---|---|
-| 분석 단계(`analysis_stage`) | `FINALIZING` → (`AWAITING_CONFIRMATION`) → `SCORING` → `REVIEWING` → `DONE`. 화면은 세 단계(정리 · 측정 · 리뷰)로 접어 보입니다 |
+| 분석 단계(`analysis_stage`) | `FINALIZING` → `SCORING` → (`AWAITING_CONFIRMATION`) → `REVIEWING` → `DONE`. 채점 결과에 확인할 말이 있을 때만 확인 단계를 거칩니다. 화면은 세 단계("발표 기록 정리" · "말한 내용 채점" · "코치 총평")로 접어 보입니다 |
 | 측정값 | 시선 · 말 속도 · 음량 · 추임새 등 코드가 잰 값. 리뷰가 없어도 있습니다 |
 | 리뷰 | AI가 측정값을 보고 쓴 설명 · 비교 · 다음 미션. 실패하거나 건너뛸 수 있습니다 |
 | 대본 확인 | 인식이 헷갈린 말을 "대본대로 말함 / 들린 대로"로 고르는 단계 |
@@ -49,14 +49,14 @@
    │  더 기다려도 바뀌지 않는 상태가 되면
    ▼
 /takes/:takeId              Take 리포트
-   │  [Take N 연습하기] → 장치 점검 (연습 조합 없이 — 서버 짝으로)
+   │  [Take N 연습하기] → 장치 점검 (연습 조합 없이 — 서버 짝으로, 지난 자료면 장치 점검이 확인받음)
    │  [설문] (자동으로 띄우지 않음)
    ▼
-/takes · /pitch/:id/comparison   Take 기록 · 한 피치의 Take 비교
+/takes   Take 기록 · 한 피치의 Take 비교 (/pitch/:id/comparison 은 /takes?… 로 넘기는 옛 주소)
 ```
 
 - 대본 확인으로 저절로 넘기지 않는 이유: 확인 화면에서 돌아온 사용자를 다시 튕겨 보내게 됩니다.
-- 분석 자체가 실패했을 때만 분석 대기에 남고, 그 밖에는 리포트로 넘어갑니다.
+- 분석 자체가 실패했을 때만 분석 대기에 남고("이번 Take는 분석하지 못했어요" + [다시 연습하기]), 그 밖에는 리포트로 넘어갑니다.
 
 ## 3. 상태를 어디에 두나
 
@@ -88,7 +88,7 @@
 | 무엇 | 경로 | FE 코드 |
 |---|---|---|
 | Take 리포트(분석 상태 포함) | `GET /api/takes/{takeId}/report` | `shared/api/report.ts` |
-| Take 기록 | `GET /api/takes/...` (피치로 거름) | `shared/api/takeHistory.ts` |
+| Take 기록 | `GET /api/takes/` · `GET /api/takes/?pitch_id={id}` | `shared/api/takeHistory.ts` |
 | 대본 확인 | `GET · POST /api/takes/{takeId}/confirmations` | `shared/api/confirmation.ts` |
 | 설문 | `GET · POST /api/takes/{takeId}/survey` · `GET /api/take-surveys/pending` | `shared/api/takeSurvey.ts` |
 
@@ -102,10 +102,10 @@
 
 | 상황 | 화면 |
 |---|---|
-| 분석 중 | 세 단계 진행 표시(정리 · 측정 · 리뷰) |
-| 대본 확인 대기 | 두 번째 단계가 "기다림", [대본 확인하기] |
+| 분석 중 | 세 단계 진행 표시("발표 기록 정리" · "말한 내용 채점" · "코치 총평") |
+| 대본 확인 대기 | 두 번째 단계(채점)가 기다림 상태, "확인을 기다리는 중" + [대본 확인하기] |
 | 리뷰 전 · 건너뜀 · 실패 | 측정값은 보이고 요약 자리에 한 줄: "발표를 분석하고 있어요. 측정값은 먼저 보여 드릴게요." · "이번 Take는 총평 없이 측정값만 보여 드려요." · "이번 Take는 총평을 만들지 못했어요. 측정값은 그대로 확인할 수 있어요." (`noReviewLine`) |
-| 분석 실패 | 분석 대기에 남아 안내, [다시 연습하기] |
+| 분석 실패 | 분석 대기에 남아 "이번 Take는 분석하지 못했어요"와 사유 안내(기록이 너무 짧거나 측정이 거의 안 됨), [다시 연습하기] |
 | 자동 종료 | 맨 위에 사유 안내(`AutoEndAlert`) |
 | 측정하지 못한 값 | `0`이 아니라 `—`로 보입니다(값이 `null`) |
 
@@ -116,7 +116,7 @@
 | 값 | 크기 | 위치 |
 |---|---|---|
 | 리포트 다시 조회 간격 | 2초 | `shared/api/report.ts` `POLL_MS` |
-| 대본 확인 대기 상한 | BE가 정함 | [docs/be/review.md](../../be/review.md) |
+| 대본 확인 대기 상한 | 최대 10분 (BE가 정함, 지나면 그대로 진행) | [docs/be/review.md](../../be/review.md) |
 
 ## 9. 테스트
 
@@ -131,5 +131,5 @@
 
 ## 10. 열린 질문 · 알려진 한계
 
-- **리포트에서 다음 Take로 갈 때의 짝** — [Take N 연습하기]는 연습 조합 없이 장치 점검으로 가서 BE `GET /prepare`의 짝을 씁니다. 새 슬라이드를 올린 뒤에는 예전 짝으로 시작될 수 있습니다([pitch-create.md](pitch-create.md) 10절).
+- **리포트에서 다음 Take로 갈 때의 짝** — [Take N 연습하기]는 연습 조합 없이 장치 점검으로 가서 BE `GET /prepare`의 짝을 씁니다. 새 PDF를 올린 뒤면 지난 자료가 골라질 수 있고, 장치 점검이 이를 알리고 확인받습니다([rehearsal.md](rehearsal.md) 2절).
 - 시선 3색은 리허설 테두리 전용이라 리포트에서는 쓰지 않습니다.
