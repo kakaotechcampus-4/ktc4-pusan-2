@@ -40,10 +40,24 @@
 
 ## 2. 화면 흐름
 
-- **보이는 화면**: 허용 목록(`chatRoutes.ts`)에 있는 화면만입니다. 홈 · 목록 · 피치 만들기 · 수정 · 장치 점검 · Take 리포트 등이고, 발표 중(리허설) 화면과 로그인 전 화면은 뺍니다. 새 화면을 더할 때는 목록에 직접 넣어야 합니다.
-- **대화창 안의 세 화면**: 메시지(기본) · 대화 목록 · 기억 설정. 머리줄 버튼으로 바꿉니다. 기억 설정에서는 입력칸을 숨기고, 쓰던 글은 남깁니다.
-- **첫 화면**: 대화가 비어 있으면 첫 인사를 보입니다.
-- **닫기**: 닫기 버튼 · Esc. 닫아도 대화 상태는 스토어에 남아 다시 열면 이어집니다. 로그아웃하면 지웁니다.
+**버튼이 보이는 화면** — 허용 목록(`chatRoutes.ts`)에 있는 화면만입니다.
+
+- 보임: 홈 · 목록 · 피치 만들기 · 수정 · 장치 점검 · Take 리포트 등
+- 안 보임: 발표 중(리허설) 화면, 로그인 전 화면
+- 새 화면에 띄우려면 목록에 직접 넣어야 합니다. 실수로 노출되지 않게 하려는 것입니다.
+
+**대화창 안의 세 화면** — 머리줄 버튼으로 바꿉니다.
+
+| 화면 | 설명 |
+|---|---|
+| 메시지 | 기본 화면. 대화가 비어 있으면 첫 인사를 보입니다 |
+| 대화 목록 | 지난 대화 고르기 · [지난 대화 더 보기] |
+| 기억 설정 | 입력칸을 숨깁니다. 쓰던 글은 남습니다 |
+
+**닫기** — 닫기 버튼 또는 Esc.
+
+- 닫아도 대화 상태는 스토어에 남아, 다시 열면 이어집니다.
+- 로그아웃하면 지웁니다.
 
 > **작성 필요** — 화면 그림(버튼 · 대화창 · 카드 위치). `docs/fe/design/`의 화면 설계서에 시안이 생기면 링크합니다.
 
@@ -61,22 +75,39 @@
 
 모두 `frontend/src/features/chat/` 아래입니다.
 
-| 묶음 | 파일 | 하는 일 |
-|---|---|---|
-| 틀 | `ChatAgentHost.tsx` | 버튼 · 팝업 · 메시지 목록. 라우터 최상위 레이아웃(`app/routes.tsx`)에 하나만 둡니다 |
-| | `ChatErrorBoundary.tsx` | 대화창이 그리다 오류를 내면 대화만 닫고 안내를 보입니다. 다른 화면은 그대로 둡니다 |
-| | `chatRoutes.ts` | 보이는 화면 허용 목록, 버튼 높이 |
-| 세션 · 통신 | `useChatSession.ts` | 대화창 한 세션(로그인 사용자 하나)의 연결 |
-| | `chatTransport.ts` | 보내기 · 실행 조회 · 취소 · 승인/거절 · 되돌리기. 조회 간격 · 재시도 규칙(8절) |
-| | `chatApi.ts` · `shared/api/chatPaths.ts` | 서버 호출과 경로. 목(`mocks/chat.ts`)도 같은 경로 파일을 봅니다 |
-| | `chatAvailability.ts` | 사용 가능 여부 조회 · 재조회 |
-| 응답 | `chatResponse.ts` | 응답 모양 검사, 근거 칩으로 바꾸기 |
-| | `chatBasis.ts` | 근거 표시 · 최신 아님 |
-| | `chatTyping.ts` | 글자 효과(받은 문장을 큐로) |
-| 그리기 | `ChatAnswer.tsx` · `ChatChips.tsx` · `ChatCards.tsx` · `chatCardRows.ts` | 답 · 근거 칩 · 카드 |
-| | `ChatPanelParts.tsx` · `chatConversations.ts` | 범위 칩 · 대화 목록 |
-| | `ChatMemorySettings.tsx` · `ChatMemoryParts.tsx` · `chatMemory.ts` · `useChatMemory.ts` | 기억 설정 · 첫 안내 |
-| 안내 · 잠금 | `chatNotices.ts` · `chatLock.ts` · `useCanSend.ts` · `LockedReason.tsx` | 안내 문구 고르기, 지금 보낼 수 있는지, 잠긴 이유 |
+**틀**
+
+| 파일 | 하는 일 |
+|---|---|
+| `ChatAgentHost.tsx` | 버튼 · 팝업 · 메시지 목록. 라우터 최상위 레이아웃(`app/routes.tsx`)에 하나만 둡니다 |
+| `ChatErrorBoundary.tsx` | 대화창이 그리다 오류를 내면 대화만 닫고 안내를 보입니다. 다른 화면은 그대로 둡니다 |
+| `chatRoutes.ts` | 버튼이 보이는 화면 목록 · 버튼 높이 |
+
+**세션 · 통신**
+
+| 파일 | 하는 일 |
+|---|---|
+| `useChatSession.ts` | 대화창 한 세션(로그인 사용자 하나)의 연결 |
+| `chatTransport.ts` | 보내기 · 실행 조회 · 취소 · 승인/거절 · 되돌리기. 조회 간격 · 재시도 규칙(8절) |
+| `chatApi.ts` · `shared/api/chatPaths.ts` | 서버 호출과 경로. 목(`mocks/chat.ts`)도 같은 경로 파일을 봅니다 |
+| `chatAvailability.ts` | 사용 가능 여부 조회 · 재조회 |
+
+**응답 · 그리기**
+
+| 파일 | 하는 일 |
+|---|---|
+| `chatResponse.ts` · `chatBasis.ts` | 응답 모양 검사 · 근거 칩으로 바꾸기 · 근거 표시와 "최신 아님" |
+| `chatTyping.ts` | 글자 효과(받은 문장을 큐로) |
+| `ChatAnswer.tsx` · `ChatChips.tsx` · `ChatCards.tsx` · `chatCardRows.ts` | 답 · 근거 칩 · 카드 |
+| `ChatPanelParts.tsx` · `chatConversations.ts` | 범위 칩 · 대화 목록 |
+| `ChatMemorySettings.tsx` · `ChatMemoryParts.tsx` · `chatMemory.ts` · `useChatMemory.ts` | 기억 설정 · 첫 안내 |
+
+**안내 · 잠금**
+
+| 파일 | 하는 일 |
+|---|---|
+| `chatNotices.ts` | 상황에 맞는 안내 문구 고르기 |
+| `chatLock.ts` · `useCanSend.ts` · `LockedReason.tsx` | 지금 보낼 수 있는지 · 잠긴 이유(화면 낭독기용) |
 
 ## 5. BE 계약
 
@@ -99,20 +130,29 @@
 
 ```
 [보내기]  POST /messages ──▶ 실행 ID
-              │  접수를 15초 안에 확인하지 못하면 "다시 보내기" · "다시 확인" 버튼 — 자동으로 다시 보내지 않고,
-              │  사용자가 누르면 같은 멱등 키로 보냅니다(두 번 접수되지 않음)
               ▼
-[조회]    GET /runs/{id}?after_seq=…  — RUNNING 이면 1초, 그 밖은 2초마다
-              │  응답의 events(진행 줄 · 답 문장)를 커서(next_after_seq) 뒤로만 받아 이어 붙입니다
-              │  답 문장(claim)은 글자 효과 큐에 넣어 그립니다
+[조회]    GET /runs/{id}?after_seq=…   실행 중 1초 · 그 밖 2초마다
               │  WAITING_APPROVAL 이면 확인 카드 → [승인] · [거절]
               ▼
-[종결]    메시지 목록을 다시 읽어 저장된 답으로 바꿉니다
-              │  상태별 안내를 붙입니다(7절)
-              ▼
-[복원]    새로고침하면 sessionStorage 의 대화 ID로 진행 중 실행(GET /conversations/{id}/run)을 다시 찾고,
-          있으면 조회를 이어 갑니다. 화면 이동은 스토어가 그대로라 끊기지 않습니다
+[종결]    메시지 목록을 다시 읽어 저장된 답으로 바꾸고, 상태별 안내를 붙임(7절)
 ```
+
+**보내기**
+
+- 접수를 15초 안에 확인하지 못하면 [다시 보내기] 또는 [다시 확인] 버튼을 띄웁니다.
+- 자동으로 다시 보내지 않습니다. 사용자가 누르면 같은 멱등 키로 보내서, 두 번 접수되지 않습니다.
+
+**조회**
+
+- 응답의 `events`(진행 줄 · 답 문장)를 커서(`next_after_seq`) 뒤로만 받아 이어 붙입니다.
+- 답 문장(`claim`)은 글자 효과 큐에 넣어 한 글자씩 그립니다.
+
+**복원**
+
+- 새로고침하면 sessionStorage에 둔 대화 ID로 진행 중 실행(`GET /conversations/{id}/run`)을 다시 찾고, 있으면 조회를 이어 갑니다.
+- 화면 이동은 스토어가 그대로라 끊기지 않습니다.
+
+**잠금**
 
 - 보내는 동안 · 실행 중에는 입력칸과 답 아래 버튼을 잠그고, 잠긴 이유를 화면 낭독기가 읽습니다.
 - 범위를 다시 골라야 하면(피치가 지워짐 등) 범위를 고를 때까지 보내지 않습니다.

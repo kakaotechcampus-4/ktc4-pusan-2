@@ -67,9 +67,21 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 | 안내 | `/about` · `/privacy` · `/terms` |
 | 개발 검증용 | `/dev/stage` · `/dev/media` · `/dev/stt` (제품 화면 아님) |
 
-- **Take는 장치 점검의 시작 버튼에서만 생깁니다.** 다른 화면의 연습 버튼(리포트의 [Take N 연습하기] 등)은 장치 점검으로 이동만 합니다. 홈에는 장치 점검으로 바로 가는 버튼이 없고, [발표 준비]는 피치 수정으로 갑니다.
-- 장치 점검은 연습할 버전을 두 곳에서 압니다. 피치 수정에서 왔으면 라우터 state의 연습 조합, 그 밖(리포트의 [Take N 연습하기] · 분석 실패 화면의 [다시 연습하기] · 대화형 에이전트의 [연습 준비로] · 주소 직접 입력)이면 서버 `GET /pitches/{id}/prepare`가 고른 짝입니다. 서버가 가장 최근 자료 대신 지난 자료를 골랐으면(장 수가 다른 새 PDF를 올린 뒤 등) 장치 점검이 "가장 최근 자료(v2 · 11쪽)는 대본(10장)과 장 수가 달라 지난 자료(v1)로 연습하게 돼요"를 띄우고, 사용자가 확인하기 전에는 시작하지 않습니다(`prepareInfo.ts` `olderSlideNotice`, #1099). 자세한 것은 [features/rehearsal.md](features/rehearsal.md) 2절.
-- 대화형 에이전트는 라우트가 아니라 최상위 레이아웃에 떠 있는 팝업이고, 정해진 화면에서만 보입니다(`features/chat/chatRoutes.ts`).
+**Take가 생기는 곳** — 장치 점검의 시작 버튼 한 곳뿐입니다.
+
+- 다른 화면의 연습 버튼(리포트의 [Take N 연습하기] 등)은 장치 점검으로 이동만 합니다.
+- 홈에는 장치 점검으로 바로 가는 버튼이 없습니다. 홈의 [발표 준비]는 피치 수정으로 갑니다.
+
+**장치 점검이 연습할 버전을 아는 법**
+
+| 어디서 왔나 | 버전 |
+|---|---|
+| 피치 수정 | 라우터 state로 넘겨받은 연습 조합 |
+| 리포트의 [Take N 연습하기] · 분석 실패 화면의 [다시 연습하기] · 대화형 에이전트의 [연습 준비로] · 주소 직접 입력 | 서버 `GET /pitches/{id}/prepare`가 고른 짝 |
+
+- 서버가 가장 최근 자료 대신 지난 자료를 고를 수 있습니다(장 수가 다른 새 PDF를 올린 뒤 등). 그러면 장치 점검이 알리고, 사용자가 확인하기 전에는 시작하지 않습니다(#1099). 자세한 것은 [features/rehearsal.md](features/rehearsal.md) 2-3.
+
+**대화형 에이전트** — 라우트가 아니라 최상위 레이아웃에 떠 있는 팝업이고, 정해진 화면에서만 보입니다(`features/chat/chatRoutes.ts`).
 
 > **작성 필요** — 화면마다 로그인 필요 여부 · 출시 제한(`VITE_LAUNCH_GATE_ENABLED`)에 걸리는 화면 목록. 출시 제한 자체는 [launch-countdown.md](launch-countdown.md)에 있습니다.
 
@@ -78,15 +90,27 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 | 무엇 | 도구 | 예 |
 |---|---|---|
 | 서버에서 온 것 | TanStack Query (`shared/api/*.ts`) | 홈 · 피치 · 리포트 · 장치 점검 준비 정보 |
-| 화면이 가진 작업 중 상태 | Zustand | 피치 작성 초안(`features/pitch/create/createStore.ts`), 장치 점검(`features/rehearsal/prepare/prepareStore.ts`), 리허설 무대(`features/rehearsal/stage/rehearsalStore.ts`), 대화(`features/chat/chatStore.ts`) |
+| 화면이 가진 작업 중 상태 | Zustand | 스토어 4개(아래 목록) |
 | 프레임 단위 고빈도 값 | `useRef` | 시선 원시 좌표 · 마이크 RMS. 상태로 두면 프레임마다 다시 그립니다 |
-| 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 세션 · 1초 시선 기록 · 슬라이드 전환. 서버로 가는 원본은 발표 중 WS `metrics`이고, 이것은 새로고침 이어 가기 · 종료 재시도를 위한 이 브라우저의 사본입니다 |
+| 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 세션 · 1초 시선 기록 · 슬라이드 전환. **사본**입니다(아래) |
 | 화면 사이에 넘기는 값 | 라우터 state | 피치 수정 → 장치 점검의 연습 조합(`practice`) |
-| 이 탭에만 남기는 값 | sessionStorage | 리허설 시계(새로고침 이어 가기, `rehearsal/stage/resume.ts`), 대화 상태 일부(`chat/chatStore.ts`), 로그아웃 신호(`shared/lib/sessionSignal.ts`) |
+| 이 탭에만 남기는 값 | sessionStorage | 리허설 시계(`rehearsal/stage/resume.ts`) · 대화 복원 값(`chat/chatStore.ts`) · 로그아웃 신호(`shared/lib/sessionSignal.ts`) |
 | 이 브라우저에만 남기는 작은 값 | localStorage | 대화 기억 첫 안내를 봤는지 등 |
 
-- 시선 기준점(Calibration)은 탭 메모리에만 둡니다. 서버로 보내지 않습니다.
-- 라우터 state는 새로고침 · 앞으로 가기에도 남습니다. 장치 점검은 넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고 [최신으로]를 둡니다.
+**Zustand 스토어 4개**
+
+| 스토어 | 담는 것 |
+|---|---|
+| `features/pitch/create/createStore.ts` | 피치 작성 초안 |
+| `features/rehearsal/prepare/prepareStore.ts` | 장치 점검의 선택 |
+| `features/rehearsal/stage/rehearsalStore.ts` | 리허설 무대 |
+| `features/chat/chatStore.ts` | 대화 |
+
+**알아 둘 점**
+
+- **IndexedDB는 사본입니다.** 서버로 가는 원본은 발표 중 WS `metrics`이고, IndexedDB는 새로고침 이어 가기 · 종료 재시도를 위해 이 브라우저에 남기는 것입니다.
+- **시선 기준점**(Calibration)은 탭 메모리에만 둡니다. 서버에도 브라우저 저장소에도 두지 않습니다.
+- **라우터 state는 새로고침 · 앞으로 가기에도 남습니다.** 그래서 장치 점검은 넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고 [최신으로]를 둡니다.
 
 ## 4. 폴더와 의존 방향
 
@@ -134,7 +158,7 @@ app/ ──▶ features/* ──▶ workers/ ──┐
 | 피치 · 슬라이드 · 대본 · 평가 기준 | REST | `shared/api/pitch.ts` · `presentation.ts` · `script.ts` · `standards.ts` | [docs/be/script-parse.md](../be/script-parse.md) |
 | 대본 나누기 결과 | REST 폴링(1초) | `features/pitch/create/scriptParse.ts` | [docs/be/script-parse.md](../be/script-parse.md) |
 | 장치 점검 준비 정보 · Take 생성 | REST | `shared/api/prepare.ts` | [docs/fe/pitch-take-contract-570.md](pitch-take-contract-570.md) |
-| 리허설 음성(PCM) · 1초 기록(`metrics`: 시선 · 음량 · 슬라이드) · 실시간 전사 · 코치 · 끝내기(`stop`) | WebSocket `/api/ws/takes/{id}` | `features/rehearsal/lib/sttSocket.ts` · `stage/useSttStream.ts` · `stage/useMetricsSender.ts` · `stage/useLiveCoach.ts` | [docs/be/realtime-stt.md](../be/realtime-stt.md) · [docs/be/take-lifecycle.md](../be/take-lifecycle.md) · [docs/ai/architecture.md](../ai/architecture.md) 1-3 · 1-4 · 6-2 |
+| 리허설 실시간 연결(음성 · 1초 기록 · 전사 · 코치 · 끝내기) | WebSocket `/api/ws/takes/{id}` | `features/rehearsal/lib/sttSocket.ts` 외 — [rehearsal.md](features/rehearsal.md) 5절 | [docs/be/realtime-stt.md](../be/realtime-stt.md) · [docs/be/take-lifecycle.md](../be/take-lifecycle.md) · [docs/ai/architecture.md](../ai/architecture.md) 1-3 · 1-4 · 6-2 |
 | Take 종료 시각 · 중단 | REST `PUT /api/pitches/{id}/takes/{takeId}` · `POST .../abandon` | `features/rehearsal/stage/sendEnding.ts` · `shared/api/take.ts` | [docs/be/take-lifecycle.md](../be/take-lifecycle.md) |
 | Take 결과 · 리포트 | REST | `shared/api/report.ts` · `takeHistory.ts` | [docs/be/realtime-coach.md](../be/realtime-coach.md) · [docs/be/review.md](../be/review.md) |
 | 대화형 에이전트 | REST 폴링 | `features/chat/chatTransport.ts` · `shared/api/chatPaths.ts` | [docs/ai/features/chat-agent.md](../ai/features/chat-agent.md) 12절 |
