@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:lan": "vite --mode lan --host",
     "format": "prettier --write .",
-    "format:check": "prettier --check . || (prettier src/shared/ui/HomeHelpDialog.tsx | diff -u src/shared/ui/HomeHelpDialog.tsx -; exit 1)",
+    "format:check": "prettier --check .",
     "doctor": "node scripts/doctor.mjs",
     "models": "node scripts/models.mjs"
   },
