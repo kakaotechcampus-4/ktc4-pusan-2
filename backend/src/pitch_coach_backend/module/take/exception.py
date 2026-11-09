@@ -95,3 +95,15 @@ class InvalidReviewResponse(AppException):
     status_code = 502
     code = "INVALID_REVIEW_RESPONSE"
     message = "리뷰 결과가 올바르지 않아 저장하지 못했습니다."
+
+
+class TutorialReportUsed(ConflictException):
+    # 튜토리얼 리포트는 계정당 한 번이다. 샘플 발표를 지우고 다시 만들어도 같다
+    code = "TUTORIAL_REPORT_USED"
+    message = "튜토리얼 리포트는 한 번만 받을 수 있어요."
+
+
+class TutorialAnalysisRunning(ConflictException):
+    # 앞 연습의 리포트를 만드는 중이다. 그 리포트가 나오면 한 번을 쓴 것이라 새 연습을 받지 않는다
+    code = "TUTORIAL_ANALYSIS_RUNNING"
+    message = "앞 연습을 분석하고 있어요. 분석이 끝난 뒤 결과를 확인해 주세요."

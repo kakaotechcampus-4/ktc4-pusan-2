@@ -387,3 +387,24 @@ it('서버가 이미 없다고(404) 하면 지운 것으로 보고, 확인 창�
   expect(client.getQueryData(takeSurveyKeys.state('t2'))).toBeUndefined();
   expect(client.getQueryData(['takes', 't3', 'report'])).toEqual({ keep: true });
 });
+
+it.each([0, 1, 15])('홈 피치 %i개의 목록 구조와 푸터를 유지한다', async (pitchCount) => {
+  list = {
+    pitches: Array.from({ length: pitchCount }, (_, index) =>
+      pitch(`p${index}`, `발표 ${index + 1}`),
+    ),
+  };
+  await render();
+
+  const shell = host.querySelector<HTMLElement>('.pitch-create')!;
+  const main = shell.querySelector<HTMLElement>('main')!;
+  const section = main.querySelector<HTMLElement>('section[aria-label="발표 목록"]')!;
+  const pitchList = section.querySelector<HTMLUListElement>('ul');
+
+  expect(shell.classList.contains('flex-1')).toBe(true);
+  expect(main.classList.contains('flex-1')).toBe(true);
+  expect(section.querySelectorAll('li[data-pitch-id]')).toHaveLength(pitchCount);
+  expect(pitchList === null).toBe(pitchCount === 0);
+  expect(pitchList?.className ?? '').not.toContain('overflow-y-auto');
+  expect(main.nextElementSibling?.tagName).toBe('FOOTER');
+});

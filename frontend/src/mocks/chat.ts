@@ -50,6 +50,7 @@ import { isTerminalRun } from '@/features/chat/chatAgent';
  *   "다시 평가" · "대본 보고" → 승인 카드(REASSESS) → [승인] 참고 결과 카드
  *   "발표할래" · "연습 준비" → [연습 준비로] 버튼 카드
  *   "기억"            → '기억했어요' 카드 (기억이 켜져 있고 '기억 없이' 대화가 아닐 때)
+ *   "열어"            → 에이전트가 피치를 엶(`FETCH_PITCH`): 범위를 바꿨다는 문장 · 끝나면 대화 범위가 그 피치
  *   "봤지"            → 주장 판정: 판단 문장(기록과 다름). 같은 대화에서 다시 물으면 앞 판단을 대체
  *   (피치 만들기 · 수정 화면에서) → 화면 값 근거(`origin:"SCREEN"`) 문장과 사용법 자료
  *   그 밖              → Take 비교 답: 내 기록 · 자료 · 일반 조언 문장 셋
@@ -567,6 +568,10 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
       case 'end': {
         const actionId = run.actionId ?? newActionId();
         const conversation = state.conversations.get(run.conversation_id)!;
+        if (step.scopePitchId) {
+          conversation.scope_pitch_id = step.scopePitchId;
+          conversation.scope_pitch_title = pitch.pitch_title;
+        }
         let cards = step.cards(actionId);
         cards = cards.map((card) => {
           if (card.type === 'GOAL_SAVED') {
@@ -867,6 +872,7 @@ export function createChatHandlers(userId: () => string | null = currentMockUser
             memoryOn: state.memory.enabled && !conversation.memory_off,
             chosen,
             screen: body.page.screen,
+            takeId: body.page.take_id ?? null,
             assessmentId: newAssessmentId(),
             priorAssessmentId:
               conversation.messages.flatMap((msg) => msg.assessments ?? []).at(-1)?.assessment_id ??

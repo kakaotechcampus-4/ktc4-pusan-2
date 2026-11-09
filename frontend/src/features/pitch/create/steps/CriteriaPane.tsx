@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useIsMutating, useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { parseStandards, saveStandards } from '../../api/standards';
@@ -40,9 +40,141 @@ function parseErrorMessage(error: unknown): string {
   return `기준을 정리하지 못했어요. ${toMessage(error)}`;
 }
 
+/** 작성 예시는 실제 평가기준 지표와 연결되는 표현을 사용합니다. */
+const MEASURABLE_CRITERIA: { label: string; example: string; note?: string }[] = [
+  { label: '말 속도', example: '1분에 300자 이하로 말하기' },
+  { label: '말 사이 멈춤', example: '말 사이 멈춤은 5회 이하로 하기' },
+  { label: '긴 침묵', example: '긴 침묵은 2회 이하로 줄이기' },
+  {
+    label: '소리 크기',
+    example: '평소보다 3dB 이상 크게 말하기',
+    note: '평소 목소리 대비 변화량(dB)으로 판정해요. 절대 음량(dB) 목표는 판정하지 않아요.',
+  },
+  { label: '군더더기 말', example: '군더더기 말은 5회 이하로 하기' },
+  {
+    label: '시선',
+    example: '청중을 70% 이상 바라보기',
+    note: '카메라가 없거나 시선을 측정할 수 없으면 판정할 수 없어요.',
+  },
+  {
+    label: '대본 의존도',
+    example: '대본을 읽으며 말하는 비율 20% 이하로 하기',
+    note: '말하는 동안 대본을 보는 비율을 시선으로 측정해요. 카메라가 필요해요.',
+  },
+  {
+    label: '대본 유사도',
+    example: '대본 내용의 80% 이상 전달하기',
+    note: '대본을 연결한 경우에 확인할 수 있어요.',
+  },
+];
+
+/**
+ * 칩은 입력 기능이 아닙니다.
+ * 숨긴 예시도 같은 그리드 칸의 높이를 차지해 전환 시 입력칸이 이동하지 않습니다.
+ */
+function CriteriaExamples() {
+  const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  const tooltipId = useId();
+  const pointerInteractionRef = useRef(false);
+  const keyboardFocusRef = useRef(false);
+
+  // 포커스를 이동시키지 않고 닫습니다. 마우스로만 열었을 때도 Esc가 작동합니다.
+  useEffect(() => {
+    if (activeLabel === null) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveLabel(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [activeLabel]);
+
+  return (
+    <div
+      className="rounded-lg border border-line bg-panel px-3 py-3"
+      onMouseLeave={() => {
+        if (!keyboardFocusRef.current) setActiveLabel(null);
+      }}
+    >
+      <p className="text-sm font-bold">작성 가능한 평가 항목</p>
+      <ul aria-label="측정 가능한 항목" className="mt-2 flex flex-wrap gap-2">
+        {MEASURABLE_CRITERIA.map((criterion) => (
+          <li key={criterion.label}>
+            <button
+              type="button"
+              aria-label={`${criterion.label} 작성 예시 보기`}
+              aria-describedby={activeLabel === criterion.label ? tooltipId : undefined}
+              onPointerDown={() => {
+                pointerInteractionRef.current = true;
+                keyboardFocusRef.current = false;
+              }}
+              onMouseDown={() => {
+                pointerInteractionRef.current = true;
+                keyboardFocusRef.current = false;
+              }}
+              onMouseEnter={() => {
+                // 키보드 포커스를 받은 칩의 설명이 다른 칩 호버에 의해 바뀌지 않도록 합니다.
+                if (!keyboardFocusRef.current) setActiveLabel(criterion.label);
+              }}
+              onFocus={() => {
+                if (pointerInteractionRef.current) return;
+                keyboardFocusRef.current = true;
+                setActiveLabel(criterion.label);
+              }}
+              onBlur={() => {
+                keyboardFocusRef.current = false;
+                setActiveLabel((current) => (current === criterion.label ? null : current));
+              }}
+              onClick={() => {
+                setActiveLabel((current) => (current === criterion.label ? null : criterion.label));
+                pointerInteractionRef.current = false;
+              }}
+              className="cursor-help rounded-full border border-line-strong bg-white px-3 py-1 text-xs font-bold hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              {criterion.label}
+              <span aria-hidden="true" className="ml-1 text-ink/60">
+                ⓘ
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 grid">
+        {MEASURABLE_CRITERIA.map((criterion) => {
+          const visible = activeLabel === criterion.label;
+          return (
+            <div
+              key={criterion.label}
+              data-criterion-preview
+              id={visible ? tooltipId : undefined}
+              role={visible ? 'tooltip' : undefined}
+              aria-hidden={!visible}
+              className="col-start-1 row-start-1 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-sm"
+              style={{ visibility: visible ? 'visible' : 'hidden' }}
+            >
+              <p className="font-bold">{criterion.label} 작성 예시</p>
+              <p className="mt-1 leading-relaxed">{criterion.example}</p>
+              {criterion.note && (
+                <p className="mt-1 text-xs leading-relaxed text-ink/80">{criterion.note}</p>
+              )}
+            </div>
+          );
+        })}
+        {activeLabel === null && (
+          <p className="col-start-1 row-start-1 self-start rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink/80">
+            항목을 선택하면 작성 예시를 볼 수 있어요.
+          </p>
+        )}
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-ink/80">
+        칩에 마우스를 올리거나 눌러 예시를 확인해 보세요. 발표 시간은 발표정보에서 설정해 주세요.
+      </p>
+    </div>
+  );
+}
+
 const PLACEHOLDER = [
-  '이번 발표에서 확인하고 싶은 기준을 자유롭게 적어 주세요.',
-  '예: 시장 규모와 출처를 말하고, 채움말은 5회 이하로 줄이고 싶어요.',
+  '예: 군더더기 말은 5회 이하로 줄이고 싶어요.',
+  '예: 청중을 70% 이상 바라보고 싶어요.',
 ].join('\n');
 
 function parseButtonLabel(pending: boolean, hasItems: boolean): string {
@@ -73,7 +205,9 @@ function Guide({ except }: { except: string | null }) {
           평가기준에 넣지 않은 내용
         </p>
         <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
-          연습 중에 측정할 수 없는 항목이라 평가기준에서 뺐어요. 발표 시간은 발표정보에서 정해요.
+          현재 측정·평가하지 않는 내용이라 제외했어요.
+          <br />
+          바꿀 수 있는 내용이라면 위 작성 예시를 참고해 다시 적어 주세요.
         </p>
         <p className="mt-1 pl-6 text-sm font-bold leading-relaxed">“{except}”</p>
       </div>
@@ -86,9 +220,10 @@ function Guide({ except }: { except: string | null }) {
         작성 안내
       </p>
       <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
-        구체적인 행동이나 목표를 적어 주세요.
+        측정 지표와 연결되는 숫자 목표는 리포트의 달성 여부 판정에 활용될 수 있어요.
         <br />
-        정리 과정에서 반영하지 못한 내용이 있으면 이유와 안내를 이곳에 알려드려요.
+        침묵 길이·절대 음량(dB)·'정도'처럼 지표로 바꿀 수 없는 조건은 판정하지 않을 수 있어요. 정리
+        과정에서 제외된 내용은 이곳에서 알려드려요.
       </p>
     </div>
   );
@@ -125,6 +260,8 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         <h3 className="text-lg font-bold">평가기준 작성</h3>
         <p className="mt-1 text-sm text-ink/80">문장이나 목록으로 2,000자까지 작성해 주세요.</p>
       </div>
+
+      <CriteriaExamples />
 
       <textarea
         aria-label="평가기준 작성"
@@ -165,11 +302,6 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
       )}
 
       <Guide except={except} />
-      {except && (
-        <p className="text-xs text-ink/80">
-          측정할 수 있는 행동(속도 · 음량 · 시선 등)으로 바꿔 적으면 기준에 넣을 수 있어요.
-        </p>
-      )}
     </section>
   );
 }
@@ -189,6 +321,11 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         </div>
         <SavedBadge criteria={criteria} />
       </div>
+      {items.length > 0 && (
+        <p className="mt-1 text-xs text-ink/80">
+          숫자 목표가 있어도 측정 지표와 연결되지 않으면 달성 여부를 판정하지 않을 수 있어요.
+        </p>
+      )}
 
       {items.length === 0 ? (
         <EmptyResult editable={editable} edited={criteria?.edited === true} />

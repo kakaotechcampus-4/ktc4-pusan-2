@@ -307,6 +307,17 @@ async function press(target: Element, init: KeyboardEventInit) {
   return event;
 }
 
+it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 열린다', async () => {
+  await visit('/');
+  const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
+  expect(container.classList.contains('left-2')).toBe(true);
+  expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('32px');
+  expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
+
+  await openPanel();
+  expect(panel()!.classList.contains('left-0')).toBe(true);
+});
+
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
   await visit('/');
   await openPanel();
@@ -721,6 +732,33 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
       screen: { name: 'device_check', gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' },
     });
     expect(sent!.page.screen!.snapshot_id).toMatch(/^ss-[0-9a-f]{16}$/);
+  });
+
+  it('처음 확인(없음 → 사용자) 뒤에 보내면 먼저 등록한 화면 상태를 싣는다', async () => {
+    expect(useChatStore.getState().userId).toBeNull();
+    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
+    await visit('/pitch/p1/device-check');
+    expect(useChatStore.getState().userId).toBe('u1');
+    await openPanel();
+    await type('장치 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'device_check' });
+  });
+
+  it('로그아웃 신호 없이 다른 사용자로 바뀐 뒤 보내면 앞 사람 때 등록한 화면 상태를 싣지 않는다', async () => {
+    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
+    await visit('/pitch/p1/device-check');
+    expect(useChatStore.getState().userId).toBe('u1');
+
+    // 같은 경로 패턴에 머문 채 사용자만 바뀝니다 — 경로가 달라서 빠지는 것이 아님을 보려고 패턴을 유지합니다
+    state.session = { isPending: false, isError: false, data: { id: 'u2' } };
+    await go('/pitch/p2/device-check');
+    expect(useChatStore.getState().userId).toBe('u2');
+    await openPanel();
+    await type('장치 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    const [sent] = transport().sent;
+    expect(sent!.page).toMatchObject({ route: '/pitch/:pitchId/device-check', screen: null });
   });
 
   it('평가 기준 원문이 2,000자를 넘으면 보내지 않고 알린다 (L3-11)', async () => {

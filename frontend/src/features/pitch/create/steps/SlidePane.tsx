@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } fr
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useCreateStore } from '../createStore';
 import {
+  AlertIcon,
   CheckIcon,
   ChevronIcon,
   DocIcon,
@@ -527,8 +528,15 @@ function Viewer({ slide }: { slide: SlideVersion }) {
                 {total}장
               </span>
             )}
-            <span className="flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-2.5 py-1 text-sm font-bold">
-              <CheckIcon /> {needsReview ? '확인 필요' : '확인 완료'}
+            <span
+              role="status"
+              className={[
+                'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-bold',
+                needsReview ? 'border-coral bg-coral-wash' : 'border-line-strong bg-panel',
+              ].join(' ')}
+            >
+              {needsReview ? <AlertIcon className="h-4 w-4 fill-coral-deep" /> : <CheckIcon />}
+              {needsReview ? '확인 필요' : '확인 완료'}
             </span>
           </>
         }
@@ -558,14 +566,12 @@ function Viewer({ slide }: { slide: SlideVersion }) {
           </span>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p role="status" className="text-sm">
-          {needsReview ? '업로드 완료 · 확인 필요' : '확인 완료'}
-        </p>
+      <div className="mt-4 flex justify-end">
         <button
           ref={trigger}
           type="button"
           aria-haspopup="dialog"
+          aria-label={`슬라이드 확인 · ${needsReview ? '확인 필요' : '확인 완료'}`}
           onClick={() => setReview(slide.version)}
           className="min-h-11 border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
         >
@@ -581,10 +587,6 @@ function Viewer({ slide }: { slide: SlideVersion }) {
           {body}
         </SlideReviewDialog>
       )}
-      <details className="[&>summary]:min-h-11 [&>summary]:cursor-pointer [&>summary]:py-3 [&>summary]:text-sm [&>summary]:underline [&>summary]:underline-offset-4">
-        <summary>슬라이드 미리보기</summary>
-        <div className="flex h-[min(34rem,75dvh)] min-h-80">{!reviewOpen && body}</div>
-      </details>
     </div>
   );
 }

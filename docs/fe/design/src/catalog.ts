@@ -24,7 +24,13 @@ export const PRODUCT_CHECKED: {
 } = {
   commit: '43b95161106639e48db50b904683fddc5c9e38d4',
   date: '2026-10-30',
-  pending: [],
+  pending: [
+    {
+      pr: 874,
+      head: '71a64d35',
+      what: '처리 중 · 끝 장 버튼은 aria-disabled로 막음(Button 모양 · 키보드 가드 추가), 설문 · 동의 · 수정 대본 매핑 뒤 초점 이동',
+    },
+  ],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -55,14 +61,32 @@ const RETRY = link(
   '이 브라우저에 기록이 없으면 안내만 뜬다. 콘솔에 mockTakeEnd.fail() 뒤 발표를 끝내면 열린다',
 );
 
-const group = '제품 화면 · 설계서 샘플';
+/** 화면 그룹은 표시용이다. 기존 화면 ID와 공유 링크는 바꾸지 않는다. */
+export const GUIDE_GROUP_ORDER: readonly string[] = [
+  '기초',
+  '컴포넌트',
+  '대화 상자',
+  '서비스 시작',
+  '피치 관리 · 생성',
+  '연습 준비 · 진행',
+  '분석 · 기록 · 리포트',
+  '안내 · 계정',
+  '검토 시안',
+];
+
+const screenGroup = {
+  pitch: '피치 관리 · 생성',
+  rehearsal: '연습 준비 · 진행',
+  results: '분석 · 기록 · 리포트',
+  review: '검토 시안',
+} as const;
 
 const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'home',
     title: '홈 · 내 피치',
-    group,
+    group: screenGroup.pitch,
     route: '/',
     status: '제품에 있음',
     summary:
@@ -161,8 +185,8 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'pitch-create-a',
-    title: '발표 준비 A안 · PM 검토',
-    group,
+    title: '피치 생성 · A안 검토 시안',
+    group: screenGroup.review,
     route: '/pitch/new',
     status: '시안',
     summary:
@@ -227,7 +251,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'pitch-create',
     title: '피치 생성 · 수정',
-    group,
+    group: screenGroup.pitch,
     route: '/pitch/new',
     status: '제품에 있음',
     summary: '슬라이드 · 대본 · 발표정보 · 평가기준을 차례로 준비하고 시작 전 세팅으로 간다.',
@@ -260,7 +284,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'prepare-mission',
     title: '시작 전 세팅',
-    group,
+    group: screenGroup.rehearsal,
     route: '/pitch/:pitchId/device-check',
     status: '제품에 있음',
     summary:
@@ -319,8 +343,8 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'prepare-layout-review',
-    title: '시작 전 세팅 · PM 검토 시안',
-    group: 'PM 검토 · 독립 시안',
+    title: '시작 전 세팅 · 배치 검토 시안',
+    group: screenGroup.review,
     route: '/pitch/:pitchId/device-check',
     status: '시안',
     summary:
@@ -412,8 +436,8 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'stage',
-    title: '리허설 무대',
-    group,
+    title: '리허설 · 실전',
+    group: screenGroup.rehearsal,
     route: '/takes/:takeId/rehearsal',
     status: '제품에 있음',
     summary:
@@ -475,7 +499,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/stage/useEndConfirm.ts',
     ],
     productNote:
-      '제품에도 흰 지면·카메라 4:3 크롭·56px 피코 코치·범례 칩·상단 종료·하단 대본 배치를 반영했다. 제품의 보정 키는 stage:bottom-script-v2로 이전 배치의 기준을 제외한다. 배치 이동만으로 시선 오분류 해결을 보장하지 않는다. 실기기에서 새 배치로 재보정한 뒤 대본 위·가운데·아래를 읽어 판정을 검증해야 한다. 카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "무대를 열지 않는 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다(장을 넘기면 풀리는 것은 제품과 같다). 무대 배치는 설계서 자체 src/ui/stage.css를 쓴다. /dev/stage도 제품 UI와 분리된 디자인 시안으로 유지한다.',
+      '제품에도 흰 지면·카메라 4:3 크롭·56px 피코 코치·범례 칩·상단 종료·하단 대본 배치를 반영했다. 제품의 보정 키는 stage:bottom-script-v2로 이전 배치의 기준을 제외한다. 배치 이동만으로 시선 오분류 해결을 보장하지 않는다. 실기기에서 새 배치로 재보정한 뒤 대본 위·가운데·아래를 읽어 판정을 검증해야 한다. 카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "리허설 · 접근 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다(장을 넘기면 풀리는 것은 제품과 같다). 무대 배치는 설계서 자체 src/ui/stage.css를 쓴다. /dev/stage도 제품 UI와 분리된 디자인 시안으로 유지한다.',
     productLinks: [REHEARSAL, link('리허설 · 실전 모드', '/takes/t3/exam')],
     next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
   },
@@ -483,7 +507,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'processing-loading',
     title: '분석 대기',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId/processing',
     status: '제품에 있음',
     summary: '노을 화면에서 분석 세 단계의 진행을 보여 주고, 끝나면 리포트로 넘어간다.',
@@ -537,7 +561,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'confirm',
     title: '대본 확인',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId/confirm',
     status: '제품에 있음',
     summary: '발표 뒤 인식이 헷갈린 말을 "대본대로 / 들린 대로"로 확인하고 분석 대기로 돌아간다.',
@@ -577,7 +601,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'retry',
     title: '업로드 실패 · 재시도',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId/retry',
     status: '제품에 있음',
     summary: '종료 기록을 서버로 보내지 못했을 때 이 브라우저에 남은 기록을 다시 보낸다.',
@@ -609,7 +633,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'report',
     title: 'Take 리포트',
-    group,
+    group: screenGroup.results,
     route: '/takes/:takeId',
     status: '제품에 있음',
     summary: '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 다음 미션을 보여 준다.',
@@ -654,7 +678,7 @@ const productScreens: GuideScreen[] = [
     kind: 'screen',
     id: 'takes',
     title: 'Take 기록 · 지표 비교',
-    group,
+    group: screenGroup.results,
     route: '/takes',
     status: '제품에 있음',
     summary: '하나의 Take 기록 화면에서 전체 목록과 같은 피치의 지표 비교를 전환한다.',
@@ -695,8 +719,8 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'comparison',
-    title: '이전 Take 비교 주소',
-    group,
+    title: 'Take 비교 · 이전 주소',
+    group: screenGroup.results,
     route: '/pitch/:id/comparison',
     status: '제품에 있음',
     summary: '옛 주소에서 /takes?pitch=:id&view=compare로 이동하는 호환 경로다.',
@@ -714,14 +738,14 @@ const productScreens: GuideScreen[] = [
   },
 ];
 
-const infoGroup = '안내 · 계정 화면';
+const infoGroup = '안내 · 계정';
 
 /** 글 위주 화면. 제품 `shared/ui/InfoPage` 틀을 쓴다 */
 const infoScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'stage-blocked',
-    title: '무대를 열지 않는 안내',
+    title: '리허설 · 접근 안내',
     group: infoGroup,
     route: '/takes/:takeId/rehearsal',
     status: '제품에 있음',
@@ -778,7 +802,7 @@ const infoScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'unsupported',
-    title: '미지원 브라우저',
+    title: '미지원 환경 안내',
     group: infoGroup,
     route: '/unsupported',
     status: '제품에 있음',
@@ -858,14 +882,14 @@ const infoScreens: GuideScreen[] = [
   },
 ];
 
-const onboardingGroup = '처음 화면 · 로그인';
+const onboardingGroup = '서비스 시작';
 
 /** 로그인 전에 보는 화면. 웰컴과 로그인은 같은 머리 · 테두리 · 그림자를 쓴다 */
 const onboardingScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'welcome',
-    title: '웰컴 · 서비스 소개',
+    title: '서비스 소개 · 시작하기',
     group: onboardingGroup,
     route: '/welcome',
     status: '제품에 있음',
@@ -933,7 +957,7 @@ const onboardingScreens: GuideScreen[] = [
   },
 ];
 
-/** 목록 순서 그대로 왼쪽 목록에 보인다: 기초 → 컴포넌트 · 대화 상자 → 화면 */
+/** 항목 배열 순서. 왼쪽 목록과 전체 보기는 GUIDE_GROUP_ORDER로 그룹을 정렬한다. */
 export const entries: GuideEntry[] = [
   ...foundationEntries,
   ...componentEntries,

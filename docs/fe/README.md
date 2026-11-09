@@ -24,6 +24,7 @@
 | [Pitch / Take 데이터 계약 (#570)](pitch-take-contract-570.md) | FE 불일치 처리와 BE 선행 조건 · 검증 결과 | FE |
 | [로그인 인증 연동](auth.md) | P11 로그인 · 토큰 처리 | FE |
 | [화면 설계서](design/README.md) | 제품과 따로 도는 React 화면 시안 · 상태 · 흐름, 제품과의 차이 | FE |
+| [화면 설계서 명명·분류 규칙](design/NAMING.md) | 화면 이름 · 그룹 · 파일명 · 검토 시안 관리 기준 | FE |
 
 문서를 추가하면 이 표에 한 줄 넣습니다.
 

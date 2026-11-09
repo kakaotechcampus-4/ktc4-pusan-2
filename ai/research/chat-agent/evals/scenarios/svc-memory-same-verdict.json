@@ -10,7 +10,17 @@
   "fixtures": {
     "pitches": [
       {
-        "preset": "sample"
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "issues": [
+                ["GAZE_ON_SCRIPT", 3, true],
+                ["GAZE_LOW_EYE_CONTACT", 3, true]
+              ]
+            }
+          }
+        }
       }
     ],
     "conversation": {
@@ -78,5 +88,5 @@
       }
     ]
   },
-  "notes": "기대 판정은 기억 없이 fixtures 만 보고 정했다(같은 입력에 기억만 넣은 실행). memory 표시 검사가 실패하면 기억 누설"
+  "notes": "기대 판정은 기억 없이 fixtures 만 보고 정했다(같은 입력에 기억만 넣은 실행). memory 표시 검사가 실패하면 기억 누설. 8회차: 제목의 '3장 시선 28%'(청중 시선 부족)가 자료에 없고 3장에는 대본 응시 문제만 있어 6-3 차원 매핑으로는 일부 맞음이 되던 자료 불일치를 고쳤다 — Take 5 3장에 청중 시선 부족(GAZE_LOW_EYE_CONTACT) 구간을 넣었다(기대 판정은 그대로 다름)"
 }

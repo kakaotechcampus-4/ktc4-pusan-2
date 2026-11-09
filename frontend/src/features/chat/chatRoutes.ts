@@ -1,5 +1,9 @@
 import { matchPath } from 'react-router';
 
+/** 정상 런처와 오류 안내가 공유하는 고정 위치. */
+export const CHAT_LAUNCHER_CLASS =
+  'light-surface fixed bottom-[var(--chat-launcher-bottom)] left-2 z-[70] text-ink';
+
 /**
  * Explicit allowlist for the floating chat. Live rehearsal is intentionally
  * excluded; adding a new route requires an explicit decision rather than
@@ -69,15 +73,14 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
 }
 
 /**
- * 런처의 아래 여백(px). 기본 32px 는 홈의 "사용방법 살펴보기"와 바닥글 사이 빈칸입니다.
- * 아래 고정 바나 오른쪽 끝까지 찬 컨트롤이 있는 화면만 올립니다 (1366×650 · 1920×950 · 125% 확대에서 잼, #941 리뷰)
+ * 왼쪽 아래 런처의 아래 여백(px). 기본 32px 는 홈의 "사용방법 살펴보기"와 바닥글 사이 빈칸입니다.
+ * 하단 고정 바가 있는 화면에서만 올립니다 (1366×650 · 1920×950 · 125% 확대 기준, #941).
+ * 최종 모바일 위치(760px 이하의 생성·수정 화면)는 index.css에서 덮어씁니다.
  */
 const launcherLifts: [pattern: string, bottom: number][] = [
   // 피치 만들기 · 수정: 아래 고정 바(79px)보다 위에 둡니다 (12-4 F1 "겹침")
   ['/pitch/new', 88],
   ['/pitch/:id/edit', 88],
-  // 장치 점검은 올리지 않고 화면의 오른쪽 여백을 런처 자리만큼 넓힙니다 (index.css `[data-chat-launcher]`).
-  // 오른쪽 열이 화면 끝까지 차서 어느 높이에 올려도 낮은 창 · 확대에서 무엇인가를 가리기 때문입니다
 ];
 
 export function chatLauncherBottom(pathname: string): number {

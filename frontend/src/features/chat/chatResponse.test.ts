@@ -818,7 +818,7 @@ describe('경로의 ID 인코딩', () => {
   });
 });
 
-describe('메시지 목록의 빠진 칸 (BE 미구현)', () => {
+describe('메시지 목록의 빠진 칸 — BE 는 stale_reasons 를 늘 보내지만 빠져 와도 빈 목록으로 받는다', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('최신 아님 사유가 빠져 오면 빈 목록으로 채운다', async () => {
