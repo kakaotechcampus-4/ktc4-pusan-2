@@ -179,6 +179,9 @@ it('현재 단계 강조 시안은 선택과 입력에 따라 한 영역만 표�
 it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인 완료를 눌러야 한다', async () => {
   await render('empty');
   await click('PDF 파일 선택');
+  expect(host.querySelector('[data-slide-review-state="pending"]')?.textContent).toContain(
+    '확인 필요',
+  );
   expect(host.querySelector('dialog')?.textContent).toContain('슬라이드 확인');
   expect(host.querySelector('progress')?.value).toBe(0);
   await click('닫기');
@@ -189,6 +192,9 @@ it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인 완료를
   await click('확인 완료');
   expect(host.querySelector('dialog')).toBeNull();
   expect(host.querySelector('progress')?.value).toBe(1);
+  expect(host.querySelector('[data-slide-review-state="confirmed"]')?.textContent).toContain(
+    '확인 완료',
+  );
 });
 
 it('대본 매핑 완료와 창 닫기만으로는 저장되지 않는다', async () => {
