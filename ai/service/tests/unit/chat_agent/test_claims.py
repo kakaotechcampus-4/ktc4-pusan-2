@@ -1832,6 +1832,39 @@ def test_script_statement_with_saying_used_is_also_retyped() -> None:
     assert (v.type, v.subject.metric) == ("MEASURED", "script_mode")
 
 
+@pytest.mark.parametrize(
+    ("claim_op", "slide", "retyped"),
+    [("ISSUE", None, True), ("OVERALL", None, True), ("ISSUE", 3, False)],
+)
+def test_script_use_statement_typed_as_script_ratio_issue_is_a_script_claim(
+    claim_op: str, slide: int | None, retyped: bool
+) -> None:
+    """'Take 5는 대본 보고 했어'를 대본 응시 지표(script_ratio)의 문제 주장으로 분류해도 장 · 값이 없으면 대본 주장으로 본다
+    (r9 obj-unverifiable-script: 화면 대본 사실 문장 대신 대본 응시 구간으로 판정). 장을 집은 말은 그 장의 측정 주장이다."""
+    from pitch_coach_ai.features.chat_agent.claims import AssessmentDraft, split_check
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+
+    from . import fakes as F
+
+    msg = "Take 5는 3장에서 대본 보고 했어" if slide else "Take 5는 대본 보고 했어"
+    d = AssessmentDraft.model_validate(
+        F.draft(
+            msg,
+            claim_op=claim_op,
+            dimension="script_independence",
+            metric="script_ratio",
+            slide_number=slide,
+            take_numbers=[5],
+            polarity="NEGATIVE",
+        )
+    )
+    (v,), _ = split_check(msg, [d], DEFAULT_CONFIG)
+    if retyped:
+        assert (v.claim_op, v.subject.metric, v.polarity) == ("VALUE", "script_mode", "POSITIVE")
+    else:
+        assert (v.claim_op, v.subject.metric) == (claim_op, "script_ratio")
+
+
 def test_choice_questions_are_not_issue_negation() -> None:
     """'아니면' · '아닌지'는 고르는 질문이라 문제 주장의 부정이 아니다(#895 리뷰). 진짜 부정은 그대로."""
     from pitch_coach_ai.features.chat_agent.claims import _NEG_AFTER

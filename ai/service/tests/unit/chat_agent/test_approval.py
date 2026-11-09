@@ -908,6 +908,33 @@ def test_script_statement_typed_as_request_still_gets_the_screen_script_fact() -
     assert templates.SystemText.MEASUREMENT_FIXED.value not in text
 
 
+def test_script_statement_merged_with_the_request_still_gets_the_screen_script_fact() -> None:
+    """모델이 진술과 요청 두 문장을 한 초안(REQUEST)으로 묶어도 진술 문장만 떼어 대본 주장으로 보고 화면 대본 사실 문장을
+    붙인다(r9 ra-script: '기록에는 화면 대본이 …' 문장이 빠짐)."""
+    msg = "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘"
+    d = [
+        F.draft(
+            msg,
+            type_="REQUEST",
+            claim_op=None,
+            dimension="script_independence",
+            take_numbers=[5],
+            polarity="NEUTRAL",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert [a.type for a in fd.actions] == ["REASSESS"]
+    assert "기록에는 화면 대본이" in fd.message.text  # type: ignore[union-attr]
+    (a,) = [x for x in fd.assessments if x.type == "MEASURED"]
+    assert a.quote == "Take 5는 대본 보고 한 발표였어"
+
+
 def test_measurement_notice_also_for_asking_to_look_again() -> None:
     """'다시 봐 줘'도 다시 평가 요청이다(측정값 이의면 안내를 붙인다)."""
     msg = "시선 잘 봤는데 왜 낮게 나와? 다시 봐 줘"

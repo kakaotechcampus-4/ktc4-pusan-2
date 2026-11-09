@@ -672,15 +672,52 @@ def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
 
     대본 주장에는 판정과 상관없이 화면 대본 사실 문장을 붙인다(L6-06). 모델이 "… 다시 평가해 줘"와 함께 온 진술을 요청으로
     분류하면 그 문장이 빠진다(4회차 ra-script). 요청 · 질문 어미가 있으면("대본 보고 한 걸로 다시 평가해 줘") 그대로 둔다.
+    진술과 요청을 한 초안으로 묶었으면 진술 문장만 떼어(quote 를 그 문장으로) 대본 주장으로 본다.
     """
+    sub = draft.subject
+    if (
+        draft.type == "MEASURED"
+        and sub.metric == "script_ratio"
+        and sub.slide_number is None
+        and draft.value is None
+        and draft.claim_op in ("ISSUE", "OVERALL")
+        and _SCRIPT_USE_RE.search(draft.quote)
+    ):
+        # 대본 사용 진술("Take 5는 대본 보고 했어")을 대본 응시 지표의 문제 주장으로 분류한 꼴(r9 obj-unverifiable-script):
+        # 장 · 값이 없는 Take 전체 진술은 화면 대본 표시로만 확인되는 대본 주장이다(극성은 '봤다'는 진술 쪽)
+        return draft.model_copy(
+            update={
+                "claim_op": "VALUE",
+                "polarity": "POSITIVE",
+                "subject": sub.model_copy(update={"metric": SCRIPT_USE_METRIC}),
+            }
+        )
     if draft.type != "REQUEST" or draft.claim_op is not None or not _is_script_claim(draft):
         return draft
-    if not any(ch in draft.quote for ch in _PAST_CHARS) or _ASK_END_RE.search(draft.quote):
+    quote = draft.quote
+    if _ASK_END_RE.search(quote):
+        # 진술과 요청을 한 초안으로 묶은 꼴("Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘", r9 ra-script): 대본 사용을
+        # 말한 과거형 문장만 떼어 대본 주장으로 본다. 요청 문장에는 측정 낱말이 없어 판단이 따로 없어도 된다
+        quote = next(
+            (
+                t.strip()
+                for t in _SENTENCE_RE.findall(quote)
+                if _SCRIPT_USE_RE.search(t)
+                and any(ch in t for ch in _PAST_CHARS)
+                and not _ASK_END_RE.search(t)
+            ),
+            "",
+        ).rstrip(".!。！")
+        if not quote:
+            return draft
+    elif not any(ch in quote for ch in _PAST_CHARS):
         return draft
     subject = draft.subject.model_copy(
         update={"dimension": "script_independence", "metric": SCRIPT_USE_METRIC}
     )
-    return draft.model_copy(update={"type": "MEASURED", "claim_op": "VALUE", "subject": subject})
+    return draft.model_copy(
+        update={"type": "MEASURED", "claim_op": "VALUE", "subject": subject, "quote": quote}
+    )
 
 
 #: 조건 꼴('긴장하면 ' · '빠르면,'): 한글 낱말 끝의 '면' 뒤에 띄어쓰기 · 쉼표 · 끝
