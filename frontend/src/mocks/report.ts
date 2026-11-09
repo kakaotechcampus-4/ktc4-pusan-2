@@ -149,7 +149,8 @@ const comparisonFixture: ReviewResult['comparison'] = (
 
 const done: TakeReport = {
   take_id: 't3',
-  pitch_id: 'p1',
+  // 홈 목(`home.ts`)의 첫 피치와 같은 ID — BE 처럼 UUID 라야 대화 보내기(`page.pitch_id`)를 목이 받습니다
+  pitch_id: '10000000-0000-4000-8000-000000000001',
   pitch_title: '캡스톤 최종 발표',
   take_number: 3,
   script_mode: 'HIGHLIGHT',
@@ -244,7 +245,20 @@ const modeChanged: TakeReport = {
   },
 };
 
+/**
+ * 홈 목(`home.ts`) 첫 피치의 Take 2(72점) — 대화 목(`chatScenarios.ts`)의 다시 평가가 이 Take 를 72 → 78 로 봅니다.
+ * 목록에 없으면 분석 진행 흉내(`progressing`)를 거쳐 Take 4 · 74점이 되어, 공식 리포트와 다시 평가가 어긋납니다
+ */
+const HOME_TAKE2_ID = '20000000-0000-4000-8000-000000000002';
+const homeTake2: TakeReport = {
+  ...done,
+  take_id: HOME_TAKE2_ID,
+  take_number: 2,
+  review: { ...done.review!, take_id: HOME_TAKE2_ID, score: 72 },
+};
+
 const FIXED: Record<string, TakeReport> = {
+  [HOME_TAKE2_ID]: homeTake2,
   t2: gazeExcluded,
   t3: done,
   't-fallback': fallback,
