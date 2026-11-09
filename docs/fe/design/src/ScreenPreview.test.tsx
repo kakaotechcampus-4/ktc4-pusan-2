@@ -263,12 +263,21 @@ it('제품 링크 · 옛 시안 주소를 설계서 안에서 처리하고 가�
   expect(host.textContent).toContain('연결하지 않은 화면');
 });
 
+it('피치가 없는 홈에서도 통합 푸터의 TIP·사용방법·정책 링크를 표시한다', async () => {
+  await render('home', 'empty');
+  expect(host.textContent).toContain('TIP /');
+  expect(host.textContent).toContain('사용방법 살펴보기');
+  expect(host.textContent).toContain('이용약관');
+  expect(host.textContent).toContain('개인정보 처리방침');
+});
+
 it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한다', async () => {
   await render('home');
   const link = [...host.querySelectorAll('a')].find(
     (item) => item.textContent?.trim() === '개인정보 처리방침',
   );
   expect(link).toBeDefined();
+  expect(link?.getAttribute('href')).toContain('/privacy?from=home');
   await act(async () => link!.click());
   expect(host.textContent).toContain('검토용 초안 · 시행 전');
   expect(host.textContent).toContain('카메라 영상과 음성의 차이');
@@ -276,6 +285,7 @@ it('홈의 정책 링크는 설계서 안 공개 정책 화면으로 이동한�
     (item) => item.textContent?.trim() === '이용약관',
   );
   expect(terms).toBeDefined();
+  expect(terms?.getAttribute('href')).toContain('/terms?from=home');
   await act(async () => terms!.click());
   expect(host.textContent).toContain('서비스의 목적');
 });
