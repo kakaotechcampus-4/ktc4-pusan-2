@@ -1177,47 +1177,11 @@
 }
 
 /* 승인 전 배치 시안: 제품 대본 토큰·보정 계약은 변경하지 않는다. */
-.stage-live .stage-foot {
-  grid-row: 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-}
-.stage-live .stage-notes {
-  justify-content: center;
-  width: 100%;
-  gap: 12px;
-  flex-wrap: nowrap;
-}
-.stage-live .stage-status {
-  display: contents;
-}
-.stage-live .stage-foot .key-help {
-  font-size: 12px;
-  flex: 0 1 auto;
-}
-.stage-live .stage-head .end {
-  min-height: 44px;
-  padding: 8px 18px;
-  flex: none;
-  border: 2px solid var(--color-ink-stage);
-  border-radius: 0;
-  background: var(--color-coral);
-  color: white;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.stage-live .stage-head .end:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.stage-live .stage-head .end:focus-visible {
-  outline: 2px solid var(--color-ink-stage);
-  outline-offset: 2px;
-}
-.stage-live .stage-head .end:hover:not(:disabled) {
-  background: var(--color-coral-deep);
-}
+.stage-live .stage-foot { grid-row: 4; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.stage-live .stage-notes { justify-content: center; width: 100%; gap: 12px; flex-wrap: nowrap; }
+.stage-live .stage-status { display: contents; }
+.stage-live .stage-foot .key-help { font-size: 12px; flex: 0 1 auto; }
+.stage-live .stage-head .end { min-height: 44px; padding: 8px 18px; flex: none; border: 2px solid var(--color-ink-stage); border-radius: 0; background: var(--color-coral); color: white; font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.stage-live .stage-head .end:disabled { opacity: .5; cursor: not-allowed; }
+.stage-live .stage-head .end:focus-visible { outline: 2px solid var(--color-ink-stage); outline-offset: 2px; }
+.stage-live .stage-head .end:hover:not(:disabled) { background: var(--color-coral-deep); }
