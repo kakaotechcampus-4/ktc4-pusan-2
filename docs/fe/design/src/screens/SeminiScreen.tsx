@@ -219,7 +219,10 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                 </div>
                 {viewChat && (
                   <div className="flex min-h-8 items-center gap-2 text-xs">
-                    <label htmlFor={memorySwitchId} className="cursor-pointer font-medium text-stone">
+                    <label
+                      htmlFor={memorySwitchId}
+                      className="cursor-pointer font-medium text-stone"
+                    >
                       기억 없이 대화하기
                     </label>
                     <input
