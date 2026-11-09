@@ -60,8 +60,12 @@ VersionOf = Callable[[TakeSnapshot], RecordVersion]
 
 #: 대본 사용 주장의 지표 이름(모델이 명시한다). 지표 표에는 없는 가상 이름이다
 SCRIPT_USE_METRIC = "script_mode"
+#: 대본 · 원고를 보거나 띄우거나 들고 읽으며 했다는 말("대본 보고 했어" · "화면에 대본을 띄워 놓고" · "종이 원고를 손에 들고
+#: 읽으면서", final60 re-contest-script-highlight · re-docent-paper-script). '안 보고'처럼 사이에 부정이 끼면 맞지 않는다
 _SCRIPT_USE_RE = re.compile(
-    r"(대본|원고|스크립트|프롬프터)\s*(을|를)?\s*(보고|보면서|보며|켜고|켜 놓고|띄우고|사용하고|사용해서|사용했|사용하며|사용하면서)"
+    r"(대본|원고|스크립트|프롬프터)\s*(을|를)?\s*(?:손에\s*)?"
+    r"(보고|보면서|보며|켜고|켜\s*놓고|띄우고|띄워|사용하고|사용해서|사용했|사용하며|사용하면서"
+    r"|들고|읽으면서|읽으며|읽고|읽었)"
 )
 CLAIM_OPS = ("OVERALL", "ISSUE", "VALUE", "CHANGE")
 

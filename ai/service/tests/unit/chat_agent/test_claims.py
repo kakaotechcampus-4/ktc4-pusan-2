@@ -1865,6 +1865,50 @@ def test_script_use_statement_typed_as_script_ratio_issue_is_a_script_claim(
         assert (v.claim_op, v.subject.metric) == (claim_op, "script_ratio")
 
 
+@pytest.mark.parametrize(
+    ("quote", "draft_kw", "mode", "verdict"),
+    [
+        (
+            "Take 2는 처음부터 화면에 대본을 띄워 놓고 보면서 하기로 한 연습이었어요",
+            {"type_": "REQUEST", "claim_op": None, "polarity": "NEUTRAL"},
+            "HIGHLIGHT",
+            "SUPPORTED",
+        ),
+        (
+            "Take 5는 종이 원고를 손에 들고 읽으면서 한 거라 대본 쪽 평가가 나쁜 건 당연해요",
+            {"claim_op": "OVERALL", "dimension": "script_independence", "polarity": "NEGATIVE"},
+            "OFF",
+            "UNVERIFIABLE",
+        ),
+    ],
+)
+def test_script_use_said_as_showing_or_holding_the_script_is_a_script_claim(
+    quote: str, draft_kw: dict[str, object], mode: str, verdict: str
+) -> None:
+    """'화면에 대본을 띄워 놓고' · '종이 원고를 손에 들고 읽으면서'도 대본 사용 진술이다: 화면 대본 표시로 판정하고 사실 · 확인
+    불가 문장을 붙인다(final60 re-contest-script-highlight · re-docent-paper-script 에서 대본 주장으로 보지 않아 문장이 빠짐)."""
+    from pitch_coach_ai.features.chat_agent.claims import AssessmentDraft, split_check
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+
+    from . import fakes as F
+
+    d = AssessmentDraft.model_validate(F.draft(quote, take_numbers=[5], **draft_kw))
+    (v,), _ = split_check(quote, [d], DEFAULT_CONFIG)
+    cv = run(v, t5(script_mode=mode), focus="take-5", script_used=None)
+    assert cv.verdict == verdict
+    assert cv.fact_sentences[0].startswith("기록에는 화면 대본이")
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["대본 안 보고 했어", "대본 읽기 속도가 빨랐어", "원고 분량이 많았어", "대본 없이 했어"],
+)
+def test_not_script_use_statements(text: str) -> None:
+    from pitch_coach_ai.features.chat_agent import claims as clm
+
+    assert not clm.states_script_use(text)
+
+
 def test_choice_questions_are_not_issue_negation() -> None:
     """'아니면' · '아닌지'는 고르는 질문이라 문제 주장의 부정이 아니다(#895 리뷰). 진짜 부정은 그대로."""
     from pitch_coach_ai.features.chat_agent.claims import _NEG_AFTER
