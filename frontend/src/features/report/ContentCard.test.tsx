@@ -115,7 +115,7 @@ describe('내용 전달 카드 — 측정됨', () => {
         status_shares: null,
       }),
     );
-    expect(none).toContain('핵심 내용 전달률—이 장에는 확인할 핵심 내용이 없어요');
+    expect(none).toContain('핵심 내용 전달률—확인할 핵심 내용이 없어요');
     expect(none).not.toContain('전달률0%');
   });
 
@@ -125,7 +125,21 @@ describe('내용 전달 카드 — 측정됨', () => {
   });
 
   it('말의 구성이 없으면 막대 대신 이유', () => {
-    expect(textOf(status('t-content-zero'))).toContain('말의 구성이 장에서 말한 내용이 없어요');
+    expect(textOf(status('t-content-zero'))).toContain('말의 구성말한 내용이 없어요');
+  });
+
+  it('Take 지표에 장들의 잠정 이유가 합쳐 오면 Take 문구로 보입니다 (#1152 보완)', () => {
+    const text = textOf(
+      withSummary({
+        delivery: {
+          ...contentMeasured.summary!.delivery,
+          reason_codes: ['SLIDES_EXCLUDED', 'STT_INCOMPLETE', 'SENTENCE_FALLBACK'],
+        },
+      }),
+    );
+    expect(text).toContain('음성 인식이 끊긴 장이 있어요. 녹음된 부분만 봤어요');
+    expect(text).toContain('일부 장은 문장 단위로 평가했어요(참고용)');
+    expect(text).not.toContain('이 장');
   });
 
   it('장별 목록 — 0 의 장, 핵심 내용 없는 장, 참고용 장, 실패 장', () => {

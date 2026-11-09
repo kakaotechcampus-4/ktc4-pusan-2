@@ -77,7 +77,7 @@ function MeasuredCard({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Facts facts={summary.facts} />
         <ExpressionLine expression={summary.expression} />
-        <SpeechMixBlock mix={summary.speech_mix} title="말의 구성" />
+        <SpeechMixBlock mix={summary.speech_mix} title="말의 구성" scope="take" />
       </div>
       <SlideList takeId={takeId} revision={status.revision} slides={summary.slides} />
     </Card>
@@ -91,7 +91,7 @@ function Headline({ status, summary }: { status: ContentStatus; summary: Coverag
   const excluded = delivery.reason_codes.includes('SLIDES_EXCLUDED');
   // 값이 없으면 숫자 자리에 이미 이유가 있어 한 번만 보입니다
   const notes =
-    delivery.value === null ? [] : reasonTexts(delivery.reason_codes, ['SLIDES_EXCLUDED']);
+    delivery.value === null ? [] : reasonTexts(delivery.reason_codes, ['SLIDES_EXCLUDED'], 'take');
   const zero = zeroText(delivery, summary.zero_kind);
   const prev = previousDelta(status);
 
@@ -109,7 +109,7 @@ function Headline({ status, summary }: { status: ContentStatus; summary: Coverag
           <dd className="mt-2">
             <MetricValue
               value={summary.contradiction.value}
-              reason={metricReason(summary.contradiction)}
+              reason={metricReason(summary.contradiction, 'take')}
             />
           </dd>
         </div>
@@ -148,7 +148,9 @@ function DeliveryValue({ summary }: { summary: CoverageSummary }) {
         <Badge tone="muted">간이</Badge>
       </span>
     );
-  return <MetricValue value={summary.delivery.value} reason={metricReason(summary.delivery)} />;
+  return (
+    <MetricValue value={summary.delivery.value} reason={metricReason(summary.delivery, 'take')} />
+  );
 }
 
 /** 숫자 또는 "—" + 이유. 0 과 null 을 섞지 않습니다 */
@@ -384,7 +386,11 @@ export function SlideRowBody({ slide }: { slide: SlideSummary }) {
       );
     }
     default:
-      return <span className="text-ink/80">{reasonText(slide.reason_codes[0] ?? null, true)}</span>;
+      return (
+        <span className="text-ink/80">
+          {reasonText(slide.reason_codes[0] ?? null, 'failedSlide')}
+        </span>
+      );
   }
 }
 

@@ -1,5 +1,12 @@
 import type { MixCategory, SpeechMix, SpeechMixBrief } from '@/types/report';
-import { mixHidden, mixLabel, mixMerged, percentText, reasonText } from './contentFormat';
+import {
+  type ReasonScope,
+  mixHidden,
+  mixLabel,
+  mixMerged,
+  percentText,
+  reasonText,
+} from './contentFormat';
 
 /** 말의 구성 막대 — Take 카드와 장별 펼침이 같이 씁니다 (#1154 3절 8번). 색만으로 나누지 않게 글자 범례를 둡니다 */
 const MIX_COLOR: Record<MixCategory, string> = {
@@ -20,16 +27,19 @@ function mixColor(category: string): string {
 export function SpeechMixBlock({
   mix,
   title,
+  scope,
 }: {
   mix: SpeechMix | SpeechMixBrief | null;
   title: string;
+  /** Take 전체인지 장 하나인지 — 이유 문구가 달라집니다 */
+  scope: ReasonScope;
 }) {
   if (!mix) return null;
   if (mixHidden(mix.state))
     return (
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-bold">{title}</h3>
-        <p className="text-sm text-ink/80">{reasonText(mix.reason_codes[0] ?? null)}</p>
+        <p className="text-sm text-ink/80">{reasonText(mix.reason_codes[0] ?? null, scope)}</p>
       </section>
     );
   if (mix.display.length === 0) return null;

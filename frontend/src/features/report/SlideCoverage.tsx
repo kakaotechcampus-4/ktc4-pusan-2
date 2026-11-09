@@ -74,7 +74,9 @@ function SlideBody({ detail }: { detail: SlideCoverageDetail }) {
       )}
       <Sentences sentences={detail.sentences} />
       <SpokenSentences detail={detail} />
-      {detail.detail && <SpeechMixBlock mix={detail.detail.speech_mix} title="이 장의 말의 구성" />}
+      {detail.detail && (
+        <SpeechMixBlock mix={detail.detail.speech_mix} title="이 장의 말의 구성" scope="slide" />
+      )}
       <KeyPoints rows={detail.key_points} />
       <Facts rows={detail.critical_facts} />
     </div>
@@ -243,7 +245,7 @@ function FailedSlide({ detail }: { detail: SlideCoverageDetail }) {
   const fallback = failure?.fallback ?? null;
   return (
     <div className="flex flex-col gap-2">
-      <Note>{reasonText(failure?.error?.code ?? null, true)}</Note>
+      <Note>{reasonText(failure?.error?.code ?? null, 'failedSlide')}</Note>
       {fallback && <FallbackValues fallback={fallback} />}
     </div>
   );

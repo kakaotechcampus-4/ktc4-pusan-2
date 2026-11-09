@@ -51,27 +51,55 @@ const REASON: Record<string, string> = {
 
 export const UNKNOWN_REASON = '이 값을 계산하지 못했어요';
 
+/**
+ * 문구가 어느 자리에 서는가.
+ * - `slide`: 장 하나 (장별 목록 · 펼침) — 문구표 그대로
+ * - `failedSlide`: 평가하지 못한 장
+ * - `take`: Take 전체 (카드 위쪽 숫자 · 수치 · 말의 구성). #1152 에서 Take 지표는 장들의 이유 코드를
+ *   합쳐 받으므로(`STT_INCOMPLETE` · `SENTENCE_FALLBACK`), "이 장" 문구를 쓰면 틀립니다
+ */
+export type ReasonScope = 'slide' | 'failedSlide' | 'take';
+
 /** 장 전체가 평가되지 못했을 때는 같은 코드라도 다르게 말합니다 */
 const FAILED_SLIDE_REASON: Record<string, string> = {
   STT_INCOMPLETE: '음성 인식이 끊겨 이 장을 평가하지 못했어요',
 };
 
-export function reasonText(code: string | null, slideFailed = false): string {
+/** Take 전체 자리 — 문구표의 "이 장" 문구만 바꿉니다 */
+const TAKE_REASON: Record<string, string> = {
+  NO_KEY_POINTS: '확인할 핵심 내용이 없어요',
+  NO_SPEECH: '말한 내용이 없어요',
+  SENTENCE_FALLBACK: '일부 장은 문장 단위로 평가했어요(참고용)',
+  STT_INCOMPLETE: '음성 인식이 끊긴 장이 있어요. 녹음된 부분만 봤어요',
+};
+
+const SCOPED_REASON: Record<ReasonScope, Record<string, string>> = {
+  slide: {},
+  failedSlide: FAILED_SLIDE_REASON,
+  take: TAKE_REASON,
+};
+
+export function reasonText(code: string | null, scope: ReasonScope = 'slide'): string {
   if (code === null) return UNKNOWN_REASON;
-  if (slideFailed && Object.hasOwn(FAILED_SLIDE_REASON, code)) return FAILED_SLIDE_REASON[code]!;
+  const scoped = SCOPED_REASON[scope];
+  if (Object.hasOwn(scoped, code)) return scoped[code]!;
   return Object.hasOwn(REASON, code) ? REASON[code]! : UNKNOWN_REASON;
 }
 
 /** 같은 문구는 한 번만 — `NOT_VALIDATED` · `OFFSCRIPT_DISABLED` 처럼 문구가 겹치는 코드가 있습니다 */
-export function reasonTexts(codes: readonly string[], skip: readonly string[] = []): string[] {
-  return [...new Set(codes.filter((c) => !skip.includes(c)).map((c) => reasonText(c)))];
+export function reasonTexts(
+  codes: readonly string[],
+  skip: readonly string[] = [],
+  scope: ReasonScope = 'slide',
+): string[] {
+  return [...new Set(codes.filter((c) => !skip.includes(c)).map((c) => reasonText(c, scope)))];
 }
 
 /** 값이 null 인 지표 자리에 보일 이유. `SLIDES_EXCLUDED` 는 범위 문구가 따로 있어 뒤로 미룹니다 */
-export function metricReason(metric: Metric | null): string {
+export function metricReason(metric: Metric | null, scope: ReasonScope = 'slide'): string {
   if (!metric) return UNKNOWN_REASON;
   const own = metric.reason_codes.filter((c) => c !== 'SLIDES_EXCLUDED');
-  return reasonText(own[0] ?? metric.reason_codes[0] ?? null);
+  return reasonText(own[0] ?? metric.reason_codes[0] ?? null, scope);
 }
 
 /** 0~1 → 정수 %. null 은 0 이 아니라 null 로 돌려줍니다 */
@@ -150,7 +178,7 @@ export function contentHeadline(status: ContentStatus | null): string | null {
       return '대본 전달도를 분석하고 있어요';
     case 'NOT_MEASURED':
     case 'FAILED':
-      return reasonText(status.reason_code);
+      return reasonText(status.reason_code, 'take');
     case 'MEASURED':
       return status.summary ? null : reasonText('NO_RESULT');
     default:
@@ -240,7 +268,7 @@ export function factsLine(facts: FactSummary): FactsLine {
   if (accuracy.value === null) {
     if (facts.accuracy_range)
       return { kind: 'estimate', text: `확인 전 추정 ${percentText(facts.accuracy_range.best)}` };
-    return { kind: 'measured', text: metricReason(accuracy) };
+    return { kind: 'measured', text: metricReason(accuracy, 'take') };
   }
   if (facts.pending > 0) {
     const checked = accuracy.evaluated;

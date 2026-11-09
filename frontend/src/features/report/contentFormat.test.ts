@@ -39,7 +39,21 @@ describe('이유 문구', () => {
 
   it('장이 실패했으면 STT_INCOMPLETE 를 장 평가 실패로 말합니다', () => {
     expect(reasonText('STT_INCOMPLETE')).toContain('녹음된 부분만 봤어요');
-    expect(reasonText('STT_INCOMPLETE', true)).toBe('음성 인식이 끊겨 이 장을 평가하지 못했어요');
+    expect(reasonText('STT_INCOMPLETE', 'failedSlide')).toBe(
+      '음성 인식이 끊겨 이 장을 평가하지 못했어요',
+    );
+  });
+
+  it('Take 전체 자리에서는 "이 장" 문구를 쓰지 않습니다 (#1152 Take 지표는 장들의 이유를 합침)', () => {
+    for (const code of ['NO_KEY_POINTS', 'NO_SPEECH', 'SENTENCE_FALLBACK', 'STT_INCOMPLETE'])
+      expect(reasonText(code, 'take')).not.toContain('이 장');
+    expect(reasonText('SENTENCE_FALLBACK', 'take')).toBe(
+      '일부 장은 문장 단위로 평가했어요(참고용)',
+    );
+    // 장 자리는 문구표 그대로
+    expect(reasonText('SENTENCE_FALLBACK')).toBe('이 장은 문장 단위로 평가했어요(참고용)');
+    // Take 자리에 따로 정하지 않은 코드는 문구표 그대로
+    expect(reasonText('FACTS_PENDING', 'take')).toBe(reasonText('FACTS_PENDING'));
   });
 
   it('겹치는 문구는 한 번만, 빼라는 코드는 뺍니다', () => {
