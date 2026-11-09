@@ -11,7 +11,12 @@ vi.hoisted(() => {
   import.meta.env.VITE_API_BASE = 'http://localhost';
 });
 
-import { contentMeasured, resetRevisedTake, slideScoredFixture } from '@/mocks/contentCoverage';
+import {
+  contentMeasured,
+  resetRevisedTake,
+  slideEstimatedFixture,
+  slideScoredFixture,
+} from '@/mocks/contentCoverage';
 import { reportHandlers } from '@/mocks/report';
 import { useTakeReport } from '@/shared/api/report';
 import { ContentCard } from './ContentCard';
@@ -114,6 +119,33 @@ describe('장별 펼침 — BE(#1156) 빈 값', () => {
     const panel =
       document.getElementById(rowButton(4).getAttribute('aria-controls')!)?.textContent ?? '';
     expect(panel).toBe('이 값을 계산하지 못했어요');
+  });
+
+  it('error 가 null 이어도 간이 값의 이유 코드로 실패 원인을 보입니다 (#1157 리뷰)', async () => {
+    server.use(
+      http.get('*/api/takes/:takeId/script-coverage/slides/:slide', ({ params }) =>
+        HttpResponse.json({
+          ...slideEstimatedFixture,
+          take_id: String(params.takeId),
+          revision: contentMeasured.revision,
+          slide_number: Number(params.slide),
+          failure: {
+            error: null,
+            fallback: {
+              ...slideEstimatedFixture.failure!.fallback!,
+              reason_codes: ['LLM_TIMEOUT'],
+            },
+          },
+        }),
+      ),
+    );
+    await render('t3');
+    await open(4);
+    await until(() => !(host.textContent?.includes('불러오고 있어요') ?? true));
+    const panel =
+      document.getElementById(rowButton(4).getAttribute('aria-controls')!)?.textContent ?? '';
+    expect(panel).toContain('채점이 시간 안에 끝나지 않았어요');
+    expect(panel).not.toContain('이 값을 계산하지 못했어요');
   });
 });
 

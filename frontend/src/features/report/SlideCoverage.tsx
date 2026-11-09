@@ -296,9 +296,11 @@ function Facts({ rows }: { rows: SlideCoverageDetail['critical_facts'] }) {
 function FailedSlide({ detail }: { detail: SlideCoverageDetail }) {
   const failure = detail.failure;
   const fallback = failure?.fallback ?? null;
+  // BE 계약상 error 가 없어도 간이 값의 reason_codes 에 실패 이유가 있을 수 있습니다 — error 를 먼저 보고 없으면 그쪽을 씁니다 (#1157 리뷰)
+  const code = failure?.error?.code ?? fallback?.reason_codes[0] ?? null;
   return (
     <div className="flex flex-col gap-2">
-      <Note>{reasonText(failure?.error?.code ?? null, 'failedSlide')}</Note>
+      <Note>{reasonText(code, 'failedSlide')}</Note>
       {fallback && <FallbackValues fallback={fallback} />}
     </div>
   );
