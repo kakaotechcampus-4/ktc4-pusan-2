@@ -128,6 +128,8 @@ describe('장별 펼침', () => {
     // 대본 밖 구간은 <mark> 와 범주 이름 글자 — 이모지 뒤에서도 위치가 맞습니다
     const marks = [...host.querySelectorAll('mark')].map((m) => m.textContent);
     expect(marks).toEqual(['안녕하세요[진행 말]', '사실 저도 놀랐어요[대본 밖 말]']);
+    // 기본 설정(OFFSCRIPT_DISABLED)이면 말한 문장 위에도 합쳐 보인다는 안내를 붙입니다 (#1152 최종 일치 확인)
+    expect(text).toContain('내가 말한 문장대본 밖 말은 세부 구분 없이 합쳐 보여요');
 
     expect(text).toContain('신규 고객 비중 60%중요다르게 말함');
     expect(text).toContain('60%40%다른 값');

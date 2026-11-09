@@ -16,6 +16,7 @@ import {
   factStatusLabel,
   importanceLabel,
   mixLabel,
+  mixMerged,
   reasonText,
   sentenceStatusLabel,
   splitMarks,
@@ -125,13 +126,23 @@ function sentenceTone(s: CoverageSentence) {
 
 /* ── 내가 말한 문장 ────────────────────────────────────────────── */
 
+/**
+ * 말한 문장 위의 안내 한 줄.
+ * - 대본 밖 말을 나누지 못했으면(`state` 가 `ok` 가 아님) 강조 없이 문장만 보이고 그 이유를 붙입니다
+ * - 나눴지만 세부 범주를 합쳐 보였으면(`OFFSCRIPT_DISABLED` · `NOT_VALIDATED`, #1152 최종 일치 확인)
+ *   말의 구성과 같은 "세부 구분 없이 합쳐 보여요"를 붙입니다
+ */
+function spokenNote(offscript: SlideCoverageDetail['offscript']): string | null {
+  if (!offscript) return null;
+  if (offscript.state !== 'ok') return reasonText(offscript.reason_codes[0] ?? null);
+  return mixMerged(offscript.reason_codes) ? reasonText('OFFSCRIPT_DISABLED') : null;
+}
+
 function SpokenSentences({ detail }: { detail: SlideCoverageDetail }) {
   if (detail.stt_sentences.length === 0) return null;
   const offscript = detail.offscript;
   const spans = offscript?.spans ?? [];
-  // 대본 밖 말을 나누지 못했으면 강조 없이 문장만 보이고 이유를 붙입니다
-  const why =
-    offscript && offscript.state !== 'ok' ? reasonText(offscript.reason_codes[0] ?? null) : null;
+  const why = spokenNote(offscript);
   return (
     <section className="flex flex-col gap-2">
       <h4 className="text-sm font-bold">내가 말한 문장</h4>

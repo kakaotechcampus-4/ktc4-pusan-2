@@ -11,6 +11,7 @@ import type {
 
 /**
  * 대본 전달도 상세 목 (BE 미구현 — #1153). 숫자는 #1152 '계약: 응답에 더하는 선택 필드'의 예시 그대로입니다.
+ * 말의 구성 · 대본 밖 구간의 이유 코드는 기본 설정(LLM 세부 분류 꺼짐)에서 오는 `OFFSCRIPT_DISABLED` 입니다(#1152 최종 일치 확인).
  *
  * 리포트(`mocks/report.ts`)는 Take id 마다 `content_status` 하나를 고릅니다.
  *   t3 · 그 밖                MEASURED — #1152 'Take 상세' 예시 (3장 채점 · 4장 간이, 일부 장 제외)
@@ -93,7 +94,7 @@ export const coverageSummaryFixture: CoverageSummary = {
   },
   speech_mix: {
     state: 'provisional',
-    reason_codes: ['NOT_VALIDATED', 'SLIDES_EXCLUDED'],
+    reason_codes: ['OFFSCRIPT_DISABLED', 'SLIDES_EXCLUDED'],
     tokens: 40,
     categories: { ...noMix, script: 30, procedural: 4, off_script: 6 },
     display: exampleDisplay,
@@ -119,7 +120,7 @@ export const coverageSummaryFixture: CoverageSummary = {
       status_shares: { covered: 0.5, partial: 0.0, missing: 0.167, contradicted: 0.333 },
       critical_gap_count: 1,
       delivery_band: null,
-      speech_mix: { state: 'ok', reason_codes: ['NOT_VALIDATED'], display: exampleDisplay },
+      speech_mix: { state: 'ok', reason_codes: ['OFFSCRIPT_DISABLED'], display: exampleDisplay },
     },
     {
       slide_number: 4,
@@ -451,7 +452,7 @@ export const slideScoredFixture: Omit<SlideCoverageDetail, 'take_id' | 'revision
     },
     speech_mix: {
       state: 'ok',
-      reason_codes: ['NOT_VALIDATED'],
+      reason_codes: ['OFFSCRIPT_DISABLED'],
       tokens: 40,
       categories: { ...noMix, script: 30, procedural: 4, off_script: 6 },
       display: exampleDisplay,
@@ -461,7 +462,7 @@ export const slideScoredFixture: Omit<SlideCoverageDetail, 'take_id' | 'revision
   offscript: {
     version: 1,
     state: 'ok',
-    reason_codes: [],
+    reason_codes: ['OFFSCRIPT_DISABLED'],
     spans: [
       {
         id: 'O1',

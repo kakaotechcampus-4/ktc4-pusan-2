@@ -96,6 +96,26 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(text).toContain('대본 밖 말은 세부 구분 없이 합쳐 보여요');
   });
 
+  it.each([
+    ['OFFSCRIPT_DISABLED (기본 설정)', ['OFFSCRIPT_DISABLED']],
+    ['NOT_VALIDATED', ['NOT_VALIDATED']],
+  ])(
+    '말의 구성에 %s 하나만 와도 합쳐 보인다는 안내를 붙입니다 (#1152 최종 일치 확인)',
+    (_, codes) => {
+      const mix = contentMeasured.summary!.speech_mix;
+      expect(textOf(withSummary({ speech_mix: { ...mix, reason_codes: codes } }))).toContain(
+        '대본 밖 말은 세부 구분 없이 합쳐 보여요',
+      );
+    },
+  );
+
+  it('세부 분류 코드가 없으면 합쳐 보인다는 안내를 붙이지 않습니다', () => {
+    const mix = contentMeasured.summary!.speech_mix;
+    expect(textOf(withSummary({ speech_mix: { ...mix, reason_codes: [] } }))).not.toContain(
+      '세부 구분 없이',
+    );
+  });
+
   it('장별 목록은 접어 두고 장 수만 보입니다 — 열면 장마다 한 줄', () => {
     const closed = textOf(contentMeasured);
     expect(closed).toContain('장별 보기 (2장)');
