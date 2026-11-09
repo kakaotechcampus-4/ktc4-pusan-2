@@ -1,6 +1,11 @@
 from fastapi import status
 
-from pitch_coach_backend.core.exceptions import AppException, NotFoundException
+from pitch_coach_backend.core.exceptions import (
+    AppException,
+    ConflictException,
+    ForbiddenException,
+    NotFoundException,
+)
 
 
 class AdminConsoleDisabled(NotFoundException):
@@ -18,3 +23,21 @@ class AdminChatQueryInvalid(AppException):
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "VALIDATION_ERROR"
     message = "run_id 와 conversation_id 중 하나만 보내 주세요."
+
+
+class AdminActionForbidden(ForbiddenException):
+    # 콘솔 스크립트가 붙이는 헤더 없이 상태를 바꾸려 했다 (dependencies.require_admin_action)
+    code = "ADMIN_ACTION_FORBIDDEN"
+    message = "관리자 콘솔에서 보낸 요청이 아닙니다."
+
+
+class TakeNotRecoverable(ConflictException):
+    # 복구할 상태가 아니다. 무엇이 맞지 않는지는 메시지로 알린다 (recovery.py)
+    code = "TAKE_NOT_RECOVERABLE"
+    message = "복구할 수 있는 연습이 아닙니다."
+
+
+class RecoveryRunning(ConflictException):
+    # 앞서 누른 복구가 아직 돈다
+    code = "RECOVERY_RUNNING"
+    message = "이 연습의 복구가 이미 진행 중입니다."

@@ -73,6 +73,22 @@ async function getJSON(path) {
   return response.json();
 }
 
+// 상태를 바꾸는 요청. 콘솔에서 보냈다는 헤더를 붙인다 — 없으면 BE 가 403 으로 막는다 (CSRF 방어)
+async function postAction(path) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'X-Admin-Action': '1' },
+  });
+  if (response.ok) return;
+  let reason = String(response.status);
+  try {
+    reason = `${response.status} ${(await response.json()).message}`;
+  } catch {
+    // 본문이 JSON 이 아니면 상태 코드만 보인다
+  }
+  throw new Error(reason);
+}
+
 // ---------- 요약 카드 ----------
 
 function renderCards(stats) {
@@ -336,9 +352,18 @@ document.getElementById('suggestions-category').addEventListener('change', () =>
 const LIVE_POLL_MS = 3000;
 const LIVE_STATUSES = ['READY', 'RUNNING'];
 const live = { request: 0 };
-// 지금 보는 Take 를 바꾼다. 요청 번호는 늦은 응답을 버리는 데 쓰니 그대로 둔다
-const resetLive = (takeId) =>
-  Object.assign(live, { takeId, timer: null, segments: [], seconds: [], slideEvents: [], script: [] });
+// 지금 보는 Take 를 바꾼다. 요청 번호는 늦은 응답을 버리는 데 쓰니 그대로 둔다.
+// take 는 목록에서 연 때의 행이다 (복구 버튼을 고르는 데 쓴다)
+const resetLive = (take) =>
+  Object.assign(live, {
+    take,
+    takeId: take?.id ?? null,
+    timer: null,
+    segments: [],
+    seconds: [],
+    slideEvents: [],
+    script: [],
+  });
 resetLive(null);
 const scriptLoad = { request: 0 };
 
@@ -374,13 +399,14 @@ function liveButton(take) {
 function openLive(take) {
   clearTimeout(live.timer);
   live.request += 1;
-  resetLive(take.id);
+  resetLive(take);
   document.getElementById('live-title').textContent =
     `${take.user_name} · ${take.pitch_title} · ${take.take_number}회차`;
   document.getElementById('live-error').hidden = true;
   const panel = document.getElementById('live');
   panel.hidden = false;
   renderLive(take.status);
+  renderRecovery(take);
   loadScript();
   pollLive();
   loadResults();
@@ -598,6 +624,56 @@ async function downloadExport() {
 document.getElementById('export-take').addEventListener('click', () => {
   if (live.takeId) downloadExport();
 });
+
+// ---------- 복구 ----------
+
+// 목록에서 연 때의 상태로 버튼을 고른다. 누르기 전에 한 번 더 묻고, 결과는 새로고침해 본다
+const RECOVERIES = [
+  {
+    id: 'rescore-held',
+    shows: (take) => take.analysis_hold_reason === 'COVERAGE_RESCORE_FAILED',
+    path: (takeId) => `api/takes/${takeId}/coverage/rescore`,
+    confirm:
+      '보존한 병합 후보로 재채점을 한 번 부릅니다. 성공하면 보류를 풀고 확인 · 리뷰로 이어 갑니다.',
+  },
+];
+
+function renderRecovery(take) {
+  document.getElementById('recovery-done').textContent = '';
+  document.getElementById('recovery-error').hidden = true;
+  let shown = false;
+  for (const action of RECOVERIES) {
+    const button = document.getElementById(action.id);
+    button.hidden = !(take && action.shows(take));
+    button.disabled = false;
+    shown ||= !button.hidden;
+  }
+  document.getElementById('recovery').hidden = !shown;
+}
+
+async function recover(action) {
+  const takeId = live.takeId;
+  if (!takeId || !window.confirm(action.confirm)) return;
+  const button = document.getElementById(action.id);
+  const done = document.getElementById('recovery-done');
+  const error = document.getElementById('recovery-error');
+  button.disabled = true;
+  error.hidden = true;
+  try {
+    await postAction(action.path(takeId));
+    if (takeId !== live.takeId) return;
+    done.textContent = '시작했습니다. 잠시 뒤 새로고침해 상태를 확인하세요.';
+  } catch (failure) {
+    if (takeId !== live.takeId) return;
+    error.textContent = `시작하지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+    button.disabled = false;
+  }
+}
+
+for (const action of RECOVERIES) {
+  document.getElementById(action.id).addEventListener('click', () => recover(action));
+}
 
 function ratios(measured) {
   const entries = Object.entries(measured);

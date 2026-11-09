@@ -1,7 +1,8 @@
 """관리자 콘솔 (/admin).
 
 화면은 static/ 의 HTML · JS · CSS 세 파일이고, 데이터는 /admin/api/* 에서 받는다. 전부 같은
-로그인(require_admin) 뒤에 있다. 앱 API 가 아니라서 /api 밖에 두고, /api/docs 에도 싣지 않는다.
+로그인(require_admin) 뒤에 있다. 상태를 바꾸는 복구 요청(POST)은 콘솔이 붙이는 헤더도 요구한다
+(require_admin_action). 앱 API 가 아니라서 /api 밖에 두고, /api/docs 에도 싣지 않는다.
 /admin 은 Caddy 가 /admin/ 으로 보낸다 — 여기서 보내면 uvicorn 이 https 를 몰라 http 주소가 된다.
 """
 
@@ -14,8 +15,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
-from pitch_coach_backend.module.admin import service
-from pitch_coach_backend.module.admin.dependencies import require_admin
+from pitch_coach_backend.module.admin import recovery, service
+from pitch_coach_backend.module.admin.dependencies import require_admin, require_admin_action
 from pitch_coach_backend.module.admin.dto import (
     AdminChatDay,
     AdminChatDiagnostic,
@@ -127,6 +128,19 @@ def take_inputs(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> 
 @router.get("/api/takes/{take_id}/export")
 def take_export(take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> AdminTakeExport:
     return service.export_take(db, take_id)
+
+
+# 복구 동작. 조건을 확인하고 백그라운드 작업을 띄운 뒤 202 로 답한다. 결과는 Take 목록에서 본다
+@router.post(
+    "/api/takes/{take_id}/coverage/rescore",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin_action)],
+)
+async def rescore_held_coverage(
+    take_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]
+) -> Response:
+    await recovery.rescore_held_coverage(db, take_id)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
 @router.get("/api/pitches/{pitch_id}/ai")
