@@ -16,7 +16,9 @@
   끝 처리(`finish_plan`): DONE · REFUSED 면 미완 단계 SKIPPED, PARTIAL 이면 TODO(DOING 포함), NEEDS_ACTION 은 그대로.
   답 쓰기 단계(`tool == "answer"`)는 답 문장이 하나 이상이면 DONE.
 - 끝 상태(`end_status`, TARGET 6): 조사가 한도 · 장애로 끊기지 않았고 풀리지 않은 단계(`unresolved_steps`: 시간 부족 · 복구되지 않은
-  확인 실패)가 없고 질문 대상마다 답 문장(확인한 답 · 확인한 '없음' · 비교할 수 없는 까닭)이 있으면 DONE, 아니면 PARTIAL.
+  확인 실패)가 없고 답 문장(확인한 답 · 확인한 '없음' · 비교할 수 없는 까닭)이 있으면 DONE, 아니면 PARTIAL. turn.py 는 이것을 모델
+  문장이 모두 빠져 코드 문장으로 답할 때와 반복으로 멈춘 조사에만 쓴다(모델 문장이 남은 답은 끊기지 않았으면 DONE, 기능 문서 6-1 7번
+  '끝 상태'). 하위 질문마다 답했는지(질문별 해소)는 아직 보지 않는다(15-2).
 - 상황 신호(`StepRun.signal`): 비교 불가 `NOT_COMPARABLE` · 기본 자료에 없음 `NOT_LOADED`(범위 피치가 있을 때만. 전체 범위에서
   막힌 읽기는 가져올 기록이 아니라 단계에 사실만 보인다) · 리뷰 없음 `REVIEW_MISSING` · 읽은 범위에
   기록 없음 `NO_RECORD`(facts `TAKES` · `GOAL` · `PROBLEM_SEGMENTS`) · 도구 실패 `TOOL_ERROR`. 기록 없음 · 리뷰 없음은 도구가 '없음'
@@ -564,8 +566,8 @@ def unresolved_steps(meta: list[dict[str, Any]]) -> list[int]:
 def end_status(meta: list[dict[str, Any]], *, cut: bool, answered: bool) -> str:
     """끝 상태(TARGET 6 · 5-5 status): 요청한 부분이 모두 해소됐으면 `DONE`, 아니면 `PARTIAL`.
 
-    해소 = 조사가 한도 · 장애로 끊기지 않았고(`cut` 아님), 풀리지 않은 단계(`unresolved_steps`)가 없고, 질문 대상마다 확인한
-    답 · 확인한 '없음' · 비교할 수 없는 까닭 문장이 있다(`answered`, turn.py 가 답 문장으로 본다). 복구된 도구 실패 이력만으로는
+    해소 = 조사가 한도 · 장애로 끊기지 않았고(`cut` 아님), 풀리지 않은 단계(`unresolved_steps`)가 없고, 확인한 답 · 확인한
+    '없음' · 비교할 수 없는 까닭 문장이 있다(`answered`, turn.py 가 답 문장으로 본다. 하위 질문마다인지는 아직 보지 않는다). 복구된 도구 실패 이력만으로는
     PARTIAL 이 되지 않는다. 끝 처리(`finish_plan`)도 이 상태를 쓴다(DONE 이면 실행하지 않은 단계 SKIPPED, PARTIAL 이면 TODO)."""
     return "DONE" if answered and not cut and not unresolved_steps(meta) else "PARTIAL"
 
