@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-fail-science-number-fix",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "첫 답의 '41%'가 '47%'로 바뀌어 나옴 — 답 검사로 고쳐 틀린 숫자를 내보내지 않음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sci",
+        "title": "청소년 과학 탐구 발표",
+        "takes": [
+          {
+            "take_id": "sci-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "sci-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.41,
+                0.6,
+                0.55,
+                0.58
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-sci"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2 첫 장에서 청중 쪽을 바라본 비율이 몇 퍼센트였는지 알려 주세요.",
+      "page_take_id": "sci-t2",
+      "faults": [
+        {
+          "kind": "corrupt_answer",
+          "from_text": "41%",
+          "to_text": "47%"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "right-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "41%",
+        "grader": "number",
+        "metric": "replan",
+        "derive": "sci-t2:GAZE.audience_ratio@1"
+      },
+      {
+        "check_id": "no-wrong-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "47%",
+        "grader": "number",
+        "metric": "replan"
+      },
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "모델이 첫 답에 '41%'를 쓰지 않으면 바꿔치기가 일어나지 않고 검사는 그대로 맞다."
+}

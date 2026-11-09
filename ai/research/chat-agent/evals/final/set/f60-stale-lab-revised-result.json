@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-stale-lab-revised-result",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should_not",
+  "title": "옛 답(35%) 뒤 결과가 다시 계산된 Take 4 — 옛 숫자를 되풀이하지 않고 다시 가져와 읽어 39%",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-lab",
+        "title": "연구 성과 중간 보고",
+        "takes": [
+          {
+            "take_id": "lab-t4",
+            "take_number": 4,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.39,
+                0.58,
+                0.61
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "revisions": {
+              "TAKE_RESULT": 2
+            }
+          },
+          {
+            "take_id": "lab-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-lab",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 4에서 2장 청중 시선 비율이 몇이었죠?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 4 2장 청중 시선 비율은 35%였어요.",
+          "basis": {
+            "pitches": [
+              {
+                "pitch_id": "p-lab",
+                "script_version_id": "sv-1",
+                "presentation_version_id": "pv-1",
+                "standard_version": 1,
+                "takes": [
+                  {
+                    "take_id": "lab-t4",
+                    "take_number": 4,
+                    "script_version_id": "sv-1",
+                    "presentation_version_id": "pv-1",
+                    "standard_version": 1,
+                    "results": {
+                      "TAKE_RESULT": 1,
+                      "REVIEW": 1
+                    },
+                    "rule_versions": {
+                      "GAZE": "gaze-1.3+1c10b82348a2"
+                    }
+                  }
+                ]
+              }
+            ],
+            "conversation_goal_version": 0,
+            "corpus_version": "guides-8",
+            "sources": []
+          }
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "예전에 들었던 Take 4 2장 시선 값, 지금 기록으로 다시 봐도 그대로인가요?",
+      "page_take_id": "lab-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "current-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "39%",
+        "grader": "number",
+        "derive": "lab-t4:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "current-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 4,
+          "slide": 2,
+          "metric": "audience_ratio"
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "no-old-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "35%",
+        "grader": "number",
+        "metric": "replan",
+        "note": "옛 메시지의 숫자는 이번 턴 근거가 아니다(6-8 · 6-9)"
+      },
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "exec:FETCH_TAKE:OK",
+          "tool:get_take_report:OK",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fetch-replan",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "decision:NOT_LOADED:*",
+            "propose:FETCH_TAKE:AUTO"
+          ],
+          [
+            "propose:FETCH_TAKE:AUTO",
+            "exec:FETCH_TAKE:OK",
+            "tool:get_take_report:OK",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "replan",
+        "note": "기본 자료에 없는 Take → 가져오기(AUTO) 뒤 다시 읽기. 코드가 먼저 가져오면 NOT_LOADED 결정 없이도 허용"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "lab-t4 결과 판 TAKE_RESULT 2(옛 답의 basis 는 판 1)."
+}

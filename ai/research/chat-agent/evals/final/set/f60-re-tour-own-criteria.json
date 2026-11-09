@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-re-tour-own-criteria",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "'우리 행사는 천천히가 원칙, 기준이 다르다' 이의 — 내 기준(분당 260자 이상)으로 다시 평가 승인 → 참고 결과",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-tour",
+        "title": "관광 상품 설명회",
+        "takes": [
+          {
+            "take_id": "tour-t3",
+            "take_number": 3,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "cpm": 270,
+              "issues": [
+                [
+                  "PACE_SLOW",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "tour-t4",
+            "take_number": 4,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                262,
+                266,
+                270,
+                274
+              ],
+              "issues": [
+                [
+                  "PACE_SLOW",
+                  1,
+                  true
+                ],
+                [
+                  "PACE_SLOW",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 67
+            }
+          }
+        ],
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": [
+            "또박또박 천천히 설명하기"
+          ],
+          "targets": [],
+          "script_used": null
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-tour"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "리뷰에서 말이 느리다고 지적했는데, 저희 투어 설명은 일부러 천천히 하는 게 원칙이라 기준이 달라요. 분당 260자 이상이면 괜찮다는 기준으로 다시 평가해 주세요.",
+      "page_take_id": "tour-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "dispute-to-reassess",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:USER_DISPUTE:*",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "replan",
+        "note": "이의에 다시 평가 근거(조건 낱말)가 있어 다시 평가 확인 카드를 낸다"
+      },
+      {
+        "check_id": "reassess-target",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": "tour-t4",
+        "path": "items[type=REASSESS].args.take_id"
+      },
+      {
+        "check_id": "reassess-criteria",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {
+          "metric": "cpm",
+          "operator": "GTE",
+          "value": 260
+        },
+        "path": "items[type=REASSESS].args.change.targets",
+        "note": "사용자가 말한 기준 그대로(분당 260자 이상)"
+      },
+      {
+        "check_id": "answer-before-card",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "claim:*",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "path",
+        "note": "ASK 행동 앞에 그때까지 확인한 답 문장을 먼저 낸다(6-1 4번)"
+      },
+      {
+        "check_id": "approve-before-reassess",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "approve:REASSESS",
+          "exec:REASSESS:*"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "result-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "REASSESS_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "reassess-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  },
+  "notes": "change 는 targets(cpm GTE 260) 하나. 바뀐 칸(사용자 기준 판정)의 값은 리뷰 규칙이 정하므로 검사하지 않는다."
+}

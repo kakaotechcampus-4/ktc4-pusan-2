@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-svc-ngo-save-expire",
+  "set": "agent_service",
+  "group": "approval",
+  "split": "dev",
+  "act": "should_not",
+  "title": "목표 저장 확인 카드가 30분 지나 만료 — 저장 안 함 · 만료 문장, 승인 대기 답에 '확인한 것' 줄 없음",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-ngo",
+        "title": "비영리 단체 후원 설명회",
+        "takes": [
+          {
+            "take_id": "ngo-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": 0.39
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "ngo-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": 0.36
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 67
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-ngo"
+    }
+  },
+  "turns": [
+    {
+      "message": "후원 설명회 연습 목표로, 다음 Take에서 청중을 바라보는 비율을 지금보다 높이는 걸 저장해 둘래요.",
+      "page_take_id": "ngo-t2",
+      "approval": "EXPIRE"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "expired-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.APPROVAL_EXPIRED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-goal",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "ask-then-expire",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:SAVE_GOAL:ASK",
+          "expire:SAVE_GOAL"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-save-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:SAVE_GOAL:*"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-success-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-result-guide",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-ana-workshop-no-segments",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should_not",
+  "title": "문제 구간이 0곳인 Take 의 문제 구간을 물음 — '없음'을 읽은 범위와 함께 RECORD 로, '문제없다' 평가로 바꾸지 않음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-ws",
+        "title": "사내 워크숍 진행 발표",
+        "takes": [
+          {
+            "take_id": "ws-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                305,
+                360,
+                310,
+                300
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "ws-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "issues": []
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "STRENGTH"
+              },
+              "score": 79
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-ws"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2에서 코치가 문제 구간으로 잡은 곳이 어디어디였는지 장 번호로 짚어 줘요.",
+      "page_take_id": "ws-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "says-none",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "구간[^.\\n]*(없었|없어|없습|없고|않았|않아요|않습|0곳|0개|하나도)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-evaluation",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(문제없|문제가 없(었|어요|습니다|네요)|아무 문제(가|도) 없|완벽|잘하셨|훌륭)",
+        "grader": "regex",
+        "note": "TARGET 6: 문제 구간 0곳을 평가로 바꾸지 않는다"
+      },
+      {
+        "check_id": "record-claim",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "kind": "RECORD"
+        },
+        "path": "claims"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "문제 구간 없음",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-record-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "decision:NO_RECORD:FACT_SHOWN:CODE"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:*",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-partial-checked",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

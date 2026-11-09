@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-seminar-autocheck-achieved",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "자동 목표 확인 — 2장 청중 시선 0.33 → 0.44(+0.11 ≥ 0.05) 이룸",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sem",
+        "title": "연구실 주간 세미나",
+        "takes": [
+          {
+            "take_id": "sem-t2",
+            "take_number": 2,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.35,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "sem-t3",
+            "take_number": 3,
+            "started_at": "2026-11-03T15:50:00+09:00",
+            "completed_at": "2026-11-03T15:57:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.33,
+                0.57,
+                0.62
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 69
+            }
+          },
+          {
+            "take_id": "sem-t4",
+            "take_number": 4,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.62,
+                0.44,
+                0.6,
+                0.61
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STABLE"
+              },
+              "score": 75
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-sem",
+      "goal": {
+        "metric": "audience_ratio",
+        "slide_number": 2,
+        "base_take_id": "sem-t3",
+        "version": 1,
+        "status": "OPEN",
+        "after_take": 3,
+        "created_at": "2026-11-04T09:00:00+09:00"
+      }
+    }
+  },
+  "turns": [
+    {
+      "auto_goal_check": true
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "goal-status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "ACHIEVED",
+        "path": "goal_result.status"
+      },
+      {
+        "check_id": "goal-terminal",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "goal_result.terminal",
+        "note": "UNKNOWN 만 terminal false(5-5)"
+      },
+      {
+        "check_id": "goal-observed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": 0.44,
+        "path": "goal_result.observed",
+        "derive": "sem-t4:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "goal-word",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_WORD.ACHIEVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "no-actions",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS",
+          "START_PRACTICE"
+        ],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path",
+        "note": "TAKE_REVIEWED 턴은 저장 · 다시 평가 · 이동 행동을 내지 않는다"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): 자동 목표 확인에도 '확인한 것' 줄 없음"
+      }
+    ]
+  },
+  "notes": "목표: audience_ratio 2장 gt_base, 기준 sem-t3 0.33, min_delta 0.05. 저장 뒤 시작한 sem-t4 의 2장 0.44 → ACHIEVED."
+}

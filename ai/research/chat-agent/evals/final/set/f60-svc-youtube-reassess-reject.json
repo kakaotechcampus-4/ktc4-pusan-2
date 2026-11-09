@@ -1,0 +1,177 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-svc-youtube-reassess-reject",
+  "set": "agent_service",
+  "group": "approval",
+  "split": "dev",
+  "act": "should",
+  "title": "핵심어 대본 이의 → 다시 평가 확인 카드 → 거절 — 리뷰 호출 없음 · 거절 문장, 앞선 판단 문장은 남음",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-yt",
+        "title": "유튜브 채널 기획 발표",
+        "takes": [
+          {
+            "take_id": "yt-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "script_mode": "KEYWORD"
+          },
+          {
+            "take_id": "yt-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "script_ratio": [
+                0.2,
+                0.48,
+                0.22,
+                0.2
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "script_independence": "PRIORITY"
+              },
+              "score": 69
+            },
+            "script_mode": "KEYWORD"
+          }
+        ],
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": [
+            "화면 보며 자연스럽게 말하기"
+          ],
+          "targets": [],
+          "script_used": null
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-yt"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3는 핵심어 대본을 켜 놓고 한 거예요. 대본을 쓴 조건으로 다시 평가해 볼 수 있을까요?",
+      "page_take_id": "yt-t3",
+      "approval": "REJECT"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "dispute-to-reassess",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:USER_DISPUTE:*",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "ask-then-reject",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:REASSESS:ASK",
+          "reject:REASSESS"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-reassess-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:REASSESS:*"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-review-call",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "rejected-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.REJECTED_REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "reassess-target",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": "yt-t3",
+        "path": "items[type=REASSESS].args.take_id"
+      },
+      {
+        "check_id": "reassess-change",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": true,
+        "path": "items[type=REASSESS].args.change.script_used"
+      },
+      {
+        "check_id": "script-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SCRIPT_UNKNOWN",
+        "grader": "template"
+      },
+      {
+        "check_id": "script-not-allowed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_NOT_ALLOWED",
+        "grader": "template",
+        "note": "평가 기준 script_used null"
+      },
+      {
+        "check_id": "script-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "SCRIPT_FACT",
+          "fields": {
+            "state": "핵심어로 켜져"
+          }
+        },
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "script-claim-verdict",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "verdict": "PARTLY"
+        },
+        "path": "assessments",
+        "metric": "objectivity",
+        "note": "script_mode KEYWORD → PARTLY(6-3). 거절해도 판단 · 근거는 지우지 않는다(6-2)"
+      }
+    ]
+  }
+}
