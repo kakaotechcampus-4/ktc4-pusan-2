@@ -341,6 +341,10 @@ def _two_takes_llm() -> F.FakeLlm:
     )
 
 
+def _talk_llm(kind: str) -> F.FakeLlm:
+    return F.FakeLlm([F.plan(route="SMALL_TALK", steps=[], talk_kind=kind)])
+
+
 def _scope_llm(reason: str) -> F.FakeLlm:
     return F.FakeLlm([F.plan(route="OUT_OF_SCOPE", steps=["범위 확인"], scope_reason=reason)])
 
@@ -403,7 +407,11 @@ def _guide_llm() -> F.FakeLlm:
             F.tools(("search_guides", {"query": "긴장"})),
             F.done(),
         ],
-        answers=[F.answer([F.claim("GUIDE", f'자료에 따르면 "{quote}"', source_ids=["g-07"])])],
+        answers=[
+            F.answer(
+                [F.claim("GUIDE", f'자료에 따르면 "{quote}"', source_ids=["g-07"], quote=quote)]
+            )
+        ],
         fixes=[F.fix({})],
     )
 
@@ -446,6 +454,14 @@ MORE = {
     "svc-general-guide-found": _guide_llm,
     "svc-general-number-lure": lambda: _general_llm("svc-general-number-lure"),
     "svc-memory-same-verdict": _verdict_llm,
+    # 가벼운 말(P-0008 5-1): 계획 한 번 + 코드 고정 문장
+    "svc-talk-greeting": lambda: _talk_llm("GREETING"),
+    "svc-talk-thanks": lambda: _talk_llm("THANKS"),
+    "svc-talk-capability": lambda: _talk_llm("CAPABILITY"),
+    "svc-talk-practice": lambda: _talk_llm("PRACTICE_INTENT"),
+    "svc-talk-farewell": lambda: _talk_llm("FAREWELL"),
+    "svc-talk-mixed-record": lambda: _record_llm(_msg("svc-talk-mixed-record")),
+    "svc-talk-greeting-oos": lambda: _scope_llm("OTHER"),
 }
 
 
@@ -767,7 +783,7 @@ def test_search_without_a_corpus_counts_as_searched_so_general_advice_is_no_viol
 
     real = ev.scn.build_world
     monkeypatch.setattr(
-        ev.scn, "build_world", lambda sc: dataclasses.replace(real(sc), corpus=None)
+        ev.scn, "build_world", lambda sc, **kw: dataclasses.replace(real(sc, **kw), corpus=None)
     )
     llm = F.FakeLlm(
         [

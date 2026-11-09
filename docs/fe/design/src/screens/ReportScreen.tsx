@@ -1,5 +1,5 @@
 // 제품 Take 리포트(`frontend/src/features/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/ui/Button';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { Card, Stat } from '@/ui/Panel';
@@ -171,7 +171,7 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
             </section>
           )}
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line-strong pt-5">
-            <SurveyLine sent={surveySent} onSent={() => onNavigate('report', 'survey-sent')} />
+            <SurveyLine sent={surveySent} />
             <Button className="ml-auto" onClick={() => onNavigate('home')}>
               내 피치로
             </Button>
@@ -186,11 +186,16 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
  * 리포트 아래 설문 줄 (제품 `TakeSurvey.tsx`, #776). 분석이 끝난 리포트에만 두고, 버튼으로만 연다.
  * 보낸 리포트에는 버튼 대신 보냈다는 줄만 둔다
  */
-function SurveyLine({ sent, onSent }: { sent: boolean; onSent: () => void }) {
+function SurveyLine({ sent }: { sent: boolean }) {
   const [open, setOpen] = useState(false);
-  if (sent)
+  const [submitted, setSubmitted] = useState(false);
+  const status = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (submitted) status.current?.focus();
+  }, [submitted]);
+  if (sent || submitted)
     return (
-      <p role="status" className="text-sm text-ink/80">
+      <p ref={status} tabIndex={-1} role="status" className="text-sm text-ink/80">
         설문을 보냈어요. 다음 분석을 고치는 데 쓸게요.
       </p>
     );
@@ -199,7 +204,9 @@ function SurveyLine({ sent, onSent }: { sent: boolean; onSent: () => void }) {
       <Button variant="secondary" onClick={() => setOpen(true)}>
         이번 분석 설문 남기기
       </Button>
-      {open && <TakeSurveyDialog onClose={() => setOpen(false)} onSent={onSent} />}
+      {open && (
+        <TakeSurveyDialog onClose={() => setOpen(false)} onSent={() => setSubmitted(true)} />
+      )}
     </>
   );
 }

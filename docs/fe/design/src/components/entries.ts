@@ -34,7 +34,7 @@ export const componentEntries: GuideComponent[] = [
       '화면을 옮기면 ButtonLink(라우터 링크), 그 자리에서 무언가 하면 Button이다.',
       'Button은 기본으로 type="button"이다. 폼을 제출할 때만 type="submit"을 준다.',
       '처리 중에는 막고 문구를 "…하는 중…"으로 바꾼다. 같은 요청을 두 번 보내지 않는다.',
-      '누른 버튼이 그 자리에서 막히면(처리 중 · 끝 장) disabled 대신 aria-disabled를 준다. aria-disabled는 마우스만 막으므로 Button이 Enter · Space의 click도 onClick에 넘기지 않고 제출도 막는다(#874 리뷰). disabled는 쥐고 있던 초점을 body로 떨어뜨려 창 밖으로 빠진다(#818 · #845). 모양은 둘이 같다.',
+      '누른 버튼이 그 자리에서 막히면(처리 중 · 끝 장) disabled 대신 aria-disabled를 준다. aria-disabled는 비활성 상태를 알린다. CSS로 포인터 입력을 막고 Button이 Enter · Space의 click을 onClick에 넘기지 않으며 기본 제출도 막는다(#874 리뷰). disabled는 쥐고 있던 초점을 body로 떨어뜨려 창 밖으로 빠진다(#818 · #845). 모양은 둘이 같다.',
       'sm(36px)은 표 · 카드 안처럼 좁은 곳에서만 쓴다. 기본은 md(44px).',
     ],
     tokens: ['coral-deep', 'ink', 'panel', 'cream'],
@@ -429,7 +429,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     code: `// 제품: 리포트 아래 줄. 분석이 끝난 리포트에만 버튼을 둔다
 <TakeSurvey takeId={report.take_id} completed={report.status === 'COMPLETED'} />`,
     productNote:
-      '서버에 보내지 않는다. 보내기를 누르면 바로 닫히고 오류 · 중복 처리는 그리지 않는다. 문항 문구는 아직 임시다(팀 확정 전).',
+      '리포트 샘플에서는 보내면 완료 안내로 초점이 옮겨 간다. 단독 창 예제는 닫히는 동작만 보여 준다. 서버 전송 · 오류 · 중복 처리는 재현하지 않는다. 문항 문구는 아직 임시다(팀 확정 전).',
   },
   {
     kind: 'component',
@@ -459,23 +459,28 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     knownIssues: [
       '보관 기한 "2026년 12월 31일"은 임시 값이다. BE 삭제 일정과 함께 팀이 정한다(BE take-survey.md 5절).',
     ],
-    productNote: '서버에 보내지 않는다. 동의를 누르면 바로 닫힌다.',
+    productNote:
+      '홈 샘플에서는 동의하면 완료 안내로 초점이 옮겨 간다. 단독 창 예제는 닫히는 동작만 보여 준다. 서버 전송은 재현하지 않는다.',
   },
   {
     kind: 'component',
     id: 'slide-preview',
-    title: '미리보기 창',
+    title: '슬라이드 확인 창',
     group: dialogs,
-    status: '시안',
-    summary: '슬라이드를 크게 보는 창. 피치 생성 화면의 "슬라이드 미리보기" 상태와 같다.',
-    states: [view('open', '열림', '피치 생성 화면에서 연 슬라이드 미리보기.')],
-    rules: ['보기만 하는 창이라 닫기 하나와 이전 · 다음만 둔다.', '닫으면 보던 단계로 돌아간다.'],
-    tokens: ['panel', 'ink'],
-    sources: [],
-    file: 'src/screens/CreateScreen.tsx',
+    status: '제품에 있음',
+    summary:
+      'PDF를 올린 뒤 자동으로 열려 내용과 순서를 확인하는 창. 피치 생성 화면의 "슬라이드 확인" 상태와 같다.',
+    states: [view('open', '열림', '업로드 직후 확인 필요 상태로 연 창.')],
+    rules: [
+      '머리에 제목과 닫기, 바닥에 확인 상태(확인 필요 · 확인 완료)와 확인 완료 버튼을 둔다.',
+      '닫기만 하면 확인 필요로 남는다. 확인 완료를 눌러야 필수 준비에 포함한다.',
+    ],
+    tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
+    sources: ['frontend/src/features/pitch/create/steps/SlidePane.tsx'],
+    file: 'src/screens/PitchCreateScreen.tsx',
     props: [],
-    code: `// 제품에는 없다. 설계서 샘플 안의 창만 그린다`,
+    code: `// 제품 SlidePane 안의 확인 창. 설계서는 피치 생성 샘플 안의 창을 그대로 보인다`,
     productNote:
-      '설계서는 피치 생성 샘플 안의 창을 그대로 보인다. 제품은 이 창을 쓰지 않고 뷰어 카드의 전체 화면 버튼을 쓴다(#802에서 썸네일로 여는 흐름이 빠졌다).',
+      '제품 창은 실제 PDF와 "슬라이드 V{n} · N장" 줄을 그린다. 샘플은 3장의 예시 자료를 그리고 서버에 묻지 않는다.',
   },
 ];

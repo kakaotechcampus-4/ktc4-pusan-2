@@ -10,6 +10,11 @@ dist
 .vite
 *.tsbuildinfo
 
+# E2E(Playwright) 결과 — 실패한 시험의 trace · 스크린샷
+test-results/
+playwright-report/
+blob-report/
+
 # OS
 .DS_Store
 Thumbs.db

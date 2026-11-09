@@ -26,8 +26,10 @@ export const MEMORY_SETTING_OFF_TEXT = '기억 설정이 꺼져 있어요';
 
 /** 대화 머리의 '기억 없이' 표시 (F15 · L3-44 "고른 대화에는 표시를 붙인다") */
 export function MemoryOffBadge() {
-  const memoryOff = useChatStore((s) => s.memoryOff);
-  if (!memoryOff) return null;
+  const showBadge = useChatStore(
+    (s) => s.memoryOff && (s.conversationId !== null || s.pending !== null || s.creating !== null),
+  );
+  if (!showBadge) return null;
   return (
     <span
       className="whitespace-nowrap rounded border border-line-strong px-1.5 text-xs font-bold text-stone"
@@ -58,7 +60,10 @@ export function MemoryOffSwitch({ userId }: { userId: string }) {
 
   if (!editable) return null;
   return (
-    <div className="mb-2 flex items-center gap-2 text-xs" data-memory-off-switch="">
+    <div className="flex min-h-8 flex-wrap items-center gap-2 text-xs" data-memory-off-switch="">
+      <label htmlFor={id} className="cursor-pointer font-medium text-stone">
+        {MEMORY_OFF_LABEL} 대화하기
+      </label>
       <input
         id={id}
         type="checkbox"
@@ -67,11 +72,13 @@ export function MemoryOffSwitch({ userId }: { userId: string }) {
         disabled={settingOff}
         aria-describedby={settingOff ? `${id}-off` : undefined}
         onChange={(event) => useChatStore.getState().setMemoryOff(event.target.checked)}
-        className="h-4 w-4 accent-coral-deep"
+        className="peer sr-only"
       />
-      <label htmlFor={id} className="font-bold">
-        {MEMORY_OFF_LABEL} 대화하기
-      </label>
+      <label
+        htmlFor={id}
+        aria-hidden="true"
+        className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-stone transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-coral-deep peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-coral peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+      />
       {settingOff && (
         <span id={`${id}-off`} className="text-stone">
           · {MEMORY_SETTING_OFF_TEXT}
