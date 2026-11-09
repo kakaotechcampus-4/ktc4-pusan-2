@@ -1,0 +1,146 @@
+{
+  "schema_version": "1.0",
+  "id": "path-ud-script-dispute",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 4 대본 의존 판정이 억울하다며 대본을 보고 한 발표였다고 함 — 다시 평가 제안(ASK) → 승인 → 실행 → 답, 공식 결과는 그대로",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-4": {
+            "result": {
+              "script_ratio": [
+                0.1,
+                0.12,
+                0.6,
+                0.15
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 4에서 대본 의존이라고 나온 건 억울해. 사실 대본을 띄워 놓고 읽은 발표였거든. 그 조건으로 다시 판정해 줘",
+      "page_take_id": "t-4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "dispute-flow",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:REASSESS:ASK",
+          "approve:REASSESS",
+          "exec:REASSESS:OK",
+          "claim:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "dispute-decision",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:USER_DISPUTE:ACTION:LLM",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "one-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "before-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 88,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "PRIORITY",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].before"
+      },
+      {
+        "check_id": "after-rule-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": {
+          "score": 100,
+          "dimensions": {
+            "audience_gaze": "STRENGTH",
+            "script_independence": "NOT_EVALUABLE",
+            "pacing_rhythm": "STRENGTH",
+            "vocal_delivery": "STRENGTH",
+            "fluency": "STRENGTH",
+            "content_delivery": "NOT_EVALUABLE"
+          },
+          "criteria_results": []
+        },
+        "path": "cards[type=REASSESS_RESULT].after"
+      },
+      {
+        "check_id": "changed-fields",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": [
+          "score",
+          "dimensions.script_independence"
+        ],
+        "path": "cards[type=REASSESS_RESULT].changed_fields"
+      },
+      {
+        "check_id": "reassess-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "REASSESS_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "grader": "template",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

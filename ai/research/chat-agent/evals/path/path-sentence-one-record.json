@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "id": "path-sentence-one-record",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "보고 있는 Take 5 한 건만 읽는 질문(마지막 장 52%) — '기록 N건을 확인' 문장이 붙지 않고 가져오기도 없다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "audience": [
+                0.62,
+                0.58,
+                0.28,
+                0.52
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 마지막 장은 청중을 얼마나 봤는지만 말해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-then-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-fetch",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "propose:FETCH_TAKE:AUTO",
+          "exec:FETCH_TAKE:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-checked-sentence",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "absent",
+        "expect": "기록 [0-9]+건을 확인"
+      },
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "52%",
+        "derive": "t-5:GAZE.audience_ratio@4"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "grader": "target",
+        "compare": "contains",
+        "expect": {
+          "take": 5,
+          "slide": 4
+        }
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

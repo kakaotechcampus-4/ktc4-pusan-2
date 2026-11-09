@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "path-sentence-two-records",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 3 와 Take 5 를 읽어 3장 시선 비교(52% → 28%) — 읽은 기록이 2건 이상이라 답 끝에 '기록 N건을 확인' 문장",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-3": {
+            "result": {
+              "audience": [
+                0.62,
+                0.58,
+                0.52,
+                0.6
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3 이후로 3장에서 관객 쳐다보는 비율이 어떻게 변했는지 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-compare",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "exec:FETCH_TAKE:OK",
+            "tool:compare_takes:*",
+            "claim:*"
+          ],
+          [
+            "exec:FETCH_TAKE:OK",
+            "tool:get_take_report:OK",
+            "claim:*"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "previous",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "52%",
+        "derive": "t-3:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "current",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "28%",
+        "derive": "t-5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "conclusion",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "나빠졌|낮아졌|떨어졌|줄었"
+      },
+      {
+        "check_id": "checked-sentence",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "기록 [2-9]건을 확인"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}
