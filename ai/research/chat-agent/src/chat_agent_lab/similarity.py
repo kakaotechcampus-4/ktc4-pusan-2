@@ -10,6 +10,8 @@
   목표 유무 · 화면 이름 · 장애 종류)이 같으면 이것도 FLAG 로 표시한다.
 - 출력에는 시나리오 글을 넣지 않는다: 새 문항마다 `id · 가장 비슷한 기존 id · 점수 · 판정`과 끝의 PASS / FLAG 수만.
 - 종료 코드: FLAG 가 있으면 1, 없으면 0. 기존 폴더는 형식 검사 없이 JSON 이면 읽는다(`schema.json` 제외).
+  읽지 못한 파일(JSON 이 아니거나 객체가 아님)이 하나라도 있거나, 새 쪽 · 기존 쪽에 시나리오(차례 `turns`가 있는 객체)가 하나도
+  없으면 비교하지 않고 2 다(빈 비교를 PASS 로 끝내지 않는다). 출력에는 파일 이름만 쓴다.
 """
 
 from __future__ import annotations
@@ -78,19 +80,26 @@ def fingerprint(sc: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def load_dir(folder: Path) -> dict[str, dict[str, Any]]:
-    """폴더의 시나리오 JSON(`schema.json` 제외)을 id → 내용으로 읽는다. 읽지 못하는 파일은 건너뛴다."""
+def load_dir(folder: Path) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """폴더의 시나리오 JSON(`schema.json` 제외)을 id → 내용으로 읽는다. 돌려주는 값: (시나리오, 읽지 못한 파일 이름).
+
+    JSON 이 아니거나 객체가 아니면 읽지 못한 파일이다. 객체지만 차례(`turns`)가 비었으면 시나리오가 아니므로 담지 않는다."""
     out: dict[str, dict[str, Any]] = {}
+    bad: list[str] = []
     for f in sorted(folder.glob("*.json")):
         if f.name == "schema.json":
             continue
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
+            bad.append(f.name)
             continue
-        if isinstance(d, dict):
+        if not isinstance(d, dict):
+            bad.append(f.name)
+            continue
+        if isinstance(d.get("turns"), list) and d["turns"]:
             out[str(d.get("id") or f.stem)] = d
-    return out
+    return out, bad
 
 
 def compare(
@@ -138,10 +147,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     ap.add_argument("--out", type=Path)
     a = ap.parse_args(argv)
-    new = load_dir(a.new)
+    new, bad = load_dir(a.new)
     old: dict[str, dict[str, Any]] = {}
     for d in a.against:
-        old.update(load_dir(d))
+        got, bad_old = load_dir(d)
+        old.update(got)
+        bad += bad_old
+    # 읽지 못한 파일이 있거나 한쪽이 비면 비교하지 않는다(빈 비교는 모두 PASS 라 변형을 놓친다). 파일 이름만 낸다
+    problems = [f"읽지 못한 파일: {name}" for name in bad]
+    if not new:
+        problems.append("새 쪽에 시나리오가 없다")
+    if not old:
+        problems.append("기존 쪽에 시나리오가 없다")
+    if problems:
+        sys.stdout.write("\n".join(problems) + "\n비교하지 않음\n")
+        return 2
     rows = compare(new, old, a.threshold)
     text = render(rows)
     sys.stdout.write(text)

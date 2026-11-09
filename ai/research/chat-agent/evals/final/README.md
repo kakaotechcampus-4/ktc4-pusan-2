@@ -30,7 +30,7 @@
 
 ## 다시 돌리기 (`ai/research/chat-agent`에서)
 ```bash
-.venv/bin/python -m chat_agent_lab.holdout verify --dir evals/final/set --manifest evals/final/manifest.json --no-grader  # 문항이 동결본과 같은지
+.venv/bin/python -m chat_agent_lab.holdout verify --dir evals/final/set --manifest evals/final/manifest.json --rules evals/final/RULES.md --no-grader  # 문항 · 규칙이 동결본과 같은지
 .venv/bin/python -m chat_agent_lab.evals --dir evals/final/set --set all --judge --workers 4 --search hybrid --out outputs/evals/final-rerun
 ```
-채점 코드는 동결 뒤에도 바뀌지 않았지만(최종 실행 때 `verify` 채점기 포함 일치), 이후 판에서 채점 코드가 바뀌면 `--no-grader`로 문항만 대조한다.
+채점 코드는 최종 실행 때까지 바뀌지 않았다(최종 실행 때 `verify` 채점기 포함 일치). 그 뒤 세트 도구(`holdout.py` 규칙 대조 · 오류 위치 가리기, `similarity.py` 읽기 실패 · 빈 쪽이면 2)를 고쳐 채점기 포함 대조는 이 두 파일이 다르다고 나오므로, `--no-grader`로 문항 · 규칙만 대조한다. 동결 목록에 규칙 해시가 있어 `--rules`는 빼면 실패한다.

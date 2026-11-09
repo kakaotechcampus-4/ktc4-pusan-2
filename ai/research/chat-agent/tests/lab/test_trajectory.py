@@ -244,6 +244,36 @@ def test_similarity_flag_pass_and_no_text(
     assert "청중" not in shown and "질문이" not in shown
 
 
+def test_similarity_fails_on_unreadable_file_or_empty_side(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """읽지 못한 파일이 있거나 한쪽에 시나리오가 없으면 비교하지 않고 2(빈 비교를 PASS 로 끝내지 않는다). 파일 이름만 낸다."""
+    old, new = tmp_path / "old", tmp_path / "new"
+    secret = "Take 3 의 청중 시선 비율이 왜 낮았는지 알려 주세요"
+    _write(old, "o1", secret)
+    _write(new, "n1", "발표 마지막에 질문이 나오면 어떻게 답하면 좋을까요")
+    assert sim.main(["--new", str(new), "--against", str(old)]) == 0
+    capsys.readouterr()
+    # 기존 쪽 파일 하나가 JSON 이 아님
+    (old / "broken.json").write_text("{" + secret, encoding="utf-8")
+    assert sim.main(["--new", str(new), "--against", str(old)]) == 2
+    out = capsys.readouterr().out
+    assert "읽지 못한 파일: broken.json" in out and "청중" not in out
+    (old / "broken.json").unlink()
+    # 객체가 아닌 JSON 도 읽지 못한 파일이다
+    (new / "list.json").write_text("[1, 2]", encoding="utf-8")
+    assert sim.main(["--new", str(new), "--against", str(old)]) == 2
+    (new / "list.json").unlink()
+    # 한쪽에 시나리오(차례가 있는 객체)가 없다
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "notes.json").write_text('{"id": "x"}', encoding="utf-8")
+    assert sim.main(["--new", str(empty), "--against", str(old)]) == 2
+    assert "새 쪽에 시나리오가 없다" in capsys.readouterr().out
+    assert sim.main(["--new", str(new), "--against", str(empty)]) == 2
+    assert "기존 쪽에 시나리오가 없다" in capsys.readouterr().out
+
+
 def test_trajectory_default_paths_and_regex() -> None:
     """경로 관찰값의 기본 경로: 값 비교는 events, regex 는 plan_text(단계 글을 이은 것)."""
     from chat_agent_lab import grading as gr

@@ -5,10 +5,12 @@
   해시만 낸다. 고치는 사람이 이 명령을 돌려도 문항을 보지 않게 하기 위해서다.
 - 명령
   - `check --dir <폴더>`: 시나리오 모양(pydantic) · 뜻(묶음 · 차례 · 템플릿 이름 · 가상 기록) 검사. 파일마다 `OK` 또는 `FAIL`과
-    위치 · 오류 종류. 개수 검사는 하지 않는다(세트 · 묶음 이름은 기존 `GROUPS`를 쓰되 개수는 이 세트의 동결 목록이 정한다).
+    위치 · 오류 종류. 위치에는 스키마가 정한 칸 이름과 목록 번호만 쓰고, 작성자가 정한 사전 열쇠(Take id · 화면 이름 · 모르는 칸
+    이름)는 `<key>`로 가린다. 개수 검사는 하지 않는다(세트 · 묶음 이름은 기존 `GROUPS`를 쓰되 개수는 이 세트의 동결 목록이 정한다).
   - `freeze --dir <폴더> --rules <규칙 파일> --out <동결 목록>`: 파일별 SHA-256 · 전체 해시 · 규칙 파일 해시 · 스키마 · 채점기 코드
     해시 · 지금 커밋 · 에이전트 판을 적은 동결 목록(JSON)을 쓴다. 내용은 담지 않는다.
-  - `verify --dir <폴더> --manifest <동결 목록>`: 지금 파일 · 채점기가 동결 목록과 같은지 본다. 다르면 종료 코드 1.
+  - `verify --dir <폴더> --manifest <동결 목록> --rules <규칙 파일>`: 지금 문항 · 규칙 · 채점기가 동결 목록과 같은지 본다. 동결 목록에
+    규칙 해시(`rules_sha256`)가 있으면 `--rules`가 필수이고 해시가 같아야 한다. 다르면 종료 코드 1.
 - 유사도(기존 문항의 변형인지)는 `similarity.py`가 본다(그쪽도 글을 출력하지 않는다).
 - 고칠 때: 출력에 문항 글이 새지 않는지 `tests/lab/test_holdout.py`가 본다.
 """
@@ -20,11 +22,12 @@ import hashlib
 import json
 import subprocess
 import sys
+import typing
 from pathlib import Path
 from typing import Any
 
 from pitch_coach_ai.features.chat_agent.version import FEATURE_VERSION
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from . import scenario as scn
 
@@ -70,6 +73,40 @@ def _semantic_code(problem: str) -> str:
     return "OTHER"
 
 
+def _models_in(tp: Any) -> list[type[BaseModel]]:
+    """형 표기 안의 pydantic 모델들(목록 · 사전 · 선택 · 합 형 안까지)."""
+    if isinstance(tp, type) and issubclass(tp, BaseModel):
+        return [tp]
+    return [m for arg in typing.get_args(tp) for m in _models_in(arg)]
+
+
+def _schema_field_names(model: type[BaseModel]) -> frozenset[str]:
+    """시나리오 스키마(`scenario.Scenario`와 그 안의 모델)가 정한 칸 이름 · 별칭 전체."""
+    names: set[str] = set()
+    seen: set[type[BaseModel]] = set()
+    todo = [model]
+    while todo:
+        m = todo.pop()
+        if m in seen:
+            continue
+        seen.add(m)
+        for name, f in m.model_fields.items():
+            names.add(name)
+            if f.alias:
+                names.add(f.alias)
+            todo.extend(_models_in(f.annotation))
+    return frozenset(names)
+
+
+#: 오류 위치에 그대로 쓸 수 있는 이름(스키마가 정한 칸). 그 밖의 글(사전 열쇠 · 모르는 칸 이름 · 형 표지)은 `<key>`로 가린다
+SCHEMA_FIELDS = _schema_field_names(scn.Scenario)
+
+
+def _safe_loc(loc: tuple[Any, ...]) -> str:
+    """오류 위치를 문항 글 없이: 목록 번호와 스키마 칸 이름만 남기고 나머지는 `<key>`."""
+    return ".".join(str(x) if isinstance(x, int) or x in SCHEMA_FIELDS else "<key>" for x in loc)
+
+
 def check_file(path: Path) -> list[str]:
     """파일 하나의 문제를 내용 없는 코드로 돌려준다(없으면 빈 목록)."""
     try:
@@ -79,10 +116,10 @@ def check_file(path: Path) -> list[str]:
     try:
         sc = scn.Scenario.model_validate(data)
     except ValidationError as e:
-        # 위치(loc)와 오류 종류만. 입력 값(input)과 메시지는 문항 글을 담을 수 있어 내지 않는다
+        # 위치(loc)와 오류 종류만. 입력 값(input)과 메시지는 문항 글을 담을 수 있어 내지 않는다. 위치의 사전 열쇠
+        # (Take id · 화면 이름)와 모르는 칸 이름도 작성자가 쓴 글이라 스키마 칸 이름이 아니면 가린다
         return [
-            f"SCHEMA {'.'.join(str(x) for x in err.get('loc', ()))} {err.get('type', '?')}"
-            for err in e.errors()
+            f"SCHEMA {_safe_loc(err.get('loc', ()))} {err.get('type', '?')}" for err in e.errors()
         ]
     out: list[str] = []
     for problem in scn._semantic(sc, path):  # noqa: SLF001 — 같은 연구 패키지의 뜻 검사를 그대로 쓴다
@@ -149,14 +186,28 @@ def freeze(directory: Path, rules: Path | None, out: Path) -> int:
     return 0
 
 
-def verify(directory: Path, manifest_path: Path, *, grader: bool = True) -> int:
-    """지금 문항 · 채점기가 동결 목록과 같은가. `grader=False`면 문항 · 규칙만 본다(채점기를 일부러 고친 뒤 대조할 때)."""
+def verify(
+    directory: Path, manifest_path: Path, *, rules: Path | None = None, grader: bool = True
+) -> int:
+    """지금 문항 · 규칙 · 채점기가 동결 목록과 같은가. `grader=False`면 문항 · 규칙만 본다(채점기를 일부러 고친 뒤 대조할 때).
+
+    동결 목록에 규칙 해시(`rules_sha256`)가 있으면 `rules`(규칙 파일)가 있어야 하고 해시가 같아야 한다. 주지 않았거나 읽지 못하면
+    다른 것으로 센다(규칙을 대조하지 않은 채 '같음'으로 끝내지 않는다)."""
     want = json.loads(manifest_path.read_text(encoding="utf-8"))
     now = manifest(directory, None)
     problems: list[str] = []
     for name in sorted(set(want["files"]) | set(now["files"])):
         if want["files"].get(name) != now["files"].get(name):
             problems.append(f"문항 다름: {name}")
+    if want.get("rules_sha256") is not None:
+        if rules is None:
+            problems.append(
+                "규칙 대조 못 함: 동결 목록에 규칙 해시가 있다(--rules 로 규칙 파일을 준다)"
+            )
+        elif not rules.is_file():
+            problems.append("규칙 대조 못 함: 규칙 파일을 읽지 못했다")
+        elif _sha(rules) != want["rules_sha256"]:
+            problems.append("규칙 다름")
     if grader:
         for name, sha in (want.get("grader_sha256") or {}).items():
             if now["grader_sha256"].get(name) != sha:
@@ -181,13 +232,19 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("verify")
     v.add_argument("--dir", type=Path, required=True)
     v.add_argument("--manifest", type=Path, required=True)
+    v.add_argument(
+        "--rules",
+        type=Path,
+        default=None,
+        help="동결한 규칙 파일(동결 목록에 규칙 해시가 있으면 필수)",
+    )
     v.add_argument("--no-grader", action="store_true", help="문항 · 규칙만 대조")
     a = ap.parse_args(argv)
     if a.cmd == "check":
         return check(a.dir)
     if a.cmd == "freeze":
         return freeze(a.dir, a.rules, a.out)
-    return verify(a.dir, a.manifest, grader=not a.no_grader)
+    return verify(a.dir, a.manifest, rules=a.rules, grader=not a.no_grader)
 
 
 if __name__ == "__main__":
