@@ -117,6 +117,66 @@ class ContentStatusDTO(BaseModel):
     previous: ContentPreviousDTO | None = None
 
 
+# 장별 상세 (`GET /takes/{take_id}/script-coverage/slides/{slide_number}`). 채점 항목에서 이름만
+# 골라 받은 값 그대로 싣는다 — BE 는 값을 해석하지 않는다. 저장본에 없는 키는 null, 목록은 [] 다
+class CoverageUnitDTO(BaseModel):
+    unit_id: Any
+    text: Any
+    status: Any
+
+
+class CoverageSentenceDTO(BaseModel):
+    sentence_index: Any
+    text: Any
+    role: Any
+    status: Any
+    # 예전 결과에는 없어 null 이다
+    expression_mode: Any
+    reason: Any
+    evidence: Any
+    units: list[CoverageUnitDTO]
+
+
+class CoverageKeyPointDTO(BaseModel):
+    key_point_id: Any
+    content: Any
+    importance: Any
+    status: Any
+    reason: Any
+    evidence: Any
+
+
+class CoverageFactDTO(BaseModel):
+    fact_id: Any
+    type: Any
+    value: Any
+    stt_value: Any
+    status: Any
+
+
+class CoverageSlideFailureDTO(BaseModel):
+    """채점하지 못한 장의 `failed[]` 항목. `fallback` 이 없는 예전 항목은 null 이다."""
+
+    error: Any
+    fallback: Any
+
+
+class CoverageSlideDTO(BaseModel):
+    take_id: uuid.UUID
+    revision: int
+    slide_number: int
+    # SCORED: 채점됨 · ESTIMATED: 실패했지만 간이 값 있음 · FAILED: 값 없이 이유만
+    state: Literal["SCORED", "ESTIMATED", "FAILED"]
+    detail: Any
+    offscript: Any
+    failure: CoverageSlideFailureDTO | None
+    sentences: list[CoverageSentenceDTO]
+    key_points: list[CoverageKeyPointDTO]
+    critical_facts: list[CoverageFactDTO]
+    # 사용자 발화다. 그 Take 의 주인만 읽고 로그에 남기지 않는다
+    stt_sentences: list[Any]
+
+
 class TakeReportDTO(BaseModel):
     take_id: uuid.UUID
     pitch_id: uuid.UUID
