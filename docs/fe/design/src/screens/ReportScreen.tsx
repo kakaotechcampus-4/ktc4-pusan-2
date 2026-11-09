@@ -245,7 +245,12 @@ function ContentSample({ stateId }: { stateId: string }) {
         <p className="flex flex-wrap items-center gap-2 text-xs text-ink/80">
           <Badge tone="muted">일부 장 제외</Badge>1장 중 0장 평가 · 1장 간이
         </p>
-        <SlideRows open={false} />
+        {/* 제품처럼 채점된 장이 없으면 Take 전체의 0 개수 대신 집계하지 못했다고 알립니다 */}
+        <p className="text-sm text-ink/80">
+          채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요. 장별 간이 결과를 확인해
+          주세요.
+        </p>
+        <SlideRows open={false} estimatedOnly />
       </Card>
     );
   return (
@@ -291,9 +296,16 @@ function ContentSample({ stateId }: { stateId: string }) {
 
 /**
  * 장별 목록. "장별 보기 (N장)"로 접어 두고, 열면 장마다 한 줄 — 장이 많아도 카드가 길어지지 않게 합니다.
- * 줄을 누르면 그 장을 펼칩니다. 제품은 펼칠 때 장별 상세를 부릅니다
+ * 줄을 누르면 그 장을 펼칩니다. 제품은 펼칠 때 장별 상세를 부릅니다.
+ * `estimatedOnly` 는 채점된 장 없이 간이 장 하나만 있는 결과(`content-estimated`)라 간이 줄 하나만 그립니다
  */
-function SlideRows({ open: initial }: { open: boolean }) {
+function SlideRows({
+  open: initial,
+  estimatedOnly = false,
+}: {
+  open: boolean;
+  estimatedOnly?: boolean;
+}) {
   const [listOpen, setListOpen] = useState(initial);
   const [open, setOpen] = useState(initial);
   return (
@@ -305,11 +317,19 @@ function SlideRows({ open: initial }: { open: boolean }) {
         className="flex min-h-11 w-full items-center justify-between gap-3 border-2 border-ink bg-cream px-3 text-left text-sm font-bold"
       >
         <span>
-          장별 보기 <span className="font-normal text-stone">(2장)</span>
+          장별 보기 <span className="font-normal text-stone">({estimatedOnly ? 1 : 2}장)</span>
         </span>
         <span aria-hidden="true">{listOpen ? '▴' : '▾'}</span>
       </button>
-      {listOpen && (
+      {listOpen && estimatedOnly && (
+        <ul className="border-t border-line text-sm">
+          <li className="flex min-h-11 items-center gap-3 border-b border-line py-2">
+            <b className="w-10 shrink-0">1장</b>
+            대부분 말함 <Badge tone="muted">간이</Badge>
+          </li>
+        </ul>
+      )}
+      {listOpen && !estimatedOnly && (
         <ul className="border-t border-line text-sm">
           <li className="border-b border-line">
             <button
