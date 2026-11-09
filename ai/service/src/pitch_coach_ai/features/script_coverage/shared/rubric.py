@@ -47,6 +47,10 @@ class RubricMeta(BaseModel):
     unit_config_hash: str = Field(
         default="", description="전달 단위 LLM 설정 해시. 단위를 나누기 전이면 빈 값"
     )
+    rubric_quality: Literal["full", "sentence_fallback"] = Field(
+        default="full",
+        description="sentence_fallback: 전달 단위 단계가 실패해 문장 하나를 단위 하나로 본 평가 기준",
+    )
 
 
 class NameDecision(BaseModel):

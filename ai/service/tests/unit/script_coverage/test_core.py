@@ -194,7 +194,11 @@ def _stage_llms(stage: str, failing: dict[int, BaseException]):
 
 
 @pytest.mark.parametrize(("stage", "stage_name"), STAGES)
-def test_partial_failure_at_each_stage(stage, stage_name):
+def test_partial_failure_at_each_stage(stage, stage_name, monkeypatch):
+    # 전달 단위 복구를 끈 동작을 본다 (복구는 script_analysis/test_unit_fallback.py)
+    monkeypatch.setattr(
+        "pitch_coach_ai.features.script_coverage.script_analysis.core.UNIT_FALLBACK_ENABLED", False
+    )
     """대상 두 장 중 6번만 그 단계에서 실패: 200 + failed, 6번은 결과에 없고 뒤 단계도 안 부른다."""
     llms, by_name = _stage_llms(stage, {6: TimeoutError("대본 원문")})
     response = _analyze(_request(slide_numbers=[4, 6]), llms)
@@ -222,7 +226,11 @@ def test_partial_failure_at_each_stage(stage, stage_name):
 
 
 @pytest.mark.parametrize(("stage", "stage_name"), STAGES)
-def test_full_failure_at_each_stage_raises(stage, stage_name):
+def test_full_failure_at_each_stage_raises(stage, stage_name, monkeypatch):
+    # 전달 단위 복구를 끈 동작을 본다 (복구는 script_analysis/test_unit_fallback.py)
+    monkeypatch.setattr(
+        "pitch_coach_ai.features.script_coverage.script_analysis.core.UNIT_FALLBACK_ENABLED", False
+    )
     llms, _ = _stage_llms(stage, {4: RuntimeError("x"), 6: RuntimeError("y")})
     with pytest.raises(CoverageError) as caught:
         _analyze(_request(slide_numbers=[4, 6]), llms)

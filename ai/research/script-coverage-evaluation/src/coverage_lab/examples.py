@@ -42,23 +42,30 @@ from .paths import DB_PATH, SCRIPT_DIR, STT_DIR
 EXAMPLES_DIR = Path(script_coverage_pkg.__file__).resolve().parent / "examples"
 # 예시를 만든 모델 (서비스 계약 테스트 `tests/unit/script_coverage/test_examples.py` 의 MODEL 과 같다). 캐시 항목의 설정 해시가 이 이름에
 # 의존하므로, 연구 DB 의 평가 기준을 다른 모델로 다시 만들어도 예시는 이 모델의 캐시 항목으로 같게 나온다
-EXAMPLE_MODEL = "openai/gpt-5.6-luna"
+EXAMPLE_MODEL = "openai/gpt-6-luna"
 
 # ── rubric 예시: 가상대본1 의 모든 장을 보내고 6 · 7번 장만 만든다 ──
 RUBRIC_SCRIPT = "가상대본1"
-RUBRIC_SLIDE_NUMBERS = [6, 7]  # 6: 수치가 많은 장 (성공), 7: 전달 단위 호출이 시간 초과 (실패)
-RUBRIC_FAILING_SLIDE = 7
+RUBRIC_SLIDE_NUMBERS = [
+    6,
+    7,
+]  # 6: 수치가 많은 장, 7: 전달 단위 호출이 시간 초과 → 문장 단위 복구로 성공
+RUBRIC_FALLBACK_SLIDE = 7
 PITCH_ID = "p-1"
 SCRIPT_VERSION_ID = "sv-3"
 
-# ── analyze · rescore 예시: 가상대본1_take9 의 모든 장 STT 를 보내고 2 · 4 · 6번 장만 채점한다 ──
+# ── analyze · rescore 예시: 가상대본1_take9 의 모든 장 STT 를 보내고 2 · 4 · 6 · 9번 장만 채점한다 ──
 # 연구 DB 의 저장된 채점에서 사람이 고른 장이다 (take9 는 2 · 3 · 5 · 6 · 8 · 9번 장에 비슷한 말이 있다)
 TAKE_FILE = "가상대본1_take9"
 TAKE_ID = "take-123"
-ANALYZE_SLIDE_NUMBERS = [2, 4, 6]
+ANALYZE_SLIDE_NUMBERS = [2, 4, 6, 9]
 ANALYZE_RUBRIC_SLIDES = [2, 4]  # 6번 장은 평가 기준을 싣지 않는다 → RUBRIC_MISSING
 SIMILAR_SLIDE = 2  # 비슷한 말(R1 · R2)이 있는 장 → 성공
-TIMEOUT_SLIDE = 4  # 의미 평가 캐시 항목을 빼서 LLM_TIMEOUT
+TIMEOUT_SLIDE = 4  # 의미 평가 캐시 항목을 빼서 LLM_TIMEOUT (간이 값 fallback.method: lexical)
+EMPTY_STT_SLIDE = 9  # STT 가 비고 끊김이 길어 STT_INCOMPLETE (fallback: null)
+# STT 끊김 값(ms): 대부분의 장은 끊김 없음, 9번 장은 장 길이의 절반이 끊김
+SLIDE_DURATION_MS = 30000
+EMPTY_STT_GAP_MS = 15000
 RESCORE_ANSWER = {"slide_number": SIMILAR_SLIDE, "item_id": "R1", "answer": "as_script"}
 
 
@@ -131,16 +138,25 @@ def build_rubric_example(conn: sqlite3.Connection) -> dict[str, object]:
     request = _rubric_request()
     # 실패시킬 장의 전달 단위 캐시 키: 그 장만 만드는 요청을 한 번 돌려 읽은 항목에서 찾는다
     probe = RecordingCache(SqliteLLMCache(conn))
-    _run_rubric({**request, "slide_numbers": [RUBRIC_FAILING_SLIDE]}, model, probe)
+    _run_rubric({**request, "slide_numbers": [RUBRIC_FALLBACK_SLIDE]}, model, probe)
     unit_keys = {key for kind, key, _ in probe.records if kind == "script.units"}
     if len(unit_keys) != 1:
-        raise RuntimeError(f"{RUBRIC_FAILING_SLIDE}번 장의 전달 단위 캐시를 못 찾았다: {unit_keys}")
+        raise RuntimeError(
+            f"{RUBRIC_FALLBACK_SLIDE}번 장의 전달 단위 캐시를 못 찾았다: {unit_keys}"
+        )
     cache = RecordingCache(
         SqliteLLMCache(conn), drop=frozenset(("script.units", key) for key in unit_keys)
     )
     response = _run_rubric(request, model, cache)
-    if len(response.rubrics) != 1 or len(response.failed) != 1:
-        raise RuntimeError("예시가 성공 1 · 실패 1 이 아니다: 연구 캐시가 이 요청과 맞지 않는다")
+    fallback = {r.meta.slide_number: r.meta.rubric_quality for r in response.rubrics}
+    if (
+        sorted(fallback) != RUBRIC_SLIDE_NUMBERS
+        or fallback[RUBRIC_FALLBACK_SLIDE] != "sentence_fallback"
+        or response.failed
+    ):
+        raise RuntimeError(
+            f"예시가 성공 2 (7번 sentence_fallback) · 실패 0 이 아니다: {fallback}, {response.failed}"
+        )
     return {
         "request.json": request,
         "response.json": response.model_dump(mode="json"),
@@ -163,9 +179,22 @@ def _analyze_request(conn: sqlite3.Connection, model: str) -> dict:
     if len(script.rubrics) != len(ANALYZE_RUBRIC_SLIDES) or script.failed:
         raise RuntimeError("평가 기준을 연구 캐시로 만들지 못했다: 연구 캐시가 맞지 않는다")
     take = load_take(STT_DIR / f"{TAKE_FILE}.json")
+    scripts = {
+        s.slide_number: s.script for s in load_script_json(SCRIPT_DIR / f"{RUBRIC_SCRIPT}.json")
+    }
     return AnalyzeRequest(
         take_id=TAKE_ID,
-        slides=[{"slide_number": s.slide_number, "stt": s.stt} for s in take.slides],
+        slides=[
+            {
+                "slide_number": s.slide_number,
+                "stt": "" if s.slide_number == EMPTY_STT_SLIDE else s.stt,
+                "duration_ms": SLIDE_DURATION_MS,
+                "stt_gap_ms": EMPTY_STT_GAP_MS if s.slide_number == EMPTY_STT_SLIDE else 0,
+                "stt_unobserved_ms": 0,
+                "script": scripts[s.slide_number],
+            }
+            for s in take.slides
+        ],
         rubrics=script.rubrics,
         slide_numbers=ANALYZE_SLIDE_NUMBERS,
     ).model_dump(mode="json")
@@ -184,8 +213,8 @@ def build_take_examples(conn: sqlite3.Connection) -> dict[str, dict[str, object]
         cache=probe,
     )
     keys = {key for kind, key, _ in probe.records if kind == "stt.semantic"}
-    if len(keys) != 1:
-        raise RuntimeError(f"{TIMEOUT_SLIDE}번 장의 의미 평가 캐시를 못 찾았다: {keys}")
+    if len(keys) > 1:
+        raise RuntimeError(f"{TIMEOUT_SLIDE}번 장의 의미 평가 캐시 항목이 하나가 아니다: {keys}")
     cache = RecordingCache(
         SqliteLLMCache(conn), drop=frozenset(("stt.semantic", key) for key in keys)
     )
@@ -193,10 +222,17 @@ def build_take_examples(conn: sqlite3.Connection) -> dict[str, dict[str, object]
     if (
         [e.slide_number for e in response.evaluations] != [SIMILAR_SLIDE]
         or [(f.slide_number, f.error.code) for f in response.failed]
-        != [(TIMEOUT_SLIDE, "LLM_TIMEOUT"), (6, "RUBRIC_MISSING")]
+        != [
+            (TIMEOUT_SLIDE, "LLM_TIMEOUT"),
+            (6, "RUBRIC_MISSING"),
+            (EMPTY_STT_SLIDE, "STT_INCOMPLETE"),
+        ]
         or not response.confirmations
     ):
-        raise RuntimeError("analyze 예시가 성공 1 · 실패 2 · 확인할 항목 있음이 아니다")
+        raise RuntimeError(
+            "analyze 예시가 성공 1 · 실패 3 (4 · 6 · 9번) · 확인할 항목 있음이 아니다: "
+            f"{[(f.slide_number, f.error.code) for f in response.failed]}"
+        )
     rescore_request = RescoreRequest(
         take_id=TAKE_ID,
         evaluations=response.evaluations,

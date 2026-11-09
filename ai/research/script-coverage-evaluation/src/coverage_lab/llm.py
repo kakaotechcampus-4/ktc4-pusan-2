@@ -16,6 +16,7 @@ from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
     SlideSemanticAnalysis,
     SlideUnits,
 )
+from pitch_coach_ai.features.script_coverage.stt_evaluation.offscript import OffscriptJudgment
 from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
     SemanticEvaluation,
     VerifierResult,
@@ -96,8 +97,14 @@ def script_llms(settings: Settings) -> ScriptLLMs:
 
 
 def stt_llms(settings: Settings) -> TakeLLMs:
-    """`/takes/analyze` 진입 함수(`script_coverage.core.evaluate_take`)에 넘기는 LLM 묶음."""
+    """`/takes/analyze` 진입 함수(`script_coverage.core.evaluate_take`)에 넘기는 LLM 묶음.
+
+    대본 밖 분류 LLM 도 만들어 두지만, 코어는 `OFFSCRIPT_LLM_ENABLED` 를 켰을 때만 부른다.
+    """
     return TakeLLMs(
         eval=structured_llm(SemanticEvaluation, settings),  # 의미 평가
         verifier=structured_llm(VerifierResult, settings),  # 교차 검증
+        offscript=structured_llm(
+            OffscriptJudgment, settings
+        ),  # 대본 밖 분류 (설정을 켰을 때만 쓰임)
     )

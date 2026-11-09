@@ -1167,6 +1167,65 @@
         "title": "CriticalFact",
         "type": "object"
       },
+      "CriticalGap": {
+        "description": "중요(critical · high) 핵심 내용 중 빠뜨리거나 다르게 말한 것. Take 요약에서는 `slide_number` 가 있다.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "importance": {
+            "enum": [
+              "critical",
+              "high",
+              "normal"
+            ],
+            "title": "Importance",
+            "type": "string"
+          },
+          "key_point_id": {
+            "title": "Key Point Id",
+            "type": "string"
+          },
+          "said_in_slides": {
+            "description": "그 내용을 다른 장에서 말한 장 번호 (점수로 인정하지 않는다)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Said In Slides",
+            "type": "array"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "status": {
+            "enum": [
+              "covered",
+              "partial",
+              "missing",
+              "contradicted"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key_point_id",
+          "content",
+          "importance",
+          "status"
+        ],
+        "title": "CriticalGap",
+        "type": "object"
+      },
       "EpisodeEvent": {
         "additionalProperties": false,
         "description": "문제 구간 하나가 끝났다. 개입했든 안 했든 남긴다 — 리뷰의 '문제 구간'이 된다.",
@@ -1357,6 +1416,17 @@
             "title": "Confirmations",
             "type": "array"
           },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TakeDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Take 상세 (선택 필드)"
+          },
           "evaluations": {
             "items": {
               "$ref": "#/components/schemas/SlideEvaluation"
@@ -1494,6 +1564,46 @@
           "warnings"
         ],
         "title": "EvaluationRubric",
+        "type": "object"
+      },
+      "ExcludedSlide": {
+        "properties": {
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number",
+          "reason_code"
+        ],
+        "title": "ExcludedSlide",
+        "type": "object"
+      },
+      "Expression": {
+        "description": "'말함' 문장의 표현 방식 개수. 바꿔 말해도 감점하지 않는다.",
+        "properties": {
+          "paraphrased": {
+            "default": 0,
+            "title": "Paraphrased",
+            "type": "integer"
+          },
+          "undetermined": {
+            "default": 0,
+            "title": "Undetermined",
+            "type": "integer"
+          },
+          "verbatim_like": {
+            "default": 0,
+            "title": "Verbatim Like",
+            "type": "integer"
+          }
+        },
+        "title": "Expression",
         "type": "object"
       },
       "FactCheck": {
@@ -1694,6 +1804,199 @@
         "title": "FactCheck",
         "type": "object"
       },
+      "FactCounts": {
+        "properties": {
+          "approximate": {
+            "default": 0,
+            "title": "Approximate",
+            "type": "integer"
+          },
+          "matched": {
+            "default": 0,
+            "title": "Matched",
+            "type": "integer"
+          },
+          "mismatched": {
+            "default": 0,
+            "title": "Mismatched",
+            "type": "integer"
+          },
+          "missing": {
+            "default": 0,
+            "title": "Missing",
+            "type": "integer"
+          },
+          "pending": {
+            "default": 0,
+            "title": "Pending",
+            "type": "integer"
+          }
+        },
+        "title": "FactCounts",
+        "type": "object"
+      },
+      "FactSummary": {
+        "properties": {
+          "accuracy": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "accuracy_range": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "확인 대기 수치를 모두 맞음(best) · 모두 틀림(worst)으로 가정한 정확도. 대기가 없으면 null",
+            "title": "Accuracy Range"
+          },
+          "approximate": {
+            "default": 0,
+            "title": "Approximate",
+            "type": "integer"
+          },
+          "matched": {
+            "default": 0,
+            "title": "Matched",
+            "type": "integer"
+          },
+          "mismatched": {
+            "default": 0,
+            "title": "Mismatched",
+            "type": "integer"
+          },
+          "missing": {
+            "default": 0,
+            "title": "Missing",
+            "type": "integer"
+          },
+          "pending": {
+            "default": 0,
+            "description": "발음이 비슷해 확인을 기다리는 수치 (sound_alike)",
+            "title": "Pending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accuracy"
+        ],
+        "title": "FactSummary",
+        "type": "object"
+      },
+      "Fallback": {
+        "description": "실패 장의 간이 값 (응답 `failed[].fallback`). 확정 값과 합치지 않고 따로 보인다.\n\n`lexical`: 평가 기준이 있는 장의 규칙 값. `lexical_no_rubric`: 평가 기준이 없어 대본 글(`script`)로만 낸 값\n(중요도 없음). `lexical_coverage` 는 문장마다 대본 내용 형태소가 STT 짝 구간에 나온 비율을 1 · 0.5 · 0 으로\n바꿔 평균한 간이 전달률이고, `delivery_band` 는 그 3단계다.",
+        "properties": {
+          "delivery_band": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mostly",
+                  "about_half",
+                  "little"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Band"
+          },
+          "fact_accuracy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metric"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "facts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lexical_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lexical Coverage"
+          },
+          "method": {
+            "enum": [
+              "lexical",
+              "lexical_no_rubric"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "script_recall": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metric"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "speech_mix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpeechMix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stt_integrity": {
+            "enum": [
+              "complete",
+              "incomplete",
+              "unknown"
+            ],
+            "title": "Stt Integrity",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "method",
+          "delivery_band",
+          "lexical_coverage",
+          "stt_integrity"
+        ],
+        "title": "Fallback",
+        "type": "object"
+      },
       "Feedback": {
         "additionalProperties": false,
         "properties": {
@@ -1749,6 +2052,23 @@
         ],
         "title": "FeedbackType",
         "type": "string"
+      },
+      "Fidelity": {
+        "description": "기존 `script_fidelity` 의 두 성분.",
+        "properties": {
+          "precision": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "recall": {
+            "$ref": "#/components/schemas/Metric"
+          }
+        },
+        "required": [
+          "recall",
+          "precision"
+        ],
+        "title": "Fidelity",
+        "type": "object"
       },
       "FinalizeRequest": {
         "description": "Take 종료. /coach/evaluate 와 같은 Take 상수에 마지막 창 · 이벤트 · coach_state 를 더한다.",
@@ -2567,6 +2887,58 @@
         "title": "Keyword",
         "type": "object"
       },
+      "Metric": {
+        "description": "지표 한 칸. `value` 가 null 이면 `state` · `reason_codes` 가 까닭이다 (0 과 섞지 않는다).\n\n`evaluated` · `excluded` 는 그 지표의 단위 개수다: 전달 · 다르게 말함은 핵심 내용, 수치는 핵심 수치,\n대본 재현은 형태소.",
+        "properties": {
+          "evaluated": {
+            "default": 0,
+            "title": "Evaluated",
+            "type": "integer"
+          },
+          "excluded": {
+            "default": 0,
+            "title": "Excluded",
+            "type": "integer"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "provisional",
+              "not_applicable",
+              "pending",
+              "failed",
+              "skipped_by_deadline",
+              "estimated"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "state"
+        ],
+        "title": "Metric",
+        "type": "object"
+      },
       "MissionResult": {
         "additionalProperties": false,
         "properties": {
@@ -2749,6 +3121,39 @@
         "title": "MissionTargetOut",
         "type": "object"
       },
+      "MixItem": {
+        "description": "말의 구성 막대 한 칸 (화면에 그릴 범주).",
+        "properties": {
+          "category": {
+            "enum": [
+              "script",
+              "other_slide",
+              "procedural",
+              "off_script",
+              "related_aside",
+              "unrelated",
+              "undetermined"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "share": {
+            "title": "Share",
+            "type": "number"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category",
+          "tokens",
+          "share"
+        ],
+        "title": "MixItem",
+        "type": "object"
+      },
       "Mode": {
         "enum": [
           "COACHING",
@@ -2852,6 +3257,133 @@
           "reason"
         ],
         "title": "NextMission",
+        "type": "object"
+      },
+      "Offscript": {
+        "description": "대본 밖 구간 목록 (장별 상세 화면의 강조용).",
+        "properties": {
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/OffscriptSpan"
+            },
+            "title": "Spans",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "provisional",
+              "not_applicable",
+              "pending",
+              "failed",
+              "skipped_by_deadline",
+              "estimated"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "Offscript",
+        "type": "object"
+      },
+      "OffscriptSpan": {
+        "description": "대본 밖 구간 하나. 위치는 `stt_sentences[stt_sentence_index]` 안의 [시작, 끝) 코드 포인트다.",
+        "properties": {
+          "category": {
+            "enum": [
+              "script",
+              "other_slide",
+              "procedural",
+              "off_script",
+              "related_aside",
+              "unrelated",
+              "undetermined"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "display_category": {
+            "description": "화면에 쓸 범주 (검증하지 않은 범주는 합침)",
+            "enum": [
+              "script",
+              "other_slide",
+              "procedural",
+              "off_script",
+              "related_aside",
+              "unrelated",
+              "undetermined"
+            ],
+            "title": "Display Category",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "integer"
+          },
+          "id": {
+            "description": "O1, O2 … (장마다 1부터)",
+            "title": "Id",
+            "type": "string"
+          },
+          "other_slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "다른 장 내용이면 그 장 번호",
+            "title": "Other Slide Number"
+          },
+          "source": {
+            "enum": [
+              "rule",
+              "llm"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "integer"
+          },
+          "stt_sentence_index": {
+            "title": "Stt Sentence Index",
+            "type": "integer"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "stt_sentence_index",
+          "start",
+          "end",
+          "category",
+          "display_category",
+          "source",
+          "tokens"
+        ],
+        "title": "OffscriptSpan",
         "type": "object"
       },
       "Outcome": {
@@ -3541,6 +4073,26 @@
         "title": "RelaxItem",
         "type": "object"
       },
+      "Repetitions": {
+        "properties": {
+          "confidence": {
+            "const": "low",
+            "default": "low",
+            "title": "Confidence",
+            "type": "string"
+          },
+          "count": {
+            "description": "바로 반복한 말의 횟수 (원본 STT 에서 센 관찰값)",
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "Repetitions",
+        "type": "object"
+      },
       "ReplayInput": {
         "description": "Take 전체 원자료. 409 REPLAY_REQUIRED 를 받았거나 coach_state 를 잃었을 때만 싣는다.\n\n코치는 이것으로 BE 가 1초마다 보냈을 /coach/evaluate 요청을 다시 만들어 처음부터 판정한다.",
         "properties": {
@@ -3965,6 +4517,16 @@
             "title": "Rubric Id",
             "type": "string"
           },
+          "rubric_quality": {
+            "default": "full",
+            "description": "sentence_fallback: 전달 단위 단계가 실패해 문장 하나를 단위 하나로 본 평가 기준",
+            "enum": [
+              "full",
+              "sentence_fallback"
+            ],
+            "title": "Rubric Quality",
+            "type": "string"
+          },
           "rubric_schema_version": {
             "title": "Rubric Schema Version",
             "type": "string"
@@ -4066,6 +4628,42 @@
           "meta"
         ],
         "title": "RubricResponse",
+        "type": "object"
+      },
+      "Scope": {
+        "description": "Take 값의 평가 범위. 간이 값(`estimated`) 장은 Take 값에 넣지 않는다.",
+        "properties": {
+          "estimated_slides": {
+            "title": "Estimated Slides",
+            "type": "integer"
+          },
+          "excluded": {
+            "items": {
+              "$ref": "#/components/schemas/ExcludedSlide"
+            },
+            "title": "Excluded",
+            "type": "array"
+          },
+          "provisional_slides": {
+            "title": "Provisional Slides",
+            "type": "integer"
+          },
+          "scored_slides": {
+            "title": "Scored Slides",
+            "type": "integer"
+          },
+          "target_slides": {
+            "title": "Target Slides",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_slides",
+          "scored_slides",
+          "estimated_slides",
+          "provisional_slides"
+        ],
+        "title": "Scope",
         "type": "object"
       },
       "ScoringMeta": {
@@ -4241,6 +4839,23 @@
             "description": "이 문장의 내용 형태소가 LLM 근거 STT 문장에 나온 비율 (근거가 이 문장과 관련 있는지)",
             "title": "Evidence Coverage",
             "type": "number"
+          },
+          "expression_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "verbatim_like",
+                  "paraphrased",
+                  "undetermined"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "said 문장만: 대본 표현에 가까움 · 바꿔 말함 · 구분 어려움 (lexical_coverage 기준, 감점 아님)",
+            "title": "Expression Mode"
           },
           "fact_statuses": {
             "additionalProperties": {
@@ -4528,6 +5143,141 @@
         "title": "Slide",
         "type": "object"
       },
+      "SlideDetail": {
+        "description": "장 상세 (`evaluations[].detail`). `/takes/rescore` 가 확인 답을 반영해 대본 쪽 지표를 다시 계산한다.",
+        "properties": {
+          "contradiction": {
+            "$ref": "#/components/schemas/Metric",
+            "description": "같은 가중치로 낸 contradicted 의 몫"
+          },
+          "critical_gaps": {
+            "items": {
+              "$ref": "#/components/schemas/CriticalGap"
+            },
+            "title": "Critical Gaps",
+            "type": "array"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/Metric",
+            "description": "핵심 내용 전달률: covered 1 · partial 0.5 · missing 0 · contradicted 0 의 중요도 가중 평균 (상쇄 없음)"
+          },
+          "expression": {
+            "$ref": "#/components/schemas/Expression"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/FactSummary"
+          },
+          "fidelity": {
+            "$ref": "#/components/schemas/Fidelity"
+          },
+          "key_points": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "description": "중요도(critical · high · normal)별 판정 개수",
+            "title": "Key Points",
+            "type": "object"
+          },
+          "legacy": {
+            "$ref": "#/components/schemas/SlideLegacy"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "rubric_quality": {
+            "enum": [
+              "full",
+              "sentence_fallback"
+            ],
+            "title": "Rubric Quality",
+            "type": "string"
+          },
+          "speech_mix": {
+            "$ref": "#/components/schemas/SpeechMix"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "provisional",
+              "not_applicable",
+              "pending",
+              "failed",
+              "skipped_by_deadline",
+              "estimated"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "status_shares": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "covered · partial · missing · contradicted 의 가중 몫 (합 1). 핵심 내용이 없으면 null",
+            "title": "Status Shares"
+          },
+          "stt_integrity": {
+            "enum": [
+              "complete",
+              "incomplete",
+              "unknown"
+            ],
+            "title": "Stt Integrity",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
+          "zero_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "slide_skipped",
+                  "all_missing",
+                  "missing_or_contradicted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zero Kind"
+          }
+        },
+        "required": [
+          "state",
+          "stt_integrity",
+          "rubric_quality",
+          "delivery",
+          "contradiction",
+          "status_shares",
+          "key_points",
+          "legacy",
+          "facts",
+          "expression",
+          "fidelity",
+          "speech_mix"
+        ],
+        "title": "SlideDetail",
+        "type": "object"
+      },
       "SlideEvaluation": {
         "description": "Structured Evaluation: 슬라이드 한 장의 평가 결과. 이 모양 그대로 DB 에 저장한다.",
         "properties": {
@@ -4553,6 +5303,17 @@
             "title": "Critical Facts",
             "type": "array"
           },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlideDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "장 상세 (선택 필드)"
+          },
           "fidelity": {
             "additionalProperties": true,
             "description": "대본 충실도 세부 (recall / precision / fidelity)",
@@ -4566,6 +5327,17 @@
             },
             "title": "Key Points",
             "type": "array"
+          },
+          "offscript": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Offscript"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "대본 밖 구간 목록 (장별 상세 화면의 강조용)"
           },
           "rubric_id": {
             "description": "채점에 쓴 평가 기준 (대본 분석 결과의 rubric_id)",
@@ -4600,6 +5372,23 @@
           "slide_number": {
             "title": "Slide Number",
             "type": "integer"
+          },
+          "stt_integrity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "incomplete",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "요청의 STT 끊김 값으로 정한 STT 완전성. 이 필드가 생기기 전의 채점에는 없다",
+            "title": "Stt Integrity"
           },
           "stt_sentences": {
             "description": "정규화한 STT 문장 (근거 번호 T0, T1 … 의 원문)",
@@ -4712,6 +5501,17 @@
           "error": {
             "$ref": "#/components/schemas/ErrorBody"
           },
+          "fallback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fallback"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "간이 값 (선택 필드). 간이 값을 낼 수 없거나 예전 결과면 null"
+          },
           "slide_number": {
             "minimum": 1.0,
             "title": "Slide Number",
@@ -4723,6 +5523,42 @@
           "error"
         ],
         "title": "SlideFailure",
+        "type": "object"
+      },
+      "SlideLegacy": {
+        "properties": {
+          "content_coverage_raw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기존 content_coverage 를 0 으로 자르기 전의 값",
+            "title": "Content Coverage Raw"
+          },
+          "zero_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "cancelled_to_zero",
+                  "clamped_negative"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zero Kind"
+          }
+        },
+        "required": [
+          "content_coverage_raw"
+        ],
+        "title": "SlideLegacy",
         "type": "object"
       },
       "SlideNow": {
@@ -4860,6 +5696,150 @@
         "title": "SlideScript",
         "type": "object"
       },
+      "SlideSummary": {
+        "description": "Take 상세 안의 장 요약 (`detail.slides[]`). 채점된 장 · 실패 장을 모두 담는다.",
+        "properties": {
+          "contradiction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metric"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "critical_gap_count": {
+            "title": "Critical Gap Count",
+            "type": "integer"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metric"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery_band": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mostly",
+                  "about_half",
+                  "little"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Band"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "rubric_quality": {
+            "anyOf": [
+              {
+                "enum": [
+                  "full",
+                  "sentence_fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric Quality"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "speech_mix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpeechMixBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "scored",
+              "estimated",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "status_shares": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Shares"
+          },
+          "stt_integrity": {
+            "enum": [
+              "complete",
+              "incomplete",
+              "unknown"
+            ],
+            "title": "Stt Integrity",
+            "type": "string"
+          },
+          "zero_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "slide_skipped",
+                  "all_missing",
+                  "missing_or_contradicted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zero Kind"
+          }
+        },
+        "required": [
+          "slide_number",
+          "state",
+          "stt_integrity",
+          "rubric_quality",
+          "delivery",
+          "zero_kind",
+          "contradiction",
+          "status_shares",
+          "critical_gap_count",
+          "delivery_band",
+          "speech_mix"
+        ],
+        "title": "SlideSummary",
+        "type": "object"
+      },
       "SlideValues": {
         "description": "Take 결과의 장별 값. 측정 비율 미달이면 metrics 가 null",
         "properties": {
@@ -4907,6 +5887,92 @@
           "slide_number"
         ],
         "title": "SlideValues",
+        "type": "object"
+      },
+      "SpeechMix": {
+        "description": "말의 구성: 정규화한 STT 의 내용 형태소를 범주 하나씩으로 나눈 것. 어떤 점수도 깎지 않는다.",
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "범주별 형태소 수 (`MIX_CATEGORIES` 일곱 개 모두)",
+            "title": "Categories",
+            "type": "object"
+          },
+          "display": {
+            "description": "화면에 그릴 목록. 검증하지 않은 범주는 `off_script` 로 합친다",
+            "items": {
+              "$ref": "#/components/schemas/MixItem"
+            },
+            "title": "Display",
+            "type": "array"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "repetitions": {
+            "$ref": "#/components/schemas/Repetitions"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "provisional",
+              "not_applicable",
+              "pending",
+              "failed",
+              "skipped_by_deadline",
+              "estimated"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tokens": {
+            "description": "분모 — 정규화한 STT 의 내용 형태소 수",
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "tokens",
+          "categories",
+          "display",
+          "repetitions"
+        ],
+        "title": "SpeechMix",
+        "type": "object"
+      },
+      "SpeechMixBrief": {
+        "description": "장 요약용 말의 구성 (상태 · 이유 · 화면 목록만).",
+        "properties": {
+          "display": {
+            "items": {
+              "$ref": "#/components/schemas/MixItem"
+            },
+            "title": "Display",
+            "type": "array"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "SpeechMixBrief",
         "type": "object"
       },
       "StrategyChange": {
@@ -5133,6 +6199,109 @@
         "title": "SuppressedEvent",
         "type": "object"
       },
+      "TakeDetail": {
+        "description": "Take 상세 (응답 맨 위 `detail`). `/takes/rescore` 는 받은 evaluations · failed 로 다시 만든다.",
+        "properties": {
+          "contradiction": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "critical_gaps": {
+            "items": {
+              "$ref": "#/components/schemas/CriticalGap"
+            },
+            "title": "Critical Gaps",
+            "type": "array"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "expression": {
+            "$ref": "#/components/schemas/Expression"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/FactSummary"
+          },
+          "fidelity": {
+            "$ref": "#/components/schemas/Fidelity"
+          },
+          "key_points": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Key Points",
+            "type": "object"
+          },
+          "legacy": {
+            "$ref": "#/components/schemas/TakeLegacy"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "slides": {
+            "items": {
+              "$ref": "#/components/schemas/SlideSummary"
+            },
+            "title": "Slides",
+            "type": "array"
+          },
+          "speech_mix": {
+            "$ref": "#/components/schemas/SpeechMix"
+          },
+          "status_shares": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Shares"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
+          "zero_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "slide_skipped",
+                  "all_missing",
+                  "missing_or_contradicted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zero Kind"
+          }
+        },
+        "required": [
+          "delivery",
+          "zero_kind",
+          "contradiction",
+          "status_shares",
+          "key_points",
+          "legacy",
+          "facts",
+          "expression",
+          "fidelity",
+          "speech_mix",
+          "scope"
+        ],
+        "title": "TakeDetail",
+        "type": "object"
+      },
       "TakeIntervention": {
         "additionalProperties": false,
         "description": "말을 건 기록 하나와 그 효과.",
@@ -5211,6 +6380,27 @@
           "message"
         ],
         "title": "TakeIntervention",
+        "type": "object"
+      },
+      "TakeLegacy": {
+        "properties": {
+          "content_coverage_raw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "장마다 0 으로 자르기 전 값의 가중 평균 (기존 Take 값은 자른 뒤 모은 값)",
+            "title": "Content Coverage Raw"
+          }
+        },
+        "required": [
+          "content_coverage_raw"
+        ],
+        "title": "TakeLegacy",
         "type": "object"
       },
       "TakePlan": {
@@ -5485,6 +6675,31 @@
       },
       "TakeSlide": {
         "properties": {
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "그 장 구간 길이의 합 (방문마다 더함). 없으면 STT 완전성 모름",
+            "title": "Duration Ms"
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "그 Take 의 대본 버전의 장 대본 글. 평가 기준이 없는 장의 간이 값에만 쓴다",
+            "title": "Script"
+          },
           "slide_number": {
             "minimum": 1.0,
             "title": "Slide Number",
@@ -5494,6 +6709,32 @@
             "description": "장 변경 기록으로 나눈 그 장의 STT 텍스트. 발표에서 넘어간 장은 빈 문자열",
             "title": "Stt",
             "type": "string"
+          },
+          "stt_gap_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "그 장 구간 중 1초 기록의 STT 상태가 ok 가 아니던 시간",
+            "title": "Stt Gap Ms"
+          },
+          "stt_unobserved_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "그 장 구간 중 1초 기록이 없던 시간",
+            "title": "Stt Unobserved Ms"
           }
         },
         "required": [

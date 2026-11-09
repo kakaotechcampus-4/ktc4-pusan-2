@@ -189,6 +189,10 @@ class SentenceResult(BaseModel):
         default_factory=list, description="규칙 결과와 LLM 판정이 어긋난 이유"
     )
     verified: bool = False
+    expression_mode: Literal["verbatim_like", "paraphrased", "undetermined"] | None = Field(
+        default=None,
+        description="said 문장만: 대본 표현에 가까움 · 바꿔 말함 · 구분 어려움 (lexical_coverage 기준, 감점 아님)",
+    )
 
 
 class KeyPointResult(BaseModel):
@@ -210,6 +214,200 @@ class KeyPointResult(BaseModel):
     similar_ids: list[str] = Field(default_factory=list)
     conflicts: list[str] = Field(default_factory=list, description="근거 문장들의 충돌 이유")
     verified: bool = False
+
+
+# ── 결과 상세 (선택 필드, 기능 문서 5-6 '장 상세') ─────────────────────
+# 기존 점수(`scores`)와 판정은 그대로 두고, 그 위에 상쇄 없는 전달률 · 상태 · 이유 · 말의 구성을 더한다.
+# 값을 계산할 수 없으면 0 이 아니라 null 이고, 상태(`state`)와 이유(`reason_codes`)가 까닭을 말한다.
+
+MetricState = Literal[
+    "ok", "provisional", "not_applicable", "pending", "failed", "skipped_by_deadline", "estimated"
+]
+SttIntegrity = Literal["complete", "incomplete", "unknown"]
+ZeroKind = Literal["slide_skipped", "all_missing", "missing_or_contradicted"]
+LegacyZeroKind = Literal["cancelled_to_zero", "clamped_negative"]
+ExpressionMode = Literal["verbatim_like", "paraphrased", "undetermined"]
+MixCategory = Literal[
+    "script",
+    "other_slide",
+    "procedural",
+    "off_script",
+    "related_aside",
+    "unrelated",
+    "undetermined",
+]
+MIX_CATEGORIES: tuple[str, ...] = (
+    "script", "other_slide", "procedural", "off_script", "related_aside", "unrelated", "undetermined",
+)  # fmt: skip
+
+
+class Metric(BaseModel):
+    """지표 한 칸. `value` 가 null 이면 `state` · `reason_codes` 가 까닭이다 (0 과 섞지 않는다).
+
+    `evaluated` · `excluded` 는 그 지표의 단위 개수다: 전달 · 다르게 말함은 핵심 내용, 수치는 핵심 수치,
+    대본 재현은 형태소.
+    """
+
+    value: float | None
+    state: MetricState
+    reason_codes: list[str] = Field(default_factory=list)
+    evaluated: int = 0
+    excluded: int = 0
+
+
+class MixItem(BaseModel):
+    """말의 구성 막대 한 칸 (화면에 그릴 범주)."""
+
+    category: MixCategory
+    tokens: int
+    share: float
+
+
+class Repetitions(BaseModel):
+    count: int = Field(description="바로 반복한 말의 횟수 (원본 STT 에서 센 관찰값)")
+    confidence: Literal["low"] = "low"
+
+
+class SpeechMix(BaseModel):
+    """말의 구성: 정규화한 STT 의 내용 형태소를 범주 하나씩으로 나눈 것. 어떤 점수도 깎지 않는다."""
+
+    state: MetricState
+    reason_codes: list[str] = Field(default_factory=list)
+    tokens: int = Field(description="분모 — 정규화한 STT 의 내용 형태소 수")
+    categories: dict[str, int] = Field(
+        description="범주별 형태소 수 (`MIX_CATEGORIES` 일곱 개 모두)"
+    )
+    display: list[MixItem] = Field(
+        description="화면에 그릴 목록. 검증하지 않은 범주는 `off_script` 로 합친다"
+    )
+    repetitions: Repetitions
+
+
+class OffscriptSpan(BaseModel):
+    """대본 밖 구간 하나. 위치는 `stt_sentences[stt_sentence_index]` 안의 [시작, 끝) 코드 포인트다."""
+
+    id: str = Field(description="O1, O2 … (장마다 1부터)")
+    stt_sentence_index: int
+    start: int
+    end: int
+    category: MixCategory
+    display_category: MixCategory = Field(description="화면에 쓸 범주 (검증하지 않은 범주는 합침)")
+    source: Literal["rule", "llm"]
+    other_slide_number: int | None = Field(default=None, description="다른 장 내용이면 그 장 번호")
+    tokens: int
+
+
+class Offscript(BaseModel):
+    """대본 밖 구간 목록 (장별 상세 화면의 강조용)."""
+
+    version: int = 1
+    state: MetricState
+    reason_codes: list[str] = Field(default_factory=list)
+    spans: list[OffscriptSpan] = Field(default_factory=list)
+
+
+class CriticalGap(BaseModel):
+    """중요(critical · high) 핵심 내용 중 빠뜨리거나 다르게 말한 것. Take 요약에서는 `slide_number` 가 있다."""
+
+    slide_number: int | None = None
+    key_point_id: str
+    content: str
+    importance: Importance
+    status: CoverageStatus
+    said_in_slides: list[int] = Field(
+        default_factory=list,
+        description="그 내용을 다른 장에서 말한 장 번호 (점수로 인정하지 않는다)",
+    )
+
+
+class FactSummary(BaseModel):
+    matched: int = 0
+    approximate: int = 0
+    mismatched: int = 0
+    missing: int = 0
+    pending: int = Field(default=0, description="발음이 비슷해 확인을 기다리는 수치 (sound_alike)")
+    accuracy: Metric
+    accuracy_range: dict[str, float] | None = Field(
+        default=None,
+        description="확인 대기 수치를 모두 맞음(best) · 모두 틀림(worst)으로 가정한 정확도. 대기가 없으면 null",
+    )
+
+
+class Expression(BaseModel):
+    """'말함' 문장의 표현 방식 개수. 바꿔 말해도 감점하지 않는다."""
+
+    verbatim_like: int = 0
+    paraphrased: int = 0
+    undetermined: int = 0
+
+
+class Fidelity(BaseModel):
+    """기존 `script_fidelity` 의 두 성분."""
+
+    recall: Metric
+    precision: Metric
+
+
+class SlideLegacy(BaseModel):
+    content_coverage_raw: float | None = Field(
+        description="기존 content_coverage 를 0 으로 자르기 전의 값"
+    )
+    zero_kind: LegacyZeroKind | None = None
+
+
+class FactCounts(BaseModel):
+    matched: int = 0
+    approximate: int = 0
+    mismatched: int = 0
+    missing: int = 0
+    pending: int = 0
+
+
+class Fallback(BaseModel):
+    """실패 장의 간이 값 (응답 `failed[].fallback`). 확정 값과 합치지 않고 따로 보인다.
+
+    `lexical`: 평가 기준이 있는 장의 규칙 값. `lexical_no_rubric`: 평가 기준이 없어 대본 글(`script`)로만 낸 값
+    (중요도 없음). `lexical_coverage` 는 문장마다 대본 내용 형태소가 STT 짝 구간에 나온 비율을 1 · 0.5 · 0 으로
+    바꿔 평균한 간이 전달률이고, `delivery_band` 는 그 3단계다.
+    """
+
+    version: int = 1
+    method: Literal["lexical", "lexical_no_rubric"]
+    delivery_band: Literal["mostly", "about_half", "little"] | None
+    lexical_coverage: float | None
+    facts: FactCounts | None = None
+    fact_accuracy: Metric | None = None
+    script_recall: Metric | None = None
+    speech_mix: SpeechMix | None = None
+    stt_integrity: SttIntegrity
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class SlideDetail(BaseModel):
+    """장 상세 (`evaluations[].detail`). `/takes/rescore` 가 확인 답을 반영해 대본 쪽 지표를 다시 계산한다."""
+
+    version: int = 1
+    state: MetricState
+    reason_codes: list[str] = Field(default_factory=list)
+    stt_integrity: SttIntegrity
+    rubric_quality: Literal["full", "sentence_fallback"]
+    delivery: Metric = Field(
+        description="핵심 내용 전달률: covered 1 · partial 0.5 · missing 0 · contradicted 0 의 중요도 가중 평균 (상쇄 없음)"
+    )
+    zero_kind: ZeroKind | None = None
+    contradiction: Metric = Field(description="같은 가중치로 낸 contradicted 의 몫")
+    status_shares: dict[str, float] | None = Field(
+        description="covered · partial · missing · contradicted 의 가중 몫 (합 1). 핵심 내용이 없으면 null"
+    )
+    key_points: dict[str, dict[str, int]] = Field(
+        description="중요도(critical · high · normal)별 판정 개수"
+    )
+    critical_gaps: list[CriticalGap] = Field(default_factory=list)
+    legacy: SlideLegacy
+    facts: FactSummary
+    expression: Expression
+    fidelity: Fidelity
+    speech_mix: SpeechMix
 
 
 class SlideEvaluation(BaseModel):
@@ -241,6 +439,14 @@ class SlideEvaluation(BaseModel):
     applied_answers: dict[str, str] = Field(
         default_factory=dict,
         description="그 장의 채점에 이미 반영한 확인 답 {item_id: as_script · as_stt}. 처음 채점에는 비어 있다. Take 단위 confirmations(아직 답하지 않은 항목)와 다르다",
+    )
+    stt_integrity: SttIntegrity | None = Field(
+        default=None,
+        description="요청의 STT 끊김 값으로 정한 STT 완전성. 이 필드가 생기기 전의 채점에는 없다",
+    )
+    detail: SlideDetail | None = Field(default=None, description="장 상세 (선택 필드)")
+    offscript: Offscript | None = Field(
+        default=None, description="대본 밖 구간 목록 (장별 상세 화면의 강조용)"
     )
 
 

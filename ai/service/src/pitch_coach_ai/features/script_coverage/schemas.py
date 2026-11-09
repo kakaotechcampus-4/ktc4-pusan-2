@@ -14,7 +14,19 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from .shared.rubric import EvaluationRubric
-from .stt_evaluation.schemas import SlideEvaluation
+from .stt_evaluation.schemas import (
+    CriticalGap,
+    Expression,
+    FactSummary,
+    Fallback,
+    Fidelity,
+    Metric,
+    MixItem,
+    SlideEvaluation,
+    SpeechMix,
+    SttIntegrity,
+    ZeroKind,
+)
 
 
 class ErrorBody(BaseModel):
@@ -27,6 +39,10 @@ class SlideFailure(BaseModel):
 
     slide_number: int = Field(ge=1)
     error: ErrorBody
+    fallback: Fallback | None = Field(
+        default=None,
+        description="간이 값 (선택 필드). 간이 값을 낼 수 없거나 예전 결과면 null",
+    )
 
 
 class ScriptSlide(BaseModel):
@@ -74,6 +90,21 @@ class TakeSlide(BaseModel):
     slide_number: int = Field(ge=1)
     stt: str = Field(
         description="장 변경 기록으로 나눈 그 장의 STT 텍스트. 발표에서 넘어간 장은 빈 문자열"
+    )
+    duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        description="그 장 구간 길이의 합 (방문마다 더함). 없으면 STT 완전성 모름",
+    )
+    stt_gap_ms: int | None = Field(
+        default=None, ge=0, description="그 장 구간 중 1초 기록의 STT 상태가 ok 가 아니던 시간"
+    )
+    stt_unobserved_ms: int | None = Field(
+        default=None, ge=0, description="그 장 구간 중 1초 기록이 없던 시간"
+    )
+    script: str | None = Field(
+        default=None,
+        description="그 Take 의 대본 버전의 장 대본 글. 평가 기준이 없는 장의 간이 값에만 쓴다",
     )
 
 
@@ -158,10 +189,76 @@ class ScoringMeta(BaseModel):
     model: str | None
 
 
+class SpeechMixBrief(BaseModel):
+    """장 요약용 말의 구성 (상태 · 이유 · 화면 목록만)."""
+
+    state: str
+    reason_codes: list[str] = Field(default_factory=list)
+    display: list[MixItem] = Field(default_factory=list)
+
+
+class SlideSummary(BaseModel):
+    """Take 상세 안의 장 요약 (`detail.slides[]`). 채점된 장 · 실패 장을 모두 담는다."""
+
+    slide_number: int
+    state: Literal["scored", "estimated", "failed"]
+    reason_codes: list[str] = Field(default_factory=list)
+    stt_integrity: SttIntegrity
+    rubric_quality: Literal["full", "sentence_fallback"] | None
+    delivery: Metric | None
+    zero_kind: ZeroKind | None
+    contradiction: Metric | None
+    status_shares: dict[str, float] | None
+    critical_gap_count: int
+    delivery_band: Literal["mostly", "about_half", "little"] | None
+    speech_mix: SpeechMixBrief | None
+
+
+class ExcludedSlide(BaseModel):
+    slide_number: int
+    reason_code: str
+
+
+class Scope(BaseModel):
+    """Take 값의 평가 범위. 간이 값(`estimated`) 장은 Take 값에 넣지 않는다."""
+
+    target_slides: int
+    scored_slides: int
+    estimated_slides: int
+    provisional_slides: int
+    excluded: list[ExcludedSlide] = Field(default_factory=list)
+
+
+class TakeLegacy(BaseModel):
+    content_coverage_raw: float | None = Field(
+        description="장마다 0 으로 자르기 전 값의 가중 평균 (기존 Take 값은 자른 뒤 모은 값)"
+    )
+
+
+class TakeDetail(BaseModel):
+    """Take 상세 (응답 맨 위 `detail`). `/takes/rescore` 는 받은 evaluations · failed 로 다시 만든다."""
+
+    version: int = 1
+    delivery: Metric
+    zero_kind: ZeroKind | None
+    contradiction: Metric
+    status_shares: dict[str, float] | None
+    key_points: dict[str, dict[str, int]]
+    critical_gaps: list[CriticalGap] = Field(default_factory=list)
+    legacy: TakeLegacy
+    facts: FactSummary
+    expression: Expression
+    fidelity: Fidelity
+    speech_mix: SpeechMix
+    scope: Scope
+    slides: list[SlideSummary] = Field(default_factory=list)
+
+
 class EvaluationResponse(BaseModel):
     take_id: str
     evaluations: list[SlideEvaluation]
     take_scores: TakeScores
     confirmations: list[Confirmation]
     failed: list[SlideFailure]
+    detail: TakeDetail | None = Field(default=None, description="Take 상세 (선택 필드)")
     meta: ScoringMeta

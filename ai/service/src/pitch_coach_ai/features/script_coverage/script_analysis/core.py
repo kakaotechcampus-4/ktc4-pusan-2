@@ -9,6 +9,9 @@
 캐시 읽기 · 쓰기와 코드 단계(초안 · 조립 · 검증)는 모두 부르는 스레드에서 한다.
 LLM 호출이 실패한 슬라이드는 평가 기준을 만들지 않고 stats["failed"] 에 {슬라이드 번호: 에러 코드}로,
 stats["causes"] 에 {슬라이드 번호: "<단계> <예외 클래스 이름>"}(로그용)으로 남긴다.
+전달 단위 단계만 실패한 슬라이드는(`UNIT_FALLBACK_ENABLED`) 문장 하나를 단위 하나로 본 평가 기준
+(`meta.rubric_quality = "sentence_fallback"`)으로 복구해 성공으로 내고, stats["unit_fallback"] 에
+{슬라이드 번호: 에러 코드}로 남긴다 (failed · causes 에는 넣지 않는다).
 성공한 호출은 캐시에 남으므로 다시 돌리면 실패한 슬라이드만 호출한다.
 `targets` 를 주면 그 슬라이드만 LLM 으로 분석하고 평가 기준을 만든다 (정규화 · 키워드 · 이름 판정의
 맥락은 받은 모든 슬라이드로 낸다). 평가 기준을 저장하는 일은 호출한 쪽이 한다.
@@ -19,9 +22,17 @@ from collections.abc import Collection
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
 from ..shared.facts import extract_critical_facts
-from ..shared.llm_step import LLMCache, cache_get, cache_put, message_hash, record_failures
+from ..shared.llm_step import (
+    LLMCache,
+    cache_get,
+    cache_put,
+    llm_error_code,
+    message_hash,
+    record_failures,
+)
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script
+from .config import UNIT_FALLBACK_ENABLED
 from .draft import draft_rubric
 from .final import (
     final_config_hash,
@@ -186,16 +197,32 @@ def analyze_script(
                     finished(stage, i, output)
             fill()
 
+    # 전달 단위 단계만 실패했고 조립까지 된 슬라이드는 문장 단위 평가 기준으로 복구한다
+    recovered: dict[int, str] = {}
+    if UNIT_FALLBACK_ENABLED:
+        for i, e in sorted(errors["unit"].items()):
+            if i not in rubrics:
+                continue
+            code = llm_error_code(e)
+            rubric = attach_units(rubrics[i], None, model)
+            rubric.meta.rubric_quality = "sentence_fallback"
+            rubric.warnings.append(f"unit_fallback:{code}")
+            recovered[slides[i].slide_number] = code
     failed: dict[int, str] = {}
     causes: dict[int, str] = {}
     for stage in ("semantic", "final", "unit"):
         record_failures(
             failed,
             causes,
-            {slides[i].slide_number: e for i, e in errors[stage].items()},
+            {
+                slides[i].slide_number: e
+                for i, e in errors[stage].items()
+                if slides[i].slide_number not in recovered
+            },
             STAGE_NAMES[stage],
         )
     lost = {i for stage_errors in errors.values() for i in stage_errors}
+    lost -= {i for i in errors["unit"] if slides[i].slide_number in recovered}
     stats = {
         "slides": len(chosen),
         "analysis_calls": calls["semantic"],
@@ -204,5 +231,7 @@ def analyze_script(
         "failed": dict(sorted(failed.items())),
         "causes": dict(sorted(causes.items())),
     }
-    # 전달 단위 단계에서 실패한 슬라이드는 조립까지 됐어도 내지 않는다
+    if recovered:
+        stats["unit_fallback"] = dict(sorted(recovered.items()))
+    # 전달 단위 단계에서 실패한 슬라이드는 복구하지 못하면(상수 꺼짐 등) 조립까지 됐어도 내지 않는다
     return [rubrics[i] for i in sorted(rubrics) if i not in lost], stats

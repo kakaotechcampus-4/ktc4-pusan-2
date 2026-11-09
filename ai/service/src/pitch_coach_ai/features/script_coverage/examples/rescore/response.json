@@ -5,7 +5,7 @@
       "take_id": "take-123",
       "script_name": "sv-3",
       "slide_number": 2,
-      "rubric_id": "5544a0465e8f7434",
+      "rubric_id": "ad884eaee7509237",
       "scores": {
         "content_coverage": 1.0,
         "critical_fact_accuracy": 1.0,
@@ -28,7 +28,7 @@
           "units": [
             {
               "unit_id": "S0-U1",
-              "text": "좌석 예약 키오스크를 씀",
+              "text": "좌석 예약 키오스크를 사용함",
               "fact_ids": [],
               "status": "said",
               "first_status": "said",
@@ -36,7 +36,7 @@
             },
             {
               "unit_id": "S0-U2",
-              "text": "모바일 예약 앱을 씀",
+              "text": "모바일 예약 앱을 사용함",
               "fact_ids": [],
               "status": "said",
               "first_status": "said",
@@ -44,7 +44,7 @@
             },
             {
               "unit_id": "S0-U3",
-              "text": "현장 순번표를 씀",
+              "text": "현장 순번표를 사용함",
               "fact_ids": [],
               "status": "said",
               "first_status": "said",
@@ -55,7 +55,7 @@
           "evidence": [
             0
           ],
-          "reason": "좌석 예약 키오스크, 모바일 예약 앱, 현장 순번표를 모두 말했으며 ‘자석’은 STT 오류로 보입니다.",
+          "reason": "좌석 예약 키오스크, 모바일 예약 앱, 현장 순번표를 모두 사용한다고 말했습니다.",
           "lexical_coverage": 0.929,
           "evidence_coverage": 0.929,
           "fact_statuses": {},
@@ -63,7 +63,8 @@
             "R2"
           ],
           "conflicts": [],
-          "verified": false
+          "verified": false,
+          "expression_mode": "verbatim_like"
         },
         {
           "sentence_index": 1,
@@ -93,13 +94,14 @@
           "evidence": [
             1
           ],
-          "reason": "예약 키오스크의 현장 사용 제약과 모바일 예약의 노쇼가 많다는 내용을 모두 말했습니다.",
+          "reason": "키오스크는 현장에 가야 쓸 수 있고 모바일 예약은 노쇼가 많다고 말했습니다.",
           "lexical_coverage": 1.0,
           "evidence_coverage": 1.0,
           "fact_statuses": {},
           "similar_ids": [],
           "conflicts": [],
-          "verified": false
+          "verified": false,
+          "expression_mode": "verbatim_like"
         },
         {
           "sentence_index": 2,
@@ -110,7 +112,7 @@
           "units": [
             {
               "unit_id": "S2-U1",
-              "text": "전체 예약의 약 18퍼센트가 노쇼임",
+              "text": "전체 예약의 약 18퍼센트가 노쇼였음",
               "fact_ids": [
                 "CF1"
               ],
@@ -123,7 +125,7 @@
           "evidence": [
             2
           ],
-          "reason": "[검증] STT의 '약 팔 퍼센트'는 대본의 '약 18퍼센트'와 발음이 비슷한 표현이므로 수치 차이는 판정에서 제외한다. 전체 예약 중 노쇼 비율이 약 18퍼센트라는 내용을 전달했다.",
+          "reason": "[검증] ‘약 18퍼센트’와 STT의 ‘약 팔 퍼센트’는 발음이 비슷하므로 차이를 판정에서 제외합니다. 나머지 내용도 말했습니다.",
           "lexical_coverage": 0.875,
           "evidence_coverage": 0.875,
           "fact_statuses": {
@@ -134,7 +136,8 @@
             "contradicted",
             "sound_alike"
           ],
-          "verified": true
+          "verified": true,
+          "expression_mode": "undetermined"
         },
         {
           "sentence_index": 3,
@@ -172,13 +175,14 @@
           "evidence": [
             3
           ],
-          "reason": "현장 순번표의 공정성, 자리 발생 시점을 알 수 없음, 대기 시간이 길어짐을 모두 말했습니다.",
+          "reason": "순번표가 공정하고 자리가 날 때를 알 수 없어 대기 시간이 길어진다고 말했습니다.",
           "lexical_coverage": 0.833,
           "evidence_coverage": 0.833,
           "fact_statuses": {},
           "similar_ids": [],
           "conflicts": [],
-          "verified": false
+          "verified": false,
+          "expression_mode": "undetermined"
         },
         {
           "sentence_index": 4,
@@ -189,15 +193,7 @@
           "units": [
             {
               "unit_id": "S4-U1",
-              "text": "이용자에게 필요한 것은 예약 수단이 아님",
-              "fact_ids": [],
-              "status": "said",
-              "first_status": "said",
-              "raised_by_rule": false
-            },
-            {
-              "unit_id": "S4-U2",
-              "text": "몇 분 뒤에 자리가 나는지에 대한 정보가 필요함",
+              "text": "이용자에게 필요한 것은 예약 수단이 아니라 자리가 나는 시점에 대한 정보임",
               "fact_ids": [],
               "status": "said",
               "first_status": "said",
@@ -208,13 +204,14 @@
           "evidence": [
             4
           ],
-          "reason": "예약 수단이 아니라 몇 분 뒤 자리가 나는지에 대한 정보가 필요하다는 내용을 모두 말했습니다.",
+          "reason": "필요한 것은 예약 수단이 아니라 몇 분 뒤에 자리가 나는지에 대한 정보라고 말했습니다.",
           "lexical_coverage": 1.0,
           "evidence_coverage": 1.0,
           "fact_statuses": {},
           "similar_ids": [],
           "conflicts": [],
-          "verified": false
+          "verified": false,
+          "expression_mode": "verbatim_like"
         }
       ],
       "key_points": [
@@ -242,7 +239,7 @@
         },
         {
           "key_point_id": "KP2",
-          "content": "예약 키오스크는 현장 이용이 필요하며 모바일 예약은 노쇼가 많이 발생한다.",
+          "content": "예약 키오스크는 현장에 가야만 쓸 수 있고, 모바일 예약은 노쇼가 많다.",
           "importance": "high",
           "sentence_indices": [
             1
@@ -262,7 +259,7 @@
         },
         {
           "key_point_id": "KP3",
-          "content": "전체 예약의 약 18퍼센트가 노쇼이다.",
+          "content": "한 대학 도서관의 기록에서 전체 예약의 약 18퍼센트가 노쇼이다.",
           "importance": "high",
           "sentence_indices": [
             2
@@ -287,7 +284,7 @@
         },
         {
           "key_point_id": "KP4",
-          "content": "현장 순번표는 자리 발생 시점을 알 수 없어 대기 시간이 길어진다.",
+          "content": "현장 순번표는 공정하지만, 언제 자리가 날지 알 수 없어 기다리는 시간이 길어진다.",
           "importance": "high",
           "sentence_indices": [
             3
@@ -486,6 +483,127 @@
       "stt_text": "자 지금 도서관들은 자석 예약 키오스크 모바일 예약 앱 현장 순번표 같은 방식을 쓰고 있습니다 하지만 예약 키오스크는 현장에 가야만 쓸수 있고 모바일 예약은 노쇼가 많습니다 한 대학 도서관의 기록을 보면 전체 예약의 약 팔 퍼센트가 노쇼였습니다 현장 순번표는 공정하긴 하지만 언제 자리가 날지 알 수 없어서 대기 시간이 길어집니다 그러니까 결국 이용자에게 필요한 건 예약 수단이 아니라 몇 분 뒤에 자리가 나는지에 대한 정보입니다",
       "applied_answers": {
         "R1": "as_script"
+      },
+      "stt_integrity": "complete",
+      "detail": {
+        "version": 1,
+        "state": "ok",
+        "reason_codes": [],
+        "stt_integrity": "complete",
+        "rubric_quality": "full",
+        "delivery": {
+          "value": 1.0,
+          "state": "ok",
+          "reason_codes": [],
+          "evaluated": 5,
+          "excluded": 0
+        },
+        "zero_kind": null,
+        "contradiction": {
+          "value": 0.0,
+          "state": "ok",
+          "reason_codes": [],
+          "evaluated": 5,
+          "excluded": 0
+        },
+        "status_shares": {
+          "covered": 1.0,
+          "partial": 0.0,
+          "missing": 0.0,
+          "contradicted": 0.0
+        },
+        "key_points": {
+          "critical": {
+            "covered": 1,
+            "partial": 0,
+            "missing": 0,
+            "contradicted": 0
+          },
+          "high": {
+            "covered": 3,
+            "partial": 0,
+            "missing": 0,
+            "contradicted": 0
+          },
+          "normal": {
+            "covered": 1,
+            "partial": 0,
+            "missing": 0,
+            "contradicted": 0
+          }
+        },
+        "critical_gaps": [],
+        "legacy": {
+          "content_coverage_raw": 1.0,
+          "zero_kind": null
+        },
+        "facts": {
+          "matched": 1,
+          "approximate": 0,
+          "mismatched": 0,
+          "missing": 0,
+          "pending": 0,
+          "accuracy": {
+            "value": 1.0,
+            "state": "ok",
+            "reason_codes": [],
+            "evaluated": 1,
+            "excluded": 0
+          },
+          "accuracy_range": null
+        },
+        "expression": {
+          "verbatim_like": 3,
+          "paraphrased": 0,
+          "undetermined": 2
+        },
+        "fidelity": {
+          "recall": {
+            "value": 0.962,
+            "state": "ok",
+            "reason_codes": [],
+            "evaluated": 52,
+            "excluded": 0
+          },
+          "precision": {
+            "value": 0.962,
+            "state": "ok",
+            "reason_codes": [],
+            "evaluated": 54,
+            "excluded": 0
+          }
+        },
+        "speech_mix": {
+          "state": "ok",
+          "reason_codes": [],
+          "tokens": 54,
+          "categories": {
+            "script": 54,
+            "other_slide": 0,
+            "procedural": 0,
+            "off_script": 0,
+            "related_aside": 0,
+            "unrelated": 0,
+            "undetermined": 0
+          },
+          "display": [
+            {
+              "category": "script",
+              "tokens": 54,
+              "share": 1.0
+            }
+          ],
+          "repetitions": {
+            "count": 0,
+            "confidence": "low"
+          }
+        }
+      },
+      "offscript": {
+        "version": 1,
+        "state": "ok",
+        "reason_codes": [],
+        "spans": []
       }
     }
   ],
@@ -495,7 +613,7 @@
     "script_fidelity": 0.962,
     "similar_words": 1,
     "similar_numbers": 0,
-    "scored_ratio": 0.333
+    "scored_ratio": 0.25
   },
   "confirmations": [
     {
@@ -511,6 +629,62 @@
       "error": {
         "code": "LLM_TIMEOUT",
         "message": "LLM 응답 시간이 초과되었습니다."
+      },
+      "fallback": {
+        "version": 1,
+        "method": "lexical",
+        "delivery_band": "mostly",
+        "lexical_coverage": 1.0,
+        "facts": {
+          "matched": 7,
+          "approximate": 0,
+          "mismatched": 0,
+          "missing": 1,
+          "pending": 0
+        },
+        "fact_accuracy": {
+          "value": 0.895,
+          "state": "estimated",
+          "reason_codes": [],
+          "evaluated": 8,
+          "excluded": 0
+        },
+        "script_recall": {
+          "value": 0.983,
+          "state": "estimated",
+          "reason_codes": [],
+          "evaluated": 59,
+          "excluded": 0
+        },
+        "speech_mix": {
+          "state": "ok",
+          "reason_codes": [],
+          "tokens": 59,
+          "categories": {
+            "script": 59,
+            "other_slide": 0,
+            "procedural": 0,
+            "off_script": 0,
+            "related_aside": 0,
+            "unrelated": 0,
+            "undetermined": 0
+          },
+          "display": [
+            {
+              "category": "script",
+              "tokens": 59,
+              "share": 1.0
+            }
+          ],
+          "repetitions": {
+            "count": 0,
+            "confidence": "low"
+          }
+        },
+        "stt_integrity": "complete",
+        "reason_codes": [
+          "LLM_TIMEOUT"
+        ]
       }
     },
     {
@@ -518,14 +692,286 @@
       "error": {
         "code": "RUBRIC_MISSING",
         "message": "6번 장의 평가 기준이 없습니다."
+      },
+      "fallback": {
+        "version": 1,
+        "method": "lexical_no_rubric",
+        "delivery_band": "mostly",
+        "lexical_coverage": 1.0,
+        "facts": {
+          "matched": 12,
+          "approximate": 0,
+          "mismatched": 0,
+          "missing": 0,
+          "pending": 0
+        },
+        "fact_accuracy": {
+          "value": 1.0,
+          "state": "estimated",
+          "reason_codes": [],
+          "evaluated": 12,
+          "excluded": 0
+        },
+        "script_recall": {
+          "value": 0.975,
+          "state": "estimated",
+          "reason_codes": [],
+          "evaluated": 40,
+          "excluded": 0
+        },
+        "speech_mix": null,
+        "stt_integrity": "complete",
+        "reason_codes": [
+          "RUBRIC_MISSING"
+        ]
       }
+    },
+    {
+      "slide_number": 9,
+      "error": {
+        "code": "STT_INCOMPLETE",
+        "message": "9번 장: 음성 인식이 끊겨 이 장을 채점하지 않았습니다."
+      },
+      "fallback": null
     }
   ],
+  "detail": {
+    "version": 1,
+    "delivery": {
+      "value": 1.0,
+      "state": "provisional",
+      "reason_codes": [
+        "SLIDES_EXCLUDED"
+      ],
+      "evaluated": 5,
+      "excluded": 0
+    },
+    "zero_kind": null,
+    "contradiction": {
+      "value": 0.0,
+      "state": "provisional",
+      "reason_codes": [
+        "SLIDES_EXCLUDED"
+      ],
+      "evaluated": 5,
+      "excluded": 0
+    },
+    "status_shares": {
+      "covered": 1.0,
+      "partial": 0.0,
+      "missing": 0.0,
+      "contradicted": 0.0
+    },
+    "key_points": {
+      "critical": {
+        "covered": 1,
+        "partial": 0,
+        "missing": 0,
+        "contradicted": 0
+      },
+      "high": {
+        "covered": 3,
+        "partial": 0,
+        "missing": 0,
+        "contradicted": 0
+      },
+      "normal": {
+        "covered": 1,
+        "partial": 0,
+        "missing": 0,
+        "contradicted": 0
+      }
+    },
+    "critical_gaps": [],
+    "legacy": {
+      "content_coverage_raw": 1.0
+    },
+    "facts": {
+      "matched": 1,
+      "approximate": 0,
+      "mismatched": 0,
+      "missing": 0,
+      "pending": 0,
+      "accuracy": {
+        "value": 1.0,
+        "state": "provisional",
+        "reason_codes": [
+          "SLIDES_EXCLUDED"
+        ],
+        "evaluated": 1,
+        "excluded": 0
+      },
+      "accuracy_range": null
+    },
+    "expression": {
+      "verbatim_like": 3,
+      "paraphrased": 0,
+      "undetermined": 2
+    },
+    "fidelity": {
+      "recall": {
+        "value": 0.962,
+        "state": "provisional",
+        "reason_codes": [
+          "SLIDES_EXCLUDED"
+        ],
+        "evaluated": 52,
+        "excluded": 0
+      },
+      "precision": {
+        "value": 0.962,
+        "state": "provisional",
+        "reason_codes": [
+          "SLIDES_EXCLUDED"
+        ],
+        "evaluated": 54,
+        "excluded": 0
+      }
+    },
+    "speech_mix": {
+      "state": "provisional",
+      "reason_codes": [
+        "SLIDES_EXCLUDED"
+      ],
+      "tokens": 54,
+      "categories": {
+        "script": 54,
+        "other_slide": 0,
+        "procedural": 0,
+        "off_script": 0,
+        "related_aside": 0,
+        "unrelated": 0,
+        "undetermined": 0
+      },
+      "display": [
+        {
+          "category": "script",
+          "tokens": 54,
+          "share": 1.0
+        }
+      ],
+      "repetitions": {
+        "count": 0,
+        "confidence": "low"
+      }
+    },
+    "scope": {
+      "target_slides": 4,
+      "scored_slides": 1,
+      "estimated_slides": 2,
+      "provisional_slides": 0,
+      "excluded": [
+        {
+          "slide_number": 4,
+          "reason_code": "LLM_TIMEOUT"
+        },
+        {
+          "slide_number": 6,
+          "reason_code": "RUBRIC_MISSING"
+        },
+        {
+          "slide_number": 9,
+          "reason_code": "STT_INCOMPLETE"
+        }
+      ]
+    },
+    "slides": [
+      {
+        "slide_number": 2,
+        "state": "scored",
+        "reason_codes": [],
+        "stt_integrity": "complete",
+        "rubric_quality": "full",
+        "delivery": {
+          "value": 1.0,
+          "state": "ok",
+          "reason_codes": [],
+          "evaluated": 5,
+          "excluded": 0
+        },
+        "zero_kind": null,
+        "contradiction": {
+          "value": 0.0,
+          "state": "ok",
+          "reason_codes": [],
+          "evaluated": 5,
+          "excluded": 0
+        },
+        "status_shares": {
+          "covered": 1.0,
+          "partial": 0.0,
+          "missing": 0.0,
+          "contradicted": 0.0
+        },
+        "critical_gap_count": 0,
+        "delivery_band": null,
+        "speech_mix": {
+          "state": "ok",
+          "reason_codes": [],
+          "display": [
+            {
+              "category": "script",
+              "tokens": 54,
+              "share": 1.0
+            }
+          ]
+        }
+      },
+      {
+        "slide_number": 4,
+        "state": "estimated",
+        "reason_codes": [
+          "LLM_TIMEOUT"
+        ],
+        "stt_integrity": "complete",
+        "rubric_quality": null,
+        "delivery": null,
+        "zero_kind": null,
+        "contradiction": null,
+        "status_shares": null,
+        "critical_gap_count": 0,
+        "delivery_band": "mostly",
+        "speech_mix": null
+      },
+      {
+        "slide_number": 6,
+        "state": "estimated",
+        "reason_codes": [
+          "RUBRIC_MISSING"
+        ],
+        "stt_integrity": "complete",
+        "rubric_quality": null,
+        "delivery": null,
+        "zero_kind": null,
+        "contradiction": null,
+        "status_shares": null,
+        "critical_gap_count": 0,
+        "delivery_band": "mostly",
+        "speech_mix": null
+      },
+      {
+        "slide_number": 9,
+        "state": "failed",
+        "reason_codes": [
+          "STT_INCOMPLETE"
+        ],
+        "stt_integrity": "unknown",
+        "rubric_quality": null,
+        "delivery": null,
+        "zero_kind": null,
+        "contradiction": null,
+        "status_shares": null,
+        "critical_gap_count": 0,
+        "delivery_band": null,
+        "speech_mix": null
+      }
+    ]
+  },
   "meta": {
     "schema_version": "1.0",
-    "feature_version": "script_coverage-1.1",
+    "feature_version": "script_coverage-1.2",
     "criteria_versions": {
-      "script_coverage": "script_coverage-1.1+e7d09c338962"
+      "script_coverage": "script_coverage-1.2+78a81b22f29e"
     },
     "model": null
   }
