@@ -2,6 +2,7 @@
 
 - 문제 구간 0곳 근거: 장마다 근거 id 가 따로이고, 그 장의 값이 측정된 영역만 '없음'이다.
 - Take 목록: 거른 조건에 맞는 Take 만 없으면 'Take 없음'(기록 없음 신호)이 아니다.
+- 결정 로그: 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 붙었을 때만 남긴다.
 """
 
 from __future__ import annotations
@@ -9,8 +10,12 @@ from __future__ import annotations
 from typing import Any
 
 from pitch_coach_ai.features.chat_agent import compose
+from pitch_coach_ai.features.chat_agent.config import load_config
 
+from . import fakes as F
 from .test_none_evidence import _read, no_take_request, with_take_result
+from .test_plan_progress_turn import decisions
+from .test_signal_routes import research_blocks
 from .test_tools import base_request, load, make_ctx, run
 
 SEG = "problem_segments"
@@ -85,3 +90,39 @@ def test_filtered_empty_take_list_is_not_take_none() -> None:
         ctx0 = make_ctx(no_take_request())
         s0 = _read(ctx0, "list_takes", a)
         assert (s0.result, s0.signal, s0.facts) == ("Take 없음", "NO_RECORD", ["TAKES"])
+
+
+# ── 3. 사실 표시(FACT_SHOWN)는 단계에 실제로 붙었을 때만 ───────────────────────
+
+
+def _review_missing_turn(cfg: Any) -> tuple[list[dict[str, Any]], F.FakeLlm]:
+    req = F.request(user_message="Take 5 리뷰에서 제일 큰 문제가 뭐였어?")
+    req["context"]["pitch"]["focus_take"]["results"]["review"] = None
+    review = ("get_take_report", {"take_id": "t-5", "section": "dimensions"})
+    segments = ("get_take_report", {"take_id": "t-5", "section": "problem_segments"})
+    llm = F.FakeLlm(
+        [
+            F.plan(steps=["리뷰 보기", "답 쓰기"], step_tools=["get_take_report", "answer"]),
+            F.tools(review, prefix="a"),
+            F.tools(segments, prefix="b"),
+            F.done(),
+        ],
+        answers=[F.answer([F.claim("RECORD", "Take 5 점수는 70점이에요.")])],
+        fixes=[F.fix({0: None})],
+    )
+    log: list[dict[str, Any]] = []
+    F.run_turn(req, llm, cfg=cfg, log=log)
+    return log, llm
+
+
+def test_fact_shown_only_when_the_fact_is_on_a_displayed_step() -> None:
+    """`plan_progress`가 꺼져 단계에 사실을 붙이지 못하면 FACT_SHOWN 을 남기지 않는다. 신호는 그대로 열려 모델에게 가고,
+    모델의 대응(ALT_TOOL)은 남는다. 켜져 있으면 전과 같이 FACT_SHOWN 이 먼저다."""
+    log, llm = _review_missing_turn(load_config(plan_progress=False))
+    assert decisions(log) == [("REVIEW_MISSING", "ALT_TOOL", "LLM", 2)]
+    assert research_blocks(llm)[1]["signals"][0]["signal"] == "REVIEW_MISSING"
+    log_on, _ = _review_missing_turn(load_config())
+    assert decisions(log_on) == [
+        ("REVIEW_MISSING", "FACT_SHOWN", "CODE", 1),
+        ("REVIEW_MISSING", "ALT_TOOL", "LLM", 2),
+    ]

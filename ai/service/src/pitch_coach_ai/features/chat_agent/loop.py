@@ -22,7 +22,7 @@
   도구 하나가 끝날 때마다(캐시 적중 포함) 그 실행을 단계에 이어 `목적: 실행 → 결과`와 상태를 다시 그려 plan 줄로 낸다(`_emit_plan_display`).
   이 표시 갱신은 계획 수정 한도(PLAN_EDITS)를 쓰지 않는다 — 한도는 모델의 `update_plan`만 센다. 끝 처리는 turn.py `_finish`.
 - 상황 신호 · 결정 로그(설정 `decision_log` · `research_signals`): 도구 결과에서 코드가 찾은 신호(비교 불가 · 기본 자료에 없음 · 리뷰 없음 ·
-  기록 없음 · 도구 실패)를 단계에 보이고(`FACT_SHOWN:CODE`) 대응을 기다리는 신호(`signals_open`)로 둔다. 그 신호를 본 모델의 다음 선택이
+  기록 없음 · 도구 실패)를 단계에 보이고(`FACT_SHOWN:CODE`, 단계에 실제로 붙었을 때만) 대응을 기다리는 신호(`signals_open`)로 둔다. 그 신호를 본 모델의 다음 선택이
   `update_plan`이면 `PLAN_EDIT`, 다른 기록 도구 · 다른 대상이면 `ALT_TOOL`, 행동이면 `ACTION`, 조사가 끝날 때까지 없으면 `NONE`이다.
   조사가 한도 · 반복으로 멈추면 `BUDGET_LOW` · `STOP_PARTIAL:CODE`. 결정 로그는 서비스 로그(`agent_decision`)에만 남는다(11-5).
 - 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤(이미 낸 문장이 기댄 원천이면 재개를 멈춘다 — `drop_removed`),
@@ -887,7 +887,12 @@ class Loop:
         if chosen and name in progress.RECORD_TOOLS:
             self._respond("ALT_TOOL", key=key, step=step, tool_seq=trace.seq)
         if run.signal is not None and tr.outcome != "CACHED":
-            self._decide(run.signal, run.facts, "FACT_SHOWN", "CODE", step=step, tool_seq=trace.seq)
+            # 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 실제로 붙었을 때만 남긴다(`plan_progress`가 꺼졌거나 단계가 8개로
+            # 차서 붙이지 못하면 보인 것이 아니다). 신호는 그래도 열어 모델에게 알린다(대응 결정은 그대로 남는다)
+            if step is not None:
+                self._decide(
+                    run.signal, run.facts, "FACT_SHOWN", "CODE", step=step, tool_seq=trace.seq
+                )
             self.st.signals_open.append(progress.open_signal(run, key, step, trace.seq))
 
     def _decide(
