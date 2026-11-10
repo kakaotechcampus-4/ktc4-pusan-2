@@ -358,7 +358,7 @@ it('튜토리얼 재연습이 막히면 장치를 켜는 수동 버튼도 요청
   expect(fixture.request).not.toHaveBeenCalled();
 });
 
-it('자동 권한 요청은 준비 정보 확인 전에는 보류하고 허용 응답 뒤 정확히 한 번만 실행한다', async () => {
+it('준비 정보를 받은 뒤에만 자동 카메라 권한을 한 번 요청한다', async () => {
   activatePage();
   const prepared = fixture.data;
   fixture.data = null as unknown as PrepareResponse;
@@ -377,7 +377,7 @@ it('자동 권한 요청은 준비 정보 확인 전에는 보류하고 허용 �
   expect(fixture.request).toHaveBeenCalledTimes(1);
 });
 
-it('준비 정보 조회 실패 시에도 자동·수동 장치 권한 요청을 하지 않는다', async () => {
+it('준비 정보 조회 실패 시 자동·수동 장치 권한 요청을 막는다', async () => {
   activatePage();
   fixture.data = null as unknown as PrepareResponse;
   fixture.prepareError = true;
