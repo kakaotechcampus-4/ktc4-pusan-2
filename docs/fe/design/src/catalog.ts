@@ -32,7 +32,7 @@ export const PRODUCT_CHECKED: {
     },
     {
       pr: 1105,
-      head: '772aa623d4b768b5a823f7ee3d1a18c260527cf5',
+      head: '81749999bd284ee8c0db2594ce5779e22f230306',
       what: 'BE 전용 샘플 피치 튜토리얼 · 샘플 제한 · 홈 진입 경로',
     },
   ],
