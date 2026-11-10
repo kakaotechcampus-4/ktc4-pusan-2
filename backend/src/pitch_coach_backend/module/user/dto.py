@@ -18,6 +18,9 @@ class UserResponse(BaseModel):
     # 사용자 테스트 참여 동의. 동의하지 않았으면 둘 다 null 이다
     test_consent_at: datetime | None
     test_consent_version: int | None
+    # First Take 튜토리얼 리포트를 받은 시각. 계정당 한 번이고 받지 않았으면 null 이다.
+    # FE 홈이 튜토리얼을 아직 권할지 가린다 (샘플 발표를 지워도 남는다)
+    tutorial_report_at: datetime | None
 
 
 class UserSettingsUpdate(BaseModel):

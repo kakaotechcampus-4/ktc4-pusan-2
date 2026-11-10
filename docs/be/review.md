@@ -103,7 +103,7 @@ sequenceDiagram
 |---|---|---|---|---|
 | WS | `/ws/takes/{take_id}` `stop` | 발표를 끝냄 (보통의 종료) | `stop` 메시지 | 마지막 전사까지 저장한 뒤 연결 종료 |
 | PUT | `/pitches/{pitch_id}/takes/{take_id}` | 연결이 끊긴 채 발표를 끝냄 | `{started_at?, ended_at?, event_logs?}` | `{message, take_id}` |
-| GET | `/takes/{take_id}/report` | 진행 상황 · 리포트 조회 | — | `{take_id, pitch_id, pitch_title, take_number, script_mode, ended_at, status, analysis_stage, review_status, analysis_hold_reason, measures, review}` |
+| GET | `/takes/{take_id}/report` | 진행 상황 · 리포트 조회 | — | `{take_id, pitch_id, pitch_title, is_demo, take_number, script_mode, ended_at, status, analysis_stage, review_status, analysis_hold_reason, measures, review}` |
 | GET | `/takes/{take_id}/confirmations` | 확인할 항목 조회 | — | `{take_id, analysis_stage, remaining_ms, items}`. 확인 대기가 아니면 `items` 가 비고 `remaining_ms` 가 null |
 | POST | `/takes/{take_id}/confirmations` | 확인 답 보내기 · 건너뛰기 | `{answers: [{slide_number, item_id, answer: "as_script" \| "as_stt"}]}`. 빈 배열이면 건너뛰기 | `{analysis_stage: "REVIEWING"}` |
 

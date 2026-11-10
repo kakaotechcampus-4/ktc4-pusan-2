@@ -479,7 +479,7 @@ OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시
 ## First Take 튜토리얼
 
 ```
-POST /api/pitches/tutorials/first-take   → pitch_id · report_received
+POST /api/pitches/tutorials/first-take   → pitch_id(null 일 수 있음) · report_received
 ```
 
 - 사용자마다 샘플 발표(`is_demo`) 하나를 만든다. 이미 있으면 그 발표를 준다. 여러 탭에서 동시에 불러도
@@ -488,11 +488,18 @@ POST /api/pitches/tutorials/first-take   → pitch_id · report_received
 - AI 를 부르지 않는다. `pitch/sample/` 의 PDF · 썸네일을 그 발표 경로에 올리고, 미리 만든 대본 파싱 ·
   장별 평가 기준을 끝난 상태로, 첫 Take 코칭 계획을 한 행으로 넣는다. 바로 장치 점검으로 넘어갈 수 있다.
   FE 의 샘플 자료나 AI 응답 형식이 바뀌면 `dev/build-first-take-sample.py` 로 다시 만든다.
-- 그 뒤 Take · 리포트는 일반 발표와 같다. 홈 목록 · 발표 상세의 `is_demo` 로 샘플을 구분한다.
+- 그 뒤 Take · 리포트는 일반 발표와 같다. 홈 목록 · 발표 상세 · Take 기록 · Take 리포트의 `is_demo` 로
+  샘플을 구분한다. 제목은 사용자가 바꿀 수 있어 구분에 쓰지 않는다.
 - 튜토리얼 리포트는 계정당 한 번이다. 샘플 발표의 리뷰가 저장되면 `users.tutorial_report_at` 을 같은
   커밋에 적는다. 그 뒤 샘플 발표에서 Take 를 만들면 `409 TUTORIAL_REPORT_USED`, 앞 Take 를 아직 분석
   중이면 `409 TUTORIAL_ANALYSIS_RUNNING` 이다. 리뷰가 실패했거나 연습이 끊겨 분석하지 않은 Take 는
   세지 않는다. 샘플 발표를 지우고 다시 만들어도 기록은 남는다.
+- 리포트를 이미 받은 계정에 샘플 발표가 없으면(지웠으면) 새로 만들지 않고 `pitch_id` 를 `null` 로 준다. 만들어도
+  Take 를 시작할 수 없고 파일만 또 올라간다. 샘플 발표가 남아 있으면 기록을 보라고 그 id 를 준다.
+- 장치 점검 준비(`/prepare`)의 `tutorial_block` 이 위 두 409 를 카메라 점검 전에 미리 알린다. Take 생성과 같은
+  판정(`take/service/lookup.py` 의 `tutorial_block`)이다.
+- 리포트를 받은 시각은 `GET /api/users/me` 의 `tutorial_report_at` 으로도 준다(받지 않았으면 `null`). FE 홈이 튜토리얼을
+  아직 권할지 가린다. 샘플 발표를 지워도 남아서 홈 목록만으로는 알 수 없는 경우를 메운다.
 
 ## Take 목록
 
@@ -522,6 +529,9 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
 - `missions` 는 Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 중 가장 늦게 끝난 Take 의
   `ACTIVE` 미션을 리뷰가 읽는 순서로 주고, 그 Take 번호를 `source_take_number` 로 준다. 리뷰가 끝난 Take 가 없으면
   `null`, 리뷰가 다음 미션을 내지 않았으면 `items` 가 빈 목록이다. 그사이 리뷰가 끝나면 시작할 때 다시 고른 미션이 실린다.
+- `tutorial_block` 은 튜토리얼 샘플 발표에서 새 Take 를 만들 수 없는 이유다. 값은 Take 생성의 409 코드
+  (`TUTORIAL_REPORT_USED` · `TUTORIAL_ANALYSIS_RUNNING`)와 같고, 일반 발표나 막히지 않은 샘플은 `null` 이다.
+  그 시점 값이라 화면을 연 사이 바뀌면 시작은 Take 생성이 다시 판단한다.
 - Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 발표자료 쪽수와 대본 장 수가 다르면
   `409 SLIDE_COUNT_MISMATCH` 다 (쪽수를 모르는 옛 발표자료는 검사하지 않는다). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
 - `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시

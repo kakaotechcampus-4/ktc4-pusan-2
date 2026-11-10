@@ -581,13 +581,13 @@ function ChatPanel({
               : 'border-line-strong focus-within:border-coral focus-within:ring-coral'
           }`}
         >
-          {/* maxLength로 잘라 버리면 이모지 등의 UTF-16/코드 포인트 수가 달라집니다. 초과분은 유지하고 전송만 막습니다. */}
+          {/* 12-4 F3: maxLength로 잘라 버리면 이모지 등의 UTF-16/코드 포인트 수가 달라집니다. 초과분은 유지하고 전송만 막습니다. */}
           <textarea
             ref={inputRef}
             id={`${id}-input`}
             value={draft}
             rows={1}
-            placeholder="새미나이에게 메시지 보내기..."
+            placeholder="새미나이에게 메시지 보내기…"
             aria-invalid={tooLong}
             aria-describedby={tooLong ? `${id}-limit` : undefined}
             onChange={(event) => {
@@ -597,7 +597,7 @@ function ChatPanel({
             onKeyDown={onComposerKeyDown}
             className="min-h-10 max-h-28 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-sm leading-6 outline-none placeholder:text-stone focus-visible:outline-none aria-invalid:text-coral-deep"
           />
-          {/* 비활성화에도 초점이 유지돼 Esc로 패널을 닫을 수 있도록 aria-disabled를 사용합니다. */}
+          {/* #818 · 12-4 F3: 비활성화에도 초점이 유지돼 Esc로 패널을 닫을 수 있도록 aria-disabled를 사용합니다. */}
           <button
             type="submit"
             aria-disabled={!content || tooLong || blocked}
