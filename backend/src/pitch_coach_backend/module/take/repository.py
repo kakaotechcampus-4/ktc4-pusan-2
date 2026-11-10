@@ -129,11 +129,12 @@ class TakeRepository:
             .where(Take.id == take_id, Pitch.user_id == user_id)
         )
 
-    def get_owned_with_pitch_title(
+    def get_owned_with_pitch(
         self, take_id: uuid.UUID, user_id: uuid.UUID
-    ) -> tuple[Take, str] | None:
+    ) -> tuple[Take, Pitch] | None:
+        """사용자의 take 와 그 발표. 리포트 · 발표 중인 Take 응답이 발표 값을 싣는다."""
         row = self.db.execute(
-            select(Take, Pitch.title)
+            select(Take, Pitch)
             .join(Pitch, Pitch.id == Take.pitch_id)
             .where(Take.id == take_id, Pitch.user_id == user_id)
         ).first()
