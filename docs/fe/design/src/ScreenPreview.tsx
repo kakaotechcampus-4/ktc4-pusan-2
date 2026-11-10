@@ -25,7 +25,7 @@ import {
   StageBlockedScreen,
   UnsupportedScreen,
 } from './screens/InfoScreens';
-import { LoginScreen, WelcomeScreen } from './screens/OnboardingScreens';
+import { LoginScreen, PrivacyConsentScreen, WelcomeScreen } from './screens/OnboardingScreens';
 import { PolicyScreen } from './screens/PolicyScreens';
 import {
   ColorsFoundation,
@@ -229,6 +229,8 @@ function CurrentScreen({
       return <WelcomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'login':
       return <LoginScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'privacy-consent':
+      return <PrivacyConsentScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'terms':
       return <PolicyScreen kind="terms" />;
     case 'privacy':
