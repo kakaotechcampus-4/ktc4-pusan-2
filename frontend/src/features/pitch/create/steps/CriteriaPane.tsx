@@ -48,7 +48,7 @@ const MEASURABLE_CRITERIA: { label: string; example: string; note?: string }[] =
   {
     label: '소리 크기',
     example: '평소보다 3dB 이상 크게 말하기',
-    note: '평소 목소리 대비 변화량(dB)으로 판정해요. 절대 음량(dB) 목표는 판정하지 않아요.',
+    note: '장치 점검에서 잰 기준 목소리 대비 변화량(dB)으로 판정해요. 절대 음량(dB) 목표는 판정하지 않아요.',
   },
   { label: '군더더기 말', example: '군더더기 말은 5회 이하로 하기' },
   {

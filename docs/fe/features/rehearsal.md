@@ -50,7 +50,7 @@
 | 시선 기준점 | 이 기기 · 이 배치에서 "카메라를 본다"의 기준(Calibration). 탭 메모리에만 둡니다 |
 | 1초 기록 | 1초마다 만드는 시선 · 음량 기록. WS `metrics`로 보냅니다 |
 | 시선 3값 | `CAMERA` · `BOTTOM` · `UNCERTAIN`. 화면은 이 셋만 압니다 |
-| 평소 목소리 | 발표 전에 잰 기준 음량(`base_level_db`). 선택 단계라 시작을 막지 않습니다 |
+| 기준 목소리 | 장치 점검에서 잰 기준 음량(`base_level_db`). 목소리 크기는 이 값과의 차이(`voice_diff_db`, 화면 이름 "기준 대비 변화")로 판정합니다. **시작 조건입니다** — 이번에 재거나, 같은 환경(같은 탭 · 같은 마이크 · 자동 음량 조절 꺼짐 · 처음 잰 지 30분 안)이면 직전 값을 다시 쓰거나, 읽기에 두 번 실패하면 탈출구로 `null`을 보내 AI가 발표 첫 발화로 잡습니다 (#1179) |
 
 **Take를 만들 때 보내는 값** — 슬라이드 버전, 대본 버전, 연습 모드, 대본 표시 방식, `client_session_id`.
 
@@ -61,7 +61,7 @@
 
 ```
 /pitch/:pitchId/device-check   장치 점검
-   │  장비 준비(카메라 · 마이크) → 시선 기준점 → 평소 목소리(선택) → 대본 표시 방식
+   │  장비 준비(카메라 · 마이크) → 시선 기준점 → 기준 목소리(재기 · 다시 쓰기 · 탈출구) → 대본 표시 방식
    │  · 서버가 지난 자료를 골랐으면 확인받은 뒤에 시작 (2-3)
    │  · 다른 창 · 기기에서 발표 중인 Take 가 있으면 끝낼지 묻기
    │
@@ -77,7 +77,7 @@ WS stop + PUT /takes/{id} (종료 시각)
    └─ 실패 → /takes/:takeId/retry        재시도 (같은 세션으로 다시 보냄)
 ```
 
-- 보정 요약 · 평소 목소리는 리포트의 참고값입니다. 보내지 못해도 연습은 엽니다.
+- 보정 요약 · 기준 목소리는 리허설로 넘어가기 전에 보내고, 실패하면 몇 번 다시 보냅니다(`lib/sendCalibration.ts`). 시선 보정 요약이 없어도 목소리 기준은 보냅니다. 끝내 응답을 못 받아도 연습은 열고, 목소리 기준을 보냈으면 무대 안내 칸에 "저장됐는지 확인하지 못했어요"를 띄웁니다.
 - 재시도 화면이나 실패한 리허설에서 장치 점검으로 돌아갈 때는 처음 고른 연습 조합을 다시 넘깁니다(`prepare/deviceCheckLink.ts`).
 
 ### 2-1. 새로고침 · 창 닫기
@@ -142,7 +142,9 @@ WS stop + PUT /takes/{id} (종료 시각)
 | `prepare/CheckCard.tsx` · `ScreenFrame.tsx` · `ScriptModeChoice.tsx` · `MissionCard.tsx` | 점검 카드 · 화면 틀 · 대본 표시 방식 고르기 · 이번 Take 목표 |
 | `prepare/PrepareRedirect.tsx` | 옛 주소 `/pitch/:id/prepare` → 장치 점검 |
 | `prepare/useGazeSetup.ts` · `GazeSetupView.tsx` | 시선 기준점. 상자 안은 AI 카메라 화면 모듈(`vendor/gaze/camera`)이 그립니다 |
-| `prepare/useBaseVoice.ts` · `media/baseVoice.ts` | 평소 목소리 재기 |
+| `prepare/useBaseVoice.ts` · `media/baseVoice.ts` | 기준 목소리 재기 |
+| `lib/baseVoiceMemory.ts` | 같은 환경에서 다시 쓸 기준 목소리. 탭 메모리에만 둡니다 |
+| `lib/sendCalibration.ts` | 보정 요약 · 기준 목소리 다시 보내기 |
 | `prepare/prepareInfo.ts` | 준비 정보 변환 · 시작할 수 없는 이유 · 연습 조합 고르기 · 지난 자료 안내 |
 | `prepare/activeTake.ts` · `ReplaceTakeDialog.tsx` | 다른 곳에서 발표 중인 Take 확인 |
 
