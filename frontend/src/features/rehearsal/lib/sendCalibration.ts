@@ -26,6 +26,15 @@ export const CALIBRATION_TIMEOUT_MS = 4000;
 export const BASE_VOICE_UNCONFIRMED_TEXT =
   '목소리 기준이 저장됐는지 확인하지 못했어요. 저장되지 않았으면 발표 처음 목소리로 잡아요.';
 
+/**
+ * 장치 점검이 목소리 기준을 보냈는데 끝내 응답을 못 받았나 — 무대로 넘겨준 라우터 state 의 `baseVoiceUnconfirmed`.
+ * state 는 새로고침 · 다른 화면을 거쳐도 남아서 무엇이 들어 있을지 장담할 수 없어, 정확히 true 일 때만 봅니다
+ */
+export function isBaseVoiceUnconfirmed(state: unknown): boolean {
+  if (typeof state !== 'object' || state === null) return false;
+  return (state as { baseVoiceUnconfirmed?: unknown }).baseVoiceUnconfirmed === true;
+}
+
 function retryable(err: unknown): boolean {
   if (!(err instanceof ApiFailure)) return true;
   return err.status >= 500 || err.status === 408 || err.status === 429;

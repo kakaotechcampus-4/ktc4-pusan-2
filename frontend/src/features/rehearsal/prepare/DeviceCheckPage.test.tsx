@@ -208,9 +208,9 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 /** 무대 자리. 장치 점검이 넘긴 state 중 목소리 기준 저장 여부를 표시로 남깁니다 (#1179) */
-function RehearsalProbe() {
+function RehearsalProbe({ label = '연습 시작' }: { label?: string }) {
   const state = useLocation().state as { baseVoiceUnconfirmed?: boolean } | null;
-  return <p data-unconfirmed={String(state?.baseVoiceUnconfirmed ?? false)}>연습 시작</p>;
+  return <p data-unconfirmed={String(state?.baseVoiceUnconfirmed ?? false)}>{label}</p>;
 }
 async function render(combo?: PracticeCombo, pitchId = 'p1') {
   await act(async () =>
@@ -225,7 +225,7 @@ async function render(combo?: PracticeCombo, pitchId = 'p1') {
         <Routes>
           <Route path="/pitch/:pitchId/device-check" element={<DeviceCheckPage />} />
           <Route path="/takes/:takeId/rehearsal" element={<RehearsalProbe />} />
-          <Route path="/takes/:takeId/exam" element={<p>실전 시작</p>} />
+          <Route path="/takes/:takeId/exam" element={<RehearsalProbe label="실전 시작" />} />
           <Route path="/pitch/:id/edit" element={<p>피치 수정</p>} />
         </Routes>
       </MemoryRouter>,
@@ -1018,4 +1018,15 @@ it('확인 창을 거치는 사이 다시 쓰는 기준이 만료되면 Take 를
   expect(findButton('Take 4 시작하기').disabled).toBe(true);
   expect(document.activeElement).not.toBe(document.body);
   now.mockRestore();
+});
+
+// #1184 리뷰 — 실전 모드로 시작해도 같은 안내 표시가 실전 무대로 넘어갑니다
+it('실전 모드로 시작했을 때도 목소리 기준을 확인하지 못했으면 실전 무대로 알리게 넘긴다', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  fixture.postCalibration.mockRejectedValue(new ApiFailure(409, 'TAKE_ALREADY_STARTED'));
+  await render();
+  await act(async () => scriptOption('실전 모드').click());
+  await act(async () => findButton('Take 4 실전 모드로 시작').click());
+  expect(host.textContent).toContain('실전 시작');
+  expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('true');
 });
