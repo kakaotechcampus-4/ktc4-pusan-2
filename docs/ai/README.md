@@ -32,7 +32,7 @@
 | 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 서비스 탑재 (코치를 통해) | [speech-pace/](../../ai/research/speech-pace/README.md) · 서비스 [`features/pace/`](../../ai/service/src/pitch_coach_ai/features/pace/) |
 | 소리 크기 · 침묵 | [volume.md](features/volume.md) | jinn-ie | 서비스 탑재 (코치를 통해) | [volume-analysis/](../../ai/research/volume-analysis/README.md) · 서비스 [`features/volume/`](../../ai/service/src/pitch_coach_ai/features/volume/) |
 | 리뷰 에이전트 | [review-agent.md](features/review-agent.md) | jinn-ie | 서비스 탑재 | [review-agent/](../../ai/research/review-agent/README.md) · 서비스 [`features/review/`](../../ai/service/src/pitch_coach_ai/features/review/) |
-| 대화형 코치 에이전트 | [chat-agent.md](features/chat-agent.md) | JWK0395 | 서비스 탑재 | [chat-agent/](../../ai/research/chat-agent/README.md) · 서비스 [`features/chat_agent/`](../../ai/service/src/pitch_coach_ai/features/chat_agent/) |
+| 대화형 코치 에이전트 | [chat-agent.md](features/chat-agent.md) · [테크스펙](features/chat-agent-techspec.md) | JWK0395 | 서비스 탑재 | [chat-agent/](../../ai/research/chat-agent/README.md) · 서비스 [`features/chat_agent/`](../../ai/service/src/pitch_coach_ai/features/chat_agent/) |
 
 현재 서비스에는 `/health` · `/ready`와 대본 파싱(`/scripts/parse`) · 대본 전달도(`/scripts/rubric` · `/takes/analyze` · `/takes/rescore`) · 코치(`/coach/evaluate` · `/coach/finalize` · `/coach/plan`) · 평가 기준 분석(`/evaluation-criteria/parse`) · 리뷰(`/takes/review`) · 대화형 코치 에이전트(`/agent/turn`, `AGENT_ENABLED`를 켜기 전에는 503 `AGENT_DISABLED`)가 연결되어 있습니다(BE 호출 · 배포 여부는 별도). 시선 · 군더더기 · 말 속도 · 소리 크기 판정 모듈은 서비스(`ai/service/src/pitch_coach_ai/features/gaze/` · `filler/` · `pace/` · `volume/`)에 있고, 자기 엔드포인트 없이 코치 `evaluate` · `finalize`가 묶어 씁니다(`coach-agent.md` 11절). 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
 

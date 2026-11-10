@@ -1,49 +1,32 @@
 # 실행 기록 발췌 — path-nl-fetch-read
 
-- 기능 버전: chat_agent-0.12.0
-- 프롬프트 버전: c098795754dc
-- 모델: gpt-6-luna
-- 검색 방식: hybrid
-- 실행일: 2026-11-10
+- 기능 버전: chat_agent-0.13.0 · 프롬프트 버전: 17278f520767 · 모델: gpt-6-luna
+- 출처: 회귀 재측정 `post4-path`의 첫 실행(가짜 BE · 합성 자료, 모델을 다시 부르지 않고 옮김)
 - 채점 결과(참고): 통과
 
-시나리오는 합성 자료이고, 서명 상태 값은 생략했다.
+## 차례 1 — Take 3 때는 말을 분당 몇 자로 했었지?
 
-## 시나리오 `path-nl-fetch-read`
+끝 상태 `DONE`
 
-- 제목: 보고 있는 Take 5 밖의 Take 3 를 물음 — 가져오기(AUTO) → 읽기 → 기록 문장 순서, 말 속도 335
+할 일 단계(화면):
 
-### 사용자 말 1
+- ☑ 기록 가져오기 → 가져옴
+- ☑ 말하기 속도 기록 확인: Take 3 기록 → 확인
+- ☑ 기록된 값을 답변
 
-> Take 3 때는 말을 분당 몇 자로 했었지?
+확인한 것(화면):
 
-#### AI 호출 1 (`req-run-1-1`)
+- 기록 보기 → 코치가 찾은 것 · 확인
 
-| seq | event | 내용 |
-| --- | --- | --- |
-| 1 | plan | [DOING] Take 기록에서 말하기 속도 확인<br>[TODO] 확인한 값으로 답변 |
-| - | final | status=NEEDS_ACTION · actions=['FETCH_TAKE'] |
+답(문장 종류 · 글):
 
-결정 로그(`agent_decision`)
+- `ACTION_RESULT` Take 3 기록을 가져왔어요.
+- `RECORD` ‘졸업 발표’의 Take 3 말 속도는 335자/분이었어요.
 
-| signal | facts | decider | effect | step | tool_seq |
-| --- | --- | --- | --- | --- | --- |
-| NOT_LOADED | [] | CODE | ACTION |  |  |
+## 결정 로그(`agent_decision` 신호:효과:결정자, 마지막 차례)
 
-BE 행동(호출 뒤)
+- `NOT_LOADED:ACTION:CODE`
 
-| 행동 | 자율 | 승인 결정 | 실행 | 결과 |
-| --- | --- | --- | --- | --- |
-| FETCH_TAKE | AUTO |  | 실행함 | SUCCEEDED |
+## 사건 순서(마지막 차례)
 
-#### AI 호출 2 (`req-run-1-2`)
-
-| seq | event | 내용 |
-| --- | --- | --- |
-| 2 | plan | [DONE] Take 기록에서 말하기 속도 확인: 기록 가져오기 → 가져옴<br>[DOING] 확인한 값으로 답변 |
-| 3 | tool_done | get_take_report · OK · 코치가 찾은 것 · 5개 항목 |
-| 4 | plan | [DONE] Take 기록에서 말하기 속도 확인: 기록 가져오기 → 가져옴<br>[DONE] 기록 보기: Take 3 기록 → 확인<br>[DOING] 확인한 값으로 답변 |
-| 5 | claim | ACTION_RESULT: Take 3 기록을 가져왔어요. |
-| 6 | claim | RECORD: Take 3의 말 속도는 335자/분이었습니다. |
-| 7 | plan | [DONE] Take 기록에서 말하기 속도 확인: 기록 가져오기 → 가져옴<br>[DONE] 기록 보기: Take 3 기록 → 확인<br>[DONE] 확인한 값으로 답변 |
-| - | final | status=DONE · actions=[] |
+`decision:NOT_LOADED:ACTION:CODE → propose:FETCH_TAKE:AUTO → final:NEEDS_ACTION → exec:FETCH_TAKE:OK → tool:get_take_report:OK → claim:ACTION_RESULT → claim:RECORD → final:DONE`
