@@ -27,7 +27,8 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
         </p>
 
         <p className="mt-1 text-sm leading-7 text-stone">
-          튜토리얼 리포트는 계정당 한 번 받을 수 있어요. 리포트가 나오기 전에 연습이 끊겼다면 다시 할 수 있어요.
+          튜토리얼 리포트는 계정당 한 번 받을 수 있어요. 리포트가 나오기 전에 연습이 끊겼다면 다시
+          할 수 있어요.
         </p>
         {used && (
           <section role="alert" className="mt-6 border-2 border-ink bg-cream p-5">
@@ -35,7 +36,11 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
             <p className="mt-2 text-sm leading-7">
               샘플 발표로는 더 연습할 수 없어요. 내 자료로 새 피치를 만들어 계속 연습할 수 있어요.
             </p>
-            <button type="button" onClick={() => onNavigate('pitch-create')} className="mt-4 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold">
+            <button
+              type="button"
+              onClick={() => onNavigate('pitch-create')}
+              className="mt-4 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold"
+            >
               새 피치 만들기
             </button>
           </section>
@@ -57,9 +62,9 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
             ))}
           </ol>
           <p className="mt-6 border-t border-line-strong pt-4 text-sm leading-7">
-            샘플 발표는 내 피치 목록에 ‘샘플’로 저장되며, 발표 기록도 남습니다. 카메라 영상은 브라우저에서
-            처리하고, 발표 음성은 분석을 위해 서버로 전송됩니다. 코칭 결과는 실제 측정에 따라
-            달라지며 예시 점수나 가짜 피드백을 사용하지 않습니다.
+            샘플 발표는 내 피치 목록에 ‘샘플’로 저장되며, 발표 기록도 남습니다. 카메라 영상은
+            브라우저에서 처리하고, 발표 음성은 분석을 위해 서버로 전송됩니다. 코칭 결과는 실제
+            측정에 따라 달라지며 예시 점수나 가짜 피드백을 사용하지 않습니다.
           </p>
         </section>
 
