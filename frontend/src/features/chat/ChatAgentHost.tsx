@@ -494,7 +494,8 @@ function ChatPanel({
   // 헤더가 스크롤로 화면 밖으로 나가면 상단 여백도 줄이고, 크기 변경은 실측으로 반영합니다.
   useLayoutEffect(() => {
     const panel = panelRef.current;
-    const content = panel?.closest('.chat-layout')?.querySelector<HTMLElement>('.chat-layout-content');
+    const layout = panel?.closest('.chat-layout');
+    const content = layout?.querySelector<HTMLElement>('.chat-layout-content');
     if (!panel || !content || typeof window.matchMedia !== 'function') return;
 
     const overlay = window.matchMedia('(min-width: 761px) and (max-width: 1439px)');
