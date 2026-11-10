@@ -40,7 +40,7 @@
 <line x1="535" y1="212" x2="985" y2="212" stroke="#c6bcac" stroke-width="1"/>
 <text x="548" y="242" font-size="16" fill="#2a2723" font-weight="700" text-anchor="start">시선 기준</text>
 <circle cx="665" cy="236" r="7" fill="#6b9e78" stroke="none" stroke-width="0"/>
-<text x="682" y="241" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">4개 중 3개 완료</text>
+<text x="682" y="241" font-size="13" fill="#6b625b" font-weight="500" text-anchor="start">시선 기준 완료</text>
 <rect x="839" y="223" width="146" height="28" rx="0" fill="#f5f0e9" stroke="#c6bcac" stroke-width="1"/>
 <text x="912" y="242" font-size="13" fill="#2a2723" font-weight="600" text-anchor="middle">다시 잡기</text>
 <line x1="535" y1="253" x2="985" y2="253" stroke="#c6bcac" stroke-width="1"/>
