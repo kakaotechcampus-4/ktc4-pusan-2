@@ -41,6 +41,13 @@ const DIALOG_STATES: Record<string, { busy: boolean; error: 'failed' | null }> =
   'delete-error': { busy: false, error: 'failed' },
 };
 
+/** 튜토리얼 진입을 권할 때 쓰는 PRESS START 스티커(#1105) — 제품과 같은 별 좌표. */
+const STARBURST =
+  '50,2 57.6,11.1 68.4,5 71.7,15.8 83.9,13.7 82.4,24.5 94.3,26.7 88.3,35.9 98,42 88.3,48.1 ' +
+  '94.3,57.3 82.4,59.5 83.9,70.3 71.7,68.2 68.4,79 57.6,72.9 50,82 42.4,72.9 31.6,79 28.3,68.2 ' +
+  '16.1,70.3 17.6,59.5 5.7,57.3 11.7,48.1 2,42 11.7,35.9 5.7,26.7 17.6,24.5 16.1,13.7 28.3,15.8 ' +
+  '31.6,5 42.4,11.1';
+
 const homePrimary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
 
@@ -132,12 +139,33 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/pitch/tutorial"
-              className="inline-flex items-center justify-center border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream"
-            >
-              첫 미션 체험하기 →
-            </Link>
+            {/* 정적 샘플은 아직 튜토리얼을 마치지 않은 계정의 강조 상태를 나타낸다. */}
+            <span className="relative inline-flex">
+              <Link
+                to="/pitch/tutorial"
+                className="tutorial-invite inline-flex items-center justify-center border-2 border-ink bg-panel py-3 pr-5 pl-10 text-sm font-bold hover:bg-cream"
+              >
+                튜토리얼 해 보기 →
+              </Link>
+              <span
+                aria-hidden="true"
+                data-tutorial-sticker=""
+                className="pointer-events-none absolute -top-7 -left-8 h-[60px] w-[72px] -rotate-12"
+              >
+                <svg viewBox="0 0 100 84" className="absolute inset-0 h-full w-full">
+                  <polygon
+                    points={STARBURST}
+                    className="fill-coral-deep stroke-ink"
+                    strokeWidth="3.5"
+                    strokeLinejoin="miter"
+                  />
+                </svg>
+                <span className="absolute inset-0 flex flex-col items-center justify-center text-[11px] font-extrabold leading-[1.1] tracking-tight text-white">
+                  <span>PRESS</span>
+                  <span>START!</span>
+                </span>
+              </span>
+            </span>
             <Link to="/pitch/new" className={homePrimary}>
               <span aria-hidden="true">＋</span> 새 피치 만들기
             </Link>
