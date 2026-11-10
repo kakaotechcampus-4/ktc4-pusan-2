@@ -9,7 +9,7 @@ from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
-from pitch_coach_backend.module.take.dto import ScriptMode, TakeSummaryDTO
+from pitch_coach_backend.module.take.dto import ScriptMode, TakeSummaryDTO, TutorialBlock
 
 # 발표 시간 상한. FE 의 MAX_TIME_LIMIT_MIN(60분)과 같다. Take 목표 시간도 이 값을 그대로 쓴다
 MAX_TIME_LIMIT_SEC = 60 * 60
@@ -276,6 +276,9 @@ class PrepareDTO(BaseModel):
     default_script_mode: ScriptMode
     # Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 가 없으면 None
     missions: PrepareMissionsDTO | None
+    # 튜토리얼 샘플 발표에서 새 Take 를 만들 수 없는 이유. Take 생성의 409 코드와 같다. 일반 발표나
+    # 막히지 않은 샘플은 None. 카메라 점검 전에 알리려는 그 시점 값이라 시작은 Take 생성이 다시 본다
+    tutorial_block: TutorialBlock | None
 
 
 class Versioned(Protocol):
