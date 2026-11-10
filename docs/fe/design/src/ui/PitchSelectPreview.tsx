@@ -58,7 +58,10 @@ export function PitchSelectPreview({
       setActive((current) => {
         if (event.key === 'Home') return 0;
         if (event.key === 'End') return options.length - 1;
-        return Math.min(options.length - 1, Math.max(0, (open ? current : selectedIndex) + direction));
+        return Math.min(
+          options.length - 1,
+          Math.max(0, (open ? current : selectedIndex) + direction),
+        );
       });
     }
   }
@@ -85,8 +88,16 @@ export function PitchSelectPreview({
           className="flex min-h-11 min-w-28 cursor-pointer select-none items-center gap-2 border-2 border-ink bg-white py-1 pl-2 pr-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep aria-expanded:bg-cream"
         >
           <span className="min-w-0 flex-1 truncate">{selectedOption.label}</span>
-          <svg aria-hidden="true" viewBox="0 0 12 12" className={`size-3 shrink-0 ${open ? 'rotate-180' : ''}`}>
-            <path className="fill-none stroke-ink" strokeWidth="1.5" d="M2.5 4.5l3.5 3.5l3.5-3.5" />
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 12 12"
+            className={`size-3 shrink-0 ${open ? 'rotate-180' : ''}`}
+          >
+            <path
+              className="fill-none stroke-ink"
+              strokeWidth="1.5"
+              d="M2.5 4.5l3.5 3.5l3.5-3.5"
+            />
           </svg>
         </div>
         {open && (
@@ -114,7 +125,11 @@ export function PitchSelectPreview({
                 </span>
                 {index === selectedIndex && (
                   <svg aria-hidden="true" viewBox="0 0 14 14" className="size-3.5 shrink-0">
-                    <path className="fill-none stroke-coral-deep" strokeWidth="2" d="M2.5 7.5l3 3l6-7" />
+                    <path
+                      className="fill-none stroke-coral-deep"
+                      strokeWidth="2"
+                      d="M2.5 7.5l3 3l6-7"
+                    />
                   </svg>
                 )}
               </li>
