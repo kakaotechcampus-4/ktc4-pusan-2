@@ -27,9 +27,7 @@ test('샘플을 만들면 해당 피치의 장치 점검으로 이동한다', as
   await expect(page.getByRole('heading', { name: '시작 전 세팅' })).toBeVisible();
 });
 
-test('튜토리얼 사용 완료 계정은 장치 점검으로 보내지 않고 새 피치를 안내한다', async ({
-  page,
-}) => {
+test('튜토리얼 사용 완료 계정은 장치 점검으로 보내지 않고 새 피치를 안내한다', async ({ page }) => {
   await page.goto('/pitch/tutorial');
   const start = page.getByRole('button', { name: '튜토리얼 시작하기 →' });
   await expect(start).toBeVisible();
