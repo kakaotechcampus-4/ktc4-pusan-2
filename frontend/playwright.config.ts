@@ -15,7 +15,10 @@ export default defineConfig({
   testMatch: '**/*.e2e.ts',
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  fullyParallel: false,
+  // 파일 안의 시험도 워커들이 나눠 돕니다. 파일 단위로만 나누면 시험이 많은 파일 하나를 워커 하나가 혼자 돌고
+  // 나머지는 놀아서, 그 파일의 시간이 곧 전체 시간이 됩니다. 시험마다 브라우저 컨텍스트가 새로 생기고 MSW 목도
+  // 페이지 안에서 돌아 시험끼리 상태를 나누지 않습니다 — 새 시험도 앞 시험의 결과에 기대지 않게 씁니다
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
