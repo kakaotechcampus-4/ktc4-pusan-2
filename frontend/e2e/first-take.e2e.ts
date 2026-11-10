@@ -42,9 +42,6 @@ test('튜토리얼 사용 완료 계정은 장치 점검으로 보내지 않고 
   await start.click();
   await expect(page).toHaveURL(/\/pitch\/tutorial$/);
   await expect(page.getByRole('heading', { name: '튜토리얼 리포트를 이미 받았어요' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '새 피치 만들기' })).toHaveAttribute(
-    'href',
-    '/pitch/new',
-  );
+  await expect(page.getByRole('link', { name: '새 피치 만들기' })).toHaveAttribute('href', '/pitch/new');
   await expect(page.getByRole('link', { name: '샘플 Take 기록 보기' })).toHaveCount(0);
 });
