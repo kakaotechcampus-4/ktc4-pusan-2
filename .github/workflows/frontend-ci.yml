@@ -37,6 +37,17 @@ on:
       - '.github/workflows/frontend-ci.yml'
       - 'docs/ai/features/script-parser-markers.json'
 
+# 같은 PR 에 새로 푸시하면 아직 돌거나 기다리는 이전 실행을 취소합니다 (#1201).
+# 결과를 볼 일 없는 실행이 러너를 차지하면 조직 전체가 나눠 쓰는 러너의 대기가 길어집니다.
+# 취소된 실행은 실패가 아니라 "cancelled" 로 남고, 마지막 커밋의 실행은 끝까지 돕니다.
+#
+# push(develop-next · main 등)는 실행마다 다른 그룹(run_id)에 넣어 서로 기다리지도 취소되지도 않게 합니다.
+# 브랜치로 묶으면 cancel-in-progress 가 false 여도 기다리는 실행은 하나만 남고 나머지는 취소됩니다
+# (notify-discord.yml 머리 주석). 연달아 머지돼도 머지 커밋마다 검사 결과가 남아야 합니다.
+concurrency:
+  group: frontend-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
