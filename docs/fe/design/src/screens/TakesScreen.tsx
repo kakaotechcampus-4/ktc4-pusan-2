@@ -4,6 +4,7 @@ import { Button } from '@/ui/Button';
 import { Card } from '@/ui/Panel';
 import { Badge } from '@/ui/Badge';
 import { Mascot } from '@/ui/Mascot';
+import { PitchSelectPreview } from '@/ui/PitchSelectPreview';
 import { Frame, QueryNotice, PITCH, type Navigate } from './shared';
 
 type Metric = 'audience' | 'script' | 'speed' | 'filler';
@@ -76,17 +77,11 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
               </button>
             ))}
           </nav>
-          <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm font-bold">
-            피치
-            <select
-              aria-label="피치"
-              defaultValue={comparing ? 'p1' : ''}
-              className="min-h-11 min-w-0 max-w-full border-2 border-ink bg-white px-2 py-1 sm:max-w-xs"
-            >
-              {!comparing && <option value="">전체</option>}
-              <option value="p1">{PITCH}</option>
-            </select>
-          </label>
+          <PitchSelectPreview
+            key={comparing ? 'compare' : 'list'}
+            comparing={comparing}
+            pitchTitle={PITCH}
+          />
         </div>
       )}
 
