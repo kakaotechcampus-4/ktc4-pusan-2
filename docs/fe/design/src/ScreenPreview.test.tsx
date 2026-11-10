@@ -484,6 +484,20 @@ it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검
   expect(host.textContent).toContain('점검 항목');
 });
 
+it('제품 점검 화면과 배치 시안은 기준 목소리를 네 번째 필수 항목으로 안내한다', async () => {
+  await render('prepare-mission');
+  expect(host.textContent).toContain('4 / 4');
+  expect(host.textContent).toContain('기준 목소리 · 확인됨');
+  await act(async () => root.render(null));
+
+  await render('prepare-layout-review', 'voice-reading');
+  expect(host.textContent).toContain('필수 3/4 준비');
+  expect(button('Take 3 시작하기')?.disabled).toBe(true);
+  await click('다 읽었어요');
+  expect(host.textContent).toContain('필수 4/4 완료');
+  expect(button('Take 3 시작하기')?.disabled).toBe(false);
+});
+
 it('사용방법의 샘플 진입점은 튜토리얼 미리보기로 이동한다', async () => {
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;
