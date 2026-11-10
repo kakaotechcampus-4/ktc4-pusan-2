@@ -247,6 +247,56 @@ body {
 }
 
 
+/* 문서 스크롤과 상단바의 sticky 기준을 유지한 채 헤더와 본문을 함께 줄입니다. */
+:root {
+  --chat-panel-width: 400px;
+}
+
+.chat-side-panel {
+  transition: translate 180ms ease-out;
+}
+
+@media (width <= 400px) {
+  .chat-side-panel {
+    bottom: calc(var(--chat-launcher-bottom) + 3.5rem);
+  }
+}
+
+@starting-style {
+  .chat-side-panel {
+    translate: 100% 0;
+  }
+}
+
+/* 패널을 제외하고도 스크롤바 여백을 포함해 본문에 약 1024px 이상을 남깁니다. */
+@media (min-width: 1440px) {
+  .chat-layout {
+    --chat-reserved-width: 0px;
+  }
+
+  .chat-layout:has([data-chat-panel]) {
+    --chat-reserved-width: var(--chat-panel-width);
+  }
+
+  .chat-layout:has([data-chat-launcher]) .chat-layout-content {
+    padding-right: var(--chat-reserved-width);
+    transition: padding-right 180ms ease-out;
+  }
+
+  .chat-layout-content .pitch-create-square > footer {
+    right: var(--chat-reserved-width);
+    transition: right 180ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-side-panel,
+  .chat-layout:has([data-chat-launcher]) .chat-layout-content,
+  .chat-layout-content .pitch-create-square > footer {
+    transition: none;
+  }
+}
+
 /* TS는 경로별 기본 하단 여백을 전달하고, CSS는 좁은 화면의 최종 여백을 결정합니다.
    정상 런처와 오류 안내가 같은 규칙을 사용하며 패널 높이도 최종 여백을 참조합니다. */
 [data-chat-launcher] {
@@ -258,11 +308,6 @@ body {
   body:has([data-chat-launcher]) .home-footer-content {
     padding-left: 5rem;
   }
-}
-
-/* 장치 점검: 왼쪽 채팅 버튼이 바닥 안내(상태 · 보조 설명)를 가리지 않게 공간을 둡니다. */
-body:has([data-chat-launcher]) .prepare-screen {
-  padding-left: 4.5rem;
 }
 
 /* 낮은 데스크톱 창에서 생성·수정 화면의 버전 관리 버튼은 왼쪽 런처와 떨어뜨립니다. */

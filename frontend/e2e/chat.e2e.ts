@@ -59,6 +59,59 @@ test('1. 홈에서 버튼 → 전체 범위로 질문 → 답과 근거 칩', as
   await expect(chips.getByRole('listitem').first()).toBeVisible();
 });
 
+test('넓은 화면에서는 400px을 확보하고 좁은 화면에서는 본문 위에 표시한다', async ({ page }) => {
+  await page.goto('/');
+  const content = page.locator('.chat-layout-content');
+  const header = content.getByRole('banner');
+  const main = content.getByRole('main');
+  await expect(header).toHaveCount(1);
+  await expect(main).toBeVisible();
+  const headerWidth = (await header.boundingBox())!.width;
+  const mainWidth = (await main.boundingBox())!.width;
+  const panel = await openChat(page);
+  await expect(panel).toHaveCSS('width', '400px');
+  await expect(content).toHaveCSS('padding-right', '400px');
+  expect((await header.boundingBox())!.width).toBe(headerWidth - 400);
+  expect((await main.boundingBox())!.width).toBeLessThan(mainWidth);
+
+  await page.setViewportSize({ width: 375, height: 780 });
+  await expect(content).toHaveCSS('padding-right', '0px');
+  const viewportWidth = (await content.boundingBox())!.width;
+  await expect(panel).toHaveCSS('width', `${viewportWidth}px`);
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(content).toHaveCSS('padding-right', '0px');
+  expect((await header.boundingBox())!.width).toBe(headerWidth);
+  expect((await main.boundingBox())!.width).toBe(mainWidth);
+});
+
+test('대본 매핑과 슬라이드 확인은 열린 채팅 위에 뷰포트 기준으로 표시한다', async ({ page }) => {
+  await page.goto(`/pitch/${PITCH_ID}/edit`);
+  const panel = await openChat(page);
+  const composer = panel.getByRole('textbox', { name: '채팅 메시지' });
+  await composer.fill('확인할 내용');
+  const triggers = [
+    [/^슬라이드 확인 ·/, '슬라이드 확인'],
+    ['매핑 확인/수정', '매핑 확인·수정'],
+  ] as const;
+  for (const [trigger, title] of triggers) {
+    await page.getByRole('button', { name: trigger }).click();
+    const modal = page
+      .locator('dialog:modal')
+      .filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+    await expect(modal).toHaveCSS('width', '1200px');
+    await expect(modal).toHaveCSS('height', '850px');
+    await expect(page.locator('[data-chat-panel]')).toBeVisible();
+    await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
+    await modal.getByRole('button', { name: '닫기', exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    await expect(composer).toHaveValue('확인할 내용');
+  }
+});
+
 test('2. 리포트에서 열면 범위가 그 피치 → 할 일 목록 · 도구 기록이 있는 답', async ({ page }) => {
   await page.goto(`/takes/${TAKE3_ID}`);
   const panel = await openChat(page);
@@ -124,8 +177,8 @@ test('5. "바로 발표할래" → [연습 준비로] 버튼 → 누르면 장�
   await start.click();
   await expect(page).toHaveURL(new RegExp(`/pitch/${PITCH_ID}/device-check$`));
   await expect(page.getByRole('heading', { level: 1, name: '시작 전 세팅' })).toBeVisible();
-  // 장치 점검 화면은 대화를 쓸 수 있는 화면이라 버튼이 있습니다 — 아래 '버튼 없음' 검사가 헛돌지 않는지 견줍니다
-  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
 
   // 리허설 화면에는 대화 버튼이 없습니다 (L3-01) — 화면이 그려진 뒤에 셉니다(그리기 전에도 0 이라 통과해 버림).
   // 장치 점검을 거치지 않고 바로 열면 리허설 화면이 '연습 중단' 안내를 그립니다 — 같은 리허설 경로의 화면입니다
