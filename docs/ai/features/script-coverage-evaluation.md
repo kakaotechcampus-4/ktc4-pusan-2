@@ -508,7 +508,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 - 채점된 장이 없으면 모든 집계 지표가 null · `failed` + `SLIDES_EXCLUDED`이고, 집계 개수는 0, `critical_gaps`는 `[]`이다. `scope.excluded`와 `slides`에는 실패 장이 그대로 들어간다.
 - 전달 · 다르게 말함의 `excluded`는 빠진 장 중 요청에 평가 기준이 있는 장의 핵심 내용 수다(그래서 BE는 rescore에 처음 채점에 쓴 평가 기준을 모두 싣는다).
 - `critical_gaps`: 장의 것에 `slide_number`를 붙여 중요도 · 장 순으로 최대 10개.
-- `scope`: `{target_slides, scored_slides, estimated_slides, provisional_slides, excluded[{slide_number, reason_code}]}`.
+- `scope`: `{target_slides, scored_slides, estimated_slides, provisional_slides, excluded[{slide_number, reason_code}]}`. `scored_slides`는 채점된 장(`evaluations`) 수이고 상세가 `provisional`인 장도 들어간다. `provisional_slides`는 그중 상세가 `provisional`인 장 수다. `estimated_slides`는 간이 값이 붙은 실패 장 수이고, `excluded`는 간이 값 유무와 상관없이 실패 장 전부다. 그래서 `target_slides − scored_slides − estimated_slides`가 간이 값도 없는 실패 장(`STT_INCOMPLETE` · 대본 글 없는 `RUBRIC_MISSING`) 수다.
 - `slides[]`: 대상 장마다 `{slide_number, state(scored · estimated · failed), reason_codes, stt_integrity, rubric_quality, delivery, zero_kind, contradiction, status_shares, critical_gap_count, delivery_band, speech_mix{state, reason_codes, display}}`.
 - `/takes/rescore`는 받은 `evaluations` · `failed`로 Take 상세를 다시 만들고, 확인 답을 반영해 장 상세의 대본 쪽 지표를 다시 계산한다. 말의 구성은 처음 채점의 관찰값을 그대로 둔다(6-3).
 
