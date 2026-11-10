@@ -43,6 +43,16 @@ it('브랜드에 Google Chrome 이 있으면 PC Chrome 이다', () => {
   ).toBe(true);
 });
 
+it('브랜드에 Google Chrome 이 있으면 다른 이름이 섞여도 PC Chrome 이다', () => {
+  // 아는 이름만 받으면 Chrome 이 가짜 이름의 모양을 바꿀 때 Chrome 사용자 모두에게 안내가 뜹니다
+  expect(isDesktopChrome(withBrands(['Google Chrome', 'Microsoft Edge', 'Chromium']), false)).toBe(
+    true,
+  );
+  expect(isDesktopChrome(withBrands(['Google Chrome', 'Chromium', 'New-Grease 2']), false)).toBe(
+    true,
+  );
+});
+
 it('Edge · 웨일 · 오페라 · 브레이브는 Chromium 이어도 Chrome 이 아니다', () => {
   for (const vendor of ['Microsoft Edge', 'Whale', 'Opera', 'Brave'])
     expect(isDesktopChrome(withBrands([vendor, 'Chromium', 'Not_A Brand']), false)).toBe(false);
@@ -76,7 +86,8 @@ it('터치스크린 노트북의 Chrome 은 PC Chrome 이다', () => {
 });
 
 it('userAgentData 가 없거나 브랜드가 비면 UA 문자열로 본다', () => {
-  // https 가 아닌 주소로 연 Chrome 은 userAgentData 가 없습니다
+  // https 가 아닌 주소로 연 Chrome 은 userAgentData 가 없습니다.
+  // 브레이브도 UA 가 이것과 같아 여기서는 Chrome 으로 봅니다(한계)
   expect(isDesktopChrome({ userAgent: CHROME_WINDOWS }, false)).toBe(true);
   for (const userAgent of [
     SAFARI_MAC,

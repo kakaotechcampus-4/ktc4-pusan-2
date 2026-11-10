@@ -47,6 +47,11 @@ const NOT_DESKTOP_CHROME_UA = /Edg(A|iOS)?\/|OPR\/|Whale\/|SamsungBrowser\/|YaBr
  * `userAgentData` 의 브랜드를 먼저 봅니다. Edge · 웨일 · 오페라 · 브레이브는 Chromium 이지만 자기 이름을 붙여서
  * 여기서 갈립니다. `userAgentData` 가 없으면(Safari · Firefox, https 가 아닌 주소로 연 Chrome) UA 문자열로 봅니다.
  * 휴대폰 · 태블릿은 브라우저와 상관없이 PC 가 아닙니다.
+ *
+ * 브랜드에 "Google Chrome" 이 있으면 다른 이름이 섞여 있어도 Chrome 으로 봅니다. 아는 이름만 받으면 Chrome 이
+ * 가짜 이름(GREASE)의 모양을 바꿀 때 Chrome 사용자 모두에게 안내가 잘못 뜹니다. 안내용이라 Chrome 이 아닌
+ * 브라우저를 놓치는 쪽을 고릅니다. UA 문자열로는 브레이브를 가리지 못합니다 — UA 가 Chrome 과 같습니다.
+ * https 주소에서는 브랜드로 갈립니다.
  */
 export function isDesktopChrome(
   nav: BrowserIdentity | undefined = globalThis.navigator as BrowserIdentity | undefined,
