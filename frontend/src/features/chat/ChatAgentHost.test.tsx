@@ -232,8 +232,12 @@ async function visit(path: string) {
       {
         element: (
           <>
-            <Outlet />
-            <ChatAgentHost />
+            <div className="chat-layout">
+              <div className="chat-layout-content">
+                <Outlet />
+              </div>
+              <ChatAgentHost />
+            </div>
           </>
         ),
         children: [
@@ -244,7 +248,14 @@ async function visit(path: string) {
           { path: '/takes/:takeId/rehearsal', element: <p>리허설</p> },
           { path: '/pitch/new', element: <p>피치 만들기</p> },
           { path: '/pitch/:id/edit', element: <p>피치 수정</p> },
-          { path: '/pitch/:pitchId/device-check', element: <p>장치 점검</p> },
+          {
+            path: '/pitch/:pitchId/device-check',
+            element: (
+              <main id="main" tabIndex={-1}>
+                장치 점검
+              </main>
+            ),
+          },
           { path: '/welcome', element: <p>서비스 소개</p> },
         ],
       },
@@ -601,6 +612,64 @@ it('열린 패널은 허용 화면에서 유지되고 장치 점검에 들어가
   await go('/takes/t1/rehearsal');
   expect(launcher()).toBeNull();
   expect(panel()).toBeNull();
+});
+
+it('장치 점검으로 이동하면 사라진 채팅 버튼 대신 화면 본문에 초점을 준다', async () => {
+  await visit('/');
+  await openPanel();
+  input().focus();
+  await go('/pitch/p1/device-check');
+  expect(document.activeElement).toBe(host.querySelector('main#main'));
+});
+
+it('지연 로딩 중의 본문이 교체되면 초점을 다시 옮기되 다른 조작부의 초점은 존중한다', async () => {
+  await visit('/');
+  await openPanel();
+  input().focus();
+  await go('/pitch/p1/device-check');
+  const fallback = host.querySelector<HTMLElement>('main#main')!;
+  expect(document.activeElement).toBe(fallback);
+
+  const loaded = document.createElement('main');
+  loaded.id = 'main';
+  loaded.tabIndex = -1;
+  loaded.textContent = '장치 점검을 불러왔어요';
+  await act(async () => {
+    fallback.replaceWith(loaded);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(loaded);
+
+  const anotherButton = document.createElement('button');
+  host.append(anotherButton);
+  anotherButton.focus();
+  const next = document.createElement('main');
+  next.id = 'main';
+  next.tabIndex = -1;
+  await act(async () => {
+    loaded.replaceWith(next);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(anotherButton);
+});
+
+it('모바일 오버레이는 배경을 비활성화하고 닫으면 복원한다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  await visit('/');
+  await openPanel();
+  const content = host.querySelector('.chat-layout-content')!;
+  expect(panel()!.getAttribute('aria-modal')).toBe('true');
+  expect(content.hasAttribute('inert')).toBe(true);
+  expect(document.body.style.position).toBe('fixed');
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(panel()).toBeNull();
+  expect(content.hasAttribute('inert')).toBe(false);
+  expect(document.body.style.position).toBe('');
 });
 
 it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내지 않는다', async () => {
