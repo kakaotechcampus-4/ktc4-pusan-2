@@ -672,6 +672,47 @@ it('모바일 오버레이는 배경을 비활성화하고 닫으면 복원한�
   expect(document.body.style.position).toBe('');
 });
 
+it('모바일에서 같은 경로에서 채팅을 닫으면 기존 스크롤 위치를 복원한다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollX', 0);
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  expect(document.body.style.top).toBe('-420px');
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(scrollTo).toHaveBeenCalledWith(0, 420);
+});
+
+it('모바일에서 채팅을 연 채 다른 페이지로 이동하면 이전 페이지의 스크롤을 복원하지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollX', 0);
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  expect(document.body.style.top).toBe('-420px');
+  await go('/pitch/new');
+  expect(panel()).not.toBeNull();
+  expect(document.body.style.top).toBe('0px');
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.position).toBe('');
+  expect(scrollTo).toHaveBeenCalledWith(0, 0);
+  expect(scrollTo).not.toHaveBeenCalledWith(0, 420);
+});
+
 it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내지 않는다', async () => {
   await visit('/');
   await openPanel();

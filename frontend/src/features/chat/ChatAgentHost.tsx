@@ -68,9 +68,12 @@ export function ChatAgentHost() {
     if (!content) return;
     let focusedMain: HTMLElement | null = null;
     const focusDestination = () => {
+      // 본문이 살아 있는 동안에는 전사·시계 등 내부 변경에 반응하지 않습니다.
+      // 로딩 대체 본문이 교체될 수 있어 초점 직후 observer를 끊지는 않습니다.
+      if (focusedMain?.isConnected) return;
       const main =
         content.querySelector<HTMLElement>('#main') ?? content.querySelector<HTMLElement>('main');
-      if (!main || main === focusedMain || focusedMain?.isConnected) return;
+      if (!main || main === focusedMain) return;
       // 사용자가 로딩 중 다른 조작부로 초점을 옮겼다면 다시 빼앗지 않습니다.
       if (focusedMain && document.activeElement !== document.body) return;
       if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
@@ -444,6 +447,9 @@ function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
+  const { pathname } = useLocation();
+  const openedRouteRef = useRef(pathname);
+  const routeChangedWhileOpenRef = useRef(false);
   const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -468,6 +474,7 @@ function ChatPanel({
     };
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
+    routeChangedWhileOpenRef.current = false;
 
     // iOS Safari에서도 뒤 화면이 움직이지 않도록 고정합니다. 음수 top으로 보던 위치를 그대로 둡니다.
     body.style.position = 'fixed';
@@ -487,9 +494,25 @@ function ChatPanel({
       body.style.left = previous.left;
       body.style.width = previous.width;
       body.style.overflow = previous.overflow;
-      window.scrollTo(scrollX, scrollY);
+      // 다른 페이지로 이동했다면 이전 페이지의 스크롤 위치로 되돌리지 않습니다.
+      if (routeChangedWhileOpenRef.current) window.scrollTo(0, 0);
+      else window.scrollTo(scrollX, scrollY);
     };
+    // 스크롤 잠금은 열고 닫을 때만 처리합니다. 경로 전환은 아래에서 별도로 처리합니다.
   }, [mobileOverlay]);
+  useLayoutEffect(() => {
+    if (mobileOverlay) return;
+    // 데스크톱에서 이동하다 모바일로 크기가 바뀐 경우의 기준 경로입니다.
+    openedRouteRef.current = pathname;
+    routeChangedWhileOpenRef.current = false;
+  }, [mobileOverlay, pathname]);
+  useLayoutEffect(() => {
+    if (!mobileOverlay || openedRouteRef.current === pathname) return;
+    // 패널이 열린 상태의 화면 이동은 기존 화면의 음수 top을 새 화면에 적용하지 않습니다.
+    routeChangedWhileOpenRef.current = true;
+    document.body.style.top = '0px';
+    document.body.style.left = '0px';
+  }, [mobileOverlay, pathname]);
   useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
