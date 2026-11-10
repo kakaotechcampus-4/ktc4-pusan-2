@@ -84,7 +84,7 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     await page.setViewportSize({ width: 1366, height: 800 });
     await page.goto('/pitch/' + PITCH_ID + '/edit');
     const panel = await openPanel(page);
-    const header = page.getByRole('banner');
+    const header = page.getByRole('banner').first();
     const footer = page.locator('.pitch-create-square > footer');
     await expect(header).toBeVisible();
     await expect(footer).toBeVisible();

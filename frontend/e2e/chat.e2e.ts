@@ -148,7 +148,7 @@ test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보�
   expect(before).toBeGreaterThan(0);
   const panel = await openChat(page);
   await expect(panel).toHaveAttribute('aria-modal', 'true');
-  await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
   await expect(page.locator('body')).not.toHaveCSS('position', 'fixed');
   await expect.poll(() => page.evaluate('window.scrollY')).toBe(before);
   expect(await page.evaluate(topScript)).toBe(topBefore);
@@ -158,7 +158,7 @@ test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보�
   expect(await page.evaluate(topScript)).toBe(topBefore);
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
-  await expect(page.locator('html')).not.toHaveCSS('overflow-y', 'hidden');
+  await expect(page.locator('body')).not.toHaveCSS('overflow-y', 'hidden');
   await expect.poll(() => page.evaluate('window.scrollY')).toBe(before);
 });
 
@@ -189,7 +189,7 @@ test('모바일 채팅을 연 채 앞뒤로 이동해도 Take 기록의 400px �
   })()`);
   await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
   const panel = await openChat(page);
-  await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
   await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
 
   // 이전 화면으로 가도 ScrollRestoration의 저장값은 400이어야 합니다.

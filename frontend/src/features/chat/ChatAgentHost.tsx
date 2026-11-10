@@ -465,7 +465,6 @@ function ChatPanel({
     const root = document.documentElement;
     const body = document.body;
     const previous = {
-      rootOverflow: root.style.overflow,
       rootOverscrollBehavior: root.style.overscrollBehavior,
       bodyOverflow: body.style.overflow,
       contentTouchAction: content.style.touchAction,
@@ -474,7 +473,6 @@ function ChatPanel({
     // 문서의 실제 scrollY를 보존해야 React Router의 ScrollRestoration이
     // 앞/뒤 화면의 위치를 저장하고, 오버레이가 열린 상태에서도 새 위치로 이동할 수 있습니다.
     // body position:fixed와 top:-scrollY는 scrollY를 0으로 만들어 사용하지 않습니다.
-    root.style.overflow = 'hidden';
     root.style.overscrollBehavior = 'none';
     body.style.overflow = 'hidden';
     content.style.touchAction = 'none';
@@ -485,7 +483,6 @@ function ChatPanel({
     }
     return () => {
       if (!wasInert) content.removeAttribute('inert');
-      root.style.overflow = previous.rootOverflow;
       root.style.overscrollBehavior = previous.rootOverscrollBehavior;
       body.style.overflow = previous.bodyOverflow;
       content.style.touchAction = previous.contentTouchAction;
