@@ -46,8 +46,11 @@ function isMetric(v: unknown): boolean {
 
 const isMetricOrNull = (v: unknown) => v === null || isMetric(v);
 
+/** 비율 막대(`SharesBar`)가 네 몫을 모두 읽습니다. `{}` · 키가 빠진 값은 `NaN%`가 되므로 네 키가 다 숫자여야 합니다 (#1157 리뷰) */
+const SHARE_KEYS = ['covered', 'partial', 'missing', 'contradicted'] as const;
+
 function isShares(v: unknown): boolean {
-  return v === null || (isObj(v) && Object.values(v).every(isNum));
+  return v === null || (isObj(v) && hasNums(v, SHARE_KEYS));
 }
 
 function isTakeGap(v: unknown): boolean {

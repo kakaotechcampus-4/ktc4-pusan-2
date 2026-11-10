@@ -98,6 +98,19 @@ describe('내용 전달 카드 — 상태', () => {
     ['대표 지표의 이유 목록이 없음', { ...contentMeasured.summary!, delivery: { value: 0.5 } }],
     ['장 목록이 배열이 아님', { ...contentMeasured.summary!, slides: {} }],
     ['장 하나의 상태를 모름', { ...contentMeasured.summary!, slides: [{ slide_number: 1 }] }],
+    // 비율 막대는 네 몫을 모두 읽어 빈 몫이 있으면 NaN% 가 됩니다 — 던지지 않으니 여기서 걸러야 합니다
+    ['판정 몫이 빈 객체', { ...contentMeasured.summary!, status_shares: {} }],
+    [
+      '판정 몫의 키 하나가 빠짐',
+      { ...contentMeasured.summary!, status_shares: { covered: 0.5, partial: 0.2, missing: 0.3 } },
+    ],
+    [
+      '장 요약의 판정 몫이 빈 객체',
+      {
+        ...contentMeasured.summary!,
+        slides: [{ ...contentMeasured.summary!.slides[0]!, status_shares: {} }],
+      },
+    ],
   ])(
     'MEASURED 인데 요약 칸이 비어 있으면(%s) 던지지 않고 카드만 안내로 낮춥니다 (#1157 리뷰 P1)',
     (_, summary) => {
