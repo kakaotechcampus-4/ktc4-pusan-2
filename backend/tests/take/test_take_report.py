@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach.replies import summary_measures
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.user.entity import User
 from tests.take.conftest import Versions, _make_take
@@ -51,6 +52,7 @@ def test_report_before_the_take_result_has_no_measures_or_review(
     assert body["take_id"] == str(take.id)
     assert body["pitch_id"] == str(pitch_id)
     assert body["pitch_title"] == "Take API"
+    assert body["is_demo"] is False
     assert body["take_number"] == 1
     assert body["script_mode"] == "HIGHLIGHT"
     assert body["status"] == "ANALYZING"
@@ -59,6 +61,22 @@ def test_report_before_the_take_result_has_no_measures_or_review(
     assert body["analysis_hold_reason"] is None
     assert body["measures"] is None
     assert body["review"] is None
+
+
+def test_report_marks_a_take_of_the_tutorial_sample_pitch(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    db_session.get(Pitch, pitch_id).is_demo = True
+    take = _make_take(db_session, pitch_id, versions, 1, status="COMPLETED")
+
+    body = _report(client, take.id, auth_headers).json()
+
+    assert body["is_demo"] is True
+    assert body["pitch_title"] == "Take API"
 
 
 def test_report_reads_measures_from_the_take_result_and_the_saved_review(

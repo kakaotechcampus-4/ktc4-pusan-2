@@ -488,7 +488,8 @@ POST /api/pitches/tutorials/first-take   → pitch_id · report_received
 - AI 를 부르지 않는다. `pitch/sample/` 의 PDF · 썸네일을 그 발표 경로에 올리고, 미리 만든 대본 파싱 ·
   장별 평가 기준을 끝난 상태로, 첫 Take 코칭 계획을 한 행으로 넣는다. 바로 장치 점검으로 넘어갈 수 있다.
   FE 의 샘플 자료나 AI 응답 형식이 바뀌면 `dev/build-first-take-sample.py` 로 다시 만든다.
-- 그 뒤 Take · 리포트는 일반 발표와 같다. 홈 목록 · 발표 상세의 `is_demo` 로 샘플을 구분한다.
+- 그 뒤 Take · 리포트는 일반 발표와 같다. 홈 목록 · 발표 상세 · Take 기록 · Take 리포트의 `is_demo` 로
+  샘플을 구분한다. 제목은 사용자가 바꿀 수 있어 구분에 쓰지 않는다.
 - 튜토리얼 리포트는 계정당 한 번이다. 샘플 발표의 리뷰가 저장되면 `users.tutorial_report_at` 을 같은
   커밋에 적는다. 그 뒤 샘플 발표에서 Take 를 만들면 `409 TUTORIAL_REPORT_USED`, 앞 Take 를 아직 분석
   중이면 `409 TUTORIAL_ANALYSIS_RUNNING` 이다. 리뷰가 실패했거나 연습이 끊겨 분석하지 않은 Take 는

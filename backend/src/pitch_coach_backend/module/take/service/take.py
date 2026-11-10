@@ -282,6 +282,7 @@ def list_takes_service(
                 take_id=row.take_id,
                 pitch_id=row.pitch_id,
                 pitch_title=row.pitch_title,
+                is_demo=row.is_demo,
                 take_number=row.take_number,
                 started_at=row.started_at,
                 status=row.status,
@@ -308,18 +309,16 @@ def active_take_service(
     """발표 중인 Take(`take_id`, 실시간 연결이 알려 준 것)의 발표 제목 · 번호. 그 사이 끝났거나
     지워졌으면 없는 것으로 답한다."""
     owned = (
-        TakeRepository(db).get_owned_with_pitch_title(take_id, user_id)
-        if take_id is not None
-        else None
+        TakeRepository(db).get_owned_with_pitch(take_id, user_id) if take_id is not None else None
     )
     if owned is None or owned[0].status not in IN_PROGRESS_STATUSES:
         return ActiveTakeResponseDTO(take=None)
-    take, pitch_title = owned
+    take, pitch = owned
     return ActiveTakeResponseDTO(
         take=ActiveTakeDTO(
             take_id=take.id,
             pitch_id=take.pitch_id,
-            pitch_title=pitch_title,
+            pitch_title=pitch.title,
             take_number=take.take_number,
         )
     )
@@ -344,15 +343,16 @@ def _take_measures(take: Take, take_result: Mapping[str, Any] | None) -> TakeMea
 
 def get_take_report_service(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> TakeReportDTO:
     take_repository = TakeRepository(db)
-    owned = take_repository.get_owned_with_pitch_title(take_id, user_id)
+    owned = take_repository.get_owned_with_pitch(take_id, user_id)
     if owned is None:
         raise NonExistentTake()
-    take, pitch_title = owned
+    take, pitch = owned
     payloads = take_repository.get_ai_payloads(take_id, (TAKE_RESULT, REVIEW))
     return TakeReportDTO(
         take_id=take.id,
         pitch_id=take.pitch_id,
-        pitch_title=pitch_title,
+        pitch_title=pitch.title,
+        is_demo=pitch.is_demo,
         take_number=take.take_number,
         script_mode=take.script_mode,
         ended_at=take.ended_at,
