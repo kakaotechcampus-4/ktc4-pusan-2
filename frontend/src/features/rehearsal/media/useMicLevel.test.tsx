@@ -24,7 +24,7 @@ vi.mock('./level', async (importOriginal) => ({
 /** 녹음용 트랙. 크롬은 녹음용 스트림의 자동 음량 조절을 켭니다 */
 const track = (deviceId: string, autoGainControl?: boolean) => ({
   readyState: 'live',
-  getSettings: () => ({ deviceId, autoGainControl }),
+  getSettings: () => ({ deviceId, groupId: `group-${deviceId}`, autoGainControl }),
 });
 const first = { getAudioTracks: () => [track('mic-a', true)] } as unknown as MediaStream;
 const second = { getAudioTracks: () => [track('mic-b', true)] } as unknown as MediaStream;
@@ -231,16 +231,16 @@ it('reports the measurement track — the unprocessed one when it opens', async 
     unprocessed: true,
   });
   await act(async () => root.render(<SourceHarness stream={first} />));
-  expect(source()).toEqual({ deviceId: 'mic-a', autoGainOff: true });
+  expect(source()).toEqual({ deviceId: 'mic-a', groupId: 'group-mic-a', autoGainOff: true });
 });
 
 it('falls back to the recording track, whose automatic gain is on, when no measurement track opens', async () => {
   await act(async () => root.render(<SourceHarness stream={first} />));
-  expect(source()).toEqual({ deviceId: 'mic-a', autoGainOff: false });
+  expect(source()).toEqual({ deviceId: 'mic-a', groupId: 'group-mic-a', autoGainOff: false });
 });
 
 it('reports an unknown automatic gain as null when the browser does not say', async () => {
   const quiet = { getAudioTracks: () => [track('mic-c')] } as unknown as MediaStream;
   await act(async () => root.render(<SourceHarness stream={quiet} />));
-  expect(source()).toEqual({ deviceId: 'mic-c', autoGainOff: null });
+  expect(source()).toEqual({ deviceId: 'mic-c', groupId: 'group-mic-c', autoGainOff: null });
 });

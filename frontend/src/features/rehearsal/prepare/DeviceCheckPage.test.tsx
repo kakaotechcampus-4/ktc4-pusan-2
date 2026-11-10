@@ -29,8 +29,9 @@ const fixture = vi.hoisted(() => ({
   voiceLevelDb: -30 as number | null,
   voiceShorts: 0,
   /** 크기를 잰 트랙 (`useMicLevel` `measuredWith`) */
-  measuredWith: { deviceId: 'mic-a', autoGainOff: true } as {
+  measuredWith: { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true } as {
     deviceId: string;
+    groupId: string;
     autoGainOff: boolean | null;
   } | null,
   postCalibration: vi.fn(),
@@ -161,7 +162,7 @@ beforeEach(() => {
   fixture.voiceStatus = 'DONE';
   fixture.voiceLevelDb = -30;
   fixture.voiceShorts = 0;
-  fixture.measuredWith = { deviceId: 'mic-a', autoGainOff: true };
+  fixture.measuredWith = { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true };
   fixture.postCalibration.mockReset().mockResolvedValue({});
   forgetBaseVoice();
   fixture.latestSlide = { data: null, isPending: false, isError: false };
@@ -797,20 +798,32 @@ it('이번에 잰 기준 목소리를 보내고, 시선 보정 요약이 없어�
 it('이번에 잰 값은 같은 마이크 · 자동 음량 조절 꺼짐이면 다시 쓰도록 둔다', async () => {
   await render();
   expect(
-    recallBaseVoice({ deviceId: 'mic-a', autoGainOff: true }, performance.now()),
+    recallBaseVoice(
+      { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+      performance.now(),
+    ),
   ).toMatchObject({
     levelDb: -30,
   });
 });
 
 it('자동 음량 조절 상태를 모르는 트랙으로 잰 값은 다시 쓰도록 두지 않는다', async () => {
-  fixture.measuredWith = { deviceId: 'mic-a', autoGainOff: null };
+  fixture.measuredWith = { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: null };
   await render();
-  expect(recallBaseVoice({ deviceId: 'mic-a', autoGainOff: true }, performance.now())).toBeNull();
+  expect(
+    recallBaseVoice(
+      { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+      performance.now(),
+    ),
+  ).toBeNull();
 });
 
 it('같은 환경에서 직전에 잰 기준 목소리가 있으면 그대로 쓰기를 골라 시작하고 그 값을 보낸다', async () => {
-  keepBaseVoice(-27.5, { deviceId: 'mic-a', autoGainOff: true }, performance.now());
+  keepBaseVoice(
+    -27.5,
+    { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+    performance.now(),
+  );
   fixture.voiceStatus = 'IDLE';
   await render();
   expect(findButton('Take 4 시작하기').disabled).toBe(true);
@@ -827,7 +840,11 @@ it('같은 환경에서 직전에 잰 기준 목소리가 있으면 그대로 �
 });
 
 it('다른 마이크면 직전 기준 목소리를 권하지 않는다', async () => {
-  keepBaseVoice(-27.5, { deviceId: 'mic-b', autoGainOff: true }, performance.now());
+  keepBaseVoice(
+    -27.5,
+    { deviceId: 'mic-b', groupId: 'group-a', autoGainOff: true },
+    performance.now(),
+  );
   fixture.voiceStatus = 'IDLE';
   await render();
   expect(findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')).toBeNull();
@@ -836,7 +853,7 @@ it('다른 마이크면 직전 기준 목소리를 권하지 않는다', async (
 
 it('그대로 쓰기를 고른 뒤 30분이 지나 시작을 누르면 Take 를 만들지 않고 다시 재라고 한다', async () => {
   const measuredAt = performance.now();
-  keepBaseVoice(-27.5, { deviceId: 'mic-a', autoGainOff: true }, measuredAt);
+  keepBaseVoice(-27.5, { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true }, measuredAt);
   fixture.voiceStatus = 'IDLE';
   await render();
   await act(async () => findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!.click());
@@ -857,7 +874,7 @@ it('그대로 쓰기를 골라 둔 채 30분이 지나면 항목도 "조금 전 
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   try {
     const measuredAt = performance.now();
-    keepBaseVoice(-27.5, { deviceId: 'mic-a', autoGainOff: true }, measuredAt);
+    keepBaseVoice(-27.5, { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true }, measuredAt);
     fixture.voiceStatus = 'IDLE';
     await render();
     await act(async () => findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!.click());
@@ -887,7 +904,12 @@ it('읽기에 두 번 실패하면 탈출구를 보이고, 고르면 기준 없�
   expect(findButton('Take 4 시작하기').disabled).toBe(false);
   await act(async () => findButton('Take 4 시작하기').click());
   expect(sentBody()).toMatchObject({ base_level_db: null });
-  expect(recallBaseVoice({ deviceId: 'mic-a', autoGainOff: true }, performance.now())).toBeNull();
+  expect(
+    recallBaseVoice(
+      { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+      performance.now(),
+    ),
+  ).toBeNull();
 });
 
 it('다시 읽기 안내는 거리를 바꾸게 하지 않는다', async () => {
