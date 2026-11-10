@@ -1,6 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
 import { matchMarker, splitLines } from '@/shared/lib/slideMarkers';
-import { recordTutorialScript } from './firstTake';
 import type {
   ParseRequested,
   ScriptCreateRequest,
@@ -106,7 +105,6 @@ export const scriptHandlers = [
     versions.set(pitchId, version);
     const id = crypto.randomUUID();
     stored.set(id, { pitchId, version, content, requestedAt: Date.now() });
-    recordTutorialScript(pitchId, id, version);
 
     const res: ScriptCreated = { script_version_id: id, version, parse_status: 'PENDING' };
     return HttpResponse.json(res, { status: 202 });

@@ -1,6 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
 import { countPdfPages } from '@/shared/lib/pdf';
-import { recordTutorialPresentation } from './firstTake';
 import type { PresentationDetail, UploadPresentationResponse } from '@/types/presentation';
 
 /** 올린 파일. 리허설이 버전 id 로 다시 받을 때(GET /presentations/{id}) 같은 파일을 돌려줍니다 */
@@ -43,7 +42,6 @@ export const presentationHandlers = [
     }
     const version = [...uploaded.values()].filter((u) => u.pitchId === pitchId).length + 1;
     uploaded.set(id, { pitchId, url, version, pageCount });
-    recordTutorialPresentation(pitchId, id, version, pageCount);
 
     const body: UploadPresentationResponse = {
       message: 'Presentation uploaded successfully',

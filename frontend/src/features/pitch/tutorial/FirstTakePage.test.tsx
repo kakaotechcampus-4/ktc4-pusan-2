@@ -2,18 +2,19 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { pitchListKey } from '@/shared/api/home';
+import { startFirstTake } from '@/shared/api/pitch';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import { FirstTakeError } from './firstTakeError';
+import type { FirstTakeResponse } from '@/types/pitch';
 import { FirstTakePage } from './FirstTakePage';
-import { ensureFirstTakePitch } from './firstTakeSetup';
 
-vi.mock('./firstTakeSetup', () => ({ ensureFirstTakePitch: vi.fn() }));
+vi.mock('@/shared/api/pitch', () => ({ startFirstTake: vi.fn() }));
 
 let host: HTMLDivElement;
 let root: Root;
-let unmounted = false;
+let client: QueryClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -21,120 +22,134 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  unmounted = false;
+  client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
 });
 
 afterEach(async () => {
-  if (!unmounted) await act(async () => root.unmount());
+  await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
 });
 
+function Where() {
+  const location = useLocation();
+  return <p data-testid="where">{location.pathname + location.search}</p>;
+}
+
 async function render() {
   await act(async () => {
     root.render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={['/pitch/tutorial']}>
           <Routes>
             <Route path="/pitch/tutorial" element={<FirstTakePage />} />
-            <Route path="/pitch/:pitchId/device-check" element={<div>장치 점검 진입</div>} />
+            <Route path="*" element={null} />
           </Routes>
+          <Where />
         </MemoryRouter>
       </QueryClientProvider>,
     );
   });
 }
 
-const start = () =>
+const where = () => host.querySelector('[data-testid="where"]')?.textContent;
+// 화면의 버튼은 시작 버튼 하나입니다. 준비 중에는 글자가 바뀌어 글자로 찾지 않습니다
+const startButton = () => host.querySelector('button')!;
+// 쿼리 라이브러리는 결과를 setTimeout(0) 뒤에 알립니다. act 는 그 타이머까지 기다리지 않습니다
+const flush = () =>
   act(async () => {
-    host.querySelector('button')!.click();
+    await new Promise((r) => setTimeout(r, 0));
   });
-
-it('시작 전에도 진행 상태 live region이 존재한다', async () => {
-  await render();
-  expect(host.querySelector('[role="status"]')).not.toBeNull();
-  expect(host.querySelector('[role="status"]')?.textContent).toBe('');
-});
-
-it('안내용 오류 메시지를 그대로 보여 주고 실패한 진행 상태를 지운다', async () => {
-  vi.mocked(ensureFirstTakePitch).mockImplementation(async (progress) => {
-    progress('슬라이드별 대본을 연결하고 있어요…');
-    throw new FirstTakeError(
-      '샘플 대본이 5개 슬라이드에 맞게 나뉘지 않았어요. 내 피치에서 대본을 확인해 주세요.',
-    );
+const start = async () => {
+  await act(async () => {
+    startButton().click();
   });
-  await render();
-  await start();
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain(
-    '내 피치에서 대본을 확인해 주세요.',
-  );
-  expect(host.querySelector('[role="status"]')?.textContent).toBe('');
-});
-
-it('기존 샘플이 잘못된 경우 해당 피치 수정 링크를 보여 준다', async () => {
-  vi.mocked(ensureFirstTakePitch).mockRejectedValue(
-    new FirstTakeError('기존 샘플 PDF가 5장이 아니에요.', 'pitch-existing'),
-  );
-  await render();
-  await start();
-  const link = [...host.querySelectorAll('a')].find((node) =>
-    node.textContent?.includes('샘플 피치에서 수정하기'),
-  );
-  expect(link?.getAttribute('href')).toBe('/pitch/pitch-existing/edit');
-});
-
-it('일반 Error의 내부 정보는 숨기고 정해진 문구를 보여 준다', async () => {
-  vi.mocked(ensureFirstTakePitch).mockRejectedValue(new TypeError('Failed to fetch'));
-  await render();
-  await start();
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(
-    '요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.',
-  );
-  expect(host.textContent).not.toContain('샘플 피치에서 수정하기');
-});
-
-it('서버 ApiFailure는 기존 공통 오류 문구를 사용한다', async () => {
-  vi.mocked(ensureFirstTakePitch).mockRejectedValue(new ApiFailure(404, 'SCRIPT_NOT_FOUND'));
-  await render();
-  await start();
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(
-    '대본을 찾을 수 없어요. 대본 매핑을 다시 눌러 주세요.',
-  );
-});
-
-it('준비 중 중복 클릭은 API 호출 하나로 제한한다', async () => {
-  let resolve!: (id: string) => void;
-  vi.mocked(ensureFirstTakePitch).mockImplementation(
+  await flush();
+};
+const pending = () => {
+  let resolve!: (res: FirstTakeResponse) => void;
+  vi.mocked(startFirstTake).mockImplementation(
     () =>
-      new Promise<string>((done) => {
+      new Promise((done) => {
         resolve = done;
       }),
   );
+  return async (res: FirstTakeResponse) => {
+    await act(async () => resolve(res));
+    await flush();
+  };
+};
+
+it('시작 전에도 진행 상태 live region 이 있고 비어 있다', async () => {
   await render();
-  await start();
-  expect(host.querySelector('button')?.getAttribute('aria-disabled')).toBe('true');
-  // 대기 중에도 초점이 남아, 진행 상태 및 실패 시 재시도 버튼을 찾을 수 있습니다.
-  expect(host.querySelector('button')?.hasAttribute('disabled')).toBe(false);
-  await start();
-  expect(ensureFirstTakePitch).toHaveBeenCalledOnce();
-  await act(async () => resolve('pitch-1'));
-  expect(host.textContent).toContain('장치 점검 진입');
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('');
 });
 
-it('화면을 떠나면 준비 요청을 중단하고 이후 이동하지 않는다', async () => {
-  let resolve!: (id: string) => void;
-  let signal: AbortSignal | undefined;
-  vi.mocked(ensureFirstTakePitch).mockImplementation((_progress, controllerSignal) => {
-    signal = controllerSignal;
-    return new Promise<string>((done) => {
-      resolve = done;
-    });
-  });
+it('샘플 피치를 받으면 장치 점검으로 가고 홈 목록을 다시 받게 한다', async () => {
+  vi.mocked(startFirstTake).mockResolvedValue({ pitch_id: 'demo-1', report_received: false });
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
   await render();
   await start();
-  await act(async () => root.unmount());
-  unmounted = true;
-  expect(signal?.aborted).toBe(true);
-  await act(async () => resolve('pitch-1'));
-  expect(host.textContent).not.toContain('장치 점검 진입');
+  expect(startFirstTake).toHaveBeenCalledOnce();
+  expect(where()).toBe('/pitch/demo-1/device-check');
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: pitchListKey });
+});
+
+it('튜토리얼 리포트를 이미 받았으면 장치 점검으로 가지 않고 새 피치 · 샘플 기록으로 안내한다', async () => {
+  vi.mocked(startFirstTake).mockResolvedValue({ pitch_id: 'demo-1', report_received: true });
+  await render();
+  await start();
+  expect(where()).toBe('/pitch/tutorial');
+  const notice = host.querySelector('[aria-labelledby="first-take-used"]');
+  expect(notice?.textContent).toContain('튜토리얼 리포트를 이미 받았어요');
+  const hrefs = [...(notice?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'));
+  expect(hrefs).toEqual(['/pitch/new', '/takes?pitch=demo-1']);
+});
+
+it('BE 에러 코드는 공통 문구로 알리고 다시 누를 수 있다', async () => {
+  vi.mocked(startFirstTake).mockRejectedValueOnce(new ApiFailure(409, 'TUTORIAL_PITCH_BUSY'));
+  await render();
+  await start();
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+    '샘플 발표를 준비하지 못했어요. 샘플 발표를 준비하고 있어요. 잠시 뒤 다시 시도해 주세요.',
+  );
+  expect(startButton().getAttribute('aria-disabled')).toBe('false');
+
+  vi.mocked(startFirstTake).mockResolvedValueOnce({ pitch_id: 'demo-1', report_received: false });
+  await start();
+  expect(where()).toBe('/pitch/demo-1/device-check');
+});
+
+it('네트워크 오류의 내부 문구는 보이지 않는다', async () => {
+  vi.mocked(startFirstTake).mockRejectedValue(new TypeError('Failed to fetch'));
+  await render();
+  await start();
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+    '샘플 발표를 준비하지 못했어요. 요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.',
+  );
+  expect(host.textContent).not.toContain('Failed to fetch');
+});
+
+it('준비 중에는 버튼을 aria-disabled 로 막아 초점은 두고 요청은 한 번만 보낸다', async () => {
+  const resolve = pending();
+  await render();
+  await start();
+  expect(startButton().getAttribute('aria-disabled')).toBe('true');
+  expect(startButton().hasAttribute('disabled')).toBe(false);
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('샘플 발표를 준비하고 있어요.');
+  await start();
+  expect(startFirstTake).toHaveBeenCalledOnce();
+  await resolve({ pitch_id: 'demo-1', report_received: false });
+  expect(where()).toBe('/pitch/demo-1/device-check');
+});
+
+it('준비 중에 화면을 떠나면 응답이 와도 장치 점검으로 끌고 가지 않는다', async () => {
+  const resolve = pending();
+  await render();
+  await start();
+  const back = [...host.querySelectorAll('a')].find((a) => a.textContent === '내 피치로 돌아가기')!;
+  await act(async () => back.click());
+  expect(where()).toBe('/');
+  await resolve({ pitch_id: 'demo-1', report_received: false });
+  expect(where()).toBe('/');
 });
