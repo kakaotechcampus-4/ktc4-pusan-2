@@ -580,7 +580,7 @@ it('Take 기록은 #1143과 같이 피치 목록을 combobox로 열고 키보드
     picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   });
   expect(picker.getAttribute('aria-expanded')).toBe('false');
-  expect(picker.textContent).toContain('서비스 소개');
+  expect(picker.textContent).toContain('캡스톤 중간발표');
 });
 
 it('사용방법은 최신 #944의 새미나이 시각 안내와 여섯 조작을 제공한다', async () => {
