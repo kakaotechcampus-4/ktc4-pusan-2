@@ -47,9 +47,7 @@ export function FirstTakePage() {
       className="pitch-create flex flex-1 flex-col bg-greige px-6 py-10 text-ink lg:px-10"
     >
       <div className="mx-auto w-full max-w-4xl">
-        <p className="text-xs font-bold tracking-widest text-coral-deep">
-          PITCHCOACH · FIRST MISSION
-        </p>
+        <p className="text-xs font-bold tracking-widest text-coral-deep">PITCHCOACH · TUTORIAL</p>
         <h1 className="mt-4 text-3xl font-bold">치치와 함께하는 첫 번째 Take</h1>
         <p className="mt-4 text-sm leading-7 text-stone">
           별도의 PDF나 대본 없이 피치코치를 체험해 보세요. 준비된 발표를 직접 읽으며 슬라이드
@@ -64,7 +62,7 @@ export function FirstTakePage() {
             샘플 장 목록 아래에 두면 버튼과 결과가 첫 화면 밖으로 밀려, 눌러도 반응이 없어 보입니다 */}
         <div className="mt-6 flex flex-wrap items-center gap-4">
           <Button aria-disabled={start.isPending} onClick={begin}>
-            {start.isPending ? '샘플 준비 중…' : '첫 미션 시작하기 →'}
+            {start.isPending ? '샘플 준비 중…' : '튜토리얼 시작하기 →'}
           </Button>
           <Link to="/" className="text-sm font-bold underline underline-offset-4">
             내 피치로 돌아가기

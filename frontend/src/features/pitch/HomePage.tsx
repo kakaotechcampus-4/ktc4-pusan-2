@@ -122,7 +122,7 @@ export function HomePage() {
               to="/pitch/tutorial"
               className="inline-flex items-center justify-center border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream"
             >
-              첫 미션 체험하기 →
+              튜토리얼 해 보기 →
             </Link>
             <Link to="/pitch/new" className={primary}>
               <span aria-hidden="true">＋</span> 새 피치 만들기
