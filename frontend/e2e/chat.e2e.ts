@@ -74,16 +74,26 @@ test('넓은 화면에서는 400px을 확보하고 좁은 화면에서는 본문
   expect((await header.boundingBox())!.width).toBe(headerWidth - 400);
   expect((await main.boundingBox())!.width).toBeLessThan(mainWidth);
 
+  await page.setViewportSize({ width: 1366, height: 780 });
+  await expect(content).toHaveCSS('padding-right', '0px');
+  await expect(panel).toHaveAttribute('aria-modal', 'false');
+
   await page.setViewportSize({ width: 375, height: 780 });
   await expect(content).toHaveCSS('padding-right', '0px');
   const usableWidth = (await content.boundingBox())!.width;
   await expect(panel).toHaveCSS('width', `${usableWidth}px`);
+  await expect(panel).toHaveAttribute('aria-modal', 'true');
+  await expect(content).toHaveAttribute('inert', '');
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
   const composer = panel.getByRole('textbox', { name: '채팅 메시지' });
   await composer.fill('모바일 입력 확인');
   await expect(composer).toBeInViewport();
   await expect(panel.getByRole('button', { name: '입력', exact: true })).toBeInViewport();
+  await page.keyboard.press('Tab');
+  await expect(panel.getByRole('button', { name: '입력', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
+  await expect(content).not.toHaveAttribute('inert');
   await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
 
   await page.setViewportSize({ width: 1440, height: 900 });

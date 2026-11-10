@@ -256,10 +256,16 @@ body {
   transition: translate 180ms ease-out;
 }
 
-@media (width <= 400px) {
-  .chat-side-panel {
-    bottom: calc(var(--chat-launcher-bottom) + 3.5rem);
-  }
+body:has([data-chat-panel][aria-modal='true']) {
+  overflow: hidden;
+}
+
+.chat-layout:has([data-chat-panel][aria-modal='true']) .chat-layout-content::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 69;
+  background: color-mix(in srgb, var(--color-ink) 30%, transparent);
 }
 
 @starting-style {

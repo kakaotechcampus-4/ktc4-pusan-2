@@ -170,7 +170,11 @@ function ChatSessionView({
 
   const close = () => {
     useChatStore.getState().closeChat();
-    launcherRef.current?.focus();
+    const launcher = launcherRef.current;
+    if (launcher) {
+      launcher.inert = false;
+      launcher.focus();
+    }
   };
 
   return (
@@ -192,6 +196,7 @@ function ChatSessionView({
           setDraft={setDraft}
           focusRequested={focusRequested}
           onFocused={focused}
+          launcherRef={launcherRef}
         />
       )}
 
@@ -392,6 +397,7 @@ function ChatPanel({
   onClose,
   focusRequested,
   onFocused,
+  launcherRef,
   draft,
   setDraft,
 }: {
@@ -402,11 +408,37 @@ function ChatPanel({
   /** 런처로 연 때만 true — 그때만 입력칸에 초점을 주고 `onFocused` 로 알립니다 */
   focusRequested: boolean;
   onFocused: () => void;
+  launcherRef: RefObject<HTMLButtonElement>;
 } & DraftProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
   useKeepFocusInPanel(panelRef, inputRef);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const launcher = launcherRef.current;
+    const content = panel
+      ?.closest('.chat-layout')
+      ?.querySelector<HTMLElement>('.chat-layout-content');
+    if (!panel || !launcher || !content) return;
+
+    const narrow = window.matchMedia?.('(max-width: 760px)');
+    if (!narrow) return;
+    const update = () => {
+      panel.setAttribute('aria-modal', String(narrow.matches));
+      content.inert = narrow.matches;
+      launcher.inert = narrow.matches;
+      if (narrow.matches && !panel.contains(document.activeElement)) panel.focus();
+    };
+    update();
+    narrow.addEventListener('change', update);
+    return () => {
+      narrow.removeEventListener('change', update);
+      content.inert = false;
+      launcher.inert = false;
+    };
+  }, [launcherRef]);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
   const [view, setView] = useState<PanelView>('messages');
