@@ -18,14 +18,12 @@ test('피치를 고르면 주소가 바뀌고 목록 안 여백과 바깥 클릭
   // Playwright locator.click의 position은 padding box 기준입니다. { x: 4, y: 4 }는
   // 첫 번째 옵션을 누를 수 있으므로, 목록의 실제 바깥 경계 기준으로 위쪽 여백을 누릅니다.
   const listBox = await list.boundingBox();
+  const firstOptionBox = await list.getByRole('option').first().boundingBox();
   expect(listBox).not.toBeNull();
+  expect(firstOptionBox).not.toBeNull();
   const paddingPoint = { x: listBox!.x + 12, y: listBox!.y + 4 };
-  expect(
-    await page.evaluate(
-      ({ x, y }) => document.elementFromPoint(x, y)?.getAttribute('role'),
-      paddingPoint,
-    ),
-  ).toBe('listbox');
+  // DOM 전역 타입을 사용하지 않는 E2E TypeScript 설정에서도 여백 클릭을 검증합니다.
+  expect(paddingPoint.y).toBeLessThan(firstOptionBox!.y);
 
   await page.mouse.click(paddingPoint.x, paddingPoint.y);
   await expect(list).toBeVisible();
