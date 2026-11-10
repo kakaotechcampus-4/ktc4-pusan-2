@@ -5,12 +5,20 @@ import type { HomePitch } from '@/types/home';
 import { Link } from 'react-router';
 import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
+import { useSession } from '@/shared/api/useSession';
 import { HomePitchCard } from './HomePitchCard';
+import { invitesTutorial } from './tutorial/tutorialInvite';
 import { duration, totalElapsed } from './homeFormat';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
+/** 튜토리얼 초대 스티커의 16꼭지 별 (viewBox 0 0 100 84, 가로로 조금 넓게) */
+const STARBURST =
+  '50,2 57.6,11.1 68.4,5 71.7,15.8 83.9,13.7 82.4,24.5 94.3,26.7 88.3,35.9 98,42 88.3,48.1 ' +
+  '94.3,57.3 82.4,59.5 83.9,70.3 71.7,68.2 68.4,79 57.6,72.9 50,82 42.4,72.9 31.6,79 28.3,68.2 ' +
+  '16.1,70.3 17.6,59.5 5.7,57.3 11.7,48.1 2,42 11.7,35.9 5.7,26.7 17.6,24.5 16.1,13.7 28.3,15.8 ' +
+  '31.6,5 42.4,11.1';
 const HOME_TIPS = [
   '연습 전, 슬라이드와 대본을 한 번 확인해 보세요.',
   '시작 전 세팅에서 대본 표시 방식을 선택할 수 있어요.',
@@ -39,6 +47,10 @@ export function HomePage() {
   const [tipHovered, setTipHovered] = useState(false);
   const home = usePitchList();
   const data = home.data;
+  // 튜토리얼 리포트를 받았는지는 내 정보에 있습니다. 로그인 확인(`RequireSession`)이 이미 받아 둔 값입니다
+  const reportReceived = useSession().data?.tutorial_report_at != null;
+  // 목록을 받은 뒤에만 정합니다. 받는 중 · 실패에 움직이면 이미 해 본 사람에게도 잠깐 권하게 됩니다
+  const inviteTutorial = data !== undefined && invitesTutorial(data.pitches, reportReceived);
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
   const listRef = useRef<HTMLUListElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -117,9 +129,43 @@ export function HomePage() {
                 : '발표 자료와 지금까지의 연습 기록을 확인해 보세요.'}
             </p>
           </div>
-          <Link to="/pitch/new" className={primary}>
-            <span aria-hidden="true">＋</span> 새 피치 만들기
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* 샘플로 끝까지 연습하지 않은 사람에게만 버튼이 톡톡 튀고 스티커가 붙습니다 (index.css `.tutorial-invite`) */}
+            <span className="relative inline-flex">
+              <Link
+                to="/pitch/tutorial"
+                className={`inline-flex items-center justify-center border-2 border-ink bg-panel py-3 pr-5 text-sm font-bold hover:bg-cream ${inviteTutorial ? 'tutorial-invite pl-10' : 'pl-5'}`}
+              >
+                튜토리얼 해 보기 →
+              </Link>
+              {inviteTutorial && (
+                // 버튼 왼쪽 위 모서리에 걸친 16꼭지 별 스티커. 버튼 안쪽까지 걸쳐서 붙을 때는 버튼 왼쪽 여백을
+                // 넓혀(pl-10) 글자를 비켜 둡니다. 톡톡 튀는 버튼과 같이 레트로 게임의
+                // "PRESS START" 를 떠올리게 합니다. 꾸밈이라 읽지 않습니다(버튼 이름이 할 일을 말합니다)
+                <span
+                  aria-hidden="true"
+                  data-tutorial-sticker=""
+                  className="pointer-events-none absolute -top-7 -left-8 h-[60px] w-[72px] -rotate-12"
+                >
+                  <svg viewBox="0 0 100 84" className="absolute inset-0 h-full w-full">
+                    <polygon
+                      points={STARBURST}
+                      className="fill-coral-deep stroke-ink"
+                      strokeWidth="3.5"
+                      strokeLinejoin="miter"
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex flex-col items-center justify-center text-[11px] font-extrabold leading-[1.1] tracking-tight text-white">
+                    <span>PRESS</span>
+                    <span>START!</span>
+                  </span>
+                </span>
+              )}
+            </span>
+            <Link to="/pitch/new" className={primary}>
+              <span aria-hidden="true">＋</span> 새 피치 만들기
+            </Link>
+          </div>
         </div>
         {home.isPending && (
           <div
@@ -230,9 +276,21 @@ export function HomePage() {
               type="button"
               onClick={() => setTipPaused((current) => !current)}
               aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
-              className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              title={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
+              className="inline-flex size-11 shrink-0 items-center justify-center hover:bg-ink/10 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
-              {tipPaused ? '재개' : '일시정지'}
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {tipPaused ? <path d="m8 5 11 7-11 7V5Z" /> : <path d="M9 5v14m6-14v14" />}
+              </svg>
             </button>
           </div>
           <button

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { SILENCE_END_NOTICE } from '@/shared/lib/autoEnd';
 import { useShallow } from 'zustand/react/shallow';
@@ -10,7 +10,7 @@ import { noteWriteFailure } from '../lib/writeFailures';
 import { toCalibrationRequest } from '../lib/calibrationRequest';
 import { keepBaseVoice, recallBaseVoice, type RememberedBaseVoice } from '../lib/baseVoiceMemory';
 import { sendCalibration } from '../lib/sendCalibration';
-import { toMessage } from '@/shared/api/errorMessage';
+import { codeMessage, toMessage } from '@/shared/api/errorMessage';
 import { RAW_DATA_CONSENT_FAILED, useEnsureRawDataConsent } from '@/shared/api/rawDataConsent';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
@@ -285,6 +285,14 @@ export function DeviceCheckPage() {
   const navigate = useNavigate();
   const prepare = usePrepare(pitchId);
   const info = useMemo(() => (prepare.data ? fromPrepare(prepare.data) : null), [prepare.data]);
+  // 튜토리얼 샘플로는 더 연습할 수 없음 — 리포트를 받았거나 앞 연습을 분석하는 중 (#931). 카메라 점검 ·
+  // 시선 보정을 다 하고 나서 시작 단계의 409 로 막히지 않게 처음부터 알리고 시작을 막습니다.
+  // 피치 생성에서 넘겨받은 조합(`combo`)이 있어도 봅니다. 그 사이 바뀌면 Take 생성의 409 가 막습니다
+  const tutorialBlock = prepare.data?.tutorial_block ?? null;
+  // 준비 정보가 성공적으로 도착해야 장치 권한을 요청합니다. 실패하거나 샘플이 막힌 상태에서는
+  // 자동 요청뿐 아니라 수동 버튼과 장치 선택으로도 카메라·마이크를 열지 않습니다.
+  const canRequestDevices =
+    Boolean(prepare.data) && !prepare.isPending && !prepare.isError && !tutorialBlock;
   // 이번에 쓸 자료가 지난 자료인지 견줄 최신 자료 (멘토 리뷰 #923). 조합을 넘겨받았어도 읽습니다 — 넘겨받은 뒤
   // 다른 탭에서 새 PDF 를 올렸을 수 있습니다 (#1099 리뷰)
   const latestSlide = useLatestSlide(pitchId, true);
@@ -433,12 +441,14 @@ export function DeviceCheckPage() {
   // 맥락 없이 권한 팝업부터 띄우면 대부분 '차단'을 누릅니다.
   const askedRef = useRef(false);
   useEffect(() => {
-    if (askedRef.current) return;
+    // 튜토리얼 샘플의 재연습 차단 여부를 받기 전에 장치 권한부터 요청하지 않습니다.
+    // 서버가 이미 막은 피치라면 브라우저가 카메라·마이크를 열 필요가 없습니다.
+    if (askedRef.current || !canRequestDevices) return;
     askedRef.current = true;
     const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } })
       .userActivation;
     if (activation?.hasBeenActive) request().catch(() => undefined);
-  }, [request]);
+  }, [request, canRequestDevices]);
 
   // 다른 피치에서 왔으면 대본 표시를 비웁니다. 아래 서버 기본값 이펙트보다 **먼저** 돌아야 합니다 —
   // 늦으면 앞 피치의 "사용자가 고름" 표시를 보고 이 피치의 기본값을 건너뜁니다
@@ -491,6 +501,7 @@ export function DeviceCheckPage() {
     ? `가장 최근 자료를 확인하지 못해 지금 자료(v${chosen?.version})가 최신인지 알 수 없어요`
     : null;
   const prepareBlocked = (() => {
+    if (tutorialBlock) return codeMessage(tutorialBlock);
     if (!combo) {
       if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
       const problem = info ? prepareProblem(info) : null;
@@ -501,6 +512,7 @@ export function DeviceCheckPage() {
     return olderSlideBlocked ? '지난 자료로 연습할지, 매핑을 다시 확인할지 골라 주세요.' : null;
   })();
   const ready =
+    !tutorialBlock &&
     live &&
     micOk &&
     cal.status === 'DONE' &&
@@ -842,6 +854,25 @@ export function DeviceCheckPage() {
         </div>
 
         <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5 prepare-low:gap-1">
+          {tutorialBlock && (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 border border-coral bg-coral-wash px-3 py-2 text-sm text-ink"
+              data-tutorial-block=""
+            >
+              <span>{codeMessage(tutorialBlock)}</span>
+              <Link
+                to={
+                  tutorialBlock === 'TUTORIAL_REPORT_USED'
+                    ? '/pitch/new'
+                    : `/takes?pitch=${encodeURIComponent(pitchId)}`
+                }
+                className="inline-flex min-h-8 shrink-0 items-center border border-ink bg-panel px-2.5 text-xs font-semibold hover:bg-cream"
+              >
+                {tutorialBlock === 'TUTORIAL_REPORT_USED' ? '새 피치 만들기' : 'Take 기록 보기'}
+              </Link>
+            </div>
+          )}
           <p role="status" className="sr-only">
             {comboAnnouncement}
           </p>
@@ -926,8 +957,10 @@ export function DeviceCheckPage() {
                 <button
                   type="button"
                   className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream disabled:pointer-events-none disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5 prepare-action-primary bg-coral-deep! text-white! hover:bg-ink! disabled:bg-cream! disabled:text-ink! disabled:border-line-strong!"
-                  disabled={starting}
-                  onClick={() => request().catch(() => undefined)}
+                  disabled={starting || !canRequestDevices}
+                  onClick={() => {
+                    if (canRequestDevices) request().catch(() => undefined);
+                  }}
                 >
                   카메라·마이크 켜기
                 </button>
@@ -945,7 +978,7 @@ export function DeviceCheckPage() {
                     value={videoId}
                     options={cameras}
                     fallback="기본 카메라"
-                    disabled={starting || cal.overlay || baseVoice.status === 'READING'}
+                    disabled={starting || !canRequestDevices || cal.overlay || reading}
                     onChange={(id) =>
                       request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
                     }
@@ -963,7 +996,7 @@ export function DeviceCheckPage() {
                     value={audioId}
                     options={mics}
                     fallback="기본 마이크"
-                    disabled={starting || cal.overlay || baseVoice.status === 'READING'}
+                    disabled={starting || !canRequestDevices || cal.overlay || reading}
                     onChange={(id) =>
                       request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
                     }

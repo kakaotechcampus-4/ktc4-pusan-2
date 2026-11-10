@@ -1,7 +1,8 @@
 """First Take 튜토리얼 샘플 발표의 미리 만든 AI 결과를 다시 만든다.
 
 튜토리얼 샘플 발표(`module/pitch/service/tutorial.py`)는 AI 를 부르지 않고 이 결과를 복사해 만든다.
-FE 의 샘플 대본 · PDF(`firstTakeMaterials.ts` · `firstTakePdf.ts`)가 바뀌면 다시 돌린다.
+샘플 대본 · PDF 가 바뀌면 다시 돌린다. PDF 는 FE 의 `firstTakePdf.ts` 로 만들었다. FE 가 샘플 피치
+API 를 쓰게 되면서 그 코드를 지웠으니 슬라이드를 바꾸려면 #1105 의 커밋 f07a95d9 에서 꺼내 쓴다.
 AI 응답 형식(평가 기준 · 코칭 계획)이 바뀌어도 다시 돌린다. 앱이 서빙하지 않는다.
 
 실제 파이프라인을 그대로 돈다. 임시 사용자 · 발표 · 대본을 만들고 BE 코드로 대본 파싱 → 장별 평가
@@ -11,7 +12,7 @@ AI 응답 형식(평가 기준 · 코칭 계획)이 바뀌어도 다시 돌린�
     DATABASE_URL=postgresql+psycopg://localhost:5432/<빈 DB> AI_BASE_URL=http://localhost:8001 \\
         uv run python dev/build-first-take-sample.py <PDF> <source.json>
 
-source.json 은 FE 의 샘플 값이다.
+source.json 은 샘플 값이다. 지금 장별 대본은 `first_take.json` 의 `slides[].full_content` 에 있다.
     {"title": ..., "time_limit_sec": 180, "lower_deviation": 30, "upper_deviation": 60,
      "slides": ["1장 대본", ...]}
 

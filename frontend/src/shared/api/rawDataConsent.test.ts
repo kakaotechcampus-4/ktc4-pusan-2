@@ -15,6 +15,7 @@ const user = (consent: boolean): User => ({
   raw_data_consent: consent,
   test_consent_at: null,
   test_consent_version: null,
+  tutorial_report_at: null,
 });
 
 let client: QueryClient;

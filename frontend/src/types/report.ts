@@ -11,6 +11,8 @@ export interface TakeReport {
   take_id: string;
   pitch_id: string;
   pitch_title: string;
+  /** First Take 튜토리얼 샘플 피치의 Take 인지 (BE #1166) */
+  is_demo: boolean;
   take_number: number;
   script_mode: ScriptMode;
   /** ISO 8601. 끝내기를 누른 순간. 끝나지 않은 Take 는 null */

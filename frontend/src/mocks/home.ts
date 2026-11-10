@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import type { PitchListResponse } from '@/types/home';
+import { tutorialHomePitches } from './firstTake';
 
 /**
  * Updated #47 response including server-issued UUID fields.
@@ -16,6 +17,7 @@ export const homeFixture: PitchListResponse = {
       thumbnail_url: null,
       presentation_date: '2026-10-30',
       can_delete: false,
+      is_demo: false,
       takes: [
         {
           take_id: '20000000-0000-4000-8000-000000000001',
@@ -82,6 +84,7 @@ export const homeFixture: PitchListResponse = {
       thumbnail_url: null,
       presentation_date: null,
       can_delete: true,
+      is_demo: false,
       takes: [
         {
           take_id: '20000000-0000-4000-8000-000000000011',
@@ -104,6 +107,7 @@ export const homeFixture: PitchListResponse = {
       thumbnail_url: null,
       presentation_date: null,
       can_delete: true,
+      is_demo: false,
       takes: [
         {
           take_id: '20000000-0000-4000-8000-000000000021',
@@ -125,6 +129,7 @@ export const homeFixture: PitchListResponse = {
       thumbnail_url: null,
       presentation_date: null,
       can_delete: true,
+      is_demo: false,
       takes: [],
     },
   ],
@@ -156,7 +161,10 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 export const homeHandlers = [
   http.get('*/api/pitches/', () =>
     HttpResponse.json({
-      pitches: homeFixture.pitches.filter((pitch) => !deleted.has(pitch.pitch_id)),
+      pitches: [
+        ...homeFixture.pitches.filter((pitch) => !deleted.has(pitch.pitch_id)),
+        ...tutorialHomePitches(),
+      ],
     } satisfies PitchListResponse),
   ),
   // BE 처럼 {message, pitch_id}. 없는 피치는 404 PITCH_NOT_FOUND, can_delete 가 false 면 409 PITCH_BUSY 입니다

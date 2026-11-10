@@ -12,6 +12,7 @@ const row = (patch: Partial<TakeHistoryRow>): TakeHistoryRow => ({
   take_id: 't1',
   pitch_id: 'p1',
   pitch_title: '캡스톤',
+  is_demo: false,
   take_number: 1,
   started_at: '2026-10-06T12:00:00',
   status: 'COMPLETED',

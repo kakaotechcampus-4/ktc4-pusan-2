@@ -224,6 +224,25 @@ body {
   .loading-dot { animation: none; }
 }
 
+/* 홈의 [튜토리얼 해 보기] 초대 (#931). 샘플로 끝까지 연습하지 않은 사람에게만 붙습니다(`tutorialInvite.ts`).
+   먹색 4px 그림자 위에서 눌렸다(그림자 0) 튀어 오르기(6px)를 두 번 하고 쉬기를 되풀이합니다 — 3초 중 약 1초가 움직임.
+   가리키거나 초점을 두면 멈춰 누르기 쉽게 하고, 움직임 줄이기 설정이면 처음부터 멈춥니다(스티커만 남음).
+   전역 규칙이 길이를 0.01ms 로 줄여 무한 반복이 깜빡이므로 animation: none 으로 끕니다 */
+@keyframes tutorial-invite {
+  0%, 34%, 100% { transform: translate(0, 0); box-shadow: 4px 4px 0 var(--color-ink); }
+  5%, 22% { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--color-ink); }
+  11%, 28% { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--color-ink); }
+  17% { transform: translate(0, 0); box-shadow: 4px 4px 0 var(--color-ink); }
+}
+.tutorial-invite {
+  box-shadow: 4px 4px 0 var(--color-ink);
+  animation: tutorial-invite 3s ease-out infinite;
+}
+.tutorial-invite:is(:hover, :focus-visible) { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-invite { animation: none; }
+}
+
 /* 피치 생성 화면의 밝은 지면. `.light-surface` 는 화면 밖 공용 층(채팅)이 같은 지면을 쓰는 이름입니다. */
 .pitch-create, .light-surface {
   --color-greige: #faf9f6;

@@ -5,13 +5,17 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AppHeader } from '@/shared/ui/AppHeader';
-import { loadPitch } from './loadPitch';
+import { DemoPitchError, loadPitch } from './loadPitch';
 import { PitchEditPage } from './PitchCreatePage';
 
 vi.mock('@/shared/api/useLogout', () => ({
   useLogout: () => ({ isPending: false, isError: false }),
 }));
-vi.mock('./loadPitch', () => ({ loadPitch: vi.fn() }));
+// 샘플 피치 오류(DemoPitchError)는 화면이 instanceof 로 가리므로 진짜를 둡니다
+vi.mock('./loadPitch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./loadPitch')>()),
+  loadPitch: vi.fn(),
+}));
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -73,4 +77,19 @@ it('불러오지 못한 안내에서도 본문이 하나이고 링크가 초점�
   expect(host.querySelectorAll('main#main')).toHaveLength(1);
   expect(await skip()).toBe(document.activeElement);
   expect(window.location.hash).toBe('');
+});
+
+it('튜토리얼 샘플 피치는 수정 화면을 열지 않고 새 피치 만들기로 안내한다', async () => {
+  vi.mocked(loadPitch).mockRejectedValue(new DemoPitchError());
+  await mount();
+  await vi.waitFor(() =>
+    expect(host.querySelector('main')!.textContent).toContain('샘플 피치는 고칠 수 없어요'),
+  );
+  const hrefs = [...host.querySelectorAll('main a')].map((a) => a.getAttribute('href'));
+  expect(hrefs).toEqual(['/pitch/new', '/']);
+  // 샘플을 막은 것은 실패가 아니라 콘솔에 남기지 않습니다
+  expect(console.error).not.toHaveBeenCalledWith(
+    '[피치 수정] 피치를 불러오지 못했습니다',
+    expect.anything(),
+  );
 });

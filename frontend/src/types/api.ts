@@ -244,6 +244,12 @@ export interface PrepareResponse {
       reason: string | null;
     }[];
   } | null;
+  /**
+   * 튜토리얼 샘플 피치로 새 Take 를 만들 수 없는 이유 (#931). 값은 Take 생성의 409 코드와 같고, 일반 피치나
+   * 막히지 않은 샘플은 null 입니다. 장치 점검이 카메라를 켜기 전에 알리려는 그 시점 값이라, 화면을 연 사이
+   * 바뀌면 시작은 Take 생성의 409 가 막습니다
+   */
+  tutorial_block: 'TUTORIAL_REPORT_USED' | 'TUTORIAL_ANALYSIS_RUNNING' | null;
 }
 
 /**
