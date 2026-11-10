@@ -32,7 +32,7 @@ export const PRODUCT_CHECKED: {
     },
     {
       pr: 1105,
-      head: 'd2ca6c981d65ee290cd529a5559a153ff7831b54',
+      head: '772aa623d4b768b5a823f7ee3d1a18c260527cf5',
       what: 'BE 전용 샘플 피치 튜토리얼 · 샘플 제한 · 홈 진입 경로',
     },
   ],
@@ -106,7 +106,11 @@ const productScreens: GuideScreen[] = [
         '발표 준비 버튼 · 기존 디자인',
         '공유 주소 호환용 상태로, 승인된 코랄 강조 발표 준비 버튼을 기본 홈과 동일하게 보여 준다.',
       ),
-      state('sample', '튜토리얼 샘플 완료', '샘플 피치는 샘플 배지를 붙이고 편집 대신 튜토리얼 화면으로 이동한다. 완료한 경우 PRESS START 강조는 숨긴다.'),
+      state(
+        'sample',
+        '튜토리얼 샘플 완료',
+        '샘플 피치는 샘플 배지를 붙이고 편집 대신 튜토리얼 화면으로 이동한다. 완료한 경우 PRESS START 강조는 숨긴다.',
+      ),
       state('loading', '불러오는 중', '발표 노트를 가져오는 동안 안내한다.'),
       state(
         'empty',
