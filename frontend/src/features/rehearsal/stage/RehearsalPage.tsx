@@ -68,7 +68,7 @@ import { sendEnding, type Ending } from './sendEnding';
 import { useEndConfirm } from './useEndConfirm';
 import { StageLiveBadge } from './StageLiveBadge';
 import { useSlideDeck } from './useSlideDeck';
-import { keepKeyboardFocus } from './keepKeyboardFocus';
+import { NextSlideButton } from './NextSlideButton';
 import { SlideClickArea } from './SlideClickArea';
 import { useStageClock } from './useStageClock';
 import {
@@ -922,30 +922,18 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="next" hidden={slideNumber >= pageCount}>
-                  <button
-                    type="button"
-                    className="next-go"
-                    disabled={!running}
-                    onMouseDown={keepKeyboardFocus}
-                    onClick={() => go(nextSlideNumber)}
-                  >
-                    <div className="thumb">
-                      {materials.doc && nextSlideNumber > 0 ? (
-                        <PdfPage
-                          doc={materials.doc}
-                          pageNumber={nextSlideNumber}
-                          fit="contain"
-                          className="h-full min-h-0 w-full min-w-0 overflow-hidden"
-                        />
-                      ) : (
-                        `SLIDE ${nextSlideNumber} · 16:9`
-                      )}
-                    </div>
-                    <div className="label">
-                      <b>다음 슬라이드</b>
-                      <span>누르거나 → 키로 이동</span>
-                    </div>
-                  </button>
+                  <NextSlideButton enabled={running} onNext={() => go(nextSlideNumber)}>
+                    {materials.doc && nextSlideNumber > 0 ? (
+                      <PdfPage
+                        doc={materials.doc}
+                        pageNumber={nextSlideNumber}
+                        fit="contain"
+                        className="h-full min-h-0 w-full min-w-0 overflow-hidden"
+                      />
+                    ) : (
+                      `SLIDE ${nextSlideNumber} · 16:9`
+                    )}
+                  </NextSlideButton>
                 </section>
 
                 {/* 배지를 따로 두지 않습니다 — 테두리가 시선 표시의 전부입니다.
@@ -1011,7 +999,9 @@ export function RehearsalPage() {
                   {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
                   전사는 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
                   {audioState !== null && audioState !== 'running' && (
-                    <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
+                    // 슬라이드를 누르면 장이 넘어가서, 소리를 켜는 클릭은 슬라이드 밖으로 안내합니다
+                    // (resumeOnGesture 는 화면 어디를 눌러도 받습니다)
+                    <span>소리가 흐르지 않습니다 — 슬라이드 밖을 한 번 클릭해 주세요</span>
                   )}
                   {ticket === null && (
                     <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>

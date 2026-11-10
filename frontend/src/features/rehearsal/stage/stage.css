@@ -1101,6 +1101,10 @@
 .rail .next .next-go:disabled {
   cursor: default;
 }
+/* 버튼의 왼쪽 정렬은 문구에만 — 썸네일 자리표시(PDF 를 못 열었을 때)는 가운데 */
+.rail .next .next-go .thumb {
+  text-align: center;
+}
 .rail .next .next-go:hover:not(:disabled) .thumb {
   border-color: var(--color-ink-stage);
 }

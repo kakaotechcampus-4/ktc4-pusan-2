@@ -1,4 +1,4 @@
-import { keepKeyboardFocus } from './keepKeyboardFocus';
+import { releaseFocus } from './releaseFocus';
 
 /**
  * 슬라이드를 마우스로 넘기는 칸 — 좌클릭은 다음 장, 우클릭은 이전 장입니다. 파워포인트 슬라이드 쇼에서
@@ -28,7 +28,7 @@ export function SlideClickArea({
       tabIndex={-1}
       aria-hidden="true"
       data-enabled={enabled}
-      onMouseDown={keepKeyboardFocus}
+      onMouseDown={releaseFocus}
       onClick={() => {
         if (enabled) onGo(slideNumber + 1);
       }}

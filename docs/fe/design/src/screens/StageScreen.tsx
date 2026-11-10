@@ -145,18 +145,22 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                     <span>음량</span>
                   </section>
                   <section className="next" hidden={onLastSlide}>
+                    {/* 썸네일과 안내 문구를 버튼 하나로 감싼다 — 어디를 눌러도 다음 장(제품 NextSlideButton) */}
                     <button
                       type="button"
-                      className="thumb"
+                      className="next-go"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => setSlide((n) => Math.min(PAGES, n + 1))}
-                      disabled={onLastSlide}
+                      disabled={onLastSlide || Boolean(gate)}
                     >
-                      {onLastSlide ? '마지막 장' : `SLIDE ${slide + 1} · 16:9`}
+                      <div className="thumb">
+                        {onLastSlide ? '마지막 장' : `SLIDE ${slide + 1} · 16:9`}
+                      </div>
+                      <div className="label">
+                        <b>다음 슬라이드</b>
+                        <span>누르거나 → 키로 이동</span>
+                      </div>
                     </button>
-                    <div className="label">
-                      <b>다음 슬라이드</b>
-                      <span>누르거나 → 키로 이동</span>
-                    </div>
                   </section>
                   <div className="legend">
                     <span>테두리 =</span>
