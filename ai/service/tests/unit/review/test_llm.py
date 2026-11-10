@@ -21,7 +21,7 @@ from pitch_coach_ai.features.review.prompts.review import REVIEW_SYSTEM_PROMPT
 from pitch_coach_ai.features.review.schemas import MAX_DESCRIPTION_CHARS, ReviewDraft
 from pitch_coach_ai.features.review.text import TextCandidate
 
-from .conftest import sample_coverage
+from .conftest import sample_coverage, unmeasured
 
 
 class FakeLLM:
@@ -121,6 +121,29 @@ def test_llm_gets_script_mode_of_comparison(req):
     assert comparison
     assert all(c["script_mode"] == {"previous": "OFF", "current": "HIGHLIGHT"} for c in comparison)
     assert "script_mode" in REVIEW_SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize(
+    ("source", "word"), [("CALIBRATION", "점검 때"), ("TAKE", "발표 처음"), (None, "기준")]
+)
+def test_llm_gets_volume_base_of_the_take(req, source, word):
+    # 소리 크기를 무엇과 견줬는지 LLM 이 쓸 수 있게 그 Take 의 출처를 싣는다 (#1181)
+    req["take_result"]["areas"]["VOLUME"]["take"]["base_level_source"] = source
+    llm = FakeLLM(full_draft)
+    review_take(req, llm)
+    payload = json.loads(llm.messages[-1][1])
+    assert "voice_diff_db" in payload["metric_labels"]
+    assert payload["volume_base"] == word
+    assert "volume_base" in REVIEW_SYSTEM_PROMPT
+
+
+def test_llm_gets_no_volume_base_without_volume_values(req):
+    req["take_result"]["areas"]["VOLUME"] = unmeasured()
+    llm = FakeLLM(full_draft)
+    review_take(req, llm)
+    payload = json.loads(llm.messages[-1][1])
+    assert "voice_diff_db" not in payload["metric_labels"]
+    assert "volume_base" not in payload
 
 
 def test_llm_comparison_is_take_values_and_candidate_slides(req):

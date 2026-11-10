@@ -88,9 +88,10 @@ function ReportBody({ report }: { report: TakeReport }) {
           <p className="text-sm text-ink/80">발표 기록을 정리하고 있어요.</p>
         </Card>
       )}
-      {/* 내용 전달이 그리다 던져도 리포트의 다른 칸은 남깁니다. 결과 판이 바뀌면 경계를 새로 만들어 다시 그려 봅니다 (#1157 리뷰 P1) */}
+      {/* 내용 전달이 그리다 던져도 리포트의 다른 칸은 남깁니다. 던진 뒤 결과 판이 바뀌면 다시 그려 봅니다 (#1157 리뷰 P1).
+          key 로 새로 만들지 않아야 판이 바뀌어도(409) 열어 둔 장별 목록이 닫히지 않습니다 */}
       <ContentErrorBoundary
-        key={`${report.content_status?.state ?? 'none'}:${report.content_status?.revision ?? '-'}`}
+        resetKey={`${report.content_status?.state ?? 'none'}:${report.content_status?.revision ?? '-'}`}
       >
         <ContentCard takeId={report.take_id} status={report.content_status} />
       </ContentErrorBoundary>

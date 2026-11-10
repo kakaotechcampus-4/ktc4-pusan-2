@@ -3,7 +3,8 @@ import { Button, ButtonLink } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { checkGazeSupport } from '@/shared/lib/gazeSupport';
 import { InfoPage } from '@/shared/ui/InfoPage';
-import { isTouchOnlyDevice, unsupportedReason, type UnsupportedReason } from './unsupportedReason';
+import { isTouchOnlyDevice } from '@/shared/lib/browserCheck';
+import { unsupportedReason, type UnsupportedReason } from './unsupportedReason';
 
 /**
  * P18 미지원 브라우저 — 시안 `docs/fe/design` unsupported.

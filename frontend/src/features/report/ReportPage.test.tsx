@@ -452,3 +452,17 @@ it('내용 전달 카드가 그리다 던져도 그 카드만 안내로 바꿉�
   expect(text).toContain(CONTENT_BROKEN_TEXT);
   expect(host.querySelector('[aria-label="측정값"]')).not.toBeNull();
 });
+
+it('결과 판이 바뀌어도(409 뒤 다시 읽기) 열어 둔 장별 목록이 닫히지 않습니다', async () => {
+  query.data!.content_status = { ...contentMeasured, revision: 0 };
+  await render();
+  const toggle = () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('장별 보기'))!;
+  await act(async () => toggle().click());
+  expect(toggle().getAttribute('aria-expanded')).toBe('true');
+
+  // 확인 답이 반영돼 새 판이 온 리포트로 다시 그립니다 — 내용 전달 카드를 새로 만들면 목록이 닫힙니다
+  query.data = { ...query.data!, content_status: { ...contentMeasured, revision: 1 } };
+  await render();
+  expect(toggle().getAttribute('aria-expanded')).toBe('true');
+});

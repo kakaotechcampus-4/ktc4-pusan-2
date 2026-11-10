@@ -113,7 +113,7 @@ ai/service/src/pitch_coach_ai/features/evaluation_criteria/   코어 (테스트�
 | `speed` | 말 속도 | `cpm` (글자/분) |
 | `pause` | 말 사이 멈춤 | `pause_count` (개) |
 | `silence` | 지나치게 긴 침묵 | `long_silence_count` (개) |
-| `volume` | 목소리 크기 | `voice_diff_db` (평소 목소리 대비 dB) |
+| `volume` | 목소리 크기 | `voice_diff_db` (기준 목소리(발표 전 점검) 대비 dB) |
 | `filler` | 군더더기(추임새) | 횟수면 `filler_count`(개), 분당이면 `filler_per_min`(개/분) |
 | `gaze` | 청중을 보는 정도 | `audience_ratio` (0–1) |
 | `script_dependency` | 발표 중 대본을 보는 정도 | `reading_ratio` (0–1) |
@@ -146,7 +146,7 @@ ai/service/src/pitch_coach_ai/features/evaluation_criteria/   코어 (테스트�
              "script_dependency": null, "script_similarity": null, "script_used": null},
   "targets": [{"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}],
   "excluded": ["발표는 5분 안에 끝내기"],
-  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.2", "model": "<응답한 모델>"}
 }
 ```
 
@@ -160,7 +160,7 @@ ai/service/src/pitch_coach_ai/features/evaluation_criteria/   코어 (테스트�
             "script_dependency": null, "script_similarity": null, "script_used": true},
  "targets": [{"display": "말 속도 1분에 300자 이하", "metric": "cpm", "operator": "LTE", "value": 300}],
  "excluded": [],
- "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}}
+ "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.2", "model": "<응답한 모델>"}}
 ```
 - 사용자가 길이 조건("3초 넘게")을 붙인 횟수 기준은 판정 모듈의 기준(긴 침묵은 소리 크기 모듈의 값)과 다를 수 있어 목표로 만들지 않고 표시 기준 · `values`에만 남긴다. 목표로 만들면 3~5초 침묵을 세지 않은 채 "이뤘다"고 판정할 수 있다.
 
@@ -273,7 +273,7 @@ sequenceDiagram
 
 **알려진 한계**
 - 사용자가 말한 기준값(예: "3초 넘는 침묵")은 판정에 쓰지 않는다. 긴 침묵 판정은 소리 크기 모듈의 기준(`ai/service/src/pitch_coach_ai/features/volume/config.py`)으로 센다. 그래서 길이 조건이 붙은 횟수 기준은 목표로 만들지 않고 표시만 한다. 목표로 만들면 표시 기준과 판정 기준이 다르게 보인다.
-- `voice_diff_db`는 평소 목소리 대비라, "크게 말하기" 같은 기준은 대부분 숫자가 없어 표시만 된다.
+- `voice_diff_db`는 기준 목소리(발표 전 점검) 대비라, "크게 말하기" 같은 기준은 대부분 숫자가 없어 표시만 된다.
 - 평가 데이터가 15문장뿐이고, 정답은 프롬프트를 쓴 쪽이 같은 규칙으로 붙였다. 다른 사람이 만든 문장으로 다시 재야 한다.
 
 # 16. 확정 값 한눈에
@@ -285,6 +285,6 @@ sequenceDiagram
 | 요소 → 지표 | `speed` `cpm` · `pause` `pause_count` · `silence` `long_silence_count` · `volume` `voice_diff_db` · `filler` `filler_count`/`filler_per_min` · `gaze` `audience_ratio` · `script_dependency` `reading_ratio` · `script_similarity` `content_coverage` · `script_used` 설정 | 5-3 |
 | 연산자 | `LTE` · `GTE` · `LT` · `GT` | 5-3 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 없음 | 8절 |
-| 버전 | `evaluation_criteria-1.1` · `schema_version` `1.0` | 9절 |
+| 버전 | `evaluation_criteria-1.2` · `schema_version` `1.0` | 9절 |
 | 저장 | 저장 요구: 12-1 · 12-2(표시 기준과 분석 결과를 같은 버전으로, 발표 · 버전마다 하나). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `standards`(표시 기준) · `standard_analyses`(버전마다 `targets` · `script_used` · `excluded` · `values` · `meta`) | 12-1 |
 | 입력 한도 | `standard_text` 1~2,000자 (넘으면 422) | 5-2 |
