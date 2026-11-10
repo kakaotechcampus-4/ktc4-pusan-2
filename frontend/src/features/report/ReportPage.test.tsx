@@ -306,7 +306,9 @@ it('describes metrics reported only for the whole Take without suggesting missin
     ],
   };
   await render();
-  const whole = comparisonCard().querySelector('[role="group"][aria-label="발표 시간 발표 전체 비교"]');
+  const whole = comparisonCard().querySelector(
+    '[role="group"][aria-label="발표 시간 발표 전체 비교"]',
+  );
   expect(whole).not.toBeNull();
   expect(whole?.textContent).toContain('지난 Take');
   expect(whole?.textContent).toContain('이번 Take');
