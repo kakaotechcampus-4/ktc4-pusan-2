@@ -72,6 +72,15 @@ const REUSE_CLOCK_MS = 30_000;
  */
 type VoicePick = { kind: 'REUSE'; measuredAt: number } | { kind: 'FALLBACK' };
 
+/**
+ * 지금 기준이 된 고른 길. 다시 쓰기를 골랐어도 그 값이 만료됐으면(30분 · 마이크 바뀜) 없습니다 —
+ * 항목 문구가 시작 조건 · 안내와 다른 말을 하지 않게 합니다
+ */
+function settledPick(pick: VoicePick | null, reusing: boolean): VoicePick['kind'] | null {
+  if (pick?.kind === 'FALLBACK') return 'FALLBACK';
+  return reusing ? 'REUSE' : null;
+}
+
 /** "3분 전에" · "방금" — 다시 쓸 기준 목소리를 언제 쟀는지 */
 function measuredAgo(measuredAt: number, now: number): string {
   const minutes = Math.floor((now - measuredAt) / 60_000);
@@ -314,8 +323,10 @@ export function DeviceCheckPage() {
   const voiceReady = baseVoice.status === 'DONE' || reusing || pick?.kind === 'FALLBACK';
   const canFallback = baseVoice.status === 'SHORT' && baseVoice.shorts >= BASE_VOICE_FALLBACK_AFTER;
   // 새로 읽으면 고른 길은 버립니다 — 읽은 결과가 기준입니다
+  // 앞서 낸 "더 쓸 수 없어요" 같은 시작 실패 문구도 지웁니다 — 남으면 다시 잰 뒤에도 안내가 그 말에 머뭅니다
   const startReading = () => {
     choosePick(null);
+    setStartError(null);
     baseVoice.start();
   };
   /** 시작을 누른 순간 정한 기준 목소리. 확인 창을 거쳐 `begin` 이 보냅니다 */
@@ -930,7 +941,7 @@ export function DeviceCheckPage() {
                 id: 'voice',
                 name: '기준 목소리',
                 label: stream
-                  ? baseVoiceLabel(baseVoice.status, baseVoice.reason, pick?.kind ?? null)
+                  ? baseVoiceLabel(baseVoice.status, baseVoice.reason, settledPick(pick, reusing))
                   : '마이크 연결 후 가능',
                 done: voiceReady,
                 action: {

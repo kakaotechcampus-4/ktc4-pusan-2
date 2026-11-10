@@ -846,7 +846,33 @@ it('그대로 쓰기를 고른 뒤 30분이 지나 시작을 누르면 Take 를 
   expect(fixture.create).not.toHaveBeenCalled();
   expect(footerText()).toContain('조금 전에 잰 기준 목소리를 더 쓸 수 없어요');
   expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  // 다시 재기 시작하면 그 문구는 지웁니다 — 남으면 다시 잰 뒤에도 안내가 그 말에 머뭅니다
+  await act(async () => findButton('다시 재기').click());
+  expect(fixture.voiceStart).toHaveBeenCalledOnce();
+  expect(footerText()).not.toContain('더 쓸 수 없어요');
   now.mockRestore();
+});
+
+it('그대로 쓰기를 골라 둔 채 30분이 지나면 항목도 "조금 전 기준 사용"을 내려놓는다', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    const measuredAt = performance.now();
+    keepBaseVoice(-27.5, { deviceId: 'mic-a', autoGainOff: true }, measuredAt);
+    fixture.voiceStatus = 'IDLE';
+    await render();
+    await act(async () => findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!.click());
+    expect(voiceRow()).toContain('조금 전 기준 사용');
+    const now = vi.spyOn(performance, 'now').mockReturnValue(measuredAt + BASE_VOICE_REUSE_MS + 1);
+    // 화면의 시계는 정해진 간격으로 갱신됩니다
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(voiceRow()).not.toContain('조금 전 기준 사용');
+    expect(voiceRow()).toContain('아직 재지 않았어요');
+    expect(findButton('Take 4 시작하기').disabled).toBe(true);
+    expect(footerText()).toContain('기준 목소리를 재야 연습을 시작할 수 있어요');
+    now.mockRestore();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('읽기에 두 번 실패하면 탈출구를 보이고, 고르면 기준 없이(null) 시작하며 다시 쓰기 칸에 넣지 않는다', async () => {
