@@ -1,6 +1,7 @@
 import {
   Fragment,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -14,7 +15,7 @@ import {
   type UIEvent,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLocation } from 'react-router';
+import { UNSAFE_DataRouterContext, useLocation } from 'react-router';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
@@ -452,12 +453,9 @@ function ChatPanel({
   const routeIdentity = `${pathname}${search}${hash}`;
   const openedRouteRef = useRef(routeIdentity);
   const navigatedWhileOpenRef = useRef(false);
-  // 사용자 직접 닫기(버튼·Esc)와 비허용 경로 이동에 따른 unmount를 구분합니다.
-  const restoreOnCloseRef = useRef(false);
-  const closeWithScrollRestore = () => {
-    restoreOnCloseRef.current = true;
-    onClose();
-  };
+  // React Router는 실제 경로를 컴포넌트 unmount 전에 갱신합니다.
+  // 비허용 화면 이동 때 자식이 새 useLocation 값을 받기 전에 제거될 수 있으므로 router.state를 확인합니다.
+  const routeStore = useContext(UNSAFE_DataRouterContext)?.router;
   const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -484,6 +482,7 @@ function ChatPanel({
     };
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
+    const openedRoute = openedRouteRef.current;
     navigatedWhileOpenRef.current = false;
 
     // iOS Safari에서도 뒤 화면이 움직이지 않도록 고정합니다. 음수 top으로 보던 위치를 그대로 둡니다.
@@ -504,19 +503,16 @@ function ChatPanel({
       body.style.left = previous.left;
       body.style.width = previous.width;
       body.style.overflow = previous.overflow;
-      // 사용자가 같은 화면에서 닫았거나 데스크톱으로 크기를 바꾼 때만 스크롤을 복원합니다.
-      // 비허용 화면으로 이동하면 직접 닫기 핸들러를 거치지 않고 패널이 사라지므로
-      // 이전 화면의 스크롤 위치를 적용하지 않습니다.
-      const sameScreen = !navigatedWhileOpenRef.current;
-      // StrictMode의 개발 모드 효과 정리/재실행에서는 panel DOM이 계속 연결돼 있습니다.
-      // 이를 복원하지 않으면 첫 setup 뒤 scrollY=0에서 재잠금되어 화면이 위로 튑니다.
-      const panelStillMounted = panel?.isConnected === true;
-      if (sameScreen && (restoreOnCloseRef.current || panelStillMounted || !isMobileChat())) {
+      // StrictMode 효과 재실행은 현재 라우터 위치가 그대로이고, 실제 화면 이동은 먼저 바뀝니다.
+      // DOM 연결 상태는 삭제 시점에 따라 달라지므로 router.state.location으로 판정합니다.
+      const latest = routeStore?.state.location;
+      const currentRoute = latest ? `${latest.pathname}${latest.search}${latest.hash}` : openedRoute;
+      if (!navigatedWhileOpenRef.current && currentRoute === openedRoute) {
         window.scrollTo(scrollX, scrollY);
       }
       // 다른 화면의 스크롤 위치는 React Router ScrollRestoration에 맡깁니다.
     };
-  }, [mobileOverlay]);
+  }, [mobileOverlay, routeStore]);
   useLayoutEffect(() => {
     if (mobileOverlay) return;
     // 데스크톱에서 이동하다 모바일로 크기가 바뀐 경우의 기준 위치입니다.
@@ -601,7 +597,7 @@ function ChatPanel({
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.stopPropagation();
-          closeWithScrollRestore();
+          onClose();
           return;
         }
         if (event.key === 'Tab' && mobileOverlay) {
@@ -648,7 +644,7 @@ function ChatPanel({
           inputRef.current?.focus();
         }}
         onToggleView={toggleView}
-        onClose={closeWithScrollRestore}
+        onClose={onClose}
         onScopeChange={(next) => session.changeScope(next).catch(() => undefined)}
       />
 
