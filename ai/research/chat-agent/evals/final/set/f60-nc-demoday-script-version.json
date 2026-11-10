@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-nc-demoday-script-version",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "대본 버전이 다른 Take 6 · 7 의 시선 비교를 '딱 잘라' 요구 — 비교 불가 까닭을 말하고 결론을 내지 않음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-dday",
+        "title": "스타트업 데모데이 피칭",
+        "takes": [
+          {
+            "take_id": "dday-t6",
+            "take_number": 6,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": 0.44
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "dday-t7",
+            "take_number": 7,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": 0.52
+            },
+            "review": {
+              "dimensions": {},
+              "score": 73
+            },
+            "script_version_id": "sv-2"
+          }
+        ],
+        "script_version_id": "sv-2",
+        "script_version_label": "V2"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-dday"
+    }
+  },
+  "turns": [
+    {
+      "message": "대본 고친 다음에 한 Take 7이 그 전 Take 6보다 시선 처리가 나아졌는지 딱 잘라서 말해 주세요.",
+      "page_take_id": "dday-t7"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "not-comparable-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:OK",
+          "decision:NOT_COMPARABLE:FACT_SHOWN:CODE"
+        ],
+        "metric": "replan",
+        "note": "README: FACT_SHOWN:CODE 는 신호를 낸 도구 사건 바로 뒤"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가.*대본 버전 다름",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "TARGET 1: 비교 불가 + 까닭 낱말이 실행한 단계 글에 보인다"
+      },
+      {
+        "check_id": "reason-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "대본 버전이 달라",
+        "grader": "regex",
+        "note": "7-10 비교할 수 없는 까닭 템플릿"
+      },
+      {
+        "check_id": "no-outcome",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(좋아졌어요|나빠졌어요|나아졌어요|높아졌어요|낮아졌어요|%p|퍼센트포인트)",
+        "grader": "regex",
+        "note": "같은 대본 버전의 다른 Take 가 없어 어떤 비교 결론도 낼 수 없다"
+      },
+      {
+        "check_id": "compare-before-answer",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:compare_takes:OK",
+          "final:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "비교할 수 없는 까닭으로 요청이 해소된다(TARGET 6)"
+      }
+    ]
+  }
+}

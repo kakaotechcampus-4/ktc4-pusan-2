@@ -147,6 +147,12 @@ body {
   outline-offset: 2px;
 }
 
+/* 채팅 입력칸은 composer 바깥 테두리와 링으로 초점을 표시합니다.
+   textarea 자체의 전역 outline은 제거해 두 겹으로 보이지 않도록 합니다. */
+[data-chat-composer] textarea:focus-visible {
+  outline: none;
+}
+
 /* Tailwind v4 는 button 커서를 화살표로 둡니다. 누를 수 있는 버튼만 손가락으로 맞춥니다.
    base 레이어라 `disabled:cursor-*` · `aria-disabled:cursor-*` 같은 유틸리티가 항상 이깁니다 (위 규칙처럼 레이어 밖에 두면 덮어버립니다) */
 @layer base {
@@ -241,15 +247,93 @@ body {
 }
 
 
+/* 문서 스크롤과 상단바의 sticky 기준을 유지한 채 헤더와 본문을 함께 줄입니다. */
+:root {
+  --chat-panel-width: 400px;
+}
+
+.chat-side-panel {
+  transition: translate 180ms ease-out;
+}
+
+/* 모바일에서는 패널을 닫는 버튼이 안에 있으므로 런처를 숨기고 전체 높이를 사용합니다.
+   401~451px의 런처·패널 겹침도 막고, 배경과의 상호작용을 차단했음을 보여 줍니다. */
+@media (max-width: 760px) {
+  /* 본문 스크롤 잠금은 ChatPanel의 이펙트가 document scrollY를 보존하며 담당합니다. */
+  [data-chat-launcher]:has([data-chat-panel]) > button {
+    visibility: hidden;
+  }
+
+  .chat-layout:has([data-chat-panel])::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: color-mix(in srgb, var(--color-ink) 45%, transparent);
+    touch-action: none;
+  }
+}
+
+@starting-style {
+  .chat-side-panel {
+    translate: 100% 0;
+  }
+}
+
+/* 761~1439px에서는 본문에 겹치는 오버레이를 유지하지만 보이는 상단바·고정 푸터는 가리지 않습니다.
+   ChatPanel은 ResizeObserver와 문서 스크롤을 이용해 현재 보이는 헤더의 하단 및 푸터 높이를 반영합니다.
+   분석 대기·대본 확인은 오른쪽 대화 상자가 패널 아래에 숨지 않도록 main의 사용 폭을 줄입니다. */
+@media (min-width: 761px) and (max-width: 1439px) {
+  .chat-side-panel {
+    top: var(--chat-overlay-top, 0px);
+    bottom: var(--chat-overlay-bottom, 0px);
+  }
+
+  .chat-layout:has([data-chat-panel]) .dusk-screen > main {
+    padding-right: calc(var(--chat-panel-width) + 2rem);
+  }
+}
+
+/* 패널을 제외하고도 스크롤바 여백을 포함해 본문에 약 1024px 이상을 남깁니다. */
+@media (min-width: 1440px) {
+  .chat-layout {
+    --chat-reserved-width: 0px;
+  }
+
+  .chat-layout:has([data-chat-panel]) {
+    --chat-reserved-width: var(--chat-panel-width);
+  }
+
+  .chat-layout:has([data-chat-launcher]) .chat-layout-content {
+    padding-right: var(--chat-reserved-width);
+    transition: padding-right 180ms ease-out;
+  }
+
+  .chat-layout-content .pitch-create-square > footer {
+    right: var(--chat-reserved-width);
+    transition: right 180ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-side-panel,
+  .chat-layout:has([data-chat-launcher]) .chat-layout-content,
+  .chat-layout-content .pitch-create-square > footer {
+    transition: none;
+  }
+}
+
 /* TS는 경로별 기본 하단 여백을 전달하고, CSS는 좁은 화면의 최종 여백을 결정합니다.
    정상 런처와 오류 안내가 같은 규칙을 사용하며 패널 높이도 최종 여백을 참조합니다. */
 [data-chat-launcher] {
   --chat-launcher-bottom: var(--chat-launcher-default-bottom);
 }
 
-/* 장치 점검: 왼쪽 채팅 버튼이 바닥 안내(상태 · 보조 설명)를 가리지 않게 공간을 둡니다. */
-body:has([data-chat-launcher]) .prepare-screen {
-  padding-left: 4.5rem;
+/* 홈의 TIP은 실제 런처가 보이는 좁은 화면에서만 왼쪽 공간을 확보합니다. */
+@media (max-width: 1279px) {
+  body:has([data-chat-launcher]) .home-footer-content {
+    padding-left: 5rem;
+  }
 }
 
 /* 낮은 데스크톱 창에서 생성·수정 화면의 버전 관리 버튼은 왼쪽 런처와 떨어뜨립니다. */

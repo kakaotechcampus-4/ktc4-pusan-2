@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-guide-script-reliance",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should",
+  "title": "대본 의존 줄이는 연습법을 자료에서 인용 — 자료 찾기 뒤 원문 그대로 인용한 GUIDE 문장",
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-deb",
+        "title": "교내 토론 대회 입론",
+        "takes": [
+          {
+            "take_id": "deb-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "script_ratio": [
+                0.2,
+                0.56,
+                0.25,
+                0.2
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "script_independence": "PRIORITY"
+              },
+              "score": 69
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-deb"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표할 때 자꾸 대본에 눈이 가요. 대본 의존을 줄이는 연습 방법이 자료에 있으면 그대로 인용해서 알려 주세요.",
+      "page_take_id": "deb-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "quote-exact",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote",
+        "metric": "advice"
+      },
+      {
+        "check_id": "guide-claim",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "kind": "GUIDE"
+        },
+        "path": "claims",
+        "metric": "advice"
+      },
+      {
+        "check_id": "search-before-guide",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:search_guides:OK",
+          "claim:GUIDE"
+        ],
+        "metric": "path"
+      }
+    ]
+  },
+  "notes": "기능 문서 3-1 의 예(대본 의존 줄이기 자료 찾기)와 같은 주제라 승인된 발표법 카드가 있다고 본다(REVIEW.md 열린 질문)."
+}

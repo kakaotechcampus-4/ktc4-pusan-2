@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, delete, func, or_, select, update
+from sqlalchemy import ColumnElement, and_, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from pitch_coach_backend.module.take.entity import (
@@ -138,6 +138,15 @@ class CoachRepository(TakeRepository):
             )
         )
 
+    def metric_second_stt(self, take_id: uuid.UUID) -> list[tuple[int, str]]:
+        """1초 기록의 (끝난 시각, STT 상태). 시선 · 음량 JSON 은 읽지 않는다."""
+        rows = self.db.execute(
+            select(TakeMetricSecond.t_ms, TakeMetricSecond.stt_status).where(
+                TakeMetricSecond.take_id == take_id
+            )
+        ).all()
+        return [(t_ms, stt_status) for t_ms, stt_status in rows]
+
     def coach_events(self, take_id: uuid.UUID) -> list[CoachEvent]:
         return list(
             self.db.scalars(
@@ -207,6 +216,18 @@ class CoachRepository(TakeRepository):
         if after is not None:
             query = query.where(Take.id > after)
         return list(self.db.scalars(query.order_by(Take.id).limit(limit)))
+
+    def lock_take(self, take_id: uuid.UUID) -> Take | None:
+        """Take 행을 잠그고 지금 DB 값으로 돌려준다. 없으면 None."""
+        return self.db.scalar(
+            select(Take)
+            .where(Take.id == take_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
+    def has_metric_seconds(self, take_id: uuid.UUID) -> bool:
+        return bool(self.db.scalar(select(exists().where(TakeMetricSecond.take_id == take_id))))
 
     def lock_finalizing(self, take_id: uuid.UUID) -> Take | None:
         """Take 행을 잠그고 `ANALYZING` · `FINALIZING` 이면 돌려준다."""

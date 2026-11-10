@@ -8,10 +8,11 @@ import {
   type RefObject,
 } from 'react';
 import { useLocation } from 'react-router';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import { CHAT_LAUNCHER_CLASS, canShowChat, chatLauncherBottom } from '../rules/chatRoutes';
 
 /** 대화창이 렌더 중에 던졌을 때 보이는 문구 (`docs/ai/features/chat-agent.md` L3-36 · 7-9) */
-export const CHAT_FAILED_TEXT = '대화창에 문제가 생겼으니 다시 열어 주세요.';
+export const CHAT_FAILED_TEXT = '새미나이 대화창에 문제가 생겼으니 다시 열어 주세요.';
 
 interface Props {
   children: ReactNode;
@@ -109,7 +110,7 @@ function ChatFailed({
           ref={retryRef}
           type="button"
           onClick={onRetry}
-          aria-label="대화창 다시 시도"
+          aria-label="새미나이 다시 시도"
           title={CHAT_FAILED_TEXT}
           className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
         >
@@ -121,7 +122,7 @@ function ChatFailed({
         </button>
       ) : (
         <section
-          aria-label="대화창 오류"
+          aria-label="새미나이 오류"
           className="w-[min(18rem,calc(100vw-2rem))] rounded-2xl border-2 border-ink bg-panel p-4 shadow-[3px_3px_0_var(--color-ink)]"
         >
           {/* 안내는 실패마다 한 번 읽힙니다. 버튼에는 이 문장을 잇지 않아 초점이 옮겨 가도 두 번 읽히지 않습니다 */}
@@ -129,13 +130,7 @@ function ChatFailed({
             {CHAT_FAILED_TEXT}
           </p>
           <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setFolded(true)}
-              className="min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
-            >
-              닫기
-            </button>
+            <CloseButton onClick={() => setFolded(true)} />
             <button
               ref={retryRef}
               type="button"

@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-obj-radio-gaze-unmeasured",
+  "set": "objectivity",
+  "group": "unverifiable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "시선이 측정되지 않은 Take 에 '시선 잘 유지했다' — 동의도 반박도 않고 UNVERIFIABLE",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-rad",
+        "title": "라디오 광고 기획 발표",
+        "takes": [
+          {
+            "take_id": "rad-t4",
+            "take_number": 4,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "unmeasured": {
+                "GAZE": "FACE_NOT_DETECTED"
+              }
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "NOT_EVALUABLE",
+                "script_independence": "NOT_EVALUABLE"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-rad"
+    }
+  },
+  "turns": [
+    {
+      "message": "청중 쪽으로 시선은 처음부터 끝까지 잘 유지했어요.",
+      "page_take_id": "rad-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "unverifiable-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "UNVERIFIABLE",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "verdict",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "verdict": "UNVERIFIABLE",
+          "quote~": "시선"
+        },
+        "path": "assessments",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-agree-or-deny",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(맞아요|맞습니다|기록과 달라요)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "read-before-judge",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:*",
+          "claim:ASSESSMENT"
+        ],
+        "metric": "path",
+        "turn": -1
+      }
+    ]
+  }
+}

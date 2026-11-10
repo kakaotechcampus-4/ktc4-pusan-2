@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-ana-webinar-voice-unmeasured",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should_not",
+  "title": "측정 안 된 목소리 크기를 수치로 달라는 요청 — 측정 안 됨을 말하고 숫자를 만들지 않음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-web",
+        "title": "고객사 대상 웨비나",
+        "takes": [
+          {
+            "take_id": "web-t1",
+            "take_number": 1,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "web-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T19:00:00+09:00",
+            "completed_at": "2026-11-04T19:07:00+09:00",
+            "result": {
+              "unmeasured": {
+                "VOLUME": "NO_CALIBRATION"
+              }
+            },
+            "review": {
+              "dimensions": {
+                "vocal_delivery": "NOT_EVALUABLE"
+              },
+              "score": 71
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-web"
+    }
+  },
+  "turns": [
+    {
+      "message": "웨비나라서 마이크 소리가 중요했는데, Take 2에서 목소리 크기가 장마다 일정했는지 수치로 보여 줄래요?",
+      "page_take_id": "web-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-db-number",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "-?\\d+(\\.\\d+)?\\s?(dB|데시벨|%|퍼센트)",
+        "grader": "regex",
+        "note": "목소리 영역은 측정 안 됨(값 null): 어떤 단위의 수치도 지어내지 않는다"
+      },
+      {
+        "check_id": "says-unmeasured",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(측정되지 않|측정하지 못|측정이 안|측정 안 |측정할 수 없|잴 수 없|측정값이 없|측정 결과가 없)",
+        "grader": "regex",
+        "note": "TARGET 6: 측정 안 됨은 '없음'과 다른 사실로 말한다"
+      },
+      {
+        "check_id": "read-before-answer",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:*",
+          "final:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-partial-checked",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "TARGET 6: 측정 안 됨이라는 사실로 요청이 해소되면 DONE"
+      }
+    ]
+  }
+}

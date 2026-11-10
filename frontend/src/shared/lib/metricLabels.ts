@@ -17,14 +17,16 @@ const METRIC: Record<
   reading_runs: { label: '대본 읽기 횟수', unit: 'count' },
   cpm: { label: '말하기 속도', unit: 'cpm' },
   pause_count: { label: '멈춤', unit: 'count' },
-  voice_diff_db: { label: '평소 대비 목소리', unit: 'db' },
+  // 장치 점검에서 잰 기준 목소리(`base_level_db`)와의 차이입니다 — 크기 자체가 아니라 변화라서 이렇게 부릅니다 (#1179)
+  voice_diff_db: { label: '기준 대비 변화', unit: 'db' },
   low_ratio: { label: '작은 목소리', unit: 'ratio' },
   long_silence_count: { label: '긴 침묵', unit: 'count' },
   filler_count: { label: '군더더기', unit: 'count' },
   filler_per_min: { label: '분당 군더더기', unit: 'perMin' },
   duration_ms: { label: '발표 시간', unit: 'ms' },
   slide_duration_ms: { label: '장 시간', unit: 'ms' },
-  content_coverage: { label: '핵심 내용 전달', unit: 'ratio' },
+  // 새 '핵심 내용 전달률'(내용 전달 카드, #1154)과 계산이 달라 이름을 나눕니다 — 기존 점수는 다르게 말한 것을 -0.5 로 상쇄합니다
+  content_coverage: { label: '핵심 내용 점수(기존 방식)', unit: 'ratio' },
   critical_fact_accuracy: { label: '핵심 수치 정확도', unit: 'ratio' },
 };
 
@@ -46,10 +48,20 @@ export function fmt(metric: string, v: number) {
     case 'ms':
       return formatDuration(v);
     case 'db':
-      return `${v}dB`;
+      return signedDb(v);
     default:
       return String(v);
   }
+}
+
+/**
+ * dB 는 기준과의 차이라 부호를 늘 붙입니다 — "+0.5dB" · "−1.1dB" · "0dB" (#1179).
+ * 빼기는 하이픈이 아니라 빼기 기호(U+2212)로 씁니다. `-0` 도 "0dB" 입니다
+ */
+function signedDb(v: number) {
+  if (v > 0) return `+${v}dB`;
+  if (v < 0) return `−${-v}dB`;
+  return '0dB';
 }
 
 /** 리뷰 영역 이름 */

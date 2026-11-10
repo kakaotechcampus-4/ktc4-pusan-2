@@ -152,8 +152,16 @@ function ConfirmForm({
   const closed = send.error instanceof ApiFailure && send.error.code === 'CONFIRMATION_CLOSED';
   // 기한 안에 보낸 답은 시간이 지나도 서버 결과를 기다립니다.
   if (send.isPending) return <StatusLine text="답을 반영하는 중" />;
+  // 409 는 시간 초과 · 이미 답함(다른 탭 · 연달아 누름) · 리뷰 시작 등 원인이 여럿이라(BE `ConfirmationClosed`) 하나로 단정하지 않습니다.
+  // 공통 오류 문구는 "확인을 받을 수 없어요."로 시작해 제목과 겹쳐 쓰지 않습니다
   if (closed)
-    return <Closed takeId={takeId} title="확인을 받을 수 없어요" text={toMessage(send.error)} />;
+    return (
+      <Closed
+        takeId={takeId}
+        title="확인을 받을 수 없어요"
+        text="확인 시간이 지났거나 이미 답이 들어와 이번 답은 반영되지 않았어요. 분석은 그대로 이어져요."
+      />
+    );
   if (expired)
     return <Closed takeId={takeId} title="확인 시간이 끝났어요" text="답 없이 그대로 진행돼요." />;
 

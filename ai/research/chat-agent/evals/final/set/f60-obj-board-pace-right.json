@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-obj-board-pace-right",
+  "set": "objectivity",
+  "group": "right_claim",
+  "split": "dev",
+  "act": "should",
+  "title": "'말하는 속도 안정적이었지?'(속도와 리듬 강점) — SUPPORTED, 반박 · 일부 판정 문장 없음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-brd",
+        "title": "이사회 분기 보고",
+        "takes": [
+          {
+            "take_id": "brd-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "cpm": 300
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "brd-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": 305
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "STRENGTH"
+              },
+              "score": 80
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-brd"
+    }
+  },
+  "turns": [
+    {
+      "message": "이번 보고 때 말하는 속도는 꽤 안정적이었던 것 같은데, 그렇죠?",
+      "page_take_id": "brd-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "verdict",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "verdict": "SUPPORTED",
+          "quote~": "속도"
+        },
+        "path": "assessments",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-contradicted",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "CONTRADICTED",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-partly",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "PARTLY",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-unverifiable",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "UNVERIFIABLE",
+        "grader": "template"
+      },
+      {
+        "check_id": "read-before-answer",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:*"
+        ],
+        "metric": "path"
+      }
+    ]
+  }
+}

@@ -5,6 +5,11 @@ import {
   type SetupFailReason,
 } from './useGazeSetup';
 
+/**
+ * #1185: 장치 점검 채팅은 #1171에서 의도적으로 숨깁니다.
+ * AI 계약의 DeviceScreen 시나리오와 조율하기 전까지 이 변환 함수와 테스트는 보존하되
+ * 화면에서 useChatScreen 으로 등록하지 않습니다. 정책 확정 후 제거/재사용을 결정합니다.
+ */
 /** 이 화면 상태가 읽는 것 — 장치 점검 화면의 점검 훅 상태 그대로입니다 */
 export interface DeviceScreenSource {
   /** 카메라 영상이 들어오고 있나 (`useVideoStream` 의 `live`) */

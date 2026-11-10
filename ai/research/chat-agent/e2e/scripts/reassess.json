@@ -1,0 +1,20 @@
+{
+  "user_message": "대본 보고 한 발표였어. 다시 평가해 줘",
+  "expect": {
+    "plan_steps": ["조건 확인", "다시 평가"],
+    "card_title": "참고 결과 — 공식 리뷰는 그대로예요"
+  },
+  "script": [
+    {"plan": {"steps": ["조건 확인", "다시 평가"], "assessments": [
+      {"draft": {"quote": "대본 보고 한 발표였어", "claim_op": "VALUE", "dimension": "script_independence", "metric": "script_mode", "polarity": "POSITIVE"}},
+      {"draft": {"quote": "다시 평가해 줘", "type_": "REQUEST", "claim_op": null, "polarity": "NEUTRAL"}}
+    ]}},
+    {"tools": [["reassess", {"take_id": "$take_id", "change": {"script_used": true}, "reason": "대본을 보고 한 발표라는 조건"}]], "prefix": "ra"},
+    {"done": true}
+  ],
+  "answers": [
+    {"claims": [{"kind": "ASSESSMENT", "text": "", "assessment_index": 0}]},
+    {"claims": []}
+  ],
+  "fixes": [{"fix": {}}, {"fix": {}}]
+}

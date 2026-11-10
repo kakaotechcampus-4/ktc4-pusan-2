@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { AppHeader } from '@/ui/AppHeader';
 import { Badge, type Tone } from '@/ui/Badge';
 import { Button, ButtonLink } from '@/ui/Button';
+import { CloseButton } from '@/ui/CloseButton';
 import { Mascot } from '@/ui/Mascot';
 import { Card, Stat } from '@/ui/Panel';
 import { PitchCoachWordmark } from '@/ui/PitchCoachWordmark';
@@ -43,7 +44,7 @@ function Specimen({
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-3 border-b border-line pb-5 sm:grid-cols-[10rem_minmax(0,1fr)]">
-      <p className="font-mono text-xs font-bold text-stone">{label}</p>
+      <p className="guide-code text-xs font-bold text-stone">{label}</p>
       <div className="flex min-w-0 flex-wrap items-center gap-3">{children}</div>
     </div>
   );
@@ -83,6 +84,23 @@ function ButtonDoc({ stateId }: { stateId: string }) {
         <ButtonLink to="/" variant="secondary">
           내 피치로
         </ButtonLink>
+      </Row>
+    </Specimen>
+  );
+}
+
+/** 창 머리글처럼 제목 옆에 둔다 */
+function CloseButtonDoc() {
+  return (
+    <Specimen title="닫기 버튼" light>
+      <Row label="창 머리글">
+        <div className="flex w-full max-w-xl items-center justify-between gap-4 border border-line-strong bg-panel p-5">
+          <h2 className="text-xl font-bold">슬라이드 확인</h2>
+          <CloseButton />
+        </div>
+      </Row>
+      <Row label="disabled">
+        <CloseButton disabled />
       </Row>
     </Specimen>
   );
@@ -270,6 +288,8 @@ export function ComponentDoc({ id, stateId }: { id: string; stateId: string }) {
   switch (id) {
     case 'button':
       return <ButtonDoc stateId={stateId} />;
+    case 'close-button':
+      return <CloseButtonDoc />;
     case 'badge':
       return <BadgeDoc stateId={stateId} />;
     case 'card':

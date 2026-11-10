@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "id": "path-ud-measurement-dispute",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should_not",
+  "title": "마이크가 멀어 목소리 크기가 작게 잡혔다는 측정값 이의 — 다시 평가를 제안하지 않고 측정 결과라 바뀌지 않는다는 문장",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 5는 마이크가 멀어서 목소리 크기가 작게 잡힌 거야. 그 부분 점수 다시 매겨 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-reassess-events",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "propose:REASSESS:ASK",
+          "approve:REASSESS",
+          "exec:REASSESS:OK",
+          "exec:REASSESS:FAIL"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-review-calls",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "measurement-fixed",
+        "observe": "answer",
+        "grader": "template",
+        "compare": "contains",
+        "expect": "SystemText.MEASUREMENT_FIXED"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

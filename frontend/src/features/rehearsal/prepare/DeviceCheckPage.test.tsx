@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { PrepareResponse, PracticeCombo } from '@/types/api';
 import type { CalibrationFailReason } from '@/workers/gaze.contract';
@@ -9,6 +9,13 @@ import type { DeviceError } from '../media/useCameraStream';
 import { DeviceCheckPage } from './DeviceCheckPage';
 import { usePrepareStore } from './prepareStore';
 import { setSessionTicket } from '../lib/db';
+import {
+  BASE_VOICE_REUSE_MS,
+  forgetBaseVoice,
+  keepBaseVoice,
+  recallBaseVoice,
+} from '../lib/baseVoiceMemory';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
 
 const fixture = vi.hoisted(() => ({
@@ -17,7 +24,17 @@ const fixture = vi.hoisted(() => ({
   gazeStatus: 'DONE',
   gazeAdvice: null as CalibrationFailReason | null,
   deviceError: null as DeviceError | null,
-  voiceStatus: 'IDLE',
+  /** 기준 목소리 읽기 (#1179). 시작 조건이라 기본은 잰 상태(DONE)입니다 */
+  voiceStatus: 'DONE',
+  voiceLevelDb: -30 as number | null,
+  voiceShorts: 0,
+  /** 크기를 잰 트랙 (`useMicLevel` `measuredWith`) */
+  measuredWith: { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true } as {
+    deviceId: string;
+    groupId: string;
+    autoGainOff: boolean | null;
+  } | null,
+  postCalibration: vi.fn(),
   data: null as unknown as PrepareResponse,
   /** 버전 목록에서 꺼낸 가장 최근 자료 (`useLatestSlide`) */
   latestSlide: {
@@ -69,6 +86,7 @@ vi.mock('../media/useMicLevel', () => ({
       audioState: 'running',
       meterError: null,
       voiceRecord: vi.fn(),
+      measuredWith: fixture.measuredWith,
     };
   },
 }));
@@ -91,8 +109,9 @@ vi.mock('./useBaseVoice', () => ({
     status: fixture.voiceStatus,
     stage: 'WAITING',
     reason: null,
-    heardSec: null,
-    levelDb: null,
+    heardSec: fixture.voiceStatus === 'DONE' ? 9.5 : null,
+    levelDb: fixture.voiceStatus === 'DONE' ? fixture.voiceLevelDb : null,
+    shorts: fixture.voiceShorts,
     start: fixture.voiceStart,
     cancel: vi.fn(),
     finish: vi.fn(),
@@ -106,7 +125,7 @@ vi.mock('@/shared/api/prepare', () => ({
     refetch: fixture.refetchLatest,
   }),
   useCreateTake: () => ({ mutateAsync: fixture.create }),
-  postCalibration: vi.fn(),
+  postCalibration: fixture.postCalibration,
 }));
 vi.mock('../lib/db', () => ({
   startSession: vi.fn().mockResolvedValue('client-session'),
@@ -140,7 +159,12 @@ beforeEach(() => {
   fixture.gazeStatus = 'DONE';
   fixture.gazeAdvice = null;
   fixture.deviceError = null;
-  fixture.voiceStatus = 'IDLE';
+  fixture.voiceStatus = 'DONE';
+  fixture.voiceLevelDb = -30;
+  fixture.voiceShorts = 0;
+  fixture.measuredWith = { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true };
+  fixture.postCalibration.mockReset().mockResolvedValue({});
+  forgetBaseVoice();
   fixture.latestSlide = { data: null, isPending: false, isError: false };
   fixture.latestFetching = false;
   fixture.refetchLatest.mockReset().mockResolvedValue(undefined);
@@ -183,6 +207,11 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
+/** 무대 자리. 장치 점검이 넘긴 state 중 목소리 기준 저장 여부를 표시로 남깁니다 (#1179) */
+function RehearsalProbe({ label = '연습 시작' }: { label?: string }) {
+  const state = useLocation().state as { baseVoiceUnconfirmed?: boolean } | null;
+  return <p data-unconfirmed={String(state?.baseVoiceUnconfirmed ?? false)}>{label}</p>;
+}
 async function render(combo?: PracticeCombo, pitchId = 'p1') {
   await act(async () =>
     root.render(
@@ -195,8 +224,8 @@ async function render(combo?: PracticeCombo, pitchId = 'p1') {
       >
         <Routes>
           <Route path="/pitch/:pitchId/device-check" element={<DeviceCheckPage />} />
-          <Route path="/takes/:takeId/rehearsal" element={<p>연습 시작</p>} />
-          <Route path="/takes/:takeId/exam" element={<p>실전 시작</p>} />
+          <Route path="/takes/:takeId/rehearsal" element={<RehearsalProbe />} />
+          <Route path="/takes/:takeId/exam" element={<RehearsalProbe label="실전 시작" />} />
           <Route path="/pitch/:id/edit" element={<p>피치 수정</p>} />
         </Routes>
       </MemoryRouter>,
@@ -212,7 +241,7 @@ const scriptOption = (label: string) =>
     node.textContent?.includes(label),
   )!;
 
-it('starts with the chosen server version IDs while the optional voice task is still untouched', async () => {
+it('starts with the chosen server version IDs once the base voice is measured', async () => {
   const combo: PracticeCombo = {
     title: '고른 발표',
     presentationVersionId: 'chosen-pv',
@@ -582,14 +611,15 @@ it('lets the app header skip link move focus to the setup body', async () => {
   expect(main.tabIndex).toBe(-1);
 });
 
-it('retains all mission access and the start action during optional voice reading', async () => {
+// #1179 기준 목소리는 시작 조건이라, 읽는 동안에는 시작할 수 없습니다
+it('retains all mission access during voice reading, and waits for the reading before starting', async () => {
   fixture.voiceStatus = 'READING';
   await render();
   expect(host.querySelector('.prepare-mission-list')).toBeNull();
   expect(findButton('전체 미션 보기')).toBeTruthy();
   expect(findButton('다 읽었어요')).toBeTruthy();
   expect(findButton('그만두기')).toBeTruthy();
-  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
   expect(findButton('다시 잡기').disabled).toBe(true);
 });
 
@@ -725,12 +755,280 @@ it('tells before starting that a long silence ends the take, apart from the goal
   expect(footer.querySelector('[role="status"]')!.textContent).not.toContain('2분 넘게');
 });
 
-it('tells the chat panel the current check state when a message is sent (chat step 6)', async () => {
+it('채팅을 지원하지 않는 장치 점검 화면에서는 채팅 화면 상태를 등록하지 않는다', async () => {
   fixture.micOk = false;
   fixture.gazeStatus = 'RUNNING';
   await render();
-  expect(takeScreenSnapshot('/pitch/:pitchId/device-check')).toMatchObject({
+  expect(takeScreenSnapshot('/pitch/:pitchId/device-check')).toEqual({
     ok: true,
-    screen: { name: 'device_check', camera: 'connected', mic: 'checking', gaze_setup: 'RUNNING' },
+    screen: null,
   });
+});
+
+// ── #1179 기준 목소리 ─────────────────────────────────────────────
+
+const footerText = () => host.querySelector('.prepare-footer')!.textContent ?? '';
+const voiceRow = () => host.querySelector('.prepare-equipment')!.textContent ?? '';
+const findButtonStarting = (prefix: string) =>
+  [...host.querySelectorAll<HTMLButtonElement>('button')].find((node) =>
+    node.textContent?.startsWith(prefix),
+  ) ?? null;
+const sentBody = () => fixture.postCalibration.mock.calls[0]?.[2];
+
+it('기준 목소리가 없으면 시작할 수 없고, 항목은 "선택"이 아니라 "기준 목소리"다', async () => {
+  fixture.voiceStatus = 'IDLE';
+  await render();
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  expect(footerText()).toContain('기준 목소리를 재야 연습을 시작할 수 있어요');
+  expect(voiceRow()).toContain('기준 목소리');
+  expect(voiceRow()).not.toContain('평소 목소리');
+  expect(voiceRow()).not.toContain('선택');
+  expect(findButton('목소리 재기')).toBeTruthy();
+});
+
+it('이번에 잰 기준 목소리를 보내고, 시선 보정 요약이 없어도 보낸다', async () => {
+  await render();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.postCalibration).toHaveBeenCalledTimes(1);
+  // 시험의 스토어에는 시선 보정 요약이 없습니다 — 그래도 목소리 기준은 갑니다
+  expect(sentBody()).toMatchObject({ base_level_db: -30, result: null });
+  expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('false');
+});
+
+it('이번에 잰 값은 같은 마이크 · 자동 음량 조절 꺼짐이면 다시 쓰도록 둔다', async () => {
+  await render();
+  expect(
+    recallBaseVoice(
+      { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+      performance.now(),
+    ),
+  ).toMatchObject({
+    levelDb: -30,
+  });
+});
+
+it('자동 음량 조절 상태를 모르는 트랙으로 잰 값은 다시 쓰도록 두지 않는다', async () => {
+  fixture.measuredWith = { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: null };
+  await render();
+  expect(
+    recallBaseVoice(
+      { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+      performance.now(),
+    ),
+  ).toBeNull();
+});
+
+it('같은 환경에서 직전에 잰 기준 목소리가 있으면 그대로 쓰기를 골라 시작하고 그 값을 보낸다', async () => {
+  keepBaseVoice(
+    -27.5,
+    { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+    performance.now(),
+  );
+  fixture.voiceStatus = 'IDLE';
+  await render();
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  expect(footerText()).toContain('조금 전에 잰 기준 목소리를 그대로 쓰거나, 다시 재 주세요');
+  // 다시 재기와 그대로 쓰기를 함께 보입니다
+  expect(findButton('다시 재기')).toBeTruthy();
+  const reuse = findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!;
+  expect(reuse.textContent).toContain('같은 자리 · 같은 마이크');
+  await act(async () => reuse.click());
+  expect(voiceRow()).toContain('조금 전 기준 사용');
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(sentBody()).toMatchObject({ base_level_db: -27.5 });
+});
+
+it('다른 마이크면 직전 기준 목소리를 권하지 않는다', async () => {
+  keepBaseVoice(
+    -27.5,
+    { deviceId: 'mic-b', groupId: 'group-a', autoGainOff: true },
+    performance.now(),
+  );
+  fixture.voiceStatus = 'IDLE';
+  await render();
+  expect(findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')).toBeNull();
+  expect(findButton('목소리 재기')).toBeTruthy();
+});
+
+it('그대로 쓰기를 고른 뒤 30분이 지나 시작을 누르면 Take 를 만들지 않고 다시 재라고 한다', async () => {
+  const measuredAt = performance.now();
+  keepBaseVoice(-27.5, { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true }, measuredAt);
+  fixture.voiceStatus = 'IDLE';
+  await render();
+  await act(async () => findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!.click());
+  // 화면을 띄워 둔 채로 시간이 흐름 — 누르는 순간 다시 확인합니다
+  const now = vi.spyOn(performance, 'now').mockReturnValue(measuredAt + BASE_VOICE_REUSE_MS + 1);
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.create).not.toHaveBeenCalled();
+  expect(footerText()).toContain('조금 전에 잰 기준 목소리를 더 쓸 수 없어요');
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  // 다시 재기 시작하면 그 문구는 지웁니다 — 남으면 다시 잰 뒤에도 안내가 그 말에 머뭅니다
+  await act(async () => findButton('다시 재기').click());
+  expect(fixture.voiceStart).toHaveBeenCalledOnce();
+  expect(footerText()).not.toContain('더 쓸 수 없어요');
+  now.mockRestore();
+});
+
+it('그대로 쓰기를 골라 둔 채 30분이 지나면 항목도 "조금 전 기준 사용"을 내려놓는다', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    const measuredAt = performance.now();
+    keepBaseVoice(-27.5, { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true }, measuredAt);
+    fixture.voiceStatus = 'IDLE';
+    await render();
+    await act(async () => findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!.click());
+    expect(voiceRow()).toContain('조금 전 기준 사용');
+    const now = vi.spyOn(performance, 'now').mockReturnValue(measuredAt + BASE_VOICE_REUSE_MS + 1);
+    // 화면의 시계는 정해진 간격으로 갱신됩니다
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(voiceRow()).not.toContain('조금 전 기준 사용');
+    expect(voiceRow()).toContain('아직 재지 않았어요');
+    expect(findButton('Take 4 시작하기').disabled).toBe(true);
+    expect(footerText()).toContain('기준 목소리를 재야 연습을 시작할 수 있어요');
+    now.mockRestore();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('읽기에 두 번 실패하면 탈출구를 보이고, 고르면 기준 없이(null) 시작하며 다시 쓰기 칸에 넣지 않는다', async () => {
+  fixture.voiceStatus = 'SHORT';
+  fixture.voiceShorts = 1;
+  await render();
+  expect(findButton('발표 처음 목소리를 기준으로 시작하기')).toBeUndefined();
+  fixture.voiceShorts = 2;
+  await render();
+  await act(async () => findButton('발표 처음 목소리를 기준으로 시작하기').click());
+  expect(voiceRow()).toContain('발표 처음 목소리로');
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(sentBody()).toMatchObject({ base_level_db: null });
+  expect(
+    recallBaseVoice(
+      { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true },
+      performance.now(),
+    ),
+  ).toBeNull();
+});
+
+it('다시 읽기 안내는 거리를 바꾸게 하지 않는다', async () => {
+  fixture.voiceStatus = 'SHORT';
+  await render();
+  expect(voiceRow()).not.toContain('가까이');
+});
+
+it('목소리 기준을 보냈는데 끝내 응답을 못 받으면 막지 않고 무대에 알리게 넘긴다', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  // 다시 보내도 같은 답(4xx)이라 바로 멈춥니다 — 다시 보내기는 sendCalibration.test.ts 가 봅니다
+  fixture.postCalibration.mockRejectedValue(new ApiFailure(409, 'TAKE_ALREADY_STARTED'));
+  await render();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('true');
+});
+
+it('탈출구로 시작했으면 보내지 못해도 무대에 알리지 않는다 — 원래 발표 처음 목소리로 잡습니다', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  fixture.postCalibration.mockRejectedValue(new ApiFailure(409, 'TAKE_ALREADY_STARTED'));
+  fixture.voiceStatus = 'SHORT';
+  fixture.voiceShorts = 2;
+  await render();
+  await act(async () => findButton('발표 처음 목소리를 기준으로 시작하기').click());
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('false');
+});
+
+// #1184 리뷰 [P1] — 보정 요청이 답 없이 걸려도 Take 를 만든 뒤 무대로 넘어갑니다
+it('보정 요청이 답 없이 걸리면 제한 시간에 끊고 다시 보낸 뒤, 끝내 못 받아도 무대로 넘어가 알린다', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const signals: AbortSignal[] = [];
+    fixture.postCalibration.mockImplementation(
+      (_pitchId: string, _takeId: string, _body: unknown, signal: AbortSignal) => {
+        signals.push(signal);
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          );
+        });
+      },
+    );
+    await render();
+    await act(async () => findButton('Take 4 시작하기').click());
+    expect(fixture.create).toHaveBeenCalledOnce();
+    expect(host.textContent).not.toContain('연습 시작');
+    await act(async () => vi.advanceTimersByTimeAsync(20_000));
+    expect(signals).toHaveLength(3);
+    expect(signals.every((s) => s.aborted)).toBe(true);
+    expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('true');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+// #1184 리뷰 — 잰 트랙과 발표에 넘기는 녹음 트랙의 장치가 다르면 그 기준은 발표 마이크의 것이라고 장담할 수 없습니다
+it('잰 트랙이 녹음 트랙과 다른 장치면 이번 값을 다시 쓰기에 두지 않고, 앞서 둔 값도 권하지 않는다', async () => {
+  // 녹음 트랙은 mic-a(시험의 stream), 잰 트랙은 mic-b
+  fixture.measuredWith = { deviceId: 'mic-b', groupId: 'group-b', autoGainOff: true };
+  await render();
+  expect(
+    recallBaseVoice(
+      { deviceId: 'mic-b', groupId: 'group-b', autoGainOff: true },
+      performance.now(),
+    ),
+  ).toBeNull();
+
+  keepBaseVoice(
+    -27.5,
+    { deviceId: 'mic-b', groupId: 'group-b', autoGainOff: true },
+    performance.now(),
+  );
+  fixture.voiceStatus = 'IDLE';
+  await render();
+  expect(findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')).toBeNull();
+  expect(findButton('목소리 재기')).toBeTruthy();
+});
+
+// #1184 리뷰 — 다른 곳의 연습을 끝낼지 묻는 창에서 기다리는 사이에도 다시 쓰는 기준이 만료될 수 있습니다
+it('확인 창을 거치는 사이 다시 쓰는 기준이 만료되면 다른 곳의 연습도 끝내지 않고 Take 를 만들지 않는다', async () => {
+  const measuredAt = performance.now();
+  keepBaseVoice(-27.5, { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true }, measuredAt);
+  fixture.voiceStatus = 'IDLE';
+  fixture.active.mockResolvedValue({
+    take_id: 'other',
+    pitch_title: '다른 발표',
+    pitch_id: 'other-pitch',
+    take_number: 2,
+  });
+  await render();
+  await act(async () => findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!.click());
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(host.querySelector('dialog')).not.toBeNull();
+  // 창을 띄워 둔 채 30분이 지남
+  const now = vi.spyOn(performance, 'now').mockReturnValue(measuredAt + BASE_VOICE_REUSE_MS + 1);
+  const confirm = [...host.querySelectorAll<HTMLButtonElement>('dialog button')].find((button) =>
+    button.textContent?.includes('그 연습 끝내고 시작'),
+  )!;
+  await act(async () => confirm.click());
+  // 끝낸 뒤에 멈추면 어느 쪽도 연습하지 않게 됩니다 — 끝내기 전에 봅니다
+  expect(fixture.endActive).not.toHaveBeenCalled();
+  expect(fixture.create).not.toHaveBeenCalled();
+  expect(fixture.postCalibration).not.toHaveBeenCalled();
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(footerText()).toContain('조금 전에 잰 기준 목소리를 더 쓸 수 없어요');
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  expect(document.activeElement).not.toBe(document.body);
+  now.mockRestore();
+});
+
+// #1184 리뷰 — 실전 모드로 시작해도 같은 안내 표시가 실전 무대로 넘어갑니다
+it('실전 모드로 시작했을 때도 목소리 기준을 확인하지 못했으면 실전 무대로 알리게 넘긴다', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  fixture.postCalibration.mockRejectedValue(new ApiFailure(409, 'TAKE_ALREADY_STARTED'));
+  await render();
+  await act(async () => scriptOption('실전 모드').click());
+  await act(async () => findButton('Take 4 실전 모드로 시작').click());
+  expect(host.textContent).toContain('실전 시작');
+  expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('true');
 });

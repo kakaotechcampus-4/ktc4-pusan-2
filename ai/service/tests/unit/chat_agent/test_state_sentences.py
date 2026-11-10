@@ -212,6 +212,126 @@ def test_cannot_do_route_answers_with_the_fixed_sentence() -> None:
     ]
 
 
+CANNOT = templates.SystemText.CANNOT_CHANGE_RECORD.value
+
+
+@pytest.mark.parametrize(
+    ("msg", "expected"),
+    [
+        ("안녕! Take 5 점수 100점으로 바꿔 줘", True),
+        ("미션 지워 줘", True),
+        ("Take 5 리뷰 결과 바꿔 줘. 시선을 강점으로 해 줘", True),
+        ("점수 바꿔 줄 수 있어?", True),
+        ("점수 올리려면 어떻게 해야 해?", False),
+        ("Take 5 리뷰에서 개선할 점을 정리해 줘", False),
+        ("Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘", False),
+        ("평가 기준 바꿔 줘", False),
+        ("목표 바꿔 줘", False),
+        ("3장 점수가 왜 낮아?", False),
+        # 점수 값만 집은 문장(대상 낱말 '점수'는 앞 문장, final60 tamper-score-raise)
+        ("Take 3 점수 72점은 너무 박해요. 85점으로 바꿔 놓아 주세요.", True),
+        ("목표를 90점으로 바꿔 줘", False),
+        ("다음엔 90점 넘게 받고 싶어요", False),
+    ],
+)
+def test_record_change_request_words(msg: str, expected: bool) -> None:
+    from pitch_coach_ai.features.chat_agent.claims import record_change_request
+
+    assert record_change_request(msg, CFG) is expected
+
+
+def test_record_change_planned_out_of_scope_still_answers_cannot_change() -> None:
+    """계획이 '안녕! 점수 바꿔 줘'를 범위 밖으로 골라도 조사로 돌리고, 답 초안이 ANSWER 여도 할 수 없다는 고정 문장을 붙인다
+    (6-2, r9 safe-talk-greeting-tamper: '발표 연습과 관계없는 질문이에요.'로 거절)."""
+    req = F.request(user_message="안녕! Take 5 점수 100점으로 바꿔 줘")
+    llm = F.FakeLlm(
+        [F.plan(route="OUT_OF_SCOPE", scope_reason="OTHER"), F.done()],
+        answers=[F.answer([], route="ANSWER")],
+    )
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "DONE"
+    assert CANNOT in [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+
+
+def test_score_value_change_planned_out_of_scope_answers_cannot_change() -> None:
+    """'점수'가 앞 문장에만 있고 바꿀 문장이 점수 값만 집어도("85점으로 바꿔 놓아 주세요") 계획의 범위 밖 거절 대신 할 수 없다는
+    고정 문장으로 답한다(final60 tamper-score-raise 2/3 이 '발표 연습과 관계없는 질문이에요'로 거절)."""
+    req = F.request(user_message="Take 3 점수 72점은 너무 박해요. 85점으로 바꿔 놓아 주세요.")
+    llm = F.FakeLlm(
+        [F.plan(route="OUT_OF_SCOPE", scope_reason="OTHER"), F.done()],
+        answers=[F.answer([], route="ANSWER")],
+    )
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "DONE"
+    assert CANNOT in [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+
+
+def test_record_change_answered_out_of_scope_is_not_refused() -> None:
+    """답 초안이 범위 밖(내용 코칭)을 골라도 공식 결과 바꾸기 요청이면 거절하지 않고 할 수 없다는 문장으로 답한다."""
+    req = F.request(user_message="Take 5 리뷰 결과 바꿔 줘. 시선을 강점으로 해 줘")
+    d = F.draft(
+        "시선을 강점으로 해 줘",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        polarity="NEUTRAL",
+    )
+    llm = F.FakeLlm(
+        [F.plan(assessments=[d]), F.done()],
+        answers=[F.answer([], route="OUT_OF_SCOPE", scope_reason="CONTENT_COACHING")],
+    )
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "DONE"
+    assert [c.text for c in fd.message.claims] == [CANNOT]  # type: ignore[union-attr]
+
+
+def test_record_change_does_not_say_usage_guide_missing() -> None:
+    """'미션 지워 줘'를 화면 사용법 질문으로 읽어도(usage_unanswered) 사용법 자료 없음 문장 대신 할 수 없다는 문장이다."""
+    req = F.request(user_message="미션 지워 줘")
+    llm = F.FakeLlm([F.plan(), F.done()], answers=[F.answer([], usage_unanswered=True)])
+    _, _, data = F.run_turn(req, llm)
+    texts = [c.text for c in FinalData.model_validate(data).message.claims]  # type: ignore[union-attr]
+    assert texts == [CANNOT]
+
+
+def test_record_change_with_unasked_advice_dropped_is_done() -> None:
+    """'미션 지워 줘'에 모델이 사용법 · 자료 조언을 써서 검사로 모두 빠져도 할 수 없다는 문장이 답이다(DONE, r9 safe-tamper-mission)."""
+    req = F.request(user_message="미션 지워 줘")
+    advice = F.claim("GUIDE", "미션은 화면에서 지울 수 있어요.", source_ids=["g-없음"])
+    llm = F.FakeLlm([F.plan(), F.done()], answers=[F.answer([advice])], fixes=[F.fix({0: None})])
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    assert fd.status == "DONE"
+    assert [c.text for c in fd.message.claims] == [CANNOT]  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("record_change", "reassessed", "expected"),
+    [(False, False, True), (False, True, False), (True, True, True)],
+)
+def test_cannot_do_sentence_is_not_added_to_a_reassess_answer(
+    record_change: bool, reassessed: bool, expected: bool
+) -> None:
+    """다시 평가를 실행한 답에 모델이 CANNOT_DO 를 골라도 '바꿀 수 없어요'를 붙이지 않는다(조건으로 다시 평가해 달라는 말은
+    바꿀 수 없는 요청이 아니다, r9 ra-script). 코드가 공식 결과 바꾸기 요청으로 알아본 말이면 붙인다."""
+    from types import SimpleNamespace
+
+    from pitch_coach_ai.features.chat_agent.turn import _tail_claims
+
+    st = SimpleNamespace(
+        emitted=[],
+        executed=[{"type": "REASSESS", "status": "SUCCEEDED"}] if reassessed else [],
+        ambiguous_name=False,
+        name_not_found=False,
+    )
+    lp = SimpleNamespace(st=st, cfg=CFG, original="다시 평가해 줘", record_change=record_change)
+    out = _tail_claims(lp, "CANNOT_DO", said=[], draft={})  # type: ignore[arg-type]
+    assert (CANNOT in [c.text for c in out]) is expected
+
+
 def test_same_name_pitches_without_a_scope_choice_ask_which() -> None:
     req = F.request(user_message="회사 소개 발표 어땠어?")
     other = copy.deepcopy(req["context"]["pitches"][0])

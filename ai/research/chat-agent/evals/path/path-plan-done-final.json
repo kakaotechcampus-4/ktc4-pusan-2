@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "id": "path-plan-done-final",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "두 값(군더더기 횟수 · 말 속도)을 묻는 작은 요청이 DONE — 끝난 계획에 TODO · DOING 단계가 남지 않는다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "cpm": 288,
+              "filler_count": 7,
+              "filler_per_min": 1.8
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 군더더기가 몇 번이고 말 속도는 어땠어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-then-done",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:OK",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-open-steps",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "TODO",
+          "DOING"
+        ],
+        "metric": "path",
+        "path": "plan_statuses"
+      },
+      {
+        "check_id": "steps-done",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "DONE",
+        "metric": "path",
+        "path": "plan_statuses"
+      },
+      {
+        "check_id": "filler",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "7번",
+        "derive": "t-5:FILLER.filler_count"
+      },
+      {
+        "check_id": "speed",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "288",
+        "derive": "t-5:SPEED.cpm"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

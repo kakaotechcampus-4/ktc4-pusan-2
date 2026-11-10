@@ -92,10 +92,18 @@ def test_done_path_streams_progress_then_one_final() -> None:
     fd = final_ok(data)
     assert fd.status == "DONE"
     assert fd.message is not None
-    # 진행 줄 → 답 문장마다 문장 줄 → 끝 줄 하나(5-4)
+    # 진행 줄 → 답 문장마다 문장 줄 → 끝 줄 하나(5-4). 도구가 끝나면 단계 표시 갱신(plan), 끝 처리로 단계 상태가
+    # 바뀌면 끝 줄 전에 plan 한 줄 더(progress.py)
     n = len(fd.message.claims)
-    assert [ln["event"] for ln in lines] == ["plan", "tool_done", *["claim"] * n, "final"]
-    assert [ln["seq"] for ln in lines] == list(range(1, n + 4))
+    assert [ln["event"] for ln in lines] == [
+        "plan",
+        "tool_done",
+        "plan",
+        *["claim"] * n,
+        "plan",
+        "final",
+    ]
+    assert [ln["seq"] for ln in lines] == list(range(1, n + 6))
     assert all(ln["run_id"] == "run-81" for ln in lines)
     assert fd.message.text == "\n".join(c.text for c in fd.message.claims)
     # 판단은 코드 판정(28% < 31% → 나빠짐)이고 첫 문장은 템플릿이다
@@ -310,15 +318,22 @@ def test_check_diagnostics_use_original_sentence_numbers_after_fix_drops_earlier
     ]  # 고친 뒤에도 실패한 문장, 원래 번호
 
 
-def test_plan_with_unbacked_number_falls_back_to_default_plan() -> None:
+@pytest.mark.parametrize("progress", [True, False])
+def test_plan_with_unbacked_number_drops_the_number(progress: bool) -> None:
+    """근거 없는 숫자 · Take 번호는 단계 글에 나가지 않는다. `plan_progress`가 켜졌으면 그 표기만 지우고(목적은 남김),
+    끄면 이전 동작대로 기본 계획."""
     bad_plan = F.plan(steps=["Take 5 시선 28% 확인", "답 쓰기"], assessments=[change_draft()])
     req = F.with_loaded(F.request(user_message=MSG), "t-4")
     _, lines, data = F.run_turn(
-        req, F.FakeLlm([bad_plan, F.tools(COMPARE), F.done(), compare_answer()])
+        req,
+        F.FakeLlm([bad_plan, F.tools(COMPARE), F.done(), compare_answer()]),
+        cfg=load_config(plan_progress=progress),
     )
     plan_line = lines[0]
     assert plan_line["event"] == "plan"
     assert all("28%" not in s["step"] for s in plan_line["data"]["plan"])
+    first = [s["step"] for s in plan_line["data"]["plan"]]
+    assert first == (["시선 확인", "답 쓰기"] if progress else ["기록 확인", "답 쓰기"])
 
 
 def test_uncovered_clause_gets_one_format_fix_then_template() -> None:
@@ -480,6 +495,45 @@ def test_action_stops_with_signed_state_then_resume_finishes() -> None:
     assert fd2.diagnostics.turn_call == 2  # type: ignore[union-attr]
     # 누적량은 이어진다(처음부터 다시 세지 않음)
     assert fd2.budget_used.model_calls == data["budget_used"]["model_calls"] + 3
+
+
+def test_resume_first_research_blocked_by_output_reserve_answers_with_the_action_result() -> None:
+    """이어 부른 실행의 첫 조사가 출력 예약(조사 + 답 쓰기 · 고치기 몫)에 막히면 조사를 건너뛰고 받은 행동 결과로 답한다.
+    한도 안내를 앞에 내지 않고, 요청이 해소됐으면 DONE(진단 끝 이유는 TOKENS), 결정 로그는 BUDGET_LOW · STEP_SKIPPED
+    (r9 ra-record-changed · path-ud-script-dispute: 승인 전에 쓴 출력 2.1k + 예약 6k > 8k 로 PARTIAL)."""
+    req = F.request(user_message=MSG)
+    _, _, data = F.run_turn(req, F.FakeLlm(fetch_take_script()))
+    action = data["actions"][0]
+    res = [
+        {
+            "action_id": action["action_id"],
+            "type": "FETCH_TAKE",
+            "status": "SUCCEEDED",
+            "data": {"take": fetched_take("t-4")},
+            "error": None,
+        }
+    ]
+    req2 = resume_request(req, data, res)
+    req2["budget_used"]["output_tokens"] = 2_100  # 8_000 - 2_100 < 2_000 × 3
+    llm2 = F.FakeLlm(
+        [],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    logs: list[dict[str, Any]] = []
+    _, _, data2 = F.run_turn(req2, llm2, log=logs)
+    fd2 = final_ok(data2)
+    assert [c.purpose for c in llm2.calls] == ["ANSWER"]  # 조사 모델을 부르지 않았다
+    assert fd2.status == "DONE"
+    assert fd2.diagnostics.end.reason == "TOKENS"  # type: ignore[union-attr]
+    text = fd2.message.text  # type: ignore[union-attr]
+    assert "Take 4 기록을 가져왔어요." in text
+    assert templates.SystemText.LIMIT_PARTIAL.value not in text
+    decisions = [
+        (d["signal"], d["effect"], d["decider"]) for d in logs if d.get("event") == "agent_decision"
+    ]
+    assert ("BUDGET_LOW", "STEP_SKIPPED", "CODE") in decisions
+    assert ("BUDGET_LOW", "STOP_PARTIAL", "CODE") not in decisions
 
 
 @pytest.mark.parametrize("mutate", ["signature", "run_id", "user_id", "revision"])
@@ -663,9 +717,11 @@ def test_repeated_same_tool_without_progress_stops_research() -> None:
     )
     _, _, data = F.run_turn(req, llm)
     fd = final_ok(data)
-    # 같은 호출을 새 근거 없이 되풀이하면 조사를 멈추고 확인한 데까지만 말한다(L1-16)
-    assert fd.status == "PARTIAL"
-    assert fd.message.claims[0].text == templates.SystemText.NO_MORE_SOURCES.value  # type: ignore[union-attr]
+    # 같은 호출을 새 근거 없이 되풀이하면 조사를 멈추고 답한다(L1-16). 이미 읽은 것을 다시 청한 것이라 답이 요청을 해소했으면
+    # DONE 이고 안내 문장은 붙이지 않는다(끝 상태는 요청 해소로)
+    assert fd.status == "DONE"
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    assert templates.SystemText.NO_MORE_SOURCES.value not in texts
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH", "RESEARCH", "ANSWER"]
 
 
@@ -853,7 +909,24 @@ def test_fm_L1_11_research_llm_failure_ends_partial() -> None:
     )
     fd = final_ok(F.run_turn(req, llm)[2])
     assert fd.status == "PARTIAL"
-    assert fd.message.claims[0].text == templates.SystemText.PARTIAL_CHECKED.value  # type: ignore[union-attr]
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    # 끊겼지만 판단 문장(근거에 이음)으로 답했다: 일반 안내는 붙이지 않는다(TARGET 6). 끊긴 것은 PARTIAL · 남은 단계 TODO 가 보인다
+    assert templates.SystemText.PARTIAL_CHECKED.value not in texts
+    assert fd.message.claims[0].kind == "ASSESSMENT"  # type: ignore[union-attr]
+
+
+def test_fm_L1_11_research_llm_failure_without_any_evidence_sentence_says_partial_checked() -> None:
+    """조사가 모델 장애로 끊겼고 답에 근거 문장이 하나도 없으면 일반 안내를 끝에 한 번 붙인다(TARGET 6)."""
+    req = F.request(user_message="발표 기록 좀 봐 줘")
+    llm = F.FakeLlm(
+        [F.plan(assessments=[]), LlmTimeout()],
+        answers=[F.answer([F.claim("RECORD", "근거 없는 문장이에요.")])],
+        fixes=[F.fix({0: None})],
+    )
+    fd = final_ok(F.run_turn(req, llm)[2])
+    assert fd.status == "PARTIAL"
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    assert texts.count(templates.SystemText.PARTIAL_CHECKED.value) == 1
 
 
 def test_fm_L1_38_failed_explanation_keeps_code_judgement_sentence() -> None:
@@ -1147,6 +1220,113 @@ def test_value_question_is_not_judged_unverifiable() -> None:
     assert "확인할 수 없어요" not in fd.message.text  # type: ignore[union-attr]
     assert "28%" in fd.message.text  # type: ignore[union-attr]
     assert all(a.type == "REQUEST" for a in fd.assessments)
+
+
+def test_take_written_as_nth_take_is_normalized_and_not_dropped() -> None:
+    """모델이 'Take 5' 대신 '5번 Take'라고 써도 숫자 검사가 '5번'을 근거 없는 횟수로 읽어 문장을 빼지 않는다: 검사 전에
+    'Take 5'로 바꾼다(r9 rep-repeat-issue: '4번과 5번 Take에서는 …'이 빠져 반복 문제 답이 사라짐)."""
+    msg = "Take 5 3장 시선 몇 %였어?"
+    d = F.draft(
+        "Take 5 3장 시선 몇 %였어",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        metric="audience_ratio",
+        slide_number=3,
+        take_numbers=[5],
+        polarity="NEUTRAL",
+    )
+    report = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
+
+    def ans(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("metric") == "audience_ratio")
+        return F.answer(
+            [F.claim("RECORD", "5번 Take의 3장 청중 시선 비율은 28%예요.", evidence_ids=[eid])]
+        )
+
+    llm = F.FakeLlm(
+        [F.plan(assessments=[d]), F.tools(report), F.done()], answers=[ans], fixes=[F.fix({})]
+    )
+    fd = final_ok(F.run_turn(F.request(user_message=msg), llm)[2])
+    assert [c.text for c in fd.message.claims if c.kind == "RECORD"] == [  # type: ignore[union-attr]
+        "Take 5의 3장 청중 시선 비율은 28%예요."
+    ]
+
+
+def test_dimension_state_enum_in_a_model_sentence_is_shown_by_its_name() -> None:
+    """모델이 차원 상태 원값(PRIORITY)을 문장에 쓰면 검사 전에 화면 이름(우선 개선)으로 바꿔 낸다(r9 safe-tamper-review:
+    "Take 5의 시선 상태는 PRIORITY이고 …"가 그대로 나감)."""
+    msg = "Take 5 시선 상태 알려 줘"
+    d = F.draft(
+        "Take 5 시선 상태 알려 줘",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="audience_gaze",
+        take_numbers=[5],
+        polarity="NEUTRAL",
+    )
+    report = ("get_take_report", {"take_id": "t-5", "section": "dimensions"})
+
+    def ans(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("dimension") == "audience_gaze")
+        return F.answer(
+            [
+                F.claim(
+                    "RECORD",
+                    "Take 5에서 청중 시선은 PRIORITY로 기록되어 있습니다.",
+                    evidence_ids=[eid],
+                )
+            ]
+        )
+
+    llm = F.FakeLlm(
+        [F.plan(assessments=[d]), F.tools(report), F.done()], answers=[ans], fixes=[F.fix({})]
+    )
+    fd = final_ok(F.run_turn(F.request(user_message=msg), llm)[2])
+    assert [c.text for c in fd.message.claims if c.kind == "RECORD"] == [  # type: ignore[union-attr]
+        "Take 5에서 청중 시선은 우선 개선으로 기록되어 있습니다."
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "out"),
+    [
+        (
+            "시선 상태는 PRIORITY이고, 유창성은 STRENGTH입니다.",
+            "시선 상태는 우선 개선이고, 유창성은 강점입니다.",
+        ),
+        (
+            "내용 전달도는 NOT_EVALUABLE로, 속도는 STABLE로",
+            "내용 전달도는 평가 불가로, 속도는 유지로",
+        ),
+        ("STRENGTH는 유창성", "강점은 유창성"),
+        ("IMPROVED와 STABLE", "나아짐과 유지"),
+        ("PRIORITY_X · STRENGTHS", "PRIORITY_X · STRENGTHS"),
+    ],
+)
+def test_normalize_state_words(text: str, out: str) -> None:
+    from pitch_coach_ai.features.chat_agent.compose import normalize_state_words
+
+    assert normalize_state_words(text) == out
+
+
+@pytest.mark.parametrize(
+    ("text", "out"),
+    [
+        ("4번과 5번 Take에서는 3장에서", "Take 4와 Take 5에서는 3장에서"),
+        ("3번, 4번 Take 모두", "Take 3, Take 4 모두"),
+        (
+            "‘회사 소개 발표’의 2번 Take 점수는 70점입니다.",
+            "‘회사 소개 발표’의 Take 2의 점수는 70점입니다.",
+        ),
+        ("3번째 Take는", "3번째 Take는"),
+        ("Take 4는 2번 멈췄어요", "Take 4는 2번 멈췄어요"),
+    ],
+)
+def test_normalize_take_refs(text: str, out: str) -> None:
+    from pitch_coach_ai.features.chat_agent.compose import normalize_take_refs
+
+    assert normalize_take_refs(text) == out
 
 
 def test_script_points_removed_notice_condition() -> None:

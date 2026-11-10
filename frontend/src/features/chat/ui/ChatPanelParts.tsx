@@ -52,7 +52,7 @@ export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }
   };
 
   return (
-    <div className="relative mt-1">
+    <div className="relative min-w-0">
       <button
         ref={chipRef}
         type="button"
@@ -60,10 +60,11 @@ export function ScopeChip({ onChange }: { onChange: (scope: ChatScope) => void }
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? menuId : undefined}
         aria-disabled={!changeable}
+        title={scopeLabel(scope, titleOf)}
         onClick={() => {
           if (changeable) setMenuOpen(!menuOpen);
         }}
-        className="min-h-8 rounded-full border border-line-strong bg-cream px-3 text-xs font-bold aria-disabled:cursor-not-allowed aria-disabled:text-stone"
+        className="min-h-8 max-w-56 truncate rounded-full border border-line-strong bg-white px-3 text-xs font-bold hover:bg-cream aria-disabled:cursor-not-allowed aria-disabled:text-stone"
       >
         {/* 이름은 글자로 둡니다 — aria-label 을 두면 안쪽 잠긴 이유(sr-only)가 덮여 읽히지 않습니다 */}
         <span className="sr-only">범위: </span>

@@ -191,6 +191,7 @@ describe('지금 실행의 답 (12-4 F12)', () => {
     contractError: null,
     progressDropped: false,
     cards: [],
+    ended: null,
   };
 
   let clock: ManualClock;

@@ -4,9 +4,10 @@ module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'
 알릴 일은 여기 세 자리를 거쳐 부른다.
 
   - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT),
-    로그아웃
+    로그아웃, 관리자 콘솔이 멈춘 연습을 끝냄
   - `coaching()`: 리뷰 뒤 · 제한 시간을 바꾼 뒤 · 대본을 파싱한 뒤 다음 Take 의 코칭 계획
-  - `finalize_export()`: 관리자 콘솔이 Take의 finalize 복구 요청을 내려받을 때
+  - `finalize_recovery()`: 관리자 콘솔이 Take 의 finalize 복구 요청을 내려받거나, finalize 가
+    실패한 Take 의 Take 결과를 다시 만들 때
 
 실제 구현은 main.py 가 앱을 만들 때 꽂는다 (`install`). 꽂기 전에는 바깥이 없는 것처럼 군다 — 아무
 것도 하지 않고, 끝내기는 DB 에 적기만 한다.
@@ -14,6 +15,7 @@ module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'
 
 import uuid
 from collections.abc import Callable, Iterable
+from datetime import datetime
 from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
@@ -53,6 +55,12 @@ class LiveTakes(Protocol):
         Refresh 를 폐기한 커밋 뒤에 부른다."""
         ...
 
+    def end_stuck(self, take_id: uuid.UUID, last_active_at: datetime) -> bool:
+        """연결 없이 진행 중으로 남은 Take 를 떠난 것(`ABANDONED`)으로 끝낸다. 떠난 Take 타이머가
+        끝낼 때와 같고 끝난 시각은 `last_active_at` 이다. 적었으면 True. 스트림이 아직 돌거나
+        그 사이 끝났으면 False. 관리자 콘솔이 부른다."""
+        ...
+
 
 class Coaching(Protocol):
     """다음 Take 의 코칭 계획 (coach). 요청 스레드에서도 이벤트 루프에서도 부른다."""
@@ -62,8 +70,18 @@ class Coaching(Protocol):
         ...
 
 
-class FinalizeExport(Protocol):
-    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None: ...
+class FinalizeRecovery(Protocol):
+    """Take 결과(finalize)의 수동 복구 (coach). 관리자 콘솔이 부른다."""
+
+    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+        """finalize 를 원자료(replay)로 다시 부를 요청. 1초 원자료가 없으면 None."""
+        ...
+
+    def restart(self, take_id: uuid.UUID) -> None:
+        """Take 결과를 기다리는 중으로 되돌린 Take 의 finalize 를 띄운다. 이벤트 루프에서 부른다.
+        같은 Take 의 앞 finalize 가 아직 끝나는 중이면 그 뒤에 띄운다. 띄우지 못하면 예외를 올린다
+        — Take 는 Take 결과를 기다리는 중으로 남아 finalize 주기 작업이 이어 간다."""
+        ...
 
 
 class _NoLiveTakes:
@@ -85,30 +103,36 @@ class _NoLiveTakes:
     def sign_out(self, user_id: uuid.UUID) -> None:
         return None
 
+    def end_stuck(self, take_id: uuid.UUID, last_active_at: datetime) -> bool:
+        return False
+
 
 class _NoCoaching:
     def plan_next_take(self, pitch_id: uuid.UUID) -> None:
         return None
 
 
-class _NoFinalizeExport:
+class _NoFinalizeRecovery:
     def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
+        return None
+
+    def restart(self, take_id: uuid.UUID) -> None:
         return None
 
 
 _live_takes: LiveTakes = _NoLiveTakes()
 _coaching: Coaching = _NoCoaching()
-_finalize_export: FinalizeExport = _NoFinalizeExport()
+_finalize_recovery: FinalizeRecovery = _NoFinalizeRecovery()
 
 
 def install(
-    *, live_takes: LiveTakes, coaching: Coaching, finalize_export: FinalizeExport
+    *, live_takes: LiveTakes, coaching: Coaching, finalize_recovery: FinalizeRecovery
 ) -> None:
     """main.py 가 앱을 만들 때 실제 구현을 꽂는다."""
-    global _live_takes, _coaching, _finalize_export
+    global _live_takes, _coaching, _finalize_recovery
     _live_takes = live_takes
     _coaching = coaching
-    _finalize_export = finalize_export
+    _finalize_recovery = finalize_recovery
 
 
 def live_takes() -> LiveTakes:
@@ -119,5 +143,5 @@ def coaching() -> Coaching:
     return _coaching
 
 
-def finalize_export() -> FinalizeExport:
-    return _finalize_export
+def finalize_recovery() -> FinalizeRecovery:
+    return _finalize_recovery

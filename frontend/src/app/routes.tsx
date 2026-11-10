@@ -167,11 +167,13 @@ export const appRoutes = screenRoutes.map((route) =>
 // 오류 화면(RouteLoadError)은 화면마다 있고 채팅은 자기 오류 경계를 가져서, 이 층에는 errorElement 를 두지 않습니다
 // 제품 라우터와 회귀 테스트가 같은 루트 층을 사용하도록 분리합니다.
 export const appRouterShell = (
-  <>
-    <Outlet />
+  <div className="chat-layout">
+    <div className="chat-layout-content">
+      <Outlet />
+    </div>
     <ScrollRestoration />
     <ChatAgentHost />
-  </>
+  </div>
 );
 
 export const router = createBrowserRouter([

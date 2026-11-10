@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "id": "path-fail-model-partial",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "도구 확인 뒤 두 번째 조사 모델 호출이 시간 초과 — 확인한 것까지만 PARTIAL, 남은 단계는 TODO, DONE 으로 끝내지 않는다",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-3": {
+            "result": {
+              "filler_per_min": 2.4,
+              "filler_count": 10
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3이랑 Take 5의 군더더기 횟수를 비교하고, 3장 시선도 비교하고, 연습 방법도 정리해 줘",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "model_error",
+          "purpose": "RESEARCH",
+          "nth": 2,
+          "seconds": 30
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "outcome",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "outcome"
+      },
+      {
+        "check_id": "todo-left",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "TODO",
+        "metric": "path",
+        "path": "plan_statuses"
+      },
+      {
+        "check_id": "partial-final",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:*",
+          "final:PARTIAL"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "not-done",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "final:DONE"
+        ],
+        "metric": "replan"
+      }
+    ]
+  }
+}

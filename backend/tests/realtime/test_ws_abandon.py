@@ -1,6 +1,7 @@
 """떠난 Take — 끊긴 방식별 대기 타이머 · 창을 다시 연 FE · 앱 재시작 복구."""
 
 import asyncio
+import functools
 import json
 import time
 import uuid
@@ -12,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.admin.dependencies import ACTION_HEADER
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
@@ -35,8 +37,10 @@ from tests.realtime.conftest import (
     handshake,
     make_take,
     use,
+    use_store,
     wait_state,
 )
+from tests.test_admin import ADMIN, admin_account  # noqa: F401
 
 # ── WS-1 재연결 (FE 가 끊긴다) ─────────────────────────────────────────
 
@@ -344,6 +348,88 @@ async def test_abandon_write_failure_leaves_the_take_open(caplog: pytest.LogCapt
     assert take_id not in state.ended
 
 
+# ── 관리자 콘솔이 멈춘 연습을 끝낸다 ─────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_stuck_take_is_ended_as_abandoned_from_its_last_activity():
+    """타이머 없이 진행 중으로 남은 Take 를 떠난 Take 타이머처럼 끝낸다. 걸린 타이머도 끈다."""
+    store = FakeTranscriptStore()
+    take_id = uuid.uuid7()
+    last_active = datetime.now(UTC) - timedelta(minutes=20)
+    registry.arm_abandon(take_id, store, closed_at=last_active, delay_sec=60)
+
+    assert await registry.end_stuck(take_id, store, last_active) is True
+
+    assert store.abandoned == [(take_id, last_active)]
+    assert state.ended[take_id] == "ABANDONED"
+    assert take_id not in abandon._abandon_timers
+
+
+@pytest.mark.anyio
+async def test_stuck_take_with_a_running_stream_is_left_alone():
+    """스트림이 아직 돌면(연결이 붙어 있음) 끝내지 않는다."""
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+    state.streams[stream.take_id] = stream
+    stream.start()
+    await stream.attach(FakeWebSocket())
+    await _wait_until_ok(stream)
+
+    assert await registry.end_stuck(stream.take_id, store, datetime.now(UTC)) is False
+
+    assert store.abandoned == []
+    assert stream.take_id not in state.ended
+    await stream.close_or_cancel(warn="test")
+
+
+@pytest.mark.anyio
+async def test_stuck_take_that_cannot_be_written_keeps_its_timer():
+    store = FakeTranscriptStore(fail_mark=True)
+    take_id = uuid.uuid7()
+    registry.arm_abandon(take_id, store, closed_at=datetime.now(UTC), delay_sec=60)
+
+    assert await registry.end_stuck(take_id, store, datetime.now(UTC)) is False
+
+    assert take_id not in state.ended
+    assert take_id in abandon._abandon_timers
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_admin_console_ends_a_stuck_take_through_the_live_takes_hook(
+    client: TestClient, db_session: Session, user: User
+):
+    """관리자 POST → 실시간 hook(`RealtimeLiveTakes.end_stuck`) → registry → DB 까지 잇는다.
+    끝난 시각은 마지막 활동 시각이고, 걸려 있던 타이머는 끈다."""
+    store = use_store(DbTranscriptStore(session_factory=lambda: db_session))
+    stuck = make_take(db_session, user.id)
+    # '멈춘 연습' 표의 기준(마지막 활동 뒤 이탈 대기 + 10분)보다 앞이다
+    last_active = datetime.now(UTC) - timedelta(
+        seconds=lifecycle_service.ABANDON_AFTER_SEC, minutes=11
+    )
+    stuck.created_at = last_active
+    db_session.commit()
+    # 타이머는 이벤트 루프에서만 걸린다
+    client.portal.call(
+        functools.partial(
+            registry.arm_abandon, stuck.id, store, closed_at=last_active, delay_sec=60
+        )
+    )
+    assert abandon.armed(stuck.id)
+
+    response = client.post(
+        f"/admin/api/takes/{stuck.id}/abandon", auth=ADMIN, headers={ACTION_HEADER: "1"}
+    )
+
+    assert response.status_code == 204
+    ended = db_session.scalars(
+        select(Take).where(Take.id == stuck.id).execution_options(populate_existing=True)
+    ).one()
+    assert (ended.status, ended.end_reason, ended.ended_at) == ("FAILED", "ABANDONED", last_active)
+    assert state.ended[stuck.id] == "ABANDONED"
+    assert not abandon.armed(stuck.id)
+
+
 @pytest.mark.anyio
 async def test_startup_rearms_timers_from_the_last_activity():
     """앱이 다시 뜨면 메모리의 타이머가 없다. 진행 중으로 남은 Take 를 DB 에서 읽어 마지막 활동에서
@@ -438,8 +524,7 @@ def test_end_does_not_revive_a_take_closed_with_its_tab(db_session: Session, use
     """창을 닫아 끝낸 Take(CLOSED)는 이어 가지 않는다. 끝내기 PUT 이 와도 되살리지 않는다."""
     closed = make_take(db_session, user.id)
     assert (
-        lifecycle_service.mark_abandoned(db_session, closed.id, datetime.now(UTC), "CLOSED")
-        is True
+        lifecycle_service.mark_abandoned(db_session, closed.id, datetime.now(UTC), "CLOSED") is True
     )
 
     assert lifecycle_service.mark_ended(db_session, closed.id) is False

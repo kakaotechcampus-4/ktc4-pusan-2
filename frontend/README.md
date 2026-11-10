@@ -36,7 +36,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 | `npm run preview` | 빌드 결과를 띄워 봅니다. dev와 같은 COOP/COEP가 걸려 있습니다 |
 | `npm run doctor` | 세팅 점검 — Node·TS·의존성·`.env.local`·줄바꿈·COOP/COEP·확장 |
 
-**PR 통과 조건은 이 넷입니다.** 레포 루트의 `.github/workflows/frontend-ci.yml`이 같은 걸 돌립니다.
+**PR 전에 돌릴 것은 이 넷입니다.** 레포 루트의 `.github/workflows/frontend-ci.yml`이 이 넷과 build, COOP/COEP 헤더 확인을 돌립니다([architecture.md](../docs/fe/architecture.md) 7절).
 
 | | |
 | --- | --- |
@@ -45,144 +45,15 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 | `npm run test` | 순수 로직 테스트 |
 | `npm run format:check` | Prettier 확인. 고칠 때는 `npm run format` |
 
+`npm run test:e2e`(Playwright, 목 서버를 3100 포트에 띄워 화면을 끝까지 돌림)는 CI의 `frontend-e2e` job이 PR마다 돌립니다. 아직 필수 검사가 아니라 실패해도 머지가 막히지 않으니 PR 검사 결과를 직접 확인합니다. 화면 · `src/mocks/` · 통신 계층을 고쳤으면 올리기 전에 로컬에서도 돌려 봅니다.
+
+E2E는 화면별 파일(`e2e/*.e2e.ts`)로 나눠 둡니다. 대화(`chat`) · 리포트(`report`) · 분석 대기와 대본 확인(`processing`) · 홈(`home`) · 장치 점검(`device-check`) · Take 기록과 비교(`takes`) · 피치 수정(`pitch`) · 마이페이지와 로그아웃 · 없는 주소(`account`)입니다. 여러 파일이 함께 쓰는 목 피치 id · 이름은 `e2e/fixtures.ts`에 둡니다. 시선 모델 파일(`public/models`)은 저장소에 없어 E2E에서 시선 기준은 '사용 불가'이고, 그래서 Take 시작 · 리허설 무대는 E2E로 보지 않습니다.
+
 실서버로 붙일 때 (W8): `.env.local`에 `VITE_USE_MOCK=false`
 
-## 지금 들어 있는 것
+## 구조와 기능별 설계
 
-**설정** — Vite 8 · React 18 · TS 6 · Tailwind 4 · React Router 7 · TanStack Query 5 · Zustand 5 · MSW 2 · Vitest 4 · oxlint · `@/` 경로 별칭 · COOP/COEP 헤더
-
-**디자인 토큰** (`src/index.css` `@theme`) — 시안 v5의 팔레트와 시선 4색, 그리고 **계측 조건인 고정 높이 네 값**이 있습니다. 밝은 지면(홈·리포트)과 어두운 지면(리허설)이 나뉘어 있습니다. **색을 새로 만들지 말고 여기 있는 것만 쓰세요.**
-
-**라우팅 21개** (`src/app/routes.tsx`) — 전부 Stub이지만 이동은 됩니다. P 번호는 화면 목록 문서와 같습니다.
-여기에 제품 화면이 아닌 검증용 `/dev/stage` · `/dev/media` 둘이 더 있습니다.
-
-**API 타입** (`src/types/api.ts`) — 명세 8-4를 옮긴 것. 시선 3값, 시간 필드 셋, `null` 규칙이 들어 있습니다.
-
-**MSW 목** (`src/mocks/handlers.ts`) — 홈·리포트·분석 상태·complete. **측정 제외 케이스(`t2`)를 일부러 넣어뒀습니다** — 이 화면을 나중에 만들면 W9에 몰립니다.
-
-**시선 파이프라인** — 프레임이 워커까지 흐르고 1초 판정이 나옵니다
-- `workers/gaze.contract.ts` — **분류기 계약. 고정하고 바꾸지 않습니다.** AI 모델은 이것만 구현하면 됩니다
-- `workers/gaze.worker.ts` — 워커. 모델 자리에 지금은 가짜 부하(`?load=`)가 들어 있습니다
-- `workers/temporalVoter.ts` — 1초 다수결. **모델이 아니라 우리 정책이라 계약 밖입니다**
-- `workers/dummyClassifier.ts` — 프레임 하나만 판단합니다 (`classify`)
-- `workers/modelClassifier.ts` — 실모델 자리. `toTensor`·`runInference`·`fromOutput` 셋으로 갈라
-  **AI팀 답이 오면 양쪽 두 함수만 채우면 됩니다**
-- `features/rehearsal/media/useCameraStream.ts` — 권한 3종 분기 + HMR 정리
-- `features/rehearsal/media/useGazeWorker.ts` — **프레임 펌프 + 백프레셔.** 여기가 성능의 전부입니다
-- `dev/MediaDevPage.tsx` — `/dev/media` 프레임 예산 계기판
-
-**음성 · 음량** — 음성은 로컬에 남기지 않고 WebSocket으로만 보냅니다 (AGENTS.md 4번)
-- `features/rehearsal/media/pcmCapture.ts` — `AudioWorklet` → 16kHz Int16 100ms 프레임 → STT 소켓
-- `features/rehearsal/media/level.ts` — `AnalyserNode` RMS 직독. 래퍼를 안 끼우는 이유는
-  **권한은 살아 있는데 입력만 0인 상황**(이어폰 분리·타앱 점유·시스템 음소거)을 잡아야 하기 때문입니다
-
-**기록 · 조립**
-- `features/rehearsal/lib/db.ts` — IndexedDB 스키마 한 곳. 키는 업로드 멱등키와 **같은** `clientSessionId`
-- `features/rehearsal/lib/gazePayload.ts` — 1초 판정들을 `GazePayload` 로 조립 (테스트 포함)
-- `features/rehearsal/lib/gazeSegments.ts` — 구간 압축·합계·자체 검증 (테스트 포함)
-- `shared/lib/clock.ts` — `performance.now()` 기준 단조 시계. 백그라운드 탭에서도 정확합니다
-
-**무대 레이아웃** (`features/rehearsal/stage/`) — `/dev/stage`(`dev/StageDemo.tsx`)에서 확인합니다.
-Script Mode 4단 높이 · 시선 테두리 4색 · **리렌더 없이 테두리가 바뀌는 것**을 눈으로 봅니다.
-이 프로젝트에서 Tailwind를 안 쓰는 유일한 곳입니다 (`stage.css`).
-
-**아직 없는 것** — 실모델 가중치 · Calibration(`ZoneReference` 를 만드는 코드가 없어서
-더미가 항상 `null` 을 냅니다) · 웹소켓 · 공용 컴포넌트 · 실제 화면.
-
-## 폴더 구조와 의존 방향
-
-세 폴더는 **책임이 아니라 실행 환경**으로 갈려 있습니다. 취향이 아니라 제약입니다.
-
-| 폴더 | 어디서 도나 | 쓸 수 있는 것 |
-| --- | --- | --- |
-| `workers/` | 워커 스레드 | DOM · React **없음** |
-| `features/rehearsal/` | 메인 스레드 | React · DOM · 워커 호출 |
-| `shared/lib/` | 양쪽 | 순수 함수만 |
-
-### 의존 방향 — 화살표를 거스르지 않습니다
-
-```
-app/ ──▶ features/* ──▶ workers/ ──┐
-                │                  ├──▶ types/       (런타임 코드 없음. 잎사귀)
-                └──▶ shared/*  ────┘
-```
-
-| 규칙 | 어기면 |
-| --- | --- |
-| `workers/` → `features/` **금지** | 워커 번들에 React 가 들어갑니다. **빌드는 통과하고 워커만 런타임에 죽습니다** |
-| `features/a` → `features/b` **금지** | Track A·B 가 서로를 기다리게 됩니다 |
-| `types/` 는 무엇도 참조하지 않음 | 잎사귀라서 순환이 생기지 않습니다 |
-
-`features/` → `workers/` 는 정방향입니다. 화면이 워커를 띄우는 쪽이니까요.
-
-### `shared/` 에 둘지 판단하는 기준
-
-**순수 함수라서가 아니라, 여러 feature 가 실제로 나눠 쓰는지**로 정합니다.
-테스트 용이성은 배치 기준이 아닙니다 — `features/rehearsal/lib/` 에 둬도 똑같이 쉽습니다.
-
-그래서 시선 전용 규칙(`gazeSegments` · `gazePayload` · `db`)은 `features/rehearsal/lib/` 에 있습니다.
-반대로 `shared/lib/clock.ts` 는 `formatDuration` 을 리허설과 리포트 화면이 함께 쓰기 때문에 `shared/` 에 있습니다.
-
-셀 때는 이렇게 봅니다.
-
-- `app/` · `dev/` · `mocks/` 가 쓰는 것은 세지 않습니다. 라우팅 · 개발 화면 · 목이 쓴다고 `shared/` 로 올리지 않습니다.
-- `shared/` 의 다른 파일이 쓰면 `shared/` 에 둡니다. 기능 폴더로 내리면 `shared/` → `features/` 로 거꾸로 가져오게 됩니다.
-  예) `HomeHelpDialog` 는 홈 화면과 공용 상단바 `AppHeader` 가 함께 써서 `shared/ui/` 에 있습니다.
-- 한 기능을 하위 폴더로 나눴으면, 하위 폴더 두 곳 이상이 쓰는 파일은 그 기능 바로 아래에 둡니다.
-  예) `features/report/reportFormat.ts` 는 `analysis/` · `report/` · `history/` 가 함께 씁니다.
-- 시험 파일은 대상 파일과 같은 폴더에 둡니다.
-
-## 시선 파이프라인 호출 흐름
-
-진입점은 `useGazeWorker` 하나입니다. 위에서 아래로 읽으면 됩니다.
-
-```
-features/rehearsal/media/useCameraStream.ts     카메라 권한 · MediaStream
-        │
-        ▼
-features/rehearsal/media/useGazeWorker.ts       ★ 진입점
-        │   프레임 펌프 — frameDone 을 받고서야 다음 프레임을 만든다 (백프레셔)
-        │   postMessage({ type: 'frame', bitmap, tMs })
-        ▼
-workers/gaze.worker.ts                          워커 경계. 여기부터 다른 스레드
-        │   classifier.classify(bitmap, tMs)  →  FrameVerdict (프레임 단위)
-        │   bitmap.close()                       ★ 프레임은 즉시 폐기. 저장하지 않는다
-        ▼
-workers/temporalVoter.ts                        1초 다수결 → ZoneDecision
-        │   postMessage({ type: 'decision', ... })   ← 워커에서 나가는 건 이것뿐
-        ▼
-features/rehearsal/lib/db.ts                    IndexedDB 에 1초 판정을 쌓는다
-        │
-        ▼  (발표 종료 시)
-features/rehearsal/lib/gazeSegments.ts          같은 zone 끼리 구간으로 압축
-features/rehearsal/lib/gazePayload.ts           GazePayload 조립 → POST /complete
-```
-
-분류기는 `workers/gaze.contract.ts` 의 `GazeClassifier` 인터페이스입니다.
-`DummyGazeClassifier`(지금)와 `ModelGazeClassifier`(AI 모듈 어댑터)가 구현합니다.
-**화면은 `ZoneDecision` 만 압니다** — 분류기가 바뀌어도 화면 코드는 안 바뀝니다.
-
-## 다음에 할 일 (W4 남은 분량)
-
-**둘이 함께**
-- [ ] 공용 컴포넌트 — 버튼 · 모달 · 토스트 · 빈 상태 · 스켈레톤 · 에러 바운더리
-- [ ] `401` 무음 갱신 인터셉터
-- [ ] Pretendard 폰트 셀프 호스팅 (`public/fonts/`)
-
-**Track A**
-- [x] 워커·백프레셔·`/dev/media` 계기판
-- [x] 음량(`AnalyserNode` RMS) — 로컬 녹음은 두었다가 뺐습니다 (AGENTS.md 4번)
-- [x] IndexedDB 스키마 · 하트비트
-- [x] 실모델 껍데기 + 실패 경로(`ENGINE_UNAVAILABLE` → 측정 제외)
-- [ ] **프레임 예산 측정** — `/dev/media` 에서 부하 0/20/40/60/80 의 fps 표 ← AI팀에 보낼 숫자
-- [ ] Calibration — `ZoneReference` 를 만드는 경로
-
-> **MediaPipe(`@mediapipe/tasks-vision`)를 붙이지 않습니다.** AI팀이 전처리까지 합니다.
-> 의존성에는 남아 있지만(제거하면 lock 이 갱신됩니다) 코드에서 쓰지 않습니다.
-
-**Track B**
-- [ ] 구글 로그인 리다이렉트 · 토큰 저장/갱신
-- [ ] 보호 라우트 · 온보딩 분기
+[docs/fe/](../docs/fe/README.md)에 있습니다. 전체 구조(폴더와 의존 방향 · 상태 위치 · 다른 파트와 주고받는 것 · 시선 파이프라인)는 [architecture.md](../docs/fe/architecture.md), 기능별 흐름은 [features/](../docs/fe/features/)입니다.
 
 ## 저장소 — 팀 모노레포의 `frontend/`
 
@@ -190,14 +61,6 @@ features/rehearsal/lib/gazePayload.ts           GazePayload 조립 → POST /com
 
 CI 는 레포 루트의 `.github/workflows/frontend-ci.yml` 에 있습니다 — GitHub 는 루트의
 `.github/` 만 읽어서, `frontend/` 안에 두면 **에러 없이 그냥 안 돕니다.**
-
-> **이 브랜치의 기준점.** `chore/fe-dev-environment` 위에 쌓았습니다. 그 브랜치가
-> 백엔드·인프라가 들어오기 전 시점(`a493804`)에서 떠서, `backend/` · `infra/` ·
-> `frontend/Dockerfile` 이 이 트리에 없습니다. `develop` 에 머지되면 함께 놓입니다.
->
-> **PR 순서가 있습니다** — `chore/fe-dev-environment` 가 먼저 머지돼야 이 브랜치의
-> base 를 `develop` 으로 바꿀 수 있습니다. 그전에는 base 를 앞 브랜치로 두세요.
-> 도커로 확인해야 하면 `develop` 을 머지해 오세요.
 
 ### 아직 남아 있는 것 셋
 
@@ -214,7 +77,7 @@ engines >=24   +   COPY .npmrc   +   node:20-alpine   →   npm ci 실패
 ```
 
 `engines` 는 이미 `>=24` 이고 `.npmrc` 의 `engine-strict=true` 는 이걸 강제합니다.
-**이 PR 은 `Dockerfile` 을 건드리지 않습니다** (이 브랜치에 없습니다). `develop` 의 것은
+지금 `frontend/Dockerfile` 은
 `.npmrc` 를 COPY 하지 않아 검사가 안 돌아서 조용히 빌드됩니다. `COPY .npmrc` 를 넣는
 순간 `node:20-alpine` 에서 `npm ci` 가 실패하니, **둘을 같은 PR 에서 함께 고치세요.**
 
@@ -222,7 +85,7 @@ engines >=24   +   COPY .npmrc   +   node:20-alpine   →   npm ci 실패
 `engines` 검사가 아예 돌지 않기 때문입니다. 즉 **배포 이미지가 개발 환경과
 다른 Node 메이저에서 돌고 있습니다.**
 
-`.dockerignore` 는 `develop` 의 `frontend/` 에 있습니다 (이 PR 은 건드리지 않습니다).
+`.dockerignore` 는 `frontend/` 에 있습니다.
 **빌드 컨텍스트를 `frontend/` 로 주세요** —
 레포 루트를 컨텍스트로 주면(`docker build -f frontend/Dockerfile .`)
 루트의 `.dockerignore` 가 쓰이고 이 파일은 무시됩니다. 그러면 `.env.local` 이
@@ -241,7 +104,9 @@ engines >=24   +   COPY .npmrc   +   node:20-alpine   →   npm ci 실패
 ### 브랜치
 
 **팀 컨벤션을 따릅니다** — 루트 `README.md` 의 `타입/영역-작업명`. FE 는 영역이 `fe` 입니다.
-`develop` 에서 따고 `develop` 으로 PR 을 보냅니다. `main` 은 멘토 리뷰용입니다.
+`feat/*` · `fix/*` 는 `develop-next` 에서 따고 `develop-next` 로 PR 을 보냅니다.
+`develop` 은 멘토 리뷰용이라 리뷰 반영(`refactor/*` → `develop`)만 보냅니다.
+`develop-next/...` 처럼 기본 브랜치 이름 아래로 브랜치를 만들 수는 없습니다(Git 이 거부).
 
 ```
 feat/fe-gaze-pipeline     Track A · 시선 · 음성    src/features/rehearsal/ · workers/
@@ -255,9 +120,9 @@ refactor/fe-*             멘토 리뷰 반영
 
 ## 읽어야 할 것
 
-`AGENTS.md`에 **바꾸면 안 되는 결정 8가지**가 정리돼 있습니다.
-카메라 온디바이스 · 시선 2분할(3값) · 1초 판정 주기 · **서버는 덤이고 브라우저가 원본(음성 제외)** ·
-시간 필드 관계식 · `null` 규칙 · 스타일 경계 · Take 생성 시점.
+`AGENTS.md`에 **바꾸면 안 되는 결정 9가지**가 정리돼 있습니다.
+카메라 온디바이스 · 시선 2분할(3값) · 1초 판정 주기 · 끊겨도 발표는 계속 ·
+시간 필드 관계식 · `null` 규칙 · 스타일 경계 · Take 생성 시점 · `void` 금지.
 이걸 모르고 짜면 나중에 다시 만듭니다.
 
 ## 알아둘 것

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act } from 'react';
+import { StrictMode, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +10,7 @@ import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
 import { CHAT_FAILED_TEXT } from './ChatErrorBoundary';
 import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from '../api/chatAvailability';
+import { ASK_HELP_ABILITIES, ASK_HELP_EXAMPLES, ASK_HELP_TITLE } from '../rules/askHelpText';
 import { emptyBasis, readCard, type ShownClaim } from '../rules/chatResponse';
 import { chatTicket, useChatStore } from '../store/chatStore';
 import type { TransportSignal } from '../api/chatTransport';
@@ -225,14 +226,18 @@ const wait = (ms: number) =>
   });
 
 // routes.tsx 의 최상위 레이아웃과 같은 모양 — 화면이 바뀌어도 채팅은 같은 자리에 남습니다
-async function visit(path: string) {
+async function visit(path: string, strict = false) {
   router = createMemoryRouter(
     [
       {
         element: (
           <>
-            <Outlet />
-            <ChatAgentHost />
+            <div className="chat-layout">
+              <div className="chat-layout-content">
+                <Outlet />
+              </div>
+              <ChatAgentHost />
+            </div>
           </>
         ),
         children: [
@@ -243,20 +248,26 @@ async function visit(path: string) {
           { path: '/takes/:takeId/rehearsal', element: <p>리허설</p> },
           { path: '/pitch/new', element: <p>피치 만들기</p> },
           { path: '/pitch/:id/edit', element: <p>피치 수정</p> },
-          { path: '/pitch/:pitchId/device-check', element: <p>장치 점검</p> },
+          {
+            path: '/pitch/:pitchId/device-check',
+            element: (
+              <main id="main" tabIndex={-1}>
+                장치 점검
+              </main>
+            ),
+          },
           { path: '/welcome', element: <p>서비스 소개</p> },
         ],
       },
     ],
     { initialEntries: [path] },
   );
-  await act(async () =>
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    ),
+  const ui = (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   );
+  await act(async () => root.render(strict ? <StrictMode>{ui}</StrictMode> : ui));
   if (vi.isFakeTimers()) await wait(0);
   else await settle();
 }
@@ -278,8 +289,12 @@ const visibleText = (el: Element) => {
   return copy.textContent;
 };
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => visibleText(b) === label);
-const sendButton = () => button('입력')!;
+  [...host.querySelectorAll('button')].find(
+    (b) => visibleText(b) === label || b.getAttribute('aria-label') === label,
+  );
+const sendButton = () => panel()!.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+const listNewButton = () =>
+  panel()!.querySelector<HTMLButtonElement>('[data-conversation-list] > button')!;
 const sentMessages = () =>
   [...panel()!.querySelectorAll('p.self-end')].map((message) => message.textContent);
 const scopeText = () => visibleText(panel()!.querySelector('[data-chat-scope]')!);
@@ -307,15 +322,110 @@ async function press(target: Element, init: KeyboardEventInit) {
   return event;
 }
 
-it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 열린다', async () => {
+it('새미나이 브랜드와 빈 대화 안내를 유지하고, 추천 질문은 별도 PR로 분리한다', async () => {
+  await visit('/');
+  await openPanel();
+  expect(panel()!.textContent).toContain('새미나이');
+  expect(launcher()!.getAttribute('aria-label')).toBe('새미나이 열기');
+  expect(launcher()!.getAttribute('title')).toBe('새미나이 열기');
+  const labelId = panel()!.getAttribute('aria-labelledby')!;
+  expect(document.getElementById(labelId)!.textContent!.trim()).toBe('새미나이');
+  expect(button('새미나이 닫기')?.getAttribute('title')).toBe('새미나이 닫기');
+  expect(launcher()!.querySelector('img')?.getAttribute('src')).toBe('/semini-mascot.svg');
+  expect(panel()!.querySelectorAll('img[src="/semini-mascot.svg"]')).toHaveLength(2);
+  expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
+    '발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.',
+  );
+  expect(panel()!.querySelector('[data-chat-empty] button')).toBeNull();
+  expect(sentMessages()).toEqual([]);
+});
+
+it('좁은 패널에서 제목과 아이콘 버튼을 줄바꿈할 수 있도록 헤더 구조를 유지한다', async () => {
+  await visit('/');
+  await openPanel();
+  const firstRow = panel()!.querySelector('header > div')!;
+  expect(firstRow.classList.contains('flex-wrap')).toBe(true);
+  expect(firstRow.firstElementChild!.classList.contains('min-w-32')).toBe(true);
+  expect(firstRow.lastElementChild!.classList.contains('ml-auto')).toBe(true);
+});
+
+it('첫 기억 안내와 빈 대화는 스크롤 맨 위에서 시작하고, 실제 전송에는 아래를 따라간다', async () => {
+  await visit('/');
+  await openPanel();
+  const scroller = panel()!.querySelector<HTMLElement>('[aria-label="채팅 메시지"]')!;
+  expect(scroller.scrollTop).toBe(0);
+  expect(scroller.querySelector('[data-memory-intro]')).not.toBeNull();
+  Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 500 });
+  Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 100 });
+  // 빈 화면에 내용이 바뀌어도 기억 안내를 밀어 내리지 않습니다.
+  await act(async () => {
+    scroller.querySelector('[data-chat-empty] p')!.textContent = '새미나이에게 물어보세요.';
+  });
+  await settle();
+  expect(scroller.scrollTop).toBe(0);
+});
+
+it('대화 목록에서도 전송 확인 오류가 노출되고 같은 요청을 다시 확인할 수 있다', async () => {
+  await visit('/');
+  await openPanel();
+  await act(async () => button('대화 목록')!.click());
+  await settle();
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+
+  await act(async () =>
+    transport().emit({ type: 'unconfirmed', sendId: 's1', notAccepted: false }),
+  );
+  const notices = panel()!.querySelector('[data-chat-notices]')!;
+  expect(notices.textContent).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.');
+  expect(alerts()).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.다시 확인');
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('[data-chat-notices]')).toBe(notices);
+  expect(alerts()).toHaveLength(1);
+  await act(async () => button('대화 목록')!.click());
+  await act(async () => button('다시 확인')!.click());
+  expect(transport().retried).toBe(1);
+  expect(panel()!.querySelector('[data-chat-notices]')).toBeNull();
+});
+
+it('목록 화면에서도 범위 확인 실패 안내를 보고 재시도할 수 있다', async () => {
+  server.report = () => Promise.reject(new ApiFailure(404, 'NOT_FOUND'));
+  await visit('/takes/t1');
+  await openPanel();
+  await settle();
+  await act(async () => button('대화 목록')!.click());
+  await settle();
+
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+  expect(panel()!.querySelector('[data-chat-notices]')!.textContent).toContain(
+    '연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.',
+  );
+  server.report = (takeId) =>
+    Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
+  await act(async () => button('다시 시도')!.click());
+  await settle();
+  expect(panel()!.querySelector('[data-chat-notices]')).toBeNull();
+});
+
+it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지한다', async () => {
+  await visit('/');
+  await openPanel();
+  await type('작성 중');
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('form')!.hidden).toBe(false);
+  expect(input().value).toBe('작성 중');
+});
+
+it('런처는 왼쪽 아래에 두고 패널은 화면 오른쪽에 연다', async () => {
   await visit('/');
   const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
   expect(container.classList.contains('left-2')).toBe(true);
-  expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('32px');
+  expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('76px');
   expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
 
   await openPanel();
-  expect(panel()!.classList.contains('left-0')).toBe(true);
+  expect(panel()!.classList.contains('right-0')).toBe(true);
 });
 
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
@@ -325,7 +435,7 @@ it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아�
   expect(launcher()!.getAttribute('aria-expanded')).toBe('true');
   expect(document.activeElement).toBe(input());
 
-  const close = [...host.querySelectorAll('button')].find((b) => b.textContent === '닫기')!;
+  const close = button('새미나이 닫기')!;
   await act(async () => close.click());
   expect(panel()).toBeNull();
   expect(document.activeElement).toBe(launcher());
@@ -484,19 +594,185 @@ it('채팅을 띄우지 않는 화면에서는 세션을 구독하지 않는다'
   expect(launcher()).not.toBeNull();
 });
 
-it('열린 패널은 피치 만들기 · 장치 점검으로 옮겨도 남고, 리허설에 들어가면 숨는다', async () => {
+it('열린 패널은 허용 화면에서 유지되고 장치 점검에 들어가면 닫힌다', async () => {
   await visit('/');
   await openPanel();
   await type('연습 준비 중');
   await go('/pitch/new');
   expect(panel()).not.toBeNull();
+  expect(input().value).toBe('연습 준비 중');
   await go('/pitch/p1/device-check');
-  expect(panel()).not.toBeNull();
+  expect(launcher()).toBeNull();
+  expect(panel()).toBeNull();
+  await go('/pitch/new');
+  expect(panel()).toBeNull();
+  await openPanel();
   expect(input().value).toBe('연습 준비 중');
 
   await go('/takes/t1/rehearsal');
   expect(launcher()).toBeNull();
   expect(panel()).toBeNull();
+});
+
+it('장치 점검으로 이동하면 사라진 채팅 버튼 대신 화면 본문에 초점을 준다', async () => {
+  await visit('/');
+  await openPanel();
+  input().focus();
+  await go('/pitch/p1/device-check');
+  expect(document.activeElement).toBe(host.querySelector('main#main'));
+});
+
+it('지연 로딩 중의 본문이 교체되면 초점을 다시 옮기되 다른 조작부의 초점은 존중한다', async () => {
+  await visit('/');
+  await openPanel();
+  input().focus();
+  await go('/pitch/p1/device-check');
+  const fallback = host.querySelector<HTMLElement>('main#main')!;
+  expect(document.activeElement).toBe(fallback);
+
+  const loaded = document.createElement('main');
+  loaded.id = 'main';
+  loaded.tabIndex = -1;
+  loaded.textContent = '장치 점검을 불러왔어요';
+  await act(async () => {
+    fallback.replaceWith(loaded);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(loaded);
+
+  const anotherButton = document.createElement('button');
+  host.append(anotherButton);
+  anotherButton.focus();
+  const next = document.createElement('main');
+  next.id = 'main';
+  next.tabIndex = -1;
+  await act(async () => {
+    loaded.replaceWith(next);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(anotherButton);
+});
+
+it('모바일 오버레이는 배경을 비활성화하고 닫으면 복원한다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  await visit('/');
+  await openPanel();
+  const content = host.querySelector('.chat-layout-content')!;
+  expect(panel()!.getAttribute('aria-modal')).toBe('true');
+  expect(content.hasAttribute('inert')).toBe(true);
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(document.body.style.overflow).toBe('hidden');
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(panel()).toBeNull();
+  expect(content.hasAttribute('inert')).toBe(false);
+  expect(document.body.style.overflow).toBe('');
+});
+
+it('모바일에서 같은 화면을 닫아도 실제 문서 스크롤을 변경하지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(document.body.style.position).toBe('');
+  expect(window.scrollY).toBe(420);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.overflow).toBe('');
+  expect(window.scrollY).toBe(420);
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('StrictMode 이펙트 재실행에서도 문서 스크롤과 잠금 상태가 유지된다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/', true);
+  await openPanel();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(document.body.style.position).toBe('');
+  expect(window.scrollY).toBe(420);
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 채팅을 연 채 다른 페이지로 이동해도 scrollY를 0으로 바꾸지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  await go('/pitch/new');
+  expect(panel()).not.toBeNull();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(window.scrollY).toBe(420);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.overflow).toBe('');
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 쿼리만 변경해도 문서 스크롤 값을 덮어쓰지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/takes');
+  await openPanel();
+  await go('/takes?view=compare&pitch=p-9');
+  expect(panel()).not.toBeNull();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(window.scrollY).toBe(420);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.overflow).toBe('');
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 채팅이 숨는 장치 점검으로 이동해도 스크롤 잠금을 해제한다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  expect(document.body.style.overflow).toBe('hidden');
+  await go('/pitch/p1/device-check');
+  expect(panel()).toBeNull();
+  expect(document.body.style.overflow).toBe('');
+  expect(host.querySelector('.chat-layout-content')!.hasAttribute('inert')).toBe(false);
+  expect(scrollTo).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(host.querySelector('main#main'));
 });
 
 it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내지 않는다', async () => {
@@ -517,6 +793,26 @@ it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내�
   await act(async () => sendButton().click());
   expect(sentMessages()).toHaveLength(1);
   expect(input().value).toBe(tooLong);
+});
+
+it('입력창의 초점 링을 유지하고 2,000자 초과 상태를 테두리에도 표시한다', async () => {
+  await visit('/');
+  await openPanel();
+  const composer = () => panel()!.querySelector<HTMLElement>('[data-chat-composer]')!;
+  expect(composer().classList.contains('focus-within:ring-2')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(true);
+  expect(composer().classList.contains('border-line-strong')).toBe(true);
+
+  await type('a'.repeat(2001));
+  expect(input().getAttribute('aria-invalid')).toBe('true');
+  expect(composer().classList.contains('border-coral-deep')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral-deep')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(false);
+
+  await type('수정한 질문');
+  expect(input().getAttribute('aria-invalid')).toBe('false');
+  expect(composer().classList.contains('border-line-strong')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(true);
 });
 
 it('닫혀 있을 때는 런처가 없는 패널을 가리키지 않는다', async () => {
@@ -547,13 +843,21 @@ const hangUntilAborted = (signal: AbortSignal | null) =>
 
 const availabilityCalls = () => server.seen.filter((s) => s.path === '/api/chat/availability');
 
-const deviceBody: ScreenBody = {
-  name: 'device_check',
-  camera: 'connected',
-  mic: 'detected',
-  gaze_setup: 'DONE',
-  gaze_reason: null,
-};
+const pitchBody = {
+  name: 'pitch_edit',
+  step: 'criteria',
+  version_label: 'V1',
+  version_id: null,
+  saved: null,
+  draft: {
+    title: null,
+    slide_count: null,
+    script_chars: null,
+    time_limit_sec: null,
+    criteria_text: null,
+  },
+  changed: [],
+} satisfies ScreenBody;
 
 const claim = (text: string) =>
   ({
@@ -617,7 +921,7 @@ describe('사용 가능 여부 (12-4 F1 · L3-02)', () => {
     expect(transports).toHaveLength(0);
 
     await openPanel();
-    expect(alerts()).toContain('코치를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+    expect(alerts()).toContain('새미나이를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
     expect(sendButton().getAttribute('aria-disabled')).toBe('true');
 
     server.availability = () => Promise.resolve({ enabled: true });
@@ -653,7 +957,7 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
   it('통신 계층은 하나 — 듣기를 건 뒤 이어 가고, 화면을 옮겨도 그대로, 숨는 화면에서 닫는다', async () => {
     await visit('/');
     await go('/pitch/new');
-    await go('/pitch/p1/device-check');
+    await go('/pitches');
     expect(transports).toHaveLength(1);
     expect(transport().resumed).toBe(1);
     expect(transport().listenedBeforeResume).toBe(true);
@@ -667,7 +971,6 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     ['/pitch/new', '전체', null],
     ['/takes', '전체', null],
     ['/pitch/p1/edit', '피치', 'p1'],
-    ['/pitch/p1/device-check', '피치', 'p1'],
     ['/takes?pitch=p2', '피치', 'p2'],
   ])('%s 에서 열면 처음 범위는 %s', async (path, label, pitchId) => {
     await visit(path);
@@ -716,49 +1019,49 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
   });
 
   it('보낼 때 지금 화면 page 와 그 순간의 화면 상태를 싣는다', async () => {
-    let gaze: ScreenBody = deviceBody;
-    registerChatScreen('/pitch/:pitchId/device-check', () => gaze);
-    await visit('/pitch/p1/device-check');
+    let screen: ScreenBody = pitchBody;
+    registerChatScreen('/pitch/:id/edit', () => screen);
+    await visit('/pitch/p1/edit');
     await openPanel();
-    await type('시선 기준이 왜 실패해?');
-    gaze = { ...deviceBody, gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' };
+    await type('발표 자료를 확인해 줘');
+    screen = { ...pitchBody, version_label: 'V2' };
     await press(input(), { key: 'Enter' });
 
     const [sent] = transport().sent;
     expect(sent!.page).toMatchObject({
-      route: '/pitch/:pitchId/device-check',
+      route: '/pitch/:id/edit',
       pitch_id: 'p1',
       take_id: null,
-      screen: { name: 'device_check', gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' },
+      screen: { name: 'pitch_edit', version_label: 'V2' },
     });
     expect(sent!.page.screen!.snapshot_id).toMatch(/^ss-[0-9a-f]{16}$/);
   });
 
   it('처음 확인(없음 → 사용자) 뒤에 보내면 먼저 등록한 화면 상태를 싣는다', async () => {
     expect(useChatStore.getState().userId).toBeNull();
-    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
-    await visit('/pitch/p1/device-check');
+    registerChatScreen('/pitch/:id/edit', () => pitchBody);
+    await visit('/pitch/p1/edit');
     expect(useChatStore.getState().userId).toBe('u1');
     await openPanel();
-    await type('장치 괜찮아?');
+    await type('자료 괜찮아?');
     await press(input(), { key: 'Enter' });
-    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'device_check' });
+    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'pitch_edit' });
   });
 
   it('로그아웃 신호 없이 다른 사용자로 바뀐 뒤 보내면 앞 사람 때 등록한 화면 상태를 싣지 않는다', async () => {
-    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
-    await visit('/pitch/p1/device-check');
+    registerChatScreen('/pitch/:id/edit', () => pitchBody);
+    await visit('/pitch/p1/edit');
     expect(useChatStore.getState().userId).toBe('u1');
 
     // 같은 경로 패턴에 머문 채 사용자만 바뀝니다 — 경로가 달라서 빠지는 것이 아님을 보려고 패턴을 유지합니다
     state.session = { isPending: false, isError: false, data: { id: 'u2' } };
-    await go('/pitch/p2/device-check');
+    await go('/pitch/p2/edit');
     expect(useChatStore.getState().userId).toBe('u2');
     await openPanel();
-    await type('장치 괜찮아?');
+    await type('자료 괜찮아?');
     await press(input(), { key: 'Enter' });
     const [sent] = transport().sent;
-    expect(sent!.page).toMatchObject({ route: '/pitch/:pitchId/device-check', screen: null });
+    expect(sent!.page).toMatchObject({ route: '/pitch/:id/edit', screen: null });
   });
 
   it('평가 기준 원문이 2,000자를 넘으면 보내지 않고 알린다 (L3-11)', async () => {
@@ -1289,15 +1592,18 @@ describe('카드 연결 (12-4 F6 · F10)', () => {
     expect(transport().decided).toEqual([['a-9', 'APPROVE', 'sha-1']]);
   });
 
-  it('[연습 준비로]는 장치 점검 화면으로 옮기고 대화창은 열린 채로 남는다', async () => {
+  it('[연습 준비로]는 장치 점검 화면으로 옮기고 대화창을 닫되 대화는 유지한다', async () => {
     await inConversation([
       assistant('m1', 'r1', 'DONE', [{ type: 'START_PRACTICE', pitch_id: PITCH }]),
     ]);
     await act(async () => button('연습 준비로')!.click());
     await settle();
     expect(router.state.location.pathname).toBe(`/pitch/${PITCH}/device-check`);
-    expect(panel()).not.toBeNull();
-    expect(panel()!.textContent).toContain('연습 준비 화면으로 옮겼어요.');
+    expect(panel()).toBeNull();
+    await go('/');
+    expect(panel()).toBeNull();
+    await openPanel();
+    expect(button('연습 준비로')).toBeDefined();
   });
 });
 
@@ -1319,11 +1625,15 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     progressDropped: false,
     cards: [],
   });
-  const ended = (runId: string, conversationId: string): TransportSignal => ({
+  const ended = (
+    runId: string,
+    conversationId: string,
+    status: 'DONE' | 'REFUSED' = 'DONE',
+  ): TransportSignal => ({
     type: 'ended',
     runId,
     conversationId,
-    status: 'DONE',
+    status,
     errorCode: null,
     endedWhileWaiting: false,
   });
@@ -1382,6 +1692,36 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     await settle();
     expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('받은 답 문장');
     expect(panel()!.textContent).not.toContain('물어보세요');
+    // 거절로 끝난 답이 아니면 질문 예시를 붙이지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('거절로 끝난 뒤 목록 다시 읽기가 실패해도 받은 거절 답 아래에 질문 예시를 한 번 붙인다', async () => {
+    await watching('c1', 'r1');
+    await act(async () =>
+      transport().emit(progressIn('r1', 'c1', '이 요청은 도와드릴 수 없어요.')),
+    );
+    // 끝나기 전에는 진행 답 아래에 붙이지 않습니다
+    expect(panel()!.querySelector('[data-live-run] ~ [data-ask-help]')).toBeNull();
+    server.messages = () => Promise.reject(new Error('끊김'));
+    // 실제 통신 계층처럼 실행을 끝낸(endRun) 뒤 끝남 신호를 보냅니다 — 보내기 잠금이 풀립니다
+    await act(async () => {
+      useChatStore.getState().endRun('r1');
+      transport().emit(ended('r1', 'c1', 'REFUSED'));
+    });
+    await settle();
+    await settle();
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
+    expect(helps).toHaveLength(1);
+    const liveRun = panel()!.querySelector('[data-live-run]')!;
+    expect(
+      liveRun.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await act(async () => helps[0]!.querySelector('button')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 보내는 중에는 안내를 거둡니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
   });
 
   it('꺼지면 패널을 닫고, 다시 켜져도 저절로 열려 초점을 가져가지 않는다', async () => {
@@ -1512,6 +1852,21 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await settle();
     expect(visibleText(chip())).toBe('피치: 졸업 발표');
     expect(chip().textContent).toBe('범위: 피치: 졸업 발표');
+  });
+
+  it('긴 피치 제목은 칩의 말줄임표와 무관하게 전체를 확인할 수 있다', async () => {
+    const longTitle = '매우 긴 발표 제목을 사용하는 프로젝트의 최종 시연과 성능 평가';
+    server.pitches = () =>
+      Promise.resolve({
+        pitches: [{ ...pitchList.pitches[0]!, pitch_title: longTitle }],
+      });
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await settle();
+    expect(visibleText(chip())).toBe(`피치: ${longTitle}`);
+    expect(chip().getAttribute('title')).toBe(`피치: ${longTitle}`);
+    // 접근성 이름은 기존 텍스트와 잠금 사유를 그대로 사용합니다.
+    expect(chip().hasAttribute('aria-label')).toBe(false);
   });
 
   it('칩을 누르면 전체 · 내 피치에서 고르고, 고르면 그 범위로 바꾼다 — Esc 는 목록만 닫는다', async () => {
@@ -1698,7 +2053,7 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await inConversation('c1');
     await act(async () => button('대화 목록')!.click());
     await settle();
-    await act(async () => button('새 대화')!.click());
+    await act(async () => listNewButton().click());
     expect(useChatStore.getState().conversationId).toBeNull();
     expect(useChatStore.getState().scope).toEqual({ pitchId: P1, title: null });
   });
@@ -1709,8 +2064,8 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await inConversation('c1');
     await act(async () => button('대화 목록')!.click());
     await settle();
-    button('새 대화')!.focus();
-    await act(async () => button('새 대화')!.click());
+    listNewButton().focus();
+    await act(async () => listNewButton().click());
     await settle();
     expect(document.activeElement).toBe(input());
 
@@ -1739,12 +2094,13 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await openPanel();
     await act(async () => button('대화 목록')!.click());
     await settle();
-    button('새 대화')!.focus();
-    button('새 대화')!.blur();
+    listNewButton().focus();
+    listNewButton().blur();
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     await act(async () => button('대화 목록')!.click());
     await settle();
-    expect(button('새 대화')).toBeFalsy();
+    // 헤더의 새 대화 버튼은 항상 보이지만, 대화 목록 내부의 버튼은 사라집니다.
+    expect(panel()!.querySelector('[data-conversation-list]')).toBeNull();
     expect(document.activeElement).toBe(document.body);
   });
 
@@ -2051,6 +2407,93 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
     expect(panel()!.querySelector('[data-message="m4"]')!.contains(more[0]!)).toBe(true);
     await act(async () => more[0]!.click());
     expect(transport().sent.map((r) => r.text)).toEqual(['이어서 확인해 줘']);
+  });
+
+  it('거절 답이 마지막이면 그 아래에만 할 수 있는 일 · 질문 예시를 붙이고, 예시를 누르면 그 질문을 보낸다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+      userMsg('m3', '주식 추천해 줘', 'r1'),
+      answer('m4', 'r1', 'REFUSED', [
+        '이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요.',
+      ]),
+    ]);
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
+    expect(helps).toHaveLength(1);
+    // 마지막 거절 답(m4) 뒤에 붙고, 앞의 거절 답(m2) 뒤에는 없습니다
+    const m4 = panel()!.querySelector('[data-message="m4"]')!;
+    expect(m4.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(helps[0]!.textContent).toContain(ASK_HELP_TITLE);
+    for (const ability of ASK_HELP_ABILITIES) expect(helps[0]!.textContent).toContain(ability);
+    const examples = [...helps[0]!.querySelectorAll('button')].map(visibleText);
+    expect(examples).toEqual([...ASK_HELP_EXAMPLES]);
+
+    await act(async () => helps[0]!.querySelector('button')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+  });
+
+  it('거절 답 아래 예시를 눌러 보내면 안내가 바로 사라지고, 초점은 입력칸으로 돌아온다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    const example = panel()!.querySelector<HTMLButtonElement>('[data-ask-help] button')!;
+    example.focus();
+    await act(async () => example.click());
+    await settle();
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 목록을 다시 읽기 전에도 거절 답(m2)이 마지막이지만, 보내는 중이라 안내를 그리지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+    expect(document.activeElement).toBe(input());
+  });
+
+  it('보낼 수 없는 동안 예시는 aria-disabled 로 막히고, 숨은 이유를 달고, 눌러도 보내지 않는다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    // 429 Retry-After 로 잠깁니다
+    await act(async () => {
+      const s = useChatStore.getState();
+      const ticket = s.beginSend({
+        text: '질문',
+        page: { route: '/', pitch_id: null, take_id: null, screen: null },
+        again_of_message_id: null,
+        choice: null,
+      })!;
+      useChatStore.getState().failSend(ticket, 60);
+    });
+    const examples = [...panel()!.querySelectorAll<HTMLButtonElement>('[data-ask-help] button')];
+    expect(examples).toHaveLength(ASK_HELP_EXAMPLES.length);
+    for (const example of examples) {
+      expect(example.getAttribute('aria-disabled')).toBe('true');
+      expect(example.querySelector('.sr-only')?.textContent).toBeTruthy();
+    }
+    await act(async () => examples[0]!.click());
+    expect(transport().sent).toEqual([]);
+  });
+
+  it('거절이 아닌 답이 마지막이면 질문 예시를 붙이지 않는다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+      userMsg('m3', '비교해 줘', 'r1'),
+      answer('m4', 'r1', 'DONE', ['비교했어요.']),
+    ]);
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('빈 대화에서는 첫 인사 아래에 같은 안내를 보이고, 예시를 누르면 그 질문을 보낸다', async () => {
+    await inConversation([]);
+    expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
+      '새미나이에게 물어보세요',
+    );
+    const help = panel()!.querySelector('[data-ask-help]')!;
+    expect(help.textContent).toContain(ASK_HELP_TITLE);
+    expect([...help.querySelectorAll('button')].map(visibleText)).toEqual([...ASK_HELP_EXAMPLES]);
+
+    await act(async () => help.querySelectorAll('button')[1]!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[1]]);
   });
 
   it.each([
@@ -2505,13 +2948,13 @@ describe('두 번째 점검 반영', () => {
     expect(chip.hasAttribute('aria-label')).toBe(false);
     expect(chip.textContent).toContain('답을 만드는 동안에는 범위를 바꿀 수 없어요');
     // [입력]은 글을 썼을 때만 이유를 붙입니다
-    expect(sendButton().querySelector('.sr-only')).toBeNull();
+    expect(sendButton().querySelectorAll('.sr-only')).toHaveLength(1);
     await type('질문');
     expect(sendButton().textContent).toBe('입력 (답을 만드는 중이에요)');
     await act(async () => useChatStore.getState().endRun('r9'));
     expect(button('이어서 확인')!.querySelector('.sr-only')).toBeNull();
     expect(chip.textContent).not.toContain('바꿀 수 없어요');
-    expect(sendButton().querySelector('.sr-only')).toBeNull();
+    expect(sendButton().querySelectorAll('.sr-only')).toHaveLength(1);
   });
 });
 
@@ -2531,7 +2974,7 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
       "'기억 없이' 대화를 골라도 그 대화의 기록 · 요약은 보관되고",
     );
 
-    await act(async () => button('닫기')!.click());
+    await act(async () => button('새미나이 닫기')!.click());
     await openPanel();
     expect(intro()).toBeNull();
 
@@ -2603,7 +3046,7 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
     await act(async () => memorySwitch()!.click());
     expect(useChatStore.getState().memoryOff).toBe(true);
     expect(memorySwitch()!.checked).toBe(true);
-    expect(badge()!.textContent).toBe('기억 없이');
+    expect(badge()).toBeNull(); // 설정 가능한 동안에는 스위치 자체가 상태를 표시합니다.
 
     // 대화가 생긴 뒤에는 바꿀 수 없습니다 — 스위치를 거두고 표시는 남깁니다
     await act(async () => {
