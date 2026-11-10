@@ -4,6 +4,7 @@
 - 남기는 것: 코드 enum · ID · 수만. 문장 · 인용 · 검색 질의 · 도구 인자 값 · 기록 값(측정 수치) · 예외 메시지는 넣지 않는다(P8).
   공급자 · 예외에서 온 값은 닫힌 enum 으로 바꾼다(모르는 값은 OTHER).
 - 같은 단계를 표준 출력 로그 자리(`log` 콜백)에 `event: "agent_step"` 한 줄로, 끝나면 `event: "agent_end"` 한 줄로 남긴다.
+  자료 검색의 임베딩 관측(방식 · 결과 · ms)은 진단 기록(BE 로 감)에 넣지 않고 `event: "agent_embed"` 한 줄로만 남긴다.
   로그에는 줄이지 않은 전체가 남는다.
 - 크기: UTF-8 JSON 65,536바이트를 넘으면 11-5 순서로 줄인다:
   ① MODEL 의 model · success · 토큰 밖 필드와 TOOL 의 detail 을 빼고 ② CHECK 는 SUMMARY 만 남기고 ③ 그래도 넘으면 MODEL 과 end 만.
@@ -58,6 +59,10 @@ def finish_code(raw: str | None) -> str | None:
     return _FINISH.get(raw, "OTHER")
 
 
+#: 도구 결과의 진단 값 중 서비스 로그(`agent_embed`)로만 가는 키(`search_guides` 의 임베딩 관측, 6-10)
+_LOG_ONLY_KEYS = ("embed", "embed_ms", "search_mode")
+
+
 def code_enum(raw: str | None) -> str | None:
     """오류 · 이유 코드를 `[A-Z_]` 40자 이하로. 아니면 OTHER."""
     if raw is None:
@@ -105,6 +110,9 @@ class DiagRecorder:
     ) -> int:
         """단계 하나를 남기고 그 seq 를 돌려준다. detail 은 종류별 닫힌 모양이어야 한다."""
         seq = len(self.steps) + 1
+        # 임베딩 관측값은 BE 로 가는 진단 기록(닫힌 모양)에 넣지 않고 서비스 로그에만 남긴다
+        embed_obs = {k: detail[k] for k in _LOG_ONLY_KEYS if k in detail}
+        detail = {k: v for k, v in detail.items() if k not in _LOG_ONLY_KEYS}
         st = DiagStep(
             seq=seq,
             kind=kind,  # type: ignore[arg-type]
@@ -124,6 +132,20 @@ class DiagRecorder:
                 **st.model_dump(),
             }
         )
+        if embed_obs.get("embed") is not None:
+            # 질문 글은 남기지 않는다. 방식 · 결과 · 걸린 시간(ms, 호출한 때만)
+            self.log(
+                {
+                    "event": "agent_embed",
+                    "request_id": self.request_id,
+                    "run_id": self.run_id,
+                    "turn_call": self.turn_call,
+                    "seq": seq,
+                    "mode": embed_obs.get("search_mode"),
+                    "outcome": embed_obs["embed"],
+                    "ms": embed_obs.get("embed_ms"),
+                }
+            )
         return seq
 
     def finish(

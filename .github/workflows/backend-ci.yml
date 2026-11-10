@@ -27,10 +27,13 @@ on:
     branches: [main, develop, release, develop-next]
     paths:
       - 'backend/**'
+      # service의 모든 하위 디렉터리를 examples가 나타날때까지 찾고, 그 이하가 변경될 때에 따라 CI 진행
+      - 'ai/service/**/examples/**'
       - '.github/workflows/backend-ci.yml'
   pull_request:
     paths:
       - 'backend/**'
+      - 'ai/service/**/examples/**'
       - '.github/workflows/backend-ci.yml'
 
 jobs:

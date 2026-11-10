@@ -105,3 +105,9 @@ class ScriptAlreadyParsed(ConflictException):
 class ScriptReuploadRequired(ConflictException):
     code = "SCRIPT_REUPLOAD_REQUIRED"
     message = "이 대본은 원문이 없어 다시 분석할 수 없습니다. 대본을 다시 올려 주세요."
+
+
+class TutorialPitchBusy(ConflictException):
+    # 동시에 온 다른 요청이 샘플 발표를 만들었다가 바로 지워졌다. 다시 부르면 새로 만든다
+    code = "TUTORIAL_PITCH_BUSY"
+    message = "샘플 발표를 준비하고 있어요. 잠시 후 다시 시도해 주세요."

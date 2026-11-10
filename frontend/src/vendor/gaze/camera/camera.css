@@ -481,7 +481,11 @@
   flex-direction: column;
   align-items: center;
   color: var(--coral);
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+  /* Keep the original coral legible over any camera frame. */
+  background: var(--backdrop);
+  padding: 5px 10px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .gzc[data-phase='calib'][data-cue='CAMERA'] .gzc-lens {
   display: flex;
@@ -970,6 +974,15 @@
   }
 }
 @container gzc (max-height: 560px) {
+  /* Compact the lens hint before the 72px target, whose box begins at y=48px. */
+  .gzc-lens {
+    top: 6px;
+    padding: 4px 8px;
+  }
+  .gzc-lens em {
+    margin-top: 0;
+    line-height: 1.2;
+  }
   .gzc-script {
     height: 110px;
   }

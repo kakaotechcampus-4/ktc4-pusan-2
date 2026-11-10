@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { clearChatScreen } from '@/shared/lib/chatScreen';
 import { onSignedOut } from '@/shared/lib/sessionSignal';
 import type { SendMessageRequest } from '@/types/chat';
 
@@ -474,6 +475,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
         if (userId === null) dropOthers(null);
         return;
       }
+      // 로그아웃 신호 없이 사람이 바뀌었으면 앞 사람 때 등록한 화면 상태도 비웁니다 (12-4 L3-09 세션 세대).
+      // 처음 확인(없음 → 사용자)은 비우지 않습니다 — 그 화면은 지금 사용자가 연 것이라, 비우면 화면 상태 없이 보내게 됩니다
+      if (get().userId !== null) clearChatScreen();
       dropOthers(userId);
       const saved = userId ? readSaved(userId) : null;
       set((s) => ({

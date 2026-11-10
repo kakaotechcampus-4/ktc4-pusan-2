@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchPitchList, pitchListKey } from '@/shared/api/home';
 import { fetchTakeReport } from '@/shared/api/report';
 import { takeScreenSnapshot } from '@/shared/lib/chatScreen';
-import type { ChatMessage, ChatPage, ConversationListItem } from '@/types/chat';
+import type { ChatMessage, ChatPage, ConversationListItem, RunStatus } from '@/types/chat';
 import { useChatAvailability, type ChatAvailability } from './chatAvailability';
 import { fetchMessages } from './chatApi';
 import { conversationsKey } from './chatConversations';
@@ -266,7 +266,7 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
               liveRun.current = signal.runId;
             }
             feedProgress(typing, signal);
-            setProgress({
+            setProgress((prev) => ({
               runId: signal.runId,
               conversationId: signal.conversationId,
               plan: signal.plan,
@@ -274,10 +274,13 @@ export function useChatSession(userId: string, info: ChatRouteInfo): ChatSession
               contractError: signal.contractError,
               progressDropped: signal.progressDropped,
               cards: signal.cards,
-            });
+              ended: prev?.runId === signal.runId ? prev.ended : null,
+            }));
           },
-          finish: (runId) => {
-            if (liveRun.current === runId) typing.finish();
+          finish: (runId, status) => {
+            if (liveRun.current !== runId) return;
+            typing.finish();
+            setProgress((prev) => (prev?.runId === runId ? { ...prev, ended: status } : prev));
           },
           clear: (runId) => {
             if (liveRun.current !== runId) return;
@@ -489,8 +492,8 @@ interface SignalHandlers {
   live: {
     /** 진행 신호를 큐에 넣습니다 — 다른 실행이면 큐를 비우고 새로 */
     take: (signal: Extract<TransportSignal, { type: 'progress' }>) => void;
-    /** 남은 글자를 다 보입니다 */
-    finish: (runId: string) => void;
+    /** 남은 글자를 다 보이고, 끝난 상태를 적어 둡니다(`lost` 는 모름 — null) */
+    finish: (runId: string, status: RunStatus | null) => void;
     /** 저장된 답으로 바꾼 뒤 비웁니다 */
     clear: (runId: string) => void;
   };
@@ -530,14 +533,14 @@ function handleSignal(signal: TransportSignal, h: SignalHandlers) {
       const notice = runEndNotice(signal);
       if (notice) h.addEndNotice(signal.runId, notice);
       h.rereadConversations();
-      h.live.finish(signal.runId);
+      h.live.finish(signal.runId, signal.status);
       h.reread(signal.conversationId, () => h.live.clear(signal.runId));
       return;
     }
     case 'lost': {
       // 실행을 더 읽을 수 없으니 저장된 답을 찾으러 지금 대화의 목록을 다시 읽습니다 (L3-21)
       const conversationId = useChatStore.getState().conversationId;
-      h.live.finish(signal.runId);
+      h.live.finish(signal.runId, null);
       if (conversationId) h.reread(conversationId, () => h.live.clear(signal.runId));
       else h.live.clear(signal.runId);
       return;

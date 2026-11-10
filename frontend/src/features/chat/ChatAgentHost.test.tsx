@@ -10,6 +10,7 @@ import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
 import { CHAT_FAILED_TEXT } from './ChatErrorBoundary';
 import { AVAILABILITY_RETRY_MS, AVAILABILITY_TIMEOUT_MS } from './chatAvailability';
+import { ASK_HELP_ABILITIES, ASK_HELP_EXAMPLES, ASK_HELP_TITLE } from './askHelpText';
 import { emptyBasis, readCard, type ShownClaim } from './chatResponse';
 import { chatTicket, useChatStore } from './chatStore';
 import type { TransportSignal } from './chatTransport';
@@ -32,7 +33,8 @@ const server = vi.hoisted(() => ({
     Promise.resolve({ enabled: true }),
   messages: (_path?: string): Promise<unknown> =>
     Promise.resolve({ messages: [], next_before_seq: null }),
-  conversations: (): Promise<unknown> => Promise.resolve({ conversations: [] }),
+  conversations: (_path?: string): Promise<unknown> =>
+    Promise.resolve({ conversations: [], next_cursor: null }),
   memory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
   pitches: (): Promise<unknown> => Promise.resolve({ pitches: [] }),
   removeMemory: (): Promise<unknown> => Promise.resolve({ enabled: true, items: [] }),
@@ -46,7 +48,7 @@ vi.mock('@/shared/api/client', async (original) => ({
     server.seen.push({ path, signal: init.signal ?? null });
     if (path === '/api/chat/availability') return server.availability(init.signal ?? null);
     if (path.startsWith('/api/chat/conversations/')) return server.messages(path);
-    if (path === '/api/chat/conversations') return server.conversations();
+    if (path.split('?')[0] === '/api/chat/conversations') return server.conversations(path);
     if (path === '/api/chat/memory') return server.memory();
     if (path.startsWith('/api/chat/memory/items/')) return server.removeMemory();
     if (path === '/api/pitches/') return server.pitches();
@@ -277,8 +279,12 @@ const visibleText = (el: Element) => {
   return copy.textContent;
 };
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => visibleText(b) === label);
-const sendButton = () => button('입력')!;
+  [...host.querySelectorAll('button')].find(
+    (b) => visibleText(b) === label || b.getAttribute('aria-label') === label,
+  );
+const sendButton = () => panel()!.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+const listNewButton = () =>
+  panel()!.querySelector<HTMLButtonElement>('[data-conversation-list] > button')!;
 const sentMessages = () =>
   [...panel()!.querySelectorAll('p.self-end')].map((message) => message.textContent);
 const scopeText = () => visibleText(panel()!.querySelector('[data-chat-scope]')!);
@@ -306,6 +312,111 @@ async function press(target: Element, init: KeyboardEventInit) {
   return event;
 }
 
+it('새미나이 브랜드와 빈 대화 안내를 유지하고, 추천 질문은 별도 PR로 분리한다', async () => {
+  await visit('/');
+  await openPanel();
+  expect(panel()!.textContent).toContain('새미나이');
+  expect(launcher()!.getAttribute('aria-label')).toBe('새미나이 열기');
+  expect(launcher()!.getAttribute('title')).toBe('새미나이 열기');
+  const labelId = panel()!.getAttribute('aria-labelledby')!;
+  expect(document.getElementById(labelId)!.textContent!.trim()).toBe('새미나이');
+  expect(button('새미나이 닫기')?.getAttribute('title')).toBe('새미나이 닫기');
+  expect(panel()!.querySelectorAll('img[src="/semini.png"]')).toHaveLength(2);
+  expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
+    '발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.',
+  );
+  expect(panel()!.querySelector('[data-chat-empty] button')).toBeNull();
+  expect(sentMessages()).toEqual([]);
+});
+
+it('좁은 패널에서 제목과 아이콘 버튼을 줄바꿈할 수 있도록 헤더 구조를 유지한다', async () => {
+  await visit('/');
+  await openPanel();
+  const firstRow = panel()!.querySelector('header > div')!;
+  expect(firstRow.classList.contains('flex-wrap')).toBe(true);
+  expect(firstRow.firstElementChild!.classList.contains('min-w-32')).toBe(true);
+  expect(firstRow.lastElementChild!.classList.contains('ml-auto')).toBe(true);
+});
+
+it('첫 기억 안내와 빈 대화는 스크롤 맨 위에서 시작하고, 실제 전송에는 아래를 따라간다', async () => {
+  await visit('/');
+  await openPanel();
+  const scroller = panel()!.querySelector<HTMLElement>('[aria-label="채팅 메시지"]')!;
+  expect(scroller.scrollTop).toBe(0);
+  expect(scroller.querySelector('[data-memory-intro]')).not.toBeNull();
+  Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 500 });
+  Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 100 });
+  // 빈 화면에 내용이 바뀌어도 기억 안내를 밀어 내리지 않습니다.
+  await act(async () => {
+    scroller.querySelector('[data-chat-empty] p')!.textContent = '새미나이에게 물어보세요.';
+  });
+  await settle();
+  expect(scroller.scrollTop).toBe(0);
+});
+
+it('대화 목록에서도 전송 확인 오류가 노출되고 같은 요청을 다시 확인할 수 있다', async () => {
+  await visit('/');
+  await openPanel();
+  await act(async () => button('대화 목록')!.click());
+  await settle();
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+
+  await act(async () =>
+    transport().emit({ type: 'unconfirmed', sendId: 's1', notAccepted: false }),
+  );
+  const notices = panel()!.querySelector('[data-chat-notices]')!;
+  expect(notices.textContent).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.');
+  expect(alerts()).toContain('전송 여부를 확인하지 못했으니 다시 확인해 주세요.다시 확인');
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('[data-chat-notices]')).toBe(notices);
+  expect(alerts()).toHaveLength(1);
+  await act(async () => button('대화 목록')!.click());
+  await act(async () => button('다시 확인')!.click());
+  expect(transport().retried).toBe(1);
+  expect(panel()!.querySelector('[data-chat-notices]')).toBeNull();
+});
+
+it('목록 화면에서도 범위 확인 실패 안내를 보고 재시도할 수 있다', async () => {
+  server.report = () => Promise.reject(new ApiFailure(404, 'NOT_FOUND'));
+  await visit('/takes/t1');
+  await openPanel();
+  await settle();
+  await act(async () => button('대화 목록')!.click());
+  await settle();
+
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+  expect(panel()!.querySelector('[data-chat-notices]')!.textContent).toContain(
+    '연습 기록의 범위를 확인하지 못했으니 다시 시도해 주세요.',
+  );
+  server.report = (takeId) =>
+    Promise.resolve({ take_id: takeId, pitch_id: 'p-9', pitch_title: '졸업 발표' });
+  await act(async () => button('다시 시도')!.click());
+  await settle();
+  expect(panel()!.querySelector('[data-chat-notices]')).toBeNull();
+});
+
+it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지한다', async () => {
+  await visit('/');
+  await openPanel();
+  await type('작성 중');
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('form')!.hidden).toBe(true);
+  await act(async () => button('대화 목록')!.click());
+  expect(panel()!.querySelector('form')!.hidden).toBe(false);
+  expect(input().value).toBe('작성 중');
+});
+
+it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 열린다', async () => {
+  await visit('/');
+  const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
+  expect(container.classList.contains('left-2')).toBe(true);
+  expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('76px');
+  expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
+
+  await openPanel();
+  expect(panel()!.classList.contains('left-0')).toBe(true);
+});
+
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
   await visit('/');
   await openPanel();
@@ -313,7 +424,7 @@ it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아�
   expect(launcher()!.getAttribute('aria-expanded')).toBe('true');
   expect(document.activeElement).toBe(input());
 
-  const close = [...host.querySelectorAll('button')].find((b) => b.textContent === '닫기')!;
+  const close = button('새미나이 닫기')!;
   await act(async () => close.click());
   expect(panel()).toBeNull();
   expect(document.activeElement).toBe(launcher());
@@ -507,6 +618,26 @@ it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내�
   expect(input().value).toBe(tooLong);
 });
 
+it('입력창의 초점 링을 유지하고 2,000자 초과 상태를 테두리에도 표시한다', async () => {
+  await visit('/');
+  await openPanel();
+  const composer = () => panel()!.querySelector<HTMLElement>('[data-chat-composer]')!;
+  expect(composer().classList.contains('focus-within:ring-2')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(true);
+  expect(composer().classList.contains('border-line-strong')).toBe(true);
+
+  await type('a'.repeat(2001));
+  expect(input().getAttribute('aria-invalid')).toBe('true');
+  expect(composer().classList.contains('border-coral-deep')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral-deep')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(false);
+
+  await type('수정한 질문');
+  expect(input().getAttribute('aria-invalid')).toBe('false');
+  expect(composer().classList.contains('border-line-strong')).toBe(true);
+  expect(composer().classList.contains('focus-within:ring-coral')).toBe(true);
+});
+
 it('닫혀 있을 때는 런처가 없는 패널을 가리키지 않는다', async () => {
   await visit('/');
   expect(launcher()!.hasAttribute('aria-controls')).toBe(false);
@@ -605,7 +736,7 @@ describe('사용 가능 여부 (12-4 F1 · L3-02)', () => {
     expect(transports).toHaveLength(0);
 
     await openPanel();
-    expect(alerts()).toContain('코치를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+    expect(alerts()).toContain('새미나이를 불러오지 못했으니 다시 시도해 주세요.다시 시도');
     expect(sendButton().getAttribute('aria-disabled')).toBe('true');
 
     server.availability = () => Promise.resolve({ enabled: true });
@@ -720,6 +851,33 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
       screen: { name: 'device_check', gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' },
     });
     expect(sent!.page.screen!.snapshot_id).toMatch(/^ss-[0-9a-f]{16}$/);
+  });
+
+  it('처음 확인(없음 → 사용자) 뒤에 보내면 먼저 등록한 화면 상태를 싣는다', async () => {
+    expect(useChatStore.getState().userId).toBeNull();
+    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
+    await visit('/pitch/p1/device-check');
+    expect(useChatStore.getState().userId).toBe('u1');
+    await openPanel();
+    await type('장치 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'device_check' });
+  });
+
+  it('로그아웃 신호 없이 다른 사용자로 바뀐 뒤 보내면 앞 사람 때 등록한 화면 상태를 싣지 않는다', async () => {
+    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
+    await visit('/pitch/p1/device-check');
+    expect(useChatStore.getState().userId).toBe('u1');
+
+    // 같은 경로 패턴에 머문 채 사용자만 바뀝니다 — 경로가 달라서 빠지는 것이 아님을 보려고 패턴을 유지합니다
+    state.session = { isPending: false, isError: false, data: { id: 'u2' } };
+    await go('/pitch/p2/device-check');
+    expect(useChatStore.getState().userId).toBe('u2');
+    await openPanel();
+    await type('장치 괜찮아?');
+    await press(input(), { key: 'Enter' });
+    const [sent] = transport().sent;
+    expect(sent!.page).toMatchObject({ route: '/pitch/:pitchId/device-check', screen: null });
   });
 
   it('평가 기준 원문이 2,000자를 넘으면 보내지 않고 알린다 (L3-11)', async () => {
@@ -1280,11 +1438,15 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     progressDropped: false,
     cards: [],
   });
-  const ended = (runId: string, conversationId: string): TransportSignal => ({
+  const ended = (
+    runId: string,
+    conversationId: string,
+    status: 'DONE' | 'REFUSED' = 'DONE',
+  ): TransportSignal => ({
     type: 'ended',
     runId,
     conversationId,
-    status: 'DONE',
+    status,
     errorCode: null,
     endedWhileWaiting: false,
   });
@@ -1343,6 +1505,36 @@ describe('점검 반영 (8-1 ~ 8-3)', () => {
     await settle();
     expect(answerText(panel()!.querySelector('[data-live-run]'))).toBe('받은 답 문장');
     expect(panel()!.textContent).not.toContain('물어보세요');
+    // 거절로 끝난 답이 아니면 질문 예시를 붙이지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('거절로 끝난 뒤 목록 다시 읽기가 실패해도 받은 거절 답 아래에 질문 예시를 한 번 붙인다', async () => {
+    await watching('c1', 'r1');
+    await act(async () =>
+      transport().emit(progressIn('r1', 'c1', '이 요청은 도와드릴 수 없어요.')),
+    );
+    // 끝나기 전에는 진행 답 아래에 붙이지 않습니다
+    expect(panel()!.querySelector('[data-live-run] ~ [data-ask-help]')).toBeNull();
+    server.messages = () => Promise.reject(new Error('끊김'));
+    // 실제 통신 계층처럼 실행을 끝낸(endRun) 뒤 끝남 신호를 보냅니다 — 보내기 잠금이 풀립니다
+    await act(async () => {
+      useChatStore.getState().endRun('r1');
+      transport().emit(ended('r1', 'c1', 'REFUSED'));
+    });
+    await settle();
+    await settle();
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
+    expect(helps).toHaveLength(1);
+    const liveRun = panel()!.querySelector('[data-live-run]')!;
+    expect(
+      liveRun.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await act(async () => helps[0]!.querySelector('button')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 보내는 중에는 안내를 거둡니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
   });
 
   it('꺼지면 패널을 닫고, 다시 켜져도 저절로 열려 초점을 가져가지 않는다', async () => {
@@ -1473,6 +1665,21 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await settle();
     expect(visibleText(chip())).toBe('피치: 졸업 발표');
     expect(chip().textContent).toBe('범위: 피치: 졸업 발표');
+  });
+
+  it('긴 피치 제목은 칩의 말줄임표와 무관하게 전체를 확인할 수 있다', async () => {
+    const longTitle = '매우 긴 발표 제목을 사용하는 프로젝트의 최종 시연과 성능 평가';
+    server.pitches = () =>
+      Promise.resolve({
+        pitches: [{ ...pitchList.pitches[0]!, pitch_title: longTitle }],
+      });
+    await visit(`/pitch/${P1}/edit`);
+    await openPanel();
+    await settle();
+    expect(visibleText(chip())).toBe(`피치: ${longTitle}`);
+    expect(chip().getAttribute('title')).toBe(`피치: ${longTitle}`);
+    // 접근성 이름은 기존 텍스트와 잠금 사유를 그대로 사용합니다.
+    expect(chip().hasAttribute('aria-label')).toBe(false);
   });
 
   it('칩을 누르면 전체 · 내 피치에서 고르고, 고르면 그 범위로 바꾼다 — Esc 는 목록만 닫는다', async () => {
@@ -1659,7 +1866,7 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await inConversation('c1');
     await act(async () => button('대화 목록')!.click());
     await settle();
-    await act(async () => button('새 대화')!.click());
+    await act(async () => listNewButton().click());
     expect(useChatStore.getState().conversationId).toBeNull();
     expect(useChatStore.getState().scope).toEqual({ pitchId: P1, title: null });
   });
@@ -1670,8 +1877,8 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await inConversation('c1');
     await act(async () => button('대화 목록')!.click());
     await settle();
-    button('새 대화')!.focus();
-    await act(async () => button('새 대화')!.click());
+    listNewButton().focus();
+    await act(async () => listNewButton().click());
     await settle();
     expect(document.activeElement).toBe(input());
 
@@ -1700,12 +1907,13 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await openPanel();
     await act(async () => button('대화 목록')!.click());
     await settle();
-    button('새 대화')!.focus();
-    button('새 대화')!.blur();
+    listNewButton().focus();
+    listNewButton().blur();
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     await act(async () => button('대화 목록')!.click());
     await settle();
-    expect(button('새 대화')).toBeFalsy();
+    // 헤더의 새 대화 버튼은 항상 보이지만, 대화 목록 내부의 버튼은 사라집니다.
+    expect(panel()!.querySelector('[data-conversation-list]')).toBeNull();
     expect(document.activeElement).toBe(document.body);
   });
 
@@ -1720,6 +1928,67 @@ describe('범위 칩 · 대화 목록 (12-4 F2)', () => {
     await act(async () => button('다시 시도')!.click());
     await settle();
     expect(panel()!.textContent).toContain('지난 대화가 없어요.');
+  });
+
+  describe('지난 대화 더 보기 (BE #1000 커서)', () => {
+    const row = (id: string, title: string) => ({
+      conversation_id: id,
+      title,
+      scope_pitch_id: null,
+      scope_pitch_title: null,
+      last_user_activity_at: '2026-11-05T12:30:00Z',
+      created_at: '2026-11-05T12:00:00Z',
+      stale: false,
+    });
+    const titles = () =>
+      [...host.querySelectorAll('[aria-label="지난 대화"] li .truncate')].map((t) => t.textContent);
+
+    it('다음 쪽이 있으면 [지난 대화 더 보기]로 받은 커서를 보내 아래에 잇고, 끝이면 버튼을 거둔다', async () => {
+      server.conversations = (path) =>
+        Promise.resolve(
+          path?.includes('cursor=k2')
+            ? // 쪽 사이에 활동이 생겨 앞 쪽의 대화가 다시 와도 한 번만 보입니다
+              { conversations: [row('c2', '둘째'), row('c1', '첫째')], next_cursor: null }
+            : { conversations: [row('c1', '첫째')], next_cursor: 'k2' },
+        );
+      await visit('/');
+      await openPanel();
+      await act(async () => button('대화 목록')!.click());
+      await settle();
+      expect(titles()).toEqual(['첫째']);
+
+      await act(async () => button('지난 대화 더 보기')!.click());
+      await settle();
+      expect(server.seen.some((s) => s.path === '/api/chat/conversations?cursor=k2')).toBe(true);
+      expect(titles()).toEqual(['첫째', '둘째']);
+      expect(button('지난 대화 더 보기')).toBeFalsy();
+    });
+
+    it('더 보기가 실패하면 읽은 줄은 그대로 두고 그 자리에서 알리며, 다시 누르면 이어 읽는다', async () => {
+      let fail = true;
+      server.conversations = (path) => {
+        if (!path?.includes('cursor=')) {
+          return Promise.resolve({ conversations: [row('c1', '첫째')], next_cursor: 'k2' });
+        }
+        if (fail) return Promise.reject(new Error('끊김'));
+        return Promise.resolve({ conversations: [row('c2', '둘째')], next_cursor: null });
+      };
+      await visit('/');
+      await openPanel();
+      await act(async () => button('대화 목록')!.click());
+      await settle();
+      await act(async () => button('지난 대화 더 보기')!.click());
+      await settle();
+      expect(titles()).toEqual(['첫째']);
+      expect(alerts()).toContain('지난 대화를 더 불러오지 못했으니 다시 시도해 주세요.');
+      expect(alerts()).not.toContain('대화 목록을 불러오지 못했으니 다시 시도해 주세요.다시 시도');
+
+      fail = false;
+      await act(async () => button('지난 대화 더 보기')!.click());
+      await settle();
+      expect(titles()).toEqual(['첫째', '둘째']);
+      expect(alerts()).not.toContain('지난 대화를 더 불러오지 못했으니 다시 시도해 주세요.');
+    });
   });
 
   it('[이전 대화 더 보기]는 앞 페이지를 읽어 위에 잇는다', async () => {
@@ -1951,6 +2220,93 @@ describe('안내 · 자동 스크롤 (12-4 F8)', () => {
     expect(panel()!.querySelector('[data-message="m4"]')!.contains(more[0]!)).toBe(true);
     await act(async () => more[0]!.click());
     expect(transport().sent.map((r) => r.text)).toEqual(['이어서 확인해 줘']);
+  });
+
+  it('거절 답이 마지막이면 그 아래에만 할 수 있는 일 · 질문 예시를 붙이고, 예시를 누르면 그 질문을 보낸다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+      userMsg('m3', '주식 추천해 줘', 'r1'),
+      answer('m4', 'r1', 'REFUSED', [
+        '이 요청은 발표 연습 기록으로 도와드릴 수 있는 범위 밖이에요.',
+      ]),
+    ]);
+    const helps = [...panel()!.querySelectorAll('[data-ask-help]')];
+    expect(helps).toHaveLength(1);
+    // 마지막 거절 답(m4) 뒤에 붙고, 앞의 거절 답(m2) 뒤에는 없습니다
+    const m4 = panel()!.querySelector('[data-message="m4"]')!;
+    expect(m4.compareDocumentPosition(helps[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(helps[0]!.textContent).toContain(ASK_HELP_TITLE);
+    for (const ability of ASK_HELP_ABILITIES) expect(helps[0]!.textContent).toContain(ability);
+    const examples = [...helps[0]!.querySelectorAll('button')].map(visibleText);
+    expect(examples).toEqual([...ASK_HELP_EXAMPLES]);
+
+    await act(async () => helps[0]!.querySelector('button')!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+  });
+
+  it('거절 답 아래 예시를 눌러 보내면 안내가 바로 사라지고, 초점은 입력칸으로 돌아온다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    const example = panel()!.querySelector<HTMLButtonElement>('[data-ask-help] button')!;
+    example.focus();
+    await act(async () => example.click());
+    await settle();
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[0]]);
+    // 목록을 다시 읽기 전에도 거절 답(m2)이 마지막이지만, 보내는 중이라 안내를 그리지 않습니다
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+    expect(document.activeElement).toBe(input());
+  });
+
+  it('보낼 수 없는 동안 예시는 aria-disabled 로 막히고, 숨은 이유를 달고, 눌러도 보내지 않는다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+    ]);
+    // 429 Retry-After 로 잠깁니다
+    await act(async () => {
+      const s = useChatStore.getState();
+      const ticket = s.beginSend({
+        text: '질문',
+        page: { route: '/', pitch_id: null, take_id: null, screen: null },
+        again_of_message_id: null,
+        choice: null,
+      })!;
+      useChatStore.getState().failSend(ticket, 60);
+    });
+    const examples = [...panel()!.querySelectorAll<HTMLButtonElement>('[data-ask-help] button')];
+    expect(examples).toHaveLength(ASK_HELP_EXAMPLES.length);
+    for (const example of examples) {
+      expect(example.getAttribute('aria-disabled')).toBe('true');
+      expect(example.querySelector('.sr-only')?.textContent).toBeTruthy();
+    }
+    await act(async () => examples[0]!.click());
+    expect(transport().sent).toEqual([]);
+  });
+
+  it('거절이 아닌 답이 마지막이면 질문 예시를 붙이지 않는다', async () => {
+    await inConversation([
+      userMsg('m1', '날씨 알려 줘', 'r0'),
+      answer('m2', 'r0', 'REFUSED', ['자료에서 근거를 찾지 못해 답하지 않을게요.']),
+      userMsg('m3', '비교해 줘', 'r1'),
+      answer('m4', 'r1', 'DONE', ['비교했어요.']),
+    ]);
+    expect(panel()!.querySelector('[data-ask-help]')).toBeNull();
+  });
+
+  it('빈 대화에서는 첫 인사 아래에 같은 안내를 보이고, 예시를 누르면 그 질문을 보낸다', async () => {
+    await inConversation([]);
+    expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
+      '새미나이에게 물어보세요',
+    );
+    const help = panel()!.querySelector('[data-ask-help]')!;
+    expect(help.textContent).toContain(ASK_HELP_TITLE);
+    expect([...help.querySelectorAll('button')].map(visibleText)).toEqual([...ASK_HELP_EXAMPLES]);
+
+    await act(async () => help.querySelectorAll('button')[1]!.click());
+    expect(transport().sent.map((r) => r.text)).toEqual([ASK_HELP_EXAMPLES[1]]);
   });
 
   it.each([
@@ -2405,13 +2761,13 @@ describe('두 번째 점검 반영', () => {
     expect(chip.hasAttribute('aria-label')).toBe(false);
     expect(chip.textContent).toContain('답을 만드는 동안에는 범위를 바꿀 수 없어요');
     // [입력]은 글을 썼을 때만 이유를 붙입니다
-    expect(sendButton().querySelector('.sr-only')).toBeNull();
+    expect(sendButton().querySelectorAll('.sr-only')).toHaveLength(1);
     await type('질문');
     expect(sendButton().textContent).toBe('입력 (답을 만드는 중이에요)');
     await act(async () => useChatStore.getState().endRun('r9'));
     expect(button('이어서 확인')!.querySelector('.sr-only')).toBeNull();
     expect(chip.textContent).not.toContain('바꿀 수 없어요');
-    expect(sendButton().querySelector('.sr-only')).toBeNull();
+    expect(sendButton().querySelectorAll('.sr-only')).toHaveLength(1);
   });
 });
 
@@ -2431,7 +2787,7 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
       "'기억 없이' 대화를 골라도 그 대화의 기록 · 요약은 보관되고",
     );
 
-    await act(async () => button('닫기')!.click());
+    await act(async () => button('새미나이 닫기')!.click());
     await openPanel();
     expect(intro()).toBeNull();
 
@@ -2503,7 +2859,7 @@ describe("기억 설정 · '기억 없이' (12-4 F14 · F15)", () => {
     await act(async () => memorySwitch()!.click());
     expect(useChatStore.getState().memoryOff).toBe(true);
     expect(memorySwitch()!.checked).toBe(true);
-    expect(badge()!.textContent).toBe('기억 없이');
+    expect(badge()).toBeNull(); // 설정 가능한 동안에는 스위치 자체가 상태를 표시합니다.
 
     // 대화가 생긴 뒤에는 바꿀 수 없습니다 — 스위치를 거두고 표시는 남깁니다
     await act(async () => {

@@ -169,6 +169,18 @@ def list_stuck_takes(db: Session, active_before: datetime, limit: int) -> list[d
     return _fetch(db, stmt.order_by(active_at).limit(limit))
 
 
+def stuck_take_last_active(
+    db: Session, take_id: uuid.UUID, active_before: datetime
+) -> datetime | None:
+    """`list_stuck_takes` 와 같은 기준으로 멈춘 Take 의 마지막 활동 시각. 멈추지 않았으면 None."""
+    active_at = last_active_at()
+    return db.scalar(
+        select(active_at).where(
+            Take.id == take_id, Take.status == "RUNNING", active_at < active_before
+        )
+    )
+
+
 def list_stalled_analyses(
     db: Session, *, stage_before: datetime, confirmation_before: datetime, limit: int
 ) -> list[dict[str, Any]]:

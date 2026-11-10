@@ -115,6 +115,7 @@ backend/
 │   └── versions/                 # 자동 생성. 날짜 접두어로 정렬. ruff 검사 제외
 │
 ├── dev/
+│   ├── build-first-take-sample.py  # 튜토리얼 샘플의 미리 만든 AI 결과를 로컬 AI 서버로 다시 만든다
 │   ├── oauth-test.html           # 로그인 흐름 수동 확인용. 앱이 서빙하지 않는다
 │   ├── stt-send-pcm.py           # PCM 파일을 WebSocket 으로 흘려 전사를 보는 스크립트
 │   └── stt-test.html             # 마이크로 실시간 STT 를 확인하는 페이지 (3000 포트로 연다)
@@ -201,12 +202,15 @@ backend/
     │   │   │   ├── presentation.py       # 발표자료(PDF) 업로드 · 조회
     │   │   │   ├── script.py             # 대본 검사 · 생성 · 파싱 상태 · 재파싱 · 결과 저장 · 장별 평가 기준 상태 · STT 용어
     │   │   │   ├── standard.py           # 평가 기준 저장 · 나누기 · 조회
+    │   │   │   ├── tutorial.py           # First Take 튜토리얼 샘플 발표. 미리 만든 결과를 복사해 만든다
     │   │   │   ├── script_parse_runner.py   # 업로드 뒤 BackgroundTasks 로 도는 파싱 작업. 짧은 세션으로 저장
     │   │   │   └── script_rubric_runner.py  # 파싱 뒤 장별 평가 기준 작업. 앱이 뜰 때 이어 간다
     │   │   ├── file_cleanup_sweep.py  # S3 에 남은 발표 파일을 다시 지우는 주기 작업
+    │   │   ├── sample/           # 튜토리얼 샘플 PDF · 썸네일 · 미리 만든 AI 결과 (dev/build-first-take-sample.py)
     │   │   └── adapter/          # 외부 연동. DB 를 모른다
     │   │       ├── storage.py            # S3 업로드 · presigned URL · prefix 삭제
     │   │       ├── presentation_file.py  # PDF 열기 · 쪽수
+    │   │       ├── sample.py             # 튜토리얼 샘플 파일 읽기
     │   │       ├── script_parser.py      # AI 대본 파서 HTTP. 응답 검증·변환·재시도
     │   │       ├── script_rubric.py      # AI 장별 평가 기준 HTTP
     │   │       └── standard_parser.py    # AI 평가 기준 분석 HTTP
@@ -472,6 +476,24 @@ OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시
 
 판단과 삭제는 발표 행을 잠근 한 트랜잭션에서 한다. Take 를 시작하는 요청도 이 행을 잠그므로, 동시에 오면 한쪽만 이긴다.
 
+## First Take 튜토리얼
+
+```
+POST /api/pitches/tutorials/first-take   → pitch_id · report_received
+```
+
+- 사용자마다 샘플 발표(`is_demo`) 하나를 만든다. 이미 있으면 그 발표를 준다. 여러 탭에서 동시에 불러도
+  사용자 유일 색인(`uq_pitches_user_demo`)에 걸려 하나만 생기고, 진 요청은 이긴 요청의 발표를 받는다.
+  이긴 요청의 발표가 그 사이 지워졌으면 `409 TUTORIAL_PITCH_BUSY` 이고 다시 부르면 새로 만든다.
+- AI 를 부르지 않는다. `pitch/sample/` 의 PDF · 썸네일을 그 발표 경로에 올리고, 미리 만든 대본 파싱 ·
+  장별 평가 기준을 끝난 상태로, 첫 Take 코칭 계획을 한 행으로 넣는다. 바로 장치 점검으로 넘어갈 수 있다.
+  FE 의 샘플 자료나 AI 응답 형식이 바뀌면 `dev/build-first-take-sample.py` 로 다시 만든다.
+- 그 뒤 Take · 리포트는 일반 발표와 같다. 홈 목록 · 발표 상세의 `is_demo` 로 샘플을 구분한다.
+- 튜토리얼 리포트는 계정당 한 번이다. 샘플 발표의 리뷰가 저장되면 `users.tutorial_report_at` 을 같은
+  커밋에 적는다. 그 뒤 샘플 발표에서 Take 를 만들면 `409 TUTORIAL_REPORT_USED`, 앞 Take 를 아직 분석
+  중이면 `409 TUTORIAL_ANALYSIS_RUNNING` 이다. 리뷰가 실패했거나 연습이 끊겨 분석하지 않은 Take 는
+  세지 않는다. 샘플 발표를 지우고 다시 만들어도 기록은 남는다.
+
 ## Take 목록
 
 `GET /api/takes/` 는 내 모든 발표의 Take 를 시작 시각 최신순으로 준다 (Take 기록 화면).
@@ -625,3 +647,4 @@ AI 를 부르는 턴 실행기는 `module/chat/turn_runner.py` 에 있다. 스�
 | Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
 | Deepgram | `DEEPGRAM_API_KEY` 하나, 또는 `DEEPGRAM_API_KEYS` 에 쉼표로 여러 개. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |
 | AI 서버 | `AI_BASE_URL` (기본 `http://localhost:8001`, 운영은 compose 내부 `http://ai:8000`). 없으면 BE 는 뜨고 대본 파싱만 `AI_UNAVAILABLE` 로 실패한다 |
+| API 명세 사이트 | `/api/docs` (Swagger UI), 로컬은 `http://localhost:8000/api/docs` |

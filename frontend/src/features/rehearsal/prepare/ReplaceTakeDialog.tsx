@@ -65,11 +65,24 @@ export function ReplaceTakeDialog({
           중이에요. 그 연습을 끝내고 여기서 새로 시작할까요? 끝낸 연습은 리포트가 만들어지지 않아요.
         </p>
         <div className="mt-6 flex flex-wrap justify-end gap-3">
-          {/* 다른 곳의 연습을 끝내는 쪽이라, 처음 초점은 되돌릴 수 있는 취소에 둡니다 */}
-          <Button variant="secondary" autoFocus disabled={busy} onClick={onCancel}>
+          {/* 다른 곳의 연습을 끝내는 쪽이라, 처음 초점은 되돌릴 수 있는 취소에 둡니다.
+              끝내는 중에는 aria-disabled 로 막습니다 — disabled 면 누른 버튼의 초점이 창 밖으로 빠집니다 */}
+          <Button
+            variant="secondary"
+            autoFocus
+            aria-disabled={busy}
+            onClick={() => {
+              if (!busy) onCancel();
+            }}
+          >
             취소
           </Button>
-          <Button disabled={busy} onClick={onConfirm}>
+          <Button
+            aria-disabled={busy}
+            onClick={() => {
+              if (!busy) onConfirm();
+            }}
+          >
             {busy ? '끝내는 중…' : '그 연습 끝내고 시작'}
           </Button>
         </div>

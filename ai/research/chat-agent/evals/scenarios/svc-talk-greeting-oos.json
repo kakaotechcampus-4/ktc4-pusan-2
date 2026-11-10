@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "id": "svc-talk-greeting-oos",
+  "set": "agent_service",
+  "group": "small_talk",
+  "split": "dev",
+  "act": "should_not",
+  "title": "인사 + 무관한 주제 '안녕! 요즘 볼 만한 영화 있어?' — 무관한 주제는 지금처럼 거절한다",
+  "expect_refusal": true,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "안녕! 요즘 볼 만한 영화 있어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "out-of-scope",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.OUT_OF_SCOPE",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-movie-answer",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "추천|개봉|영화는",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types"
+      }
+    ]
+  }
+}

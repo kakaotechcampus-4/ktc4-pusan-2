@@ -11,7 +11,7 @@ vi.mock('./catalog', () => {
       kind: 'screen',
       id: 'pitch-create',
       title: '피치 생성',
-      group: '연습',
+      group: '피치 관리 · 생성',
       route: '/pitch/new',
       status: '제품에 있음',
       summary: '자료를 준비합니다.',
@@ -31,7 +31,7 @@ vi.mock('./catalog', () => {
       kind: 'screen',
       id: 'prepare',
       title: '시작 전 세팅',
-      group: '연습',
+      group: '연습 준비 · 진행',
       route: '/pitch/:id/device-check',
       status: '제품에 있음',
       summary: '장치를 확인합니다.',
@@ -50,7 +50,7 @@ vi.mock('./catalog', () => {
       kind: 'screen',
       id: 'new-idea',
       title: '새 화면 시안',
-      group: '시안',
+      group: '검토 시안',
       route: '/new-idea',
       status: '시안',
       summary: '제품에 넣을 새 화면입니다.',
@@ -92,8 +92,19 @@ vi.mock('./catalog', () => {
   };
   return {
     PRODUCT_ORIGIN: 'http://localhost:3000',
+    GUIDE_GROUP_ORDER: [
+      '기초',
+      '컴포넌트',
+      '대화 상자',
+      '서비스 시작',
+      '피치 관리 · 생성',
+      '연습 준비 · 진행',
+      '분석 · 기록 · 리포트',
+      '안내 · 계정',
+      '검토 시안',
+    ],
     screens,
-    entries: [foundation, component, ...screens],
+    entries: [foundation, component, screens[2], screens[0], screens[1]],
   };
 });
 
@@ -395,4 +406,13 @@ it('브라우저 확대는 주소에 남고, 페이지가 쓰는 크기를 함�
   expect(host.textContent).toContain('1366 × 768 · 125% → 페이지 1093 × 614');
   await choose(zoom, '100');
   expect(address()).not.toContain('zoom=');
+});
+
+it('전체 보기 카드 순서는 왼쪽 목록의 그룹 순서와 같다', async () => {
+  await render('/?screen=pitch-create');
+  await click('전체 화면');
+  const cards = [...host.querySelectorAll('[data-preview]')].map(
+    (el) => el.getAttribute('data-preview')?.split(':')[0],
+  );
+  expect(cards).toEqual(['pitch-create', 'prepare', 'new-idea']);
 });

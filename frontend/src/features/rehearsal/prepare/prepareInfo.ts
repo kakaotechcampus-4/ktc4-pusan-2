@@ -1,4 +1,5 @@
 import type { PracticeCombo, PrepareResponse, ScriptMode } from '@/types/api';
+import type { LatestSlide } from '@/shared/api/prepare';
 import { normalizeScriptMode } from './prepareStore';
 
 /**
@@ -90,6 +91,85 @@ export function newerScriptNotice(info: PrepareInfo): string | null {
   const why = status === 'PENDING' ? '아직 나누는 중이라' : '나누지 못해서';
   // 조사는 숫자가 아니라 '대본'에 붙입니다 — "v2으로"처럼 읽히지 않게
   return `새 대본(v${version})은 ${why} 지난 대본(v${info.script.version})으로 연습해요`;
+}
+
+/**
+ * 넘겨받은 조합보다 서버의 최신 조합이 새 것일 때의 안내. 해당 없으면 null (멘토 리뷰 #923).
+ *
+ * 조합은 라우터 state 라 새로고침 · 앞으로 가기에도 남아, 그사이 새로 매핑한 대본 대신 예전 조합이 쓰일 수 있습니다.
+ * 예전 조합으로 연습하는 것은 막지 않습니다 — 피치 수정에서 예전 버전을 골라 연습할 수 있고, 실패한 Take 에서
+ * 돌아올 때도 같은 조합을 넘깁니다(`deviceCheckLink`). 그래서 알리고 [최신으로]만 둡니다.
+ *
+ * 최신 조합으로 시작할 수 없거나(`prepareProblem`) 어느 한쪽이라도 조합보다 낮으면(서로 엇갈리면) 알리지 않습니다 —
+ * 무엇이 "최신"인지 말할 수 없습니다.
+ *
+ * 서버 id 가 둘 다 같으면 번호와 관계없이 같은 조합입니다. 조합의 번호는 수정 화면 번호라, 같은 버전의 매핑을 고쳐
+ * 다시 올리면 서버 번호만 앞서갑니다(`ScriptVersion.remote`) — 번호만 견주면 같은 조합에도 안내가 뜹니다.
+ */
+export function newerComboNotice(combo: PracticeCombo, info: PrepareInfo): string | null {
+  if (!info.presentation || !info.script || prepareProblem(info) !== null) return null;
+  if (
+    combo.presentationVersionId === info.presentation.id &&
+    combo.scriptVersionId === info.script.id
+  )
+    return null;
+  const slide = info.presentation.version;
+  const script = info.script.version;
+  if (slide < combo.slideVersion || script < combo.scriptVersion) return null;
+  if (slide === combo.slideVersion && script === combo.scriptVersion) return null;
+  // 조사는 숫자 뒤에 붙이지 않습니다 — "v3예요"처럼 읽기 어렵지 않게
+  return `최신 조합이 있어요: 자료 v${slide} · 대본 v${script}`;
+}
+
+/**
+ * 준비 정보가 가장 최근 자료 대신 **지난 자료**를 골랐을 때의 안내. 해당 없으면 null (멘토 리뷰 #923).
+ *
+ * 리포트의 [Take N 연습하기] · 대화의 [연습 준비로]는 피치 수정을 거치지 않고 조합 없이 들어옵니다. 그러면
+ * `/prepare` 가 대본과 장 수가 맞는 가장 최근 자료를 고르는데, 장 수가 다른 새 PDF 를 올린 뒤면 그게 지난 자료입니다.
+ * 막아 버리지는 않고(일부러 지난 자료로 연습할 수 있게) 화면이 한 번 확인받습니다.
+ *
+ * 준비 정보로 시작할 수 없으면(`prepareProblem`) 그 이유가 먼저라 알리지 않습니다.
+ *
+ * 피치 생성에서 조합(`combo`)을 넘겨받았으면 그 조합의 자료와 견줍니다 — 넘겨받은 뒤 다른 탭에서 새 PDF 를 올렸을 수
+ * 있습니다(#1099 리뷰). 그때는 준비 정보를 기다리지 않으므로 `info` 가 없어도 됩니다.
+ */
+export function olderSlideNotice(
+  info: PrepareInfo | null,
+  latest: LatestSlide | null,
+  combo: PracticeCombo | null = null,
+): string | null {
+  const chosen = chosenSlide(info, combo);
+  if (!latest || !chosen) return null;
+  if (latest.id === chosen.id || latest.version <= chosen.version) return null;
+  const { slideCount } = chosen;
+  if (latest.pageCount !== null && slideCount !== null && latest.pageCount !== slideCount) {
+    return `가장 최근 자료(v${latest.version} · ${latest.pageCount}쪽)는 대본(${slideCount}장)과 장 수가 달라 지난 자료(v${chosen.version})로 연습하게 돼요`;
+  }
+  return `가장 최근 자료(v${latest.version}) 대신 지난 자료(v${chosen.version})로 연습하게 돼요`;
+}
+
+/**
+ * 이번 연습에 쓸 자료 — 넘겨받은 조합이 있으면 그것, 없으면 준비 정보가 고른 것. 정할 수 없으면 null.
+ * 장 수는 그 조합의 대본을 준비 정보로 알 때만 채웁니다
+ */
+export function chosenSlide(
+  info: PrepareInfo | null,
+  combo: PracticeCombo | null,
+): { id: string; version: number; slideCount: number | null } | null {
+  if (combo) {
+    const script = info?.script?.id === combo.scriptVersionId ? info.script : null;
+    return {
+      id: combo.presentationVersionId,
+      version: combo.slideVersion,
+      slideCount: script?.slideCount ?? null,
+    };
+  }
+  if (!info?.presentation || !info.script || prepareProblem(info) !== null) return null;
+  return {
+    id: info.presentation.id,
+    version: info.presentation.version,
+    slideCount: info.script.slideCount,
+  };
 }
 
 /**

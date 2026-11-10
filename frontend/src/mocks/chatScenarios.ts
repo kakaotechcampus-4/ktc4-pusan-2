@@ -207,7 +207,13 @@ export type Step =
       approved: Step[];
       rejected: string;
     }
-  | { t: 'end'; status: RunStatus; cards: (actionId: string) => Card[] };
+  | {
+      t: 'end';
+      status: RunStatus;
+      cards: (actionId: string) => Card[];
+      /** 에이전트가 이 피치를 열었음(`FETCH_PITCH`) — 끝날 때 BE 처럼 대화 범위를 이 피치로 바꿉니다 */
+      scopePitchId?: string;
+    };
 
 const STEPS = ['최근 Take 비교', '3장 문제 구간 확인', '발표법 자료 찾기'];
 
@@ -246,6 +252,8 @@ export interface ScenarioContext {
   /** 제안 카드에서 고른 안. 없으면 null */
   chosen: GoalOption | null;
   screen: ChatScreen | null;
+  /** 보낼 때 보던 Take(`page.take_id`). 없으면 null */
+  takeId: string | null;
   /** 이번 판단에 붙일 ID 와, 같은 대화의 가장 최근 판단 */
   assessmentId: string;
   priorAssessmentId: string | null;
@@ -422,7 +430,10 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
         rejected: '목표를 저장하지 않았어요.',
       },
     ];
-  if (text.includes('다시 평가') || text.includes('대본 보고'))
+  if (text.includes('다시 평가') || text.includes('대본 보고')) {
+    // 보던 Take 를 다시 평가합니다 — Take 화면 밖에서 물으면 점수가 있는 Take 2(72점)로 합니다
+    const target = pitch.takes.find((t) => t.take_id === ctx.takeId) ?? take2!;
+    const reassessed = target.score === null ? null : target.score + 6;
     return [
       ...base(),
       { t: 'claim', data: say('SYSTEM', '실제로 대본을 봤는지는 기록으로 확인할 수 없어요.') },
@@ -430,7 +441,7 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
         t: 'ask',
         action_type: 'REASSESS',
         title: '대본을 보고 한 발표로 다시 평가할까요?',
-        summary: `Take ${take2!.take_version}를 대본 사용 기준으로 다시 평가해 참고 결과를 만들어요`,
+        summary: `Take ${target.take_version}를 대본 사용 기준으로 다시 평가해 참고 결과를 만들어요`,
         before: { script_used: false },
         after: { script_used: true },
         notes: ['참고 결과이고 공식 결과는 그대로예요'],
@@ -445,16 +456,15 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
             cards: () => [
               {
                 type: 'REASSESS_RESULT',
-                // 홈 목에서 점수가 있는 Take(2, 72점) — Take 3 은 점수가 없습니다
-                take_id: take2!.take_id,
+                take_id: target.take_id,
                 change: { script_used: true },
                 before: {
-                  score: take2!.score,
+                  score: target.score,
                   dimensions: { audience_gaze: 'PRIORITY', pacing_rhythm: 'STABLE' },
                   criteria_results: [],
                 },
                 after: {
-                  score: 78,
+                  score: reassessed,
                   dimensions: { audience_gaze: null, pacing_rhythm: 'STABLE' },
                   criteria_results: [],
                 },
@@ -467,6 +477,7 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
         rejected: '다시 평가하지 않았어요.',
       },
     ];
+  }
   if (text.includes('발표할래') || text.includes('연습 준비'))
     return [
       // SYSTEM 은 코드 목록의 문장만(6-9) — 안내는 사용법 자료 문장으로 냅니다
@@ -496,6 +507,16 @@ export function scenario(text: string, ctx: ScenarioContext): Step[] {
             ? [{ type: 'MEMORY_SAVED', item_id: '', key: 'TONE', value: '짧게 설명' }]
             : [],
       },
+    ];
+  // 에이전트가 피치를 열어 범위를 바꿈 (12-4 L3-08) — 답에 바꾼 범위를 알리고, 칩은 실행이 끝나 대화를 다시 읽은 뒤 바뀝니다
+  if (text.includes('열어'))
+    return [
+      { t: 'plan', plan: plan(['DOING'], ['피치 열기', '최근 Take 비교']) },
+      { t: 'tool', trace: trace(1, 'fetch_pitch', pitch.pitch_title, '피치 범위로 바꿈') },
+      { t: 'plan', plan: plan(['DONE', 'DONE'], ['피치 열기', '최근 Take 비교']) },
+      { t: 'claim', data: say('SYSTEM', `${pitch.pitch_title}로 범위를 바꿨어요.`) },
+      { t: 'claim', data: first! },
+      { t: 'end', status: 'DONE', cards: () => [], scopePitchId: PITCH_ID },
     ];
   if (text.includes('봤지')) return assessmentSteps(text, ctx);
   if (text.includes('깨진 답')) return brokenSteps();

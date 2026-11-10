@@ -113,7 +113,7 @@ async function upload(version: number): Promise<void> {
   const script = draft.scripts.find((v) => v.version === version);
   if (!pitchId || !script || script.parse.status === 'pending') return;
 
-  patchScript(version, { parse: { status: 'pending' } });
+  patchScript(version, { parse: { status: 'pending', startedAt: performance.now() } });
 
   let created;
   try {
@@ -140,7 +140,7 @@ async function retry(version: number): Promise<void> {
   // 올리기부터 실패했으면 서버에 아무것도 없습니다 — 처음부터 올립니다
   if (!remote) return upload(version);
 
-  patchScript(version, { parse: { status: 'pending' } });
+  patchScript(version, { parse: { status: 'pending', startedAt: performance.now() } });
   try {
     await reparseScript(pitchId, remote.id);
   } catch (error) {

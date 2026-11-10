@@ -20,7 +20,7 @@ import {
   MyPage,
   TakesPage,
 } from './LazyScreens';
-import { createBrowserRouter, Outlet } from 'react-router';
+import { createBrowserRouter, Outlet, ScrollRestoration } from 'react-router';
 import { TakeComparisonRedirect } from '@/features/report/TakeComparisonRedirect';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
@@ -169,14 +169,18 @@ export const appRoutes = screenRoutes.map((route) =>
 );
 // 모든 화면 위에 늘 붙어 있는 층입니다. 화면을 옮겨도 채팅 상태가 남고, 로그인 · 기기 확인은 화면마다 그대로입니다.
 // 오류 화면(RouteLoadError)은 화면마다 있고 채팅은 자기 오류 경계를 가져서, 이 층에는 errorElement 를 두지 않습니다
+// 제품 라우터와 회귀 테스트가 같은 루트 층을 사용하도록 분리합니다.
+export const appRouterShell = (
+  <>
+    <Outlet />
+    <ScrollRestoration />
+    <ChatAgentHost />
+  </>
+);
+
 export const router = createBrowserRouter([
   {
-    element: (
-      <>
-        <Outlet />
-        <ChatAgentHost />
-      </>
-    ),
+    element: appRouterShell,
     children: appRoutes,
   },
 ]);
