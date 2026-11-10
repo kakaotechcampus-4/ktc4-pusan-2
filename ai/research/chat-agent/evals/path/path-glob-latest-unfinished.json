@@ -1,0 +1,105 @@
+{
+ "schema_version": "1.0",
+ "id": "path-glob-latest-unfinished",
+ "set": "eval",
+ "group": "global_scope",
+ "split": "dev",
+ "act": "should",
+ "title": "전체 범위에서 '가장 최근에 한 발표' — 마지막 연습 시작이 가장 늦은 피치(분석이 끝난 Take 0개)를 날짜 근거로 말하고, 분석이 끝난 Take 가 있는 최근 피치를 함께 안내한다",
+ "baseline_type": "scope",
+ "fixtures": {
+  "pitches": [
+   {
+    "preset": "sample"
+   },
+   {
+    "pitch_id": "p-2",
+    "title": "회사 소개 발표",
+    "last_practiced_at": "2026-11-09T19:30:00+09:00",
+    "criteria": null,
+    "takes": [
+     {
+      "take_id": "p2-t1",
+      "take_number": 1,
+      "status": "ANALYZING",
+      "completed_at": null,
+      "result": null,
+      "review": null
+     }
+    ]
+   }
+  ],
+  "conversation": {
+   "scope_pitch_id": null
+  }
+ },
+ "turns": [
+  {
+   "message": "가장 최근에 한 발표가 뭐였는지 알려 줘"
+  }
+ ],
+ "expected": {
+  "checks": [
+   {
+    "check_id": "read-list",
+    "observe": "trajectory",
+    "compare": "in_order",
+    "expect": [
+     "tool:list_pitches:*",
+     "claim:*"
+    ],
+    "metric": "path"
+   },
+   {
+    "check_id": "latest-title",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "contains",
+    "expect": "'회사 소개 발표'"
+   },
+   {
+    "check_id": "latest-date",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "contains",
+    "expect": "11월 9일"
+   },
+   {
+    "check_id": "no-finished-take",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "contains",
+    "expect": "분석이 끝난 Take는 없|분석이 끝난 Take가 없|아직 분석"
+   },
+   {
+    "check_id": "finished-alt",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "contains",
+    "expect": "'졸업 발표'"
+   },
+   {
+    "check_id": "not-old-as-latest",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "absent",
+    "expect": "(가장 최근|마지막)[^\\n'.]{0,15}(연습|한) 발표는 '졸업 발표'"
+   },
+   {
+    "check_id": "record-evidence",
+    "observe": "answer",
+    "compare": "equals",
+    "expect": true,
+    "path": "has_record_evidence"
+   },
+   {
+    "check_id": "status",
+    "observe": "answer",
+    "compare": "equals",
+    "expect": "DONE",
+    "path": "status"
+   }
+  ]
+ },
+ "notes": "Issue #1194 4-A(dev 2026-11-10 '가장 최근 발표' 오답): 맨 앞 피치의 분석이 끝난 Take 가 0개인 자료. 기대 답은 기능 문서 7-10 '가장 최근' 행."
+}

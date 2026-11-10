@@ -16,6 +16,12 @@
             "result": {
               "filler_per_min": 3.4,
               "filler_count": 14
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY",
+                "audience_gaze": "STABLE"
+              }
             }
           }
         }
@@ -104,5 +110,6 @@
         "path": "status"
       }
     ]
-  }
+  },
+  "notes": "Issue #1194 실패 분석: 고치기 전에는 sample 의 Take 5 우선 개선이 다른 차원이라 군더더기 목표가 L6-08 목표 충돌(제안 카드)이 맞았다. 이 문항은 충돌 없는 저장 흐름을 보려는 것이라 우선 개선을 fluency 로 둔다."
 }
