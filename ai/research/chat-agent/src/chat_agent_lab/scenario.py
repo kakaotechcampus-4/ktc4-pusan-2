@@ -150,13 +150,28 @@ HOLDOUT_COUNTS = {
 #: 고정 순서 기준선의 입력 유형(13-3). 유형마다 도구 순서는 evals.BASELINE_SEQUENCES
 BaselineType = Literal["record", "compare", "goal", "reassess", "scope", "screen", "guide", "none"]
 
-Observe = Literal["answer", "actions_proposed", "actions_executed", "db_diff", "trace"]
-Compare = Literal["equals", "contains", "set_equals", "absent", "one_of"]
+Observe = Literal[
+    "answer", "actions_proposed", "actions_executed", "db_diff", "trace", "trajectory"
+]
+Compare = Literal[
+    "equals",
+    "contains",
+    "set_equals",
+    "absent",
+    "one_of",
+    "in_order",
+    "in_order_any",
+    "precedes",
+    "not_in_order",
+]
+#: 사건 순서를 보는 비교(trajectory 관찰값에만)
+PATH_COMPARES = ("in_order", "in_order_any", "precedes", "not_in_order")
 Grader = Literal["value", "number", "target", "regex", "template", "quote"]
 #: 검사가 들어가는 지표(14-1). 그 지표의 대상 실행 = 이 표시가 있는 검사를 가진 시나리오의 실행.
 #: advice: 조언 질문의 GUIDE 비율(답을 뒷받침하는 자료 id 를 정해 둔 조언 질문) · memory: 기억 오염 기대검사 실패(기억 누설의 대리 지표, 기억을 넣거나 바꿔도
-#: 판단 · 판정 · 근거 · 행동이 기억 없을 때의 기대와 같은가 — 기대값은 기억 없이 fixtures 만 보고 쓴다)
-MetricTag = Literal["autonomy", "screen", "objectivity", "advice", "memory"]
+#: 판단 · 판정 · 근거 · 행동이 기억 없을 때의 기대와 같은가 — 기대값은 기억 없이 fixtures 만 보고 쓴다) ·
+#: path: 경로 정확도(도구 선택 · 순서) · replan: 재계획 적합률(계획 변경이 맞았는가)
+MetricTag = Literal["autonomy", "screen", "objectivity", "advice", "memory", "path", "replan"]
 Approval = Literal["APPROVE", "REJECT", "EXPIRE", "NEW_MESSAGE"]
 
 
@@ -408,11 +423,12 @@ class Check(_M):
     """기대 결과 하나(10-5). 필수 검사가 하나라도 실패하거나 관찰값이 없으면 그 실행은 실패다.
 
     - observe: 무엇을 보나. answer(최종 답) · actions_proposed(AI가 낸 행동 · 카드) · actions_executed(BE가 실제로 실행한 행동) ·
-      db_diff(실행 전후 저장소) · trace(도구 · 진단 기록). 관찰값 모양은 grading.py 머리 설명
+      db_diff(실행 전후 저장소) · trace(도구 · 진단 기록) · trajectory(사건 순서 · 계획 기록). 관찰값 모양은 grading.py 머리 설명
     - path: 관찰값 안의 위치(예 `after.conversation.goal.metric` · `assessments[]`). 없으면 grader 기본값
     - grader: value(값 그대로) · number(숫자 표기 규칙) · target(Take · 장 · 지표 대상) · regex · template(templates.py 문구) ·
       quote(자료 인용이 원문에 그대로 있는가)
-    - compare: equals · contains · set_equals · absent(10-5) + one_of(허용 집합, 13-5 '맞는 답이 여럿이면')
+    - compare: equals · contains · set_equals · absent(10-5) + one_of(허용 집합, 13-5 '맞는 답이 여럿이면') +
+      in_order · in_order_any · precedes · not_in_order(사건 순서, `observe: trajectory`에만)
     - turn: 몇 번째 차례의 관찰값인가(기본 마지막, `all`이면 모든 차례를 합침)
     - metric: 이 검사가 들어가는 지표(자율 · 화면 이해도 · 객관성)
     - derive: 기대값을 계산한 가상 기록 위치(예 `t-5:GAZE.audience_ratio@3`). 시험이 기대값과 맞는지 다시 계산한다
@@ -432,7 +448,7 @@ class Check(_M):
     @model_validator(mode="after")
     def _grader_compare(self) -> Check:
         allowed = {
-            "value": {"equals", "contains", "set_equals", "absent", "one_of"},
+            "value": {"equals", "contains", "set_equals", "absent", "one_of", *PATH_COMPARES},
             "number": {"contains", "absent"},
             "target": {"contains", "absent"},
             "regex": {"contains", "absent"},
@@ -441,8 +457,28 @@ class Check(_M):
         }[self.grader]
         if self.compare not in allowed:
             raise ValueError(f"{self.grader} 채점기는 {sorted(allowed)} 만 쓴다")
-        if self.grader != "value" and self.observe != "answer":
-            raise ValueError(f"{self.grader} 채점기는 answer 에만 쓴다")
+        # 글 채점기는 answer 에만. 예외: 계획 단계 글(`trajectory`의 `plan_text`)은 regex 로 본다(목표 동작 '상황 사실이 단계에 보인다')
+        if (
+            self.grader != "value"
+            and self.observe != "answer"
+            and not (self.grader == "regex" and self.observe == "trajectory")
+        ):
+            raise ValueError(f"{self.grader} 채점기는 answer 에만 쓴다(regex 는 trajectory 에도)")
+        if self.compare in PATH_COMPARES:
+            if self.observe != "trajectory":
+                raise ValueError(f"{self.compare} 는 trajectory 관찰값에만 쓴다")
+            ex = self.expect
+            if self.compare == "in_order_any":
+                if (
+                    not isinstance(ex, list)
+                    or not ex
+                    or not all(isinstance(o, list) and o for o in ex)
+                ):
+                    raise ValueError("in_order_any 의 expect 는 비어 있지 않은 목록의 목록이다")
+            elif not isinstance(ex, list) or not ex or not all(isinstance(o, str) for o in ex):
+                raise ValueError(f"{self.compare} 의 expect 는 패턴 문자열의 목록이다")
+            elif self.compare == "precedes" and len(ex) != 2:
+                raise ValueError("precedes 의 expect 는 [A, B] 두 개다")
         return self
 
 

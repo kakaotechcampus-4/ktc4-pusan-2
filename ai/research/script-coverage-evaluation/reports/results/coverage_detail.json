@@ -1,0 +1,1088 @@
+{
+  "feature_version": "script_coverage-1.2",
+  "criteria_version": "script_coverage-1.2+6d9376541711",
+  "model": "none (LLM 호출 없음)",
+  "split": {
+    "dev": "가상대본1",
+    "test": "가상대본2"
+  },
+  "missing_slides": {
+    "no_rubric": [],
+    "not_scored": []
+  },
+  "expression": {
+    "n": {
+      "dev": 284,
+      "test": 319
+    },
+    "objective": "띠 안 비율 <= 0.15 에서 띠 밖 일치율 최대 (같으면 띠가 좁은 쪽)",
+    "chosen": {
+      "EXPRESSION_VERBATIM_MIN": 0.9,
+      "EXPRESSION_PARAPHRASE_MAX": 0.8
+    },
+    "chosen_dev": {
+      "n": 284,
+      "n_outside": 249,
+      "accuracy_outside": 0.9679,
+      "balanced_accuracy_outside": 0.9333,
+      "band_ratio": 0.1232,
+      "confusion": {
+        "verbatim": {
+          "verbatim_like": 189,
+          "undetermined": 17,
+          "paraphrased": 0
+        },
+        "paraphrased": {
+          "verbatim_like": 8,
+          "undetermined": 18,
+          "paraphrased": 52
+        }
+      }
+    },
+    "chosen_test": {
+      "n": 319,
+      "n_outside": 276,
+      "accuracy_outside": 0.9601,
+      "balanced_accuracy_outside": 0.9251,
+      "band_ratio": 0.1348,
+      "confusion": {
+        "verbatim": {
+          "verbatim_like": 206,
+          "undetermined": 23,
+          "paraphrased": 1
+        },
+        "paraphrased": {
+          "verbatim_like": 10,
+          "undetermined": 20,
+          "paraphrased": 59
+        }
+      }
+    },
+    "current": {
+      "EXPRESSION_VERBATIM_MIN": 0.9,
+      "EXPRESSION_PARAPHRASE_MAX": 0.8
+    },
+    "current_dev": {
+      "n": 284,
+      "n_outside": 249,
+      "accuracy_outside": 0.9679,
+      "balanced_accuracy_outside": 0.9333,
+      "band_ratio": 0.1232,
+      "confusion": {
+        "verbatim": {
+          "verbatim_like": 189,
+          "undetermined": 17,
+          "paraphrased": 0
+        },
+        "paraphrased": {
+          "verbatim_like": 8,
+          "undetermined": 18,
+          "paraphrased": 52
+        }
+      }
+    },
+    "current_test": {
+      "n": 319,
+      "n_outside": 276,
+      "accuracy_outside": 0.9601,
+      "balanced_accuracy_outside": 0.9251,
+      "band_ratio": 0.1348,
+      "confusion": {
+        "verbatim": {
+          "verbatim_like": 206,
+          "undetermined": 23,
+          "paraphrased": 1
+        },
+        "paraphrased": {
+          "verbatim_like": 10,
+          "undetermined": 20,
+          "paraphrased": 59
+        }
+      }
+    },
+    "dev_top5": [
+      {
+        "verbatim_min": 0.9,
+        "paraphrase_max": 0.8,
+        "accuracy_outside": 0.9679,
+        "band_ratio": 0.1232
+      },
+      {
+        "verbatim_min": 0.9,
+        "paraphrase_max": 0.85,
+        "accuracy_outside": 0.9464,
+        "band_ratio": 0.081
+      },
+      {
+        "verbatim_min": 0.85,
+        "paraphrase_max": 0.8,
+        "accuracy_outside": 0.9265,
+        "band_ratio": 0.0423
+      },
+      {
+        "verbatim_min": 0.85,
+        "paraphrase_max": 0.75,
+        "accuracy_outside": 0.9242,
+        "band_ratio": 0.0704
+      },
+      {
+        "verbatim_min": 0.85,
+        "paraphrase_max": 0.7,
+        "accuracy_outside": 0.9219,
+        "band_ratio": 0.0986
+      }
+    ]
+  },
+  "fallback_band": {
+    "n_slides": {
+      "dev": 81,
+      "test": 99
+    },
+    "objective": "개발에서 심각한 어긋남(정답 mostly <-> 간이 little) 최소 -> 단계 일치율 최대 -> MAE 최소 -> 지금 값에 가까운 쪽",
+    "constraint": "LITTLE <= 0.4, MOSTLY >= 0.6 (제한 없이 고르면 아래 unconstrained_best 처럼 모든 장이 mostly 로 몰린다)",
+    "unconstrained_best": {
+      "severe": 0,
+      "neg_agreement": -1.0,
+      "mae": 0.07646913580246914,
+      "dist": 0.5499999999999999,
+      "LO": 0.35,
+      "HI": 0.5,
+      "LITTLE": 0.2,
+      "MOSTLY": 0.3
+    },
+    "chosen": {
+      "LO": 0.35,
+      "HI": 0.45,
+      "LITTLE": 0.3,
+      "MOSTLY": 0.7
+    },
+    "chosen_dev": {
+      "n_slides": 81,
+      "agreement": 0.9259,
+      "severe": 0,
+      "mae": 0.0785,
+      "confusion": {
+        "little": {
+          "little": 0,
+          "about_half": 0,
+          "mostly": 0
+        },
+        "about_half": {
+          "little": 0,
+          "about_half": 15,
+          "mostly": 5
+        },
+        "mostly": {
+          "little": 0,
+          "about_half": 1,
+          "mostly": 60
+        }
+      }
+    },
+    "chosen_test": {
+      "n_slides": 99,
+      "agreement": 0.8889,
+      "severe": 0,
+      "mae": 0.0709,
+      "confusion": {
+        "little": {
+          "little": 0,
+          "about_half": 2,
+          "mostly": 0
+        },
+        "about_half": {
+          "little": 1,
+          "about_half": 12,
+          "mostly": 7
+        },
+        "mostly": {
+          "little": 0,
+          "about_half": 1,
+          "mostly": 76
+        }
+      }
+    },
+    "current": {
+      "LO": 0.35,
+      "HI": 0.45,
+      "LITTLE": 0.3,
+      "MOSTLY": 0.7
+    },
+    "current_dev": {
+      "n_slides": 81,
+      "agreement": 0.9259,
+      "severe": 0,
+      "mae": 0.0785,
+      "confusion": {
+        "little": {
+          "little": 0,
+          "about_half": 0,
+          "mostly": 0
+        },
+        "about_half": {
+          "little": 0,
+          "about_half": 15,
+          "mostly": 5
+        },
+        "mostly": {
+          "little": 0,
+          "about_half": 1,
+          "mostly": 60
+        }
+      }
+    },
+    "current_test": {
+      "n_slides": 99,
+      "agreement": 0.8889,
+      "severe": 0,
+      "mae": 0.0709,
+      "confusion": {
+        "little": {
+          "little": 0,
+          "about_half": 2,
+          "mostly": 0
+        },
+        "about_half": {
+          "little": 1,
+          "about_half": 12,
+          "mostly": 7
+        },
+        "mostly": {
+          "little": 0,
+          "about_half": 1,
+          "mostly": 76
+        }
+      }
+    },
+    "llm_final_reference": {
+      "at_current_bands": {
+        "dev": {
+          "agreement": 0.9753,
+          "severe": 0,
+          "mae": 0.0068
+        },
+        "test": {
+          "agreement": 0.9697,
+          "severe": 0,
+          "mae": 0.0093
+        }
+      },
+      "at_chosen_bands": {
+        "dev": {
+          "agreement": 0.9753,
+          "severe": 0,
+          "mae": 0.0068
+        },
+        "test": {
+          "agreement": 0.9697,
+          "severe": 0,
+          "mae": 0.0093
+        }
+      }
+    },
+    "dev_top5": [
+      {
+        "LO": 0.35,
+        "HI": 0.45,
+        "LITTLE": 0.3,
+        "MOSTLY": 0.7,
+        "severe": 0,
+        "agreement": 0.9259259259259259,
+        "mae": 0.0785
+      },
+      {
+        "LO": 0.35,
+        "HI": 0.4,
+        "LITTLE": 0.3,
+        "MOSTLY": 0.7,
+        "severe": 0,
+        "agreement": 0.9259259259259259,
+        "mae": 0.0785
+      },
+      {
+        "LO": 0.35,
+        "HI": 0.45,
+        "LITTLE": 0.2,
+        "MOSTLY": 0.7,
+        "severe": 0,
+        "agreement": 0.9259259259259259,
+        "mae": 0.0785
+      },
+      {
+        "LO": 0.35,
+        "HI": 0.4,
+        "LITTLE": 0.2,
+        "MOSTLY": 0.7,
+        "severe": 0,
+        "agreement": 0.9259259259259259,
+        "mae": 0.0785
+      },
+      {
+        "LO": 0.35,
+        "HI": 0.45,
+        "LITTLE": 0.1,
+        "MOSTLY": 0.7,
+        "severe": 0,
+        "agreement": 0.9259259259259259,
+        "mae": 0.0785
+      }
+    ],
+    "dev_truth_rate_summary": {
+      "count": 81.0,
+      "mean": 0.818,
+      "std": 0.221,
+      "min": 0.3,
+      "25%": 0.7,
+      "50%": 0.9,
+      "75%": 1.0,
+      "max": 1.0
+    }
+  },
+  "labels": {
+    "note": "대본 밖 말 후보 구간(짝 있는 문장 안 꼬리 2개 이상 + 짝 없는 문장, 문장 안 꼬리를 켠 규칙으로 뽑은 것)의 정답 라벨. 라벨러 둘(자동 라벨러, 사람 검수 전)이 서로 보지 않고 단 라벨(labels)이 같으면 그 값을 label 에 둔다. 둘이 다른 8개는 장 대본을 보고 다시 판정해 label 에 두고 adjudicated: true 로 표시했다(셋째 라벨러의 독립 판정과 8개 모두 같음). 범주: script(그 장 대본 내용을 그대로 · 바꿔 말함, 수치만 틀리게 말한 것 포함) · other_slide · procedural · aside(관련 곁말) · unrelated · unclear. 실험 12_coverage_detail.py 가 (take_id, slide_number, stt_sentence, span_text)로 후보와 맞춰 precision 을 잰다.",
+    "agreement": 0.964,
+    "n_items": 221,
+    "n_label_null": 0,
+    "label_counts": {
+      "script": 206,
+      "aside": 13,
+      "procedural": 2
+    }
+  },
+  "offscript_natural": {
+    "n_candidates": 13,
+    "recall_definitions": {
+      "additions_caught_ratio": "라벨 additions(실제로 끼어든 곁말 문장) 중 어떤 후보 구간에 잡힌 비율 (형태소 겹침 0.5 이상 또는 글 포함). offscript_natural.addition_recall 에 있다",
+      "labeled_outside_caught_ratio": "라벨 파일의 정답(두 라벨러가 같은 것 + 어긋나 다시 판정한 것)이 대본 밖 말(aside · unrelated · procedural · other_slide)인 것에서, 지금 규칙이 후보로 잡은 비율. offscript_natural_precision 에 있다"
+    },
+    "candidates_by_category": {
+      "dev": {
+        "off_script": 6
+      },
+      "test": {
+        "off_script": 7
+      }
+    },
+    "addition_recall": {
+      "dev": {
+        "n": 8,
+        "caught": 5,
+        "additions_caught_ratio": 0.625,
+        "by_category": {
+          "off_script": 5
+        },
+        "missed": [
+          {
+            "take_id": "가상대본1_take4",
+            "slide": 1,
+            "text": "저도 시험 기간에 자리 찾느라 열람실을 몇 바퀴씩 돌았던 기억이 있는데요"
+          },
+          {
+            "take_id": "가상대본1_take7",
+            "slide": 1,
+            "text": "제가 좀 긴장이 돼서요"
+          },
+          {
+            "take_id": "가상대본1_take8",
+            "slide": 4,
+            "text": "시간 관계상 짧게 말씀드리면"
+          }
+        ]
+      },
+      "test": {
+        "n": 10,
+        "caught": 7,
+        "additions_caught_ratio": 0.7,
+        "by_category": {
+          "off_script": 7
+        },
+        "missed": [
+          {
+            "take_id": "가상대본2_take6",
+            "slide": 7,
+            "text": "이 부분이 저희가 제일 공들인 기능인데요"
+          },
+          {
+            "take_id": "가상대본2_take7",
+            "slide": 7,
+            "text": "이게 저희가 제일 자랑하고 싶은 기능인데요"
+          },
+          {
+            "take_id": "가상대본2_take8",
+            "slide": 2,
+            "text": "역할은 화면으로 대신하겠습니다"
+          }
+        ]
+      }
+    },
+    "take_mean_token_share": {
+      "dev": {
+        "script": 0.9901,
+        "procedural": 0.0,
+        "other_slide": 0.0,
+        "off_script": 0.0099
+      },
+      "test": {
+        "script": 0.9891,
+        "procedural": 0.0,
+        "other_slide": 0.0,
+        "off_script": 0.0109
+      }
+    },
+    "take_token_share_range": {
+      "dev": {
+        "script": [
+          0.9624,
+          1.0
+        ],
+        "procedural": [
+          0.0,
+          0.0
+        ],
+        "other_slide": [
+          0.0,
+          0.0
+        ],
+        "off_script": [
+          0.0,
+          0.0376
+        ]
+      },
+      "test": {
+        "script": [
+          0.9566,
+          1.0
+        ],
+        "procedural": [
+          0.0,
+          0.0
+        ],
+        "other_slide": [
+          0.0,
+          0.0
+        ],
+        "off_script": [
+          0.0,
+          0.0434
+        ]
+      }
+    }
+  },
+  "offscript_natural_precision": {
+    "dev": {
+      "n_candidates": 6,
+      "n_usable": 6,
+      "n_label_null": 0,
+      "n_not_in_label_file": 0,
+      "outside_precision": 0.8333,
+      "labeled_outside_caught_ratio": 0.7143,
+      "n_label_mismatch_excluded": 0,
+      "n_labeled_outside": 7,
+      "by_predicted": {
+        "off_script": {
+          "n": 6,
+          "right": 5,
+          "precision": 0.8333,
+          "labels": {
+            "script": 1,
+            "aside": 5
+          }
+        },
+        "procedural": {
+          "n": 0,
+          "right": 0,
+          "precision": null,
+          "labels": {}
+        },
+        "other_slide": {
+          "n": 0,
+          "right": 0,
+          "precision": null,
+          "labels": {}
+        }
+      }
+    },
+    "test": {
+      "n_candidates": 7,
+      "n_usable": 7,
+      "n_label_null": 0,
+      "n_not_in_label_file": 0,
+      "outside_precision": 1.0,
+      "labeled_outside_caught_ratio": 0.875,
+      "n_label_mismatch_excluded": 0,
+      "n_labeled_outside": 8,
+      "by_predicted": {
+        "off_script": {
+          "n": 7,
+          "right": 5,
+          "precision": 0.7143,
+          "labels": {
+            "aside": 5,
+            "procedural": 2
+          }
+        },
+        "procedural": {
+          "n": 0,
+          "right": 0,
+          "precision": null,
+          "labels": {}
+        },
+        "other_slide": {
+          "n": 0,
+          "right": 0,
+          "precision": null,
+          "labels": {}
+        }
+      }
+    }
+  },
+  "rule_variants": {
+    "in_sentence=False,min_tokens=2": {
+      "dev": {
+        "n_candidates": 6,
+        "n_usable": 6,
+        "n_label_null": 0,
+        "n_not_in_label_file": 0,
+        "outside_precision": 0.8333,
+        "labeled_outside_caught_ratio": 0.7143,
+        "n_label_mismatch_excluded": 0,
+        "n_labeled_outside": 7,
+        "by_predicted": {
+          "off_script": {
+            "n": 6,
+            "right": 5,
+            "precision": 0.8333,
+            "labels": {
+              "script": 1,
+              "aside": 5
+            }
+          },
+          "procedural": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          },
+          "other_slide": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          }
+        }
+      },
+      "test": {
+        "n_candidates": 7,
+        "n_usable": 7,
+        "n_label_null": 0,
+        "n_not_in_label_file": 0,
+        "outside_precision": 1.0,
+        "labeled_outside_caught_ratio": 0.875,
+        "n_label_mismatch_excluded": 0,
+        "n_labeled_outside": 8,
+        "by_predicted": {
+          "off_script": {
+            "n": 7,
+            "right": 5,
+            "precision": 0.7143,
+            "labels": {
+              "aside": 5,
+              "procedural": 2
+            }
+          },
+          "procedural": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          },
+          "other_slide": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          }
+        }
+      }
+    },
+    "in_sentence=True,min_tokens=2": {
+      "dev": {
+        "n_candidates": 88,
+        "n_usable": 71,
+        "n_label_null": 0,
+        "n_not_in_label_file": 17,
+        "outside_precision": 0.0986,
+        "labeled_outside_caught_ratio": 1.0,
+        "n_label_mismatch_excluded": 17,
+        "n_labeled_outside": 7,
+        "by_predicted": {
+          "off_script": {
+            "n": 65,
+            "right": 7,
+            "precision": 0.1077,
+            "labels": {
+              "script": 58,
+              "aside": 7
+            }
+          },
+          "procedural": {
+            "n": 1,
+            "right": 0,
+            "precision": 0.0,
+            "labels": {
+              "script": 1
+            }
+          },
+          "other_slide": {
+            "n": 5,
+            "right": 0,
+            "precision": 0.0,
+            "labels": {
+              "script": 5
+            }
+          }
+        }
+      },
+      "test": {
+        "n_candidates": 150,
+        "n_usable": 150,
+        "n_label_null": 0,
+        "n_not_in_label_file": 0,
+        "outside_precision": 0.0533,
+        "labeled_outside_caught_ratio": 1.0,
+        "n_label_mismatch_excluded": 0,
+        "n_labeled_outside": 8,
+        "by_predicted": {
+          "off_script": {
+            "n": 144,
+            "right": 6,
+            "precision": 0.0417,
+            "labels": {
+              "script": 136,
+              "aside": 6,
+              "procedural": 2
+            }
+          },
+          "procedural": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          },
+          "other_slide": {
+            "n": 6,
+            "right": 0,
+            "precision": 0.0,
+            "labels": {
+              "script": 6
+            }
+          }
+        }
+      }
+    },
+    "in_sentence=True,min_tokens=4": {
+      "dev": {
+        "n_candidates": 16,
+        "n_usable": 13,
+        "n_label_null": 0,
+        "n_not_in_label_file": 3,
+        "outside_precision": 0.3846,
+        "labeled_outside_caught_ratio": 0.7143,
+        "n_label_mismatch_excluded": 3,
+        "n_labeled_outside": 7,
+        "by_predicted": {
+          "off_script": {
+            "n": 12,
+            "right": 5,
+            "precision": 0.4167,
+            "labels": {
+              "script": 7,
+              "aside": 5
+            }
+          },
+          "procedural": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          },
+          "other_slide": {
+            "n": 1,
+            "right": 0,
+            "precision": 0.0,
+            "labels": {
+              "script": 1
+            }
+          }
+        }
+      },
+      "test": {
+        "n_candidates": 32,
+        "n_usable": 32,
+        "n_label_null": 0,
+        "n_not_in_label_file": 0,
+        "outside_precision": 0.2188,
+        "labeled_outside_caught_ratio": 0.875,
+        "n_label_mismatch_excluded": 0,
+        "n_labeled_outside": 8,
+        "by_predicted": {
+          "off_script": {
+            "n": 30,
+            "right": 5,
+            "precision": 0.1667,
+            "labels": {
+              "script": 23,
+              "aside": 5,
+              "procedural": 2
+            }
+          },
+          "procedural": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          },
+          "other_slide": {
+            "n": 2,
+            "right": 0,
+            "precision": 0.0,
+            "labels": {
+              "script": 2
+            }
+          }
+        }
+      }
+    },
+    "in_sentence=True,min_tokens=6": {
+      "dev": {
+        "n_candidates": 7,
+        "n_usable": 7,
+        "n_label_null": 0,
+        "n_not_in_label_file": 0,
+        "outside_precision": 0.7143,
+        "labeled_outside_caught_ratio": 0.7143,
+        "n_label_mismatch_excluded": 0,
+        "n_labeled_outside": 7,
+        "by_predicted": {
+          "off_script": {
+            "n": 7,
+            "right": 5,
+            "precision": 0.7143,
+            "labels": {
+              "script": 2,
+              "aside": 5
+            }
+          },
+          "procedural": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          },
+          "other_slide": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          }
+        }
+      },
+      "test": {
+        "n_candidates": 9,
+        "n_usable": 9,
+        "n_label_null": 0,
+        "n_not_in_label_file": 0,
+        "outside_precision": 0.7778,
+        "labeled_outside_caught_ratio": 0.875,
+        "n_label_mismatch_excluded": 0,
+        "n_labeled_outside": 8,
+        "by_predicted": {
+          "off_script": {
+            "n": 9,
+            "right": 5,
+            "precision": 0.5556,
+            "labels": {
+              "script": 2,
+              "aside": 5,
+              "procedural": 2
+            }
+          },
+          "procedural": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          },
+          "other_slide": {
+            "n": 0,
+            "right": 0,
+            "precision": null,
+            "labels": {}
+          }
+        }
+      }
+    }
+  },
+  "offscript_injection": {
+    "rounds": 4,
+    "note": "장마다 범주 4개를 한 번씩, 한 번에 문장 하나만 끼움 (같은 장의 주입은 서로 독립인 별도 실행)",
+    "definitions": {
+      "new_false_positive": "주입 구간과 겹치지 않고, (STT 문장 글, 구간 글)로 대응시킨 주입 전 후보에 없던 후보. 사라진 후보와 상쇄하지 않는다",
+      "precision": "범주별: 그 범주로 검출된 주입 중 정답 범주 / (그 수 + 그 범주의 새 오탐)",
+      "span_metrics": "정답 = 주입 문장 형태소, 예측 = 주입과 겹친 후보 + 새 후보의 형태소; 범주 일치 필요"
+    },
+    "runs": {
+      "total": 720,
+      "already_in_stt_skipped": 0,
+      "already_in_stt_by_category": {},
+      "not_found": 0,
+      "no_tokens": 0
+    },
+    "dev": {
+      "n": 324,
+      "already_in_stt_skipped": 0,
+      "recall": {
+        "procedural": {
+          "n": 81,
+          "detected": 0.8148,
+          "category_right": 0.2593,
+          "predicted_as": {
+            "off_script": 42,
+            "procedural": 21,
+            "other_slide": 3
+          }
+        },
+        "related_aside": {
+          "n": 81,
+          "detected": 0.7654,
+          "category_right": 0.7654,
+          "predicted_as": {
+            "off_script": 62
+          }
+        },
+        "unrelated": {
+          "n": 81,
+          "detected": 0.9506,
+          "category_right": 0.9506,
+          "predicted_as": {
+            "off_script": 77
+          }
+        },
+        "other_slide": {
+          "n": 81,
+          "detected": 0.7284,
+          "category_right": 0.7284,
+          "predicted_as": {
+            "other_slide": 59
+          }
+        }
+      },
+      "precision": {
+        "procedural": {
+          "n_predicted": 21,
+          "n_new_false": 0,
+          "precision": 1.0,
+          "precision_without_new_false": 1.0,
+          "truth_counts": {
+            "procedural": 21
+          }
+        },
+        "other_slide": {
+          "n_predicted": 62,
+          "n_new_false": 0,
+          "precision": 0.9516,
+          "precision_without_new_false": 0.9516,
+          "truth_counts": {
+            "other_slide": 59,
+            "procedural": 3
+          }
+        },
+        "off_script": {
+          "n_predicted": 181,
+          "n_new_false": 0,
+          "precision": 0.768,
+          "precision_without_new_false": 0.768,
+          "truth_counts": {
+            "unrelated": 77,
+            "related_aside": 62,
+            "procedural": 42
+          }
+        }
+      },
+      "new_false_positives": {
+        "total": 0,
+        "by_category": {},
+        "runs_with_new": 0,
+        "mean_per_run": 0.0,
+        "removed_total": 1,
+        "runs_with_removed": 1
+      },
+      "span_metrics": {
+        "procedural": {
+          "precision": 1.0,
+          "recall": 0.2741,
+          "f1": 0.4303,
+          "tp_tokens": 54,
+          "pred_tokens": 54,
+          "truth_tokens": 197
+        },
+        "other_slide": {
+          "precision": 0.9853,
+          "recall": 0.7201,
+          "f1": 0.8321,
+          "tp_tokens": 602,
+          "pred_tokens": 611,
+          "truth_tokens": 836
+        },
+        "off_script": {
+          "precision": 0.8832,
+          "recall": 0.8191,
+          "f1": 0.8499,
+          "tp_tokens": 756,
+          "pred_tokens": 856,
+          "truth_tokens": 923
+        },
+        "overall": {
+          "precision": 0.9283,
+          "recall": 0.7219,
+          "f1": 0.8122,
+          "tp_tokens": 1412,
+          "pred_tokens": 1521,
+          "truth_tokens": 1956
+        },
+        "overall_any_category": {
+          "precision": 0.9954,
+          "recall": 0.774,
+          "f1": 0.8709,
+          "tp_tokens": 1514,
+          "pred_tokens": 1521,
+          "truth_tokens": 1956
+        }
+      }
+    },
+    "test": {
+      "n": 396,
+      "already_in_stt_skipped": 0,
+      "recall": {
+        "procedural": {
+          "n": 99,
+          "detected": 0.8283,
+          "category_right": 0.4141,
+          "predicted_as": {
+            "procedural": 41,
+            "off_script": 35,
+            "other_slide": 6
+          }
+        },
+        "related_aside": {
+          "n": 99,
+          "detected": 0.5758,
+          "category_right": 0.5758,
+          "predicted_as": {
+            "off_script": 57
+          }
+        },
+        "unrelated": {
+          "n": 99,
+          "detected": 0.8687,
+          "category_right": 0.8687,
+          "predicted_as": {
+            "off_script": 86
+          }
+        },
+        "other_slide": {
+          "n": 99,
+          "detected": 0.8081,
+          "category_right": 0.8081,
+          "predicted_as": {
+            "other_slide": 80
+          }
+        }
+      },
+      "precision": {
+        "procedural": {
+          "n_predicted": 41,
+          "n_new_false": 0,
+          "precision": 1.0,
+          "precision_without_new_false": 1.0,
+          "truth_counts": {
+            "procedural": 41
+          }
+        },
+        "other_slide": {
+          "n_predicted": 86,
+          "n_new_false": 0,
+          "precision": 0.9302,
+          "precision_without_new_false": 0.9302,
+          "truth_counts": {
+            "other_slide": 80,
+            "procedural": 6
+          }
+        },
+        "off_script": {
+          "n_predicted": 178,
+          "n_new_false": 1,
+          "precision": 0.7989,
+          "precision_without_new_false": 0.8034,
+          "truth_counts": {
+            "unrelated": 86,
+            "related_aside": 57,
+            "procedural": 35
+          }
+        }
+      },
+      "new_false_positives": {
+        "total": 1,
+        "by_category": {
+          "off_script": 1
+        },
+        "runs_with_new": 1,
+        "mean_per_run": 0.0025,
+        "removed_total": 1,
+        "runs_with_removed": 1
+      },
+      "span_metrics": {
+        "procedural": {
+          "precision": 1.0,
+          "recall": 0.3992,
+          "f1": 0.5707,
+          "tp_tokens": 105,
+          "pred_tokens": 105,
+          "truth_tokens": 263
+        },
+        "other_slide": {
+          "precision": 0.9788,
+          "recall": 0.795,
+          "f1": 0.8774,
+          "tp_tokens": 830,
+          "pred_tokens": 848,
+          "truth_tokens": 1044
+        },
+        "off_script": {
+          "precision": 0.8695,
+          "recall": 0.7048,
+          "f1": 0.7785,
+          "tp_tokens": 733,
+          "pred_tokens": 843,
+          "truth_tokens": 1040
+        },
+        "overall": {
+          "precision": 0.9287,
+          "recall": 0.7107,
+          "f1": 0.8052,
+          "tp_tokens": 1668,
+          "pred_tokens": 1796,
+          "truth_tokens": 2347
+        },
+        "overall_any_category": {
+          "precision": 0.9928,
+          "recall": 0.7597,
+          "f1": 0.8607,
+          "tp_tokens": 1783,
+          "pred_tokens": 1796,
+          "truth_tokens": 2347
+        }
+      }
+    }
+  }
+}

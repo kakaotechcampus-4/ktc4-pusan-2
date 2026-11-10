@@ -3,6 +3,7 @@
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script, overlaps
 from .align import fidelity_excluding, positioned_tokens
+from .detail import annotate_expression
 from .judge import sentence_units
 from .merge import aggregate_key_points, status_from_units
 from .schemas import SentenceResult, SimilarItem, SlideEvaluation, UnitResult
@@ -104,4 +105,5 @@ def rescore_evaluation(
     )
     e.scores = slide_scores(e.key_points, e.critical_facts, e.fidelity, held)
     e.applied_answers = applied
+    annotate_expression(e.sentences)  # 판정이 바뀐 문장의 표현 방식을 다시 채운다
     return e

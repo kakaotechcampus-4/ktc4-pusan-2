@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "id": "path-nc-script-alt",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "대본 버전이 다른 Take 4(sv-0)를 앞 Take 로 물음 — 같은 대본의 Take 3 와 비교하거나 비교 불가 사실만 말한다(둘 다 유효)",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-4": {
+            "script_version_id": "sv-0"
+          },
+          "t-3": {
+            "result": {
+              "audience": [
+                0.62,
+                0.58,
+                0.52,
+                0.6
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "지난번 Take 4 때보다 이번 Take 5에서 3장은 관객을 더 쳐다봤는지 궁금해",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-take4-conclusion",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "absent",
+        "expect": "Take 4[^\\n]{0,80}(좋아졌|나빠졌|올랐|떨어졌|늘었|줄었)"
+      },
+      {
+        "check_id": "reason-or-alt",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "대본 버전|비교할 수 없|비교하지|Take 3"
+      },
+      {
+        "check_id": "compare-then-fact",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:compare_takes:*",
+          "decision:NOT_COMPARABLE:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fact-then-answer",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "decision:NOT_COMPARABLE:FACT_SHOWN:CODE",
+            "tool:compare_takes:*",
+            "decision:NOT_COMPARABLE:ALT_TOOL:LLM",
+            "claim:*"
+          ],
+          [
+            "decision:NOT_COMPARABLE:FACT_SHOWN:CODE",
+            "claim:*"
+          ]
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "비교 불가[^\\n]*대본 버전 다름",
+        "metric": "replan"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "source": "path-nc-script"
+}

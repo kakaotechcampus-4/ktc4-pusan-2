@@ -8,17 +8,19 @@ import logging
 import secrets
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from pitch_coach_backend.core.client_ip import client_ip
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.module.admin.exception import AdminConsoleDisabled
+from pitch_coach_backend.module.admin.exception import AdminActionForbidden, AdminConsoleDisabled
 
 logger = logging.getLogger(__name__)
 
 # 브라우저는 이 이름으로 입력한 계정을 기억한다
 REALM = "pitch-coach-admin"
+# 상태를 바꾸는 관리자 요청에만 요구하는 헤더. 콘솔 스크립트(static/app.js)가 붙인다
+ACTION_HEADER = "X-Admin-Action"
 
 # 계정이 없거나 틀리면 401 과 함께 Basic 을 알려야 해서 직접 판단한다 (auto_error=False).
 # 헤더가 깨져 있으면 auto_error 와 상관없이 HTTPBasic 이 401 을 낸다
@@ -65,3 +67,16 @@ def require_admin(
         status.HTTP_401_UNAUTHORIZED,
         headers={"WWW-Authenticate": f'Basic realm="{REALM}"'},
     )
+
+
+def require_admin_action(
+    action: Annotated[str | None, Header(alias=ACTION_HEADER)] = None,
+) -> None:
+    """상태를 바꾸는 관리자 요청(POST)의 CSRF 방어. 로그인 확인(`require_admin`) 뒤에 건다.
+
+    Basic 로그인은 브라우저가 기억해 두었다가 다른 사이트가 이 주소로 보낸 요청에도 붙인다. 그래서
+    로그인만으로는 콘솔에서 누른 요청인지 알 수 없다. 다른 사이트의 form 은 헤더를 붙이지 못하고,
+    다른 출처의 fetch 는 이 헤더 때문에 preflight 를 거치는데 CORS 설정(main.py)이 허용하지 않는다.
+    """
+    if action != "1":
+        raise AdminActionForbidden()

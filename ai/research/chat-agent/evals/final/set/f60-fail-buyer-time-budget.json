@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-fail-buyer-time-budget",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "계획 직후 시간이 41초 흐름 — 남은 시간으로 조사를 멈추고 PARTIAL, 남은 단계는 TODO · 단계에 시간 부족",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-buy",
+        "title": "해외 바이어 상담 발표",
+        "takes": [
+          {
+            "take_id": "buy-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "buy-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.31,
+                0.57,
+                0.62
+              ],
+              "cpm": [
+                310,
+                365,
+                300,
+                305
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY",
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 65
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-buy"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3에서 어느 장이 제일 약했는지 장별로 다 훑어보고, 그 장에 맞는 연습 요령도 자료에서 찾아 한꺼번에 정리해 줘요.",
+      "page_take_id": "buy-t3",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 1,
+          "seconds": 41
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "metric": "replan"
+      },
+      {
+        "check_id": "budget-stop",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:BUDGET_LOW:*",
+          "final:PARTIAL"
+        ],
+        "metric": "replan",
+        "note": "STOP_PARTIAL · STEP_SKIPPED 어느 효과든(README: 진행 사건 끝, final 앞)"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "시간 부족",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "remaining-todo",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "TODO",
+        "path": "plan_statuses",
+        "metric": "replan",
+        "note": "TARGET 1 · 6: PARTIAL 이면 실행하지 않은 단계가 TODO 로 남는다"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  },
+  "notes": "한 호출 마감 45초 중 41초가 지나 조사 몫(24초)을 남길 수 없다(8-3)."
+}

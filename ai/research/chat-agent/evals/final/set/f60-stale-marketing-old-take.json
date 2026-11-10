@@ -1,0 +1,170 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-stale-marketing-old-take",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should",
+  "title": "기본 자료에 결과가 없는 옛 Take 4 의 3장 말 속도 — 가져오기(묻지 않음) 뒤 읽어 334",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-mkt",
+        "title": "브랜드 마케팅 전략 발표",
+        "takes": [
+          {
+            "take_id": "mkt-t3",
+            "take_number": 3,
+            "started_at": "2026-10-28T19:00:00+09:00",
+            "completed_at": "2026-10-28T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "mkt-t4",
+            "take_number": 4,
+            "started_at": "2026-10-30T19:00:00+09:00",
+            "completed_at": "2026-10-30T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                300,
+                312,
+                334,
+                305
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "mkt-t5",
+            "take_number": 5,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "mkt-t6",
+            "take_number": 6,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "mkt-t7",
+            "take_number": 7,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "mkt-t8",
+            "take_number": 8,
+            "started_at": "2026-11-07T19:00:00+09:00",
+            "completed_at": "2026-11-07T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-mkt"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4 때 3장 말 속도가 분당 몇 글자였는지 다시 확인하고 싶어요.",
+      "page_take_id": "mkt-t8"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "334",
+        "grader": "number",
+        "derive": "mkt-t4:SPEED.cpm@3"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 4,
+          "slide": 3,
+          "metric": "cpm"
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_TAKE:AUTO",
+          "exec:FETCH_TAKE:OK",
+          "tool:get_take_report:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fetch-replan",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "decision:NOT_LOADED:*",
+            "propose:FETCH_TAKE:AUTO"
+          ],
+          [
+            "propose:FETCH_TAKE:AUTO",
+            "exec:FETCH_TAKE:OK",
+            "tool:get_take_report:OK",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "replan",
+        "note": "기본 자료에 없는 Take → 가져오기(AUTO) 뒤 다시 읽기. 코드가 먼저 가져오면 NOT_LOADED 결정 없이도 허용"
+      },
+      {
+        "check_id": "fetch-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "ACTION_SUCCESS.FETCH_TAKE",
+          "fields": {
+            "take_number": "4"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "보던 Take 는 8 이라 Take 4 결과는 기본 자료에 없다(요약만 있음)."
+}

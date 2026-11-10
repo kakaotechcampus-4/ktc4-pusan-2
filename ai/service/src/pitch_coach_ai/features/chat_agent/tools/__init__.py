@@ -9,6 +9,8 @@
   2. 캐시 열쇠 = (도구, 검증한 인자의 정렬 JSON, 지금 범위, 읽은 결과 판 집합 · 화면 스냅샷). 있으면 `CACHED`로 돌려주고
      도구 호출 수에 세지 않는다. `NOT_LOADED` · 오류 결과는 캐시하지 않는다.
   3. 실행해 근거를 발급하고, 도구 기록(`TraceItem`)을 코드 템플릿으로 만든다(대본 · 사용자 원문 · 검색 질의 원문은 넣지 않는다).
+     도구 구현 안에서 예상하지 못한 예외가 나면 실행 전체를 끝내지 않고 그 호출 하나의 오류 결과(`TOOL_FAILED`, `failed_result`)로
+     돌려준다(L1-19). 예외 글은 결과 · 기록에 싣지 않고, 예외 종류 · 위치만 `crash`에 남겨 loop.py 가 서비스 로그에 쓴다.
 - 고칠 때: 도구를 더하거나 인자 · 결과 모양을 바꾸면 `version.TOOL_SCHEMA_VERSION`을 올린다(진행 중 실행은 판을 고정, 5-6).
 """
 
@@ -16,7 +18,9 @@ from __future__ import annotations
 
 import json
 import time
+import traceback
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -24,6 +28,7 @@ from pydantic import BaseModel, ValidationError
 from ..evidence import canonical_json
 from ..runctx import RunCtx
 from ..schemas import TraceItem
+from ..templates import PLAN_RESULT, PLAN_TOOL_NAME
 from . import impl
 
 P0_TOOLS = (
@@ -39,7 +44,10 @@ P0_TOOLS = (
 
 #: 모델에 주는 도구 설명. 짧게 둔다(도구가 많고 설명이 길면 모델이 잘못 고르기 쉽다, 4-3)
 DESCRIPTIONS = {
-    "update_plan": "할 일 목록(1~8단계)을 만들거나 고친다. 단계 상태는 TODO · DOING · DONE · SKIPPED.",
+    # '단계마다 tool 에 적는다'처럼 힌트를 채우라는 지시는 넣지 않고(계획 지침 prompts.PLAN 에만), 고칠 때만 · 상태는 코드가 단다고
+    # 적는다: 인자 스키마에 `tool`(도구 이름 목록)이 생긴 뒤로 모델이 조사 첫머리에 계획을 만들고 끝에 상태만 바꾸려고 update_plan 을
+    # 거듭 불러 반복 멈춤(PARTIAL) · 한도에 걸렸다(r9 평가). 이 설명 · 조사 지침의 같은 말로 같은 문항 33번 실행의 호출이 48 → 13번
+    "update_plan": "할 일 자체가 바뀔 때 할 일 목록(1~8단계)을 고친다. 단계 상태 · 결과는 코드가 실행에 맞춰 단다. tool 은 그 단계에서 쓸 도구(모르면 null), step 은 목적만.",
     "get_screen": "대화창을 연 화면의 상태(입력 중인 값과 저장된 값)를 읽는다. 피치 만들기 · 수정 · 장치 점검 화면에서만 값이 있다.",
     "list_pitches": "내 피치 목록에서 이름(query)으로 찾는다. query 가 null 이면 전체 목록 요약.",
     "list_takes": "지금 범위 피치의 최근 Take 요약을 조건으로 거른다(대본 버전 · 끝까지 한 발표 · 모드).",
@@ -70,6 +78,8 @@ class ToolResult:
     source_ids: list[str] = field(default_factory=list)
     #: 서비스 로그에 더할 관측값(`search_guides`: embed · embed_ms · search_mode, `agent_embed` 로그로만 나가고 진단 기록 모양은 안 바꾼다). 캐시에 담지 않는다
     diag: dict[str, Any] = field(default_factory=dict)
+    #: 도구 구현의 예외(`failed_result`): 예외 종류 · 마지막 위치만(예외 글 없음). loop.py 가 `agent_tool_crash` 로그로 남긴다. 캐시에 담지 않는다
+    crash: dict[str, Any] | None = None
 
     def model_view(self) -> dict[str, Any]:
         """모델에 돌려줄 짧은 JSON."""
@@ -195,7 +205,10 @@ def run_tool(
     if key in ctx.tool_cache:
         res = ToolResult.from_cache(ctx.tool_cache[key])
     else:
-        res = impl.RUNNERS[name](ctx, args)
+        try:
+            res = impl.RUNNERS[name](ctx, args)
+        except Exception as exc:  # noqa: BLE001  # 도구 하나의 예외로 실행 전체를 끝내지 않는다(L1-19)
+            res = failed_result(name, exc)
         if (
             res.ok
             and res.read_state not in ("NOT_LOADED", "OMITTED")
@@ -218,6 +231,33 @@ def run_tool(
         outcome=outcome,  # type: ignore[arg-type]
     )
     return res, trace
+
+
+#: 도구 구현 안의 예상하지 못한 예외(L1-19). 모델은 다른 도구 · 대상으로 확인하거나 확인한 데까지 답한다(상황 신호 `TOOL_ERROR`)
+TOOL_FAILED = "TOOL_FAILED"
+
+
+def failed_result(name: str, exc: BaseException) -> ToolResult:
+    """도구 구현이 예외로 끝난 호출의 결과: 그 도구의 오류(`outcome:"ERROR"`, 캐시하지 않음). 예외 글은 모델 · 도구 기록에
+    싣지 않는다(사용자 글 · 기록 값을 담을 수 있다). 로그에는 예외 종류와 마지막 위치(파일:줄 · 함수)만 남긴다(turn.py `_crash_info`와 같은 모양)."""
+    tb = traceback.extract_tb(exc.__traceback__)
+    return ToolResult(
+        name=name,
+        ok=False,
+        data=None,
+        error={
+            "code": TOOL_FAILED,
+            "message": "도구를 실행하지 못했다. 다른 도구 · 대상으로 확인하거나 확인한 데까지 답한다",
+        },
+        outcome="ERROR",
+        args_summary=PLAN_TOOL_NAME.get(name, name),
+        result_summary=PLAN_RESULT["ERROR"],
+        cacheable=False,
+        crash={
+            "cause": type(exc).__name__,
+            "where": [f"{Path(f.filename).name}:{f.lineno} {f.name}" for f in tb[-3:]],
+        },
+    )
 
 
 def invalid_result(name: str, code: str) -> ToolResult:

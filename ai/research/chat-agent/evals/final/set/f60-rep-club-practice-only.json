@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-club-practice-only",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "이미 목표가 있고 연습만 하겠다는 말 — 연습 준비 버튼만, 저장 · 결과 발견 안내 없음",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-club",
+        "title": "동아리 신입 모집 홍보 발표",
+        "takes": [
+          {
+            "take_id": "club-t1",
+            "take_number": 1,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "audience": 0.5
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "club-t2",
+            "take_number": 2,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "result": {
+              "audience": 0.47
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 69
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-club",
+      "goal": {
+        "metric": "audience_ratio",
+        "slide_number": null,
+        "base_take_id": "club-t2",
+        "version": 1,
+        "status": "OPEN",
+        "after_take": 2,
+        "created_at": "2026-11-03T21:00:00+09:00"
+      }
+    }
+  },
+  "turns": [
+    {
+      "message": "목표는 지난번에 정해 둔 그대로 두고, 지금 곧장 한 번 더 연습하러 갈래요.",
+      "page_take_id": "club-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-save-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL"
+        ],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "button-proposed",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:START_PRACTICE:BUTTON"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-save-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:SAVE_GOAL:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-result-guide",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요",
+        "grader": "regex",
+        "note": "TARGET 3: 버튼만 낸 답에는 결과 발견 안내가 없다"
+      },
+      {
+        "check_id": "goal-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 1,
+        "path": "after.conversation.goal.version"
+      }
+    ]
+  }
+}

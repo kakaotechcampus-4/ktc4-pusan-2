@@ -35,6 +35,7 @@ import { autoEndState, type AutoEndNotice, type AutoEndReason } from '@/shared/l
 import { formatDuration } from '@/shared/lib/clock';
 import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
+import { BaseVoiceUnconfirmedNote } from './BaseVoiceUnconfirmedNote';
 import { CoachStrip } from './CoachStrip';
 import { useLiveCoach } from './useLiveCoach';
 import { useLiveGaze } from './useLiveGaze';
@@ -67,6 +68,8 @@ import { sendEnding, type Ending } from './sendEnding';
 import { useEndConfirm } from './useEndConfirm';
 import { StageLiveBadge } from './StageLiveBadge';
 import { useSlideDeck } from './useSlideDeck';
+import { NextSlideButton } from './NextSlideButton';
+import { SlideClickArea } from './SlideClickArea';
 import { useStageClock } from './useStageClock';
 import {
   CONNECT_SLOW_MS,
@@ -266,7 +269,7 @@ export function RehearsalPage() {
   const { meterRef, audioState, voiceRecord } = useMicLevel(stream, {
     clock: elapsedMs,
   });
-  const { slideNumber, slideStartedAtRef, slideAt } = useSlideDeck({
+  const { slideNumber, go, slideStartedAtRef, slideAt } = useSlideDeck({
     total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
@@ -901,6 +904,8 @@ export function RehearsalPage() {
                     </span>
                   )}
                 </div>
+                {/* 좌클릭 다음 장 · 우클릭 이전 장 (파워포인트와 같습니다). 위에 겹쳐 칸은 그대로입니다 */}
+                <SlideClickArea slideNumber={slideNumber} enabled={running} onGo={go} />
               </div>
 
               <div className="rail">
@@ -917,7 +922,7 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="next" hidden={slideNumber >= pageCount}>
-                  <div className="thumb">
+                  <NextSlideButton enabled={running} onNext={() => go(nextSlideNumber)}>
                     {materials.doc && nextSlideNumber > 0 ? (
                       <PdfPage
                         doc={materials.doc}
@@ -928,11 +933,7 @@ export function RehearsalPage() {
                     ) : (
                       `SLIDE ${nextSlideNumber} · 16:9`
                     )}
-                  </div>
-                  <div className="label">
-                    <b>다음 슬라이드</b>
-                    <span>→ 키로 이동</span>
-                  </div>
+                  </NextSlideButton>
                 </section>
 
                 {/* 배지를 따로 두지 않습니다 — 테두리가 시선 표시의 전부입니다.
@@ -972,7 +973,8 @@ export function RehearsalPage() {
                   </span>
                 ) : (
                   <span className="key-help">
-                    ← → 슬라이드 이동 · Space 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
+                    다음 장 클릭 · → · Space · 이전 장 우클릭 · ←
+                    {scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
                   </span>
                 )}
                 {/* 알림 영역은 안쪽 문구가 각자 잡습니다 — 여기도 status 면 낭독기가 두 번 읽습니다 */}
@@ -997,12 +999,16 @@ export function RehearsalPage() {
                   {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
                   전사는 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
                   {audioState !== null && audioState !== 'running' && (
-                    <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
+                    // 슬라이드를 누르면 장이 넘어가서, 소리를 켜는 클릭은 슬라이드 밖으로 안내합니다
+                    // (resumeOnGesture 는 화면 어디를 눌러도 받습니다)
+                    <span>소리가 흐르지 않습니다 — 슬라이드 밖을 한 번 클릭해 주세요</span>
                   )}
                   {ticket === null && (
                     <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
                   )}
                   {sessionError && <span>{sessionError}</span>}
+                  {/* 장치 점검이 목소리 기준을 보냈는데 끝내 응답을 못 받았으면 알립니다 (#1179) */}
+                  <BaseVoiceUnconfirmedNote state={location.state} />
                 </div>
 
                 {/* 비활성 버튼은 초점을 못 받고 title 도 잘 안 보여서 이유를 글자로 둡니다 */}

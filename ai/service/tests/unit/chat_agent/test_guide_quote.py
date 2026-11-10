@@ -146,3 +146,38 @@ def test_guide_survivors_cite_only_cards_of_emitted_guide_claims(corpus: Any) ->
     # 같은 카드의 다른 문장을 인용한 뒤 문장은 보이는 인용과 어긋나므로 버린다(test_quote_lock.py)
     assert kinds.count("GUIDE") == 1
     assert [s["quote"] for s in data["message"]["sources"]] == [sents[1]]  # 첫 인용 문장
+
+
+def test_advice_question_typed_as_knowledge_keeps_the_guide_sentences(corpus: Any) -> None:
+    """방법 질문을 계획 · 답 초안이 발표법 주장(KNOWLEDGE, SUPPORTED)으로 분류해도 요청으로 바로잡는다: '자료와 맞아요' 판단 문장이
+    먼저 나가 그 카드의 인용을 첫 문장으로 잠그면 다른 문장을 인용한 자료 조언이 모두 빠졌다(r9 svc-general-guide-found)."""
+    card = _card(corpus)
+    s = _sentences(card.text)[1]
+    knowledge = F.draft(
+        "청중과 눈을 잘 맞추려면 어떻게 해야 해",
+        type_="KNOWLEDGE",
+        claim_op=None,
+        polarity="NEUTRAL",
+        verdict="SUPPORTED",
+        source_ids=[card.source_id],
+    )
+    llm = F.FakeLlm(
+        [
+            F.plan(assessments=[knowledge]),
+            F.tools(("search_guides", {"query": card.title})),
+            F.done(),
+        ],
+        answers=[
+            F.answer(
+                [F.claim("GUIDE", "이렇게 해 보세요.", source_ids=[card.source_id], quote=s)],
+                assessments=[knowledge],
+            )
+        ],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(
+        F.request(user_message=MSG), llm, corpus=corpus, corpus_version=corpus.version
+    )
+    fd = FinalData.model_validate(data)
+    assert [c.kind for c in fd.message.claims] == ["GUIDE"]  # type: ignore[union-attr]
+    assert all(a.type == "REQUEST" for a in fd.assessments)

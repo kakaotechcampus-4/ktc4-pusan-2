@@ -93,9 +93,16 @@ def test_slides_finished_before_the_deadline_keep_their_rubrics() -> None:
 
 
 def test_a_slide_cut_in_the_middle_fails_as_a_whole() -> None:
-    res = _run(calls_before_deadline=5)  # 6번 장은 1차 분석 · 최종 결론까지만
+    res = _run(calls_before_deadline=4)  # 6번 장은 1차 분석까지만
     assert [r.meta.slide_number for r in res.rubrics] == [4]
     assert _failed(res) == [(6, "LLM_TIMEOUT"), (7, "LLM_TIMEOUT")]
+
+
+def test_a_slide_cut_at_the_unit_stage_is_recovered_with_sentence_units() -> None:
+    res = _run(calls_before_deadline=5)  # 6번 장은 1차 분석 · 최종 결론까지만 (전달 단위에서 끊김)
+    assert [r.meta.slide_number for r in res.rubrics] == [4, 6]
+    assert res.rubrics[1].meta.rubric_quality == "sentence_fallback"
+    assert _failed(res) == [(7, "LLM_TIMEOUT")]
 
 
 def test_every_slide_fits_before_the_deadline() -> None:

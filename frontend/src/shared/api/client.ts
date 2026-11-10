@@ -143,10 +143,18 @@ export function retryAfterSec(value: string | null, now = Date.now()): number | 
  *
  * 인증 경로(`cookieRequest`)는 이 길을 타지 않습니다. 거기는 JSON 본문이 없고
  * CSRF 헤더와 탭 간 직렬화가 붙으며, `apiRequest` 가 `/api/auth/` 를 거부합니다.
+ *
+ * `signal` 을 주면 그 요청을 중간에 끊을 수 있습니다 — 끊기면 `fetch` 가 `AbortError` 를 던집니다.
+ * 장치 점검의 보정 요청이 제한 시간을 둘 때 씁니다 (`features/rehearsal/lib/sendCalibration.ts`, #1184 리뷰)
  */
-export const postJson = <T>(path: string, body: unknown): Promise<T> =>
+export const postJson = <T>(
+  path: string,
+  body: unknown,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<T> =>
   apiRequest<T>(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
