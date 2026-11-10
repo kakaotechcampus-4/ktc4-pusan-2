@@ -8,7 +8,7 @@ import '@/ui/stage.css';
 /**
  * PM 승인 대기 배치 시안이다. 제품의 보정·측정 계약은 바꾸지 않는다. 배치 · 색은 src/ui/stage.css가 정한다.
  * 클래스 이름은 ScreenPreview.test가 stage.css에 있는지 확인한다.
- * 슬라이드는 ← → · Space로 넘긴다(제품과 같은 키). 끝내기는 마지막 장에서만 열린다(제품 #697).
+ * 슬라이드는 ← → · Space 및 슬라이드 좌클릭·우클릭으로 넘긴다(제품 #1192). 끝내기는 마지막 장에서만 열린다(#697).
  */
 const PAGES = 12;
 
@@ -120,6 +120,21 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   <div className="slide-content">
                     <span className="placeholder">SLIDE {slide} · 16:9</span>
                   </div>
+                  <button
+                    type="button"
+                    className="slide-advance"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      if (!gate) setSlide((n) => Math.min(PAGES, n + 1));
+                    }}
+                    onContextMenu={(event) => {
+                      if (gate) return;
+                      event.preventDefault();
+                      setSlide((n) => Math.max(1, n - 1));
+                    }}
+                  />
                 </div>
                 <div className="rail">
                   <section className="camera">
@@ -179,7 +194,7 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
               <div className="stage-foot">
                 <div className="stage-notes">
                   <span className="key-help">
-                    ← → 슬라이드 이동 · Space 다음 장{!exam && ' · ↑ ↓ 대본 스크롤'}
+                    ← → 슬라이드 · 클릭 다음 장 · 우클릭 이전 장 · Space 다음 장{!exam && ' · ↑ ↓ 대본'}
                   </span>
                   <div className="stage-status">
                     {stateId === 'disconnected' && (
