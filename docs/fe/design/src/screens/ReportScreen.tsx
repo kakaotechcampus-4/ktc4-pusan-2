@@ -135,7 +135,9 @@ function ComparisonSummary() {
                     <p className="text-xs font-bold text-stone">발표 전체</p>
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                       <span className="tabular tabular-nums font-bold text-ink">{overall[0]}</span>
-                      <span aria-hidden="true" className="text-stone">→</span>
+                      <span aria-hidden="true" className="text-stone">
+                        →
+                      </span>
                       <span className="tabular tabular-nums font-bold text-ink">{overall[1]}</span>
                       {overall[3] === 'muted' ? (
                         <Badge tone="muted">{overall[2]}</Badge>
