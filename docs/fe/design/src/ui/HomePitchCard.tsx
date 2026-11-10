@@ -16,6 +16,8 @@ export interface HomePitch {
   takes: readonly unknown[];
   /** BE가 정한 삭제 가능 여부(#1057). false면 연습이나 분석이 도는 중이라 막는다. 없으면 막지 않는다 */
   can_delete?: boolean;
+  /** #1105 튜토리얼 샘플 여부. 제목 대신 이 필드로 판단한다. */
+  is_demo?: boolean;
 }
 
 const rowLink = 'whitespace-nowrap text-xs font-bold hover:text-coral-deep';
@@ -39,6 +41,7 @@ export function HomePitchCard({
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const takes = pitch.takes.length;
   const titleStyle = 'inline-flex min-w-0 items-center gap-2 font-bold';
+  const demo = pitch.is_demo === true;
   return (
     <li className="flex items-center gap-4 px-4 py-2 sm:px-5">
       <div
@@ -60,9 +63,14 @@ export function HomePitchCard({
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-        {pitch.pitch_id ? (
+        {demo ? (
+          <span className={titleStyle}>
+            <span className="truncate">{pitch.pitch_title}</span>
+            <span className="shrink-0 border border-ink bg-cream px-1.5 text-xs">샘플</span>
+          </span>
+        ) : pitch.pitch_id ? (
           <Link
-            to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
+            to={demo ? '/pitch/tutorial' : `/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
             className={`${titleStyle} hover:text-coral-deep`}
           >
             <span className="truncate">{pitch.pitch_title}</span>
