@@ -113,6 +113,14 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
         return Math.abs(panel.getBoundingClientRect().top - visibleBottom) <= 1;
       })()`);
     await expect.poll(alignedToVisibleHeader).toBe(true);
+    // 스크롤 오프셋 CSS 변수는 본문 전체가 아닌 패널에만 기록해야 합니다.
+    await expect
+      .poll(() => panel.evaluate((element) => element.style.getPropertyValue('--chat-overlay-top')))
+      .not.toBe('');
+    await expect(page.locator('.chat-layout')).not.toHaveAttribute(
+      'style',
+      /--chat-overlay-(top|bottom)/,
+    );
 
     // Take 기록 내용이 짧아도 테스트 환경에서 문서 스크롤을 충분히 확보합니다.
     await page.evaluate(`(() => {
