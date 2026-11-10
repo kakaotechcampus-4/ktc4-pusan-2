@@ -447,6 +447,7 @@ function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
+  const { pathname, search } = useLocation();
   const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -488,6 +489,70 @@ function ChatPanel({
       content.style.touchAction = previous.contentTouchAction;
     };
   }, [mobileOverlay]);
+
+  // 중간 폭(761~1439px)에서는 상단바/고정 푸터의 실제 높이만큼 패널을 비웁니다.
+  // 헤더가 줄바꿈되거나 발표 준비 버튼 안내가 길어져도 고정된 rem 값에 의존하지 않습니다.
+  useLayoutEffect(() => {
+    const layout = document.querySelector<HTMLElement>('.chat-layout');
+    const content = layout?.querySelector<HTMLElement>('.chat-layout-content');
+    if (!layout || !content || typeof window.matchMedia !== 'function') return;
+
+    const overlay = window.matchMedia('(min-width: 761px) and (max-width: 1439px)');
+    let header: HTMLElement | null = null;
+    let footer: HTMLElement | null = null;
+    const measure = () => {
+      if (!overlay.matches) return;
+      layout.style.setProperty(
+        '--chat-overlay-top',
+        `${Math.ceil(header?.getBoundingClientRect().height ?? 0)}px`,
+      );
+      layout.style.setProperty(
+        '--chat-overlay-bottom',
+        `${Math.ceil(footer?.getBoundingClientRect().height ?? 0)}px`,
+      );
+    };
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    const discover = () => {
+      const nextHeader = content.querySelector<HTMLElement>(
+        '.app-scroll-shell > header, .dusk-screen > header, .pitch-create > header',
+      );
+      const nextFooter = content.querySelector<HTMLElement>('.pitch-create-square > footer');
+      if (nextHeader === header && nextFooter === footer) return;
+      resizeObserver?.disconnect();
+      header = nextHeader;
+      footer = nextFooter;
+      if (header) resizeObserver?.observe(header);
+      if (footer) resizeObserver?.observe(footer);
+      measure();
+    };
+    // React.lazy/Suspense가 화면 헤더를 나중에 마운트할 수 있으므로 교체도 감지합니다.
+    const mutationObserver = new MutationObserver(discover);
+    const sync = () => {
+      if (overlay.matches) {
+        mutationObserver.observe(content, { childList: true, subtree: true });
+        discover();
+      } else {
+        mutationObserver.disconnect();
+        resizeObserver?.disconnect();
+        header = null;
+        footer = null;
+        layout.style.removeProperty('--chat-overlay-top');
+        layout.style.removeProperty('--chat-overlay-bottom');
+      }
+    };
+    overlay.addEventListener('change', sync);
+    window.addEventListener('resize', measure);
+    sync();
+    return () => {
+      overlay.removeEventListener('change', sync);
+      window.removeEventListener('resize', measure);
+      mutationObserver.disconnect();
+      resizeObserver?.disconnect();
+      layout.style.removeProperty('--chat-overlay-top');
+      layout.style.removeProperty('--chat-overlay-bottom');
+    };
+  }, [pathname, search]);
   useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */

@@ -54,13 +54,13 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
       expect(mainBox!.x + mainBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
 
       // 부모 영역뿐 아니라 실제 조작부도 채팅 패널에 가려지지 않아야 합니다.
-      // 발표 수정 화면의 지연 로딩이 완료된 다음 기존 첫 조작부를 측정합니다.
-      if (screen.name === '발표 수정') {
-        await expect(main.getByRole('button', { name: /^슬라이드 확인 ·/ })).toBeVisible();
-      }
-      const action = main
+      // 지연 로딩 중 첫 요소가 교체될 수 있는 발표 수정 화면에서는 고유 버튼을 직접 측정합니다.
+      let action = main
         .locator('a:visible, button:visible:not([disabled]):not([aria-disabled="true"])')
         .first();
+      if (screen.name === '발표 수정') {
+        action = main.getByRole('button', { name: /^슬라이드 확인 ·/ });
+      }
       await expect(action).toBeVisible();
       const actionBox = await action.boundingBox();
       expect(actionBox).not.toBeNull();
@@ -95,6 +95,73 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     await header.getByRole('button', { name: '사용방법' }).click({ trial: true });
     await expect(footer.getByRole('button').last()).toBeInViewport();
   });
+
+  test('761px에서 헤더와 고정 푸터 높이가 변해도 패널은 조작부를 가리지 않는다', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 761, height: 900 });
+    await page.goto('/pitch/' + PITCH_ID + '/edit');
+    const panel = await openPanel(page);
+    const header = page.getByRole('banner').first();
+    const footer = page.locator('.pitch-create-square > footer');
+    await expect(header).toBeVisible();
+    await expect(footer).toBeVisible();
+
+    // 실제 메뉴가 줄바꿈되거나 안내가 길어지는 상황을 브라우저에서 재현합니다.
+    await header.evaluate((element) => {
+      element.style.minHeight = `${element.getBoundingClientRect().height + 75}px`;
+    });
+    await footer.evaluate((element) => {
+      element.style.minHeight = `${element.getBoundingClientRect().height + 65}px`;
+    });
+
+    await expect
+      .poll(async () => {
+        const [panelBox, headerBox, footerBox] = await Promise.all([
+          panel.boundingBox(),
+          header.boundingBox(),
+          footer.boundingBox(),
+        ]);
+        return (
+          !!panelBox &&
+          !!headerBox &&
+          !!footerBox &&
+          panelBox.y >= headerBox.y + headerBox.height - 1 &&
+          panelBox.y + panelBox.height <= footerBox.y + 1
+        );
+      })
+      .toBe(true);
+    await header.getByRole('button', { name: '사용방법' }).click({ trial: true });
+    await footer.getByRole('button').last().click({ trial: true });
+  });
+
+  for (const screen of [
+    { name: '분석 대기', path: '/takes/t-held/processing', action: '홈으로' },
+    { name: '대본 확인', path: '/takes/t-confirm/confirm', action: '건너뛰기' },
+  ]) {
+    test(`1366px ${screen.name} 조작부는 열린 채팅에 가리지 않는다`, async ({ page }) => {
+      await page.setViewportSize({ width: 1366, height: 900 });
+      await page.goto(screen.path);
+      const dialog = page.locator('.dusk-screen > main > section');
+      await expect(dialog).toBeVisible();
+      const panel = await openPanel(page);
+      const action =
+        screen.action === '홈으로'
+          ? dialog.getByRole('link', { name: screen.action })
+          : dialog.getByRole('button', { name: screen.action });
+      await expect(action).toBeVisible();
+
+      const panelBox = await panel.boundingBox();
+      const dialogBox = await dialog.boundingBox();
+      const actionBox = await action.boundingBox();
+      expect(panelBox).not.toBeNull();
+      expect(dialogBox).not.toBeNull();
+      expect(actionBox).not.toBeNull();
+      expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
+      expect(actionBox!.x + actionBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
+      await action.click({ trial: true });
+    });
+  }
 
   test('1366·1439px는 오버레이이고 1440px부터 도킹된다', async ({ page }) => {
     await page.goto('/');
