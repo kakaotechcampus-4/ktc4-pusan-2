@@ -461,6 +461,28 @@ def attach(
         seen = next((j for j, m in enumerate(meta) if key in m.get("keys", [])), None)
         if seen is not None:
             return seen
+    if i is None and why is None:
+        # 같은 도구 · 같은 대상을 이미 실행한 단계가 있으면 새 단계를 덧붙이지 않고 거기에 잇는다(같은 Take 기록의 두 절 · 자료 찾기
+        # 여러 번이 화면에서 겹쳐 보이지 않게, Issue #1194 화면 검토). 결과는 더 구체적인 쪽을 남긴다
+        # '아직 불러오지 않음' 뒤의 가져오기 · 다시 읽기는 순서 자체가 할 일이라 합치지 않는다
+        same = next(
+            (
+                j
+                for j, m in enumerate(meta)
+                if m["ran"] == run.tool and m.get("take") == run.take and m["done"] and run.done
+                and m["result"] not in _SEPARATE_RESULTS
+            ),
+            None,
+        )
+        if same is not None:
+            m = meta[same]
+            m.update(result=merge_result(m["result"], run.result))
+            m["evidence_ids"] = list(dict.fromkeys([*m["evidence_ids"], *run.evidence_ids]))
+            if tool_seq is not None:
+                m["tool_seqs"] = [*m["tool_seqs"], tool_seq]
+            if key is not None:
+                m["keys"] = [*m.get("keys", []), key]
+            return same
     if i is None:
         if len(meta) >= max_steps:
             return None
@@ -483,6 +505,29 @@ def attach(
     if key is not None:
         m["keys"] = [*m.get("keys", []), key]
     return i
+
+
+#: 한 단계에 이은 실행 결과를 합칠 때 덜 구체적인 결과(다른 결과가 있으면 버린다)
+_PLAIN_RESULTS = (tpl.PLAN_RESULT["CHECKED"], tpl.PLAN_RESULT["GUIDES"], tpl.PLAN_RESULT["NO_GUIDES"])
+#: 다음 실행을 기다린 사실이라 같은 도구의 다음 실행과 한 단계로 합치지 않는 결과
+_SEPARATE_RESULTS = (tpl.PLAN_RESULT["NOT_LOADED"],)
+
+
+def merge_result(old: str | None, new: str | None) -> str | None:
+    """한 단계에 이은 두 실행의 결과: 같으면 하나, 한쪽이 '확인'처럼 덜 구체적이면 다른 쪽, 자료는 하나라도 있으면 '자료 있음',
+    그 밖은 ' · '로 잇는다."""
+    if not old or old == new:
+        return new or old
+    if not new:
+        return old
+    guides = {tpl.PLAN_RESULT["GUIDES"], tpl.PLAN_RESULT["NO_GUIDES"]}
+    if {old, new} == guides:
+        return tpl.PLAN_RESULT["GUIDES"]
+    if old in _PLAIN_RESULTS:
+        return new
+    if new in _PLAIN_RESULTS:
+        return old
+    return f"{old} · {new}"
 
 
 def add_unresolved(meta: list[dict[str, Any]], max_steps: int) -> int | None:
@@ -617,20 +662,24 @@ def finish_plan(
     *,
     answered: bool,
 ) -> list[dict[str, Any]]:
-    """끝 처리: DONE · REFUSED 면 실행하지 않은 단계 SKIPPED, PARTIAL 이면 TODO(DOING 포함), NEEDS_ACTION 은 그대로.
-    답 쓰기 단계(`tool == "answer"`)는 `answered`(답 문장이 하나 이상)면 DONE. 실행했지만 실패한 단계(`확인 실패`)는 DONE · REFUSED
-    답에서 DONE 이다 — 실행한 단계이고 글이 실패를 보이므로 '의도적으로 건너뜀'(SKIPPED)이 아니다. PARTIAL 이면 남은 일(TODO)."""
+    """끝 처리: DONE · REFUSED 면 실행하지 않은 단계를 목록에서 뺀다, PARTIAL 이면 TODO(DOING 포함), NEEDS_ACTION 은 그대로.
+    끝난 답에 실행하지 않은 단계(처음 계획의 가설)가 남아 보이면 무엇을 했는지 헷갈린다(Issue #1194 화면 검토: '— 건너뜀'이
+    두 차례 모두 남음). 다만 모든 단계가 빠지면 마지막 단계 하나는 남긴다. 답 쓰기 단계(`tool == "answer"`)는 `answered`(답
+    문장이 하나 이상)면 DONE. 실행했지만 실패한 단계(`확인 실패`)는 DONE · REFUSED 답에서 DONE 이다 — 실행한 단계이고 글이 실패를
+    보인다. PARTIAL 이면 남은 일(TODO)."""
     plan = render(meta, registry, cfg)
     if status not in ("DONE", "REFUSED", "PARTIAL"):
         return plan
-    left = "TODO" if status == "PARTIAL" else "SKIPPED"
     out = []
     for m, p in zip(meta, plan, strict=True):
         if p["status"] in ("DOING", "TODO"):
             ran_failed = bool(m.get("ran")) and bool(m.get("failed")) and status != "PARTIAL"
             done = (m["tool"] == "answer" and answered) or ran_failed
-            p = {**p, "status": "DONE" if done else left}
+            p = {**p, "status": "DONE" if done else ("TODO" if status == "PARTIAL" else "SKIPPED")}
         out.append(p)
+    if status != "PARTIAL":
+        kept = [p for p in out if p["status"] != "SKIPPED"]
+        out = kept or out[-1:]
     return out
 
 

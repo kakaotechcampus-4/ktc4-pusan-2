@@ -185,14 +185,11 @@ def test_template_grader_uses_the_constants_and_checks_particles() -> None:
     assert not gr.template_check(contradicted.replace("'는", "'은"), "CONTRADICTED", "contains")[0]
     wrong = "말씀하신 '시선'은 기록과 맞아요: x."
     assert not gr.template_check(wrong, "CONTRADICTED", "contains")[0]
-    # 준 자리 뒤 '으로'는 그 값의 받침에 맞는 것 하나만
+    # 준 자리는 그 값 그대로만(범위 문장은 제목을 따옴표로 묶어 조사가 붙지 않는다, Issue #1194 화면 검토)
     fetch = {"name": "ACTION_SUCCESS.FETCH_PITCH", "fields": {"title": "졸업 발표"}}
-    assert gr.template_check("졸업 발표로 범위를 바꿨어요.", fetch, "contains")[0]
-    assert not gr.template_check("졸업 발표으로 범위를 바꿨어요.", fetch, "contains")[0]
-    assert not gr.template_check("회사 소개로 범위를 바꿨어요.", fetch, "contains")[0]
-    lesson = {"name": "ACTION_SUCCESS.FETCH_PITCH", "fields": {"title": "신입 수업"}}
-    assert gr.template_check("신입 수업으로 범위를 바꿨어요.", lesson, "contains")[0]
-    assert not gr.template_check("신입 수업로 범위를 바꿨어요.", lesson, "contains")[0]
+    assert gr.template_check("'졸업 발표' 기록을 가져왔어요.", fetch, "contains")[0]
+    assert not gr.template_check("'회사 소개' 기록을 가져왔어요.", fetch, "contains")[0]
+    assert not gr.template_check("졸업 발표로 범위를 바꿨어요.", fetch, "contains")[0]
     # 모르는 자리 뒤 '예요'는 맞은 값의 받침으로 대조한다
     assert gr.template_check("답답하실 수 있지만 기록은 우선 개선이에요.", "PRESSURE", "contains")[
         0

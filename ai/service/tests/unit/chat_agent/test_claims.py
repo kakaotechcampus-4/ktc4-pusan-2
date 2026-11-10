@@ -908,7 +908,7 @@ def test_fm_L6_15_preference_conflicting_problem_is_partly_whatever_the_model_sa
     snap = t5(issues=[("PACE_FAST", 2, True)])
     cv = run(pref(model_verdict), snap, focus="take-5")
     assert (cv.verdict, cv.verdict_source) == ("PARTLY", "CODE")  # 어긋남 = PARTLY
-    assert cv.evidence_ids and cv.evidence_phrase == "Take 5 말이 빠름"
+    assert cv.evidence_ids and cv.evidence_phrase == "Take 5 빠른 말 속도"
 
 
 @pytest.mark.parametrize("model_verdict", ["SUPPORTED", "PARTLY", "CONTRADICTED", "UNVERIFIABLE"])
@@ -948,7 +948,7 @@ def test_fm_L6_15_preference_never_contradicted_and_ignores_model_evidence_ids()
 def test_fm_L6_15_preference_uses_its_own_template_never_the_measured_one():
     snap = t5(issues=[("PACE_FAST", 2, True)])
     o = fin([pref("PARTLY")], PREF_MSG, snap, focus="take-5").outcomes[0]
-    assert o.sentence == "말씀하신 방식은 존중해요. 다만 이 피치의 기록에서는 Take 5 말이 빠름예요."
+    assert o.sentence == "말씀하신 방식은 존중해요. 다만 이 피치의 기록에서는 Take 5 빠른 말 속도예요."
     assert "기록과 달라요" not in o.sentence
     fits = fin([pref("PARTLY")], PREF_MSG, t5(), focus="take-5").outcomes[0]
     assert fits.assessment.verdict == "SUPPORTED"

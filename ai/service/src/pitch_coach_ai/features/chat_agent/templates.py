@@ -170,7 +170,8 @@ def scope_text(reason: object) -> SystemText:
 #: 실행 성공 문장 (ACTION_RESULT, 6-9 · 7-10). 행동 type → 문장
 ACTION_SUCCESS = {
     "SAVE_GOAL": "목표를 저장했어요.",
-    "FETCH_PITCH": "{title}으로 범위를 바꿨어요.",
+    # 범위를 바꾼 사실보다 무엇을 가져왔는지를 말한다('범위'는 화면 칩으로 보인다, Issue #1194 화면 검토)
+    "FETCH_PITCH": "'{title}' 기록을 가져왔어요.",
     "FETCH_TAKE": "Take {take_number} 기록을 가져왔어요.",
     "REASSESS": "참고 결과를 만들었어요. 공식 리뷰는 그대로예요.",
 }
@@ -379,7 +380,7 @@ PLAN_OUTCOME_OTHER = "판단 불가"
 #: 단계 결과 글(사실 · 상태)
 PLAN_RESULT = {
     "NOT_COMPARABLE": "비교 불가({reason})",
-    "NOT_LOADED": "기본 자료에 없음",
+    "NOT_LOADED": "아직 불러오지 않음",
     "REVIEW_MISSING": "리뷰 분석 전",
     "ERROR": "확인 실패",
     "SHORT": "시간 부족",
@@ -403,7 +404,7 @@ PLAN_RESULT = {
 PLAN_WHY = {
     "REVIEW_MISSING": "리뷰 없어",
     "NOT_COMPARABLE": "비교 불가라",
-    "NOT_LOADED": "기본 자료에 없어",
+    "NOT_LOADED": "불러오지 않아",
     "NO_RECORD": "기록 없어",
     "TOOL_ERROR": "확인 실패라",
 }
