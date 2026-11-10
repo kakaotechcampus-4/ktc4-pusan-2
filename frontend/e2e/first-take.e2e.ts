@@ -36,7 +36,7 @@ test('튜토리얼 사용 완료 계정은 장치 점검으로 보내지 않고 
 
   // 개발용 MSW 모듈은 화면과 같은 브라우저 안에 있으므로 새로고침 없이 상태를 바꿉니다.
   await page.evaluate(() => {
-    const mock = Reflect.get(window, 'mockFirstTake') as { used(): void } | undefined;
+    const mock = Reflect.get(globalThis, 'mockFirstTake') as { used(): void } | undefined;
     if (!mock) throw new Error('First Take 개발 목이 등록되지 않았습니다.');
     mock.used();
   });
