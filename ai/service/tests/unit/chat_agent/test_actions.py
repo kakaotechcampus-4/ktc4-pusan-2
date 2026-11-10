@@ -1650,3 +1650,35 @@ def test_goal_proposal_options_carry_evidence() -> None:
         ctx=ctx, base=base, user_draft=None, user_reason="x", dims={}, seq=2
     )
     assert unmeasurable["options"][0]["evidence_ids"] == []
+
+
+def test_reassess_target_text_is_never_null_when_it_has_a_number_goal() -> None:
+    """숫자 목표가 있는 기준의 문구가 출처가 없거나 비었으면 null 대신 숫자 목표로 만든 문구를 싣는다(#1167).
+
+    리뷰는 이 문구를 기준 판정 · 다음 미션 설명에 그대로 싣고, BE 는 다시 평가 응답을 공식 리뷰와 같은 검사(문자열만)로
+    본다. null 이면 승인 뒤 다시 평가가 늘 실패했다. 출처가 있는 문구는 그대로 둔다.
+    """
+    targets = [
+        {"display": "Take 5 속도 300이었어요", "metric": "cpm", "operator": "LTE", "value": 330},
+        {"display": None, "metric": "audience_ratio", "operator": "GTE", "value": 0.7},
+        {"display": "  ", "metric": "filler_count", "operator": "LT", "value": 5},
+        {"display": "속도 330 이하", "metric": "cpm", "operator": "LTE", "value": 330},
+    ]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": targets}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.result == "PROPOSED", p.reason_code
+    got = p.action.args["change"]["targets"]  # type: ignore[union-attr]
+    assert [t["display"] for t in got] == [
+        "말 속도 330자/분 이하",
+        "청중 시선 70% 이상",
+        "군더더기 수 5회 미만",
+        "속도 330 이하",  # 사용자가 말한 글자 그대로라 출처가 있다
+    ]
+    # 숫자 목표 셋은 그대로다
+    assert [(t["metric"], t["operator"], t["value"]) for t in got] == [
+        (t["metric"], t["operator"], t["value"]) for t in targets
+    ]
