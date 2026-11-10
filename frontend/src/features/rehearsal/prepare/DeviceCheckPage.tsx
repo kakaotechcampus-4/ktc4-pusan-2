@@ -8,6 +8,8 @@ import { postCalibration, useCreateTake, useLatestSlide, usePrepare } from '@/sh
 import { setPrepareContext, setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { toCalibrationRequest } from '../lib/calibrationRequest';
+import { keepBaseVoice, recallBaseVoice, type RememberedBaseVoice } from '../lib/baseVoiceMemory';
+import { sendCalibration } from '../lib/sendCalibration';
 import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
@@ -39,7 +41,7 @@ import { useChatScreen } from '@/shared/lib/chatScreen';
 import { deviceScreen } from './chatScreen';
 
 /**
- * 평소 목소리로 읽을 문단. 발표를 여는 말투입니다. 처음부터 한 번에 보여 주고, 다 읽으면 사용자가
+ * 기준 목소리로 읽을 문단. 발표를 여는 말투입니다. 처음부터 한 번에 보여 주고, 다 읽으면 사용자가
  * "다 읽었어요"를 누릅니다. '말하는 중'은 실제 읽은 시간의 절반 남짓만 잡혀서(`loudness.ts`), 문장 하나로는
  * 5초를 못 채울 수 있어 두 문장(평소 속도로 10초 안팎)으로 둡니다. 더 줄이면 다 읽어도 모자랄 수 있습니다.
  */
@@ -53,6 +55,28 @@ const BASE_VOICE_SENTENCES = [
  * 모듈 상수라 정체성이 고정입니다 — 렌더마다 새로 만들면 계량기 쪽 이펙트가 다시 돕니다
  */
 const pageClock = () => performance.now();
+
+/**
+ * 기준 목소리 읽기가 이만큼 실패하면 탈출구("발표 처음 목소리를 기준으로 시작하기")를 보입니다 (#1179).
+ * 첫 읽기 실패 + 다시 읽기 실패입니다. 첫 값이고 AI 측정 실험(#1182)에 따라 바뀔 수 있습니다
+ */
+const BASE_VOICE_FALLBACK_AFTER = 2;
+
+/** 다시 쓸 기준 목소리의 "N분 전" · 만료를 다시 보는 간격 */
+const REUSE_CLOCK_MS = 30_000;
+
+/**
+ * 기준 목소리를 무엇으로 정했나 — 이번에 잰 것(`useBaseVoice` DONE) 말고 고른 길 (#1179).
+ *   REUSE     같은 환경에서 직전에 잰 값을 다시 씀. 그 값의 처음 잰 시각으로 같은 값인지 봅니다
+ *   FALLBACK  탈출구. `base_level_db: null` 로 보내 AI 가 발표 첫 발화로 기준을 잡습니다
+ */
+type VoicePick = { kind: 'REUSE'; measuredAt: number } | { kind: 'FALLBACK' };
+
+/** "3분 전에" · "방금" — 다시 쓸 기준 목소리를 언제 쟀는지 */
+function measuredAgo(measuredAt: number, now: number): string {
+  const minutes = Math.floor((now - measuredAt) / 60_000);
+  return minutes < 1 ? '방금' : `${minutes}분 전에`;
+}
 
 /**
  * 점검 안내 한 줄.
@@ -71,6 +95,8 @@ function deviceCheckHint({
   calUnavailable,
   calPoor,
   voiceStatus,
+  voiceReady,
+  voiceReusable,
 }: {
   deviceError: DeviceError | null;
   live: boolean;
@@ -80,12 +106,16 @@ function deviceCheckHint({
   calUnavailable: string | null;
   /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
   calPoor: boolean;
-  /** 평소 목소리 읽기 — 선택이라 다른 점검이 다 끝난 뒤에만 말합니다 */
+  /** 기준 목소리 읽기 */
   voiceStatus: BaseVoiceStatus;
+  /** 기준 목소리가 정해짐 — 이번에 잼 · 다시 씀 · 탈출구 중 하나 (#1179) */
+  voiceReady: boolean;
+  /** 같은 환경에서 직전에 잰 기준 목소리를 다시 쓸 수 있음 */
+  voiceReusable: boolean;
 }): string {
   // 읽는 중이면 그 안내가 먼저입니다 — 사용자가 지금 하고 있는 일입니다
   if (voiceStatus === 'READING')
-    return '아래 문단을 평소 발표하는 목소리로 읽고, 다 읽으면 "다 읽었어요"를 눌러 주세요';
+    return '발표할 때와 같은 자리 · 거리 · 목소리로 아래 문단을 읽고, 다 읽으면 "다 읽었어요"를 눌러 주세요';
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   // 카메라 권한을 묻기 전에 알립니다 — 시선 분석을 못 쓰면 카메라를 켜도 시작할 수 없습니다
   if (calStatus === 'UNAVAILABLE' && calUnavailable) return calUnavailable;
@@ -95,9 +125,13 @@ function deviceCheckHint({
   if (calStatus === 'FAILED')
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
   if (calStatus !== 'DONE') return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
+  // 기준 목소리는 시작 조건이라(#1179) 흐릿한 시선 기준 권유보다 먼저 말합니다
+  if (!voiceReady) {
+    return voiceReusable
+      ? '조금 전에 잰 기준 목소리를 그대로 쓰거나, 다시 재 주세요'
+      : '기준 목소리를 재야 연습을 시작할 수 있어요. 발표할 때와 같은 자리에서 읽어 주세요';
+  }
   if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
-  if (voiceStatus !== 'DONE')
-    return '점검이 끝났어요. 평소 목소리를 재 두면 작게 말할 때 더 정확히 알려 드려요 (선택)';
   return '점검이 끝났어요';
 }
 
@@ -111,8 +145,16 @@ function startingHint(replacing: { busy: boolean } | null): string {
   return '다른 곳에서 진행 중인 연습을 끝낼지 골라 주세요';
 }
 
-/** 평소 목소리 항목의 문구 */
-function baseVoiceLabel(status: BaseVoiceStatus, reason: ShortReason | null): string {
+/** 기준 목소리 항목의 문구. 재지 않고 고른 길(다시 쓰기 · 탈출구)이 있으면 그것을 말합니다 */
+function baseVoiceLabel(
+  status: BaseVoiceStatus,
+  reason: ShortReason | null,
+  pick: VoicePick['kind'] | null,
+): string {
+  if (status !== 'DONE' && status !== 'READING') {
+    if (pick === 'REUSE') return '조금 전 기준 사용';
+    if (pick === 'FALLBACK') return '발표 처음 목소리로';
+  }
   switch (status) {
     case 'IDLE':
       return '아직 재지 않았어요';
@@ -132,17 +174,18 @@ const SHORT_TITLE: Record<ShortReason, string> = {
 };
 
 const SHORT_GUIDE: Record<ShortReason, string> = {
+  // 거리를 바꾸게 하지 않습니다 — 다가가서 잰 기준은 발표할 때 자리와 맞지 않습니다 (#1179)
   QUIET:
-    '말소리로 들리지 않았어요. 목소리가 작거나 주변이 시끄러울 수 있어요. "다시 읽기"를 누르고, 마이크에 조금 더 가까이에서 평소 목소리로 읽어 주세요.',
+    '말소리로 들리지 않았어요. 목소리가 작거나 주변이 시끄러울 수 있어요. "다시 읽기"를 누르고, 발표할 때 자리에서 조금 더 또렷하게 읽어 주세요.',
   BRIEF:
     '말한 시간이 모자랐어요. "다시 읽기"를 누르고, 문단을 끝까지 읽은 뒤에 "다 읽었어요"를 눌러 주세요.',
 };
 
-/** 평소 목소리 항목의 버튼 문구. 읽는 중에는 그만두기입니다 */
-function baseVoiceActionText(status: BaseVoiceStatus): string {
+/** 기준 목소리 항목의 버튼 문구. 읽는 중에는 그만두기, 다시 쓸 기준이 있으면 다시 재기입니다 */
+function baseVoiceActionText(status: BaseVoiceStatus, reusable: boolean): string {
   switch (status) {
     case 'IDLE':
-      return '목소리 재기';
+      return reusable ? '다시 재기' : '목소리 재기';
     case 'READING':
       return '그만두기';
     case 'DONE':
@@ -204,7 +247,9 @@ function calibrationLabel(cal: Pick<ReturnType<typeof useGazeSetup>, 'status' | 
  *   만들지 않습니다 — 점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 실제
  *   연습 횟수와 어긋납니다. 이 함수를 다른 화면으로 복사하지 마세요.
  *
- * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다. 셋 다 통과해야 시작합니다.
+ * 점검은 장치(카메라·마이크) · 시선 기준점 · 기준 목소리입니다. 모두 통과해야 시작합니다.
+ * 기준 목소리는 이번에 재거나, 같은 환경에서 직전에 잰 값을 다시 쓰거나, 읽기에 거듭 실패하면 탈출구로
+ * 정합니다 (#1179, `lib/baseVoiceMemory.ts`).
  */
 export function DeviceCheckPage() {
   const { pitchId = '' } = useParams();
@@ -225,14 +270,56 @@ export function DeviceCheckPage() {
   // 적습니다 — useMicLevel 이 voiceRecord 를 넘겨야 해서 먼저 불리기 때문입니다
   const readingSinceRef = useRef<number | null>(null);
   const silenceFrom = useCallback(() => readingSinceRef.current, []);
-  const { meterRef, echoMeterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } =
-    useMicLevel(stream, { clock: pageClock, silenceFrom });
-  // 평소 목소리 크기. 선택 단계라 시작을 막지 않습니다 — 안 재면 AI 가 Take 첫 발화로 잡습니다
+  const {
+    meterRef,
+    echoMeterRef,
+    rowRef,
+    silentRef,
+    micOk,
+    audioState,
+    meterError,
+    voiceRecord,
+    measuredWith,
+  } = useMicLevel(stream, { clock: pageClock, silenceFrom });
+  // 기준 목소리 크기. 시작 조건입니다 (#1179)
   const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
   const reading = baseVoice.status === 'READING';
   useEffect(() => {
     readingSinceRef.current = reading ? performance.now() : null;
   }, [reading]);
+  // 이번에 잰 값은 같은 환경이면 다음 Take 에서 다시 쓰도록 둡니다. 조건(장치 · 자동 음량 조절)은 모듈이 봅니다
+  useEffect(() => {
+    if (baseVoice.status === 'DONE' && baseVoice.levelDb !== null)
+      keepBaseVoice(baseVoice.levelDb, measuredWith, performance.now());
+  }, [baseVoice.status, baseVoice.levelDb, measuredWith]);
+  // 재지 않고 고른 길(다시 쓰기 · 탈출구). 마이크가 바뀌면 렌더 중에 비웁니다 — 이펙트로 비우면 한 번은 옛 값이 보입니다
+  const [voicePick, setVoicePick] = useState<{
+    stream: MediaStream | null;
+    pick: VoicePick | null;
+  }>({ stream, pick: null });
+  if (voicePick.stream !== stream) setVoicePick({ stream, pick: null });
+  const pick = voicePick.stream === stream ? voicePick.pick : null;
+  const choosePick = (next: VoicePick | null) => setVoicePick({ stream, pick: next });
+  // 다시 쓸 기준을 견줄 시각. 렌더 중에 시계를 읽지 않고 정해진 간격으로 갱신합니다 — "N분 전" 표시와
+  // 30분이 지났는지가 화면을 띄워 둔 동안에도 맞게 바뀝니다. 시작을 누를 때는 그 순간 시계로 다시 봅니다
+  const [now, setNow] = useState(pageClock);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(performance.now()), REUSE_CLOCK_MS);
+    return () => clearInterval(timer);
+  }, []);
+  // 다시 쓸 수 있는 기준 목소리. 이번에 쟀거나 읽는 중이면 보이지 않습니다
+  const remembered =
+    baseVoice.status === 'DONE' || reading ? null : recallBaseVoice(measuredWith, now);
+  const reusing = pick?.kind === 'REUSE' && remembered?.measuredAt === pick.measuredAt;
+  const voiceReady = baseVoice.status === 'DONE' || reusing || pick?.kind === 'FALLBACK';
+  const canFallback = baseVoice.status === 'SHORT' && baseVoice.shorts >= BASE_VOICE_FALLBACK_AFTER;
+  // 새로 읽으면 고른 길은 버립니다 — 읽은 결과가 기준입니다
+  const startReading = () => {
+    choosePick(null);
+    baseVoice.start();
+  };
+  /** 시작을 누른 순간 정한 기준 목소리. 확인 창을 거쳐 `begin` 이 보냅니다 */
+  const baseLevelRef = useRef<number | null>(null);
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
@@ -397,7 +484,21 @@ export function DeviceCheckPage() {
     !olderSlideBlocked &&
     !latestSlidePending &&
     !latestUnchecked &&
+    voiceReady &&
     !starting;
+
+  /**
+   * 시작할 때 보낼 기준 목소리. 이번에 잰 값 · 다시 쓰는 값 · 탈출구(null) 중 하나입니다.
+   * 다시 쓰는 값은 **누르는 순간 한 번 더 확인합니다** — 화면을 띄워 둔 사이 30분이 지났을 수 있습니다.
+   * 더 쓸 수 없으면 undefined 입니다
+   */
+  const chosenBaseLevel = (): number | null | undefined => {
+    if (baseVoice.status === 'DONE') return baseVoice.levelDb;
+    if (pick?.kind === 'FALLBACK') return null;
+    if (pick?.kind !== 'REUSE') return undefined;
+    const again = recallBaseVoice(measuredWith, performance.now());
+    return again?.measuredAt === pick.measuredAt ? again.levelDb : undefined;
+  };
 
   /**
    * 시작 버튼. 사용자는 한 번에 연습 하나만 해서, 다른 창 · 기기에서 발표 중인 Take 가 있으면
@@ -405,6 +506,15 @@ export function DeviceCheckPage() {
    */
   const start = async () => {
     if (!choice || starting) return;
+    const baseLevel = chosenBaseLevel();
+    if (baseLevel === undefined) {
+      choosePick(null);
+      setStartError(
+        '조금 전에 잰 기준 목소리를 더 쓸 수 없어요. 시간이 지났거나 마이크가 바뀌었어요. 기준 목소리를 다시 재 주세요.',
+      );
+      return;
+    }
+    baseLevelRef.current = baseLevel;
     setStarting(true);
     setStartError(null);
     const other = await activeTakeOrNone();
@@ -506,23 +616,25 @@ export function DeviceCheckPage() {
 
       // 요약 수치만 갑니다. 보정 모델은 브라우저에 남습니다 (CLAUDE.md 1번)
       //
-      // ★ 여기서 실패해도 연습은 엽니다. Take 는 이미 만들어졌으니, 여기서 멈추면 연습 없이
-      //   빈 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다. 요약은 리포트의 참고값이라
-      //   빠져도 발표 기록은 온전합니다 — 원인은 콘솔에 남깁니다
-      if (calibration) {
-        const body = toCalibrationRequest(calibration, {
-          micDetected: micOk,
-          baseLevelDb: baseVoice.levelDb,
-        });
-        await postCalibration(pitchId, take.takeId, body).catch((err: unknown) => {
-          console.error('[장치 점검] 보정 요약을 보내지 못했습니다', err);
-        });
-      }
+      // 시선 보정 요약이 없어도 보냅니다 — 목소리 기준이 같이 갑니다 (#1179). 실패하면 실시간 연결 전에
+      // 몇 번 다시 보냅니다(`sendCalibration`). 서버는 시작 전 Take 만 받아서, 무대로 넘어가기 전에 끝냅니다.
+      //
+      // ★ 끝내 실패해도 연습은 엽니다. Take 는 이미 만들어졌으니, 여기서 멈추면 연습 없이
+      //   빈 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다. 목소리 기준을 보냈으면 무대가 알립니다
+      const baseLevelDb = baseLevelRef.current;
+      const body = toCalibrationRequest(calibration, { micDetected: micOk, baseLevelDb });
+      const saved = await sendCalibration(() => postCalibration(pitchId, take.takeId, body));
 
       navigate(
         practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
         {
-          state: { clientSessionId, scriptMode, ticket },
+          state: {
+            clientSessionId,
+            scriptMode,
+            ticket,
+            // 탈출구로 시작했으면(null) 알릴 것이 없습니다 — 원래 발표 처음 목소리로 잡습니다
+            baseVoiceUnconfirmed: !saved && baseLevelDb !== null,
+          },
         },
       );
     } catch (e) {
@@ -547,6 +659,8 @@ export function DeviceCheckPage() {
           calUnavailable: cal.unavailableMessage,
           calPoor: cal.advice !== null,
           voiceStatus: baseVoice.status,
+          voiceReady,
+          voiceReusable: remembered !== null,
         })));
 
   const takeNumber = info?.nextTakeNumber ?? 0;
@@ -814,15 +928,14 @@ export function DeviceCheckPage() {
               },
               {
                 id: 'voice',
-                name: '평소 목소리',
+                name: '기준 목소리',
                 label: stream
-                  ? baseVoiceLabel(baseVoice.status, baseVoice.reason)
+                  ? baseVoiceLabel(baseVoice.status, baseVoice.reason, pick?.kind ?? null)
                   : '마이크 연결 후 가능',
-                done: baseVoice.status === 'DONE',
-                optional: true,
+                done: voiceReady,
                 action: {
-                  text: baseVoiceActionText(baseVoice.status),
-                  onClick: baseVoice.status === 'READING' ? baseVoice.cancel : baseVoice.start,
+                  text: baseVoiceActionText(baseVoice.status, remembered !== null),
+                  onClick: reading ? baseVoice.cancel : startReading,
                   disabled: !stream || starting || cal.overlay,
                 },
               },
@@ -838,6 +951,24 @@ export function DeviceCheckPage() {
                 echoMeterRef={echoMeterRef}
               />
             )}
+            <BaseVoiceChoice
+              remembered={remembered}
+              now={now}
+              pick={pick?.kind ?? null}
+              reusing={reusing}
+              canFallback={canFallback}
+              disabled={starting || cal.overlay}
+              onReuse={() => {
+                if (!remembered) return;
+                // 누른 버튼이 사라지면 초점이 body 로 빠집니다 (#818) — 사라지기 전에 본문으로 옮깁니다
+                document.getElementById('main')?.focus();
+                choosePick({ kind: 'REUSE', measuredAt: remembered.measuredAt });
+              }}
+              onFallback={() => {
+                document.getElementById('main')?.focus();
+                choosePick({ kind: 'FALLBACK' });
+              }}
+            />
             <div
               className="prepare-notices text-xs leading-[18px] wrap-anywhere [&>p]:mt-1.5"
               aria-live="polite"
@@ -889,8 +1020,69 @@ export function DeviceCheckPage() {
   );
 }
 
+const CHOICE_BUTTON =
+  'inline-flex min-h-8 shrink-0 items-center border border-ink bg-panel px-2.5 text-xs font-semibold hover:bg-cream disabled:cursor-default disabled:border-dashed disabled:border-line-strong';
+
 /**
- * 평소 목소리 읽기 — **사용자가 "제대로 듣고 있나"를 확인하는 자리**입니다.
+ * 기준 목소리를 재지 않고 정하는 두 길 (#1179).
+ *   다시 쓰기  같은 환경(같은 탭 · 같은 마이크 · 자동 음량 조절 꺼짐 · 30분 안)에서 직전에 잰 값
+ *   탈출구     읽기에 거듭 실패했을 때. 발표 처음 목소리로 기준을 잡습니다 — 다시 쓰기 칸에는 넣지 않습니다
+ * 고른 뒤에는 무엇으로 정했는지 한 줄로 알립니다. 다시 재려면 항목의 [다시 재기] · [다시 읽기]를 누릅니다.
+ */
+function BaseVoiceChoice({
+  remembered,
+  now,
+  pick,
+  reusing,
+  canFallback,
+  disabled,
+  onReuse,
+  onFallback,
+}: {
+  remembered: RememberedBaseVoice | null;
+  now: number;
+  pick: VoicePick['kind'] | null;
+  reusing: boolean;
+  canFallback: boolean;
+  disabled: boolean;
+  onReuse: () => void;
+  onFallback: () => void;
+}) {
+  if (reusing && remembered) {
+    return (
+      <p role="status" className="mt-1.5 text-xs leading-[18px]">
+        {measuredAgo(remembered.measuredAt, now)} 잰 기준 목소리를 그대로 써요. 자리나 마이크가
+        바뀌었다면 "다시 재기"를 눌러 주세요.
+      </p>
+    );
+  }
+  if (pick === 'FALLBACK') {
+    return (
+      <p role="status" className="mt-1.5 text-xs leading-[18px]">
+        발표 처음 목소리를 기준으로 시작해요. 다시 재려면 "다시 읽기"를 눌러 주세요.
+      </p>
+    );
+  }
+  if (!remembered && !canFallback) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {remembered && (
+        <button type="button" disabled={disabled} onClick={onReuse} className={CHOICE_BUTTON}>
+          {measuredAgo(remembered.measuredAt, now)} 잰 기준 목소리 그대로 쓰기 (같은 자리 · 같은
+          마이크)
+        </button>
+      )}
+      {canFallback && (
+        <button type="button" disabled={disabled} onClick={onFallback} className={CHOICE_BUTTON}>
+          발표 처음 목소리를 기준으로 시작하기
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 기준 목소리 읽기 — **사용자가 "제대로 듣고 있나"를 확인하는 자리**입니다.
  *
  * 말한 내용은 확인하지 않습니다(음성 인식은 Take 를 만든 뒤에만 됩니다). 그래서 소리로 볼 수 있는 것만 보여 줍니다.
  *   읽는 중  문단 · 지금 들리는 음량 막대 · 단계 체크(들림 → 충분히 들음) · "다 읽었어요" 버튼. 시간 막대 ·
@@ -918,8 +1110,8 @@ function BaseVoicePanel({
   if (status === 'DONE') {
     return (
       <p role="status" className="mt-1.5 text-xs leading-[18px]">
-        평소 목소리를 {heardSec}초 들었어요. 발표 중 이 기준과 비교해요. 평소와 다르게 읽었다면 다시
-        읽어 주세요.
+        기준 목소리를 {heardSec}초 들었어요. 발표 중 이 기준과 비교해요. 잰 뒤에는 노트북을 옮기지
+        말아 주세요. 발표할 때와 다르게 읽었다면 다시 읽어 주세요.
       </p>
     );
   }

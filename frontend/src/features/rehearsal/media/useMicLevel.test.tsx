@@ -14,13 +14,20 @@ const fixture = vi.hoisted(() => ({
   read: vi.fn(),
   render: vi.fn(),
 }));
-vi.mock('./level', () => ({
+vi.mock('./level', async (importOriginal) => ({
+  // 트랙 설정 읽기(`measuredWith`)는 그대로 씁니다
+  ...(await importOriginal<typeof import('./level')>()),
   openMeasureStream: fixture.open,
   createLevelMeter: fixture.create,
 }));
 
-const first = { getAudioTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
-const second = { getAudioTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+/** 녹음용 트랙. 크롬은 녹음용 스트림의 자동 음량 조절을 켭니다 */
+const track = (deviceId: string, autoGainControl?: boolean) => ({
+  readyState: 'live',
+  getSettings: () => ({ deviceId, autoGainControl }),
+});
+const first = { getAudioTracks: () => [track('mic-a', true)] } as unknown as MediaStream;
+const second = { getAudioTracks: () => [track('mic-b', true)] } as unknown as MediaStream;
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let frame: FrameRequestCallback | undefined;
@@ -209,4 +216,31 @@ it('does not warn while not counting, and counts from the start when no start is
   expect(silenceText(42_000, 100_000, null)).toBe('');
   expect(silenceText(42_000, 100_000, undefined)).toBe('42초 동안 소리가 들어오지 않습니다');
   expect(silenceText(5_000, 100_000, undefined)).toBe('');
+});
+
+// #1179 기준 목소리를 다시 쓸지는 "크기를 실제로 잰 트랙"의 장치 · 자동 음량 조절로 정합니다
+function SourceHarness({ stream }: { stream: MediaStream }) {
+  const { measuredWith } = useMicLevel(stream);
+  return <p data-source={measuredWith ? JSON.stringify(measuredWith) : 'none'} />;
+}
+const source = () => JSON.parse(host.querySelector('[data-source]')!.getAttribute('data-source')!);
+
+it('reports the measurement track — the unprocessed one when it opens', async () => {
+  fixture.open.mockResolvedValueOnce({
+    stream: { getAudioTracks: () => [track('mic-a', false)], getTracks: () => [] },
+    unprocessed: true,
+  });
+  await act(async () => root.render(<SourceHarness stream={first} />));
+  expect(source()).toEqual({ deviceId: 'mic-a', autoGainOff: true });
+});
+
+it('falls back to the recording track, whose automatic gain is on, when no measurement track opens', async () => {
+  await act(async () => root.render(<SourceHarness stream={first} />));
+  expect(source()).toEqual({ deviceId: 'mic-a', autoGainOff: false });
+});
+
+it('reports an unknown automatic gain as null when the browser does not say', async () => {
+  const quiet = { getAudioTracks: () => [track('mic-c')] } as unknown as MediaStream;
+  await act(async () => root.render(<SourceHarness stream={quiet} />));
+  expect(source()).toEqual({ deviceId: 'mic-c', autoGainOff: null });
 });

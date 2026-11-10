@@ -14,6 +14,7 @@ import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { exclusionForDeviceError, exclusionForGazeError } from '../lib/gazeExclusion';
+import { BASE_VOICE_UNCONFIRMED_TEXT } from '../lib/sendCalibration';
 import { stopTakeStream } from '../lib/sttSocket';
 import { forgetZoneRef } from '../lib/zoneRefMemory';
 import {
@@ -165,6 +166,12 @@ export function RehearsalPage() {
   const [ticket, setTicket] = useState<RehearsalTicket | null | undefined>(
     () => (location.state as { ticket?: RehearsalTicket } | null)?.ticket,
   );
+  /**
+   * 장치 점검이 목소리 기준을 보냈는데 끝내 응답을 못 받았습니다 (#1179). 막지 않고 알리기만 합니다 —
+   * 저장은 됐는데 응답만 잃었을 수 있습니다. 새로고침해도 state 가 남아 다시 보입니다(여전히 모르는 일이라 맞습니다)
+   */
+  const baseVoiceUnconfirmed =
+    (location.state as { baseVoiceUnconfirmed?: boolean } | null)?.baseVoiceUnconfirmed === true;
   const materials = useRehearsalMaterials(ticket ?? null);
   const endTake = useEndTake(ticket?.pitchId ?? '', takeId);
   const { mutateAsync: abandonTake } = useAbandonTake(ticket?.pitchId ?? '', takeId);
@@ -1003,6 +1010,7 @@ export function RehearsalPage() {
                     <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
                   )}
                   {sessionError && <span>{sessionError}</span>}
+                  {baseVoiceUnconfirmed && <span role="status">{BASE_VOICE_UNCONFIRMED_TEXT}</span>}
                 </div>
 
                 {/* 비활성 버튼은 초점을 못 받고 title 도 잘 안 보여서 이유를 글자로 둡니다 */}
