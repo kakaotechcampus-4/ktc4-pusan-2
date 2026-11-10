@@ -266,6 +266,9 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(text).toContain('평가한 장이 없어 계산하지 못했어요');
     // 값이 없는데 "빼고 계산했어요"라고 하지 않습니다
     expect(text).not.toContain('빼고 계산했어요');
+    // 모든 장이 빠졌으니 "일부 장 제외"가 아닙니다
+    expect(text).toContain('평가한 장 없음');
+    expect(text).not.toContain('일부 장 제외');
     expect(text).not.toContain('장별 간이 결과를 확인해 주세요');
     expect(text.match(/음성 인식이 끊겨 이 장을 평가하지 못했어요/g)).toHaveLength(2);
   });

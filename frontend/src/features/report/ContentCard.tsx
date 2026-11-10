@@ -131,7 +131,10 @@ function Headline({ status, summary }: { status: ContentStatus; summary: Coverag
       </dl>
       {excluded && (
         <p className="flex flex-wrap items-center gap-2 text-xs text-ink/80">
-          <Badge tone="muted">일부 장 제외</Badge>
+          {/* 채점된 장이 하나도 없으면(모두 STT 끊김 · 간이 장만) "일부"가 아니라서 그렇게 말합니다 */}
+          <Badge tone="muted">
+            {hasNoScoredSlides(summary) ? '평가한 장 없음' : '일부 장 제외'}
+          </Badge>
           {scopeLine(summary.scope)}
         </p>
       )}
