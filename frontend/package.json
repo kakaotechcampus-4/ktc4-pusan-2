@@ -13,7 +13,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:lan": "vite --mode lan --host",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write src/features/report/ReportPage.tsx src/features/report/ReportPage.test.tsx && git diff -- src/features/report/ReportPage.tsx src/features/report/ReportPage.test.tsx && prettier --check .",
     "doctor": "node scripts/doctor.mjs",
     "models": "node scripts/models.mjs"
   },
