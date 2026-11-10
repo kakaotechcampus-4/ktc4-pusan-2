@@ -406,7 +406,7 @@ it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지
   expect(input().value).toBe('작성 중');
 });
 
-it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 열린다', async () => {
+it('런처는 왼쪽 아래에 두고 패널은 화면 오른쪽에 연다', async () => {
   await visit('/');
   const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
   expect(container.classList.contains('left-2')).toBe(true);
@@ -414,7 +414,7 @@ it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 �
   expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
 
   await openPanel();
-  expect(panel()!.classList.contains('left-0')).toBe(true);
+  expect(panel()!.classList.contains('right-0')).toBe(true);
 });
 
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
@@ -583,14 +583,19 @@ it('채팅을 띄우지 않는 화면에서는 세션을 구독하지 않는다'
   expect(launcher()).not.toBeNull();
 });
 
-it('열린 패널은 피치 만들기 · 장치 점검으로 옮겨도 남고, 리허설에 들어가면 숨는다', async () => {
+it('열린 패널은 허용 화면에서 유지되고 장치 점검에 들어가면 닫힌다', async () => {
   await visit('/');
   await openPanel();
   await type('연습 준비 중');
   await go('/pitch/new');
   expect(panel()).not.toBeNull();
+  expect(input().value).toBe('연습 준비 중');
   await go('/pitch/p1/device-check');
-  expect(panel()).not.toBeNull();
+  expect(launcher()).toBeNull();
+  expect(panel()).toBeNull();
+  await go('/pitch/new');
+  expect(panel()).toBeNull();
+  await openPanel();
   expect(input().value).toBe('연습 준비 중');
 
   await go('/takes/t1/rehearsal');
@@ -666,13 +671,21 @@ const hangUntilAborted = (signal: AbortSignal | null) =>
 
 const availabilityCalls = () => server.seen.filter((s) => s.path === '/api/chat/availability');
 
-const deviceBody: ScreenBody = {
-  name: 'device_check',
-  camera: 'connected',
-  mic: 'detected',
-  gaze_setup: 'DONE',
-  gaze_reason: null,
-};
+const pitchBody = {
+  name: 'pitch_edit',
+  step: 'criteria',
+  version_label: 'V1',
+  version_id: null,
+  saved: null,
+  draft: {
+    title: null,
+    slide_count: null,
+    script_chars: null,
+    time_limit_sec: null,
+    criteria_text: null,
+  },
+  changed: [],
+} satisfies ScreenBody;
 
 const claim = (text: string) =>
   ({
@@ -772,7 +785,7 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
   it('통신 계층은 하나 — 듣기를 건 뒤 이어 가고, 화면을 옮겨도 그대로, 숨는 화면에서 닫는다', async () => {
     await visit('/');
     await go('/pitch/new');
-    await go('/pitch/p1/device-check');
+    await go('/pitches');
     expect(transports).toHaveLength(1);
     expect(transport().resumed).toBe(1);
     expect(transport().listenedBeforeResume).toBe(true);
@@ -786,7 +799,6 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     ['/pitch/new', '전체', null],
     ['/takes', '전체', null],
     ['/pitch/p1/edit', '피치', 'p1'],
-    ['/pitch/p1/device-check', '피치', 'p1'],
     ['/takes?pitch=p2', '피치', 'p2'],
   ])('%s 에서 열면 처음 범위는 %s', async (path, label, pitchId) => {
     await visit(path);
@@ -835,49 +847,49 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
   });
 
   it('보낼 때 지금 화면 page 와 그 순간의 화면 상태를 싣는다', async () => {
-    let gaze: ScreenBody = deviceBody;
-    registerChatScreen('/pitch/:pitchId/device-check', () => gaze);
-    await visit('/pitch/p1/device-check');
+    let screen: ScreenBody = pitchBody;
+    registerChatScreen('/pitch/:id/edit', () => screen);
+    await visit('/pitch/p1/edit');
     await openPanel();
-    await type('시선 기준이 왜 실패해?');
-    gaze = { ...deviceBody, gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' };
+    await type('발표 자료를 확인해 줘');
+    screen = { ...pitchBody, version_label: 'V2' };
     await press(input(), { key: 'Enter' });
 
     const [sent] = transport().sent;
     expect(sent!.page).toMatchObject({
-      route: '/pitch/:pitchId/device-check',
+      route: '/pitch/:id/edit',
       pitch_id: 'p1',
       take_id: null,
-      screen: { name: 'device_check', gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' },
+      screen: { name: 'pitch_edit', version_label: 'V2' },
     });
     expect(sent!.page.screen!.snapshot_id).toMatch(/^ss-[0-9a-f]{16}$/);
   });
 
   it('처음 확인(없음 → 사용자) 뒤에 보내면 먼저 등록한 화면 상태를 싣는다', async () => {
     expect(useChatStore.getState().userId).toBeNull();
-    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
-    await visit('/pitch/p1/device-check');
+    registerChatScreen('/pitch/:id/edit', () => pitchBody);
+    await visit('/pitch/p1/edit');
     expect(useChatStore.getState().userId).toBe('u1');
     await openPanel();
-    await type('장치 괜찮아?');
+    await type('자료 괜찮아?');
     await press(input(), { key: 'Enter' });
-    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'device_check' });
+    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'pitch_edit' });
   });
 
   it('로그아웃 신호 없이 다른 사용자로 바뀐 뒤 보내면 앞 사람 때 등록한 화면 상태를 싣지 않는다', async () => {
-    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
-    await visit('/pitch/p1/device-check');
+    registerChatScreen('/pitch/:id/edit', () => pitchBody);
+    await visit('/pitch/p1/edit');
     expect(useChatStore.getState().userId).toBe('u1');
 
     // 같은 경로 패턴에 머문 채 사용자만 바뀝니다 — 경로가 달라서 빠지는 것이 아님을 보려고 패턴을 유지합니다
     state.session = { isPending: false, isError: false, data: { id: 'u2' } };
-    await go('/pitch/p2/device-check');
+    await go('/pitch/p2/edit');
     expect(useChatStore.getState().userId).toBe('u2');
     await openPanel();
-    await type('장치 괜찮아?');
+    await type('자료 괜찮아?');
     await press(input(), { key: 'Enter' });
     const [sent] = transport().sent;
-    expect(sent!.page).toMatchObject({ route: '/pitch/:pitchId/device-check', screen: null });
+    expect(sent!.page).toMatchObject({ route: '/pitch/:id/edit', screen: null });
   });
 
   it('평가 기준 원문이 2,000자를 넘으면 보내지 않고 알린다 (L3-11)', async () => {
@@ -1408,15 +1420,18 @@ describe('카드 연결 (12-4 F6 · F10)', () => {
     expect(transport().decided).toEqual([['a-9', 'APPROVE', 'sha-1']]);
   });
 
-  it('[연습 준비로]는 장치 점검 화면으로 옮기고 대화창은 열린 채로 남는다', async () => {
+  it('[연습 준비로]는 장치 점검 화면으로 옮기고 대화창을 닫되 대화는 유지한다', async () => {
     await inConversation([
       assistant('m1', 'r1', 'DONE', [{ type: 'START_PRACTICE', pitch_id: PITCH }]),
     ]);
     await act(async () => button('연습 준비로')!.click());
     await settle();
     expect(router.state.location.pathname).toBe(`/pitch/${PITCH}/device-check`);
-    expect(panel()).not.toBeNull();
-    expect(panel()!.textContent).toContain('연습 준비 화면으로 옮겼어요.');
+    expect(panel()).toBeNull();
+    await go('/');
+    expect(panel()).toBeNull();
+    await openPanel();
+    expect(button('연습 준비로')).toBeDefined();
   });
 });
 
