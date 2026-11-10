@@ -111,7 +111,7 @@ it('BE 에러 코드는 공통 문구로 알리고 다시 누를 수 있다', as
   await render();
   await start();
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(
-    '샘플 발표를 준비하지 못했어요. 샘플 발표를 준비하고 있어요. 잠시 뒤 다시 시도해 주세요.',
+    '샘플 발표를 준비하지 못했어요. 다른 요청과 겹쳤어요. 잠시 뒤 다시 시도해 주세요.',
   );
   expect(startButton().getAttribute('aria-disabled')).toBe('false');
 

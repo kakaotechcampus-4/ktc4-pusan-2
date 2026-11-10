@@ -55,35 +55,14 @@ export function FirstTakePage() {
           별도의 PDF나 대본 없이 피치코치를 체험해 보세요. 준비된 발표를 직접 읽으며 슬라이드
           이동부터 실시간 코칭, 결과 리포트까지 익힙니다.
         </p>
+        <p className="mt-1 text-sm leading-7 text-stone">
+          튜토리얼 리포트는 계정당 한 번 받을 수 있어요. 리포트가 나오기 전에 연습이 끊겼다면 다시
+          할 수 있어요.
+        </p>
 
-        <section className="mt-8 border-2 border-ink bg-panel p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-bold">샘플 발표</h2>
-            <span className="border border-line-strong bg-cream px-3 py-1 text-xs font-bold">
-              {FIRST_TAKE_SLIDES.length} SLIDES · 목표 3분
-            </span>
-          </div>
-          <ol className="mt-5 grid gap-3 sm:grid-cols-2">
-            {FIRST_TAKE_SLIDES.map((slide) => (
-              <li key={slide.mission} className="border border-line-strong bg-white p-4">
-                <p className="text-xs font-bold text-coral-deep">{slide.mission}</p>
-                <p className="mt-2 text-sm font-bold">{slide.title}</p>
-                <p className="mt-1 text-xs leading-6 text-stone">{slide.subtitle}</p>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-6 border-t border-line-strong pt-4 text-sm leading-7">
-            샘플 발표는 내 피치 목록에 &lsquo;샘플&rsquo;로 저장되고, 발표 기록도 남습니다. 카메라
-            영상은 브라우저에서 처리하고, 발표 음성은 분석을 위해 서버로 전송됩니다. 코칭 결과는
-            실제 측정에 따라 달라지며 예시 점수나 가짜 피드백을 사용하지 않습니다.
-          </p>
-          <p className="mt-3 text-sm leading-7">
-            튜토리얼 리포트는 계정당 한 번 받을 수 있어요. 리포트가 나오기 전에 연습이 끊겼다면 다시
-            할 수 있어요.
-          </p>
-        </section>
-
-        <div className="mt-7 flex flex-wrap items-center gap-4">
+        {/* 시작 버튼과 그 결과(안내 · 오류)는 소개 바로 아래에 둡니다. 팀 기준 화면(1366×650)에서
+            샘플 장 목록 아래에 두면 버튼과 결과가 첫 화면 밖으로 밀려, 눌러도 반응이 없어 보입니다 */}
+        <div className="mt-6 flex flex-wrap items-center gap-4">
           <Button aria-disabled={start.isPending} onClick={begin}>
             {start.isPending ? '샘플 준비 중…' : '첫 미션 시작하기 →'}
           </Button>
@@ -126,6 +105,28 @@ export function FirstTakePage() {
             </div>
           </section>
         )}
+        <section className="mt-10 border-2 border-ink bg-panel p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold">샘플 발표</h2>
+            <span className="border border-line-strong bg-cream px-3 py-1 text-xs font-bold">
+              {FIRST_TAKE_SLIDES.length} SLIDES · 목표 3분
+            </span>
+          </div>
+          <ol className="mt-5 grid gap-3 sm:grid-cols-2">
+            {FIRST_TAKE_SLIDES.map((slide) => (
+              <li key={slide.mission} className="border border-line-strong bg-white p-4">
+                <p className="text-xs font-bold text-coral-deep">{slide.mission}</p>
+                <p className="mt-2 text-sm font-bold">{slide.title}</p>
+                <p className="mt-1 text-xs leading-6 text-stone">{slide.subtitle}</p>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-6 border-t border-line-strong pt-4 text-sm leading-7">
+            샘플 발표는 내 피치 목록에 &lsquo;샘플&rsquo;로 저장되고, 발표 기록도 남습니다. 카메라
+            영상은 브라우저에서 처리하고, 발표 음성은 분석을 위해 서버로 전송됩니다. 코칭 결과는
+            실제 측정에 따라 달라지며 예시 점수나 가짜 피드백을 사용하지 않습니다.
+          </p>
+        </section>
       </div>
     </main>
   );
