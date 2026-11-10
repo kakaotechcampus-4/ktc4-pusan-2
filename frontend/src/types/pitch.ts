@@ -16,6 +16,8 @@ export interface PitchRequest {
 
 export interface PitchDetail extends PitchRequest {
   pitch_id: string;
+  /** First Take 튜토리얼 샘플 피치인지 (BE #1135). 수정 화면은 샘플을 열지 않습니다 */
+  is_demo: boolean;
 }
 
 /**

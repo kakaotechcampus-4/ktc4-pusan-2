@@ -97,6 +97,7 @@ export const firstTakeHandlers = [
       lower_deviation: 30,
       upper_deviation: 60,
       presentation_date: null,
+      is_demo: true,
     } satisfies PitchDetail);
   }),
 

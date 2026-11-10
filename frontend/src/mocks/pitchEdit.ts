@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { PitchResources } from '@/types/pitch';
+import type { PitchDetail, PitchResources } from '@/types/pitch';
 import type { PresentationDetail } from '@/types/presentation';
 import type { ScriptDetail } from '@/types/script';
 import type { EvaluationDetail } from '@/types/standards';
@@ -100,10 +100,11 @@ export const pitchEditHandlers = [
       pitch_id: item.pitch_id,
       title: item.pitch_title,
       time_limit_sec: item.pitch_time,
-      presentation_date: item.presentation_date,
+      presentation_date: item.presentation_date ?? null,
       lower_deviation: 15,
       upper_deviation: 30,
-    });
+      is_demo: item.is_demo,
+    } satisfies PitchDetail);
   }),
   http.get('*/api/pitches/:pitchId/resources', ({ params }) => {
     if (params.pitchId !== PITCH_ID) return notFound();
