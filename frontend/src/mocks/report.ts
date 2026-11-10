@@ -1,6 +1,13 @@
 import { http, HttpResponse } from 'msw';
 import type { AnalysisStage, ReviewResult, TakeMeasures, TakeReport } from '@/types/report';
 import type { ConfirmationItem, Confirmations, ConfirmationsSent } from '@/types/confirmation';
+import {
+  contentAnalyzing,
+  contentCoverageHandlers,
+  contentMeasured,
+  contentStatusOf,
+  contentTakeFailed,
+} from './contentCoverage';
 
 /**
  * Take 리포트 목 — `GET /api/takes/{take_id}/report` (BE 에 아직 없는 API, `types/report.ts`).
@@ -161,6 +168,7 @@ const done: TakeReport = {
   analysis_hold_reason: null,
   measures: measuresFixture,
   review: { ...reviewFixture, comparison: comparisonFixture },
+  content_status: contentMeasured,
 };
 
 /** 5-5 경계 — LLM 실패. 숫자 · 상태 · 점수는 같고 문장만 기본 문장입니다 */
@@ -191,6 +199,7 @@ const failed: TakeReport = {
   review_status: null,
   measures: null,
   review: null,
+  content_status: contentTakeFailed,
 };
 
 /** 리뷰 보류 — 대본 전달도 재채점이 끝내 실패해 사람이 복구할 때까지 멈춤 (`architecture.md` 1-3) */
@@ -302,8 +311,14 @@ const TIMEOUT_DEMO_MS = 8000;
 /** 확인 대기가 끝난(답함 · 건너뜀 · 시간 초과) 시각. 그 뒤로는 리뷰를 거쳐 끝납니다 */
 const answeredAt = new Map<string, number>();
 
-/** 리포트 단계 — 확인 대기가 끝났으면 리뷰 한 단계를 거쳐 끝납니다 */
+/** 리포트 + 대본 전달도 상세(`contentCoverage.ts`의 Take id 별 상태) */
 function reportOf(takeId: string): TakeReport {
+  const report = stagedReportOf(takeId);
+  return { ...report, content_status: contentStatusOf(takeId, report.content_status) };
+}
+
+/** 리포트 단계 — 확인 대기가 끝났으면 리뷰 한 단계를 거쳐 끝납니다 */
+function stagedReportOf(takeId: string): TakeReport {
   const answered = answeredAt.get(takeId);
   if (answered !== undefined && Date.now() >= answered) {
     const base = FIXED[takeId] ?? done;
@@ -348,6 +363,9 @@ function progressing(takeId: string): TakeReport {
     review_status: null,
     measures: stage === 'FINALIZING' ? null : measuresFixture,
     review: null,
+    // 채점이 끝나기 전(FINALIZING · SCORING)에는 분석 중, 그 뒤로는 확정본이 있습니다 (#1153 5절 상태표)
+    content_status:
+      stage === 'FINALIZING' || stage === 'SCORING' ? contentAnalyzing : contentMeasured,
   };
 }
 
@@ -371,4 +389,6 @@ export const reportHandlers = [
     answeredAt.set(takeId, Date.now());
     return HttpResponse.json({ analysis_stage: 'REVIEWING' } satisfies ConfirmationsSent);
   }),
+
+  ...contentCoverageHandlers((takeId) => reportOf(takeId).content_status),
 ];

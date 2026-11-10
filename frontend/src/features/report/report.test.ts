@@ -22,6 +22,7 @@ const analyzing: TakeReport = {
   analysis_hold_reason: null,
   measures: null,
   review: null,
+  content_status: null,
 };
 
 it.each<[Operator, string]>([
