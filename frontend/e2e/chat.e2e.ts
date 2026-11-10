@@ -132,7 +132,8 @@ test('모바일 패널은 배경을 비활성화하고 키보드 초점을 패�
 test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보존한다', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 });
   await page.goto('/');
-  await expect(page.locator('.chat-layout-content')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeVisible();
   await page.evaluate(`(() => {
     const content = document.querySelector('.chat-layout-content');
     if (!content) throw new Error('채팅 레이아웃 본문이 없습니다');
