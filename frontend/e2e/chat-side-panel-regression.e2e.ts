@@ -54,10 +54,16 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
       expect(mainBox!.x + mainBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
 
       // 부모 영역뿐 아니라 실제 조작부도 채팅 패널에 가려지지 않아야 합니다.
-      const action = main
-        .locator('a:visible, button:visible:not([disabled]):not([aria-disabled="true"])')
-        .first();
+      // 발표 수정은 지연 로딩 후 고유한 슬라이드 확인 버튼을 기준으로 잡아
+      // Suspense 교체 타이밍에 .first()가 다른 요소를 가리키지 않게 합니다.
+      const action =
+        screen.name === '발표 수정'
+          ? main.getByRole('button', { name: /^슬라이드 확인 ·/ })
+          : main
+              .locator('a:visible, button:visible:not([disabled]):not([aria-disabled="true"])')
+              .first();
       await expect(action).toBeVisible();
+      await expect.poll(() => action.boundingBox()).not.toBeNull();
       const actionBox = await action.boundingBox();
       expect(actionBox).not.toBeNull();
       expect(actionBox!.x).toBeGreaterThanOrEqual(-1);
@@ -71,6 +77,30 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
       ).toBe(true);
     });
   }
+
+  test('1366px 오버레이는 헤더 메뉴와 발표 수정 하단 바를 가리지 않는다', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 800 });
+    await page.goto('/pitch/' + PITCH_ID + '/edit');
+    const panel = await openPanel(page);
+    const header = page.getByRole('banner');
+    const footer = page.locator('.pitch-create-square > footer');
+    await expect(header).toBeVisible();
+    await expect(footer).toBeVisible();
+    await expect.poll(async () => {
+      const [panelBox, headerBox, footerBox] = await Promise.all([
+        panel.boundingBox(),
+        header.boundingBox(),
+        footer.boundingBox(),
+      ]);
+      return !!panelBox && !!headerBox && !!footerBox &&
+        panelBox.y >= headerBox.y + headerBox.height - 1 &&
+        panelBox.y + panelBox.height <= footerBox.y + 1;
+    }).toBe(true);
+    await header.getByRole('button', { name: '사용방법' }).click({ trial: true });
+    await expect(footer.getByRole('button').last()).toBeInViewport();
+  });
 
   test('1366·1439px는 오버레이이고 1440px부터 도킹된다', async ({ page }) => {
     await page.goto('/');

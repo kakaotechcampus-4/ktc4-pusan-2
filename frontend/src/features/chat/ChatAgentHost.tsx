@@ -1,7 +1,6 @@
 import {
   Fragment,
   useCallback,
-  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -15,7 +14,7 @@ import {
   type UIEvent,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { UNSAFE_DataRouterContext, useLocation } from 'react-router';
+import { useLocation } from 'react-router';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
@@ -448,14 +447,6 @@ function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
-  const { pathname, search, hash } = useLocation();
-  // 내부 navigation key만 바뀌어도 같은 화면일 수 있으므로 실제 URL 위치를 비교합니다.
-  const routeIdentity = `${pathname}${search}${hash}`;
-  const openedRouteRef = useRef(routeIdentity);
-  const navigatedWhileOpenRef = useRef(false);
-  // React Router는 실제 경로를 컴포넌트 unmount 전에 갱신합니다.
-  // 비허용 화면 이동 때 자식이 새 useLocation 값을 받기 전에 제거될 수 있으므로 router.state를 확인합니다.
-  const routeStore = useContext(UNSAFE_DataRouterContext)?.router;
   const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -469,28 +460,24 @@ function ChatPanel({
     if (!mobileOverlay) return;
     const content = document.querySelector<HTMLElement>('.chat-layout-content');
     if (!content) return;
-    // StrictMode의 effect 재실행 때에도 DOM은 남아 있습니다. 실제 unmount와 구분합니다.
     const panel = panelRef.current;
     const wasInert = content.hasAttribute('inert');
+    const root = document.documentElement;
     const body = document.body;
     const previous = {
-      position: body.style.position,
-      top: body.style.top,
-      left: body.style.left,
-      width: body.style.width,
-      overflow: body.style.overflow,
+      rootOverflow: root.style.overflow,
+      rootOverscrollBehavior: root.style.overscrollBehavior,
+      bodyOverflow: body.style.overflow,
+      contentTouchAction: content.style.touchAction,
     };
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    const openedRoute = openedRouteRef.current;
-    navigatedWhileOpenRef.current = false;
 
-    // iOS Safari에서도 뒤 화면이 움직이지 않도록 고정합니다. 음수 top으로 보던 위치를 그대로 둡니다.
-    body.style.position = 'fixed';
-    body.style.top = `-${scrollY}px`;
-    body.style.left = `-${scrollX}px`;
-    body.style.width = '100%';
+    // 문서의 실제 scrollY를 보존해야 React Router의 ScrollRestoration이
+    // 앞/뒤 화면의 위치를 저장하고, 오버레이가 열린 상태에서도 새 위치로 이동할 수 있습니다.
+    // body position:fixed와 top:-scrollY는 scrollY를 0으로 만들어 사용하지 않습니다.
+    root.style.overflow = 'hidden';
+    root.style.overscrollBehavior = 'none';
     body.style.overflow = 'hidden';
+    content.style.touchAction = 'none';
     content.setAttribute('inert', '');
     if (panel && !panel.contains(document.activeElement)) {
       if (inputRef.current && !inputRef.current.closest('[hidden]')) inputRef.current.focus();
@@ -498,36 +485,12 @@ function ChatPanel({
     }
     return () => {
       if (!wasInert) content.removeAttribute('inert');
-      body.style.position = previous.position;
-      body.style.top = previous.top;
-      body.style.left = previous.left;
-      body.style.width = previous.width;
-      body.style.overflow = previous.overflow;
-      // StrictMode 효과 재실행은 현재 라우터 위치가 그대로이고, 실제 화면 이동은 먼저 바뀝니다.
-      // DOM 연결 상태는 삭제 시점에 따라 달라지므로 router.state.location으로 판정합니다.
-      const latest = routeStore?.state.location;
-      const currentRoute = latest
-        ? `${latest.pathname}${latest.search}${latest.hash}`
-        : openedRoute;
-      if (!navigatedWhileOpenRef.current && currentRoute === openedRoute) {
-        window.scrollTo(scrollX, scrollY);
-      }
-      // 다른 화면의 스크롤 위치는 React Router ScrollRestoration에 맡깁니다.
+      root.style.overflow = previous.rootOverflow;
+      root.style.overscrollBehavior = previous.rootOverscrollBehavior;
+      body.style.overflow = previous.bodyOverflow;
+      content.style.touchAction = previous.contentTouchAction;
     };
-  }, [mobileOverlay, routeStore]);
-  useLayoutEffect(() => {
-    if (mobileOverlay) return;
-    // 데스크톱에서 이동하다 모바일로 크기가 바뀐 경우의 기준 위치입니다.
-    openedRouteRef.current = routeIdentity;
-    navigatedWhileOpenRef.current = false;
-  }, [mobileOverlay, routeIdentity]);
-  useLayoutEffect(() => {
-    if (!mobileOverlay || openedRouteRef.current === routeIdentity) return;
-    // 쿼리 변경도 탐색으로 취급합니다. 패널이 유지되는 이동에서는 옛 화면의 음수 top을 제거합니다.
-    navigatedWhileOpenRef.current = true;
-    document.body.style.top = '0px';
-    document.body.style.left = '0px';
-  }, [mobileOverlay, routeIdentity]);
+  }, [mobileOverlay]);
   useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */

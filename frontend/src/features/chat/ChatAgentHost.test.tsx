@@ -664,112 +664,111 @@ it('모바일 오버레이는 배경을 비활성화하고 닫으면 복원한�
   const content = host.querySelector('.chat-layout-content')!;
   expect(panel()!.getAttribute('aria-modal')).toBe('true');
   expect(content.hasAttribute('inert')).toBe(true);
-  expect(document.body.style.position).toBe('fixed');
+  expect(document.documentElement.style.overflow).toBe('hidden');
+  expect(document.body.style.overflow).toBe('hidden');
   await act(async () => button('새미나이 닫기')!.click());
   expect(panel()).toBeNull();
   expect(content.hasAttribute('inert')).toBe(false);
-  expect(document.body.style.position).toBe('');
+  expect(document.documentElement.style.overflow).toBe('');
 });
 
-it('모바일에서 같은 경로에서 채팅을 닫으면 기존 스크롤 위치를 복원한다', async () => {
+it('모바일에서 같은 화면을 닫아도 실제 문서 스크롤을 변경하지 않는다', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query === '(max-width: 760px)',
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
-  vi.stubGlobal('scrollX', 0);
   vi.stubGlobal('scrollY', 420);
   const scrollTo = vi.fn();
   vi.stubGlobal('scrollTo', scrollTo);
   await visit('/');
   await openPanel();
-  expect(document.body.style.top).toBe('-420px');
+  expect(document.documentElement.style.overflow).toBe('hidden');
+  expect(document.body.style.position).toBe('');
+  expect(window.scrollY).toBe(420);
   await act(async () => button('새미나이 닫기')!.click());
-  expect(scrollTo).toHaveBeenCalledWith(0, 420);
+  expect(document.documentElement.style.overflow).toBe('');
+  expect(window.scrollY).toBe(420);
+  expect(scrollTo).not.toHaveBeenCalled();
 });
 
-it('StrictMode 이펙트 재실행에서도 같은 화면의 스크롤 위치를 보존한다', async () => {
+it('StrictMode 이펙트 재실행에서도 문서 스크롤과 잠금 상태가 유지된다', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query === '(max-width: 760px)',
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
-  vi.stubGlobal('scrollX', 0);
   vi.stubGlobal('scrollY', 420);
   const scrollTo = vi.fn();
   vi.stubGlobal('scrollTo', scrollTo);
   await visit('/', true);
   await openPanel();
-  // StrictMode의 effect 정리 시 DOM은 남아 있으므로 이전 위치로 복원되어야 합니다.
-  expect(scrollTo).toHaveBeenCalledWith(0, 420);
-  expect(document.body.style.position).toBe('fixed');
-  expect(document.body.style.top).toBe('-420px');
+  expect(document.documentElement.style.overflow).toBe('hidden');
+  expect(document.body.style.position).toBe('');
+  expect(window.scrollY).toBe(420);
+  expect(scrollTo).not.toHaveBeenCalled();
 });
 
-it('모바일에서 채팅을 연 채 다른 페이지로 이동하면 이전 페이지의 스크롤을 복원하지 않는다', async () => {
+it('모바일에서 채팅을 연 채 다른 페이지로 이동해도 scrollY를 0으로 바꾸지 않는다', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query === '(max-width: 760px)',
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
-  vi.stubGlobal('scrollX', 0);
   vi.stubGlobal('scrollY', 420);
   const scrollTo = vi.fn();
   vi.stubGlobal('scrollTo', scrollTo);
   await visit('/');
   await openPanel();
-  expect(document.body.style.top).toBe('-420px');
   await go('/pitch/new');
   expect(panel()).not.toBeNull();
-  expect(document.body.style.top).toBe('0px');
+  expect(document.documentElement.style.overflow).toBe('hidden');
+  expect(window.scrollY).toBe(420);
   await act(async () => button('새미나이 닫기')!.click());
-  expect(document.body.style.position).toBe('');
-  // 새 화면 위치는 ScrollRestoration에 맡기며, 패널은 scrollTo를 호출하지 않습니다.
+  expect(document.documentElement.style.overflow).toBe('');
   expect(scrollTo).not.toHaveBeenCalled();
 });
 
-it('모바일에서 쿼리만 바뀌어도 이전 화면의 스크롤을 덮어쓰지 않는다', async () => {
+it('모바일에서 쿼리만 변경해도 문서 스크롤 값을 덮어쓰지 않는다', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query === '(max-width: 760px)',
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
-  vi.stubGlobal('scrollX', 0);
   vi.stubGlobal('scrollY', 420);
   const scrollTo = vi.fn();
   vi.stubGlobal('scrollTo', scrollTo);
   await visit('/takes');
   await openPanel();
-  expect(document.body.style.top).toBe('-420px');
   await go('/takes?view=compare&pitch=p-9');
   expect(panel()).not.toBeNull();
-  expect(document.body.style.top).toBe('0px');
+  expect(document.documentElement.style.overflow).toBe('hidden');
+  expect(window.scrollY).toBe(420);
   await act(async () => button('새미나이 닫기')!.click());
-  expect(document.body.style.position).toBe('');
+  expect(document.documentElement.style.overflow).toBe('');
   expect(scrollTo).not.toHaveBeenCalled();
 });
 
-it('모바일에서 채팅이 숨는 장치 점검으로 이동해도 이전 화면 스크롤을 복원하지 않는다', async () => {
+it('모바일에서 채팅이 숨는 장치 점검으로 이동해도 스크롤 잠금을 해제한다', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query === '(max-width: 760px)',
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
-  vi.stubGlobal('scrollX', 0);
   vi.stubGlobal('scrollY', 420);
   const scrollTo = vi.fn();
   vi.stubGlobal('scrollTo', scrollTo);
   await visit('/');
   await openPanel();
-  expect(document.body.style.top).toBe('-420px');
+  expect(document.documentElement.style.overflow).toBe('hidden');
   await go('/pitch/p1/device-check');
   expect(panel()).toBeNull();
-  expect(document.body.style.position).toBe('');
+  expect(document.documentElement.style.overflow).toBe('');
   expect(host.querySelector('.chat-layout-content')!.hasAttribute('inert')).toBe(false);
   expect(scrollTo).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(host.querySelector('main#main'));

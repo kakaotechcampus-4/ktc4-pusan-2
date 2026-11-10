@@ -259,7 +259,7 @@ body {
 /* 모바일에서는 패널을 닫는 버튼이 안에 있으므로 런처를 숨기고 전체 높이를 사용합니다.
    401~451px의 런처·패널 겹침도 막고, 배경과의 상호작용을 차단했음을 보여 줍니다. */
 @media (max-width: 760px) {
-  /* 본문 스크롤 잠금·위치 복원은 ChatPanel의 레이아웃 이펙트가 담당합니다. */
+  /* 본문 스크롤 잠금은 ChatPanel의 이펙트가 document scrollY를 보존하며 담당합니다. */
   [data-chat-launcher]:has([data-chat-panel]) > button {
     visibility: hidden;
   }
@@ -277,6 +277,19 @@ body {
 @starting-style {
   .chat-side-panel {
     translate: 100% 0;
+  }
+}
+
+/* 1440px 미만에서는 본문 너비를 유지하되, 헤더와 하단 고정 조작부를 덮지 않습니다.
+   헤더는 약 85px, 발표 생성·수정 하단 바는 약 76px입니다.
+   버튼·안내가 줄바꿈되는 경우까지 여유를 주도록 하단 7rem을 남깁니다. */
+@media (min-width: 761px) and (max-width: 1439px) {
+  .chat-layout:has(.app-scroll-shell) .chat-side-panel {
+    top: var(--spacing-app-header);
+  }
+
+  .chat-layout:has(.pitch-create-square) .chat-side-panel {
+    bottom: 7rem;
   }
 }
 

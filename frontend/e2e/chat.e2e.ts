@@ -148,8 +148,9 @@ test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보�
   expect(before).toBeGreaterThan(0);
   const panel = await openChat(page);
   await expect(panel).toHaveAttribute('aria-modal', 'true');
-  await expect(page.locator('body')).toHaveCSS('position', 'fixed');
-  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
+  await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
+  await expect(page.locator('body')).not.toHaveCSS('position', 'fixed');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(before);
   expect(await page.evaluate(topScript)).toBe(topBefore);
   await page.mouse.move(40, 300);
   await page.mouse.wheel(0, 500);
@@ -157,27 +158,27 @@ test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보�
   expect(await page.evaluate(topScript)).toBe(topBefore);
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
-  await expect(page.locator('body')).not.toHaveCSS('position', 'fixed');
-  expect(await page.evaluate('window.scrollY')).toBe(before);
+  await expect(page.locator('html')).not.toHaveCSS('overflow-y', 'hidden');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(before);
 });
 
-test('모바일에서 채팅을 연 채 다른 화면으로 이동하면 라우터의 스크롤 위치를 유지한다', async ({
+test('모바일 채팅을 연 채 앞뒤로 이동해도 Take 기록의 400px 스크롤을 복원한다', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 600, height: 800 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
 
-  // SPA 내부 링크로 Take 기록으로 이동해, 브라우저 뒤로 가기로 화면만 바꿉니다.
-  // 모바일 메뉴에서 링크가 접혀 있더라도 React Router 링크의 클릭 이벤트는 동일합니다.
+  // SPA 내부 링크로 Take 기록으로 이동합니다.
   await page.evaluate(`(() => {
     const link = document.querySelector('a[href="/takes"]');
     if (!link) throw new Error('Take 기록 링크가 없습니다');
     link.click();
   })()`);
-  await expect(page).toHaveURL(/\/takes$/);
+  await expect(page).toHaveURL(/\\/takes$/);
+  await expect(page.getByRole('heading', { name: 'Take 기록', exact: true })).toBeVisible();
 
-  // 이전 화면으로 잘못 되돌아가는 문제를 감지하도록 Take 기록을 실제로 스크롤합니다.
+  // React Router의 첫 스크롤 복원이 끝난 다음에 0이 아닌 위치를 기록합니다.
   await page.evaluate(`(() => {
     const content = document.querySelector('.chat-layout-content');
     if (!content) throw new Error('채팅 레이아웃 본문이 없습니다');
@@ -186,20 +187,34 @@ test('모바일에서 채팅을 연 채 다른 화면으로 이동하면 라우�
     content.append(spacer);
     window.scrollTo(0, 400);
   })()`);
-  expect(await page.evaluate('window.scrollY')).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
   const panel = await openChat(page);
-  await expect(page.locator('body')).toHaveCSS('position', 'fixed');
+  await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
 
+  // 이전 화면으로 가도 ScrollRestoration의 저장값은 400이어야 합니다.
   await page.goBack();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\\/$/);
+  await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
   await expect(panel).toBeVisible();
-  await expect(page.locator('body')).toHaveCSS('top', '0px');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(0);
+
+  // 패널을 연 상태로 다시 Take 기록에 돌아오고, 닫아도 400px이 유지돼야 합니다.
+  await page.goForward();
+  await expect(page).toHaveURL(/\\/takes$/);
+  await expect(page.getByRole('heading', { name: 'Take 기록', exact: true })).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
-  await expect(page.locator('body')).not.toHaveCSS('position', 'fixed');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
 
-  // 이전 Take 기록의 400px을 홈에 강제 적용하면 회귀입니다.
-  expect(await page.evaluate('window.scrollY')).toBe(0);
+  // 다시 왕복해도 React Router가 기록한 400px이 보존되는지 확인합니다.
+  await page.goBack();
+  await expect(page).toHaveURL(/\\/$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\\/takes$/);
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
 });
 
 test('761px 이상에서는 채팅을 열어도 본문을 비활성화하지 않는다', async ({ page }) => {
