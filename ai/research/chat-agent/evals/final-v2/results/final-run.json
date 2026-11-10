@@ -1,0 +1,23 @@
+{
+ "commit": "85fcc115",
+ "code": "chat_agent-0.13.0 (마지막 코드의 깨끗한 사본, git archive)",
+ "runs": {
+  "agent": "60 x 3"
+ },
+ "settings": "봉인 기준선과 같다: --set all --judge --workers 4 --search hybrid, 모델 gpt-6-luna · 추론 low · 판정 gpt-6-luna",
+ "exit": {
+  "uv": 0,
+  "verify": 0,
+  "agent": 0,
+  "hash": 0
+ },
+ "verify": "동결 목록과 같음",
+ "provider_failed_calls": {
+  "agent": 0
+ },
+ "provider_aborted_runs": {
+  "agent": 0
+ },
+ "retries": 0,
+ "note": "v2-07 #2 의 모델 오류(LLM_ERROR)는 사용량이 있어 제공자 장애가 아니므로 다시 돌리지 않고 실패로 셌다(RULES 6절). 결과 파일은 저장소 밖 보관 폴더에 있고 해시는 final.sha256."
+}

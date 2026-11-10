@@ -1,39 +1,36 @@
 # 실행 기록 발췌 — path-rm-score-ask
 
-- 기능 버전: chat_agent-0.12.0
-- 프롬프트 버전: c098795754dc
-- 모델: gpt-6-luna
-- 검색 방식: hybrid
-- 실행일: 2026-11-10
-- 채점 결과(참고): 실패
+- 기능 버전: chat_agent-0.13.0 · 프롬프트 버전: 17278f520767 · 모델: gpt-6-luna
+- 출처: 회귀 재측정 `post4-path`의 첫 실행(가짜 BE · 합성 자료, 모델을 다시 부르지 않고 옮김)
+- 채점 결과(참고): 실패(problem-slide, slide2-value)
 
-시나리오는 합성 자료이고, 서명 상태 값은 생략했다.
+## 차례 1 — Take 5 점수랑 가장 크게 걸린 문제 구간이 어디였는지 알려 줘
 
-## 시나리오 `path-rm-score-ask`
+끝 상태 `DONE`
 
-- 제목: Take 5 리뷰가 아직 없음 — 점수는 확인할 수 없다고 하고 코치 결과(2장 문제 구간 30%)로 답한다
+할 일 단계(화면):
 
-### 사용자 말 1
+- ☑ 점수와 문제 구간 기록 확인: Take 5 기록 → 리뷰 분석 전
+- ☑ 리뷰 없어 코치 기록: Take 5 기록 → 확인
+- ☑ 기록을 바탕으로 질문에 답변
 
-> Take 5 점수랑 가장 크게 걸린 문제 구간이 어디였는지 알려 줘
+확인한 것(화면):
 
-#### AI 호출 1 (`req-run-1-1`)
+- 기록 보기 → 리뷰 분석 · 없음
+- 기록 보기 → 코치가 찾은 것 · 확인
 
-| seq | event | 내용 |
-| --- | --- | --- |
-| 1 | plan | [DOING] Take 기록과 리뷰를 확인한다<br>[TODO] 확인된 결과를 답한다 |
-| 2 | tool_done | get_take_report · EMPTY · 리뷰 분석 · EMPTY |
-| 3 | plan | [DONE] 기록 보기: Take 5 기록 → 리뷰 분석 전<br>[DOING] Take 기록과 리뷰를 확인한다<br>[TODO] 확인된 결과를 답한다 |
-| 4 | tool_done | get_take_report · OK · 코치가 찾은 것 · 1개 항목 |
-| 5 | plan | [DONE] 기록 보기: Take 5 기록 → 리뷰 분석 전<br>[DONE] 기록 보기: Take 5 기록 → 문제 구간 있음<br>[DOING] Take 기록과 리뷰를 확인한다<br>[TODO] 확인된 결과를 답한다 |
-| 6 | claim | RECORD: Take 5는 리뷰가 없어 점수를 확인할 수 없습니다. |
-| 7 | claim | RECORD: 확인된 문제 구간은 2장의 대본 응시입니다. |
-| 8 | plan | [DONE] 기록 보기: Take 5 기록 → 리뷰 분석 전<br>[DONE] 기록 보기: Take 5 기록 → 문제 구간 있음<br>[SKIPPED] Take 기록과 리뷰를 확인한다<br>[DONE] 확인된 결과를 답한다 |
-| - | final | status=DONE · actions=[] |
+답(문장 종류 · 글):
 
-결정 로그(`agent_decision`)
+- `RECORD` ‘졸업 발표’의 Take 5는 리뷰가 없어 점수를 확인할 수 없어요.
+- `RECORD` 확인된 문제 구간은 2장에서 대본 응시예요.
+- `SYSTEM` 리뷰가 없어 점수와 미션은 확인할 수 없지만 측정값은 볼 수 있어요.
+- `SYSTEM` 리뷰가 끝나면 점수와 미션도 같이 볼 수 있어요.
 
-| signal | facts | decider | effect | step | tool_seq |
-| --- | --- | --- | --- | --- | --- |
-| REVIEW_MISSING | [] | CODE | FACT_SHOWN | 0 | 1 |
-| REVIEW_MISSING | [] | LLM | ALT_TOOL | 1 | 2 |
+## 결정 로그(`agent_decision` 신호:효과:결정자, 마지막 차례)
+
+- `REVIEW_MISSING:FACT_SHOWN:CODE`
+- `REVIEW_MISSING:ALT_TOOL:CODE`
+
+## 사건 순서(마지막 차례)
+
+`tool:get_take_report:EMPTY → decision:REVIEW_MISSING:FACT_SHOWN:CODE → decision:REVIEW_MISSING:ALT_TOOL:CODE → tool:get_take_report:OK → tool:get_take_report:OK → claim:RECORD → claim:RECORD → claim:SYSTEM → claim:SYSTEM → final:DONE`
