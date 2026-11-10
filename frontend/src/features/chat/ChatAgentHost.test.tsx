@@ -709,8 +709,52 @@ it('모바일에서 채팅을 연 채 다른 페이지로 이동하면 이전 �
   expect(document.body.style.top).toBe('0px');
   await act(async () => button('새미나이 닫기')!.click());
   expect(document.body.style.position).toBe('');
-  expect(scrollTo).toHaveBeenCalledWith(0, 0);
-  expect(scrollTo).not.toHaveBeenCalledWith(0, 420);
+  // 새 화면 위치는 ScrollRestoration에 맡기며, 패널은 scrollTo를 호출하지 않습니다.
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 쿼리만 바뀌어도 이전 화면의 스크롤을 덮어쓰지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollX', 0);
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/takes');
+  await openPanel();
+  expect(document.body.style.top).toBe('-420px');
+  await go('/takes?view=compare&pitch=p-9');
+  expect(panel()).not.toBeNull();
+  expect(document.body.style.top).toBe('0px');
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.position).toBe('');
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 채팅이 숨는 장치 점검으로 이동해도 이전 화면 스크롤을 복원하지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollX', 0);
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  expect(document.body.style.top).toBe('-420px');
+  await go('/pitch/p1/device-check');
+  expect(panel()).toBeNull();
+  expect(document.body.style.position).toBe('');
+  expect(host.querySelector('.chat-layout-content')!.hasAttribute('inert')).toBe(false);
+  expect(scrollTo).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(host.querySelector('main#main'));
 });
 
 it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내지 않는다', async () => {

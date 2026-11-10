@@ -161,6 +161,47 @@ test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보�
   expect(await page.evaluate('window.scrollY')).toBe(before);
 });
 
+test('모바일에서 채팅을 연 채 다른 화면으로 이동하면 라우터의 스크롤 위치를 유지한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
+
+  // SPA 내부 링크로 Take 기록으로 이동해, 브라우저 뒤로 가기로 화면만 바꿉니다.
+  // 모바일 메뉴에서 링크가 접혀 있더라도 React Router 링크의 클릭 이벤트는 동일합니다.
+  await page.evaluate(`(() => {
+    const link = document.querySelector('a[href="/takes"]');
+    if (!link) throw new Error('Take 기록 링크가 없습니다');
+    link.click();
+  })()`);
+  await expect(page).toHaveURL(/\/takes$/);
+
+  // 이전 화면으로 잘못 되돌아가는 문제를 감지하도록 Take 기록을 실제로 스크롤합니다.
+  await page.evaluate(`(() => {
+    const content = document.querySelector('.chat-layout-content');
+    if (!content) throw new Error('채팅 레이아웃 본문이 없습니다');
+    const spacer = document.createElement('div');
+    spacer.style.height = '200vh';
+    content.append(spacer);
+    window.scrollTo(0, 400);
+  })()`);
+  expect(await page.evaluate('window.scrollY')).toBeGreaterThan(0);
+  const panel = await openChat(page);
+  await expect(page.locator('body')).toHaveCSS('position', 'fixed');
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(panel).toBeVisible();
+  await expect(page.locator('body')).toHaveCSS('top', '0px');
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator('body')).not.toHaveCSS('position', 'fixed');
+
+  // 이전 Take 기록의 400px을 홈에 강제 적용하면 회귀입니다.
+  expect(await page.evaluate('window.scrollY')).toBe(0);
+});
+
 test('761px 이상에서는 채팅을 열어도 본문을 비활성화하지 않는다', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto('/');
