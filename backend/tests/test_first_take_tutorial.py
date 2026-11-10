@@ -373,7 +373,7 @@ def test_sample_take_is_refused_after_the_tutorial_report(
     assert _first_take(client, auth_headers)["report_received"] is True
 
 
-def test_report_limit_survives_deleting_the_sample(
+def test_sample_is_not_made_again_after_the_tutorial_report(
     client: TestClient,
     db_session: Session,
     committed_user: uuid.UUID,
@@ -382,13 +382,17 @@ def test_report_limit_survives_deleting_the_sample(
 ) -> None:
     first = _first_take(client, auth_headers)["pitch_id"]
     _mark_report(db_session, committed_user)
+    # 남아 있는 샘플은 기록을 보라고 그대로 준다
+    assert _first_take(client, auth_headers) == {"pitch_id": first, "report_received": True}
     client.delete(f"/api/pitches/delete/{first}", headers=auth_headers)
+    uploaded = list(uploads)
 
     again = _first_take(client, auth_headers)
 
-    assert again["report_received"] is True
-    response = _start_take(client, db_session, again["pitch_id"], auth_headers)
-    assert response.json()["code"] == "TUTORIAL_REPORT_USED"
+    # 리포트 기록은 사용자에 남아 있다. 만들어도 연습할 수 없으니 만들지 않고 파일도 올리지 않는다
+    assert again == {"pitch_id": None, "report_received": True}
+    assert _demo_pitches(db_session, committed_user) == []
+    assert uploads == uploaded
 
 
 def test_normal_pitch_is_not_limited_by_the_tutorial_report(
@@ -436,6 +440,62 @@ def test_sample_take_waits_for_a_running_analysis(
     analyzing.analysis_stage_at = datetime.now(UTC) - timedelta(hours=1)
     db_session.flush()
     assert _start_take(client, db_session, pitch_id, auth_headers).status_code == 200
+
+
+# ── 장치 점검 준비가 미리 알리는 막힘 ─────────────────────────────────────
+
+
+def _tutorial_block(client: TestClient, pitch_id: object, headers: dict[str, str]) -> object:
+    response = client.get(f"/api/pitches/{pitch_id}/prepare", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["tutorial_block"]
+
+
+def test_prepare_tells_why_the_sample_cannot_start(
+    client: TestClient,
+    db_session: Session,
+    committed_user: uuid.UUID,
+    auth_headers: dict[str, str],
+    uploads: list[str],
+) -> None:
+    pitch_id = _first_take(client, auth_headers)["pitch_id"]
+    assert _tutorial_block(client, pitch_id, auth_headers) is None
+
+    analyzing = _add_take(
+        db_session,
+        pitch_id,
+        1,
+        status="ANALYZING",
+        analysis_stage="SCORING",
+        analysis_stage_at=datetime.now(UTC),
+    )
+    # Take 생성과 같은 판정이다. 분석 중을 먼저 본다
+    _mark_report(db_session, committed_user)
+    assert _tutorial_block(client, pitch_id, auth_headers) == "TUTORIAL_ANALYSIS_RUNNING"
+    assert _start_take(client, db_session, pitch_id, auth_headers).json()["code"] == (
+        "TUTORIAL_ANALYSIS_RUNNING"
+    )
+
+    analyzing.status = "COMPLETED"
+    db_session.flush()
+    assert _tutorial_block(client, pitch_id, auth_headers) == "TUTORIAL_REPORT_USED"
+    assert _start_take(client, db_session, pitch_id, auth_headers).json()["code"] == (
+        "TUTORIAL_REPORT_USED"
+    )
+
+
+def test_prepare_of_a_normal_pitch_is_not_blocked_by_the_tutorial_report(
+    client: TestClient,
+    db_session: Session,
+    committed_user: uuid.UUID,
+    auth_headers: dict[str, str],
+) -> None:
+    pitch = Pitch(user_id=committed_user, title="내 발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    _mark_report(db_session, committed_user)
+
+    assert _tutorial_block(client, pitch.id, auth_headers) is None
 
 
 def _reviewing_take(db: Session, pitch_id: str) -> tuple[Take, uuid.UUID]:

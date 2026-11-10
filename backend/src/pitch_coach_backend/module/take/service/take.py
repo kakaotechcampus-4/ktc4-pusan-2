@@ -42,7 +42,7 @@ from pitch_coach_backend.module.take.exception import (
 )
 from pitch_coach_backend.module.take.measures import take_count, take_metric
 from pitch_coach_backend.module.take.repository import TakeRepository
-from pitch_coach_backend.module.take.service.lookup import pitch_has_running_analysis
+from pitch_coach_backend.module.take.service.lookup import tutorial_block
 from pitch_coach_backend.module.take.states import (
     ANALYZING,
     COMPLETED,
@@ -51,7 +51,6 @@ from pitch_coach_backend.module.take.states import (
     REVIEW,
     TAKE_RESULT,
 )
-from pitch_coach_backend.module.user import service as user_service
 
 # 시작 · 끝 시각으로 받는 범위의 여유. Take 를 만든 때보다 이만큼 앞부터 지금보다 이만큼 뒤까지
 # 받는다. FE 시계로 잰 값이라 서버 시계와 어긋날 수 있다. 앞뒤로 같은 여유를 둔다 — 끝내기 PUT 이
@@ -136,14 +135,13 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 def _check_tutorial_take(db: Session, pitch: Pitch) -> None:
     """튜토리얼 리포트는 계정당 한 번이다. 받았거나 받는 중이면 샘플 발표에서 새 Take 를 막는다.
 
-    리포트(리뷰)가 만들어진 횟수로 센다. 끊긴 연습은 분석하지 않아 리포트가 없으니 다시 할 수 있다.
-    받았다는 기록은 리뷰 결과 · Take 완료와 한 커밋이다(`review.save_review`). 그래서 분석 중인지를
-    먼저 본다 — 기록을 먼저 보면 두 조회 사이에 그 커밋이 끼어 둘 다 지나갈 수 있다.
+    판정은 `lookup.tutorial_block` 이다(장치 점검 준비도 같은 판정을 미리 알린다).
     발표 행을 잠근 뒤에 보므로 같은 발표의 Take 생성끼리는 차례로 판단한다.
     """
-    if pitch_has_running_analysis(db, pitch.id, datetime.now(UTC)):
+    block = tutorial_block(db, pitch.id, pitch.user_id, datetime.now(UTC))
+    if block == "TUTORIAL_ANALYSIS_RUNNING":
         raise TutorialAnalysisRunning()
-    if user_service.has_tutorial_report(db, pitch.user_id):
+    if block == "TUTORIAL_REPORT_USED":
         raise TutorialReportUsed()
 
 
