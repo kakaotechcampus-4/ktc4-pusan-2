@@ -2,15 +2,19 @@ import { useId, useLayoutEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/shared/ui/Button';
 import { recordPrivacyConsent } from '@/shared/lib/privacyConsent';
+import { DATA_RETENTION_UNTIL } from '@/shared/lib/retention';
 import { useLogout } from './useSession';
 
 /** 안내문을 고치면 `PRIVACY_CONSENT_VERSION`(privacyConsent.ts)을 올립니다 */
 const DATA_USES = [
-  ['얼굴·시선', '기기 내에서만 분석하며, 영상과 생체정보는 서버로 전송하거나 저장하지 않습니다.'],
+  [
+    '얼굴·시선',
+    '카메라 영상은 기기 안에서만 분석하며 서버로 전송하거나 저장하지 않습니다. 시선 분석 결과(시선 구간)만 연습 기록으로 저장합니다.',
+  ],
   ['음성', 'Deepgram STT로 텍스트 변환하며, 서비스 서버에 녹음 파일은 저장하지 않습니다.'],
   [
     '분석 정보',
-    '발표 분석 결과, 변환된 텍스트, 오류 로그 등은 기능 검증 및 개선을 위해 2026년 12월 31일까지 보관합니다.',
+    `발표 분석 결과, 변환된 텍스트, 오류 로그 등은 기능 검증 및 개선을 위해 ${DATA_RETENTION_UNTIL}까지 보관합니다.`,
   ],
 ] as const;
 

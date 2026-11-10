@@ -76,6 +76,9 @@ it('opens the consent popup over the signed-in screen before the user agrees', a
   expect(dialog?.open).toBe(true);
   expect(dialog?.querySelector('h2')?.textContent).toBe('개인정보 처리 및 데이터 활용');
   expect(dialog?.textContent).toContain('Deepgram STT');
+  // 영상은 보내지 않고 시선 구간만 저장한다는 것 · 보관 기한이 처리방침과 같게 보입니다
+  expect(dialog?.textContent).toContain('시선 분석 결과(시선 구간)만 연습 기록으로 저장합니다');
+  expect(dialog?.textContent).toContain('2026년 12월 31일까지 보관합니다');
   expect(dialog?.querySelector('a[href="/privacy"]')).not.toBeNull();
   // 뒤에는 가려던 화면이 그려져 있고, 모달이라 누를 수 없습니다
   expect(host.querySelector('h1')?.textContent).toBe('Take 기록 화면');
@@ -123,8 +126,8 @@ it('closes the popup at the same address and focuses the screen heading once the
   expect(consentDialog()).toBeNull();
   expect(router.state.location.pathname).toBe('/takes');
   expect(localStorage.getItem(privacyConsentKey('u1'))).not.toBeNull();
-  await vi.waitFor(() => expect(document.activeElement?.textContent).toBe('Take 기록 화면'));
-  expect(document.activeElement?.tagName).toBe('H1');
+  // body 의 글자도 'Take 기록 화면' 뿐이라, 글자가 아니라 요소로 봅니다
+  await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector('h1')));
 });
 
 it('closes the popup when the user agrees in another tab', async () => {
