@@ -1201,12 +1201,19 @@ def _latest_pitch_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
     if latest is None:
         return [Claim(kind="SYSTEM", text=templates.SystemText.LATEST_NONE.value)]
 
-    def sentence(p: Any, *, head: bool) -> Claim | None:
+    def sentence(p: Any, *, head: bool, count_only: bool = False) -> Claim | None:
         day = practiced_date(p.last_practiced_at)
         date_ev = pitch_evidence(ctx, p.pitch_id, "last_practiced_at")
         count_ev = pitch_evidence(ctx, p.pitch_id, "take_count")
         if day is None or date_ev is None or count_ev is None:
             return None
+        if count_only:
+            text = "'{t}'는 아직 분석이 끝난 Take가 없어요."
+            claim = Claim(kind="RECORD", text=text.format(t=p.title), evidence_ids=[count_ev])
+            masked = claim.model_copy(update={"text": text.format(t="발표")})
+            if chk.check_claims([masked], registry=ctx.registry, code_sentences={masked.text}, cfg=lp.cfg):
+                return None
+            return claim
         if head:
             tail = (
                 f"분석이 끝난 Take는 {p.take_count}개예요."
@@ -1229,6 +1236,11 @@ def _latest_pitch_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
         return []
     if head.evidence_ids[0] not in cited:
         out.append(head)  # 모델 문장이 이미 그 피치의 마지막 연습 날짜를 근거로 말했으면 첫 문장은 내지 않는다
+    elif latest.take_count == 0 and head.evidence_ids[1] not in cited:
+        # 모델이 날짜만 말하고 분석이 끝난 Take 가 없다는 것은 말하지 않았다: 그 사실만 붙인다(path-glob-latest-unfinished)
+        zero = sentence(latest, head=True, count_only=True)
+        if zero is not None:
+            out.append(zero)
     if latest.take_count == 0:
         done = [p for p in practiced if p.take_count > 0]
         if done:

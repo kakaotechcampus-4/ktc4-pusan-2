@@ -265,3 +265,24 @@ def test_model_citing_the_latest_date_still_gets_the_finished_pitch_sentence() -
     texts = _texts(data)
     assert HEAD_0 not in texts
     assert EXTRA_0 in texts
+    # 모델은 날짜만 말했다: 분석이 끝난 Take 가 없다는 사실만 코드가 붙인다(path-glob-latest-unfinished)
+    assert "'투자 설명회'는 아직 분석이 끝난 Take가 없어요." in texts
+
+
+@pytest.mark.prefetch
+def test_model_citing_date_and_count_gets_no_extra_zero_sentence() -> None:
+    """모델 문장이 날짜와 분석이 끝난 Take 수 근거를 모두 이었으면 '아직 없어요' 문장을 되풀이하지 않는다."""
+
+    def answer(r: Any) -> Any:
+        day = F.find_evidence(r, lambda o: o.get("value") == "11월 10일")
+        cnt = F.find_evidence(r, lambda o: o.get("value") == 0)  # 첫 줄 '투자 설명회'의 분석이 끝난 Take 수
+        return F.answer(
+            [F.claim("RECORD", "가장 최근 발표는 11월 10일에 시작한 '투자 설명회'이고 분석이 끝난 Take는 0개예요.", evidence_ids=[day, cnt])]
+        )
+
+    req = _global("가장 최근에 한 발표 뭐야?", PITCHES_0)
+    llm = F.FakeLlm([F.plan(steps=DEV_STEPS), F.done()], answers=[answer], fixes=[F.fix({})])
+    _, _, data = F.run_turn(req, llm)
+    texts = _texts(data)
+    assert texts and texts[0].startswith("가장 최근 발표는 11월 10일")  # 모델 문장이 나갔다
+    assert "'투자 설명회'는 아직 분석이 끝난 Take가 없어요." not in texts
