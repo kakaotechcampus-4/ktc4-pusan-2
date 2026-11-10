@@ -373,7 +373,7 @@ def test_sample_take_is_refused_after_the_tutorial_report(
     assert _first_take(client, auth_headers)["report_received"] is True
 
 
-def test_report_limit_survives_deleting_the_sample(
+def test_sample_is_not_made_again_after_the_tutorial_report(
     client: TestClient,
     db_session: Session,
     committed_user: uuid.UUID,
@@ -382,13 +382,17 @@ def test_report_limit_survives_deleting_the_sample(
 ) -> None:
     first = _first_take(client, auth_headers)["pitch_id"]
     _mark_report(db_session, committed_user)
+    # 남아 있는 샘플은 기록을 보라고 그대로 준다
+    assert _first_take(client, auth_headers) == {"pitch_id": first, "report_received": True}
     client.delete(f"/api/pitches/delete/{first}", headers=auth_headers)
+    uploaded = list(uploads)
 
     again = _first_take(client, auth_headers)
 
-    assert again["report_received"] is True
-    response = _start_take(client, db_session, again["pitch_id"], auth_headers)
-    assert response.json()["code"] == "TUTORIAL_REPORT_USED"
+    # 리포트 기록은 사용자에 남아 있다. 만들어도 연습할 수 없으니 만들지 않고 파일도 올리지 않는다
+    assert again == {"pitch_id": None, "report_received": True}
+    assert _demo_pitches(db_session, committed_user) == []
+    assert uploads == uploaded
 
 
 def test_normal_pitch_is_not_limited_by_the_tutorial_report(

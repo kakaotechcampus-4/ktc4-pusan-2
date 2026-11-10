@@ -63,7 +63,9 @@ class PitchListResponseDTO(BaseModel):
 class FirstTakeDTO(BaseModel):
     """`POST /pitches/tutorials/first-take` 응답. 처음이면 만들고, 있으면 그 발표를 준다."""
 
-    pitch_id: uuid.UUID
+    # 튜토리얼 리포트를 이미 받은 계정에 샘플 발표가 없으면(지웠으면) 만들지 않아 None 이다.
+    # 만들어도 Take 를 시작할 수 없다
+    pitch_id: uuid.UUID | None
     # 이 계정이 튜토리얼 리포트를 이미 받았는가. true 면 샘플 발표에서 새 Take 를 만들 수 없다
     # (409 `TUTORIAL_REPORT_USED`)
     report_received: bool
