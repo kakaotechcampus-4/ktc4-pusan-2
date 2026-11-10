@@ -1,0 +1,44 @@
+name: AI PR review on request
+
+on:
+  pull_request_target:
+    types: [review_requested]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: >-
+      github.event.requested_reviewer.login == 'anjh8370' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.login != 'anjh8370'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check required secret
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Configure OPENAI_API_KEY in repository Actions secrets"
+            exit 1
+          fi
+      - name: Checkout trusted base workflow code only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Review pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_REVIEW_MODEL: gpt-5.5
+          REVIEW_PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_REPOSITORY: ${{ github.repository }}
+        run: python3 .github/scripts/ai_pr_review.py
