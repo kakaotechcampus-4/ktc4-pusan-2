@@ -43,6 +43,12 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
 /** 발표 전체만 산출되는 지표를 슬라이드 데이터 누락과 구분합니다. */
 const OVERALL_ONLY_LABELS = new Set(['발표 시간', '핵심 내용 전달', '핵심 수치 정확도']);
 
+function comparisonBadgeClass(tone: Tone) {
+  if (tone === 'good') return 'bg-coral-deep text-white';
+  if (tone === 'bad') return 'border border-line-strong bg-cream text-ink';
+  return 'border border-dashed border-line-strong text-stone';
+}
+
 function ComparisonSummary() {
   const [open, setOpen] = useState(false);
   const detailTitleId = useId();
@@ -124,7 +130,15 @@ function ComparisonSummary() {
                       <span className="tabular tabular-nums font-bold text-ink">{overall[0]}</span>
                       <span aria-hidden="true" className="text-stone">→</span>
                       <span className="tabular tabular-nums font-bold text-ink">{overall[1]}</span>
-                      <Badge tone={overall[3]}>{overall[2]}</Badge>
+                      {overall[3] === 'muted' ? (
+                        <Badge tone="muted">{overall[2]}</Badge>
+                      ) : (
+                        <span
+                          className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(overall[3])}`}
+                        >
+                          {overall[2]}
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -201,7 +215,15 @@ function ComparisonSummary() {
                             <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                               <span className="text-ink/80">{cell[0]}</span>→
                               <b className="text-base">{cell[1]}</b>
-                              <Badge tone={cell[3]}>{cell[2]}</Badge>
+                              {cell[3] === 'muted' ? (
+                                <Badge tone="muted">{cell[2]}</Badge>
+                              ) : (
+                                <span
+                                  className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(cell[3])}`}
+                                >
+                                  {cell[2]}
+                                </span>
+                              )}
                             </span>
                           ) : (
                             <span className="text-ink/80">—</span>
