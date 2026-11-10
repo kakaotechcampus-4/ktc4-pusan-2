@@ -121,6 +121,15 @@ def with_prefix(emitted: list[dict[str, Any]], claims: list[Claim]) -> list[Clai
     return [*(Claim.model_validate(d) for d in emitted), *rest]
 
 
+def _action_answers(lp: Any, sentence: str) -> bool:
+    """덮이지 않은 절의 '확인하지 못했어요' 문장이 이 실행이 낸 다시 평가 요청이면 붙이지 않는다: 확인 카드 · 행동 결과가 그 절의
+    답이다(Issue #1194 읽듯 보는 검토 — 다시 평가 카드와 '확인하지 못했어요'가 함께 나와 어긋나 보였다)."""
+    acted = (lp.st.pending_action or {}).get("type") == "REASSESS" or any(
+        e.get("type") == "REASSESS" for e in lp.st.executed
+    )
+    return acted and any(w in sentence for w in lp.cfg.reassess_request_words)
+
+
 class ClaimLines:
     """문장 줄(`claim`, 5-4)을 낸다. 실행 전체에서 이어지는 번호와, 그 줄이 처음 쓰는 근거 · 자료 사본과, 아직 보내지 않은
     확정 판단을 싣는다. 앞 응답에서 낸 문장 · 내보낸 판단과 그 근거는 이미 보낸 것으로 센다(서명 상태에서 되살림)."""
@@ -491,7 +500,8 @@ class Composer:
         if not lead_closed:
             return out, flags, code
         if fin.result is not None:
-            for s in [*fin.result.uncovered_sentences, *fin.result.dropped_notice]:
+            uncovered = [s for s in fin.result.uncovered_sentences if not _action_answers(self.lp, s)]
+            for s in [*uncovered, *fin.result.dropped_notice]:
                 add(compose._claim("SYSTEM", s), False)
         # 비교할 수 없다는 도구 결과의 까닭은 코드 문장으로(모델이 근거 없는 까닭 문장을 써서 빠지지 않게, 7-10)
         seen_nc: set[str] = set()

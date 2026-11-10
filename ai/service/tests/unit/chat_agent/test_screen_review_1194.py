@@ -107,3 +107,27 @@ def test_metric_only_issue_claim_is_judged_by_the_problem_segment() -> None:
     assert run(d, t5(), focus="take-5").verdict == "CONTRADICTED"  # 대본 응시 구간이 없으면 반박
     pace = mk("말 속도가 너무 이상한 거 같아", op="ISSUE", dim="pacing_rhythm", metric="cpm", polarity=NEG)
     assert run(pace, t5(issues=[("PACE_FAST", 2, True)]), focus="take-5").reason_code == "NO_ISSUE_WORD"
+
+
+# ── 읽듯 보는 검토(보정 전 보조 검토)로 찾은 것 ─────────────────────────────────
+
+
+def test_question_form_is_not_answered_with_an_unverifiable_head() -> None:
+    """물음 꼴의 말('나아졌는지' · '올랐어?')은 판정할 수 없어도 '이 기록으로는 확인할 수 없어요'로 되받지 않는다(답이 까닭을 말한다)."""
+    assert clm._asks("Take 7이 그 전 Take 6보다 시선 처리가 나아졌는지")
+    assert clm._asks("Take 4 점수랑 비교해서 이번 Take 점수가 올랐어?")
+    assert clm._asks("대본을 쓴 조건으로 다시 평가해 볼 수 있을까요")
+    assert not clm._asks("Take 5는 군더더기 말이 너무 많았어")
+    assert not clm._asks("대본 응시 비율이 너무 높은거같아")
+    # 확인을 구하는 꼴은 주장이다(판정 문장을 쓴다)
+    assert not clm._asks("Take 5 목소리는 충분히 컸지?")
+    assert not clm._asks("시선 잘 봤죠?")
+    assert not clm._asks("목소리 크게 잘 냈잖아요")
+
+
+def test_unknown_issue_type_shows_the_area_name_not_the_internal_code() -> None:
+    from pitch_coach_ai.features.chat_agent.tools.impl import issue_label
+
+    assert issue_label("FILLER_FREQUENT", "FILLER") == "잦은 군더더기"
+    assert issue_label("FILLER_EXCESS", "FILLER") == "군더더기 문제"  # 계약 밖 종류
+    assert issue_label("SOMETHING_NEW", None) == "문제 구간"

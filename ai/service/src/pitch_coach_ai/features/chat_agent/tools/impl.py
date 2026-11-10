@@ -35,6 +35,7 @@ from ..templates import (
     PLAN_NOT_COMPARABLE_OTHER,
     PLAN_OUTCOME,
     PLAN_OUTCOME_OTHER,
+    PLAN_RESULT,
     SCREEN_STEP_LABEL,
     TRACE_OUTCOME,
     TRACE_SECTION,
@@ -127,6 +128,15 @@ def _res(name: str, **kw: Any) -> ToolResult:
     return ToolResult(name=name, **kw)
 
 
+def issue_label(issue_type: Any, area: Any) -> str:
+    """문제 구간 종류의 화면 이름. 계약 밖 종류는 내부 코드(예 `FILLER_EXCESS`)를 보이지 않고 영역 이름으로('군더더기 문제',
+    영역도 모르면 '문제 구간') — 모델이 이름표를 그대로 옮겨 써도 내부 말이 답에 나오지 않게(Issue #1194 읽듯 보는 검토)."""
+    known = ISSUE_LABEL.get(str(issue_type))
+    if known:
+        return known
+    return f"{AREA_LABEL[area]} 문제" if area in AREA_LABEL else "문제 구간"
+
+
 def _not_loaded(name: str, what: str, args_summary: str) -> ToolResult:
     return _res(
         name,
@@ -138,7 +148,7 @@ def _not_loaded(name: str, what: str, args_summary: str) -> ToolResult:
         },
         read_state="NOT_LOADED",
         args_summary=args_summary,
-        result_summary="기본 자료에 없음",
+        result_summary=PLAN_RESULT["NOT_LOADED"],  # '확인한 것'에 보이는 글: 내부 말 '기본 자료' 대신 할 일 단계와 같은 말
         cacheable=False,
     )
 
@@ -736,7 +746,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 items.append(
                     {
                         "issue_type": seg.get("issue_type"),
-                        "label": ISSUE_LABEL.get(str(seg.get("issue_type")), seg.get("issue_type")),
+                        "label": issue_label(seg.get("issue_type"), seg.get("area")),
                         "area": seg.get("area"),
                         "slide_number": seg.get("slide_number"),
                         "start_ms": seg.get("start_ms"),
