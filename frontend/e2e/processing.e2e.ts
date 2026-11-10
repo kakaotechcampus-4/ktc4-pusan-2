@@ -65,7 +65,7 @@ test.describe('대본 확인', () => {
     // 답이 반영되지 않았고 분석은 이어진다고 알립니다. 제목과 같은 말을 본문에서 되풀이하지 않습니다
     await expect(
       page.getByText(
-        '확인 시간이 지나 이번 답은 반영되지 않았어요. 분석은 답 없이 그대로 이어져요.',
+        '확인 시간이 지났거나 이미 답이 들어와 이번 답은 반영되지 않았어요. 분석은 그대로 이어져요.',
       ),
     ).toBeVisible();
     await expect(page.getByText(/확인을 받을 수 없어요/)).toHaveCount(1);
