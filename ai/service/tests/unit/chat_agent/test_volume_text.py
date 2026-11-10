@@ -65,6 +65,10 @@ def test_sentences_ending_with_the_volume_text_read_naturally() -> None:
     assert compose.be("점검 때보다 1.1dB 작게") == "점검 때보다 1.1dB 작게 나왔어요"
     assert compose.be("점검 때와 같게") == "점검 때와 같게 나왔어요"
     assert compose.be("28%") == "28%예요"
+    # 소리 크기 끝말(작게 · 크게 · 같게)에만 붙는다: 다른 '…게' 표기는 '나왔어요'가 붙지 않는다(#1183 리뷰)
+    assert templates.be("빠르게") == "빠르게예요"
+    assert compose.be("일정하게") == "일정하게예요"
+    assert templates.be("점검 때보다 0.5dB 크게") == "점검 때보다 0.5dB 크게 나왔어요"
     assert (
         templates.fill(templates.PRESSURE, evidence="Take 5 소리 크기 점검 때보다 1.1dB 작게")
         == "답답하실 수 있지만 기록은 Take 5 소리 크기 점검 때보다 1.1dB 작게 나왔어요."

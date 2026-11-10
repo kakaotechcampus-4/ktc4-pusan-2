@@ -208,8 +208,10 @@ def _num_display(ctx: Any, ev: Any) -> str | None:
 
 
 def be(shown: str) -> str:
-    """값 표기 + 서술 '예요'. 소리 크기처럼 '…작게 · 같게'로 끝나는 표기는 '…작게 나왔어요'(#1182, '작게예요'가 되지 않게)."""
-    return f"{shown} 나왔어요" if shown.endswith("게") else f"{shown}예요"
+    """값 표기 + 서술 '예요'. 소리 크기 표기('…작게 · 같게')면 '… 나왔어요'(규칙은 `templates.be` 한곳, #1182 · #1183 리뷰).
+
+    숫자 · 단위 표기 뒤는 지금처럼 '예요'를 붙인다(기록 문장 템플릿과 같은 꼴)."""
+    return templates.be(shown) if shown.endswith(templates.VOLUME_ENDINGS) else f"{shown}예요"
 
 
 def obj(word: str) -> str:

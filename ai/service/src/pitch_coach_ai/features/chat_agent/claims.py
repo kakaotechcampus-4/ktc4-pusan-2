@@ -255,9 +255,10 @@ def volume_text(v: Decimal, base: str | None) -> str:
     숫자는 크기만 쓴다(음수는 크기로 본다, `architecture.md` 0-2 ⑤ — 숫자 검사가 −1.1 ↔ '1.1dB 작게'를 같은 값으로 본다).
     `v`는 이미 표시 자리수로 반올림한 값이라 0.0dB 로 보이면 '같게'다."""
     word = VOLUME_BASE_WORD.get(base or "", VOLUME_BASE_UNKNOWN)
+    vw = templates.VOLUME_WORD  # 끝말은 templates 한곳(서술 '나왔어요' 규칙과 같은 목록)
     if v == 0:
-        return f"{_with(word)} 같게"
-    return f"{word}보다 {_fmt(abs(v))}dB {'작게' if v < 0 else '크게'}"
+        return f"{_with(word)} {vw['SAME']}"
+    return f"{word}보다 {_fmt(abs(v))}dB {vw['LESS'] if v < 0 else vw['MORE']}"
 
 
 def signed_db(value: float | int) -> str:
