@@ -209,12 +209,10 @@ function ChatSessionView({
         title="새미나이 열기"
         className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
       >
-        {/* 앱 아이콘 그림(192px)의 몸통 중심 (82, 104)을 44px 로 줄여 원 안쪽(40px)의 가운데에 둡니다.
-            오른쪽 꼬리와 반짝이는 원 밖으로 잘립니다 */}
         <img
-          src="/icon-192.png"
+          src="/semini-mascot.svg"
           alt=""
-          className="absolute left-[1.2px] top-[-3.8px] h-11 w-11 max-w-none"
+          className="h-full w-full object-contain [image-rendering:pixelated]"
         />
       </button>
     </div>
