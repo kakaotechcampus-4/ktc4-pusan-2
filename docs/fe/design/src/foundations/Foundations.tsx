@@ -3,7 +3,14 @@
  * CSS 변수(`var(--color-…)`)로 칠해 styles.css를 저장하면 바로 바뀐다. 쓰는 곳 · 규칙은 제품 코드를 보고 적었다.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { contrast, lightOverrides, themeGroups, themeTokens, type Token } from './tokens';
+import {
+  contrast,
+  customVariants,
+  lightOverrides,
+  themeGroups,
+  themeTokens,
+  type Token,
+} from './tokens';
 
 function Page({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
   return (
@@ -464,6 +471,10 @@ function LiveSize() {
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, []);
+  const queries = [
+    ...TAILWIND_QUERIES,
+    ...customVariants().map(({ name, query }): [string, string] => [name, query]),
+  ];
   const on = (query: string) =>
     typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
   return (
@@ -475,7 +486,7 @@ function LiveSize() {
         {size.width} × {size.height}
       </p>
       <ul className="flex flex-wrap gap-2">
-        {TAILWIND_QUERIES.map(([name, query]) => (
+        {queries.map(([name, query]) => (
           <li
             key={name}
             className={`px-2 py-0.5 guide-code text-xs font-bold ${on(query) ? 'bg-ink text-panel' : 'border border-dashed border-line-strong text-stone'}`}
@@ -519,7 +530,7 @@ export function ResponsiveFoundation() {
   return (
     <Page
       title="반응형 기준"
-      intro="작은 화면부터 쓰고 넓어질 때 바꾼다(min-width). 기준은 Tailwind 기본값과 무대 전용 stage.css 기준이다. 미리보기는 iframe이라 이 문서도 그 크기에 반응한다."
+      intro="작은 화면부터 쓰고 넓어질 때 바꾼다(min-width). 기준은 Tailwind 기본값, 설계서가 더한 one-screen, 무대 전용 stage.css 기준이다. 미리보기는 iframe이라 이 문서도 그 크기에 반응한다."
     >
       <LiveSize />
       <Section
@@ -529,6 +540,15 @@ export function ResponsiveFoundation() {
         <Rows rows={BREAKPOINTS} columns="sm:grid-cols-[4rem_10rem_minmax(0,1fr)]" />
       </Section>
       <Section
+        title="설계서가 더한 기준"
+        description="styles.css의 @custom-variant에서 읽는다. 홈을 한 화면에 고정할 만큼 넓고 높은 창에서만 켠다 — 배율 125~150% 노트북처럼 낮으면 고정하지 않고 스크롤한다."
+      >
+        <Rows
+          rows={customVariants().map(({ name, query }) => [`${name}:`, query])}
+          columns="sm:grid-cols-[8rem_minmax(0,1fr)]"
+        />
+      </Section>
+      <Section
         title="무대(stage.css) 기준"
         description="리허설 무대는 자기 크기 기준을 둔다(stage.css 주석: 준비하며 태블릿으로 열어 보는 경우). 대본 칸 높이(계측 조건)는 어느 크기에서도 바꾸지 않는다."
       >
@@ -536,7 +556,7 @@ export function ResponsiveFoundation() {
       </Section>
       <Section
         title="확인할 크기"
-        description="제품은 노트북 · 데스크톱 전용이고 팀 기준 크기는 1366 × 650 · 1920 × 950이다. 이 두 크기와 브라우저 확대 125% · 150%(배율을 올린 노트북)에서 가로 넘침 · 잘림이 없어야 한다. 휴대폰 · 태블릿 크기는 참고용이고, 제품은 그 기기에서 연습 화면(장치 점검 · 리허설 · 실전)만 막는다(#710). 미리보기 크기 맨 위의 팀 기준을 고르고 브라우저 확대를 바꿔 본다."
+        description="제품은 노트북 · 데스크톱 전용이고 팀 기준 크기는 1366 × 650 · 1920 × 950이다. 이 두 크기와 브라우저 확대 125% · 150%(배율을 올린 노트북)에서 가로 넘침 · 잘림이 없어야 한다. 휴대폰 · 태블릿 크기는 참고용이고, 제품은 그 기기에서 연습 화면(튜토리얼 진입 · 장치 점검 · 리허설 · 실전)만 막는다(#710). 미리보기 크기 맨 위의 팀 기준을 고르고 브라우저 확대를 바꿔 본다."
       />
     </Page>
   );
