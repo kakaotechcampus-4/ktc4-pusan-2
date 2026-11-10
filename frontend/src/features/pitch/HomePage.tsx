@@ -5,7 +5,9 @@ import type { HomePitch } from '@/types/home';
 import { Link } from 'react-router';
 import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
+import { useSession } from '@/shared/api/useSession';
 import { HomePitchCard } from './HomePitchCard';
+import { invitesTutorial } from './tutorial/tutorialInvite';
 import { duration, totalElapsed } from './homeFormat';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
 
@@ -39,6 +41,10 @@ export function HomePage() {
   const [tipHovered, setTipHovered] = useState(false);
   const home = usePitchList();
   const data = home.data;
+  // 튜토리얼 리포트를 받았는지는 내 정보에 있습니다. 로그인 확인(`RequireSession`)이 이미 받아 둔 값입니다
+  const reportReceived = useSession().data?.tutorial_report_at != null;
+  // 목록을 받은 뒤에만 정합니다. 받는 중 · 실패에 움직이면 이미 해 본 사람에게도 잠깐 권하게 됩니다
+  const inviteTutorial = data !== undefined && invitesTutorial(data.pitches, reportReceived);
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
   const listRef = useRef<HTMLUListElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -118,12 +124,24 @@ export function HomePage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/pitch/tutorial"
-              className="inline-flex items-center justify-center border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream"
-            >
-              튜토리얼 해 보기 →
-            </Link>
+            {/* 샘플로 끝까지 연습하지 않은 사람에게만 버튼이 톡톡 튀고 스티커가 붙습니다 (index.css `.tutorial-invite`) */}
+            <span className="relative inline-flex">
+              <Link
+                to="/pitch/tutorial"
+                className={`inline-flex items-center justify-center border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream ${inviteTutorial ? 'tutorial-invite' : ''}`}
+              >
+                튜토리얼 해 보기 →
+              </Link>
+              {inviteTutorial && (
+                <span
+                  aria-hidden="true"
+                  data-tutorial-sticker=""
+                  className="pointer-events-none absolute -top-3.5 -right-3 -rotate-6 whitespace-nowrap border-2 border-ink bg-coral-deep px-1.5 py-0.5 text-[11px] font-bold leading-none text-white"
+                >
+                  처음이라면 여기부터!
+                </span>
+              )}
+            </span>
             <Link to="/pitch/new" className={primary}>
               <span aria-hidden="true">＋</span> 새 피치 만들기
             </Link>

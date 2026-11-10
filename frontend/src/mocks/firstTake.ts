@@ -29,10 +29,16 @@ declare global {
   }
 }
 
+let reportAt: string | null = null;
+
 /** 튜토리얼 리포트를 받은 계정인지 정합니다. 개발 토글과 테스트가 씁니다 */
 export function setTutorialReportReceived(value: boolean) {
   reportReceived = value;
+  reportAt = value ? new Date().toISOString() : null;
 }
+
+/** 내 정보(`GET /users/me`)의 `tutorial_report_at`. 목은 사용자가 한 명이라 여기 둡니다 */
+export const tutorialReportAt = () => reportAt;
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   window.mockFirstTake = {
@@ -44,7 +50,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 /** 테스트마다 샘플 피치와 리포트 기록을 지웁니다. 일반 피치 목은 건드리지 않습니다 */
 export function resetTutorialMock() {
   tutorial = null;
-  reportReceived = false;
+  setTutorialReportReceived(false);
 }
 
 /** 홈 목록에 붙일 샘플 피치. 아직 만들지 않았으면 없습니다 */
