@@ -208,11 +208,13 @@ def test_cannot_do_route_answers_with_the_fixed_sentence() -> None:
     fd = FinalData.model_validate(data)
     assert fd.status == "DONE"
     assert [c.text for c in fd.message.claims] == [  # type: ignore[union-attr]
-        templates.SystemText.CANNOT_CHANGE_RECORD.value
+        templates.SystemText.CANNOT_CHANGE_RECORD.value,
+        templates.SystemText.NEXT_REVIEW.value,  # 다음 걸음(Issue #1194 4-E)
     ]
 
 
 CANNOT = templates.SystemText.CANNOT_CHANGE_RECORD.value
+NEXT = templates.SystemText.NEXT_REVIEW.value
 
 
 @pytest.mark.parametrize(
@@ -285,7 +287,8 @@ def test_record_change_answered_out_of_scope_is_not_refused() -> None:
     _, _, data = F.run_turn(req, llm)
     fd = FinalData.model_validate(data)
     assert fd.status == "DONE"
-    assert [c.text for c in fd.message.claims] == [CANNOT]  # type: ignore[union-attr]
+    # 할 수 없다는 고정 문장 뒤에 다음 걸음(Issue #1194 4-E)
+    assert [c.text for c in fd.message.claims] == [CANNOT, NEXT]  # type: ignore[union-attr]
 
 
 def test_record_change_does_not_say_usage_guide_missing() -> None:
@@ -294,7 +297,7 @@ def test_record_change_does_not_say_usage_guide_missing() -> None:
     llm = F.FakeLlm([F.plan(), F.done()], answers=[F.answer([], usage_unanswered=True)])
     _, _, data = F.run_turn(req, llm)
     texts = [c.text for c in FinalData.model_validate(data).message.claims]  # type: ignore[union-attr]
-    assert texts == [CANNOT]
+    assert texts == [CANNOT, NEXT]
 
 
 def test_record_change_with_unasked_advice_dropped_is_done() -> None:
@@ -305,7 +308,8 @@ def test_record_change_with_unasked_advice_dropped_is_done() -> None:
     _, _, data = F.run_turn(req, llm)
     fd = FinalData.model_validate(data)
     assert fd.status == "DONE"
-    assert [c.text for c in fd.message.claims] == [CANNOT]  # type: ignore[union-attr]
+    # 할 수 없다는 고정 문장 뒤에 다음 걸음(Issue #1194 4-E)
+    assert [c.text for c in fd.message.claims] == [CANNOT, NEXT]  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize(
@@ -370,6 +374,6 @@ def test_name_lookup_with_no_match_says_the_pitch_is_not_found() -> None:
     _, _, data = F.run_turn(req, llm)
     fd = FinalData.model_validate(data)
     assert fd.status == "DONE"
-    assert [c.text for c in fd.message.claims] == [  # type: ignore[union-attr]
-        templates.SystemText.PITCH_NOT_FOUND.value
-    ]
+    assert [c.text for c in fd.message.claims][0] == templates.SystemText.PITCH_NOT_FOUND.value  # type: ignore[union-attr]
+    # 그 뒤에 지금 있는 발표(기본 자료의 피치 목록) · 다음 걸음(Issue #1194 4-E)
+    assert [c.text for c in fd.message.claims][-1] == templates.SystemText.NEXT_PICK_PITCH.value  # type: ignore[union-attr]

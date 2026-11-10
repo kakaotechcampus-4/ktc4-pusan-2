@@ -1,0 +1,152 @@
+"""'안 된다' 답의 대안 · 다음 걸음과 [이어서 확인] 반복 막기 시험 (Issue #1194 4-C · 4-E, `guidance.py`, 기능 문서 7-10).
+
+- 핵심 고정 문장은 그대로 맨 앞이고, 그 뒤에 이번 요청의 기본 자료로 고른 대안 · 다음 걸음 문장(`SYSTEM`)이 붙는다.
+- 직전 어시스턴트 메시지에 같은 핵심 문장이 있으면 선택지(예시 질문)를, 후보가 없으면 다음 걸음만.
+- "이어서 확인해 줘"인데 직전 답과 같은 `PARTIAL` 안내가 또 나오면 `DONE` + 같은 이유 안내(버튼이 다시 붙지 않음).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pitch_coach_ai.features.chat_agent import guidance, templates
+from pitch_coach_ai.features.chat_agent.schemas import FinalData
+
+from . import fakes as F
+
+T = templates.SystemText
+
+
+def _history(*pairs: tuple[str, str]) -> list[dict[str, Any]]:
+    return [
+        {"role": role, "text": text, "truncated": False, "basis": None, "stale_reasons": []}
+        for role, text in pairs
+    ]
+
+
+def _texts(fd: FinalData) -> list[str]:
+    return [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+
+
+def _partial_checked(req: dict[str, Any]) -> FinalData:
+    """답 문장이 검사로 모두 빠지고 고치기도 못 해 '답 일부를 확인하지 못해 …'로 끝나는 실행."""
+    bad = F.claim("RECORD", "Take 5 3장 시선은 99%예요.", evidence_ids=["e-없음"])
+    llm = F.FakeLlm([F.plan(), F.done()], answers=[F.answer([bad])], fixes=[F.fix({0: None})])
+    _, _, data = F.run_turn(req, llm)
+    return FinalData.model_validate(data)
+
+
+def test_is_continue_ignores_spaces_and_end_marks() -> None:
+    assert guidance.is_continue("이어서 확인해 줘")
+    assert guidance.is_continue(" 이어서확인해줘. ")
+    assert not guidance.is_continue("이어서 확인해 줘, 3장도")
+    assert not guidance.is_continue(None)
+
+
+def test_partial_without_history_stays_partial() -> None:
+    fd = _partial_checked(F.request(user_message="이어서 확인해 줘"))
+    assert fd.status == "PARTIAL"
+    assert T.PARTIAL_CHECKED.value in _texts(fd)
+    assert T.REPEAT_SAME_REASON.value not in _texts(fd)
+
+
+def test_continue_with_the_same_partial_notice_ends_done() -> None:
+    req = F.request(user_message="이어서 확인해 줘")
+    req["history"]["messages"] = _history(
+        ("user", "Take 5 3장 어땠어?"), ("assistant", T.PARTIAL_CHECKED.value)
+    )
+    fd = _partial_checked(req)
+    assert fd.status == "DONE"
+    texts = _texts(fd)
+    assert texts[-2:] == [T.REPEAT_SAME_REASON.value, T.REPEAT_SPLIT.value]
+    assert all(p.status != "TODO" for p in fd.plan)  # 남은 일이 없어 [이어서 확인] 버튼이 붙지 않는다
+
+
+def test_continue_with_a_different_notice_stays_partial() -> None:
+    req = F.request(user_message="이어서 확인해 줘")
+    req["history"]["messages"] = _history(("assistant", T.LIMIT_PARTIAL.value))
+    fd = _partial_checked(req)
+    assert fd.status == "PARTIAL"
+    assert T.REPEAT_SAME_REASON.value not in _texts(fd)
+
+
+def test_same_partial_notice_but_other_message_stays_partial() -> None:
+    req = F.request(user_message="Take 5 3장 다시 봐 줘")
+    req["history"]["messages"] = _history(("assistant", T.PARTIAL_CHECKED.value))
+    fd = _partial_checked(req)
+    assert fd.status == "PARTIAL"
+
+
+def _global_not_found(history: list[dict[str, Any]], pitches: list[dict[str, Any]]) -> FinalData:
+    req = F.request(user_message="'창업 경진대회' 발표 기록 보여 줘")
+    req["run"]["scope_pitch_id"] = None
+    req["context"]["pitch"] = None
+    req["context"]["loaded_takes"] = []
+    req["context"]["pitches"] = pitches
+    req["context"]["pitches_total"] = len(pitches)
+    req["page"] = {"route": "/", "pitch_id": None, "take_id": None, "screen": None}
+    req["history"]["messages"] = history
+    llm = F.FakeLlm(
+        [F.plan(), F.tools(("list_pitches", {"query": "창업 경진대회"})), F.done()],
+        answers=[F.answer([])],
+    )
+    _, _, data = F.run_turn(req, llm)
+    return FinalData.model_validate(data)
+
+
+PITCHES = [
+    {"pitch_id": "p-1", "title": "졸업 발표", "take_count": 3, "last_practiced_at": "2026-11-01T10:00:00+09:00", "last_review": None},
+    {"pitch_id": "p-2", "title": "투자 설명회", "take_count": 1, "last_practiced_at": "2026-11-08T10:00:00+09:00", "last_review": None},
+]
+
+
+def test_pitch_not_found_offers_existing_titles_then_next_step() -> None:
+    fd = _global_not_found([], PITCHES)
+    assert _texts(fd) == [
+        T.PITCH_NOT_FOUND.value,
+        "지금 볼 수 있는 발표는 '투자 설명회' · '졸업 발표'예요.",  # 최근 연습 순
+        T.NEXT_PICK_PITCH.value,
+    ]
+    assert fd.actions == [] and fd.message.cards == []  # type: ignore[union-attr]
+
+
+def test_second_same_notice_offers_choices_instead_of_repeating() -> None:
+    first = _global_not_found([], PITCHES)
+    history = _history(("user", "'창업 경진대회' 발표 기록 보여 줘"), ("assistant", "\n".join(_texts(first))))
+    fd = _global_not_found(history, PITCHES)
+    texts = _texts(fd)
+    assert texts[0] == T.PITCH_NOT_FOUND.value
+    assert texts[1] == (
+        f"{T.CHOICES_HEADER.value} '투자 설명회 최근 Take 어땠어?' · '졸업 발표 최근 Take 어땠어?'."
+    )
+    assert "지금 볼 수 있는 발표는" not in "\n".join(texts)  # 첫 안내의 대안을 되풀이하지 않는다
+
+
+def test_no_candidates_gives_only_the_next_step() -> None:
+    fd = _global_not_found([], [])
+    assert _texts(fd)[1:] == [T.NEXT_FIRST_PITCH.value]
+    again = _global_not_found(_history(("assistant", T.PITCH_NOT_FOUND.value)), [])
+    assert T.CHOICES_HEADER.value not in "\n".join(_texts(again))
+    assert _texts(again)[-1] == T.NEXT_FIRST_PITCH.value
+
+
+def test_copula_follows_final_sound() -> None:
+    assert guidance._copula("'졸업 발표'") == "예요"
+    assert guidance._copula("'투자 설명회'") == "예요"
+    assert guidance._copula("'창업 경진대회 본선'") == "이에요"
+    assert guidance._copula("3") == "이에요" and guidance._copula("5") == "예요"
+
+
+def test_pitches_without_finished_takes_are_not_offered() -> None:
+    """분석이 끝난 Take 가 없는 피치는 대안 · 예시 질문에 넣지 않는다(볼 기록이 없다). 시간대가 섞여도 최근 순은 시각으로 정한다."""
+    pitches = [
+        *PITCHES,
+        {"pitch_id": "p-3", "title": "새 발표", "take_count": 0, "last_practiced_at": None, "last_review": None},
+        {"pitch_id": "p-4", "title": "빈 설명회", "take_count": 0, "last_practiced_at": "2026-11-10T10:00:00+09:00", "last_review": None},
+        {"pitch_id": "p-5", "title": "오전 발표", "take_count": 1, "last_practiced_at": "2026-11-08T03:00:00Z", "last_review": None},
+    ]
+    first = _global_not_found([], pitches)
+    assert _texts(first)[1] == "지금 볼 수 있는 발표는 '오전 발표' · '투자 설명회' · '졸업 발표'예요."
+    history = _history(("user", "'창업 경진대회' 발표 기록 보여 줘"), ("assistant", "\n".join(_texts(first))))
+    again = "\n".join(_texts(_global_not_found(history, pitches)))
+    assert "새 발표" not in again and "빈 설명회" not in again

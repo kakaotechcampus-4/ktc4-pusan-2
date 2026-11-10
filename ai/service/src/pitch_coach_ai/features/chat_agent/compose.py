@@ -229,6 +229,7 @@ _NC_PAIR = {
     "DIFFERENT_CRITERIA_VERSION": "평가 기준 버전이 달라",
     "RULE_VERSION_CHANGED": "판정 기준 버전이 달라",
     "MISSING_VERSION": "버전 정보가 없어",
+    "DIFFERENT_VOLUME_BASE": "소리 크기를 견준 기준이 달라",
 }
 _NC_FIXED = {
     "NO_VALUE": templates.SystemText.METRIC_UNMEASURED,
@@ -266,11 +267,19 @@ def not_comparable_sentence(rec: dict[str, Any]) -> str:
     return fixed.value if fixed is not None else templates.SystemText.NOT_COMPARABLE.value
 
 
+def date_display(value: str) -> str:
+    """날짜 근거 값 'YYYY-MM-DD' → 화면 표기 'M월 D일'(값이 그 꼴이 아니면 그대로)."""
+    m = re.fullmatch(r"\d{4}-(\d{2})-(\d{2})", value)
+    return f"{int(m.group(1))}월 {int(m.group(2))}일" if m else value
+
+
 def value_display(ctx: Any, ev: Any) -> str | None:
-    """근거 값을 화면 표기로(숫자 지표는 단위 · 자리수, 글 값은 그대로)."""
+    """근거 값을 화면 표기로(숫자 지표는 단위 · 자리수, 날짜는 'M월 D일', 글 값은 그대로)."""
     shown = _num_display(ctx, ev)
     if shown is not None:
         return shown
+    if ev.unit == "date" and isinstance(ev.value, str):
+        return date_display(ev.value)
     return ev.value if isinstance(ev.value, str) else None
 
 
@@ -474,7 +483,9 @@ def segment_area(ev: Any) -> str | None:
 
 
 def evidence_what(ev: Any) -> str | None:
-    """지표가 없는 Take 수 · 상태 근거의 이름(근거 표 '무엇'). 그 밖은 None."""
+    """지표가 없는 Take 수 · 상태 · 날짜 근거의 이름(근거 표 '무엇'). 그 밖은 None."""
+    if ev is not None and ev.unit == "date" and ev.path.endswith(".last_practiced_at"):
+        return "마지막 연습 시작"
     hit = _none_match(ev)
     if hit is None:
         return None

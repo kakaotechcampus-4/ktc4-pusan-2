@@ -404,12 +404,39 @@ def test_list_pitches_items_and_score_evidence() -> None:
     score = row["last_review"]["score"]
     ev = ctx.registry.get(score["evidence_id"])
     assert score["value"] == 68 and ev.value == 68 and ev.origin == "RECORD" and ev.take_id == "t-5"
+    # 마지막 연습 시작 날짜도 근거다(한국 시간 날짜, Issue #1194 4-A)
+    lp = ctx.registry.get(row["last_practiced"]["evidence_id"])
+    assert row["last_practiced"]["value"] == "11월 1일"
+    assert (lp.path, lp.value, lp.unit) == (
+        "pitches[pitch_id=p-1].last_practiced_at",
+        "2026-11-01",
+        "date",
+    )
+    assert "마지막 연습 시작이 늦은 순" in res.data["note"]
     assert res.evidence_ids == [
         row["take_count"]["evidence_id"],
+        row["last_practiced"]["evidence_id"],
         *(d["evidence_id"] for d in dims),
         score["evidence_id"],
     ]
     assert trace.result_summary == "피치 1개(전체 1개)"
+
+
+def test_practiced_date_is_korea_time() -> None:
+    from pitch_coach_ai.features.chat_agent.tools.impl import practiced_date
+
+    # UTC 로 온 시각도 한국 시간 날짜로 읽는다(11월 9일 16시 UTC = 11월 10일 01시 KST)
+    assert practiced_date("2026-11-09T16:00:00Z") == ("2026-11-10", "11월 10일")
+    assert practiced_date("2026-11-10T09:00:00+09:00") == ("2026-11-10", "11월 10일")
+    assert practiced_date("2026-11-10T09:00:00") == ("2026-11-10", "11월 10일")  # 시간대가 없으면 한국 시간
+    assert practiced_date(None) is None and practiced_date("어제") is None
+
+
+def test_list_pitches_without_practice_date() -> None:
+    ctx = make_ctx()
+    ctx.pitches = [ctx.pitches[0].model_copy(update={"last_practiced_at": None})]
+    res, _ = run(ctx, "list_pitches", {"query": None})
+    assert res.data["items"][0]["last_practiced"] is None
 
 
 def test_list_pitches_query_ignores_spaces_and_hides_query_in_trace() -> None:

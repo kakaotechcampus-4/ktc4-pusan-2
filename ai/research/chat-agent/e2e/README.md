@@ -1,6 +1,6 @@
 # 대화 에이전트 풀스택 E2E
 
-진짜 FE + 진짜 BE + PostgreSQL + 진짜 AI 서비스 앱(모델만 시나리오별 대본으로 정해 둔 가짜)을 로컬에서 띄워, 브라우저로 시나리오 6개를 끝까지 확인한다.
+진짜 FE + 진짜 BE + PostgreSQL + 진짜 AI 서비스 앱(모델만 시나리오별 대본으로 정해 둔 가짜)을 로컬에서 띄워, 브라우저로 시나리오 7개를 끝까지 확인한다.
 `frontend/` · `backend/` · `infra/` · `.github/` · `ai/service/` 파일은 하나도 고치지 않는다(읽기만, 새 파일은 이 폴더에만). 실제 LLM은 부르지 않는다.
 
 ## 파일
@@ -24,6 +24,7 @@
 | 4 | `reassess.e2e.ts` · `reassess` | 이의 + 다시 평가 → 확인 카드 → [승인] → "참고 결과 — 공식 리뷰는 그대로예요" 카드 / 실행 DONE · 카드 REASSESS_RESULT / BE가 AI `/takes/review`를 모델 없이 호출(결과 `fallback_reason=LLM_UNAVAILABLE`), 공식 리뷰 행(내용 · revision) 그대로 |
 | 5 | `partial.e2e.ts` · `partial-continue` | 조사 중 모델 시간 초과 → "여기까지 확인했어요" 머리 + [이어서 확인] → 누르면 새 메시지 → 끝까지 답 / 첫 실행 PARTIAL → 둘째 DONE, 메시지 4개 / DB 실행 순서 |
 | 6 | `goal-check.e2e.ts` | 열린 대화 목표 + 목표 뒤 Take 2(리뷰 DONE)를 시드 → `sweep`(BE `goal_sweep.sweep_once()` 직접 호출) → TAKE_REVIEWED 실행이 모델 없이 DONE / 대화 목록에서 열면 GOAL_RESULT 카드("이룸") / 목표 행 OPEN → ACHIEVED, 임대 DONE |
+| 7 | `partial-repeat.e2e.ts` · `partial-repeat` | [이어서 확인] 반복 막기(Issue #1194, 기능 문서 7-10): 답 문장이 검사로 모두 빠져 PARTIAL("답 일부를 확인하지 못해 …") + [이어서 확인] → 누르면 같은 까닭이라 DONE + "같은 이유로 더 확인할 수 없어요." · 버튼 다시 안 붙음 / 실행 PARTIAL → DONE, 메시지 4개, 둘째 사용자 말은 "이어서 확인해 줘" / DB 실행 순서 |
 
 ## 실행 (저장소 루트에서)
 ```bash

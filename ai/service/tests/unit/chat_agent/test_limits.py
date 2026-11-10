@@ -228,7 +228,9 @@ def test_l1_31_settlement_never_lowers_the_exported_budget_used() -> None:
     """이어 부르기: 응답의 `budget_used`가 서명 누적보다 작아지지 않아 그대로 다시 보내면 409 가 아니다."""
     req = F.request(user_message=MSG)
     llm = F.FakeLlm(fetch_take_script(), usage=Usage(100, 30))
-    _, _, data = F.run_turn(req, llm)
+    # 모델이 가져오기를 고르는 대본(4-G 의 코드 가져오기를 끈 설정, 정산 규칙만 본다)
+    legacy = load_config(code_signal_responses=False)
+    _, _, data = F.run_turn(req, llm, cfg=legacy)
     first = data["budget_used"]
     assert first["output_tokens"] == 3 * 30
     assert first["input_tokens"] == 3 * 100
@@ -245,7 +247,7 @@ def test_l1_31_settlement_never_lowers_the_exported_budget_used() -> None:
     llm2 = F.FakeLlm(
         [F.tools(COMPARE, prefix="c2"), F.done(), compare_answer()], usage=Usage(100, 5)
     )
-    status, _, data2 = F.run_turn(resume_request(req, data, res), llm2)
+    status, _, data2 = F.run_turn(resume_request(req, data, res), llm2, cfg=legacy)
     assert status == 200
     second = final_ok(data2).budget_used
     assert second.output_tokens == first["output_tokens"] + 3 * 5

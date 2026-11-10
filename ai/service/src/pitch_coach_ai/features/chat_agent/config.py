@@ -674,6 +674,11 @@ class ChatAgentConfig(_Frozen):
     #: 답 쓰기 · 고치기 몫으로 남기는 호출 수와 그 시간(각 12초)
     reserved_answer_calls: int = 2
     reserved_answer_seconds: float = 24.0
+    #: 그 몫 안에서 답 쓰기 한 번의 시간 제한(초). 고치기는 몫의 나머지(최소 `fix_min_seconds`)를 쓴다. 답 쓰기는 상위 5% 8.4초 ·
+    #: 최대 20초, 고치기는 상위 5% 4.7초라(Issue #1194 실패 분석 2절, 고치기 전 회귀 실행) 반씩(12 · 12) 나누면 답 쓰기만 시간 초과로
+    #: 끊겼다. 몫의 합(24초)과 한 턴 시간 예산은 그대로다
+    answer_call_seconds: float = 18.0
+    fix_min_seconds: float = 6.0
     #: 조사 호출이 의미 있게 끝날 최소 시간(초). 남은 시간 − 답 몫(24초)이 이보다 짧으면 조사를 보내지 않는다(전송 뒤 24초는 항상 남음)
     min_research_call_seconds: float = 3.0
     max_tool_calls: int = 12
@@ -694,6 +699,46 @@ class ChatAgentConfig(_Frozen):
     #: 대화 목표를 묻는 말(6-1 2번 '목표 질문'): 목표 낱말이 있고 묻는 꼴이며 목표를 정하는 말이 없으면, 조사 첫머리에 코드가
     #: `get_goals`를 먼저 읽는다(계획이 기록 없이 답하기를 골라도 조사로 돌린다)
     goal_question_words: tuple[str, ...] = ("목표",)
+    #: '가장 최근' 발표 질문(Issue #1194 4-A): 범위 '전체'에서 최근 낱말 바로 뒤(사이에 '에 · 으로'와 '한 · 했던 · 연습한 …' 하나까지)에
+    #: 발표 낱말이 오면, 코드가 피치 목록을 먼저 읽고 마지막 연습 시작으로 대상을 고른다(`loop.latest_pitch_question`)
+    latest_pitch_words: tuple[str, ...] = ("가장 최근", "제일 최근", "최근", "마지막", "최신")
+    latest_pitch_verbs: tuple[str, ...] = (
+        "한",
+        "했던",
+        "연습한",
+        "연습했던",
+        "본",
+        "봤던",
+        "진행한",
+        "만든",
+        "올린",
+    )
+    latest_pitch_targets: tuple[str, ...] = ("발표", "피치")
+    #: 발표 낱말 바로 뒤에 붙어 '그 발표'를 가리키게 하는 조사와, 띄우고 오는 묻는 말. 이것이 아니면('발표할 때' · '발표 트렌드')
+    #: 최근 발표를 찾는 말이 아니다('요즘'은 '요즘 발표할 때 …'처럼 일반 고민에 흔해 최근 낱말에서 뺐다)
+    latest_pitch_particles: tuple[str, ...] = ("는", "은", "가", "를", "을", "의", "좀")
+    latest_pitch_follow: tuple[str, ...] = (
+        "뭐",
+        "무엇",
+        "어땠",
+        "어때",
+        "어떻",
+        "알려",
+        "보여",
+        "찾아",
+        "봐",
+        "확인",
+        "기록",
+        "결과",
+        "리포트",
+        "리뷰",
+        "점수",
+        "제목",
+        "이름",
+        "언제",
+    )
+    #: 리뷰 내용을 묻는 말(Issue #1194 4-E): 물은 Take 의 리뷰가 없다고 확인했고 이 낱말이 있으면 `NO_REVIEW` 문장을 낸다
+    review_question_words: tuple[str, ...] = ("점수", "미션", "리뷰", "우선 개선", "강점", "평가 결과")
     goal_question_ask_words: tuple[str, ...] = (
         "?",
         "？",
@@ -1163,6 +1208,13 @@ class ChatAgentConfig(_Frozen):
     #: 기록 질문을 '기록 말고 일반 조언으로'라고 해도 기록으로 답한다(6-1 · 13-2): 계획이 기록 대상(요청 · 측정 초안)을 집었고
     #: 이번 실행이 그 대상의 검증된 기록을 읽었는데 답에 기록 문장이 하나도 없으면, 그 근거로 그린 코드 기록 문장을 더한다
     record_answer_guard: bool = True
+    #: 요청 해소 검사(Issue #1194 4-B): 계획 때 판단 초안이 집은 측정 항목을 묻는 정보 질문마다 답에 검증된 답 · 확인한 '없음' ·
+    #: 비교할 수 없는 까닭 · 측정 안 됨 중 하나가 있어야 `DONE`(측정 주장은 코드가 판정 문장을 늘 낸다). 모자라면 읽은 근거로 코드 기록 문장을 채우고, 그래도 남으면 남은 일
+    #: 단계를 더해 `PARTIAL`. 기록 보강(`record_answer_guard`) 위에 서므로 그것도 켜져 있어야 한다. 끄면 이전 동작(끊기지 않으면 DONE)
+    request_resolution: bool = True
+    #: 기준(`targets`)을 바꾸는 다시 평가를 낼 수 있는가(Issue #1194 R5(a)). FE 확인 카드가 기준을 개수로만 보이는 동안은 사용자가
+    #: 무엇을 승인하는지 볼 수 없어 끈다(대본 사용 조건 다시 평가는 그대로). FE 카드가 기준 내용(전 → 후)을 보이면 켠다
+    reassess_targets: bool = False
     #: '몇 번 · 몇 회 · 횟수' 질문은 횟수 지표(`filler_count` · `pause_count`)로: 계획 지침에 알리고, 조사 흐름이 읽는
     #: Take 전체 지표값(`slides`)에 횟수 지표도 싣는다
     count_metric_hint: bool = True
@@ -1178,6 +1230,12 @@ class ChatAgentConfig(_Frozen):
     decision_log: bool = True
     #: 조사 호출의 데이터 블록에 대응을 기다리는 신호(`signals`: 신호 · 사실 · 고를 수 있는 대응)를 싣고 지시문에 한 줄을 더한다
     research_signals: bool = True
+    #: 늘 같은 대응이 정답인 신호는 코드가 바로 처리한다(Issue #1194 4-G, 실패 분석 3절의 신호별 대응 분포): 리뷰 없음 → 그 Take 의
+    #: 코치 기록(문제 구간 · 장별 값)을 코드가 읽음, 기본 자료에 없음 → 코드가 가져오기, 기록 없음 → 사실 표시로 닫음. 이 신호들은
+    #: 모델에게 대응을 묻지 않는다. 비교 불가 · 도구 실패는 질문에 따라 대응이 갈려 모델 몫이다. 끄면 이전 동작(모두 모델에게 묻기)
+    code_signal_responses: bool = True
+    #: 위 코드 대응으로 한 실행에 더 읽는 요청 수 상한(조사 흐름 `research_prefetch_max`와 따로, 도구 12번 상한 안)
+    code_signal_reads_max: int = 4
     #: 결과 발견 안내(D4b): 이 실행에서 목표 저장(`SAVE_GOAL`)이 성공했으면 그 성공 문장 바로 뒤에 "연습 뒤 대화를 다시 열면 목표 확인
     #: 결과를 볼 수 있어요."를 한 번 붙인다(7-10). 연습 준비 버튼만 낸 답 · 저장 실패 · 거절에는 붙지 않는다
     result_discovery: bool = True

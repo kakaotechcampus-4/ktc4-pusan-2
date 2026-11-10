@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import threading
 from collections import Counter
 from collections.abc import Callable
@@ -39,6 +40,9 @@ from . import checks as chk
 from . import compose, templates
 from .schemas import Assessment, Claim
 from .stream_json import AssessmentsDone, ClaimClosed, StreamTracker, ValueDone
+
+#: 피치 목록 근거의 경로(`pitches[pitch_id=…].…`)에서 피치 id
+_PITCH_PATH = re.compile(r"pitches\[pitch_id=([^\]]+)\]")
 
 #: 모델 문장을 스트림으로 내도 되는 답 초안 route. 범위 밖 답(OUT_OF_SCOPE)은 고정 거절 문장으로 끝나므로 내지 않는다
 STREAM_ROUTES = ("ANSWER", "NO_GUIDE", "CANNOT_DO")
@@ -569,7 +573,47 @@ class Composer:
         failures += self._quote_lock(
             claims, {f.claim_index for f in failures if f.claim_index is not None}
         )
+        failures += self._latest_conflicts(
+            claims, code, {f.claim_index for f in failures if f.claim_index is not None}
+        )
         return failures
+
+    def _latest_conflicts(
+        self, claims: list[Claim], code: set[str], failed: set[int]
+    ) -> list[chk.CheckFailure]:
+        """'가장 최근 발표' 질문(4-A)에서 최근 낱말을 쓴 모델 기록 문장이 최근 피치가 아닌 피치의 목록 근거만 이었으면 걸린다
+        (고치지 않고 버린다). 대상은 코드가 정하고(`Loop.latest_practiced`) 그 근거로 코드 문장을 내므로, 다른 피치를 '가장
+        최근'이라 한 문장이 코드 문장과 엇갈려 나가지 않게 한다. 코드가 만든 문장은 보지 않는다."""
+        lp = self.lp
+        if not lp.latest_question:
+            return []
+        found = lp.latest_practiced()
+        if not found or found[1] is None:
+            return []
+        target = found[1].pitch_id
+        out: list[chk.CheckFailure] = []
+        for i, c in enumerate(claims):
+            if i in failed or c.kind != "RECORD" or c.text in code:
+                continue
+            if not any(w in c.text for w in lp.cfg.latest_pitch_words):
+                continue
+            pids = set()
+            for e in c.evidence_ids:
+                ev = lp.ctx.registry.get(e)
+                m = _PITCH_PATH.match(ev.path) if ev is not None else None
+                if m:
+                    pids.add(m.group(1))
+            if pids and target not in pids:
+                out.append(
+                    chk.CheckFailure(
+                        i,
+                        chk.CheckId.TARGET_MISMATCH,
+                        "가장 최근 발표가 아닌 발표를 최근이라고 말함",
+                        claim_kind=c.kind,
+                        unfixable=True,
+                    )
+                )
+        return out
 
     # ── 초안을 다 받은 뒤 ────────────────────────────────────────────
     def finish(self, draft: dict[str, Any], messages: list[dict[str, Any]]) -> Composed:

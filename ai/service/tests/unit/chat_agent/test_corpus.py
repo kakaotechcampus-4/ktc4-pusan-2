@@ -75,7 +75,7 @@ def test_real_files_load_and_counts(corpus):
     kinds = [c.kind for c in corpus.cards]
     assert kinds.count("method") == 22
     assert kinds.count("usage") == 25
-    assert corpus.version == "guides-8"
+    assert corpus.version == "guides-9"
     assert all(c.license == "team" for c in corpus.cards)
 
 

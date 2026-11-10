@@ -22,3 +22,18 @@ def _no_prefetch_unless_marked(
         from pitch_coach_ai.features.chat_agent.loop import Loop
 
         monkeypatch.setattr(Loop, "_prefetch_calls", lambda self: [])
+
+
+@pytest.fixture(autouse=True)
+def _config_markers(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #1194 로 바뀐 서비스 기본값을 이전 동작으로 돌려 보는 시험 표지(서비스 tests/unit/chat_agent/conftest.py 와 같은 규칙).
+
+    - `model_signals`: 리뷰 없음 · 기본 자료에 없음 · 기록 없음 신호를 모델에게 묻던 이전 동작(`code_signal_responses=False`).
+      모델이 가져오기를 고르는 대본으로 승인 · 재개 · 한도 규칙을 보는 시험에 단다(코드가 가져오면 대본이 어긋난다).
+    - `reassess_targets`: 기준(`targets`) 다시 평가를 켠다(서비스 기본은 막음, R5(a)). 그 기능 자체를 보는 시험에 단다."""
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+
+    if request.node.get_closest_marker("model_signals") is not None:
+        monkeypatch.setitem(DEFAULT_CONFIG.__dict__, "code_signal_responses", False)
+    if request.node.get_closest_marker("reassess_targets") is not None:
+        monkeypatch.setitem(DEFAULT_CONFIG.__dict__, "reassess_targets", True)

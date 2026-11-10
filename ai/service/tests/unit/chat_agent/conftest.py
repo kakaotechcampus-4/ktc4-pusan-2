@@ -20,3 +20,15 @@ def _no_prefetch_unless_marked(
         from pitch_coach_ai.features.chat_agent.loop import Loop
 
         monkeypatch.setattr(Loop, "_prefetch_calls", lambda self: [])
+
+
+@pytest.fixture(autouse=True)
+def _reassess_targets_when_marked(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """기준(`targets`)을 바꾸는 다시 평가는 서비스 기본에서 막는다(Issue #1194 R5(a), `reassess_targets=False`). 그 기능 자체
+    (확인 카드 · 비율 변환 · 기준 문구)를 보는 시험은 `@pytest.mark.reassess_targets`를 달아 켠 채 본다."""
+    if request.node.get_closest_marker("reassess_targets") is not None:
+        from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+
+        monkeypatch.setitem(DEFAULT_CONFIG.__dict__, "reassess_targets", True)

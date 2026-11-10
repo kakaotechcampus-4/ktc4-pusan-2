@@ -40,6 +40,7 @@ from .config import ChatAgentConfig
 from .evidence import canonical_json
 from .goals import build_goal_draft, record_read_value
 from .runctx import RunCtx
+from .tools import arg_problems
 from .schemas import (
     Action,
     ActionResult,
@@ -480,19 +481,24 @@ def propose(
 ) -> Proposal:
     """모델이 고른 행동 도구 하나를 행동 · 제안 카드 · 오류로 바꾼다."""
     model = ACTION_TOOL_ARGS.get(tool_name)
-    if model is None or raw_args is None:
+    if model is None:
         return Proposal(
             result="TOOL_ERROR",
             reason_code="BAD_ARGS",
             tool_message=_err("TOOL_INVALID", "BAD_ARGS"),
         )
     try:
-        a = model.model_validate(raw_args)
+        a = model.model_validate(raw_args) if raw_args is not None else None
     except ValidationError:
+        a = None
+    if a is None:
+        # 틀린 칸 · 문제 · 올바른 꼴을 함께 돌려준다(Issue #1194 4-D, 받은 값은 되돌리지 않음). 인자가 없으면 '인자는 JSON 객체'
+        message = _err("TOOL_INVALID", "BAD_ARGS")
+        message["error"]["fields"] = arg_problems(tool_name, raw_args, model)
         return Proposal(
             result="TOOL_ERROR",
             reason_code="BAD_ARGS",
-            tool_message=_err("TOOL_INVALID", "BAD_ARGS"),
+            tool_message=message,
         )
     atype = ACTION_TOOL_TYPE[tool_name]
     run_id = ctx.req.run.run_id
@@ -589,6 +595,17 @@ def propose(
                 tool_message=_err(
                     "CONDITION_NOT_STATED",
                     "사용자가 이 조건(대본 사용 · 내 기준)을 말하지 않았다. 측정값 이의는 다시 평가하지 않는다",
+                ),
+            )
+        if a.change.script_used is None and not ctx.cfg.reassess_targets:
+            # 기준을 바꾸는 다시 평가는 이번 판에서 내지 않는다(R5(a): FE 확인 카드가 기준을 개수로만 보여 승인 내용을 볼 수 없다).
+            # 답에는 할 수 없다는 고정 문장과 대본 사용 조건은 된다는 안내를 코드가 붙인다(turn.py `_targets_blocked_notes`)
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="TARGETS_NOT_SUPPORTED",
+                tool_message=_err(
+                    "TARGETS_NOT_SUPPORTED",
+                    "기준(targets)을 바꾸는 다시 평가는 지금 하지 않는다. 할 수 없다는 안내는 코드가 쓴다. 기록으로 확인한 것만 답한다",
                 ),
             )
         if a.change.script_used is not None:
