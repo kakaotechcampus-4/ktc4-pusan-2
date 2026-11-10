@@ -21,6 +21,11 @@ export function HomePitchCard({
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const takes = pitch.takes.length;
   const titleStyle = 'inline-flex min-w-0 items-center gap-2 font-bold';
+  // 튜토리얼 샘플 피치(#931)는 자료 · 대본을 고치는 화면으로 보내지 않습니다. 자료를 바꾸면 튜토리얼이
+  // 아니게 되고, 시간을 바꾸면 BE 가 코칭 계획을 다시 만들려고 AI 를 부릅니다. 연습은 튜토리얼 화면에서
+  // 시작합니다 — 리포트를 이미 받았는지 거기서 알려 줍니다
+  const demo = pitch.is_demo;
+  const prepareTo = demo ? '/pitch/tutorial' : `/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`;
   return (
     <li data-pitch-id={pitch.pitch_id} className="flex items-center gap-4 px-4 py-2 sm:px-5">
       <div
@@ -42,19 +47,26 @@ export function HomePitchCard({
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-        {pitch.pitch_id ? (
-          <Link
-            to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
-            className={`${titleStyle} hover:text-coral-deep`}
-          >
+        {demo && (
+          <span className={titleStyle}>
             <span className="truncate">{pitch.pitch_title}</span>
-            <span aria-hidden="true" className="text-xs">
-              ↗
-            </span>
-          </Link>
-        ) : (
-          <h3 className={titleStyle}>{pitch.pitch_title}</h3>
+            <span className="shrink-0 border border-ink bg-cream px-1.5 text-xs">샘플</span>
+          </span>
         )}
+        {!demo &&
+          (pitch.pitch_id ? (
+            <Link
+              to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
+              className={`${titleStyle} hover:text-coral-deep`}
+            >
+              <span className="truncate">{pitch.pitch_title}</span>
+              <span aria-hidden="true" className="text-xs">
+                ↗
+              </span>
+            </Link>
+          ) : (
+            <h3 className={titleStyle}>{pitch.pitch_title}</h3>
+          ))}
         <span className="text-xs text-ink/80">
           {takes === 0 && <span className="mr-2 font-bold text-coral-deep">연습 전</span>}
           목표 {duration(pitch.pitch_time)}
@@ -78,7 +90,7 @@ export function HomePitchCard({
       </span>
       {pitch.pitch_id && (
         <ButtonLink
-          to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
+          to={prepareTo}
           aria-label={`${pitch.pitch_title} 발표 준비`}
           size="sm"
           className="shrink-0 border-transparent! shadow-none! outline-1 outline-ink"
