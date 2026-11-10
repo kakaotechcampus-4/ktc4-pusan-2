@@ -96,6 +96,44 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     await expect(footer.getByRole('button').last()).toBeInViewport();
   });
 
+  test('1366px 스크롤 시 화면에 남은 헤더만큼 패널 상단 여백을 조정한다', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 800 });
+    await page.goto('/takes');
+    const header = page.locator('.app-scroll-shell > header');
+    await expect(header).toBeVisible();
+    const panel = await openPanel(page);
+
+    // 헤더가 전부 보이거나, 일부만 보이거나, 화면 밖으로 나가도 빈 띠가 없어야 합니다.
+    const alignedToVisibleHeader = () =>
+      page.evaluate(`(() => {
+        const header = document.querySelector('.app-scroll-shell > header');
+        const panel = document.querySelector('[data-chat-panel]');
+        if (!header || !panel) throw new Error('헤더 또는 채팅 패널이 없습니다');
+        const visibleBottom = Math.max(0, Math.ceil(header.getBoundingClientRect().bottom));
+        return Math.abs(panel.getBoundingClientRect().top - visibleBottom) <= 1;
+      })()`);
+    await expect.poll(alignedToVisibleHeader).toBe(true);
+
+    // Take 기록 내용이 짧아도 테스트 환경에서 문서 스크롤을 충분히 확보합니다.
+    await page.evaluate(`(() => {
+      const content = document.querySelector('.chat-layout-content');
+      if (!content) throw new Error('채팅 레이아웃 본문이 없습니다');
+      const spacer = document.createElement('div');
+      spacer.style.height = '200vh';
+      content.append(spacer);
+    })()`);
+    await page.evaluate('window.scrollTo(0, 40)');
+    await expect.poll(() => page.evaluate('window.scrollY')).toBe(40);
+    await expect.poll(alignedToVisibleHeader).toBe(true);
+
+    await page.evaluate('window.scrollTo(0, 600)');
+    await expect.poll(() => page.evaluate('window.scrollY')).toBe(600);
+    await expect.poll(() => panel.evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(0);
+
+    await page.evaluate('window.scrollTo(0, 0)');
+    await expect.poll(alignedToVisibleHeader).toBe(true);
+  });
+
   test('761px에서 헤더와 고정 푸터 높이가 변해도 패널은 조작부를 가리지 않는다', async ({
     page,
   }) => {
