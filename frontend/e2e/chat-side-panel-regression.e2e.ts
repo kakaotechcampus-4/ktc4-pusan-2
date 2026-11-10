@@ -95,7 +95,7 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     }
   });
 
-  test('320·340·375px에서 오류 안내가 고정 푸터를 가리지 않는다', async ({ page }) => {
+  test('320~760px 오류 안내와 마지막 조작부 접근성', async ({ page }) => {
     for (const width of [320, 340, 375, 760]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/pitch/new');
