@@ -641,11 +641,11 @@ function NextMissions({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">
-            {demo ? '다음 연습에서 해 볼 것' : `Take ${nextTake}에서 해 볼 것`}
+            {demo ? '내 발표에서 의식해 볼 것' : `Take ${nextTake}에서 해 볼 것`}
           </h2>
           <p className="mt-1 text-sm text-ink">
             {demo
-              ? '튜토리얼은 여기까지예요. 내 자료로 새 피치를 만들어 연습을 이어 가 보세요.'
+              ? '이 항목은 튜토리얼 샘플에서 받은 피드백이에요. 내 자료로 새 피치를 만들면 새로운 연습으로 시작해요.'
               : '다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.'}
           </p>
         </div>
