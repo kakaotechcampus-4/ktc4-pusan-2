@@ -38,3 +38,7 @@ QUOTE_TAGS = {
     "MAG",
 }  # quote 를 느슨하게 찾을 때 보는 내용 형태소
 QUOTE_MATCH = 0.6  # quote 가 그대로 없을 때, 내용 형태소가 문장에 이 비율 이상 있으면 받는다
+
+# 전달 단위 단계(LLM)만 실패한 장은 문장 하나를 단위 하나로 본 평가 기준으로 복구한다(rubric_quality=sentence_fallback).
+# 끄면 예전처럼 그 장을 실패로 돌려준다. 이미 저장된 평가 기준은 바뀌지 않는다
+UNIT_FALLBACK_ENABLED = True

@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { Navigate } from 'react-router';
-import { isTouchOnlyDevice } from '@/features/info/unsupportedReason';
+import { isTouchOnlyDevice } from '@/shared/lib/browserCheck';
 
 /**
- * 카메라 · 마이크로 연습하는 화면(장치 점검 · 리허설 · 실전)을 휴대폰 · 태블릿에서 막는다 (#710).
+ * 카메라 · 마이크로 연습하는 화면(튜토리얼 진입 · 장치 점검 · 리허설 · 실전)을 휴대폰 · 태블릿에서
+ * 막는다 (#710). 튜토리얼 진입은 샘플 피치를 만들기 전에 막는다 — 못 쓸 피치를 남기지 않는다.
  * 홈 · 피치 · 리포트 · 마이페이지는 감싸지 않아 모바일에서도 열린다.
  *
  * 로그인보다 먼저 판단한다 — 어차피 못 할 연습 주소로 로그인부터 시키지 않으려는 것이다.

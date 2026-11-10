@@ -53,6 +53,11 @@ def _second_record(value: dict[str, Any]) -> dict[str, Any]:
         v = value.get(key)
         if isinstance(v, bool) or not isinstance(v, int | float) or v < 0:
             raise ValueError(f"{key} 는 0 이상의 숫자여야 합니다.")
+    level = value.get("level_db")
+    if level is not None and (
+        isinstance(level, bool) or not isinstance(level, int | float) or level > 0
+    ):
+        raise ValueError("level_db 는 null 또는 0 이하의 숫자여야 합니다.")
     if len(json.dumps(value, ensure_ascii=False).encode()) > MAX_SECOND_RECORD_BYTES:
         raise ValueError(f"1초 기록은 {MAX_SECOND_RECORD_BYTES}바이트 이하여야 합니다.")
     # 원자료로 JSONB 에 그대로 들어간다

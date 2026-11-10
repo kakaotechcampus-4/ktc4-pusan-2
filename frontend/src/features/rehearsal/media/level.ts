@@ -179,6 +179,30 @@ export interface MeasureStream {
 }
 
 /**
+ * 크기를 실제로 잰 트랙 — 측정용 트랙(`openMeasureStream`), 못 받았으면 녹음용 스트림의 트랙입니다.
+ * 기준 목소리를 다시 쓸지 정할 때 봅니다 (`lib/baseVoiceMemory.ts`, #1179).
+ *   deviceId     그 트랙의 장치. 모르면 빈 문자열. 크롬은 `default` · `communications` 같은 별칭을 줄 수 있습니다
+ *   groupId      그 장치의 실제 기기 묶음. 별칭이어도 실제 기기를 가리킵니다. 모르면 빈 문자열
+ *   autoGainOff  자동 음량 조절이 꺼졌나. 브라우저가 알려 주지 않으면 null
+ */
+export interface MeasuredWith {
+  deviceId: string;
+  groupId: string;
+  autoGainOff: boolean | null;
+}
+
+/** 트랙 설정에서 `MeasuredWith` 를 읽습니다 */
+export function measuredWith(track: MediaStreamTrack | undefined): MeasuredWith {
+  const settings = track?.getSettings();
+  const agc = settings?.autoGainControl;
+  return {
+    deviceId: settings?.deviceId ?? '',
+    groupId: settings?.groupId ?? '',
+    autoGainOff: typeof agc === 'boolean' ? !agc : null,
+  };
+}
+
+/**
  * 음량을 잴 **가공 없는** 마이크 트랙을 따로 받습니다.
  *
  * ── 왜 따로 받나 ────────────────────────────────────────────────────

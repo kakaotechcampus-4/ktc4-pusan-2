@@ -7,6 +7,7 @@ import { ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
+import { PitchSelect, type PitchOption } from './PitchSelect';
 import { QueryState } from './QueryState';
 import { TakeComparison } from './TakeComparison';
 import { duration, pct } from './reportFormat';
@@ -14,6 +15,18 @@ import { completedTakes, SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat'
 
 /** P16: 목록과 비교는 한 페이지, 피치/화면 선택은 URL에 남깁니다 (#795). */
 const ALL = '';
+
+/** 피치 목록 앞에 두는 항목. 목록은 전체, 비교는 고를 피치가 없거나 기록이 없을 때만 안내합니다 */
+function leadingOption(
+  comparing: boolean,
+  pitch: string,
+  pitches: Map<string, string>,
+): PitchOption | null {
+  if (!comparing) return { value: ALL, label: '전체' };
+  if (!pitch) return { value: ALL, label: '선택할 피치가 없어요' };
+  if (!pitches.has(pitch)) return { value: pitch, label: '기록이 없는 피치' };
+  return null;
+}
 
 export function TakesPage() {
   // 목록은 전체 이력을 한 번만 조회하고, 비교에 넘길 때 반드시 같은 pitch_id로 먼저 거릅니다.
@@ -90,25 +103,13 @@ export function TakesPage() {
             지표 비교
           </Link>
         </nav>
-        <label className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm font-bold">
-          피치
-          <select
-            value={pitch}
-            onChange={(event) => selectPitch(event.target.value)}
-            className="min-h-11 min-w-0 max-w-full border-2 border-ink bg-white px-2 py-1 sm:max-w-xs"
-          >
-            {!comparing && <option value={ALL}>전체</option>}
-            {comparing && !pitch && <option value={ALL}>선택할 피치가 없어요</option>}
-            {comparing && pitch && !pitches.has(pitch) && (
-              <option value={pitch}>기록이 없는 피치</option>
-            )}
-            {[...pitches].map(([id, title]) => (
-              <option key={id} value={id}>
-                {title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <PitchSelect
+          label="피치"
+          value={pitch}
+          leading={leadingOption(comparing, pitch, pitches)}
+          options={[...pitches].map(([id, title]) => ({ value: id, label: title }))}
+          onChange={selectPitch}
+        />
       </div>
 
       {comparing && (
@@ -147,6 +148,9 @@ export function TakesPage() {
                   <div className="min-w-0">
                     <p className="[overflow-wrap:anywhere] text-xs text-stone">
                       {takeDay(t.started_at)} · {t.pitch_title}
+                      {t.is_demo && (
+                        <span className="ml-2 border border-ink bg-cream px-1 text-ink">샘플</span>
+                      )}
                     </p>
                     <p className="mt-0.5 tabular-nums font-bold">TAKE {t.take_number}</p>
                   </div>

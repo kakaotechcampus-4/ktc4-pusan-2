@@ -5,7 +5,13 @@ import { prepareKey } from './prepare';
 import { takeSurveyKeys } from './takeSurvey';
 import { ApiFailure } from './tokenStore';
 import type { PitchListResponse } from '@/types/home';
-import type { PitchDetail, PitchRequest, PitchResources, PitchSavedResponse } from '@/types/pitch';
+import type {
+  FirstTakeResponse,
+  PitchDetail,
+  PitchRequest,
+  PitchResources,
+  PitchSavedResponse,
+} from '@/types/pitch';
 
 /** 피치를 만듭니다. 발표자료 · 대본 · 평가기준은 전부 이 응답의 pitch_id 아래에 올라갑니다 */
 export function createPitch(body: PitchRequest) {
@@ -23,6 +29,14 @@ export function updatePitch(pitchId: string, body: PitchRequest) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * First Take 튜토리얼 샘플 피치를 받습니다. 없으면 BE 가 준비된 자료로 만들고(AI 를 부르지 않습니다),
+ * 있으면 그 피치를 돌려줍니다. 같은 사용자가 여러 번 불러도 피치는 하나입니다 (BE #1135)
+ */
+export function startFirstTake() {
+  return apiRequest<FirstTakeResponse>('/api/pitches/tutorials/first-take', { method: 'POST' });
 }
 
 /** 피치의 버전 목록 — 수정 화면이 사이드바를 채울 때 씁니다 */

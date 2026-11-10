@@ -187,7 +187,11 @@ def test_resume_with_exhausted_budget_does_not_call_analyze(db_session, user_id,
 def test_whole_retry_keeps_one_budget_after_restart(db_session, user_id, monkeypatch):
     take = make_ready(db_session, user_id, "SCORING")
     in_current_session(monkeypatch, db_session)
-    analyze = AsyncMock(side_effect=coverage_service.CoverageCallError("장애", retryable=True))
+    analyze = AsyncMock(
+        side_effect=coverage_service.CoverageCallError(
+            "장애", retryable=True, failure_code="AI_UNAVAILABLE"
+        )
+    )
     monkeypatch.setattr(coverage_service, "request_analyze", analyze)
     assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
     assert analyze.await_count == 2

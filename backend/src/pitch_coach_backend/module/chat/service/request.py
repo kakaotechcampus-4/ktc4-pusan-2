@@ -162,26 +162,69 @@ def _json_size(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
+def _without_evaluations(coverage: dict[str, Any]) -> dict[str, Any] | None:
+    if "evaluations" not in coverage:
+        return None
+    return {key: value for key, value in coverage.items() if key != "evaluations"}
+
+
+def _without_detail_slides(coverage: dict[str, Any]) -> dict[str, Any] | None:
+    detail = coverage.get("detail")
+    if not isinstance(detail, dict) or "slides" not in detail:
+        return None
+    return {**coverage, "detail": {key: value for key, value in detail.items() if key != "slides"}}
+
+
+def _without_fallbacks(coverage: dict[str, Any]) -> dict[str, Any] | None:
+    failed = coverage.get("failed")
+    if not isinstance(failed, list) or not any(
+        isinstance(item, dict) and "fallback" in item for item in failed
+    ):
+        return None
+    return {
+        **coverage,
+        "failed": [
+            {key: value for key, value in item.items() if key != "fallback"}
+            if isinstance(item, dict)
+            else item
+            for item in failed
+        ],
+    }
+
+
+# 기본 자료가 넘칠 때 focus_take 의 대본 전달도에서 차례로 빼는 것 (chat-agent.md 6-12).
+# 장별 채점 → Take 상세의 장별 요약 → 실패 장의 간이 값. 뺀 경로는 omitted_paths 에 적는다
+_COVERAGE_TRIMS = (
+    ("results.script_coverage.evaluations", _without_evaluations),
+    ("results.script_coverage.detail.slides", _without_detail_slides),
+    ("results.script_coverage.failed[].fallback", _without_fallbacks),
+)
+
+
 def _fit_context(context: AgentContextDTO) -> AgentContextDTO:
     if _json_size(context.model_dump(mode="json")) <= CONTEXT_LIMIT_BYTES:
         return context
     pitch = context.pitch or {}
     focus = pitch.get("focus_take") or {}
     coverage = (focus.get("results") or {}).get("script_coverage")
-    if not isinstance(coverage, dict) or "evaluations" not in coverage:
+    if not isinstance(coverage, dict):
         raise ContextTooLarge()
-    trimmed = {key: value for key, value in coverage.items() if key != "evaluations"}
-    focus = {
-        **focus,
-        "results": {**focus["results"], "script_coverage": trimmed},
-        "omitted_paths": [*focus["omitted_paths"], "results.script_coverage.evaluations"],
-    }
-    context = AgentContextDTO.model_validate(
-        {**context.model_dump(), "pitch": {**pitch, "focus_take": focus}}
-    )
-    if _json_size(context.model_dump(mode="json")) > CONTEXT_LIMIT_BYTES:
-        raise ContextTooLarge()
-    return context
+    for path, trim in _COVERAGE_TRIMS:
+        trimmed = trim(coverage)
+        if trimmed is None:
+            continue
+        coverage = trimmed
+        focus = {
+            **focus,
+            "results": {**focus["results"], "script_coverage": coverage},
+            "omitted_paths": [*focus["omitted_paths"], path],
+        }
+        context = AgentContextDTO.model_validate(
+            {**context.model_dump(), "pitch": {**pitch, "focus_take": focus}}
+        )
+        if _json_size(context.model_dump(mode="json")) <= CONTEXT_LIMIT_BYTES:
+            return context
+    raise ContextTooLarge()
 
 
 def _history(

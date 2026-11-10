@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
+import { isDesktopChrome, isTouchOnlyDevice } from '@/shared/lib/browserCheck';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
+import { ChromeNoticeDialog, type ChromeNoticeReason } from './ChromeNoticeDialog';
 import { safeDestination, useSession } from './useSession';
 
 /** P11: 로그인 시작과 콜백 상태 안내, 세션 확인 후 목적지 이동을 담당한다. */
@@ -26,12 +28,20 @@ function loginStatusMessage(state: {
   return state.fallback;
 }
 
+/** PC 의 Chrome 이 아니면 안내할 이유. 기기는 화면을 여는 동안 바뀌지 않으니 처음 한 번만 봅니다 */
+function chromeNoticeReason(): ChromeNoticeReason | null {
+  if (isTouchOnlyDevice()) return 'MOBILE';
+  return isDesktopChrome() ? null : 'BROWSER';
+}
+
 export function LoginPage() {
   const [params] = useSearchParams();
   const session = useSession();
   const destination = safeDestination(params.get('next'));
   const [redirecting, setRedirecting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [chromeNotice, setChromeNotice] = useState(chromeNoticeReason);
+  const loginButtonRef = useRef<HTMLButtonElement>(null);
   const navigationStarted = useRef(false);
 
   const authError = params.get('auth_error');
@@ -116,6 +126,7 @@ export function LoginPage() {
             발표 연습을 시작하세요.
           </p>
           <button
+            ref={loginButtonRef}
             type="button"
             onClick={login}
             disabled={redirecting || session.isPending}
@@ -167,6 +178,17 @@ export function LoginPage() {
           PITCH COACH / ONE TAKE AT A TIME.
         </p>
       </footer>
+
+      {/* 로그인 상태를 확인하는 동안은 띄우지 않습니다 — 이미 로그인했으면 곧바로 넘어가 창이 깜빡입니다 */}
+      {chromeNotice && !session.isPending && (
+        <ChromeNoticeDialog
+          reason={chromeNotice}
+          onClose={() => {
+            setChromeNotice(null);
+            loginButtonRef.current?.focus();
+          }}
+        />
+      )}
     </div>
   );
 }

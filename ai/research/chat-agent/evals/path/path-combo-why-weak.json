@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "id": "path-combo-why-weak",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "'2장이 왜 약해?' — 코치 문제 구간과 리뷰 차원을 둘 다 읽는다(순서 무관), 2장 시선 30%",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "audience": [
+                0.6,
+                0.3,
+                0.57,
+                0.6
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY",
+                "fluency": "STRENGTH"
+              },
+              "score": 70
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5에서 2장이 왜 이렇게 약하게 나왔어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "both-reads",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:get_take_report:OK",
+            "tool:get_take_report:OK",
+            "claim:RECORD"
+          ],
+          [
+            "tool:get_take_report:OK",
+            "tool:get_take_report:CACHED",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "report-read",
+        "observe": "trace",
+        "compare": "contains",
+        "expect": "get_take_report",
+        "path": "tools"
+      },
+      {
+        "check_id": "slide2-value",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "30%",
+        "derive": "t-5:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "grader": "target",
+        "compare": "contains",
+        "expect": {
+          "take": 5,
+          "slide": 2
+        }
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

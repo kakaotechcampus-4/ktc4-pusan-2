@@ -21,7 +21,7 @@ async function openChat(page: Page): Promise<Locator> {
 }
 
 async function ask(panel: Locator, text: string): Promise<void> {
-  await panel.getByPlaceholder('새미나이에게 메시지 보내기...').fill(text);
+  await panel.getByPlaceholder('새미나이에게 메시지 보내기…').fill(text);
   await panel.getByRole('button', { name: '입력', exact: true }).click();
 }
 
@@ -59,9 +59,223 @@ test('1. 홈에서 버튼 → 전체 범위로 질문 → 답과 근거 칩', as
   await expect(chips.getByRole('listitem').first()).toBeVisible();
 });
 
+test('넓은 화면에서는 400px을 확보하고 좁은 화면에서는 본문 위에 표시한다', async ({ page }) => {
+  await page.goto('/');
+  const content = page.locator('.chat-layout-content');
+  const header = content.getByRole('banner');
+  const main = content.getByRole('main');
+  await expect(header).toHaveCount(1);
+  await expect(main).toBeVisible();
+  const headerWidth = (await header.boundingBox())!.width;
+  const mainWidth = (await main.boundingBox())!.width;
+  const panel = await openChat(page);
+  await expect(panel).toHaveCSS('width', '400px');
+  await expect(content).toHaveCSS('padding-right', '400px');
+  expect((await header.boundingBox())!.width).toBe(headerWidth - 400);
+  expect((await main.boundingBox())!.width).toBeLessThan(mainWidth);
+
+  // 1366px 데스크톱에서도 400px 도킹 대신 오버레이를 사용합니다.
+  await page.setViewportSize({ width: 1366, height: 780 });
+  await expect(content).toHaveCSS('padding-right', '0px');
+  await expect(panel).toHaveAttribute('aria-modal', 'false');
+
+  await page.setViewportSize({ width: 375, height: 780 });
+  await expect(content).toHaveCSS('padding-right', '0px');
+  const usableWidth = (await content.boundingBox())!.width;
+  await expect(panel).toHaveCSS('width', `${usableWidth}px`);
+  const composer = panel.getByRole('textbox', { name: '채팅 메시지' });
+  await composer.fill('모바일 입력 확인');
+  await expect(composer).toBeInViewport();
+  await expect(panel.getByRole('button', { name: '입력', exact: true })).toBeInViewport();
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(content).toHaveCSS('padding-right', '0px');
+  expect((await header.boundingBox())!.width).toBe(headerWidth);
+  expect((await main.boundingBox())!.width).toBe(mainWidth);
+});
+
+test('모바일 패널은 배경을 비활성화하고 키보드 초점을 패널 안에 유지한다', async ({ page }) => {
+  for (const width of [375, 400, 401, 430, 452, 760]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/');
+    const panel = await openChat(page);
+    await expect(panel).toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('.chat-layout-content')).toHaveAttribute('inert', '');
+    await expect(page.locator('[data-chat-launcher] > button')).toBeHidden();
+
+    const first = panel.getByRole('button', { name: '새 대화', exact: true });
+    const last = panel.getByRole('button', { name: '입력', exact: true });
+    await last.focus();
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+
+    // 기억 설정 등에서 입력창이 숨으면 패널 자체가 초점을 받을 수 있습니다.
+    await panel.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+    await panel.focus();
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator('.chat-layout-content')).not.toHaveAttribute('inert');
+    await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
+  }
+});
+
+test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보존한다', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeVisible();
+  await page.evaluate(`(() => {
+    const content = document.querySelector('.chat-layout-content');
+    if (!content) throw new Error('채팅 레이아웃 본문이 없습니다');
+    const spacer = document.createElement('div');
+    spacer.style.height = '200vh';
+    content.append(spacer);
+    window.scrollTo(0, 400);
+  })()`);
+  const before = await page.evaluate('window.scrollY');
+  const topScript = "document.querySelector('.chat-layout-content').getBoundingClientRect().top";
+  const topBefore = await page.evaluate(topScript);
+  expect(before).toBeGreaterThan(0);
+  const panel = await openChat(page);
+  await expect(panel).toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
+  await expect(page.locator('body')).not.toHaveCSS('position', 'fixed');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(before);
+  expect(await page.evaluate(topScript)).toBe(topBefore);
+  await page.mouse.move(40, 300);
+  await page.mouse.wheel(0, 500);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(topScript)).toBe(topBefore);
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator('body')).not.toHaveCSS('overflow-y', 'hidden');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(before);
+});
+
+test('모바일 채팅을 연 채 앞뒤로 이동해도 Take 기록의 400px 스크롤을 복원한다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
+
+  // SPA 내부 링크로 Take 기록으로 이동합니다.
+  await page.evaluate(`(() => {
+    const link = document.querySelector('a[href="/takes"]');
+    if (!link) throw new Error('Take 기록 링크가 없습니다');
+    link.click();
+  })()`);
+  await expect(page).toHaveURL(/\/takes$/);
+  await expect(page.getByRole('heading', { name: 'Take 기록', exact: true })).toBeVisible();
+
+  // React Router의 첫 스크롤 복원이 끝난 다음에 0이 아닌 위치를 기록합니다.
+  await page.evaluate(`(() => {
+    const content = document.querySelector('.chat-layout-content');
+    if (!content) throw new Error('채팅 레이아웃 본문이 없습니다');
+    const spacer = document.createElement('div');
+    spacer.style.height = '200vh';
+    content.append(spacer);
+    window.scrollTo(0, 400);
+  })()`);
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
+  const panel = await openChat(page);
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
+
+  // 이전 화면으로 가도 ScrollRestoration의 저장값은 400이어야 합니다.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(0);
+
+  // 패널을 연 상태로 다시 Take 기록에 돌아오고, 닫아도 400px이 유지돼야 합니다.
+  await page.goForward();
+  await expect(page).toHaveURL(/\/takes$/);
+  await expect(page.getByRole('heading', { name: 'Take 기록', exact: true })).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
+
+  // 다시 왕복해도 React Router가 기록한 400px이 보존되는지 확인합니다.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/takes$/);
+  await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
+});
+
+test('761px 이상에서는 채팅을 열어도 본문을 비활성화하지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto('/');
+  const panel = await openChat(page);
+  await expect(panel).toHaveAttribute('aria-modal', 'false');
+  await expect(page.locator('.chat-layout-content')).not.toHaveAttribute('inert');
+  // 패널을 연 동안에는 본문 조작은 허용하되 런처만 숨깁니다.
+  await expect(page.locator('[data-chat-launcher] > button')).toBeHidden();
+});
+
+test('대본 매핑과 슬라이드 확인은 열린 채팅 위에 뷰포트 기준으로 표시한다', async ({ page }) => {
+  await page.goto(`/pitch/${PITCH_ID}/edit`);
+  const panel = await openChat(page);
+  const composer = panel.getByRole('textbox', { name: '채팅 메시지' });
+  await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
+  const footer = page.locator('.pitch-create-square > footer');
+  await expect(footer).toHaveCSS('right', '400px');
+  expect(
+    await page.evaluate(
+      'document.documentElement.scrollWidth <= document.documentElement.clientWidth',
+    ),
+  ).toBe(true);
+  await composer.fill('확인할 내용');
+  const triggers = [
+    [/^슬라이드 확인 ·/, '슬라이드 확인'],
+    ['매핑 확인/수정', '매핑 확인·수정'],
+  ] as const;
+  for (const [trigger, title] of triggers) {
+    const button = page.getByRole('button', { name: trigger });
+    await button.click();
+    const modal = page
+      .locator('dialog:modal')
+      .filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+    await expect(modal).toHaveCSS('width', '1200px');
+    await expect(modal).toHaveCSS('height', '850px');
+    await expect(page.locator('[data-chat-panel]')).toBeVisible();
+    await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
+    await expect(button).toBeFocused();
+    await expect(composer).toHaveValue('확인할 내용');
+  }
+});
+
 test('2. 리포트에서 열면 범위가 그 피치 → 할 일 목록 · 도구 기록이 있는 답', async ({ page }) => {
   await page.goto(`/takes/${TAKE3_ID}`);
+  const header = page
+    .getByRole('banner')
+    .filter({ has: page.getByRole('link', { name: 'Take 기록', exact: true }) });
+  await expect(header).toBeVisible();
+  const headerWidth = (await header.boundingBox())!.width;
   const panel = await openChat(page);
+  await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
+  expect((await header.boundingBox())!.width).toBe(headerWidth - 400);
+  expect(
+    await page.evaluate(
+      'document.documentElement.scrollWidth <= document.documentElement.clientWidth',
+    ),
+  ).toBe(true);
   await expect(scopeChip(panel)).toHaveAccessibleName(`범위: 피치: ${PITCH_TITLE}`);
 
   await ask(panel, '지난번보다 뭐가 나아졌어?');
@@ -124,8 +338,8 @@ test('5. "바로 발표할래" → [연습 준비로] 버튼 → 누르면 장�
   await start.click();
   await expect(page).toHaveURL(new RegExp(`/pitch/${PITCH_ID}/device-check$`));
   await expect(page.getByRole('heading', { level: 1, name: '시작 전 세팅' })).toBeVisible();
-  // 장치 점검 화면은 대화를 쓸 수 있는 화면이라 버튼이 있습니다 — 아래 '버튼 없음' 검사가 헛돌지 않는지 견줍니다
-  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
 
   // 리허설 화면에는 대화 버튼이 없습니다 (L3-01) — 화면이 그려진 뒤에 셉니다(그리기 전에도 0 이라 통과해 버림).
   // 장치 점검을 거치지 않고 바로 열면 리허설 화면이 '연습 중단' 안내를 그립니다 — 같은 리허설 경로의 화면입니다
@@ -474,7 +688,69 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
     // 스위치 input 은 sr-only 라 꾸민 라벨이 덮고 있습니다 — 사람처럼 보이는 글자 라벨을 눌러 켜고, 켜졌는지 봅니다
     await panel.getByText('기억 없이 대화하기', { exact: true }).click();
     await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).toBeChecked();
+    const badge = panel.locator('[data-memory-off]');
+    await expect(badge).toHaveCount(0);
     await ask(panel, REMEMBER);
+    await expect(badge).toHaveText('기억 없이');
     await expectNoMemoryCard(panel);
+
+    await panel.getByRole('button', { name: '새 대화', exact: true }).first().click();
+    await expect(badge).toHaveCount(0);
+    await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).not.toBeChecked();
+
+    // 저장된 memory_off=true를 대화 목록에서 다시 선택할 때 배지로 복원합니다.
+    await panel.getByRole('button', { name: '대화 목록' }).click();
+    const saved = panel
+      .getByRole('list', { name: '지난 대화' })
+      .getByRole('button', { name: /앞으로 짧게 설명해 줘, 기억해/ });
+    await expect(saved).toContainText('기억 없이');
+    await saved.click();
+    await expect(badge).toHaveText('기억 없이');
+    await expect(panel.getByText(REMEMBER, { exact: true })).toBeVisible();
+    await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).toHaveCount(0);
   });
+});
+
+test('13. 320×400px 낮은 모바일 패널에서 입력창·전송 버튼이 조작 가능하다', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 400 });
+  await page.goto('/');
+  const panel = await openChat(page);
+  await expect(panel).toHaveAttribute('aria-modal', 'true');
+  const input = panel.getByRole('textbox', { name: '채팅 메시지' });
+  const send = panel.getByRole('button', { name: '입력', exact: true });
+  await send.scrollIntoViewIfNeeded();
+  await expect(input).toBeInViewport();
+  await expect(send).toBeInViewport();
+
+  const fits = await page.evaluate(`(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const composer = dialog?.querySelector('[data-chat-composer]');
+    const input = composer?.querySelector('textarea');
+    const send = composer?.querySelector('button[type="submit"]');
+    const within = (element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left >= -1 && rect.top >= -1 &&
+        rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1;
+    };
+    return Boolean(dialog && input && send &&
+      within(dialog) && within(input) && within(send));
+  })()`);
+  expect(fits).toBe(true);
+  await input.fill('좁은 화면 입력 검증');
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(panel.getByText('좁은 화면 입력 검증', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
+});
+
+test('14. 기억 첫 안내는 처음 열 때만 보이고 재열기에는 숨긴다', async ({ page }) => {
+  await page.goto('/');
+  const panel = await openChat(page);
+  await expect(panel.locator('[data-memory-intro]')).toBeVisible();
+  await panel.getByRole('button', { name: '새미나이 닫기' }).click();
+
+  const again = await openChat(page);
+  await expect(again.locator('[data-memory-intro]')).toHaveCount(0);
 });

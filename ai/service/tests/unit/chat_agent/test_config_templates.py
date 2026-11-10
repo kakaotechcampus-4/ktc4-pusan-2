@@ -94,6 +94,20 @@ def test_objectivity_templates_are_feature_doc_strings() -> None:
         assert f'"{doc_form}"' in doc, tpl
 
 
+@pytest.mark.skipif(not DOC.exists(), reason="기능 문서는 연구 모듈 위치에서만 읽는다")
+def test_open_goal_templates_are_feature_doc_strings() -> None:
+    """열린 대화 목표 문장(7-10)은 기능 문서의 글과 같다."""
+    doc = DOC.read_text(encoding="utf-8")
+    for tpl in templates.GOAL_OPEN.values():
+        doc_form = (
+            tpl.replace("{take_number}", "{기준 번호}")
+            .replace("{where}", "{장 }")
+            .replace("{label}", "{지표}")
+            .replace("{value}", "{기준 값}")
+        )
+        assert f'"{doc_form}"' in doc, tpl
+
+
 def test_assessment_sentence_picks_template_by_type_and_speaker() -> None:
     f = templates.assessment_sentence
     kw = dict(quote="시선 잘 봤어", evidence="Take 5 청중 시선 31%, 우선 개선")

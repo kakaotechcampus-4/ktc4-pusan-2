@@ -19,6 +19,7 @@ const base: User = {
   raw_data_consent: false,
   test_consent_at: null,
   test_consent_version: null,
+  tutorial_report_at: null,
 };
 
 let host: HTMLDivElement;

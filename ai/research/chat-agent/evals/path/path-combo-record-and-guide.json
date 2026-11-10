@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "id": "path-combo-record-and-guide",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should",
+  "title": "'말이 빨랐는지 보고 조절 연습법도' — 기록 읽기와 발표법 자료 검색을 둘 다(순서 무관), 말 속도 372",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "cpm": 372
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5에서 내가 말이 빨랐는지 확인하고, 말 속도를 조절하는 연습법도 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "both-tools",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:get_take_report:OK",
+            "tool:search_guides:*",
+            "claim:*"
+          ],
+          [
+            "tool:search_guides:*",
+            "tool:get_take_report:OK",
+            "claim:*"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "record-before-record-claim",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "search-before-guide-claim",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:search_guides:*",
+          "claim:GUIDE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "372",
+        "derive": "t-5:SPEED.cpm"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "grader": "target",
+        "compare": "contains",
+        "expect": {
+          "take": 5,
+          "metric": "cpm"
+        }
+      },
+      {
+        "check_id": "guide-quote-verbatim",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

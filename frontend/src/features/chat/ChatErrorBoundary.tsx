@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import { useLocation } from 'react-router';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import { CHAT_LAUNCHER_CLASS, canShowChat, chatLauncherBottom } from './chatRoutes';
 
 /** 대화창이 렌더 중에 던졌을 때 보이는 문구 (`docs/ai/features/chat-agent.md` L3-36 · 7-9) */
@@ -76,7 +77,7 @@ export class ChatErrorBoundary extends Component<Props, State> {
 
 /**
  * 런처 자리의 안내. 채팅이 숨는 화면(연습 무대 등)에서는 그리지 않습니다.
- * [닫기]는 안내를 런처 크기의 [다시 시도] 버튼으로 접습니다 — 안내도 왼쪽 아래에 표시합니다.
+ * [닫기]는 안내를 런처 크기의 [다시 시도] 버튼으로 접습니다 — 안내도 오른쪽 아래에 표시합니다.
  * 정상 런처와 같은 `data-chat-launcher` 를 둡니다.
  * index.css의 화면 여백 보정과 오류 경계의 초점 복귀가 이 표시를 사용합니다.
  */
@@ -129,13 +130,7 @@ function ChatFailed({
             {CHAT_FAILED_TEXT}
           </p>
           <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setFolded(true)}
-              className="min-h-11 border border-line-strong px-3 text-sm font-bold hover:bg-cream"
-            >
-              닫기
-            </button>
+            <CloseButton onClick={() => setFolded(true)} />
             <button
               ref={retryRef}
               type="button"

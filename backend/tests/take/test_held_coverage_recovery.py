@@ -145,7 +145,9 @@ def test_recovery_rescore_lifts_the_hold_and_keeps_the_retry_record(
 @pytest.mark.parametrize("retryable", [True, False])
 def test_failed_recovery_rescore_keeps_the_hold(db_session, user_id, monkeypatch, retryable):
     take = _held(db_session, user_id, rescore_retry_used=False)
-    rescore = AsyncMock(side_effect=CoverageCallError("합성 실패", retryable=retryable))
+    rescore = AsyncMock(
+        side_effect=CoverageCallError("합성 실패", retryable=retryable, failure_code="AI_ERROR")
+    )
     monkeypatch.setattr(coverage_service, "request_rescore", rescore)
 
     outcome = asyncio.run(coverage_service.recover_held_coverage(take.id))
@@ -294,7 +296,9 @@ def test_hold_that_stays_is_not_reviewed(db_session, user_id, monkeypatch, plans
     monkeypatch.setattr(
         coverage_service,
         "request_rescore",
-        AsyncMock(side_effect=CoverageCallError("합성 실패", retryable=True)),
+        AsyncMock(
+            side_effect=CoverageCallError("합성 실패", retryable=True, failure_code="AI_ERROR")
+        ),
     )
     reviewer = AsyncMock(side_effect=AssertionError("리뷰를 부르면 안 된다"))
     monkeypatch.setattr(take_ai_client, "request_review_async", reviewer)

@@ -24,6 +24,7 @@ beforeEach(() => {
     take_id: 't3',
     pitch_id: 'p1',
     pitch_title: '연습',
+    is_demo: false,
     take_number: 3,
     script_mode: 'HIGHLIGHT',
     ended_at: '2026-10-26T00:00:00Z',
@@ -33,6 +34,7 @@ beforeEach(() => {
     analysis_hold_reason: null,
     measures: measuresFixture,
     review: reviewFixture,
+    content_status: null,
   };
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;

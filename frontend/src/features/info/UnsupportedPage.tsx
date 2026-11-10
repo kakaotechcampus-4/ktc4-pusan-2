@@ -3,20 +3,22 @@ import { Button, ButtonLink } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { checkGazeSupport } from '@/shared/lib/gazeSupport';
 import { InfoPage } from '@/shared/ui/InfoPage';
-import { isTouchOnlyDevice, unsupportedReason, type UnsupportedReason } from './unsupportedReason';
+import { isTouchOnlyDevice } from '@/shared/lib/browserCheck';
+import { unsupportedReason, type UnsupportedReason } from './unsupportedReason';
 
 /**
  * P18 미지원 브라우저 — 시안 `docs/fe/design` unsupported.
  *
- * 왜 왔는지는 이 화면이 직접 봅니다. 휴대폰 · 태블릿이 연습 화면(장치 점검 · 리허설 · 실전)을 열면
- * `DesktopGate` 가 여기로 보냅니다 (#710). 보내는 쪽마다 사유를 실어 주지 않아도 되게 하려는 것입니다.
+ * 왜 왔는지는 이 화면이 직접 봅니다. 휴대폰 · 태블릿이 연습 화면(튜토리얼 진입 · 장치 점검 · 리허설 ·
+ * 실전)을 열면 `DesktopGate` 가 여기로 보냅니다 (#710). 보내는 쪽마다 사유를 실어 주지 않아도 되게
+ * 하려는 것입니다.
  * 시안의 '보안 설정' 사유는 뺐습니다 — `crossOriginIsolated` 가 없을 때 막는 코드가 없습니다.
  */
 
 const COPY: Record<UnsupportedReason, { title: string; body: string }> = {
   BROWSER: {
     title: '이 브라우저에서는 시선 분석을 할 수 없어요',
-    body: '시선 분석에 필요한 기능(WebAssembly · Worker · createImageBitmap)이 없어요. 최신 Chrome이나 Edge로 열어 주세요.',
+    body: '시선 분석에 필요한 기능(WebAssembly · Worker · createImageBitmap)이 없어요. 최신 Google Chrome에서 열어 주세요.',
   },
   MOBILE: {
     title: '발표 연습은 노트북 · 데스크톱에서 해 주세요',
@@ -52,7 +54,6 @@ export function UnsupportedPage() {
         <p className="leading-relaxed text-stone">{copy.body}</p>
         <ul className="list-disc space-y-1 pl-5 text-sm">
           <li>Chrome 최신 버전 (PC)</li>
-          <li>Edge 최신 버전 (PC)</li>
         </ul>
         <div className="flex flex-wrap gap-3">
           <Button onClick={copyLink}>링크 복사</Button>
@@ -61,7 +62,7 @@ export function UnsupportedPage() {
           </ButtonLink>
         </div>
         <p role="status" className="text-sm text-stone">
-          {copied === 'OK' && '복사했어요. PC의 Chrome이나 Edge 주소창에 붙여 넣어 주세요.'}
+          {copied === 'OK' && '복사했어요. PC의 Chrome 주소창에 붙여 넣어 주세요.'}
           {copied === 'FAILED' &&
             `복사하지 못했어요. 주소 ${window.location.origin} 를 직접 옮겨 주세요.`}
         </p>

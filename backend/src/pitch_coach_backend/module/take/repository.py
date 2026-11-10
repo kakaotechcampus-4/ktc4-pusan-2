@@ -4,8 +4,20 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, Row, and_, case, delete, func, or_, select, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import (
+    ColumnElement,
+    Row,
+    and_,
+    case,
+    cast,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+    update,
+)
+from sqlalchemy.dialects.postgresql import JSONB, JSONPATH, insert
 from sqlalchemy.orm import Session, aliased
 
 from pitch_coach_backend.module.pitch.entity import Pitch
@@ -53,6 +65,11 @@ def last_active_at() -> ColumnElement[datetime]:
 
 
 logger = logging.getLogger(__name__)
+
+# 채점 payload 에서 장 하나의 항목을 고르는 JSON 경로 (`coverage_slide`). 채점 응답은 대본이 길면
+# 수 MB 라 장을 펼칠 때마다 전체를 앱으로 읽지 않는다
+_SLIDE_EVALUATION = "$.evaluations[*] ? (@.slide_number == $slide_number)"
+_SLIDE_FAILED = "$.failed[*] ? (@.slide_number == $slide_number)"
 
 
 def parse_mission_ids(values: Any) -> list[uuid.UUID]:
@@ -129,11 +146,12 @@ class TakeRepository:
             .where(Take.id == take_id, Pitch.user_id == user_id)
         )
 
-    def get_owned_with_pitch_title(
+    def get_owned_with_pitch(
         self, take_id: uuid.UUID, user_id: uuid.UUID
-    ) -> tuple[Take, str] | None:
+    ) -> tuple[Take, Pitch] | None:
+        """사용자의 take 와 그 발표. 리포트 · 발표 중인 Take 응답이 발표 값을 싣는다."""
         row = self.db.execute(
-            select(Take, Pitch.title)
+            select(Take, Pitch)
             .join(Pitch, Pitch.id == Take.pitch_id)
             .where(Take.id == take_id, Pitch.user_id == user_id)
         ).first()
@@ -260,6 +278,58 @@ class TakeRepository:
         ).all()
 
         return [(take_result, script_coverage) for take_result, script_coverage in rows]
+
+    def coverage_summary(self, take_id: uuid.UUID) -> Row | None:
+        """확정본(`SCRIPT_COVERAGE`)의 revision · meta · `payload.detail`. 장별 채점은 읽지 않는다
+        (채점 payload 는 수 MB 일 수 있다). 확정본이 없으면 None."""
+        return self.db.execute(
+            select(
+                TakeAIResults.revision,
+                TakeAIResults.meta,
+                TakeAIResults.payload["detail"].label("detail"),
+            ).where(TakeAIResults.take_id == take_id, TakeAIResults.kind == COVERAGE_KIND)
+        ).first()
+
+    def coverage_slide(self, take_id: uuid.UUID, slide_number: int) -> Row | None:
+        """확정본의 revision 과 그 장의 `evaluations[]` · `failed[]` 항목. 장 하나만 DB 에서
+        꺼낸다. 확정본이 없으면 None, 그 장이 없으면 두 항목이 None 이다."""
+        slide = literal({"slide_number": slide_number}, JSONB)
+        return self.db.execute(
+            select(
+                TakeAIResults.revision,
+                func.jsonb_path_query_first(
+                    TakeAIResults.payload, cast(_SLIDE_EVALUATION, JSONPATH), slide, type_=JSONB
+                ).label("evaluation"),
+                func.jsonb_path_query_first(
+                    TakeAIResults.payload, cast(_SLIDE_FAILED, JSONPATH), slide, type_=JSONB
+                ).label("failed"),
+            ).where(TakeAIResults.take_id == take_id, TakeAIResults.kind == COVERAGE_KIND)
+        ).first()
+
+    def previous_coverage_summary(self, pitch_id: uuid.UUID, take_number: int) -> Row | None:
+        """바로 앞 Take 와 그 확정본의 meta · `payload.detail`. 리뷰의 이전 Take
+        (`get_previous_take_results`)와 같은 규칙이다 — 같은 발표, `COMPLETED`, Take 결과가 있고
+        번호가 더 작은 것 중 가장 큰 것. 그 Take 에 확정본이 없으면 meta · detail 이 None 이다."""
+        coverage = aliased(TakeAIResults)
+        return self.db.execute(
+            select(
+                Take.id.label("take_id"),
+                Take.take_number,
+                coverage.meta,
+                coverage.payload["detail"].label("detail"),
+            )
+            .outerjoin(coverage, (coverage.take_id == Take.id) & (coverage.kind == COVERAGE_KIND))
+            .where(
+                Take.pitch_id == pitch_id,
+                Take.take_number < take_number,
+                Take.status == COMPLETED,
+                select(TakeAIResults.id)
+                .where(TakeAIResults.take_id == Take.id, TakeAIResults.kind == TAKE_RESULT)
+                .exists(),
+            )
+            .order_by(Take.take_number.desc())
+            .limit(1)
+        ).first()
 
     def get_previous_review_payload(
         self, pitch_id: uuid.UUID, standard_take_num: int
@@ -697,6 +767,7 @@ class TakeRepository:
                 Take.id.label("take_id"),
                 Take.pitch_id,
                 Pitch.title.label("pitch_title"),
+                Pitch.is_demo,
                 Take.take_number,
                 Take.started_at,
                 Take.status,

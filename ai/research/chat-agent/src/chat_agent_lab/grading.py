@@ -18,11 +18,17 @@
     번호 · 코칭 프로필) …)
   - trace: `{tools[], diag[], limits[], calls, statuses[], model_calls, tool_calls, claim_lines, stream_ok, profile_sent}` — 도구 기록과 진단 기록 단계
     (`종류:코드[:결과]`), 문장 줄 수 · 문장 줄이 끝 줄 앞부분과 같은가
+  - trajectory: `{events[], plans[], final_plan[], plan_texts[], plan_text, plan_statuses[], plan_edits, plan_updates, decisions[]}` — 실제 순서의
+    사건 문자열(`plan:set|edit|update` · `tool:<도구>:<결과>` · `decision:<신호>:<효과>:<결정자>` · `claim:<종류>` · `propose:<행동>:<자율>` ·
+    `final:<상태>` · `approve|preapprove|reject|expire|cancel:<행동>` · `exec:<행동>:OK|FAIL`)과 계획 기록
 - 비교(compare): equals(같음) · contains(문자열이면 부분 문자열, 목록이면 원소 · 딕셔너리면 일부 칸 일치. expect 가 목록이면
   모두 있어야) · set_equals(집합 같음) · absent(expect 의 원소가 하나라도 있으면 실패, 하나 값이면 다름) · one_of(허용 집합:
   값이 목록 안에 있음, 관찰값이 목록이면 하나라도. 목록 관찰값을 쓰는 검사는 모두 '이 중 하나라도 나오면 됨'이 뜻이고,
   목록 밖 원소를 막으려면 absent 를 함께 쓴다, 10-5). 관찰값이 없으면(경로가 없음, `items[].x`에서 한 원소라도 x 가 없음 포함)
   어떤 비교든 실패다(10-5). 딕셔너리 일부 칸 일치의 키 끝 `~`는 부분 문자열, `@`는 고정 문구가 있는가.
+- 경로 비교(trajectory 의 `events` 같은 문자열 목록에만, 사건 패턴은 `fnmatch` 글롭 예 `tool:get_take_report:*`): in_order(패턴 목록이 사이를
+  건너뛰며 그 순서로 나옴) · in_order_any(패턴 목록의 목록, 하나라도 in_order) · precedes([A, B]: B 에 맞는 모든 사건 앞에 A 가 있음, B 가 없으면
+  실패) · not_in_order(그 순서가 나오면 실패, 금지 전이).
 - 숫자 정확도(14-1)의 셈 규칙은 `number_accuracy` 설명(분모에 단위 없는 정수 포함, 대상 번호 · 순서 · 날짜 제외, 원본을 읽지
   못한 근거는 대조 불가로 따로).
 - `GENERAL` 금지 위반(14-1)은 `general_violations`: 제품의 GENERAL_RULE(checks.py · config.py 낱말 목록)과 따로 짠 규칙 ·
@@ -33,6 +39,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import math
 import re
@@ -185,7 +192,77 @@ def compare(op: str, obs: Any, expect: Any) -> tuple[bool, str]:
         if not present:
             return True, ""
         return False, f"{_short(obs)} 에 있음: {_short(present)}"
+    if op in PATH_OPS:
+        return path_compare(op, obs, expect)
     return False, f"모르는 비교 {op}"
+
+
+# ── 경로 비교 (사건 문자열 목록) ──────────────────────────────────────────
+
+PATH_OPS = ("in_order", "in_order_any", "precedes", "not_in_order")
+
+
+def _match(pattern: str, event: str) -> bool:
+    return fnmatch.fnmatchcase(event, pattern)
+
+
+def _greedy(events: list[str], patterns: list[str]) -> tuple[int, str | None]:
+    """패턴을 순서대로(사이 허용) 탐욕으로 맞춘다. (맞춘 개수, 못 찾은 첫 패턴 또는 None)."""
+    pos = 0
+    for n, pat in enumerate(patterns):
+        while pos < len(events) and not _match(pat, events[pos]):
+            pos += 1
+        if pos >= len(events):
+            return n, pat
+        pos += 1
+    return len(patterns), None
+
+
+def path_compare(op: str, obs: Any, expect: Any) -> tuple[bool, str]:
+    """경로 비교 4개. 관찰값은 문자열 목록이어야 한다. 사유는 사건 글 그대로(사용자 글 없음)."""
+    if not isinstance(obs, list) or not all(isinstance(x, str) for x in obs):
+        return False, f"{op} 는 문자열 목록 관찰값에만 쓴다"
+
+    def pats(x: Any) -> list[str] | None:
+        return list(x) if isinstance(x, list) and all(isinstance(p, str) for p in x) else None
+
+    if op == "in_order_any":
+        if not isinstance(expect, list) or not expect or any(pats(o) is None for o in expect):
+            return False, "in_order_any 의 expect 는 패턴 목록의 목록이다"
+        notes = []
+        for o in expect:
+            n, miss = _greedy(obs, o)
+            if miss is None:
+                return True, ""
+            notes.append(f"{n}/{len(o)}번째까지 맞고 '{miss}' 없음")
+        return False, "어느 순서도 아님: " + " | ".join(notes)
+    if op == "precedes":
+        p = pats(expect)
+        if p is None or len(p) != 2:
+            return False, "precedes 의 expect 는 [A, B]"
+        a, b = p
+        bs = [i for i, e in enumerate(obs) if _match(b, e)]
+        if not bs:
+            return False, f"B 없음: '{b}'"
+        first_a = next((i for i, e in enumerate(obs) if _match(a, e)), None)
+        if first_a is None:
+            return False, f"A 없음: '{a}'"
+        late = [obs[i] for i in bs if i < first_a]
+        if late:
+            return False, f"'{a}' 보다 먼저 나옴: {_short(late)}"
+        return True, ""
+    p = pats(expect)
+    if p is None or not p:
+        return False, f"{op} 의 expect 는 비어 있지 않은 패턴 목록이다"
+    n, miss = _greedy(obs, p)
+    if op == "in_order":
+        if miss is None:
+            return True, ""
+        return False, f"{n}/{len(p)}번째까지 맞고 '{miss}' 없음 (사건 {_short(obs)})"
+    # not_in_order
+    if miss is None:
+        return False, f"금지된 순서가 나옴: {_short(p)}"
+    return True, ""
 
 
 def _present(obs: Any, want: Any) -> bool:
@@ -642,7 +719,10 @@ def run_check(
 ) -> CheckResult:
     """시나리오 검사 하나(`scenario.Check`)를 관찰값에 대 본다."""
     path = check.path
-    if path is None and check.grader in _TEXT_GRADERS:
+    if path is None and getattr(check, "observe", None) == "trajectory":
+        # 경로 관찰값의 기본: 글 채점기는 단계 글(`plan_text`), 그 밖은 사건 목록(`events`)
+        path = "plan_text" if check.grader in _TEXT_GRADERS else "events"
+    elif path is None and check.grader in _TEXT_GRADERS:
         path = "all_text"
     obs = resolve(observation, path) if observation is not MISSING else MISSING
     if obs is MISSING:

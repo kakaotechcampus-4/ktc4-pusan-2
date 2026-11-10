@@ -6,7 +6,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ReportPage } from './ReportPage';
 import { measuresFixture, reviewFixture } from '@/mocks/report';
-import type { TakeReport } from '@/types/report';
+import type { ContentStatus, TakeReport } from '@/types/report';
+import { contentMeasured } from '@/mocks/contentCoverage';
+import { CONTENT_BROKEN_TEXT } from './ContentErrorBoundary';
 
 const query = vi.hoisted(() => ({
   data: undefined as TakeReport | undefined,
@@ -38,6 +40,7 @@ beforeEach(() => {
     take_id: 't3',
     pitch_id: 'p1',
     pitch_title: '연습',
+    is_demo: false,
     take_number: 3,
     script_mode: 'HIGHLIGHT',
     ended_at: '2026-10-26T00:00:00Z',
@@ -47,6 +50,7 @@ beforeEach(() => {
     analysis_hold_reason: null,
     measures: measuresFixture,
     review: reviewFixture,
+    content_status: null,
   };
   host = document.createElement('div');
   document.body.append(host);
@@ -80,11 +84,14 @@ it('shows the previous Take comparison immediately after the summary and before 
   const summary = main.querySelector('[role="status"]')!.closest('section')!;
   const comparison = summary.nextElementSibling!;
   expect(comparison.querySelector('h2')?.textContent).toBe('지난 Take와 비교');
-  expect(comparison.nextElementSibling?.getAttribute('aria-label')).toBe('측정값');
+  const measures = comparison.nextElementSibling!;
+  expect(measures.getAttribute('aria-label')).toBe('측정값');
+  // 내용 전달 카드(#1154)는 측정값 다음입니다
+  expect(measures.nextElementSibling?.querySelector('h2')?.textContent).toBe('내용 전달');
   const pageHeadings = [...main.querySelectorAll('h2')].filter(
     (heading) => !heading.closest('dialog'),
   );
-  expect(pageHeadings).toHaveLength(8);
+  expect(pageHeadings).toHaveLength(9);
 });
 
 it('shows the script modes in Korean when the two Takes used different ones', async () => {
@@ -107,7 +114,7 @@ it('shows the script modes in Korean when the two Takes used different ones', as
   expect(text).not.toContain('HIGHLIGHT');
 });
 
-it('shows 같음, not 나빠짐, when the visible values are equal even if improved is false', async () => {
+it('shows 변화 없음, not 악화, when the visible values are equal even if improved is false', async () => {
   const row = { script_mode: null };
   query.data!.review = {
     ...reviewFixture,
@@ -138,9 +145,9 @@ it('shows 같음, not 나빠짐, when the visible values are equal even if impro
       .querySelector('dialog')!
       .querySelector(`section[aria-label="${dimension}"] tbody tr:nth-of-type(${row}) td`)!
       .textContent;
-  expect(cell('대본에서 벗어나기', 1)).toContain('같음');
-  expect(cell('군더더기 없이', 1)).toContain('같음');
-  expect(cell('군더더기 없이', 2)).toContain('나빠짐');
+  expect(cell('대본에서 벗어나기', 1)).toContain('변화 없음');
+  expect(cell('군더더기 없이', 1)).toContain('변화 없음');
+  expect(cell('군더더기 없이', 2)).toContain('악화 ↓');
 });
 
 async function openComparisonDetail() {
@@ -235,13 +242,37 @@ it('shows per-metric improved and worsened slides before opening details', async
     (section) => section.querySelector('h3')?.textContent === '청중 응시',
   )!;
   const slideLists = metric.querySelectorAll('p.mt-1');
-  expect(metric.textContent).toContain('나아진 슬라이드');
-  expect(metric.textContent).toContain('나빠진 슬라이드');
+  expect(metric.textContent).toContain('개선된 슬라이드');
+  expect(metric.textContent).toContain('다시 점검할 슬라이드');
   expect(slideLists[0]?.textContent).toBe('2번');
   expect(slideLists[1]?.textContent).toBe('3번');
+  const improved = metric.querySelector('[role="group"][aria-label="개선된 슬라이드"]')!;
+  const worsened = metric.querySelector('[role="group"][aria-label="다시 점검할 슬라이드"]')!;
+  expect(improved.classList.contains('bg-coral-wash')).toBe(true);
+  expect(worsened.classList.contains('bg-coral-wash')).toBe(false);
   await openComparisonDetail();
   expect(host.querySelector('dialog[open]')).not.toBeNull();
   expect(host.querySelector('dialog table')).not.toBeNull();
+});
+
+it('does not highlight an empty improvement group', async () => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      {
+        metric: 'audience_ratio',
+        slide_number: 2,
+        previous: 0.5,
+        current: 0.3,
+        improved: false,
+        script_mode: null,
+      },
+    ],
+  };
+  await render();
+  const improved = comparisonCard().querySelector('[role="group"][aria-label="개선된 슬라이드"]');
+  expect(improved?.textContent).toContain('없음');
+  expect(improved?.classList.contains('bg-coral-wash')).toBe(false);
 });
 
 it('keeps summary metrics ordered and hidden consistently with the detail table', async () => {
@@ -282,8 +313,43 @@ it('describes metrics reported only for the whole Take without suggesting missin
     ],
   };
   await render();
-  expect(comparisonCard().textContent).toContain('발표 전체 기준 지표예요.');
-  expect(comparisonCard().textContent).not.toContain('슬라이드별 비교 데이터가 없어요.');
+  const whole = comparisonCard().querySelector(
+    '[role="group"][aria-label="발표 시간 발표 전체 비교"]',
+  );
+  expect(whole).not.toBeNull();
+  expect(whole?.textContent).toContain('지난 Take');
+  expect(whole?.textContent).toContain('이번 Take');
+  expect(whole?.textContent).toContain('개선 ↑');
+  expect(whole?.classList.contains('bg-coral-wash')).toBe(true);
+  expect(whole?.classList.contains('border-coral-deep')).toBe(true);
+  expect(comparisonCard().textContent).not.toContain('발표 전체 기준 지표예요.');
+});
+
+it.each([
+  { improved: false, current: 140000, label: '악화 ↓' },
+  { improved: null, current: 140000, label: '방향 판단 불가' },
+  { improved: false, current: 150000, label: '변화 없음' },
+])('keeps $label neutral for a whole-Take metric', async ({ improved, current, label }) => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      {
+        metric: 'duration_ms',
+        slide_number: null,
+        previous: 150000,
+        current,
+        improved,
+        script_mode: null,
+      },
+    ],
+  };
+  await render();
+  const whole = comparisonCard().querySelector(
+    '[role="group"][aria-label="발표 시간 발표 전체 비교"]',
+  );
+  expect(whole?.textContent).toContain(label);
+  expect(whole?.classList.contains('bg-coral-wash')).toBe(false);
+  expect(whole?.classList.contains('bg-panel')).toBe(true);
 });
 
 it('shows undetermined direction without falsely saying no slides improved or worsened', async () => {
@@ -305,8 +371,8 @@ it('shows undetermined direction without falsely saying no slides improved or wo
     (section) => section.querySelector('h3')?.textContent === '멈춤',
   )!;
   expect(metric.textContent).toContain('개선·악화 방향을 판단할 수 없는 지표예요.');
-  expect(metric.textContent).not.toContain('나아진 슬라이드');
-  expect(metric.textContent).not.toContain('나빠진 슬라이드');
+  expect(metric.textContent).not.toContain('개선된 슬라이드');
+  expect(metric.textContent).not.toContain('다시 점검할 슬라이드');
 });
 
 it('does not label a metric with missing slide details as whole-Take-only', async () => {
@@ -358,4 +424,68 @@ it('restores focus to the detail trigger after closing the dialog', async () => 
   expect(host.querySelector('dialog[open]')).toBeNull();
   expect(document.activeElement).toBe(trigger);
   expect(document.body.style.overflow).toBe('');
+});
+
+it('일반 피치 리포트의 다음 연습은 같은 피치의 장치 점검으로 간다', async () => {
+  await render();
+  const hrefs = [...host.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  expect(hrefs).toContain('/pitch/p1/device-check');
+  expect(hrefs).not.toContain('/pitch/new');
+  expect(host.textContent).not.toContain('샘플 발표');
+});
+
+it('튜토리얼 샘플 리포트는 샘플로 표시하고 다음 연습을 내 자료로 새 피치 만들기로 잇는다', async () => {
+  query.data!.is_demo = true;
+  await render();
+  const title = host.querySelector('main > p')!;
+  expect(title.textContent).toContain('샘플 발표');
+  const hrefs = [...host.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  // 튜토리얼 리포트는 한 번이라 샘플 피치의 장치 점검은 409 로 막힙니다
+  expect(hrefs).not.toContain('/pitch/p1/device-check');
+  expect(hrefs).toContain('/pitch/new');
+  expect(host.textContent).toContain('내 발표에서 의식해 볼 것');
+  expect(host.textContent).toContain('새로운 연습으로 시작해요.');
+  expect(host.textContent).not.toContain('다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.');
+});
+
+it('내용 전달 요약이 비어 와도 리포트의 다른 칸은 그대로 보입니다 (#1157 리뷰 P1)', async () => {
+  query.data!.content_status = {
+    ...contentMeasured,
+    summary: {} as unknown as NonNullable<ContentStatus['summary']>,
+  };
+  await render();
+  const text = host.querySelector('main')!.textContent;
+  expect(text).toContain(CONTENT_BROKEN_TEXT);
+  expect(host.querySelector('[aria-label="측정값"]')).not.toBeNull();
+  expect(text).toContain('잘한 점');
+});
+
+it('내용 전달 카드가 그리다 던져도 그 카드만 안내로 바꿉니다 (#1157 리뷰 P1)', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  // 모양 검사를 지나는 요약이지만 그리는 중에 던지게 만듭니다
+  const summary = { ...contentMeasured.summary! };
+  Object.defineProperty(summary, 'critical_gaps', {
+    get() {
+      throw new Error('boom');
+    },
+  });
+  query.data!.content_status = { ...contentMeasured, summary };
+  await render();
+  const text = host.querySelector('main')!.textContent;
+  expect(text).toContain(CONTENT_BROKEN_TEXT);
+  expect(host.querySelector('[aria-label="측정값"]')).not.toBeNull();
+});
+
+it('결과 판이 바뀌어도(409 뒤 다시 읽기) 열어 둔 장별 목록이 닫히지 않습니다', async () => {
+  query.data!.content_status = { ...contentMeasured, revision: 0 };
+  await render();
+  const toggle = () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('장별 보기'))!;
+  await act(async () => toggle().click());
+  expect(toggle().getAttribute('aria-expanded')).toBe('true');
+
+  // 확인 답이 반영돼 새 판이 온 리포트로 다시 그립니다 — 내용 전달 카드를 새로 만들면 목록이 닫힙니다
+  query.data = { ...query.data!, content_status: { ...contentMeasured, revision: 1 } };
+  await render();
+  expect(toggle().getAttribute('aria-expanded')).toBe('true');
 });

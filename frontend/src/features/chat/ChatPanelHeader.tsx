@@ -80,9 +80,9 @@ export function ChatPanelHeader({
         <div className="flex min-w-32 flex-1 items-center gap-2.5">
           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-line-strong bg-cream">
             <img
-              src="/semini.png"
+              src="/semini-mascot.svg"
               alt=""
-              className="h-full w-full object-cover [image-rendering:pixelated]"
+              className="h-full w-full object-contain [image-rendering:pixelated]"
             />
           </div>
           <div className="min-w-0">

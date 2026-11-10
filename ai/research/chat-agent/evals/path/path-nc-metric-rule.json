@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "id": "path-nc-metric-rule",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "Take 4 의 시선 판정 기준 버전이 달라 3장 시선을 비교할 수 없음 — 단계 글에 '비교 불가'와 까닭 낱말, 다른 Take(3)와 비교는 허용",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-4": {
+            "result": {
+              "criteria_versions": {
+                "GAZE": "gaze-1.2+0a1b2c3d4e5f"
+              }
+            }
+          },
+          "t-3": {
+            "result": {
+              "audience": [
+                0.62,
+                0.58,
+                0.5,
+                0.6
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "3장 청중 시선 비율을 Take 4에서 Take 5로 가면서 어떻게 달라졌는지 비교해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-take4-conclusion",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "absent",
+        "expect": "Take 4[^\\n]{0,80}(좋아졌|나빠졌|올랐|떨어졌)"
+      },
+      {
+        "check_id": "reason-or-alt",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "판정 기준|비교할 수 없|비교하지|Take 3"
+      },
+      {
+        "check_id": "compare-then-fact",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:compare_takes:*",
+          "decision:NOT_COMPARABLE:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fact-then-answer",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "decision:NOT_COMPARABLE:FACT_SHOWN:CODE",
+            "tool:compare_takes:*",
+            "decision:NOT_COMPARABLE:ALT_TOOL:LLM",
+            "claim:*"
+          ],
+          [
+            "decision:NOT_COMPARABLE:FACT_SHOWN:CODE",
+            "claim:*"
+          ]
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "비교 불가[^\\n]*판정 기준 버전 다름",
+        "metric": "replan"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "source": "path-nc-metric"
+}

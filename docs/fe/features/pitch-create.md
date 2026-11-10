@@ -24,7 +24,7 @@
 
 ## 0. 한눈에 보기
 
-- 라우트는 `/pitch/new`(새로 만들기)와 `/pitch/:id/edit`(수정) 둘이고, 같은 화면을 씁니다. 수정은 서버의 피치를 초안 모양으로 읽어 와 시작합니다(`loadPitch.ts`).
+- 라우트는 `/pitch/new`(새로 만들기)와 `/pitch/:id/edit`(수정) 둘이고, 같은 화면을 씁니다. 수정은 서버의 피치를 초안 모양으로 읽어 와 시작합니다(`loadPitch.ts`). 단, 튜토리얼 샘플(`is_demo`) 피치는 수정할 수 없습니다(`DemoPitchError`): 안내를 보이고 `/pitch/new`로 이동할 수 있게 합니다.
 - 화면은 한 페이지에 네 구역(슬라이드 · 대본 연결 · 발표정보 · 평가기준)이 차례로 이어지고, 슬라이드 · 대본 · 평가 기준은 **버전**을 쌓습니다.
 - 대본 매핑은 서버에 올린 뒤 AI가 나눈 결과를 1초마다 조회해 받습니다. 기다린 시간에 따라 안내가 바뀝니다.
 - 슬라이드와 대본의 장 수가 맞고 매핑을 저장해야 연습할 조합(`PracticeCombo`)이 생기고, 그 조합을 라우터 state로 장치 점검에 넘깁니다.
@@ -52,6 +52,8 @@
 - 네 구역이 한 페이지에 세로로 이어집니다(`PitchCreatePage.tsx`의 `SECTIONS`).
 - 왼쪽 '준비 순서'로 구역을 옮기고, 그 아래 접히는 '자료 버전 관리'에서 버전을 고릅니다.
 - 아래 고정 버튼 하나가 다음 할 일로 데려갑니다. 문구는 "슬라이드 확인하기 ↓" · "대본 연결 확인하기 ↓" … 처럼 바뀌다가, 다 되면 "최종 확인 →"이 됩니다.
+- **채팅과 본문의 관계**: 새미나이 패널을 연 1440px 이상 화면에서는 오른쪽 400px을 채팅 공간으로 예약하므로 헤더·본문·하단 고정 버튼이 남은 영역에 맞춰 배치됩니다. 그보다 좁은 화면에서는 패널이 본문 위에 겹칩니다(`app/routes.tsx` · `index.css`).
+- **대본 매핑·슬라이드 확인 창**: 각각 `steps/ScriptPane.tsx`의 `MappingDialog`, `steps/SlidePane.tsx`의 `SlideReviewDialog`가 네이티브 `dialog.showModal()`로 열립니다. 채팅 패널이 열린 상태에서도 모달은 축소된 본문 너비가 아니라 **전체 뷰포트 기준**으로 기존 최대 크기(가로 1200px · 세로 850px 이내)를 유지합니다. 모달을 닫아도 기존 채팅의 열린 상태와 대화 내용은 유지합니다. 좁은 화면의 뷰포트 제한은 각 모달의 CSS 규칙을 따릅니다.
 - 화면 그림은 화면 설계서의 `pitch-create` 화면에 있습니다. `docs/fe/design/`에서 `npm run dev`를 띄운 뒤 `http://localhost:3100/#/?screen=pitch-create`를 엽니다([설계서 사용법](../design/README.md)). 설명 패널의 "제품과 다른 점"에 시안과 제품이 다른 곳이 적혀 있습니다.
 
 | 구역 | 하는 일 |
@@ -231,6 +233,7 @@
 | 수정 화면 읽기 | `loadPitch.test.ts` |
 | 대본 매핑 폴링 | `scriptParse.test.ts` |
 | 규칙 | `lib/draft.test.ts` · `lib/gate.test.ts` · `lib/markerHint.test.ts` · `lib/parseWait.test.ts` · `pendingVersion.test.ts` |
+| 브라우저 끝까지(E2E) | `frontend/e2e/pitch.e2e.ts` — 최종 확인 → 장치 점검 · 발표정보 저장 · 새 피치 첫 안내. PDF 올리기는 보지 않습니다 |
 
 ## 10. 열린 질문 · 알려진 한계
 
