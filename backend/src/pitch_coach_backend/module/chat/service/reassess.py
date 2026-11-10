@@ -9,7 +9,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.chat.ai_client import ReviewTakeMismatch, request_review_once
-from pitch_coach_backend.module.chat.ai_response import ReassessArgs
+from pitch_coach_backend.module.chat.ai_response import ReassessArgs, ReassessCriteria
 from pitch_coach_backend.module.chat.dto import ActionResultDTO
 from pitch_coach_backend.module.chat.repository import ChatRepository
 from pitch_coach_backend.module.chat.service.owned import owned_take
@@ -29,7 +29,6 @@ from pitch_coach_backend.module.chat.service.run import (
     lock_or_cancel,
     seoul_day,
 )
-from pitch_coach_backend.module.take.dto import UserCriteriaDTO
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service.review import build_review_request
 
@@ -103,7 +102,7 @@ def _changed_request(before: dict[str, Any], change: dict[str, Any]) -> dict[str
     after = copy.deepcopy(before)
     criteria = after["user_criteria"] or copy.deepcopy(EMPTY_CRITERIA)
     criteria.update(change)
-    after["user_criteria"] = UserCriteriaDTO.model_validate(criteria).model_dump(mode="json")
+    after["user_criteria"] = ReassessCriteria.model_validate(criteria).model_dump(mode="json")
     if {**before, "user_criteria": None} != {**after, "user_criteria": None}:
         raise ValueError("허용 칸 밖이 바뀌었다")
     return after

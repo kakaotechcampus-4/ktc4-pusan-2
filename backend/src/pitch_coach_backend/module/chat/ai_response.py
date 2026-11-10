@@ -12,6 +12,7 @@ from pitch_coach_backend.module.chat.dto import (
     BudgetUsedDTO,
     SignedStateDTO,
 )
+from pitch_coach_backend.module.take.dto import TargetInfoDTO, UserCriteriaDTO
 
 MAX_LINE_BYTES = 2 * 1024 * 1024
 MAX_DIAGNOSTICS_BYTES = 65_536
@@ -209,6 +210,23 @@ class ReassessArgs(ActionArgs):
         if len(self.change) != 1 or next(iter(self.change)) not in ("script_used", "targets"):
             raise ValueError("change 는 허용 키 하나만 가진다")
         return self
+
+
+class ReassessTarget(TargetInfoDTO):
+    metric: str | None = None
+    operator: str | None = None
+    value: float | None = None
+
+    @model_validator(mode="after")
+    def _all_or_none(self) -> Self:
+        parts = [self.metric is None, self.operator is None, self.value is None]
+        if any(parts) and not all(parts):
+            raise ValueError("metric · operator · value 는 모두 있거나 모두 없어야 한다")
+        return self
+
+
+class ReassessCriteria(UserCriteriaDTO):
+    targets: list[ReassessTarget] = Field(default=[], max_length=20)
 
 
 class StartPracticeArgs(ActionArgs):
