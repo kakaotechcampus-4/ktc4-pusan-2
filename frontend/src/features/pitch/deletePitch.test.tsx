@@ -549,7 +549,7 @@ it('TIP 목록은 채팅 에이전트 안내를 포함하고 마지막 다음에
     for (let i = 0; i < 10; i += 1) tick();
   });
   const chatTip =
-    '왼쪽 아래 새미나이 버튼을 누르면 오른쪽에 대화가 열려요. 지난 Take 기록이나 발표 방법을 물어보세요.';
+    '오른쪽 아래 새미나이 버튼을 누르면 오른쪽에 대화가 열려요. 지난 Take 기록이나 발표 방법을 물어보세요.';
   expect(tip.textContent).toBe(chatTip);
 
   await act(async () => tick());
