@@ -128,7 +128,9 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
 
     await page.evaluate('window.scrollTo(0, 600)');
     await expect.poll(() => page.evaluate('window.scrollY')).toBe(600);
-    await expect.poll(() => panel.evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(0);
+    await expect
+      .poll(() => panel.evaluate((element) => Math.round(element.getBoundingClientRect().top)))
+      .toBe(0);
 
     await page.evaluate('window.scrollTo(0, 0)');
     await expect.poll(alignedToVisibleHeader).toBe(true);
