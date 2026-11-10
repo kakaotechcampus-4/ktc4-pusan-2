@@ -43,6 +43,8 @@ it.each([
   ['분석 중', take('ANALYZING')],
   ['완료', take('COMPLETED')],
   ['끝냈지만 분석 실패', take('FAILED')],
+  ['침묵으로 자동 종료 후 분석 실패', take('FAILED', 'SILENCE')],
+  ['제한 시간 종료 후 분석 실패', take('FAILED', 'TIME_LIMIT')],
 ])('샘플로 끝까지 연습했으면(%s) 더 권하지 않는다', (_, sampleTake) => {
   expect(invitesTutorial([pitch(false), pitch(true, [take('READY'), sampleTake])], false)).toBe(
     false,
