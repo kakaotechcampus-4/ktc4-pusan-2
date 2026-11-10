@@ -1,5 +1,6 @@
 // 제품 `frontend/src/shared/ui/HomeHelpDialog.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import { useEffect, useId, useRef } from 'react';
+import { CloseButton } from '../CloseButton';
 
 const steps = [
   [
@@ -44,20 +45,13 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
       onClose={() => {
         if (!dialogRef.current?.open) onDismiss();
       }}
-      className="pitch-create fixed inset-0 m-auto h-dvh max-h-dvh w-full max-w-none overflow-y-auto overscroll-contain border-0 bg-panel p-0 text-ink backdrop:bg-ink/20 sm:h-auto sm:max-h-[85dvh] sm:max-w-2xl sm:border-2 sm:border-ink"
+      className="pitch-create fixed inset-0 m-auto h-dvh max-h-dvh w-full max-w-none overflow-y-auto overscroll-none border-0 bg-panel p-0 text-ink backdrop:bg-ink/20 sm:h-auto sm:max-h-[85dvh] sm:max-w-2xl sm:border-2 sm:border-ink"
     >
       <header className="sticky top-0 flex items-center justify-between gap-5 border-b border-line-strong bg-panel px-6 py-5">
         <h2 id={titleId} className="text-xl font-bold">
           사용방법
         </h2>
-        <button
-          type="button"
-          autoFocus
-          onClick={() => dialogRef.current?.close()}
-          className="border border-ink px-4 py-2 text-sm font-bold hover:bg-cream"
-        >
-          닫기
-        </button>
+        <CloseButton autoFocus onClick={() => dialogRef.current?.close()} />
       </header>
       <div className="px-6 py-8 sm:px-8">
         <p className="text-sm leading-7 text-stone">

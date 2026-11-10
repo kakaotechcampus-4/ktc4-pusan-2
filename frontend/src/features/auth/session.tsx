@@ -1,21 +1,27 @@
 import type { ReactNode } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
+import { PrivacyConsentDialog } from './PrivacyConsentDialog';
+import { usePrivacyConsent } from '@/shared/lib/privacyConsent';
 import { useLogout, useSession } from './useSession';
 
 /**
  * @param stageBar 리허설 무대 위에 이름 · 로그아웃 한 줄을 얹고 무대가 남은 높이를 받게 합니다
  * @param header 주면 이것을 얹습니다 (홈 · 피치 생성 · 시작 전 세팅 등의 상단바)
+ * @param holdUntilConsent 동의 전에는 화면을 뒤에 그리지 않습니다. 카메라 · 마이크를 켜는 연습 화면이
+ *   동의 창 뒤에서 먼저 켜지지 않게 합니다
  */
 export function RequireSession({
   stageBar = false,
   header,
+  holdUntilConsent = false,
 }: {
   stageBar?: boolean;
   header?: ReactNode;
+  holdUntilConsent?: boolean;
 }) {
   const session = useSession();
-  const signOut = useLogout();
   const location = useLocation();
+  const consented = usePrivacyConsent(session.data?.id ?? null);
 
   const oauthError = new URLSearchParams(location.search).get('auth_error');
   if (oauthError)
@@ -48,6 +54,22 @@ export function RequireSession({
       />
     );
 
+  // 로그인한 화면은 모두 동의 뒤에 씁니다. 동의 전에는 화면 위에 동의 창을 띄우고, 주소는 그대로 둡니다
+  if (!consented)
+    return (
+      <>
+        {!holdUntilConsent && <SignedInScreen stageBar={stageBar} header={header} />}
+        <PrivacyConsentDialog userId={session.data.id} />
+      </>
+    );
+
+  return <SignedInScreen stageBar={stageBar} header={header} />;
+}
+
+function SignedInScreen({ stageBar, header }: { stageBar: boolean; header?: ReactNode }) {
+  const session = useSession();
+  const signOut = useLogout();
+
   if (header)
     return (
       // 상단바와 화면이 함께 한 화면 높이를 채웁니다. 화면은 flex-1 로 남은 높이를 받아,
@@ -69,8 +91,8 @@ export function RequireSession({
     <div className="rehearsal-shell">
       <div className="flex items-center justify-end gap-4 px-6 py-3 text-sm">
         {/* 헤더 높이로 무대 위치가 달라지지 않도록 한 줄을 유지합니다. */}
-        <span title={session.data.name} className="min-w-0 truncate">
-          {session.data.name}
+        <span title={session.data?.name} className="min-w-0 truncate">
+          {session.data?.name}
         </span>
         <NavLink to="/takes" end className="underline aria-[current=page]:font-bold">
           Take 기록

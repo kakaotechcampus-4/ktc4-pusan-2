@@ -6,9 +6,15 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MyPage } from './MyPage';
 
+const session = vi.hoisted(() => ({ consent: false }));
 vi.mock('./useSession', () => ({
   useSession: () => ({
-    data: { id: 'u1', name: '테스트', email: 'test@example.com', raw_data_consent: false },
+    data: {
+      id: 'u1',
+      name: '테스트',
+      email: 'test@example.com',
+      raw_data_consent: session.consent,
+    },
   }),
 }));
 vi.mock('./SuggestionForm', () => ({ SuggestionForm: () => null }));
@@ -18,11 +24,7 @@ vi.mock('@/shared/api/useWithdraw', () => ({
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
-beforeEach(async () => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  host = document.createElement('div');
-  document.body.append(host);
-  root = createRoot(host);
+async function render() {
   await act(async () =>
     root.render(
       <QueryClientProvider client={new QueryClient()}>
@@ -32,6 +34,14 @@ beforeEach(async () => {
       </QueryClientProvider>,
     ),
   );
+}
+beforeEach(async () => {
+  session.consent = false;
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  await render();
 });
 afterEach(async () => {
   await act(async () => root.unmount());
@@ -56,5 +66,20 @@ function consentCheckbox() {
 it('links the consent checkbox to its label with for · id', () => {
   const checkbox = consentCheckbox();
   expect(checkbox.id).toBe('raw-data-consent');
+});
+
+it('shows the server consent as is, locked, and says an off value turns on at the next practice', () => {
+  const checkbox = consentCheckbox();
   expect(checkbox.checked).toBe(false);
+  expect(checkbox.disabled).toBe(true);
+  expect(host.textContent).toContain('다음 연습을 시작할 때 켜져요');
+});
+
+it('shows a consent already on as checked, without the pending note', async () => {
+  session.consent = true;
+  await render();
+  const checkbox = consentCheckbox();
+  expect(checkbox.checked).toBe(true);
+  expect(checkbox.disabled).toBe(true);
+  expect(host.textContent).not.toContain('다음 연습을 시작할 때 켜져요');
 });

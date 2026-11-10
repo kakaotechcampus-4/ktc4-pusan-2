@@ -35,7 +35,7 @@
 | 리허설 | `/takes/:takeId/rehearsal`(코칭) · `/takes/:takeId/exam`(실전) |
 
 - `/pitch/:pitchId/prepare`는 장치 점검으로 넘기는 옛 주소입니다(`prepare/PrepareRedirect.tsx`).
-- 장치 점검 · 리허설 · 실전은 휴대폰 · 태블릿에서 열지 않고 `/unsupported`로 보냅니다(`app/routes.tsx`의 `practicePaths`를 `DesktopGate`가 감쌈, #710). 분석 대기 · 재시도는 휴대폰에서도 열립니다.
+- 튜토리얼 진입(`/pitch/tutorial`) · 장치 점검 · 리허설 · 실전은 휴대폰 · 태블릿에서 열지 않고 `/unsupported`로 보냅니다(`app/routes.tsx`의 `practicePaths`를 `DesktopGate`가 감쌈, #710). 분석 대기 · 재시도는 휴대폰에서도 열립니다.
 
 지켜야 할 결정(시선 3값 · 1초 주기 · 시간 필드 규칙 · 끊겨도 발표는 계속 등)은 [frontend/AGENTS.md](../../../frontend/AGENTS.md) 1~9번이 기준입니다.
 
@@ -157,6 +157,7 @@ WS stop + PUT /takes/{id} (종료 시각)
 | `stage/StageLiveBadge.tsx` | 발표가 돌고 있을 때만 켜지는 "STAGE LIVE" 표시(`startGate.ts` `isRehearsalRunning`) |
 | `stage/ScriptPane.tsx` · `useRehearsalMaterials.ts` · `lib/scriptMarks.ts` | 발표 중 대본 · 슬라이드 · 대본 자료 읽기 · 대본 표시 |
 | `stage/useSlideDeck.ts` · `useSlideSender.ts` · `lib/slideTimeline.ts` | 슬라이드 넘기기 · WS `slide` · 그 시각의 슬라이드 |
+| `stage/SlideClickArea.tsx` · `NextSlideButton.tsx` · `releaseFocus.ts` | 마우스로 넘기기 — 슬라이드 좌클릭은 다음 장, 우클릭은 이전 장(파워포인트와 같음), 다음 장 칸(썸네일 + 문구)을 누르면 다음 장입니다. 모두 키보드(← → · Space)와 같은 `go`를 불러 장 넘김 기록이 한 경로로 남습니다. 슬라이드 위에 투명하게 겹쳐 칸 크기 · 자리(시선 기준)는 바꾸지 않고, 발밑 안내 줄에 조작을 적습니다. 마우스로 넘기면 다른 버튼에 남은 초점을 풀어 그 뒤 Space · ← → 가 장을 넘깁니다. 소리 재개 안내는 "슬라이드 밖을 한 번 클릭"입니다(슬라이드를 누르면 장이 넘어갑니다) |
 | `stage/useLiveGaze.ts` · `useMetricsSender.ts` · `lib/metricsClock.ts` | 시선 1초 기록 받기 · WS `metrics` 보내기 · 어느 1초로 보낼지 |
 | `stage/useSttStream.ts` · `lib/sttSocket.ts` · `lib/sttProtocol.ts` | 실시간 연결(React를 모르는 상태기계) |
 | `stage/useLiveCoach.ts` · `lib/coachIndicators.ts` · `CoachStrip.tsx` | 코치 한마디 · 상태 표시 |
@@ -241,9 +242,10 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 
 | 화면 | 시작 조건 |
 |---|---|
-| 장치 점검 | 카메라 · 마이크 · 시선 기준점 |
+| 장치 점검 | 카메라 · 마이크 · 시선 기준점. 샘플 튜토리얼 피치에 `tutorial_block`이 있으면 시작 불가 |
 | 리허설 | **마이크와 서버 연결**(첫 `ready`). 카메라는 조건이 아닙니다 |
 
+- **튜토리얼 샘플 제한** — `GET /prepare`의 `tutorial_block`이 있으면 카메라 점검과 시선 보정을 시작하기 전에 샘플 재연습 불가를 안내하고 Take 생성을 막습니다. BE에서 이미 분석 중이거나 튜토리얼 리포트를 사용한 샘플을 제한합니다(#931).
 - 리허설 화면에서 카메라를 못 열면 마이크만으로 시작하고 시선만 뺍니다(#445 카메라만 못 열어도 시작이 멈추던 버그, `stage/openDevices.ts`).
 - 서버 연결이 필요한 이유: 첫 연결이 서버에서 Take를 시작합니다(`READY` → `RUNNING`). 그 전에 시작하면 기록이 남지 않습니다(`stage/startGate.ts`, #381 마이크 · 실시간 연결 없이 시작하지 않게 함).
 - 첫 `ready`를 15초 넘게 못 받으면 [다시 시도]를 보입니다(`startGate.ts` `CONNECT_SLOW_MS`). 누르면 소켓을 새로 만들고 처음부터 다시 셉니다. 끝내 붙지 않은 Take는 "이 연습은 시작하기 전에 끝났어" 화면으로 갑니다.
@@ -338,6 +340,7 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 | 리허설 · 이어 가기 · 끝내기 | `stage/*.test.ts(x)` |
 | 실시간 연결 | `lib/sttSocket.test.ts` · `lib/sttProtocol.test.ts` |
 | 시선 워커 | `src/workers/gaze.worker.test.ts` · `aiAdapter.test.ts` · `calibrationModel.test.ts` |
+| 장치 점검 브라우저 끝까지(E2E) | `frontend/e2e/device-check.e2e.ts` — 가짜 카메라 · 마이크로 기준 목소리 재기 · 그만두기 · 두 번 실패 뒤 탈출구. 시선 모델 파일이 없어 시선 기준은 '사용 불가'라 시작 · 다시 쓰기 · 보정 값 보내기는 보지 않습니다 |
 
 **손으로 확인하는 페이지** (개발 검증용)
 

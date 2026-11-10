@@ -106,8 +106,21 @@ async function loadCriteria(pitchId: string, ref: VersionRef): Promise<CriteriaV
   };
 }
 
+/**
+ * 튜토리얼 샘플 피치(#931)는 수정 화면에서 열지 않습니다. 자료 · 대본을 바꾸면 튜토리얼이 아니게 되고,
+ * 시간을 바꾸면 BE 가 코칭 계획을 다시 만들려고 AI 를 부릅니다. 홈 카드는 이 화면으로 보내지 않지만
+ * 주소를 직접 열거나 장치 점검의 [매핑 확인하기]로 올 수 있어 여기서 막습니다
+ */
+export class DemoPitchError extends Error {
+  constructor() {
+    super('튜토리얼 샘플 피치는 수정 화면에서 열지 않습니다');
+    this.name = 'DemoPitchError';
+  }
+}
+
 export async function loadPitch(pitchId: string): Promise<PitchDraft> {
   const [item, resources] = await Promise.all([getPitch(pitchId), getPitchResources(pitchId)]);
+  if (item.is_demo) throw new DemoPitchError();
 
   const slides = await Promise.all(
     [...resources.presentation_versions].sort(byVersion).map((ref) => loadSlide(pitchId, ref)),

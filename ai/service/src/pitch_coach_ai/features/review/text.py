@@ -20,7 +20,9 @@ from .metrics import find_metric
 from .recurring import build_recurring_issues
 from .vocab import DIMENSIONS, METRIC_TO_DIMENSION
 
-#: 미션 설명용 지표 이름 (명세에 표시 이름이 없어 정한 것. FE 표시 이름이 정해지면 맞춘다)
+#: 미션 설명 · LLM 입력(metric_labels)용 지표 이름 (명세에 표시 이름이 없어 정한 것.
+#: FE 표시 이름이 정해지면 맞춘다). voice_diff_db 의 미션 설명은 이 이름 대신
+#: next_missions.VOLUME_MISSION_TEXT 를 쓴다
 METRIC_LABELS = {
     "audience_ratio": "청중 응시 비율",
     "script_ratio": "대본 응시 비율",
@@ -28,12 +30,30 @@ METRIC_LABELS = {
     "long_silence_count": "긴 침묵",
     "duration_ms": "발표 시간",
     "slide_duration_ms": "머문 시간",
-    "voice_diff_db": "평소 대비 음량(dB)",
+    "voice_diff_db": "기준 대비 목소리 크기(dB)",
     "filler_per_min": "분당 군더더기",
     "filler_count": "군더더기 횟수",
     "content_coverage": "핵심 내용 전달률",
 }
 OPERATOR_WORDS = {"LT": "미만", "LTE": "이하", "GT": "초과", "GTE": "이상"}
+
+#: 소리 크기(voice_diff_db)를 견준 때. 그 Take 의 기준 음량 출처
+#: (take_result.areas.VOLUME.take.base_level_source)로 고른다.
+#: 대화 에이전트 · FE 와 같은 규칙 (#1181)
+VOLUME_BASE_WORDS = {"CALIBRATION": "점검 때", "TAKE": "발표 처음"}
+#: 출처를 모를 때. 다음 미션 설명(next_missions.VOLUME_MISSION_TEXT)도 다음 Take 의 기준으로
+#: 판정하므로 이 말을 쓴다
+VOLUME_BASE_UNKNOWN = "기준"
+
+
+def volume_base(take_result: dict[str, Any]) -> str:
+    """그 Take 의 소리 크기를 견준 때: '점검 때' · '발표 처음', 출처를 모르면 '기준'"""
+    area = (take_result.get("areas") or {}).get("VOLUME") or {}
+    source = (area.get("take") or {}).get("base_level_source")
+    if not isinstance(source, str):
+        return VOLUME_BASE_UNKNOWN
+    return VOLUME_BASE_WORDS.get(source, VOLUME_BASE_UNKNOWN)
+
 
 #: '좋았던 점' 과 '다듬을 점' 양쪽에 들어가도 어색하지 않은 이름
 DIMENSION_LABELS = {
@@ -53,11 +73,12 @@ STRENGTH_TEXT = {
     "content_delivery": "핵심 내용을 빠짐없이 전달했습니다",
 }
 IMPROVED_TEXT = "{label} 부분이 지난번보다 나아졌습니다"
+#: {base} 는 그 Take 의 소리 크기를 견준 때 (volume_base)
 IMPROVEMENT_TEXT = {
     "audience_gaze": "청중을 바라보는 시간을 늘려 보세요",
     "script_independence": "대본을 이어 읽기보다 문장 끝에서 고개를 들어 보세요",
     "pacing_rhythm": "말 속도와 장별 시간 배분을 점검해 보세요",
-    "vocal_delivery": "평소보다 조금 더 크게 말해 보세요",
+    "vocal_delivery": "{base}보다 조금 더 크게 말해 보세요",
     "fluency": "군더더기 대신 잠깐 쉬어 보세요",
     "content_delivery": "빠뜨린 핵심 내용을 다시 챙겨 보세요",
 }
@@ -194,7 +215,7 @@ def text_candidates(
         item = {
             "area": it["area"],
             "slide_number": slide,
-            "text": where + IMPROVEMENT_TEXT[dim],
+            "text": where + IMPROVEMENT_TEXT[dim].format(base=volume_base(take_result)),
             "evidence": _evidence(
                 dim, burden, take_result, script_coverage, measured, cfg, it["area"], slide
             )[1],

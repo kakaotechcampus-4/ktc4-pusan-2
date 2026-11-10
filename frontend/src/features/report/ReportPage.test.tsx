@@ -40,6 +40,7 @@ beforeEach(() => {
     take_id: 't3',
     pitch_id: 'p1',
     pitch_title: '연습',
+    is_demo: false,
     take_number: 3,
     script_mode: 'HIGHLIGHT',
     ended_at: '2026-10-26T00:00:00Z',
@@ -425,6 +426,28 @@ it('restores focus to the detail trigger after closing the dialog', async () => 
   expect(document.body.style.overflow).toBe('');
 });
 
+it('일반 피치 리포트의 다음 연습은 같은 피치의 장치 점검으로 간다', async () => {
+  await render();
+  const hrefs = [...host.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  expect(hrefs).toContain('/pitch/p1/device-check');
+  expect(hrefs).not.toContain('/pitch/new');
+  expect(host.textContent).not.toContain('샘플 발표');
+});
+
+it('튜토리얼 샘플 리포트는 샘플로 표시하고 다음 연습을 내 자료로 새 피치 만들기로 잇는다', async () => {
+  query.data!.is_demo = true;
+  await render();
+  const title = host.querySelector('main > p')!;
+  expect(title.textContent).toContain('샘플 발표');
+  const hrefs = [...host.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  // 튜토리얼 리포트는 한 번이라 샘플 피치의 장치 점검은 409 로 막힙니다
+  expect(hrefs).not.toContain('/pitch/p1/device-check');
+  expect(hrefs).toContain('/pitch/new');
+  expect(host.textContent).toContain('내 발표에서 의식해 볼 것');
+  expect(host.textContent).toContain('새로운 연습으로 시작해요.');
+  expect(host.textContent).not.toContain('다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.');
+});
+
 it('내용 전달 요약이 비어 와도 리포트의 다른 칸은 그대로 보입니다 (#1157 리뷰 P1)', async () => {
   query.data!.content_status = {
     ...contentMeasured,
@@ -451,4 +474,18 @@ it('내용 전달 카드가 그리다 던져도 그 카드만 안내로 바꿉�
   const text = host.querySelector('main')!.textContent;
   expect(text).toContain(CONTENT_BROKEN_TEXT);
   expect(host.querySelector('[aria-label="측정값"]')).not.toBeNull();
+});
+
+it('결과 판이 바뀌어도(409 뒤 다시 읽기) 열어 둔 장별 목록이 닫히지 않습니다', async () => {
+  query.data!.content_status = { ...contentMeasured, revision: 0 };
+  await render();
+  const toggle = () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('장별 보기'))!;
+  await act(async () => toggle().click());
+  expect(toggle().getAttribute('aria-expanded')).toBe('true');
+
+  // 확인 답이 반영돼 새 판이 온 리포트로 다시 그립니다 — 내용 전달 카드를 새로 만들면 목록이 닫힙니다
+  query.data = { ...query.data!, content_status: { ...contentMeasured, revision: 1 } };
+  await render();
+  expect(toggle().getAttribute('aria-expanded')).toBe('true');
 });

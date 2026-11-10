@@ -22,6 +22,7 @@ const base: TakeHistoryRow = {
   take_id: '',
   pitch_id: homePitch.pitch_id,
   pitch_title: homePitch.pitch_title,
+  is_demo: false,
   take_number: 0,
   started_at: '',
   status: 'COMPLETED',

@@ -88,9 +88,10 @@ function ReportBody({ report }: { report: TakeReport }) {
           <p className="text-sm text-ink/80">발표 기록을 정리하고 있어요.</p>
         </Card>
       )}
-      {/* 내용 전달이 그리다 던져도 리포트의 다른 칸은 남깁니다. 결과 판이 바뀌면 경계를 새로 만들어 다시 그려 봅니다 (#1157 리뷰 P1) */}
+      {/* 내용 전달이 그리다 던져도 리포트의 다른 칸은 남깁니다. 던진 뒤 결과 판이 바뀌면 다시 그려 봅니다 (#1157 리뷰 P1).
+          key 로 새로 만들지 않아야 판이 바뀌어도(409) 열어 둔 장별 목록이 닫히지 않습니다 */}
       <ContentErrorBoundary
-        key={`${report.content_status?.state ?? 'none'}:${report.content_status?.revision ?? '-'}`}
+        resetKey={`${report.content_status?.state ?? 'none'}:${report.content_status?.revision ?? '-'}`}
       >
         <ContentCard takeId={report.take_id} status={report.content_status} />
       </ContentErrorBoundary>
@@ -147,7 +148,12 @@ function ReportBody({ report }: { report: TakeReport }) {
             <Dimensions value={review.dimensions} />
           </div>
 
-          <NextMissions rows={review.next_missions} nextTake={nextTake} pitchId={report.pitch_id} />
+          <NextMissions
+            rows={review.next_missions}
+            nextTake={nextTake}
+            pitchId={report.pitch_id}
+            demo={report.is_demo}
+          />
         </>
       )}
 
@@ -681,22 +687,36 @@ function NextMissions({
   rows,
   nextTake,
   pitchId,
+  demo,
 }: {
   rows: ReviewResult['next_missions'];
   nextTake: number;
   pitchId: string;
+  /**
+   * 튜토리얼 샘플 피치의 리포트(#931). 튜토리얼 리포트는 계정당 한 번이라 샘플로는 다음 Take 를 만들 수
+   * 없습니다(BE 409 `TUTORIAL_REPORT_USED`). 장치 점검 대신 내 자료로 새 피치를 만드는 곳으로 보냅니다
+   */
+  demo: boolean;
 }) {
   return (
     <section className="border-2 border-ink bg-coral-wash p-6 shadow-[4px_4px_0_var(--color-line)] xl:p-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold">Take {nextTake}에서 해 볼 것</h2>
+          <h2 className="text-lg font-bold">
+            {demo ? '내 발표에서 의식해 볼 것' : `Take ${nextTake}에서 해 볼 것`}
+          </h2>
           <p className="mt-1 text-sm text-ink">
-            다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.
+            {demo
+              ? '이 항목은 튜토리얼 샘플에서 받은 피드백이에요. 내 자료로 새 피치를 만들면 새로운 연습으로 시작해요.'
+              : '다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.'}
           </p>
         </div>
         {/* 이동만 합니다. Take는 시작 전 세팅에서 생깁니다 (CLAUDE.md 8번) */}
-        <ButtonLink to={`/pitch/${pitchId}/device-check`}>Take {nextTake} 연습하기</ButtonLink>
+        {demo ? (
+          <ButtonLink to="/pitch/new">내 자료로 연습하기</ButtonLink>
+        ) : (
+          <ButtonLink to={`/pitch/${pitchId}/device-check`}>Take {nextTake} 연습하기</ButtonLink>
+        )}
       </div>
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-ink">이번에는 새 미션이 없어요. 지금처럼 연습해 보세요.</p>

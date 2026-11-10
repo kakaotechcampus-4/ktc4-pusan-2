@@ -14,7 +14,7 @@ from .burden import Burden, focus
 from .config import ReviewConfig
 from .metrics import find_metric, slide_target_ms, speed_threshold
 from .schemas import MAX_DESCRIPTION_CHARS, MAX_NEXT_MISSIONS
-from .text import METRIC_LABELS, OPERATOR_WORDS
+from .text import METRIC_LABELS, OPERATOR_WORDS, VOLUME_BASE_UNKNOWN
 from .vocab import DIMENSION_ORDER, METRIC_TO_DIMENSION
 
 
@@ -32,7 +32,34 @@ def _format_value(metric: str, value: float) -> str:
     return f"{value:g}"
 
 
+#: 소리 크기 미션 설명 (#1181). (연산자, 목표값의 부호) → 문장. {size} 는 목표값의 크기(dB).
+#: 미션은 다음 Take 의 기준 음량으로 판정하므로 그 Take 의 출처가 아니라 {base}
+#: (text.VOLUME_BASE_UNKNOWN, '기준')와 견준다.
+#: 음수는 크기와 방향 말로 쓴다 (숫자 검사 ⑤: -7.3 ↔ '7.3dB')
+VOLUME_MISSION_TEXT = {
+    ("GTE", -1): "{base}보다 {size} 넘게 작아지지 않기",
+    ("GTE", 0): "{base}보다 작아지지 않기",
+    ("GTE", 1): "{base}보다 {size} 이상 크게 말하기",
+    ("GT", -1): "{base}보다 {size} 이상 작아지지 않기",
+    ("GT", 0): "{base}보다 크게 말하기",
+    ("GT", 1): "{base}보다 {size} 넘게 크게 말하기",
+    ("LTE", -1): "{base}보다 {size} 이상 작게 말하기",
+    ("LTE", 0): "{base}보다 크지 않게 말하기",
+    ("LTE", 1): "{base}보다 {size} 넘게 커지지 않기",
+    ("LT", -1): "{base}보다 {size} 넘게 작게 말하기",
+    ("LT", 0): "{base}보다 작게 말하기",
+    ("LT", 1): "{base}보다 {size} 이상 커지지 않기",
+}
+
+
 def _describe(metric: str, operator: str, value: float, slide_number: int | None) -> str:
+    if metric == "voice_diff_db":
+        where = f"{slide_number}번 장에서 " if slide_number is not None else ""
+        sign = (value > 0) - (value < 0)
+        text = VOLUME_MISSION_TEXT[(operator, sign)].format(
+            base=VOLUME_BASE_UNKNOWN, size=f"{abs(value):g}dB"
+        )
+        return where + text
     where = f"{slide_number}번 장 " if slide_number is not None else ""
     label = METRIC_LABELS.get(metric, metric)
     return f"{where}{label} {_format_value(metric, value)} {OPERATOR_WORDS[operator]}".strip()

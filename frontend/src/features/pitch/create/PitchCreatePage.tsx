@@ -4,7 +4,7 @@ import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-route
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { CheckIcon } from './icons';
 import { useSavePitchInfo } from './useSavePitchInfo';
-import { loadPitch } from './loadPitch';
+import { DemoPitchError, loadPitch } from './loadPitch';
 import { VersionRail } from './VersionRail';
 import {
   selectBusy,
@@ -27,6 +27,7 @@ import { SlidePane } from './steps/SlidePane';
 import { FinalReviewDialog } from './FinalReviewDialog';
 import { shownVersion, type Chosen, type PitchDraft } from './lib/draft';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
+import { ButtonLink } from '@/shared/ui/Button';
 import { useChatScreen } from '@/shared/lib/chatScreen';
 import { pitchScreen } from './chatScreen';
 
@@ -91,11 +92,23 @@ export function PitchEditPage() {
   }, [ready, pitch.data, hydrate, key, id]);
 
   useEffect(() => {
-    if (pitch.error)
+    if (pitch.error && !(pitch.error instanceof DemoPitchError))
       console.error('[피치 수정] 피치를 불러오지 못했습니다', { id, error: pitch.error });
   }, [pitch.error, id]);
 
   if (ready) return <PitchCreateScreen />;
+  if (pitch.error instanceof DemoPitchError)
+    return (
+      <EditNotice
+        title="샘플 피치는 고칠 수 없어요"
+        body="튜토리얼용 샘플이라 자료와 대본을 바꾸지 않아요. 내 자료로 연습하려면 새 피치를 만들어 주세요."
+        action={
+          <ButtonLink to="/pitch/new" size="sm">
+            새 피치 만들기
+          </ButtonLink>
+        }
+      />
+    );
   if (pitch.isError) {
     return isMissing(pitch.error) ? (
       <EditNotice title="피치를 찾을 수 없어요" body="지워졌거나 열 수 없는 피치예요." />

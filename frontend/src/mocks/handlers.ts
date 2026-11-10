@@ -9,6 +9,7 @@ import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
 import { pitchEditHandlers } from './pitchEdit';
+import { firstTakeHandlers } from './firstTake';
 import { scriptHandlers } from './scripts';
 import { takeHistoryHandlers } from './takeHistory';
 import type { ActiveTake, TakeCreated, TakeCreateRequest } from '@/types/take';
@@ -46,6 +47,7 @@ const prepare: PrepareResponse = {
   newer_script: null,
   next_take_number: 4,
   default_script_mode: 'HIGHLIGHT',
+  tutorial_block: null,
   // BE #409 — 리포트 목(Take 3 리뷰 `next_missions`)과 같은 미션입니다
   missions: {
     source_take_number: 3,
@@ -203,6 +205,9 @@ export const handlers = [
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
     HttpResponse.json(sampleScript),
   ),
+  // 튜토리얼 샘플 피치 목(#931) — 수정 화면 목보다 먼저 와야 합니다. 그쪽은 모르는 피치에 404 를 줍니다.
+  // 샘플이 아닌 피치는 아무것도 하지 않고 뒤로 넘깁니다
+  ...firstTakeHandlers,
   // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
   ...pitchEditHandlers,
   ...homeHandlers,

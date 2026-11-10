@@ -3,13 +3,15 @@ import { Button, ButtonLink } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { checkGazeSupport } from '@/shared/lib/gazeSupport';
 import { InfoPage } from '@/shared/ui/InfoPage';
-import { isTouchOnlyDevice, unsupportedReason, type UnsupportedReason } from './unsupportedReason';
+import { isTouchOnlyDevice } from '@/shared/lib/browserCheck';
+import { unsupportedReason, type UnsupportedReason } from './unsupportedReason';
 
 /**
  * P18 미지원 브라우저 — 시안 `docs/fe/design` unsupported.
  *
- * 왜 왔는지는 이 화면이 직접 봅니다. 휴대폰 · 태블릿이 연습 화면(장치 점검 · 리허설 · 실전)을 열면
- * `DesktopGate` 가 여기로 보냅니다 (#710). 보내는 쪽마다 사유를 실어 주지 않아도 되게 하려는 것입니다.
+ * 왜 왔는지는 이 화면이 직접 봅니다. 휴대폰 · 태블릿이 연습 화면(튜토리얼 진입 · 장치 점검 · 리허설 ·
+ * 실전)을 열면 `DesktopGate` 가 여기로 보냅니다 (#710). 보내는 쪽마다 사유를 실어 주지 않아도 되게
+ * 하려는 것입니다.
  * 시안의 '보안 설정' 사유는 뺐습니다 — `crossOriginIsolated` 가 없을 때 막는 코드가 없습니다.
  */
 

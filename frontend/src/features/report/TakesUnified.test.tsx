@@ -20,6 +20,7 @@ function take(
     take_id: pitchId + '-' + n,
     pitch_id: pitchId,
     pitch_title: pitchId === 'p1' ? '내 발표' : '다른 발표',
+    is_demo: false,
     take_number: n,
     started_at: '2026-10-06T12:00:00',
     status,
@@ -68,6 +69,18 @@ async function render(path: string) {
   await act(async () => root.render(<RouterProvider router={router} />));
 }
 
+function pitchBox() {
+  return host.querySelector<HTMLElement>('[role="combobox"]')!;
+}
+
+async function choosePitch(label: string) {
+  await act(async () => pitchBox().click());
+  const option = [...host.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (item) => item.textContent === label,
+  )!;
+  await act(async () => option.click());
+}
+
 function view(label: string) {
   return [...host.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Take 기록 보기"] a')].find(
     (link) => link.textContent?.trim() === label,
@@ -80,6 +93,16 @@ it.each([0, 1])('완료된 Take가 %i개면 비교 대신 추가 연습을 안�
   expect(host.textContent).toContain('완료된 Take가 2개 이상 필요해요');
   expect(host.querySelector('table')).toBeNull();
   expect(view('지표 비교').getAttribute('aria-current')).toBe('page');
+});
+
+it('튜토리얼 샘플 피치의 Take 에만 샘플 표시를 붙인다', async () => {
+  history.data.takes = [{ ...take(1, 'p2'), is_demo: true }, take(1)];
+  await render('/takes');
+  const rows = [...host.querySelectorAll('ul > li')];
+  expect(rows.map((row) => row.querySelector('p')?.textContent)).toEqual([
+    expect.stringMatching(/다른 발표샘플$/),
+    expect.stringMatching(/내 발표$/),
+  ]);
 });
 
 it('분석 중 기록은 목록에 남지만 비교 개수에 포함하지 않는다', async () => {
@@ -97,11 +120,7 @@ it('같은 피치의 완료 Take만 비교해 다른 피치의 값을 혼합하�
   const table = host.querySelector('table')!;
   expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
   expect(table.textContent).not.toContain('TAKE 7');
-  const select = host.querySelector('select')!;
-  await act(async () => {
-    select.value = 'p2';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await choosePitch('다른 발표');
   expect(router.state.location.search).toContain('pitch=p2');
   expect(host.querySelector('table')).toBeNull();
   expect(host.textContent).toContain('완료된 Take가 2개 이상 필요해요');
@@ -111,7 +130,7 @@ it('같은 피치의 완료 Take만 비교해 다른 피치의 값을 혼합하�
 it('목록 · 비교 선택과 피치 필터는 주소와 브라우저 뒤로 가기에 남는다', async () => {
   history.data.takes = [take(3, 'p2'), take(2), take(1)];
   await render('/takes?pitch=p1');
-  expect(host.querySelector('select')?.value).toBe('p1');
+  expect(pitchBox().textContent).toBe('내 발표');
   await act(async () => view('지표 비교').click());
   expect(router.state.location.search).toContain('pitch=p1');
   expect(view('지표 비교').getAttribute('aria-current')).toBe('page');
@@ -119,7 +138,7 @@ it('목록 · 비교 선택과 피치 필터는 주소와 브라우저 뒤로 �
     await router.navigate(-1);
   });
   expect(router.state.location.pathname).toBe('/takes');
-  expect(host.querySelector('select')?.value).toBe('p1');
+  expect(pitchBox().textContent).toBe('내 발표');
   expect(view('기록 목록').getAttribute('aria-current')).toBe('page');
   await act(async () => {
     await router.navigate(1);
@@ -133,11 +152,7 @@ it('같은 Take 기록 페이지의 탭과 피치 필터를 바꿀 때 스크롤
   await act(async () => view('지표 비교').click());
   expect(router.state.preventScrollReset).toBe(true);
 
-  const select = host.querySelector('select')!;
-  await act(async () => {
-    select.value = 'p2';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await choosePitch('다른 발표');
   expect(router.state.preventScrollReset).toBe(true);
   expect(router.state.location.search).toContain('pitch=p2');
 });

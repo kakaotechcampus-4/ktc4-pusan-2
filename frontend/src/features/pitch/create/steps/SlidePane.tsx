@@ -18,6 +18,7 @@ import {
   type SlideUploadFailure,
   type SlideVersion,
 } from '../lib/draft';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { startSlideUpload } from '../slideUpload';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -451,13 +452,7 @@ function SlideReviewDialog({
         <h2 id={titleId} className="text-xl font-bold">
           슬라이드 확인
         </h2>
-        <button
-          type="button"
-          className="min-h-11 border border-line-strong px-5 text-sm font-bold hover:bg-cream"
-          onClick={() => ref.current?.close()}
-        >
-          닫기
-        </button>
+        <CloseButton onClick={() => ref.current?.close()} />
       </header>
       <p className="text-sm">PDF는 업로드되어 있어요. 내용과 순서를 확인해 주세요.</p>
       <p className="text-sm">

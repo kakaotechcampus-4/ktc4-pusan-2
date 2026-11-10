@@ -16,6 +16,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
+import { usePrivacyConsent } from '@/shared/lib/privacyConsent';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
@@ -53,9 +54,47 @@ import { useChatSession, type ChatNotice, type ChatSession } from './useChatSess
  * 채팅에서 오류가 나면 대화만 닫고 런처 자리에 안내와 [다시 시도]를 둡니다. 화면은 그대로 씁니다 (12-4 F8 · L3-36).
  */
 export function ChatAgentHost() {
+  const { pathname, search } = useLocation();
+  const info = chatRouteOf(pathname, search);
+  const hidden = info === null;
+
+  // 숨는 화면으로 가면 패널을 닫습니다. 지연 로딩 중인 본문이 교체돼도 초점을 잃지 않게 합니다.
+  useLayoutEffect(() => {
+    if (!hidden) return;
+    const wasOpen = useChatStore.getState().open;
+    useChatStore.getState().closeChat();
+    if (!wasOpen) return;
+
+    const content = document.querySelector<HTMLElement>('.chat-layout-content');
+    if (!content) return;
+    let focusedMain: HTMLElement | null = null;
+    const focusDestination = () => {
+      // 본문이 살아 있는 동안에는 전사·시계 등 내부 변경에 반응하지 않습니다.
+      // 로딩 대체 본문이 교체될 수 있어 초점 직후 observer를 끊지는 않습니다.
+      if (focusedMain?.isConnected) return;
+      const main =
+        content.querySelector<HTMLElement>('#main') ?? content.querySelector<HTMLElement>('main');
+      if (!main || main === focusedMain) return;
+      // 사용자가 로딩 중 다른 조작부로 초점을 옮겼다면 다시 빼앗지 않습니다.
+      if (focusedMain && document.activeElement !== document.body) return;
+      if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
+      main.focus({ preventScroll: true });
+      if (document.activeElement === main) focusedMain = main;
+    };
+    const observer = new MutationObserver(focusDestination);
+    observer.observe(content, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['inert'],
+    });
+    focusDestination();
+    return () => observer.disconnect();
+  }, [hidden]);
+
   return (
     <ChatErrorBoundary onReset={resetChatAfterFailure}>
-      <ChatLayer />
+      <ChatLayer pathname={pathname} info={info} />
     </ChatErrorBoundary>
   );
 }
@@ -73,18 +112,15 @@ function resetChatAfterFailure(failures: number) {
 
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
 const MAX_MESSAGE_LENGTH = 2000;
+const MOBILE_CHAT_QUERY = '(max-width: 760px)';
+const isMobileChat = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia(MOBILE_CHAT_QUERY).matches;
 
-function ChatLayer() {
-  const { pathname, search } = useLocation();
-  const info = chatRouteOf(pathname, search);
-  const hidden = info === null;
+function ChatLayer({ pathname, info }: { pathname: string; info: ChatRouteInfo | null }) {
   // 입력은 여기 두어 패널을 닫거나 채팅이 숨는 화면을 지나도 남습니다. 사용자가 바뀌면 비웁니다
   const [draft, setDraft] = useState({ userId: null as string | null, text: '' });
-
-  // 숨는 화면으로 가면 닫습니다. 돌아왔을 때 패널이 다시 열려 초점을 빼앗지 않게 합니다
-  useEffect(() => {
-    if (hidden && useChatStore.getState().open) useChatStore.getState().closeChat();
-  }, [hidden]);
 
   if (!info) return null;
 
@@ -135,7 +171,10 @@ function SignedInOnly({ children }: { children: (userId: string) => ReactNode })
     useChatStore.getState().setUser(id);
   }, [id, signedOut, storeUser, checkedAt, queryClient]);
 
-  return id && storeUser === id ? children(id) : null;
+  // 개인정보 처리 동의 전에는 서비스 화면을 막으므로(`RequireSession`) 채팅도 띄우지 않습니다
+  const consented = usePrivacyConsent(id);
+
+  return id && storeUser === id && consented ? children(id) : null;
 }
 
 interface DraftProps {
@@ -158,6 +197,13 @@ function ChatSessionView({
   const launcherBottom = chatLauncherBottom(pathname);
   const open = useChatStore((s) => s.open);
   const launcherRef = useRef<HTMLButtonElement>(null);
+  const restoreLauncherFocusRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!open && restoreLauncherFocusRef.current) {
+      restoreLauncherFocusRef.current = false;
+      launcherRef.current?.focus();
+    }
+  }, [open]);
   /** 런처로 열었음 — 패널은 이때만 입력칸에 초점을 줍니다(꺼졌다 켜짐 · 모달이 닫힘으로 다시 그려질 때는 주지 않음) */
   const [focusRequested, setFocusRequested] = useState(false);
   const focused = useCallback(() => setFocusRequested(false), []);
@@ -168,15 +214,16 @@ function ChatSessionView({
   if (session.availability === 'checking' || session.availability === 'off') return null;
 
   const close = () => {
+    // 패널을 열면 모든 화면에서 런처를 숨기므로, 닫힌 화면이 커밋된 뒤 초점을 돌립니다.
+    restoreLauncherFocusRef.current = true;
     useChatStore.getState().closeChat();
-    launcherRef.current?.focus();
   };
 
   return (
-    // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
+    // 런처는 화면 오른쪽 아래의 44px 마스코트 아이콘입니다.
     // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: index.css의 장치 점검·피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
+      // data-chat-launcher: index.css의 피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
       data-chat-launcher=""
       style={{ '--chat-launcher-default-bottom': `${launcherBottom}px` } as CSSProperties}
       className={CHAT_LAUNCHER_CLASS}
@@ -209,12 +256,10 @@ function ChatSessionView({
         title="새미나이 열기"
         className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-coral"
       >
-        {/* 앱 아이콘 그림(192px)의 몸통 중심 (82, 104)을 44px 로 줄여 원 안쪽(40px)의 가운데에 둡니다.
-            오른쪽 꼬리와 반짝이는 원 밖으로 잘립니다 */}
         <img
-          src="/icon-192.png"
+          src="/semini-mascot.svg"
           alt=""
-          className="absolute left-[1.2px] top-[-3.8px] h-11 w-11 max-w-none"
+          className="h-full w-full object-contain [image-rendering:pixelated]"
         />
       </button>
     </div>
@@ -405,6 +450,119 @@ function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
+  const { pathname, search } = useLocation();
+  const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(MOBILE_CHAT_QUERY);
+    const sync = () => setMobileOverlay(media.matches);
+    media.addEventListener('change', sync);
+    sync();
+    return () => media.removeEventListener('change', sync);
+  }, []);
+  useLayoutEffect(() => {
+    if (!mobileOverlay) return;
+    const content = document.querySelector<HTMLElement>('.chat-layout-content');
+    if (!content) return;
+    const panel = panelRef.current;
+    const wasInert = content.hasAttribute('inert');
+    const root = document.documentElement;
+    const body = document.body;
+    const previous = {
+      rootOverscrollBehavior: root.style.overscrollBehavior,
+      bodyOverflow: body.style.overflow,
+      contentTouchAction: content.style.touchAction,
+    };
+
+    // 문서의 실제 scrollY를 보존해야 React Router의 ScrollRestoration이
+    // 앞/뒤 화면의 위치를 저장하고, 오버레이가 열린 상태에서도 새 위치로 이동할 수 있습니다.
+    // body position:fixed와 top:-scrollY는 scrollY를 0으로 만들어 사용하지 않습니다.
+    root.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    content.style.touchAction = 'none';
+    content.setAttribute('inert', '');
+    if (panel && !panel.contains(document.activeElement)) {
+      if (inputRef.current && !inputRef.current.closest('[hidden]')) inputRef.current.focus();
+      else panel.focus();
+    }
+    return () => {
+      if (!wasInert) content.removeAttribute('inert');
+      root.style.overscrollBehavior = previous.rootOverscrollBehavior;
+      body.style.overflow = previous.bodyOverflow;
+      content.style.touchAction = previous.contentTouchAction;
+    };
+  }, [mobileOverlay]);
+
+  // 중간 폭(761~1439px)에서는 화면 안에 보이는 헤더와 고정 푸터만큼 패널을 비웁니다.
+  // 헤더가 스크롤로 화면 밖으로 나가면 상단 여백도 줄이고, 크기 변경은 실측으로 반영합니다.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const layout = panel?.closest('.chat-layout');
+    const content = layout?.querySelector<HTMLElement>('.chat-layout-content');
+    if (!panel || !content || typeof window.matchMedia !== 'function') return;
+
+    const overlay = window.matchMedia('(min-width: 761px) and (max-width: 1439px)');
+    let header: HTMLElement | null = null;
+    let footer: HTMLElement | null = null;
+    // 스크롤마다 변경되는 오프셋을 패널에만 기록해 본문 전체의 스타일 재계산을 피합니다.
+    // 헤더가 화면 밖으로 나간 뒤 같은 0px을 반복 기록하는 일도 생략합니다.
+    const setPanelOffset = (name: string, value: string) => {
+      if (panel.style.getPropertyValue(name) !== value) panel.style.setProperty(name, value);
+    };
+    const measure = () => {
+      if (!overlay.matches) return;
+      // 일반 헤더는 sticky가 아니므로 스크롤 시 화면 안에 남은 부분만 비웁니다.
+      const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
+      setPanelOffset('--chat-overlay-top', `${Math.ceil(Math.max(0, headerBottom))}px`);
+      setPanelOffset(
+        '--chat-overlay-bottom',
+        `${Math.ceil(footer?.getBoundingClientRect().height ?? 0)}px`,
+      );
+    };
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    const discover = () => {
+      const nextHeader = content.querySelector<HTMLElement>(
+        '.app-scroll-shell > header, .dusk-screen > header, .pitch-create > header',
+      );
+      const nextFooter = content.querySelector<HTMLElement>('.pitch-create-square > footer');
+      if (nextHeader === header && nextFooter === footer) return;
+      resizeObserver?.disconnect();
+      header = nextHeader;
+      footer = nextFooter;
+      if (header) resizeObserver?.observe(header);
+      if (footer) resizeObserver?.observe(footer);
+      measure();
+    };
+    // React.lazy/Suspense가 화면 헤더를 나중에 마운트할 수 있으므로 교체도 감지합니다.
+    const mutationObserver = new MutationObserver(discover);
+    const sync = () => {
+      if (overlay.matches) {
+        mutationObserver.observe(content, { childList: true, subtree: true });
+        discover();
+      } else {
+        mutationObserver.disconnect();
+        resizeObserver?.disconnect();
+        header = null;
+        footer = null;
+        panel.style.removeProperty('--chat-overlay-top');
+        panel.style.removeProperty('--chat-overlay-bottom');
+      }
+    };
+    overlay.addEventListener('change', sync);
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, { passive: true });
+    sync();
+    return () => {
+      overlay.removeEventListener('change', sync);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure);
+      mutationObserver.disconnect();
+      resizeObserver?.disconnect();
+      panel.style.removeProperty('--chat-overlay-top');
+      panel.style.removeProperty('--chat-overlay-bottom');
+    };
+  }, [pathname, search]);
   useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
@@ -464,15 +622,12 @@ function ChatPanel({
   };
 
   return (
-    // 패널은 런처 위 왼쪽에 정렬해 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
-    // 4.25rem = 런처 높이 2.75rem + 위아래 간격 0.75rem 둘.
-    // 낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
-    // 머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성")
     <section
+      data-chat-panel=""
       ref={panelRef}
       id={`${id}-panel`}
       role="dialog"
-      aria-modal="false"
+      aria-modal={mobileOverlay}
       aria-labelledby={`${id}-title`}
       // 누른 버튼이 사라졌는데 입력칸도 숨겨져 있을 때 초점을 받는 자리입니다 (useKeepFocusInPanel)
       tabIndex={-1}
@@ -480,9 +635,40 @@ function ChatPanel({
         if (event.key === 'Escape') {
           event.stopPropagation();
           onClose();
+          return;
+        }
+        if (event.key === 'Tab' && mobileOverlay) {
+          const focusable = [
+            ...event.currentTarget.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+            ),
+          ].filter(
+            (element) =>
+              !element.closest('[hidden]') &&
+              element.getClientRects().length > 0 &&
+              window.getComputedStyle(element).visibility !== 'hidden',
+          );
+          const first = focusable[0];
+          const last = focusable.at(-1);
+          if (!first || !last) {
+            event.preventDefault();
+            event.currentTarget.focus();
+          } else if (
+            event.shiftKey &&
+            (document.activeElement === first || document.activeElement === event.currentTarget)
+          ) {
+            event.preventDefault();
+            last.focus();
+          } else if (
+            !event.shiftKey &&
+            (document.activeElement === last || document.activeElement === event.currentTarget)
+          ) {
+            event.preventDefault();
+            first.focus();
+          }
         }
       }}
-      className="absolute bottom-full left-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-[3px] border-ink bg-white shadow-[6px_6px_0_var(--color-ink),0_18px_36px_rgba(42,39,35,0.2)]"
+      className="chat-side-panel fixed inset-y-0 right-0 flex w-[min(var(--chat-panel-width),100%)] flex-col overflow-y-auto overscroll-contain border-l border-line bg-white outline-none"
     >
       <ChatPanelHeader
         titleId={`${id}-title`}
