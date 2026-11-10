@@ -725,12 +725,12 @@ it('tells before starting that a long silence ends the take, apart from the goal
   expect(footer.querySelector('[role="status"]')!.textContent).not.toContain('2분 넘게');
 });
 
-it('tells the chat panel the current check state when a message is sent (chat step 6)', async () => {
+it('채팅을 지원하지 않는 장치 점검 화면에서는 채팅 화면 상태를 등록하지 않는다', async () => {
   fixture.micOk = false;
   fixture.gazeStatus = 'RUNNING';
   await render();
-  expect(takeScreenSnapshot('/pitch/:pitchId/device-check')).toMatchObject({
+  expect(takeScreenSnapshot('/pitch/:pitchId/device-check')).toEqual({
     ok: true,
-    screen: { name: 'device_check', camera: 'connected', mic: 'checking', gaze_setup: 'RUNNING' },
+    screen: null,
   });
 });
