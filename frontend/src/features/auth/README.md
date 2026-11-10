@@ -19,6 +19,14 @@ Web Locks 지원 브라우저에서는 탭 간 쿠키 요청도 직렬화합니�
 공용 API 호출은 shared/api/client.ts의 apiRequest를 사용해야 이 처리가 적용됩니다.
 신규 사용자 온보딩 분기는 구현하지 않았습니다.
 
+## 개인정보 처리 동의
+
+로그인한 화면(`RequireSession`)은 모두 개인정보 처리 · 데이터 활용 동의 뒤에 열립니다.
+동의 전에는 가려던 화면 대신 `PrivacyConsentPage` 를 그리고, 동의하면 같은 주소에서 그 화면이 열립니다.
+새미나이 런처도 동의 전에는 띄우지 않습니다.
+(BE 미구현) 동의 기록은 사용자별로 이 브라우저(localStorage)에만 남습니다 — `shared/lib/privacyConsent.ts`.
+다른 기기에서는 한 번 더 묻고, 안내문을 고치면 `PRIVACY_CONSENT_VERSION` 을 올려 다시 묻습니다.
+
 ## 실행
 
 frontend에서 npm ci, npm run dev 실행 후 /login을 엽니다.

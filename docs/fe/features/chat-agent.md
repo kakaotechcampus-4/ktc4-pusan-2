@@ -55,7 +55,7 @@ AI 문서의 절은 "AI 12-4 F3"처럼 가리킵니다. `F`번호는 AI 문서 1
 **버튼이 보이는 화면** — 허용 목록(`chatRoutes.ts`)에 있는 화면만입니다.
 
 - 보임: `/` · `/pitches` · `/pitch/new` · `/pitch/:id/edit` · `/takes` · `/me` · `/about` · `/takes/:takeId` · `/takes/:takeId/processing` · `/takes/:takeId/confirm` · `/takes/:takeId/retry` (`chatRoutePatterns`가 기준)
-- 안 보임: 장치 점검(`/pitch/:pitchId/device-check`), 발표 중(리허설 · 실전), 로그인 전, `/privacy` · `/terms` · `/unsupported` · `/dev/*` 등 그 밖의 모든 화면
+- 안 보임: 장치 점검(`/pitch/:pitchId/device-check`), 발표 중(리허설 · 실전), 로그인 전, 개인정보 처리 동의 전, `/privacy` · `/terms` · `/unsupported` · `/dev/*` 등 그 밖의 모든 화면
 - 새 화면에 띄우려면 목록에 직접 넣어야 합니다. 실수로 노출되지 않게 하려는 것입니다.
 
 **대화창 머리줄**(`ChatPanelHeader.tsx`) — 제목(새미나이 · "Semini · AI 비서 앱")과 [새 대화] · [대화 목록] · [기억 설정] · [닫기] 버튼이 있습니다. 새 대화에서 첫 메시지를 보내기 전에는 '기억 없이 대화하기' 스위치도 보입니다. 선택 직후에는 스위치가 상태를 알려 주므로 배지를 중복 표시하지 않습니다. 전송·대화 생성을 시작하거나 기존 '기억 없이' 대화를 열면 스위치 대신 '기억 없이' 배지를 표시합니다. 새 대화에서는 선택과 배지를 초기화합니다. 기억 설정에서 코칭 프로필 기억을 꺼 두었으면 스위치가 잠깁니다.

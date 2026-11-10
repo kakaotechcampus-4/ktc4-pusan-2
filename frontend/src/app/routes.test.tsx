@@ -14,6 +14,8 @@ vi.mock('@/features/auth/useSession', () => ({
   }),
   useLogout: () => ({ isPending: false, isError: false }),
 }));
+// 동의 화면은 session.test.tsx 가 봅니다. 여기서는 라우팅만 보므로 동의한 사용자로 둡니다
+vi.mock('@/shared/lib/privacyConsent', () => ({ usePrivacyConsent: () => true }));
 vi.mock('@/shared/api/launch', () => ({
   useLaunchStatus: () => ({ isOpen: state.launchOpen }),
 }));

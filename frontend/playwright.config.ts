@@ -27,6 +27,21 @@ export default defineConfig({
     locale: 'ko-KR',
     trace: 'retain-on-failure',
     permissions: ['camera', 'microphone'],
+    // 개인정보 처리 동의를 마친 목 사용자(`src/mocks/auth.ts` 의 u1)로 시작합니다.
+    // 동의 화면 자체는 `e2e/privacy-consent.e2e.ts` 가 빈 저장소로 따로 봅니다.
+    // 키는 `src/shared/lib/privacyConsent.ts` 의 `privacyConsentKey('u1')` 입니다 — 이 설정은 브라우저 코드를 가져올 수 없어
+    // 글자로 적습니다. 안내문 버전을 올리면 여기 `v1` 도 올립니다(안 올리면 모든 E2E 가 동의 화면에서 멈춰 바로 드러납니다)
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: `http://localhost:${PORT}`,
+          localStorage: [
+            { name: 'pitchcoach.privacyConsent.v1.u1', value: '2026-11-11T00:00:00.000Z' },
+          ],
+        },
+      ],
+    },
     launchOptions: {
       // 장치 점검 · 리허설 화면용 가짜 카메라 · 마이크 — 권한 창 없이 허용합니다
       args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],

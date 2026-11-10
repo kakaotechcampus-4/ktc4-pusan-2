@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
+import { PrivacyConsentPage } from './PrivacyConsentPage';
+import { usePrivacyConsent } from '@/shared/lib/privacyConsent';
 import { useLogout, useSession } from './useSession';
 
 /**
@@ -16,6 +18,7 @@ export function RequireSession({
   const session = useSession();
   const signOut = useLogout();
   const location = useLocation();
+  const consented = usePrivacyConsent(session.data?.id ?? null);
 
   const oauthError = new URLSearchParams(location.search).get('auth_error');
   if (oauthError)
@@ -47,6 +50,9 @@ export function RequireSession({
         }
       />
     );
+
+  // 로그인한 화면은 모두 동의 뒤에 엽니다. 주소는 그대로 두어, 동의하면 가려던 화면이 바로 열립니다
+  if (!consented) return <PrivacyConsentPage userId={session.data.id} />;
 
   if (header)
     return (
