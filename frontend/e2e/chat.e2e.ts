@@ -21,7 +21,7 @@ async function openChat(page: Page): Promise<Locator> {
 }
 
 async function ask(panel: Locator, text: string): Promise<void> {
-  await panel.getByPlaceholder('새미나이에게 메시지 보내기...').fill(text);
+  await panel.getByPlaceholder('새미나이에게 메시지 보내기…').fill(text);
   await panel.getByRole('button', { name: '입력', exact: true }).click();
 }
 
@@ -631,7 +631,71 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
     // 스위치 input 은 sr-only 라 꾸민 라벨이 덮고 있습니다 — 사람처럼 보이는 글자 라벨을 눌러 켜고, 켜졌는지 봅니다
     await panel.getByText('기억 없이 대화하기', { exact: true }).click();
     await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).toBeChecked();
+    const badge = panel.locator('[data-memory-off]');
+    await expect(badge).toHaveCount(0);
     await ask(panel, REMEMBER);
+    await expect(badge).toHaveText('기억 없이');
     await expectNoMemoryCard(panel);
+
+    await panel.getByRole('button', { name: '새 대화', exact: true }).first().click();
+    await expect(badge).toHaveCount(0);
+    await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).not.toBeChecked();
+
+    // 저장된 memory_off=true를 대화 목록에서 다시 선택할 때 배지로 복원합니다.
+    await panel.getByRole('button', { name: '대화 목록' }).click();
+    const saved = panel
+      .getByRole('list', { name: '지난 대화' })
+      .getByRole('button', { name: /앞으로 짧게 설명해 줘, 기억해/ });
+    await expect(saved).toContainText('기억 없이');
+    await saved.click();
+    await expect(badge).toHaveText('기억 없이');
+    await expect(panel.getByText(REMEMBER, { exact: true })).toBeVisible();
+    await expect(panel.getByRole('switch', { name: '기억 없이 대화하기' })).toHaveCount(0);
   });
+});
+
+test('13. 320×400px 낮은 모바일 패널에서 입력창·전송 버튼이 조작 가능하다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 400 });
+  await page.goto('/');
+  const panel = await openChat(page);
+  await expect(panel).toHaveAttribute('aria-modal', 'true');
+  const input = panel.getByRole('textbox', { name: '채팅 메시지' });
+  const send = panel.getByRole('button', { name: '입력', exact: true });
+  await send.scrollIntoViewIfNeeded();
+  await expect(input).toBeInViewport();
+  await expect(send).toBeInViewport();
+
+  const fits = await page.evaluate(`(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const composer = dialog?.querySelector('[data-chat-composer]');
+    const input = composer?.querySelector('textarea');
+    const send = composer?.querySelector('button[type="submit"]');
+    const within = (element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left >= -1 && rect.top >= -1 &&
+        rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1;
+    };
+    return Boolean(dialog && input && send &&
+      within(dialog) && within(input) && within(send));
+  })()`);
+  expect(fits).toBe(true);
+  await input.fill('좁은 화면 입력 검증');
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(panel.getByText('좁은 화면 입력 검증', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
+});
+
+test('14. 기억 첫 안내는 처음 열 때만 보이고 재열기에는 숨긴다', async ({ page }) => {
+  await page.goto('/');
+  const panel = await openChat(page);
+  await expect(panel.locator('[data-memory-intro]')).toBeVisible();
+  await panel.getByRole('button', { name: '새미나이 닫기' }).click();
+
+  const again = await openChat(page);
+  await expect(again.locator('[data-memory-intro]')).toHaveCount(0);
 });
