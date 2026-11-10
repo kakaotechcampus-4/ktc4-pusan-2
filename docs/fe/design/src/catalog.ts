@@ -396,6 +396,7 @@ const productScreens: GuideScreen[] = [
       '카메라 · 마이크 · 시선 기준 · 기준 목소리를 점검하고 대본 표시를 고른 뒤, 이 화면의 시작 버튼에서 Take를 만들어 리허설을 연다.',
     states: [
       state('default', '점검 완료', '카메라 · 마이크 · 시선 기준 · 기준 목소리가 모두 돼 시작할 수 있다.'),
+      state('voice-required', '기준 목소리 전', '나머지 점검이 끝나도 기준 목소리를 재지 않으면 시작할 수 없다(#1184).'),
       state(
         'no-camera',
         '카메라 꺼짐',
