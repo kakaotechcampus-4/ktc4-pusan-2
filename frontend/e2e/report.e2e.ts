@@ -114,10 +114,25 @@ test.describe('내용 전달 카드 (#1157)', () => {
   test('결과가 바뀌었으면(409) 리포트를 다시 읽고 새 결과로 그 장을 다시 받는다', async ({
     page,
   }) => {
+    // 장별 상세를 부른 판(`revision`)을 모읍니다 — 처음은 0(409), 리포트를 다시 읽은 뒤에는 1 이어야 합니다
+    const revisions: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.includes('/script-coverage/slides/3'))
+        revisions.push(url.searchParams.get('revision') ?? '');
+    });
+
     await page.goto('/takes/t-content-revised');
     const card = await openSlideList(page);
-    await card.getByRole('button', { name: /^3장/ }).click();
+    const list = card.getByRole('button', { name: /^장별 보기/ });
+    const slide3 = card.getByRole('button', { name: /^3장/ });
+    await slide3.click();
     await expect(card.getByRole('heading', { name: '대본 문장' })).toBeVisible();
+
+    // 새 판으로 다시 받았고, 그동안 열어 둔 목록과 펼친 장이 닫히지 않았습니다 (이 PR 이 고친 회귀)
+    expect(revisions).toEqual(['0', '1']);
+    await expect(list).toHaveAttribute('aria-expanded', 'true');
+    await expect(slide3).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('채점된 장이 없으면 간이 단계만 보이고 전체 개수는 집계하지 못했다고 알린다', async ({
