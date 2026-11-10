@@ -654,9 +654,7 @@ test.describe("12. '기억했어요' 카드 → [지우기] · 설정에서 끄�
   });
 });
 
-test('13. 320×400px 낮은 모바일 패널에서 입력창·전송 버튼이 조작 가능하다', async ({
-  page,
-}) => {
+test('13. 320×400px 낮은 모바일 패널에서 입력창·전송 버튼이 조작 가능하다', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 400 });
   await page.goto('/');
   const panel = await openChat(page);
