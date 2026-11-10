@@ -482,12 +482,19 @@ def mark_short(meta: list[dict[str, Any]]) -> int | None:
     return i
 
 
+def _cut(text: str, limit: int) -> str:
+    """`limit`자 안이면 그대로, 넘으면 끝을 줄여 "…"를 붙인다(잘린 글이 결과 전체로 읽히지 않게, #1163 리뷰)."""
+    return text if len(text) <= limit else f"{text[: limit - 1].rstrip()}…"
+
+
 def compose(purpose: str, exec_: str | None, result: str, limit: int = STEP_CHARS) -> str:
-    """`목적: 실행 → 결과`(60자). 넘으면 목적을 줄여 "…", 그래도 넘으면 `실행 → 결과`. 실행이 목적과 같으면(덧붙은 단계) 목적을 되풀이하지 않는다."""
+    """`목적: 실행 → 결과`(60자). 넘으면 목적을 줄여 "…", 그래도 넘으면 `실행 → 결과`의 끝을 줄여 "…". 실행이 목적과 같으면
+    (덧붙은 단계) 목적을 되풀이하지 않는다. 실행 · 결과 글은 템플릿 표로만 만들어 세 자리 Take · 장 번호까지는 가장 긴 조합도
+    60자보다 짧다(시험으로 묶음). 번호 자릿수에는 상한이 없어(아주 긴 Take 번호 둘의 비교) 넘칠 수 있으므로 끝을 줄인다."""
     if exec_ is None:
         tail = result
     elif exec_ == purpose:
-        return f"{exec_} → {result}"[:limit]
+        return _cut(f"{exec_} → {result}", limit)
     else:
         tail = f"{exec_} → {result}"
     full = f"{purpose}: {tail}"
@@ -496,7 +503,7 @@ def compose(purpose: str, exec_: str | None, result: str, limit: int = STEP_CHAR
     room = limit - len(tail) - len(": ") - len("…")
     if room >= 2:
         return f"{purpose[:room].rstrip()}…: {tail}"
-    return tail[:limit]
+    return _cut(tail, limit)
 
 
 def _blocked(text: str, ids: list[str], registry: EvidenceRegistry, cfg: ChatAgentConfig) -> bool:

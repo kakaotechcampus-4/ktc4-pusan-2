@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import copy
+from string import Formatter
 from typing import Any
 
 import pytest
 
 from pitch_coach_ai.features.chat_agent import progress
+from pitch_coach_ai.features.chat_agent import templates as tpl
+from pitch_coach_ai.features.chat_agent.claims import DIM_LABEL, METRIC_LABEL
 from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG as CFG
 from pitch_coach_ai.features.chat_agent.schemas import PlanStep
 
@@ -99,7 +102,43 @@ def test_display_text_is_purpose_exec_result_within_sixty_chars() -> None:
     long = "아주 긴 목적" * 10
     text = progress.compose(long, "Take 4·5 비교", "3장 청중 시선 나빠짐")
     assert len(text) <= 60 and text.endswith("…: Take 4·5 비교 → 3장 청중 시선 나빠짐")
-    assert progress.compose("짧음", "x" * 70, "y") == ("x" * 70 + " → y")[:60]
+
+
+def test_step_text_result_is_never_cut_silently() -> None:
+    """실행 · 결과 글은 템플릿 표로만 만든다: 세 자리 Take · 장 번호로 잡은 가장 긴 `실행 → 결과`도 60자 안이다. 번호 자릿수에는
+    상한이 없어 넘칠 수 있으므로, 넘치면 끝을 줄여 "…"를 붙인다 — 잘린 글이 결과 전체로 읽히지 않게(#1163 리뷰)."""
+    n = "999"
+    execs = [
+        f"Take {n}·{n} 비교",
+        tpl.PLAN_REPORT_EXEC.format(n=n),
+        f"Take {n} 가져오기",
+        *tpl.PLAN_EXEC.values(),
+        *tpl.PLAN_TOOL_NAME.values(),
+    ]
+    reasons = [*tpl.PLAN_NOT_COMPARABLE.values(), tpl.PLAN_NOT_COMPARABLE_OTHER]
+    slots = {"reason": reasons, "dimension": list(DIM_LABEL.values()), "slide": [n]}
+    results = []
+    for text in tpl.PLAN_RESULT.values():
+        fields = [f for _, f, _, _ in Formatter().parse(text) if f]
+        # 새 자리가 생기면 여기서 KeyError: 그 자리에 들어갈 가장 긴 값을 slots 에 더한다
+        results += [text.format(**{f: v}) for f in fields for v in slots[f]] or [text]
+    outcomes = [*tpl.PLAN_OUTCOME.values(), tpl.PLAN_OUTCOME_OTHER]
+    results += [f"{n}장 {m} {o}" for m in [*METRIC_LABEL.values(), "지표"] for o in outcomes]
+    longest = f"{max(execs, key=len)} → {max(results, key=len)}"
+    assert len(longest) < progress.STEP_CHARS, longest
+
+    cut = progress.compose("짧음", "x" * 70, "y")
+    assert len(cut) == 60 and cut.endswith("x…")
+    # 아주 긴 Take 번호 둘의 비교(번호 자릿수 상한 없음): 결과가 '…' 없이 끊기지 않는다
+    big = "9" * 21
+    text = progress.compose(
+        "반복 확인", f"Take {big}·{big} 비교", "999장 핵심 사실 정확도 판단 불가"
+    )
+    assert len(text) <= 60 and text.endswith("장…")
+    # 덧붙은 단계(실행 = 목적)도 같다
+    same = progress.compose("x" * 70, "x" * 70, "y")
+    assert len(same) == 60 and same.endswith("…")
+    assert progress.compose("기록 보기", "기록 보기", "확인") == "기록 보기 → 확인"
 
 
 def test_display_text_drops_numbers_without_step_evidence() -> None:
