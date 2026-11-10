@@ -339,6 +339,7 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 | 리허설 · 이어 가기 · 끝내기 | `stage/*.test.ts(x)` |
 | 실시간 연결 | `lib/sttSocket.test.ts` · `lib/sttProtocol.test.ts` |
 | 시선 워커 | `src/workers/gaze.worker.test.ts` · `aiAdapter.test.ts` · `calibrationModel.test.ts` |
+| 장치 점검 브라우저 끝까지(E2E) | `frontend/e2e/device-check.e2e.ts` — 가짜 카메라 · 마이크로 기준 목소리 재기 · 그만두기 · 두 번 실패 뒤 탈출구. 시선 모델 파일이 없어 시선 기준은 '사용 불가'라 시작 · 다시 쓰기 · 보정 값 보내기는 보지 않습니다 |
 
 **손으로 확인하는 페이지** (개발 검증용)
 

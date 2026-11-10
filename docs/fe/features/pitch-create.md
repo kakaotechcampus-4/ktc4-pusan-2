@@ -231,6 +231,7 @@
 | 수정 화면 읽기 | `loadPitch.test.ts` |
 | 대본 매핑 폴링 | `scriptParse.test.ts` |
 | 규칙 | `lib/draft.test.ts` · `lib/gate.test.ts` · `lib/markerHint.test.ts` · `lib/parseWait.test.ts` · `pendingVersion.test.ts` |
+| 브라우저 끝까지(E2E) | `frontend/e2e/pitch.e2e.ts` — 최종 확인 → 장치 점검 · 발표정보 저장 · 새 피치 첫 안내. PDF 올리기는 보지 않습니다 |
 
 ## 10. 열린 질문 · 알려진 한계
 
