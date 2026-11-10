@@ -174,10 +174,17 @@ def test_confirm_card_expires_30_minutes_after_issue_and_state_lasts_35() -> Non
     assert DEFAULT_CONFIG.state_ttl_ask_seconds == 35 * 60
 
 
-def test_reassess_request_clause_is_answered_by_the_card_not_an_unchecked_notice() -> None:
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "대본 보고 한 발표였어. 대본을 쓴 조건으로 다시 평가해 볼 수 있을까요?",
+        # 실사용 흐름 점검 장면 4: '다시 평가' 낱말 없이 청한 말도 같다
+        "대본 보고 한 발표였어. 대본 사용 조건으로 다시 확인해줘",
+    ],
+)
+def test_reassess_request_clause_is_answered_by_the_card_not_an_unchecked_notice(msg: str) -> None:
     """초안이 덮지 않은 다시 평가 요청 절('대본을 쓴 조건으로 다시 평가해 볼 수 있을까요')은 이 실행이 낸 확인 카드가 답이라
     '이번 답에서 확인하지 못했어요'를 붙이지 않는다(Issue #1194 읽듯 보는 검토, f60-svc-youtube-reassess-reject)."""
-    msg = "대본 보고 한 발표였어. 대본을 쓴 조건으로 다시 평가해 볼 수 있을까요?"
     d = [F.draft("대본 보고 한 발표였어", claim_op="VALUE", dimension="script_independence", metric="script_mode", polarity="POSITIVE")]
     llm = F.FakeLlm(
         [F.plan(assessments=d), F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
