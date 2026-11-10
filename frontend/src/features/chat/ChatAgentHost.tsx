@@ -471,6 +471,8 @@ function ChatPanel({
     if (!mobileOverlay) return;
     const content = document.querySelector<HTMLElement>('.chat-layout-content');
     if (!content) return;
+    // StrictMode의 effect 재실행 때에도 DOM은 남아 있습니다. 실제 unmount와 구분합니다.
+    const panel = panelRef.current;
     const wasInert = content.hasAttribute('inert');
     const body = document.body;
     const previous = {
@@ -491,9 +493,9 @@ function ChatPanel({
     body.style.width = '100%';
     body.style.overflow = 'hidden';
     content.setAttribute('inert', '');
-    if (panelRef.current && !panelRef.current.contains(document.activeElement)) {
+    if (panel && !panel.contains(document.activeElement)) {
       if (inputRef.current && !inputRef.current.closest('[hidden]')) inputRef.current.focus();
-      else panelRef.current.focus();
+      else panel.focus();
     }
     return () => {
       if (!wasInert) content.removeAttribute('inert');
@@ -506,7 +508,10 @@ function ChatPanel({
       // 비허용 화면으로 이동하면 직접 닫기 핸들러를 거치지 않고 패널이 사라지므로
       // 이전 화면의 스크롤 위치를 적용하지 않습니다.
       const sameScreen = !navigatedWhileOpenRef.current;
-      if (sameScreen && (restoreOnCloseRef.current || !isMobileChat())) {
+      // StrictMode의 개발 모드 효과 정리/재실행에서는 panel DOM이 계속 연결돼 있습니다.
+      // 이를 복원하지 않으면 첫 setup 뒤 scrollY=0에서 재잠금되어 화면이 위로 튑니다.
+      const panelStillMounted = panel?.isConnected === true;
+      if (sameScreen && (restoreOnCloseRef.current || panelStillMounted || !isMobileChat())) {
         window.scrollTo(scrollX, scrollY);
       }
       // 다른 화면의 스크롤 위치는 React Router ScrollRestoration에 맡깁니다.

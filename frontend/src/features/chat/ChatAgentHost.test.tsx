@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act } from 'react';
+import { StrictMode, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -226,7 +226,7 @@ const wait = (ms: number) =>
   });
 
 // routes.tsx 의 최상위 레이아웃과 같은 모양 — 화면이 바뀌어도 채팅은 같은 자리에 남습니다
-async function visit(path: string) {
+async function visit(path: string, strict = false) {
   router = createMemoryRouter(
     [
       {
@@ -262,13 +262,12 @@ async function visit(path: string) {
     ],
     { initialEntries: [path] },
   );
-  await act(async () =>
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    ),
+  const ui = (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   );
+  await act(async () => root.render(strict ? <StrictMode>{ui}</StrictMode> : ui));
   if (vi.isFakeTimers()) await wait(0);
   else await settle();
 }
@@ -688,6 +687,25 @@ it('모바일에서 같은 경로에서 채팅을 닫으면 기존 스크롤 위
   expect(document.body.style.top).toBe('-420px');
   await act(async () => button('새미나이 닫기')!.click());
   expect(scrollTo).toHaveBeenCalledWith(0, 420);
+});
+
+it('StrictMode 이펙트 재실행에서도 같은 화면의 스크롤 위치를 보존한다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollX', 0);
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/', true);
+  await openPanel();
+  // StrictMode의 effect 정리 시 DOM은 남아 있으므로 이전 위치로 복원되어야 합니다.
+  expect(scrollTo).toHaveBeenCalledWith(0, 420);
+  expect(document.body.style.position).toBe('fixed');
+  expect(document.body.style.top).toBe('-420px');
 });
 
 it('모바일에서 채팅을 연 채 다른 페이지로 이동하면 이전 페이지의 스크롤을 복원하지 않는다', async () => {
