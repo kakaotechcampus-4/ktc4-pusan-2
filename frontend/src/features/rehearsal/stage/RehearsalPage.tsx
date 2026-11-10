@@ -69,7 +69,7 @@ import { useEndConfirm } from './useEndConfirm';
 import { StageLiveBadge } from './StageLiveBadge';
 import { useSlideDeck } from './useSlideDeck';
 import { keepKeyboardFocus } from './keepKeyboardFocus';
-import { SlideNav } from './SlideNav';
+import { SlideClickArea } from './SlideClickArea';
 import { useStageClock } from './useStageClock';
 import {
   CONNECT_SLOW_MS,
@@ -904,17 +904,8 @@ export function RehearsalPage() {
                     </span>
                   )}
                 </div>
-                {/* 슬라이드를 누르면 다음 장 — 파워포인트와 같습니다. 슬라이드 위에 겹쳐 두어 칸의
-                    크기 · 자리(시선 기준)는 그대로입니다. Tab 으로는 아래 이전 · 다음 버튼을 씁니다 */}
-                <button
-                  type="button"
-                  className="slide-advance"
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  disabled={!running || slideNumber >= pageCount}
-                  onMouseDown={keepKeyboardFocus}
-                  onClick={() => go(slideNumber + 1)}
-                />
+                {/* 좌클릭 다음 장 · 우클릭 이전 장 (파워포인트와 같습니다). 위에 겹쳐 칸은 그대로입니다 */}
+                <SlideClickArea slideNumber={slideNumber} enabled={running} onGo={go} />
               </div>
 
               <div className="rail">
@@ -987,13 +978,6 @@ export function RehearsalPage() {
 
             <div className="stage-foot">
               <div className="stage-notes">
-                {/* 끝내기 실패 문구가 떠도 넘길 수 있게 안내 문구와 따로 둡니다 */}
-                <SlideNav
-                  slideNumber={slideNumber}
-                  pageCount={pageCount}
-                  enabled={running}
-                  onGo={go}
-                />
                 {/* 끝내기 실패는 꼭 봐야 해서 스크롤되는 상태 칸 밖, 조작 안내 자리에 띄웁니다 */}
                 {endError ? (
                   <span className="end-error" role="alert">
@@ -1001,7 +985,8 @@ export function RehearsalPage() {
                   </span>
                 ) : (
                   <span className="key-help">
-                    ← → 슬라이드 이동 · Space 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
+                    다음 장 클릭 · → · Space · 이전 장 우클릭 · ←
+                    {scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
                   </span>
                 )}
                 {/* 알림 영역은 안쪽 문구가 각자 잡습니다 — 여기도 status 면 낭독기가 두 번 읽습니다 */}
