@@ -61,7 +61,7 @@ export function AboutScreen({ onNavigate }: ScreenProps) {
 const UNSUPPORTED: Record<string, { title: string; body: string }> = {
   browser: {
     title: '이 브라우저에서는 시선 분석을 할 수 없어요',
-    body: '시선 분석에 필요한 기능(WebAssembly · Worker · createImageBitmap)이 없어요. 최신 Chrome이나 Edge로 열어 주세요.',
+    body: '시선 분석에 필요한 기능(WebAssembly · Worker · createImageBitmap)이 없어요. 최신 Google Chrome에서 열어 주세요.',
   },
   mobile: {
     title: '발표 연습은 PC에서 해 주세요',
@@ -83,7 +83,6 @@ export function UnsupportedScreen({ stateId, onNavigate }: ScreenProps) {
         <p className="leading-relaxed text-stone">{copy.body}</p>
         <ul className="list-disc space-y-1 pl-5 text-sm">
           <li>Chrome 최신 버전 (PC)</li>
-          <li>Edge 최신 버전 (PC)</li>
         </ul>
         <div className="flex flex-wrap gap-3">
           {/* 샘플은 클립보드를 쓰지 않는다 */}
