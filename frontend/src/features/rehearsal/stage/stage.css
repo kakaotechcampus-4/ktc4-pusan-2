@@ -1069,6 +1069,51 @@
   flex: 0 1 auto;
 }
 
+/* ── 마우스로 넘기기 ───────────────────────────────────────────
+   슬라이드 위 투명 칸(좌클릭 다음 장 · 우클릭 이전 장)과 다음 장 썸네일. 둘 다 이미 있는 칸 안에 앉아
+   슬라이드 칸의 크기 · 자리(시선 기준)를 바꾸지 않는다. 눈에 보이는 버튼 대신 발밑 안내 줄에 적는다. */
+.slide-advance {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.slide-advance[data-enabled='false'] {
+  cursor: default;
+}
+
+.rail .next .next-go {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rail .next .next-go:disabled {
+  cursor: default;
+}
+/* 버튼의 왼쪽 정렬은 문구에만 — 썸네일 자리표시(PDF 를 못 열었을 때)는 가운데 */
+.rail .next .next-go .thumb {
+  text-align: center;
+}
+.rail .next .next-go:hover:not(:disabled) .thumb {
+  border-color: var(--color-ink-stage);
+}
+.rail .next .next-go:focus-visible {
+  outline: 2px solid var(--color-ink-stage);
+  outline-offset: 2px;
+}
+
+
 .stage-live .coach .indicators {
   min-width: 0;
   flex-shrink: 1;

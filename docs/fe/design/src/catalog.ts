@@ -24,7 +24,13 @@ export const PRODUCT_CHECKED: {
 } = {
   commit: '0bf5dbb1e1421b825ee88b706e49fd436fd045e7',
   date: '2026-11-09',
-  pending: [],
+  pending: [
+    {
+      pr: 1199,
+      head: 'a616b7f7',
+      what: '로그인 화면의 Chrome 안내 창, 터치 기기 판별을 shared/lib/browserCheck.ts 로 옮김',
+    },
+  ],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -504,7 +510,7 @@ const productScreens: GuideScreen[] = [
     ],
     rules: [
       '끝내기("발표 끝내기")는 마지막 장에서만 열린다. 마지막 장이 아니면 막히고 버튼 바로 옆에 "마지막 장에서 끝낼 수 있어요"를 글자로 둔다(버튼의 aria-describedby). 막힌 버튼은 초점을 받지 못하고 title 툴팁도 잘 보이지 않아서다. 장 수를 모르면(0) 막지 않는다. 중간 종료는 없다 — BE가 중간 종료를 구분하지 않아 일부만 한 발표도 점수가 남기 때문이다.',
-      '슬라이드는 ← → · Space로 넘긴다.',
+      '슬라이드는 ← → · Space로 넘긴다. 마우스로는 슬라이드 좌클릭이 다음 장, 우클릭이 이전 장(파워포인트와 같음)이고 다음 장 썸네일 클릭도 다음 장이다. 모두 키보드와 같은 장 넘김 기록으로 남는다. 화면에 이동 버튼을 따로 두지 않는 대신 조작 안내 줄에 클릭 · 우클릭을 적는다(Take별 설문 피드백).',
       '한 번 누르면 "정말 끝낼까요?"로 바뀌고 4초 안에 다시 눌러야 끝난다. 장이 바뀌면 확인이 풀린다 — 이전 장에 갔다가 4초 안에 돌아와도 처음부터 다시 묻는다. 화면을 덮는 창은 띄우지 않는다.',
       '시작 뒤 말하기 분석 연결이 끊겨도 시계와 발표는 계속된다. 시작 전에 다른 곳에서 발표 중이라 연결이 거절되면 연결 실패 대신 그 이유를 알린다.',
       '이 Take를 다른 창에서 하고 있으면 무대를 열지 않고 "다른 창에서 연습 중"을, 창이 닫혀 끝났으면 "연습 중단"을 안내한다. 다른 곳에서 새 연습을 시작해 끝났으면 새 Take를 권하지 않는다.',
@@ -517,6 +523,7 @@ const productScreens: GuideScreen[] = [
     tokens: ['stage', 'stage-panel', 'ink-stage', 'gaze-audience', 'script-highlight'],
     sources: [
       'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
+      'frontend/src/features/rehearsal/stage/SlideClickArea.tsx',
       'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
       'frontend/src/features/rehearsal/stage/CoachStrip.tsx',
       'frontend/src/features/rehearsal/stage/stage.css',
@@ -932,6 +939,7 @@ const infoScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/info/UnsupportedPage.tsx',
       'frontend/src/features/info/unsupportedReason.ts',
+      'frontend/src/shared/lib/browserCheck.ts',
       'frontend/src/app/DesktopGate.tsx',
     ],
     productNote: '"링크 복사"는 샘플에서 클립보드를 쓰지 않고 복사 결과 문구도 띄우지 않는다.',
@@ -1051,13 +1059,18 @@ const onboardingScreens: GuideScreen[] = [
       '이미 로그인했으면 목적지(next)로 바로 보낸다. 외부 주소는 목적지로 받지 않는다.',
       '상태 줄은 role="status"로 한 줄만 보인다.',
       '정책 문서가 검토용 초안이라 "동의한 것으로 본다"고 쓰지 않고 확인만 안내한다.',
-      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳".',
+      'PC의 Google Chrome이 아니면 세션 확인이 끝난 뒤 안내 창을 띄운다. 막지 않고, 닫으면 Google 로그인 버튼으로 초점이 간다. 휴대폰 · 태블릿은 연습 화면이 열리지 않는다고 알린다. 닫은 기록은 남기지 않는다.',
+      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳". Chrome 안내 창은 다른 창처럼 해요체다.',
     ],
-    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림'],
+    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림', 'ChromeNoticeDialog'],
     tokens: ['panel', 'ink', 'cream', 'line-strong'],
-    sources: ['frontend/src/features/auth/LoginPage.tsx'],
+    sources: [
+      'frontend/src/features/auth/LoginPage.tsx',
+      'frontend/src/features/auth/ChromeNoticeDialog.tsx',
+      'frontend/src/shared/lib/browserCheck.ts',
+    ],
     productNote:
-      '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내는 그리지 않는다.',
+      '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내와 Chrome 안내 창은 그리지 않는다.',
     productLinks: [link('로그인', '/login')],
     next: [next('로그인 → 홈', 'home'), next('서비스 소개', 'welcome')],
   },

@@ -18,4 +18,6 @@ SCHEMA_VERSION = "1.1"
 #: review-1.3: LLM 비교 입력을 Take 값과 후보가 가리키는 장으로 줄임, 다음 미션 설명을
 #: 자른 뒤 숫자 검사, 초안을 붙이는 코드의 예외는 기본 결과가 아니라 500 (#589)
 #: review-1.4: 지난 Take 비교에서 같은 값 · 기준까지 거리가 같으면 improved 를 null 로 (#787)
-FEATURE_VERSION = "review-1.4"
+#: review-1.5: 소리 크기를 무엇과 견줬는지 쓴다 — 다음 미션 설명은 '기준', 개선점 기본 문장 ·
+#: LLM 문장은 그 Take 의 기준 음량 출처('점검 때' · '발표 처음'). LLM 입력에 volume_base (#1181)
+FEATURE_VERSION = "review-1.5"

@@ -231,6 +231,8 @@ FINALIZING → SCORING → (AWAITING_CONFIRMATION) → REVIEWING → DONE
 | 내용 전달 카드 · 장별 상세(목 BE 위에서 409 흐름까지) | `ContentCard.test.tsx` · `SlideCoverage.test.tsx` · `contentFormat.test.ts` |
 | Take 기록 · 비교 | `TakesUnified.test.tsx` · `takeHistory.test.ts` · `HistoryAccessibility.test.tsx` |
 | 설문 · 서비스 의견 | `TakeSurvey.test.tsx` · `ServiceReviewFlow.test.tsx` |
+| 내용 전달 오류 경계 (판이 바뀌어도 열린 목록 유지 · 오류 뒤 회복) | `ContentErrorBoundary.test.tsx` · `ReportPage.test.tsx` |
+| 브라우저 끝까지(E2E, `frontend/e2e/`) | `report.e2e.ts`(리포트 · 내용 전달 카드 · 409) · `processing.e2e.ts`(분석 대기 · 대본 확인) · `takes.e2e.ts`(Take 기록 · 지표 비교) |
 
 ## 10. 열린 질문 · 알려진 한계
 

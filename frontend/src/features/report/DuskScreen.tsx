@@ -18,7 +18,7 @@ export function DuskScreen({
   children: ReactNode;
 }) {
   return (
-    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-dusk">
+    <div className="dusk-screen relative flex min-h-dvh flex-col overflow-hidden bg-dusk">
       <img
         src="/loading/sunset-wide-bird.png"
         alt="노을 진 바닷가 도시 위를 가방을 멘 치치가 날아가는 그림"

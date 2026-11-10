@@ -421,7 +421,7 @@ export function WelcomePage() {
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
               <div className="w-20 shrink-0 border border-ink bg-panel p-2 shadow-[3px_3px_0_var(--color-line-strong)]">
                 <img
-                  src="/semini.png"
+                  src="/semini-mascot.svg"
                   alt=""
                   width={64}
                   height={64}

@@ -7,9 +7,9 @@ export function ChatEmptyState() {
     >
       <div className="mb-3 h-16 w-16 overflow-hidden rounded-2xl border border-line-strong bg-cream">
         <img
-          src="/semini.png"
+          src="/semini-mascot.svg"
           alt=""
-          className="h-full w-full object-cover [image-rendering:pixelated]"
+          className="h-full w-full object-contain [image-rendering:pixelated]"
         />
       </div>
       <p className="text-base font-bold">새미나이에게 물어보세요</p>
