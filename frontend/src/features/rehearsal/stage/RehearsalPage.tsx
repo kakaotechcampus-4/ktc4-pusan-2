@@ -1007,7 +1007,7 @@ export function RehearsalPage() {
                   {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
                   전사는 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
                   {audioState !== null && audioState !== 'running' && (
-                    <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
+                    <span>소리가 흐르지 않습니다 — 슬라이드 밖을 한 번 클릭해 주세요</span>
                   )}
                   {ticket === null && (
                     <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
