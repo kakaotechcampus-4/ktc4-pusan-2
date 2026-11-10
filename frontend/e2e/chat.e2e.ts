@@ -124,7 +124,7 @@ test('모바일 패널은 배경을 비활성화하고 키보드 초점을 패�
   }
 });
 
-test('모바일 패널을 열어도 문서 스크롤 위치가 유지되고 가림막에서 배경을 스크롤할 수 없다', async ({ page }) => {
+test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보존한다', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 });
   await page.goto('/');
   await page.evaluate(`(() => {
