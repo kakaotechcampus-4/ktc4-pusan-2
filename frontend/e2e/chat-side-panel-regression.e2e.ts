@@ -94,9 +94,13 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
         header.boundingBox(),
         footer.boundingBox(),
       ]);
-      return !!panelBox && !!headerBox && !!footerBox &&
+      return (
+        !!panelBox &&
+        !!headerBox &&
+        !!footerBox &&
         panelBox.y >= headerBox.y + headerBox.height - 1 &&
-        panelBox.y + panelBox.height <= footerBox.y + 1;
+        panelBox.y + panelBox.height <= footerBox.y + 1
+      );
     }).toBe(true);
     await header.getByRole('button', { name: '사용방법' }).click({ trial: true });
     await expect(footer.getByRole('button').last()).toBeInViewport();
