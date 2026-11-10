@@ -54,7 +54,7 @@ export function PitchSelect({
     };
   }, [open]);
 
-  // 아래 공간이 부족할 때 위쪽 여유가 더 크면 위로 펼칩니다.
+  // 위쪽에 목록 전체가 들어갈 때만 위로 펼칩니다. 화면 밖으로 잘린 첫 항목은 스크롤로도 닿지 않습니다.
   useLayoutEffect(() => {
     if (!open) return;
     const trigger = comboRef.current?.getBoundingClientRect();
@@ -62,7 +62,7 @@ export function PitchSelect({
     if (!trigger || !list) return;
     const below = window.innerHeight - trigger.bottom - 4;
     const above = trigger.top - 4;
-    setDropUp(below < list.offsetHeight && above > below);
+    setDropUp(below < list.offsetHeight && above >= list.offsetHeight);
   }, [open]);
 
   // 키보드로 옮긴 항목이 목록 밖이면 목록만 스크롤합니다. scrollIntoView 는 페이지까지 움직여서 쓰지 않습니다

@@ -50,3 +50,26 @@ test('데스크톱에서는 선택창을 넓게, 320px 화면에서는 목록을
   expect(mobile!.x).toBeGreaterThanOrEqual(0);
   expect(mobile!.x + mobile!.width).toBeLessThanOrEqual(320);
 });
+
+test('낮은 화면에서도 첫 항목이 보이고 전체 필터로 돌아갈 수 있다', async ({ page }) => {
+  for (const viewport of [
+    { width: 740, height: 360 },
+    { width: 667, height: 320 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/takes?pitch=p2');
+    const combo = page.getByRole('combobox', { name: '피치' });
+    await combo.click();
+    const first = page.getByRole('listbox', { name: '피치' }).getByRole('option', {
+      name: '전체',
+    });
+    await expect(first).toBeVisible();
+    const firstBox = await first.boundingBox();
+    expect(firstBox).not.toBeNull();
+    expect(firstBox!.y).toBeGreaterThanOrEqual(0);
+    expect(firstBox!.y + firstBox!.height).toBeLessThanOrEqual(viewport.height);
+    await first.click();
+    await expect(page).toHaveURL(/\/takes$/);
+    await expect(combo).toHaveText('전체');
+  }
+});

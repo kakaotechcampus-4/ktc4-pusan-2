@@ -226,11 +226,14 @@ it('열린 목록에서 Alt+위쪽 화살표는 현재 항목을 선택하고 �
   expect(box().getAttribute('aria-expanded')).toBe('false');
 });
 
-it('아래 공간이 좁고 위가 넓으면 목록을 위로 펼친다', async () => {
+it('위쪽에 목록 전체가 들어갈 때만 위로 펼친다', async () => {
   await render();
+  vi.stubGlobal('innerHeight', 320);
   const trigger = box();
   const originalRect = trigger.getBoundingClientRect;
-  trigger.getBoundingClientRect = () => ({ top: 600, bottom: 640 }) as DOMRect;
+  let top = 260;
+  let bottom = 300;
+  trigger.getBoundingClientRect = () => ({ top, bottom }) as DOMRect;
   const originalHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
@@ -243,6 +246,14 @@ it('아래 공간이 좁고 위가 넓으면 목록을 위로 펼친다', async 
     const list = host.querySelector<HTMLElement>('[role="listbox"]')!;
     expect(list.classList.contains('bottom-full')).toBe(true);
     expect(list.classList.contains('top-full')).toBe(false);
+
+    // 위쪽이 아래보다 넓더라도 목록 높이에 못 미치면 아래로 열어 첫 항목을 보존합니다.
+    await act(async () => trigger.click());
+    top = 150;
+    bottom = 190;
+    await act(async () => trigger.click());
+    expect(list.classList.contains('top-full')).toBe(true);
+    expect(list.classList.contains('bottom-full')).toBe(false);
   } finally {
     trigger.getBoundingClientRect = originalRect;
     if (originalHeight) {
