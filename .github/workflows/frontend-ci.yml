@@ -218,3 +218,4 @@ jobs:
             echo "$out"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+# 캐시·이전 실행 취소 확인용 (머지하지 않음) 1
