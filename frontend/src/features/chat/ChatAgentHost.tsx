@@ -193,6 +193,13 @@ function ChatSessionView({
   const launcherBottom = chatLauncherBottom(pathname);
   const open = useChatStore((s) => s.open);
   const launcherRef = useRef<HTMLButtonElement>(null);
+  const restoreLauncherFocusRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!open && restoreLauncherFocusRef.current) {
+      restoreLauncherFocusRef.current = false;
+      launcherRef.current?.focus();
+    }
+  }, [open]);
   /** 런처로 열었음 — 패널은 이때만 입력칸에 초점을 줍니다(꺼졌다 켜짐 · 모달이 닫힘으로 다시 그려질 때는 주지 않음) */
   const [focusRequested, setFocusRequested] = useState(false);
   const focused = useCallback(() => setFocusRequested(false), []);
@@ -203,19 +210,13 @@ function ChatSessionView({
   if (session.availability === 'checking' || session.availability === 'off') return null;
 
   const close = () => {
+    // 패널을 열면 모든 화면에서 런처를 숨기므로, 닫힌 화면이 커밋된 뒤 초점을 돌립니다.
+    restoreLauncherFocusRef.current = true;
     useChatStore.getState().closeChat();
-    // 모바일에서는 패널이 닫힐 때까지 런처가 숨겨져 있어 렌더 완료 뒤 초점을 돌립니다.
-    if (isMobileChat()) {
-      window.setTimeout(() => {
-        if (!useChatStore.getState().open) launcherRef.current?.focus();
-      }, 0);
-    } else {
-      launcherRef.current?.focus();
-    }
   };
 
   return (
-    // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
+    // 런처는 화면 오른쪽 아래의 44px 마스코트 아이콘입니다.
     // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
       // data-chat-launcher: index.css의 피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다

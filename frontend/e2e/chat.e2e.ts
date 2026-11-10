@@ -223,7 +223,8 @@ test('761px 이상에서는 채팅을 열어도 본문을 비활성화하지 않
   const panel = await openChat(page);
   await expect(panel).toHaveAttribute('aria-modal', 'false');
   await expect(page.locator('.chat-layout-content')).not.toHaveAttribute('inert');
-  await expect(page.locator('[data-chat-launcher] > button')).toBeVisible();
+  // 패널을 연 동안에는 본문 조작은 허용하되 런처만 숨깁니다.
+  await expect(page.locator('[data-chat-launcher] > button')).toBeHidden();
 });
 
 test('대본 매핑과 슬라이드 확인은 열린 채팅 위에 뷰포트 기준으로 표시한다', async ({ page }) => {

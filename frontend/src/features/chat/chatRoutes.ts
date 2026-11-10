@@ -2,7 +2,7 @@ import { matchPath } from 'react-router';
 
 /** 정상 런처와 오류 안내가 공유하는 고정 위치. */
 export const CHAT_LAUNCHER_CLASS =
-  'light-surface fixed bottom-[var(--chat-launcher-bottom)] left-2 z-[70] text-ink';
+  'light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink';
 
 /**
  * Explicit allowlist for the chat panel. Device check and live rehearsal are intentionally
@@ -71,13 +71,15 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
 }
 
 /**
- * 왼쪽 아래 런처의 기본 하단 여백(px). 홈·피치 목록은 통합 푸터 위로 올립니다 (#1112).
- * 그 외 기본값은 32px, 생성·수정 화면은 고정 바를 피하도록 88px입니다 (#941).
+ * 오른쪽 아래 런처의 기본 하단 여백(px). 홈·피치 목록은 통합 푸터 위로 올립니다 (#1112).
+ * 그 외 기본값은 32px, 생성·수정 화면은 88px(#941), 리포트는 하단 동작 버튼을 피하도록 96px입니다.
  * 좁은 생성·수정 화면의 최종 위치는 index.css에서 결정합니다 (#1104).
  */
 const launcherLifts: [pattern: string, bottom: number][] = [
   ['/', 76],
   ['/pitches', 76],
+  // 리포트 하단 [내 피치로] · 설문 버튼의 조작 영역을 가리지 않습니다 (#1197).
+  ['/takes/:takeId', 96],
   // 피치 만들기 · 수정: 아래 고정 바(79px)보다 위에 둡니다 (12-4 F1 "겹침")
   ['/pitch/new', 88],
   ['/pitch/:id/edit', 88],

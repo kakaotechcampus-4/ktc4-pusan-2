@@ -9,6 +9,14 @@ import { expect, test, type Page } from '@playwright/test';
 const PITCH_ID = '10000000-0000-4000-8000-000000000001';
 const TAKE_ID = '20000000-0000-4000-8000-000000000003';
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+function overlaps(a: Rect, b: Rect) {
+  const x = a.x < b.x + b.width && b.x < a.x + a.width;
+  const y = a.y < b.y + b.height && b.y < a.y + a.height;
+  return x && y;
+}
+
 async function openPanel(page: Page) {
   const launcher = page.getByRole('button', { name: '새미나이 열기', exact: true });
   await expect(launcher).toBeVisible();
@@ -20,6 +28,118 @@ async function openPanel(page: Page) {
 
 test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('우측 런처: 화면 너비별 숨김과 초점 복귀', async ({ page }) => {
+    for (const width of [375, 761, 1366, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/');
+      const container = page.locator('[data-chat-launcher]');
+      const launcher = container.locator(':scope > button');
+      await expect(container).toHaveCSS('right', '8px');
+      await expect(launcher).toBeVisible();
+
+      await launcher.click();
+      const panel = page.getByRole('dialog', { name: '새미나이' });
+      await expect(panel).toBeVisible();
+      await expect(panel).toHaveCSS('right', '0px');
+      await expect(launcher).toBeHidden();
+
+      await panel.getByRole('button', { name: '새미나이 닫기' }).click();
+      await expect(panel).toHaveCount(0);
+      await expect(launcher).toBeVisible();
+      await expect(launcher).toBeFocused();
+
+      await launcher.click();
+      await expect(panel).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(panel).toHaveCount(0);
+      await expect(launcher).toBeVisible();
+      await expect(launcher).toBeFocused();
+    }
+  });
+
+  test('375px 홈·발표 생성의 우측 런처 여백을 확보한다', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto('/');
+    await expect(page.locator('.home-footer-content')).toHaveCSS('padding-right', '80px');
+    await page.goto('/pitch/new');
+    const launcher = page.locator('[data-chat-launcher] > button');
+    await expect(launcher).toBeVisible();
+    await expect(page.locator('.pitch-create-square > footer > div')).toHaveCSS(
+      'padding-right',
+      '64px',
+    );
+    const footerAction = page.locator('.pitch-create-square > footer').getByRole('button').last();
+    const launcherBox = await launcher.boundingBox();
+    const actionBox = await footerAction.boundingBox();
+    expect(launcherBox).not.toBeNull();
+    expect(actionBox).not.toBeNull();
+    expect(overlaps(launcherBox!, actionBox!)).toBe(false);
+  });
+
+  test('리포트 하단 링크는 런처에 가리지 않는다', async ({ page }) => {
+    for (const width of [375, 761, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/takes/' + TAKE_ID);
+      const link = page.getByRole('link', { name: '내 피치로' });
+      await expect(link).toBeVisible();
+      await link.scrollIntoViewIfNeeded();
+      const launcher = page.locator('[data-chat-launcher] > button');
+      await expect(launcher).toBeVisible();
+      const linkBox = await link.boundingBox();
+      const launcherBox = await launcher.boundingBox();
+      expect(linkBox).not.toBeNull();
+      expect(launcherBox).not.toBeNull();
+      expect(overlaps(linkBox!, launcherBox!)).toBe(false);
+      await link.click({ trial: true });
+    }
+  });
+
+  test('320~760px 오류 안내와 마지막 조작부 접근성', async ({ page }) => {
+    for (const width of [320, 340, 375, 760]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/pitch/new');
+      const container = page.locator('[data-chat-launcher]');
+      await expect(container).toBeVisible();
+      // 실제 오류 경계와 같은 aria-label로 CSS의 오류 안내 위치 조건을 확인합니다.
+      await container.evaluate((element) => {
+        // 실패 상태는 런처 대신 안내만 보이므로 테스트에서도 기존 버튼을 제거합니다.
+        element.querySelector(':scope > button')?.remove();
+        const warning = element.ownerDocument.createElement('section');
+        warning.setAttribute('aria-label', '새미나이 오류');
+        warning.style.height = '144px';
+        warning.style.width = '288px';
+        element.append(warning);
+      });
+      await expect(container).toHaveCSS('bottom', width < 360 ? '192px' : '144px');
+      await expect(page.locator('.pitch-create-square').first()).toHaveCSS(
+        'padding-bottom',
+        width < 360 ? '400px' : '352px',
+      );
+      const footer = page.locator('.pitch-create-square > footer');
+      const warningBox = await container.boundingBox();
+      const footerBox = await footer.boundingBox();
+      expect(warningBox).not.toBeNull();
+      expect(footerBox).not.toBeNull();
+      expect(warningBox!.y + warningBox!.height).toBeLessThanOrEqual(footerBox!.y);
+
+      // 끝부분 조작부까지 스크롤할 수 있어야 안내에 가리지 않습니다.
+      const criteria = page.locator('#create-criteria');
+      await expect(criteria).toBeVisible();
+      await criteria.evaluate((element) => {
+        const action = element.ownerDocument.createElement('button');
+        action.id = 'e2e-last-criteria-action';
+        action.textContent = '마지막 평가기준 버튼';
+        element.append(action);
+      });
+      await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
+      const actionBox = await page.locator('#e2e-last-criteria-action').boundingBox();
+      const expandedBox = await container.boundingBox();
+      expect(actionBox).not.toBeNull();
+      expect(expandedBox).not.toBeNull();
+      expect(actionBox!.y + actionBox!.height).toBeLessThan(expandedBox!.y);
+    }
+  });
 
   const screens = [
     { name: '홈', path: '/' },

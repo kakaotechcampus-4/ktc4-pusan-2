@@ -38,7 +38,8 @@ describe('chat route visibility', () => {
   it.each([
     ['/', 76],
     ['/pitches', 76],
-    ['/takes/123', 32],
+    ['/takes/123', 96],
+    ['/takes/123/processing', 32],
     ['/pitch/new', 88],
     ['/pitch/p1/edit', 88],
   ])('lifts the launcher on %s to %ipx', (path, bottom) => {
