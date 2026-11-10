@@ -1,5 +1,4 @@
-// 제품 웰컴(`frontend/src/features/onboarding/WelcomePage.tsx`) · 로그인(`features/auth/LoginPage.tsx`) ·
-// 개인정보 처리 동의(`features/auth/PrivacyConsentDialog.tsx`)의 설계서 샘플.
+// 제품 웰컴·로그인·개인정보 처리 동의 화면의 독립 설계서 샘플.
 // 문구는 제품과 같다. 움직이는 장면(ComfortScene) · 넘어가는 숫자(FlipNumber)는 자리만 두고, 로그인은 Google로 가지 않는다.
 import { useRef, type ReactNode } from 'react';
 import { publicUrl } from '@/lib/publicUrl';
@@ -12,6 +11,10 @@ type ScreenProps = { stateId: string; onNavigate: Navigate };
 
 const cta =
   'inline-flex items-center justify-center gap-6 border-2 border-ink bg-coral-deep px-6 py-3.5 font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-1 hover:bg-ink active:translate-x-1 active:translate-y-1 active:shadow-none';
+
+const SEMINI_IMAGE = publicUrl('semini.png');
+const PICO_ID_IMAGE = publicUrl('onboarding/pico-id.png');
+const CHICHI_ID_IMAGE = publicUrl('onboarding/chichi-id.png');
 
 const SECTIONS = [
   ['service', '서비스 소개'],
@@ -248,9 +251,93 @@ export function WelcomeScreen({ stateId, onNavigate }: ScreenProps) {
           <br />
           멀리 닿을 수 있도록.
         </h2>
-        <p className="mt-8 border-2 border-dashed border-line-strong p-6 text-sm text-stone">
-          연구실 소개 글 · 구성원(피코 교수 · 치치) 카드 자리
-        </p>
+        <div className="mb-6 mt-10 flex items-center justify-between gap-4">
+          <h3 className="text-xl font-bold">연구실 구성원</h3>
+          <span className="tabular-nums text-[10px] tracking-widest">LAB MEMBERS / 02</span>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          {[true, false].map((professor) => (
+            <article
+              key={String(professor)}
+              className={`border border-line-strong p-6 lg:p-8 ${professor ? 'bg-cream' : 'bg-coral-wash'}`}
+            >
+              <div className="mb-6 flex flex-wrap items-center gap-5 sm:flex-nowrap">
+                <figure className="w-28 shrink-0 border border-ink bg-panel p-1.5 shadow-[3px_3px_0_var(--color-line-strong)] lg:w-32">
+                  <img
+                    src={professor ? PICO_ID_IMAGE : CHICHI_ID_IMAGE}
+                    alt={
+                      professor
+                        ? '안경과 정장을 갖춘 공작새 피코 교수가 정면을 바라보는 픽셀 증명사진'
+                        : '아이보리와 갈색 깃털에 흰색 롱슬리브를 입은 뱁새 치치의 정면 픽셀 증명사진'
+                    }
+                    width={600}
+                    height={800}
+                    loading="lazy"
+                    className="aspect-[3/4] w-full object-cover [image-rendering:pixelated]"
+                  />
+                  <figcaption className="pt-2 text-center tabular-nums text-[9px] tracking-widest">
+                    {professor ? 'FACULTY / 001' : 'RESEARCHER / 002'}
+                  </figcaption>
+                </figure>
+                <div>
+                  <p className="tabular-nums text-[10px] tracking-widest">
+                    {professor ? 'DIRECTOR' : 'JUNIOR RESEARCHER'}
+                  </p>
+                  <h4 className="mb-2 mt-3 text-2xl font-extrabold lg:text-3xl">
+                    {professor ? '피코 교수' : '치치'}
+                  </h4>
+                  <p className="text-xs leading-6">
+                    {professor ? '연구 책임자 · 공작새' : '신입 연구원 · 뱁새'}
+                  </p>
+                  <p className="mt-3 text-xs font-bold text-ink">
+                    {professor ? '연구 분야: 말하기와 시선' : '연구 과제: 떨려도 끝까지 말하기'}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm leading-7">
+                {professor
+                  ? '단정한 정장과 안경 너머로, 작은 변화도 따뜻하게 알아봐 주는 공작새. 말이 막히면 잠시 기다려 주고, 용기 내어 끝낸 발표에는 먼저 수고했다는 인사를 건네요. 잘한 점은 함께 기뻐하고, 어려웠던 점은 하나씩 짚어 주며 치치가 자기 속도로 자라도록 곁을 지켜요.'
+                  : '흰색 롱슬리브와 스트릿 패션을 좋아하는 뱁새. 평소엔 스웨그 넘치지만 발표 앞에선 살짝 버벅여요. 가끔 멍하고 자주 허둥대도, 연습만큼은 진심. 피코 교수의 피드백에 울고 웃으며 한 번 더 도전해요.'}
+              </p>
+              <p className="mt-6 border-t border-ink/20 pt-5 font-bold">
+                {professor
+                  ? '“조금 떨려도 괜찮아요. 우리 하나씩, 같이 해봐요.”'
+                  : '“오늘은 어제보다 덜 떨릴지도! skrr”'}
+              </p>
+            </article>
+          ))}
+        </div>
+        <article className="mt-6 border border-line-strong bg-greige p-6 lg:p-8">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+            <div className="w-20 shrink-0 border border-ink bg-panel p-2 shadow-[3px_3px_0_var(--color-line-strong)]">
+              <img
+                src={SEMINI_IMAGE}
+                alt=""
+                width={64}
+                height={64}
+                className="aspect-square w-full object-contain [image-rendering:pixelated]"
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="tabular-nums text-[10px] tracking-widest">CHICHI'S FAVORITE APP</p>
+                <span className="border border-ink bg-coral-wash px-2 py-1 text-[10px] font-bold">
+                  AI 비서 앱
+                </span>
+              </div>
+              <h4 className="mt-3 text-2xl font-extrabold">새미나이 (Semini)</h4>
+              <p className="mt-3 text-sm leading-7">
+                치치가 발표를 준비하다 막히면 가장 먼저 찾는 AI 비서 앱이에요.
+              </p>
+              <p className="mt-2 text-sm leading-7">
+                지난 Take 기록을 함께 살펴보고 다음 연습 목표를 정하도록 도와줘요.
+              </p>
+              <p className="mt-5 border-t border-line-strong pt-4 text-sm font-bold">
+                “잠깐, 이건 새미나이한테 물어봐야겠다!” <span className="font-normal">— 치치</span>
+              </p>
+            </div>
+          </div>
+        </article>
       </section>
 
       <section id="faq" className="border-t border-line-strong px-6 py-20">

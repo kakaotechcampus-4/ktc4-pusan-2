@@ -35,7 +35,7 @@
 | 리허설 | `/takes/:takeId/rehearsal`(코칭) · `/takes/:takeId/exam`(실전) |
 
 - `/pitch/:pitchId/prepare`는 장치 점검으로 넘기는 옛 주소입니다(`prepare/PrepareRedirect.tsx`).
-- 장치 점검 · 리허설 · 실전은 휴대폰 · 태블릿에서 열지 않고 `/unsupported`로 보냅니다(`app/routes.tsx`의 `practicePaths`를 `DesktopGate`가 감쌈, #710). 분석 대기 · 재시도는 휴대폰에서도 열립니다.
+- 튜토리얼 진입(`/pitch/tutorial`) · 장치 점검 · 리허설 · 실전은 휴대폰 · 태블릿에서 열지 않고 `/unsupported`로 보냅니다(`app/routes.tsx`의 `practicePaths`를 `DesktopGate`가 감쌈, #710). 분석 대기 · 재시도는 휴대폰에서도 열립니다.
 
 지켜야 할 결정(시선 3값 · 1초 주기 · 시간 필드 규칙 · 끊겨도 발표는 계속 등)은 [frontend/AGENTS.md](../../../frontend/AGENTS.md) 1~9번이 기준입니다.
 
@@ -242,9 +242,10 @@ media/pcmCapture.ts (AudioWorklet → 16kHz Int16 100ms 프레임) → lib/sttSo
 
 | 화면 | 시작 조건 |
 |---|---|
-| 장치 점검 | 카메라 · 마이크 · 시선 기준점 |
+| 장치 점검 | 카메라 · 마이크 · 시선 기준점. 샘플 튜토리얼 피치에 `tutorial_block`이 있으면 시작 불가 |
 | 리허설 | **마이크와 서버 연결**(첫 `ready`). 카메라는 조건이 아닙니다 |
 
+- **튜토리얼 샘플 제한** — `GET /prepare`의 `tutorial_block`이 있으면 카메라 점검과 시선 보정을 시작하기 전에 샘플 재연습 불가를 안내하고 Take 생성을 막습니다. BE에서 이미 분석 중이거나 튜토리얼 리포트를 사용한 샘플을 제한합니다(#931).
 - 리허설 화면에서 카메라를 못 열면 마이크만으로 시작하고 시선만 뺍니다(#445 카메라만 못 열어도 시작이 멈추던 버그, `stage/openDevices.ts`).
 - 서버 연결이 필요한 이유: 첫 연결이 서버에서 Take를 시작합니다(`READY` → `RUNNING`). 그 전에 시작하면 기록이 남지 않습니다(`stage/startGate.ts`, #381 마이크 · 실시간 연결 없이 시작하지 않게 함).
 - 첫 `ready`를 15초 넘게 못 받으면 [다시 시도]를 보입니다(`startGate.ts` `CONNECT_SLOW_MS`). 누르면 소켓을 새로 만들고 처음부터 다시 셉니다. 끝내 붙지 않은 Take는 "이 연습은 시작하기 전에 끝났어" 화면으로 갑니다.

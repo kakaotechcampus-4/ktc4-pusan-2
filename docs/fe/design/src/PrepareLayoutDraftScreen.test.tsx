@@ -81,7 +81,7 @@ it('is explicitly a PM draft and keeps the product sample available separately',
 
 it('uses independent device examples and allows mode selection before devices are ready', async () => {
   await render();
-  expect(host.textContent).toContain('필수 0/3 준비');
+  expect(host.textContent).toContain('필수 0/4 준비');
   expect(button('Take 3 시작하기').disabled).toBe(true);
   expect(host.querySelectorAll('select')).toHaveLength(2);
   expect(host.querySelectorAll('button select')).toHaveLength(0);
@@ -89,17 +89,23 @@ it('uses independent device examples and allows mode selection before devices ar
   expect([...modes].every((mode) => !mode.disabled)).toBe(true);
   await act(async () => modes[1]!.click());
   await click('카메라·마이크 켜기');
-  expect(host.textContent).toContain('필수 2/3 준비');
+  expect(host.textContent).toContain('필수 2/4 준비');
   await click('시선 기준 잡기');
-  expect(host.textContent).toContain('필수 3/3 완료');
+  expect(host.textContent).toContain('필수 3/4 준비');
+  expect(button('Take 3 시작하기').disabled).toBe(true);
+  await click('목소리 재기');
+  await click('다 읽었어요');
+  expect(host.textContent).toContain('필수 4/4 완료');
+  expect(button('Take 3 시작하기').disabled).toBe(false);
   await click('Take 3 시작하기');
   expect(navigate).toHaveBeenCalledWith('stage', 'keyword');
 });
 
-it('keeps optional voice reading and all mission access inside the draft', async () => {
+it('keeps required voice reading and all mission access inside the draft', async () => {
   await render('ready');
   expect(button('Take 3 시작하기').disabled).toBe(false);
-  await click('목소리 재기');
+  await click('다시 읽기');
+  expect(button('Take 3 시작하기').disabled).toBe(true);
   expect(host.querySelector('.prepare-draft-mission-list')).toBeNull();
   expect(button('전체 미션 보기')).toBeDefined();
   await click('다 읽었어요');

@@ -12,6 +12,8 @@ export interface TakeHistoryRow {
   take_id: string;
   pitch_id: string;
   pitch_title: string;
+  /** First Take 튜토리얼 샘플 피치의 Take 인지 (BE #1166) */
+  is_demo: boolean;
   take_number: number;
   /** ISO 8601. 연습을 시작한 시각 */
   started_at: string;

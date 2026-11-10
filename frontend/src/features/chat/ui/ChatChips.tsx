@@ -14,7 +14,8 @@ export function ChipList({ chips }: { chips: readonly Chip[] }) {
   return (
     <ul aria-label="근거" className="mt-1 flex flex-wrap gap-1.5">
       {chips.map((chip) => (
-        <li key={chip.key}>
+        // 펼친 자료의 긴 주소가 칸을 넓혀 말풍선 밖으로 나가지 않게, 칸이 줄 너비보다 커지지 않게 합니다
+        <li key={chip.key} className="max-w-full min-w-0">
           <ChipView chip={chip} />
         </li>
       ))}
@@ -52,7 +53,10 @@ function ChipView({ chip }: { chip: Chip }) {
         {label}
       </button>
       {open && (
-        <dl id={id} className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs leading-5">
+        <dl
+          id={id}
+          className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 text-xs leading-5 [overflow-wrap:anywhere]"
+        >
           <dt className="text-stone">인용</dt>
           <dd>{chip.quote ?? MISSING_INFO}</dd>
           <dt className="text-stone">출처</dt>

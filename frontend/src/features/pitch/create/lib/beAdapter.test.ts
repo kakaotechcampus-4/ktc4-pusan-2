@@ -211,6 +211,7 @@ describe('수정 화면 — 발표 기본정보 · 저장된 평가기준', () =
     lower_deviation: 15,
     upper_deviation: 30,
     presentation_date: '2026-10-30',
+    is_demo: false,
   };
 
   it('단건 응답의 허용오차를 보존한다', () => {

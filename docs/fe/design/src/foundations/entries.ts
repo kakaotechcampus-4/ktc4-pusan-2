@@ -113,8 +113,7 @@ export const foundationEntries: GuideFoundation[] = [
     title: '반응형 기준',
     group,
     status: '제품에 있음',
-    summary:
-      'Tailwind 크기 기준, 설계서가 더한 one-screen, 무대 전용 기준, 확인할 크기 · 브라우저 확대.',
+    summary: 'Tailwind 크기 기준, 무대 전용 기준, 확인할 크기 · 브라우저 확대.',
     states: [
       {
         id: 'default',

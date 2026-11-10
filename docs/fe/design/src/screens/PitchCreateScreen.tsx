@@ -18,6 +18,96 @@ const GROUPS = ['슬라이드', '대본', '평가기준'] as const;
 type Kind = (typeof GROUPS)[number];
 type Preview = { kind: Kind | '매핑' | '슬라이드 확인' | '최종 확인'; version: number };
 const sections = ['슬라이드', '대본 연결', '발표정보', '평가기준'];
+/** 작성 예시는 실제 평가기준 지표와 연결되는 표현을 사용합니다. */
+const MEASURABLE_CRITERIA: { label: string; example: string; note?: string }[] = [
+  { label: '말 속도', example: '1분에 300자 이하로 말하기' },
+  { label: '말 사이 멈춤', example: '말 사이 멈춤은 5회 이하로 하기' },
+  { label: '긴 침묵', example: '긴 침묵은 2회 이하로 줄이기' },
+  {
+    label: '소리 크기',
+    example: '평소보다 3dB 이상 크게 말하기',
+    note: '장치 점검에서 잰 기준 목소리 대비 변화량(dB)으로 판정해요. 절대 음량(dB) 목표는 판정하지 않아요.',
+  },
+  { label: '군더더기 말', example: '군더더기 말은 5회 이하로 하기' },
+  {
+    label: '시선',
+    example: '청중을 70% 이상 바라보기',
+    note: '카메라가 없거나 시선을 측정할 수 없으면 판정할 수 없어요.',
+  },
+  {
+    label: '대본 의존도',
+    example: '대본을 읽으며 말하는 비율 20% 이하로 하기',
+    note: '말하는 동안 대본을 보는 비율을 시선으로 측정해요. 카메라가 필요해요.',
+  },
+  {
+    label: '대본 유사도',
+    example: '대본 내용의 80% 이상 전달하기',
+    note: '대본을 연결한 경우에 확인할 수 있어요.',
+  },
+];
+
+/** 칩은 입력 기능이 아니며, 하나의 예시만 칩 목록 아래에 표시합니다. */
+function CriteriaExamples() {
+  const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  const tooltipId = useId();
+  const active = MEASURABLE_CRITERIA.find((criterion) => criterion.label === activeLabel);
+
+  // 포커스를 이동시키지 않고 닫습니다. 마우스로만 열었을 때도 Esc가 작동합니다.
+  useEffect(() => {
+    if (activeLabel === null) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveLabel(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [activeLabel]);
+
+  return (
+    <div
+      className="rounded-lg border border-line bg-panel px-3 py-3"
+      onMouseLeave={(event) => {
+        if (!event.currentTarget.contains(document.activeElement)) setActiveLabel(null);
+      }}
+    >
+      <p className="text-sm font-bold">작성 가능한 평가 항목</p>
+      <ul aria-label="측정 가능한 항목" className="mt-2 flex flex-wrap gap-2">
+        {MEASURABLE_CRITERIA.map((criterion) => (
+          <li key={criterion.label}>
+            <button
+              type="button"
+              aria-label={`${criterion.label} 작성 예시 보기`}
+              aria-describedby={activeLabel === criterion.label ? tooltipId : undefined}
+              onMouseEnter={() => setActiveLabel(criterion.label)}
+              onFocus={() => setActiveLabel(criterion.label)}
+              onBlur={() => setActiveLabel(null)}
+              onClick={() => setActiveLabel(criterion.label)}
+              className="cursor-help rounded-full border border-line-strong bg-white px-3 py-1 text-xs font-bold hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              {criterion.label}
+              <span aria-hidden="true" className="ml-1 text-ink/60">
+                ⓘ
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {active && (
+        <div
+          id={tooltipId}
+          role="tooltip"
+          className="mt-2 rounded-lg border border-line-strong bg-white px-3 py-2 text-sm shadow-sm"
+        >
+          <p className="font-bold">{active.label} 작성 예시</p>
+          <p className="mt-1 leading-relaxed">{active.example}</p>
+          {active.note && <p className="mt-1 text-xs leading-relaxed text-ink/80">{active.note}</p>}
+        </div>
+      )}
+      <p className="mt-2 text-xs leading-relaxed text-ink/80">
+        칩에 마우스를 올리거나 눌러 예시를 확인해 보세요. 발표 시간은 발표정보에서 설정해 주세요.
+      </p>
+    </div>
+  );
+}
 
 function Icon({ kind }: { kind: 'folder' | 'caret' | 'doc' | 'check' }) {
   const paths = {
@@ -534,8 +624,38 @@ export function PitchCreateScreen({
                     <span>V1 · 3장 · PDF</span>
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <p role="status">{slidesConfirmed ? '확인 완료' : '업로드 완료 · 확인 필요'}</p>
+                <div className="mt-3">
+                  <span
+                    role="status"
+                    data-slide-review-state={slidesConfirmed ? 'confirmed' : 'pending'}
+                    className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-bold ${
+                      slidesConfirmed
+                        ? 'border-line-strong bg-panel'
+                        : 'border-coral bg-coral-wash text-coral-deep'
+                    }`}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      aria-hidden="true"
+                    >
+                      {slidesConfirmed ? (
+                        <path d="M3 8l3 3 7-7" />
+                      ) : (
+                        <>
+                          <path d="M8 2L15 14H1z" />
+                          <path d="M8 6v4m0 2v.5" />
+                        </>
+                      )}
+                    </svg>
+                    {slidesConfirmed ? '확인 완료' : '확인 필요'}
+                  </span>
+                </div>
+                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     className="create-secondary"
@@ -544,17 +664,6 @@ export function PitchCreateScreen({
                     슬라이드 확인
                   </button>
                 </div>
-                <details className="create-slide-preview">
-                  <summary>슬라이드 미리보기</summary>
-                  <SampleSlide page={0} version={1} />
-                  <button
-                    type="button"
-                    className="create-secondary"
-                    onClick={() => setPreview({ kind: '슬라이드', version: 1 })}
-                  >
-                    크게 보기
-                  </button>
-                </details>
               </>
             ) : (
               <div className="border-2 border-dashed border-line-strong bg-white p-8 text-center">
@@ -748,6 +857,9 @@ export function PitchCreateScreen({
                 <label className="mb-3 block font-bold" htmlFor={`${id}-criteria`}>
                   평가기준 작성
                 </label>
+                <div className="mb-3">
+                  <CriteriaExamples />
+                </div>
                 <textarea
                   id={`${id}-criteria`}
                   className="min-h-40 w-full border border-line-strong bg-white p-4"
@@ -757,7 +869,9 @@ export function PitchCreateScreen({
                     setCriteria([]);
                     setCriteriaSaved(false);
                   }}
-                  placeholder="핵심 주장을 먼저 말하고, 근거와 출처를 설명하고 싶어요."
+                  placeholder={
+                    '예: 군더더기 말은 5회 이하로 줄이고 싶어요.\n예: 청중을 70% 이상 바라보고 싶어요.'
+                  }
                 />
                 <button
                   type="button"
@@ -773,6 +887,12 @@ export function PitchCreateScreen({
               </div>
               <div>
                 <h3 className="mb-3 font-bold">정리된 평가기준</h3>
+                {criteria.length > 0 && (
+                  <p className="mb-3 text-xs text-ink/80">
+                    숫자 목표가 있어도 측정 지표와 연결되지 않으면 달성 여부를 판정하지 않을 수
+                    있어요.
+                  </p>
+                )}
                 {criteria.length ? (
                   <ol className="list-decimal space-y-3 pl-5">
                     {criteria.map((text) => (

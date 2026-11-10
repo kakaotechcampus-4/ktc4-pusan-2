@@ -20,6 +20,7 @@ const res: PrepareResponse = {
   newer_script: null,
   next_take_number: 4,
   default_script_mode: 'KEYWORD',
+  tutorial_block: null,
   missions: null,
 };
 

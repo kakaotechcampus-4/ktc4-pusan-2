@@ -47,7 +47,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 
 `npm run test:e2e`(Playwright, 목 서버를 3100 포트에 띄워 화면을 끝까지 돌림)는 CI의 `frontend-e2e` job이 PR마다 돌립니다. 아직 필수 검사가 아니라 실패해도 머지가 막히지 않으니 PR 검사 결과를 직접 확인합니다. 화면 · `src/mocks/` · 통신 계층을 고쳤으면 올리기 전에 로컬에서도 돌려 봅니다.
 
-E2E는 화면별 파일(`e2e/*.e2e.ts`)로 나눠 둡니다. 대화(`chat`) · 리포트(`report`) · 분석 대기와 대본 확인(`processing`) · 홈(`home`) · 장치 점검(`device-check`) · Take 기록과 비교(`takes`) · 피치 수정(`pitch`) · 마이페이지와 로그아웃 · 없는 주소(`account`)입니다. 여러 파일이 함께 쓰는 목 피치 id · 이름은 `e2e/fixtures.ts`에 둡니다. 시선 모델 파일(`public/models`)은 저장소에 없어 E2E에서 시선 기준은 '사용 불가'이고, 그래서 Take 시작 · 리허설 무대는 E2E로 보지 않습니다.
+E2E는 화면별 파일(`e2e/*.e2e.ts`)로 나눠 둡니다. 대화(`chat`) · 리포트(`report`) · 분석 대기와 대본 확인(`processing`) · 홈(`home`) · 장치 점검(`device-check`) · Take 기록과 비교(`takes`) · 피치 드롭다운(`pitch-select`) · 피치 수정(`pitch`) · 마이페이지와 로그아웃 · 없는 주소(`account`)입니다. 여러 파일이 함께 쓰는 목 피치 id · 이름은 `e2e/fixtures.ts`에 둡니다. 시선 모델 파일(`public/models`)은 저장소에 없어 E2E에서 시선 기준은 '사용 불가'이고, 그래서 Take 시작 · 리허설 무대는 E2E로 보지 않습니다.
 
 실서버로 붙일 때 (W8): `.env.local`에 `VITE_USE_MOCK=false`
 

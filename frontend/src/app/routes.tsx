@@ -6,6 +6,7 @@ import {
   SttDevPage,
   PolicyPage,
   DeviceCheckPage,
+  FirstTakePage,
   PitchCreatePage,
   PitchEditPage,
   RehearsalPage,
@@ -49,6 +50,7 @@ const routes = [
   { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <AboutPage /> },
   { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <HomePage /> },
   { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <PitchCreatePage /> },
+  { path: '/pitch/tutorial', title: '튜토리얼 | 피치코치', element: <FirstTakePage /> },
   { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <PitchEditPage /> },
   { path: '/takes',       title: 'Take 기록 | 피치코치', element: <TakesPage /> },
   // ★ Take는 준비 화면의 시작 CTA에서 생긴다.
@@ -96,6 +98,7 @@ const publicPaths = [
 // 카메라 · 마이크로 연습하는 화면. 휴대폰 · 태블릿에서는 /unsupported 로 보냅니다 (#710).
 // 분석 대기 · 대본 확인 · 재시도 같은 리포트 쪽은 모바일에서도 열립니다.
 const practicePaths = [
+  '/pitch/tutorial',
   '/pitch/:pitchId/device-check',
   '/takes/:takeId/rehearsal',
   '/takes/:takeId/exam',
@@ -110,6 +113,7 @@ const appHeaderPaths = [
   '/me',
   '/takes/:takeId/retry',
   '/pitch/new',
+  '/pitch/tutorial',
   '/pitch/:id/edit',
   '/pitch/:pitchId/device-check',
 ];
