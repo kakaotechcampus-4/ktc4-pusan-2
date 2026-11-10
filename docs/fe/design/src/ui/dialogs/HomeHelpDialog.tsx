@@ -22,7 +22,7 @@ const steps = [
 const chatGuide = [
   [
     '채팅 열기',
-    '홈·연습 기록 등 지원되는 화면의 왼쪽 아래에서 새미나이 열기를 누르세요. 실제 발표 연습 중에는 버튼이 보이지 않아요.',
+    '홈·연습 기록 등 지원되는 화면의 오른쪽 아래에서 새미나이 열기를 누르면 오른쪽에 채팅 패널이 열려요. 장치 점검·발표 연습 중에는 버튼이 보이지 않아요.',
   ],
   [
     '대화 관리',
@@ -55,7 +55,7 @@ function ChatGuide() {
       <figure className="min-w-0">
         <img
           src={publicUrl('help/chat-agent.svg')}
-          alt="새미나이 채팅 설명용 목업. 1 왼쪽 아래 채팅 버튼, 2 상단 새 대화·대화 목록·기억 설정·닫기, 3 전체·피치 대화 범위, 4 기억 없이 대화 스위치, 5 할 수 있는 일과 질문 예시, 6 메시지 입력칸을 번호로 나타냅니다."
+          alt="새미나이 채팅 설명용 목업. 1 오른쪽 아래 채팅 버튼과 오른쪽 패널, 2 상단 새 대화·대화 목록·기억 설정·닫기, 3 전체·피치 대화 범위, 4 기억 없이 대화 스위치, 5 할 수 있는 일과 질문 예시, 6 메시지 입력칸을 번호로 나타냅니다."
           width={1040}
           height={600}
           loading="lazy"
@@ -146,21 +146,24 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                       <figcaption className="mb-3 text-sm font-bold">시작 전 장치 점검</figcaption>
                       <img
                         src={publicUrl('help/device-check.svg')}
-                        alt="장치 점검 화면 목업. 왼쪽 카메라와 오디오 입력, 오른쪽 장비 준비·이번 Take 미션·발표 중 대본 표시, 하단의 Take 시작 버튼이 있습니다."
+                        alt="장치 점검 화면 목업. 예시 피치 제목과 TAKE 배지, 왼쪽 카메라·오디오 입력, 오른쪽 장비 준비(카메라·마이크·시선 기준·기준 목소리)·이번 Take 미션·발표 중 대본 표시, 오른쪽 Take 시작 버튼이 있습니다."
                         width={1040}
                         height={600}
                         loading="lazy"
                         className="block h-auto w-full border border-line-strong bg-white"
                       />
                       <p className="mt-2 text-xs text-stone">
-                        카메라·마이크·시선 기준과 기준 목소리 측정을 모두 완료해야 연습을 시작할 수 있어요.
+                        카메라·마이크·시선 기준과 기준 목소리를 확인해 주세요. 기준 목소리는 시작 조건이며, 같은 환경에서 잰 값을 다시 사용하거나 안내된 대체 방법을 선택할 수 있어요.
+                      </p>
+                      <p className="mt-2 text-xs text-stone">
+                        장치 점검 중에는 새미나이 채팅 버튼이 보이지 않아요. 홈이나 연습 기록 화면에서 사용할 수 있어요.
                       </p>
                     </figure>
                     <figure className="min-w-0">
                       <figcaption className="mb-3 text-sm font-bold">발표 연습 화면</figcaption>
                       <img
                         src={publicUrl('help/rehearsal-stage.svg')}
-                        alt="발표 화면 목업. 1 슬라이드, 2 카메라, 3 음량, 4 피코 코치, 5 대본, 6 키 안내, 7 발표 끝내기, 8 시선 테두리 범례."
+                        alt="발표 연습 화면 목업. 1 현재 슬라이드와 다음 슬라이드, 2 오른쪽 카메라, 3 음량 막대, 4 가운데 아래 피코 코치, 5 맨 아래 대본, 6 코치 아래 마우스·키보드 이동 안내, 7 오른쪽 위 비활성 발표 끝내기 버튼, 8 시선 테두리와 범례."
                         width={1040}
                         height={600}
                         loading="lazy"
@@ -190,8 +193,8 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
           </Link>
         </div>
         <p className="mt-8 border border-line-strong bg-cream p-4 text-sm leading-7">
-          현재 발표 연습은 데스크톱 Chrome 브라우저에서만 지원해요. 도움말을 닫으면 보던 목록에서
-          이어갈 수 있어요.
+          데스크톱 최신 Google Chrome에서 연습하는 것을 권장해요. Edge에서는 시선 추적이 정상적으로
+          작동하지 않을 수 있어요. 도움말을 닫으면 보던 목록에서 이어갈 수 있어요.
         </p>
       </div>
     </dialog>
