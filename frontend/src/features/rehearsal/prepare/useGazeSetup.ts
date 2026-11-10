@@ -35,7 +35,7 @@ export const CALIBRATION_FAIL_MESSAGE: Record<SetupFailReason, string> = {
 /** 시선 분석을 켤 수 없는 이유별 안내 — 브라우저 · 워커 · 엔진(모델 파일) 순으로 봅니다 */
 function unavailableMessage(unsupported: boolean, workerFailed: boolean): string {
   if (unsupported)
-    return '이 브라우저에서는 시선 분석을 쓸 수 없어요. 최신 Chrome 이나 Edge 에서 열어 주세요.';
+    return '이 브라우저에서는 시선 분석을 쓸 수 없어요. 최신 Google Chrome에서 열어 주세요.';
   if (workerFailed) return '시선 분석이 멈췄어요. 페이지를 새로고침해 주세요.';
   return '시선 모델 파일을 불러오지 못했어요. 새로고침해도 그대로면 팀에 알려 주세요.';
 }
