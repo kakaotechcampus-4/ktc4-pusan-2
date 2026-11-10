@@ -139,6 +139,17 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(text).toContain('일부 장이 평가에서 제외됐어요');
   });
 
+  it('지난 Take 범위 모양이 틀리면 지난 Take 비교만 숨기고 이번 Take 결과는 그대로 보입니다 (#1157 리뷰)', () => {
+    const prev = contentMeasured.previous!;
+    const text = textOf({
+      ...contentMeasured,
+      previous: { ...prev, scope: {} } as unknown as typeof prev,
+    });
+    expect(text).not.toContain(CONTENT_BROKEN_TEXT);
+    expect(text).toContain('핵심 내용 전달률50%잠정');
+    expect(text).not.toContain('지난 Take보다');
+  });
+
   it('확정 값에는 잠정 배지가 없습니다 (#1157 리뷰)', () => {
     const ok = (m: Metric): Metric => ({ ...m, state: 'ok', reason_codes: [] });
     const text = textOf(

@@ -183,6 +183,18 @@ describe('지난 Take 대비', () => {
     });
     expect(noScope).toEqual({ takeNumber: 2, delta: 8, partial: false });
   });
+
+  it('지난 Take 범위 · 값의 모양이 틀리면 비교만 숨기고 던지지 않습니다 (#1157 리뷰)', () => {
+    const prev = contentMeasured.previous!;
+    const broken = (patch: object) =>
+      previousDelta({ ...contentMeasured, previous: { ...prev, ...patch } as typeof prev });
+    // 양쪽 전달률은 숫자인데 범위가 빈 객체 · 제외 목록이 배열이 아님
+    expect(() => broken({ scope: {} })).not.toThrow();
+    expect(broken({ scope: {} })).toBeNull();
+    expect(broken({ scope: { excluded: 'x' } })).toBeNull();
+    // 전달률이 숫자가 아님
+    expect(broken({ delivery: { ...prev.delivery!, value: '0.4' } })).toBeNull();
+  });
 });
 
 describe('수치 정확도 한 줄', () => {

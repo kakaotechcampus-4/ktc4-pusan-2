@@ -249,15 +249,27 @@ export interface PreviousDelta {
  * 지난 Take 대비. 기능 버전이 같고 양쪽 전달률이 모두 숫자일 때만 냅니다 (#1154 3절 9번).
  * BE 는 지난 Take 값을 그대로 넘겨 칸이 null 일 수 있습니다 — 그러면 비교하지 않습니다
  */
+/**
+ * 지난 Take 의 제외된 장 수. BE(#1156)는 지난 Take 값을 검사 없이 그대로 실으므로 모양을 여기서 봅니다.
+ * 범위가 없으면(null) 0 — "일부 장 제외" 안내만 붙이지 않습니다. 모양이 틀리면(`{}` 등) null — 비교 자체를 숨깁니다
+ */
+function previousExcluded(scope: unknown): number | null {
+  if (scope === null || scope === undefined) return 0;
+  const excluded = (scope as { excluded?: unknown }).excluded;
+  return Array.isArray(excluded) ? excluded.length : null;
+}
+
 export function previousDelta(status: ContentStatus): PreviousDelta | null {
   const prev = status.previous;
   const now = status.summary?.delivery.value ?? null;
-  const before = prev?.delivery?.value ?? null;
-  if (!prev || now === null || before === null) return null;
+  // 지난 Take 값은 검사를 거치지 않아 숫자가 아닐 수 있습니다
+  const before: unknown = prev?.delivery?.value ?? null;
+  if (!prev || now === null || typeof before !== 'number' || !Number.isFinite(before)) return null;
   const mine = featureVersion(status.criteria_version);
   if (mine === null || mine !== featureVersion(prev.criteria_version)) return null;
-  // 범위를 모르면 "일부 장 제외" 안내를 붙이지 않습니다
-  const prevExcluded = prev.scope?.excluded.length ?? 0;
+  // 지난 Take 범위의 모양이 틀리면 지난 Take 비교만 숨기고 이번 Take 결과는 그대로 둡니다 (#1157 리뷰)
+  const prevExcluded = previousExcluded(prev.scope);
+  if (prevExcluded === null) return null;
   return {
     takeNumber: prev.take_number,
     delta: Math.round((now - before) * 100),
