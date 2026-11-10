@@ -1,4 +1,4 @@
-// Draft #1105 First Take 화면의 정적 설계서 샘플. 실제 API·PDF 생성은 실행하지 않는다.
+// 머지된 #1105 First Take 화면의 정적 설계서 샘플. 실제 API·PDF 생성은 실행하지 않는다.
 import type { Navigate } from './shared';
 
 const MISSION_CARDS = [
@@ -12,7 +12,8 @@ const MISSION_CARDS = [
 export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const pending = stateId === 'pending';
   const error = stateId === 'error';
-  const used = stateId === 'used';
+  const used = stateId === 'used' || stateId === 'used-no-pitch';
+  const usedWithHistory = stateId === 'used';
 
   return (
     <div className="pitch-create flex min-h-dvh flex-col bg-greige px-6 py-10 text-ink lg:px-10">
@@ -56,22 +57,35 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
         )}
         {error && (
           <p role="alert" className="mt-3 text-sm font-bold text-coral-deep">
-            요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.
+            샘플 발표를 준비하지 못했어요. 잠시 뒤 다시 시도해 주세요.
           </p>
         )}
         {used && (
           <section role="alert" className="mt-6 border-2 border-ink bg-cream p-5">
             <h2 className="font-bold">튜토리얼 리포트를 이미 받았어요</h2>
             <p className="mt-2 text-sm leading-7">
-              샘플 발표로는 더 연습할 수 없어요. 내 자료로 새 피치를 만들어 계속 연습할 수 있어요.
+              샘플 발표로는 더 연습할 수 없어요.{' '}
+              {usedWithHistory && '지난 연습은 Take 기록에서 볼 수 있고, '}내 자료로 새 피치를
+              만들면 계속 연습할 수 있어요.
             </p>
-            <button
-              type="button"
-              onClick={() => onNavigate('pitch-create')}
-              className="mt-4 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold"
-            >
-              새 피치 만들기
-            </button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => onNavigate('pitch-create')}
+                className="border-2 border-ink bg-panel px-4 py-2 text-sm font-bold"
+              >
+                새 피치 만들기
+              </button>
+              {usedWithHistory && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('takes')}
+                  className="border-2 border-ink bg-cream px-4 py-2 text-sm font-bold"
+                >
+                  샘플 Take 기록 보기
+                </button>
+              )}
+            </div>
           </section>
         )}
         <section className="mt-10 border-2 border-ink bg-panel p-6">
