@@ -72,7 +72,7 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
 
 /**
  * 오른쪽 아래 런처의 기본 하단 여백(px). 홈·피치 목록은 통합 푸터 위로 올립니다 (#1112).
- * 그 외 기본값은 32px, 생성·수정는 88px(#941), 리포트는 하단 동작 버튼을 피하도록 96px입니다.
+ * 그 외 기본값은 32px, 생성·수정 화면은 88px(#941), 리포트는 하단 동작 버튼을 피하도록 96px입니다.
  * 좁은 생성·수정 화면의 최종 위치는 index.css에서 결정합니다 (#1104).
  */
 const launcherLifts: [pattern: string, bottom: number][] = [

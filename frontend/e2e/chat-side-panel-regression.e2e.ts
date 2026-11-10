@@ -118,7 +118,7 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
       warning.style.width = '288px';
       element.append(warning);
     });
-    await expect(container).toHaveCSS('bottom', '96px');
+    await expect(container).toHaveCSS('bottom', '144px');
     const footer = page.locator('.pitch-create-square > footer');
     const warningBox = await container.boundingBox();
     const footerBox = await footer.boundingBox();
