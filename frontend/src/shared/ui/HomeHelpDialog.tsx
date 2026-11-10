@@ -70,8 +70,9 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
             </li>
           ))}
         </ol>
+        {/* 사용방법 단계(위 h3)와 같은 층이 아니라 제목 대신 굵은 글자로 둡니다 */}
         <div className="mt-8 border-2 border-ink bg-coral-wash p-4">
-          <h3 className="font-bold">직접 연습하며 익히고 싶나요?</h3>
+          <p className="font-bold">직접 연습하며 익히고 싶나요?</p>
           <p className="mt-2 text-sm leading-7">준비된 PDF와 대본으로 첫 미션을 진행해 보세요.</p>
           <Link
             to="/pitch/tutorial"
