@@ -19,7 +19,10 @@ export function PitchSelectPreview({
   const [selected, setSelected] = useState(comparing ? 'p1' : '');
   const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === selected));
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === selected),
+  );
   const selectedOption = options[selectedIndex]!;
 
   function choose(index: number) {
@@ -93,11 +96,7 @@ export function PitchSelectPreview({
             viewBox="0 0 12 12"
             className={`size-3 shrink-0 ${open ? 'rotate-180' : ''}`}
           >
-            <path
-              className="fill-none stroke-ink"
-              strokeWidth="1.5"
-              d="M2.5 4.5l3.5 3.5l3.5-3.5"
-            />
+            <path className="fill-none stroke-ink" strokeWidth="1.5" d="M2.5 4.5l3.5 3.5l3.5-3.5" />
           </svg>
         </div>
         {open && (
