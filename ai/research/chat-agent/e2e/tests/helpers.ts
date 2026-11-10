@@ -71,7 +71,8 @@ export async function login(context: BrowserContext, t: Seeded): Promise<void> {
 /** 대화창의 접근성 이름 — FE 화면 이름(새미나이, 기능 문서 12-4)이 바뀌면 여기만 고친다 */
 const LAUNCHER = '새미나이 열기';
 const PANEL = '새미나이';
-const INPUT = '새미나이에게 메시지 보내기...';
+/** 입력창 placeholder 의 앞부분(부분 일치). 끝의 말줄임표는 FE 가 바꾼 적이 있어(`...` → `…`, #1159) 넣지 않는다 */
+const INPUT = '새미나이에게 메시지 보내기';
 
 /** 지금 화면의 런처를 눌러 채팅 패널을 연다(새로고침 뒤 다시 열 때도) */
 export async function openPanel(page: Page): Promise<Locator> {
