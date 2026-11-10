@@ -71,7 +71,7 @@ describe('화면 설계서 목록', () => {
       ...new Set(draftScreens.flatMap((screen) => screen.draftPrs ?? [])),
     ].sort((a, b) => a - b);
     expect(referencedPrs).toEqual(pending);
-    expect(screens.find((screen) => screen.id === 'home')?.draftPrs).toEqual([944, 1105]);
+    expect(screens.find((screen) => screen.id === 'home')?.draftPrs).toEqual([1105]);
     expect(screens.find((screen) => screen.id === 'tutorial')?.draftPrs).toEqual([1105]);
     for (const id of ['stage', 'processing-loading', 'semini']) {
       expect(screens.find((screen) => screen.id === id)?.status).toBe('제품에 있음');
