@@ -14,8 +14,8 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
     title: '대본에서 벗어나기',
     columns: ['대본 응시', '대본 읽기 횟수'],
     rows: [
-      ['발표 전체', ['27%', '22%', '나아짐', 'good'], ['4회', '2회', '나아짐', 'good']],
-      ['3번 장', ['70%', '62%', '나아짐', 'good'], null],
+      ['발표 전체', ['27%', '22%', '개선 ↑', 'good'], ['4회', '2회', '개선 ↑', 'good']],
+      ['3번 장', ['70%', '62%', '개선 ↑', 'good'], null],
     ],
   },
   {
@@ -24,19 +24,19 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
     rows: [
       [
         '발표 전체',
-        ['14회', '9회', '방향 없음', 'muted'],
-        ['3회', '1회', '나아짐', 'good'],
-        ['05:12', '04:38', '나아짐', 'good'],
+        ['14회', '9회', '방향 판단 불가', 'muted'],
+        ['3회', '1회', '개선 ↑', 'good'],
+        ['05:12', '04:38', '개선 ↑', 'good'],
         null,
       ],
-      ['1번 장', null, null, null, ['01:10', '00:58', '나아짐', 'good']],
-      ['2번 장', null, null, null, ['00:52', '00:55', '나빠짐', 'bad']],
+      ['1번 장', null, null, null, ['01:10', '00:58', '개선 ↑', 'good']],
+      ['2번 장', null, null, null, ['00:52', '00:55', '악화 ↓', 'bad']],
     ],
   },
   {
     title: '군더더기 없이',
     columns: ['군더더기'],
-    rows: [['발표 전체', ['10회', '7회', '나아짐', 'good']]],
+    rows: [['발표 전체', ['10회', '7회', '개선 ↑', 'good']]],
   },
 ];
 
@@ -78,7 +78,7 @@ function ComparisonSummary() {
               .filter((row) => row[index + 1]?.[3] === 'bad')
               .map((row) => row[0]);
             const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
-            const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 없음').length;
+            const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 판단 불가').length;
             const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
             const directionUnknown = slides.length > 0 && unknown === slides.length && same === 0;
             return (
@@ -91,12 +91,12 @@ function ComparisonSummary() {
                 )}
                 {slides.length > 0 && !directionUnknown && (
                   <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                    <div className="border border-line-strong bg-panel p-3">
-                      <p className="font-bold">나아진 슬라이드</p>
+                    <div className="border border-coral-deep bg-coral-wash p-3">
+                      <p className="font-bold text-ink">개선된 슬라이드</p>
                       <p className="mt-1">{improved.join(', ') || '없음'}</p>
                     </div>
-                    <div className="border border-line-strong bg-panel p-3">
-                      <p className="font-bold">나빠진 슬라이드</p>
+                    <div className="border border-line-strong bg-cream p-3">
+                      <p className="font-bold text-ink">다시 점검할 슬라이드</p>
                       <p className="mt-1">{worsened.join(', ') || '없음'}</p>
                     </div>
                   </div>
@@ -116,9 +116,17 @@ function ComparisonSummary() {
                   </p>
                 )}
                 {overall && (
-                  <p className="mt-2 text-xs text-ink/80">
-                    발표 전체: {overall[0]} → {overall[1]} · {overall[2]}
-                  </p>
+                  <div
+                    className={`mt-2 border p-3 text-sm ${overall[3] === 'good' ? 'border-coral-deep bg-coral-wash' : 'border-line-strong bg-cream'}`}
+                  >
+                    <p className="text-xs font-bold text-stone">발표 전체</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <span className="tabular tabular-nums font-bold text-ink">{overall[0]}</span>
+                      <span aria-hidden="true" className="text-stone">→</span>
+                      <span className="tabular tabular-nums font-bold text-ink">{overall[1]}</span>
+                      <Badge tone={overall[3]}>{overall[2]}</Badge>
+                    </div>
+                  </div>
                 )}
               </section>
             );
