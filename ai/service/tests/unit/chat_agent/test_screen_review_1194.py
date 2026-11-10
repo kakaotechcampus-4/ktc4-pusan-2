@@ -94,3 +94,16 @@ def test_finished_plan_drops_steps_that_never_ran() -> None:
     meta = _meta(("최근 발표 기록 확인", "list_pitches"), ("답 쓰기", "answer"))
     plan = progress.finish_plan(meta, ctx.registry, CFG, "DONE", answered=True)
     assert [p["step"] for p in plan] == ["답 쓰기"]
+
+
+def test_metric_only_issue_claim_is_judged_by_the_problem_segment() -> None:
+    """'대본 응시 비율이 너무 높은거같아'(문제 낱말 없음): 대본 의존 차원의 문제는 대본 응시 하나뿐이라 그 문제 구간으로 판정한다
+    ('확인 불가'가 아니다). 방향이 둘인 말 속도는 낱말이 있어야 한다."""
+    from .test_claims import NEG, mk, run, t5
+
+    d = mk("대본 응시 비율이 너무 높은거같아", op="ISSUE", dim="script_independence", metric="script_ratio", polarity=NEG)
+    with_seg = run(d, t5(issues=[("GAZE_ON_SCRIPT", 3, True)]), focus="take-5")
+    assert with_seg.verdict == "SUPPORTED" and "대본 응시" in with_seg.evidence_phrase
+    assert run(d, t5(), focus="take-5").verdict == "CONTRADICTED"  # 대본 응시 구간이 없으면 반박
+    pace = mk("말 속도가 너무 이상한 거 같아", op="ISSUE", dim="pacing_rhythm", metric="cpm", polarity=NEG)
+    assert run(pace, t5(issues=[("PACE_FAST", 2, True)]), focus="take-5").reason_code == "NO_ISSUE_WORD"

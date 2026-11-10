@@ -46,6 +46,9 @@ SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 #: 토론으로 고른 문장), 그에 맞춰 g-09 · g-10 · g-11 참고 문헌을 본문이 기대는 장으로
 #: guides-9: 사용법 카드 25장 FE 검수 반영 · 검수 완료(#1129 FE 검수 댓글의 전 → 후: u-01 · u-07 · u-09 · u-11 · u-15 · u-16 ·
 #: u-20 · u-22 · u-23 · u-24, u-24 화면을 분석 중 확인 화면 `take_confirm`으로)
+#: guides-10: 사용법 카드를 지금 FE 코드(#1171 · #1179 뒤)와 대조해 고침(Issue #1194) — 기준 목소리 필수(u-11 · u-14), 버튼 · 창 이름
+#: (u-02 슬라이드 확인 · u-06 평가기준 확인 완료 · u-13 시선 기준 잡기 · u-24 비슷하게 들린 말 확인하기), 대본 구분 형식(u-03),
+#: 판정 지표 이름(u-07 소리 크기), 대화창 화면 이름 새미나이(u-25), 화면 문구 주제어
 CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-1": "48aa04e52f8f16abacb6c87d37d5536daf39e4d3c4aac05bf1550cad9dd6ad89",
     "guides-2": "a2b1f11aaf653da307afce2ec0bfe8d5a141fe08d3faed1e803c955ffe619823",
@@ -56,6 +59,7 @@ CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-7": "421b5e210d49f540960b512675dc118fd90321d6cb631184d460512597a8e9fd",
     "guides-8": "f4ace2bfa2f4ca32dfee2367c649dac72255e2a961c75814cdb12498b0de3946",
     "guides-9": "318eaeb501091aabd397643c8b4fafad438a5aa2e0270ec630c9e966a114a956",
+    "guides-10": "f42ba8316b15e10867f895ec4436db9af9dbbecf7f9c4e7491fc1aabe334b696",
 }
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),

@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -60,7 +61,12 @@ CORE_KINDS: dict[str, str] = {
     SystemText.CANNOT_ANSWER.value: "ANSWER",
     SystemText.ANSWER_INCOMPLETE.value: "ANSWER",
     SystemText.USAGE_NO_GUIDE.value: "USAGE",
+    SystemText.MEASUREMENT_FIXED.value: "MEASURE",
 }
+#: 답이 있어도 다음 걸음을 붙이는 상황(리뷰 없음 · 측정값 이의 — 코치 기록 · 판단 답과 함께 나간다)
+_WITH_ANSWER = ("REVIEW", "MEASURE")
+#: 답에 이미 다음 Take · 연습에서 확인할 방법이 있다(측정값 이의의 다음 걸음을 되풀이하지 않는다)
+_NEXT_TAKE = re.compile(r"다음\s*(Take|연습)")
 
 #: 대안 후보 수(피치 제목 · Take 번호)와 선택지 예시 수
 MAX_CANDIDATES = 3
@@ -175,6 +181,8 @@ def _first_time(kind: str, ctx: Any) -> list[str]:
         return [SystemText.NEXT_ASK_FORM.value]
     if kind == "USAGE":
         return [_next_step(ctx).value]
+    if kind == "MEASURE":
+        return [SystemText.NEXT_MEASURE_CHECK.value]
     return []
 
 
@@ -231,13 +239,18 @@ def follow_up(
             texts += [SystemText.REPEAT_SAME_REASON.value, SystemText.REPEAT_SPLIT.value]
     seen: set[str] = set()
     # 답이 이미 있으면(기록 · 판단 · 자료 · 행동 결과 문장) 대안은 붙이지 않는다: 섞인 요청의 범위 밖 안내 · 끝에 붙는 안내는
-    # 그 부분의 핵심 문장으로 충분하다. 리뷰 없음은 코치 기록 답과 함께 다음 걸음을 붙인다
+    # 그 부분의 핵심 문장으로 충분하다. 리뷰 없음 · 측정값 이의는 답과 함께 다음 걸음을 붙인다
     answered = any(c.kind != "SYSTEM" for c in claims)
     for c in claims:
         kind = CORE_KINDS.get(c.text) if c.kind == "SYSTEM" else None
-        if kind is None or kind in seen or (answered and kind != "REVIEW"):
+        if kind is None or kind in seen or (answered and kind not in _WITH_ANSWER):
             continue
         seen.add(kind)
+        if kind == "MEASURE":
+            # 다음 걸음만(대안 · 선택지 없음). 모델이 이미 다음 Take 확인을 말했으면 붙이지 않는다
+            if not any(_NEXT_TAKE.search(x.text) for x in claims):
+                texts += _first_time(kind, ctx)
+            continue
         if prev is not None and c.text in prev:
             texts += _choices(kind, ctx) or _first_time(kind, ctx)[-1:]
         else:

@@ -58,6 +58,9 @@ class SystemText(StrEnum):
     MEASUREMENT_FIXED = "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요."
     OMITTED = "자료 크기 제한으로 일부 상세를 읽지 못했어요."
     UNMEASURED = "이 항목은 측정되지 않았어요."
+    #: 한 턴 전체 검사(output_guard.py `UNVERIFIABLE_NO_CRITERION`): '확인 불가' 판정인데 값은 기록에 있고 판단 기준(리뷰 판정 ·
+    #: 문제 구간 · 대화 목표)은 없다고 확인됐을 때, 값은 인정하고 기준이 없음을 말한다(6-9, Issue #1194)
+    VALUE_NO_CRITERION = "기록된 값은 있지만 높고 낮음을 판단할 기준은 이 기록에 없어요."
     METRIC_UNMEASURED = "이 지표는 측정되지 않아 비교할 수 없어요."
     INVALID_DATA = "기록 값이나 기준이 올바르지 않아 비교하거나 판정할 수 없어요."
     RECORD_RECHECKED = "갱신된 기록을 다시 확인했어요."
@@ -128,6 +131,8 @@ class SystemText(StrEnum):
     NEXT_PICK_TAKE = "그중 볼 Take를 말씀해 주시면 그 기록을 같이 볼게요."
     NEXT_AFTER_REVIEW = "리뷰가 끝나면 점수와 미션도 같이 볼 수 있어요."
     NEXT_ASK_FORM = "궁금한 Take와 항목을 함께 말씀해 주시면 바로 확인할게요."
+    #: 측정값 이의(`MEASUREMENT_FIXED`) 뒤 — 답에 다음 Take · 연습에서 확인할 방법이 없을 때만
+    NEXT_MEASURE_CHECK = "자리나 장치를 바꿨다면 다음 Take에서 같은 항목이 달라지는지 확인해 볼 수 있어요."
     #: 두 번째 같은 안내의 선택지 머리말(뒤에 예시 질문을 이어 한 문장으로 낸다)
     CHOICES_HEADER = "이렇게 물어보시면 바로 확인할 수 있어요:"
     #: [이어서 확인] 반복 막기(4-C): 같은 안내 유형의 PARTIAL 이 이어질 때
@@ -201,6 +206,11 @@ REASSESS_CHANGE_TEXT = {
     "targets": "내 평가 기준 {count}개",
 }
 REASSESS_NOTE = "참고 결과이고 공식 결과는 그대로예요"
+#: 기준(targets)을 바꾸는 다시 평가의 확인 카드 안내(6-6). 화면이 카드의 기준 칸을 개수로만 보여도 요약 · 안내 글(받은 글
+#: 그대로 보임)로 무엇으로 다시 평가하는지 알 수 있게, 바뀌는 기준 문구를 코드가 채운다(Issue #1194 — FE 변경 없이)
+REASSESS_TARGETS_NEW = "다시 평가에 쓸 기준: {targets}"
+REASSESS_TARGETS_NOW = "지금 리뷰의 기준: {targets}"
+REASSESS_TARGETS_NOW_NONE = "지금 리뷰에는 내 평가 기준이 없어요"
 
 #: 스트림 전 오류 · error 줄의 message (로그 · BE용. 화면에는 BE가 7-9 문구로 바꿔 보인다)
 ERROR_MESSAGES = {
@@ -348,6 +358,16 @@ PLAN_TOOL_NAME = {
     "get_screen": "화면 보기",
     "search_guides": "자료 찾기",
     "fetch_take": "기록 가져오기",
+    "update_plan": "할 일 정리",
+}
+#: '확인한 것'(trace) 요약의 결과 코드 · 읽은 절 이름(화면에 보이는 글이라 내부 이름을 쓰지 않는다, Issue #1194)
+TRACE_OUTCOME = {"OK": "확인", "EMPTY": "없음", "ERROR": "확인 실패", "CACHED": "이미 확인함"}
+TRACE_SECTION = {
+    "dimensions": "리뷰 판정",
+    "improvements": "개선점",
+    "problem_segments": "문제 구간",
+    "slides": "장별 기록",
+    "mission_results": "미션 결과",
 }
 #: 대상 번호가 없는 도구의 실행 글(compare_takes · get_take_report · fetch_take 는 Take 번호를 넣어 progress.py 가 만든다)
 PLAN_EXEC = {
@@ -366,6 +386,7 @@ PLAN_NOT_COMPARABLE = {
     "MISSING_VERSION": "버전 정보 없음",
     "NO_VALUE": "측정 안 됨",
     "DIFFERENT_VOLUME_BASE": "소리 기준 다름",
+    "NO_DIRECTION": "방향을 정할 수 없는 지표",
 }
 PLAN_NOT_COMPARABLE_OTHER = "조건 다름"
 #: 비교 결론(compare_takes `outcome`) → 단계 결과 낱말. 목록 밖은 `판단 불가`

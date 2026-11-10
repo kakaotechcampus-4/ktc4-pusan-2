@@ -404,7 +404,12 @@ class ChatAgentConfig(_Frozen):
         "고치려면",
         "줄이려면",
         "늘리려면",
+        "게 좋",
+        "좋을까",
     )
+    #: 뜻 · 개념을 묻는 말("필러 워드가 무슨 뜻이야?"). 요청 해소 검사가 값을 묻는 질문으로 세지 않고, 조사 흐름이 그 초안의 기록을
+    #: 먼저 읽지 않는다(답은 자료 · 일반 설명, v1 회귀 path-combo-definition-only)
+    definition_question_words: tuple[str, ...] = ("뜻", "개념", "정의")
     info_question_words: tuple[str, ...] = (
         "몇",
         "얼마",
@@ -1228,9 +1233,10 @@ class ChatAgentConfig(_Frozen):
     #: 비교할 수 없는 까닭 · 측정 안 됨 중 하나가 있어야 `DONE`(측정 주장은 코드가 판정 문장을 늘 낸다). 모자라면 읽은 근거로 코드 기록 문장을 채우고, 그래도 남으면 남은 일
     #: 단계를 더해 `PARTIAL`. 기록 보강(`record_answer_guard`) 위에 서므로 그것도 켜져 있어야 한다. 끄면 이전 동작(끊기지 않으면 DONE)
     request_resolution: bool = True
-    #: 기준(`targets`)을 바꾸는 다시 평가를 낼 수 있는가(Issue #1194 R5(a)). FE 확인 카드가 기준을 개수로만 보이는 동안은 사용자가
-    #: 무엇을 승인하는지 볼 수 없어 끈다(대본 사용 조건 다시 평가는 그대로). FE 카드가 기준 내용(전 → 후)을 보이면 켠다
-    reassess_targets: bool = False
+    #: 기준(`targets`)을 바꾸는 다시 평가를 낼 수 있는가(Issue #1194 R5(a)). 화면 확인 카드의 기준 칸은 개수만 보이므로, 바꾸는
+    #: 기준 문구(전 · 후)를 카드 안내 글(`notes`, 화면이 받은 글 그대로 보임)에 코드가 싣는다(`actions.ask_confirm_card`). 끄면
+    #: 기준 다시 평가를 내지 않고 할 수 없다는 고정 문장을 붙인다(대본 사용 조건 다시 평가는 그대로)
+    reassess_targets: bool = True
     #: '몇 번 · 몇 회 · 횟수' 질문은 횟수 지표(`filler_count` · `pause_count`)로: 계획 지침에 알리고, 조사 흐름이 읽는
     #: Take 전체 지표값(`slides`)에 횟수 지표도 싣는다
     count_metric_hint: bool = True
@@ -1250,6 +1256,9 @@ class ChatAgentConfig(_Frozen):
     #: 코치 기록(문제 구간 · 장별 값)을 코드가 읽음, 기본 자료에 없음 → 코드가 가져오기, 기록 없음 → 사실 표시로 닫음. 이 신호들은
     #: 모델에게 대응을 묻지 않는다. 비교 불가 · 도구 실패는 질문에 따라 대응이 갈려 모델 몫이다. 끄면 이전 동작(모두 모델에게 묻기)
     code_signal_responses: bool = True
+    #: 한 턴 전체를 보는 마지막 검사(output_guard.py, 6-9): 같은 사실의 반복을 빼고, 기준 없는 '확인 불가'를 고정 문장으로 바꾼다.
+    #: 끄면 이전 동작(문장 하나씩 보는 검사만)
+    output_guard: bool = True
     #: 위 코드 대응으로 한 실행에 더 읽는 요청 수 상한(조사 흐름 `research_prefetch_max`와 따로, 도구 12번 상한 안)
     code_signal_reads_max: int = 4
     #: 결과 발견 안내(D4b): 이 실행에서 목표 저장(`SAVE_GOAL`)이 성공했으면 그 성공 문장 바로 뒤에 "연습 뒤 대화를 다시 열면 목표 확인

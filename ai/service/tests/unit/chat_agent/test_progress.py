@@ -141,6 +141,20 @@ def test_step_text_result_is_never_cut_silently() -> None:
     assert progress.compose("기록 보기", "기록 보기", "확인") == "기록 보기 → 확인"
 
 
+def test_two_comparisons_of_the_same_takes_stay_separate_steps() -> None:
+    """같은 두 Take 를 지표마다 비교하면 단계를 합치지 않는다: 한 지표의 '비교 불가(까닭)'가 단계 글에서 빠지지 않게
+    (v1 f60-nc-public-criteria-speed 회귀, Issue #1194). 같은 Take 기록의 다른 절은 한 단계로 합친다."""
+    req = load(base_request(), "t-4")
+    ctx = make_ctx(req)
+    meta = _meta(("두 Take 비교", "compare_takes"), ("답 쓰기", "answer"))
+    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    progress.attach(meta, _read(ctx, "compare_takes", {**COMPARE, "metric": "cpm", "slide_number": None}), 2, max_steps=8)
+    assert [m["ran"] for m in meta] == ["compare_takes", "compare_takes", None]
+    for section in ("dimensions", "problem_segments"):
+        progress.attach(meta, _read(ctx, "get_take_report", {"take_id": "t-5", "section": section}), 3, max_steps=8)
+    assert [m["ran"] for m in meta].count("get_take_report") == 1
+
+
 def test_display_text_drops_numbers_without_step_evidence() -> None:
     """숫자 · Take · 장 번호는 그 단계 근거로만: 근거가 없으면 숫자 없는 실행 이름으로 그린다."""
     req = load(base_request(), "t-4")  # Take 3 은 기본 자료에 없다(요약만)
@@ -286,6 +300,23 @@ def test_finish_plan_by_end_status(status: str, answered: bool, expected: list[s
     progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
     plan = progress.finish_plan(meta, ctx.registry, CFG, status, answered=answered)
     assert [p["status"] for p in plan] == expected
+
+
+def test_mark_short_after_all_planned_steps_adds_a_remaining_step() -> None:
+    """계획한 조사 단계를 다 마친 뒤 한도로 멈추면 답 쓰기 앞에 '물은 항목 확인: 시간 부족' 단계를 더한다: `PARTIAL`이면 남은 일,
+    `DONE`이면 끝 처리가 뺀다(v1 회귀 path-fail-budget-partial, Issue #1194)."""
+    req = load(base_request(), "t-4")
+    ctx = make_ctx(req)
+    meta = _meta(("비교", "compare_takes"), ("답 쓰기", "answer"))
+    progress.attach(meta, _read(ctx, "compare_takes", COMPARE), 1, max_steps=8)
+    assert progress.mark_short(copy.deepcopy(meta)) is None  # 상한을 주지 않으면 예전대로
+    i = progress.mark_short(meta, 8)
+    assert i == 1 and meta[1]["purpose"] == tpl.PLAN_UNRESOLVED and meta[2]["tool"] == "answer"
+    partial = progress.finish_plan(copy.deepcopy(meta), ctx.registry, CFG, "PARTIAL", answered=True)
+    assert [p["status"] for p in partial] == ["DONE", "TODO", "DONE"]
+    assert partial[1]["step"] == f"{tpl.PLAN_UNRESOLVED}: {tpl.PLAN_RESULT['SHORT']}"
+    done = progress.finish_plan(copy.deepcopy(meta), ctx.registry, CFG, "DONE", answered=True)
+    assert tpl.PLAN_UNRESOLVED not in [p["step"].split(":")[0] for p in done]
 
 
 def test_mark_short_puts_time_short_on_current_step() -> None:

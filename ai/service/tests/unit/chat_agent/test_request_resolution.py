@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from pitch_coach_ai.features.chat_agent import templates
 from pitch_coach_ai.features.chat_agent.config import load_config
 
@@ -95,22 +97,27 @@ def test_unrelated_none_evidence_does_not_resolve_an_item() -> None:
     assert data["status"] == "PARTIAL"
 
 
-def test_advice_question_is_not_counted_as_a_value_question() -> None:
-    """'어떻게 하면 좋아?'는 조언을 묻는 말이라, 측정 지표를 집었어도 값을 읽지 않았다고 PARTIAL 이 되지 않는다."""
-    advice = F.draft(
-        "긴장하면 말이 빨라져. 어떻게 하면 좋아?",
-        type_="REQUEST",
-        claim_op=None,
-        metric="cpm",
-        polarity="NEUTRAL",
-    )
-    req = F.with_loaded(F.request(user_message="긴장하면 말이 빨라져. 어떻게 하면 좋아?"), "t-5")
+@pytest.mark.parametrize(
+    ("msg", "metric"),
+    [
+        ("긴장하면 말이 빨라져. 어떻게 하면 좋아?", "cpm"),
+        # v1 회귀(Issue #1194): 손 · 개념 질문을 값을 묻는 질문으로 세어 '물은 항목 확인'이 남고 PARTIAL 이 됐다
+        ("발표할 때 손은 어떻게 두는 게 좋아?", "audience_ratio"),
+        ("필러 워드가 정확히 무슨 뜻이야? 개념만 짧게 알려 줘", "filler_per_min"),
+    ],
+)
+def test_advice_question_is_not_counted_as_a_value_question(msg: str, metric: str) -> None:
+    """'어떻게 하면 좋아?' · '두는 게 좋아?'는 조언을, '무슨 뜻이야?'는 개념을 묻는 말이라, 측정 지표를 집었어도 값을 읽지 않았다고
+    PARTIAL 이 되지 않는다."""
+    advice = F.draft(msg, type_="REQUEST", claim_op=None, metric=metric, polarity="NEUTRAL")
+    req = F.with_loaded(F.request(user_message=msg), "t-5")
     llm = F.FakeLlm(
-        [F.plan(assessments=[advice]), F.done()],
-        answers=[F.answer([F.claim("GENERAL", "숨을 한 번 고르고 첫 문장을 천천히 시작해 보세요.")])],
+        [F.plan(assessments=[advice]), F.tools(("search_guides", {"query": "손 위치"}), prefix="g"), F.done()],
+        answers=[F.answer([F.claim("GENERAL", "손은 편안한 위치에 두고, 강조할 때만 자연스럽게 움직여 보세요.")])],
     )
     _, _, data = F.run_turn(req, llm)
     assert not any(p["step"] == templates.PLAN_UNRESOLVED for p in data["plan"])  # 남은 일로 세지 않았다
+    assert data["status"] == "DONE"
 
 
 def test_dimension_state_answers_a_dimension_question() -> None:

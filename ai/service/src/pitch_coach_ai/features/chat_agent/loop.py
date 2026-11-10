@@ -1121,7 +1121,7 @@ class Loop:
         step = None
         if self.cfg.plan_progress and self.st.plan_meta:
             if reason in progress.LIMIT_STOPS:
-                step = progress.mark_short(self.st.plan_meta)
+                step = progress.mark_short(self.st.plan_meta, self.cfg.plan_steps_max)
                 self._emit_plan_display()
             else:
                 step = progress.current_step(self.st.plan_meta)
@@ -1140,7 +1140,7 @@ class Loop:
         `BUDGET_LOW · STOP_PARTIAL:CODE`를 남긴다. 그래서 화면의 남은 일과 결정 로그가 끊긴 까닭을 보인다."""
         step = None
         if self.cfg.plan_progress and self.st.plan_meta:
-            step = progress.mark_short(self.st.plan_meta)
+            step = progress.mark_short(self.st.plan_meta, self.cfg.plan_steps_max)
             self._emit_plan_display()
         if self.tracking:
             self._decide("BUDGET_LOW", [reason], "STOP_PARTIAL", "CODE", step=step)
@@ -1635,6 +1635,10 @@ class Loop:
         for d in self.st.drafts:
             if d.get("type") not in ("MEASURED", "REQUEST"):
                 continue
+            if d.get("type") == "REQUEST" and any(
+                w in str(d.get("quote") or "") for w in self.cfg.definition_question_words
+            ):
+                continue  # 뜻 · 개념을 묻는 말: 기록 값이 답이 아니다
             sub = d.get("subject") or {}
             metric = sub.get("metric")
             dim = sub.get("dimension")

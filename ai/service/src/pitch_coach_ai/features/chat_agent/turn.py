@@ -362,7 +362,11 @@ def _final_line(writer: _Writer, final: dict[str, Any]) -> str:
         pass
     slim = dict(final)
     slim["trace"] = [
-        {**t, "args_summary": t["tool"], "result_summary": t["outcome"]}
+        {
+            **t,
+            "args_summary": templates.PLAN_TOOL_NAME.get(t["tool"], t["tool"]),
+            "result_summary": templates.TRACE_OUTCOME.get(t["outcome"], t["outcome"]),
+        }
         for t in final.get("trace", [])
     ]
     try:
@@ -1360,8 +1364,8 @@ def _unresolved_targets(
         quote = str(d.get("quote") or "")
         if d.get("type") != "REQUEST" or not any(w in quote for w in lp.cfg.info_question_words):
             continue
-        if any(w in quote for w in lp.cfg.advice_question_words):
-            continue  # 조언 · 방법을 묻는 말이지 그 항목의 값을 묻는 말이 아니다(답은 자료 · 일반 조언)
+        if any(w in quote for w in (*lp.cfg.advice_question_words, *lp.cfg.definition_question_words)):
+            continue  # 조언 · 방법 · 뜻을 묻는 말이지 그 항목의 값을 묻는 말이 아니다(답은 자료 · 일반 조언)
         if d.get("quote") in forced or (takes and not takes <= in_scope):
             continue
         if named and takes and not takes <= named:
@@ -1920,7 +1924,8 @@ def _measurement_notes(lp: Loop) -> list[str]:
     "이 값은 측정 결과라 다시 평가해도 바뀌지 않아요."
 
     사용자 말이 다시 평가를 바라는 측정값 이의이고(`clm.measurement_dispute`: 측정 항목을 말했지만 대본 · 원고 · 기준은
-    말하지 않음), 이 실행에서 다시 평가를 내지도 하지도 않았을 때만 붙인다. 까닭과 다음 Take에서 확인할 방법은 모델이 쓴다."""
+    말하지 않음), 이 실행에서 다시 평가를 내지도 하지도 않았을 때만 붙인다. 까닭은 모델이 쓰고, 다음 Take에서 확인할 방법이
+    답에 없으면 guidance.py 가 다음 걸음 문장(`NEXT_MEASURE_CHECK`)을 붙인다(4-E)."""
     msg = lp.original or ""
     if not _REASSESS_ASK.search(msg) or not clm.measurement_dispute(msg, lp.cfg):
         return []
@@ -2118,8 +2123,9 @@ def _safe_cards(
 
 
 def _safe_trace(lp: Loop, trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """trace 요약에 외부 문자열(피치 제목 등)이 들어가므로 같은 검사를 하고, 걸리면 도구 이름 · 결과만 남긴다.
-    `get_take_report` 요약 앞의 읽은 출처(`코치가 찾은 것` · `리뷰 분석`)는 숫자가 없어 그대로 남긴다."""
+    """trace 요약에 외부 문자열(피치 제목 등)이 들어가므로 같은 검사를 하고, 걸리면 화면용 도구 이름 · 결과(`templates.PLAN_TOOL_NAME`
+    · `TRACE_OUTCOME`, 예 '기록 보기 → 코치가 찾은 것 · 확인')만 남긴다 — '확인한 것'은 화면에 그대로 보이므로 내부 도구 이름 ·
+    결과 코드를 쓰지 않는다(Issue #1194). `get_take_report` 요약 앞의 읽은 출처는 숫자가 없어 그대로 남긴다."""
     ctx, cfg = lp.ctx, lp.cfg
     out = []
     for t in trace:
@@ -2127,7 +2133,11 @@ def _safe_trace(lp: Loop, trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
             trace=[t], registry=ctx.registry, display_evidence=None, cfg=cfg, assessments={}
         ):
             tag = source_tag_of(t["result_summary"]) if t["tool"] == "get_take_report" else ""
-            t = {**t, "args_summary": t["tool"], "result_summary": tag + t["outcome"]}
+            t = {
+                **t,
+                "args_summary": templates.PLAN_TOOL_NAME.get(t["tool"], t["tool"]),
+                "result_summary": tag + templates.TRACE_OUTCOME.get(t["outcome"], t["outcome"]),
+            }
         out.append(t)
     return out
 
@@ -2224,6 +2234,8 @@ def _finish(
     claim_list: list[Claim] = [Claim(kind="SYSTEM", text=s.value) for s in (system or [])] + list(
         claims or []
     )
+    # 흘려보내는 동안 한 턴 전체 검사가 뺀 · 바꾼 문장은 끝 줄 답에서도 같게(낸 문장 줄과 끝 줄이 같다, 5-4)
+    claim_list = lines.decided(claim_list)
     assessments_out = [
         a.model_dump(mode="json") if hasattr(a, "model_dump") else a for a in (assessments or [])
     ]
@@ -2244,6 +2256,17 @@ def _finish(
         claim_list = [*claim_list, *follow.claims]
         if follow.status is not None:
             status = follow.status
+    if terminal or status == "NEEDS_ACTION":
+        # 아직 내지 않은 문장은 내보내기 직전처럼 한 턴 전체 검사를 거친다(뺀 문장은 끝 줄 답에도 싣지 않는다, 6-9)
+        kept: list[Claim] = []
+        for cl in claim_list[n_sent:]:
+            got = lines.guard.admit(cl, assessments_out)
+            if got is None:
+                continue
+            lines.guard.note(got, assessments_out)
+            kept.append(got)
+        claim_list = [*claim_list[:n_sent], *kept]
+    lines.guard.log()
     have = {a["assessment_id"] for a in assessments_out}
     for a in [*(st.exported if n_sent else []), *lines.sent_assessments]:
         if a["assessment_id"] not in have:
@@ -2462,7 +2485,7 @@ def _send_rest(
     by_dump = {json.dumps(o.model_dump(mode="json"), sort_keys=True): o for o in objs}
     for d in dumps[n_sent:]:
         claim = by_dump.get(json.dumps(d, sort_keys=True)) or Claim.model_validate(d)
-        lines.send(claim, assessments, record=False, cards=cards)
+        lines.send(claim, assessments, record=False, cards=cards, guarded=True)
 
 
 __all__ = ["handle_turn", "TurnResponse", "PreStreamError"]

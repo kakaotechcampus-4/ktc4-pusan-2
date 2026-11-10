@@ -688,7 +688,6 @@ def test_fm_L6_07_reassess_calls_real_review_with_changed_input_and_keeps_offici
     assert conv.reassess_results and conv.reassess_results[0]["take_id"] == "t-5"
 
 
-@pytest.mark.reassess_targets
 def test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchanged() -> None:
     """A 의 user_criteria 가 null 이면 B 는 빈 기준에서 targets 만 넣는다. A 는 호출 전후 같다."""
     target = {"display": "청중 보기", "metric": "audience_ratio", "operator": "GTE", "value": 0.3}
@@ -717,7 +716,6 @@ def test_fm_L4_18_reassess_targets_start_from_empty_criteria_and_keep_a_unchange
     assert card["after"]["criteria_results"][0]["status"] == "ACHIEVED"
 
 
-@pytest.mark.reassess_targets
 def test_reassess_card_is_kept_when_target_display_has_numbers() -> None:
     target = {
         "display": "3장 시선 30% 넘기기",
@@ -738,7 +736,6 @@ def test_reassess_card_is_kept_when_target_display_has_numbers() -> None:
     assert [r["display"] for r in card["after"]["criteria_results"]] == ["청중 시선 30% 이상"]
 
 
-@pytest.mark.reassess_targets
 def test_reassess_card_keeps_display_the_user_said() -> None:
     target = {
         "display": "3장 시선 30% 넘기기",

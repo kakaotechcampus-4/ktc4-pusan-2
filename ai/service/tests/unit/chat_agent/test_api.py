@@ -797,9 +797,9 @@ def test_core_iterator_exception_still_sends_one_error_end_line(
 
 def test_service_reads_only_reviewed_cards(log_records: list[logging.LogRecord]) -> None:
     """서비스는 검수를 마친 카드만 싣는다(카드 단위 검수, P-0008 5-2). 발표법 카드(g-19 는 참고 문헌이 없어 검수 전)와, guides-9 부터
-    FE 검수(#1129)를 반영한 사용법 카드 25장이 실린다."""
+    FE 검수(#1129)를 반영하고 guides-10 에서 지금 FE 코드와 대조해 고친 사용법 카드 25장이 실린다."""
     served = api.load_corpus()
-    assert served is not None and served.version == "guides-9"
+    assert served is not None and served.version == "guides-10"
     assert {c.kind for c in served.cards} == {"method", "usage"}
     assert sum(c.kind == "usage" for c in served.cards) == 25
     assert all(c.review == "APPROVED" for c in served.cards)
@@ -874,4 +874,4 @@ def test_runtime_caps_one_model_call_at_the_core_answer_share(
 
 def test_runtime_built_from_settings_serves_the_reviewed_cards() -> None:
     rt = api.AgentRuntime.from_settings(_settings(agent_enabled=True, agent_state_secret=SECRET))
-    assert rt.corpus is not None and rt.corpus_version == "guides-9"
+    assert rt.corpus is not None and rt.corpus_version == "guides-10"
