@@ -157,6 +157,7 @@ WS stop + PUT /takes/{id} (종료 시각)
 | `stage/StageLiveBadge.tsx` | 발표가 돌고 있을 때만 켜지는 "STAGE LIVE" 표시(`startGate.ts` `isRehearsalRunning`) |
 | `stage/ScriptPane.tsx` · `useRehearsalMaterials.ts` · `lib/scriptMarks.ts` | 발표 중 대본 · 슬라이드 · 대본 자료 읽기 · 대본 표시 |
 | `stage/useSlideDeck.ts` · `useSlideSender.ts` · `lib/slideTimeline.ts` | 슬라이드 넘기기 · WS `slide` · 그 시각의 슬라이드 |
+| `stage/SlideClickArea.tsx` · `NextSlideButton.tsx` · `releaseFocus.ts` | 마우스로 넘기기 — 슬라이드 좌클릭은 다음 장, 우클릭은 이전 장(파워포인트와 같음), 다음 장 칸(썸네일 + 문구)을 누르면 다음 장입니다. 모두 키보드(← → · Space)와 같은 `go`를 불러 장 넘김 기록이 한 경로로 남습니다. 슬라이드 위에 투명하게 겹쳐 칸 크기 · 자리(시선 기준)는 바꾸지 않고, 발밑 안내 줄에 조작을 적습니다. 마우스로 넘기면 다른 버튼에 남은 초점을 풀어 그 뒤 Space · ← → 가 장을 넘깁니다. 소리 재개 안내는 "슬라이드 밖을 한 번 클릭"입니다(슬라이드를 누르면 장이 넘어갑니다) |
 | `stage/useLiveGaze.ts` · `useMetricsSender.ts` · `lib/metricsClock.ts` | 시선 1초 기록 받기 · WS `metrics` 보내기 · 어느 1초로 보낼지 |
 | `stage/useSttStream.ts` · `lib/sttSocket.ts` · `lib/sttProtocol.ts` | 실시간 연결(React를 모르는 상태기계) |
 | `stage/useLiveCoach.ts` · `lib/coachIndicators.ts` · `CoachStrip.tsx` | 코치 한마디 · 상태 표시 |
