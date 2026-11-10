@@ -55,7 +55,9 @@ test.describe('대본 확인', () => {
     await expect(page).toHaveURL(/\/takes\/t-confirm$/, TO_REPORT);
   });
 
-  test('확인 시간이 지난 뒤 보내면(409) 받을 수 없다고 알리고 분석 대기로 돌아갈 길을 준다', async ({
+  // 목의 t-confirm-timeout 은 남은 시간과 상관없이 보내면 409 를 줍니다 — 시간 경과가 아니라
+  // "서버가 답을 거절했을 때의 안내"를 봅니다. 시간이 다 돼 화면이 스스로 닫히는 것은 이 시험의 범위가 아닙니다 (#1193 리뷰)
+  test('서버가 답을 받지 않으면(409) 반영되지 않았다고 알리고 분석 대기로 돌아갈 길을 준다', async ({
     page,
   }) => {
     await page.goto('/takes/t-confirm-timeout/confirm');
