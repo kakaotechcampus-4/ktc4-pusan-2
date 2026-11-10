@@ -8,8 +8,8 @@ import '@/ui/stage.css';
 /**
  * PM 승인 대기 배치 시안이다. 제품의 보정·측정 계약은 바꾸지 않는다. 배치 · 색은 src/ui/stage.css가 정한다.
  * 클래스 이름은 ScreenPreview.test가 stage.css에 있는지 확인한다.
- * 슬라이드는 ← → · Space로 넘긴다(제품과 같은 키). 마우스로는 발밑 [‹ 이전] · [다음 ›], 슬라이드 클릭,
- * 다음 장 썸네일 클릭으로 넘긴다(제품 SlideNav). 끝내기는 마지막 장에서만 열린다(제품 #697).
+ * 슬라이드는 ← → · Space로 넘긴다(제품과 같은 키). 마우스로는 슬라이드 좌클릭이 다음 장, 우클릭이 이전 장,
+ * 다음 장 썸네일 클릭이 다음 장이다(제품 SlideClickArea). 끝내기는 마지막 장에서만 열린다(제품 #697).
  */
 const PAGES = 12;
 
@@ -118,15 +118,20 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   <div className="slide-content">
                     <span className="placeholder">SLIDE {slide} · 16:9</span>
                   </div>
-                  {/* 슬라이드를 누르면 다음 장(제품 slide-advance). 위에 겹쳐 칸의 크기 · 자리는 그대로다 */}
+                  {/* 좌클릭 다음 장 · 우클릭 이전 장(제품 SlideClickArea). 위에 겹쳐 칸의 크기 · 자리는 그대로다 */}
                   <button
                     type="button"
                     className="slide-advance"
                     tabIndex={-1}
                     aria-hidden="true"
-                    disabled={onLastSlide || Boolean(gate)}
+                    data-enabled={!gate}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => setSlide((n) => Math.min(PAGES, n + 1))}
+                    onClick={() => !gate && setSlide((n) => Math.min(PAGES, n + 1))}
+                    onContextMenu={(event) => {
+                      if (gate) return;
+                      event.preventDefault();
+                      setSlide((n) => Math.max(1, n - 1));
+                    }}
                   />
                 </div>
                 <div className="rail">
@@ -186,27 +191,8 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
               )}
               <div className="stage-foot">
                 <div className="stage-notes">
-                  {/* 마우스로 넘기는 이전 · 다음(제품 SlideNav). 늘 보이게 둔다 — 올려야 보이는 버튼은 못 찾는다 */}
-                  <span className="slide-nav">
-                    <button
-                      type="button"
-                      disabled={slide <= 1 || Boolean(gate)}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => setSlide((n) => Math.max(1, n - 1))}
-                    >
-                      ‹ 이전
-                    </button>
-                    <button
-                      type="button"
-                      disabled={onLastSlide || Boolean(gate)}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => setSlide((n) => Math.min(PAGES, n + 1))}
-                    >
-                      다음 ›
-                    </button>
-                  </span>
                   <span className="key-help">
-                    ← → 슬라이드 이동 · Space 다음 장{!exam && ' · ↑ ↓ 대본 스크롤'}
+                    다음 장 클릭 · → · Space · 이전 장 우클릭 · ←{!exam && ' · ↑ ↓ 대본 스크롤'}
                   </span>
                   <div className="stage-status">
                     {stateId === 'disconnected' && (
