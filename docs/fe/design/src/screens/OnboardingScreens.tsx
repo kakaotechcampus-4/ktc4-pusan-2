@@ -1,8 +1,10 @@
-// 제품 웰컴(`frontend/src/features/onboarding/WelcomePage.tsx`) · 로그인(`features/auth/LoginPage.tsx`)의 설계서 샘플.
+// 제품 웰컴·로그인·개인정보 처리 동의 화면의 독립 설계서 샘플.
 // 문구는 제품과 같다. 움직이는 장면(ComfortScene) · 넘어가는 숫자(FlipNumber)는 자리만 두고, 로그인은 Google로 가지 않는다.
 import { useRef, type ReactNode } from 'react';
 import { publicUrl } from '@/lib/publicUrl';
+import { PrivacyConsentDialog } from '@/ui/dialogs/PrivacyConsentDialog';
 import { PitchCoachWordmark } from '@/ui/PitchCoachWordmark';
+import { HomeScreen } from './HomeScreen';
 import type { Navigate } from './shared';
 
 type ScreenProps = { stateId: string; onNavigate: Navigate };
@@ -442,7 +444,7 @@ export function LoginScreen({ stateId, onNavigate }: ScreenProps) {
           <button
             type="button"
             disabled={busy}
-            onClick={() => onNavigate('home')}
+            onClick={() => onNavigate('privacy-consent')}
             aria-label="Google 계정으로 로그인"
             className="mx-auto mt-8 flex min-h-11 max-w-full items-center rounded disabled:cursor-wait"
           >
@@ -471,5 +473,21 @@ export function LoginScreen({ stateId, onNavigate }: ScreenProps) {
         </section>
       </div>
     </div>
+  );
+}
+
+/** 로그인한 뒤 동의 전이면 가려던 화면(여기서는 홈) 위에 동의 창을 띄운다. 주소는 가려던 화면 그대로다 */
+export function PrivacyConsentScreen({ stateId, onNavigate }: ScreenProps) {
+  return (
+    <>
+      <HomeScreen stateId="default" onNavigate={() => undefined} />
+      <PrivacyConsentDialog
+        signingOut={stateId === 'signing-out'}
+        signOutFailed={stateId === 'sign-out-failed'}
+        onAgree={() => onNavigate('home')}
+        onSignOut={() => onNavigate('welcome')}
+        onOpenPolicy={() => onNavigate('privacy')}
+      />
+    </>
   );
 }
