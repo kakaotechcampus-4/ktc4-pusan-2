@@ -252,8 +252,9 @@ it('위쪽에 목록 전체가 들어갈 때만 위로 펼친다', async () => {
     top = 150;
     bottom = 190;
     await act(async () => trigger.click());
-    expect(list.classList.contains('top-full')).toBe(true);
-    expect(list.classList.contains('bottom-full')).toBe(false);
+    const reopenedList = host.querySelector<HTMLElement>('[role="listbox"]')!;
+    expect(reopenedList.classList.contains('top-full')).toBe(true);
+    expect(reopenedList.classList.contains('bottom-full')).toBe(false);
   } finally {
     trigger.getBoundingClientRect = originalRect;
     if (originalHeight) {
