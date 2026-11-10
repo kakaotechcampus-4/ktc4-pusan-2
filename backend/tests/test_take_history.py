@@ -21,8 +21,8 @@ from pitch_coach_backend.module.user.entity import User
 T0 = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
 
 
-def _pitch(db: Session, user_id: uuid.UUID, title: str = "발표") -> Pitch:
-    pitch = Pitch(user_id=user_id, title=title, time_limit_sec=300)
+def _pitch(db: Session, user_id: uuid.UUID, title: str = "발표", *, is_demo: bool = False) -> Pitch:
+    pitch = Pitch(user_id=user_id, title=title, time_limit_sec=300, is_demo=is_demo)
     db.add(pitch)
     db.flush()
     db.add_all([
@@ -120,6 +120,7 @@ def test_lists_measures_missions_and_gaze_engine(
         "take_id": str(take.id),
         "pitch_id": str(pitch.id),
         "pitch_title": "투자 발표",
+        "is_demo": False,
         "take_number": 2,
         "started_at": row["started_at"],
         "status": "COMPLETED",
@@ -273,6 +274,23 @@ def test_newest_first_across_pitches_and_skips_unstarted(
     takes = _list(client, auth_headers).json()["takes"]
 
     assert [t["take_id"] for t in takes] == [str(newest.id), str(middle.id), str(old.id)]
+
+
+def test_marks_takes_of_the_tutorial_sample_pitch(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, auth_headers: dict[str, str]
+) -> None:
+    sample = _pitch(db_session, user_id, "이름을 바꾼 샘플", is_demo=True)
+    mine = _pitch(db_session, user_id, "[튜토리얼] 내 발표")
+    _take(db_session, sample, 1, started_at=T0)
+    _take(db_session, mine, 1, started_at=T0 + timedelta(hours=1))
+
+    takes = _list(client, auth_headers).json()["takes"]
+
+    # 제목이 아니라 발표의 샘플 여부를 따른다
+    assert [(t["pitch_title"], t["is_demo"]) for t in takes] == [
+        ("[튜토리얼] 내 발표", False),
+        ("이름을 바꾼 샘플", True),
+    ]
 
 
 def test_pitch_id_filters_to_that_pitch(
