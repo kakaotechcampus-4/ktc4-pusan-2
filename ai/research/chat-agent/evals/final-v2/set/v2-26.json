@@ -1,0 +1,174 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-26",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "'가장 최근에 하던 발표로 바로 연습하러 갈래요' — 맨 앞 피치의 [연습 준비로] 버튼, 저장 · 다시 평가 없음",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-wine",
+        "title": "와인 클래스 오프닝 멘트",
+        "takes": [
+          {
+            "take_id": "wn-t1",
+            "take_number": 1,
+            "started_at": "2026-11-07T11:00:00+09:00",
+            "completed_at": "2026-11-07T11:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "wn-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T11:40:00+09:00",
+            "completed_at": "2026-11-09T11:47:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-09T11:40:00+09:00"
+      },
+      {
+        "pitch_id": "p-ir",
+        "title": "시리즈A 투자 유치 피칭",
+        "takes": [
+          {
+            "take_id": "ir-t1",
+            "take_number": 1,
+            "started_at": "2026-10-20T16:00:00+09:00",
+            "completed_at": "2026-10-20T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ir-t2",
+            "take_number": 2,
+            "started_at": "2026-10-24T16:00:00+09:00",
+            "completed_at": "2026-10-24T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ir-t3",
+            "take_number": 3,
+            "started_at": "2026-10-28T16:00:00+09:00",
+            "completed_at": "2026-10-28T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ir-t4",
+            "take_number": 4,
+            "started_at": "2026-11-01T16:00:00+09:00",
+            "completed_at": "2026-11-01T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ir-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T16:00:00+09:00",
+            "completed_at": "2026-11-05T16:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-05T16:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-lec",
+        "title": "고등학생 진로 특강",
+        "takes": [
+          {
+            "take_id": "lc-t1",
+            "take_number": 1,
+            "started_at": "2026-10-29T13:00:00+09:00",
+            "completed_at": "2026-10-29T13:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-10-29T13:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "가장 최근에 하던 발표로 바로 연습하러 갈래요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {
+          "type": "START_PRACTICE",
+          "args": {
+            "pitch_id": "p-wine"
+          }
+        },
+        "path": "items",
+        "note": "6-2 ① 이동 요청('연습하러 갈래요'). 대상은 last_practiced_at 가장 늦은 피치"
+      },
+      {
+        "check_id": "button-on-done",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:START_PRACTICE:BUTTON",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-ask-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS"
+        ],
+        "path": "types"
+      },
+      {
+        "check_id": "names-pitch",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "와인 클래스 오프닝 멘트",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

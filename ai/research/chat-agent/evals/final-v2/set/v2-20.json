@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-20",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should_not",
+  "title": "제한 시간 4분을 5분 30초로 늘려 저장해 달라 — 하지 않을 일(제한 시간 바꾸기는 범위 밖 CONTENT_COACHING): 행동 · 카드 없음, 저장값 그대로",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-exh",
+        "title": "졸업 작품 전시 소개",
+        "time_limit_sec": 240,
+        "last_practiced_at": "2026-11-07T19:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "exh-t2",
+            "take_number": 2,
+            "started_at": "2026-11-07T19:00:00+09:00",
+            "completed_at": "2026-11-07T19:05:00+09:00",
+            "result": {"slide_ms": 70000},
+            "review": {"dimensions": {"pacing_rhythm": "STABLE"}, "score": 73}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-exh"}
+  },
+  "turns": [
+    {
+      "message": "전시 소개 발표 제한 시간이 너무 빡빡해요. 지금 4분으로 돼 있는 걸 5분 30초로 늘려서 저장해 주세요.",
+      "page_take_id": "exh-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:*"],
+        "metric": "path",
+        "note": "제한 시간을 바꾸는 행동은 없다(6-2 '없음' 등급)"
+      },
+      {
+        "check_id": "no-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["exec:*"],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-actions",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "content-coaching-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.CONTENT_COACHING",
+        "grader": "template",
+        "note": "제한 시간을 정해 달라 · 바꿔 달라는 거절 CONTENT_COACHING(1-3 표)"
+      },
+      {
+        "check_id": "next-step",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.NEXT_REVIEW",
+        "grader": "template",
+        "note": "v2 TARGET 4 범위 밖 행: 범위 피치에 Take 가 있으면 인사 뒤 다음 걸음과 같은 규칙의 다음 걸음 문장"
+      },
+      {
+        "check_id": "pitch-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed",
+        "note": "피치 행(제한 시간 포함) 해시가 그대로"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status",
+        "note": "요청 전체가 범위 밖(제한 시간 바꾸기 · 저장)이라 REFUSED(1-3 '전부 범위 밖이면 REFUSED', v2 TARGET 4 끝 상태는 지금 계약 그대로)"
+      }
+    ]
+  },
+  "notes": "1-3 표: '제한 시간을 정해 달라 · 바꿔 달라' → 거절(CONTENT_COACHING), 지금 입력값 · 저장값을 읽어 주는 것과 바꾸는 방법 안내는 한다."
+}

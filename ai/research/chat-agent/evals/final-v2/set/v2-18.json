@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-18",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should",
+  "title": "보던 Take 5 밖의 Take 2 군더더기 횟수를 나란히 — 묻지 않고 읽기(가져오기 AUTO 또는 비교) → 답(16번 · 9번), 승인 단계 · 저장 카드 없음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-run",
+        "title": "동네 마라톤 대회 개회사",
+        "last_practiced_at": "2026-11-09T07:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "run-t1",
+            "take_number": 1,
+            "started_at": "2026-10-28T07:00:00+09:00",
+            "completed_at": "2026-10-28T07:03:00+09:00"
+          },
+          {
+            "take_id": "run-t2",
+            "take_number": 2,
+            "started_at": "2026-10-31T07:00:00+09:00",
+            "completed_at": "2026-10-31T07:03:00+09:00",
+            "result": {"filler_per_min": 4.0, "filler_count": 16},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 64}
+          },
+          {
+            "take_id": "run-t3",
+            "take_number": 3,
+            "started_at": "2026-11-03T07:00:00+09:00",
+            "completed_at": "2026-11-03T07:03:00+09:00",
+            "result": {"filler_per_min": 3.1, "filler_count": 12},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 67}
+          },
+          {
+            "take_id": "run-t4",
+            "take_number": 4,
+            "started_at": "2026-11-06T07:00:00+09:00",
+            "completed_at": "2026-11-06T07:03:00+09:00",
+            "result": {"filler_per_min": 2.6, "filler_count": 10},
+            "review": {"dimensions": {"fluency": "STABLE"}, "score": 71}
+          },
+          {
+            "take_id": "run-t5",
+            "take_number": 5,
+            "started_at": "2026-11-09T07:00:00+09:00",
+            "completed_at": "2026-11-09T07:03:00+09:00",
+            "result": {"filler_per_min": 2.2, "filler_count": 9},
+            "review": {"dimensions": {"fluency": "STABLE"}, "score": 73}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-run"}
+  },
+  "turns": [
+    {
+      "message": "개회사 연습 초반에 했던 Take 2에서 '어', '음' 같은 군더더기를 몇 번 했었는지 찾아서 이번 Take 5랑 나란히 보여 줘요.",
+      "page_take_id": "run-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "auto-read-other-take",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          ["propose:FETCH_TAKE:AUTO", "exec:FETCH_TAKE:OK", "claim:RECORD"],
+          ["tool:compare_takes:OK", "claim:RECORD"]
+        ],
+        "metric": "path",
+        "note": "보던 Take 밖의 Take 2 결과는 가져오기(AUTO) 또는 비교로 묻지 않고 읽는다(6-2)"
+      },
+      {
+        "check_id": "no-approval-step",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["approve:*"],
+        "metric": "autonomy",
+        "note": "읽기 · 비교에는 승인 단계가 없다"
+      },
+      {
+        "check_id": "no-ask-actions",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "take2-count",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "16",
+        "grader": "number",
+        "derive": "run-t2:FILLER.filler_count"
+      },
+      {
+        "check_id": "take5-count",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "9",
+        "grader": "number",
+        "derive": "run-t5:FILLER.filler_count"
+      },
+      {
+        "check_id": "take2-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"take": 2, "metric": "filler_count"},
+        "grader": "target"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "되묻지 않고 읽은 기록으로 끝낸다"
+      }
+    ]
+  },
+  "notes": "'몇 번' 질문은 횟수 지표 filler_count 로 고른다(6-1 2번). Take 2 filler_count 16(분당 4.0), Take 5 filler_count 9(분당 2.2). Take 2 는 기본 자료의 Take 요약에는 있지만 결과 전체(focus_take)는 Take 5 뿐이다."
+}

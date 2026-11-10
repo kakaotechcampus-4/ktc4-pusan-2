@@ -1,0 +1,197 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-44",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should",
+  "title": "리뷰가 아직 없는 Take 2 의 점수 · 미션 결과를 물음 — 리뷰 없음을 말하고 그 Take 의 코치 기록으로 RECORD 답 + 리뷰가 끝나면 점수 · 미션을 볼 수 있다는 다음 걸음, '리뷰 분석 전'(Take 없음 아님), DONE",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-vol",
+        "title": "봉사 동아리 활동 보고",
+        "last_practiced_at": "2026-11-09T21:00:00+09:00",
+        "missions": [
+          {
+            "mission_id": "m-31",
+            "area": "SPEED",
+            "slide_number": null,
+            "target": {
+              "metric": "cpm",
+              "operator": "LTE",
+              "value": 340
+            },
+            "status": "ACTIVE"
+          }
+        ],
+        "takes": [
+          {
+            "take_id": "vol-t1",
+            "take_number": 1,
+            "started_at": "2026-11-06T21:00:00+09:00",
+            "completed_at": "2026-11-06T21:05:00+09:00",
+            "result": {
+              "cpm": [
+                330,
+                352,
+                361,
+                335
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "vol-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T21:00:00+09:00",
+            "completed_at": "2026-11-09T21:05:00+09:00",
+            "result": {
+              "cpm": [
+                312,
+                326,
+                371,
+                318
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": null
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-vol"
+    }
+  },
+  "turns": [
+    {
+      "message": "방금 끝낸 Take 2 점수랑 이번 미션 통과했는지 볼 수 있을까요?",
+      "page_take_id": "vol-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "core-review-missing",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "Take 2에는 아직 리뷰 결과가 없어요|리뷰가 없어 점수와 미션은 확인할 수 없지만 측정값은 볼 수 있어요",
+        "grader": "regex",
+        "note": "① 리뷰 없음의 지금 고정 문장 둘 중 하나(templates NONE_REVIEW · SystemText.NO_REVIEW)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "② TARGET 2 리뷰 없음은 해소"
+      },
+      {
+        "check_id": "alt-coach-record",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence",
+        "note": "③ 대안: 그 Take 의 코치 기록을 RECORD 로"
+      },
+      {
+        "check_id": "alt-record-of-take2",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": [
+          "vol-t2"
+        ],
+        "path": "evidence[].take_id",
+        "note": "③ 근거가 물은 Take 2 의 기록"
+      },
+      {
+        "check_id": "no-new-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS",
+          "START_PRACTICE"
+        ],
+        "path": "types",
+        "metric": "autonomy",
+        "note": "⑤ 허용 행동 안"
+      },
+      {
+        "check_id": "no-new-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "ASK_CONFIRM",
+          "GOAL_PROPOSAL"
+        ],
+        "path": "cards",
+        "note": "⑤ 카드 없음"
+      },
+      {
+        "check_id": "read-then-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:*",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "review-signal",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "decision:REVIEW_MISSING:*"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "리뷰 분석 전",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "not-no-take",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": "(?<!맞는 )Take 없음",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-generic-partial",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      }
+    ]
+  }
+}

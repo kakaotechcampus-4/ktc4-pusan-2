@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-12",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "첫 장에서 말이 빨라진다 — 보던 Take 4 와 보던 밖의 Take 2 의 1장 말 속도(371 · 362)를 각각 읽어 답함(가져오기 또는 비교)",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-deb",
+        "title": "교내 토론 대회 입론",
+        "last_practiced_at": "2026-11-09T20:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "deb-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T20:00:00+09:00",
+            "completed_at": "2026-11-02T20:04:00+09:00",
+            "result": {"cpm": [362, 320, 310, 305], "issues": [["PACE_FAST", 1, true]]},
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY"}, "score": 70}
+          },
+          {
+            "take_id": "deb-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T20:00:00+09:00",
+            "completed_at": "2026-11-05T20:04:00+09:00",
+            "result": {"cpm": [340, 318, 312, 300]},
+            "review": {"dimensions": {"pacing_rhythm": "STABLE"}, "score": 74}
+          },
+          {
+            "take_id": "deb-t4",
+            "take_number": 4,
+            "started_at": "2026-11-09T20:00:00+09:00",
+            "completed_at": "2026-11-09T20:04:00+09:00",
+            "result": {"cpm": [371, 318, 309, 300], "issues": [["PACE_FAST", 1, true]]},
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY"}, "score": 69}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-deb"}
+  },
+  "turns": [
+    {
+      "message": "입론할 때 첫 장에서 유독 말이 빨라지는 것 같아요. Take 2랑 Take 4에서 1장 말 속도가 각각 얼마였는지 보고, 첫 장은 어떻게 연습하면 좋을지 알려 주세요.",
+      "page_take_id": "deb-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "other-take-read",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          ["exec:FETCH_TAKE:OK", "claim:RECORD"],
+          ["tool:compare_takes:OK", "claim:RECORD"]
+        ],
+        "metric": "path",
+        "note": "보던 Take 밖의 Take 2 는 가져와 읽거나 비교로 읽는다(묻지 않고 AUTO)"
+      },
+      {
+        "check_id": "take2-value-derive",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "362",
+        "grader": "number",
+        "derive": "deb-t2:SPEED.cpm@1"
+      },
+      {
+        "check_id": "take4-value-derive",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "371",
+        "grader": "number",
+        "derive": "deb-t4:SPEED.cpm@1"
+      },
+      {
+        "check_id": "no-ask-actions",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "Take 2 · 4 모두 1장 PACE_FAST(빠름 기준 350 초과). 두 Take 는 같은 대본 · 기준 버전 · 끝까지 함이라 비교 가능."
+}

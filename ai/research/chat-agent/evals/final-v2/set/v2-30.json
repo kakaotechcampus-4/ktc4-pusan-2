@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-30",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "멈춤 횟수(방향 없는 지표)가 줄었는지 비교 요청 — 높고 낮음만으로 좋고 나쁨을 정하지 않는다는 문장, 좋아짐 · 나빠짐 없음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-apt",
+        "title": "아파트 관리비 절감 주민 보고",
+        "takes": [
+          {
+            "take_id": "ap-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T20:00:00+09:00",
+            "completed_at": "2026-11-03T20:07:00+09:00",
+            "result": {
+              "cpm": 296
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ap-t2",
+            "take_number": 2,
+            "started_at": "2026-11-06T20:00:00+09:00",
+            "completed_at": "2026-11-06T20:07:00+09:00",
+            "result": {
+              "cpm": 305
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-06T20:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-apt"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 1이랑 Take 2에서 멈춤 횟수가 줄었는지 비교해 줘요.",
+      "page_take_id": "ap-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-direction",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.NO_DIRECTION",
+        "grader": "template",
+        "metric": "replan",
+        "note": "6-4: pause_count 는 방향이 null 이라 비교하지 않는다(NO_DIRECTION, L4-10)"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "compare-signal",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:*",
+          "decision:NOT_COMPARABLE:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-improved",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

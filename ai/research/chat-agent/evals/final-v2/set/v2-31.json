@@ -1,0 +1,191 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-31",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should",
+  "title": "대화 요약에만 남은 '보다 만 Take'(Take 2) 2장 청중 시선 — 결과가 기본 자료에 없어 가져와 읽고 29%",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-fin2",
+        "title": "청소년 금융 교육 강연",
+        "takes": [
+          {
+            "take_id": "yf-t1",
+            "take_number": 1,
+            "started_at": "2026-10-26T15:00:00+09:00",
+            "completed_at": "2026-10-26T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.44,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "yf-t2",
+            "take_number": 2,
+            "started_at": "2026-10-29T15:00:00+09:00",
+            "completed_at": "2026-10-29T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.29,
+                0.58,
+                0.6
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 67
+            }
+          },
+          {
+            "take_id": "yf-t3",
+            "take_number": 3,
+            "started_at": "2026-11-02T15:00:00+09:00",
+            "completed_at": "2026-11-02T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.47,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "yf-t4",
+            "take_number": 4,
+            "started_at": "2026-11-06T15:00:00+09:00",
+            "completed_at": "2026-11-06T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.52,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "yf-t5",
+            "take_number": 5,
+            "started_at": "2026-11-09T15:00:00+09:00",
+            "completed_at": "2026-11-09T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.61,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-09T15:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-fin2",
+      "summary": [
+        {
+          "kind": "TOPIC",
+          "text": "Take 2의 2장 청중 시선"
+        },
+        {
+          "kind": "OPEN",
+          "text": "Take 2 2장에서 청중 시선이 낮았던 장면 다시 보기"
+        }
+      ],
+      "history": [
+        {
+          "role": "user",
+          "text": "오늘은 여기까지 볼게요, 고마워요."
+        },
+        {
+          "role": "assistant",
+          "text": "도움이 됐다니 다행이에요. 더 궁금한 점이 있으면 물어봐 주세요."
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "지난번에 보다가 만 그 Take 있잖아요, 2장에서 청중을 본 비율이 정확히 몇 퍼센트였는지 다시 확인해 줘요.",
+      "page_take_id": "yf-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_TAKE:AUTO",
+          "exec:FETCH_TAKE:OK",
+          "tool:get_take_report:*"
+        ],
+        "metric": "replan",
+        "note": "기본 자료에는 보던 Take(5)의 결과만 있다. Take 2 결과는 가져와(AUTO) 읽는다"
+      },
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.29,
+        "grader": "number",
+        "derive": "yf-t2:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 2,
+          "slide": 2
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "대화 요약 항목(TOPIC · OPEN)만 Take 2 를 가리킨다. 최근 메시지는 인사뿐이고 근거 표시(basis)가 없다."
+}

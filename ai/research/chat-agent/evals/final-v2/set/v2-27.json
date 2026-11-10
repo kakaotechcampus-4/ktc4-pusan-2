@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-27",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "Take 2 시선이 측정 안 됨(얼굴 인식 안 됨) — 청중 시선 비교를 하지 않고 측정되지 않아 비교할 수 없다고 말함, 단계에 비교 불가(측정 안 됨)",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-ol",
+        "title": "온라인 강의 오리엔테이션 녹화",
+        "takes": [
+          {
+            "take_id": "ol-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T10:00:00+09:00",
+            "completed_at": "2026-11-05T10:07:00+09:00",
+            "result": {
+              "audience": 0.52
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ol-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T10:00:00+09:00",
+            "completed_at": "2026-11-08T10:07:00+09:00",
+            "result": {
+              "audience": 0.6,
+              "unmeasured": {
+                "GAZE": "NO_FACE"
+              }
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T10:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-ol"
+    }
+  },
+  "turns": [
+    {
+      "message": "오리엔테이션 녹화 두 번째 Take에서 청중 시선 비율이 첫 번째보다 올라갔는지 확인해 주세요.",
+      "page_take_id": "ol-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "unmeasured-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.METRIC_UNMEASURED",
+        "grader": "template",
+        "metric": "replan",
+        "note": "7-10: 값이 없으면 '이 지표는 측정되지 않아 비교할 수 없어요.'"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가\\(측정 안 됨\\)",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "compare-signal",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:*",
+          "decision:NOT_COMPARABLE:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-improved",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-rise-claim",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(올라갔|늘었|높아졌)어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "TARGET 2: 측정 안 됨은 확인한 사실이라 해소"
+      }
+    ]
+  }
+}

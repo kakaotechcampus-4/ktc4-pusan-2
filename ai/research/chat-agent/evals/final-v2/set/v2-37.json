@@ -1,0 +1,173 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-37",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "전체 범위에서 이름으로 부른 발표의 Take 3 — 가져오기 직전에 Take 3 이 지워짐: 가져온 피치에 없다고 말하고 남은 Take 번호를 대안으로, 값을 만들지 않음",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-trip",
+        "title": "가족 여행 사진 발표회",
+        "takes": [
+          {
+            "take_id": "tp-t1",
+            "take_number": 1,
+            "started_at": "2026-11-09T19:00:00+09:00",
+            "completed_at": "2026-11-09T19:07:00+09:00",
+            "result": {
+              "cpm": 300
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-09T19:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-club",
+        "title": "교내 창업 동아리 설명회",
+        "takes": [
+          {
+            "take_id": "cl-t1",
+            "take_number": 1,
+            "started_at": "2026-10-31T12:00:00+09:00",
+            "completed_at": "2026-10-31T12:07:00+09:00",
+            "result": {
+              "cpm": 330
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "cl-t2",
+            "take_number": 2,
+            "started_at": "2026-11-03T12:00:00+09:00",
+            "completed_at": "2026-11-03T12:07:00+09:00",
+            "result": {
+              "cpm": 318
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "cl-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T12:00:00+09:00",
+            "completed_at": "2026-11-05T12:07:00+09:00",
+            "result": {
+              "cpm": 352
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "cl-t4",
+            "take_number": 4,
+            "started_at": "2026-11-08T12:00:00+09:00",
+            "completed_at": "2026-11-08T12:07:00+09:00",
+            "result": {
+              "cpm": 309
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T12:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "교내 창업 동아리 설명회 Take 3에서 말 속도가 어땠는지 알려 주세요.",
+      "faults": [
+        {
+          "kind": "delete_before_action",
+          "action": "FETCH_PITCH",
+          "target": "cl-t3"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-pitch",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_PITCH:AUTO",
+          "exec:FETCH_PITCH:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-refetch",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:FETCH_PITCH:OK",
+          "propose:FETCH_PITCH:*"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "not-found-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "기록을 찾을 수 없어요\\.|해당 연습 기록을 가져오지 못했어요\\.",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "TARGET 4 표: 물은 Take 가 그 발표에 없음 · 가져오지 못함의 핵심 문장(templates.py 두 문장)"
+      },
+      {
+        "check_id": "alternative-take",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "Take ?[124](?!\\d)",
+        "grader": "regex",
+        "note": "TARGET 4: 그 발표에서 볼 수 있는 Take 번호(4 · 2 · 1) 중 하나 이상"
+      },
+      {
+        "check_id": "no-made-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "Take ?3(?!\\d)[^.\\n]*\\d{3} ?(자|글자)",
+        "grader": "regex",
+        "note": "지운 Take 3 에 다른 Take 값을 붙이지 않는다"
+      },
+      {
+        "check_id": "no-deleted-value",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": 352,
+        "grader": "number"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "TARGET 2: 없는 Take 는 확인한 '없음'이라 해소(다시 해도 나아지지 않음)"
+      }
+    ]
+  },
+  "notes": "장애: FETCH_PITCH 실행 직전에 cl-t3 을 지운다. 가져온 피치의 Take 는 1 · 2 · 4."
+}

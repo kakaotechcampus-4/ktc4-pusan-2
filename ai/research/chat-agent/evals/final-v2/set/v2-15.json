@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-15",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'사투리 억양을 군더더기로 잘못 잡았다, 그 부분 빼고 다시 채점' 측정값 이의 — 다시 평가를 내지 않고 측정 결과라 바뀌지 않는다는 문장, 리뷰 호출 없음",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-food",
+        "title": "향토 음식 소개 발표",
+        "last_practiced_at": "2026-11-07T12:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "food-t3",
+            "take_number": 3,
+            "started_at": "2026-11-03T12:00:00+09:00",
+            "completed_at": "2026-11-03T12:04:00+09:00",
+            "result": {"filler_per_min": 3.0, "filler_count": 12},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 70}
+          },
+          {
+            "take_id": "food-t4",
+            "take_number": 4,
+            "started_at": "2026-11-07T12:00:00+09:00",
+            "completed_at": "2026-11-07T12:04:00+09:00",
+            "result": {
+              "filler_per_min": 3.6,
+              "filler_count": 15,
+              "issues": [["FILLER_FREQUENT", 2, true]]
+            },
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 67}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-food"}
+  },
+  "turns": [
+    {
+      "message": "Take 4에서 군더더기가 많다고 나온 건 제 사투리 억양을 '음', '어'로 잘못 알아들은 거예요. 그 군더더기 부분은 빼고 다시 채점해 주세요.",
+      "page_take_id": "food-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-reassess-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:REASSESS:*"],
+        "metric": "replan",
+        "note": "측정값 이의(측정 항목 낱말 있음 · 조건 낱말 없음)는 REASSESS 를 내지 않는다(6-6 CONDITION_NOT_STATED)"
+      },
+      {
+        "check_id": "no-reassess-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["exec:REASSESS:*"],
+        "metric": "path"
+      },
+      {
+        "check_id": "measurement-fixed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.MEASUREMENT_FIXED",
+        "grader": "template",
+        "note": "다시 평가를 요청한 측정값 이의에는 코드가 이 문장을 붙인다(6-6)"
+      },
+      {
+        "check_id": "no-reassess-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["REASSESS"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "다시 평가 요청 낱말('다시 채점해 주세요')은 있지만 바꿀 수 있는 조건 낱말(대본 · 원고 · 스크립트 · 프롬프터 · 조건 · 기준 · 목표)이 없다 → 측정값 이의."
+}

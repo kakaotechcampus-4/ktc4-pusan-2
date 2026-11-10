@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-08",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "2장에서 고개가 자꾸 내려간다 — 그 장의 대본 응시 문제 구간 · 장별 값(대본 57% · 청중 31%)과 리뷰 판단으로 어디서 · 왜 · 무엇을 연습",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-lib",
+        "title": "도서관 이용 안내 발표",
+        "last_practiced_at": "2026-11-09T16:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "lib-t4",
+            "take_number": 4,
+            "started_at": "2026-11-05T16:00:00+09:00",
+            "completed_at": "2026-11-05T16:04:00+09:00",
+            "result": {
+              "audience": [0.6, 0.4, 0.58, 0.6],
+              "script_ratio": [0.18, 0.45, 0.2, 0.17]
+            },
+            "review": {"dimensions": {"script_independence": "STABLE"}, "score": 73}
+          },
+          {
+            "take_id": "lib-t5",
+            "take_number": 5,
+            "started_at": "2026-11-09T16:00:00+09:00",
+            "completed_at": "2026-11-09T16:04:00+09:00",
+            "result": {
+              "audience": [0.6, 0.31, 0.58, 0.62],
+              "script_ratio": [0.18, 0.57, 0.2, 0.16],
+              "issues": [["GAZE_ON_SCRIPT", 2, true]]
+            },
+            "review": {"dimensions": {"script_independence": "PRIORITY", "audience_gaze": "PRIORITY"}, "score": 67}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-lib"}
+  },
+  "turns": [
+    {
+      "message": "Take 5 녹화를 다시 보니까 2장으로 넘어가면서부터 고개가 자꾸 아래로 내려가더라고요. 그 장에서 기록상 무슨 일이 있었던 건지, 다음엔 어떻게 연습해 보면 좋을지 같이 봐 주세요.",
+      "page_take_id": "lib-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["tool:get_take_report:*", "claim:RECORD"],
+        "metric": "path"
+      },
+      {
+        "check_id": "slide2-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"slide": 2},
+        "grader": "target"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "no-actions",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "Take 5: 2장 script_ratio 0.57 · audience_ratio 0.31, 문제 구간 GAZE_ON_SCRIPT 2장(믿을 만함), 리뷰 우선 개선 script_independence · audience_gaze."
+}

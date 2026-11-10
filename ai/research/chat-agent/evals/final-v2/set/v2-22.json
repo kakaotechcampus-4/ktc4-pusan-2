@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-22",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "가장 최근 발표의 분석 끝난 Take 가 0개(둘째 피치도 0개) — 0개 문장 + 분석 끝난 Take 가 있는 가장 최근 발표(셋째), 날짜는 한국 시간",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-hack",
+        "title": "해커톤 최종 데모 발표",
+        "takes": [
+          {
+            "take_id": "hk-t1",
+            "take_number": 1,
+            "status": "FAILED",
+            "started_at": "2026-11-09T16:30:00+00:00",
+            "completed_at": null,
+            "result": null,
+            "review": null
+          }
+        ],
+        "last_practiced_at": "2026-11-09T16:30:00+00:00"
+      },
+      {
+        "pitch_id": "p-wed",
+        "title": "친구 결혼식 축사",
+        "takes": [
+          {
+            "take_id": "wd-t1",
+            "take_number": 1,
+            "status": "ANALYZING",
+            "started_at": "2026-11-08T03:00:00+00:00",
+            "completed_at": null,
+            "result": null,
+            "review": null
+          }
+        ],
+        "last_practiced_at": "2026-11-08T03:00:00+00:00"
+      },
+      {
+        "pitch_id": "p-esg",
+        "title": "ESG 경영 사례 세미나 발표",
+        "takes": [
+          {
+            "take_id": "esg-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T01:00:00+00:00",
+            "completed_at": "2026-11-02T01:07:00+00:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "esg-t2",
+            "take_number": 2,
+            "started_at": "2026-11-03T01:00:00+00:00",
+            "completed_at": "2026-11-03T01:07:00+00:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "esg-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T01:00:00+00:00",
+            "completed_at": "2026-11-05T01:07:00+00:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "esg-t4",
+            "take_number": 4,
+            "status": "FAILED",
+            "started_at": "2026-11-06T15:20:00+00:00",
+            "completed_at": null,
+            "result": null,
+            "review": null
+          }
+        ],
+        "last_practiced_at": "2026-11-06T15:20:00+00:00"
+      },
+      {
+        "pitch_id": "p-photo",
+        "title": "사진 동호회 전시 안내",
+        "takes": [
+          {
+            "take_id": "ph-t1",
+            "take_number": 1,
+            "started_at": "2026-11-01T09:00:00+00:00",
+            "completed_at": "2026-11-01T09:07:00+00:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ph-t2",
+            "take_number": 2,
+            "started_at": "2026-11-03T09:00:00+00:00",
+            "completed_at": "2026-11-03T09:07:00+00:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-03T09:00:00+00:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "제가 가장 최근에 연습을 시작한 발표가 무엇인지 확인 부탁드려요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "recent-zero",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "가장 최근에 연습을 시작한 발표는 '해커톤 최종 데모 발표'이고, 마지막 연습 시작은 11월 10일, 아직 분석이 끝난 Take는 없어요\\.",
+        "grader": "regex",
+        "note": "2026-11-09T16:30Z = 11-10 01:30 KST, take_count 0"
+      },
+      {
+        "check_id": "recent-with-takes",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "분석이 끝난 Take가 있는 가장 최근 발표는 'ESG 경영 사례 세미나 발표'이고, 마지막 연습 시작은 11월 7일이에요\\.",
+        "grader": "regex",
+        "note": "take_count ≥ 1 중 가장 최근: p-esg(last_practiced_at = 실패한 Take 4 시작 2026-11-06T15:20Z = 11-07 00:20 KST, 분석 끝난 Take 3개). p-wed 는 take_count 0(분석 중만)이라 건너뜀"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-partial-text",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path"
+      }
+    ]
+  },
+  "notes": "take_count 는 COMPLETED Take 만 센다(fixtures.pitch_summary): p-hack 은 실패한 Take 1개 · p-wed 는 분석 중 Take 1개라 0개. last_practiced_at 은 각 피치에서 상태와 상관없이 가장 늦은 Take 시작으로 직접 적었다. 모든 시각은 UTC 로 적어 정렬이 시각 순과 같다."
+}
