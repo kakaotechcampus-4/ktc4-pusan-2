@@ -33,6 +33,10 @@ export function ReportFrame({
           <p className="border-b border-line pb-4 font-bold">
             {report.pitch_title} <span className="mx-2 text-line-strong">/</span> TAKE{' '}
             {report.take_number}
+            {/* 튜토리얼 샘플 발표의 결과가 내 발표 결과처럼 보이지 않게 합니다 (#931) */}
+            {report.is_demo && (
+              <span className="ml-3 border border-ink bg-cream px-1.5 text-xs">샘플 발표</span>
+            )}
           </p>
         )}
         {children}

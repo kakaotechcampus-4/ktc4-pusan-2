@@ -20,6 +20,7 @@ function take(
     take_id: pitchId + '-' + n,
     pitch_id: pitchId,
     pitch_title: pitchId === 'p1' ? '내 발표' : '다른 발표',
+    is_demo: false,
     take_number: n,
     started_at: '2026-10-06T12:00:00',
     status,
@@ -80,6 +81,16 @@ it.each([0, 1])('완료된 Take가 %i개면 비교 대신 추가 연습을 안�
   expect(host.textContent).toContain('완료된 Take가 2개 이상 필요해요');
   expect(host.querySelector('table')).toBeNull();
   expect(view('지표 비교').getAttribute('aria-current')).toBe('page');
+});
+
+it('튜토리얼 샘플 피치의 Take 에만 샘플 표시를 붙인다', async () => {
+  history.data.takes = [{ ...take(1, 'p2'), is_demo: true }, take(1)];
+  await render('/takes');
+  const rows = [...host.querySelectorAll('ul > li')];
+  expect(rows.map((row) => row.querySelector('p')?.textContent)).toEqual([
+    expect.stringMatching(/다른 발표샘플$/),
+    expect.stringMatching(/내 발표$/),
+  ]);
 });
 
 it('분석 중 기록은 목록에 남지만 비교 개수에 포함하지 않는다', async () => {

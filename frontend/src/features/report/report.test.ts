@@ -13,6 +13,7 @@ const analyzing: TakeReport = {
   take_id: 't4',
   pitch_id: 'p1',
   pitch_title: '캡스톤 최종 발표',
+  is_demo: false,
   take_number: 4,
   script_mode: 'HIGHLIGHT',
   ended_at: null,

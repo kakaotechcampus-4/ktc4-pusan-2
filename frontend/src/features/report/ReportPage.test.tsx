@@ -38,6 +38,7 @@ beforeEach(() => {
     take_id: 't3',
     pitch_id: 'p1',
     pitch_title: '연습',
+    is_demo: false,
     take_number: 3,
     script_mode: 'HIGHLIGHT',
     ended_at: '2026-10-26T00:00:00Z',
@@ -358,4 +359,24 @@ it('restores focus to the detail trigger after closing the dialog', async () => 
   expect(host.querySelector('dialog[open]')).toBeNull();
   expect(document.activeElement).toBe(trigger);
   expect(document.body.style.overflow).toBe('');
+});
+
+it('일반 피치 리포트의 다음 연습은 같은 피치의 장치 점검으로 간다', async () => {
+  await render();
+  const hrefs = [...host.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  expect(hrefs).toContain('/pitch/p1/device-check');
+  expect(hrefs).not.toContain('/pitch/new');
+  expect(host.textContent).not.toContain('샘플 발표');
+});
+
+it('튜토리얼 샘플 리포트는 샘플로 표시하고 다음 연습을 내 자료로 새 피치 만들기로 잇는다', async () => {
+  query.data!.is_demo = true;
+  await render();
+  const title = host.querySelector('main > p')!;
+  expect(title.textContent).toContain('샘플 발표');
+  const hrefs = [...host.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  // 튜토리얼 리포트는 한 번이라 샘플 피치의 장치 점검은 409 로 막힙니다
+  expect(hrefs).not.toContain('/pitch/p1/device-check');
+  expect(hrefs).toContain('/pitch/new');
+  expect(host.textContent).toContain('다음 연습에서 해 볼 것');
 });
