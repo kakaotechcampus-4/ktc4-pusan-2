@@ -37,6 +37,17 @@ on:
       - '.github/workflows/frontend-ci.yml'
       - 'docs/ai/features/script-parser-markers.json'
 
+# 같은 PR 에 새로 푸시하면 아직 돌거나 기다리는 이전 실행을 취소합니다 (#1201).
+# 결과를 볼 일 없는 실행이 러너를 차지하면 조직 전체가 나눠 쓰는 러너의 대기가 길어집니다.
+# 취소된 실행은 실패가 아니라 "cancelled" 로 남고, 마지막 커밋의 실행은 끝까지 돕니다.
+#
+# push(develop-next · main 등)는 실행마다 다른 그룹(run_id)에 넣어 서로 기다리지도 취소되지도 않게 합니다.
+# 브랜치로 묶으면 cancel-in-progress 가 false 여도 기다리는 실행은 하나만 남고 나머지는 취소됩니다
+# (notify-discord.yml 머리 주석). 연달아 머지돼도 머지 커밋마다 검사 결과가 남아야 합니다.
+concurrency:
+  group: frontend-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -140,7 +151,30 @@ jobs:
 
       # package-lock 의 @playwright/test 버전에 맞는 Chromium 과 리눅스 의존 패키지를 받습니다.
       # 시험은 Chromium 하나로만 돕니다 (playwright.config.ts 의 projects).
-      - run: npx playwright install --with-deps chromium
+      #
+      # 받은 브라우저(~/.cache/ms-playwright)는 Playwright 버전을 키로 캐시합니다 (#1201).
+      # 버전을 올리면 키가 바뀌어 새 브라우저를 다시 받습니다. 버전 숫자는 여기 적지 않고
+      # node_modules 에서 읽습니다 — 두 곳에 적으면 한쪽만 바뀌어 갈라집니다.
+      # develop-next 푸시에서 만든 캐시를 PR 들이 함께 쓰고, PR 에서 만든 캐시는 그 PR 안에서만 씁니다.
+      #
+      # 버전을 변수에 먼저 담습니다. echo 안에서 바로 읽으면 node 가 실패해도 단계가 통과해
+      # 키가 버전 없는 `playwright-Linux-` 가 됩니다.
+      - id: pw
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # 리눅스 의존 패키지(apt)는 캐시되지 않아서 캐시가 맞을 때도 install-deps 로 따로 설치합니다.
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       # GitHub 가 CI=true 를 두면 설정이 바뀝니다 — 실패한 시험을 한 번 더 돌리고(retries: 1),
       # test.only 가 남아 있으면 실패하고, HTML 리포트를 playwright-report/ 에 남깁니다.
