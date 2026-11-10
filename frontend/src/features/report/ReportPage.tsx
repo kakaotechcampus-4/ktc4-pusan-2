@@ -309,7 +309,10 @@ function Points({
 const TREND: Record<string, { label: string; className: string }> = {
   true: { label: '개선 ↑', className: 'bg-coral-deep text-white' },
   false: { label: '악화 ↓', className: 'border border-line-strong bg-cream text-ink' },
-  null: { label: '방향 판단 불가', className: 'border border-dashed border-line-strong text-stone' },
+  null: {
+    label: '방향 판단 불가',
+    className: 'border border-dashed border-line-strong text-stone',
+  },
   same: { label: '변화 없음', className: 'border border-dashed border-line-strong text-stone' },
 };
 
@@ -466,7 +469,8 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                       ) : (
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink/80">
                           <span>
-                            발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)}
+                            발표 전체: {fmt(metric, overall.previous)} →{' '}
+                            {fmt(metric, overall.current)}
                           </span>
                           <ComparisonTrendBadge result={trend(overall)} />
                         </div>
