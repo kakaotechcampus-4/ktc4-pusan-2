@@ -490,8 +490,8 @@ function ChatPanel({
     };
   }, [mobileOverlay]);
 
-  // 중간 폭(761~1439px)에서는 상단바/고정 푸터의 실제 높이만큼 패널을 비웁니다.
-  // 헤더가 줄바꿈되거나 발표 준비 버튼 안내가 길어져도 고정된 rem 값에 의존하지 않습니다.
+  // 중간 폭(761~1439px)에서는 화면 안에 보이는 헤더와 고정 푸터만큼 패널을 비웁니다.
+  // 헤더가 스크롤로 화면 밖으로 나가면 상단 여백도 줄이고, 크기 변경은 실측으로 반영합니다.
   useLayoutEffect(() => {
     const layout = document.querySelector<HTMLElement>('.chat-layout');
     const content = layout?.querySelector<HTMLElement>('.chat-layout-content');
@@ -502,10 +502,9 @@ function ChatPanel({
     let footer: HTMLElement | null = null;
     const measure = () => {
       if (!overlay.matches) return;
-      layout.style.setProperty(
-        '--chat-overlay-top',
-        `${Math.ceil(header?.getBoundingClientRect().height ?? 0)}px`,
-      );
+      // 일반 헤더는 sticky가 아니므로 스크롤 시 화면 안에 남은 부분만 비웁니다.
+      const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
+      layout.style.setProperty('--chat-overlay-top', `${Math.ceil(Math.max(0, headerBottom))}px`);
       layout.style.setProperty(
         '--chat-overlay-bottom',
         `${Math.ceil(footer?.getBoundingClientRect().height ?? 0)}px`,
@@ -543,10 +542,12 @@ function ChatPanel({
     };
     overlay.addEventListener('change', sync);
     window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, { passive: true });
     sync();
     return () => {
       overlay.removeEventListener('change', sync);
       window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure);
       mutationObserver.disconnect();
       resizeObserver?.disconnect();
       layout.style.removeProperty('--chat-overlay-top');
