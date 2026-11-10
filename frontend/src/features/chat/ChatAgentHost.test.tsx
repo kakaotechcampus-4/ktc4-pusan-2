@@ -622,6 +622,37 @@ it('장치 점검으로 이동하면 사라진 채팅 버튼 대신 화면 본�
   expect(document.activeElement).toBe(host.querySelector('main#main'));
 });
 
+it('지연 로딩 중의 본문이 교체되면 초점을 다시 옮기되 다른 조작부의 초점은 존중한다', async () => {
+  await visit('/');
+  await openPanel();
+  input().focus();
+  await go('/pitch/p1/device-check');
+  const fallback = host.querySelector<HTMLElement>('main#main')!;
+  expect(document.activeElement).toBe(fallback);
+
+  const loaded = document.createElement('main');
+  loaded.id = 'main';
+  loaded.tabIndex = -1;
+  loaded.textContent = '장치 점검을 불러왔어요';
+  await act(async () => {
+    fallback.replaceWith(loaded);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(loaded);
+
+  const anotherButton = document.createElement('button');
+  host.append(anotherButton);
+  anotherButton.focus();
+  const next = document.createElement('main');
+  next.id = 'main';
+  next.tabIndex = -1;
+  await act(async () => {
+    loaded.replaceWith(next);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(anotherButton);
+});
+
 it('모바일 오버레이는 배경을 비활성화하고 닫으면 복원한다', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query === '(max-width: 760px)',
