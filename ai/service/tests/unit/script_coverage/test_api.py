@@ -22,7 +22,7 @@ from pitch_coach_ai.features.script_coverage import core as core_module
 from pitch_coach_ai.main import create_app
 from pitch_coach_ai.settings import Settings
 
-from .fakes import DeckAwareLLM, KeepFirstVerifier, deck_rubrics
+from .fakes import DeckAwareLLM, FakeLLM, KeepFirstVerifier, deck_rubrics
 from .shared.slides import SLIDES
 from .test_take_core import SaidAllLLM
 
@@ -143,7 +143,7 @@ def test_rubric_returns_rubrics_and_meta(make_client) -> None:
     assert body["failed"] == []
     assert body["meta"] == {
         "schema_version": "1.0",
-        "feature_version": "script_coverage-1.1",
+        "feature_version": "script_coverage-1.2",
         "model": MODEL,
     }
     # 평가 기준에는 설정한 모델 이름이 남는다 (설정 해시에도 들어간다)
@@ -181,6 +181,7 @@ def test_one_failed_slide_goes_to_failed_and_others_succeed(make_client) -> None
         {
             "slide_number": 6,
             "error": {"code": "LLM_TIMEOUT", "message": "LLM 응답 시간이 초과되었습니다."},
+            "fallback": None,  # 평가 기준 만들기에는 간이 값이 없다
         }
     ]
 
@@ -337,14 +338,23 @@ def test_analyze_one_failed_slide_goes_to_failed_and_lowers_scored_ratio(make_cl
     assert body["take_scores"]["scored_ratio"] == round(2 / 3, 3)
 
 
-def test_analyze_all_slides_failed_is_the_common_error_body(make_client) -> None:
+def test_analyze_all_slides_failed_with_fallback_is_200(make_client) -> None:
     fakes = _take_fakes()
     fakes["eval"] = _Raise(LlmTimeout())
     res = make_client(fakes).post("/takes/analyze", json=_analyze_request())
-    assert res.status_code == 504
-    assert res.json() == {
-        "error": {"code": "LLM_TIMEOUT", "message": "LLM 응답 시간이 초과되었습니다."}
-    }
+    assert res.status_code == 200
+    body = res.json()
+    assert body["evaluations"] == [] and len(body["failed"]) == 3
+    assert body["failed"][0]["fallback"]["method"] == "lexical"
+    assert body["detail"]["scope"]["scored_slides"] == 0
+
+
+def test_analyze_all_slides_failed_is_the_common_error_body(make_client) -> None:
+    """간이 값이 하나도 없으면 지금처럼 에러 본문이다 (대상 장의 평가 기준도 대본 글도 없음)."""
+    request = {**_analyze_request(), "rubrics": [], "slide_numbers": [4]}
+    res = make_client(_take_fakes()).post("/takes/analyze", json=request)
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "RUBRIC_MISSING"
 
 
 def test_analyze_eval_and_verifier_share_one_deadline(make_client) -> None:
@@ -352,3 +362,20 @@ def test_analyze_eval_and_verifier_share_one_deadline(make_client) -> None:
     client.post("/takes/analyze", json=_analyze_request())
     assert [r for r, _ in client.calls] == ["script_coverage.eval", "script_coverage.verifier"]
     assert len({d for _, d in client.calls}) == 1
+
+
+def test_analyze_builds_the_offscript_role_only_when_enabled(make_client, monkeypatch) -> None:
+    """대본 밖 분류는 `OFFSCRIPT_LLM_ENABLED` 가 참일 때만 역할이 만들어진다 (기본 꺼짐)."""
+    fakes = {**_take_fakes(), "offscript": FakeLLM(None)}
+    off = make_client(fakes)
+    off.post("/takes/analyze", json=_analyze_request())
+    assert "script_coverage.offscript" not in [r for r, _ in off.calls]
+
+    monkeypatch.setattr(api.stt_config, "OFFSCRIPT_LLM_ENABLED", True)
+    on = make_client(fakes)
+    on.post("/takes/analyze", json=_analyze_request())
+    assert [r for r, _ in on.calls] == [
+        "script_coverage.eval",
+        "script_coverage.verifier",
+        "script_coverage.offscript",
+    ]

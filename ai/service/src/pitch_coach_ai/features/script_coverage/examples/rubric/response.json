@@ -2,15 +2,16 @@
   "rubrics": [
     {
       "meta": {
-        "rubric_id": "182e0668bb67ed42",
+        "rubric_id": "03ef39ce2867215d",
         "script_name": "sv-3",
         "slide_number": 6,
         "content_hash": "d211dcdd3f197a1f93540587dded4e2c54dda186e91eae954f1925023f1f1a3e",
-        "rubric_schema_version": "1.2",
-        "llm_model": "openai/gpt-5.6-luna",
-        "llm_config_hash": "f7b2ef94d4e7",
-        "final_config_hash": "83cb79b10a03",
-        "unit_config_hash": "1e964b21a6bf"
+        "rubric_schema_version": "1.3",
+        "llm_model": "openai/gpt-6-luna",
+        "llm_config_hash": "fe145db16778",
+        "final_config_hash": "ea6918cfbdbd",
+        "unit_config_hash": "9fbab8f4bf05",
+        "rubric_quality": "full"
       },
       "normalized_script": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했습니다. 참여한 이용자는 1,860명이었고, 빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었습니다. 알림을 받고 10분 안에 자리를 잡은 비율은 76%였습니다. 노쇼 비율도 18%에서 7%로 낮아졌습니다. 시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다.",
       "sentences": [
@@ -52,7 +53,7 @@
         "evidence",
         "evidence"
       ],
-      "core_claim": "시범 운영 결과 빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+      "core_claim": "시범 운영에서 빈자리를 찾는 데 걸린 시간이 평균 약 42퍼센트 줄었다.",
       "key_points": [
         {
           "id": "KP1",
@@ -75,7 +76,7 @@
         },
         {
           "id": "KP2",
-          "content": "빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+          "content": "참여한 이용자는 1,860명이었고, 빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
           "importance": "critical",
           "sentence_indices": [
             1
@@ -95,7 +96,7 @@
         },
         {
           "id": "KP3",
-          "content": "알림을 받고 10분 안에 자리를 잡은 비율이 76%이다.",
+          "content": "알림을 받고 10분 안에 자리를 잡은 비율은 76%였다.",
           "importance": "high",
           "sentence_indices": [
             2
@@ -113,7 +114,7 @@
         },
         {
           "id": "KP4",
-          "content": "노쇼 비율이 18%에서 7%로 낮아졌다.",
+          "content": "노쇼 비율도 18%에서 7%로 낮아졌다.",
           "importance": "high",
           "sentence_indices": [
             3
@@ -475,33 +476,20 @@
         {
           "id": "S0-U1",
           "sentence_index": 0,
-          "text": "2025년 3월부터 시범 운영함",
-          "quote": "2025년 3월부터",
+          "text": "2025년 3월부터 8주 동안 시범 운영함",
+          "quote": "2025년 3월부터 8주 동안",
           "span": [
             0,
-            10
-          ],
-          "fact_ids": [
-            "CF1"
-          ],
-          "source": "llm"
-        },
-        {
-          "id": "S0-U2",
-          "sentence_index": 0,
-          "text": "8주 동안 시범 운영함",
-          "quote": "8주 동안",
-          "span": [
-            11,
             16
           ],
           "fact_ids": [
+            "CF1",
             "CF2"
           ],
           "source": "llm"
         },
         {
-          "id": "S0-U3",
+          "id": "S0-U2",
           "sentence_index": 0,
           "text": "제휴 도서관 3곳에서 시범 운영함",
           "quote": "제휴 도서관 3곳",
@@ -517,11 +505,11 @@
         {
           "id": "S1-U1",
           "sentence_index": 1,
-          "text": "참여한 이용자는 1,860명이었음",
-          "quote": "참여한 이용자는 1,860명",
+          "text": "참여한 이용자가 1,860명이었음",
+          "quote": "참여한 이용자는 1,860명이었고",
           "span": [
             42,
-            57
+            60
           ],
           "fact_ids": [
             "CF4"
@@ -531,10 +519,10 @@
         {
           "id": "S1-U2",
           "sentence_index": 1,
-          "text": "빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄어듦",
-          "quote": "빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었습니다",
+          "text": "빈자리를 찾는 시간이 평균 23분에서 13분으로 약 42퍼센트 줄어듦",
+          "quote": "평균 23분에서 13분으로 약 42퍼센트 줄었습니다",
           "span": [
-            62,
+            79,
             107
           ],
           "fact_ids": [
@@ -547,11 +535,11 @@
         {
           "id": "S2-U1",
           "sentence_index": 2,
-          "text": "알림을 받고 10분 안에 자리를 잡은 비율은 76%였음",
-          "quote": "알림을 받고 10분 안에 자리를 잡은 비율은 76%",
+          "text": "알림을 받고 10분 안에 자리를 잡은 비율이 76%였음",
+          "quote": "알림을 받고 10분 안에 자리를 잡은 비율은 76%였습니다",
           "span": [
             109,
-            136
+            141
           ],
           "fact_ids": [
             "CF8",
@@ -578,9 +566,9 @@
           "id": "S4-U1",
           "sentence_index": 4,
           "text": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답함",
-          "quote": "이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다",
+          "quote": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다",
           "span": [
-            181,
+            168,
             211
           ],
           "fact_ids": [
@@ -589,20 +577,407 @@
           "source": "llm"
         }
       ]
-    }
-  ],
-  "failed": [
+    },
     {
-      "slide_number": 7,
-      "error": {
-        "code": "LLM_TIMEOUT",
-        "message": "LLM 응답 시간이 초과되었습니다."
-      }
+      "meta": {
+        "rubric_id": "15958beff4ad3734",
+        "script_name": "sv-3",
+        "slide_number": 7,
+        "content_hash": "2c80d08e9afdcd4a1ad597ac61a127130a7532b1085ce5a0a6aa508ce684211d",
+        "rubric_schema_version": "1.3",
+        "llm_model": "openai/gpt-6-luna",
+        "llm_config_hash": "fe145db16778",
+        "final_config_hash": "ea6918cfbdbd",
+        "unit_config_hash": "",
+        "rubric_quality": "sentence_fallback"
+      },
+      "normalized_script": "국내 공공도서관은 약 1,200곳이고, 대학 도서관은 약 430곳입니다. 이 중 열람실 좌석 예약 시스템을 이미 쓰는 곳을 초기 대상으로 보면 약 900곳이며, 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했습니다. 처음에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작하겠습니다.",
+      "sentences": [
+        {
+          "index": 0,
+          "text": "국내 공공도서관은 약 1,200곳이고, 대학 도서관은 약 430곳입니다.",
+          "start": 0,
+          "end": 40
+        },
+        {
+          "index": 1,
+          "text": "이 중 열람실 좌석 예약 시스템을 이미 쓰는 곳을 초기 대상으로 보면 약 900곳이며, 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했습니다.",
+          "start": 41,
+          "end": 125
+        },
+        {
+          "index": 2,
+          "text": "처음에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작하겠습니다.",
+          "start": 126,
+          "end": 167
+        }
+      ],
+      "sentence_roles": [
+        "evidence",
+        "claim",
+        "detail"
+      ],
+      "core_claim": "열람실 좌석 예약 시스템을 이미 쓰는 약 900곳을 초기 대상으로 하면 연간 시장 규모는 약 24억 원에서 36억 원이다.",
+      "key_points": [
+        {
+          "id": "KP1",
+          "content": "국내 공공도서관은 약 1,200곳이고 대학 도서관은 약 430곳이다.",
+          "importance": "high",
+          "sentence_indices": [
+            0
+          ],
+          "source_quote": "국내 공공도서관은 약 1,200곳이고, 대학 도서관은 약 430곳입니다.",
+          "source_span": [
+            0,
+            40
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF1",
+            "CF2"
+          ]
+        },
+        {
+          "id": "KP2",
+          "content": "열람실 좌석 예약 시스템을 이미 쓰는 약 900곳을 초기 대상으로 삼는다.",
+          "importance": "critical",
+          "sentence_indices": [
+            1
+          ],
+          "source_quote": "이 중 열람실 좌석 예약 시스템을 이미 쓰는 곳을 초기 대상으로 보면 약 900곳이며, 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했습니다.",
+          "source_span": [
+            41,
+            125
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF3"
+          ]
+        },
+        {
+          "id": "KP3",
+          "content": "초기 대상의 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했다.",
+          "importance": "critical",
+          "sentence_indices": [
+            1
+          ],
+          "source_quote": "이 중 열람실 좌석 예약 시스템을 이미 쓰는 곳을 초기 대상으로 보면 약 900곳이며, 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했습니다.",
+          "source_span": [
+            41,
+            125
+          ],
+          "key_terms": [],
+          "fact_ids": [
+            "CF4",
+            "CF5"
+          ]
+        },
+        {
+          "id": "KP4",
+          "content": "처음에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작한다.",
+          "importance": "normal",
+          "sentence_indices": [
+            2
+          ],
+          "source_quote": "처음에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작하겠습니다.",
+          "source_span": [
+            126,
+            167
+          ],
+          "key_terms": [
+            "서울",
+            "대전"
+          ],
+          "fact_ids": [
+            "CF6",
+            "CF7"
+          ]
+        }
+      ],
+      "critical_facts": [
+        {
+          "id": "CF1",
+          "type": "quantity",
+          "value": "약 1,200곳",
+          "normalized": "1,200곳",
+          "numeric_value": 1200.0,
+          "unit": "곳",
+          "qualifier": "약",
+          "spans": [
+            [
+              10,
+              18
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF2",
+          "type": "quantity",
+          "value": "약 430곳",
+          "normalized": "430곳",
+          "numeric_value": 430.0,
+          "unit": "곳",
+          "qualifier": "약",
+          "spans": [
+            [
+              30,
+              36
+            ]
+          ],
+          "sentence_indices": [
+            0
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP1"
+          ],
+          "importance": "high"
+        },
+        {
+          "id": "CF3",
+          "type": "quantity",
+          "value": "약 900곳",
+          "normalized": "900곳",
+          "numeric_value": 900.0,
+          "unit": "곳",
+          "qualifier": "약",
+          "spans": [
+            [
+              80,
+              86
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP2"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF4",
+          "type": "money",
+          "value": "약 24억 원",
+          "normalized": "2,400,000,000원",
+          "numeric_value": 2400000000.0,
+          "unit": "원",
+          "qualifier": "약",
+          "spans": [
+            [
+              100,
+              107
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP3"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF5",
+          "type": "money",
+          "value": "36억 원",
+          "normalized": "3,600,000,000원",
+          "numeric_value": 3600000000.0,
+          "unit": "원",
+          "qualifier": null,
+          "spans": [
+            [
+              110,
+              115
+            ]
+          ],
+          "sentence_indices": [
+            1
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP3"
+          ],
+          "importance": "critical"
+        },
+        {
+          "id": "CF6",
+          "type": "proper_noun",
+          "value": "서울",
+          "normalized": "서울",
+          "numeric_value": null,
+          "unit": null,
+          "qualifier": null,
+          "spans": [
+            [
+              142,
+              144
+            ]
+          ],
+          "sentence_indices": [
+            2
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP4"
+          ],
+          "importance": "normal"
+        },
+        {
+          "id": "CF7",
+          "type": "proper_noun",
+          "value": "대전",
+          "normalized": "대전",
+          "numeric_value": null,
+          "unit": null,
+          "qualifier": null,
+          "spans": [
+            [
+              146,
+              148
+            ]
+          ],
+          "sentence_indices": [
+            2
+          ],
+          "source": "rule",
+          "key_point_ids": [
+            "KP4"
+          ],
+          "importance": "normal"
+        }
+      ],
+      "keywords": [
+        {
+          "term": "대학 도서관",
+          "score": 0.2406,
+          "tf": 2
+        },
+        {
+          "term": "대학",
+          "score": 0.2406,
+          "tf": 2
+        },
+        {
+          "term": "초기 대상",
+          "score": 0.219,
+          "tf": 1
+        },
+        {
+          "term": "예약 시스템",
+          "score": 0.219,
+          "tf": 1
+        },
+        {
+          "term": "국내 공공",
+          "score": 0.219,
+          "tf": 1
+        },
+        {
+          "term": "처음",
+          "score": 0.219,
+          "tf": 1
+        },
+        {
+          "term": "초기",
+          "score": 0.219,
+          "tf": 1
+        },
+        {
+          "term": "연간 시장",
+          "score": 0.219,
+          "tf": 1
+        }
+      ],
+      "warnings": [
+        "too_many_critical:2",
+        "units_not_split:S0",
+        "units_not_split:S1",
+        "units_not_split:S2",
+        "unit_fallback:LLM_TIMEOUT"
+      ],
+      "draft_warnings": [],
+      "review_changes": [
+        "S1의 초기 대상과 연간 시장 규모를 서로 다른 사실로 나누어 key point 두 개로 정리했다."
+      ],
+      "name_decisions": [
+        {
+          "value": "서울",
+          "source": "rule",
+          "keep": true,
+          "reason": "시작 지역을 특정하는 고유 지명이다."
+        },
+        {
+          "value": "대전",
+          "source": "rule",
+          "keep": true,
+          "reason": "시작 지역을 특정하는 고유 지명이다."
+        }
+      ],
+      "content_units": [
+        {
+          "id": "S0-U1",
+          "sentence_index": 0,
+          "text": "국내 공공도서관은 약 1,200곳이고, 대학 도서관은 약 430곳입니다.",
+          "quote": "국내 공공도서관은 약 1,200곳이고, 대학 도서관은 약 430곳입니다.",
+          "span": [
+            0,
+            40
+          ],
+          "fact_ids": [
+            "CF1",
+            "CF2"
+          ],
+          "source": "sentence"
+        },
+        {
+          "id": "S1-U1",
+          "sentence_index": 1,
+          "text": "이 중 열람실 좌석 예약 시스템을 이미 쓰는 곳을 초기 대상으로 보면 약 900곳이며, 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했습니다.",
+          "quote": "이 중 열람실 좌석 예약 시스템을 이미 쓰는 곳을 초기 대상으로 보면 약 900곳이며, 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했습니다.",
+          "span": [
+            41,
+            125
+          ],
+          "fact_ids": [
+            "CF3",
+            "CF4",
+            "CF5"
+          ],
+          "source": "sentence"
+        },
+        {
+          "id": "S2-U1",
+          "sentence_index": 2,
+          "text": "처음에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작하겠습니다.",
+          "quote": "처음에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작하겠습니다.",
+          "span": [
+            126,
+            167
+          ],
+          "fact_ids": [
+            "CF6",
+            "CF7"
+          ],
+          "source": "sentence"
+        }
+      ]
     }
   ],
+  "failed": [],
   "meta": {
     "schema_version": "1.0",
-    "feature_version": "script_coverage-1.1",
-    "model": "openai/gpt-5.6-luna"
+    "feature_version": "script_coverage-1.2",
+    "model": "openai/gpt-6-luna"
   }
 }

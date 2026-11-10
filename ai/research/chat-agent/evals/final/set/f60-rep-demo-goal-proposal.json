@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-demo-goal-proposal",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "강점(청중 시선)을 목표로 저장 요청, 우선 개선은 말 속도 — 확인 카드 대신 목표 제안, 저장 없음",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-demo",
+        "title": "신제품 데모 시연",
+        "takes": [
+          {
+            "take_id": "demo-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": 0.7,
+              "cpm": [
+                318,
+                369,
+                362,
+                325
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STRENGTH",
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 71
+            }
+          },
+          {
+            "take_id": "demo-t3",
+            "take_number": 3,
+            "started_at": "2026-11-04T19:00:00+09:00",
+            "completed_at": "2026-11-04T19:07:00+09:00",
+            "result": {
+              "audience": 0.71,
+              "cpm": [
+                320,
+                371,
+                365,
+                330
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STRENGTH",
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-demo"
+    }
+  },
+  "turns": [
+    {
+      "message": "다음 연습은 청중 시선 비율을 지금보다 더 끌어올리는 쪽으로 목표를 저장해 주세요.",
+      "page_take_id": "demo-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "proposal-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_PROPOSAL",
+        "path": "card_types"
+      },
+      {
+        "check_id": "no-confirm-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "ASK_CONFIRM"
+        ],
+        "path": "card_types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-save-propose",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "propose:SAVE_GOAL:ASK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-save-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:SAVE_GOAL:*"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "conflict-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.GOAL_CONFLICT",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-goal",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "read-before-answer",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:get_take_report:OK",
+            "final:DONE"
+          ],
+          [
+            "tool:list_takes:OK",
+            "final:DONE"
+          ],
+          [
+            "tool:compare_takes:OK",
+            "final:DONE"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "6-3 목표 요청 판정: 사용자 목표 차원(청중 시선)이 STRENGTH → 판정과 상관없이 GOAL_PROPOSAL."
+}

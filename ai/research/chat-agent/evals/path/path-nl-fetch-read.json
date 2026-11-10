@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "id": "path-nl-fetch-read",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "보고 있는 Take 5 밖의 Take 3 를 물음 — 가져오기(AUTO) → 읽기 → 기록 문장 순서, 말 속도 335",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-3": {
+            "result": {
+              "cpm": 335
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3 때는 말을 분당 몇 자로 했었지?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_TAKE:AUTO",
+          "exec:FETCH_TAKE:OK",
+          "tool:get_take_report:OK",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fetch-replan",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "decision:NOT_LOADED:ACTION:LLM",
+            "exec:FETCH_TAKE:OK"
+          ],
+          [
+            "propose:FETCH_TAKE:AUTO",
+            "exec:FETCH_TAKE:OK"
+          ]
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "335",
+        "derive": "t-3:SPEED.cpm"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "grader": "target",
+        "compare": "contains",
+        "expect": {
+          "take": 3,
+          "metric": "cpm"
+        }
+      },
+      {
+        "check_id": "fetch-once",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "attempt_counts.FETCH_TAKE"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}
