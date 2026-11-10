@@ -175,7 +175,7 @@ test('모바일 채팅을 연 채 앞뒤로 이동해도 Take 기록의 400px �
     if (!link) throw new Error('Take 기록 링크가 없습니다');
     link.click();
   })()`);
-  await expect(page).toHaveURL(/\\/takes$/);
+  await expect(page).toHaveURL(/\/takes$/);
   await expect(page.getByRole('heading', { name: 'Take 기록', exact: true })).toBeVisible();
 
   // React Router의 첫 스크롤 복원이 끝난 다음에 0이 아닌 위치를 기록합니다.
@@ -194,14 +194,14 @@ test('모바일 채팅을 연 채 앞뒤로 이동해도 Take 기록의 400px �
 
   // 이전 화면으로 가도 ScrollRestoration의 저장값은 400이어야 합니다.
   await page.goBack();
-  await expect(page).toHaveURL(/\\/$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('heading', { name: '내 피치', exact: true })).toBeVisible();
   await expect(panel).toBeVisible();
   await expect.poll(() => page.evaluate('window.scrollY')).toBe(0);
 
   // 패널을 연 상태로 다시 Take 기록에 돌아오고, 닫아도 400px이 유지돼야 합니다.
   await page.goForward();
-  await expect(page).toHaveURL(/\\/takes$/);
+  await expect(page).toHaveURL(/\/takes$/);
   await expect(page.getByRole('heading', { name: 'Take 기록', exact: true })).toBeVisible();
   await expect(panel).toBeVisible();
   await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
@@ -211,9 +211,9 @@ test('모바일 채팅을 연 채 앞뒤로 이동해도 Take 기록의 400px �
 
   // 다시 왕복해도 React Router가 기록한 400px이 보존되는지 확인합니다.
   await page.goBack();
-  await expect(page).toHaveURL(/\\/$/);
+  await expect(page).toHaveURL(/\/$/);
   await page.goForward();
-  await expect(page).toHaveURL(/\\/takes$/);
+  await expect(page).toHaveURL(/\/takes$/);
   await expect.poll(() => page.evaluate('window.scrollY')).toBe(400);
 });
 
