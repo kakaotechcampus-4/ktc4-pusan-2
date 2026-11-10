@@ -236,12 +236,21 @@ const productScreens: GuideScreen[] = [
     route: '/pitch/tutorial',
     status: '제품에 있음',
     // 머지된 #1105의 샘플 준비·장치 점검·리포트 사용 제한을 재현한다.
-    summary: '머지된 #1105의 BE 전용 튜토리얼 API로 준비하는 샘플 발표와 장치 점검 진입, 리포트 사용 후 제한을 시연한다.',
+    summary:
+      '머지된 #1105의 BE 전용 튜토리얼 API로 준비하는 샘플 발표와 장치 점검 진입, 리포트 사용 후 제한을 시연한다.',
     states: [
       base,
       state('pending', '샘플 준비 중', '튜토리얼 시작 후 진행 문구와 비활성화된 버튼을 보여 준다.'),
-      state('used', '리포트 이미 사용함 · 샘플 기록 있음', '이미 받은 샘플 리포트를 알리고 새 피치 생성 및 샘플 Take 기록 링크를 보여 준다.'),
-      state('used-no-pitch', '리포트 이미 사용함 · 샘플 삭제됨', '이미 받은 샘플 리포트를 알리고 새 피치 생성만 안내한다.'),
+      state(
+        'used',
+        '리포트 이미 사용함 · 샘플 기록 있음',
+        '이미 받은 샘플 리포트를 알리고 새 피치 생성 및 샘플 Take 기록 링크를 보여 준다.',
+      ),
+      state(
+        'used-no-pitch',
+        '리포트 이미 사용함 · 샘플 삭제됨',
+        '이미 받은 샘플 리포트를 알리고 새 피치 생성만 안내한다.',
+      ),
       state('error', '샘플 준비 실패', '제품의 기본 오류 안내를 읽을 수 있게 보여 준다.'),
     ],
     rules: [
@@ -387,7 +396,11 @@ const productScreens: GuideScreen[] = [
     summary:
       '카메라 · 마이크 · 시선 기준 · 기준 목소리를 점검하고 대본 표시를 고른 뒤, 이 화면의 시작 버튼에서 Take를 만들어 리허설을 연다.',
     states: [
-      state('default', '점검 완료', '카메라 · 마이크 · 시선 기준 · 기준 목소리가 모두 돼 시작할 수 있다.'),
+      state(
+        'default',
+        '점검 완료',
+        '카메라 · 마이크 · 시선 기준 · 기준 목소리가 모두 돼 시작할 수 있다.',
+      ),
       state(
         'voice-required',
         '기준 목소리 전',
@@ -837,7 +850,15 @@ const productScreens: GuideScreen[] = [
       '측정하지 않았거나 시선 엔진이 다른 Take는 —로 표시하고 비교하지 않는다. 말하기 속도는 높고 낮음으로 판정하지 않는다.',
       '기존 /pitch/:id/comparison 주소는 /takes?pitch=:id&view=compare로 리다이렉트한다.',
     ],
-    components: ['InfoPage 틀', 'Card', 'TakeStatusBadge', 'Mascot', 'PitchSelect', '지표 탭', '지표 흐름 · 표'],
+    components: [
+      'InfoPage 틀',
+      'Card',
+      'TakeStatusBadge',
+      'Mascot',
+      'PitchSelect',
+      '지표 탭',
+      '지표 흐름 · 표',
+    ],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: [
       'frontend/src/features/report/TakesPage.tsx',
