@@ -20,6 +20,7 @@ import type {
  *   t-content-legacy          NOT_MEASURED `LEGACY_RESULT`
  *   t-content-failed          FAILED `AI_TIMEOUT`
  *   t-content-estimated       MEASURED — 채점된 장 없이 간이 장만 (#1152 '모든 대상 장이 실패해도' 예시)
+ *   t-content-stt-cut         MEASURED — 대상 장이 모두 STT 끊김: 채점 · 간이 장 없이 장마다 `STT_INCOMPLETE` (#1152 결정, #1158 리뷰)
  *   t-content-zero            MEASURED — 전달률 0 · 수치 모두 확인 대기 · 0 의 세 종류 · 실패 장
  *   t-content-revised         MEASURED — 장을 처음 펼치면 409 `COVERAGE_REVISION_CHANGED` 한 번, 판이 0 → 1
  *
@@ -193,6 +194,38 @@ const estimatedOnlySummary: CoverageSummary = {
       speech_mix: null,
     },
   ],
+};
+
+/** 대상 장이 모두 STT 끊김 — 예전에는 분석 거절(`AI_REJECTED`)이었고, 이제 MEASURED 로 옵니다(#1152 결정, #1158 리뷰).
+ *  채점된 장도 간이 장도 없어 Take 지표는 null · failed(`SLIDES_EXCLUDED`), 장은 모두 failed(`STT_INCOMPLETE`)입니다 */
+const sttCutSummary: CoverageSummary = {
+  ...estimatedOnlySummary,
+  delivery: failedAll(2),
+  contradiction: failedAll(2),
+  scope: {
+    target_slides: 2,
+    scored_slides: 0,
+    estimated_slides: 0,
+    provisional_slides: 0,
+    excluded: [
+      { slide_number: 1, reason_code: 'STT_INCOMPLETE' },
+      { slide_number: 2, reason_code: 'STT_INCOMPLETE' },
+    ],
+  },
+  slides: [1, 2].map((slide_number) => ({
+    slide_number,
+    state: 'failed' as const,
+    reason_codes: ['STT_INCOMPLETE'],
+    stt_integrity: 'incomplete' as const,
+    rubric_quality: null,
+    delivery: null,
+    zero_kind: null,
+    contradiction: null,
+    status_shares: null,
+    critical_gap_count: 0,
+    delivery_band: null,
+    speech_mix: null,
+  })),
 };
 
 const zeroSlide = (
@@ -412,6 +445,8 @@ export function contentStatusOf(
       return unmeasured('FAILED', 'AI_TIMEOUT');
     case 't-content-estimated':
       return { ...measured(estimatedOnlySummary), previous: null };
+    case 't-content-stt-cut':
+      return { ...measured(sttCutSummary), previous: null };
     case 't-content-zero':
       return measured(zeroSummary);
     case REVISED_TAKE_ID:

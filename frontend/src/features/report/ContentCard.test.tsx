@@ -260,6 +260,16 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(openedText(status('t-content-estimated'))).toContain('1장대부분 말함');
   });
 
+  it('대상 장이 모두 STT 끊김이면 숫자 자리에 평가한 장이 없다고 하고, 장마다 끊겨 평가하지 못했다고 알립니다 (#1158 리뷰)', () => {
+    const text = openedText(status('t-content-stt-cut'));
+    expect(text).toContain('채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요');
+    expect(text).toContain('평가한 장이 없어 계산하지 못했어요');
+    // 값이 없는데 "빼고 계산했어요"라고 하지 않습니다
+    expect(text).not.toContain('빼고 계산했어요');
+    expect(text).not.toContain('장별 간이 결과를 확인해 주세요');
+    expect(text.match(/음성 인식이 끊겨 이 장을 평가하지 못했어요/g)).toHaveLength(2);
+  });
+
   it('채점 0장 · 간이 0장(대상 장 없음 · 모두 실패)이어도 0 개수 대신 집계하지 못했다고 알립니다 (#1157 리뷰)', () => {
     const text = textOf(
       withSummary({
