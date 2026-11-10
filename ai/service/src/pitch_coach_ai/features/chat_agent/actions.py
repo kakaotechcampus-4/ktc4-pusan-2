@@ -703,6 +703,24 @@ def _sourced_targets(
 
 #: 숫자 목표의 비교 방법 → 문구 (리뷰 판정과 같은 뜻: LT 미만 · LTE 이하 · GT 초과 · GTE 이상)
 _OPERATOR_WORD: dict[str, str] = {"LT": "미만", "LTE": "이하", "GT": "초과", "GTE": "이상"}
+#: 소리 크기 문턱값 문구. (비교 방법, 값의 부호) → 문구, {size}는 값의 크기(dB). 리뷰의 소리 크기 미션 설명
+#: (`review/next_missions.py` `VOLUME_MISSION_TEXT`, #1186)과 같은 말이다: 다시 평가의 기준은 리뷰가 그 Take 의 기준 음량으로
+#: 판정하므로 견준 때는 '기준'이고, 음수는 크기와 방향 말로 쓴다(숫자 검사 ⑤: -1 ↔ '1dB'). 리뷰 표가 바뀌면 함께 고친다
+#: (시험 `test_volume_text.py`가 두 표가 같은지 본다, Issue #1194 — #1183 후속)
+VOLUME_TARGET_TEXT: dict[tuple[str, int], str] = {
+    ("GTE", -1): "기준보다 {size} 넘게 작아지지 않기",
+    ("GTE", 0): "기준보다 작아지지 않기",
+    ("GTE", 1): "기준보다 {size} 이상 크게 말하기",
+    ("GT", -1): "기준보다 {size} 이상 작아지지 않기",
+    ("GT", 0): "기준보다 크게 말하기",
+    ("GT", 1): "기준보다 {size} 넘게 크게 말하기",
+    ("LTE", -1): "기준보다 {size} 이상 작게 말하기",
+    ("LTE", 0): "기준보다 크지 않게 말하기",
+    ("LTE", 1): "기준보다 {size} 넘게 커지지 않기",
+    ("LT", -1): "기준보다 {size} 넘게 작게 말하기",
+    ("LT", 0): "기준보다 작게 말하기",
+    ("LT", 1): "기준보다 {size} 이상 커지지 않기",
+}
 
 
 def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
@@ -714,10 +732,13 @@ def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
     """
     metric = str(target["metric"])
     if metric in clm.VOLUME_DIFF_METRICS:
-        # 소리 크기 문턱값은 '기준보다 1dB 작게 이상'처럼 비교 말이 겹치지 않게 부호로 쓴다(#1182, FE 표기와 같은 꼴)
-        value = f"기준 대비 {clm.signed_db(target['value'])}"
-    else:
-        value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
+        # 소리 크기 문턱값은 리뷰 미션 설명과 같은 말로 쓴다('소리 크기: 기준보다 1dB 넘게 작아지지 않기', VOLUME_TARGET_TEXT)
+        v = target["value"]
+        sign = (v > 0) - (v < 0)
+        size = clm.signed_db(abs(v)).lstrip("+")  # 크기만(반올림 없이): 1.25 → '1.25dB'
+        text = VOLUME_TARGET_TEXT[(str(target["operator"]), sign)].format(size=size)
+        return f"{metric_label(metric)}: {text}"
+    value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
     return f"{metric_label(metric)} {value} {_OPERATOR_WORD[str(target['operator'])]}"
 
 

@@ -89,15 +89,28 @@ def test_number_check_accepts_the_magnitude_in_the_new_text() -> None:
     )
 
 
-def test_reassess_volume_threshold_is_signed_against_the_base() -> None:
-    """다시 평가 기준 문구의 소리 크기 문턱값은 '기준 대비 -1dB 이상'처럼 부호로(비교 말과 겹치지 않게)."""
+def test_reassess_volume_threshold_uses_the_review_mission_words() -> None:
+    """다시 평가 기준 문구의 소리 크기 문턱값은 리뷰 미션 설명(#1186)과 같은 말로: 비교 말과 방향 말을 겹치지 않고, 음수는
+    크기와 방향 말로(숫자 검사 ⑤), 값은 반올림하지 않는다(Issue #1194 — #1183 후속)."""
     text = actions._target_text  # noqa: SLF001 — 코드가 만드는 기준 문구
     assert text({"metric": "voice_diff_db", "operator": "GTE", "value": -1}, CFG) == (
-        "소리 크기 기준 대비 -1dB 이상"
+        "소리 크기: 기준보다 1dB 넘게 작아지지 않기"
     )
     assert text({"metric": "voice_diff_db", "operator": "GT", "value": 3}, CFG) == (
-        "소리 크기 기준 대비 +3dB 초과"
+        "소리 크기: 기준보다 3dB 넘게 크게 말하기"
     )
     assert text({"metric": "voice_diff_db", "operator": "LTE", "value": 0}, CFG) == (
-        "소리 크기 기준 대비 0dB 이하"
+        "소리 크기: 기준보다 크지 않게 말하기"
     )
+    assert text({"metric": "voice_diff_db", "operator": "LT", "value": 1.25}, CFG) == (
+        "소리 크기: 기준보다 1.25dB 이상 커지지 않기"
+    )
+
+
+def test_reassess_volume_threshold_table_matches_the_review() -> None:
+    """두 표(대화 · 리뷰)가 같다: 리뷰 표가 바뀌면 이 시험이 대화 쪽도 고치게 한다."""
+    from pitch_coach_ai.features.review.next_missions import VOLUME_MISSION_TEXT
+    from pitch_coach_ai.features.review.text import VOLUME_BASE_UNKNOWN
+
+    review = {k: v.replace("{base}", VOLUME_BASE_UNKNOWN) for k, v in VOLUME_MISSION_TEXT.items()}
+    assert review == actions.VOLUME_TARGET_TEXT
