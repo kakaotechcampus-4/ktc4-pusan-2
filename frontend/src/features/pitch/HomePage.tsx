@@ -134,17 +134,18 @@ export function HomePage() {
             <span className="relative inline-flex">
               <Link
                 to="/pitch/tutorial"
-                className={`inline-flex items-center justify-center border-2 border-ink bg-panel px-5 py-3 text-sm font-bold hover:bg-cream ${inviteTutorial ? 'tutorial-invite' : ''}`}
+                className={`inline-flex items-center justify-center border-2 border-ink bg-panel py-3 pr-5 text-sm font-bold hover:bg-cream ${inviteTutorial ? 'tutorial-invite pl-10' : 'pl-5'}`}
               >
                 튜토리얼 해 보기 →
               </Link>
               {inviteTutorial && (
-                // 버튼 왼쪽 위 모서리에 걸친 16꼭지 별 스티커. 톡톡 튀는 버튼과 같이 레트로 게임의
+                // 버튼 왼쪽 위 모서리에 걸친 16꼭지 별 스티커. 버튼 안쪽까지 걸쳐서 붙을 때는 버튼 왼쪽 여백을
+                // 넓혀(pl-10) 글자를 비켜 둡니다. 톡톡 튀는 버튼과 같이 레트로 게임의
                 // "PRESS START" 를 떠올리게 합니다. 꾸밈이라 읽지 않습니다(버튼 이름이 할 일을 말합니다)
                 <span
                   aria-hidden="true"
                   data-tutorial-sticker=""
-                  className="pointer-events-none absolute -top-8 -left-11 h-[60px] w-[72px] -rotate-12"
+                  className="pointer-events-none absolute -top-7 -left-8 h-[60px] w-[72px] -rotate-12"
                 >
                   <svg viewBox="0 0 100 84" className="absolute inset-0 h-full w-full">
                     <polygon
