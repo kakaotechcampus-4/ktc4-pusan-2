@@ -127,7 +127,8 @@ def _action_answers(lp: Any, sentence: str) -> bool:
     acted = (lp.st.pending_action or {}).get("type") == "REASSESS" or any(
         e.get("type") == "REASSESS" for e in lp.st.executed
     )
-    return acted and any(w in sentence for w in lp.cfg.reassess_request_words)
+    # 다시 평가 행동을 낼 때와 같은 요청 판별 낱말로 본다('다시 확인해줘' · '반영해 줘'도, 실제 모델 시연 장면 4)
+    return acted and any(w in sentence for w in (*lp.cfg.reassess_request_words, *lp.cfg.reassess_request_hints))
 
 
 class ClaimLines:
