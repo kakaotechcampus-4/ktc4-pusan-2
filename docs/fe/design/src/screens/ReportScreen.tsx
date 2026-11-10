@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/ui/Button';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { Card, Stat } from '@/ui/Panel';
-import type { Tone } from '@/ui/Badge';
+import { Badge, type Tone } from '@/ui/Badge';
 import { Frame, PITCH, type Navigate } from './shared';
 
 type Cell = readonly [string, string, string, Tone] | null;
@@ -167,11 +167,15 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
                                   <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                                     <span className="text-ink/80">{cell[0]}</span>→
                                     <b className="text-base">{cell[1]}</b>
-                                    <span
-                                      className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(cell[3])}`}
-                                    >
-                                      {cell[2]}
-                                    </span>
+                                    {cell[3] === 'muted' ? (
+                                      <Badge tone="muted">{cell[2]}</Badge>
+                                    ) : (
+                                      <span
+                                        className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(cell[3])}`}
+                                      >
+                                        {cell[2]}
+                                      </span>
+                                    )}
                                   </span>
                                 ) : (
                                   <span className="text-ink/80">—</span>
