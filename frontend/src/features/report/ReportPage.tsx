@@ -434,9 +434,7 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                       </>
                     )}
                     {slides.length === 0 && !(overall && OVERALL_ONLY_METRICS.has(metric)) && (
-                      <p className="mt-2 text-sm text-ink/80">
-                        슬라이드별 비교 결과가 없어요.
-                      </p>
+                      <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 결과가 없어요.</p>
                     )}
                     {overall &&
                       (slides.length === 0 && OVERALL_ONLY_METRICS.has(metric) ? (
