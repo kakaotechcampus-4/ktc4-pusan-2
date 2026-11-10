@@ -109,11 +109,45 @@ test('모바일 패널은 배경을 비활성화하고 키보드 초점을 패�
     await page.keyboard.press('Shift+Tab');
     await expect(last).toBeFocused();
 
+    // 기억 설정 등에서 입력창이 숨으면 패널 자체가 초점을 받을 수 있습니다.
+    await panel.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+    await panel.focus();
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+
     await page.keyboard.press('Escape');
     await expect(panel).toHaveCount(0);
     await expect(page.locator('.chat-layout-content')).not.toHaveAttribute('inert');
     await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
   }
+});
+
+test('모바일 패널을 열어도 문서 스크롤 위치가 유지되고 가림막에서 배경을 스크롤할 수 없다', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.goto('/');
+  await page.evaluate(() => {
+    const content = document.querySelector('.chat-layout-content');
+    if (!content) throw new Error('채팅 레이아웃 본문이 없습니다');
+    const spacer = document.createElement('div');
+    spacer.style.height = '200vh';
+    content.append(spacer);
+    window.scrollTo(0, 400);
+  });
+  const before = await page.evaluate(() => window.scrollY);
+  expect(before).toBeGreaterThan(0);
+  const panel = await openChat(page);
+  await expect(panel).toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
+  await page.mouse.move(40, 300);
+  await page.mouse.wheel(0, 500);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator('body')).not.toHaveCSS('overflow-y', 'hidden');
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });
 
 test('761px 이상에서는 채팅을 열어도 본문을 비활성화하지 않는다', async ({ page }) => {
