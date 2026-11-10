@@ -243,11 +243,7 @@ export function HomePage() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                {tipPaused ? (
-                  <path d="m8 5 11 7-11 7V5Z" />
-                ) : (
-                  <path d="M9 5v14m6-14v14" />
-                )}
+                {tipPaused ? <path d="m8 5 11 7-11 7V5Z" /> : <path d="M9 5v14m6-14v14" />}
               </svg>
             </button>
           </div>
