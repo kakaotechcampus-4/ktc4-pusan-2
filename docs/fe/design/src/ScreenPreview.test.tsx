@@ -133,6 +133,10 @@ it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 �
     expect(row.lastElementChild?.getAttribute('aria-haspopup')).toBe('menu');
     const prepare = row.lastElementChild!.previousElementSibling as HTMLAnchorElement;
     expect(prepare.textContent?.trim()).toBe('발표 준비');
+    // #801에서 승인된 강조 위계는 #1117(미병합 종료) 이후에도 유지한다.
+    expect(prepare.className).toContain('bg-coral-deep');
+    expect(prepare.className).toContain('text-white');
+    expect(prepare.className).toContain('shadow-none!');
     const title = row.querySelector('a')!;
     expect(prepare.getAttribute('href')).toBe(title.getAttribute('href'));
     expect(prepare.getAttribute('href')).toMatch(/\/edit$/);
@@ -478,4 +482,214 @@ it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검
   expect(button('발표 끝내기')?.disabled).toBe(true);
   await click('장치 점검으로');
   expect(host.textContent).toContain('점검 항목');
+});
+
+it('홈의 샘플 피치는 편집 대신 튜토리얼로 이동하고 완료된 초대 강조를 숨긴다', async () => {
+  await render('home', 'sample');
+  const name = [...host.querySelectorAll('span')].find((el) => el.textContent === '샘플 발표');
+  const sample = name?.closest('li');
+  expect(sample).not.toBeNull();
+  expect(sample?.textContent).toContain('샘플');
+  expect(sample?.querySelector('a[href$="/edit"]')).toBeNull();
+  expect(sample?.querySelector('a[href="/pitch/tutorial"]')?.textContent).toContain('발표 준비');
+  expect(host.querySelector('[data-tutorial-sticker]')).toBeNull();
+});
+
+it('튜토리얼 준비 중 버튼은 초점을 유지하고 장치 점검으로 이동하지 않는다', async () => {
+  await render('tutorial', 'pending');
+  const start = button('샘플 준비 중…')!;
+  expect(start.getAttribute('aria-disabled')).toBe('true');
+  await act(async () => start.focus());
+  await act(async () => start.click());
+  expect(document.activeElement).toBe(start);
+  expect(host.textContent).toContain('샘플 발표를 준비하고 있습니다.');
+});
+
+it('기준 목소리가 빠진 상태에서는 제품 점검의 시작을 차단한다', async () => {
+  await render('prepare-mission', 'voice-required');
+  expect(host.textContent).toContain('3 / 4');
+  expect(host.textContent).toContain('기준 목소리를 재야 연습을 시작할 수 있어요.');
+  expect(button('Take 3 시작하기')?.disabled).toBe(true);
+});
+
+it('제품 점검 화면과 배치 시안은 기준 목소리를 네 번째 필수 항목으로 안내한다', async () => {
+  await render('prepare-mission');
+  expect(host.textContent).toContain('4 / 4');
+  expect(host.textContent).toContain('기준 목소리 · 확인됨');
+  await act(async () => root.render(null));
+
+  await render('prepare-layout-review', 'voice-reading');
+  expect(host.textContent).toContain('필수 3/4 준비');
+  expect(button('Take 3 시작하기')?.disabled).toBe(true);
+  await click('다 읽었어요');
+  expect(host.textContent).toContain('필수 4/4 완료');
+  expect(button('Take 3 시작하기')?.disabled).toBe(false);
+});
+
+it('사용방법의 샘플 진입점은 튜토리얼 미리보기로 이동한다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  await render('home');
+  await click('사용방법 살펴보기');
+  const link = [...host.querySelectorAll('a')].find((item) =>
+    item.textContent?.includes('튜토리얼 해 보기'),
+  )!;
+  expect(link.getAttribute('href')).toBe('/pitch/tutorial');
+  await act(async () => link.click());
+  expect(host.textContent).toContain('첫 번째 Take');
+});
+
+it('튜토리얼 사용 완료 안내와 새미나이의 제품 질문 예시 네 개를 보여 준다', async () => {
+  await render('tutorial', 'used');
+  expect(host.textContent).toContain('튜토리얼 리포트를 이미 받았어요');
+  expect(button('새 피치 만들기')).toBeDefined();
+  await act(async () => root.render(null));
+  await render('semini');
+  expect(host.textContent).toContain('이런 걸 도와드릴 수 있어요');
+  expect(host.querySelectorAll('ul[aria-label="질문 예시"] button')).toHaveLength(4);
+});
+
+it('TAKE RECORDED는 분석 중에만 보이고 확인 대기·실패·보류에는 보이지 않는다', async () => {
+  for (const state of ['default', 'auto-end']) {
+    await render('processing-loading', state);
+    expect(host.textContent, state).toContain('TAKE RECORDED · 발표 기록 접수');
+    await act(async () => root.render(null));
+  }
+  for (const state of ['confirm', 'loading', 'failed', 'held', 'error']) {
+    await render('processing-loading', state);
+    expect(host.textContent, state).not.toContain('TAKE RECORDED · 발표 기록 접수');
+    if (state === 'confirm') expect(host.textContent).toContain('확인을 기다리는 중');
+    await act(async () => root.render(null));
+  }
+});
+
+it('Take 기록은 #1143과 같이 피치 목록을 combobox로 열고 키보드로 선택한다', async () => {
+  await render('takes');
+  const picker = host.querySelector<HTMLElement>('[role="combobox"]')!;
+  expect(picker).toBeTruthy();
+  expect(picker.getAttribute('aria-expanded')).toBe('false');
+  await act(async () => picker.click());
+  expect(picker.getAttribute('aria-expanded')).toBe('true');
+  expect(host.querySelectorAll('[role="option"]')).toHaveLength(2);
+  await act(async () => {
+    picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  });
+  expect(picker.getAttribute('aria-activedescendant')).toContain('-option-1');
+  await act(async () => {
+    picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  expect(picker.getAttribute('aria-expanded')).toBe('false');
+  expect(picker.textContent).toContain('캡스톤 중간발표');
+});
+
+it('사용방법은 최신 #944의 새미나이 시각 안내와 여섯 조작을 제공한다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  await render('home');
+  await click('사용방법 살펴보기');
+  expect(host.textContent).toContain('새미나이 채팅 사용방법');
+  expect(host.querySelector('img[src*="chat-agent.svg"]')).not.toBeNull();
+  expect(
+    host.querySelectorAll('ol[aria-label="새미나이 채팅의 번호별 사용방법"] > li'),
+  ).toHaveLength(6);
+});
+
+it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립적으로 유지된다', async () => {
+  await render('semini');
+  const scope = host.querySelector<HTMLButtonElement>('[data-chat-scope]')!;
+  await act(async () => scope.click());
+  await click('피치: 서비스 소개');
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+
+  const memoryOff = host.querySelector<HTMLInputElement>('input[role="switch"]')!;
+  await act(async () => memoryOff.click());
+  expect(memoryOff.checked).toBe(true);
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+
+  const history = host.querySelector<HTMLButtonElement>('button[aria-label="대화 목록"]')!;
+  await act(async () => history.click());
+  expect(host.textContent).toContain('대화 목록');
+  expect(history.getAttribute('aria-pressed')).toBe('true');
+  await act(async () => history.click());
+  expect(history.getAttribute('aria-pressed')).toBe('false');
+  await act(async () => history.click());
+  await click('대화로 돌아가기');
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+  expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(true);
+
+  const launcher = host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!;
+  expect(launcher.getAttribute('aria-controls')).toBeTruthy();
+  expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
+  expect(launcher.querySelector('img')?.getAttribute('src')).toContain('semini-mascot.svg');
+  expect(launcher.className).toContain('invisible');
+  const close = host.querySelector<HTMLButtonElement>(
+    'button[aria-label="새미나이 닫기"]:not([aria-haspopup="dialog"])',
+  )!;
+  await act(async () => close.click());
+  expect(document.activeElement).toBe(launcher);
+  expect(launcher.getAttribute('aria-expanded')).toBe('false');
+  expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
+  await act(async () => launcher.click());
+  expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
+  expect(document.activeElement).toBe(host.querySelector('textarea'));
+  expect(scope.textContent).toContain('피치: 서비스 소개');
+  expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(true);
+  const composer = host.querySelector('textarea')!;
+  await act(async () => {
+    composer.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  expect(launcher.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(launcher);
+});
+
+it('개인정보 처리 동의 창은 동의 전 Escape로 닫히지 않고 로그인한 화면 위에 열린다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  await render('privacy-consent');
+  const dialog = host.querySelector<HTMLDialogElement>('dialog')!;
+  expect(dialog).toBeTruthy();
+  expect(dialog.open).toBe(true);
+  expect(host.textContent).toContain('내 피치');
+  expect(button('동의하고 시작하기')).toBeDefined();
+  expect(button('동의하지 않고 로그아웃')).toBeDefined();
+  const cancel = new Event('cancel', { cancelable: true });
+  await act(async () => dialog.dispatchEvent(cancel));
+  expect(cancel.defaultPrevented).toBe(true);
+});
+
+it('리포트는 발표 전체 지표를 구분하고 상세 비교 모달의 스크롤을 잠근다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
+  };
+  const previousOverflow = document.body.style.overflow;
+  await render('report');
+  expect(host.textContent).toContain('발표 전체 기준 지표예요.');
+
+  const opener = button('상세 비교표 보기')!;
+  await act(async () => opener.click());
+  const dialog = host.querySelector('dialog')!;
+  expect(dialog.open).toBe(true);
+  expect(document.body.style.overflow).toBe('hidden');
+  const close = host.querySelector<HTMLButtonElement>('button[aria-label="상세 비교 닫기"]')!;
+  await act(async () => close.click());
+  expect(dialog.open).toBe(false);
+  expect(document.body.style.overflow).toBe(previousOverflow);
+  expect(document.activeElement).toBe(opener);
+});
+
+it('스크롤 gutter를 쓰는 설계서 도움말은 본문 오른쪽 여백을 추가하지 않는다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  const previousPadding = document.body.style.paddingRight;
+  await render('home');
+  await click('사용방법 살펴보기');
+  expect(document.body.style.paddingRight).toBe(previousPadding);
 });

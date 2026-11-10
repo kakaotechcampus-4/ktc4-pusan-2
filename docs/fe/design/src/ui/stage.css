@@ -189,6 +189,18 @@
   overflow: hidden;
 }
 
+/* 슬라이드 클릭 영역은 화면 위치를 바꾸지 않고 키보드 이동과 같은 상태를 갱신한다. */
+.slide .slide-advance {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
 .slide img {
   max-width: 100%;
   max-height: 100%;
@@ -1186,11 +1198,43 @@
 .stage-live .stage-head .end:focus-visible { outline: 2px solid var(--color-ink-stage); outline-offset: 2px; }
 .stage-live .stage-head .end:hover:not(:disabled) { background: var(--color-coral-deep); }
 
-/* 마우스로 넘기기(제품 SlideClickArea): 슬라이드 좌클릭 다음 장 · 우클릭 이전 장. 위에 겹쳐 슬라이드 칸 크기 · 자리를 바꾸지 않는다. */
-.slide-advance { position: absolute; inset: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
+
+/* 제품 #1118: 시작 게이트에서는 자리를 보존하고 RUNNING일 때 한 번 나타난다. */
+.stage-head .stage-mission-label {
+  flex: none;
+  padding: 4px 7px;
+  border: 2px solid var(--color-coral);
+  color: var(--color-ink-stage);
+  background: color-mix(in srgb, var(--color-coral) 12%, transparent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.stage-head .stage-mission-label[data-live='false'] {
+  visibility: hidden;
+}
+.stage-head .stage-mission-label[data-live='true'] {
+  animation: stage-mission-enter 180ms steps(2, end) both;
+}
+
+@keyframes stage-mission-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 좁은 화면에서는 타이머·진행 막대·종료 버튼을 우선합니다. */
+@media (max-width: 760px) {
+  .stage-head .stage-mission-label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-head .stage-mission-label { animation: none; }
+}
+
+/* 최신 StageScreen의 다음 장 썸네일 전체를 클릭 가능한 버튼으로 취급한다. */
 .slide-advance[data-enabled='false'] { cursor: default; }
 .rail .next .next-go { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .rail .next .next-go:disabled { cursor: default; }
-.rail .next .next-go .thumb { text-align: center; } /* 버튼의 왼쪽 정렬은 문구에만 — 썸네일 자리표시는 가운데 */
-.rail .next .next-go:hover:not(:disabled) .thumb { border-color: var(--color-ink-stage); }
-.rail .next .next-go:focus-visible { outline: 2px solid var(--color-ink-stage); outline-offset: 2px; }

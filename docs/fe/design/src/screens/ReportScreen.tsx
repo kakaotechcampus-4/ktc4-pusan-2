@@ -1,5 +1,5 @@
 // 제품 Take 리포트(`frontend/src/features/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/ui/Button';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { Card, Stat } from '@/ui/Panel';
@@ -7,6 +7,13 @@ import { Badge, type Tone } from '@/ui/Badge';
 import { Frame, PITCH, type Navigate } from './shared';
 
 type Cell = readonly [string, string, string, Tone] | null;
+
+function findOverallCell(rows: [string, ...Cell[]][], index: number): Cell {
+  const overallRow = rows.find(([label]) => label === '발표 전체');
+  if (!overallRow) return null;
+  const [, ...cells] = overallRow;
+  return cells[index] ?? null;
+}
 
 /** 지난 Take와 비교 샘플 — 제품은 AI `comparison` 을 차원별로 묶습니다. 분당 군더더기는 보이지 않습니다 (#929) */
 const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][] }[] = [
@@ -40,10 +47,208 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
   },
 ];
 
+/** 발표 전체만 산출되는 지표를 슬라이드 데이터 누락과 구분합니다. */
+const OVERALL_ONLY_LABELS = new Set(['발표 시간', '핵심 내용 전달', '핵심 수치 정확도']);
+
 function comparisonBadgeClass(tone: Tone) {
   if (tone === 'good') return 'bg-coral-deep text-white';
   if (tone === 'bad') return 'border border-line-strong bg-cream text-ink';
   return 'border border-dashed border-line-strong text-stone';
+}
+
+function ComparisonSummary() {
+  const [open, setOpen] = useState(false);
+  const detailTitleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (!open) {
+      if (dialog.open) dialog.close();
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (!dialog.open) dialog.showModal();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+  return (
+    <Card title="지난 Take와 비교">
+      <p className="mb-4 text-sm text-ink/80">
+        지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.
+      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {COMPARISON.flatMap((group) =>
+          group.columns.map((metric, index) => {
+            const slides = group.rows.filter((row) => row[0] !== '발표 전체' && row[index + 1]);
+            const improved = slides
+              .filter((row) => row[index + 1]?.[3] === 'good')
+              .map((row) => row[0]);
+            const worsened = slides
+              .filter((row) => row[index + 1]?.[3] === 'bad')
+              .map((row) => row[0]);
+            const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
+            const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 판단 불가').length;
+            const overall = findOverallCell(group.rows, index);
+            const directionUnknown = slides.length > 0 && unknown === slides.length && same === 0;
+            return (
+              <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
+                <h3 className="font-bold">{metric}</h3>
+                {directionUnknown && (
+                  <p className="mt-2 text-sm text-ink/80">
+                    개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
+                  </p>
+                )}
+                {slides.length > 0 && !directionUnknown && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                    <div className="border border-coral-deep bg-coral-wash p-3">
+                      <p className="font-bold text-ink">개선된 슬라이드</p>
+                      <p className="mt-1">{improved.join(', ') || '없음'}</p>
+                    </div>
+                    <div className="border border-line-strong bg-cream p-3">
+                      <p className="font-bold text-ink">다시 점검할 슬라이드</p>
+                      <p className="mt-1">{worsened.join(', ') || '없음'}</p>
+                    </div>
+                  </div>
+                )}
+                {slides.length === 0 && (
+                  <p className="mt-2 text-sm text-ink/80">
+                    {overall && OVERALL_ONLY_LABELS.has(metric)
+                      ? '발표 전체 기준 지표예요.'
+                      : '슬라이드별 비교 결과가 없어요.'}
+                  </p>
+                )}
+                {!directionUnknown && (same > 0 || unknown > 0) && (
+                  <p className="mt-2 text-xs text-ink/80">
+                    {same > 0 && `변화 없음 ${same}개`}
+                    {same > 0 && unknown > 0 && ' · '}
+                    {unknown > 0 && `방향 판단 불가 ${unknown}개`}
+                  </p>
+                )}
+                {overall && (
+                  <div
+                    className={`mt-2 border p-3 text-sm ${overall[3] === 'good' ? 'border-coral-deep bg-coral-wash' : 'border-line-strong bg-cream'}`}
+                  >
+                    <p className="text-xs font-bold text-stone">발표 전체</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <span className="tabular tabular-nums font-bold text-ink">{overall[0]}</span>
+                      <span aria-hidden="true" className="text-stone">
+                        →
+                      </span>
+                      <span className="tabular tabular-nums font-bold text-ink">{overall[1]}</span>
+                      {overall[3] === 'muted' ? (
+                        <Badge tone="muted">{overall[2]}</Badge>
+                      ) : (
+                        <span
+                          className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(overall[3])}`}
+                        >
+                          {overall[2]}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </section>
+            );
+          }),
+        )}
+      </div>
+      <button
+        ref={openerRef}
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-5 min-h-11 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+      >
+        상세 비교표 보기
+      </button>
+      <dialog
+        ref={dialogRef}
+        aria-labelledby={detailTitleId}
+        onClose={() => {
+          setOpen(false);
+          openerRef.current?.focus();
+        }}
+        onCancel={() => setOpen(false)}
+        className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
+      >
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h2 id={detailTitleId} className="text-lg font-bold">
+              지난 Take 상세 비교
+            </h2>
+            <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => dialogRef.current?.close()}
+            aria-label="상세 비교 닫기"
+            className="min-h-11 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
+          >
+            닫기
+          </button>
+        </div>
+        {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {COMPARISON.map((g) => (
+            <section
+              key={g.title}
+              aria-label={g.title}
+              className={`min-w-0 border-l-2 border-line pl-3 ${g.columns.length > 2 ? 'lg:col-span-2' : ''}`}
+            >
+              <h3 className="text-sm font-bold">{g.title}</h3>
+              <table className="tabular mt-2 w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-line text-xs text-ink/80">
+                    <th scope="col" className="w-20 py-1.5 pr-4 font-normal">
+                      구간
+                    </th>
+                    {g.columns.map((c) => (
+                      <th key={c} scope="col" className="py-1.5 pr-4 font-bold text-ink">
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.rows.map(([label, ...cells]) => (
+                    <tr key={label} className="border-b border-line last:border-b-0">
+                      <th scope="row" className="whitespace-nowrap py-2 pr-4 text-xs font-normal">
+                        {label}
+                      </th>
+                      {cells.map((cell, i) => (
+                        <td key={i} className="py-2 pr-4">
+                          {cell ? (
+                            <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                              <span className="text-ink/80">{cell[0]}</span>→
+                              <b className="text-base">{cell[1]}</b>
+                              {cell[3] === 'muted' ? (
+                                <Badge tone="muted">{cell[2]}</Badge>
+                              ) : (
+                                <span
+                                  className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(cell[3])}`}
+                                >
+                                  {cell[2]}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-ink/80">—</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))}
+        </div>
+      </dialog>
+    </Card>
+  );
 }
 
 export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
@@ -85,113 +290,7 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
               </p>
             </div>
           </section>
-          {!noReview && (
-            <Card
-              title="지난 Take와 비교"
-              action={<p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>}
-            >
-              {/* 제품의 지표 요약 구조: 슬라이드는 구분된 카드, 전체 지표는 값과 판정을 한 박스로 표시 */}
-              <div className="grid gap-4 lg:grid-cols-2">
-                <section className="min-w-0 border-l-2 border-line pl-3">
-                  <h3 className="font-bold">대본 응시</h3>
-                  <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
-                    <div className="border border-coral-deep bg-coral-wash p-3">
-                      <p className="font-bold text-ink">개선된 슬라이드</p>
-                      <p className="mt-1">3번</p>
-                    </div>
-                    <div className="border border-line-strong bg-cream p-3">
-                      <p className="font-bold text-ink">다시 점검할 슬라이드</p>
-                      <p className="mt-1">없음</p>
-                    </div>
-                  </div>
-                </section>
-                <section className="min-w-0 border-l-2 border-line pl-3">
-                  <h3 className="font-bold">발표 시간</h3>
-                  <div className="mt-2 border border-coral-deep bg-coral-wash p-3">
-                    <p className="text-xs font-bold text-stone">발표 전체</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <div>
-                        <p className="text-xs text-stone">지난 Take</p>
-                        <p className="tabular tabular-nums font-bold text-ink">05:12</p>
-                      </div>
-                      <span aria-hidden="true" className="text-stone">
-                        →
-                      </span>
-                      <div>
-                        <p className="text-xs text-stone">이번 Take</p>
-                        <p className="tabular tabular-nums font-bold text-ink">04:38</p>
-                      </div>
-                      <span className="inline-flex shrink-0 bg-coral-deep px-2 py-0.5 text-xs font-bold text-white">
-                        개선 ↑
-                      </span>
-                    </div>
-                  </div>
-                </section>
-              </div>
-              <p className="text-xs text-ink/80">
-                아래는 상세 비교표의 미리보기예요. 제품에서는 ‘상세 비교표 보기’를 눌러 확인해요.
-              </p>
-              {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
-              <div className="grid gap-4 lg:grid-cols-2">
-                {COMPARISON.map((g) => (
-                  <section
-                    key={g.title}
-                    aria-label={g.title}
-                    className={`min-w-0 border-l-2 border-line pl-3 ${g.columns.length > 2 ? 'lg:col-span-2' : ''}`}
-                  >
-                    <h3 className="text-sm font-bold">{g.title}</h3>
-                    <table className="tabular mt-2 w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-line text-xs text-ink/80">
-                          <th scope="col" className="w-20 py-1.5 pr-4 font-normal">
-                            구간
-                          </th>
-                          {g.columns.map((c) => (
-                            <th key={c} scope="col" className="py-1.5 pr-4 font-bold text-ink">
-                              {c}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {g.rows.map(([label, ...cells]) => (
-                          <tr key={label} className="border-b border-line last:border-b-0">
-                            <th
-                              scope="row"
-                              className="whitespace-nowrap py-2 pr-4 text-xs font-normal"
-                            >
-                              {label}
-                            </th>
-                            {cells.map((cell, i) => (
-                              <td key={i} className="py-2 pr-4">
-                                {cell ? (
-                                  <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                                    <span className="text-ink/80">{cell[0]}</span>→
-                                    <b className="text-base">{cell[1]}</b>
-                                    {cell[3] === 'muted' ? (
-                                      <Badge tone="muted">{cell[2]}</Badge>
-                                    ) : (
-                                      <span
-                                        className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(cell[3])}`}
-                                      >
-                                        {cell[2]}
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : (
-                                  <span className="text-ink/80">—</span>
-                                )}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </section>
-                ))}
-              </div>
-            </Card>
-          )}
+          {!noReview && <ComparisonSummary />}
           <section aria-label="측정값" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="발표 시간" value="04:38">
               목표 05:00 · 00:22 남김

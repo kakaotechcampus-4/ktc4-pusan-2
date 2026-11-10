@@ -179,18 +179,22 @@ it('현재 단계 강조 시안은 선택과 입력에 따라 한 영역만 표�
 it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인 완료를 눌러야 한다', async () => {
   await render('empty');
   await click('PDF 파일 선택');
+  expect(host.querySelector('[data-slide-review-state="pending"]')?.textContent).toContain(
+    '확인 필요',
+  );
   expect(host.querySelector('dialog')?.textContent).toContain('슬라이드 확인');
   expect(host.querySelector('progress')?.value).toBe(0);
   await click('닫기');
   expect(host.querySelector('progress')?.value).toBe(0);
-  expect(host.textContent).toContain('업로드 완료 · 확인 필요');
   await click('슬라이드 확인');
   await click('다음 장');
   expect(host.querySelector('dialog')?.textContent).toContain('2 / 3장');
   await click('확인 완료');
   expect(host.querySelector('dialog')).toBeNull();
   expect(host.querySelector('progress')?.value).toBe(1);
-  expect(host.textContent).toContain('확인 완료');
+  expect(host.querySelector('[data-slide-review-state="confirmed"]')?.textContent).toContain(
+    '확인 완료',
+  );
 });
 
 it('대본 매핑 완료와 창 닫기만으로는 저장되지 않는다', async () => {
@@ -227,4 +231,25 @@ it('평가기준은 정리 후 확인·저장해야 하며 수정하면 재확�
   await edit('');
   await click('최종 확인 →');
   expect(host.querySelector('dialog')?.textContent).toContain('사용하지 않음');
+});
+
+it('평가 항목은 예시 하나만 표시하고 Esc 뒤에도 포커스를 유지한다', async () => {
+  await render('empty');
+  const first = host.querySelector<HTMLButtonElement>('[aria-label="말 속도 작성 예시 보기"]')!;
+  const script = host.querySelector<HTMLButtonElement>(
+    '[aria-label="대본 의존도 작성 예시 보기"]',
+  )!;
+  await act(async () => first.focus());
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain('1분에 300자');
+  await act(async () => script.focus());
+  expect(host.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain(
+    '대본을 읽으며 말하는 비율',
+  );
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain('카메라가 필요해요');
+  await act(async () =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  );
+  expect(host.querySelector('[role="tooltip"]')).toBeNull();
+  expect(document.activeElement).toBe(script);
 });

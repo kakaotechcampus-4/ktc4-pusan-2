@@ -21,7 +21,7 @@ const ANALYSES = [
   {
     title: '소리 크기 · 침묵',
     where: '브라우저에서 재고 숫자만 보내요',
-    body: '장치 점검에서 잰 기준 목소리와 비교해 작아지거나 길게 멈춘 구간을 찾아요.',
+    body: '장치 점검에서 잰 평소 목소리와 비교해 작아지거나 길게 멈춘 구간을 찾아요.',
   },
   {
     title: '내용 전달',
@@ -61,7 +61,7 @@ export function AboutScreen({ onNavigate }: ScreenProps) {
 const UNSUPPORTED: Record<string, { title: string; body: string }> = {
   browser: {
     title: '이 브라우저에서는 시선 분석을 할 수 없어요',
-    body: '시선 분석에 필요한 기능(WebAssembly · Worker · createImageBitmap)이 없어요. 최신 Google Chrome에서 열어 주세요.',
+    body: '시선 분석에 필요한 기능(WebAssembly · Worker · createImageBitmap)이 없어요. 최신 Chrome이나 Edge로 열어 주세요.',
   },
   mobile: {
     title: '발표 연습은 PC에서 해 주세요',
@@ -83,6 +83,7 @@ export function UnsupportedScreen({ stateId, onNavigate }: ScreenProps) {
         <p className="leading-relaxed text-stone">{copy.body}</p>
         <ul className="list-disc space-y-1 pl-5 text-sm">
           <li>Chrome 최신 버전 (PC)</li>
+          <li>Edge 최신 버전 (PC)</li>
         </ul>
         <div className="flex flex-wrap gap-3">
           {/* 샘플은 클립보드를 쓰지 않는다 */}
@@ -138,14 +139,21 @@ export function MyScreen({ stateId }: ScreenProps) {
         <label className="flex min-h-11 items-center gap-3 text-sm font-bold">
           <input
             type="checkbox"
-            defaultChecked={consented}
+            checked={consented}
+            disabled
+            readOnly
             className="size-4 shrink-0 accent-ink"
           />
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
         <span className="text-xs text-stone">
-          바꾼 설정은 다음에 시작하는 연습부터 적용돼요. 이미 끝난 연습은 그대로예요.
+          지금은 테스트 기간이라 연습을 시작할 때 이 설정을 켜고, 바꿀 수 없어요.
         </span>
+        {!consented && (
+          <span className="text-xs text-stone">
+            아직 꺼져 있어요. 다음 연습을 시작할 때 켜져요.
+          </span>
+        )}
       </Card>
 
       <Card title="이 브라우저의 기록">
