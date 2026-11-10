@@ -24,9 +24,7 @@ test('피치를 고르면 주소가 바뀌고 목록 안 여백과 바깥 클릭
   await expect(page).toHaveURL(/pitch=p2/);
 });
 
-test('데스크톱에서는 선택창을 넓게, 320px 화면에서는 목록을 뷰포트 안에 둔다', async ({
-  page,
-}) => {
+test('데스크톱에서는 선택창을 넓게, 320px 화면에서는 목록을 뷰포트 안에 둔다', async ({ page }) => {
   await page.goto('/takes');
   const combo = page.getByRole('combobox', { name: '피치' });
   await expect(combo).toBeVisible();
