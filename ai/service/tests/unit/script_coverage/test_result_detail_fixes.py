@@ -100,7 +100,9 @@ def test_take_critical_gap_requires_slide_number():
     gaps = _analyze(_request(stt={4: ""})).detail.critical_gaps
     assert gaps and all(isinstance(g.slide_number, int) for g in gaps)
     spec = json.loads(
-        (Path(core_module.__file__).parents[4] / "contracts/openapi.json").read_text()
+        (Path(core_module.__file__).parents[4] / "contracts/openapi.json").read_text(
+            encoding="utf-8"
+        )
     )
     take_gap = spec["components"]["schemas"]["TakeCriticalGap"]
     assert "slide_number" in take_gap["required"]
