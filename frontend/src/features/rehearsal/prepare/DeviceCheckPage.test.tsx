@@ -160,6 +160,7 @@ beforeEach(() => {
     newer_script: null,
     next_take_number: 4,
     default_script_mode: 'HIGHLIGHT',
+    tutorial_block: null,
     missions: {
       source_take_number: 2,
       items: Array.from({ length: 20 }, (_, i) => ({
@@ -294,6 +295,30 @@ it('넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고, [
     'client-session',
     expect.objectContaining({ practice: null }),
   );
+});
+
+it.each([
+  ['TUTORIAL_REPORT_USED', '튜토리얼 리포트는 한 번만 받을 수 있어요', '/pitch/new'],
+  ['TUTORIAL_ANALYSIS_RUNNING', '앞 연습을 분석하고 있어요', '/takes?pitch=p1'],
+] as const)(
+  '튜토리얼 샘플이 막혔으면(%s) 처음부터 알리고, 장비가 준비돼도 시작하지 않는다',
+  async (block, text, href) => {
+    fixture.data = { ...fixture.data, tutorial_block: block };
+    await render();
+    const notice = host.querySelector('[data-tutorial-block]')!;
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.textContent).toContain(text);
+    expect(notice.querySelector('a')?.getAttribute('href')).toBe(href);
+    // 장비 · 시선 기준이 모두 준비된 상태(fixture 기본값)에서도 막습니다
+    expect(findButton('Take 4 시작하기').disabled).toBe(true);
+    expect(fixture.create).not.toHaveBeenCalled();
+  },
+);
+
+it('막히지 않은 샘플이나 일반 피치에는 튜토리얼 안내가 없다', async () => {
+  await render();
+  expect(host.querySelector('[data-tutorial-block]')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
 });
 
 it('조합 없이 들어오면 최신 조합 안내를 띄우지 않는다', async () => {

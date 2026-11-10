@@ -47,6 +47,7 @@ const prepare: PrepareResponse = {
   newer_script: null,
   next_take_number: 4,
   default_script_mode: 'HIGHLIGHT',
+  tutorial_block: null,
   // BE #409 — 리포트 목(Take 3 리뷰 `next_missions`)과 같은 미션입니다
   missions: {
     source_take_number: 3,

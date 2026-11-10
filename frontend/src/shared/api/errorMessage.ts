@@ -75,6 +75,11 @@ const MESSAGE: Record<string, string> = {
 const FALLBACK = '요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
 
 export function toMessage(error: unknown): string {
-  if (error instanceof ApiFailure) return MESSAGE[error.code] ?? FALLBACK;
+  if (error instanceof ApiFailure) return codeMessage(error.code);
   return FALLBACK;
+}
+
+/** 응답 본문에 실려 온 에러 코드(장치 점검 준비의 `tutorial_block` 등)를 같은 문구로 바꿉니다 */
+export function codeMessage(code: string): string {
+  return MESSAGE[code] ?? FALLBACK;
 }

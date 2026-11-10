@@ -88,6 +88,8 @@ it('리포트를 받은 계정은 샘플 피치로 Take 를 만들지 못하고,
 
   setTutorialReportReceived(true);
   expect(await startFirstTake()).toEqual({ pitch_id: pitchId, report_received: true });
+  const prepare = await (await fetch(base + `/api/pitches/${pitchId}/prepare`)).json();
+  expect(prepare.tutorial_block).toBe('TUTORIAL_REPORT_USED');
   const refused = await createTake(pitchId);
   expect(refused.status).toBe(409);
   expect(await refused.json()).toMatchObject({ code: 'TUTORIAL_REPORT_USED' });

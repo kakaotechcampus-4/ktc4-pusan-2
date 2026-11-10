@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { SILENCE_END_NOTICE } from '@/shared/lib/autoEnd';
 import { useShallow } from 'zustand/react/shallow';
@@ -8,7 +8,7 @@ import { postCalibration, useCreateTake, useLatestSlide, usePrepare } from '@/sh
 import { setPrepareContext, setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { toCalibrationRequest } from '../lib/calibrationRequest';
-import { toMessage } from '@/shared/api/errorMessage';
+import { codeMessage, toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
 import { AudioInputMeter } from './AudioInputMeter';
@@ -214,6 +214,10 @@ export function DeviceCheckPage() {
   const navigate = useNavigate();
   const prepare = usePrepare(pitchId);
   const info = useMemo(() => (prepare.data ? fromPrepare(prepare.data) : null), [prepare.data]);
+  // 튜토리얼 샘플로는 더 연습할 수 없음 — 리포트를 받았거나 앞 연습을 분석하는 중 (#931). 카메라 점검 ·
+  // 시선 보정을 다 하고 나서 시작 단계의 409 로 막히지 않게 처음부터 알리고 시작을 막습니다.
+  // 피치 생성에서 넘겨받은 조합(`combo`)이 있어도 봅니다. 그 사이 바뀌면 Take 생성의 409 가 막습니다
+  const tutorialBlock = prepare.data?.tutorial_block ?? null;
   // 이번에 쓸 자료가 지난 자료인지 견줄 최신 자료 (멘토 리뷰 #923). 조합을 넘겨받았어도 읽습니다 — 넘겨받은 뒤
   // 다른 탭에서 새 PDF 를 올렸을 수 있습니다 (#1099 리뷰)
   const latestSlide = useLatestSlide(pitchId, true);
@@ -380,6 +384,7 @@ export function DeviceCheckPage() {
     ? `가장 최근 자료를 확인하지 못해 지금 자료(v${chosen?.version})가 최신인지 알 수 없어요`
     : null;
   const prepareBlocked = (() => {
+    if (tutorialBlock) return codeMessage(tutorialBlock);
     if (!combo) {
       if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
       const problem = info ? prepareProblem(info) : null;
@@ -390,6 +395,7 @@ export function DeviceCheckPage() {
     return olderSlideBlocked ? '지난 자료로 연습할지, 매핑을 다시 확인할지 골라 주세요.' : null;
   })();
   const ready =
+    !tutorialBlock &&
     live &&
     micOk &&
     cal.status === 'DONE' &&
@@ -668,6 +674,25 @@ export function DeviceCheckPage() {
         </div>
 
         <div className="prepare-controls flex min-w-0 flex-col gap-2.5 prepare-compact:gap-1.5 prepare-low:gap-1">
+          {tutorialBlock && (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 border border-coral bg-coral-wash px-3 py-2 text-sm text-ink"
+              data-tutorial-block=""
+            >
+              <span>{codeMessage(tutorialBlock)}</span>
+              <Link
+                to={
+                  tutorialBlock === 'TUTORIAL_REPORT_USED'
+                    ? '/pitch/new'
+                    : `/takes?pitch=${encodeURIComponent(pitchId)}`
+                }
+                className="inline-flex min-h-8 shrink-0 items-center border border-ink bg-panel px-2.5 text-xs font-semibold hover:bg-cream"
+              >
+                {tutorialBlock === 'TUTORIAL_REPORT_USED' ? '새 피치 만들기' : 'Take 기록 보기'}
+              </Link>
+            </div>
+          )}
           <p role="status" className="sr-only">
             {comboAnnouncement}
           </p>

@@ -125,6 +125,7 @@ export const firstTakeHandlers = [
       next_take_number: 1,
       default_script_mode: 'HIGHLIGHT',
       missions: null,
+      tutorial_block: reportReceived ? 'TUTORIAL_REPORT_USED' : null,
     } satisfies PrepareResponse);
   }),
 
