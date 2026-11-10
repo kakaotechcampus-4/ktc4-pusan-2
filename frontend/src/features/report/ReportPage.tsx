@@ -306,11 +306,11 @@ function Points({
 /* ── 지난 Take와 비교 ───────────────────────────────────────────── */
 
 /** `improved` 는 true · false · null(방향을 정할 수 없음) */
-const TREND: Record<string, { label: string; tone: Tone }> = {
-  true: { label: '나아짐', tone: 'good' },
-  false: { label: '나빠짐', tone: 'bad' },
-  null: { label: '방향 판단 불가', tone: 'muted' },
-  same: { label: '같음', tone: 'muted' },
+const TREND: Record<string, { label: string; className: string }> = {
+  true: { label: '개선 ↑', className: 'bg-coral-deep text-white' },
+  false: { label: '악화 ↓', className: 'border border-line-strong bg-cream text-ink' },
+  null: { label: '방향 판단 불가', className: 'border border-dashed border-line-strong text-stone' },
+  same: { label: '변화 없음', className: 'border border-dashed border-line-strong text-stone' },
 };
 
 /** 화면에 보이는 값이 같으면 AI 의 `improved`(같으면 false)와 상관없이 "같음" */
@@ -318,6 +318,14 @@ function trend(r: ReviewResult['comparison'][number]) {
   return fmt(r.metric, r.previous) === fmt(r.metric, r.current)
     ? TREND.same!
     : TREND[String(r.improved)]!;
+}
+
+function ComparisonTrendBadge({ result }: { result: ReturnType<typeof trend> }) {
+  return (
+    <span className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${result.className}`}>
+      {result.label}
+    </span>
+  );
 }
 
 /** 지난 Take의 지표별 슬라이드 변화 요약과 차원별 상세 비교표 (#929). */
@@ -394,13 +402,25 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                     )}
                     {slides.length > 0 && !directionUnknown && (
                       <>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                          <div className="border border-line-strong bg-panel p-3">
-                            <p className="font-bold text-ink">나아진 슬라이드</p>
+                        <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                          <div
+                            role="group"
+                            aria-label="개선된 슬라이드"
+                            className={
+                              improved.length > 0
+                                ? 'border border-coral-deep bg-coral-wash p-3'
+                                : 'border border-line-strong bg-panel p-3'
+                            }
+                          >
+                            <p className="font-bold text-ink">개선된 슬라이드</p>
                             <p className="mt-1">{slideList(improved)}</p>
                           </div>
-                          <div className="border border-line-strong bg-panel p-3">
-                            <p className="font-bold text-ink">나빠진 슬라이드</p>
+                          <div
+                            role="group"
+                            aria-label="다시 점검할 슬라이드"
+                            className="border border-line-strong bg-cream p-3"
+                          >
+                            <p className="font-bold text-ink">다시 점검할 슬라이드</p>
                             <p className="mt-1">{slideList(worsened)}</p>
                           </div>
                         </div>
@@ -413,19 +433,46 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                         )}
                       </>
                     )}
-                    {slides.length === 0 && (
+                    {slides.length === 0 && !(overall && OVERALL_ONLY_METRICS.has(metric)) && (
                       <p className="mt-2 text-sm text-ink/80">
-                        {overall && OVERALL_ONLY_METRICS.has(metric)
-                          ? '발표 전체 기준 지표예요.'
-                          : '슬라이드별 비교 결과가 없어요.'}
+                        슬라이드별 비교 결과가 없어요.
                       </p>
                     )}
-                    {overall && (
-                      <p className="mt-2 text-xs text-ink/80">
-                        발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)}{' '}
-                        · {trend(overall).label}
-                      </p>
-                    )}
+                    {overall &&
+                      (slides.length === 0 && OVERALL_ONLY_METRICS.has(metric) ? (
+                        <div
+                          role="group"
+                          aria-label={`${metricLabel(metric)} 발표 전체 비교`}
+                          className="mt-2 border border-line-strong bg-panel p-3"
+                        >
+                          <p className="text-xs font-bold text-stone">발표 전체</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                            <div>
+                              <p className="text-xs text-stone">지난 Take</p>
+                              <p className="tabular tabular-nums font-bold text-ink">
+                                {fmt(metric, overall.previous)}
+                              </p>
+                            </div>
+                            <span aria-hidden="true" className="text-stone">
+                              →
+                            </span>
+                            <div>
+                              <p className="text-xs text-stone">이번 Take</p>
+                              <p className="tabular tabular-nums font-bold text-ink">
+                                {fmt(metric, overall.current)}
+                              </p>
+                            </div>
+                            <ComparisonTrendBadge result={trend(overall)} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink/80">
+                          <span>
+                            발표 전체: {fmt(metric, overall.previous)} → {fmt(metric, overall.current)}
+                          </span>
+                          <ComparisonTrendBadge result={trend(overall)} />
+                        </div>
+                      ))}
                   </section>
                 );
               })}
@@ -512,7 +559,7 @@ function ComparisonTable({ group }: { group: ComparisonGroup }) {
                         <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                           <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
                           <b className="text-base">{fmt(r.metric, r.current)}</b>
-                          <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
+                          <ComparisonTrendBadge result={trend(r)} />
                         </span>
                       ) : (
                         <span className="text-ink/80">—</span>
