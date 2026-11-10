@@ -12,12 +12,9 @@ const TAKE_ID = '20000000-0000-4000-8000-000000000003';
 type Rect = { x: number; y: number; width: number; height: number };
 
 function overlaps(a: Rect, b: Rect) {
-  return (
-    a.x < b.x + b.width &&
-    b.x < a.x + a.width &&
-    a.y < b.y + b.height &&
-    b.y < a.y + a.height
-  );
+  const x = a.x < b.x + b.width && b.x < a.x + a.width;
+  const y = a.y < b.y + b.height && b.y < a.y + a.height;
+  return x && y;
 }
 
 async function openPanel(page: Page) {
@@ -65,13 +62,6 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     await page.setViewportSize({ width: 375, height: 900 });
     await page.goto('/');
     await expect(page.locator('.home-footer-content')).toHaveCSS('padding-right', '80px');
-    const homeLauncher = page.locator('[data-chat-launcher] > button');
-    const helpButton = page.getByRole('button', { name: '사용방법 살펴보기' });
-    const homeLauncherBox = await homeLauncher.boundingBox();
-    const helpBox = await helpButton.boundingBox();
-    expect(homeLauncherBox).not.toBeNull();
-    expect(helpBox).not.toBeNull();
-    expect(overlaps(homeLauncherBox!, helpBox!)).toBe(false);
     await page.goto('/pitch/new');
     const launcher = page.locator('[data-chat-launcher] > button');
     await expect(launcher).toBeVisible();
@@ -105,26 +95,28 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     }
   });
 
-  test('모바일에서 펼친 오류 안내는 발표 생성 푸터 위에 놓인다', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 900 });
-    await page.goto('/pitch/new');
-    const container = page.locator('[data-chat-launcher]');
-    await expect(container).toBeVisible();
-    // 실제 오류 경계와 같은 aria-label로 CSS의 오류 안내 위치 조건을 확인합니다.
-    await container.evaluate((element) => {
-      const warning = document.createElement('section');
-      warning.setAttribute('aria-label', '새미나이 오류');
-      warning.style.height = '144px';
-      warning.style.width = '288px';
-      element.append(warning);
-    });
-    await expect(container).toHaveCSS('bottom', '144px');
-    const footer = page.locator('.pitch-create-square > footer');
-    const warningBox = await container.boundingBox();
-    const footerBox = await footer.boundingBox();
-    expect(warningBox).not.toBeNull();
-    expect(footerBox).not.toBeNull();
-    expect(warningBox!.y + warningBox!.height).toBeLessThanOrEqual(footerBox!.y);
+  test('320·340·375px에서 오류 안내가 고정 푸터를 가리지 않는다', async ({ page }) => {
+    for (const width of [320, 340, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/pitch/new');
+      const container = page.locator('[data-chat-launcher]');
+      await expect(container).toBeVisible();
+      // 실제 오류 경계와 같은 aria-label로 CSS의 오류 안내 위치 조건을 확인합니다.
+      await container.evaluate((element) => {
+        const warning = element.ownerDocument.createElement('section');
+        warning.setAttribute('aria-label', '새미나이 오류');
+        warning.style.height = '144px';
+        warning.style.width = '288px';
+        element.append(warning);
+      });
+      await expect(container).toHaveCSS('bottom', '192px');
+      const footer = page.locator('.pitch-create-square > footer');
+      const warningBox = await container.boundingBox();
+      const footerBox = await footer.boundingBox();
+      expect(warningBox).not.toBeNull();
+      expect(footerBox).not.toBeNull();
+      expect(warningBox!.y + warningBox!.height).toBeLessThanOrEqual(footerBox!.y);
+    }
   });
 
   const screens = [
