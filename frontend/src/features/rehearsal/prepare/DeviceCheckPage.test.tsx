@@ -989,3 +989,33 @@ it('잰 트랙이 녹음 트랙과 다른 장치면 이번 값을 다시 쓰기�
   expect(findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')).toBeNull();
   expect(findButton('목소리 재기')).toBeTruthy();
 });
+
+// #1184 리뷰 — 다른 곳의 연습을 끝낼지 묻는 창에서 기다리는 사이에도 다시 쓰는 기준이 만료될 수 있습니다
+it('확인 창을 거치는 사이 다시 쓰는 기준이 만료되면 Take 를 만들지 않고 보내지도 않는다', async () => {
+  const measuredAt = performance.now();
+  keepBaseVoice(-27.5, { deviceId: 'mic-a', groupId: 'group-a', autoGainOff: true }, measuredAt);
+  fixture.voiceStatus = 'IDLE';
+  fixture.active.mockResolvedValue({
+    take_id: 'other',
+    pitch_title: '다른 발표',
+    pitch_id: 'other-pitch',
+    take_number: 2,
+  });
+  await render();
+  await act(async () => findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')!.click());
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(host.querySelector('dialog')).not.toBeNull();
+  // 창을 띄워 둔 채 30분이 지남
+  const now = vi.spyOn(performance, 'now').mockReturnValue(measuredAt + BASE_VOICE_REUSE_MS + 1);
+  const confirm = [...host.querySelectorAll<HTMLButtonElement>('dialog button')].find((button) =>
+    button.textContent?.includes('그 연습 끝내고 시작'),
+  )!;
+  await act(async () => confirm.click());
+  expect(fixture.endActive).toHaveBeenCalledOnce();
+  expect(fixture.create).not.toHaveBeenCalled();
+  expect(fixture.postCalibration).not.toHaveBeenCalled();
+  expect(footerText()).toContain('조금 전에 잰 기준 목소리를 더 쓸 수 없어요');
+  expect(findButton('Take 4 시작하기').disabled).toBe(true);
+  expect(document.activeElement).not.toBe(document.body);
+  now.mockRestore();
+});

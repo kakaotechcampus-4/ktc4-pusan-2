@@ -63,6 +63,10 @@ const pageClock = () => performance.now();
  */
 const BASE_VOICE_FALLBACK_AFTER = 2;
 
+/** 다시 쓰기로 고른 기준 목소리를 시작할 때 더 쓸 수 없을 때(30분 지남 · 마이크 바뀜) */
+const BASE_VOICE_EXPIRED_TEXT =
+  '조금 전에 잰 기준 목소리를 더 쓸 수 없어요. 시간이 지났거나 마이크가 바뀌었어요. 기준 목소리를 다시 재 주세요.';
+
 /** 다시 쓸 기준 목소리의 "N분 전" · 만료를 다시 보는 간격 */
 const REUSE_CLOCK_MS = 30_000;
 
@@ -534,17 +538,24 @@ export function DeviceCheckPage() {
    * 시작 버튼. 사용자는 한 번에 연습 하나만 해서, 다른 창 · 기기에서 발표 중인 Take 가 있으면
    * 그것을 끝낼지 먼저 묻습니다 (#719). 없거나 묻지 못했으면 바로 `begin` 입니다.
    */
-  const start = async () => {
-    if (!choice || starting) return;
+  /**
+   * 보낼 기준 목소리를 정해 `baseLevelRef` 에 둡니다. 더 쓸 수 없으면 고른 길을 버리고 알린 뒤 false 입니다.
+   * 시작을 누를 때와, 다른 곳의 연습을 끝낼지 묻는 창을 거친 뒤 Take 를 만들기 직전(`begin`)에 부릅니다 (#1184 리뷰)
+   */
+  const settleBaseLevel = (): boolean => {
     const baseLevel = chosenBaseLevel();
     if (baseLevel === undefined) {
       choosePick(null);
-      setStartError(
-        '조금 전에 잰 기준 목소리를 더 쓸 수 없어요. 시간이 지났거나 마이크가 바뀌었어요. 기준 목소리를 다시 재 주세요.',
-      );
-      return;
+      setStartError(BASE_VOICE_EXPIRED_TEXT);
+      return false;
     }
     baseLevelRef.current = baseLevel;
+    return true;
+  };
+
+  const start = async () => {
+    if (!choice || starting) return;
+    if (!settleBaseLevel()) return;
     setStarting(true);
     setStartError(null);
     const other = await activeTakeOrNone();
@@ -590,6 +601,13 @@ export function DeviceCheckPage() {
     // 확인 창을 거치는 동안 고를 조합이 사라졌을 수 있습니다. 시작 버튼을 잠근 채 두지 않습니다
     if (!choice) {
       setStarting(false);
+      return;
+    }
+    // 확인 창에서 기다리는 사이 30분이 지났거나 마이크가 바뀌었을 수 있습니다. Take 를 만들기 전에 한 번 더 봅니다.
+    // 시작 버튼이 다시 막히므로 초점은 본문으로 둡니다 — 막힌 버튼에 두면 body 로 빠집니다 (#818)
+    if (!settleBaseLevel()) {
+      setStarting(false);
+      document.getElementById('main')?.focus();
       return;
     }
 
