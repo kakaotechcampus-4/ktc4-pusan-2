@@ -9,6 +9,17 @@ import { expect, test, type Page } from '@playwright/test';
 const PITCH_ID = '10000000-0000-4000-8000-000000000001';
 const TAKE_ID = '20000000-0000-4000-8000-000000000003';
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+function overlaps(a: Rect, b: Rect) {
+  return (
+    a.x < b.x + b.width &&
+    b.x < a.x + a.width &&
+    a.y < b.y + b.height &&
+    b.y < a.y + a.height
+  );
+}
+
 async function openPanel(page: Page) {
   const launcher = page.getByRole('button', { name: '새미나이 열기', exact: true });
   await expect(launcher).toBeVisible();
@@ -40,6 +51,13 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
       await expect(panel).toHaveCount(0);
       await expect(launcher).toBeVisible();
       await expect(launcher).toBeFocused();
+
+      await launcher.click();
+      await expect(panel).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(panel).toHaveCount(0);
+      await expect(launcher).toBeVisible();
+      await expect(launcher).toBeFocused();
     }
   });
 
@@ -47,6 +65,13 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     await page.setViewportSize({ width: 375, height: 900 });
     await page.goto('/');
     await expect(page.locator('.home-footer-content')).toHaveCSS('padding-right', '80px');
+    const homeLauncher = page.locator('[data-chat-launcher] > button');
+    const helpButton = page.getByRole('button', { name: '사용방법 살펴보기' });
+    const homeLauncherBox = await homeLauncher.boundingBox();
+    const helpBox = await helpButton.boundingBox();
+    expect(homeLauncherBox).not.toBeNull();
+    expect(helpBox).not.toBeNull();
+    expect(overlaps(homeLauncherBox!, helpBox!)).toBe(false);
     await page.goto('/pitch/new');
     const launcher = page.locator('[data-chat-launcher] > button');
     await expect(launcher).toBeVisible();
@@ -54,6 +79,52 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
       'padding-right',
       '64px',
     );
+    const footerAction = page.locator('.pitch-create-square > footer').getByRole('button').last();
+    const launcherBox = await launcher.boundingBox();
+    const actionBox = await footerAction.boundingBox();
+    expect(launcherBox).not.toBeNull();
+    expect(actionBox).not.toBeNull();
+    expect(overlaps(launcherBox!, actionBox!)).toBe(false);
+  });
+
+  test('리포트 하단 링크는 런처에 가리지 않는다', async ({ page }) => {
+    for (const width of [375, 761, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/takes/' + TAKE_ID);
+      const link = page.getByRole('link', { name: '내 피치로' });
+      await expect(link).toBeVisible();
+      await link.scrollIntoViewIfNeeded();
+      const launcher = page.locator('[data-chat-launcher] > button');
+      await expect(launcher).toBeVisible();
+      const linkBox = await link.boundingBox();
+      const launcherBox = await launcher.boundingBox();
+      expect(linkBox).not.toBeNull();
+      expect(launcherBox).not.toBeNull();
+      expect(overlaps(linkBox!, launcherBox!)).toBe(false);
+      await link.click({ trial: true });
+    }
+  });
+
+  test('모바일에서 펼친 오류 안내는 발표 생성 푸터 위에 놓인다', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto('/pitch/new');
+    const container = page.locator('[data-chat-launcher]');
+    await expect(container).toBeVisible();
+    // 실제 오류 경계와 같은 aria-label로 CSS의 오류 안내 위치 조건을 확인합니다.
+    await container.evaluate((element) => {
+      const warning = document.createElement('section');
+      warning.setAttribute('aria-label', '새미나이 오류');
+      warning.style.height = '144px';
+      warning.style.width = '288px';
+      element.append(warning);
+    });
+    await expect(container).toHaveCSS('bottom', '96px');
+    const footer = page.locator('.pitch-create-square > footer');
+    const warningBox = await container.boundingBox();
+    const footerBox = await footer.boundingBox();
+    expect(warningBox).not.toBeNull();
+    expect(footerBox).not.toBeNull();
+    expect(warningBox!.y + warningBox!.height).toBeLessThanOrEqual(footerBox!.y);
   });
 
   const screens = [
