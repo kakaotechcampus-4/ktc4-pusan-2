@@ -23,9 +23,12 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: '시작 전 세팅' })).toBeVisible();
 });
 
-test('카메라 · 마이크가 켜지고, 기준 목소리는 재기 전이라 시작할 수 없다', async ({ page }) => {
+test('카메라 · 마이크가 켜지고 기준 목소리를 잴 수 있다', async ({ page }) => {
   await expect(page.getByText('마이크 입력 확인됨')).toBeVisible();
   await expect(page.getByRole('button', { name: '목소리 재기' })).toBeVisible();
+  // 시작 버튼은 꺼져 있지만, 이 환경에서는 시선 모델이 없어 시선 기준 때문에도 꺼집니다.
+  // "기준 목소리가 시작 조건"인지는 여기서 따로 가를 수 없어 `DeviceCheckPage.test.tsx` 가 봅니다.
+  // 시선 보정을 통과시키는 시험 환경이 생기면 목소리를 재기 전후의 시작 가능 여부를 여기서 비교합니다 (#1193 리뷰)
   await expect(page.getByRole('button', { name: /^Take \d+ 시작하기$/ })).toBeDisabled();
 });
 
