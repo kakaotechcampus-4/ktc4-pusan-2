@@ -95,10 +95,19 @@ export function reasonTexts(
   return [...new Set(codes.filter((c) => !skip.includes(c)).map((c) => reasonText(c, scope)))];
 }
 
+/**
+ * 값이 빈 지표에 `SLIDES_EXCLUDED` 만 있을 때 — 평가한 장이 하나도 없어 값을 내지 못한 경우입니다(대상 장이 모두
+ * STT 끊김 · 간이 장만 있음 등, #1152 결정). 문구표의 "빼고 계산했어요"는 값이 있을 때의 말이라 여기서는 쓰지 않습니다.
+ * FE 가 정한 문구입니다(#1154 문구표에 없음)
+ */
+export const NO_EVALUATED_SLIDES = '평가한 장이 없어 계산하지 못했어요';
+
 /** 값이 null 인 지표 자리에 보일 이유. `SLIDES_EXCLUDED` 는 범위 문구가 따로 있어 뒤로 미룹니다 */
 export function metricReason(metric: Metric | null, scope: ReasonScope = 'slide'): string {
   if (!metric) return UNKNOWN_REASON;
   const own = metric.reason_codes.filter((c) => c !== 'SLIDES_EXCLUDED');
+  if (own.length === 0 && metric.reason_codes.includes('SLIDES_EXCLUDED'))
+    return NO_EVALUATED_SLIDES;
   return reasonText(own[0] ?? metric.reason_codes[0] ?? null, scope);
 }
 

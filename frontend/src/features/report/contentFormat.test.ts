@@ -9,6 +9,7 @@ import {
   factsLine,
   featureVersion,
   metricReason,
+  NO_EVALUATED_SLIDES,
   mixLabel,
   percentText,
   previousDelta,
@@ -66,9 +67,9 @@ describe('이유 문구', () => {
     expect(metricReason(metric(null, ['SLIDES_EXCLUDED', 'NO_KEY_POINTS']))).toBe(
       '이 장에는 확인할 핵심 내용이 없어요',
     );
-    expect(metricReason(metric(null, ['SLIDES_EXCLUDED']))).toBe(
-      '평가하지 못한 장을 빼고 계산했어요',
-    );
+    // SLIDES_EXCLUDED 만 있으면 평가한 장이 없어 값을 못 낸 것 — 값이 없는데 "빼고 계산했어요"라고 하지 않습니다
+    expect(metricReason(metric(null, ['SLIDES_EXCLUDED']))).toBe(NO_EVALUATED_SLIDES);
+    expect(metricReason(metric(null, ['SLIDES_EXCLUDED']), 'take')).toBe(NO_EVALUATED_SLIDES);
     expect(metricReason(null)).toBe(UNKNOWN_REASON);
   });
 });
