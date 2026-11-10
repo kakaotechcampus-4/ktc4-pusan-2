@@ -2,7 +2,7 @@ import { matchPath } from 'react-router';
 
 /** 정상 런처와 오류 안내가 공유하는 고정 위치. */
 export const CHAT_LAUNCHER_CLASS =
-  'light-surface fixed bottom-[var(--chat-launcher-bottom)] left-2 z-[70] text-ink';
+  'light-surface fixed bottom-[var(--chat-launcher-bottom)] right-2 z-[70] text-ink';
 
 /**
  * Explicit allowlist for the chat panel. Device check and live rehearsal are intentionally
@@ -71,7 +71,7 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
 }
 
 /**
- * 왼쪽 아래 런처의 기본 하단 여백(px). 홈·피치 목록은 통합 푸터 위로 올립니다 (#1112).
+ * 오른쪽 아래 런처의 기본 하단 여백(px). 홈·피치 목록은 통합 푸터 위로 올립니다 (#1112).
  * 그 외 기본값은 32px, 생성·수정 화면은 고정 바를 피하도록 88px입니다 (#941).
  * 좁은 생성·수정 화면의 최종 위치는 index.css에서 결정합니다 (#1104).
  */
