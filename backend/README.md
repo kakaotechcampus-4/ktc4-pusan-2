@@ -498,6 +498,8 @@ POST /api/pitches/tutorials/first-take   → pitch_id(null 일 수 있음) · re
   Take 를 시작할 수 없고 파일만 또 올라간다. 샘플 발표가 남아 있으면 기록을 보라고 그 id 를 준다.
 - 장치 점검 준비(`/prepare`)의 `tutorial_block` 이 위 두 409 를 카메라 점검 전에 미리 알린다. Take 생성과 같은
   판정(`take/service/lookup.py` 의 `tutorial_block`)이다.
+- 리포트를 받은 시각은 `GET /api/users/me` 의 `tutorial_report_at` 으로도 준다(받지 않았으면 `null`). FE 홈이 튜토리얼을
+  아직 권할지 가린다. 샘플 발표를 지워도 남아서 홈 목록만으로는 알 수 없는 경우를 메운다.
 
 ## Take 목록
 

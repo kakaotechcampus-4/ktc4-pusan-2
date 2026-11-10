@@ -24,7 +24,12 @@ export function MemoryIntro({ userId }: { userId: string }) {
 export const MEMORY_OFF_LABEL = '기억 없이';
 export const MEMORY_SETTING_OFF_TEXT = '기억 설정이 꺼져 있어요';
 
-/** 대화 머리의 '기억 없이' 표시 (F15 · L3-44 "고른 대화에는 표시를 붙인다") */
+/**
+ * 대화 머리의 '기억 없이' 표시 (F15 · L3-44).
+ * 전송 전에는 스위치가 선택 상태를 알려 주므로 배지를 중복해서 붙이지 않습니다.
+ * 전송·생성을 시작하면 고른 대화의 속성이 확정되므로 배지를 표시합니다.
+ * 지난 대화를 열 때는 저장된 memoryOff 값으로 표시를 복원합니다.
+ */
 export function MemoryOffBadge() {
   const showBadge = useChatStore(
     (s) => s.memoryOff && (s.conversationId !== null || s.pending !== null || s.creating !== null),
