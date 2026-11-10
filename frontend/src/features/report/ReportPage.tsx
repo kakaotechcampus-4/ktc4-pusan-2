@@ -316,7 +316,7 @@ const TREND: Record<string, { label: string; className: string }> = {
   same: { label: '변화 없음', className: 'border border-dashed border-line-strong text-stone' },
 };
 
-/** 화면에 보이는 값이 같으면 AI 의 `improved`(같으면 false)와 상관없이 "같음" */
+/** 화면에 보이는 값이 같으면 AI 판정과 무관하게 "변화 없음" — 반올림된 표시값 기준 */
 function trend(r: ReviewResult['comparison'][number]) {
   return fmt(r.metric, r.previous) === fmt(r.metric, r.current)
     ? TREND.same!
@@ -444,7 +444,11 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
                         <div
                           role="group"
                           aria-label={`${metricLabel(metric)} 발표 전체 비교`}
-                          className="mt-2 border border-line-strong bg-panel p-3"
+                          className={
+                            trend(overall) === TREND.true
+                              ? 'mt-2 border border-coral-deep bg-coral-wash p-3'
+                              : 'mt-2 border border-line-strong bg-panel p-3'
+                          }
                         >
                           <p className="text-xs font-bold text-stone">발표 전체</p>
                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
