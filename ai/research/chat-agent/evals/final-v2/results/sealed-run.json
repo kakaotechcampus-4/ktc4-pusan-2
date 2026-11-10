@@ -1,0 +1,12 @@
+{
+  "freeze_commit": "d88c67dab26a8486b1dd5f984de91b4c5cbf0dc9",
+  "code": "chat_agent-0.12.1 (동결 커밋의 깨끗한 사본, git archive)",
+  "runs": {"agent": "60 x 3", "baseline": "60 x 3 (고정 순서)"},
+  "settings": "README '다시 돌리기'와 같다: --set all --judge --workers 4 --search hybrid (baseline 은 --baseline)",
+  "exit": {"uv": 0, "verify": 0, "agent": 0, "baseline": 0, "hash": 0},
+  "provider_failed_calls": {"agent": 0, "baseline": 0},
+  "provider_aborted_runs": {"agent": 0, "baseline": 0},
+  "retries": 0,
+  "finished_at": "2026-11-11T02:21+09:00",
+  "note": "결과 파일은 저장소 밖 보관 폴더에만 있다. 구현 세션은 최종 실행이 끝날 때까지 열지 않는다(RULES 3절). 이 파일의 값은 종료 코드 · 개수만이다."
+}
