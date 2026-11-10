@@ -609,8 +609,15 @@ def _finalize(
         id_prefix=f"{req.run.run_id}:as{lp.counters.turn_count}-",
         guide_texts=_guide_texts(lp),
         guide_titles=_guide_titles(lp),
+        restated=_restated_quotes(drafts, req),
         **kwargs,
     )
+
+
+def _restated_quotes(drafts: list[clm.AssessmentDraft], req: TurnRequest) -> set[str]:
+    """직전 어시스턴트 답을 되받아 옮긴 말인 초안의 인용(`claims.restates_previous_answer`). 그 초안은 판정 첫 문장을 그리지 않는다."""
+    prev = next((m.text for m in reversed(req.history.messages) if m.role == "assistant"), None)
+    return {d.quote for d in drafts if clm.restates_previous_answer(d.quote, prev)}
 
 
 def _question_as_request(

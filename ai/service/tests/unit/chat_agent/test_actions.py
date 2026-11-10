@@ -1142,7 +1142,7 @@ def test_fetch_pitch_success_changes_scope() -> None:
         ctx=ctx,
     )
     assert applied.ok and applied.scope_changed
-    assert applied.success_text == "다른 발표로 범위를 바꿨어요."  # 받침 없는 제목은 '로'
+    assert applied.success_text == "'다른 발표' 기록을 가져왔어요."  # 받침 없는 제목은 '로'
     assert (
         ctx.scope_pitch_id == "p-2" and "t-4" not in ctx.snapshots
     )  # 이전 범위에서 가져온 Take 는 버린다

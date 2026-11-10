@@ -131,9 +131,10 @@ def test_steps_follow_actual_runs_and_unrun_steps_are_skipped() -> None:
         "note": None,
     }
     assert [p["status"] for p in plans[1]] == ["DONE", "DOING", "TODO"]
-    # 끝(DONE): 실행하지 않은 단계는 SKIPPED, 답 쓰기 단계는 답 문장이 있어 DONE
-    assert [p["status"] for p in data["plan"]] == ["DONE", "SKIPPED", "DONE"]
-    assert data["plan"][1]["step"] == "발표법 자료 찾기"
+    # 끝(DONE): 실행하지 않은 단계는 끝 목록에서 빠지고(헷갈리지 않게), 답 쓰기 단계는 답 문장이 있어 DONE
+    assert [p["status"] for p in data["plan"]] == ["DONE", "DONE"]
+    assert "발표법 자료 찾기" not in [p["step"] for p in data["plan"]]
+    assert plans[-2][1]["step"] == "발표법 자료 찾기"  # 진행 중에는 보였다
     events = [ln["event"] for ln in lines]
     assert events.index("tool_done") < 2 < events.index("final")  # 표시 갱신은 도구 기록 줄 뒤
     assert lines[-2]["event"] in ("plan", "claim")
@@ -426,9 +427,9 @@ def test_plan_edit_after_runs_keeps_executed_steps_in_front_and_appends_new_ones
         {"step": "자료 찾기", "status": "TODO", "note": None},
         {"step": "답 정리", "status": "TODO", "note": None},
     ]
-    # 끝: 실행한 단계는 DONE 그대로, 실행하지 않은 새 단계만 SKIPPED(답 쓰기 단계는 답이 있어 DONE)
+    # 끝: 실행한 단계는 DONE 그대로, 실행하지 않은 새 단계는 끝 목록에서 빠진다(답 쓰기 단계는 답이 있어 DONE)
     assert data["plan"][:2] == RAN
-    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "SKIPPED", "SKIPPED", "DONE"]
+    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "DONE"]
     assert not [s for s in fd.diagnostics.steps if s.kind == "LIMIT"]  # type: ignore[union-attr]
 
 
@@ -466,7 +467,7 @@ def test_plan_edit_result_to_model_is_the_model_list_not_the_merged_screen() -> 
         ("조건 확인", "DOING"),
         ("답 정리", "TODO"),
     ]
-    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "SKIPPED", "DONE"]
+    assert [s["status"] for s in data["plan"]] == ["DONE", "DONE", "DONE"]  # 실행하지 않은 조건 확인은 끝 목록에서 빠짐
 
 
 def test_research_prompts_do_not_push_update_plan() -> None:
@@ -487,8 +488,10 @@ def test_plan_edit_merge_cuts_new_steps_to_eight() -> None:
     new = [(f"새 단계 {'가나다라마바사'[i]}", None) for i in range(7)]
     lines, data, seen = _ran_two_then_edit(_edit(*new))
     check_stream(lines, data)
-    steps = [s["step"] for s in data["plan"]]
-    assert len(steps) == 8 and data["plan"][:2] == RAN
+    live = plan_lines(lines)[-2]  # 끝 처리 전 마지막 화면 목록(끝난 답에서는 실행하지 않은 단계를 뺀다)
+    steps = [s["step"] for s in live]
+    assert len(steps) == 8 and [p["step"] for p in live[:2]] == [p["step"] for p in RAN]
+    assert [p["step"] for p in data["plan"]] == [p["step"] for p in RAN]
     # 남긴 실행 단계는 자르지 않고 뒤의 새 단계(7번째)를 자른다
     assert steps[2:] == [n for n, _ in new[:6]]
     assert len(seen["edit_result"]["data"]["plan"]) == 7  # 모델에게는 보낸 목록 그대로
@@ -549,7 +552,7 @@ def test_partial_on_research_time_leaves_todo_and_time_short() -> None:
 
 
 def test_needs_action_keeps_plan_meta_across_resume() -> None:
-    req = F.request(user_message=MSG)  # Take 4 결과가 기본 자료에 없음
+    req = F.request(user_message=MSG)  # Take 4 결과가 아직 불러오지 않음
     llm = F.FakeLlm(
         [
             compare_plan(("반복 확인", "compare_takes"), ("답 쓰기", "answer")),
@@ -562,7 +565,7 @@ def test_needs_action_keeps_plan_meta_across_resume() -> None:
     fd = check_stream(lines, data)
     assert fd.status == "NEEDS_ACTION"
     assert data["plan"] == [
-        {"step": "반복 확인: 비교 → 기본 자료에 없음", "status": "DONE", "note": None},
+        {"step": "반복 확인: 비교 → 아직 불러오지 않음", "status": "DONE", "note": None},
         {"step": "답 쓰기", "status": "DOING", "note": None},
     ]
     # 기본 자료에 없는 Take 는 코드가 바로 가져온다(Issue #1194 4-G): 모델 대본의 fetch_take 는 부르지 않는다
@@ -586,7 +589,7 @@ def test_needs_action_keeps_plan_meta_across_resume() -> None:
     check_stream(lines2, data2)
     # 서명 상태로 이어진 단계 메타: 앞 호출의 실행 결과가 남고, 가져오기 · 다시 비교가 단계로 붙는다
     assert [p["step"] for p in data2["plan"]] == [
-        "반복 확인: 비교 → 기본 자료에 없음",
+        "반복 확인: 비교 → 아직 불러오지 않음",
         "기록 가져오기 → 가져옴",
         "비교: Take 4·5 비교 → 3장 청중 시선 나빠짐",
         "답 쓰기",
@@ -597,7 +600,7 @@ def test_needs_action_keeps_plan_meta_across_resume() -> None:
 
 @pytest.mark.prefetch
 def test_code_prefetch_fetch_take_is_logged_as_code_action() -> None:
-    req = F.request(user_message=MSG)  # Take 4 결과가 기본 자료에 없음 → 코드가 먼저 가져온다
+    req = F.request(user_message=MSG)  # Take 4 결과가 아직 불러오지 않음 → 코드가 먼저 가져온다
     llm = F.FakeLlm([compare_plan(("반복 확인", "compare_takes"), ("답 쓰기", "answer"))])
     log: list[dict[str, Any]] = []
     _, lines, data = F.run_turn(req, llm, log=log)
@@ -718,10 +721,8 @@ def test_take_report_trace_keeps_its_source_in_live_and_final_trace() -> None:
     # 끝 줄의 trace 는 표시 검사로 숫자를 줄여도 읽은 출처는 남긴다
     final = [t["result_summary"] for t in data["trace"]]
     assert final[1].startswith("리뷰 분석 · ") and final[2].startswith("코치가 찾은 것 · ")
-    assert [p["step"] for p in data["plan"][1:3]] == [
-        "기록 보기: Take 5 기록 → 리뷰 우선 개선 청중 시선",
-        "기록 보기: Take 5 기록 → 문제 구간 있음",
-    ]
+    # 같은 Take 기록의 두 절은 한 단계로 잇는다(화면에서 겹쳐 보이지 않게)
+    assert data["plan"][1]["step"] == "기록 보기: Take 5 기록 → 리뷰 우선 개선 청중 시선 · 문제 구간 있음"
 
 
 # ── TARGET 1절 예의 꼴 · 목적의 숫자 ─────────────────────────────────────────

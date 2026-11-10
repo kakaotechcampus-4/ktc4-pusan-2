@@ -83,7 +83,7 @@
         "observe": "trajectory",
         "grader": "regex",
         "compare": "contains",
-        "expect": "확인 실패|기본 자료에 없음",
+        "expect": "확인 실패|기본 자료에 없음|아직 불러오지 않음",
         "metric": "replan"
       },
       {

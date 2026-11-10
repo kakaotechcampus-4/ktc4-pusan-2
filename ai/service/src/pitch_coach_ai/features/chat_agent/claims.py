@@ -105,21 +105,22 @@ STATE_WORD: dict[str, str] = {
     "STABLE": "유지",
     "NOT_EVALUABLE": "평가 불가",
 }
+#: 문제 이름의 표시 글. '~ 구간' 앞에 붙어도 자연스러운 이름꼴로 쓴다('작은 목소리 구간', '목소리가 작음 구간' 아님)
 ISSUE_LABEL: dict[str, str] = {
     "GAZE_LOW_EYE_CONTACT": "청중 시선 부족",
     "GAZE_AWAY": "시선 이탈",
     "GAZE_ON_SCRIPT": "대본 응시",
     "GAZE_ON_SCREEN": "화면 응시",
-    "PACE_FAST": "말이 빠름",
-    "PACE_SLOW": "말이 느림",
+    "PACE_FAST": "빠른 말 속도",
+    "PACE_SLOW": "느린 말 속도",
     "LONG_SILENCE": "긴 침묵",
     "BEHIND_SCHEDULE": "시간 배분 지연",
     "AHEAD_OF_SCHEDULE": "시간 배분 앞섬",
     "SLIDE_OVER": "장 시간 초과",
     "TIME_OVER": "발표 시간 초과",
     "FINAL_MINUTE": "마지막 1분",
-    "VOLUME_LOW": "목소리가 작음",
-    "FILLER_FREQUENT": "군더더기 잦음",
+    "VOLUME_LOW": "작은 목소리",
+    "FILLER_FREQUENT": "잦은 군더더기",
     "CONTENT": "빠뜨리거나 틀린 핵심 내용",
 }
 #: 같은 지표의 반대 방향 문제 (6-3 ISSUE '반대 방향 문제만 있음')
@@ -456,6 +457,22 @@ def forced_unverifiable_quotes(
     valid, problems, valid_idx = _split_check_indexed(user_message, drafts, cfg)
     bad = {p.draft_index for p in problems if p.code in FORCED_UNVERIFIABLE}
     return {d.quote for i, d in enumerate(drafts) if i in bad}
+
+
+#: 남의 말 · 앞 답을 되받아 옮기는 꼴('…다고 하는데' · '…라고 하셨는데')
+_REPORTED = re.compile(r"(?:다|라)고\s?(?:하는데|했는데|하셨는데|하시는데|하니|해서|하던데)|(?:다|라)던데")
+
+
+def restates_previous_answer(quote: str, previous_answer: str | None) -> bool:
+    """초안의 인용이 직전 어시스턴트 답을 되받아 옮긴 말인가: 옮기는 꼴('…다고 하는데')이 있고, 그 앞 내용의 낱말(두 글자 이상의
+    한글 낱말 앞 두 글자) 하나 이상이 직전 답에 있다. 그러면 사용자가 확인을 청한 주장이 아니라 앞 답을 받아 다음 말을 이은 것이다."""
+    if not previous_answer:
+        return False
+    m = _REPORTED.search(quote)
+    if m is None:
+        return False
+    words = re.findall(r"[가-힣]{2,}", quote[: m.start()])
+    return any(w[:2] in previous_answer for w in words)
 
 
 def split_check(
@@ -1779,6 +1796,7 @@ def finalize(
     script_used: bool | None | _Unset = UNSET,
     guide_texts: Mapping[str, str] | None = None,
     guide_titles: Mapping[str, str] | None = None,
+    restated: set[str] | None = None,
 ) -> FinalizeResult:
     """판단 초안을 코드가 확정한다: 판정 · 키 · 근거 지문 · 압력 · 대체 · 첫 문장.
 
@@ -1893,6 +1911,10 @@ def finalize(
                 if state_facts
                 else templates.UNVERIFIABLE.format(quote=d.quote)
             )
+        elif restated and d.quote in restated:
+            # 사용자가 앞 답을 되받아 말한 것('작게 말했다고 하는데 …')은 확인을 청한 주장이 아니다: 판정 첫 문장을 그리지 않는다
+            # (앞 답이 기록으로 확인해 준 것을 '확인 불가'로 다시 말하면 앞 답과 어긋나 보인다, Issue #1194 화면 검토)
+            sentence = ""
         elif d.type == "REQUEST" and (verdict in ("SUPPORTED", "UNVERIFIABLE") or not phrase):
             # 요청 · 정보 질문은 참 · 거짓을 가릴 사실 주장이 아니다: '이 기록으로는 확인할 수 없어요'를 붙이지 않는다.
             # 요청에 응할 수 없으면 답 · 행동 결과가 그 까닭을 말한다(근거가 있고 기록과 어긋난 요청만 템플릿 문장을 쓴다)

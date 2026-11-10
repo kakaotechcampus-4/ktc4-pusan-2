@@ -153,7 +153,7 @@ def test_display_text_drops_numbers_without_step_evidence() -> None:
     plan = progress.render(meta, ctx.registry, CFG)
     assert plan[0]["step"].startswith("반복 확인: Take 4·5 비교")
     # 'Take 3'을 받칠 근거가 이 단계에 없다 → 숫자 없는 실행 이름
-    assert plan[1]["step"] == "이전 기록 보기: 기록 보기 → 기본 자료에 없음"
+    assert plan[1]["step"] == "이전 기록 보기: 기록 보기 → 아직 불러오지 않음"
 
 
 def test_review_missing_step_is_backed_by_its_own_none_evidence() -> None:
@@ -213,9 +213,9 @@ def test_read_run_results_and_signals() -> None:
 
 
 def test_read_run_not_loaded_and_empty_takes() -> None:
-    ctx = make_ctx(base_request())  # Take 4 결과가 기본 자료에 없음
+    ctx = make_ctx(base_request())  # Take 4 결과가 아직 불러오지 않음
     nl = _read(ctx, "compare_takes", COMPARE)
-    assert (nl.result, nl.done, nl.signal) == ("기본 자료에 없음", True, "NOT_LOADED")
+    assert (nl.result, nl.done, nl.signal) == ("아직 불러오지 않음", True, "NOT_LOADED")
     req = base_request()
     req["context"]["pitch"]["takes"] = []
     req["context"]["pitch"]["focus_take"] = None
@@ -226,9 +226,9 @@ def test_read_run_not_loaded_and_empty_takes() -> None:
 
 def test_not_loaded_without_scope_pitch_shows_fact_but_opens_no_signal() -> None:
     """r9 회귀(glob-ambiguous-name · glob-weakest): 전체 범위에서 list_takes 가 막힌 것(범위 피치 없음)에 NOT_LOADED 신호(가져오기
-    대응)를 내면 모델이 fetch_pitch 로 범위를 바꿨다. 단계에는 사실(`기본 자료에 없음`)만 보이고 신호는 내지 않는다."""
+    대응)를 내면 모델이 fetch_pitch 로 범위를 바꿨다. 단계에는 사실(`아직 불러오지 않음`)만 보이고 신호는 내지 않는다."""
     nl = _read(make_ctx(scope=None), "list_takes", {})
-    assert (nl.result, nl.done, nl.signal) == ("기본 자료에 없음", True, None)
+    assert (nl.result, nl.done, nl.signal) == ("아직 불러오지 않음", True, None)
     scoped = _read(make_ctx(base_request()), "compare_takes", COMPARE)
     assert scoped.signal == "NOT_LOADED"  # 범위 피치가 있으면 그대로(가져올 Take 가 있다)
 
@@ -271,8 +271,8 @@ def test_slides_read_shows_unmeasured_when_the_asked_area_is_unmeasured() -> Non
 @pytest.mark.parametrize(
     ("status", "answered", "expected"),
     [
-        ("DONE", True, ["DONE", "SKIPPED", "DONE"]),
-        ("REFUSED", False, ["DONE", "SKIPPED", "SKIPPED"]),
+        ("DONE", True, ["DONE", "DONE"]),  # 실행하지 않은 단계는 끝 목록에서 빠진다
+        ("REFUSED", False, ["DONE"]),
         ("PARTIAL", True, ["DONE", "TODO", "DONE"]),
         ("PARTIAL", False, ["DONE", "TODO", "TODO"]),
         ("NEEDS_ACTION", True, ["DONE", "DOING", "TODO"]),
