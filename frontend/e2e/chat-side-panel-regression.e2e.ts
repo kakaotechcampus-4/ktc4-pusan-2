@@ -21,27 +21,30 @@ async function openPanel(page: Page) {
 test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('우측 런처는 375·761·1366·1440px에서 패널을 열면 숨고 닫으면 초점이 복귀한다', async ({ page }) => {
-    for (const width of [375, 761, 1366, 1440]) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.goto('/');
-      const container = page.locator('[data-chat-launcher]');
-      const launcher = container.locator(':scope > button');
-      await expect(container).toHaveCSS('right', '8px');
-      await expect(launcher).toBeVisible();
+  test(
+    '우측 런처는 375·761·1366·1440px에서 패널을 열면 숨고 닫으면 초점이 복귀한다',
+    async ({ page }) => {
+      for (const width of [375, 761, 1366, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto('/');
+        const container = page.locator('[data-chat-launcher]');
+        const launcher = container.locator(':scope > button');
+        await expect(container).toHaveCSS('right', '8px');
+        await expect(launcher).toBeVisible();
 
-      await launcher.click();
-      const panel = page.getByRole('dialog', { name: '새미나이' });
-      await expect(panel).toBeVisible();
-      await expect(panel).toHaveCSS('right', '0px');
-      await expect(launcher).toBeHidden();
+        await launcher.click();
+        const panel = page.getByRole('dialog', { name: '새미나이' });
+        await expect(panel).toBeVisible();
+        await expect(panel).toHaveCSS('right', '0px');
+        await expect(launcher).toBeHidden();
 
-      await panel.getByRole('button', { name: '새미나이 닫기' }).click();
-      await expect(panel).toHaveCount(0);
-      await expect(launcher).toBeVisible();
-      await expect(launcher).toBeFocused();
-    }
-  });
+        await panel.getByRole('button', { name: '새미나이 닫기' }).click();
+        await expect(panel).toHaveCount(0);
+        await expect(launcher).toBeVisible();
+        await expect(launcher).toBeFocused();
+      }
+    },
+  );
 
   test('375px 홈·발표 생성의 우측 런처 여백을 확보한다', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 900 });
