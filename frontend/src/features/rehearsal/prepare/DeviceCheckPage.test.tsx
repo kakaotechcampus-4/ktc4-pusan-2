@@ -315,6 +315,17 @@ it.each([
   },
 );
 
+it('튜토리얼 재연습이 막히면 장치를 켜는 수동 버튼도 요청하지 않는다', async () => {
+  fixture.data = { ...fixture.data, tutorial_block: 'TUTORIAL_REPORT_USED' };
+  fixture.live = false;
+  fixture.micOk = false;
+  await render();
+  const openDevices = findButton('카메라·마이크 켜기');
+  expect(openDevices.disabled).toBe(true);
+  await act(async () => openDevices.click());
+  expect(fixture.request).not.toHaveBeenCalled();
+});
+
 it('막히지 않은 샘플이나 일반 피치에는 튜토리얼 안내가 없다', async () => {
   await render();
   expect(host.querySelector('[data-tutorial-block]')).toBeNull();
