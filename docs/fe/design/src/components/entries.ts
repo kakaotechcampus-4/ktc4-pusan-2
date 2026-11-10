@@ -56,6 +56,38 @@ export const componentEntries: GuideComponent[] = [
   },
   {
     kind: 'component',
+    id: 'close-button',
+    title: '닫기 버튼',
+    group: components,
+    status: '제품에 있음',
+    summary: '창 · 패널의 글자 [닫기]. 모양과 문구만 맡고 닫는 동작은 부르는 곳이 넘긴다.',
+    states: [
+      view('default', '기본', '창 머리글. 사용방법 · 슬라이드 확인 · 매핑 확인 · 최종 확인 창.'),
+    ],
+    rules: [
+      '"닫기" 글자를 보이는 창 · 패널의 닫기 버튼은 직접 만들지 않고 CloseButton을 쓴다. 문구는 늘 "닫기"다.',
+      '<dialog>는 onClick에 ref.current?.close()를 넘긴다. 창이 문서에서 빠지기 전에 닫아야 브라우저가 연 버튼으로 초점을 돌려준다(#766 · #771).',
+      '무엇을 닫는지 문맥으로 드러나지 않으면 aria-label로 대상을 붙인다.',
+      '아이콘만 있는 닫기(새미나이 패널 머리글의 ×)는 그 머리글의 아이콘 버튼 모양을 따르므로 쓰지 않는다.',
+      '장치 점검 화면은 그 화면의 버튼 모양(prepare-action)을 따르므로 쓰지 않는다.',
+    ],
+    tokens: ['line-strong', 'cream', 'ink'],
+    sources: ['frontend/src/shared/ui/CloseButton.tsx'],
+    file: 'src/ui/CloseButton.tsx',
+    props: [
+      ['onClick', '() => void', '닫는 동작. <dialog>면 ref.current?.close()'],
+      ['disabled', 'boolean', '저장 중처럼 닫으면 안 될 때. 흐리게 보인다'],
+      ['aria-label', 'string', '닫는 대상이 문맥으로 드러나지 않을 때'],
+    ],
+    code: `import { CloseButton } from '@/shared/ui/CloseButton';
+
+<header className="flex items-center justify-between gap-4">
+  <h2 id={titleId}>슬라이드 확인</h2>
+  <CloseButton onClick={() => ref.current?.close()} />
+</header>`,
+  },
+  {
+    kind: 'component',
     id: 'badge',
     title: '배지',
     group: components,

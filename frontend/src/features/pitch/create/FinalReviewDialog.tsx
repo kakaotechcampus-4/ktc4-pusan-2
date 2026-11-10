@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import { formatDuration, resolveChosen, type Chosen, type PitchDraft } from './lib/draft';
 
 export function FinalReviewDialog({
@@ -52,13 +53,7 @@ export function FinalReviewDialog({
         <h2 id={titleId} className="text-xl font-bold">
           발표 준비 최종 확인
         </h2>
-        <button
-          type="button"
-          onClick={() => ref.current?.close()}
-          className="min-h-11 shrink-0 border border-line-strong px-5 text-sm font-bold hover:bg-cream"
-        >
-          닫기
-        </button>
+        <CloseButton onClick={() => ref.current?.close()} />
       </header>
       <p>이 자료와 설정으로 연습할까요? 수정하려면 창을 닫고 해당 항목을 바꿔 주세요.</p>
       <dl className="grid gap-5 border-y border-line py-5">
