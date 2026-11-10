@@ -256,16 +256,22 @@ body {
   transition: translate 180ms ease-out;
 }
 
-body:has([data-chat-panel][aria-modal='true']) {
-  overflow: hidden;
-}
+/* 모바일에서는 패널을 닫는 버튼이 안에 있으므로 런처를 숨기고 전체 높이를 사용합니다.
+   401~451px의 런처·패널 겹침도 막고, 배경과의 상호작용을 차단했음을 보여 줍니다. */
+@media (max-width: 760px) {
+  /* 본문 스크롤 잠금·위치 복원은 ChatPanel의 레이아웃 이펙트가 담당합니다. */
+  [data-chat-launcher]:has([data-chat-panel]) > button {
+    visibility: hidden;
+  }
 
-.chat-layout:has([data-chat-panel][aria-modal='true']) .chat-layout-content::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 69;
-  background: color-mix(in srgb, var(--color-ink) 30%, transparent);
+  .chat-layout:has([data-chat-panel])::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: color-mix(in srgb, var(--color-ink) 45%, transparent);
+    touch-action: none;
+  }
 }
 
 @starting-style {
