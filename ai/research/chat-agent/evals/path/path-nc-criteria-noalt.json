@@ -48,7 +48,7 @@
         "observe": "answer",
         "grader": "regex",
         "compare": "absent",
-        "expect": "(줄었|늘었|좋아졌|나빠졌|개선)"
+        "expect": "(줄었|늘었|좋아졌|나빠졌|개선)(?![^'\\n]*'[은는])"
       },
       {
         "check_id": "fact-sentence",
@@ -103,5 +103,6 @@
       }
     ]
   },
-  "source": "path-nc-criteria"
+  "source": "path-nc-criteria",
+  "notes": "Issue #1194 실패 분석: 결론 낱말 정규식이 코드 판단 첫 문장의 사용자 말 인용(\"말씀하신 '…'는\")에 걸려 인용 안(뒤에 '은 · '는가 오는 곳)은 세지 않게 했다."
 }
