@@ -22,15 +22,9 @@ export const PRODUCT_CHECKED: {
   date: string;
   pending: { pr: number; head: string; what: string }[];
 } = {
-  commit: '0bf5dbb1e1421b825ee88b706e49fd436fd045e7',
-  date: '2026-11-09',
-  pending: [
-    {
-      pr: 1105,
-      head: '172e40f20a430049eb4144bf473573ac03e7ac5e',
-      what: 'BE 전용 샘플 피치 튜토리얼 · 샘플 제한 · 홈 진입 경로',
-    },
-  ],
+  commit: 'cfa66ac7ca23ae9243842b027bb8c4874555201b',
+  date: '2026-11-11',
+  pending: [],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -89,9 +83,8 @@ const productScreens: GuideScreen[] = [
     title: '홈 · 내 피치',
     group: screenGroup.pitch,
     route: '/',
-    status: 'Draft 반영',
-    // #944 사용방법 시각 안내는 머지 완료, #1105 튜토리얼·샘플 피치만 선반영한다.
-    draftPrs: [1105],
+    status: '제품에 있음',
+    // #944 사용방법 안내와 #1105 튜토리얼의 머지 결과를 반영한다.
     summary:
       '피치 목록과 연습 통계를 보고 발표 준비 · 새 피치 만들기 · 피치 수정 · Take 기록으로 간다. 비교는 Take 기록 안에서 연다. 줄마다 더보기(···) 메뉴에서 피치를 지운다. 데이터는 예시다.',
     states: [
@@ -154,7 +147,7 @@ const productScreens: GuideScreen[] = [
       'Take 기록 영역은 고정 너비를 써서 연습 횟수가 달라도 각 열을 위아래로 맞춘다.',
       '발표 준비 버튼은 #801에서 승인한 coral-deep 강조형으로 유지한다. #1117의 secondary 변경은 미병합 종료되었으며 적용하지 않는다. 작은 크기, 행 정렬 및 피치 수정 경로는 유지한다.',
       '피치 제목은 피치 수정, "Take 기록"은 그 피치로 거른 Take 기록을 연다.',
-      '미병합 #1105의 "튜토리얼 해 보기"는 튜토리얼 화면으로 이어진다. 설계서의 홈은 아직 샘플을 끝내지 않은 계정의 PRESS START 별 스티커를 시연하며, 실제 제품은 샘플 완료 여부에 따라 강조를 숨긴다.',
+      '"튜토리얼 해 보기"는 머지된 #1105의 튜토리얼 화면으로 이어진다. 설계서의 홈은 아직 샘플을 끝내지 않은 계정의 PRESS START 별 스티커를 시연한다. 실제 제품은 리포트를 받지 않았고 샘플 Take를 끝까지 완료하지 않았다면 초대한다. 단순히 샘플 피치 존재 여부만으로 판단하지 않는다.',
       '누적 발표 시간은 길이를 아는 Take만 더하고, 하나도 모르면 —로 둔다.',
       '설문은 홈에서 받지 않는다(#776). 동의 전이면 참여 안내, 동의 뒤면 남은 설문 링크만 두고 설문은 리포트에서 한다. 자동으로 띄우는 창은 없다.',
       '참여에 동의하면 카드가 사라지고 완료 안내로 초점이 옮겨 간다.',
@@ -242,26 +235,26 @@ const productScreens: GuideScreen[] = [
     title: '튜토리얼 · 샘플 발표',
     group: '서비스 시작',
     route: '/pitch/tutorial',
-    status: 'Draft 반영',
-    // 미병합 #1105의 첫 미션 샘플 준비·장치 점검 흐름을 선반영한다.
-    draftPrs: [1105],
-    summary: 'Draft #1105의 BE 전용 튜토리얼 API로 준비하는 샘플 발표와 장치 점검 진입, 리포트 사용 후 제한을 시연한다.',
+    status: '제품에 있음',
+    // 머지된 #1105의 샘플 준비·장치 점검·리포트 사용 제한을 재현한다.
+    summary: '머지된 #1105의 BE 전용 튜토리얼 API로 준비하는 샘플 발표와 장치 점검 진입, 리포트 사용 후 제한을 시연한다.',
     states: [
       base,
       state('pending', '샘플 준비 중', '튜토리얼 시작 후 진행 문구와 비활성화된 버튼을 보여 준다.'),
-      state('used', '리포트 이미 사용함', '샘플을 더 연습할 수 없다는 안내와 새 피치 생성 버튼을 보여 준다.'),
+      state('used', '리포트 이미 사용함 · 샘플 기록 있음', '이미 받은 샘플 리포트를 알리고 새 피치 생성 및 샘플 Take 기록 링크를 보여 준다.'),
+      state('used-no-pitch', '리포트 이미 사용함 · 샘플 삭제됨', '이미 받은 샘플 리포트를 알리고 새 피치 생성만 안내한다.'),
       state('error', '샘플 준비 실패', '제품의 기본 오류 안내를 읽을 수 있게 보여 준다.'),
     ],
     rules: [
       '샘플은 BE `POST /pitches/tutorials/first-take`가 5장의 슬라이드·대본을 자동 준비한다. `is_demo`로 식별하며 리포트는 계정당 한 번이다.',
-      '설계서에서는 서버 요청 없이 화면 문구와 상태만 시연한다. 리포트를 이미 받은 상태에서는 샘플 연습을 막고 새 피치를 안내한다.',
-      'BE가 중복 샘플 생성과 재연습 제한을 처리한다. 실서버에서 샘플 Take 완료 후 상태 전환은 별도로 검증한다.',
+      '설계서에서는 서버 요청 없이 화면 문구와 상태만 시연한다. 제품은 응답의 report_received 또는 pitch_id가 null일 때 사용 완료를 판정하고, 샘플 피치 ID가 있으면 해당 Take 기록 링크도 보여 준다.',
+      'BE는 샘플 중복 생성을 막고 기존 샘플을 재사용한다. 리포트는 계정당 한 번 받을 수 있으며, 리포트 전 중단한 연습은 다시 시도할 수 있다. 실제 발표 시작 시에는 409 TUTORIAL_REPORT_USED로도 차단한다.',
     ],
     components: ['5장 미션 카드', '진행·오류 상태', '장치 점검 진입'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: ['frontend/src/features/pitch/tutorial/FirstTakePage.tsx'],
     productNote:
-      '실제 API를 호출하지 않고 시작 버튼으로 장치 점검 미리보기로 이동한다. 제품 Draft #1105는 BE 전용 API를 사용하며 `tutorial_report_at`/`tutorial_block`에 따라 완료·차단 상태가 달라진다.',
+      '실제 API를 호출하지 않고 시작 버튼으로 장치 점검 미리보기로 이동한다. 제품 #1105는 BE 전용 API를 사용하며 `report_received`와 `pitch_id`에 따라 완료·차단 및 샘플 기록 연결이 달라진다. 설계서 기록 버튼은 샘플 피치 ID별 URL 필터를 모사하지 않는다.',
     productLinks: [link('튜토리얼', '/pitch/tutorial')],
     next: [next('시작 전 세팅', 'prepare-mission'), next('홈', 'home')],
   },
