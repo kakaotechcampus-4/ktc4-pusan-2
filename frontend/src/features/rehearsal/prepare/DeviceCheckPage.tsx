@@ -326,12 +326,14 @@ export function DeviceCheckPage() {
   // 맥락 없이 권한 팝업부터 띄우면 대부분 '차단'을 누릅니다.
   const askedRef = useRef(false);
   useEffect(() => {
-    if (askedRef.current) return;
+    // 튜토리얼 샘플의 재연습 차단 여부를 받기 전에 장치 권한부터 요청하지 않습니다.
+    // 서버가 이미 막은 피치라면 브라우저가 카메라·마이크를 열 필요가 없습니다.
+    if (askedRef.current || prepare.isPending || tutorialBlock) return;
     askedRef.current = true;
     const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } })
       .userActivation;
     if (activation?.hasBeenActive) request().catch(() => undefined);
-  }, [request]);
+  }, [request, prepare.isPending, tutorialBlock]);
 
   // 다른 피치에서 왔으면 대본 표시를 비웁니다. 아래 서버 기본값 이펙트보다 **먼저** 돌아야 합니다 —
   // 늦으면 앞 피치의 "사용자가 고름" 표시를 보고 이 피치의 기본값을 건너뜁니다
@@ -777,8 +779,10 @@ export function DeviceCheckPage() {
                 <button
                   type="button"
                   className="prepare-action inline-flex min-h-8 shrink-0 items-center justify-center gap-1 border border-ink bg-panel px-2.5 py-1 text-xs leading-[18px] font-semibold text-ink hover:bg-cream disabled:pointer-events-none disabled:cursor-default disabled:border-dashed disabled:border-line-strong disabled:bg-cream disabled:text-ink prepare-low:min-h-7 prepare-low:py-0.5 prepare-action-primary bg-coral-deep! text-white! hover:bg-ink! disabled:bg-cream! disabled:text-ink! disabled:border-line-strong!"
-                  disabled={starting}
-                  onClick={() => request().catch(() => undefined)}
+                  disabled={starting || prepare.isPending || tutorialBlock !== null}
+                  onClick={() => {
+                    if (!prepare.isPending && !tutorialBlock) request().catch(() => undefined);
+                  }}
                 >
                   카메라·마이크 켜기
                 </button>
@@ -796,7 +800,7 @@ export function DeviceCheckPage() {
                     value={videoId}
                     options={cameras}
                     fallback="기본 카메라"
-                    disabled={starting || cal.overlay || baseVoice.status === 'READING'}
+                    disabled={starting || tutorialBlock !== null || cal.overlay || baseVoice.status === 'READING'}
                     onChange={(id) =>
                       request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
                     }
@@ -814,7 +818,7 @@ export function DeviceCheckPage() {
                     value={audioId}
                     options={mics}
                     fallback="기본 마이크"
-                    disabled={starting || cal.overlay || baseVoice.status === 'READING'}
+                    disabled={starting || tutorialBlock !== null || cal.overlay || baseVoice.status === 'READING'}
                     onChange={(id) =>
                       request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
                     }
