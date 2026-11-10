@@ -70,7 +70,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
           ))}
         </ol>
         <p className="mt-8 border border-line-strong bg-cream p-4 text-sm leading-7">
-          데스크톱 Chrome 또는 Edge에서 연습하는 것을 권장해요. 도움말을 닫으면 보던 목록에서 이어갈
+          데스크톱 최신 Google Chrome에서 연습하는 것을 권장해요. Edge에서는 시선 추적이 정상적으로 진행되지 않을 수 있어요. 도움말을 닫으면 보던 목록에서 이어갈
           수 있어요.
         </p>
       </div>
