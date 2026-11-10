@@ -7,7 +7,8 @@
      까닭(`not_comparable_sentence`) 문장은 코드 템플릿이다.
      모델이 쓴 RECORD · GUIDE 문장은 그대로 두고 검사한다.
   3. 답 검사(`checks.check_claims` · `check_display_strings`). 걸리면 걸린 모델 문장만 한 번 고치게 하고 다시 검사, 그래도 걸리면 지운다.
-  4. 남은 문장이 없으면 검증된 근거 값을 템플릿으로 그린 PARTIAL, 근거도 없으면 고정 SYSTEM 안내(6-9 '고친 뒤').
+  4. 남은 문장이 없으면 질문 대상의 검증된 근거로 그린 템플릿 문장(값 `template_partial` · 읽은 범위의 '없음' `none_partial`)으로
+     답하고, 근거도 없으면 고정 SYSTEM 안내(6-9 '고친 뒤'). 상태(DONE · PARTIAL)는 turn.py 가 정한다.
 - `message.text` 는 남은 문장을 LF 로 이은 값과 정확히 같다(5-5). 모델 글을 그대로 내지 않는다.
 - 고칠 때: 사용자에게 보이는 문구는 templates.py, 검사 규칙은 checks.py.
 """
@@ -71,7 +72,7 @@ _SPACE_BEFORE_PUNCT = re.compile(r"\s+([.,!?])")
 
 def strip_ref_ids(text: str) -> str:
     """모델이 문장 글에 적은 근거 · 자료 id 표기를 지운다(6-9). 모델이 쓴 글에만 쓴다(answer.py): 코드 템플릿 문장은
-    자료 id 를 일부러 싣는다(판단 첫 문장의 "발표법 자료(g-18)").
+    지우지 않는다(판단 첫 문장의 자료 표기는 카드 제목 "발표법 자료 '…'"이다, claims `knowledge_phrase`).
 
     숫자 검사가 id 속 숫자(`e-0e00ac50bb`의 0 · 00 · 50)를 문장의 값으로 읽어 맞는 문장을 빼지 않게 하고, 화면에 내부
     표기가 나가지 않게 한다(4회차: 고치기 응답이 "28%였습니다 (e-…)"로 써서 고친 문장까지 빠짐)."""
@@ -80,6 +81,92 @@ def strip_ref_ids(text: str) -> str:
         t = p.sub("", t)
     t = _SPACE_BEFORE_PUNCT.sub(r"\1", t)
     return re.sub(r"\s{2,}", " ", t).strip()
+
+
+#: 모델이 쓴 'N번 Take' 표기(화면 · 근거 · 코드 문장의 Take 표기는 'Take N'). 'N번과 M번 Take'처럼 이어 쓴 꼴도 본다
+_TAKE_LIST_RE = re.compile(
+    r"((?:(?<![\d.])\d+번\s*(?:과|와|,|·|및)\s*)+)(\d+)번\s*Take(?![A-Za-z])"
+)
+_TAKE_ITEM_RE = re.compile(r"(\d+)번\s*(과|와|,|·|및)\s*")
+_TAKE_ONE_RE = re.compile(r"(?<![\d.])(\d+)번\s*Take(?![A-Za-z])")
+
+
+def _wa(num: str) -> str:
+    """'Take N' 뒤 접속 조사: 숫자 읽기의 끝소리에 받침이 없으면(이 · 사 · 오 · 구) '와', 있으면 '과'."""
+    return "와" if num[-1] in "2459" else "과"
+
+
+def normalize_take_refs(text: str) -> str:
+    """모델 문장의 'N번 Take'를 'Take N'으로 바꾼다(6-9 숫자 검사 · 화면 표기).
+
+    "4번과 5번 Take에서는"의 '4번'은 Take 번호인데 숫자 검사는 횟수(4번)로 읽어 근거 없는 숫자로 문장을 뺐다(r9 rep-repeat-issue:
+    반복 문제 답이 빠짐 · glob-ambiguous-name 숫자 불일치). 순서('3번째')는 바꾸지 않는다.
+
+    예: "4번과 5번 Take에서는" → "Take 4와 Take 5에서는", "‘졸업 발표’의 2번 Take 점수는" → "‘졸업 발표’의 Take 2의 점수는"
+    """
+
+    def _list(m: re.Match[str]) -> str:
+        parts = []
+        for n, sep in _TAKE_ITEM_RE.findall(m.group(1)):
+            if sep in ("과", "와"):
+                parts.append(f"Take {n}{_wa(n)} ")
+            elif sep == ",":
+                parts.append(f"Take {n}, ")
+            else:
+                parts.append(f"Take {n} {sep} ")
+        return "".join(parts) + f"Take {m.group(2)}"
+
+    out = _TAKE_LIST_RE.sub(_list, text)
+    # 뒤에 '점수'가 오면 'Take N의 점수'로 잇는다('Take 2 점수'는 'Take 2'의 2 를 점수 값처럼 읽게 한다)
+    return _TAKE_ONE_RE.sub(
+        lambda m: (
+            f"Take {m.group(1)}" + ("의" if m.string[m.end() :].lstrip().startswith("점수") else "")
+        ),
+        out,
+    )
+
+
+#: 모델 문장에 그대로 나온 차원 상태 원값(리뷰의 내부 enum). 영문 낱말 경계로만 찾는다(한글이 붙어도 찾는다: "PRIORITY로")
+_STATE_ENUM_RE = re.compile(
+    r"(?<![A-Za-z_])(" + "|".join(sorted(clm.STATE_WORD, key=len, reverse=True)) + r")(?![A-Za-z_])"
+    r"(으로|로|은|는|을|를|과|와)?"
+)
+#: 받침 있는 말 뒤 · 없는 말 뒤 조사 짝(ㄹ 받침 뒤 '로'는 그대로)
+_JOSA_PAIRS = {"으로": ("으로", "로"), "로": ("으로", "로"), "은": ("은", "는"), "는": ("은", "는"),
+               "을": ("을", "를"), "를": ("을", "를"), "과": ("과", "와"), "와": ("과", "와")}  # fmt: skip
+
+
+def _josa(word: str, particle: str) -> str:
+    """`word` 끝소리에 맞춘 조사(받침 있음 → 앞, 없음 → 뒤. ㄹ 받침 뒤 '로')."""
+    last = ord(word[-1]) - 0xAC00
+    if not 0 <= last < 11172:
+        return particle
+    final = last % 28
+    with_batchim, without = _JOSA_PAIRS[particle]
+    if particle in ("으로", "로"):
+        return "로" if final in (0, 8) else "으로"
+    return with_batchim if final else without
+
+
+def normalize_state_words(text: str) -> str:
+    """모델 문장에 나온 차원 상태 원값(PRIORITY · STRENGTH · IMPROVED · STABLE · NOT_EVALUABLE)을 화면 이름(우선 개선 · 강점 ·
+    나아짐 · 유지 · 평가 불가, claims `STATE_WORD`)으로 바꾼다. 바로 뒤 조사는 바꾼 말의 끝소리에 맞춘다.
+
+    예: "시선 상태는 PRIORITY이고, 유창성은 STRENGTH입니다." → "시선 상태는 우선 개선이고, 유창성은 강점입니다."
+        "PRIORITY로 기록" → "우선 개선으로 기록"(r9 safe-tamper-review: 내부 enum 이 답에 그대로 나감)
+    """
+
+    def _sub(m: re.Match[str]) -> str:
+        word = clm.STATE_WORD[m.group(1)]
+        return word + (_josa(word, m.group(2)) if m.group(2) else "")
+
+    return _STATE_ENUM_RE.sub(_sub, text)
+
+
+def tidy_model_text(text: str) -> str:
+    """모델이 쓴 문장 글을 검사 전에 다듬는다: 근거 · 자료 id 표기를 지우고(`strip_ref_ids`) 'N번 Take'를 'Take N'으로,
+    차원 상태 원값을 화면 이름으로 바꾼다."""
+    return normalize_state_words(normalize_take_refs(strip_ref_ids(text)))
 
 
 def _claim(
@@ -115,7 +202,16 @@ def _num_display(ctx: Any, ev: Any) -> str | None:
         return None
     if ev.metric not in ctx.cfg.metric_units:
         return None
-    return clm.format_metric_value(ev.metric, ev.value, ctx.cfg)
+    # 소리 크기는 그 Take 의 기준 음량 출처로 견주는 때를 붙인다('점검 때보다 1.1dB 작게', #1182)
+    base = clm.volume_base(ctx.snapshots.get(ev.take_id)) if ev.take_id else None
+    return clm.format_metric_value(ev.metric, ev.value, ctx.cfg, base=base)
+
+
+def be(shown: str) -> str:
+    """값 표기 + 서술 '예요'. 소리 크기 표기('…작게 · 같게')면 '… 나왔어요'(규칙은 `templates.be` 한곳, #1182 · #1183 리뷰).
+
+    숫자 · 단위 표기 뒤는 지금처럼 '예요'를 붙인다(기록 문장 템플릿과 같은 꼴)."""
+    return templates.be(shown) if shown.endswith(templates.VOLUME_ENDINGS) else f"{shown}예요"
 
 
 def obj(word: str) -> str:
@@ -245,7 +341,7 @@ def goal_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> st
     word = templates.GOAL_WORD[j.status]
     if obs is None:
         return f"Take {take_number}: {word}."
-    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
+    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {be(obs)}. {word}."
 
 
 def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> str | None:
@@ -262,7 +358,41 @@ def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int)
         return None
     where = f"{goal.slide_number}장 " if goal.slide_number else ""
     obs = clm.format_metric_value(goal.metric, j.observed, ctx.cfg)
-    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
+    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {be(obs)}. {word}."
+
+
+def goal_open_sentence(ctx: Any, goal: Any) -> tuple[str, str, str] | None:
+    """열린 대화 목표의 내용 문장(7-10 `GOAL_OPEN`)과 그 근거 id · 기준 값 표기(범위 목표는 ""). get_goals 가 이번 실행에 발급한
+    목표 기준 값 근거가 없거나 값을 표시할 수 없으면 None."""
+    eid = next(
+        (
+            e
+            for e, ev in ctx.registry.items.items()
+            if ev.kind == "GOAL"
+            and ev.path == "conversation_goal.base.value"
+            and ev.take_id == goal.base.take_id
+            and ev.revision == goal.version
+            and ctx.registry.is_current(e)
+        ),
+        None,
+    )
+    tpl = templates.GOAL_OPEN.get(goal.operator)
+    if eid is None or tpl is None or goal.metric not in ctx.cfg.metric_units:
+        return None
+    if goal.operator != "in_range" and not isinstance(goal.base.value, (int, float)):
+        return None
+    value = (
+        ""
+        if goal.operator == "in_range"
+        else clm.format_metric_value(goal.metric, goal.base.value, ctx.cfg)
+    )
+    text = tpl.format(
+        take_number=goal.base.take_number,
+        where=f"{goal.slide_number}장 " if goal.slide_number else "",
+        label=metric_label(goal.metric),
+        value=value,
+    )
+    return text, eid, value
 
 
 def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
@@ -283,7 +413,7 @@ def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
         where = f"{ev.slide_number}장 " if ev.slide_number else ""
         c = _claim(
             "RECORD",
-            f"Take {ev.take_number}의 {where}{topic(metric_label(ev.metric))} {disp}예요.",
+            f"Take {ev.take_number}의 {where}{topic(metric_label(ev.metric))} {be(disp)}.",
             evidence_ids=[eid],
         )
         if c is not None:
@@ -291,6 +421,169 @@ def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
         if len(out) >= 3:
             break
     return out
+
+
+# ── '없음' 근거 (6-8 · 6-9 '고친 뒤', 7-10) ───────────────────────────────────
+
+#: '없음' 근거의 경로(tools/impl.py 가 낸다) → 종류. 값이 0 · NONE 일 때만 '없음'이다(피치의 Take 수 3 은 '없음'이 아니다)
+_NONE_PATHS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^pitches\[pitch_id=[^\],]+\]\.take_count$"), "TAKES"),
+    (re.compile(r"^takes\[pitch_id=[^\],]*\]\.count$"), "TAKES"),
+    (re.compile(r"^takes\[pitch_id=[^\],]*,[^\]]*\]\.count$"), "TAKES_FILTERED"),
+    (re.compile(r"^pitches\[query\]\.count$"), "PITCH_QUERY"),
+    (re.compile(r"^review\.status$"), "REVIEW"),
+    (re.compile(r"^goal\.status$"), "GOAL"),
+    (re.compile(r"^problem_segments\[area=([A-Z_]+)(?:,slide_number=\d+)?\]\.count$"), "SEGMENTS"),
+)
+#: 근거 표(`evidence_table`)의 '무엇' 이름(지표가 없는 Take 수 · 상태 근거)
+_NONE_WHAT = {
+    "TAKES": "Take 수",
+    "TAKES_FILTERED": "조건에 맞는 Take 수",
+    "PITCH_QUERY": "이름으로 찾은 피치 수",
+    "REVIEW": "리뷰 상태",
+    "GOAL": "대화 목표 상태",
+}
+
+
+def _none_match(ev: Any) -> tuple[str, re.Match[str]] | None:
+    if ev is None or ev.origin != "RECORD":
+        return None
+    for pat, kind in _NONE_PATHS:
+        m = pat.match(ev.path)
+        if m is not None:
+            return kind, m
+    return None
+
+
+def none_kind(ev: Any) -> str | None:
+    """근거가 읽은 범위의 '없음 · 0'이면 그 종류(`TAKES` · `TAKES_FILTERED` · `PITCH_QUERY` · `REVIEW` · `GOAL` ·
+    `SEGMENTS`), 아니면 None."""
+    hit = _none_match(ev)
+    if hit is None:
+        return None
+    kind = hit[0]
+    if kind in ("REVIEW", "GOAL"):
+        return kind if ev.value == "NONE" else None
+    return kind if ev.value == 0 and not isinstance(ev.value, bool) else None
+
+
+def segment_area(ev: Any) -> str | None:
+    """문제 구간 0곳 근거의 영역(`problem_segments[area=GAZE].count` · `[area=GAZE,slide_number=2]` → GAZE)."""
+    hit = _none_match(ev)
+    return hit[1].group(1) if hit is not None and hit[0] == "SEGMENTS" else None
+
+
+def evidence_what(ev: Any) -> str | None:
+    """지표가 없는 Take 수 · 상태 근거의 이름(근거 표 '무엇'). 그 밖은 None."""
+    hit = _none_match(ev)
+    if hit is None:
+        return None
+    if hit[0] == "SEGMENTS":
+        area = hit[1].group(1)
+        return f"문제 구간 수({templates.AREA_LABEL.get(area, area)})"
+    return _NONE_WHAT.get(hit[0])
+
+
+def pitch_title(ctx: Any, pitch_id: str | None) -> str | None:
+    """피치 제목(범위 피치는 기본 자료의 피치 정보, 아니면 피치 목록에서)."""
+    if pitch_id is None:
+        return None
+    if ctx.pitch is not None and pitch_id == ctx.scope_pitch_id:
+        return ctx.pitch.info.title
+    return next((p.title for p in ctx.pitches if p.pitch_id == pitch_id), None)
+
+
+def segments_sentence(take_number: int, slide: int | None, label: str | None) -> str:
+    """'Take 5 2장의 시선에서 찾은 문제 구간이 없어요.' 영역 이름이 없으면 읽은 Take · 장 전체(모든 영역이 측정됐을 때만 쓴다).
+    장 번호와 영역 이름 사이에 '의'를 둔다('2장 시간 배분'이 지표 이름 '장 시간'으로 읽히지 않게)."""
+    where = " ".join(
+        x for x in (f"{slide}장" + ("의" if label else "") if slide else "", label or "") if x
+    )
+    if not where:
+        return templates.NONE_SEGMENTS.replace(" {area}", "").format(n=take_number)
+    return templates.NONE_SEGMENTS.format(n=take_number, area=where)
+
+
+def none_sentence(ctx: Any, ev: Any) -> str | None:
+    """'없음' 근거 하나의 문장(코드 템플릿, 7-10). 읽은 범위를 함께 말한다. 거른 조건의 Take 0개 · 이름 검색 0개는 그리지 않는다
+    (조건 · 이름 범위를 문장으로 옮기지 않고 넓히지도 않는다. 이름 검색 0개는 고정 문장 `PITCH_NOT_FOUND` 길)."""
+    kind = none_kind(ev)
+    if kind == "TAKES":
+        title = pitch_title(ctx, ev.pitch_id)
+        return templates.NONE_TAKES.format(title=title) if title else None
+    if kind == "REVIEW" and ev.take_number is not None:
+        return templates.NONE_REVIEW.format(n=ev.take_number)
+    if kind == "GOAL":
+        return templates.NONE_GOAL
+    if kind == "SEGMENTS" and ev.take_number is not None:
+        area = segment_area(ev) or ""
+        return segments_sentence(ev.take_number, ev.slide_number, templates.AREA_LABEL.get(area))
+    return None
+
+
+def none_partial(ctx: Any, ids: list[str], *, areas: frozenset[str] | None = None) -> list[Claim]:
+    """'없음' 근거로 그린 RECORD 문장(같은 문장은 근거를 합쳐 한 번, 최대 3개, 근거 순서대로).
+
+    문제 구간 0곳은 물은 영역(`areas`, 판단 초안의 지표 · 차원)이 있으면 그 영역만 영역 이름과 함께 그린다. 물은 영역을 모르면 읽은
+    Take · 장의 모든 영역이 측정됐고 모두 0곳일 때만 영역 이름 없이 한 문장으로 그린다(측정 안 된 영역을 '없음'으로 넓히지 않는다)."""
+    reg = ctx.registry
+    #: 처음 본 근거 순서대로: 문장 하나(글 → 근거들) 또는 문제 구간 묶음(Take · 장)
+    order: list[tuple[str, Any]] = []
+    texts: dict[str, list[str]] = {}
+    seg_groups: dict[tuple[str | None, int | None], list[Any]] = {}
+    for eid in dict.fromkeys(ids):
+        ev = reg.get(eid)
+        if ev is None or not reg.is_current(eid):
+            continue
+        kind = none_kind(ev)
+        if kind == "SEGMENTS":
+            key = (ev.take_id, ev.slide_number)
+            if key not in seg_groups:
+                order.append(("seg", key))
+            seg_groups.setdefault(key, []).append(ev)
+            continue
+        text = none_sentence(ctx, ev) if kind is not None else None
+        if text is None:
+            continue
+        if text not in texts:
+            order.append(("text", text))
+        texts.setdefault(text, []).append(eid)
+    pairs: list[tuple[str, list[str]]] = []
+    for what, key in order:
+        if what == "text":
+            pairs.append((key, texts[key]))
+        else:
+            pairs.extend(_segment_pairs(ctx, key, seg_groups[key], areas))
+    out: list[Claim] = []
+    for text, eids in pairs:
+        c = _claim("RECORD", text, evidence_ids=list(dict.fromkeys(eids)))
+        if c is not None and all(c.text != o.text for o in out):
+            out.append(c)
+    return out[:3]
+
+
+def _segment_pairs(
+    ctx: Any, key: tuple[str | None, int | None], evs: list[Any], areas: frozenset[str] | None
+) -> list[tuple[str, list[str]]]:
+    take_id, slide = key
+    n = evs[0].take_number
+    if n is None:
+        return []
+    if areas is not None:
+        return [
+            (
+                segments_sentence(n, slide, templates.AREA_LABEL.get(segment_area(ev) or "")),
+                [ev.evidence_id],
+            )
+            for ev in evs
+            if segment_area(ev) in areas
+        ]
+    snap = ctx.snapshots.get(take_id) if take_id else None
+    tr = (snap.results.take_result or {}) if snap is not None else {}
+    all_areas = {a for a in (tr.get("areas") or {}) if isinstance(a, str)}
+    if all_areas and {segment_area(ev) for ev in evs} == all_areas:
+        return [(segments_sentence(n, slide, None), [ev.evidence_id for ev in evs])]
+    return []
 
 
 def first_sentence(text: str) -> str:

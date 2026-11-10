@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-ana-policy-recurring",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "최근 세 Take 에서 매번 지적된 것 — 군더더기(세 번 모두 우선 개선), 말 속도는 한 번뿐",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-pol",
+        "title": "청년 정책 제안 발표",
+        "takes": [
+          {
+            "take_id": "pol-t4",
+            "take_number": 4,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 3.0,
+              "filler_count": 12,
+              "cpm": 362,
+              "issues": [
+                [
+                  "PACE_FAST",
+                  1,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY",
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 64
+            }
+          },
+          {
+            "take_id": "pol-t5",
+            "take_number": 5,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 3.3,
+              "filler_count": 13
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "pol-t6",
+            "take_number": 6,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 2.9,
+              "filler_count": 12
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 68
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-pol"
+    }
+  },
+  "turns": [
+    {
+      "message": "최근 세 번 연습을 쭉 놓고 봤을 때, 매번 빠지지 않고 지적받은 부분이 뭔지 알려 주세요.",
+      "page_take_id": "pol-t6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "recurring-filler",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "metric": "filler_per_min"
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "recurring-word",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "군더더기[^.\\n]*(세 번|매번|모두|계속|반복|공통)|(세 번|매번|모두|계속|반복|공통)[^.\\n]*군더더기",
+        "grader": "regex"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:list_takes:OK",
+            "claim:RECORD"
+          ],
+          [
+            "tool:get_take_report:OK",
+            "claim:RECORD"
+          ],
+          [
+            "tool:compare_takes:OK",
+            "claim:RECORD"
+          ],
+          [
+            "exec:FETCH_TAKE:OK",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "path",
+        "note": "Take 요약(list_takes) · 가져오기 · 비교 어느 길이든 허용"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-refuse-excel",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should_not",
+  "title": "발표와 무관한 엑셀 질문 — REFUSED + OTHER 고정 문장, 기록을 읽지 않음",
+  "expect_refusal": true,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-xls",
+        "title": "분기 영업 회의 발표",
+        "takes": [
+          {
+            "take_id": "xls-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-xls"
+    }
+  },
+  "turns": [
+    {
+      "message": "엑셀에서 VLOOKUP 함수로 다른 시트 값 끌어오는 법 좀 알려 줘요.",
+      "page_take_id": "xls-t1"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status"
+      },
+      {
+        "check_id": "refuse-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.OUT_OF_SCOPE",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-record-read",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "tool:get_take_report:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  }
+}

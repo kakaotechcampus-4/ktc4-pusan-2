@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "id": "path-rm-score-ask",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 5 리뷰가 아직 없음 — 점수는 확인할 수 없다고 하고 코치 결과(2장 문제 구간 30%)로 답한다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "review": null,
+            "result": {
+              "audience": [
+                0.6,
+                0.3,
+                0.57,
+                0.6
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 점수랑 가장 크게 걸린 문제 구간이 어디였는지 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-then-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "decision:REVIEW_MISSING:*",
+          "claim:*"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "리뷰 분석 전",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-review-sentence",
+        "observe": "answer",
+        "grader": "template",
+        "compare": "contains",
+        "expect": "SystemText.NO_REVIEW"
+      },
+      {
+        "check_id": "no-score-number",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "absent",
+        "expect": "[0-9]+점"
+      },
+      {
+        "check_id": "problem-slide",
+        "observe": "answer",
+        "grader": "target",
+        "compare": "contains",
+        "expect": {
+          "take": 5,
+          "slide": 2
+        }
+      },
+      {
+        "check_id": "slide2-value",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "contains",
+        "expect": "30%",
+        "derive": "t-5:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

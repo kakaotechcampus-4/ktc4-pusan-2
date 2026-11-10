@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "id": "path-norec-latest-no-take",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "범위 피치(졸업 발표)에 Take 가 하나도 없는데 '가장 최근 발표'를 물음 — 'Take 없음'을 그 피치 범위로만 말하고 DONE, 일반 부분 확인 문장 없음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "drop_takes": [
+          "t-3",
+          "t-4",
+          "t-5"
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "가장 최근에 한 발표를 보고 싶어"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-then-record",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:list_pitches:*",
+            "claim:RECORD"
+          ],
+          [
+            "tool:list_takes:*",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-record-fact",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:list_pitches:*",
+            "decision:NO_RECORD:FACT_SHOWN:CODE"
+          ],
+          [
+            "tool:list_takes:*",
+            "decision:NO_RECORD:FACT_SHOWN:CODE"
+          ]
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "Take 없음",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "says-no-take",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "Take[^\\n]{0,20}(없|아직)|졸업 발표",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-overgeneralize",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "발표한 적이 없|발표 기록이 없|발표가 없",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-generic-partial",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

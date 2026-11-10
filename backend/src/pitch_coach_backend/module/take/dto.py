@@ -11,6 +11,9 @@ from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_js
 # takes 의 CHECK 와 같은 값이다. FE types/api.ts 의 PracticeMode · ScriptMode 와도 같다
 TakeMode = Literal["COACHING", "EXAM"]
 ScriptMode = Literal["HIGHLIGHT", "KEYWORD", "OFF"]
+# 튜토리얼 샘플 발표에서 새 Take 를 막는 이유. Take 생성의 409 코드와 같은 값이다
+# (`service/lookup.py` 의 `tutorial_block`)
+TutorialBlock = Literal["TUTORIAL_ANALYSIS_RUNNING", "TUTORIAL_REPORT_USED"]
 
 
 # 목표 시간은 받지 않는다. 발표 제한 시간을 그대로 박는다 (FE 가 보내도 무시한다)
@@ -41,6 +44,8 @@ class TakeHistoryRowDTO(BaseModel):
     take_id: uuid.UUID
     pitch_id: uuid.UUID
     pitch_title: str
+    # First Take 튜토리얼 샘플 발표의 Take 인가. 제목은 사용자가 바꿀 수 있어 이 값으로 가린다
+    is_demo: bool
     take_number: int
     started_at: datetime
     status: str
@@ -181,6 +186,8 @@ class TakeReportDTO(BaseModel):
     take_id: uuid.UUID
     pitch_id: uuid.UUID
     pitch_title: str
+    # First Take 튜토리얼 샘플 발표의 Take 인가 (TakeHistoryRowDTO 와 같다)
+    is_demo: bool
     take_number: int
     script_mode: str
     ended_at: datetime | None

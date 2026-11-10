@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createLevelMeter, openMeasureStream, type LevelMeter, type MeasureStream } from './level';
+import {
+  createLevelMeter,
+  measuredWith,
+  openMeasureStream,
+  type LevelMeter,
+  type MeasuredWith,
+  type MeasureStream,
+} from './level';
 import { createVoiceRecorder, type VoiceRecord } from './voiceRecord';
 import type { Ms } from '@/types/api';
 
@@ -121,6 +128,8 @@ export function useMicLevel(
    * "소리가 안 들어옴" 이 아니라 **"재보지도 못함"** 입니다 — 사용자가 할 일이 다릅니다.
    */
   const [failedFor, setFailedFor] = useState<MediaStream | null>(null);
+  /** 크기를 실제로 잰 트랙의 장치 · 자동 음량 조절 상태. 스트림마다 한 번 정해집니다 (#1179) */
+  const [source, setSource] = useState<{ stream: MediaStream; with: MeasuredWith } | null>(null);
 
   /**
    * 음량 1초 기록의 재료. 스트림이 바뀌면 비웁니다 — 다른 마이크의 레벨이 섞이면 안 됩니다.
@@ -161,6 +170,7 @@ export function useMicLevel(
         meter?.stop();
         return;
       }
+      setSource({ stream, with: measuredWith((measure?.stream ?? stream).getAudioTracks()[0]) });
       if (meter) {
         setAudio({ stream, state: meter.state });
         // 멈춘 채로 시작했다가 첫 제스처에서 풀리면 "소리가 흐르지 않습니다" 를 치웁니다
@@ -254,6 +264,11 @@ export function useMicLevel(
     silentRef,
     statsRef,
     micOk: stream !== null && heardFor === stream,
+    /**
+     * 크기를 잰 트랙의 장치 · 자동 음량 조절 상태 (`MeasuredWith`). 계량기가 뜨기 전이면 null 입니다.
+     * 스트림이 그대로면 같은 객체라 의존성에 넣어도 됩니다
+     */
+    measuredWith: source && source.stream === stream ? source.with : null,
     audioState: audio && audio.stream === stream ? audio.state : null,
     /** 계량기 자체가 못 떴을 때의 문구. null 이면 정상입니다 */
     meterError:

@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from pitch_coach_ai.features.chat_agent import templates
+from pitch_coach_ai.features.chat_agent.config import load_config
 from pitch_coach_ai.features.chat_agent.llm_types import LlmRefused, LlmTimeout, Usage
 from pitch_coach_ai.features.chat_agent.schemas import ClaimLineData, FinalData
 
@@ -138,8 +139,12 @@ def test_sentences_go_out_as_draft_elements_close_before_the_draft_ends() -> Non
     assert all(c["assessments"] == [] for c in cl[1:])
 
 
+#: 도구 한도(1번)를 넘기는 새 읽기 — 조사를 한도(TOOL_CALLS)로 끝내 중단 안내를 앞 문장으로 내게 한다
+LIMITED_READ = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
+
+
 def test_code_sentences_decided_before_the_model_call_go_out_first() -> None:
-    """조사가 반복으로 끝났으면 중단 안내(코드 고정문)를 답 쓰기 모델을 부르기 전에 낸다. 모델에게 알리는
+    """조사가 한도로 끝났으면 중단 안내(코드 고정문)를 답 쓰기 모델을 부르기 전에 낸다. 모델에게 알리는
     '이미 보인 문장'에는 넣지 않는다(답을 비우지 않게)."""
     probes: list[list[str]] = []
 
@@ -151,13 +156,13 @@ def test_code_sentences_decided_before_the_model_call_go_out_first() -> None:
         [
             F.plan(assessments=[change_draft()]),
             F.tools(COMPARE, prefix="a"),
-            F.tools(COMPARE, prefix="b"),
+            F.tools(LIMITED_READ, prefix="b"),  # 새 읽기: 도구 한도(1번)에 닿아 조사가 끝난다
             streamed,
         ]
     )
-    _, lines, data = F.run_turn(request(), llm)
-    assert probes == [[templates.SystemText.NO_MORE_SOURCES.value]]
-    assert claim_lines(lines)[0]["claim"]["text"] == templates.SystemText.NO_MORE_SOURCES.value
+    _, lines, data = F.run_turn(request(), llm, cfg=load_config(max_tool_calls=1))
+    assert probes == [[templates.SystemText.LIMIT_PARTIAL.value]]
+    assert claim_lines(lines)[0]["claim"]["text"] == templates.SystemText.LIMIT_PARTIAL.value
     assert data["status"] == "PARTIAL"
     assert_prefix_invariant(lines, data)
     research = next(c for c in llm.calls if c.purpose == "ANSWER").messages[-1]["content"]
@@ -206,7 +211,9 @@ def test_model_failure_after_a_sentence_went_out_keeps_it_and_ends_partial() -> 
     claims = [c.model_dump(mode="json") for c in fd.message.claims]  # type: ignore[union-attr]
     sent = [c["claim"] for c in claim_lines(lines)]
     assert claims[:2] == sent[:2]
-    assert claims[2]["text"] == templates.SystemText.PARTIAL_CHECKED.value
+    # 근거 문장(판단 · 결론)을 이미 냈다: 일반 안내 "답 일부를 확인하지 못해 …"는 붙이지 않는다(TARGET 6 — 끊겼고 근거 문장이 하나도
+    # 없을 때만). 끊긴 것은 PARTIAL 상태가 보인다
+    assert templates.SystemText.PARTIAL_CHECKED.value not in [c["text"] for c in claims]
     assert_prefix_invariant(lines, data)
     # 줄로 보낸 판단은 끝 줄에도 있다
     assert {a.assessment_id for a in fd.assessments} == {
@@ -223,7 +230,8 @@ def test_refusal_after_a_sentence_went_out_ends_partial_not_refused() -> None:
     _, lines, data = F.run_turn(request(), F.FakeLlm(script(cut), stream_chunk=None))
     fd = FinalData.model_validate(data)
     assert fd.status == "PARTIAL"
-    assert fd.message.claims[-1].text == templates.SystemText.PARTIAL_CHECKED.value  # type: ignore[union-attr]
+    # 낸 문장에 근거 문장이 있으면 일반 안내를 붙이지 않는다(TARGET 6)
+    assert templates.SystemText.PARTIAL_CHECKED.value not in [c.text for c in fd.message.claims]  # type: ignore[union-attr]
     assert_prefix_invariant(lines, data)
 
 
@@ -246,14 +254,14 @@ def test_refusal_after_only_code_sentences_went_out_ends_partial() -> None:
         [
             F.plan(assessments=[change_draft()]),
             F.tools(COMPARE, prefix="a"),
-            F.tools(COMPARE, prefix="b"),
+            F.tools(LIMITED_READ, prefix="b"),  # 새 읽기: 도구 한도(1번)에 닿아 조사가 끝난다
             refuse,
         ]
     )
-    _, lines, data = F.run_turn(request(), llm)
+    _, lines, data = F.run_turn(request(), llm, cfg=load_config(max_tool_calls=1))
     assert data["status"] == "PARTIAL"
     texts = [c["text"] for c in data["message"]["claims"]]
-    assert texts[0] == templates.SystemText.NO_MORE_SOURCES.value
+    assert texts[0] == templates.SystemText.LIMIT_PARTIAL.value
     assert texts[-1] == templates.SystemText.PARTIAL_CHECKED.value
     assert_prefix_invariant(lines, data)
 

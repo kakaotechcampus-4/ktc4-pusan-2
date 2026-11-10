@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-auto-court-save-asks",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should",
+  "title": "명시한 목표 저장 요청 — 바로 저장하지 않고 확인 카드로 묻고, 승인 뒤에만 저장",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-court",
+        "title": "모의 법정 변론",
+        "takes": [
+          {
+            "take_id": "court-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": 0.4
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 67
+            }
+          },
+          {
+            "take_id": "court-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": 0.38
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 66
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-court"
+    }
+  },
+  "turns": [
+    {
+      "message": "변론 연습 목표는 청중 시선 비율을 Take 3보다 높이는 걸로 저장해 주세요.",
+      "page_take_id": "court-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "ask-before-approve",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "propose:SAVE_GOAL:ASK",
+          "approve:SAVE_GOAL"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "approve-before-save",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "approve:SAVE_GOAL",
+          "exec:SAVE_GOAL:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "audience_ratio",
+        "path": "after.conversation.goal.metric"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "gt_base",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "goal-base-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "court-t3",
+        "path": "after.conversation.goal.base.take_id",
+        "note": "사용자가 기준 Take 3 을 말했다"
+      },
+      {
+        "check_id": "goal-base-value",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 0.38,
+        "path": "after.conversation.goal.base.value",
+        "derive": "court-t3:GAZE.audience_ratio"
+      },
+      {
+        "check_id": "goal-slide",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal.slide_number",
+        "note": "장을 말하지 않은 Take 전체 청중 시선 목표"
+      },
+      {
+        "check_id": "save-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-guide",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

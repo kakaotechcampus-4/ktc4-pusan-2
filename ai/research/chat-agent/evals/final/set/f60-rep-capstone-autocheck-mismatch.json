@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-capstone-autocheck-mismatch",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "자동 목표 확인 — 목표 뒤 Take 의 대본 버전이 달라 BASELINE_MISMATCH(이룸으로 판정하지 않음)",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-cap",
+        "title": "캡스톤 최종 발표",
+        "takes": [
+          {
+            "take_id": "cap-t5",
+            "take_number": 5,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                368,
+                375,
+                371,
+                374
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  4,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 67
+            }
+          },
+          {
+            "take_id": "cap-t6",
+            "take_number": 6,
+            "started_at": "2026-11-06T10:00:00+09:00",
+            "completed_at": "2026-11-06T10:07:00+09:00",
+            "result": {
+              "cpm": [
+                330,
+                334,
+                328,
+                336
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "STABLE"
+              },
+              "score": 74
+            },
+            "script_version_id": "sv-2"
+          }
+        ],
+        "script_version_id": "sv-2",
+        "script_version_label": "V2"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-cap",
+      "goal": {
+        "metric": "cpm",
+        "slide_number": null,
+        "base_take_id": "cap-t5",
+        "version": 1,
+        "status": "OPEN",
+        "after_take": 5,
+        "created_at": "2026-11-04T12:00:00+09:00"
+      }
+    }
+  },
+  "turns": [
+    {
+      "auto_goal_check": true
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "goal-status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "BASELINE_MISMATCH",
+        "path": "goal_result.status"
+      },
+      {
+        "check_id": "goal-terminal",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "goal_result.terminal"
+      },
+      {
+        "check_id": "no-achieved-word",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "GOAL_WORD.ACHIEVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-not-achieved-word",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "GOAL_WORD.NOT_ACHIEVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-new-goal",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "START_PRACTICE"
+        ],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  },
+  "notes": "cap-t6 의 cpm 332 는 범위(275~350) 안이지만 목표에 고정한 대본 버전 sv-1 과 cap-t6 의 sv-2 가 달라 6-4 판정 순서상 버전 차이를 먼저 본다."
+}

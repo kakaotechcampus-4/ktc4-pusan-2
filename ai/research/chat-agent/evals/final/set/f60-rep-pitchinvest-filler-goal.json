@@ -1,0 +1,181 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-pitchinvest-filler-goal",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "목표 대상을 말하지 않고 '제일 시급한 것'을 목표로 저장 + 연습 이동 — 군더더기 목표 저장 · 버튼",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-ivs",
+        "title": "투자 유치 피칭",
+        "takes": [
+          {
+            "take_id": "ivs-t4",
+            "take_number": 4,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 2.1,
+              "filler_count": 9
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "STABLE",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 74
+            }
+          },
+          {
+            "take_id": "ivs-t5",
+            "take_number": 5,
+            "started_at": "2026-11-04T19:00:00+09:00",
+            "completed_at": "2026-11-04T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 3.4,
+              "filler_count": 14
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "ivs-t6",
+            "take_number": 6,
+            "started_at": "2026-11-06T19:00:00+09:00",
+            "completed_at": "2026-11-06T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 3.1,
+              "filler_count": 13
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY",
+                "audience_gaze": "STRENGTH"
+              },
+              "score": 67
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-ivs"
+    }
+  },
+  "turns": [
+    {
+      "message": "투자자 앞에서 하는 발표라 이번엔 제대로 고치고 싶어요. 요즘 연습에서 제일 시급한 거 하나 골라서 대화 목표로 저장해 주고, 저장되면 바로 연습하러 갈 수 있게 해 주세요.",
+      "page_take_id": "ivs-t6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-before-propose",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:get_take_report:OK",
+            "propose:SAVE_GOAL:ASK"
+          ],
+          [
+            "tool:list_takes:OK",
+            "propose:SAVE_GOAL:ASK"
+          ],
+          [
+            "tool:compare_takes:OK",
+            "propose:SAVE_GOAL:ASK"
+          ],
+          [
+            "tool:list_pitches:OK",
+            "propose:SAVE_GOAL:ASK"
+          ]
+        ],
+        "metric": "path",
+        "note": "목표를 고르기 전에 기록을 읽는다(어느 읽기 도구든 허용)"
+      },
+      {
+        "check_id": "approve-before-save",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "approve:SAVE_GOAL",
+          "exec:SAVE_GOAL:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "saved",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "SAVE_GOAL",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "filler_per_min",
+        "path": "after.conversation.goal.metric",
+        "note": "Take 5 · 6 모두 군더더기(fluency) 우선 개선, 다른 차원은 우선 개선 아님"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "lt_base",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "save-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-guide",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요",
+        "grader": "regex",
+        "note": "TARGET 3: 저장 성공 답에만 붙는 결과 발견 안내"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "허용 근거('저장해')는 사용자 말에 있다. 기준 Take 는 판정하지 않는다(최근 Take 6 이 자연스럽지만 정답을 하나로 두지 않음)."
+}

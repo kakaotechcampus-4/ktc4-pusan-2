@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { fetchTakeReport, isSettled } from '@/shared/api/report';
 import { clearTokens } from '@/shared/api/tokenStore';
 import type { Operator, TakeReport } from '@/types/report';
-import { OP, comparisonGroups, duration, fmt, pct, stepStates } from './reportFormat';
+import { OP, comparisonGroups, duration, fmt, metricLabel, pct, stepStates } from './reportFormat';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -22,6 +22,7 @@ const analyzing: TakeReport = {
   analysis_hold_reason: null,
   measures: null,
   review: null,
+  content_status: null,
 };
 
 it.each<[Operator, string]>([
@@ -60,6 +61,19 @@ it('shows missing measures as — instead of 0%', () => {
   expect(pct(0.736)).toBe('74%');
   expect(fmt('script_ratio', 0.62)).toBe('62%');
   expect(fmt('unknown_metric', 3)).toBe('3');
+});
+
+// #1179 목소리 크기는 기준 목소리와의 차이라 부호를 늘 붙입니다
+it('shows the voice change against the base voice with an explicit sign', () => {
+  expect(metricLabel('voice_diff_db')).toBe('기준 대비 변화');
+  expect(fmt('voice_diff_db', 0.5)).toBe('+0.5dB');
+  expect(fmt('voice_diff_db', -1.1)).toBe('−1.1dB');
+  expect(fmt('voice_diff_db', 0)).toBe('0dB');
+  expect(fmt('voice_diff_db', -0)).toBe('0dB');
+  // 미션 결과 줄 — "기준 대비 변화 −7.3dB 이상"
+  expect(`${metricLabel('voice_diff_db')} ${fmt('voice_diff_db', -7.3)} ${OP.GTE}`).toBe(
+    '기준 대비 변화 −7.3dB 이상',
+  );
 });
 
 it('shows an unknown duration as — instead of 00:00', () => {

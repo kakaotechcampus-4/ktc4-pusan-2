@@ -1,0 +1,14 @@
+{
+  "name": "chat-agent-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

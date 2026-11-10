@@ -222,18 +222,25 @@ def test_analyze_partial_llm_failure_goes_to_failed():
     assert response.take_scores.scored_ratio == pytest.approx(0.667)
 
 
-def test_analyze_all_failed_raises_lowest_slide_llm_code():
+def test_analyze_all_failed_with_llm_errors_is_200_with_fallbacks():
+    """모든 장이 LLM 오류여도 장마다 간이 값이 있으면 요청 전체 오류가 아니라 evaluations 가 빈 200 이다."""
     failing = {4: RuntimeError("x"), 6: TimeoutError("y"), 7: TimeoutError("z")}
-    with pytest.raises(CoverageError) as caught:
-        _analyze(llms=_llms(SaidAllLLM(failing)))
-    assert (caught.value.status_code, caught.value.code) == (502, "LLM_ERROR")  # 4번 장의 코드
+    response = _analyze(llms=_llms(SaidAllLLM(failing)))
+    assert response.evaluations == []
+    assert [(f.slide_number, f.error.code) for f in response.failed] == [
+        (4, "LLM_ERROR"),
+        (6, "LLM_TIMEOUT"),
+        (7, "LLM_TIMEOUT"),
+    ]
+    assert all(f.fallback is not None for f in response.failed)
+    assert response.take_scores.scored_ratio == 0.0
 
 
-def test_analyze_all_failed_prefers_llm_code_over_rubric_missing():
-    request = _request(slide_numbers=[4, 6], rubrics=_rubrics_of(6))
+def test_analyze_all_failed_without_fallback_raises_rubric_missing():
+    request = _request(slide_numbers=[4, 6], rubrics=_rubrics_of(7))
     with pytest.raises(CoverageError) as caught:
         _analyze(request, _llms(SaidAllLLM({6: TimeoutError()})))
-    assert (caught.value.status_code, caught.value.code) == (504, "LLM_TIMEOUT")
+    assert (caught.value.status_code, caught.value.code) == (422, "RUBRIC_MISSING")
 
 
 def test_analyze_empty_slide_numbers_is_empty_200_even_without_rubrics():

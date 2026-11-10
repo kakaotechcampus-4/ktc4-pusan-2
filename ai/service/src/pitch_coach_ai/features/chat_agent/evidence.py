@@ -75,7 +75,7 @@ class EvidenceRegistry:
     def record(
         self,
         *,
-        pitch_id: str,
+        pitch_id: str | None,
         take_id: str | None,
         take_number: int | None,
         kind: str | None,
@@ -87,8 +87,10 @@ class EvidenceRegistry:
         unit: str | None = None,
         rule_version: str | None = None,
         version: RecordVersion | None = None,
+        deps: Iterable[str] = (),
     ) -> Evidence:
-        """저장된 기록 값의 근거(`origin: RECORD`)."""
+        """저장된 기록 값의 근거(`origin: RECORD`). 읽은 범위의 '없음 · 0'(Take 수 · 리뷰 상태 · 대화 목표 · 문제 구간 수)도
+        같은 모양의 근거다(6-8). `deps`: 피치 · Take 밖에 더 기댄 원천(예: 센 Take 들). 그 원천이 지워지면 함께 버린다(5-6)."""
         eid = "e-" + _h(self.run_id, "RECORD", pitch_id, take_id, kind, revision, path)
         ev = Evidence(
             evidence_id=eid,
@@ -105,7 +107,7 @@ class EvidenceRegistry:
             unit=unit,
             rule_version=rule_version,
         )
-        self._put(ev, deps={pitch_id, take_id or ""})
+        self._put(ev, deps={pitch_id or "", take_id or "", *deps})
         if version is not None:
             self.versions[eid] = version
         return ev
