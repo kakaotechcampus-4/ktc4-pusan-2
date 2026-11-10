@@ -981,7 +981,8 @@ export function RehearsalPage() {
                   </span>
                 ) : (
                   <span className="key-help">
-                    ← 이전 장 · →/Space/슬라이드 클릭 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
+                    ← 이전 장 · →/Space/슬라이드 클릭 다음 장
+                    {scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
                   </span>
                 )}
                 {/* 알림 영역은 안쪽 문구가 각자 잡습니다 — 여기도 status 면 낭독기가 두 번 읽습니다 */}
