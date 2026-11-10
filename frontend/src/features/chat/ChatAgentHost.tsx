@@ -447,8 +447,10 @@ function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
-  const { key: navigationKey } = useLocation();
-  const openedNavigationKeyRef = useRef(navigationKey);
+  const { pathname, search, hash } = useLocation();
+  // 내부 navigation key만 바뀌어도 같은 화면일 수 있으므로 실제 URL 위치를 비교합니다.
+  const routeIdentity = `${pathname}${search}${hash}`;
+  const openedRouteRef = useRef(routeIdentity);
   const navigatedWhileOpenRef = useRef(false);
   // 사용자 직접 닫기(버튼·Esc)와 비허용 경로 이동에 따른 unmount를 구분합니다.
   const restoreOnCloseRef = useRef(false);
@@ -513,16 +515,16 @@ function ChatPanel({
   useLayoutEffect(() => {
     if (mobileOverlay) return;
     // 데스크톱에서 이동하다 모바일로 크기가 바뀐 경우의 기준 위치입니다.
-    openedNavigationKeyRef.current = navigationKey;
+    openedRouteRef.current = routeIdentity;
     navigatedWhileOpenRef.current = false;
-  }, [mobileOverlay, navigationKey]);
+  }, [mobileOverlay, routeIdentity]);
   useLayoutEffect(() => {
-    if (!mobileOverlay || openedNavigationKeyRef.current === navigationKey) return;
+    if (!mobileOverlay || openedRouteRef.current === routeIdentity) return;
     // 쿼리 변경도 탐색으로 취급합니다. 패널이 유지되는 이동에서는 옛 화면의 음수 top을 제거합니다.
     navigatedWhileOpenRef.current = true;
     document.body.style.top = '0px';
     document.body.style.left = '0px';
-  }, [mobileOverlay, navigationKey]);
+  }, [mobileOverlay, routeIdentity]);
   useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
