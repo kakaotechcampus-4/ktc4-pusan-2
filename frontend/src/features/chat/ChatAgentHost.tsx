@@ -493,19 +493,24 @@ function ChatPanel({
   // 중간 폭(761~1439px)에서는 화면 안에 보이는 헤더와 고정 푸터만큼 패널을 비웁니다.
   // 헤더가 스크롤로 화면 밖으로 나가면 상단 여백도 줄이고, 크기 변경은 실측으로 반영합니다.
   useLayoutEffect(() => {
-    const layout = document.querySelector<HTMLElement>('.chat-layout');
-    const content = layout?.querySelector<HTMLElement>('.chat-layout-content');
-    if (!layout || !content || typeof window.matchMedia !== 'function') return;
+    const panel = panelRef.current;
+    const content = panel?.closest('.chat-layout')?.querySelector<HTMLElement>('.chat-layout-content');
+    if (!panel || !content || typeof window.matchMedia !== 'function') return;
 
     const overlay = window.matchMedia('(min-width: 761px) and (max-width: 1439px)');
     let header: HTMLElement | null = null;
     let footer: HTMLElement | null = null;
+    // 스크롤마다 변경되는 오프셋을 패널에만 기록해 본문 전체의 스타일 재계산을 피합니다.
+    // 헤더가 화면 밖으로 나간 뒤 같은 0px을 반복 기록하는 일도 생략합니다.
+    const setPanelOffset = (name: string, value: string) => {
+      if (panel.style.getPropertyValue(name) !== value) panel.style.setProperty(name, value);
+    };
     const measure = () => {
       if (!overlay.matches) return;
       // 일반 헤더는 sticky가 아니므로 스크롤 시 화면 안에 남은 부분만 비웁니다.
       const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
-      layout.style.setProperty('--chat-overlay-top', `${Math.ceil(Math.max(0, headerBottom))}px`);
-      layout.style.setProperty(
+      setPanelOffset('--chat-overlay-top', `${Math.ceil(Math.max(0, headerBottom))}px`);
+      setPanelOffset(
         '--chat-overlay-bottom',
         `${Math.ceil(footer?.getBoundingClientRect().height ?? 0)}px`,
       );
@@ -536,8 +541,8 @@ function ChatPanel({
         resizeObserver?.disconnect();
         header = null;
         footer = null;
-        layout.style.removeProperty('--chat-overlay-top');
-        layout.style.removeProperty('--chat-overlay-bottom');
+        panel.style.removeProperty('--chat-overlay-top');
+        panel.style.removeProperty('--chat-overlay-bottom');
       }
     };
     overlay.addEventListener('change', sync);
@@ -550,8 +555,8 @@ function ChatPanel({
       window.removeEventListener('scroll', measure);
       mutationObserver.disconnect();
       resizeObserver?.disconnect();
-      layout.style.removeProperty('--chat-overlay-top');
-      layout.style.removeProperty('--chat-overlay-bottom');
+      panel.style.removeProperty('--chat-overlay-top');
+      panel.style.removeProperty('--chat-overlay-bottom');
     };
   }, [pathname, search]);
   useKeepFocusInPanel(panelRef, inputRef);
