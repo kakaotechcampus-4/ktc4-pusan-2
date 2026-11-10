@@ -246,7 +246,7 @@ it('평가 항목은 예시 하나만 표시하고 Esc 뒤에도 포커스를 �
   expect(host.querySelector('[role="tooltip"]')?.textContent).toContain(
     '대본을 읽으며 말하는 비율',
   );
-  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain('대본을 연결한 경우');
+  expect(host.querySelector('[role="tooltip"]')?.textContent).toContain('카메라가 필요해요');
   await act(async () =>
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
   );
