@@ -6,6 +6,9 @@
   `uv run --project backend python ai/research/chat-agent/e2e/seed.py new base|review|goal`
   · `base`: Take 1(3장 시선 28%, 코치 결과만).  · `review`: base + 공식 리뷰(AI `/takes/review` 를 불러 받은 실제 모양).
   · `goal`: review + 열린 대화 목표(Take 1 기준) + 목표 뒤 Take 2(코치 결과 + 리뷰 DONE, 3장 시선 52%).
+  · 실사용 흐름 점검(README '실사용 흐름 점검')용: `voice` — base + 더 최근에 연습한 피치 'abc'(Take 2 가 점검 때보다 1.4dB
+    작고 3장에 작은 목소리 구간). `latest` — base + 다른 피치 '투자 설명회'에 2분 전 시작해 분석이 실패한 Take 하나
+    (마지막 연습 시작은 더 늦지만 분석이 끝난 Take 0개). `scripts` — base + 대본 판 2로 한 Take 2(코치 결과, 대본 판이 달라 비교 불가).
 - 읽기만 하는 것: BE 엔티티(`pitch_coach_backend`)와 서비스 시험 도우미 `fixtures.take_result`
   (모양이 실제 저장 payload 와 같다). 어느 쪽 파일도 고치지 않는다.
 - 결과: 표준 출력에 JSON 한 줄 {user_id, pitch_id, take_id, refresh_token, csrf_token, ...}.
@@ -79,8 +82,8 @@ def _goal_rule_version() -> str:
     return subprocess.run([str(AI_PYTHON), "-c", code], capture_output=True, text=True, check=True).stdout.strip()
 
 
-def _add_take(db, pitch, pres, script, number: int, audience: list[float], *, ago_min: int):
-    """끝난 Take 하나 + 장 이벤트 + 코치 결과(TAKE_RESULT)."""
+def _add_take(db, pitch, pres, script, number: int, audience: list[float], *, ago_min: int, **result: object):
+    """끝난 Take 하나 + 장 이벤트 + 코치 결과(TAKE_RESULT). `result`는 가상 코치 결과 인자를 바꾼다(예: voice_diff_db · issues)."""
     from pitch_coach_backend.module.take.entity import Take, TakeAIResults, TakeSlideEvent
 
     now = datetime.now(UTC)
@@ -105,15 +108,63 @@ def _add_take(db, pitch, pres, script, number: int, audience: list[float], *, ag
     db.add_all(
         TakeSlideEvent(take_id=take.id, started_ms=i * 60_000, slide_number=i + 1) for i in range(4)
     )
-    result = _fixtures().take_result(
-        take_id=str(take.id),
-        audience=audience,
-        script_ratio=[0.15, 0.2, 0.55, 0.18],
-        issues=[("GAZE_ON_SCRIPT", 3, True)],
-    )
+    kw: dict = {"script_ratio": [0.15, 0.2, 0.55, 0.18], "issues": [("GAZE_ON_SCRIPT", 3, True)], **result}
+    result = _fixtures().take_result(take_id=str(take.id), audience=audience, **kw)
     db.add(TakeAIResults(take_id=take.id, kind="TAKE_RESULT", payload=result, revision=1))
     db.flush()
     return take
+
+
+def _add_voice_pitch(db, user) -> dict:
+    """가장 최근에 연습한 다른 피치 'abc'(Take 1 · 2). Take 2 는 점검 때보다 1.4dB 작게 말했고 3장에 작은 목소리 구간이 있다
+    (실제 화면에서 본 헷갈리는 두 차례 대화의 재현, Issue #1194)."""
+    from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+
+    pitch = Pitch(user_id=user.id, title="abc", time_limit_sec=240)
+    db.add(pitch)
+    db.flush()
+    pres = PresentationVersion(pitch_id=pitch.id, version=1, file_key=f"{pitch.id}/1.pdf", page_count=4)
+    script = ScriptVersion(pitch_id=pitch.id, version=1, content="대본")
+    db.add_all([pres, script])
+    db.flush()
+    _add_take(db, pitch, pres, script, 1, GAZE_BASE, ago_min=20, voice_diff_db=-0.6)
+    t2 = _add_take(
+        db, pitch, pres, script, 2, GAZE_BASE, ago_min=2, voice_diff_db=-1.4,
+        issues=[("VOLUME_LOW", 3, True)],
+    )  # fmt: skip
+    db.flush()
+    return {"voice_pitch_id": str(pitch.id), "voice_take_id": str(t2.id)}
+
+
+def _add_unfinished_pitch(db, user) -> None:
+    """다른 피치 '투자 설명회'와, 2분 전 시작해 분석이 실패한 Take 하나(결과 없음). 마지막 연습 시작은 이쪽이 더 늦다."""
+    from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+    from pitch_coach_backend.module.take.entity import Take
+
+    now = datetime.now(UTC)
+    pitch = Pitch(user_id=user.id, title="투자 설명회", time_limit_sec=300)
+    db.add(pitch)
+    db.flush()
+    pres = PresentationVersion(pitch_id=pitch.id, version=1, file_key=f"{pitch.id}/1.pdf", page_count=4)
+    script = ScriptVersion(pitch_id=pitch.id, version=1, content="대본")
+    db.add_all([pres, script])
+    db.flush()
+    db.add(
+        Take(
+            pitch_id=pitch.id,
+            take_number=1,
+            presentation_version_id=pres.id,
+            script_version_id=script.id,
+            mode="COACHING",
+            script_mode="OFF",
+            status="FAILED",
+            goal_time_sec=300,
+            started_at=now - timedelta(minutes=2),
+            raw_data_consent=True,
+            standard_version=None,
+        )
+    )
+    db.flush()
 
 
 def _add_review(db, take) -> None:
@@ -140,7 +191,7 @@ def new(kind: str) -> dict:
     from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
     from pitch_coach_backend.module.user.entity import User
 
-    assert kind in ("base", "review", "goal"), kind
+    assert kind in ("base", "review", "goal", "latest", "scripts", "voice"), kind
     now = datetime.now(UTC)
     with _session() as db:
         user = User(
@@ -171,6 +222,19 @@ def new(kind: str) -> dict:
         if kind in ("review", "goal"):
             _add_review(db, take1)
             db.commit()
+        if kind == "latest":
+            _add_unfinished_pitch(db, user)
+            db.commit()
+        if kind == "voice":
+            info.update(_add_voice_pitch(db, user))
+            db.commit()
+        if kind == "scripts":
+            script2 = ScriptVersion(pitch_id=pitch.id, version=2, content="고친 대본")
+            db.add(script2)
+            db.flush()
+            take2 = _add_take(db, pitch, pres, script2, 2, GAZE_LATER, ago_min=5)
+            db.commit()
+            info.update(take2_id=str(take2.id))
         if kind == "goal":
             take2 = _add_take(db, pitch, pres, script, 2, GAZE_LATER, ago_min=5)
             db.commit()

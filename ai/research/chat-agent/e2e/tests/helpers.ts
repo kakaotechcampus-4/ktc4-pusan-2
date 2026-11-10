@@ -34,8 +34,8 @@ export function useScenario(name: string): void {
   writeFileSync(state.scenario_file, name);
 }
 
-/** 테스트 하나가 쓸 새 사용자 · 피치 · Take (종류: base | review | goal) */
-export function seed(kind: 'base' | 'review' | 'goal'): Seeded {
+/** 테스트 하나가 쓸 새 사용자 · 피치 · Take (종류: base | review | goal, 실사용 흐름 점검은 latest | scripts 도) */
+export function seed(kind: 'base' | 'review' | 'goal' | 'latest' | 'scripts' | 'voice'): Seeded {
   const out = execFileSync(
     'uv',
     ['run', '--project', 'backend', 'python', 'ai/research/chat-agent/e2e/seed.py', 'new', kind],

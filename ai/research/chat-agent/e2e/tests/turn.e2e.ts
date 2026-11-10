@@ -30,7 +30,7 @@ for (const [no, name, title] of [
     const steps: string[] = s.expect.plan_steps;
     await expect(plan.locator('[data-plan-status]')).toHaveCount(steps.length);
     for (const [i, text] of steps.entries()) await expect(plan.locator('[data-plan-status]').nth(i)).toContainText(text);
-    // 단계 상태 = 실제 실행: 실행한 단계는 끝(DONE), 실행하지 않은 단계는 건너뜀(SKIPPED) — 끝난 답이라 남은 일(TODO · DOING)은 없다
+    // 단계 상태 = 실제 실행: 실행한 단계는 끝(DONE). 끝난 답은 실행하지 않은 단계를 목록에서 빼므로(Issue #1194) 남은 일 · 건너뜀은 없다
     const statuses: string[] = s.expect.plan_statuses;
     for (const [i, st] of statuses.entries()) await expect(plan.locator('[data-plan-status]').nth(i)).toHaveAttribute('data-plan-status', st);
 

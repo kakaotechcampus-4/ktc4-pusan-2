@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "demo": "playwright test -c playwright.real.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",
