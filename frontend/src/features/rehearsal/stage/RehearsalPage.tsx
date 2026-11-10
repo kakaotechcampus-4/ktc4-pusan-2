@@ -35,6 +35,7 @@ import { autoEndState, type AutoEndNotice, type AutoEndReason } from '@/shared/l
 import { formatDuration } from '@/shared/lib/clock';
 import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
+import { BaseVoiceUnconfirmedNote } from './BaseVoiceUnconfirmedNote';
 import { CoachStrip } from './CoachStrip';
 import { useLiveCoach } from './useLiveCoach';
 import { useLiveGaze } from './useLiveGaze';
@@ -1003,6 +1004,8 @@ export function RehearsalPage() {
                     <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
                   )}
                   {sessionError && <span>{sessionError}</span>}
+                  {/* 장치 점검이 목소리 기준을 보냈는데 끝내 응답을 못 받았으면 알립니다 (#1179) */}
+                  <BaseVoiceUnconfirmedNote state={location.state} />
                 </div>
 
                 {/* 비활성 버튼은 초점을 못 받고 title 도 잘 안 보여서 이유를 글자로 둡니다 */}
