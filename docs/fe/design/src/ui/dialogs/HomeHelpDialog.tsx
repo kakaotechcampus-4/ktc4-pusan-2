@@ -4,10 +4,7 @@ import { Link } from 'react-router';
 import { publicUrl } from '@/lib/publicUrl';
 
 const steps = [
-  [
-    '자료 준비',
-    '새 피치를 만들고 발표할 PDF 슬라이드와 대본을 준비해 주세요. 연습 전에 자료와 목표 시간을 확인해 주세요.',
-  ],
+  ['자료 준비', '새 피치를 만들고 발표할 PDF 슬라이드와 대본을 준비해 주세요. 연습 전에 자료와 목표 시간을 확인해 주세요.'],
   [
     '장치 점검과 연습',
     '마이크와 카메라를 점검하고 브라우저의 장치 사용 권한을 허용해 주세요. 준비가 끝나면 발표 연습을 시작하세요.',
@@ -24,22 +21,10 @@ const chatGuide = [
     '채팅 열기',
     '홈·연습 기록 등 지원되는 화면의 왼쪽 아래에서 새미나이 열기를 누르세요. 실제 발표 연습 중에는 버튼이 보이지 않아요.',
   ],
-  [
-    '대화 관리',
-    '상단에서 새 대화를 시작하거나 대화 목록·기억 설정을 열고, 닫기 버튼으로 패널을 닫을 수 있어요.',
-  ],
-  [
-    '대화 범위',
-    '범위 칩을 눌러 전체 또는 특정 피치를 선택하면 관련 기록을 중심으로 질문할 수 있어요.',
-  ],
-  [
-    '기억 없이 대화',
-    '새 대화의 첫 메시지를 보내기 전에 기억 없이 대화하기를 선택할 수 있어요.',
-  ],
-  [
-    '질문 예시',
-    '할 수 있는 일과 질문 예시를 확인하고, 예시 버튼을 눌러 바로 질문할 수 있어요.',
-  ],
+  ['대화 관리', '상단에서 새 대화를 시작하거나 대화 목록·기억 설정을 열고, 닫기 버튼으로 패널을 닫을 수 있어요.'],
+  ['대화 범위', '범위 칩을 눌러 전체 또는 특정 피치를 선택하면 관련 기록을 중심으로 질문할 수 있어요.'],
+  ['기억 없이 대화', '새 대화의 첫 메시지를 보내기 전에 기억 없이 대화하기를 선택할 수 있어요.'],
+  ['질문 예시', '할 수 있는 일과 질문 예시를 확인하고, 예시 버튼을 눌러 바로 질문할 수 있어요.'],
   [
     '메시지 입력',
     '아래 입력칸에서 직접 질문을 작성해 보낼 수 있어요. 실제 답변 범위는 준비된 자료와 서비스 상태에 따라 달라져요.',
@@ -153,7 +138,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
                         className="block h-auto w-full border border-line-strong bg-white"
                       />
                       <p className="mt-2 text-xs text-stone">
-                        카메라·마이크와 시선 기준을 확인해 주세요. 평소 목소리 측정은 선택이에요.
+                        카메라·마이크·시선 기준과 기준 목소리 측정을 모두 완료해야 연습을 시작할 수 있어요.
                       </p>
                     </figure>
                     <figure className="min-w-0">
@@ -180,7 +165,7 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
         </ol>
         <div className="mt-8 border-2 border-ink bg-coral-wash p-4">
           <h3 className="font-bold">직접 연습하며 익히고 싶나요?</h3>
-          <p className="mt-2 text-sm leading-7">준비된 PDF와 대본으로 첫 미션을 진행해 보세요.</p>
+          <p className="mt-2 text-sm leading-7">준비된 PDF와 대본으로 튜토리얼을 진행해 보세요.</p>
           <Link
             to="/pitch/tutorial"
             onClick={() => dialogRef.current?.close()}
