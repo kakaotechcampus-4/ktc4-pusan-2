@@ -18,6 +18,7 @@ beforeEach(() => {
     take_id: `t${n}`,
     pitch_id: n === 1 ? 'p2' : 'p1',
     pitch_title: n === 1 ? '다른 발표' : '내 발표',
+    is_demo: false,
     take_number: n,
     started_at: '2026-10-06T12:00:00',
     status: 'COMPLETED',

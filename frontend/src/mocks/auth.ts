@@ -1,4 +1,6 @@
 import { http, HttpResponse } from 'msw';
+import type { User } from '@/shared/api/useSession';
+import { tutorialReportAt } from './firstTake';
 
 // Default mocks remain unauthenticated; Google navigation is never faked.
 const unauthorized = { code: 'UNAUTHORIZED', message: '로그인이 필요합니다.', detail: null };
@@ -65,6 +67,9 @@ const mockUser: {
   test_consent_version: null,
 };
 
+/** BE `UserResponse` 모양. 튜토리얼 리포트 시각은 튜토리얼 목(`firstTake.ts`)이 갖고 있습니다 */
+const meOf = (): User => ({ ...mockUser, tutorial_report_at: tutorialReportAt() });
+
 export const currentMockUserId = () => (signedIn ? mockUser.id : null);
 /** 테스트 참여 동의 시각. 설문 목은 이 뒤에 끝난 Take 만 미작성 목록에 넣습니다 (BE #777) */
 export const mockTestConsentAt = () => (signedIn ? mockUser.test_consent_at : null);
@@ -115,7 +120,7 @@ export const authHandlers = [
       : HttpResponse.json(unauthorized, { status: 401 }),
   ),
   http.get('*/api/users/me', () =>
-    signedIn ? HttpResponse.json(mockUser) : HttpResponse.json(unauthorized, { status: 401 }),
+    signedIn ? HttpResponse.json(meOf()) : HttpResponse.json(unauthorized, { status: 401 }),
   ),
   // 마이페이지 설정(#361). 보낸 칸만 바꿉니다
   http.patch('*/api/users/me', async ({ request }) => {
@@ -133,7 +138,7 @@ export const authHandlers = [
       mockUser.test_consent_version = body.test_consent_version;
       mockUser.test_consent_at = new Date().toISOString();
     }
-    return HttpResponse.json(mockUser);
+    return HttpResponse.json(meOf());
   }),
   // 서버처럼 세션 쿠키를 지웁니다. 로그아웃은 화면을 새로 열어서, 남겨 두면 다시 로그인돼 보입니다
   http.post('*/api/auth/logout', () => {

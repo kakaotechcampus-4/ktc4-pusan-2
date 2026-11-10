@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 import { CloseButton } from './CloseButton';
+import { ButtonLink } from './Button';
 
 const steps = [
   [
@@ -242,6 +243,20 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
             </li>
           ))}
         </ol>
+        {/* 사용방법 단계(위 h3)와 같은 층이 아니라 제목 대신 굵은 글자로 둡니다 */}
+        <div className="mt-8 border-2 border-ink bg-coral-wash p-4">
+          <p className="font-bold">직접 연습하며 익히고 싶나요?</p>
+          <p className="mt-2 text-sm leading-7">준비된 PDF와 대본으로 튜토리얼을 진행해 보세요.</p>
+          <ButtonLink
+            to="/pitch/tutorial"
+            onClick={() => dialogRef.current?.close()}
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+          >
+            튜토리얼 해 보기 →
+          </ButtonLink>
+        </div>
         <p className="mt-8 border border-line-strong bg-cream p-4 text-sm leading-7">
           데스크톱 최신 Google Chrome에서 연습하는 것을 권장해요. Edge에서는 시선 추적이 정상적으로
           진행되지 않을 수 있어요. 도움말을 닫으면 보던 목록에서 이어갈 수 있어요.

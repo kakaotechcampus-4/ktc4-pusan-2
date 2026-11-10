@@ -68,6 +68,21 @@ it.each([0, 1, 2])('기록 %i개인 피치의 발표 준비는 제목과 같은 
   expect(markup).not.toContain('/rehearsal');
 });
 
+it('튜토리얼 샘플 피치는 샘플로 표시하고 자료 수정 대신 튜토리얼 화면으로 보낸다', () => {
+  const markup = renderToStaticMarkup(
+    <MemoryRouter>
+      <HomePitchCard
+        pitch={{ ...homeFixture.pitches[0], pitch_id: 'demo-1', is_demo: true }}
+        index={0}
+      />
+    </MemoryRouter>,
+  );
+  const links = [...markup.matchAll(/href="([^"]+)"/g)].map((match) => match[1]);
+  expect(markup).toContain('샘플');
+  expect(markup).not.toContain('/edit');
+  expect(links).toEqual(['/takes?pitch=demo-1', '/pitch/tutorial']);
+});
+
 it('피치 ID가 없으면 발표 준비 링크를 표시하지 않는다', () => {
   const markup = renderToStaticMarkup(
     <MemoryRouter>

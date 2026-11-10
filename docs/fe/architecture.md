@@ -66,7 +66,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 |---|---|
 | 들어오기 | `/welcome` · `/login` · `/unsupported`(미지원 브라우저) |
 | 홈 · 목록 | `/` · `/pitches` · `/takes`(Take 기록 · 비교) · `/pitch/:id/comparison`(옛 주소, `/takes?…`로 넘김) · `/me` |
-| 피치 | `/pitch/new` · `/pitch/:id/edit` |
+| 피치 | `/pitch/new` · `/pitch/:id/edit` · `/pitch/tutorial`(First Take 튜토리얼. BE가 준비한 샘플 피치를 받아 장치 점검으로 이동합니다, #931) |
 | 연습 | `/pitch/:pitchId/device-check` · `/pitch/:pitchId/prepare`(옛 주소, 장치 점검으로 넘김) · `/takes/:takeId/rehearsal` · `/takes/:takeId/exam` |
 | 결과 | `/takes/:takeId/processing` · `/takes/:takeId/confirm` · `/takes/:takeId/retry` · `/takes/:takeId` |
 | 안내 | `/about` · `/privacy` · `/terms` |
@@ -92,12 +92,12 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 
 | 겹 | 걸리는 화면 | 걸리면 |
 |---|---|---|
-| 1. 기기 확인(`DesktopGate`) | `practicePaths`: 장치 점검 · 리허설 · 실전 | 휴대폰 · 태블릿이면 `/unsupported`. 로그인보다 먼저 막아, 못 하는 연습 주소로 로그인부터 시키지 않습니다 |
+| 1. 기기 확인(`DesktopGate`) | `practicePaths`: 튜토리얼 진입 · 장치 점검 · 리허설 · 실전 | 휴대폰 · 태블릿이면 `/unsupported`. 로그인보다 먼저 막아, 못 하는 연습 주소로 로그인부터 시키지 않습니다 |
 | 2. 출시 제한(`LaunchGate`) | `/login`과 로그인이 필요한 모든 화면 | `VITE_LAUNCH_GATE_ENABLED=true`이고 공개 시각(`shared/api/launch.ts` `LAUNCH_AT`) 전이면 `/welcome` |
 | 3. 로그인(`RequireSession`) | 아래 "공개 화면"을 뺀 모든 화면 | 확인하는 동안 "로그인 상태를 확인하고 있습니다.", 서버에 못 붙으면 [다시 시도]. 로그인이 안 돼 있으면 `/`는 `/welcome`, 그 밖은 `/login?next=<원래 주소>`. 로그인했어도 개인정보 처리 동의 전이면 같은 주소에서 화면 위에 동의 창(`PrivacyConsentDialog`)을 띄우고, 동의해야만 닫힙니다. 카메라 · 마이크를 켜는 연습 화면은 동의 전에 뒤에 그리지 않습니다([features/auth/README.md](../../frontend/src/features/auth/README.md)) |
 
 - **공개 화면**(`publicPaths`, 로그인 없이 열림): `/welcome` · `/login` · `/about` · `/privacy` · `/terms` · `/unsupported` · `/dev/*` · 없는 주소(404). 이 중 출시 제한은 `/login`에만 걸립니다.
-- **상단바**(`appHeaderPaths`): `/` · `/pitches` · `/takes` · `/me` · `/pitch/new` · `/pitch/:id/edit` · 장치 점검 · 재시도에만 홈과 같은 상단바를 얹습니다. 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다.
+- **상단바**(`appHeaderPaths`): `/` · `/pitches` · `/takes` · `/me` · `/pitch/new` · `/pitch/tutorial` · `/pitch/:id/edit` · 장치 점검 · 재시도에만 홈과 같은 상단바를 얹습니다. 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다.
 - 로그인 화면이 Google에서 오류(`?auth_error=`)를 받아 오면 `/login`으로 돌려 보여 줍니다.
 - 출시 제한 자체(카운트다운 · 공개 시각)는 [launch-countdown.md](launch-countdown.md)에 있습니다.
 

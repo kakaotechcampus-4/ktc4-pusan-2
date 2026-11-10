@@ -148,6 +148,9 @@ export function TakesPage() {
                   <div className="min-w-0">
                     <p className="[overflow-wrap:anywhere] text-xs text-stone">
                       {takeDay(t.started_at)} · {t.pitch_title}
+                      {t.is_demo && (
+                        <span className="ml-2 border border-ink bg-cream px-1 text-ink">샘플</span>
+                      )}
                     </p>
                     <p className="mt-0.5 tabular-nums font-bold">TAKE {t.take_number}</p>
                   </div>

@@ -35,6 +35,7 @@ const pitch = (
 ): HomePitch => ({
   pitch_id: id,
   pitch_title: title,
+  is_demo: false,
   pitch_time: 300,
   thumbnail_url: null,
   presentation_date: null,

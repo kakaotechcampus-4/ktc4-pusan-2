@@ -36,6 +36,8 @@ const fixture = vi.hoisted(() => ({
   } | null,
   postCalibration: vi.fn(),
   data: null as unknown as PrepareResponse,
+  preparePending: false,
+  prepareError: false,
   /** 버전 목록에서 꺼낸 가장 최근 자료 (`useLatestSlide`) */
   latestSlide: {
     data: null as { id: string; version: number; pageCount: number | null } | null | undefined,
@@ -118,7 +120,12 @@ vi.mock('./useBaseVoice', () => ({
   }),
 }));
 vi.mock('@/shared/api/prepare', () => ({
-  usePrepare: () => ({ data: fixture.data, isError: false }),
+  usePrepare: () => ({
+    data: fixture.data,
+    isPending: fixture.preparePending,
+    isError: fixture.prepareError,
+    error: fixture.prepareError ? new Error('prepare failed') : null,
+  }),
   useLatestSlide: () => ({
     ...fixture.latestSlide,
     isFetching: fixture.latestFetching,
@@ -136,7 +143,18 @@ vi.mock('../lib/db', () => ({
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
+let originalActivation: PropertyDescriptor | undefined;
+
+/** SPA에서 홈 버튼을 누르고 넘어온 것처럼 사용자 조작이 있었던 브라우저 상태입니다. */
+function activatePage() {
+  Object.defineProperty(navigator, 'userActivation', {
+    configurable: true,
+    value: { hasBeenActive: true },
+  });
+}
+
 beforeEach(() => {
+  originalActivation = Object.getOwnPropertyDescriptor(navigator, 'userActivation');
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;
@@ -155,6 +173,8 @@ beforeEach(() => {
     },
   });
   fixture.live = true;
+  fixture.preparePending = false;
+  fixture.prepareError = false;
   fixture.micOk = true;
   fixture.gazeStatus = 'DONE';
   fixture.gazeAdvice = null;
@@ -184,6 +204,7 @@ beforeEach(() => {
     newer_script: null,
     next_take_number: 4,
     default_script_mode: 'HIGHLIGHT',
+    tutorial_block: null,
     missions: {
       source_take_number: 2,
       items: Array.from({ length: 20 }, (_, i) => ({
@@ -202,6 +223,11 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(async () => {
+  if (originalActivation) {
+    Object.defineProperty(navigator, 'userActivation', originalActivation);
+  } else {
+    Reflect.deleteProperty(navigator, 'userActivation');
+  }
   vi.unstubAllEnvs();
   await act(async () => root.unmount());
   host.remove();
@@ -323,6 +349,81 @@ it('넘겨받은 조합보다 서버 최신 조합이 새 것이면 알리고, [
     'client-session',
     expect.objectContaining({ practice: null }),
   );
+});
+
+it.each([
+  ['TUTORIAL_REPORT_USED', '튜토리얼 리포트는 한 번만 받을 수 있어요', '/pitch/new'],
+  ['TUTORIAL_ANALYSIS_RUNNING', '앞 연습을 분석하고 있어요', '/takes?pitch=p1'],
+] as const)(
+  '튜토리얼 샘플이 막혔으면(%s) 처음부터 알리고, 장비가 준비돼도 시작하지 않는다',
+  async (block, text, href) => {
+    activatePage();
+    fixture.data = { ...fixture.data, tutorial_block: block };
+    await render();
+    // 홈에서 버튼을 눌러 온 경우에도 자동 장치 권한 요청이 발생하면 안 됩니다.
+    expect(fixture.request).not.toHaveBeenCalled();
+    const notice = host.querySelector('[data-tutorial-block]')!;
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.textContent).toContain(text);
+    expect(notice.querySelector('a')?.getAttribute('href')).toBe(href);
+    // 장비 · 시선 기준이 모두 준비된 상태(fixture 기본값)에서도 막습니다
+    expect(findButton('Take 4 시작하기').disabled).toBe(true);
+    expect(fixture.create).not.toHaveBeenCalled();
+    // 장치 변경도 권한 요청 경로이므로 같은 제한을 따릅니다.
+    const deviceSelectors = [...host.querySelectorAll<HTMLSelectElement>('select')];
+    expect(deviceSelectors).toHaveLength(2);
+    expect(deviceSelectors.every((select) => select.disabled)).toBe(true);
+  },
+);
+
+it('튜토리얼 재연습이 막히면 장치를 켜는 수동 버튼도 요청하지 않는다', async () => {
+  fixture.data = { ...fixture.data, tutorial_block: 'TUTORIAL_REPORT_USED' };
+  fixture.live = false;
+  fixture.micOk = false;
+  await render();
+  const openDevices = findButton('카메라·마이크 켜기');
+  expect(openDevices.disabled).toBe(true);
+  await act(async () => openDevices.click());
+  expect(fixture.request).not.toHaveBeenCalled();
+});
+
+it('준비 정보를 받은 뒤에만 자동 카메라 권한을 한 번 요청한다', async () => {
+  activatePage();
+  const prepared = fixture.data;
+  fixture.data = null as unknown as PrepareResponse;
+  fixture.preparePending = true;
+  fixture.live = false;
+
+  await render();
+  expect(fixture.request).not.toHaveBeenCalled();
+
+  fixture.data = { ...prepared, tutorial_block: null };
+  fixture.preparePending = false;
+  await render();
+  expect(fixture.request).toHaveBeenCalledTimes(1);
+
+  await render();
+  expect(fixture.request).toHaveBeenCalledTimes(1);
+});
+
+it('준비 정보 조회 실패 시 자동·수동 장치 권한 요청을 막는다', async () => {
+  activatePage();
+  fixture.data = null as unknown as PrepareResponse;
+  fixture.prepareError = true;
+  fixture.live = false;
+
+  await render();
+  expect(fixture.request).not.toHaveBeenCalled();
+  const openDevices = findButton('카메라·마이크 켜기');
+  expect(openDevices.disabled).toBe(true);
+  await act(async () => openDevices.click());
+  expect(fixture.request).not.toHaveBeenCalled();
+});
+
+it('막히지 않은 샘플이나 일반 피치에는 튜토리얼 안내가 없다', async () => {
+  await render();
+  expect(host.querySelector('[data-tutorial-block]')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
 });
 
 it('조합 없이 들어오면 최신 조합 안내를 띄우지 않는다', async () => {

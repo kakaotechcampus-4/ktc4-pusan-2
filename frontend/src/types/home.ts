@@ -30,6 +30,8 @@ export interface HomePitch {
    * 보류되거나 멈춘 분석만 남았으면 true 입니다. 기준은 `backend/README.md` 의 "발표 삭제"
    */
   can_delete: boolean;
+  /** First Take 튜토리얼 샘플 피치인지 (BE #1135). 제목은 사용자가 바꿀 수 있어 이 값으로 가립니다 */
+  is_demo: boolean;
 }
 
 export interface PitchListResponse {
