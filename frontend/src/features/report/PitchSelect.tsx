@@ -117,7 +117,8 @@ export function PitchSelect({
           onBlur={(event) => {
             // 터치로 비포커스 옵션을 누르면 초점이 body로 빠질 수 있습니다.
             // 이 경우에는 클릭 선택을 먼저 처리하고, 실제 외부 포인터는 별도 리스너가 닫습니다.
-            if (event.relatedTarget && event.relatedTarget !== document.body) setOpen(false);
+            if (event.relatedTarget && event.relatedTarget !== document.body)
+              setOpen(false);
           }}
           className="flex min-h-11 min-w-28 cursor-pointer select-none items-center gap-2 border-2 border-ink bg-white py-1 pl-2 pr-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep aria-expanded:bg-cream"
         >
@@ -160,7 +161,9 @@ export function PitchSelect({
                   leading !== null && index === 0 && options.length > 0,
                 )}
               >
-                <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{item.label}</span>
+                <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
+                  {item.label}
+                </span>
                 {index === selectedIndex && (
                   <svg aria-hidden="true" viewBox="0 0 14 14" className="size-3.5 shrink-0">
                     <path
