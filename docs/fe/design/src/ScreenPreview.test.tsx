@@ -644,6 +644,22 @@ it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립
   expect(document.activeElement).toBe(launcher);
 });
 
+it('개인정보 처리 동의 창은 동의 전 Escape로 닫히지 않고 로그인한 화면 위에 열린다', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  await render('privacy-consent');
+  const dialog = host.querySelector<HTMLDialogElement>('dialog')!;
+  expect(dialog).toBeTruthy();
+  expect(dialog.open).toBe(true);
+  expect(host.textContent).toContain('내 피치');
+  expect(button('동의하고 시작하기')).toBeDefined();
+  expect(button('동의하지 않고 로그아웃')).toBeDefined();
+  const cancel = new Event('cancel', { cancelable: true });
+  await act(async () => dialog.dispatchEvent(cancel));
+  expect(cancel.defaultPrevented).toBe(true);
+});
+
 it('리포트는 발표 전체 지표를 구분하고 상세 비교 모달의 스크롤을 잠근다', async () => {
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;
