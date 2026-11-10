@@ -5,18 +5,16 @@ export const CHAT_LAUNCHER_CLASS =
   'light-surface fixed bottom-[var(--chat-launcher-bottom)] left-2 z-[70] text-ink';
 
 /**
- * Explicit allowlist for the floating chat. Live rehearsal is intentionally
+ * Explicit allowlist for the chat panel. Device check and live rehearsal are intentionally
  * excluded; adding a new route requires an explicit decision rather than
  * exposing chat by accident.
- * 패턴은 `app/routes.tsx` 의 경로 문자열 그대로입니다. 피치 만들기 · 수정 · 장치 점검은 화면 상태를 함께 보내고,
- * 연습 준비로 옮겨 가도 대화가 이어져야 해서 둡니다 (`docs/ai/features/chat-agent.md` 12-4 F1 · F2)
+ * 패턴은 `app/routes.tsx` 의 경로 문자열 그대로입니다. 피치 만들기 · 수정은 화면 상태를 함께 보냅니다.
  */
 const chatRoutePatterns = [
   '/',
   '/pitches',
   '/pitch/new',
   '/pitch/:id/edit',
-  '/pitch/:pitchId/device-check',
   '/takes',
   '/me',
   '/about',
@@ -33,7 +31,7 @@ export function canShowChat(pathname: string): boolean {
 /**
  * 지금 화면 — 보내기의 `page` 와 처음 범위의 바탕입니다 (12-4 F2 "처음 범위" 표 · "메시지를 보낼 때마다 지금 화면 `page`").
  * - `route` 는 경로 패턴 그대로(`ChatPage.route`), 실제 ID 는 `pitchId` · `takeId` 로 따로 둡니다.
- * - `pitchId` 는 화면이 바로 아는 피치 — 피치 수정 · 장치 점검은 경로의 ID, Take 기록은 `?pitch=`.
+ * - `pitchId` 는 화면이 바로 아는 피치 — 피치 수정은 경로의 ID, Take 기록은 `?pitch=`.
  *   리포트와 그 아래 화면(`/takes/:takeId/…`)은 Take 를 조회해야 알아서 여기서는 null 이고 `needsTake` 가 true 입니다.
  * 채팅을 띄우지 않는 화면이면 null
  */
@@ -64,7 +62,7 @@ export function chatRouteOf(pathname: string, search = ''): ChatRouteInfo | null
     if (takeId) return { route, pitchId: null, takeId, needsTake: true };
     return {
       route,
-      pitchId: usableId(match.params.id ?? match.params.pitchId),
+      pitchId: usableId(match.params.id),
       takeId: null,
       needsTake: false,
     };

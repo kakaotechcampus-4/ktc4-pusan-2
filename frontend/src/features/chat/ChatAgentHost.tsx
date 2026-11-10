@@ -53,9 +53,18 @@ import { useChatSession, type ChatNotice, type ChatSession } from './useChatSess
  * 채팅에서 오류가 나면 대화만 닫고 런처 자리에 안내와 [다시 시도]를 둡니다. 화면은 그대로 씁니다 (12-4 F8 · L3-36).
  */
 export function ChatAgentHost() {
+  const { pathname, search } = useLocation();
+  const info = chatRouteOf(pathname, search);
+  const hidden = info === null;
+
+  // 숨는 화면으로 가면 닫습니다. 돌아왔을 때 패널이 다시 열려 초점을 빼앗지 않게 합니다
+  useLayoutEffect(() => {
+    if (hidden) useChatStore.getState().closeChat();
+  }, [hidden]);
+
   return (
     <ChatErrorBoundary onReset={resetChatAfterFailure}>
-      <ChatLayer />
+      <ChatLayer pathname={pathname} info={info} />
     </ChatErrorBoundary>
   );
 }
@@ -74,17 +83,9 @@ function resetChatAfterFailure(failures: number) {
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
 const MAX_MESSAGE_LENGTH = 2000;
 
-function ChatLayer() {
-  const { pathname, search } = useLocation();
-  const info = chatRouteOf(pathname, search);
-  const hidden = info === null;
+function ChatLayer({ pathname, info }: { pathname: string; info: ChatRouteInfo | null }) {
   // 입력은 여기 두어 패널을 닫거나 채팅이 숨는 화면을 지나도 남습니다. 사용자가 바뀌면 비웁니다
   const [draft, setDraft] = useState({ userId: null as string | null, text: '' });
-
-  // 숨는 화면으로 가면 닫습니다. 돌아왔을 때 패널이 다시 열려 초점을 빼앗지 않게 합니다
-  useEffect(() => {
-    if (hidden && useChatStore.getState().open) useChatStore.getState().closeChat();
-  }, [hidden]);
 
   if (!info) return null;
 
@@ -176,7 +177,7 @@ function ChatSessionView({
     // 런처는 화면 왼쪽 아래의 44px 마스코트 아이콘입니다.
     // 화면별 하단 고정 바를 피하는 여백은 chatLauncherBottom 에서 관리합니다
     <div
-      // data-chat-launcher: index.css의 장치 점검·피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
+      // data-chat-launcher: index.css의 피치 생성 여백 보정, 오류 경계의 초점 복귀 및 테스트가 참조합니다
       data-chat-launcher=""
       style={{ '--chat-launcher-default-bottom': `${launcherBottom}px` } as CSSProperties}
       className={CHAT_LAUNCHER_CLASS}
@@ -464,11 +465,8 @@ function ChatPanel({
   };
 
   return (
-    // 패널은 런처 위 왼쪽에 정렬해 열리고 상단바(--spacing-app-header) 아래에서 멈춥니다.
-    // 4.25rem = 런처 높이 2.75rem + 위아래 간격 0.75rem 둘.
-    // 낮은 창에서는 메시지 목록이 먼저 줄고, 그보다 낮으면(150% · 200% 확대) 패널 전체가 스크롤되어
-    // 머리 · 입력칸 · 버튼이 잘리지 않습니다 (12-4 "키보드 · 접근성")
     <section
+      data-chat-panel=""
       ref={panelRef}
       id={`${id}-panel`}
       role="dialog"
@@ -482,7 +480,7 @@ function ChatPanel({
           onClose();
         }
       }}
-      className="absolute bottom-full left-0 mb-3 flex h-[36rem] outline-none max-h-[calc(100dvh-var(--spacing-app-header)-var(--chat-launcher-bottom)-4.25rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-y-auto rounded-2xl border-[3px] border-ink bg-white shadow-[6px_6px_0_var(--color-ink),0_18px_36px_rgba(42,39,35,0.2)]"
+      className="chat-side-panel fixed inset-y-0 right-0 flex w-[min(var(--chat-panel-width),100%)] flex-col overflow-y-auto overscroll-contain border-l border-line bg-white outline-none"
     >
       <ChatPanelHeader
         titleId={`${id}-title`}
