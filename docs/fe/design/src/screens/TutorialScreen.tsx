@@ -30,6 +30,35 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
           튜토리얼 리포트는 계정당 한 번 받을 수 있어요. 리포트가 나오기 전에 연습이 끊겼다면 다시
           할 수 있어요.
         </p>
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            aria-disabled={pending || used}
+            onClick={() => {
+              if (!pending && !used) onNavigate('prepare-mission');
+            }}
+            className="border-2 border-ink bg-coral-deep px-6 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] hover:bg-ink aria-disabled:cursor-wait aria-disabled:opacity-60 aria-disabled:hover:bg-coral-deep"
+          >
+            {pending ? '샘플 준비 중…' : '튜토리얼 시작하기 →'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('home')}
+            className="text-sm font-bold underline underline-offset-4"
+          >
+            내 피치로 돌아가기
+          </button>
+        </div>
+        {pending && (
+          <p role="status" className="mt-5 text-sm text-stone">
+            샘플 발표를 준비하고 있습니다. (설계서 예시)
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mt-3 text-sm font-bold text-coral-deep">
+            요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.
+          </p>
+        )}
         {used && (
           <section role="alert" className="mt-6 border-2 border-ink bg-cream p-5">
             <h2 className="font-bold">튜토리얼 리포트를 이미 받았어요</h2>
@@ -45,7 +74,7 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
             </button>
           </section>
         )}
-        <section className="mt-8 border-2 border-ink bg-panel p-6">
+        <section className="mt-10 border-2 border-ink bg-panel p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-bold">샘플 발표</h2>
             <span className="border border-line-strong bg-cream px-3 py-1 text-xs font-bold">
@@ -68,33 +97,6 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
           </p>
         </section>
 
-        <div className="mt-7 flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            disabled={pending || used}
-            onClick={() => onNavigate('prepare-mission')}
-            className="border-2 border-ink bg-coral-deep px-6 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] hover:bg-ink disabled:cursor-wait disabled:opacity-60"
-          >
-            {pending ? '샘플 준비 중…' : '튜토리얼 시작하기 →'}
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('home')}
-            className="text-sm font-bold underline underline-offset-4"
-          >
-            내 피치로 돌아가기
-          </button>
-        </div>
-        {pending && (
-          <p role="status" className="mt-5 text-sm text-stone">
-            샘플 발표를 준비하고 있습니다. (설계서 예시)
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="mt-3 text-sm font-bold text-coral-deep">
-            요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.
-          </p>
-        )}
         <p className="mt-6 text-xs text-stone">
           설계서 전용 미리보기입니다. 실제 튜토리얼 API 요청 없이 장치 점검 화면으로
           연결합니다.
