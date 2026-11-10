@@ -1233,3 +1233,8 @@
 @media (prefers-reduced-motion: reduce) {
   .stage-head .stage-mission-label { animation: none; }
 }
+
+/* 최신 StageScreen의 다음 장 썸네일 전체를 클릭 가능한 버튼으로 취급한다. */
+.slide-advance[data-enabled='false'] { cursor: default; }
+.rail .next .next-go { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.rail .next .next-go:disabled { cursor: default; }
