@@ -417,15 +417,17 @@ it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지
   expect(input().value).toBe('작성 중');
 });
 
-it('런처는 왼쪽 아래에 두고 패널은 화면 오른쪽에 연다', async () => {
+it('런처와 패널은 오른쪽에 두며 닫힌 뒤 런처 초점을 복원한다', async () => {
   await visit('/');
   const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
-  expect(container.classList.contains('left-2')).toBe(true);
+  expect(container.classList.contains('right-2')).toBe(true);
   expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('76px');
   expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
 
   await openPanel();
   expect(panel()!.classList.contains('right-0')).toBe(true);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.activeElement).toBe(launcher());
 });
 
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
