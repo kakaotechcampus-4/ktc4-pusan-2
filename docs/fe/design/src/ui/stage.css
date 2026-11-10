@@ -1185,3 +1185,12 @@
 .stage-live .stage-head .end:disabled { opacity: .5; cursor: not-allowed; }
 .stage-live .stage-head .end:focus-visible { outline: 2px solid var(--color-ink-stage); outline-offset: 2px; }
 .stage-live .stage-head .end:hover:not(:disabled) { background: var(--color-coral-deep); }
+
+/* 마우스로 넘기기(제품 SlideNav · slide-advance). 이미 있는 칸 안에 앉아 슬라이드 칸 · 발밑 줄(26px) 크기를 바꾸지 않는다. */
+.slide-advance { position: absolute; inset: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.slide-advance:disabled { cursor: default; }
+.stage-foot .slide-nav { display: inline-flex; flex-shrink: 0; gap: 4px; }
+.stage-foot .slide-nav button { height: 22px; padding: 0 10px; border: 1px solid var(--color-ink-stage); border-radius: 999px; background: var(--color-stage-panel); color: var(--color-ink-stage); font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
+.stage-foot .slide-nav button:hover:not(:disabled) { background: var(--color-stage-deep); }
+.stage-foot .slide-nav button:disabled { opacity: .4; cursor: default; }
+.stage-foot .slide-nav button:focus-visible { outline: 2px solid var(--color-ink-stage); outline-offset: 2px; }
