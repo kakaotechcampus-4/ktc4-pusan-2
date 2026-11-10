@@ -422,6 +422,9 @@ def fill(template: str, **values: str) -> str:
         if tail == "으로":
             return v + ("로" if _final(v) in (0, 8) else "으로")
         if tail == "예요":
+            if v.endswith("게"):
+                # 소리 크기 표기('점검 때보다 1.1dB 작게')로 끝나면 '작게예요'가 되지 않게(#1182)
+                return v + " 나왔어요"
             return v + ("이에요" if _final(v) else "예요")
         return v
 
