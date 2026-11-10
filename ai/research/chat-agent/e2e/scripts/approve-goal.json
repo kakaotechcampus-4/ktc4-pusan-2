@@ -1,0 +1,18 @@
+{
+  "user_message": "3장 청중 시선 비율을 목표로 잡고 다음 연습 준비해 줘",
+  "expect": {
+    "plan_steps": ["기록 확인", "목표 저장"],
+    "result_text": "목표를 저장했어요."
+  },
+  "script": [
+    {"plan": {"steps": ["기록 확인", "목표 저장"]}},
+    {"tools": [["get_take_report", {"take_id": "$take_id", "section": "slides", "slide_number": 3}]]},
+    {"tools": [["save_goal", {"metric": "audience_ratio", "slide_number": 3, "base_take_id": "$take_id", "authorized_by": "목표로 잡고", "reason": "3장 시선 목표"}]], "prefix": "sg"},
+    {"done": true}
+  ],
+  "answers": [
+    {"claims": []},
+    {"claims": []}
+  ],
+  "fixes": [{"fix": {}}, {"fix": {}}]
+}

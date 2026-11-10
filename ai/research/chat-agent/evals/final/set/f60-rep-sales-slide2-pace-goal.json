@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-sales-slide2-pace-goal",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "'2장 말 속도를 범위 안으로' 목표 저장 — cpm · 2장 · in_range, 승인 뒤 저장",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sales",
+        "title": "영업 제안 발표",
+        "takes": [
+          {
+            "take_id": "sales-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                300,
+                362,
+                312,
+                298
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "sales-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                306,
+                368,
+                318,
+                300
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 69
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-sales"
+    }
+  },
+  "turns": [
+    {
+      "message": "2장만 가면 말이 빨라지는 게 계속 신경 쓰여요. 2장 말 속도를 적정 범위 안으로 들이는 걸 다음 목표로 잡아 주세요.",
+      "page_take_id": "sales-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "ask-approve-exec",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:SAVE_GOAL:ASK",
+          "approve:SAVE_GOAL",
+          "exec:SAVE_GOAL:OK",
+          "claim:ACTION_RESULT"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "cpm",
+        "path": "after.conversation.goal.metric"
+      },
+      {
+        "check_id": "goal-slide",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 2,
+        "path": "after.conversation.goal.slide_number"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "in_range",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "save-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-guide",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "말 속도(pacing_rhythm)만 우선 개선이라 목표 충돌이 없다 → 확인 카드. cpm 목표는 in_range(6-4)."
+}

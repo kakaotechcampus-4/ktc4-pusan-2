@@ -19,6 +19,9 @@ AWAITING_CONFIRMATION = "AWAITING_CONFIRMATION"
 REVIEWING = "REVIEWING"
 DONE = "DONE"
 
+# takes.analysis_hold_reason. 병합 rescore 가 끝내 실패해 리뷰를 보류했다 (architecture.md 1-7)
+COVERAGE_RESCORE_FAILED = "COVERAGE_RESCORE_FAILED"
+
 # take_ai_results.kind
 TAKE_RESULT = "TAKE_RESULT"
 REVIEW = "REVIEW"

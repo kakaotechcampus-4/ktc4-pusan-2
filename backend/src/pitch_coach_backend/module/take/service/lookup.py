@@ -6,6 +6,7 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.take.dto import TutorialBlock
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import (
     ANALYSIS_STALL_AFTER,
@@ -13,6 +14,7 @@ from pitch_coach_backend.module.take.repository import (
     TakeRepository,
 )
 from pitch_coach_backend.module.take.states import ANALYZING, AWAITING_CONFIRMATION, RUNNING
+from pitch_coach_backend.module.user import service as user_service
 
 
 class TakeProgress(Protocol):
@@ -67,3 +69,21 @@ def pitch_has_take_blocking_deletion(db: Session, pitch_id: uuid.UUID, now: date
     return any(
         blocks_pitch_deletion(take, now) for take in TakeRepository(db).progress_in_pitch(pitch_id)
     )
+
+
+def tutorial_block(
+    db: Session, pitch_id: uuid.UUID, user_id: uuid.UUID, now: datetime
+) -> TutorialBlock | None:
+    """튜토리얼 샘플 발표에서 새 Take 를 막는 이유. 막지 않으면 None. 샘플 발표인지는 부르는 쪽이
+    본다. Take 생성(`take._check_tutorial_take`)과 장치 점검 준비가 같이 쓴다.
+
+    튜토리얼 리포트는 계정당 한 번이고 리포트(리뷰)가 만들어진 횟수로 센다. 끊긴 연습은 분석하지
+    않아 리포트가 없으니 다시 할 수 있다. 받았다는 기록은 리뷰 결과 · Take 완료와 한 커밋이다
+    (`review.save_review`). 그래서 분석 중인지를 먼저 본다 — 기록을 먼저 보면 두 조회 사이에 그
+    커밋이 끼어 둘 다 지나갈 수 있다.
+    """
+    if pitch_has_running_analysis(db, pitch_id, now):
+        return "TUTORIAL_ANALYSIS_RUNNING"
+    if user_service.has_tutorial_report(db, user_id):
+        return "TUTORIAL_REPORT_USED"
+    return None

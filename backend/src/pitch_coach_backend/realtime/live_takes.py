@@ -8,6 +8,7 @@
 import functools
 import uuid
 from collections.abc import Iterable
+from datetime import datetime
 
 import anyio
 
@@ -59,3 +60,8 @@ class RealtimeLiveTakes:
 
     def sign_out(self, user_id: uuid.UUID) -> None:
         anyio.from_thread.run(registry.sign_out, user_id)
+
+    def end_stuck(self, take_id: uuid.UUID, last_active_at: datetime) -> bool:
+        return anyio.from_thread.run(
+            registry.end_stuck, take_id, get_transcript_store(), last_active_at
+        )

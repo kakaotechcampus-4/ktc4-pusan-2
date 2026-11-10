@@ -252,6 +252,19 @@ def test_l1_09_update_plan_rejects_bad_plans(steps: list[dict[str, Any]]) -> Non
     assert validate_args("update_plan", {"steps": steps}) == "BAD_ARGS"
 
 
+@pytest.mark.parametrize("hint", ["fetch_pitch", "reassess", "모르는 도구", 3])
+def test_update_plan_unknown_tool_hint_is_dropped_not_bad_args(hint: Any) -> None:
+    """도구 힌트(`tool`)는 힌트일 뿐이다: 목록 밖 이름은 없는 것(None)으로 받는다. 틀린 인자로 막으면 계획 고치기 전체가
+    BAD_ARGS 로 버려지고 모델이 같은 호출을 되풀이했다(r9 평가: fetch_pitch 힌트로 update_plan 오류 17번)."""
+    steps = [
+        {"step": "피치 찾기", "status": "DOING", "tool": "list_pitches"},
+        {"step": "피치 바꾸기", "status": "TODO", "tool": hint},
+    ]
+    args = validate_args("update_plan", {"steps": steps})
+    assert not isinstance(args, str)
+    assert [s.tool for s in args.steps] == ["list_pitches", None]  # type: ignore[attr-defined]
+
+
 def test_l1_09_update_plan_is_not_cached_and_trace_hides_step_text() -> None:
     ctx = make_ctx()
     args = {"steps": [{"step": f"대본 속 {SECRET} 확인", "status": "DOING", "note": SECRET}]}
@@ -294,10 +307,13 @@ def test_get_screen_draft_values_are_screen_evidence_with_saved_flag() -> None:
     assert ctx.registry.get(saved["evidence_id"]).saved is True
     assert screen["changed"] == ["time_limit_sec", "criteria_text"]
     saved_ids = {v["evidence_id"] for v in res.data["saved"].values() if v is not None}
-    assert (
-        set(res.evidence_ids)
-        == {v["evidence_id"] for v in draft.values() if v is not None} | saved_ids
-    )
+    # 지금 구역의 화면 이름도 근거와 함께 싣는다(final60 inj-screen-criteria: "어느 단계예요?")
+    step = screen["step_label"]
+    assert step["value"] == "평가 기준"
+    assert ctx.registry.get(step["evidence_id"]).saved is False
+    assert set(res.evidence_ids) == {
+        v["evidence_id"] for v in draft.values() if v is not None
+    } | saved_ids | {step["evidence_id"]}
     for eid in res.evidence_ids:
         ev = ctx.registry.get(eid)
         assert (
@@ -369,7 +385,16 @@ def test_list_pitches_items_and_score_evidence() -> None:
     assert res.ok and res.read_state is None
     assert (res.data["total"], res.data["shown"]) == (1, 1)
     row = res.data["items"][0]
-    assert (row["pitch_id"], row["title"], row["take_count"]) == ("p-1", "졸업 발표", 3)
+    assert (row["pitch_id"], row["title"], row["take_count"]["value"]) == ("p-1", "졸업 발표", 3)
+    # 피치마다 Take 수도 근거다(0 이면 '그 피치에 아직 Take 없음'의 근거, 6-8)
+    tc = ctx.registry.get(row["take_count"]["evidence_id"])
+    assert (tc.origin, tc.pitch_id, tc.path, tc.value, tc.unit) == (
+        "RECORD",
+        "p-1",
+        "pitches[pitch_id=p-1].take_count",
+        3,
+        "count",
+    )
     dims = row["last_review"]["priority_dimensions"]
     assert [d["dimension"] for d in dims] == ["audience_gaze", "script_independence"]
     for d in dims:
@@ -379,7 +404,11 @@ def test_list_pitches_items_and_score_evidence() -> None:
     score = row["last_review"]["score"]
     ev = ctx.registry.get(score["evidence_id"])
     assert score["value"] == 68 and ev.value == 68 and ev.origin == "RECORD" and ev.take_id == "t-5"
-    assert res.evidence_ids == [*(d["evidence_id"] for d in dims), score["evidence_id"]]
+    assert res.evidence_ids == [
+        row["take_count"]["evidence_id"],
+        *(d["evidence_id"] for d in dims),
+        score["evidence_id"],
+    ]
     assert trace.result_summary == "피치 1개(전체 1개)"
 
 
@@ -585,6 +614,40 @@ def test_take_report_improvements_text_is_data_and_numbers_have_evidence() -> No
     assert [it["kind"] for it in only3.data["items"]] == ["improvement"]
 
 
+def test_take_report_empty_improvements_points_to_problem_segments() -> None:
+    """리뷰의 강점 · 개선점이 비면 '문제 없음'으로 읽지 않게 장별 문제 구간 · 차원 상태를 읽을 절을 알려 준다(r9 rep-repeat-issue)."""
+    req = load(base_request(), "t-4")
+    review = req["context"]["pitch"]["focus_take"]["results"]["review"]
+    review["improvements"], review["strengths"] = [], []
+    res, _ = run(make_ctx(req), "get_take_report", {"take_id": "t-5", "section": "improvements"})
+    assert res.read_state == "EMPTY" and res.data["items"] == []
+    assert "problem_segments" in res.data["note"] and "dimensions" in res.data["note"]
+
+
+def test_take_report_no_problem_segments_points_to_review_dimensions() -> None:
+    """코치가 찾은 문제 구간이 0곳이어도 리뷰가 있으면 차원 판정(우선 개선)을 읽을 절을 알려 준다(final60 ana-policy-recurring ·
+    rep-conference-two-turn-goal: '매번 지적된 것'을 문제 구간으로만 찾고 '확인되지 않는다'고 답함). 리뷰가 없으면 알리지 않는다."""
+    req = load(base_request(), "t-4")
+    req["context"]["pitch"]["focus_take"]["results"]["take_result"]["problem_segments"] = []
+    res, _ = run(
+        make_ctx(req), "get_take_report", {"take_id": "t-5", "section": "problem_segments"}
+    )
+    assert res.data["items"] == [] and "dimensions" in res.data["note"]
+    with_items, _ = run(
+        make_ctx(load(base_request(), "t-4")),
+        "get_take_report",
+        {"take_id": "t-5", "section": "problem_segments"},
+    )
+    assert with_items.data["items"] and "note" not in with_items.data
+    req2 = load(base_request(), "t-4")
+    req2["context"]["pitch"]["focus_take"]["results"]["take_result"]["problem_segments"] = []
+    req2["context"]["pitch"]["focus_take"]["results"]["review"] = None
+    no_review, _ = run(
+        make_ctx(req2), "get_take_report", {"take_id": "t-5", "section": "problem_segments"}
+    )
+    assert "note" not in no_review.data
+
+
 def test_take_report_mission_results() -> None:
     req = load(base_request(), "t-4")
     req["context"]["pitch"]["focus_take"]["results"]["review"]["mission_results"] = [
@@ -612,10 +675,10 @@ def test_take_report_mission_results() -> None:
     )
     assert res.data["active_missions"][0]["mission_id"] == "m-7"
     assert all("active_missions" not in it for it in res.data["items"])
-    assert res.result_summary == "1개 항목"
+    assert res.result_summary == "리뷰 분석 · 1개 항목"  # 읽은 출처(리뷰)를 앞에 붙인다
     empty, _ = run(make_ctx(), "get_take_report", {"take_id": "t-5", "section": "mission_results"})
     assert empty.ok and empty.read_state == "EMPTY"
-    assert empty.data["items"] == [] and empty.result_summary == "EMPTY"
+    assert empty.data["items"] == [] and empty.result_summary == "리뷰 분석 · EMPTY"
 
 
 def test_take_report_revisions_follow_source_per_section() -> None:
@@ -1039,3 +1102,61 @@ def test_cache_key_changes_with_omitted_paths_and_pitch_total() -> None:
     k3 = cache_key(make_ctx(req), "list_pitches", lp)  # type: ignore[arg-type]
     req["context"]["pitches_total"] += 1
     assert cache_key(make_ctx(req), "list_pitches", lp) != k3  # type: ignore[arg-type]
+
+
+# ── L1-19 도구 구현의 예외 ───────────────────────────────────────────────────
+
+
+def test_fm_L1_19_runner_exception_is_that_tools_error_without_its_text_and_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """도구 구현이 예외로 끝나면 그 호출 하나의 오류 결과(`TOOL_FAILED`, `outcome:"ERROR"`)다. 예외 글은 모델에 돌려주는 결과 ·
+    도구 기록 · 로그용 `crash` 어디에도 없고, 오류라 캐시하지 않아 다시 부르면 다시 실행한다. 실행이 이어지는 턴 시험은
+    test_failure_rows.py `test_fm_L1_19_tool_exception_becomes_that_tools_error_and_the_run_goes_on`."""
+    from pitch_coach_ai.features.chat_agent.tools import TOOL_FAILED, impl
+
+    calls: list[str] = []
+
+    def boom(_ctx: Any, _a: Any) -> ToolResult:
+        calls.append("run")
+        raise RuntimeError(f"{SECRET} 0.28")
+
+    monkeypatch.setitem(impl.RUNNERS, "list_takes", boom)
+    ctx = make_ctx()
+    tr, trace = run(ctx, "list_takes", {})
+    assert (tr.ok, tr.outcome, tr.data) == (False, "ERROR", None)
+    assert tr.error is not None and tr.error["code"] == TOOL_FAILED
+    assert (trace.outcome, trace.args_summary, trace.result_summary) == (
+        "ERROR",
+        "Take 목록",
+        "확인 실패",
+    )
+    assert tr.crash is not None and tr.crash["cause"] == "RuntimeError"
+    assert tr.crash["where"][-1].endswith(" boom")
+    blob = json.dumps([tr.model_view(), trace.model_dump(), tr.crash], ensure_ascii=False)
+    assert SECRET not in blob and "0.28" not in blob
+    assert ctx.tool_cache == {}
+    run(ctx, "list_takes", {}, seq=2)
+    assert calls == ["run", "run"]  # 캐시 적중이 아니라 다시 실행
+
+
+def test_screen_step_label_sentence_passes_the_answer_checks() -> None:
+    """화면 구역 이름 근거로 쓴 단계 문장("지금은 평가 기준 단계예요")이 답 검사를 통과해 답에 남는다(final60
+    inj-screen-criteria: 단계 질문에 답할 근거가 없어 시간 비교만 답함)."""
+    from . import fakes as F
+
+    req = F.request(user_message="지금 이 화면에서 제가 어느 단계에 있는지 알려 줘요.")
+    req["page"]["screen"] = pitch_screen()
+
+    def answer(r: Any) -> Any:
+        (scr,) = [x for x in F.tool_results(r) if "screen" in (x.get("data") or {})]
+        eid = scr["data"]["screen"]["step_label"]["evidence_id"]
+        return F.answer([F.claim("RECORD", "지금은 평가 기준 단계예요.", evidence_ids=[eid])])
+
+    llm = F.FakeLlm(
+        [F.plan(), F.tools(("get_screen", {})), F.done()], answers=[answer], fixes=[F.fix({})]
+    )
+    _, _, data = F.run_turn(req, llm)
+    assert data is not None
+    texts = [c["text"] for c in data["message"]["claims"]]
+    assert "지금은 평가 기준 단계예요." in texts

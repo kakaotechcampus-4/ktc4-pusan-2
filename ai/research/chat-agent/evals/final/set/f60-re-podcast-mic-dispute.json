@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-re-podcast-mic-dispute",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'마이크가 끊겨 빠르게 잡혔다' 측정값 이의 — 다시 평가하지 않고 측정 결과 안내",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-pod",
+        "title": "팟캐스트 기획 발표",
+        "takes": [
+          {
+            "take_id": "pod-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "cpm": 340
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "pod-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                366,
+                320,
+                310,
+                372
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  1,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  4,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 68
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-pod"
+    }
+  },
+  "turns": [
+    {
+      "message": "녹음할 때 마이크가 자꾸 끊겨서 말이 빨랐다고 잘못 잡힌 것 같아요. 속도 평가는 리뷰를 다시 돌려 주세요.",
+      "page_take_id": "pod-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "measurement-fixed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.MEASUREMENT_FIXED",
+        "grader": "template",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-reassess-propose",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "replan",
+        "note": "측정값 이의(조건 낱말 없음)는 다시 평가를 내지 않는다(6-6)"
+      },
+      {
+        "check_id": "no-reassess-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:REASSESS:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-reassess-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "REASSESS"
+        ],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-confirm-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "ASK_CONFIRM"
+        ],
+        "path": "card_types"
+      },
+      {
+        "check_id": "no-review-call",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "next-take-check",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "다음 (Take|연습)",
+        "grader": "regex",
+        "note": "다음 Take 에서 확인할 방법을 함께 안내(6-6)"
+      }
+    ]
+  }
+}

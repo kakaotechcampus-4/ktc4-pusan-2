@@ -1,0 +1,18 @@
+# 대화 에이전트 E2E 전용 PostgreSQL. 팀 compose(infra/)와 무관하다. 프로젝트 이름 pc-e2e.
+name: pc-e2e
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: pc
+      POSTGRES_PASSWORD: pc
+      POSTGRES_DB: pc_e2e
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pc -d pc_e2e"]
+      interval: 1s
+      timeout: 3s
+      retries: 30

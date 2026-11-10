@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from functools import partial
 
@@ -50,14 +50,32 @@ def start(
     )
 
 
+def recover_held(
+    take_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
+) -> asyncio.Task[None] | None:
+    """리뷰를 보류한 Take 의 병합 rescore 를 한 번 더 하고, 보류가 풀리면 확인 · 리뷰로 이어 간다.
+    관리자 콘솔이 부른다. 이 Take 의 분석이 이미 돌고 있으면 띄우지 않고 None."""
+    if _running.running(take_id):
+        return None
+    return _running.spawn(
+        _guarded(take_id, _recover_held(take_id, session_factory)),
+        name=f"take-coverage-recovery:{take_id}",
+        key=take_id,
+    )
+
+
 async def run(
     take_id: uuid.UUID,
     session_factory: SessionFactory = SessionLocal,
     *,
     restarted: bool = False,
 ) -> None:
+    await _guarded(take_id, _run(take_id, session_factory, restarted))
+
+
+async def _guarded(take_id: uuid.UUID, work: Awaitable[None]) -> None:
     try:
-        await _run(take_id, session_factory, restarted)
+        await work
     except asyncio.CancelledError:
         logger.info("Take 분석을 멈춘다 (앱 종료) take=%s", take_id)
         raise
@@ -81,6 +99,24 @@ async def _score(take_id: uuid.UUID, session_factory: SessionFactory, restarted:
 
 async def _run(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> None:
     outcome = await _score(take_id, session_factory, restarted)
+    await _after_scoring(take_id, session_factory, outcome, restarted)
+
+
+async def _recover_held(take_id: uuid.UUID, session_factory: SessionFactory) -> None:
+    async with ai_slots.background():
+        outcome = await coverage_service.recover_held_coverage(take_id, session_factory)
+    if outcome == "SKIPPED":
+        # 그 사이 다른 작업이 표식을 잡았거나 보류가 풀렸다. 그 작업이 이어 간다
+        logger.info("보류를 풀 채점 표식을 잡지 못했다 take=%s", take_id)
+        return
+    if outcome != "HELD":
+        logger.info("병합 재채점을 다시 해 리뷰 보류를 풀었다 take=%s", take_id)
+    await _after_scoring(take_id, session_factory, outcome, restarted=False)
+
+
+async def _after_scoring(
+    take_id: uuid.UUID, session_factory: SessionFactory, outcome: str, restarted: bool
+) -> None:
     if outcome == "HELD":
         logger.warning("대본 전달도 병합이 실패해 리뷰를 보류한다 take=%s", take_id)
         return

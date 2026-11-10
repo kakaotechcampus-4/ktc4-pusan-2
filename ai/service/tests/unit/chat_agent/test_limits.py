@@ -372,7 +372,8 @@ def test_l1_16_alternating_requests_end_research_with_repeat_reason() -> None:
     )
     fd = final_ok(F.run_turn(request(), llm)[2])
     assert purposes(llm) == ["RESEARCH"] * 7 + ["ANSWER"]  # 계획 + 조사 6번 + 답
-    assert fd.status == "PARTIAL" and reason_of(fd) == "REPEAT"
+    # 반복으로 멈췄어도 답이 요청을 해소했으면 DONE 이다(끝 상태는 요청 해소로). 멈춘 까닭은 진단에 남는다
+    assert fd.status == "DONE" and reason_of(fd) == "REPEAT"
 
 
 def test_l1_16_new_evidence_keeps_alternating_requests_going() -> None:
@@ -574,7 +575,7 @@ def test_end_reason_repeat_when_same_request_is_repeated() -> None:
         answers=[compare_answer()],
     )
     fd = final_ok(F.run_turn(request(), llm)[2])
-    assert fd.status == "PARTIAL" and reason_of(fd) == "REPEAT"
+    assert fd.status == "DONE" and reason_of(fd) == "REPEAT"  # 비교 결론 · 값을 답했다
 
 
 def test_end_reason_repeat_when_invalid_tool_responses_repeat() -> None:

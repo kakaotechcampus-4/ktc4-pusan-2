@@ -20,7 +20,7 @@ from pitch_coach_ai.features.script_coverage.core import (
 
 # 예시 폴더는 코어 패키지 안에 있다. 패키지 위치가 바뀌면 위 import 앞부분만 바뀐다
 EXAMPLES = Path(core_module.__file__).resolve().parent / "examples"
-MODEL = "openai/gpt-5.6-luna"  # 예시를 만든 모델. 캐시 항목의 설정 해시가 이 이름에 의존한다
+MODEL = "openai/gpt-6-luna"  # 예시를 만든 모델. 캐시 항목의 설정 해시가 이 이름에 의존한다
 
 
 class TimeoutLLM:
@@ -83,10 +83,15 @@ def test_rubric_example():
         cache=DictCache(_load("rubric", "llm_cache.json")),
     )
     expected = _load("rubric", "response.json")
-    assert [r["meta"]["slide_number"] for r in expected["rubrics"]] == [6]
-    assert [f["slide_number"] for f in expected["failed"]] == [7]
+    assert [r["meta"]["slide_number"] for r in expected["rubrics"]] == [6, 7]
+    assert expected["failed"] == []
+    # 7번 장은 전달 단위 호출만 실패해 문장 단위 평가 기준으로 복구된다 (실패 목록에 없다)
+    assert [r["meta"]["rubric_quality"] for r in expected["rubrics"]] == [
+        "full",
+        "sentence_fallback",
+    ]
     assert_same(response.model_dump(mode="json"), expected)
-    # 7번 장이 실패한 까닭은 전달 단위 호출 하나뿐이다: 다른 단계는 캐시에서 다 읽는다
+    # 7번 장이 복구된 까닭은 전달 단위 호출 하나뿐이다: 다른 단계는 캐시에서 다 읽는다
     assert (semantic.calls, final.calls, unit.calls) == (0, 0, 1)
 
 
@@ -103,7 +108,16 @@ def test_analyze_example():
     assert [(f["slide_number"], f["error"]["code"]) for f in expected["failed"]] == [
         (4, "LLM_TIMEOUT"),
         (6, "RUBRIC_MISSING"),
+        (9, "STT_INCOMPLETE"),
     ]
+    # 실패 장의 간이 값: 4번 평가 기준 있음, 6번 평가 기준 없음(대본 글만), 9번 STT 끊김은 없음
+    assert [(f["fallback"] or {}).get("method") for f in expected["failed"]] == [
+        "lexical",
+        "lexical_no_rubric",
+        None,
+    ]
+    assert expected["detail"]["scope"]["target_slides"] == 4
+    assert expected["evaluations"][0]["detail"] is not None
     assert expected["confirmations"]  # 비슷한 말이 있어 확인할 항목이 있다
     assert_same(response.model_dump(mode="json"), expected)
     # 4번 장의 의미 평가 호출 하나만 시간 초과가 된다: 2번 장은 의미 평가 · 교차 검증을 캐시에서 읽는다

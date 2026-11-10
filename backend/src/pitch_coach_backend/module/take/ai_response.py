@@ -5,7 +5,7 @@
 
 import uuid
 from collections.abc import Mapping
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,11 +14,23 @@ from pitch_coach_backend.core.validation import reject_unstorable_json
 from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
 
+# 대본 전달도 호출이 실패한 이유 (`takes.coverage_failure_code`, 리포트 `content_status`).
+# AI 에러 본문은 읽지 않고 호출 오류와 상태 코드로만 나눈다 (`adapter/ai_client.post_coverage`)
+#   AI_TIMEOUT          : BE 시간 제한을 넘김 · 504
+#   AI_UNAVAILABLE      : 연결하지 못함 · 연결이 끊김 · 503
+#   AI_ERROR            : 그 밖의 5xx · 408 · 429 · 계약에 없는 상태 코드
+#   AI_REJECTED         : 422 (평가 기준 · 대본 글이 모두 없음 등 입력 오류)
+#   AI_INVALID_RESPONSE : 200 인데 본문을 읽지 못했거나 검사(`validate_coverage_reply`)에 걸림
+type CoverageFailureCode = Literal[
+    "AI_TIMEOUT", "AI_UNAVAILABLE", "AI_ERROR", "AI_REJECTED", "AI_INVALID_RESPONSE"
+]
+
 
 class CoverageCallError(Exception):
-    def __init__(self, reason: str, retryable: bool) -> None:
+    def __init__(self, reason: str, retryable: bool, *, failure_code: CoverageFailureCode) -> None:
         super().__init__(reason)
         self.retryable = retryable
+        self.failure_code = failure_code
 
 
 class _View(BaseModel):
@@ -98,7 +110,9 @@ def validate_coverage_reply(reply: Any, take_id: uuid.UUID | str) -> dict:
             raise ValueError("장 번호가 중복된 채점")
     except (ValueError, TypeError) as exc:
         # 검증 예외에는 대본·전사가 있을 수 있어 값이나 본문을 메시지에 붙이지 않는다.
-        raise CoverageCallError("invalid coverage response", retryable=False) from exc
+        raise CoverageCallError(
+            "invalid coverage response", retryable=False, failure_code="AI_INVALID_RESPONSE"
+        ) from exc
     # 새 필드와 장별 채점은 rescore에 그대로 돌려보내므로 모델로 다시 직렬화하지 않는다.
     return reply
 

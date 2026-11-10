@@ -4,7 +4,7 @@ import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import func
@@ -30,7 +30,15 @@ from pitch_coach_backend.module.take.dto import (
 from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import json_ints, parse_mission_ids
-from pitch_coach_backend.module.take.states import REVIEW, SCORING, TAKE_RESULT
+from pitch_coach_backend.module.take.states import (
+    ANALYZING,
+    FAILED,
+    FINALIZING,
+    REVIEW,
+    SCORING,
+    TAKE_RESULT,
+)
+from pitch_coach_backend.module.take.stt_gaps import stt_gap_ranges
 from pitch_coach_backend.module.user import service as user_service
 
 logger = logging.getLogger(__name__)
@@ -260,10 +268,14 @@ def save_take_result(
     """finalize 응답을 한 트랜잭션에 저장한다 (12-2). 저장했으면 True.
 
     이벤트(발표 중 못 넣은 것 + 이번 응답의 것, 받은 순서대로) · Take 결과 · take_summaries 측정
-    칸 · Take 길이 · 분석 단계(`SCORING`) · 동의 없는 Take 의 1초 원자료 삭제를 같이 한다. Take
-    행을 잠근 뒤 Take 가 아직 Take 결과를 기다리는 중(`ANALYZING` · `FINALIZING`)일 때만 커밋하고,
-    아니면 응답을 버린다 — 재시작한 BE 와 앞 작업의 응답이 겹쳐도 이미 앞으로 간 단계를 되돌리지
-    않게.
+    칸 · Take 길이 · STT 끊김 구간 · 분석 단계(`SCORING`) · 동의 없는 Take 의 1초 원자료 삭제를
+    같이 한다. Take 행을 잠근 뒤 Take 가 아직 Take 결과를 기다리는 중(`ANALYZING` · `FINALIZING`)
+    일 때만 커밋하고, 아니면 응답을 버린다 — 재시작한 BE 와 앞 작업의 응답이 겹쳐도 이미 앞으로 간
+    단계를 되돌리지 않게.
+
+    STT 끊김 구간은 동의와 상관없이 모든 Take 에 남긴다. 1초 원자료를 지운 뒤에도 대본 전달도
+    채점이 음성 인식이 끊긴 장과 말하지 않은 장을 가르게 하기 위해서다. replay 로 만든 Take
+    결과도 이 함수를 지난다.
     """
     # HTTP 어댑터를 거치지 않은 호출도 다른 Take의 결과를 저장하지 못하게 한다.
     if take_result.get("take_id") != str(take_id):
@@ -277,6 +289,9 @@ def save_take_result(
     repo.save_ai_result(take_id, TAKE_RESULT, take_result, meta)
     repo.save_summary_measures(take_id, measures)
     take.duration_sec = duration_sec
+    take.stt_gap_ranges = stt_gap_ranges(
+        repo.metric_second_stt(take_id), take_result["duration_ms"]
+    )
     take.analysis_stage = SCORING
     take.analysis_stage_at = func.now()
     if not take.raw_data_consent:
@@ -327,6 +342,49 @@ def purge_expired_raw(db: Session, now: datetime) -> int:
         if len(take_ids) < PURGE_BATCH_TAKES:
             return deleted
         after = take_ids[-1]
+
+
+# 관리자가 finalize 를 다시 하려 할 때의 결과 (`reopen_failed_finalize`)
+#   REOPENED    : Take 결과를 기다리는 중으로 되돌렸다
+#   NOT_FAILED  : finalize 가 실패한 Take(`FAILED` · 단계 `FINALIZING`)가 아니다
+#   EXPIRED     : 동의 없는 Take 의 1초 원자료 보관 기한(7일)이 지났다
+#   NO_RAW_DATA : 1초 원자료가 없다 (발표 중 하나도 오지 않았거나 이미 지웠다)
+type FinalizeReopen = Literal["REOPENED", "NOT_FAILED", "EXPIRED", "NO_RAW_DATA"]
+
+
+def reopen_failed_finalize(db: Session, take_id: uuid.UUID, now: datetime) -> FinalizeReopen | None:
+    """Take 결과를 끝내 만들지 못한 Take 를 Take 결과를 기다리는 중(`ANALYZING` · `FINALIZING`)으로
+    되돌리고 커밋한다. 관리자가 정한 수동 복구다 (coach-agent.md 7절). Take 가 없으면 None.
+
+    finalize 를 원자료(replay)로 다시 부르므로 1초 원자료가 남아 있어야 한다. 동의 없는 Take 는
+    끝난 시각(없으면 만든 시각)부터 7일 안이어야 한다 — 정리 작업(`purge_expired_raw`)과 같은
+    기준이다. Take 행을 잠근 뒤 원자료를 본다. 정리 작업이 먼저 잠갔으면 지운 뒤에 보게 되고,
+    되돌린 뒤에는 `FAILED` 가 아니라 정리 작업이 건드리지 않는다.
+
+    떠난 Take(`FAILED`, 분석 단계 없음)는 사용자가 그만둔 연습이라 되돌리지 않는다.
+    """
+    repo = CoachRepository(db)
+    take = repo.lock_take(take_id)
+    if take is None:
+        db.rollback()
+        return None
+    result: FinalizeReopen
+    if take.status != FAILED or take.analysis_stage != FINALIZING:
+        result = "NOT_FAILED"
+    elif not take.raw_data_consent and (
+        (take.ended_at or take.created_at) < now - FAILED_RAW_RETENTION
+    ):
+        result = "EXPIRED"
+    elif not repo.has_metric_seconds(take_id):
+        result = "NO_RAW_DATA"
+    else:
+        take.status = ANALYZING
+        # 주기 작업이 막 되돌린 Take 를 오래 기다린 것으로 보고 한 번 더 띄우지 않게 한다
+        take.analysis_stage_at = func.now()
+        db.commit()
+        return "REOPENED"
+    db.rollback()
+    return result
 
 
 def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:

@@ -5,7 +5,11 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ProcessingPage } from './ProcessingPage';
 
-const report = vi.hoisted(() => ({ analysis_stage: 'SCORING' }));
+const report = vi.hoisted(() => ({
+  analysis_stage: 'SCORING',
+  status: 'ANALYZING',
+  analysis_hold_reason: null as string | null,
+}));
 const settled = vi.hoisted(() => ({ value: false }));
 vi.mock('@/shared/api/report', () => ({
   useTakeReport: () => ({ data: report, isPending: false, error: null }),
@@ -16,6 +20,8 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.useFakeTimers();
   report.analysis_stage = 'SCORING';
+  report.status = 'ANALYZING';
+  report.analysis_hold_reason = null;
   settled.value = false;
   vi.spyOn(Math, 'random').mockReturnValue(0);
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -101,6 +107,23 @@ it('announces a silence auto end with the server message and why it differs from
   expect(alert?.textContent).toContain('발표 목표 시간과는 상관없이');
   // 분석은 그대로 진행 중으로 보입니다
   expect(host.querySelector('[role="status"]')?.textContent).toContain('분석 중');
+});
+
+// 서버가 분석 중이라고 응답한 Take에만 '기록 접수'를 표시합니다.
+it('shows the recorded cue only for an analyzing take, never before or after', async () => {
+  await renderAt(null);
+  expect(host.textContent).toContain('TAKE RECORDED');
+
+  for (const status of ['READY', 'RUNNING', 'COMPLETED', 'FAILED']) {
+    report.status = status;
+    await renderAt(null);
+    expect(host.textContent).not.toContain('TAKE RECORDED');
+  }
+
+  report.status = 'ANALYZING';
+  report.analysis_hold_reason = 'COVERAGE_RESCORE_FAILED';
+  await renderAt(null);
+  expect(host.textContent).not.toContain('TAKE RECORDED');
 });
 
 it('shows the time limit reason through the same notice', async () => {
