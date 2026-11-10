@@ -225,16 +225,69 @@ def to_base_unit(
     return _dec(value) * factor
 
 
+#: 기준 목소리와의 차이를 담는 지표(dB, 음수면 작게 · 양수면 크게 말함). 값만으로는 무엇과 견준 차이인지 알 수 없어
+#: 견주는 때를 글로 붙인다(#1182)
+VOLUME_DIFF_METRICS: frozenset[str] = frozenset({"voice_diff_db"})
+#: 기준 음량 출처(`take_result.areas.VOLUME.take.base_level_source`) → 견주는 때. 리뷰 · FE 와 같은 규칙(#1181 · #1179).
+#: 출처를 모르거나 못 잡았으면 '기준'
+VOLUME_BASE_WORD: dict[str, str] = {"CALIBRATION": "점검 때", "TAKE": "발표 처음"}
+VOLUME_BASE_UNKNOWN = "기준"
+
+
+def volume_base(snap: TakeSnapshot | None) -> str | None:
+    """그 Take 의 기준 음량 출처(`CALIBRATION` · `TAKE`). 결과가 없거나 출처를 못 잡았으면 None."""
+    tr = snap.results.take_result if snap is not None else None
+    area = (tr.get("areas") or {}).get("VOLUME") if isinstance(tr, Mapping) else None
+    take = area.get("take") if isinstance(area, Mapping) else None
+    src = take.get("base_level_source") if isinstance(take, Mapping) else None
+    return src if src in VOLUME_BASE_WORD else None
+
+
+def _with(word: str) -> str:
+    """조사 '와/과': 마지막 한글 음절에 받침이 있으면 '과'."""
+    last = word[-1]
+    return word + ("과" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "와")
+
+
+def volume_text(v: Decimal, base: str | None) -> str:
+    """기준과 견준 목소리 크기: '점검 때보다 1.1dB 작게' · '점검 때와 같게' · '발표 처음보다 0.5dB 크게' · '기준보다 …'.
+
+    숫자는 크기만 쓴다(음수는 크기로 본다, `architecture.md` 0-2 ⑤ — 숫자 검사가 −1.1 ↔ '1.1dB 작게'를 같은 값으로 본다).
+    `v`는 이미 표시 자리수로 반올림한 값이라 0.0dB 로 보이면 '같게'다."""
+    word = VOLUME_BASE_WORD.get(base or "", VOLUME_BASE_UNKNOWN)
+    vw = templates.VOLUME_WORD  # 끝말은 templates 한곳(서술 '나왔어요' 규칙과 같은 목록)
+    if v == 0:
+        return f"{_with(word)} {vw['SAME']}"
+    return f"{word}보다 {_fmt(abs(v))}dB {vw['LESS'] if v < 0 else vw['MORE']}"
+
+
+def signed_db(value: float | int) -> str:
+    """기준 대비 차이를 부호와 함께(반올림 없이): '+3dB' · '-1.1dB' · '0dB'. 문턱값(다시 평가 기준 문구)처럼 '…보다 작게'로
+    풀면 비교 말(이상 · 이하)과 겹쳐 어색한 곳에 쓴다."""
+    d = _dec(value)
+    sign = "+" if d > 0 else "-" if d < 0 else ""
+    return f"{sign}{_fmt(abs(d))}dB"
+
+
 def format_metric_value(
-    metric: str, value: float | int, cfg: ChatAgentConfig, *, exact: bool = False
+    metric: str,
+    value: float | int,
+    cfg: ChatAgentConfig,
+    *,
+    exact: bool = False,
+    base: str | None = None,
 ) -> str:
     """근거 문구용 값 표시(화면 표시 자리수). 비율 0.31 → '31%', ms 92000 → '92초', cpm 300 → '300자/분'.
 
     `exact`면 화면 자리수로 반올림하지 않고 단위만 바꾼다 — 판정에 쓰는 기준값을 글로 옮길 때(다시 평가 기준 문구,
-    0.655 → '65.5%'). 반올림하면 "66% 초과"처럼 실제 기준(65.5%)과 다르게 읽힌다."""
+    0.655 → '65.5%'). 반올림하면 "66% 초과"처럼 실제 기준(65.5%)과 다르게 읽힌다.
+    소리 크기(`VOLUME_DIFF_METRICS`)는 견주는 때를 붙인 글이다: `base`(그 Take 의 기준 음량 출처, `volume_base`)가
+    `CALIBRATION`이면 '점검 때보다 1.1dB 작게', `TAKE`면 '발표 처음보다 …', 모르면 '기준보다 …'(#1182)."""
     kind = cfg.metric_units.get(metric)
     dec = cfg.display_decimals.get(kind or "", 2)
     v = _dec(value) if exact else round_display(value, dec)
+    if metric in VOLUME_DIFF_METRICS:
+        return volume_text(v, base)
     if kind == "ratio":
         return _fmt(v * 100) + "%"
     if kind == "ms":
@@ -925,7 +978,8 @@ def _one_overall(d: AssessmentDraft, t: _Target, dim: str, ctx: _Ctx) -> _One:
                 ids.append(
                     record_read_value(ctx.registry, ctx.pitch_id, snap, mv, ctx.cfg, ctx.version_of)
                 )
-                label = f"{METRIC_LABEL.get(primary, primary)} {format_metric_value(primary, mv.value, ctx.cfg)}"  # type: ignore[arg-type]
+                shown = format_metric_value(primary, mv.value, ctx.cfg, base=volume_base(snap))  # type: ignore[arg-type]
+                label = f"{METRIC_LABEL.get(primary, primary)} {shown}"
         return _One(verdict, ids, f"{t.label} {label}, {STATE_WORD[state]}")  # type: ignore[arg-type]
     pr = read_problems(snap, dim, slide, ctx.cfg)
     if pr.state != "OK":
@@ -1007,7 +1061,7 @@ def _one_value(d: AssessmentDraft, t: _Target, dim: str, ctx: _Ctx) -> _One:
     else:
         verdict = "SUPPORTED" if same else "CONTRADICTED"
     eid = record_read_value(ctx.registry, ctx.pitch_id, snap, rv, ctx.cfg, ctx.version_of)
-    shown = format_metric_value(metric, rv.value, ctx.cfg)  # type: ignore[arg-type]
+    shown = format_metric_value(metric, rv.value, ctx.cfg, base=volume_base(snap))  # type: ignore[arg-type]
     return _One(
         verdict, [eid], f"{_take_prefix(t, slide)} {METRIC_LABEL.get(metric, metric)} {shown}"
     )
@@ -1037,8 +1091,8 @@ def _change_one(
         claimed = "IMPROVED" if d.polarity == "POSITIVE" else "WORSENED"
         verdict = "SUPPORTED" if comp.outcome == claimed else "CONTRADICTED"
     label = METRIC_LABEL.get(metric, metric)
-    pv = format_metric_value(metric, comp.previous, ctx.cfg)  # type: ignore[arg-type]
-    cv = format_metric_value(metric, comp.current, ctx.cfg)  # type: ignore[arg-type]
+    pv = format_metric_value(metric, comp.previous, ctx.cfg, base=volume_base(prev.snap))  # type: ignore[arg-type]
+    cv = format_metric_value(metric, comp.current, ctx.cfg, base=volume_base(cur.snap))  # type: ignore[arg-type]
     word = templates.OUTCOME_WORD.get(str(comp.outcome), "")
     scope = f" {slide}장" if slide is not None else ""
     phrase = f"{prev.label}{scope} {label} {pv} → {cur.label}{scope} {label} {cv}, {word}"
@@ -1179,6 +1233,7 @@ def _model_verdict(
     cfg: ChatAgentConfig,
     guide_texts: Mapping[str, str] | None = None,
     guide_titles: Mapping[str, str] | None = None,
+    takes: Mapping[str, TakeSnapshot] | None = None,
 ) -> CodeVerdict:
     """발표법 주장(KNOWLEDGE) · 행동 요청(REQUEST): 모델 판정을 유지하되 근거가 모자라면 낮춘다(6-3)."""
     valid_ev = [e for e in d.evidence_ids if registry.is_current(e)]
@@ -1194,7 +1249,7 @@ def _model_verdict(
             phrase = knowledge_phrase(d.source_ids, guide_titles or {})
     else:  # REQUEST
         evidence_ids = valid_ev
-        phrase = ", ".join(_phrase_from_evidence(registry, e, cfg) for e in valid_ev[:2])
+        phrase = ", ".join(_phrase_from_evidence(registry, e, cfg, takes) for e in valid_ev[:2])
     return CodeVerdict(verdict, "MODEL", evidence_ids, phrase, reason)
 
 
@@ -1277,14 +1332,19 @@ def _preference_verdict(
 
 
 def _phrase_from_evidence(
-    registry: EvidenceRegistry, evidence_id: str, cfg: ChatAgentConfig
+    registry: EvidenceRegistry,
+    evidence_id: str,
+    cfg: ChatAgentConfig,
+    takes: Mapping[str, TakeSnapshot] | None = None,
 ) -> str:
+    """근거 하나를 'Take 5 청중 시선 31%'처럼. `takes`가 있으면 소리 크기의 견주는 때를 그 Take 의 기준 음량 출처로 쓴다."""
     ev = registry.get(evidence_id)
     if ev is None:
         return ""
     prefix = f"Take {ev.take_number} " if ev.take_number is not None else ""
     if ev.metric and isinstance(ev.value, (int, float)) and not isinstance(ev.value, bool):
-        return f"{prefix}{METRIC_LABEL.get(ev.metric, ev.metric)} {format_metric_value(ev.metric, ev.value, cfg)}"
+        base = volume_base((takes or {}).get(ev.take_id or ""))
+        return f"{prefix}{METRIC_LABEL.get(ev.metric, ev.metric)} {format_metric_value(ev.metric, ev.value, cfg, base=base)}"
     return f"{prefix}{ev.path} {ev.value}"
 
 
@@ -1327,7 +1387,7 @@ def code_verdict(
     if draft.type == "PREFERENCE":
         return _preference_verdict(draft, ctx, focus_take_id)
     if draft.type != "MEASURED":
-        return _model_verdict(draft, registry, cfg, guide_texts, guide_titles)
+        return _model_verdict(draft, registry, cfg, guide_texts, guide_titles, takes)
 
     script = _is_script_claim(draft)
     dim, metric, err = (None, None, None) if script else _resolve_subject(draft, cfg)

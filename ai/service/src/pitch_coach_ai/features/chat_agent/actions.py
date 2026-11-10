@@ -696,7 +696,11 @@ def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
     예: {metric: audience_ratio, operator: GTE, value: 0.7} → '청중 시선 70% 이상' · cpm LTE 330 → '말 속도 330자/분 이하'
     """
     metric = str(target["metric"])
-    value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
+    if metric in clm.VOLUME_DIFF_METRICS:
+        # 소리 크기 문턱값은 '기준보다 1dB 작게 이상'처럼 비교 말이 겹치지 않게 부호로 쓴다(#1182, FE 표기와 같은 꼴)
+        value = f"기준 대비 {clm.signed_db(target['value'])}"
+    else:
+        value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
     return f"{metric_label(metric)} {value} {_OPERATOR_WORD[str(target['operator'])]}"
 
 

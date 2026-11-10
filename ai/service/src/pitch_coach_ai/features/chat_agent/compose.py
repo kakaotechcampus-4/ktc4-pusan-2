@@ -202,7 +202,16 @@ def _num_display(ctx: Any, ev: Any) -> str | None:
         return None
     if ev.metric not in ctx.cfg.metric_units:
         return None
-    return clm.format_metric_value(ev.metric, ev.value, ctx.cfg)
+    # 소리 크기는 그 Take 의 기준 음량 출처로 견주는 때를 붙인다('점검 때보다 1.1dB 작게', #1182)
+    base = clm.volume_base(ctx.snapshots.get(ev.take_id)) if ev.take_id else None
+    return clm.format_metric_value(ev.metric, ev.value, ctx.cfg, base=base)
+
+
+def be(shown: str) -> str:
+    """값 표기 + 서술 '예요'. 소리 크기 표기('…작게 · 같게')면 '… 나왔어요'(규칙은 `templates.be` 한곳, #1182 · #1183 리뷰).
+
+    숫자 · 단위 표기 뒤는 지금처럼 '예요'를 붙인다(기록 문장 템플릿과 같은 꼴)."""
+    return templates.be(shown) if shown.endswith(templates.VOLUME_ENDINGS) else f"{shown}예요"
 
 
 def obj(word: str) -> str:
@@ -332,7 +341,7 @@ def goal_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> st
     word = templates.GOAL_WORD[j.status]
     if obs is None:
         return f"Take {take_number}: {word}."
-    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
+    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {be(obs)}. {word}."
 
 
 def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int) -> str | None:
@@ -349,7 +358,7 @@ def goal_value_sentence(ctx: Any, goal: Any, j: GoalJudgement, take_number: int)
         return None
     where = f"{goal.slide_number}장 " if goal.slide_number else ""
     obs = clm.format_metric_value(goal.metric, j.observed, ctx.cfg)
-    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {obs}예요. {word}."
+    return f"Take {take_number}의 {where}{topic(metric_label(goal.metric))} {be(obs)}. {word}."
 
 
 def goal_open_sentence(ctx: Any, goal: Any) -> tuple[str, str, str] | None:
@@ -404,7 +413,7 @@ def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
         where = f"{ev.slide_number}장 " if ev.slide_number else ""
         c = _claim(
             "RECORD",
-            f"Take {ev.take_number}의 {where}{topic(metric_label(ev.metric))} {disp}예요.",
+            f"Take {ev.take_number}의 {where}{topic(metric_label(ev.metric))} {be(disp)}.",
             evidence_ids=[eid],
         )
         if c is not None:

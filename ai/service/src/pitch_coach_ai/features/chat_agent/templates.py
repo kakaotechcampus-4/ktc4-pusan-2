@@ -409,6 +409,20 @@ def _final(word: str) -> int:
 _SLOT = re.compile(r"\{(\w+)\}(으로|예요)?")
 
 
+#: 소리 크기 표기의 끝말(`claims.volume_text`: '점검 때보다 1.1dB 작게' · '…와 같게'). 이 말로 끝나는 표기 뒤의 서술은
+#: '예요'가 아니라 '나왔어요'다('작게예요'가 되지 않게, #1182). 끝말을 이 한곳에 두어 다른 '…게' 표기('빠르게' 등)에는
+#: 붙지 않게 한다(#1183 리뷰)
+VOLUME_WORD = {"LESS": "작게", "MORE": "크게", "SAME": "같게"}
+VOLUME_ENDINGS = tuple(VOLUME_WORD.values())
+
+
+def be(shown: str) -> str:
+    """값 표기 + 서술: 소리 크기 표기('…작게 · 크게 · 같게')면 '… 나왔어요', 아니면 받침에 맞춘 '예요 · 이에요'."""
+    if shown.endswith(VOLUME_ENDINGS):
+        return shown + " 나왔어요"
+    return shown + ("이에요" if _final(shown) else "예요")
+
+
 def fill(template: str, **values: str) -> str:
     """템플릿을 채우며 값 뒤 조사를 받침에 맞춘다: '{x}으로' → 받침 없거나 ㄹ이면 '로', '{x}예요' → 받침 있으면 '이에요'.
 
@@ -422,7 +436,7 @@ def fill(template: str, **values: str) -> str:
         if tail == "으로":
             return v + ("로" if _final(v) in (0, 8) else "으로")
         if tail == "예요":
-            return v + ("이에요" if _final(v) else "예요")
+            return be(v)
         return v
 
     return _SLOT.sub(one, template)

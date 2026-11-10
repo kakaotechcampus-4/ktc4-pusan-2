@@ -10,7 +10,7 @@
 | 담당 | JWK0395 |
 | 설계 | 목적 · 계약 · 처리 · 실패 처리 · 시험 → [`docs/ai/features/chat-agent.md`](../../../docs/ai/features/chat-agent.md) |
 | 단계 | 서비스에 탑재했다(기능 문서 4-1). 코어는 서비스 [`features/chat_agent/`](../../service/src/pitch_coach_ai/features/chat_agent/), 엔드포인트는 `POST /agent/turn`(`AGENT_ENABLED`를 켜기 전에는 503). 이 폴더에는 가짜 BE · 평가 · 실제 모델 시험이 남고 서비스 패키지를 가져다 쓴다 |
-| 버전 | `chat_agent-0.12.0`(서비스 `features/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-5`, 자료 묶음 `guides-8`, 실행 상태 `v` 1 |
+| 버전 | `chat_agent-0.12.1`(서비스 `features/chat_agent/version.py`. 아래 평가 결과 표는 회차마다 적은 판에서 잰 값이고, 6회차가 `0.7.0` · 7회차가 `0.9.0`), 응답 스키마 `1.0`, 도구 스키마 `tools-5`, 자료 묶음 `guides-8`, 실행 상태 `v` 1 |
 
 ## 1. 코드 구조
 

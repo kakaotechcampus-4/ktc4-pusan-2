@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value
+from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value, volume_base
 from ..goals import compare_takes, record_read_value
 from ..prompts import PLAN_STEP_TOOLS
 from ..schemas import PlanStep, TakeSnapshot
@@ -487,7 +487,7 @@ def _num(ctx: RunCtx, snap: TakeSnapshot, rv: Any) -> dict[str, Any]:
         # 답 문장에는 지표 키(audience_ratio) 대신 이 이름을 쓴다(답 검사의 지표 이름 사전에 있는 이름)
         item["label"] = METRIC_LABEL[rv.metric]
     if isinstance(rv.value, (int, float)) and rv.metric in ctx.cfg.metric_units:
-        item["display"] = format_metric_value(rv.metric, rv.value, ctx.cfg)
+        item["display"] = format_metric_value(rv.metric, rv.value, ctx.cfg, base=volume_base(snap))
     return item
 
 
@@ -625,7 +625,9 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                                     "metric": metric,
                                     "label": METRIC_LABEL.get(metric, metric),
                                     "value": v,
-                                    "display": format_metric_value(metric, v, ctx.cfg)
+                                    "display": format_metric_value(
+                                        metric, v, ctx.cfg, base=volume_base(snap)
+                                    )
                                     if metric in ctx.cfg.metric_units
                                     else str(v),
                                     "evidence_id": ev.evidence_id,
@@ -967,7 +969,10 @@ def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
         for k in ("previous", "current"):
             v = data.get(k)
             if isinstance(v, (int, float)):
-                data[f"{k}_display"] = format_metric_value(a.metric, v, ctx.cfg)
+                snap = prev if k == "previous" else cur
+                data[f"{k}_display"] = format_metric_value(
+                    a.metric, v, ctx.cfg, base=volume_base(snap)
+                )
     result = f"{a.metric} {cmp.outcome}" if cmp.comparable else f"비교할 수 없음({cmp.reason})"
     return _res(
         "compare_takes",
