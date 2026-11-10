@@ -491,11 +491,21 @@ it('사용방법의 샘플 진입점은 튜토리얼 미리보기로 이동한�
   await render('home');
   await click('사용방법 살펴보기');
   const link = [...host.querySelectorAll('a')].find((item) =>
-    item.textContent?.includes('샘플로 연습하기'),
+    item.textContent?.includes('튜토리얼 해 보기'),
   )!;
   expect(link.getAttribute('href')).toBe('/pitch/tutorial');
   await act(async () => link.click());
   expect(host.textContent).toContain('첫 번째 Take');
+});
+
+it('튜토리얼 사용 완료 안내와 새미나이의 제품 질문 예시 네 개를 보여 준다', async () => {
+  await render('tutorial', 'used');
+  expect(host.textContent).toContain('튜토리얼 리포트를 이미 받았어요');
+  expect(button('새 피치 만들기')).toBeDefined();
+  await act(async () => root.render(null));
+  await render('semini');
+  expect(host.textContent).toContain('이런 걸 도와드릴 수 있어요');
+  expect(host.querySelectorAll('ul[aria-label="질문 예시"] button')).toHaveLength(4);
 });
 
 it('TAKE RECORDED는 분석 중에만 보이고 확인 대기·실패·보류에는 보이지 않는다', async () => {
