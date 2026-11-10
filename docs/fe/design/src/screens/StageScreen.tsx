@@ -8,7 +8,8 @@ import '@/ui/stage.css';
 /**
  * PM 승인 대기 배치 시안이다. 제품의 보정·측정 계약은 바꾸지 않는다. 배치 · 색은 src/ui/stage.css가 정한다.
  * 클래스 이름은 ScreenPreview.test가 stage.css에 있는지 확인한다.
- * 슬라이드는 ← → · Space 및 슬라이드 좌클릭·우클릭으로 넘긴다(제품 #1192). 끝내기는 마지막 장에서만 열린다(#697).
+ * 슬라이드는 ← → · Space로 넘긴다(제품과 같은 키). 마우스로는 슬라이드 좌클릭이 다음 장, 우클릭이 이전 장,
+ * 다음 장 썸네일 클릭이 다음 장이다(제품 SlideClickArea). 끝내기는 마지막 장에서만 열린다(제품 #697).
  */
 const PAGES = 12;
 
@@ -93,9 +94,6 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                 </div>
               )}
               <header className="stage-head">
-                <span className="stage-mission-label" data-live={!gate} aria-hidden="true">
-                  STAGE LIVE
-                </span>
                 <span className="elapsed">{gate ? '00:00' : '02:14'}</span>
                 <span className="limit">/ 05:00</span>
                 <div className="bar" data-over="false">
@@ -120,15 +118,15 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   <div className="slide-content">
                     <span className="placeholder">SLIDE {slide} · 16:9</span>
                   </div>
+                  {/* 좌클릭 다음 장 · 우클릭 이전 장(제품 SlideClickArea). 위에 겹쳐 칸의 크기 · 자리는 그대로다 */}
                   <button
                     type="button"
                     className="slide-advance"
                     tabIndex={-1}
                     aria-hidden="true"
+                    data-enabled={!gate}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      if (!gate) setSlide((n) => Math.min(PAGES, n + 1));
-                    }}
+                    onClick={() => !gate && setSlide((n) => Math.min(PAGES, n + 1))}
                     onContextMenu={(event) => {
                       if (gate) return;
                       event.preventDefault();
@@ -147,18 +145,22 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                     <span>음량</span>
                   </section>
                   <section className="next" hidden={onLastSlide}>
+                    {/* 썸네일과 안내 문구를 버튼 하나로 감싼다 — 어디를 눌러도 다음 장(제품 NextSlideButton) */}
                     <button
                       type="button"
-                      className="thumb"
+                      className="next-go"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => setSlide((n) => Math.min(PAGES, n + 1))}
-                      disabled={onLastSlide}
+                      disabled={onLastSlide || Boolean(gate)}
                     >
-                      {onLastSlide ? '마지막 장' : `SLIDE ${slide + 1} · 16:9`}
+                      <div className="thumb">
+                        {onLastSlide ? '마지막 장' : `SLIDE ${slide + 1} · 16:9`}
+                      </div>
+                      <div className="label">
+                        <b>다음 슬라이드</b>
+                        <span>누르거나 → 키로 이동</span>
+                      </div>
                     </button>
-                    <div className="label">
-                      <b>다음 슬라이드</b>
-                      <span>→ 키로 이동</span>
-                    </div>
                   </section>
                   <div className="legend">
                     <span>테두리 =</span>
@@ -194,7 +196,7 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
               <div className="stage-foot">
                 <div className="stage-notes">
                   <span className="key-help">
-                    ← → 슬라이드 · 클릭 다음 장 · 우클릭 이전 장 · Space 다음 장{!exam && ' · ↑ ↓ 대본'}
+                    다음 장 클릭 · → · Space · 이전 장 우클릭 · ←{!exam && ' · ↑ ↓ 대본 스크롤'}
                   </span>
                   <div className="stage-status">
                     {stateId === 'disconnected' && (
