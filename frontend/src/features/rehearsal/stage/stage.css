@@ -1069,6 +1069,73 @@
   flex: 0 1 auto;
 }
 
+/* ── 마우스로 넘기기 ───────────────────────────────────────────
+   슬라이드 위 투명 버튼 · 다음 장 썸네일 · 발밑 이전/다음. 셋 다 이미 있는 칸 안에 앉아
+   슬라이드 칸의 크기 · 자리(시선 기준)와 발밑 줄 높이(26px)를 바꾸지 않는다.
+   발밑 버튼이 기본이다 — 창이 낮으면 썸네일은 접히고, 슬라이드 클릭은 눈에 안 보인다. */
+.slide-advance {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.slide-advance:disabled {
+  cursor: default;
+}
+
+.rail .next .next-go {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rail .next .next-go:disabled {
+  cursor: default;
+}
+.rail .next .next-go:hover:not(:disabled) .thumb {
+  border-color: var(--color-ink-stage);
+}
+.rail .next .next-go:focus-visible {
+  outline: 2px solid var(--color-ink-stage);
+  outline-offset: 2px;
+}
+
+.stage-foot .slide-nav {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+.stage-foot .slide-nav button {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--color-ink-stage);
+  border-radius: 999px;
+  background: var(--color-stage-panel);
+  color: var(--color-ink-stage);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.stage-foot .slide-nav button:hover:not(:disabled) {
+  background: var(--color-stage-deep);
+}
+.stage-foot .slide-nav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .stage-live .coach .indicators {
   min-width: 0;
   flex-shrink: 1;

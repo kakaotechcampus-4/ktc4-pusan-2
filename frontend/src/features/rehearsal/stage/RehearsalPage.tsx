@@ -68,6 +68,8 @@ import { sendEnding, type Ending } from './sendEnding';
 import { useEndConfirm } from './useEndConfirm';
 import { StageLiveBadge } from './StageLiveBadge';
 import { useSlideDeck } from './useSlideDeck';
+import { keepKeyboardFocus } from './keepKeyboardFocus';
+import { SlideNav } from './SlideNav';
 import { useStageClock } from './useStageClock';
 import {
   CONNECT_SLOW_MS,
@@ -267,7 +269,7 @@ export function RehearsalPage() {
   const { meterRef, audioState, voiceRecord } = useMicLevel(stream, {
     clock: elapsedMs,
   });
-  const { slideNumber, slideStartedAtRef, slideAt } = useSlideDeck({
+  const { slideNumber, go, slideStartedAtRef, slideAt } = useSlideDeck({
     total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
@@ -902,6 +904,17 @@ export function RehearsalPage() {
                     </span>
                   )}
                 </div>
+                {/* 슬라이드를 누르면 다음 장 — 파워포인트와 같습니다. 슬라이드 위에 겹쳐 두어 칸의
+                    크기 · 자리(시선 기준)는 그대로입니다. Tab 으로는 아래 이전 · 다음 버튼을 씁니다 */}
+                <button
+                  type="button"
+                  className="slide-advance"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  disabled={!running || slideNumber >= pageCount}
+                  onMouseDown={keepKeyboardFocus}
+                  onClick={() => go(slideNumber + 1)}
+                />
               </div>
 
               <div className="rail">
@@ -918,22 +931,30 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="next" hidden={slideNumber >= pageCount}>
-                  <div className="thumb">
-                    {materials.doc && nextSlideNumber > 0 ? (
-                      <PdfPage
-                        doc={materials.doc}
-                        pageNumber={nextSlideNumber}
-                        fit="contain"
-                        className="h-full min-h-0 w-full min-w-0 overflow-hidden"
-                      />
-                    ) : (
-                      `SLIDE ${nextSlideNumber} · 16:9`
-                    )}
-                  </div>
-                  <div className="label">
-                    <b>다음 슬라이드</b>
-                    <span>→ 키로 이동</span>
-                  </div>
+                  <button
+                    type="button"
+                    className="next-go"
+                    disabled={!running}
+                    onMouseDown={keepKeyboardFocus}
+                    onClick={() => go(nextSlideNumber)}
+                  >
+                    <div className="thumb">
+                      {materials.doc && nextSlideNumber > 0 ? (
+                        <PdfPage
+                          doc={materials.doc}
+                          pageNumber={nextSlideNumber}
+                          fit="contain"
+                          className="h-full min-h-0 w-full min-w-0 overflow-hidden"
+                        />
+                      ) : (
+                        `SLIDE ${nextSlideNumber} · 16:9`
+                      )}
+                    </div>
+                    <div className="label">
+                      <b>다음 슬라이드</b>
+                      <span>누르거나 → 키로 이동</span>
+                    </div>
+                  </button>
                 </section>
 
                 {/* 배지를 따로 두지 않습니다 — 테두리가 시선 표시의 전부입니다.
@@ -966,6 +987,13 @@ export function RehearsalPage() {
 
             <div className="stage-foot">
               <div className="stage-notes">
+                {/* 끝내기 실패 문구가 떠도 넘길 수 있게 안내 문구와 따로 둡니다 */}
+                <SlideNav
+                  slideNumber={slideNumber}
+                  pageCount={pageCount}
+                  enabled={running}
+                  onGo={go}
+                />
                 {/* 끝내기 실패는 꼭 봐야 해서 스크롤되는 상태 칸 밖, 조작 안내 자리에 띄웁니다 */}
                 {endError ? (
                   <span className="end-error" role="alert">

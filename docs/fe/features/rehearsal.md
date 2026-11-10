@@ -157,6 +157,7 @@ WS stop + PUT /takes/{id} (종료 시각)
 | `stage/StageLiveBadge.tsx` | 발표가 돌고 있을 때만 켜지는 "STAGE LIVE" 표시(`startGate.ts` `isRehearsalRunning`) |
 | `stage/ScriptPane.tsx` · `useRehearsalMaterials.ts` · `lib/scriptMarks.ts` | 발표 중 대본 · 슬라이드 · 대본 자료 읽기 · 대본 표시 |
 | `stage/useSlideDeck.ts` · `useSlideSender.ts` · `lib/slideTimeline.ts` | 슬라이드 넘기기 · WS `slide` · 그 시각의 슬라이드 |
+| `stage/SlideNav.tsx` | 마우스로 넘기기 — 발밑 줄의 [‹ 이전] · [다음 ›]. 슬라이드 클릭 · 다음 장 썸네일 클릭도 다음 장입니다. 모두 키보드(← → · Space)와 같은 `go`를 불러 장 넘김 기록이 한 경로로 남습니다. 칸 크기 · 자리(시선 기준)는 바꾸지 않습니다 |
 | `stage/useLiveGaze.ts` · `useMetricsSender.ts` · `lib/metricsClock.ts` | 시선 1초 기록 받기 · WS `metrics` 보내기 · 어느 1초로 보낼지 |
 | `stage/useSttStream.ts` · `lib/sttSocket.ts` · `lib/sttProtocol.ts` | 실시간 연결(React를 모르는 상태기계) |
 | `stage/useLiveCoach.ts` · `lib/coachIndicators.ts` · `CoachStrip.tsx` | 코치 한마디 · 상태 표시 |
