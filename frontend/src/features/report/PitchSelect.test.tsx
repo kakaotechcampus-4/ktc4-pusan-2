@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { PitchSelect } from './PitchSelect';
+import { PitchSelect, type PitchOption } from './PitchSelect';
 
 const onChange = vi.fn();
 let host: HTMLDivElement;
@@ -22,17 +22,20 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(value = 'p1') {
+async function render(
+  value = 'p1',
+  available: PitchOption[] = [
+    { value: 'p1', label: '내 발표' },
+    { value: 'p2', label: '다른 발표' },
+  ],
+) {
   await act(async () =>
     root.render(
       <PitchSelect
         label="피치"
         value={value}
         leading={{ value: '', label: '전체' }}
-        options={[
-          { value: 'p1', label: '내 발표' },
-          { value: 'p2', label: '다른 발표' },
-        ]}
+        options={available}
         onChange={onChange}
       />,
     ),
@@ -110,12 +113,76 @@ it('마우스로 항목을 누르면 고르고, 이미 고른 항목은 다시 �
   expect(host.querySelector('[role="listbox"]')).toBeNull();
 });
 
-it('초점이 나가면 고르지 않고 닫는다', async () => {
+it('Tab 또는 외부 포인터 입력은 값을 바꾸지 않고 목록을 닫는다', async () => {
   await render();
   await act(async () => box().focus());
   await press(' ');
   expect(box().getAttribute('aria-expanded')).toBe('true');
-  await act(async () => box().blur());
+  await press('Tab');
   expect(box().getAttribute('aria-expanded')).toBe('false');
   expect(onChange).not.toHaveBeenCalled();
+
+  await act(async () => box().click());
+  const outside = document.createElement('button');
+  document.body.append(outside);
+  try {
+    await act(async () => {
+      outside.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      outside.focus();
+    });
+    expect(box().getAttribute('aria-expanded')).toBe('false');
+    expect(onChange).not.toHaveBeenCalled();
+  } finally {
+    outside.remove();
+  }
+});
+
+it('좁은 화면에서도 목록은 버튼 너비를 넘지 않고 긴 피치 제목은 여러 줄로 보여 준다', async () => {
+  const longTitle = '졸업 작품 최종 발표와 중간 점검을 함께 준비하는 아주 긴 피치 제목';
+  await render('p1', [
+    { value: 'p1', label: longTitle },
+    { value: 'p2', label: longTitle + ' 두 번째' },
+  ]);
+  await act(async () => box().click());
+
+  const container = box().parentElement!;
+  const list = host.querySelector<HTMLElement>('[role="listbox"]')!;
+  expect(container.classList.contains('max-w-full')).toBe(true);
+  expect(container.classList.contains('min-w-0')).toBe(true);
+  expect(container.classList.contains('flex-1')).toBe(true);
+  expect(list.classList.contains('inset-x-0')).toBe(true);
+  expect(list.classList.contains('w-max')).toBe(false);
+  expect(options()[1]!.textContent).toBe(longTitle);
+  expect(options()[1]!.querySelector('span')?.classList.contains('truncate')).toBe(false);
+  expect(options()[1]!.querySelector('span')?.classList.contains('break-words')).toBe(true);
+});
+
+it('옵션 클릭만 mousedown 기본 동작을 막고 목록 스크롤바와 터치 입력은 막지 않는다', async () => {
+  await render();
+  await act(async () => box().focus());
+  await act(async () => box().click());
+  const list = host.querySelector<HTMLElement>('[role="listbox"]')!;
+  const scrollbarDown = new MouseEvent('mousedown', {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+  });
+  await act(async () => list.dispatchEvent(scrollbarDown));
+  expect(scrollbarDown.defaultPrevented).toBe(false);
+
+  const touchStart = new Event('pointerdown', { bubbles: true, cancelable: true });
+  await act(async () => options()[2]!.dispatchEvent(touchStart));
+  expect(touchStart.defaultPrevented).toBe(false);
+  expect(box().getAttribute('aria-expanded')).toBe('true');
+
+  const optionDown = new MouseEvent('mousedown', {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+  });
+  await act(async () => options()[2]!.dispatchEvent(optionDown));
+  expect(optionDown.defaultPrevented).toBe(true);
+  await act(async () => options()[2]!.click());
+  expect(onChange).toHaveBeenCalledWith('p2');
+  expect(box().getAttribute('aria-expanded')).toBe('false');
 });
