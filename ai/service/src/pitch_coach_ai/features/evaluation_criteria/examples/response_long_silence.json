@@ -4,5 +4,5 @@
              "script_dependency": null, "script_similarity": null, "script_used": true},
   "targets": [{"display": "말 속도 1분에 300자 이하", "metric": "cpm", "operator": "LTE", "value": 300}],
   "excluded": [],
-  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.2", "model": "<응답한 모델>"}
 }

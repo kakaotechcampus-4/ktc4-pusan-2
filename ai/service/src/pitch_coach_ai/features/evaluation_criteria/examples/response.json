@@ -4,5 +4,5 @@
              "script_dependency": null, "script_similarity": null, "script_used": null},
   "targets": [{"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}],
   "excluded": ["발표는 5분 안에 끝내기"],
-  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.1", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.2", "model": "<응답한 모델>"}
 }
