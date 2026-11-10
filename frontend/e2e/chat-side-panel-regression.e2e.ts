@@ -32,9 +32,7 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
   ] as const;
 
   for (const screen of screens) {
-    test(screen.name + ': 헤더·본문이 패널에 가리지 않고 문서 가로 스크롤이 생기지 않는다', async ({
-      page,
-    }) => {
+    test(screen.name + ': 헤더·본문과 문서 가로 스크롤 회귀', async ({ page }) => {
       await page.goto(screen.path);
       const content = page.locator('.chat-layout-content');
       const panel = await openPanel(page);
@@ -90,9 +88,7 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
     await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
   });
 
-  test('모션 감소 설정에서는 패널 및 페이지 전환 애니메이션이 꺼진다', async ({
-    page,
-  }) => {
+  test('모션 감소에서 패널 및 페이지 애니메이션이 꺼진다', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     const panel = await openPanel(page);
@@ -101,9 +97,7 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
   });
 });
 
-test('좁은 화면에서 Take 비교표는 문서 밖으로 넘치지 않고 표 내부에서 스크롤된다', async ({
-  page,
-}) => {
+test('375px에서 Take 비교표는 내부 가로 스크롤을 제공한다', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/takes?view=compare&pitch=' + PITCH_ID);
   const region = page.getByRole('region', { name: 'Take별 기록 표 · 좌우로 스크롤' });
@@ -122,9 +116,7 @@ test('좁은 화면에서 Take 비교표는 문서 밖으로 넘치지 않고 �
   expect(scrolled).toBeGreaterThan(0);
 });
 
-test('낮은 창에서도 대본 매핑·슬라이드 확인 모달은 뷰포트 기준 크기를 유지한다', async ({
-  page,
-}) => {
+test('650px 높이에서 대본·슬라이드 모달은 뷰포트 크기를 유지한다', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 650 });
   await page.goto('/pitch/' + PITCH_ID + '/edit');
   const panel = await openPanel(page);
