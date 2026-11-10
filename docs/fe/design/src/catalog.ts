@@ -26,7 +26,6 @@ export const PRODUCT_CHECKED: {
   date: '2026-11-11',
   pending: [],
 };
-
 const state = (id: string, label: string, description: string): GuideState => ({
   id,
   label,
@@ -471,7 +470,7 @@ const productScreens: GuideScreen[] = [
       ),
       state(
         'voice-reading',
-        '평소 목소리 읽는 중',
+        '기준 목소리 읽는 중',
         '시안: 실제 측정 없이 문단·예시 음량·다 읽었어요 버튼을 표시한다.',
       ),
       state(
@@ -598,6 +597,7 @@ const productScreens: GuideScreen[] = [
     tokens: ['stage', 'stage-panel', 'ink-stage', 'gaze-audience', 'script-highlight'],
     sources: [
       'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
+      'frontend/src/features/rehearsal/stage/SlideClickArea.tsx',
       'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
       'frontend/src/features/rehearsal/stage/CoachStrip.tsx',
       'frontend/src/features/rehearsal/stage/stage.css',
@@ -744,7 +744,8 @@ const productScreens: GuideScreen[] = [
     group: screenGroup.results,
     route: '/takes/:takeId',
     status: '제품에 있음',
-    summary: '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 다음 미션을 보여 준다.',
+    summary:
+      '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 내용 전달 · 다음 미션을 보여 준다.',
     states: [
       base,
       state('loading', '불러오는 중', '연습 기록을 불러오는 동안 안내한다.'),
@@ -756,29 +757,57 @@ const productScreens: GuideScreen[] = [
         '설문 보냄',
         '이 리포트의 설문을 냈다. 아래 줄에 버튼 대신 보냈다는 문장만 둔다.',
       ),
+      state(
+        'content-open',
+        '내용 전달 · 장 펼침',
+        '장별 목록의 3장을 펼쳤다. 대본 문장 판정 · 내가 말한 문장의 대본 밖 구간 · 핵심 수치를 보인다.',
+      ),
+      state(
+        'content-estimated',
+        '내용 전달 · 간이 장만',
+        '채점된 장 없이 간이 장만 있다. 전달률 숫자 대신 간이 단계를 모아 보인다.',
+      ),
+      state(
+        'content-none',
+        '내용 전달 · 미제공',
+        '대본 전달도 상세가 아직 없다(BE 배포 전 응답). 숫자 없이 안내만 둔다.',
+      ),
+      state('content-analyzing', '내용 전달 · 분석 중', '대본 전달도를 분석하고 있다.'),
     ],
     rules: [
       '지난 Take 비교 본문은 지표별 개선/악화 슬라이드 요약을 보여 주고, 개선된 슬라이드 · 발표 전체 비교 박스와 배지는 #1176의 코랄 강조를 유지한다. 상세 비교표는 별도 모달에서 제공한다(#1120). 점수(score)는 보여 주지 않는다.',
+      '지난 Take 비교에서 발표 전체 전용 지표는 이전 · 이번 값과 개선 판정을 한 박스에 넣는다. 개선된 슬라이드 또는 개선 판정의 발표 전체 박스만 코랄로 강조한다. 악화·변화 없음·판단 불가는 중립색과 문구로 구분한다.',
       '리뷰가 없거나 실패해도 측정값은 먼저 보여 준다.',
       '측정하지 않은 값은 —로 두어 측정된 0과 구별한다.',
       '"Take N 연습하기"는 시작 전 세팅으로 이동만 한다. 여기서 Take를 만들지 않는다.',
       '분석 실패 · 리뷰 보류 Take는 분석 대기 화면으로 보낸다.',
       '아래 줄에 "이번 분석 설문 남기기"를 둔다(#776). 분석이 끝난 리포트에만 두고, 설문 상태를 못 받으면 버튼을 두지 않아 리포트를 막지 않는다. 리포트마다 한 번 보낸다. 보내면 완료 안내로 초점이 옮겨 간다.',
+      '내용 전달 카드는 측정값 다음에 둔다(#1154). 대표 숫자는 핵심 내용 전달률이고, 다르게 말한 몫은 따로 보인다. 리뷰 비교의 기존 점수는 "핵심 내용 점수(기존 방식)"로 이름을 나눈다.',
+      '내용 전달의 비율은 null을 0%로 바꾸지 않고 —와 이유를 보인다. 간이 · 추정 값은 배지로 구분하고, 막대는 글자 범례와 %를 함께 둔다.',
+      '지난 Take 대비는 평가 기능 버전이 같고 양쪽 전달률이 숫자일 때만 보인다.',
+      '장별 목록은 "장별 보기 (N장)"로 접어 두어 장이 많아도 카드가 길어지지 않게 한다. 열어서 줄을 누르면 그 장을 펼치고, 그때만 장별 상세를 부른다. 결과가 바뀌었다는 응답(409)이면 리포트를 다시 읽고 새 판으로 다시 부른다.',
     ],
     components: ['Card', 'Stat', 'Badge', 'ButtonLink', '설문 창'],
-    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep', 'coral-wash'],
     sources: [
       'frontend/src/features/report/ReportPage.tsx',
       'frontend/src/features/report/ReportFrame.tsx',
       'frontend/src/features/report/TakeSurvey.tsx',
+      'frontend/src/features/report/ContentCard.tsx',
+      'frontend/src/features/report/SlideCoverage.tsx',
+      'frontend/src/features/report/SpeechMixBlock.tsx',
+      'frontend/src/features/report/contentFormat.ts',
     ],
     productNote:
-      '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다. 설문은 서버에 보내지 않고, 보내기를 누르면 "설문 보냄" 상태로 간다.',
+      '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 내용 전달 · 시선 비율 · 다음 미션만 그린다. 설문은 서버에 보내지 않고, 보내기를 누르면 "설문 보냄" 상태로 간다. 내용 전달은 #1152 예시 숫자로 간추려 그린다 — 제품의 4칸 · 말의 구성 막대 대신 글자 범례만 두고, 수치 칩 · 0일 때 설명 · 측정 불가 · 실패 상태와 장 펼침의 핵심 내용 표 · 간이 장 펼침은 그리지 않는다.',
     productLinks: [
       link('Take 리포트', '/takes/t3'),
       link('AI 문장 실패', '/takes/t-fallback'),
       link('리뷰 실패', '/takes/t-review-failed'),
       link('시선 측정 제외', '/takes/t2'),
+      link('내용 전달 · 0 과 확인 대기', '/takes/t-content-zero'),
+      link('내용 전달 · 간이 장만', '/takes/t-content-estimated'),
+      link('내용 전달 · 미제공', '/takes/t-content-none'),
     ],
     next: [next('Take 3 연습하기', 'prepare-mission'), next('내 피치로', 'home')],
   },
@@ -974,13 +1003,13 @@ const infoScreens: GuideScreen[] = [
       state(
         'mobile',
         '터치 기기',
-        '휴대폰 · 태블릿에서 연습 화면(장치 점검 · 리허설 · 실전)을 열면 이 안내로 온다. 노트북 · 데스크톱에서 연습하라고 알린다.',
+        '휴대폰 · 태블릿에서 연습 화면(튜토리얼 진입 · 장치 점검 · 리허설 · 실전)을 열면 이 안내로 온다. 노트북 · 데스크톱에서 연습하라고 알린다.',
       ),
       state('supported', '연습 가능', '이 주소로 바로 들어왔지만 이 브라우저는 연습할 수 있다.'),
     ],
     rules: [
       '사유는 이 화면이 직접 고른다. 시선 분석 기능이 없으면 그게 먼저고, 그다음 터치 전용 기기다(주 입력이 `pointer: coarse` 이고 마우스 · 트랙패드가 없을 때).',
-      '터치 전용 기기가 연습 화면(장치 점검 · 리허설 · 실전)을 열면 `DesktopGate` 가 로그인보다 먼저 이 화면으로 보낸다. 홈 · 피치 · 리포트 · 마이페이지는 모바일에서도 열린다.',
+      '터치 전용 기기가 연습 화면(튜토리얼 진입 · 장치 점검 · 리허설 · 실전)을 열면 `DesktopGate` 가 로그인보다 먼저 이 화면으로 보낸다. 홈 · 피치 · 리포트 · 마이페이지는 모바일에서도 열린다.',
       '"링크 복사"는 주소를 복사하고, 복사할 수 없으면 주소를 직접 옮기라고 알린다.',
     ],
     components: ['InfoPage 틀(로고 줄)', 'Card', 'Button'],
@@ -988,6 +1017,7 @@ const infoScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/info/UnsupportedPage.tsx',
       'frontend/src/features/info/unsupportedReason.ts',
+      'frontend/src/shared/lib/browserCheck.ts',
       'frontend/src/app/DesktopGate.tsx',
     ],
     productNote: '"링크 복사"는 샘플에서 클립보드를 쓰지 않고 복사 결과 문구도 띄우지 않는다.',
@@ -1107,11 +1137,16 @@ const onboardingScreens: GuideScreen[] = [
       '이미 로그인했으면 목적지(next)로 바로 보낸다. 외부 주소는 목적지로 받지 않는다.',
       '상태 줄은 role="status"로 한 줄만 보인다.',
       '정책 문서가 검토용 초안이라 "동의한 것으로 본다"고 쓰지 않고 확인만 안내한다.',
-      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳".',
+      'PC의 Google Chrome이 아니면 세션 확인이 끝난 뒤 안내 창을 띄운다. 막지 않고, 닫으면 Google 로그인 버튼으로 초점이 간다. 휴대폰 · 태블릿은 연습 화면이 열리지 않는다고 알린다. 닫은 기록은 남기지 않는다.',
+      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳". Chrome 안내 창은 다른 창처럼 해요체다.',
     ],
-    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림'],
+    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림', 'ChromeNoticeDialog'],
     tokens: ['panel', 'ink', 'cream', 'line-strong'],
-    sources: ['frontend/src/features/auth/LoginPage.tsx'],
+    sources: [
+      'frontend/src/features/auth/LoginPage.tsx',
+      'frontend/src/features/auth/ChromeNoticeDialog.tsx',
+      'frontend/src/shared/lib/browserCheck.ts',
+    ],
     productNote:
       '로그인 버튼은 Google로 가지 않고 개인정보 처리 동의 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내와 Chrome 안내 창은 그리지 않는다.',
     productLinks: [link('로그인', '/login')],
