@@ -40,6 +40,12 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
   },
 ];
 
+function comparisonBadgeClass(tone: Tone) {
+  if (tone === 'good') return 'bg-coral-deep text-white';
+  if (tone === 'bad') return 'border border-line-strong bg-cream text-ink';
+  return 'border border-dashed border-line-strong text-stone';
+}
+
 export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const noGaze = stateId === 'no-gaze';
   const noReview = stateId === 'no-review';
@@ -162,13 +168,7 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
                                     <span className="text-ink/80">{cell[0]}</span>→
                                     <b className="text-base">{cell[1]}</b>
                                     <span
-                                      className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${
-                                        cell[3] === 'good'
-                                          ? 'bg-coral-deep text-white'
-                                          : cell[3] === 'bad'
-                                            ? 'border border-line-strong bg-cream text-ink'
-                                            : 'border border-dashed border-line-strong text-stone'
-                                      }`}
+                                      className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(cell[3])}`}
                                     >
                                       {cell[2]}
                                     </span>
