@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { FIRST_PITCH } from './fixtures.ts';
 
 /**
  * 장치 점검(`/pitch/:pitchId/device-check`) E2E — 기준 목소리(#1184)를 중심으로 봅니다.
@@ -8,7 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
  * "사용 불가"이고 Take 를 시작할 수 없습니다 — 그래서 시작 · 다시 쓰기 · 보정 값 보내기는 여기서 보지 않습니다.
  */
 
-const DEVICE_CHECK = '/pitch/10000000-0000-4000-8000-000000000001/device-check';
+const DEVICE_CHECK = `/pitch/${FIRST_PITCH.id}/device-check`;
 
 /** 기준 목소리를 읽기 시작해 몇 초 뒤 "다 읽었어요" — 너무 빨리 누르면 시간이 모자란 실패입니다 */
 async function readBaseVoice(page: Page, seconds: number) {

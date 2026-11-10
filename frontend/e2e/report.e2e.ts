@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { FIRST_PITCH } from './fixtures.ts';
 
 /**
  * 리포트(`/takes/:takeId`) E2E — 목(`src/mocks/report.ts` · `contentCoverage.ts`)의 Take id 마다 상태가 정해져 있습니다.
@@ -9,7 +10,7 @@ import { expect, test, type Page } from '@playwright/test';
  *   t-content-*       내용 전달 카드의 상태별 목 (#1157)
  */
 
-const PITCH_ID = '10000000-0000-4000-8000-000000000001';
+const PITCH_ID = FIRST_PITCH.id;
 
 const contentCard = (page: Page) =>
   page.locator('section').filter({ has: page.getByRole('heading', { name: '내용 전달' }) });

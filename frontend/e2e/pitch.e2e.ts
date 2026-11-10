@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { FIRST_PITCH } from './fixtures.ts';
 
 /**
  * 피치 만들기 · 수정(`/pitch/new` · `/pitch/:id/edit`) E2E — 목(`src/mocks/pitchEdit.ts` 등).
@@ -6,7 +7,7 @@ import { expect, test } from '@playwright/test';
  * PDF 올리기는 실제 PDF 렌더링까지 얽혀 여기서는 보지 않습니다.
  */
 
-const PITCH_ID = '10000000-0000-4000-8000-000000000001';
+const PITCH_ID = FIRST_PITCH.id;
 const EDIT = `/pitch/${PITCH_ID}/edit`;
 
 test('준비가 끝난 피치는 최종 확인을 거쳐 장치 점검으로 간다', async ({ page }) => {
@@ -16,7 +17,7 @@ test('준비가 끝난 피치는 최종 확인을 거쳐 장치 점검으로 간
   await page.getByRole('button', { name: '최종 확인 →' }).click();
   const dialog = page.getByRole('dialog', { name: '발표 준비 최종 확인' });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText('캡스톤 최종 발표');
+  await expect(dialog).toContainText(FIRST_PITCH.title);
 
   // 돌아가서 수정하면 창만 닫힙니다
   await dialog.getByRole('button', { name: '돌아가서 수정' }).click();

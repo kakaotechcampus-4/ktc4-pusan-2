@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { FIRST_PITCH } from './fixtures.ts';
 
 /**
  * Take 기록(`/takes`) · 지표 비교 E2E — 목(`src/mocks/takeHistory.ts`).
  * 피치 고르기 드롭다운은 #1143 이 직접 그린 목록으로 바꾸는 중이라 여기서는 조작하지 않습니다.
  */
 
-const PITCH_ID = '10000000-0000-4000-8000-000000000001';
+const PITCH_ID = FIRST_PITCH.id;
 
 test('기록 목록에서 Take 를 골라 그 리포트로 간다', async ({ page }) => {
   await page.goto('/takes');

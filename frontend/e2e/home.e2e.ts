@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { DELETABLE_PITCH_TITLE, FIRST_PITCH } from './fixtures.ts';
 
 /**
  * 홈(`/`) E2E — 목(`src/mocks/home.ts`)의 피치 넷 가운데
@@ -6,8 +7,8 @@ import { expect, test } from '@playwright/test';
  *   '창업 경진대회 본선' 지울 수 있음
  */
 
-const BUSY = '캡스톤 최종 발표';
-const DELETABLE = '창업 경진대회 본선';
+const BUSY = FIRST_PITCH.title;
+const DELETABLE = DELETABLE_PITCH_TITLE;
 
 test('발표 목록에 피치가 보인다', async ({ page }) => {
   await page.goto('/');
