@@ -72,7 +72,8 @@ FINALIZING → SCORING → (AWAITING_CONFIRMATION) → REVIEWING → DONE
    │  더 기다려도 바뀌지 않는 상태가 되면
    ▼
 /takes/:takeId              Take 리포트
-   │  [Take N 연습하기] → 장치 점검 (연습 조합 없이 → 서버가 고른 짝)
+   │  일반 피치: [Take N 연습하기] → 장치 점검 (연습 조합 없이 → 서버가 고른 짝)
+   │  샘플 피치(is_demo): [내 자료로 연습하기] → /pitch/new (새 피치 생성)
    │  [설문] (자동으로 띄우지 않음)
    ▼
 /takes                      Take 기록 · 한 피치의 Take 비교
