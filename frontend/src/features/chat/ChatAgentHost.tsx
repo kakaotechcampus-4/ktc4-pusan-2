@@ -53,11 +53,7 @@ import { useChatSession, type ChatNotice, type ChatSession } from './useChatSess
  * 채팅에서 오류가 나면 대화만 닫고 런처 자리에 안내와 [다시 시도]를 둡니다. 화면은 그대로 씁니다 (12-4 F8 · L3-36).
  */
 export function ChatAgentHost() {
-  const { pathname, search, key: navigationKey } = useLocation();
-  // 비허용 경로 이동 시 ChatPanel은 렌더 전에 제거되므로,
-  // 자식의 cleanup에서도 최신 라우터 위치를 읽을 수 있게 합니다.
-  const latestNavigationKey = useRef(navigationKey);
-  latestNavigationKey.current = navigationKey;
+  const { pathname, search } = useLocation();
   const info = chatRouteOf(pathname, search);
   const hidden = info === null;
 
@@ -97,7 +93,7 @@ export function ChatAgentHost() {
 
   return (
     <ChatErrorBoundary onReset={resetChatAfterFailure}>
-      <ChatLayer pathname={pathname} info={info} latestNavigationKey={latestNavigationKey} />
+      <ChatLayer pathname={pathname} info={info} />
     </ChatErrorBoundary>
   );
 }
@@ -121,15 +117,7 @@ const isMobileChat = () =>
   typeof window.matchMedia === 'function' &&
   window.matchMedia(MOBILE_CHAT_QUERY).matches;
 
-function ChatLayer({
-  pathname,
-  info,
-  latestNavigationKey,
-}: {
-  pathname: string;
-  info: ChatRouteInfo | null;
-  latestNavigationKey: RefObject<string>;
-}) {
+function ChatLayer({ pathname, info }: { pathname: string; info: ChatRouteInfo | null }) {
   // 입력은 여기 두어 패널을 닫거나 채팅이 숨는 화면을 지나도 남습니다. 사용자가 바뀌면 비웁니다
   const [draft, setDraft] = useState({ userId: null as string | null, text: '' });
 
@@ -142,7 +130,6 @@ function ChatLayer({
           userId={userId}
           info={info}
           pathname={pathname}
-          latestNavigationKey={latestNavigationKey}
           draft={draft.userId === userId ? draft.text : ''}
           setDraft={(text) => setDraft({ userId, text })}
         />
@@ -195,14 +182,12 @@ function ChatSessionView({
   userId,
   info,
   pathname,
-  latestNavigationKey,
   draft,
   setDraft,
 }: {
   userId: string;
   info: ChatRouteInfo;
   pathname: string;
-  latestNavigationKey: RefObject<string>;
 } & DraftProps) {
   const session = useChatSession(userId, info);
   const launcherBottom = chatLauncherBottom(pathname);
@@ -244,7 +229,6 @@ function ChatSessionView({
           userId={userId}
           session={session}
           onClose={close}
-          latestNavigationKey={latestNavigationKey}
           draft={draft}
           setDraft={setDraft}
           focusRequested={focusRequested}
@@ -447,7 +431,6 @@ function ChatPanel({
   userId,
   session,
   onClose,
-  latestNavigationKey,
   focusRequested,
   onFocused,
   draft,
@@ -457,7 +440,6 @@ function ChatPanel({
   userId: string;
   session: ChatSession;
   onClose: () => void;
-  latestNavigationKey: RefObject<string>;
   /** 런처로 연 때만 true — 그때만 입력칸에 초점을 주고 `onFocused` 로 알립니다 */
   focusRequested: boolean;
   onFocused: () => void;
@@ -468,6 +450,12 @@ function ChatPanel({
   const { key: navigationKey } = useLocation();
   const openedNavigationKeyRef = useRef(navigationKey);
   const navigatedWhileOpenRef = useRef(false);
+  // 사용자 직접 닫기(버튼·Esc)와 비허용 경로 이동에 따른 unmount를 구분합니다.
+  const restoreOnCloseRef = useRef(false);
+  const closeWithScrollRestore = () => {
+    restoreOnCloseRef.current = true;
+    onClose();
+  };
   const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -492,8 +480,6 @@ function ChatPanel({
     };
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
-    const openedNavigationKey = latestNavigationKey.current ?? navigationKey;
-    openedNavigationKeyRef.current = openedNavigationKey;
     navigatedWhileOpenRef.current = false;
 
     // iOS Safari에서도 뒤 화면이 움직이지 않도록 고정합니다. 음수 top으로 보던 위치를 그대로 둡니다.
@@ -514,16 +500,16 @@ function ChatPanel({
       body.style.left = previous.left;
       body.style.width = previous.width;
       body.style.overflow = previous.overflow;
-      // 라우터 이동(쿼리 변경 포함) 후에는 이전 화면 좌표를 강제 적용하지 않습니다.
-      // 비허용 경로에서는 패널이 즉시 unmount되어 아래 이펙트가 실행되지 않으므로
-      // 루트의 최신 navigation key도 함께 비교합니다.
-      const navigated =
-        navigatedWhileOpenRef.current || latestNavigationKey.current !== openedNavigationKey;
-      if (!navigated) window.scrollTo(scrollX, scrollY);
-      // 이동한 화면의 스크롤은 React Router ScrollRestoration에 맡깁니다.
+      // 사용자가 같은 화면에서 닫았거나 데스크톱으로 크기를 바꾼 때만 스크롤을 복원합니다.
+      // 비허용 화면으로 이동하면 직접 닫기 핸들러를 거치지 않고 패널이 사라지므로
+      // 이전 화면의 스크롤 위치를 적용하지 않습니다.
+      const sameScreen = !navigatedWhileOpenRef.current;
+      if (sameScreen && (restoreOnCloseRef.current || !isMobileChat())) {
+        window.scrollTo(scrollX, scrollY);
+      }
+      // 다른 화면의 스크롤 위치는 React Router ScrollRestoration에 맡깁니다.
     };
-    // 스크롤 잠금은 열고 닫을 때만 처리합니다. 경로 전환은 아래에서 별도로 처리합니다.
-  }, [mobileOverlay, latestNavigationKey]);
+  }, [mobileOverlay]);
   useLayoutEffect(() => {
     if (mobileOverlay) return;
     // 데스크톱에서 이동하다 모바일로 크기가 바뀐 경우의 기준 위치입니다.
@@ -532,7 +518,7 @@ function ChatPanel({
   }, [mobileOverlay, navigationKey]);
   useLayoutEffect(() => {
     if (!mobileOverlay || openedNavigationKeyRef.current === navigationKey) return;
-    // 패널이 유지되는 화면 이동에서는 기존 화면의 음수 top을 새 화면에 적용하지 않습니다.
+    // 쿼리 변경도 탐색으로 취급합니다. 패널이 유지되는 이동에서는 옛 화면의 음수 top을 제거합니다.
     navigatedWhileOpenRef.current = true;
     document.body.style.top = '0px';
     document.body.style.left = '0px';
@@ -608,7 +594,7 @@ function ChatPanel({
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.stopPropagation();
-          onClose();
+          closeWithScrollRestore();
           return;
         }
         if (event.key === 'Tab' && mobileOverlay) {
@@ -655,7 +641,7 @@ function ChatPanel({
           inputRef.current?.focus();
         }}
         onToggleView={toggleView}
-        onClose={onClose}
+        onClose={closeWithScrollRestore}
         onScopeChange={(next) => session.changeScope(next).catch(() => undefined)}
       />
 
