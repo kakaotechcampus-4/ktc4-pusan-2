@@ -12,12 +12,13 @@ const MISSION_CARDS = [
 export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const pending = stateId === 'pending';
   const error = stateId === 'error';
+  const used = stateId === 'used';
 
   return (
     <div className="pitch-create flex min-h-dvh flex-col bg-greige px-6 py-10 text-ink lg:px-10">
       <div className="mx-auto w-full max-w-4xl">
         <p className="text-xs font-bold tracking-widest text-coral-deep">
-          PITCHCOACH · FIRST MISSION
+          PITCHCOACH · TUTORIAL
         </p>
         <h1 className="mt-4 text-3xl font-bold">치치와 함께하는 첫 번째 Take</h1>
         <p className="mt-4 text-sm leading-7 text-stone">
@@ -25,9 +26,23 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
           이동부터 실시간 코칭, 결과 리포트까지 익힙니다.
         </p>
 
+        <p className="mt-1 text-sm leading-7 text-stone">
+          튜토리얼 리포트는 계정당 한 번 받을 수 있어요. 리포트가 나오기 전에 연습이 끊겼다면 다시 할 수 있어요.
+        </p>
+        {used && (
+          <section role="alert" className="mt-6 border-2 border-ink bg-cream p-5">
+            <h2 className="font-bold">튜토리얼 리포트를 이미 받았어요</h2>
+            <p className="mt-2 text-sm leading-7">
+              샘플 발표로는 더 연습할 수 없어요. 내 자료로 새 피치를 만들어 계속 연습할 수 있어요.
+            </p>
+            <button type="button" onClick={() => onNavigate('pitch-create')} className="mt-4 border-2 border-ink bg-panel px-4 py-2 text-sm font-bold">
+              새 피치 만들기
+            </button>
+          </section>
+        )}
         <section className="mt-8 border-2 border-ink bg-panel p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-bold">[튜토리얼] 치치와 함께하는 First Take</h2>
+            <h2 className="text-lg font-bold">샘플 발표</h2>
             <span className="border border-line-strong bg-cream px-3 py-1 text-xs font-bold">
               5 SLIDES · 목표 3분
             </span>
@@ -42,7 +57,7 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
             ))}
           </ol>
           <p className="mt-6 border-t border-line-strong pt-4 text-sm leading-7">
-            샘플 발표는 내 피치에 저장되며, 발표 기록도 남습니다. 카메라 영상은 브라우저에서
+            샘플 발표는 내 피치 목록에 ‘샘플’로 저장되며, 발표 기록도 남습니다. 카메라 영상은 브라우저에서
             처리하고, 발표 음성은 분석을 위해 서버로 전송됩니다. 코칭 결과는 실제 측정에 따라
             달라지며 예시 점수나 가짜 피드백을 사용하지 않습니다.
           </p>
@@ -51,11 +66,11 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
         <div className="mt-7 flex flex-wrap items-center gap-4">
           <button
             type="button"
-            disabled={pending}
+            disabled={pending || used}
             onClick={() => onNavigate('prepare-mission')}
             className="border-2 border-ink bg-coral-deep px-6 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] hover:bg-ink disabled:cursor-wait disabled:opacity-60"
           >
-            {pending ? '샘플 준비 중…' : '첫 미션 시작하기 →'}
+            {pending ? '샘플 준비 중…' : '튜토리얼 시작하기 →'}
           </button>
           <button
             type="button"
@@ -76,7 +91,7 @@ export function TutorialScreen({ stateId, onNavigate }: { stateId: string; onNav
           </p>
         )}
         <p className="mt-6 text-xs text-stone">
-          설계서 전용 미리보기입니다. 실제 샘플 저장·폴링·PDF 생성 없이 장치 점검 화면으로
+          설계서 전용 미리보기입니다. 실제 튜토리얼 API 요청 없이 장치 점검 화면으로
           연결합니다.
         </p>
       </div>
