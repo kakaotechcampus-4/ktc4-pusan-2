@@ -44,6 +44,7 @@ from .values import (
     range_for,
     range_sources,
     read_metric,
+    volume_base_source,
 )
 from .version import SUPPORTED_GOAL_ALGORITHMS
 
@@ -191,7 +192,8 @@ def compare_takes(
         `Comparison`. 비교할 수 없으면 `comparable:false`와 `reason`:
         `NO_DIRECTION` · `NOT_COMPLETED_FULLY` · `MISSING_VERSION` · `DIFFERENT_SCRIPT_VERSION` ·
         `DIFFERENT_CRITERIA_VERSION`(평가 기준 `standard_version`) · `RULE_VERSION_CHANGED`(그 지표의 판정 기준 버전) ·
-        `NO_VALUE` · `NO_RANGE` · `INVALID_DATA` · `OMITTED` · `NOT_LOADED`.
+        `NO_VALUE` · `NO_RANGE` · `INVALID_DATA` · `OMITTED` · `NOT_LOADED` · `DIFFERENT_VOLUME_BASE`(소리 크기의 기준 음량 출처가
+        `TAKE`이거나 두 Take 가 다름).
         예외를 던지지 않는다(값 검사 위반도 `INVALID_DATA` 결과다).
 
     예:
@@ -226,6 +228,13 @@ def compare_takes(
             return nc("MISSING_VERSION")
         if pr.rule_version != cr.rule_version:
             return nc("RULE_VERSION_CHANGED")
+    if pr.area == "VOLUME":
+        # 소리 크기는 그 Take 의 기준 음량과 견준 값이다: 기준이 그 Take 자신(`TAKE`, 발표 처음)이거나 두 Take 의 기준 출처가 다르면
+        # 같은 잣대가 아니라 비교하지 않는다(리뷰의 출처 규칙 #1181 과 같음, Issue #1194 R1 — 사람 음량 실험은 이번 범위 밖이라
+        # 최소 변화폭은 리뷰와 같은 지금 값 그대로)
+        pb, cb = volume_base_source(prev), volume_base_source(cur)
+        if pb == "TAKE" or cb == "TAKE" or pb != cb:
+            return nc("DIFFERENT_VOLUME_BASE")
 
     p_range = c_range = None
     p_src: list[RangeSource] = []

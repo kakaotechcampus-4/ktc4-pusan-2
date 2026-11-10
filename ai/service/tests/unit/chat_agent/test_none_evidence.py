@@ -361,7 +361,9 @@ def test_name_search_zero_does_not_widen_to_no_pitches() -> None:
     _, lines, data = F.run_turn(req, llm)
     fd = check_stream(lines, data)
     assert fd.status == "DONE"
-    assert texts(data) == [T.PITCH_NOT_FOUND.value]  # 이름 검색 결과의 고정 문장이 답이다
+    # 이름 검색 결과의 고정 문장이 답이고, 그 뒤에 지금 있는 발표 · 다음 걸음(Issue #1194 4-E)
+    assert texts(data)[0] == T.PITCH_NOT_FOUND.value
+    assert texts(data)[1:] == ["지금 볼 수 있는 발표는 '졸업 발표'예요.", T.NEXT_PICK_PITCH.value]
     assert not any("피치가 없" in t or "발표가 없" in t for t in texts(data))
 
 
@@ -380,7 +382,10 @@ def test_review_missing_fallback_says_review_not_take() -> None:
     _, lines, data = F.run_turn(req, llm)
     fd = check_stream(lines, data)
     assert fd.status == "DONE"
-    assert texts(data) == ["Take 5에는 아직 리뷰 결과가 없어요."]
+    # 리뷰 없음 '없음' 근거 문장, 리뷰를 물었으니 리뷰 없음 안내, 그 뒤 다음 걸음(Issue #1194 4-E)
+    assert texts(data)[0] == "Take 5에는 아직 리뷰 결과가 없어요."
+    assert T.NO_REVIEW.value in texts(data)
+    assert texts(data)[-1] == T.NEXT_AFTER_REVIEW.value
     assert data["plan"][0]["step"] == "리뷰 보기: Take 5 기록 → 리뷰 분석 전"
     assert not any("Take 없음" in p["step"] for p in data["plan"])
     assert T.NEXT_FIRST_TAKE.value not in texts(data)  # Take 는 있다
@@ -444,8 +449,9 @@ def test_recovered_tool_failure_is_done_but_unrecovered_is_partial() -> None:
     assert texts(done)[:1] == [NO_TAKE_SENTENCE]
     # 실행했지만 실패한 단계는 글에 실패를 보인 채 DONE(SKIPPED 는 실행하지 않은 단계만)
     assert [p["status"] for p in done["plan"]] == ["DONE", "DONE", "DONE"]
-    assert done["plan"][1]["step"].endswith("확인 실패")
-    assert done["plan"][1]["step"].endswith("확인 실패")
+    assert done["plan"][0]["step"].endswith("확인 실패")
+    # 실패 뒤 다른 도구로 확인한 단계는 실패 단계 뒤에 까닭과 함께 보인다(Issue #1194 4-F)
+    assert done["plan"][1]["step"].startswith("확인 실패라 피치 목록:")
     # 확인한 뒤 실패하고 복구하지 않았다: 남은 부분이 있어 PARTIAL, 실패 단계는 TODO
     left = turn(F.tools(("list_pitches", {}), prefix="b"), F.tools(bad, prefix="a"))
     assert left["status"] == "PARTIAL"

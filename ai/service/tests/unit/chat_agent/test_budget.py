@@ -194,15 +194,22 @@ def test_answer_needs_more_than_half_a_second(spent: float, allowed: bool) -> No
 
 
 @pytest.mark.parametrize(
-    ("spent", "research", "answer"),
-    [(0, 12.0, 12.0), (15, 6.0, 12.0), (25, 0.0, 12.0), (40, 0.0, 5.0), (50, 0.0, 0.0)],
+    ("spent", "research", "answer", "fix"),
+    [
+        (0, 12.0, 18.0, 12.0),
+        (15, 6.0, 18.0, 12.0),
+        (25, 0.0, 14.0, 12.0),  # 답 쓰기는 고치기 몫 6초를 남긴다
+        (40, 0.0, 5.0, 5.0),  # 남은 시간이 모자라면 남은 만큼
+        (50, 0.0, 0.0, 0.0),
+    ],
 )
-def test_call_timeout(spent: float, research: float, answer: float) -> None:
+def test_call_timeout(spent: float, research: float, answer: float, fix: float) -> None:
+    """답 쓰기 · 고치기 몫(24초) 안에서 답 쓰기 18초 · 고치기 나머지(Issue #1194 실패 분석 2절)."""
     b, clock = start()
     clock.advance(spent)
     assert b.call_timeout("RESEARCH") == pytest.approx(research)
     assert b.call_timeout("ANSWER") == pytest.approx(answer)
-    assert b.call_timeout("FIX") == pytest.approx(answer)
+    assert b.call_timeout("FIX") == pytest.approx(fix)
 
 
 # ── 토큰 예약 (8-2 · L1-39) ─────────────────────────────────────────────────

@@ -186,7 +186,12 @@ def test_out_of_scope_is_refused_after_plan() -> None:
     _, lines, data = F.run_turn(F.request(user_message="오늘 날씨 어때?"), llm)
     fd = final_ok(data)
     assert fd.status == "REFUSED"
-    assert fd.message is not None and fd.message.text == templates.SystemText.OUT_OF_SCOPE.value
+    # 핵심 고정 문장 뒤에 할 수 있는 일 · 다음 걸음(Issue #1194 4-E, guidance.py)
+    assert fd.message is not None and [c.text for c in fd.message.claims] == [
+        templates.SystemText.OUT_OF_SCOPE.value,
+        templates.SystemText.TALK_CAPABILITY.value,
+        templates.SystemText.NEXT_REVIEW.value,
+    ]
     assert len(llm.calls) == 1
 
 
@@ -209,8 +214,10 @@ def test_out_of_scope_plan_refuses_with_fixed_sentence_per_reason(
     _, _, data = F.run_turn(F.request(user_message="3장 대본 고쳐 줘"), llm)
     fd = final_ok(data)
     assert fd.status == "REFUSED"
-    assert fd.message is not None and fd.message.text == text.value
-    assert [c.kind for c in fd.message.claims] == ["SYSTEM"]
+    # 핵심 문장은 그대로 맨 앞, 그 뒤 다음 걸음(이유별 문장이 대안을 말하지 않는 것은 할 수 있는 일도, 4-E)
+    assert fd.message is not None and fd.message.claims[0].text == text.value
+    assert {c.kind for c in fd.message.claims} == {"SYSTEM"}
+    assert fd.message.claims[-1].text == templates.SystemText.NEXT_REVIEW.value
     assert len(llm.calls) == 1
 
 
@@ -232,7 +239,8 @@ def test_out_of_scope_answer_route_refuses_with_fixed_sentence_per_reason(
     _, _, data = F.run_turn(F.request(user_message="예상 질문 만들어 줘"), llm)
     fd = final_ok(data)
     assert fd.status == "REFUSED"
-    assert fd.message is not None and fd.message.text == text.value
+    assert fd.message is not None and fd.message.claims[0].text == text.value
+    assert fd.message.claims[-1].text == templates.SystemText.NEXT_REVIEW.value
 
 
 def test_mixed_request_appends_fixed_scope_sentences_and_stays_done() -> None:
@@ -1125,7 +1133,10 @@ def test_fm_L1_12_research_refusal_ends_refused() -> None:
     llm = F.FakeLlm([F.plan(assessments=[change_draft()]), LlmRefused()])
     fd = final_ok(F.run_turn(req, llm)[2])
     assert fd.status == "REFUSED"
-    assert fd.message.text == templates.SystemText.CANNOT_ANSWER.value  # type: ignore[union-attr]
+    assert [c.text for c in fd.message.claims] == [  # type: ignore[union-attr]
+        templates.SystemText.CANNOT_ANSWER.value,
+        templates.SystemText.NEXT_ASK_FORM.value,
+    ]
     assert [c.purpose for c in llm.calls] == ["RESEARCH", "RESEARCH"]
 
 
@@ -1470,7 +1481,9 @@ def test_mixed_request_keeps_the_scope_sentence_when_every_answer_sentence_is_dr
     fd = final_ok(F.run_turn(req, llm)[2])
     assert fd.status == "PARTIAL"
     texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
-    assert texts[-1] == templates.SystemText.CONTENT_COACHING.value
+    # 범위 밖 고정 문장은 남고, 답이 안내뿐이라 그 뒤에 다음 걸음이 붙는다(Issue #1194 4-E)
+    assert templates.SystemText.CONTENT_COACHING.value in texts
+    assert texts[-1] == templates.SystemText.NEXT_REVIEW.value
     assert all("99%" not in t for t in texts)
 
 

@@ -37,6 +37,7 @@ from . import templates
 from .config import ChatAgentConfig
 from .evidence import EvidenceRegistry, RecordVersion, canonical_json
 from .goals import Comparison, compare_takes, record_read_value
+from .values import volume_base_source
 from .schemas import (
     Assessment,
     AssessmentType,
@@ -236,10 +237,7 @@ VOLUME_BASE_UNKNOWN = "기준"
 
 def volume_base(snap: TakeSnapshot | None) -> str | None:
     """그 Take 의 기준 음량 출처(`CALIBRATION` · `TAKE`). 결과가 없거나 출처를 못 잡았으면 None."""
-    tr = snap.results.take_result if snap is not None else None
-    area = (tr.get("areas") or {}).get("VOLUME") if isinstance(tr, Mapping) else None
-    take = area.get("take") if isinstance(area, Mapping) else None
-    src = take.get("base_level_source") if isinstance(take, Mapping) else None
+    src = volume_base_source(snap)
     return src if src in VOLUME_BASE_WORD else None
 
 
@@ -448,6 +446,16 @@ def _states_my_fact(clause: str, draft: AssessmentDraft) -> bool:
     if draft.type == "KNOWLEDGE":
         return ref  # 발표법 주장은 과거형이어도('~라고 했어') 유형을 유지한다
     return ref or past  # PREFERENCE
+
+
+def forced_unverifiable_quotes(
+    user_message: str, drafts: Sequence[AssessmentDraft], cfg: ChatAgentConfig
+) -> set[str]:
+    """사용자 말을 잘못 나눠(유형 · 대상 불일치 · 섞인 인용, `FORCED_UNVERIFIABLE`) 확인할 수 없게 된 초안의 `quote`.
+    요청 해소 검사(turn.py, Issue #1194 4-B)는 이 초안을 세지 않는다."""
+    valid, problems, valid_idx = _split_check_indexed(user_message, drafts, cfg)
+    bad = {p.draft_index for p in problems if p.code in FORCED_UNVERIFIABLE}
+    return {d.quote for i, d in enumerate(drafts) if i in bad}
 
 
 def split_check(

@@ -144,6 +144,9 @@ def named_take_numbers(text: str) -> set[int]:
 _SLIDE = re.compile(r"(\d+)\s?장|슬라이드\s*(\d+)")
 #: 순서를 가리키는 "N번째"는 값이 아니다
 _ORDINAL = re.compile(r"\d+\s?번째")
+#: 날짜 "11월 10일"(한국 시간 월 · 일). 값보다 먼저 뽑아 11 · 10 을 단위 없는 수로 대조하지 않는다. 날짜는 이은 근거 중
+#: 단위가 `date`인 근거(피치 목록의 마지막 연습 시작, `tools/impl.py`)의 월 · 일과 같아야 한다(Issue #1194, 4-A)
+_DATE = re.compile(r"(\d{1,2})\s?월\s?(\d{1,2})\s?일")
 _NUMBER = re.compile(
     rf"({_NUM})(퍼센트\s?포인트|퍼센트p|%p|퍼센트|%|ms|dB|초(?!과)|분(?!당)|번|개|점|자)?",
     re.IGNORECASE,
@@ -171,6 +174,8 @@ class Extracted:
     slides: tuple[int, ...]
     take_pos: tuple[int, ...] = ()
     slide_pos: tuple[int, ...] = ()
+    #: 날짜 (월, 일). 값 목록에는 들지 않는다
+    dates: tuple[tuple[int, int], ...] = ()
 
 
 def _parse(num: str) -> tuple[float, int]:
@@ -185,9 +190,14 @@ def extract_numbers(sentence: str) -> Extracted:
     """
     takes: list[tuple[int, int]] = []
     slides: list[tuple[int, int]] = []
+    dates: list[tuple[int, tuple[int, int]]] = []
 
     def blank(m: re.Match[str]) -> str:
         return " " * len(m.group(0))
+
+    def date(m: re.Match[str]) -> str:
+        dates.append((m.start(), (int(m.group(1)), int(m.group(2)))))
+        return blank(m)
 
     def take(m: re.Match[str]) -> str:
         takes.append((m.start(), int(m.group(1))))
@@ -197,7 +207,8 @@ def extract_numbers(sentence: str) -> Extracted:
         slides.append((m.start(), int(m.group(1) or m.group(2))))
         return blank(m)
 
-    rest = _TAKE_BEFORE.sub(take, sentence)
+    rest = _DATE.sub(date, sentence)
+    rest = _TAKE_BEFORE.sub(take, rest)
     rest = _TAKE_AFTER.sub(take, rest)
     rest = _SLIDE.sub(slide, rest)
     rest = _ORDINAL.sub(blank, rest)
@@ -227,7 +238,13 @@ def extract_numbers(sentence: str) -> Extracted:
         tuple(n for _, n in slides),
         tuple(p for p, _ in takes),
         tuple(p for p, _ in slides),
+        tuple(d for _, d in sorted(dates)),
     )
+
+
+def date_value(month_day: tuple[int, int]) -> str:
+    """(월, 일) → 근거 날짜 값과 견줄 'MM-DD'."""
+    return f"{month_day[0]:02d}-{month_day[1]:02d}"
 
 
 def _round_half_up(value: float, places: int) -> float:
@@ -261,6 +278,8 @@ def check_numbers(
     ex = extract_numbers(sentence)
     if not set(ex.takes) <= set(take_numbers) or not set(ex.slides) <= set(slide_numbers):
         return False
+    if ex.dates:
+        return False  # 이 단순 규칙에는 날짜 근거가 없다(날짜는 근거를 잇는 문장 검사만 받는다)
     return all(any(_value_matches(t, a) for a in allowed) for t in ex.values)
 
 
@@ -543,6 +562,14 @@ def _check_record_text(
             usable.append(ev)
 
     ex = extract_numbers(text)
+    # 0) 날짜: 이은 근거 중 날짜 근거(단위 `date`, 값 'YYYY-MM-DD')의 월 · 일과 같아야 한다(4-A)
+    dates_ok = {str(e.value)[5:10] for e in effective if e.unit == "date" and isinstance(e.value, str)}
+    for d in dict.fromkeys(ex.dates):
+        if date_value(d) not in dates_ok:
+            fail(
+                CheckId.NUMBER_MISMATCH,
+                f"'{d[0]}월 {d[1]}일'은 이은 근거의 날짜와 다름",
+            )
     # 1) 대상 집합 검사: Take · 장 · 지표 이름이 이은 근거의 것인가
     target_failed = False
     take_set = {e.take_number for e in effective if e.take_number is not None}
@@ -1360,7 +1387,7 @@ def _check_assessment(
         )
     # 템플릿 뒤 설명 속 숫자 · Take · 장 · 지표 이름은 판단의 근거 또는 설명이 이은 이번 턴 근거와 맞아야 한다
     ex = extract_numbers(scan)
-    if ex.values or ex.takes or ex.slides or _metric_mentions(scan, cfg):
+    if ex.values or ex.takes or ex.slides or ex.dates or _metric_mentions(scan, cfg):
         ids = list(dict.fromkeys([*a.evidence_ids, *c.evidence_ids]))
         f.extend(_check_record_text(i, c.kind, scan, ids, registry, cfg))
     return scan, f

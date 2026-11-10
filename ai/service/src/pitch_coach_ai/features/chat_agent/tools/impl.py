@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -133,12 +134,28 @@ def _not_loaded(name: str, what: str, args_summary: str) -> ToolResult:
     )
 
 
-def _not_found(name: str, args_summary: str) -> ToolResult:
+def take_candidates(ctx: RunCtx | None, limit: int = 5) -> list[dict[str, Any]]:
+    """없는 대상을 부른 모델에게 돌려줄 후보(Issue #1194 4-D): 지금 범위 피치에서 확인된 Take(번호가 큰 것부터 `limit`개).
+    범위 밖 · 지워진 대상은 넣지 않는다(모델에게만 가는 결과, 응답 계약이 아니다)."""
+    if ctx is None:
+        return []
+    return [
+        {"take_id": t.take_id, "take_number": t.take_number}
+        for t in sorted(ctx.summaries.values(), key=lambda x: x.take_number, reverse=True)[:limit]
+    ]
+
+
+def _not_found(name: str, args_summary: str, ctx: RunCtx | None = None) -> ToolResult:
+    error: dict[str, Any] = {"code": "NOT_FOUND", "message": "범위 피치에 없는 대상이다"}
+    cands = take_candidates(ctx)
+    if cands:
+        error["candidates"] = cands
+        error["message"] += ". candidates 의 take_id 중에서 고른다"
     return _res(
         name,
         ok=False,
         data=None,
-        error={"code": "NOT_FOUND", "message": "범위 피치에 없는 대상이다"},
+        error=error,
         read_state="NOT_FOUND",
         args_summary=args_summary,
         result_summary="찾을 수 없음",
@@ -275,6 +292,31 @@ def _path_value(v: Any) -> str:
     return s if _PATH_VALUE.match(s) else "OTHER"
 
 
+#: 날짜 표기의 시간대(한국 시간, 일광 절약 없음)
+_KST = timezone(timedelta(hours=9))
+#: 피치 목록의 순서 뜻(모델에게만 가는 결과 note, 기능 문서 5-7)
+PITCH_ORDER_NOTE = (
+    "목록은 마지막 연습 시작이 늦은 순이다(분석 중 · 중단 · 실패한 Take 의 시작도 든다). "
+    "last_practiced 는 그 피치 Take 의 가장 늦은 시작 날짜(한국 시간), take_count 는 분석이 끝난 Take 수다"
+)
+
+
+def practiced_date(iso: str | None) -> tuple[str, str] | None:
+    """마지막 연습 시작 시각(ISO 8601) → (근거 값 'YYYY-MM-DD', 화면 표기 'M월 D일'), 한국 시간. 없거나 읽을 수 없으면 None.
+
+    시간대가 없는 값은 한국 시간으로 본다(BE 는 시간대를 싣는다, 5-3 `PitchSummary`)."""
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_KST)
+    d = dt.astimezone(_KST)
+    return d.strftime("%Y-%m-%d"), f"{d.month}월 {d.day}일"
+
+
 def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
     items = ctx.pitches
     if a.query:
@@ -299,7 +341,23 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
             "pitch_id": p.pitch_id,
             "title": p.title,
             "take_count": {"value": p.take_count, "evidence_id": tc.evidence_id},
+            "last_practiced": None,
         }
+        pd = practiced_date(p.last_practiced_at)
+        if pd is not None:
+            # 마지막 연습 시작 날짜도 근거다: "가장 최근에 연습한 발표"를 이 근거로 말한다(Issue #1194 4-A, 날짜 검사는 checks.py)
+            lp = ctx.registry.record(
+                pitch_id=p.pitch_id,
+                take_id=None,
+                take_number=None,
+                kind=None,
+                revision=None,
+                path=f"pitches[pitch_id={p.pitch_id}].last_practiced_at",
+                value=pd[0],
+                unit="date",
+            )
+            eids.append(lp.evidence_id)
+            row["last_practiced"] = {"value": pd[1], "evidence_id": lp.evidence_id}
         lr = p.last_review
         if lr is not None:
             # 우선 개선 차원도 근거로 낸다(피치마다 따로 말하는 전체 범위 답이 근거 없는 문장으로 빠지지 않게, 6-5)
@@ -334,7 +392,12 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
                 eids.append(ev.evidence_id)
                 row["last_review"]["score"] = {"value": lr.score, "evidence_id": ev.evidence_id}
         out.append(row)
-    data: dict[str, Any] = {"items": out, "total": ctx.pitches_total, "shown": len(ctx.pitches)}
+    data: dict[str, Any] = {
+        "items": out,
+        "total": ctx.pitches_total,
+        "shown": len(ctx.pitches),
+        "note": PITCH_ORDER_NOTE,
+    }
     if a.query and not out:
         # 이름으로 찾은 목록이 비었다: '이 이름으로 찾은 피치 0개'다(사용자의 피치 수 전체가 아님). 검색어는 경로에 넣지 않는다
         ev = ctx.registry.record(
@@ -512,7 +575,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         return _not_loaded("get_take_report", "이 Take 결과가", summ)
     if isinstance(snap, str):
         ctx.not_found.add(a.take_id)
-        return _not_found("get_take_report", summ)
+        return _not_found("get_take_report", summ, ctx)
     tn = snap.summary.take_number
     summ = f"Take {tn} · {a.section}" + (f" · {a.slide_number}장" if a.slide_number else "")
     ctx.touch(snap.summary.take_id, ctx.scope_pitch_id)
@@ -910,7 +973,16 @@ def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
             data=None,
             error={
                 "code": "BAD_ARGS",
-                "message": "모르는 지표다. 지표 이름은 도구 설명의 목록에서 고른다",
+                "message": "모르는 지표다. 지표 이름은 fields 의 expected 에서 고른다",
+                # 틀린 칸과 올바른 꼴(받은 글은 되돌리지 않는다, 4-D). 점수 · 차원 상태는 지표가 아니다
+                "fields": [
+                    {
+                        "field": "metric",
+                        "problem": "UNKNOWN_METRIC",
+                        "expected": sorted(ctx.cfg.metric_units),
+                        "hint": "점수 · 차원 상태 · 미션은 get_take_report(section=dimensions · mission_results)로 Take 마다 읽는다",
+                    }
+                ],
             },
             args_summary=summ,
             result_summary="모르는 지표",
@@ -922,7 +994,7 @@ def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
             return _not_loaded("compare_takes", "비교할 Take 결과가", summ)
         if isinstance(s, str):
             ctx.not_found.add(tid)
-            return _not_found("compare_takes", summ)
+            return _not_found("compare_takes", summ, ctx)
         snaps.append(s)
     prev, cur = snaps
     summ = f"Take {prev.summary.take_number} · {cur.summary.take_number} · {metric_label}" + (

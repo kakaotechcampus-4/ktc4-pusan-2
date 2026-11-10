@@ -378,7 +378,7 @@ def _report_run(
         first = next((it["dimension"] for it in items if it.get("state") == "PRIORITY"), None)
         if first is not None:
             return run(r["PRIORITY"].format(dimension=DIM_LABEL.get(first, first)))
-    if section == "slides" and (tr.read_state == "UNMEASURED" or _asked_unmeasured(snap, areas)):
+    if section == "slides" and (tr.read_state == "UNMEASURED" or asked_unmeasured(snap, areas)):
         return run(r["UNMEASURED"])
     if section == "slides" and args.slide_number:
         # 무엇을 봤는지 보인다: `3장 확인`(장 번호는 그 단계 근거로 표시 검사를 받는다)
@@ -386,7 +386,7 @@ def _report_run(
     return run(r["CHECKED"])
 
 
-def _asked_unmeasured(snap: Any, areas: frozenset[str] | None) -> bool:
+def asked_unmeasured(snap: Any, areas: frozenset[str] | None) -> bool:
     """물은 영역(`asked_areas`)이 그 Take 에서 모두 측정 안 됨인가(영역에 미측정 사유가 있거나 Take 값이 null). 장별 값을 읽으면
     다른 지표가 측정됐어도 물은 영역의 측정 안 됨을 단계에 보인다(final60 ana-webinar-voice-unmeasured: 목소리 크기를 물었는데
     `확인`으로만 보이고 답에 측정 안 됨이 빠짐). 물은 영역을 모르거나 Take 결과가 없으면 False."""
@@ -435,12 +435,28 @@ def attach(
     max_steps: int,
     key: str | None = None,
     cached: bool = False,
+    why: str | None = None,
 ) -> int | None:
     """실행을 단계에 붙이고 그 단계 번호(0부터)를 돌려준다. 붙일 단계가 없으면 실행 뒤에 새 단계를 남은 단계 앞에 끼운다
     (목적 = 도구 종류 이름). 이미 `max_steps`단계면 붙이지 않고 None(trace 에만 남는다).
     캐시 적중이라도 힌트가 맞는 미완 단계가 있으면 그 단계를 채운다(계획한 일을 이미 읽은 기록으로 끝냄). 붙일 단계가 없어 새 단계를
     덧붙여야 할 때, 같은 호출(`key`)을 이미 보인 단계가 있는 캐시 적중이면 덧붙이지 않고 그 단계 번호만 돌려준다(되풀이 읽기는 새 일이 아니다)."""
-    i = pick(meta, run.tool)
+    if why is not None:
+        # 신호에 대응한 대안 실행(4-F): 계획한 단계에 섞지 않고 `<까닭> <대안>` 단계로 보인다. 같은 까닭 · 같은 Take 의 대안
+        # 단계가 이미 있으면 거기에 잇는다(코치 기록의 두 절을 한 단계로)
+        i = next(
+            (j for j, m in enumerate(meta) if m["purpose"] == why and m.get("take") == run.take),
+            None,
+        )
+        if i is None:
+            if len(meta) >= max_steps:
+                return None
+            # 실행한 단계(실패한 단계 포함) 뒤, 아직 하지 않은 단계 앞에 끼운다
+            todo = [j for j in _pending(meta) if not meta[j]["ran"]]
+            i = todo[0] if todo else len(meta)
+            meta.insert(i, _meta(why, run.tool))
+    else:
+        i = pick(meta, run.tool)
     if i is None and cached and key is not None:
         seen = next((j for j, m in enumerate(meta) if key in m.get("keys", [])), None)
         if seen is not None:
@@ -467,6 +483,20 @@ def attach(
     if key is not None:
         m["keys"] = [*m.get("keys", []), key]
     return i
+
+
+def add_unresolved(meta: list[dict[str, Any]], max_steps: int) -> int | None:
+    """요청 해소 검사(4-B)로 남은 항목이 있다: 아직 하지 않은 단계(답 쓰기 제외)가 없으면 '물은 항목 확인' 단계를 답 쓰기 앞에
+    더해 `PARTIAL`의 남은 일(TODO)로 보이게 한다. 더한(또는 이미 있던 미완) 단계 번호. 할 일 목록이 상한(`max_steps`, 8)으로
+    차 있으면 더하지 않고 None(끝 상태는 그래도 `PARTIAL`이다)."""
+    for i, m in enumerate(meta):
+        if not m["done"] and not m["skipped"] and not m["ran"] and m["tool"] != "answer":
+            return i
+    if len(meta) >= max_steps:
+        return None
+    answer = next((i for i, m in enumerate(meta) if m["tool"] == "answer"), len(meta))
+    meta.insert(answer, _meta(tpl.PLAN_UNRESOLVED, None))
+    return answer
 
 
 def current_step(meta: list[dict[str, Any]]) -> int | None:

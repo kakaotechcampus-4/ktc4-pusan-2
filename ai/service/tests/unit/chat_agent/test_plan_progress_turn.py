@@ -273,7 +273,8 @@ def test_not_comparable_shows_fact_then_alt_tool_appends_step_after_run() -> Non
     assert len(plans[1]) == 2  # 다른 Take 비교는 아직 실행 전이라 보이지 않는다
     # 모델이 다른 Take 비교를 실행한 뒤에만 단계가 붙는다(남은 단계 앞)
     assert len(plans[2]) == 3
-    assert plans[2][1]["step"] == "비교: Take 4·5 비교 → 3장 청중 시선 나빠짐"
+    # 대안 단계는 까닭과 함께 보인다(Issue #1194 4-F, `<까닭> <대안>: <실행> → <결과>`)
+    assert plans[2][1]["step"] == "비교 불가라 다른 Take 비교: Take 4·5 비교 → 3장 청중 시선 나빠짐"
     assert [p["status"] for p in data["plan"]] == ["DONE", "DONE", "DONE"]
     assert decisions(log) == [
         ("NOT_COMPARABLE", "FACT_SHOWN", "CODE", 1),
@@ -564,9 +565,10 @@ def test_needs_action_keeps_plan_meta_across_resume() -> None:
         {"step": "반복 확인: 비교 → 기본 자료에 없음", "status": "DONE", "note": None},
         {"step": "답 쓰기", "status": "DOING", "note": None},
     ]
+    # 기본 자료에 없는 Take 는 코드가 바로 가져온다(Issue #1194 4-G): 모델 대본의 fetch_take 는 부르지 않는다
     assert decisions(log) == [
         ("NOT_LOADED", "FACT_SHOWN", "CODE", 1),
-        ("NOT_LOADED", "ACTION", "LLM", None),
+        ("NOT_LOADED", "ACTION", "CODE", None),
     ]
     action = fd.actions[0]
     res = [

@@ -28,6 +28,9 @@ from .test_plan_progress_turn import (
 )
 from .test_turn import COMPARE, MSG, final_ok
 
+#: 리뷰 없음 · 기록 없음 신호를 모델에게 묻던 이전 동작(Issue #1194 4-G 의 코드 대응을 끈 설정)
+LEGACY = load_config(code_signal_responses=False)
+
 
 def research_blocks(llm: F.FakeLlm) -> list[dict[str, Any]]:
     """도구를 고르는 조사 호출마다 데이터 블록(`<data>…</data>`)."""
@@ -65,7 +68,8 @@ def test_review_missing_is_shown_then_the_model_reads_the_coach_result_instead()
         fixes=[F.fix({0: None})],
     )
     log: list[dict[str, Any]] = []
-    _, lines, data = F.run_turn(req, llm, log=log)
+    # 모델이 신호에 대응하던 길(4-G 코드 대응을 끈 설정). 코드 대응 길은 test_signal_code.py
+    _, lines, data = F.run_turn(req, llm, log=log, cfg=LEGACY)
     fd = check_stream(lines, data)
     assert tools_of(data) == [("get_take_report", "EMPTY"), ("get_take_report", "OK")]
     assert decisions(log) == [
@@ -90,7 +94,8 @@ def test_review_missing_is_shown_then_the_model_reads_the_coach_result_instead()
         "note": None,
     }
     assert len(plans[1]) == 2 and len(plans[-1]) == 3
-    assert data["plan"][1]["step"].startswith("기록 보기: Take 5 기록 → ")
+    # 모델이 고른 대안도 까닭과 함께 보인다(Issue #1194 4-F)
+    assert data["plan"][1]["step"].startswith("리뷰 없어 코치 기록: Take 5 기록 → ")
     assert fd.status == "DONE"
     assert [p["status"] for p in data["plan"]] == ["DONE", "DONE", "DONE"]
 
@@ -122,7 +127,7 @@ def test_no_record_offers_the_none_answer_and_the_model_answers_without_more_rea
         answers=[answer],
     )
     log: list[dict[str, Any]] = []
-    _, lines, data = F.run_turn(no_take_request(), llm, log=log)
+    _, lines, data = F.run_turn(no_take_request(), llm, log=log, cfg=LEGACY)
     fd = check_stream(lines, data)
     assert tools_of(data) == [("list_pitches", "OK")]
     assert decisions(log) == [
