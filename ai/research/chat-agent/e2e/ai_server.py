@@ -150,6 +150,9 @@ def _no_llm(*_args: Any, **_kw: Any) -> Any:
 
 
 def build_app() -> Any:
+    if os.environ.get("E2E_REAL_MODEL") == "1":
+        # 실제 모델 시연(README): 서비스 앱 그대로(대화 · 리뷰 모두 `ai/.env`의 실제 모델 묶음, 요금이 듦)
+        return create_app(settings)
     app = create_app(settings)
     secret = settings.agent_state_secret.get_secret_value().encode()
     app.state.chat_agent_runtime = AgentRuntime(

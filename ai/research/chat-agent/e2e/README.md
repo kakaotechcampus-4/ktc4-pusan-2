@@ -8,12 +8,13 @@
 |---|---|
 | `compose.yml` | postgres:17 하나(호스트 55432, 프로젝트 `pc-e2e`, 데이터는 tmpfs) |
 | `stack.py` | DB → 마이그레이션 → AI(18001) → BE(18000) → FE(3100) 기동, 명령 실행 뒤 모두 내림(`down -v`). AI에 모델 주소를 닿지 않는 곳으로 넘기고, 시나리오 통제 파일(`.stack/scenario`)을 만든다 |
-| `seed.py` | 테스트마다 새 사용자 · 피치 · Take를 BE 엔티티로 넣고 쿠키 값 발급. `new base｜review｜goal`, `sweep`(자동 목표 확인을 지금 한 번 실행) |
-| `ai_server.py` | `create_app()` + `app.state.chat_agent_runtime`에 가짜 모델(`ScriptedLlm`) 주입. 통제 파일의 시나리오 이름으로 `scripts/<이름>.json`을 읽어 응답을 낸다. `/takes/review`는 모델 없이(기본 결과) 돈다 |
+| `seed.py` | 테스트마다 새 사용자 · 피치 · Take를 BE 엔티티로 넣고 쿠키 값 발급. `new base｜review｜goal`(시연용 `latest｜scripts`도), `sweep`(자동 목표 확인을 지금 한 번 실행) |
+| `ai_server.py` | `create_app()` + `app.state.chat_agent_runtime`에 가짜 모델(`ScriptedLlm`) 주입. 통제 파일의 시나리오 이름으로 `scripts/<이름>.json`을 읽어 응답을 낸다. `/takes/review`는 모델 없이(기본 결과) 돈다. `E2E_REAL_MODEL=1`이면 서비스 앱 그대로(실제 모델, 아래 '실제 모델 시연') |
 | `scripts/*.json` | 시나리오별 대본 데이터: 사용자 말, 호출 순서(계획 · 도구 · 실패), 답 문장, **기대 문구(`expect.plan_steps` 등)** |
 | `tests/helpers.ts` | 시드 · 시나리오 고르기 · 로그인 · 대화 열기/보내기 · BE API(`Api`) · DB 조회(`sql`) |
 | `tests/*.e2e.ts` | 시나리오 테스트(아래 표). 시험마다 화면 · BE API · DB 세 층을 본다 |
 | `playwright.config.ts` · `package.json` | chromium 한 개, 서버는 띄우지 않음, 순차 실행 |
+| `tests/demo.real.ts` · `playwright.real.config.ts` | 실제 모델 시연(아래 절): 장면 4개 × 3번, 결과는 `.stack/demo-results.jsonl`. `npm run demo`로만 돈다 |
 
 ## 시나리오
 | # | 파일 · 대본 | 확인하는 것 (화면 / BE API / DB) |
@@ -33,6 +34,23 @@ python3 ai/research/chat-agent/e2e/stack.py run -- npm --prefix ai/research/chat
 ```
 전제: Docker 실행 중, `uv`, `backend/`에서 `uv sync`, `frontend/`에서 `npm ci`, `ai/research/chat-agent/.venv`.
 `stack.py up`은 띄운 채 유지(로그 `.stack/*.log`). 그동안 `E2E_STATE=$PWD/ai/research/chat-agent/e2e/.stack/state.json npm --prefix ai/research/chat-agent/e2e test -- <파일 이름 일부>`로 한 파일만 돌릴 수 있다. `ai_server.py`나 `scripts/*.json`의 구조를 바꾸면 스택을 다시 띄운다(대본 내용은 시나리오를 다시 고를 때마다 다시 읽힌다).
+
+## 실제 모델 시연 (요금이 듦)
+가짜 모델 대신 `ai/.env`의 실제 모델 묶음으로 AI 서비스 앱을 그대로 띄워, 아래 장면 4개를 새 대화에서 3번씩 돌린다(Issue #1194). 사용자는 목표만 말하고, 확인 카드의 [승인] 말고는 다음 단계를 지시하지 않는다. 성공 · 실패를 모두 `.stack/demo-results.jsonl`에 남긴다(입력 · 끝 상태 · 걸린 시간 · 할 일 단계 · 답 글 · 카드 · 승인 횟수). 기본 E2E(`npm test`)에는 들지 않는다.
+
+```bash
+E2E_REAL_MODEL=1 python3 ai/research/chat-agent/e2e/stack.py run -- npm --prefix ai/research/chat-agent/e2e run demo
+```
+
+| 장면 | 시드 · 화면 | 사용자 말 | 성공으로 보는 것 |
+|---|---|---|---|
+| 1 | `latest` · 홈(범위 전체) | "가장 최근에 연습한 발표를 찾아줘" | `DONE`, 마지막 연습 시작이 가장 늦은 '투자 설명회'(분석이 끝난 Take 0개)와 결과를 볼 수 있는 '졸업 발표'를 함께 안내, '졸업 발표'를 가장 최근이라 하지 않음 |
+| 2 | `base`(리뷰 없는 Take 1) · 리포트 | "최근 기록을 보고 다음 목표를 잡아줘" | 확인 카드 1번 승인 뒤 `DONE`, 대화 목표 1개 저장 |
+| 3 | `scripts`(대본 판이 다른 Take 1 · 2) · Take 2 리포트 | "두 Take의 시선이 좋아졌는지 비교해줘" | `DONE` · `PARTIAL`, 비교할 수 없는 까닭(대본 버전)을 말하고 좋아짐 · 나빠짐 결론을 내지 않음 |
+| 4 | `review` · 리포트 | "대본 보고 한 발표였어. 대본 사용 조건으로 다시 확인해줘" | 확인 카드 → 새로고침 → 승인 → `DONE`, 참고 결과 카드, 공식 리뷰 그대로 |
+
+- 실제 모델이라 결과는 매번 다를 수 있다. 시연은 성공한 한 번으로 안정성을 말하지 않고 3번의 결과를 모두 적는다.
+- 배포(dev)에서의 반복 완주는 merge · 배포 뒤 같은 장면으로 한다(기능 문서 15-4).
 
 ## 대본 고치기 (계획 스키마가 바뀔 때)
 - 계획 단계 글자 · 단계별 칸(예: 단계마다 쓸 도구 힌트 `tool`, `tools-5`)은 `scripts/*.json`의 `plan.steps`(문자열 또는 `{"step", "status", "note", ...}` 객체 — 늘어난 칸은 그대로 실린다)와 `update_plan` 인자에 쓴다. 기대 글자는 같은 파일 `expect.plan_steps`.

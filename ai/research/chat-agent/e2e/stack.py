@@ -51,6 +51,10 @@ AI_ENV = {
     "OPENAI_MODEL": "e2e-unreachable-model",
     "E2E_SCENARIO_FILE": str(STATE_DIR / "scenario"),
 }
+#: 실제 모델 시연(`E2E_REAL_MODEL=1 python3 …/stack.py run -- npm --prefix … run demo`): 모델 주소를 막지 않고
+#: `ai/.env`의 실제 묶음을 쓴다(요금이 듦). 시나리오 통제 파일 · 가짜 모델은 쓰지 않는다
+if os.environ.get("E2E_REAL_MODEL") == "1":
+    AI_ENV = {k: v for k, v in AI_ENV.items() if not k.startswith("OPENAI_")} | {"E2E_REAL_MODEL": "1"}
 FE_ENV = {
     "VITE_USE_MOCK": "false",
     "VITE_MOCK_SESSION": "false",
