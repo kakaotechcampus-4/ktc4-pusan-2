@@ -14,8 +14,8 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
     title: '대본에서 벗어나기',
     columns: ['대본 응시', '대본 읽기 횟수'],
     rows: [
-      ['발표 전체', ['27%', '22%', '나아짐', 'good'], ['4회', '2회', '나아짐', 'good']],
-      ['3번 장', ['70%', '62%', '나아짐', 'good'], null],
+      ['발표 전체', ['27%', '22%', '개선 ↑', 'good'], ['4회', '2회', '개선 ↑', 'good']],
+      ['3번 장', ['70%', '62%', '개선 ↑', 'good'], null],
     ],
   },
   {
@@ -24,21 +24,27 @@ const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][
     rows: [
       [
         '발표 전체',
-        ['14회', '9회', '방향 없음', 'muted'],
-        ['3회', '1회', '나아짐', 'good'],
-        ['05:12', '04:38', '나아짐', 'good'],
+        ['14회', '9회', '방향 판단 불가', 'muted'],
+        ['3회', '1회', '개선 ↑', 'good'],
+        ['05:12', '04:38', '개선 ↑', 'good'],
         null,
       ],
-      ['1번 장', null, null, null, ['01:10', '00:58', '나아짐', 'good']],
-      ['2번 장', null, null, null, ['00:52', '00:55', '나빠짐', 'bad']],
+      ['1번 장', null, null, null, ['01:10', '00:58', '개선 ↑', 'good']],
+      ['2번 장', null, null, null, ['00:52', '00:55', '악화 ↓', 'bad']],
     ],
   },
   {
     title: '군더더기 없이',
     columns: ['군더더기'],
-    rows: [['발표 전체', ['10회', '7회', '나아짐', 'good']]],
+    rows: [['발표 전체', ['10회', '7회', '개선 ↑', 'good']]],
   },
 ];
+
+function comparisonBadgeClass(tone: Tone) {
+  if (tone === 'good') return 'bg-coral-deep text-white';
+  if (tone === 'bad') return 'border border-line-strong bg-cream text-ink';
+  return 'border border-dashed border-line-strong text-stone';
+}
 
 export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const noGaze = stateId === 'no-gaze';
@@ -84,6 +90,47 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
               title="지난 Take와 비교"
               action={<p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>}
             >
+              {/* 제품의 지표 요약 구조: 슬라이드는 구분된 카드, 전체 지표는 값과 판정을 한 박스로 표시 */}
+              <div className="grid gap-4 lg:grid-cols-2">
+                <section className="min-w-0 border-l-2 border-line pl-3">
+                  <h3 className="font-bold">대본 응시</h3>
+                  <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                    <div className="border border-coral-deep bg-coral-wash p-3">
+                      <p className="font-bold text-ink">개선된 슬라이드</p>
+                      <p className="mt-1">3번</p>
+                    </div>
+                    <div className="border border-line-strong bg-cream p-3">
+                      <p className="font-bold text-ink">다시 점검할 슬라이드</p>
+                      <p className="mt-1">없음</p>
+                    </div>
+                  </div>
+                </section>
+                <section className="min-w-0 border-l-2 border-line pl-3">
+                  <h3 className="font-bold">발표 시간</h3>
+                  <div className="mt-2 border border-coral-deep bg-coral-wash p-3">
+                    <p className="text-xs font-bold text-stone">발표 전체</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <div>
+                        <p className="text-xs text-stone">지난 Take</p>
+                        <p className="tabular tabular-nums font-bold text-ink">05:12</p>
+                      </div>
+                      <span aria-hidden="true" className="text-stone">
+                        →
+                      </span>
+                      <div>
+                        <p className="text-xs text-stone">이번 Take</p>
+                        <p className="tabular tabular-nums font-bold text-ink">04:38</p>
+                      </div>
+                      <span className="inline-flex shrink-0 bg-coral-deep px-2 py-0.5 text-xs font-bold text-white">
+                        개선 ↑
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <p className="text-xs text-ink/80">
+                아래는 상세 비교표의 미리보기예요. 제품에서는 ‘상세 비교표 보기’를 눌러 확인해요.
+              </p>
               {/* 리뷰 차원(`review-agent.md` 5-3)마다 표 하나 — 지표가 열, 발표 전체 · 장이 행 (#929) */}
               <div className="grid gap-4 lg:grid-cols-2">
                 {COMPARISON.map((g) => (
@@ -121,7 +168,15 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
                                   <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                                     <span className="text-ink/80">{cell[0]}</span>→
                                     <b className="text-base">{cell[1]}</b>
-                                    <Badge tone={cell[3]}>{cell[2]}</Badge>
+                                    {cell[3] === 'muted' ? (
+                                      <Badge tone="muted">{cell[2]}</Badge>
+                                    ) : (
+                                      <span
+                                        className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${comparisonBadgeClass(cell[3])}`}
+                                      >
+                                        {cell[2]}
+                                      </span>
+                                    )}
                                   </span>
                                 ) : (
                                   <span className="text-ink/80">—</span>
