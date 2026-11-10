@@ -139,6 +139,76 @@ def all_failed(take_id: uuid.UUID) -> dict[str, Any]:
     }
 
 
+STT_INCOMPLETE_SLIDES = (4, 6, 7)
+
+
+def _stt_incomplete_slide(slide_number: int) -> dict[str, Any]:
+    return {
+        "slide_number": slide_number,
+        "state": "failed",
+        "reason_codes": ["STT_INCOMPLETE"],
+        "stt_integrity": "incomplete",
+        "rubric_quality": "full",
+        "delivery": None,
+        "zero_kind": None,
+        "contradiction": None,
+        "status_shares": None,
+        "critical_gap_count": 0,
+        "delivery_band": None,
+        "speech_mix": None,
+    }
+
+
+def all_stt_incomplete(take_id: uuid.UUID) -> dict[str, Any]:
+    """대상 장이 모두 STT 끊김이라 채점도 간이 값도 없이 200 으로 온 응답 (#1158).
+
+    AI 의 `evaluate_take` 에 4 · 6 · 7장 STT 를 비우고 끊김 시간을 준 요청을 넣어 얻은 모양이다.
+    `ALL_FAILED_DETAIL` 과는 전달 · 다르게 말함 · 비교 범위 · 장 상세만 다르다. LLM 을 부르지 않아
+    `meta.model` 이 null 이다.
+    """
+    numbers = STT_INCOMPLETE_SLIDES
+    excluded = len(numbers)
+    detail = copy.deepcopy(ALL_FAILED_DETAIL)
+    detail.update(
+        delivery=_metric(None, "failed", "SLIDES_EXCLUDED", excluded=excluded),
+        contradiction=_metric(None, "failed", "SLIDES_EXCLUDED", excluded=excluded),
+        scope={
+            "target_slides": excluded,
+            "scored_slides": 0,
+            "estimated_slides": 0,
+            "provisional_slides": 0,
+            "excluded": [{"slide_number": n, "reason_code": "STT_INCOMPLETE"} for n in numbers],
+        },
+        slides=[_stt_incomplete_slide(n) for n in numbers],
+    )
+    return {
+        "take_id": str(take_id),
+        "evaluations": [],
+        "take_scores": {
+            "content_coverage": None,
+            "critical_fact_accuracy": None,
+            "script_fidelity": None,
+            "similar_words": 0,
+            "similar_numbers": 0,
+            "scored_ratio": 0.0,
+        },
+        "confirmations": [],
+        "failed": [
+            {
+                "slide_number": n,
+                "error": {
+                    "code": "STT_INCOMPLETE",
+                    "message": f"{n}번 장: 음성 인식이 끊겨 이 장을 채점하지 않았습니다.",
+                },
+                "fallback": None,
+            }
+            for n in numbers
+        ],
+        "detail": detail,
+        "meta": {**copy.deepcopy(META), "model": None},
+    }
+
+
 SLIDE_DETAIL = {
     "version": 1,
     "state": "ok",
