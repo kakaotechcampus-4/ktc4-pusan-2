@@ -492,7 +492,7 @@ function ChatPanel({
     };
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
-    const openedNavigationKey = latestNavigationKey.current;
+    const openedNavigationKey = latestNavigationKey.current ?? navigationKey;
     openedNavigationKeyRef.current = openedNavigationKey;
     navigatedWhileOpenRef.current = false;
 
