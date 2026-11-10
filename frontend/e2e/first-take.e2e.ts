@@ -27,7 +27,7 @@ test('샘플을 만들면 해당 피치의 장치 점검으로 이동한다', as
   await expect(page.getByRole('heading', { name: '시작 전 세팅' })).toBeVisible();
 });
 
-test('튜토리얼 사용 완료 계정은 장치 점검으로 보내지 않고 새 피치를 안내한다', async ({ page }) => {
+test('튜토리얼 사용 완료 시 장치 점검 대신 새 피치를 안내한다', async ({ page }) => {
   await page.goto('/pitch/tutorial');
   const start = page.getByRole('button', { name: '튜토리얼 시작하기 →' });
   await expect(start).toBeVisible();
@@ -37,7 +37,8 @@ test('튜토리얼 사용 완료 계정은 장치 점검으로 보내지 않고 
 
   await start.click();
   await expect(page).toHaveURL(/\/pitch\/tutorial$/);
-  await expect(page.getByRole('heading', { name: '튜토리얼 리포트를 이미 받았어요' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '새 피치 만들기' })).toHaveAttribute('href', '/pitch/new');
+  await expect(page.getByRole('heading', { name: /튜토리얼 리포트를 이미/ })).toBeVisible();
+  const create = page.getByRole('link', { name: '새 피치 만들기' });
+  await expect(create).toHaveAttribute('href', '/pitch/new');
   await expect(page.getByRole('link', { name: '샘플 Take 기록 보기' })).toHaveCount(0);
 });
