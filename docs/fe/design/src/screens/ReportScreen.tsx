@@ -8,6 +8,13 @@ import { Frame, PITCH, type Navigate } from './shared';
 
 type Cell = readonly [string, string, string, Tone] | null;
 
+function findOverallCell(rows: [string, ...Cell[]][], index: number): Cell {
+  const overallRow = rows.find(([label]) => label === '발표 전체');
+  if (!overallRow) return null;
+  const [, ...cells] = overallRow;
+  return cells[index] ?? null;
+}
+
 /** 지난 Take와 비교 샘플 — 제품은 AI `comparison` 을 차원별로 묶습니다. 분당 군더더기는 보이지 않습니다 (#929) */
 const COMPARISON: { title: string; columns: string[]; rows: [string, ...Cell[]][] }[] = [
   {
@@ -85,7 +92,7 @@ function ComparisonSummary() {
               .map((row) => row[0]);
             const same = slides.filter((row) => row[index + 1]?.[2] === '같음').length;
             const unknown = slides.filter((row) => row[index + 1]?.[2] === '방향 판단 불가').length;
-            const overall = group.rows.find((row) => row[0] === '발표 전체')?.[index + 1];
+            const overall = findOverallCell(group.rows, index);
             const directionUnknown = slides.length > 0 && unknown === slides.length && same === 0;
             return (
               <section key={group.title + metric} className="min-w-0 border-l-2 border-line pl-3">
