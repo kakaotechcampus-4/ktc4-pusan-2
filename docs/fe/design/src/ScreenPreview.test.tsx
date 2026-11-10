@@ -484,6 +484,17 @@ it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검
   expect(host.textContent).toContain('점검 항목');
 });
 
+it('홈의 샘플 피치는 편집 대신 튜토리얼로 이동하고 완료된 초대 강조를 숨긴다', async () => {
+  await render('home', 'sample');
+  const name = [...host.querySelectorAll('span')].find((el) => el.textContent === '샘플 발표');
+  const sample = name?.closest('li');
+  expect(sample).not.toBeNull();
+  expect(sample?.textContent).toContain('샘플');
+  expect(sample?.querySelector('a[href$="/edit"]')).toBeNull();
+  expect(sample?.querySelector('a[href="/pitch/tutorial"]')?.textContent).toContain('발표 준비');
+  expect(host.querySelector('[data-tutorial-sticker]')).toBeNull();
+});
+
 it('튜토리얼 준비 중 버튼은 초점을 유지하고 장치 점검으로 이동하지 않는다', async () => {
   await render('tutorial', 'pending');
   const start = button('샘플 준비 중…')!;
