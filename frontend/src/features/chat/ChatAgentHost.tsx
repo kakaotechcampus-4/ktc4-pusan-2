@@ -57,13 +57,35 @@ export function ChatAgentHost() {
   const info = chatRouteOf(pathname, search);
   const hidden = info === null;
 
-  // 숨는 화면으로 가면 닫습니다. 돌아왔을 때 패널이 다시 열려 초점을 빼앗지 않게 합니다
+  // 숨는 화면으로 가면 패널을 닫습니다. 지연 로딩 중인 본문이 교체돼도 초점을 잃지 않게 합니다.
   useLayoutEffect(() => {
     if (!hidden) return;
     const wasOpen = useChatStore.getState().open;
     useChatStore.getState().closeChat();
-    // 패널 안의 버튼으로 이동했다면 사라진 버튼 대신 목적지 본문에 초점을 둡니다.
-    if (wasOpen) document.getElementById('main')?.focus({ preventScroll: true });
+    if (!wasOpen) return;
+
+    const content = document.querySelector<HTMLElement>('.chat-layout-content');
+    if (!content) return;
+    let focusedMain: HTMLElement | null = null;
+    const focusDestination = () => {
+      const main =
+        content.querySelector<HTMLElement>('#main') ?? content.querySelector<HTMLElement>('main');
+      if (!main || main === focusedMain || focusedMain?.isConnected) return;
+      // 사용자가 로딩 중 다른 조작부로 초점을 옮겼다면 다시 빼앗지 않습니다.
+      if (focusedMain && document.activeElement !== document.body) return;
+      if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
+      main.focus({ preventScroll: true });
+      if (document.activeElement === main) focusedMain = main;
+    };
+    const observer = new MutationObserver(focusDestination);
+    observer.observe(content, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['inert'],
+    });
+    focusDestination();
+    return () => observer.disconnect();
   }, [hidden]);
 
   return (
@@ -535,10 +557,16 @@ function ChatPanel({
           if (!first || !last) {
             event.preventDefault();
             event.currentTarget.focus();
-          } else if (event.shiftKey && document.activeElement === first) {
+          } else if (
+            event.shiftKey &&
+            (document.activeElement === first || document.activeElement === event.currentTarget)
+          ) {
             event.preventDefault();
             last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
+          } else if (
+            !event.shiftKey &&
+            (document.activeElement === last || document.activeElement === event.currentTarget)
+          ) {
             event.preventDefault();
             first.focus();
           }
