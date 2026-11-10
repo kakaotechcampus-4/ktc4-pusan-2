@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-46",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should_not",
+  "title": "아직 Take 가 하나도 없는 범위 피치에서 발표자료 문구를 고쳐 달라고 함 — 내용 코칭 범위 밖 고정 문장 + Take 없음 상태의 다음 걸음, 대안 후보가 없으니 Take 번호를 지어내지 않음, REFUSED · 행동 없음",
+  "expect_refusal": true,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-grad",
+        "title": "대학원 연구계획 발표",
+        "last_practiced_at": "2026-11-09T10:00:00+09:00",
+        "takes": []
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-grad"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표자료 첫 장 제목이 너무 밋밋한데, 좀 더 눈에 띄는 문구로 바꿔 줄래요?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "core-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.CONTENT_COACHING",
+        "grader": "template",
+        "note": "① 범위 밖 이유 CONTENT_COACHING 의 고정 문장(1-3: 발표자료 내용 고쳐 쓰기) — 이유 문장이 이미 대안을 말한다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status",
+        "note": "② 전부 범위 밖"
+      },
+      {
+        "check_id": "no-fake-take",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "Take\\s*\\d",
+        "grader": "regex",
+        "note": "③ 후보 없음 — 이 피치에는 Take 가 없으므로 Take 번호를 말하지 않음"
+      },
+      {
+        "check_id": "next-step",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.NEXT_FIRST_TAKE",
+        "grader": "template",
+        "note": "④ 범위 피치에 Take 없음 상태의 다음 걸음(인사 뒤 다음 걸음과 같은 규칙)"
+      },
+      {
+        "check_id": "no-review-step",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.NEXT_REVIEW",
+        "grader": "template",
+        "note": "④ Take 가 없으므로 '최근 Take에서 고칠 점부터…'는 아님"
+      },
+      {
+        "check_id": "no-new-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS",
+          "START_PRACTICE"
+        ],
+        "path": "types",
+        "metric": "autonomy",
+        "note": "⑤ REFUSED 답에는 행동이 없다(5-5)"
+      },
+      {
+        "check_id": "no-new-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "ASK_CONFIRM",
+          "GOAL_PROPOSAL"
+        ],
+        "path": "cards",
+        "note": "⑤ 카드 없음"
+      },
+      {
+        "check_id": "no-record-read",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "tool:get_take_report:*"
+        ],
+        "metric": "path"
+      }
+    ]
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-28",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "앞 Take 의 3장 넘김 기록이 빠져 끝까지 했는지 모름 — 말 속도 비교를 하지 않고 장 기록 부족 문장, 비교 결론 없음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-job",
+        "title": "스타트업 채용 설명회",
+        "takes": [
+          {
+            "take_id": "jb-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T18:00:00+09:00",
+            "completed_at": "2026-11-04T18:07:00+09:00",
+            "result": {
+              "cpm": 345
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "visited_slides": [
+              1,
+              2,
+              4
+            ]
+          },
+          {
+            "take_id": "jb-t2",
+            "take_number": 2,
+            "started_at": "2026-11-07T18:00:00+09:00",
+            "completed_at": "2026-11-07T18:07:00+09:00",
+            "result": {
+              "cpm": 312
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-07T18:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-job"
+    }
+  },
+  "turns": [
+    {
+      "message": "지난번 Take보다 이번에 말 속도가 좀 안정됐나요? 비교해 주세요.",
+      "page_take_id": "jb-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "completion-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.COMPLETION_UNKNOWN",
+        "grader": "template",
+        "metric": "replan",
+        "note": "7-10: completed_fully null 인 Take 가 있으면 '장 기록이 부족해 끝까지 진행했는지 확인할 수 없어요.'"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "compare-signal",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:*",
+          "decision:NOT_COMPARABLE:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-in-range-outcome",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.BOTH_IN_RANGE",
+        "grader": "template",
+        "note": "비교했다면 345 · 312 모두 범위(275~350) 안이라 나올 결론"
+      },
+      {
+        "check_id": "no-improved",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "jb-t1: COMPLETED · end_reason 없음 · page_count 4 · 장 넘김 [1,2,4] → completed_fully null(12-3)."
+}

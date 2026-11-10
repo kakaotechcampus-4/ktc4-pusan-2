@@ -1,0 +1,163 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-29",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should",
+  "title": "'대본 V2 로 바꾼 뒤 Take 끼리만' 3장 청중 시선 — 같은 대본의 Take 3 · 4 를 비교해 34% → 47% 좋아짐, 앞 대본 Take 와 섞지 않음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-ft",
+        "title": "푸드트럭 창업 지원사업 발표",
+        "takes": [
+          {
+            "take_id": "ft-t1",
+            "take_number": 1,
+            "started_at": "2026-10-30T15:00:00+09:00",
+            "completed_at": "2026-10-30T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.58,
+                0.52,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "script_version_id": "sv-ft1"
+          },
+          {
+            "take_id": "ft-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T15:00:00+09:00",
+            "completed_at": "2026-11-02T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.61,
+                0.57,
+                0.49,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "script_version_id": "sv-ft1"
+          },
+          {
+            "take_id": "ft-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T15:00:00+09:00",
+            "completed_at": "2026-11-05T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.58,
+                0.34,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "script_version_id": "sv-ft2"
+          },
+          {
+            "take_id": "ft-t4",
+            "take_number": 4,
+            "started_at": "2026-11-08T15:00:00+09:00",
+            "completed_at": "2026-11-08T15:07:00+09:00",
+            "result": {
+              "audience": [
+                0.62,
+                0.59,
+                0.47,
+                0.61
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            },
+            "script_version_id": "sv-ft2"
+          }
+        ],
+        "last_practiced_at": "2026-11-08T15:00:00+09:00",
+        "script_version_id": "sv-ft2",
+        "script_version_label": "V2"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-ft"
+    }
+  },
+  "turns": [
+    {
+      "message": "대본을 V2로 바꾼 뒤에 한 Take들끼리만 놓고 보면, 3장에서 청중을 보는 비율이 나아졌어?",
+      "page_take_id": "ft-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "improved",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template",
+        "metric": "replan",
+        "note": "Take 3 → 4 3장 audience_ratio 0.34 → 0.47(HIGHER)"
+      },
+      {
+        "check_id": "no-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template",
+        "metric": "replan",
+        "note": "앞 대본 Take(1: 52% · 2: 49%)와 비교하면 나올 결론"
+      },
+      {
+        "check_id": "t3-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.34,
+        "grader": "number",
+        "derive": "ft-t3:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "t4-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.47,
+        "grader": "number",
+        "derive": "ft-t4:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "compared",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:OK",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

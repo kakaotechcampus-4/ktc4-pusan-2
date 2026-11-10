@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-39",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should",
+  "title": "말이 꼬이거나 막혔을 때 처음부터 다시 해야 하나 — 자료 g-22 인용(원문 그대로), 기록 비교 도구 없음",
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-show",
+        "title": "신제품 런칭 쇼케이스",
+        "takes": [
+          {
+            "take_id": "sh-t1",
+            "take_number": 1,
+            "started_at": "2026-11-08T13:00:00+09:00",
+            "completed_at": "2026-11-08T13:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T13:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-show"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표하다가 말이 꼬이거나 다음 말이 생각 안 나면 처음부터 다시 하는 게 나아요? 자료에 있는 방법으로 알려 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "source",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "g-22",
+        "path": "source_ids"
+      },
+      {
+        "check_id": "quote-exact",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "search-then-guide",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:search_guides:OK",
+          "claim:GUIDE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-compare",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "tool:compare_takes:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-14",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "'프롬프터에 핵심어를 띄워 두고 참고했다' 이의 + 다시 평가 요청 — 일부만 확인 판단(핵심어 표시) · 사실 문장 먼저 → 확인 카드 → 승인 → 참고 결과(대본 의존 칸이 바뀜), 공식 그대로",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-pharm",
+        "title": "약학 세미나 증례 발표",
+        "last_practiced_at": "2026-11-08T09:00:00+09:00",
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": ["청중과 눈 맞추며 설명하기"],
+          "targets": [],
+          "script_used": false
+        },
+        "takes": [
+          {
+            "take_id": "pharm-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T09:00:00+09:00",
+            "completed_at": "2026-11-04T09:05:00+09:00",
+            "result": {"script_ratio": [0.22, 0.3, 0.28, 0.2], "audience": [0.58, 0.5, 0.52, 0.6]}
+          },
+          {
+            "take_id": "pharm-t3",
+            "take_number": 3,
+            "script_mode": "KEYWORD",
+            "started_at": "2026-11-08T09:00:00+09:00",
+            "completed_at": "2026-11-08T09:05:00+09:00",
+            "result": {
+              "script_ratio": [0.3, 0.52, 0.48, 0.35],
+              "audience": [0.5, 0.33, 0.36, 0.5],
+              "issues": [["GAZE_ON_SCRIPT", 2, true], ["GAZE_ON_SCRIPT", 3, true]]
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-pharm"},
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 3에서 대본 의존이 우선 개선이라고 나온 게 좀 억울해요. 발표하면서 프롬프터 화면에 핵심어를 띄워 두고 참고한 거라서요. 그 상황을 반영해서 다시 평가해 주세요.",
+      "page_take_id": "pharm-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "judge-then-card",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["claim:*", "propose:REASSESS:ASK"],
+        "metric": "replan",
+        "note": "요청보다 판단 먼저: 판단 · 사실 문장이 문장 줄로 먼저 나가고 확인 카드가 뒤따른다(6-3 · L6-07)"
+      },
+      {
+        "check_id": "reassess-flow",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["propose:REASSESS:ASK", "approve:REASSESS", "exec:REASSESS:OK", "claim:ACTION_RESULT"],
+        "metric": "path"
+      },
+      {
+        "check_id": "reassess-args",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {"type": "REASSESS", "args": {"take_id": "pharm-t3", "change": {"script_used": true}}},
+        "path": "items"
+      },
+      {
+        "check_id": "verdict-partly",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "PARTLY",
+        "path": "verdicts",
+        "note": "대본 사용 주장: script_mode KEYWORD → PARTLY(6-3 판정 표)"
+      },
+      {
+        "check_id": "script-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"name": "SCRIPT_FACT", "fields": {"state": "핵심어로 켜져"}},
+        "grader": "template"
+      },
+      {
+        "check_id": "script-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SCRIPT_UNKNOWN",
+        "grader": "template"
+      },
+      {
+        "check_id": "script-not-allowed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_NOT_ALLOWED",
+        "grader": "template",
+        "note": "평가 기준 script_used false → 공식 평가에는 대본 사용 허용이 없어요"
+      },
+      {
+        "check_id": "changed-script-independence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": ["score", "dimensions.script_independence"],
+        "path": "cards[type=REASSESS_RESULT].changed_fields",
+        "note": "script_used true → 대본 의존 차원이 판단 불가 · 점수(6-6 표). A · B 는 리뷰 규칙 코드(LLM 없이)로 계산해 확인: A 대본 의존 PRIORITY · 88점 → B NOT_EVALUABLE · 100점"
+      },
+      {
+        "check_id": "after-script-independence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "NOT_EVALUABLE",
+        "path": "cards[type=REASSESS_RESULT].after.dimensions.script_independence"
+      },
+      {
+        "check_id": "before-script-independence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PRIORITY",
+        "path": "cards[type=REASSESS_RESULT].before.dimensions.script_independence"
+      },
+      {
+        "check_id": "reassess-success",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "one-reassess",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.REASSESS"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "공식 리뷰는 리뷰 규칙 결과로 시작(official_reviews rule) → A 는 공식과 같다. B 는 script_used 만 true."
+}

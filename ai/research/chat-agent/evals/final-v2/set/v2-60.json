@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-60",
+  "set": "agent_service",
+  "group": "small_talk",
+  "split": "dev",
+  "act": "should_not",
+  "title": "범위 피치 없는(전체) 대화에서 연습하려는 뜻만 말함 — 연습 고정 문장 + 어떤 발표인지 선택 안내, 범위 피치가 없으니 연습 준비 버튼 · 기록 읽기 없음",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-wed",
+        "title": "결혼식 축사",
+        "last_practiced_at": "2026-11-08T22:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "wed-t1",
+            "take_number": 1,
+            "started_at": "2026-11-08T22:00:00+09:00",
+            "completed_at": "2026-11-08T22:03:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-club",
+        "title": "독서 모임 발제",
+        "last_practiced_at": "2026-11-05T20:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "club-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T20:00:00+09:00",
+            "completed_at": "2026-11-05T20:06:00+09:00"
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "좋아요, 이제 연습 한 번 더 해 볼게요!"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "practice-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.TALK_PRACTICE",
+        "grader": "template",
+        "note": "7-10 가벼운 말 — 연습하려는 뜻"
+      },
+      {
+        "check_id": "which-pitch",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.WHICH_PITCH",
+        "grader": "template",
+        "note": "범위 피치가 없고 피치는 있으면 '어떤 발표인지 선택해 주세요.'"
+      },
+      {
+        "check_id": "no-button",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["START_PRACTICE", "SAVE_GOAL", "REASSESS"],
+        "path": "types",
+        "metric": "autonomy",
+        "note": "범위 피치가 없으면 [연습 준비로] 버튼을 내지 않는다(7-10)"
+      },
+      {
+        "check_id": "no-button-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PRACTICE_BUTTON",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "fixed-reply-path",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["claim:SYSTEM", "final:DONE"],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-research",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["tool:get_take_report:*"],
+        "metric": "path",
+        "note": "가벼운 말은 조사 · 답 쓰기 없이 고정 문장으로 끝낸다(6-1)"
+      },
+      {
+        "check_id": "no-record-claim",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["claim:RECORD"],
+        "metric": "path"
+      }
+    ]
+  }
+}

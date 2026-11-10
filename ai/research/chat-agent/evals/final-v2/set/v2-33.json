@@ -1,0 +1,190 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-33",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "[이어서 확인] 두 차례 모두 같은 시간 한도 장애 — 첫 차례 PARTIAL(남은 단계 TODO), 둘째 '이어서 확인해 줘'는 같은 안내라 DONE + 같은 이유 안내",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-used",
+        "title": "중고 거래 앱 투자 설명회",
+        "takes": [
+          {
+            "take_id": "ud-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T14:00:00+09:00",
+            "completed_at": "2026-11-02T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ud-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T14:00:00+09:00",
+            "completed_at": "2026-11-05T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "ud-t3",
+            "take_number": 3,
+            "started_at": "2026-11-08T14:00:00+09:00",
+            "completed_at": "2026-11-08T14:07:00+09:00",
+            "result": {
+              "cpm": [
+                318,
+                362,
+                341,
+                329
+              ],
+              "audience": [
+                0.55,
+                0.38,
+                0.61,
+                0.57
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ],
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 63
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T14:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-used"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 3를 장별로 훑어서 말 속도랑 청중 시선을 하나씩 짚어 주고, 제일 약한 장에 맞는 연습 요령도 자료에서 찾아 같이 정리해 주세요.",
+      "page_take_id": "ud-t3",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 40
+        }
+      ]
+    },
+    {
+      "message": "이어서 확인해 줘",
+      "page_take_id": "ud-t3",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 40
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t0-partial",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "turn": 0,
+        "metric": "replan"
+      },
+      {
+        "check_id": "t0-todo",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "TODO",
+        "path": "plan_statuses",
+        "turn": 0,
+        "metric": "replan"
+      },
+      {
+        "check_id": "t0-guidance",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요\\.|답 일부를 확인하지 못해 확인된 내용만 알려드릴게요\\.",
+        "grader": "regex",
+        "turn": 0,
+        "note": "시간 한도 PARTIAL 의 안내 고정 문장(7-9)"
+      },
+      {
+        "check_id": "t0-budget-stop",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:BUDGET_LOW:*",
+          "final:PARTIAL"
+        ],
+        "turn": 0,
+        "metric": "replan"
+      },
+      {
+        "check_id": "t1-done",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "turn": 1,
+        "metric": "replan",
+        "note": "TARGET 3: 같은 장애로 이번에도 PARTIAL 일 상황 + 직전 답에 같은 안내 → DONE"
+      },
+      {
+        "check_id": "t1-same-reason",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "같은 이유로 더 확인할 수 없어요\\.",
+        "grader": "regex",
+        "turn": 1
+      },
+      {
+        "check_id": "t1-not-partial",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "final:PARTIAL"
+        ],
+        "turn": 1,
+        "metric": "path"
+      },
+      {
+        "check_id": "t1-no-new-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS",
+          "START_PRACTICE"
+        ],
+        "path": "types",
+        "turn": 1
+      }
+    ]
+  },
+  "notes": "두 차례 같은 장애(두 번째 모델 호출 뒤 40초 → 한 호출 마감 45초 안에 조사 · 답 쓰기 몫이 없음). 두 차례의 PARTIAL 안내는 같은 시간 한도 안내다."
+}

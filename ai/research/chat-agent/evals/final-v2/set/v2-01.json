@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-01",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "말버릇(군더더기)만 말하고 목표로 잡아 달라 — 할 일을 세우고 최근 Take 기록을 읽어 목표 확인 카드 → 승인 → 저장(filler_per_min · lt_base · Take 전체)",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-mkt",
+        "title": "브랜드 리뉴얼 제안 발표",
+        "last_practiced_at": "2026-11-06T20:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "mkt-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:06:00+09:00",
+            "result": {"filler_per_min": 3.0, "filler_count": 12},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 70}
+          },
+          {
+            "take_id": "mkt-t3",
+            "take_number": 3,
+            "started_at": "2026-11-06T20:00:00+09:00",
+            "completed_at": "2026-11-06T20:06:00+09:00",
+            "result": {"filler_per_min": 3.2, "filler_count": 13},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 69}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-mkt"}
+  },
+  "turns": [
+    {
+      "message": "연습 영상을 돌려 볼 때마다 '음', '그' 같은 말버릇이 계속 귀에 걸려요. 가장 최근 연습 기준으로 이 말버릇을 줄이는 걸 다음 목표로 잡아 주세요.",
+      "page_take_id": "mkt-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "plan-read-ask-save",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          ["plan:set", "tool:get_take_report:*", "propose:SAVE_GOAL:ASK", "approve:SAVE_GOAL", "exec:SAVE_GOAL:OK", "claim:ACTION_RESULT"],
+          ["plan:set", "tool:list_takes:*", "propose:SAVE_GOAL:ASK", "approve:SAVE_GOAL", "exec:SAVE_GOAL:OK", "claim:ACTION_RESULT"],
+          ["plan:set", "tool:compare_takes:*", "propose:SAVE_GOAL:ASK", "approve:SAVE_GOAL", "exec:SAVE_GOAL:OK", "claim:ACTION_RESULT"]
+        ],
+        "metric": "path",
+        "note": "할 일 목록 → 기록 읽기(도구는 여럿 허용) → 확인 카드 → 승인 → 저장 → 결과 문장"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "filler_per_min",
+        "path": "after.conversation.goal.metric",
+        "note": "군더더기 목표 지표는 filler_per_min(6-4 대화 목표 지표 넷 중)"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "lt_base",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "goal-base-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "mkt-t3",
+        "path": "after.conversation.goal.base.take_id",
+        "note": "'가장 최근 연습 기준' = Take 3(보던 Take이자 가장 최근 완료 Take)"
+      },
+      {
+        "check_id": "goal-base-value",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 3.2,
+        "path": "after.conversation.goal.base.value",
+        "derive": "mkt-t3:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "goal-whole-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal.slide_number",
+        "note": "장을 말하지 않았고 문제 구간도 없다 → Take 전체 목표"
+      },
+      {
+        "check_id": "save-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-discovery",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.RESULT_DISCOVERY",
+        "grader": "template",
+        "note": "v1 TARGET 3: 저장이 성공한 답에만 결과 발견 안내"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "우선 개선은 fluency 하나뿐이라 목표 충돌이 없다(6-3) → 확인 카드. 허용 근거 '잡아 주세요'(잡). lt_base 의 min_delta 0.5 는 검사하지 않는다(config 값)."
+}

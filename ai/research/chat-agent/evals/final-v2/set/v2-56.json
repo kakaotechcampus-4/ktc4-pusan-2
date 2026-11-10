@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-56",
+  "set": "objectivity",
+  "group": "right_claim",
+  "split": "dev",
+  "act": "should",
+  "title": "'Take 1보다 Take 2에서 청중 시선 비율이 늘었죠?'라는 맞는 변화 주장(42% → 55%) — 비교 뒤 맞다고 판단, 반박 · 일부만 문장 없음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-buyer",
+        "title": "해외 바이어 미팅 피칭",
+        "last_practiced_at": "2026-11-09T15:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "buyer-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T15:00:00+09:00",
+            "completed_at": "2026-11-05T15:06:00+09:00",
+            "result": {"audience": 0.42, "script_ratio": 0.3},
+            "review": {"dimensions": {"audience_gaze": "PRIORITY"}, "score": 66}
+          },
+          {
+            "take_id": "buyer-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T15:00:00+09:00",
+            "completed_at": "2026-11-09T15:06:00+09:00",
+            "result": {"audience": 0.55, "script_ratio": 0.22},
+            "review": {"dimensions": {"audience_gaze": "IMPROVED"}, "score": 73}
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-buyer"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 1보다 Take 2에서 청중 시선 비율이 늘었죠?",
+      "page_take_id": "buyer-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "verdict-supported",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": [{"verdict": "SUPPORTED", "quote~": "시선"}],
+        "path": "judgements",
+        "metric": "objectivity",
+        "note": "6-3 CHANGE: '늘었'은 청중 시선(HIGHER)에서 좋아짐, 비교 결과도 좋아짐 → SUPPORTED"
+      },
+      {
+        "check_id": "no-wrong-verdict",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": ["CONTRADICTED", "PARTLY", "UNVERIFIABLE"],
+        "path": "verdicts",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-contradicted-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "CONTRADICTED",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-partly-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "PARTLY",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "current-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "55%",
+        "grader": "number",
+        "derive": "buyer-t2:GAZE.audience_ratio"
+      },
+      {
+        "check_id": "compare-before-final",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["tool:compare_takes:*", "final:DONE"],
+        "metric": "path"
+      }
+    ]
+  }
+}

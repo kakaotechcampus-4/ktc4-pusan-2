@@ -1,0 +1,152 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-42",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should_not",
+  "title": "피치가 하나도 없는 사용자가 이름으로 발표를 두 번 물음 — 두 차례 모두 '발표를 찾을 수 없어요.' + 첫 피치 다음 걸음, 대안 후보가 없으므로 둘째 차례에도 선택지 머리말 없음, 없는 제목 · Take 를 말하지 않음",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "'동아리 신입생 환영회 발표' 연습 결과 좀 보여 주세요."
+    },
+    {
+      "message": "아 그럼 '학과 세미나 발표' 쪽 기록은 남아 있어요?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t1-core",
+        "observe": "answer",
+        "turn": 0,
+        "compare": "contains",
+        "expect": "SystemText.PITCH_NOT_FOUND",
+        "grader": "template",
+        "note": "① 이름으로 찾은 발표 없음"
+      },
+      {
+        "check_id": "t1-status",
+        "observe": "answer",
+        "turn": 0,
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "② 확인한 '없음'"
+      },
+      {
+        "check_id": "t1-next-step",
+        "observe": "answer",
+        "turn": 0,
+        "compare": "contains",
+        "expect": "SystemText.NEXT_FIRST_PITCH",
+        "grader": "template",
+        "note": "④ 피치가 없으면 대안 없이 이 문장"
+      },
+      {
+        "check_id": "t1-no-pick-step",
+        "observe": "answer",
+        "turn": 0,
+        "compare": "absent",
+        "expect": "SystemText.NEXT_PICK_PITCH",
+        "grader": "template",
+        "note": "④ 고를 발표가 없으므로 '어느 발표를 볼지…'는 아님"
+      },
+      {
+        "check_id": "t1-no-fake-take",
+        "observe": "answer",
+        "turn": 0,
+        "compare": "absent",
+        "expect": "Take\\s*\\d",
+        "grader": "regex",
+        "note": "③ 후보 없음 — 없는 Take 번호를 말하지 않음(Take 가 하나도 없다)"
+      },
+      {
+        "check_id": "t2-core",
+        "observe": "answer",
+        "turn": 1,
+        "compare": "contains",
+        "expect": "SystemText.PITCH_NOT_FOUND",
+        "grader": "template",
+        "note": "① 두 번째 같은 안내도 핵심 문장은 그대로"
+      },
+      {
+        "check_id": "t2-status",
+        "observe": "answer",
+        "turn": 1,
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "t2-no-choice-header",
+        "observe": "answer",
+        "turn": 1,
+        "compare": "absent",
+        "expect": "이렇게 물어보시면 바로 확인할 수 있어요",
+        "grader": "regex",
+        "note": "TARGET 4 두 번째 같은 안내: 확인할 후보가 없으면 선택지 머리말 · 예시 없이 상태와 다음 걸음만"
+      },
+      {
+        "check_id": "t2-next-step",
+        "observe": "answer",
+        "turn": 1,
+        "compare": "contains",
+        "expect": "SystemText.NEXT_FIRST_PITCH",
+        "grader": "template",
+        "note": "④ 피치 없음 상태의 다음 걸음"
+      },
+      {
+        "check_id": "t2-no-fake-take",
+        "observe": "answer",
+        "turn": 1,
+        "compare": "absent",
+        "expect": "Take\\s*\\d",
+        "grader": "regex",
+        "note": "③ 없는 Take 번호를 말하지 않음"
+      },
+      {
+        "check_id": "no-new-action",
+        "observe": "actions_proposed",
+        "turn": "all",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS", "START_PRACTICE"],
+        "path": "types",
+        "metric": "autonomy",
+        "note": "⑤ 허용 행동 안"
+      },
+      {
+        "check_id": "no-new-card",
+        "observe": "actions_proposed",
+        "turn": "all",
+        "compare": "absent",
+        "expect": ["ASK_CONFIRM", "GOAL_PROPOSAL"],
+        "path": "cards",
+        "note": "⑤ 카드 없음"
+      },
+      {
+        "check_id": "t1-guide-then-done",
+        "observe": "trajectory",
+        "turn": 0,
+        "compare": "in_order",
+        "expect": ["claim:SYSTEM", "final:DONE"],
+        "metric": "path"
+      },
+      {
+        "check_id": "t2-guide-then-done",
+        "observe": "trajectory",
+        "turn": 1,
+        "compare": "in_order",
+        "expect": ["claim:SYSTEM", "final:DONE"],
+        "metric": "path"
+      }
+    ]
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-58",
+  "set": "objectivity",
+  "group": "mixed",
+  "split": "dev",
+  "act": "should",
+  "title": "한 말에 틀린 주장('말이 너무 빨랐다' — 실제로는 느림 구간만)과 맞는 주장('군더더기는 거의 없었다' — 매끄러움 강점)이 섞임 — 주장마다 따로 판단: 속도는 기록과 다름, 군더더기는 맞음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-career",
+        "title": "청소년 진로 특강",
+        "last_practiced_at": "2026-11-08T16:30:00+09:00",
+        "takes": [
+          {
+            "take_id": "career-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T16:30:00+09:00",
+            "completed_at": "2026-11-04T16:36:00+09:00",
+            "result": {"cpm": [281, 276, 290, 285], "filler_per_min": 0.7, "filler_count": 4},
+            "review": {"dimensions": {"pacing_rhythm": "STABLE", "fluency": "STRENGTH"}, "score": 75}
+          },
+          {
+            "take_id": "career-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T16:30:00+09:00",
+            "completed_at": "2026-11-08T16:36:00+09:00",
+            "result": {
+              "cpm": [262, 255, 268, 270],
+              "filler_per_min": 0.6,
+              "filler_count": 4,
+              "issues": [["PACE_SLOW", 1, true], ["PACE_SLOW", 2, true]]
+            },
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY", "fluency": "STRENGTH"}, "score": 71}
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-career"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2에서 말이 너무 빨랐는데, 군더더기는 거의 없었죠?",
+      "page_take_id": "career-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "speed-contradicted",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": [{"verdict": "CONTRADICTED", "quote~": "빨랐"}],
+        "path": "judgements",
+        "metric": "objectivity",
+        "note": "6-3 ISSUE: 빠름(PACE_FAST) 없음, 반대 방향(PACE_SLOW)만 있음 → CONTRADICTED"
+      },
+      {
+        "check_id": "filler-supported",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": [{"verdict": "SUPPORTED", "quote~": "군더더기"}],
+        "path": "judgements",
+        "metric": "objectivity",
+        "note": "6-3 OVERALL 긍정: fluency STRENGTH → SUPPORTED(부정된 문제 주장으로 읽어도 측정됐고 문제 없음 → SUPPORTED)"
+      },
+      {
+        "check_id": "contradicted-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "CONTRADICTED",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "no-speed-agree",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [{"verdict": "SUPPORTED", "quote~": "빨랐"}],
+        "path": "judgements",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "read-then-judge",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["tool:get_take_report:*", "claim:ASSESSMENT"],
+        "metric": "path"
+      },
+      {
+        "check_id": "official-kept",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-05",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "기록으로 잴 수 없는 목표(밝은 표정)를 저장해 달라 — 저장 확인 카드 없이 잴 수 있는 추천 안의 목표 제안 카드와 잴 수 없음 문장, 저장 없음",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-wed",
+        "title": "결혼식 축사 리허설",
+        "last_practiced_at": "2026-11-08T22:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "wed-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T22:00:00+09:00",
+            "completed_at": "2026-11-05T22:04:00+09:00",
+            "result": {"filler_per_min": 3.1, "filler_count": 12},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 67}
+          },
+          {
+            "take_id": "wed-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T22:00:00+09:00",
+            "completed_at": "2026-11-08T22:04:00+09:00",
+            "result": {"filler_per_min": 3.4, "filler_count": 14},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 66}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-wed"}
+  },
+  "turns": [
+    {
+      "message": "축사할 때 얼굴이 너무 굳어 있는 것 같아서요. 다음 리허설은 미소 띤 밝은 얼굴로 말하는 걸 목표로 저장해 주세요.",
+      "page_take_id": "wed-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-save-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:SAVE_GOAL:*"],
+        "metric": "path",
+        "note": "잴 수 없는 사용자 안은 저장 선택지가 아니다(L6-23) — 확인 카드를 내지 않는다"
+      },
+      {
+        "check_id": "read-before-end",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          ["tool:get_take_report:*", "final:DONE"],
+          ["tool:list_takes:*", "final:DONE"],
+          ["tool:compare_takes:*", "final:DONE"]
+        ],
+        "metric": "path",
+        "note": "추천 안은 기록 근거로 만든다(읽기 도구는 여럿 허용)"
+      },
+      {
+        "check_id": "proposal-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_PROPOSAL",
+        "path": "card_types"
+      },
+      {
+        "check_id": "unmeasurable-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.GOAL_UNMEASURABLE",
+        "grader": "template",
+        "note": "잴 수 없음으로 제안 카드를 낸 답에는 그 까닭의 고정 문장(L6-23)을 코드가 붙인다(6-3)"
+      },
+      {
+        "check_id": "no-save-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "nothing-saved",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "no-result-discovery",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.RESULT_DISCOVERY",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "표정은 어떤 측정 지표로도 잴 수 없다(대화 목표 지표는 audience_ratio · filler_per_min · cpm · duration_ms). 추천 안은 우선 개선 fluency 의 군더더기 목표가 될 것이나 추천 내용은 검사하지 않는다."
+}

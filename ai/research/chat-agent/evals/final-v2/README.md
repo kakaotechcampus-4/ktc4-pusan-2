@@ -1,0 +1,21 @@
+# 대화 에이전트 독립 평가 v2 (기능 문서 13-5 · 13-8, Issue #1194)
+
+v1(`../final/`, 0.650)은 결과를 본 뒤 고쳐 회귀 세트로 강등됐다. 그래서 이번 개선(Issue #1194)의 성능을 독립 수치로 말하려고 처음 보는 문항 60개를 새로 썼다. 에이전트를 고치는 구현 세션과 맥락을 나눈 별도 작성 에이전트 셋이 묶음을 나눠 쓰고, 작성자와 다른 보조 검수 모델이 기대값을 다시 계산해 검수했다. 문항은 첫 동작 변경 커밋보다 먼저 동결했고, 같은 동결본으로 고치기 전(봉인 기준선)과 고친 뒤(최종 한 번)를 짝으로 잰다.
+
+| 파일 | 내용 |
+|---|---|
+| `RULES.md` | 문항을 쓰기 전에 정한 규칙: 구성 · 작성 · 봉인 경계 · 동결 · 유사도 · 실행 설정 · 짝 비교 통계 · '안 된다' 답 별도 검수 · 자체 기준 |
+| `TARGET.md` | 문항이 기준으로 삼은 목표 동작(지금 계약 + Issue #1194 개선) |
+| `set/` | 문항 60개(`v2-01` ~ `v2-60`, 파일 이름은 내용이 드러나지 않게 번호만) |
+| `manifest.json` | 동결 목록(파일별 해시 · 규칙 · 스키마 · 채점기 해시 · 동결 커밋) |
+| `REVIEW.md` | 작성 · 보조 모델 검수 · 사람 검수의 기록(동결 때는 개수만, 상세는 최종 실행 뒤) |
+| `results/` | 봉인 기준선 결과의 해시(`sealed.sha256`), 최종 실행 뒤의 보고 |
+
+## 봉인 경계
+최종 실행이 끝날 때까지 문항 · 기대값 · 상세 검수 기록 · 기준선 결과는 구현 세션이 열지 않는다(`RULES.md` 3절). 이 폴더의 도구(`holdout` · `similarity`)는 문항 글을 출력하지 않는다. 기준선 결과 폴더는 저장소 밖 보관 폴더에 두고, 저장소에는 해시만 남긴다.
+
+## 다시 돌리기 (`ai/research/chat-agent`에서)
+```bash
+.venv/bin/python -m chat_agent_lab.holdout verify --dir evals/final-v2/set --manifest evals/final-v2/manifest.json --rules evals/final-v2/RULES.md
+.venv/bin/python -m chat_agent_lab.evals --dir evals/final-v2/set --set all --judge --workers 4 --search hybrid --out outputs/evals/v2-rerun
+```
