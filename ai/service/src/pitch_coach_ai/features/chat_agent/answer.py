@@ -38,6 +38,7 @@ from typing import Any
 
 from . import checks as chk
 from . import compose, templates
+from .output_guard import OutputGuard
 from .schemas import Assessment, Claim
 from .stream_json import AssessmentsDone, ClaimClosed, StreamTracker, ValueDone
 
@@ -141,6 +142,21 @@ class ClaimLines:
         for a in lp.st.exported:
             self.sent_as.add(a["assessment_id"])
             self._mark(a.get("evidence_ids") or [], a.get("source_ids") or [])
+        #: 한 턴 전체를 보는 마지막 검사(output_guard.py): 내보내기 직전에 이미 나간 문장 · 도구 결과와 견준다
+        self.guard = OutputGuard(lp)
+        #: 이 응답에서 가드레일이 뺀 문장 · 바꾼 문장(원래 문장 키 → 바꾼 문장). 끝 줄 조립이 같은 결정을 쓴다(turn.py `_finish`)
+        self.dropped: set[str] = set()
+        self.replaced: dict[str, Claim] = {}
+
+    def decided(self, claims: list[Claim]) -> list[Claim]:
+        """흘려보내는 동안 가드레일이 뺀 문장은 빼고 바꾼 문장은 바꾼 것으로(끝 줄 답이 낸 문장 줄과 같게)."""
+        out = []
+        for c in claims:
+            k = _key(c)
+            if k in self.dropped:
+                continue
+            out.append(self.replaced.get(k, c))
+        return out
 
     def _mark(self, ev_ids: list[str], src_ids: list[str]) -> None:
         self.sent_ev.update(e["evidence_id"] for e in compose.referenced(self.lp.ctx, ev_ids))
@@ -153,12 +169,22 @@ class ClaimLines:
         *,
         record: bool = True,
         cards: list[dict[str, Any]] | None = None,
-    ) -> None:
+        guarded: bool = False,
+    ) -> bool:
         """문장 하나를 줄로 낸다. `record`면 서명 상태의 낸 문장(`st.emitted`)에도 더한다(끝 줄 조립 뒤의 남은 문장은 False).
+        내보내기 직전에 한 턴 전체 검사(가드레일)를 거친다(`guarded`면 이미 거친 문장). 빼면 내지 않고 False.
 
         `cards`는 끝 줄 message 에 조립해 둔 자료 카드 사본이다. 주면 문장 줄이 처음 보내는 카드를 이 사본에서 가져온다 —
         검사 · 고치기를 거쳐 모양이 바뀐 `Claim` 은 내부 인용 문장(`quote`)을 잃으므로 다시 그리지 않는다(문장 줄과 끝 줄의 보이는 인용이 같게)."""
         lp = self.lp
+        if not guarded:
+            got = self.guard.admit(claim, confirmed)
+            if got is None:
+                self.dropped.add(_key(claim))
+                return False
+            if got is not claim:
+                self.replaced[_key(claim)] = got
+                claim = got
         new_as = [a for a in confirmed if a["assessment_id"] not in self.sent_as]
         ev_ids = [*claim.evidence_ids, *(e for a in new_as for e in a.get("evidence_ids") or [])]
         src_ids = [*claim.source_ids, *(s for a in new_as for s in a.get("source_ids") or [])]
@@ -198,8 +224,10 @@ class ClaimLines:
         self.sent_src.update(src_ids)
         self.sent_as.update(a["assessment_id"] for a in new_as)
         self.sent_assessments.extend(new_as)
+        self.guard.note(claim, confirmed)
         if record:
             lp.st.emitted.append(dump)
+        return True
 
 
 @dataclass

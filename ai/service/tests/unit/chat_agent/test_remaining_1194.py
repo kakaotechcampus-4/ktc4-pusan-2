@@ -70,13 +70,14 @@ def test_volume_same_calibration_base_is_compared() -> None:
     assert c.reason != "DIFFERENT_VOLUME_BASE"
 
 
-# ── R5(a) 기준(targets)을 바꾸는 다시 평가는 이번 판에서 막는다 ─────────────────────────
+# ── R5(a) 기준(targets) 다시 평가를 끈 설정(`reassess_targets=False`)의 동작 ─────────────────────────
 
 
 TARGETS = {"take_id": "t-5", "change": {"targets": [{"metric": "audience_ratio", "operator": "GTE", "value": 0.3}]}}
 
 
-def test_targets_reassess_is_not_proposed_by_default() -> None:
+@pytest.mark.no_reassess_targets
+def test_targets_reassess_is_not_proposed_when_switched_off() -> None:
     p = do("reassess", {**TARGETS, "reason": "내 기준으로"}, message="Take 5 청중 시선 30% 이상 기준으로 다시 평가해 줘")
     assert p.action is None and p.reason_code == "TARGETS_NOT_SUPPORTED"
 
@@ -86,6 +87,7 @@ def test_script_condition_reassess_is_still_proposed() -> None:
     assert p.action is not None and p.action.type == "REASSESS"
 
 
+@pytest.mark.no_reassess_targets
 def test_turn_says_targets_reassess_is_not_possible() -> None:
     msg = "Take 5를 청중 시선 30% 이상 기준으로 다시 평가해 줘"
     ask = F.draft(msg, type_="REQUEST", claim_op=None, take_numbers=[5], polarity="NEUTRAL")

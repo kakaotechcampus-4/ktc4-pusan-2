@@ -464,13 +464,14 @@ def attach(
     if i is None and why is None:
         # 같은 도구 · 같은 대상을 이미 실행한 단계가 있으면 새 단계를 덧붙이지 않고 거기에 잇는다(같은 Take 기록의 두 절 · 자료 찾기
         # 여러 번이 화면에서 겹쳐 보이지 않게, Issue #1194 화면 검토). 결과는 더 구체적인 쪽을 남긴다
-        # '아직 불러오지 않음' 뒤의 가져오기 · 다시 읽기는 순서 자체가 할 일이라 합치지 않는다
+        # '아직 불러오지 않음' 뒤의 가져오기 · 다시 읽기는 순서 자체가 할 일이라 합치지 않는다. 비교는 지표마다 결과가 따로라
+        # (예: 말 속도 '비교 불가(판정 기준 버전 다름)' · 청중 시선 '좋아짐') 합치지 않는다 — 합치면 단계 글이 길어져 까닭이 빠진다
         same = next(
             (
                 j
                 for j, m in enumerate(meta)
-                if m["ran"] == run.tool and m.get("take") == run.take and m["done"] and run.done
-                and m["result"] not in _SEPARATE_RESULTS
+                if m["ran"] == run.tool and run.tool in _MERGED_TOOLS and m.get("take") == run.take
+                and m["done"] and run.done and m["result"] not in _SEPARATE_RESULTS
             ),
             None,
         )
@@ -511,6 +512,8 @@ def attach(
 _PLAIN_RESULTS = (tpl.PLAN_RESULT["CHECKED"], tpl.PLAN_RESULT["GUIDES"], tpl.PLAN_RESULT["NO_GUIDES"])
 #: 다음 실행을 기다린 사실이라 같은 도구의 다음 실행과 한 단계로 합치지 않는 결과
 _SEPARATE_RESULTS = (tpl.PLAN_RESULT["NOT_LOADED"],)
+#: 같은 대상의 되풀이 실행을 한 단계로 합치는 도구(같은 Take 기록의 여러 절 · 자료 찾기 여러 번 · 목록 다시 보기)
+_MERGED_TOOLS = ("get_take_report", "search_guides", "list_takes", "list_pitches", "get_goals")
 
 
 def merge_result(old: str | None, new: str | None) -> str | None:
@@ -549,9 +552,16 @@ def current_step(meta: list[dict[str, Any]]) -> int | None:
     return next((i for i in _pending(meta) if meta[i]["tool"] != "answer"), None)
 
 
-def mark_short(meta: list[dict[str, Any]]) -> int | None:
-    """조사가 한도 · 시간으로 멈췄다: 지금 하던 단계에 결과가 없으면 `시간 부족`을 단다. 그 단계 번호(없으면 None)."""
+def mark_short(meta: list[dict[str, Any]], max_steps: int | None = None) -> int | None:
+    """조사가 한도 · 시간으로 멈췄다: 지금 하던 단계에 결과가 없으면 `시간 부족`을 단다. 그 단계 번호(없으면 None).
+
+    계획한 조사 단계를 모두 마친 뒤 멈췄으면(모델이 더 읽으려다 한도에 닿음) 남은 일이 화면에 보이게 '물은 항목 확인' 단계를 답 쓰기
+    앞에 더해 `시간 부족`을 단다(`max_steps`를 줄 때, 목록이 차 있으면 더하지 않음). 끝이 `PARTIAL`이면 남은 일(TODO)이고, 답이
+    요청을 해소해 `DONE`이면 실행하지 않은 단계라 끝 처리가 뺀다(v1 회귀 path-fail-budget-partial: `PARTIAL`인데 남은 일이 없었다)."""
     i = current_step(meta)
+    if i is None and max_steps is not None and len(meta) < max_steps:
+        i = next((j for j, m in enumerate(meta) if m["tool"] == "answer"), len(meta))
+        meta.insert(i, _meta(tpl.PLAN_UNRESOLVED, None))
     if i is not None and meta[i]["result"] is None:
         meta[i]["result"] = tpl.PLAN_RESULT["SHORT"]
     return i

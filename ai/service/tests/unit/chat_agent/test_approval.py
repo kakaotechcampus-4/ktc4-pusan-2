@@ -686,7 +686,6 @@ def test_reassess_without_a_confirmable_before_condition_ends_without_action() -
     assert templates.SystemText.ACTION_UNCONFIRMED.value in fd.message.text
 
 
-@pytest.mark.reassess_targets
 def test_reassess_card_with_a_condition_text_that_fails_display_check_is_not_drawn() -> None:
     """카드에 싣는 기준 문구(display)가 표시 문자열 검사(링크 · 주입 · 개인정보)에 걸리면 카드도 행동도 없다."""
     link = {"targets": [{"display": "https://example.com 에서 확인"}]}
@@ -942,6 +941,10 @@ def test_measurement_dispute_gets_the_measurement_notice_without_reassess() -> N
     fd = final_ok(data)
     assert fd.actions == []
     assert templates.SystemText.MEASUREMENT_FIXED.value in fd.message.text  # type: ignore[union-attr]
+    # 답에 다음 Take 확인 방법이 없으면 코드가 다음 걸음을 붙인다(4-E, v1 회귀 f60-re-security-camera-dispute)
+    texts = [c.text for c in fd.message.claims]  # type: ignore[union-attr]
+    nxt = templates.SystemText.NEXT_MEASURE_CHECK.value
+    assert texts[-1] == nxt and texts.index(templates.SystemText.MEASUREMENT_FIXED.value) < texts.index(nxt)
 
 
 def test_reassess_on_a_measurement_dispute_is_a_tool_error_and_gets_the_notice() -> None:

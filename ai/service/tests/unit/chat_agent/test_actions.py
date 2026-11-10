@@ -329,7 +329,6 @@ def test_fetch_pitch_by_name_or_id() -> None:
     assert (same.result, same.reason_code) == ("TOOL_ERROR", "ALREADY_IN_SCOPE")
 
 
-@pytest.mark.reassess_targets
 def test_reassess_is_ask_without_authorization_check_and_once_per_run() -> None:
     """다시 평가는 허용 근거 검사 없이 확인 카드(ASK)가 승인 근거다. 한 턴에 한 번(6-2)."""
     b = budget()
@@ -638,7 +637,6 @@ def test_confirm_card_before_is_the_current_goal() -> None:
     assert templates.SAVE_GOAL_NOTE_REPLACE in card["notes"]
 
 
-@pytest.mark.reassess_targets
 def test_reassess_confirm_card_shows_current_and_reference_condition() -> None:
     msg = "대본 보고 한 걸로 다시 평가해 줘"
     ctx = ctx_for(msg)
@@ -658,6 +656,10 @@ def test_reassess_confirm_card_shows_current_and_reference_condition() -> None:
     )
     tcard = ask_confirm_card(t.action.model_dump(mode="json"), ctx=ctx2, expires_at="x")
     assert tcard is not None and "내 평가 기준 1개" in tcard["summary"]
+    # 화면이 기준 칸을 개수로만 보여도 안내 글(받은 글 그대로 보임)로 무엇으로 다시 평가하는지 보인다(Issue #1194)
+    shown = tcard["after"]["targets"][0]["display"]
+    assert f"다시 평가에 쓸 기준: '{shown}'" in tcard["notes"]
+    assert any(n.startswith("지금 리뷰") for n in tcard["notes"])
     assert tcard["after"]["targets"] == targets
     # 숫자 목표가 없는 기준은 문구만이 실제 조건이다: 카드에 문구가 보여야 승인할 수 있다
     words = [{"display": "자연스럽게 말하기", "metric": None, "operator": None, "value": None}]
@@ -672,7 +674,6 @@ def _reassess_before(ctx: RunCtx, take_id: str, change: dict[str, Any]) -> dict[
     return None if card is None else card["before"]
 
 
-@pytest.mark.reassess_targets
 def test_reassess_card_before_is_the_target_takes_review_condition_not_the_pitch_now() -> None:
     """바꾸기 전 조건은 대상 Take 가 리뷰받은 때의 조건이다(Take 요약의 `standard_version` 판, 6-6)."""
     ctx = ctx_for(MSG)
@@ -698,7 +699,6 @@ def test_reassess_card_before_is_the_target_takes_review_condition_not_the_pitch
     assert _reassess_before(ctx, "t-5", {"targets": [{"display": "빠르지 않게"}]})["targets"] == []
 
 
-@pytest.mark.reassess_targets
 def test_reassess_card_missing_fields_are_unconfirmed_not_empty_conditions() -> None:
     """필드 누락과 명시적 null · 빈 값을 구분한다: 확인할 수 없는 조건은 빈 조건으로 보이지 않고 카드를 그리지 않는다(6-6)."""
     ctx = ctx_for(MSG)
@@ -1581,7 +1581,6 @@ def test_named_take_ids_need_letters_and_digits() -> None:
     assert p.result == "PROPOSED", p.reason_code
 
 
-@pytest.mark.reassess_targets
 def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
     """숫자 목표도 문구도 없는 칸은 보이는 조건이 없어 다시 평가를 내지 않는다(L1-37)."""
     empty = [{"display": "  ", "metric": None, "operator": None, "value": None}]
@@ -1594,7 +1593,6 @@ def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
     assert p.action is None and p.reason_code == "DISPLAY_UNSOURCED"
 
 
-@pytest.mark.reassess_targets
 @pytest.mark.parametrize(
     ("metric", "value", "sent"),
     [("audience_ratio", 30, 0.3), ("audience_ratio", 0.3, 0.3), ("cpm", 300, 300)],
@@ -1658,7 +1656,6 @@ def test_goal_proposal_options_carry_evidence() -> None:
     assert unmeasurable["options"][0]["evidence_ids"] == []
 
 
-@pytest.mark.reassess_targets
 def test_reassess_target_text_is_never_null_when_it_has_a_number_goal() -> None:
     """숫자 목표가 있는 기준의 문구가 출처가 없거나 비었으면 null 대신 숫자 목표로 만든 문구를 싣는다(#1167).
 
@@ -1691,7 +1688,6 @@ def test_reassess_target_text_is_never_null_when_it_has_a_number_goal() -> None:
     ]
 
 
-@pytest.mark.reassess_targets
 def test_reassess_target_text_keeps_the_exact_number_goal() -> None:
     """코드가 만든 기준 문구의 값은 화면 자리수로 반올림하지 않는다: 리뷰는 반올림하지 않은 값으로 판정하므로 0.655 를
     "66% 초과"로 쓰면 실제 기준(65.5%)과 다르게 읽힌다."""

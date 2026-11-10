@@ -55,7 +55,7 @@
     "observe": "answer",
     "grader": "regex",
     "compare": "contains",
-    "expect": "'회사 소개 발표'"
+    "expect": "['‘\"]회사 소개 발표['’\"]"
    },
    {
     "check_id": "latest-date",
@@ -69,7 +69,7 @@
     "observe": "answer",
     "grader": "regex",
     "compare": "contains",
-    "expect": "분석이 끝난 Take는 없|분석이 끝난 Take가 없|아직 분석"
+    "expect": "분석이 끝난 Take는 없|분석이 끝난 Take가 없|분석이 끝난 Take가 0개|아직 분석"
    },
    {
     "check_id": "finished-alt",

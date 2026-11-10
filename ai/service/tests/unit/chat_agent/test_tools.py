@@ -766,8 +766,9 @@ def test_compare_takes_values_outcome_and_evidence_roles() -> None:
         reg.get(e) for e in res.evidence_ids
     )
     assert res.target_ids == ["t-4", "t-5"] and res.revisions == {"t-4": 1, "t-5": 1}
-    assert trace.args_summary == "Take 4 · 5 · audience_ratio · 3장"
-    assert trace.result_summary == "audience_ratio WORSENED"
+    # 화면 '확인한 것'에 보이는 글이라 지표 · 결과를 화면 이름으로(Issue #1194)
+    assert trace.args_summary == "Take 4 · 5 · 청중 시선 · 3장"
+    assert trace.result_summary == "청중 시선 나빠짐"
 
 
 def test_compare_takes_range_metric_distance_roles_follow_take() -> None:
@@ -799,7 +800,7 @@ def test_compare_takes_not_comparable_returns_reason_only() -> None:
     assert res.ok and res.data["comparable"] is False and res.data["reason"] == "NO_DIRECTION"
     assert res.data["evidence_by_role"] == {} and res.evidence_ids == []
     assert res.data["previous"] is None and res.data["current"] is None
-    assert trace.result_summary == "비교할 수 없음(NO_DIRECTION)"
+    assert trace.result_summary == "비교할 수 없음(방향을 정할 수 없는 지표)"
 
 
 def test_l1_09_compare_takes_unknown_metric_is_rejected_without_echo() -> None:

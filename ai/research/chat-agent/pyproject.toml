@@ -43,7 +43,7 @@ markers = [
     "prefetch: 조사 흐름(코드가 먼저 읽기)을 켠 시험 — tests/conftest.py (서비스 tests/unit/chat_agent/conftest.py 와 같은 규칙)",
     "no_prefetch: prefetch 를 단 파일 안에서 조사 흐름을 끄는 시험(모델 호출 순서 대본) — tests/conftest.py",
     "model_signals: 신호를 모델에게 묻던 이전 동작(code_signal_responses=False)으로 보는 시험 — tests/conftest.py",
-    "reassess_targets: 기준(targets) 다시 평가를 켠 시험(서비스 기본은 막음) — tests/conftest.py",
+    "no_reassess_targets: 기준(targets) 다시 평가를 끈 시험(서비스 기본은 켬) — tests/conftest.py",
 ]
 addopts = "-m 'not live and not slow'"
 

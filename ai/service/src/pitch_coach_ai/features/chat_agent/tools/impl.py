@@ -29,7 +29,16 @@ from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value, volume_base
 from ..goals import compare_takes, record_read_value
 from ..prompts import PLAN_STEP_TOOLS
 from ..schemas import PlanStep, TakeSnapshot
-from ..templates import AREA_LABEL, SCREEN_STEP_LABEL
+from ..templates import (
+    AREA_LABEL,
+    PLAN_NOT_COMPARABLE,
+    PLAN_NOT_COMPARABLE_OTHER,
+    PLAN_OUTCOME,
+    PLAN_OUTCOME_OTHER,
+    SCREEN_STEP_LABEL,
+    TRACE_OUTCOME,
+    TRACE_SECTION,
+)
 from ..values import is_number, read_dimension_state, read_metric
 
 if TYPE_CHECKING:
@@ -569,7 +578,7 @@ _COUNT_METRICS = ("filler_count", "pause_count")
 
 
 def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
-    summ = f"Take 리포트 · {a.section}"
+    summ = f"Take 리포트 · {TRACE_SECTION.get(a.section, a.section)}"
     snap = _snapshot_for(ctx, a.take_id)
     if snap == "NOT_LOADED":
         return _not_loaded("get_take_report", "이 Take 결과가", summ)
@@ -851,7 +860,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         # 무엇을 읽었는지 출처를 앞에 붙인다(코치 Take 결과 · 리뷰, trace 요약 200자 안)
         result_summary=(
             _SOURCE_TAG[report_source((a.section,))]
-            + (f"{len(items)}개 항목" if items else (state or "OK"))
+            + (f"{len(items)}개 항목" if items else (state or TRACE_OUTCOME["OK"]))
         )[:200],
     )
 
@@ -963,7 +972,7 @@ def report_source(sections: Sequence[str]) -> str:
 
 def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
     # 도구 기록에는 아는 지표 이름만 쓴다(모델이 metric 에 사용자 원문을 넣어도 진행 줄에 나오지 않게, L1-09)
-    metric_label = a.metric if a.metric in ctx.cfg.metric_units else "모르는 지표"
+    metric_label = METRIC_LABEL.get(a.metric, a.metric) if a.metric in ctx.cfg.metric_units else "모르는 지표"
     summ = "Take 비교 · " + metric_label + (f" · {a.slide_number}장" if a.slide_number else "")
     if a.metric not in ctx.cfg.metric_units:
         # 모르는 지표는 실행하지 않고, 받은 글을 결과에 되돌려 주지 않는다(5-7 엄격한 인자 · L1-09)
@@ -1045,7 +1054,11 @@ def _compare(ctx: RunCtx, a: CompareArgs) -> ToolResult:
                 data[f"{k}_display"] = format_metric_value(
                     a.metric, v, ctx.cfg, base=volume_base(snap)
                 )
-    result = f"{a.metric} {cmp.outcome}" if cmp.comparable else f"비교할 수 없음({cmp.reason})"
+    result = (
+        f"{metric_label} {PLAN_OUTCOME.get(cmp.outcome, PLAN_OUTCOME_OTHER)}"
+        if cmp.comparable
+        else f"비교할 수 없음({PLAN_NOT_COMPARABLE.get(cmp.reason, PLAN_NOT_COMPARABLE_OTHER)})"
+    )
     return _res(
         "compare_takes",
         ok=True,

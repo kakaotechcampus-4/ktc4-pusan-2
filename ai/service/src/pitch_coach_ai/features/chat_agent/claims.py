@@ -1030,6 +1030,14 @@ def _one_issue(d: AssessmentDraft, t: _Target, dim: str, ctx: _Ctx) -> _One:
         if issue in spec.issues and any(w in d.quote for w in words)
     ]
     if not claimed:
+        # 문제 낱말 없이 지표로만 말한 문제 주장("대본 응시 비율이 너무 높은거같아"): 그 차원에서 그 지표에 걸리는 문제가 한 방향뿐이면
+        # (반대 방향 문제가 없으면) 그 문제로 본다. 방향이 둘인 차원(빠름 · 느림)은 낱말이 있어야 한다(Issue #1194 화면 검토 —
+        # 문제 구간이 있는데 '확인 불가'로 답해 값 문장과 어긋나 보임)
+        metric = _metric_for(d, dim)
+        inferred = [i for i in spec.issues if metric in ctx.cfg.issue_metrics.get(i, ())]
+        if inferred and not any(i in _OPPOSITE_ISSUE for i in inferred):
+            claimed = inferred
+    if not claimed:
         return _unv("NO_ISSUE_WORD")
     types = tuple(
         dict.fromkeys(claimed + [_OPPOSITE_ISSUE[c] for c in claimed if c in _OPPOSITE_ISSUE])

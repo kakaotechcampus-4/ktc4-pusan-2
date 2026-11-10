@@ -1452,6 +1452,11 @@ def _target_view(t: CriteriaTarget | dict[str, Any]) -> dict[str, Any]:
     return {k: d.get(k) for k in ("display", "metric", "operator", "value")}
 
 
+def _targets_text(targets: list[dict[str, Any]]) -> str:
+    """기준 문구들을 안내 글 한 줄로: '청중 시선 30% 이상' · '말 속도 330자/분 이하'. 승인하는 내용이 다 보이게 모두 싣는다."""
+    return " · ".join(f"'{t.get('display')}'" for t in targets if t.get("display"))
+
+
 def _take_conditions(
     ctx: RunCtx, take_id: str, need: Literal["script_used", "targets"] | None = None
 ) -> tuple[bool | None, list[Any]] | None:
@@ -1523,6 +1528,13 @@ def ask_confirm_card(
             before = {**take_view, "targets": now}
             after = {**take_view, "targets": new}
             text = templates.REASSESS_CHANGE_TEXT["targets"].format(count=len(new))
+            # 바뀌는 기준 문구를 안내 글로 보인다(화면이 기준 칸을 개수로만 보여도 무엇으로 다시 평가하는지 알 수 있게)
+            notes.append(templates.REASSESS_TARGETS_NEW.format(targets=_targets_text(new)))
+            notes.append(
+                templates.REASSESS_TARGETS_NOW.format(targets=_targets_text(now))
+                if now
+                else templates.REASSESS_TARGETS_NOW_NONE
+            )
         summary = templates.fill(
             templates.REASSESS_SUMMARY, take_number=str(summ.take_number), change=text
         )

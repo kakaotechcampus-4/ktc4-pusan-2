@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from pitch_coach_ai.features.chat_agent import guidance, templates
@@ -150,3 +151,20 @@ def test_pitches_without_finished_takes_are_not_offered() -> None:
     history = _history(("user", "'창업 경진대회' 발표 기록 보여 줘"), ("assistant", "\n".join(_texts(first))))
     again = "\n".join(_texts(_global_not_found(history, pitches)))
     assert "새 발표" not in again and "빈 설명회" not in again
+
+
+def test_measurement_dispute_next_step_only_when_the_answer_has_none() -> None:
+    """측정값 이의 문장은 답(판단 · 기록)이 있어도 다음 Take 확인 걸음을 붙인다. 답에 이미 '다음 Take · 연습'이 있으면 붙이지 않는다
+    (Issue #1194 4-E, v1 회귀 f60-re-security-camera-dispute)."""
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+    from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
+    from pitch_coach_ai.features.chat_agent.schemas import Claim
+
+    ctx = SimpleNamespace(registry=EvidenceRegistry("run"), cfg=DEFAULT_CONFIG)
+    fixed = Claim(kind="SYSTEM", text=T.MEASUREMENT_FIXED.value)
+    judged = Claim(kind="RECORD", text="Take 5에서는 시선 문제 구간이 0곳이에요.")
+    got = guidance.follow_up(ctx, message="다시 평가해 줘", history_messages=[], claims=[fixed, judged], status="DONE")
+    assert [c.text for c in got.claims] == [T.NEXT_MEASURE_CHECK.value]
+    said = Claim(kind="GENERAL", text="다음 연습에서는 카메라를 눈높이에 두고 다시 확인해 보세요.")
+    got = guidance.follow_up(ctx, message="다시 평가해 줘", history_messages=[], claims=[fixed, judged, said], status="DONE")
+    assert got.claims == []

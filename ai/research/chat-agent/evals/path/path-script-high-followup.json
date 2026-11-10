@@ -1,0 +1,115 @@
+{
+ "schema_version": "1.0",
+ "id": "path-script-high-followup",
+ "set": "eval",
+ "group": "pitch_analysis",
+ "split": "dev",
+ "act": "should",
+ "title": "앞 차례로 최근 발표 'abc'를 본 뒤 '대본 응시 비율이 너무 높은거같아' — 문제 구간으로 답하고, '확인 불가'로 앞뒤가 어긋나거나 같은 값을 두 번 말하지 않는다",
+ "baseline_type": "record",
+ "fixtures": {
+  "pitches": [
+   {
+    "preset": "sample"
+   },
+   {
+    "pitch_id": "p-abc",
+    "title": "abc",
+    "last_practiced_at": "2026-11-10T21:00:00+09:00",
+    "criteria": null,
+    "takes": [
+     {
+      "take_id": "abc-t1",
+      "take_number": 1,
+      "completed_at": "2026-11-10T20:00:00+09:00",
+      "result": {
+       "voice_diff_db": -0.6
+      }
+     },
+     {
+      "take_id": "abc-t2",
+      "take_number": 2,
+      "completed_at": "2026-11-10T21:00:00+09:00",
+      "result": {
+       "voice_diff_db": -1.4,
+       "issues": [
+        [
+         "VOLUME_LOW",
+         3,
+         true
+        ],
+        [
+         "GAZE_ON_SCRIPT",
+         3,
+         true
+        ]
+       ],
+       "script_ratio": [
+        0.2,
+        0.25,
+        0.55,
+        0.28
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "conversation": {
+   "scope_pitch_id": null
+  }
+ },
+ "turns": [
+  {
+   "message": "최근 발표에서 제 목소리 크기가 어땠나요?"
+  },
+  {
+   "message": "대본 응시 비율이 너무 높은거같아"
+  }
+ ],
+ "expected": {
+  "checks": [
+   {
+    "check_id": "no-unverifiable-head",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "absent",
+    "expect": "확인할 수 없어요|확인 불가",
+    "turn": -1
+   },
+   {
+    "check_id": "uses-segment",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "contains",
+    "expect": "3장",
+    "turn": -1
+   },
+   {
+    "check_id": "no-repeated-value",
+    "observe": "answer",
+    "grader": "regex",
+    "compare": "absent",
+    "expect": "(\\d+(?:\\.\\d+)?%)[\\s\\S]*\\1",
+    "turn": -1
+   },
+   {
+    "check_id": "no-skipped-step",
+    "observe": "trajectory",
+    "compare": "absent",
+    "expect": "SKIPPED",
+    "path": "plan_statuses",
+    "metric": "replan"
+   },
+   {
+    "check_id": "status",
+    "observe": "answer",
+    "compare": "equals",
+    "expect": "DONE",
+    "path": "status",
+    "turn": -1
+   }
+  ]
+ },
+ "notes": "Issue #1194 화면 검토 2: 같은 사실이 두 번 나오고 '확인 불가' 첫머리가 값과 어긋나 보인 대화. 앞 차례(최근 발표의 목소리 크기)로 범위를 'abc'로 잡은 뒤 둘째 차례만 채점한다(첫 답은 path-voice-latest-first 가 기록)."
+}
