@@ -35,7 +35,7 @@ def test_volume_base_without_volume_take_is_unknown(req):
     ("operator", "value", "text"),
     [
         ("GTE", -7.3, "기준보다 7.3dB 넘게 작아지지 않기"),
-        ("GTE", 0, "기준만큼 크게 말하기"),
+        ("GTE", 0, "기준보다 작아지지 않기"),
         ("GTE", 3, "기준보다 3dB 이상 크게 말하기"),
         ("GT", -1, "기준보다 1dB 이상 작아지지 않기"),
         ("GT", 0.0, "기준보다 크게 말하기"),

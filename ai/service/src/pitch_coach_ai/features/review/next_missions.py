@@ -38,7 +38,7 @@ def _format_value(metric: str, value: float) -> str:
 #: 음수는 크기와 방향 말로 쓴다 (숫자 검사 ⑤: -7.3 ↔ '7.3dB')
 VOLUME_MISSION_TEXT = {
     ("GTE", -1): "{base}보다 {size} 넘게 작아지지 않기",
-    ("GTE", 0): "{base}만큼 크게 말하기",
+    ("GTE", 0): "{base}보다 작아지지 않기",
     ("GTE", 1): "{base}보다 {size} 이상 크게 말하기",
     ("GT", -1): "{base}보다 {size} 이상 작아지지 않기",
     ("GT", 0): "{base}보다 크게 말하기",
