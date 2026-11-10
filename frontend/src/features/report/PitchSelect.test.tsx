@@ -163,7 +163,7 @@ it('좁은 화면에서도 목록은 버튼 너비를 넘지 않고 긴 피치 �
   expect(options()[1]!.querySelector('span')?.classList.contains('break-words')).toBe(true);
 });
 
-it('옵션 클릭만 mousedown 기본 동작을 막고 목록 스크롤바와 터치 입력은 막지 않는다', async () => {
+it('목록 여백과 옵션의 mousedown은 초점 이동을 막고 터치 pointerdown은 유지한다', async () => {
   await render();
   await act(async () => box().focus());
   await act(async () => box().click());
@@ -174,11 +174,13 @@ it('옵션 클릭만 mousedown 기본 동작을 막고 목록 스크롤바와 �
     button: 0,
   });
   await act(async () => list.dispatchEvent(scrollbarDown));
-  expect(scrollbarDown.defaultPrevented).toBe(false);
+  expect(scrollbarDown.defaultPrevented).toBe(true);
 
   const touchStart = new Event('pointerdown', { bubbles: true, cancelable: true });
   await act(async () => options()[2]!.dispatchEvent(touchStart));
   expect(touchStart.defaultPrevented).toBe(false);
+  await act(async () => document.dispatchEvent(new Event('pointerup', { bubbles: true })));
+  expect(document.activeElement).toBe(box());
   expect(box().getAttribute('aria-expanded')).toBe('true');
 
   const optionDown = new MouseEvent('mousedown', {
@@ -193,7 +195,7 @@ it('옵션 클릭만 mousedown 기본 동작을 막고 목록 스크롤바와 �
   expect(box().getAttribute('aria-expanded')).toBe('false');
 });
 
-it('목록 스크롤바 때문에 초점이 main으로 옮겨져도 선택창을 유지한다', async () => {
+it('앱 코드가 외부 요소로 초점을 옮기면 열린 목록을 닫는다', async () => {
   await render();
   const main = document.createElement('main');
   main.tabIndex = -1;
@@ -203,11 +205,42 @@ it('목록 스크롤바 때문에 초점이 main으로 옮겨져도 선택창을
     await act(async () => box().click());
     await act(async () => main.focus());
     expect(document.activeElement).toBe(main);
-    expect(box().getAttribute('aria-expanded')).toBe('true');
-    expect(host.querySelector('[role="listbox"]')).not.toBeNull();
+    expect(box().getAttribute('aria-expanded')).toBe('false');
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
   } finally {
     main.remove();
   }
+});
+
+it('목록 안 포인터 조작 중 잃은 초점을 포인터 종료 후 복구한다', async () => {
+  await render();
+  const main = document.createElement('main');
+  main.tabIndex = -1;
+  document.body.append(main);
+  try {
+    await act(async () => box().focus());
+    await act(async () => box().click());
+    const list = host.querySelector<HTMLElement>('[role="listbox"]')!;
+    await act(async () => {
+      list.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      main.focus();
+    });
+    expect(box().getAttribute('aria-expanded')).toBe('true');
+    await act(async () => document.dispatchEvent(new Event('pointerup', { bubbles: true })));
+    expect(document.activeElement).toBe(box());
+    await press('Escape');
+    expect(box().getAttribute('aria-expanded')).toBe('false');
+  } finally {
+    main.remove();
+  }
+});
+
+it('열린 상태에서 창 크기가 바뀌면 목록을 닫는다', async () => {
+  await render();
+  await act(async () => box().click());
+  await act(async () => window.dispatchEvent(new Event('resize')));
+  expect(box().getAttribute('aria-expanded')).toBe('false');
+  expect(host.querySelector('[role="listbox"]')).toBeNull();
 });
 
 it('창이 비활성화되면 목록을 닫는다', async () => {

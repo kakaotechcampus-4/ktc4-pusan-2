@@ -27,7 +27,14 @@ test('피치를 고르면 주소가 바뀌고 목록 안 여백과 바깥 클릭
 
   await page.mouse.click(paddingPoint.x, paddingPoint.y);
   await expect(list).toBeVisible();
+  await expect(combo).toBeFocused();
   await expect(page).toHaveURL(/pitch=p2/);
+
+  // 목록 여백을 건드린 뒤에도 키보드로 닫고 다시 열 수 있어야 합니다.
+  await page.keyboard.press('Escape');
+  await expect(list).toHaveCount(0);
+  await combo.click();
+  await expect(list).toBeVisible();
 
   await page.getByRole('heading', { name: 'Take 기록' }).click();
   await expect(list).toHaveCount(0);
@@ -72,4 +79,19 @@ test('낮은 화면에서도 첫 항목이 보이고 전체 필터로 돌아갈 
     await expect(page).toHaveURL(/\/takes$/);
     await expect(combo).toHaveText('전체');
   }
+});
+
+test('열린 상태에서 화면 크기나 외부 초점이 바뀌면 목록을 닫는다', async ({ page }) => {
+  await page.goto('/takes');
+  const combo = page.getByRole('combobox', { name: '피치' });
+  const list = page.getByRole('listbox', { name: '피치' });
+  await combo.click();
+  await expect(list).toBeVisible();
+  await page.setViewportSize({ width: 740, height: 360 });
+  await expect(list).toHaveCount(0);
+
+  await combo.click();
+  await expect(list).toBeVisible();
+  await page.getByRole('link', { name: '지표 비교' }).focus();
+  await expect(list).toHaveCount(0);
 });

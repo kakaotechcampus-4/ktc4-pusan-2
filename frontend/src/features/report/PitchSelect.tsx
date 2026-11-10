@@ -35,22 +35,41 @@ export function PitchSelect({
   const comboRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const listPointerDown = useRef(false);
   const labelId = useId();
   const listId = useId();
   const optionId = useId();
 
-  // 목록 밖 포인터 입력으로 닫습니다. 목록 안의 터치·스크롤은 초점 변화와 관계없이 유지합니다.
+  // 목록 밖 입력·창 전환·화면 크기 변경으로 닫습니다. 목록 안 포인터 조작 후에는 초점을 복구합니다.
   useEffect(() => {
     if (!open) return;
     function onOutsidePointerDown(event: PointerEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!containerRef.current?.contains(event.target as Node)) {
+        listPointerDown.current = false;
+        setOpen(false);
+      }
     }
+    function onListPointerEnd() {
+      if (!listPointerDown.current) return;
+      listPointerDown.current = false;
+      comboRef.current?.focus({ preventScroll: true });
+    }
+    const onWindowBlur = () => {
+      listPointerDown.current = false;
+      setOpen(false);
+    };
+    const onWindowResize = () => setOpen(false);
     document.addEventListener('pointerdown', onOutsidePointerDown);
-    const onWindowBlur = () => setOpen(false);
+    document.addEventListener('pointerup', onListPointerEnd);
+    document.addEventListener('pointercancel', onListPointerEnd);
     window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('resize', onWindowResize);
     return () => {
       document.removeEventListener('pointerdown', onOutsidePointerDown);
+      document.removeEventListener('pointerup', onListPointerEnd);
+      document.removeEventListener('pointercancel', onListPointerEnd);
       window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('resize', onWindowResize);
     };
   }, [open]);
 
@@ -133,6 +152,9 @@ export function PitchSelect({
           title={selected?.label}
           onClick={() => (open ? setOpen(false) : openAt(selectedIndex))}
           onKeyDown={onKeyDown}
+          onBlur={() => {
+            if (!listPointerDown.current) setOpen(false);
+          }}
           className="flex min-h-11 min-w-28 cursor-pointer select-none items-center gap-2 border-2 border-ink bg-white py-1 pl-2 pr-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep aria-expanded:bg-cream"
         >
           <span className="min-w-0 flex-1 truncate">{selected?.label}</span>
@@ -150,6 +172,13 @@ export function PitchSelect({
             id={listId}
             role="listbox"
             aria-labelledby={labelId}
+            onPointerDownCapture={() => {
+              listPointerDown.current = true;
+            }}
+            // 목록 여백·스크롤바를 눌러도 키보드 초점은 combobox에 둡니다.
+            onMouseDown={(event) => {
+              if (event.button === 0) event.preventDefault();
+            }}
             className={`absolute inset-x-0 z-20 max-h-80 min-w-0 overflow-y-auto overscroll-contain border-2 border-ink bg-panel py-1 font-normal shadow-[3px_3px_0_var(--color-ink)] ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
           >
             {items.map((item, index) => (
@@ -160,10 +189,6 @@ export function PitchSelect({
                 aria-selected={index === selectedIndex}
                 data-active={index === active ? '' : undefined}
                 title={item.label}
-                // 옵션 선택에만 적용해 초점을 유지합니다. ul의 스크롤바 드래그는 막지 않습니다.
-                onMouseDown={(event) => {
-                  if (event.button === 0) event.preventDefault();
-                }}
                 onClick={() => choose(index)}
                 onMouseMove={() => {
                   if (index !== active) setActive(index);
