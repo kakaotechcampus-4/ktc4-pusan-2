@@ -569,12 +569,9 @@ def _sourced_targets(
 
     문구는 모델이 채운 행동 인자라, 확인 카드 · 결과 카드(코드 카드라 숫자 출처 검사를 받지 않음)에 그대로 보이면 근거 없는
     숫자 · 칭찬이 나갈 수 있다. 출처: 처음 사용자 말 원문의 부분 문자열이거나 그 Take 기준(바꾸기 전 조건)의 문구와 같음.
-    출처가 없거나 문구가 비었으면 숫자 목표가 있는 칸은 숫자 목표로 코드가 만든 문구(`_target_text`)로 바꾸고(숫자 조건이
-    실제 조건), 문구만 있는 칸이면 None(행동을 내지 않는다: 보이지 않는 조건은 승인받지 않는다).
-    문구를 null 로 두지 않는 까닭: 리뷰가 이 문구를 기준 판정(`criteria_results[].display`)과 실패한 기준의 다음 미션 설명
-    (`next_missions[].description`)에 그대로 싣고, BE 는 다시 평가 응답도 공식 리뷰와 같은 검사(문자열만)로 본다(#1167).
-    예: 사용자 "시선 70% 넘으면 통과로 다시 봐 줘", display "Take 5 시선 90%였어요"(audience_ratio · GTE · 0.7)
-    → display "청중 시선 70% 이상"
+    출처가 없으면 숫자 목표가 있는 칸은 문구를 비우고(숫자 조건이 실제 조건), 문구만 있는 칸이면 None(행동을 내지 않는다:
+    보이지 않는 조건은 승인받지 않는다).
+    예: 사용자 "시선 70% 넘으면 통과로 다시 봐 줘", display "Take 5 시선 90%였어요"(metric 있음) → display None
     """
     known: set[str] = set()
     cond = _take_conditions(ctx, take_id, "targets")
@@ -585,28 +582,13 @@ def _sourced_targets(
         d = (t.get("display") or "").strip()
         if not d and t.get("metric") is None:
             return None  # 숫자 목표도 문구도 없는 칸: 보이는 조건이 없다
-        if d and ((original is not None and d in original) or d in known):
+        if not d or (original is not None and d in original) or d in known:
             out.append(t)
         elif t.get("metric") is not None:
-            out.append({**t, "display": _target_text(t, ctx.cfg)})
+            out.append({**t, "display": None})
         else:
             return None
     return out
-
-
-#: 숫자 목표의 비교 방법 → 문구 (리뷰 판정과 같은 뜻: LT 미만 · LTE 이하 · GT 초과 · GTE 이상)
-_OPERATOR_WORD: dict[str, str] = {"LT": "미만", "LTE": "이하", "GT": "초과", "GTE": "이상"}
-
-
-def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
-    """숫자 목표로 코드가 만든 기준 문구. 지표 표시 이름 · 화면 표시 값 · 비교 말을 잇는다.
-
-    모델 글이 아니라 사용자가 확인 카드에서 승인하는 숫자 목표 그대로라 출처 검사가 필요 없다(6-9).
-    예: {metric: audience_ratio, operator: GTE, value: 0.7} → '청중 시선 70% 이상' · cpm LTE 330 → '말 속도 330자/분 이하'
-    """
-    metric = str(target["metric"])
-    value = clm.format_metric_value(metric, target["value"], cfg)
-    return f"{metric_label(metric)} {value} {_OPERATOR_WORD[str(target['operator'])]}"
 
 
 def _propose_goal(

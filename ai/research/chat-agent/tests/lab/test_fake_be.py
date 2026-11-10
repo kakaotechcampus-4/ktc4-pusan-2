@@ -725,12 +725,10 @@ def test_reassess_card_is_kept_when_target_display_has_numbers() -> None:
     be.use_rule_reviews()
     run = be.send_message(None, msg, page_take_id="t-5", approval="APPROVE")
     assert [c["type"] for c in cards(run)] == ["REASSESS_RESULT"]
-    # 문구가 사용자 말에 없고 숫자 목표가 있으면 모델 문구 대신 숫자 목표로 코드가 만든 문구를 싣는다(모델 글이 코드 카드에
-    # 나가지 않음, #888 리뷰). null 로 두면 리뷰 결과의 기준 판정 문구가 null 이 되어 BE 응답 검사에 걸린다(#1167)
+    # 문구가 사용자 말에 없고 숫자 목표가 있으면 문구는 비운다(모델 글이 코드 카드에 나가지 않음, #888 리뷰)
     (card,) = cards(run, "REASSESS_RESULT")
-    assert card["change"]["targets"][0]["display"] == "청중 시선 30% 이상"
+    assert card["change"]["targets"][0]["display"] is None
     assert card["change"]["targets"][0]["value"] == 0.3
-    assert [r["display"] for r in card["after"]["criteria_results"]] == ["청중 시선 30% 이상"]
 
 
 def test_reassess_card_keeps_display_the_user_said() -> None:
