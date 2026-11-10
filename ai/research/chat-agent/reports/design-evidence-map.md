@@ -1,6 +1,6 @@
 # 대화 에이전트 설계 · 증거 지도 (`chat_agent-0.13.0`)
 
-한 쪽으로 "무엇을 왜 모델이 정하고 무엇을 규칙으로 두었는지 → 그 코드 → 실행 로그 → 시험 → 측정"을 잇는다. 기준은 기능 문서 [`docs/ai/features/chat-agent.md`](../../../../docs/ai/features/chat-agent.md)(절 번호)와 테크스펙 [`chat-agent-techspec.md`](../../../../docs/ai/features/chat-agent-techspec.md), 코드는 서비스 `ai/service/src/pitch_coach_ai/features/chat_agent/`, 시험 목차는 [연구 README '기준표 대응 시험 목차'](../README.md), 측정은 [연구 README 10회차](../README.md)와 [독립 평가 v2](../evals/final-v2/README.md).
+한 쪽으로 "무엇을 왜 모델이 정하고 무엇을 규칙으로 두었는지 → 그 코드 → 실행 로그 → 시험 → 측정"을 잇는다. 기준은 기능 문서 [`docs/ai/features/chat-agent.md`](../../../../docs/ai/features/chat-agent.md)(절 번호)와 테크스펙 [`chat-agent-techspec.md`](../../../../docs/ai/chat-agent-techspec.md), 코드는 서비스 `ai/service/src/pitch_coach_ai/features/chat_agent/`, 시험 목차는 [연구 README '기준표 대응 시험 목차'](../README.md), 측정은 [연구 README 10회차](../README.md)와 [독립 평가 v2](../evals/final-v2/README.md).
 
 ## 1. 문제 → 왜 에이전트인가
 - 사용자는 Take 결과(코치)와 리뷰를 보고 "무엇이 계속 막히는지 · 다음에 무엇을 연습할지"를 스스로 판단해야 한다. 질문마다 읽을 기록(어느 Take · 장 · 지표 · 리뷰 차원)과 순서가 다르고, 기록 상태(비교 불가 · 리뷰 전 · 기록 없음 · 기본 자료에 없음)에 따라 다음 할 일이 바뀐다.
