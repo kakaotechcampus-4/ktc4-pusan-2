@@ -96,8 +96,10 @@ DEFAULT_PLAN = [
 PLAN_ROUTES = ("RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE")
 #: 조사 종료 사유: 이어 부른 실행의 첫 조사가 출력 예약에 막혀 조사를 건너뜀(끝 상태는 요청 해소로, 진단 끝 이유는 TOKENS)
 RESUME_RESERVE_STOP = "RESUME_RESERVE"
-#: 늘 같은 대응이 정답인 신호(4-G): 코드가 바로 처리하고 모델에게 대응을 묻지 않는다(`Loop._code_signal`)
-CODE_SIGNALS = frozenset({"REVIEW_MISSING", "NOT_LOADED", "NO_RECORD"})
+#: 늘 같은 대응이 정답인 신호(4-G): 코드가 바로 처리하고 모델에게 대응을 묻지 않는다(`Loop._code_signal`). 기록 없음
+#: (`NO_RECORD`)은 대응은 늘 '없음으로 답'이었지만, 모델이 그 신호를 보고 '없음'과 다음 걸음을 답에 썼다 — 코드로 닫자
+#: 회귀 세트에서 그 안내가 빠지는 문항이 늘어(목표 없음 · 측정값 이의 등 4문항) 모델에게 다시 연다(Issue #1194 재측정)
+CODE_SIGNALS = frozenset({"REVIEW_MISSING", "NOT_LOADED"})
 
 
 def _alt_name(name: str, args: Any) -> str:
@@ -1004,7 +1006,6 @@ class Loop:
         - 리뷰 없음: 그 Take 의 코치 기록(문제 구간 · 장별 값)을 아직 읽지 않았으면 코드가 읽는다(`REVIEW_MISSING:ALT_TOOL:CODE`).
           읽을 것이 없으면 사실 표시로 끝(`NONE:CODE`)
         - 기본 자료에 없음(범위 피치의 Take): 아직 가져오려 한 적이 없으면 코드가 `fetch_take`를 낸다(그 처리에서 `NOT_LOADED:ACTION:CODE`)
-        - 기록 없음: 읽은 범위의 '없음'은 답의 기록 문장으로 코드가 채운다(6-9). 사실 표시로 닫는다
         같은 요청은 한 번만 내고(`code_done`), 한 실행에 `code_signal_reads_max`개까지. 코드 읽기는 덧붙이는 대응이라 남은 도구 몫
         안에서만 낸다(이 읽기 때문에 도구 한도로 멈춰 `PARTIAL`이 되지 않게). 이미 읽은(캐시에 있는) 기록은 다시 내지 않는다."""
         sig = run.signal
@@ -1045,7 +1046,6 @@ class Loop:
             self.st.code_queue.append(
                 {"name": "fetch_take", "args": {"take_id": tid, "reason": "읽으려던 연습 기록이 기본 자료에 없음"}, "why": None}
             )
-        # NO_RECORD: 사실 표시(위 FACT_SHOWN)로 닫는다 — 모델에게 대응을 묻지 않는다
 
     def _decide(
         self,

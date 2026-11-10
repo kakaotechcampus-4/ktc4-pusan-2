@@ -93,3 +93,45 @@ def test_unrelated_none_evidence_does_not_resolve_an_item() -> None:
     )
     _, _, data = F.run_turn(req, llm)
     assert data["status"] == "PARTIAL"
+
+
+def test_advice_question_is_not_counted_as_a_value_question() -> None:
+    """'어떻게 하면 좋아?'는 조언을 묻는 말이라, 측정 지표를 집었어도 값을 읽지 않았다고 PARTIAL 이 되지 않는다."""
+    advice = F.draft(
+        "긴장하면 말이 빨라져. 어떻게 하면 좋아?",
+        type_="REQUEST",
+        claim_op=None,
+        metric="cpm",
+        polarity="NEUTRAL",
+    )
+    req = F.with_loaded(F.request(user_message="긴장하면 말이 빨라져. 어떻게 하면 좋아?"), "t-5")
+    llm = F.FakeLlm(
+        [F.plan(assessments=[advice]), F.done()],
+        answers=[F.answer([F.claim("GENERAL", "숨을 한 번 고르고 첫 문장을 천천히 시작해 보세요.")])],
+    )
+    _, _, data = F.run_turn(req, llm)
+    assert not any(p["step"] == templates.PLAN_UNRESOLVED for p in data["plan"])  # 남은 일로 세지 않았다
+
+
+def test_dimension_state_answers_a_dimension_question() -> None:
+    """'대본 전달은 어땠어?'(내용 전달 차원)에 그 차원 상태 근거로 답했으면 해소다(지표 칸이 없는 근거)."""
+    ask = F.draft(
+        "Take 5 대본 전달은 어땠어?",
+        type_="REQUEST",
+        claim_op=None,
+        dimension="content_delivery",
+        take_numbers=[5],
+        polarity="NEUTRAL",
+    )
+
+    def answer(r: Any) -> Any:
+        eid = F.find_evidence(r, lambda o: o.get("dimension") == "content_delivery")
+        return F.answer([F.claim("RECORD", "Take 5의 내용 전달은 유지 상태예요.", evidence_ids=[eid])])
+
+    req = F.with_loaded(F.request(user_message="Take 5 대본 전달은 어땠어?"), "t-5")
+    llm = F.FakeLlm(
+        [F.plan(assessments=[ask]), F.tools(("get_take_report", {"take_id": "t-5", "section": "dimensions"})), F.done()],
+        answers=[answer],
+    )
+    _, _, data = F.run_turn(req, llm)
+    assert data["status"] == "DONE"

@@ -1280,12 +1280,23 @@ def _target_evidence(lp: Loop, takes: set[int], slide: int | None, metrics: set[
             continue
         if slide is not None and ev.slide_number not in (None, slide):
             continue
-        if metrics and ev.metric not in metrics:
+        if metrics and ev.metric not in metrics and not _dimension_covers(lp, ev, metrics):
             continue
         if not metrics and ev.take_number is None:
             continue
         out.add(eid)
     return out
+
+
+#: 리뷰 차원 상태 근거의 경로 끝(`….dimensions.<차원>`)
+_DIMENSION_PATH = re.compile(r"\.dimensions\.([a-z_]+)$")
+
+
+def _dimension_covers(lp: Loop, ev: Any, metrics: set[str]) -> bool:
+    """차원 상태 근거(지표 칸 없음)가 물은 지표가 든 차원의 것인가("대본 전달은 어땠어?"에 내용 전달 차원 상태로 답함)."""
+    m = _DIMENSION_PATH.search(ev.path or "")
+    dim = lp.cfg.dimensions.get(m.group(1)) if m else None
+    return dim is not None and bool(set(dim.metrics) & metrics)
 
 
 def _item_unmeasured(lp: Loop, takes: set[int], metrics: set[str]) -> bool:
@@ -1339,10 +1350,11 @@ def _unresolved_targets(
     # 계획 때 초안으로 본다(기록 보강과 같은 대상, 답 쓰기가 고친 초안이 아니다). 값을 묻는 정보 질문만 센다: 측정 주장은 코드가
     # 판정 첫 문장(7-9)을 늘 내고, 행동 요청은 행동 결과가 답이다
     for d, takes, slide, metrics in lp.question_targets(lp.st.plan_drafts):
-        if d.get("type") != "REQUEST" or not any(
-            w in str(d.get("quote") or "") for w in lp.cfg.info_question_words
-        ):
+        quote = str(d.get("quote") or "")
+        if d.get("type") != "REQUEST" or not any(w in quote for w in lp.cfg.info_question_words):
             continue
+        if any(w in quote for w in lp.cfg.advice_question_words):
+            continue  # 조언 · 방법을 묻는 말이지 그 항목의 값을 묻는 말이 아니다(답은 자료 · 일반 조언)
         if d.get("quote") in forced or (takes and not takes <= in_scope):
             continue
         if named and takes and not takes <= named:

@@ -54,8 +54,9 @@ def test_review_missing_reads_the_coach_record_by_code() -> None:
     assert texts[-1] == templates.SystemText.NEXT_AFTER_REVIEW.value
 
 
-def test_no_record_is_closed_by_the_shown_fact() -> None:
-    """범위 피치의 Take 가 0개(`Take 없음`)는 사실 표시로 닫는다: 모델에게 신호를 묻지 않고 대응 없음(NONE:LLM)도 남지 않는다."""
+def test_no_record_is_left_to_the_model() -> None:
+    """기록 없음(`Take 없음`)은 코드가 닫지 않고 모델에게 연다: 대응은 늘 '없음으로 답'이었지만, 그 신호를 보고 모델이 '없음'과
+    다음 걸음을 답에 썼다. 코드로 닫자 그 안내가 빠지는 회귀 문항이 늘어 되돌렸다(Issue #1194 재측정)."""
 
     def answer(r: Any) -> Any:
         return F.answer(
@@ -73,10 +74,11 @@ def test_no_record_is_closed_by_the_shown_fact() -> None:
     log: list[dict[str, Any]] = []
     _, lines, data = F.run_turn(no_take_request(), llm, log=log)
     fd = check_stream(lines, data)
-    assert decisions(log) == [("NO_RECORD", "FACT_SHOWN", "CODE", 1)]
-    assert all("signals" not in b for b in research_blocks(llm))
+    effects = [d[:3] for d in decisions(log)]
+    assert ("NO_RECORD", "FACT_SHOWN", "CODE") in effects
+    assert ("NO_RECORD", "NONE", "LLM") in effects
+    assert any("signals" in b for b in research_blocks(llm))
     assert fd.status == "DONE"
-
 
 def test_not_loaded_take_is_fetched_by_code() -> None:
     """모델이 기본 자료에 없는 Take 를 읽으려 하면(NOT_LOADED) 코드가 바로 가져오기를 낸다(NOT_LOADED:ACTION:CODE)."""
