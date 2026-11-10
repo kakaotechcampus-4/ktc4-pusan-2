@@ -42,6 +42,7 @@ export function HomePitchCard({
   const takes = pitch.takes.length;
   const titleStyle = 'inline-flex min-w-0 items-center gap-2 font-bold';
   const demo = pitch.is_demo === true;
+  const editTo = `/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`;
   return (
     <li className="flex items-center gap-4 px-4 py-2 sm:px-5">
       <div
@@ -63,24 +64,21 @@ export function HomePitchCard({
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-        {demo ? (
+        {demo && (
           <span className={titleStyle}>
             <span className="truncate">{pitch.pitch_title}</span>
             <span className="shrink-0 border border-ink bg-cream px-1.5 text-xs">샘플</span>
           </span>
-        ) : pitch.pitch_id ? (
-          <Link
-            to={demo ? '/pitch/tutorial' : `/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
-            className={`${titleStyle} hover:text-coral-deep`}
-          >
+        )}
+        {!demo && pitch.pitch_id && (
+          <Link to={editTo} className={`${titleStyle} hover:text-coral-deep`}>
             <span className="truncate">{pitch.pitch_title}</span>
             <span aria-hidden="true" className="text-xs">
               ↗
             </span>
           </Link>
-        ) : (
-          <h3 className={titleStyle}>{pitch.pitch_title}</h3>
         )}
+        {!demo && !pitch.pitch_id && <h3 className={titleStyle}>{pitch.pitch_title}</h3>}
         <span className="text-xs text-ink/80">
           {takes === 0 && <span className="mr-2 font-bold text-coral-deep">연습 전</span>}
           목표 {formatSeconds(pitch.pitch_time)}
@@ -104,7 +102,7 @@ export function HomePitchCard({
       </span>
       {showPrepare && pitch.pitch_id && (
         <ButtonLink
-          to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
+          to={demo ? '/pitch/tutorial' : editTo}
           aria-label={`${pitch.pitch_title} 발표 준비`}
           size="sm"
           className="shrink-0 border-transparent! shadow-none! outline-1 outline-ink"
