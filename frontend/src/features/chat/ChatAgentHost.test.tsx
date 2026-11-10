@@ -665,9 +665,11 @@ it('모바일 오버레이는 배경을 비활성화하고 닫으면 복원한�
   const content = host.querySelector('.chat-layout-content')!;
   expect(panel()!.getAttribute('aria-modal')).toBe('true');
   expect(content.hasAttribute('inert')).toBe(true);
+  expect(document.body.style.position).toBe('fixed');
   await act(async () => button('새미나이 닫기')!.click());
   expect(panel()).toBeNull();
   expect(content.hasAttribute('inert')).toBe(false);
+  expect(document.body.style.position).toBe('');
 });
 
 it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내지 않는다', async () => {
