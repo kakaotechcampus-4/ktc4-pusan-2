@@ -106,7 +106,7 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
                 </section>
                 <section className="min-w-0 border-l-2 border-line pl-3">
                   <h3 className="font-bold">발표 시간</h3>
-                  <div className="mt-2 border border-line-strong bg-panel p-3">
+                  <div className="mt-2 border border-coral-deep bg-coral-wash p-3">
                     <p className="text-xs font-bold text-stone">발표 전체</p>
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                       <div>
