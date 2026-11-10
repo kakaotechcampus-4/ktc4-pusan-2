@@ -458,6 +458,23 @@ function ChatPanel({
     const content = document.querySelector<HTMLElement>('.chat-layout-content');
     if (!content) return;
     const wasInert = content.hasAttribute('inert');
+    const body = document.body;
+    const previous = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+
+    // iOS Safari에서도 뒤 화면이 움직이지 않도록 고정합니다. 음수 top으로 보던 위치를 그대로 둡니다.
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = `-${scrollX}px`;
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
     content.setAttribute('inert', '');
     if (panelRef.current && !panelRef.current.contains(document.activeElement)) {
       if (inputRef.current && !inputRef.current.closest('[hidden]')) inputRef.current.focus();
@@ -465,6 +482,12 @@ function ChatPanel({
     }
     return () => {
       if (!wasInert) content.removeAttribute('inert');
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.left = previous.left;
+      body.style.width = previous.width;
+      body.style.overflow = previous.overflow;
+      window.scrollTo(scrollX, scrollY);
     };
   }, [mobileOverlay]);
   useKeepFocusInPanel(panelRef, inputRef);
