@@ -53,8 +53,14 @@ const fixture = vi.hoisted(() => ({
   create: vi.fn(),
   active: vi.fn(),
   endActive: vi.fn(),
+  /** 연습 기록 사용 동의 켜기 (#1208) */
+  ensureConsent: vi.fn(),
   /** 화면이 useMicLevel 에 넘긴 옵션. 무음 경고를 언제부터 세는지(silenceFrom)를 봅니다 */
   micOptions: null as { silenceFrom?: () => number | null } | null,
+}));
+vi.mock('@/shared/api/rawDataConsent', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api/rawDataConsent')>()),
+  useEnsureRawDataConsent: () => fixture.ensureConsent,
 }));
 vi.mock('./activeTake', () => ({
   activeTakeOrNone: fixture.active,
@@ -192,6 +198,7 @@ beforeEach(() => {
   fixture.create.mockReset().mockResolvedValue({ takeId: 't1', takeNumber: 4 });
   fixture.active.mockReset().mockResolvedValue(null);
   fixture.endActive.mockReset().mockResolvedValue(undefined);
+  fixture.ensureConsent.mockReset().mockResolvedValue(undefined);
   fixture.gazeStart.mockReset();
   fixture.voiceStart.mockReset();
   usePrepareStore.setState(usePrepareStore.getInitialState(), true);
@@ -778,6 +785,41 @@ it('still summarizes missions after starting fails and keeps retry available', a
   expect(host.querySelector('.prepare-missions-compact')).not.toBeNull();
   expect(findButton('전체 미션 보기')).toBeTruthy();
   expect(findButton('Take 4 시작하기').disabled).toBe(false);
+});
+
+it('연습 기록 사용 동의를 켠 뒤에 다른 곳의 연습을 묻고 Take 를 만든다 (#1208)', async () => {
+  const order: string[] = [];
+  fixture.ensureConsent.mockImplementation(async () => {
+    order.push('consent');
+  });
+  fixture.active.mockImplementation(async () => {
+    order.push('active');
+    return null;
+  });
+  fixture.create.mockImplementation(async () => {
+    order.push('create');
+    return { takeId: 't1', takeNumber: 4 };
+  });
+  await render();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(order).toEqual(['consent', 'active', 'create']);
+});
+
+it('연습 기록 사용 동의를 켜지 못하면 Take 를 만들지 않고 알린 뒤, 다시 누르면 다시 시도한다 (#1208)', async () => {
+  fixture.ensureConsent.mockRejectedValueOnce(new Error('네트워크'));
+  await render();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.active).not.toHaveBeenCalled();
+  expect(fixture.create).not.toHaveBeenCalled();
+  expect(host.querySelector('.prepare-footer')!.textContent).toContain(
+    '연습 기록 사용 동의를 켜지 못해 연습을 시작하지 않았어요.',
+  );
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(fixture.ensureConsent).toHaveBeenCalledTimes(2);
+  expect(fixture.create).toHaveBeenCalledTimes(1);
+  expect(host.textContent).toContain('연습 시작');
 });
 
 it('locks device and script choices while checking for an existing Take, and restores focus after cancellation', async () => {
