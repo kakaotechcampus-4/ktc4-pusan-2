@@ -150,6 +150,7 @@ it('세 설명용 SVG가 올바른 문서이며 현재 화면의 필수 문구�
 
   const deviceSvg = new DOMParser().parseFromString(device, 'image/svg+xml');
   expect(deviceSvg.querySelector('[aria-label*="채팅 에이전트 런처"]')).toBeNull();
+  expect(deviceSvg.querySelector('desc')?.textContent).not.toContain('채팅 런처');
 
   const chatSvg = new DOMParser().parseFromString(chat, 'image/svg+xml');
   expect(chatSvg.querySelector('[data-help-chat-panel]')?.getAttribute('transform')).toBe(
