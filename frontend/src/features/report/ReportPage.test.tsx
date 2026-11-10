@@ -313,7 +313,36 @@ it('describes metrics reported only for the whole Take without suggesting missin
   expect(whole?.textContent).toContain('지난 Take');
   expect(whole?.textContent).toContain('이번 Take');
   expect(whole?.textContent).toContain('개선 ↑');
+  expect(whole?.classList.contains('bg-coral-wash')).toBe(true);
+  expect(whole?.classList.contains('border-coral-deep')).toBe(true);
   expect(comparisonCard().textContent).not.toContain('발표 전체 기준 지표예요.');
+});
+
+it.each([
+  { improved: false, current: 140000, label: '악화 ↓' },
+  { improved: null, current: 140000, label: '방향 판단 불가' },
+  { improved: false, current: 150000, label: '변화 없음' },
+])('does not emphasize a whole-Take comparison when $label', async ({ improved, current, label }) => {
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      {
+        metric: 'duration_ms',
+        slide_number: null,
+        previous: 150000,
+        current,
+        improved,
+        script_mode: null,
+      },
+    ],
+  };
+  await render();
+  const whole = comparisonCard().querySelector(
+    '[role="group"][aria-label="발표 시간 발표 전체 비교"]',
+  );
+  expect(whole?.textContent).toContain(label);
+  expect(whole?.classList.contains('bg-coral-wash')).toBe(false);
+  expect(whole?.classList.contains('bg-panel')).toBe(true);
 });
 
 it('shows undetermined direction without falsely saying no slides improved or worsened', async () => {
