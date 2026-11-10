@@ -1923,6 +1923,10 @@ def finalize(
             # 사용자가 앞 답을 되받아 말한 것('작게 말했다고 하는데 …')은 확인을 청한 주장이 아니다: 판정 첫 문장을 그리지 않는다
             # (앞 답이 기록으로 확인해 준 것을 '확인 불가'로 다시 말하면 앞 답과 어긋나 보인다, Issue #1194 화면 검토)
             sentence = ""
+        elif verdict == "UNVERIFIABLE" and _asks(d.quote):
+            # 물음 꼴의 말('나아졌는지' · '올랐어?')은 확인을 청한 것이다: 판정할 수 없으면 '이 기록으로는 확인할 수 없어요'로
+            # 되받지 않고 답(비교할 수 없는 까닭 · 없음 근거 · 값)이 말한다(Issue #1194 읽듯 보는 검토 — 질문을 주장처럼 받음)
+            sentence = ""
         elif d.type == "REQUEST" and (verdict in ("SUPPORTED", "UNVERIFIABLE") or not phrase):
             # 요청 · 정보 질문은 참 · 거짓을 가릴 사실 주장이 아니다: '이 기록으로는 확인할 수 없어요'를 붙이지 않는다.
             # 요청에 응할 수 없으면 답 · 행동 결과가 그 까닭을 말한다(근거가 있고 기록과 어긋난 요청만 템플릿 문장을 쓴다)
@@ -1948,6 +1952,20 @@ def finalize(
     dropped = any(p.code in FORMAT_PROBLEMS for p in problems)
     notice = [templates.SystemText.NOT_VERIFIED_CLAIM.value] if dropped else []
     return FinalizeResult(outcomes, uncovered, notice, problems)
+
+
+#: 물음으로 끝나는 말의 끝(인용이 물음표 앞에서 끊겨도 알아본다)
+_QUESTION_END = re.compile(r"(\?|는지|는가|나요|까요|을까|ㄹ까|었어\?|았어\?)\s*$")
+
+
+#: 확인을 구하는 꼴('컸지?' · '맞죠?' · '잘했잖아')은 물음이 아니라 주장이다(판정 문장을 그대로 쓴다, obj-unverifiable-volume)
+_TAG_END = re.compile(r"((?<!는)지\s*\?|죠\s*\??|지요\s*\??|잖아요?\s*\??)\s*$")
+
+
+def _asks(quote: str) -> bool:
+    """판단 초안의 인용이 물음인가: 물음표로 끝나거나 '…는지' · '…나요' · '…까요'로 끝난다. 확인을 구하는 꼴은 물음이 아니다."""
+    q = quote.strip()
+    return bool(_QUESTION_END.search(q)) and not _TAG_END.search(q)
 
 
 # ── 목표 요청 충돌 ────────────────────────────────────────────────────────

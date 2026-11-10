@@ -521,6 +521,7 @@ def test_l1_17_take_in_summary_but_not_loaded_is_not_loaded() -> None:
     ctx = make_ctx()
     res, trace = run(ctx, "get_take_report", {"take_id": "t-3", "section": "dimensions"})
     assert (res.ok, res.read_state, res.error["code"]) == (False, "NOT_LOADED", "NOT_LOADED")
+    assert res.result_summary == "아직 불러오지 않음"  # '확인한 것'에 내부 말 '기본 자료'를 쓰지 않는다(Issue #1194)
     assert res.data is None and "t-3" not in ctx.not_found and ctx.tool_cache == {}
     assert trace.outcome == "ERROR"
 
