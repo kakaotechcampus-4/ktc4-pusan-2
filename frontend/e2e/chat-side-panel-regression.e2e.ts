@@ -87,7 +87,8 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
       const mainBox = await main.boundingBox();
       expect(panelBox).not.toBeNull();
       expect(mainBox).not.toBeNull();
-      expect(Math.abs(panelBox!.x + panelBox!.width - width)).toBeLessThanOrEqual(1);
+      // 고정 패널의 오른쪽 경계는 스크롤바 너비에 따라 달라질 수 있습니다.
+      await expect(panel).toHaveCSS('right', '0px');
 
       if (width >= 1440) {
         expect(mainBox!.x + mainBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
