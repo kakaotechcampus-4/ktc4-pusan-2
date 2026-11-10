@@ -137,22 +137,21 @@ test('모바일 패널은 배경 스크롤을 차단하고 기존 위치를 보�
     window.scrollTo(0, 400);
   })()`);
   const before = await page.evaluate('window.scrollY');
-  const topBefore = await page.evaluate(
-    "document.querySelector('.chat-layout-content').getBoundingClientRect().top",
-  );
+  const topScript = "document.querySelector('.chat-layout-content').getBoundingClientRect().top";
+  const topBefore = await page.evaluate(topScript);
   expect(before).toBeGreaterThan(0);
   const panel = await openChat(page);
   await expect(panel).toHaveAttribute('aria-modal', 'true');
   await expect(page.locator('body')).toHaveCSS('position', 'fixed');
   await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
   expect(
-    await page.evaluate("document.querySelector('.chat-layout-content').getBoundingClientRect().top"),
+    await page.evaluate(topScript),
   ).toBe(topBefore);
   await page.mouse.move(40, 300);
   await page.mouse.wheel(0, 500);
   await page.waitForTimeout(100);
   expect(
-    await page.evaluate("document.querySelector('.chat-layout-content').getBoundingClientRect().top"),
+    await page.evaluate(topScript),
   ).toBe(topBefore);
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
