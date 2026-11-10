@@ -7,6 +7,8 @@
 import { useState, type MouseEvent } from 'react';
 import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
+import { TutorialScreen } from './screens/TutorialScreen';
+import { SeminiScreen } from './screens/SeminiScreen';
 import { PitchCreateScreen } from './screens/PitchCreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
 import { PrepareLayoutDraftScreen } from './screens/PrepareLayoutDraftScreen';
@@ -58,6 +60,7 @@ const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
 /** 제품 경로를 설계서 화면으로 바꾼다. 알 수 없는 경로는 제품으로 열지 않는다 */
 function targetFor(path: string): string | null {
   if (path === '/' || path === '/pitches') return 'home';
+  if (path === '/pitch/tutorial') return 'tutorial';
   if (path === '/pitch/new' || /^\/pitch\/[^/]+\/edit$/.test(path)) return 'pitch-create';
   if (/^\/pitch\/[^/]+\/(device-check|prepare)$/.test(path)) return 'prepare-mission';
   if (/^\/pitch\/[^/]+\/comparison$/.test(path)) return 'comparison';
@@ -184,6 +187,10 @@ function CurrentScreen({
       return <WritingFoundation stateId={stateId} />;
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'tutorial':
+      return <TutorialScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'semini':
+      return <SeminiScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create-a':
     case 'pitch-create':
       // 옛 preview 상태 주소는 슬라이드 확인 창으로 연다

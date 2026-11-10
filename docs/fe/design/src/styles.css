@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* #1106 반영: 세로 스크롤 유무와 무관하게 헤더의 수평 정렬을 유지한다. */
+html { scrollbar-gutter: stable; }
+
 /* 화면 설계서의 디자인 값. 제품 frontend/src/index.css 에서 복사해 시작했고, 이제 설계서가 직접 관리합니다.
    디자인을 바꾸면 여기를 먼저 고치고, 제품과의 차이는 `npm run tokens` 로 확인합니다 (README "제품으로 옮기기").
    글꼴은 직접 둡니다. 라이선스는 public/fonts/*-OFL.txt */
@@ -10,8 +13,7 @@
   src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
 }
 
-/* 홈을 한 화면에 고정할 만큼 넓고 높은 창. 낮으면(배율 125~150% 노트북) 목록이 몇 줄만 남아
-   고정하지 않고 페이지를 스크롤합니다 (PR #669 리뷰) */
+/* 한 화면에 고정할 만큼 폭과 높이가 충분할 때만 사용하는 레이아웃 기준(#669). */
 @custom-variant one-screen (@media (min-width: 64rem) and (min-height: 40rem));
 
 /* ═══════════════════════════════════════════════════════════════
@@ -202,4 +204,20 @@ body {
 /* 문서 뷰어의 코드·토큰 값: 제품 폰트 토큰과 별도로 고정폭을 보장한다. */
 .guide-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* #1105: 튜토리얼 초대 버튼의 PRESS START 효과. 사용자가 움직임을 줄이면 정지한다. */
+@keyframes tutorial-invite {
+  0%, 34%, 100% { transform: translate(0, 0); box-shadow: 4px 4px 0 var(--color-ink); }
+  5%, 22% { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--color-ink); }
+  11%, 28% { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--color-ink); }
+  17% { transform: translate(0, 0); box-shadow: 4px 4px 0 var(--color-ink); }
+}
+.tutorial-invite {
+  box-shadow: 4px 4px 0 var(--color-ink);
+  animation: tutorial-invite 3s ease-out infinite;
+}
+.tutorial-invite:is(:hover, :focus-visible) { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-invite { animation: none; }
 }

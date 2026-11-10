@@ -34,12 +34,13 @@ function Draft({
   const [gaze, setGaze] = useState(fixture.gaze);
   const [voice, setVoice] = useState(fixture.voice);
   const [mode, setMode] = useState<ScriptMode>(fixture.exam ? 'OFF' : 'HIGHLIGHT');
-  const ready = camera && mic && gaze === 'DONE' && !fixture.starting;
+  const ready = camera && mic && gaze === 'DONE' && voice === 'DONE' && !fixture.starting;
   const reading = voice === 'READING';
-  let hint = '점검이 끝났어요. 평소 목소리 측정은 선택이에요.';
+  let hint = '점검이 끝났어요.';
   if (!camera) hint = '카메라·마이크를 켜면 점검을 시작할 수 있어요.';
   else if (!mic) hint = '마이크에 대고 한 마디 해 보세요.';
   else if (gaze !== 'DONE') hint = '시선 기준을 잡으면 연습을 시작할 수 있어요.';
+  else if (voice !== 'DONE') hint = '기준 목소리를 재야 연습을 시작할 수 있어요.';
   if (reading) hint = '문단을 평소 목소리로 읽고, 다 읽으면 “다 읽었어요”를 눌러 주세요.';
   if (fixture.permissionError) hint = '카메라와 마이크 사용을 허용해 주세요. (권한 오류 예시)';
   if (fixture.starting) hint = '연습을 여는 중… (시안 예시)';
@@ -161,10 +162,9 @@ function Draft({
               },
               {
                 id: 'voice',
-                name: '평소 목소리',
+                name: '기준 목소리',
                 label: voiceLabel,
                 done: voice === 'DONE',
-                optional: true,
                 action: {
                   text: voiceAction,
                   onClick: () => setVoice(reading ? 'IDLE' : 'READING'),
@@ -191,7 +191,7 @@ function Draft({
             )}
             {voice === 'DONE' && (
               <p className="prepare-draft-notices" role="status">
-                평소 목소리 확인 완료 예시예요. 실제 소리를 측정하지 않았어요.
+                기준 목소리 확인 완료 예시예요. 실제 소리를 측정하지 않았어요.
               </p>
             )}
             {fixture.permissionError && (

@@ -10,8 +10,8 @@ const GAP = 4;
  * 키보드는 WAI-ARIA 메뉴 버튼 방식입니다 — Enter · Space · ↓ 로 열면 첫 항목, ↑ 면 마지막 항목에 초점이 가고,
  * ↑ ↓ Home End 로 옮기고, Esc 는 닫고 ··· 로 초점을 돌려줍니다. Tab 이나 바깥을 누르면 그냥 닫습니다.
  *
- * 목록 상자가 스크롤 상자(one-screen)라 메뉴를 그 안에 두면 마지막 줄에서 잘립니다. 그래서 화면 좌표(fixed)로
- * 띄우고, 아래 자리가 모자라면 위로 엽니다. 스크롤하거나 창 크기가 바뀌면 자리가 어긋나 닫습니다
+ * 화면 아래쪽의 마지막 줄에서도 메뉴가 잘리지 않도록 화면 좌표(fixed)로 띄우고,
+ * 아래 자리가 모자라면 위로 엽니다. 페이지를 스크롤하거나 창 크기가 바뀌면 닫습니다
  */
 export function PitchMoreMenu({
   pitchTitle,
@@ -76,7 +76,7 @@ export function PitchMoreMenu({
     };
     const drop = () => close(false);
     document.addEventListener('pointerdown', outside);
-    // 목록 상자 안의 스크롤도 잡도록 capture 로 듣습니다
+    // 스크롤하면 자리가 어긋나 닫습니다. 안쪽 스크롤 상자도 잡도록 capture 로 듣습니다.
     window.addEventListener('scroll', drop, true);
     window.addEventListener('resize', drop);
     return () => {

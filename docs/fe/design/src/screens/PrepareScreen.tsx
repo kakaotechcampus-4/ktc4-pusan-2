@@ -6,14 +6,11 @@ import { Badge } from '@/ui/Badge';
 import { ScriptModeChoice, type ScriptMode } from '@/ui/ScriptModeChoice';
 import { PITCH, type Navigate } from './shared';
 
-/**
- * 상태별 점검 결과. 제품은 카메라 · 마이크 · 시선 기준 · 기준 목소리가 모두 돼야 시작한다(DeviceCheckPage `ready`).
- * 기준 목소리는 이번에 재거나, 같은 환경에서 직전 값을 다시 쓰거나, 탈출구로 정한다(#1179)
- */
+/** 제품은 카메라 · 마이크 · 시선 기준 · 기준 목소리가 모두 돼야 시작한다(#1184). */
 function prepareChecks(stateId: string) {
   const camera = stateId !== 'no-camera';
   const mic = camera && stateId !== 'mic-error';
-  const gaze = stateId === 'default';
+  const gaze = stateId === 'default' || stateId === 'voice-required';
   const voice = stateId === 'default' || stateId === 'voice-done';
   // 안내 줄은 막고 있는 것 하나만, 제품 deviceCheckHint의 순서대로
   let hint = '점검이 끝났어요';
@@ -61,7 +58,17 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
               {/* 카메라 자기 화면 자리. 제품은 여기서 AI 카메라 화면 모듈이 시선 기준을 잡는다 */}
               <div className="relative grid aspect-video max-h-[360px] w-full place-items-center bg-stage text-sm text-ink-stage">
                 {check.camera ? (
-                  <span>카메라 미리보기 · 얼굴 인식됨</span>
+                  <>
+                    <span>카메라 미리보기 · 얼굴 인식됨</span>
+                    {stateId === 'calibration-camera' && (
+                      <div
+                        className="absolute right-4 top-4 rounded-xl px-[10px] py-[5px] text-xs font-bold shadow-md"
+                        style={{ backgroundColor: '#161412', color: '#E8532A' }}
+                      >
+                        <span aria-hidden="true">↗ </span>렌즈
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <button
                     type="button"
