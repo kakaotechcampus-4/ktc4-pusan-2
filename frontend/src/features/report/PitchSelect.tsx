@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 export type PitchOption = { value: string; label: string };
 
@@ -9,7 +9,7 @@ export type PitchOption = { value: string; label: string };
  * 키보드는 WAI-ARIA select-only combobox 방식입니다 — 초점은 늘 버튼에 두고, 가리킨 항목은
  * aria-activedescendant 로 알립니다. 닫혀 있으면 ↑ ↓ Enter Space 로 고른 항목에서, Home End 로
  * 처음 · 끝 항목에서 엽니다. 열려 있으면 ↑ ↓ Home End 로 옮기고 Enter · Space 로 고르며,
- * Esc 와 Tab 은 바꾸지 않고 닫습니다. 바깥을 눌러 초점이 나가도 닫습니다.
+ * Esc 와 Tab 은 바꾸지 않고 닫습니다. 바깥 포인터나 창 전환 시에도 닫습니다.
  *
  * `leading` 은 피치 목록 앞에 따로 두는 항목(전체 · 안내)이고 그 아래에 구분선을 긋습니다
  */
@@ -31,6 +31,7 @@ export function PitchSelect({
   const selected = items[selectedIndex];
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [dropUp, setDropUp] = useState(false);
   const comboRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -45,7 +46,23 @@ export function PitchSelect({
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     }
     document.addEventListener('pointerdown', onOutsidePointerDown);
-    return () => document.removeEventListener('pointerdown', onOutsidePointerDown);
+    const onWindowBlur = () => setOpen(false);
+    window.addEventListener('blur', onWindowBlur);
+    return () => {
+      document.removeEventListener('pointerdown', onOutsidePointerDown);
+      window.removeEventListener('blur', onWindowBlur);
+    };
+  }, [open]);
+
+  // 아래 공간이 부족할 때 위쪽 여유가 더 크면 위로 펼칩니다.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const trigger = comboRef.current?.getBoundingClientRect();
+    const list = listRef.current;
+    if (!trigger || !list) return;
+    const below = window.innerHeight - trigger.bottom - 4;
+    const above = trigger.top - 4;
+    setDropUp(below < list.offsetHeight && above > below);
   }, [open]);
 
   // 키보드로 옮긴 항목이 목록 밖이면 목록만 스크롤합니다. scrollIntoView 는 페이지까지 움직여서 쓰지 않습니다
@@ -59,6 +76,7 @@ export function PitchSelect({
   }, [open, active]);
 
   function openAt(index: number) {
+    setDropUp(false);
     setActive(Math.max(0, index));
     setOpen(true);
   }
@@ -80,7 +98,8 @@ export function PitchSelect({
       return;
     }
 
-    if (event.key === 'ArrowDown') setActive(Math.min(active + 1, last));
+    if (event.altKey && event.key === 'ArrowUp') choose(active);
+    else if (event.key === 'ArrowDown') setActive(Math.min(active + 1, last));
     else if (event.key === 'ArrowUp') setActive(Math.max(active - 1, 0));
     else if (event.key === 'Home') setActive(0);
     else if (event.key === 'End') setActive(last);
@@ -101,7 +120,7 @@ export function PitchSelect({
       <span id={labelId} onClick={() => comboRef.current?.focus()}>
         {label}
       </span>
-      <div ref={containerRef} className="relative min-w-0 max-w-full flex-1 sm:max-w-xs">
+      <div ref={containerRef} className="relative min-w-0 max-w-full flex-1 sm:w-xs sm:flex-none">
         <div
           ref={comboRef}
           role="combobox"
@@ -114,11 +133,6 @@ export function PitchSelect({
           title={selected?.label}
           onClick={() => (open ? setOpen(false) : openAt(selectedIndex))}
           onKeyDown={onKeyDown}
-          onBlur={(event) => {
-            // 터치로 비포커스 옵션을 누르면 초점이 body로 빠질 수 있습니다.
-            // 이 경우에는 클릭 선택을 먼저 처리하고, 실제 외부 포인터는 별도 리스너가 닫습니다.
-            if (event.relatedTarget && event.relatedTarget !== document.body) setOpen(false);
-          }}
           className="flex min-h-11 min-w-28 cursor-pointer select-none items-center gap-2 border-2 border-ink bg-white py-1 pl-2 pr-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep aria-expanded:bg-cream"
         >
           <span className="min-w-0 flex-1 truncate">{selected?.label}</span>
@@ -136,7 +150,7 @@ export function PitchSelect({
             id={listId}
             role="listbox"
             aria-labelledby={labelId}
-            className="absolute inset-x-0 top-full z-20 mt-1 max-h-80 min-w-0 overflow-y-auto overscroll-contain border-2 border-ink bg-panel py-1 font-normal shadow-[3px_3px_0_var(--color-ink)]"
+            className={`absolute inset-x-0 z-20 max-h-80 min-w-0 overflow-y-auto overscroll-contain border-2 border-ink bg-panel py-1 font-normal shadow-[3px_3px_0_var(--color-ink)] ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
           >
             {items.map((item, index) => (
               <li
