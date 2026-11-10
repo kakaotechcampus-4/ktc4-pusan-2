@@ -341,7 +341,9 @@ it.each([
     expect(findButton('Take 4 시작하기').disabled).toBe(true);
     expect(fixture.create).not.toHaveBeenCalled();
     // 장치 변경도 권한 요청 경로이므로 같은 제한을 따릅니다.
-    expect([...host.querySelectorAll<HTMLSelectElement>('select')].every((select) => select.disabled)).toBe(true);
+    const deviceSelectors = [...host.querySelectorAll<HTMLSelectElement>('select')];
+    expect(deviceSelectors).toHaveLength(2);
+    expect(deviceSelectors.every((select) => select.disabled)).toBe(true);
   },
 );
 
