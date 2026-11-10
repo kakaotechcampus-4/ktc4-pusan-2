@@ -176,6 +176,14 @@ it('목록 여백과 옵션의 mousedown은 초점 이동을 막고 터치 point
   await act(async () => list.dispatchEvent(scrollbarDown));
   expect(scrollbarDown.defaultPrevented).toBe(true);
 
+  const secondaryDown = new MouseEvent('mousedown', {
+    bubbles: true,
+    cancelable: true,
+    button: 2,
+  });
+  await act(async () => list.dispatchEvent(secondaryDown));
+  expect(secondaryDown.defaultPrevented).toBe(false);
+
   const touchStart = new Event('pointerdown', { bubbles: true, cancelable: true });
   await act(async () => options()[2]!.dispatchEvent(touchStart));
   expect(touchStart.defaultPrevented).toBe(false);
