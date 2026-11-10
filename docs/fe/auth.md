@@ -1,12 +1,5 @@
 # 로그인 인증 연동 (P11)
 
-## 로컬 브랜치
-
-- 화면 보관: feat/fe-login-page, 4cee762
-- 인증 작업: feat/fe-login-auth (화면 브랜치에서 분기)
-- 원본 pitchcoach-fe-share 폴더는 수정하지 않았습니다.
-- 초기 코드가 팀에 병합되면 화면 변경과 인증 변경을 별도로 옮깁니다.
-
 ## 구현 범위
 
 Google 로그인 페이지 이동 → /login 복귀 → refresh → /api/users/me → 원래 목적지.

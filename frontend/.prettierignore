@@ -14,7 +14,7 @@ src/vendor/gaze/worker
 
 # 무대 CSS와 토큰은 정렬이 곧 주석이다. Prettier가 표를 흩뜨린다.
 src/index.css
-src/features/rehearsal/Stage/stage.css
+src/features/rehearsal/stage/stage.css
 
 # 문서는 손으로 맞춘 표와 괘선이 곧 내용이다. Prettier가 재정렬하면 읽기 어려워진다.
 *.md

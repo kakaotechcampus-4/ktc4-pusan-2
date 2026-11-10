@@ -297,7 +297,7 @@ src/
     chat/       대화형 에이전트 — api/ · store/ · rules/(응답 검사·문구 규칙) · ui/
     info/       소개·지원하지 않는 환경·404
     onboarding/ 첫 화면·출시 카운트다운
-    pitch/      api/ · create/(Pitch 생성·수정) · home/(홈·피치 목록)
+    pitch/      api/ · create/(Pitch 생성·수정) · home/(홈·피치 목록) · tutorial/(First Take 튜토리얼)
     rehearsal/  ★ 리허설. 난이도 최상 (Track A) — api/ · lib/ · media/ · prepare/ · retry/ · stage/
     report/     api/ · analysis/(분석 대기·대본 확인) · report/(리포트) · history/(Take 기록·비교)
   dev/          /dev/* 개발용 화면. features 를 가져다 써도 됩니다 (app 과 같은 린트 예외)

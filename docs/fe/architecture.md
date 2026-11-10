@@ -4,7 +4,7 @@
 >
 > **한 줄 요약**: 피치를 만들고 Take를 반복하는 화면들이, 서버 값은 TanStack Query · 작업 중 상태는 Zustand · 리허설 기록 사본은 IndexedDB에 두고, BE와는 REST와 WebSocket으로 주고받습니다.
 >
-> **기준값**: 라우트는 `src/app/routes.tsx`, API 경로는 `src/shared/api/*.ts`, 의존성 버전은 `frontend/package.json`이 기준입니다. 이 문서의 표는 이해를 돕는 요약이라, 코드와 다르면 코드가 맞고 이 문서를 고칩니다.
+> **기준값**: 라우트는 `src/app/routes.tsx`, API 경로는 `src/shared/api/*.ts`와 `src/features/*/api/*.ts`, 의존성 버전은 `frontend/package.json`이 기준입니다. 이 문서의 표는 이해를 돕는 요약이라, 코드와 다르면 코드가 맞고 이 문서를 고칩니다.
 
 다른 문서에서 "[architecture.md](architecture.md) 3절"처럼 링크와 절 번호로 가리킵니다. 절 번호는 바꾸지 않습니다. `docs/ai/architecture.md`(AI 문서)와 이름이 같으니, 그쪽을 가리킬 때는 `docs/ai/`를 붙여 씁니다.
 
@@ -105,7 +105,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 
 | 무엇 | 도구 | 예 |
 |---|---|---|
-| 서버에서 온 것 | TanStack Query (`shared/api/*.ts`) | 홈 · 피치 · 리포트 · 장치 점검 준비 정보 |
+| 서버에서 온 것 | TanStack Query (`shared/api/*.ts` · `features/*/api/*.ts`) | 홈 · 피치 · 리포트 · 장치 점검 준비 정보 |
 | 화면이 가진 작업 중 상태 | Zustand | 스토어 4개(아래 목록) |
 | 프레임 단위 고빈도 값 | `useRef` | 프레임 펌프 상태 · 마이크 RMS. 상태로 두면 프레임마다 다시 그립니다 |
 | 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 세션 · 1초 시선 기록 · 슬라이드 전환. **사본**입니다(아래) |
@@ -139,7 +139,7 @@ src/
     chat/       대화형 에이전트 — api/ · store/ · rules/(응답 검사 · 문구 규칙) · ui/
     info/       소개 · 지원하지 않는 환경 · 404
     onboarding/ 첫 화면 · 출시 카운트다운
-    pitch/      api/ · create/(피치 생성 · 수정) · home/(홈 · 피치 목록)
+    pitch/      api/ · create/(피치 생성 · 수정) · home/(홈 · 피치 목록) · tutorial/(First Take 튜토리얼)
     rehearsal/  api/ · lib/ · media/ · prepare/ · retry/ · stage/
     report/     api/ · analysis/(분석 대기 · 대본 확인) · report/(리포트) · history/(Take 기록 · 비교)
   shared/       두 기능 이상이 쓰는 것 — api/ 쿼리 훅 · 공용 클라이언트 · lib/ 순수 함수 · ui/ 공용 컴포넌트
