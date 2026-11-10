@@ -75,14 +75,16 @@ const pdfOf = (id: string) => {
 };
 
 export const firstTakeHandlers = [
+  // BE 처럼 리포트를 받은 계정에 샘플 피치가 없으면 새로 만들지 않고 pitch_id 를 비웁니다
   http.post('*/api/pitches/tutorials/first-take', () => {
-    tutorial ??= {
-      pitchId: crypto.randomUUID(),
-      presentationId: crypto.randomUUID(),
-      scriptId: crypto.randomUUID(),
-    };
+    if (!tutorial && !reportReceived)
+      tutorial = {
+        pitchId: crypto.randomUUID(),
+        presentationId: crypto.randomUUID(),
+        scriptId: crypto.randomUUID(),
+      };
     return HttpResponse.json({
-      pitch_id: tutorial.pitchId,
+      pitch_id: tutorial?.pitchId ?? null,
       report_received: reportReceived,
     } satisfies FirstTakeResponse);
   }),

@@ -26,15 +26,15 @@ export function FirstTakePage() {
       queryClient.invalidateQueries({ queryKey: pitchListKey }).catch(() => undefined);
     },
   });
-  // 리포트를 이미 받은 샘플 피치. 그 기록으로 가는 길을 보여 줍니다
-  const [usedPitchId, setUsedPitchId] = useState<string | null>(null);
+  // 리포트를 이미 받았을 때. 샘플 피치가 남아 있으면 그 기록으로 가는 길도 보여 줍니다(지웠으면 null)
+  const [used, setUsed] = useState<{ pitchId: string | null } | null>(null);
 
   const begin = () => {
-    setUsedPitchId(null);
+    setUsed(null);
     // mutate 에 준 콜백은 화면을 떠난 뒤에는 불리지 않습니다 — 떠난 사용자를 장치 점검으로 끌고 가지 않습니다
     start.mutate(undefined, {
       onSuccess: ({ pitch_id, report_received }) => {
-        if (report_received) setUsedPitchId(pitch_id);
+        if (report_received || pitch_id === null) setUsed({ pitchId: pitch_id });
         else navigate(`/pitch/${encodeURIComponent(pitch_id)}/device-check`);
       },
     });
@@ -78,7 +78,7 @@ export function FirstTakePage() {
             샘플 발표를 준비하지 못했어요. {toMessage(start.error)}
           </p>
         )}
-        {usedPitchId && (
+        {used && (
           <section
             role="alert"
             aria-labelledby="first-take-used"
@@ -88,20 +88,23 @@ export function FirstTakePage() {
               튜토리얼 리포트를 이미 받았어요
             </h2>
             <p className="mt-2 text-sm leading-7">
-              샘플 발표로는 더 연습할 수 없어요. 지난 연습은 Take 기록에서 볼 수 있고, 내 자료로 새
-              피치를 만들면 계속 연습할 수 있어요.
+              샘플 발표로는 더 연습할 수 없어요.{' '}
+              {used.pitchId && '지난 연습은 Take 기록에서 볼 수 있고, '}내 자료로 새 피치를 만들면
+              계속 연습할 수 있어요.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <ButtonLink to="/pitch/new" size="sm">
                 새 피치 만들기
               </ButtonLink>
-              <ButtonLink
-                to={`/takes?pitch=${encodeURIComponent(usedPitchId)}`}
-                variant="secondary"
-                size="sm"
-              >
-                샘플 Take 기록 보기
-              </ButtonLink>
+              {used.pitchId && (
+                <ButtonLink
+                  to={`/takes?pitch=${encodeURIComponent(used.pitchId)}`}
+                  variant="secondary"
+                  size="sm"
+                >
+                  샘플 Take 기록 보기
+                </ButtonLink>
+              )}
             </div>
           </section>
         )}

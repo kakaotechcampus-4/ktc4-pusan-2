@@ -94,3 +94,12 @@ it('리포트를 받은 계정은 샘플 피치로 Take 를 만들지 못하고,
   expect(refused.status).toBe(409);
   expect(await refused.json()).toMatchObject({ code: 'TUTORIAL_REPORT_USED' });
 });
+
+it('리포트를 받은 계정은 샘플을 지운 뒤 다시 불러도 새로 만들지 않는다', async () => {
+  const { pitch_id: pitchId } = await startFirstTake();
+  setTutorialReportReceived(true);
+  await fetch(base + '/api/pitches/delete/' + pitchId, { method: 'DELETE' });
+
+  expect(await startFirstTake()).toEqual({ pitch_id: null, report_received: true });
+  expect(await homePitches()).not.toContainEqual(expect.objectContaining({ is_demo: true }));
+});

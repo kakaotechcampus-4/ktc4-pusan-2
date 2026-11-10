@@ -106,6 +106,17 @@ it('튜토리얼 리포트를 이미 받았으면 장치 점검으로 가지 않
   expect(hrefs).toEqual(['/pitch/new', '/takes?pitch=demo-1']);
 });
 
+it('리포트를 받은 뒤 샘플을 지웠으면(pitch_id 없음) 새 피치 만들기만 안내한다', async () => {
+  vi.mocked(startFirstTake).mockResolvedValue({ pitch_id: null, report_received: true });
+  await render();
+  await start();
+  expect(where()).toBe('/pitch/tutorial');
+  const notice = host.querySelector('[aria-labelledby="first-take-used"]');
+  expect(notice?.textContent).not.toContain('Take 기록');
+  const hrefs = [...(notice?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'));
+  expect(hrefs).toEqual(['/pitch/new']);
+});
+
 it('BE 에러 코드는 공통 문구로 알리고 다시 누를 수 있다', async () => {
   vi.mocked(startFirstTake).mockRejectedValueOnce(new ApiFailure(409, 'TUTORIAL_PITCH_BUSY'));
   await render();

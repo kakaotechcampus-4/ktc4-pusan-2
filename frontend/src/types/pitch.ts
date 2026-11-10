@@ -26,7 +26,11 @@ export interface PitchDetail extends PitchRequest {
  * 대본 나누기 · 장별 평가 기준이 끝난 상태로 오므로 바로 장치 점검으로 갈 수 있습니다.
  */
 export interface FirstTakeResponse {
-  pitch_id: string;
+  /**
+   * 튜토리얼 리포트를 이미 받은 계정에 샘플 피치가 없으면(지웠으면) BE 가 새로 만들지 않아 null 입니다.
+   * `report_received` 가 false 면 늘 있습니다
+   */
+  pitch_id: string | null;
   /**
    * 튜토리얼 리포트를 이미 받았는지. 리포트는 계정당 한 번이라 true 면 이 피치로 새 Take 를 만들 수 없습니다
    * (409 `TUTORIAL_REPORT_USED`). 샘플 피치를 지우고 다시 받아도 같습니다
