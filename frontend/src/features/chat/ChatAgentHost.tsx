@@ -506,7 +506,9 @@ function ChatPanel({
       // StrictMode 효과 재실행은 현재 라우터 위치가 그대로이고, 실제 화면 이동은 먼저 바뀝니다.
       // DOM 연결 상태는 삭제 시점에 따라 달라지므로 router.state.location으로 판정합니다.
       const latest = routeStore?.state.location;
-      const currentRoute = latest ? `${latest.pathname}${latest.search}${latest.hash}` : openedRoute;
+      const currentRoute = latest
+        ? `${latest.pathname}${latest.search}${latest.hash}`
+        : openedRoute;
       if (!navigatedWhileOpenRef.current && currentRoute === openedRoute) {
         window.scrollTo(scrollX, scrollY);
       }
