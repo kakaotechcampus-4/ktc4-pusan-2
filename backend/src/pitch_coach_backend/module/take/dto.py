@@ -175,7 +175,7 @@ class CalibrationResultDTO(BaseModel):
 
 
 class CalibrationDTO(BaseModel):
-    base_level_db: float | None = None
+    base_level_db: float | None = Field(default=None, le=0, allow_inf_nan=False)
     result: CalibrationResultDTO | None = None
     face_detected: bool = False
     mic_detected: bool = False
