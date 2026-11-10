@@ -13,6 +13,9 @@ html { scrollbar-gutter: stable; }
   src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
 }
 
+/* 한 화면에 고정할 만큼 폭과 높이가 충분할 때만 사용하는 레이아웃 기준(#669). */
+@custom-variant one-screen (@media (min-width: 64rem) and (min-height: 40rem));
+
 /* ═══════════════════════════════════════════════════════════════
    피치코치 디자인 토큰
 
