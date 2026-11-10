@@ -378,5 +378,7 @@ it('튜토리얼 샘플 리포트는 샘플로 표시하고 다음 연습을 내
   // 튜토리얼 리포트는 한 번이라 샘플 피치의 장치 점검은 409 로 막힙니다
   expect(hrefs).not.toContain('/pitch/p1/device-check');
   expect(hrefs).toContain('/pitch/new');
-  expect(host.textContent).toContain('다음 연습에서 해 볼 것');
+  expect(host.textContent).toContain('내 발표에서 의식해 볼 것');
+  expect(host.textContent).toContain('새로운 연습으로 시작해요.');
+  expect(host.textContent).not.toContain('다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.');
 });
