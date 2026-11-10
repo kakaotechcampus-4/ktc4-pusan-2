@@ -564,6 +564,25 @@ it('TAKE RECORDED는 분석 중에만 보이고 확인 대기·실패·보류에
   }
 });
 
+it('Take 기록은 #1143과 같이 피치 목록을 combobox로 열고 키보드로 선택한다', async () => {
+  await render('takes');
+  const picker = host.querySelector<HTMLElement>('[role="combobox"]')!;
+  expect(picker).toBeTruthy();
+  expect(picker.getAttribute('aria-expanded')).toBe('false');
+  await act(async () => picker.click());
+  expect(picker.getAttribute('aria-expanded')).toBe('true');
+  expect(host.querySelectorAll('[role="option"]')).toHaveLength(2);
+  await act(async () => {
+    picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  });
+  expect(picker.getAttribute('aria-activedescendant')).toContain('-option-1');
+  await act(async () => {
+    picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  expect(picker.getAttribute('aria-expanded')).toBe('false');
+  expect(picker.textContent).toContain('서비스 소개');
+});
+
 it('사용방법은 최신 #944의 새미나이 시각 안내와 여섯 조작을 제공한다', async () => {
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;
