@@ -95,7 +95,7 @@ const productScreens: GuideScreen[] = [
     group: screenGroup.pitch,
     route: '/',
     status: 'Draft 반영',
-    // #944 사용방법 시각 안내와 #1105 첫 미션 진입을 선반영한다.
+    // #944 사용방법 시각 안내와 #1105 튜토리얼 및 샘플 피치 표시를 선반영한다.
     draftPrs: [944, 1105],
     summary:
       '피치 목록과 연습 통계를 보고 발표 준비 · 새 피치 만들기 · 피치 수정 · Take 기록으로 간다. 비교는 Take 기록 안에서 연다. 줄마다 더보기(···) 메뉴에서 피치를 지운다. 데이터는 예시다.',
@@ -239,7 +239,7 @@ const productScreens: GuideScreen[] = [
   {
     kind: 'screen',
     id: 'tutorial',
-    title: '첫 미션 · 샘플 발표 튜토리얼',
+    title: '튜토리얼 · 샘플 발표',
     group: '서비스 시작',
     route: '/pitch/tutorial',
     status: 'Draft 반영',
@@ -396,7 +396,11 @@ const productScreens: GuideScreen[] = [
       '카메라 · 마이크 · 시선 기준 · 기준 목소리를 점검하고 대본 표시를 고른 뒤, 이 화면의 시작 버튼에서 Take를 만들어 리허설을 연다.',
     states: [
       state('default', '점검 완료', '카메라 · 마이크 · 시선 기준 · 기준 목소리가 모두 돼 시작할 수 있다.'),
-      state('voice-required', '기준 목소리 전', '나머지 점검이 끝나도 기준 목소리를 재지 않으면 시작할 수 없다(#1184).'),
+      state(
+        'voice-required',
+        '기준 목소리 전',
+        '나머지 점검이 끝나도 기준 목소리를 재지 않으면 시작할 수 없다(#1184).',
+      ),
       state(
         'no-camera',
         '카메라 꺼짐',
