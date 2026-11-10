@@ -4,4 +4,5 @@ SCHEMA_VERSION = "1.0"
 #: evaluation_criteria-1.0: 첫 판
 #: evaluation_criteria-1.1: 프롬프트에 pause · silence 경계 규칙, 예시 표현을 평가 데이터와 다르게,
 #:   표시 기준 50자 검사를 쓰는 앞 10개에만 (#589)
-FEATURE_VERSION = "evaluation_criteria-1.1"
+#: evaluation_criteria-1.2: 프롬프트의 voice_diff_db 뜻을 '기준 목소리(발표 전 점검) 대비'로 (#1181)
+FEATURE_VERSION = "evaluation_criteria-1.2"
