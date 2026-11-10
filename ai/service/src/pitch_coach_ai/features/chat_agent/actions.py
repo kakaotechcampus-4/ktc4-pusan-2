@@ -742,6 +742,12 @@ def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
     return f"{metric_label(metric)} {value} {_OPERATOR_WORD[str(target['operator'])]}"
 
 
+def _user_named_metric(message: str, metric: str, cfg: ChatAgentConfig) -> bool:
+    """사용자 말이 그 지표를 직접 말했는가(지표 이름 · 화면 이름). 목표 내용을 맡긴 말인지 가리는 데만 쓴다."""
+    names = {k for k, v in cfg.metric_names.items() if v == metric} | {clm.METRIC_LABEL.get(metric, "")}
+    return any(n and n in message for n in names)
+
+
 def _propose_goal(
     a: SaveGoalArgs, *, ctx: RunCtx, budget: Budget, seq: int, original_message: str | None
 ) -> Proposal:
@@ -756,6 +762,19 @@ def _propose_goal(
     draft = build_goal_draft(
         base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg
     )
+    if draft == "UNMEASURABLE_METRIC" and not _user_named_metric(original_message or "", a.metric, cfg):
+        # 사용자는 목표 내용을 맡겼는데("다음 목표를 잡아 줘") 모델이 대화 목표로 잴 수 없는 지표를 골랐다: '말씀하신 목표는 잴 수
+        # 없어요' 제안 카드로 낮추지 않고, 고를 수 있는 지표를 알려 모델이 다시 고르게 한다(실사용 흐름 점검 장면 2, Issue #1194).
+        # 사용자가 그 지표를 직접 말한 목표면 지금처럼 제안 카드(6-3 · L6-23)
+        allowed = list(cfg.goal_metrics)
+        tool_message = _err(
+            "GOAL_METRIC_NOT_ALLOWED",
+            f"대화 목표 지표는 {' · '.join(allowed)} 중 하나다. 사용자가 이 지표를 목표로 말하지 않았으니 "
+            "기준 Take 기록에서 잴 수 있는 지표로 다시 고른다",
+        )
+        tool_message["error"]["fields"] = ["metric"]
+        tool_message["error"]["allowed"] = allowed
+        return Proposal(result="TOOL_ERROR", reason_code="GOAL_METRIC_NOT_ALLOWED", tool_message=tool_message)
     review = base.results.review or {}
     dims = review.get("dimensions") or {}
     requested_dim = GOAL_METRIC_DIM.get(a.metric)

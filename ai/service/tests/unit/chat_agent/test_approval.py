@@ -287,14 +287,15 @@ def test_ask_after_unauthorized_request_becomes_goal_proposal_not_a_card() -> No
 
 
 @pytest.mark.parametrize(
-    ("metric", "note"),
+    ("metric", "note", "msg"),
     [
-        ("filler_per_min", templates.SystemText.GOAL_CONFLICT),  # 이미 강점인 차원(L6-08)
-        ("script_ratio", templates.SystemText.GOAL_UNMEASURABLE),  # 잴 수 없는 목표(L6-23)
+        ("filler_per_min", templates.SystemText.GOAL_CONFLICT, GOAL_MSG),  # 이미 강점인 차원(L6-08)
+        # 잴 수 없는 목표(L6-23): 사용자가 그 지표를 직접 말한 목표일 때(말하지 않았으면 도구 오류로 모델이 다시 고른다)
+        ("script_ratio", templates.SystemText.GOAL_UNMEASURABLE, "3장 대본 응시 비율을 줄이는 걸 목표로 잡고 다음 연습 준비해 줘"),
     ],
 )
 def test_goal_proposal_for_conflict_or_unmeasurable_goal_says_why(
-    metric: str, note: templates.SystemText
+    metric: str, note: templates.SystemText, msg: str
 ) -> None:
     """기록과 어긋나거나 잴 수 없는 목표 요청은 목표 제안 카드와 함께 그 까닭의 고정 문장을 답에 싣는다(final60
     rep-demo-goal-proposal: 카드는 나왔는데 "말씀하신 목표와 기록으로 본 추천 목표가 달라요…"가 없었다)."""
@@ -304,7 +305,7 @@ def test_goal_proposal_for_conflict_or_unmeasurable_goal_says_why(
         answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
         fixes=[F.fix({})],
     )
-    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=GOAL_MSG), "t-4"), llm)
+    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=msg), "t-4"), llm)
     fd = final_ok(data)
     assert fd.status == "DONE" and fd.actions == []
     assert fd.message is not None

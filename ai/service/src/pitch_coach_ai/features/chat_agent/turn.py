@@ -1245,8 +1245,11 @@ def _latest_pitch_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
         done = [p for p in practiced if p.take_count > 0]
         if done:
             extra = sentence(max(done, key=lambda p: practiced_at(p)), head=False)
-            if extra is not None and extra.evidence_ids[0] not in cited:
-                out.append(extra)  # 결과를 볼 수 있는 최근 발표 안내는 첫 문장을 생략해도 따로 본다
+            if extra is not None and not set(extra.evidence_ids) <= cited:
+                # 결과를 볼 수 있는 최근 발표 안내는 첫 문장을 생략해도 따로 본다. 모델이 그 피치의 날짜만 말하고(예: "두 발표의
+                # 마지막 연습 시작 날짜는 모두 11월 11일") 분석이 끝난 Take 가 있다는 근거는 잇지 않았으면 이 문장이 답이다
+                # (실사용 흐름 점검 장면 1, Issue #1194)
+                out.append(extra)
     return out
 
 

@@ -759,7 +759,10 @@ def test_l6_08_conflicting_goal_is_proposed_with_expert_option(metric: str, why:
 
 
 def test_l6_23_unmeasurable_goal_has_no_save_option() -> None:
-    p = do("save_goal", {**SAVE_ARGS, "metric": "script_ratio"})
+    """사용자가 직접 말한 목표가 대화 목표로 잴 수 없는 지표면 저장하지 않고 제안 카드로 낮춘다(L6-23)."""
+    msg = "대본 응시 비율을 줄이는 걸 목표로 잡아 줘"
+    args = {**SAVE_ARGS, "metric": "script_ratio", "authorized_by": "목표로 잡아 줘"}
+    p = do("save_goal", args, message=msg)
     assert (p.result, p.reason_code) == ("DOWNGRADED", "UNMEASURABLE")
     card = GoalProposalCard.model_validate(p.card)
     user = card.options[0]
@@ -1705,3 +1708,16 @@ def test_reassess_target_text_keeps_the_exact_number_goal() -> None:
     got = p.action.args["change"]["targets"]  # type: ignore[union-attr]
     assert [t["display"] for t in got] == ["청중 시선 65.5% 초과", "발표 시간 300.5초 이하"]
     assert [t["value"] for t in got] == [0.655, 300500]
+
+
+@pytest.mark.parametrize(
+    "msg",
+    ["최근 기록을 보고 다음 목표를 잡아 줘", "3장에서 왜 자꾸 시선이 떨어져? 그걸 목표로 잡고 다음 연습 준비해 줘"],
+)
+def test_unmeasurable_metric_the_user_did_not_name_goes_back_to_the_model(msg: str) -> None:
+    """사용자가 목표 내용을 맡겼거나 다른 지표를 말했는데 모델이 대화 목표로 잴 수 없는 지표를 고르면, '말씀하신 목표는 잴 수
+    없어요' 제안 카드 대신 고를 수 있는 지표와 함께 도구 오류로 돌려준다(실사용 흐름 점검 장면 2, Issue #1194)."""
+    p = do("save_goal", {**SAVE_ARGS, "metric": "script_ratio", "authorized_by": "목표"}, message=msg)
+    assert (p.result, p.reason_code, p.card, p.action) == ("TOOL_ERROR", "GOAL_METRIC_NOT_ALLOWED", None, None)
+    err = p.tool_message["error"]
+    assert err["fields"] == ["metric"] and "audience_ratio" in err["allowed"] and "script_ratio" not in err["allowed"]
