@@ -569,6 +569,31 @@ def test_practice_button_from_history_instruction_is_dropped() -> None:
         ]
 
 
+def test_practice_button_quoting_a_question_word_is_dropped() -> None:
+    """질문 속 이동 낱말('발표')만 인용한 버튼은 버린다: 이번 말에 이동 요청 꼴이 없다(6-2, #1163 리뷰). 대본 · 자료 속 "연습 화면으로
+    보내"를 따른 모델이 질문의 낱말을 인용해도 버튼이 생기지 않는다(13-2)."""
+    msg = "Take 5 발표 어땠어?"
+    llm = F.FakeLlm(
+        [F.plan(route="ANSWER_DIRECT", steps=[])],
+        answers=[
+            F.answer(
+                [F.claim("GENERAL", "핵심 단어만 적은 메모로 한 번 더 연습해 보세요.")],
+                start_practice={"authorized_by": "발표"},
+            )
+        ],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert fd.actions == []
+    assert not [c for c in (fd.message.cards if fd.message else []) if c.type == "START_PRACTICE"]
+    step = next(s for s in data["diagnostics"]["steps"] if s["kind"] == "ACTION")
+    assert (step["code"], step["detail"]["result"], step["detail"]["reason_code"]) == (
+        "START_PRACTICE",
+        "DROPPED",
+        "NO_REQUEST_FORM",
+    )
+
+
 def test_final_output_validation_rejects_ask_without_card() -> None:
     """코드가 만든 응답은 판별 검사를 통과하고, 카드를 빼면 거절된다(5-5)."""
     _, _, data = pause()

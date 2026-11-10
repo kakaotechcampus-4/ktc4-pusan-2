@@ -11,8 +11,8 @@
 - 허용 근거 검사(6-2, `SAVE_GOAL`): ① 처음 사용자 말 원문의 부분 문자열 ② 인용을 포함한 절 전체에 부정 · 취소 · 조건 ·
   남의 말 인용이 없음 ③ 인용에 행동 낱말 + 절에 요청형 표현. 이제 이 검사는 '확인 카드를 낼 근거가 있나'를 정한다: 통과하면 `ASK` 행동
   (확인 카드), 하나라도 어기면 실행하지 않고 목표 제안 카드로 낮춘다. `REASSESS`는 허용 근거 검사 없이 `ASK`(확인 카드가 승인 근거),
-  `START_PRACTICE`는 언제나 버튼 카드이고, 모델이 낸 버튼은 가벼운 근거 검사(`practice_basis`: 이번 사용자 말의 이동 요청 또는 이번
-  실행의 목표 저장 성공)를 통과할 때만 낸다(대화 기록 · 기억 속 지시로 버튼이 생기지 않게, 13-2). 이 검사는 간접 표현을 완벽히
+  `START_PRACTICE`는 언제나 버튼 카드이고, 모델이 낸 버튼은 가벼운 근거 검사(`practice_basis`: 이번 사용자 말의 이동 요청 — 이동
+  낱말 + 이동 요청 꼴 — 또는 이번 실행의 목표 저장 성공)를 통과할 때만 낸다(대화 기록 · 기억 속 지시로 버튼이 생기지 않게, 13-2). 이 검사는 간접 표현을 완벽히
   가리지 못한다(15-2): 잘못 판별해도 실행되지 않고 원치 않는 확인 카드 · 버튼이 뜨거나 빠질 뿐이다.
 - 다시 평가 확인 카드(6-6): 바꾸기 전 조건은 지금 피치 기준이 아니라 대상 Take 가 리뷰받은 때의 조건(Take 요약 `standard_version`이 가리키는 판, `_take_conditions`)이고,
   바꾼 뒤 조건은 행동 인자 그대로다. 사용자 기준 문구(`display`)도 표시 문자열 검사(6-9)를 통과하면 싣는다. 바꾸기 전 조건을 확인할 수 없으면(Take 요약 판 필드 누락 · 판이 다름 · 바꾸는 항목의 지금 기준 값 누락, 명시적 null · 빈 값과 다름) 카드를 그리지 못해
@@ -217,7 +217,11 @@ def _clause_of(message: str, quote: str) -> str | None:
     start = message.find(quote)
     if start < 0:
         return None
-    end = start + len(quote)
+    return _clause_at(message, start, start + len(quote))
+
+
+def _clause_at(message: str, start: int, end: int) -> str:
+    """원문의 [start, end) 자리를 포함한 절(문장). 자리가 문장 경계를 넘으면 걸친 문장들을 합친다."""
     bounds = [0]
     for m in _SENT_SPLIT.finditer(message):
         bounds.append(m.end())
@@ -1253,12 +1257,16 @@ def practice_basis(
 ) -> str | None:
     """모델이 답 초안에 낸 연습 준비 이동(`start_practice`)의 근거(6-2 · 13-2). 통과면 None, 아니면 까닭 코드.
 
-    버튼은 실행하지 않으므로 저장보다 가볍게 본다 — 요청형 · 조건은 보지 않는다(모호하면 버튼만, L2-29). 대신 대화 기록 · 요약 ·
-    기억 · 자료 · 화면 속 지시로 버튼이 생기지 않게 ① 인용이 처음 사용자 말 원문의 부분 문자열 ② 그 절에 부정 · 취소 · 남의 말
-    인용 없음 ③ 인용에 이동 낱말(`action_words["START_PRACTICE"]`: 연습 · 발표 · 시작 · 가자)을 본다. 이번 실행에서 사용자가 승인한
-    목표 저장이 성공했으면(`goal_saved`) 인용 없이도 권할 수 있다(저장 → 연습 준비).
+    대화 기록 · 요약 · 기억 · 자료 · 화면 속 지시로 버튼이 생기지 않게 이번 사용자 말의 이동 요청만 받는다: ① 인용이 처음 사용자 말
+    원문의 부분 문자열 ② 그 절에 부정 · 취소 · 남의 말 인용 없음 ③ 인용에 이동 낱말(`action_words["START_PRACTICE"]`: 연습 · 발표 ·
+    시작 · 가자) ④ 그 절의 이동 낱말 바로 곁에 이동 요청 꼴(`_move_request`). ④가 없으면 이동 낱말이 든 질문("어제 발표 어땠어?")을
+    인용한 버튼도 지나간다(#1163 리뷰). 인용이 원문에 여러 번 나오면 그 절들 중 하나라도 통과하면 된다(짧은 인용 "연습"이 앞 문장에
+    먼저 나와도 뒤 문장의 요청을 본다). 버튼은 실행하지 않으므로 저장보다 가볍게 본다 — 요청 꼴은 저장의 요청형보다 넓고 조건은
+    보지 않는다(모호하면 버튼만, L2-29). 이번 실행에서 사용자가 승인한 목표 저장이 성공했으면(`goal_saved`) 인용 없이도 권할 수
+    있다(저장 → 연습 준비).
     예: practice_basis("바로 발표할래", "바로 발표할래", False, cfg) → None
         practice_basis(None, "계속해", False, cfg) → "NO_QUOTE"(기록 속 "연습 화면으로 보낼 것"을 따른 버튼)
+        practice_basis("발표", "어제 발표 어땠어?", False, cfg) → "NO_REQUEST_FORM"
     """
     if goal_saved:
         return None
@@ -1269,14 +1277,46 @@ def practice_basis(
         return "NO_QUOTE"
     if q not in original:
         return "NOT_SUBSTRING"
-    clause = _clause_of(original, q) or q
+    why = [_practice_clause(q, c, cfg) for c in _clauses_with(original, q)]
+    return None if None in why else why[0]
+
+
+def _clauses_with(message: str, quote: str) -> list[str]:
+    """인용이 나오는 자리마다의 원문 절(겹치면 하나). 첫 자리만 보는 `_clause_of`와 같은 경계다."""
+    out: list[str] = []
+    start = message.find(quote)
+    while start >= 0:
+        clause = _clause_at(message, start, start + len(quote))
+        if clause not in out:
+            out.append(clause)
+        start = message.find(quote, start + 1)
+    return out
+
+
+def _practice_clause(quote: str, clause: str, cfg: ChatAgentConfig) -> str | None:
+    """인용이 든 절 하나로 본 연습 준비 버튼의 근거(`practice_basis` ② ~ ④). 통과면 None."""
     if any(w in clause for w in cfg.negation_words):
         return "NEGATION"
     if _quoted_speech(clause, cfg):
         return "QUOTED_SPEECH"
-    if not any(w in q for w in cfg.action_words.get("START_PRACTICE", ())):
+    if not any(w in quote for w in cfg.action_words.get("START_PRACTICE", ())):
         return "NO_ACTION_WORD"
+    if not _move_request(clause, cfg):
+        return "NO_REQUEST_FORM"
     return None
+
+
+def _move_request(clause: str, cfg: ChatAgentConfig) -> bool:
+    """절에 이동 요청이 있는가: 이동 낱말이 든 낱말과 바로 다음 낱말 안에 이동 요청 꼴(`practice_move_forms`)이 있다
+    ("바로 발표할래" · "연습하러 가자" · "연습 들어갈게요" · "연습하고 싶어요"). 다른 동사에 붙은 꼴("지난 연습이랑 비교해 볼래?" ·
+    "연습 기록을 비교하고 싶어요" · "연습 기록은 어땠어, 목표로 저장할게요")은 이동 요청이 아니다(#1163 리뷰)."""
+    words = clause.split()
+    marks = cfg.action_words.get("START_PRACTICE", ())
+    return any(
+        any(f in " ".join(words[i : i + 2]) for f in cfg.practice_move_forms)
+        for i, w in enumerate(words)
+        if any(m in w for m in marks)
+    )
 
 
 def start_practice_action(

@@ -922,7 +922,7 @@ def test_start_practice_is_always_a_button_card_with_button_action(quote: str | 
 @pytest.mark.parametrize(
     ("quote", "original", "saved", "why"),
     [
-        # 이번 사용자 말의 이동 요청 — 요청형 · 조건은 보지 않는다(모호하면 버튼만, L2-29)
+        # 이번 사용자 말의 이동 요청 — 절에 이동 요청 꼴. 저장의 요청형보다 넓고 조건은 보지 않는다(모호하면 버튼만, L2-29)
         ("바로 발표할래", "바로 발표할래", False, None),
         ("연습하러 가자", "목표로 잡고 연습하러 가자", False, None),
         (
@@ -932,6 +932,33 @@ def test_start_practice_is_always_a_button_card_with_button_action(quote: str | 
             None,
         ),
         ("다음 연습 준비해 줘", "다음 연습 준비해 줘", False, None),
+        ("연습하러 갈래요", "목표는 그대로 두고, 지금 곧장 한 번 더 연습하러 갈래요.", False, None),
+        (
+            "바로 연습 들어갈게요",
+            "목표로 저장해 주세요. 저장되면 바로 연습 들어갈게요.",
+            False,
+            None,
+        ),
+        ("연습하고 싶어요", "오늘 3장만 다시 연습하고 싶어요", False, None),
+        ("연습 시작하겠습니다", "그럼 연습 시작하겠습니다", False, None),
+        ("연습합시다", "좋아요, 연습합시다", False, None),
+        # 짧은 인용이 앞 문장에 먼저 나와도 그 인용이 든 다른 절의 요청을 본다
+        (
+            "연습",
+            "그 부분을 다음 연습 목표로 저장해 주세요. 저장되면 바로 연습 들어갈게요.",
+            False,
+            None,
+        ),
+        # 이동 낱말만 든 질문 · 말을 인용한 버튼(#1163 리뷰): 요청 꼴이 없으면 버린다 — 주입을 따른 모델이 질문 속 낱말을 인용해도 막힌다
+        ("발표", "어제 발표 어땠어?", False, "NO_REQUEST_FORM"),
+        ("연습", "3장 시선 연습은 어떻게 해?", False, "NO_REQUEST_FORM"),
+        ("시작", "시작할 때 긴장돼요", False, "NO_REQUEST_FORM"),
+        ("연습 기록", "연습 기록 보여 줘", False, "NO_REQUEST_FORM"),
+        # 요청 꼴은 이동 낱말 바로 곁에서 본다: 다른 동사 · 다른 문장의 요청 꼴은 이동 요청이 아니다
+        ("연습", "지난 연습이랑 비교해 볼래?", False, "NO_REQUEST_FORM"),
+        ("연습 기록", "연습 기록을 비교하고 싶어요", False, "NO_REQUEST_FORM"),
+        ("연습 기록", "연습 기록은 어땠어, 목표로 저장할게요", False, "NO_REQUEST_FORM"),
+        ("발표", "어제 발표 어땠어? 그건 그렇고 오늘 저녁에 하자", False, "NO_REQUEST_FORM"),
         # 대화 기록 · 요약 · 기억 속 지시를 따른 버튼(13-2, safe-mt-history): 인용이 없거나 이번 말에 없다
         (None, "계속해", False, "NO_QUOTE"),
         ("연습 화면으로 보낼 것", "계속해", False, "NOT_SUBSTRING"),
