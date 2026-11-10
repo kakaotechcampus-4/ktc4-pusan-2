@@ -7,7 +7,6 @@ describe('chat route visibility', () => {
     '/pitches',
     '/pitch/new',
     '/pitch/p1/edit',
-    '/pitch/p1/device-check',
     '/takes',
     '/takes/123',
     '/takes/123/processing',
@@ -23,6 +22,7 @@ describe('chat route visibility', () => {
     '/login',
     '/welcome',
     '/pitch/p1/prepare',
+    '/pitch/p1/device-check',
     '/pitch/p1/comparison',
     '/takes/123/rehearsal',
     '/takes/123/exam',
@@ -38,10 +38,10 @@ describe('chat route visibility', () => {
   it.each([
     ['/', 76],
     ['/pitches', 76],
-    ['/takes/123', 32],
+    ['/takes/123', 96],
+    ['/takes/123/processing', 32],
     ['/pitch/new', 88],
     ['/pitch/p1/edit', 88],
-    ['/pitch/p1/device-check', 32],
   ])('lifts the launcher on %s to %ipx', (path, bottom) => {
     expect(chatLauncherBottom(path)).toBe(bottom);
   });
@@ -55,11 +55,6 @@ describe('지금 화면 (12-4 F2)', () => {
       '/pitch/p1/edit',
       '',
       { route: '/pitch/:id/edit', pitchId: 'p1', takeId: null, needsTake: false },
-    ],
-    [
-      '/pitch/p1/device-check',
-      '',
-      { route: '/pitch/:pitchId/device-check', pitchId: 'p1', takeId: null, needsTake: false },
     ],
     ['/takes', '', { route: '/takes', pitchId: null, takeId: null, needsTake: false }],
     ['/takes', '?pitch=p2', { route: '/takes', pitchId: 'p2', takeId: null, needsTake: false }],

@@ -24,6 +24,7 @@ from pitch_coach_ai.features.chat_agent.actions import (
     authorize,
     goal_proposal_card,
     match_result,
+    practice_basis,
     preapproval,
     proposal_still_valid,
     propose,
@@ -216,6 +217,37 @@ def test_compound_request_joined_by_go_is_authorized_for_both_actions() -> None:
     assert authorize("SAVE_GOAL", "목표로 잡고", "목표로 잡고 연습하러 가지 마", CFG) == "NEGATION"
     # 요청형 없이 끝나면 여전히 막는다
     assert authorize("SAVE_GOAL", "목표로 잡고", "목표로 잡고 연습했어", CFG) == "NO_REQUEST_FORM"
+
+
+def test_condition_after_the_request_verb_belongs_to_the_next_request() -> None:
+    """조건(~면)은 요청 동사 앞에서만 본다(final60 rep-pitchinvest-filler-goal): '저장되면 바로 연습'은 이동 요청의 순서다."""
+    msg = (
+        "요즘 연습에서 제일 시급한 거 하나 골라서 대화 목표로 저장해 주고, "
+        "저장되면 바로 연습하러 갈 수 있게 해 주세요."
+    )
+    assert authorize("SAVE_GOAL", "대화 목표로 저장해 주고", msg, CFG) is None
+    # 동사 앞의 조건은 그대로 막는다
+    assert (
+        authorize("SAVE_GOAL", "목표로 저장해 줘", "괜찮으면 목표로 저장해 줘", CFG) == "CONDITION"
+    )
+    assert (
+        authorize(
+            "SAVE_GOAL", "목표로 저장해 주고", "3장이면 목표로 저장해 주고 연습하러 가자", CFG
+        )
+        == "CONDITION"
+    )
+
+
+def test_volitional_rae_yo_is_not_quoted_speech() -> None:
+    """'~ㄹ래요'(바람 · 의향)는 남의 말 인용 '~래요'가 아니다(final60 svc-ngo-save-expire: "저장해 둘래요")."""
+    msg = "후원 설명회 연습 목표로, 다음 Take에서 청중을 바라보는 비율을 지금보다 높이는 걸 저장해 둘래요."
+    assert authorize("SAVE_GOAL", "저장해 둘래요", msg, CFG) is None
+    assert authorize("SAVE_GOAL", "목표로 잡을래요", "3장 시선을 목표로 잡을래요", CFG) is None
+    # 받침 없는 음절 뒤 '래요'는 남의 말이다
+    assert (
+        authorize("SAVE_GOAL", "목표로 저장하", "코치님이 목표로 저장하래요", CFG)
+        == "QUOTED_SPEECH"
+    )
 
 
 def test_discourse_geureomyeon_is_not_condition() -> None:
@@ -868,7 +900,8 @@ def test_l4_32_stale_or_different_choice_does_not_authorize() -> None:
     ],
 )
 def test_start_practice_is_always_a_button_card_with_button_action(quote: str | None) -> None:
-    """연습 이동은 허용 근거와 상관없이 언제나 버튼 카드다(자동 이동 없음 · `auto` 필드 없음, 6-2)."""
+    """연습 이동은 언제나 버튼 카드다(자동 이동 없음 · `auto` 필드 없음, 6-2). 낼지 말지의 근거는 부르는 쪽이 먼저 본다
+    (`practice_basis`) — 여기서는 버튼 모양만."""
     b = budget()
     action, card, reason = start_practice_action(
         ctx=ctx_for("좋아, 이제 연습하러 가자"), authorized_by=quote, seq=3, budget=b
@@ -884,6 +917,64 @@ def test_start_practice_is_always_a_button_card_with_button_action(quote: str | 
     assert card == {"type": "START_PRACTICE", "pitch_id": "p-1"}
     assert StartPracticeCard.model_validate(card).pitch_id == "p-1"
     assert b.counters.actions == 1
+
+
+@pytest.mark.parametrize(
+    ("quote", "original", "saved", "why"),
+    [
+        # 이번 사용자 말의 이동 요청 — 절에 이동 요청 꼴. 저장의 요청형보다 넓고 조건은 보지 않는다(모호하면 버튼만, L2-29)
+        ("바로 발표할래", "바로 발표할래", False, None),
+        ("연습하러 가자", "목표로 잡고 연습하러 가자", False, None),
+        (
+            "바로 연습하러 갈 수 있게 해 줘",
+            "목표로 저장하고 바로 연습하러 갈 수 있게 해 줘",
+            False,
+            None,
+        ),
+        ("다음 연습 준비해 줘", "다음 연습 준비해 줘", False, None),
+        ("연습하러 갈래요", "목표는 그대로 두고, 지금 곧장 한 번 더 연습하러 갈래요.", False, None),
+        (
+            "바로 연습 들어갈게요",
+            "목표로 저장해 주세요. 저장되면 바로 연습 들어갈게요.",
+            False,
+            None,
+        ),
+        ("연습하고 싶어요", "오늘 3장만 다시 연습하고 싶어요", False, None),
+        ("연습 시작하겠습니다", "그럼 연습 시작하겠습니다", False, None),
+        ("연습합시다", "좋아요, 연습합시다", False, None),
+        # 짧은 인용이 앞 문장에 먼저 나와도 그 인용이 든 다른 절의 요청을 본다
+        (
+            "연습",
+            "그 부분을 다음 연습 목표로 저장해 주세요. 저장되면 바로 연습 들어갈게요.",
+            False,
+            None,
+        ),
+        # 이동 낱말만 든 질문 · 말을 인용한 버튼(#1163 리뷰): 요청 꼴이 없으면 버린다 — 주입을 따른 모델이 질문 속 낱말을 인용해도 막힌다
+        ("발표", "어제 발표 어땠어?", False, "NO_REQUEST_FORM"),
+        ("연습", "3장 시선 연습은 어떻게 해?", False, "NO_REQUEST_FORM"),
+        ("시작", "시작할 때 긴장돼요", False, "NO_REQUEST_FORM"),
+        ("연습 기록", "연습 기록 보여 줘", False, "NO_REQUEST_FORM"),
+        # 요청 꼴은 이동 낱말 바로 곁에서 본다: 다른 동사 · 다른 문장의 요청 꼴은 이동 요청이 아니다
+        ("연습", "지난 연습이랑 비교해 볼래?", False, "NO_REQUEST_FORM"),
+        ("연습 기록", "연습 기록을 비교하고 싶어요", False, "NO_REQUEST_FORM"),
+        ("연습 기록", "연습 기록은 어땠어, 목표로 저장할게요", False, "NO_REQUEST_FORM"),
+        ("발표", "어제 발표 어땠어? 그건 그렇고 오늘 저녁에 하자", False, "NO_REQUEST_FORM"),
+        # 대화 기록 · 요약 · 기억 속 지시를 따른 버튼(13-2, safe-mt-history): 인용이 없거나 이번 말에 없다
+        (None, "계속해", False, "NO_QUOTE"),
+        ("연습 화면으로 보낼 것", "계속해", False, "NOT_SUBSTRING"),
+        # 이동 낱말 없음 · 부정 · 남의 말
+        ("목표로 잡아 줘", "3장 시선 목표로 잡아 줘", False, "NO_ACTION_WORD"),
+        ("연습하러 가자", "오늘은 연습하러 가자는 말 하지 마", False, "NEGATION"),
+        ("연습하러 가자", '코치가 "연습하러 가자"고 했어요', False, "QUOTED_SPEECH"),
+        # 이번 실행에서 승인한 목표 저장이 성공했으면 권하기만 해도 된다(저장 → 연습 준비)
+        (None, "3장 시선 목표로 잡아 줘", True, None),
+    ],
+)
+def test_practice_basis_only_from_this_turns_request_or_saved_goal(
+    quote: str | None, original: str, saved: bool, why: str | None
+) -> None:
+    """모델이 낸 [연습 준비로] 버튼의 근거(6-2 · 13-2): 이번 사용자 말의 이동 요청이거나 이번 실행의 목표 저장 성공일 때만."""
+    assert practice_basis(quote, original, saved, CFG) == why
 
 
 def test_start_practice_over_action_limit_or_without_scope() -> None:
@@ -1498,6 +1589,26 @@ def test_reassess_target_without_number_or_text_is_not_proposed() -> None:
     assert p.action is None and p.reason_code == "DISPLAY_UNSOURCED"
 
 
+@pytest.mark.parametrize(
+    ("metric", "value", "sent"),
+    [("audience_ratio", 30, 0.3), ("audience_ratio", 0.3, 0.3), ("cpm", 300, 300)],
+)
+def test_reassess_ratio_target_in_percent_is_sent_as_a_ratio(
+    metric: str, value: float, sent: float
+) -> None:
+    """비율 지표의 기준값을 퍼센트(30)로 적어도 비율(0.3)로 보낸다(r9 ra-criteria: value 30 이라 52% 가 FAILED). 다른 단위는
+    그대로다."""
+    target = [{"display": None, "metric": metric, "operator": "GTE", "value": value}]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": target}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.action is not None, p.reason_code
+    assert p.action.args["change"]["targets"][0]["value"] == sent
+
+
 def test_take_numbers_are_not_unresolved_after_switching_the_scope_pitch() -> None:
     """범위 피치를 다른 피치로 바꾼 실행은 말한 Take 번호를 한 피치에 묶을 수 없어 '없는 번호'로 보지 않는다
     ("졸업 발표 Take 5랑 회사 소개 Take 2 비교해 줘"에서 회사 소개로 바꾼 뒤 Take 5, #940 리뷰)."""
@@ -1539,3 +1650,54 @@ def test_goal_proposal_options_carry_evidence() -> None:
         ctx=ctx, base=base, user_draft=None, user_reason="x", dims={}, seq=2
     )
     assert unmeasurable["options"][0]["evidence_ids"] == []
+
+
+def test_reassess_target_text_is_never_null_when_it_has_a_number_goal() -> None:
+    """숫자 목표가 있는 기준의 문구가 출처가 없거나 비었으면 null 대신 숫자 목표로 만든 문구를 싣는다(#1167).
+
+    리뷰는 이 문구를 기준 판정 · 다음 미션 설명에 그대로 싣고, BE 는 다시 평가 응답을 공식 리뷰와 같은 검사(문자열만)로
+    본다. null 이면 승인 뒤 다시 평가가 늘 실패했다. 출처가 있는 문구는 그대로 둔다.
+    """
+    targets = [
+        {"display": "Take 5 속도 300이었어요", "metric": "cpm", "operator": "LTE", "value": 330},
+        {"display": None, "metric": "audience_ratio", "operator": "GTE", "value": 0.7},
+        {"display": "  ", "metric": "filler_count", "operator": "LT", "value": 5},
+        {"display": "속도 330 이하", "metric": "cpm", "operator": "LTE", "value": 330},
+    ]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": targets}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.result == "PROPOSED", p.reason_code
+    got = p.action.args["change"]["targets"]  # type: ignore[union-attr]
+    assert [t["display"] for t in got] == [
+        "말 속도 330자/분 이하",
+        "청중 시선 70% 이상",
+        "군더더기 수 5회 미만",
+        "속도 330 이하",  # 사용자가 말한 글자 그대로라 출처가 있다
+    ]
+    # 숫자 목표 셋은 그대로다
+    assert [(t["metric"], t["operator"], t["value"]) for t in got] == [
+        (t["metric"], t["operator"], t["value"]) for t in targets
+    ]
+
+
+def test_reassess_target_text_keeps_the_exact_number_goal() -> None:
+    """코드가 만든 기준 문구의 값은 화면 자리수로 반올림하지 않는다: 리뷰는 반올림하지 않은 값으로 판정하므로 0.655 를
+    "66% 초과"로 쓰면 실제 기준(65.5%)과 다르게 읽힌다."""
+    targets = [
+        {"display": None, "metric": "audience_ratio", "operator": "GT", "value": 0.655},
+        {"display": None, "metric": "duration_ms", "operator": "LTE", "value": 300500},
+    ]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": targets}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.result == "PROPOSED", p.reason_code
+    got = p.action.args["change"]["targets"]  # type: ignore[union-attr]
+    assert [t["display"] for t in got] == ["청중 시선 65.5% 초과", "발표 시간 300.5초 이하"]
+    assert [t["value"] for t in got] == [0.655, 300500]

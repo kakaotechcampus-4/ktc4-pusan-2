@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act } from 'react';
+import { StrictMode, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiFailure } from '@/shared/api/tokenStore';
+import {
+  forgetPrivacyConsentsInTab,
+  privacyConsentKey,
+  recordPrivacyConsent,
+} from '@/shared/lib/privacyConsent';
 import { registerChatScreen, resetChatScreen, type ScreenBody } from '@/shared/lib/chatScreen';
 import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
@@ -196,6 +201,9 @@ beforeEach(() => {
   undoMode.value = 'undone';
   sessionStorage.clear();
   localStorage.clear();
+  forgetPrivacyConsentsInTab();
+  // 개인정보 처리에 동의한 사용자들로 시작합니다. 동의 전에 숨기는 것은 따로 봅니다
+  for (const userId of ['u1', 'u2']) localStorage.setItem(privacyConsentKey(userId), 'x');
   useChatStore.getState().signOut();
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   host = document.createElement('div');
@@ -226,14 +234,18 @@ const wait = (ms: number) =>
   });
 
 // routes.tsx 의 최상위 레이아웃과 같은 모양 — 화면이 바뀌어도 채팅은 같은 자리에 남습니다
-async function visit(path: string) {
+async function visit(path: string, strict = false) {
   router = createMemoryRouter(
     [
       {
         element: (
           <>
-            <Outlet />
-            <ChatAgentHost />
+            <div className="chat-layout">
+              <div className="chat-layout-content">
+                <Outlet />
+              </div>
+              <ChatAgentHost />
+            </div>
           </>
         ),
         children: [
@@ -244,20 +256,26 @@ async function visit(path: string) {
           { path: '/takes/:takeId/rehearsal', element: <p>리허설</p> },
           { path: '/pitch/new', element: <p>피치 만들기</p> },
           { path: '/pitch/:id/edit', element: <p>피치 수정</p> },
-          { path: '/pitch/:pitchId/device-check', element: <p>장치 점검</p> },
+          {
+            path: '/pitch/:pitchId/device-check',
+            element: (
+              <main id="main" tabIndex={-1}>
+                장치 점검
+              </main>
+            ),
+          },
           { path: '/welcome', element: <p>서비스 소개</p> },
         ],
       },
     ],
     { initialEntries: [path] },
   );
-  await act(async () =>
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    ),
+  const ui = (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   );
+  await act(async () => root.render(strict ? <StrictMode>{ui}</StrictMode> : ui));
   if (vi.isFakeTimers()) await wait(0);
   else await settle();
 }
@@ -312,6 +330,17 @@ async function press(target: Element, init: KeyboardEventInit) {
   return event;
 }
 
+it('개인정보 처리에 동의하기 전에는 새미나이를 띄우지 않고, 동의하면 바로 띄운다', async () => {
+  localStorage.removeItem(privacyConsentKey('u1'));
+
+  await visit('/');
+  expect(launcher()).toBeNull();
+
+  await act(async () => recordPrivacyConsent('u1'));
+  await settle();
+  expect(launcher()).not.toBeNull();
+});
+
 it('새미나이 브랜드와 빈 대화 안내를 유지하고, 추천 질문은 별도 PR로 분리한다', async () => {
   await visit('/');
   await openPanel();
@@ -321,7 +350,8 @@ it('새미나이 브랜드와 빈 대화 안내를 유지하고, 추천 질문�
   const labelId = panel()!.getAttribute('aria-labelledby')!;
   expect(document.getElementById(labelId)!.textContent!.trim()).toBe('새미나이');
   expect(button('새미나이 닫기')?.getAttribute('title')).toBe('새미나이 닫기');
-  expect(panel()!.querySelectorAll('img[src="/semini.png"]')).toHaveLength(2);
+  expect(launcher()!.querySelector('img')?.getAttribute('src')).toBe('/semini-mascot.svg');
+  expect(panel()!.querySelectorAll('img[src="/semini-mascot.svg"]')).toHaveLength(2);
   expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
     '발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.',
   );
@@ -406,15 +436,17 @@ it('대화 목록에서는 입력 폼을 숨기고 돌아오면 입력을 유지
   expect(input().value).toBe('작성 중');
 });
 
-it('채팅 버튼과 패널은 왼쪽 하단에서 같은 기준선에 맞춰 열린다', async () => {
+it('런처와 패널은 오른쪽에 두며 닫힌 뒤 런처 초점을 복원한다', async () => {
   await visit('/');
   const container = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
-  expect(container.classList.contains('left-2')).toBe(true);
+  expect(container.classList.contains('right-2')).toBe(true);
   expect(container.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('76px');
   expect(container.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
 
   await openPanel();
-  expect(panel()!.classList.contains('left-0')).toBe(true);
+  expect(panel()!.classList.contains('right-0')).toBe(true);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.activeElement).toBe(launcher());
 });
 
 it('런처로 열면 입력칸에 초점이 가고, 닫으면 런처로 돌아온다', async () => {
@@ -583,19 +615,185 @@ it('채팅을 띄우지 않는 화면에서는 세션을 구독하지 않는다'
   expect(launcher()).not.toBeNull();
 });
 
-it('열린 패널은 피치 만들기 · 장치 점검으로 옮겨도 남고, 리허설에 들어가면 숨는다', async () => {
+it('열린 패널은 허용 화면에서 유지되고 장치 점검에 들어가면 닫힌다', async () => {
   await visit('/');
   await openPanel();
   await type('연습 준비 중');
   await go('/pitch/new');
   expect(panel()).not.toBeNull();
+  expect(input().value).toBe('연습 준비 중');
   await go('/pitch/p1/device-check');
-  expect(panel()).not.toBeNull();
+  expect(launcher()).toBeNull();
+  expect(panel()).toBeNull();
+  await go('/pitch/new');
+  expect(panel()).toBeNull();
+  await openPanel();
   expect(input().value).toBe('연습 준비 중');
 
   await go('/takes/t1/rehearsal');
   expect(launcher()).toBeNull();
   expect(panel()).toBeNull();
+});
+
+it('장치 점검으로 이동하면 사라진 채팅 버튼 대신 화면 본문에 초점을 준다', async () => {
+  await visit('/');
+  await openPanel();
+  input().focus();
+  await go('/pitch/p1/device-check');
+  expect(document.activeElement).toBe(host.querySelector('main#main'));
+});
+
+it('지연 로딩 중의 본문이 교체되면 초점을 다시 옮기되 다른 조작부의 초점은 존중한다', async () => {
+  await visit('/');
+  await openPanel();
+  input().focus();
+  await go('/pitch/p1/device-check');
+  const fallback = host.querySelector<HTMLElement>('main#main')!;
+  expect(document.activeElement).toBe(fallback);
+
+  const loaded = document.createElement('main');
+  loaded.id = 'main';
+  loaded.tabIndex = -1;
+  loaded.textContent = '장치 점검을 불러왔어요';
+  await act(async () => {
+    fallback.replaceWith(loaded);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(loaded);
+
+  const anotherButton = document.createElement('button');
+  host.append(anotherButton);
+  anotherButton.focus();
+  const next = document.createElement('main');
+  next.id = 'main';
+  next.tabIndex = -1;
+  await act(async () => {
+    loaded.replaceWith(next);
+    await Promise.resolve();
+  });
+  expect(document.activeElement).toBe(anotherButton);
+});
+
+it('모바일 오버레이는 배경을 비활성화하고 닫으면 복원한다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  await visit('/');
+  await openPanel();
+  const content = host.querySelector('.chat-layout-content')!;
+  expect(panel()!.getAttribute('aria-modal')).toBe('true');
+  expect(content.hasAttribute('inert')).toBe(true);
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(document.body.style.overflow).toBe('hidden');
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(panel()).toBeNull();
+  expect(content.hasAttribute('inert')).toBe(false);
+  expect(document.body.style.overflow).toBe('');
+});
+
+it('모바일에서 같은 화면을 닫아도 실제 문서 스크롤을 변경하지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(document.body.style.position).toBe('');
+  expect(window.scrollY).toBe(420);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.overflow).toBe('');
+  expect(window.scrollY).toBe(420);
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('StrictMode 이펙트 재실행에서도 문서 스크롤과 잠금 상태가 유지된다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/', true);
+  await openPanel();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(document.body.style.position).toBe('');
+  expect(window.scrollY).toBe(420);
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 채팅을 연 채 다른 페이지로 이동해도 scrollY를 0으로 바꾸지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  await go('/pitch/new');
+  expect(panel()).not.toBeNull();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(window.scrollY).toBe(420);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.overflow).toBe('');
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 쿼리만 변경해도 문서 스크롤 값을 덮어쓰지 않는다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/takes');
+  await openPanel();
+  await go('/takes?view=compare&pitch=p-9');
+  expect(panel()).not.toBeNull();
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(window.scrollY).toBe(420);
+  await act(async () => button('새미나이 닫기')!.click());
+  expect(document.body.style.overflow).toBe('');
+  expect(scrollTo).not.toHaveBeenCalled();
+});
+
+it('모바일에서 채팅이 숨는 장치 점검으로 이동해도 스크롤 잠금을 해제한다', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 760px)',
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  vi.stubGlobal('scrollY', 420);
+  const scrollTo = vi.fn();
+  vi.stubGlobal('scrollTo', scrollTo);
+  await visit('/');
+  await openPanel();
+  expect(document.body.style.overflow).toBe('hidden');
+  await go('/pitch/p1/device-check');
+  expect(panel()).toBeNull();
+  expect(document.body.style.overflow).toBe('');
+  expect(host.querySelector('.chat-layout-content')!.hasAttribute('inert')).toBe(false);
+  expect(scrollTo).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(host.querySelector('main#main'));
 });
 
 it('2,000자는 코드 포인트로 세고, 넘으면 입력을 둔 채 보내지 않는다', async () => {
@@ -666,13 +864,21 @@ const hangUntilAborted = (signal: AbortSignal | null) =>
 
 const availabilityCalls = () => server.seen.filter((s) => s.path === '/api/chat/availability');
 
-const deviceBody: ScreenBody = {
-  name: 'device_check',
-  camera: 'connected',
-  mic: 'detected',
-  gaze_setup: 'DONE',
-  gaze_reason: null,
-};
+const pitchBody = {
+  name: 'pitch_edit',
+  step: 'criteria',
+  version_label: 'V1',
+  version_id: null,
+  saved: null,
+  draft: {
+    title: null,
+    slide_count: null,
+    script_chars: null,
+    time_limit_sec: null,
+    criteria_text: null,
+  },
+  changed: [],
+} satisfies ScreenBody;
 
 const claim = (text: string) =>
   ({
@@ -772,7 +978,7 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
   it('통신 계층은 하나 — 듣기를 건 뒤 이어 가고, 화면을 옮겨도 그대로, 숨는 화면에서 닫는다', async () => {
     await visit('/');
     await go('/pitch/new');
-    await go('/pitch/p1/device-check');
+    await go('/pitches');
     expect(transports).toHaveLength(1);
     expect(transport().resumed).toBe(1);
     expect(transport().listenedBeforeResume).toBe(true);
@@ -786,7 +992,6 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
     ['/pitch/new', '전체', null],
     ['/takes', '전체', null],
     ['/pitch/p1/edit', '피치', 'p1'],
-    ['/pitch/p1/device-check', '피치', 'p1'],
     ['/takes?pitch=p2', '피치', 'p2'],
   ])('%s 에서 열면 처음 범위는 %s', async (path, label, pitchId) => {
     await visit(path);
@@ -835,49 +1040,49 @@ describe('연결 (12-4 F1 · F2 · F3)', () => {
   });
 
   it('보낼 때 지금 화면 page 와 그 순간의 화면 상태를 싣는다', async () => {
-    let gaze: ScreenBody = deviceBody;
-    registerChatScreen('/pitch/:pitchId/device-check', () => gaze);
-    await visit('/pitch/p1/device-check');
+    let screen: ScreenBody = pitchBody;
+    registerChatScreen('/pitch/:id/edit', () => screen);
+    await visit('/pitch/p1/edit');
     await openPanel();
-    await type('시선 기준이 왜 실패해?');
-    gaze = { ...deviceBody, gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' };
+    await type('발표 자료를 확인해 줘');
+    screen = { ...pitchBody, version_label: 'V2' };
     await press(input(), { key: 'Enter' });
 
     const [sent] = transport().sent;
     expect(sent!.page).toMatchObject({
-      route: '/pitch/:pitchId/device-check',
+      route: '/pitch/:id/edit',
       pitch_id: 'p1',
       take_id: null,
-      screen: { name: 'device_check', gaze_setup: 'FAILED', gaze_reason: '얼굴이 보이지 않아요' },
+      screen: { name: 'pitch_edit', version_label: 'V2' },
     });
     expect(sent!.page.screen!.snapshot_id).toMatch(/^ss-[0-9a-f]{16}$/);
   });
 
   it('처음 확인(없음 → 사용자) 뒤에 보내면 먼저 등록한 화면 상태를 싣는다', async () => {
     expect(useChatStore.getState().userId).toBeNull();
-    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
-    await visit('/pitch/p1/device-check');
+    registerChatScreen('/pitch/:id/edit', () => pitchBody);
+    await visit('/pitch/p1/edit');
     expect(useChatStore.getState().userId).toBe('u1');
     await openPanel();
-    await type('장치 괜찮아?');
+    await type('자료 괜찮아?');
     await press(input(), { key: 'Enter' });
-    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'device_check' });
+    expect(transport().sent[0]!.page.screen).toMatchObject({ name: 'pitch_edit' });
   });
 
   it('로그아웃 신호 없이 다른 사용자로 바뀐 뒤 보내면 앞 사람 때 등록한 화면 상태를 싣지 않는다', async () => {
-    registerChatScreen('/pitch/:pitchId/device-check', () => deviceBody);
-    await visit('/pitch/p1/device-check');
+    registerChatScreen('/pitch/:id/edit', () => pitchBody);
+    await visit('/pitch/p1/edit');
     expect(useChatStore.getState().userId).toBe('u1');
 
     // 같은 경로 패턴에 머문 채 사용자만 바뀝니다 — 경로가 달라서 빠지는 것이 아님을 보려고 패턴을 유지합니다
     state.session = { isPending: false, isError: false, data: { id: 'u2' } };
-    await go('/pitch/p2/device-check');
+    await go('/pitch/p2/edit');
     expect(useChatStore.getState().userId).toBe('u2');
     await openPanel();
-    await type('장치 괜찮아?');
+    await type('자료 괜찮아?');
     await press(input(), { key: 'Enter' });
     const [sent] = transport().sent;
-    expect(sent!.page).toMatchObject({ route: '/pitch/:pitchId/device-check', screen: null });
+    expect(sent!.page).toMatchObject({ route: '/pitch/:id/edit', screen: null });
   });
 
   it('평가 기준 원문이 2,000자를 넘으면 보내지 않고 알린다 (L3-11)', async () => {
@@ -1408,15 +1613,18 @@ describe('카드 연결 (12-4 F6 · F10)', () => {
     expect(transport().decided).toEqual([['a-9', 'APPROVE', 'sha-1']]);
   });
 
-  it('[연습 준비로]는 장치 점검 화면으로 옮기고 대화창은 열린 채로 남는다', async () => {
+  it('[연습 준비로]는 장치 점검 화면으로 옮기고 대화창을 닫되 대화는 유지한다', async () => {
     await inConversation([
       assistant('m1', 'r1', 'DONE', [{ type: 'START_PRACTICE', pitch_id: PITCH }]),
     ]);
     await act(async () => button('연습 준비로')!.click());
     await settle();
     expect(router.state.location.pathname).toBe(`/pitch/${PITCH}/device-check`);
-    expect(panel()).not.toBeNull();
-    expect(panel()!.textContent).toContain('연습 준비 화면으로 옮겼어요.');
+    expect(panel()).toBeNull();
+    await go('/');
+    expect(panel()).toBeNull();
+    await openPanel();
+    expect(button('연습 준비로')).toBeDefined();
   });
 });
 

@@ -246,8 +246,14 @@ def test_running_calls_never_exceed_max_workers(workers):
     assert len(rubrics) == len(_MARKS) and stats["failed"] == {}
 
 
-def test_failures_in_different_stages_are_all_kept():
-    """장마다 다른 단계에서 실패해도 실패가 모두 남고, 실패한 장은 다음 단계를 부르지 않으며, 성공한 장은 그대로다."""
+def test_failures_in_different_stages_are_all_kept(monkeypatch):
+    """장마다 다른 단계에서 실패해도 실패가 모두 남고, 실패한 장은 다음 단계를 부르지 않으며, 성공한 장은 그대로다.
+
+    (전달 단위 복구를 끈 경우. 켠 경우는 test_unit_fallback.py)
+    """
+    monkeypatch.setattr(
+        "pitch_coach_ai.features.script_coverage.script_analysis.core.UNIT_FALLBACK_ENABLED", False
+    )
     log = _OrderLog(
         fail={
             ("semantic", 4): TimeoutError("1차 분석 원문"),

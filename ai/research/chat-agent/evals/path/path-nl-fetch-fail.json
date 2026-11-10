@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "id": "path-nl-fetch-fail",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "Take 4 를 가져오던 중 지워짐 — 실패를 알리고 다른 Take(3 · 5)의 값으로 대신 답하지 않는다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-4": {
+            "result": {
+              "cpm": 395
+            }
+          },
+          "t-3": {
+            "result": {
+              "cpm": 335
+            }
+          },
+          "t-5": {
+            "result": {
+              "cpm": 310
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4는 말이 얼마나 빨랐는지 알려 줘",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "delete_before_action",
+          "action": "FETCH_TAKE",
+          "target": "t-4"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-then-fail",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_TAKE:AUTO",
+          "exec:FETCH_TAKE:FAIL"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-ok-fetch",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "exec:FETCH_TAKE:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-retry-loop",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:FETCH_TAKE:FAIL",
+          "exec:FETCH_TAKE:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fail-fact",
+        "observe": "trajectory",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "확인 실패|기본 자료에 없음",
+        "metric": "replan"
+      },
+      {
+        "check_id": "fetch-failed",
+        "observe": "answer",
+        "grader": "template",
+        "compare": "contains",
+        "expect": "SystemText.TAKE_FETCH_FAILED"
+      },
+      {
+        "check_id": "no-deleted-value",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "absent",
+        "expect": "395"
+      },
+      {
+        "check_id": "no-substitute-take3",
+        "observe": "answer",
+        "grader": "number",
+        "compare": "absent",
+        "expect": "335"
+      },
+      {
+        "check_id": "outcome",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": [
+          "DONE",
+          "PARTIAL"
+        ],
+        "path": "status"
+      }
+    ]
+  }
+}

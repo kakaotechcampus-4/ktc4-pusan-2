@@ -34,6 +34,7 @@ beforeEach(() => {
     analysis_hold_reason: null,
     measures: measuresFixture,
     review: reviewFixture,
+    content_status: null,
   };
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;

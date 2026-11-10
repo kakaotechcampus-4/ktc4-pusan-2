@@ -15,7 +15,10 @@ export default defineConfig({
   testMatch: '**/*.e2e.ts',
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  fullyParallel: false,
+  // 파일 안의 시험도 워커들이 나눠 돕니다. 파일 단위로만 나누면 시험이 많은 파일 하나를 워커 하나가 혼자 돌고
+  // 나머지는 놀아서, 그 파일의 시간이 곧 전체 시간이 됩니다. 시험마다 브라우저 컨텍스트가 새로 생기고 MSW 목도
+  // 페이지 안에서 돌아 시험끼리 상태를 나누지 않습니다 — 새 시험도 앞 시험의 결과에 기대지 않게 씁니다
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
@@ -24,6 +27,21 @@ export default defineConfig({
     locale: 'ko-KR',
     trace: 'retain-on-failure',
     permissions: ['camera', 'microphone'],
+    // 개인정보 처리 동의를 마친 목 사용자(`src/mocks/auth.ts` 의 u1)로 시작합니다.
+    // 동의 화면 자체는 `e2e/privacy-consent.e2e.ts` 가 빈 저장소로 따로 봅니다.
+    // 키는 `src/shared/lib/privacyConsent.ts` 의 `privacyConsentKey('u1')` 입니다 — 이 설정은 브라우저 코드를 가져올 수 없어
+    // 글자로 적습니다. 안내문 버전을 올리면 여기 `v1` 도 올립니다(안 올리면 모든 E2E 가 동의 화면에서 멈춰 바로 드러납니다)
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: `http://localhost:${PORT}`,
+          localStorage: [
+            { name: 'pitchcoach.privacyConsent.v1.u1', value: '2026-11-11T00:00:00.000Z' },
+          ],
+        },
+      ],
+    },
     launchOptions: {
       // 장치 점검 · 리허설 화면용 가짜 카메라 · 마이크 — 권한 창 없이 허용합니다
       args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],

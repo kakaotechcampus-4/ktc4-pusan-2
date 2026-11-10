@@ -38,6 +38,7 @@ from pitch_coach_backend.module.take.states import (
     SCORING,
     TAKE_RESULT,
 )
+from pitch_coach_backend.module.take.stt_gaps import stt_gap_ranges
 from pitch_coach_backend.module.user import service as user_service
 
 logger = logging.getLogger(__name__)
@@ -267,10 +268,14 @@ def save_take_result(
     """finalize 응답을 한 트랜잭션에 저장한다 (12-2). 저장했으면 True.
 
     이벤트(발표 중 못 넣은 것 + 이번 응답의 것, 받은 순서대로) · Take 결과 · take_summaries 측정
-    칸 · Take 길이 · 분석 단계(`SCORING`) · 동의 없는 Take 의 1초 원자료 삭제를 같이 한다. Take
-    행을 잠근 뒤 Take 가 아직 Take 결과를 기다리는 중(`ANALYZING` · `FINALIZING`)일 때만 커밋하고,
-    아니면 응답을 버린다 — 재시작한 BE 와 앞 작업의 응답이 겹쳐도 이미 앞으로 간 단계를 되돌리지
-    않게.
+    칸 · Take 길이 · STT 끊김 구간 · 분석 단계(`SCORING`) · 동의 없는 Take 의 1초 원자료 삭제를
+    같이 한다. Take 행을 잠근 뒤 Take 가 아직 Take 결과를 기다리는 중(`ANALYZING` · `FINALIZING`)
+    일 때만 커밋하고, 아니면 응답을 버린다 — 재시작한 BE 와 앞 작업의 응답이 겹쳐도 이미 앞으로 간
+    단계를 되돌리지 않게.
+
+    STT 끊김 구간은 동의와 상관없이 모든 Take 에 남긴다. 1초 원자료를 지운 뒤에도 대본 전달도
+    채점이 음성 인식이 끊긴 장과 말하지 않은 장을 가르게 하기 위해서다. replay 로 만든 Take
+    결과도 이 함수를 지난다.
     """
     # HTTP 어댑터를 거치지 않은 호출도 다른 Take의 결과를 저장하지 못하게 한다.
     if take_result.get("take_id") != str(take_id):
@@ -284,6 +289,9 @@ def save_take_result(
     repo.save_ai_result(take_id, TAKE_RESULT, take_result, meta)
     repo.save_summary_measures(take_id, measures)
     take.duration_sec = duration_sec
+    take.stt_gap_ranges = stt_gap_ranges(
+        repo.metric_second_stt(take_id), take_result["duration_ms"]
+    )
     take.analysis_stage = SCORING
     take.analysis_stage_at = func.now()
     if not take.raw_data_consent:

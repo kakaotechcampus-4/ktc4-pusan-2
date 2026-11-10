@@ -1,0 +1,202 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-re-contest-script-highlight",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "'화면 대본을 띄워 놓고 한 연습' 이의(대본 전체 표시 HIGHLIGHT) → 판단 먼저 → 다시 평가 승인 → 참고 결과, 공식 그대로",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-cm",
+        "title": "지자체 청년 공모 발표",
+        "takes": [
+          {
+            "take_id": "cm-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "review": {
+              "dimensions": {
+                "script_independence": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "cm-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.3,
+                0.28,
+                0.58
+              ],
+              "script_ratio": [
+                0.2,
+                0.58,
+                0.61,
+                0.22
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ],
+                [
+                  "GAZE_ON_SCRIPT",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY",
+                "script_independence": "PRIORITY"
+              },
+              "score": 64
+            },
+            "script_mode": "HIGHLIGHT"
+          }
+        ],
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": [
+            "청중과 눈 맞추며 말하기"
+          ],
+          "targets": [],
+          "script_used": null
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-cm"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 2는 처음부터 화면에 대본을 띄워 놓고 보면서 하기로 한 연습이었어요. 그 조건으로 참고 결과를 다시 뽑아 줄 수 있어요?",
+      "page_take_id": "cm-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "dispute-to-reassess",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:USER_DISPUTE:*",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "replan",
+        "note": "이의에 다시 평가 근거(조건 낱말)가 있어 다시 평가 확인 카드를 낸다"
+      },
+      {
+        "check_id": "judge-first",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "claim:ASSESSMENT",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "path",
+        "note": "판단 문장이 확인 카드보다 먼저(6-3)"
+      },
+      {
+        "check_id": "approve-before-reassess",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "approve:REASSESS",
+          "exec:REASSESS:*"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "result-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "REASSESS_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "reassess-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "reassess-target",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": "cm-t2",
+        "path": "items[type=REASSESS].args.take_id"
+      },
+      {
+        "check_id": "reassess-change",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": true,
+        "path": "items[type=REASSESS].args.change.script_used"
+      },
+      {
+        "check_id": "script-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "SCRIPT_FACT",
+          "fields": {
+            "state": "전체로 켜져"
+          }
+        },
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "script-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SCRIPT_UNKNOWN",
+        "grader": "template",
+        "note": "판정과 상관없이 붙는다(7-10)"
+      },
+      {
+        "check_id": "script-not-allowed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_NOT_ALLOWED",
+        "grader": "template",
+        "note": "평가 기준 script_used null"
+      },
+      {
+        "check_id": "script-claim-verdict",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "verdict": "SUPPORTED",
+          "quote~": "대본"
+        },
+        "path": "assessments",
+        "metric": "objectivity",
+        "note": "대본 사용 주장: script_mode HIGHLIGHT → SUPPORTED(6-3)"
+      }
+    ]
+  }
+}

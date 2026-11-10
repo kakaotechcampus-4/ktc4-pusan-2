@@ -1275,8 +1275,41 @@ def test_ref_ids_in_sentence_text_are_removed_so_their_digits_are_not_values(
     assert extract_numbers(strip_ref_ids(text)).values == extract_numbers(want).values
 
 
+@pytest.mark.parametrize(
+    ("ids", "titles", "phrase"),
+    [
+        (
+            ["g-18"],
+            {"g-18": "발표는 빠를수록 좋다는 오해"},
+            "발표법 자료 '발표는 빠를수록 좋다는 오해'",
+        ),
+        (["g-03", "g-04"], {"g-03": "말 속도", "g-04": "쉼"}, "발표법 자료 '말 속도' · '쉼'"),
+        (["g-99"], {}, "발표법 자료"),
+    ],
+)
+def test_knowledge_phrase_uses_card_titles_not_ids(
+    ids: list[str], titles: dict[str, str], phrase: str
+) -> None:
+    """발표법 주장 판단 첫 문장의 근거 표기는 카드 제목이고 내부 자료 id 는 쓰지 않는다(7-10)."""
+    from pitch_coach_ai.features.chat_agent.claims import knowledge_phrase
+
+    assert knowledge_phrase(ids, titles) == phrase
+
+
+def test_knowledge_head_title_digits_are_not_number_checked() -> None:
+    """카드 제목에 숫자가 있어도(예: '3초 쉬기') 판단 첫 문장(코드 템플릿)은 숫자 검사 대상이 아니다: 첫 문장 뒤만 본다."""
+    head = "말씀하신 '쉼은 필요 없다며?'는 기록과 달라요: 발표법 자료 '3초 쉬기'."
+    a = assessment(quote="쉼은 필요 없다며?").model_copy(
+        update={"type": "KNOWLEDGE", "claim_op": None, "source_ids": ["g-04"]}
+    )
+    c = Claim(kind="ASSESSMENT", text=head, assessment_id="a1", source_ids=["g-04"])
+    fails = run([c], assessments={"a1": a}, first_sentences={"a1": head})
+    assert CheckId.NUMBER_MISMATCH not in ids_of(fails)
+
+
 def test_code_template_sentences_keep_their_source_ids() -> None:
-    """id 지우기는 모델이 쓴 글에만 한다: 코드가 만드는 문장(판단 첫 문장의 "발표법 자료(g-18)")은 그대로다(6회차 회귀)."""
+    """id 지우기는 모델이 쓴 글에만 한다: 코드가 만드는 문장(판단 첫 문장)은 그대로다(6회차 회귀). 지금 판단 첫 문장의 자료
+    표기는 카드 제목이지만, 코드 문장에 괄호 표기가 있어도 지우지 않는다."""
     from pitch_coach_ai.features.chat_agent.compose import _claim
 
     head = "말씀하신 '발표는 빠를수록 좋다며?'는 기록과 달라요: 발표법 자료(g-18)."

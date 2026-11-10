@@ -33,7 +33,7 @@ const faqs = [
   ],
   [
     '어떤 브라우저에서 이용하나요?',
-    '데스크톱의 최신 Chrome 또는 Edge를 권장해요. 연습 시작 전 마이크와 카메라 권한을 허용하고 장치 점검을 진행해 주세요.',
+    '데스크톱 최신 Google Chrome 사용을 권장해요. Edge에서는 시선 추적이 정상적으로 진행되지 않을 수 있어요. 연습 시작 전 마이크와 카메라 권한을 허용하고 장치 점검을 진행해 주세요.',
   ],
 ];
 export function WelcomePage() {
@@ -421,7 +421,7 @@ export function WelcomePage() {
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
               <div className="w-20 shrink-0 border border-ink bg-panel p-2 shadow-[3px_3px_0_var(--color-line-strong)]">
                 <img
-                  src="/semini.png"
+                  src="/semini-mascot.svg"
                   alt=""
                   width={64}
                   height={64}

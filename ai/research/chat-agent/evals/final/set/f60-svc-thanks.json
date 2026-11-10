@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-svc-thanks",
+  "set": "agent_service",
+  "group": "small_talk",
+  "split": "dev",
+  "act": "should_not",
+  "title": "감사 인사 — 조사 없이 감사 고정 문장(모델 1번), 행동 · '확인한 것' 줄 없음",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-thx",
+        "title": "봄 학기 수업 발표",
+        "takes": [
+          {
+            "take_id": "thx-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-thx"
+    }
+  },
+  "turns": [
+    {
+      "message": "오늘 설명해 준 덕분에 많이 배웠어요. 정말 고마워요!",
+      "page_take_id": "thx-t1"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "thanks-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.TALK_THANKS",
+        "grader": "template"
+      },
+      {
+        "check_id": "one-model-call",
+        "observe": "trace",
+        "compare": "equals",
+        "expect": 1,
+        "path": "model_calls"
+      },
+      {
+        "check_id": "no-tools",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "tool:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-actions",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": [],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  }
+}

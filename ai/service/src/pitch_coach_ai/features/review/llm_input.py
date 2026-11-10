@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from .next_missions import fixed_count
-from .text import DIMENSION_LABELS, METRIC_LABELS, TextCandidate, TextCandidates
+from .text import DIMENSION_LABELS, METRIC_LABELS, TextCandidate, TextCandidates, volume_base
 from .vocab import CONTENT_BURDEN_STATUSES
 
 if TYPE_CHECKING:
@@ -147,4 +147,7 @@ def review_message(rules: RuleResult, candidates: Candidates) -> str:
         "content_slides": _content_slides(rules),
         "metric_labels": {m: METRIC_LABELS[m] for m in sorted(metrics) if m in METRIC_LABELS},
     }
+    if "voice_diff_db" in metrics:
+        # 이번 Take 의 소리 크기를 견준 때 ('점검 때' · '발표 처음' · '기준', #1181)
+        payload["volume_base"] = volume_base(rules.take_result)
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)

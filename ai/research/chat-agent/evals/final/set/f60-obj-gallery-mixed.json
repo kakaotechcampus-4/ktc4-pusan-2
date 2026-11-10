@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-obj-gallery-mixed",
+  "set": "objectivity",
+  "group": "mixed",
+  "split": "dev",
+  "act": "should",
+  "title": "'시선 좋았고 속도도 적당했지?' — 시선 SUPPORTED · 속도 CONTRADICTED 로 나눠 판단",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-gal",
+        "title": "갤러리 개관 기념 발표",
+        "takes": [
+          {
+            "take_id": "gal-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": 0.74,
+              "cpm": [
+                372,
+                330,
+                368,
+                340
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  1,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STRENGTH",
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 73
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-gal"
+    }
+  },
+  "turns": [
+    {
+      "message": "청중 시선은 전체적으로 좋았고, 말 속도도 적당했죠?",
+      "page_take_id": "gal-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "both-verdicts",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": [
+          {
+            "verdict": "SUPPORTED",
+            "quote~": "시선"
+          },
+          {
+            "verdict": "CONTRADICTED",
+            "quote~": "속도"
+          }
+        ],
+        "path": "assessments",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "contradicted-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "CONTRADICTED",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "read-before-judge",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:ASSESSMENT"
+        ],
+        "metric": "path",
+        "turn": -1
+      }
+    ]
+  }
+}

@@ -36,8 +36,8 @@ describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', (
       { ...summary, quality: 'FAIR', warnings },
       { micDetected: true, baseLevelDb: null },
     );
-    expect(body.result.status).toBe('OK');
-    expect(body.result.warnings).toEqual(warnings);
+    expect(body.result?.status).toBe('OK');
+    expect(body.result?.warnings).toEqual(warnings);
     expect(body.gaze_confidence).toBe(0.93);
   });
 
@@ -46,7 +46,7 @@ describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', (
       { ...summary, quality: 'POOR' },
       { micDetected: false, baseLevelDb: null },
     );
-    expect(body.result.status).toBe('RETRY_REQUIRED');
+    expect(body.result?.status).toBe('RETRY_REQUIRED');
     expect(body.gaze_confidence).toBe(0);
     expect(body.mic_detected).toBe(false);
   });
@@ -60,7 +60,18 @@ describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', (
     expect(body.gaze_confidence).toBe(0);
   });
 
-  it('평소 목소리 크기는 잰 값을 그대로, 안 쟀으면 null 로 보낸다 — 0 으로 채우지 않는다', () => {
+  // #1179 시선 보정 요약이 없어도 목소리 기준은 보냅니다 — 전에는 요청 자체를 보내지 않았습니다
+  it('시선 보정 요약이 없으면 result 는 null 이고 목소리 기준만 실어 보낸다', () => {
+    expect(toCalibrationRequest(null, { micDetected: true, baseLevelDb: -30 })).toEqual({
+      face_detected: false,
+      mic_detected: true,
+      gaze_confidence: 0,
+      base_level_db: -30,
+      result: null,
+    });
+  });
+
+  it('기준 목소리 크기는 정한 값을 그대로, 탈출구면 null 로 보낸다 — 0 으로 채우지 않는다', () => {
     expect(
       toCalibrationRequest(summary, { micDetected: true, baseLevelDb: -28.5 }).base_level_db,
     ).toBe(-28.5);

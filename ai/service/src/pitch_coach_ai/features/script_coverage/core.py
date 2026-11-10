@@ -8,9 +8,13 @@
 - `evaluate_take`: `/takes/analyze` (장별 STT → 장별 채점 + Take 값)
 - `rescore_evaluation`: `/takes/rescore` (확인 답을 반영해 LLM 없이 다시 계산)
 
+- `evaluate_take` 는 장마다 STT 완전성(`stt_integrity`)을 정한다. 끊겨 비어 있는 장은 채점하지 않고 `STT_INCOMPLETE`,
+  평가 기준이 없는 장은 `RUBRIC_MISSING` 이며 대본 글이 있으면 간이 값(`fallback`)을 붙인다.
+  응답 맨 위 `detail` 은 `take_detail` 이 만든다 (analyze · rescore 같은 모양).
 - 요청 전체를 실패로 돌려줄 때는 `CoverageError` 를 낸다. API 가 `status_code` 와 `{"error": {code, message}}` 로 바꾼다.
 - 일부 장만 실패하면 성공한 장은 결과에, 실패한 장은 `failed` 에 담아 200 으로 돌려준다.
-  대상 장이 모두 실패하면 요청 전체 실패다 (architecture.md 4절 '장별 API').
+  대상 장이 모두 실패하면 요청 전체 실패다. 단 `/takes/analyze` 는 실패 장의 간이 값이 하나라도 있으면
+  `evaluations` 가 빈 200 이다 (architecture.md 4절 '장별 API').
 - LLM 과 캐시는 인자로 받는다. 코어는 파일 · 환경변수 · 시계를 쓰지 않는다.
 """
 
@@ -36,10 +40,18 @@ from .script_analysis.core import analyze_script as analyze_slides
 from .script_analysis.schemas import SlideScript
 from .shared.llm_step import ERROR_MESSAGES, LLM_ERROR_CODES, LLMCache
 from .shared.rubric import EvaluationRubric
+from .shared.text import normalize_script
+from .stt_evaluation.align import positioned_tokens
 from .stt_evaluation.confirm import rescore_evaluation as rescore_slide
 from .stt_evaluation.core import evaluate_take as evaluate_slides
-from .stt_evaluation.schemas import SlideEvaluation, SlideSTT, Take
+from .stt_evaluation.detail import slide_detail
+from .stt_evaluation.detail import stt_integrity as slide_integrity
+from .stt_evaluation.fallback import no_rubric_fallback
+from .stt_evaluation.normalize import normalize_stt
+from .stt_evaluation.schemas import Fallback, SlideEvaluation, SlideSTT, Take
 from .stt_evaluation.scoring import take_scores as slide_take_scores
+from .stt_evaluation.speech_mix import build_offscript, build_speech_mix, said_in_other_slides
+from .take_detail import take_detail
 from .version import FEATURE_VERSION, SCHEMA_VERSION
 
 # 에러 코드 → HTTP 상태 (기능 문서 7절). LLM 코드의 문구는 `ERROR_MESSAGES`
@@ -51,6 +63,7 @@ STATUS_CODES = {
     "RUBRIC_MISSING": 422,
     "RUBRIC_MISMATCH": 422,
     "STT_TEXT_MISSING": 422,
+    "STT_INCOMPLETE": 422,
 }
 ALL_RUBRIC_MISSING_MESSAGE = "채점할 장의 평가 기준이 없습니다."
 
@@ -85,34 +98,50 @@ class TakeLLMs:
 
     eval: Any  # SemanticEvaluation
     verifier: Any  # VerifierResult
+    offscript: Any = None  # OffscriptJudgment — 대본 밖 분류(설정 OFFSCRIPT_LLM_ENABLED 일 때만)
 
 
 def _all_failed(failed: dict[int, str]) -> CoverageError:
-    """대상 장이 모두 실패했을 때의 요청 전체 오류.
+    """대상 장이 모두 실패했고 간이 값도 없을 때의 요청 전체 오류.
 
     LLM 코드가 하나라도 있으면 그중 장 번호가 가장 작은 장의 코드 · 상태 · 고정 문구를 쓴다.
-    모두 `RUBRIC_MISSING` 일 때만 422 `RUBRIC_MISSING` 이다.
+    없으면 모두 `RUBRIC_MISSING` 일 때 422 `RUBRIC_MISSING`, 그 밖에는 장 번호가 가장 작은 장의 코드다.
+    `/takes/analyze` 는 `STT_INCOMPLETE` 장이 있으면 이 오류 대신 200 으로 낸다(`evaluate_take`).
     """
     for number in sorted(failed):
         if failed[number] in LLM_ERROR_CODES:
             return llm_error(failed[number])
-    code = "RUBRIC_MISSING"
-    return CoverageError(STATUS_CODES[code], code, ALL_RUBRIC_MISSING_MESSAGE)
+    if all(c == "RUBRIC_MISSING" for c in failed.values()):
+        code = "RUBRIC_MISSING"
+        return CoverageError(STATUS_CODES[code], code, ALL_RUBRIC_MISSING_MESSAGE)
+    first = min(failed)
+    code = failed[first]
+    return CoverageError(STATUS_CODES[code], code, _failure_message(first, code))
 
 
 def _rubric_missing_message(slide_number: int) -> str:
     return f"{slide_number}번 장의 평가 기준이 없습니다."
 
 
-def _failures(failed: dict[int, str]) -> list[SlideFailure]:
-    """{장 번호: 에러 코드} → 장 번호 순 `failed` 목록. 문구는 코드마다 고정이고 장 번호만 들어간다."""
+def _failure_message(slide_number: int, code: str) -> str:
+    """실패 문구. `RUBRIC_MISSING` · `STT_INCOMPLETE` 는 장 번호가 앞에 붙고, LLM 코드는 고정 문구다."""
+    if code == "RUBRIC_MISSING":
+        return _rubric_missing_message(slide_number)
+    if code == "STT_INCOMPLETE":
+        return f"{slide_number}번 장: 음성 인식이 끊겨 이 장을 채점하지 않았습니다."
+    return ERROR_MESSAGES[code]
+
+
+def _failures(
+    failed: dict[int, str], fallbacks: dict[int, Fallback] | None = None
+) -> list[SlideFailure]:
+    """{장 번호: 에러 코드} → 장 번호 순 `failed` 목록. 문구는 코드마다 고정이고 장 번호만 들어간다. 간이 값을 붙인다."""
+    fallbacks = fallbacks or {}
     return [
         SlideFailure(
             slide_number=n,
-            error=ErrorBody(
-                code=c,
-                message=_rubric_missing_message(n) if c == "RUBRIC_MISSING" else ERROR_MESSAGES[c],
-            ),
+            error=ErrorBody(code=c, message=_failure_message(n, c)),
+            fallback=fallbacks.get(n),
         )
         for n, c in sorted(failed.items())
     ]
@@ -197,6 +226,8 @@ def _scoring_response(
     targets: Collection[int],
     failures: list[SlideFailure],
     model: str | None,
+    rubrics: dict[int, EvaluationRubric],
+    integrity: dict[int, str],
 ) -> EvaluationResponse:
     evaluations = sorted(evaluations, key=lambda e: e.slide_number)
     return EvaluationResponse(
@@ -205,6 +236,7 @@ def _scoring_response(
         take_scores=take_scores(evaluations, targets),
         confirmations=confirmations(evaluations),
         failed=sorted(failures, key=lambda f: f.slide_number),
+        detail=take_detail(evaluations, failures, targets, rubrics, integrity),
         meta=ScoringMeta(
             schema_version=SCHEMA_VERSION,
             feature_version=FEATURE_VERSION,
@@ -225,8 +257,13 @@ def evaluate_take(
 
     대상 장은 `slide_numbers`(없으면 `slides` 전부)다. 평가 기준이 없는 장은 채점하지 않고 `failed`
     (`RUBRIC_MISSING`)에 담되 `scored_ratio` 의 대상 장에는 들어가며, 나머지 장은 계속한다.
-    대상 장이 없으면 (`slide_numbers=[]`) `rubrics` 와 상관없이 빈 결과 200 이다. 대상이 있는데 `rubrics` 가
-    비었거나 대상 장이 모두 평가 기준이 없으면 422 `RUBRIC_MISSING` 이다. `llms` 가 None 이면
+    대상 장이 없으면 (`slide_numbers=[]`) `rubrics` 와 상관없이 빈 결과 200 이다. `rubrics` 가 비어도 장마다
+    STT 완전성을 먼저 정하고(끊겨 빈 장은 `STT_INCOMPLETE`) 나머지를 `RUBRIC_MISSING` 으로 둔다. 대상 장이 모두
+    실패하고 간이 값도 `STT_INCOMPLETE` 장도 없으면 `_all_failed` 가 오류를 고른다 (모두 `RUBRIC_MISSING` 이면 422 `RUBRIC_MISSING`).
+    STT 완전성(`stt_integrity`)이 `incomplete` 인데 STT 가 빈 장은 채점하지 않고 `failed` (`STT_INCOMPLETE`, 간이 값 없음)이다.
+    평가 기준이 없는 장은 `script` 가 있으면 간이 값(`lexical_no_rubric`)을 붙인다. 대상 장이 모두 실패해도 간이 값이
+    하나라도 있거나 `STT_INCOMPLETE` 장이 있으면 `evaluations` 가 빈 200 이고(에러 본문은 BE 가 읽지 않아 장마다
+    이유를 보일 수 있는 실패는 200 으로 낸다), 둘 다 없으면 `_all_failed` 의 오류다. `llms` 가 None 이면
     503 `LLM_UNAVAILABLE`. `meta.model` 은 LLM 출력을 쓴 채점(STT 가 빈 장이 아닌 것)이 있을 때만 모델 이름이다.
     대본 식별자 `script_name` 은 평가 기준 중 장 번호가 가장 작은 것의 `meta.script_name` 에서 가져온다.
     """
@@ -235,11 +272,23 @@ def evaluate_take(
         raise llm_error("LLM_UNAVAILABLE")
     by_slide: dict[int, EvaluationRubric] = {r.meta.slide_number: r for r in request.rubrics}
     stt = {s.slide_number: s.stt for s in request.slides}
+    info = {s.slide_number: s for s in request.slides}
     targets = sorted(set(request.slide_numbers) if request.slide_numbers is not None else set(stt))
-    if not request.rubrics and targets:
-        raise _input_error("RUBRIC_MISSING", ALL_RUBRIC_MISSING_MESSAGE)
-    failed = {n: "RUBRIC_MISSING" for n in targets if n not in by_slide}
-    ready = [n for n in targets if n in by_slide]
+    scripts = {n: (info[n].script or "") for n in targets}
+    integrity = {
+        n: slide_integrity(info[n].duration_ms, info[n].stt_gap_ms, info[n].stt_unobserved_ms)
+        for n in targets
+    }
+    failed: dict[int, str] = {}
+    fallbacks: dict[int, Fallback] = {}
+    for n in targets:
+        if integrity[n] == "incomplete" and not normalize_stt(stt[n]).text:
+            failed[n] = "STT_INCOMPLETE"  # 인식이 끊겨 빈 것을 '빠뜨림'으로 판정하지 않는다
+        elif n not in by_slide:
+            failed[n] = "RUBRIC_MISSING"
+            if scripts[n].strip():
+                fallbacks[n] = no_rubric_fallback(scripts[n], stt[n], stt_integrity=integrity[n])
+    ready = [n for n in targets if n not in failed and n in by_slide]
     evaluations: list[SlideEvaluation] = []
     if ready:
         take = Take(
@@ -249,19 +298,28 @@ def evaluate_take(
         )
         evaluations, stats = evaluate_slides(
             take,
-            {n: by_slide[n] for n in ready},
+            by_slide,  # 채점하지 않는 다른 장의 평가 기준도 '다른 장 내용'을 알아보는 데 쓴다
             eval_llm=llms.eval,
             verifier_llm=llms.verifier,
             model=model,
             cache=cache,
             max_workers=MAX_WORKERS,
+            integrity=integrity,
+            offscript_llm=llms.offscript,
         )
         failed |= stats["failed"]
-    if targets and not evaluations:
+        fallbacks |= stats.get("fallbacks", {})
+    if targets and not evaluations and not fallbacks and "STT_INCOMPLETE" not in failed.values():
         raise _all_failed(failed)
     used_llm = any(e.stt_text for e in evaluations)
     return _scoring_response(
-        request.take_id, evaluations, targets, _failures(failed), model if used_llm else None
+        request.take_id,
+        evaluations,
+        targets,
+        _failures(failed, fallbacks),
+        model if used_llm else None,
+        by_slide,
+        integrity,
     )
 
 
@@ -300,13 +358,61 @@ def rescore_evaluation(request: RescoreRequest | dict) -> EvaluationResponse:
         rescore_slide(e, answers.get(e.slide_number, {}), by_slide[e.slide_number])
         for e in evaluations
     ]
+    _rebuild_details(rescored, by_slide)
     scored = {e.slide_number for e in rescored}
     targets = scored | {f.slide_number for f in request.failed}
     failures: dict[int, SlideFailure] = {}
     for f in request.failed:  # 같은 장이 둘이면 처음 것
         if f.slide_number not in scored:
             failures.setdefault(f.slide_number, f)
-    return _scoring_response(request.take_id, rescored, targets, list(failures.values()), None)
+    integrity = {e.slide_number: e.stt_integrity or "unknown" for e in rescored}
+    return _scoring_response(
+        request.take_id,
+        rescored,
+        targets,
+        list(failures.values()),
+        None,
+        by_slide,
+        integrity,
+    )
+
+
+def _rebuild_details(
+    evaluations: list[SlideEvaluation], rubrics: dict[int, EvaluationRubric]
+) -> None:
+    """다시 계산한 채점의 장 상세를 만든다 (제자리). 말의 구성은 처음 채점의 관찰값을 그대로 둔다.
+
+    예전 채점(`detail` · `offscript` 없음)은 `stt_text` 로 대본 밖 구간 · 말의 구성을 만든다 (바로 반복한 말은 세지 않는다).
+    """
+    mixes = {}
+    for e in evaluations:
+        rubric = rubrics[e.slide_number]
+        e.stt_integrity = e.stt_integrity or "unknown"
+        old_mix = e.detail.speech_mix if e.detail is not None else None
+        if e.offscript is None or old_mix is None:
+            stt_norm = normalize_script(e.stt_text)
+            ptokens = positioned_tokens(stt_norm)
+            if e.offscript is None:
+                e.offscript = build_offscript(
+                    rubric,
+                    stt_norm,
+                    ptokens,
+                    e.alignments,
+                    {n: r for n, r in rubrics.items() if n != e.slide_number},
+                )
+            old_mix = old_mix or build_speech_mix(e.offscript, ptokens, None)
+        mixes[e.slide_number] = old_mix
+    said = said_in_other_slides(
+        {e.slide_number: (e.offscript, e.stt_sentences) for e in evaluations}, rubrics
+    )
+    for e in evaluations:
+        e.detail = slide_detail(
+            e,
+            rubrics[e.slide_number],
+            stt_integrity=e.stt_integrity,
+            speech_mix=mixes[e.slide_number],
+            said={kp: nums for (n, kp), nums in said.items() if n == e.slide_number},
+        )
 
 
 def _input_error(code: str, message: str) -> CoverageError:

@@ -43,6 +43,17 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
+function pitchBox() {
+  return host.querySelector<HTMLElement>('[role="combobox"]')!;
+}
+
+async function choosePitch(label: string) {
+  await act(async () => pitchBox().click());
+  const option = [...host.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (item) => item.textContent === label,
+  )!;
+  await act(async () => option.click());
+}
 // 비교는 피치 거르기와 떼어 엔진이 다른 Take를 같이 넣어 봅니다
 async function render(page: 'compare' | 'takes', search = '') {
   await act(async () =>
@@ -98,11 +109,7 @@ it('keeps old-engine gaze values excluded while allowing other metrics and keybo
 });
 it('filters by pitch and announces the result count without losing report destinations', async () => {
   await render('takes');
-  const select = host.querySelector('select')!;
-  await act(async () => {
-    select.value = 'p2';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await choosePitch('다른 발표');
   expect(host.querySelector('[role="status"]')?.textContent).toBe('연습 기록 1개');
   expect(host.querySelector('a[href="/takes/t1"]')?.getAttribute('aria-label')).toBe(
     '다른 발표 Take 1 리포트',
@@ -111,11 +118,11 @@ it('filters by pitch and announces the result count without losing report destin
 });
 it('opens filtered by ?pitch= and falls back to all for a pitch that is not in the list', async () => {
   await render('takes', '?pitch=p2');
-  expect(host.querySelector('select')?.value).toBe('p2');
+  expect(pitchBox().textContent).toBe('다른 발표');
   expect(host.querySelector('[role="status"]')?.textContent).toBe('연습 기록 1개');
   await act(async () => root.unmount());
   root = createRoot(host);
   await render('takes', '?pitch=gone');
-  expect(host.querySelector('select')?.value).toBe('');
+  expect(pitchBox().textContent).toBe('전체');
   expect(host.querySelector('[role="status"]')?.textContent).toBe('연습 기록 3개');
 });

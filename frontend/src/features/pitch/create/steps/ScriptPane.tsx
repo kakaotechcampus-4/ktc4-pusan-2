@@ -14,6 +14,7 @@ import {
 } from '../lib/draft';
 import { computeGate } from '../lib/gate';
 import { mappingEditNotice, markerHint, unsegmentedNotice } from '../lib/markerHint';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -420,14 +421,10 @@ function MappingDialog({
     >
       <header>
         <h2 id={titleId}>매핑 확인·수정</h2>
-        <button
-          type="button"
-          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
+        <CloseButton
           disabled={script.parse.status === 'pending'}
           onClick={() => ref.current?.close()}
-        >
-          닫기
-        </button>
+        />
       </header>
       <MappingEditor script={script} linked={linked} onSaved={onClose} />
     </dialog>

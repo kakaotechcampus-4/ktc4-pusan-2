@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type RefObject } from 'react';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
+import { CloseButton } from '@/shared/ui/CloseButton';
 import { useCreateStore } from './createStore';
 import type { DraftNode, SlideVersion } from './lib/draft';
 import { Pages } from './steps/SlidePane';
@@ -68,13 +69,7 @@ export function VersionPreviewDialog({
         <h2 id={titleId}>
           {labels[node]} V{version} · 자료 보기
         </h2>
-        <button
-          type="button"
-          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
-          onClick={() => ref.current?.close()}
-        >
-          닫기
-        </button>
+        <CloseButton onClick={() => ref.current?.close()} />
       </header>
       <p className="text-sm">확인용 창이에요. 현재 작성 중인 자료와 연습할 버전은 바뀌지 않아요.</p>
       {node === 'slides' && slide && <SlidePreview slide={slide} />}

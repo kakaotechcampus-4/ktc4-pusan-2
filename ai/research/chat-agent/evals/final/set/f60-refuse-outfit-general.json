@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-refuse-outfit-general",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should",
+  "title": "자료에 없을 발표 준비 질문(옷차림) — 거절하지 않고 자료 찾기 뒤 일반 조언 안내 문장 + GENERAL",
+  "expect_refusal": false,
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-cer",
+        "title": "졸업식 축사",
+        "takes": [
+          {
+            "take_id": "cer-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-cer"
+    }
+  },
+  "turns": [
+    {
+      "message": "발표 날 정장을 입는 게 나을지, 깔끔한 캐주얼이 나을지 고민돼요.",
+      "page_take_id": "cer-t1"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "general-intro",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.GENERAL_INTRO",
+        "grader": "template",
+        "metric": "advice"
+      },
+      {
+        "check_id": "search-before-general",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:search_guides:*",
+          "claim:GENERAL"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "general-no-number",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "\\d",
+        "grader": "regex",
+        "path": "advice_text",
+        "note": "GENERAL 금지 목록: 숫자 없음(6-9)"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  },
+  "notes": "발표법 카드는 전달 방식만 다루므로 옷차림 자료는 없다고 본다(REVIEW.md 열린 질문)."
+}

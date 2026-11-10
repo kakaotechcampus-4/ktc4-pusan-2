@@ -6,24 +6,30 @@ import { Badge } from '@/ui/Badge';
 import { ScriptModeChoice, type ScriptMode } from '@/ui/ScriptModeChoice';
 import { PITCH, type Navigate } from './shared';
 
-/** 상태별 점검 결과. 제품은 카메라 · 마이크 · 시선 기준이 모두 돼야 시작한다(DeviceCheckPage `ready`) */
+/**
+ * 상태별 점검 결과. 제품은 카메라 · 마이크 · 시선 기준 · 기준 목소리가 모두 돼야 시작한다(DeviceCheckPage `ready`).
+ * 기준 목소리는 이번에 재거나, 같은 환경에서 직전 값을 다시 쓰거나, 탈출구로 정한다(#1179)
+ */
 function prepareChecks(stateId: string) {
   const camera = stateId !== 'no-camera';
   const mic = camera && stateId !== 'mic-error';
   const gaze = stateId === 'default';
+  const voice = stateId === 'default' || stateId === 'voice-done';
   // 안내 줄은 막고 있는 것 하나만, 제품 deviceCheckHint의 순서대로
-  let hint = '점검이 끝났어요. 평소 목소리를 재 두면 작게 말할 때 더 정확히 알려 드려요 (선택)';
+  let hint = '점검이 끝났어요';
   if (!camera) hint = '카메라를 켜야 점검을 시작할 수 있습니다';
   else if (!mic) hint = '마이크에 대고 한 마디 해보세요';
   else if (!gaze) hint = '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
-  return { camera, mic, gaze, hint, ready: camera && mic && gaze };
+  else if (!voice)
+    hint = '기준 목소리를 재야 연습을 시작할 수 있어요. 발표할 때와 같은 자리에서 읽어 주세요';
+  return { camera, mic, gaze, voice, hint, ready: camera && mic && gaze && voice };
 }
 
 export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [mode, setMode] = useState<ScriptMode>('HIGHLIGHT');
   const check = prepareChecks(stateId);
   const exam = mode === 'OFF';
-  const done = [check.camera, check.mic, check.gaze].filter(Boolean).length;
+  const done = [check.camera, check.mic, check.gaze, check.voice].filter(Boolean).length;
   let gazeAction = '누르면 시작';
   if (check.gaze) gazeAction = '다시 잡기';
   else if (!check.camera) gazeAction = '카메라 먼저';
@@ -68,7 +74,7 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
               </div>
               <Card
                 title="점검 항목"
-                action={<span className="tabular font-mono text-xs text-ink/80">{done} / 3</span>}
+                action={<span className="tabular font-mono text-xs text-ink/80">{done} / 4</span>}
               >
                 <ul className="flex flex-col gap-2">
                   <CheckRow
@@ -91,10 +97,13 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
                     }
                   />
                   <CheckRow
-                    done={false}
-                    optional
-                    label="평소 목소리 · 문단 읽기"
-                    action="누르고 읽기"
+                    done={check.voice}
+                    label={
+                      check.voice
+                        ? '기준 목소리 · 확인됨'
+                        : '기준 목소리 · 발표할 때 자리에서 문단 읽기'
+                    }
+                    action={check.voice ? '다시 읽기' : '목소리 재기'}
                   />
                 </ul>
               </Card>

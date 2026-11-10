@@ -49,7 +49,9 @@ def test_duplicate_job_does_not_discard_the_first_valid_result(db_session, user_
                 entered.set()
                 await answer.wait()
                 return coverage(take.id)
-            raise CoverageCallError("synthetic failure", retryable=False)
+            raise CoverageCallError(
+                "synthetic failure", retryable=False, failure_code="AI_REJECTED"
+            )
 
         monkeypatch.setattr(coverage_service, "request_analyze", respond)
         first = asyncio.create_task(coverage_service.analyze_script_coverage(take.id))
@@ -82,6 +84,9 @@ def test_taken_over_job_cannot_save_fail_or_move_the_stage(db_session, user_id):
     }
 
     assert not coverage_service._mark_retry_used(db_session, take.id, old, "coverage_retry_used")
+    assert not coverage_service._record_analyze_failure(
+        db_session, take.id, old, "AI_TIMEOUT", True
+    )
     assert coverage_service._save_confirmed(db_session, take.id, old, reply) is None
     assert not coverage_service._save_candidate(db_session, take.id, old, candidate)
     assert not coverage_service._apply_merged(db_session, take.id, old, 0, reply)
@@ -94,6 +99,7 @@ def test_taken_over_job_cannot_save_fail_or_move_the_stage(db_session, user_id):
         None,
         False,
     )
+    assert take.coverage_failure_code is None
     assert take.coverage_requested_at == new
     assert TakeRepository(db_session).get_ai_result(take.id, "SCRIPT_COVERAGE") is None
     # 이어받은 작업은 그대로 쓴다

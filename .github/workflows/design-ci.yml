@@ -11,6 +11,13 @@ on:
       - 'docs/fe/design/**'
       - '.github/workflows/design-ci.yml'
 
+# 같은 PR 에 새로 푸시하면 아직 돌거나 기다리는 이전 실행을 취소합니다 (#1205).
+# frontend-ci.yml 과 같은 방식입니다. push 는 실행마다 다른 그룹(run_id)이라 서로 기다리거나 취소되지 않습니다.
+# Pages 배포가 한 번에 하나만 도는 건 아래 deploy job 의 design-pages 그룹이 따로 맡습니다.
+concurrency:
+  group: design-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   design:
     runs-on: ubuntu-latest

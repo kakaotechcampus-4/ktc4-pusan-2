@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "id": "path-norec-name-filter",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "이름으로 찾은 발표가 없음(다른 피치는 있음) — 발표를 찾을 수 없다고만 하고 '피치가 없다'로 넓히지 않는다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      },
+      {
+        "pitch_id": "p-2",
+        "title": "투자 설명회",
+        "takes": [
+          {
+            "take_number": 1,
+            "take_id": "t-21"
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "'창업 경진대회' 발표 기록 보여 줘"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "search-then-answer",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:list_pitches:*",
+          "claim:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "not-found-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.PITCH_NOT_FOUND",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-overgeneralize",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "피치가 없|발표가 없|발표한 적이 없",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-generic-partial",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

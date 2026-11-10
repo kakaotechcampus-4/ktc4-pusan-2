@@ -94,7 +94,8 @@ WS /api/ws/takes/{take_id}
   보내기 전에는 남은 interim 을 버리고 보내는 중인 것을 끝낸다 — 옛 interim 이 같은 `segment_id` 로 확정 자막을
   덮지 않게.
 - **`metrics` 는 `take_metric_seconds` 에 1초 원자료로 저장한다** (`realtime/storage/metrics.py`). Take 결과를
-  다시 만들 때(`/coach/finalize` 의 `replay`) 읽는다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
+  다시 만들 때(`/coach/finalize` 의 `replay`) 읽고, Take 결과를 저장할 때 STT 끊김 구간(`takes.stt_gap_ranges`)을
+  만든다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
   STT 상태(`stt_status`)를 같이 남긴다. 5개가 모이면 한 번에 넣고, 연결이 끊기거나 스트림이 닫히면 남은 것을
   넣는다. FE 는 끊긴 동안 쌓아 둔 것을 다시 붙은 뒤 보내므로 같은 1초가 또 온다 — `(take_id, t_ms)` 로 먼저
   저장한 것을 둔다. 저장에 실패하면 10분 치까지 들고 있다가 다시 넣는다. 잘못된 `metrics` 는 `BAD_MESSAGE` 다.

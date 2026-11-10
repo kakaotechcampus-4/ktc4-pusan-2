@@ -54,6 +54,8 @@ from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
     SlideUnits,
 )
 from pitch_coach_ai.features.script_coverage.shared.kiwi import get_kiwi
+from pitch_coach_ai.features.script_coverage.stt_evaluation import config as stt_config
+from pitch_coach_ai.features.script_coverage.stt_evaluation.offscript import OffscriptJudgment
 from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
     SemanticEvaluation,
     VerifierResult,
@@ -84,6 +86,8 @@ TAKE_ROLES: dict[str, tuple[str, type[BaseModel]]] = {
     "eval": ("script_coverage.eval", SemanticEvaluation),
     "verifier": ("script_coverage.verifier", VerifierResult),
 }
+
+OFFSCRIPT_ROLE: tuple[str, type[BaseModel]] = ("script_coverage.offscript", OffscriptJudgment)
 
 #: (스키마, 역할, 마감, 설정) → `.invoke` 를 가진 LLM 객체. 테스트가 가짜 LLM 으로 바꾼다
 LlmFactory = Callable[[type[BaseModel], str, float, Settings], Any]
@@ -216,7 +220,10 @@ def analyze(
         "targets": _targets(req.slide_numbers, numbers),
         "chars": _chars(req),
     }
-    llms = _build_llms(TAKE_ROLES, factory, s)
+    roles = dict(TAKE_ROLES)
+    if stt_config.OFFSCRIPT_LLM_ENABLED:  # 대본 밖 분류는 설정을 켰을 때만
+        roles["offscript"] = OFFSCRIPT_ROLE
+    llms = _build_llms(roles, factory, s)
     try:
         res = evaluate_take(
             req,

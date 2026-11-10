@@ -24,7 +24,13 @@ export const PRODUCT_CHECKED: {
 } = {
   commit: '0bf5dbb1e1421b825ee88b706e49fd436fd045e7',
   date: '2026-11-09',
-  pending: [],
+  pending: [
+    {
+      pr: 1199,
+      head: 'a616b7f7',
+      what: '로그인 화면의 Chrome 안내 창, 터치 기기 판별을 shared/lib/browserCheck.ts 로 옮김',
+    },
+  ],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -153,7 +159,7 @@ const productScreens: GuideScreen[] = [
       '확인 창은 제목 · 되돌릴 수 없음 · 함께 지워지는 것(Take 기록 N개와 리포트, 발표 자료 · 대본 · 평가 기준)을 적는다. 버튼은 취소 · 삭제, 처음 초점은 취소다.',
       '지우는 동안 두 버튼을 aria-disabled로 막고 Esc도 막는다. 두 번 눌러도 요청은 한 번이다. 실패하면 창과 줄을 그대로 두고 알린다(role="alert").',
       '취소하면 ···로 초점을 돌려준다. 지우면 그 줄을 빼고, 같은 자리에 온 다음 줄(마지막 줄이었으면 윗줄)의 제목, 줄이 없으면 "내 피치" 제목으로 초점을 옮기고 화면 낭독기에 지웠다고 알린다.',
-      '홈 푸터는 TIP · 사용방법 살펴보기 · 브랜드 슬로건 · 이용약관 · 개인정보 처리방침을 배치한다. 좁은 화면에서는 TIP 문장 전체를 버튼 아래에 줄바꿈해 표시하고, 넓은 화면에서는 한 행에 배치한다. 영문 슬로건은 2xl 이상에서만 표시한다. 실제 채팅 런처가 있을 때만 좁은 화면의 푸터 왼쪽 여백을 확보한다. TIP에는 채팅 에이전트에서 지난 Take 기록이나 발표 방법을 물어보는 안내를 포함한다. TIP은 8초 간격으로 바뀌며 일시정지·재개할 수 있고, 자동 전환 문구에는 aria-live를 걸지 않는다. 움직임 감소 설정은 처음뿐 아니라 실행 중 변경도 반영한다.',
+      '홈 푸터는 TIP · 사용방법 살펴보기 · 브랜드 슬로건 · 이용약관 · 개인정보 처리방침을 배치한다. 좁은 화면에서는 TIP 문장 전체를 버튼 아래에 줄바꿈해 표시하고, 넓은 화면에서는 한 행에 배치한다. 영문 슬로건은 2xl 이상에서만 표시한다. 실제 채팅 런처가 있을 때만 좁은 화면의 푸터 오른쪽 여백을 확보한다. TIP에는 채팅 에이전트에서 지난 Take 기록이나 발표 방법을 물어보는 안내를 포함한다. TIP은 8초 간격으로 바뀌며 일시정지·재개할 수 있고, 자동 전환 문구에는 aria-live를 걸지 않는다. 움직임 감소 설정은 처음뿐 아니라 실행 중 변경도 반영한다.',
     ],
     components: [
       'HomePitchCard',
@@ -329,10 +335,10 @@ const productScreens: GuideScreen[] = [
     rules: [
       '위에 공용 상단바(AppHeader)가 얹히고, 그 아래 본문은 자체 틀(ScreenFrame)을 쓴다(#694). 상단바 높이(약 85px)를 빼고도 폭 1024px 이상 · 높이 606px 이상에서 페이지 스크롤 없이 시작 버튼까지 보이도록, 높이 749px 이하에서는 여백을 줄이고(compact) 659px 이하에서는 점검 행 · 미션 칸 · 카메라 열 폭(640px)까지 줄인다(low). 내용은 가운데 정렬 그대로다(왼쪽 위로 옮길지는 #706에서 정한다).',
       'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
-      '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
-      '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중(다른 곳의 연습을 끝낼지 묻는 동안은 그 안내) → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
+      '카메라 영상 · 마이크 입력 · 시선 기준 · 기준 목소리가 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
+      '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중(다른 곳의 연습을 끝낼지 묻는 동안은 그 안내) → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 기준 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준 목소리 없음(같은 환경 기준이 있으면 그대로 쓰기 · 다시 재기 안내) → 기준이 흐릿함(막지 않고 권하기만) → "점검이 끝났어요"다.',
       '안내 줄 아래에는 "말이 없는 상태가 2분 넘게 이어지면 연습이 자동으로 끝날 수 있어요. 발표 목표 시간과는 상관없어요."를 늘 둔다(#925). 서버는 최근 2분 무발화와 최근 5분 중 80% 이상 무발화를 모두 볼 때 끝내므로 "끝날 수 있어요"로 쓴다. 바뀌지 않는 말이라 안내 줄의 알림 영역(role="status") 밖이다. 2분은 서버가 미리 알려 주지 않아 제품 `shared/lib/autoEnd.ts`에 두고 BE `take_silence_end_sec`과 맞춘다.',
-      '평소 목소리 읽기는 선택이라 시작을 막지 않는다.',
+      '기준 목소리는 시작 조건이다(#1179). 이번에 재거나, 같은 탭 · 같은 마이크 · 자동 음량 조절 꺼짐 · 처음 잰 지 30분 안이면 직전 값을 그대로 쓰거나, 읽기에 두 번 실패하면 "발표 처음 목소리를 기준으로 시작하기"(탈출구)로 정한다. 그대로 쓰기는 시작을 누를 때 한 번 더 확인한다. 읽기 안내는 발표할 때와 같은 자리 · 거리 · 목소리로 읽고 잰 뒤 노트북을 옮기지 않게 한다.',
       '미션 전문 창에서 첫 미션과 마지막 미션에 도달하면 해당 탐색 버튼의 동작을 막고 초점은 유지한다.',
       '다른 창 · 기기에서 발표 중인 Take가 있으면 시작을 누를 때 그 연습을 끝내고 시작할지 묻는다. 끝내지 못하면 시작하지 않는다. 그 창을 닫으면(취소 · Esc · 끝내기 실패) 초점을 시작 버튼으로 돌린다 — 창이 열린 동안 시작 버튼이 막혀 있어 브라우저가 돌려주지 못하기 때문이다. 시작을 누른 뒤에는 대본 표시 · 장치 선택을 잠근다.',
       '"실전 모드 · 대본 없이"를 고르면 버튼이 "실전 모드로 시작"으로 바뀌고 실전 무대로 간다.',
@@ -357,7 +363,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/prepare/prepareStore.ts',
     ],
     productNote:
-      '카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 그리지 않고 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다. 안내 줄은 카메라 · 마이크 · 시선 기준 세 갈래만 그린다(제품 순서는 동작 규칙). 다른 곳의 연습을 끝낼지 묻는 창은 그리지 않는다. 시작 조건은 제품과 같다.',
+      '카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 기준 목소리 읽기 패널 · 그대로 쓰기 · 탈출구는 그리지 않고 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다. 안내 줄은 카메라 · 마이크 · 시선 기준 · 기준 목소리 네 갈래만 그린다(제품 순서는 동작 규칙). 다른 곳의 연습을 끝낼지 묻는 창은 그리지 않는다. 시작 조건은 제품과 같다.',
     productLinks: [link('시작 전 세팅', '/pitch/p1/device-check')],
     next: [
       next('Take 시작 → 리허설', 'stage'),
@@ -391,13 +397,13 @@ const productScreens: GuideScreen[] = [
       ),
       state(
         'voice-reading',
-        '평소 목소리 읽는 중',
+        '기준 목소리 읽는 중',
         '시안: 실제 측정 없이 문단·예시 음량·다 읽었어요 버튼을 표시한다.',
       ),
       state(
         'voice-done',
-        '평소 목소리 완료',
-        '시안: 선택 단계 완료 안내와 미션 전문 접근을 유지한다.',
+        '기준 목소리 완료',
+        '시안: 기준 목소리 완료 안내와 미션 전문 접근을 유지한다.',
       ),
       state(
         'starting',
@@ -504,7 +510,7 @@ const productScreens: GuideScreen[] = [
     ],
     rules: [
       '끝내기("발표 끝내기")는 마지막 장에서만 열린다. 마지막 장이 아니면 막히고 버튼 바로 옆에 "마지막 장에서 끝낼 수 있어요"를 글자로 둔다(버튼의 aria-describedby). 막힌 버튼은 초점을 받지 못하고 title 툴팁도 잘 보이지 않아서다. 장 수를 모르면(0) 막지 않는다. 중간 종료는 없다 — BE가 중간 종료를 구분하지 않아 일부만 한 발표도 점수가 남기 때문이다.',
-      '슬라이드는 ← → · Space로 넘긴다.',
+      '슬라이드는 ← → · Space로 넘긴다. 마우스로는 슬라이드 좌클릭이 다음 장, 우클릭이 이전 장(파워포인트와 같음)이고 다음 장 썸네일 클릭도 다음 장이다. 모두 키보드와 같은 장 넘김 기록으로 남는다. 화면에 이동 버튼을 따로 두지 않는 대신 조작 안내 줄에 클릭 · 우클릭을 적는다(Take별 설문 피드백).',
       '한 번 누르면 "정말 끝낼까요?"로 바뀌고 4초 안에 다시 눌러야 끝난다. 장이 바뀌면 확인이 풀린다 — 이전 장에 갔다가 4초 안에 돌아와도 처음부터 다시 묻는다. 화면을 덮는 창은 띄우지 않는다.',
       '시작 뒤 말하기 분석 연결이 끊겨도 시계와 발표는 계속된다. 시작 전에 다른 곳에서 발표 중이라 연결이 거절되면 연결 실패 대신 그 이유를 알린다.',
       '이 Take를 다른 창에서 하고 있으면 무대를 열지 않고 "다른 창에서 연습 중"을, 창이 닫혀 끝났으면 "연습 중단"을 안내한다. 다른 곳에서 새 연습을 시작해 끝났으면 새 Take를 권하지 않는다.',
@@ -517,6 +523,7 @@ const productScreens: GuideScreen[] = [
     tokens: ['stage', 'stage-panel', 'ink-stage', 'gaze-audience', 'script-highlight'],
     sources: [
       'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
+      'frontend/src/features/rehearsal/stage/SlideClickArea.tsx',
       'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
       'frontend/src/features/rehearsal/stage/CoachStrip.tsx',
       'frontend/src/features/rehearsal/stage/stage.css',
@@ -661,7 +668,8 @@ const productScreens: GuideScreen[] = [
     group: screenGroup.results,
     route: '/takes/:takeId',
     status: '제품에 있음',
-    summary: '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 다음 미션을 보여 준다.',
+    summary:
+      '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 내용 전달 · 다음 미션을 보여 준다.',
     states: [
       base,
       state('loading', '불러오는 중', '연습 기록을 불러오는 동안 안내한다.'),
@@ -673,29 +681,57 @@ const productScreens: GuideScreen[] = [
         '설문 보냄',
         '이 리포트의 설문을 냈다. 아래 줄에 버튼 대신 보냈다는 문장만 둔다.',
       ),
+      state(
+        'content-open',
+        '내용 전달 · 장 펼침',
+        '장별 목록의 3장을 펼쳤다. 대본 문장 판정 · 내가 말한 문장의 대본 밖 구간 · 핵심 수치를 보인다.',
+      ),
+      state(
+        'content-estimated',
+        '내용 전달 · 간이 장만',
+        '채점된 장 없이 간이 장만 있다. 전달률 숫자 대신 간이 단계를 모아 보인다.',
+      ),
+      state(
+        'content-none',
+        '내용 전달 · 미제공',
+        '대본 전달도 상세가 아직 없다(BE 배포 전 응답). 숫자 없이 안내만 둔다.',
+      ),
+      state('content-analyzing', '내용 전달 · 분석 중', '대본 전달도를 분석하고 있다.'),
     ],
     rules: [
       '점수(score)는 보여 주지 않는다. 요약과 지난 Take와의 변화를 먼저 보여 준다.',
+      '지난 Take 비교에서 발표 전체 전용 지표는 이전 · 이번 값과 개선 판정을 한 박스에 넣는다. 개선된 슬라이드 또는 개선 판정의 발표 전체 박스만 코랄로 강조한다. 악화·변화 없음·판단 불가는 중립색과 문구로 구분한다.',
       '리뷰가 없거나 실패해도 측정값은 먼저 보여 준다.',
       '측정하지 않은 값은 —로 두어 측정된 0과 구별한다.',
       '"Take N 연습하기"는 시작 전 세팅으로 이동만 한다. 여기서 Take를 만들지 않는다.',
       '분석 실패 · 리뷰 보류 Take는 분석 대기 화면으로 보낸다.',
       '아래 줄에 "이번 분석 설문 남기기"를 둔다(#776). 분석이 끝난 리포트에만 두고, 설문 상태를 못 받으면 버튼을 두지 않아 리포트를 막지 않는다. 리포트마다 한 번 보낸다. 보내면 완료 안내로 초점이 옮겨 간다.',
+      '내용 전달 카드는 측정값 다음에 둔다(#1154). 대표 숫자는 핵심 내용 전달률이고, 다르게 말한 몫은 따로 보인다. 리뷰 비교의 기존 점수는 "핵심 내용 점수(기존 방식)"로 이름을 나눈다.',
+      '내용 전달의 비율은 null을 0%로 바꾸지 않고 —와 이유를 보인다. 간이 · 추정 값은 배지로 구분하고, 막대는 글자 범례와 %를 함께 둔다.',
+      '지난 Take 대비는 평가 기능 버전이 같고 양쪽 전달률이 숫자일 때만 보인다.',
+      '장별 목록은 "장별 보기 (N장)"로 접어 두어 장이 많아도 카드가 길어지지 않게 한다. 열어서 줄을 누르면 그 장을 펼치고, 그때만 장별 상세를 부른다. 결과가 바뀌었다는 응답(409)이면 리포트를 다시 읽고 새 판으로 다시 부른다.',
     ],
     components: ['Card', 'Stat', 'Badge', 'ButtonLink', '설문 창'],
-    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep', 'coral-wash'],
     sources: [
       'frontend/src/features/report/ReportPage.tsx',
       'frontend/src/features/report/ReportFrame.tsx',
       'frontend/src/features/report/TakeSurvey.tsx',
+      'frontend/src/features/report/ContentCard.tsx',
+      'frontend/src/features/report/SlideCoverage.tsx',
+      'frontend/src/features/report/SpeechMixBlock.tsx',
+      'frontend/src/features/report/contentFormat.ts',
     ],
     productNote:
-      '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다. 설문은 서버에 보내지 않고, 보내기를 누르면 "설문 보냄" 상태로 간다.',
+      '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 내용 전달 · 시선 비율 · 다음 미션만 그린다. 설문은 서버에 보내지 않고, 보내기를 누르면 "설문 보냄" 상태로 간다. 내용 전달은 #1152 예시 숫자로 간추려 그린다 — 제품의 4칸 · 말의 구성 막대 대신 글자 범례만 두고, 수치 칩 · 0일 때 설명 · 측정 불가 · 실패 상태와 장 펼침의 핵심 내용 표 · 간이 장 펼침은 그리지 않는다.',
     productLinks: [
       link('Take 리포트', '/takes/t3'),
       link('AI 문장 실패', '/takes/t-fallback'),
       link('리뷰 실패', '/takes/t-review-failed'),
       link('시선 측정 제외', '/takes/t2'),
+      link('내용 전달 · 0 과 확인 대기', '/takes/t-content-zero'),
+      link('내용 전달 · 간이 장만', '/takes/t-content-estimated'),
+      link('내용 전달 · 미제공', '/takes/t-content-none'),
     ],
     next: [next('Take 3 연습하기', 'prepare-mission'), next('내 피치로', 'home')],
   },
@@ -903,6 +939,7 @@ const infoScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/info/UnsupportedPage.tsx',
       'frontend/src/features/info/unsupportedReason.ts',
+      'frontend/src/shared/lib/browserCheck.ts',
       'frontend/src/app/DesktopGate.tsx',
     ],
     productNote: '"링크 복사"는 샘플에서 클립보드를 쓰지 않고 복사 결과 문구도 띄우지 않는다.',
@@ -1022,15 +1059,68 @@ const onboardingScreens: GuideScreen[] = [
       '이미 로그인했으면 목적지(next)로 바로 보낸다. 외부 주소는 목적지로 받지 않는다.',
       '상태 줄은 role="status"로 한 줄만 보인다.',
       '정책 문서가 검토용 초안이라 "동의한 것으로 본다"고 쓰지 않고 확인만 안내한다.',
-      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳".',
+      'PC의 Google Chrome이 아니면 세션 확인이 끝난 뒤 안내 창을 띄운다. 막지 않고, 닫으면 Google 로그인 버튼으로 초점이 간다. 휴대폰 · 태블릿은 연습 화면이 열리지 않는다고 알린다. 닫은 기록은 남기지 않는다.',
+      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳". Chrome 안내 창은 다른 창처럼 해요체다.',
     ],
-    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림'],
+    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림', 'ChromeNoticeDialog'],
     tokens: ['panel', 'ink', 'cream', 'line-strong'],
-    sources: ['frontend/src/features/auth/LoginPage.tsx'],
+    sources: [
+      'frontend/src/features/auth/LoginPage.tsx',
+      'frontend/src/features/auth/ChromeNoticeDialog.tsx',
+      'frontend/src/shared/lib/browserCheck.ts',
+    ],
     productNote:
-      '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내는 그리지 않는다.',
+      '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내와 Chrome 안내 창은 그리지 않는다.',
     productLinks: [link('로그인', '/login')],
-    next: [next('로그인 → 홈', 'home'), next('서비스 소개', 'welcome')],
+    next: [
+      next('로그인 → 개인정보 처리 동의(처음 한 번)', 'privacy-consent'),
+      next('이미 동의함 → 홈', 'home'),
+      next('서비스 소개', 'welcome'),
+    ],
+  },
+  {
+    kind: 'screen',
+    id: 'privacy-consent',
+    title: '개인정보 처리 동의',
+    group: onboardingGroup,
+    route: '로그인이 필요한 모든 주소',
+    status: '제품에 있음',
+    summary:
+      '로그인한 뒤 동의 전이면 가려던 화면 위에 동의 창(모달)을 띄운다. 동의해야만 닫히고, 같은 주소에서 그 화면을 쓴다.',
+    states: [
+      state(
+        'default',
+        '기본',
+        '데이터 활용 안내와 "동의하고 시작하기" · "동의하지 않고 로그아웃".',
+      ),
+      state('signing-out', '로그아웃 중', '로그아웃 버튼을 막고 "로그아웃 중…"으로 바꾼다.'),
+      state('sign-out-failed', '로그아웃 실패', 'role="alert"로 다시 시도하라고 알린다.'),
+    ],
+    rules: [
+      '로그인 확인(RequireSession) 다음, 화면보다 앞에 걸린다. 공개 화면(/welcome · /login · /about · /privacy · /terms 등)에는 걸리지 않는다.',
+      '주소를 옮기지 않는다. 딥링크 · next 로 들어와도 그 화면 위에 창이 뜬다.',
+      '창은 Esc · 닫기 버튼으로 닫히지 않는다. 뒤 화면은 모달이라 누를 수 없다.',
+      '카메라 · 마이크를 켜는 연습 화면(장치 점검 · 리허설 · 실전)은 동의 전에는 뒤에 그리지 않는다(holdUntilConsent).',
+      '동의 전에는 새미나이 런처를 띄우지 않는다.',
+      '동의는 사용자별 · 안내문 버전별로 이 브라우저(localStorage)에 남는다(BE 미구현). 다른 계정 · 다른 브라우저 · 버전을 올린 뒤에는 다시 묻는다.',
+      '창을 열면 초점은 창 제목에, 동의하면 뒤 화면의 첫 제목(h1)으로 옮긴다. 로그아웃 중에는 aria-disabled 로 막아 초점이 창 밖으로 빠지지 않게 한다.',
+      '개인정보 처리방침 링크는 새 탭으로 연다.',
+    ],
+    components: ['PrivacyConsentDialog', 'Button(primary · quiet)', 'dl(안내 항목)'],
+    tokens: ['panel', 'ink', 'cream', 'line-strong'],
+    sources: [
+      'frontend/src/features/auth/PrivacyConsentDialog.tsx',
+      'frontend/src/features/auth/session.tsx',
+      'frontend/src/shared/lib/privacyConsent.ts',
+    ],
+    productNote:
+      '뒤 화면은 홈 샘플로 고정한다(제품은 가려던 화면). "동의하고 시작하기"는 홈 샘플로, "동의하지 않고 로그아웃"은 서비스 소개로 간다(제품은 로그아웃하면 로그인 확인이 보낸다). 개인정보 처리방침 링크는 새 탭 대신 설계서의 정책 화면으로 간다.',
+    productLinks: [link('동의 화면(동의 전 로그인 사용자)', '/')],
+    next: [
+      next('동의하고 시작하기 → 가려던 화면(홈)', 'home'),
+      next('동의하지 않고 로그아웃', 'welcome'),
+      next('개인정보 처리방침', 'privacy'),
+    ],
   },
 ];
 

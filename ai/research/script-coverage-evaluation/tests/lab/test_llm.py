@@ -57,4 +57,4 @@ def test_llm_builders_return_schema_bound_runnables():
     script = lab_llm.script_llms(settings)
     assert (type(script), set(vars(script))) == (ScriptLLMs, {"semantic", "final", "unit"})
     take = lab_llm.stt_llms(settings)
-    assert (type(take), set(vars(take))) == (TakeLLMs, {"eval", "verifier"})
+    assert (type(take), set(vars(take))) == (TakeLLMs, {"eval", "verifier", "offscript"})
