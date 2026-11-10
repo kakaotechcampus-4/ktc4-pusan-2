@@ -21,7 +21,10 @@ test('피치를 고르면 주소가 바뀌고 목록 안 여백과 바깥 클릭
   expect(listBox).not.toBeNull();
   const paddingPoint = { x: listBox!.x + 12, y: listBox!.y + 4 };
   expect(
-    await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute('role'), paddingPoint),
+    await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.getAttribute('role'),
+      paddingPoint,
+    ),
   ).toBe('listbox');
 
   await page.mouse.click(paddingPoint.x, paddingPoint.y);
