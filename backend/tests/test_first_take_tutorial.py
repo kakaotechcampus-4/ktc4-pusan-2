@@ -395,6 +395,21 @@ def test_sample_is_not_made_again_after_the_tutorial_report(
     assert uploads == uploaded
 
 
+def test_me_tells_whether_the_tutorial_report_was_received(
+    client: TestClient,
+    db_session: Session,
+    committed_user: uuid.UUID,
+    auth_headers: dict[str, str],
+) -> None:
+    assert client.get("/api/users/me", headers=auth_headers).json()["tutorial_report_at"] is None
+
+    _mark_report(db_session, committed_user)
+
+    received = client.get("/api/users/me", headers=auth_headers).json()["tutorial_report_at"]
+    assert received is not None
+    assert datetime.fromisoformat(received) <= datetime.now(UTC)
+
+
 def test_normal_pitch_is_not_limited_by_the_tutorial_report(
     client: TestClient,
     db_session: Session,
