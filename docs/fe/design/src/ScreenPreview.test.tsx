@@ -484,6 +484,23 @@ it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검
   expect(host.textContent).toContain('점검 항목');
 });
 
+it('튜토리얼 준비 중 버튼은 초점을 유지하고 장치 점검으로 이동하지 않는다', async () => {
+  await render('tutorial', 'pending');
+  const start = button('샘플 준비 중…')!;
+  expect(start.getAttribute('aria-disabled')).toBe('true');
+  await act(async () => start.focus());
+  await act(async () => start.click());
+  expect(document.activeElement).toBe(start);
+  expect(host.textContent).toContain('샘플 발표를 준비하고 있습니다.');
+});
+
+it('기준 목소리가 빠진 상태에서는 제품 점검의 시작을 차단한다', async () => {
+  await render('prepare-mission', 'voice-required');
+  expect(host.textContent).toContain('3 / 4');
+  expect(host.textContent).toContain('기준 목소리를 재야 연습을 시작할 수 있어요.');
+  expect(button('Take 3 시작하기')?.disabled).toBe(true);
+});
+
 it('제품 점검 화면과 배치 시안은 기준 목소리를 네 번째 필수 항목으로 안내한다', async () => {
   await render('prepare-mission');
   expect(host.textContent).toContain('4 / 4');
