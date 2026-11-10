@@ -35,7 +35,7 @@
 | 리허설 | `/takes/:takeId/rehearsal`(코칭) · `/takes/:takeId/exam`(실전) |
 
 - `/pitch/:pitchId/prepare`는 장치 점검으로 넘기는 옛 주소입니다(`prepare/PrepareRedirect.tsx`).
-- 장치 점검 · 리허설 · 실전은 휴대폰 · 태블릿에서 열지 않고 `/unsupported`로 보냅니다(`app/routes.tsx`의 `practicePaths`를 `DesktopGate`가 감쌈, #710). 분석 대기 · 재시도는 휴대폰에서도 열립니다.
+- 튜토리얼 진입(`/pitch/tutorial`) · 장치 점검 · 리허설 · 실전은 휴대폰 · 태블릿에서 열지 않고 `/unsupported`로 보냅니다(`app/routes.tsx`의 `practicePaths`를 `DesktopGate`가 감쌈, #710). 분석 대기 · 재시도는 휴대폰에서도 열립니다.
 
 지켜야 할 결정(시선 3값 · 1초 주기 · 시간 필드 규칙 · 끊겨도 발표는 계속 등)은 [frontend/AGENTS.md](../../../frontend/AGENTS.md) 1~9번이 기준입니다.
 
