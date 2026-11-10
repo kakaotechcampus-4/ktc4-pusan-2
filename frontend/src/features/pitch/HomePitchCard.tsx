@@ -25,7 +25,7 @@ export function HomePitchCard({
   // 아니게 되고, 시간을 바꾸면 BE 가 코칭 계획을 다시 만들려고 AI 를 부릅니다. 연습은 튜토리얼 화면에서
   // 시작합니다 — 리포트를 이미 받았는지 거기서 알려 줍니다
   const demo = pitch.is_demo;
-  const prepareTo = demo ? '/pitch/tutorial' : `/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`;
+  const editTo = `/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`;
   return (
     <li data-pitch-id={pitch.pitch_id} className="flex items-center gap-4 px-4 py-2 sm:px-5">
       <div
@@ -55,10 +55,7 @@ export function HomePitchCard({
         )}
         {!demo &&
           (pitch.pitch_id ? (
-            <Link
-              to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
-              className={`${titleStyle} hover:text-coral-deep`}
-            >
+            <Link to={editTo} className={`${titleStyle} hover:text-coral-deep`}>
               <span className="truncate">{pitch.pitch_title}</span>
               <span aria-hidden="true" className="text-xs">
                 ↗
@@ -90,7 +87,7 @@ export function HomePitchCard({
       </span>
       {pitch.pitch_id && (
         <ButtonLink
-          to={prepareTo}
+          to={demo ? '/pitch/tutorial' : editTo}
           aria-label={`${pitch.pitch_title} 발표 준비`}
           size="sm"
           className="shrink-0 border-transparent! shadow-none! outline-1 outline-ink"

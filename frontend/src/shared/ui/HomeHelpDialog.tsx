@@ -1,5 +1,5 @@
-import { Link } from 'react-router';
 import { useEffect, useId, useRef } from 'react';
+import { ButtonLink } from './Button';
 
 const steps = [
   [
@@ -74,13 +74,15 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
         <div className="mt-8 border-2 border-ink bg-coral-wash p-4">
           <p className="font-bold">직접 연습하며 익히고 싶나요?</p>
           <p className="mt-2 text-sm leading-7">준비된 PDF와 대본으로 첫 미션을 진행해 보세요.</p>
-          <Link
+          <ButtonLink
             to="/pitch/tutorial"
             onClick={() => dialogRef.current?.close()}
-            className="mt-3 inline-flex border border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream"
+            variant="secondary"
+            size="sm"
+            className="mt-3"
           >
             샘플로 연습하기 →
-          </Link>
+          </ButtonLink>
         </div>
         <p className="mt-8 border border-line-strong bg-cream p-4 text-sm leading-7">
           데스크톱 Chrome 또는 Edge에서 연습하는 것을 권장해요. 도움말을 닫으면 보던 목록에서 이어갈

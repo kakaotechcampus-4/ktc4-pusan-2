@@ -204,8 +204,10 @@ export const handlers = [
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
     HttpResponse.json(sampleScript),
   ),
-  // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
+  // 튜토리얼 샘플 피치 목(#931) — 수정 화면 목보다 먼저 와야 합니다. 그쪽은 모르는 피치에 404 를 줍니다.
+  // 샘플이 아닌 피치는 아무것도 하지 않고 뒤로 넘깁니다
   ...firstTakeHandlers,
+  // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
   ...pitchEditHandlers,
   ...homeHandlers,
   ...takeHistoryHandlers,
