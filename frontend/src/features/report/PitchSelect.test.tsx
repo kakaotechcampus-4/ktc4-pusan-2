@@ -230,8 +230,7 @@ it('아래 공간이 좁고 위가 넓으면 목록을 위로 펼친다', async 
   await render();
   const trigger = box();
   const originalRect = trigger.getBoundingClientRect;
-  trigger.getBoundingClientRect = () =>
-    ({ top: 400, bottom: 440 } as DOMRect);
+  trigger.getBoundingClientRect = () => ({ top: 600, bottom: 640 }) as DOMRect;
   const originalHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
@@ -246,7 +245,10 @@ it('아래 공간이 좁고 위가 넓으면 목록을 위로 펼친다', async 
     expect(list.classList.contains('top-full')).toBe(false);
   } finally {
     trigger.getBoundingClientRect = originalRect;
-    if (originalHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalHeight);
-    else delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+    if (originalHeight) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalHeight);
+    } else {
+      delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+    }
   }
 });
