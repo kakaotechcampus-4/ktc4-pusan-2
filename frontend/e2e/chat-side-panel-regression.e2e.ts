@@ -21,9 +21,7 @@ async function openPanel(page: Page) {
 test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('우측 런처는 375·761·1366·1440px에서 패널을 열면 숨고 닫으면 초점이 복귀한다', async ({
-    page,
-  }) => {
+  test('우측 런처는 375·761·1366·1440px에서 패널을 열면 숨고 닫으면 초점이 복귀한다', async ({ page }) => {
     for (const width of [375, 761, 1366, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/');
