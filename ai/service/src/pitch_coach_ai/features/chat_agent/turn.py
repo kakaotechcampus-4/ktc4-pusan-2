@@ -23,6 +23,15 @@
 - 줄 쓰기(5-4): 이벤트마다 `allow_nan=False`로 완전히 직렬화하고 LF 를 붙인다. 한 줄 2 MiB, 누적 16 MiB(끝 줄 몫 4 KiB 예약).
   `final`이 너무 크면 trace 상세 → 진단 기록 순으로 줄이고, 그래도 크면 `AGENT_OUTPUT_TOO_LARGE` error 줄로 끝낸다. 끝 줄은 정확히 하나다.
 - 연결이 끊기면(반복자를 닫으면) 새 모델 · 도구 호출을 하지 않는다(L1-08).
+- 근거 기반 답(TARGET 6): 읽은 범위의 '없음'(Take 0개 · 리뷰 없음 · 대화 목표 없음 · 문제 구간 0곳)도 확인한 사실이다. 모델 문장이 모두
+  빠졌거나 답이 비면 질문 대상의 근거로 코드가 문장을 그리고(`_target_fallback`. 답 쓰기 호출이 실패했을 때도 같은 거름으로
+  질문 대상에 맞는 근거만 쓴다, `Loop.question_evidence_ids`), 그 문장들로 요청이 해소되면(조사가 끊기지 않았고 풀리지
+  않은 단계가 없음, progress.end_status) DONE 이다. 일반 안내 "답 일부를 확인하지 못해 …"(PARTIAL_CHECKED)는 실제로 끊겼고(한도 · 장애)
+  근거 문장이 하나도 없을 때(`_cut_notice`)와 근거로 그릴 문장도 없을 때만 낸다. 범위 피치에 Take 가 없다고 답하면 다음 걸음 문장과
+  [연습 준비로] 버튼(`_no_take_next`), 목표 저장이 성공하면 그 성공 문장 바로 뒤에 결과 발견 안내(`_with_discovery`)를 둔다.
+- 할 일 목록의 끝 처리(`_final_plan`, progress.py): DONE · REFUSED 면 실행하지 않은 단계 SKIPPED, PARTIAL 이면 TODO, NEEDS_ACTION 은
+  그대로이고 답 쓰기 단계는 답 문장이 있으면 DONE 이다. 상태가 바뀌면 끝 줄 전에 plan 줄을 한 번 더 내 실시간 화면과 최종 목록이 같다.
+  설정 `plan_progress`를 끄면 이전 동작(DONE 이면 단계를 모두 DONE)이다.
 - 고칠 때: 화면 문구는 templates.py, 한도 숫자는 config.py, 검사 규칙은 checks.py, 루프 단계는 loop.py.
 """
 
@@ -45,17 +54,20 @@ from pydantic import ValidationError
 from . import actions as act
 from . import checks as chk
 from . import claims as clm
-from . import compose, memory, prompts, state, templates
+from . import compose, memory, progress, prompts, state, templates
 from .answer import ClaimLines, Composer, is_general_intro, with_prefix
 from .answer import assessment_head as _assessment_head  # noqa: F401  # 시험이 이 이름으로 부른다
 from .answer import guide_texts as _guide_texts
+from .answer import guide_titles as _guide_titles
 from .budget import LIMIT_END_REASONS, Counters
 from .config import ChatAgentConfig
 from .diagnostics import DiagRecorder, code_enum, reduce_to_fit, safe_request_id
 from .evidence import canonical_json
 from .goals import judge_goal
-from .loop import Loop, LoopState, TurnDeps, meta
+from .loop import RESUME_RESERVE_STOP, Loop, LoopState, TurnDeps, goal_question, meta
+from .runctx import RunCtx
 from .schemas import Action, Assessment, Claim, Diagnostics, FinalData, TurnRequest
+from .tools.impl import source_tag_of
 from .version import FEATURE_VERSION, TOOL_SCHEMA_VERSION
 
 _Result = tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]
@@ -424,6 +436,8 @@ def _orchestrate(
                 reason="OUT_OF_SCOPE",
                 system=[templates.scope_text(lp.scope_reason)],
             )
+        if route == "SMALL_TALK":
+            return _small_talk(lp, req, finish)
         if route == "ANSWER_DIRECT":
             lp.st.research_done = True
 
@@ -538,8 +552,10 @@ def _finalize(
     lp: Loop, req: TurnRequest, extra_prior: list[Assessment] | None = None
 ) -> clm.FinalizeResult | None:
     # 초안이 없어도 사용자 말이 있으면 확정한다: 측정 절을 덮는 판단이 없으면 '확인하지 못했어요' 문장을 만든다(L6-16)
+    # 답 단계가 바꾼 초안도 '그때 · 아까'의 Take 를 다시 채운다(6-8): 비우면 지금 보던 Take 로 판정된다
     drafts = [
-        _question_as_request(d, lp.original or "", lp.cfg) for d in lp._parse_drafts(lp.st.drafts)
+        _question_as_request(d, lp.original or "", lp.cfg)
+        for d in lp.fill_history_take(lp._parse_drafts(lp.st.drafts))
     ]
     if not lp.original:
         return None
@@ -565,6 +581,7 @@ def _finalize(
         cfg=lp.cfg,
         id_prefix=f"{req.run.run_id}:as{lp.counters.turn_count}-",
         guide_texts=_guide_texts(lp),
+        guide_titles=_guide_titles(lp),
         **kwargs,
     )
 
@@ -620,6 +637,8 @@ def _end_without_model(
         and e.get("success_text")
         and e["action_id"] not in said_actions
     ]
+    # 목표 저장이 성공했으면 그 성공 문장 바로 뒤에 결과 발견 안내(D4b)
+    result_claims = _with_discovery(lp, result_claims, {d["text"] for d in lp.st.emitted})
     if partial or notes_claims or result_claims or lp.st.emitted:
         # 한도 안내는 행동 결과 문장 뒤에 둔다(앞 문장 → 결과 문장 → 안내 순서)
         limit = (
@@ -642,24 +661,121 @@ def _slots_short_end(lp: Loop, finish: Callable[..., _Result]) -> _Result:
     return _end_without_model(lp, finish, "MODEL_CALLS", notes=_action_notes(lp))
 
 
+def _practice_button(lp: Loop, authorized_by: str | None) -> Action | None:
+    """[연습 준비로] 버튼(6-2 START_PRACTICE): 카드는 상태에 남기고 행동을 돌려준다(없으면 None)."""
+    lp.st.action_seq += 1
+    action, card, why = act.start_practice_action(
+        ctx=lp.ctx, authorized_by=authorized_by, seq=lp.st.action_seq, budget=lp.budget
+    )
+    # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
+    # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
+    lp.diag.step(
+        "ACTION",
+        "START_PRACTICE",
+        {
+            "action_id": action.action_id if action is not None else None,
+            "autonomy": act.AUTONOMY.get("START_PRACTICE"),
+            "authorization": "NOT_REQUIRED",
+            "result": "PROPOSED" if action is not None else ("DOWNGRADED" if card else "DROPPED"),
+            "reason_code": code_enum(why),
+        },
+        parent_seq=lp._last_model_seq,
+    )
+    if card:
+        lp.st.cards.append(card)
+    return action
+
+
+def _practice_dropped(lp: Loop, why: str) -> None:
+    """근거 없는 연습 준비 이동(6-2 · 13-2): 버튼을 내지 않고 진단 기록 ACTION 단계에 근거 검사 실패(`FAIL`)와 까닭만 남긴다."""
+    lp.diag.step(
+        "ACTION",
+        "START_PRACTICE",
+        {
+            "action_id": None,
+            "autonomy": act.AUTONOMY.get("START_PRACTICE"),
+            "authorization": "FAIL",
+            "result": "DROPPED",
+            "reason_code": code_enum(why),
+        },
+        parent_seq=lp._last_model_seq,
+    )
+    return None
+
+
+def _capability_text(ctx: RunCtx) -> templates.SystemText:
+    """할 수 있는 일 안내. 사용법 카드가 실린 묶음일 때만 화면 사용법 안내를 말한다(검수 전이면 답할 근거가 없다)."""
+    corpus = ctx.corpus
+    usage = corpus is not None and any(c.kind == "usage" for c in corpus.cards)
+    return (
+        templates.SystemText.TALK_CAPABILITY_USAGE
+        if usage
+        else templates.SystemText.TALK_CAPABILITY
+    )
+
+
+def _next_step(ctx: RunCtx) -> templates.SystemText:
+    """가벼운 말 뒤에 붙일 다음 걸음 — 기본 자료로 코드가 고른다(P-0008 5-1)."""
+    if ctx.scope_pitch_id is None:
+        return (
+            templates.SystemText.NEXT_PICK_PITCH
+            if ctx.pitches
+            else templates.SystemText.NEXT_FIRST_PITCH
+        )
+    has_take = bool(ctx.summaries or ctx.snapshots) or any(
+        p.pitch_id == ctx.scope_pitch_id and p.take_count > 0 for p in ctx.pitches
+    )
+    return templates.SystemText.NEXT_REVIEW if has_take else templates.SystemText.NEXT_FIRST_TAKE
+
+
+def _small_talk(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
+    """가벼운 말(계획 route SMALL_TALK, P-0008 5-1): 모델은 계획 한 번뿐이고 답은 코드 고정 문장(`SYSTEM`)이다.
+
+    인사 · 감사는 다음 걸음 하나를 붙이고, 할 수 있는 일은 FE 첫 화면 안내와 같은 낱말로, 연습하려는 뜻은 [연습 준비로]
+    버튼(범위 피치가 없으면 고르라는 안내), 작별은 한 문장이다. 숫자 · 기록 값 · 판정 낱말이 없어 답 검사 대상이 아니다.
+    """
+    ctx = lp.ctx
+    t = templates.SystemText
+    kind = lp.talk_kind
+    actions: list[Action] = []
+    if kind == "PRACTICE_INTENT":
+        action = _practice_button(lp, lp.original or None) if ctx.scope_pitch_id else None
+        if action is not None:
+            actions.append(action)
+            system = [t.TALK_PRACTICE, t.PRACTICE_BUTTON]
+        else:
+            system = [t.TALK_PRACTICE, t.WHICH_PITCH if ctx.pitches else t.NEXT_FIRST_PITCH]
+    elif kind == "CAPABILITY":
+        system = [_capability_text(ctx)]
+    elif kind == "THANKS":
+        system = [t.TALK_THANKS]
+    elif kind == "FAREWELL":
+        system = [t.TALK_FAREWELL]
+    else:
+        system = [t.TALK_GREETING, _next_step(ctx)]
+    return finish(status="DONE", system=system, actions=actions or None)
+
+
 def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Result:
     ctx = lp.ctx
     stop_reason = lp.st.stop_reason
     if stop_reason == "LLM_REFUSED":
         # 공급자가 조사 단계에서 거절하면 답을 쓰지 않고 거절로 끝낸다(L1-12)
         return finish(status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER])
-    stopped = _RESEARCH_STOP.get(stop_reason or "")
+    # 반복으로 멈춘 조사(같은 요청 되풀이 · 교대 반복)는 한도 · 장애가 아니다: 모델이 이미 읽은 것을 다시 청한 것이라 답이 요청을
+    # 해소했는지로 끝 상태를 정한다(끝 상태는 요청 해소로, L1-16). 안내 문장은 남은 부분이 있을 때만 답 끝에 붙인다
+    soft_stop = stop_reason in _SOFT_STOPS
+    stopped = None if soft_stop else _RESEARCH_STOP.get(stop_reason or "")
     notes = _action_notes(lp)
     pre = _pre_claims(lp, notes=True, stopped=stopped)
     ans, cmp = _start_answer(lp, req, route="ANSWER", pre=pre)
     if ans.get("failed"):
+        said = [Claim.model_validate(d) for d in lp.st.emitted]
         if ans.get("refused"):
             if lp.st.emitted:
                 # 이 실행에서 이미 낸 문장(앞 문장 · 이 답의 문장 줄 · 앞 응답)이 있으면 거절로 바꾸지 않는다:
-                # 낸 문장 뒤에 안내를 붙여 부분 답(6-1 5번)
-                return finish(
-                    status="PARTIAL", reason="OTHER", system=[templates.SystemText.PARTIAL_CHECKED]
-                )
+                # 낸 문장으로 부분 답(6-1 5번). 일반 안내는 근거 문장이 하나도 없을 때만(TARGET 6)
+                return finish(status="PARTIAL", reason="OTHER", system=_cut_notice(lp, said))
             return finish(
                 status="REFUSED", reason="OTHER", system=[templates.SystemText.CANNOT_ANSWER]
             )
@@ -669,14 +785,23 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             if stop_reason in LIMIT_END_REASONS
             else lp.limit_end or ("TIME" if lp.budget.left() <= 0 else None)
         )
-        partial = compose.template_partial(ctx, list(ctx.registry.items))
+        # 질문 대상의 근거로만 코드 문장을 그린다(`_target_fallback`과 같은 거름): 판단 초안이 집은 Take · 장 · 지표 · 차원에 맞는
+        # 값과, 질문 대상의 '없음' 근거(조사가 읽은 범위의 Take 0개 · 리뷰 없음 등). 이번 실행이 읽은 근거를 모두 나열하지 않는다.
+        # 대상이 있는데 맞는 근거가 없으면 다른 대상의 값으로 넓히지 않는다: 맞는 '없음' 근거만, 그것도 없으면 아래 안내 · 오류(13-2)
+        if lp.question_targets():
+            partial = _target_fallback(lp, lp.question_evidence_ids(), have=said)
+        else:
+            # 질문이 대상을 집지 않았으면(대상 없는 질문) 거를 기준이 없다: 이번 실행이 확인한 근거로 그린다(13-2 '확인한 것만 PARTIAL')
+            partial = compose.template_partial(ctx, list(ctx.registry.items))
+            partial += _target_fallback(lp, [], have=[*said, *partial])
         if partial or lp.st.emitted:
-            # 이미 낸 문장이 하나라도 있으면 오류로 버리지 않는다(5-4 · 5-5). 조사 중단 안내를 냈으면 안내를 겹치지 않는다
+            # 이미 낸 문장이 하나라도 있으면 오류로 버리지 않는다(5-4 · 5-5). 조사 중단 안내를 냈으면 안내를 겹치지 않는다.
+            # 일반 안내('답 일부를 확인하지 못해 …')는 끊긴 답에 근거 문장이 하나도 없을 때만(TARGET 6)
             said_stop = stopped is not None and any(c.text == stopped[1].value for c in cmp.pre)
             return finish(
                 status="PARTIAL",
                 reason=limit or "LLM_ERROR",
-                system=[] if said_stop else [templates.SystemText.PARTIAL_CHECKED],
+                system=[] if said_stop else _cut_notice(lp, [*said, *partial]),
                 claims=partial,
             )
         return finish(
@@ -685,6 +810,9 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
         )
     draft = ans["draft"]
     route = draft.get("route")
+    if route in ("ANSWER", "OUT_OF_SCOPE") and lp.record_change:
+        # 공식 결과를 바꿔 달라는 말: 거절 · 일반 답 대신 할 수 없다는 고정 문장을 붙인다(6-2, 답 초안 route CANNOT_DO)
+        route = "CANNOT_DO"
     if route == "OUT_OF_SCOPE":
         return finish(
             status="REFUSED",
@@ -695,13 +823,29 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
 
     comp = cmp.finish(draft, ans["messages"])
     out, body, all_assessments = comp.out, list(comp.body), comp.all_assessments
-    tail = _tail_claims(lp, route, said=[*comp.pre, *body])
+    tail = _tail_claims(lp, route, said=[*comp.pre, *body], draft=draft)
     elems_written = any(
         c.get("kind") != "ASSESSMENT" and str(c.get("text") or "").strip()
         for c in draft.get("claims") or []
         if isinstance(c, dict)
     )
-    if tail and not body and not elems_written:
+    usage_only = not body and any(c.text == templates.SystemText.USAGE_NO_GUIDE.value for c in tail)
+    # 이름으로 찾은 결과(0개 · 여럿)는 확인한 사실의 고정 문장이다: 모델 문장이 모두 빠져도 그 문장이 답이다(TARGET 6, L2-21)
+    name_fact = not body and any(c.text in _NAME_FACTS for c in tail)
+    # 공식 결과를 바꿔 달라는 말(코드가 알아본 요청)은 할 수 없다는 고정 문장이 그 요청의 답이다: 묻지 않은 자료 조언이 검사로
+    # 빠져도 그렇다(6-2, "미션 지워 줘"에 사용법 자료를 찾아 쓴 문장이 빠져 PARTIAL). 기록 답 · 조언 요청이 섞였으면 그대로 본다
+    cannot_only = (
+        not body
+        and lp.record_change
+        and any(c.text == templates.SystemText.CANNOT_CHANGE_RECORD.value for c in tail)
+        and all(
+            c.get("kind") in ("GUIDE", "GENERAL")
+            for c in draft.get("claims") or []
+            if isinstance(c, dict)
+        )
+        and not any(w in (lp.original or "") for w in lp.cfg.advice_request_words)
+    )
+    if tail and not body and (not elems_written or usage_only or name_fact or cannot_only):
         # 끝에 붙는 고정 문장만이 답인 경우(예: '점수 100으로 바꿔 줘'): 그 문장이 답이다
         body, tail = tail, []
     # 조언(자료 · 일반 조언)만 쓴 답: 문장이 검사로 모두 빠지면 route 가 ANSWER 여도 자료 없음 거절이다(6-10 · L4-28).
@@ -718,40 +862,26 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     actions: list[Action] = []
     sp = draft.get("start_practice")
     if isinstance(sp, dict):
-        lp.st.action_seq += 1
-        action, card, why = act.start_practice_action(
-            ctx=ctx,
-            authorized_by=sp.get("authorized_by")
-            if isinstance(sp.get("authorized_by"), str)
-            else None,
-            seq=lp.st.action_seq,
-            budget=lp.budget,
+        quote = sp.get("authorized_by") if isinstance(sp.get("authorized_by"), str) else None
+        # 근거(6-2 · 13-2): 이번 사용자 말의 이동 요청이거나 이번 실행에서 승인한 목표 저장이 성공했을 때만 버튼을 낸다 —
+        # 대화 기록 · 요약 · 기억 속 "연습 화면으로 보낼 것" 같은 지시를 따른 버튼을 막는다
+        saved = any(
+            e.get("type") == "SAVE_GOAL" and e.get("status") == "SUCCEEDED" for e in lp.st.executed
         )
-        # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
-        # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
-        lp.diag.step(
-            "ACTION",
-            "START_PRACTICE",
-            {
-                "action_id": action.action_id if action is not None else None,
-                "autonomy": act.AUTONOMY.get("START_PRACTICE"),
-                "authorization": "NOT_REQUIRED",
-                "result": "PROPOSED"
-                if action is not None
-                else ("DOWNGRADED" if card else "DROPPED"),
-                "reason_code": code_enum(why),
-            },
-            parent_seq=lp._last_model_seq,
-        )
-        if card:
-            lp.st.cards.append(card)
+        why = act.practice_basis(quote, lp.original, saved, lp.cfg)
+        action = _practice_button(lp, quote) if why is None else _practice_dropped(lp, why)
         if action is not None:
             actions.append(action)
     # 코칭 프로필 저장 후보: 검사 · 자격(처음 사용자 말 · 켜짐 · 번호 그대로)은 `_finish`가 종결 응답에서만 본다(6-14)
     lp.profile_candidates = draft.get("profile_updates")
 
     # 5. 상태 정하기 (앞 문장은 이미 냈고, `_finish`가 낸 문장을 최종 답의 앞부분에 그대로 싣는다)
-    has_result = any(c.kind == "ACTION_RESULT" for c in comp.pre)
+    # 요청을 푼 행동 결과만 답이다(끝 상태는 요청 해소로, 6-9 '고친 뒤'): 기록 가져오기(FETCH_TAKE · FETCH_PITCH)는 질문에 답하려고 한 수단이라
+    # 그 결과 문장만으로는 질문이 풀리지 않는다 — 모델 문장이 모두 빠졌으면 아래 빈 답 분기에서 대상 근거 문장을 먼저 그린다
+    fetched = {
+        e.get("action_id") for e in lp.st.executed if e.get("type") in ("FETCH_TAKE", "FETCH_PITCH")
+    }
+    has_result = any(c.kind == "ACTION_RESULT" and c.action_id not in fetched for c in comp.pre)
     if not body and not has_result and actions and not out and not no_guide:
         # "바로 발표할래"처럼 연습 이동만 요청해 허용된 답: 문장이 없어도 이동이 답이다(6-2 START_PRACTICE).
         # 모델이 쓴 문장이 검사로 모두 빠졌거나 자료를 찾지 못한 답은 그대로 PARTIAL · 거절이다
@@ -760,13 +890,77 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
     scope_claims = [
         Claim(kind="SYSTEM", text=templates.scope_text(r).value) for r in _scope_notes(draft)
     ]
+    # 답 품질 보강: 기록 문장 · 목표 상태 문장을 코드 템플릿으로 더한다(둘 다 설정으로 끈다). 모델 문장이 모두 빠져 본문이
+    # 비어 있어도 먼저 만든다 — 검증된 기록 문장이 있으면 빈 답 분기로 가지 않고 그 문장으로 상태를 정한다
+    extras: list[Claim] = []
+    if lp.cfg.record_answer_guard:
+        extras += _record_guard_claims(lp, [*comp.pre, *body], all_assessments)
+    if lp.cfg.goal_status_sentence:
+        # 닫힌 목표의 상태(와 보고 있는 Take 의 판정)를 코드 문장으로 말한다. `goal_result` 는 싣지 않는다: 계약상 자동 목표 확인
+        # (TAKE_REVIEWED)의 값이고 BE 가 그 값으로 목표 상태를 바꾸므로(5-5 · 12-3), 사용자 말 응답에 실으면 호출 시점이 바뀐다
+        have = {c.text for c in [*comp.pre, *body, *tail, *extras]}
+        extras += [
+            c
+            for c in _goal_status_claims(lp, req, said=[*comp.pre, *body, *extras])
+            if c.text not in have
+        ]
+    # 다른 발표 비교 안내(1-3): 코드 보강 문장까지 모은 최종 답 문장의 기록 피치로 본다
+    cross = templates.SystemText.CROSS_PITCH_NO_COMPARE.value
+    shown = {c.text for c in tail} | {d.get("text") for d in lp.st.emitted}
+    if cross not in shown and _cross_pitch_compare(lp, [*comp.pre, *body, *extras]):
+        tail = [*tail, Claim(kind="SYSTEM", text=cross)]
     if not body and not has_result:
+        # 안전망(P-0008 5-1): 기록 · 자료 없이 답하려던 말(ANSWER_DIRECT)의 문장이 모두 빠져도 실패 상태 · 까닭은 그대로 두고,
+        # 할 수 있는 일 안내만 덧붙인다(가벼운 말로 보지 않은 인사가 거절 문장 하나로 끝나지 않게)
+        if lp.route == "ANSWER_DIRECT":
+            scope_claims = [*scope_claims, Claim(kind="SYSTEM", text=_capability_text(ctx).value)]
         if notes:
             # 행동 결과 안내만 있는 답(예: 다른 탭에서 목표가 바뀌어 저장하지 못함): 안내를 그대로 낸다
             return finish(
                 status="PARTIAL",
                 reason="OTHER",
-                claims=[*comp.pre, *tail, *scope_claims],
+                claims=[*comp.pre, *extras, *tail, *scope_claims],
+                assessments=all_assessments,
+            )
+        # 모델 문장이 모두 빠졌거나 답이 비었다(6-9 '고친 뒤'): 질문 대상의 검증된 근거로 코드가 그린 문장이 답이다 —
+        # 기록 보강 문장(`extras`), 빠진 모델 문장이 이은 근거의 값, 계획 단계가 읽은 '없음' 근거. 자료 · 일반 조언만 쓴 답은
+        # 기록 보강 문장이 없으면 자료 없음 거절이다(6-10 · L4-28)
+        code_claims = list(extras)
+        if code_claims or not (no_guide or advice_only):
+            code_claims += _target_fallback(
+                lp, [e for c in out for e in c.evidence_ids], have=code_claims
+            )
+        # 앞 문장으로 이미 낸 측정 안 됨 사실(`_unmeasured_notes`)도 질문 대상에 답한 확인한 사실이다: 대신 문장은 같은 문장을
+        # 다시 내지 않으므로 그 앞 문장을 답으로 센다(path-norec-unmeasured 가 '답 일부를 확인하지 못해'로 PARTIAL 이 되지 않게)
+        pre_fact = any(
+            c.kind == "SYSTEM" and c.text == templates.SystemText.UNMEASURED.value for c in comp.pre
+        )
+        if code_claims or pre_fact:
+            # 이 문장들로 요청이 모두 해소되면(조사가 끊기지 않았고 풀리지 않은 단계가 없음) DONE, 아니면 확인된 근거만 PARTIAL.
+            # 검사로 빠진 자료 · 일반 조언 문장은 코드가 다시 그릴 수 없다: 그 부분이 남으므로 PARTIAL 이다
+            advice_dropped = any(
+                c.get("kind") in ("GUIDE", "GENERAL") and str(c.get("text") or "").strip()
+                for c in elems
+            )
+            status = progress.end_status(
+                lp.st.plan_meta, cut=stopped is not None, answered=not advice_dropped
+            )
+            if status == "DONE":
+                nxt, more = _no_take_next(lp, [*comp.pre, *code_claims], actions)
+                return finish(
+                    status="DONE",
+                    # 반복으로 조사를 멈췄거나 재개 조사를 건너뛰었어도 요청이 해소된 답이다: 진단에는 멈춘 까닭(REPEAT · TOKENS)을
+                    # 남긴다(모델 문장이 남은 답의 끝과 같은 규칙, 11-5 · L1-16)
+                    reason=_SOFT_STOPS[stop_reason or ""][0] if soft_stop else "ANSWERED",
+                    claims=[*code_claims, *tail, *scope_claims, *nxt],
+                    assessments=all_assessments,
+                    actions=[*actions, *more],
+                )
+            return finish(
+                status="PARTIAL",
+                reason="CHECK_ALL_DROPPED",
+                system=[templates.SystemText.VERIFIED_ONLY],
+                claims=[*code_claims, *tail, *scope_claims],
                 assessments=all_assessments,
             )
         if no_guide or advice_only:
@@ -777,15 +971,7 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
                 claims=[*tail, *scope_claims] or None,
                 assessments=all_assessments,
             )
-        partial = compose.template_partial(ctx, [e for c in out for e in c.evidence_ids])
-        if partial:
-            return finish(
-                status="PARTIAL",
-                reason="CHECK_ALL_DROPPED",
-                system=[templates.SystemText.VERIFIED_ONLY],
-                claims=[*partial, *tail, *scope_claims],
-                assessments=all_assessments,
-            )
+        # 근거로 그릴 문장도 없다: 답을 확인하지 못한 것이다(검사 탈락 · 끊김). 비어 있지 않은 고정 안내로 끝낸다(L1-38)
         return finish(
             status="PARTIAL",
             reason="CHECK_ALL_DROPPED",
@@ -794,13 +980,42 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             assessments=all_assessments,
         )
     final_claims = [*comp.pre, *body, *tail]
+    # 더한 문장(`extras`)은 위에서 만들었다. 낸 문장은 순서를 바꾸지 않는다
+    if extras:
+        final_claims = _splice_extras(lp, comp.pre, body, tail, extras)
     # 섞인 요청의 범위 밖 부분: 이유별 고정 문장을 답 문장 뒤에 덧붙인다(1-3 · 7-10)
     for reason in _scope_notes(draft):
         note = templates.scope_text(reason).value
         if all(c.text != note for c in final_claims):
             final_claims.append(Claim(kind="SYSTEM", text=note))
+    if soft_stop and (
+        progress.end_status(
+            lp.st.plan_meta,
+            cut=False,
+            answered=_answer_sentences(
+                lp, [*final_claims, *map(Claim.model_validate, lp.st.emitted)]
+            ),
+        )
+        == "PARTIAL"
+    ):
+        # 반복으로 멈췄거나 재개 조사를 건너뛰었고 풀리지 않은 부분이 남았다: 확인한 데까지 말하고 안내를 끝에 붙인다(L1-16)
+        soft_reason, soft_notice = _SOFT_STOPS[stop_reason or ""]
+        final_claims.append(Claim(kind="SYSTEM", text=soft_notice.value))
+        return finish(
+            status="PARTIAL",
+            reason=soft_reason,
+            claims=final_claims,
+            assessments=all_assessments,
+            sources=_sources(final_claims),
+        )
     if stopped is not None:
-        # 조사가 끝까지 가지 못했으면 확인한 데까지만 말한다(8-2 · L1-11 · L1-12 · L1-16). 안내는 앞 문장으로 이미 냈다
+        # 조사가 끝까지 가지 못했으면 확인한 데까지만 말한다(8-2 · L1-11 · L1-12). 안내는 앞 문장으로 이미 냈다.
+        # 모델 장애 · 무효 도구로 끊긴 때의 일반 안내는 답에 근거 문장이 하나도 없을 때만 끝에 붙인다(TARGET 6, `_pre_claims`)
+        if stopped[1] == templates.SystemText.PARTIAL_CHECKED:
+            final_claims += [
+                Claim(kind="SYSTEM", text=t.value)
+                for t in _cut_notice(lp, [*final_claims, *map(Claim.model_validate, lp.st.emitted)])
+            ]
         return finish(
             status="PARTIAL",
             reason=stopped[0],
@@ -808,27 +1023,378 @@ def _answer(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -> _Resu
             assessments=all_assessments,
             sources=_sources(final_claims),
         )
-    if no_guide and not any(c.kind == "GENERAL" for c in final_claims):
+    if (
+        no_guide
+        and not any(c.kind == "GENERAL" for c in final_claims)
+        and not any(c.text == templates.SystemText.USAGE_NO_GUIDE.value for c in final_claims)
+    ):
         # 자료를 찾지 못했고 일반 조언도 없으면(기록 답만 남음) 자료 근거가 없다고 덧붙인다. 일반 조언이 있으면 그 앞의
         # 고정 안내(GENERAL_INTRO)가 이미 자료에서 확인한 내용이 아니라고 말한다(6-10)
         final_claims.append(
             Claim(kind="SYSTEM", text=templates.SystemText.KNOWLEDGE_NO_SOURCE.value)
         )
+    # 범위 피치에 Take 가 없다고 답했으면 다음 걸음(연습 안내 · [연습 준비로] 버튼)을 끝에 붙인다(TARGET 6)
+    nxt, more = _no_take_next(lp, final_claims, actions)
+    final_claims += nxt
     return finish(
         status="DONE",
-        reason="ANSWERED",
+        # 반복으로 조사를 멈췄거나 재개 조사를 건너뛰었어도 요청이 해소된 답(진단에는 멈춘 까닭을 남긴다)
+        reason=_SOFT_STOPS[stop_reason or ""][0] if soft_stop else "ANSWERED",
         claims=final_claims,
         assessments=all_assessments,
-        actions=actions,
+        actions=[*actions, *more],
         sources=_sources(final_claims),
     )
 
 
-def _tail_claims(lp: Loop, route: Any, *, said: list[Claim]) -> list[Claim]:
+def _splice_extras(
+    lp: Loop, pre: list[Claim], body: list[Claim], tail: list[Claim], extras: list[Claim]
+) -> list[Claim]:
+    """코드가 더한 문장(`extras`)을 끼운다. 모델 문장이 아직 하나도 나가지 않았으면 모델 문장 앞에, 하나라도 이미 문장 줄로
+    나갔으면 그 뒤(끝 고정 문장 앞)에 둔다 — 낸 문장은 최종 답의 앞부분 그대로여야 한다(5-4 · 5-5)."""
+    out_texts = {d.get("text") for d in lp.st.emitted}
+    if any(c.text in out_texts for c in body):
+        return [*pre, *body, *extras, *tail]
+    return [*pre, *extras, *body, *tail]
+
+
+def _record_guard_claims(
+    lp: Loop, said: list[Claim], assessments: list[Assessment] | None = None
+) -> list[Claim]:
+    """기록 질문을 '기록 말고 일반 조언으로'라고 해도 기록으로 답한다(6-1 · 13-2, `record_answer_guard`).
+
+    대상마다 따로 본다. 대상은 계획을 확정할 때의 초안(`plan_drafts`, 답 쓰기가 바꾼 초안이 아니다)의 요청 · 측정 초안이 집은
+    장 · 지표 · 차원 · Take 이고, 사용자 말이 Take 번호를 집었으면 그 번호의 대상만 받는다(말하지 않은 Take 값을 대신 채우지
+    않는다). 이번 실행이 읽은 그 대상의 검증된 기록 값이 있는데 답의 기록 문장(`RECORD`)이나 판단(`ASSESSMENT`)이 그 값을
+    근거로 삼지 않았으면 그 근거로 그린 코드 기록 문장(최대 3개)을 돌려준다. 읽은 값만 쓴다.
+    """
+    ctx = lp.ctx
+    if ctx.pitch is None or lp.st.scope_switched or ctx.scope_switched:
+        return []
+    by_number = {sm.take_number: tid for tid, sm in ctx.summaries.items()}
+    msg_takes = chk.named_take_numbers(lp.original or "")
+    amap = {a.assessment_id: a for a in assessments or []}
+    answered: set[str] = set()
+    for c in said:
+        if c.kind == "RECORD":
+            answered.update(c.evidence_ids)
+        elif c.kind == "ASSESSMENT" and c.assessment_id in amap:
+            answered.update(amap[c.assessment_id].evidence_ids)
+    ids: list[str] = []
+    for d in lp.st.plan_drafts:
+        if d.get("type") not in ("MEASURED", "REQUEST"):
+            continue
+        sub = d.get("subject") or {}
+        metric, dim = sub.get("metric"), sub.get("dimension")
+        slide = sub.get("slide_number") if isinstance(sub.get("slide_number"), int) else None
+        metrics = {metric} if metric in lp.cfg.metric_units else set()
+        if not metrics and dim in lp.cfg.dimensions:
+            metrics = set(lp.cfg.dimensions[dim].metrics)
+        if not metrics and slide is None:
+            continue
+        named = list(sub.get("take_numbers") or [])
+        if named:
+            numbers = set(named)
+        else:
+            tid = lp._judged_take()
+            numbers = {ctx.summaries[tid].take_number} if tid in ctx.summaries else set()
+        if not numbers or any(n not in by_number for n in numbers):
+            continue
+        if msg_takes and not numbers <= msg_takes:
+            continue  # 사용자 말이 집은 Take 와 다른 대상이다(다른 Take 의 값으로 답하지 않는다)
+        # Take 마다 따로 본다: 여러 Take 를 집은 초안에서 한 Take 만 답했으면 남은 Take 만 보강한다
+        for number in sorted(numbers):
+            target = [
+                eid
+                for eid, ev in ctx.registry.items.items()
+                if ev.origin == "RECORD"
+                and ev.take_number == number
+                and (not metrics or ev.metric in metrics)
+                and (slide is None or ev.slide_number == slide)
+            ]
+            if not target or answered.intersection(target):
+                continue  # 읽은 값이 없거나, 이 Take 의 대상은 이미 기록 문장 · 판단이 답했다
+            ids.extend(e for e in target if e not in ids)
+    return compose.template_partial(ctx, ids)
+
+
+#: 이름으로 찾은 결과의 고정 문장(0개 · 여럿, L2-21). 확인한 사실이라 모델 문장이 모두 빠져도 이 문장이 답이다
+_NAME_FACTS = frozenset(
+    {templates.SystemText.PITCH_NOT_FOUND.value, templates.SystemText.WHICH_PITCH.value}
+)
+
+
+def _answer_sentences(lp: Loop, claims: list[Claim]) -> bool:
+    """질문 대상에 답한 문장이 하나라도 있는가: 근거에 이은 기록 · 판단 문장, 자료에 이은 문장, 코드가 확인한 사실 문장(비교할 수
+    없는 까닭 · 측정 안 됨 · 이름으로 찾은 결과)."""
+    facts = {compose.not_comparable_sentence(r) for r in lp.st.not_comparable} | _NAME_FACTS
+    facts.add(templates.SystemText.UNMEASURED.value)
+    return any(
+        (c.kind in ("RECORD", "ASSESSMENT") and c.evidence_ids)
+        or (c.kind == "GUIDE" and c.source_ids)
+        or (c.kind == "SYSTEM" and c.text in facts)
+        for c in claims
+    )
+
+
+def _cut_notice(lp: Loop, claims: list[Claim]) -> list[templates.SystemText]:
+    """끊긴 답(한도 · 장애)의 일반 안내 "답 일부를 확인하지 못해 확인된 내용만 알려드릴게요."는 질문 대상에 맞는 근거 문장이 하나도
+    없을 때만 붙인다(TARGET 6). 근거 문장이 있으면 붙이지 않는다(PARTIAL 상태와 남은 단계 TODO 가 끊긴 것을 보인다)."""
+    return [] if _answer_sentences(lp, claims) else [templates.SystemText.PARTIAL_CHECKED]
+
+
+@dataclass(frozen=True)
+class _Asked:
+    """질문이 물은 범위 — '없음' 근거를 대신 문장으로 고르는 기준(`_asked`). None 은 거를 기준이 없다(무엇이든 맞음)."""
+
+    #: 물은 Take 번호(판단 초안의 대상 · 판정 대상 Take와 사용자 말이 이름으로 집은 Take)
+    takes: frozenset[int] | None
+    #: 물은 장(대상을 집은 초안이 모두 장을 집었을 때만)
+    slides: frozenset[int] | None
+    #: 물은 '없음' 종류(`compose.none_kind`). 대상을 집은 초안이 없으면 None
+    kinds: frozenset[str] | None
+
+
+def _asked(lp: Loop) -> _Asked:
+    """질문(판단 초안 · 사용자 말)이 물은 범위. 종류는 대상을 집은 초안이 있을 때만 정한다: Take 목록(범위 피치의 Take 0개는
+    어느 기록 질문에도 답이다) · 문제 구간(물은 영역은 `compose.none_partial`이 고른다)은 늘, 리뷰는 지표를 집지 않은 초안
+    (Take · 차원 단위 질문 — 리뷰의 차원 상태가 답)이 있을 때, 대화 목표는 목표를 묻는 말(`goal_question`)일 때."""
+    targets = lp.question_targets()
+    takes = {n for _, t, _, _ in targets for n in t} | chk.named_take_numbers(lp.original or "")
+    slides = {s for _, _, s, _ in targets if s is not None}
+    kinds: set[str] | None = None
+    if targets:
+        kinds = {"TAKES", "SEGMENTS"}
+        if any(not (d.get("subject") or {}).get("metric") for d, _, _, _ in targets):
+            kinds.add("REVIEW")
+        if goal_question(lp.original, lp.cfg):
+            kinds.add("GOAL")
+    return _Asked(
+        takes=frozenset(takes) or None,
+        slides=frozenset(slides)
+        if targets and all(s is not None for _, _, s, _ in targets)
+        else None,
+        kinds=frozenset(kinds) if kinds is not None else None,
+    )
+
+
+def _none_target(ctx: RunCtx, eid: str, asked: _Asked) -> bool:
+    """'없음' 근거가 질문 대상인가: 물은 종류(`asked.kinds`)이고, 피치의 Take 0개는 범위 피치의 것(범위가 없으면 읽은 피치가
+    하나일 때만), 리뷰 없음 · 문제 구간 0곳은 물은 Take(`asked.takes`)의 것, 장 단위 문제 구간 0곳은 물은 장의 것(Take 전체의
+    0곳은 그 장도 덮는다). 거른 조건의 Take 0개 · 이름 검색 0개는 문장으로 그리지 않는다. 조사가 읽었어도 질문과 맞지 않으면
+    (예: Take 5 를 물었는데 Take 4 의 리뷰 없음) 그리지 않는다."""
+    ev = ctx.registry.get(eid)
+    kind = compose.none_kind(ev)
+    if ev is None or kind is None:
+        return False
+    if asked.kinds is not None and kind not in asked.kinds:
+        return False
+    if kind == "TAKES":
+        if ctx.scope_pitch_id is not None:
+            return ev.pitch_id == ctx.scope_pitch_id
+        read = {e.pitch_id for e in ctx.registry.items.values() if e.path.endswith(".take_count")}
+        return len(read) == 1
+    if kind not in ("REVIEW", "GOAL", "SEGMENTS"):
+        return False
+    if (
+        kind in ("REVIEW", "SEGMENTS")
+        and asked.takes is not None
+        and ev.take_number not in asked.takes
+    ):
+        return False
+    return not (
+        kind == "SEGMENTS"
+        and asked.slides is not None
+        and ev.slide_number is not None
+        and ev.slide_number not in asked.slides
+    )
+
+
+def _target_fallback(lp: Loop, used_ids: list[str], *, have: list[Claim]) -> list[Claim]:
+    """모델 문장이 모두 빠졌거나 답이 비었을 때 질문 대상의 근거로 코드가 그린 문장(6-9 '고친 뒤', TARGET 6, 최대 3개).
+
+    - '없음': 계획 단계가 읽은 '없음' 근거와 빠진 모델 문장이 이은 '없음' 근거 중 질문이 물은 종류 · Take · 장에 맞는 것
+      (`_none_target`). 문제 구간 0곳은 물은 영역(판단 초안의 지표 · 차원)으로 고른다(compose.none_partial)
+    - 측정 안 됨: 물은 영역이 측정되지 않은 Take 를 읽었으면 고정 문장 "이 항목은 측정되지 않았어요."('없음'과 다른 사실)
+    - 값: 빠진 모델 문장이 이은 근거의 값(`template_partial`). 아무 근거나 나열하지 않는다
+    이미 있는 문장(`have` · 낸 문장)과 같은 문장은 빼고, 코드 문장도 답 검사를 거쳐 걸리면 버린다(제목에 숫자가 든 피치 등)."""
+    ctx, st = lp.ctx, lp.st
+    areas = progress.asked_areas(st.plan_drafts, lp.cfg)
+    step_ids = (
+        [e for m in st.plan_meta if m.get("tool") != "answer" for e in m.get("evidence_ids") or []]
+        if st.plan_meta
+        else list(ctx.registry.items)
+    )
+    asked = _asked(lp)
+    none_ids = [e for e in dict.fromkeys([*used_ids, *step_ids]) if _none_target(ctx, e, asked)]
+    cands = compose.none_partial(ctx, none_ids, areas=areas)
+    if areas is not None and any(
+        m.get("ran") == "get_take_report" and m.get("result") == templates.PLAN_RESULT["UNMEASURED"]
+        for m in st.plan_meta
+    ):
+        cands.append(Claim(kind="SYSTEM", text=templates.SystemText.UNMEASURED.value))
+    cands += compose.template_partial(ctx, used_ids)
+    seen = {c.text for c in have} | {d.get("text") for d in st.emitted}
+    out: list[Claim] = []
+    for c in cands:
+        if c.text in seen or chk.check_claims(
+            [c], registry=ctx.registry, code_sentences={c.text}, cfg=lp.cfg
+        ):
+            continue
+        seen.add(c.text)
+        out.append(c)
+    return out[:3]
+
+
+def _no_take_next(
+    lp: Loop, claims: list[Claim], actions: list[Action]
+) -> tuple[list[Claim], list[Action]]:
+    """범위 피치의 Take 가 0개라고 답했으면(그 '없음' 근거에 이은 기록 문장) 다음 걸음: "Take를 한 번 연습하면 그 기록을 같이 볼 수
+    있어요."(인사 뒤 다음 걸음과 같은 문장)를 끝에 붙이고, 이번 실행에 다른 행동이 없으면 [연습 준비로] 버튼(START_PRACTICE ·
+    BUTTON, 6-2 규칙 그대로 · 자동 이동 없음)을 낸다. 버튼을 낼 수 없으면 문장만."""
+    ctx = lp.ctx
+    pid = ctx.scope_pitch_id
+    if pid is None:
+        return [], []
+    reg = ctx.registry
+    zero = any(
+        compose.none_kind(ev) == "TAKES" and ev.pitch_id == pid
+        for c in claims
+        if c.kind == "RECORD"
+        for e in c.evidence_ids
+        if (ev := reg.get(e)) is not None
+    )
+    if not zero:
+        return [], []
+    text = templates.SystemText.NEXT_FIRST_TAKE.value
+    said = {c.text for c in claims} | {d.get("text") for d in lp.st.emitted}
+    out = [] if text in said else [Claim(kind="SYSTEM", text=text)]
+    more: list[Action] = []
+    if not actions and not lp.st.executed and lp.st.pending_action is None:
+        button = _practice_button(lp, None)
+        if button is not None:
+            more.append(button)
+    return out, more
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    """BE 시각 문자열(ISO 8601)을 읽는다. 읽지 못하면 None."""
+    if not value:
+        return None
+    try:
+        t = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo is not None else t.replace(tzinfo=UTC)
+
+
+def _page_take_goal_claim(lp: Loop, req: TurnRequest, goal: Any) -> Claim | None:
+    """닫힌 목표를 물을 때 보고 있는 Take(`page.take_id`)의 지금 기록으로 목표를 판정한 `RECORD` 문장. 못 만들면 None.
+
+    목표를 닫은 Take 는 요청 자료로 알 수 없으므로(닫은 때의 판 · 앞 Take 목록 · 시작 시각이 없음) 고르지 않는다. 보고 있는 Take 가
+    목표 뒤 Take(기준 Take 보다 번호가 크고 `completed_at`이 목표 `created_at` 뒤)이고, 그 Take 의 지금 판정이 끝난 판정이며
+    목표 상태와 같을 때만 그 Take 의 값이 목표 기준을 달성했는지(못 미치는지)를 말한다. 이 Take 가 목표를 이뤘다 · 닫았다고는
+    말하지 않는다(저장 전에 시작한 Take 일 수 있고, 닫은 때의 판정과 지금 판정이 다를 수 있다).
+    """
+    ctx = lp.ctx
+    tid = req.page.take_id if req.page is not None else None
+    summ = ctx.summaries.get(tid) if tid else None
+    if summ is None or summ.take_number <= goal.base.take_number:
+        return None
+    created, done = _parse_ts(goal.created_at), _parse_ts(summ.completed_at)
+    if created is None or done is None or done <= created:
+        return None
+    snap = ctx.snapshots.get(summ.take_id)
+    if snap is None:
+        return None
+    j = judge_goal(goal, snap, registry=ctx.registry, version_of=ctx.version_of, cfg=lp.cfg)
+    if not j.terminal or j.status != goal.status or not j.evidence_ids:
+        return None
+    text = compose.goal_value_sentence(ctx, goal, j, summ.take_number)
+    if text is None:
+        return None
+    ctx.touch(summ.take_id, ctx.scope_pitch_id)
+    claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
+    fails = chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg)
+    return None if fails else claim
+
+
+def _goal_status_claims(lp: Loop, req: TurnRequest, said: list[Claim] | None = None) -> list[Claim]:
+    """사용자 말로 대화 목표의 결과를 물을 때(`get_goals`를 읽은 실행) 닫힌 목표의 결과 문장들(7-10, `goal_status_sentence`).
+
+    목표 상태(`ACHIEVED` · `NOT_ACHIEVED` · `BASELINE_MISMATCH`)를 고정 `SYSTEM` 문장으로 말하고, 보고 있는 Take 의 지금 기록이
+    같은 판정이면 그 값 문장(`RECORD`, `_page_take_goal_claim`)을 잇는다. 열린 목표는 목표를 묻는 말(`goal_question`)일 때만
+    목표 내용 문장(`_open_goal_claim`)을 낸다. 자동 목표 확인 턴 · 다른 피치의 목표는 내지 않는다. `goal_result` 는 싣지 않는다
+    (자동 목표 확인의 계약 값).
+    """
+    ctx, goal = lp.ctx, lp.ctx.goal
+    if req.review_event is not None or goal is None:
+        return []
+    if goal.pitch_id != ctx.scope_pitch_id or not any(
+        t.get("tool") == "get_goals" for t in lp.st.trace
+    ):
+        return []
+    if goal.status == "OPEN":
+        return _open_goal_claim(lp, goal, said or [])
+    text = templates.GOAL_CLOSED_TEXT.get(goal.status)
+    out = [Claim(kind="SYSTEM", text=text.value)] if text is not None else []
+    page = _page_take_goal_claim(lp, req, goal)
+    return [*out, page] if page is not None and out else out
+
+
+def _open_goal_claim(lp: Loop, goal: Any, said: list[Claim]) -> list[Claim]:
+    """열린 대화 목표를 물으면(`goal_question`) 목표 내용을 `RECORD` 문장으로(7-10 `GOAL_OPEN`, get_goals 의 목표 기준 값 근거).
+
+    답(낸 문장 포함)의 기록 문장이 이미 그 근거를 잇고 기준 값까지 말했으면 내지 않는다(같은 근거 · 같은 값은 한 번). 근거만 잇고
+    값을 빠뜨린 문장이면 낸다. 검사(6-9)에 걸리면 내지 않는다.
+    """
+    if not goal_question(lp.original, lp.cfg):
+        return []
+    drawn = compose.goal_open_sentence(lp.ctx, goal)
+    if drawn is None:
+        return []
+    text, eid, value = drawn
+    cited = [*said, *map(Claim.model_validate, lp.st.emitted)]
+    if any(c.kind == "RECORD" and eid in c.evidence_ids and value in c.text for c in cited):
+        return []
+    claim = Claim(kind="RECORD", text=text, evidence_ids=[eid])
+    fails = chk.check_claims([claim], registry=lp.ctx.registry, code_sentences={text}, cfg=lp.cfg)
+    return [] if fails else [claim]
+
+
+def _cross_pitch_compare(lp: Loop, said: list[Claim]) -> bool:
+    """비교를 청했는데 답이 서로 다른 피치의 Take 기록을 함께 보이는가(1-3: 다른 피치끼리는 비교하지 않는다).
+
+    비교 요청은 비교 낱말 또는 계획 초안의 비교 주장(`COMPARE` · `CHANGE`)으로 본다. 이번 실행이 읽은 기록 전체가 아니라 최종 답
+    문장(코드 보강 문장 포함)이 근거로 든 기록의 피치를 센다(다른 피치를 읽었어도 한 피치 안에서 답하면 붙이지 않는다).
+    """
+    msg = lp.original or ""
+    asked = any(w in msg for w in lp.cfg.compare_request_words) or any(
+        (d.get("subject") or {}).get("relation") == "COMPARE" or d.get("claim_op") == "CHANGE"
+        for d in lp.st.plan_drafts
+    )
+    if not asked:
+        return False
+    reg = lp.ctx.registry
+    pitches = set()
+    for c in said:
+        for eid in c.evidence_ids:
+            ev = reg.get(eid)
+            if ev is not None and ev.origin == "RECORD" and ev.pitch_id:
+                pitches.add(ev.pitch_id)
+    return len(pitches) >= 2
+
+
+def _tail_claims(
+    lp: Loop, route: Any, *, said: list[Claim], draft: dict[str, Any] | None = None
+) -> list[Claim]:
     """답 끝에 붙는 고정 문장(7-9 · 7-10). 이미 낸 · 낼 문장과 같은 문장은 다시 붙이지 않는다.
 
     - 이름으로 찾은 피치가 여럿인데 범위를 정하지 않았고, 여러 발표를 함께 묻는 말이 아니면 어느 발표인지 되묻는다(L2-21).
-    - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2).
+    - 이름으로 찾은 피치가 하나도 없고 범위를 정하지 않았으면 발표를 찾을 수 없다고 말한다(L2-21 0개).
+    - 답 초안 `usage_unanswered`(화면 조작 방법을 물었는데 찾은 사용법 자료가 없음)면 사용법 자료 없음 문장(6-10).
+    - 답 초안 route `CANNOT_DO`(점수 · 차원 상태 · 공식 미션 · 리뷰 결과를 바꿔 달라는 요청)면 할 수 없다는 문장(6-2). 코드가
+      그 요청으로 알아본 말(`Loop.record_change`)은 늘, 다시 평가를 실행한 답에는 코드가 알아본 요청일 때만.
     """
     seen = {c.text for c in said} | {d.get("text") for d in lp.st.emitted}
     out: list[Claim] = []
@@ -839,7 +1405,14 @@ def _tail_claims(lp: Loop, route: Any, *, said: list[Claim]) -> list[Claim]:
     plural = any(w in msg for w in lp.cfg.plural_request_words)
     if lp.st.ambiguous_name and not fetched and not plural:
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.WHICH_PITCH.value))
-    if route == "CANNOT_DO":
+    elif lp.st.name_not_found and not fetched and not lp.st.ambiguous_name:
+        out.append(Claim(kind="SYSTEM", text=templates.SystemText.PITCH_NOT_FOUND.value))
+    if draft is not None and draft.get("usage_unanswered") is True and not lp.record_change:
+        # 공식 결과를 바꿔 달라는 말("미션 지워 줘")을 화면 사용법 질문으로 읽어도 사용법 자료 없음 문장을 내지 않는다
+        out.append(Claim(kind="SYSTEM", text=templates.SystemText.USAGE_NO_GUIDE.value))
+    reassessed = any(e.get("type") == "REASSESS" for e in lp.st.executed)
+    if route == "CANNOT_DO" and (lp.record_change or not reassessed):
+        # 다시 평가를 실행한 답(참고 결과)에는 붙이지 않는다: 조건으로 다시 평가해 달라는 말은 바꿀 수 없는 요청이 아니다(6-6)
         out.append(Claim(kind="SYSTEM", text=templates.SystemText.CANNOT_CHANGE_RECORD.value))
     return [c for c in out if c.text not in seen]
 
@@ -874,26 +1447,58 @@ def _pre_claims(
     """모델을 부르기 전에 정해지는 앞 문장(5-4: 코드 템플릿 문장은 확정되는 즉시 먼저 낸다). 이미 낸 문장은 뺀다.
 
     순서(`notes`면): 조사 중단 안내 → 기록이 바뀐 안내 → 행동 안내(7-10) → 행동 결과(이 실행에서 성공한 행동의 성공
-    문장). 안내를 앞에 두는 것은 그 뒤 문장을 읽는 법을 먼저 알리기 위해서다. 승인 대기 전 답(`notes` 아님)은 행동 결과만.
+    문장, 목표 저장이면 바로 뒤에 결과 발견 안내). 안내를 앞에 두는 것은 그 뒤 문장을 읽는 법을 먼저 알리기 위해서다. 승인 대기 전
+    답(`notes` 아님)은 행동 결과만. 모델 장애 · 무효 도구로 조사가 끊긴 때의 일반 안내('답 일부를 확인하지 못해 …')는 여기서 내지
+    않고, 답에 근거 문장이 하나도 없을 때만 `_answer`가 끝에 붙인다(TARGET 6).
     """
     said_actions = {d.get("action_id") for d in lp.st.emitted}
     said = {d["text"] for d in lp.st.emitted}
     out: list[Claim] = []
     if notes:
-        system = [stopped[1].value] if stopped is not None else []
+        system = (
+            [stopped[1].value]
+            if stopped is not None and stopped[1] != templates.SystemText.PARTIAL_CHECKED
+            else []
+        )
         if lp.record_changed:
             system.append(templates.SystemText.RECORD_CHANGED_DURING.value)
         system += _action_notes(lp)
+        system += _goal_proposal_notes(lp)
         system += _measurement_notes(lp)
         system += _missing_take_notes(lp)
+        system += _unmeasured_notes(lp)
         out += [Claim(kind="SYSTEM", text=t) for t in dict.fromkeys(system) if t not in said]
-    out += [
+    results = [
         Claim(kind="ACTION_RESULT", text=e["success_text"], action_id=e["action_id"])
         for e in lp.st.executed
         if e.get("status") == "SUCCEEDED"
         and e.get("success_text")
         and e["action_id"] not in said_actions
     ]
+    return out + _with_discovery(lp, results, said)
+
+
+def _with_discovery(lp: Loop, results: list[Claim], said: set[str]) -> list[Claim]:
+    """결과 발견 안내(D4b, 7-10, 설정 `result_discovery`): 이 실행에서 성공한 목표 저장(`SAVE_GOAL`)의 `ACTION_RESULT` 문장 바로
+    뒤에 "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요."를 한 번 둔다. 이미 낸 실행이면 다시 붙이지 않는다.
+    연습 준비 버튼만 낸 답 · 저장 실패 · 거절(BE 문장)에는 성공 문장이 없으므로 붙지 않는다."""
+    text = templates.SystemText.RESULT_DISCOVERY.value
+    saved = {
+        e["action_id"]
+        for e in lp.st.executed
+        if e.get("type") == "SAVE_GOAL" and e.get("status") == "SUCCEEDED"
+    }
+    if not any(c.action_id in saved for c in results) or text in said:
+        return results
+    if not lp.cfg.result_discovery:
+        return results
+    out: list[Claim] = []
+    added = False
+    for c in results:
+        out.append(c)
+        if not added and c.action_id in saved:
+            out.append(Claim(kind="SYSTEM", text=text))
+            added = True
     return out
 
 
@@ -967,9 +1572,34 @@ def _action_notes(lp: Loop) -> list[str]:
     return out
 
 
-#: 다시 평가를 바라는 말(6-6)
+#: 목표 제안 카드로 낮춘 까닭 → 고정 문장(L6-08 · L6-23, 7-10)
+_GOAL_PROPOSAL_NOTE = {
+    "GOAL_CONFLICT": templates.SystemText.GOAL_CONFLICT,
+    "UNMEASURABLE": templates.SystemText.GOAL_UNMEASURABLE,
+}
+
+
+def _goal_proposal_notes(lp: Loop) -> list[str]:
+    """목표 요청을 저장 확인 카드 대신 목표 제안 카드(`GOAL_PROPOSAL`)로 낮춘 까닭의 고정 문장(L6-08 · L6-23).
+
+    사용자 목표가 기록과 어긋나면(우선 개선 차원이 따로 있음 · 이미 강점) "말씀하신 목표와 기록으로 본 추천 목표가 달라요. 하나를
+    골라 주세요.", 잴 수 없는 목표면 잴 수 없다는 문장을 붙인다. 카드가 답에 남아 있을 때만(지워진 원천으로 버린 카드는 빼고),
+    허용 근거가 모호해 낮춘 카드에는 붙이지 않는다(까닭이 기록과의 어긋남이 아니다)."""
+    shown = {c.get("proposal_id") for c in lp.st.cards if c.get("type") == "GOAL_PROPOSAL"}
+    out: list[str] = []
+    for g in lp.st.goal_proposals:
+        note = _GOAL_PROPOSAL_NOTE.get(g.get("reason") or "")
+        if note is not None and g.get("proposal_id") in shown and note.value not in out:
+            out.append(note.value)
+    return out
+
+
+#: 다시 평가를 바라는 말(6-6). "평가 다시 돌려 주세요" · "리뷰를 다시 돌려 주세요"처럼 대상이 앞에 오거나 '돌려'로 말한
+#: 요청도 잡는다(final60 re-security-camera-dispute · re-podcast-mic-dispute). "다시 봐도 낮아" 같은 서술은 잡지 않는다
 _REASSESS_ASK = re.compile(
     r"다시\s*(평가|채점|매겨|판정)|다시\s*봐\s*(줘|주세요|줄래)|재평가|재채점"
+    r"|다시\s*돌려\s*(줘|주세요|줄래)"
+    r"|(평가|채점|리뷰|판정)[을를은는도]?\s*다시\s*(해|매겨|받|돌려)"
 )
 
 
@@ -990,6 +1620,20 @@ def _measurement_notes(lp: Loop) -> list[str]:
     return [templates.SystemText.MEASUREMENT_FIXED.value]
 
 
+def _unmeasured_notes(lp: Loop) -> list[str]:
+    """물은 영역이 측정 안 됨으로 읽힌 단계가 있으면(할 일 단계 결과 `측정 안 됨`) "이 항목은 측정되지 않았어요."를 붙인다(TARGET
+    6: 측정 안 됨은 '없음'이 아니라 그 자체로 확인한 사실이다). 모델 문장이 그 사실을 빠뜨려도 답에 남는다(final60
+    ana-webinar-voice-unmeasured). 모델 문장이 모두 빠졌을 때의 대신 문장(`_target_fallback`)과 같은 문장이라 겹쳐 붙지 않는다."""
+    if not lp.cfg.plan_progress:
+        return []
+    unmeasured = templates.PLAN_RESULT["UNMEASURED"]
+    if any(
+        m.get("ran") == "get_take_report" and m.get("result") == unmeasured for m in lp.st.plan_meta
+    ):
+        return [templates.SystemText.UNMEASURED.value]
+    return []
+
+
 def _missing_take_notes(lp: Loop) -> list[str]:
     """사용자가 번호로 집어 말한 Take 가 범위 피치에 없으면(지워짐 · 없는 번호) "해당 연습 기록을 가져오지 못했어요"(L2-22).
 
@@ -1003,6 +1647,15 @@ def _missing_take_notes(lp: Loop) -> list[str]:
 
 
 #: 조사 종료 사유 → (진단 끝 사유, 안내 문구)
+#: 반복으로 멈춘 조사(같은 요청 되풀이 · 교대 반복, L1-16): 한도 · 장애가 아니라 끝 상태를 요청 해소로 정한다. 무효 도구 반복
+#: (모델 장애) · 실패한 행동 반복은 그대로 끊긴 것으로 본다
+#: 이어 부른 실행의 첫 조사가 출력 예약에 막혀 건너뛴 것도 같다(받은 행동 결과로 답하고 요청 해소로 정함, 진단 끝 이유 TOKENS)
+#: 조사 종료 사유 → (진단 끝 이유, 풀리지 않은 부분이 남았을 때 끝에 붙이는 안내)
+_SOFT_STOPS: dict[str, tuple[str, templates.SystemText]] = {
+    "NO_PROGRESS": ("REPEAT", templates.SystemText.NO_MORE_SOURCES),
+    "ALTERNATING": ("REPEAT", templates.SystemText.NO_MORE_SOURCES),
+    RESUME_RESERVE_STOP: ("TOKENS", templates.SystemText.LIMIT_PARTIAL),
+}
 _RESEARCH_STOP = {
     "TIME": ("TIME", templates.SystemText.LIMIT_PARTIAL),
     "MODEL_CALLS": ("MODEL_CALLS", templates.SystemText.LIMIT_PARTIAL),
@@ -1153,14 +1806,16 @@ def _safe_cards(
 
 
 def _safe_trace(lp: Loop, trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """trace 요약에 외부 문자열(피치 제목 등)이 들어가므로 같은 검사를 하고, 걸리면 도구 이름 · 결과만 남긴다."""
+    """trace 요약에 외부 문자열(피치 제목 등)이 들어가므로 같은 검사를 하고, 걸리면 도구 이름 · 결과만 남긴다.
+    `get_take_report` 요약 앞의 읽은 출처(`코치가 찾은 것` · `리뷰 분석`)는 숫자가 없어 그대로 남긴다."""
     ctx, cfg = lp.ctx, lp.cfg
     out = []
     for t in trace:
         if chk.check_display_strings(
             trace=[t], registry=ctx.registry, display_evidence=None, cfg=cfg, assessments={}
         ):
-            t = {**t, "args_summary": t["tool"], "result_summary": t["outcome"]}
+            tag = source_tag_of(t["result_summary"]) if t["tool"] == "get_take_report" else ""
+            t = {**t, "args_summary": t["tool"], "result_summary": tag + t["outcome"]}
         out.append(t)
     return out
 
@@ -1275,27 +1930,29 @@ def _finish(
     if req.run.trigger == "TAKE_REVIEWED":
         assessments_out = []
     amap = {a["assessment_id"]: Assessment.model_validate(a) for a in assessments_out}
-    plan = st.plan
-    if status == "DONE":
-        plan = [
-            {**p, "status": "DONE" if p["status"] in ("DOING", "TODO") else p["status"]}
-            for p in plan
-        ]
+    if terminal:
+        lp.close_signals()  # 조사를 다시 하지 않고 끝난 실행(호출 수 · 시간 한도 등)에 남은 신호도 대응 없음으로 닫는다
+    plan = _final_plan(lp, status, claim_list)
     # NEEDS_ACTION 의 message 에는 확인 카드(`extra_cards`)만 싣는다. 모인 카드(st.cards)는 최종 답까지 상태에 남는다
     cards = _safe_cards(lp, st.cards if status != "NEEDS_ACTION" else extra_cards or [], amap)
     msg = None
+    ordered_claims: list[Claim] = []
     act_list = [action] if action is not None else list(actions or [])
     ask_wait = bool(act_list) and act_list[0].autonomy == "ASK"
     if claim_list or extra_cards or ask_wait or status != "NEEDS_ACTION":
         if not claim_list and status != "NEEDS_ACTION":
             claim_list = [Claim(kind="SYSTEM", text=templates.SystemText.PARTIAL_CHECKED.value)]
         text, ordered = chk.assemble_message(claim_list)
+        ordered_claims = ordered
         # 멈추기 전에 낸 문장의 자료 카드는 서명 상태의 사본을 그대로 쓰고, 새 자료만 지금 자료 묶음에서 그린다
-        carried = {g["source_id"]: g for g in st.emitted_sources}
+        # 이 응답의 문장 줄이 이미 보낸 카드도 같은 사본을 쓴다(문장 줄과 끝 줄의 보이는 인용이 같게)
+        carried = {g["source_id"]: g for g in [*st.emitted_sources, *lines.sent_cards.values()]}
         src_ids = sources
+        # 보이는 인용은 남은 `GUIDE` 문장이 실제로 인용한 문장이다(카드 앞부분이 아니라)
+        quotes = compose.claim_quotes(claim_list)
         fresh = {
             g.source_id: g.model_dump(mode="json")
-            for g in compose.guide_cards(ctx, [i for i in src_ids if i not in carried])
+            for g in compose.guide_cards(ctx, [i for i in src_ids if i not in carried], quotes)
         }
         msg = {
             "text": text,
@@ -1314,8 +1971,7 @@ def _finish(
     if terminal:
         if msg is not None:
             # 답 문장은 요약보다 먼저 다 낸다(6-1 8번: 사용자는 요약을 기다리지 않는다)
-            for d in msg["claims"][n_sent:]:
-                lines.send(Claim.model_validate(d), assessments_out, record=False)
+            _send_rest(lines, ordered, msg["claims"], n_sent, assessments_out, msg["sources"])
             tail_sent = True
         # 대화 요약(6-14): 답 쓰기 · 고치기 뒤 남은 몫에서. 이 호출도 사용량에 들어가므로 사용량을 다시 센다
         history_summary = _history_summary(lp)
@@ -1406,6 +2062,7 @@ def _finish(
                     "cards": _safe_cards(lp, st.cards, amap) if results_now else [],
                     "sources": [g for sid, g in pool.items() if sid in keep_src],
                 },
+                plan=_final_plan(lp, "PARTIAL", kept_claims),
             )
             reason = "LIMIT"
     if profile_updates:
@@ -1430,9 +2087,57 @@ def _finish(
     final["diagnostics"] = d.model_dump(mode="json")
     # 아직 줄로 내지 않은 문장(보류했다 통과한 문장 · 끝에 붙는 안내 · 모델 없이 만든 답)도 끝 줄 앞에 문장 줄로 낸다.
     # 그래서 문장 줄 번호는 실행 전체 답에서의 자리와 같고 빈 번호가 없다(5-4)
-    for d in [] if tail_sent else (final["message"] or {}).get("claims", [])[n_sent:]:
-        lines.send(Claim.model_validate(d), final["assessments"], record=False)
+    if not tail_sent and final["message"]:
+        _send_rest(
+            lines,
+            ordered_claims,
+            final["message"]["claims"],
+            n_sent,
+            final["assessments"],
+            final["message"]["sources"],
+        )
     return final, None, None
+
+
+def _final_plan(lp: Loop, status: str | None, claims: list[Claim]) -> list[dict[str, Any]]:
+    """끝 줄의 할 일 목록(progress.finish_plan). 끝 처리로 상태가 바뀌면 plan 줄을 한 번 더 낸다(실시간 화면 = 최종).
+
+    답 쓰기 단계의 '답 문장': DONE 이면 낸 문장 하나 이상, PARTIAL 이면 고정 안내(`SYSTEM`)가 아닌 문장 하나 이상, REFUSED 는 없음.
+    `plan_progress`를 끄거나 단계 메타가 없으면 이전 동작(DONE 이면 단계를 모두 DONE)이다."""
+    st = lp.st
+    if not (lp.cfg.plan_progress and st.plan_meta):
+        if status == "DONE":
+            return [
+                {**p, "status": "DONE" if p["status"] in ("DOING", "TODO") else p["status"]}
+                for p in st.plan
+            ]
+        return st.plan
+    answered = (status == "DONE" and bool(claims)) or (
+        status == "PARTIAL" and any(c.kind != "SYSTEM" for c in claims)
+    )
+    plan = progress.finish_plan(
+        st.plan_meta, lp.ctx.registry, lp.cfg, status or "", answered=answered
+    )
+    if plan != st.plan:
+        st.plan = plan
+        lp.emit("plan", {"plan": plan})
+    return plan
+
+
+def _send_rest(
+    lines: Any,
+    objs: list[Claim],
+    dumps: list[dict[str, Any]],
+    n_sent: int,
+    assessments: list[dict[str, Any]],
+    cards: list[dict[str, Any]],
+) -> None:
+    """끝 줄 message 의 아직 내지 않은 문장을 문장 줄로 낸다. 조립한 `Claim` 객체(내부 인용 문장 유지)를 그대로 쓰고, 자료 카드는
+    message 에 조립한 사본을 그대로 쓴다. 상태가 너무 커 message 를 다시 만든 경우처럼 객체가 맞지 않으면 모양에서 되살린다."""
+    by_dump = {json.dumps(o.model_dump(mode="json"), sort_keys=True): o for o in objs}
+    for d in dumps[n_sent:]:
+        claim = by_dump.get(json.dumps(d, sort_keys=True)) or Claim.model_validate(d)
+        lines.send(claim, assessments, record=False, cards=cards)
 
 
 __all__ = ["handle_turn", "TurnResponse", "PreStreamError"]

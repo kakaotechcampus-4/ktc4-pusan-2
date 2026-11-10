@@ -199,11 +199,6 @@ def recovery_request(db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
     )
 
 
-class StoreFinalizeExport:
-    def recovery_request(self, db: Session, take_id: uuid.UUID) -> dict[str, Any] | None:
-        return recovery_request(db, take_id)
-
-
 def save_take_result(
     db: Session, take_id: uuid.UUID, reply: FinalizeReply, events: Sequence[StoredEvent]
 ) -> bool:

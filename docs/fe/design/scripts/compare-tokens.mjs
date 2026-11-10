@@ -10,7 +10,8 @@ const productPath = fileURLToPath(new URL('../../../../frontend/src/index.css', 
 function variables(css) {
   const result = new Map();
   const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  for (const block of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  // 앞의 @import · 한 줄 @custom-variant는 다음 블록의 선택자가 아니다.
+  for (const block of text.matchAll(/([^{};]+)\{([^{}]*)\}/g)) {
     const scope = block[1].trim().replace(/\s+/g, ' ');
     for (const match of block[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
       result.set(`${scope} ${match[1]}`, match[2].trim());

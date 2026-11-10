@@ -1,0 +1,188 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-auto-gym-gaze-trend",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 2~5 의 3장 시선 흐름 — 묻지 않고 가져오기 · 비교로 읽어 30% → 47%",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-gym",
+        "title": "헬스장 신규 프로그램 소개",
+        "takes": [
+          {
+            "take_id": "gym-t2",
+            "take_number": 2,
+            "started_at": "2026-10-30T19:00:00+09:00",
+            "completed_at": "2026-10-30T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.58,
+                0.3,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "gym-t3",
+            "take_number": 3,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.59,
+                0.36,
+                0.61
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "gym-t4",
+            "take_number": 4,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.61,
+                0.6,
+                0.42,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STABLE"
+              },
+              "score": 72
+            }
+          },
+          {
+            "take_id": "gym-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.62,
+                0.6,
+                0.47,
+                0.61
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STABLE"
+              },
+              "score": 75
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-gym"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2부터 Take 5까지 3장에서 청중 시선이 어떻게 변해 왔는지 흐름으로 보여 주세요.",
+      "page_take_id": "gym-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "metric": "autonomy",
+        "note": "읽기 · 가져오기는 AUTO: 사용자에게 묻고 멈추지 않는다"
+      },
+      {
+        "check_id": "no-confirm-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "ASK_CONFIRM"
+        ],
+        "path": "card_types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "first-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "30%",
+        "grader": "number",
+        "derive": "gym-t2:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "mid-value-3",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "36%",
+        "grader": "number",
+        "derive": "gym-t3:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "mid-value-4",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "42%",
+        "grader": "number",
+        "derive": "gym-t4:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "last-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "47%",
+        "grader": "number",
+        "derive": "gym-t5:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "exec:FETCH_TAKE:OK",
+            "claim:RECORD"
+          ],
+          [
+            "tool:compare_takes:OK",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  }
+}

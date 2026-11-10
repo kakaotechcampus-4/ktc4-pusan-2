@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "id": "path-norec-segments-zero",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 5 의 2장은 측정됐고 문제 구간이 0곳 — 어느 Take · 어느 장인지와 함께 '문제 구간 없음'을 사실로 말하고 평가로 바꾸지 않는다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "audience": [
+                0.62,
+                0.7,
+                0.6,
+                0.6
+              ],
+              "issues": []
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 2장에서 시선 문제가 있던 구간이 어디야?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-then-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "문제 구간 없음",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "scope-named",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "Take ?5|2장",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-evaluation",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "문제없|완벽|잘하셨|훌륭",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-generic-partial",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

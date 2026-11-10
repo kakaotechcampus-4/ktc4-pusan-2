@@ -1,0 +1,183 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-stale-festival-history-take",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should",
+  "title": "옛 대화에서 다룬 Take('그때 그 연습')의 마지막 장 시선 — 대화 기록으로 Take 2 를 찾아 가져와 36%",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-fest",
+        "title": "지역 축제 기획 발표",
+        "takes": [
+          {
+            "take_id": "fest-t2",
+            "take_number": 2,
+            "started_at": "2026-10-30T19:00:00+09:00",
+            "completed_at": "2026-10-30T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.55,
+                0.58,
+                0.36
+              ],
+              "filler_per_min": 3.1,
+              "filler_count": 12
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 67
+            }
+          },
+          {
+            "take_id": "fest-t3",
+            "take_number": 3,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "fest-t4",
+            "take_number": 4,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "fest-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-fest",
+      "history": [
+        {
+          "role": "user",
+          "text": "Take 2는 전체적으로 어땠어요?"
+        },
+        {
+          "role": "assistant",
+          "text": "Take 2는 군더더기가 우선 개선이었고, 나머지 항목은 보통이었어요.",
+          "basis": {
+            "pitches": [
+              {
+                "pitch_id": "p-fest",
+                "script_version_id": "sv-1",
+                "presentation_version_id": "pv-1",
+                "standard_version": 1,
+                "takes": [
+                  {
+                    "take_id": "fest-t2",
+                    "take_number": 2,
+                    "script_version_id": "sv-1",
+                    "presentation_version_id": "pv-1",
+                    "standard_version": 1,
+                    "results": {
+                      "TAKE_RESULT": 1,
+                      "REVIEW": 1
+                    },
+                    "rule_versions": {}
+                  }
+                ]
+              }
+            ],
+            "conversation_goal_version": 0,
+            "corpus_version": "guides-8",
+            "sources": []
+          }
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "그때 얘기했던 그 연습에서 마지막 장 청중 시선은 몇 퍼센트였어요?",
+      "page_take_id": "fest-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "36%",
+        "grader": "number",
+        "derive": "fest-t2:GAZE.audience_ratio@4"
+      },
+      {
+        "check_id": "target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 2,
+          "metric": "audience_ratio"
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "last-slide",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(4장|마지막 장)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "exec:FETCH_TAKE:OK",
+          "tool:get_take_report:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "fetch-replan",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "decision:NOT_LOADED:*",
+            "propose:FETCH_TAKE:AUTO"
+          ],
+          [
+            "propose:FETCH_TAKE:AUTO",
+            "exec:FETCH_TAKE:OK",
+            "tool:get_take_report:OK",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "replan",
+        "note": "기본 자료에 없는 Take → 가져오기(AUTO) 뒤 다시 읽기. 코드가 먼저 가져오면 NOT_LOADED 결정 없이도 허용"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

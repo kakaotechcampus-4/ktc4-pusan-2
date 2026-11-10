@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "id": "path-norec-review-missing",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 5 리뷰가 아직 없는데 리뷰 결과 · 점수를 물음 — '리뷰 분석 전'으로 말하고 'Take 없음'이 아니며, 코치 결과로 답할 수 있으면 답한다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "review": null
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 리뷰 결과랑 점수 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-then-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:*",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "review-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "decision:REVIEW_MISSING:*"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "리뷰 분석 전",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "not-no-take",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": "Take 없음",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-score-number",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "[0-9]+점",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-generic-partial",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -36,13 +36,13 @@
 <text x="823" y="340" font-size="12" fill="#17191e" font-weight="700" text-anchor="start">다음 슬라이드  →</text>
 <text x="763" y="362" font-size="11" fill="#17191e" font-weight="700" text-anchor="start">테두리 =</text>
 <line x1="821" y1="358" x2="836" y2="358" stroke="#6b9e78" stroke-width="3"/>
-<text x="821" y="371" font-size="10" fill="#17191e" font-weight="600" text-anchor="start">청중</text>
+<text x="808" y="371" font-size="12" fill="#17191e" font-weight="600" text-anchor="start">청중</text>
 <line x1="869" y1="358" x2="884" y2="358" stroke="#d9a441" stroke-width="3"/>
-<text x="869" y="371" font-size="10" fill="#17191e" font-weight="600" text-anchor="start">화면</text>
+<text x="854" y="371" font-size="12" fill="#17191e" font-weight="600" text-anchor="start">화면</text>
 <line x1="918" y1="358" x2="933" y2="358" stroke="#7fa3c7" stroke-width="3"/>
-<text x="918" y="371" font-size="10" fill="#17191e" font-weight="600" text-anchor="start">대본</text>
+<text x="902" y="371" font-size="12" fill="#17191e" font-weight="600" text-anchor="start">대본</text>
 <line x1="970" y1="358" x2="985" y2="358" stroke="#c0392b" stroke-width="3" stroke-dasharray="3 2"/>
-<text x="970" y="371" font-size="10" fill="#17191e" font-weight="600" text-anchor="start">판정 불가</text>
+<text x="950" y="371" font-size="12" fill="#17191e" font-weight="600" text-anchor="start">판정 불가</text>
 <rect x="26" y="385" width="990" height="52" rx="0" fill="#f6efe3" stroke="#17191e" stroke-width="2"/>
 <circle cx="57" cy="411" r="19" fill="#fff1d4" stroke="none" stroke-width="0"/>
 <path d="M43 421 Q37 405 48 398 Q62 391 70 404 Q75 415 61 422 Z" fill="#e8532a"/>
@@ -51,7 +51,7 @@
 <text x="89" y="407" font-size="16" fill="#17191e" font-weight="800" text-anchor="start">피코</text>
 <text x="159" y="415" font-size="19" fill="#17191e" font-weight="600" text-anchor="start">코치 안내가 여기에 표시돼요</text>
 <rect x="26" y="445" width="990" height="28" rx="0" fill="#faf9f6" stroke="none" stroke-width="1"/>
-<text x="38" y="463" font-size="14" fill="#17191e" font-weight="600" text-anchor="start">← → 슬라이드 이동 · Space 다음 장 · ↑ ↓ 대본 스크롤</text>
+<text x="38" y="463" font-size="14" fill="#17191e" font-weight="600" text-anchor="start">슬라이드 클릭 다음 · 우클릭 이전 · ← → · Space · ↑ ↓ 대본 스크롤</text>
 <text x="742" y="463" font-size="13" fill="#626976" font-weight="600" text-anchor="start">마지막 장에서 끝낼 수 있어요</text>
 <rect x="26" y="480" width="990" height="96" rx="0" fill="#fff" stroke="#17191e" stroke-width="2"/>
 <text x="46" y="503" font-size="17" fill="#17191e" font-weight="800" text-anchor="start">대본</text>

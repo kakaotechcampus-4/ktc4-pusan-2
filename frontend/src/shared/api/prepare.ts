@@ -84,7 +84,15 @@ export function useCreateTake() {
  * 본문은 `toCalibrationRequest` 가 만듭니다 (`features/rehearsal/lib/calibrationRequest.ts`).
  *
  * 경로는 BE 그대로입니다 — #69 부터 Take 경로는 전부 `pitch_id` 를 품습니다.
+ * `signal` 로 끊을 수 있습니다 — 장치 점검이 제한 시간을 둡니다 (`sendCalibration`).
  */
-export function postCalibration(pitchId: string, takeId: string, body: CalibrationRequest) {
-  return postJson<unknown>(`/api/pitches/${pitchId}/takes/${takeId}/calibration`, body);
+export function postCalibration(
+  pitchId: string,
+  takeId: string,
+  body: CalibrationRequest,
+  signal?: AbortSignal,
+) {
+  return postJson<unknown>(`/api/pitches/${pitchId}/takes/${takeId}/calibration`, body, {
+    signal,
+  });
 }

@@ -26,7 +26,8 @@ AI_DIR = Path(__file__).resolve().parents[3]
 
 # 묶음 이름 → 환경변수 접두어.
 # 묶음을 더하면 Settings 에 세 칸을 더하고 여기에 한 줄을 더한다
-_BUNDLE_PREFIXES = {"default": "openai", "sol": "openai_sol"}
+# embedding: 대화 에이전트 자료 검색의 질문 임베딩(선택, 기능 문서 11-1). 없으면 키워드 검색만 한다
+_BUNDLE_PREFIXES = {"default": "openai", "sol": "openai_sol", "embedding": "openai_embedding"}
 _PARTS = ("base_url", "api_key", "model")
 
 
@@ -86,6 +87,10 @@ LLM_ROLES: dict[str, LlmRole] = {
     "script_coverage.verifier": LlmRole(
         bundle="default", max_output_tokens=2048, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
     ),
+    # 대본 밖 구간 분류(기본 꺼짐). 출력 상한은 잰 값이 아니라 임시값이다 — 켜기 전에 잰다
+    "script_coverage.offscript": LlmRole(
+        bundle="default", max_output_tokens=2048, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
+    ),
     # 코치 코칭 계획: 잰 최대 출력 × 2 를 1,024 단위로 올림(최소 2,048).
     # 호출 한 번은 LLM_TIMEOUT_SECONDS (코치 기능 문서 8절)
     "coach.plan": LlmRole(bundle="default", max_output_tokens=2048),
@@ -123,6 +128,11 @@ class Settings(BaseSettings):
     openai_sol_base_url: str | None = None
     openai_sol_api_key: SecretStr | None = None
     openai_sol_model: str | None = None
+    # 임베딩 묶음 (text-embedding-3-small). 선택, 셋이 다 있거나 다 없어야 한다.
+    # 게이트웨이는 모델마다 주소 · 키가 달라 기본 묶음으로 임베딩을 부를 수 없다
+    openai_embedding_base_url: str | None = None
+    openai_embedding_api_key: SecretStr | None = None
+    openai_embedding_model: str | None = None
 
     # LLM 호출 한 번의 시간 제한(초)과 재시도 횟수 (architecture.md 9 · 10절)
     # 범위 밖(0 이하 · nan · 음수)이면 시작 오류
@@ -155,6 +165,9 @@ class Settings(BaseSettings):
         "openai_sol_base_url",
         "openai_sol_api_key",
         "openai_sol_model",
+        "openai_embedding_base_url",
+        "openai_embedding_api_key",
+        "openai_embedding_model",
         "script_coverage_llm_timeout_seconds",
         "agent_state_secret",
         "agent_state_secret_previous",

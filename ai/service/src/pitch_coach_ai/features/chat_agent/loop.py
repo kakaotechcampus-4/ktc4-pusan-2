@@ -18,6 +18,14 @@
      결론 · 성공 문장은 코드 템플릿 → 답 검사(6-9)를 하고 통과한 문장부터 문장 줄로 낸다. 걸린 문장은 까닭을 알려 한 번
      고치게 하고(`fix_call`) 다시 검사한다. 그래도 걸린 문장은 지운다.
   4. 최종 출력(`final.data`)을 조립한다. `message.text` 는 검사를 통과한 문장을 LF 로 이은 값이다.
+- 할 일 단계 = 실제 실행(progress.py, 설정 `plan_progress`): 계획 단계마다 도구 힌트(`tool`)를 받아 단계 메타(`plan_meta`)를 두고,
+  도구 하나가 끝날 때마다(캐시 적중 포함) 그 실행을 단계에 이어 `목적: 실행 → 결과`와 상태를 다시 그려 plan 줄로 낸다(`_emit_plan_display`).
+  이 표시 갱신은 계획 수정 한도(PLAN_EDITS)를 쓰지 않는다 — 한도는 모델의 `update_plan`만 센다. 끝 처리는 turn.py `_finish`.
+- 상황 신호 · 결정 로그(설정 `decision_log` · `research_signals`): 도구 결과에서 코드가 찾은 신호(비교 불가 · 기본 자료에 없음 · 리뷰 없음 ·
+  기록 없음 · 도구 실패)를 단계에 보이고(`FACT_SHOWN:CODE`, 단계에 실제로 붙었을 때만) 대응을 기다리는 신호(`signals_open`)로 둔다. 그 신호를 본 모델의 다음 선택이
+  `update_plan`이면 `PLAN_EDIT`, 다른 기록 도구 · 다른 대상이면 `ALT_TOOL`, 행동이면 `ACTION`, 조사가 끝날 때까지 없으면 `NONE`이다.
+  조사가 한도 · 무효 도구 반복 · 실패 행동 반복으로 멈추면 `BUDGET_LOW:STOP_PARTIAL:CODE`이고, 같은 요청 · 교대 반복으로 멈추면
+  요청 해소로 끝 상태를 정한다(한도 · 장애가 아니다). 결정 로그는 서비스 로그(`agent_decision`)에만 남는다(11-5).
 - 이어 부르기(ACTION_RESULT): 서명 상태의 루프 데이터(멈추기 전에 낸 문장 포함)를 되살리고, 지워진 원천(`removed_sources`)에 기댄 근거 · 캐시 · 도구 결과를 모델 호출 전에 버린 뒤(이미 낸 문장이 기댄 원천이면 재개를 멈춘다 — `drop_removed`),
   행동 결과를 검사해 반영하고 2부터 잇는다.
 - 자동 목표 확인(TAKE_REVIEWED): 모델 없이 코드가 목표를 판정하고 결과 문장 · 카드를 만든다(meta.model null).
@@ -27,7 +35,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,9 +45,10 @@ from pydantic import ValidationError
 from . import actions as act
 from . import checks as chk
 from . import claims as clm
-from . import compose, memory, prompts, templates
+from . import compose, memory, progress, prompts, templates
 from .budget import Budget, Counters, LimitHit, estimate_tokens, limit_end_reason
 from .config import ChatAgentConfig
+from .corpus import sentence_spans
 from .diagnostics import DiagRecorder, code_enum, finish_code
 from .evidence import EvidenceRegistry
 from .goals import judge_goal
@@ -58,7 +68,6 @@ from .schemas import (
     Assessment,
     Claim,
     GuideCard,
-    PlanStep,
     TraceItem,
     TurnRequest,
 )
@@ -71,12 +80,64 @@ from .tools import (
     run_tool,
     validate_args,
 )
+from .tools.impl import embed_planned_queries
+from .values import METRIC_AREA
 from .version import FEATURE_VERSION, SCHEMA_VERSION, TOOL_SCHEMA_VERSION
 
+#: 기본 계획(계획이 무효일 때). `tool`은 단계의 도구 힌트(progress.py)이고 응답 `PlanStep`에는 싣지 않는다
 DEFAULT_PLAN = [
-    {"step": "기록 확인", "status": "DOING", "note": None},
-    {"step": "답 쓰기", "status": "TODO", "note": None},
+    {"step": "기록 확인", "status": "DOING", "note": None, "tool": None},
+    {"step": "답 쓰기", "status": "TODO", "note": None, "tool": "answer"},
 ]
+
+
+#: 계획 route 값(6-1). 모르는 값은 RESEARCH 로 본다
+PLAN_ROUTES = ("RESEARCH", "ANSWER_DIRECT", "SMALL_TALK", "OUT_OF_SCOPE")
+#: 조사 종료 사유: 이어 부른 실행의 첫 조사가 출력 예약에 막혀 조사를 건너뜀(끝 상태는 요청 해소로, 진단 끝 이유는 TOKENS)
+RESUME_RESERVE_STOP = "RESUME_RESERVE"
+#: 가벼운 말 종류(P-0008 5-1)
+TALK_KINDS = ("GREETING", "THANKS", "CAPABILITY", "PRACTICE_INTENT", "FAREWELL")
+#: '같은 조건으로 다시 평가' 말에서 새 대상 · 조건으로 보는 표기: 숫자(Take · 장 번호 · 기준 값)와 Take 지칭(6-6 되살리기)
+_NEW_TARGET_RE = re.compile(r"\d|take|테이크", re.IGNORECASE)
+#: 번호로 집은 Take("Take 5"). 앞 말의 Take 와 같은지는 따로 본다
+_TAKE_MENTION_RE = re.compile(r"(?:take|테이크)\s*\d+", re.IGNORECASE)
+#: '같은 조건으로 다시 평가' 되살리기에 필요한 요청형(명령 · 권유 · 부탁). 다시 평가 낱말 뒤 절 끝 낱말에 있어야 한다.
+#: 할 수 있는지 묻는 말("다시 평가할 수 있어?" · "다시 평가돼?" · "다시 평가해 줄 수 있나요?")은 요청형이 아니라 모델이 고른다
+_REASSESS_REQUEST_FORMS = ("줘", "주세요", "주십시오", "줄래", "하자", "합시다", "부탁")
+
+
+def _reassess_requested(sentence: str, words: tuple[str, ...]) -> bool:
+    """다시 평가 낱말(`words`)이 든 절이 그 낱말 뒤에서 요청형으로 끝나는가("같은 조건으로 다시 평가해 줘" · "재평가 부탁해").
+    요청형은 명령 · 권유라 절 끝 낱말에 있어야 한다: "다시 평가해 줘도 돼?"처럼 요청형 뒤에 묻는 말이 오면 요청이 아니다."""
+    at = [i + len(w) for w in words if (i := sentence.find(w)) >= 0]
+    if not at:
+        return False
+    tail = re.findall(r"[가-힣]+", sentence[min(at) :])[-1:]
+    return bool(tail) and any(f in tail[0] for f in _REASSESS_REQUEST_FORMS)
+
+
+def _greeting_only(msg: str, cfg: Any) -> bool:
+    """인사 낱말(`small_talk_greeting_words`)을 빼고 나면 문장 부호 · 공백만 남는 말인가("안녕하세요?")."""
+    rest = msg
+    for w in sorted(cfg.small_talk_greeting_words, key=len, reverse=True):
+        rest = rest.replace(w, "")
+    return not any(ch.isalnum() for ch in rest)
+
+
+def goal_question(msg: str | None, cfg: Any) -> bool:
+    """대화 목표를 묻는 말인가("지금 대화 목표가 뭐야?" · "대화 목표는 어떻게 됐어?"): 목표 낱말(`goal_question_words`)과 묻는
+    꼴(`goal_question_ask_words`)이 있고 목표를 정하는 말(`goal_set_words`)이 없다."""
+    m = msg or ""
+    return (
+        any(w in m for w in cfg.goal_question_words)
+        and any(w in m for w in cfg.goal_question_ask_words)
+        and not any(w in m for w in cfg.goal_set_words)
+    )
+
+
+def _route_of(parsed: dict[str, Any]) -> str:
+    route = parsed.get("route")
+    return route if route in PLAN_ROUTES else "RESEARCH"
 
 
 @dataclass
@@ -141,8 +202,25 @@ class LoopState:
     prefetched: list[str] = field(default_factory=list)
     #: 이름으로 찾은(`list_pitches` query) 피치가 둘 이상이었다. 범위를 정하지 않고 답하면 어느 발표인지 되묻는다(L2-21)
     ambiguous_name: bool = False
+    #: 이름으로 찾은(`list_pitches` query) 피치가 하나도 없었다. 범위를 정하지 않고 답하면 찾을 수 없다고 말한다(L2-21 0개, 8회차 M4)
+    name_not_found: bool = False
     #: 이 실행에서 `compare_takes`가 비교할 수 없다고 한 것(앞 · 뒤 Take 번호 · 지표 · 장 · 까닭). 답에 까닭 문장을 코드가 붙인다(7-10)
     not_comparable: list[dict[str, Any]] = field(default_factory=list)
+    #: 이 실행에서 질문 임베딩을 이미 불렀는가(실행당 한 번, 6-10). 옛 상태에는 없어 False 로 읽는다
+    embed_used: bool = False
+    #: 계획이 쓴 자료 검색어(조사 첫머리에 코드가 먼저 찾는다, 6-10). 이어 부른 뒤에도 같은 목록을 쓴다. 옛 상태에는 없어 빈 목록
+    guide_queries: list[str] = field(default_factory=list)
+    #: 계획을 확정할 때의 판단 초안 사본. 답 쓰기가 `drafts`를 바꿔도 이 사본은 그대로다(기록 안전장치의 대상, 6-1). 옛 상태에는 없어 빈 목록
+    plan_drafts: list[dict[str, Any]] = field(default_factory=list)
+    #: 할 일 단계 메타(progress.py, `plan`과 같은 순서): 목적 · 도구 힌트 · 실행 · 결과 · 근거 · 도구 기록 순번. 옛 상태에는 없어 빈 목록
+    plan_meta: list[dict[str, Any]] = field(default_factory=list)
+    #: 결정 로그 줄의 실행 안 순번(마지막으로 쓴 번호)
+    decision_seq: int = 0
+    #: 대응을 기다리는 상황 신호(progress.open_signal). 조사가 끝날 때 남은 것은 대응 없음(NONE)으로 닫는다
+    signals_open: list[dict[str, Any]] = field(default_factory=list)
+    #: 이 실행에서 목표 제안 카드로 낮춘 까닭(`GOAL_CONFLICT` · `UNMEASURABLE`, 카드 id 와 함께). 답에 그 까닭의 고정 문장을
+    #: 코드가 붙인다(L6-08 · L6-23). 옛 상태에는 없어 빈 목록
+    goal_proposals: list[dict[str, Any]] = field(default_factory=list)
 
     def dump(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -167,6 +245,8 @@ class TurnDeps:
     monotonic: Callable[[], float]
     cfg: ChatAgentConfig
     log: Callable[[dict[str, Any]], None] = lambda _l: None
+    #: 질문 임베딩 함수(글, 시간 제한 초 → 벡터, 실패하면 예외). 없으면 키워드 검색만 한다(6-10)
+    embed_query: Callable[[Sequence[str], float], Sequence[Sequence[float]]] | None = None
 
 
 @dataclass
@@ -205,6 +285,11 @@ class Loop:
         self.original = original_message
         #: 계획 단계에서 모델이 고른 범위 밖 이유(route 가 OUT_OF_SCOPE 일 때만, 1-3). 한 호출 안에서만 쓰고 저장하지 않는다
         self.scope_reason: str | None = None
+        #: 이 응답의 계획 route(계획을 돌리지 않은 이어 부르기는 None)와 가벼운 말 종류(route 가 SMALL_TALK 일 때만, P-0008 5-1)
+        self.route: str | None = None
+        self.talk_kind: str | None = None
+        #: 이 호출에서 조사 모델을 한 번이라도 불렀는가(재개 첫 조사가 출력 예약에 막혔는지 가리는 데 쓴다)
+        self.research_called = False
         self.counters = counters
         self.budget = Budget.start(self.cfg, counters, deps.monotonic)
         self.diag = diag
@@ -224,6 +309,13 @@ class Loop:
             trusted_takes=set(state.read_sources),
         )
         self.ctx.tool_cache = dict(state.tool_cache)
+        self.ctx.embed_query = deps.embed_query
+        self.ctx.embed_used = state.embed_used
+        self.ctx.monotonic = deps.monotonic
+        # 임베딩 시간 제한은 조사에 남은 시간(답 몫을 뺀 것) 안으로 줄인다
+        self.ctx.research_left = lambda: max(
+            0.0, self.budget.left() - self.cfg.reserved_answer_seconds
+        )
         if not corpus_ok:
             # 실행 중 자료 판이 바뀌면 검색 캐시만 버리고 지금 판으로 다시 찾는다(5-6 · 6-10)
             self.ctx.tool_cache = {
@@ -231,6 +323,10 @@ class Loop:
                 for k, v in self.ctx.tool_cache.items()
                 if json.loads(k).get("tool") != "search_guides"
             }
+            # 검색 완료 표시도 함께 버린다: 남겨 두면 같은 검색어가 끝난 것으로 보여 지금 판을 찾지 않는다. 임베딩은 실행당
+            # 한 번이라 `embed_used`는 그대로 두고(지금 판은 키워드로 찾는다)
+            state.prefetched = [k for k in state.prefetched if not k.startswith('["search_guides"')]
+            state.guide_searched = False
         self.ctx.read_sources = set(state.read_sources)
         self.ctx.scope_switched = state.scope_switched
         #: 이어 부르는 사이 결과 판이 바뀐 Take 가 있었는가(옛 근거는 사본으로 낮췄다, 5-5 · L1-32)
@@ -249,6 +345,8 @@ class Loop:
         self._last_model_seq: int | None = None
         #: 문장 줄(`claim`)을 내는 쪽(turn.py 가 넣는다, answer.py `ClaimLines`)
         self.lines: Any = None
+        #: 상황 신호를 따라가는가(결정 로그 · 조사 데이터 블록 신호 중 하나라도 켜짐)
+        self.tracking = self.cfg.decision_log or self.cfg.research_signals
         memory.sync_version(state, req.memory)
 
     # ── 모델 호출 공통 ───────────────────────────────────────────────
@@ -508,21 +606,37 @@ class Loop:
 
     # ── 1. 계획 ─────────────────────────────────────────────────────
     def plan_phase(self) -> str:
-        """계획 · 판단 초안. 돌려주는 값: route(RESEARCH · ANSWER_DIRECT · OUT_OF_SCOPE). OUT_OF_SCOPE 면 `scope_reason`도 남는다."""
-        msgs = [self._system(prompts.PLAN), prompts.data_message(self.data_block())]
+        """계획 · 판단 초안. 돌려주는 값: route(RESEARCH · ANSWER_DIRECT · SMALL_TALK · OUT_OF_SCOPE). OUT_OF_SCOPE 면
+        `scope_reason`, SMALL_TALK 면 `talk_kind`도 남는다."""
+        self.route = self._plan_route()
+        return self.route
+
+    def _plan_route(self) -> str:
+        plan = prompts.PLAN + ("\n" + prompts.PLAN_COUNT_HINT if self.cfg.count_metric_hint else "")
+        msgs = [self._system(plan), prompts.data_message(self.data_block())]
         res = self._call("RESEARCH", msgs, schema=prompts.PLAN_SCHEMA)
         if not isinstance(res, LlmResult) or res.parsed is None:
             self._set_plan(DEFAULT_PLAN, edit=False)
             return "RESEARCH"
         parsed = res.parsed
-        route = (
-            parsed.get("route")
-            if parsed.get("route") in ("RESEARCH", "ANSWER_DIRECT", "OUT_OF_SCOPE")
-            else "RESEARCH"
-        )
-        if route == "OUT_OF_SCOPE":
-            self.scope_reason = parsed.get("scope_reason")
-        drafts = self._parse_drafts(parsed.get("assessments") or [])
+        route = _route_of(parsed)
+        if route in ("OUT_OF_SCOPE", "SMALL_TALK") and self.record_change:
+            # 공식 결과를 바꿔 달라는 말은 범위 밖 · 가벼운 말이 아니다: 기록을 읽고 할 수 없다는 고정 문장으로 답한다(6-2, r9
+            # safe-talk-greeting-tamper: "안녕! Take 5 점수 100점으로 바꿔 줘"가 '관계없는 질문' 거절로 끝남)
+            route = "RESEARCH"
+        drafts = self._plan_drafts(parsed.get("assessments") or [])
+        if route == "SMALL_TALK":
+            # 가벼운 말 확인은 모델이 낸 초안 그대로 본다(대상을 비운 초안으로 가벼운 말이 되지 않게)
+            kind = self._small_talk_kind(
+                parsed.get("talk_kind"), self._parse_drafts(parsed.get("assessments") or [])
+            )
+            if kind is not None:
+                # 가벼운 말: 모델은 이 한 번뿐이고 답은 코드 고정 문장이다(P-0008 5-1). 판단 · 할 일 목록은 두지 않는다
+                self.talk_kind = kind
+                self.st.drafts = []
+                return "SMALL_TALK"
+            # 코드가 가벼운 말로 보지 않은 말(길다 · 숫자 · 내용 있는 판단)은 기록 · 자료를 조사하는 기존 처리로
+            route = "RESEARCH"
         valid, problems = clm.split_check(self.original or "", drafts, self.cfg)
         plan_ok = self._plan_valid(parsed.get("plan") or [], allow_empty=route != "RESEARCH")
         if (problems or not plan_ok) and route != "OUT_OF_SCOPE":
@@ -543,12 +657,32 @@ class Loop:
             res2 = self._call("RESEARCH", fix_msgs, schema=prompts.PLAN_SCHEMA)
             if isinstance(res2, LlmResult) and res2.parsed is not None:
                 parsed = res2.parsed
-                drafts = self._parse_drafts(parsed.get("assessments") or [])
+                # 고친 계획의 route 로 다시 정한다(처음 route 를 그대로 쓰면 고친 계획과 어긋난다). 고치기에서 가벼운 말 ·
+                # 범위 밖으로 바꾼 것은 받지 않는다 — 형식이 틀렸던 말을 고정 문장 · 거절로 끝내지 않게
+                route2 = _route_of(parsed)
+                route = route2 if route2 in ("RESEARCH", "ANSWER_DIRECT") else route
+                drafts = self._plan_drafts(parsed.get("assessments") or [])
                 valid, problems = clm.split_check(self.original or "", drafts, self.cfg)
                 plan_ok = self._plan_valid(
                     parsed.get("plan") or [], allow_empty=route != "RESEARCH"
                 )
+        if (
+            route == "ANSWER_DIRECT"
+            and self.cfg.research_prefetch
+            and goal_question(self.original, self.cfg)
+        ):
+            # 대화 목표를 묻는 말은 읽은 대화 목표로 답한다: 기록 없이 답하기를 골라도 조사로 돌려 get_goals 를 먼저 읽는다(6-1 2번)
+            route = "RESEARCH"
+        if route == "OUT_OF_SCOPE":
+            self.scope_reason = parsed.get("scope_reason")
+        drafts = self.fill_history_take(drafts)
         self.st.drafts = [d.model_dump(mode="json") for d in drafts]
+        self.st.plan_drafts = [dict(d) for d in self.st.drafts]
+        self.st.guide_queries = (
+            self._clean_guide_queries(parsed.get("guide_queries"))
+            if route == "RESEARCH" and self.cfg.plan_guide_queries
+            else []
+        )
         if route == "RESEARCH":
             self._set_plan(
                 parsed.get("plan") if plan_ok and parsed.get("plan") else DEFAULT_PLAN, edit=False
@@ -556,6 +690,65 @@ class Loop:
         elif plan_ok and parsed.get("plan"):
             self._set_plan(parsed["plan"], edit=False)
         return route
+
+    @property
+    def record_change(self) -> bool:
+        """이번 사용자 말이 공식 결과(점수 · 차원 상태 · 미션 · 리뷰 결과)를 바꿔 달라는 요청인가(6-2 '없음' 행)."""
+        return clm.record_change_request(self.original or "", self.cfg)
+
+    def _clean_guide_queries(self, raw: Any) -> list[str]:
+        """계획이 쓴 자료 검색어를 거른다: 글자 아닌 것 · 빈 것 · 중복을 빼고, 도구 인자 한도(200자)로 자르고, 개수 상한으로 자른다."""
+        if not isinstance(raw, list):
+            return []
+        out: list[str] = []
+        for q in raw:
+            if isinstance(q, str) and q.strip() and q.strip()[:200] not in out:
+                out.append(q.strip()[:200])
+        return out[: self.cfg.max_guide_queries]
+
+    def _small_talk_kind(self, kind: Any, drafts: list[clm.AssessmentDraft]) -> str | None:
+        """계획이 고른 가벼운 말을 코드가 한 번 더 본다(P-0008 5-1 · 레드팀 '말 전체가 가벼운 말일 때만').
+
+        받지 않는 것: 모르는 종류, 말이 길거나(`small_talk_max_chars`) 숫자가 있음, 대상(차원 · 지표 · 장 · Take)을 집었거나
+        요청이 아닌 판단 초안(주장 · 의견)이 있음. 연습하려는 뜻은 사용자 말에 연습 낱말이 있을 때만 — 없으면 인사로 받는다
+        (화면 상태 · 기록 속 지시가 이동 버튼을 만들지 못하게).
+        """
+        if kind not in TALK_KINDS:
+            return None
+        msg = self.original or ""
+        if len(msg) > self.cfg.small_talk_max_chars or any(ch.isdigit() for ch in msg):
+            return None
+        # 요청 · 지시 · 질문이 섞인 말은 가벼운 말이 아니다("안녕, 예상 질문 만들어 줘"). 물음표는 CAPABILITY 에서만 받는다
+        words = self.cfg.small_talk_request_words
+        if kind == "CAPABILITY" and "수 있" in msg:
+            # "어떻게 도와줄 수 있어?" · "뭘 알려줄 수 있어?"처럼 할 수 있는 일을 묻는 말의 낱말은 요청으로 세지 않는다
+            words = tuple(w for w in words if w not in self.cfg.capability_question_words)
+        if any(w in msg for w in words):
+            return None
+        if (
+            kind != "CAPABILITY"
+            and ("?" in msg or "？" in msg)
+            and not _greeting_only(msg, self.cfg)
+        ):
+            # 물음표는 할 수 있는 일 질문과 "안녕하세요?"처럼 인사 낱말만 있는 말에서만 받는다
+            return None
+        for d in drafts:
+            sub = d.subject
+            if (
+                d.type != "REQUEST"
+                or sub.dimension
+                or sub.metric
+                or sub.slide_number
+                or sub.take_ids
+                or sub.take_numbers
+            ):
+                return None
+        if kind == "PRACTICE_INTENT" and (
+            not any(w in msg for w in self.cfg.practice_intent_words)
+            or any(w in msg for w in self.cfg.practice_negation_words)
+        ):
+            return "GREETING"
+        return str(kind)
 
     def _parse_drafts(self, raw: list[Any]) -> list[clm.AssessmentDraft]:
         out = []
@@ -566,6 +759,69 @@ class Loop:
                 continue
         return out
 
+    def _plan_drafts(self, raw: list[Any]) -> list[clm.AssessmentDraft]:
+        """계획의 판단 초안: 대상 없는 경향 진술 + 조언 요청은 요청으로 바꿔 둔다(6-3, 조사 흐름이 기록을 읽지 않게)."""
+        msg = self.original or ""
+        return [
+            clm.tendency_advice_as_request(
+                clm.knowledge_question_as_request(d, self.cfg), msg, self.cfg
+            )
+            for d in self._parse_drafts(raw)
+        ]
+
+    def _history_take(self) -> str | None:
+        """'그때 · 아까'(설정 `history_deictic_words`)가 가리키는 Take(6-8 '그때(Take n) 기준').
+
+        가장 최근 assistant 메시지의 근거 표시(`basis`)가 지금 범위 피치의 Take 를 **하나만** 가리킬 때 그 Take id. 지시어가 없거나,
+        근거 표시가 없거나, Take 가 둘 이상 · 다른 피치 · 이 피치에 없으면 None(추측해 고르지 않는다).
+        """
+        msg = self.original or ""
+        if not any(w in msg for w in self.cfg.history_deictic_words):
+            return None
+        last = next((m for m in reversed(self.req.history.messages) if m.role == "assistant"), None)
+        if last is None or not isinstance(last.basis, dict):
+            return None
+        found: set[tuple[Any, str]] = set()
+        for p in last.basis.get("pitches") or []:
+            if not isinstance(p, dict):
+                continue
+            for t in p.get("takes") or []:
+                if isinstance(t, dict) and isinstance(t.get("take_id"), str):
+                    found.add((p.get("pitch_id"), t["take_id"]))
+        if len(found) != 1:
+            return None
+        pid, tid = next(iter(found))
+        if pid != self.ctx.scope_pitch_id or tid not in self.ctx.summaries:
+            return None
+        return tid
+
+    def fill_history_take(self, drafts: list[clm.AssessmentDraft]) -> list[clm.AssessmentDraft]:
+        """지시어로 앞 답의 Take 를 가리킨 말(6-8): Take 를 집지 않은 요청 · 측정 초안의 대상을 앞 답의 Take(`_history_take`)로 채운다.
+
+        그러면 조사 흐름(6-1 2번)이 그 Take 를 먼저 읽고, 기본 자료에 없으면 가져온다(`FETCH_TAKE`). 비교(`CHANGE` · `COMPARE`)
+        초안은 채우지 않는다("그때보다"는 그 Take 와 지금 Take 의 비교라 한 Take 로 채우면 뜻이 바뀐다). 범위를 바꾼 실행에서도
+        하지 않는다. 계획 단계와 판단 확정(답 단계 초안) 모두에 쓴다.
+        """
+        if self.st.scope_switched or self.ctx.scope_switched:
+            return drafts
+        tid = self._history_take()
+        if tid is None:
+            return drafts
+        n = self.ctx.summaries[tid].take_number
+        out: list[clm.AssessmentDraft] = []
+        for d in drafts:
+            sub = d.subject
+            if (
+                d.type in ("MEASURED", "REQUEST")
+                and not sub.take_numbers
+                and not sub.take_ids
+                and d.claim_op != "CHANGE"
+                and sub.relation != "COMPARE"
+            ):
+                d = d.model_copy(update={"subject": sub.model_copy(update={"take_numbers": [n]})})
+            out.append(d)
+        return out
+
     def _plan_valid(self, plan: list[Any], *, allow_empty: bool) -> bool:
         if not plan:
             return allow_empty
@@ -573,18 +829,24 @@ class Loop:
             return False
         try:
             for s in plan:
-                PlanStep.model_validate(s)
+                progress.PlanStepDraft.model_validate(s)  # PlanStep + 도구 힌트
         except ValidationError:
             return False
         return True
 
     def _set_plan(self, plan: list[dict[str, Any]], *, edit: bool) -> bool:
+        """모델의 계획(처음 · `update_plan`)을 정해 plan 줄을 낸다. 고치기(`edit`)만 계획 수정 한도(PLAN_EDITS)를 예약한다.
+        `plan_progress`가 켜졌으면 단계 메타를 새로 만들고 상태 · 글은 메타로 그린다. 고치기는 합친다: 이미 실행한 단계는 메타 ·
+        표시 그대로 앞에 남기고 모델의 새 목록 중 실행하지 않은 단계를 뒤에 잇는다(8단계까지, progress.new_meta). 합치기도 고치기 1회다."""
         if edit and self.st.plan_set:
             hit = self.budget.reserve_plan_edit()
             if hit is not None:
                 self._limit(hit)
                 return False
-        steps = [PlanStep.model_validate(s).model_dump() for s in plan]
+        steps, hints = progress.split_steps(plan)
+        if self.cfg.plan_progress:
+            # 목적에 쓴 숫자 · Take · 장 번호는 그 표기만 지운다(계획 전체를 기본 계획으로 바꾸지 않는다). 숫자는 실행 뒤 결과 쪽에 붙는다
+            steps = progress.clean_purposes(steps, hints, self.ctx.registry, self.cfg)
         # 할 일 목록도 화면에 보이는 문자열이다: 근거 없는 숫자 · 금지 주장 · 개인정보가 있으면 쓰지 않는다(6-9 · L1-37)
         if chk.check_display_strings(
             plan=steps,
@@ -595,11 +857,165 @@ class Loop:
         ):
             if self.st.plan_set:
                 return False
-            steps = [PlanStep.model_validate(s).model_dump() for s in DEFAULT_PLAN]
+            steps, hints = progress.split_steps(DEFAULT_PLAN)
+        if self.cfg.plan_progress:
+            self.st.plan_meta = progress.new_meta(
+                steps,
+                hints,
+                old=self.st.plan_meta if self.st.plan_set else None,
+                shown=self.st.plan,
+                max_steps=self.cfg.plan_steps_max,
+            )
+            steps = progress.render(self.st.plan_meta, self.ctx.registry, self.cfg)
         self.st.plan = steps
         self.st.plan_set = True
         self.emit("plan", {"plan": self.st.plan})
         return True
+
+    def _emit_plan_display(self) -> None:
+        """표시 갱신(코드): 단계 메타로 상태 · 글을 다시 그려 바뀌었으면 plan 줄을 낸다. 계획 수정 한도(PLAN_EDITS)를 쓰지 않는다."""
+        plan = progress.render(self.st.plan_meta, self.ctx.registry, self.cfg)
+        if plan != self.st.plan:
+            self.st.plan = plan
+            self.emit("plan", {"plan": plan})
+
+    def _after_tool(
+        self, name: str, args: Any, tr: ToolResult, trace: TraceItem, *, chosen: bool
+    ) -> None:
+        """도구 하나가 끝난 뒤(캐시 적중 포함): 실행을 할 일 단계에 이어 다시 그리고, 상황 신호 · 결정을 남긴다(progress.py).
+
+        `chosen`: 모델이 고른 호출인가(코드가 먼저 읽은 요청은 신호에 대한 대응이 아니다). 같은 결과를 다시 읽은 캐시 적중은
+        새 신호를 내지 않는다(이미 보인 사실)."""
+        run = progress.read_run(
+            name, args, tr, self.ctx, areas=progress.asked_areas(self.st.plan_drafts, self.cfg)
+        )
+        step = None
+        key = progress.call_key(name, args)
+        if self.cfg.plan_progress and self.st.plan_meta:
+            step = progress.attach(
+                self.st.plan_meta,
+                run,
+                trace.seq,
+                max_steps=self.cfg.plan_steps_max,
+                key=key,
+                cached=tr.outcome == "CACHED",
+            )
+            self._emit_plan_display()  # 바뀐 때만 plan 줄을 낸다
+        if not self.tracking:
+            return
+        if chosen and name in progress.RECORD_TOOLS:
+            self._respond("ALT_TOOL", key=key, step=step, tool_seq=trace.seq)
+        if run.signal is not None and tr.outcome != "CACHED":
+            # 사실 표시(FACT_SHOWN)는 그 사실이 화면 단계에 실제로 붙었을 때만 남긴다(`plan_progress`가 꺼졌거나 단계가 8개로
+            # 차서 붙이지 못하면 보인 것이 아니다). 신호는 그래도 열어 모델에게 알린다(대응 결정은 그대로 남는다)
+            if step is not None:
+                self._decide(
+                    run.signal, run.facts, "FACT_SHOWN", "CODE", step=step, tool_seq=trace.seq
+                )
+            self.st.signals_open.append(progress.open_signal(run, key, step, trace.seq))
+
+    def _decide(
+        self,
+        signal: str,
+        facts: list[str],
+        effect: str,
+        decider: str,
+        *,
+        step: int | None = None,
+        tool_seq: int | None = None,
+    ) -> None:
+        """결정 로그 한 줄(`event: agent_decision`)을 서비스 로그에 남긴다(설정 `decision_log`). 진단 기록에는 넣지 않는다."""
+        if not self.cfg.decision_log:
+            return
+        self.st.decision_seq += 1
+        self.deps.log(
+            progress.decision_line(
+                request_id=self.diag.request_id,
+                run_id=self.diag.run_id,
+                turn_call=self.diag.turn_call,
+                seq=self.st.decision_seq,
+                signal=signal,
+                facts=facts,
+                decider=decider,
+                effect=effect,
+                step=step,
+                tool_seq=tool_seq,
+            )
+        )
+
+    def _respond(
+        self,
+        effect: str,
+        *,
+        key: str | None = None,
+        step: int | None = None,
+        tool_seq: int | None = None,
+    ) -> list[str]:
+        """모델이 본 신호를 이 선택(`PLAN_EDIT` · `ALT_TOOL` · `ACTION`, 결정 주체 LLM)으로 닫는다. 같은 도구 · 같은 대상을 다시
+        부른 것(`key`가 같음)은 그 신호의 대응이 아니다. 돌려주는 값: 닫은 신호 이름들."""
+        kept: list[dict[str, Any]] = []
+        closed: list[str] = []
+        for s in self.st.signals_open:
+            if not s["seen"] or (key is not None and s["key"] == key):
+                kept.append(s)
+                continue
+            self._decide(s["signal"], s["facts"], effect, "LLM", step=step, tool_seq=tool_seq)
+            closed.append(s["signal"])
+        self.st.signals_open = kept
+        return closed
+
+    def _action_decision(self, out: dict[str, Any], *, chosen: bool) -> None:
+        """행동 도구 하나의 결정: 모델이 고른 행동은 모델이 본 신호의 대응(`ACTION:LLM`)이다. 가져오기(FETCH_TAKE)는
+        `NOT_LOADED · ACTION`(코드가 먼저 읽기로 냈으면 CODE), 허용 근거를 통과한 다시 평가는 `USER_DISPUTE · ACTION:LLM`."""
+        action = out.get("action")
+        atype = getattr(action, "type", None)
+        if not chosen:
+            if atype == "FETCH_TAKE":
+                self._decide("NOT_LOADED", [], "ACTION", "CODE")
+            return
+        if not out.get("valid"):
+            return
+        closed = self._respond("ACTION")
+        if atype == "FETCH_TAKE" and "NOT_LOADED" not in closed:
+            self._decide("NOT_LOADED", [], "ACTION", "LLM")
+        elif atype == "REASSESS":
+            self._decide("USER_DISPUTE", [], "ACTION", "LLM")
+
+    def _research_end(self) -> None:
+        """조사가 끝날 때: 대응이 없던 신호마다 `NONE:LLM`을 남기고, 한도 · 반복으로 멈췄으면 `BUDGET_LOW · STOP_PARTIAL:CODE`를
+        남긴다. 한도 · 시간으로 멈췄으면 지금 하던 단계에 `시간 부족`을 단다."""
+        reason = self.st.stop_reason
+        step = None
+        if self.cfg.plan_progress and self.st.plan_meta:
+            if reason in progress.LIMIT_STOPS:
+                step = progress.mark_short(self.st.plan_meta)
+                self._emit_plan_display()
+            else:
+                step = progress.current_step(self.st.plan_meta)
+        if not self.tracking:
+            return
+        self.close_signals()
+        if reason in progress.BUDGET_STOPS:
+            self._decide("BUDGET_LOW", [reason], "STOP_PARTIAL", "CODE", step=step)
+        elif reason == RESUME_RESERVE_STOP:
+            # 출력 예약이 모자라 재개 조사를 코드가 건너뛰었다(끝 상태는 turn.py 가 요청 해소로 정한다)
+            self._decide("BUDGET_LOW", ["TOKENS"], "STEP_SKIPPED", "CODE", step=step)
+
+    def close_signals(self) -> None:
+        """대응이 없던 신호마다 `NONE:LLM` 한 줄을 남기고 비운다(조사가 끝날 때, 조사 없이 끝나는 응답은 turn.py 가 끝에서)."""
+        for s in self.st.signals_open:
+            self._decide(s["signal"], s["facts"], "NONE", "LLM")
+        self.st.signals_open = []
+
+    def _research_messages(self) -> list[dict[str, Any]]:
+        """조사 호출의 메시지: 지시문 · 데이터 블록 · 지난 도구 메시지. `research_signals`가 켜졌고 대응을 기다리는 신호가 있을 때만
+        데이터 블록에 `signals`를, 지시문 끝에 신호 지침을 싣는다(신호가 없는 질문에 신호 대응 지침을 주지 않는다)."""
+        prompt = prompts.RESEARCH
+        block = self.data_block()
+        if self.cfg.research_signals and self.st.signals_open:
+            prompt += "\n" + prompts.RESEARCH_SIGNALS_HINT
+            block["signals"] = progress.signals_view(self.st.signals_open)
+        return [self._system(prompt), prompts.data_message(block), *self.st.messages]
 
     # ── 2. 조사 ─────────────────────────────────────────────────────
     def research_phase(self) -> dict[str, Any] | None:
@@ -614,15 +1030,23 @@ class Loop:
                 # 조사 흐름: 판단 초안이 집은 기록을 모델이 고르기 전에 코드가 먼저 읽는다(모델 호출 없음)
                 calls, said, model_seq = pre, "", None
             else:
-                msgs = [
-                    self._system(prompts.RESEARCH),
-                    prompts.data_message(self.data_block()),
-                    *self.st.messages,
-                ]
+                msgs = self._research_messages()
                 res = self._call("RESEARCH", msgs, tools=tools)
+                for s in self.st.signals_open:
+                    s["seen"] = True  # 이 조사 호출이 본 신호다. 이 응답의 선택부터 대응으로 센다
                 if isinstance(res, LimitHit):
                     self.st.research_done, self.st.stop_reason = True, limit_end_reason(res.code)
+                    if (
+                        res.code == "OUTPUT_RESERVE"
+                        and self.req.run.trigger == "ACTION_RESULT"
+                        and not self.research_called
+                    ):
+                        # 재개 첫 조사가 출력 예약(조사 + 답 쓰기 · 고치기 몫)에 막혔다: 조사를 건너뛰고 받은 행동 결과로 답을
+                        # 쓴다. 끝 상태는 요청 해소로 정한다(TARGET 6, r9 ra-record-changed · path-ud-script-dispute: 승인
+                        # 전에 쓴 출력 2.1k + 예약 6k > 8k 로 다시 평가 결과를 낸 답이 PARTIAL). 한도 값은 그대로다
+                        self.st.stop_reason = RESUME_RESERVE_STOP
                     break
+                self.research_called = True
                 if isinstance(res, LlmError):
                     self.st.research_done = True
                     self.st.stop_reason = (
@@ -684,6 +1108,8 @@ class Loop:
                     continue
                 if call.name in act.ACTION_TOOL_ARGS:
                     out = self._handle_action(call, model_seq)
+                    if self.tracking:
+                        self._action_decision(out, chosen=not pre)
                     any_valid = any_valid or out.get("valid", False)
                     results.append(self._tool_msg(call.id, out["message"]))
                     if out.get("action") is not None:
@@ -746,6 +1172,13 @@ class Loop:
                             False,
                             {"code": "LIMIT", "message": "할 일 목록 고치기 한도"},
                         )
+                        # 도구 기록도 실제와 같게: 거절된 고치기는 OK · '할 일 목록 갱신'이 아니다
+                        trace = trace.model_copy(
+                            update={"outcome": "ERROR", "result_summary": "고치기 한도"}
+                        )
+                    # 성공한 고치기의 결과는 모델이 보낸 목록 그대로다(`_update_plan`). 화면(plan 줄)에는 실행한 단계를 앞에 남긴
+                    # 합친 목록이 나가지만, 그 목록(지운 숫자 · 덧붙은 실행 단계 · 코드 상태)을 모델에게 돌려주면 모델은 고치기가 안
+                    # 먹혔다고 보고 같은 update_plan 을 되풀이해 반복 멈춤(PARTIAL) · 계획 수정 한도 · 시간을 썼다(r9 평가)
                 else:
                     tr, trace = run_tool(
                         self.ctx,
@@ -771,6 +1204,13 @@ class Loop:
                         and len((tr.data or {}).get("items") or []) >= 2
                     ):
                         self.st.ambiguous_name = True
+                    if (
+                        call.name == "list_pitches"
+                        and tr.ok
+                        and getattr(args, "query", None)
+                        and not (tr.data or {}).get("items")
+                    ):
+                        self.st.name_not_found = True
                     if call.name == "search_guides" and (
                         tr.ok or (tr.error or {}).get("code") == "CORPUS_UNAVAILABLE"
                     ):
@@ -787,6 +1227,10 @@ class Loop:
                 self.st.trace.append(trace.model_dump())
                 self.emit("tool_done", {"trace": trace.model_dump()})
                 self._tool_diag(tr, trace, model_seq, args)
+                if call.name != "update_plan":
+                    self._after_tool(call.name, args, tr, trace, chosen=not pre)
+                elif tr.ok and self.tracking and not pre:
+                    self._respond("PLAN_EDIT", tool_seq=trace.seq)
                 self.st.message_deps[call.id] = list(tr.target_ids) + (
                     [self.ctx.scope_pitch_id] if self.ctx.scope_pitch_id else []
                 )
@@ -817,6 +1261,7 @@ class Loop:
                 and not self.st.research_done
             ):
                 self.st.research_done, self.st.stop_reason = True, "NO_PROGRESS"
+        self._research_end()
         return None
 
     def _prefetch_calls(self) -> list[ToolCall]:
@@ -830,6 +1275,150 @@ class Loop:
         - 이미 낸 요청은 `prefetched`에 남겨 이어 부른 뒤에도 다시 내지 않는다. 결과는 모델이 고른 호출과 같은 길(캐시 ·
           한도 · 근거 · 도구 기록)로 처리한다.
         """
+        # 공통 한도(`research_prefetch_max`)는 계획한 자료 검색어(`max_guide_queries`개까지)에 먼저 나누고, 남은 몫을 기록 읽기가 쓴다.
+        # 자료 검색은 앞에 둔다: 기록을 가져오는 행동(fetch_take)은 한 번에 하나이고 그 뒤 요청은 실행하지 않는다
+        guides = self._guide_prefetch_calls()
+        reads = [*guides, *self._goal_prefetch_calls(), *self._prefetch_record_calls()]
+        if reads:
+            return reads  # 읽기를 먼저 마친다(가져오기 · 다시 평가는 행동이라 그 뒤 요청은 실행하지 않는다)
+        return self._same_condition_reassess_calls()
+
+    def _same_condition_reassess_calls(self) -> list[ToolCall]:
+        """ "같은 조건으로 한 번 더 다시 평가해 줘"(6-6): 앞 턴에서 다시 평가를 청한 사용자 말의 조건(대본 사용)으로 `reassess` 를 낸다.
+
+        모델은 대화 기록에서 조건을 놓치고 빈 조건으로 부르거나('같은 조건이라 바뀔 것이 없다') 부르지 않았다(r9 ra-script-twice).
+        조건은 대화 기록(`history.messages`)에서 다시 평가 낱말이 있는 가장 최근 사용자 말이 대본 사용을 말했을 때만 이어 쓴다. 이번 말이
+        조건을 새로 말했거나 · 기준 조건이거나 · 그 Take 를 정할 수 없으면 내지 않는다(모델이 고른다). 확실하지 않으면 되살리지 않는다:
+        이번 말의 다시 평가 절이 부정 · 인용("다시 평가하지 마")이거나, 같은 조건 말 밖에서 새 조건 · 대상(숫자 · Take 지칭 · 조건
+        낱말)을 말했거나, 앞 말의 대본 사용 절이 부정 · 인용("대본 들고 읽지 않았어")이면 내지 않는다. 확인 카드 · 한도 · 허용 검사는
+        모델이 고른 다시 평가와 같은 길이다. 한 실행에 한 번.
+        """
+        cfg = self.cfg
+        msg = self.original or ""
+        if (
+            not cfg.same_condition_reassess
+            or not cfg.research_prefetch
+            or self.ctx.pitch is None
+            or not any(w in msg for w in cfg.reassess_request_words)
+            or not any(w in msg for w in cfg.same_condition_words)
+            or clm.states_script_use(msg)
+            or self._same_condition_unsure(msg)
+        ):
+            return []
+        key = json.dumps(["reassess", "same_condition"])
+        if key in self.st.prefetched or len(self.st.prefetched) >= cfg.research_prefetch_max:
+            return []
+        prior = next(
+            (
+                m.text
+                for m in reversed(self.req.history.messages)
+                if m.role == "user" and any(w in m.text for w in cfg.reassess_request_words)
+            ),
+            None,
+        )
+        if prior is None:
+            return []
+        # 앞 말의 대본 사용은 그 절이 부정 · 인용이 아닐 때만 조건이다("대본 들고 읽지 않았어" · "대본 보고 했다던데")
+        script_said = [s for s in act.sentences(prior) if clm.states_script_use(s)]
+        if not script_said or any(act.negated_or_quoted(s, cfg) for s in script_said):
+            return []
+        by_number = {sm.take_number: tid for tid, sm in self.ctx.summaries.items()}
+        named = chk.named_take_numbers(prior)
+        if len(named) > 1 or any(n not in by_number for n in named):
+            return []
+        tid = by_number[next(iter(named))] if named else self._judged_take()
+        if tid is None:
+            return []
+        # 이번 말이 Take 를 집었으면 앞 말의 그 Take 와 같을 때만 되살린다(다른 Take 는 새 대상이다)
+        now = chk.named_take_numbers(msg)
+        if now and now != {n for n, t in by_number.items() if t == tid}:
+            return []
+        self.st.prefetched.append(key)
+        return [
+            ToolCall(
+                id=self._pf_id(),
+                name="reassess",
+                args={
+                    "take_id": tid,
+                    "change": {"script_used": True},
+                    "reason": "앞 턴과 같은 조건(대본 사용)으로 다시 평가 요청",
+                },
+            )
+        ]
+
+    def _same_condition_unsure(self, msg: str) -> bool:
+        """이번 말로 앞 조건을 되살려도 되는지 확실하지 않은가: 다시 평가 낱말이 든 절이 부정 · 인용이거나("같은 조건으로 다시
+        평가하지 마"), 요청형(`_REASSESS_REQUEST_FORMS`: 해 줘 · 해 주세요 · 하자 · 부탁)으로 끝나지 않거나(할 수 있는지 묻는 말
+        "다시 평가할 수 있어?" · "다시 평가돼?"), 같은 조건 말(`same_condition_words`) 밖에서 새 대상 · 조건 — 숫자(Take · 장 번호 ·
+        기준 값) · Take 지칭 · 조건 낱말 — 을 말했다. 그러면 코드가 되살리지 않고 모델이 고른다. "Take 5"처럼 번호로 집은 Take 는
+        여기서 빼고 앞 말의 Take 와 같은지를 따로 본다(`_same_condition_reassess_calls`)."""
+        cfg = self.cfg
+        asks = [s for s in act.sentences(msg) if any(w in s for w in cfg.reassess_request_words)]
+        if any(act.negated_or_quoted(s, cfg) for s in asks):
+            return True
+        if not any(_reassess_requested(s, cfg.reassess_request_words) for s in asks):
+            return True
+        rest = msg
+        for w in sorted(cfg.same_condition_words, key=len, reverse=True):
+            rest = rest.replace(w, " ")
+        rest = _TAKE_MENTION_RE.sub(" ", rest)
+        return bool(_NEW_TARGET_RE.search(rest)) or clm.states_condition(rest)
+
+    def _goal_prefetch_calls(self) -> list[ToolCall]:
+        """대화 목표를 묻는 말(`goal_question`)이면 조사 첫머리에 `get_goals`를 먼저 읽는다(6-1 2번, 같은 한도 · 같은 길).
+
+        모델이 목표를 읽지 않고 답하면 목표 상태 · 기준 값이 빠진다(r9 rep-goal-achieved · rep-goal-readback). 이미 읽었거나
+        낸 요청이면 다시 내지 않는다. 자동 목표 확인 턴(사용자 말 없음)에는 내지 않는다.
+        """
+        if not self.cfg.research_prefetch or not goal_question(self.original, self.cfg):
+            return []
+        key = json.dumps(["get_goals", {}], sort_keys=True)
+        if key in self.st.prefetched or any(t.get("tool") == "get_goals" for t in self.st.trace):
+            return []
+        if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
+            return []
+        self.st.prefetched.append(key)
+        return [ToolCall(id=self._pf_id(), name="get_goals", args={})]
+
+    def _guide_prefetch_calls(self) -> list[ToolCall]:
+        """계획이 쓴 자료 검색어(`guide_queries`)를 코드가 먼저 찾을 요청 목록(6-10). 기록 요청과 같은 한도(`research_prefetch_max`)로 센다.
+
+        질문 임베딩은 이 검색어들을 한 번에 묶어 부른다(실행당 한 번). 이미 낸 검색어는 `prefetched`에 남겨 다시 내지 않는다.
+        자료 묶음이 없으면 내지 않는다(모델이 고른 검색과 같은 길로 처리한다).
+        """
+        if (
+            not self.cfg.plan_guide_queries
+            or not self.cfg.research_prefetch
+            or not self.st.guide_queries
+            or self.deps.corpus is None
+        ):
+            return []
+        todo: list[tuple[str, str]] = []
+        for q in self.st.guide_queries[: self.cfg.max_guide_queries]:
+            key = json.dumps(["search_guides", {"query": q}], sort_keys=True)
+            if key in self.st.prefetched or any(k == key for _, k in todo):
+                continue
+            if len(self.st.prefetched) + len(todo) >= self.cfg.research_prefetch_max:
+                break
+            todo.append((q, key))
+        if not todo:
+            return []
+        embed_planned_queries(self.ctx, [q for q, _ in todo])
+        out: list[ToolCall] = []
+        for q, key in todo:
+            self.st.prefetched.append(key)
+            out.append(ToolCall(id=self._pf_id(), name="search_guides", args={"query": q}))
+        return out
+
+    def _pf_id(self) -> str:
+        """코드가 먼저 내는 요청의 호출 id. 자료 판이 바뀌어 검색 완료 표시를 버리면 번호가 되풀이되므로, 이미 처리한 id 와 겹치지 않게 한다."""
+        cid = f"pf-{len(self.st.prefetched)}"
+        while cid in self.st.processed_calls:
+            cid += "r"
+        return cid
+
+    def _prefetch_record_calls(self) -> list[ToolCall]:
+        """`_prefetch_calls` 의 기록 읽기 부분(위 설명)."""
         if not self.cfg.research_prefetch or self.ctx.pitch is None:
             return []
         if self.st.scope_switched or self.ctx.scope_switched:
@@ -920,7 +1509,7 @@ class Loop:
                 return [
                     *out,
                     ToolCall(
-                        id=f"pf-{len(self.st.prefetched)}",
+                        id=self._pf_id(),
                         name="fetch_take",
                         args={"take_id": tid, "reason": "질문한 연습 기록 확인"},
                     ),
@@ -931,7 +1520,7 @@ class Loop:
             if len(self.st.prefetched) >= self.cfg.research_prefetch_max:
                 break
             self.st.prefetched.append(key)
-            out.append(ToolCall(id=f"pf-{len(self.st.prefetched)}", name=name, args=args))
+            out.append(ToolCall(id=self._pf_id(), name=name, args=args))
         return out
 
     def _judged_take(self) -> str | None:
@@ -1003,6 +1592,7 @@ class Loop:
             return
         # 질의 글자 수만 남기고 질의 글은 남기지 않는다(`search_guides` 만, 11-5)
         query_chars = len(args.query) if tr.name == "search_guides" and args is not None else None
+        self.st.embed_used = self.ctx.embed_used  # 질문 임베딩은 실행당 한 번(서명 상태로 이어진다)
         self.diag.step(
             "TOOL",
             tr.name,
@@ -1013,10 +1603,24 @@ class Loop:
                 "result_bytes": result_bytes(tr),
                 "query_chars": query_chars,
                 "error_code": code_enum(tr.error["code"]) if tr.error else None,
+                **tr.diag,
             },
             ms=trace.ms,
             parent_seq=model_seq,
         )
+        if tr.crash is not None:
+            # 도구 구현의 예외(L1-19): 실행은 그 도구의 오류 결과로 잇고, 로그에는 예외 종류 · 위치만(예외 글 없음)
+            self.deps.log(
+                {
+                    "event": "agent_tool_crash",
+                    "request_id": self.diag.request_id,
+                    "run_id": self.diag.run_id,
+                    "turn_call": self.diag.turn_call,
+                    "seq": trace.seq,
+                    "tool": tr.name,
+                    **tr.crash,
+                }
+            )
 
     def _handle_action(self, call: Any, model_seq: int | None) -> dict[str, Any]:
         """행동 도구 하나를 처리한다. 같은 실패 행동 · 인자가 연속 2회면 더 실행하지 않는다(5-8 · L2-31)."""
@@ -1078,6 +1682,10 @@ class Loop:
             }
         if p.card is not None:
             self.st.cards.append(p.card)
+            if p.reason_code in ("GOAL_CONFLICT", "UNMEASURABLE"):
+                self.st.goal_proposals.append(
+                    {"proposal_id": p.card.get("proposal_id"), "reason": p.reason_code}
+                )
         return {"message": p.tool_message, "valid": True, "progressed": p.card is not None}
 
     def _switched_without_reading(self) -> bool:
@@ -1215,6 +1823,13 @@ class Loop:
             self.st.scope_switched = self.st.scope_switched or self.ctx.scope_switched
         elif applied.ok and pending["type"] == "FETCH_TAKE":
             self.st.scope_switch_unread = False
+        if pending["type"] == "FETCH_TAKE" and self.cfg.plan_progress and self.st.plan_meta:
+            # 가져오기도 할 일 단계의 실행이다(`Take {n} 가져오기` → 가져옴 · 확인 실패)
+            run = progress.fetch_run(
+                (pending.get("args") or {}).get("take_id"), applied.ok, self.ctx
+            )
+            progress.attach(self.st.plan_meta, run, None, max_steps=self.cfg.plan_steps_max)
+            self._emit_plan_display()
         self.st.executed.append(rec)
         if applied.card is not None:
             self.st.cards.append(applied.card)
@@ -1290,6 +1905,17 @@ class Loop:
                 + "\n</research>",
             },
         ]
+        cands = self._guide_candidates() if self.cfg.answer_guide_candidates else []
+        if cands:
+            # 문장 후보는 맨 끝에 둔다(긴 입력의 가운데에 묻히지 않게). 고치기는 이 메시지를 빼고 걸린 문장에 이은 카드의 후보만 준다
+            msgs.append(
+                {
+                    "role": "user",
+                    "content": GUIDE_CANDIDATES_TAG
+                    + json.dumps(cands, ensure_ascii=False, separators=(",", ":"))
+                    + "\n</guide_candidates>",
+                }
+            )
         res = self._call("ANSWER", msgs, schema=prompts.ANSWER_SCHEMA, sink=sink)
         if not isinstance(res, LlmResult) or res.parsed is None:
             refused = isinstance(res, LlmRefused)
@@ -1303,30 +1929,94 @@ class Loop:
     def _evidence_table(self) -> list[dict[str, Any]]:
         """이번 턴에 읽은 최신 기록 · 화면 근거를 한 줄씩(최대 40줄): id · Take · 장 · 무엇(지표 · 문제 이름) · 화면 표기 값."""
         reg = self.ctx.registry
-        rows: list[dict[str, Any]] = []
-        for eid, ev in reg.items.items():
-            if not reg.is_current(eid) or ev.origin == "COMPUTED":
+        rows = [self._evidence_row(eid) for eid in reg.items]
+        return [r for r in rows if r is not None][-40:]
+
+    def _evidence_row(self, eid: str) -> dict[str, Any] | None:
+        """근거 표의 한 줄(id · Take · 장 · 무엇 · 화면 표기 값). 지금 판이 아니거나 코드가 계산한 값이면 None."""
+        reg = self.ctx.registry
+        ev = reg.items.get(eid)
+        if ev is None or not reg.is_current(eid) or ev.origin == "COMPUTED":
+            return None
+        if ev.metric:
+            what = compose.metric_label(ev.metric)
+        elif ev.path.endswith(".issue_type") and isinstance(ev.value, str):
+            what = "문제 구간: " + clm.ISSUE_LABEL.get(ev.value, ev.value)
+        else:
+            # Take 수 · 리뷰 상태 · 대화 목표 · 영역별 문제 구간 수('없음'도 근거다, 6-8)는 읽을 수 있는 이름으로
+            what = compose.evidence_what(ev) or ev.path.rsplit(".", 1)[-1]
+        shown = compose.value_display(self.ctx, ev)
+        return {
+            "id": eid,
+            "take": ev.take_number,
+            "slide": ev.slide_number,
+            "what": what,
+            # 화면 표기를 만들 수 없는 값(지표가 없는 화면 숫자 등)은 저장된 값 그대로 · 단위와 함께 보인다(값이 없다고 읽히지 않게)
+            "value": shown if shown is not None else ev.value,
+            **({"unit": ev.unit} if shown is None and ev.unit else {}),
+            **({"saved": ev.saved} if ev.origin == "SCREEN" else {}),
+        }
+
+    def _card_sentences(self, source_id: str) -> list[dict[str, str]]:
+        """자료 카드의 문장을 원문 그대로 한 줄씩(`{source_id, title, sentence}`). 카드가 없으면 빈 목록."""
+        card = getattr(self.deps.corpus, "get", lambda _s: None)(source_id)
+        if card is None:
+            return []
+        return [
+            {"source_id": source_id, "title": card.title, "sentence": card.text[s:e].strip()}
+            for s, e in sentence_spans(card.text)
+            if card.text[s:e].strip()
+        ]
+
+    def shown_quotes(self) -> dict[str, str]:
+        """이 실행에서 이미 보인 자료 카드의 보이는 인용(자료 id → quote): 앞 응답이 낸 카드(서명 상태) + 이 응답의 문장 줄이 보낸 카드.
+        한 카드는 한 응답에서 한 번만 보내고 인용도 그때 정해지므로(answer.py `ClaimLines`), 뒤 문장은 이 문장만 인용할 수 있다."""
+        cards = [*self.st.emitted_sources, *(self.lines.sent_cards.values() if self.lines else [])]
+        return {g["source_id"]: g["quote"] for g in cards if g.get("source_id") and g.get("quote")}
+
+    def _guide_candidates(self) -> list[dict[str, str]]:
+        """답 쓰기에 줄 자료 문장 후보: 이 실행의 자료 검색이 돌려준 카드(찾은 순서, 중복 없음)의 문장을 원문 그대로.
+
+        카드는 통째로만 싣고 합이 `max_guide_candidates` 를 넘기 전에 멈춘다(첫 카드가 혼자 넘으면 앞에서부터 자른다).
+        검색 결과는 도구 캐시(이어 불러도 남는다)에서 읽는다.
+        """
+        order: list[str] = []
+        for k, v in self.ctx.tool_cache.items():
+            if json.loads(k).get("tool") != "search_guides" or not v.get("ok"):
                 continue
-            if ev.metric:
-                what = compose.metric_label(ev.metric)
-            elif ev.path.endswith(".issue_type") and isinstance(ev.value, str):
-                what = "문제 구간: " + clm.ISSUE_LABEL.get(ev.value, ev.value)
-            else:
-                what = ev.path.rsplit(".", 1)[-1]
-            shown = compose.value_display(self.ctx, ev)
-            rows.append(
-                {
-                    "id": eid,
-                    "take": ev.take_number,
-                    "slide": ev.slide_number,
-                    "what": what,
-                    # 화면 표기를 만들 수 없는 값(지표가 없는 화면 숫자 등)은 저장된 값 그대로 · 단위와 함께 보인다(값이 없다고 읽히지 않게)
-                    "value": shown if shown is not None else ev.value,
-                    **({"unit": ev.unit} if shown is None and ev.unit else {}),
-                    **({"saved": ev.saved} if ev.origin == "SCREEN" else {}),
-                }
-            )
-        return rows[-40:]
+            order.extend(s for s in v.get("source_ids") or [] if s not in order)
+        out: list[dict[str, str]] = []
+        cap = self.cfg.max_guide_candidates
+        shown = self.shown_quotes()
+        for sid in order:
+            sents = self._card_sentences(sid)
+            if sid in shown:
+                # 이미 보인 카드는 보인 인용 문장만 후보로 준다(한 카드는 한 문장만 인용, answer.py 인용 고정)
+                only = [x for x in sents if x["sentence"][:300] == shown[sid][:300]]
+                sents = only or sents
+            if out and len(out) + len(sents) > cap:
+                break
+            out.extend(sents)
+            if len(out) >= cap:
+                break
+        return out[:cap]
+
+    def _fix_materials(self, claim: dict[str, Any]) -> dict[str, Any]:
+        """고치기에 걸린 문장 하나에 더해 줄 자료: 그 문장에 이미 이은 근거의 화면 표기 값, GUIDE 문장이면 이미 이은 카드의 문장 후보.
+        새 근거 · 자료 id 는 주지 않는다(문장에 이어 있지 않은 것은 담지 않는다)."""
+        extra: dict[str, Any] = {}
+        rows = [r for r in (self._evidence_row(e) for e in claim.get("evidence_ids") or []) if r]
+        if rows:
+            extra["values"] = rows
+        if claim.get("kind") == "GUIDE":
+            sents = [
+                {"source": x["source_id"], "sentence": x["sentence"]}
+                for sid in claim.get("source_ids") or []
+                for x in self._card_sentences(sid)
+            ]
+            if sents:
+                extra["card_sentences"] = sents[: self.cfg.max_guide_candidates]
+        return extra
 
     def _evidence_metrics(self, eid: str) -> set[str]:
         """근거가 말하는 지표: 지표 값은 그 지표, 문제 구간은 그 문제의 지표(`issue_metrics`), 차원 상태는 그 차원의 지표."""
@@ -1337,12 +2027,18 @@ class Loop:
             return {ev.metric}
         if ev.path.endswith(".issue_type") and isinstance(ev.value, str):
             return set(self.cfg.issue_metrics.get(ev.value, ()))
+        if (area := compose.segment_area(ev)) is not None:
+            # 영역의 문제 구간 0곳은 그 영역 지표들의 질문에 답한다('2장 시선 문제 구간' → 시선 영역 0곳)
+            return {m for m, a in METRIC_AREA.items() if a == area}
         dim = ev.path.rsplit(".dimensions.", 1)[-1] if ".dimensions." in ev.path else None
         return set(self.cfg.dimensions[dim].metrics) if dim in self.cfg.dimensions else set()
 
-    def _question_checklist(self, table: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """판단 초안(기록 질문 · 주장)마다 그 대상(Take · 장 · 지표 · 차원)에 맞는 근거 id. 답이 질문을 빠뜨리지 않게 한다."""
-        out: list[dict[str, Any]] = []
+    def question_targets(self) -> list[tuple[dict[str, Any], set[int], int | None, set[str]]]:
+        """판단 초안(기록 질문 · 주장 `MEASURED` · `REQUEST`) 중 대상을 집은 것마다 `(초안, Take 번호, 장, 지표)`.
+
+        Take · 장 · 지표 · 차원 중 하나라도 집어야 대상이 있는 초안이다(차원은 그 차원의 지표로). Take 를 말하지 않았으면
+        판정 대상 Take(6-3)로 채운다(기본 자료에 없으면 빈 채로 — 어느 Take 든 맞음). 빈 목록이면 질문이 대상을 집지 않은 것이다."""
+        out: list[tuple[dict[str, Any], set[int], int | None, set[str]]] = []
         num_of = {tid: s.take_number for tid, s in self.ctx.summaries.items()}
         for d in self.st.drafts:
             if d.get("type") not in ("MEASURED", "REQUEST"):
@@ -1363,6 +2059,13 @@ class Loop:
                 target = self._judged_take()
                 if target in num_of:
                     takes = {num_of[target]}
+            out.append((d, takes, slide, metrics))
+        return out
+
+    def _question_checklist(self, table: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """판단 초안(기록 질문 · 주장)마다 그 대상(Take · 장 · 지표 · 차원)에 맞는 근거 id. 답이 질문을 빠뜨리지 않게 한다."""
+        out: list[dict[str, Any]] = []
+        for d, takes, slide, metrics in self.question_targets():
             ids = [
                 r["id"]
                 for r in table
@@ -1372,6 +2075,15 @@ class Loop:
             ]
             out.append({"quote": d.get("quote"), "evidence_ids": ids[:8]})
         return out
+
+    def question_evidence_ids(self) -> list[str]:
+        """질문 대상(판단 초안이 집은 Take · 장 · 지표 · 차원)에 맞는 이번 턴 근거 id(질문별 근거 목록을 합친 것, 처음 본 순서).
+        답 쓰기가 실패했을 때 코드가 대신 그릴 값 문장의 후보다(turn.py — 읽은 근거를 모두 나열하지 않는다). 대상이 있는데 맞는
+        근거가 없어도 빈 목록이다: 대상이 있는지는 `question_targets`로 따로 본다."""
+        table = self._evidence_table()
+        return list(
+            dict.fromkeys(e for q in self._question_checklist(table) for e in q["evidence_ids"])
+        )
 
     def fix_call(
         self,
@@ -1387,6 +2099,11 @@ class Loop:
                 "text": draft_claims[f.claim_index]["text"],
                 "check": f.check_id,
                 "reason": f.reason,
+                **(
+                    self._fix_materials(draft_claims[f.claim_index])
+                    if self.cfg.fix_materials
+                    else {}
+                ),
             }
             for f in failures
             if f.claim_index is not None and f.claim_index < len(draft_claims)
@@ -1395,7 +2112,12 @@ class Loop:
             return None
         fix_msgs = [
             self._system(prompts.FIX),
-            *msgs[1:],
+            # 답 쓰기의 문장 후보(전체 카드)는 고치기에 주지 않는다. 걸린 문장에 이은 카드의 후보만 문장 옆에 붙는다
+            *(
+                m
+                for m in msgs[1:]
+                if not str(m.get("content", "")).startswith(GUIDE_CANDIDATES_TAG)
+            ),
             {
                 "role": "user",
                 "content": "<fix>\n" + json.dumps(items, ensure_ascii=False) + "\n</fix>",
@@ -1439,6 +2161,10 @@ class Loop:
             return None
         items = res.parsed.get("items")
         return items if isinstance(items, list) else None
+
+
+#: 답 쓰기에 주는 자료 문장 후보 메시지의 머리 표시(고치기가 이 메시지를 빼는 데도 쓴다)
+GUIDE_CANDIDATES_TAG = "<guide_candidates>\n"
 
 
 def _script_points_removed(card: dict[str, Any] | None) -> bool:

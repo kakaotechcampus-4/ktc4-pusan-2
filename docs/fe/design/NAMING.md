@@ -45,12 +45,11 @@
 ## 파일과 문서 이름
 
 - `src/screens/`: 화면 하나면 `<Feature>Screen.tsx`, 함께 정의한 여러 화면이면 `<Feature>Screens.tsx`.
-- `src/ui/`: 재사용 컴포넌트는 PascalCase, 검토 시안에서만 쓰는 컴포넌트는 대상 시안 접두어를 둔다(예: `PrepareDraftAudioMeter.tsx`).
+- `src/ui/`: 재사용 컴포넌트는 PascalCase로 두고, 검토 시안에서만 쓰는 컴포넌트는 그 시안 하위 폴더에 둔다(예: `ui/prepare-draft/`).
 - `src/components/`와 `src/foundations/`: 각각 컴포넌트 사용법과 디자인 기초를 관리한다.
+- `src/samples/`: API·장치 없이 미리보기에 쓰는 고정 예시 데이터를 둔다. UI가 화면(`screens/`)의 fixture를 역참조하지 않게 한다.
 - Markdown: 소문자 kebab-case로 기능·목적을 나타낸다. `README.md`는 진입 안내, `audit.md`는 제품 대조, `prepare-layout-review.md`는 특정 검토안 결정 기록이다.
 - 테스트: 대상 파일명에 `.test.ts` 또는 `.test.tsx`를 붙인다.
-
-이번 정리는 **목록 명칭과 문서 구조만 정리**한다. 기존 `CreateConceptScreen.tsx`, `PrepareLayoutDraft.tsx`, `AnalysisScreen.tsx`처럼 이미 import와 테스트에 연결된 파일명은 무리하게 변경하지 않는다. 추후 파일명을 바꿀 때는 모든 import·CSS 참조·테스트·문서 링크를 함께 수정한다.
 
 ## 유지·검증 규칙
 

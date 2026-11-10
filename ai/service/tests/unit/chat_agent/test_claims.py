@@ -12,6 +12,7 @@ from pitch_coach_ai.features.chat_agent.claims import (
     UNSET,
     AssessmentDraft,
     DraftSubject,
+    change_direction,
     claim_key,
     claim_link_key,
     code_verdict,
@@ -20,6 +21,7 @@ from pitch_coach_ai.features.chat_agent.claims import (
     normalize_quote,
     round_display,
     split_check,
+    tendency_advice_as_request,
     to_base_unit,
 )
 from pitch_coach_ai.features.chat_agent.claims import _aggregate as aggregate
@@ -320,6 +322,9 @@ def test_fm_L6_06_first_sentence_is_script_fact_and_unknown_never_matches_or_dif
         ([], NEG, "CONTRADICTED"),
         ([("GAZE_LOW_EYE_CONTACT", 3, False)], POS, "UNVERIFIABLE"),  # 믿을 수 없는 구간만
         ([("GAZE_LOW_EYE_CONTACT", 3, False)], NEG, "UNVERIFIABLE"),
+        # 다른 차원(script_independence)의 문제(대본 응시)는 청중 시선 주장의 근거가 아니다 — 리뷰 차원 매핑 그대로(8회차)
+        ([("GAZE_ON_SCRIPT", 3, True)], POS, "PARTLY"),
+        ([("GAZE_ON_SCRIPT", 3, True), ("GAZE_LOW_EYE_CONTACT", 3, True)], POS, "CONTRADICTED"),
     ],
 )
 def test_fm_L6_18_slide_scope_table(issues, polarity, expected):
@@ -433,8 +438,9 @@ def test_fm_L6_19_value_slide_and_unmeasured():
 
 
 def change_draft(
-    polarity=POS, takes=("take-4", "take-5"), relation="COMPARE", quote="지난번보다 늘었어", **kw
+    polarity=POS, takes=("take-4", "take-5"), relation="COMPARE", quote="지난번보다 달라졌어", **kw
 ):
+    # 방향 낱말이 없는 말: 모델 극성으로 판정한다(방향 낱말이 있으면 낱말이 정한다, 아래 change_direction 시험)
     return mk(
         quote,
         op="CHANGE",
@@ -466,6 +472,73 @@ def test_fm_L6_19_change_claim_uses_compare_takes(prev, cur, polarity, expected)
     )
     assert cv.verdict == expected
     assert cv.checked_take_ids == ["take-4", "take-5"]
+
+
+@pytest.mark.parametrize(
+    ("quote", "metric", "expected"),
+    [
+        (
+            "Take 4보다 Take 5에서 3장 시선이 좋아졌어?",
+            "audience_ratio",
+            "IMPROVED",
+        ),  # 묻는 꼴도 같은 방향
+        ("지난번보다 나빠졌지", "audience_ratio", "WORSENED"),
+        ("3장 시선이 좋아지지 않았어", "audience_ratio", "WORSENED"),  # 부정 표현
+        ("시선 비율이 늘었어", "audience_ratio", "IMPROVED"),  # 높을수록 좋은 지표
+        ("군더더기가 늘었어", "filler_per_min", "WORSENED"),  # 낮을수록 좋은 지표
+        ("군더더기가 줄었어?", "filler_per_min", "IMPROVED"),
+        ("말 속도가 올랐어", "cpm", None),  # 범위 지표는 오르내림으로 정하지 않는다
+        ("좋아졌어, 아니면 나빠졌어?", "audience_ratio", None),  # 두 방향이 섞임
+        ("지난번이랑 어때?", "audience_ratio", None),
+    ],
+)
+def test_change_direction_comes_from_direction_words(quote, metric, expected):
+    assert change_direction(quote, metric, CFG) == expected
+
+
+@pytest.mark.parametrize(
+    ("polarity", "expected"), [("NEUTRAL", "CONTRADICTED"), (NEG, "CONTRADICTED")]
+)
+def test_fm_L6_19_question_change_claim_is_judged_by_its_words(polarity, expected):
+    """'Take 4보다 Take 5에서 3장 시선이 좋아졌어?'(ana-compare-4-5): 모델 극성이 NEUTRAL · NEGATIVE 여도 말이 '좋아졌'이면
+    좋아짐 주장이다. 31% → 28% 로 나빠졌으므로 기록과 다름."""
+    d = mk(
+        "Take 4보다 Take 5에서 3장 시선이 좋아졌어?",
+        op="CHANGE",
+        dim="audience_gaze",
+        polarity=polarity,
+        takes=("take-4", "take-5"),
+        relation="COMPARE",
+    )
+    cv = run(d, make_take(4, audience_ratio=0.31), t5(audience_ratio=0.28), focus="take-5")
+    assert cv.verdict == expected
+
+
+def test_question_change_claim_polarity_is_set_from_words_in_finalize():
+    """확정한 판단의 극성도 말 속 방향 낱말로 정한다: 같은 주장을 '좋아졌어?' · '좋아졌잖아'로 되풀이해도 같은 주장 키다."""
+    msg = "Take 4보다 Take 5에서 3장 시선이 좋아졌어?"
+    d = mk(
+        msg,
+        op="CHANGE",
+        dim="audience_gaze",
+        polarity="NEUTRAL",
+        takes=("take-4", "take-5"),
+        relation="COMPARE",
+    )
+    snaps = (make_take(4, audience_ratio=0.31), t5(audience_ratio=0.28))
+    a = fin([d], msg, *snaps, focus="take-5").outcomes[0].assessment
+    assert (a.polarity, a.verdict) == ("POSITIVE", "CONTRADICTED")
+    msg2 = "Take 4보다 Take 5에서 3장 시선이 좋아졌잖아"
+    d2 = mk(
+        msg2,
+        op="CHANGE",
+        dim="audience_gaze",
+        polarity=POS,
+        takes=("take-4", "take-5"),
+        relation="COMPARE",
+    )
+    b = fin([d2], msg2, *snaps, focus="take-5").outcomes[0].assessment
+    assert b.polarity == "POSITIVE"
 
 
 def test_fm_L6_19_change_phrase_and_evidence_come_from_comparison():
@@ -1104,10 +1177,11 @@ def test_fm_L6_09_claim_key_same_claim_same_key_and_unit_normalized():
             )
         },
         {
+            # relation 은 Take 가 둘 이상일 때만 키에 든다(Take 하나면 뜻이 없다, 8회차 M5)
             "subject": Subject(
                 dimension="audience_gaze",
                 metric="audience_ratio",
-                take_ids=["take-5"],
+                take_ids=["take-5", "take-4"],
                 relation="ALL",
             )
         },
@@ -1279,6 +1353,22 @@ def test_fm_L6_09_pressure_keeps_prior_verdict_for_same_claim_and_basis():
     tampered = [prior[0].model_copy(update={"verdict": "PARTLY"})]
     kept = fin([mk()], "시선 잘 봤어", t5(), prior=tampered, focus="take-5").outcomes[0]
     assert kept.assessment.verdict == "PARTLY" and kept.verdict_kept
+
+
+def test_fm_L6_09_pressure_ignores_ids_the_model_put_in_source_ids_of_a_measured_claim():
+    """측정 주장은 기록으로 코드가 판정한다: 모델이 다음 턴 초안의 source_ids 에 근거 id 를 넣어도 근거 지문에 넣지 않아 같은 주장 ·
+    같은 기록이면 압력에 버틴다(9회차 obj-pressure-repeat)."""
+    first = fin([mk()], "시선 잘 봤어", t5(), focus="take-5")
+    again = fin(
+        [mk(source_ids=("e-196c88b815", "e-18577fe9fe"))],
+        "아니야, 시선 잘 봤어",
+        t5(),
+        prior=first.assessments,
+        focus="take-5",
+    ).outcomes[0]
+    assert again.verdict_kept and again.basis_changed is False
+    assert again.assessment.source_ids == []
+    assert again.sentence == "답답하실 수 있지만 기록은 Take 5 청중 시선 31%, 우선 개선이에요."
 
 
 def test_fm_L6_09_pressure_keeps_prior_verdict_for_request_when_model_flips():
@@ -1592,8 +1682,9 @@ def test_fm_L6_09_non_measured_claim_key_includes_actual_take_ids():
         (2.0, 1.5, POS, "SUPPORTED"),  # 군더더기는 낮을수록 좋다: 줄었다 = 좋아졌다
         (1.5, 2.0, POS, "CONTRADICTED"),
         (1.5, 1.5, POS, "CONTRADICTED"),
-        (1.5, 2.0, NEG, "SUPPORTED"),
-        (2.0, 1.5, NEG, "CONTRADICTED"),
+        # 방향은 말 속 낱말이 정한다(6-3 CHANGE): '줄었어'는 모델 극성이 NEGATIVE 여도 좋아짐 주장이다
+        (1.5, 2.0, NEG, "CONTRADICTED"),
+        (2.0, 1.5, NEG, "SUPPORTED"),
     ],
 )
 def test_fm_L6_19_change_claim_lower_direction_metric(prev, cur, polarity, expected):
@@ -1741,6 +1832,83 @@ def test_script_statement_with_saying_used_is_also_retyped() -> None:
     assert (v.type, v.subject.metric) == ("MEASURED", "script_mode")
 
 
+@pytest.mark.parametrize(
+    ("claim_op", "slide", "retyped"),
+    [("ISSUE", None, True), ("OVERALL", None, True), ("ISSUE", 3, False)],
+)
+def test_script_use_statement_typed_as_script_ratio_issue_is_a_script_claim(
+    claim_op: str, slide: int | None, retyped: bool
+) -> None:
+    """'Take 5는 대본 보고 했어'를 대본 응시 지표(script_ratio)의 문제 주장으로 분류해도 장 · 값이 없으면 대본 주장으로 본다
+    (r9 obj-unverifiable-script: 화면 대본 사실 문장 대신 대본 응시 구간으로 판정). 장을 집은 말은 그 장의 측정 주장이다."""
+    from pitch_coach_ai.features.chat_agent.claims import AssessmentDraft, split_check
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+
+    from . import fakes as F
+
+    msg = "Take 5는 3장에서 대본 보고 했어" if slide else "Take 5는 대본 보고 했어"
+    d = AssessmentDraft.model_validate(
+        F.draft(
+            msg,
+            claim_op=claim_op,
+            dimension="script_independence",
+            metric="script_ratio",
+            slide_number=slide,
+            take_numbers=[5],
+            polarity="NEGATIVE",
+        )
+    )
+    (v,), _ = split_check(msg, [d], DEFAULT_CONFIG)
+    if retyped:
+        assert (v.claim_op, v.subject.metric, v.polarity) == ("VALUE", "script_mode", "POSITIVE")
+    else:
+        assert (v.claim_op, v.subject.metric) == (claim_op, "script_ratio")
+
+
+@pytest.mark.parametrize(
+    ("quote", "draft_kw", "mode", "verdict"),
+    [
+        (
+            "Take 2는 처음부터 화면에 대본을 띄워 놓고 보면서 하기로 한 연습이었어요",
+            {"type_": "REQUEST", "claim_op": None, "polarity": "NEUTRAL"},
+            "HIGHLIGHT",
+            "SUPPORTED",
+        ),
+        (
+            "Take 5는 종이 원고를 손에 들고 읽으면서 한 거라 대본 쪽 평가가 나쁜 건 당연해요",
+            {"claim_op": "OVERALL", "dimension": "script_independence", "polarity": "NEGATIVE"},
+            "OFF",
+            "UNVERIFIABLE",
+        ),
+    ],
+)
+def test_script_use_said_as_showing_or_holding_the_script_is_a_script_claim(
+    quote: str, draft_kw: dict[str, object], mode: str, verdict: str
+) -> None:
+    """'화면에 대본을 띄워 놓고' · '종이 원고를 손에 들고 읽으면서'도 대본 사용 진술이다: 화면 대본 표시로 판정하고 사실 · 확인
+    불가 문장을 붙인다(final60 re-contest-script-highlight · re-docent-paper-script 에서 대본 주장으로 보지 않아 문장이 빠짐)."""
+    from pitch_coach_ai.features.chat_agent.claims import AssessmentDraft, split_check
+    from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
+
+    from . import fakes as F
+
+    d = AssessmentDraft.model_validate(F.draft(quote, take_numbers=[5], **draft_kw))
+    (v,), _ = split_check(quote, [d], DEFAULT_CONFIG)
+    cv = run(v, t5(script_mode=mode), focus="take-5", script_used=None)
+    assert cv.verdict == verdict
+    assert cv.fact_sentences[0].startswith("기록에는 화면 대본이")
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["대본 안 보고 했어", "대본 읽기 속도가 빨랐어", "원고 분량이 많았어", "대본 없이 했어"],
+)
+def test_not_script_use_statements(text: str) -> None:
+    from pitch_coach_ai.features.chat_agent import claims as clm
+
+    assert not clm.states_script_use(text)
+
+
 def test_choice_questions_are_not_issue_negation() -> None:
     """'아니면' · '아닌지'는 고르는 질문이라 문제 주장의 부정이 아니다(#895 리뷰). 진짜 부정은 그대로."""
     from pitch_coach_ai.features.chat_agent.claims import _NEG_AFTER
@@ -1772,3 +1940,73 @@ def test_goal_only_counts_as_a_condition_when_a_number_is_set() -> None:
     cfg = load_config()
     assert clm.measurement_dispute("시선 목표치보다 낮게 나왔어. 다시 봐 줘", cfg)
     assert not clm.measurement_dispute("시선 목표를 30%로 다시 평가해 줘", cfg)
+
+
+def test_claim_key_ignores_relation_for_a_single_take() -> None:
+    """Take 하나에 대한 주장은 모델이 relation 을 ALL · null 로 다르게 적어도 같은 키다(반복 압력이 이어지게, 8회차 M5)."""
+    base = dict(
+        type="MEASURED", claim_op="OVERALL", polarity="POSITIVE", value=None, value_unit=None,
+        quote="Take 5 시선 잘 봤어", cfg=CFG,
+    )  # fmt: skip
+    one = Subject(dimension="audience_gaze", take_ids=["take-5"])
+    assert claim_key(subject=one, **base) == claim_key(
+        subject=one.model_copy(update={"relation": "ALL"}), **base
+    )
+    two = Subject(dimension="audience_gaze", take_ids=["take-4", "take-5"])
+    assert claim_key(subject=two.model_copy(update={"relation": "ALL"}), **base) != claim_key(
+        subject=two.model_copy(update={"relation": "SOME"}), **base
+    )
+
+
+# ── 대상 없는 자기 경향 + 조언 요청(6-3 먼저 검사 2, r9 guide-nervous) ─────────────────────────
+
+
+NERVOUS = "긴장하면 말이 빨라져. 어떻게 하면 좋아?"
+
+
+def _nervous_draft(quote: str = "긴장하면 말이 빨라져", **kw) -> AssessmentDraft:
+    return mk(quote, op="ISSUE", dim="pacing_rhythm", metric="cpm", polarity="NEGATIVE", **kw)
+
+
+def test_tendency_with_advice_request_is_not_a_measured_claim() -> None:
+    d = tendency_advice_as_request(_nervous_draft(), NERVOUS, CFG)
+    assert (d.type, d.claim_op, d.subject.dimension, d.subject.metric) == (
+        "REQUEST",
+        None,
+        None,
+        None,
+    )
+    # 확정에서도 같다: 측정 판정(기록과 다름 · 확인 불가)을 하지 않는다
+    out = fin([_nervous_draft()], NERVOUS, t5(), focus="take-5").outcomes
+    assert [(o.assessment.type, o.assessment.claim_op) for o in out] == [("REQUEST", None)]
+    assert not out[0].sentence  # 요청의 SUPPORTED 판단은 첫 문장 템플릿을 그리지 않는다
+
+
+@pytest.mark.parametrize(
+    ("message", "draft"),
+    [
+        # 대상(Take · 장 · 기록 지시어)이 있으면 지금처럼 측정 주장으로 판정한다
+        (
+            "Take 5에서 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?",
+            _nervous_draft("Take 5에서 긴장하면 말이 빨라졌어"),
+        ),
+        (
+            "이번에 긴장하면 말이 빨라졌어. 어떻게 하면 좋아?",
+            _nervous_draft("이번에 긴장하면 말이 빨라졌어"),
+        ),
+        ("3장에서 긴장하면 빨라져. 방법 있어?", _nervous_draft("3장에서 긴장하면 빨라져")),
+        ("긴장하면 말이 빨라져. 어떻게 하면 좋아?", _nervous_draft(numbers=(5,))),
+        # 조언 요청이 없으면 그대로
+        ("긴장하면 말이 빨라져", _nervous_draft()),
+        # 경향 진술이 아니면 그대로(조건 꼴 · 경향 낱말 없음)
+        ("말이 빨랐어. 어떻게 하면 좋아?", _nervous_draft("말이 빨랐어")),
+    ],
+)
+def test_tendency_rule_keeps_claims_with_a_target(message: str, draft: AssessmentDraft) -> None:
+    assert tendency_advice_as_request(draft, message, CFG) == draft
+
+
+def test_tendency_word_form_is_also_a_tendency() -> None:
+    msg = "나는 보통 말이 빨라. 줄이는 방법 알려줘"
+    d = tendency_advice_as_request(_nervous_draft("나는 보통 말이 빨라"), msg, CFG)
+    assert d.type == "REQUEST"

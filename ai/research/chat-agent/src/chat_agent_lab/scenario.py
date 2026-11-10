@@ -21,7 +21,8 @@
   세트 값 · 선택 필드를 더한 것이라 옛 시나리오 파일이 그대로 읽히므로 `SCHEMA_VERSION`은 1.0 그대로다.
 - 하는 일: `load_scenarios()`가 파일을 읽어 모양(pydantic, schema.json 과 같음)과 뜻(묶음 · 개수 · 보류 · 검사 · 템플릿 이름)을
   검사하고, 하나라도 틀리면 `ScenarioError`로 멈춘다(10-5 '스키마 검사에 실패하면 실행을 멈춘다'). `build_world()`가 가짜 BE 저장소
-  (피치 · Take · 대화 목표 · 대화 기록 · 화면 · 자료 묶음)를 만든다.
+  (피치 · Take · 대화 목표 · 대화 기록 · 화면 · 자료 묶음)를 만든다. 자료 묶음은 모드(`CORPUS_MODES`)를 따른다: approved = 서비스와
+  같은 호출로 검수를 마친 카드만(못 만들면 자료 없음), all = 검수 전 초안까지(참고 실험), none = 없음. 채점 원문도 같은 모드다.
 - 고칠 때: 모양을 바꾸면 `SCHEMA_VERSION`과 schema.json 을 같이 바꾼다. 묶음 · 개수(13-2 · 13-4)는 `GROUPS`. 기대 결과는 사람이
   검수한다(13-5, 아직 팀원 검수 전). 시험: tests/lab/test_scenarios.py · test_evals.py · test_evals_agent_service.py.
 """
@@ -29,6 +30,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -36,7 +38,13 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pitch_coach_ai.features.chat_agent.config import DEFAULT_CONFIG
-from pitch_coach_ai.features.chat_agent.corpus import Corpus, build_corpus, manifest_hash
+from pitch_coach_ai.features.chat_agent.corpus import (
+    Corpus,
+    CorpusInvalid,
+    build_corpus,
+    manifest_hash,
+    parse_card_vectors,
+)
 from pitch_coach_ai.features.chat_agent.goals import build_goal_draft
 from pitch_coach_ai.features.chat_agent.schemas import Screen, TakeSnapshot
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
@@ -65,9 +73,9 @@ GROUPS: dict[str, dict[str, int]] = {
         "failure": 3,
     },
     "safety": {
-        "injection_abuse": 6,
+        "injection_abuse": 8,
         "permission": 4,
-        "tampering": 4,
+        "tampering": 5,
         "multi_turn": 3,
         "cost": 3,
     },
@@ -87,6 +95,7 @@ GROUPS: dict[str, dict[str, int]] = {
         "memory": 5,
         "general": 4,
         "out_of_scope": 3,
+        "small_talk": 7,
     },
 }
 #: 묶음 이름(결과 표)
@@ -121,6 +130,7 @@ GROUP_LABELS = {
     "memory": "기억",
     "general": "일반 조언",
     "out_of_scope": "범위 밖",
+    "small_talk": "가벼운 말",
 }
 #: 평가셋 50 의 보류 개수(13-5: 묶음마다 약 30%, 합계 15)
 HOLDOUT_COUNTS = {
@@ -140,13 +150,28 @@ HOLDOUT_COUNTS = {
 #: 고정 순서 기준선의 입력 유형(13-3). 유형마다 도구 순서는 evals.BASELINE_SEQUENCES
 BaselineType = Literal["record", "compare", "goal", "reassess", "scope", "screen", "guide", "none"]
 
-Observe = Literal["answer", "actions_proposed", "actions_executed", "db_diff", "trace"]
-Compare = Literal["equals", "contains", "set_equals", "absent", "one_of"]
+Observe = Literal[
+    "answer", "actions_proposed", "actions_executed", "db_diff", "trace", "trajectory"
+]
+Compare = Literal[
+    "equals",
+    "contains",
+    "set_equals",
+    "absent",
+    "one_of",
+    "in_order",
+    "in_order_any",
+    "precedes",
+    "not_in_order",
+]
+#: 사건 순서를 보는 비교(trajectory 관찰값에만)
+PATH_COMPARES = ("in_order", "in_order_any", "precedes", "not_in_order")
 Grader = Literal["value", "number", "target", "regex", "template", "quote"]
 #: 검사가 들어가는 지표(14-1). 그 지표의 대상 실행 = 이 표시가 있는 검사를 가진 시나리오의 실행.
 #: advice: 조언 질문의 GUIDE 비율(답을 뒷받침하는 자료 id 를 정해 둔 조언 질문) · memory: 기억 오염 기대검사 실패(기억 누설의 대리 지표, 기억을 넣거나 바꿔도
-#: 판단 · 판정 · 근거 · 행동이 기억 없을 때의 기대와 같은가 — 기대값은 기억 없이 fixtures 만 보고 쓴다)
-MetricTag = Literal["autonomy", "screen", "objectivity", "advice", "memory"]
+#: 판단 · 판정 · 근거 · 행동이 기억 없을 때의 기대와 같은가 — 기대값은 기억 없이 fixtures 만 보고 쓴다) ·
+#: path: 경로 정확도(도구 선택 · 순서) · replan: 재계획 적합률(계획 변경이 맞았는가)
+MetricTag = Literal["autonomy", "screen", "objectivity", "advice", "memory", "path", "replan"]
 Approval = Literal["APPROVE", "REJECT", "EXPIRE", "NEW_MESSAGE"]
 
 
@@ -398,11 +423,12 @@ class Check(_M):
     """기대 결과 하나(10-5). 필수 검사가 하나라도 실패하거나 관찰값이 없으면 그 실행은 실패다.
 
     - observe: 무엇을 보나. answer(최종 답) · actions_proposed(AI가 낸 행동 · 카드) · actions_executed(BE가 실제로 실행한 행동) ·
-      db_diff(실행 전후 저장소) · trace(도구 · 진단 기록). 관찰값 모양은 grading.py 머리 설명
+      db_diff(실행 전후 저장소) · trace(도구 · 진단 기록) · trajectory(사건 순서 · 계획 기록). 관찰값 모양은 grading.py 머리 설명
     - path: 관찰값 안의 위치(예 `after.conversation.goal.metric` · `assessments[]`). 없으면 grader 기본값
     - grader: value(값 그대로) · number(숫자 표기 규칙) · target(Take · 장 · 지표 대상) · regex · template(templates.py 문구) ·
       quote(자료 인용이 원문에 그대로 있는가)
-    - compare: equals · contains · set_equals · absent(10-5) + one_of(허용 집합, 13-5 '맞는 답이 여럿이면')
+    - compare: equals · contains · set_equals · absent(10-5) + one_of(허용 집합, 13-5 '맞는 답이 여럿이면') +
+      in_order · in_order_any · precedes · not_in_order(사건 순서, `observe: trajectory`에만)
     - turn: 몇 번째 차례의 관찰값인가(기본 마지막, `all`이면 모든 차례를 합침)
     - metric: 이 검사가 들어가는 지표(자율 · 화면 이해도 · 객관성)
     - derive: 기대값을 계산한 가상 기록 위치(예 `t-5:GAZE.audience_ratio@3`). 시험이 기대값과 맞는지 다시 계산한다
@@ -422,7 +448,7 @@ class Check(_M):
     @model_validator(mode="after")
     def _grader_compare(self) -> Check:
         allowed = {
-            "value": {"equals", "contains", "set_equals", "absent", "one_of"},
+            "value": {"equals", "contains", "set_equals", "absent", "one_of", *PATH_COMPARES},
             "number": {"contains", "absent"},
             "target": {"contains", "absent"},
             "regex": {"contains", "absent"},
@@ -431,8 +457,28 @@ class Check(_M):
         }[self.grader]
         if self.compare not in allowed:
             raise ValueError(f"{self.grader} 채점기는 {sorted(allowed)} 만 쓴다")
-        if self.grader != "value" and self.observe != "answer":
-            raise ValueError(f"{self.grader} 채점기는 answer 에만 쓴다")
+        # 글 채점기는 answer 에만. 예외: 계획 단계 글(`trajectory`의 `plan_text`)은 regex 로 본다(목표 동작 '상황 사실이 단계에 보인다')
+        if (
+            self.grader != "value"
+            and self.observe != "answer"
+            and not (self.grader == "regex" and self.observe == "trajectory")
+        ):
+            raise ValueError(f"{self.grader} 채점기는 answer 에만 쓴다(regex 는 trajectory 에도)")
+        if self.compare in PATH_COMPARES:
+            if self.observe != "trajectory":
+                raise ValueError(f"{self.compare} 는 trajectory 관찰값에만 쓴다")
+            ex = self.expect
+            if self.compare == "in_order_any":
+                if (
+                    not isinstance(ex, list)
+                    or not ex
+                    or not all(isinstance(o, list) and o for o in ex)
+                ):
+                    raise ValueError("in_order_any 의 expect 는 비어 있지 않은 목록의 목록이다")
+            elif not isinstance(ex, list) or not ex or not all(isinstance(o, str) for o in ex):
+                raise ValueError(f"{self.compare} 의 expect 는 패턴 문자열의 목록이다")
+            elif self.compare == "precedes" and len(ex) != 2:
+                raise ValueError("precedes 의 expect 는 [A, B] 두 개다")
         return self
 
 
@@ -639,27 +685,110 @@ def build_pitch(spec: PitchSpec, user_id: str) -> fx.PitchRecord:
     return p
 
 
-def build_corpus_for(spec: CorpusSpec | None) -> Corpus:
-    """기본 자료 묶음, 또는 카드를 더한 시험용 묶음(판 · 해시를 새로 만든다)."""
+#: 평가의 자료 묶음 모드(P-0008 5-4). approved = 서비스와 같게(검수를 마친 카드만, 서비스가 묶음을 못 만들면 자료 없음) ·
+#: all = 검수 전 초안까지 연 참고 실험 · none = 자료 묶음 없음
+CORPUS_MODES = ("approved", "all", "none")
+CorpusMode = Literal["approved", "all", "none"]
+
+
+def _guide_files() -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]]]:
     manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
     files = {
         name: json.loads((GUIDES / name).read_text(encoding="utf-8"))
         for name in manifest.get("files", [])
     }
-    if spec is not None and spec.extra_cards:
-        first = manifest["files"][0]
-        files[first] = [*files[first], *copy.deepcopy(spec.extra_cards)]
-        raw = [c for name in manifest["files"] for c in files[name]]
-        manifest = {
-            **manifest,
-            "corpus_version": spec.corpus_version,
-            "sha256": manifest_hash(raw, manifest.get("synonyms") or None),
+    return manifest, files
+
+
+def _with_cards(
+    manifest: dict[str, Any], files: dict[str, list[dict[str, Any]]], version: str
+) -> dict[str, Any]:
+    raw = [c for name in manifest["files"] for c in files[name]]
+    return {
+        **manifest,
+        "corpus_version": version,
+        "sha256": manifest_hash(raw, manifest.get("synonyms") or None),
+    }
+
+
+def build_corpus_for(spec: CorpusSpec | None, mode: CorpusMode = "all") -> Corpus | None:
+    """시나리오의 자료 묶음. `mode`(CORPUS_MODES)에 따라 서비스 조건 · 초안 포함 · 없음으로 만든다.
+
+    - approved: 서비스 계층(`api/chat_agent.py` `load_corpus`)과 같은 호출(`allow_unreviewed=False`)로 만들고, 실패하면
+      서비스처럼 자료 묶음 없이(None) 돈다. 시나리오가 카드를 더하면(주입 시험: 검수를 통과한 카드에 지시가 섞인 경우를 흉내)
+      서비스가 실은 카드 + 더한 카드(검수 완료로 표시)로 시험용 판을 다시 만든다 — 판 고정표 검사만 빼고(시험용 판은 등록하지
+      않는다) 나머지 검사는 같다.
+    - all: 검수 전 카드까지 연다(7회차까지의 평가 조건, 참고 실험).
+    - none: 자료 묶음 없음.
+    """
+    if mode == "none":
+        return None
+    extra = list(spec.extra_cards) if spec is not None else []
+    if mode == "approved":
+        try:
+            # 파일 읽기 · 해석 실패도 서비스처럼 자료 묶음 없이(None) 돈다(서비스 `load_corpus` 와 같다)
+            manifest, files = _guide_files()
+            served = build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=False)
+        except (CorpusInvalid, OSError, ValueError, KeyError, TypeError):
+            return None
+        if not extra:
+            return served
+        keep = {c.source_id for c in served.cards}
+        files = {
+            name: [c for c in cards if c["source_id"] in keep] for name, cards in files.items()
         }
+        extra = [{**copy.deepcopy(c), "review": "APPROVED"} for c in extra]
+    else:
+        manifest, files = _guide_files()
+    if extra:
+        first = manifest["files"][0]
+        files = {**files, first: [*files[first], *copy.deepcopy(extra)]}
+        assert spec is not None
+        manifest = _with_cards(manifest, files, spec.corpus_version)
     return build_corpus(manifest, files, cfg=DEFAULT_CONFIG, allow_unreviewed=True)
 
 
-def corpus_texts(spec: CorpusSpec | None) -> dict[str, str]:
-    """채점기용 자료 원문(source_id → 본문). 코어 검색 코드를 거치지 않고 파일에서 바로 읽는다."""
+#: 카드 임베딩 파일(서비스가 읽는 것과 같은 파일). 비교 실험은 다른 파일(예: 512차원)을 넘긴다
+EMBEDDINGS_FILE = GUIDES / "embeddings.json"
+
+
+@functools.lru_cache(maxsize=4)
+def _embeddings_data(file: Path) -> Any:
+    return json.loads(file.read_text(encoding="utf-8"))
+
+
+def with_search_vectors(
+    corpus: Corpus | None,
+    *,
+    model: str,
+    dims: int,
+    path: Path | None = None,
+) -> Corpus | None:
+    """하이브리드 검색용 카드 벡터를 붙인 묶음. 파일이 묶음과 맞지 않으면 까닭을 적은 ValueError.
+
+    서비스(`api/chat_agent.py` `attach_embeddings`)와 같이 `parse_card_vectors` 로 모델 · 차원 · 카드별 입력 해시를 본다.
+    묶음이 없으면(None) 그대로 None 이다.
+    """
+    if corpus is None:
+        return None
+    file = path or EMBEDDINGS_FILE
+    data = _embeddings_data(file)
+    vectors, reason = parse_card_vectors(data, corpus, model=model, dims=dims)
+    if vectors is None:
+        raise ValueError(f"카드 임베딩 파일을 쓸 수 없다({file.name}): {reason}")
+    return corpus.with_vectors(vectors)
+
+
+def corpus_texts(
+    spec: CorpusSpec | None, corpus: Corpus | None = None, mode: CorpusMode = "all"
+) -> dict[str, str]:
+    """채점기용 자료 원문(source_id → 본문). 코어 검색 코드를 거치지 않고 파일에서 바로 읽는다.
+
+    approved · none 모드에서는 그 실행이 실제로 실은 카드(`corpus`)만 원문으로 인정한다 — 서비스에 없는 카드의 인용을
+    맞는 인용으로 채점하지 않게(P-0008 5-4 '채점 원문까지 일관되게').
+    """
+    if mode == "none" or (mode != "all" and corpus is None):
+        return {}  # 실은 자료가 없으면 파일을 읽지 않고 빈 사전(원문으로 인정할 카드가 없다)
     manifest = json.loads((GUIDES / "manifest.json").read_text(encoding="utf-8"))
     out: dict[str, str] = {}
     for name in manifest.get("files", []):
@@ -667,6 +796,9 @@ def corpus_texts(spec: CorpusSpec | None) -> dict[str, str]:
             out[c["source_id"]] = c["text"]
     for c in spec.extra_cards if spec is not None else []:
         out[c["source_id"]] = c["text"]
+    if mode != "all":
+        served = {c.source_id for c in corpus.cards} if corpus is not None else set()
+        out = {k: v for k, v in out.items() if k in served}
     return out
 
 
@@ -681,7 +813,7 @@ class World:
     user_id: str
     conversation: ConversationSpec
     screens: dict[str, dict[str, Any]]
-    corpus: Corpus
+    corpus: Corpus | None
     corpus_texts: dict[str, str]
     official_reviews: str
     goal: dict[str, Any] | None = None
@@ -710,8 +842,9 @@ def build_goal(spec: GoalSpec, pitches: list[fx.PitchRecord]) -> dict[str, Any]:
     raise ValueError(f"목표 기준 Take 가 없다: {spec.base_take_id}")
 
 
-def build_world(sc: Scenario) -> World:
+def build_world(sc: Scenario, *, corpus_mode: CorpusMode = "all") -> World:
     fxs = sc.fixtures
+    corpus = build_corpus_for(fxs.corpus, corpus_mode)
     pitches = [build_pitch(p, fxs.user_id) for p in fxs.pitches]
     for raw in fxs.screens.values():
         _SCREEN.validate_python(raw)  # 12-4 화면 상태 모양
@@ -721,8 +854,8 @@ def build_world(sc: Scenario) -> World:
         user_id=fxs.user_id,
         conversation=fxs.conversation,
         screens=copy.deepcopy(fxs.screens),
-        corpus=build_corpus_for(fxs.corpus),
-        corpus_texts=corpus_texts(fxs.corpus),
+        corpus=corpus,
+        corpus_texts=corpus_texts(fxs.corpus, corpus, corpus_mode),
         official_reviews=fxs.official_reviews,
         goal=goal,
         memory=fxs.memory,
@@ -897,6 +1030,7 @@ def count_problems(scenarios: list[Scenario]) -> list[str]:
 
 
 __all__ = [
+    "CORPUS_MODES",
     "GROUPS",
     "GROUP_LABELS",
     "HOLDOUT_COUNTS",

@@ -11,8 +11,9 @@
 - 허용 근거 검사(6-2, `SAVE_GOAL`): ① 처음 사용자 말 원문의 부분 문자열 ② 인용을 포함한 절 전체에 부정 · 취소 · 조건 ·
   남의 말 인용이 없음 ③ 인용에 행동 낱말 + 절에 요청형 표현. 이제 이 검사는 '확인 카드를 낼 근거가 있나'를 정한다: 통과하면 `ASK` 행동
   (확인 카드), 하나라도 어기면 실행하지 않고 목표 제안 카드로 낮춘다. `REASSESS`는 허용 근거 검사 없이 `ASK`(확인 카드가 승인 근거),
-  `START_PRACTICE`는 허용 근거와 상관없이 언제나 버튼 카드다. 이 검사는 간접 표현을 완벽히 가리지 못한다(15-2): 잘못 판별해도
-  실행되지 않고 원치 않는 확인 카드가 뜰 뿐이다.
+  `START_PRACTICE`는 언제나 버튼 카드이고, 모델이 낸 버튼은 가벼운 근거 검사(`practice_basis`: 이번 사용자 말의 이동 요청 — 이동
+  낱말 + 이동 요청 꼴 — 또는 이번 실행의 목표 저장 성공)를 통과할 때만 낸다(대화 기록 · 기억 속 지시로 버튼이 생기지 않게, 13-2). 이 검사는 간접 표현을 완벽히
+  가리지 못한다(15-2): 잘못 판별해도 실행되지 않고 원치 않는 확인 카드 · 버튼이 뜨거나 빠질 뿐이다.
 - 다시 평가 확인 카드(6-6): 바꾸기 전 조건은 지금 피치 기준이 아니라 대상 Take 가 리뷰받은 때의 조건(Take 요약 `standard_version`이 가리키는 판, `_take_conditions`)이고,
   바꾼 뒤 조건은 행동 인자 그대로다. 사용자 기준 문구(`display`)도 표시 문자열 검사(6-9)를 통과하면 싣는다. 바꾸기 전 조건을 확인할 수 없으면(Take 요약 판 필드 누락 · 판이 다름 · 바꾸는 항목의 지금 기준 값 누락, 명시적 null · 빈 값과 다름) 카드를 그리지 못해
   행동을 내지 않는다(사용자가 본 것과 실행되는 것이 달라지면 안 된다).
@@ -37,7 +38,7 @@ from .claims import goal_conflict
 from .compose import metric_label
 from .config import ChatAgentConfig
 from .evidence import canonical_json
-from .goals import build_goal_draft
+from .goals import build_goal_draft, record_read_value
 from .runctx import RunCtx
 from .schemas import (
     Action,
@@ -56,6 +57,7 @@ from .schemas import (
     StartPracticeCard,
     TakeSnapshot,
 )
+from .values import read_dimension_state, read_metric
 
 #: 행동마다 코드에 고정한 자율 등급(6-2). 모델이 바꾸지 못한다
 AUTONOMY: dict[str, str] = {
@@ -215,7 +217,11 @@ def _clause_of(message: str, quote: str) -> str | None:
     start = message.find(quote)
     if start < 0:
         return None
-    end = start + len(quote)
+    return _clause_at(message, start, start + len(quote))
+
+
+def _clause_at(message: str, start: int, end: int) -> str:
+    """원문의 [start, end) 자리를 포함한 절(문장). 자리가 문장 경계를 넘으면 걸친 문장들을 합친다."""
     bounds = [0]
     for m in _SENT_SPLIT.finditer(message):
         bounds.append(m.end())
@@ -223,6 +229,34 @@ def _clause_of(message: str, quote: str) -> str | None:
     s = max(b for b in bounds if b <= start)
     e = min(b for b in bounds if b >= end)
     return message[s:e]
+
+
+def _rieul_final(ch: str) -> bool:
+    """한글 음절의 받침이 ㄹ인가("둘" · "할" · "을")."""
+    return "가" <= ch <= "힣" and (ord(ch) - 0xAC00) % 28 == 8
+
+
+def _quoted_speech(clause: str, cfg: ChatAgentConfig) -> bool:
+    """절에 남의 말 인용 표시가 있는가. '래요'는 바로 앞 음절의 받침이 ㄹ이면 인용이 아니라 바람 · 의향의 '~ㄹ래요'다
+    ("저장해 둘래요" · "목표로 할래요"는 요청, "저장하래요"는 남의 말, final60 svc-ngo-save-expire)."""
+    for m in cfg.quotation_markers:
+        start = clause.find(m)
+        while start != -1:
+            if not (m.startswith("래") and start > 0 and _rieul_final(clause[start - 1])):
+                return True
+            start = clause.find(m, start + 1)
+    return False
+
+
+def sentences(text: str) -> list[str]:
+    """글을 절(문장)로 나눈다. 허용 근거 검사와 같은 경계(. ? ! 줄바꿈)다."""
+    return [s for s in _SENT_SPLIT.split(text) if s.strip()]
+
+
+def negated_or_quoted(clause: str, cfg: ChatAgentConfig) -> bool:
+    """절에 부정 · 취소 표현(`negation_words`)이나 남의 말 인용 표시(`quotation_markers`)가 있는가. 허용 근거 검사와 같은
+    낱말이다. loop.py 의 '같은 조건 다시 평가' 되살리기가 이번 말 · 앞 말의 절을 볼 때 쓴다."""
+    return any(w in clause for w in cfg.negation_words) or _quoted_speech(clause, cfg)
 
 
 def _has_condition(clause: str, cfg: ChatAgentConfig) -> bool:
@@ -254,18 +288,26 @@ def authorize(
     clause = _clause_of(original, q) or q
     if any(w in clause for w in cfg.negation_words):
         return "NEGATION"
-    if any(m in clause for m in cfg.quotation_markers):
+    if _quoted_speech(clause, cfg):
         return "QUOTED_SPEECH"
-    if _has_condition(clause, cfg):
-        return "CONDITION"
     q_at = clause.find(q)
     spots = [q_at + i for w in cfg.action_words.get(action_type, ()) if (i := q.find(w)) >= 0]
+    # 조건(~면)은 요청 동사 앞에서만 본다: 조건절은 그것이 거는 동사 앞에 온다. 동사 뒤의 '~면'은 다음 요청에 걸린다
+    # ("목표로 저장해 주고, 저장되면 바로 연습하러 갈 수 있게 해 주세요"의 '저장되면'은 연습 이동의 순서, final60
+    # rep-pitchinvest-filler-goal). 행동 낱말이 없으면 절 전체를 본다
+    if _has_condition(clause[: min(spots)] if spots else clause, cfg):
+        return "CONDITION"
     if not spots:
         return "NO_ACTION_WORD"
     pos = min(spots)
     forms = cfg.request_forms.get(action_type, ())
     verb = _word_at(clause, pos)
     words = re.findall(r"[가-힣]+", clause[pos:])
+    # 요청 동사 자체가 조건 꼴이면("목표 저장하면 알려줘"의 '저장하면') 그 동사는 요청이 아니라 뒤 요청의 조건이다.
+    # 바로 뒤가 바람 낱말이면("저장하면 좋겠어") 조건이 아니라 바람이다(요청형 검사로 넘긴다)
+    wish = _has_condition(verb, cfg)
+    if wish and not any(w.startswith(cfg.wish_after_condition) for w in words[1:2]):
+        return "CONDITION"
     # 동사 뒤에서 절을 끊는 말(~는데 · ~지만 · ~니까 …)이나 보조 용언(~고 있 · ~어 놓)이 오면 그 동사는 요청이 아니다
     # ("목표를 정해 놓았는데 … 알려줘", "목표로 잡고 있었는데 결과를 알려줘")
     if any(w.endswith(_CLAUSE_BREAKS) for w in words) or any(
@@ -279,6 +321,27 @@ def authorize(
     tail = " ".join(words[-2:])
     if not words or not any(f in tail for f in forms):
         return "NO_REQUEST_FORM"
+    # 바람("저장하면 좋겠…") 뒤의 요청형은 행동 동사 자체에 붙어야 한다: "저장하면 좋겠고 결과도 알려줘"의 '알려줘'는 다른 동사의
+    # 요청이라 저장을 허용하지 않는다("저장하면 좋겠어, 저장해 줘"는 허용)
+    if wish:
+        req_verb = _request_verb(words, forms)
+        if req_verb is None or not any(
+            w in req_verb for w in cfg.action_words.get(action_type, ())
+        ):
+            return "NO_REQUEST_FORM"
+    return None
+
+
+#: 앞 동사에 붙는 요청 보조 낱말("저장해 줘"의 '줘' · "잡아 주세요"의 '주세요')
+_REQUEST_AUX = ("줘", "주세요", "주십시오", "줄래", "주라")
+
+
+def _request_verb(words: list[str], forms: tuple[str, ...]) -> str | None:
+    """절 끝 두 낱말 중 요청형이 붙은 동사(뒤에서부터 첫 것). 요청형이 보조 낱말("줘" · "주세요")이면 그 앞 낱말이 동사다."""
+    for i in range(len(words) - 1, max(len(words) - 2, 0) - 1, -1):
+        w = words[i]
+        if any(f in w for f in forms):
+            return words[i - 1] if w.startswith(_REQUEST_AUX) and i > 0 else w
     return None
 
 
@@ -506,6 +569,17 @@ def propose(
                     "사용자가 말한 Take 가 아니다. 그 Take 를 찾지 못했으면 다시 평가하지 않는다",
                 ),
             )
+        if not any(w in (original_message or "") for w in ctx.cfg.reassess_request_hints):
+            # 다시 평가는 사용자가 이번 말에서 청했을 때만 한다. '대본 보고 했어' 같은 의견만으로는 내지 않는다(6-6, r9
+            # obj-unverifiable-script: 의견에 확인 카드를 냄). 의견은 판단(화면 대본 사실 · 확인 불가)으로 답한다
+            return Proposal(
+                result="TOOL_ERROR",
+                reason_code="REASSESS_NOT_REQUESTED",
+                tool_message=_err(
+                    "REASSESS_NOT_REQUESTED",
+                    "사용자가 이번 말에서 다시 평가를 요청하지 않았다. 의견만으로는 다시 평가하지 않고 기록으로 확인한 것만 답한다",
+                ),
+            )
         if clm.measurement_dispute(original_message or "", ctx.cfg):
             # 다시 평가는 입력을 바꾸는 조건(대본 사용 · 내 기준)을 사용자가 말했을 때만 한다. 측정값 이의('카메라가 낮았어')는
             # 다시 평가로 바뀌지 않는다(6-6, 4회차 ra-measurement)
@@ -521,7 +595,7 @@ def propose(
             change: dict[str, Any] = {"script_used": a.change.script_used}
         else:
             targets = _sourced_targets(
-                [t.model_dump() for t in a.change.targets or []],
+                [_ratio_value(t.model_dump(), ctx.cfg) for t in a.change.targets or []],
                 original=original_message,
                 ctx=ctx,
                 take_id=a.take_id,
@@ -561,6 +635,23 @@ def _err(code: str, message: str) -> dict[str, Any]:
     return {"ok": False, "error": {"code": code, "message": message}}
 
 
+def _ratio_value(target: dict[str, Any], cfg: ChatAgentConfig) -> dict[str, Any]:
+    """비율 지표(`metric_units`가 ratio: 청중 시선 · 대본 응시 …)의 기준값은 0~1 비율이다. 모델이 퍼센트(30)로 적으면 비율(0.3)로
+    바꾼다: 1보다 큰 비율은 없으므로 뜻이 갈리지 않는다(r9 ra-criteria: "청중 시선 30% 이상"을 value 30 으로 불러 52% 가 FAILED).
+
+    예: {"metric": "audience_ratio", "operator": "GTE", "value": 30} → value 0.3 · 0.3 은 그대로 · cpm 300 은 그대로
+    """
+    v = target.get("value")
+    if (
+        cfg.metric_units.get(str(target.get("metric"))) == "ratio"
+        and isinstance(v, (int, float))
+        and not isinstance(v, bool)
+        and 1 < v <= 100
+    ):
+        return {**target, "value": round(v / 100, 6)}
+    return target
+
+
 def _sourced_targets(
     targets: list[dict[str, Any]], *, original: str | None, ctx: RunCtx, take_id: str
 ) -> list[dict[str, Any]] | None:
@@ -568,9 +659,12 @@ def _sourced_targets(
 
     문구는 모델이 채운 행동 인자라, 확인 카드 · 결과 카드(코드 카드라 숫자 출처 검사를 받지 않음)에 그대로 보이면 근거 없는
     숫자 · 칭찬이 나갈 수 있다. 출처: 처음 사용자 말 원문의 부분 문자열이거나 그 Take 기준(바꾸기 전 조건)의 문구와 같음.
-    출처가 없으면 숫자 목표가 있는 칸은 문구를 비우고(숫자 조건이 실제 조건), 문구만 있는 칸이면 None(행동을 내지 않는다:
-    보이지 않는 조건은 승인받지 않는다).
-    예: 사용자 "시선 70% 넘으면 통과로 다시 봐 줘", display "Take 5 시선 90%였어요"(metric 있음) → display None
+    출처가 없거나 문구가 비었으면 숫자 목표가 있는 칸은 숫자 목표로 코드가 만든 문구(`_target_text`)로 바꾸고(숫자 조건이
+    실제 조건), 문구만 있는 칸이면 None(행동을 내지 않는다: 보이지 않는 조건은 승인받지 않는다).
+    문구를 null 로 두지 않는 까닭: 리뷰가 이 문구를 기준 판정(`criteria_results[].display`)과 실패한 기준의 다음 미션 설명
+    (`next_missions[].description`)에 그대로 싣고, BE 는 다시 평가 응답도 공식 리뷰와 같은 검사(문자열만)로 본다(#1167).
+    예: 사용자 "시선 70% 넘으면 통과로 다시 봐 줘", display "Take 5 시선 90%였어요"(audience_ratio · GTE · 0.7)
+    → display "청중 시선 70% 이상"
     """
     known: set[str] = set()
     cond = _take_conditions(ctx, take_id, "targets")
@@ -581,13 +675,33 @@ def _sourced_targets(
         d = (t.get("display") or "").strip()
         if not d and t.get("metric") is None:
             return None  # 숫자 목표도 문구도 없는 칸: 보이는 조건이 없다
-        if not d or (original is not None and d in original) or d in known:
+        if d and ((original is not None and d in original) or d in known):
             out.append(t)
         elif t.get("metric") is not None:
-            out.append({**t, "display": None})
+            out.append({**t, "display": _target_text(t, ctx.cfg)})
         else:
             return None
     return out
+
+
+#: 숫자 목표의 비교 방법 → 문구 (리뷰 판정과 같은 뜻: LT 미만 · LTE 이하 · GT 초과 · GTE 이상)
+_OPERATOR_WORD: dict[str, str] = {"LT": "미만", "LTE": "이하", "GT": "초과", "GTE": "이상"}
+
+
+def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
+    """숫자 목표로 코드가 만든 기준 문구. 지표 표시 이름 · 값 · 비교 말을 잇는다.
+
+    모델 글이 아니라 사용자가 확인 카드에서 승인하는 숫자 목표 그대로라 출처 검사가 필요 없다(6-9). 값은 화면 자리수로
+    반올림하지 않는다: 리뷰는 반올림하지 않은 값으로 판정하므로 문구도 같은 값이어야 한다(0.655 → '65.5%', '66%' 아님).
+    예: {metric: audience_ratio, operator: GTE, value: 0.7} → '청중 시선 70% 이상' · cpm LTE 330 → '말 속도 330자/분 이하'
+    """
+    metric = str(target["metric"])
+    if metric in clm.VOLUME_DIFF_METRICS:
+        # 소리 크기 문턱값은 '기준보다 1dB 작게 이상'처럼 비교 말이 겹치지 않게 부호로 쓴다(#1182, FE 표기와 같은 꼴)
+        value = f"기준 대비 {clm.signed_db(target['value'])}"
+    else:
+        value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
+    return f"{metric_label(metric)} {value} {_OPERATOR_WORD[str(target['operator'])]}"
 
 
 def _propose_goal(
@@ -686,6 +800,23 @@ def _propose_goal(
     return Proposal(result="PROPOSED", action=action, authorization=authorization)
 
 
+def _option_evidence(ctx: RunCtx, base: TakeSnapshot, goal: GoalDraft | None) -> list[str]:
+    """목표 안의 근거 id: 기준 Take 의 지표 값 · 그 지표의 리뷰 차원 상태(읽을 수 있는 것만). 잴 수 없는 안은 빈 목록."""
+    if goal is None:
+        return []
+    pid = ctx.scope_pitch_id or ""
+    out: list[str] = []
+    rv = read_metric(base, goal.metric, goal.slide_number, ctx.cfg)
+    if rv.ok:
+        out.append(record_read_value(ctx.registry, pid, base, rv, ctx.cfg, ctx.version_of))
+    dim = GOAL_METRIC_DIM.get(goal.metric)
+    if dim is not None:
+        dv = read_dimension_state(base, dim)
+        if dv.ok:
+            out.append(record_read_value(ctx.registry, pid, base, dv, ctx.cfg, ctx.version_of))
+    return out
+
+
 def goal_proposal_card(
     *,
     ctx: RunCtx,
@@ -695,7 +826,11 @@ def goal_proposal_card(
     dims: dict[str, Any],
     seq: int,
 ) -> dict[str, Any]:
-    """사용자 안 · 전문가 추천 안을 담은 GOAL_PROPOSAL 카드(6-3). 잴 수 없는 사용자 안은 goal null(선택 버튼 없음)."""
+    """사용자 안 · 전문가 추천 안을 담은 GOAL_PROPOSAL 카드(6-3). 잴 수 없는 사용자 안은 goal null(선택 버튼 없음).
+
+    안마다 근거(`evidence_ids`)를 단다: 기준 Take 의 그 지표 값과 그 지표가 든 리뷰 차원의 상태(강점 · 우선 개선 등).
+    "리뷰에서 우선 개선인 차원이에요" 같은 까닭이 근거 없이 보이지 않게 한다(13-4 목표 충돌, 8회차 M4).
+    """
     cfg = ctx.cfg
     options: list[GoalOption] = []
     options.append(
@@ -705,7 +840,7 @@ def goal_proposal_card(
             reason=user_reason
             if user_draft is not None
             else "말씀하신 목표는 기록으로 잴 수 없어요",
-            evidence_ids=[],
+            evidence_ids=_option_evidence(ctx, base, user_draft),
             content_hash=_goal_options_hash(user_draft),
         )
     )
@@ -724,7 +859,7 @@ def goal_proposal_card(
                 label="EXPERT",
                 goal=expert,
                 reason="리뷰에서 우선 개선인 차원이에요",
-                evidence_ids=[],
+                evidence_ids=_option_evidence(ctx, base, expert),
                 content_hash=_goal_options_hash(expert),
             )
         )
@@ -1140,6 +1275,73 @@ def _apply_reassess(pending: dict[str, Any], data: dict[str, Any], *, ctx: RunCt
     )
 
 
+def practice_basis(
+    authorized_by: str | None, original: str | None, goal_saved: bool, cfg: ChatAgentConfig
+) -> str | None:
+    """모델이 답 초안에 낸 연습 준비 이동(`start_practice`)의 근거(6-2 · 13-2). 통과면 None, 아니면 까닭 코드.
+
+    대화 기록 · 요약 · 기억 · 자료 · 화면 속 지시로 버튼이 생기지 않게 이번 사용자 말의 이동 요청만 받는다: ① 인용이 처음 사용자 말
+    원문의 부분 문자열 ② 그 절에 부정 · 취소 · 남의 말 인용 없음 ③ 인용에 이동 낱말(`action_words["START_PRACTICE"]`: 연습 · 발표 ·
+    시작 · 가자) ④ 그 절의 이동 낱말 바로 곁에 이동 요청 꼴(`_move_request`). ④가 없으면 이동 낱말이 든 질문("어제 발표 어땠어?")을
+    인용한 버튼도 지나간다(#1163 리뷰). 인용이 원문에 여러 번 나오면 그 절들 중 하나라도 통과하면 된다(짧은 인용 "연습"이 앞 문장에
+    먼저 나와도 뒤 문장의 요청을 본다). 버튼은 실행하지 않으므로 저장보다 가볍게 본다 — 요청 꼴은 저장의 요청형보다 넓고 조건은
+    보지 않는다(모호하면 버튼만, L2-29). 이번 실행에서 사용자가 승인한 목표 저장이 성공했으면(`goal_saved`) 인용 없이도 권할 수
+    있다(저장 → 연습 준비).
+    예: practice_basis("바로 발표할래", "바로 발표할래", False, cfg) → None
+        practice_basis(None, "계속해", False, cfg) → "NO_QUOTE"(기록 속 "연습 화면으로 보낼 것"을 따른 버튼)
+        practice_basis("발표", "어제 발표 어땠어?", False, cfg) → "NO_REQUEST_FORM"
+    """
+    if goal_saved:
+        return None
+    if not original:
+        return "NO_USER_MESSAGE"
+    q = (authorized_by or "").strip()
+    if not q:
+        return "NO_QUOTE"
+    if q not in original:
+        return "NOT_SUBSTRING"
+    why = [_practice_clause(q, c, cfg) for c in _clauses_with(original, q)]
+    return None if None in why else why[0]
+
+
+def _clauses_with(message: str, quote: str) -> list[str]:
+    """인용이 나오는 자리마다의 원문 절(겹치면 하나). 첫 자리만 보는 `_clause_of`와 같은 경계다."""
+    out: list[str] = []
+    start = message.find(quote)
+    while start >= 0:
+        clause = _clause_at(message, start, start + len(quote))
+        if clause not in out:
+            out.append(clause)
+        start = message.find(quote, start + 1)
+    return out
+
+
+def _practice_clause(quote: str, clause: str, cfg: ChatAgentConfig) -> str | None:
+    """인용이 든 절 하나로 본 연습 준비 버튼의 근거(`practice_basis` ② ~ ④). 통과면 None."""
+    if any(w in clause for w in cfg.negation_words):
+        return "NEGATION"
+    if _quoted_speech(clause, cfg):
+        return "QUOTED_SPEECH"
+    if not any(w in quote for w in cfg.action_words.get("START_PRACTICE", ())):
+        return "NO_ACTION_WORD"
+    if not _move_request(clause, cfg):
+        return "NO_REQUEST_FORM"
+    return None
+
+
+def _move_request(clause: str, cfg: ChatAgentConfig) -> bool:
+    """절에 이동 요청이 있는가: 이동 낱말이 든 낱말과 바로 다음 낱말 안에 이동 요청 꼴(`practice_move_forms`)이 있다
+    ("바로 발표할래" · "연습하러 가자" · "연습 들어갈게요" · "연습하고 싶어요"). 다른 동사에 붙은 꼴("지난 연습이랑 비교해 볼래?" ·
+    "연습 기록을 비교하고 싶어요" · "연습 기록은 어땠어, 목표로 저장할게요")은 이동 요청이 아니다(#1163 리뷰)."""
+    words = clause.split()
+    marks = cfg.action_words.get("START_PRACTICE", ())
+    return any(
+        any(f in " ".join(words[i : i + 2]) for f in cfg.practice_move_forms)
+        for i, w in enumerate(words)
+        if any(m in w for m in marks)
+    )
+
+
 def start_practice_action(
     *,
     ctx: RunCtx,
@@ -1147,7 +1349,8 @@ def start_practice_action(
     seq: int,
     budget: Budget,
 ) -> tuple[Action | None, dict[str, Any], str | None]:
-    """마지막 답의 연습 준비 이동(6-2): 허용 근거와 상관없이 언제나 [연습 준비로] 버튼 카드만 낸다(자동 이동 없음).
+    """마지막 답의 연습 준비 이동(6-2): [연습 준비로] 버튼 카드만 낸다(자동 이동 없음). 근거는 부르는 쪽이 먼저 본다
+    (모델 초안은 `practice_basis`, 가벼운 말 · Take 0개 다음 걸음은 코드가 정함).
 
     행동은 `autonomy:"BUTTON"`으로 `DONE`의 `actions`에 싣고 BE 는 실행하지 않는다(누르는 것이 승인이고 FE 가 옮긴다).
     행동 수 한도에 막히면 행동 없이 카드만 남긴다. 사용자가 이번 말에서 요청한 인용은 그대로 남긴다.

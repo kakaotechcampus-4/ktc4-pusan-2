@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "id": "path-combo-goal-flow",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "군더더기 분당 횟수(3.4)를 줄이는 목표를 저장하고 연습으로 가기 — 제안(ASK) → 승인 → 저장 → 결과 문장 + 결과 발견 안내 + 연습 버튼",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "filler_per_min": 3.4,
+              "filler_count": 14
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5는 군더더기 말이 너무 많았어. 분당 횟수를 줄이는 걸 목표로 저장하고 바로 연습하러 갈 수 있게 해 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "goal-flow",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:SAVE_GOAL:ASK",
+          "approve:SAVE_GOAL",
+          "exec:SAVE_GOAL:OK",
+          "claim:ACTION_RESULT"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "save-executed",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": "SAVE_GOAL",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "filler_per_min",
+        "path": "after.conversation.goal.metric"
+      },
+      {
+        "check_id": "goal-base-value",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 3.4,
+        "path": "after.conversation.goal.base.value",
+        "derive": "t-5:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "lt_base",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "save-success",
+        "observe": "answer",
+        "grader": "template",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL"
+      },
+      {
+        "check_id": "result-discovery",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "목표를 저장했어요[\\s\\S]*연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

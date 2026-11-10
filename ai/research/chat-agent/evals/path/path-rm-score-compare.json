@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "id": "path-rm-score-compare",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should_not",
+  "title": "Take 4 점수는 있고 최신 Take 5 리뷰는 없음 — 점수 오르내림 결론 없이 리뷰 분석 전임을 알린다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "review": null
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4 점수랑 비교해서 이번 Take 점수가 올랐어?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-score-direction",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "absent",
+        "expect": "(올랐|내렸|떨어졌|높아졌|낮아졌|좋아졌|나빠졌)"
+      },
+      {
+        "check_id": "no-take5-score",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "absent",
+        "expect": "Take 5[^\\n]{0,30}[0-9]+점"
+      },
+      {
+        "check_id": "read-then-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "decision:REVIEW_MISSING:*",
+          "claim:*"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "fact-on-plan",
+        "observe": "trajectory",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "리뷰 분석 전",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-review-sentence",
+        "observe": "answer",
+        "grader": "template",
+        "compare": "contains",
+        "expect": "SystemText.NO_REVIEW"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

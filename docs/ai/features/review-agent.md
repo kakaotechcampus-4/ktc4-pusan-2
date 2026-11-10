@@ -135,7 +135,7 @@ flowchart LR
 | `dimensions` | object | 차원 여섯 개 → 상태 |
 | `strengths[]` | list | `{area, slide_number, text, evidence}`. 개선점과 같은 모양이고, 장이 없으면 `slide_number` null. `evidence`는 지표 이름 → 숫자. `area` · `evidence`를 고르는 법은 6-2 |
 | `improvements[]` | list | `{area, slide_number, text, evidence}`. 장이 없으면 `slide_number` null |
-| `comparison[]` | list | 바로 앞 Take(`previous_takes[0]`)와 같은 지표 비교 `{metric, slide_number, previous, current, improved, script_mode}`. `improved`는 좋아진 방향인지(bool, 방향을 정할 수 없으면 null). `script_mode`는 두 Take의 대본 보기가 다를 때 `{previous, current}`, 같으면 null |
+| `comparison[]` | list | 바로 앞 Take(`previous_takes[0]`)와 같은 지표 비교 `{metric, slide_number, previous, current, improved, script_mode}`. `improved`는 좋아진 방향인지(bool, 방향을 정할 수 없거나 나아지지도 나빠지지도 않았으면 null). `script_mode`는 두 Take의 대본 보기가 다를 때 `{previous, current}`, 같으면 null |
 | `mission_results[]` | list | `{mission_id, status, metric, operator, slide_number, target, observed}`. `observed`는 판정에 쓴 관측값(float), 없으면 null |
 | `criteria_results[]` | list | 사용자 기준 판정 `{display, metric, operator, target, observed, status}`. `observed`는 float · null |
 | `next_missions[]` | list | `{area, slide_number, description, target{metric, operator, value}, priority, reason}`. `area`는 일곱 영역 중 하나(null 아님, `architecture.md` 6-3), `slide_number`는 null(Take 전체) 또는 1 이상이다. `mission_id`는 없다(BE가 저장하며 붙인다). `priority`는 코드가 1부터 차례로 붙인다(실패한 사용자 목표가 먼저, 이어서 LLM이 고른 순서, LLM 실패면 후보 순서. 한 리뷰 안에서 겹치지 않는다 — 저장 UQ). **20개 이하, `description`은 500자 이하**(코칭 계획 입력 한도, `coach-agent.md` 5-2) |
@@ -198,7 +198,7 @@ flowchart LR
                      "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.52}, "priority": 2, "reason": "3번 장 이번 Take 0.62, 이전 Take 0.70"}],
   "recurring_issues": [{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}],
   "fallback_reason": null,
-  "meta": {"schema_version": "1.0", "feature_version": "review-1.3", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.3+<config 해시>"}, "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.1", "feature_version": "review-1.5", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.5+<config 해시>"}, "model": "<응답한 모델>"}
 }
 ```
 **경계 — LLM 실패** (200, 문장은 기본 문장, 다음 미션은 후보 상위, 숫자 · 상태 · 점수는 같다)
@@ -207,7 +207,7 @@ flowchart LR
  "strengths": [{"area": "CONTENT", "slide_number": null, "text": "핵심 내용을 빠짐없이 전달했습니다", "evidence": {"content_coverage": 0.92}}],
  "...": "...",
  "fallback_reason": "LLM_TIMEOUT",
- "meta": {"schema_version": "1.0", "feature_version": "review-1.3", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.3+<config 해시>"}, "model": null}}
+ "meta": {"schema_version": "1.1", "feature_version": "review-1.5", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.5+<config 해시>"}, "model": null}}
 ```
 
 # 6. 처리 — 안에서 어떻게 도는가
@@ -219,19 +219,20 @@ flowchart LR
 3. **사용자 기준**: `user_criteria.targets`를 미션처럼(Take 값으로) 판정해 `criteria_results`에 싣는다. 숫자 목표가 없는 기준은 판정하지 않는다. 범위 목표(같은 `display`에 목표 둘)는 둘 다 판정해 싣는다.
 4. **문제 부담**: 믿을 수 있는(`reliable`) 문제 구간마다 `mean_severity × (end_ms − start_ms) ÷ 1000`을 5-3 표에 따라 차원별로 더한다. 대본 전달도는 `missing` · `contradicted` 핵심 내용을 중요도별로 정해진 부담으로 바꿔 더하고, `sound_alike` · `unverified`는 세지 않는다(STT가 잘못 적었을 수 있어서). 중요도가 없거나 모르는 값이면 `normal`의 부담으로 센다(`config.py`의 `content_burden_fallback`. 핵심 내용 하나 때문에 리뷰 전체가 실패하지 않게). 반복 문제(`previous_recurring_issues`의 `dimension`) · 코치가 포기한 문제(`gave_up`, 문제 이름으로 차원을 찾음) · 미션을 이루지 못한 차원은 부담을 키운다(배율은 `config.py`). 핵심 수치가 틀린(`mismatched`) 경우를 넣을지는 아직 정하지 않았다(15절 열린 질문).
 5. **차원 상태**: 부담이 정해진 값 이상인 차원 중 부담이 큰 상위 차원(정해진 개수, 부담이 같으면 5-3 차원 표에 적힌 순서) `PRIORITY` → `previous_recurring_issues`에 `dimension`으로 있던 차원의 부담이 이번에 `PRIORITY`의 정해진 값 미만이거나, 미션을 이루고 문제가 없으면 `IMPROVED` → 문제가 없으면 `STRENGTH` → 그 밖은 `STABLE`. 반복 차원의 부담이 정해진 값 이상인데 개수 상한으로 `PRIORITY`에 들지 못하면 여전히 문제라 `STABLE`이다. 순위는 장별이 아니라 차원 합계로 매긴다(장마다 나누면 1순위가 흔들린다). "문제가 없음"은 부담이 0인 것으로 본다.
-6. **이전 Take 비교**: 같은 지표의 이번 값과 이전 값, 좋아진 방향인지. 장 값끼리 비교하면 `slide_number`를 싣고, 한쪽 값이 없으면 비교하지 않는다. 대본 보기(`script_mode`)가 다른 Take끼리는 그 차이를 `script_mode` `{previous, current}`로 함께 싣는다. 비교 대상은 바로 앞 Take(`previous_takes[0]`)이고, 지표의 좋은 방향은 `config.py`의 표로 정한다. 비율 · 개수는 한 방향이고, 범위가 좋은 지표는 각 Take의 값이 그 Take의 기준에 가까워졌는지로 본다: `cpm`은 Take 결과 `criteria`의 기준 범위, Take `duration_ms`는 Take 결과 `plan`의 `min_ms` ~ `max_ms`(없으면 `target_ms`), 장 `slide_duration_ms`는 그 장의 `target_ms`(`coach-agent.md` 5-3). 기준이 없으면 `improved`는 null이다.
+6. **이전 Take 비교**: 같은 지표의 이번 값과 이전 값, 좋아진 방향인지. 장 값끼리 비교하면 `slide_number`를 싣고, 한쪽 값이 없으면 비교하지 않는다. 대본 보기(`script_mode`)가 다른 Take끼리는 그 차이를 `script_mode` `{previous, current}`로 함께 싣는다. 비교 대상은 바로 앞 Take(`previous_takes[0]`)이고, 지표의 좋은 방향은 `config.py`의 표로 정한다. 비율 · 개수는 한 방향이고, 범위가 좋은 지표는 각 Take의 값이 그 Take의 기준에 가까워졌는지로 본다: `cpm`은 Take 결과 `criteria`의 기준 범위, Take `duration_ms`는 Take 결과 `plan`의 `min_ms` ~ `max_ms`(없으면 `target_ms`), 장 `slide_duration_ms`는 그 장의 `target_ms`(`coach-agent.md` 5-3). 기준이 없으면 `improved`는 null이다. 나아지지도 나빠지지도 않았으면 `improved`는 null이다: 한 방향 지표는 두 값이 같을 때, 범위가 좋은 지표는 두 Take의 기준까지 거리가 같을 때(둘 다 범위 안이라 거리가 0인 경우 포함)다.
 7. **다음 미션 후보**: 사용자 기준이 `FAILED`인 지표는 규칙 단계가 다음 미션으로 먼저 정한다(사용자가 직접 정한 목표라서. LLM은 이것을 빼거나 순서를 바꾸지 못한다). 실패한 사용자 목표끼리는 그 지표가 속한 차원의 부담이 큰 순이고, 같으면 `user_criteria.targets`의 입력 순서다. 이어서 `PRIORITY` 차원마다 후보를 하나씩 만든다. 이미 앞에 같은 `(지표, slide_number)`의 미션이 있으면(예: 실패한 사용자 목표와 같은 지표의 Take 미션) 그 `PRIORITY` 후보는 만들지 않는다. 후보는 그 차원에서 부담이 가장 큰 영역의, 부담이 가장 큰 문제로 만들고(동률이면 5-3 차원 표에 적힌 순서), 지표와 비교 방향은 `config.py`의 문제별 미션 지표 표로 정한다(예: `GAZE_ON_SCRIPT` → `script_ratio` `LTE`, `PACE_SLOW` → `cpm` `GTE`, 내용 전달 → `content_coverage` `GTE`). 목표는 지금 값에서 지표별로 정해진 폭만큼 나아진 값이고, 최종 목표를 넘지 않는다. 최종 목표는 지표별 값이고, 기준이 Take마다 다른 지표는 그 Take의 기준이다: `cpm`은 Take 결과 `criteria`의 `PACE_FAST`(`LTE`) · `PACE_SLOW`(`GTE`) 기준값, 장 `slide_duration_ms`는 그 장의 `target_ms`, Take `duration_ms`는 `plan.max_ms`. 최종 목표를 정할 기준이 없거나 지금 값이 이미 최종 목표면 후보를 만들지 않는다. `PRIORITY` 후보는 고른 문제의 부담이 한 장에 정해진 비율 넘게 몰리면 장 미션, 아니면 Take 미션이다. 시간 · 내용 후보는 늘 장 미션이고, Take 전체의 시간 초과(`TIME_OVER`)만 Take 미션(`duration_ms`)이다(그 구간의 장은 시간을 넘긴 순간에 보던 장일 뿐이라서). 장 미션의 장은 고른 문제에서 부담이 가장 큰 장(동률이면 작은 장 번호)이고(같은 영역의 다른 문제 부담이 섞여 엉뚱한 장을 고르지 않게), 장 번호가 있는 부담이 없으면 Take 미션이다. 장 값 지표(`slide_duration_ms`)라 Take 미션을 만들 수 없으면 후보를 만들지 않는다. 실패한 사용자 목표에서 나온 미션은 사용자 기준을 Take 값으로 판정하므로 Take 미션(`slide_number` null)이다. 개수 상한까지(20개 이하): 실패한 사용자 목표는 모두 넣고(사용자 목표가 20개 이하이므로 다 들어간다), `PRIORITY` 후보는 `config.py`의 개수까지 채우되 합이 20을 넘지 않게 한다.
 8. **반복 문제**: `PRIORITY` 차원마다 `{area, slide_number, dimension}` 하나를 `recurring_issues`로 낸다. `dimension`은 그 차원 이름이고, `area` · `slide_number`는 그 차원의 7번 후보와 같다(부담이 가장 큰 영역, 장 미션이면 그 장 · Take 미션이면 null). 그 후보가 개수 상한으로 다음 미션에서 빠지거나 목표를 만들 수 없어 만들어지지 않아도 반복 문제는 낸다. 다음 리뷰는 `dimension`으로 반복된 차원을 찾고(4 · 5번), 다음 Take의 코칭 계획 · 코치는 `area` · `slide_number`를 쓴다.
 9. **점수**: 차원 상태를 점수로 바꿔(`STRENGTH`가 가장 높고 `IMPROVED` · `STABLE` · `PRIORITY` 순) `NOT_EVALUABLE`을 뺀 평균을 정수로 반올림한다(0–100). 모든 차원이 `NOT_EVALUABLE`이면 null이다.
 
 ## 6-2. LLM 단계 (1번)
-- **입력**: 규칙 단계 결과(차원 상태 · 점수 · 미션 · 기준 판정 · 비교)와 그 근거 숫자, 강점 후보(`STRENGTH` · `IMPROVED` 차원)와 개선점 후보(`PRIORITY` 차원, 장 · 근거 지표), 다음 미션 후보 목록(번호 · 목표 · 이유 근거). 대본 원문 · STT 원문은 넣지 않는다. 비교는 Take 값 비교(`slide_number` null)와 강점 · 개선점 · 다음 미션 후보가 가리키는 장의 비교만 싣는다(응답의 `comparison`은 전부다). 장마다의 비교를 모두 실으면 장 수에 비례해 입력이 커지는데(예시 요청의 지표를 모든 장에 넣어 재면 비교 전체를 실을 때 10장 약 14 KB · 30장 약 34 KB), 후보 밖의 장은 LLM이 말할 곳이 없다. 이렇게 줄이면 예시 요청 기준 장 수와 상관없이 약 6 KB다. 다만 장별 핵심 내용 개수(`content_slides`)는 비교와 별개로 빠뜨리거나 다르게 말한 핵심 내용이 있는 장을 모두 실으므로, 그런 장이 많으면 그만큼 커진다.
+- **입력**: 규칙 단계 결과(차원 상태 · 점수 · 미션 · 기준 판정 · 비교)와 그 근거 숫자, 강점 후보(`STRENGTH` · `IMPROVED` 차원)와 개선점 후보(`PRIORITY` 차원, 장 · 근거 지표), 다음 미션 후보 목록(번호 · 목표 · 이유 근거). 입력에 `voice_diff_db`가 있으면 이번 Take의 소리 크기를 견준 때(`volume_base`, 아래 '소리 크기 표기')도 싣는다. 대본 원문 · STT 원문은 넣지 않는다. 비교는 Take 값 비교(`slide_number` null)와 강점 · 개선점 · 다음 미션 후보가 가리키는 장의 비교만 싣는다(응답의 `comparison`은 전부다). 장마다의 비교를 모두 실으면 장 수에 비례해 입력이 커지는데(예시 요청의 지표를 모든 장에 넣어 재면 비교 전체를 실을 때 10장 약 14 KB · 30장 약 34 KB), 후보 밖의 장은 LLM이 말할 곳이 없다. 이렇게 줄이면 예시 요청 기준 장 수와 상관없이 약 6 KB다. 다만 장별 핵심 내용 개수(`content_slides`)는 비교와 별개로 빠뜨리거나 다르게 말한 핵심 내용이 있는 장을 모두 실으므로, 그런 장이 많으면 그만큼 커진다.
 - **출력 스키마** (고정 필드): `{overall_summary, strengths[{candidate_id, text}], improvements[{candidate_id, text}], next_missions[{candidate_id, description, reason}]}`. 후보에 없는 항목을 만들 수 없고, 숫자 · 상태 · 목표는 출력에 없다(코드가 후보에서 붙인다).
 - **규칙**: 대본 전달도는 점수보다 장별 판정 · 근거로 말한다(같은 입력에서도 장 점수가 흔들린다). 사용자 기준이 `FAILED`인 다음 미션은 늘 앞에 둔다(코드가 다시 맞춘다). `description`은 500자에서 자르고, 자른 뒤 숫자를 검사한다(검사 뒤에 자르면 "…52%"가 "…52"로 잘려 입력에 없는 숫자가 나간다).
 - **후보에 붙이기**: LLM 출력은 `candidate_id`로 후보에 붙인다. 후보에 없는 id는 버리고, 같은 id가 여럿이면 첫 항목만 쓴다. LLM이 빠뜨린 강점 · 개선점 후보와 빈 문장은 그 후보의 기본 문장이고, 빈 요약은 기본 요약이다. 다음 미션은 사용자 기준 `FAILED` 미션(늘 앞에 남고, 빠뜨리거나 빈 설명 · 이유는 기본 문장)과 LLM이 고른 `PRIORITY` 후보만 내고, LLM이 고르지 않은 `PRIORITY` 후보는 내지 않는다. 이것들은 `fallback_reason`을 달지 않는다(버린 항목 수는 로그에).
 - **숫자 검사**: 코드가 LLM이 쓴 항목(요약 · 강점 한 줄 · 개선점 한 줄 · 다음 미션 설명 · 이유)마다 숫자를 규칙 단계 결과 · 근거 숫자와 대조한다. 숫자 뽑기와 예시 표는 `architecture.md` 0-2를 따른다. 같은 값으로 보는 표기는 ① 비율과 퍼센트(0.62 ↔ 62% ↔ 62퍼센트. 단위 없는 62는 같은 값이 아니다) ② 시간 ms ↔ 초 ↔ 분(88000 ↔ 88초 ↔ 1분 28초. 이어 쓴 "N분 M초"는 한 값이다) ③ 보여 준 자리까지 반올림한 값(0.6248 ↔ 0.62 ↔ 62%) ④ 정수 개수 · 점수는 그대로이고, ⑤ 음수는 크기로 본다(`voice_diff_db` −1.5 ↔ "1.5dB 작게". "작게 · 줄었다" 같은 방향 말은 검사하지 않는다). 장 번호 · Take 번호 · 날짜는 입력에 있으면 입력에 있는 숫자로 본다. 한글로 쓴 수("세 번")는 검사하지 않으므로 프롬프트가 숫자를 아라비아 숫자로 쓰게 한다(`architecture.md` 0-2를 구체화한 것). 허용하는 숫자는 LLM에 보낸 입력 속 숫자다(LLM이 볼 수 있던 숫자는 그것뿐이다). 없는 숫자가 든 항목은 문장 하나가 아니라 그 항목 전체를 규칙 단계의 기본 문장으로 바꾼다(요약이 세 문장이면 세 문장 모두). 항목 단위로 바꾸므로 `fallback_reason`은 달지 않고 바꾼 항목 수를 로그에 남긴다.
 - **실패**: LLM이 없거나 실패하면 기본 문장과 규칙 단계 결과(다음 미션은 후보 상위)를 200으로 돌려주고 `fallback_reason`을 단다.
 - **기본 요약**: 강점 · 개선점 후보의 차원 이름(개선점은 장 번호도)을 잇는다. 후보가 없으면, 판단할 수 있는 차원이 있을 때(모두 `STABLE`) '전반적으로 보통이었고 두드러진 강점이나 크게 흔들린 항목은 없었다'는 문장이고, 모두 `NOT_EVALUABLE`일 때만 '평가할 수 있는 항목이 부족했다'는 문장이다. 차원 평가에 대해서만 말하고 '고칠 점이 없다'고 하지 않는다(사용자 기준 `FAILED`는 다음 미션 1순위로 따로 나간다, 6-1).
+- **소리 크기 표기**: `voice_diff_db`는 기준 목소리와의 차이라 무엇과 견줬는지 쓴다(대화 에이전트 · FE와 같은 규칙). 그 Take를 말하는 문장(개선점 기본 문장 · LLM 문장)은 그 Take의 기준 음량 출처(`take_result.areas.VOLUME.take.base_level_source`)로 `CALIBRATION`이면 '점검 때', `TAKE`면 '발표 처음', 모르면 '기준'과 견준다(예: "점검 때보다 조금 더 크게 말해 보세요" · "점검 때보다 2.1dB 작게"). 다음 미션 설명은 다음 Take의 기준으로 판정하므로 '기준'과 견주고 부호 대신 크기와 방향 말로 쓴다(예: `GTE` −1.1 → "기준보다 1.1dB 넘게 작아지지 않기", `GTE` 0 → "기준보다 작아지지 않기", `GTE` 3 → "기준보다 3dB 이상 크게 말하기"). 사용자 기준 `FAILED` 미션의 설명은 지금처럼 사용자의 표현이다.
 - **강점 · 개선점의 `area` · `evidence`**: 규칙 단계가 후보마다 정하고, 기본 문장과 LLM 문장이 같이 쓴다. 측정 비율이 기준 미만인 영역(6-1 1번)은 고르지 않는다. 지표는 그 차원의 다음 미션 지표 → 5-3 차원 표의 지표 순으로 보고, 값이 있는 첫 지표를 `evidence`에 싣는다.
   - 강점: 잰 영역 어디서든 찾고, 찾은 지표의 영역이 `area`다(예: SPEED · PAUSE를 못 잰 Take의 `pacing_rhythm` 강점 → `TIME`, `duration_ms`).
   - 강점의 `slide_number`: `IMPROVED`면 나아진 근거의 장(그 차원의 `previous_recurring_issues` 장 → 이룬 장 미션의 장)이고, 근거는 그 장 값을 먼저 찾는다. 그 장 값이 없으면(이번에 재지 못한 장) 근거는 Take 값이고 `slide_number`는 null이다. 그런 장이 없거나 `STRENGTH`면 null이다(`STRENGTH`는 그 차원의 Take 전체에 문제가 없다는 뜻이라 장 하나를 고르지 않는다).
@@ -267,7 +268,7 @@ flowchart LR
 |---|---|---|---|
 | `feature_version` | `review-<버전>` (첫 판 `review-1.0`) | 서비스 `features/review/version.py` | 규칙 · 프롬프트 · 출력의 뜻이 바뀔 때 |
 | `criteria_versions.review` | `review-<버전>+<config 해시 12자리>` | 응답 `meta` | 부담 기준 · 허용치 · 점수 같은 `config.py` 값을 바꾸면 해시가 바뀐다 |
-| `schema_version` | `1.0` | 응답 `meta` | 필드 이름 변경 · 삭제 · 뜻 변경 |
+| `schema_version` | `1.1` | 응답 `meta` | 필드 이름 변경 · 삭제 · 뜻 변경 |
 
 # 10. 실행 · 테스트
 준비 (Python 3.12, `ai/research/review-agent`에서. `.venv`는 git에 없어 처음 한 번 만든다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
@@ -394,6 +395,6 @@ sequenceDiagram
 | 실패 | LLM 실패는 200 기본 결과 + `fallback_reason`(`LLM_*`만). 입력 오류(422)는 다시 부르지 않고, 연결 실패 · 시간 초과 · 408 · 429 · 5xx는 BE가 1번 다시(공식 리뷰만. 대화의 다시 평가는 다시 부르지 않는다, 8). 끝내 실패하면 Take `COMPLETED`(리뷰 없음) + `/coach/plan`은 `previous_review` null | 7절 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번(대화의 다시 평가는 재시도 0회, 8) | 8절 |
 | 대화의 다시 평가 | 같은 `/takes/review`를 A(기존 요청) · B(`user_criteria.script_used` 또는 `targets`만 바꿈)로 동시에 부른다. 이 흐름 · 저장 규칙은 공식 리뷰에만 적용한다. 대화의 다시 평가 응답은 대화 저장소에만 두고 `take_ai_results` · `missions` · `take_summaries` · Take 상태를 바꾸지 않으며 코칭 계획도 부르지 않는다. | 3 · 5-1 · 5-2 · 7 · 8 · 12-2 |
-| 버전 | `review-1.3` · `criteria_versions.review` `review-1.3+<config 해시>` · `schema_version` `1.0` | 9절 |
+| 버전 | `review-1.5` · `criteria_versions.review` `review-1.5+<config 해시>` · `schema_version` `1.1` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
 | 저장 | 저장 요구: 12-1 · 12-2(리뷰 결과, 미션 결과 갱신 · 다음 미션 추가, 같은 리뷰는 한 벌, 발표의 `ACTIVE` 미션을 찾을 수 있음, Take에 실은 미션 목록 고정). 테이블 · 칸과 마이그레이션은 BE가 한다. 지금 저장 위치(BE 소유): `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `reason` · `observed`, UQ(`source_take_id`, `priority`), `source_take_id` 인덱스), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |

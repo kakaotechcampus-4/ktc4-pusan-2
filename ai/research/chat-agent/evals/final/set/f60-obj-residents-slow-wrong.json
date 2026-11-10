@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-obj-residents-slow-wrong",
+  "set": "objectivity",
+  "group": "wrong_claim",
+  "split": "dev",
+  "act": "should",
+  "title": "'2장에서 너무 느려졌지?'(실제는 빠름 문제) — 반대 방향 문제라 CONTRADICTED, 근거와 함께",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-res",
+        "title": "재개발 주민 설명회",
+        "takes": [
+          {
+            "take_id": "res-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                305,
+                381,
+                312,
+                300
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 67
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-res"
+    }
+  },
+  "turns": [
+    {
+      "message": "2장에서 말이 너무 느려져서 지루했던 게 문제였죠?",
+      "page_take_id": "res-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "contradicted-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "CONTRADICTED",
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "verdict",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "verdict": "CONTRADICTED",
+          "quote~": "느려"
+        },
+        "path": "assessments",
+        "metric": "objectivity",
+        "note": "ISSUE: 2장에 PACE_FAST(reliable)만 있음 → '느렸다'는 CONTRADICTED(6-3)"
+      },
+      {
+        "check_id": "no-agreement",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(맞아요|맞습니다|잘하셨|훌륭|말씀대로)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "read-before-judge",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:*",
+          "claim:ASSESSMENT"
+        ],
+        "metric": "path",
+        "turn": -1
+      }
+    ]
+  }
+}

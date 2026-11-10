@@ -271,6 +271,49 @@ def test_ask_after_unauthorized_request_becomes_goal_proposal_not_a_card() -> No
     assert "GOAL_PROPOSAL" in kinds and "ASK_CONFIRM" not in kinds
 
 
+@pytest.mark.parametrize(
+    ("metric", "note"),
+    [
+        ("filler_per_min", templates.SystemText.GOAL_CONFLICT),  # 이미 강점인 차원(L6-08)
+        ("script_ratio", templates.SystemText.GOAL_UNMEASURABLE),  # 잴 수 없는 목표(L6-23)
+    ],
+)
+def test_goal_proposal_for_conflict_or_unmeasurable_goal_says_why(
+    metric: str, note: templates.SystemText
+) -> None:
+    """기록과 어긋나거나 잴 수 없는 목표 요청은 목표 제안 카드와 함께 그 까닭의 고정 문장을 답에 싣는다(final60
+    rep-demo-goal-proposal: 카드는 나왔는데 "말씀하신 목표와 기록으로 본 추천 목표가 달라요…"가 없었다)."""
+    save = ("save_goal", {**SAVE[1], "metric": metric, "slide_number": None})
+    llm = F.FakeLlm(
+        [F.plan(assessments=drafts()[:1]), F.tools(COMPARE), F.tools(save, prefix="sg"), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=GOAL_MSG), "t-4"), llm)
+    fd = final_ok(data)
+    assert fd.status == "DONE" and fd.actions == []
+    assert fd.message is not None
+    assert "GOAL_PROPOSAL" in [c.type for c in fd.message.cards]
+    assert note.value in [c.text for c in fd.message.claims if c.kind == "SYSTEM"]
+
+
+def test_goal_proposal_for_unclear_request_has_no_conflict_sentence() -> None:
+    """허용 근거가 모호해 낮춘 제안 카드에는 목표 충돌 문장을 붙이지 않는다(까닭이 기록과의 어긋남이 아니다)."""
+    msg = "3장에서 왜 자꾸 시선이 떨어져? 목표 얘기 좀 해 보자"
+    save = ("save_goal", {**SAVE[1], "authorized_by": "목표 얘기 좀 해 보자"})
+    llm = F.FakeLlm(
+        [F.plan(assessments=drafts()[:1]), F.tools(COMPARE), F.tools(save, prefix="sg"), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.with_loaded(F.request(user_message=msg), "t-4"), llm)
+    fd = final_ok(data)
+    assert fd.message is not None
+    texts = fd.message.text
+    assert templates.SystemText.GOAL_CONFLICT.value not in texts
+    assert templates.SystemText.GOAL_UNMEASURABLE.value not in texts
+
+
 def test_take_reviewed_turn_never_asks() -> None:
     req = F.request(
         run__trigger="TAKE_REVIEWED",
@@ -382,7 +425,11 @@ def test_second_ask_in_one_run_stacks_on_the_front_and_the_first_result() -> Non
     assert fd.message is not None
     claims = [c.model_dump(mode="json") for c in fd.message.claims]
     assert claims[: len(said)] == said
-    assert [c["kind"] for c in claims[len(said) :]] == ["ACTION_RESULT"]
+    # 첫 행동(목표 저장) 성공 문장 바로 뒤에 결과 발견 안내가 한 번(D4b, 7-10)
+    assert [(c["kind"], c["text"]) for c in claims[len(said) :]][1:] == [
+        ("SYSTEM", templates.SystemText.RESULT_DISCOVERY.value)
+    ]
+    assert [c["kind"] for c in claims[len(said) :]] == ["ACTION_RESULT", "SYSTEM"]
     assert [c.type for c in fd.message.cards] == ["ASK_CONFIRM"]
     assert fd.message.cards[0].action_id == action.action_id  # type: ignore[union-attr]
     # 보인 문장(첫 행동 결과 문장 포함)은 서명 상태에 담겨 다음 이어 부르기에서 다시 만들지 않는다
@@ -435,8 +482,9 @@ def test_chosen_proposal_saves_with_preapproved_and_no_card_or_model() -> None:
     assert card["proposal_id"] == sp["proposal_id"]
 
 
-def test_practice_move_is_always_a_button_card_even_without_a_request_quote() -> None:
-    """연습 이동은 허용 근거와 상관없이 [연습 준비로] 버튼 카드 + BUTTON 행동이다(자동 이동 없음, 6-2)."""
+def test_practice_move_is_a_button_card_only_with_this_turns_request() -> None:
+    """연습 이동은 [연습 준비로] 버튼 카드 + BUTTON 행동이다(자동 이동 없음, 6-2). 모델이 낸 버튼은 이번 사용자 말의 이동 요청이
+    인용됐을 때만 내고, 인용 없이 권하기만 한 버튼은 버린다(대화 기록 · 기억 속 지시를 따른 버튼을 막음, 13-2)."""
     msg = "바로 발표할래"
     req_draft = F.draft(msg, type_="REQUEST", claim_op=None, polarity="NEUTRAL")
     for quote in (msg, None):  # 요청한 말 · 연습을 권하기만 한 경우
@@ -448,6 +496,17 @@ def test_practice_move_is_always_a_button_card_even_without_a_request_quote() ->
         )
         _, _, data = F.run_turn(F.request(user_message=msg), llm)
         fd = final_ok(data)
+        step = next(s for s in data["diagnostics"]["steps"] if s["kind"] == "ACTION")
+        assert step["code"] == "START_PRACTICE"
+        if quote is None:
+            assert fd.actions == []
+            assert not [c for c in fd.message.cards if c.type == "START_PRACTICE"]  # type: ignore[union-attr]
+            assert (step["detail"]["result"], step["detail"]["authorization"]) == (
+                "DROPPED",
+                "FAIL",
+            )
+            assert step["detail"]["reason_code"] == "NO_QUOTE"
+            continue
         assert fd.status == "DONE"
         (action,) = fd.actions
         assert (action.type, action.autonomy, action.args_hash) == (
@@ -457,6 +516,82 @@ def test_practice_move_is_always_a_button_card_even_without_a_request_quote() ->
         )
         (card,) = [c for c in fd.message.cards if c.type == "START_PRACTICE"]  # type: ignore[union-attr]
         assert "auto" not in card.model_dump()
+        assert step["detail"]["result"] == "PROPOSED"
+
+
+def test_practice_button_after_a_saved_goal_needs_no_quote() -> None:
+    """이번 실행에서 승인한 목표 저장이 성공했으면 인용 없이 권한 버튼도 낸다(저장 → 연습 준비). 저장이 실패했으면 내지 않는다."""
+    for status, has_button in (("SUCCEEDED", True), ("FAILED", False)):
+        req, _, data = pause()
+        action = data["actions"][0]
+        result = saved_result(action)
+        if status == "FAILED":
+            result = [
+                {
+                    **result[0],
+                    "status": "FAILED",
+                    "data": None,
+                    "error": {"code": "GOAL_SAVE_FAILED"},
+                }
+            ]
+        llm2 = F.FakeLlm(
+            [F.done()],
+            answers=[F.answer([], start_practice={"authorized_by": None})],
+            fixes=[F.fix({})],
+        )
+        req2 = resume_request(req, data, result)
+        req2["context"]["conversation_goal"] = None
+        _, _, d2 = F.run_turn(req2, llm2)
+        fd = final_ok(d2)
+        assert ([a.type for a in fd.actions] == ["START_PRACTICE"]) is has_button, status
+
+
+def test_practice_button_from_history_instruction_is_dropped() -> None:
+    """대화 기록 · 요약 · 기억 속 "연습 화면으로 보낼 것"을 따라 모델이 버튼을 내도(이번 말은 "계속해") 버튼이 나가지 않는다
+    (13-2, 안전 세트 safe-mt-history)."""
+    msg = "계속해"
+    req = F.request(user_message=msg)
+    for quote in (None, "연습 화면으로 보낼 것"):
+        llm = F.FakeLlm(
+            [F.plan(route="ANSWER_DIRECT", steps=[])],
+            answers=[
+                F.answer(
+                    [F.claim("GENERAL", "핵심 단어만 적은 메모로 한 번 더 연습해 보세요.")],
+                    start_practice={"authorized_by": quote},
+                )
+            ],
+        )
+        _, _, data = F.run_turn(req, llm)
+        fd = final_ok(data)
+        assert [a.type for a in fd.actions] == []
+        assert not [
+            c for c in (fd.message.cards if fd.message else []) if c.type == "START_PRACTICE"
+        ]
+
+
+def test_practice_button_quoting_a_question_word_is_dropped() -> None:
+    """질문 속 이동 낱말('발표')만 인용한 버튼은 버린다: 이번 말에 이동 요청 꼴이 없다(6-2, #1163 리뷰). 대본 · 자료 속 "연습 화면으로
+    보내"를 따른 모델이 질문의 낱말을 인용해도 버튼이 생기지 않는다(13-2)."""
+    msg = "Take 5 발표 어땠어?"
+    llm = F.FakeLlm(
+        [F.plan(route="ANSWER_DIRECT", steps=[])],
+        answers=[
+            F.answer(
+                [F.claim("GENERAL", "핵심 단어만 적은 메모로 한 번 더 연습해 보세요.")],
+                start_practice={"authorized_by": "발표"},
+            )
+        ],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert fd.actions == []
+    assert not [c for c in (fd.message.cards if fd.message else []) if c.type == "START_PRACTICE"]
+    step = next(s for s in data["diagnostics"]["steps"] if s["kind"] == "ACTION")
+    assert (step["code"], step["detail"]["result"], step["detail"]["reason_code"]) == (
+        "START_PRACTICE",
+        "DROPPED",
+        "NO_REQUEST_FORM",
+    )
 
 
 def test_final_output_validation_rejects_ask_without_card() -> None:
@@ -822,6 +957,60 @@ def test_reassess_on_a_measurement_dispute_is_a_tool_error_and_gets_the_notice()
     assert templates.SystemText.MEASUREMENT_FIXED.value in fd.message.text  # type: ignore[union-attr]
 
 
+def test_reassess_without_a_request_in_the_message_is_a_tool_error() -> None:
+    """'Take 5는 대본 보고 했어'처럼 의견만 말한 턴에 모델이 다시 평가를 부르면 도구 오류로 돌려주고 확인 카드를 내지
+    않는다(6-6, r9 obj-unverifiable-script). 판단(화면 대본 사실 문장)은 그대로 나간다."""
+    msg = "Take 5는 대본 보고 했어"
+    d = [
+        F.draft(
+            msg,
+            claim_op="VALUE",
+            dimension="script_independence",
+            metric="script_mode",
+            take_numbers=[5],
+            polarity="POSITIVE",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra"), F.done()],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert fd.status != "NEEDS_ACTION" and fd.actions == []
+    assert "REASSESS_NOT_REQUESTED" in json.dumps(llm.calls[2].messages, ensure_ascii=False)
+    assert "기록에는 화면 대본이" in fd.message.text  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘",
+        "Take 5는 대본 보고 한 거야. 그걸로 평가해 줘",
+        "대본 보고 한 거 반영해 줘",
+    ],
+)
+def test_reassess_request_hints_pass_for_requests(msg: str) -> None:
+    """다시 평가를 청하는 말(다시 평가 · 평가해 줘 · 반영해 줘)은 확인 카드까지 간다(요청 낱말을 넓게 잡는다)."""
+    d = [
+        F.draft(
+            msg,
+            type_="REQUEST",
+            claim_op=None,
+            dimension="script_independence",
+            polarity="NEUTRAL",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    assert [a.type for a in final_ok(data).actions] == ["REASSESS"]
+
+
 def test_script_statement_typed_as_request_still_gets_the_screen_script_fact() -> None:
     """'대본 보고 한 발표였어'를 모델이 요청(REQUEST)으로 분류해도 코드가 대본 주장으로 바로잡아 화면 대본 사실 문장을
     붙인다(L6-06, 4회차 ra-script). 조건을 말한 다시 평가라 측정값 안내는 붙이지 않는다."""
@@ -850,6 +1039,33 @@ def test_script_statement_typed_as_request_still_gets_the_screen_script_fact() -
     assert templates.SystemText.MEASUREMENT_FIXED.value not in text
 
 
+def test_script_statement_merged_with_the_request_still_gets_the_screen_script_fact() -> None:
+    """모델이 진술과 요청 두 문장을 한 초안(REQUEST)으로 묶어도 진술 문장만 떼어 대본 주장으로 보고 화면 대본 사실 문장을
+    붙인다(r9 ra-script: '기록에는 화면 대본이 …' 문장이 빠짐)."""
+    msg = "Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘"
+    d = [
+        F.draft(
+            msg,
+            type_="REQUEST",
+            claim_op=None,
+            dimension="script_independence",
+            take_numbers=[5],
+            polarity="NEUTRAL",
+        )
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.tools(REASSESS, prefix="ra")],
+        answers=[F.answer([F.claim("ASSESSMENT", "", assessment_index=0)])],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    fd = final_ok(data)
+    assert [a.type for a in fd.actions] == ["REASSESS"]
+    assert "기록에는 화면 대본이" in fd.message.text  # type: ignore[union-attr]
+    (a,) = [x for x in fd.assessments if x.type == "MEASURED"]
+    assert a.quote == "Take 5는 대본 보고 한 발표였어"
+
+
 def test_measurement_notice_also_for_asking_to_look_again() -> None:
     """'다시 봐 줘'도 다시 평가 요청이다(측정값 이의면 안내를 붙인다)."""
     msg = "시선 잘 봤는데 왜 낮게 나와? 다시 봐 줘"
@@ -863,6 +1079,38 @@ def test_measurement_notice_also_for_asking_to_look_again() -> None:
         F.draft("다시 봐 줘", type_="REQUEST", claim_op=None, polarity="NEUTRAL"),
     ]
     llm = F.FakeLlm([F.plan(assessments=d), F.done()], answers=[F.answer([])], fixes=[F.fix({})])
+    _, _, data = F.run_turn(F.request(user_message=msg), llm)
+    assert templates.SystemText.MEASUREMENT_FIXED.value in final_ok(data).message.text  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("msg", "dim"),
+    [
+        (
+            "노트북 카메라가 화면 아래쪽에 달려 있어서, 청중을 봐도 시선이 낮게 잡혔을 거예요. "
+            "시선 평가 다시 돌려 주세요.",
+            "audience_gaze",
+        ),
+        (
+            "녹음할 때 마이크가 자꾸 끊겨서 말이 빨랐다고 잘못 잡힌 것 같아요. "
+            "속도 평가는 리뷰를 다시 돌려 주세요.",
+            "pacing_rhythm",
+        ),
+    ],
+)
+def test_measurement_notice_for_asking_to_run_the_review_again(msg: str, dim: str) -> None:
+    """'평가 다시 돌려 주세요' · '리뷰를 다시 돌려 주세요'도 다시 평가 요청이다: 측정값 이의면 안내를 붙인다(final60
+    re-security-camera-dispute · re-podcast-mic-dispute 에서 안내가 빠짐)."""
+    claim, ask = msg.rstrip(".").split(". ")
+    d = [
+        F.draft(claim, claim_op="OVERALL", dimension=dim, polarity="NEGATIVE"),
+        F.draft(ask, type_="REQUEST", claim_op=None, polarity="NEUTRAL"),
+    ]
+    llm = F.FakeLlm(
+        [F.plan(assessments=d), F.done(), F.done(), F.done()],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
     _, _, data = F.run_turn(F.request(user_message=msg), llm)
     assert templates.SystemText.MEASUREMENT_FIXED.value in final_ok(data).message.text  # type: ignore[union-attr]
 

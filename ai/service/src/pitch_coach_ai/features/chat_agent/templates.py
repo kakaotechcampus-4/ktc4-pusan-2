@@ -76,6 +76,9 @@ class SystemText(StrEnum):
     GOAL_BASE_DELETED = "목표의 기준 기록이 삭제되어 새 목표가 필요해요."
     GOAL_AFTER_SAVE = "목표 설정 뒤 시작한 연습부터 확인해요."
     GOAL_CONFIRM = "이 목표로 저장할까요?"
+    GOAL_CLOSED_ACHIEVED = "대화 목표는 이뤄서 닫혔어요."
+    GOAL_CLOSED_NOT_ACHIEVED = "대화 목표는 이루지 못한 채 닫혔어요."
+    GOAL_CLOSED_MISMATCH = "대본이나 평가 기준이 바뀌어 대화 목표를 닫았어요. 새 목표가 필요해요."
     PRACTICE_BUTTON = "연습 준비 화면으로 이동할 수 있어요."
     NO_NUMERIC_TARGET = "숫자로 판정할 기준이 없어 이 항목은 설명만 반영해요."
     REASSESS_BOTH_FAILED = "두 조건을 모두 확인하지 못해 비교 결과를 만들지 않았어요."
@@ -95,9 +98,29 @@ class SystemText(StrEnum):
         "말씀하신 목표는 기록으로 잴 수 없어 저장할 수 없어요. 잴 수 있는 목표를 추천드릴게요."
     )
     GOAL_CONFLICT = "말씀하신 목표와 기록으로 본 추천 목표가 달라요. 하나를 골라 주세요."
+    #: 화면 조작 방법을 물었는데 찾은 사용법 자료가 없을 때(답 초안 usage_unanswered, 6-10 · 7-10)
+    USAGE_NO_GUIDE = "이 화면 사용법은 아직 확인된 안내 자료가 없어 답해 드리기 어려워요."
     KNOWLEDGE_NO_SOURCE = "발표법 자료에서 그 말을 뒷받침하는 근거를 찾지 못했어요."
     #: 일반 조언(`GENERAL`) 문장 묶음 바로 앞에 코드가 붙이는 안내(6-10). 일반 조언이 하나도 남지 않으면 뺀다
     GENERAL_INTRO = "자료에서 확인한 내용은 아니고 일반적인 조언이에요."
+    #: 가벼운 말(계획 route SMALL_TALK, P-0008 5-1)의 고정 문장. 모델이 쓰지 않는다. 숫자 · 기록 값 · 판정 낱말이 없다.
+    #: 할 수 있는 일 목록은 묻는 말(CAPABILITY)에만 쓴다 — 인사에 다시 늘어놓으면 대화창 첫 화면 안내(FE)와 겹친다
+    TALK_GREETING = "안녕하세요! 발표 연습을 같이 볼게요."
+    TALK_THANKS = "도움이 됐다니 다행이에요. 더 궁금한 점이 있으면 물어봐 주세요."
+    TALK_FAREWELL = "수고하셨어요. 다음 연습 뒤에도 기록을 같이 볼게요."
+    TALK_PRACTICE = "네, 연습해 봐요."
+    #: 할 수 있는 일(FE 첫 화면 안내와 같은 낱말). 사용법 카드가 실리지 않은 동안은 화면 사용법을 말하지 않는다
+    TALK_CAPABILITY = "내 연습 기록에서 고칠 점 찾기, Take끼리 비교하기, 다음 연습 목표 잡기, 발표법 안내를 도와드릴 수 있어요."
+    TALK_CAPABILITY_USAGE = "내 연습 기록에서 고칠 점 찾기, Take끼리 비교하기, 다음 연습 목표 잡기, 발표법 · 화면 사용법 안내를 도와드릴 수 있어요."
+    #: 가벼운 말 뒤에 붙는 다음 걸음 — 기본 자료(범위 피치 · Take 유무)로 코드가 고른다
+    NEXT_REVIEW = "최근 Take에서 고칠 점부터 같이 볼까요?"
+    NEXT_FIRST_TAKE = "Take를 한 번 연습하면 그 기록을 같이 볼 수 있어요."
+    NEXT_PICK_PITCH = "어느 발표를 볼지 말씀해 주시면 그 기록을 같이 볼게요."
+    NEXT_FIRST_PITCH = "피치를 만들어 연습하면 그 기록을 같이 볼 수 있어요."
+    #: 결과 발견 안내(D4b): 이 실행에서 `SAVE_GOAL`이 성공한 답에만, 그 `ACTION_RESULT` 문장 바로 뒤에 한 번(설정 `result_discovery`)
+    RESULT_DISCOVERY = "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요."
+    #: 다른 피치의 Take 를 함께 비교해 달라고 했을 때(1-3). 값은 각각 말해도 좋아짐 · 나빠짐 · 차이를 말하지 않는다
+    CROSS_PITCH_NO_COMPARE = "다른 발표의 Take끼리는 비교하지 않아요. 발표마다 따로 볼 수 있어요."
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
     SCRIPT_NOT_ALLOWED = "공식 평가에는 대본 사용 허용이 없어요."
     SCRIPT_POINTS_REMOVED = "평가 항목이 빠져 오른 점수예요. 실력이 바뀐 건 아니에요."
@@ -146,6 +169,13 @@ GOAL_SUMMARY = {
     "gt_base": "Take {take_number}의 {where}{label}({value})보다 높이는 목표예요.",
     "lt_base": "Take {take_number}의 {where}{label}({value})보다 낮추는 목표예요.",
     "in_range": "Take {take_number} 기준 {where}{label}의 목표 범위({value}) 안에 드는 목표예요.",
+}
+#: 열린 대화 목표를 물을 때 목표 내용(7-10). get_goals 가 발급한 목표 기준 값 근거(기준 Take · 장 · 지표 · 값)로 그리는 `RECORD` 문장.
+#: 범위 목표는 범위 끝값이 근거가 아니므로 값을 쓰지 않는다
+GOAL_OPEN = {
+    "gt_base": "대화 목표는 Take {take_number}의 {where}{label} {value}보다 높이기예요.",
+    "lt_base": "대화 목표는 Take {take_number}의 {where}{label} {value}보다 낮추기예요.",
+    "in_range": "대화 목표는 Take {take_number} 기준 {where}{label}의 목표 범위 안에 들기예요.",
 }
 SAVE_GOAL_NOTE_REPLACE = "저장하면 지금 대화 목표가 이 목표로 바뀌어요."
 SAVE_GOAL_NOTE_UNDO = "저장한 뒤에도 되돌릴 수 있어요."
@@ -241,12 +271,123 @@ OUTCOME_WORD = {
     "BOTH_IN_RANGE": "두 번 모두 목표 범위 안이에요",
     "SAME_DISTANCE": "목표 범위와의 거리가 같아요",
 }
+#: 닫힌 목표를 물을 때 보고 있는 Take 의 지금 값이 목표 기준과 어떤지(7-10). 그 Take 가 목표를 이뤘다고는 하지 않는다
+GOAL_VALUE_WORD = {
+    "ACHIEVED": "목표 기준을 달성한 값이에요",
+    "NOT_ACHIEVED": "목표 기준에 못 미치는 값이에요",
+}
+
 GOAL_WORD = {
     "ACHIEVED": "목표를 이뤘어요",
     "NOT_ACHIEVED": "목표를 아직 이루지 못했어요",
     "UNKNOWN": "이번 Take로는 목표를 판정할 수 없어 다음 Take를 기다려요",
     "BASELINE_MISMATCH": "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
 }
+
+#: '없음' 근거 문장(코드 템플릿, 7-10 · 6-9 '고친 뒤'). 모델 문장이 모두 빠졌거나 답이 비었을 때 질문 대상의 '없음' 근거로
+#: 그린다(compose.none_sentence). 읽은 범위(피치 · Take · 장 · 영역)를 함께 말하고 그 밖으로 넓히지 않는다. '없음'을 평가로
+#: 바꾸지 않는다(문제 구간 0곳 ≠ 문제없음). 문제 구간 문장은 측정된 영역일 때만
+NONE_TAKES = "'{title}'에는 아직 연습한 Take가 없어요."
+NONE_REVIEW = "Take {n}에는 아직 리뷰 결과가 없어요."
+NONE_GOAL = "대화 목표는 아직 없어요."
+NONE_SEGMENTS = "Take {n} {area}에서 찾은 문제 구간이 없어요."
+#: 코치 결과 영역 → 문장 · 도구 결과의 이름. 답 검사의 지표 이름(`claims.METRIC_LABEL` · `cfg.metric_names`)과 겹치지 않게
+#: 짧게 둔다(겹치면 지표 근거가 없는 '없음' 문장이 대상 불일치로 걸린다)
+AREA_LABEL = {
+    "GAZE": "시선",
+    "SPEED": "속도",
+    "PAUSE": "침묵",
+    "TIME": "시간 배분",
+    "VOLUME": "목소리",
+    "FILLER": "군더더기",
+}
+
+#: 피치 만들기 · 수정 화면의 구역(`page.screen.step`) → 화면에 보이는 단계 이름(FE `PitchCreatePage` 단계 막대).
+#: get_screen 결과에 근거와 함께 실어 "지금 어느 단계예요?"에 답할 수 있게 한다(final60 inj-screen-criteria)
+SCREEN_STEP_LABEL = {
+    "slides": "슬라이드",
+    "script": "대본 연결",
+    "info": "발표정보",
+    "criteria": "평가 기준",
+}
+
+#: 닫힌 대화 목표의 상태 → 고정 문장(7-10). 닫은 Take 를 요청 자료로는 알 수 없어 Take · 값 없이 상태만 말한다
+GOAL_CLOSED_TEXT = {
+    "ACHIEVED": SystemText.GOAL_CLOSED_ACHIEVED,
+    "NOT_ACHIEVED": SystemText.GOAL_CLOSED_NOT_ACHIEVED,
+    "BASELINE_MISMATCH": SystemText.GOAL_CLOSED_MISMATCH,
+}
+
+
+# ── 할 일 단계 표시 (6-1 7번, progress.py) ───────────────────────────────────
+# 단계 글 = `목적: 실행 → 결과`. 실행 · 결과 글은 아래 표로만 만든다(모델 글을 넣지 않는다). 숫자 · Take · 장 번호는
+# 그 단계가 읽은 근거로만 붙고, 근거로 받칠 수 없으면 숫자 없는 실행 이름(`PLAN_TOOL_NAME`)으로 그린다
+
+#: 도구 종류 이름: 계획에 없던 도구를 실행해 덧붙는 단계의 목적이자, 숫자를 뺀 실행 이름
+PLAN_TOOL_NAME = {
+    "compare_takes": "비교",
+    "get_take_report": "기록 보기",
+    "list_takes": "Take 목록",
+    "list_pitches": "피치 목록",
+    "get_goals": "대화 목표",
+    "get_screen": "화면 보기",
+    "search_guides": "자료 찾기",
+    "fetch_take": "기록 가져오기",
+}
+#: 대상 번호가 없는 도구의 실행 글(compare_takes · get_take_report · fetch_take 는 Take 번호를 넣어 progress.py 가 만든다)
+PLAN_EXEC = {
+    "list_takes": "Take 목록",
+    "list_pitches": "피치 목록",
+    "get_screen": "화면",
+    "get_goals": "대화 목표",
+    "search_guides": "자료 찾기",
+}
+#: 비교할 수 없는 까닭(compare_takes `reason`) → 단계 결과의 까닭 낱말. 목록 밖 까닭은 `조건 다름`
+PLAN_NOT_COMPARABLE = {
+    "DIFFERENT_SCRIPT_VERSION": "대본 버전 다름",
+    "DIFFERENT_CRITERIA_VERSION": "평가 기준 버전 다름",
+    "RULE_VERSION_CHANGED": "판정 기준 버전 다름",
+    "NOT_COMPLETED_FULLY": "끝까지 안 한 Take",
+    "MISSING_VERSION": "버전 정보 없음",
+    "NO_VALUE": "측정 안 됨",
+}
+PLAN_NOT_COMPARABLE_OTHER = "조건 다름"
+#: 비교 결론(compare_takes `outcome`) → 단계 결과 낱말. 목록 밖은 `판단 불가`
+PLAN_OUTCOME = {
+    "IMPROVED": "좋아짐",
+    "WORSENED": "나빠짐",
+    "SAME": "같음",
+    "BOTH_IN_RANGE": "같음",
+    "SAME_DISTANCE": "같음",
+}
+PLAN_OUTCOME_OTHER = "판단 불가"
+#: 단계 결과 글(사실 · 상태)
+PLAN_RESULT = {
+    "NOT_COMPARABLE": "비교 불가({reason})",
+    "NOT_LOADED": "기본 자료에 없음",
+    "REVIEW_MISSING": "리뷰 분석 전",
+    "ERROR": "확인 실패",
+    "SHORT": "시간 부족",
+    "NO_TAKES": "Take 없음",
+    # 거른 조건에 맞는 Take 만 없다(범위 피치에는 Take 가 있음): 'Take 없음'과 나눈다
+    "NO_TAKES_FILTERED": "조건에 맞는 Take 없음",
+    "NO_GOAL": "목표 없음",
+    "NO_SEGMENTS": "문제 구간 없음",
+    "SEGMENTS": "문제 구간 있음",
+    "UNMEASURED": "측정 안 됨",
+    "PRIORITY": "리뷰 우선 개선 {dimension}",
+    "GOAL": "있음",
+    "GUIDES": "자료 있음",
+    "NO_GUIDES": "자료 없음",
+    "FETCHED": "가져옴",
+    "CHECKED": "확인",
+    "SLIDE_CHECKED": "{slide}장 확인",
+}
+#: get_take_report 의 실행 글(읽은 절과 상관없이). 출처(코치 결과 · 리뷰)는 결과 글과 trace 요약이 보인다
+PLAN_REPORT_EXEC = "Take {n} 기록"
+#: 모델이 쓴 단계 목적에서 숫자 · Take · 장 번호를 지우고 빈 글이 되면 쓰는 목적(도구 힌트가 없거나 도구 종류 이름이 없을 때)
+PLAN_PURPOSE_FALLBACK = {"answer": "답 쓰기"}
+PLAN_PURPOSE_DEFAULT = "기록 확인"
 
 
 # ── 조사 ─────────────────────────────────────────────────────────────────
@@ -268,6 +409,20 @@ def _final(word: str) -> int:
 _SLOT = re.compile(r"\{(\w+)\}(으로|예요)?")
 
 
+#: 소리 크기 표기의 끝말(`claims.volume_text`: '점검 때보다 1.1dB 작게' · '…와 같게'). 이 말로 끝나는 표기 뒤의 서술은
+#: '예요'가 아니라 '나왔어요'다('작게예요'가 되지 않게, #1182). 끝말을 이 한곳에 두어 다른 '…게' 표기('빠르게' 등)에는
+#: 붙지 않게 한다(#1183 리뷰)
+VOLUME_WORD = {"LESS": "작게", "MORE": "크게", "SAME": "같게"}
+VOLUME_ENDINGS = tuple(VOLUME_WORD.values())
+
+
+def be(shown: str) -> str:
+    """값 표기 + 서술: 소리 크기 표기('…작게 · 크게 · 같게')면 '… 나왔어요', 아니면 받침에 맞춘 '예요 · 이에요'."""
+    if shown.endswith(VOLUME_ENDINGS):
+        return shown + " 나왔어요"
+    return shown + ("이에요" if _final(shown) else "예요")
+
+
 def fill(template: str, **values: str) -> str:
     """템플릿을 채우며 값 뒤 조사를 받침에 맞춘다: '{x}으로' → 받침 없거나 ㄹ이면 '로', '{x}예요' → 받침 있으면 '이에요'.
 
@@ -281,7 +436,7 @@ def fill(template: str, **values: str) -> str:
         if tail == "으로":
             return v + ("로" if _final(v) in (0, 8) else "으로")
         if tail == "예요":
-            return v + ("이에요" if _final(v) else "예요")
+            return be(v)
         return v
 
     return _SLOT.sub(one, template)

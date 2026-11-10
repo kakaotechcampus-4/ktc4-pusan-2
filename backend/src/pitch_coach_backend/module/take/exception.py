@@ -89,6 +89,25 @@ class ConfirmationRescoreFailed(AppException):
     message = "확인 답을 반영하지 못했습니다. 다시 보내 주세요."
 
 
+class CoverageNotFound(NotFoundException):
+    # 대본 전달도 확정본이 없다 (채점 전 · 끝내 실패 · 대본 전달도를 만들기 전의 Take)
+    code = "COVERAGE_NOT_FOUND"
+    message = "대본 전달도 결과가 없습니다."
+
+
+class CoverageSlideNotFound(NotFoundException):
+    # 그 장이 확정본의 evaluations · failed 어디에도 없다
+    code = "SLIDE_NOT_FOUND"
+    message = "대본 전달도 결과에 없는 장입니다."
+
+
+class CoverageRevisionChanged(ConflictException):
+    # 리포트를 읽은 뒤 확정본이 바뀌었다 (확인 답 반영 · 실패한 장 다시 채점). FE 는 리포트를 다시
+    # 읽어 새 revision 으로 부른다
+    code = "COVERAGE_REVISION_CHANGED"
+    message = "대본 전달도 결과가 바뀌었습니다. 리포트를 다시 불러 주세요."
+
+
 class InvalidReviewResponse(AppException):
     # AI 리뷰 응답이 계약(review-agent.md 5-3)과 다르거나 다른 Take 의 응답이다. 저장하지 않고
     # Take 를 FAILED 로 끝낸다

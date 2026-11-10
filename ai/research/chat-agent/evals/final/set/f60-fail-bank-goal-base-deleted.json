@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-fail-bank-goal-base-deleted",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "승인 뒤 저장 직전에 기준 Take 2 가 지워짐 — 저장 실패를 성공이라 하지 않고 다시 저장하지 않음",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-bank",
+        "title": "금융 상품 설명회",
+        "takes": [
+          {
+            "take_id": "bank-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 2.9,
+              "filler_count": 12
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "bank-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "filler_per_min": 2.6,
+              "filler_count": 11
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-bank"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2를 기준으로 군더더기를 줄이는 걸 대화 목표로 저장해 주세요.",
+      "page_take_id": "bank-t2",
+      "faults": [
+        {
+          "kind": "delete_before_action",
+          "action": "SAVE_GOAL",
+          "target": "bank-t2"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "save-failed",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "approve:SAVE_GOAL",
+          "exec:SAVE_GOAL:FAIL"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-resave",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:SAVE_GOAL:FAIL",
+          "propose:SAVE_GOAL:*"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-success-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template",
+        "metric": "replan"
+      },
+      {
+        "check_id": "no-result-guide",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "failure-notice",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(저장하지 못|확인하지 못|가져오지 못|삭제되|지워져|찾을 수 없)",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "실패를 알린다(5-8 · 7-9). 표현은 여러 고정 문장 중 하나"
+      },
+      {
+        "check_id": "no-goal",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "one_of",
+        "expect": [
+          "DONE",
+          "PARTIAL"
+        ],
+        "path": "status"
+      }
+    ]
+  }
+}

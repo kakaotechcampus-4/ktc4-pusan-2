@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Navigate } from 'react-router';
-import { isTouchOnlyDevice } from '@/features/info/unsupportedReason';
+import { isTouchOnlyDevice } from '@/shared/lib/browserCheck';
 
 /**
  * 카메라 · 마이크로 연습하는 화면(장치 점검 · 리허설 · 실전)을 휴대폰 · 태블릿에서 막는다 (#710).

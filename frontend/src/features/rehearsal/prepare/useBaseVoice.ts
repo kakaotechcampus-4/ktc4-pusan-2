@@ -17,10 +17,13 @@ import type { Ms } from '@/types/api';
 const POLL_MS = 250;
 
 /**
- *   IDLE     아직 안 잼 (선택 단계라 막지 않습니다)
+ *   IDLE     아직 안 잼
  *   READING  문단을 읽는 중 — 다 읽으면 사용자가 "다 읽었어요"를 누릅니다
  *   DONE     잼 — `levelDb` 가 있습니다
- *   SHORT    다시 읽어야 함 — `reason` 에 이유, `levelDb` 는 null (AI 가 Take 첫 발화로 잡습니다)
+ *   SHORT    다시 읽어야 함 — `reason` 에 이유, `levelDb` 는 null
+ *
+ * 시작하려면 기준 목소리가 있어야 합니다(#1179). 잰 것 말고 다른 길(같은 환경 기준 다시 쓰기 · 탈출구)은
+ * 장치 점검 화면이 고릅니다 — 여기서는 재는 일만 합니다.
  */
 export type BaseVoiceStatus = 'IDLE' | 'READING' | 'DONE' | 'SHORT';
 
@@ -33,6 +36,8 @@ interface State {
   /** DONE 일 때 들은 시간(초, 소수 한 자리). 결과 문구에 씁니다 */
   heardSec: number | null;
   levelDb: number | null;
+  /** 이 마이크로 읽기가 SHORT 로 끝난 횟수. 몇 번 실패하면 화면이 탈출구를 보입니다 (#1179) */
+  shorts: number;
 }
 
 const IDLE: State = {
@@ -41,7 +46,14 @@ const IDLE: State = {
   reason: null,
   heardSec: null,
   levelDb: null,
+  shorts: 0,
 };
+
+/** 끝낸 결과를 지금 상태에 얹습니다. SHORT 면 실패 횟수를 하나 올립니다 */
+const withResult = (s: State, next: Partial<State>): Partial<State> => ({
+  ...next,
+  shorts: next.status === 'SHORT' ? s.shorts + 1 : s.shorts,
+});
 
 /** 끝낸 결과를 화면 상태로 */
 function settled(result: ReadResult): Partial<State> {
@@ -97,7 +109,7 @@ export function useBaseVoice({
   const start = useCallback(() => {
     const now = clock();
     runRef.current = { fromMs: now, read: startRead(now) };
-    setState({ ...IDLE, status: 'READING', stream });
+    setState((s) => ({ ...IDLE, status: 'READING', stream, shorts: s.shorts }));
   }, [clock, stream]);
 
   /** "다 읽었어요" */
@@ -106,7 +118,7 @@ export function useBaseVoice({
     if (!caught) return;
     runRef.current = null;
     const next = settled(finishRead(caught.r.read, true));
-    setState((s) => ({ ...s, ...next }));
+    setState((s) => ({ ...s, ...withResult(s, next) }));
   }, [catchUp]);
 
   const reading = state.status === 'READING';
@@ -119,7 +131,7 @@ export function useBaseVoice({
       if (readTimedOut(r.read, now)) {
         runRef.current = null;
         const next = settled(finishRead(r.read, false));
-        setState((s) => ({ ...s, ...next }));
+        setState((s) => ({ ...s, ...withResult(s, next) }));
         return;
       }
       // 단계가 바뀔 때만 다시 그립니다 — 읽는 동안 두 번 바뀝니다
@@ -131,7 +143,7 @@ export function useBaseVoice({
 
   const cancel = useCallback(() => {
     runRef.current = null;
-    setState({ ...IDLE, stream });
+    setState((s) => ({ ...IDLE, stream, shorts: s.shorts }));
   }, [stream]);
 
   return {
@@ -139,8 +151,9 @@ export function useBaseVoice({
     stage: state.stage,
     reason: state.reason,
     heardSec: state.heardSec,
-    /** 잰 평소 목소리 크기(dBFS). 안 쟀거나 다시 읽어야 하면 null — 그대로 서버에 보냅니다 */
+    /** 잰 기준 목소리 크기(dBFS). 안 쟀거나 다시 읽어야 하면 null */
     levelDb: state.levelDb,
+    shorts: state.shorts,
     start,
     finish,
     cancel,

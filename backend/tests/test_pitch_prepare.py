@@ -119,6 +119,7 @@ def test_new_pitch_has_no_versions_and_starts_at_take_1(
         "next_take_number": 1,
         "default_script_mode": "HIGHLIGHT",
         "missions": None,
+        "tutorial_block": None,
     }
 
 

@@ -210,6 +210,74 @@ def test_fm_L1_12_refused_or_invalid_research_output_runs_no_tool_and_is_not_res
     ) == 2  # 계획 1 + 실패한 조사 1(다시 보내지 않음)
 
 
+# ── L1-19 도구 구현의 예외 ───────────────────────────────────────────────────
+
+
+def test_fm_L1_19_tool_exception_becomes_that_tools_error_and_the_run_goes_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """도구 구현이 예외로 끝나도 실행은 error 줄(INTERNAL_ERROR)로 끝나지 않는다: 그 호출이 오류 결과(`TOOL_FAILED`)가 되고, 단계에
+    `확인 실패`가 붙고, 상황 신호 `TOOL_ERROR`를 본 모델이 다른 도구를 골라 확인하면 요청이 해소돼 DONE 이다. 예외 글은 줄 · 로그
+    어디에도 없고, 서비스 로그 `agent_tool_crash`에 도구 이름 · 예외 종류 · 위치만 남는다."""
+    from pitch_coach_ai.features.chat_agent.tools import TOOL_FAILED, impl
+
+    from .test_plan_progress_turn import check_stream, compare_answer, compare_plan, decisions
+
+    leak = "사용자 글 그대로 x7731"
+
+    def boom(_ctx: Any, _a: Any) -> Any:
+        raise ValueError(leak)
+
+    monkeypatch.setitem(impl.RUNNERS, "get_take_report", boom)
+    report = ("get_take_report", {"take_id": "t-5", "section": "slides", "slide_number": 3})
+    llm = F.FakeLlm(
+        [
+            compare_plan(
+                ("기록 보기", "get_take_report"),
+                ("반복 확인", "compare_takes"),
+                ("답 쓰기", "answer"),
+            ),
+            F.tools(report, prefix="a"),
+            F.tools(COMPARE, prefix="b"),
+            F.done(),
+            compare_answer(),
+        ]
+    )
+    log: list[dict[str, Any]] = []
+    status, lines, data = F.run_turn(
+        F.with_loaded(F.request(user_message=MSG), "t-4"), llm, log=log
+    )
+    assert status == 200 and lines[-1]["event"] == "final"
+    fd = check_stream(lines, data)  # type: ignore[arg-type]
+    assert fd.status == "DONE"
+    # 도구 순서 · 결과: 실패한 기록 보기(ERROR) → 모델이 고른 비교(OK)
+    assert [(t.tool, t.outcome) for t in fd.trace] == [
+        ("get_take_report", "ERROR"),
+        ("compare_takes", "OK"),
+    ]
+    live = [ln["data"]["trace"] for ln in lines if ln["event"] == "tool_done"]
+    assert (live[0]["outcome"], live[0]["result_summary"]) == ("ERROR", "확인 실패")
+    # 모델에게는 코드 오류만 돌려준다(다음 조사 호출의 도구 메시지)
+    research = [c for c in llm.calls if c.purpose == "RESEARCH" and c.tools]
+    told = [json.loads(m["content"]) for m in research[1].messages if m.get("role") == "tool"]
+    assert told[-1]["ok"] is False and told[-1]["error"]["code"] == TOOL_FAILED
+    # 단계: 실패한 단계는 확인 실패, 다른 도구로 확인한 뒤 끝나 실행하지 않은 단계는 없다
+    assert data["plan"][0]["step"].endswith("확인 실패")  # type: ignore[index]
+    assert decisions(log) == [
+        ("TOOL_ERROR", "FACT_SHOWN", "CODE", 1),
+        ("TOOL_ERROR", "ALT_TOOL", "LLM", 2),
+    ]
+    fact = next(d for d in log if d.get("event") == "agent_decision")
+    assert fact["facts"] == [TOOL_FAILED]
+    tool_steps = [s for s in fd.diagnostics.steps if s.kind == "TOOL"]  # type: ignore[union-attr]
+    assert tool_steps[0].detail.error_code == TOOL_FAILED  # type: ignore[union-attr]
+    (crash,) = [e for e in log if e.get("event") == "agent_tool_crash"]
+    assert (crash["tool"], crash["seq"], crash["cause"]) == ("get_take_report", 1, "ValueError")
+    assert not [e for e in log if e.get("event") == "agent_crash"]
+    blob = json.dumps([lines, log], ensure_ascii=False)
+    assert leak not in blob and "x7731" not in blob
+
+
 # ── L1-25 한 응답에 행동이 여럿 ─────────────────────────────────────────────
 
 

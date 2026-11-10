@@ -5,7 +5,9 @@
 - `plan()` · `tools()` · `answer()` · `fix()`: 구조화 · 도구 응답 만들기. `tool_results(req)`: 요청 속 도구 결과 JSON 목록.
 - `request(**바꿀 것)`: 예시 `request_user_message.json`에서 시작한 요청 dict.
 - `load_corpus()`: 코어 패키지의 자료 묶음(검수 전 카드 포함, 연구 단계와 같음).
-- `run_turn(req, llm, ...)`: `handle_turn`을 불러 (상태 코드 · 줄 목록 · final 데이터)를 돌려준다.
+- `run_turn(req, llm, ...)`: `handle_turn`을 불러 (상태 코드 · 줄 목록 · final 데이터)를 돌려준다. 받은 줄은 `check_contract`로
+  계약(줄 종류 5종 · 행동 종류 5종, 새 종류 없음)을 본다 — 턴 시험이 모두 이 함수를 거치므로 모든 턴 시험의 스트림이 이 검사를 받는다
+  (묶음 시험: test_turn_contract.py).
 """
 
 from __future__ import annotations
@@ -37,6 +39,22 @@ NOW_MS = 1_793_000_000_000
 Item = LlmResult | LlmError | Callable[[LlmRequest], "LlmResult | LlmError"]
 #: 가짜 응답의 기본 사용량(공급자 실측값 흉내)
 DEFAULT_USAGE = Usage(100, 20)
+#: 스트림 줄 종류(5-4)와 행동 종류(5-8)의 닫힌 집합. 여기에 없는 종류가 나오면 계약 변경이다(목표 동작: 새 줄 · 행동 종류 없음)
+STREAM_EVENTS = frozenset({"plan", "tool_done", "claim", "final", "error"})
+ACTION_TYPES = frozenset({"FETCH_PITCH", "FETCH_TAKE", "REASSESS", "SAVE_GOAL", "START_PRACTICE"})
+
+
+def check_contract(lines: list[dict[str, Any]]) -> None:
+    """한 응답의 줄 종류 ⊆ `STREAM_EVENTS`, 끝 줄(final)의 행동 종류 ⊆ `ACTION_TYPES`. 어기면 AssertionError."""
+    bad = [ln.get("event") for ln in lines if ln.get("event") not in STREAM_EVENTS]
+    if bad:
+        raise AssertionError(f"계약에 없는 줄 종류: {bad}")
+    last = lines[-1] if lines else {}
+    if last.get("event") == "final":
+        types = [a.get("type") for a in (last.get("data") or {}).get("actions") or []]
+        wrong = [t for t in types if t not in ACTION_TYPES]
+        if wrong:
+            raise AssertionError(f"계약에 없는 행동 종류: {wrong}")
 
 
 class FakeLlm:
@@ -105,16 +123,30 @@ def plan(
     steps: list[str] | None = None,
     assessments: list[dict[str, Any]] | None = None,
     scope_reason: str | None = None,
+    talk_kind: str | None = None,
+    guide_queries: list[str] | None = None,
+    step_tools: list[str | None] | None = None,
 ) -> LlmResult:
+    """계획 호출의 응답. `step_tools`는 단계마다 도구 힌트(`tool`)다. 기본 단계(기록 확인 · 답 쓰기)면 기본 계획과 같은
+    힌트(None · answer), 단계를 준 시험은 주지 않으면 모두 None 이다."""
+    if step_tools is None:
+        step_tools = [None, "answer"] if steps is None else [None] * len(steps)
     steps = steps if steps is not None else ["기록 확인", "답 쓰기"]
     return structured(
         {
             "route": route,
+            "talk_kind": talk_kind,
             "scope_reason": scope_reason,
             "plan": [
-                {"step": s, "status": "DOING" if i == 0 else "TODO", "note": None}
+                {
+                    "step": s,
+                    "status": "DOING" if i == 0 else "TODO",
+                    "note": None,
+                    "tool": step_tools[i] if i < len(step_tools) else None,
+                }
                 for i, s in enumerate(steps)
             ],
+            "guide_queries": guide_queries or [],
             "assessments": assessments or [],
         }
     )
@@ -143,6 +175,8 @@ def claim(
     *,
     evidence_ids: list[str] | None = None,
     source_ids: list[str] | None = None,
+    quote: str | None = None,
+    about: str | None = None,
     assessment_index: int | None = None,
     comparison_evidence_id: str | None = None,
 ) -> dict[str, Any]:
@@ -151,6 +185,8 @@ def claim(
         "text": text,
         "evidence_ids": evidence_ids or [],
         "source_ids": source_ids or [],
+        "quote": quote,
+        "about": about,
         "assessment_index": assessment_index,
         "comparison_evidence_id": comparison_evidence_id,
     }
@@ -165,6 +201,7 @@ def answer(
     scope_reason: str | None = None,
     scope_notes: list[str] | None = None,
     profile_updates: list[dict[str, Any]] | None = None,
+    usage_unanswered: bool = False,
 ) -> LlmResult:
     return structured(
         {
@@ -173,6 +210,7 @@ def answer(
             "scope_notes": scope_notes or [],
             "assessments": assessments or [],
             "claims": claims,
+            "usage_unanswered": usage_unanswered,
             "start_practice": start_practice,
             "profile_updates": profile_updates or [],
         }
@@ -352,6 +390,7 @@ def run_turn(
         return resp.error.status, [], resp.error.body()
     assert resp.lines is not None
     lines = [json.loads(x) for x in resp.lines]
+    check_contract(lines)
     last = lines[-1]
     for entry in sink:
         if entry.get("event") in ("agent_crash", "agent_final_invalid"):

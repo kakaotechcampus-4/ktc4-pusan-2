@@ -38,17 +38,19 @@ export interface CalibrationRequest {
   /** 보정이 OK 면 `loo_accuracy`, 아니면 0 (AI 문서 추천) */
   gaze_confidence: number;
   /**
-   * 평소 목소리 크기 — 말한 구간의 Leq(dBFS, A 가중 · Fast, 음수). 발표 전 점검에서 정해진 문장을 읽게 해
-   * 잽니다. 안 쟀거나 말한 시간이 5초 미만이면 null 이고, AI 가 Take 첫 발화로 잡습니다 (`volume.md` 5-2)
+   * 기준 목소리 크기 — 말한 구간의 Leq(dBFS, A 가중 · Fast, 음수). 발표 전 점검에서 정해진 문장을 읽게 해
+   * 잽니다. 같은 환경이면 직전 값을 다시 씁니다 (#1179). 탈출구("발표 처음 목소리를 기준으로")로 시작하면
+   * null 이고, AI 가 Take 첫 발화로 잡습니다 (`volume.md` 5-2)
    */
   base_level_db: number | null;
+  /** 시선 보정 요약. 요약이 없으면 null 이고 목소리 기준만 갑니다 — 서버에서 선택 칸입니다 (#1179) */
   result: {
     engine_version: string;
     status: 'OK' | 'RETRY_REQUIRED';
     separability: number | null;
     loo_accuracy: number | null;
     warnings: string[];
-  };
+  } | null;
 }
 
 /** Take 생성 응답. `take_number` 는 BE 가 실제로 매긴 번호입니다 (#296) */

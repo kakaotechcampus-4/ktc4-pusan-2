@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.0",
+  "id": "path-combo-across-takes",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "여러 Take 에 걸쳐 같은 문제(군더더기)가 반복 — 다른 Take 를 가져와 읽거나 비교해 확인한다(여러 방법 허용)",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-3": {
+            "result": {
+              "filler_per_min": 4.5,
+              "filler_count": 18,
+              "audience": 0.6,
+              "issues": [
+                [
+                  "FILLER_EXCESS",
+                  null,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          "t-4": {
+            "result": {
+              "filler_per_min": 4.2,
+              "filler_count": 17,
+              "audience": 0.6,
+              "issues": [
+                [
+                  "FILLER_EXCESS",
+                  null,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 67
+            }
+          },
+          "t-5": {
+            "result": {
+              "filler_per_min": 4.8,
+              "filler_count": 19,
+              "audience": 0.6,
+              "issues": [
+                [
+                  "FILLER_EXCESS",
+                  null,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 65
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "연습할 때마다 똑같이 발목 잡는 게 뭐야?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "multi-take",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "exec:FETCH_TAKE:OK",
+            "exec:FETCH_TAKE:OK",
+            "claim:RECORD"
+          ],
+          [
+            "exec:FETCH_TAKE:OK",
+            "tool:compare_takes:*",
+            "claim:RECORD"
+          ],
+          [
+            "tool:list_takes:*",
+            "tool:get_take_report:*",
+            "tool:get_take_report:*",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "mentions-filler",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "군더더기|필러|추임새|말버릇"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "no-unasked-save",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": "SAVE_GOAL",
+        "path": "types"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -90,10 +90,10 @@ it('개인정보 없는 SVG 목업에 대체 텍스트와 키보드로 여는 �
     '/help/chat-agent.svg',
   ]);
   expect(images[0].getAttribute('alt')).toContain('이번 Take 미션');
-  expect(images[0].getAttribute('alt')).toContain('왼쪽 아래 채팅 에이전트 버튼');
-  expect(host.textContent).toContain('발표 중에는 숨겨져요.');
+  expect(images[0].getAttribute('alt')).toContain('기준 목소리');
+  expect(host.textContent).toContain('장치 점검 중에는 새미나이 채팅 버튼이 보이지 않아요.');
   expect(images[1].getAttribute('alt')).toContain('8 시선 테두리');
-  expect(images[1].getAttribute('alt')).toContain('6 코치 아래 키보드 이동 안내');
+  expect(images[1].getAttribute('alt')).toContain('6 코치 아래 마우스·키보드 이동 안내');
   expect(images[2].getAttribute('alt')).toContain('대화 범위');
   expect(images[2].getAttribute('alt')).toContain('기억 설정');
   for (const [index, image] of images.entries()) {
@@ -105,7 +105,10 @@ it('개인정보 없는 SVG 목업에 대체 텍스트와 키보드로 여는 �
     expect(link?.getAttribute('target')).toBe('_blank');
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
   }
-  expect(host.textContent).toContain('개인정보가 없는 설명용 목업');
+  expect(host.textContent).toContain('설명용 목업 (작은 화면에서는 가로 스크롤 가능)');
+  expect(host.textContent).toContain('Google Chrome');
+  expect(host.textContent).toContain('Edge에서는 시선 추적');
+  expect(host.querySelectorAll('figure [tabindex="0"][aria-label$="가로 스크롤 영역"]')).toHaveLength(3);
 });
 
 it('리허설의 여덟 기능과 키보드 조작을 이미지와 별도 텍스트로 제공한다', async () => {
@@ -141,10 +144,13 @@ it('세 설명용 SVG가 올바른 문서이며 현재 화면의 필수 문구�
     expect(parsed.documentElement.tagName).toBe('svg');
   }
 
-  const launcher = new DOMParser()
-    .parseFromString(device, 'image/svg+xml')
-    .querySelector('[aria-label="왼쪽 아래 채팅 에이전트 런처를 나타낸 단순화한 기호"]');
-  expect(launcher?.querySelector('g')?.getAttribute('transform')).toBe('translate(-960 0)');
+  const deviceSvg = new DOMParser().parseFromString(device, 'image/svg+xml');
+  expect(deviceSvg.querySelector('[aria-label*="채팅 에이전트 런처"]')).toBeNull();
+
+  const chatSvg = new DOMParser().parseFromString(chat, 'image/svg+xml');
+  expect(chatSvg.querySelector('[data-help-chat-panel]')?.getAttribute('transform')).toBe(
+    'translate(523 0)',
+  );
 
   for (const phrase of [
     'TAKE 3',
@@ -156,6 +162,7 @@ it('세 설명용 SVG가 올바른 문서이며 현재 화면의 필수 문구�
     '실전 모드 · 대본 없이',
     'Take 3 시작하기',
     '2분 넘게',
+    '기준 목소리',
   ]) {
     expect(device).toContain(phrase);
   }
@@ -166,6 +173,8 @@ it('세 설명용 SVG가 올바른 문서이며 현재 화면의 필수 문구�
     '화면',
     '대본',
     '판정 불가',
+    '클릭 다음',
+    '우클릭 이전',
   ]) {
     expect(stage).toContain(phrase);
   }
@@ -200,7 +209,8 @@ it('채팅 주요 조작 6가지를 번호별 텍스트로 안내하고 발표 �
   ]) {
     expect([...numbered].some((row) => row.textContent?.includes(label))).toBe(true);
   }
-  expect(host.textContent).toContain('실제 발표 연습 중에는 버튼이 보이지 않아요.');
+  expect(host.textContent).toContain('장치 점검·발표 연습 중에는 버튼이 보이지 않아요.');
+  expect(host.textContent).toContain('오른쪽에 채팅 패널이 열려요.');
   expect(host.textContent).toContain('예시 버튼을 눌러 바로 질문할 수 있어요.');
   expect(host.textContent).toContain('서비스 상태에 따라 달라져요.');
 });

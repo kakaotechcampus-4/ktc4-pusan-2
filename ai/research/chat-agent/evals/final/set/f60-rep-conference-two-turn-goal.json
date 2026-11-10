@@ -1,0 +1,212 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-rep-conference-two-turn-goal",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "1차례 반복 문제 찾기(저장 없음) → 2차례 '그걸로 목표 저장 + 연습' — 3장 청중 시선 목표",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-conf",
+        "title": "학회 구두 발표",
+        "takes": [
+          {
+            "take_id": "conf-t3",
+            "take_number": 3,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.58,
+                0.46,
+                0.61
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "STABLE"
+              },
+              "score": 76
+            }
+          },
+          {
+            "take_id": "conf-t4",
+            "take_number": 4,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.61,
+                0.57,
+                0.3,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 69
+            }
+          },
+          {
+            "take_id": "conf-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.62,
+                0.59,
+                0.27,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 68
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-conf"
+    }
+  },
+  "turns": [
+    {
+      "message": "최근 두 번 연습에서 공통으로 계속 걸리는 부분이 어디였는지 찾아봐 주세요.",
+      "page_take_id": "conf-t5"
+    },
+    {
+      "message": "좋아요, 그럼 그 부분을 다음 연습 목표로 저장해 주세요. 저장되면 바로 연습 들어갈게요.",
+      "page_take_id": "conf-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t0-no-save",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:SAVE_GOAL:*"
+        ],
+        "metric": "path",
+        "turn": 0,
+        "note": "첫 차례는 저장을 요청하지 않았다"
+      },
+      {
+        "check_id": "t0-read",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "tool:list_takes:OK",
+            "claim:RECORD"
+          ],
+          [
+            "tool:compare_takes:OK",
+            "claim:RECORD"
+          ],
+          [
+            "exec:FETCH_TAKE:OK",
+            "claim:RECORD"
+          ],
+          [
+            "tool:get_take_report:OK",
+            "claim:RECORD"
+          ]
+        ],
+        "metric": "path",
+        "turn": 0
+      },
+      {
+        "check_id": "t0-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "metric": "audience_ratio"
+        },
+        "grader": "target",
+        "turn": 0,
+        "note": "반복 우선 개선은 청중 시선. 3장을 짚으면 더 좋지만 장은 강제하지 않는다(검수 반영)"
+      },
+      {
+        "check_id": "t0-no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "turn": 0,
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      },
+      {
+        "check_id": "approve-before-save",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "approve:SAVE_GOAL",
+          "exec:SAVE_GOAL:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "audience_ratio",
+        "path": "after.conversation.goal.metric"
+      },
+      {
+        "check_id": "goal-slide",
+        "observe": "db_diff",
+        "compare": "one_of",
+        "expect": [
+          3,
+          null
+        ],
+        "path": "after.conversation.goal.slide_number",
+        "note": "3장 목표가 자연스럽지만 Take 전체 청중 시선 목표도 허용"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": "START_PRACTICE",
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "save-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-guide",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      }
+    ]
+  },
+  "notes": "Take 4 · 5 의 3장 청중 시선 0.30 · 0.27, 청중 시선만 우선 개선(Take 3 은 0.46 · 보통)."
+}

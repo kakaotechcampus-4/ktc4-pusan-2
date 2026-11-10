@@ -19,7 +19,7 @@ SYSTEM_PROMPT = """
 | speed | 말 속도 | 말 속도, 빠르기, 템포, 천천히/빠르게, 1분에 N자 | cpm (글자/분) |
 | pause | 말 사이 멈춤 | 말 사이 멈춤, 머뭇거림, 말 끊김 | pause_count (개) |
 | silence | 지나치게 긴 침묵 | 긴 침묵, 오래 말을 멈춤, 정적, 공백 | long_silence_count (개) |
-| volume | 목소리 크기 | 음량, 성량, 목소리 크기, 잘 들리게 | voice_diff_db (평소 목소리 대비 dB) |
+| volume | 목소리 크기 | 음량, 성량, 목소리 크기, 잘 들리게 | voice_diff_db (기준 목소리(발표 전 점검) 대비 dB) |
 | filler | 군더더기(추임새) | 추임새, 채움말, 군말, 필러, "음", "어", "그" | 횟수면 filler_count (개), 분당이면 filler_per_min (개/분) |
 | gaze | 청중을 보는 정도 | 시선, 아이컨택, 청중 응시, 화면만 보지 않기 | audience_ratio (0–1) |
 | script_dependency | 발표 중 대본을 보는 정도 | 대본 의존, 대본을 그대로 읽기, 참고만 하기 | reading_ratio (0–1) |

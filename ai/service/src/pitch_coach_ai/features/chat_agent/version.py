@@ -6,14 +6,19 @@
     (config.py 의 낱말 목록 · 검사 ID 를 바꿔도 올린다 — 9절)
   - `TOOL_SCHEMA_VERSION`: 도구 · 행동 모양(인자 · 결과)이 바뀌면 올린다. 진행 중 실행은 서명한 판을 고정하므로
     판이 다르면 이어 부르기가 409 `AGENT_STATE_INVALID` 다(5-6).
+    tools-5: 할 일 단계 초안(계획 출력 · `update_plan` 인자)에 단계마다 쓸 도구 힌트 `tool`(응답 `PlanStep`에는 없음),
+    `get_take_report` 결과 요약 앞에 읽은 출처(`코치가 찾은 것` · `리뷰 분석`).
   - `SCHEMA_VERSION`: 요청 · 응답 필드의 이름 변경 · 삭제 · 뜻 변경 때만 올린다(`architecture.md` 5절).
   - `STATE_V`: 서명 형식(외곽 `v`)이 바뀔 때만 올린다.
 - prompt_version(프롬프트 해시) · corpus_version(자료 묶음 판)은 각각 prompts/ · corpus.py 가 계산한다.
 """
 
-FEATURE_VERSION = "chat_agent-0.10.0"
+#: 0.12.0: 할 일 단계 = 실제 실행(목적: 실행 → 결과 · 상태) · 상황 신호 · 결정 로그 · 근거 기반 답('없음' 근거 · 끝 상태는 요청 해소) ·
+#: 결과 발견 안내 · 지시어 · 목표 질문 · 변화 방향 · 같은 조건 다시 평가 등 원인별 고침(#1150)
+#: 0.12.1: 소리 크기 표기 — 값에 견주는 때(점검 때 · 발표 처음 · 기준)를 붙이고 프롬프트에 값의 뜻 한 줄(#1182)
+FEATURE_VERSION = "chat_agent-0.12.1"
 SCHEMA_VERSION = "1.0"
-TOOL_SCHEMA_VERSION = "tools-4"
+TOOL_SCHEMA_VERSION = "tools-5"
 STATE_V = 1
 #: 목표 판정 계산식(6-4 판정 순서 · 비교식)의 판. 계산식을 바꾸면 올린다. 목표 규칙 판(goal_rule_version)에 들어가므로
 #: 옛 판으로 저장한 목표는 판이 달라 새 목표를 정하자고 한다(설정 해시만으로는 계산식 변경을 알 수 없다)
@@ -29,7 +34,11 @@ SUPPORTED_GOAL_ALGORITHMS: frozenset[str] = frozenset({GOAL_ALGORITHM_VERSION})
 #: guides-4: u-08 의 기준 고쳐 쓰기 안내 문장 빼기, 동의어 사전에서 오탐 낱말(불안 · 급하게 · 포즈 · 결론 …) 빼고
 #: 목소리 · 억양 묶음 대표어를 카드 표현으로, q&a 더함. guides-5: 사용법 카드 u-03 을 대본 파서 규칙에 맞춤(번호 조건 ·
 #: 첫 구분 표시 앞에는 제목만, #885 리뷰). guides-6: u-07 셋째 문장에서 u-08 과 겹치는 '측정되지 않는 항목' 부분을 뺌
-#: (u-07 은 판정, u-08 은 빠지는 항목으로 역할을 나눔, #921 리뷰)
+#: (u-07 은 판정, u-08 은 빠지는 항목으로 역할을 나눔, #921 리뷰). guides-7: 카드 단위 검수 — 발표법 카드 21장 검수 완료(g-19 만
+#: CC BY 참고 문헌이 없어 검수 전), 발표법 카드에 CC BY 4.0 교재 참고 문헌, 교재와 어긋난 문장 다듬기(g-01 · g-07 · g-12 · g-14 ·
+#: g-15 · g-18), g-13 을 질의응답 시간의 전달만으로, 새 카드 g-21(카메라 앞) · g-22(실수 뒤 이어 가기), u-25 를 1-3 에 맞춤(P-0008)
+#: guides-8: 내용 구성 · 자료 수정 · 제한 시간 추천으로 읽힐 문장을 빼고 전달만 남김(g-08 · g-09 · g-10 · g-11 · g-18 · g-20, 1-3,
+#: 토론으로 고른 문장), 그에 맞춰 g-09 · g-10 · g-11 참고 문헌을 본문이 기대는 장으로
 CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-1": "48aa04e52f8f16abacb6c87d37d5536daf39e4d3c4aac05bf1550cad9dd6ad89",
     "guides-2": "a2b1f11aaf653da307afce2ec0bfe8d5a141fe08d3faed1e803c955ffe619823",
@@ -37,6 +46,8 @@ CORPUS_VERSION_HASHES: dict[str, str] = {
     "guides-4": "ed5d3b2dd2a3aae8acd8ec5bc71518b64863d1ba7323db889140f20200af16d7",
     "guides-5": "a8c7f133a4549c27c1e22ea4530b91ff19834551e96e59fd9d8d2c822a6cc30a",
     "guides-6": "a74cb7cc6790fcf607edbc7d69d42593dc0a1fa89330e089c83d16208ecfb48d",
+    "guides-7": "421b5e210d49f540960b512675dc118fd90321d6cb631184d460512597a8e9fd",
+    "guides-8": "f4ace2bfa2f4ca32dfee2367c649dac72255e2a961c75814cdb12498b0de3946",
 }
 
 #: 이어 부를 때 받아 주는 실행 판(feature · tool_schema). 진행 중 실행은 판을 고정하므로(5-6),

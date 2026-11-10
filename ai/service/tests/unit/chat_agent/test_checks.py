@@ -22,6 +22,7 @@ from pitch_coach_ai.features.chat_agent.checks import (
     failing_indices,
     summary_counts,
 )
+from pitch_coach_ai.features.chat_agent.compose import DraftClaim
 from pitch_coach_ai.features.chat_agent.config import load_config
 from pitch_coach_ai.features.chat_agent.evidence import EvidenceRegistry
 from pitch_coach_ai.features.chat_agent.schemas import (
@@ -204,16 +205,45 @@ def test_fm_L1_35_stale_does_not_hide_valid_other_evidence():
 
 def test_fm_L1_35_guide_quote_and_numbers():
     texts = {"g-07#2": "발표 전에 세 번 소리 내어 연습하세요. 목표는 90초입니다."}
-    ok = Claim(kind="GUIDE", text="'소리 내어 연습하세요'라고 해요. 90초", source_ids=["g-07#2"])
+    q = "발표 전에 세 번 소리 내어 연습하세요."
+    ok = DraftClaim(
+        kind="GUIDE", text="'소리 내어 연습하세요'라고 해요. 90초", source_ids=["g-07#2"], quote=q
+    )
     assert run([ok], guide_texts=texts) == []
-    bad_quote = Claim(kind="GUIDE", text="'눈을 맞추세요'가 좋아요", source_ids=["g-07#2"])
+    bad_quote = DraftClaim(
+        kind="GUIDE", text="'눈을 맞추세요'가 좋아요", source_ids=["g-07#2"], quote=q
+    )
     assert CheckId.QUOTE_MISMATCH in ids_of(run([bad_quote], guide_texts=texts))
-    bad_num = Claim(kind="GUIDE", text="120초가 적당해요", source_ids=["g-07#2"])
+    bad_num = DraftClaim(kind="GUIDE", text="120초가 적당해요", source_ids=["g-07#2"], quote=q)
     assert ids_of(run([bad_num], guide_texts=texts)) == [CheckId.QUOTE_MISMATCH]
     none = Claim(kind="GUIDE", text="연습하세요")
     assert ids_of(run([none], guide_texts=texts)) == [CheckId.EVIDENCE_MISSING]
     unknown = Claim(kind="GUIDE", text="연습하세요", source_ids=["g-99"])
     assert ids_of(run([unknown], guide_texts=texts)) == [CheckId.STALE_EVIDENCE]
+
+
+def test_guide_quote_missing_or_not_in_source_is_unfixable_mismatch():
+    """GUIDE 문장은 이은 자료 원문의 문장을 quote 로 달아야 한다. 없거나 원문에 없으면 고치기 없이 버린다(unfixable)."""
+    texts = {"g-07#2": "발표 전에 세 번 소리 내어 연습하세요. 목표는 90초입니다."}
+    base = {"kind": "GUIDE", "text": "소리 내어 읽는 연습을 해 보세요", "source_ids": ["g-07#2"]}
+    for quote in (None, "", "  ", "눈을 맞추세요."):
+        c = DraftClaim(**base, quote=quote)
+        f = run([c], guide_texts=texts)
+        assert ids_of(f) == [CheckId.QUOTE_MISMATCH], quote
+        assert all(x.unfixable for x in f), quote
+    plain = Claim(**base)  # quote 를 싣지 않는 문장(초안 밖에서 만든 GUIDE)도 같다
+    assert ids_of(run([plain], guide_texts=texts)) == [CheckId.QUOTE_MISMATCH]
+    # 둘째 문장(원문 그대로)이면 통과, 이은 자료 중 어느 하나에 있으면 된다
+    ok = DraftClaim(**base, quote="목표는 90초입니다.")
+    assert run([ok], guide_texts=texts) == []
+    two = DraftClaim(
+        kind="GUIDE", text="연습하세요", source_ids=["g-07#2", "g-08"], quote="천천히 말하세요."
+    )
+    assert run([two], guide_texts={**texts, "g-08": "천천히 말하세요."}) == []
+    # 다른 종류의 문장은 quote 없이도 영향이 없다
+    r = reg()
+    e = rec(r, 0.28)
+    assert run([claim("시선 28%", e.evidence_id)], r) == []
 
 
 def test_fm_L1_35_action_result_must_equal_code_rendered_sentence():
@@ -346,7 +376,12 @@ def test_fm_L1_36_causal_claim_needs_approved_guide_source():
     e = rec(r, 0.28)
     c = claim("긴장했기 때문에 시선 비율이 28%였어요", e.evidence_id)
     assert ids_of(run([c], r)) == [CheckId.CAUSAL_CLAIM]
-    g = Claim(kind="GUIDE", text="긴장하기 때문에 시선이 흔들릴 수 있어요", source_ids=["g1"])
+    g = DraftClaim(
+        kind="GUIDE",
+        text="긴장하기 때문에 시선이 흔들릴 수 있어요",
+        source_ids=["g1"],
+        quote="긴장하기 때문에 시선이 흔들릴 수 있다",
+    )
     texts = {"g1": "긴장하기 때문에 시선이 흔들릴 수 있다"}
     assert ids_of(run([g], guide_texts=texts)) == [CheckId.CAUSAL_CLAIM]
     assert run([g], guide_texts=texts, approved_cause_sources={"g1"}) == []
@@ -1182,13 +1217,15 @@ def test_guide_quote_words_are_not_agreement_or_conclusion() -> None:
     guide = {
         "g-03": "모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다."
     }
-    c = Claim(kind="GUIDE", text=text, source_ids=["g-03"])
+    q = "모든 발표에 맞는 말 속도의 정답 숫자는 없고, 청중이 내용을 따라올 수 있는지가 기준입니다."
+    c = DraftClaim(kind="GUIDE", text=text, source_ids=["g-03"], quote=q)
     assert check_claims([c], registry=reg, guide_texts=guide) == []
     # 따옴표 밖에서 모델이 쓴 동의 표현은 그대로 걸린다
-    c2 = Claim(
+    c2 = DraftClaim(
         kind="GUIDE",
         text='맞는 말이에요. 자료에도 "모든 발표에 맞는 말 속도의 정답 숫자는 없고"라고 해요.',
         source_ids=["g-03"],
+        quote=q,
     )
     assert any(
         f.check_id == "AGREEMENT_WORD" for f in check_claims([c2], registry=reg, guide_texts=guide)
@@ -1238,8 +1275,41 @@ def test_ref_ids_in_sentence_text_are_removed_so_their_digits_are_not_values(
     assert extract_numbers(strip_ref_ids(text)).values == extract_numbers(want).values
 
 
+@pytest.mark.parametrize(
+    ("ids", "titles", "phrase"),
+    [
+        (
+            ["g-18"],
+            {"g-18": "발표는 빠를수록 좋다는 오해"},
+            "발표법 자료 '발표는 빠를수록 좋다는 오해'",
+        ),
+        (["g-03", "g-04"], {"g-03": "말 속도", "g-04": "쉼"}, "발표법 자료 '말 속도' · '쉼'"),
+        (["g-99"], {}, "발표법 자료"),
+    ],
+)
+def test_knowledge_phrase_uses_card_titles_not_ids(
+    ids: list[str], titles: dict[str, str], phrase: str
+) -> None:
+    """발표법 주장 판단 첫 문장의 근거 표기는 카드 제목이고 내부 자료 id 는 쓰지 않는다(7-10)."""
+    from pitch_coach_ai.features.chat_agent.claims import knowledge_phrase
+
+    assert knowledge_phrase(ids, titles) == phrase
+
+
+def test_knowledge_head_title_digits_are_not_number_checked() -> None:
+    """카드 제목에 숫자가 있어도(예: '3초 쉬기') 판단 첫 문장(코드 템플릿)은 숫자 검사 대상이 아니다: 첫 문장 뒤만 본다."""
+    head = "말씀하신 '쉼은 필요 없다며?'는 기록과 달라요: 발표법 자료 '3초 쉬기'."
+    a = assessment(quote="쉼은 필요 없다며?").model_copy(
+        update={"type": "KNOWLEDGE", "claim_op": None, "source_ids": ["g-04"]}
+    )
+    c = Claim(kind="ASSESSMENT", text=head, assessment_id="a1", source_ids=["g-04"])
+    fails = run([c], assessments={"a1": a}, first_sentences={"a1": head})
+    assert CheckId.NUMBER_MISMATCH not in ids_of(fails)
+
+
 def test_code_template_sentences_keep_their_source_ids() -> None:
-    """id 지우기는 모델이 쓴 글에만 한다: 코드가 만드는 문장(판단 첫 문장의 "발표법 자료(g-18)")은 그대로다(6회차 회귀)."""
+    """id 지우기는 모델이 쓴 글에만 한다: 코드가 만드는 문장(판단 첫 문장)은 그대로다(6회차 회귀). 지금 판단 첫 문장의 자료
+    표기는 카드 제목이지만, 코드 문장에 괄호 표기가 있어도 지우지 않는다."""
     from pitch_coach_ai.features.chat_agent.compose import _claim
 
     head = "말씀하신 '발표는 빠를수록 좋다며?'는 기록과 달라요: 발표법 자료(g-18)."

@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
@@ -15,6 +16,8 @@ import type {
   TakeReport,
 } from '@/types/report';
 import { AutoEndAlert } from './AutoEndAlert';
+import { ContentCard } from './ContentCard';
+import { ContentErrorBoundary } from './ContentErrorBoundary';
 import { QueryState, ReportFrame } from './ReportFrame';
 import {
   DIMENSION_LABEL,
@@ -85,6 +88,13 @@ function ReportBody({ report }: { report: TakeReport }) {
           <p className="text-sm text-ink/80">발표 기록을 정리하고 있어요.</p>
         </Card>
       )}
+      {/* 내용 전달이 그리다 던져도 리포트의 다른 칸은 남깁니다. 던진 뒤 결과 판이 바뀌면 다시 그려 봅니다 (#1157 리뷰 P1).
+          key 로 새로 만들지 않아야 판이 바뀌어도(409) 열어 둔 장별 목록이 닫히지 않습니다 */}
+      <ContentErrorBoundary
+        resetKey={`${report.content_status?.state ?? 'none'}:${report.content_status?.revision ?? '-'}`}
+      >
+        <ContentCard takeId={report.take_id} status={report.content_status} />
+      </ContentErrorBoundary>
 
       {/* 측정값이 아직 없으면 평가기준 카드 하나가 줄을 다 씁니다 */}
       <div className="grid gap-4 lg:auto-cols-fr lg:grid-flow-col">
@@ -305,35 +315,63 @@ function Points({
 /* ── 지난 Take와 비교 ───────────────────────────────────────────── */
 
 /** `improved` 는 true · false · null(방향을 정할 수 없음) */
-const TREND: Record<string, { label: string; tone: Tone }> = {
-  true: { label: '나아짐', tone: 'good' },
-  false: { label: '나빠짐', tone: 'bad' },
-  null: { label: '방향 없음', tone: 'muted' },
-  same: { label: '같음', tone: 'muted' },
+const TREND: Record<string, { label: string; className: string }> = {
+  true: { label: '개선 ↑', className: 'bg-coral-deep text-white' },
+  false: { label: '악화 ↓', className: 'border border-line-strong bg-cream text-ink' },
+  null: {
+    label: '방향 판단 불가',
+    className: 'border border-dashed border-line-strong text-stone',
+  },
+  same: { label: '변화 없음', className: 'border border-dashed border-line-strong text-stone' },
 };
 
-/** 화면에 보이는 값이 같으면 AI 의 `improved`(같으면 false)와 상관없이 "같음" */
+/** 화면에 보이는 값이 같으면 AI 판정과 무관하게 "변화 없음" — 반올림된 표시값 기준 */
 function trend(r: ReviewResult['comparison'][number]) {
   return fmt(r.metric, r.previous) === fmt(r.metric, r.current)
     ? TREND.same!
     : TREND[String(r.improved)]!;
 }
 
-/**
- * 차원마다 표 하나 — 지표 하나가 열 하나, 발표 전체 · 장이 행입니다 (#929).
- * 전에는 (지표, 장) 하나가 칸 하나라 같은 지표가 장마다 칸으로 되풀이돼 읽는 법을 알기 어려웠습니다.
- */
+function ComparisonTrendBadge({ result }: { result: ReturnType<typeof trend> }) {
+  return (
+    <span className={`inline-flex shrink-0 px-2 py-0.5 text-xs font-bold ${result.className}`}>
+      {result.label}
+    </span>
+  );
+}
+
+/** 지난 Take의 지표별 슬라이드 변화 요약과 차원별 상세 비교표 (#929). */
+function slideList(numbers: number[]) {
+  const unique = [...new Set(numbers)].sort((a, b) => a - b);
+  return unique.length ? unique.map((n) => `${n}번`).join(', ') : '없음';
+}
+
+/** 항상 발표 전체 기준으로만 산출되는 지표. 장별 값이 빠진 다른 지표와 구분합니다. */
+const OVERALL_ONLY_METRICS = new Set(['duration_ms', 'content_coverage', 'critical_fact_accuracy']);
+
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   const groups = comparisonGroups(rows);
-  // 두 Take 의 대본 보기 차이는 AI 가 모든 행에 같이 싣습니다 — 칸마다 되풀이하지 않고 한 번만 알립니다
+  // AI가 대본 보기 차이를 모든 행에 싣더라도 안내는 한 번만 보여 줍니다.
   const mode = rows.find((r) => r.script_mode)?.script_mode;
+  const [open, setOpen] = useState(false);
+  const detailTitleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog.showModal();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   return (
-    <Card
-      title="지난 Take와 비교"
-      action={
-        groups.length > 0 && <p className="text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
-      }
-    >
+    <Card title="지난 Take와 비교">
       {groups.length === 0 ? (
         <p className="text-sm text-ink/80">
           {rows.length === 0 ? '비교할 지난 Take가 없어요.' : '지난 Take와 함께 잰 지표가 없어요.'}
@@ -346,11 +384,153 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
               {scriptModeLabel(mode.current)}). 비교는 참고만 해 주세요.
             </p>
           )}
+          <p className="text-sm text-ink/80">
+            지표별로 지난 연습과의 차이와 비교 가능한 슬라이드를 정리했어요.
+          </p>
           <div className="grid gap-4 lg:grid-cols-2">
-            {groups.map((g) => (
-              <ComparisonTable key={g.dimension ?? 'other'} group={g} />
-            ))}
+            {groups
+              .flatMap((g) => g.metrics)
+              .map((metric) => {
+                const metricRows = rows.filter((r) => r.metric === metric);
+                const slides = metricRows.filter((r) => r.slide_number !== null);
+                const improved = slides
+                  .filter((r) => trend(r) === TREND.true)
+                  .map((r) => r.slide_number!);
+                const worsened = slides
+                  .filter((r) => trend(r) === TREND.false)
+                  .map((r) => r.slide_number!);
+                const same = slides.filter((r) => trend(r) === TREND.same).length;
+                const unknown = slides.filter((r) => trend(r) === TREND.null).length;
+                const overall = metricRows.find((r) => r.slide_number === null);
+                const directionUnknown =
+                  slides.length > 0 && unknown === slides.length && same === 0;
+                return (
+                  <section key={metric} className="min-w-0 border-l-2 border-line pl-3">
+                    <h3 className="font-bold">{metricLabel(metric)}</h3>
+                    {slides.length > 0 && directionUnknown && (
+                      <p className="mt-2 text-sm text-ink/80">
+                        개선·악화 방향을 판단할 수 없는 지표예요. 해당 슬라이드 {unknown}개
+                      </p>
+                    )}
+                    {slides.length > 0 && !directionUnknown && (
+                      <>
+                        <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                          <div
+                            role="group"
+                            aria-label="개선된 슬라이드"
+                            className={
+                              improved.length > 0
+                                ? 'border border-coral-deep bg-coral-wash p-3'
+                                : 'border border-line-strong bg-panel p-3'
+                            }
+                          >
+                            <p className="font-bold text-ink">개선된 슬라이드</p>
+                            <p className="mt-1">{slideList(improved)}</p>
+                          </div>
+                          <div
+                            role="group"
+                            aria-label="다시 점검할 슬라이드"
+                            className="border border-line-strong bg-cream p-3"
+                          >
+                            <p className="font-bold text-ink">다시 점검할 슬라이드</p>
+                            <p className="mt-1">{slideList(worsened)}</p>
+                          </div>
+                        </div>
+                        {(same > 0 || unknown > 0) && (
+                          <p className="mt-2 text-xs text-ink/80">
+                            {same > 0 && `변화 없음 ${same}개`}
+                            {same > 0 && unknown > 0 && ' · '}
+                            {unknown > 0 && `방향 판단 불가 ${unknown}개`}
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {slides.length === 0 && !(overall && OVERALL_ONLY_METRICS.has(metric)) && (
+                      <p className="mt-2 text-sm text-ink/80">슬라이드별 비교 결과가 없어요.</p>
+                    )}
+                    {overall &&
+                      (slides.length === 0 && OVERALL_ONLY_METRICS.has(metric) ? (
+                        <div
+                          role="group"
+                          aria-label={`${metricLabel(metric)} 발표 전체 비교`}
+                          className={
+                            trend(overall) === TREND.true
+                              ? 'mt-2 border border-coral-deep bg-coral-wash p-3'
+                              : 'mt-2 border border-line-strong bg-panel p-3'
+                          }
+                        >
+                          <p className="text-xs font-bold text-stone">발표 전체</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                            <div>
+                              <p className="text-xs text-stone">지난 Take</p>
+                              <p className="tabular tabular-nums font-bold text-ink">
+                                {fmt(metric, overall.previous)}
+                              </p>
+                            </div>
+                            <span aria-hidden="true" className="text-stone">
+                              →
+                            </span>
+                            <div>
+                              <p className="text-xs text-stone">이번 Take</p>
+                              <p className="tabular tabular-nums font-bold text-ink">
+                                {fmt(metric, overall.current)}
+                              </p>
+                            </div>
+                            <ComparisonTrendBadge result={trend(overall)} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink/80">
+                          <span>
+                            발표 전체: {fmt(metric, overall.previous)} →{' '}
+                            {fmt(metric, overall.current)}
+                          </span>
+                          <ComparisonTrendBadge result={trend(overall)} />
+                        </div>
+                      ))}
+                  </section>
+                );
+              })}
           </div>
+          <button
+            ref={openerRef}
+            type="button"
+            onClick={() => setOpen(true)}
+            className="min-h-11 w-fit border-2 border-ink bg-panel px-4 py-2 text-sm font-bold hover:bg-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral-deep"
+          >
+            상세 비교표 보기
+          </button>
+          <dialog
+            ref={dialogRef}
+            aria-labelledby={detailTitleId}
+            onClose={() => {
+              setOpen(false);
+              openerRef.current?.focus();
+            }}
+            className="fixed inset-0 m-auto max-h-[90dvh] w-[min(96vw,72rem)] max-w-none overflow-y-auto border-2 border-ink bg-panel p-4 text-ink shadow-[6px_6px_0_var(--color-line)] backdrop:bg-ink/60 sm:p-6"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id={detailTitleId} className="text-lg font-bold">
+                  지난 Take 상세 비교
+                </h2>
+                <p className="mt-1 text-xs text-ink/80">칸마다 지난 Take → 이번 Take</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => dialogRef.current?.close()}
+                className="min-h-11 shrink-0 border-2 border-ink px-4 font-bold focus-visible:outline-2 focus-visible:outline-coral-deep"
+                aria-label="상세 비교 닫기"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {groups.map((g) => (
+                <ComparisonTable key={g.dimension ?? 'other'} group={g} />
+              ))}
+            </div>
+          </dialog>
         </>
       )}
     </Card>
@@ -394,7 +574,7 @@ function ComparisonTable({ group }: { group: ComparisonGroup }) {
                         <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                           <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
                           <b className="text-base">{fmt(r.metric, r.current)}</b>
-                          <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
+                          <ComparisonTrendBadge result={trend(r)} />
                         </span>
                       ) : (
                         <span className="text-ink/80">—</span>

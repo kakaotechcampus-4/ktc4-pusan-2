@@ -61,6 +61,7 @@ def test_guide_sentence_with_verbatim_quote_passes_and_shows_source(corpus: Any)
                     "GUIDE",
                     f'자료에서는 "{it["quote"][:25]}"라고 안내해요.',
                     source_ids=[it["source_id"]],
+                    quote=it["quote"],
                 )
             ]
         )
@@ -107,9 +108,9 @@ def test_no_guide_route_without_claims_is_refused(corpus: Any) -> None:
     assert fd.status == "REFUSED"
 
 
-def test_knowledge_head_keeps_its_source_id_while_model_ids_are_removed(corpus: Any) -> None:
-    """판단 첫 문장(코드 템플릿)의 "발표법 자료(g-…)"는 남고, 모델이 뒷부분 글에 적은 id 만 지운다(6회차 회귀: 코드 문장의
-    id 까지 지워 판단 문장이 검사에서 빠짐)."""
+def test_knowledge_head_shows_the_card_title_while_model_ids_are_removed(corpus: Any) -> None:
+    """판단 첫 문장(코드 템플릿)의 근거 표기는 카드 제목("발표법 자료 '…'")이고 내부 id 는 보이지 않는다. 모델이 뒷부분 글에
+    적은 id 는 지운다(6회차 회귀: 코드 문장까지 지워 판단 문장이 검사에서 빠짐 — 판단 문장은 그대로 남는다)."""
     msg = "발표는 빠를수록 좋다며?"
     know = F.draft(
         msg,
@@ -145,5 +146,5 @@ def test_knowledge_head_keeps_its_source_id_while_model_ids_are_removed(corpus: 
     sid = a.source_ids[0]
     text = fd.message.text  # type: ignore[union-attr]
     assert a.verdict == "CONTRADICTED"
-    assert f"발표법 자료({sid})" in text
-    assert text.count(sid) == 1  # 모델이 뒷부분에 적은 id 는 지웠다
+    assert f"발표법 자료 '{corpus.get(sid).title}'" in text
+    assert sid not in text  # 판단 첫 문장도 id 를 쓰지 않고, 모델이 뒷부분에 적은 id 는 지웠다

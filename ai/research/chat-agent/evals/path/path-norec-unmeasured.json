@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "id": "path-norec-unmeasured",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "Take 5 의 시선 영역이 측정 안 됨(값 null) — '문제 구간 없음'이 아니라 측정 안 됨으로 말한다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample",
+        "take_overrides": {
+          "t-5": {
+            "result": {
+              "unmeasured": {
+                "GAZE": "LOW_MEASURED_RATIO"
+              },
+              "issues": []
+            }
+          }
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5 2장에서 시선 문제가 있던 구간이 어디야?",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-first",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "unmeasured-on-plan",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "측정 안 됨",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "not-none-on-plan",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": "문제 구간 없음",
+        "grader": "regex",
+        "metric": "replan"
+      },
+      {
+        "check_id": "says-unmeasured",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "측정(되지|이 안| 안)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-none-claim",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "문제 구간[^\\n]{0,10}없|문제없|구간이 없",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

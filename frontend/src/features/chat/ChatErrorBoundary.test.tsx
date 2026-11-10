@@ -124,10 +124,10 @@ it('대화창이 던지면 런처 자리에 안내와 [다시 시도]를 한 번
   expect(alerts()).toHaveLength(1);
   expect(alerts()[0].textContent).toBe(CHAT_FAILED_TEXT);
   expect(button('다시 시도')).not.toBeNull();
-  // 오류 안내도 정상 런처와 같은 왼쪽 아래 위치에 남습니다
+  // 오류 안내도 정상 런처와 같은 오른쪽 아래 위치에 남습니다
   const failedLauncher = host.querySelector<HTMLElement>('[data-chat-launcher]')!;
-  expect(failedLauncher.classList.contains('left-2')).toBe(true);
-  expect(failedLauncher.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('32px');
+  expect(failedLauncher.classList.contains('right-2')).toBe(true);
+  expect(failedLauncher.style.getPropertyValue('--chat-launcher-default-bottom')).toBe('96px');
   expect(failedLauncher.style.getPropertyValue('--chat-launcher-bottom')).toBe('');
   expect(host.querySelector('[data-chat-launcher] [role="alert"]')).not.toBeNull();
 
@@ -193,7 +193,7 @@ it('[닫기]는 안내를 런처 크기의 [다시 시도]로 접고 초점을 �
 
   await click(button('닫기')!);
   expect(alerts()).toHaveLength(0);
-  const folded = byLabel('대화창 다시 시도')!;
+  const folded = byLabel('새미나이 다시 시도')!;
   expect(folded.title).toBe(CHAT_FAILED_TEXT);
   expect(document.activeElement).toBe(folded);
 
