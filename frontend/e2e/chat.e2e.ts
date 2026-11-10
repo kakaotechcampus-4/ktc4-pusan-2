@@ -92,6 +92,39 @@ test('넓은 화면에서는 400px을 확보하고 좁은 화면에서는 본문
   expect((await main.boundingBox())!.width).toBe(mainWidth);
 });
 
+test('모바일 패널은 배경을 비활성화하고 키보드 초점을 패널 안에 유지한다', async ({ page }) => {
+  for (const width of [375, 400, 401, 430, 452, 760]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/');
+    const panel = await openChat(page);
+    await expect(panel).toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('.chat-layout-content')).toHaveAttribute('inert', '');
+    await expect(page.locator('[data-chat-launcher] > button')).toBeHidden();
+
+    const first = panel.getByRole('button', { name: '새 대화', exact: true });
+    const last = panel.getByRole('button', { name: '입력', exact: true });
+    await last.focus();
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator('.chat-layout-content')).not.toHaveAttribute('inert');
+    await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
+  }
+});
+
+test('761px 이상에서는 채팅을 열어도 본문을 비활성화하지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto('/');
+  const panel = await openChat(page);
+  await expect(panel).toHaveAttribute('aria-modal', 'false');
+  await expect(page.locator('.chat-layout-content')).not.toHaveAttribute('inert');
+  await expect(page.locator('[data-chat-launcher] > button')).toBeVisible();
+});
+
 test('대본 매핑과 슬라이드 확인은 열린 채팅 위에 뷰포트 기준으로 표시한다', async ({ page }) => {
   await page.goto(`/pitch/${PITCH_ID}/edit`);
   const panel = await openChat(page);
