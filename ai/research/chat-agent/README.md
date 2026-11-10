@@ -36,8 +36,10 @@ chat-agent/
 ├─ tests/lab/ · tests/live/ 연구 도구 시험 · 실패 행 대응표 · 기준표 목차 시험 · 실제 모델 평가(live)
 │                           (코어 단위 · 계약 시험은 서비스 ai/service/tests/unit/chat_agent/)
 ├─ evals/scenarios/         평가셋 · 안전 세트 · 객관성 세트 · 에이전트 서비스 세트
-├─ evals/path/              경로 세트 24(개발 · 회귀: 도구 선택 · 계획 변경 · '없음' 근거, --dir 로 돈다)
-├─ evals/final/             독립 최종 평가 60(동결 문항 · 규칙 · 검수 · 결과 · 사후 분석, 9회차)
+├─ evals/path/              경로 세트 27(개발 · 회귀: 도구 선택 · 계획 변경 · '없음' 근거 · 여러 차례, --dir 로 돈다)
+├─ evals/final/             독립 최종 평가 v1 60(9회차, 결과를 본 뒤 고쳐 회귀 세트로 강등)
+├─ evals/final-v2/          독립 평가 v2 60(Issue #1194: 고치기 전 동결 · 봉인 기준선 · 끝나고 한 번)
+├─ evals/reader-review/     사람이 읽듯 대화를 보는 검토 기준(보정 전 보조 검토)
 ├─ e2e/                     로컬 풀스택 E2E(실제 FE · BE · PostgreSQL + 가짜 모델 AI 서비스, Playwright)
 ├─ reports/results/         커밋하는 평가 결과
 └─ reports/run-logs/        실행 로그 발췌(화면 단계 · 도구 기록 · 문장 · 결정 로그, runlog.py)
@@ -90,6 +92,7 @@ chat-agent/
 | `perf.py` | 실행 폴더의 단계별 시간(계획 · 조사 · 답 쓰기 · 검사 · 고치기) · 일반/다시 평가 턴 시간 · 첫 문장 시간 · 턴당 호출 · 토큰 · 도구 캐시 적중률 · 한도로 끝난 턴 비율(14-1 '비용 · 시간') | `runs.jsonl`(호출별 진단 시간표 `diag`) → 표 | 사람이 실행(`python -m chat_agent_lab.perf <실행 폴더>`) | 시험 `tests/lab/test_perf.py` |
 | `holdout.py` · `similarity.py` | 독립 최종 평가 세트 도구(13-5 · 13-8): 형식 검사 · 동결(문항 · 규칙 · 스키마 · 채점 코드 해시) · 대조(`--rules`), 기존 문항과의 유사도(글자 3-그램 자카드, 기준 0.45). **문항 글을 출력하지 않는다**(파일 · 검사 id · 위치 · 해시 · 점수만) | 문항 폴더 → 코드 · 해시 · 점수 | 사람이 실행 | 시험 `tests/lab/test_holdout.py` · `test_trajectory.py` |
 | `runlog.py` | 실행 로그 발췌: 시나리오를 평가 실행기와 같은 가짜 BE 길로 한 번 돌려 호출마다 plan 단계 · 도구 기록 · 문장 · 끝 상태와 그 호출의 결정 로그 · 호출 사이 BE 행동을 md · jsonl 로(서명 상태는 가림) | 시나리오 → `reports/run-logs/` | 사람이 실행(요금이 듦) | 시험 `tests/lab/test_runlog.py` |
+| `transcripts.py` | 평가 실행의 대화 기록: 평가 실행기를 그대로 돌리며(채점 · 실행 코드는 고치지 않고 `evals.grade`를 감쌈) 실행마다 사용자 화면에 보이는 것(사용자 말 · 할 일 단계 · 확인한 것 · 답 문장 · 카드)을 차례마다 `transcripts.jsonl`로 남긴다. 사람이 읽듯 보는 검토(`evals/reader-review/`)의 재료 | `evals` 인자 그대로 → 결과 폴더 `transcripts.jsonl` | 사람이 실행(요금이 듦) | 화면에 보이는 칸이 바뀌면(FE 12-4) `screen_turn`을 고친다. 독립 평가 v2 공식 실행에는 쓰지 않는다 |
 | `app.py` | 서비스 계층 대역: `ai/.env` 읽기, 자료 묶음 읽기(`--corpus` 모드, 기본 검수를 마친 카드만), 동시 실행 자리(429 `AGENT_BUSY`), `handle_turn` 부르기, 서비스 도구 호출 LLM(`ToolLlmClient` · `tool_role`) 만들기, 한 턴 해 보기 명령 | 요청 dict → 줄 목록 | live 시험 · 평가 · 손으로 해 보기 | 서비스의 같은 자리는 `api/chat_agent.py`(HTTP · 스트림 · 실행 풀) |
 | `fake_be.py` | 가짜 BE 실행기(12-3 흉내): 저장소(피치 · Take · 공식 리뷰 · 대화 · 목표 · 메시지 · 판단), 기본 자료 · 대화 기록 모으기, 스트림 · final 검사, 실행 이벤트(진행 줄 · 문장 줄을 `event_seq`로 저장, `events_after`로 `after_seq` 커서 조회, 문장 줄 번호 · 끝 줄 앞부분 대조, 끊김 · `error` 끝 줄 · 불일치면 받은 문장으로 `PARTIAL`), 행동 실행(소유권 · 한 번만 · 다시 평가는 실제 리뷰 코드로 A · B), 승인 흐름(`ASK` 행동은 `args` · `args_hash` 저장 뒤 `WAITING_APPROVAL`에서 멈추고 `approve` · `reject` · `cancel` · 30분 만료 · 대기 중 새 메시지로 이어짐, 거절 · 만료 · 취소는 AI를 부르지 않고 고정 문장을 덧붙여 저장, 선승인 `SAVE_GOAL`은 내용 해시를 다시 계산해 맞을 때만 실행, 연습 이동 버튼은 실행하지 않고 `click_practice`로만 기록), `ACTION_RESULT` 이어 부르기(누적량 + 행동 시간 · `loaded_takes` · `removed_sources` · 범위 확정과 `state_revision`), 답 저장, 기억(설정 켜기 · 끄기 · '기억 없이' 대화 · 항목 · 전체 지우기와 기억 번호, 요청 `memory` · 밀린 메시지 `overflow`, 프로필 저장은 다시 검사 · 번호 조건 · `MEMORY_SAVED` 카드, 요약은 판 번호가 같을 때만 갱신), 자동 목표 확인 | `AgentApp` · 메시지 → `Run`(호출 · 행동 · final 기록) | 통합 시험 · 평가 | 계약(5절) · BE 할 일(12-3)이 바뀌면 같이 고친다. 실제 BE가 아니다(DB · 동시성 · 재시작 복구 없음, 머리 설명의 '단순화') |
 
