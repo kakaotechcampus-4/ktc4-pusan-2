@@ -119,6 +119,8 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
   // 설문 안내 두 상태(#776)와 발표 준비 버튼 시안도 목록은 평소와 같다
   const ready = ['default', 'empty', 'consent', 'pending'].includes(stateId) || showPrepare;
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
+  // 이 시안의 sample 상태는 샘플 Take를 끝낸 계정을 나타낸다.
+  const inviteTutorial = stateId !== 'sample';
   return (
     <div className="pitch-create flex min-h-[40rem] flex-col bg-greige text-ink">
       {stateId === 'consent' &&
@@ -150,32 +152,34 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {/* 정적 샘플은 아직 튜토리얼을 마치지 않은 계정의 강조 상태를 나타낸다. */}
+            {/* 완료한 샘플 Take가 없는 상태에서만 초대 애니메이션을 보여 준다. */}
             <span className="relative inline-flex">
               <Link
                 to="/pitch/tutorial"
-                className="tutorial-invite inline-flex items-center justify-center border-2 border-ink bg-panel py-3 pr-5 pl-10 text-sm font-bold hover:bg-cream"
+                className={`inline-flex items-center justify-center border-2 border-ink bg-panel py-3 pr-5 text-sm font-bold hover:bg-cream ${inviteTutorial ? 'tutorial-invite pl-10' : 'pl-5'}`}
               >
                 튜토리얼 해 보기 →
               </Link>
-              <span
-                aria-hidden="true"
-                data-tutorial-sticker=""
-                className="pointer-events-none absolute -top-7 -left-8 h-[60px] w-[72px] -rotate-12"
-              >
-                <svg viewBox="0 0 100 84" className="absolute inset-0 h-full w-full">
-                  <polygon
-                    points={STARBURST}
-                    className="fill-coral-deep stroke-ink"
-                    strokeWidth="3.5"
-                    strokeLinejoin="miter"
-                  />
-                </svg>
-                <span className="absolute inset-0 flex flex-col items-center justify-center text-[11px] font-extrabold leading-[1.1] tracking-tight text-white">
-                  <span>PRESS</span>
-                  <span>START!</span>
+              {inviteTutorial && (
+                <span
+                  aria-hidden="true"
+                  data-tutorial-sticker=""
+                  className="pointer-events-none absolute -top-7 -left-8 h-[60px] w-[72px] -rotate-12"
+                >
+                  <svg viewBox="0 0 100 84" className="absolute inset-0 h-full w-full">
+                    <polygon
+                      points={STARBURST}
+                      className="fill-coral-deep stroke-ink"
+                      strokeWidth="3.5"
+                      strokeLinejoin="miter"
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex flex-col items-center justify-center text-[11px] font-extrabold leading-[1.1] tracking-tight text-white">
+                    <span>PRESS</span>
+                    <span>START!</span>
+                  </span>
                 </span>
-              </span>
+              )}
             </span>
             <Link to="/pitch/new" className={homePrimary}>
               <span aria-hidden="true">＋</span> 새 피치 만들기
