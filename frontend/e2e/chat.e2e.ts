@@ -76,8 +76,12 @@ test('넓은 화면에서는 400px을 확보하고 좁은 화면에서는 본문
 
   await page.setViewportSize({ width: 375, height: 780 });
   await expect(content).toHaveCSS('padding-right', '0px');
-  const viewportWidth = (await content.boundingBox())!.width;
-  await expect(panel).toHaveCSS('width', `${viewportWidth}px`);
+  const usableWidth = (await content.boundingBox())!.width;
+  await expect(panel).toHaveCSS('width', `${usableWidth}px`);
+  const composer = panel.getByRole('textbox', { name: '채팅 메시지' });
+  await composer.fill('모바일 입력 확인');
+  await expect(composer).toBeInViewport();
+  await expect(panel.getByRole('button', { name: '입력', exact: true })).toBeInViewport();
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
   await expect(page.getByRole('button', { name: '새미나이 열기', exact: true })).toBeFocused();
@@ -92,13 +96,22 @@ test('대본 매핑과 슬라이드 확인은 열린 채팅 위에 뷰포트 기
   await page.goto(`/pitch/${PITCH_ID}/edit`);
   const panel = await openChat(page);
   const composer = panel.getByRole('textbox', { name: '채팅 메시지' });
+  await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
+  const footer = page.locator('.pitch-create-square > footer');
+  await expect(footer).toHaveCSS('right', '400px');
+  expect(
+    await page.evaluate(
+      'document.documentElement.scrollWidth <= document.documentElement.clientWidth',
+    ),
+  ).toBe(true);
   await composer.fill('확인할 내용');
   const triggers = [
     [/^슬라이드 확인 ·/, '슬라이드 확인'],
     ['매핑 확인/수정', '매핑 확인·수정'],
   ] as const;
   for (const [trigger, title] of triggers) {
-    await page.getByRole('button', { name: trigger }).click();
+    const button = page.getByRole('button', { name: trigger });
+    await button.click();
     const modal = page
       .locator('dialog:modal')
       .filter({ has: page.getByRole('heading', { name: title, exact: true }) });
@@ -106,15 +119,28 @@ test('대본 매핑과 슬라이드 확인은 열린 채팅 위에 뷰포트 기
     await expect(modal).toHaveCSS('height', '850px');
     await expect(page.locator('[data-chat-panel]')).toBeVisible();
     await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
-    await modal.getByRole('button', { name: '닫기', exact: true }).click();
+    await page.keyboard.press('Escape');
     await expect(modal).toHaveCount(0);
+    await expect(button).toBeFocused();
     await expect(composer).toHaveValue('확인할 내용');
   }
 });
 
 test('2. 리포트에서 열면 범위가 그 피치 → 할 일 목록 · 도구 기록이 있는 답', async ({ page }) => {
   await page.goto(`/takes/${TAKE3_ID}`);
+  const header = page
+    .getByRole('banner')
+    .filter({ has: page.getByRole('link', { name: 'Take 기록', exact: true }) });
+  await expect(header).toBeVisible();
+  const headerWidth = (await header.boundingBox())!.width;
   const panel = await openChat(page);
+  await expect(page.locator('.chat-layout-content')).toHaveCSS('padding-right', '400px');
+  expect((await header.boundingBox())!.width).toBe(headerWidth - 400);
+  expect(
+    await page.evaluate(
+      'document.documentElement.scrollWidth <= document.documentElement.clientWidth',
+    ),
+  ).toBe(true);
   await expect(scopeChip(panel)).toHaveAccessibleName(`범위: 피치: ${PITCH_TITLE}`);
 
   await ask(panel, '지난번보다 뭐가 나아졌어?');
