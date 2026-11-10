@@ -192,7 +192,6 @@ it('옵션 클릭만 mousedown 기본 동작을 막고 목록 스크롤바와 �
   expect(box().getAttribute('aria-expanded')).toBe('false');
 });
 
-
 it('목록 스크롤바 때문에 초점이 main으로 옮겨져도 선택창을 유지한다', async () => {
   await render();
   const main = document.createElement('main');
