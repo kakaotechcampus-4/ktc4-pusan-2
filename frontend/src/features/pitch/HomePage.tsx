@@ -230,9 +230,25 @@ export function HomePage() {
               type="button"
               onClick={() => setTipPaused((current) => !current)}
               aria-label={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
-              className="min-h-9 shrink-0 px-1 text-xs underline underline-offset-4 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              title={tipPaused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
+              className="inline-flex size-11 shrink-0 items-center justify-center hover:bg-ink/10 hover:text-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
-              {tipPaused ? '재개' : '일시정지'}
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {tipPaused ? (
+                  <path d="m8 5 11 7-11 7V5Z" />
+                ) : (
+                  <path d="M9 5v14m6-14v14" />
+                )}
+              </svg>
             </button>
           </div>
           <button
