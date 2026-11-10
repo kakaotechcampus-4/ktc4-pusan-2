@@ -17,12 +17,9 @@ export function PitchSelectPreview({
         { value: 'p1', label: pitchTitle },
       ];
   const [selected, setSelected] = useState(comparing ? 'p1' : '');
-  const [active, setActive] = useState(comparing ? 0 : 0);
+  const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((option) => option.value === selected),
-  );
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === selected));
   const selectedOption = options[selectedIndex]!;
 
   function choose(index: number) {
@@ -52,8 +49,9 @@ export function PitchSelectPreview({
       }
       return;
     }
-    const direction =
-      event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+    let direction = 0;
+    if (event.key === 'ArrowDown') direction = 1;
+    else if (event.key === 'ArrowUp') direction = -1;
     if (direction || event.key === 'Home' || event.key === 'End') {
       event.preventDefault();
       setOpen(true);
@@ -109,7 +107,7 @@ export function PitchSelectPreview({
                 title={option.label}
                 onMouseMove={() => setActive(index)}
                 onClick={() => choose(index)}
-                className={`flex min-h-11 cursor-pointer items-center gap-3 px-4 py-2 ${index === active ? 'bg-cream' : index === selectedIndex ? 'bg-coral-wash' : ''} ${index === selectedIndex ? 'font-bold text-coral-deep' : ''} ${!comparing && index === 0 ? 'mb-1 border-b border-line' : ''}`}
+                className={optionClass(index, active, selectedIndex, !comparing)}
               >
                 <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
                   {option.label}
@@ -126,4 +124,13 @@ export function PitchSelectPreview({
       </div>
     </div>
   );
+}
+
+function optionClass(index: number, active: number, selected: number, showAll: boolean) {
+  const classes = ['flex min-h-11 cursor-pointer items-center gap-3 px-4 py-2'];
+  if (index === active) classes.push('bg-cream');
+  else if (index === selected) classes.push('bg-coral-wash');
+  if (index === selected) classes.push('font-bold text-coral-deep');
+  if (showAll && index === 0) classes.push('mb-1 border-b border-line');
+  return classes.join(' ');
 }
