@@ -5,7 +5,7 @@ Take가 끝난 뒤 코치의 **Take 결과**와 **대본 전달도 채점**을 �
 | | |
 |---|---|
 | 담당 | jinn-ie |
-| 기능 버전 | `review-1.4`, 요청 · 응답 스키마 `1.1` (서비스 `features/review/version.py`) |
+| 기능 버전 | `review-1.5`, 요청 · 응답 스키마 `1.1` (서비스 `features/review/version.py`) |
 | 상태 | 코어와 `POST /takes/review`가 AI 서비스에 있습니다(2026-10-28 옮김). 이 폴더는 평가 · 실제 LLM 실행 · 예시 만들기만 합니다. **가상 발표 48 Take로만 평가했습니다** (실제 리허설 없음) |
 | 설계 | 목적 · BE ↔ 리뷰 계약 · 처리 · 배포 → [`docs/ai/features/review-agent.md`](../../../docs/ai/features/review-agent.md) |
 

@@ -150,6 +150,7 @@ const screenRoutes = routes.map((route) => {
               <RequireSession
                 stageBar={['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
                 header={appHeaderPaths.includes(route.path) ? <AppHeader /> : undefined}
+                holdUntilConsent={practicePaths.includes(route.path)}
               />
             </LaunchGate>
           </PageTitle>

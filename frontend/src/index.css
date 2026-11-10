@@ -252,18 +252,18 @@ body {
   --chat-panel-width: 400px;
 }
 
+/* 오른쪽 패널을 연 동안 런처를 숨깁니다. 닫기 버튼과 Esc가 닫기 동작을 맡습니다. */
+[data-chat-launcher]:has([data-chat-panel]) > button {
+  visibility: hidden;
+}
+
 .chat-side-panel {
   transition: translate 180ms ease-out;
 }
 
-/* 모바일에서는 패널을 닫는 버튼이 안에 있으므로 런처를 숨기고 전체 높이를 사용합니다.
-   401~451px의 런처·패널 겹침도 막고, 배경과의 상호작용을 차단했음을 보여 줍니다. */
+/* 모바일 오버레이는 전체 높이를 사용하고 배경과의 상호작용을 차단합니다. */
 @media (max-width: 760px) {
   /* 본문 스크롤 잠금은 ChatPanel의 이펙트가 document scrollY를 보존하며 담당합니다. */
-  [data-chat-launcher]:has([data-chat-panel]) > button {
-    visibility: hidden;
-  }
-
   .chat-layout:has([data-chat-panel])::before {
     content: '';
     position: fixed;
@@ -329,27 +329,41 @@ body {
   --chat-launcher-bottom: var(--chat-launcher-default-bottom);
 }
 
-/* 홈의 TIP은 실제 런처가 보이는 좁은 화면에서만 왼쪽 공간을 확보합니다. */
+/* 홈 푸터는 우측 런처가 표시되는 좁은 화면에서 오른쪽 공간을 확보합니다. */
 @media (max-width: 1279px) {
   body:has([data-chat-launcher]) .home-footer-content {
-    padding-left: 5rem;
+    padding-right: 5rem;
   }
 }
 
-/* 낮은 데스크톱 창에서 생성·수정 화면의 버전 관리 버튼은 왼쪽 런처와 떨어뜨립니다. */
-@media (min-width: 761px) and (max-height: 600px) {
-  body:has([data-chat-launcher]) .pitch-create-square aside .create-versions {
-    margin-left: 3.5rem;
-  }
-}
-
-/* 좁은 화면에서는 버튼을 고정 푸터의 왼쪽 빈 공간으로 내리고 조작부에 자리를 남깁니다. */
+/* 좁은 생성·수정 화면에서는 버튼을 고정 푸터의 오른쪽 빈 공간에 둡니다. */
 @media (max-width: 760px) {
   body:has(.pitch-create-square) [data-chat-launcher] {
     --chat-launcher-bottom: 1rem;
   }
 
   body:has([data-chat-launcher]) .pitch-create-square > footer > div {
-    padding-left: 4rem;
+    padding-right: 4rem;
+  }
+
+  /* 오류 안내가 펼쳐진 동안에만 본문 끝을 안내 위로 스크롤할 공간을 확보합니다. */
+  body:has([data-chat-launcher] > section[aria-label='새미나이 오류']) .pitch-create-square {
+    padding-bottom: 22rem;
+  }
+
+  /* 일반 모바일에서는 두 줄 고정 푸터를 피합니다. 접힌 버튼은 기존 1rem을 유지합니다. */
+  body:has(.pitch-create-square) [data-chat-launcher]:has(section[aria-label='새미나이 오류']) {
+    --chat-launcher-bottom: 9rem;
+  }
+}
+
+/* 320~359px에서는 세 줄로 늘어나는 고정 푸터를 피합니다. */
+@media (max-width: 359px) {
+  body:has(.pitch-create-square) [data-chat-launcher]:has(section[aria-label='새미나이 오류']) {
+    --chat-launcher-bottom: 12rem;
+  }
+
+  body:has([data-chat-launcher] > section[aria-label='새미나이 오류']) .pitch-create-square {
+    padding-bottom: 25rem;
   }
 }

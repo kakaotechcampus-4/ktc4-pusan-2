@@ -5,7 +5,12 @@ import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { appRouterShell, appRoutes, router as browserRouter } from './routes';
 
-const state = vi.hoisted(() => ({ signedIn: false, stageImports: 0, launchOpen: true }));
+const state = vi.hoisted(() => ({
+  signedIn: false,
+  consented: true,
+  stageImports: 0,
+  launchOpen: true,
+}));
 vi.mock('@/features/auth/useSession', () => ({
   useSession: () => ({
     isPending: false,
@@ -13,6 +18,11 @@ vi.mock('@/features/auth/useSession', () => ({
     data: state.signedIn ? { name: '테스트 사용자' } : null,
   }),
   useLogout: () => ({ isPending: false, isError: false }),
+}));
+// 동의 화면 자체는 session.test.tsx 가 봅니다. 여기서는 동의가 어느 화면에 걸리는지만 봅니다
+vi.mock('@/shared/lib/privacyConsent', () => ({
+  usePrivacyConsent: () => state.consented,
+  recordPrivacyConsent: () => undefined,
 }));
 vi.mock('@/features/onboarding/launch', () => ({
   useLaunchStatus: () => ({ isOpen: state.launchOpen }),
@@ -43,6 +53,13 @@ let router: ReturnType<typeof createMemoryRouter> | undefined;
 beforeEach(() => {
   browserRouter.dispose();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  state.consented = true;
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -85,6 +102,25 @@ it('loads rehearsal only after the session gate, preserving take routes and titl
   expect(host.textContent).toContain('리허설 next-take');
   expect(state.stageImports).toBe(1);
   expect(document.title).toBe('실전 검증 리허설 | 피치코치');
+});
+
+it('keeps public screens open for a signed-in user who has not agreed yet', async () => {
+  state.signedIn = true;
+  state.consented = false;
+  await visit('/privacy');
+  await vi.waitFor(() => expect(document.title).toBe('개인정보 처리방침 | 피치코치'));
+  expect(host.textContent).not.toContain('개인정보 처리 및 데이터 활용');
+
+  await visit('/');
+  expect(host.querySelector('dialog h2')?.textContent).toBe('개인정보 처리 및 데이터 활용');
+  // 홈은 동의 창 뒤에 그려지고, 카메라를 켜는 연습 화면은 동의 전에 그리지 않습니다
+  expect(host.textContent).toContain('내 피치');
+
+  const importsBefore = state.stageImports;
+  await visit('/takes/held-take/rehearsal');
+  expect(host.querySelector('dialog h2')?.textContent).toBe('개인정보 처리 및 데이터 활용');
+  expect(host.textContent).not.toContain('리허설 held-take');
+  expect(state.stageImports).toBe(importsBefore);
 });
 
 it('offers recovery when a screen chunk fails and can navigate back to the eager home', async () => {

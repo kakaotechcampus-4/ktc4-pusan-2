@@ -356,7 +356,7 @@ import { TakeStatusBadge } from '@/features/report/history/TakeStatusBadge';
       '닫힌 뒤 초점은 부모가 옮긴다. 취소면 연 ··· 버튼, 지웠으면 다음 줄의 제목이다.',
     ],
     knownIssues: [
-      '보관 기한 "2026년 12월 31일"은 동의 안내(테스트 참여 안내 창)와 같은 임시 값이다. BE 삭제 일정과 함께 팀이 정하면 두 곳을 같이 고친다(제품은 SURVEY_RETENTION_UNTIL 한 곳).',
+      '보관 기한 "2026년 12월 31일"은 개인정보 처리 동의 팝업 · 처리방침 · 테스트 참여 안내와 같은 값이다(제품은 shared/lib/retention.ts 의 DATA_RETENTION_UNTIL 한 곳). BE 의 일괄 파기 작업은 아직 없다.',
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
     sources: ['frontend/src/features/pitch/home/DeletePitchDialog.tsx'],
@@ -454,7 +454,7 @@ import { TakeStatusBadge } from '@/features/report/history/TakeStatusBadge';
     code: `// 제품: 동의하지 않은 사용자의 홈 위쪽 카드 → 안내 보고 참여하기
 <HomeSurveyNotice />`,
     knownIssues: [
-      '보관 기한 "2026년 12월 31일"은 임시 값이다. BE 삭제 일정과 함께 팀이 정한다(BE take-survey.md 5절).',
+      '보관 기한 "2026년 12월 31일"은 개인정보 처리 동의 팝업 · 처리방침과 같은 값이다(제품은 DATA_RETENTION_UNTIL). BE 의 일괄 파기 작업은 아직 없다(BE take-survey.md 5절).',
     ],
     productNote:
       '홈 샘플에서는 동의하면 완료 안내로 초점이 옮겨 간다. 단독 창 예제는 닫히는 동작만 보여 준다. 서버 전송은 재현하지 않는다.',
