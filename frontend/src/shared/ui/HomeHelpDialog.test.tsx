@@ -108,7 +108,9 @@ it('개인정보 없는 SVG 목업에 대체 텍스트와 키보드로 여는 �
   expect(host.textContent).toContain('설명용 목업 (작은 화면에서는 가로 스크롤 가능)');
   expect(host.textContent).toContain('Google Chrome');
   expect(host.textContent).toContain('Edge에서는 시선 추적');
-  expect(host.querySelectorAll('figure [tabindex="0"][aria-label$="가로 스크롤 영역"]')).toHaveLength(3);
+  expect(
+    host.querySelectorAll('figure [tabindex="0"][aria-label$="가로 스크롤 영역"]'),
+  ).toHaveLength(3);
 });
 
 it('리허설의 여덟 기능과 키보드 조작을 이미지와 별도 텍스트로 제공한다', async () => {
@@ -128,7 +130,9 @@ it('리허설의 여덟 기능과 키보드 조작을 이미지와 별도 텍스
   ]) {
     expect([...numbered].some((row) => row.textContent?.includes(label))).toBe(true);
   }
-  expect(host.textContent).toContain('Space 다음 장');
+  expect(host.textContent).toContain('왼쪽 클릭하면 다음 장');
+  expect(host.textContent).toContain('오른쪽 클릭하면 이전 장');
+  expect(host.textContent).toContain('Space로도 넘기고');
   expect(host.textContent).toContain('↑·↓');
   expect(host.textContent).toContain('자동으로 끝날 수도 있어요');
 });
