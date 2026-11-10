@@ -55,9 +55,9 @@ function activeOption() {
   return id ? document.getElementById(id)?.textContent : null;
 }
 
-async function press(key: string) {
+async function press(key: string, init: KeyboardEventInit = {}) {
   await act(async () => {
-    box().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    box().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...init }));
   });
 }
 
@@ -92,6 +92,8 @@ it('↓ 로 열면 고른 항목을 가리키고, 옮긴 뒤 Enter 로 고르면
 
 it('Home · End 로 처음과 끝으로 가고, Esc 는 바꾸지 않고 닫는다', async () => {
   await render();
+  const onDocumentKeyDown = vi.fn();
+  document.addEventListener('keydown', onDocumentKeyDown);
   await press('End');
   expect(activeOption()).toBe('다른 발표');
   await press('Home');
@@ -99,6 +101,8 @@ it('Home · End 로 처음과 끝으로 가고, Esc 는 바꾸지 않고 닫는�
   await press('Escape');
   expect(box().getAttribute('aria-expanded')).toBe('false');
   expect(onChange).not.toHaveBeenCalled();
+  expect(onDocumentKeyDown).not.toHaveBeenCalled();
+  document.removeEventListener('keydown', onDocumentKeyDown);
 });
 
 it('마우스로 항목을 누르면 고르고, 이미 고른 항목은 다시 알리지 않는다', async () => {
@@ -128,7 +132,6 @@ it('Tab 또는 외부 포인터 입력은 값을 바꾸지 않고 목록을 닫�
   try {
     await act(async () => {
       outside.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-      outside.focus();
     });
     expect(box().getAttribute('aria-expanded')).toBe('false');
     expect(onChange).not.toHaveBeenCalled();
@@ -150,6 +153,8 @@ it('좁은 화면에서도 목록은 버튼 너비를 넘지 않고 긴 피치 �
   expect(container.classList.contains('max-w-full')).toBe(true);
   expect(container.classList.contains('min-w-0')).toBe(true);
   expect(container.classList.contains('flex-1')).toBe(true);
+  expect(container.classList.contains('sm:w-xs')).toBe(true);
+  expect(container.classList.contains('sm:flex-none')).toBe(true);
   expect(list.classList.contains('inset-x-0')).toBe(true);
   expect(list.classList.contains('w-max')).toBe(false);
   expect(options()[1]!.textContent).toBe(longTitle);
@@ -185,4 +190,63 @@ it('옵션 클릭만 mousedown 기본 동작을 막고 목록 스크롤바와 �
   await act(async () => options()[2]!.click());
   expect(onChange).toHaveBeenCalledWith('p2');
   expect(box().getAttribute('aria-expanded')).toBe('false');
+});
+
+
+it('목록 스크롤바 때문에 초점이 main으로 옮겨져도 선택창을 유지한다', async () => {
+  await render();
+  const main = document.createElement('main');
+  main.tabIndex = -1;
+  document.body.append(main);
+  try {
+    await act(async () => box().focus());
+    await act(async () => box().click());
+    await act(async () => main.focus());
+    expect(document.activeElement).toBe(main);
+    expect(box().getAttribute('aria-expanded')).toBe('true');
+    expect(host.querySelector('[role="listbox"]')).not.toBeNull();
+  } finally {
+    main.remove();
+  }
+});
+
+it('창이 비활성화되면 목록을 닫는다', async () => {
+  await render();
+  await act(async () => box().click());
+  await act(async () => window.dispatchEvent(new Event('blur')));
+  expect(box().getAttribute('aria-expanded')).toBe('false');
+});
+
+it('열린 목록에서 Alt+위쪽 화살표는 현재 항목을 선택하고 닫는다', async () => {
+  await render();
+  await press('End');
+  expect(activeOption()).toBe('다른 발표');
+  await press('ArrowUp', { altKey: true });
+  expect(onChange).toHaveBeenCalledWith('p2');
+  expect(box().getAttribute('aria-expanded')).toBe('false');
+});
+
+it('아래 공간이 좁고 위가 넓으면 목록을 위로 펼친다', async () => {
+  await render();
+  const trigger = box();
+  const originalRect = trigger.getBoundingClientRect;
+  trigger.getBoundingClientRect = () =>
+    ({ top: 400, bottom: 440 } as DOMRect);
+  const originalHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get() {
+      return this.getAttribute('role') === 'listbox' ? 200 : 0;
+    },
+  });
+  try {
+    await act(async () => trigger.click());
+    const list = host.querySelector<HTMLElement>('[role="listbox"]')!;
+    expect(list.classList.contains('bottom-full')).toBe(true);
+    expect(list.classList.contains('top-full')).toBe(false);
+  } finally {
+    trigger.getBoundingClientRect = originalRect;
+    if (originalHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalHeight);
+    else delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+  }
 });
