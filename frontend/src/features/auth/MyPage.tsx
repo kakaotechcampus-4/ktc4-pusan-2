@@ -62,8 +62,9 @@ export function MyPage() {
           <input
             id="raw-data-consent"
             type="checkbox"
-            // 테스트 기간에는 항상 켜 둡니다. 서버 값은 `useRawDataConsentLock` 이 맞춥니다
-            checked
+            // 테스트 기간에는 사용자가 바꾸지 못합니다. 꺼져 있으면 다음 연습을 시작할 때 켭니다
+            // (`ensureRawDataConsent`). 화면은 서버 값을 그대로 보여 줍니다
+            checked={user?.raw_data_consent ?? false}
             disabled
             readOnly
             className="size-4 shrink-0 accent-ink"
@@ -71,8 +72,13 @@ export function MyPage() {
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
         <span className="text-xs text-stone">
-          지금은 테스트 기간이라 이 설정을 켜 둔 채로 바꿀 수 없어요.
+          지금은 테스트 기간이라 연습을 시작할 때 이 설정을 켜고, 바꿀 수 없어요.
         </span>
+        {user && !user.raw_data_consent && (
+          <span className="text-xs text-stone">
+            아직 꺼져 있어요. 다음 연습을 시작할 때 켜져요.
+          </span>
+        )}
       </Card>
 
       <Card title="이 브라우저의 기록">

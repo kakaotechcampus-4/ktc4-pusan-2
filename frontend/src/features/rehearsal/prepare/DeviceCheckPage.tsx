@@ -11,6 +11,7 @@ import { toCalibrationRequest } from '../lib/calibrationRequest';
 import { keepBaseVoice, recallBaseVoice, type RememberedBaseVoice } from '../lib/baseVoiceMemory';
 import { sendCalibration } from '../lib/sendCalibration';
 import { toMessage } from '@/shared/api/errorMessage';
+import { RAW_DATA_CONSENT_FAILED, useEnsureRawDataConsent } from '@/shared/api/rawDataConsent';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
 import { AudioInputMeter } from './AudioInputMeter';
@@ -380,6 +381,7 @@ export function DeviceCheckPage() {
   );
   const cal = useGazeSetup({ stream, videoRef, live });
   const createTake = useCreateTake();
+  const ensureConsent = useEnsureRawDataConsent();
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [starting, setStarting] = useState(false);
@@ -546,6 +548,17 @@ export function DeviceCheckPage() {
     if (!settleBaseLevel()) return;
     setStarting(true);
     setStartError(null);
+    // 테스트 기간에는 연습 기록 사용 동의를 켠 뒤에 시작합니다 (#1208). Take 가 시작될 때 이 값이 고정되므로
+    // 다른 곳의 연습을 끝내거나 Take 를 만들기 전에 봅니다. 켜지 못하면 시작하지 않고, 다시 누르면 다시 시도합니다
+    try {
+      await ensureConsent();
+    } catch (e) {
+      if (leftPage.current) return;
+      setStartError(`${RAW_DATA_CONSENT_FAILED} ${toMessage(e)}`);
+      setStarting(false);
+      return;
+    }
+    if (leftPage.current) return;
     const other = await activeTakeOrNone();
     if (leftPage.current) return;
     if (other) {

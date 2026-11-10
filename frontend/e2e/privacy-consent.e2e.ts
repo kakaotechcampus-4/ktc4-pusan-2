@@ -43,3 +43,21 @@ test('동의 전에 다른 화면 주소로 바로 들어와도 그 화면 위�
   await expect(page).toHaveURL(/\/takes$/);
   await expect(page.getByRole('heading', { name: 'Take 기록' })).toBeVisible();
 });
+
+test('개인정보 안내에 동의하기 전후로, 화면에 들어오는 것만으로는 연습 기록 사용 동의를 바꾸지 않는다 (#1208)', async ({
+  page,
+}) => {
+  const patches: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH' && new URL(request.url()).pathname === '/api/users/me')
+      patches.push(request.postData() ?? '');
+  });
+
+  await page.goto('/me');
+  await expect(page.getByRole('dialog', { name: '개인정보 처리 및 데이터 활용' })).toBeVisible();
+  await page.getByRole('button', { name: '동의하고 시작하기' }).click();
+  await expect(page.getByRole('heading', { name: '마이페이지' })).toBeVisible();
+
+  // 켜는 것은 장치 점검의 시작 버튼에서만 합니다 (`shared/api/rawDataConsent.ts`)
+  expect(patches).toEqual([]);
+});
