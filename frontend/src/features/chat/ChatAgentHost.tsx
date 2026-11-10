@@ -59,7 +59,11 @@ export function ChatAgentHost() {
 
   // 숨는 화면으로 가면 닫습니다. 돌아왔을 때 패널이 다시 열려 초점을 빼앗지 않게 합니다
   useLayoutEffect(() => {
-    if (hidden) useChatStore.getState().closeChat();
+    if (!hidden) return;
+    const wasOpen = useChatStore.getState().open;
+    useChatStore.getState().closeChat();
+    // 패널 안의 버튼으로 이동했다면 사라진 버튼 대신 목적지 본문에 초점을 둡니다.
+    if (wasOpen) document.getElementById('main')?.focus({ preventScroll: true });
   }, [hidden]);
 
   return (
@@ -82,6 +86,11 @@ function resetChatAfterFailure(failures: number) {
 
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
 const MAX_MESSAGE_LENGTH = 2000;
+const MOBILE_CHAT_QUERY = '(max-width: 760px)';
+const isMobileChat = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia(MOBILE_CHAT_QUERY).matches;
 
 function ChatLayer({ pathname, info }: { pathname: string; info: ChatRouteInfo | null }) {
   // 입력은 여기 두어 패널을 닫거나 채팅이 숨는 화면을 지나도 남습니다. 사용자가 바뀌면 비웁니다
@@ -170,7 +179,14 @@ function ChatSessionView({
 
   const close = () => {
     useChatStore.getState().closeChat();
-    launcherRef.current?.focus();
+    // 모바일에서는 패널이 닫힐 때까지 런처가 숨겨져 있어 렌더 완료 뒤 초점을 돌립니다.
+    if (isMobileChat()) {
+      window.setTimeout(() => {
+        if (!useChatStore.getState().open) launcherRef.current?.focus();
+      }, 0);
+    } else {
+      launcherRef.current?.focus();
+    }
   };
 
   return (
@@ -406,6 +422,29 @@ function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
+  const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(MOBILE_CHAT_QUERY);
+    const sync = () => setMobileOverlay(media.matches);
+    media.addEventListener('change', sync);
+    sync();
+    return () => media.removeEventListener('change', sync);
+  }, []);
+  useLayoutEffect(() => {
+    if (!mobileOverlay) return;
+    const content = document.querySelector<HTMLElement>('.chat-layout-content');
+    if (!content) return;
+    const wasInert = content.hasAttribute('inert');
+    content.setAttribute('inert', '');
+    if (panelRef.current && !panelRef.current.contains(document.activeElement)) {
+      if (inputRef.current && !inputRef.current.closest('[hidden]')) inputRef.current.focus();
+      else panelRef.current.focus();
+    }
+    return () => {
+      if (!wasInert) content.removeAttribute('inert');
+    };
+  }, [mobileOverlay]);
   useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
@@ -470,7 +509,7 @@ function ChatPanel({
       ref={panelRef}
       id={`${id}-panel`}
       role="dialog"
-      aria-modal="false"
+      aria-modal={mobileOverlay}
       aria-labelledby={`${id}-title`}
       // 누른 버튼이 사라졌는데 입력칸도 숨겨져 있을 때 초점을 받는 자리입니다 (useKeepFocusInPanel)
       tabIndex={-1}
@@ -478,6 +517,31 @@ function ChatPanel({
         if (event.key === 'Escape') {
           event.stopPropagation();
           onClose();
+          return;
+        }
+        if (event.key === 'Tab' && mobileOverlay) {
+          const focusable = [
+            ...event.currentTarget.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+            ),
+          ].filter(
+            (element) =>
+              !element.closest('[hidden]') &&
+              element.getClientRects().length > 0 &&
+              window.getComputedStyle(element).visibility !== 'hidden',
+          );
+          const first = focusable[0];
+          const last = focusable.at(-1);
+          if (!first || !last) {
+            event.preventDefault();
+            event.currentTarget.focus();
+          } else if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
         }
       }}
       className="chat-side-panel fixed inset-y-0 right-0 flex w-[min(var(--chat-panel-width),100%)] flex-col overflow-y-auto overscroll-contain border-l border-line bg-white outline-none"
