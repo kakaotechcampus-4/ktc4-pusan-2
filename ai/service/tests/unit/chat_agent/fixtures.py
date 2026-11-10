@@ -401,7 +401,9 @@ def pitch_summary(p: PitchRecord) -> dict[str, Any]:
     return {
         "pitch_id": p.pitch_id,
         "title": p.title,
-        "take_count": len(p.takes),
+        # BE 와 같게 분석이 끝난(`COMPLETED`) Take 만 센다(backend chat/repository.py `take_count`). 분석 중 · 실패한 Take 는
+        # 마지막 연습 시각(`last_practiced_at`)에는 들 수 있지만 이 수에는 들지 않는다(기능 문서 5-2 `PitchSummary`)
+        "take_count": sum(1 for t in p.takes if t.status == "COMPLETED"),
         "last_practiced_at": p.last_practiced_at,
         "last_review": (
             {
