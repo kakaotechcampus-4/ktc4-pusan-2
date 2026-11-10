@@ -98,6 +98,7 @@ it('Home · End 로 처음과 끝으로 가고, Esc 는 바꾸지 않고 닫는�
   expect(activeOption()).toBe('다른 발표');
   await press('Home');
   expect(activeOption()).toBe('전체');
+  onDocumentKeyDown.mockClear();
   await press('Escape');
   expect(box().getAttribute('aria-expanded')).toBe('false');
   expect(onChange).not.toHaveBeenCalled();
