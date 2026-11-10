@@ -24,7 +24,13 @@ export const PRODUCT_CHECKED: {
 } = {
   commit: '0bf5dbb1e1421b825ee88b706e49fd436fd045e7',
   date: '2026-11-09',
-  pending: [],
+  pending: [
+    {
+      pr: 1199,
+      head: 'a616b7f7',
+      what: '로그인 화면의 Chrome 안내 창, 터치 기기 판별을 shared/lib/browserCheck.ts 로 옮김',
+    },
+  ],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -933,6 +939,7 @@ const infoScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/info/UnsupportedPage.tsx',
       'frontend/src/features/info/unsupportedReason.ts',
+      'frontend/src/shared/lib/browserCheck.ts',
       'frontend/src/app/DesktopGate.tsx',
     ],
     productNote: '"링크 복사"는 샘플에서 클립보드를 쓰지 않고 복사 결과 문구도 띄우지 않는다.',
@@ -1052,13 +1059,18 @@ const onboardingScreens: GuideScreen[] = [
       '이미 로그인했으면 목적지(next)로 바로 보낸다. 외부 주소는 목적지로 받지 않는다.',
       '상태 줄은 role="status"로 한 줄만 보인다.',
       '정책 문서가 검토용 초안이라 "동의한 것으로 본다"고 쓰지 않고 확인만 안내한다.',
-      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳".',
+      'PC의 Google Chrome이 아니면 세션 확인이 끝난 뒤 안내 창을 띄운다. 막지 않고, 닫으면 Google 로그인 버튼으로 초점이 간다. 휴대폰 · 태블릿은 연습 화면이 열리지 않는다고 알린다. 닫은 기록은 남기지 않는다.',
+      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳". Chrome 안내 창은 다른 창처럼 해요체다.',
     ],
-    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림'],
+    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림', 'ChromeNoticeDialog'],
     tokens: ['panel', 'ink', 'cream', 'line-strong'],
-    sources: ['frontend/src/features/auth/LoginPage.tsx'],
+    sources: [
+      'frontend/src/features/auth/LoginPage.tsx',
+      'frontend/src/features/auth/ChromeNoticeDialog.tsx',
+      'frontend/src/shared/lib/browserCheck.ts',
+    ],
     productNote:
-      '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내는 그리지 않는다.',
+      '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내와 Chrome 안내 창은 그리지 않는다.',
     productLinks: [link('로그인', '/login')],
     next: [next('로그인 → 홈', 'home'), next('서비스 소개', 'welcome')],
   },
