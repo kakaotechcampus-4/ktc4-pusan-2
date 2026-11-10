@@ -139,14 +139,21 @@ export function MyScreen({ stateId }: ScreenProps) {
         <label className="flex min-h-11 items-center gap-3 text-sm font-bold">
           <input
             type="checkbox"
-            defaultChecked={consented}
+            checked={consented}
+            disabled
+            readOnly
             className="size-4 shrink-0 accent-ink"
           />
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
         <span className="text-xs text-stone">
-          바꾼 설정은 다음에 시작하는 연습부터 적용돼요. 이미 끝난 연습은 그대로예요.
+          지금은 테스트 기간이라 연습을 시작할 때 이 설정을 켜고, 바꿀 수 없어요.
         </span>
+        {!consented && (
+          <span className="text-xs text-stone">
+            아직 꺼져 있어요. 다음 연습을 시작할 때 켜져요.
+          </span>
+        )}
       </Card>
 
       <Card title="이 브라우저의 기록">
