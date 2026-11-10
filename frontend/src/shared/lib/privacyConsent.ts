@@ -7,7 +7,7 @@ import { useSyncExternalStore } from 'react';
  * 그래서 다른 기기 · 브라우저에서는 한 번 더 묻고, 서버에는 동의 기록이 남지 않습니다.
  * BE 칸이 생기면 이 파일의 읽기 · 쓰기만 바꿉니다.
  *
- * 안내문(`PrivacyConsentPage`)을 고치면 `PRIVACY_CONSENT_VERSION` 을 올립니다 — 바뀐 안내문으로 다시 묻습니다.
+ * 안내문(`PrivacyConsentDialog`)을 고치면 `PRIVACY_CONSENT_VERSION` 을 올립니다 — 바뀐 안내문으로 다시 묻습니다.
  */
 export const PRIVACY_CONSENT_VERSION = 1;
 

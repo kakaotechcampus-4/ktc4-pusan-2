@@ -6,31 +6,37 @@ import { expect, test } from '@playwright/test';
  */
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test('동의하기 전에는 홈 대신 동의 화면이 뜨고, 동의하면 홈이 열리며 다시 묻지 않는다', async ({
+test('동의하기 전에는 홈 위에 동의 창이 뜨고, 동의하면 홈이 열리며 다시 묻지 않는다', async ({
   page,
 }) => {
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: '개인정보 처리 및 데이터 활용' })).toBeVisible();
-  await expect(page.getByRole('region', { name: '발표 목록' })).toHaveCount(0);
+  const consent = page.getByRole('dialog', { name: '개인정보 처리 및 데이터 활용' });
+  await expect(consent).toBeVisible();
   await expect(page.getByRole('button', { name: '새미나이 열기' })).toHaveCount(0);
+  // 동의 전에는 Esc 로 닫히지 않습니다
+  await page.keyboard.press('Escape');
+  await expect(consent).toBeVisible();
 
-  await page.getByRole('button', { name: '동의하고 시작하기' }).click();
+  await consent.getByRole('button', { name: '동의하고 시작하기' }).click();
 
+  await expect(consent).toHaveCount(0);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('region', { name: '발표 목록' })).toBeVisible();
+  // 동의 전에 '없음'을 본 것이 런처 이름이 바뀌어 지나간 것이 아님을 같은 이름으로 확인합니다
+  await expect(page.getByRole('button', { name: '새미나이 열기' })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('region', { name: '발표 목록' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '개인정보 처리 및 데이터 활용' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '개인정보 처리 및 데이터 활용' })).toHaveCount(0);
 });
 
-test('동의 전에 다른 화면 주소로 바로 들어와도 동의 화면이 먼저 뜨고, 동의하면 그 화면이 열린다', async ({
+test('동의 전에 다른 화면 주소로 바로 들어와도 그 화면 위에 동의 창이 뜨고, 동의하면 그 화면이 열린다', async ({
   page,
 }) => {
   await page.goto('/takes');
 
-  await expect(page.getByRole('heading', { name: '개인정보 처리 및 데이터 활용' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '개인정보 처리 및 데이터 활용' })).toBeVisible();
 
   await page.getByRole('button', { name: '동의하고 시작하기' }).click();
 

@@ -94,7 +94,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 |---|---|---|
 | 1. 기기 확인(`DesktopGate`) | `practicePaths`: 장치 점검 · 리허설 · 실전 | 휴대폰 · 태블릿이면 `/unsupported`. 로그인보다 먼저 막아, 못 하는 연습 주소로 로그인부터 시키지 않습니다 |
 | 2. 출시 제한(`LaunchGate`) | `/login`과 로그인이 필요한 모든 화면 | `VITE_LAUNCH_GATE_ENABLED=true`이고 공개 시각(`shared/api/launch.ts` `LAUNCH_AT`) 전이면 `/welcome` |
-| 3. 로그인(`RequireSession`) | 아래 "공개 화면"을 뺀 모든 화면 | 확인하는 동안 "로그인 상태를 확인하고 있습니다.", 서버에 못 붙으면 [다시 시도]. 로그인이 안 돼 있으면 `/`는 `/welcome`, 그 밖은 `/login?next=<원래 주소>` |
+| 3. 로그인(`RequireSession`) | 아래 "공개 화면"을 뺀 모든 화면 | 확인하는 동안 "로그인 상태를 확인하고 있습니다.", 서버에 못 붙으면 [다시 시도]. 로그인이 안 돼 있으면 `/`는 `/welcome`, 그 밖은 `/login?next=<원래 주소>`. 로그인했어도 개인정보 처리 동의 전이면 같은 주소에서 화면 위에 동의 창(`PrivacyConsentDialog`)을 띄우고, 동의해야만 닫힙니다. 카메라 · 마이크를 켜는 연습 화면은 동의 전에 뒤에 그리지 않습니다([features/auth/README.md](../../frontend/src/features/auth/README.md)) |
 
 - **공개 화면**(`publicPaths`, 로그인 없이 열림): `/welcome` · `/login` · `/about` · `/privacy` · `/terms` · `/unsupported` · `/dev/*` · 없는 주소(404). 이 중 출시 제한은 `/login`에만 걸립니다.
 - **상단바**(`appHeaderPaths`): `/` · `/pitches` · `/takes` · `/me` · `/pitch/new` · `/pitch/:id/edit` · 장치 점검 · 재시도에만 홈과 같은 상단바를 얹습니다. 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다.
@@ -111,7 +111,7 @@ Vite 8 · React 18 · TypeScript 6 · Tailwind 4 · React Router 7 · TanStack Q
 | 리허설 기록 | IndexedDB (`features/rehearsal/lib/db.ts`) | 세션 · 1초 시선 기록 · 슬라이드 전환. **사본**입니다(아래) |
 | 화면 사이에 넘기는 값 | 라우터 state | 피치 수정 → 장치 점검의 연습 조합(`practice`) |
 | 이 탭에만 남기는 값 | sessionStorage | 리허설 이어 가기 사본(`rehearsal/stage/resume.ts`) · 대화 복원 값(`chat/chatStore.ts`) |
-| 이 브라우저에만 남기는 작은 값 | localStorage | 대화 기억 첫 안내를 봤는지 등 |
+| 이 브라우저에만 남기는 작은 값 | localStorage | 대화 기억 첫 안내를 봤는지 · 개인정보 처리 동의 기록(사용자별, `shared/lib/privacyConsent.ts`) 등 |
 | 탭끼리 주고받는 신호 | BroadcastChannel | 로그아웃 신호(`shared/lib/sessionSignal.ts`). 다른 탭의 메모리 · sessionStorage 사본도 비우게 합니다 |
 
 **Zustand 스토어 4개**
