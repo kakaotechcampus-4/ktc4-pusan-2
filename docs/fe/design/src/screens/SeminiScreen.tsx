@@ -1,4 +1,4 @@
-// #1104·#1110이 반영된 새미나이 패널의 독립 UI 샘플. 실제 API와 저장소는 사용하지 않는다.
+// #1197 우측 런처·400px 사이드 패널을 반영한 정적 시안. API와 저장소는 사용하지 않는다.
 import { useEffect, useId, useRef, useState } from 'react';
 import { publicUrl } from '@/lib/publicUrl';
 import type { Navigate } from './shared';
@@ -17,7 +17,7 @@ const QUESTIONS = [
 ] as const;
 
 const SEMINI_IMAGE = publicUrl('semini.png');
-const SEMINI_LAUNCHER_IMAGE = publicUrl('icon-192.png');
+const SEMINI_LAUNCHER_IMAGE = publicUrl('semini-mascot.svg');
 type ActionIcon = 'new' | 'history' | 'memory' | 'close';
 
 function ActionIconGraphic({ kind }: { kind: ActionIcon }) {
@@ -86,20 +86,22 @@ function SeminiPanel({ stateId }: { stateId: string }) {
   const wasClosed = useRef(isClosed);
   useEffect(() => {
     if (wasClosed.current && !isClosed) inputRef.current?.focus();
+    if (!wasClosed.current && isClosed) launcherRef.current?.focus();
     wasClosed.current = isClosed;
   }, [isClosed]);
 
   const closePanel = () => {
     setView('closed');
     setScopeOpen(false);
-    launcherRef.current?.focus();
   };
 
   return (
-    <div className="relative min-h-[42rem] bg-greige p-8 text-ink">
-      <h1 className="text-2xl font-bold">발표 연습 화면</h1>
-      <p className="mt-3 text-sm">왼쪽 아래에서 새미나이 채팅을 열어 보세요.</p>
-      <div className="absolute bottom-8 left-4 z-10">
+    <div
+      className={`relative min-h-[42rem] bg-greige p-8 text-ink ${!isClosed ? 'min-[1440px]:pr-[27rem]' : ''}`}
+    >
+      <h1 className="text-2xl font-bold">내 피치</h1>
+      <p className="mt-3 text-sm">오른쪽 아래에서 새미나이 채팅을 열어 보세요.</p>
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-full justify-end">
         {!isClosed && (
           <section
             id={panelId}
@@ -112,7 +114,7 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                 closePanel();
               }
             }}
-            className="absolute bottom-full left-0 mb-3 flex h-[36rem] max-h-[calc(100dvh-9rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border-[3px] border-ink bg-white shadow-[6px_6px_0_var(--color-ink),0_18px_36px_rgba(42,39,35,0.2)]"
+            className="pointer-events-auto relative flex h-full max-h-[calc(100dvh-2rem)] w-[min(400px,100%)] flex-col overflow-hidden border-l border-line bg-white shadow-[-4px_0_12px_rgba(42,39,35,0.12)]"
           >
             <header className="shrink-0 border-b border-line-strong bg-panel px-4 pb-3 pt-3">
               <div className="flex items-center justify-between gap-2">
@@ -331,7 +333,7 @@ function SeminiPanel({ stateId }: { stateId: string }) {
             if (isClosed) setView('messages');
             else closePanel();
           }}
-          className="relative block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)]"
+          className={`pointer-events-auto absolute bottom-8 right-4 block h-11 w-11 overflow-hidden rounded-full border-2 border-ink bg-coral-deep shadow-[3px_3px_0_var(--color-ink)] ${isClosed ? '' : 'invisible'}`}
           aria-label="새미나이 열기"
           aria-expanded={!isClosed}
           aria-haspopup="dialog"
@@ -340,7 +342,7 @@ function SeminiPanel({ stateId }: { stateId: string }) {
           <img
             src={SEMINI_LAUNCHER_IMAGE}
             alt=""
-            className="absolute left-[1.2px] top-[-3.8px] h-11 w-11 max-w-none"
+            className="h-full w-full object-contain [image-rendering:pixelated]"
           />
         </button>
       </div>
