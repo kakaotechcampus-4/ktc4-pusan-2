@@ -11,7 +11,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint --max-warnings=0",
     "format": "prettier --write .",
-    "format:check": "prettier --write src/catalog.ts src/screens/ReportScreen.tsx src/screens/TutorialScreen.tsx src/ui/dialogs/HomeHelpDialog.tsx src/ui/PitchSelectPreview.tsx && git diff -- src/catalog.ts src/screens/ReportScreen.tsx src/screens/TutorialScreen.tsx src/ui/dialogs/HomeHelpDialog.tsx src/ui/PitchSelectPreview.tsx && exit 1",
+    "format:check": "prettier --check .",
     "tokens": "node scripts/compare-tokens.mjs",
     "drift": "node scripts/product-drift.mjs"
   },
