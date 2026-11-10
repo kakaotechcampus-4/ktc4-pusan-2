@@ -202,3 +202,19 @@ body {
 .guide-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+/* #1105: 튜토리얼 초대 버튼의 PRESS START 효과. 사용자가 움직임을 줄이면 정지한다. */
+@keyframes tutorial-invite {
+  0%, 34%, 100% { transform: translate(0, 0); box-shadow: 4px 4px 0 var(--color-ink); }
+  5%, 22% { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--color-ink); }
+  11%, 28% { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--color-ink); }
+  17% { transform: translate(0, 0); box-shadow: 4px 4px 0 var(--color-ink); }
+}
+.tutorial-invite {
+  box-shadow: 4px 4px 0 var(--color-ink);
+  animation: tutorial-invite 3s ease-out infinite;
+}
+.tutorial-invite:is(:hover, :focus-visible) { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-invite { animation: none; }
+}
