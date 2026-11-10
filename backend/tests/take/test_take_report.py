@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,7 @@ from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.user.entity import User
 from tests.take.conftest import Versions, _make_take
+from tests.take.coverage_fixtures import CRITERIA_VERSION, META, TAKE_DETAIL, all_failed, scored
 
 TAKE_RESULT_AREAS = {
     "GAZE": {
@@ -61,6 +63,14 @@ def test_report_before_the_take_result_has_no_measures_or_review(
     assert body["analysis_hold_reason"] is None
     assert body["measures"] is None
     assert body["review"] is None
+    assert body["content_status"] == {
+        "state": "ANALYZING",
+        "reason_code": None,
+        "revision": None,
+        "criteria_version": None,
+        "summary": None,
+        "previous": None,
+    }
 
 
 def test_report_marks_a_take_of_the_tutorial_sample_pitch(
@@ -195,3 +205,184 @@ def test_report_of_a_missing_or_someone_elses_take_is_404(
         response = _report(client, take_id, headers)
         assert response.status_code == 404
         assert response.json()["code"] == "TAKE_NOT_FOUND"
+
+
+def _add_coverage(db: Session, take: Take, payload: dict, *, revision: int = 0) -> None:
+    db.add(
+        TakeAIResults(
+            take_id=take.id, kind="SCRIPT_COVERAGE", payload=payload, meta=META, revision=revision
+        )
+    )
+    db.flush()
+
+
+def _content_status(client: TestClient, take: Take, headers: dict[str, str]) -> dict:
+    return _report(client, take.id, headers).json()["content_status"]
+
+
+@pytest.mark.parametrize(
+    "status,stage,coverage,failure_code,expected",
+    [
+        ("FAILED", "FINALIZING", None, None, ("NOT_MEASURED", "TAKE_FAILED")),
+        ("FAILED", "FINALIZING", "detail", "AI_ERROR", ("NOT_MEASURED", "TAKE_FAILED")),
+        ("ANALYZING", "AWAITING_CONFIRMATION", "detail", None, ("MEASURED", None)),
+        ("COMPLETED", "DONE", "detail", None, ("MEASURED", None)),
+        ("COMPLETED", "DONE", "legacy", None, ("NOT_MEASURED", "LEGACY_RESULT")),
+        ("ANALYZING", "FINALIZING", None, None, ("ANALYZING", None)),
+        # 전체 재시도 중이면 앞 시도의 실패 이유가 있어도 채점 중이다
+        ("ANALYZING", "SCORING", None, "AI_UNAVAILABLE", ("ANALYZING", None)),
+        ("ANALYZING", "REVIEWING", None, "AI_TIMEOUT", ("FAILED", "AI_TIMEOUT")),
+        ("COMPLETED", "DONE", None, "AI_REJECTED", ("FAILED", "AI_REJECTED")),
+        ("ANALYZING", "REVIEWING", None, None, ("NOT_MEASURED", "NO_RESULT")),
+        ("COMPLETED", "DONE", None, None, ("NOT_MEASURED", "NO_RESULT")),
+    ],
+)
+def test_content_status_follows_the_first_matching_row(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+    stage: str,
+    coverage: str | None,
+    failure_code: str | None,
+    expected: tuple[str, str | None],
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1, status=status)
+    take.analysis_stage = stage
+    take.coverage_failure_code = failure_code
+    if coverage is not None:
+        payload = scored(take.id)
+        if coverage == "legacy":
+            del payload["detail"]
+        _add_coverage(db_session, take, payload)
+
+    body = _content_status(client, take, auth_headers)
+
+    assert (body["state"], body["reason_code"]) == expected
+    if body["state"] != "MEASURED":
+        assert [body[key] for key in ("summary", "revision", "criteria_version", "previous")] == [
+            None
+        ] * 4
+
+
+def test_measured_content_status_carries_the_saved_take_detail_as_is(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    # 병합 rescore 가 끝내 실패해 리뷰를 보류해도 확정본은 그대로 보인다
+    take = _make_take(db_session, pitch_id, versions, 1, status="ANALYZING")
+    take.analysis_stage = "SCORING"
+    take.analysis_hold_reason = "COVERAGE_RESCORE_FAILED"
+    _add_coverage(db_session, take, scored(take.id), revision=2)
+    # 병합 후보는 읽지 않는다
+    _add_result(db_session, take, "SCRIPT_COVERAGE_PENDING", {"detail": {"version": 99}})
+
+    body = _content_status(client, take, auth_headers)
+
+    assert body == {
+        "state": "MEASURED",
+        "reason_code": None,
+        "revision": 2,
+        "criteria_version": CRITERIA_VERSION,
+        "summary": TAKE_DETAIL,
+        "previous": None,
+    }
+
+
+def _completed(db: Session, pitch_id: uuid.UUID, versions: Versions, number: int, **values):
+    take = _make_take(db, pitch_id, versions, number, status=values.pop("status", "COMPLETED"))
+    _add_result(db, take, "TAKE_RESULT", {"take_id": str(take.id), "duration_ms": 60_000})
+    return take
+
+
+def test_previous_is_the_take_just_before_like_the_review(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    first = _completed(db_session, pitch_id, versions, 1)
+    _add_coverage(db_session, first, all_failed(first.id))
+    second = _completed(db_session, pitch_id, versions, 2)
+    _add_coverage(db_session, second, scored(second.id))
+    # 리뷰처럼 끝내 실패한 Take 와 뒤 번호 Take 는 앞 Take 가 아니다
+    _completed(db_session, pitch_id, versions, 3, status="FAILED")
+    current = _completed(db_session, pitch_id, versions, 4, status="ANALYZING")
+    current.analysis_stage = "AWAITING_CONFIRMATION"
+    _add_coverage(db_session, current, scored(current.id))
+    _completed(db_session, pitch_id, versions, 5)
+
+    previous = _content_status(client, current, auth_headers)["previous"]
+
+    assert previous == {
+        "take_id": str(second.id),
+        "take_number": 2,
+        "criteria_version": CRITERIA_VERSION,
+        "delivery": TAKE_DETAIL["delivery"],
+        "contradiction": TAKE_DETAIL["contradiction"],
+        "scope": TAKE_DETAIL["scope"],
+    }
+
+
+@pytest.mark.parametrize("before", ["legacy", "no-coverage", "none"])
+def test_previous_is_null_unless_the_take_just_before_has_a_detail(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    before: str,
+) -> None:
+    number = 1
+    if before != "none":
+        # 더 앞 Take 에 상세가 있어도 건너뛰지 않는다
+        oldest = _completed(db_session, pitch_id, versions, 1)
+        _add_coverage(db_session, oldest, scored(oldest.id))
+        previous = _completed(db_session, pitch_id, versions, 2)
+        if before == "legacy":
+            payload = scored(previous.id)
+            del payload["detail"]
+            _add_coverage(db_session, previous, payload)
+        number = 3
+    current = _completed(db_session, pitch_id, versions, number)
+    _add_coverage(db_session, current, scored(current.id))
+
+    assert _content_status(client, current, auth_headers)["previous"] is None
+
+
+@pytest.mark.parametrize(
+    "status,stage,coverage",
+    [
+        ("ANALYZING", "SCORING", None),
+        ("COMPLETED", "DONE", "legacy"),
+        ("FAILED", "FINALIZING", None),
+    ],
+)
+def test_previous_is_null_unless_this_take_is_measured(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+    stage: str,
+    coverage: str | None,
+) -> None:
+    """비교할 이번 값이 없으면 앞 Take 에 상세가 있어도 싣지 않는다. 분석 중에는 FE 가 리포트를
+    2초마다 다시 읽는다."""
+    before = _completed(db_session, pitch_id, versions, 1)
+    _add_coverage(db_session, before, scored(before.id))
+    current = _make_take(db_session, pitch_id, versions, 2, status=status)
+    current.analysis_stage = stage
+    if coverage == "legacy":
+        payload = scored(current.id)
+        del payload["detail"]
+        _add_coverage(db_session, current, payload)
+
+    assert _content_status(client, current, auth_headers)["previous"] is None

@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
@@ -15,6 +15,7 @@ from pitch_coach_backend.module.take.dto import (
     ConfirmationsDTO,
     ConfirmationsRequestDTO,
     ConfirmationsSentDTO,
+    CoverageSlideDTO,
     TakeHistoryResponseDTO,
     TakeInitRequestDTO,
     TakeReportDTO,
@@ -25,6 +26,7 @@ from pitch_coach_backend.module.take.service.confirmation import (
     get_confirmations_service,
     send_confirmations_service,
 )
+from pitch_coach_backend.module.take.service.coverage_report import slide_detail
 from pitch_coach_backend.module.take.service.lifecycle import close_take_service, mark_ended
 from pitch_coach_backend.module.take.service.take import (
     active_take_service,
@@ -137,6 +139,21 @@ def get_take_report(
     db: Annotated[Session, Depends(get_db)],
 ):
     return get_take_report_service(db, take_id, current_user.id)
+
+
+@takes_router.get(
+    "/{take_id}/script-coverage/slides/{slide_number}", response_model=CoverageSlideDTO
+)
+def get_script_coverage_slide(
+    take_id: uuid.UUID,
+    slide_number: Annotated[int, Path(ge=1)],
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    revision: Annotated[int | None, Query(ge=0)] = None,
+):
+    # 리포트에서 장을 펼칠 때 부른다. `revision` 은 리포트 `content_status.revision` 이다.
+    # 바뀌었으면 409 COVERAGE_REVISION_CHANGED — FE 는 리포트를 다시 읽는다
+    return slide_detail(db, take_id, current_user.id, slide_number, revision)
 
 
 @takes_router.get("/{take_id}/confirmations", response_model=ConfirmationsDTO)

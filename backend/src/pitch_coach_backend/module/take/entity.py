@@ -69,6 +69,12 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "analysis_hold_reason IN ('COVERAGE_RESCORE_FAILED')",
             name="check_take_analysis_hold_reason",
         ),
+        # ai_response.CoverageFailureCode 와 같은 값이다
+        CheckConstraint(
+            "coverage_failure_code IN "
+            "('AI_TIMEOUT', 'AI_UNAVAILABLE', 'AI_ERROR', 'AI_REJECTED', 'AI_INVALID_RESPONSE')",
+            name="check_take_coverage_failure_code",
+        ),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(
@@ -122,6 +128,13 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     analysis_hold_reason: Mapped[str | None] = mapped_column(String(32))
     # 지금 이 Take 를 채점하는 작업의 표식(그 작업이 시작한 시각). 비어 있으면 맡은 작업이 없다
     coverage_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 대본 전달도가 확정본 없이 실패한 마지막 이유 (`ai_response.CoverageFailureCode`). 확정본을
+    # 저장하면 비운다. 비어 있으면 실패가 아니다
+    coverage_failure_code: Mapped[str | None] = mapped_column(String(32))
+    # STT 끊김 구간 (`stt_gaps.stt_gap_ranges`). Take 결과를 저장할 때 1초 기록으로 남긴다.
+    # 비어 있으면 모른다 — 이 칸을 만들기 전에 끝났거나 Take 결과가 없거나 1초 기록이 없던 Take.
+    # None 을 JSON null 이 아니라 SQL NULL 로 둔다 (모름이 한 가지 뜻이 되게)
+    stt_gap_ranges: Mapped[Any | None] = mapped_column(JSONB(none_as_null=True))
 
     standard_version: Mapped[int | None] = mapped_column(Integer)
 

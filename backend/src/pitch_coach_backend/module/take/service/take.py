@@ -42,6 +42,7 @@ from pitch_coach_backend.module.take.exception import (
 )
 from pitch_coach_backend.module.take.measures import take_count, take_metric
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service.coverage_report import content_status
 from pitch_coach_backend.module.take.service.lookup import tutorial_block
 from pitch_coach_backend.module.take.states import (
     ANALYZING,
@@ -360,6 +361,7 @@ def get_take_report_service(db: Session, take_id: uuid.UUID, user_id: uuid.UUID)
         analysis_hold_reason=take.analysis_hold_reason,
         measures=_take_measures(take, payloads.get(TAKE_RESULT)),
         review=payloads.get(REVIEW),
+        content_status=content_status(take_repository, take),
     )
 
 

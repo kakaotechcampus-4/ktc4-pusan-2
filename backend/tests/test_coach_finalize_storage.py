@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.coach import finalize
 from pitch_coach_backend.coach import store as coach_store
 from pitch_coach_backend.coach.replies import FinalizeReply
 from pitch_coach_backend.coach.requests import SlideEvent
@@ -26,6 +27,7 @@ from pitch_coach_backend.module.take.entity import (
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service import record as record_service
+from tests.coach_fakes import FakeClient
 from tests.coach_storage_seed import (  # noqa: F401
     META,
     _event,
@@ -41,6 +43,7 @@ from tests.coach_storage_seed import (  # noqa: F401
 EXAMPLES = (
     Path(__file__).resolve().parents[2] / "ai/service/src/pitch_coach_ai/features/coach/examples"
 )
+
 
 def example(name: str) -> dict[str, Any]:
     return json.loads((EXAMPLES / name).read_text(encoding="utf-8"))
@@ -97,6 +100,84 @@ def test_consented_take_keeps_the_raw_data(db_session: Session, take_parts):
         select(TakeMetricSecond).where(TakeMetricSecond.take_id == take.id)
     ).all()
     assert len(rows) == 1
+
+
+def _add_seconds(db: Session, take: Take, seconds: list[tuple[int, str]]) -> None:
+    db.add_all(
+        TakeMetricSecond(take_id=take.id, t_ms=t_ms, slide_number=1, stt_status=stt_status)
+        for t_ms, stt_status in seconds
+    )
+    db.flush()
+
+
+# `finalizing` 이 넣는 1초(t_ms 1000, ok) 뒤에 이어지는 1초 기록. 3000 은 빠졌다
+STT_SECONDS = [(2_000, "reconnecting"), (4_000, "ok"), (4_500, "degraded")]
+STT_GAPS = {
+    "version": 1,
+    "duration_ms": 4_500,
+    "not_ok": [[1_000, 2_000], [3_500, 4_500]],
+    "unobserved": [[2_000, 3_000]],
+}
+
+
+@pytest.mark.parametrize("consent", [False, True])
+def test_take_result_keeps_stt_gaps_before_the_raw_data_goes(
+    db_session: Session, take_parts, consent: bool
+):
+    take = finalizing(db_session, make_take(db_session, *take_parts, 1), consent=consent)
+    _add_seconds(db_session, take, STT_SECONDS)
+
+    coach_store.save_take_result(db_session, take.id, finalize_reply(take, duration_ms=4_500), [])
+
+    db_session.refresh(take)
+    assert take.stt_gap_ranges == STT_GAPS
+    rows = db_session.scalars(
+        select(TakeMetricSecond).where(TakeMetricSecond.take_id == take.id)
+    ).all()
+    # 동의 없는 Take 는 구간을 남긴 뒤 1초 기록을 지운다
+    assert len(rows) == (4 if consent else 0)
+
+
+def test_take_without_any_second_leaves_stt_gaps_unknown(db_session: Session, take_parts):
+    take = finalizing(db_session, make_take(db_session, *take_parts, 1))
+    db_session.execute(delete(TakeMetricSecond).where(TakeMetricSecond.take_id == take.id))
+    # 칸에 값이 있던 Take 도 JSON null 이 아니라 SQL NULL 로 비운다 ('모름'은 한 가지다)
+    take.stt_gap_ranges = STT_GAPS
+    db_session.flush()
+
+    coach_store.save_take_result(db_session, take.id, finalize_reply(take), [])
+
+    db_session.refresh(take)
+    assert take.analysis_stage == "SCORING"
+    assert (
+        db_session.scalar(select(Take.id).where(Take.id == take.id, Take.stt_gap_ranges.is_(None)))
+        == take.id
+    )
+
+
+@pytest.mark.anyio
+async def test_replayed_take_result_also_keeps_stt_gaps(db_session: Session, take_parts):
+    """코치 상태 없이 원자료(replay)로 만든 Take 결과도 같은 저장을 지난다."""
+    take = finalizing(db_session, make_take(db_session, *take_parts, 1))
+    _add_seconds(db_session, take, STT_SECONDS)
+    db_session.commit()
+    client = FakeClient()
+    client.finalize_replies = [finalize_reply(take, duration_ms=4_500)]
+
+    await finalize.run(
+        take.id, None, client=client, store=DbCoachStore(session_factory=lambda: db_session)
+    )
+
+    [request] = client.finalized
+    assert request["replay"] is not None
+    saved = db_session.get(Take, take.id)
+    assert saved.stt_gap_ranges == STT_GAPS
+    assert (
+        db_session.scalars(
+            select(TakeMetricSecond).where(TakeMetricSecond.take_id == take.id)
+        ).all()
+        == []
+    )
 
 
 def test_take_result_keeps_the_review_columns(db_session: Session, take_parts):
