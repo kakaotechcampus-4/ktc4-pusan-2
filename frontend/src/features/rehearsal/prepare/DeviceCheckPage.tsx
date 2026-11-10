@@ -570,6 +570,15 @@ export function DeviceCheckPage() {
   /** 확인 창의 [그 연습 끝내고 시작]. 끝내지 못하면 시작하지 않습니다 — 새 연결이 거절됩니다 */
   const confirmReplace = async () => {
     if (!replacing || replacing.busy) return;
+    // 다른 곳의 연습을 끝내기 **전에** 기준 목소리를 다시 봅니다 (#1184 리뷰). 창에서 기다리는 사이 30분이 지났는데
+    // 끝낸 뒤에 멈추면, 그쪽 연습은 끝나고 이쪽은 시작하지 않아 어느 쪽도 연습하지 않게 됩니다.
+    // 시작 버튼이 다시 막히므로 초점은 본문으로 둡니다 — 막힌 버튼에 두면 body 로 빠집니다 (#818)
+    if (!settleBaseLevel()) {
+      setReplacing(null);
+      setStarting(false);
+      document.getElementById('main')?.focus();
+      return;
+    }
     setReplacing({ ...replacing, busy: true });
     try {
       await endActiveTake(replacing.take);
