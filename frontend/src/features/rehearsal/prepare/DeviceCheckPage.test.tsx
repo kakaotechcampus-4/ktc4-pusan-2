@@ -966,3 +966,26 @@ it('보정 요청이 답 없이 걸리면 제한 시간에 끊고 다시 보낸 
     vi.useRealTimers();
   }
 });
+
+// #1184 리뷰 — 잰 트랙과 발표에 넘기는 녹음 트랙의 장치가 다르면 그 기준은 발표 마이크의 것이라고 장담할 수 없습니다
+it('잰 트랙이 녹음 트랙과 다른 장치면 이번 값을 다시 쓰기에 두지 않고, 앞서 둔 값도 권하지 않는다', async () => {
+  // 녹음 트랙은 mic-a(시험의 stream), 잰 트랙은 mic-b
+  fixture.measuredWith = { deviceId: 'mic-b', groupId: 'group-b', autoGainOff: true };
+  await render();
+  expect(
+    recallBaseVoice(
+      { deviceId: 'mic-b', groupId: 'group-b', autoGainOff: true },
+      performance.now(),
+    ),
+  ).toBeNull();
+
+  keepBaseVoice(
+    -27.5,
+    { deviceId: 'mic-b', groupId: 'group-b', autoGainOff: true },
+    performance.now(),
+  );
+  fixture.voiceStatus = 'IDLE';
+  await render();
+  expect(findButtonStarting('방금 잰 기준 목소리 그대로 쓰기')).toBeNull();
+  expect(findButton('목소리 재기')).toBeTruthy();
+});

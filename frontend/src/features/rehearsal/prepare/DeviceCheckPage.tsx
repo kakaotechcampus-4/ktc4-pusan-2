@@ -35,6 +35,7 @@ import {
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
 import { useMicLevel } from '../media/useMicLevel';
+import type { MeasuredWith } from '../media/level';
 import type { ReadStage, ShortReason } from '../media/baseVoice';
 import { useVideoStream } from '../media/useVideoStream';
 import { useChatScreen } from '@/shared/lib/chatScreen';
@@ -79,6 +80,19 @@ type VoicePick = { kind: 'REUSE'; measuredAt: number } | { kind: 'FALLBACK' };
 function settledPick(pick: VoicePick | null, reusing: boolean): VoicePick['kind'] | null {
   if (pick?.kind === 'FALLBACK') return 'FALLBACK';
   return reusing ? 'REUSE' : null;
+}
+
+/**
+ * 크기를 잰 트랙이 녹음 트랙과 같은 장치인가 (#1184 리뷰). 측정용 트랙은 녹음 트랙의 장치를 `exact` 로 열지만,
+ * 녹음 트랙의 장치를 모르면 아무 장치나 열릴 수 있습니다. 그때 잰 기준은 발표하는 마이크의 것이라고 장담할 수 없어,
+ * 다시 쓰기에 쓰지 않습니다(null). 같으면 받은 객체를 그대로 돌려줍니다 — 이펙트 의존성이 렌더마다 바뀌지 않게
+ */
+function sameDeviceAsRecording(
+  measured: MeasuredWith | null,
+  recordingDeviceId: string,
+): MeasuredWith | null {
+  if (!measured || recordingDeviceId === '' || measured.deviceId !== recordingDeviceId) return null;
+  return measured;
 }
 
 /** "3분 전에" · "방금" — 다시 쓸 기준 목소리를 언제 쟀는지 */
@@ -288,8 +302,13 @@ export function DeviceCheckPage() {
     audioState,
     meterError,
     voiceRecord,
-    measuredWith,
+    measuredWith: measuredTrack,
   } = useMicLevel(stream, { clock: pageClock, silenceFrom });
+  // 기준을 다시 쓸지 볼 트랙. 잰 트랙이 발표에 넘기는 녹음 트랙과 같은 장치일 때만입니다 (#1184 리뷰)
+  const measuredWith = sameDeviceAsRecording(
+    measuredTrack,
+    stream?.getAudioTracks()[0]?.getSettings().deviceId ?? '',
+  );
   // 기준 목소리 크기. 시작 조건입니다 (#1179)
   const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
   const reading = baseVoice.status === 'READING';
