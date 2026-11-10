@@ -287,7 +287,7 @@ describe('내용 전달 카드 — 측정됨', () => {
   it('대상 장이 모두 STT 끊김이면 숫자 자리에 평가한 장이 없다고 하고, 장마다 끊겨 평가하지 못했다고 알립니다 (#1158 리뷰)', () => {
     const text = openedText(status('t-content-stt-cut'));
     expect(text).toContain('채점된 장이 없어 핵심 수치 · 표현 · 말의 구성은 집계하지 못했어요');
-    expect(text).toContain('평가한 장이 없어 계산하지 못했어요');
+    expect(text).toContain('평가하지 못한 장이 있어 계산하지 못했어요');
     // 값이 없는데 "빼고 계산했어요"라고 하지 않습니다
     expect(text).not.toContain('빼고 계산했어요');
     // 모든 장이 빠졌으니 "일부 장 제외"가 아닙니다
@@ -295,6 +295,31 @@ describe('내용 전달 카드 — 측정됨', () => {
     expect(text).not.toContain('일부 장 제외');
     expect(text).not.toContain('장별 간이 결과를 확인해 주세요');
     expect(text.match(/음성 인식이 끊겨 이 장을 평가하지 못했어요/g)).toHaveLength(2);
+  });
+
+  it('채점된 장에 핵심 내용이 없고 빠진 장에만 있으면, 평가한 장이 있으니 "평가한 장이 없다"고 하지 않습니다', () => {
+    // AI(#1158 take_detail.py)는 채점된 장이 있어도 이 경우 전달률을 null · SLIDES_EXCLUDED 로 보냅니다
+    const excluded = { ...metric(null, ['SLIDES_EXCLUDED']), state: 'failed' as const };
+    const text = textOf(
+      withSummary({
+        delivery: excluded,
+        contradiction: excluded,
+        status_shares: null,
+        scope: {
+          target_slides: 3,
+          scored_slides: 2,
+          estimated_slides: 0,
+          provisional_slides: 0,
+          excluded: [{ slide_number: 3, reason_code: 'STT_INCOMPLETE' }],
+        },
+      }),
+    );
+    expect(text).toContain('평가하지 못한 장이 있어 계산하지 못했어요');
+    expect(text).not.toContain('평가한 장이 없어');
+    expect(text).not.toContain('빼고 계산했어요');
+    // 채점된 장이 있으니 배지는 '일부 장 제외' 그대로입니다
+    expect(text).toContain('일부 장 제외');
+    expect(text).toContain('3장 중 2장 평가');
   });
 
   it('채점 0장 · 간이 0장(대상 장 없음 · 모두 실패)이어도 0 개수 대신 집계하지 못했다고 알립니다 (#1157 리뷰)', () => {

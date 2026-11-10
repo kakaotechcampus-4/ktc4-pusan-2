@@ -96,11 +96,14 @@ export function reasonTexts(
 }
 
 /**
- * 값이 빈 지표에 `SLIDES_EXCLUDED` 만 있을 때 — 평가한 장이 하나도 없어 값을 내지 못한 경우입니다(대상 장이 모두
- * STT 끊김 · 간이 장만 있음 등, #1152 결정). 문구표의 "빼고 계산했어요"는 값이 있을 때의 말이라 여기서는 쓰지 않습니다.
- * FE 가 정한 문구입니다(#1154 문구표에 없음)
+ * 값이 빈 지표에 `SLIDES_EXCLUDED` 만 있을 때 — 평가하지 못한 장 때문에 값을 내지 못한 경우입니다. AI(#1158 `take_detail.py`)는
+ * 두 경우에 이 모양을 보냅니다.
+ * - 채점된 장이 없음(대상 장이 모두 STT 끊김 등, #1152 결정)
+ * - 채점된 장은 있는데 그 장들에 이 지표의 단위(핵심 내용 등)가 없고, 빠진 장에만 있을 수 있음
+ * 그래서 "평가한 장이 없어"라고 하지 않습니다 — 두 번째 경우에는 평가한 장이 있습니다. 문구표의 "빼고 계산했어요"도
+ * 값이 있을 때의 말이라 쓰지 않습니다. FE 가 정한 문구입니다(#1154 문구표에 없음)
  */
-export const NO_EVALUATED_SLIDES = '평가한 장이 없어 계산하지 못했어요';
+export const NO_EVALUATED_SLIDES = '평가하지 못한 장이 있어 계산하지 못했어요';
 
 /** 값이 null 인 지표 자리에 보일 이유. `SLIDES_EXCLUDED` 는 범위 문구가 따로 있어 뒤로 미룹니다 */
 export function metricReason(metric: Metric | null, scope: ReasonScope = 'slide'): string {
