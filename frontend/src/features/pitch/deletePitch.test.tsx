@@ -428,14 +428,30 @@ it('TIP은 8초마다 순환하고 일시정지·재개 버튼으로 타이머�
   await act(async () => (next as () => void)());
   expect(tip.textContent).toBe('시작 전 세팅에서 대본 표시 방식을 선택할 수 있어요.');
 
-  await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 일시정지"]')!);
+  const pauseButton = host.querySelector<HTMLButtonElement>(
+    'button[aria-label="팁 자동 전환 일시정지"]',
+  )!;
+  expect(pauseButton.title).toBe('팁 자동 전환 일시정지');
+  expect(pauseButton.classList.contains('size-11')).toBe(true);
+  expect(pauseButton.textContent?.trim()).toBe('');
+  expect(pauseButton.querySelector('svg[aria-hidden="true"] path')?.getAttribute('d')).toBe(
+    'M9 5v14m6-14v14',
+  );
+  await click(pauseButton);
   const firstTimerIndex = setIntervalSpy.mock.calls.findIndex(([, delay]) => delay === 8000);
   const firstTimer = setIntervalSpy.mock.results[firstTimerIndex]?.value;
   expect(clearIntervalSpy).toHaveBeenCalledWith(firstTimer);
   expect(timers()).toHaveLength(1);
-  expect(host.querySelector('button[aria-label="팁 자동 전환 재개"]')).not.toBeNull();
+  const playButton = host.querySelector<HTMLButtonElement>(
+    'button[aria-label="팁 자동 전환 재개"]',
+  )!;
+  expect(playButton.title).toBe('팁 자동 전환 재개');
+  expect(playButton.textContent?.trim()).toBe('');
+  expect(playButton.querySelector('svg[aria-hidden="true"] path')?.getAttribute('d')).toBe(
+    'm8 5 11 7-11 7V5Z',
+  );
 
-  await click(host.querySelector<HTMLButtonElement>('button[aria-label="팁 자동 전환 재개"]')!);
+  await click(playButton);
   expect(timers()).toHaveLength(2);
 });
 
