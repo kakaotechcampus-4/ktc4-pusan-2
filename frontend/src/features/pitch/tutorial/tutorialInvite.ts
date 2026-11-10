@@ -19,5 +19,9 @@ export function invitesTutorial(pitches: readonly HomePitch[], reportReceived: b
  */
 function finishedByUser(take: HomeTake): boolean {
   if (take.status === 'ANALYZING' || take.status === 'COMPLETED') return true;
-  return take.status === 'FAILED' && take.end_reason !== 'ABANDONED' && take.end_reason !== 'CLOSED';
+  return (
+    take.status === 'FAILED' &&
+    take.end_reason !== 'ABANDONED' &&
+    take.end_reason !== 'CLOSED'
+  );
 }
