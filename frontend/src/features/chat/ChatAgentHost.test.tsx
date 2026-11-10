@@ -321,7 +321,8 @@ it('새미나이 브랜드와 빈 대화 안내를 유지하고, 추천 질문�
   const labelId = panel()!.getAttribute('aria-labelledby')!;
   expect(document.getElementById(labelId)!.textContent!.trim()).toBe('새미나이');
   expect(button('새미나이 닫기')?.getAttribute('title')).toBe('새미나이 닫기');
-  expect(panel()!.querySelectorAll('img[src="/semini.png"]')).toHaveLength(2);
+  expect(launcher()!.querySelector('img')?.getAttribute('src')).toBe('/semini-mascot.svg');
+  expect(panel()!.querySelectorAll('img[src="/semini-mascot.svg"]')).toHaveLength(2);
   expect(panel()!.querySelector('[data-chat-empty]')!.textContent).toContain(
     '발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.',
   );
