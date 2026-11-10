@@ -8,6 +8,16 @@ import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
 import { HomePitchCard, type HomePitch } from '@/ui/HomePitchCard';
 import { PITCH, type Navigate } from './shared';
 
+const DEMO_PITCH: HomePitch = {
+  pitch_id: 'demo-sample',
+  pitch_title: '샘플 발표',
+  pitch_time: 180,
+  thumbnail_url: null,
+  takes: [1],
+  can_delete: true,
+  is_demo: true,
+};
+
 const HOME_PITCHES: HomePitch[] = [
   { pitch_id: 'p1', pitch_title: PITCH, pitch_time: 300, thumbnail_url: null, takes: [1, 2] },
   {
@@ -98,10 +108,11 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
   // 기본 상태에서 메뉴로 지우면 그 줄만 이 미리보기에서 뺀다. 서버 요청은 없다
   const [removed, setRemoved] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
+  const samplePitches = stateId === 'sample' ? [...HOME_PITCHES, DEMO_PITCH] : HOME_PITCHES;
   const pitches =
-    stateId === 'empty' ? [] : HOME_PITCHES.filter((pitch) => !removed.includes(pitch.pitch_id));
+    stateId === 'empty' ? [] : samplePitches.filter((pitch) => !removed.includes(pitch.pitch_id));
   const showPrepare =
-    ['default', 'consent', 'pending', 'prepare-entry-draft'].includes(stateId) ||
+    ['default', 'sample', 'consent', 'pending', 'prepare-entry-draft'].includes(stateId) ||
     DELETE_STATES.includes(stateId);
   const dialogState = DIALOG_STATES[stateId];
   const target = HOME_PITCHES.find((pitch) => pitch.pitch_id === (asking ?? 'p1'))!;
