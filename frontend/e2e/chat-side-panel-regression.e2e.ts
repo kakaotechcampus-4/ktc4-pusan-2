@@ -96,26 +96,48 @@ test.describe('채팅 사이드 패널 UI 회귀 (작업 B)', () => {
   });
 
   test('320·340·375px에서 오류 안내가 고정 푸터를 가리지 않는다', async ({ page }) => {
-    for (const width of [320, 340, 375]) {
+    for (const width of [320, 340, 375, 760]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/pitch/new');
       const container = page.locator('[data-chat-launcher]');
       await expect(container).toBeVisible();
       // 실제 오류 경계와 같은 aria-label로 CSS의 오류 안내 위치 조건을 확인합니다.
       await container.evaluate((element) => {
+        // 실패 상태는 런처 대신 안내만 보이므로 테스트에서도 기존 버튼을 제거합니다.
+        element.querySelector(':scope > button')?.remove();
         const warning = element.ownerDocument.createElement('section');
         warning.setAttribute('aria-label', '새미나이 오류');
         warning.style.height = '144px';
         warning.style.width = '288px';
         element.append(warning);
       });
-      await expect(container).toHaveCSS('bottom', '192px');
+      await expect(container).toHaveCSS('bottom', width < 360 ? '192px' : '144px');
+      await expect(page.locator('.pitch-create-square').first()).toHaveCSS(
+        'padding-bottom',
+        width < 360 ? '400px' : '352px',
+      );
       const footer = page.locator('.pitch-create-square > footer');
       const warningBox = await container.boundingBox();
       const footerBox = await footer.boundingBox();
       expect(warningBox).not.toBeNull();
       expect(footerBox).not.toBeNull();
       expect(warningBox!.y + warningBox!.height).toBeLessThanOrEqual(footerBox!.y);
+
+      // 끝부분 조작부까지 스크롤할 수 있어야 안내에 가리지 않습니다.
+      const criteria = page.locator('#create-criteria');
+      await expect(criteria).toBeVisible();
+      await criteria.evaluate((element) => {
+        const action = element.ownerDocument.createElement('button');
+        action.id = 'e2e-last-criteria-action';
+        action.textContent = '마지막 평가기준 버튼';
+        element.append(action);
+      });
+      await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
+      const actionBox = await page.locator('#e2e-last-criteria-action').boundingBox();
+      const expandedBox = await container.boundingBox();
+      expect(actionBox).not.toBeNull();
+      expect(expandedBox).not.toBeNull();
+      expect(actionBox!.y + actionBox!.height).toBeLessThan(expandedBox!.y);
     }
   });
 

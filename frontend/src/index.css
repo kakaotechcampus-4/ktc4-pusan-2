@@ -346,9 +346,24 @@ body {
     padding-right: 4rem;
   }
 
-  /* 320px에서 세 줄로 늘어나는 고정 푸터까지 피합니다.
-     접힌 다시 시도 버튼은 기존 오른쪽 빈 공간(1rem)을 사용합니다. */
+  /* 오류 안내가 펼쳐진 동안에만 본문 끝을 안내 위로 스크롤할 공간을 확보합니다. */
+  body:has([data-chat-launcher] > section[aria-label='새미나이 오류']) .pitch-create-square {
+    padding-bottom: 22rem;
+  }
+
+  /* 일반 모바일에서는 두 줄 고정 푸터를 피합니다. 접힌 버튼은 기존 1rem을 유지합니다. */
+  body:has(.pitch-create-square) [data-chat-launcher]:has(section[aria-label='새미나이 오류']) {
+    --chat-launcher-bottom: 9rem;
+  }
+}
+
+/* 320~359px에서는 세 줄로 늘어나는 고정 푸터를 피합니다. */
+@media (max-width: 359px) {
   body:has(.pitch-create-square) [data-chat-launcher]:has(section[aria-label='새미나이 오류']) {
     --chat-launcher-bottom: 12rem;
+  }
+
+  body:has([data-chat-launcher] > section[aria-label='새미나이 오류']) .pitch-create-square {
+    padding-bottom: 25rem;
   }
 }
