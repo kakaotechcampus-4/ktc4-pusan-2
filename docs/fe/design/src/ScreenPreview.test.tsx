@@ -603,7 +603,8 @@ it('새미나이의 피치 범위와 기억 없이 대화하기는 서로 독립
   const launcher = host.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!;
   expect(launcher.getAttribute('aria-controls')).toBeTruthy();
   expect(launcher.getAttribute('aria-label')).toBe('새미나이 열기');
-  expect(launcher.querySelector('img')?.getAttribute('src')).toContain('icon-192.png');
+  expect(launcher.querySelector('img')?.getAttribute('src')).toContain('semini-mascot.svg');
+  expect(launcher.className).toContain('invisible');
   const close = host.querySelector<HTMLButtonElement>(
     'button[aria-label="새미나이 닫기"]:not([aria-haspopup="dialog"])',
   )!;
