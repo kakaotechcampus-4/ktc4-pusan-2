@@ -115,7 +115,7 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
     ['default', 'sample', 'consent', 'pending', 'prepare-entry-draft'].includes(stateId) ||
     DELETE_STATES.includes(stateId);
   const dialogState = DIALOG_STATES[stateId];
-  const target = HOME_PITCHES.find((pitch) => pitch.pitch_id === (asking ?? 'p1'))!;
+  const target = samplePitches.find((pitch) => pitch.pitch_id === (asking ?? 'p1'))!;
   // 설문 안내 두 상태(#776)와 발표 준비 버튼 시안도 목록은 평소와 같다
   const ready = ['default', 'empty', 'consent', 'pending'].includes(stateId) || showPrepare;
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
