@@ -36,14 +36,17 @@ logger = logging.getLogger(__name__)
 
 
 def get_or_create_first_take(db: Session, user_id: uuid.UUID) -> FirstTakeDTO:
-    """사용자의 샘플 발표를 준다. 없으면 만든다. 여러 탭에서 동시에 불러도 하나만 생긴다."""
+    """사용자의 샘플 발표를 준다. 없으면 만든다. 여러 탭에서 동시에 불러도 하나만 생긴다.
+
+    튜토리얼 리포트를 이미 받았으면 새로 만들지 않는다 — 만들어도 Take 를 시작할 수 없고(409
+    `TUTORIAL_REPORT_USED`) 파일만 또 올라간다. 그대로 있는 샘플 발표는 기록을 보라고 준다.
+    """
     pitch_repository = PitchRepository(db)
-    pitch_id = pitch_repository.get_demo_pitch_id(user_id) or _create(
-        db, pitch_repository, user_id, sample_files.first_take()
-    )
-    return FirstTakeDTO(
-        pitch_id=pitch_id, report_received=user_service.has_tutorial_report(db, user_id)
-    )
+    report_received = user_service.has_tutorial_report(db, user_id)
+    pitch_id = pitch_repository.get_demo_pitch_id(user_id)
+    if pitch_id is None and not report_received:
+        pitch_id = _create(db, pitch_repository, user_id, sample_files.first_take())
+    return FirstTakeDTO(pitch_id=pitch_id, report_received=report_received)
 
 
 def _create(

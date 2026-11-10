@@ -230,6 +230,11 @@ def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
         next_take_number=latest_take.take_number + 1 if latest_take else 1,
         default_script_mode=latest_take.script_mode if latest_take else "HIGHLIGHT",
         missions=_prepare_missions(db, pitch_id),
+        tutorial_block=(
+            take_lookup.tutorial_block(db, pitch.id, pitch.user_id, datetime.now(UTC))
+            if pitch.is_demo
+            else None
+        ),
     )
 
 
