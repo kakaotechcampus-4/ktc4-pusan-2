@@ -16,6 +16,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
+import { usePrivacyConsent } from '@/shared/lib/privacyConsent';
 import { useSession } from '@/shared/api/useSession';
 import type { ChatMessage } from '@/types/chat';
 import { AGENT_BUBBLE, LiveAnswer, StoredAnswer, WAITING_TEXT } from './ChatAnswer';
@@ -170,7 +171,10 @@ function SignedInOnly({ children }: { children: (userId: string) => ReactNode })
     useChatStore.getState().setUser(id);
   }, [id, signedOut, storeUser, checkedAt, queryClient]);
 
-  return id && storeUser === id ? children(id) : null;
+  // 개인정보 처리 동의 전에는 서비스 화면을 막으므로(`RequireSession`) 채팅도 띄우지 않습니다
+  const consented = usePrivacyConsent(id);
+
+  return id && storeUser === id && consented ? children(id) : null;
 }
 
 interface DraftProps {

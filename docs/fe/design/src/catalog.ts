@@ -1072,7 +1072,55 @@ const onboardingScreens: GuideScreen[] = [
     productNote:
       '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내와 Chrome 안내 창은 그리지 않는다.',
     productLinks: [link('로그인', '/login')],
-    next: [next('로그인 → 홈', 'home'), next('서비스 소개', 'welcome')],
+    next: [
+      next('로그인 → 개인정보 처리 동의(처음 한 번)', 'privacy-consent'),
+      next('이미 동의함 → 홈', 'home'),
+      next('서비스 소개', 'welcome'),
+    ],
+  },
+  {
+    kind: 'screen',
+    id: 'privacy-consent',
+    title: '개인정보 처리 동의',
+    group: onboardingGroup,
+    route: '로그인이 필요한 모든 주소',
+    status: '제품에 있음',
+    summary:
+      '로그인한 뒤 동의 전이면 가려던 화면 위에 동의 창(모달)을 띄운다. 동의해야만 닫히고, 같은 주소에서 그 화면을 쓴다.',
+    states: [
+      state(
+        'default',
+        '기본',
+        '데이터 활용 안내와 "동의하고 시작하기" · "동의하지 않고 로그아웃".',
+      ),
+      state('signing-out', '로그아웃 중', '로그아웃 버튼을 막고 "로그아웃 중…"으로 바꾼다.'),
+      state('sign-out-failed', '로그아웃 실패', 'role="alert"로 다시 시도하라고 알린다.'),
+    ],
+    rules: [
+      '로그인 확인(RequireSession) 다음, 화면보다 앞에 걸린다. 공개 화면(/welcome · /login · /about · /privacy · /terms 등)에는 걸리지 않는다.',
+      '주소를 옮기지 않는다. 딥링크 · next 로 들어와도 그 화면 위에 창이 뜬다.',
+      '창은 Esc · 닫기 버튼으로 닫히지 않는다. 뒤 화면은 모달이라 누를 수 없다.',
+      '카메라 · 마이크를 켜는 연습 화면(장치 점검 · 리허설 · 실전)은 동의 전에는 뒤에 그리지 않는다(holdUntilConsent).',
+      '동의 전에는 새미나이 런처를 띄우지 않는다.',
+      '동의는 사용자별 · 안내문 버전별로 이 브라우저(localStorage)에 남는다(BE 미구현). 다른 계정 · 다른 브라우저 · 버전을 올린 뒤에는 다시 묻는다.',
+      '창을 열면 초점은 창 제목에, 동의하면 뒤 화면의 첫 제목(h1)으로 옮긴다. 로그아웃 중에는 aria-disabled 로 막아 초점이 창 밖으로 빠지지 않게 한다.',
+      '개인정보 처리방침 링크는 새 탭으로 연다.',
+    ],
+    components: ['PrivacyConsentDialog', 'Button(primary · quiet)', 'dl(안내 항목)'],
+    tokens: ['panel', 'ink', 'cream', 'line-strong'],
+    sources: [
+      'frontend/src/features/auth/PrivacyConsentDialog.tsx',
+      'frontend/src/features/auth/session.tsx',
+      'frontend/src/shared/lib/privacyConsent.ts',
+    ],
+    productNote:
+      '뒤 화면은 홈 샘플로 고정한다(제품은 가려던 화면). "동의하고 시작하기"는 홈 샘플로, "동의하지 않고 로그아웃"은 서비스 소개로 간다(제품은 로그아웃하면 로그인 확인이 보낸다). 개인정보 처리방침 링크는 새 탭 대신 설계서의 정책 화면으로 간다.',
+    productLinks: [link('동의 화면(동의 전 로그인 사용자)', '/')],
+    next: [
+      next('동의하고 시작하기 → 가려던 화면(홈)', 'home'),
+      next('동의하지 않고 로그아웃', 'welcome'),
+      next('개인정보 처리방침', 'privacy'),
+    ],
   },
 ];
 

@@ -5,6 +5,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiFailure } from '@/shared/api/tokenStore';
+import {
+  forgetPrivacyConsentsInTab,
+  privacyConsentKey,
+  recordPrivacyConsent,
+} from '@/shared/lib/privacyConsent';
 import { registerChatScreen, resetChatScreen, type ScreenBody } from '@/shared/lib/chatScreen';
 import type { SendMessageRequest } from '@/types/chat';
 import { ChatAgentHost } from './ChatAgentHost';
@@ -196,6 +201,9 @@ beforeEach(() => {
   undoMode.value = 'undone';
   sessionStorage.clear();
   localStorage.clear();
+  forgetPrivacyConsentsInTab();
+  // 개인정보 처리에 동의한 사용자들로 시작합니다. 동의 전에 숨기는 것은 따로 봅니다
+  for (const userId of ['u1', 'u2']) localStorage.setItem(privacyConsentKey(userId), 'x');
   useChatStore.getState().signOut();
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   host = document.createElement('div');
@@ -321,6 +329,17 @@ async function press(target: Element, init: KeyboardEventInit) {
   });
   return event;
 }
+
+it('개인정보 처리에 동의하기 전에는 새미나이를 띄우지 않고, 동의하면 바로 띄운다', async () => {
+  localStorage.removeItem(privacyConsentKey('u1'));
+
+  await visit('/');
+  expect(launcher()).toBeNull();
+
+  await act(async () => recordPrivacyConsent('u1'));
+  await settle();
+  expect(launcher()).not.toBeNull();
+});
 
 it('새미나이 브랜드와 빈 대화 안내를 유지하고, 추천 질문은 별도 PR로 분리한다', async () => {
   await visit('/');

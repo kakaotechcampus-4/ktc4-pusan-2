@@ -3,7 +3,7 @@ import { toMessage } from '@/shared/api/errorMessage';
 import { isPitchBusy, useDeletePitch } from '@/shared/api/pitch';
 import { Button } from '@/shared/ui/Button';
 import type { HomePitch } from '@/types/home';
-import { SURVEY_RETENTION_UNTIL } from './HomeSurveyNotice';
+import { DATA_RETENTION_UNTIL } from '@/shared/lib/retention';
 
 /**
  * 홈에서 피치를 지울지 묻습니다 (#807). 영구 삭제라 되돌릴 수 없다는 것과 함께 지워지는 것을 적고,
@@ -94,7 +94,7 @@ export function DeletePitchDialog({
           {/* 설문 답은 Take 가 지워져도 연결만 끊고 남습니다 (BE take_surveys.take_id SET NULL).
               홈 목록은 Take 마다 설문 여부를 알려 주지 않고, 설문은 동의하지 않아도 리포트에서 남길 수 있어 Take 가 있으면 알립니다 */}
           {takes > 0 &&
-            ` 리포트에 설문을 남기셨다면 그 답은 지워지지 않고, 피치와 떨어져 ${SURVEY_RETENTION_UNTIL}까지 따로 보관돼요.`}
+            ` 리포트에 설문을 남기셨다면 그 답은 지워지지 않고, 피치와 떨어져 ${DATA_RETENTION_UNTIL}까지 따로 보관돼요.`}
         </p>
         {remove.isError && (
           <p role="alert" className="mt-3 text-sm leading-6 font-bold text-coral-deep">
