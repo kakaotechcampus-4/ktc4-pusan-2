@@ -173,7 +173,7 @@ ai/research/script-coverage-evaluation/     연구 (실험 도구 coverage_lab �
 
   핵심 내용이 없는 장은 STT와 상관없이 새 전달률이 null(`not_applicable`, `NO_KEY_POINTS`)이다. 단 `incomplete` + 빈 STT면 `failed`(`STT_INCOMPLETE`)다.
 
-- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 본다. 이때 STT가 끊겨 빈 장(`incomplete` + 빈 STT)은 `STT_INCOMPLETE`가 먼저이고 간이 값이 없다. 나머지 장 중 `script`가 있는 장이 하나라도 있으면 그 장들의 간이 값(5-7)을 붙여 200(`evaluations` 빈 목록, 7절)이고, 간이 값이 하나도 없으면 7절의 에러(모두 평가 기준 없음이면 422 `RUBRIC_MISSING`)다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0). 단, LLM 설정이 없으면 대상 유무와 관계없이 7절대로 503 `LLM_UNAVAILABLE`이다.
+- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 본다. 이때 STT가 끊겨 빈 장(`incomplete` + 빈 STT)은 `STT_INCOMPLETE`가 먼저이고 간이 값이 없다. 나머지 장 중 `script`가 있는 장에는 간이 값(5-7)을 붙인다. 간이 값이 하나라도 있거나 `STT_INCOMPLETE` 장이 있으면 200(`evaluations` 빈 목록, 7절)이고, 둘 다 없으면(모든 대상 장이 평가 기준 · 대본 글 없음) 422 `RUBRIC_MISSING`(7절)이다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0). 단, LLM 설정이 없으면 대상 유무와 관계없이 7절대로 503 `LLM_UNAVAILABLE`이다.
 
 **`POST /takes/rescore`**
 
@@ -553,7 +553,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 
 - ④ 다음에 규칙으로 대본 밖 구간과 말의 구성을 만든다(이 장 대본 어휘 · 진행 말 사전 · 다른 장 대본 어휘). `OFFSCRIPT_LLM_ENABLED`를 켰을 때만, ⑦ 뒤에 대본 밖 구간이 있는 장만 LLM으로 관련 곁말 · 무관한 말을 나눈다(동시 2개, 핵심 채점 호출 뒤). 이 분류가 실패하거나 마감에 걸리면 그 장은 규칙 값을 그대로 두고 `OFFSCRIPT_FAILED` · `OFFSCRIPT_DEADLINE`만 붙인다(장 채점은 실패로 하지 않는다).
 - 채점 전에 요청의 STT 끊김 값으로 장마다 STT 완전성을 정하고(5-2), `incomplete`이면서 정규화 STT가 빈 장은 채점하지 않고 `failed`(`STT_INCOMPLETE`)로 담는다. 평가 기준이 없는 장은 요청의 `script`로 간이 값(`lexical_no_rubric`)을 만든다.
-- 의미 평가 · 교차 검증이 실패한 장은 ①~④의 규칙 결과로 간이 값(`lexical`)을 만들어 `failed[].fallback`에 싣는다. 대상 장이 모두 실패해도 간이 값이 하나라도 있으면 200이다(7절).
+- 의미 평가 · 교차 검증이 실패한 장은 ①~④의 규칙 결과로 간이 값(`lexical`)을 만들어 `failed[].fallback`에 싣는다. 대상 장이 모두 실패해도 간이 값이 하나라도 있거나 `STT_INCOMPLETE` 장이 있으면 200이다(7절).
 
 - 교차 검증이 실패한 장은 그 장 전체를 `failed`로 돌려준다(1차 판정만으로 내지 않는다). 검증 출력이 검증 대상 문장(충돌한 문장)이나 그 문장의 전달 단위를 빠뜨리거나 같은 것을 두 번 내면 잘못된 출력이다(`LLM_INVALID_OUTPUT`). 대상이 아닌 문장 · 단위의 판정은 쓰지 않는다.
 - STT가 빈 장(발표에서 넘어감)은 LLM을 부르지 않고 모든 전달 단위를 `missing`으로 판정한다.
@@ -626,8 +626,8 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 평가 기준 만들기에서 전달 단위 단계(LLM)만 실패 | 그 장은 문장 하나를 단위 하나로 본 평가 기준으로 복구해 성공으로 낸다(`rubric_quality: sentence_fallback`, `warnings`에 `unit_fallback:<코드>`). `config.py`로 끄면 실패로 담는다 | 200, `rubrics`에 그 장 | 전달 단위 한 단계 때문에 그 대본 버전의 모든 Take에서 그 장을 채점하지 못하던 것을 막는다. 1차 분석 · 최종 결론 실패는 지금처럼 실패다 |
 | 채점할 장의 평가 기준이 없음 (평가 기준 만들기가 실패한 장) | 그 장은 채점하지 않고 나머지 장은 계속한다. 그 장도 `scored_ratio`의 대상 장이다. 요청에 그 장의 `script`가 있으면 간이 값(`lexical_no_rubric`)을 붙인다 | 200, `failed`에 `RUBRIC_MISSING` | 전체를 멈추지 않고, 일부만 채점된 것을 비율로 알린다 |
 | 의미 평가 · 교차 검증이 실패한 장 | 그 장은 실패로 담고, 이미 계산한 규칙 값으로 간이 값(`lexical`)을 붙인다 | 200, `failed[].fallback` | 1차 판정을 확정 값으로 쓰지 않으면서도 빈칸 대신 간이 값을 보인다(5-7) |
-| STT가 끊긴(`stt_integrity: incomplete`) 빈 장 | 채점하지 않는다. 간이 값 없음 | 200, `failed`에 `STT_INCOMPLETE` | 음성 인식이 유실된 장을 발표자의 누락(0)으로 판정하지 않는다. 다시 불러도 같다 |
-| 모든 장이 실패 (대상 장이 하나 이상일 때. 대상이 없으면 빈 결과 200, 5-2) | 실패 장의 간이 값이 하나라도 있으면 그 결과를 낸다. 없으면 결과를 내지 않는다 | 간이 값이 있으면 200(`evaluations` 빈 목록, `take_scores`의 세 비율 null · 개수 0 · `scored_ratio` 0, `confirmations` 빈 목록, `failed[].fallback`, `detail`). 없으면 `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 없으면 모두 평가 기준 없음일 때 422 `RUBRIC_MISSING`, 그 밖에는 장 번호가 가장 작은 장의 입력 오류(422 `STT_INCOMPLETE`) | 간이 값이 있는 200은 BE가 지금 흐름대로 저장하고 LLM 오류 장만 한 번 다시 부른다(1-7). LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
+| STT가 끊긴(`stt_integrity: incomplete`) 빈 장 | 채점하지 않는다. 간이 값 없음 | 200, `failed`에 `STT_INCOMPLETE`(대상 장이 모두 이 경우여도 200, 아래 줄) | 음성 인식이 유실된 장을 발표자의 누락(0)으로 판정하지 않는다. 다시 불러도 같다 |
+| 모든 장이 실패 (대상 장이 하나 이상일 때. 대상이 없으면 빈 결과 200, 5-2) | 실패 장의 간이 값이 하나라도 있거나 `STT_INCOMPLETE` 장이 있으면 그 결과를 낸다. 둘 다 없으면 결과를 내지 않는다 | 간이 값이나 `STT_INCOMPLETE` 장이 있으면 200(`evaluations` 빈 목록, `take_scores`의 세 비율 null · 개수 0 · `scored_ratio` 0, `confirmations` 빈 목록, `failed[].fallback`(`STT_INCOMPLETE` 장은 null), `detail`). 둘 다 없는 것은 모든 대상 장이 평가 기준 · 대본 글이 없을 때뿐이고 422 `RUBRIC_MISSING`이다(LLM 오류 장은 늘 간이 값이 붙는다, 6-2. 오류를 고르는 순서는 `architecture.md` 4절 '장별 API') | 이 200은 BE가 지금 흐름대로 저장하고 LLM 오류 장만 한 번 다시 부른다(1-7). `STT_INCOMPLETE`는 LLM 오류가 아니어서 다시 부르지 않는다. 에러 상태 코드는 BE가 본문을 읽지 않아 이유를 보일 수 없으므로, 장마다 이유를 보일 수 있는 실패는 200으로 낸다. LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
 | LLM 설정 없음 (`/scripts/rubric` · `/takes/analyze`) | 모든 장이 실패 | 503 `LLM_UNAVAILABLE` | `architecture.md` 9 · 10절 |
 | `/takes/rescore`: 채점의 `rubric_id`가 받은 평가 기준과 다름 | 거절 | 422 `RUBRIC_MISMATCH` | 평가 기준이 바뀌었으면 다시 채점해야 한다 |
 | `/takes/rescore`: 채점에 `stt_text` 필드가 없음 (예전 모양) | 거절. 빈 문자열(발표에서 넘어간 장)은 정상이다 | 422 `STT_TEXT_MISSING` | 다시 계산에 필요한 STT가 없다 |

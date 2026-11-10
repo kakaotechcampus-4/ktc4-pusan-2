@@ -105,7 +105,8 @@ def _all_failed(failed: dict[int, str]) -> CoverageError:
     """대상 장이 모두 실패했고 간이 값도 없을 때의 요청 전체 오류.
 
     LLM 코드가 하나라도 있으면 그중 장 번호가 가장 작은 장의 코드 · 상태 · 고정 문구를 쓴다.
-    없으면 모두 `RUBRIC_MISSING` 일 때 422 `RUBRIC_MISSING`, 그 밖에는 장 번호가 가장 작은 장의 코드(`STT_INCOMPLETE` 422)다.
+    없으면 모두 `RUBRIC_MISSING` 일 때 422 `RUBRIC_MISSING`, 그 밖에는 장 번호가 가장 작은 장의 코드다.
+    `/takes/analyze` 는 `STT_INCOMPLETE` 장이 있으면 이 오류 대신 200 으로 낸다(`evaluate_take`).
     """
     for number in sorted(failed):
         if failed[number] in LLM_ERROR_CODES:
@@ -258,10 +259,11 @@ def evaluate_take(
     (`RUBRIC_MISSING`)에 담되 `scored_ratio` 의 대상 장에는 들어가며, 나머지 장은 계속한다.
     대상 장이 없으면 (`slide_numbers=[]`) `rubrics` 와 상관없이 빈 결과 200 이다. `rubrics` 가 비어도 장마다
     STT 완전성을 먼저 정하고(끊겨 빈 장은 `STT_INCOMPLETE`) 나머지를 `RUBRIC_MISSING` 으로 둔다. 대상 장이 모두
-    실패하고 간이 값도 없으면 `_all_failed` 가 오류를 고른다 (모두 `RUBRIC_MISSING` 이면 422 `RUBRIC_MISSING`).
+    실패하고 간이 값도 `STT_INCOMPLETE` 장도 없으면 `_all_failed` 가 오류를 고른다 (모두 `RUBRIC_MISSING` 이면 422 `RUBRIC_MISSING`).
     STT 완전성(`stt_integrity`)이 `incomplete` 인데 STT 가 빈 장은 채점하지 않고 `failed` (`STT_INCOMPLETE`, 간이 값 없음)이다.
     평가 기준이 없는 장은 `script` 가 있으면 간이 값(`lexical_no_rubric`)을 붙인다. 대상 장이 모두 실패해도 간이 값이
-    하나라도 있으면 `evaluations` 가 빈 200 이고, 없으면 `_all_failed` 의 오류다. `llms` 가 None 이면
+    하나라도 있거나 `STT_INCOMPLETE` 장이 있으면 `evaluations` 가 빈 200 이고(에러 본문은 BE 가 읽지 않아 장마다
+    이유를 보일 수 있는 실패는 200 으로 낸다), 둘 다 없으면 `_all_failed` 의 오류다. `llms` 가 None 이면
     503 `LLM_UNAVAILABLE`. `meta.model` 은 LLM 출력을 쓴 채점(STT 가 빈 장이 아닌 것)이 있을 때만 모델 이름이다.
     대본 식별자 `script_name` 은 평가 기준 중 장 번호가 가장 작은 것의 `meta.script_name` 에서 가져온다.
     """
@@ -307,7 +309,7 @@ def evaluate_take(
         )
         failed |= stats["failed"]
         fallbacks |= stats.get("fallbacks", {})
-    if targets and not evaluations and not fallbacks:
+    if targets and not evaluations and not fallbacks and "STT_INCOMPLETE" not in failed.values():
         raise _all_failed(failed)
     used_llm = any(e.stt_text for e in evaluations)
     return _scoring_response(

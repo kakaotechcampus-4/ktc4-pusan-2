@@ -246,11 +246,22 @@ def test_tiny_contradiction_rate_is_never_rounded_to_zero():
 # ── 3. 흐름 ─────────────────────────────────────────────────
 
 
-def test_empty_rubrics_without_script_picks_stt_incomplete_first():
+def test_empty_rubrics_without_script_with_stt_incomplete_is_200():
+    """평가 기준 · 대본 글이 없어도 STT 가 끊겨 뺀 장이 있으면 오류 대신 장마다 이유를 담은 200 이다."""
     request = _with_timing(_request(rubrics=[], stt={4: ""}), {4: INCOMPLETE})
-    with pytest.raises(CoverageError) as caught:
-        _analyze(request)
-    assert (caught.value.status_code, caught.value.code) == (422, "STT_INCOMPLETE")
+    response = _analyze(request)
+    assert response.evaluations == []
+    assert [(f.slide_number, f.error.code, f.fallback) for f in response.failed] == [
+        (4, "STT_INCOMPLETE", None),
+        (6, "RUBRIC_MISSING", None),
+        (7, "RUBRIC_MISSING", None),
+    ]
+    assert response.take_scores.scored_ratio == 0
+    assert [(x.slide_number, x.reason_code) for x in response.detail.scope.excluded] == [
+        (4, "STT_INCOMPLETE"),
+        (6, "RUBRIC_MISSING"),
+        (7, "RUBRIC_MISSING"),
+    ]
 
 
 def test_empty_rubrics_all_rubric_missing_keeps_the_same_422():

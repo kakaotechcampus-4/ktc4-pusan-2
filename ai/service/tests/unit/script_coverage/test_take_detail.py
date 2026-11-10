@@ -104,12 +104,31 @@ def test_empty_stt_with_incomplete_integrity_is_failed_not_scored():
     assert response.detail.slides[1].stt_integrity == "incomplete"
 
 
-def test_all_slides_stt_incomplete_is_422():
+def test_all_slides_stt_incomplete_is_200_with_reasons():
+    """대상 장이 모두 STT 끊김이어도 422 대신 200 — BE 는 에러 본문을 읽지 않아 이유를 보일 수 없다."""
     timing = {"duration_ms": 60000, "stt_gap_ms": 30000, "stt_unobserved_ms": 0}
     request = _with_timing(_request(slide_numbers=[6], stt={6: ""}), {6: timing})
-    with pytest.raises(CoverageError) as caught:
-        _analyze(request)
-    assert (caught.value.status_code, caught.value.code) == (422, "STT_INCOMPLETE")
+    response = _analyze(request)
+    assert response.evaluations == []
+    [failure] = response.failed
+    assert (failure.slide_number, failure.error.code, failure.fallback) == (
+        6,
+        "STT_INCOMPLETE",
+        None,
+    )
+    scores = response.take_scores
+    assert (scores.content_coverage, scores.critical_fact_accuracy, scores.script_fidelity) == (
+        None,
+        None,
+        None,
+    )
+    assert scores.scored_ratio == 0
+    assert response.confirmations == []
+    assert response.meta.model is None
+    assert [(x.slide_number, x.reason_code) for x in response.detail.scope.excluded] == [
+        (6, "STT_INCOMPLETE")
+    ]
+    assert response.detail.slides[0].state == "failed"
 
 
 def test_incomplete_with_stt_is_scored_provisional():
