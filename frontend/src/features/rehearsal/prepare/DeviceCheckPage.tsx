@@ -634,7 +634,9 @@ export function DeviceCheckPage() {
       //   빈 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다. 목소리 기준을 보냈으면 무대가 알립니다
       const baseLevelDb = baseLevelRef.current;
       const body = toCalibrationRequest(calibration, { micDetected: micOk, baseLevelDb });
-      const saved = await sendCalibration(() => postCalibration(pitchId, take.takeId, body));
+      const saved = await sendCalibration((signal) =>
+        postCalibration(pitchId, take.takeId, body, signal),
+      );
 
       navigate(
         practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,

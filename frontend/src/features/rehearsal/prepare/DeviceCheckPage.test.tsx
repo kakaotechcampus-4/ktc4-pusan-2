@@ -915,3 +915,32 @@ it('탈출구로 시작했으면 보내지 못해도 무대에 알리지 않는�
   await act(async () => findButton('Take 4 시작하기').click());
   expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('false');
 });
+
+// #1184 리뷰 [P1] — 보정 요청이 답 없이 걸려도 Take 를 만든 뒤 무대로 넘어갑니다
+it('보정 요청이 답 없이 걸리면 제한 시간에 끊고 다시 보낸 뒤, 끝내 못 받아도 무대로 넘어가 알린다', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const signals: AbortSignal[] = [];
+    fixture.postCalibration.mockImplementation(
+      (_pitchId: string, _takeId: string, _body: unknown, signal: AbortSignal) => {
+        signals.push(signal);
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          );
+        });
+      },
+    );
+    await render();
+    await act(async () => findButton('Take 4 시작하기').click());
+    expect(fixture.create).toHaveBeenCalledOnce();
+    expect(host.textContent).not.toContain('연습 시작');
+    await act(async () => vi.advanceTimersByTimeAsync(20_000));
+    expect(signals).toHaveLength(3);
+    expect(signals.every((s) => s.aborted)).toBe(true);
+    expect(host.querySelector('[data-unconfirmed]')!.getAttribute('data-unconfirmed')).toBe('true');
+  } finally {
+    vi.useRealTimers();
+  }
+});
