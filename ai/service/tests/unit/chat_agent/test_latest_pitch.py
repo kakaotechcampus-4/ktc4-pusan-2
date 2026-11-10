@@ -286,3 +286,23 @@ def test_model_citing_date_and_count_gets_no_extra_zero_sentence() -> None:
     texts = _texts(data)
     assert texts and texts[0].startswith("가장 최근 발표는 11월 10일")  # 모델 문장이 나갔다
     assert "'투자 설명회'는 아직 분석이 끝난 Take가 없어요." not in texts
+
+
+@pytest.mark.prefetch
+def test_model_citing_both_dates_still_gets_the_finished_pitch_sentence() -> None:
+    """모델이 두 피치의 날짜만 이어 말하면('두 발표의 마지막 연습 시작 날짜는 …') 결과를 볼 수 있는 최근 발표 안내가 빠지지
+    않는다 — 분석이 끝난 Take 수 근거를 잇지 않았다(실제 모델 시연 장면 1, Issue #1194)."""
+
+    def answer(r: Any) -> Any:
+        latest = F.find_evidence(r, lambda o: o.get("value") == "11월 10일")
+        done = F.find_evidence(r, lambda o: o.get("value") == "11월 1일")
+        return F.answer(
+            [F.claim("RECORD", "가장 최근 발표는 11월 10일에 시작했고, 다른 발표는 11월 1일에 시작했어요.", evidence_ids=[latest, done])]
+        )
+
+    req = _global("가장 최근에 한 발표 뭐야?", PITCHES_0)
+    llm = F.FakeLlm([F.plan(steps=DEV_STEPS), F.done()], answers=[answer], fixes=[F.fix({})])
+    _, _, data = F.run_turn(req, llm)
+    texts = _texts(data)
+    assert texts and texts[0].startswith("가장 최근 발표는 11월 10일")  # 모델 문장이 나갔다
+    assert EXTRA_0 in texts
