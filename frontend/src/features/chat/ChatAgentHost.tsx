@@ -57,9 +57,35 @@ export function ChatAgentHost() {
   const info = chatRouteOf(pathname, search);
   const hidden = info === null;
 
-  // 숨는 화면으로 가면 닫습니다. 돌아왔을 때 패널이 다시 열려 초점을 빼앗지 않게 합니다
+  // 숨는 화면으로 가면 패널을 닫습니다. 지연 로딩 중인 본문이 교체돼도 초점을 잃지 않게 합니다.
   useLayoutEffect(() => {
-    if (hidden) useChatStore.getState().closeChat();
+    if (!hidden) return;
+    const wasOpen = useChatStore.getState().open;
+    useChatStore.getState().closeChat();
+    if (!wasOpen) return;
+
+    const content = document.querySelector<HTMLElement>('.chat-layout-content');
+    if (!content) return;
+    let focusedMain: HTMLElement | null = null;
+    const focusDestination = () => {
+      const main =
+        content.querySelector<HTMLElement>('#main') ?? content.querySelector<HTMLElement>('main');
+      if (!main || main === focusedMain || focusedMain?.isConnected) return;
+      // 사용자가 로딩 중 다른 조작부로 초점을 옮겼다면 다시 빼앗지 않습니다.
+      if (focusedMain && document.activeElement !== document.body) return;
+      if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
+      main.focus({ preventScroll: true });
+      if (document.activeElement === main) focusedMain = main;
+    };
+    const observer = new MutationObserver(focusDestination);
+    observer.observe(content, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['inert'],
+    });
+    focusDestination();
+    return () => observer.disconnect();
   }, [hidden]);
 
   return (
@@ -82,6 +108,11 @@ function resetChatAfterFailure(failures: number) {
 
 /** 메시지 글자 수 상한. 서버와 같은 기준(Python `len`, 코드 포인트 수)으로 셉니다 (12-4 F3) */
 const MAX_MESSAGE_LENGTH = 2000;
+const MOBILE_CHAT_QUERY = '(max-width: 760px)';
+const isMobileChat = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia(MOBILE_CHAT_QUERY).matches;
 
 function ChatLayer({ pathname, info }: { pathname: string; info: ChatRouteInfo | null }) {
   // 입력은 여기 두어 패널을 닫거나 채팅이 숨는 화면을 지나도 남습니다. 사용자가 바뀌면 비웁니다
@@ -170,10 +201,13 @@ function ChatSessionView({
 
   const close = () => {
     useChatStore.getState().closeChat();
-    const launcher = launcherRef.current;
-    if (launcher) {
-      launcher.inert = false;
-      launcher.focus();
+    // 모바일에서는 패널이 닫힐 때까지 런처가 숨겨져 있어 렌더 완료 뒤 초점을 돌립니다.
+    if (isMobileChat()) {
+      window.setTimeout(() => {
+        if (!useChatStore.getState().open) launcherRef.current?.focus();
+      }, 0);
+    } else {
+      launcherRef.current?.focus();
     }
   };
 
@@ -196,7 +230,6 @@ function ChatSessionView({
           setDraft={setDraft}
           focusRequested={focusRequested}
           onFocused={focused}
-          launcherRef={launcherRef}
         />
       )}
 
@@ -397,7 +430,6 @@ function ChatPanel({
   onClose,
   focusRequested,
   onFocused,
-  launcherRef,
   draft,
   setDraft,
 }: {
@@ -408,37 +440,57 @@ function ChatPanel({
   /** 런처로 연 때만 true — 그때만 입력칸에 초점을 주고 `onFocused` 로 알립니다 */
   focusRequested: boolean;
   onFocused: () => void;
-  launcherRef: RefObject<HTMLButtonElement>;
 } & DraftProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const memoryButtonRef = useRef<HTMLButtonElement>(null);
-  useKeepFocusInPanel(panelRef, inputRef);
-
+  const [mobileOverlay, setMobileOverlay] = useState(isMobileChat);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(MOBILE_CHAT_QUERY);
+    const sync = () => setMobileOverlay(media.matches);
+    media.addEventListener('change', sync);
+    sync();
+    return () => media.removeEventListener('change', sync);
+  }, []);
   useLayoutEffect(() => {
-    const panel = panelRef.current;
-    const launcher = launcherRef.current;
-    const content = panel
-      ?.closest('.chat-layout')
-      ?.querySelector<HTMLElement>('.chat-layout-content');
-    if (!panel || !launcher || !content) return;
+    if (!mobileOverlay) return;
+    const content = document.querySelector<HTMLElement>('.chat-layout-content');
+    if (!content) return;
+    const wasInert = content.hasAttribute('inert');
+    const body = document.body;
+    const previous = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
 
-    const narrow = window.matchMedia?.('(max-width: 760px)');
-    if (!narrow) return;
-    const update = () => {
-      panel.setAttribute('aria-modal', String(narrow.matches));
-      content.inert = narrow.matches;
-      launcher.inert = narrow.matches;
-      if (narrow.matches && !panel.contains(document.activeElement)) panel.focus();
-    };
-    update();
-    narrow.addEventListener('change', update);
+    // iOS Safari에서도 뒤 화면이 움직이지 않도록 고정합니다. 음수 top으로 보던 위치를 그대로 둡니다.
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = `-${scrollX}px`;
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+    content.setAttribute('inert', '');
+    if (panelRef.current && !panelRef.current.contains(document.activeElement)) {
+      if (inputRef.current && !inputRef.current.closest('[hidden]')) inputRef.current.focus();
+      else panelRef.current.focus();
+    }
     return () => {
-      narrow.removeEventListener('change', update);
-      content.inert = false;
-      launcher.inert = false;
+      if (!wasInert) content.removeAttribute('inert');
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.left = previous.left;
+      body.style.width = previous.width;
+      body.style.overflow = previous.overflow;
+      window.scrollTo(scrollX, scrollY);
     };
-  }, [launcherRef]);
+  }, [mobileOverlay]);
+  useKeepFocusInPanel(panelRef, inputRef);
   const sendable = useCanSend();
   /** 패널 몸통에 무엇을 그릴지 — 메시지 · 대화 목록 · 기억 설정(F14, 대화창 안) */
   const [view, setView] = useState<PanelView>('messages');
@@ -502,7 +554,7 @@ function ChatPanel({
       ref={panelRef}
       id={`${id}-panel`}
       role="dialog"
-      aria-modal="false"
+      aria-modal={mobileOverlay}
       aria-labelledby={`${id}-title`}
       // 누른 버튼이 사라졌는데 입력칸도 숨겨져 있을 때 초점을 받는 자리입니다 (useKeepFocusInPanel)
       tabIndex={-1}
@@ -510,6 +562,37 @@ function ChatPanel({
         if (event.key === 'Escape') {
           event.stopPropagation();
           onClose();
+          return;
+        }
+        if (event.key === 'Tab' && mobileOverlay) {
+          const focusable = [
+            ...event.currentTarget.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+            ),
+          ].filter(
+            (element) =>
+              !element.closest('[hidden]') &&
+              element.getClientRects().length > 0 &&
+              window.getComputedStyle(element).visibility !== 'hidden',
+          );
+          const first = focusable[0];
+          const last = focusable.at(-1);
+          if (!first || !last) {
+            event.preventDefault();
+            event.currentTarget.focus();
+          } else if (
+            event.shiftKey &&
+            (document.activeElement === first || document.activeElement === event.currentTarget)
+          ) {
+            event.preventDefault();
+            last.focus();
+          } else if (
+            !event.shiftKey &&
+            (document.activeElement === last || document.activeElement === event.currentTarget)
+          ) {
+            event.preventDefault();
+            first.focus();
+          }
         }
       }}
       className="chat-side-panel fixed inset-y-0 right-0 flex w-[min(var(--chat-panel-width),100%)] flex-col overflow-y-auto overscroll-contain border-l border-line bg-white outline-none"
