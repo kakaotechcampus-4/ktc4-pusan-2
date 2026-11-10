@@ -3,10 +3,17 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { publicUrl } from '@/lib/publicUrl';
 import type { Navigate } from './shared';
 
+const ABILITIES = [
+  '내 연습 기록에서 고칠 점 찾기',
+  'Take끼리 비교하기',
+  '다음 연습 목표 잡기',
+  '발표법 · 화면 사용법 안내',
+] as const;
 const QUESTIONS = [
-  '최근 연습에서 개선할 점을 알려줘',
-  '이전 연습과 달라진 점을 비교해줘',
-  '지난 Take에서 군더더기가 많았던 부분을 알려줘',
+  '최근 Take에서 가장 고칠 점이 뭐야?',
+  '지난 Take랑 비교해 줘',
+  '다음 연습 목표 잡아 줘',
+  '발표 시작은 어떻게 하면 좋아?',
 ] as const;
 
 const SEMINI_IMAGE = publicUrl('semini.png');
@@ -253,24 +260,26 @@ function SeminiPanel({ stateId }: { stateId: string }) {
                       className="h-full w-full object-cover [image-rendering:pixelated]"
                     />
                   </div>
-                  <p className="text-base font-bold">새미나이에게 물어보세요</p>
-                  <p className="mt-1 text-xs leading-5 text-stone">
-                    발표 기록을 분석하거나 다음 연습을 준비할 수 있어요.
-                  </p>
-                  <div className="mt-5 flex w-full max-w-80 flex-col gap-2" aria-label="추천 질문">
-                    {QUESTIONS.map((question) => (
-                      <button
-                        key={question}
-                        type="button"
-                        onClick={() => setDraft(question)}
-                        className="min-h-11 rounded-xl border border-line-strong bg-white px-3 py-2.5 text-left text-xs leading-5 text-ink transition-colors hover:border-coral hover:bg-coral-wash"
-                      >
-                        <span aria-hidden="true" className="mr-2 font-bold text-coral-deep">
-                          ↗
-                        </span>
-                        {question}
-                      </button>
-                    ))}
+                  <div className="w-full text-left text-xs leading-5 text-stone">
+                    <p className="font-bold text-ink">이런 걸 도와드릴 수 있어요</p>
+                    <ul className="mt-1 list-inside list-disc">
+                      {ABILITIES.map((ability) => (
+                        <li key={ability}>{ability}</li>
+                      ))}
+                    </ul>
+                    <ul aria-label="질문 예시" className="mt-2 flex flex-wrap gap-1.5">
+                      {QUESTIONS.map((question) => (
+                        <li key={question}>
+                          <button
+                            type="button"
+                            onClick={() => setDraft(question)}
+                            className="inline-flex min-h-11 items-center rounded-full border border-line-strong bg-cream px-3 font-bold text-ink hover:bg-greige"
+                          >
+                            {question}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               ) : (
