@@ -698,6 +698,7 @@ class TakeRepository:
                 Take.id.label("take_id"),
                 Take.pitch_id,
                 Pitch.title.label("pitch_title"),
+                Pitch.is_demo,
                 Take.take_number,
                 Take.started_at,
                 Take.status,

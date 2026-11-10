@@ -41,6 +41,8 @@ class TakeHistoryRowDTO(BaseModel):
     take_id: uuid.UUID
     pitch_id: uuid.UUID
     pitch_title: str
+    # First Take 튜토리얼 샘플 발표의 Take 인가. 제목은 사용자가 바꿀 수 있어 이 값으로 가린다
+    is_demo: bool
     take_number: int
     started_at: datetime
     status: str
@@ -95,6 +97,8 @@ class TakeReportDTO(BaseModel):
     take_id: uuid.UUID
     pitch_id: uuid.UUID
     pitch_title: str
+    # First Take 튜토리얼 샘플 발표의 Take 인가 (TakeHistoryRowDTO 와 같다)
+    is_demo: bool
     take_number: int
     script_mode: str
     ended_at: datetime | None
