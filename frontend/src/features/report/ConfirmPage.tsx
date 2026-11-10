@@ -152,8 +152,15 @@ function ConfirmForm({
   const closed = send.error instanceof ApiFailure && send.error.code === 'CONFIRMATION_CLOSED';
   // 기한 안에 보낸 답은 시간이 지나도 서버 결과를 기다립니다.
   if (send.isPending) return <StatusLine text="답을 반영하는 중" />;
+  // 공통 오류 문구는 "확인을 받을 수 없어요."로 시작해 제목과 겹칩니다. 답이 반영되지 않았고 분석은 이어진다는 것을 알립니다
   if (closed)
-    return <Closed takeId={takeId} title="확인을 받을 수 없어요" text={toMessage(send.error)} />;
+    return (
+      <Closed
+        takeId={takeId}
+        title="확인을 받을 수 없어요"
+        text="확인 시간이 지나 이번 답은 반영되지 않았어요. 분석은 답 없이 그대로 이어져요."
+      />
+    );
   if (expired)
     return <Closed takeId={takeId} title="확인 시간이 끝났어요" text="답 없이 그대로 진행돼요." />;
 

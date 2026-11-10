@@ -62,6 +62,13 @@ test.describe('대본 확인', () => {
     await answerAll(page, '잘 모르겠어요');
     await page.getByRole('button', { name: '답 보내기' }).click();
     await expect(page.getByText('확인을 받을 수 없어요', { exact: true })).toBeVisible();
+    // 답이 반영되지 않았고 분석은 이어진다고 알립니다. 제목과 같은 말을 본문에서 되풀이하지 않습니다
+    await expect(
+      page.getByText(
+        '확인 시간이 지나 이번 답은 반영되지 않았어요. 분석은 답 없이 그대로 이어져요.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByText(/확인을 받을 수 없어요/)).toHaveCount(1);
     await expect(page.getByRole('link', { name: '분석 대기로' })).toBeVisible();
   });
 
