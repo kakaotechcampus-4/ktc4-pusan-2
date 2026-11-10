@@ -369,3 +369,32 @@ def test_judge_gives_only_the_cited_cards_and_scores_one_or_zero() -> None:
     assert jg.judge_sentence(stub, "x", {}).error == "NO_SOURCE"  # 인용 누락은 부르지 않고 0
     failing = _JudgeStub(LlmTimeout(cause="t"))
     assert jg.judge_sentence(failing, "x", {"g-07": "본문"}).supported == 0  # 판정 오류
+
+
+# ── 경로 비교(in_order · in_order_any · precedes · not_in_order) ──────────
+
+_PATH = ["plan:set", "tool:get_take_report:OK", "tool:compare_takes:OK", "final:DONE"]
+
+
+@pytest.mark.parametrize(
+    ("op", "expect", "ok"),
+    [
+        ("in_order", ["plan:set", "tool:compare_takes:*"], True),  # 글롭 · 사이 건너뜀
+        ("in_order", ["final:*", "plan:set"], False),
+        ("in_order_any", [["final:*", "plan:set"], ["plan:set", "final:*"]], True),
+        ("in_order_any", [["x"], ["y"]], False),
+        ("precedes", ["tool:get_take_report:*", "tool:compare_takes:*"], True),
+        ("precedes", ["tool:compare_takes:*", "tool:get_take_report:*"], False),
+        ("precedes", ["plan:set", "tool:없는도구:*"], False),  # B 없음: 빈 통과 금지
+        ("not_in_order", ["tool:compare_takes:*", "plan:set"], True),
+        ("not_in_order", ["plan:set", "final:*"], False),
+    ],
+)
+def test_path_compares(op: str, expect: Any, ok: bool) -> None:
+    assert gr.compare(op, _PATH, expect)[0] is ok
+
+
+def test_path_compare_needs_string_list() -> None:
+    ok, why = gr.compare("in_order", {"a": 1}, ["a"])
+    assert not ok and "문자열 목록" in why
+    assert not gr.compare("precedes", [1, 2], ["a", "b"])[0]

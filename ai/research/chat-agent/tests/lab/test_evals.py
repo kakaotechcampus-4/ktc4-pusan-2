@@ -14,6 +14,7 @@ import pytest
 from pitch_coach_ai.features.chat_agent import templates
 
 from chat_agent_lab import evals as ev
+from chat_agent_lab import grading as gr
 from chat_agent_lab import scenario as scn
 from chat_agent_lab.service_tests import fakes as F
 
@@ -111,6 +112,16 @@ def test_runner_end_to_end_with_a_fake_model() -> None:
     assert isinstance(turn["first_claim_ms"], int)
     m = ev.unit_metrics(results, None, None, 1)
     assert m["stream_mismatch"] == 0 and m["first_claim_p95_s"] is not None
+    # 경로 사건(trajectory)은 실제 가짜 BE 줄에서 만든다: 문장 줄의 종류(claim.kind) · 도구 · 승인 → 실행 순서
+    traj = by["ana-slide3-gaze"].trajectory
+    assert traj[0] == "plan:set" and traj[-1] == "final:DONE", traj
+    assert "claim:RECORD" in traj and any(e.startswith("tool:get_take_report:") for e in traj), traj
+    assert "claim:None" not in traj
+    save = by["rep-save-goal"].trajectory
+    ok, why = gr.path_compare(
+        "in_order", save, ["propose:SAVE_GOAL:ASK", "approve:SAVE_GOAL", "exec:SAVE_GOAL:OK"]
+    )
+    assert ok, (why, save)
 
 
 def test_stream_metrics_count_a_turn_whose_lines_differ_from_the_final() -> None:

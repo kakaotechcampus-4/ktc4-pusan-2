@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "id": "path-combo-definition-only",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'필러 워드가 뭐야?'처럼 기록과 상관없는 개념 질문 — Take 기록 읽기 · 비교 도구를 쓰지 않는다",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "필러 워드가 정확히 무슨 뜻이야? 개념만 짧게 알려 줘",
+      "page_take_id": "t-5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-record-tool",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "tool:get_take_report:OK",
+          "tool:get_take_report:CACHED",
+          "tool:compare_takes:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": false,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "no-check-sentence",
+        "observe": "answer",
+        "grader": "regex",
+        "compare": "absent",
+        "expect": "기록 [0-9]+건을 확인"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

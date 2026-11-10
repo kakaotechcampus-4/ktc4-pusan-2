@@ -117,6 +117,8 @@ class SystemText(StrEnum):
     NEXT_FIRST_TAKE = "Take를 한 번 연습하면 그 기록을 같이 볼 수 있어요."
     NEXT_PICK_PITCH = "어느 발표를 볼지 말씀해 주시면 그 기록을 같이 볼게요."
     NEXT_FIRST_PITCH = "피치를 만들어 연습하면 그 기록을 같이 볼 수 있어요."
+    #: 결과 발견 안내(D4b): 이 실행에서 `SAVE_GOAL`이 성공한 답에만, 그 `ACTION_RESULT` 문장 바로 뒤에 한 번(설정 `result_discovery`)
+    RESULT_DISCOVERY = "연습 뒤 대화를 다시 열면 목표 확인 결과를 볼 수 있어요."
     #: 다른 피치의 Take 를 함께 비교해 달라고 했을 때(1-3). 값은 각각 말해도 좋아짐 · 나빠짐 · 차이를 말하지 않는다
     CROSS_PITCH_NO_COMPARE = "다른 발표의 Take끼리는 비교하지 않아요. 발표마다 따로 볼 수 있어요."
     REASSESS_HYPOTHETICAL = "이 결과는 '이 조건이라면'을 가정한 참고 결과이고 공식 결과는 아니에요."
@@ -167,6 +169,13 @@ GOAL_SUMMARY = {
     "gt_base": "Take {take_number}의 {where}{label}({value})보다 높이는 목표예요.",
     "lt_base": "Take {take_number}의 {where}{label}({value})보다 낮추는 목표예요.",
     "in_range": "Take {take_number} 기준 {where}{label}의 목표 범위({value}) 안에 드는 목표예요.",
+}
+#: 열린 대화 목표를 물을 때 목표 내용(7-10). get_goals 가 발급한 목표 기준 값 근거(기준 Take · 장 · 지표 · 값)로 그리는 `RECORD` 문장.
+#: 범위 목표는 범위 끝값이 근거가 아니므로 값을 쓰지 않는다
+GOAL_OPEN = {
+    "gt_base": "대화 목표는 Take {take_number}의 {where}{label} {value}보다 높이기예요.",
+    "lt_base": "대화 목표는 Take {take_number}의 {where}{label} {value}보다 낮추기예요.",
+    "in_range": "대화 목표는 Take {take_number} 기준 {where}{label}의 목표 범위 안에 들기예요.",
 }
 SAVE_GOAL_NOTE_REPLACE = "저장하면 지금 대화 목표가 이 목표로 바뀌어요."
 SAVE_GOAL_NOTE_UNDO = "저장한 뒤에도 되돌릴 수 있어요."
@@ -275,12 +284,110 @@ GOAL_WORD = {
     "BASELINE_MISMATCH": "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요",
 }
 
+#: '없음' 근거 문장(코드 템플릿, 7-10 · 6-9 '고친 뒤'). 모델 문장이 모두 빠졌거나 답이 비었을 때 질문 대상의 '없음' 근거로
+#: 그린다(compose.none_sentence). 읽은 범위(피치 · Take · 장 · 영역)를 함께 말하고 그 밖으로 넓히지 않는다. '없음'을 평가로
+#: 바꾸지 않는다(문제 구간 0곳 ≠ 문제없음). 문제 구간 문장은 측정된 영역일 때만
+NONE_TAKES = "'{title}'에는 아직 연습한 Take가 없어요."
+NONE_REVIEW = "Take {n}에는 아직 리뷰 결과가 없어요."
+NONE_GOAL = "대화 목표는 아직 없어요."
+NONE_SEGMENTS = "Take {n} {area}에서 찾은 문제 구간이 없어요."
+#: 코치 결과 영역 → 문장 · 도구 결과의 이름. 답 검사의 지표 이름(`claims.METRIC_LABEL` · `cfg.metric_names`)과 겹치지 않게
+#: 짧게 둔다(겹치면 지표 근거가 없는 '없음' 문장이 대상 불일치로 걸린다)
+AREA_LABEL = {
+    "GAZE": "시선",
+    "SPEED": "속도",
+    "PAUSE": "침묵",
+    "TIME": "시간 배분",
+    "VOLUME": "목소리",
+    "FILLER": "군더더기",
+}
+
+#: 피치 만들기 · 수정 화면의 구역(`page.screen.step`) → 화면에 보이는 단계 이름(FE `PitchCreatePage` 단계 막대).
+#: get_screen 결과에 근거와 함께 실어 "지금 어느 단계예요?"에 답할 수 있게 한다(final60 inj-screen-criteria)
+SCREEN_STEP_LABEL = {
+    "slides": "슬라이드",
+    "script": "대본 연결",
+    "info": "발표정보",
+    "criteria": "평가 기준",
+}
+
 #: 닫힌 대화 목표의 상태 → 고정 문장(7-10). 닫은 Take 를 요청 자료로는 알 수 없어 Take · 값 없이 상태만 말한다
 GOAL_CLOSED_TEXT = {
     "ACHIEVED": SystemText.GOAL_CLOSED_ACHIEVED,
     "NOT_ACHIEVED": SystemText.GOAL_CLOSED_NOT_ACHIEVED,
     "BASELINE_MISMATCH": SystemText.GOAL_CLOSED_MISMATCH,
 }
+
+
+# ── 할 일 단계 표시 (6-1 7번, progress.py) ───────────────────────────────────
+# 단계 글 = `목적: 실행 → 결과`. 실행 · 결과 글은 아래 표로만 만든다(모델 글을 넣지 않는다). 숫자 · Take · 장 번호는
+# 그 단계가 읽은 근거로만 붙고, 근거로 받칠 수 없으면 숫자 없는 실행 이름(`PLAN_TOOL_NAME`)으로 그린다
+
+#: 도구 종류 이름: 계획에 없던 도구를 실행해 덧붙는 단계의 목적이자, 숫자를 뺀 실행 이름
+PLAN_TOOL_NAME = {
+    "compare_takes": "비교",
+    "get_take_report": "기록 보기",
+    "list_takes": "Take 목록",
+    "list_pitches": "피치 목록",
+    "get_goals": "대화 목표",
+    "get_screen": "화면 보기",
+    "search_guides": "자료 찾기",
+    "fetch_take": "기록 가져오기",
+}
+#: 대상 번호가 없는 도구의 실행 글(compare_takes · get_take_report · fetch_take 는 Take 번호를 넣어 progress.py 가 만든다)
+PLAN_EXEC = {
+    "list_takes": "Take 목록",
+    "list_pitches": "피치 목록",
+    "get_screen": "화면",
+    "get_goals": "대화 목표",
+    "search_guides": "자료 찾기",
+}
+#: 비교할 수 없는 까닭(compare_takes `reason`) → 단계 결과의 까닭 낱말. 목록 밖 까닭은 `조건 다름`
+PLAN_NOT_COMPARABLE = {
+    "DIFFERENT_SCRIPT_VERSION": "대본 버전 다름",
+    "DIFFERENT_CRITERIA_VERSION": "평가 기준 버전 다름",
+    "RULE_VERSION_CHANGED": "판정 기준 버전 다름",
+    "NOT_COMPLETED_FULLY": "끝까지 안 한 Take",
+    "MISSING_VERSION": "버전 정보 없음",
+    "NO_VALUE": "측정 안 됨",
+}
+PLAN_NOT_COMPARABLE_OTHER = "조건 다름"
+#: 비교 결론(compare_takes `outcome`) → 단계 결과 낱말. 목록 밖은 `판단 불가`
+PLAN_OUTCOME = {
+    "IMPROVED": "좋아짐",
+    "WORSENED": "나빠짐",
+    "SAME": "같음",
+    "BOTH_IN_RANGE": "같음",
+    "SAME_DISTANCE": "같음",
+}
+PLAN_OUTCOME_OTHER = "판단 불가"
+#: 단계 결과 글(사실 · 상태)
+PLAN_RESULT = {
+    "NOT_COMPARABLE": "비교 불가({reason})",
+    "NOT_LOADED": "기본 자료에 없음",
+    "REVIEW_MISSING": "리뷰 분석 전",
+    "ERROR": "확인 실패",
+    "SHORT": "시간 부족",
+    "NO_TAKES": "Take 없음",
+    # 거른 조건에 맞는 Take 만 없다(범위 피치에는 Take 가 있음): 'Take 없음'과 나눈다
+    "NO_TAKES_FILTERED": "조건에 맞는 Take 없음",
+    "NO_GOAL": "목표 없음",
+    "NO_SEGMENTS": "문제 구간 없음",
+    "SEGMENTS": "문제 구간 있음",
+    "UNMEASURED": "측정 안 됨",
+    "PRIORITY": "리뷰 우선 개선 {dimension}",
+    "GOAL": "있음",
+    "GUIDES": "자료 있음",
+    "NO_GUIDES": "자료 없음",
+    "FETCHED": "가져옴",
+    "CHECKED": "확인",
+    "SLIDE_CHECKED": "{slide}장 확인",
+}
+#: get_take_report 의 실행 글(읽은 절과 상관없이). 출처(코치 결과 · 리뷰)는 결과 글과 trace 요약이 보인다
+PLAN_REPORT_EXEC = "Take {n} 기록"
+#: 모델이 쓴 단계 목적에서 숫자 · Take · 장 번호를 지우고 빈 글이 되면 쓰는 목적(도구 힌트가 없거나 도구 종류 이름이 없을 때)
+PLAN_PURPOSE_FALLBACK = {"answer": "답 쓰기"}
+PLAN_PURPOSE_DEFAULT = "기록 확인"
 
 
 # ── 조사 ─────────────────────────────────────────────────────────────────

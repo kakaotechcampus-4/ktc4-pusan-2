@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-ana-thesis-gaze-pace-compare",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "'시선은 나아진 것 같은데 속도는?' — 시선 41% → 53% 맞음, 말 속도 342 → 358(범위 275~350 밖) 나빠짐",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-thes",
+        "title": "졸업 논문 심사 발표",
+        "takes": [
+          {
+            "take_id": "thes-t2",
+            "take_number": 2,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": 0.41,
+              "cpm": 342
+            },
+            "review": {
+              "dimensions": {},
+              "score": 71
+            }
+          },
+          {
+            "take_id": "thes-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": 0.53,
+              "cpm": [
+                345,
+                348,
+                389,
+                350
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-thes"
+    }
+  },
+  "turns": [
+    {
+      "message": "지난 연습이랑 비교하면 시선은 좀 나아진 것 같은데, 말 속도는 어떻게 됐는지 둘 다 비교해서 봐 주세요.",
+      "page_take_id": "thes-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "gaze-before",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "41%",
+        "grader": "number",
+        "derive": "thes-t2:GAZE.audience_ratio"
+      },
+      {
+        "check_id": "gaze-after",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "53%",
+        "grader": "number",
+        "derive": "thes-t3:GAZE.audience_ratio"
+      },
+      {
+        "check_id": "claim-supported",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "verdict": "SUPPORTED",
+          "quote~": "시선"
+        },
+        "path": "assessments",
+        "metric": "objectivity",
+        "note": "'시선은 나아진 것 같은데'(CHANGE) — compare IMPROVED"
+      },
+      {
+        "check_id": "pace-worse",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "나빠졌",
+        "grader": "regex",
+        "note": "RANGE: d(342)=0 → d(358)=8, WORSENED"
+      },
+      {
+        "check_id": "two-compares",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:OK",
+          "tool:compare_takes:OK"
+        ],
+        "metric": "path",
+        "note": "지표가 둘이라 비교가 두 번 필요(어느 쪽을 먼저 하든)"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

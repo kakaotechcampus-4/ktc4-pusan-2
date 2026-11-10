@@ -4,13 +4,21 @@
   결과 JSON 의 값 옆에 `evidence_id`를 단다. 모델은 답 문장에 그 id 를 잇는다(6-9).
 - 읽기 상태: 값이 없으면 까닭을 `NOT_LOADED`(기본 자료에 없음) · `OMITTED`(크기 때문에 뺌) · `UNMEASURED`(잴 수 없음) ·
   `NOT_FOUND`(지워짐 · 없음) · `EMPTY`(실제로 빈 결과)로 나눈다. null 을 0 으로 바꾸지 않는다(L1-17).
+- '없음'도 근거다(6-8): 실제로 읽은 범위의 0 · 없음 — 피치별 Take 수(`list_pitches`, `pitches[pitch_id=…].take_count`),
+  범위 피치의 Take 0개(`list_takes`, 거른 조건은 경로에), 리뷰 절의 리뷰 없음(`review.status` NONE), 측정된 영역의 문제 구간
+  0곳(`problem_segments[area=…].count`, 장을 읽었으면 `[area=…,slide_number=…]`), 대화 목표 없음(`goal.status` NONE) — 을 같은 `Evidence` 모양(RECORD)으로 낸다.
+  이름 검색이 비면 '이 이름으로 찾은 0개'(`pitches[query].count`)다. 측정 안 됨 · 생략 · 기본 자료에 없음은 '없음' 근거를 만들지 않는다.
+  '없음' 근거를 낸 결과는 범위 피치도 `target_ids`에 넣어 피치가 지워지면 함께 버린다(5-6).
 - 범위 대조: 모든 도구가 대상 피치를 지금 범위와 대조한다. 범위 밖 Take 는 `NOT_FOUND` 로 돌려준다(L1-18).
 - 도구 기록 문구(`args_summary` · `result_summary`)는 도구명 · 대상 번호 · 상태로 만든다. 사용자 원문 · 대본 · 검색 질의는 넣지 않는다.
+  `get_take_report` 결과 요약 앞에는 읽은 출처를 붙인다: 코치 Take 결과(장별 지표 · 문제 구간)면 `코치가 찾은 것 · `,
+  리뷰(차원 판정 · 강점 · 개선 · 미션 결과)면 `리뷰 분석 · `(`report_source`).
 - 고칠 때: 인자 모델은 `extra="forbid"`(모르는 인자 거부, L1-15). 결과 모양을 바꾸면 TOOL_SCHEMA_VERSION 을 올린다.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -18,8 +26,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..claims import ISSUE_LABEL, METRIC_LABEL, format_metric_value
 from ..goals import compare_takes, record_read_value
+from ..prompts import PLAN_STEP_TOOLS
 from ..schemas import PlanStep, TakeSnapshot
-from ..values import read_dimension_state, read_metric
+from ..templates import AREA_LABEL, SCREEN_STEP_LABEL
+from ..values import is_number, read_dimension_state, read_metric
 
 if TYPE_CHECKING:
     from ..runctx import RunCtx
@@ -35,6 +45,15 @@ class PlanStepArg(_Args):
     step: str = Field(min_length=1, max_length=60)
     status: Literal["TODO", "DOING", "DONE", "SKIPPED"]
     note: str | None = Field(default=None, max_length=200)
+    #: 이 단계에서 쓸 도구(힌트, 선택). 코드가 실행한 도구를 단계에 잇는 데만 쓰고 응답 `PlanStep`에는 싣지 않는다(progress.py)
+    tool: Literal[PLAN_STEP_TOOLS] | None = None  # type: ignore[valid-type]
+
+    @field_validator("tool", mode="before")
+    @classmethod
+    def _known_tool(cls, v: Any) -> Any:
+        # 힌트일 뿐이다: 모르는 이름(fetch_pitch · reassess 등)은 없는 것으로 본다. 틀린 인자로 막으면 계획 고치기 전체가
+        # BAD_ARGS 로 버려지고 모델이 같은 호출을 되풀이한다(계획 출력의 `progress.PlanStepDraft`와 같은 규칙)
+        return v if v in PLAN_STEP_TOOLS else None
 
 
 class UpdatePlanArgs(_Args):
@@ -164,6 +183,17 @@ def _get_screen(ctx: RunCtx, _a: NoArgs) -> ToolResult:
     eids: list[str] = []
     if sc.name in ("pitch_create", "pitch_edit"):
         data["step"] = sc.step
+        # 지금 구역의 화면 이름도 근거와 함께 싣는다("지금 어느 단계예요?" → "평가 기준 단계", final60 inj-screen-criteria:
+        # 구역 키만 있어 근거로 잇지 못하고 단계 질문을 건너뜀)
+        step_ev = ctx.registry.screen(
+            pitch_id=pid,
+            snapshot_id=sc.snapshot_id,
+            path="screen.step",
+            value=SCREEN_STEP_LABEL.get(sc.step, sc.step),
+            saved=False,
+        )
+        eids.append(step_ev.evidence_id)
+        data["step_label"] = {"value": step_ev.value, "evidence_id": step_ev.evidence_id}
         data["version_label"] = sc.version_label
         draft: dict[str, Any] = {}
         for k, v in sc.draft.model_dump().items():
@@ -234,6 +264,17 @@ def _norm(s: str) -> str:
     return "".join(s.split()).lower()
 
 
+#: 근거 경로에 넣을 수 있는 거른 조건 값(식별자 · enum 모양). 그 밖의 글(모델이 넣은 임의 글)은 경로에 넣지 않는다
+_PATH_VALUE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+def _path_value(v: Any) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    s = str(v)
+    return s if _PATH_VALUE.match(s) else "OTHER"
+
+
 def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
     items = ctx.pitches
     if a.query:
@@ -242,7 +283,23 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
     out = []
     eids: list[str] = []
     for p in items:
-        row: dict[str, Any] = {"pitch_id": p.pitch_id, "title": p.title, "take_count": p.take_count}
+        # 피치마다 Take 수도 근거다: 0 이면 '그 피치에 아직 Take 가 없음'을 RECORD 로 말할 수 있게(6-8 '없음'도 확인한 사실)
+        tc = ctx.registry.record(
+            pitch_id=p.pitch_id,
+            take_id=None,
+            take_number=None,
+            kind=None,
+            revision=None,
+            path=f"pitches[pitch_id={p.pitch_id}].take_count",
+            value=p.take_count,
+            unit="count",
+        )
+        eids.append(tc.evidence_id)
+        row: dict[str, Any] = {
+            "pitch_id": p.pitch_id,
+            "title": p.title,
+            "take_count": {"value": p.take_count, "evidence_id": tc.evidence_id},
+        }
         lr = p.last_review
         if lr is not None:
             # 우선 개선 차원도 근거로 낸다(피치마다 따로 말하는 전체 범위 답이 근거 없는 문장으로 빠지지 않게, 6-5)
@@ -277,7 +334,25 @@ def _list_pitches(ctx: RunCtx, a: ListPitchesArgs) -> ToolResult:
                 eids.append(ev.evidence_id)
                 row["last_review"]["score"] = {"value": lr.score, "evidence_id": ev.evidence_id}
         out.append(row)
-    data = {"items": out, "total": ctx.pitches_total, "shown": len(ctx.pitches)}
+    data: dict[str, Any] = {"items": out, "total": ctx.pitches_total, "shown": len(ctx.pitches)}
+    if a.query and not out:
+        # 이름으로 찾은 목록이 비었다: '이 이름으로 찾은 피치 0개'다(사용자의 피치 수 전체가 아님). 검색어는 경로에 넣지 않는다
+        ev = ctx.registry.record(
+            pitch_id=None,
+            take_id=None,
+            take_number=None,
+            kind=None,
+            revision=None,
+            path="pitches[query].count",
+            value=0,
+            unit="count",
+        )
+        eids.append(ev.evidence_id)
+        data["found"] = {
+            "value": 0,
+            "evidence_id": ev.evidence_id,
+            "note": "이 이름으로 찾은 피치 수다(전체 피치 수가 아님)",
+        }
     return _res(
         "list_pitches",
         ok=True,
@@ -342,18 +417,45 @@ def _list_takes(ctx: RunCtx, a: ListTakesArgs) -> ToolResult:
         rows.append(row)
         ctx.touch(t.take_id)
     ctx.touch(ctx.scope_pitch_id)
+    data: dict[str, Any] = {
+        "items": rows,
+        "pitch_title": ctx.pitch.info.title,
+        "script_version_id": ctx.pitch.versions.script_version_id,
+    }
+    targets = [r["take_id"] for r in rows]
+    if not rows:
+        # 읽은 범위(범위 피치 · 거른 조건)에 Take 가 없다: 그 범위의 '0개'를 근거로 낸다. 조건은 경로에 남긴다(범위 밖으로 넓히지 않게)
+        cond = "".join(
+            f", {k}={_path_value(v)}"
+            for k, v in (
+                ("script_version_id", a.script_version_id),
+                ("completed_fully", a.completed_fully),
+                ("mode", a.mode),
+            )
+            if v is not None
+        )
+        ev = ctx.registry.record(
+            pitch_id=ctx.scope_pitch_id,
+            take_id=None,
+            take_number=None,
+            kind=None,
+            revision=None,
+            path=f"takes[pitch_id={ctx.scope_pitch_id}{cond}].count",
+            value=0,
+            unit="count",
+        )
+        eids.append(ev.evidence_id)
+        data["count"] = {"value": 0, "evidence_id": ev.evidence_id, "filtered": bool(cond)}
+        targets = [ctx.scope_pitch_id] if ctx.scope_pitch_id else []
     return _res(
         "list_takes",
         ok=True,
-        data={
-            "items": rows,
-            "pitch_title": ctx.pitch.info.title,
-            "script_version_id": ctx.pitch.versions.script_version_id,
-        },
+        data=data,
         error=None,
         evidence_ids=eids,
         read_state=None if rows else "EMPTY",
-        target_ids=[r["take_id"] for r in rows],
+        # '없음' 근거는 범위 피치에 기댄다: 피치가 지워지면 이 결과 · 근거를 함께 버린다(5-6)
+        target_ids=targets,
         args_summary="Take 목록",
         result_summary=f"Take {len(rows)}개",
     )
@@ -420,6 +522,22 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
     eids: list[str] = []
     state: str | None = None
     note: str | None = None
+    #: 이 결과가 낸 '없음' 근거(리뷰 상태 · 영역별 문제 구간 0곳). 있으면 결과 칸에 싣고 범위 피치도 대상에 넣는다
+    extra: dict[str, Any] = {}
+    if a.section in REVIEW_SECTIONS and review is None:
+        # 리뷰 절을 청했는데 리뷰가 없다: 리뷰 상태를 근거로 낸다('그 Take 에 아직 리뷰 결과가 없음', 'Take 없음'과 섞지 않는다)
+        ev = ctx.registry.record(
+            pitch_id=ctx.scope_pitch_id or "",
+            take_id=snap.summary.take_id,
+            take_number=tn,
+            kind="REVIEW",
+            revision=snap.revisions.REVIEW,
+            path="review.status",
+            value="NONE",
+            version=ctx.version_of(snap),
+        )
+        eids.append(ev.evidence_id)
+        extra["review_status"] = {"value": "NONE", "evidence_id": ev.evidence_id}
     if a.section == "dimensions":
         if review is None:
             state, note = (
@@ -515,6 +633,13 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                             )
                     items.append(row)
             state = None if items else "EMPTY"
+            if not items:
+                # 리뷰의 강점 · 개선점 목록이 비어도 문제가 없다는 뜻이 아니다: 장별 문제 구간 · 차원 상태는 다른 절에 있다
+                # (r9 rep-repeat-issue: '반복되는 문제'를 이 절로만 찾고 비었다고 답을 비움)
+                note = (
+                    "리뷰의 강점 · 개선점 목록이 비었다. 문제가 없다는 뜻이 아니다: 장별 문제(어디서 · 무슨 문제)는 "
+                    "problem_segments, 차원 상태는 dimensions 로 읽는다."
+                )
     elif a.section == "problem_segments":
         if tr is None:
             state = "NOT_LOADED"
@@ -548,6 +673,14 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                     }
                 )
             state = None if items else "EMPTY"
+            extra.update(_segment_facts(ctx, snap, a, items, eids))
+            if not items and review is not None:
+                # 코치가 찾은 문제 구간이 0곳이어도 리뷰의 차원 판정(우선 개선 등)은 따로 있다(final60 ana-policy-recurring ·
+                # rep-conference-two-turn-goal: '매번 지적된 것 · 공통으로 걸리는 부분'을 이 절로만 찾고 '확인되지 않는다'고 답함)
+                note = (
+                    "이 범위에서 코치가 찾은 문제 구간이 없다. 리뷰가 지적한 것(차원 상태: 우선 개선 · 강점)은 따로 있다: "
+                    "dimensions 로 읽는다."
+                )
     elif a.section == "slides":
         if tr is None:
             state = "NOT_LOADED"
@@ -618,6 +751,7 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
     if a.section == "mission_results":
         # 지금 진행 중인 미션은 결과 행(items)과 모양이 달라 따로 둔다(items 는 한 모양, #883 리뷰)
         data["active_missions"] = missions
+    data.update(extra)
     if note:
         data["note"] = note
     omitted = [
@@ -640,11 +774,123 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
         error=None if state != "NOT_LOADED" else {"code": "NOT_LOADED", "message": "결과가 없다"},
         evidence_ids=eids,
         read_state=state,
-        target_ids=[snap.summary.take_id],
+        # '없음' 근거를 냈으면 범위 피치도 대상이다(피치가 지워지면 그 근거와 이 결과를 함께 버린다, 5-6)
+        target_ids=[snap.summary.take_id]
+        + (
+            [ctx.scope_pitch_id]
+            if ctx.scope_pitch_id and ("review_status" in extra or "no_segment_areas" in extra)
+            else []
+        ),
         revisions={snap.summary.take_id: source_revision},
         args_summary=summ,
-        result_summary=f"{len(items)}개 항목" if items else (state or "OK"),
+        # 무엇을 읽었는지 출처를 앞에 붙인다(코치 Take 결과 · 리뷰, trace 요약 200자 안)
+        result_summary=(
+            _SOURCE_TAG[report_source((a.section,))]
+            + (f"{len(items)}개 항목" if items else (state or "OK"))
+        )[:200],
     )
+
+
+#: 코치 결과 영역 이름(근거 경로에 넣는다). 모르는 모양의 이름은 '없음' 근거를 만들지 않는다
+_AREA_NAME = re.compile(r"^[A-Z_]{1,32}$")
+
+
+def _slide_measured(av: dict[str, Any], slide_number: int) -> bool:
+    """영역 값(`areas.<영역>`)에서 그 장이 측정됐는가: 장 항목이 있고, 측정 비율이 0 이하가 아니고, 지표 값이 하나라도 수다
+    (장 값 읽기 `read_metric`의 측정 안 됨 조건과 같다). 장 항목이 없거나 값이 모두 null 이면 측정 안 됨이다."""
+    slides = av.get("slides")
+    slide = next(
+        (
+            s
+            for s in (slides if isinstance(slides, list) else [])
+            if isinstance(s, dict) and s.get("slide_number") == slide_number
+        ),
+        None,
+    )
+    if slide is None:
+        return False
+    ratio = slide.get("measured_ratio")
+    if is_number(ratio) and ratio <= 0:
+        return False
+    metrics = slide.get("metrics")
+    return isinstance(metrics, dict) and any(is_number(v) for v in metrics.values())
+
+
+def _segment_facts(
+    ctx: RunCtx, snap: TakeSnapshot, a: TakeReportArgs, items: list[dict[str, Any]], eids: list[str]
+) -> dict[str, Any]:
+    """문제 구간을 읽은 범위(Take · 장)에서 영역마다: 값이 측정됐고 구간이 0곳이면 '문제 구간 없음' 근거(count 0)를 내고,
+    측정 안 된 영역(값 null · 미측정 사유)은 이름만 알린다. 측정 안 됨은 '없음'이 아니다(null 을 0 으로 읽지 않는다, L1-17).
+    구간이 하나라도 있는 영역(믿을 수 없는 구간 포함)은 '없음' 근거를 만들지 않는다.
+
+    장을 읽었으면(`slide_number`) 그 장의 값이 측정된 영역만 '없음'이다(Take 값만 측정되고 그 장은 측정 안 된 영역을 넓히지
+    않는다). 장의 '없음' 근거는 경로에 장 번호를 넣는다: 한 실행에서 두 장을 읽어도 근거 id 가 겹치지 않는다(L1-18)."""
+    tr = snap.results.take_result or {}
+    with_segments = {it.get("area") for it in items}
+    none_rows: list[dict[str, Any]] = []
+    unmeasured: list[dict[str, Any]] = []
+    slide = a.slide_number
+    for area, av in (tr.get("areas") or {}).items():
+        if not isinstance(av, dict) or not isinstance(area, str) or not _AREA_NAME.match(area):
+            continue
+        label = AREA_LABEL.get(area, area)
+        if (
+            av.get("unmeasured_reason") is not None
+            or av.get("take") is None
+            or (slide is not None and not _slide_measured(av, slide))
+        ):
+            unmeasured.append({"area": area, "label": label})
+            continue
+        if area in with_segments:
+            continue
+        where = f"area={area}" + (f",slide_number={slide}" if slide is not None else "")
+        ev = ctx.registry.record(
+            pitch_id=ctx.scope_pitch_id or "",
+            take_id=snap.summary.take_id,
+            take_number=snap.summary.take_number,
+            kind="TAKE_RESULT",
+            revision=snap.revisions.TAKE_RESULT,
+            path=f"problem_segments[{where}].count",
+            value=0,
+            slide_number=a.slide_number,
+            unit="count",
+            version=ctx.version_of(snap),
+        )
+        eids.append(ev.evidence_id)
+        none_rows.append(
+            {"area": area, "label": label, "count": {"value": 0, "evidence_id": ev.evidence_id}}
+        )
+    out: dict[str, Any] = {}
+    if none_rows:
+        out["no_segment_areas"] = none_rows
+    if unmeasured:
+        out["unmeasured_areas"] = unmeasured
+    return out
+
+
+#: get_take_report 의 절 → 읽은 출처. 코치 Take 결과(장별 지표 · 문제 구간)와 리뷰(차원 판정 · 강점 · 개선 · 미션 결과)
+COACH_SECTIONS = frozenset({"slides", "problem_segments", "metrics"})
+REVIEW_SECTIONS = frozenset({"dimensions", "strengths", "improvements", "mission_results"})
+_SOURCE_TAG = {
+    "COACH": "코치가 찾은 것 · ",
+    "REVIEW": "리뷰 분석 · ",
+    "BOTH": "코치가 찾은 것 · 리뷰 분석 · ",
+}
+
+
+def source_tag_of(summary: str) -> str:
+    """결과 요약 앞의 출처 표지(없으면 빈 글). 표시 검사로 요약을 줄일 때도 출처는 남긴다(turn.py `_safe_trace`)."""
+    return next(
+        (t for t in sorted(_SOURCE_TAG.values(), key=len, reverse=True) if summary.startswith(t)),
+        "",
+    )
+
+
+def report_source(sections: Sequence[str]) -> str:
+    """읽은 절들의 출처: `COACH`(코치 Take 결과) · `REVIEW`(리뷰) · `BOTH`(둘 다). trace 요약 · 할 일 단계 실행 글이 같이 쓴다."""
+    coach = any(s in COACH_SECTIONS for s in sections)
+    review = any(s in REVIEW_SECTIONS for s in sections)
+    return "BOTH" if coach and review else ("REVIEW" if review else "COACH")
 
 
 # ── compare_takes ─────────────────────────────────────────────────────────
@@ -788,16 +1034,33 @@ def _get_goals(ctx: RunCtx, _a: NoArgs) -> ToolResult:
             "pitch_id": goal.pitch_id,
             "status": goal.status,
         }
+    conversation: dict[str, Any] = {"source": "대화에서 정한 목표", "goal": goal_view}
+    targets_ids: list[str] = []
+    if goal is None:
+        # 대화 목표가 없다는 것도 확인한 사실이다(다른 피치의 목표가 있으면 '없음'이 아니다)
+        ev = ctx.registry.record(
+            pitch_id=ctx.scope_pitch_id,
+            take_id=None,
+            take_number=None,
+            kind="GOAL",
+            revision=ctx.goal_version,
+            path="goal.status",
+            value="NONE",
+        )
+        eids.append(ev.evidence_id)
+        conversation["status"] = {"value": "NONE", "evidence_id": ev.evidence_id}
+        targets_ids = [ctx.scope_pitch_id] if ctx.scope_pitch_id else []
     return _res(
         "get_goals",
         ok=True,
         data={
             "missions": {"source": "리뷰가 정한 미션", "items": missions},
             "criteria_targets": {"source": "평가 기준", "items": targets},
-            "conversation_goal": {"source": "대화에서 정한 목표", "goal": goal_view},
+            "conversation_goal": conversation,
         },
         error=None,
         evidence_ids=eids,
+        target_ids=targets_ids,
         read_state=None if (missions or targets or goal_view) else "EMPTY",
         args_summary="목표 · 미션",
         result_summary=f"미션 {len(missions)} · 기준 {len(targets)} · 대화 목표 {'있음' if goal_view else '없음'}",

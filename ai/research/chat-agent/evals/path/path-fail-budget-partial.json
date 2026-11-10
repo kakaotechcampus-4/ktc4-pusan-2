@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "id": "path-fail-budget-partial",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "세 가지를 하나씩 확인하라는 긴 요청 중 두 번째 모델 호출 뒤 110초 흐름 — PARTIAL 로 끝나고 못 한 단계는 TODO 로 남는다",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "preset": "sample"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-1"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5에서 군더더기 횟수, 3장 시선 비율, 말 속도를 하나씩 확인해서 정리해 주고 마지막에 다음 연습 방법도 알려 줘",
+      "page_take_id": "t-5",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 110
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "outcome",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "outcome"
+      },
+      {
+        "check_id": "todo-left",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "TODO",
+        "metric": "path",
+        "path": "plan_statuses"
+      },
+      {
+        "check_id": "budget-then-partial",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:BUDGET_LOW:*",
+          "final:PARTIAL"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "not-done",
+        "observe": "trajectory",
+        "compare": "absent",
+        "expect": [
+          "final:DONE"
+        ],
+        "metric": "replan"
+      },
+      {
+        "check_id": "budget-fact",
+        "observe": "trajectory",
+        "grader": "regex",
+        "compare": "contains",
+        "expect": "시간 부족",
+        "metric": "replan"
+      }
+    ]
+  }
+}

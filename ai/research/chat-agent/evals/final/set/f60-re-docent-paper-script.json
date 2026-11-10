@@ -1,0 +1,200 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-re-docent-paper-script",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should",
+  "title": "'종이 원고를 들고 읽었다' 이의(화면 대본 꺼짐) — 확인 불가 판단 · 사실 문장을 먼저 보이고, 원하면 그 조건의 참고 결과",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-mus",
+        "title": "미술관 도슨트 해설 발표",
+        "takes": [
+          {
+            "take_id": "mus-t4",
+            "take_number": 4,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "review": {
+              "dimensions": {
+                "script_independence": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "mus-t5",
+            "take_number": 5,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.3,
+                0.27,
+                0.6,
+                0.62
+              ],
+              "script_ratio": [
+                0.55,
+                0.6,
+                0.2,
+                0.18
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  1,
+                  true
+                ],
+                [
+                  "GAZE_ON_SCRIPT",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY",
+                "script_independence": "PRIORITY"
+              },
+              "score": 63
+            },
+            "script_mode": "OFF"
+          }
+        ],
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": [
+            "관람객을 보며 해설하기"
+          ],
+          "targets": [],
+          "script_used": false
+        }
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-mus"
+    },
+    "official_reviews": "rule"
+  },
+  "turns": [
+    {
+      "message": "Take 5는 종이 원고를 손에 들고 읽으면서 한 거라 대본 쪽 평가가 나쁜 건 당연해요. 대본 본 걸로 치고 참고용으로 다시 평가해 주세요.",
+      "page_take_id": "mus-t5"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "dispute-to-reassess",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "decision:USER_DISPUTE:*",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "replan",
+        "note": "이의에 다시 평가 근거(조건 낱말)가 있어 다시 평가 확인 카드를 낸다"
+      },
+      {
+        "check_id": "judge-first",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "claim:ASSESSMENT",
+          "propose:REASSESS:ASK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "approve-before-reassess",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "approve:REASSESS",
+          "exec:REASSESS:*"
+        ],
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "result-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "REASSESS_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "reassess-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "reassess-target",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": "mus-t5",
+        "path": "items[type=REASSESS].args.take_id"
+      },
+      {
+        "check_id": "reassess-change",
+        "observe": "actions_proposed",
+        "compare": "equals",
+        "expect": true,
+        "path": "items[type=REASSESS].args.change.script_used"
+      },
+      {
+        "check_id": "script-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "SCRIPT_FACT",
+          "fields": {
+            "state": "꺼져"
+          }
+        },
+        "grader": "template",
+        "metric": "objectivity"
+      },
+      {
+        "check_id": "script-unknown",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SCRIPT_UNKNOWN",
+        "grader": "template"
+      },
+      {
+        "check_id": "script-not-allowed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.SCRIPT_NOT_ALLOWED",
+        "grader": "template",
+        "note": "평가 기준 script_used false"
+      },
+      {
+        "check_id": "script-claim-verdict",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "verdict": "UNVERIFIABLE",
+          "quote~": "원고"
+        },
+        "path": "assessments",
+        "metric": "objectivity",
+        "note": "script_mode OFF → UNVERIFIABLE(6-3). 판정과 상관없이 사용자가 원하면 참고 결과로 실행"
+      }
+    ]
+  }
+}

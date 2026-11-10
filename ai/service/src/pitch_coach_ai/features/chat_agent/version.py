@@ -6,14 +6,18 @@
     (config.py 의 낱말 목록 · 검사 ID 를 바꿔도 올린다 — 9절)
   - `TOOL_SCHEMA_VERSION`: 도구 · 행동 모양(인자 · 결과)이 바뀌면 올린다. 진행 중 실행은 서명한 판을 고정하므로
     판이 다르면 이어 부르기가 409 `AGENT_STATE_INVALID` 다(5-6).
+    tools-5: 할 일 단계 초안(계획 출력 · `update_plan` 인자)에 단계마다 쓸 도구 힌트 `tool`(응답 `PlanStep`에는 없음),
+    `get_take_report` 결과 요약 앞에 읽은 출처(`코치가 찾은 것` · `리뷰 분석`).
   - `SCHEMA_VERSION`: 요청 · 응답 필드의 이름 변경 · 삭제 · 뜻 변경 때만 올린다(`architecture.md` 5절).
   - `STATE_V`: 서명 형식(외곽 `v`)이 바뀔 때만 올린다.
 - prompt_version(프롬프트 해시) · corpus_version(자료 묶음 판)은 각각 prompts/ · corpus.py 가 계산한다.
 """
 
-FEATURE_VERSION = "chat_agent-0.11.0"
+#: 0.12.0: 할 일 단계 = 실제 실행(목적: 실행 → 결과 · 상태) · 상황 신호 · 결정 로그 · 근거 기반 답('없음' 근거 · 끝 상태는 요청 해소) ·
+#: 결과 발견 안내 · 지시어 · 목표 질문 · 변화 방향 · 같은 조건 다시 평가 등 원인별 고침(#1150)
+FEATURE_VERSION = "chat_agent-0.12.0"
 SCHEMA_VERSION = "1.0"
-TOOL_SCHEMA_VERSION = "tools-4"
+TOOL_SCHEMA_VERSION = "tools-5"
 STATE_V = 1
 #: 목표 판정 계산식(6-4 판정 순서 · 비교식)의 판. 계산식을 바꾸면 올린다. 목표 규칙 판(goal_rule_version)에 들어가므로
 #: 옛 판으로 저장한 목표는 판이 달라 새 목표를 정하자고 한다(설정 해시만으로는 계산식 변경을 알 수 없다)

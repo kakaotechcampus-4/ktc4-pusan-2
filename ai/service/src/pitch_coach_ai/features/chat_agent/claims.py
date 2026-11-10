@@ -60,8 +60,12 @@ VersionOf = Callable[[TakeSnapshot], RecordVersion]
 
 #: 대본 사용 주장의 지표 이름(모델이 명시한다). 지표 표에는 없는 가상 이름이다
 SCRIPT_USE_METRIC = "script_mode"
+#: 대본 · 원고를 보거나 띄우거나 들고 읽으며 했다는 말("대본 보고 했어" · "화면에 대본을 띄워 놓고" · "종이 원고를 손에 들고
+#: 읽으면서", final60 re-contest-script-highlight · re-docent-paper-script). '안 보고'처럼 사이에 부정이 끼면 맞지 않는다
 _SCRIPT_USE_RE = re.compile(
-    r"(대본|원고|스크립트|프롬프터)\s*(을|를)?\s*(보고|보면서|보며|켜고|켜 놓고|띄우고|사용하고|사용해서|사용했|사용하며|사용하면서)"
+    r"(대본|원고|스크립트|프롬프터)\s*(을|를)?\s*(?:손에\s*)?"
+    r"(보고|보면서|보며|켜고|켜\s*놓고|띄우고|띄워|사용하고|사용해서|사용했|사용하며|사용하면서"
+    r"|들고|읽으면서|읽으며|읽고|읽었)"
 )
 CLAIM_OPS = ("OVERALL", "ISSUE", "VALUE", "CHANGE")
 
@@ -221,15 +225,21 @@ def to_base_unit(
     return _dec(value) * factor
 
 
-def format_metric_value(metric: str, value: float | int, cfg: ChatAgentConfig) -> str:
-    """근거 문구용 값 표시(화면 표시 자리수). 비율 0.31 → '31%', ms 92000 → '92초', cpm 300 → '300자/분'."""
+def format_metric_value(
+    metric: str, value: float | int, cfg: ChatAgentConfig, *, exact: bool = False
+) -> str:
+    """근거 문구용 값 표시(화면 표시 자리수). 비율 0.31 → '31%', ms 92000 → '92초', cpm 300 → '300자/분'.
+
+    `exact`면 화면 자리수로 반올림하지 않고 단위만 바꾼다 — 판정에 쓰는 기준값을 글로 옮길 때(다시 평가 기준 문구,
+    0.655 → '65.5%'). 반올림하면 "66% 초과"처럼 실제 기준(65.5%)과 다르게 읽힌다."""
     kind = cfg.metric_units.get(metric)
     dec = cfg.display_decimals.get(kind or "", 2)
+    v = _dec(value) if exact else round_display(value, dec)
     if kind == "ratio":
-        return _fmt(round_display(value, dec) * 100) + "%"
+        return _fmt(v * 100) + "%"
     if kind == "ms":
-        return _fmt(round_display(value, dec) / 1000) + "초"
-    shown = _fmt(round_display(value, dec))
+        return _fmt(v / 1000) + "초"
+    shown = _fmt(v)
     return shown + {"cpm": "자/분", "per_min": "회/분", "count": "회", "dB": "dB"}.get(
         kind or "", ""
     )
@@ -415,7 +425,12 @@ def _split_check_indexed(
     valid: list[AssessmentDraft] = []
     valid_idx: list[int] = []
     problems: list[Problem] = []
-    drafts = [_script_statement_as_claim(d) for d in drafts]
+    drafts = [
+        tendency_advice_as_request(
+            knowledge_question_as_request(_script_statement_as_claim(d), cfg), user_message, cfg
+        )
+        for d in drafts
+    ]
     for i, d in enumerate(drafts):
         if not d.quote.strip():
             problems.append(Problem("EMPTY_QUOTE", d.quote, i))
@@ -670,15 +685,147 @@ def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
 
     대본 주장에는 판정과 상관없이 화면 대본 사실 문장을 붙인다(L6-06). 모델이 "… 다시 평가해 줘"와 함께 온 진술을 요청으로
     분류하면 그 문장이 빠진다(4회차 ra-script). 요청 · 질문 어미가 있으면("대본 보고 한 걸로 다시 평가해 줘") 그대로 둔다.
+    진술과 요청을 한 초안으로 묶었으면 진술 문장만 떼어(quote 를 그 문장으로) 대본 주장으로 본다.
     """
+    sub = draft.subject
+    if (
+        draft.type == "MEASURED"
+        and sub.metric == "script_ratio"
+        and sub.slide_number is None
+        and draft.value is None
+        and draft.claim_op in ("ISSUE", "OVERALL")
+        and _SCRIPT_USE_RE.search(draft.quote)
+    ):
+        # 대본 사용 진술("Take 5는 대본 보고 했어")을 대본 응시 지표의 문제 주장으로 분류한 꼴(r9 obj-unverifiable-script):
+        # 장 · 값이 없는 Take 전체 진술은 화면 대본 표시로만 확인되는 대본 주장이다(극성은 '봤다'는 진술 쪽)
+        return draft.model_copy(
+            update={
+                "claim_op": "VALUE",
+                "polarity": "POSITIVE",
+                "subject": sub.model_copy(update={"metric": SCRIPT_USE_METRIC}),
+            }
+        )
     if draft.type != "REQUEST" or draft.claim_op is not None or not _is_script_claim(draft):
         return draft
-    if not any(ch in draft.quote for ch in _PAST_CHARS) or _ASK_END_RE.search(draft.quote):
+    quote = draft.quote
+    if _ASK_END_RE.search(quote):
+        # 진술과 요청을 한 초안으로 묶은 꼴("Take 5는 대본 보고 한 발표였어. 그 조건으로 다시 평가해 줘", r9 ra-script): 대본 사용을
+        # 말한 과거형 문장만 떼어 대본 주장으로 본다. 요청 문장에는 측정 낱말이 없어 판단이 따로 없어도 된다
+        quote = next(
+            (
+                t.strip()
+                for t in _SENTENCE_RE.findall(quote)
+                if _SCRIPT_USE_RE.search(t)
+                and any(ch in t for ch in _PAST_CHARS)
+                and not _ASK_END_RE.search(t)
+            ),
+            "",
+        ).rstrip(".!。！")
+        if not quote:
+            return draft
+    elif not any(ch in quote for ch in _PAST_CHARS):
         return draft
     subject = draft.subject.model_copy(
         update={"dimension": "script_independence", "metric": SCRIPT_USE_METRIC}
     )
-    return draft.model_copy(update={"type": "MEASURED", "claim_op": "VALUE", "subject": subject})
+    return draft.model_copy(
+        update={"type": "MEASURED", "claim_op": "VALUE", "subject": subject, "quote": quote}
+    )
+
+
+def knowledge_question_as_request(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft:
+    """발표법 방법 · 조언 질문을 발표법 주장(`KNOWLEDGE`)으로 분류했으면 요청(`REQUEST`)으로 바로잡는다(6-3 유형 표: 방법 · 조언
+    질문은 REQUEST).
+
+    "발표 시작할 때 긴장 줄이는 방법 있어?"를 주장으로 두면 코드가 "말씀하신 '…'는 발표법 자료와 맞아요"를 먼저 내며 그 자료
+    카드의 보이는 인용을 잠가, 같은 카드의 다른 문장을 인용한 자료 조언(GUIDE)이 모두 빠졌다(r9 svc-general-guide-found). quote 에
+    조언 요청 낱말(`advice_request_words`: 방법 · 어떻게 하면 · 팁 …)이 있을 때만 바꾼다 — "발표는 빠를수록 좋다며?" 같은 통념
+    확인은 주장 그대로다.
+    """
+    if draft.type != "KNOWLEDGE" or not any(w in draft.quote for w in cfg.advice_request_words):
+        return draft
+    return draft.model_copy(
+        update={
+            "type": "REQUEST",
+            "claim_op": None,
+            "polarity": "NEUTRAL",
+            "value": None,
+            "value_unit": None,
+            "verdict": "SUPPORTED",
+        }
+    )
+
+
+#: 조건 꼴('긴장하면 ' · '빠르면,'): 한글 낱말 끝의 '면' 뒤에 띄어쓰기 · 쉼표 · 끝
+_CONDITIONAL_RE = re.compile(r"[가-힣]면(?:\s|,|$)")
+
+
+def tendency_advice_as_request(
+    draft: AssessmentDraft, user_message: str, cfg: ChatAgentConfig
+) -> AssessmentDraft:
+    """대상 없는 자기 경향 진술 + 조언 요청을 측정 주장으로 판정하지 않는다(6-3 '먼저 검사' 2, r9 guide-nervous).
+
+    "긴장하면 말이 빨라져. 어떻게 하면 좋아?"는 내 Take 의 사실이 아니라 평소 경향을 말하고 방법을 묻는 말이다. 측정 주장(`MEASURED`)으로
+    두면 지금 Take 기록으로 '기록과 달라요' · '확인할 수 없어요'를 판정해 조언 질문에 답하지 못한다. 바꾸는 것은 사용자 말에 조언 요청
+    낱말(`advice_request_words`)이 있고, 초안이 Take · 장을 집지 않았고, `quote`가 조건 꼴('~하면') 또는 경향 낱말(`tendency_words`)이며
+    Take · 장 · 기록 지시어(`record_ref_words`)가 없는 측정 초안뿐이다. 요청(`REQUEST`)으로 바꾸고 대상(차원 · 지표)을 비운다 —
+    기록을 읽지 않고 자료 조언으로 답한다. 대상이 있으면 지금처럼 판정한다.
+    """
+    sub = draft.subject
+    q = draft.quote
+    if (
+        draft.type != "MEASURED"
+        or draft.speaker != "USER"
+        or sub.take_ids
+        or sub.take_numbers
+        or sub.slide_number is not None
+        or not any(w in user_message for w in cfg.advice_request_words)
+        or _TAKE_REF.search(q)
+        or _SLIDE_REF.search(q)
+        or any(w in q for w in cfg.record_ref_words)
+    ):
+        return draft
+    if not (_CONDITIONAL_RE.search(q) or any(w in q for w in cfg.tendency_words)):
+        return draft
+    subject = sub.model_copy(update={"dimension": None, "metric": None, "relation": None})
+    return draft.model_copy(
+        update={
+            "type": "REQUEST",
+            "claim_op": None,
+            "polarity": "NEUTRAL",
+            "value": None,
+            "value_unit": None,
+            "verdict": "SUPPORTED",
+            "subject": subject,
+        }
+    )
+
+
+#: 문장 하나(끝 문장부호 포함). 공식 결과 바꾸기 요청은 한 문장 안에서 본다
+_SENTENCE_RE = re.compile(r"[^.?!\n。？！]+[.?!。？！]*")
+
+
+#: 점수 값("85점으로"): '점수' 낱말이 앞 문장에만 있어도 바꿀 값으로 점수를 집은 말이다(final60 tamper-score-raise:
+#: "Take 3 점수 72점은 너무 박해요. 85점으로 바꿔 놓아 주세요.")
+_SCORE_VALUE_RE = re.compile(r"\d+\s*점")
+
+
+def record_change_request(text: str, cfg: ChatAgentConfig) -> bool:
+    """공식 결과(점수 · 차원 상태 · 미션 · 리뷰 결과)를 바꿔 달라는 요청인가(6-2 '없음' 행, 답 초안 route `CANNOT_DO`).
+
+    한 문장에 대상 낱말(`record_change_targets`, 또는 점수 값 'N점') · 바꾸기 낱말(`record_change_verbs`) · 요청 · 질문 어미가 모두 있고 제외 낱말
+    (`record_change_exclusions`: 방법 질문 · 다시 평가 · 입력값 바꾸기)이 없으면 그 요청이다.
+
+    예: "안녕! Take 5 점수 100점으로 바꿔 줘" → True, "미션 지워 줘" → True, "점수 올리려면 어떻게 해?" → False,
+        "그 조건으로 다시 평가해 줘" → False, "평가 기준 바꿔 줘" → False(입력값 코칭은 범위 밖 거절이 맡는다)
+    """
+    return any(
+        (any(t in sent for t in cfg.record_change_targets) or _SCORE_VALUE_RE.search(sent))
+        and any(v in sent for v in cfg.record_change_verbs)
+        and not any(w in sent for w in cfg.record_change_exclusions)
+        and _ASK_END_RE.search(sent)
+        for sent in _SENTENCE_RE.findall(text)
+    )
 
 
 def states_script_use(text: str) -> bool:
@@ -694,6 +841,11 @@ def states_script_use(text: str) -> bool:
 _CONDITION_WORD_RE = re.compile(
     r"대본|원고|스크립트|프롬프터|조건|목표(?:를|는|은)?\s*\d|목표로|(?<!측정 )(?<!측정)기준(?!\s*잡)"
 )
+
+
+def states_condition(text: str) -> bool:
+    """글이 다시 평가가 바꿀 수 있는 조건 낱말(대본 · 원고 · 스크립트 · 프롬프터 · 조건 · 기준 · 숫자로 정한 목표)을 말하는가."""
+    return bool(_CONDITION_WORD_RE.search(text))
 
 
 def measurement_dispute(text: str, cfg: ChatAgentConfig) -> bool:
@@ -877,8 +1029,13 @@ def _change_one(
     )  # fmt: skip
     if not comp.comparable:
         return _unv(comp.reason or "NOT_COMPARABLE"), comp
-    claimed = "IMPROVED" if d.polarity == "POSITIVE" else "WORSENED"
-    verdict: Verdict = "SUPPORTED" if comp.outcome == claimed else "CONTRADICTED"
+    stated = negated_change(d.quote, metric, ctx.cfg)
+    if stated is not None:
+        # 부정한 변화 주장("좋아지지 않았어")은 말한 방향의 여집합: 같음 · 반대면 맞고, 말한 방향이면 틀리다(6-3 `CHANGE` 행)
+        verdict: Verdict = "CONTRADICTED" if comp.outcome == stated else "SUPPORTED"
+    else:
+        claimed = "IMPROVED" if d.polarity == "POSITIVE" else "WORSENED"
+        verdict = "SUPPORTED" if comp.outcome == claimed else "CONTRADICTED"
     label = METRIC_LABEL.get(metric, metric)
     pv = format_metric_value(metric, comp.previous, ctx.cfg)  # type: ignore[arg-type]
     cv = format_metric_value(metric, comp.current, ctx.cfg)  # type: ignore[arg-type]
@@ -1006,11 +1163,22 @@ def _knowledge_ok(
     return True, None
 
 
+def knowledge_phrase(source_ids: Sequence[str], titles: Mapping[str, str]) -> str:
+    """발표법 주장(KNOWLEDGE) 판단 첫 문장의 근거 표기: 카드 제목(7-9 · 7-10). 내부 자료 id(g-18)는 사용자에게 보이지 않는다.
+
+    예: ["g-18"], {"g-18": "발표는 빠를수록 좋다는 오해"} → "발표법 자료 '발표는 빠를수록 좋다는 오해'".
+        제목을 모르는 카드는 이름 없이 "발표법 자료"(id 를 쓰지 않는다)
+    """
+    names = [f"'{titles[s]}'" for s in dict.fromkeys(source_ids) if titles.get(s)]
+    return "발표법 자료 " + " · ".join(names) if names else "발표법 자료"
+
+
 def _model_verdict(
     d: AssessmentDraft,
     registry: EvidenceRegistry,
     cfg: ChatAgentConfig,
     guide_texts: Mapping[str, str] | None = None,
+    guide_titles: Mapping[str, str] | None = None,
 ) -> CodeVerdict:
     """발표법 주장(KNOWLEDGE) · 행동 요청(REQUEST): 모델 판정을 유지하되 근거가 모자라면 낮춘다(6-3)."""
     valid_ev = [e for e in d.evidence_ids if registry.is_current(e)]
@@ -1023,7 +1191,7 @@ def _model_verdict(
         if verdict in ("SUPPORTED", "CONTRADICTED") and not ok:
             verdict, reason = "UNVERIFIABLE", why
         if ok:
-            phrase = "발표법 자료(" + ", ".join(d.source_ids) + ")"
+            phrase = knowledge_phrase(d.source_ids, guide_titles or {})
     else:  # REQUEST
         evidence_ids = valid_ev
         phrase = ", ".join(_phrase_from_evidence(registry, e, cfg) for e in valid_ev[:2])
@@ -1131,6 +1299,7 @@ def code_verdict(
     cfg: ChatAgentConfig,
     script_used: bool | None | _Unset = UNSET,
     guide_texts: Mapping[str, str] | None = None,
+    guide_titles: Mapping[str, str] | None = None,
 ) -> CodeVerdict:
     """판단 초안의 판정을 코드가 정한다(6-3 판정 표). `MEASURED`는 모델 판정을 버린다.
 
@@ -1143,6 +1312,7 @@ def code_verdict(
             `False` · `None`이면 "공식 평가에는 대본 사용 허용이 없어요"를 붙인다.
         guide_texts: 이번 실행에서 읽은 발표법 자료 원문 {source_id: 글}. `KNOWLEDGE`의 `SUPPORTED` · `CONTRADICTED`는
             인용한 모든 자료의 원문이 여기 있고 주장의 주제와 관련 있을 때만 유지한다(없으면 `UNVERIFIABLE`).
+        guide_titles: 자료 카드 제목 {source_id: 제목}. `KNOWLEDGE` 판단 첫 문장의 근거 표기에 쓴다(id 대신).
 
     Returns:
         `CodeVerdict`. 대상을 풀지 못하면(차원 · 지표가 기록 이름이 아님 · `claim_op`가 넷 밖) `UNVERIFIABLE`.
@@ -1153,11 +1323,11 @@ def code_verdict(
         ``verdict="CONTRADICTED"``, ``evidence_phrase="Take 5 청중 시선 31%, 우선 개선"``.
     """
     ctx = _Ctx(pitch_id, registry, version_of, cfg, takes, script_used)
-    draft = _metric_key(draft, cfg)
+    draft = _change_polarity(_metric_key(draft, cfg), cfg)
     if draft.type == "PREFERENCE":
         return _preference_verdict(draft, ctx, focus_take_id)
     if draft.type != "MEASURED":
-        return _model_verdict(draft, registry, cfg, guide_texts)
+        return _model_verdict(draft, registry, cfg, guide_texts, guide_titles)
 
     script = _is_script_claim(draft)
     dim, metric, err = (None, None, None) if script else _resolve_subject(draft, cfg)
@@ -1310,14 +1480,83 @@ def issue_negated(quote: str, issues: Sequence[str], cfg: ChatAgentConfig) -> bo
     for w in words:
         at = quote.find(w)
         while at != -1:
-            if _NEG_BEFORE.search(quote[:at]):
-                return True
-            rest = quote[at + len(w) :]
-            cut = _NEG_CLAUSE_BREAK.search(rest)
-            if _NEG_AFTER.search(rest[: cut.start()] if cut else rest):
+            if _negated_at(quote, at, w):
                 return True
             at = quote.find(w, at + 1)
     return False
+
+
+def _negated_at(quote: str, at: int, word: str) -> bool:
+    """`quote[at:]`의 낱말 `word`가 부정됐는가: 바로 앞의 '안', 또는 뒤 같은 절 안의 부정 표현(않 · 못 · 아니)."""
+    if _NEG_BEFORE.search(quote[:at]):
+        return True
+    rest = quote[at + len(word) :]
+    cut = _NEG_CLAUSE_BREAK.search(rest)
+    return bool(_NEG_AFTER.search(rest[: cut.start()] if cut else rest))
+
+
+def change_direction(quote: str, metric: str | None, cfg: ChatAgentConfig) -> str | None:
+    """변화 주장(`CHANGE`)의 방향을 `quote`의 방향 낱말로 정한다(6-3 `CHANGE` 행): `IMPROVED` · `WORSENED` · None.
+
+    좋아짐 · 나빠짐 낱말(`change_better_words` · `change_worse_words`)은 그대로, 오르내림 낱말(`change_up_words` ·
+    `change_down_words`)은 지표 방향 표(`HIGHER` · `LOWER`)로 바꾼다. 묻는 꼴("좋아졌어?")도 같은 방향의 주장이다. 부정
+    표현("좋아지지 않았어")은 문제 주장과 같은 자리 규칙(`_negated_at`)으로 반대 방향이다(극성용). 판정은 반대 방향 주장이 아니라
+    말한 방향의 여집합으로 한다(`negated_change`). 낱말이 없거나 두 방향이 섞이면 None (모델 극성을 쓴다).
+
+    예: change_direction("Take 4보다 Take 5에서 3장 시선이 좋아졌어?", "audience_ratio", cfg) → "IMPROVED"
+    """
+    flip = {"IMPROVED": "WORSENED", "WORSENED": "IMPROVED"}
+    found = {flip[o] if neg else o for o, neg in _change_hits(quote, metric, cfg)}
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def negated_change(quote: str, metric: str | None, cfg: ChatAgentConfig) -> str | None:
+    """부정한 변화 주장("좋아지지 않았어" · "안 늘었어")이면 말한(부정하기 전) 방향 `IMPROVED` · `WORSENED`, 아니면 None.
+
+    방향 낱말이 모두 부정됐고 한 방향일 때만이다. 부정한 주장은 그 방향의 여집합이다: 비교 결과가 같음 · 반대면 맞고, 말한
+    방향이면 틀리다(6-3 `CHANGE` 행). 부정과 긍정이 섞이면("좋아지지 않고 나빠졌어") 긍정한 방향의 주장으로 본다(None)."""
+    hits = _change_hits(quote, metric, cfg)
+    if not hits or not all(neg for _, neg in hits):
+        return None
+    stated = {o for o, _ in hits}
+    return next(iter(stated)) if len(stated) == 1 else None
+
+
+def _change_hits(quote: str, metric: str | None, cfg: ChatAgentConfig) -> list[tuple[str, bool]]:
+    """`quote`의 방향 낱말마다 (말한 방향, 부정됐는가). 오르내림 낱말은 지표 방향 표로 좋아짐 · 나빠짐으로 바꾼다."""
+    groups: list[tuple[str, tuple[str, ...]]] = [
+        ("IMPROVED", cfg.change_better_words),
+        ("WORSENED", cfg.change_worse_words),
+    ]
+    direction = cfg.direction.get(metric) if metric else None
+    if direction == "HIGHER":
+        groups += [("IMPROVED", cfg.change_up_words), ("WORSENED", cfg.change_down_words)]
+    elif direction == "LOWER":
+        groups += [("WORSENED", cfg.change_up_words), ("IMPROVED", cfg.change_down_words)]
+    out: list[tuple[str, bool]] = []
+    for outcome, words in groups:
+        for w in words:
+            at = quote.find(w)
+            while at != -1:
+                out.append((outcome, _negated_at(quote, at, w)))
+                at = quote.find(w, at + 1)
+    return out
+
+
+def _change_polarity(draft: AssessmentDraft, cfg: ChatAgentConfig) -> AssessmentDraft:
+    """측정 변화 주장(`CHANGE`)의 극성을 말 속 방향 낱말로 코드가 정한다(`change_direction`). 낱말로 정하지 못하면 그대로."""
+    if draft.type != "MEASURED" or draft.claim_op != "CHANGE":
+        return draft
+    d = _metric_key(draft, cfg)
+    dim = d.subject.dimension or (
+        cfg.dimension_of_metric(d.subject.metric) if d.subject.metric else None
+    )
+    metric = d.subject.metric or (PRIMARY_METRIC.get(dim) if dim else None)
+    outcome = change_direction(draft.quote, metric, cfg)
+    if outcome is None:
+        return draft
+    polarity: Polarity = "POSITIVE" if outcome == "IMPROVED" else "NEGATIVE"
+    return draft if draft.polarity == polarity else draft.model_copy(update={"polarity": polarity})
 
 
 def _claim_core(
@@ -1337,6 +1576,12 @@ def _claim_core(
         issues = claimed_issues(quote, subject.dimension, cfg) if claim_op == "ISSUE" else []
         # 문제 주장의 부정("빠르지 않았어")은 극성이 아니라 말로 가리므로 키에도 따로 넣는다
         negated = issue_negated(quote, issues, cfg) if issues else None
+        if claim_op == "CHANGE":
+            # 부정한 변화 주장("좋아지지 않았어")은 반대 방향 주장("나빠졌어")과 판정이 다르다(같음이면 맞음 · 틀림):
+            # 같은 키로 앞 판정을 압력으로 잇지 않게 따로 둔다. 부정이 아니면 키는 그대로(None)다
+            metric = subject.metric or PRIMARY_METRIC.get(subject.dimension or "")
+            if negated_change(quote, metric, cfg) is not None:
+                negated = True
         # Take 가 하나면 `relation`(ALL · SOME · COMPARE)은 뜻이 없다: 차례마다 모델이 다르게 적어도 같은 주장으로 본다
         # (반복 압력 "아니야, 잘 봤다니까"가 다른 키가 되어 압력으로 이어지지 않던 문제, 8회차 M5)
         relation = subject.relation if len(set(subject.take_ids)) > 1 else None
@@ -1465,6 +1710,7 @@ def finalize(
     id_prefix: str,
     script_used: bool | None | _Unset = UNSET,
     guide_texts: Mapping[str, str] | None = None,
+    guide_titles: Mapping[str, str] | None = None,
 ) -> FinalizeResult:
     """판단 초안을 코드가 확정한다: 판정 · 키 · 근거 지문 · 압력 · 대체 · 첫 문장.
 
@@ -1472,7 +1718,8 @@ def finalize(
         drafts: 모델의 초안(고치기를 마친 뒤의 것).
         user_message: 사용자 말 원문.
         prior: 앞 판단(`history.prior_assessments`, 오래된 것 → 최근 순서라고 본다).
-        takes, focus_take_id, pitch_id, registry, version_of, cfg, script_used, guide_texts: `code_verdict`와 같다.
+        takes, focus_take_id, pitch_id, registry, version_of, cfg, script_used, guide_texts, guide_titles:
+            `code_verdict`와 같다.
         corpus_version: 자료 판(근거 지문의 `sources`에 적는다).
         id_prefix: 판단 id 앞부분. id는 `f"{id_prefix}{i}"`(i는 1부터, 유효한 초안 순서).
 
@@ -1490,6 +1737,12 @@ def finalize(
     }
     outcomes: list[AssessmentOutcome] = []
     for n, (idx, d) in enumerate(zip(valid_idx, valid, strict=True), start=1):
+        # 변화 주장의 방향은 말 속 방향 낱말로(6-3): 판정 · 키 · 내보내는 극성이 같게 여기서 정한다
+        d = _change_polarity(d, cfg)
+        if d.type == "MEASURED" and d.source_ids:
+            # 측정 주장은 기록으로 코드가 판정하므로 모델이 붙인 자료 id(때로 근거 id)는 쓰지 않는다: 근거 지문에 들어가면 같은 주장 ·
+            # 같은 기록인데 지문이 달라져 압력에 버티기(같은 판정 유지)가 깨진다(9회차 obj-pressure-repeat)
+            d = d.model_copy(update={"source_ids": []})
         if idx in forced:
             # 유형 · 대상이 원문과 어긋난 채 고치기를 마쳤다: 모델 판정을 버리고 확인 불가로 둔다(6-3 먼저 검사 2)
             cv = CodeVerdict("UNVERIFIABLE", "CODE", reason_code=forced[idx])
@@ -1497,6 +1750,7 @@ def finalize(
             cv = code_verdict(
                 d, takes=takes, focus_take_id=focus_take_id, pitch_id=pitch_id, registry=registry,
                 version_of=version_of, cfg=cfg, script_used=script_used, guide_texts=guide_texts,
+                guide_titles=guide_titles,
             )  # fmt: skip
         measured = d.type == "MEASURED"
         take_ids = cv.target_take_ids if measured else list(d.subject.take_ids)
