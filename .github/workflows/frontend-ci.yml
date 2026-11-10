@@ -249,3 +249,4 @@ jobs:
             echo "$out"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+# 글꼴 .deb 캐시 확인용 (머지하지 않음)
