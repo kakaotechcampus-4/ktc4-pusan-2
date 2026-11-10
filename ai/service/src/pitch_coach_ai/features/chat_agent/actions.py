@@ -689,13 +689,14 @@ _OPERATOR_WORD: dict[str, str] = {"LT": "미만", "LTE": "이하", "GT": "초과
 
 
 def _target_text(target: dict[str, Any], cfg: ChatAgentConfig) -> str:
-    """숫자 목표로 코드가 만든 기준 문구. 지표 표시 이름 · 화면 표시 값 · 비교 말을 잇는다.
+    """숫자 목표로 코드가 만든 기준 문구. 지표 표시 이름 · 값 · 비교 말을 잇는다.
 
-    모델 글이 아니라 사용자가 확인 카드에서 승인하는 숫자 목표 그대로라 출처 검사가 필요 없다(6-9).
+    모델 글이 아니라 사용자가 확인 카드에서 승인하는 숫자 목표 그대로라 출처 검사가 필요 없다(6-9). 값은 화면 자리수로
+    반올림하지 않는다: 리뷰는 반올림하지 않은 값으로 판정하므로 문구도 같은 값이어야 한다(0.655 → '65.5%', '66%' 아님).
     예: {metric: audience_ratio, operator: GTE, value: 0.7} → '청중 시선 70% 이상' · cpm LTE 330 → '말 속도 330자/분 이하'
     """
     metric = str(target["metric"])
-    value = clm.format_metric_value(metric, target["value"], cfg)
+    value = clm.format_metric_value(metric, target["value"], cfg, exact=True)
     return f"{metric_label(metric)} {value} {_OPERATOR_WORD[str(target['operator'])]}"
 
 

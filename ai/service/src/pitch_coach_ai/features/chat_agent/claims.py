@@ -225,15 +225,21 @@ def to_base_unit(
     return _dec(value) * factor
 
 
-def format_metric_value(metric: str, value: float | int, cfg: ChatAgentConfig) -> str:
-    """근거 문구용 값 표시(화면 표시 자리수). 비율 0.31 → '31%', ms 92000 → '92초', cpm 300 → '300자/분'."""
+def format_metric_value(
+    metric: str, value: float | int, cfg: ChatAgentConfig, *, exact: bool = False
+) -> str:
+    """근거 문구용 값 표시(화면 표시 자리수). 비율 0.31 → '31%', ms 92000 → '92초', cpm 300 → '300자/분'.
+
+    `exact`면 화면 자리수로 반올림하지 않고 단위만 바꾼다 — 판정에 쓰는 기준값을 글로 옮길 때(다시 평가 기준 문구,
+    0.655 → '65.5%'). 반올림하면 "66% 초과"처럼 실제 기준(65.5%)과 다르게 읽힌다."""
     kind = cfg.metric_units.get(metric)
     dec = cfg.display_decimals.get(kind or "", 2)
+    v = _dec(value) if exact else round_display(value, dec)
     if kind == "ratio":
-        return _fmt(round_display(value, dec) * 100) + "%"
+        return _fmt(v * 100) + "%"
     if kind == "ms":
-        return _fmt(round_display(value, dec) / 1000) + "초"
-    shown = _fmt(round_display(value, dec))
+        return _fmt(v / 1000) + "초"
+    shown = _fmt(v)
     return shown + {"cpm": "자/분", "per_min": "회/분", "count": "회", "dB": "dB"}.get(
         kind or "", ""
     )

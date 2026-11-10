@@ -1682,3 +1682,22 @@ def test_reassess_target_text_is_never_null_when_it_has_a_number_goal() -> None:
     assert [(t["metric"], t["operator"], t["value"]) for t in got] == [
         (t["metric"], t["operator"], t["value"]) for t in targets
     ]
+
+
+def test_reassess_target_text_keeps_the_exact_number_goal() -> None:
+    """코드가 만든 기준 문구의 값은 화면 자리수로 반올림하지 않는다: 리뷰는 반올림하지 않은 값으로 판정하므로 0.655 를
+    "66% 초과"로 쓰면 실제 기준(65.5%)과 다르게 읽힌다."""
+    targets = [
+        {"display": None, "metric": "audience_ratio", "operator": "GT", "value": 0.655},
+        {"display": None, "metric": "duration_ms", "operator": "LTE", "value": 300500},
+    ]
+    p = do(
+        "reassess",
+        {"take_id": "t-4", "change": {"targets": targets}},
+        ctx=ctx_for(MSG),
+        message=CRIT_MSG,
+    )
+    assert p.result == "PROPOSED", p.reason_code
+    got = p.action.args["change"]["targets"]  # type: ignore[union-attr]
+    assert [t["display"] for t in got] == ["청중 시선 65.5% 초과", "발표 시간 300.5초 이하"]
+    assert [t["value"] for t in got] == [0.655, 300500]
