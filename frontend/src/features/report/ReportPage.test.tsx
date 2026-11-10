@@ -322,7 +322,7 @@ it.each([
   { improved: false, current: 140000, label: '악화 ↓' },
   { improved: null, current: 140000, label: '방향 판단 불가' },
   { improved: false, current: 150000, label: '변화 없음' },
-])('does not emphasize a whole-Take comparison when $label', async ({ improved, current, label }) => {
+])('keeps $label neutral for a whole-Take metric', async ({ improved, current, label }) => {
   query.data!.review = {
     ...reviewFixture,
     comparison: [
