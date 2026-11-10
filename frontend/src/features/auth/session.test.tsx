@@ -15,6 +15,7 @@ vi.mock('./useSession', () => ({
   useSession: () => ({ isPending: false, isError: false, data: state.user }),
   useLogout: () => ({ isPending: state.logoutPending, isError: false, mutate: state.logout }),
 }));
+vi.mock('@/shared/api/useRawDataConsentLock', () => ({ useRawDataConsentLock: () => undefined }));
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

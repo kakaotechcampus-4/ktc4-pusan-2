@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { PrivacyConsentDialog } from './PrivacyConsentDialog';
 import { usePrivacyConsent } from '@/shared/lib/privacyConsent';
+import { useRawDataConsentLock } from '@/shared/api/useRawDataConsentLock';
 import { useLogout, useSession } from './useSession';
 
 /**
@@ -69,6 +70,7 @@ export function RequireSession({
 function SignedInScreen({ stageBar, header }: { stageBar: boolean; header?: ReactNode }) {
   const session = useSession();
   const signOut = useLogout();
+  useRawDataConsentLock(session.data);
 
   if (header)
     return (

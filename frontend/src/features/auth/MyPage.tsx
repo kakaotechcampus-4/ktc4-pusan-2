@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { SuggestionForm } from './SuggestionForm';
 import { Link } from 'react-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { InfoPage } from '@/shared/ui/InfoPage';
-import { apiRequest } from '@/shared/api/client';
 import { deleteLocalRecords } from '@/shared/lib/localData';
 import { useWithdraw } from '@/shared/api/useWithdraw';
-import { useSession, type User } from './useSession';
+import { useSession } from './useSession';
 
 /**
  * P9 마이페이지.
@@ -19,18 +17,6 @@ import { useSession, type User } from './useSession';
 export function MyPage() {
   const user = useSession().data;
   const withdraw = useWithdraw();
-  const client = useQueryClient();
-  // 원자료 사용 동의 (#361). 서버가 돌려준 내 정보로 세션을 바로 바꿉니다
-  const consent = useMutation({
-    mutationFn: (value: boolean) =>
-      apiRequest<User>('/api/users/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ raw_data_consent: value }),
-      }),
-    onSuccess: (me) => client.setQueryData(['session'], me),
-  });
-  const consented = consent.isPending ? consent.variables : (user?.raw_data_consent ?? false);
   const [cleared, setCleared] = useState<'OK' | 'BLOCKED' | null>(null);
 
   const clearRecords = () => {
@@ -76,21 +62,17 @@ export function MyPage() {
           <input
             id="raw-data-consent"
             type="checkbox"
-            checked={consented}
-            disabled={!user || consent.isPending}
-            onChange={(e) => consent.mutate(e.target.checked)}
+            // 테스트 기간에는 항상 켜 둡니다. 서버 값은 `useRawDataConsentLock` 이 맞춥니다
+            checked
+            disabled
+            readOnly
             className="size-4 shrink-0 accent-ink"
           />
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
         <span className="text-xs text-stone">
-          바꾼 설정은 다음에 시작하는 연습부터 적용돼요. 이미 끝난 연습은 그대로예요.
+          지금은 테스트 기간이라 이 설정을 켜 둔 채로 바꿀 수 없어요.
         </span>
-        {consent.isError && (
-          <p role="alert" className="text-sm text-coral-deep">
-            동의 설정을 바꾸지 못했어요. 다시 시도해 주세요.
-          </p>
-        )}
       </Card>
 
       <Card title="이 브라우저의 기록">

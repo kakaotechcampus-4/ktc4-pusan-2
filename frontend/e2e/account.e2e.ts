@@ -14,15 +14,16 @@ test('없는 주소는 길을 잃었다고 알리고 내 피치로 돌려보낸�
 });
 
 test.describe('마이페이지', () => {
-  test('계정 정보와 연습 기록 동의를 보이고, 동의를 바꿀 수 있다', async ({ page }) => {
+  test('계정 정보를 보이고, 테스트 기간에는 연습 기록 동의가 켜진 채 잠겨 있다', async ({
+    page,
+  }) => {
     await page.goto('/me');
     await expect(page.getByRole('heading', { name: '마이페이지' })).toBeVisible();
     await expect(page.getByText('demo@pitchcoach.local')).toBeVisible();
 
     const consent = page.getByLabel('연습 기록을 남겨 다시 분석하는 데 동의해요');
-    const before = await consent.isChecked();
-    await consent.click();
-    await expect(consent).toBeChecked({ checked: !before });
+    await expect(consent).toBeChecked();
+    await expect(consent).toBeDisabled();
   });
 
   test('계정 삭제는 한 번 더 묻고, 확인하면 첫 화면으로 간다', async ({ page }) => {

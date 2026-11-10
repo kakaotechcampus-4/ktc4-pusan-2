@@ -56,5 +56,10 @@ function consentCheckbox() {
 it('links the consent checkbox to its label with for · id', () => {
   const checkbox = consentCheckbox();
   expect(checkbox.id).toBe('raw-data-consent');
-  expect(checkbox.checked).toBe(false);
+});
+
+it('keeps the consent checkbox on and locked during the test period', () => {
+  const checkbox = consentCheckbox();
+  expect(checkbox.checked).toBe(true);
+  expect(checkbox.disabled).toBe(true);
 });
