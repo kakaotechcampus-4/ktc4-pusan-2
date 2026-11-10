@@ -20,7 +20,16 @@ export function prepareDraftFixture(stateId: string) {
   let gaze: 'IDLE' | 'DONE' | 'UNAVAILABLE' = 'DONE';
   if (disconnected || stateId === 'gaze-unavailable') gaze = 'UNAVAILABLE';
   if (stateId === 'calibration') gaze = 'IDLE';
-  let voice: 'IDLE' | 'READING' | 'DONE' = 'IDLE';
+  let voice: 'IDLE' | 'READING' | 'DONE' = [
+    'default',
+    'no-camera',
+    'permission-error',
+    'mic-error',
+    'calibration',
+    'voice-reading',
+  ].includes(stateId)
+    ? 'IDLE'
+    : 'DONE';
   if (stateId === 'voice-reading') voice = 'READING';
   if (stateId === 'voice-done') voice = 'DONE';
   const info: DraftPrepareInfo = {
