@@ -1,0 +1,20 @@
+{
+  "what": "독립 평가 v3 최종 한 번(RULES 6절). 결과 폴더는 저장소 밖 보관 폴더, 여기에는 해시(final.sha256)와 실행 정보",
+  "code_commit": "29e6b5e4",
+  "freeze_commit": "500dc07f",
+  "feature_version": "chat_agent-0.14.0",
+  "verify": "동결 목록과 같음",
+  "runs": {
+    "luna": {
+      "runs": 120,
+      "exit": 0
+    },
+    "terra": {
+      "runs": 120,
+      "exit": 0,
+      "bundle": "OPENAI_TERRA"
+    }
+  },
+  "note": "terra 최종은 terra 회귀 측정과 동시에 돌렸다(공급자 대기로 시간 초과가 섞일 수 있음 — 시간 초과가 낀 실행 1). luna 최종은 홀로 돌렸다. 처음 띄운 최종 실행 하나는 luna 가 끝나기 전에 멈췄고(결과 파일 없음, 연 결과 없음) 같은 코드로 다시 돌렸다",
+  "date": "2026-11-11"
+}
