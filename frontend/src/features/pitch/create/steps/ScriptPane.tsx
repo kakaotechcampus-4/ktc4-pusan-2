@@ -42,7 +42,13 @@ const PLACEHOLDER = [
   '처음에 저희가 마주한 문제는 …',
 ].join('\n');
 
-const SCRIPT_MARKER_EXAMPLES = ['[N]', '[슬라이드 N]', '슬라이드 N:', 'Slide N', '## Slide N — 제목'];
+const SCRIPT_MARKER_EXAMPLES = [
+  '[N]',
+  '[슬라이드 N]',
+  '슬라이드 N:',
+  'Slide N',
+  '## Slide N — 제목',
+];
 
 function mapLabel(pending: boolean): string {
   return pending ? '나누는 중…' : '대본 매핑';
@@ -298,8 +304,8 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           ))}
         </div>
         <p className="mt-2">
-          N은 슬라이드 번호예요. 1부터 순서대로 적어 주세요. 구분이 없으면 대본 전체가 한
-          슬라이드로 연결돼요.
+          N은 슬라이드 번호예요. 1부터 순서대로 적어 주세요. 구분이 없으면 대본 전체가 한 슬라이드로
+          연결돼요.
         </p>
       </div>
     </div>
