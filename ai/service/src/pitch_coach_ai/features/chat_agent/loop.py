@@ -1227,6 +1227,8 @@ class Loop:
                             "arguments": call.raw_args
                             or json.dumps(call.args or {}, ensure_ascii=False),
                         },
+                        # 공급자가 붙여 보낸 칸은 받은 그대로 돌려준다(Gemini 는 없으면 다음 호출이 400)
+                        **({"extra_content": call.extra} if getattr(call, "extra", None) else {}),
                     }
                 )
                 self.st.processed_calls.append(call.id)

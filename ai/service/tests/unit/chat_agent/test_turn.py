@@ -1533,3 +1533,20 @@ def test_broken_log_sink_still_ends_with_one_error_line() -> None:
     assert status == 200
     _one_terminal(lines)
     assert data is not None and "error" in data and data["error"]["code"] == "INTERNAL_ERROR"
+
+
+def test_provider_extra_content_on_a_tool_call_is_sent_back_next_round() -> None:
+    """공급자가 도구 호출에 붙인 칸(`extra_content`, Gemini thought_signature)은 다음 조사 호출의 assistant 메시지에 받은
+    그대로 실린다(없으면 Gemini 호환 API 가 400, Issue #1194 모델 비교). 칸이 없는 OpenAI 계열은 메시지 모양이 그대로다."""
+    from pitch_coach_ai.features.chat_agent.llm_types import LlmResult, ToolCall
+
+    sig = {"google": {"thought_signature": "c2ln"}}
+    call = ToolCall(id="g-0", name="get_goals", args={}, raw_args="{}", extra=sig)
+    llm = F.FakeLlm(
+        [F.plan(), LlmResult(message=None, tool_calls=[call], finish_reason="tool_calls", model="fake-model"), F.done()],
+        answers=[F.answer([])],
+        fixes=[F.fix({})],
+    )
+    F.run_turn(F.request(user_message="대화 목표 있어?"), llm)
+    sent = [m for c in llm.calls[2:] for m in c.messages if m.get("role") == "assistant" and m.get("tool_calls")]
+    assert sent and sent[0]["tool_calls"][0]["extra_content"] == sig

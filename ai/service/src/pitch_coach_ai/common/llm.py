@@ -586,7 +586,9 @@ class ToolLlmClient:
             ) from None
         holder["stream"] = stream
         text: list[str] = []
-        calls: dict[int, dict[str, Any]] = {}
+        #: 도구 호출 조각을 모으는 칸. 열쇠는 조각의 `index`이고, index 없이 오는 공급자(Gemini 호환 API)는 호출 id 로 나눈다
+        calls: dict[Any, dict[str, Any]] = {}
+        last_key: Any = None
         finish: str | None = None
         model: str | None = None
         usage = chat_llm.Usage()
@@ -612,9 +614,16 @@ class ToolLlmClient:
                         if getattr(d, "refusal", None):
                             refusal = True
                         for tc in getattr(d, "tool_calls", None) or []:
-                            slot = calls.setdefault(tc.index, {"id": None, "name": "", "args": ""})
+                            idx = getattr(tc, "index", None)
+                            key = idx if idx is not None else (f"id:{tc.id}" if tc.id else last_key)
+                            last_key = key
+                            slot = calls.setdefault(key, {"id": None, "name": "", "args": ""})
                             if tc.id:
                                 slot["id"] = tc.id
+                            extra = (getattr(tc, "model_extra", None) or {}).get("extra_content")
+                            if extra is not None:
+                                # 다음 차례에 그대로 돌려줄 공급자 칸(Gemini thought_signature)
+                                slot["extra"] = extra
                             fn = tc.function
                             if fn is not None:
                                 if fn.name:
@@ -647,8 +656,7 @@ class ToolLlmClient:
         if finish not in _ALLOWED_FINISH[mode]:
             raise _with_usage(chat_llm.LlmInvalidOutput(cause=f"finish_reason={finish}"), usage)
         tool_calls: list[chat_llm.ToolCall] = []
-        for idx in sorted(calls):
-            c = calls[idx]
+        for c in calls.values():  # 받은 순서(OpenAI 는 index 순서와 같다)
             if not c["id"] or not c["name"]:
                 # 호출 id · 이름이 없는 불완전한 도구 호출은 실행하지 않는다(6-11 · L1-12 · L1-15)
                 raise _with_usage(chat_llm.LlmInvalidOutput(cause="incomplete_tool_call"), usage)
@@ -659,7 +667,9 @@ class ToolLlmClient:
             except json.JSONDecodeError:
                 args = None
             tool_calls.append(
-                chat_llm.ToolCall(id=c["id"], name=c["name"], args=args, raw_args=c["args"])
+                chat_llm.ToolCall(
+                    id=c["id"], name=c["name"], args=args, raw_args=c["args"], extra=c.get("extra")
+                )
             )
         message = "".join(text) or None
         parsed = None
