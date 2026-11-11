@@ -1,0 +1,228 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-32",
+  "set": "eval",
+  "group": "stale",
+  "split": "dev",
+  "act": "should",
+  "title": "옛 대화에서 다룬 발표(전체 범위, Take 2 때 이야기)의 '요즘' 마무리 장 말 속도 — 그 피치를 가져와 지금 마지막 Take 4 4장 336",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-meet",
+        "title": "주간 팀 회의 진행",
+        "takes": [
+          {
+            "take_id": "mt-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T09:00:00+09:00",
+            "completed_at": "2026-11-02T09:07:00+09:00",
+            "result": {
+              "cpm": 300
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "mt-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T09:00:00+09:00",
+            "completed_at": "2026-11-09T09:07:00+09:00",
+            "result": {
+              "cpm": 305
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-09T09:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-demo",
+        "title": "창업 데모데이 최종 피칭",
+        "takes": [
+          {
+            "take_id": "dm-t1",
+            "take_number": 1,
+            "started_at": "2026-10-28T19:00:00+09:00",
+            "completed_at": "2026-10-28T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                322,
+                338,
+                352,
+                389
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "dm-t2",
+            "take_number": 2,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                330,
+                342,
+                365,
+                401
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  4,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 65
+            }
+          },
+          {
+            "take_id": "dm-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                320,
+                334,
+                341,
+                372
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "dm-t4",
+            "take_number": 4,
+            "started_at": "2026-11-08T19:00:00+09:00",
+            "completed_at": "2026-11-08T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                318,
+                325,
+                330,
+                336
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T19:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-poster",
+        "title": "학회 포스터 세션 발표",
+        "takes": [
+          {
+            "take_id": "ps-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T13:00:00+09:00",
+            "completed_at": "2026-11-03T13:07:00+09:00",
+            "result": {
+              "cpm": 310
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-03T13:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null,
+      "history": [
+        {
+          "role": "user",
+          "text": "'창업 데모데이 최종 피칭' Take 2에서 마무리 장이 너무 빨랐던 것 같은데 맞아?"
+        },
+        {
+          "role": "assistant",
+          "text": "'창업 데모데이 최종 피칭' Take 2의 4장 말 속도는 분당 401자로 빠른 편이었어요."
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "그때 얘기했던 그 발표, 요즘 연습에서는 마무리 장 말 속도가 어떻게 나오고 있어요?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          [
+            "propose:FETCH_PITCH:AUTO",
+            "exec:FETCH_PITCH:OK",
+            "tool:get_take_report:*"
+          ],
+          [
+            "propose:FETCH_PITCH:AUTO",
+            "exec:FETCH_PITCH:OK",
+            "tool:compare_takes:*"
+          ]
+        ],
+        "metric": "replan",
+        "note": "옛 대화의 발표는 전체 범위 요약에 값이 없어 가져와 지금 기록을 읽는다(옛 답 숫자로 답하지 않음)"
+      },
+      {
+        "check_id": "scope-changed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "p-demo",
+        "path": "scope_pitch_id"
+      },
+      {
+        "check_id": "latest-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 336,
+        "grader": "number",
+        "derive": "dm-t4:SPEED.cpm@4"
+      },
+      {
+        "check_id": "latest-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "take": 4
+        },
+        "grader": "target"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "옛 답의 401 은 dm-t2 4장 값(사실과 같다). 지금 가장 최근 Take 는 dm-t4(4장 336). 맨 앞 피치는 다른 발표(p-meet)."
+}

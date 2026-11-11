@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-45",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should_not",
+  "title": "앞 답(대화 기록)이 이미 '발표 연습과 관계없는 질문이에요.'였는데 또 무관한 질문 — 두 번째 같은 안내: 핵심 문장은 그대로, 앞 답의 할 수 있는 일 줄을 되풀이하지 않고 실제 Take 번호 · 제목을 넣은 선택지, REFUSED",
+  "expect_refusal": true,
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-cafe",
+        "title": "카페 창업 설명회",
+        "last_practiced_at": "2026-11-08T15:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "cafe-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T15:00:00+09:00",
+            "completed_at": "2026-11-03T15:06:00+09:00",
+            "review": {"dimensions": {"vocal_delivery": "PRIORITY"}, "score": 64}
+          },
+          {
+            "take_id": "cafe-t2",
+            "take_number": 2,
+            "started_at": "2026-11-06T15:00:00+09:00",
+            "completed_at": "2026-11-06T15:06:00+09:00",
+            "review": {"dimensions": {"vocal_delivery": "PRIORITY"}, "score": 67}
+          },
+          {
+            "take_id": "cafe-t3",
+            "take_number": 3,
+            "started_at": "2026-11-08T15:00:00+09:00",
+            "completed_at": "2026-11-08T15:06:00+09:00",
+            "review": {"dimensions": {"vocal_delivery": "IMPROVED"}, "score": 71}
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-cafe",
+      "history": [
+        {
+          "role": "user",
+          "text": "요즘 환율이 왜 이렇게 오르는지 쉽게 설명해 줄 수 있어요?"
+        },
+        {
+          "role": "assistant",
+          "text": "발표 연습과 관계없는 질문이에요.\n내 연습 기록에서 고칠 점 찾기, Take끼리 비교하기, 다음 연습 목표 잡기, 발표법 안내를 도와드릴 수 있어요.\n최근 Take에서 고칠 점부터 같이 볼까요?"
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "message": "그럼 이번 주말 부산 날씨는 어떨 것 같아요?",
+      "page_take_id": "cafe-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "core-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.OUT_OF_SCOPE",
+        "grader": "template",
+        "note": "① 핵심 문장은 그대로(범위 밖 이유 OTHER)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "REFUSED",
+        "path": "status",
+        "note": "② 범위 밖은 REFUSED"
+      },
+      {
+        "check_id": "choice-header",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "이렇게 물어보시면 바로 확인할 수 있어요:",
+        "grader": "regex",
+        "note": "④ TARGET 4 두 번째 같은 안내: 확인할 후보가 있으면 선택지 머리말 + 예시 질문"
+      },
+      {
+        "check_id": "choice-has-candidate",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "Take\\s*[123](?!\\d)|카페 창업 설명회",
+        "grader": "regex",
+        "note": "③ 예시 질문에 확인된 후보(이 피치의 Take 1~3 또는 제목)"
+      },
+      {
+        "check_id": "no-fake-take",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "Take\\s*(?:[4-9]|[1-9]\\d)(?!\\d)",
+        "grader": "regex",
+        "note": "③ 없는 Take 번호(4 이상)를 말하지 않음"
+      },
+      {
+        "check_id": "prev-alt-not-repeated",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "고칠 점 찾기, Take끼리 비교하기",
+        "grader": "regex",
+        "note": "RULES 2: 앞 답(history)의 대안 문장(할 수 있는 일 줄)이 이번 답에 그대로 없음"
+      },
+      {
+        "check_id": "no-new-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS", "START_PRACTICE", "FETCH_PITCH", "FETCH_TAKE"],
+        "path": "types",
+        "metric": "autonomy",
+        "note": "⑤ 허용 행동 안 — 범위 밖 답에 행동 없음"
+      },
+      {
+        "check_id": "no-new-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["ASK_CONFIRM", "GOAL_PROPOSAL"],
+        "path": "cards",
+        "note": "⑤ 카드 없음"
+      },
+      {
+        "check_id": "no-record-read",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["tool:get_take_report:*"],
+        "metric": "path",
+        "note": "범위 밖 답은 기록을 펼쳐 읽지 않는다 — 선택지 후보는 기본 자료의 Take 목록 · 제목"
+      }
+    ]
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-40",
+  "set": "eval",
+  "group": "guide",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'자료 기준으로 분당 몇 글자가 정답인지 숫자로' — 자료 g-03(정답 숫자는 없음) 인용, 조언 문장에 숫자를 만들지 않음",
+  "baseline_type": "guide",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-run",
+        "title": "마라톤 동호회 안전 브리핑",
+        "takes": [
+          {
+            "take_id": "rn-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T07:00:00+09:00",
+            "completed_at": "2026-11-05T07:07:00+09:00",
+            "result": {
+              "cpm": 342
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-05T07:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "발표할 때 말 속도는 분당 몇 글자가 정답이에요? 자료 기준으로 딱 숫자로 정해 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "source",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "g-03",
+        "path": "source_ids"
+      },
+      {
+        "check_id": "quote-exact",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "grader": "quote"
+      },
+      {
+        "check_id": "no-made-number",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "\\d+ ?(자|글자)",
+        "grader": "regex",
+        "path": "advice_text",
+        "note": "GUIDE · GENERAL 문장에 자료에 없는 분당 글자 수를 만들지 않는다(6-10)"
+      },
+      {
+        "check_id": "search-then-guide",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:search_guides:OK",
+          "claim:GUIDE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

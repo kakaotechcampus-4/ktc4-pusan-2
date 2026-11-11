@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-19",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should_not",
+  "title": "대본 전체를 띄운 리허설 조건으로 다시 평가해 달라 → 확인 카드를 띄우고 사용자가 거절 — 다시 평가 실행 0번(리뷰 호출 없음), 거절 문장, 공식 그대로",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-car",
+        "title": "청소년 진로 특강",
+        "last_practiced_at": "2026-11-08T16:00:00+09:00",
+        "criteria": {
+          "standard_version": 1,
+          "display_criteria": ["학생들과 눈 맞추기"],
+          "targets": [],
+          "script_used": false
+        },
+        "takes": [
+          {
+            "take_id": "car-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T16:00:00+09:00",
+            "completed_at": "2026-11-04T16:06:00+09:00",
+            "result": {"script_ratio": [0.3, 0.32, 0.35, 0.3]},
+            "review": {"dimensions": {"script_independence": "STABLE"}, "score": 72}
+          },
+          {
+            "take_id": "car-t2",
+            "take_number": 2,
+            "script_mode": "HIGHLIGHT",
+            "started_at": "2026-11-08T16:00:00+09:00",
+            "completed_at": "2026-11-08T16:06:00+09:00",
+            "result": {
+              "script_ratio": [0.5, 0.55, 0.6, 0.52],
+              "audience": [0.4, 0.36, 0.3, 0.38],
+              "issues": [["GAZE_ON_SCRIPT", 3, true]]
+            },
+            "review": {"dimensions": {"script_independence": "PRIORITY"}, "score": 64}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-car"}
+  },
+  "turns": [
+    {
+      "message": "Take 2는 화면에 대본을 전부 띄워 놓고 한 리허설이었어요. 그 조건으로 다시 평가해 줘요.",
+      "page_take_id": "car-t2",
+      "approval": "REJECT"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "ask-before-reject",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["propose:REASSESS:ASK", "reject:REASSESS"],
+        "metric": "autonomy",
+        "note": "다시 평가는 ASK — 확인 카드로 묻는다"
+      },
+      {
+        "check_id": "no-reassess-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["exec:REASSESS:*"],
+        "metric": "path",
+        "note": "거절하면 실행하지 않고 AI 도 다시 부르지 않는다(6-2)"
+      },
+      {
+        "check_id": "no-reassess-executed",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "counts.REASSESS",
+        "metric": "autonomy",
+        "note": "승인 없이 실행한 다시 평가 0번(실행한 행동 결과로 본다)"
+      },
+      {
+        "check_id": "reject-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.REJECTED_REASSESS",
+        "grader": "template"
+      },
+      {
+        "check_id": "script-fact-highlight",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"name": "SCRIPT_FACT", "fields": {"state": "전체로 켜져"}},
+        "grader": "template",
+        "note": "판단 · 사실 문장은 확인 카드 전에 나가 거절 뒤에도 답에 남는다(6-1 4번)"
+      },
+      {
+        "check_id": "no-result-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "REASSESS_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "거절이면 실행은 DONE(6-2)"
+      }
+    ]
+  },
+  "notes": "script_mode HIGHLIGHT → 대본 주장 SUPPORTED, 사실 문장 '전체로 켜져'. 사용자가 확인 카드를 거절하면 BE 가 '다시 평가하지 않았어요.'를 덧붙인다."
+}

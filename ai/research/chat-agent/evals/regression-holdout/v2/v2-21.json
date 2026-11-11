@@ -1,0 +1,196 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-21",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "전체 범위에서 마지막으로 연습한 발표 — 맨 앞 피치(분석 끝난 Take 2개)를 고정 문장으로, 행동 · 범위 바꾸기 없이 DONE",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-book",
+        "title": "동네 도서관 북토크 진행",
+        "takes": [
+          {
+            "take_id": "bk-t1",
+            "take_number": 1,
+            "started_at": "2026-11-06T19:30:00+09:00",
+            "completed_at": "2026-11-06T19:37:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "bk-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T19:00:00+09:00",
+            "completed_at": "2026-11-08T19:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "bk-t3",
+            "take_number": 3,
+            "status": "ANALYZING",
+            "started_at": "2026-11-09T20:10:00+09:00",
+            "completed_at": null,
+            "result": null,
+            "review": null
+          }
+        ],
+        "last_practiced_at": "2026-11-09T20:10:00+09:00"
+      },
+      {
+        "pitch_id": "p-sec",
+        "title": "사내 정보보안 교육 발표",
+        "takes": [
+          {
+            "take_id": "sec-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T10:00:00+09:00",
+            "completed_at": "2026-11-03T10:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "sec-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T10:00:00+09:00",
+            "completed_at": "2026-11-05T10:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "sec-t3",
+            "take_number": 3,
+            "started_at": "2026-11-07T10:00:00+09:00",
+            "completed_at": "2026-11-07T10:07:00+09:00",
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 70
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-07T10:00:00+09:00"
+      },
+      {
+        "pitch_id": "p-thesis",
+        "title": "석사 논문 중간 심사",
+        "takes": [
+          {
+            "take_id": "th-t1",
+            "take_number": 1,
+            "started_at": "2026-10-28T14:00:00+09:00",
+            "completed_at": "2026-10-28T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "th-t2",
+            "take_number": 2,
+            "started_at": "2026-10-30T14:00:00+09:00",
+            "completed_at": "2026-10-30T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "th-t3",
+            "take_number": 3,
+            "started_at": "2026-11-02T14:00:00+09:00",
+            "completed_at": "2026-11-02T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "th-t4",
+            "take_number": 4,
+            "started_at": "2026-11-04T14:00:00+09:00",
+            "completed_at": "2026-11-04T14:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-04T14:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "요즘 마지막으로 연습했던 게 어떤 발표였더라? 기억이 잘 안 나네"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "recent-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "가장 최근에 연습을 시작한 발표는 '동네 도서관 북토크 진행'이고, 마지막 연습 시작은 11월 9일, 분석이 끝난 Take는 2개예요\\.",
+        "grader": "regex",
+        "note": "TARGET 1: last_practiced_at 가장 늦은 피치(분석 중 Take 3 의 시작 11-09 20:10 KST), take_count 2(COMPLETED 만, 분석 중 Take 3 제외)"
+      },
+      {
+        "check_id": "no-zero-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "아직 분석이 끝난 Take는 없어요",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-partial-text",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template",
+        "note": "TARGET 1: 목록을 정상으로 읽었으면 PARTIAL 안내가 나오지 않는다"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path",
+        "note": "최근 발표 찾기만 요청: 기본 자료 피치 목록으로 답하고 범위를 바꾸지 않는다(6-5)"
+      },
+      {
+        "check_id": "scope-kept",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": null,
+        "path": "scope_pitch_id"
+      }
+    ]
+  },
+  "notes": "가장 최근: p-book(11-09, 분석 중 Take 포함) > p-sec(11-07) > p-thesis(11-04). Take 가 더 많은 피치가 뒤에 있다. take_count 는 COMPLETED 만 센다(fixtures.pitch_summary)."
+}

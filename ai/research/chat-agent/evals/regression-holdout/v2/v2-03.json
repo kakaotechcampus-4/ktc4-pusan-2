@@ -1,0 +1,141 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-03",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "자동 목표 확인(2장 말 속도 범위 목표) — 목표 뒤 첫 Take 는 시간 제한으로 끝나 알 수 없음, 다음 Take 는 범위 안이라 이룸(Take 번호 순)",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-trv",
+        "title": "해외 봉사 활동 보고",
+        "last_practiced_at": "2026-11-09T19:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "trv-t2",
+            "take_number": 2,
+            "started_at": "2026-11-01T19:00:00+09:00",
+            "completed_at": "2026-11-01T19:05:00+09:00",
+            "result": {"cpm": [300, 366, 310, 305], "issues": [["PACE_FAST", 2, true]]},
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY"}, "score": 70}
+          },
+          {
+            "take_id": "trv-t3",
+            "take_number": 3,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:05:00+09:00",
+            "result": {"cpm": [298, 371, 312, 301], "issues": [["PACE_FAST", 2, true]]},
+            "review": {"dimensions": {"pacing_rhythm": "PRIORITY"}, "score": 69}
+          },
+          {
+            "take_id": "trv-t4",
+            "take_number": 4,
+            "end_reason": "TIME_LIMIT",
+            "started_at": "2026-11-06T19:00:00+09:00",
+            "completed_at": "2026-11-06T19:05:00+09:00",
+            "result": {"cpm": [296, 345, 305, 300]},
+            "review": {"dimensions": {"pacing_rhythm": "STABLE"}, "score": 73}
+          },
+          {
+            "take_id": "trv-t5",
+            "take_number": 5,
+            "started_at": "2026-11-09T19:00:00+09:00",
+            "completed_at": "2026-11-09T19:05:00+09:00",
+            "result": {"cpm": [300, 338, 309, 302]},
+            "review": {"dimensions": {"pacing_rhythm": "STABLE"}, "score": 75}
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-trv",
+      "goal": {
+        "metric": "cpm",
+        "slide_number": 2,
+        "base_take_id": "trv-t3",
+        "version": 1,
+        "status": "OPEN",
+        "after_take": 3,
+        "created_at": "2026-11-04T09:00:00+09:00"
+      }
+    }
+  },
+  "turns": [
+    {"auto_goal_check": true}
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "results-in-take-order",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": ["UNKNOWN", "ACHIEVED"],
+        "path": "goal_results",
+        "note": "Take 4 는 끝까지 한 발표가 아님(completed_fully null, 자동 종료) → 알 수 없음 · 다음 Take 기다림, Take 5 는 2장 338 이 범위 275~350 안 → 이룸(6-4 판정 순서)"
+      },
+      {
+        "check_id": "last-status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "ACHIEVED",
+        "path": "goal_result.status"
+      },
+      {
+        "check_id": "last-terminal",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "goal_result.terminal"
+      },
+      {
+        "check_id": "last-observed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": 338,
+        "path": "goal_result.observed",
+        "derive": "trv-t5:SPEED.cpm@2"
+      },
+      {
+        "check_id": "goal-closed-achieved",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "ACHIEVED",
+        "path": "after.conversation.goal.status"
+      },
+      {
+        "check_id": "achieved-word",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_WORD.ACHIEVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "no-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:*"],
+        "metric": "path",
+        "note": "TAKE_REVIEWED 실행은 저장 · 다시 평가 · 이동 행동을 내지 않는다(6-2)"
+      },
+      {
+        "check_id": "no-actions",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS", "START_PRACTICE"],
+        "path": "types",
+        "metric": "autonomy"
+      }
+    ]
+  },
+  "notes": "목표: cpm 2장 in_range, 기준 Take 3(2장 371), 범위는 기준 Take 의 말 속도 판정 기준 275~350(fixtures PACE_SLOW · PACE_FAST). 저장 뒤 시작한 Take 4 · 5 를 번호 순으로 판정."
+}

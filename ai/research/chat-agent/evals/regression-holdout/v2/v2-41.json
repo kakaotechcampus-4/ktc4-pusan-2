@@ -1,0 +1,374 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-41",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should",
+  "title": "전체 범위 · 피치 21개(기본 자료 20개) — 목록에 없는 이름의 발표를 물음: 이름으로 가져오기 시도 → 실패 → '발표를 찾을 수 없어요.' + 최근 발표 제목 대안 + 다음 걸음",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-n01",
+        "title": "신제품 런칭 발표",
+        "last_practiced_at": "2026-11-09T20:10:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-09T20:10:00+09:00",
+            "completed_at": "2026-11-09T20:17:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n02",
+        "title": "졸업 작품 심사",
+        "last_practiced_at": "2026-11-08T19:40:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-08T19:40:00+09:00",
+            "completed_at": "2026-11-08T19:47:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n03",
+        "title": "투자 유치 데모",
+        "last_practiced_at": "2026-11-07T21:05:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-07T21:05:00+09:00",
+            "completed_at": "2026-11-07T21:12:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n04",
+        "title": "주간 업무 보고",
+        "last_practiced_at": "2026-11-06T09:20:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-06T09:20:00+09:00",
+            "completed_at": "2026-11-06T09:27:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n05",
+        "title": "사내 세미나 발표",
+        "last_practiced_at": "2026-11-05T18:30:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-05T18:30:00+09:00",
+            "completed_at": "2026-11-05T18:37:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n06",
+        "title": "고객사 제안 발표",
+        "last_practiced_at": "2026-11-04T14:00:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-04T14:00:00+09:00",
+            "completed_at": "2026-11-04T14:07:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n07",
+        "title": "학회 구두 발표",
+        "last_practiced_at": "2026-11-03T22:15:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-03T22:15:00+09:00",
+            "completed_at": "2026-11-03T22:22:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n08",
+        "title": "신입 연수 강의",
+        "last_practiced_at": "2026-11-02T10:45:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-11-02T10:45:00+09:00",
+            "completed_at": "2026-11-02T10:52:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n09",
+        "title": "공모전 본선 발표",
+        "last_practiced_at": "2026-10-31T16:00:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-31T16:00:00+09:00",
+            "completed_at": "2026-10-31T16:07:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n10",
+        "title": "팀 회고 발표",
+        "last_practiced_at": "2026-10-30T17:10:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-30T17:10:00+09:00",
+            "completed_at": "2026-10-30T17:17:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n11",
+        "title": "제품 데모 영상 녹화",
+        "last_practiced_at": "2026-10-29T13:25:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-29T13:25:00+09:00",
+            "completed_at": "2026-10-29T13:32:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n12",
+        "title": "동아리 정기 총회",
+        "last_practiced_at": "2026-10-28T19:00:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-28T19:00:00+09:00",
+            "completed_at": "2026-10-28T19:07:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n13",
+        "title": "교양 수업 조별 발표",
+        "last_practiced_at": "2026-10-27T11:30:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-27T11:30:00+09:00",
+            "completed_at": "2026-10-27T11:37:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n14",
+        "title": "봉사 활동 결과 보고",
+        "last_practiced_at": "2026-10-26T15:50:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-26T15:50:00+09:00",
+            "completed_at": "2026-10-26T15:57:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n15",
+        "title": "창업 경진대회 예선",
+        "last_practiced_at": "2026-10-25T20:20:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-25T20:20:00+09:00",
+            "completed_at": "2026-10-25T20:27:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n16",
+        "title": "연구실 주간 미팅",
+        "last_practiced_at": "2026-10-24T09:05:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-24T09:05:00+09:00",
+            "completed_at": "2026-10-24T09:12:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n17",
+        "title": "기술 블로그 세미나",
+        "last_practiced_at": "2026-10-23T18:45:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-23T18:45:00+09:00",
+            "completed_at": "2026-10-23T18:52:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n18",
+        "title": "영어 프레젠테이션 연습",
+        "last_practiced_at": "2026-10-22T21:35:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-22T21:35:00+09:00",
+            "completed_at": "2026-10-22T21:42:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n19",
+        "title": "면접 자기소개",
+        "last_practiced_at": "2026-10-21T08:50:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-21T08:50:00+09:00",
+            "completed_at": "2026-10-21T08:57:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n20",
+        "title": "학부모 설명회",
+        "last_practiced_at": "2026-10-20T19:15:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-20T19:15:00+09:00",
+            "completed_at": "2026-10-20T19:22:00+09:00"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-n21",
+        "title": "해커톤 중간 발표",
+        "last_practiced_at": "2026-10-18T23:00:00+09:00",
+        "takes": [
+          {
+            "take_number": 1,
+            "started_at": "2026-10-18T23:00:00+09:00",
+            "completed_at": "2026-10-18T23:07:00+09:00"
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "'지역 축제 홍보 발표' 연습 점수랑 고칠 점 좀 알려 줄래요?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "core-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.PITCH_NOT_FOUND",
+        "grader": "template",
+        "note": "① TARGET 4 이름으로 찾은 발표 없음"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "② TARGET 2 확인한 '없음'은 해소"
+      },
+      {
+        "check_id": "alt-recent-title",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "신제품 런칭 발표",
+        "grader": "regex",
+        "note": "③ 대안: 지금 있는 발표 제목(최근 연습 순) — last_practiced_at 가장 늦은 피치"
+      },
+      {
+        "check_id": "next-step",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.NEXT_PICK_PITCH",
+        "grader": "template",
+        "note": "④ 피치가 있을 때의 다음 걸음 고정 문장"
+      },
+      {
+        "check_id": "no-first-pitch-step",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.NEXT_FIRST_PITCH",
+        "grader": "template",
+        "note": "④ 피치가 있으므로 '피치를 만들어…' 문장은 아님"
+      },
+      {
+        "check_id": "no-new-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS",
+          "START_PRACTICE"
+        ],
+        "path": "types",
+        "metric": "autonomy",
+        "note": "⑤ 허용 행동 안 — 가져오기(AUTO) 밖의 행동 없음"
+      },
+      {
+        "check_id": "no-new-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "ASK_CONFIRM",
+          "GOAL_PROPOSAL"
+        ],
+        "path": "cards",
+        "note": "⑤ 카드 없음"
+      },
+      {
+        "check_id": "scope-unchanged",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": null,
+        "path": "scope_pitch_id"
+      },
+      {
+        "check_id": "fetch-by-name-then-done",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_PITCH:AUTO",
+          "final:DONE"
+        ],
+        "metric": "path",
+        "note": "5-3 pitches_total 21 > 실린 20: 목록에 없는 이름은 FETCH_PITCH(이름)로 찾는다"
+      },
+      {
+        "check_id": "fetch-failed-not-found",
+        "observe": "actions_executed",
+        "compare": "contains",
+        "expect": [
+          {
+            "type": "FETCH_PITCH",
+            "status": "FAILED",
+            "error_code": "NOT_FOUND"
+          }
+        ],
+        "path": "items",
+        "note": "그 이름의 피치는 없다 — 가져오기는 NOT_FOUND 로 실패(5-8)"
+      }
+    ]
+  }
+}

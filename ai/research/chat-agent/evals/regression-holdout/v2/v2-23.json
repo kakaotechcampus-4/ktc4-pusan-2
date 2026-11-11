@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-23",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "가장 최근 발표 + 그 발표 마지막 Take 전체 말 속도 — 고정 문장, 그 피치로 범위를 바꿔 읽고 375 자",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-rob",
+        "title": "로봇 동아리 대회 출전 발표",
+        "takes": [
+          {
+            "take_id": "rb-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T21:00:00+09:00",
+            "completed_at": "2026-11-05T21:07:00+09:00",
+            "result": {
+              "cpm": 340
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "rb-t2",
+            "take_number": 2,
+            "started_at": "2026-11-06T21:00:00+09:00",
+            "completed_at": "2026-11-06T21:07:00+09:00",
+            "result": {
+              "cpm": 330
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "rb-t3",
+            "take_number": 3,
+            "started_at": "2026-11-08T21:15:00+09:00",
+            "completed_at": "2026-11-08T21:22:00+09:00",
+            "result": {
+              "cpm": [
+                378,
+                384,
+                366,
+                372
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 66
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-08T21:15:00+09:00"
+      },
+      {
+        "pitch_id": "p-fin",
+        "title": "분기 재무 실적 브리핑",
+        "takes": [
+          {
+            "take_id": "fn-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T09:30:00+09:00",
+            "completed_at": "2026-11-03T09:37:00+09:00",
+            "result": {
+              "cpm": 302
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "fn-t2",
+            "take_number": 2,
+            "started_at": "2026-11-06T09:30:00+09:00",
+            "completed_at": "2026-11-06T09:37:00+09:00",
+            "result": {
+              "cpm": 296
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-06T09:30:00+09:00"
+      },
+      {
+        "pitch_id": "p-tour",
+        "title": "문화유산 해설사 시연",
+        "takes": [
+          {
+            "take_id": "tr-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T15:00:00+09:00",
+            "completed_at": "2026-11-02T15:07:00+09:00",
+            "result": {
+              "cpm": 288
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-02T15:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "가장 최근에 연습했던 발표 찾아서, 그 발표 마지막 Take 전체 말 속도가 분당 몇 글자였는지도 같이 알려 줄래?"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "recent-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "가장 최근에 연습을 시작한 발표는 '로봇 동아리 대회 출전 발표'이고, 마지막 연습 시작은 11월 8일, 분석이 끝난 Take는 3개예요\\.",
+        "grader": "regex"
+      },
+      {
+        "check_id": "cpm-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 375,
+        "grader": "number",
+        "derive": "rb-t3:SPEED.cpm"
+      },
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_PITCH:AUTO",
+          "exec:FETCH_PITCH:OK",
+          "tool:get_take_report:*"
+        ],
+        "metric": "path",
+        "note": "전체 범위 요약에는 말 속도가 없어 그 피치를 가져와(AUTO) 마지막 Take 기록을 읽는다(6-5)"
+      },
+      {
+        "check_id": "scope-changed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "p-rob",
+        "path": "scope_pitch_id"
+      },
+      {
+        "check_id": "scope-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "ACTION_SUCCESS.FETCH_PITCH",
+          "fields": {
+            "title": "로봇 동아리 대회 출전 발표"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-59",
+  "set": "agent_service",
+  "group": "approval",
+  "split": "dev",
+  "act": "should",
+  "title": "군더더기를 줄이는 대화 목표를 잡아 달라는 명확한 요청 → 확인 카드 → 사용자가 승인 → 승인한 인자로 한 번 저장, 다시 읽은 목표가 기준 Take 기록과 같고 저장 성공 · 결과 발견 안내",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-fire",
+        "title": "소방 안전 교육 강연",
+        "last_practiced_at": "2026-11-09T10:30:00+09:00",
+        "takes": [
+          {
+            "take_id": "fire-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T10:30:00+09:00",
+            "completed_at": "2026-11-05T10:37:00+09:00",
+            "result": {"filler_per_min": 2.8, "filler_count": 18},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 63}
+          },
+          {
+            "take_id": "fire-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T10:30:00+09:00",
+            "completed_at": "2026-11-09T10:37:00+09:00",
+            "result": {"filler_per_min": 2.4, "filler_count": 16},
+            "review": {"dimensions": {"fluency": "PRIORITY"}, "score": 66}
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-fire"
+    }
+  },
+  "turns": [
+    {
+      "message": "소방 교육 강연은 다음 연습부터 Take 2보다 군더더기를 줄이는 걸 대화 목표로 잡아 주세요.",
+      "page_take_id": "fire-t2",
+      "approval": "APPROVE"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "ask-approve-exec",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["propose:SAVE_GOAL:ASK", "approve:SAVE_GOAL", "exec:SAVE_GOAL:OK", "final:DONE"],
+        "metric": "path",
+        "note": "확인 카드 → 승인 → 실행(승인 전 실행 0번)"
+      },
+      {
+        "check_id": "confirm-card",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": ["ASK_CONFIRM"],
+        "path": "cards",
+        "note": "목표 차원(매끄러움)이 우선 개선이고 다른 우선 개선이 없어 제안 카드로 낮추지 않는다(6-3 목표 요청 판정)"
+      },
+      {
+        "check_id": "exec-once",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.SAVE_GOAL"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "filler_per_min",
+        "path": "after.conversation.goal.metric"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "lt_base",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "goal-base-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "fire-t2",
+        "path": "after.conversation.goal.base.take_id"
+      },
+      {
+        "check_id": "goal-base-value",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 2.4,
+        "path": "after.conversation.goal.base.value",
+        "derive": "fire-t2:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "goal-whole-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal.slide_number"
+      },
+      {
+        "check_id": "success-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-discovery",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.RESULT_DISCOVERY",
+        "grader": "template",
+        "note": "v1 TARGET 3: 저장 성공 답에만 붙는 결과 발견 안내"
+      },
+      {
+        "check_id": "saved-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": ["GOAL_SAVED"],
+        "path": "card_types"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "official-kept",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  }
+}

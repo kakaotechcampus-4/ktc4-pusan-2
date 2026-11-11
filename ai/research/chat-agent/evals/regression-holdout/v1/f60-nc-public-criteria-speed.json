@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-nc-public-criteria-speed",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "말 속도는 판정 기준 버전이 달라 비교 불가, 청중 시선은 비교 가능(48% → 57%) — 속도 결론 없음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-pub",
+        "title": "공공기관 정책 브리핑",
+        "takes": [
+          {
+            "take_id": "pub-t8",
+            "take_number": 8,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "audience": 0.48,
+              "cpm": 322,
+              "criteria_versions": {
+                "SPEED": "pace-0.9+5d1e0c7a9b21"
+              }
+            },
+            "review": {
+              "dimensions": {},
+              "score": 71
+            }
+          },
+          {
+            "take_id": "pub-t9",
+            "take_number": 9,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "audience": 0.57,
+              "cpm": 305
+            },
+            "review": {
+              "dimensions": {},
+              "score": 75
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-pub"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 8이랑 Take 9를 놓고 말 속도랑 청중 시선을 둘 다 비교해 주세요.",
+      "page_take_id": "pub-t9"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "not-comparable-fact",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:OK",
+          "decision:NOT_COMPARABLE:FACT_SHOWN:CODE"
+        ],
+        "metric": "replan",
+        "note": "README: FACT_SHOWN:CODE 는 신호를 낸 도구 사건 바로 뒤"
+      },
+      {
+        "check_id": "plan-fact",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가.*판정 기준 버전 다름",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "TARGET 1: 비교 불가 + 까닭 낱말이 실행한 단계 글에 보인다"
+      },
+      {
+        "check_id": "reason-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "판정 기준 버전이 달라",
+        "grader": "regex"
+      },
+      {
+        "check_id": "gaze-before",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "48%",
+        "grader": "number",
+        "derive": "pub-t8:GAZE.audience_ratio"
+      },
+      {
+        "check_id": "gaze-after",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "57%",
+        "grader": "number",
+        "derive": "pub-t9:GAZE.audience_ratio"
+      },
+      {
+        "check_id": "no-speed-outcome",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "속도[^.\\n]*(빨라졌|느려졌|좋아졌|나빠졌|줄었|늘었|증가|감소)",
+        "grader": "regex"
+      },
+      {
+        "check_id": "no-speed-diff",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "17자",
+        "grader": "number",
+        "note": "322 − 305 = 17: 비교할 수 없는 차이를 말하지 않는다"
+      },
+      {
+        "check_id": "gaze-improved",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "좋아졌",
+        "grader": "regex",
+        "note": "청중 시선 HIGHER: 48% → 57% IMPROVED"
+      },
+      {
+        "check_id": "two-compares",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:OK",
+          "tool:compare_takes:OK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

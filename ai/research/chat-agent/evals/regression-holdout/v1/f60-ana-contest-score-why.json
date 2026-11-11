@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0",
+  "id": "f60-ana-contest-score-why",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "'점수가 왜 낮아 · 어디서 · 무엇을 연습' — 2 · 3장 말 속도 빠름 문제 구간과 리뷰 우선 개선을 엮어 답함",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-cont",
+        "title": "창업 공모전 본선 발표",
+        "takes": [
+          {
+            "take_id": "cont-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T19:00:00+09:00",
+            "completed_at": "2026-11-02T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                300,
+                362,
+                358,
+                302
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "fluency": "STRENGTH"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "cont-t2",
+            "take_number": 2,
+            "started_at": "2026-11-05T19:00:00+09:00",
+            "completed_at": "2026-11-05T19:07:00+09:00",
+            "result": {
+              "cpm": [
+                302,
+                371,
+                366,
+                305
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY",
+                "fluency": "STRENGTH"
+              },
+              "score": 63
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-cont"
+    }
+  },
+  "turns": [
+    {
+      "message": "본선 연습 점수가 생각보다 낮게 나왔어요. 어느 장에서 무엇 때문에 깎인 건지 짚어 주고, 다음 연습에서 뭘 붙잡고 연습하면 될지도 알려 주세요.",
+      "page_take_id": "cont-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "where-what",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "slide": 3,
+          "metric": "cpm"
+        },
+        "grader": "target",
+        "note": "문제 구간은 2 · 3장(PACE_FAST). '2 · 3장'처럼 이어 써도 3장은 잡힌다"
+      },
+      {
+        "check_id": "fast-direction",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(빠르|빨랐|빨라|빠른|빠름)",
+        "grader": "regex",
+        "note": "문제 방향: PACE_FAST(빠름)"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:OK",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-confirmed-line",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "기록 \\d+건을 확인",
+        "grader": "regex",
+        "note": "TARGET 3(고침): '확인한 것' 줄은 넣지 않는다"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

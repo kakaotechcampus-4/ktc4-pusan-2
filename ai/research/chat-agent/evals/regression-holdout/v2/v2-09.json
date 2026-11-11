@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-09",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should",
+  "title": "리뷰 미션 기준과 이번 Take 의 그 장 값 — 공식 미션(3장 청중 시선 45% 이상)과 Take 4 3장 33% 를 함께 읽어 답함(목표 · 미션 읽기 + 장별 값)",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-fes",
+        "title": "지역 축제 홍보 발표",
+        "last_practiced_at": "2026-11-09T11:00:00+09:00",
+        "missions": [
+          {
+            "mission_id": "m-21",
+            "area": "GAZE",
+            "slide_number": 3,
+            "target": {"metric": "audience_ratio", "operator": "GTE", "value": 0.45},
+            "status": "ACTIVE"
+          }
+        ],
+        "takes": [
+          {
+            "take_id": "fes-t3",
+            "take_number": 3,
+            "started_at": "2026-11-05T11:00:00+09:00",
+            "completed_at": "2026-11-05T11:04:00+09:00",
+            "result": {"audience": [0.6, 0.57, 0.3, 0.6]},
+            "review": {"dimensions": {"audience_gaze": "PRIORITY"}, "score": 66}
+          },
+          {
+            "take_id": "fes-t4",
+            "take_number": 4,
+            "started_at": "2026-11-09T11:00:00+09:00",
+            "completed_at": "2026-11-09T11:04:00+09:00",
+            "result": {"audience": [0.6, 0.58, 0.33, 0.61]},
+            "review": {"dimensions": {"audience_gaze": "PRIORITY"}, "score": 68}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-fes"}
+  },
+  "turns": [
+    {
+      "message": "리뷰가 정해 준 미션이 뭐였는지, 이번 Take 4에서 그 미션이 걸린 장은 몇 %까지 나왔는지 알려 줘요. 다음엔 어떻게 맞춰 가면 좋을까요?",
+      "page_take_id": "fes-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "mission-and-slide-read",
+        "observe": "trajectory",
+        "compare": "in_order_any",
+        "expect": [
+          ["tool:get_goals:OK", "tool:get_take_report:*", "claim:RECORD"],
+          ["tool:get_take_report:*", "tool:get_goals:OK", "claim:RECORD"]
+        ],
+        "metric": "path",
+        "note": "공식 미션은 get_goals 로, 그 장 값은 Take 결과로 읽는다(순서 무관)"
+      },
+      {
+        "check_id": "slide3-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "33%",
+        "grader": "number",
+        "derive": "fes-t4:GAZE.audience_ratio@3"
+      },
+      {
+        "check_id": "mission-threshold",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "45%",
+        "grader": "number",
+        "note": "미션 m-21 의 기준값 0.45(GTE)"
+      },
+      {
+        "check_id": "slide3-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"slide": 3},
+        "grader": "target"
+      },
+      {
+        "check_id": "no-mission-change",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "미션은 리뷰가 정한 공식 미션(바꾸지 않음). Take 4 3장 청중 시선 0.33. 차이(12%p)를 모델이 계산해 말하는지는 검사하지 않는다(숫자 정확도 지표가 따로 본다)."
+}

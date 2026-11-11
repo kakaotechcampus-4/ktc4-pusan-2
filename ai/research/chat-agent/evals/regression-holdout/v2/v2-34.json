@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-34",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "[이어서 확인] 첫 차례만 문장 1개 뒤 끊김(PARTIAL) — 둘째 '이어서 확인해 줘'에 장애가 없어 다시 읽고 남은 값까지 DONE, 같은 이유 안내 없음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sci",
+        "title": "어린이 과학관 해설 시연",
+        "takes": [
+          {
+            "take_id": "sc-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T11:00:00+09:00",
+            "completed_at": "2026-11-04T11:07:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "sc-t2",
+            "take_number": 2,
+            "started_at": "2026-11-07T11:00:00+09:00",
+            "completed_at": "2026-11-07T11:07:00+09:00",
+            "result": {
+              "audience": [
+                0.57,
+                0.41,
+                0.6,
+                0.66
+              ],
+              "filler_per_min": 2.7,
+              "filler_count": 11
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ],
+        "last_practiced_at": "2026-11-07T11:00:00+09:00"
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-sci"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2에서 2장이랑 4장 청중 시선 비율이 각각 몇 퍼센트였는지, 전체 군더더기는 분당 몇 번이었는지 알려 줘요.",
+      "page_take_id": "sc-t2",
+      "faults": [
+        {
+          "kind": "stream_cut",
+          "after_claims": 1
+        }
+      ]
+    },
+    {
+      "message": "이어서 확인해 줘",
+      "page_take_id": "sc-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t0-partial",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "turn": 0,
+        "metric": "replan"
+      },
+      {
+        "check_id": "t1-done",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "turn": 1,
+        "metric": "replan"
+      },
+      {
+        "check_id": "t1-reread",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:get_take_report:*",
+          "final:DONE"
+        ],
+        "turn": 1,
+        "metric": "path",
+        "note": "앞 답 문장은 근거가 아니다: 남은 값은 이번 차례에 다시 읽어 답한다"
+      },
+      {
+        "check_id": "t1-no-same-reason",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "같은 이유로 더 확인할 수 없어요",
+        "grader": "regex",
+        "turn": 1
+      },
+      {
+        "check_id": "slide2",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.41,
+        "grader": "number",
+        "turn": "all",
+        "derive": "sc-t2:GAZE.audience_ratio@2"
+      },
+      {
+        "check_id": "slide4",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.66,
+        "grader": "number",
+        "turn": "all",
+        "derive": "sc-t2:GAZE.audience_ratio@4"
+      },
+      {
+        "check_id": "filler",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 2.7,
+        "grader": "number",
+        "turn": "all",
+        "derive": "sc-t2:FILLER.filler_per_min"
+      }
+    ]
+  },
+  "notes": "첫 차례만 장애(끊김). 끊겨 남은 답에는 PARTIAL 안내 문장이 없다. 값은 두 차례 답을 합쳐 본다."
+}

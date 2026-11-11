@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-11",
+  "set": "eval",
+  "group": "pitch_analysis",
+  "split": "dev",
+  "act": "should_not",
+  "title": "대본을 가장 많이 본 장 + 그 장 대본 문장을 짧게 고쳐 달라(섞인 요청) — 3장 대본 응시 60% 는 기록으로 답하고, 대본 고쳐 쓰기는 하지 않고 범위 밖 고정 문장(DONE)",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-grad",
+        "title": "대학원 연구 계획 발표",
+        "last_practiced_at": "2026-11-07T15:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "grad-t2",
+            "take_number": 2,
+            "started_at": "2026-11-03T15:00:00+09:00",
+            "completed_at": "2026-11-03T15:05:00+09:00",
+            "result": {"script_ratio": [0.2, 0.25, 0.48, 0.22], "audience": [0.6, 0.55, 0.4, 0.58]},
+            "review": {"dimensions": {"script_independence": "PRIORITY"}, "score": 69}
+          },
+          {
+            "take_id": "grad-t3",
+            "take_number": 3,
+            "started_at": "2026-11-07T15:00:00+09:00",
+            "completed_at": "2026-11-07T15:05:00+09:00",
+            "result": {
+              "script_ratio": [0.2, 0.22, 0.6, 0.19],
+              "audience": [0.6, 0.58, 0.3, 0.61],
+              "issues": [["GAZE_ON_SCRIPT", 3, true]]
+            },
+            "review": {"dimensions": {"script_independence": "PRIORITY"}, "score": 67}
+          }
+        ]
+      }
+    ],
+    "conversation": {"scope_pitch_id": "p-grad"}
+  },
+  "turns": [
+    {
+      "message": "Take 3에서 대본 보는 비율이 제일 높았던 장이 어디였어? 그리고 그 장 대본 문장들을 외우기 쉽게 짧게 고쳐 줘.",
+      "page_take_id": "grad-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": ["tool:get_take_report:*", "claim:RECORD"],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:*"],
+        "metric": "path"
+      },
+      {
+        "check_id": "slide3-target",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {"slide": 3},
+        "grader": "target"
+      },
+      {
+        "check_id": "slide3-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "60%",
+        "grader": "number",
+        "derive": "grad-t3:GAZE.script_ratio@3"
+      },
+      {
+        "check_id": "content-coaching-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.CONTENT_COACHING",
+        "grader": "template",
+        "note": "대본 고쳐 쓰기는 범위 밖(1-3 CONTENT_COACHING) — 섞인 요청은 범위 안 부분만 답하고 고정 문장을 덧붙인다"
+      },
+      {
+        "check_id": "record-evidence",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "has_record_evidence"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "섞인 요청은 DONE(전부 범위 밖일 때만 REFUSED, 1-3)"
+      }
+    ]
+  },
+  "notes": "Take 3 장별 대본 응시 0.2 · 0.22 · 0.6 · 0.19 → 가장 높은 장은 3장(0.6), 문제 구간 GAZE_ON_SCRIPT 3장."
+}

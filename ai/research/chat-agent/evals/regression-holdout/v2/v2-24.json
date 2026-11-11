@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "id": "v2-24",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "피치가 하나도 없는 사용자의 '마지막으로 연습한 발표' — 연습을 시작한 발표가 없다는 고정 문장, 지어낸 제목 · 행동 없음",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "마지막으로 연습한 발표 기록 좀 보여 줘"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "none-started",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "아직 연습을 시작한 발표가 없어요\\.",
+        "grader": "regex",
+        "note": "TARGET 1: last_practiced_at 이 있는 피치가 없다(피치 0개)"
+      },
+      {
+        "check_id": "no-recent-sentence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "가장 최근에 연습을 시작한 발표는",
+        "grader": "regex"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-partial-text",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SystemText.PARTIAL_CHECKED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path"
+      }
+    ]
+  },
+  "notes": "fixtures 한계: PitchSpec 의 last_practiced_at null 은 기본 시각으로 바뀌어 '피치는 있으나 연습 시작 없음'을 만들 수 없어 피치 0개로 둔다."
+}
