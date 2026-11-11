@@ -30,6 +30,9 @@ class ToolCall:
     #: 파싱한 인자. 파싱하지 못했으면 None 이고 raw_args 에 원문(잘린 출력 등)
     args: dict[str, Any] | None
     raw_args: str | None = None
+    #: 공급자가 도구 호출에 붙여 보낸 칸(`extra_content`, 예: Gemini 의 thought_signature). 다음 차례에 받은 그대로 돌려줘야
+    #: 하는 공급자가 있다(없으면 400). OpenAI 계열은 보내지 않아 None
+    extra: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

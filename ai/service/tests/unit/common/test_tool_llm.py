@@ -666,3 +666,15 @@ def test_call_cap_keeps_one_chat_call_within_the_core_answer_share(
     assert tool_role(app_settings=s).timeout_seconds == global_seconds  # 상한을 안 주면 설정 그대로
     llm = tool_llm(pool_size=2, app_settings=s, max_call_seconds=12.0)
     assert llm is not None and llm._role.timeout_seconds == expected  # type: ignore[attr-defined]
+
+
+def test_provider_extra_content_is_kept_and_calls_without_index_are_split_by_id() -> None:
+    """Gemini 호환 API 는 도구 호출 조각에 index 없이 `extra_content`(thought_signature)를 붙여 보낸다. 그 칸을 호출에 남겨
+    다음 차례에 돌려줄 수 있게 하고, index 없는 조각은 호출 id 로 나눈다(Issue #1194 모델 비교 — 없으면 다음 호출이 400)."""
+    sig = {"google": {"thought_signature": "c2ln"}}
+    first = NS(index=None, id="call-1", function=NS(name="get_goals", arguments="{}"), model_extra={"extra_content": sig})
+    second = NS(index=None, id="call-2", function=NS(name="list_takes", arguments="{}"), model_extra={})
+    tool_chunk = NS(model="google/gemini-4-argon", choices=[NS(delta=NS(content=None, refusal=None, tool_calls=[first, second]), finish_reason=None)], usage=None)
+    llm, _, _ = make([[tool_chunk, chunk(finish="tool_calls"), chunk(usage=(10, 5))]])
+    r = llm.invoke(req(), always)
+    assert [(c.id, c.name, c.extra) for c in r.tool_calls] == [("call-1", "get_goals", sig), ("call-2", "list_takes", None)]
