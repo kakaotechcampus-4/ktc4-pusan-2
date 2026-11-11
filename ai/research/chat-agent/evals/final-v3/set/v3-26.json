@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-26",
+  "set": "eval",
+  "group": "reassess",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'리모컨이 안 넘어가 기다린 게 긴 침묵으로 잡혔다, 그 부분 빼고 다시 평가' 측정값 이의 — 바꿀 조건 낱말이 없어 다시 평가를 내지 않고 측정 결과라 바뀌지 않는다는 문장, 리뷰 호출 없음",
+  "baseline_type": "reassess",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-winery",
+        "title": "와이너리 투어 해설 리허설",
+        "last_practiced_at": "2026-11-08T16:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "wy-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T16:00:00+09:00",
+            "completed_at": "2026-11-03T16:05:00+09:00",
+            "review": {
+              "dimensions": {"pacing_rhythm": "STABLE"},
+              "score": 74
+            }
+          },
+          {
+            "take_id": "wy-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T16:00:00+09:00",
+            "completed_at": "2026-11-08T16:05:00+09:00",
+            "result": {
+              "long_silence_count": 3,
+              "issues": [["LONG_SILENCE", 3, true]]
+            },
+            "review": {
+              "dimensions": {"pacing_rhythm": "PRIORITY"},
+              "score": 67
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-winery"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2 3장에서 리모컨이 안 넘어가서 잠깐 기다린 건데 그게 긴 침묵으로 잡혔어요. 그 부분은 빼고 다시 평가해 주세요.",
+      "page_take_id": "wy-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-reassess-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:REASSESS:*"],
+        "metric": "replan",
+        "note": "6-6 측정값 이의: 측정 항목 낱말(침묵)은 있고 바꿀 수 있는 조건 낱말(대본 · 원고 · 스크립트 · 프롬프터 · 조건 · 기준 · 목표)은 없다 → REASSESS 를 내지 않는다"
+      },
+      {
+        "check_id": "no-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["exec:*"],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-reassess-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["REASSESS"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-review-call",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 0,
+        "path": "review_calls"
+      },
+      {
+        "check_id": "measurement-fixed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.MEASUREMENT_FIXED",
+        "grader": "template",
+        "note": "다시 평가를 요청한 측정값 이의에는 코드가 이 문장을 붙인다(6-6 · 7-10)"
+      },
+      {
+        "check_id": "no-result-card",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "REASSESS_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "다시 평가 요청 낱말('다시 평가해 주세요')은 있지만 조건 낱말이 없다 → 측정값 이의."
+}

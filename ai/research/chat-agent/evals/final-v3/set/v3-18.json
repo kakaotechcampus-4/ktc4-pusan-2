@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-18",
+  "set": "eval",
+  "group": "autonomy",
+  "split": "dev",
+  "act": "should",
+  "title": "다른 내 발표를 이름으로 열어 마지막 Take 1장 청중 시선 — 묻지 않고 가져오기(AUTO) → 범위 바뀜 → 55%",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-course",
+        "title": "봄 학기 수업 계획 안내",
+        "last_practiced_at": "2026-11-09T09:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "co-t1",
+            "take_number": 1,
+            "started_at": "2026-11-06T09:00:00+09:00",
+            "completed_at": "2026-11-06T09:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "co-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T09:00:00+09:00",
+            "completed_at": "2026-11-09T09:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-onb",
+        "title": "신입 사원 온보딩 안내",
+        "last_practiced_at": "2026-11-07T16:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "on-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T16:00:00+09:00",
+            "completed_at": "2026-11-03T16:07:00+09:00",
+            "result": {
+              "audience": [
+                0.5,
+                0.6,
+                0.62,
+                0.58
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "on-t2",
+            "take_number": 2,
+            "started_at": "2026-11-07T16:00:00+09:00",
+            "completed_at": "2026-11-07T16:07:00+09:00",
+            "result": {
+              "audience": [
+                0.55,
+                0.6,
+                0.62,
+                0.58
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 74
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-course"
+    }
+  },
+  "turns": [
+    {
+      "message": "지금 보는 발표 말고, 제 '신입 사원 온보딩 안내' 발표 마지막 Take에서 첫 장 청중 시선이 몇 %였는지 확인해 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "fetch-then-read",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:FETCH_PITCH:AUTO",
+          "exec:FETCH_PITCH:OK",
+          "tool:get_take_report:*"
+        ],
+        "metric": "path",
+        "note": "읽기는 AUTO(6-2) — 승인 없이 실행"
+      },
+      {
+        "check_id": "no-ask",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*:ASK"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 0.55,
+        "grader": "number",
+        "derive": "on-t2:GAZE.audience_ratio@1"
+      },
+      {
+        "check_id": "scope-changed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "p-onb",
+        "path": "scope_pitch_id"
+      },
+      {
+        "check_id": "scope-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "name": "ACTION_SUCCESS.FETCH_PITCH",
+          "fields": {
+            "title": "신입 사원 온보딩 안내"
+          }
+        },
+        "grader": "template"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

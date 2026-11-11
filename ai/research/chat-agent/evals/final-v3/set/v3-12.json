@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-12",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should",
+  "title": "가장 최근 발표(중단한 Take 뿐이라 분석 끝난 Take 0개) + 그 발표로 바로 연습 — 0개 사실 · 분석 끝난 Take 가 있는 가장 최근 발표 · 그 피치 [연습 준비로]",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-gala",
+        "title": "후원의 밤 감사 인사",
+        "last_practiced_at": "2026-11-10T20:30:00+09:00",
+        "takes": [
+          {
+            "take_id": "ga-t1",
+            "take_number": 1,
+            "status": "ABANDONED",
+            "started_at": "2026-11-10T20:30:00+09:00",
+            "completed_at": null,
+            "result": null,
+            "review": null,
+            "end_reason": "ABANDONED"
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-press",
+        "title": "신제품 보도자료 브리핑",
+        "last_practiced_at": "2026-11-09T09:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "pr-t1",
+            "take_number": 1,
+            "started_at": "2026-11-07T09:00:00+09:00",
+            "completed_at": "2026-11-07T09:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "pr-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T09:00:00+09:00",
+            "completed_at": "2026-11-09T09:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-book",
+        "title": "독서 모임 발제",
+        "last_practiced_at": "2026-11-04T19:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "bk-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T19:00:00+09:00",
+            "completed_at": "2026-11-04T19:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "가장 최근에 연습한 발표가 뭐였는지 알려 주세요. 그 발표로 바로 이어서 연습하러 갈게요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "names-latest",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "후원의 밤 감사 인사",
+        "grader": "regex",
+        "note": "중단한 Take 1 시작(11-10 20:30)도 마지막 연습 시작에 든다(v2 TARGET 1)"
+      },
+      {
+        "check_id": "zero-analyzed",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(분석|Take)[^.\\n]*(없|0\\s*개)|아직[^.\\n]*(분석|Take)",
+        "grader": "regex",
+        "note": "take_count 0"
+      },
+      {
+        "check_id": "with-takes-pitch",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "신제품 보도자료 브리핑",
+        "grader": "regex",
+        "note": "take_count ≥ 1 중 가장 최근(v2 TARGET 1 · 7-10)"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {
+          "type": "START_PRACTICE",
+          "args": {
+            "pitch_id": "p-gala"
+          }
+        },
+        "path": "items",
+        "note": "'그 발표로 … 연습하러 갈게요'"
+      },
+      {
+        "check_id": "list-then-button",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:list_pitches:*",
+          "propose:START_PRACTICE:BUTTON",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-ask-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS"
+        ],
+        "path": "types"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

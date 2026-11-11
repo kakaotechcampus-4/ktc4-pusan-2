@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-04",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "Take 가 하나도 없는 새 발표에서 목표 저장 + 바로 연습 — 기준 기록이 없어 저장 · 확인 카드 없이 'Take 없음'을 말하고 [연습 준비로]만",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-toast",
+        "title": "동문회 송년 모임 건배사",
+        "takes": []
+      },
+      {
+        "pitch_id": "p-club",
+        "title": "사진 동아리 정기 전시 소개",
+        "last_practiced_at": "2026-11-07T20:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "cl-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T20:00:00+09:00",
+            "completed_at": "2026-11-04T20:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 69
+            }
+          },
+          {
+            "take_id": "cl-t2",
+            "take_number": 2,
+            "started_at": "2026-11-07T20:00:00+09:00",
+            "completed_at": "2026-11-07T20:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 73
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-toast"
+    }
+  },
+  "turns": [
+    {
+      "message": "이번에 새로 만든 발표예요. 청중을 고루 보는 걸 다음 목표로 저장해 두고 바로 연습하러 갈래요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-save-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:SAVE_GOAL:*"
+        ],
+        "metric": "path",
+        "note": "범위 피치의 Take 0개 → 목표 기준(기준 Take · 값)을 만들 수 없다(6-7)"
+      },
+      {
+        "check_id": "button-on-done",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:START_PRACTICE:BUTTON",
+          "final:DONE"
+        ],
+        "metric": "path",
+        "note": "'연습하러 갈래요'(6-2 ①)"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {
+          "type": "START_PRACTICE",
+          "args": {
+            "pitch_id": "p-toast"
+          }
+        },
+        "path": "items"
+      },
+      {
+        "check_id": "no-save",
+        "observe": "actions_executed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL"
+        ],
+        "path": "types"
+      },
+      {
+        "check_id": "goal-not-saved",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "says-no-take",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(Take|연습|기록)[^.\\n]*(없|아직)|아직[^.\\n]*(Take|연습|기록)",
+        "grader": "regex",
+        "note": "읽은 범위(이 발표)의 Take 0개를 말한다(v1 TARGET 6)"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "시나리오 형식상 피치의 last_practiced_at 을 비울 수 없어 p-toast 는 기본값(11-01)이 남는다. 검사는 그 값을 보지 않는다."
+}

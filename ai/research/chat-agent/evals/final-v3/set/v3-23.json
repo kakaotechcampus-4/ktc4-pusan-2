@@ -1,0 +1,157 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-23",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "두 차례 모두 같은 시간 한도인데 둘째 말이 '이어서 확인해 줘'가 아닌 다른 말 — 반복 막기 규칙을 쓰지 않고 보통 PARTIAL(안내 · 남은 단계 TODO), 같은 이유 안내 없음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-booth",
+        "title": "취업 박람회 기업 설명 부스 발표",
+        "last_practiced_at": "2026-11-09T13:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "bt-t1",
+            "take_number": 1,
+            "started_at": "2026-10-27T13:00:00+09:00",
+            "completed_at": "2026-10-27T13:05:00+09:00"
+          },
+          {
+            "take_id": "bt-t2",
+            "take_number": 2,
+            "started_at": "2026-10-30T13:00:00+09:00",
+            "completed_at": "2026-10-30T13:05:00+09:00"
+          },
+          {
+            "take_id": "bt-t3",
+            "take_number": 3,
+            "started_at": "2026-11-02T13:00:00+09:00",
+            "completed_at": "2026-11-02T13:05:00+09:00"
+          },
+          {
+            "take_id": "bt-t4",
+            "take_number": 4,
+            "started_at": "2026-11-05T13:00:00+09:00",
+            "completed_at": "2026-11-05T13:05:00+09:00"
+          },
+          {
+            "take_id": "bt-t5",
+            "take_number": 5,
+            "started_at": "2026-11-09T13:00:00+09:00",
+            "completed_at": "2026-11-09T13:05:00+09:00",
+            "result": {
+              "cpm": [
+                300,
+                315,
+                340,
+                362
+              ],
+              "filler_per_min": 3.1,
+              "filler_count": 12,
+              "issues": [
+                [
+                  "FILLER_FREQUENT",
+                  2,
+                  true
+                ],
+                [
+                  "PACE_FAST",
+                  4,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY",
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 64
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-booth"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 5에서 군더더기가 몰린 장이랑 말이 급해진 장을 수치와 함께 각각 알려 주고, 둘 다 고치는 요령을 자료에서 찾아서 덧붙여 줘요.",
+      "page_take_id": "bt-t5",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 42
+        }
+      ]
+    },
+    {
+      "message": "남은 부분도 마저 확인해 주실래요?",
+      "page_take_id": "bt-t5",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 42
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t0-partial",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "turn": 0,
+        "metric": "replan"
+      },
+      {
+        "check_id": "t1-partial",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "turn": 1,
+        "metric": "replan",
+        "note": "v2 TARGET 3: 메시지가 '이어서 확인해 줘'(공백 무시)가 아니면 반복 막기 규칙을 쓰지 않는다 → 같은 장애의 보통 PARTIAL"
+      },
+      {
+        "check_id": "t1-no-same-reason",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "같은 이유로 더 확인할 수 없어요",
+        "grader": "regex",
+        "turn": 1
+      },
+      {
+        "check_id": "t1-guidance",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요\\.|답 일부를 확인하지 못해 확인된 내용만 알려드릴게요\\.",
+        "grader": "regex",
+        "turn": 1
+      },
+      {
+        "check_id": "t1-no-action",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "turn": 1,
+        "metric": "path"
+      }
+    ]
+  },
+  "notes": "실제 두 차례. 두 차례 모두 같은 장애. 둘째 말은 반복 막기 규칙의 대상 문구가 아니다."
+}

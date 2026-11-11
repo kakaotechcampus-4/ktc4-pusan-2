@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-03",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should_not",
+  "title": "이미 강점인 말 속도를 목표로 저장해 달라 — 목표 충돌이라 확인 카드 · 저장 없이 목표 제안 카드와 충돌 고정 문장",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-forum",
+        "title": "청년 정책 토론회 발제",
+        "last_practiced_at": "2026-11-06T16:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "fo-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T16:00:00+09:00",
+            "completed_at": "2026-11-03T16:07:00+09:00",
+            "result": {
+              "cpm": [
+                305,
+                300,
+                296,
+                310
+              ],
+              "audience": [
+                0.6,
+                0.38,
+                0.58,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "STRENGTH",
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 71
+            }
+          },
+          {
+            "take_id": "fo-t2",
+            "take_number": 2,
+            "started_at": "2026-11-06T16:00:00+09:00",
+            "completed_at": "2026-11-06T16:07:00+09:00",
+            "result": {
+              "cpm": [
+                302,
+                298,
+                300,
+                306
+              ],
+              "audience": [
+                0.61,
+                0.35,
+                0.57,
+                0.6
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "STRENGTH",
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-forum"
+    }
+  },
+  "turns": [
+    {
+      "message": "다음 연습 목표는 말하는 빠르기를 알맞은 범위 안으로 맞추는 걸로 저장해 주세요.",
+      "page_take_id": "fo-t2"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "no-ask-card",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:SAVE_GOAL:ASK"
+        ],
+        "metric": "path",
+        "note": "사용자 목표 차원(속도와 리듬)이 STRENGTH · 다른 차원이 PRIORITY → 확인 카드 대신 GOAL_PROPOSAL(6-3 · L6-08)"
+      },
+      {
+        "check_id": "no-save-exec",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "exec:SAVE_GOAL:*"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "proposal-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_PROPOSAL",
+        "path": "card_types"
+      },
+      {
+        "check_id": "conflict-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.GOAL_CONFLICT",
+        "grader": "template"
+      },
+      {
+        "check_id": "goal-not-saved",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": null,
+        "path": "after.conversation.goal"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-22",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should_not",
+  "title": "[이어서 확인] 두 차례 모두 같은 시간 한도 — 첫 차례 PARTIAL, 둘째 '이어서 확인해 줘'는 같은 안내라 PARTIAL 을 되풀이하지 않고 DONE + 같은 이유 안내 두 문장",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-nurse",
+        "title": "병원 신규 간호사 오리엔테이션",
+        "last_practiced_at": "2026-11-06T08:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "ns-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T08:00:00+09:00",
+            "completed_at": "2026-11-02T08:06:00+09:00"
+          },
+          {
+            "take_id": "ns-t2",
+            "take_number": 2,
+            "started_at": "2026-11-06T08:00:00+09:00",
+            "completed_at": "2026-11-06T08:06:00+09:00",
+            "result": {
+              "audience": [
+                0.52,
+                0.47,
+                0.33,
+                0.58
+              ],
+              "script_ratio": [
+                0.2,
+                0.25,
+                0.48,
+                0.18
+              ],
+              "issues": [
+                [
+                  "GAZE_ON_SCRIPT",
+                  3,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY",
+                "script_independence": "PRIORITY"
+              },
+              "score": 66
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-nurse"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2 기록에서 시선이 가장 흔들린 장이 어디였고 그 장에서 대본을 얼마나 봤는지 짚어 주세요. 그 장을 어떻게 연습하면 좋을지 발표법 자료에서도 찾아 주시고요.",
+      "page_take_id": "ns-t2",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 42
+        }
+      ]
+    },
+    {
+      "message": "이어서 확인해 줘",
+      "page_take_id": "ns-t2",
+      "faults": [
+        {
+          "kind": "model_delay",
+          "after_call": 2,
+          "seconds": 42
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t0-partial",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "turn": 0,
+        "metric": "replan",
+        "note": "8-3: 두 번째 모델 호출 뒤 42초 → 답 쓰기 · 고치기 몫이 없음"
+      },
+      {
+        "check_id": "t0-guidance",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요\\.|답 일부를 확인하지 못해 확인된 내용만 알려드릴게요\\.",
+        "grader": "regex",
+        "turn": 0
+      },
+      {
+        "check_id": "t1-done",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "turn": 1,
+        "metric": "replan",
+        "note": "v2 TARGET 3: 같은 장애로 이번에도 PARTIAL 일 상황 + 직전 답에 같은 안내 고정 문장 → DONE"
+      },
+      {
+        "check_id": "t1-same-reason",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.REPEAT_SAME_REASON",
+        "grader": "template",
+        "turn": 1
+      },
+      {
+        "check_id": "t1-split-next-step",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.REPEAT_SPLIT",
+        "grader": "template",
+        "turn": 1,
+        "note": "7-10 [이어서 확인] 반복 막기: 두 문장을 붙인다"
+      },
+      {
+        "check_id": "t1-not-partial",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "final:PARTIAL"
+        ],
+        "turn": 1,
+        "metric": "path"
+      },
+      {
+        "check_id": "t1-no-new-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS",
+          "START_PRACTICE"
+        ],
+        "path": "types",
+        "turn": 1
+      }
+    ]
+  },
+  "notes": "실제 두 차례. 두 차례 모두 같은 장애(두 번째 모델 호출 뒤 42초)라 PARTIAL 안내 유형이 같다."
+}

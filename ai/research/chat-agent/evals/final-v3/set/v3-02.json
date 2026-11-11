@@ -1,0 +1,170 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-02",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "자동 목표 확인 — 군더더기(lt_base, 기준 Take 2 분당 4.0) 목표 뒤 Take 3 은 4.3 으로 늘어 못 이룸(끝), 분석 중인 Take 4 는 판정 안 함",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-sec",
+        "title": "사내 정보보안 교육 강의",
+        "last_practiced_at": "2026-11-09T14:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "sec-t1",
+            "take_number": 1,
+            "started_at": "2026-11-02T14:00:00+09:00",
+            "completed_at": "2026-11-02T14:07:00+09:00",
+            "result": {
+              "filler_per_min": 3.6,
+              "filler_count": 14
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "sec-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T14:00:00+09:00",
+            "completed_at": "2026-11-04T14:07:00+09:00",
+            "result": {
+              "filler_per_min": 4.0,
+              "filler_count": 16
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 68
+            }
+          },
+          {
+            "take_id": "sec-t3",
+            "take_number": 3,
+            "started_at": "2026-11-07T14:00:00+09:00",
+            "completed_at": "2026-11-07T14:07:00+09:00",
+            "result": {
+              "filler_per_min": 4.3,
+              "filler_count": 17
+            },
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 66
+            }
+          },
+          {
+            "take_id": "sec-t4",
+            "take_number": 4,
+            "status": "ANALYZING",
+            "started_at": "2026-11-09T14:00:00+09:00",
+            "completed_at": null,
+            "result": null,
+            "review": null
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-sec",
+      "goal": {
+        "metric": "filler_per_min",
+        "slide_number": null,
+        "base_take_id": "sec-t2",
+        "version": 1,
+        "status": "OPEN",
+        "after_take": 2,
+        "created_at": "2026-11-05T09:00:00+09:00"
+      }
+    }
+  },
+  "turns": [
+    {
+      "auto_goal_check": true
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "results",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": [
+          "NOT_ACHIEVED"
+        ],
+        "path": "goal_results",
+        "note": "저장 뒤 시작한 Take 3 만 리뷰가 있다. 4.3 > 기준 4.0(줄이기 목표) → 못 이룸(끝). Take 4 는 분석 중이라 판정 대상이 아니고 목표는 이미 닫힘"
+      },
+      {
+        "check_id": "last-status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "NOT_ACHIEVED",
+        "path": "goal_result.status"
+      },
+      {
+        "check_id": "last-terminal",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": true,
+        "path": "goal_result.terminal"
+      },
+      {
+        "check_id": "last-observed",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": 4.3,
+        "path": "goal_result.observed",
+        "derive": "sec-t3:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "goal-closed",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "NOT_ACHIEVED",
+        "path": "after.conversation.goal.status"
+      },
+      {
+        "check_id": "not-achieved-word",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_WORD.NOT_ACHIEVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-card",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "GOAL_RESULT",
+        "path": "card_types"
+      },
+      {
+        "check_id": "no-propose",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "propose:*"
+        ],
+        "metric": "path",
+        "note": "TAKE_REVIEWED 실행은 행동을 내지 않는다(6-2)"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  },
+  "notes": "Take 3 은 같은 대본 · 평가 기준 · 판정 기준 버전이고 끝까지 한 발표다. 늘어난 값이라 min_delta 값과 상관없이 못 이룸."
+}

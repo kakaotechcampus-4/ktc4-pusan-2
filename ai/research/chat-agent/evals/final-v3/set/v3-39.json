@@ -1,0 +1,174 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-39",
+  "set": "agent_service",
+  "group": "approval",
+  "split": "dev",
+  "act": "should",
+  "title": "기록과 어긋나는 목표(군더더기 — 유지인데 청중 시선이 우선 개선) 저장 요청 → 확인 카드 대신 목표 제안 카드 + 충돌 고정 문장, 둘째 차례에 추천 안을 고름 — 고른 클릭이 승인이라 확인 카드 없이 그 안을 한 번 저장(선승인), 저장 성공 · 결과 발견 안내",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-shelter",
+        "title": "유기견 보호소 후원 설명회",
+        "last_practiced_at": "2026-11-09T14:30:00+09:00",
+        "takes": [
+          {
+            "take_id": "sh-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T14:30:00+09:00",
+            "completed_at": "2026-11-05T14:35:00+09:00"
+          },
+          {
+            "take_id": "sh-t2",
+            "take_number": 2,
+            "started_at": "2026-11-09T14:30:00+09:00",
+            "completed_at": "2026-11-09T14:35:00+09:00",
+            "result": {
+              "audience": [0.5, 0.36, 0.33, 0.52],
+              "filler_per_min": 1.4,
+              "filler_count": 6
+            },
+            "review": {
+              "dimensions": {"audience_gaze": "PRIORITY", "fluency": "STABLE"},
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-shelter"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 2를 기준으로 군더더기 줄이는 걸 다음 대화 목표로 잡아 주세요.",
+      "page_take_id": "sh-t2"
+    },
+    {
+      "message": "추천해 주신 목표로 할게요.",
+      "page_take_id": "sh-t2",
+      "choice": {"option": "EXPERT"}
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t1-proposal-card",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": ["GOAL_PROPOSAL"],
+        "path": "cards",
+        "turn": 0,
+        "note": "6-3 목표 요청 판정: 사용자 목표 차원(군더더기 · 유지)이 우선 개선이 아니고 다른 차원(청중 시선)이 우선 개선 → 저장 확인 카드 대신 목표 제안"
+      },
+      {
+        "check_id": "t1-no-confirm-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["ASK_CONFIRM"],
+        "path": "cards",
+        "turn": 0
+      },
+      {
+        "check_id": "t1-conflict-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.GOAL_CONFLICT",
+        "grader": "template",
+        "turn": 0,
+        "note": "충돌로 제안 카드를 낸 답에는 그 까닭의 고정 문장(L6-08)"
+      },
+      {
+        "check_id": "t1-not-saved",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["exec:SAVE_GOAL:*"],
+        "turn": 0,
+        "metric": "path"
+      },
+      {
+        "check_id": "t2-preapproved-save",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["preapprove:SAVE_GOAL", "exec:SAVE_GOAL:OK", "final:DONE"],
+        "turn": 1,
+        "metric": "path",
+        "note": "6-2 목표 제안에서 고른 안: 고른 클릭이 그 안의 승인(선승인) — 확인 카드 · 승인 대기 없이 실행"
+      },
+      {
+        "check_id": "t2-no-confirm-card",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["ASK_CONFIRM"],
+        "path": "cards",
+        "turn": 1
+      },
+      {
+        "check_id": "exec-once",
+        "observe": "actions_executed",
+        "compare": "equals",
+        "expect": 1,
+        "path": "counts.SAVE_GOAL",
+        "turn": "all"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "audience_ratio",
+        "path": "after.conversation.goal.metric",
+        "note": "추천 안 = 우선 개선 차원(청중 시선)의 목표 지표"
+      },
+      {
+        "check_id": "goal-pitch",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "p-shelter",
+        "path": "after.conversation.goal.pitch_id"
+      },
+      {
+        "check_id": "goal-base-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "sh-t2",
+        "path": "after.conversation.goal.base.take_id"
+      },
+      {
+        "check_id": "t2-success-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template",
+        "turn": 1
+      },
+      {
+        "check_id": "t2-result-discovery",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.RESULT_DISCOVERY",
+        "grader": "template",
+        "turn": 1,
+        "note": "v1 TARGET 3: 저장 성공 답에만 붙는 결과 발견 안내"
+      },
+      {
+        "check_id": "t2-status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "turn": 1
+      },
+      {
+        "check_id": "official-kept",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      }
+    ]
+  },
+  "notes": "둘째 차례의 choice 는 실행기가 이 대화의 가장 최근 목표 제안 카드로 채운다(EXPERT = 전문가 추천 안)."
+}

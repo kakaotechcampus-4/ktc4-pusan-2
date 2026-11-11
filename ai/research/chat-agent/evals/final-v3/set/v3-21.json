@@ -1,0 +1,148 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-21",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "[이어서 확인] 첫 차례만 시간 한도(조사 몫을 남기지 못함) → PARTIAL, 둘째 '이어서 확인해 줘'는 장애 없이 다시 읽어 DONE · 같은 이유 안내 없음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-lib",
+        "title": "구립 도서관 독서 프로그램 소개",
+        "last_practiced_at": "2026-11-08T15:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "lb-t1",
+            "take_number": 1,
+            "started_at": "2026-10-28T15:00:00+09:00",
+            "completed_at": "2026-10-28T15:05:00+09:00"
+          },
+          {
+            "take_id": "lb-t2",
+            "take_number": 2,
+            "started_at": "2026-11-01T15:00:00+09:00",
+            "completed_at": "2026-11-01T15:05:00+09:00"
+          },
+          {
+            "take_id": "lb-t3",
+            "take_number": 3,
+            "started_at": "2026-11-04T15:00:00+09:00",
+            "completed_at": "2026-11-04T15:05:00+09:00"
+          },
+          {
+            "take_id": "lb-t4",
+            "take_number": 4,
+            "started_at": "2026-11-08T15:00:00+09:00",
+            "completed_at": "2026-11-08T15:05:00+09:00",
+            "result": {
+              "cpm": [305, 352, 298, 330],
+              "filler_per_min": 2.2,
+              "filler_count": 9,
+              "issues": [["PACE_FAST", 2, true]]
+            },
+            "review": {
+              "dimensions": {"pacing_rhythm": "PRIORITY"},
+              "score": 70
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-lib"
+    }
+  },
+  "turns": [
+    {
+      "message": "Take 4에서 2장 말 속도가 분당 몇 자였는지, 전체 군더더기가 분당 몇 번이었는지 알려 주시고, 말이 빨라질 때 늦추는 방법도 발표법 자료에서 골라 주세요.",
+      "page_take_id": "lb-t4",
+      "faults": [
+        {"kind": "model_delay", "after_call": 2, "seconds": 42}
+      ]
+    },
+    {
+      "message": "이어서 확인해 줘",
+      "page_take_id": "lb-t4"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "t0-partial",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "PARTIAL",
+        "path": "status",
+        "turn": 0,
+        "metric": "replan",
+        "note": "8-3: 두 번째 모델 호출 뒤 42초 → 한 호출 마감 45초 안에 답 쓰기 · 고치기 몫(24초)이 없음. 자료 조언은 코드가 다시 그릴 수 없어 남은 부분이다(6-1 7번 끝 상태)"
+      },
+      {
+        "check_id": "t0-guidance",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "시간이나 처리 한도에 닿아 확인한 내용까지만 알려드릴게요\\.|답 일부를 확인하지 못해 확인된 내용만 알려드릴게요\\.",
+        "grader": "regex",
+        "turn": 0,
+        "note": "시간 한도 PARTIAL 의 안내 고정 문장(7-9 L1-04 · L1-13 · L1-38)"
+      },
+      {
+        "check_id": "t1-done",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "turn": 1,
+        "metric": "replan",
+        "note": "v2 TARGET 3: 이번 실행이 남은 항목을 마저 확인해 해소되면 보통처럼 DONE"
+      },
+      {
+        "check_id": "t1-no-action-path",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["propose:*"],
+        "turn": 1,
+        "metric": "path",
+        "note": "이어서 확인은 읽기 · 답만 — 저장 · 다시 평가 · 이동 행동으로 번지지 않음"
+      },
+      {
+        "check_id": "t1-no-same-reason",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "같은 이유로 더 확인할 수 없어요",
+        "grader": "regex",
+        "turn": 1
+      },
+      {
+        "check_id": "slide2-cpm",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 352,
+        "grader": "number",
+        "turn": "all",
+        "derive": "lb-t4:SPEED.cpm@2"
+      },
+      {
+        "check_id": "filler-per-min",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 2.2,
+        "grader": "number",
+        "turn": "all",
+        "derive": "lb-t4:FILLER.filler_per_min"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["SAVE_GOAL", "REASSESS", "START_PRACTICE"],
+        "path": "types",
+        "turn": "all"
+      }
+    ]
+  },
+  "notes": "실제 두 차례. 첫 차례만 장애(model_delay). 값은 두 차례 답을 합쳐 본다."
+}

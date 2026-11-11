@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-15",
+  "set": "eval",
+  "group": "not_comparable",
+  "split": "dev",
+  "act": "should_not",
+  "title": "'이번 Take 6 1장 대본 응시가 지난번보다 줄었죠?' — 시선 판정 기준 버전이 달라 비교할 수 없어 확인 불가 판정, 맞장구 · 결론 없음",
+  "baseline_type": "compare",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-pack",
+        "title": "친환경 포장재 사업 제안 발표",
+        "last_practiced_at": "2026-11-08T10:30:00+09:00",
+        "takes": [
+          {
+            "take_id": "pk-t5",
+            "take_number": 5,
+            "started_at": "2026-11-04T10:30:00+09:00",
+            "completed_at": "2026-11-04T10:37:00+09:00",
+            "result": {
+              "audience": [
+                0.5,
+                0.6,
+                0.6,
+                0.6
+              ],
+              "script_ratio": [
+                0.42,
+                0.2,
+                0.18,
+                0.15
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 72
+            }
+          },
+          {
+            "take_id": "pk-t6",
+            "take_number": 6,
+            "started_at": "2026-11-08T10:30:00+09:00",
+            "completed_at": "2026-11-08T10:37:00+09:00",
+            "result": {
+              "audience": [
+                0.58,
+                0.6,
+                0.6,
+                0.6
+              ],
+              "script_ratio": [
+                0.3,
+                0.2,
+                0.18,
+                0.16
+              ],
+              "criteria_versions": {
+                "GAZE": "gaze-1.4+5d1e2c3b4a90"
+              }
+            },
+            "review": {
+              "dimensions": {},
+              "score": 74
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-pack"
+    }
+  },
+  "turns": [
+    {
+      "message": "이번 Take 6 첫 장에서 대본 쳐다보는 비율, 지난번보다 확실히 줄었죠?",
+      "page_take_id": "pk-t6"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "tried-compare",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "tool:compare_takes:*",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "plan-not-comparable",
+        "observe": "trajectory",
+        "compare": "contains",
+        "expect": "비교 불가",
+        "grader": "regex",
+        "metric": "path"
+      },
+      {
+        "check_id": "verdict-unverifiable",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "UNVERIFIABLE",
+        "path": "verdicts",
+        "note": "CHANGE 주장 · 비교할 수 없음 → UNVERIFIABLE(6-3)"
+      },
+      {
+        "check_id": "unverifiable-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "UNVERIFIABLE",
+        "grader": "template"
+      },
+      {
+        "check_id": "rule-version-reason",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "판정 기준",
+        "grader": "regex",
+        "note": "7-10 '… 판정 기준 버전이 달라 … 비교할 수 없어요.'"
+      },
+      {
+        "check_id": "no-supported",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "SUPPORTED",
+        "path": "verdicts"
+      },
+      {
+        "check_id": "no-outcome-improved",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-outcome-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "pk-t6 의 GAZE 판정 기준 버전만 바뀌었다(대본 · 평가 기준 버전 · 끝까지 함은 같음). 시나리오 형식상 리뷰 meta 의 gaze 버전은 바꿀 수 없어 그대로다(비교는 take_result.criteria 로 본다, 6-4)."
+}

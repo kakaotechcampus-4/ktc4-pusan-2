@@ -1,0 +1,197 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-01",
+  "set": "eval",
+  "group": "representative",
+  "split": "dev",
+  "act": "should",
+  "title": "4장 청중 시선을 보던 Take 보다 올리는 목표를 정하고 바로 연습하러 감 — 기록 읽기 → 확인 카드 → 승인 → 저장(gt_base · 4장 · 기준 Take 3) → 결과 발견 안내 · [연습 준비로]",
+  "baseline_type": "goal",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-lib",
+        "title": "동네 도서관 북토크 진행",
+        "last_practiced_at": "2026-11-09T19:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "lib-t1",
+            "take_number": 1,
+            "started_at": "2026-11-03T19:00:00+09:00",
+            "completed_at": "2026-11-03T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.6,
+                0.57,
+                0.55,
+                0.41
+              ]
+            },
+            "review": {
+              "dimensions": {},
+              "score": 74
+            }
+          },
+          {
+            "take_id": "lib-t2",
+            "take_number": 2,
+            "started_at": "2026-11-06T19:00:00+09:00",
+            "completed_at": "2026-11-06T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.61,
+                0.58,
+                0.56,
+                0.36
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 70
+            }
+          },
+          {
+            "take_id": "lib-t3",
+            "take_number": 3,
+            "started_at": "2026-11-09T19:00:00+09:00",
+            "completed_at": "2026-11-09T19:07:00+09:00",
+            "result": {
+              "audience": [
+                0.62,
+                0.6,
+                0.57,
+                0.33
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "audience_gaze": "PRIORITY"
+              },
+              "score": 69
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-lib"
+    }
+  },
+  "turns": [
+    {
+      "message": "4장에서 청중을 바라보는 비율을 이번 Take보다 올리는 걸 다음 연습 목표로 정해 주시고, 정해지면 바로 연습하러 갈게요.",
+      "page_take_id": "lib-t3"
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "plan-read-ask-save",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "plan:set",
+          "tool:*",
+          "propose:SAVE_GOAL:ASK",
+          "approve:SAVE_GOAL",
+          "exec:SAVE_GOAL:OK",
+          "claim:ACTION_RESULT"
+        ],
+        "metric": "path",
+        "note": "할 일 목록 → 기록 읽기(도구 종류는 묻지 않음) → 확인 카드 → 승인 → 저장 → 결과 문장(6-2 · 3-2)"
+      },
+      {
+        "check_id": "save-then-button",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "exec:SAVE_GOAL:OK",
+          "propose:START_PRACTICE:BUTTON",
+          "final:DONE"
+        ],
+        "metric": "path",
+        "note": "'연습하러 갈게요'(6-2 ①) · 승인한 저장 성공(②) → DONE 에 버튼"
+      },
+      {
+        "check_id": "goal-metric",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "audience_ratio",
+        "path": "after.conversation.goal.metric"
+      },
+      {
+        "check_id": "goal-slide",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 4,
+        "path": "after.conversation.goal.slide_number"
+      },
+      {
+        "check_id": "goal-operator",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "gt_base",
+        "path": "after.conversation.goal.operator"
+      },
+      {
+        "check_id": "goal-base-take",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": "lib-t3",
+        "path": "after.conversation.goal.base.take_id",
+        "note": "'이번 Take' = 보던 Take 3"
+      },
+      {
+        "check_id": "goal-base-value",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": 0.33,
+        "path": "after.conversation.goal.base.value",
+        "derive": "lib-t3:GAZE.audience_ratio@4"
+      },
+      {
+        "check_id": "save-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "ACTION_SUCCESS.SAVE_GOAL",
+        "grader": "template"
+      },
+      {
+        "check_id": "result-discovery",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.RESULT_DISCOVERY",
+        "grader": "template"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {
+          "type": "START_PRACTICE",
+          "args": {
+            "pitch_id": "p-lib"
+          }
+        },
+        "path": "items"
+      },
+      {
+        "check_id": "official-unchanged",
+        "observe": "db_diff",
+        "compare": "equals",
+        "expect": [],
+        "path": "official_changed"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  },
+  "notes": "우선 개선은 audience_gaze 하나뿐이라 목표 충돌이 없다(6-3 목표 요청 판정) → 확인 카드. 허용 근거 '정해 주시고'(정해). '정해지면'은 다음 요청에 걸린 조건(6-2 2번)."
+}

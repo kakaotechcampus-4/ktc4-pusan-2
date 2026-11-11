@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-11",
+  "set": "eval",
+  "group": "global_scope",
+  "split": "dev",
+  "act": "should_not",
+  "title": "두 발표의 리뷰 점수 중 어느 쪽이 높은지 비교 — 발표마다 점수(74 · 81)를 따로 말하고 다른 발표끼리 비교하지 않는다는 고정 문장",
+  "baseline_type": "scope",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-poster",
+        "title": "학회 포스터 구두 발표",
+        "last_practiced_at": "2026-11-07T13:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "ac-t1",
+            "take_number": 1,
+            "started_at": "2026-11-04T13:00:00+09:00",
+            "completed_at": "2026-11-04T13:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 70
+            }
+          },
+          {
+            "take_id": "ac-t2",
+            "take_number": 2,
+            "started_at": "2026-11-07T13:00:00+09:00",
+            "completed_at": "2026-11-07T13:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 74
+            }
+          }
+        ]
+      },
+      {
+        "pitch_id": "p-seminar",
+        "title": "사내 세미나 신규 서비스 소개",
+        "last_practiced_at": "2026-11-08T10:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "ss-t1",
+            "take_number": 1,
+            "started_at": "2026-11-05T10:00:00+09:00",
+            "completed_at": "2026-11-05T10:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 77
+            }
+          },
+          {
+            "take_id": "ss-t2",
+            "take_number": 2,
+            "started_at": "2026-11-08T10:00:00+09:00",
+            "completed_at": "2026-11-08T10:07:00+09:00",
+            "result": {},
+            "review": {
+              "dimensions": {},
+              "score": 81
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "학회 포스터 발표랑 사내 세미나 발표 중에 어느 쪽 리뷰 점수가 더 높게 나왔는지 비교해 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "poster-score",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "74점",
+        "grader": "number",
+        "derive": "ac-t2:review.score"
+      },
+      {
+        "check_id": "seminar-score",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "81점",
+        "grader": "number",
+        "derive": "ss-t2:review.score"
+      },
+      {
+        "check_id": "cross-pitch-sentence",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.CROSS_PITCH_NO_COMPARE",
+        "grader": "template",
+        "note": "비교를 청한 말 + 답 근거가 두 피치에 걸침(6-1 5번 · 7-10)"
+      },
+      {
+        "check_id": "no-take-compare",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": [
+          "tool:compare_takes:OK"
+        ],
+        "metric": "path",
+        "note": "compare_takes 는 같은 피치 안에서만(6-4)"
+      },
+      {
+        "check_id": "no-outcome-improved",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.IMPROVED",
+        "grader": "template"
+      },
+      {
+        "check_id": "no-outcome-worsened",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "OUTCOME_WORD.WORSENED",
+        "grader": "template"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      }
+    ]
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-30",
+  "set": "eval",
+  "group": "refusal",
+  "split": "dev",
+  "act": "should",
+  "title": "아직 Take 가 하나도 없는 범위 피치의 점수 · 아쉬운 점을 물음 — 대안 후보가 없는 상태: 그 피치에 Take 가 없다는 확인한 '없음' + 첫 Take 다음 걸음 + [연습 준비로] 버튼, 다른 피치 기록 · 지어낸 Take 번호 · 점수 없음, DONE",
+  "baseline_type": "record",
+  "expect_refusal": false,
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-demoday",
+        "title": "스타트업 데모데이 피칭",
+        "takes": []
+      },
+      {
+        "pitch_id": "p-assembly",
+        "title": "동아리 정기 총회 보고",
+        "last_practiced_at": "2026-11-04T20:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "as-t1",
+            "take_number": 1,
+            "started_at": "2026-11-01T20:00:00+09:00",
+            "completed_at": "2026-11-01T20:04:00+09:00",
+            "review": {
+              "dimensions": {
+                "fluency": "PRIORITY"
+              },
+              "score": 71
+            }
+          },
+          {
+            "take_id": "as-t2",
+            "take_number": 2,
+            "started_at": "2026-11-04T20:00:00+09:00",
+            "completed_at": "2026-11-04T20:04:00+09:00",
+            "review": {
+              "dimensions": {},
+              "score": 77
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-demoday"
+    }
+  },
+  "turns": [
+    {
+      "message": "이 발표로 연습한 거 점수 몇 점 받았는지, 어디가 제일 아쉬웠는지 알려 주세요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "none-fact",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "(?:Take|테이크)[^.\\n]{0,12}없|연습(?:한)? 기록[^.\\n]{0,12}없|아직[^.\\n]{0,15}연습(?:하지 않|한 적이 없|을 하지 않)|연습한 적이 없|연습하지 않았",
+        "grader": "regex",
+        "note": "① v1 TARGET 6: 범위 피치의 Take 0개는 확인한 '없음'이고 읽은 범위(이 피치)로 말한다(7-10 NONE_TAKES 또는 같은 뜻의 기록 문장)"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status",
+        "note": "② v2 TARGET 2: 기록이 없어서 '없음'뿐인 항목은 해소"
+      },
+      {
+        "check_id": "next-first-take",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.NEXT_FIRST_TAKE",
+        "grader": "template",
+        "note": "④ 7-10: 범위 피치의 Take 0개를 답하면 끝에 붙인다"
+      },
+      {
+        "check_id": "practice-button",
+        "observe": "actions_proposed",
+        "compare": "contains",
+        "expect": {
+          "type": "START_PRACTICE",
+          "args": {
+            "pitch_id": "p-demoday"
+          }
+        },
+        "path": "items",
+        "note": "7-10: 이번 실행에 다른 행동이 없으면 [연습 준비로] 버튼(범위 피치)"
+      },
+      {
+        "check_id": "button-path",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": [
+          "propose:START_PRACTICE:BUTTON",
+          "final:DONE"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-fake-take",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(?:Take|테이크)\\s*[1-9]\\d*(?![\\d개])",
+        "grader": "regex",
+        "note": "③ 후보 없음 — 이 피치에 Take 가 없으므로 Take 번호를 말하지 않음('Take 0개' 같은 개수 표현은 번호가 아니다)"
+      },
+      {
+        "check_id": "no-score",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "\\d+\\s?점",
+        "grader": "regex",
+        "note": "다른 피치의 점수(71 · 77점)나 지어낸 점수를 말하지 않음"
+      },
+      {
+        "check_id": "no-other-pitch-evidence",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": [
+          "p-assembly"
+        ],
+        "path": "evidence[].pitch_id",
+        "note": "'없음'을 다른 피치 기록으로 메우지 않는다(v1 TARGET 6 '그 밖으로 넓히지 않는다')"
+      },
+      {
+        "check_id": "no-ask-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS"
+        ],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "no-problem-free",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "문제\\s*(?:가|는)?\\s*없",
+        "grader": "regex",
+        "note": "v1 TARGET 6: '없음'을 '문제없어요' 같은 평가로 바꾸지 않는다"
+      }
+    ]
+  }
+}

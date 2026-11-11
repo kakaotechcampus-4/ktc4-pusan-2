@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-24",
+  "set": "eval",
+  "group": "failure",
+  "split": "dev",
+  "act": "should",
+  "title": "첫 답 문장의 장 번호가 '2장' → '4장'으로 바뀌어 나옴 — 답 검사가 근거(2장)와 다른 장 번호를 잡아 고치고, 2장 말 속도를 4장 값처럼 내보내지 않음",
+  "baseline_type": "record",
+  "fixtures": {
+    "pitches": [
+      {
+        "pitch_id": "p-museum",
+        "title": "지역 박물관 특별전 도슨트 해설",
+        "last_practiced_at": "2026-11-07T11:00:00+09:00",
+        "takes": [
+          {
+            "take_id": "mu-t1",
+            "take_number": 1,
+            "started_at": "2026-10-31T11:00:00+09:00",
+            "completed_at": "2026-10-31T11:05:00+09:00"
+          },
+          {
+            "take_id": "mu-t2",
+            "take_number": 2,
+            "started_at": "2026-11-03T11:00:00+09:00",
+            "completed_at": "2026-11-03T11:05:00+09:00"
+          },
+          {
+            "take_id": "mu-t3",
+            "take_number": 3,
+            "started_at": "2026-11-07T11:00:00+09:00",
+            "completed_at": "2026-11-07T11:05:00+09:00",
+            "result": {
+              "cpm": [
+                310,
+                371,
+                305,
+                318
+              ],
+              "issues": [
+                [
+                  "PACE_FAST",
+                  2,
+                  true
+                ]
+              ]
+            },
+            "review": {
+              "dimensions": {
+                "pacing_rhythm": "PRIORITY"
+              },
+              "score": 69
+            }
+          }
+        ]
+      }
+    ],
+    "conversation": {
+      "scope_pitch_id": "p-museum"
+    }
+  },
+  "turns": [
+    {
+      "message": "도슨트 리허설 Take 3 말인데요, 전시실 동선을 설명하던 2장 구간의 말 속도를 분당 글자 수로 짚어 줄래요?",
+      "page_take_id": "mu-t3",
+      "faults": [
+        {
+          "kind": "corrupt_answer",
+          "from_text": "2장",
+          "to_text": "4장"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "right-value",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": 371,
+        "grader": "number",
+        "metric": "replan",
+        "derive": "mu-t3:SPEED.cpm@2"
+      },
+      {
+        "check_id": "right-slide",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": {
+          "slide": 2,
+          "metric": "cpm"
+        },
+        "grader": "target",
+        "metric": "replan",
+        "note": "값을 말한 문장에 2장 · 말 속도가 함께 있다"
+      },
+      {
+        "check_id": "no-wrong-slide",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "(?:^|[.\\n])(?:(?!2\\s*장)[^.\\n])*(?:(?:4\\s*장|4번 슬라이드|슬라이드\\s*4(?!\\d)|네 번째 장)(?:(?!2\\s*장)[^.\\n])*371|371(?:(?!2\\s*장)[^.\\n])*(?:4\\s*장|4번 슬라이드|슬라이드\\s*4(?!\\d)|네 번째 장))",
+        "grader": "regex",
+        "metric": "replan",
+        "note": "6-9 RECORD: 문장의 장 번호는 그 문장에 이은 근거의 장과 같아야 한다 — 2장 값(분당 371자)을 4장 문장으로 내보내지 않는다(4장 실제 값은 318). 2장이 함께 든 문장(비교)은 보지 않는다"
+      },
+      {
+        "check_id": "read-before-record",
+        "observe": "trajectory",
+        "compare": "precedes",
+        "expect": [
+          "tool:get_take_report:*",
+          "claim:RECORD"
+        ],
+        "metric": "path"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": [
+          "SAVE_GOAL",
+          "REASSESS",
+          "START_PRACTICE"
+        ],
+        "path": "types"
+      }
+    ]
+  },
+  "notes": "장애 corrupt_answer: 첫 답 쓰기 응답의 문장 속 '2장'을 '4장'으로 바꾼다. 모델이 '2장'을 쓰지 않으면 바꿔치기가 일어나지 않고 검사는 그대로 맞다."
+}

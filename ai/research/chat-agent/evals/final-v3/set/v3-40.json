@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "id": "v3-40",
+  "set": "agent_service",
+  "group": "small_talk",
+  "split": "dev",
+  "act": "should_not",
+  "title": "피치가 하나도 없는 사용자의 첫 인사 — 인사 고정 문장 + 피치 없음 상태의 다음 걸음(첫 피치 만들기), 조사 · 기록 문장 · 행동 · 버튼 없음",
+  "baseline_type": "none",
+  "fixtures": {
+    "pitches": [],
+    "conversation": {
+      "scope_pitch_id": null
+    }
+  },
+  "turns": [
+    {
+      "message": "안녕하세요, 오늘 처음 들어와 봤어요."
+    }
+  ],
+  "expected": {
+    "checks": [
+      {
+        "check_id": "greeting",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.TALK_GREETING",
+        "grader": "template",
+        "note": "7-10 가벼운 말 — 인사(GREETING)"
+      },
+      {
+        "check_id": "next-first-pitch",
+        "observe": "answer",
+        "compare": "contains",
+        "expect": "SystemText.NEXT_FIRST_PITCH",
+        "grader": "template",
+        "note": "7-10 인사 뒤 다음 걸음: 피치 없음 → '피치를 만들어 연습하면…'"
+      },
+      {
+        "check_id": "no-other-next-step",
+        "observe": "answer",
+        "compare": "absent",
+        "expect": "최근 Take에서 고칠 점부터|어느 발표를 볼지 말씀해 주시면|Take를 한 번 연습하면",
+        "grader": "regex",
+        "note": "다른 상태의 다음 걸음(범위 피치 Take 있음 · 범위 피치 없음(피치 있음) · 범위 피치 Take 없음)이 아님"
+      },
+      {
+        "check_id": "no-action",
+        "observe": "actions_proposed",
+        "compare": "absent",
+        "expect": ["START_PRACTICE", "SAVE_GOAL", "REASSESS", "FETCH_PITCH", "FETCH_TAKE"],
+        "path": "types",
+        "metric": "autonomy"
+      },
+      {
+        "check_id": "status",
+        "observe": "answer",
+        "compare": "equals",
+        "expect": "DONE",
+        "path": "status"
+      },
+      {
+        "check_id": "fixed-reply-path",
+        "observe": "trajectory",
+        "compare": "in_order",
+        "expect": ["claim:SYSTEM", "final:DONE"],
+        "metric": "path"
+      },
+      {
+        "check_id": "no-research",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["tool:*"],
+        "metric": "path",
+        "note": "가벼운 말은 조사 · 답 쓰기 없이 계획 뒤 고정 문장으로 끝낸다(6-1)"
+      },
+      {
+        "check_id": "no-record-claim",
+        "observe": "trajectory",
+        "compare": "not_in_order",
+        "expect": ["claim:RECORD"],
+        "metric": "path"
+      }
+    ]
+  }
+}
