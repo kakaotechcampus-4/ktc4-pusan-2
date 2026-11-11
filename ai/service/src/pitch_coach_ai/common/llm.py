@@ -327,6 +327,28 @@ def _client(
 
 #: 시간 초과 뒤 앞 시도가 끝났는지 기다려 보는 시간(초). 이 안에 끝나야 다시 보낸다
 _CANCEL_GRACE_SECONDS = 0.5
+#: Gemini 의 공식 대체 서명: 모델이 만들지 않은 함수 호출(코드가 넣은 호출 · 저장한 기록에서 되살린 호출)에 쓴다
+#: (Google AI 문서 'Thought signatures' FAQ, 2026-11-11 확인)
+GEMINI_DUMMY_SIGNATURE = "skip_thought_signature_validator"
+
+
+def _is_gemini(model: str | None) -> bool:
+    return "gemini" in (model or "").lower()
+
+
+def _with_gemini_signatures(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Gemini 호환 API 는 이번 차례의 함수 호출마다 thought_signature 를 요구한다(없으면 400). 모델이 붙여 보낸 칸
+    (`extra_content`)은 루프가 그대로 돌려주고, 칸이 없는 호출(코드가 먼저 읽은 호출 · 서명 상태에서 되살린 호출)에는
+    공식 대체 서명을 채운다. 다른 공급자에는 쓰지 않는다(OpenAI 계열 요청 모양은 그대로)."""
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        calls = m.get("tool_calls") if m.get("role") == "assistant" else None
+        if calls and any("extra_content" not in c for c in calls):
+            dummy = {"google": {"thought_signature": GEMINI_DUMMY_SIGNATURE}}
+            m = {**m, "tool_calls": [c if "extra_content" in c else {**c, "extra_content": dummy} for c in calls]}
+        out.append(m)
+    return out
+
 _ALLOWED_FINISH = {"tools": {"stop", "tool_calls"}, "schema": {"stop"}}
 
 
@@ -555,7 +577,7 @@ class ToolLlmClient:
     def _stream(self, req: chat_llm.LlmRequest, holder: dict[str, Any]) -> chat_llm.LlmResult:
         kwargs: dict[str, Any] = {
             "model": self._model,
-            "messages": req.messages,
+            "messages": _with_gemini_signatures(req.messages) if _is_gemini(self._model) else req.messages,
             "stream": True,
             "stream_options": {"include_usage": True},
             "max_completion_tokens": min(req.max_output_tokens, self._role.max_output_tokens),
