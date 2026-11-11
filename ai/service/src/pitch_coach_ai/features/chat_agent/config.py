@@ -578,7 +578,7 @@ class ChatAgentConfig(_Frozen):
     action_words: Mapping[str, tuple[str, ...]] = Field(
         default_factory=lambda: {
             # 명사 '목표'만으로는 저장 요청이 아니다(동사가 있어야 함, L1-24)
-            "SAVE_GOAL": ("잡", "정해", "정하", "저장", "세워", "설정"),
+            "SAVE_GOAL": ("잡", "정해", "정하", "저장", "세워", "세우", "설정"),
             "START_PRACTICE": ("연습", "발표", "시작", "가자"),
         }
     )
@@ -720,8 +720,9 @@ class ChatAgentConfig(_Frozen):
     #: 대화 목표를 묻는 말(6-1 2번 '목표 질문'): 목표 낱말이 있고 묻는 꼴이며 목표를 정하는 말이 없으면, 조사 첫머리에 코드가
     #: `get_goals`를 먼저 읽는다(계획이 기록 없이 답하기를 골라도 조사로 돌린다)
     goal_question_words: tuple[str, ...] = ("목표",)
-    #: '가장 최근' 발표 질문(Issue #1194 4-A): 범위 '전체'에서 최근 낱말 바로 뒤(사이에 '에 · 으로'와 '한 · 했던 · 연습한 …' 하나까지)에
-    #: 발표 낱말이 오면, 코드가 피치 목록을 먼저 읽고 마지막 연습 시작으로 대상을 고른다(`loop.latest_pitch_question`)
+    #: '가장 최근' 발표 질문(Issue #1194 4-A): 범위 '전체'에서 최근 낱말 뒤(사이에 '에 · 으로'와 꾸밈 낱말 세 개까지: '한 · 연습을
+    #: 시작한 · 연습했던 게 어떤')에 발표 낱말이 오면, 코드가 피치 목록을 먼저 읽고 마지막 연습 시작으로 대상을 고른다
+    #: (`loop.latest_pitch_question`)
     latest_pitch_words: tuple[str, ...] = ("가장 최근", "제일 최근", "최근", "마지막", "최신")
     latest_pitch_verbs: tuple[str, ...] = (
         "한",
@@ -737,7 +738,8 @@ class ChatAgentConfig(_Frozen):
     latest_pitch_targets: tuple[str, ...] = ("발표", "피치")
     #: 발표 낱말 바로 뒤에 붙어 '그 발표'를 가리키게 하는 조사와, 띄우고 오는 묻는 말. 이것이 아니면('발표할 때' · '발표 트렌드')
     #: 최근 발표를 찾는 말이 아니다('요즘'은 '요즘 발표할 때 …'처럼 일반 고민에 흔해 최근 낱말에서 뺐다)
-    latest_pitch_particles: tuple[str, ...] = ("는", "은", "가", "를", "을", "의", "좀")
+    #: '로'("가장 최근에 하던 발표로 연습하러 갈래요") · 서술격('였더라' · '이었지' · '인지')도 그 발표를 가리킨다
+    latest_pitch_particles: tuple[str, ...] = ("는", "은", "가", "를", "을", "의", "좀", "로", "였", "이었", "인지")
     latest_pitch_follow: tuple[str, ...] = (
         "뭐",
         "무엇",

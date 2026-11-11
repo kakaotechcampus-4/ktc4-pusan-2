@@ -162,8 +162,22 @@ def latest_pitch_question(msg: str | None, cfg: Any) -> bool:
     parts = "|".join(re.escape(w) for w in sorted(cfg.latest_pitch_particles, key=len, reverse=True))
     follow = "|".join(re.escape(w) for w in cfg.latest_pitch_follow)
     after = rf"(?=(?:{parts})|[?.!,~]|\s*$|\s+(?:{follow}))"
-    pat = rf"(?:{words})(?:에|으로|로)?\s*(?:(?:{verbs})\s*)?(?:{targets}){after}"
-    return re.search(pat, m) is not None
+    # 최근 낱말과 발표 낱말 사이: 꾸밈말(`latest_pitch_verbs`) 하나, 또는 문장 부호가 아닌 낱말 세 개까지("가장 최근에 연습을
+    # 시작한 발표" · "마지막으로 연습했던 게 어떤 발표", Issue #1194 독립 평가). 발표 낱말 뒤 조건(`after`)은 그대로라 "최근 발표할
+    # 때 떨려" · "최신 발표 트렌드"는 아니다
+    between = rf"(?P<mid>(?:{verbs})\s*|(?:\s*[^\s?.!,~]+){{0,3}}?\s*)"
+    pat = rf"(?:{words})(?:에|으로|로)?\s*{between}(?:{targets}){after}"
+    for hit in re.finditer(pat, m):
+        mid = hit.group("mid").split()
+        # 사이 낱말이 있으면 연습 이력을 말해야 한다("연습을 시작한" · "하던" · "연습했던 게 어떤"). "최근 들어 발표가 무서워요" ·
+        # "최근 친구 발표는 어땠어?"는 아니다(Issue #1194 코드 검수)
+        if not mid or any(t.startswith(_PRACTICE_HINTS) or t in cfg.latest_pitch_verbs for t in mid):
+            return True
+    return False
+
+
+#: '가장 최근 발표' 판별에서 최근 낱말과 발표 낱말 사이에 오면 연습 이력을 말한다고 보는 낱말 머리
+_PRACTICE_HINTS = ("연습", "시작", "하던", "했던", "진행")
 
 
 def pitch_evidence(ctx: Any, pitch_id: str, field: str) -> str | None:
@@ -733,9 +747,10 @@ class Loop:
         if (
             route == "ANSWER_DIRECT"
             and self.cfg.research_prefetch
-            and goal_question(self.original, self.cfg)
+            and (goal_question(self.original, self.cfg) or self.latest_question)
         ):
-            # 대화 목표를 묻는 말은 읽은 대화 목표로 답한다: 기록 없이 답하기를 골라도 조사로 돌려 get_goals 를 먼저 읽는다(6-1 2번)
+            # 대화 목표를 묻는 말은 읽은 대화 목표로, 가장 최근 발표를 찾는 말은 읽은 피치 목록으로 답한다: 기록 없이 답하기를
+            # 골라도 조사로 돌려 get_goals · list_pitches 를 먼저 읽는다(6-1 2번, Issue #1194 독립 평가)
             route = "RESEARCH"
         if route == "OUT_OF_SCOPE":
             self.scope_reason = parsed.get("scope_reason")
@@ -1013,7 +1028,7 @@ class Loop:
         if sig == "REVIEW_MISSING":
             tid = getattr(args, "take_id", None)
             tool_room = self.cfg.max_tool_calls - self.counters.tool_calls - sum(
-                1 for q in self.st.code_queue if q["name"] != "fetch_take"
+                1 for q in self.st.code_queue if q["name"] not in ("fetch_take", "fetch_pitch")
             )
             queued = 0
             for section in ("problem_segments", "slides"):
@@ -1357,6 +1372,7 @@ class Loop:
                         and not (tr.data or {}).get("items")
                     ):
                         self.st.name_not_found = True
+                        self._fetch_pitch_by_name(args.query)
                     if call.name == "search_guides" and (
                         tr.ok or (tr.error or {}).get("code") == "CORPUS_UNAVAILABLE"
                     ):
@@ -1412,13 +1428,40 @@ class Loop:
         self._research_end()
         return None
 
+    def _pitch_fetched(self) -> bool:
+        """이번 실행에 피치 가져오기가 이미 있었는가(실행했거나 행동으로 냈음)."""
+        pending = (self.st.pending_action or {}).get("type") == "FETCH_PITCH"
+        return pending or any(e.get("type") == "FETCH_PITCH" for e in self.st.executed)
+
+    def _fetch_pitch_by_name(self, name: str) -> None:
+        """이름으로 찾은 피치가 기본 자료에 없고 전체 피치 수가 실린 수보다 많으면(기본 자료는 최근 피치 일부만, 5-3) 코드가 그 이름으로
+        가져오기를 낸다(Issue #1194 독립 평가 — 모델이 가져오지 않고 '발표를 찾을 수 없어요'로 끝냈다). 같은 이름은 한 번만, 코드
+        대응 몫(`code_signal_reads_max`) 안에서. 가져오기가 실패하면 그때 '발표를 찾을 수 없어요'와 대안 · 다음 걸음이 나간다."""
+        total = self.ctx.pitches_total or 0
+        if total <= len(self.ctx.pitches) or len(self.st.code_done) >= self.cfg.code_signal_reads_max:
+            return
+        if self._pitch_fetched():
+            return
+        fkey = json.dumps(["fetch_pitch", name], ensure_ascii=False)
+        if fkey in self.st.code_done:
+            return
+        self.st.code_done.append(fkey)
+        self.st.code_queue.append(
+            {"name": "fetch_pitch", "args": {"name": name, "reason": "찾는 발표가 기본 자료의 최근 목록에 없음"}, "why": None}
+        )
+
     def _code_calls(self) -> list[ToolCall]:
         """신호에 대한 코드 대응(4-G, `_code_signal`)이 낸 요청. 조사 흐름의 선읽기(`research_prefetch`)와 따로 처리한다.
         행동(가져오기)은 한 번에 하나이므로 읽기를 앞에 둔다."""
         if not self.st.code_queue:
             return []
         queue, self.st.code_queue = self.st.code_queue, []
-        queue.sort(key=lambda q: q["name"] == "fetch_take")
+        if self._pitch_fetched():
+            # 모델이 같은 응답에서 이미 가져왔으면(실행했거나 승인을 기다림) 코드의 이름 가져오기는 버린다(되풀이 막기, 코드 검수)
+            queue = [q for q in queue if q["name"] != "fetch_pitch"]
+            if not queue:
+                return []
+        queue.sort(key=lambda q: q["name"] in ("fetch_take", "fetch_pitch"))
         calls = []
         for q in queue:
             cid = f"cs-{len(self.st.code_done)}-{len(calls)}"
@@ -1550,6 +1593,13 @@ class Loop:
         (answer.py)가 같은 대상을 쓴다."""
         read = [p for p in self.ctx.pitches if pitch_evidence(self.ctx, p.pitch_id, "take_count")]
         if not read:
+            # 이름 검색 없이 목록을 읽었는데 피치가 하나도 없다: 읽지 않은 것이 아니라 연습을 시작한 피치가 없는 것이다
+            # (Issue #1194 독립 평가 — 전에는 None 으로 보아 '아직 연습을 시작한 발표가 없어요.' 대신 PARTIAL 로 끝났다)
+            listed = json.dumps(["list_pitches", {"query": None}], sort_keys=True) in self.st.prefetched or any(
+                m.get("ran") == "list_pitches" for m in self.st.plan_meta
+            )
+            if listed and not self.ctx.pitches and not (self.ctx.pitches_total or 0):
+                return [], None
             return None
         practiced = [p for p in read if practiced_date(p.last_practiced_at) and practiced_at(p)]
         if not practiced:

@@ -404,8 +404,15 @@ def goal_open_sentence(ctx: Any, goal: Any) -> tuple[str, str, str] | None:
     return text, eid, value
 
 
+def is_target_value(ev: Any) -> bool:
+    """미션 기준값 근거인가(`missions[…].target.value` · `review.mission_results[…].target`). 측정값이 아니라 기준이라, 코드가
+    측정값 문장("Take 4의 3장 청중 시선은 40%예요")을 그릴 때 고르지 않는다(Issue #1194 코드 검수)."""
+    path = getattr(ev, "path", "") or ""
+    return path.endswith(".target") or path.endswith(".target.value")
+
+
 def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
-    """남은 문장이 없을 때 검증된 근거 값으로 그린 문장(최대 3개)."""
+    """남은 문장이 없을 때 검증된 근거 값으로 그린 문장(최대 3개). 미션 기준값은 측정값이 아니라 그리지 않는다."""
     out: list[Claim] = []
     for eid in used_ids:
         ev = ctx.registry.get(eid)
@@ -414,6 +421,7 @@ def template_partial(ctx: Any, used_ids: list[str]) -> list[Claim]:
             or not ctx.registry.is_current(eid)
             or ev.origin != "RECORD"
             or ev.take_number is None
+            or is_target_value(ev)
         ):
             continue
         disp = _num_display(ctx, ev)

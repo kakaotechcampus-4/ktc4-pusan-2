@@ -870,6 +870,31 @@ def test_take_reviewed_unknown_when_goal_changed() -> None:
     assert (fd.goal_result.status, fd.goal_result.terminal) == ("UNKNOWN", False)
 
 
+@pytest.mark.parametrize(
+    ("change", "status", "sentence"),
+    [
+        # 대본 판이 다름 → 기준 불일치(끝): 목표를 새로 정하자는 문장(숫자 없음)
+        ({"script_version_id": "sv-other"}, "BASELINE_MISMATCH", "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요"),
+        # 평가 기준 판이 다름 → 같은 문장
+        ({"standard_version": 9}, "BASELINE_MISMATCH", "대본이나 평가 기준이 바뀌어 목표를 새로 정해야 해요"),
+        # 목표 계산식 판을 지금 코드가 지원하지 않음 → 새 목표 안내(L4-12)
+        ({"goal_rule_version": "goal-algo-0+000000000000"}, "UNKNOWN", "목표 기준이 바뀌어 새 목표가 필요해요."),
+    ],
+)
+def test_take_reviewed_states_each_judgement_without_evidence(change: dict[str, Any], status: str, sentence: str) -> None:
+    """숫자 · 근거가 없는 판정도 판정마다 정한 문장을 낸다. 전에는 근거가 없으면 모두 '확인된 근거만 정리해서 보여 드릴게요.'
+    (PARTIAL 안내)로 덮어 기준 불일치 문장이 나올 수 없었다(Issue #1194 독립 평가)."""
+    req = take_reviewed_request(None, take_id="t-6")  # 목표를 저장한 뒤 시작해 리뷰가 끝난 Take(예시 그대로)
+    req["context"]["conversation_goal"].update(change)
+    _, _, data = F.run_turn(req, None)
+    fd = final_ok(data)
+    assert fd.status == "DONE"
+    assert fd.goal_result is not None and fd.goal_result.status == status
+    text = fd.message.text  # type: ignore[union-attr]
+    assert sentence in text
+    assert "확인된 근거만 정리해서 보여 드릴게요" not in text
+
+
 # ── 검증 반영 ──────────────────────────────────────────────────────────────
 
 

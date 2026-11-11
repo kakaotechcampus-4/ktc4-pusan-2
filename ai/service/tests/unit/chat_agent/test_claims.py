@@ -1932,6 +1932,43 @@ def test_goal_and_script_synonyms_state_a_reassess_condition() -> None:
     assert clm._SCRIPT_USE_RE.search("Take 5는 프롬프터 보고 했어")
 
 
+@pytest.mark.parametrize(
+    ("text", "hit"),
+    [
+        ("화면에 대본을 띄워 놓고 한 연습", True),
+        ("대본을 전부 띄워 놓고 한 리허설이었어요", True),
+        ("프롬프터 화면에 핵심어를 띄워 두고 참고한 거라서요", True),
+        ("종이 원고를 손에 들고 읽으면서", True),
+        ("대본 봤어", True),
+        ("대본을 안 보고 했어", False),
+        ("대본을 못 보고 했어", False),
+        ("대본 없이 발표했어", False),
+        ("대본은 보지 않고 했어", False),
+        ("대본 없는 연습이었어", False),
+        # 다른 대상을 보았다 · 대본이 아닌 것으로 했다(코드 검수 반례)
+        ("대본 말고 자료를 보고 했어", False),
+        ("대본 작성자를 보고 했어", False),
+        ("대본없이 보고 했어", False),
+        ("대본 대신 메모를 보고 했어", False),
+    ],
+)
+def test_script_use_statement_forms(text: str, hit: bool) -> None:
+    """대본 사용 진술은 명사와 동사 사이에 조사 · 낱말 두 개까지 낄 수 있고(부사 · 장소), 부정이 끼면 진술이 아니다
+    (Issue #1194 독립 평가: '대본을 전부 띄워' · '프롬프터 화면에 핵심어를 띄워'를 놓쳐 화면 대본 사실 문장이 빠졌다)."""
+    from pitch_coach_ai.features.chat_agent import claims as clm
+
+    assert bool(clm._SCRIPT_USE_RE.search(text)) is hit
+
+
+def test_adnominal_past_counts_as_a_past_statement() -> None:
+    """'참고한 거라서요'처럼 관형 과거로 끝낸 말도 지난 일의 진술이다(요청 어미는 따로 본다)."""
+    from pitch_coach_ai.features.chat_agent import claims as clm
+
+    assert clm._says_past("프롬프터 화면에 핵심어를 띄워 두고 참고한 거라서요")
+    assert clm._says_past("대본 보고 한 발표였어")
+    assert not clm._says_past("대본 보고 해 줘")
+
+
 def test_goal_only_counts_as_a_condition_when_a_number_is_set() -> None:
     """'목표치보다 낮게 나왔어'는 값과 견주기만 한 측정값 이의다('목표 30%로'처럼 정해 말해야 조건)."""
     from pitch_coach_ai.features.chat_agent import claims as clm

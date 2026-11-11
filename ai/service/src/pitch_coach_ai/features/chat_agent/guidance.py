@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from . import checks as chk
+from . import compose
 from .schemas import Claim
 from .templates import SystemText
 
@@ -240,7 +241,9 @@ def follow_up(
     seen: set[str] = set()
     # 답이 이미 있으면(기록 · 판단 · 자료 · 행동 결과 문장) 대안은 붙이지 않는다: 섞인 요청의 범위 밖 안내 · 끝에 붙는 안내는
     # 그 부분의 핵심 문장으로 충분하다. 리뷰 없음 · 측정값 이의는 답과 함께 다음 걸음을 붙인다
-    answered = any(c.kind != "SYSTEM" for c in claims)
+    # '없음' 근거만 이은 기록 문장("'…'라는 이름으로 찾은 피치는 0개예요")은 답이 아니라 '안 된다'의 사실이다: 대안 · 다음 걸음을
+    # 막지 않는다(Issue #1194 독립 평가 — 모델이 이 문장을 쓰면 '어느 발표를 볼지 말씀해 주시면 …'이 빠졌다)
+    answered = any(c.kind != "SYSTEM" and not _none_only(c, ctx) for c in claims)
     for c in claims:
         kind = CORE_KINDS.get(c.text) if c.kind == "SYSTEM" else None
         if kind is None or kind in seen or (answered and kind not in _WITH_ANSWER):
@@ -267,3 +270,13 @@ __all__ = [
     "is_continue",
     "previous_assistant_text",
 ]
+
+
+def _none_only(c: Claim, ctx: Any) -> bool:
+    """기록 문장이 '없음 · 0' 근거(`compose.none_kind`: 이름 검색 0개 · Take 0개 · 리뷰 없음 등)만 이었는가."""
+    if c.kind != "RECORD" or not c.evidence_ids:
+        return False
+    registry = getattr(ctx, "registry", None)
+    if registry is None:
+        return False
+    return all(compose.none_kind(registry.get(e)) is not None for e in c.evidence_ids)

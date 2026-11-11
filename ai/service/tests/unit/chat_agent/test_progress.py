@@ -277,6 +277,11 @@ def test_slides_read_shows_unmeasured_when_the_asked_area_is_unmeasured() -> Non
     other = progress.read_run("get_take_report", a, tr, ctx, areas=frozenset({"GAZE"}))
     unknown = progress.read_run("get_take_report", a, tr, ctx)
     assert other.result != "측정 안 됨" and unknown.result != "측정 안 됨"
+    # 섞인 질문(목소리 크기와 시선을 함께 물음, 목소리만 측정 안 됨): 어느 영역이 측정 안 됨인지 붙여 보인다(Issue #1194 독립 평가 —
+    # 전에는 물은 영역이 '모두' 측정 안 됨일 때만 보여 섞인 질문에서 빠졌다)
+    mixed = progress.read_run("get_take_report", a, tr, ctx, areas=frozenset({"VOLUME", "GAZE"}))
+    assert mixed.result == "목소리 측정 안 됨"
+    assert progress.unmeasured_areas(ctx.snapshots["t-3"], frozenset({"VOLUME", "GAZE"})) == ["VOLUME"]
 
 
 # ── 끝 처리 ──────────────────────────────────────────────────────────────────

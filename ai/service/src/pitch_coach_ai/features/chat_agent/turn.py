@@ -702,8 +702,16 @@ def _slots_short_end(lp: Loop, finish: Callable[..., _Result]) -> _Result:
 def _practice_button(lp: Loop, authorized_by: str | None) -> Action | None:
     """[연습 준비로] 버튼(6-2 START_PRACTICE): 카드는 상태에 남기고 행동을 돌려준다(없으면 None)."""
     lp.st.action_seq += 1
+    latest_id = None
+    # 처음 판정(서명 상태 `latest_q`)이 '가장 최근 발표'면 이어 부른 뒤 범위가 바뀌었어도(다른 피치를 가져옴) 코드가 고른 피치가 대상이다
+    if lp.latest_question:
+        # 범위 '전체'의 "가장 최근 발표로 연습하러 갈래요": 코드가 피치 목록으로 고른 가장 최근 피치로 버튼을 낸다(6-1 2번 · 6-2,
+        # Issue #1194 독립 평가 — 전에는 범위 피치가 없다고 버렸다)
+        found = lp.latest_practiced()
+        if found is not None and found[1] is not None:
+            latest_id = found[1].pitch_id
     action, card, why = act.start_practice_action(
-        ctx=lp.ctx, authorized_by=authorized_by, seq=lp.st.action_seq, budget=lp.budget
+        ctx=lp.ctx, authorized_by=authorized_by, seq=lp.st.action_seq, budget=lp.budget, pitch_id=latest_id
     )
     # 진단 기록 ACTION 단계(11-5): 버튼 행동이라 승인 확인은 필요 없다(NOT_REQUIRED). 행동을 내면 PROPOSED,
     # 행동 수 한도로 카드만 남기면 DOWNGRADED, 범위가 없어 아무것도 못 내면 DROPPED(#887 리뷰)
@@ -1175,6 +1183,7 @@ def _record_guard_claims(
                 for eid, ev in ctx.registry.items.items()
                 if ev.origin == "RECORD"
                 and ev.take_number == number
+                and not compose.is_target_value(ev)  # 미션 기준값은 측정값이 아니다
                 and (not metrics or ev.metric in metrics)
                 and (slide is None or ev.slide_number == slide)
             ]
@@ -1234,13 +1243,10 @@ def _latest_pitch_claims(lp: Loop, said: list[Claim]) -> list[Claim]:
     head = sentence(latest, head=True)
     if head is None:
         return []
-    if head.evidence_ids[0] not in cited:
-        out.append(head)  # 모델 문장이 이미 그 피치의 마지막 연습 날짜를 근거로 말했으면 첫 문장은 내지 않는다
-    elif latest.take_count == 0 and head.evidence_ids[1] not in cited:
-        # 모델이 날짜만 말하고 분석이 끝난 Take 가 없다는 것은 말하지 않았다: 그 사실만 붙인다(path-glob-latest-unfinished)
-        zero = sentence(latest, head=True, count_only=True)
-        if zero is not None:
-            out.append(zero)
+    if not set(head.evidence_ids) <= cited:
+        # 첫 문장은 모델 문장이 그 피치의 마지막 연습 날짜와 분석이 끝난 Take 수를 둘 다 근거로 말했을 때만 뺀다(TARGET v2
+        # 1절 '답에 이 문장이 나온다'). 전에는 날짜만 이어도 빼서 Take 수가 빠졌다(Issue #1194 독립 평가)
+        out.append(head)
     if latest.take_count == 0:
         done = [p for p in practiced if p.take_count > 0]
         if done:
@@ -1549,7 +1555,8 @@ def _target_fallback(lp: Loop, used_ids: list[str], *, have: list[Claim]) -> lis
     none_ids = [e for e in dict.fromkeys([*used_ids, *step_ids]) if _none_target(ctx, e, asked)]
     cands = compose.none_partial(ctx, none_ids, areas=areas)
     if areas is not None and any(
-        m.get("ran") == "get_take_report" and m.get("result") == templates.PLAN_RESULT["UNMEASURED"]
+        m.get("ran") == "get_take_report"
+        and str(m.get("result") or "").endswith(templates.PLAN_RESULT["UNMEASURED"])
         for m in st.plan_meta
     ):
         cands.append(Claim(kind="SYSTEM", text=templates.SystemText.UNMEASURED.value))
@@ -1960,7 +1967,8 @@ def _unmeasured_notes(lp: Loop) -> list[str]:
         return []
     unmeasured = templates.PLAN_RESULT["UNMEASURED"]
     if any(
-        m.get("ran") == "get_take_report" and m.get("result") == unmeasured for m in lp.st.plan_meta
+        m.get("ran") == "get_take_report" and str(m.get("result") or "").endswith(unmeasured)
+        for m in lp.st.plan_meta
     ):
         return [templates.SystemText.UNMEASURED.value]
     return []
@@ -2048,12 +2056,31 @@ def _take_reviewed(lp: Loop, req: TurnRequest, finish: Callable[..., _Result]) -
         "terminal": j.terminal,
     }
     text = compose.goal_sentence(ctx, goal, j, snap.summary.take_number)
+    if not j.evidence_ids:
+        # 숫자 · 근거가 없는 판정은 판정마다 정한 코드 문장이다(6-4 판정 순서 · L4-01 · L4-12): 기준이 바뀌면 목표를 새로 정하자는
+        # 문장, 계산식 판이 바뀌면 새 목표 안내, 값이 없으면 측정 안 됨, 그 밖(끝까지 안 함 등)은 다음 Take 를 기다린다는 문장.
+        # 전에는 근거가 없으면 모두 '확인된 근거만 …'(PARTIAL 안내 문장)으로 덮어 불일치 문장이 나올 수 없었다(Issue #1194 독립 평가)
+        fixed = {
+            "GOAL_RULE_CHANGED": templates.SystemText.GOAL_RULE_CHANGED,
+            "NO_VALUE": templates.SystemText.METRIC_UNMEASURED,
+        }.get(reason) if j.status == "UNKNOWN" else None
+        lp.st.cards.append(
+            {
+                "type": "GOAL_RESULT",
+                "goal_version": goal.version,
+                "take_id": ev.take_id,
+                "status": j.status,
+                "observed": j.observed,
+                "reason": reason,
+            }
+        )
+        if fixed is not None:
+            return finish(status="DONE", reason="ANSWERED", system=[fixed], goal_result=gr)
+        return finish(
+            status="DONE", reason="ANSWERED", claims=[Claim(kind="SYSTEM", text=text)], goal_result=gr
+        )
     claim = Claim(kind="RECORD", text=text, evidence_ids=list(j.evidence_ids))
-    fails = (
-        chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg)
-        if j.evidence_ids
-        else [True]
-    )
+    fails = chk.check_claims([claim], registry=ctx.registry, code_sentences={text}, cfg=lp.cfg)
     card = {
         "type": "GOAL_RESULT",
         "goal_version": goal.version,

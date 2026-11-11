@@ -142,7 +142,12 @@ class FetchTakeArgs(_A):
 
 
 class ReassessChange(_A):
-    script_used: bool | None = None
+    #: 대본을 쓴 조건이면 true: 사용자가 대본 · 원고 · 프롬프터(핵심어만 띄운 것 포함)를 보거나 띄워 놓고 했다고 말한 다시
+    #: 평가다(6-6 표 '대본 보고 한 발표 → script_used = true', Issue #1194 독립 평가에서 모델이 false 로 낸 일이 있었다)
+    script_used: bool | None = Field(
+        default=None,
+        description="대본 조건으로 다시 평가: 사용자가 대본 · 원고 · 프롬프터(핵심어만 띄운 것 포함)를 보거나 띄워 놓고 했다고 하면 true",
+    )
     targets: list[CriteriaTarget] | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
@@ -159,7 +164,10 @@ class ReassessArgs(_A):
 
 
 class SaveGoalArgs(_A):
-    metric: str
+    #: 사용자가 말한 목표가 어떤 지표로도 잴 수 없으면(표정 · 자신감 등) null: 저장하지 않고 잴 수 있는 추천 안을 보인다(6-3 · L6-23)
+    metric: str | None = Field(
+        description="대화 목표 지표. 사용자가 말한 목표가 어떤 지표로도 잴 수 없으면(예: 표정 · 자신감) null"
+    )
     slide_number: int | None = Field(default=None, ge=1)
     base_take_id: str
     #: 이번 사용자 말에서 저장을 요청한 부분 그대로
@@ -183,7 +191,7 @@ ACTION_DESCRIPTIONS = {
     "fetch_pitch": "다른 피치의 자세한 자료를 가져와 대화 범위를 그 피치로 바꾼다(BE가 실행). pitch_id 또는 name 하나.",
     "fetch_take": "기본 자료에 없는 Take(같은 피치) 결과 전체를 가져온다(BE가 실행).",
     "reassess": "바꾼 조건(대본 사용 script_used 또는 내 기준 targets 하나)으로 리뷰를 다시 불러 참고 결과를 만든다. 공식 결과는 바뀌지 않는다. 측정값 이의(카메라가 낮았다 등)에는 쓰지 않는다.",
-    "save_goal": "대화 목표를 저장한다. 지표는 audience_ratio · filler_per_min · cpm · duration_ms 중 하나. 기준값은 코드가 base_take_id 의 기록으로 정한다. authorized_by 에는 이번 사용자 말에서 저장을 요청한 부분을 글자 그대로 넣는다.",
+    "save_goal": "대화 목표를 저장한다. 지표는 audience_ratio · filler_per_min · cpm · duration_ms 중 하나. 사용자가 말한 목표가 어떤 지표로도 잴 수 없으면(표정 · 자신감 등) metric 을 null 로 부른다(저장하지 않고 잴 수 있는 추천 안을 보인다). 기준값은 코드가 base_take_id 의 기록으로 정한다. authorized_by 에는 이번 사용자 말에서 저장을 요청한 부분을 글자 그대로 넣는다.",
 }
 
 
@@ -311,11 +319,14 @@ def authorize(
         return "CONDITION"
     # 동사 뒤에서 절을 끊는 말(~는데 · ~지만 · ~니까 …)이나 보조 용언(~고 있 · ~어 놓)이 오면 그 동사는 요청이 아니다
     # ("목표를 정해 놓았는데 … 알려줘", "목표로 잡고 있었는데 결과를 알려줘")
-    if any(w.endswith(_CLAUSE_BREAKS) for w in words) or any(
-        w.startswith(_AUX_STEMS) for w in words[1:2]
+    # 보조 용언에 '~고'가 붙어 다음 요청으로 이으면("목표로 세워 두고, 저장되면 곧장 연습하러 갈래요") 보조 용언이 있어도 '~고' 복합
+    # 요청이다(Issue #1194 독립 평가). '두었는데 · 놓았는데'처럼 절을 끊으면 그대로 막는다
+    aux_go = words[1:2] in (["두고"], ["놓고"])
+    if any(w.endswith(_CLAUSE_BREAKS) for w in words) or (
+        not aux_go and any(w.startswith(_AUX_STEMS) for w in words[1:2])
     ):
         return "NO_REQUEST_FORM"
-    if verb.endswith("고"):
+    if verb.endswith("고") or aux_go:
         # "목표로 잡고 연습하러 가자"처럼 '~고'로 이은 복합 요청은 문장 끝 동사의 요청형이 앞 동사에도 걸린다(6-2 · 13-2)
         forms = tuple({f for fs in cfg.request_forms.values() for f in fs})
     # 요청형은 명령 · 권유라 절 끝에 온다: 마지막 두 낱말 안에 있어야 한다
@@ -761,10 +772,18 @@ def _propose_goal(
         return Proposal(
             result="TOOL_ERROR", reason_code=code, tool_message=_err(code, "기준 Take 결과가 없다")
         )
-    draft = build_goal_draft(
-        base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg
+    # 지표가 null 이면 사용자가 말한 목표 자체가 어떤 지표로도 잴 수 없다(Issue #1194 독립 평가: 표정 목표에 모델이 save_goal 을
+    # 부를 길이 없었다). 사용자가 정한 목표라 다시 고르게 하지 않고 '잴 수 없음' 제안 카드로 간다
+    draft = (
+        "UNMEASURABLE_METRIC"
+        if a.metric is None
+        else build_goal_draft(base, a.metric, a.slide_number, pitch_id=ctx.scope_pitch_id or "", cfg=cfg)
     )
-    if draft == "UNMEASURABLE_METRIC" and not _user_named_metric(original_message or "", a.metric, cfg):
+    if (
+        draft == "UNMEASURABLE_METRIC"
+        and a.metric is not None
+        and not _user_named_metric(original_message or "", a.metric, cfg)
+    ):
         # 사용자는 목표 내용을 맡겼는데("다음 목표를 잡아 줘") 모델이 대화 목표로 잴 수 없는 지표를 골랐다: '말씀하신 목표는 잴 수
         # 없어요' 제안 카드로 낮추지 않고, 고를 수 있는 지표를 알려 모델이 다시 고르게 한다(실사용 흐름 점검 장면 2, Issue #1194).
         # 사용자가 그 지표를 직접 말한 목표면 지금처럼 제안 카드(6-3 · L6-23)
@@ -1407,14 +1426,18 @@ def start_practice_action(
     authorized_by: str | None,
     seq: int,
     budget: Budget,
+    pitch_id: str | None = None,
 ) -> tuple[Action | None, dict[str, Any], str | None]:
     """마지막 답의 연습 준비 이동(6-2): [연습 준비로] 버튼 카드만 낸다(자동 이동 없음). 근거는 부르는 쪽이 먼저 본다
     (모델 초안은 `practice_basis`, 가벼운 말 · Take 0개 다음 걸음은 코드가 정함).
 
+    대상은 범위 피치다. 범위가 '전체'면 부르는 쪽이 고른 피치(`pitch_id`: '가장 최근 발표' 질문에서 코드가 피치 목록으로 고른 것,
+    6-1 2번)를 쓰고, 그것도 없으면 버튼을 내지 않는다(`NO_SCOPE`).
+
     행동은 `autonomy:"BUTTON"`으로 `DONE`의 `actions`에 싣고 BE 는 실행하지 않는다(누르는 것이 승인이고 FE 가 옮긴다).
     행동 수 한도에 막히면 행동 없이 카드만 남긴다. 사용자가 이번 말에서 요청한 인용은 그대로 남긴다.
     """
-    pid = ctx.scope_pitch_id
+    pid = pitch_id or ctx.scope_pitch_id
     if pid is None:
         return None, {}, "NO_SCOPE"
     card = StartPracticeCard(pitch_id=pid).model_dump(mode="json")

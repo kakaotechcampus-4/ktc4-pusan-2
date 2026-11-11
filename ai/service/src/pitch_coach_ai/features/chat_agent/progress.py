@@ -378,29 +378,39 @@ def _report_run(
         first = next((it["dimension"] for it in items if it.get("state") == "PRIORITY"), None)
         if first is not None:
             return run(r["PRIORITY"].format(dimension=DIM_LABEL.get(first, first)))
-    if section == "slides" and (tr.read_state == "UNMEASURED" or asked_unmeasured(snap, areas)):
-        return run(r["UNMEASURED"])
+    if section == "slides":
+        missing = unmeasured_areas(snap, areas)
+        if tr.read_state == "UNMEASURED" or (missing and len(missing) == len(areas or ())):
+            return run(r["UNMEASURED"])
+        if missing:
+            # 물은 영역 중 일부만 측정 안 됨(시선과 말 속도를 함께 물었는데 시선만 측정 안 됨): 어느 영역인지 붙인다
+            return run(f"{' · '.join(tpl.AREA_LABEL.get(a, a) for a in missing)} {r['UNMEASURED']}")
     if section == "slides" and args.slide_number:
         # 무엇을 봤는지 보인다: `3장 확인`(장 번호는 그 단계 근거로 표시 검사를 받는다)
         return run(r["SLIDE_CHECKED"].format(slide=args.slide_number))
     return run(r["CHECKED"])
 
 
-def asked_unmeasured(snap: Any, areas: frozenset[str] | None) -> bool:
-    """물은 영역(`asked_areas`)이 그 Take 에서 모두 측정 안 됨인가(영역에 미측정 사유가 있거나 Take 값이 null). 장별 값을 읽으면
-    다른 지표가 측정됐어도 물은 영역의 측정 안 됨을 단계에 보인다(final60 ana-webinar-voice-unmeasured: 목소리 크기를 물었는데
-    `확인`으로만 보이고 답에 측정 안 됨이 빠짐). 물은 영역을 모르거나 Take 결과가 없으면 False."""
+def unmeasured_areas(snap: Any, areas: frozenset[str] | None) -> list[str]:
+    """물은 영역(`asked_areas`) 중 그 Take 에서 측정 안 됨인 영역(영역에 미측정 사유가 있거나 Take 값이 null), 정렬해서. 장별 값을
+    읽으면 다른 지표가 측정됐어도 물은 영역의 측정 안 됨을 단계에 보인다(final60 ana-webinar-voice-unmeasured). 영역마다 따로
+    본다: 시선과 말 속도를 함께 물었는데 시선만 측정 안 됨이면 시선을 돌려준다(6-1 7번 '그 항목의 것', Issue #1194 독립 평가).
+    물은 영역을 모르거나 Take 결과가 없으면 빈 목록."""
     if not areas or snap is None:
-        return False
+        return []
     tr = snap.results.take_result or {}
     got = tr.get("areas") or {}
-    for area in areas:
-        av = got.get(area)
-        if not isinstance(av, dict) or not (
-            av.get("unmeasured_reason") is not None or av.get("take") is None
-        ):
-            return False
-    return True
+    return sorted(
+        area
+        for area in areas
+        if isinstance(av := got.get(area), dict)
+        and (av.get("unmeasured_reason") is not None or av.get("take") is None)
+    )
+
+
+def asked_unmeasured(snap: Any, areas: frozenset[str] | None) -> bool:
+    """물은 영역 중 하나라도 그 Take 에서 측정 안 됨인가(`unmeasured_areas`)."""
+    return bool(unmeasured_areas(snap, areas))
 
 
 def fetch_run(take_id: str | None, ok: bool, ctx: RunCtx) -> StepRun:

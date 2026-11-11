@@ -168,6 +168,35 @@ def test_no_pitch_practiced_yet() -> None:
 
 
 @pytest.mark.prefetch
+def test_no_pitch_at_all_says_none_started_and_is_done() -> None:
+    """피치가 하나도 없으면 목록을 읽고도 근거가 없다: '아직 연습을 시작한 발표가 없어요.'로 DONE 이다(Issue #1194 독립 평가 —
+    전에는 목록을 읽지 않은 것으로 보아 모델 문장이 빠지면 PARTIAL '답 일부를 확인하지 못해 …'로 끝났다)."""
+    req = _global("마지막으로 연습한 발표 기록 좀 보여 줘", [])
+    fd, data, _ = _run(req, answer_claims=[])
+    assert fd.status == "DONE"
+    assert T.LATEST_NONE.value in _texts(data)
+    assert not any("답 일부를 확인하지 못해" in t for t in _texts(data))
+
+
+@pytest.mark.prefetch
+def test_practice_button_for_the_latest_pitch_in_global_scope() -> None:
+    """범위 '전체'에서 "가장 최근에 하던 발표로 바로 연습하러 갈래요": 계획이 기록 없이 답하기를 골라도 조사로 돌려 피치 목록을 읽고,
+    코드가 고른 가장 최근 피치로 [연습 준비로] 버튼을 낸다(Issue #1194 독립 평가 — 전에는 범위 피치가 없다고 버튼을 버렸다)."""
+    msg = "가장 최근에 하던 발표로 바로 연습하러 갈래요."
+    req = _global(msg, PITCHES_0)
+    llm = F.FakeLlm(
+        [F.plan(route="ANSWER_DIRECT", steps=DEV_STEPS), F.done()],
+        answers=[F.answer([], start_practice={"authorized_by": "바로 연습하러 갈래요"})],
+        fixes=[F.fix({})],
+    )
+    _, _, data = F.run_turn(req, llm)
+    fd = FinalData.model_validate(data)
+    starts = [a for a in fd.actions if a.type == "START_PRACTICE"]
+    assert starts and starts[0].args == {"pitch_id": "p-2"}  # 마지막 연습 시작이 가장 늦은 피치
+    assert HEAD_0 in _texts(data)
+
+
+@pytest.mark.prefetch
 def test_scoped_conversation_is_not_a_latest_pitch_question() -> None:
     """범위 피치가 있으면 '최근'은 그 피치의 Take 목록이 답이다(코드 문장 없음)."""
     req = F.request(user_message="가장 최근에 한 발표 어땠어?")
@@ -187,9 +216,22 @@ def test_general_talk_with_latest_words_is_not_a_latest_pitch_question() -> None
         "최근 발표할 때 떨려",
         "최신 발표 트렌드가 뭐야?",
         "마지막 피치 부분에서 목소리가 작아져",
+        "최근에 연습을 많이 해서 발표할 때 긴장이 덜 돼요",
+        "마지막 장에서 발표 속도가 빨라",
+        # 사이 낱말이 연습 이력이 아니다(코드 검수 반례)
+        "최근 들어 발표가 너무 무서워요",
+        "최근 친구 발표는 어땠어?",
     ):
         assert not latest_pitch_question(msg, DEFAULT_CONFIG), msg
-    for msg in ("가장 최근 발표", "최근 발표는 언제야?", "마지막으로 한 피치 기록 보여 줘"):
+    for msg in (
+        "가장 최근 발표",
+        "최근 발표는 언제야?",
+        "마지막으로 한 피치 기록 보여 줘",
+        # 꾸밈 낱말 여러 개 · 발표 뒤 '로 · 였 · 인지'(Issue #1194 독립 평가에서 놓친 말꼴)
+        "제가 가장 최근에 연습을 시작한 발표가 무엇인지 확인 부탁드려요.",
+        "요즘 마지막으로 연습했던 게 어떤 발표였더라?",
+        "가장 최근에 하던 발표로 바로 연습하러 갈래요.",
+    ):
         assert latest_pitch_question(msg, DEFAULT_CONFIG), msg
 
 
@@ -253,7 +295,8 @@ def test_model_sentence_calling_another_pitch_latest_is_dropped() -> None:
 
 @pytest.mark.prefetch
 def test_model_citing_the_latest_date_still_gets_the_finished_pitch_sentence() -> None:
-    """모델 문장이 최근 피치의 날짜 근거를 이었으면 첫 코드 문장은 빼지만, 결과를 볼 수 있는 최근 발표 안내는 붙인다."""
+    """모델 문장이 최근 피치의 날짜 근거만 이었으면(분석이 끝난 Take 수는 말하지 않음) 첫 코드 문장을 그대로 내고(TARGET v2 1절 '답에
+    이 문장이 나온다', Issue #1194 독립 평가 — 전에는 날짜만 이어도 뺐다), 결과를 볼 수 있는 최근 발표 안내도 붙인다."""
 
     def answer(r: Any) -> Any:
         eid = F.find_evidence(r, lambda o: o.get("value") == "11월 10일")
@@ -263,10 +306,8 @@ def test_model_citing_the_latest_date_still_gets_the_finished_pitch_sentence() -
     llm = F.FakeLlm([F.plan(steps=DEV_STEPS), F.done()], answers=[answer])
     _, _, data = F.run_turn(req, llm)
     texts = _texts(data)
-    assert HEAD_0 not in texts
+    assert HEAD_0 in texts  # 첫 문장이 분석이 끝난 Take 가 없다는 사실까지 말한다(path-glob-latest-unfinished)
     assert EXTRA_0 in texts
-    # 모델은 날짜만 말했다: 분석이 끝난 Take 가 없다는 사실만 코드가 붙인다(path-glob-latest-unfinished)
-    assert "'투자 설명회'는 아직 분석이 끝난 Take가 없어요." in texts
 
 
 @pytest.mark.prefetch

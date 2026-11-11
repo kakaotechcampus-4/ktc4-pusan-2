@@ -10,6 +10,7 @@
     `get_take_report` 결과 요약 앞에 읽은 출처(`코치가 찾은 것` · `리뷰 분석`).
     tools-6: `list_pitches` 항목에 마지막 연습 시작 날짜(`last_practiced`, 근거 id)와 목록 순서 note, 틀린 인자 결과(`TOOL_INVALID` ·
     `BAD_ARGS`)에 칸별 안내(`fields`), 범위에 없는 대상(`NOT_FOUND`)에 후보(`candidates`) — 모델에게만 가는 결과(#1194).
+    tools-7: `save_goal`의 `metric`이 null 을 받는다(어떤 지표로도 잴 수 없는 사용자 목표), `reassess`의 `script_used` 설명(#1194).
   - `SCHEMA_VERSION`: 요청 · 응답 필드의 이름 변경 · 삭제 · 뜻 변경 때만 올린다(`architecture.md` 5절).
   - `STATE_V`: 서명 형식(외곽 `v`)이 바뀔 때만 올린다.
 - prompt_version(프롬프트 해시) · corpus_version(자료 묶음 판)은 각각 prompts/ · corpus.py 가 계산한다.
@@ -21,9 +22,12 @@
 #: 0.13.0: 최종 정리(#1194) — 가장 최근 발표(피치 목록의 마지막 연습 날짜 근거 · 날짜 검사 · 코드 문장) · 요청 해소 검사 ·
 #: [이어서 확인] 반복 막기 · '안 된다' 답의 대안 · 다음 걸음 · 도구 오류 안내 · 대안 단계의 까닭 · 늘 같은 대응의 신호를 코드로 ·
 #: 답 쓰기 시간 몫 · 소리 크기 기준 출처 · 기준 다시 평가 막기 · 재개 때 목표 기준 삭제 안내 · 자료 판 소실 409
-FEATURE_VERSION = "chat_agent-0.13.0"
+#: 0.14.0: 독립 평가에서 늘 실패한 상황을 종류 단위로 고침(#1194) — 대본 사용 진술의 말꼴 · 섞인 질문의 측정 안 됨 · 자동 목표
+#: 확인의 판정별 문장 · 가장 최근 발표 판별 말꼴 · 첫 문장 · 피치 0개 · 전체 범위 연습 버튼 · '없음' 문장이 다음 걸음을 막지 않음 ·
+#: 기본 자료 밖 피치 이름 가져오기 · '세워 두고' 복합 저장 요청 · 잴 수 없는 목표(metric null) · 미션 기준값 근거
+FEATURE_VERSION = "chat_agent-0.14.0"
 SCHEMA_VERSION = "1.0"
-TOOL_SCHEMA_VERSION = "tools-6"
+TOOL_SCHEMA_VERSION = "tools-7"
 STATE_V = 1
 #: 목표 판정 계산식(6-4 판정 순서 · 비교식)의 판. 계산식을 바꾸면 올린다. 목표 규칙 판(goal_rule_version)에 들어가므로
 #: 옛 판으로 저장한 목표는 판이 달라 새 목표를 정하자고 한다(설정 해시만으로는 계산식 변경을 알 수 없다)

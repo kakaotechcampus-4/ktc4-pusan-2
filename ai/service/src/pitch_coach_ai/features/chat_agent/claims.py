@@ -62,12 +62,18 @@ VersionOf = Callable[[TakeSnapshot], RecordVersion]
 #: 대본 사용 주장의 지표 이름(모델이 명시한다). 지표 표에는 없는 가상 이름이다
 SCRIPT_USE_METRIC = "script_mode"
 #: 대본 · 원고를 보거나 띄우거나 들고 읽으며 했다는 말("대본 보고 했어" · "화면에 대본을 띄워 놓고" · "종이 원고를 손에 들고
-#: 읽으면서", final60 re-contest-script-highlight · re-docent-paper-script). '안 보고'처럼 사이에 부정이 끼면 맞지 않는다
+#: 읽으면서", final60 re-contest-script-highlight · re-docent-paper-script). 명사와 동사 사이에 조사와 낱말 두 개까지 낄 수
+#: 있다("대본을 전부 띄워" · "프롬프터 화면에 핵심어를 띄워", Issue #1194 독립 평가). '안 보고' · '없이'처럼 사이에 부정이
+#: 끼면 맞지 않는다
 _SCRIPT_USE_RE = re.compile(
-    r"(대본|원고|스크립트|프롬프터)\s*(을|를)?\s*(?:손에\s*)?"
-    r"(보고|보면서|보며|켜고|켜\s*놓고|띄우고|띄워|사용하고|사용해서|사용했|사용하며|사용하면서"
+    r"(?:대본|원고|스크립트|프롬프터)(?:을|를|은|는|이|가|도|만|에|에서)?\s*"
+    r"(?:(?!(?:안|못)\s|않|없이|없고|없는|없었|말고|대신|빼고)"
+    r"(?:(?:핵심어|키워드|내용|문장|일부|전체|전부|절반)\S*|\S*[^\s을를])\s+){0,2}?"
+    r"(?:보고|보면서|보며|봤|켜고|켜\s*놓고|켜\s*두고|띄우고|띄워|띄웠|사용하고|사용해서|사용했|사용하며|사용하면서"
     r"|들고|읽으면서|읽으며|읽고|읽었)"
 )
+#: 관형 과거로 끝낸 진술("참고한 거라서요" · "띄워 놓고 한 연습이었어요"): 과거 글자(`_PAST_CHARS`)가 없어도 지난 일을 말한다
+_PAST_ADNOMINAL_RE = re.compile(r"(?:한|던)\s*(?:거|것|게|발표|연습|리허설|테이크|Take)")
 CLAIM_OPS = ("OVERALL", "ISSUE", "VALUE", "CHANGE")
 
 #: 근거 문구용 표시 이름
@@ -376,6 +382,11 @@ FORCED_UNVERIFIABLE = frozenset({"TYPE_MISMATCH", "TARGET_MISMATCH", "MIXED_QUOT
 _TAKE_REF = re.compile(r"(?:take|테이크)\s*\d+|\d+\s*번째", re.IGNORECASE)
 _SLIDE_REF = re.compile(r"\d+\s*(?:번\s*)?장|슬라이드\s*\d+")
 _PAST_CHARS = "았었였했랐렸겼웠봤됐"
+
+
+def _says_past(text: str) -> bool:
+    """지난 일을 말하는가: 과거 글자 또는 관형 과거('한 거' · '한 발표')."""
+    return any(ch in text for ch in _PAST_CHARS) or bool(_PAST_ADNOMINAL_RE.search(text))
 
 
 def _measure_hits(text: str, cfg: ChatAgentConfig, offset: int = 0) -> list[tuple[int, int, str]]:
@@ -794,14 +805,14 @@ def _script_statement_as_claim(draft: AssessmentDraft) -> AssessmentDraft:
                 t.strip()
                 for t in _SENTENCE_RE.findall(quote)
                 if _SCRIPT_USE_RE.search(t)
-                and any(ch in t for ch in _PAST_CHARS)
+                and _says_past(t)
                 and not _ASK_END_RE.search(t)
             ),
             "",
         ).rstrip(".!。！")
         if not quote:
             return draft
-    elif not any(ch in quote for ch in _PAST_CHARS):
+    elif not _says_past(quote):
         return draft
     subject = draft.subject.model_copy(
         update={"dimension": "script_independence", "metric": SCRIPT_USE_METRIC}

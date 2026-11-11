@@ -854,7 +854,21 @@ def test_get_goals_sources_and_goal_evidence() -> None:
     )
     ev = ctx.registry.get(g["base_value"]["evidence_id"])
     assert ev.kind == "GOAL" and ev.value == 0.28 and ev.revision == 1
-    assert res.evidence_ids == [ev.evidence_id]
+    # 미션 기준값도 근거다(Issue #1194 독립 평가 — '미션 기준 40%'를 말한 문장이 숫자 검사를 통과하게)
+    mv = d["missions"]["items"][0]["target"]["value"]
+    mev = ctx.registry.get(mv["evidence_id"])
+    assert mv["value"] == 0.4 and mev.value == 0.4 and mev.path == "missions[mission_id=m-7].target.value"
+    # 기준값은 측정값이 아니다: 코드가 측정값 문장을 그릴 때 고르지 않는다(코드 검수 — "청중 시선은 40%예요"가 되지 않게)
+    from pitch_coach_ai.features.chat_agent import compose
+
+    assert compose.is_target_value(mev) and not compose.is_target_value(ev)
+    assert compose.template_partial(ctx, [mev.evidence_id]) == []
+    assert res.evidence_ids == [ev.evidence_id, mev.evidence_id]
+    from pitch_coach_ai.features.chat_agent import checks as chk
+    from pitch_coach_ai.features.chat_agent.schemas import Claim
+
+    said = Claim(kind="RECORD", text="리뷰가 정한 미션은 3장 청중 시선 40% 이상이에요.", evidence_ids=[mev.evidence_id])
+    assert chk.check_claims([said], registry=ctx.registry, cfg=ctx.cfg) == []
     assert trace.result_summary == "미션 1 · 기준 0 · 대화 목표 있음"
 
 
@@ -865,7 +879,9 @@ def test_l1_18_goal_of_other_pitch_is_not_mixed() -> None:
     res, _ = run(ctx, "get_goals", {})
     g = res.data["conversation_goal"]["goal"]
     assert g == {"note": "다른 피치의 대화 목표다", "pitch_id": "p-2", "status": "OPEN"}
-    assert res.evidence_ids == []
+    # 다른 피치의 목표 근거는 없다(미션 기준값 근거만, 지금 범위 피치의 것)
+    paths = [ctx.registry.get(e).path for e in res.evidence_ids]
+    assert paths == ["missions[mission_id=m-7].target.value"]
 
 
 # ── search_guides ───────────────────────────────────────────────────────────

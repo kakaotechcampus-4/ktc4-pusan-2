@@ -807,6 +807,24 @@ def _take_report(ctx: RunCtx, a: TakeReportArgs) -> ToolResult:
                 k: m.get(k)
                 for k in ("mission_id", "status", "metric", "operator", "slide_number", "target")
             }
+            tgt = m.get("target")
+            if isinstance(tgt, (int, float)) and not isinstance(tgt, bool):
+                # 미션 기준값도 근거다: '미션 기준 45%'를 말한 문장이 숫자 검사를 통과하게(Issue #1194 독립 평가)
+                tev = ctx.registry.record(
+                    pitch_id=ctx.scope_pitch_id or "",
+                    take_id=snap.summary.take_id,
+                    take_number=tn,
+                    kind="REVIEW",
+                    revision=snap.revisions.REVIEW,
+                    path=f"review.mission_results[{i}].target",
+                    value=tgt,
+                    metric=m.get("metric"),
+                    slide_number=m.get("slide_number"),
+                    unit=ctx.cfg.metric_units.get(m.get("metric") or ""),
+                    version=ctx.version_of(snap),
+                )
+                eids.append(tev.evidence_id)
+                row["target"] = {"value": tgt, "evidence_id": tev.evidence_id}
             obs = m.get("observed")
             if isinstance(obs, (int, float)) and not isinstance(obs, bool):
                 ev = ctx.registry.record(
@@ -1097,6 +1115,32 @@ def _input_takes(ctx: RunCtx, ev: Any) -> set[str]:
 # ── get_goals ─────────────────────────────────────────────────────────────
 
 
+def _mission_target_view(ctx: RunCtx, m: Any, eids: list[str]) -> Any:
+    """미션 하나를 모델에게 줄 모양으로: 기준값(`target.value`)이 숫자면 근거 id 를 달아 `{value, evidence_id}`로 둔다(대화 목표의
+    `base_value`와 같은 모양). 그래야 미션 기준값을 말한 문장이 숫자 검사를 통과한다(5-7, Issue #1194 독립 평가)."""
+    if not isinstance(m, dict):
+        return m
+    tgt = m.get("target")
+    value = tgt.get("value") if isinstance(tgt, dict) else None
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not m.get("mission_id"):
+        return m
+    metric = tgt.get("metric") if isinstance(tgt, dict) else None
+    ev = ctx.registry.record(
+        pitch_id=ctx.scope_pitch_id,
+        take_id=None,
+        take_number=None,
+        kind="REVIEW",
+        revision=None,
+        path=f"missions[mission_id={m['mission_id']}].target.value",
+        value=value,
+        metric=metric,
+        slide_number=m.get("slide_number"),
+        unit=ctx.cfg.metric_units.get(metric or ""),
+    )
+    eids.append(ev.evidence_id)
+    return {**m, "target": {**tgt, "value": {"value": value, "evidence_id": ev.evidence_id}}}
+
+
 def _get_goals(ctx: RunCtx, _a: NoArgs) -> ToolResult:
     missions = list(ctx.pitch.missions) if ctx.pitch is not None else []
     crit = ctx.pitch.criteria if ctx.pitch is not None else None
@@ -1150,11 +1194,12 @@ def _get_goals(ctx: RunCtx, _a: NoArgs) -> ToolResult:
         eids.append(ev.evidence_id)
         conversation["status"] = {"value": "NONE", "evidence_id": ev.evidence_id}
         targets_ids = [ctx.scope_pitch_id] if ctx.scope_pitch_id else []
+    mission_views = [_mission_target_view(ctx, m, eids) for m in missions]
     return _res(
         "get_goals",
         ok=True,
         data={
-            "missions": {"source": "리뷰가 정한 미션", "items": missions},
+            "missions": {"source": "리뷰가 정한 미션", "items": mission_views},
             "criteria_targets": {"source": "평가 기준", "items": targets},
             "conversation_goal": conversation,
         },
