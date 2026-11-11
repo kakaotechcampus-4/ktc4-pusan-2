@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { scanSlideMarkers } from '../lib/slideMarkers';
 import { useCreateStore } from '../createStore';
-import { CaretIcon, CheckIcon, DocIcon, LinkIcon } from '../icons';
+import { CaretIcon, CheckIcon, DocIcon, LinkIcon, PencilIcon } from '../icons';
 import {
   canSaveMapping,
   countChars,
@@ -492,14 +492,26 @@ function MappingReview({
             {missing > 0 ? `빈 대본 ${missing}장` : '빈 대본 없음'}
           </p>
         </div>
-        <button
-          ref={trigger}
-          type="button"
-          className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
-          onClick={() => setOpen(true)}
-        >
-          매핑 확인/수정
-        </button>
+        {/* 매핑이 어긋나면 원문으로 돌아가 고치는 길이 보이도록, 확인 버튼 옆에 같은 무게로 둡니다 */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center justify-center gap-2 border border-line-strong bg-white px-5 py-3 text-sm font-bold hover:bg-cream disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={script.parse.status === 'pending'}
+            onClick={() => unmapScript(script.version)}
+          >
+            <PencilIcon />
+            대본 원문 수정
+          </button>
+          <button
+            ref={trigger}
+            type="button"
+            className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
+            onClick={() => setOpen(true)}
+          >
+            매핑 확인/수정
+          </button>
+        </div>
       </div>
       <MappingNotice
         text={script.text}
@@ -517,14 +529,6 @@ function MappingReview({
           수정한 문장은 유지됩니다. 확인 창에서 다시 매핑하고 저장해 주세요.
         </p>
       )}
-      <button
-        type="button"
-        className="mt-3 min-h-11 text-sm underline underline-offset-4"
-        disabled={script.parse.status === 'pending'}
-        onClick={() => unmapScript(script.version)}
-      >
-        대본 원문 수정
-      </button>
       {open && (
         <MappingDialog
           script={script}
