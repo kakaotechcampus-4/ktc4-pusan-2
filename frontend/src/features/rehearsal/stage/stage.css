@@ -903,6 +903,30 @@
   visibility: visible;
 }
 
+/* 코치가 말하는 동안만 줄 전체를 코랄로 켠다. 교정 · 칭찬 구분 없이 "코치가 말한다" 신호 하나다.
+   테두리는 실선만 쓴다 — 점선 빨강은 시선 판정 불가 표시라 겹치지 않게 둔다. */
+.stage-live .coach {
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease;
+}
+
+.stage-live .coach[data-empty='false'] {
+  border-color: var(--color-coral);
+  background: var(--color-coral-deep);
+  color: var(--color-ink-stage);
+}
+
+.stage-live .coach[data-empty='false'] .indicators li {
+  border-color: color-mix(in srgb, var(--color-ink-stage) 45%, transparent);
+  color: var(--color-ink-stage);
+}
+
+.stage-live .coach[data-empty='false'] .indicators li[data-tone='warn'] {
+  border-color: var(--color-ink-stage);
+  background: color-mix(in srgb, var(--color-ink-stage) 18%, transparent);
+}
+
 .stage-live .coach-avatar {
   width: 40px;
   height: 40px;
@@ -1264,4 +1288,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .stage-head .stage-mission-label { animation: none; }
+  .stage-live .coach { transition: none; }
 }
