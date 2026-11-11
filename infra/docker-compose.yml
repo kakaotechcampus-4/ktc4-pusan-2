@@ -22,7 +22,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
-    mem_limit: 620m
+    mem_limit: 1g
     
   be:
     restart: unless-stopped
