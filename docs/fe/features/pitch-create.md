@@ -121,7 +121,7 @@
 | 피치 정보 · 버전 목록 | `GET /api/pitches/{id}` · `GET /api/pitches/{id}/resources` | `shared/api/pitch.ts` |
 | 슬라이드 올리기 · 읽기 | `POST /api/pitches/add/{id}/presentation` · `GET /api/pitches/{id}/presentations/{versionId}` | `shared/api/presentation.ts` |
 | 대본 올리기(202) · 읽기 · 다시 나누기 | `POST /api/pitches/{id}/scripts` · `GET /api/pitches/{id}/scripts/{versionId}` · `POST .../scripts/{versionId}/parse` | `shared/api/script.ts` |
-| 평가 기준 정리 · 저장 · 읽기 | `POST /api/pitches/add/{id}/standards` · `POST /api/pitches/{id}/standards` · `GET /api/pitches/{id}/evaluations/{version}` | `shared/api/standards.ts` |
+| 평가 기준 정리 · 저장 · 읽기 | `POST /api/pitches/add/{id}/standards` · `POST /api/pitches/{id}/standards` · `GET /api/pitches/{id}/evaluations/{version}` | `features/pitch/api/standards.ts` |
 
 - 대본 업로드 · 파싱 · 재시도 · 만료 규칙은 [docs/be/script-parse.md](../../be/script-parse.md)가 기준입니다. AI가 나누는 규칙(구분자)은 [docs/ai/features/script-parser.md](../../ai/features/script-parser.md), 평가 기준 정리는 [docs/ai/features/evaluation-criteria.md](../../ai/features/evaluation-criteria.md)입니다.
 - 슬라이드 쪽수는 BE가 센 값(`page_count`)을 쓰고, 없을 때(옛 발표자료)만 PDF를 열어 셉니다.

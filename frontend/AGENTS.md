@@ -291,12 +291,16 @@ src/
   shared/
     ui/         공용 컴포넌트 (버튼·모달·빈 상태·스켈레톤)
     lib/        순수 함수 (시계, 구간 압축) — 여기 있는 건 테스트가 쉽습니다
-    api/        쿼리 훅
-  features/
-    auth/       로그인·토큰
-    pitch/      Pitch 생성·수정·목록
-    rehearsal/  ★ 리허설. 난이도 최상 (Track A)
-    report/     리포트·비교·Take 기록·분석 대기
+    api/        두 기능 이상이 쓰는 쿼리 훅 · 공용 클라이언트
+  features/     한 기능만 쓰는 것은 그 기능 안에 (서버 호출은 각 기능의 api/)
+    auth/       로그인·토큰·내 정보·서비스 의견
+    chat/       대화형 에이전트 — api/ · store/ · rules/(응답 검사·문구 규칙) · ui/
+    info/       소개·지원하지 않는 환경·404
+    onboarding/ 첫 화면·출시 카운트다운
+    pitch/      api/ · create/(Pitch 생성·수정) · home/(홈·피치 목록) · tutorial/(First Take 튜토리얼)
+    rehearsal/  ★ 리허설. 난이도 최상 (Track A) — api/ · lib/ · media/ · prepare/ · retry/ · stage/
+    report/     api/ · analysis/(분석 대기·대본 확인) · report/(리포트) · history/(Take 기록·비교)
+  dev/          /dev/* 개발용 화면. features 를 가져다 써도 됩니다 (app 과 같은 린트 예외)
   workers/      시선 워커. 메인 스레드에서 격리
   vendor/gaze/  AI 시선 엔진 v1.1 — engine·worker 는 복사본(고치지 않음), camera 는 FE 원본 (그 폴더 README)
   mocks/        MSW. 명세 8-4의 JSON 그대로
@@ -314,7 +318,7 @@ src/
 
 1. 명세 8-4의 응답을 `types/api.ts`에 타입으로
 2. 그 JSON을 `mocks/handlers.ts`에 그대로
-3. 쿼리 훅 (`shared/api/`)
+3. 쿼리 훅 (그 기능만 쓰면 `features/<기능>/api/`, 두 기능 이상이면 `shared/api/`)
 4. 화면 컴포넌트
 5. **상태 붙이기 — 로딩·빈·에러·부분 실패.** 명세 8-3 표가 체크리스트입니다
 6. (W8) 목만 걷어냄

@@ -14,7 +14,7 @@ test('없는 주소는 길을 잃었다고 알리고 내 피치로 돌려보낸�
 });
 
 test.describe('마이페이지', () => {
-  test('계정 정보를 보이고, 테스트 기간에는 연습 기록 동의를 서버 값대로 잠가 둔다', async ({
+  test('계정 정보를 보이고, 테스트 기간에는 연습 기록 동의를 켠 채로 잠가 둔다', async ({
     page,
   }) => {
     await page.goto('/me');
@@ -22,10 +22,9 @@ test.describe('마이페이지', () => {
     await expect(page.getByText('demo@pitchcoach.local')).toBeVisible();
 
     const consent = page.getByLabel('연습 기록을 남겨 다시 분석하는 데 동의해요');
-    // 목 사용자는 꺼져 있습니다(`src/mocks/auth.ts`). 켜는 것은 장치 점검의 시작 버튼이 합니다
-    await expect(consent).not.toBeChecked();
+    // 목 사용자는 서버 값이 꺼져 있지만(`src/mocks/auth.ts`) 테스트 기간에는 켠 채로 보입니다
+    await expect(consent).toBeChecked();
     await expect(consent).toBeDisabled();
-    await expect(page.getByText('다음 연습을 시작할 때 켜져요')).toBeVisible();
   });
 
   test('계정 삭제는 한 번 더 묻고, 확인하면 첫 화면으로 간다', async ({ page }) => {

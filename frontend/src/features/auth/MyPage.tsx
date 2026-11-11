@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { deleteLocalRecords } from '@/shared/lib/localData';
-import { useWithdraw } from '@/shared/api/useWithdraw';
+import { useWithdraw } from './api/useWithdraw';
 import { useSession } from './useSession';
 
 /**
@@ -62,9 +62,9 @@ export function MyPage() {
           <input
             id="raw-data-consent"
             type="checkbox"
-            // 테스트 기간에는 사용자가 바꾸지 못합니다. 꺼져 있으면 다음 연습을 시작할 때 켭니다
-            // (`ensureRawDataConsent`). 화면은 서버 값을 그대로 보여 줍니다
-            checked={user?.raw_data_consent ?? false}
+            // 테스트 기간에는 켜진 채로 잠가 둡니다. 서버 값이 꺼져 있어도 모든 연습은 시작 버튼에서
+            // 먼저 켠 뒤에 Take 를 만들어서(`ensureRawDataConsent`), 꺼진 채로 진행되는 연습은 없습니다
+            checked
             disabled
             readOnly
             className="size-4 shrink-0 accent-ink"
@@ -72,13 +72,8 @@ export function MyPage() {
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
         <span className="text-xs text-stone">
-          지금은 테스트 기간이라 연습을 시작할 때 이 설정을 켜고, 바꿀 수 없어요.
+          지금은 테스트 기간이라 이 설정이 켜져 있고, 바꿀 수 없어요.
         </span>
-        {user && !user.raw_data_consent && (
-          <span className="text-xs text-stone">
-            아직 꺼져 있어요. 다음 연습을 시작할 때 켜져요.
-          </span>
-        )}
       </Card>
 
       <Card title="이 브라우저의 기록">

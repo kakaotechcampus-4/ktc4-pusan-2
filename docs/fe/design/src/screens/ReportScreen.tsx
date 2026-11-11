@@ -1,4 +1,4 @@
-// 제품 Take 리포트(`frontend/src/features/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
+// 제품 Take 리포트(`frontend/src/features/report/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/ui/Button';
 import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';

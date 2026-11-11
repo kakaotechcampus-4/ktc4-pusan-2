@@ -1,4 +1,4 @@
-// 제품 홈 · 내 피치(`frontend/src/features/pitch/HomePage.tsx`)의 설계서 샘플.
+// 제품 홈 · 내 피치(`frontend/src/features/pitch/home/HomePage.tsx`)의 설계서 샘플.
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/ui/Button';

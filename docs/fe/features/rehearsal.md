@@ -132,7 +132,7 @@ WS stop + PUT /takes/{id} (종료 시각)
 
 모두 `frontend/src/features/rehearsal/` 아래입니다. 시선 워커는 `src/workers/`, 시선 엔진은 `src/vendor/gaze/`에 있습니다. 표는 처음 읽을 때 볼 파일만 골랐습니다.
 
-> 파일 위치 정리 PR #1151이 합쳐지면 `shared/api/take.ts`가 `features/rehearsal/api/take.ts`로 옮겨지고, 개발 검증 화면(`MediaDevPage.tsx` 등)이 `src/dev/`로 갑니다. 그때 이 절을 함께 고칩니다.
+서버 호출 중 Take 만들기 · 끝내기 · 중단은 `api/take.ts`에 있습니다. 개발 검증 화면은 `src/dev/`에 있습니다(표 맨 아래).
 
 **장치 점검**
 
@@ -174,7 +174,7 @@ WS stop + PUT /takes/{id} (종료 시각)
 | `lib/db.ts` · `writeFailures.ts` | IndexedDB · 쓰기 실패 장부 |
 | `lib/gazeExclusion.ts` · `gazeNote.ts` | Take 전체에서 시선을 뺄지 · 기록되지 않을 때의 안내 |
 | `retry/RetryPage.tsx` | 종료를 못 보냈을 때 다시 보내기 |
-| `media/MediaDevPage.tsx` · `SttDevPage.tsx` · `stage/StageDemo.tsx` | `/dev/media` · `/dev/stt` · `/dev/stage` (개발 검증용, 제품 화면 아님) |
+| `src/dev/MediaDevPage.tsx` · `SttDevPage.tsx` · `StageDemo.tsx` | `/dev/media` · `/dev/stt` · `/dev/stage` (개발 검증용, 제품 화면 아님) |
 
 ## 5. BE · AI 계약
 

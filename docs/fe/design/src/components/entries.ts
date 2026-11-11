@@ -107,8 +107,8 @@ export const componentEntries: GuideComponent[] = [
     tokens: ['coral-deep', 'coral-wash', 'ink', 'cream', 'line-strong'],
     sources: [
       'frontend/src/shared/ui/Badge.tsx',
-      'frontend/src/shared/ui/TakeStatusBadge.tsx',
-      'frontend/src/shared/lib/takeStatus.ts',
+      'frontend/src/features/report/history/TakeStatusBadge.tsx',
+      'frontend/src/features/report/history/takeStatus.ts',
     ],
     file: 'src/ui/Badge.tsx · src/ui/TakeStatusBadge.tsx · src/lib/takeStatus.ts',
     props: [
@@ -117,7 +117,7 @@ export const componentEntries: GuideComponent[] = [
       ['status (TakeStatusBadge)', '{ label, tone }', 'takeStatusView의 결과'],
     ],
     code: `import { Badge } from '@/shared/ui/Badge';
-import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
+import { TakeStatusBadge } from '@/features/report/history/TakeStatusBadge';
 
 <Badge tone="strong">이번 미션</Badge>
 <TakeStatusBadge status={takeStatusView(take.id, take.status, take.end_reason)} />`,
@@ -244,7 +244,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     ],
     tokens: ['ink', 'cream', 'line-strong', 'coral-wash'],
     sources: [
-      'frontend/src/shared/ui/SuggestionCategorySelect.tsx',
+      'frontend/src/features/auth/SuggestionCategorySelect.tsx',
       'frontend/src/features/auth/SuggestionForm.tsx',
       'frontend/src/features/rehearsal/prepare/ScriptModeChoice.tsx',
     ],
@@ -279,7 +279,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '빈 자리는 점선 테두리로 두고, 왜 비었는지 쓴다.',
     ],
     tokens: ['ink', 'panel', 'coral-deep', 'line-strong'],
-    sources: ['frontend/src/features/report/QueryState.tsx'],
+    sources: ['frontend/src/features/report/history/QueryState.tsx'],
     file: 'src/screens/shared.tsx (QueryNotice)',
     props: [
       ['stateId', "'loading' | 'error'", '설계서 샘플용'],
@@ -359,7 +359,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '보관 기한 "2026년 12월 31일"은 개인정보 처리 동의 팝업 · 처리방침 · 테스트 참여 안내와 같은 값이다(제품은 shared/lib/retention.ts 의 DATA_RETENTION_UNTIL 한 곳). BE 의 일괄 파기 작업은 아직 없다.',
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong'],
-    sources: ['frontend/src/features/pitch/DeletePitchDialog.tsx'],
+    sources: ['frontend/src/features/pitch/home/DeletePitchDialog.tsx'],
     file: 'src/ui/dialogs/DeletePitchDialog.tsx',
     props: [
       ['pitchTitle · takeCount', 'string · number', '알릴 피치'],
@@ -415,7 +415,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '문구를 바꾸면 QUESTION_VERSION 을 올린다. BE 가 버전별로 응답을 나눠 평균 낸다.',
     ],
     tokens: ['panel', 'ink', 'coral-deep', 'line-strong', 'line'],
-    sources: ['frontend/src/features/report/TakeSurvey.tsx'],
+    sources: ['frontend/src/features/report/report/TakeSurvey.tsx'],
     file: 'src/ui/dialogs/TakeSurveyDialog.tsx',
     props: [
       ['takeId', 'string', '설문을 보낼 Take (제품)'],
@@ -445,7 +445,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '저장하는 중에는 Esc · 나중에를 막는다(버튼은 aria-disabled). 동의하면 연 버튼이 카드와 함께 사라지므로 완료 안내(role="status", tabIndex=-1)를 바로 만들고 그 안내로 초점을 한 번 옮긴다. 남은 설문 목록을 기다리지 않고, 늦게 와도 초점을 빼앗지 않으며 목록이 비어도 body로 빠지지 않는다(#845).',
     ],
     tokens: ['panel', 'ink', 'line'],
-    sources: ['frontend/src/features/pitch/HomeSurveyNotice.tsx'],
+    sources: ['frontend/src/features/pitch/home/HomeSurveyNotice.tsx'],
     file: 'src/ui/dialogs/TestConsentDialog.tsx',
     props: [
       ['onClose', '() => void', '나중에 · Esc · 동의 저장 뒤'],

@@ -4,7 +4,7 @@
 >
 > **한 줄 요약**: 끝낸 Take의 리포트를 끝날 때까지 2초마다 다시 묻고, 점수 대신 지난 Take와의 변화와 측정 근거를 보이며, 리뷰가 없어도 측정값은 먼저 보입니다.
 >
-> **기준값**: 다시 조회 간격과 멈추는 조건은 `shared/api/report.ts`(`POLL_MS` · `isSettled`), 분석 단계 이름은 `features/report/ProcessingPage.tsx`가 기준입니다.
+> **기준값**: 다시 조회 간격과 멈추는 조건은 `shared/api/report.ts`(`POLL_MS` · `isSettled`), 분석 단계 이름은 `features/report/analysis/ProcessingPage.tsx`가 기준입니다.
 
 | 절 | 내용 |
 |---|---|
@@ -94,8 +94,8 @@ FINALIZING → SCORING → (AWAITING_CONFIRMATION) → REVIEWING → DONE
 | 무엇 | 위치 |
 |---|---|
 | 리포트 · 분석 상태 | TanStack Query `shared/api/report.ts` (끝날 때까지 2초 간격으로 다시 조회) |
-| Take 기록 | `shared/api/takeHistory.ts` |
-| 대본 확인 목록 · 보내기 | `shared/api/confirmation.ts` (목록은 항상 새로 읽음, `staleTime: 0`. 같은 화면의 리포트 머리 정보는 다시 묻지 않음) |
+| Take 기록 | `features/report/api/takeHistory.ts` |
+| 대본 확인 목록 · 보내기 | `features/report/api/confirmation.ts` (목록은 항상 새로 읽음, `staleTime: 0`. 같은 화면의 리포트 머리 정보는 다시 묻지 않음) |
 | 내용 전달 장별 상세 | TanStack Query `shared/api/report.ts` `useSlideCoverage`. 장을 펼칠 때만 부르고, 키에 결과 판(`revision`)이 들어갑니다 |
 | 설문 | `shared/api/takeSurvey.ts` |
 | 자동 종료 사유 | 무대 → 분석 대기 → 리포트로 라우터 state로 넘깁니다. 분석이 빨리 끝나면 분석 대기에서 놓치기 때문입니다 |
@@ -104,29 +104,29 @@ FINALIZING → SCORING → (AWAITING_CONFIRMATION) → REVIEWING → DONE
 
 모두 `frontend/src/features/report/` 아래입니다.
 
-> 파일 위치 정리 PR #1151이 합쳐지면 이 폴더가 `analysis/`(분석 대기 · 대본 확인) · `report/`(리포트 · 설문) · `history/`(Take 기록 · 비교) · `api/`(`confirmation.ts` · `takeHistory.ts`)로 나뉩니다. 그때 4절 · 9절 경로를 함께 고칩니다.
+하위 폴더는 `analysis/`(분석 대기 · 대본 확인) · `report/`(리포트 · 설문) · `history/`(Take 기록 · 비교) · `api/`(`confirmation.ts` · `takeHistory.ts`)입니다. 하위 폴더 두 곳 이상이 쓰는 파일(`reportFormat.ts` · `takeHistoryFormat.ts` · `AutoEndAlert.tsx`)은 `report/` 바로 아래에 둡니다.
 
 | 파일 | 하는 일 |
 |---|---|
-| `ProcessingPage.tsx` · `DuskScreen.tsx` | 분석 대기. 노을 그림 위 대화 상자에 상태 · 진행 · 팁 |
-| `ConfirmPage.tsx` · `confirmFormat.ts` | 대본 확인. 문장 안에서 헷갈린 말을 강조 |
-| `ReportPage.tsx` · `ReportFrame.tsx` | 리포트. 요약 · 측정 · 시선 내역 · 지난 Take 비교 · 리뷰 차원 · 다음 미션 |
+| `analysis/ProcessingPage.tsx` · `analysis/DuskScreen.tsx` | 분석 대기. 노을 그림 위 대화 상자에 상태 · 진행 · 팁 |
+| `analysis/ConfirmPage.tsx` · `analysis/confirmFormat.ts` | 대본 확인. 문장 안에서 헷갈린 말을 강조 |
+| `report/ReportPage.tsx` · `report/ReportFrame.tsx` | 리포트. 요약 · 측정 · 시선 내역 · 지난 Take 비교 · 리뷰 차원 · 다음 미션 |
 | `reportFormat.ts` | 서버 단계 → 화면 세 단계 상태 |
-| `ContentCard.tsx` · `contentFormat.ts` | 내용 전달 카드. 대표 숫자 · 4칸 막대 · 놓친 중요 내용 · 수치 · 표현 · 말의 구성 · 장별 목록과 그 문구 |
-| `SlideCoverage.tsx` · `SpeechMixBlock.tsx` | 장을 펼쳤을 때의 상세(대본 문장 · 말한 문장 · 핵심 내용 · 수치)와 말의 구성 막대 |
-| `contentGuard.ts` · `ContentErrorBoundary.tsx` | 요약 모양 검사, 내용 전달 카드만 감싸는 오류 경계 |
+| `report/ContentCard.tsx` · `report/contentFormat.ts` | 내용 전달 카드. 대표 숫자 · 4칸 막대 · 놓친 중요 내용 · 수치 · 표현 · 말의 구성 · 장별 목록과 그 문구 |
+| `report/SlideCoverage.tsx` · `report/SpeechMixBlock.tsx` | 장을 펼쳤을 때의 상세(대본 문장 · 말한 문장 · 핵심 내용 · 수치)와 말의 구성 막대 |
+| `report/contentGuard.ts` · `report/ContentErrorBoundary.tsx` | 요약 모양 검사, 내용 전달 카드만 감싸는 오류 경계 |
 | `AutoEndAlert.tsx` | 자동 종료 안내(분석 대기 · 리포트 공용) |
-| `TakeSurvey.tsx` | 리포트마다 받는 설문 |
-| `TakesPage.tsx` · `TakeComparison.tsx` · `TakeComparisonRedirect.tsx` · `takeHistoryFormat.ts` | Take 기록 · 비교 |
-| `QueryState.tsx` | 로딩 · 오류 공용 표시 |
+| `report/TakeSurvey.tsx` | 리포트마다 받는 설문 |
+| `history/TakesPage.tsx` · `history/TakeComparison.tsx` · `history/TakeComparisonRedirect.tsx` · `takeHistoryFormat.ts` | Take 기록 · 비교 |
+| `history/QueryState.tsx` | 로딩 · 오류 공용 표시 |
 
 ## 5. BE 계약
 
 | 무엇 | 경로 | FE 코드 |
 |---|---|---|
 | Take 리포트(분석 상태 포함) | `GET /api/takes/{takeId}/report` | `shared/api/report.ts` |
-| Take 기록 | `GET /api/takes/` · `GET /api/takes/?pitch_id={id}` | `shared/api/takeHistory.ts` |
-| 대본 확인 | `GET · POST /api/takes/{takeId}/confirmations` | `shared/api/confirmation.ts` |
+| Take 기록 | `GET /api/takes/` · `GET /api/takes/?pitch_id={id}` | `features/report/api/takeHistory.ts` |
+| 대본 확인 | `GET · POST /api/takes/{takeId}/confirmations` | `features/report/api/confirmation.ts` |
 | 설문 | `GET · POST /api/takes/{takeId}/survey` · `GET /api/take-surveys/pending` | `shared/api/takeSurvey.ts` |
 | 내용 전달 요약 | 리포트 응답의 `content_status`(`state` · `revision` · `summary` · `previous`) | `shared/api/report.ts` · `types/report.ts` |
 | 내용 전달 장별 상세 | `GET /api/takes/{takeId}/script-coverage/slides/{slide}?revision={n}` | `shared/api/report.ts` `fetchSlideCoverage` |
@@ -226,14 +226,14 @@ FINALIZING → SCORING → (AWAITING_CONFIRMATION) → REVIEWING → DONE
 
 | 무엇 | 파일 (`features/report/`) |
 |---|---|
-| 분석 대기 | `ProcessingPage.test.tsx` |
-| 대본 확인 | `ConfirmPage.test.tsx` · `confirm.test.ts` |
-| 리포트 | `ReportPage.test.tsx` · `ReportFrame.test.tsx` · `report.test.ts` |
-| 리포트 응답 모양 | `ReportContract.test.tsx` |
-| 내용 전달 카드 · 장별 상세(목 BE 위에서 409 흐름까지) | `ContentCard.test.tsx` · `SlideCoverage.test.tsx` · `contentFormat.test.ts` |
-| Take 기록 · 비교 | `TakesUnified.test.tsx` · `takeHistory.test.ts` · `HistoryAccessibility.test.tsx` |
-| 설문 · 서비스 의견 | `TakeSurvey.test.tsx` · `ServiceReviewFlow.test.tsx` |
-| 내용 전달 오류 경계 (판이 바뀌어도 열린 목록 유지 · 오류 뒤 회복) | `ContentErrorBoundary.test.tsx` · `ReportPage.test.tsx` |
+| 분석 대기 | `analysis/ProcessingPage.test.tsx` |
+| 대본 확인 | `analysis/ConfirmPage.test.tsx` · `analysis/confirm.test.ts` |
+| 리포트 | `report/ReportPage.test.tsx` · `report/ReportFrame.test.tsx` · `report.test.ts` |
+| 리포트 응답 모양 | `report/ReportContract.test.tsx` |
+| 내용 전달 카드 · 장별 상세(목 BE 위에서 409 흐름까지) | `report/ContentCard.test.tsx` · `report/SlideCoverage.test.tsx` · `report/contentFormat.test.ts` |
+| Take 기록 · 비교 | `history/TakesUnified.test.tsx` · `takeHistory.test.ts` · `history/HistoryAccessibility.test.tsx` |
+| 설문 · 서비스 의견 | `report/TakeSurvey.test.tsx` · `report/ServiceReviewFlow.test.tsx` |
+| 내용 전달 오류 경계 (판이 바뀌어도 열린 목록 유지 · 오류 뒤 회복) | `report/ContentErrorBoundary.test.tsx` · `report/ReportPage.test.tsx` |
 | 브라우저 끝까지(E2E, `frontend/e2e/`) | `report.e2e.ts`(리포트 · 내용 전달 카드 · 409) · `processing.e2e.ts`(분석 대기 · 대본 확인) · `takes.e2e.ts`(Take 기록 · 지표 비교) |
 
 ## 10. 열린 질문 · 알려진 한계

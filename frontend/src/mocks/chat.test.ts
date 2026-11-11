@@ -2,7 +2,7 @@ import { setupServer } from 'msw/node';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./auth', () => ({ currentMockUserId: () => null }));
 import { createChatHandlers, type MockChatControls } from './chat';
-import { chatPaths } from '@/shared/api/chatPaths';
+import { chatPaths } from '@/features/chat/api/chatPaths';
 import type {
   Card,
   ConversationList,

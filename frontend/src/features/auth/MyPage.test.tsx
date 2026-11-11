@@ -18,7 +18,7 @@ vi.mock('./useSession', () => ({
   }),
 }));
 vi.mock('./SuggestionForm', () => ({ SuggestionForm: () => null }));
-vi.mock('@/shared/api/useWithdraw', () => ({
+vi.mock('./api/useWithdraw', () => ({
   useWithdraw: () => ({ isPending: false, isError: false, mutate: vi.fn() }),
 }));
 
@@ -68,18 +68,14 @@ it('links the consent checkbox to its label with for · id', () => {
   expect(checkbox.id).toBe('raw-data-consent');
 });
 
-it('shows the server consent as is, locked, and says an off value turns on at the next practice', () => {
-  const checkbox = consentCheckbox();
-  expect(checkbox.checked).toBe(false);
-  expect(checkbox.disabled).toBe(true);
-  expect(host.textContent).toContain('다음 연습을 시작할 때 켜져요');
-});
-
-it('shows a consent already on as checked, without the pending note', async () => {
-  session.consent = true;
-  await render();
-  const checkbox = consentCheckbox();
-  expect(checkbox.checked).toBe(true);
-  expect(checkbox.disabled).toBe(true);
-  expect(host.textContent).not.toContain('다음 연습을 시작할 때 켜져요');
-});
+it.each([false, true])(
+  'shows the consent checked and locked during the test period (server value %s)',
+  async (consent) => {
+    session.consent = consent;
+    await render();
+    const checkbox = consentCheckbox();
+    expect(checkbox.checked).toBe(true);
+    expect(checkbox.disabled).toBe(true);
+    expect(host.textContent).not.toContain('다음 연습을 시작할 때 켜져요');
+  },
+);

@@ -1,5 +1,5 @@
 import { http, HttpResponse, type PathParams } from 'msw';
-import { chatPaths } from '@/shared/api/chatPaths';
+import { chatPaths } from '@/features/chat/api/chatPaths';
 import { currentMockUserId } from './auth';
 import {
   pitch,
@@ -33,7 +33,7 @@ import type {
   SendMessageRequest,
   TraceItem,
 } from '@/types/chat';
-import { isTerminalRun } from '@/shared/lib/chatAgent';
+import { isTerminalRun } from '@/features/chat/rules/chatAgent';
 
 /**
  * 대화형 코치 에이전트 목 (`docs/ai/features/chat-agent.md` 12-3 · 12-4, 개정판 #900).

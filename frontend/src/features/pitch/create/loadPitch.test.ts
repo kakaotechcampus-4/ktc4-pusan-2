@@ -92,7 +92,7 @@ const latestScriptIsShort = () =>
     .mocked(getScript)
     .mockImplementationOnce(async (_pitchId, id) => script(id, 1, 3))
     .mockImplementationOnce(async (_pitchId, id) => script(id, 2, 3));
-vi.mock('@/shared/api/standards', () => ({
+vi.mock('../api/standards', () => ({
   getEvaluation: vi.fn(async () => ({
     pitch_id: 'p1',
     evaluation_version: 1,

@@ -3,9 +3,9 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { SuggestionForm } from './SuggestionForm';
-import { submitSuggestion } from '@/shared/api/serviceReview';
+import { submitSuggestion } from './api/serviceReview';
 import { ApiFailure } from '@/shared/api/tokenStore';
-vi.mock('@/shared/api/serviceReview', () => ({ submitSuggestion: vi.fn() }));
+vi.mock('./api/serviceReview', () => ({ submitSuggestion: vi.fn() }));
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(async () => {

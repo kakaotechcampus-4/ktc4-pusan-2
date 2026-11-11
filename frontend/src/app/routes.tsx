@@ -21,7 +21,7 @@ import {
   TakesPage,
 } from './LazyScreens';
 import { createBrowserRouter, Outlet, ScrollRestoration } from 'react-router';
-import { TakeComparisonRedirect } from '@/features/report/TakeComparisonRedirect';
+import { TakeComparisonRedirect } from '@/features/report/history/TakeComparisonRedirect';
 import { PageTitle } from './PageTitle';
 import { LaunchGate } from './LaunchGate';
 import { DesktopGate } from './DesktopGate';
@@ -30,9 +30,9 @@ import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { MAIN_ID } from '@/shared/ui/SkipLink';
-import { HomePage } from '@/features/pitch/HomePage';
+import { HomePage } from '@/features/pitch/home/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
-import { ChatAgentHost } from '@/features/chat/ChatAgentHost';
+import { ChatAgentHost } from '@/features/chat/ui/ChatAgentHost';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
