@@ -1,5 +1,6 @@
 name: PR1214 Prettier diagnostic
 on:
+  pull_request:
   push:
     branches:
       - feat/script-marker-hint-chips
