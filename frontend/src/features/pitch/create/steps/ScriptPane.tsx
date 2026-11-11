@@ -285,7 +285,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
       <div id={formatHintId} className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
         <p className="mb-2 font-bold text-ink">슬라이드 구분자 안내</p>
         <p>슬라이드마다 아래 구분자 중 하나를 새 줄 맨 앞에 적어 주세요.</p>
-        <div className="mt-2 flex flex-wrap gap-2" aria-label="지원하는 슬라이드 구분자 예시">
+        <div className="mt-2 flex flex-wrap gap-2">
           {['[N]', '[슬라이드 N]', '슬라이드 N:', 'Slide N', '## Slide N — 제목'].map(
             (marker) => (
               <code
