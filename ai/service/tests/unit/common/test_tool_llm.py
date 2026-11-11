@@ -678,3 +678,25 @@ def test_provider_extra_content_is_kept_and_calls_without_index_are_split_by_id(
     llm, _, _ = make([[tool_chunk, chunk(finish="tool_calls"), chunk(usage=(10, 5))]])
     r = llm.invoke(req(), always)
     assert [(c.id, c.name, c.extra) for c in r.tool_calls] == [("call-1", "get_goals", sig), ("call-2", "list_takes", None)]
+
+
+def test_gemini_requests_fill_missing_thought_signatures_and_others_are_unchanged() -> None:
+    """Gemini 모델이면 서명 칸이 없는 assistant 도구 호출(코드가 넣은 호출 · 되살린 호출)에 공식 대체 서명을 채우고,
+    받은 칸은 그대로 둔다. 다른 모델의 요청 메시지는 바꾸지 않는다(Issue #1194 모델 비교)."""
+    from pitch_coach_ai.common.llm import GEMINI_DUMMY_SIGNATURE, _is_gemini, _with_gemini_signatures
+
+    real = {"google": {"thought_signature": "c2ln"}}
+    msgs = [
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "pf-1", "type": "function", "function": {"name": "get_goals", "arguments": "{}"}},
+            {"id": "g-1", "type": "function", "function": {"name": "list_takes", "arguments": "{}"}, "extra_content": real},
+        ]},
+        {"role": "tool", "tool_call_id": "pf-1", "content": "{}"},
+    ]
+    got = _with_gemini_signatures(msgs)
+    calls = got[1]["tool_calls"]
+    assert calls[0]["extra_content"]["google"]["thought_signature"] == GEMINI_DUMMY_SIGNATURE
+    assert calls[1]["extra_content"] == real
+    assert "extra_content" not in msgs[1]["tool_calls"][0]  # 원본은 그대로
+    assert _is_gemini("google/gemini-4-argon") and not _is_gemini("openai/gpt-6-luna")
