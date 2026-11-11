@@ -238,7 +238,7 @@ function CurrentScreen({
     case 'stage-blocked':
       return <StageBlockedScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'me':
-      return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
+      return <MyScreen />;
     case 'slide-preview':
       // 피치 생성 샘플 안의 슬라이드 확인 창을 그대로 보인다
       return <PitchCreateScreen stateId="upload-review" onNavigate={onNavigate} inline={inline} />;
